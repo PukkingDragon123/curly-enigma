@@ -75,6 +75,7 @@ export default class MineScene extends Scene {
         if (sp < 1.2) return;
         const k = clamp(0.35 + b.n / 500, 0.35, 1.6);
         this.fx.splash(b.x, sy, k);
+        this.renderer.ripple(b.x, -sy, k * clamp(sp / 6, 0.5, 2));
         this.audio.play('splash', { vol: clamp(sp / 10, 0.2, 0.9) * Math.min(1, k) });
       },
     };
@@ -844,7 +845,15 @@ export default class MineScene extends Scene {
     if (pev.jump) { this.audio.play('jump'); this.energy(0.25); }
     if (pev.landed) { this.audio.play('land', { hard: pev.landed > 9 }); this.fx.blockDust(pl.x, pl.feetY - 0.1, pl.groundBlock(), Math.min(8, pev.landed)); }
     if (pev.fallDamage) { this.hurt(Math.round(pev.fallDamage), 'fall'); this.say('fall', 'Oof! That was a long drop.', 'bad'); }
-    if (pev.splash) { this.audio.play('splash'); this.fx.splash(pl.x, Math.floor(pl.y) + 1 - Math.min(1, w.fluid[w.idx(Math.floor(pl.x), Math.floor(pl.y))] || 0), 1.2); }
+    if (pev.splash || (pl.inWater && Math.abs(pl.vx) > 0.6 && (this.swimT = (this.swimT || 0) - dt) < 0)) {
+      // the water line above the mole
+      const cx = Math.floor(pl.x);
+      let cy = Math.floor(pl.y);
+      while (cy > 0 && w.fluid[w.idx(cx, cy - 1)] > 0.05) cy--;
+      const sy = cy + 1 - Math.min(1, w.fluid[w.idx(cx, cy)] || 0);
+      if (pev.splash) { this.audio.play('splash'); this.fx.splash(pl.x, sy, 1.2); this.renderer.ripple(pl.x, -sy, 2.2); }
+      else { this.swimT = 0.45; this.renderer.ripple(pl.x, -sy, 0.8); }
+    }
     if (pev.buried > 6) { this.fx.dust(pl.x, pl.y, 6, [0.8, 0.72, 0.6], 0.4); if (chance(0.2)) this.audio.play('trickle'); }
     if (pev.climbing) { this.energy(1.0 * dt); if (chance(dt * 6)) { this.audio.play('climb'); this.fx.blockDust(pl.x + pl.wall * 0.3, pl.y, B.DIRT, 1); } }
     if (pl.onGround && Math.abs(pl.vx) > 0.5) {

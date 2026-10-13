@@ -339,8 +339,11 @@ export class MineRenderer {
     // fluids: one quad per wet cell; surface cells carry the (smoothed) water line as an
     // attribute and the fragment shader cuts it pixel-exact, so pools read as one body
     this.fluidGeo = new THREE.BufferGeometry();
+    // recent splashes: x, water line y (world), start time, strength
+    this.ripples = Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, -99, 0));
+    this.rippleN = 0;
     this.fluidMat = new THREE.ShaderMaterial({
-      uniforms: { ...this.U },
+      uniforms: { ...this.U, ripples: { value: this.ripples } },
       vertexShader: /* glsl */`
         attribute vec3 fdata;
         varying vec3 vData;
@@ -353,6 +356,7 @@ export class MineRenderer {
         }`,
       fragmentShader: /* glsl */`
         ${LIGHT_GLSL}
+        uniform vec4 ripples[8];
         varying vec3 vData; // type, water line to cut at (world y; 1e4 = none), surface of the column (1e4 = this cell)
         varying vec2 vWorld;
         void main() {
@@ -364,6 +368,15 @@ export class MineRenderer {
             wave = lava
               ? sin(time * 1.1 + pc.x * 2.1) * 0.022 + sin(time * 0.7 - pc.x * 5.3) * 0.01
               : sin(time * 2.4 + pc.x * 2.3) * 0.028 + sin(time * 3.7 - pc.x * 6.1) * 0.012;
+            // rings running out from splashes along the water line
+            for (int i = 0; i < 8; i++) {
+              vec4 r = ripples[i];
+              float age = time - r.z;
+              if (age < 0.0 || age > 2.4 || abs(r.y - vData.y) > 1.2) continue;
+              float dx = abs(pc.x - r.x);
+              float front = age * 2.2;
+              wave += r.w * sin(dx * 26.0 - age * 15.0) * exp(-abs(dx - front) * 3.2) * exp(-dx * 0.35) * (1.0 - age / 2.4);
+            }
           }
           float surf = floor((vData.y + wave) * 32.0 + 0.5) / 32.0;
           if (pc.y > surf) discard;
@@ -399,6 +412,12 @@ export class MineRenderer {
     this.fluidMesh.renderOrder = 9;
     this.fluidMesh.frustumCulled = false;
     this.root.add(this.fluidMesh);
+  }
+
+  /** A splash at x on the water line wy (world y): rings run out along the surface. */
+  ripple(x, wy, strength = 1) {
+    const r = this.ripples[this.rippleN++ % this.ripples.length];
+    r.set(x, wy, this.U.time.value, Math.min(0.12, 0.06 * strength));
   }
 
   /** Point the reticle at a pixel (or hide it). */
