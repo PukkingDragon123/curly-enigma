@@ -23,7 +23,7 @@ const CAM = {
   plate: { off: [0, 1.45, 1.3], look: [0, 0.05, -0.2] },
   pot: { off: [0, 1.62, 1.3], look: [0, 0.18, -0.16] },
   pan: { off: [0, 1.5, 1.3], look: [0, 0.06, -0.2] },
-  pantry: { at: 'board', off: [0.95, 1.55, 2.05], look: [0.95, 0.3, -0.6] },
+  pantry: { at: 'board', off: [0.6, 1.6, 2.15], look: [0.6, 0.36, -0.6] },
   result: { at: 'plate', off: [-0.45, 1.45, 1.75], look: [-0.45, 0.24, -0.25] },
 };
 
@@ -241,8 +241,9 @@ export default class CookingScene extends Scene {
 
   // ------------------------------------------------------------------ cooking flow
   startCooking(ids) {
+    if (this.phase !== 'pantry' || !ids.length) return false; // ignore double clicks while the panel slides out
     const st = this.game.state;
-    if (ids.some((id) => st.count(id) < 1)) { this.game.ui.toast('Missing an ingredient!', { kind: 'warn' }); return; }
+    if (ids.some((id) => st.count(id) < 1)) { this.game.ui.toast('Missing an ingredient!', { kind: 'warn' }); return false; }
     for (const id of ids) st.removeItem(id, 1);
     const r = findRecipe(Object.fromEntries(ids.map((id) => [id, 1])));
     this.dish = r ? r.dish : 'mystery_mush';
@@ -267,6 +268,7 @@ export default class CookingScene extends Scene {
     this.phase = 'start';
     this.phaseT = 0;
     this.setView('board');
+    return true;
   }
 
   stepOpts(kind) {

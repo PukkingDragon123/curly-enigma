@@ -52,7 +52,7 @@ export class CookUI {
     const scroll = el('div', { class: 'ck-scroll' });
     const info = el('div', { class: 'ck-info' });
     const tray = el('div', { class: 'ck-tray' });
-    const cookBtn = el('button', { class: 'btn big ck-cookbtn', onclick: () => { if (sel.length) opts.onCook(sel.slice()); } }, 'Cook!');
+    const cookBtn = el('button', { class: 'btn big ck-cookbtn', onclick: () => { if (sel.length && !cookBtn.disabled) { cookBtn.disabled = true; if (!opts.onCook(sel.slice())) cookBtn.disabled = false; } } }, 'Cook!');
     panel.append(title, tabs, scroll, info, tray);
     this.side = panel;
     this.layer.append(panel);

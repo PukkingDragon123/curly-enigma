@@ -108,7 +108,10 @@ export class SeasonStep extends Step {
     this.jolt = Math.max(0, this.jolt - dt * 7);
     const bob = Math.sin(this.jolt * Math.PI) * 0.07;
     const c = this.center;
-    this.shaker.position.set(c.x + 0.16, this.surfaceY + 0.26 - bob, c.z + 0.02);
+    const m = this.input.mouse;
+    this.follow = this.follow ?? 0;
+    this.follow += ((live ? clamp(m.ny, -0.6, 0.6) : 0) - this.follow) * Math.min(1, dt * 18);
+    this.shaker.position.set(c.x + 0.16, this.surfaceY + 0.26 - bob + this.follow * 0.09, c.z + 0.02);
     this.shaker.rotation.set(0.25, 0, Math.PI * 0.72 + Math.sin(this.jolt * Math.PI) * 0.25);
     const sp = this.shaker.position;
     this.R.goal.set(sp.x + 0.2, sp.y - 0.04, sp.z + 0.1);

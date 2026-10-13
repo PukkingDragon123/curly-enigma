@@ -20,7 +20,7 @@ URL params understood by `Game.start()`:
 - **Mix voxel 3D with flat 2D pixel art.** Build models with `VoxelGrid` (1 voxel = 1/16 unit is the character scale). Draw flat pixel sprites with `PixelCanvas` / `drawTemplate` and turn them into textures with `pixelTexture(canvas)` (NearestFilter).
 - **Chibi characters** come from `gfx/characters.js` (`makeCharacter`, `randomSpec`, `playerSpec`, `makeChicken`, `makePaw`).
 - **Warm, cozy, dirty underground.** Use reds, browns, moss greens, lantern oranges, glowing blue mushrooms and gold accents. The reference mood is a cozy pixel cabin with wooden beams, vines, a fireplace, dried herbs and a chalkboard.
-- **UI is DOM** over the canvas. Use the classes in `src/ui/styles.css` (`.panel`, `.btn`, `.btn.alt`, `.li`, `.grid`, `.slot`, `.tabs/.tab`, `.chip`, `.big-title`, `kbd`, `.muted`, `.gold-txt`, `.detail`, `.row`, `.spacer`). Fonts: `var(--font)` (Pixelify Sans) and `var(--font-display)` (Jersey 10). Size things with `calc(var(--px) * N)`, where `--px` is 2–3 CSS px.
+- **UI is DOM** over the canvas. Use the classes in `src/ui/styles.css` (`.panel`, `.btn`, `.btn.alt`, `.li`, `.grid`, `.slot`, `.tabs/.tab`, `.chip`, `.big-title`, `kbd`, `.muted`, `.gold-txt`, `.detail`, `.row`, `.spacer`). Fonts: `var(--font)` (Tiny5) and `var(--font-display)` (Jersey 10). Size things with `calc(var(--px) * N)`, where `--px` is 2–3 CSS px.
 - **No tutorials, no forced dialogue.** Players learn by experimenting. Useful feedback is fine: sounds, float texts, a short toast. Record discoveries with `state.learn('<mechanic id>')` or `state.discover(cat, id)`. The index book pops a card automatically.
 
 ## Core APIs

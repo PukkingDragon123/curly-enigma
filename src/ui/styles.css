@@ -19,8 +19,8 @@
   --cool: #7fd0ff;
   --text-light: #fbf1dc;
   --px: 3px;
-  --font: 'Pixelify Sans', ui-monospace, 'Cascadia Mono', Menlo, monospace;
-  --font-display: 'Jersey 10', 'Pixelify Sans', ui-monospace, monospace;
+  --font: 'Tiny5', ui-monospace, 'Cascadia Mono', Menlo, monospace;
+  --font-display: 'Jersey 10', 'Tiny5', ui-monospace, monospace;
   color-scheme: dark;
 }
 @media (max-width: 900px), (max-height: 600px) { :root { --px: 2px; } }
