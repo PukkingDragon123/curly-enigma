@@ -191,6 +191,7 @@ export class IntroController {
     }
     const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     if (!coarse) g.ui.setHints('<kbd>A</kbd><kbd>D</kbd> move · <kbd>W</kbd>/<kbd>Space</kbd> jump &amp; climb · <kbd>Mouse</kbd> dig · walk into a wall to dig up close · <kbd>1</kbd>–<kbd>8</kbd> tools · <kbd>Q</kbd> snack');
+    else g.ui.setHints('Stick to walk and climb · tap the rock to dig · push into a wall to dig up close');
     setTimeout(() => { if (g.scene === s) g.ui.setHints(null); }, 60000);
   }
 
