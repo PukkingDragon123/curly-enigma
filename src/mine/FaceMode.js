@@ -318,7 +318,8 @@ export class FaceMode {
     }
     const fx = pl.x + this.dir * 1.2 + this.look.x, fy = pl.y - 0.22 - this.look.y;
     this.focus.x = fx; this.focus.y = fy;
-    const dist = FACE_H / (2 * Math.tan((FACE_FOV * Math.PI) / 360));
+    // FACE_H cells across the screen's short side (portrait phones see a taller strip)
+    const dist = FACE_H / (2 * Math.tan((FACE_FOV * Math.PI) / 360) * Math.min(1, cam.aspect));
     const sh = s.shakeAmp * 0.6;
     const kick = s.kick || { x: 0, y: 0, z: 0 };
     const facePos = new THREE.Vector3(fx + kick.x * 0.5 + (Math.random() - 0.5) * sh * 0.4, -fy + kick.y * 0.5 + (Math.random() - 0.5) * sh * 0.4, 0.5 + dist + kick.z);
@@ -378,7 +379,7 @@ export class FaceMode {
     const W = eng.width, H = eng.height;
     const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360) * PAW_D;
     const unit = viewH / H; // world units per internal pixel at the paw plane
-    const S = Math.max(2, Math.round((H / (FACE_H * M)) * 0.78)); // sprite px → internal px (close to the rock's pixels)
+    const S = Math.max(2, Math.round((Math.min(W, H) / (FACE_H * M)) * 0.78)); // sprite px → internal px (close to the rock's pixels)
     const a = this.anim;
     a.t += dt;
     if (a.hit > 0) a.hit -= dt;
