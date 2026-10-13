@@ -238,7 +238,8 @@ export class Engine {
   resize() {
     const ww = Math.max(1, window.innerWidth);
     const wh = Math.max(1, window.innerHeight);
-    const base = Math.max(1, Math.round(Math.min(wh / 330, ww / 420)));
+    // ~540-720 internal lines: crisp pixel art that still has room for fine voxel detail
+    const base = Math.max(1, Math.floor(Math.min(wh / 500, ww / 800)));
     const s = Math.max(1, base + this.pixelOffset);
     this.scale = s;
     this.width = Math.ceil(ww / s);

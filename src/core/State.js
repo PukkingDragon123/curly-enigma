@@ -26,7 +26,7 @@ function defaultHome() {
 
 export function defaultData() {
   return {
-    v: 1,
+    v: 2,
     gold: 120,
     day: 1,
     energy: 100,
@@ -95,6 +95,8 @@ export class State {
       const base = defaultData();
       this.data = { ...base, ...d, stats: { ...base.stats, ...d.stats }, settings: { ...base.settings, ...d.settings }, equip: { ...base.equip, ...d.equip }, chicken: { ...base.chicken, ...d.chicken } };
       if (!this.data.home || !this.data.home.placed) this.data.home = defaultHome();
+      // v1 saves began at home: they have already escaped the collapsed tunnels
+      if (!(d.v >= 2)) { this.data.v = 2; this.data.flags = { ...this.data.flags, escaped: true, nugget: true }; }
       this.emit('load');
       return true;
     } catch (e) {
@@ -378,6 +380,11 @@ export class State {
     delete this.data.flags[k];
     this.dirty = true;
   }
+  /**
+   * Story flags: 'escaped' = dug out of the collapsed tunnels and reached Deep Town
+   * (town, home and the lift are locked until then); 'nugget' = found Nugget the hen.
+   */
+  get escaped() { return !!this.data.flags.escaped; }
   flag(k, v) {
     if (v === undefined) return this.data.flags[k];
     this.data.flags[k] = v;

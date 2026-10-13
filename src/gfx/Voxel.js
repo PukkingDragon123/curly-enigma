@@ -169,6 +169,105 @@ export function meshGrid(grid, opts = {}) {
   return g;
 }
 
+// ---------------------------------------------------------------- greedy mesher
+// Same faces, AO and vertex layout as meshGrid, but coplanar faces that share a color
+// and a flat AO level merge into one big quad. Faces with mixed corner AO are emitted
+// individually so the occlusion gradients stay intact. Use for hi-res models and big
+// static grids: flat-colored regions collapse to a handful of quads.
+const AXES = FACES.map((f) => {
+  const d = f.n[0] ? 0 : f.n[1] ? 1 : 2;
+  const t = [0, 1, 2].filter((k) => k !== d);
+  return { d, u: d === 0 ? 1 : 0, v: d === 2 ? 1 : 2, t0: t[0], t1: t[1], tc: f.c.map((cr) => [cr[t[0]] ? 1 : -1, cr[t[1]] ? 1 : -1]) };
+});
+
+export function meshGridGreedy(grid, opts = {}) {
+  const s = opts.scale ?? 1 / 16;
+  const [px, py, pz] = opts.pivot ?? [grid.w / 2, 0, grid.d / 2];
+  const bake = opts.shade ?? false;
+  const useAO = opts.ao ?? true;
+  const W = grid.w, H = grid.h, D = grid.d, data = grid.data;
+  const dims = [W, H, D];
+  const solid = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < W && y < H && z < D && data[x + W * (y + H * z)] !== 0;
+  const pos = [], nor = [], col = [], idx = [];
+  let vc = 0;
+  const cell = [0, 0, 0], o = [0, 0, 0], q = [0, 0, 0];
+  const ao4 = [0, 0, 0, 0];
+  const emit = (f, colorHex, a0, a1, a2, a3, corners) => {
+    _c.setHex(colorHex);
+    const sh = bake ? f.shade : 1;
+    const lv = [a0, a1, a2, a3];
+    for (let i = 0; i < 4; i++) {
+      const c = corners[i];
+      pos.push((c[0] - px) * s, (c[1] - py) * s, (c[2] - pz) * s);
+      nor.push(f.n[0], f.n[1], f.n[2]);
+      const a = AO_CURVE[lv[i]] * sh;
+      col.push(_c.r * a, _c.g * a, _c.b * a);
+    }
+    if (AO_CURVE[a0] + AO_CURVE[a2] < AO_CURVE[a1] + AO_CURVE[a3]) idx.push(vc + 1, vc + 2, vc + 3, vc + 1, vc + 3, vc);
+    else idx.push(vc, vc + 1, vc + 2, vc, vc + 2, vc + 3);
+    vc += 4;
+  };
+  for (let fi = 0; fi < 6; fi++) {
+    const f = FACES[fi], A = AXES[fi];
+    const { d, u, v } = A;
+    const U = dims[u], V = dims[v];
+    const mask = new Int32Array(U * V);
+    for (let sl = 0; sl < dims[d]; sl++) {
+      mask.fill(0);
+      for (let b = 0; b < V; b++) for (let a = 0; a < U; a++) {
+        cell[d] = sl; cell[u] = a; cell[v] = b;
+        const x = cell[0], y = cell[1], z = cell[2];
+        const raw = data[x + W * (y + H * z)];
+        if (!raw || solid(x + f.n[0], y + f.n[1], z + f.n[2])) continue;
+        const c = raw & 0xffffff;
+        o[0] = x + f.n[0]; o[1] = y + f.n[1]; o[2] = z + f.n[2];
+        for (let i = 0; i < 4; i++) {
+          if (!useAO) { ao4[i] = 0; continue; }
+          const [s0, s1] = A.tc[i];
+          q[0] = o[0]; q[1] = o[1]; q[2] = o[2]; q[A.t0] += s0;
+          const e1 = solid(q[0], q[1], q[2]) ? 1 : 0;
+          q[A.t0] -= s0; q[A.t1] += s1;
+          const e2 = solid(q[0], q[1], q[2]) ? 1 : 0;
+          q[A.t0] += s0;
+          const cc = solid(q[0], q[1], q[2]) ? 1 : 0;
+          ao4[i] = e1 && e2 ? 3 : e1 + e2 + cc;
+        }
+        if (ao4[0] === ao4[1] && ao4[1] === ao4[2] && ao4[2] === ao4[3]) mask[a + b * U] = c * 4 + ao4[0] + 1;
+        else emit(f, c, ao4[0], ao4[1], ao4[2], ao4[3], f.c.map((cr) => [x + cr[0], y + cr[1], z + cr[2]]));
+      }
+      for (let b = 0; b < V; b++) for (let a = 0; a < U;) {
+        const key = mask[a + b * U];
+        if (!key) { a++; continue; }
+        let w = 1;
+        while (a + w < U && mask[a + w + b * U] === key) w++;
+        let h = 1;
+        outer: while (b + h < V) {
+          for (let k = 0; k < w; k++) if (mask[a + k + (b + h) * U] !== key) break outer;
+          h++;
+        }
+        for (let hh = 0; hh < h; hh++) for (let k = 0; k < w; k++) mask[a + k + (b + hh) * U] = 0;
+        const lv = (key - 1) % 4;
+        const corners = f.c.map((cr) => {
+          const p = [0, 0, 0];
+          p[d] = sl + cr[d];
+          p[u] = cr[u] ? a + w : a;
+          p[v] = cr[v] ? b + h : b;
+          return p;
+        });
+        emit(f, Math.floor((key - 1) / 4), lv, lv, lv, lv, corners);
+        a += w;
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(vc > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
+  g.computeBoundingSphere();
+  return g;
+}
+
 // ---------------------------------------------------------------- materials
 let toonGradient = null;
 function getToonGradient() {
@@ -202,9 +301,12 @@ export function voxelMaterial(kind = 'toon', opts = {}) {
 }
 function strip(o) { const r = { ...o }; delete r.unique; return r; }
 
-/** Build a mesh from a grid with a material kind; enables the outline layer by default. */
+/**
+ * Build a mesh from a grid with a material kind; enables the outline layer by default.
+ * opts.greedy: merge flat coplanar faces (recommended for hi-res / large grids).
+ */
 export function voxelMesh(grid, opts = {}) {
-  const geo = meshGrid(grid, opts);
+  const geo = opts.greedy ? meshGridGreedy(grid, opts) : meshGrid(grid, opts);
   const mat = opts.material || voxelMaterial(opts.kind || 'toon', opts.matOpts || {});
   const mesh = new THREE.Mesh(geo, mat);
   if (opts.outline !== false) mesh.layers.enable(LAYER_OUTLINE);

@@ -16,10 +16,11 @@ URL params understood by `Game.start()`:
 
 ## Look & feel (match this everywhere)
 
-- **Pixel-art voxel world.** The canvas renders at about 1/3 resolution and is upscaled with nearest-neighbour filtering (`Engine`). A post pass adds 1px dark outlines around any mesh on camera layer 1 (`LAYER_OUTLINE`), plus ordered dithering, a vignette and a light grade.
-- **Mix voxel 3D with flat 2D pixel art.** Build models with `VoxelGrid` (1 voxel = 1/16 unit is the character scale). Draw flat pixel sprites with `PixelCanvas` / `drawTemplate` and turn them into textures with `pixelTexture(canvas)` (NearestFilter).
+- **Pixel-art voxel world, high detail.** The canvas renders at roughly 540–720 internal lines (1× on phones and small windows, 2× upscaled on 1080p) with nearest-neighbour filtering (`Engine`). That is enough resolution for fine voxel detail, so build models with lots of small, deliberate detail rather than big flat blocks. A post pass adds 1px dark outlines around any mesh on camera layer 1 (`LAYER_OUTLINE`), plus ordered dithering, a vignette and a light grade.
+- **Mix voxel 3D with flat 2D pixel art.** Build models with `VoxelGrid`. Characters use 1/32-unit voxels (twice the old 1/16 detail); props use 1/32 for anything the camera sees up close and 1/16 for big background pieces. Mesh hi-res grids with `voxelMesh(grid, {greedy: true})` (or `meshGridGreedy`) so flat-colored regions collapse into a few quads. Keep per-voxel color noise subtle and structured (bands, grain, patches) so it reads as material, not static. Draw flat pixel sprites with `PixelCanvas` / `drawTemplate` and turn them into textures with `pixelTexture(canvas)` (NearestFilter).
 - **Chibi characters** come from `gfx/characters.js` (`makeCharacter`, `randomSpec`, `playerSpec`, `makeChicken`, `makePaw`).
 - **Warm, cozy, dirty underground.** Use reds, browns, moss greens, lantern oranges, glowing blue mushrooms and gold accents. The reference mood is a cozy pixel cabin with wooden beams, vines, a fireplace, dried herbs and a chalkboard.
+- **Almost no UI.** The interface is diegetic: the mole's backpack is the inventory, the Index Book is a real book with turning pages, gold is a coin pouch and energy is a little lantern. Nothing sits on screen permanently: those pieces slide in when they change, when they matter (low energy) or when the player reaches for them. Prompts are small glyphs next to the thing you can use.
 - **UI is DOM** over the canvas. Use the classes in `src/ui/styles.css` (`.panel`, `.btn`, `.btn.alt`, `.li`, `.grid`, `.slot`, `.tabs/.tab`, `.chip`, `.big-title`, `kbd`, `.muted`, `.gold-txt`, `.detail`, `.row`, `.spacer`). Fonts: `var(--font)` (Tiny5) and `var(--font-display)` (Jersey 10). Size things with `calc(var(--px) * N)`, where `--px` is 2–3 CSS px.
 - **No tutorials, no forced dialogue.** Players learn by experimenting. Useful feedback is fine: sounds, float texts, a short toast. Record discoveries with `state.learn('<mechanic id>')` or `state.discover(cat, id)`. The index book pops a card automatically.
 
@@ -68,6 +69,7 @@ Input is disabled automatically while a UI panel is open.
 - Equipment: `equip(id)`, `equipped(slot)`, `protects('zap'|'heat'|'cold')`, `bagCapacity()`, `lightRadius()`.
 - Index: `discover(cat, id)` with cat one of `mineral gem plant critter weapon recipe mechanic`, `learn(mechanicId)` (ids in `data/mechanics.js`), `known(cat, id)`.
 - `data.*` fields: `day, recipes{dishId:bestScore}, home{level, wall, floor{"x,y":floorId}, placed[{uid,id,x,y,r}], planters{uid:{id,day,ready}}}, furniture{id:count}` (unplaced), `forgeLevel, zoneMax, chicken{name,eggs,pets,lastPetDay}, flags, stats`.
+- Story flags: `state.escaped` (`flag('escaped')`) is false on a new game. The mole starts trapped in collapsed tunnels (`game.goto('mine', {intro: '1'})`) and must dig out; town, home and the lift unlock when they reach Deep Town (`game.goto('town', {from: 'escape'})`). `flag('nugget')` is set once Nugget the hen has been found on the way out. v1 saves are migrated as already escaped.
 - `flag(k, v?)` gets or sets a misc flag. `save()` writes the save (autosave runs every 30 s and on scene switch).
 - Events: `state.on('gold'|'energy'|'items'|'discover'|'weapon'|'day'|'buffs'|'load', fn)` returns an unsubscribe function. Pass it to `this.own(...)`.
 
@@ -90,7 +92,7 @@ Input is disabled automatically while a UI panel is open.
 - `creatures.js`, `mechanics.js`, `zones.js` (`ZONES[1..6]`).
 
 ### Graphics helpers
-- `gfx/Voxel.js`: `new VoxelGrid(w,h,d)` with `.set .box .rbox .ellipsoid .cylinderY .paint`; `voxelMesh(grid, {pivot:[x,y,z], scale, kind:'toon'|'lambert'|'basic', shade, outline})`; `voxelMaterial(kind)`; `setOutline(obj, on)`.
+- `gfx/Voxel.js`: `new VoxelGrid(w,h,d)` with `.set .box .rbox .ellipsoid .cylinderY .paint`; `voxelMesh(grid, {pivot:[x,y,z], scale, kind:'toon'|'lambert'|'basic', shade, outline, greedy})`; `meshGrid` / `meshGridGreedy` (geometry only); `voxelMaterial(kind)`; `setOutline(obj, on)`.
 - `gfx/characters.js`: `makeCharacter(spec, {kind, scale})` returns a rig with `.root .height .update(dt) .play(state) .face(yaw) .talk(sec) .doEmote('nod'|'shake'|'hop'|'wave') .holdItem(obj,'R'|'L') .handR .handL .lamp`. Rig states: `idle walk run jump fall climb swim swing hammer dig chisel brush drill wave cheer sit sleep laugh sad carry peck hurt sneeze`. For a swing animation, set `rig.swingPhase` (0..1) yourself. Also `randomSpec(seed, overrides)`, `playerSpec()`, `makeChicken({hat:'straw', scale})` (rig with `.play('idle'|'walk'|'run'|'sit') .peck() .flap()`), `makePaw(side, {scale, fur, sleeve})`, `renderPortrait(renderer, spec, size)`, `FUR`, `SPECIES`.
 - `gfx/PixelArt.js`: `PixelCanvas`, `drawTemplate`, `ramp(color)`, `iconURL(itemId)`, `weaponIconURL(type, metal, infusion)`, `drawWeapon(pc, type, color)`, `pixelTexture(canvas)`.
 - `core/util.js`: `clamp lerp damp rand randInt pick chance makeRng hashStr makeNoise2D mixHex shade hexCss formatGold formatGoldFull el wait uid`.
