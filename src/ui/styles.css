@@ -288,6 +288,8 @@ kbd {
 .prompt-in kbd { margin-right: calc(var(--px) * 2); }
 .prompt-tap { display: none; width: calc(var(--px) * 11); height: calc(var(--px) * 13); margin: calc(var(--px) * -2) calc(var(--px) * 2) calc(var(--px) * -2) 0; }
 @keyframes promptIn { from { transform: translateY(calc(var(--px) * 5)); opacity: 0; } }
+/* no keyboard key caps on touch screens (menus keep working by tap) */
+html.is-touch button kbd, html.is-touch .ck-esc { display: none; }
 html.is-touch .prompt { pointer-events: none; }
 html.is-touch .prompt-in { pointer-events: auto; cursor: pointer; }
 html.is-touch .prompt-in kbd { display: none; }
