@@ -247,7 +247,7 @@ export class Game {
     if (rest >= 2) st.addBuff('lucky', 600);
     // eggs
     const petBonus = d.chicken.lastPetDay >= d.day - 1 ? 0.35 : 0;
-    if (d.home.placed.some((p) => p.id === 'coop') && Math.random() < 0.65 + petBonus) {
+    if (st.flag('nugget') && d.home.placed.some((p) => p.id === 'coop') && Math.random() < 0.65 + petBonus) {
       d.chicken.eggs = Math.min(6, (d.chicken.eggs || 0) + 1 + (Math.random() < petBonus ? 1 : 0));
     }
     // planters

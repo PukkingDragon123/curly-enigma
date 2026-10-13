@@ -69,7 +69,7 @@ Input is disabled automatically while a UI panel is open.
 - Equipment: `equip(id)`, `equipped(slot)`, `protects('zap'|'heat'|'cold')`, `bagCapacity()`, `lightRadius()`.
 - Index: `discover(cat, id)` with cat one of `mineral gem plant critter weapon recipe mechanic`, `learn(mechanicId)` (ids in `data/mechanics.js`), `known(cat, id)`.
 - `data.*` fields: `day, recipes{dishId:bestScore}, home{level, wall, floor{"x,y":floorId}, placed[{uid,id,x,y,r}], planters{uid:{id,day,ready}}}, furniture{id:count}` (unplaced), `forgeLevel, zoneMax, chicken{name,eggs,pets,lastPetDay}, flags, stats`.
-- Story flags: `state.escaped` (`flag('escaped')`) is false on a new game. The mole starts trapped in collapsed tunnels (`game.goto('mine', {intro: '1'})`) and must dig out; town, home and the lift unlock when they reach Deep Town (`game.goto('town', {from: 'escape'})`). `flag('nugget')` is set once Nugget the hen has been found on the way out. v1 saves are migrated as already escaped.
+- Story flags: `state.escaped` (`flag('escaped')`) is false on a new game. The mole starts trapped in collapsed tunnels (`game.goto('mine', {intro: '1'})`) and must dig out; town, home and the lift unlock when they reach Deep Town (`game.goto('town', {from: 'escape'})`). `flag('nugget')` is set when the mole breaks out with Nugget the hen; if the player never went to her, she comes flapping out of the dark at the last moment, so she always ends up at home. v1 saves are migrated as already escaped.
 - `flag(k, v?)` gets or sets a misc flag. `save()` writes the save (autosave runs every 30 s and on scene switch).
 - Events: `state.on('gold'|'energy'|'items'|'discover'|'weapon'|'day'|'buffs'|'load', fn)` returns an unsubscribe function. Pass it to `this.own(...)`.
 
@@ -111,6 +111,20 @@ Input is disabled automatically while a UI panel is open.
 - Never touch files you don't own. If a shared file needs a change, describe it in your final report instead.
 - Don't run `git` commands. The lead developer commits.
 - Use the shared renderer and the post pass. Keep the frame cheap: avoid hundreds of lights, and prefer emissive materials or baked vertex colors.
+
+## Town and home (`src/iso/`, `TownScene.js`, `HomeScene.js`)
+
+- Built at 1/32 voxels where the camera looks closely (shop fronts, the Surface Express booth, the burrow entrance, all 40 furniture pieces in `furniture32.js`) and at 1/16 or coarser for background decor (`kit.js` `lowRes()`).
+- `kit.js` is the modelling kit: structured material fills (wood grain, riveted iron, stone, cloth, straw, moss) and `sp3` sparse speckle, so plain runs still merge. `mesher.js` (`fastMesh`, `meshDefaults({ao})`) is a fast greedy mesher that can skip faces the fixed iso camera never sees. `bake.js` merges statics, and `atlas.js` / `surface.js` / `townFloor.js` / `homeFloor.js` paint the floors at 32 texels per tile.
+- Town pieces: `townCave.js` (strata walls, ledges, stalactites, waterfall in `waterfall.js`), `shopFront.js`, `booth.js`, `props.js` / `props2.js`, `tunnel.js`, `townLife.js` (vendors, fireflies, spores, smoke) and `townArrival.js` (the escape arrival: boards burst, the mole tumbles out, townsfolk react, Nugget trots to the new home). Scenes log `[town] built in … ms` with a step breakdown.
+- Budget: the town environment is about 400k triangles. Cave walls and rims skip the outline pass. Nugget, the coop and eggs only appear once `flag('nugget')` is set.
+
+## Title, forge, cooking and ending
+
+- **Flow:** New Game resets the save and starts the escape opening (`goto('mine', {intro: '1'})`). Continue does the same until `state.escaped` is set, then resumes the last scene or home.
+- **Dioramas** (`src/bookends/`): `vox.js` has `meshVoxGreedy` and `meshRelief(o)`, a heightfield mesher for big terrain (columns of voxels along any axis: beach sand, shaft and cave walls) with greedy caps, merged wall runs, row chunking and baked AO. `batch.js` `batchStatic(root)` merges static props per material/outline layer/render order, because every outlined mesh is drawn twice. `logo.js` draws the pixel MOLEFORGE letters for the title and credits.
+- **Ending:** the shaft walls (~600k triangles) build in small time slices (about 2 ms per frame) while the farewell plays, and a zone is only built in one go if the ride reaches it first. The farewell crowd uses `simplifyRig()` (landing.js) to merge each townsfolk rig into a few meshes. Sunglasses are sized from `rig.anchors.headW`.
+- **Forge and cooking** keep their game logic; icons show at `var(--icon)` / `var(--icon-s)` (64/32 px, 32/32 on small screens).
 
 ## The mine (`src/mine/`, `src/scenes/MineScene.js`)
 

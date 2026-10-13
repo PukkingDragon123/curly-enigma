@@ -367,7 +367,16 @@ export class IntroController {
     s.post.flashColor = 0xffe0a0;
     s.fx.dustCloud(this.d.exit.x0 + 0.6, (this.d.exit.y0 + this.d.exit.y1) / 2, 2, [0.85, 0.75, 0.6]);
     st.flag('escaped', true);
-    if (this.found) st.flag('nugget', true);
+    if (!this.found) {
+      // she wasn't going to be left behind: Nugget comes flapping out of the dark at the last moment
+      this.found = true;
+      const pl = s.player;
+      this.henPos.x = pl.x - 1.4 * (pl.facing || 1);
+      this.henPos.y = pl.y;
+      this.hen.flap(1.4);
+      s.audio.play('bawk');
+    }
+    st.flag('nugget', true);
     st.learn('elevator');
     st.save();
     setTimeout(() => {

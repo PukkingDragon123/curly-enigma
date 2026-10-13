@@ -74,15 +74,17 @@ await step('mine zone 1', async () => {
   await shot('05-mine');
 });
 await step('face mode', async () => {
-  await page.keyboard.down('KeyD');
-  for (let i = 0; i < 120 && !(await page.evaluate(() => window.__game.scene.face && window.__game.scene.face.on)); i++) await wait(250);
-  await page.keyboard.up('KeyD');
-  const on = await page.evaluate(() => window.__game.scene.face.on);
-  if (!on) {
-    // the spawn may not face a wall: walk the other way
-    await page.keyboard.down('KeyA');
-    for (let i = 0; i < 120 && !(await page.evaluate(() => window.__game.scene.face.on)); i++) await wait(250);
-    await page.keyboard.up('KeyA');
+  // which way is the nearest wall on the mole's row? (maps are random and headless frames are slow)
+  const dirs = await page.evaluate(() => {
+    const s = window.__game.scene, pl = s.player, w = s.world;
+    const dist = (d) => { for (let k = 0.4; k < 12; k += 1 / 32) if (w.solidPt(pl.x + d * k, pl.y) && w.solidPt(pl.x + d * k, pl.y - 0.25)) return k; return 99; };
+    return dist(1) <= dist(-1) ? ['KeyD', 'KeyA'] : ['KeyA', 'KeyD'];
+  });
+  for (const key of dirs) {
+    if (await page.evaluate(() => window.__game.scene.face.on)) break;
+    await page.keyboard.down(key);
+    for (let i = 0; i < 160 && !(await page.evaluate(() => window.__game.scene.face && window.__game.scene.face.on)); i++) await wait(250);
+    await page.keyboard.up(key);
   }
   if (!(await page.evaluate(() => window.__game.scene.face.on))) throw new Error('face mode never engaged');
   await wait(1500);
