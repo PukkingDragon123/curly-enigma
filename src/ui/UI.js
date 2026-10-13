@@ -153,16 +153,31 @@ export class UI {
     return t;
   }
 
-  discoverCard({ cat, id, name }) {
+  discoverCard(e) {
+    this._discQ = this._discQ || [];
+    this._discQ.push(e);
+    if (!this._discBusy) this._nextDiscover();
+  }
+
+  _nextDiscover() {
+    const e = this._discQ.shift();
+    if (!e) { this._discBusy = false; return; }
+    this._discBusy = true;
+    this._showDiscover(e);
+    setTimeout(() => this._nextDiscover(), this._discQ.length > 3 ? 650 : 1300);
+  }
+
+  _showDiscover({ cat, id, name }) {
     const icon = this.indexIcon(cat, id);
     const label = { mineral: 'New mineral', gem: 'New gem', plant: 'New plant', critter: 'New creature', weapon: 'New weapon', recipe: 'New recipe', mechanic: 'Learned' }[cat] || 'Discovered';
     const card = el('div', { class: 'discover' }, [el('img', { class: 'pix', src: icon, alt: '' }), el('div', {}, [el('small', {}, label + ' · Index Book'), el('b', {}, name)])]);
     this.hud.append(card);
     this.bookBadge.hidden = false;
     this.game.audio.play('discover');
-    const existing = this.hud.querySelectorAll('.discover');
+    const existing = [...this.hud.querySelectorAll('.discover:not(.out)')];
+    if (existing.length > 3) { const old = existing[0]; old.classList.add('out'); setTimeout(() => old.remove(), 380); existing.shift(); }
     existing.forEach((c, i) => { c.style.top = `calc(var(--px) * ${56 + (existing.length - 1 - i) * 34})`; });
-    setTimeout(() => { card.classList.add('out'); setTimeout(() => card.remove(), 380); }, 3600);
+    setTimeout(() => { card.classList.add('out'); setTimeout(() => card.remove(), 380); }, 3200);
   }
 
   indexIcon(cat, id) {
