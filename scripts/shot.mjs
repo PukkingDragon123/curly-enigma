@@ -1,6 +1,7 @@
 // Dev helper: boots the game in headless Chromium and takes screenshots.
 //
-//   node scripts/shot.mjs "<query>" out.png [--wait 2500] [--size 1280x720] [--steps steps.json]
+//   node scripts/shot.mjs "<query>" out.png [--wait 2500] [--size 1280x720] [--steps steps.json] [--touch] [--dpr 2]
+//   --touch emulates a phone (touch events, coarse pointer, devicePixelRatio 2 unless --dpr is given).
 //
 // <query> is the URL query string, e.g. "scene=mine&zone=2&fresh=1".
 // steps.json is an array of actions run after the initial wait:
@@ -30,7 +31,9 @@ const browser = await chromium.launch({
   executablePath: process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
 });
-const page = await browser.newPage({ viewport: { width: w, height: h } });
+const touch = args.includes('--touch');
+const dpr = parseFloat(opt('dpr', touch ? '2' : '1'));
+const page = await (await browser.newContext({ viewport: { width: w, height: h }, isMobile: touch, hasTouch: touch, deviceScaleFactor: dpr })).newPage();
 const errors = [];
 page.on('console', (m) => {
   const t = m.text();
