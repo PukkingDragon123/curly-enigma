@@ -80,7 +80,10 @@ Input is disabled automatically while a UI panel is open.
 - `setHotbar(slots | null, selectedIndex, onPick)` and `setHints(html | null)` (small key hints at bottom-left)
 - `openPanel({title, sub, body: HTMLElement, width, onClose, closable})` returns a handle with `.close()`. Also `closePanel()`, `closeAllPanels()`, `isPanelOpen()`, and `confirm(html, yes, no)`, which returns `Promise<boolean>`.
 - `openShop(shopId)` with shopId one of `tools grocer furniture blueprints outfitter assay ticket`, `openInventory()`, `openIndex()`, `openMenu()`
-- `ui.world` is a DOM layer for anything anchored to world positions. It is cleared on scene change.
+- `ui.world` is a DOM layer for anything anchored to world positions. It is cleared on scene change. Also `ui.root`, `ui.overlay`, `ui.hud`, and the corner clusters `ui.tl` / `ui.tr` plus `ui.bubbles`.
+- `setBag(n, cap)` (call on every pickup: the backpack bulges, shows `n/cap`, wiggles FULL; `setBag(null)` clears), `setFocusMode(on, {onBack})` (mine face close-up: hides the corner HUD and shrinks the belt to the held tool; on touch, Back calls `onBack`), `setTouchControls(on)` (hide the on-screen controls, e.g. in cutscenes), `pressKey(code, ms)` (simulated key tap).
+- The HUD lives in `ui/Hud.js` (coin pouch, lantern, charms, calendar, backpack + book, depth plumb-bob), `ui/Belt.js` (tool belt), `ui/Backpack.js`, `ui/IndexBook.js`, `ui/ShopUI.js`, `ui/Journal.js` (pause menu) and `ui/TouchControls.js`. Pixel chrome is generated in `ui/uiArt.js` (9-slice frames and tiles as `--a-*` CSS custom properties) and `ui/uiSprites.js`; styles are split into `hud.css`, `backpack.css`, `book.css`, `shop.css`, `touch.css` next to `styles.css`. Fonts: Tiny5, Jersey 10/15 and Jacquarda Bastarda 9, used only at sizes where they render crisp.
+- Tests: `node scripts/e2e.mjs` (desktop playthrough) and `node scripts/e2e-touch.mjs [outDir] [--portrait]` (phone viewport with real touch events: stick, tap-to-dig, face mode, backpack, book).
 - Use the `el(tag, attrs, children)` helper from `core/util.js` to build DOM.
 
 ### Data (`src/data/*`)

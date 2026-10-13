@@ -1,18 +1,42 @@
-// DOM HUD + panels layered over the pixel canvas.
-import { el, formatGoldFull, formatGold, clamp } from '../core/util.js';
+// The interface, layered over the pixel canvas. Almost nothing sits on screen: the coin pouch,
+// lantern and charms drop in when they change, the backpack (with the Index Book peeking out)
+// waits in a corner, the tool belt tucks itself away. Big things open as real objects: the
+// leather backpack, the Index Book, shop counters and the pause journal.
+import { el } from '../core/util.js';
 import { iconURL, specURL, weaponIconURL } from '../gfx/PixelArt.js';
-import { ITEMS, sellPrice, CAT_LABEL } from '../data/items.js';
-import { BUFFS } from '../data/recipes.js';
-import { GOAL_GOLD, indexName } from '../core/State.js';
-import { gradeFor } from '../data/weapons.js';
+import { critterIconURL } from '../gfx/critters32.js';
+import { ITEMS } from '../data/items.js';
+import { indexName } from '../core/State.js';
+import { installArt } from './uiArt.js';
+import { SPR } from './uiSprites.js';
+import { Hud } from './Hud.js';
+import { Belt } from './Belt.js';
+import { openBackpack } from './Backpack.js';
+import { openJournal } from './Journal.js';
+import { qColor } from './common.js';
+import './hud.css';
+import './backpack.css';
+import './book.css';
+import './shop.css';
+import './touch.css';
 
 export const COIN = () => specURL('ui:coin', { k: 'coin' });
 export const BOLT = () => specURL('ui:bolt', { k: 'bolt' });
 export const BOOK = () => specURL('ui:book', { k: 'book' });
 export const HEART = () => specURL('ui:heart', { k: 'heart' });
 
-export function qColor(q) {
-  return q >= 90 ? '#2a9a3a' : q >= 70 ? '#5a8a2a' : q >= 45 ? '#b07a14' : '#c0402a';
+export { qColor };
+
+const SEAL_FOR = { good: 'green', warn: 'amber', bad: 'red' };
+const TACK_FOR = { good: 0x5a9a3a, warn: 0xd9901e, bad: 0xc23c2c };
+
+/** '<kbd>E</kbd>' text → KeyboardEvent.code, for tapping prompts on touch screens. */
+function keyCode(label) {
+  const t = String(label || '').trim();
+  if (/^[A-Za-z]$/.test(t)) return 'Key' + t.toUpperCase();
+  if (/^[0-9]$/.test(t)) return 'Digit' + t;
+  const map = { space: 'Space', enter: 'Enter', esc: 'Escape', escape: 'Escape', tab: 'Tab', shift: 'ShiftLeft', '←': 'ArrowLeft', '→': 'ArrowRight', '↑': 'ArrowUp', '↓': 'ArrowDown' };
+  return map[t.toLowerCase()] || null;
 }
 
 export class UI {
@@ -21,135 +45,111 @@ export class UI {
     this.root = document.getElementById('ui');
     this.panelStack = [];
     this.bubbles = new Map();
-    this.goldShown = game.state.gold;
     this.hudMode = 'none';
+    this.focus = false;
+    installArt();
+    const rs = document.documentElement.style;
+    const css = { coin: SPR.coin(), sealX: SPR.seal('red', 'x'), sealCheck: SPR.seal('green', 'check'), sealStar: SPR.seal('amber', 'star'), tackRed: SPR.tack(0xc23c2c), coins: SPR.coins(), buckle: SPR.buckle(), beltTip: SPR.beltTip(), tap: SPR.tap(), knob: SPR.knob(), chain: SPR.chain(), twine: SPR.twine(), stampHandle: SPR.stampHandle(), sayTail: SPR.sayTail() };
+    for (const [k, v] of Object.entries(css)) rs.setProperty('--a-' + k, `url("${v}")`);
 
+    // touch devices: tap glyphs instead of key caps, bigger targets
+    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if (coarse) document.documentElement.classList.add('is-touch');
+    window.addEventListener('touchstart', () => document.documentElement.classList.add('is-touch'), { once: true, passive: true });
+
+    this.root.dataset.hud = 'none';
     this.world = el('div', { class: 'world-layer' });
     this.hud = el('div', { class: 'hud' });
     this.overlay = el('div', { class: 'overlay' });
     this.root.append(this.world, this.hud, this.overlay);
-    this.buildHud();
+
+    this.status = new Hud(this);
+    this.tl = this.status.tl;
+    this.tr = this.status.tr;
+    this.toasts = el('div', { class: 'toasts' });
+    this.promptIn = el('div', { class: 'prompt-in', role: 'button', onclick: () => this.tapPrompt() });
+    this.promptEl = el('div', { class: 'prompt', hidden: true }, [this.promptIn]);
+    this.hintEl = el('div', { class: 'hint-keys', hidden: true });
+    this.hud.append(this.toasts, this.promptEl, this.hintEl);
+    this.belt = new Belt(this);
+    this.hotbarEl = this.belt.el;
 
     const st = game.state;
-    st.on('gold', (e) => { if (e.delta > 0) this.goldEl.classList.add('bump'); setTimeout(() => this.goldEl.classList.remove('bump'), 260); });
-    st.on('energy', () => this.updateEnergy());
-    st.on('buffs', () => this.updateBuffs());
-    st.on('day', () => this.updateDay());
     st.on('discover', (e) => this.discoverCard(e));
-    st.on('load', () => { this.goldShown = st.gold; this.refreshHud(); });
 
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape' && this.panelStack.length) {
         e.preventDefault();
         e.stopImmediatePropagation();
+        const top = this.panelStack[this.panelStack.length - 1];
+        if (top && top.onEscape && top.onEscape()) return;
         this.closePanel();
       }
     }, true);
   }
 
   // ------------------------------------------------------------ HUD
-  buildHud() {
-    const st = this.game.state;
-    this.goldNum = el('span', { class: 'gold-num' }, formatGoldFull(st.gold));
-    this.goldEl = el('div', { class: 'chip gold-chip', title: 'Gold' }, [el('img', { class: 'pix', src: COIN(), alt: '' }), this.goldNum]);
-    this.goalFill = el('i');
-    this.goalTxt = el('span');
-    this.goalEl = el('div', { class: 'goal', title: 'Savings toward the Surface Ticket' }, [el('div', { class: 'goal-bar' }, [this.goalFill]), this.goalTxt]);
-    this.energyFill = el('i');
-    this.energyTxt = el('span');
-    this.energyBar = el('div', { class: 'energy-bar' }, [this.energyFill, this.energyTxt]);
-    this.energyEl = el('div', { class: 'energy-wrap', title: 'Energy' }, [el('img', { class: 'pix', src: BOLT(), alt: '', style: { width: 'calc(var(--px) * 12)', height: 'calc(var(--px) * 12)' } }), this.energyBar]);
-    this.dayEl = el('div', { class: 'daytag' });
-    this.buffsEl = el('div', { class: 'buffs' });
-    this.tl = el('div', { class: 'hud-tl' }, [this.goldEl, this.goalEl, this.energyEl, this.dayEl, this.buffsEl]);
-
-    this.bookBadge = el('span', { class: 'badge', hidden: true }, '!');
-    this.btnBook = el('button', { class: 'icon-btn interactive', title: 'Index Book (B)', 'aria-label': 'Index Book', onclick: () => this.openIndex() }, [el('img', { class: 'pix', src: BOOK(), alt: '' }), this.bookBadge, el('span', { class: 'key' }, 'B')]);
-    this.btnBag = el('button', { class: 'icon-btn interactive', title: 'Inventory (I)', 'aria-label': 'Inventory', onclick: () => this.openInventory() }, [el('img', { class: 'pix', src: iconURL('bag_medium'), alt: '' }), el('span', { class: 'key' }, 'I')]);
-    this.btnMenu = el('button', { class: 'icon-btn interactive', title: 'Menu (Esc)', 'aria-label': 'Menu', onclick: () => this.openMenu() }, [el('span', { style: { fontWeight: 700, fontSize: '1.2em', color: '#3a2212' } }, '≡'), el('span', { class: 'key' }, 'Esc')]);
-    this.tr = el('div', { class: 'hud-tr' }, [this.btnBook, this.btnBag, this.btnMenu]);
-
-    this.depthEl = el('div', { class: 'depth', hidden: true });
-    this.toasts = el('div', { class: 'toasts' });
-    this.promptEl = el('div', { class: 'prompt', hidden: true });
-    this.hotbarEl = el('div', { class: 'hotbar', hidden: true });
-    this.hotbarLabel = el('div', { class: 'hotbar-label', hidden: true });
-    this.hintEl = el('div', { class: 'hint-keys', hidden: true });
-    this.hud.append(this.tl, this.tr, this.depthEl, this.toasts, this.promptEl, this.hotbarLabel, this.hotbarEl, this.hintEl);
-    this.refreshHud();
-  }
-
   setHudMode(mode) {
     this.hudMode = mode;
-    const show = mode !== 'none';
-    this.tl.hidden = !show;
-    this.tr.hidden = !show;
-    this.depthEl.hidden = mode !== 'mine';
-    if (!show) { this.setHotbar(null); this.setPrompt(null); this.setHints(null); }
-    this.refreshHud();
+    this.root.dataset.hud = mode;
+    if (mode === 'none') { this.setHotbar(null); this.setPrompt(null); this.setHints(null); }
+    this.status.setMode(mode);
+  }
+  refreshHud() { this.status.refresh(); }
+
+  /**
+   * Mine face close-up: hide nearly all chrome; the belt shrinks to the tool in hand.
+   * opts.onBack: called by the touch "back" button (without it, the button taps KeyS, i.e. step back).
+   */
+  setFocusMode(on, opts = {}) {
+    this.focus = !!on;
+    this.focusBack = this.focus ? opts.onBack || null : null;
+    this.root.classList.toggle('focus', this.focus);
+    if (this.focus) this.belt.collapse();
+    else this.belt.expand();
   }
 
-  refreshHud() {
-    this.updateEnergy();
-    this.updateDay();
-    this.updateBuffs();
-    this.updateGold(true);
-  }
+  /** Touch screens: hide (false) or restore (true) the joystick and buttons, e.g. during a cutscene. */
+  setTouchControls(on) { this.root.classList.toggle('no-touch', on === false); }
 
-  updateGold(snap = false) {
-    const target = this.game.state.gold;
-    if (snap) this.goldShown = target;
-    const diff = target - this.goldShown;
-    if (Math.abs(diff) < 1) this.goldShown = target;
-    else this.goldShown += diff * 0.18 + Math.sign(diff) * 0.5;
-    this.goldNum.textContent = formatGoldFull(Math.round(this.goldShown));
-    const p = clamp(target / GOAL_GOLD, 0, 1);
-    this.goalFill.style.width = (p * 100).toFixed(2) + '%';
-    this.goalTxt.textContent = `${formatGold(target)} / 1M`;
-  }
+  /** Backpack fill for this trip (shown on the backpack itself). setBag(null) clears it. */
+  setBag(n, cap) { this.status.setBag(n, cap); }
 
-  updateEnergy() {
-    const st = this.game.state;
-    const p = st.energy / st.maxEnergy;
-    this.energyFill.style.width = (p * 100).toFixed(1) + '%';
-    this.energyTxt.textContent = `${Math.ceil(st.energy)} / ${st.maxEnergy}`;
-    this.energyBar.classList.toggle('low', p < 0.2);
-  }
-
-  updateDay() { this.dayEl.textContent = `Day ${this.game.state.data.day}`; }
-
-  updateBuffs() {
-    const st = this.game.state;
-    this.buffsEl.innerHTML = '';
-    for (const b of st.data.buffs) {
-      const def = BUFFS[b.id];
-      if (!def) continue;
-      const left = Math.max(0, Math.ceil((b.until - st.data.playTime) / 60));
-      this.buffsEl.append(el('span', { class: 'buff', style: { color: def.color }, title: def.desc }, `${def.name} ${left}m`));
-    }
-  }
-
-  setDepth(html) { this.depthEl.innerHTML = html; }
+  setDepth(html) { this.status.setDepth(html); }
 
   setHints(html) {
-    if (!html) { this.hintEl.hidden = true; return; }
+    if (!html) { this.hintEl.hidden = true; this._hints = null; return; }
+    if (this._hints === html) return;
+    this._hints = html;
     this.hintEl.hidden = false;
     this.hintEl.innerHTML = html;
   }
 
-  /** Per-frame HUD tick (gold count-up, bubbles fade). */
+  /** Per-frame tick (gold count-up, belt, buff expiry). */
   update(dt) {
-    if (Math.abs(this.goldShown - this.game.state.gold) >= 1) this.updateGold();
+    // HUD timers follow the wall clock (the game's dt is capped on slow frames)
+    const now = performance.now();
+    const rdt = this._lastT ? Math.min(0.25, Math.max(0, (now - this._lastT) / 1000)) : dt;
+    this._lastT = now;
+    this.status.update(rdt);
+    this.belt.update(rdt);
     this._buffTimer = (this._buffTimer || 0) + dt;
-    if (this._buffTimer > 5) { this._buffTimer = 0; this.game.state.tickBuffs(); this.updateBuffs(); }
+    if (this._buffTimer > 5) { this._buffTimer = 0; this.game.state.tickBuffs(); }
   }
 
   // ------------------------------------------------------------ toasts / popups
   toast(text, { icon, kind = '', dur = 2600 } = {}) {
-    const t = el('div', { class: 'toast ' + kind }, [icon ? el('img', { class: 'pix', src: icon, alt: '' }) : null, el('span', { html: text })]);
+    const color = SEAL_FOR[kind] || 'brown';
+    const t = el('div', { class: 'toast ' + kind, role: 'status' }, [
+      el('img', { class: 'pix toast-tack', src: SPR.tack(TACK_FOR[kind] || 0xc23c2c), alt: '' }),
+      icon ? el('img', { class: 'pix toast-icon', src: icon, alt: '' }) : null,
+      el('span', { class: 'toast-text', html: text }),
+      el('img', { class: 'pix toast-seal', src: SPR.seal(color, kind === 'good' ? 'check' : kind === 'bad' ? 'x' : 'ring'), alt: '' }),
+    ]);
+    if (!icon) t.insertBefore(t.lastChild, t.children[1]);
     this.toasts.append(t);
     while (this.toasts.children.length > 4) this.toasts.firstChild.remove();
-    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 320); }, dur);
+    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 360); }, dur);
     return t;
   }
 
@@ -160,8 +160,10 @@ export class UI {
   }
 
   _nextDiscover() {
+    if (!this._discQ.length) { this._discBusy = false; return; }
+    // cards flip out of the book in the corner: wait until the backpack/shop/book is put away
+    if (this.panelStack.length) { this._discBusy = true; setTimeout(() => this._nextDiscover(), 350); return; }
     const e = this._discQ.shift();
-    if (!e) { this._discBusy = false; return; }
     this._discBusy = true;
     this._showDiscover(e);
     setTimeout(() => this._nextDiscover(), this._discQ.length > 3 ? 650 : 1300);
@@ -170,14 +172,18 @@ export class UI {
   _showDiscover({ cat, id, name }) {
     const icon = this.indexIcon(cat, id);
     const label = { mineral: 'New mineral', gem: 'New gem', plant: 'New plant', critter: 'New creature', weapon: 'New weapon', recipe: 'New recipe', mechanic: 'Learned' }[cat] || 'Discovered';
-    const card = el('div', { class: 'discover' }, [el('img', { class: 'pix', src: icon, alt: '' }), el('div', {}, [el('small', {}, label + ' · Index Book'), el('b', {}, name)])]);
+    const card = el('div', { class: 'disc', role: 'status' }, [el('div', { class: 'disc-card' }, [
+      el('div', { class: 'disc-sketch' }, [el('img', { class: 'pix', src: icon, alt: '' })]),
+      el('div', {}, [el('small', {}, label), el('b', {}, name)]),
+    ])]);
     this.hud.append(card);
-    this.bookBadge.hidden = false;
+    this.status.setBadge(true);
     this.game.audio.play('discover');
-    const existing = [...this.hud.querySelectorAll('.discover:not(.out)')];
-    if (existing.length > 3) { const old = existing[0]; old.classList.add('out'); setTimeout(() => old.remove(), 380); existing.shift(); }
-    existing.forEach((c, i) => { c.style.top = `calc(var(--px) * ${56 + (existing.length - 1 - i) * 34})`; });
-    setTimeout(() => { card.classList.add('out'); setTimeout(() => card.remove(), 380); }, 3200);
+    const live = [...this.hud.querySelectorAll('.disc:not(.out)')];
+    const max = window.innerWidth < 640 || window.innerHeight < 420 ? 1 : 3;
+    while (live.length > max) { const old = live.shift(); old.classList.add('out'); setTimeout(() => old.remove(), 500); }
+    live.forEach((c, i) => { c.style.marginTop = `calc(var(--px) * ${(live.length - 1 - i) * 30})`; });
+    setTimeout(() => { card.classList.add('out'); setTimeout(() => card.remove(), 520); }, 3400);
   }
 
   indexIcon(cat, id) {
@@ -192,41 +198,36 @@ export class UI {
     if (!html) { this.promptEl.hidden = true; this._prompt = null; return; }
     if (this._prompt === html) return;
     this._prompt = html;
-    this.promptEl.innerHTML = html;
+    this.promptIn.innerHTML = html;
+    const k = this.promptIn.querySelector('kbd');
+    this._promptKey = k ? keyCode(k.textContent) : 'KeyE';
+    this.promptIn.prepend(el('img', { class: 'pix prompt-tap', src: SPR.tap(), alt: '' }));
     this.promptEl.hidden = false;
   }
 
+  /** Touch: tapping the prompt presses its key. */
+  tapPrompt() {
+    if (!document.documentElement.classList.contains('is-touch') || !this._promptKey) return;
+    this.pressKey(this._promptKey);
+  }
+
+  /** Simulate a short key press (touch buttons, tappable prompts). */
+  pressKey(code, ms = 110) {
+    const inp = this.game.input;
+    this.game.audio.init?.();
+    inp.justDown.add(code);
+    inp.down.add(code);
+    setTimeout(() => { inp.down.delete(code); inp.justUp.add(code); }, ms);
+  }
+
   /** slots: [{icon, key, label, off, n, meter}] */
-  setHotbar(slots, sel = 0, onPick = null) {
-    if (!slots) { this.hotbarEl.hidden = true; this.hotbarLabel.hidden = true; this._hotSig = null; return; }
-    const sig = JSON.stringify(slots.map((s) => [s.icon, s.key, s.off, s.n])) + sel;
-    this.hotbarEl.hidden = false;
-    if (sig !== this._hotSig) {
-      this._hotSig = sig;
-      this.hotbarEl.innerHTML = '';
-      this.hotSlots = slots.map((s, i) => {
-        const meter = el('div', { class: 'meter', hidden: s.meter === undefined }, [el('i', { style: { width: ((s.meter || 0) * 100) + '%' } })]);
-        const node = el('div', { class: 'hotbar-slot' + (i === sel ? ' sel' : '') + (s.off ? ' off' : ''), title: s.label, onclick: () => onPick && onPick(i) }, [
-          el('img', { class: 'pix', src: s.icon, alt: '' }), el('span', { class: 'k' }, s.key || ''), s.n !== undefined ? el('span', { class: 'n' }, String(s.n)) : null, meter,
-        ]);
-        this.hotbarEl.append(node);
-        return { node, meter };
-      });
-    }
-    const lab = slots[sel]?.label;
-    this.hotbarLabel.hidden = !lab;
-    if (lab) this.hotbarLabel.textContent = lab;
-  }
-  setHotbarMeter(i, v) {
-    const s = this.hotSlots?.[i];
-    if (!s) return;
-    s.meter.hidden = v === null || v === undefined;
-    if (!s.meter.hidden) s.meter.firstChild.style.width = clamp(v, 0, 1) * 100 + '%';
-  }
+  setHotbar(slots, sel = 0, onPick = null) { this.belt.set(slots, sel, onPick); }
+  setHotbarMeter(i, v) { this.belt.meter(i, v); }
 
   // ------------------------------------------------------------ world-anchored
   floatText(text, sx, sy, color = '#fff', size = 1) {
-    const t = el('div', { class: 'float-text', style: { left: sx + 'px', top: sy + 'px', color, fontSize: size + 'em' } }, text);
+    const t = el('div', { class: 'float-text', style: { left: sx + 'px', top: sy + 'px', color } }, text);
+    if (size && size !== 1) t.style.fontSize = size >= 1.4 ? (size >= 2 ? '32px' : '24px') : '';
     this.world.append(t);
     setTimeout(() => t.remove(), 1150);
   }
@@ -272,6 +273,10 @@ export class UI {
   clearWorld() {
     this.world.innerHTML = '';
     this.bubbles.clear();
+    // a new scene starts clean: no face mode, no trip bag
+    if (this.focus) this.setFocusMode(false);
+    this.setTouchControls(true);
+    this.status.setBag(null);
   }
 
   // ------------------------------------------------------------ panels
@@ -279,17 +284,19 @@ export class UI {
 
   openPanel({ title, sub, body, className = '', width, onClose, closable = true, noBack = false }) {
     this.game.audio.play('ui_open');
-    const panel = el('div', { class: 'panel ' + className, role: 'dialog', 'aria-label': title || 'Panel', style: width ? { width } : {} });
+    const generic = !/\b(bp-panel|ib-panel|sh-panel|jr-panel)\b/.test(className);
+    const panel = el('div', { class: 'panel ' + (generic ? 'sheet ' : '') + className, role: 'dialog', 'aria-label': title || 'Panel', style: width ? { width } : {} });
     if (title) panel.append(el('h2', {}, title));
     if (sub) panel.append(el('p', { class: 'sub', html: sub }));
     if (body) panel.append(body);
     const back = el('div', { class: 'modal-back' }, [panel]);
-    const handle = { el: panel, back, onClose, closed: false };
+    const handle = { el: panel, back, onClose, closed: false, closable };
     handle.close = () => this.closePanel(handle);
-    if (closable) panel.append(el('button', { class: 'close', 'aria-label': 'Close', onclick: () => handle.close() }, 'X'));
+    if (closable) panel.append(el('button', { class: 'close', 'aria-label': 'Close', title: 'Close (Esc)', onclick: () => handle.close() }, 'X'));
     back.addEventListener('pointerdown', (e) => { if (e.target === back && closable && !noBack) handle.close(); });
     this.overlay.append(back);
     this.panelStack.push(handle);
+    this.root.classList.add('panel-open');
     this.game.input.enabled = false;
     this.game.input.clearAll();
     return handle;
@@ -299,9 +306,11 @@ export class UI {
     const h = handle || this.panelStack[this.panelStack.length - 1];
     if (!h || h.closed) return;
     h.closed = true;
-    h.back.remove();
+    h.back.classList.add('closing');
+    setTimeout(() => h.back.remove(), 170);
     this.panelStack = this.panelStack.filter((p) => p !== h);
     if (!this.panelStack.length) {
+      this.root.classList.remove('panel-open');
       this.game.input.enabled = true;
       this.game.input.clearAll();
     }
@@ -313,118 +322,38 @@ export class UI {
     while (this.panelStack.length) this.closePanel();
   }
 
+  /** Parchment card with two rubber stamps. Resolves true/false. */
   confirm(text, yes = 'Yes', no = 'No') {
     return new Promise((resolve) => {
       let done = false;
-      const body = el('div', { class: 'menu-list' }, [
-        el('p', { html: text, style: { margin: 0, maxWidth: '44ch', paddingRight: 'calc(var(--px) * 12)' } }),
-        el('div', { class: 'row' }, [
-          el('button', { class: 'btn', onclick: () => { done = true; h.close(); resolve(true); } }, yes),
-          el('button', { class: 'btn alt', onclick: () => { done = true; h.close(); resolve(false); } }, no),
-        ]),
+      const card = el('div', { class: 'cf-body' });
+      const stamp = (label, ok) => el('button', { class: 'stamp-btn ' + (ok ? 'yes' : 'no'), onclick: (e) => press(ok, e.currentTarget) }, [
+        el('img', { class: 'pix', src: SPR.stampHandle(), alt: '' }), el('span', {}, label),
       ]);
-      const h = this.openPanel({ body, onClose: () => { if (!done) resolve(false); } });
+      const press = (ok, btn) => {
+        if (done) return;
+        done = true;
+        this.game.audio.play(ok ? 'thud' : 'ui_click', { vol: 0.6 });
+        btn.classList.add('press');
+        const r = btn.getBoundingClientRect(), cr = card.getBoundingClientRect();
+        const mark = el('div', { class: 'ink-mark', style: { left: (r.left - cr.left + r.width / 2) + 'px', top: (r.top - cr.top) + 'px' } }, ok ? yes : no);
+        mark.style.setProperty('--c', ok ? '#3d7a2e' : '#9a3a26');
+        mark.style.translate = '-50% -110%';
+        card.append(mark);
+        setTimeout(() => { h.close(); resolve(ok); }, 300);
+      };
+      const yesB = stamp(yes, true), noB = stamp(no, false);
+      card.append(el('p', { class: 'cf-text', html: text }), el('div', { class: 'cf-row' }, [yesB, noB]));
+      const h = this.openPanel({ body: card, className: 'confirm-card', onClose: () => { if (!done) { done = true; resolve(false); } } });
+      setTimeout(() => yesB.focus({ preventScroll: true }), 30);
     });
   }
 
-  // ------------------------------------------------------------ inventory
+  // ------------------------------------------------------------ backpack
   openInventory() {
     if (this.panelStack.some((p) => p.kind === 'inv')) return;
-    const st = this.game.state;
-    const tabs = [
-      ['all', 'All'], ['mineral', 'Minerals'], ['gem', 'Gems'], ['ingot', 'Ingots'], ['plant', 'Plants & Critters'],
-      ['food', 'Food'], ['weapon', 'Weapons'], ['gear', 'Gear'], ['furniture', 'Furniture'],
-    ];
-    let tab = 'all';
-    let selected = null;
-    const tabRow = el('div', { class: 'tabs' });
-    const grid = el('div', { class: 'grid' });
-    const detail = el('div', { class: 'detail' }, 'Pick something to inspect it.');
-    const scroll = el('div', { class: 'scroll', style: { maxHeight: 'calc(var(--px) * 110)' } }, [grid]);
-    const body = el('div', { style: { display: 'flex', flexDirection: 'column', minHeight: 0 } }, [tabRow, scroll, detail]);
-
-    const match = (it) => {
-      if (!it) return false;
-      if (tab === 'all') return true;
-      if (tab === 'plant') return ['plant', 'critter', 'drop', 'ingredient'].includes(it.cat);
-      if (tab === 'gear') return ['tool', 'equip', 'consumable', 'blueprint', 'key'].includes(it.cat);
-      if (tab === 'furniture') return ['furniture', 'floor', 'wallpaper'].includes(it.cat);
-      return it.cat === tab;
-    };
-
-    const render = () => {
-      tabRow.innerHTML = '';
-      for (const [k, label] of tabs) tabRow.append(el('button', { class: 'tab' + (tab === k ? ' on' : ''), onclick: () => { tab = k; selected = null; render(); } }, label));
-      grid.innerHTML = '';
-      const entries = [];
-      if (tab === 'weapon' || tab === 'all') {
-        for (const w of st.data.weapons) entries.push({ weapon: w });
-      }
-      if (tab !== 'weapon') {
-        for (const g of st.inventory(match)) entries.push(g);
-        if (tab === 'gear' || tab === 'all') for (const id of Object.keys(st.data.owned)) {
-          const it = ITEMS[id];
-          if (it && match(it) && ['tool', 'equip', 'blueprint', 'key'].includes(it.cat)) entries.push({ id, n: 1, owned: true });
-        }
-      }
-      if (!entries.length) grid.append(el('p', { class: 'muted', style: { gridColumn: '1 / -1' } }, 'Nothing here yet.'));
-      for (const e of entries) {
-        if (e.weapon) {
-          const w = e.weapon;
-          grid.append(el('div', { class: 'slot' + (selected === w.uid ? ' on' : ''), title: w.name, onclick: () => { selected = w.uid; showWeapon(w); render(); } }, [
-            el('img', { class: 'pix', src: weaponIconURL(w.type, w.metal, w.infusion), alt: '' }),
-            el('span', { class: 'q', style: { color: gradeFor(w.score).color, textShadow: '0 1px 0 #000' } }, w.grade),
-          ]));
-          continue;
-        }
-        const it = ITEMS[e.id];
-        const isEq = it.slot && st.data.equip[it.slot] === e.id;
-        grid.append(el('div', { class: 'slot' + (selected === e.id ? ' on' : ''), title: it.name, onclick: () => { selected = e.id; showItem(e); render(); } }, [
-          el('img', { class: 'pix', src: iconURL(e.id), alt: '' }),
-          e.avgQ !== undefined ? el('span', { class: 'q', style: { color: qColor(e.avgQ) } }, e.avgQ + '%') : null,
-          e.n > 1 || (!e.owned && e.n) ? el('span', { class: 'n' }, '×' + e.n) : null,
-          isEq ? el('span', { class: 'eq' }, 'ON') : null,
-        ]));
-      }
-    };
-
-    const showItem = (e) => {
-      const it = ITEMS[e.id];
-      detail.innerHTML = '';
-      const parts = [el('div', { class: 'row' }, [el('b', {}, it.name), el('span', { class: 'muted' }, CAT_LABEL[it.cat] || it.cat), el('span', { class: 'spacer' })])];
-      parts.push(el('div', { class: 'muted', style: { margin: 'calc(var(--px)*1.5) 0' } }, it.desc || ''));
-      const info = [];
-      if (e.avgQ !== undefined) info.push(`Avg quality <b style="color:${qColor(e.avgQ)}">${e.avgQ}%</b> · ${e.lots.filter((l) => l.p).length} pristine`);
-      if (it.value && it.cat !== 'tool' && it.cat !== 'equip') info.push(`Worth about <span class="gold-txt">${formatGoldFull(sellPrice(e.id, e.avgQ ?? 100))}g</span> each`);
-      if (it.energy) info.push(`Restores <b>${it.energy}</b> energy` + (it.buff ? ` · ${BUFFS[it.buff]?.name}` : '') + (it.maxEnergy ? ` · +${it.maxEnergy} max energy` : ''));
-      if (it.cap) info.push(`Holds ${it.cap} finds per trip`);
-      if (it.tier) info.push(`Pick tier ${it.tier} · power ${it.power}`);
-      if (it.light) info.push(`Lamp radius ${it.light}`);
-      if (info.length) parts.push(el('div', { html: info.join('<br>') }));
-      const actions = el('div', { class: 'row', style: { marginTop: 'calc(var(--px)*2)' } });
-      if (it.cat === 'food' || (it.food && this.game.scene?.allowEatRaw !== false)) {
-        actions.append(el('button', { class: 'btn', onclick: () => { this.game.eat(e.id); render(); const g = st.inventory((x) => x === it)[0]; if (g) showItem(g); else detail.textContent = 'Yum.'; } }, it.cat === 'food' ? 'Eat' : 'Eat raw'));
-      }
-      if (it.slot && st.owns(e.id) && st.data.equip[it.slot] !== e.id) {
-        actions.append(el('button', { class: 'btn', onclick: () => { st.equip(e.id); this.game.audio.play('ui_click'); render(); showItem(e); } }, 'Equip'));
-      }
-      if (actions.children.length) parts.push(actions);
-      detail.append(...parts);
-    };
-
-    const showWeapon = (w) => {
-      detail.innerHTML = '';
-      const g = gradeFor(w.score);
-      detail.append(
-        el('div', { class: 'row' }, [el('b', {}, w.name), el('span', { class: 'stamp', style: { color: g.color, borderColor: g.color, background: '#2a1a12' } }, `Grade ${g.g}`)]),
-        el('div', { class: 'muted', style: { margin: 'calc(var(--px)*1.5) 0' }, html: `Forged on day ${w.day}. Metal quality ${w.matQ}% · craft score ${Math.round(w.score)}` + (w.gem ? ` · socketed ${ITEMS[w.gem]?.name}` : '') }),
-        el('div', { html: `Worth about <span class="gold-txt">${formatGoldFull(w.value)}g</span> at the assay office.` }),
-      );
-    };
-
-    render();
-    const h = this.openPanel({ title: 'Inventory', sub: `Bag holds ${st.bagCapacity()} finds per trip.`, body, width: 'calc(var(--px) * 200)' });
-    h.kind = 'inv';
+    const h = openBackpack(this.game);
+    if (h) h.kind = 'inv';
   }
 
   // ------------------------------------------------------------ shops
@@ -434,37 +363,24 @@ export class UI {
 
   // ------------------------------------------------------------ index book (lazy import keeps UI light)
   openIndex(cat, id) {
-    this.bookBadge.hidden = true;
-    import('./IndexBook.js').then((m) => m.openIndexBook(this.game, cat, id));
+    this.status.setBadge(false);
+    if (this.panelStack.some((p) => p.kind === 'book')) return;
+    import('./IndexBook.js').then((m) => { const h = m.openIndexBook(this.game, cat, id); if (h) h.kind = 'book'; });
   }
 
-  // ------------------------------------------------------------ menu
+  // ------------------------------------------------------------ pause journal
   openMenu() {
     if (this.panelStack.length) return;
-    const g = this.game;
-    const st = g.state;
-    const s = st.data.settings;
-    const range = (id, label, val, on) => el('label', { class: 'setting', for: id }, [label, el('input', { id, type: 'range', min: 0, max: 1, step: 0.05, value: val, oninput: (e) => on(parseFloat(e.target.value)) })]);
-    const body = el('div', { class: 'menu-list' }, [
-      el('button', { class: 'btn big', onclick: () => h.close() }, 'Resume'),
-      range('set-music', 'Music', s.music, (v) => { s.music = v; g.audio.setVolumes({ music: v }); }),
-      range('set-sfx', 'Sound', s.sfx, (v) => { s.sfx = v; g.audio.setVolumes({ sfx: v }); }),
-      el('label', { class: 'setting', for: 'set-pixel' }, ['Pixel size', el('select', { id: 'set-pixel', onchange: (e) => { s.pixel = parseInt(e.target.value, 10); g.engine.setPixelOffset(s.pixel); }, style: { font: 'inherit' } }, [
-        el('option', { value: -1, selected: s.pixel === -1 }, 'Fine'), el('option', { value: 0, selected: s.pixel === 0 }, 'Normal'), el('option', { value: 1, selected: s.pixel === 1 }, 'Chunky'),
-      ])]),
-      el('label', { class: 'setting', for: 'set-shake' }, ['Screen shake', el('input', { id: 'set-shake', type: 'checkbox', checked: s.shake > 0, onchange: (e) => { s.shake = e.target.checked ? 1 : 0; } })]),
-      el('div', { class: 'row' }, [
-        el('button', { class: 'btn alt', onclick: () => { st.save(); this.toast('Game saved', { kind: 'good' }); } }, 'Save'),
-        el('button', { class: 'btn alt', onclick: () => { h.close(); g.goto('title'); } }, 'Title screen'),
-      ]),
-      el('p', { class: 'muted', style: { margin: 0, fontSize: '.75em' } }, `Day ${st.data.day} · ${Math.floor(st.data.playTime / 60)} min played · Your game saves automatically.`),
-    ]);
-    const h = this.openPanel({ title: 'Paused', body });
+    openJournal(this.game);
   }
 }
 
-// creature icons are drawn by the mine art module; fall back to a book icon until it registers
+// creature icons: the mine art module may register its own; otherwise the 32×32 critter sprites
 let creatureIconFn = null;
 export function registerCreatureIcons(fn) { creatureIconFn = fn; }
-export function creatureIconURL(id) { return creatureIconFn ? creatureIconFn(id) : BOOK(); }
+export function creatureIconURL(id) {
+  let url = null;
+  try { url = (creatureIconFn && creatureIconFn(id)) || critterIconURL(id); } catch (e) { url = null; }
+  return url || BOOK();
+}
 export { indexName };

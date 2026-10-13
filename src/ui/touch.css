@@ -1,0 +1,71 @@
+/* ---------- touch controls ---------- */
+.tc { position: absolute; inset: 0; z-index: 3; pointer-events: none; display: none; }
+html.is-touch .tc { display: block; }
+#ui.panel-open .tc, #ui.no-touch .tc, #ui[data-hud=none] .tc, #ui[data-hud=mini] .tc { display: none !important; }
+/* the pad's build button replaces build mode's desktop button on touch screens */
+html.is-touch .world-layer > .btn[aria-label="Build mode"] { display: none !important; }
+.tc button, .tc-stick { pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none; }
+
+/* joystick: carved stone disc + brass knob, bottom-left */
+.tc-stick {
+  position: absolute; left: calc(var(--sal) + var(--px) * 7); bottom: calc(var(--sab) + var(--px) * 7);
+  width: calc(var(--px) * 52); height: calc(var(--px) * 52); opacity: .78; transition: opacity .2s;
+  display: none;
+}
+#ui[data-hud=mine] .tc-stick, #ui[data-hud=town] .tc-stick, #ui[data-hud=home] .tc-stick { display: block; }
+#ui.focus .tc-stick { opacity: .5; }
+#ui.focus .tc-stick.on { opacity: .85; }
+.tc-stick.on { opacity: 1; }
+.tc-stick::before { content: ''; position: absolute; inset: calc(var(--px) * -8); }
+.tc-base { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 var(--px) 0 rgba(0, 0, 0, .5)); }
+.tc-knob {
+  position: absolute; left: 50%; top: 50%; width: calc(var(--px) * 24); height: calc(var(--px) * 24); margin: calc(var(--px) * -12) 0 0 calc(var(--px) * -12);
+  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .45)); transition: transform .12s var(--pop);
+}
+.tc-stick.on .tc-knob { transition: none; filter: drop-shadow(0 calc(var(--px) * 1) 0 rgba(0, 0, 0, .45)) brightness(1.08); }
+
+/* carved buttons, bottom-right */
+.tc-pad {
+  position: absolute; right: calc(var(--sar) + var(--px) * 6); bottom: calc(var(--sab) + var(--px) * 6);
+  display: grid; grid-template-columns: repeat(2, calc(var(--px) * 30)); grid-template-rows: repeat(2, calc(var(--px) * 31));
+  grid-template-areas: 'tool snack' 'use jump'; gap: calc(var(--px) * 3);
+}
+.tc-btn { display: none; position: relative; width: calc(var(--px) * 30); height: calc(var(--px) * 31); padding: 0; border: 0; background: none; opacity: .86; }
+.tc-btn.on { opacity: 1; }
+.tc-btn::before { content: ''; position: absolute; inset: calc(var(--px) * -2); }
+.tc-face { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tc-ic { position: absolute; left: 50%; top: 50%; width: calc(var(--px) * 11); height: calc(var(--px) * 11); margin: calc(var(--px) * -6) 0 0 calc(var(--px) * -5.5); pointer-events: none; }
+.tc-btn.on .tc-ic { transform: translateY(var(--px)); }
+.b-jump { grid-area: jump; }
+.b-use { grid-area: use; }
+.b-snack { grid-area: snack; }
+.b-tool { grid-area: tool; }
+.b-build { grid-area: snack; }
+.b-back { grid-area: tool; }
+#ui[data-hud=mine]:not(.focus) .tc-btn.m-mine,
+#ui[data-hud=town]:not(.focus) .tc-btn.m-town,
+#ui[data-hud=home]:not(.focus) .tc-btn.m-home,
+#ui.focus .tc-btn.m-focus, #ui.focus .tc-btn.m-focus-only { display: block; }
+#ui.building .tc-btn { display: none !important; }
+#ui.building .tc-btn.m-building { display: block !important; }
+#ui.building .tc-stick { display: none !important; }
+@media (max-width: 640px) { #ui.building .tc-pad { bottom: calc(var(--sab) + var(--px) * 84); } }
+.b-rot { grid-area: use; }
+.b-done { grid-area: jump; }
+#ui[data-hud=town] .b-use, #ui[data-hud=home] .b-use { grid-area: jump; }
+#ui[data-hud=home] .b-build { grid-area: use; }
+#ui.focus .b-use { grid-area: jump; }
+#ui.focus .b-snack { grid-area: use; }
+
+/* keep the belt and prompt clear of the thumbs */
+html.is-touch .prompt { bottom: calc(var(--sab) + var(--px) * 40); }
+@media (max-width: 560px) {
+  html.is-touch .belt { bottom: calc(var(--sab) + var(--px) * 72); }
+  html.is-touch .prompt { bottom: calc(var(--sab) + var(--px) * 104); }
+  html.is-touch .belt-buckle, html.is-touch .belt-tip { display: none; }
+  /* loops sit shoulder to shoulder on a narrow strap */
+  .belt-strap { padding: 0; }
+  .belt-loops { padding: 0 calc(var(--px) * 1); }
+  .loop { margin: 0 calc(var(--px) * -1); }
+  .belt.tucked .loop.sel { margin: 0; }
+}
