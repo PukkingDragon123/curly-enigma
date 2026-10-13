@@ -182,10 +182,15 @@ export class IsoScene extends Scene {
     if (s.x < -60 || s.x > W + 60 || s.y < -40 || s.y > H + 120) s.visible = false;
     s.x = Math.max(half + 6, Math.min(W - half - 6, s.x));
     s.y = Math.max(h + 2, Math.min(H - 10, s.y));
-    for (const r of this.hudBoxes()) {
-      if (s.x + half > r.l && s.x - half < r.r && s.y - h < r.b && s.y > r.t) s.y = r.b + h;
-    }
+    const r = this.hudHit(s.x, s.y, half, h);
+    if (r) s.y = r.b + h;
     return s;
+  }
+
+  /** The HUD box a bubble (centered on x, bottom at y) would cover, if any. */
+  hudHit(x, y, half, h) {
+    for (const r of this.hudBoxes()) if (x + half > r.l && x - half < r.r && y - h < r.b && y > r.t) return r;
+    return null;
   }
 
   /** The HUD corner panels in bubble-layer pixels, re-measured twice a second. */
@@ -205,16 +210,34 @@ export class IsoScene extends Scene {
 
   updateAnchors() {
     const ui = this.game.ui;
-    // measure every bubble first (one layout pass), then move them all
+    // measure every bubble first (one layout pass), then place them all
     const list = [];
     for (const [key, a] of this.anchors) {
       const b = ui.bubbles.get(key);
       if (!b) { this.anchors.delete(key); continue; }
-      list.push([key, a, b.node.classList.contains('emote'), b.node.offsetWidth, b.node.offsetHeight]);
+      list.push({ key, a, emote: b.node.classList.contains('emote'), w: b.node.offsetWidth, h: b.node.offsetHeight });
     }
-    for (const [key, a, emote, w, h] of list) {
-      const s = this.clampBubble(this.toScreen(a.headPos(_v)), emote, w, h);
-      ui.moveBubble(key, s.x, s.y, s.visible);
+    for (const it of list) it.s = this.clampBubble(this.toScreen(it.a.headPos(_v)), it.emote, it.w, it.h);
+    if (list.length > 1) this.unstackBubbles(list);
+    for (const it of list) ui.moveBubble(it.key, it.s.x, it.s.y, it.s.visible);
+  }
+
+  /** Nudge overlapping bubbles apart: the one lowest on screen keeps its spot, the others rise above it. */
+  unstackBubbles(list) {
+    list.sort((a, b) => b.s.y - a.s.y);
+    const placed = [];
+    for (const it of list) {
+      if (!it.s.visible || !it.w) continue;
+      const top = it.h + 8; // height including the tail
+      for (let pass = 0; pass < 4; pass++) {
+        const hit = placed.find((p) => Math.abs(it.s.x - p.s.x) < (it.w + p.w) / 2 + 2 && it.s.y > p.s.y - p.h - 10 && it.s.y - top < p.s.y + 2);
+        if (!hit) break;
+        const up = hit.s.y - hit.h - 11;
+        // rise above it, or drop below it when rising would leave the screen or cover the HUD
+        it.s.y = up - top < 2 || this.hudHit(it.s.x, up, it.w / 2, top) ? hit.s.y + top + 3 : up;
+      }
+      it.s.y = Math.max(top + 2, it.s.y);
+      placed.push(it);
     }
   }
 

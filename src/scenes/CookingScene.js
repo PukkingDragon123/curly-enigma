@@ -74,6 +74,11 @@ export default class CookingScene extends Scene {
     this.phase = 'pantry';
     this.phaseT = 0;
 
+    // remember whether the last press was a finger (touch kneading uses screen halves)
+    const onDown = (e) => { this.lastPointer = e.pointerType; };
+    this.game.canvas.addEventListener('pointerdown', onDown, true);
+    this.own(() => this.game.canvas.removeEventListener('pointerdown', onDown, true));
+
     // keep the pantry honest if the inventory changes while it's open (eating from the bag...)
     this.own(this.game.state.on('items', () => { if (this.phase === 'pantry' && this.ui.pantryRender) this.ui.pantryRender(); }));
 

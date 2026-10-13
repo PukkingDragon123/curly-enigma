@@ -5,7 +5,7 @@ import { flatFood } from '../models.js';
 import { slabMesh, spriteCells, mainColor, chunkMesh } from '../food.js';
 import { voxelMaterial } from '../../gfx/Voxel.js';
 import { droplets, smoke, sparkle } from '../fx.js';
-import { clamp, mixHex } from '../../core/util.js';
+import { clamp } from '../../core/util.js';
 
 const SIDE_TIME = 3.4;
 const WIN = [0.55, 0.8];
@@ -185,4 +185,3 @@ export class FryStep extends Step {
   }
 }
 
-export { mixHex };

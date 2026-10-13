@@ -374,6 +374,10 @@ export class State {
     d.day++;
     this.emit('day', { day: d.day });
   }
+  unflag(k) {
+    delete this.data.flags[k];
+    this.dirty = true;
+  }
   flag(k, v) {
     if (v === undefined) return this.data.flags[k];
     this.data.flags[k] = v;

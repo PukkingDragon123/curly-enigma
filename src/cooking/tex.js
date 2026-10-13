@@ -223,17 +223,6 @@ export function dashTex() {
   return tex(pc);
 }
 
-/** Round shadow blob (soft, dithered). */
-export function blobTex() {
-  const S = 16;
-  const pc = new PixelCanvas(S, S);
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const d = Math.hypot(x + 0.5 - 8, y + 0.5 - 8) / 8;
-    if (d < 0.75 || (d < 1 && (x + y) % 2 === 0)) pc.set(x, y, 0x000000);
-  }
-  return tex(pc);
-}
-
 /** Dithered flour dusting (white blob with ragged edges). */
 export function flourTex() {
   const S = 32;

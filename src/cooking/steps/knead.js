@@ -5,7 +5,7 @@ import { dough as doughModel } from '../models.js';
 import { flourTex } from '../tex.js';
 import { puff } from '../fx.js';
 import { BOARD_TOP } from '../kitchen.js';
-import { clamp, damp, mixHex } from '../../core/util.js';
+import { mixHex } from '../../core/util.js';
 
 const BEAT = 0.5;
 const COUNT = 12;
@@ -77,7 +77,10 @@ export class KneadStep extends Step {
     const inp = this.input;
     const now = this.live;
     if (live && this.finishT < 0) {
-      if (inp.mousePressed(0) || inp.pressed('KeyA', 'ArrowLeft')) this.judge('L');
+      const touch = this.cook.lastPointer === 'touch';
+      const half = inp.mouse.x > (this.cook.game.canvas.clientWidth || 0) / 2;
+      if (inp.mousePressed(0) && touch) this.judge(half ? 'R' : 'L');
+      else if (inp.mousePressed(0) || inp.pressed('KeyA', 'ArrowLeft')) this.judge('L');
       if (inp.mousePressed(2) || inp.pressed('KeyD', 'ArrowRight')) this.judge('R');
       // metronome tick on every beat
       while (this.tickI < this.notes.length && now >= this.notes[this.tickI].t) {
@@ -102,16 +105,16 @@ export class KneadStep extends Step {
     const sq = Math.sin(this.squash * Math.PI) * 0.25;
     const base = 1.2 * (1 - this.flat * 0.32);
     this.dough.scale.set(1.2 * (1 + this.flat * 0.2) * (1 + sq * 0.5), base * (1 - sq), 1.2 * (1 + this.flat * 0.15) * (1 + sq * 0.4));
-    // paws hover over the dough and push down on a press
-    const top = BOARD_TOP + 0.25 * this.dough.scale.y;
+    // paws rest beside the dough and squash it from the sides/top on a press
+    const top = BOARD_TOP + 0.3 * this.dough.scale.y;
     for (const p of [this.L, this.R]) {
       const k = p.side < 0 ? 'L' : 'R';
       this.press[k] = Math.max(0, this.press[k] - dt * 5);
       const dip = Math.sin(this.press[k] * Math.PI);
       const c = this.group.position;
       p.speed = 26;
-      p.goal.set(c.x + p.side * (0.3 - dip * 0.12), top + 0.05 - dip * 0.1, c.z + 0.14 - dip * 0.06);
-      p.setPose({ pitch: 0.55 + dip * 0.5, roll: 0.25, yaw: 0.55 + dip * 0.3 });
+      p.goal.set(c.x + p.side * (0.44 - dip * 0.22), BOARD_TOP + 0.17 + dip * (top - BOARD_TOP - 0.12), c.z + 0.1);
+      p.setPose({ pitch: 0.45 + dip * 0.5, roll: 0.3, yaw: 0.8 - dip * 0.35 });
     }
   }
 
@@ -127,4 +130,3 @@ export class KneadStep extends Step {
   timeout() {}
 }
 
-export { clamp, damp };

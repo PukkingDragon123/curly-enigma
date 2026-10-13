@@ -1,6 +1,6 @@
 // CRACK: an egg above the bowl and a swinging power meter. Click inside the sweet zone.
 // Too gentle just dents it (try again, costs points); too hard smashes shell into the bowl.
-import { Step, V3, THREE } from './base.js';
+import { Step, V3 } from './base.js';
 import { egg, eggShell, yolk, shellBit } from '../models.js';
 import { droplets, sparkle } from '../fx.js';
 import { VESSEL } from '../vessels.js';
@@ -194,4 +194,3 @@ export class CrackStep extends Step {
   }
 }
 
-export { THREE };

@@ -42,14 +42,14 @@ export class PlateStep extends Step {
   placeSpatula(x, roll) {
     const S = this.S;
     const B = V3(x, this.y0 - 0.012, S.z);
-    const dir = V3(-0.28, -0.22, -1).normalize();
+    const dir = V3(-0.85, -0.2, -0.5).normalize();
     _x.crossVectors(UPV, dir).normalize();
     _y.crossVectors(dir, _x);
     _m.makeBasis(_x, _y, dir);
     this.spat.quaternion.setFromRotationMatrix(_m);
     this.spat.rotateZ(roll);
     this.spat.position.copy(B).addScaledVector(dir, -0.41);
-    this.handle = this.spat.position.clone().addScaledVector(dir, -0.12);
+    this.handle = this.spat.position.clone().addScaledVector(dir, -0.14);
   }
 
   tick(dt, live) {
@@ -86,8 +86,8 @@ export class PlateStep extends Step {
     this.placeSpatula(this.dropped ? this.x : this.x, this.dropped ? -this.tiltT * 0.9 : 0);
     const h = this.handle;
     this.R.speed = 30;
-    this.R.goal.set(h.x + 0.03, h.y + 0.05, h.z + 0.06);
-    this.R.setPose({ pitch: 0.3, roll: 0.3 + (this.dropped ? this.tiltT * 0.4 : 0), yaw: 0.35 });
+    this.R.goal.set(h.x + 0.08, h.y + 0.02, h.z + 0.06);
+    this.R.setPose({ pitch: 0.2, roll: 0.45 + (this.dropped ? this.tiltT * 0.4 : 0), yaw: 1.05 });
     this.L.goal.set(S.x - 0.42, PLATE_TOP + 0.08, S.z + 0.1);
     this.L.setPose({ pitch: 0.6, roll: 0.3, yaw: 0.6 });
   }

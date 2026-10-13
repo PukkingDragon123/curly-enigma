@@ -293,8 +293,7 @@ export class BuildMode {
     const i = d.home.placed.indexOf(p);
     if (i >= 0) { d.home.placed.splice(i, 1); this.s.removePlaced(p.uid); }
     this.returnPlanter(p);
-    d.furniture[p.id] = (d.furniture[p.id] || 0) + 1;
-    st.emit('items', { id: p.id, n: 1 });
+    st.addItem(p.id, { n: 1 });
     this.s.rebuildCollision();
     this.game.audio.play('remove');
     this.s.particles.dustPuff(p.x + 0.5, 0.1, p.y + 0.5, 6, 0x8a6a4a);
@@ -324,8 +323,7 @@ export class BuildMode {
     this.mark.visible = false;
     const st = this.game.state;
     this.returnPlanter(p);
-    st.data.furniture[p.id] = (st.data.furniture[p.id] || 0) + 1;
-    st.emit('items', { id: p.id, n: 1 });
+    st.addItem(p.id, { n: 1 });
     this.game.audio.play('remove');
     st.save();
     this.renderDrawer();

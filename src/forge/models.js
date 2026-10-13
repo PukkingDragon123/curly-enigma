@@ -311,27 +311,37 @@ export function makeBarrel(waterTex) {
 // ---------------------------------------------------------------- grindstone
 export function makeGrindstone() {
   const group = new THREE.Group();
-  const fg = new VoxelGrid(12, 12, 14);
-  for (const z of [1, 11]) { fg.box(2, 0, z, 1, 10, 1, 0x5a3a20); fg.box(9, 0, z, 1, 10, 1, 0x5a3a20); fg.box(2, 9, z, 8, 1, 1, 0x6a4424); }
-  fg.box(3, 1, 3, 6, 2, 8, (x, y, z) => (y === 2 && x > 3 && x < 8 && z > 3 && z < 10 ? 0x2a5a68 : 0x6a4424)); // trough
-  group.add(mesh(fg, [6, 0, 7]));
-  const wg = new VoxelGrid(13, 13, 3);
-  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) {
-    const r = Math.hypot(x + 0.5 - 6.5, y + 0.5 - 6.5);
-    if (r <= 6.3) for (let z = 0; z < 3; z++) wg.set(x, y, z, r < 1.2 ? 0x3a3436 : jit(h3(x, y, z) % 5 === 0 ? 0x9a8a6a : 0xb8a684, x, y, z, 0.05));
+  // waist-high for a mole: two braced side frames carry the axle, a water trough sits below
+  const fg = new VoxelGrid(10, 8, 9);
+  const WOOD = 0x5a3a20, WOOD2 = 0x6a4424;
+  for (const x of [1, 8]) {
+    fg.box(x, 0, 1, 1, 6, 1, WOOD); fg.box(x, 0, 7, 1, 6, 1, WOOD); // legs
+    fg.box(x, 2, 2, 1, 1, 5, WOOD2); // brace
+    fg.box(x, 5, 2, 1, 1, 5, WOOD2); // top rail
+    fg.box(x, 6, 4, 1, 1, 1, 0x3a3436); // bearing
   }
-  const wheel = mesh(wg, [6.5, 6.5, 1.5]);
+  fg.box(0, 6, 4, 1, 1, 1, 0x3a3436); fg.box(9, 6, 4, 1, 1, 1, 0x3a3436); // axle ends
+  fg.box(3, 0, 1, 4, 2, 7, (x, y, z) => (y === 1 && x > 3 && x < 6 && z > 1 && z < 7 ? 0x2a5a68 : jit(WOOD2, x, y, z, 0.06))); // trough
+  group.add(mesh(fg, [5, 0, 4.5]));
+  const R = 4.6, D = 10;
+  const wg = new VoxelGrid(D, D, 3);
+  for (let y = 0; y < D; y++) for (let x = 0; x < D; x++) {
+    const r = Math.hypot(x + 0.5 - D / 2, y + 0.5 - D / 2);
+    if (r <= R) for (let z = 0; z < 3; z++) wg.set(x, y, z, r < 1.1 ? 0x3a3436 : jit(h3(x, y, z) % 5 === 0 ? 0x9a8a6a : 0xb8a684, x, y, z, 0.05));
+  }
+  const wheel = mesh(wg, [D / 2, D / 2, 1.5]);
   wheel.rotation.y = Math.PI / 2;
   const hub = new THREE.Group();
-  hub.position.set(0, 9.5 * V, 0);
+  hub.position.set(0, 6.5 * V, 0);
   hub.add(wheel);
   group.add(hub);
-  const cg = new VoxelGrid(2, 5, 2);
-  cg.box(0, 0, 0, 1, 5, 1, 0x3a3436); cg.box(0, 4, 0, 2, 1, 1, 0x7a4a26);
-  const crank = mesh(cg, [0.5, 0, 0.5]);
-  crank.position.set(0, 0, 7 * V);
+  // crank on the axle end: an arm and a handle, turning with the wheel
+  const cg = new VoxelGrid(3, 4, 1);
+  cg.box(0, 0, 0, 1, 4, 1, 0x3a3436); cg.box(1, 3, 0, 2, 1, 1, 0x7a4a26);
+  const crank = mesh(cg, [0.5, 0.5, 0.5]);
+  crank.position.set(5.5 * V, 0, 0);
   hub.add(crank);
-  return { group, wheel, hub, contact: new THREE.Vector3(0, 9.5 * V + 6.5 * V, 0) };
+  return { group, wheel, hub, contact: new THREE.Vector3(0, 6.5 * V + R * V, 0) };
 }
 
 // ---------------------------------------------------------------- racks, benches, decor

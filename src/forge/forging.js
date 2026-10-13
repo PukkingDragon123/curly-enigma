@@ -501,6 +501,7 @@ export class ForgeRun {
     this.setActions([]);
     this.game.ui.setHints(null);
     this.view.setDotsVisible(false);
+    this.thermo.el.hidden = true;
     sc.setShot('grind');
     sc.molePose = 'idle';
     sc.hammer.visible = false;
@@ -508,13 +509,12 @@ export class ForgeRun {
     const c = W.grindContact;
     // the blade lies across the rim (along the axle), hilt toward the mole, and is drawn
     // sideways so the stone runs along the edge; sparks fly off the top toward the camera
-    const ry = W.grind.group.rotation.y;
-    const axle = W.grindAxle;
-    const tan = new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry));
-    const rotY = Math.atan2(axle.z, -axle.x);
+    const axle = W.grindAxle, tan = W.grindTan;
+    const rotY = Math.atan2(-axle.z, axle.x);
     const len = this.sim.length * COL;
     const reach = Math.min(0.5, len * 0.8);
-    const pose = (u) => ({ pos: c.clone().addScaledVector(axle, 0.16 + (reach - 0.16) * u).add(_v2.set(0, 0.012, 0)), rot: new THREE.Euler(0, rotY, 0) });
+    // hilt on the mole's right (-axle), tip out to its left; slide it so the stone runs along the edge
+    const pose = (u) => ({ pos: c.clone().addScaledVector(axle, -(0.12 + (reach - 0.12) * u)).add(_v2.set(0, 0.012, 0)), rot: new THREE.Euler(0, rotY, 0) });
     for (const st of ['heat', 'hammer']) if (!this.done.includes(st)) this.done.push(st);
     sc.walkTo('grind', 'carry');
     this.moveObj(this.view.group, pose(0), 0.7, 0.4);
@@ -527,9 +527,9 @@ export class ForgeRun {
       W.grind.hub.rotation.x += dt * 18;
       const u = 0.5 - 0.5 * Math.cos(k * Math.PI * 4);
       this.view.group.position.copy(pose(u).pos);
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 4; i++) {
         const sp = 1.4 + Math.random() * 2.2, side = (Math.random() - 0.5) * 0.12;
-        P.glow.spawn({ x: c.x + axle.x * side, y: c.y + 0.01, z: c.z + axle.z * side, vx: tan.x * sp + (Math.random() - 0.5) * 0.45, vy: 0.25 + Math.random() * 0.9, vz: tan.z * sp + (Math.random() - 0.5) * 0.45, life: 0.3 + Math.random() * 0.35, size: 0.014, size1: 0.004, color: 0xfff0b0, color1: 0xff7a1a, gravity: 4, drag: 1 });
+        P.glow.spawn({ x: c.x + axle.x * side, y: c.y + 0.01, z: c.z + axle.z * side, vx: tan.x * sp + (Math.random() - 0.5) * 0.45, vy: 0.25 + Math.random() * 0.9, vz: tan.z * sp + (Math.random() - 0.5) * 0.45, life: 0.3 + Math.random() * 0.35, size: 0.018, size1: 0.005, color: 0xfff0b0, color1: 0xff7a1a, gravity: 4, drag: 1 });
       }
     });
     this.seq.call(() => {
@@ -739,6 +739,7 @@ export class ForgeRun {
     this.busy = true;
     sc.pumpAllowed = false;
     sc.walkTo('barrel', 'carry');
+    sc.setShot('quench');
     const Tp = this.weaponT;
     const res = quenchResult(this.m, Tp);
     this.setActions([]);

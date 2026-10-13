@@ -115,12 +115,13 @@ export function buildWorld(scene) {
   W.barrel = barrel;
   W.barrelTop = new THREE.Vector3(barrelPos.x, barrel.waterY, barrelPos.z);
   const grind = makeGrindstone();
-  grind.group.position.set(3.2, 0, -0.85);
+  grind.group.position.set(3.2, 0, -0.6);
   grind.group.rotation.y = 0.3;
   scene.add(grind.group);
   W.grind = grind;
   W.grindContact = grind.contact.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.3).add(grind.group.position);
-  W.grindAxle = new THREE.Vector3(Math.cos(0.3), 0, -Math.sin(0.3)); // toward the side the grinder stands on
+  W.grindAxle = new THREE.Vector3(Math.cos(0.3), 0, -Math.sin(0.3));
+  W.grindTan = new THREE.Vector3(Math.sin(0.3), 0, Math.cos(0.3)); // the rim's top runs this way, away from the grinder
   const bench = makeWorkbench();
   bench.group.position.set(2.75, 0, R.back + 0.4);
   scene.add(bench.group);
@@ -220,7 +221,7 @@ export function buildWorld(scene) {
     hearth: { pos: new THREE.Vector3(hearthX - 0.2, 0, hearthZ + 1.12), yaw: Math.PI },
     barrel: { pos: new THREE.Vector3(barrelPos.x + 0.56, 0, barrelPos.z - 0.12), yaw: -Math.PI / 2 },
     bench: { pos: new THREE.Vector3(1.55, 0, R.back + 0.75), yaw: Math.PI / 2 },
-    grind: { pos: W.grindContact.clone().setY(0).addScaledVector(W.grindAxle, 0.74), yaw: Math.atan2(-W.grindAxle.x, -W.grindAxle.z) },
+    grind: { pos: W.grindContact.clone().setY(0).addScaledVector(W.grindTan, -0.58), yaw: Math.atan2(W.grindTan.x, W.grindTan.z) },
     idle: { pos: new THREE.Vector3(anvilPos.x, 3 * V, anvilPos.z - 0.62), yaw: 0.45 },
   };
   // walking obstacles (circles {x,z,r} and boxes {x0,x1,z0,z1}) and detour waypoints
@@ -233,10 +234,10 @@ export function buildWorld(scene) {
     { x: anvilPos.x, z: anvilPos.z, r: 0.4 },
     { x: crate.position.x, z: crate.position.z, r: 0.36 },
     { x0: 1.85, x1: 3.65, z0: R.back - 0.1, z1: R.back + 0.78 },
-    { x: grind.group.position.x, z: grind.group.position.z, r: 0.45 },
+    { x: grind.group.position.x, z: grind.group.position.z, r: 0.38 },
     { x: -3.55, z: 0.25, r: 0.3 }, { x: -3.75, z: -0.62, r: 0.25 }, { x: 1.25, z: 0.75, r: 0.38 }, { x: 3.95, z: 0.6, r: 0.28 },
   ];
-  W.waypoints = [[-3.72, -1.08], [-2.3, -1.06], [-1.6, -0.02], [-0.15, -0.02], [-0.1, -0.95], [1.05, 0.0], [1.15, -1.15], [2.65, -1.15], [0.55, 0.35], [2.7, 0.05], [-1.45, -0.62], [3.9, -0.12]]
+  W.waypoints = [[-3.72, -1.08], [-2.3, -1.06], [-1.6, -0.02], [-0.15, -0.02], [-0.1, -0.95], [1.05, 0.0], [1.15, -1.15], [2.65, -1.15], [0.55, 0.35], [2.7, 0.05], [-1.45, -0.62], [3.9, -0.12], [2.43, -0.62]]
     .map(([x, z]) => new THREE.Vector3(x, 0, z));
   const af = W.anvilFace;
   W.shots = {
@@ -248,7 +249,7 @@ export function buildWorld(scene) {
     infuse: { pos: new THREE.Vector3(af.x + 0.25, af.y + 0.95, af.z + 1.55), look: new THREE.Vector3(af.x + 0.02, af.y + 0.22, af.z - 0.1), fov: 38 },
     quench: { pos: new THREE.Vector3(0.2, 2.3, 3.6), look: new THREE.Vector3(-0.95, 0.6, -1.15), fov: 46 },
     bench: { pos: new THREE.Vector3(W.fulcrumTop.x - 0.05, W.fulcrumTop.y + 0.95, W.fulcrumTop.z + 1.45), look: new THREE.Vector3(W.fulcrumTop.x - 0.05, W.fulcrumTop.y + 0.05, W.fulcrumTop.z), fov: 40 },
-    grind: { pos: new THREE.Vector3(W.grindContact.x - 0.05, 2.0, W.grindContact.z + 2.75), look: new THREE.Vector3(W.grindContact.x - 0.45, 0.72, W.grindContact.z), fov: 40 },
+    grind: { pos: new THREE.Vector3(W.grindContact.x - 0.3, 2.0, W.grindContact.z + 3.2), look: new THREE.Vector3(W.grindContact.x - 0.1, 0.62, W.grindContact.z - 0.2), fov: 34 },
     reveal: { pos: new THREE.Vector3(2.4, 2.25, 3.55), look: new THREE.Vector3(-1.05, 0.9, -1.1), fov: 44 },
   };
   return W;

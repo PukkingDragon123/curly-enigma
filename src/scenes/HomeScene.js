@@ -397,8 +397,7 @@ export default class HomeScene extends IsoScene {
     const st = this.game.state;
     const on = !(rec.lights[0]?.on ?? true);
     for (const s of rec.lights) s.on = on;
-    st.flag('lampOff:' + rec.p.uid, on ? undefined : true);
-    if (on) delete st.data.flags['lampOff:' + rec.p.uid];
+    if (on) { delete st.data.flags['lampOff:' + rec.p.uid]; st.dirty = true; } else st.flag('lampOff:' + rec.p.uid, true);
     rec.obj.traverse((o) => { if (o.isMesh && o.material?.type === 'MeshBasicMaterial' && o.material.vertexColors) o.visible = on; });
     this.game.audio.play('click');
   }

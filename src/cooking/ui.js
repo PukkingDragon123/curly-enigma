@@ -2,7 +2,7 @@
 // meters, rhythm lane and the result card. Built on the shared panel/slot/btn styles.
 import { el, clamp } from '../core/util.js';
 import { iconURL } from '../gfx/PixelArt.js';
-import { ITEMS, CAT_LABEL } from '../data/items.js';
+import { ITEMS } from '../data/items.js';
 import { DISHES, BUFFS, RECIPES } from '../data/recipes.js';
 import { BOLT } from '../ui/UI.js';
 import { ensureStyles } from './style.js';

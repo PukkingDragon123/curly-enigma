@@ -1,6 +1,5 @@
 // Ingredients and dishes as chunky voxel sprites: the 16×16 item icon extruded into voxels.
 // Also: per-ingredient colors (for chunks, particles, liquids) and slicing for the chop step.
-import * as THREE from 'three';
 import { VoxelGrid, voxelMesh } from '../gfx/Voxel.js';
 import { iconCanvas } from '../gfx/PixelArt.js';
 import { FIXED } from '../gfx/sprites16.js';
@@ -117,12 +116,6 @@ export function standeeMesh(id, { px = 0.035, depth = 2, kind = 'toon', material
   return voxelMesh(g, { pivot: [(x0 + x1 + 1) / 2, yb, depth / 2], scale: px, kind, material, outline: true });
 }
 
-/** Chunk colors for soups etc: a few shades of an item's color. */
-export function chunkPalette(id) {
-  const c = mainColor(id);
-  return [c, shade(c, 0.85), mixHex(c, 0xffffff, 0.25)];
-}
-
 /** Which ingredients get chopped (solid things first). */
 const NOT_CHOPPY = new Set(['salt_crystal', 'egg', 'flour', 'honey', 'rootbeer', 'butter']);
 export function chopQueue(ings) {
@@ -149,4 +142,3 @@ export function chunkMesh(colors, n, radius, seed = 1, px = 0.03) {
   return voxelMesh(g, { pivot: [16.5, 0, 16.5], scale: px, kind: 'toon', outline: true });
 }
 
-export { THREE };

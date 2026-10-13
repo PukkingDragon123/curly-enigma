@@ -89,6 +89,11 @@ export class Input {
     return false;
   }
 
+  /** Swallow a just-pressed key so it can't trigger twice this frame. */
+  consume(code) {
+    this.justDown.delete(code);
+  }
+
   released(...codes) {
     for (const c of codes) if (this.justUp.has(c)) return true;
     return false;
