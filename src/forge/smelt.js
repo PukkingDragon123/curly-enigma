@@ -196,7 +196,7 @@ export class SmeltGame {
     this.timeBar.set(left / sim.limit, left < 4 ? 'bad' : 'warm');
     setText(this.timeTxt, sim.started ? left.toFixed(1) + 's' : 'ready');
     this.slagBar.set(Math.min(1, sim.impurity / 0.6));
-    setText(this.slagTxt, sim.impurity > 0 ? '-' + Math.round(sim.impurity * 100) + '%' : 'clean');
+    setText(this.slagTxt, sim.impurity > 0.005 ? '−' + Math.round(sim.impurity * 100) + '%' : 'clean');
     let s;
     if (!sim.started) s = 'The crucible sits in the coals.';
     else if (sim.overheat) s = '<span class="fg-warn">Too hot! Slag is forming.</span>';

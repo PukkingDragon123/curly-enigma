@@ -45,7 +45,7 @@ export default class ForgeScene extends Scene {
 - `this.hud`: `'none' | 'town' | 'home' | 'mine' | 'mini'`. Any value except `'none'` shows the gold, energy and book buttons.
 - `this.allowMenus`: set it to false to disable the B / I / Esc global panels, for example in a minigame that uses those keys.
 - `this.music`: a track name that starts on enter. Tracks: `title town home mine forge cooking beach ascent`.
-- `this.post`: overrides for the post pass. Keys: `outline, outlineColor, outlineAlpha, vignette, saturation, contrast, brightness, tint, levels (posterize, 0 = off), dither, grain, fade, fadeColor, flash, flashColor, iris, irisCenter`.
+- `this.post`: overrides for the post pass. Keys: `outline, outlineColor, outlineAlpha, innerThresh` (depth gap for outlines between overlapping outlined objects), `vignette, saturation, contrast, brightness, tint, levels (posterize, 0 = off), dither, grain, fade, fadeColor, flash, flashColor, iris, irisCenter`.
 - `this.own(fn)` registers cleanup to run on exit.
 - `this.toScreen(vec3)` returns `{x, y, visible}` in page CSS px, for bubbles and float texts.
 - The renderer is shared. Don't create a new `WebGLRenderer`. The post pass needs depth, so keep `camera.near` and `camera.far` reasonable (0.1–200).

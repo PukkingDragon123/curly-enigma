@@ -82,5 +82,8 @@ export function findRecipe(ings) {
 }
 
 /** Items that can go in the pot. */
-export const COOKABLE_CATS = ['plant', 'critter', 'ingredient', 'mineral'];
-export const COOKABLE_EXTRA = ['salt_crystal'];
+export const COOKABLE_CATS = ['plant', 'critter', 'ingredient'];
+export const COOKABLE_EXTRA = ['salt_crystal', 'egg'];
+
+/** What you get when nothing matches. */
+export const MUSH = { dish: 'mystery_mush', steps: ['chop', 'stir'] };

@@ -244,12 +244,12 @@ export function buildWorld(scene) {
     overview: { pos: new THREE.Vector3(3.1, 2.45, 4.0), look: new THREE.Vector3(-0.55, 0.95, -1.0), fov: 45 },
     menu: { pos: new THREE.Vector3(3.0, 2.15, 4.3), look: new THREE.Vector3(-0.3, 1.05, -1.2), fov: 44 },
     hearth: { pos: new THREE.Vector3(hearthX - 0.45, 2.15, hearthZ + 4.6), look: new THREE.Vector3(hearthX - 1.05, 0.72, hearthZ), fov: 42 },
-    pour: { pos: new THREE.Vector3(hearthX + 0.35, 1.75, hearthZ + 2.85), look: new THREE.Vector3(hearthX + 1.05, 0.5, hearthZ + 0.3), fov: 40 },
+    pour: { pos: new THREE.Vector3(hearthX + 1.6, 2.2, hearthZ + 2.685), look: new THREE.Vector3(hearthX + 1.0, 0.55, hearthZ + 0.285), fov: 36 },
     anvil: { pos: new THREE.Vector3(af.x + 0.05, af.y + 0.05 + 3.3 * Math.sin(0.98), af.z - 0.1 + 3.3 * Math.cos(0.98)), look: new THREE.Vector3(af.x + 0.05, af.y + 0.05, af.z - 0.1), fov: 23 },
-    infuse: { pos: new THREE.Vector3(af.x + 0.25, af.y + 0.95, af.z + 1.55), look: new THREE.Vector3(af.x + 0.02, af.y + 0.22, af.z - 0.1), fov: 38 },
-    quench: { pos: new THREE.Vector3(0.2, 2.3, 3.6), look: new THREE.Vector3(-0.95, 0.6, -1.15), fov: 46 },
+    infuse: { pos: new THREE.Vector3(af.x + 0.3, af.y + 1.55, af.z + 2.7), look: new THREE.Vector3(af.x + 0.05, af.y + 0.42, af.z - 0.2), fov: 38 },
+    quench: { pos: new THREE.Vector3(-1.4, 2.0, 2.6), look: new THREE.Vector3(-0.5, 0.85, -0.75), fov: 40 },
     bench: { pos: new THREE.Vector3(W.fulcrumTop.x - 0.05, W.fulcrumTop.y + 0.95, W.fulcrumTop.z + 1.45), look: new THREE.Vector3(W.fulcrumTop.x - 0.05, W.fulcrumTop.y + 0.05, W.fulcrumTop.z), fov: 40 },
-    grind: { pos: new THREE.Vector3(W.grindContact.x - 0.3, 2.0, W.grindContact.z + 3.2), look: new THREE.Vector3(W.grindContact.x - 0.1, 0.62, W.grindContact.z - 0.2), fov: 34 },
+    grind: { pos: new THREE.Vector3(W.grindContact.x - 0.35, 2.15, W.grindContact.z + 3.6), look: new THREE.Vector3(W.grindContact.x - 0.1, 0.8, W.grindContact.z - 0.2), fov: 34 },
     reveal: { pos: new THREE.Vector3(2.4, 2.25, 3.55), look: new THREE.Vector3(-1.05, 0.9, -1.1), fov: 44 },
   };
   return W;

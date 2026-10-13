@@ -189,6 +189,7 @@ export function registerSounds(au) {
   d('oops', (a) => { a.tone({ f: 400, f2: 250, type: 'triangle', dur: 0.25, vol: 0.08, vib: 8, vibRate: 9 }); }, 0.3);
   d('plate', (a) => { a.tone({ f: 1400, type: 'sine', dur: 0.25, vol: 0.05, reverb: 0.3 }); a.tone({ f: 2100, type: 'sine', dur: 0.15, vol: 0.03 }); }, 0.2);
   d('shake', (a) => { for (let i = 0; i < 3; i++) a.noise({ filter: 'bandpass', f: 5000, q: 1.5, dur: 0.04, vol: 0.06, delay: i * 0.05 }); }, 0.1);
+  d('squish', (a) => { a.tone({ f: 170, f2: 110, type: 'triangle', dur: 0.09, vol: 0.12 }); a.noise({ color: 'pink', filter: 'lowpass', f: 700, dur: 0.07, vol: 0.08 }); }, 0.05);
   d('flip', (a) => { a.noise({ color: 'pink', filter: 'bandpass', f: 800, f2: 1600, q: 1, dur: 0.15, vol: 0.1 }); }, 0.1);
 
   // ---------- world ----------

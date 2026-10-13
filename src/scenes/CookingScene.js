@@ -485,7 +485,8 @@ export default class CookingScene extends Scene {
         n.root.position.y = h * (g === 'Perfect' ? 0.07 : 0.04) * (n.landT < 4 ? 1 : 0.3);
         if (g === 'Perfect' && Math.random() < dt * 0.8) n.flap(0.5);
       }
-      if (Math.random() < dt * 0.35) { n.peck(); if (Math.random() < 0.5) audio.play('cluck', { n: 1 + ((Math.random() * 2) | 0) }); }
+      if (n.landT > 2.5 && Math.random() < dt * 0.12) { n.peck(); if (Math.random() < 0.5) audio.play('cluck', { n: 1 + ((Math.random() * 2) | 0) }); }
+      else if (n.landT > 1.5 && Math.random() < dt * 0.2) audio.play('cluck', { n: 1, pitch: 1.1 });
       n.face(0.35 + Math.sin(n.landT * 0.7) * 0.4);
     }
     n.update(dt);

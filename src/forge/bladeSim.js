@@ -345,7 +345,7 @@ export class CrucibleSim {
     if (!this.started) return;
     this.time += dt;
     if (this.T >= this.band[0] && this.T <= this.band[1]) this.inBand += dt;
-    if (this.overheat) this.impurity += dt * 0.12;
+    if (this.overheat) this.impurity = Math.min(1, this.impurity + dt * 0.12);
   }
   get progress() { return clamp(this.inBand / this.required, 0, 1); }
   get accuracy() { return clamp(this.inBand / this.required - this.impurity, 0, 1); }

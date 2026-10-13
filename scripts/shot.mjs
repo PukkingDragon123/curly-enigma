@@ -6,6 +6,7 @@
 // steps.json is an array of actions run after the initial wait:
 //   {"wait": 500} | {"key": "KeyD", "hold": 400} | {"press": "KeyE"} | {"click": [x, y], "button": "left", "hold": 0}
 //   {"move": [x, y]} | {"shot": "file.png"} | {"eval": "window.__game.state.addGold(100)"} | {"type": "motherlode"}
+//   {"waitFor": "window.__game.sceneName === 'town'", "timeout": 30000}
 import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
 import { readFileSync } from 'node:fs';
@@ -41,6 +42,7 @@ await page.goto(`http://127.0.0.1:${port}/?${query}`);
 await page.waitForTimeout(wait);
 for (const s of steps) {
   if (s.wait) await page.waitForTimeout(s.wait);
+  if (s.waitFor) await page.waitForFunction(s.waitFor, null, { timeout: s.timeout || 60000, polling: 100 }).catch(() => console.log('[waitFor timeout]', s.waitFor));
   if (s.move) await page.mouse.move(s.move[0], s.move[1]);
   if (s.click) {
     await page.mouse.move(s.click[0], s.click[1]);
