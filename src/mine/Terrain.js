@@ -53,6 +53,7 @@ uniform sampler2D tPal;
 uniform vec2 uOrigin;
 uniform vec3 uGrowth;
 uniform float uFlat;
+uniform vec4 uSpeck;
 ${LIGHT_GLSL}
 varying vec3 vPos;
 varying vec4 vInfo;
@@ -140,6 +141,13 @@ void main() {
     float cr = abs(fract(sin(dot(floor(wpx / 9.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5);
     if (cr < 0.012 && mod(ip.x + ip.y, 3.0) < 1.0) c *= 0.6;
     col = c * (ambient * 0.8 + lightAt(vPos.xy) * 0.85);
+    // glow-worms and mineral glints twinkling on the far wall
+    vec2 sc = floor(wpx / 3.0);
+    float sp = h21(sc + 17.0);
+    if (sp > 1.0 - uSpeck.w && occ < 2.5) {
+      float tw = 0.55 + 0.45 * sin(time * (1.3 + sp * 3.0) + sp * 91.0);
+      col += uSpeck.rgb * tw * (mod(ip.x, 3.0) == 1.0 && mod(ip.y, 3.0) == 1.0 ? 1.0 : 0.0);
+    }
     if (xm > 0.0) col = mix(col, vec3(0.01, 0.04, 0.06), xm * 0.8);
   } else {
     // ---------------- extruded side walls
@@ -200,13 +208,13 @@ export function makePaletteTexture() {
 
 export class Terrain {
   /** U: shared uniforms (lightMap, worldSize, ambient, xray, xrayOn, time). */
-  constructor(scene3, world, U, { growth = 0x5a8a3a } = {}) {
+  constructor(scene3, world, U, { growth = 0x5a8a3a, speck = [0.25, 0.32, 0.2, 0.004] } = {}) {
     this.w = world;
     this.U = U;
     this.root = new THREE.Group();
     scene3.add(this.root);
     this.palTex = makePaletteTexture();
-    this.shared = { ...U, tPal: { value: this.palTex }, uGrowth: { value: new THREE.Color(growth) }, uFlat: { value: 0 } };
+    this.shared = { ...U, tPal: { value: this.palTex }, uGrowth: { value: new THREE.Color(growth) }, uFlat: { value: 0 }, uSpeck: { value: new THREE.Vector4(...speck) } };
     // three programs: the front face (alpha-tested), the side walls and the back wall. Drawing
     // the front first lets the GPU skip back-wall pixels hidden behind solid rock.
     this.bases = [0, 1, 2].map((k) => new THREE.ShaderMaterial({ uniforms: this.shared, vertexShader: VERT, fragmentShader: FRAG, defines: { KIND: k } }));

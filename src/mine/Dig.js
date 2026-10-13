@@ -124,7 +124,7 @@ export class Digger {
       }
     // loose material just pours out of the way
     const loose = this.nearest(x, y, R * 0.75, (m) => GRAN[m] === 1);
-    if (loose.length) { res.chips.push(...this.take(loose.slice(0, 90))); res.loose = true; }
+    if (loose.length) { res.chips.push(...this.take(loose.slice(0, Math.round(380 * power)))); res.loose = true; }
     for (const [k, c] of cand) {
       const pc = this.piece(c.x, c.y);
       if (!pc) continue;

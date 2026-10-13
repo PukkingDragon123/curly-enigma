@@ -377,7 +377,7 @@ export class FaceMode {
     const W = eng.width, H = eng.height;
     const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360) * PAW_D;
     const unit = viewH / H; // world units per internal pixel at the paw plane
-    const S = Math.max(2, Math.round(H / (FACE_H * M))); // sprite px → internal px (matches the rock's pixels)
+    const S = Math.max(2, Math.round((H / (FACE_H * M)) * 0.78)); // sprite px → internal px (close to the rock's pixels)
     const a = this.anim;
     a.t += dt;
     if (a.hit > 0) a.hit -= dt;

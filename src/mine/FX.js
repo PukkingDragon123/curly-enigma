@@ -30,14 +30,14 @@ export class FX {
   dust(x, y, n = 6, color = [0.75, 0.68, 0.6], spread = 0.4) {
     for (let i = 0; i < n; i++) {
       this.dustP.spawn({ x: x + rand(-spread, spread), y: -y + rand(-spread, spread), z: rand(0.1, 0.6), vx: rand(-0.8, 0.8), vy: rand(-0.1, 0.9), vz: rand(0, 0.5),
-        life: rand(0.6, 1.4), size: rand(0.07, 0.16), grow: 0.08, color, alpha: rand(0.5, 0.85), drag: 2.4, grav: -0.3 });
+        life: rand(0.6, 1.4), size: rand(0.035, 0.085), grow: 0.05, color, alpha: rand(0.45, 0.8), drag: 2.4, grav: -0.3 });
     }
   }
   dustCloud(x, y, r = 1.2, color = [0.8, 0.74, 0.66]) {
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0; i < 48; i++) {
       const a = rand(0, Math.PI * 2), d = rand(0, r);
       this.dustP.spawn({ x: x + Math.cos(a) * d * 0.5, y: -y + Math.sin(a) * d * 0.5, z: rand(0.1, 0.9), vx: Math.cos(a) * rand(0.5, 2.2), vy: Math.sin(a) * rand(0.5, 2.0) + 0.4, vz: rand(0, 1),
-        life: rand(1, 2.4), size: rand(0.12, 0.26), grow: 0.12, color, alpha: rand(0.55, 0.85), drag: 2.0, grav: -0.15 });
+        life: rand(1, 2.4), size: rand(0.05, 0.12), grow: 0.07, color, alpha: rand(0.35, 0.7), drag: 2.0, grav: -0.15 });
     }
   }
   blockDust(x, y, blockId, n = 8) {
@@ -57,10 +57,10 @@ export class FX {
     this.glowP.spawn({ x: x + rand(-0.2, 0.2), y: -y, z: rand(0.1, 0.4), vx: rand(-0.4, 0.4), vy: rand(0.6, 1.6), life: rand(0.6, 1.4), size: rand(0.04, 0.07), color: chance(0.5) ? [1, 0.55, 0.15] : [1, 0.8, 0.3], alpha: 1, drag: 0.6, grav: -0.5 });
   }
   smoke(x, y, n = 1) {
-    for (let i = 0; i < n; i++) this.dustP.spawn({ x: x + rand(-0.2, 0.2), y: -y, z: rand(0.1, 0.5), vx: rand(-0.3, 0.3), vy: rand(0.5, 1.2), life: rand(1.2, 2.5), size: rand(0.14, 0.24), grow: 0.25, color: [0.35, 0.32, 0.32], alpha: 0.55, drag: 0.8, grav: -0.4 });
+    for (let i = 0; i < n; i++) this.dustP.spawn({ x: x + rand(-0.2, 0.2), y: -y, z: rand(0.1, 0.5), vx: rand(-0.3, 0.3), vy: rand(0.5, 1.2), life: rand(1.2, 2.5), size: rand(0.08, 0.15), grow: 0.16, color: [0.35, 0.32, 0.32], alpha: 0.5, drag: 0.8, grav: -0.4 });
   }
   steam(x, y, n = 10) {
-    for (let i = 0; i < n; i++) this.dustP.spawn({ x: x + rand(-0.4, 0.4), y: -y + rand(-0.2, 0.3), z: rand(0.2, 0.7), vx: rand(-0.6, 0.6), vy: rand(1, 2.4), life: rand(0.7, 1.6), size: rand(0.14, 0.28), grow: 0.35, color: [0.9, 0.92, 0.95], alpha: 0.7, drag: 1.4, grav: -0.6 });
+    for (let i = 0; i < n; i++) this.dustP.spawn({ x: x + rand(-0.4, 0.4), y: -y + rand(-0.2, 0.3), z: rand(0.2, 0.7), vx: rand(-0.6, 0.6), vy: rand(1, 2.4), life: rand(0.7, 1.6), size: rand(0.08, 0.16), grow: 0.22, color: [0.9, 0.92, 0.95], alpha: 0.6, drag: 1.4, grav: -0.6 });
   }
   spore(x, y) {
     this.glowP.spawn({ x: x + rand(-0.3, 0.3), y: -y + rand(-0.2, 0.2), z: 0.3, vx: rand(-0.2, 0.2), vy: rand(0.1, 0.4), life: rand(1.5, 3), size: 0.05, color: [0.6, 0.4, 0.8], alpha: 0.8, drag: 0.5, grav: -0.05 });

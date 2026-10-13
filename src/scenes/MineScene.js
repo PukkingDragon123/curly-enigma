@@ -29,6 +29,8 @@ import { qColor } from '../ui/UI.js';
 
 const AMBIENT = [[0.085, 0.075, 0.07], [0.1, 0.088, 0.08], [0.1, 0.082, 0.074], [0.075, 0.08, 0.105], [0.105, 0.066, 0.052], [0.075, 0.092, 0.11], [0.08, 0.06, 0.105]];
 const GROWTH = [0x5a8a3a, 0x5a8a3a, 0x3a8a6a, 0x4aa0a0, 0x4a4040, 0xd8f0ff, 0x8a5ad0];
+// far-wall twinkles per zone: [r, g, b, density]
+const SPECK = [[0.35, 0.5, 0.25, 0.005], [0.35, 0.5, 0.25, 0.004], [0.3, 0.55, 0.45, 0.006], [0.25, 0.45, 0.9, 0.012], [0.9, 0.35, 0.1, 0.006], [0.6, 0.85, 1.0, 0.01], [0.6, 0.35, 0.95, 0.012]];
 const SLOTS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'beam', 'stake', 'food'];
 const FOOD_PRIORITY = (it) => (it.energy || it.food || 0);
 
@@ -56,7 +58,7 @@ export default class MineScene extends Scene {
     // pixels around the start exist before the first frame
     w.ensureCells(Math.floor(w.spawn.x) - 18, Math.floor(w.spawn.y) - 11, Math.floor(w.spawn.x) + 18, Math.floor(w.spawn.y) + 11);
     this.lighting = new Lighting(w);
-    this.renderer = new MineRenderer(this.scene, w, this.lighting, { growth: GROWTH[this.zone] });
+    this.renderer = new MineRenderer(this.scene, w, this.lighting, { growth: GROWTH[this.zone], speck: SPECK[this.zone] });
     const amb = AMBIENT[this.zone];
     this.renderer.U.ambient.value.setRGB(amb[0], amb[1], amb[2]);
     this.player = new Player(this.scene, w, st);
@@ -1083,7 +1085,7 @@ export default class MineScene extends Scene {
     const t = this.target;
     const tip = this.tooltip;
     const w = this.world;
-    if (!t || t.far || this.game.ui.isPanelOpen() || this.game.touch) { tip.style.opacity = 0; return; }
+    if (!t || t.far || this.game.ui.isPanelOpen() || this.game.touch || this.face.on) { tip.style.opacity = 0; return; }
     let html = '';
     if (t.solid) {
       const d = t.ore ? w.depositAt(t.px, t.py) : null;

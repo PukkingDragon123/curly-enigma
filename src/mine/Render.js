@@ -297,7 +297,7 @@ export class MineRenderer {
     this.spriteAtlas = buildSpriteAtlas();
     this.root = new THREE.Group();
     scene3.add(this.root);
-    this.terrain = new Terrain(this.root, world, this.U, { growth: opts.growth });
+    this.terrain = new Terrain(this.root, world, this.U, { growth: opts.growth, speck: opts.speck });
 
     this.sprites = new SpriteBatch(this.U, this.spriteAtlas.tex, 2200);
     this.glowSprites = new SpriteBatch(this.U, this.spriteAtlas.tex, 400, { additive: true, depthWrite: false });
