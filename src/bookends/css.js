@@ -107,6 +107,17 @@ const CSS = /* css */`
   .bk-depth { right: auto; left: 50%; top: auto; bottom: calc(var(--px) * 16); transform: translateX(-50%); text-align: center; }
   .bk-skip { bottom: auto; top: calc(var(--px) * 6); }
 }
+/* touch screens: thumb-sized menu buttons (Tiny5 stays on its 8 px grid), no keyboard legend */
+@media (pointer: coarse) {
+  .bk-controls { display: none; }
+  .bk-menu { width: min(78vw, 300px); gap: 12px; }
+  .bk-menu .btn { font-size: 16px; min-height: 46px; padding: 12px calc(var(--px) * 6); }
+  .bk-skip { min-height: 40px; min-width: 64px; }
+}
+@media (pointer: coarse) and (max-height: 500px) {
+  .bk-menu { width: 240px; gap: 8px; margin-top: calc(var(--px) * 6); }
+  .bk-menu .btn { min-height: 42px; padding: 9px calc(var(--px) * 5); }
+}
 `;
 
 let refs = 0;

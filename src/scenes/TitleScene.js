@@ -76,7 +76,7 @@ export default class TitleScene extends Scene {
       if (i) controls.append(el('span', { class: 'dot' }, '·'));
       controls.append(el('kbd', {}, k), label);
     });
-    this.soundHint = el('div', { class: 'bk-sound bk-outline', role: 'status' }, [el('span', { class: 'bk-sound-in' }, [el('span', { class: 'note' }, '♪'), 'click anywhere for sound'])]);
+    this.soundHint = el('div', { class: 'bk-sound bk-outline', role: 'status' }, [el('span', { class: 'bk-sound-in' }, [el('span', { class: 'note' }, '♪'), (window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 'tap' : 'click') + ' anywhere for sound'])]);
     this.root = el('div', { class: 'bk-root bk-title' }, [el('div', { class: 'bk-left' }, [logo, sub, menu]), controls, this.soundHint]);
     g.ui.world.append(this.root);
     this.own(() => this.root.remove());
