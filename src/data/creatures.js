@@ -1,0 +1,37 @@
+// Cave wildlife. Each species is a 2D pixel-art sprite with its own behavior in the mine.
+// zones: depth zones where it spawns. drop: item given when caught/brushed/startled.
+// catch: how the player gets something from it: 'grab' (E when adjacent), 'brush' (use brush),
+//        'hit' (whack it), 'xray' (hold the X-ray beam on it), 'net' (grab while in water)
+
+export const CREATURES = {
+  earthworm: { name: 'Earthworm', zones: [1, 2], catch: 'grab', drop: 'worm', color: 0xe0a0a0,
+    desc: 'Tunnels slowly through dirt. Pokes its head out to see what the noise is. Grab it when it surfaces.' },
+  dust_bunny: { name: 'Dust Bunny', zones: [1, 2, 3], catch: 'brush', drop: 'dust_fluff', color: 0xc8bba8,
+    desc: 'A ball of fluff that hops about. Startle it and it bursts into a cloud. Brush it and it purrs.' },
+  mole_cricket: { name: 'Mole Cricket', zones: [1, 2], catch: 'none', color: 0x8a6a4a,
+    desc: 'Chirps in the dark. Digs almost as well as you. Won\'t be caught.' },
+  cave_bat: { name: 'Cave Bat', zones: [2, 3, 4], catch: 'none', drop: 'bat_guano', color: 0x5a4a6a,
+    desc: 'Sleeps upside down until bright light wakes it. Leaves guano where it roosts.' },
+  rock_crab: { name: 'Rock Crab', zones: [2, 3, 4], catch: 'hit', drop: 'crab_shell', color: 0x8a7a6a,
+    desc: 'Looks just like a rock until you step on it. Pinches. A good whack sends it running without its shell.' },
+  ore_slug: { name: 'Ore Slug', zones: [2, 3, 4, 5], catch: 'hit', drop: 'slug_slime', color: 0x9ad0a0,
+    desc: 'Crawls toward exposed ore and eats it, quality and all. Shoo it off with a tap.' },
+  glow_beetle: { name: 'Glow Beetle', zones: [2, 3], catch: 'grab', drop: 'glow_beetle', color: 0xc8ff7a,
+    desc: 'Drifts around like a living lantern. Gentle enough to catch by paw.' },
+  spark_mite: { name: 'Spark Mite', zones: [3, 4], catch: 'none', drop: 'spark_dust', color: 0x7fe7ff,
+    desc: 'Swarms around Bioxide. Zaps anything without rubber gloves. Sheds spark dust.' },
+  crystal_spider: { name: 'Crystal Spider', zones: [3], catch: 'hit', drop: 'spider_silk', color: 0xbfe6ff,
+    desc: 'Spins sticky webs across tunnels. Clear a web to collect its silk.' },
+  blind_fish: { name: 'Blind Cave Fish', zones: [2, 3, 4, 5], catch: 'net', drop: 'blind_fish', color: 0xf0d8d8,
+    desc: 'Lives in still pools. Swim close and grab it.' },
+  lava_newt: { name: 'Lava Newt', zones: [4], catch: 'hit', drop: 'ember_scale', color: 0xff6a2a,
+    desc: 'Swims in lava. Hops out to spit embers that set plants alight.' },
+  ember_moth: { name: 'Ember Moth', zones: [4, 5], catch: 'none', color: 0xffa84a,
+    desc: 'Drawn to your lamp. Its wings smoulder harmlessly.' },
+  frost_shrimp: { name: 'Frost Shrimp', zones: [5], catch: 'net', drop: 'frost_shrimp', color: 0xff9a8a,
+    desc: 'Darts through icy pools. Grab it while swimming.' },
+  gem_tortoise: { name: 'Gem Tortoise', zones: [4, 5, 6], catch: 'brush', drop: 'ruby', color: 0x6a8a5a,
+    desc: 'Very old, very slow. Brush the moss off its shell and it might leave you a gem.' },
+  void_wisp: { name: 'Void Wisp', zones: [5, 6], catch: 'xray', drop: 'wisp_essence', color: 0x9a6ad9,
+    desc: 'Drifts through solid rock and dims every light nearby. Hold the X-ray beam on it to catch it.' },
+};

@@ -1,0 +1,22 @@
+{
+  "name": "moleforge",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "MOLEFORGE — a pixel-art voxel mining & medieval blacksmith game about a dirty mole saving up 1,000,000 gold for a ticket to the surface.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:single": "vite build --mode single",
+    "preview": "vite preview",
+    "shot": "node scripts/shot.mjs"
+  },
+  "dependencies": {
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1",
+    "vite": "7.3.7",
+    "vite-plugin-singlefile": "2.3.3"
+  }
+}
