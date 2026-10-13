@@ -5,8 +5,8 @@
 import * as THREE from 'three';
 import { makePaw } from '../gfx/characters.js';
 import { VoxelGrid, voxelMesh } from '../gfx/Voxel.js';
-import { jit } from './models.js';
-import { damp } from '../core/util.js';
+import { damp, makeRng, shade } from '../core/util.js';
+import { hash3 } from '../bookends/vox.js';
 
 export const PAW_SCALE = 0.42;
 const V = PAW_SCALE / 16;
@@ -35,20 +35,34 @@ function basis(dir, out) {
 }
 
 function sleeveMesh(side) {
-  // long furry arm that runs from the wrist back past the shoulder (always leaves the view)
-  const L = 34;
-  const g = new VoxelGrid(10, 9, L);
-  g.box(1, 1, 0, 8, 7, L, (x, y, z) => {
-    let c = 0x3a2e2a;
-    if ((x * 5 + z * 3 + y) % 9 === 0) c = 0x4a3c34; // fur tufts
-    if (z % 7 === 3 && (x + y) % 3 === 0) c = 0x2e2428;
-    return jit(c, x, y, z, 51 + side, 0.08);
-  });
+  // a long furry forearm running from the wrist back past the shoulder (always leaves the view),
+  // built at half the paw's voxel size: fur strands along the arm, lighter tips on top, a scruffy
+  // cuff at the wrist and some honest dirt
+  const L = 68, W = 20, H = 18;
+  const g = new VoxelGrid(W, H, L);
+  const FUR = [0x3a2e2a, 0x34282a, 0x42342e, 0x2e2428];
+  for (let z = 0; z < L; z++) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const cuff = z > L - 9;
+    const rx = cuff ? 9.6 : 8.4, ry = cuff ? 8.6 : 7.4;
+    const dx = (x + 0.5 - 10) / rx, dy = (y + 0.5 - 9) / ry;
+    const d = dx * dx + dy * dy;
+    if (d > 1) continue;
+    const strand = hash3(x, y, Math.floor(z / 4), 51 + side);
+    if (cuff && d > 0.72 && hash3(x, y, z, 52) < 0.35) continue; // ragged fluffy cuff
+    let c = FUR[(strand * FUR.length) | 0];
+    if (dy < -0.45) c = shade(c, 1.22); // light catches the top of the fur
+    else if (dy > 0.5) c = shade(c, 0.8);
+    if ((z + Math.floor(strand * 7)) % 9 === 0) c = shade(c, 1.15); // tufts
+    if (cuff) c = shade(c, 1.12);
+    g.set(x, y, z, c);
+  }
   // dirt smudges, it's a mole
-  for (const [x, y, z] of [[2, 7, 20], [3, 7, 21], [6, 7, 12], [7, 7, 13], [4, 7, 27], [1, 4, 16], [8, 3, 24]]) g.set(x, y, z, 0x5a4028);
-  // fluffy fur ring near the wrist
-  g.box(0, 0, L - 4, 10, 9, 3, (x, y, z) => ((x + y) % 4 === 0 ? -1 : jit(0x44363a, x, y, z, 53 + side, 0.1)));
-  return voxelMesh(g, { pivot: [5, 4.5, L], scale: V, kind: 'toon', outline: true });
+  const rng = makeRng(60 + side);
+  for (let i = 0; i < 9; i++) {
+    const z = rng.int(8, L - 12), x = rng.int(4, 15);
+    for (let k = 0; k < 4; k++) if (g.filled(x + (k % 2), 2 + (k >> 1), z + k)) g.set(x + (k % 2), 2 + (k >> 1), z + k, rng.chance(0.5) ? 0x5a4028 : 0x6a4a30);
+  }
+  return voxelMesh(g, { pivot: [10, 9, L], scale: V / 2, kind: 'toon', outline: true, greedy: true });
 }
 
 export class Paw {

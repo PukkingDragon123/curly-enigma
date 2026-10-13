@@ -148,24 +148,137 @@ export class ParticlePool {
   }
 }
 
-/** Two pools (glowing additive + soft alpha) with preset emitters for the forge. */
+/**
+ * Motion-blurred sparks: each one is a short additive line from its position back along its
+ * velocity, so fast sparks streak and slow ones shrink to dots. Gravity + drag on the CPU.
+ */
+export class StreakPool {
+  constructor(max = 600) {
+    this.max = max;
+    this.next = 0;
+    const f = (n) => new Float32Array(max * n);
+    this.p = f(3); this.v = f(3); this.life = f(1); this.maxLife = f(1);
+    this.c0 = f(3); this.c1 = f(3); this.grav = f(1); this.drag = f(1); this.len = f(1);
+    this.pos = new Float32Array(max * 6);
+    this.col = new Float32Array(max * 6);
+    this.geo = new THREE.BufferGeometry();
+    this.geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
+    this.geo.setAttribute('color', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
+    this.geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
+    this.material = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    this.lines = new THREE.LineSegments(this.geo, this.material);
+    this.lines.frustumCulled = false;
+    this.lines.renderOrder = 21;
+  }
+
+  /** o: {x,y,z, vx,vy,vz, life, color, color1, gravity, drag, len (seconds of trail)} */
+  spawn(o) {
+    const i = this.next;
+    this.next = (this.next + 1) % this.max;
+    const i3 = i * 3;
+    this.p[i3] = o.x; this.p[i3 + 1] = o.y; this.p[i3 + 2] = o.z;
+    this.v[i3] = o.vx || 0; this.v[i3 + 1] = o.vy || 0; this.v[i3 + 2] = o.vz || 0;
+    this.life[i] = this.maxLife[i] = o.life || 0.5;
+    _c0.setHex(o.color ?? 0xfff0b0);
+    _c1.setHex(o.color1 ?? 0xff6a1a);
+    this.c0[i3] = _c0.r; this.c0[i3 + 1] = _c0.g; this.c0[i3 + 2] = _c0.b;
+    this.c1[i3] = _c1.r; this.c1[i3 + 1] = _c1.g; this.c1[i3 + 2] = _c1.b;
+    this.grav[i] = o.gravity ?? 5;
+    this.drag[i] = o.drag ?? 1;
+    this.len[i] = o.len ?? 0.025;
+  }
+
+  update(dt) {
+    const P = this.pos, C = this.col;
+    for (let i = 0; i < this.max; i++) {
+      const i3 = i * 3, i6 = i * 6;
+      if (this.life[i] <= 0) { if (C[i6] !== 0 || C[i6 + 3] !== 0) C.fill(0, i6, i6 + 6); continue; }
+      this.life[i] -= dt;
+      const t = 1 - Math.max(0, this.life[i]) / this.maxLife[i];
+      const dr = Math.max(0, 1 - this.drag[i] * dt);
+      this.v[i3] *= dr; this.v[i3 + 1] *= dr; this.v[i3 + 2] *= dr;
+      this.v[i3 + 1] -= this.grav[i] * dt;
+      this.p[i3] += this.v[i3] * dt; this.p[i3 + 1] += this.v[i3 + 1] * dt; this.p[i3 + 2] += this.v[i3 + 2] * dt;
+      const L = this.len[i];
+      P[i6] = this.p[i3]; P[i6 + 1] = this.p[i3 + 1]; P[i6 + 2] = this.p[i3 + 2];
+      P[i6 + 3] = this.p[i3] - this.v[i3] * L; P[i6 + 4] = this.p[i3 + 1] - this.v[i3 + 1] * L; P[i6 + 5] = this.p[i3 + 2] - this.v[i3 + 2] * L;
+      const fade = t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1;
+      for (let k = 0; k < 3; k++) {
+        const c = (this.c0[i3 + k] + (this.c1[i3 + k] - this.c0[i3 + k]) * t) * fade;
+        C[i6 + k] = c;
+        C[i6 + 3 + k] = c * 0.25; // the tail fades out
+      }
+      if (this.life[i] <= 0) C.fill(0, i6, i6 + 6);
+    }
+    this.geo.attributes.position.needsUpdate = true;
+    this.geo.attributes.color.needsUpdate = true;
+  }
+
+  clear() { this.life.fill(0); }
+  dispose() { this.geo.dispose(); this.material.dispose(); }
+}
+
+/** Pools (glowing additive, soft alpha, flat chips, spark streaks) with preset emitters for the forge. */
 export class ForgeParticles {
   constructor(scene) {
     this.glow = new ParticlePool(1400, { additive: true });
     this.soft = new ParticlePool(700, { additive: false, round: true });
     this.flat = new ParticlePool(500, { additive: false });
-    scene.add(this.glow.points, this.soft.points, this.flat.points);
+    this.streak = new StreakPool(700);
+    scene.add(this.glow.points, this.soft.points, this.flat.points, this.streak.lines);
   }
 
   update(dt, camera, viewHeightPx) {
     this.glow.update(dt, camera, viewHeightPx);
     this.soft.update(dt, camera, viewHeightPx);
     this.flat.update(dt, camera, viewHeightPx);
+    this.streak.update(dt);
   }
 
-  clear() { this.glow.clear(); this.soft.clear(); this.flat.clear(); }
+  clear() { this.glow.clear(); this.soft.clear(); this.flat.clear(); this.streak.clear(); }
 
-  dispose() { this.glow.dispose(); this.soft.dispose(); this.flat.dispose(); }
+  dispose() { this.glow.dispose(); this.soft.dispose(); this.flat.dispose(); this.streak.dispose(); }
+
+  /** Hammer-blow spark shower as streaks: a fan of bright scale fragments skidding off the anvil. */
+  streaks(p, n = 30, power = 1, colorA = 0xfff6d0, colorB = 0xff6a1a) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = (1.2 + Math.random() * 3.2) * (0.55 + power * 0.75);
+      const up = 0.15 + Math.random() * 0.9;
+      this.streak.spawn({
+        x: p.x + (Math.random() - 0.5) * 0.02, y: p.y + 0.01, z: p.z + (Math.random() - 0.5) * 0.02,
+        vx: Math.cos(a) * sp, vy: up * sp * 0.75, vz: Math.sin(a) * sp * 0.75,
+        life: 0.22 + Math.random() * 0.45, color: Math.random() < 0.4 ? 0xffffff : colorA, color1: colorB,
+        gravity: 6, drag: 1.8, len: 0.018 + Math.random() * 0.02,
+      });
+    }
+  }
+
+  /** Oxide scale knocked off hot metal: dark chips, some still glowing, bouncing off the anvil. */
+  scaleFlakes(p, n = 8, glowing = 0.4) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 0.35 + Math.random() * 1.1;
+      const hot = Math.random() < glowing;
+      (hot ? this.glow : this.flat).spawn({
+        x: p.x + (Math.random() - 0.5) * 0.03, y: p.y + 0.01, z: p.z + (Math.random() - 0.5) * 0.03,
+        vx: Math.cos(a) * sp, vy: 0.5 + Math.random() * 1.2, vz: Math.sin(a) * sp * 0.7,
+        life: 0.5 + Math.random() * 0.5, size: hot ? 0.012 : 0.01 + Math.random() * 0.008, size1: 0.006,
+        color: hot ? 0xff9a3a : 0x3a2c28, color1: hot ? 0x6a1a0a : 0x2a1e1c, gravity: 5.5, drag: 0.7, fadeIn: 0,
+      });
+    }
+  }
+
+  /** A billow of steam rising off the quench barrel. */
+  billow(p, n = 12, spread = 0.25, power = 1) {
+    for (let i = 0; i < n; i++) {
+      this.soft.spawn({
+        x: p.x + (Math.random() - 0.5) * spread, y: p.y + Math.random() * 0.06, z: p.z + (Math.random() - 0.5) * spread,
+        vx: (Math.random() - 0.5) * 0.25 * power, vy: (0.35 + Math.random() * 0.6) * power, vz: (Math.random() - 0.5) * 0.2 * power,
+        life: 1.4 + Math.random() * 1.4, size: 0.1, size1: 0.45 + Math.random() * 0.3,
+        color: 0xffffff, color1: 0xa8a4a8, alpha: 0.32, drag: 0.9, wobble: 0.25, fadeIn: 0.12,
+      });
+    }
+  }
 
   // ---------------------------------------------------------------- presets
   ember(p, spread = 0.3, heat = 1) {

@@ -100,3 +100,54 @@ export const INFUSION_FX = {
 };
 
 function lerpV(a, b, t) { return new THREE.Vector3().lerpVectors(a, b, t); }
+
+// ---------------------------------------------------------------- heat haze
+const BAYER = /* glsl */`
+float fg_bayer2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
+float fg_bayer4(vec2 a) { return fg_bayer2(0.5 * a) * 0.25 + fg_bayer2(a); }
+`;
+
+/**
+ * A camera-facing heat-haze billboard: faint wavy bands of warm light rising off the coals,
+ * ordered-dithered so it stays pixel-crisp. Drive userData.shimmer.uTime / uHeat.
+ */
+export function makeShimmer(w = 1.2, h = 1.0) {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uHeat: { value: 0.5 }, uColor: { value: new THREE.Color(0xff9448) }, uSize: { value: new THREE.Vector2(w, h) } },
+    vertexShader: /* glsl */`
+      uniform vec2 uSize;
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        vec4 mv = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        mv.xy += (uv - vec2(0.5, 0.0)) * uSize;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */`
+      uniform float uTime;
+      uniform float uHeat;
+      uniform vec3 uColor;
+      varying vec2 vUv;
+      ${BAYER}
+      void main() {
+        float x = vUv.x - 0.5;
+        float edge = smoothstep(0.5, 0.12, abs(x)) * smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.45, vUv.y);
+        float wob = sin(vUv.x * 9.0 + uTime * 2.3) * 2.2 + sin(vUv.x * 23.0 - uTime * 3.1) * 0.6;
+        float a = sin(vUv.y * 30.0 - uTime * 7.5 + wob) * 0.5 + 0.5;
+        float b = sin(vUv.y * 13.0 - uTime * 4.1 + x * 17.0) * 0.5 + 0.5;
+        float i = edge * pow(a * b, 2.2) * uHeat * 0.3;
+        float q = floor(i * 6.0 + fg_bayer4(gl_FragCoord.xy)) / 6.0;
+        if (q <= 0.0) discard;
+        gl_FragColor = vec4(uColor * q, 1.0);
+      }`,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+  m.frustumCulled = false;
+  m.renderOrder = 15;
+  m.userData.shimmer = mat.uniforms;
+  m.userData.dynamic = true;
+  return m;
+}

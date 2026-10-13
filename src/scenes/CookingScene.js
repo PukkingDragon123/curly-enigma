@@ -53,6 +53,9 @@ export default class CookingScene extends Scene {
     this.post = { innerThresh: 0.15, vignette: 0.42, tint: 0xfff2e2, saturation: 1.1 };
 
     this.kitchen = new Kitchen(this.scene);
+    const ks = this.kitchen.stats;
+    console.log(`[cooking] kitchen built in ${ks.ms.toFixed(0)} ms (${ks.batched} props → ${ks.batches} batches)`);
+    this.own(() => { for (const t of this.kitchen.flameTextures || []) t.dispose(); });
     this.paws = new Paws(this.scene);
     this.fx = new Particles(this.scene);
     this.contents = new Contents(this.kitchen);

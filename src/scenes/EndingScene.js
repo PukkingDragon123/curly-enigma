@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { Scene, disposeObject } from '../core/Scene.js';
 import { el, clamp } from '../core/util.js';
 import { useBookendStyles } from '../bookends/css.js';
-import { disposeTextures } from '../bookends/fx.js';
+import { disposeTextures, setPixelScale } from '../bookends/fx.js';
 import { makeMole, makeChicken } from '../bookends/actors.js';
 import { makeCage } from '../bookends/cage.js';
 import { makeSunglasses } from '../bookends/props.js';
@@ -50,14 +50,22 @@ export default class EndingScene extends Scene {
     this.mole = makeMole();
     this.hen = makeChicken({ hat: 'straw' });
     this.cage = makeCage();
-    this.shades = makeSunglasses(this.mole.s);
+    this.shades = makeSunglasses(this.mole.anchors?.headW ?? 0.75);
     this.shades.visible = false;
     this.mole.neck.add(this.shades);
     this.shadesRest = new THREE.Vector3(0, 6 * this.mole.s + (this.mole.eyeDrop ? 0 : this.mole.s), 6.6 * this.mole.s);
     this.shades.position.copy(this.shadesRest);
 
     const ctx = { mole: this.mole, hen: this.hen, cage: this.cage, shades: this.shades, textures: this.textures, game: this.game };
-    this.views = { farewell: buildLanding(ctx), ascent: buildShaft(ctx), beach: buildBeach(ctx) };
+    const tb = performance.now();
+    const farewell = buildLanding(ctx);
+    const tl = performance.now();
+    const ascent = buildShaft(ctx);
+    const ts = performance.now();
+    const beach = buildBeach(ctx);
+    console.log(`[ending] views built in ${Math.round(performance.now() - tb)} ms (landing ${Math.round(tl - tb)}, shaft ${Math.round(ts - tl)}, beach ${Math.round(performance.now() - ts)}; the shaft walls finish in slices during the farewell)`);
+    this.views = { farewell, ascent, beach };
+    HEART(); // the first toDataURL can be slow; draw the heart emote now, not mid-farewell
     this.allScenes = [this.views.farewell.scene, this.views.ascent.scene, this.views.beach.scene];
     this.api = this.makeApi();
     this.buildDom();
@@ -307,6 +315,7 @@ export default class EndingScene extends Scene {
 
   // ------------------------------------------------------------------ frame
   onResize(w, h) {
+    setPixelScale(h); // pixel-sized particles (confetti, motes, sparkles) keep their size at any resolution
     const aspect = w / h;
     const cams = new Set([this.camera]);
     if (this.views) for (const v of Object.values(this.views)) for (const c of v.cameras || [v.camera]) cams.add(c);
@@ -330,6 +339,7 @@ export default class EndingScene extends Scene {
     switch (this.phase) {
       case 'farewell': {
         v.farewell.update(dt, this.api);
+        v.ascent.prebuild?.(2); // the shaft's walls build a couple of ms at a time while everyone waves
         const d = v.farewell.duration;
         post.fade = clamp((t - (d - 0.55)) / 0.5, 0, 1);
         if (t >= d) this.setPhase('ascent');

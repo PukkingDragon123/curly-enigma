@@ -4,9 +4,11 @@ import { makeRng } from '../core/util.js';
 import {
   V, makeHearth, makeBellows, makeAnvil, makePlatform, makeBarrel, makeGrindstone, makeToolRack, makeWorkbench,
   makeCoalBin, makeCrate, makeShelf, makeLantern, makeHerbBundle, makeVine, makeBeam, makeMossStrip, makeMold,
-  makeSack, makeScrapPile, makeStool, makeLogs,
+  makeSack, makeScrapPile, makeStool, makeLogs, makeStoneBlock, makeBladeBarrel, makeWallDisplay, makeBucket, makeTongs,
 } from './models.js';
 import { backWallTexture, sideWallTexture, floorTexture, postcardTexture, rugTexture, WaterTexture } from './textures.js';
+import { batchStatic } from '../bookends/batch.js';
+import { makeShimmer } from './fx.js';
 
 export const ROOM = { left: -4.1, right: 4.5, back: -2.3, front: 2.9, ceil: 4.0 };
 
@@ -17,6 +19,7 @@ function plane(w, h, tex, opts = {}) {
 }
 
 export function buildWorld(scene) {
+  const t0 = performance.now();
   const W = {};
   const R = ROOM;
   const width = R.right - R.left, depth = R.front - R.back, height = R.ceil;
@@ -70,12 +73,14 @@ export function buildWorld(scene) {
   // ---------------------------------------------------------------- hearth & bellows
   const hearth = makeHearth();
   hearth.group.position.set(hearthX, 0, hearthZ);
+  hearth.group.userData.dynamic = true;
   scene.add(hearth.group);
   W.hearth = hearth;
   W.firePos = hearth.firePos.clone().add(hearth.group.position);
   const bellows = makeBellows();
   const tuyere = hearth.tuyere.clone().add(hearth.group.position);
   bellows.group.position.set(tuyere.x - bellows.nozzleTip.x, tuyere.y - bellows.nozzleTip.y, tuyere.z);
+  bellows.group.userData.dynamic = true;
   scene.add(bellows.group);
   W.bellows = bellows;
   // an invisible, generous hit box for clicking the bellows
@@ -85,9 +90,8 @@ export function buildWorld(scene) {
   W.bellowsHit = hit;
 
   // ingot mold on a stone block between hearth and anvil
-  const blockG = makeCrate();
+  const blockG = makeStoneBlock(6.4);
   blockG.position.set(hearthX + 1.25, 0, hearthZ + 0.25);
-  blockG.scale.set(1, 0.8, 1);
   scene.add(blockG);
   const mold = makeMold();
   mold.group.position.set(hearthX + 1.25, 8 * V * 0.8, hearthZ + 0.25);
@@ -106,11 +110,12 @@ export function buildWorld(scene) {
   scene.add(platform);
 
   // ---------------------------------------------------------------- quench barrel, grindstone, bench
-  const water = new WaterTexture(20);
+  const water = new WaterTexture(40);
   W.water = water;
   const barrel = makeBarrel(water.texture);
   const barrelPos = new THREE.Vector3(hearthX + 0.5, 0, hearthZ + 1.05);
   barrel.group.position.copy(barrelPos);
+  barrel.group.userData.dynamic = true;
   scene.add(barrel.group);
   W.barrel = barrel;
   W.barrelTop = new THREE.Vector3(barrelPos.x, barrel.waterY, barrelPos.z);
@@ -177,16 +182,36 @@ export function buildWorld(scene) {
   const stool = makeStool();
   stool.position.set(3.95, 0, 0.6);
   scene.add(stool);
+  // finished work waiting to go to market, a shield on the wall, a bucket by the hearth
+  const blades = makeBladeBarrel(4);
+  blades.position.set(4.05, 0, -1.55);
+  blades.rotation.y = 0.4;
+  scene.add(blades);
+  const display = makeWallDisplay();
+  display.position.set(R.right - 0.04, 2.25, 0.35);
+  display.rotation.y = -Math.PI / 2;
+  scene.add(display);
+  const bucket = makeBucket();
+  bucket.position.set(hearthX - 1.05, 0, hearthZ + 0.62);
+  scene.add(bucket);
+  // spare tongs hanging from the hood's chain hooks
+  for (const [x, ry] of [[hearthX - 0.95, 0.15], [hearthX + 0.88, -0.2]]) {
+    const t = makeTongs(13);
+    t.rotation.set(0, ry, -Math.PI / 2);
+    t.position.set(x, 1.55, hearthZ - 0.15);
+    scene.add(t);
+  }
 
   const rng = makeRng(41);
   W.hanging = [];
+  const hang = (obj, phase, amp) => { obj.userData.dynamic = true; W.hanging.push({ obj, phase, amp }); };
   // dried herbs along a rope under the wall plate
   const herbXs = [-0.2, 0.15, 0.6, 1.15, 1.55, 2.0];
   herbXs.forEach((x, i) => {
     const h = makeHerbBundle(i, 3 + (i % 3) * 2, 100 + i);
     h.position.set(x, 3.2, R.back + 0.32);
     scene.add(h);
-    W.hanging.push({ obj: h, phase: rng.range(0, 6), amp: 0.03 });
+    hang(h, rng.range(0, 6), 0.03);
   });
   // vines from the plate and joists
   const vineSpots = [[-3.6, R.back + 0.3, 18], [-3.1, R.back + 0.28, 10], [-0.05, R.back + 0.3, 8], [2.35, R.back + 0.28, 14], [3.6, R.back + 0.3, 20], [4.0, R.back + 0.32, 9],
@@ -195,17 +220,22 @@ export function buildWorld(scene) {
     const v = makeVine(len, 200 + i);
     v.position.set(x, 3.25, z);
     scene.add(v);
-    W.hanging.push({ obj: v, phase: rng.range(0, 6), amp: 0.02 });
+    hang(v, rng.range(0, 6), 0.02);
   });
   for (const [x, len] of [[-2.2, 12], [-2.2, 7], [1.7, 15], [1.7, 9]]) {
     const v = makeVine(len, 300 + len);
     v.position.set(x, 3.72, -1.0 + len * 0.06);
     scene.add(v);
-    W.hanging.push({ obj: v, phase: rng.range(0, 6), amp: 0.025 });
+    hang(v, rng.range(0, 6), 0.025);
   }
 
+  // heat haze over the coals
+  W.shimmer = makeShimmer(1.25, 1.1);
+  W.shimmer.position.copy(W.firePos).add(new THREE.Vector3(0, 0.62, 0.05));
+  scene.add(W.shimmer);
+
   // ---------------------------------------------------------------- light
-  const hemi = new THREE.HemisphereLight(0xc8a0a0, 0x4a2c1c, 2.1);
+  const hemi = new THREE.HemisphereLight(0xd8b0a0, 0x4a2c1c, 2.45);
   scene.add(hemi);
   const fire = new THREE.PointLight(0xff8a3a, 7, 14, 1.2);
   fire.position.copy(W.firePos).add(new THREE.Vector3(0.1, 0.45, 0.45));
@@ -239,13 +269,16 @@ export function buildWorld(scene) {
   ];
   W.waypoints = [[-3.72, -1.08], [-2.3, -1.06], [-1.6, -0.02], [-0.15, -0.02], [-0.1, -0.95], [1.05, 0.0], [1.15, -1.15], [2.65, -1.15], [0.55, 0.35], [2.7, 0.05], [-1.45, -0.62], [3.9, -0.12], [2.43, -0.62]]
     .map(([x, z]) => new THREE.Vector3(x, 0, z));
+  // merge the static props into a few big meshes (the moving/clickable groups are flagged dynamic)
+  const batches = batchStatic(scene);
+  W.stats = { ms: performance.now() - t0, batches: batches.length, batched: batches.reduce((n, b) => n + b.userData.batched, 0) };
   const af = W.anvilFace;
   W.shots = {
     overview: { pos: new THREE.Vector3(3.1, 2.45, 4.0), look: new THREE.Vector3(-0.55, 0.95, -1.0), fov: 45 },
     menu: { pos: new THREE.Vector3(3.0, 2.15, 4.3), look: new THREE.Vector3(-0.3, 1.05, -1.2), fov: 44 },
     hearth: { pos: new THREE.Vector3(hearthX - 0.45, 2.15, hearthZ + 4.6), look: new THREE.Vector3(hearthX - 1.05, 0.72, hearthZ), fov: 42 },
     pour: { pos: new THREE.Vector3(hearthX + 1.6, 2.2, hearthZ + 2.685), look: new THREE.Vector3(hearthX + 1.0, 0.55, hearthZ + 0.285), fov: 36 },
-    anvil: { pos: new THREE.Vector3(af.x + 0.05, af.y + 0.05 + 3.3 * Math.sin(0.98), af.z - 0.1 + 3.3 * Math.cos(0.98)), look: new THREE.Vector3(af.x + 0.05, af.y + 0.05, af.z - 0.1), fov: 23 },
+    anvil: { pos: new THREE.Vector3(af.x + 0.05, af.y + 0.02 + 3.4 * Math.sin(0.98), af.z - 0.04 + 3.4 * Math.cos(0.98)), look: new THREE.Vector3(af.x + 0.05, af.y + 0.02, af.z - 0.04), fov: 23 },
     infuse: { pos: new THREE.Vector3(af.x + 0.3, af.y + 1.55, af.z + 2.7), look: new THREE.Vector3(af.x + 0.05, af.y + 0.42, af.z - 0.2), fov: 38 },
     quench: { pos: new THREE.Vector3(-1.4, 2.0, 2.6), look: new THREE.Vector3(-0.5, 0.85, -0.75), fov: 40 },
     bench: { pos: new THREE.Vector3(W.fulcrumTop.x - 0.05, W.fulcrumTop.y + 0.95, W.fulcrumTop.z + 1.45), look: new THREE.Vector3(W.fulcrumTop.x - 0.05, W.fulcrumTop.y + 0.05, W.fulcrumTop.z), fov: 40 },

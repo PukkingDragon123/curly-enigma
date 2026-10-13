@@ -10,6 +10,8 @@ import { ForgeParticles } from '../forge/particles.js';
 import { makeHammer } from '../forge/models.js';
 import { injectStyles, popWord } from '../forge/ui.js';
 import { Menus } from '../forge/menus.js';
+import { makeGlow } from '../bookends/fx.js';
+import { glowHex } from '../forge/blackbody.js';
 
 const _v = new THREE.Vector3();
 const _ray = new THREE.Raycaster();
@@ -33,8 +35,16 @@ export default class ForgeScene extends Scene {
     this.game.ui.world.append(this.layer);
 
     this.W = buildWorld(this.scene);
+    console.log(`[forge] room built in ${this.W.stats.ms.toFixed(0)} ms (${this.W.stats.batched} props → ${this.W.stats.batches} batches)`);
     this.particles = new ForgeParticles(this.scene);
     this.own(() => this.particles.dispose());
+    // the white-hot flash where the hammer meets the metal
+    this.impactGlow = makeGlow({ color: 0xfff0c0, size: 0.5, intensity: 0, falloff: 1.4, levels: 6, renderOrder: 22 });
+    this.impactGlow.visible = false;
+    this.scene.add(this.impactGlow);
+    this.impactT = 0;
+    this.hitStop = 0;
+    this.kick = 0;
 
     // the mole, with a hammer in the right paw
     this.mole = makeCharacter(playerSpec());
@@ -135,6 +145,19 @@ export default class ForgeScene extends Scene {
     if (instant) { this.cam.pos.copy(pos); this.cam.look.copy(look); this.cam.fov = fov; }
   }
 
+  /** Juice for a hammer blow on hot metal: impact flash, hit-stop and a little camera kick. */
+  impact(pos, power, T = 900) {
+    this.impactGlow.position.copy(pos);
+    this.impactGlow.userData.glow.uColor.value.setHex(glowHex(Math.max(1100, T + 250)));
+    this.impactT = 1;
+    this.impactPower = power;
+    this.impactGlow.visible = true;
+    if (power > 0.35) this.hitStop = 0.035 + power * 0.045;
+    if ((this.game.state.data.settings.shake ?? 1) > 0) this.kick = 0.012 + power * 0.022;
+    this.post.flash = Math.max(this.post.flash || 0, 0.04 + power * 0.08);
+    this.post.flashColor = 0xfff2d8;
+  }
+
   addShake(a) {
     if ((this.game.state.data.settings.shake ?? 1) <= 0) return;
     this.shake = Math.min(0.06, this.shake + a);
@@ -154,6 +177,7 @@ export default class ForgeScene extends Scene {
       c.position.y += (Math.random() - 0.5) * this.shake;
       this.shake *= Math.exp(-dt * 16);
     }
+    if (this.kick > 0.0004) { c.position.y -= this.kick; this.kick *= Math.exp(-dt * 18); }
     c.lookAt(this.cam.look);
     if (Math.abs(c.fov - this.cam.fov) > 0.01) { c.fov = this.cam.fov; c.updateProjectionMatrix(); }
     c.updateMatrixWorld();
@@ -330,6 +354,9 @@ export default class ForgeScene extends Scene {
     if (magma) this.W.hearth.coalMat.color.setRGB(0.8 + g * 0.6, 0.32 + g * 0.42, 0.18 + g * 0.2);
     else this.W.hearth.coalMat.color.setRGB(0.55 + g * 0.6, 0.45 + g * 0.45, 0.4 + g * 0.3);
     this.W.hearth.emberMat.color.setScalar(0.35 + g * 0.35);
+    const sh = this.W.shimmer.userData.shimmer;
+    sh.uTime.value = this.time;
+    sh.uHeat.value = 0.35 + f.glow * 0.9;
     this.W.light.intensity = ((magma ? 5.4 : 4.2) + f.air * 5) * f.flick + (this.extraLight || 0);
     this.W.light.color.setHSL((magma ? 0.045 : 0.065) + f.air * 0.015, 1, 0.55 + f.air * 0.06);
     this.fireLoop.set({ vol: 0.3 + f.air * 0.45, intensity: f.air });
@@ -399,7 +426,19 @@ export default class ForgeScene extends Scene {
   // ---------------------------------------------------------------- frame
   update(dt) {
     dt *= this.timeScale;
+    const realDt = dt;
+    // hit-stop: the world holds its breath for a few frames on a heavy blow
+    if (this.hitStop > 0) { this.hitStop -= dt; dt *= 0.06; }
     super.update(dt);
+    if (this.post.flash > 0) this.post.flash = Math.max(0, this.post.flash - realDt * 1.6);
+    if (this.impactT > 0) {
+      this.impactT = Math.max(0, this.impactT - realDt * 7);
+      const k = this.impactT;
+      const u = this.impactGlow.userData.glow;
+      u.uIntensity.value = k * (0.6 + this.impactPower * 0.6);
+      u.uSize.value.setScalar(0.18 + (1 - k) * 0.35 + this.impactPower * 0.25);
+      this.impactGlow.visible = k > 0.01;
+    }
     if (this.activity) {
       try { this.activity.update(dt); } catch (e) { console.error(e); this.game.reportError(e); this.activity = null; this.endActivity(); }
     } else this.menus.update(dt);

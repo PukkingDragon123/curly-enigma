@@ -1,6 +1,7 @@
 // Ending credits: a slow DOM roll over the beach with the player's journey stats,
 // then the end-of-game choices.
 import { el, formatGoldFull } from '../core/util.js';
+import { logoLetters } from './logo.js';
 import { ITEMS } from '../data/items.js';
 import { CREATURES } from '../data/creatures.js';
 import { DISHES } from '../data/recipes.js';
@@ -61,8 +62,12 @@ export function buildCredits(game, handlers) {
   ]);
   const endBlock = el('div', { class: 'bk-endblock' }, [el('div', { class: 'bk-thanks bk-outline' }, 'Thanks for playing!'), end]);
 
+  // the same pixel logo as the title screen (gold MOLE, hot-metal FORGE), bobbing gently
+  const logo = el('div', { class: 'bk-logo bk-roll-logo', role: 'img', 'aria-label': 'MOLEFORGE' }, logoLetters().map((L, i) => el('span', { class: L.hot ? 'hot' : '', style: { '--i': i } }, [
+    el('img', { class: 'pix', src: L.url, alt: '', draggable: 'false', style: { width: `calc(var(--lp) * ${L.w})`, height: `calc(var(--lp) * ${L.h})` } }),
+  ])));
   const roll = el('div', { class: 'bk-roll bk-outline' }, [
-    el('div', { class: 'big-title' }, 'MOLEFORGE'),
+    logo,
     el('div', { class: 'tag' }, 'A game about digging your way out'),
     el('h3', {}, 'Starring'),
     el('p', {}, 'One very dirty mole'),
@@ -77,7 +82,8 @@ export function buildCredits(game, handlers) {
     el('p', { class: 'soft' }, 'No external assets. Just a lot of tiny cubes.'),
     endBlock,
   ]);
-  const root = el('div', { class: 'bk-credits', hidden: true }, [roll]);
+  // laid out from the start but invisible, so showing it later costs no layout pass mid-scene
+  const root = el('div', { class: 'bk-credits', style: { visibility: 'hidden' } }, [roll]);
 
   const c = { el: root, shown: false, done: false, y: 0, target: 0, fast: false };
   const measure = () => {
@@ -86,7 +92,7 @@ export function buildCredits(game, handlers) {
     c.target = vh * 0.5 - center;
   };
   c.start = () => {
-    root.hidden = false;
+    root.style.visibility = '';
     c.shown = true;
     c.done = false;
     end.classList.remove('on');
@@ -101,7 +107,7 @@ export function buildCredits(game, handlers) {
     c.done = true;
     end.classList.add('on');
   };
-  c.hide = () => { root.hidden = true; c.shown = false; };
+  c.hide = () => { root.style.visibility = 'hidden'; c.shown = false; };
   c.update = (dt) => {
     if (!c.shown || c.done) return;
     measure();

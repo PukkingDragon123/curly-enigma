@@ -15,8 +15,8 @@ const CSS = `
 .fg-side h2 { margin: 0 0 var(--px); font-size: 1.7em; }
 .fg-side .sub { margin: 0 0 calc(var(--px) * 2); font-size: .78em; }
 .fg-kicker { font-size: .62em; letter-spacing: .14em; text-transform: uppercase; color: var(--wood-2); font-weight: 700; }
-.fg-big { display: grid; grid-template-columns: calc(var(--px) * 22) 1fr auto; gap: calc(var(--px) * 3); align-items: center; text-align: left; width: 100%; padding: calc(var(--px) * 2) calc(var(--px) * 3); }
-.fg-big img { width: calc(var(--px) * 18); height: calc(var(--px) * 18); }
+.fg-big { display: grid; grid-template-columns: var(--icon) 1fr auto; gap: calc(var(--px) * 3); align-items: center; text-align: left; width: 100%; padding: calc(var(--px) * 2) calc(var(--px) * 3); }
+.fg-big img { width: var(--icon); height: var(--icon); }
 .fg-big b { display: block; font-size: 1.05em; line-height: 1.1; }
 .fg-big small { display: block; font-weight: 500; font-size: .7em; color: var(--ink-soft); line-height: 1.25; }
 .fg-big kbd { font-size: .7em; }
@@ -62,8 +62,8 @@ const CSS = `
 .fg-meter > b { position: absolute; left: calc(var(--px) * -2); right: calc(var(--px) * -2); height: var(--px); background: #fff; opacity: .6; }
 .fg-meter > span { position: absolute; left: calc(100% + var(--px) * 2); bottom: 0; font-size: .55em; white-space: nowrap; text-shadow: 0 var(--px) 0 #000; }
 .fg-chipline { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 1.5); }
-.fg-pick { position: relative; display: grid; grid-template-columns: calc(var(--px) * 14) 1fr; gap: calc(var(--px) * 2); align-items: center; padding: var(--px) calc(var(--px) * 2); background: var(--parch-2); border: var(--px) solid var(--parch-3); cursor: pointer; font: inherit; color: var(--ink); text-align: left; font-size: .78em; line-height: 1.15; }
-.fg-pick img { width: calc(var(--px) * 13); height: calc(var(--px) * 13); }
+.fg-pick { position: relative; display: grid; grid-template-columns: var(--icon-s) 1fr; gap: calc(var(--px) * 2); align-items: center; padding: var(--px) calc(var(--px) * 2); background: var(--parch-2); border: var(--px) solid var(--parch-3); cursor: pointer; font: inherit; color: var(--ink); text-align: left; font-size: .78em; line-height: 1.15; }
+.fg-pick img { width: var(--icon-s); height: var(--icon-s); }
 .fg-pick:hover { border-color: var(--wood); background: #fff4d0; }
 .fg-pick.on { border-color: var(--gold-dk); background: #fff1c0; box-shadow: inset 0 0 0 var(--px) var(--gold); }
 .fg-pick[disabled] { opacity: .5; cursor: not-allowed; filter: grayscale(.6); }
@@ -71,12 +71,12 @@ const CSS = `
 .fg-pick .why { color: #a83a1a; }
 .fg-grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--px) * 64), 1fr)); gap: calc(var(--px) * 1.5); }
 .fg-section { font-size: .7em; letter-spacing: .12em; text-transform: uppercase; color: var(--wood); font-weight: 700; margin: calc(var(--px) * 2) 0 var(--px); }
-.fg-recipe { display: grid; grid-template-columns: calc(var(--px) * 18) 1fr auto; gap: calc(var(--px) * 3); align-items: center; padding: calc(var(--px) * 1.5) calc(var(--px) * 2); background: var(--parch-2); border: var(--px) solid var(--parch-3); }
+.fg-recipe { display: grid; grid-template-columns: var(--icon) 1fr auto; gap: calc(var(--px) * 3); align-items: center; padding: calc(var(--px) * 1.5) calc(var(--px) * 2); background: var(--parch-2); border: var(--px) solid var(--parch-3); }
 .fg-recipe.locked { opacity: .62; }
-.fg-recipe img { width: calc(var(--px) * 16); height: calc(var(--px) * 16); }
+.fg-recipe img { width: var(--icon); height: var(--icon); }
 .fg-recipe .name { font-weight: 700; }
 .fg-recipe .ins { font-size: .72em; color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 0 calc(var(--px) * 3); align-items: center; }
-.fg-recipe .ins img { width: calc(var(--px) * 8); height: calc(var(--px) * 8); vertical-align: middle; }
+.fg-recipe .ins img { width: var(--icon-s); height: var(--icon-s); vertical-align: middle; margin: calc(var(--px) * -2) 0; }
 .fg-recipe .ins .miss { color: #b0301a; font-weight: 700; }
 .fg-recipe .why { font-size: .7em; color: #a83a1a; }
 .fg-recipe .btns { display: flex; flex-direction: column; gap: var(--px); align-items: stretch; }
@@ -87,7 +87,7 @@ const CSS = `
 @keyframes stamp { from { transform: rotate(-20deg) scale(2.4); opacity: 0; } }
 .fg-stamp small { position: absolute; bottom: calc(var(--px) * -6); font-family: var(--font); font-size: .17em; letter-spacing: .1em; white-space: nowrap; text-transform: uppercase; color: currentColor; text-shadow: 0 var(--px) 0 #000; }
 .fg-value { font-family: var(--font-display); font-size: 2.2em; color: var(--gold-dk); line-height: 1; display: flex; align-items: center; gap: calc(var(--px) * 2); }
-.fg-value img { width: calc(var(--px) * 12); height: calc(var(--px) * 12); }
+.fg-value img { width: var(--icon-s); height: var(--icon-s); }
 .fg-break { display: grid; grid-template-columns: auto 1fr auto; gap: var(--px) calc(var(--px) * 2); align-items: center; font-size: .75em; margin: calc(var(--px) * 2) 0; }
 .fg-break .fg-bar { grid-column: auto; height: calc(var(--px) * 3); }
 .fg-float { position: absolute; transform: translate(-50%, -50%); font-family: var(--font-display); font-size: 1.6em; white-space: nowrap; pointer-events: none; text-shadow: 0 var(--px) 0 #000, var(--px) 0 0 #000, calc(var(--px) * -1) 0 0 #000, 0 calc(var(--px) * -1) 0 #000; animation: fgFloat 1.3s ease-out forwards; }

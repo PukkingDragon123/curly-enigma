@@ -1,6 +1,9 @@
 // Ending phase 1: the farewell at Deep Town's Surface Express landing.
 import * as THREE from 'three';
-import { VoxelGrid, voxMesh, jitf, hash3 } from './vox.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { VoxelGrid, voxMesh, meshRelief, jitf, hash3 } from './vox.js';
+import { voxelMaterial } from '../gfx/Voxel.js';
+import { batchStatic } from './batch.js';
 import { makeLantern, makeMushrooms, makeRock, S16 } from './props.js';
 import { Particles, SHAPE, makeGlow, makeBlobShadow, fitFov } from './fx.js';
 import { signTexture } from './pixfont.js';
@@ -48,54 +51,94 @@ function platform(textures) {
   return { mesh: grp };
 }
 
+/** The cavern wall behind Deep Town: a 1/16 relief of earthy strata, moss creeping down from the
+ *  top, roots, pebbles and cracks, with the dark mouth of the Surface Express shaft above the lift. */
 function backWall() {
+  const V = 1 / 16;
   const x0 = -12.5, x1 = 11.5, y0 = -0.5, y1 = 9.5, z0 = -9.6, z1 = -7.3;
-  const nx = Math.round((x1 - x0) / VS), ny = Math.round((y1 - y0) / VS), nz = Math.round((z1 - z0) / VS);
-  const g = new VoxelGrid(nx, ny, nz);
-  const n = makeNoise2D(5), n2 = makeNoise2D(9);
+  const W = Math.round((x1 - x0) / V), D = Math.round((y1 - y0) / V);
+  const h = new Uint16Array(W * D), top = new Uint32Array(W * D);
+  const n = makeNoise2D(5), n2 = makeNoise2D(9), n3 = makeNoise2D(13);
   const bands = [0x4a3428, 0x3e2c22, 0x54392a, 0x36261e, 0x4a3a30];
-  for (let i = 0; i < nx; i++) {
-    const x = x0 + (i + 0.5) * VS;
-    for (let j = 0; j < ny; j++) {
-      const y = y0 + (j + 0.5) * VS;
-      // the shaft opening above the lift
+  const P3 = [0.94, 1, 1.06];
+  for (let j = 0; j < D; j++) {
+    const y = y0 + (j + 0.5) * V;
+    for (let i = 0; i < W; i++) {
+      const x = x0 + (i + 0.5) * V;
+      const q = i + W * j;
       const inShaft = Math.abs(x - LIFT_X) < 1.5 && y > 6.2;
       const relief = 0.6 + n(x * 0.3, y * 0.3) * 0.9 + (y > 6 ? (y - 6) * 0.4 : 0);
-      const front = z1 - Math.max(0, relief);
-      for (let k = 0; k < nz; k++) {
-        const z = z0 + (k + 0.5) * VS;
-        if (z > front) continue;
-        if (inShaft && z > z0 + 0.6) continue;
-        const b = Math.floor((y + n(x * 0.2, 3) * 0.6) / 0.7);
-        let c = bands[((b % bands.length) + bands.length) % bands.length];
-        if (hash3(i, j, k, 4) < 0.05) c = 0x6a6058;
-        if (y > 4.5 && n2(x * 0.5 + 9, y * 0.5) > 0.25) c = hash3(i, j, k, 6) < 0.5 ? 0x3e5a2e : 0x4a6a34;
-        g.set(i, j, k, jitf(c, i, j, k, 2, 0.07));
-      }
+      let front = z1 - Math.max(0, relief);
+      const b = Math.floor((y + n(x * 0.2, 3) * 0.6) / 0.7);
+      let c = bands[((b % bands.length) + bands.length) % bands.length];
+      c = shade(c, P3[(hash3(i >> 1, j >> 1, 0, 2) * 3) | 0]);
+      const by = (y + n(x * 0.2, 3) * 0.6) / 0.7 - b;
+      if (by < 0.08) { c = shade(c, 0.8); front -= 0.04; } // seams between the strata
+      if (y > 4.5 && n2(x * 0.5 + 9, y * 0.5) > 0.25) c = hash3(i, j, 0, 6) < 0.5 ? 0x3e5a2e : 0x4a6a34; // moss
+      else if (Math.abs(n3(x * 0.25, y * 0.7)) < 0.014) { c = hash3(i, j, 1, 7) < 0.5 ? 0x5e4430 : 0x543c2a; front += 0.05; } // roots
+      else if (hash3(i >> 2, j >> 2, 3, 4) < 0.025) { c = 0x6a6058; front += 0.06; } // pebbles
+      else if (Math.abs(n3(x * 0.6 + 5, y * 0.6)) < 0.01) { c = shade(c, 0.55); front -= 0.08; } // cracks
+      if (inShaft) { front = z0 + 0.6; c = 0x1a120e; }
+      h[q] = clamp(Math.round((front - z0) / V), 1, 40);
+      top[q] = c;
     }
   }
-  return voxMesh(g, { scale: VS, pivot: [-x0 / VS, -y0 / VS, -z0 / VS], solid: { nz: true, ny: true, py: true, nx: true, px: true }, outline: false });
+  const sideFn = (q, y, dir) => shade(top[q], dir === 3 ? 1.12 : dir === 2 ? 0.72 : 0.85);
+  const geo = meshRelief({ W, D, h, top, side: sideFn, U: [V, 0, 0], V: [0, V, 0], N: [0, 0, V], origin: [x0, y0, z0], wallAO: false });
+  return new THREE.Mesh(geo, voxelMaterial('toon'));
 }
 
-/** A little Deep Town house facade (box with roof and glowing windows). */
+/** A little Deep Town house facade at 1/16: coursed stone or plank walls, a tiled gable roof with
+ *  a chimney, a framed door with a lamp, and glowing mullioned windows with sills. */
 function house(seed, w, h, color, roof) {
   const rng = makeRng(seed);
-  const g = new VoxelGrid(w + 2, h + 8, 8);
-  const gl = new VoxelGrid(w + 2, h + 8, 8);
-  g.box(1, 0, 1, w, h, 6, (x, y, z) => jitf(((x + y) % 7 === 0) ? shade(color, 0.85) : color, x, y, z, seed, 0.06));
-  for (let y = 0; y < 7; y++) g.box(1 + y, h + y, 0, Math.max(0, w - y * 2), 1, 8, roof);
-  // door
-  g.box(Math.floor(w / 2), 0, 7, 2, 4, 1, 0x3a2416);
-  // windows (glowing)
+  const W = w * 2, H = h * 2;
+  const g = new VoxelGrid(W + 4, H + 20, 14);
+  const gl = new VoxelGrid(W + 4, H + 20, 14);
+  const stone = rng.chance(0.5);
+  g.box(2, 0, 2, W, H, 10, (x, y, z) => {
+    if (z < 11) return color;
+    if (stone) {
+      const row = y >> 2, off = (row % 2) * 3;
+      if (y % 4 === 3 || (x + off) % 6 === 0) return shade(color, 0.72); // mortar
+      return jitf(shade(color, ((x + off) / 6 + row) % 3 === 0 ? 0.92 : 1.04), (x + off) / 6 | 0, row, 0, seed, 0.05);
+    }
+    if (x % 5 === 0) return shade(color, 0.75); // board gaps
+    return jitf(shade(color, (x / 5 | 0) % 2 ? 0.95 : 1.05), x / 5 | 0, y >> 3, 0, seed, 0.05);
+  });
+  g.box(2, 0, 11, W, 2, 1, shade(color, 0.7)); // plinth
+  // tiled gable roof with eaves
+  for (let y = 0; y < 14; y++) {
+    const inset = y * 2 - 2;
+    const span = W + 4 - inset * 2;
+    if (span <= 0) break;
+    g.box(Math.max(0, inset), H + y, 0, span, 1, 14, (x, yy, z) => (y % 2 ? shade(roof, 0.82) : ((x >> 1) % 2 ? roof : shade(roof, 1.1))));
+  }
+  // chimney
+  const cx = 4 + rng.int(0, Math.max(1, W - 10));
+  g.box(cx, H + 4, 4, 4, 12, 4, (x, y) => (y % 3 === 0 ? 0x4a2e22 : 0x6a3e2e));
+  g.box(cx - 1, H + 16, 3, 6, 1, 6, 0x3a2a22);
+  // door with a frame, knob and step, and a little lamp beside it
+  const dx = Math.floor(W / 2) - 1;
+  g.box(dx - 1, 0, 12, 6, 10, 1, 0x2a1810);
+  g.box(dx, 0, 12, 4, 9, 2, (x, y) => (y % 3 === 0 ? 0x4a2e18 : 0x5a3a22));
+  g.set(dx + 3, 4, 13, 0xffd060);
+  g.box(dx - 1, 0, 13, 6, 1, 1, 0x5a5048);
+  gl.box(dx + 5, 8, 13, 1, 2, 1, 0xffd070);
+  // windows (glowing) with a cross mullion, frame and sill
   const wins = rng.int(1, 3);
   for (let i = 0; i < wins; i++) {
-    const wx = 2 + Math.floor(((i + 0.5) / wins) * (w - 4)), wy = rng.int(4, Math.max(4, h - 4));
-    gl.box(wx, wy, 7, 2, 2, 1, rng.chance(0.5) ? 0xffd070 : 0xffb050);
-    g.box(wx - 1, wy - 1, 6, 4, 4, 1, 0x3a2416);
+    const wx = 4 + Math.floor(((i + 0.5) / wins) * (W - 8)) - 2, wy = rng.int(8, Math.max(8, H - 8));
+    const warm = rng.chance(0.5) ? 0xffd070 : 0xffb050;
+    gl.box(wx, wy, 13, 4, 4, 1, (x, y) => ((x === wx + 1 && y === wy + 2) ? 0xfff0c0 : warm));
+    g.box(wx - 1, wy - 1, 12, 6, 6, 1, 0x3a2416);
+    g.box(wx + 2, wy, 13, 1, 4, 1, 0x3a2416); g.box(wx, wy + 2, 13, 4, 1, 1, 0x3a2416);
+    g.box(wx - 1, wy - 2, 12, 6, 1, 2, 0x8a6a48); // sill
   }
   const grp = new THREE.Group();
-  grp.add(voxMesh(g, { scale: VS, pivot: [(w + 2) / 2, 0, 4] }));
-  grp.add(voxMesh(gl, { scale: VS, pivot: [(w + 2) / 2, 0, 4], kind: 'basic', outline: false }));
+  const S = VS / 2;
+  grp.add(voxMesh(g, { scale: S, pivot: [(W + 4) / 2, 0, 7] }));
+  grp.add(voxMesh(gl, { scale: S, pivot: [(W + 4) / 2, 0, 7], kind: 'basic', outline: false }));
   return grp;
 }
 
@@ -119,19 +162,24 @@ function bunting(a, b, sag, seed) {
   }
   const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x2a1a12 }));
   grp.add(line);
-  const flags = [];
+  // every flag baked into one mesh per string (one draw instead of a dozen); the string sways as one
+  const flagGeos = flagG.map((g) => voxMesh(g, { scale: S16 * 1.4, pivot: [2.5, 6, 0.5] }));
+  const parts = [];
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1);
   for (let i = 1; i < N; i++) {
     const t = i / N;
     const p = new THREE.Vector3().lerpVectors(a, b, t);
     p.y -= Math.sin(t * Math.PI) * sag;
     const ci = (i + seed) % cols.length;
-    const m = voxMesh(flagG[ci], { scale: S16 * 1.4, pivot: [2.5, 6, 0.5] });
-    m.position.copy(p);
-    m.rotation.y = Math.atan2(b.x - a.x, b.z - a.z) - Math.PI / 2;
-    grp.add(m);
-    flags.push({ m, ph: rng.range(0, 6) });
+    e.set(rng.range(-0.25, 0.25), Math.atan2(b.x - a.x, b.z - a.z) - Math.PI / 2, rng.range(-0.08, 0.08));
+    parts.push(flagGeos[ci].geometry.clone().applyMatrix4(m4.compose(p, q.setFromEuler(e), one)));
   }
-  return { grp, flags };
+  const merged = new THREE.Mesh(mergeGeometries(parts), flagGeos[0].material);
+  merged.layers.mask = flagGeos[0].layers.mask;
+  for (const g of parts) g.dispose();
+  for (const f of flagGeos) f.geometry.dispose();
+  grp.add(merged);
+  return { grp, mesh: merged, ph: rng.range(0, 6) };
 }
 
 function signMesh(lines, style, width) {
@@ -139,6 +187,49 @@ function signMesh(lines, style, width) {
   const h = width * (t.h / t.w);
   const m = new THREE.Mesh(new THREE.PlaneGeometry(width, h), new THREE.MeshBasicMaterial({ map: t.texture, transparent: false }));
   return { mesh: m, texture: t.texture, h };
+}
+
+/**
+ * Collapse a background townsfolk rig into five meshes: legs (they only stand and wave), body,
+ * the whole head (face as it is now: no blinking or chatter for the crowd) and the two arms.
+ * The bones still drive everything, so waves, cheers and turns read the same; the crowd just
+ * costs a third of the draws.
+ */
+function simplifyRig(rig) {
+  rig.root.updateMatrixWorld(true);
+  const bones = new Set([rig.hip, rig.neck, rig.armL, rig.armR, rig.legL, rig.legR].filter(Boolean));
+  const visibleMeshes = (from, stop) => {
+    const out = [];
+    const walk = (o) => {
+      for (const c of o.children) {
+        if (stop.has(c) || !c.visible) continue;
+        if (c.isMesh) out.push(c);
+        walk(c);
+      }
+    };
+    walk(from);
+    return out;
+  };
+  const sameLayout = (geos) => {
+    const key = (g) => Object.keys(g.attributes).sort().join(',') + (g.index ? '|i' : '');
+    return geos.every((g) => key(g) === key(geos[0]));
+  };
+  const inv = new THREE.Matrix4(), rel = new THREE.Matrix4();
+  const merge = (target, items) => {
+    if (items.length < 2 || items.some((m) => m.material !== items[0].material)) return;
+    target.updateMatrixWorld(true);
+    inv.copy(target.matrixWorld).invert();
+    const geos = items.map((m) => m.geometry.clone().applyMatrix4(rel.multiplyMatrices(inv, m.matrixWorld)));
+    if (!sameLayout(geos)) { for (const g of geos) g.dispose(); return; }
+    const mesh = new THREE.Mesh(mergeGeometries(geos), items[0].material);
+    mesh.layers.mask = items[0].layers.mask;
+    for (const g of geos) g.dispose();
+    for (const m of items) m.parent.remove(m);
+    target.add(mesh);
+  };
+  merge(rig.neck, visibleMeshes(rig.neck, bones));
+  const legs = [rig.legL, rig.legR].filter(Boolean).flatMap((l) => visibleMeshes(l, new Set()));
+  merge(rig.root, legs);
 }
 
 /**
@@ -237,28 +328,35 @@ export function buildLanding(ctx) {
 
   // ---------------------------------------------------------------- the crowd
   const crowd = [];
+  // nine well-wishers: the four shopkeepers, three grown-ups and two kids (each rig is a dozen
+  // outlined draws, so the crowd is the farewell's biggest cost)
   const spots = [
     { p: [2.45, 0.35], k: 'ticket' },
     { p: [-0.55, 0.55], k: 'grocer' },
     { p: [-2.55, 0.15], k: 'tools' },
     { p: [-5.0, 0.4], k: 'assay' },
-    { p: [0.65, -0.85] }, { p: [-1.5, -1.1] }, { p: [-3.6, -1.35] }, { p: [-5.9, -1.6] },
-    { p: [-4.0, 1.45], kid: true }, { p: [-6.6, 0.0] }, { p: [-1.75, 1.75], kid: true }, { p: [0.35, 1.6], kid: true },
+    { p: [0.65, -0.85] }, { p: [-1.5, -1.1] }, { p: [-3.9, -1.35] },
+    { p: [-4.0, 1.45], kid: true }, { p: [-1.75, 1.75], kid: true },
   ];
   spots.forEach((s, i) => {
     let spec;
     if (s.k) spec = { ...SHOPS[s.k].keeper };
     else spec = randomSpec(9100 + i * 37, s.kid ? { age: 'kid' } : {});
     const rig = makeFolk(spec);
+    rig.root.userData.dynamic = true;
+    simplifyRig(rig);
     rig.root.position.set(s.p[0], 0, s.p[1]);
     rig.play(i % 3 === 0 ? 'cheer' : 'wave');
     rig.t = Math.random() * 5;
     scene.add(rig.root);
-    const sh = makeBlobShadow(0.42, 0.3, 0.42);
-    sh.position.set(s.p[0], 0.01, s.p[1]);
-    scene.add(sh);
     crowd.push({ rig, name: spec.name || null, keeper: !!s.k, home: new THREE.Vector3(s.p[0], 0, s.p[1]) });
   });
+  // the crowd stands still, so their blob shadows are one mesh (one draw)
+  const crowdShadow = makeBlobShadow(0.42, 0.3, 0.42);
+  crowdShadow.geometry.dispose();
+  crowdShadow.geometry = mergeGeometries(spots.map((s) => new THREE.PlaneGeometry(0.84, 0.6).rotateX(-Math.PI / 2).translate(s.p[0], 0.01, s.p[1])));
+  crowdShadow.rotation.x = 0;
+  scene.add(crowdShadow);
 
   // the travellers
   const { mole, hen, cage } = ctx;
@@ -335,7 +433,7 @@ export function buildLanding(ctx) {
     const audio = api.audio;
     // --- events
     once('bell', 0.25, () => { audio.play('bell'); api.say(crowd[0], 'All aboard the<br>Surface Express!', 2.4); });
-    once('kid', 1.0, () => api.say(crowd[10], 'Bye, mole!!', 1.8));
+    once('kid', 1.0, () => api.say(crowd[8], 'Bye, mole!!', 1.8));
     once('hazel', 1.9, () => api.say(crowd[1], 'Send us a seashell!', 2.0));
     once('cluck', 0.7, () => { audio.play('cluck', { n: 3 }); hen.flap(0.6); });
     once('burst0', 0.15, () => { burst(-1.5, 0.4, 2.8, 50); burst(-6.5, 0.4, 2.2, 40); audio.play('firework'); });
@@ -418,7 +516,7 @@ export function buildLanding(ctx) {
     }
     confetti.update(dt);
     sparks.update(dt);
-    for (const b of buntings) for (const f of b.flags) f.m.rotation.x = Math.sin(state.t * 2.4 + f.ph) * 0.25;
+    for (const b of buntings) b.mesh.position.y = Math.sin(state.t * 2.4 + b.ph) * 0.025; // a gentle bob
     for (const g of glows) g.userData.glow.uIntensity.value = 0.48 + Math.sin(state.t * 3 + g.id) * 0.03;
     warm.intensity = 6 + Math.sin(t * 9) * 0.25;
 
@@ -445,5 +543,9 @@ export function buildLanding(ctx) {
     camQuat.copy(camera.quaternion);
     fitFov(camera, 34, narrow ? 40 : 56);
   };
+  for (const b of buntings) b.grp.userData.dynamic = true;
+  const t0 = performance.now();
+  const batches = batchStatic(scene);
+  console.log(`[ending] landing batched in ${Math.round(performance.now() - t0)} ms (${batches.reduce((n, m) => n + m.userData.batched, 0)} props → ${batches.length} batches, ${crowd.length} townsfolk)`);
   return { scene, camera, enter, update, state, crowd, duration: 7.6, onResize };
 }

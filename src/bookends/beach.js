@@ -1,7 +1,8 @@
 // Ending phases 3 & 4: the surface (a blinding first look at the sun, sunglasses on) and the
 // sunset beach, where the camera slowly orbits for the first time in the whole game.
 import * as THREE from 'three';
-import { VoxelGrid, voxMesh, jitf, hash3 } from './vox.js';
+import { meshRelief, hash3 } from './vox.js';
+import { batchStatic } from './batch.js';
 import { makePalm, makeUmbrella, makeLounger, makeTowel, makeSandcastle, makeBucket, makeSpade, makeBeachBall, makeShell, makeStarfish, makeCrab, makeGrassTuft, makeTerminusRing } from './beachprops.js';
 import { makeCoconut, makeRock } from './props.js';
 import { Particles, Twinkles, SHAPE, makeSheetSprite, makeBlobShadow, cloudCanvas, gullSheet, GLSL_BAYER, fitFov } from './fx.js';
@@ -34,33 +35,101 @@ export function sandHeight(x, z) {
 }
 
 // ------------------------------------------------------------------ island
-function buildIsland() {
-  const nx = Math.round((GB.x1 - GB.x0) / VS), nz = Math.round((GB.z1 - GB.z0) / VS);
-  const ny = 14;
-  const g = new VoxelGrid(nx, ny, nz);
-  const tops = new Float32Array(nx * nz);
-  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
-    const x = GB.x0 + (i + 0.5) * VS, z = GB.z0 + (k + 0.5) * VS;
-    const h = sandHeight(x, z);
-    const jt = clamp(Math.floor((h - GB.y0) / VS), 0, ny - 1);
-    tops[k * nx + i] = GB.y0 + (jt + 1) * VS;
-    if (h < -0.32) continue; // hidden under the opaque water; the water shader draws the shallows
-    const d = islandD(x, z);
-    // ripples: wavy darker bands across the dry sand
-    const rip = Math.sin(x * 2.3 + z * 0.9 + n1(x * 0.5, z * 0.5) * 3) > 0.82;
-    for (let j = 0; j <= jt; j++) {
-      const y = GB.y0 + (j + 0.5) * VS;
-      let c;
-      if (y < -0.05) c = 0xb08a5c;
-      else if (d > 0.9 || y < 0.12) c = hash3(i, j, k, 1) < 0.5 ? 0xc89a68 : 0xbc8e5e; // wet sand
-      else c = rip && j === jt ? 0xdcbc86 : (hash3(i, j, k, 2) < 0.33 ? 0xf2d8a0 : hash3(i, j, k, 3) < 0.5 ? 0xead09a : 0xf6e0b0);
-      if (j < jt - 1) c = 0xc8a070;
-      g.set(i, j, k, jitf(c, i, j, k, 4, 0.04));
+// The sand is a 1/16 heightfield relief: wind ripples (lit crests, shaded troughs), a dark wet band
+// with foam lace at the waterline, shell grit and seaweed, and footprints: the mole's paws from the
+// lift ring to the lounger, Nugget's little forks from the towel down to the water.
+const VI = 1 / 16;
+function footprintMap(nx, nz) {
+  const marks = new Map();
+  const cell = (x, z) => {
+    const i = Math.floor((x - GB.x0) / VI), k = Math.floor((z - GB.z0) / VI);
+    return i >= 0 && k >= 0 && i < nx && k < nz ? i + nx * k : -1;
+  };
+  const stamp = (x, z, dx, dz, pts) => {
+    for (const [a, b] of pts) {
+      const q = cell(x + dx * a - dz * b, z + dz * a + dx * b);
+      if (q >= 0) marks.set(q, 1);
     }
+  };
+  // the mole: from the Surface Express ring to the lounger, a lazy S
+  const A = SPOTS.cage, B = SPOTS.chair;
+  const n = 26;
+  for (let s = 1; s < n; s++) {
+    const t = s / n;
+    const x = A.x + (B.x - A.x) * t + Math.sin(t * Math.PI * 1.6) * 0.55, z = A.z + (B.z - A.z) * t;
+    const t2 = (s + 0.5) / n;
+    const x2 = A.x + (B.x - A.x) * t2 + Math.sin(t2 * Math.PI * 1.6) * 0.55, z2 = A.z + (B.z - A.z) * t2;
+    let dx = x2 - x, dz = z2 - z;
+    const l = Math.hypot(dx, dz) || 1;
+    dx /= l; dz /= l;
+    const side = s % 2 ? 1 : -1;
+    const px = x - dz * side * 0.07, pz = z + dx * side * 0.07;
+    stamp(px, pz, dx, dz, [[0, 0], [0.0625, 0], [-0.0625, 0], [0, 0.0625], [0.0625, 0.0625], [0.125, -0.06], [0.14, 0], [0.125, 0.06]]);
   }
-  const mesh = voxMesh(g, { scale: VS, pivot: [-GB.x0 / VS, -GB.y0 / VS, -GB.z0 / VS], solid: { ny: true } });
+  // Nugget: three-toed forks from the towel to the shallows
+  const H0 = new THREE.Vector3(SPOTS.towel.x - 0.25, 0, SPOTS.towel.z + 0.1);
+  const a = -Math.PI / 2 + 0.35;
+  const H1 = new THREE.Vector3(Math.cos(a) * RX * 0.86, 0, Math.sin(a) * RZ * 0.86);
+  const m = 30;
+  for (let s = 2; s < m; s++) {
+    const t = s / m;
+    const x = H0.x + (H1.x - H0.x) * t + Math.sin(t * 9) * 0.06, z = H0.z + (H1.z - H0.z) * t;
+    let dx = H1.x - H0.x, dz = H1.z - H0.z;
+    const l = Math.hypot(dx, dz);
+    dx /= l; dz /= l;
+    const side = s % 2 ? 1 : -1;
+    stamp(x - dz * side * 0.04, z + dx * side * 0.04, dx, dz, [[0, 0], [0.0625, 0], [0.11, -0.06], [0.11, 0.06], [-0.06, 0]]);
+  }
+  return marks;
+}
+
+function buildIsland() {
+  const nx = Math.round((GB.x1 - GB.x0) / VI), nz = Math.round((GB.z1 - GB.z0) / VI);
+  const n = nx * nz;
+  const h = new Uint16Array(n), top = new Uint32Array(n), tops = new Float32Array(n);
+  const prints = footprintMap(nx, nz);
+  const PATCH3 = [0.96, 1.0, 1.04];
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    const x = GB.x0 + (i + 0.5) * VI, z = GB.z0 + (k + 0.5) * VI;
+    const q = i + nx * k;
+    const hgt = sandHeight(x, z);
+    let lv = clamp(Math.floor((hgt - GB.y0) / VI) + 1, 1, 60);
+    tops[q] = GB.y0 + lv * VI;
+    if (hgt < -0.32) continue; // under the opaque water; the water shader draws the shallows
+    const d = islandD(x, z);
+    const y = tops[q];
+    const g = hash3(i, k, 0, 2);
+    let c;
+    if (y < -0.05) c = g < 0.5 ? 0xa8845a : 0xb08a5c;
+    else if (d > 0.9 || y < 0.12) {
+      // wet sand, with lace-like foam residue and strands of seaweed near the line
+      c = g < 0.5 ? 0xc89a68 : 0xbc8e5e;
+      const lace = Math.abs(Math.sin(Math.atan2(z / RZ, x / RX) * 23 + n1(x * 0.8, z * 0.8) * 4) * 0.5 + (d - 0.935) * 30);
+      if (d > 0.91 && d < 0.96 && lace < 0.18) c = g < 0.5 ? 0xeee2cc : 0xdcccb0;
+      else if (d > 0.88 && d < 0.95 && n2(x * 1.7, z * 1.7) > 0.36) c = g < 0.5 ? 0x4a6a3a : 0x5a7a3a; // seaweed
+      else if (g > 0.985) c = 0xfff6e0; // a glint of shell
+    } else {
+      // dry sand: wind ripples with a lit crest and a shaded lee, plus shell grit
+      const ph = x * 8.2 + z * 3.4 + n1(x * 0.45, z * 0.45) * 7 + n2(x * 1.3, z * 1.3) * 1.5;
+      const sn = Math.sin(ph), cs = Math.cos(ph);
+      const calm = n2(x * 0.3 + 9, z * 0.3) > 0.32; // patches where the wind left the sand smooth
+      if (!calm && sn > 0.82) c = 0xfff0c8;
+      else if (!calm && sn > 0.35 && cs < -0.15) c = 0xd8b47c;
+      else c = PATCH3[(hash3(i >> 1, k >> 1, 0, 3) * 3) | 0] > 1 ? 0xf6e0b0 : hash3(i >> 1, k >> 1, 0, 4) < 0.5 ? 0xf2d8a0 : 0xead09a;
+      if (g > 0.993) c = [0xffc0c8, 0xfff0e0, 0xe8d0ff, 0xf0b090][(g * 4000) & 3]; // shell grit
+      else if (g < 0.004) c = 0xb8a088; // a dark pebble
+    }
+    if (prints.has(q) && y >= 0.05) { lv = Math.max(1, lv - 1); c = d > 0.9 ? 0xa8845a : 0xd8b47c; }
+    h[q] = lv;
+    top[q] = c;
+  }
+  const sideFn = (q, y) => (y >= h[q] - 3 ? top[q] : 0xd8b47c); // steps keep the sand's colour; light does the rest
+  const mesh = new THREE.Mesh(
+    meshRelief({ W: nx, D: nz, h, top, side: sideFn, U: [VI, 0, 0], V: [0, 0, VI], N: [0, VI, 0], origin: [GB.x0, GB.y0, GB.z0] }),
+    voxelMaterial('toon'),
+  );
   const groundY = (x, z) => {
-    const i = clamp(Math.floor((x - GB.x0) / VS), 0, nx - 1), k = clamp(Math.floor((z - GB.z0) / VS), 0, nz - 1);
+    const i = clamp(Math.floor((x - GB.x0) / VI), 0, nx - 1), k = clamp(Math.floor((z - GB.z0) / VI), 0, nz - 1);
     return tops[k * nx + i];
   };
   return { mesh, groundY };
@@ -218,10 +287,25 @@ void main() {
   col += uGlint * floor(sheen * 4.0 + bk_bayer4(gl_FragCoord.xy)) / 4.0 * 0.6;
   float tw = hash12(floor(vWorld.xz * 5.0) + floor(uTime * 3.0));
   if (s > 0.965 && tw > 0.72) col = mix(col, vec3(1.0, 0.97, 0.85), 0.9);
-  // foam at the waterline and lapping lines in the shallows
-  float foam = 1.0 - smoothstep(0.0, 0.07, depth);
-  float lap = step(0.82, fract(depth * 5.0 - uTime * 0.55)) * (1.0 - smoothstep(0.05, 0.42, depth));
-  col = mix(col, uFoam, clamp(max(foam, lap * 0.75), 0.0, 1.0));
+  // foam: a lacy line at the waterline, and three breaking waves whose fronts run up the beach,
+  // broken up along the shore, each trailing a dithered wake of foam that thins as it spends itself
+  float foam = 1.0 - smoothstep(0.0, 0.06, depth);
+  float along = vWorld.x * 0.9 + vWorld.z * 0.7;
+  float brk = sin(along * 1.7 + uTime * 0.3) * 0.5 + sin(along * 4.3 - uTime * 0.7) * 0.25;
+  float surf = 0.0;
+  for (int i = 0; i < 3; i++) {
+    float ph = fract(uTime * 0.13 + float(i) / 3.0);
+    float front = mix(0.55, -0.02, ph * ph * (3.0 - 2.0 * ph));
+    float d = depth - front + brk * 0.035;
+    float gaps = step(0.22, fract(along * 0.45 + float(i) * 0.31 + brk * 0.2)); // the crest breaks in places
+    float band = (1.0 - smoothstep(0.0, 0.025 + 0.02 * (1.0 - ph), abs(d))) * (1.0 - ph * 0.55) * gaps;
+    float wake = step(0.0, d) * (1.0 - smoothstep(0.0, 0.2, d)) * (1.0 - ph) * 0.55;
+    surf = max(surf, max(band, wake));
+  }
+  surf *= 1.0 - smoothstep(0.2, 0.6, depth);
+  float lap = step(0.86, fract(depth * 5.0 - uTime * 0.55)) * (1.0 - smoothstep(0.05, 0.42, depth)) * 0.5;
+  float fq = floor(clamp(max(max(foam, surf), lap), 0.0, 1.0) * 4.0 + bk_bayer4(gl_FragCoord.xy)) / 4.0;
+  col = mix(col, uFoam, clamp(fq, 0.0, 1.0));
   // fade into the horizon haze
   float dist = length(vWorld.xz - cameraPosition.xz);
   float fogK = smoothstep(uFogNear, uFogFar2, dist);
@@ -403,10 +487,10 @@ export function buildBeach(ctx) {
     const dAz = Math.abs(Math.atan2(Math.sin(az - sunAz), Math.cos(az - sunAz)));
     const warm = 1 - dAz / Math.PI;
     const pal = warm > 0.6 ? { hi: 0xffe8b8, mid: 0xf8a0a0, lo: 0xc070a0, rim: 0xfff6d8 } : warm > 0.3 ? { hi: 0xffc0c0, mid: 0xd88aa8, lo: 0x8a5a98, rim: 0xffd8d0 } : { hi: 0xd0a0d0, mid: 0x9a78b8, lo: 0x5a4a88, rim: 0xe0c0e8 };
-    const cv = cloudCanvas(100 + i, 64, 20, pal);
+    const cv = cloudCanvas(100 + i, 128, 40, pal);
     const tex = pixelTexture(cv);
     textures.push(tex);
-    const s = makeSheetSprite(tex, { cols: 1, size: [w, w * (20 / 64)], anchor: [0.5, 0.5], renderOrder: -50 });
+    const s = makeSheetSprite(tex, { cols: 1, size: [w, w * (40 / 128)], anchor: [0.5, 0.5], renderOrder: -50 });
     const dist = 125;
     const elr = THREE.MathUtils.degToRad(el);
     s.position.set(Math.sin(az) * dist, Math.tan(elr) * dist, -Math.cos(az) * dist);
@@ -416,7 +500,7 @@ export function buildBeach(ctx) {
   const gulls = gullSheet();
   textures.push(gulls.texture);
   const birds = [0, 1, 2].map((i) => {
-    const s = makeSheetSprite(gulls.texture, { cols: gulls.cols, size: [1.3, 1.3 / gulls.aspect], anchor: [0.5, 0.5] });
+    const s = makeSheetSprite(gulls.texture, { cols: gulls.cols, size: [1.45, 1.45 / gulls.aspect], anchor: [0.5, 0.5] });
     s.layers.enable(1);
     scene.add(s);
     return { s, r: 8.5 + i * 3.2, h: 4.4 + i * 1.3, w: (i % 2 ? -1 : 1) * (0.2 - i * 0.04), a: i * 2.1, flap: Math.random() * 3, glide: 0 };
@@ -555,7 +639,7 @@ export function buildBeach(ctx) {
     const cx = SPOTS.chair.x, cz = SPOTS.chair.z;
     lounge.position.set(cx, gy(cx, cz), cz);
     lounge.rotation.set(0, Math.PI + 0.12, 0);
-    lean.position.set(0, 0.385, -0.42);
+    lean.position.set(0, 0.385, -0.3); // forward enough that the hi-res mole clears the canvas
     lean.rotation.set(-0.5, 0, 0);
     lean.add(mole.root);
     mole.root.position.set(0, -2 * mole.s, 0);
@@ -733,6 +817,14 @@ export function buildBeach(ctx) {
       }
     }
   };
+
+  // everything that never moves (sand, props, shells, rocks, grass) collapses into a few draws
+  for (const o of palmObjs) o.p.userData.dynamic = true;
+  for (const c of crabs) c.c.root.userData.dynamic = true;
+  lounge.userData.dynamic = true;
+  const tb = performance.now();
+  const batches = batchStatic(scene);
+  console.log(`[ending] beach batched in ${Math.round(performance.now() - tb)} ms (${batches.reduce((n, m) => n + m.userData.batched, 0)} props → ${batches.length} batches)`);
 
   const onResize = () => { fitFov(camera, 40, 62); fitFov(surfaceCamera, 24, 40); };
 

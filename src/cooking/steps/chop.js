@@ -2,13 +2,13 @@
 // mouse along x; click to chop. Each chop takes the nearest uncut line and scores by distance.
 // The voxel ingredient is really split at the knife, so sloppy cuts make uneven pieces.
 import { Step, V3, THREE } from './base.js';
-import { spriteCells, slabMesh, mainColor, itemName } from '../food.js';
+import { spriteCells, slabMesh, mainColor, itemName, pxFor } from '../food.js';
 import { dashTex } from '../tex.js';
 import { crumbs, sparkle } from '../fx.js';
 import { BOARD_TOP } from '../kitchen.js';
 import { clamp, damp } from '../../core/util.js';
 
-const PX = 0.046;
+const PX = 0.046; // world size of one 16px-icon pixel (cut scoring is measured in these)
 const DEPTH = 3;
 const GAP = 0.032;
 const EDGE = new THREE.Vector3(-0.0125, -0.0625, 0.52); // knife-local point on the edge, mid-blade
@@ -24,6 +24,7 @@ export class ChopStep extends Step {
     this.item = this.opts.item;
     this.sprite = spriteCells(this.item, { horizontal: true });
     const { x0, x1, z0, z1 } = this.sprite;
+    this.px = pxFor(this.sprite, PX); // world size of one real icon pixel
     this.cx = (x0 + x1 + 1) / 2;
     const S = this.S;
     this.base = V3(S.x, BOARD_TOP, S.z - 0.04);
@@ -31,7 +32,7 @@ export class ChopStep extends Step {
     this.color = mainColor(this.item);
     // guide lines at column boundaries
     const w = x1 - x0 + 1;
-    const n = clamp(Math.round(w / 2.3), 4, 6);
+    const n = clamp(Math.round((w * this.px / PX) / 2.3), 4, 6);
     const seen = new Set();
     this.lines = [];
     for (let k = 1; k <= n; k++) {
@@ -40,7 +41,7 @@ export class ChopStep extends Step {
       seen.add(b);
       this.lines.push({ b, x: this.bx(b), cut: false, score: 0 });
     }
-    const len = (z1 - z0 + 1) * PX + 0.14;
+    const len = (z1 - z0 + 1) * this.px + 0.14;
     const tex = dashTex();
     tex.repeat.set(1, len / 0.1);
     for (const L of this.lines) {
@@ -67,7 +68,7 @@ export class ChopStep extends Step {
   }
 
   /** World x of an icon column boundary. */
-  bx(b) { return this.base.x + (b - this.cx) * PX; }
+  bx(b) { return this.base.x + (b - this.cx) * this.px; }
 
   rebuild() {
     for (const p of this.pieces) { p.mesh.parent?.remove(p.mesh); p.mesh.geometry.dispose(); }
@@ -128,6 +129,8 @@ export class ChopStep extends Step {
     for (const L of this.lines) {
       L.mesh.visible = !L.cut;
       const near = Math.abs(L.x + this.pieceShift(L.b) - this.knifeX) < PX * 0.55;
+      if (near && !L.wasNear) this.audio.tone({ f: 1400, type: 'sine', dur: 0.025, vol: 0.03 });
+      L.wasNear = near;
       L.mesh.material.color.set(near ? 0xffd84a : 0xffffff);
       L.mesh.position.x = L.x + this.pieceShift(L.b);
     }
@@ -181,7 +184,7 @@ export class ChopStep extends Step {
     best.cut = true;
     best.score = dpx <= 0.35 ? 100 : clamp(100 - (dpx - 0.35) * 55, 0, 100);
     // where the blade really landed (column boundary under the knife)
-    let b = clamp(Math.round((kx - this.base.x - this.pieceShift(best.b)) / PX + this.cx), x0 + 1, x1);
+    let b = clamp(Math.round((kx - this.base.x - this.pieceShift(best.b)) / this.px + this.cx), x0 + 1, x1);
     if (this.cuts.includes(b)) b = best.b;
     if (!this.cuts.includes(b)) this.cuts.push(b);
     this.rebuild();

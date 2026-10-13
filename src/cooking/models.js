@@ -1,20 +1,21 @@
 // Voxel props for the first-person kitchen. 1 voxel = PS world units (finer than characters,
 // since everything here is seen up close).
 import * as THREE from 'three';
-import { VoxelGrid, voxelMesh } from '../gfx/Voxel.js';
-import { hashStr, shade, mixHex, makeRng } from '../core/util.js';
+import { VoxelGrid } from '../gfx/Voxel.js';
+import { voxMesh, hash3 } from '../bookends/vox.js';
+import { shade, mixHex, makeRng } from '../core/util.js';
 import { PixelCanvas, pixelTexture } from '../gfx/PixelArt.js';
 
 export const PS = 1 / 40;
 
-/** Deterministic per-voxel color jitter. */
+/** Deterministic per-voxel color jitter (fast integer hash). */
 export function jit(c, x, y, z, seed = 1, amt = 0.06) {
-  const h = (hashStr(`${x},${y},${z},${seed}`) % 1000) / 1000;
-  return shade(c, 1 + (h - 0.5) * 2 * amt);
+  return shade(c, 1 + (hash3(x | 0, y | 0, z | 0, seed) - 0.5) * 2 * amt);
 }
 
+/** Mesh a prop grid (greedy-merged faces, baked AO) on the outline layer. */
 export function vmesh(grid, pivot, opts = {}) {
-  return voxelMesh(grid, { pivot, scale: opts.scale ?? PS, kind: opts.kind || 'toon', outline: opts.outline ?? true, shade: opts.shade, material: opts.material, matOpts: opts.matOpts });
+  return voxMesh(grid, { pivot, scale: opts.scale ?? PS, kind: opts.kind || 'toon', outline: opts.outline ?? true, shade: opts.shade, material: opts.material, matOpts: opts.matOpts });
 }
 
 /** Fill a ring (hollow cylinder slice) between rIn and rOut, centered at (cx, cz). rIn <= 0 → solid disc. */
@@ -38,26 +39,36 @@ const metal = (base, seed) => (x, y, z, d, a) => {
 };
 
 // ---------------------------------------------------------------- work surfaces & tools
+/** End-glued maple board: three strips with wavy grain, a juice groove, knife scars and a beet stain. */
 export function cuttingBoard() {
   const W = 48, D = 30;
   const g = new VoxelGrid(W, 3, D);
+  const STRIPS = [0xd9a866, 0xcf9c5a, 0xe2b272];
   g.rbox(0, 0, 0, W, 3, D, (x, y, z) => {
-    let c = 0xd9a866;
-    if ((z * 5 + Math.floor(x / 7)) % 9 === 0) c = 0xc99456;
-    if ((x + z * 3) % 23 === 0) c = 0xe6b878;
-    if (x === 0 || z === 0 || x === W - 1 || z === D - 1) c = 0xb98448;
-    if (y < 2) c = shade(c, 0.85);
-    return jit(c, x, y, z, 11, 0.04);
+    const strip = Math.floor(z / 10);
+    let c = STRIPS[strip % 3];
+    const wave = Math.sin(x * 0.23 + strip * 2.1 + Math.sin(z * 0.8 + x * 0.06) * 1.4);
+    if (wave > 0.78) c = shade(c, 0.86);
+    else if (wave < -0.92) c = shade(c, 1.07);
+    if (z % 10 === 0 && z > 0) c = 0xb98448; // glue line
+    if (x === 0 || z === 0 || x === W - 1 || z === D - 1) c = shade(c, 0.82);
+    if (y < 2) c = shade(c, 0.84);
+    return c;
   }, 2);
+  // juice groove running around the top, two voxels in from the edge
+  for (let x = 2; x < W - 2; x++) for (let z = 2; z < D - 2; z++) {
+    const ring = x === 2 || x === W - 3 || z === 2 || z === D - 3;
+    if (ring && !(x > W - 8 && z > 10 && z < 20)) g.set(x, 2, z, 0xb07a44);
+  }
   // handle hole at the right end
   for (let z = 12; z < 18; z++) for (let x = W - 6; x < W - 3; x++) for (let y = 0; y < 3; y++) g.clear(x, y, z);
-  // knife marks & a beet stain
+  // knife scars & a beet stain
   const rng = makeRng(5);
-  for (let i = 0; i < 14; i++) {
-    const x = rng.int(4, W - 10), z = rng.int(3, D - 4);
-    for (let k = 0; k < rng.int(2, 4); k++) if (g.filled(x, 2, z + k)) g.set(x, 2, z + k, 0xb07a44);
+  for (let i = 0; i < 22; i++) {
+    const x = rng.int(5, W - 11), z = rng.int(4, D - 5);
+    for (let k = 0; k < rng.int(2, 5); k++) if (g.filled(x + (k > 2 ? 1 : 0), 2, z + k)) g.set(x + (k > 2 ? 1 : 0), 2, z + k, 0xb47e48);
   }
-  for (const [x, z] of [[8, 6], [9, 6], [8, 7], [10, 7], [9, 8]]) g.set(x, 2, z, 0xb0645a);
+  for (const [x, z] of [[8, 6], [9, 6], [8, 7], [10, 7], [9, 8], [11, 8], [10, 9]]) g.set(x, 2, z, x % 2 ? 0xb0645a : 0xa05050);
   return vmesh(g, [W / 2, 3, D / 2]); // origin at top center
 }
 
@@ -141,27 +152,77 @@ export function saltShaker() {
 }
 
 // ---------------------------------------------------------------- vessels
-/** Copper stock pot. Origin at bottom center. userData.liquidY = inner liquid height. */
+/**
+ * Copper stock pot at double density: hammered body (every dimple catches the light), two raised
+ * bands, a rolled brass lip, riveted iron loop handles, a maker's stamp and soot creeping up from
+ * the flame. Origin at bottom center. userData.liquidY = inner liquid height, innerR = inner radius.
+ */
 export function pot() {
-  const H = 17, R = 13.5;
-  const g = new VoxelGrid(36, H, 30);
-  const cx = 18, cz = 15;
-  const cop = metal(0x6a3a28, 4);
-  ring(g, cx, cz, R - 1, -1, 0, 1, 0x6a3420);
-  ring(g, cx, cz, R, R - 1.6, 1, H - 1, (x, y, z, d, a) => (y === 3 || y === 12 ? shade(cop(x, y, z, d, a), 0.86) : cop(x, y, z, d, a)));
-  ring(g, cx, cz, R - 1.6, -1, 1, 2, 0x4a2414);
-  ring(g, cx, cz, R + 0.6, R - 1.4, H - 1, H, (x, y, z, d, a) => metal(0xc8a050, 5)(x, y, z, d, a));
-  // side handles
-  for (const s of [-1, 1]) {
-    const hx = s < 0 ? cx - R - 3 : cx + R + 1;
-    for (let y = H - 6; y < H - 2; y++) for (let z = cz - 3; z < cz + 3; z++) {
-      const edge = y === H - 6 || y === H - 3 || z === cz - 3 || z === cz + 2;
-      if (edge) { g.set(hx, y, z, 0x5a5a62); g.set(hx + 1, y, z, 0x5a5a62); }
+  const k = 2, H = 17 * k, R = 13.5 * k, T = 3;
+  const W = Math.ceil(2 * R) + 18, D = Math.ceil(2 * R) + 4;
+  const g = new VoxelGrid(W, H + 1, D);
+  const cx = W / 2, cz = D / 2;
+  const COP = 0x7a4029, BRASS = 0xc8a050, IRON = 0x4a4a52;
+  const cell = 3.4;
+  // hammered copper: staggered dimples in (arc, height) space, lit from the upper left
+  const hammered = (x, y, z, d, a) => {
+    const u = a * R / cell, v = y / cell;
+    const row = Math.floor(v), fu = u + (row % 2) * 0.5;
+    const du = fu - Math.floor(fu) - 0.5, dv = v - row - 0.5;
+    const lit = Math.cos(a - 2.2);
+    let c = lit > 0.88 ? mixHex(COP, 0xfff0d8, 0.34) : lit > 0.55 ? shade(COP, 1.14) : lit < -0.6 ? shade(COP, 0.8) : COP;
+    const dim = du * du + dv * dv;
+    if (dim < 0.12) c = shade(c, 1 + (-du * 0.5 + dv * 0.6) * 0.5);   // dimple: bright rim upper-left, dark lower-right
+    else if (dim > 0.22 && hash3(Math.floor(fu), row, 7, 3) < 0.25) c = shade(c, 1.06);
+    // soot from the burner, licking up in tongues
+    const soot = 1 - (y - 1) / (7 + 5 * hash3(Math.round(a * 9), 0, 0, 11));
+    if (soot > 0) c = mixHex(c, 0x241812, Math.min(0.85, soot * 0.9));
+    else if (hash3(x, y, z, 5) < 0.012) c = 0x5a9078;               // verdigris speck
+    return jit(c, x, y, z, 4, 0.035);
+  };
+  // floor + body
+  ring(g, cx, cz, R - 1.5, -1, 0, 1, 0x4a2618);
+  ring(g, cx, cz, R - 0.5, -1, 1, 2, (x, y, z) => jit(0x5a2e1c, x, y, z, 2, 0.05));
+  ring(g, cx, cz, R, R - T, 2, H - 2, hammered);
+  ring(g, cx, cz, R - T, -1, 2, 3, (x, y, z) => jit(0x4a2414, x, y, z, 3, 0.06));
+  // raised bands
+  for (const yb of [6, 23]) ring(g, cx, cz, R + 0.8, R - 1, yb, yb + 2, (x, y, z, d, a) => {
+    const lit = Math.cos(a - 2.2);
+    const c = y === yb + 1 ? mixHex(COP, 0xffe8c8, lit > 0.5 ? 0.42 : 0.18) : shade(COP, lit > 0.3 ? 1 : 0.78);
+    return jit(c, x, y, z, 6, 0.03);
+  });
+  // rolled brass lip
+  ring(g, cx, cz, R + 1.2, R - T - 0.4, H - 2, H, (x, y, z, d, a) => {
+    const lit = Math.cos(a - 2.2);
+    let c = y === H - 1 ? mixHex(BRASS, 0xfff6d8, lit > 0.6 ? 0.45 : 0.15) : shade(BRASS, lit > 0 ? 0.92 : 0.72);
+    if (d < R - T + 0.6) c = shade(BRASS, 0.7);
+    return jit(c, x, y, z, 8, 0.04);
+  });
+  // maker's stamp facing the cook (+z side): a little star in a circle
+  const sz = Math.round(cz + R) - 1;
+  for (let yy = -3; yy <= 3; yy++) for (let xx = -3; xx <= 3; xx++) {
+    const r = Math.hypot(xx, yy);
+    if ((r > 2.4 && r < 3.4) || (Math.abs(xx) + Math.abs(yy) <= 1)) g.set(Math.floor(cx) + xx, 15 + yy, sz, shade(COP, 0.62));
+  }
+  // riveted iron loop handles on both sides
+  for (const sd of [-1, 1]) {
+    const wall = sd < 0 ? Math.floor(cx - R) : Math.ceil(cx + R) - 1;
+    for (let y = H - 13; y < H - 4; y++) for (let z = Math.floor(cz) - 5; z <= Math.floor(cz) + 4; z++) {
+      const plate = y >= H - 12 && y < H - 5 && Math.abs(z + 0.5 - cz) < 4.5;
+      if (!plate) continue;
+      const rivet = (y === H - 11 || y === H - 7) && (z === Math.floor(cz) - 3 || z === Math.floor(cz) + 2);
+      g.set(wall + sd, y, z, rivet ? 0x8a8a92 : jit(IRON, wall, y, z, 9, 0.06));
+    }
+    // the loop: out from the plate, around and back
+    const x0 = wall + sd * 2;
+    for (let t = 0; t <= 7; t++) for (let y = H - 9; y < H - 7; y++) {
+      for (const z of [Math.floor(cz) - 5, Math.floor(cz) - 4, Math.floor(cz) + 3, Math.floor(cz) + 4]) if (t < 6) g.set(x0 + sd * t, y, z, t > 4 ? 0x5a5a64 : IRON);
+      if (t === 6) for (let z = Math.floor(cz) - 5; z <= Math.floor(cz) + 4; z++) { g.set(x0 + sd * 6, y, z, z === Math.floor(cz) ? 0x6e6e78 : 0x52525c); g.set(x0 + sd * 7, y, z, 0x3a3a42); }
     }
   }
-  const m = vmesh(g, [cx, 0, cz]);
+  const m = vmesh(g, [cx, 0, cz], { scale: PS / k });
   m.userData.liquidY = 12.5 * PS;
-  m.userData.innerR = (R - 1.6) * PS;
+  m.userData.innerR = (R - T) / k * PS;
   return m;
 }
 
@@ -351,6 +412,32 @@ export function stoveTop(widthU, depthU) {
     group.add(post);
   }
   return { group, burners, grates, height: H };
+}
+
+/** A hanging copper saucepan (origin at the hook). size: radius in voxels. */
+export function copperPan(r = 9, deep = 7, seed = 1) {
+  const L = r * 2 + 24;
+  const g = new VoxelGrid(r * 2 + 4, L, 4 + deep);
+  const cx = r + 2;
+  // the pan hangs by its handle: the bowl at the bottom, its open face toward +z
+  for (let y = 0; y < r * 2 + 2; y++) for (let x = 0; x < r * 2 + 4; x++) {
+    const d = Math.hypot(x + 0.5 - cx, y + 0.5 - (r + 1));
+    if (d > r + 0.4) continue;
+    const ang = Math.atan2(y - (r + 1), x - cx);
+    const k = Math.cos(ang - 2.3);
+    const rim = d > r - 1.2;
+    for (let z = 0; z < deep; z++) {
+      if (!rim && z > 0) continue;
+      let c = rim ? (z === deep - 1 ? 0xf0b080 : 0xc8703a) : 0xa85a30;
+      if (!rim && k > 0.75) c = 0xf0a070; else if (!rim && k > 0.4) c = 0xd8804a; else if (!rim && k < -0.6) c = 0x8a4626;
+      if (!rim && Math.abs(d - r * 0.55) < 0.6) c = shade(c, 0.9); // a hammered ring
+      g.set(x, y, z, c);
+    }
+  }
+  // handle up to the hook
+  for (let y = r * 2 + 1; y < L - 2; y++) { g.set(cx, y, 1, 0x7a4a2a); g.set(cx + 1, y, 1, 0x8a5a32); }
+  g.box(cx - 1, L - 3, 0, 4, 1, 3, 0x5a5a62); g.set(cx, L - 1, 1, 0x5a5a62); g.set(cx + 1, L - 2, 1, 0x5a5a62);
+  return vmesh(g, [cx + 0.5, L, 1]);
 }
 
 /** One flame tongue (unlit). */

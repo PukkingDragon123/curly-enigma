@@ -2,9 +2,11 @@
 // cast-iron stove with burners and flames, and all the props the minigames use.
 import * as THREE from 'three';
 import * as M from './models.js';
-import { wallPlanksTex, counterTex, beamTex, caveViewTex, nuggetPortraitTex, chalkboardTex } from './tex.js';
+import { wallPlanksTex, counterTex, beamTex, caveViewTex, nuggetPortraitTex, chalkboardTex, tilesTex } from './tex.js';
 import { setOutline } from '../gfx/Voxel.js';
 import { makeRng } from '../core/util.js';
+import { flameSheet, makeSheetSprite } from '../bookends/fx.js';
+import { batchStatic } from '../bookends/batch.js';
 
 const PS = M.PS;
 
@@ -29,11 +31,17 @@ export class Kitchen {
     this.flames = [[], []];
     this.burnerOn = [0, 0];
     this.burnerHeat = [0, 0];
+    const t0 = performance.now();
     this.buildLights();
     this.buildRoom();
     this.buildStove();
     this.buildWallDecor();
     this.buildProps();
+    // everything that never moves becomes a few merged meshes
+    for (const o of Object.values(this.props)) o.userData.dynamic = true;
+    for (const sw of this.sway) sw.obj.userData.dynamic = true;
+    const batches = batchStatic(this.root);
+    this.stats = { ms: performance.now() - t0, batches: batches.length, batched: batches.reduce((n, b) => n + b.userData.batched, 0) };
   }
 
   add(obj, x, y, z, ry = 0) {
@@ -63,6 +71,15 @@ export class Kitchen {
     const wall = new THREE.Mesh(new THREE.PlaneGeometry(wallW, wallH), new THREE.MeshLambertMaterial({ map: wallPlanksTex([wallW / 4, wallH / 3]) }));
     wall.position.set(0, wallH / 2 - 0.3, WALL_Z);
     this.root.add(wall);
+    // a band of hand-made tiles behind the counter (sooty behind the stove)
+    const tw = 13, th = 0.56;
+    const sootX = [Math.round((STOVE.x0 + 6.5) * 32), Math.round((STOVE.x1 + 6.5) * 32)];
+    const tiles = new THREE.Mesh(new THREE.PlaneGeometry(tw, th), new THREE.MeshLambertMaterial({ map: tilesTex(tw, th, sootX) }));
+    tiles.position.set(0, th / 2, WALL_Z + 0.006);
+    this.root.add(tiles);
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(13, 0.05, 0.05), new THREE.MeshLambertMaterial({ map: beamTex([13, 1]) }));
+    trim.position.set(0, th + 0.02, WALL_Z + 0.025);
+    this.root.add(trim);
     // counter top (left part and right part around the stove)
     const mkCounter = (x0, x1) => {
       const w = x1 - x0, d = 0.85 - WALL_Z;
@@ -144,17 +161,21 @@ export class Kitchen {
       band.position.set(STOVE.x1 - 0.3, y, WALL_Z + 0.2);
       this.root.add(band);
     }
-    // flames around each burner
+    // flames licking up around each burner: layered pixel flame sprites
+    const sheet = flameSheet(8, 14, 26, 5, [0xfffbe0, 0xffe066, 0xffa62a, 0xf0601a, 0xb8301a]);
+    const core = flameSheet(8, 10, 18, 9, [0xffffff, 0xd8f0ff, 0x8ac0ff, 0xffd060, 0xff9a2a]);
+    this.flameTextures = [sheet.texture, core.texture];
     for (let b = 0; b < 2; b++) {
-      const n = 14;
+      const n = 12;
       for (let i = 0; i < n; i++) {
-        const f = M.flameTongue();
+        const inner = i % 3 === 0;
+        const f = makeSheetSprite(inner ? core.texture : sheet.texture, { cols: 8, size: inner ? [0.07, 0.11] : [0.11, 0.2], anchor: [0.5, 0], renderOrder: 2 });
         const a = (i / n) * Math.PI * 2;
-        const r = 0.29 + (i % 2) * 0.025;
-        f.position.set(this.burners[b].x + Math.cos(a) * r, STOVE.top + 0.005, this.burners[b].z + Math.sin(a) * r);
-        f.rotation.y = -a;
+        const r = inner ? 0.25 : 0.29 + (i % 2) * 0.02;
+        f.position.set(this.burners[b].x + Math.cos(a) * r, STOVE.top + 0.004, this.burners[b].z + Math.sin(a) * r);
         f.visible = false;
-        f.userData = { a, ph: Math.random() * 10, sp: 9 + Math.random() * 7 };
+        f.userData.a = a; f.userData.ph = Math.random() * 10; f.userData.sp = 9 + Math.random() * 7; f.userData.rate = 10 + Math.random() * 6;
+        f.userData.dynamic = true;
         this.root.add(f);
         this.flames[b].push(f);
       }
@@ -224,6 +245,22 @@ export class Kitchen {
     const hp = M.hangingPan(); this.add(hp, 2.3, 1.62, z + 0.08);
     const ld2 = M.ladle(); this.add(ld2, 2.75, 1.62, z + 0.12);
     this.sway.push({ obj: ld, amp: 0.04, sp: 1.1, ph: 1, axis: 'z' }, { obj: ld2, amp: 0.05, sp: 1.3, ph: 2, axis: 'z' });
+    // a wrought-iron pot rack with copper pans over the left counter
+    const rack = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.035, 0.035), new THREE.MeshLambertMaterial({ color: 0x3a3438 }));
+    rack.position.set(-2.55, 2.02, z + 0.42);
+    setOutline(rack, true);
+    this.root.add(rack);
+    for (const sx of [-0.72, 0.72]) {
+      const chain = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.3, 0.02), new THREE.MeshLambertMaterial({ color: 0x3a3438 }));
+      chain.position.set(-2.55 + sx, 2.17, z + 0.42);
+      this.root.add(chain);
+    }
+    [[-3.1, 10, 7, 1.0], [-2.6, 8, 6, 0.9], [-2.12, 11, 8, 1.05], [-1.95, 6, 5, 0.8]].forEach(([x, r, d, sc], i) => {
+      const pan = M.copperPan(r, d, i + 1);
+      pan.scale.setScalar(sc);
+      this.add(pan, x, 2.02, z + 0.42, (i % 2 ? 0.25 : -0.2));
+      this.sway.push({ obj: pan, amp: 0.035, sp: 0.9 + i * 0.13, ph: i * 1.7, axis: 'z' });
+    });
     // right side: spice rack, garlic
     this.add(M.spiceRack(), 4.4, 0.42, z + 0.01);
     const gb = M.garlicBraid(4); gb.scale.setScalar(1.2); this.add(gb, 3.95, 1.9, z + 0.14);
@@ -281,9 +318,9 @@ export class Kitchen {
         f.visible = h > 0.05;
         if (!f.visible) continue;
         const u = f.userData;
-        const fl = 0.75 + Math.sin(t * u.sp + u.ph) * 0.18 + Math.sin(t * u.sp * 2.3 + u.ph * 2) * 0.12;
-        f.scale.set(1, Math.max(0.1, fl * h * 0.9), 1);
-        f.rotation.z = Math.sin(t * 5 + u.ph) * 0.15;
+        const fl = 0.8 + Math.sin(t * u.sp + u.ph) * 0.16 + Math.sin(t * u.sp * 2.3 + u.ph * 2) * 0.1;
+        f.scale.set(0.85 + h * 0.15, Math.max(0.1, fl * h), 1);
+        u.sheet.uFrame.value = Math.floor(t * u.rate + u.ph) % 8;
       }
       const g = this.stove.grates[b];
       const k = 0.2 + h * (0.8 + Math.sin(t * 13 + b) * 0.08);

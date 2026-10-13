@@ -220,6 +220,57 @@ export function liquidTex(color, opts = {}) {
 export function dashTex() {
   const pc = new PixelCanvas(2, 16);
   for (let y = 0; y < 16; y++) if (y % 4 < 2) { pc.set(0, y, 0xffffff); pc.set(1, y, 0xffffff); }
+  return tex(pc, [1, 1]);
+}
+
+/**
+ * Hand-made ceramic tiles for the backsplash (32 px per unit): cream and terracotta in a
+ * checker, the odd painted tile (a mushroom, a little flower, a hen), grout lines, a few
+ * chipped corners and soot behind the stove. sootX = [x0, x1] in texels to blacken.
+ */
+export function tilesTex(wU, hU, sootX = null) {
+  const T = 6; // tile size in texels (+1 grout)
+  const W = Math.round(wU * 32), H = Math.round(hU * 32);
+  const pc = new PixelCanvas(W, H);
+  const rng = makeRng(23);
+  const CREAM = [0xf0e2c0, 0xeadabb, 0xf4e8cc], TERRA = [0xc86a4a, 0xbe6244, 0xd07452], BLUE = 0x4a78b8, GROUT = 0x8a7a6a;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const tx = Math.floor(x / (T + 1)), ty = Math.floor(y / (T + 1));
+    const ix = x % (T + 1), iy = y % (T + 1);
+    if (ix === T || iy === T) { pc.set(x, y, GROUT); continue; }
+    const terra = (tx + ty) % 2 === 1;
+    const h = ((tx * 73856093) ^ (ty * 19349663)) >>> 0;
+    let c = terra ? TERRA[h % 3] : CREAM[h % 3];
+    // glaze: a bright corner highlight and a darker lower edge
+    if (ix === 0 || iy === 0) c = shade(c, 1.08);
+    if (iy === T - 1) c = shade(c, 0.9);
+    if (ix === 1 && iy === 1) c = 0xfffaf0;
+    pc.set(x, y, c);
+  }
+  // painted cream tiles
+  const motifs = [
+    ['..BB..', '.BBBB.', 'BBWBBB', '..ww..', '..ww..', '......'], // mushroom
+    ['......', '.R..R.', 'RRRRRR', '.RRRR.', '..RR..', '......'], // heart
+    ['..Y...', '.YOY..', '..Y.G.', '...GG.', '..G...', '......'], // flower
+    ['......', '.B.B..', 'BBBBB.', '.BBB..', '..B...', '......'], // little bird
+  ];
+  const pal = { B: BLUE, W: 0xffffff, w: 0xe8e0d0, R: 0xc8403a, Y: 0xf0c030, O: 0xe07a2a, G: 0x5a9a3a };
+  for (let ty = 0; ty < Math.floor(H / (T + 1)); ty++) for (let tx = 0; tx < Math.floor(W / (T + 1)); tx++) {
+    if ((tx + ty) % 2 === 1 || !rng.chance(0.16)) continue;
+    const m = rng.pick(motifs);
+    m.forEach((row, yy) => { for (let xx = 0; xx < row.length; xx++) if (pal[row[xx]]) pc.set(tx * (T + 1) + xx, ty * (T + 1) + yy, pal[row[xx]]); });
+  }
+  // chips and cracks
+  for (let i = 0; i < 18; i++) {
+    const x = rng.int(0, W - 1), y = rng.int(0, H - 1);
+    pc.set(x, y, 0x6a5a4a); if (rng.chance(0.5)) pc.set(x + 1, y + 1, 0x6a5a4a);
+  }
+  if (sootX) {
+    for (let y = 0; y < H; y++) for (let x = sootX[0]; x < sootX[1]; x++) {
+      const k = Math.max(0, 1 - Math.abs(x - (sootX[0] + sootX[1]) / 2) / ((sootX[1] - sootX[0]) / 2)) * (0.35 + 0.65 * (1 - y / H));
+      if (k > 0.05 && rng() < k * 1.2) pc.set(x, y, mixHex(pc.getHex(x, y), 0x2a1e1a, Math.min(0.7, k * 0.9)));
+    }
+  }
   return tex(pc);
 }
 

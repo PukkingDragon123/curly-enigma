@@ -1,6 +1,10 @@
 // Ingredients and dishes as chunky voxel sprites: the 16×16 item icon extruded into voxels.
 // Also: per-ingredient colors (for chunks, particles, liquids) and slicing for the chop step.
-import { VoxelGrid, voxelMesh } from '../gfx/Voxel.js';
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { VoxelGrid, voxelMesh, voxelMaterial } from '../gfx/Voxel.js';
+import { LAYER_OUTLINE } from '../core/Engine.js';
+import { meshVoxGreedy, hash3 } from '../bookends/vox.js';
 import { iconCanvas } from '../gfx/PixelArt.js';
 import { FIXED } from '../gfx/sprites16.js';
 import { ITEMS } from '../data/items.js';
@@ -29,9 +33,28 @@ export function iconPixels(id) {
     if (c === null || luma(c) > 0.24) continue;
     if (at(x - 1, y) === null || at(x + 1, y) === null || at(x, y - 1) === null || at(x, y + 1) === null) trimmed[y * W + x] = null;
   }
-  const out = { W, H, px: trimmed, raw: px };
+  const out = { W, H, px: trimmed, raw: px, res: Math.max(W, H) };
   pixCache.set(id, out);
   return out;
+}
+
+/** Chamfer distance (in pixels) from each opaque cell to the nearest transparent one. */
+function insetMap(occ, W, H) {
+  const d = new Float32Array(W * H);
+  const INF = 1e4;
+  for (let i = 0; i < W * H; i++) d[i] = occ[i] ? INF : 0;
+  const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : d[x + y * W]);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = x + y * W;
+    if (!d[i]) continue;
+    d[i] = Math.min(d[i], at(x - 1, y) + 1, at(x, y - 1) + 1, at(x - 1, y - 1) + 1.4, at(x + 1, y - 1) + 1.4);
+  }
+  for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) {
+    const i = x + y * W;
+    if (!d[i]) continue;
+    d[i] = Math.min(d[i], at(x + 1, y) + 1, at(x, y + 1) + 1, at(x + 1, y + 1) + 1.4, at(x - 1, y + 1) + 1.4);
+  }
+  return d;
 }
 
 /** Representative color of an item: its most common mid-tone pixel color. */
@@ -80,40 +103,64 @@ export function spriteCells(id, { horizontal = false } = {}) {
     cells = cells.map((q) => ({ x: H - 1 - q.z, z: q.x, c: q.c }));
     b = bounds(cells);
   }
-  return { cells, ...b };
+  return { cells, ...b, res: Math.max(W, H) };
 }
 
+/** World size of one icon pixel for a sprite, given a size designed for 16px icons. */
+export function pxFor(sprite, px16) { return px16 * 16 / (sprite.res || 16); }
+
 /**
- * Build a flat voxel slab from sprite cells (lying on its back, icon top = far side).
+ * Build a voxel slab from sprite cells (lying on its back, icon top = far side). The slab is
+ * puffy: thickest in the middle of the shape and rounded off toward its outline, with the icon's
+ * pixel art on top and darker, warmer sides. Sizes are given for 16px icons (px = world size of
+ * one 16px-icon pixel, depth = thickness in those pixels) and scale to the icon's real resolution.
  * cols: [from, to) column filter. Returns a mesh with origin at the bottom center of the FULL sprite.
  */
 export function slabMesh(sprite, { px = 0.035, depth = 2, cols = null, kind = 'toon', material = null } = {}) {
   const { cells, x0, x1, z0, z1 } = sprite;
-  const g = new VoxelGrid(16, depth, 16);
+  const res = sprite.res || 16;
+  const k = res / 16;
+  const pxe = px / k;
+  const D = Math.max(1, Math.round(depth * k));
+  const occ = new Uint8Array(res * res);
+  for (const q of cells) occ[q.x + q.z * res] = 1;
+  const inset = insetMap(occ, res, res);
+  const g = new VoxelGrid(res, D, res);
   for (const q of cells) {
     if (cols && (q.x < cols[0] || q.x >= cols[1])) continue;
-    for (let y = 0; y < depth; y++) g.set(q.x, y, q.z, y === depth - 1 ? q.c : shade(q.c, 0.82));
+    const r = inset[q.x + q.z * res];
+    const h = Math.max(1, Math.min(D, Math.round(D * Math.min(1, 0.45 + r / (2.2 * k)))));
+    for (let y = 0; y < h; y++) g.set(q.x, y, q.z, y === h - 1 ? q.c : y === h - 2 ? shade(q.c, 0.9) : mixHex(shade(q.c, 0.72), 0x3a1a10, 0.12));
   }
   const cx = (x0 + x1 + 1) / 2, cz = (z0 + z1 + 1) / 2;
-  return voxelMesh(g, { pivot: [cx, 0, cz], scale: px, kind, material, outline: true });
+  return voxelMesh(g, { pivot: [cx, 0, cz], scale: pxe, kind, material, outline: true, greedy: true });
 }
 
 /**
- * An upright sprite (standing, facing +z) — for dishes on the plate and held items.
- * Origin at the bottom center.
+ * An upright sprite (standing, facing +z): for dishes on the plate and held items. Puffy like the
+ * slabs (thicker in the middle). Origin at the bottom center. Sizes as for slabMesh.
  */
 export function standeeMesh(id, { px = 0.035, depth = 2, kind = 'toon', material = null } = {}) {
   const { W, H, px: pix } = iconPixels(id);
-  const g = new VoxelGrid(W, H, depth);
-  let x0 = 99, x1 = -1, yb = 99;
+  const res = Math.max(W, H);
+  const k = res / 16;
+  const pxe = px / k;
+  const D = Math.max(2, Math.round(depth * k));
+  const occ = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) occ[i] = pix[i] === null ? 0 : 1;
+  const inset = insetMap(occ, W, H);
+  const g = new VoxelGrid(W, H, D * 2 + 1);
+  let x0 = 1e9, x1 = -1, yb = 1e9;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const c = pix[y * W + x];
     if (c === null) continue;
     const vy = H - 1 - y;
-    for (let z = 0; z < depth; z++) g.set(x, vy, z, z === depth - 1 ? c : shade(c, 0.8));
+    const r = inset[x + y * W];
+    const h = Math.max(1, Math.min(D, Math.round(D * Math.min(1, 0.4 + r / (2.2 * k)))));
+    for (let z = D - h; z <= D + h; z++) g.set(x, vy, z, z === D + h ? c : z === D - h ? shade(c, 0.8) : shade(c, 0.86));
     x0 = Math.min(x0, x); x1 = Math.max(x1, x); yb = Math.min(yb, vy);
   }
-  return voxelMesh(g, { pivot: [(x0 + x1 + 1) / 2, yb, depth / 2], scale: px, kind, material, outline: true });
+  return voxelMesh(g, { pivot: [(x0 + x1 + 1) / 2, yb, D + 0.5], scale: pxe, kind, material, outline: true, greedy: true });
 }
 
 /** Which ingredients get chopped (solid things first). */
@@ -126,19 +173,48 @@ export function chopQueue(ings) {
 
 export function itemName(id) { return ITEMS[id]?.name || id; }
 
-/** Mesh of little cube chunks (for soups, salads, pans). */
+/**
+ * Diced chunks for soups, salads and pans: every piece is its own little hand-cut voxel cube
+ * (flesh, a strip of skin/peel, a lighter cut top, nibbled corners) at a random yaw and tilt,
+ * all merged into one outlined mesh. `radius` is in units of `px` (the old chunk voxel size).
+ */
 export function chunkMesh(colors, n, radius, seed = 1, px = 0.03) {
-  const g = new VoxelGrid(32, 3, 32);
-  let s = seed * 9301 + 49297;
+  const fine = px * 0.4;
+  let s = (seed * 9301 + 49297) % 233280;
   const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
+  const geos = [], placed = [];
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
   for (let i = 0; i < n; i++) {
-    const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * radius;
-    const x = Math.round(16 + Math.cos(a) * r), z = Math.round(16 + Math.sin(a) * r);
-    const c = colors[i % colors.length];
-    g.set(x, 0, z, c); g.set(x + 1, 0, z, shade(c, 0.9));
-    if (rnd() < 0.6) g.set(x, 1, z, mixHex(c, 0xffffff, 0.15));
-    if (rnd() < 0.5) g.set(x, 0, z + 1, shade(c, 0.85));
+    let x = 0, z = 0;
+    for (let t = 0; t < 8; t++) {   // spread the pieces out a little (a few tries, then accept)
+      const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * radius * px;
+      x = Math.cos(a) * r; z = Math.sin(a) * r;
+      if (placed.every(([ox, oz]) => (ox - x) ** 2 + (oz - z) ** 2 > (px * 1.7) ** 2)) break;
+    }
+    placed.push([x, z]);
+    const base = colors[i % colors.length];
+    const w = 4 + ((rnd() * 3) | 0), d = 3 + ((rnd() * 3) | 0), h = 2 + ((rnd() * 2) | 0);
+    const g = new VoxelGrid(w, h, d);
+    const flesh = mixHex(base, 0xffffff, 0.1), skin = shade(base, 0.7), top = mixHex(base, 0xffffff, 0.28);
+    const skinSide = (rnd() * 5) | 0;   // 0..3: one side keeps its peel, 4: all flesh
+    for (let yy = 0; yy < h; yy++) for (let zz = 0; zz < d; zz++) for (let xx = 0; xx < w; xx++) {
+      const ex = xx === 0 || xx === w - 1, ez = zz === 0 || zz === d - 1;
+      if (ex && ez && (yy === h - 1 ? rnd() < 0.6 : rnd() < 0.15)) continue;   // nibbled corners
+      const peel = (skinSide === 0 && xx === 0) || (skinSide === 1 && xx === w - 1) || (skinSide === 2 && zz === 0) || (skinSide === 3 && zz === d - 1);
+      let c = peel ? skin : yy === h - 1 ? top : flesh;
+      if (!peel && yy === h - 1 && (ex || ez)) c = mixHex(c, 0xffffff, 0.12);   // bright cut edge
+      g.set(xx, yy, zz, shade(c, 1 + (hash3(xx, yy, zz, seed * 31 + i) - 0.5) * 0.14));
+    }
+    const geo = meshVoxGreedy(g, { scale: fine, pivot: [w / 2, h * 0.45, d / 2] });
+    e.set((rnd() - 0.5) * 0.4, rnd() * Math.PI * 2, (rnd() - 0.5) * 0.4);
+    m4.compose(p.set(x, 0, z), q.setFromEuler(e), one);
+    geo.applyMatrix4(m4);
+    geos.push(geo);
   }
-  return voxelMesh(g, { pivot: [16.5, 0, 16.5], scale: px, kind: 'toon', outline: true });
+  const merged = mergeGeometries(geos);
+  for (const g of geos) g.dispose();
+  const mesh = new THREE.Mesh(merged, voxelMaterial('toon'));
+  mesh.layers.enable(LAYER_OUTLINE);
+  return mesh;
 }
 

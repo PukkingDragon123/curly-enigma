@@ -4,8 +4,30 @@ import * as THREE from 'three';
 import { VoxelGrid, voxelMesh, voxelMaterial } from '../gfx/Voxel.js';
 import { METALS, INFUSIONS } from '../data/weapons.js';
 import { mixHex, shade } from '../core/util.js';
-import { applyHeat } from './blackbody.js';
+import { applyHeat, glowAmount, glowHex } from './blackbody.js';
 import { HAFTED } from './bladeSim.js';
+import { PixelCanvas, pixelTexture } from '../gfx/PixelArt.js';
+import { makeGlow } from '../bookends/fx.js';
+
+/** Mottled forge-scale texture: used as both colour and emissive map so hot metal glows unevenly. */
+let scaleTex = null;
+function getScaleTex() {
+  if (scaleTex) return scaleTex;
+  const pc = new PixelCanvas(16, 16);
+  let s = 91;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const v = rnd();
+    const blot = Math.sin(x * 0.9 + Math.sin(y * 0.7) * 2) + Math.sin(y * 1.1 + x * 0.3);
+    let c = v < 0.06 ? 0xffffff : blot > 1.2 ? 0x8a8a8a : blot < -1.35 ? 0x9a9a9a : v < 0.2 ? 0xc8c8c8 : 0xe6e6e6;
+    if (v > 0.97) c = 0x6a6a6a;
+    pc.set(x, y, c);
+  }
+  scaleTex = pixelTexture(pc.commit());
+  scaleTex.colorSpace = THREE.NoColorSpace;
+  scaleTex.userData.shared = true;
+  return scaleTex;
+}
 
 export const COL = 0.08; // world length of one column
 export const HWU = 0.028; // world units per half-width unit
@@ -25,8 +47,10 @@ export class BladeView {
     this.group = new THREE.Group();
     this.base = scaleColor(sim.metal);
     this.cols = [];
+    const st = getScaleTex();
     for (let i = 0; i < sim.maxLen; i++) {
       const mat = voxelMaterial('toon', { unique: true, vertexColors: false, color: this.base, emissive: 0x000000 });
+      mat.map = st; mat.emissiveMap = st;
       const m = new THREE.Mesh(unitBox, mat);
       m.visible = false;
       m.layers.enable(1);
@@ -35,6 +59,7 @@ export class BladeView {
     }
     // tang: a stub the tongs hold
     const tm = voxelMaterial('toon', { unique: true, vertexColors: false, color: this.base, emissive: 0x000000 });
+    tm.map = st; tm.emissiveMap = st;
     this.tang = new THREE.Mesh(unitBox, tm);
     this.tang.scale.set(0.16, 0.022, 0.035);
     this.tang.position.set(-0.08, 0.011, 0);
@@ -54,6 +79,10 @@ export class BladeView {
     this.group.add(this.ghostMesh);
     this.ghostW = 0;
     this.ghostCol = -1;
+    // a dithered heat haze around the bar while it glows
+    this.halo = makeGlow({ color: 0xff8a30, size: 1, intensity: 0, falloff: 1.6, levels: 6, renderOrder: 18 });
+    this.halo.position.set(0, 0.03, 0);
+    this.group.add(this.halo);
   }
 
   /** Show (col >= 0) or hide the predicted width of a column under a charging blow. */
@@ -95,7 +124,7 @@ export class BladeView {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
     const cols = new Float32Array(pts.length);
     geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-    const mat = new THREE.PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true, depthTest: false, transparent: true, opacity: 0.95 });
+    const mat = new THREE.PointsMaterial({ size: 3, sizeAttenuation: false, vertexColors: true, depthTest: false, transparent: true, opacity: 0.95 });
     const p = new THREE.Points(geo, mat);
     p.renderOrder = 25;
     p.frustumCulled = false;
@@ -145,6 +174,16 @@ export class BladeView {
       });
     }
     applyHeat(this.tangMat, this.base, sim.T[0] ?? 20, 0.7);
+    // heat halo: centred on the bar, as bright as its hottest part
+    let hot = 0, sumT = 0, sumX = 0;
+    for (let i = 0; i < sim.w.length; i++) { const T = sim.T[i] ?? 20; const k = glowAmount(T); if (k > 0) { sumT += k; sumX += k * (i + 0.5) * COL; } if (T > hot) hot = T; }
+    const gk = glowAmount(hot);
+    const hu = this.halo.userData.glow;
+    hu.uIntensity.value = Math.min(0.42, gk * 0.3) * (0.92 + Math.sin(time * 7.3) * 0.08);
+    if (gk > 0) hu.uColor.value.setHex(glowHex(hot));
+    hu.uSize.value.setScalar(0.35 + sim.length * COL * 1.15);
+    this.halo.position.x = sumT > 0 ? sumX / sumT : sim.length * COL * 0.5;
+    this.halo.visible = gk > 0.02;
     if (this.dots) {
       this.dots.position.y = maxTh + 0.004;
       const col = this.dots.geometry.attributes.color;
@@ -195,6 +234,7 @@ export class BladeView {
   }
 
   dispose() {
+    this.halo.material.dispose();
     for (const c of this.cols) c.mat.dispose();
     this.tangMat.dispose();
     this.crackMat.dispose();
@@ -205,105 +245,173 @@ export class BladeView {
 }
 
 // ---------------------------------------------------------------- finished weapon model
-const VW = COL / 3; // weapon model voxel size: 3 voxels per column, ~1 voxel per half-width unit
+const VPC = 6; // weapon model voxels per column
+const VW = COL / VPC; // weapon model voxel size
+const RW = HWU / VW; // voxels per half-width unit
 
 const INF_VEIN = {
   bioxide: 0x9af4ff, magmaite: 0xffa040, frostite: 0xe8fcff, gravium: 0xd8b8ff, voidstone: 0x9a5aff,
   lumite: 0xb8ffb0, obsidian_shard: 0x8a6ab0, echo_crystal: 0xbfe6ff, sunstone: 0xffe066,
 };
 
+const smooth01 = (t) => t * t * (3 - 2 * t);
+
 /**
  * Voxel model of the finished weapon, blade along +y from the guard at y = 0 (hilt below),
- * broad faces toward ±z. opts: { infusion, gem, pommelScale }.
- * Returns { group, blade, pommel, headCap, mat, veinMat, length, hiltLength }.
+ * broad faces toward ±z. The blade has a diamond cross-section with polished bevels, a temper
+ * line on quench-hardened metals, a fuller, cracks where the forging cracked it and glowing
+ * veins for infusions. opts: { infusion, gem, gemColor }.
+ * Returns { group, blade, hilt, pommel, headCap, mat, veinMat, length, hiltLength, hafted }.
  */
 export function buildWeapon(sim, opts = {}) {
   const metal = METALS[sim.metal];
   const mc = metal.color;
   const w = sim.w.slice(0, sim.length);
   const L = w.length;
-  const maxHW = Math.max(2, ...w.map((x) => Math.round(x)));
+  const maxHW = Math.max(2, ...w);
   const hafted = HAFTED.has(sim.type);
-  const GX = maxHW * 2 + 3, GY = L * 3 + 1, GZ = 3;
+  const R = Math.ceil(maxHW * RW) + 2;
+  const GX = R * 2 + 3, GY = L * VPC + 1, GZ = 9, cz = 4;
   const g = new VoxelGrid(GX, GY, GZ);
-  const veins = new VoxelGrid(GX, GY, 1);
+  const veins = new VoxelGrid(GX, GY, GZ);
   const cx = Math.floor(GX / 2);
-  const edge = mixHex(mc, 0xffffff, 0.38), dark = shade(mc, 0.78), spine = shade(mc, 0.9);
+  const edge = mixHex(mc, 0xffffff, 0.5), bevel = mixHex(mc, 0xffffff, 0.2), dark = shade(mc, 0.7), deep = shade(mc, 0.82);
+  const hamonC = mixHex(mc, 0xffffff, 0.34);
+  const quenched = !!metal.quench;
   const veinC = opts.infusion ? INF_VEIN[opts.infusion] ?? INFUSIONS[opts.infusion]?.color : null;
-  let seed = 7;
-  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  for (let i = 0; i < L; i++) {
-    for (let k = 0; k < 3; k++) {
-      const y = i * 3 + k;
-      // smooth the half-width along the column for nicer silhouettes
-      const a = w[i], b = i + 1 < L ? w[i + 1] : w[i] * 0.4;
-      const hw = Math.max(0.4, a + (b - a) * (k / 3) * 0.5);
-      const r = Math.round(hw);
-      for (let dx = -r; dx <= r; dx++) {
-        const x = cx + dx;
-        const isEdge = Math.abs(dx) === r && r > 0;
-        for (let z = 0; z < GZ; z++) {
-          const thin = Math.abs(dx) > r * 0.55 && z !== 1;
-          if (thin && isEdge) continue; // bevel: edges are one voxel thick
-          let c = isEdge ? edge : z === 1 ? spine : mc;
-          if (!hafted && dx === 0 && z !== 1 && y > 2 && i < L * 0.7 && r >= 2) c = dark; // fuller
-          const cr = sim.cracks[i] || 0;
-          if (cr > 0 && z !== 1 && r >= 2 && ((k === 1 && dx === -1) || (k === 2 && dx === 0) || (cr > 1 && k === 0 && dx === 1))) c = 0x1a1414;
-          g.set(x, y, z, c);
+  // smooth half-width (in units) along the blade; the last column tapers to a point
+  const hwAt = (yy) => {
+    const f = yy / VPC - 0.5;
+    const i0 = Math.max(0, Math.min(L - 1, Math.floor(f)));
+    const t = Math.max(0, Math.min(1, f - i0));
+    const a = w[i0];
+    const b = i0 + 1 < L ? w[i0 + 1] : w[i0] * 0.15;
+    let hw = a + (b - a) * smooth01(t);
+    if (f > L - 1) hw = w[L - 1] * Math.max(0, 1 - (f - (L - 1)) * 1.6);
+    return Math.max(0, hw);
+  };
+  for (let y = 0; y < GY; y++) {
+    const col = Math.min(L - 1, Math.floor(y / VPC));
+    const hw = hwAt(y);
+    const r = hw * RW;
+    const shaft = hafted && hw <= 1.65 && y < GY * 0.85;
+    if (shaft) {
+      // a forged socket/shaft: a round bar with a raised band every so often
+      const rr = Math.max(1.6, r * 0.9);
+      const band = y % 12 < 2;
+      for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) {
+        if (dx * dx + dz * dz > (band ? rr + 0.7 : rr) ** 2 + 0.2) continue;
+        g.set(cx + dx, y, cz + dz, band ? dark : dx < 0 ? bevel : dz > 0 ? deep : mc);
+      }
+      continue;
+    }
+    if (r < 0.35) continue;
+    const ri = Math.round(r);
+    const hamonAt = 0.62 + 0.07 * Math.sin(y * 0.55) + 0.03 * Math.sin(y * 1.7);
+    for (let dx = -ri; dx <= ri; dx++) {
+      const ad = Math.abs(dx);
+      const t = ad / Math.max(0.6, r);
+      if (t > 1.02) continue;
+      // diamond cross-section: thick spine, bevels running to a one-voxel edge
+      let ht = hafted ? Math.round(3 - t * 1.6) : Math.round(Math.max(0, 2.6 * (1 - t) + 0.2));
+      if (t > 0.88) ht = 0;
+      let c = t > 0.84 ? edge : t > 0.58 ? bevel : mc;
+      if (!hafted && quenched && Math.abs(t - hamonAt) < 0.06 && y > 4) c = hamonC; // temper line
+      if (!hafted && ad <= 1 && y > VPC * 1.2 && y < GY * 0.72 && r >= 4.5) c = dark; // fuller
+      if (((y + dx * 1.6) % 46 + 46) % 46 < 2 && t < 0.84) c = mixHex(c, 0xffffff, 0.3); // polish streak
+      if (hafted && hw > 1.65 && (y % 9 === 0) && t < 0.7) c = deep; // hammered facets on heads
+      const cr = sim.cracks[col] || 0;
+      const crack = cr > 0 && r >= 2 && ((y % VPC === 2 && dx === -1) || (y % VPC === 3 && dx === 0) || (y % VPC === 4 && dx === 1) || (cr > 1 && y % VPC === 1 && dx === 2));
+      for (let z = cz - ht; z <= cz + ht; z++) {
+        const face = z === cz - ht || z === cz + ht;
+        let cc = c;
+        if (crack && face) cc = 0x1a1414;
+        if (veinC && face && ht >= 1 && !crack && y > 3) {
+          // a glowing inlay: a wavy line down the spine with little branches
+          const wave = Math.sin(y * 0.33 + (z < cz ? 0 : 1.7)) * Math.min(r * 0.32, 2.4);
+          const branch = (y % 17 < 4) && Math.abs(dx - wave - Math.sign(wave || 1) * (y % 17)) < 0.7;
+          if (Math.abs(dx - wave) < 0.75 || branch) { veins.set(cx + dx, y, z, veinC); continue; }
         }
-        if (veinC && !isEdge && Math.abs(dx) <= Math.max(0, r - 1) && rnd() < 0.2) veins.set(x, y, 0, veinC);
+        g.set(cx + dx, y, z, cc);
       }
     }
   }
   const mat = voxelMaterial('toon', { unique: true, emissive: 0x000000 });
-  const blade = voxelMesh(g, { pivot: [cx + 0.5, 0, GZ / 2], scale: VW, material: mat });
+  const blade = voxelMesh(g, { pivot: [cx + 0.5, 0, GZ / 2], scale: VW, material: mat, greedy: true });
   const group = new THREE.Group();
   group.add(blade);
   let veinMat = null;
   if (veinC) {
     veinMat = voxelMaterial('basic', { unique: true });
-    const vm = voxelMesh(veins, { pivot: [cx + 0.5, 0, 0], scale: VW, material: veinMat, outline: false });
-    vm.scale.z = 0.06;
-    vm.position.z = (GZ / 2) * VW + 0.0005;
-    const vm2 = vm.clone();
-    vm2.position.z = -vm.position.z - 0.06 * VW;
-    group.add(vm, vm2);
+    const vm = voxelMesh(veins, { pivot: [cx + 0.5, 0, GZ / 2], scale: VW, material: veinMat, outline: false, greedy: true });
+    group.add(vm);
   }
   // ---- hilt
   const fit = sim.fittings();
-  const gripV = Math.round(fit.grip * 3);
-  const hg = new VoxelGrid(GX + 6, gripV + 4, 5);
-  const hcx = Math.floor((GX + 6) / 2);
-  const wood = 0x6a4424, wrap = 0x3a2214, leather = 0x5a3420;
+  const gripV = Math.round(fit.grip * VPC);
+  const HW = Math.max(GX + 14, 30);
+  const hg = new VoxelGrid(HW, gripV + 12, 11);
+  const hcx = Math.floor(HW / 2), hcz = 5;
+  const leather = 0x5a3420, leatherDk = 0x3a2214, wood = 0x6a4424, woodDk = 0x4a2e18;
   const guardC = sim.metal === 'iron' || sim.metal === 'steel' ? 0xc98a3a : shade(mc, 0.85);
+  const gy = gripV + 4; // guard base row
+  const round = (y0, y1, rad, fn) => {
+    for (let y = y0; y < y1; y++) for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) {
+      const d = Math.hypot(dx, dz);
+      if (d > rad + 0.2) continue;
+      const c = fn(y, dx, dz, d);
+      if (c !== undefined && c !== -1) hg.set(hcx + dx, y, hcz + dz, c);
+    }
+  };
   if (hafted) {
-    for (let y = 0; y < gripV; y++) hg.box(hcx - 1, y + 2, 1, 3, 1, 3, (y % 4 === 0 ? 0x4a2e18 : wood));
-    hg.box(hcx - 2, gripV + 1, 0, 5, 2, 5, shade(mc, 0.8)); // collar/socket
-    hg.box(hcx - 1, 0, 1, 3, 2, 3, shade(mc, 0.75)); // butt cap
+    // wooden haft with grain, two leather wraps and an iron collar
+    round(2, gy + 2, 2.4, (y, dx, dz) => {
+      const wrap = (y > gy - 10 && y < gy - 4) || (y > gripV * 0.35 && y < gripV * 0.35 + 6);
+      if (wrap) return (y + Math.round(Math.atan2(dz, dx) * 2)) % 3 === 0 ? leatherDk : leather;
+      return (Math.round(Math.atan2(dz, dx) * 3 + y * 0.15) % 4 === 0) ? woodDk : wood;
+    });
+    round(gy - 1, gy + 5, 3.3, (y) => (y === gy + 4 ? shade(mc, 0.95) : shade(mc, 0.78))); // collar
+    round(0, 3, 3, (y) => (y === 0 ? shade(mc, 0.6) : shade(mc, 0.75))); // butt cap
   } else {
-    const gl = Math.min(GX + 6, maxHW * 2 + 7);
-    hg.box(hcx - Math.floor(gl / 2), gripV + 1, 1, gl, 2, 3, (x, y) => (y === gripV + 2 ? shade(guardC, 1.15) : guardC));
-    for (let y = 1; y < gripV + 1; y++) hg.box(hcx - 1, y, 1, 3, 1, 3, (x, yy, z) => ((x + yy + z) % 3 === 0 ? wrap : leather));
+    // crossguard with flared quillons, a ricasso block and the grip with a diagonal wrap
+    const gl = Math.min(HW - 2, Math.round(maxHW * RW * 2 + 12));
+    for (let dx = -Math.floor(gl / 2); dx <= Math.floor(gl / 2); dx++) {
+      const end = Math.abs(dx) > gl / 2 - 3;
+      const y0 = gy + (end ? 1 : 0), h = end ? 4 : 4;
+      for (let y = y0; y < y0 + h; y++) for (let dz = -2; dz <= 2; dz++) {
+        const top = y === y0 + h - 1;
+        hg.set(hcx + dx, y, hcz + dz, top ? shade(guardC, 1.2) : dz === -2 || dz === 2 ? shade(guardC, 0.85) : guardC);
+      }
+    }
+    hg.box(hcx - 3, gy + 4, hcz - 2, 7, 3, 5, (x, y) => (y === gy + 6 ? shade(guardC, 1.15) : guardC));
+    if (opts.gem) { hg.set(hcx, gy + 2, hcz - 3, opts.gemColor ?? 0xe02a3a); hg.set(hcx, gy + 2, hcz + 3, opts.gemColor ?? 0xe02a3a); }
+    round(3, gy, 2.3, (y, dx, dz) => {
+      const a = Math.atan2(dz, dx);
+      const spiral = (y + Math.round(a * 1.9)) % 4;
+      if (y === gy - 1 || y === 3) return shade(guardC, 0.9); // ferrules
+      return spiral === 0 ? leatherDk : spiral === 2 ? shade(leather, 1.15) : leather;
+    });
     if (sim.type === 'rapier') {
-      for (let a = 0; a < Math.PI; a += 0.25) hg.set(hcx + Math.round(Math.cos(a) * 4), gripV + 1 - Math.round(Math.sin(a) * 4), 0, guardC);
+      for (let a = 0; a <= Math.PI; a += 0.12) hg.set(hcx + Math.round(Math.cos(a) * 7 + 0), Math.round(gy - Math.sin(a) * (gy - 3)), hcz, guardC);
     }
   }
-  const hilt = voxelMesh(hg, { pivot: [hcx + 0.5, gripV + 3, 2.5], scale: VW });
+  const hilt = voxelMesh(hg, { pivot: [hcx + 0.5, gy + 6, hcz + 0.5], scale: VW, greedy: true });
   group.add(hilt);
   // pommel (separate so the balance step can grow it)
-  const pg = new VoxelGrid(5, 5, 5);
-  pg.box(0, 1, 1, 5, 3, 3, mc); pg.box(1, 0, 1, 3, 5, 3, mc); pg.box(1, 1, 0, 3, 3, 5, shade(mc, 0.9));
-  if (opts.gem) { pg.set(2, 2, 0, opts.gemColor ?? 0xe02a3a); pg.set(2, 2, 4, opts.gemColor ?? 0xe02a3a); }
-  const pommel = voxelMesh(pg, { pivot: [2.5, 2.5, 2.5], scale: VW });
-  const hiltLen = (gripV + 3) * VW;
-  pommel.position.y = -hiltLen - 1.2 * VW;
+  const pg = new VoxelGrid(11, 11, 11);
+  pg.ellipsoid(5.5, 5.5, 5.5, 5, 4.6, 4.2, (x, y, z, dx, dy) => (dy > 0.5 ? mixHex(mc, 0xffffff, 0.3) : dy < -0.5 ? shade(mc, 0.7) : (x + y) % 3 === 0 ? shade(mc, 0.88) : mc));
+  if (opts.gem) for (const z of [0, 1, 9, 10]) pg.box(4, 4, z, 3, 3, 1, (x, y) => (x === 4 && y === 6 ? 0xffffff : opts.gemColor ?? 0xe02a3a));
+  const pommel = voxelMesh(pg, { pivot: [5.5, 5.5, 5.5], scale: VW, greedy: true });
+  const hiltLen = (gy + 6) * VW;
+  pommel.position.y = -hiltLen - 2 * VW;
   group.add(pommel);
   // head cap (balance weight for head-heavy weapons)
-  const cg = new VoxelGrid(5, 4, 5);
-  cg.box(0, 0, 0, 5, 2, 5, shade(mc, 0.7)); cg.box(1, 2, 1, 3, 1, 3, shade(mc, 0.8)); cg.set(2, 3, 2, edge);
-  const headCap = voxelMesh(cg, { pivot: [2.5, 0, 2.5], scale: VW });
-  headCap.position.y = GY * VW - 1 * VW;
+  const cg = new VoxelGrid(11, 8, 11);
+  cg.box(0, 0, 0, 11, 4, 11, (x, y) => (y === 3 ? shade(mc, 0.85) : shade(mc, 0.68)));
+  cg.box(2, 4, 2, 7, 2, 7, shade(mc, 0.8)); cg.box(4, 6, 4, 3, 2, 3, edge);
+  const headCap = voxelMesh(cg, { pivot: [5.5, 0, 5.5], scale: VW, greedy: true });
+  headCap.position.y = GY * VW - 2 * VW;
   headCap.visible = false;
   group.add(headCap);
-  return { group, blade, hilt, pommel, headCap, mat, veinMat, length: GY * VW, hiltLength: hiltLen + 2.5 * VW, hafted };
+  return { group, blade, hilt, pommel, headCap, mat, veinMat, length: GY * VW, hiltLength: hiltLen + 4 * VW, hafted };
 }

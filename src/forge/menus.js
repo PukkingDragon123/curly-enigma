@@ -229,7 +229,7 @@ export class Menus {
       const base = { type: sel.type, metal: sel.metal, matQ, infusion: sel.infusion || undefined, gem: sel.gem || undefined, gemQ };
       const lo = weaponValue({ ...base, score: 55 }, ITEMS), hi = weaponValue({ ...base, score: 95 }, ITEMS);
       summary.append(
-        el('div', { class: 'fg-row' }, [el('img', { class: 'pix', src: weaponIconURL(sel.type, sel.metal, sel.infusion), alt: '', style: { width: 'calc(var(--px)*16)', height: 'calc(var(--px)*16)' } }),
+        el('div', { class: 'fg-row' }, [el('img', { class: 'pix', src: weaponIconURL(sel.type, sel.metal, sel.infusion), alt: '', style: { width: 'var(--icon)', height: 'var(--icon)' } }),
           el('b', {}, `${sel.infusion ? INFUSIONS[sel.infusion].name + ' ' : ''}${m.name} ${wt.name}`)]),
         el('div', { html: `Uses ${wt.ingots} ${m.name} ingot${wt.ingots > 1 ? 's' : ''} · material <b style="color:${qColor(matQ)}">${matQ}%</b>` }),
         el('div', { html: `Worth about <span class="gold-txt">${formatGoldFull(lo)}g</span> if ${GRADES[3].word.toLowerCase()}, up to <span class="gold-txt">${formatGoldFull(hi)}g</span> if ${GRADES[0].word.toLowerCase()}.` }),

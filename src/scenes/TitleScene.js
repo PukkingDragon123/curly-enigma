@@ -5,7 +5,8 @@ import { Scene } from '../core/Scene.js';
 import { el } from '../core/util.js';
 import { buildBurrow, BURROW } from '../bookends/burrow.js';
 import { useBookendStyles } from '../bookends/css.js';
-import { disposeTextures } from '../bookends/fx.js';
+import { logoLetters, glintURL } from '../bookends/logo.js';
+import { disposeTextures, setPixelScale } from '../bookends/fx.js';
 
 const CONTINUE_OK = new Set(['town', 'home', 'mine', 'forge', 'cooking']);
 
@@ -24,6 +25,9 @@ export default class TitleScene extends Scene {
     this.camBase = new THREE.Vector3();
     this.camLook = new THREE.Vector3();
     this.dio = buildBurrow(this.scene, this.textures);
+    const st = this.dio.stats;
+    console.log(`[title] burrow built in ${st.total.toFixed(0)} ms (cave grid ${st.grid.toFixed(0)} ms, shell mesh ${st.shell.toFixed(0)} ms, ${Math.round(st.shellTris / 1000)}k tris; ${st.batched} props → ${st.batches} batches)`);
+    setPixelScale(this.game.engine.height);
     this.layoutCamera(this.game.engine.width, this.game.engine.height);
 
     this.buildDom();
@@ -35,7 +39,23 @@ export default class TitleScene extends Scene {
   buildDom() {
     const g = this.game;
     const word = 'MOLEFORGE';
-    const logo = el('h1', { class: 'big-title bk-logo', 'aria-label': word }, [...word].map((ch, i) => el('span', { class: ch === 'O' && i === 1 ? 'bk-o' : '', style: { '--i': i }, 'aria-hidden': 'true' }, ch)));
+    const letters = logoLetters().map((L, i) => el('span', { class: L.hot ? 'hot' : '', style: { '--i': i }, 'aria-hidden': 'true' }, [
+      el('img', { class: 'pix', src: L.url, alt: '', draggable: 'false', style: { width: `calc(var(--lp) * ${L.w})`, height: `calc(var(--lp) * ${L.h})` } }),
+    ]));
+    const glint = glintURL();
+    const sparkles = [[1, 0.18, 0.22, 0], [8, 0.25, 0.12, 1.9], [5, 0.4, 0.05, 3.3]].map(([li, x, y, d]) => el('img', { class: 'pix bk-glint', src: glint, alt: '', style: { '--gl': li, '--gx': x, '--gy': y, animationDelay: `${2.6 + d}s` } }));
+    const embers = Array.from({ length: 9 }, (_, i) => el('i', { class: 'bk-ember', style: { left: `${46 + ((i * 37) % 52)}%`, animationDelay: `${(i * 0.53) % 2.6 + 2}s`, animationDuration: `${2.1 + (i % 4) * 0.35}s` } }));
+    const logo = el('h1', { class: 'bk-logo', 'aria-label': word }, [...letters, ...sparkles, ...embers]);
+    // position each glint over its letter once laid out
+    requestAnimationFrame(() => {
+      for (const sp of sparkles) {
+        const li = +sp.style.getPropertyValue('--gl');
+        const L = letters[li];
+        if (!L) continue;
+        sp.style.left = `${L.offsetLeft + L.offsetWidth * +sp.style.getPropertyValue('--gx')}px`;
+        sp.style.top = `${L.offsetTop + L.offsetHeight * +sp.style.getPropertyValue('--gy')}px`;
+      }
+    });
     const sub = el('div', { class: 'bk-sub bk-outline' }, [el('i'), 'One million gold to the surface', el('i')]);
 
     const items = [];
@@ -81,7 +101,9 @@ export default class TitleScene extends Scene {
 
   doContinue() {
     this.busy = true;
-    this.game.goto(this.continueTarget(), { from: 'continue' });
+    // still trapped in the collapsed tunnels: pick the escape back up where it left off
+    if (!this.game.state.escaped) this.game.goto('mine', { intro: '1' });
+    else this.game.goto(this.continueTarget(), { from: 'continue' });
   }
 
   async newGame() {
@@ -97,7 +119,8 @@ export default class TitleScene extends Scene {
     this.busy = true;
     st.reset();
     st.wipeSave();
-    g.goto('home', { from: 'newgame' });
+    // every new game starts trapped deep underground: dig your way out first
+    g.goto('mine', { intro: '1' });
   }
 
   openSettings() {
@@ -169,6 +192,7 @@ export default class TitleScene extends Scene {
   }
 
   onResize(w, h) {
+    setPixelScale(h);
     this.layoutCamera(w, h);
   }
 

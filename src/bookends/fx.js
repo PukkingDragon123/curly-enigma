@@ -15,6 +15,12 @@ float bk_steps(float v, float levels) { return floor(v * levels + bk_bayer4(gl_F
 const tmpColor = new THREE.Color();
 
 // ------------------------------------------------------------------ particles
+// Particle sizes are given in "design pixels" (tuned for ~400 internal lines). PIX scales them
+// with the engine's real internal resolution so effects keep their weight at 540-720 lines.
+export const PIX = { value: 1 };
+/** Call from onResize with the engine's internal height. */
+export function setPixelScale(heightPx) { PIX.value = Math.max(1, heightPx / 400); }
+
 const P_VERT = /* glsl */`
 attribute vec4 aColor;
 attribute float aSize;
@@ -22,13 +28,14 @@ attribute float aShape;
 attribute float aSpin;
 uniform float uAtten;
 uniform float uScale;
+uniform float uPix;
 varying vec4 vColor;
 varying float vShape;
 varying float vSpin;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
-  float sz = aSize;
+  float sz = aSize * uPix;
   if (uAtten > 0.5) sz = aSize * uScale / max(0.1, -mv.z);
   gl_PointSize = max(1.0, floor(sz + 0.5));
   vColor = aColor;
@@ -95,7 +102,7 @@ export class Particles {
     g.setAttribute('aSpin', mk(this.spin, 1));
     this.geo = g;
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { uAtten: { value: atten ? 1 : 0 }, uScale: { value: 300 } },
+      uniforms: { uAtten: { value: atten ? 1 : 0 }, uScale: { value: 300 }, uPix: PIX },
       vertexShader: P_VERT,
       fragmentShader: P_FRAG,
       transparent: true,
@@ -440,11 +447,15 @@ export function makeBlobShadow(rx = 0.5, rz = 0.35, strength = 0.45) {
 }
 
 // ------------------------------------------------------------------ pixel textures
-/** Animated flame sprite sheet (frames side by side). Returns {texture, cols}. */
-export function flameSheet(frames = 8, w = 18, h = 26, seed = 3) {
+const FLAME_PAL = [0xfffbe0, 0xffe066, 0xffa62a, 0xf0601a, 0xb8301a];
+
+/**
+ * Animated flame sprite sheet (frames side by side). Returns {texture, cols}.
+ * pal: 5 colours from the white-hot core to the dark red rim.
+ */
+export function flameSheet(frames = 8, w = 18, h = 26, seed = 3, pal = FLAME_PAL) {
   const pc = new PixelCanvas(w * frames, h);
   const noise = makeNoise2D(seed);
-  const pal = [0xfffbe0, 0xffe066, 0xffa62a, 0xf0601a, 0xb8301a];
   for (let f = 0; f < frames; f++) {
     const ph = (f / frames) * Math.PI * 2;
     for (let y = 0; y < h; y++) {
@@ -453,7 +464,7 @@ export function flameSheet(frames = 8, w = 18, h = 26, seed = 3) {
       const sway = Math.sin(ph + fy * 4.2) * fy * 2.2 + noise(fy * 3, f * 0.7) * fy * 2.5;
       for (let x = 0; x < w; x++) {
         const dx = Math.abs(x + 0.5 - w / 2 - sway);
-        const n = noise(x * 0.35, y * 0.28 + f * 1.3) * 0.55;
+        const n = noise(x * 0.35 * 18 / w, (y * 0.28 + f * 1.3 * h / 26) * 26 / h) * 0.55;
         let i = width > 0 ? (width - dx) / Math.max(1, width) : -1;
         i += n * (0.4 + fy);
         i -= fy * 0.25;
@@ -464,11 +475,13 @@ export function flameSheet(frames = 8, w = 18, h = 26, seed = 3) {
     }
     // detached licks near the top
     const rng = makeRng(seed * 31 + f);
-    for (let k = 0; k < 2; k++) {
-      const x = f * w + Math.round(w / 2 + rng.range(-4, 4));
-      const y = rng.int(1, 6);
-      pc.set(x, y, rng.chance(0.5) ? pal[2] : pal[3]);
-      if (rng.chance(0.5)) pc.set(x, y + 1, pal[3]);
+    const sc = h / 26;
+    for (let k = 0; k < 2 + Math.round(sc); k++) {
+      const x = f * w + Math.round(w / 2 + rng.range(-4, 4) * w / 18);
+      const y = rng.int(1, Math.round(6 * sc));
+      const sz = Math.max(1, Math.round(sc * rng.range(0.6, 1.4)));
+      for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) pc.set(x + dx, y + dy, rng.chance(0.5) ? pal[2] : pal[3]);
+      if (rng.chance(0.5)) pc.set(x, y + sz, pal[3]);
     }
   }
   return { texture: pixelTexture(pc.commit()), cols: frames };
@@ -501,46 +514,50 @@ export function cloudCanvas(seed, w = 64, h = 22, pal = { hi: 0xffe2c0, mid: 0xf
   return pc.commit();
 }
 
-/** A tiny two/three-frame seagull flap (white gull with grey wingtips), drawn as a sheet. */
+/**
+ * A three-frame seagull flap (wings up, gliding, wings down) at 33x14 per frame: white head and
+ * body, pale grey wings with a lit leading edge, black wingtips, a yellow beak with a red spot.
+ */
 export function gullSheet() {
-  const frames = [
-    [
-      '..o.........o..',
-      '.oWo.......oWo.',
-      'oWWWo.....oWWWo',
-      '.ooWWoooooWWoo.',
-      '....oWWYWWo....',
-      '.....ooooo.....',
-    ],
-    [
-      '...............',
-      '...............',
-      'oooo.......oooo',
-      'oWWWWoooooWWWWo',
-      '.ooooWWYWWoooo.',
-      '.....ooooo.....',
-    ],
-    [
-      '...............',
-      '...............',
-      '......ooo......',
-      '..ooooWWYoooo..',
-      '.oWWWoooooWWWo.',
-      'oWWo.......oWWo',
-    ],
+  const w = 33, h = 14;
+  const WHITE = 0xfff6ee, GREY = 0xc8c0d0, GREY_DK = 0x9890a8, TIP = 0x2a2028, LINE = 0x3a2a3a;
+  // wing polylines from the shoulder out: [shoulder, elbow, tip] (left wing; the right mirrors)
+  const poses = [
+    [[13, 8], [8, 4], [1, 2]],
+    [[13, 7.5], [7, 6.5], [0, 8]],
+    [[13, 8], [8, 10], [2, 13]],
   ];
-  const w = 15, h = 6;
-  const pc = new PixelCanvas(w * frames.length, h);
-  const pal = { o: 0x3a2a3a, W: 0xfff6ee, Y: 0xffb040 };
-  frames.forEach((rows, f) => {
-    rows.forEach((row, y) => {
-      for (let x = 0; x < row.length; x++) {
-        const ch = row[x];
-        if (pal[ch] !== undefined) pc.set(f * w + x, y, pal[ch]);
+  const pc = new PixelCanvas(w * poses.length, h);
+  poses.forEach((pose, f) => {
+    const fr = new PixelCanvas(w, h);
+    for (const side of [-1, 1]) {
+      const P = pose.map(([x, y]) => [side < 0 ? x : w - 1 - x, y]);
+      // inner arm: two rows (lit top, grey under); outer hand tapers to a black tip
+      for (let seg = 0; seg < 2; seg++) {
+        const [x0, y0] = P[seg], [x1, y1] = P[seg + 1];
+        const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2);
+        for (let i = 0; i <= n; i++) {
+          const t = i / n;
+          const x = Math.round(x0 + (x1 - x0) * t), y = Math.round(y0 + (y1 - y0) * t);
+          const tip = seg === 1 && t > 0.62;
+          const thick = seg === 0 ? 2 : t < 0.5 ? 2 : 1;
+          fr.set(x, y, tip ? TIP : WHITE);
+          if (thick > 1) fr.set(x, y + 1, tip ? TIP : seg === 0 ? GREY : GREY_DK);
+          if (seg === 0) fr.set(x, y + 2, GREY_DK);
+        }
       }
-    });
+    }
+    // body, head, beak, eyes
+    fr.ellipse(16, 9, 3.6, 2.2, WHITE);
+    fr.rect(13, 10, 7, 1, GREY);
+    fr.disk(16, 6, 2.2, WHITE);
+    fr.set(15, 5, LINE); fr.set(17, 5, LINE);
+    fr.set(16, 7, 0xffc040); fr.set(16, 8, 0xffa020); fr.set(17, 8, 0xe04030);
+    fr.set(14, 12, GREY_DK); fr.set(18, 12, GREY_DK); // tail feathers
+    fr.outline(LINE);
+    pc.blit(fr, f * w, 0);
   });
-  return { texture: pixelTexture(pc.commit()), cols: frames.length, aspect: w / h };
+  return { texture: pixelTexture(pc.commit()), cols: poses.length, aspect: w / h };
 }
 
 /** Small 'z' for a dozing creature. */

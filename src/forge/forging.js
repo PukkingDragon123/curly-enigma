@@ -463,8 +463,12 @@ export class ForgeRun {
     } else {
       this.game.audio.play('clang', { pitch: 0.8 + thin * 0.45 + Math.random() * 0.06, vol: 0.55 + power * 0.6 });
       const n = 10 + Math.round(power * 28);
-      P.sparks(pos, n, power, ev.kind === 'hot' || ev.kind === 'burn' ? 0xffffff : 0xfff0b0);
+      const white = ev.kind === 'hot' || ev.kind === 'burn';
+      P.sparks(pos, n, power, white ? 0xffffff : 0xfff0b0);
+      P.streaks(pos, 8 + Math.round(power * 26), power, white ? 0xffffff : 0xfff6d0);
+      P.scaleFlakes(pos, 3 + Math.round(power * 7), 0.45);
       sc.addShake(0.01 + power * 0.03);
+      sc.impact(pos, power, this.sim.T[i] ?? 900);
       sc.extraLight = 2.5 + power * 4;
       if (ev.kind === 'burn') {
         P.burnSpray(pos, 26);
@@ -754,7 +758,9 @@ export class ForgeRun {
         this.game.audio.play('quench');
         this.game.audio.play('steam');
         P.steam(top, 70, 0.35, 1.3);
+        P.billow(top, 22, 0.3, 1.3);
         P.bubbles(top, 14, 0.4);
+        for (let k = 0; k < 10; k++) P.streak.spawn({ x: top.x, y: top.y + 0.02, z: top.z, vx: (Math.random() - 0.5) * 1.6, vy: 1 + Math.random() * 1.6, vz: (Math.random() - 0.5) * 1.2, life: 0.4, color: 0xd8f4ff, color1: 0x5a8a98, gravity: 6, drag: 0.6, len: 0.02 });
         W.water.splash(1.4);
         sc.waterEnergy = 1.2;
         sc.addShake(0.02);
@@ -765,6 +771,7 @@ export class ForgeRun {
         this.weaponT = lerp(Tp, 60, ease.out(k));
         applyHeat(this.weapon.mat, 0xffffff, this.weaponT, 0.9);
         if (Math.random() < dt * 30) P.steam(top, 2, 0.3, 0.8);
+        if (Math.random() < dt * 9 * (1 - k)) P.billow(top, 2, 0.25, 0.9);
         if (Math.random() < dt * 20) P.bubbles(top, 2, 0.3);
       })
       .add(0.45, (k) => { this.carrier.position.lerpVectors(dunk.pos, above.pos, ease.out(k)); })
