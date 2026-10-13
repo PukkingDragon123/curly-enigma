@@ -164,20 +164,36 @@ export function planDeposit(w, plan, oreId, px, py, q, seed) {
   return d;
 }
 
-/** Pointy cave decorations made of pixels: stalactites / stalagmites (only fill air). */
-export function spikeFeature(px, py, len, base, dir, mat) {
+/**
+ * Pointy cave decorations made of pixels: stalactites / stalagmites (only fill air).
+ * facets: shade it like a crystal shard (lit face, ridge, shadow face, glinting tip).
+ */
+export function spikeFeature(px, py, len, base, dir, mat, facets = false) {
   const x0 = Math.floor(px - base), x1 = Math.ceil(px + base) + 1;
   const y0 = dir > 0 ? Math.floor(py - 6) : Math.floor(py - len), y1 = dir > 0 ? Math.ceil(py + len) : Math.ceil(py + 6);
-  return {
+  const at = (x, y) => (dir > 0 ? (y - (py - 6)) / (len + 6) : ((py + 6) - y) / (len + 6));
+  const halfAt = (t) => base * (1 - t) * (1 - t * 0.25) + 0.4;
+  const offAt = (x, t) => x + 0.5 - px - Math.sin(t * 5 + px) * 0.6;
+  const f = {
     kind: 'fill', mat, x0, y0, x1, y1,
     test(x, y, cur) {
       if (cur) return false;
-      const t = dir > 0 ? (y - (py - 6)) / (len + 6) : ((py + 6) - y) / (len + 6);
+      const t = at(x, y);
       if (t < 0 || t > 1) return false;
-      const half = base * (1 - t) * (1 - t * 0.25) + 0.4;
-      return Math.abs(x + 0.5 - px - Math.sin(t * 5 + px) * 0.6) <= half;
+      return Math.abs(offAt(x, t)) <= halfAt(t);
     },
   };
+  if (facets) {
+    f.det = (x, y) => {
+      const t = at(x, y), half = halfAt(t), off = offAt(x, t);
+      if (t > 0.86) return 15;
+      if (off > half - 0.9) return 13;
+      if (off < 0.9 - half) return 12;
+      if (Math.abs(off) < 0.55) return t > 0.45 ? 15 : 12;
+      return off < 0 ? 11 : 14;
+    };
+  }
+  return f;
 }
 
 /** A hanging root strand (thin wiggly line of root pixels, fills air only). */
@@ -270,22 +286,36 @@ export function generateMine(zone, seed) {
     const cx = rng.int(6, W - 7) + 0.5, cy = rng.int(12, H - 8) + 0.5, rx = rng.range(2.4, 3.6), ry = rng.range(2, 3);
     const pcx = cx * M, pcy = cy * M, prx = rx * M, pry = ry * M;
     const gs = rng.int(1, 9999);
+    const shape = (x, y) => {
+      const dx = (x + 0.5 - pcx) / prx, dy = (y + 0.5 - pcy) / pry;
+      return Math.sqrt(dx * dx + dy * dy) + (tn(x, y, 8, gs) - 0.5) * 0.08;
+    };
+    // crystal teeth of uneven lengths: where pixel (x, y) sits on its tooth
+    const toothAt = (x, y) => {
+      const ang = Math.atan2((y + 0.5 - pcy) / pry, (x + 0.5 - pcx) / prx) * 11 + gs;
+      const u = ang / Math.PI, k = Math.floor(u);
+      const h = (((((k % 22) + 22) * 2654435761 + gs * 97) >>> 0) % 1000) / 1000;
+      const L = 0.06 + h * h * 0.3;
+      return { f: u - k, inner: 0.82 - L * Math.pow(Math.abs(Math.sin(ang)), 1.6) };
+    };
+    // hollow it out first, then line it: rind + crystal teeth pointing inward
+    plan.features.push({ kind: 'carve', x0: Math.floor(pcx - prx), x1: Math.ceil(pcx + prx), y0: Math.floor(pcy - pry), y1: Math.ceil(pcy + pry), test: (x, y) => shape(x, y) < 0.82 });
     plan.features.push({
       kind: 'fill', mat: B.GEODE, x0: Math.floor(pcx - prx - 4), x1: Math.ceil(pcx + prx + 4), y0: Math.floor(pcy - pry - 4), y1: Math.ceil(pcy + pry + 4),
       test(x, y) {
-        const dx = (x + 0.5 - pcx) / prx, dy = (y + 0.5 - pcy) / pry;
-        const d = Math.sqrt(dx * dx + dy * dy) + (tn(x, y, 8, gs) - 0.5) * 0.08;
+        const d = shape(x, y);
         if (d > 1.12) return false;
         if (d > 0.82) return B.GEODE;
-        if (d > 0.62) {
-          // crystal teeth pointing inward
-          const a = Math.atan2(dy, dx);
-          const tooth = Math.abs(Math.sin(a * 11 + gs)) ;
-          return d > 0.62 + (1 - tooth) * 0.2 ? B.CRYSTALROCK : 0;
-        }
-        return 0;
+        return d > 0.5 && d > toothAt(x, y).inner ? B.CRYSTALROCK : false;
       },
-      det(x, y, m) { return m === B.CRYSTALROCK ? (((x + y) & 3) === 0 ? 15 : 10 + ((x * 7 + y * 3) % 3)) : 2 + ((x * 5 + y * 9) % 5); },
+      det(x, y, m) {
+        if (m !== B.CRYSTALROCK) return -1;
+        // faceted teeth: lit face, bright ridge, shadow face, dark outline on the shadow side
+        const d = shape(x, y), { f, inner } = toothAt(x, y);
+        if (d - inner < 0.014) return f < 0.5 ? 12 : 13;
+        if (Math.abs(f - 0.5) < 0.035) return d - inner < 0.06 ? 15 : 12;
+        return f < 0.5 ? 11 : 14;
+      },
     });
     for (let y = Math.floor(cy - ry); y <= cy + ry; y++) for (let x = Math.floor(cx - rx); x <= cx + rx; x++) {
       if (!w.inb(x, y)) continue;
@@ -382,9 +412,7 @@ export function generateMine(zone, seed) {
       if (cfg.crystals && isSolid(below) && rng.chance(cfg.crystals * 0.25)) {
         const bx = (x + rng.range(0.2, 0.8)) * M, by = (y + 1) * M;
         for (let k = 0; k < 3; k++) {
-          const f = spikeFeature(bx + rng.range(-5, 5), by + 2, rng.range(8, 18), rng.range(2, 3.5), -1, B.CRYSTALROCK);
-          f.det = (xx, yy) => (((xx + yy) % 5) === 0 ? 15 : 10 + ((xx * 3 + yy) % 3));
-          plan.features.push(f);
+          plan.features.push(spikeFeature(bx + rng.range(-5, 5), by + 2, rng.range(8, 18), rng.range(2, 3.5), -1, B.CRYSTALROCK, true));
         }
       }
     }

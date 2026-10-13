@@ -70,6 +70,13 @@ export default class MineScene extends Scene {
       bigLand: (b, sp) => this.tools.bigLand(b, sp),
       hitPlayer: (b) => this.bonk(9),
       gone: (b) => this.fx.dust(b.x, -b.y, 2, [0.62, 0.56, 0.5], 0.12),
+      splash: (b, t, sp, sy) => {
+        if (t === 2) { this.fx.steam(b.x, sy, 5); this.fx.sparks(b.x, sy, 5, [1, 0.6, 0.2], 3); this.audio.play('sizzle', { vol: 0.5 }); return; }
+        if (sp < 1.2) return;
+        const k = clamp(0.35 + b.n / 500, 0.35, 1.6);
+        this.fx.splash(b.x, sy, k);
+        this.audio.play('splash', { vol: clamp(sp / 10, 0.2, 0.9) * Math.min(1, k) });
+      },
     };
     this.sand = new Sand(w);
     this.digger = new Digger(w);
@@ -835,7 +842,7 @@ export default class MineScene extends Scene {
     if (pev.jump) { this.audio.play('jump'); this.energy(0.25); }
     if (pev.landed) { this.audio.play('land', { hard: pev.landed > 9 }); this.fx.blockDust(pl.x, pl.feetY - 0.1, pl.groundBlock(), Math.min(8, pev.landed)); }
     if (pev.fallDamage) { this.hurt(Math.round(pev.fallDamage), 'fall'); this.say('fall', 'Oof! That was a long drop.', 'bad'); }
-    if (pev.splash) { this.audio.play('splash'); this.fx.steam(pl.x, pl.y, 0); for (let k = 0; k < 8; k++) this.fx.bubbles(pl.x, pl.y); }
+    if (pev.splash) { this.audio.play('splash'); this.fx.splash(pl.x, Math.floor(pl.y) + 1 - Math.min(1, w.fluid[w.idx(Math.floor(pl.x), Math.floor(pl.y))] || 0), 1.2); }
     if (pev.buried > 6) { this.fx.dust(pl.x, pl.y, 6, [0.8, 0.72, 0.6], 0.4); if (chance(0.2)) this.audio.play('trickle'); }
     if (pev.climbing) { this.energy(1.0 * dt); if (chance(dt * 6)) { this.audio.play('climb'); this.fx.blockDust(pl.x + pl.wall * 0.3, pl.y, B.DIRT, 1); } }
     if (pl.onGround && Math.abs(pl.vx) > 0.5) {

@@ -8,6 +8,9 @@ import { UNGEN } from './MineWorld.js';
 export const NODE = 8; // pixel spacing of the plan's noise-field nodes
 const PAD = 3; // generated margin around the chunk (for surface flags)
 const SZ = CPX + PAD * 2;
+// no moss on these
+const NOGROW = new Uint8Array(256);
+for (const m of [B.CRYSTALROCK, B.ICE, B.MAGMAROCK, B.BOARDS, B.OBSIDIAN]) NOGROW[m] = 1;
 
 export class ChunkGen {
   /**
@@ -120,7 +123,10 @@ export class ChunkGen {
         if (f.kind === 'carve') { if (f.test(x, y)) tm[o] = 0; }
         else if (f.kind === 'fill') {
           const r = f.test(x, y, tm[o]);
-          if (r) { const m = r === true ? f.mat : r; tm[o] = m; tb[o] = f.back ?? tb[o]; td[o] = f.det ? f.det(x, y, m) : texel(m, x, y, seedOf[m]); }
+          if (r) {
+            const m = r === true ? f.mat : r, d = f.det ? f.det(x, y, m) : -1;
+            tm[o] = m; tb[o] = f.back ?? tb[o]; td[o] = d >= 0 ? d : texel(m, x, y, seedOf[m]);
+          }
         }
       }
     }
@@ -136,7 +142,7 @@ export class ChunkGen {
         const near1 = !tm[o - 1] || !tm[o + 1] || !tm[o - SZ] || !tm[o + SZ];
         const near2 = near1 || !tm[o - 2] || !tm[o + 2] || !tm[o - SZ * 2] || !tm[o + SZ * 2] || !tm[o - SZ - 1] || !tm[o - SZ + 1] || !tm[o + SZ - 1] || !tm[o + SZ + 1];
         if (near2) td[o] |= D_CRUST;
-        if (g && !GRAN[m]) {
+        if (g && !GRAN[m] && !NOGROW[m]) {
           const x = X0 + lx, y = Y0 + ly;
           const up1 = !tm[o - SZ], up2 = !tm[o - SZ * 2], up3 = !tm[o - SZ * 3];
           if (up1 || (up2 && tn(x, y, 8, gs) > 0.45) || (up3 && tn(x, y, 6, gs + 1) > 0.72)) {

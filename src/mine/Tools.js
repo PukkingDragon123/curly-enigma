@@ -427,7 +427,7 @@ export class Tools {
     const done = new Set();
     for (const seed of seeds) {
       if (done.has(seed)) continue;
-      const comp = this.component(seed, 2600, done);
+      const comp = this.component(seed, 6000, done);
       if (comp) this.detach(comp);
     }
   }

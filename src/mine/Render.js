@@ -5,6 +5,7 @@ import { buildSpriteAtlas32 } from './MineSprites.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { Terrain, LIGHT_GLSL } from './Terrain.js';
 import { M } from './micro.js';
+import { isSolid } from './blocks.js';
 
 export function makeUniforms(world) {
   return {
@@ -335,40 +336,58 @@ export class MineRenderer {
     this.marker.visible = false;
     this.root.add(this.marker);
 
-    // fluids
+    // fluids: one quad per wet cell; surface cells carry the (smoothed) water line as an
+    // attribute and the fragment shader cuts it pixel-exact, so pools read as one body
     this.fluidGeo = new THREE.BufferGeometry();
     this.fluidMat = new THREE.ShaderMaterial({
       uniforms: { ...this.U },
       vertexShader: /* glsl */`
         attribute vec3 fdata;
-        uniform float time;
         varying vec3 vData;
         varying vec2 vWorld;
         void main() {
-          vec3 p = position;
-          if (fdata.y > 0.5) p.y += sin(time * (fdata.x > 1.5 ? 1.2 : 2.6) + p.x * 2.3) * (fdata.x > 1.5 ? 0.025 : 0.035);
           vData = fdata;
-          vec4 wp = modelMatrix * vec4(p, 1.0);
+          vec4 wp = modelMatrix * vec4(position, 1.0);
           vWorld = wp.xy;
           gl_Position = projectionMatrix * viewMatrix * wp;
         }`,
       fragmentShader: /* glsl */`
         ${LIGHT_GLSL}
-        varying vec3 vData;
+        varying vec3 vData; // type, water line to cut at (world y; 1e4 = none), surface of the column (1e4 = this cell)
         varying vec2 vWorld;
         void main() {
-          vec3 col; float a;
           vec2 px = floor(vWorld * 32.0);
-          if (vData.x < 1.5) {
+          vec2 pc = (px + 0.5) / 32.0;
+          bool lava = vData.x > 1.5;
+          float wave = 0.0;
+          if (vData.y < 1000.0) {
+            wave = lava
+              ? sin(time * 1.1 + pc.x * 2.1) * 0.022 + sin(time * 0.7 - pc.x * 5.3) * 0.01
+              : sin(time * 2.4 + pc.x * 2.3) * 0.028 + sin(time * 3.7 - pc.x * 6.1) * 0.012;
+          }
+          float surf = floor((vData.y + wave) * 32.0 + 0.5) / 32.0;
+          if (pc.y > surf) discard;
+          float d = (min(surf, vData.z) - pc.y) * 32.0; // pixels below the water line
+          vec3 col; float a;
+          if (!lava) {
             vec3 L = ambient + lightAt(vWorld);
-            float surf = smoothstep(0.9, 1.0, vData.z);
-            float ripple = 0.5 + 0.5 * sin(px.x * 0.19 + time * 1.7) * sin(px.y * 0.16 - time * 1.3);
-            col = vec3(0.12, 0.34, 0.78) * (L * 0.85 + 0.05) + vec3(0.25, 0.5, 0.7) * L * (surf * 0.9 + step(0.8, ripple) * 0.12);
-            a = 0.58 + surf * 0.25;
+            float deep = clamp(d / 40.0, 0.0, 1.0);
+            float ripple = sin(px.x * 0.19 + time * 1.7) * sin(px.y * 0.16 - time * 1.3);
+            vec3 base = mix(vec3(0.16, 0.42, 0.86), vec3(0.07, 0.2, 0.55), deep);
+            col = base * (L * 0.85 + 0.05) + vec3(0.2, 0.45, 0.65) * L * step(0.72, ripple) * 0.18;
+            a = 0.52 + deep * 0.22;
+            if (vData.y < 1000.0) {
+              if (d < 1.0) { col = vec3(0.78, 0.92, 1.0) * (L * 0.9 + 0.18); a = 0.92; }
+              else if (d < 3.0) { col = mix(col, vec3(0.42, 0.7, 0.95) * (L + 0.1), 0.55); a = 0.75; }
+            }
           } else {
             float n = sin(px.x * 0.085 + time * 1.1) * sin(px.y * 0.097 - time * 0.8) * 0.5 + 0.5;
             float n2 = sin(px.x * 0.22 - time * 2.0 + px.y * 0.125) * 0.5 + 0.5;
             col = mix(vec3(0.85, 0.2, 0.04), vec3(1.0, 0.72, 0.18), floor((n * 0.7 + n2 * 0.3) * 4.0) / 4.0) * 1.25;
+            if (vData.y < 1000.0) {
+              if (d < 1.0) col = vec3(1.0, 0.93, 0.55) * 1.4;
+              else if (d < 3.0) col = mix(col, vec3(0.45, 0.12, 0.05), 0.55 * step(0.5, fract(px.x * 0.13 + time * 0.05)));
+            }
             a = 0.96;
           }
           gl_FragColor = vec4(col, a);
@@ -393,25 +412,58 @@ export class MineRenderer {
 
   // ------------------------------------------------------------ fluids
   updateFluids(x0, y0, x1, y1) {
-    const w = this.w;
+    const w = this.w, W = w.W;
+    x0 = Math.max(0, x0); x1 = Math.min(W - 1, x1);
+    y0 = Math.max(0, y0); y1 = Math.min(w.H - 1, y1);
     const pos = [], fd = [], idx = [];
     let n = 0;
-    for (let y = Math.max(0, y0); y <= Math.min(w.H - 1, y1); y++)
-      for (let x = Math.max(0, x0); x <= Math.min(w.W - 1, x1); x++) {
-        const i = w.idx(x, y);
-        const f = w.fluid[i];
-        if (f < 0.02) continue;
+    // displayed level of a cell for type t: -1 dry/other, 1 when water sits on top of it
+    const lv = (x, y, t) => {
+      if (x < 0 || x >= W) return -1;
+      const i = y * W + x;
+      if (w.fluid[i] < 0.02 || w.ftype[i] !== t) return -1;
+      if (y > 0 && w.fluid[i - W] > 0.02 && w.ftype[i - W] === t) return 1;
+      return Math.min(1, w.fluid[i]);
+    };
+    const EXT = 12 / M;
+    const solid = (x, y) => x < 0 || x >= W || y >= w.H || isSolid(w.block[y * W + x]);
+    const wet = (x, y, t) => y >= 0 && x >= 0 && x < W && w.fluid[y * W + x] > 0.02 && w.ftype[y * W + x] === t;
+    const z = 0.32;
+    const quad = (xa, ya, xb, yb, t, ca, cb, sy) => {
+      pos.push(xa, ya, z, xb, ya, z, xb, yb, z, xa, yb, z);
+      fd.push(t, ca, sy, t, cb, sy, t, cb, sy, t, ca, sy);
+      const v = n * 4;
+      idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
+      n++;
+    };
+    for (let y = y0; y <= y1; y++)
+      for (let x = x0; x <= x1; x++) {
+        const i = y * W + x;
+        if (w.fluid[i] < 0.02) continue;
         const t = w.ftype[i];
-        const above = y > 0 && w.fluid[i - w.W] > 0.02 && w.ftype[i - w.W] === t;
-        const lvl = above ? 1 : Math.min(1, f);
-        const X0 = x, X1 = x + 1, Y0 = -y - 1, Y1 = -y - 1 + Math.round(lvl * M) / M;
-        const z = 0.32;
-        pos.push(X0, Y0, z, X1, Y0, z, X1, Y1, z, X0, Y1, z);
-        const top = above ? 0 : 1;
-        fd.push(t, 0, 0, t, 0, 0, t, top, 1, t, top, 1);
-        const v = n * 4;
-        idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
-        n++;
+        const l = lv(x, y, t);
+        const top = !(y > 0 && w.fluid[i - W] > 0.02 && w.ftype[i - W] === t);
+        const Yb = -y - 1;
+        let sl = 1e4, sr = 1e4, Yt = -y, sy = 1e4;
+        if (!top) {
+          // depth shading: find the water line of this column
+          let yy = y - 1;
+          while (yy > 0 && w.fluid[yy * W + x - W] > 0.02 && w.ftype[yy * W + x - W] === t) yy--;
+          sy = -yy - 1 + Math.max(0, lv(x, yy, t));
+        } else {
+          // average with wet neighbours so neighbouring cells meet at one line
+          const a = lv(x - 1, y, t), b = lv(x + 1, y, t);
+          const hl = a >= 0 ? (l + a) / 2 : l, hr = b >= 0 ? (l + b) / 2 : l;
+          sl = Yb + hl; sr = Yb + hr;
+          Yt = Math.max(sl, sr) + 0.08;
+        }
+        quad(x, Yb, x + 1, Yt, t, sl, sr, sy);
+        // the sim is per cell but rock is per pixel: let the water reach a little into solid
+        // neighbours so it fills their ragged edge pixels (the rock in front hides the rest)
+        const col = top ? Yb + l : sy;
+        if (solid(x, y + 1)) quad(x, Yb - EXT, x + 1, Yb, t, 1e4, 1e4, col);
+        if (solid(x - 1, y)) quad(x - EXT, Yb, x, wet(x - 1, y - 1, t) ? Yb + 1 - EXT : Yt, t, sl, sl, sy);
+        if (solid(x + 1, y)) quad(x + 1, Yb, x + 1 + EXT, wet(x + 1, y - 1, t) ? Yb + 1 - EXT : Yt, t, sr, sr, sy);
       }
     this.fluidGeo.dispose();
     const g = new THREE.BufferGeometry();

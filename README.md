@@ -33,7 +33,9 @@ On touch screens, on-screen buttons appear. Tap the world to dig or aim.
 
 ## What's in it
 
-- **Mining in a flat 2D side view of 3D voxel rock.** The camera never rotates. Rock cracks, chips and shatters into physical debris. Dust hangs in the lamplight. Ceilings creak and cave in when you dig too wide, so place support beams. Sand and rubble pour down, water and lava flow and react, and fire spreads through roots and coal. Everything is lit by a colored light grid with real shadows.
+- **You start trapped.** You wake up in a collapsed tunnel with no way to town. Dig your way through, find Nugget, and break out through the old boarded-up passage to reach Deep Town for the first time.
+- **Pixel-perfect mining in a 2D side view of 3D voxel rock.** The camera never rotates. Rock is simulated pixel by pixel (32 per tile), with its own grain, plates, pebbles, roots and crystal veins. Each blow knocks out irregular fracture pieces that fly as physical voxel debris, so there's no tile grid to dig along. Loose overhangs fall and shatter into rubble piles. Ceilings creak and cave in when you dig too wide, so place support beams. Sand and gravel pour, water and lava flow and react, and fire spreads through roots and coal. Everything is lit by a colored light grid with real shadows.
+- **Face mode.** Press up against a rock wall and the view drops into a close, first-person 2D pixel-art view of the rock with your own paws swinging the tool. Step back and it zooms out again.
 - **Careful extraction.** Ore hides inside rock until it's exposed, brushed or X-rayed. Hitting ore with a pick or drill chips its quality, and heavy blows shake the ore next to them. A chisel removes the rock around ore safely, and brushing a loosened find out keeps it *pristine*. Tools: pickaxe, chisel, brush, drill (which overheats), X-ray lamp, support beams and glow stakes.
 - **Six depth zones:** Rootsoil, Clayworks, Crystal Grotto, Magma Deep, Frost Vault and The Core. They hold 29 minerals and gems, 15 plants and 15 creatures, many with their own behavior:
   - *Bioxide* zaps bare paws and explodes when struck; rubber gloves protect you.
@@ -55,4 +57,4 @@ On touch screens, on-screen buttons appear. Tap the world to dig or aim.
 
 ## Tech
 
-Three.js 0.185 and Vite 7, plain ES modules. The canvas renders at about 1/3 resolution and is upscaled with nearest-neighbor filtering. A post pass adds 1px outlines, ordered dithering and a light color grade. Audio is synthesized with the Web Audio API. Progress is saved to `localStorage`.
+Three.js 0.185 and Vite 7, plain ES modules. The canvas renders at 540–720 lines and is upscaled with nearest-neighbor filtering. Mine terrain is generated lazily in 256-pixel chunks from a cheap world plan and drawn as one extruded voxel mesh per chunk. A post pass adds 1px outlines, ordered dithering and a light color grade. Audio is synthesized with the Web Audio API. Progress is saved to `localStorage`.

@@ -172,6 +172,23 @@ export class Bodies {
       if (resting) { b.vx = 0; b.wx = b.wy = b.wz = 0; b.rest += dt; } else b.rest = 0;
       if (!b.big && b.dying <= 0 && (b.rest > b.life * 0.6 || b.t > b.life + 3)) b.dying = 0.35;
       if (b.big && player && this.hooks.hitPlayer && b.vy < -3 && Math.abs(player.x - b.x) < b.hx + 0.3 && Math.abs(-player.y - b.y) < b.hy + 0.4) this.hooks.hitPlayer(b);
+      // water slows a chunk down (and lava eats it), with a splash on the way in
+      const w = this.w, fx = Math.floor(b.x), fy = Math.floor(-b.y);
+      if (fx >= 0 && fy >= 0 && fx < w.W && fy < w.H) {
+        const i = fy * w.W + fx, f = w.fluid[i];
+        const deep = f > 0.05 && (-b.y > fy + 1 - Math.min(1, f) || (fy > 0 && w.fluid[i - w.W] > 0.05));
+        if (deep) {
+          const t = w.ftype[i];
+          if (!b.wet && this.hooks.splash) {
+            let sy = fy;
+            while (sy > 0 && w.fluid[sy * w.W - w.W + fx] > 0.05) sy--;
+            this.hooks.splash(b, t, -b.vy, sy + 1 - Math.min(1, w.fluid[sy * w.W + fx]));
+          }
+          b.wet = t || 1;
+          if (t === 2) { if (b.dying <= 0) b.dying = 0.35; }
+          else { b.vy = b.vy * Math.max(0, 1 - 5 * dt) + 15 * dt; b.vx *= Math.max(0, 1 - 3 * dt); b.wz *= Math.max(0, 1 - 2 * dt); }
+        } else b.wet = 0;
+      }
       if (b.y < -this.w.H - 2) { this.kill(b, true); continue; }
       b.mesh.position.set(b.x, b.y, b.z);
       b.mesh.rotation.set(b.rx, b.ry, b.rz);
