@@ -65,6 +65,10 @@ export class FX {
   spore(x, y) {
     this.glowP.spawn({ x: x + rand(-0.3, 0.3), y: -y + rand(-0.2, 0.2), z: 0.3, vx: rand(-0.2, 0.2), vy: rand(0.1, 0.4), life: rand(1.5, 3), size: 0.05, color: [0.6, 0.4, 0.8], alpha: 0.8, drag: 0.5, grav: -0.05 });
   }
+  /** A slow glowing mote drifting up from a luminous plant. */
+  firefly(x, y, color) {
+    this.glowP.spawn({ x: x + rand(-0.55, 0.55), y: -y + rand(-0.2, 0.45), z: rand(0.3, 0.6), vx: rand(-0.22, 0.22), vy: rand(-0.04, 0.22), life: rand(1.8, 3.4), size: rand(0.03, 0.048), color, alpha: 0.85, drag: 0.35, grav: -0.05 });
+  }
   spores(x, y) { for (let i = 0; i < 30; i++) { this.spore(x + rand(-0.6, 0.6), y + rand(-0.6, 0.4)); } this.dust(x, y, 10, [0.55, 0.42, 0.7]); }
   sparkle(x, y, color = [1, 1, 0.85]) {
     for (let i = 0; i < 10; i++) {

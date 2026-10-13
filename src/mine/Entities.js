@@ -177,10 +177,14 @@ export class Plants {
         p.angle += (clamp(a, -0.9, 0.9) - p.angle) * Math.min(1, dt * 2);
         if (Math.hypot(s.player.x - p.x, s.player.y - p.y) < 4 && chance(dt * 0.4)) s.audio.play('wisp', { vol: 0.5 });
       }
+      // cosmetic particles only where someone can see them
+      const v = s.view;
+      if (v && (p.x < v.x0 - 1 || p.x > v.x1 + 1 || p.y < v.y0 - 1 || p.y > v.y1 + 1)) continue;
       if (p.type === 'sparkmoss' && chance(dt * 1.5)) s.fx.spark(p.x + rand(0.2, 0.8), p.y + rand(0.2, 0.8), [0.5, 0.9, 1]);
       if (p.type === 'ember' && chance(dt * 4)) s.fx.ember(p.x + 0.5, p.y + 0.3);
       if (p.type === 'gloom' && chance(dt * 0.6)) s.fx.spore(p.x + 0.5, p.y + 0.5);
       if (p.type === 'lotus' && chance(dt * 2)) s.fx.sparkle(p.x + 0.5, p.y + 0.4, [1, 0.6, 0.9]);
+      if ((p.type === 'glowcap' || p.type === 'lily') && chance(dt * 0.45)) s.fx.firefly(p.x + 0.5, p.y + 0.35, p.type === 'glowcap' ? [0.38, 0.72, 1] : [0.72, 0.9, 1]);
     }
     if (this.whisperT <= 0) this.whisperT = 2;
   }
