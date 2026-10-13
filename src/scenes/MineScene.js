@@ -994,6 +994,9 @@ export default class MineScene extends Scene {
     const tx = pl.x + lookAhead, ty = pl.y - 0.4;
     this.camX += (tx - this.camX) * Math.min(1, dt * 5);
     this.camY += (ty - this.camY) * Math.min(1, dt * 6);
+    // a phone held upright still sees ~9 cells across (it just sees a taller slice)
+    this.camera.fov = 36;
+    if (!this.overview) this.camDist = Math.max(16, 4.6 / (Math.tan((36 * Math.PI) / 360) * this.camera.aspect) + 0.5);
     const halfH = Math.tan((this.camera.fov * Math.PI) / 360) * (this.camDist - 0.5);
     const halfW = halfH * this.camera.aspect;
     if (this.overview) { this.camX = w.W / 2; this.camY = w.H / 2; }
@@ -1003,10 +1006,9 @@ export default class MineScene extends Scene {
     }
     this.shakeAmp = Math.max(0, this.shakeAmp - dt * 1.2);
     const sh = this.shakeAmp;
-    this.camera.fov = 36;
     this.camera.updateProjectionMatrix();
     const kx = this.kick ? this.kick.x : 0, ky = this.kick ? this.kick.y : 0;
-    this.camera.position.set(this.camX + kx + (Math.random() - 0.5) * sh, -this.camY + 2.2 + ky + (Math.random() - 0.5) * sh, this.camDist);
+    this.camera.position.set(this.camX + kx + (Math.random() - 0.5) * sh, -this.camY + 2.2 * (this.camDist / 16) + ky + (Math.random() - 0.5) * sh, this.camDist);
     this.camera.lookAt(this.camX + kx + (Math.random() - 0.5) * sh * 0.3, -this.camY - 0.15 + ky, 0);
     this.renderer.terrain.shared.uFlat.value = 0;
   }
