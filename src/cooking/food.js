@@ -8,6 +8,7 @@ import { DISHES } from '../data/recipes.js';
 import { mixHex, shade } from '../core/util.js';
 
 const pixCache = new Map();
+const luma = (c) => (((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11) / 255;
 
 /** Icon pixels as a 16×16 array of hex colors (null = transparent). */
 export function iconPixels(id) {
@@ -20,12 +21,18 @@ export function iconPixels(id) {
     const i = (y * W + x) * 4;
     px.push(d[i + 3] > 128 ? (d[i] << 16) | (d[i + 1] << 8) | d[i + 2] : null);
   }
-  const out = { W, H, px };
+  // drop the dark 1px icon outline: the post pass already draws a crisp silhouette in 3D
+  const trimmed = px.slice();
+  const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? null : px[y * W + x]);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const c = px[y * W + x];
+    if (c === null || luma(c) > 0.24) continue;
+    if (at(x - 1, y) === null || at(x + 1, y) === null || at(x, y - 1) === null || at(x, y + 1) === null) trimmed[y * W + x] = null;
+  }
+  const out = { W, H, px: trimmed, raw: px };
   pixCache.set(id, out);
   return out;
 }
-
-const luma = (c) => (((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11) / 255;
 
 /** Representative color of an item: average of its mid-tone pixels. */
 export function mainColor(id) {

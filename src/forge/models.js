@@ -120,9 +120,9 @@ export function makeHearth() {
 }
 
 function makeHood() {
-  const W = 28, D = 21, HH = 13, PIPE = 30;
+  const W = 26, D = 19, HH = 11, PIPE = 32;
   const g = new VoxelGrid(W, HH + PIPE, D);
-  const COP = 0xb8683c;
+  const COP = 0x7a4a34;
   for (let y = 0; y < HH; y++) {
     const t = y / (HH - 1);
     const hw = Math.round((W / 2) * (1 - t * 0.62)), hd = Math.round((D / 2) * (1 - t * 0.55));
@@ -131,9 +131,9 @@ function makeHood() {
       const edge = x === cx - hw || x === cx + hw - 1 || z === cz - hd || z === cz + hd - 1;
       if (!edge && y !== HH - 1) continue;
       let c = jit(COP, x, y, z, 0.07);
-      if (y === 0) c = 0x8a4a28;
-      if (y === 1 && (x + z) % 3 === 0) c = 0x5a2e18; // rivets
-      if (h3(x, y, z) % 23 === 0) c = 0x5a9a7a; // patina
+      if (y === 0) c = 0x5a3424;
+      if (y === 1 && (x + z) % 3 === 0) c = 0x3a2016; // rivets
+      if (h3(x, y, z) % 19 === 0) c = 0x4a7a6a; // patina
       if (y > HH - 4) c = mixHex(c, 0x3a2a24, 0.35);
       g.set(x, y, z, c);
     }

@@ -7,7 +7,7 @@ export const FUNCTIONAL = new Set(['bed', 'forge', 'stove', 'coop']);
 /** Floor items tall enough to cover the wall behind them. */
 export const TALL_WALL = new Set(['bookshelf', 'clock', 'fireplace']);
 /** North-wall slots covered by the Surface Express poster. */
-export const POSTER_SLOTS = [2, 3];
+export const POSTER_SLOTS = [1, 2];
 
 export function roomSize(level) {
   return ROOM_SIZES[Math.max(0, Math.min(ROOM_SIZES.length - 1, level | 0))];

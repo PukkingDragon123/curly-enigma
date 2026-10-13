@@ -184,20 +184,21 @@ export function makeRoot(seed = 1, len = 40) {
  * lenses at the lens centre height, lenses facing +z.
  */
 export function makeSunglasses(s = S16) {
-  const g = new VoxelGrid(16, 5, 9);
+  // 14 voxels wide: lenses at x 1..5 and 8..12, arms at x 0 and 13 hug a 12-voxel head
+  const g = new VoxelGrid(14, 4, 9);
   const lens = 0x141018, frame = 0x2a2230, shine = 0xf4f0ff, tint = 0x3a2a5a;
   const z = 8;
-  for (const x0 of [1, 9]) {
-    g.box(x0, 0, z, 6, 4, 1, lens);
-    g.set(x0, 0, z, -1); g.set(x0 + 5, 0, z, -1); // rounded bottom corners
-    g.box(x0, 3, z, 6, 1, 1, frame);
+  for (const x0 of [1, 8]) {
+    g.box(x0, 0, z, 5, 3, 1, lens);
+    g.set(x0, 0, z, -1); g.set(x0 + 4, 0, z, -1); // rounded bottom corners
+    g.box(x0, 3, z, 5, 1, 1, frame);
     g.set(x0 + 1, 2, z, shine); g.set(x0 + 2, 2, z, shine); g.set(x0 + 1, 1, z, tint);
-    g.set(x0 + 4, 1, z, tint);
+    g.set(x0 + 3, 1, z, tint);
   }
-  g.box(7, 3, z, 2, 1, 1, frame); // bridge
+  g.box(6, 2, z, 2, 2, 1, frame); // bridge
   // arms run back along the sides of the head
-  for (let k = 0; k < 8; k++) { g.set(0, 3, z - k, frame); g.set(15, 3, z - k, frame); }
-  return voxMesh(g, { pivot: [8, 2, 8.5], scale: s });
+  for (let k = 1; k < 9; k++) { g.set(0, 3, z - k + 1, frame); g.set(13, 3, z - k + 1, frame); }
+  return voxMesh(g, { pivot: [7, 2, 8.5], scale: s });
 }
 
 // ------------------------------------------------------------------ coconut drink

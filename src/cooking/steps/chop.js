@@ -8,7 +8,7 @@ import { crumbs, sparkle } from '../fx.js';
 import { BOARD_TOP } from '../kitchen.js';
 import { clamp, damp } from '../../core/util.js';
 
-const PX = 0.034;
+const PX = 0.046;
 const DEPTH = 3;
 const GAP = 0.032;
 const EDGE = new THREE.Vector3(-0.0125, -0.0875, 0.49); // knife-local point on the edge, mid-blade
@@ -138,8 +138,8 @@ export class ChopStep extends Step {
     const left = this.pieces[0];
     const lx = this.bx(x0) + (left ? left.off : 0) - 0.07;
     const press = this.chopT >= 0 && this.chopT < 0.2 ? -0.012 : 0;
-    this.L.goal.set(Math.min(lx, this.knifeX - 0.42), this.top + 0.09 + press, this.base.z + 0.12);
-    this.L.setPose({ pitch: 0.95, roll: 0.25, yaw: 0.35 });
+    this.L.goal.set(Math.min(lx - 0.12, this.knifeX - 0.45), this.top + 0.07 + press, this.base.z + 0.1);
+    this.L.setPose({ pitch: 0.8, roll: 0.35, yaw: 1.05 });
     if (this.finishT >= 0) {
       this.finishT += dt;
       if (this.finishT > 0.45) this.finish(this.total());

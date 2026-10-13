@@ -29,8 +29,8 @@ export default class HomeScene extends IsoScene {
     const [W, D] = roomSize(d.home.level);
     this.W = W;
     this.D = D;
-    this.initIso({ w: W, h: D, zoom: 9.6, minZoom: 6.5, maxZoom: 17, lights: 6, lightRange: 16, bg: 0x110b0f });
-    this.cam.bounds = { minX: 2.5, maxX: W - 2, minZ: 2, maxZ: D - 1.5 };
+    this.initIso({ w: W, h: D, zoom: 9.6, minZoom: 6.5, maxZoom: 13, lights: 6, lightRange: 16, bg: 0x110b0f });
+    this.cam.bounds = null;
     this.post = { vignette: 0.42 };
     WATER_TIME.value = 0;
 
@@ -43,8 +43,9 @@ export default class HomeScene extends IsoScene {
     this.room = new HomeRoom(this.scene);
     this.room.build(W, D, d.home.wall, d.home.floor);
     this.own(() => this.room.dispose());
-    const L = this.room.lantern;
-    this.addLight({ x: L.x, y: L.y, z: L.z, color: 0xffc27a, intensity: 7, distance: 9, flicker: 0.08, pool: 2.8, poolOpacity: 0.2, halo: 0.8, hy: L.y + 0.05, haloOpacity: 0.55, priority: 3 });
+    for (const L of this.room.sconces) {
+      this.addLight({ x: L.x, y: L.y, z: L.z, color: 0xffc27a, intensity: 6.5, distance: 8, flicker: 0.1, pool: 2.2, poolOpacity: 0.16, poolX: L.x + (L.z < 0.5 ? 0 : 1.1), poolZ: L.z + (L.z < 0.5 ? 1.1 : 0), halo: 0.75, haloOpacity: 0.5, priority: 3 });
+    }
 
     // furniture
     this.items = new Map();
@@ -67,7 +68,7 @@ export default class HomeScene extends IsoScene {
     this.map.resolve(this.nugget.pos, 0.17);
     this.nuggetAI.home = { x0: 0, z0: 0, x1: W - 1, z1: D - 1 };
     this.napT = rand(25, 45);
-    this.cam.snap(_v.set(this.player.x, 0.65, this.player.z));
+    { const k = clamp((W + D - 18) / 12, 0.22, 0.85); this.cam.snap(_v.set(W / 2 + 0.2 + (this.player.x - W / 2 - 0.2) * k, 0.6, D / 2 + 0.4 + (this.player.z - D / 2 - 0.4) * k)); }
 
     // build mode
     this.build = new BuildMode(this);
@@ -539,6 +540,14 @@ export default class HomeScene extends IsoScene {
   update(dt) {
     WATER_TIME.value += dt;
     this.build.update(dt);
+    if (!this.build.active && this.player) {
+      // soft follow: small rooms stay framed, big rooms follow the player more
+      const k = clamp((this.W + this.D - 18) / 12, 0.22, 0.85);
+      const cx = this.W / 2 + 0.2, cz = this.D / 2 + 0.4;
+      this.homeFocus = this.homeFocus || new THREE.Vector3();
+      this.homeFocus.set(cx + (this.player.x - cx) * k, 0.6, cz + (this.player.z - cz) * k);
+      this.camFocus = this.homeFocus;
+    }
     super.update(dt);
     const env = { near: 99, audio: this.game.audio, playing: this.musicBox.on };
     for (const rec of this.items.values()) {

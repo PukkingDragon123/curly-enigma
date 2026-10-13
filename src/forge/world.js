@@ -113,7 +113,7 @@ export function buildWorld(scene) {
   W.barrel = barrel;
   W.barrelTop = new THREE.Vector3(1.8, barrel.waterY, -0.62);
   const grind = makeGrindstone();
-  grind.group.position.set(3.35, 0, -0.75);
+  grind.group.position.set(3.55, 0, -0.95);
   grind.group.rotation.y = -0.5;
   scene.add(grind.group);
   W.grind = grind;
@@ -138,9 +138,10 @@ export function buildWorld(scene) {
   scene.add(coal);
   W.coalBin = coal;
   const crate = makeCrate();
-  crate.position.set(-0.3, 0, R.back + 0.38);
+  crate.position.set(2.5, 0, -0.32);
+  crate.rotation.y = 0.3;
   scene.add(crate);
-  W.perch = new THREE.Vector3(-0.3, 8 * V, R.back + 0.38);
+  W.perch = new THREE.Vector3(2.5, 8 * V, -0.32);
   const shelf = makeShelf();
   shelf.group.position.set(1.2, 1.75, R.back + 0.02);
   scene.add(shelf.group);
@@ -179,9 +180,9 @@ export function buildWorld(scene) {
   }
 
   // ---------------------------------------------------------------- light
-  const hemi = new THREE.HemisphereLight(0x9a7a88, 0x3a2216, 1.25);
+  const hemi = new THREE.HemisphereLight(0xc8a0a0, 0x4a2c1c, 2.1);
   scene.add(hemi);
-  const fire = new THREE.PointLight(0xff8a3a, 9, 11, 1.25);
+  const fire = new THREE.PointLight(0xff8a3a, 9, 14, 1.05);
   fire.position.copy(W.firePos).add(new THREE.Vector3(0.1, 0.45, 0.45));
   scene.add(fire);
   W.light = fire;
@@ -195,12 +196,12 @@ export function buildWorld(scene) {
     hearth: { pos: new THREE.Vector3(hearthX + 0.15, 0, hearthZ + 1.05), yaw: Math.PI },
     barrel: { pos: new THREE.Vector3(1.25, 0, -1.05), yaw: Math.PI * 0.75 },
     bench: { pos: new THREE.Vector3(2.2, 0, R.back + 1.05), yaw: Math.PI * 0.9 },
-    idle: { pos: new THREE.Vector3(anvilPos.x - 0.75, 0, anvilPos.z + 0.35), yaw: 0.35 },
+    idle: { pos: new THREE.Vector3(anvilPos.x, 3 * V, anvilPos.z - 0.62), yaw: 0.45 },
   };
   const af = W.anvilFace;
   W.shots = {
     overview: { pos: new THREE.Vector3(3.1, 2.45, 4.0), look: new THREE.Vector3(-0.55, 0.95, -1.0), fov: 45 },
-    menu: { pos: new THREE.Vector3(2.4, 2.25, 3.55), look: new THREE.Vector3(-1.05, 0.9, -1.1), fov: 44 },
+    menu: { pos: new THREE.Vector3(3.0, 2.15, 4.3), look: new THREE.Vector3(-0.3, 1.05, -1.2), fov: 44 },
     hearth: { pos: new THREE.Vector3(hearthX + 1.25, 1.62, hearthZ + 2.25), look: new THREE.Vector3(hearthX - 0.85, 0.7, hearthZ + 0.05), fov: 42 },
     anvil: { pos: new THREE.Vector3(af.x + 0.08, af.y + 1.72, af.z + 1.42), look: new THREE.Vector3(af.x + 0.08, af.y + 0.3, af.z - 0.22), fov: 40 },
     quench: { pos: new THREE.Vector3(0.9, 1.75, 2.15), look: new THREE.Vector3(0.1, 0.55, -1.0), fov: 46 },

@@ -183,8 +183,8 @@ export class ForgeParticles {
     this.glow.spawn({
       x: p.x + (Math.random() - 0.5) * spread, y: p.y + Math.random() * 0.03, z: p.z + (Math.random() - 0.5) * spread * 0.55,
       vx: (Math.random() - 0.5) * 0.08, vy: 0.25 + Math.random() * 0.35 * heat, vz: (Math.random() - 0.5) * 0.06,
-      life: 0.35 + Math.random() * 0.35, size: 0.05 + 0.03 * heat, size1: 0.012,
-      color: c < 0.4 ? 0xffe08a : 0xffa03a, color1: 0xc8300a, alpha: 0.55, gravity: -0.6, drag: 1.2, wobble: 0.3, fadeIn: 0.12,
+      life: 0.4 + Math.random() * 0.45, size: 0.06 + 0.035 * heat, size1: 0.014,
+      color: c < 0.4 ? 0xffe08a : 0xffa03a, color1: 0xc8300a, alpha: 0.6, gravity: -0.7, drag: 1.2, wobble: 0.3, fadeIn: 0.12,
     });
   }
 

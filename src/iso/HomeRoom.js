@@ -374,7 +374,7 @@ export class HomeRoom {
     const pw = pc.w / 30, ph = pc.h / 30;
     const mat = new THREE.MeshLambertMaterial({ map: tex });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), mat);
-    const cx = 3, cy = 1.72;
+    const cx = 2, cy = 1.72;
     plane.position.set(cx, cy, 0.135);
     this.group.add(plane);
     // chunky wooden frame
@@ -389,7 +389,7 @@ export class HomeRoom {
     const fm = vmesh(g, { scale: V16, pivot: [fw / 2, fh / 2, 0] });
     fm.position.set(cx, cy, 0.03);
     this.group.add(fm);
-    this.poster = { x0: 2, x1: 3, cx, cy };
+    this.poster = { x0: 1, x1: 2, cx, cy };
   }
 
   /** Roots, dried herbs, little wall details that never move. */
@@ -410,7 +410,7 @@ export class HomeRoom {
       return vmesh(g, { scale: V16, pivot: [3, len + 1, 1] });
     };
     const top = WALL_H - 0.02;
-    const posterSkip = (x) => x > 1.5 && x < 4.5;
+    const posterSkip = (x) => x > 0.6 && x < 3.4;
     for (let i = 0; i < Math.round(W * 0.6); i++) {
       const x = 0.6 + rng() * (W - 1.2);
       if (posterSkip(x)) continue;
@@ -428,12 +428,12 @@ export class HomeRoom {
     }
     this.group.add(roots);
     // dried herb bundles on a string along the west wall
-    const herbs = new VoxelGrid(4, 1, 52);
-    for (let z = 0; z < 52; z++) herbs.set(1, 0, z, 0xc8b890);
+    const herbs = new VoxelGrid(4, 1, 44);
+    for (let z = 0; z < 44; z++) herbs.set(1, 0, z, 0xc8b890);
     const hg = new THREE.Group();
     hg.add(Object.assign(vmesh(herbs, { scale: V16, pivot: [1, 0, 0] }), {}));
     const herbCols = [[0x6a8a3a, 0x8aa84a], [0x9a6aa8, 0x6a8a3a], [0xc8a040, 0x7a8a3a], [0xa84a3a, 0x6a7a3a]];
-    for (let k = 0; k < 4; k++) {
+    for (let k = 0; k < 3; k++) {
       const b = new VoxelGrid(5, 11, 5);
       const [c1, c2] = herbCols[k];
       b.box(2, 7, 2, 1, 4, 1, 0x7a5a3a);
@@ -443,31 +443,38 @@ export class HomeRoom {
       }
       b.box(1, 7, 1, 3, 1, 3, 0xc94a3a);
       const bm = vmesh(b, { scale: V16, pivot: [2.5, 11, 2.5] });
-      bm.position.set(0, 0, 0.35 + k * 0.85);
+      bm.position.set(0, 0, 0.4 + k * 0.9);
       hg.add(bm);
     }
-    hg.position.set(0.18, 2.55, Math.max(1, D * 0.25));
+    hg.position.set(0.18, 2.55, 0.9);
     hg.rotation.y = 0;
     this.group.add(hg);
-    // ceiling lantern hanging from the dark
-    const lan = new VoxelGrid(9, 60, 9);
-    for (let y = 14; y < 60; y++) if (y % 2 === 0) lan.set(4, y, 4, 0x3a3a42); else lan.set(4, y, 4, 0x5a5a62);
-    lan.box(1, 1, 1, 7, 1, 7, 0x2a2a30);
-    lan.box(2, 11, 2, 5, 2, 5, 0x2a2a30);
-    lan.box(3, 13, 3, 3, 1, 3, 0x3a3a42);
-    for (const [x, z] of [[1, 1], [7, 1], [1, 7], [7, 7]]) lan.box(x, 2, z, 1, 9, 1, 0x2a2a30);
-    const lm = vmesh(lan, { scale: V16, pivot: [4.5, 0, 4.5] });
-    const glass = new VoxelGrid(5, 9, 5);
-    glass.box(0, 0, 0, 5, 9, 5, (x, y, z) => (y > 6 ? 0xffd890 : 0xffb24a));
-    glass.box(1, 1, 1, 3, 4, 3, 0xfff0c0);
-    const gm = gmesh(glass, { scale: V16, pivot: [2.5, 0, 2.5], outline: false });
-    gm.position.y = 2 / 16;
-    const lg = new THREE.Group();
-    lg.add(lm, gm);
-    const lx = Math.min(W - 2.5, W * 0.55), lz = Math.min(D - 2.5, D * 0.5);
-    lg.position.set(lx, 2.35, lz);
-    this.group.add(lg);
-    this.lantern = { x: lx, y: 2.6, z: lz, obj: lg };
+    // two wall sconces (they never cover the room the way a hanging lamp would)
+    this.sconces = [];
+    const sconce = (wx, wz, rotY) => {
+      const sg = new VoxelGrid(7, 12, 8);
+      sg.box(3, 3, 0, 1, 1, 5, 0x2a2a30); // bracket arm
+      sg.box(2, 2, 0, 3, 3, 1, 0x3a3a42); // wall plate
+      sg.box(1, 0, 3, 5, 1, 5, 0x2a2a30);
+      sg.box(1, 7, 3, 5, 1, 5, 0x2a2a30);
+      sg.box(2, 8, 4, 3, 1, 3, 0x3a3a42);
+      for (const [x, z] of [[1, 3], [5, 3], [1, 7], [5, 7]]) sg.box(x, 1, z, 1, 6, 1, 0x2a2a30);
+      const sm = vmesh(sg, { scale: V16, pivot: [3.5, 0, 0] });
+      const gl = new VoxelGrid(3, 6, 3);
+      gl.box(0, 0, 0, 3, 6, 3, (x, y) => (y > 3 ? 0xffd890 : 0xffb24a));
+      gl.set(1, 2, 1, 0xfff2c0);
+      const gm = gmesh(gl, { scale: V16, pivot: [1.5, 0, 1.5], outline: false });
+      gm.position.set(0, 1 / 16, 5 / 16);
+      const grp = new THREE.Group();
+      grp.add(sm, gm);
+      grp.position.set(wx, 2.18, wz);
+      grp.rotation.y = rotY;
+      this.group.add(grp);
+      const fwd = rotY === 0 ? [0, 0.32] : [0.32, 0];
+      this.sconces.push({ x: wx + fwd[0], y: 2.42, z: wz + fwd[1] });
+    };
+    sconce(Math.min(W - 1.5, 3.55), 0.12, 0);
+    sconce(0.12, Math.max(1.5, Math.min(D - 3.4, 4.2)), Math.PI / 2);
   }
 
   dispose() {

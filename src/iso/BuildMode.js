@@ -81,43 +81,57 @@ export class BuildMode {
       s.noMove = true;
       s.noPrompt = true;
       this.prevZoom = s.cam.zoomGoal;
-      const { W, D } = s;
-      const need = Math.max((W + D) * 0.354 + 3.6, ((W + D) / Math.SQRT2 + 1.5) / s.cam.aspect) + 1.2;
-      s.cam.zoomGoal = clamp(need, 8, s.cam.maxZoom);
-      this.focus = new THREE.Vector3(W / 2, 0.4, D / 2 + 0.6);
-      s.camFocus = this.focus;
-      s.cam.bounds = { minX: 0, maxX: W, minZ: 0, maxZ: D + 2 };
+      this.prevMax = s.cam.maxZoom;
+      s.cam.maxZoom = 22;
+      this.frameRoom();
       this.helpers.visible = true;
       this.btn.classList.add('alt');
       this.openDrawer();
-      this.game.ui.setHints('<kbd>R</kbd> rotate · <kbd>Right-click</kbd> put away · <kbd>WASD</kbd> look around · <kbd>X</kbd> done');
     } else {
       this.cancelSel();
       s.noMove = false;
       s.noPrompt = false;
       s.camFocus = null;
+      s.cam.maxZoom = this.prevMax ?? 13;
       s.cam.zoomGoal = this.prevZoom ?? 9.6;
-      s.cam.bounds = { minX: 2.5, maxX: s.W - 2, minZ: 2, maxZ: s.D - 1.5 };
+      s.cam.bounds = null;
       this.helpers.visible = false;
       this.btn.classList.remove('alt');
       this.closeDrawer();
-      this.game.ui.setHints(null);
       this.game.state.save();
     }
+  }
+
+  /** Zoom and aim so the whole room sits above the drawer (pan with WASD if it can't). */
+  frameRoom() {
+    const s = this.s;
+    const { W, D } = s;
+    const drawer = 0.27; // fraction of the screen the drawer covers
+    const top = 2.6 + 0.5, bottom = -0.354 * (W + D) - 0.4; // screen-up extent of the room
+    const zoom = clamp((top - bottom) / (1 - drawer), 9, s.cam.maxZoom);
+    const uf = top - zoom / 2;
+    const fy = 0.4;
+    const sum = (0.866 * fy - uf) / 0.354, diff = (W - D) / 2;
+    s.cam.zoomGoal = zoom;
+    this.focus = new THREE.Vector3((sum + diff) / 2, fy, (sum - diff) / 2);
+    s.camFocus = this.focus;
+    s.cam.bounds = null;
   }
 
   // ------------------------------------------------------------ drawer UI
   openDrawer() {
     this.closeDrawer();
-    this.tabsEl = el('div', { class: 'tabs', style: { marginBottom: 'calc(var(--px) * 2)' } });
-    this.row = el('div', { style: { display: 'flex', gap: 'calc(var(--px) * 2)', overflowX: 'auto', paddingBottom: 'calc(var(--px) * 1.5)', minHeight: 'calc(var(--px) * 28)' } });
-    this.info = el('div', { class: 'muted', style: { fontSize: '.78em', minHeight: '1.3em', marginTop: 'calc(var(--px) * 1.5)' } });
-    this.actions = el('div', { class: 'row', style: { marginTop: 'calc(var(--px) * 1.5)', gap: 'calc(var(--px) * 2)' } });
-    const panel = el('div', { class: 'panel', style: { width: 'min(calc(100vw - 40px), calc(var(--px) * 250))', padding: 'calc(var(--px) * 4) calc(var(--px) * 5)', animation: 'none' } }, [
-      el('div', { class: 'row', style: { marginBottom: 'calc(var(--px) * 1)' } }, [el('b', { style: { fontFamily: 'var(--font-display)', fontSize: '1.5em', fontWeight: 400, color: 'var(--wood-dk)' } }, 'Decorate'), el('span', { class: 'spacer' }), this.tabsEl]),
-      this.row, this.info, this.actions,
+    this.tabsEl = el('div', { class: 'tabs', style: { margin: 0 } });
+    this.row = el('div', { style: { display: 'flex', gap: 'calc(var(--px) * 2)', overflowX: 'auto', padding: 'calc(var(--px) * 1) 0', minHeight: 'calc(var(--px) * 27)' } });
+    this.info = el('div', { class: 'muted', style: { fontSize: '.78em', minWidth: 0, flex: '1 1 auto' } });
+    this.actions = el('div', { class: 'row', style: { gap: 'calc(var(--px) * 2)', flexWrap: 'nowrap' } });
+    const keys = el('span', { class: 'muted', style: { fontSize: '.7em' }, html: '<kbd>R</kbd>rotate <kbd>Right-click</kbd>put away <kbd>X</kbd>done' });
+    const panel = el('div', { class: 'panel', style: { width: 'min(calc(100vw - 40px), calc(var(--px) * 250))', padding: 'calc(var(--px) * 3) calc(var(--px) * 5) calc(var(--px) * 3)', animation: 'none' } }, [
+      el('div', { class: 'row', style: { gap: 'calc(var(--px) * 3)' } }, [el('b', { style: { fontFamily: 'var(--font-display)', fontSize: '1.45em', fontWeight: 400, color: 'var(--wood-dk)', lineHeight: 1 } }, 'Decorate'), keys, el('span', { class: 'spacer' }), this.tabsEl]),
+      this.row,
+      el('div', { class: 'row', style: { flexWrap: 'nowrap', gap: 'calc(var(--px) * 3)' } }, [this.info, this.actions]),
     ]);
-    this.drawer = el('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 'calc(var(--px) * 4)', display: 'flex', justifyContent: 'center', pointerEvents: 'none' } }, [panel]);
+    this.drawer = el('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 'calc(var(--px) * 3)', display: 'flex', justifyContent: 'center', pointerEvents: 'none' } }, [panel]);
     this.game.ui.world.append(this.drawer);
     this.renderDrawer();
   }
@@ -174,14 +188,15 @@ export class BuildMode {
     } else {
       txt = 'Pick something below, or click furniture in the room to move it.';
     }
-    this.actions.append(el('span', { class: 'spacer' }), el('button', { class: 'btn', onclick: () => this.toggle(false) }, 'Done'));
+    this.actions.append(el('button', { class: 'btn', onclick: () => this.toggle(false) }, 'Done'));
     if (this.info.innerHTML !== txt) this.info.innerHTML = txt;
   }
 
   // ------------------------------------------------------------ selection
   select(sel) {
+    const same = this.sel && this.sel.id === sel.id && this.sel.type === sel.type;
     this.cancelSel();
-    if (this.sel && this.sel.id === sel.id && this.sel.type === sel.type) { this.sel = null; this.renderDrawer(); return; }
+    if (same) { this.renderDrawer(); return; }
     this.sel = sel;
     this.game.audio.play('ui_click');
     if (sel.type === 'new' || sel.type === 'move') {
@@ -410,8 +425,8 @@ export class BuildMode {
     const ax = inp.axisX(), ay = inp.axisY();
     if (ax || ay) {
       const dir = s.cam.moveDir(ax, ay, _d);
-      this.focus.x = clamp(this.focus.x + dir.x * dt * 6, 0, s.W);
-      this.focus.z = clamp(this.focus.z + dir.z * dt * 6, 0, s.D + 2);
+      this.focus.x = clamp(this.focus.x + dir.x * dt * 6, -2, s.W + 4);
+      this.focus.z = clamp(this.focus.z + dir.z * dt * 6, -2, s.D + 4);
     }
     if (inp.pressed('KeyR')) this.rotate();
     if (!inp.enabled) return;
