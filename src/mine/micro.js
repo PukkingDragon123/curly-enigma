@@ -347,10 +347,12 @@ export function texel(m, x, y, s) {
     }
     case 19: /* core */ {
       const v = voro(m, x, y);
-      if (v.edge < 0.5) return 12;
-      if (v.edge < 1.3) return 11;
+      const hot = (v.id & 7) < 2; // only some seams carry the core's glow
+      if (v.edge < 0.55) return hot ? 12 : 13;
+      if (v.edge < 1.1 && hot) return 11;
       let t = 2 + (v.id % 3);
       if (v.edge < 2.6 && v.ox + v.oy < 0) t += 2;
+      else if (v.edge < 1.8 && v.ox + v.oy > 0) t -= 1;
       return t;
     }
     case 20: /* star */ {
@@ -449,7 +451,7 @@ function pebble(x, y, s, G, p, base, c1, c2, dark) {
 
 /** Thin wavy strands (roots): 13 = root body, 14 = lit edge, 0 = none. */
 function strands(x, y, s, spacing, density) {
-  const wob = tn(x, y, 32, s) * spacing * 2.2 + tn(x, y, 8, s + 1) * 3 + y * 0.18 * (tn(x >> 4, y, 64, s + 4) - 0.5);
+  const wob = tn(x, y, 32, s) * spacing * 2.2 + tn(x, y, 8, s + 1) * 3;
   const f = (x + wob) / spacing;
   const fr = f - Math.floor(f);
   if (fr > 1 / spacing + 0.02) return 0;

@@ -366,11 +366,12 @@ export function generateMine(zone, seed) {
 
   // 7. borders, arrival room, lift stations
   const bseed = rng.int(1, 9999);
-  plan.features.push({ kind: 'fill', mat: B.BEDROCK, x0: 0, y0: 0, x1: w.MW, y1: w.MH, back: B.BEDROCK,
-    test(x, y) {
-      const e = 10 + tn(x, y, 16, bseed) * 18;
-      return x < M + e - 24 || x >= w.MW - M - e + 24 || y < M * 0.5 || y >= w.MH - M - e + 24;
-    } });
+  const edge = (x, y) => 10 + tn(x, y, 16, bseed) * 18;
+  // four tight strips (a whole-world box would be tested for every pixel of every chunk)
+  plan.features.push({ kind: 'fill', mat: B.BEDROCK, back: B.BEDROCK, x0: 0, y0: 0, x1: M + 12, y1: w.MH, test: (x, y) => x < M + edge(x, y) - 24 });
+  plan.features.push({ kind: 'fill', mat: B.BEDROCK, back: B.BEDROCK, x0: w.MW - M - 12, y0: 0, x1: w.MW, y1: w.MH, test: (x, y) => x >= w.MW - M - edge(x, y) + 24 });
+  plan.features.push({ kind: 'fill', mat: B.BEDROCK, back: B.BEDROCK, x0: 0, y0: 0, x1: w.MW, y1: M / 2, test: () => true });
+  plan.features.push({ kind: 'fill', mat: B.BEDROCK, back: B.BEDROCK, x0: 0, y0: w.MH - M - 12, x1: w.MW, y1: w.MH, test: (x, y) => y >= w.MH - M - edge(x, y) + 24 });
   for (let y = 0; y < H; y++) { w.block[w.idx(0, y)] = B.BEDROCK; w.block[w.idx(W - 1, y)] = B.BEDROCK; }
   for (let x = 0; x < W; x++) { w.block[w.idx(x, 0)] = B.BEDROCK; w.block[w.idx(x, H - 1)] = B.BEDROCK; }
   carveCells(sx - 5, 1, sx + 5, 3, 10);

@@ -125,11 +125,15 @@ void main() {
   } else if (kind < 1.5) {
     // ---------------- back wall: the rock that used to be here, set back and shadowed
     vec2 ip = floor(lp);
-    vec4 t = tx(ip);
+    // the far wall is drawn coarser, darker and hazier so open caves read as depth
+    vec2 cp = floor(lp / 2.0) * 2.0;
+    vec4 t = tx(cp);
     float bm = floor(t.b * 255.0 + 0.5);
     float sh = mod(detOf(t), 16.0);
+    if (sh > 9.5) sh = 3.0 + mod(sh, 3.0);
     vec3 c = pal(bm, sh).rgb;
-    c = mix(vec3(lum(c)), c, 0.7) * vec3(0.4, 0.4, 0.44);
+    c = mix(vec3(lum(c)), c, 0.55) * vec3(0.3, 0.3, 0.34);
+    c = mix(c, ambient * 0.9, 0.18);
     // soft contact shadow from nearby solid pixels
     float occ = 0.0;
     occ += 1.0 - airAt(ip + vec2(0.0, -3.0)); occ += 1.0 - airAt(ip + vec2(0.0, 3.0));

@@ -60,40 +60,52 @@ export class ChunkGen {
     const T = p.T, C = p.C, A = p.A, WX = p.WX, WY = p.WY;
     const tunnel = p.tunnel, cavern = p.cavern;
 
-    // ---- base pass: warped cell materials, textures, caves
+    // ---- base pass: warped cell materials, textures, caves. Noise fields are interpolated
+    // down the row once per 8-px node segment, then across it per pixel.
     for (let ly = 0; ly < SZ; ly++) {
       const y = Y0 + ly;
       const row = ly * SZ;
       if (y < 0 || y >= MH) { for (let lx = 0; lx < SZ; lx++) { tm[row + lx] = B.BEDROCK; td[row + lx] = 3; tb[row + lx] = B.BEDROCK; } continue; }
       const fy = y / NODE;
       const j = Math.min(this.NH - 2, Math.floor(fy)), ty = fy - j;
-      for (let lx = 0; lx < SZ; lx++) {
-        const x = X0 + lx;
-        const o = row + lx;
-        if (x < 0 || x >= MW) { tm[o] = B.BEDROCK; td[o] = 3; tb[o] = B.BEDROCK; continue; }
-        const fx = x / NODE;
-        const i = Math.min(NW - 2, Math.floor(fx)), tx = fx - i;
+      const inRows = y >= ry0 && y < ry1;
+      let lx = 0;
+      while (lx < SZ) {
+        const x0 = X0 + lx;
+        if (x0 < 0 || x0 >= MW) { const o = row + lx; tm[o] = B.BEDROCK; td[o] = 3; tb[o] = B.BEDROCK; lx++; continue; }
+        const i = Math.min(NW - 2, Math.floor(x0 / NODE));
         const k = j * NW + i;
-        const wx0 = WX[k] + (WX[k + 1] - WX[k]) * tx, wx1 = WX[k + NW] + (WX[k + NW + 1] - WX[k + NW]) * tx;
-        const wy0 = WY[k] + (WY[k + 1] - WY[k]) * tx, wy1 = WY[k + NW] + (WY[k + NW + 1] - WY[k + NW]) * tx;
-        let ccx = ((x + wx0 + (wx1 - wx0) * ty) / M) | 0, ccy = ((y + wy0 + (wy1 - wy0) * ty) / M) | 0;
-        if (ccx < 0) ccx = 0; else if (ccx >= W) ccx = W - 1;
-        if (ccy < 0) ccy = 0; else if (ccy >= H) ccy = H - 1;
-        const m = cellMat[ccy * W + ccx];
-        tb[o] = m;
-        td[o] = texel(m, x, y, seedOf[m]);
-        let air = false;
-        if (x >= rx0 && x < rx1 && y >= ry0 && y < ry1) {
-          if (mask) {
-            const a0 = A[k] + (A[k + 1] - A[k]) * tx, a1 = A[k + NW] + (A[k + NW + 1] - A[k + NW]) * tx;
-            air = a0 + (a1 - a0) * ty + (tn(x, y, 4, s1) - 0.5) * 0.16 > 0.5;
-          } else {
-            const t0 = T[k] + (T[k + 1] - T[k]) * tx, t1 = T[k + NW] + (T[k + NW + 1] - T[k + NW]) * tx;
-            const c0 = C[k] + (C[k + 1] - C[k]) * tx, c1 = C[k + NW] + (C[k + NW + 1] - C[k + NW]) * tx;
-            air = Math.abs(t0 + (t1 - t0) * ty) + (tn(x, y, 4, s1) - 0.5) * 0.012 < tunnel || c0 + (c1 - c0) * ty + (tn(x, y, 4, s2) - 0.5) * 0.024 > cavern;
-          }
+        const segEnd = Math.min(SZ, (i + 1) * NODE - X0, MW - X0);
+        const wxL = WX[k] + (WX[k + NW] - WX[k]) * ty, wxR = WX[k + 1] + (WX[k + NW + 1] - WX[k + 1]) * ty;
+        const wyL = WY[k] + (WY[k + NW] - WY[k]) * ty, wyR = WY[k + 1] + (WY[k + NW + 1] - WY[k + 1]) * ty;
+        let fL, fR, gL = 0, gR = 0;
+        if (mask) { fL = A[k] + (A[k + NW] - A[k]) * ty; fR = A[k + 1] + (A[k + NW + 1] - A[k + 1]) * ty; }
+        else {
+          fL = T[k] + (T[k + NW] - T[k]) * ty; fR = T[k + 1] + (T[k + NW + 1] - T[k + 1]) * ty;
+          gL = C[k] + (C[k + NW] - C[k]) * ty; gR = C[k + 1] + (C[k + NW + 1] - C[k + 1]) * ty;
         }
-        tm[o] = air ? 0 : m;
+        const xs = i * NODE;
+        for (; lx < segEnd; lx++) {
+          const x = X0 + lx;
+          const o = row + lx;
+          const tx = (x - xs) / NODE;
+          let ccx = ((x + wxL + (wxR - wxL) * tx) / M) | 0, ccy = ((y + wyL + (wyR - wyL) * tx) / M) | 0;
+          if (ccx < 0) ccx = 0; else if (ccx >= W) ccx = W - 1;
+          if (ccy < 0) ccy = 0; else if (ccy >= H) ccy = H - 1;
+          const m = cellMat[ccy * W + ccx];
+          tb[o] = m;
+          td[o] = texel(m, x, y, seedOf[m]);
+          let air = false;
+          if (inRows && x >= rx0 && x < rx1) {
+            const f = fL + (fR - fL) * tx;
+            if (mask) air = f + (tn(x, y, 4, s1) - 0.5) * 0.16 > 0.5;
+            else {
+              const g = gL + (gR - gL) * tx;
+              air = Math.abs(f) + (tn(x, y, 4, s1) - 0.5) * 0.012 < tunnel || g + (tn(x, y, 4, s2) - 0.5) * 0.024 > cavern;
+            }
+          }
+          tm[o] = air ? 0 : m;
+        }
       }
     }
 

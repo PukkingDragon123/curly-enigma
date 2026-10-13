@@ -34,11 +34,27 @@ const step = async (label, fn) => {
 await page.goto(`http://127.0.0.1:${port}/?fresh=1`);
 await wait(3500);
 await step('title loads', async () => { if ((await scene()) !== 'title') throw new Error('not on title'); await shot('01-title'); });
-await step('new game → home', async () => {
-  await page.evaluate(() => { window.__game.state.reset(); window.__game.goto('home', { from: 'newgame' }, { transition: 'none' }); });
-  await wait(4000);
+await step('new game → trapped in the intro', async () => {
+  await page.evaluate(() => { window.__game.state.reset(); window.__game.goto('mine', { intro: '1' }, { transition: 'none' }); });
+  for (let i = 0; i < 80 && (await scene()) !== 'mine'; i++) await wait(250);
+  await wait(3000);
+  if ((await scene()) !== 'mine') throw new Error('not in the intro mine: ' + (await scene()));
+  if (await page.evaluate(() => window.__game.state.escaped)) throw new Error('escaped flag set on a new game');
+  await shot('02-intro');
+});
+await step('escape → town arrival', async () => {
+  await page.evaluate(() => { const s = window.__game.scene; s.introCtl.found = true; s.introCtl.escape(); });
+  for (let i = 0; i < 80 && ((await scene()) !== 'town' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
+  if ((await scene()) !== 'town') throw new Error('did not reach town: ' + (await scene()));
+  if (!(await page.evaluate(() => window.__game.state.escaped))) throw new Error('escaped flag missing');
+  await wait(2500);
+  await shot('02b-arrival');
+});
+await step('home', async () => {
+  await go('home', { from: 'town' });
+  await wait(2500);
   if ((await scene()) !== 'home') throw new Error('not home: ' + (await scene()));
-  await shot('02-home');
+  await shot('02c-home');
 });
 await step('town', async () => { await go('town', { from: 'home' }); await wait(2500); await shot('03-town'); });
 await step('shops open & buy', async () => {
@@ -56,6 +72,27 @@ await step('mine zone 1', async () => {
   await wait(1500);
   await page.mouse.up();
   await shot('05-mine');
+});
+await step('face mode', async () => {
+  await page.keyboard.down('KeyD');
+  for (let i = 0; i < 120 && !(await page.evaluate(() => window.__game.scene.face && window.__game.scene.face.on)); i++) await wait(250);
+  await page.keyboard.up('KeyD');
+  const on = await page.evaluate(() => window.__game.scene.face.on);
+  if (!on) {
+    // the spawn may not face a wall: walk the other way
+    await page.keyboard.down('KeyA');
+    for (let i = 0; i < 120 && !(await page.evaluate(() => window.__game.scene.face.on)); i++) await wait(250);
+    await page.keyboard.up('KeyA');
+  }
+  if (!(await page.evaluate(() => window.__game.scene.face.on))) throw new Error('face mode never engaged');
+  await wait(1500);
+  await page.mouse.move(640, 300);
+  await page.mouse.down();
+  await wait(2000);
+  await page.mouse.up();
+  await shot('05b-face');
+  await page.keyboard.press('KeyS');
+  await wait(800);
 });
 await step('mine → town via lift', async () => {
   await page.evaluate(() => window.__game.scene.leave('town'));
