@@ -1,69 +1,87 @@
-// The mine: a side-on slice of 3D voxel rock you dig through with physical, careful tools.
+// The mine: a side-view cross-section of pixel rock you chip away bit by bit. Rock breaks
+// into real chunks along its grain, ores hide inside as little pixel deposits you free with
+// care, loose ground pours, undercut rock falls. Walk into a wall and the view drops into a
+// first-person close-up of the rock face (FaceMode).
 import * as THREE from 'three';
 import { Scene } from '../core/Scene.js';
 import { clamp, rand, chance, pick, wait, el, formatGoldFull, lerp } from '../core/util.js';
-import { B, BLOCKS, ORES, ORE_ID, isSolid, isGranular } from '../mine/blocks.js';
-import { F, CHUNK } from '../mine/MineWorld.js';
+import { B, BLOCKS, ORES, isSolid, isGranular } from '../mine/blocks.js';
+import { F } from '../mine/MineWorld.js';
+import { M, CPX, MAT, ORE_BASE } from '../mine/micro.js';
 import { generateMine } from '../mine/MineGen.js';
 import { stepFluids } from '../mine/Fluids.js';
 import { Lighting } from '../mine/Lighting.js';
 import { MineRenderer } from '../mine/Render.js';
 import { Player, P_W, P_H } from '../mine/Player.js';
-import { Debris, Fallers, Stability } from '../mine/Physics.js';
+import { Debris, Stability } from '../mine/Physics.js';
 import { Pickups, Plants, Creatures, PLANT_ITEM } from '../mine/Entities.js';
 import { FX } from '../mine/FX.js';
+import { Bodies } from '../mine/Bodies.js';
+import { Sand } from '../mine/Sand.js';
+import { Digger } from '../mine/Dig.js';
+import { Tools, REACH } from '../mine/Tools.js';
+import { FaceMode } from '../mine/FaceMode.js';
+import { generateIntro, IntroController } from '../mine/Intro.js';
 import { ITEMS, sellPrice } from '../data/items.js';
 import { ZONES, MAX_ZONE } from '../data/zones.js';
-import { iconURL, specURL } from '../gfx/PixelArt.js';
+import { iconURL } from '../gfx/PixelArt.js';
 import { qColor } from '../ui/UI.js';
 
-const AMBIENT = [null, [0.1, 0.088, 0.08], [0.1, 0.082, 0.074], [0.075, 0.08, 0.105], [0.105, 0.066, 0.052], [0.075, 0.092, 0.11], [0.08, 0.06, 0.105]];
+const AMBIENT = [[0.085, 0.075, 0.07], [0.1, 0.088, 0.08], [0.1, 0.082, 0.074], [0.075, 0.08, 0.105], [0.105, 0.066, 0.052], [0.075, 0.092, 0.11], [0.08, 0.06, 0.105]];
+const GROWTH = [0x5a8a3a, 0x5a8a3a, 0x3a8a6a, 0x4aa0a0, 0x4a4040, 0xd8f0ff, 0x8a5ad0];
 const SLOTS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'beam', 'stake', 'food'];
 const FOOD_PRIORITY = (it) => (it.energy || it.food || 0);
-const REACH = 2.45;
 
 export default class MineScene extends Scene {
   async enter(params) {
     const g = this.game, st = g.state;
     this.hud = 'mine';
     this.music = 'mine';
+    this.intro = params.intro === '1' || params.intro === 1 || params.intro === true;
     let zone = clamp(parseInt(params.zone, 10) || 1, 1, MAX_ZONE);
     if (zone > st.data.zoneMax) zone = st.data.zoneMax;
-    this.zone = zone;
-    this.zdef = ZONES[zone];
-    this.musicParams = { depth: (zone - 1) / 5 };
+    this.zone = this.intro ? 0 : zone;
+    this.zdef = this.intro ? { name: 'Collapsed Tunnels', depth: [40, 70] } : ZONES[zone];
+    this.musicParams = { depth: this.intro ? 0.15 : (zone - 1) / 5 };
     this.audio = g.audio;
     this.state = st;
     this.flags = {};
-    const done = g.showLoading('Digging...');
+    const done = g.showLoading(this.intro ? '...' : 'Digging...');
     await wait(40);
     const seed = params.seed ? parseInt(params.seed, 10) : ((Date.now() ^ (zone * 7919)) >>> 0);
-    const gen = generateMine(zone, seed);
+    const gen = this.intro ? generateIntro(seed) : generateMine(zone, seed);
     this.world = gen.world;
+    this.gen = gen.gen;
     const w = this.world;
+    // pixels around the start exist before the first frame
+    w.ensureCells(Math.floor(w.spawn.x) - 18, Math.floor(w.spawn.y) - 11, Math.floor(w.spawn.x) + 18, Math.floor(w.spawn.y) + 11);
     this.lighting = new Lighting(w);
-    this.renderer = new MineRenderer(this.scene, w, this.lighting);
-    const amb = AMBIENT[zone];
+    this.renderer = new MineRenderer(this.scene, w, this.lighting, { growth: GROWTH[this.zone] });
+    const amb = AMBIENT[this.zone];
     this.renderer.U.ambient.value.setRGB(amb[0], amb[1], amb[2]);
     this.player = new Player(this.scene, w, st);
     this.debris = new Debris(this.renderer.debris, w);
-    this.debris.tick = () => { if (chance(0.5)) this.audio.play('debris', { vol: 0.6 }); };
+    this.debris.tick = () => { if (chance(0.4)) this.audio.play('debris', { vol: 0.45 }); };
+    this.bodies = new Bodies(this.renderer.root, w, this.renderer.U);
+    this.bodies.hooks = {
+      tick: (b, sp) => { if (chance(0.7)) this.audio.play('debris', { vol: clamp(sp / 9, 0.25, 0.8) }); if (sp > 4) this.fx.dust(b.x, -b.y + b.r, 2, [0.7, 0.64, 0.56], 0.15); },
+      bigLand: (b, sp) => this.tools.bigLand(b, sp),
+      hitPlayer: (b) => this.bonk(9),
+      gone: (b) => this.fx.dust(b.x, -b.y, 2, [0.62, 0.56, 0.5], 0.12),
+    };
+    this.sand = new Sand(w);
+    this.digger = new Digger(w);
+    this.tools = new Tools(this);
     this.fx = new FX(this);
-    this.fallers = new Fallers(this.renderer.fallers, w, this.renderer, {
-      start: (f) => { this.audio.play('trickle'); },
-      land: (f, x, y) => this.fallerLanded(f, x, y),
-      hitPlayer: (f) => this.fallerHitPlayer(f),
-    });
     this.stability = new Stability(w, {
-      warnStart: (x, y) => { this.damaged.add(w.idx(x, y)); if (chance(0.5)) this.audio.play('creak'); },
-      warn: (x, y, t) => { if (chance(0.25)) this.fx.trickle(x, y); this.renderer.setHit(this.hitSlot++, x, y, this.time, 0.4); },
-      collapse: (x, y, granular) => this.collapse(x, y, granular),
+      warnStart: (x, y) => { if (chance(0.5)) this.audio.play('creak'); },
+      warn: (x, y) => { if (chance(0.25)) this.fx.trickle(x, y); },
+      collapse: (x, y) => this.collapse(x, y),
+      loose: (x, y) => this.sand.wake(x * M + 16, y * M + 16, 40),
     });
     this.pickups = new Pickups(this);
     this.plants = new Plants(this, gen.plants);
     this.creatures = new Creatures(this, gen.creatures);
-    this.damaged = new Set();
-    this.hitSlot = 0;
     this.magnets = [];
     this.fires = new Set();
     this.embersFlying = [];
@@ -73,15 +91,16 @@ export default class MineScene extends Scene {
     });
     this.staticDirty = true;
 
-    // camera
+    // camera: a fixed, slightly raised side view; FaceMode pulls it in close
     this.camera = new THREE.PerspectiveCamera(36, g.engine.aspect, 1, 260);
+    this.scene.add(this.camera);
     this.camDist = params.overview ? 150 : 16;
-    if (params.overview) { this.renderer.U.ambient.value.setRGB(0.55, 0.55, 0.55); for (let i = 0; i < w.W * w.H; i++) if (w.ore[i]) w.flags[i] |= F.REVEALED; this.overview = true; }
     this.camX = this.player.x;
     this.camY = this.player.y;
     this.shakeAmp = 0;
-    this.post = { vignette: 0.6, levels: 26, dither: 1, saturation: 1.12, contrast: 1.06, outline: true, outlineColor: 0x0a0608, innerThresh: 0.4 };
+    this.post = { vignette: 0.6, levels: 28, dither: 1, saturation: 1.12, contrast: 1.06, outline: true, outlineColor: 0x0a0608, innerThresh: 0.4 };
     this.scene.background = new THREE.Color(0x000000);
+    if (params.overview) { this.overview = true; this.renderer.U.ambient.value.setRGB(0.55, 0.55, 0.55); for (const d of w.deposits) d.revealed = true; }
 
     // tools & trip
     this.slot = 0;
@@ -100,27 +119,33 @@ export default class MineScene extends Scene {
     this.scanT = 0;
     this.hudT = 0;
     this.stepT = 0;
+    this.sandT = 0;
     this.toastCd = {};
     this.fainting = false;
     this.leaving = false;
-    this.arriveT = 1.2;
     this.loops = {};
     this.cageY = -2;
-    st.data.stats.trips++;
-    st.data.deepest = Math.max(st.data.deepest || 0, this.zdef.depth[0]);
+    this.hitStop = 0;
+    if (!this.intro) {
+      st.data.stats.trips++;
+      st.data.deepest = Math.max(st.data.deepest || 0, this.zdef.depth[0]);
+    }
 
     this.own(st.on('exhausted', () => this.faint()));
     this.tooltip = el('div', { class: 'bubble', style: { pointerEvents: 'none', transform: 'translate(12px, 12px)', fontSize: '.7em', opacity: 0, transition: 'none', textAlign: 'left' } });
     g.ui.world.append(this.tooltip);
-    g.ui.setHints(st.data.stats.trips <= 2 ? '<kbd>A</kbd><kbd>D</kbd> move · <kbd>W</kbd>/<kbd>Space</kbd> jump &amp; climb walls · <kbd>Mouse</kbd> dig · <kbd>Right</kbd> grab · <kbd>1</kbd>–<kbd>8</kbd> tools · <kbd>E</kbd> interact · <kbd>Q</kbd> snack' : null);
-    if (st.data.stats.trips <= 2) setTimeout(() => { if (this.game.scene === this) g.ui.setHints(null); }, 40000);
 
-    // initial chunks
+    this.face = new FaceMode(this);
+    this.introCtl = this.intro ? new IntroController(this, gen.intro) : null;
+
     this.updateView();
-    this.renderer.updateChunks(this.view.cx0, this.view.cy0, this.view.cx1, this.view.cy1, 999);
+    this.renderer.terrain.update(...this.viewPx(), 999);
     done();
-    this.audio.play('bell');
-    setTimeout(() => { if (this.game.scene === this) g.ui.toast(`<b>${this.zdef.name}</b> · ${Math.round(this.zdef.depth[0])}–${this.zdef.depth[1]} m`, { dur: 3500 }); }, 300);
+    if (this.introCtl) this.introCtl.start();
+    else {
+      this.audio.play('bell');
+      setTimeout(() => { if (this.game.scene === this) g.ui.toast(`<b>${this.zdef.name}</b> · ${Math.round(this.zdef.depth[0])}–${this.zdef.depth[1]} m`, { dur: 3500 }); }, 300);
+    }
     this.updateHotbar(true);
   }
 
@@ -137,12 +162,13 @@ export default class MineScene extends Scene {
   screen(x, y, z = 0.5) { return this.toScreen(new THREE.Vector3(x, -y, z)); }
   float(text, x, y, color = '#fff', size = 1) {
     const p = this.screen(x, y);
-    if (p.visible) this.game.ui.floatText(text, p.x, p.y, color, size);
+    if (p.visible) this.game.ui.floatText(text, p.x, p.y, color, size * (this.face.on ? 1.25 : 1));
   }
   shake(a) { if (this.state.data.settings.shake) this.shakeAmp = Math.max(this.shakeAmp, a); }
   energy(n) {
     const st = this.state;
     if (st.hasBuff('sturdy')) n *= 0.6;
+    if (this.intro) n *= 0.5;
     if (n > 0) st.useEnergy(n);
   }
   hurt(n, kind) {
@@ -152,6 +178,14 @@ export default class MineScene extends Scene {
     this.audio.play('hurt');
     this.float(`-${Math.round(n)}`, pl.x, pl.y - 0.8, '#ff7a6a');
     this.shake(0.12);
+    if (this.face.on) this.face.exit('hurt');
+  }
+  bonk(n) {
+    if (this.bonkT > 0) return;
+    this.bonkT = 1;
+    this.hurt(n, 'rock');
+    this.player.knock.x = (chance(0.5) ? 1 : -1) * 3;
+    this.say('bonk', 'BONK! Watch the ceiling!', 'bad', 3);
   }
   zap(x, y, dmg, msg) {
     if (this.state.protects('zap')) return;
@@ -171,30 +205,27 @@ export default class MineScene extends Scene {
     this.state.learn('burning_paws');
     this.say('burn', 'Ouch! Too hot to hold!', 'bad', 3);
   }
-
-  nearestHiddenOre(x, y, r) {
-    const w = this.world;
+  depCenter(d) { return { x: (d.x0 + d.w / 2) / M, y: (d.y0 + d.h / 2) / M }; }
+  nearestHiddenDeposit(x, y, r) {
     let best = null, bd = Infinity;
-    for (let yy = Math.max(1, y - r); yy <= Math.min(w.H - 2, y + r); yy++)
-      for (let xx = Math.max(1, x - r); xx <= Math.min(w.W - 2, x + r); xx++) {
-        const i = w.idx(xx, yy);
-        if (!w.ore[i] || w.oreVisible(xx, yy)) continue;
-        const d = (xx - x) ** 2 + (yy - y) ** 2;
-        if (d < bd) { bd = d; best = { x: xx, y: yy }; }
-      }
+    for (const d of this.world.depositsNear(x, y, r)) {
+      if (d.visible || d.done || ORES[d.oreId].tags.includes('void')) continue;
+      const c = this.depCenter(d);
+      const dd = Math.hypot(c.x - x, c.y - y);
+      if (dd < bd) { bd = dd; best = c; }
+    }
     return best;
   }
-  nearestVisibleOre(x, y, r) {
-    const w = this.world;
+  /** Legacy name used by plants (whisperweed). */
+  nearestHiddenOre(x, y, r) { const c = this.nearestHiddenDeposit(x + 0.5, y + 0.5, r); return c ? { x: c.x - 0.5, y: c.y - 0.5 } : null; }
+  nearestVisibleDeposit(x, y, r) {
     let best = null, bd = Infinity;
-    const cx = Math.floor(x), cy = Math.floor(y);
-    for (let yy = Math.max(1, cy - r); yy <= Math.min(w.H - 2, cy + r); yy++)
-      for (let xx = Math.max(1, cx - r); xx <= Math.min(w.W - 2, cx + r); xx++) {
-        const i = w.idx(xx, yy);
-        if (!w.ore[i] || !w.exposed(xx, yy)) continue;
-        const d = (xx - cx) ** 2 + (yy - cy) ** 2;
-        if (d < bd) { bd = d; best = { x: xx, y: yy }; }
-      }
+    for (const d of this.world.depositsNear(x, y, r)) {
+      if (!d.visible || d.done) continue;
+      const c = this.depCenter(d);
+      const dd = Math.hypot(c.x - x, c.y - y);
+      if (dd < bd) { bd = dd; best = d; }
+    }
     return best;
   }
 
@@ -205,19 +236,17 @@ export default class MineScene extends Scene {
     if (slot === 'beam') return st.count('support_beam') ? ITEMS.support_beam : null;
     if (slot === 'stake') return st.count('glow_stake') ? ITEMS.glow_stake : null;
     if (slot === 'food') return this.bestFood();
-    const it = st.equipped(slot);
-    return it;
+    return st.equipped(slot);
   }
   bestFood() {
-    const st = this.state;
     let best = null;
-    for (const g of st.inventory((it) => it && (it.cat === 'food' || it.food))) {
-      const it = ITEMS[g.id];
+    for (const gr of this.state.inventory((it) => it && (it.cat === 'food' || it.food))) {
+      const it = ITEMS[gr.id];
       if (!best || FOOD_PRIORITY(it) > FOOD_PRIORITY(best)) best = it;
     }
     return best;
   }
-  updateHotbar(force) {
+  updateHotbar() {
     const st = this.state;
     const slots = SLOTS.map((s, i) => {
       const it = this.toolItem(s);
@@ -229,60 +258,42 @@ export default class MineScene extends Scene {
     this.game.ui.setHotbar(slots, this.slot, (i) => { this.selectSlot(i); });
   }
   selectSlot(i) {
-    if (this.slot === i) return;
-    this.slot = (i + SLOTS.length) % SLOTS.length;
+    const n = (i + SLOTS.length) % SLOTS.length;
+    if (this.slot === n) return;
+    this.slot = n;
     this.audio.play('ui_click', { pitch: 1.3 });
     this.updateHotbar();
   }
+  get slotName() { return SLOTS[this.slot]; }
 
-  /** Find the cell the tool would hit: first solid cell along the player→mouse ray within reach. */
-  computeTarget() {
-    const pl = this.player;
-    const m = this.mouseGrid();
-    if (!m) return null;
-    const ox = pl.x, oy = pl.y - 0.1;
-    let dx = m.x - ox, dy = m.y - oy;
-    const dist = Math.hypot(dx, dy);
-    if (dist < 0.0001) return null;
-    dx /= dist; dy /= dist;
-    const maxD = Math.min(dist, REACH);
-    const w = this.world;
-    // march in small steps (good enough & robust)
-    for (let t = 0.2; t <= maxD + 0.05; t += 0.08) {
-      const x = Math.floor(ox + dx * t), y = Math.floor(oy + dy * t);
-      if (w.solid(x, y)) {
-        const b = w.get(x, y);
-        return { x, y, solid: true, ok: isFinite(BLOCKS[b].hp), mx: m.x, my: m.y };
-      }
-    }
-    const cx = Math.floor(m.x), cy = Math.floor(m.y);
-    if (dist <= REACH + 0.5) return { x: cx, y: cy, solid: false, ok: true, mx: m.x, my: m.y };
-    return { x: cx, y: cy, solid: false, ok: false, far: true, mx: m.x, my: m.y };
-  }
-  mouseGrid() {
+  /** Pointer position on the rock face in cell coords. */
+  mouseWorld() {
     const mouse = this.game.input.mouse;
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera(new THREE.Vector2(mouse.nx, mouse.ny), this.camera);
-    const t = (0.5 - ray.ray.origin.z) / ray.ray.direction.z;
+    if (!this._ray) this._ray = new THREE.Raycaster();
+    this._ray.setFromCamera(new THREE.Vector2(mouse.nx, mouse.ny), this.camera);
+    const r = this._ray.ray;
+    const t = (0.5 - r.origin.z) / r.direction.z;
     if (!(t > 0)) return null;
-    const p = ray.ray.origin.clone().addScaledVector(ray.ray.direction, t);
-    return { x: p.x, y: -p.y };
+    return { x: r.origin.x + r.direction.x * t, y: -(r.origin.y + r.direction.y * t) };
+  }
+  computeTarget() {
+    const m = this.face.on ? this.face.pointer() : this.mouseWorld();
+    if (!m) return null;
+    return this.tools.target(m.x, m.y, this.face.on ? REACH + 0.6 : REACH);
   }
 
   useTools(dt) {
     const g = this.game, inp = g.input, st = this.state, pl = this.player;
-    const slotName = SLOTS[this.slot];
-    const tool = this.toolItem(slotName);
-    const target = this.target;
-    const lmb = inp.mouseDown(0) && !this.fainting && !this.leaving;
+    const slot = this.slotName;
+    const tool = this.toolItem(slot);
+    const t = this.target;
+    const lmb = inp.mouseDown(0) && !this.fainting && !this.leaving && !(this.introCtl && this.introCtl.blockTools());
     pl.action = null;
     this.xrayOn = false;
-
-    // held model
     const heldMap = { pick: 'pick', chisel: 'chisel', brush: 'brush', drill: 'drill', xray: 'xray' };
-    pl.hold(tool && heldMap[slotName] ? heldMap[slotName] : null);
+    pl.hold(tool && heldMap[slot] ? heldMap[slot] : null);
+    this.face.tool = tool && heldMap[slot] ? slot : null;
 
-    // continuous swing animation
     if (this.swing) {
       this.swing.t += dt;
       pl.rig.swingPhase = clamp(this.swing.t / this.swing.dur, 0, 1);
@@ -290,37 +301,40 @@ export default class MineScene extends Scene {
       if (!this.swing.done && this.swing.t >= this.swing.dur * 0.5) {
         this.swing.done = true;
         const tg = this.computeTarget() || this.swing.target;
-        this.applyHit(tg, 'pick', this.swing.tool);
+        this.face.impact('pick', tg);
+        this.tools.pick(tg, this.swing.tool);
       }
       if (this.swing.t >= this.swing.dur) this.swing = null;
     }
     this.toolCd -= dt;
     if (this.overheat > 0) { this.overheat -= dt; this.drillHeat = Math.max(0, this.drillHeat - dt * 0.4); if (chance(dt * 8)) this.fx.steam(pl.x + pl.facing * 0.5, pl.y, 1); }
     let drilling = false;
-    if (lmb && tool && target) {
+    if (lmb && tool && t) {
       const zippy = st.hasBuff('zippy') ? 0.75 : 1;
-      switch (slotName) {
+      switch (slot) {
         case 'pick':
           if (!this.swing && this.toolCd <= 0) {
             const rate = (tool.rate || 0.36) * zippy;
-            this.swing = { t: 0, dur: rate, done: false, target, tool };
+            this.swing = { t: 0, dur: rate, done: false, target: t, tool };
             this.toolCd = rate;
             this.audio.play('whoosh', { gap: 0 });
+            this.face.windup('pick', rate);
           }
           break;
         case 'chisel':
           pl.action = 'chisel';
-          if (this.toolCd <= 0) { this.toolCd = (tool.rate || 0.2) * zippy; this.applyHit(target, 'chisel', tool); }
+          if (this.toolCd <= 0) { this.toolCd = (tool.rate || 0.2) * zippy; this.face.impact('chisel', t); this.tools.chisel(t, tool); }
           break;
         case 'brush':
           pl.action = 'brush';
-          if (this.toolCd <= 0) { this.toolCd = (tool.rate || 0.12) * zippy; this.applyBrush(target, tool); }
+          if (this.toolCd <= 0) { this.toolCd = (tool.rate || 0.12) * zippy; this.face.impact('brush', t); this.tools.brush(t, tool); }
           break;
         case 'drill':
           if (this.overheat > 0) { this.say('hot', 'The drill is too hot. Let it cool!', 'warn', 2); break; }
           pl.action = 'drill';
           drilling = true;
-          this.applyDrill(target, tool, dt);
+          this.face.impact('drill', t);
+          this.tools.drill(t, tool, dt);
           break;
         case 'xray':
           pl.action = 'xray';
@@ -328,17 +342,16 @@ export default class MineScene extends Scene {
           this.energy(0.7 * dt);
           break;
         case 'beam':
-          if (inp.mousePressed(0)) this.placeBeam(target);
+          if (inp.mousePressed(0)) this.placeBeam(t);
           break;
         case 'stake':
-          if (inp.mousePressed(0)) this.placeStake(target);
+          if (inp.mousePressed(0)) this.placeStake(t);
           break;
         case 'food':
-          if (inp.mousePressed(0) && tool) this.game.eat(tool.id), this.updateHotbar();
+          if (inp.mousePressed(0) && tool) { g.eat(tool.id); this.updateHotbar(); this.face.impact('eat', t); }
           break;
       }
     }
-    // drill heat & sound
     const dtool = st.equipped('drill');
     if (drilling && dtool) {
       const slime = st.count('slug_slime') > 0;
@@ -347,17 +360,16 @@ export default class MineScene extends Scene {
       if (slime && this.drillTime > 15) { this.drillTime = 0; st.removeItem('slug_slime', 1); }
       if (this.drillHeat >= 1) { this.overheat = 2.6; this.audio.play('overheat'); st.learn('overheating'); this.say('overheat', 'Drill overheated!', 'bad', 2); }
       if (!this.loops.drill) { this.loops.drill = this.audio.loop('drill', { vol: 0.5 }); this.audio.play('drill_start'); }
-      this.loops.drill.set({ load: target && target.solid ? 1 : 0.2 });
+      this.loops.drill.set({ load: t && t.solid ? 1 : 0.2 });
     } else {
       this.drillHeat = Math.max(0, this.drillHeat - dt * 0.22);
       if (this.loops.drill) { this.loops.drill.stop(); this.loops.drill = null; }
     }
-    // x-ray beam
     const U = this.renderer.U;
     if (this.xrayOn) {
       const xt = st.equipped('xray');
       const head = { x: pl.x, y: pl.y - 0.25 };
-      const m = this.target ? { x: this.target.mx, y: this.target.my } : { x: head.x + pl.facing, y: head.y };
+      const m = t ? { x: t.mx, y: t.my } : { x: head.x + pl.facing, y: head.y };
       const ang = Math.atan2(-(m.y - head.y), m.x - head.x);
       U.xray.value.set(head.x, -head.y, ang, xt.radius);
       U.xrayOn.value = 1;
@@ -367,8 +379,7 @@ export default class MineScene extends Scene {
       U.xrayOn.value = 0;
       if (this.loops.xray) { this.loops.xray.stop(); this.loops.xray = null; }
     }
-    // right click / E: gentle grab
-    if ((inp.mousePressed(2)) && target && !this.fainting) this.grab(target);
+    if (inp.mousePressed(2) && t && !this.fainting) this.grab(t);
   }
 
   inXray(x, y) {
@@ -384,172 +395,40 @@ export default class MineScene extends Scene {
   }
 
   revealCone(head, ang, R) {
-    const w = this.world, st = this.state;
-    const x0 = Math.floor(head.x - R), x1 = Math.ceil(head.x + R), y0 = Math.floor(head.y - R), y1 = Math.ceil(head.y + R);
-    for (let y = y0; y <= y1; y++)
-      for (let x = x0; x <= x1; x++) {
-        if (!w.inb(x, y)) continue;
-        const i = w.idx(x, y);
-        if (!w.ore[i] || (w.flags[i] & F.REVEALED)) continue;
-        if (!this.inXray(x + 0.5, y + 0.5)) continue;
-        const o = ORES[w.ore[i]];
-        if (o.tags.includes('void')) continue; // voidstone hides from x-rays
-        w.flags[i] |= F.REVEALED;
-        w.markDirty(x, y);
-        this.fx.sparkle(x + 0.5, y + 0.5, [0.5, 0.95, 1]);
-        if (!this.flags.xray) { this.flags.xray = true; st.learn('x_ray'); }
-        this.audio.play('glow', { gap: 0.15 });
-      }
+    const st = this.state;
+    for (const d of this.world.depositsNear(head.x, head.y, R + 1)) {
+      if (d.revealed || d.done) continue;
+      const c = this.depCenter(d);
+      if (!this.inXray(c.x, c.y)) continue;
+      if (ORES[d.oreId].tags.includes('void')) continue;
+      d.revealed = true;
+      d.visible = true;
+      this.tools.touchDeposit(d);
+      this.fx.sparkle(c.x, c.y, [0.5, 0.95, 1]);
+      if (!this.flags.xray) { this.flags.xray = true; st.learn('x_ray'); }
+      this.audio.play('glow', { gap: 0.15 });
+    }
   }
 
-  // ------------------------------------------------------------------ hits
-  /** Pick or chisel strike on a target. */
-  applyHit(target, kind, tool) {
-    if (!target || !target.ok || target.far) return;
-    const w = this.world, st = this.state, pl = this.player;
-    const { x, y } = target;
-    if (!target.solid || !w.solid(x, y)) { this.hitOpenCell(target, kind); return; }
-    const i = w.idx(x, y);
-    const b = BLOCKS[w.block[i]];
-    const pick = st.equipped('pick');
-    const tier = pick?.tier ?? 1;
-    const power = kind === 'chisel' ? (tool.power || 0.55) : (tool.power || 1);
-    const cx = x + 0.5, cy = y + 0.5;
-    const dir = [clamp((pl.x - cx) * 0.4, -0.6, 0.6), 0.35];
-    const ore = w.ore[i] ? ORES[w.ore[i]] : null;
-    const needTier = Math.max(b.tier, ore ? ore.tier || 0 : 0);
-    if (!isFinite(b.hp) || needTier > tier) {
-      this.audio.play('hit', { snd: 'hard', vol: 0.8 });
-      this.fx.sparks(cx + dir[0] * 0.6, cy, 6, [1, 0.85, 0.5], 4);
-      this.renderer.setHit(this.hitSlot++, x, y, this.time, 0.35);
-      this.float(isFinite(b.hp) ? 'Too hard!' : 'Solid bedrock', cx, cy - 0.5, '#ffd0a0', 0.9);
-      if (isFinite(b.hp)) st.learn('too_hard');
-      this.energy(0.15);
-      return;
-    }
-    // explosive ore struck hard
-    if (ore && kind !== 'chisel' && ore.tags.includes('explosive') && chance(0.35)) { this.explode(x, y); return; }
-    if (ore && kind !== 'chisel' && ore.tags.includes('electric') && Math.hypot(pl.x - cx, pl.y - cy) < 1.8) this.zap(cx, cy, 5, 'Bioxide crackles up your pickaxe!');
-    // direct ore damage
-    if (ore && kind === 'pick') {
-      const dmg = ore.frag * Math.sqrt(power) * rand(0.8, 1.2) * (st.hasBuff('lucky') ? 0.7 : 1);
-      if (dmg > 0) {
-        w.oreQ[i] = Math.max(0, w.oreQ[i] - dmg);
-        this.float(`-${Math.round(dmg)}%`, cx, cy - 0.3, '#ff6a5a', 0.95);
-        this.audio.play('ore_damage');
-        if (w.oreVisible(x, y)) st.learn('chipped_ore');
-        if (ore.tags.includes('resonant')) this.resonate(x, y, 2);
-        if (w.oreQ[i] <= 0) this.destroyOre(x, y, 'shattered');
-      } else if (ore.item === 'diamond') this.say('diamond', 'Diamond doesn\'t chip. Its rock does.', 'good', 10);
-    }
-    if (kind === 'pick') this.vibrate(x, y, 1, power);
-    // damage the block
-    w.hp[i] -= power;
-    this.damaged.add(i);
-    this.renderer.setHit(this.hitSlot++, x, y, this.time, kind === 'chisel' ? 0.4 : 1);
-    // feedback
-    const snd = ore && kind === 'chisel' ? 'chisel' : null;
-    if (kind === 'chisel') { this.audio.play('chisel'); this.fx.sparks(cx + dir[0] * 0.5, cy, 2, [1, 1, 0.8], 2); }
-    else this.audio.play('hit', { snd: b.snd });
-    const chipColors = b.debris || [b.color];
-    this.debris.burst(cx + dir[0] * 0.5, -cy, kind === 'chisel' ? 2 : 4, chipColors, { speed: kind === 'chisel' ? 2 : 3.5, dir, size: [0.05, 0.12], bounce: b.bounce ?? 0.3, z: 0.45 });
-    this.fx.blockDust(cx + dir[0] * 0.5, cy, b.id, kind === 'chisel' ? 2 : 4);
-    if (kind === 'pick' && b.tier >= 2) this.fx.sparks(cx + dir[0] * 0.5, cy, 4, [1, 0.8, 0.4], 4);
-    if (kind === 'pick') this.shake(0.035);
-    if (b.quake && kind === 'pick' && chance(0.4)) this.quake(x, y);
-    if (b.id === B.ROOTS) this.fx.leaves(cx, cy, 'fern');
-    this.energy(kind === 'chisel' ? 0.18 : 0.32);
-    if (!this.flags.digging) { this.flags.digging = true; st.learn('digging'); }
-    if (w.hp[i] <= 0) this.breakBlock(x, y, kind);
-  }
-
-  applyDrill(target, tool, dt) {
-    if (!target || !target.ok || target.far) return;
-    const w = this.world, st = this.state, pl = this.player;
-    const { x, y } = target;
-    if (!target.solid || !w.solid(x, y)) { if (chance(dt * 4)) this.hitOpenCell(target, 'drill'); return; }
-    const i = w.idx(x, y);
-    const b = BLOCKS[w.block[i]];
-    const tier = (st.equipped('pick')?.tier ?? 1) + 1;
-    const ore = w.ore[i] ? ORES[w.ore[i]] : null;
-    const cx = x + 0.5, cy = y + 0.5;
-    const needTier = Math.max(b.tier, ore ? ore.tier || 0 : 0);
-    if (!isFinite(b.hp) || needTier > tier) {
-      if (chance(dt * 10)) { this.fx.sparks(cx, cy, 3); this.audio.play('hit', { snd: 'hard', vol: 0.5 }); }
-      this.say('toohard', 'Too hard even for the drill.', 'warn', 3);
-      return;
-    }
-    if (ore && ore.tags.includes('explosive') && chance(dt * 3)) { this.explode(x, y); return; }
-    if (ore) {
-      const dmg = ore.frag * 2.2 * dt;
-      if (dmg > 0) { w.oreQ[i] = Math.max(0, w.oreQ[i] - dmg); if (chance(dt * 4)) { this.float('-%', cx, cy - 0.3, '#ff6a5a', 0.8); this.audio.play('ore_damage'); } st.learn('chipped_ore'); }
-      if (ore.tags.includes('resonant')) this.resonate(x, y, 4 * dt * 10);
-      if (w.oreQ[i] <= 0) { this.destroyOre(x, y, 'shredded'); }
-    }
-    this.vibrate(x, y, 2, 3 * dt * 4);
-    w.hp[i] -= tool.power * dt * 2.4;
-    this.damaged.add(i);
-    if (chance(dt * 18)) this.renderer.setHit(this.hitSlot++, x, y, this.time, 0.5);
-    if (chance(dt * 30)) this.debris.burst(cx + (pl.x - cx) * 0.3, -cy, 1, b.debris || [b.color], { speed: 4, size: [0.04, 0.1], z: 0.45 });
-    if (chance(dt * 25)) this.fx.sparks(cx + (pl.x - cx) * 0.35, cy, 2, [1, 0.8, 0.35], 5);
-    if (chance(dt * 10)) this.fx.blockDust(cx, cy, b.id, 2);
-    this.shake(0.03);
-    this.energy(2.6 * dt);
-    if (w.hp[i] <= 0) this.breakBlock(x, y, 'drill');
-  }
-
-  applyBrush(target, tool) {
-    if (!target || !target.ok || target.far) return;
-    const w = this.world, st = this.state;
-    const { x, y } = target;
-    const cx = x + 0.5, cy = y + 0.5;
-    this.audio.play('brush');
-    this.energy(0.05);
-    if (!target.solid || !w.solid(x, y)) {
-      if (!this.creatures.hitAt(target.mx, target.my, 'brush')) this.fx.dust(target.mx, target.my, 2);
-      return;
-    }
-    const i = w.idx(x, y);
-    this.fx.blockDust(cx, cy, w.block[i], 3);
-    this.renderer.setHit(this.hitSlot++, x, y, this.time, 0.15);
-    if (!w.ore[i]) {
-      // brushing grit off bare rock: nothing hiding here
-      if (!(w.flags[i] & F.REVEALED)) { w.flags[i] |= F.REVEALED; }
-      return;
-    }
-    if (!(w.flags[i] & F.REVEALED) && !w.exposed(x, y)) {
-      w.flags[i] |= F.REVEALED;
-      w.markDirty(x, y);
-      this.audio.play('glow');
-      this.fx.sparkle(cx, cy);
-      st.learn('hidden_ore');
-      return;
-    }
-    const max = w.maxHp(x, y);
-    const frac = w.hp[i] / max;
-    if (frac > 0.38) { if (chance(0.25)) this.float('Too much rock', cx, cy - 0.4, '#e6dcc8', 0.8); return; }
-    w.hp[i] -= (tool.power || 1) * 0.3;
-    this.damaged.add(i);
-    if (w.hp[i] <= 0) this.breakBlock(x, y, 'brush');
-  }
-
-  /** Hitting an open cell: plants, creatures, webs, beams. */
-  hitOpenCell(target, kind) {
+  /** Hitting open space: plants, creatures, webs, beams. */
+  hitOpenCell(t, kind) {
     const w = this.world;
-    const { x, y } = target;
-    if (this.creatures.hitAt(target.mx, target.my, kind)) { this.audio.play('hit', { snd: 'flesh', vol: 0.6 }); return; }
+    const x = t.cx, y = t.cy;
+    if (this.creatures.hitAt(t.mx, t.my, kind)) { this.audio.play('hit', { snd: 'flesh', vol: 0.6 }); return; }
     const plant = this.plants.at(x, y);
     if (plant) { this.plants.harvest(plant, false); return; }
     if (w.hasFlag(x, y, F.WEB)) { this.clearWeb(x, y); return; }
     if (w.hasFlag(x, y, F.BEAM) && kind === 'pick') { this.removeBeam(x, y); return; }
+    if (this.introCtl && this.introCtl.hit(t, kind)) return;
   }
 
-  grab(target) {
-    const w = this.world, pl = this.player;
-    if (target.far) return;
-    const { x, y } = target;
-    if (this.creatures.grabAt(target.mx, target.my, 0.9)) return;
-    const plant = this.plants.at(x, y);
+  grab(t) {
+    const w = this.world;
+    if (t.far) return;
+    if (this.introCtl && this.introCtl.grab(t)) return;
+    const x = t.cx, y = t.cy;
+    if (this.creatures.grabAt(t.mx, t.my, 0.9)) return;
+    const plant = this.plants.at(x, y) || this.plants.at(Math.floor(t.mx), Math.floor(t.my));
     if (plant) { this.plants.harvest(plant, true); return; }
     if (w.hasFlag(x, y, F.WEB)) { this.clearWeb(x, y); return; }
     if (w.hasFlag(x, y, F.BEAM)) { this.removeBeam(x, y); return; }
@@ -557,28 +436,26 @@ export default class MineScene extends Scene {
   }
 
   clearWeb(x, y) {
-    const w = this.world;
-    w.setFlag(x, y, F.WEB, false);
+    this.world.setFlag(x, y, F.WEB, false);
     this.pickups.spawn('spider_silk', x + 0.5, y + 0.5, { vy: -2 });
     this.fx.dust(x + 0.5, y + 0.5, 6, [0.9, 0.95, 1]);
     this.audio.play('brush');
   }
 
-  placeBeam(target) {
-    const w = this.world, st = this.state, pl = this.player;
-    if (!target || target.far) return;
-    const { x, y } = target;
+  placeBeam(t) {
+    const w = this.world, st = this.state;
+    if (!t || t.far) return;
+    const x = Math.floor(t.mx), y = Math.floor(t.my);
     if (w.hasFlag(x, y, F.BEAM)) { this.removeBeam(x, y); return; }
-    if (target.solid || w.solid(x, y)) { this.say('beamsolid', 'Beams go in open space, under a ceiling.', 'warn'); return; }
+    if (w.solid(x, y)) { this.say('beamsolid', 'Beams go in open space, under a ceiling.', 'warn'); return; }
     if (!w.solid(x, y - 1) && !w.hasFlag(x, y - 1, F.BEAM)) { this.say('beamceil', 'Nothing above to hold up.', 'warn'); return; }
     if (!st.count('support_beam')) return;
     st.removeItem('support_beam', 1);
     w.setFlag(x, y, F.BEAM, true);
-    // relieve stress above
     for (let yy = y - 3; yy < y; yy++) for (let xx = x - 8; xx <= x + 8; xx++) {
       if (!w.inb(xx, yy)) continue;
       const i = w.idx(xx, yy);
-      if (w.stress[i] > 0 && this.stability.holds(xx, yy)) { w.stress[i] = 0; this.stability.stressed.delete(i); w.markDirty(xx, yy); }
+      if (w.stress[i] > 0 && this.stability.holds(xx, yy)) { w.stress[i] = 0; this.stability.stressed.delete(i); }
     }
     this.audio.play('place');
     this.fx.dust(x + 0.5, y + 0.5, 6);
@@ -586,158 +463,24 @@ export default class MineScene extends Scene {
     this.updateHotbar();
   }
   removeBeam(x, y) {
-    const w = this.world;
-    w.setFlag(x, y, F.BEAM, false);
+    this.world.setFlag(x, y, F.BEAM, false);
     this.state.addItem('support_beam');
     this.audio.play('remove');
     this.stability.onOpened(x, y);
     this.updateHotbar();
   }
-  placeStake(target) {
+  placeStake(t) {
     const w = this.world, st = this.state;
-    if (!target || target.far || target.solid || w.solid(target.x, target.y)) return;
-    if (!st.count('glow_stake')) return;
+    if (!t || t.far) return;
+    const x = Math.floor(t.solid ? t.mx - t.dirx * 0.3 : t.mx), y = Math.floor(t.solid ? t.my - t.diry * 0.3 : t.my);
+    if (w.solid(x, y) || !st.count('glow_stake')) return;
     st.removeItem('glow_stake', 1);
-    w.setFlag(target.x, target.y, F.STAKE, true);
+    w.setFlag(x, y, F.STAKE, true);
     this.staticDirty = true;
     this.audio.play('place');
     this.audio.play('glow');
     st.learn('darkness');
     this.updateHotbar();
-  }
-
-  vibrate(x, y, r, power) {
-    const w = this.world, st = this.state;
-    for (let yy = y - r; yy <= y + r; yy++)
-      for (let xx = x - r; xx <= x + r; xx++) {
-        if ((xx === x && yy === y) || !w.inb(xx, yy)) continue;
-        const i = w.idx(xx, yy);
-        if (!w.ore[i]) continue;
-        const o = ORES[w.ore[i]];
-        if (!o.vib) continue;
-        const d = Math.max(Math.abs(xx - x), Math.abs(yy - y));
-        const dmg = 1.4 * o.vib * Math.pow(power, 0.35) / d;
-        w.oreQ[i] = Math.max(0, w.oreQ[i] - dmg);
-        if (w.oreVisible(xx, yy)) {
-          if (dmg > 1.5 && chance(0.5)) this.float(`-${Math.round(dmg)}%`, xx + 0.5, yy + 0.2, '#ffa08a', 0.75);
-          if (!this.flags.vibration) { this.flags.vibration = true; st.learn('vibration'); }
-          this.renderer.setHit(this.hitSlot++, xx, yy, this.time, 0.25);
-        }
-        if (o.tags.includes('resonant')) this.resonate(xx, yy, 1);
-        if (w.oreQ[i] <= 0) this.destroyOre(xx, yy, 'shattered');
-      }
-  }
-
-  resonate(x, y, amount) {
-    const w = this.world;
-    const i = w.idx(x, y);
-    this.audio.tone({ f: 1400 + (x * 37 % 400), type: 'sine', dur: 0.6, vol: 0.05, reverb: 0.6, vib: 8, vibRate: 12 });
-    if (w.oreVisible(x, y)) { this.fx.glints(x, y); this.state.learn('resonance'); }
-    w.oreQ[i] -= amount * 1.5;
-    if (w.oreQ[i] <= 25 && w.ore[i]) this.destroyOre(x, y, 'shattered');
-  }
-
-  destroyOre(x, y, how) {
-    const w = this.world;
-    const i = w.idx(x, y);
-    const o = ORES[w.ore[i]];
-    if (!o) return;
-    w.ore[i] = 0;
-    w.oreQ[i] = 0;
-    w.markDirty(x, y);
-    this.audio.play('break', { snd: 'crystal', vol: 0.8 });
-    this.fx.sparkle(x + 0.5, y + 0.5, [0.8, 0.9, 1]);
-    this.debris.burst(x + 0.5, -y - 0.5, 8, [0xffffff, 0xd8f0ff, ITEMS[o.item]?.icon?.c?.[0] ?? 0xaaaaff], { speed: 4, size: [0.04, 0.1] });
-    if (w.oreVisible(x, y) || true) this.float(`${ITEMS[o.item].name} ${how}!`, x + 0.5, y, '#ff9a8a', 0.85);
-  }
-
-  breakBlock(x, y, kind) {
-    const w = this.world, st = this.state, pl = this.player;
-    const i = w.idx(x, y);
-    const b = BLOCKS[w.block[i]];
-    const oreId = w.ore[i];
-    const q = w.oreQ[i];
-    const cx = x + 0.5, cy = y + 0.5;
-    // debris & dust
-    this.debris.burst(cx, -cy, kind === 'brush' ? 4 : kind === 'chisel' ? 7 : 13, b.debris || [b.color], { speed: kind === 'drill' ? 5 : 4, size: [0.07, 0.22], bounce: b.bounce ?? 0.3, z: 0.25 });
-    this.fx.blockDust(cx, cy, b.id, kind === 'brush' ? 4 : 10);
-    this.audio.play('break', { snd: b.snd });
-    this.shake(kind === 'brush' ? 0 : 0.07);
-    if (kind === 'pick') this.hitStop = 0.045;
-    if (oreId) {
-      const o = ORES[oreId];
-      const item = o.item;
-      const pristine = kind === 'brush';
-      const qq = Math.round(clamp(q + (st.hasBuff('lucky') && kind !== 'pick' ? 6 : 0), 1, 100));
-      const p = this.pickups.spawn(item, cx, cy, { q: qq, p: pristine, vx: clamp((pl.x - cx) * 1.5, -2, 2), vy: -3.5 });
-      if (pristine) { this.audio.play('pristine'); this.fx.sparkle(cx, cy, [1, 1, 0.7]); st.learn('pristine'); st.data.stats.pristine++; }
-      else if (kind === 'chisel') { this.audio.play('ore_free'); st.learn('chiseling'); }
-      else this.audio.play('ore_free', { gap: 0.2 });
-      if (o.tags.includes('electric') && !st.protects('zap')) { this.fx.arcs(cx, cy, 4); }
-      this.float(`${ITEMS[item].name} ${qq}%${pristine ? ' ✦' : ''}`, cx, cy - 0.5, qColor(qq), 0.95);
-    }
-    if (b.drop && chance(b.dropChance || 1)) this.pickups.spawn(b.drop, cx, cy, { q: Math.round(rand(60, 100)) });
-    if (b.id === B.ROOTS && chance(0.12)) this.pickups.spawn('cave_carrot', cx, cy);
-    w.setBlock(x, y, B.AIR);
-    w.flags[i] |= F.MINED;
-    w.flags[i] &= ~F.REVEALED;
-    this.damaged.delete(i);
-    st.data.stats.blocks++;
-    // freshly opened fluid pocket?
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, -1], [0, 1]]) {
-      const j = w.idx(x + dx, y + dy);
-      if (w.inb(x + dx, y + dy) && w.fluid[j] > 0.3) {
-        if (w.ftype[j] === 1 && !this.flags.flooding) { this.flags.flooding = true; st.learn('flooding'); this.audio.play('splash'); }
-      }
-    }
-  }
-
-  explode(x, y) {
-    const w = this.world, st = this.state, pl = this.player;
-    const cx = x + 0.5, cy = y + 0.5;
-    const R = 2.6;
-    const chain = [];
-    w.ore[w.idx(x, y)] = 0;
-    for (let yy = Math.floor(y - R); yy <= y + R; yy++)
-      for (let xx = Math.floor(x - R); xx <= x + R; xx++) {
-        if (!w.inb(xx, yy)) continue;
-        const d = Math.hypot(xx - x, yy - y);
-        if (d > R) continue;
-        const i = w.idx(xx, yy);
-        const b = BLOCKS[w.block[i]];
-        if (w.ore[i]) {
-          if (ORES[w.ore[i]].tags.includes('explosive')) { chain.push([xx, yy]); continue; }
-          w.oreQ[i] = Math.max(0, w.oreQ[i] - rand(30, 60) * (1 - d / R + 0.3));
-        }
-        if (isSolid(b.id) && isFinite(b.hp) && b.hp < 14 && d < R - 0.3 && chance(0.85)) {
-          if (w.ore[i] && w.oreQ[i] > 5) this.pickups.spawn(ORES[w.ore[i]].item, xx + 0.5, yy + 0.5, { q: Math.round(w.oreQ[i]), vx: (xx - x) * 3, vy: -4 + (yy - y) * 2 });
-          this.debris.burst(xx + 0.5, -yy - 0.5, 4, b.debris || [b.color], { speed: 9, size: [0.08, 0.24] });
-          w.setBlock(xx, yy, B.AIR);
-          this.damaged.delete(i);
-        } else if (isSolid(b.id)) { w.hp[i] -= 3; this.damaged.add(i); }
-        const plant = this.plants.at(xx, yy);
-        if (plant) this.plants.remove(plant);
-      }
-    this.fx.dustCloud(cx, cy, 2.4, [0.6, 0.62, 0.66]);
-    this.fx.arcs(cx, cy, 14);
-    this.fx.sparks(cx, cy, 30, [0.6, 0.95, 1], 9);
-    for (let k = 0; k < 6; k++) this.fx.smoke(cx + rand(-1, 1), cy + rand(-1, 1), 2);
-    this.fx.light(cx, cy, [1.2, 1.6, 2.0], 9, 0.6);
-    this.audio.play('explode');
-    this.audio.play('zap', { vol: 1 });
-    this.hitStop = 0.12;
-    this.post.flash = 0.6; this.post.flashColor = 0xd8f6ff;
-    this.shake(0.55);
-    const d = Math.hypot(pl.x - cx, pl.y - cy);
-    if (d < 3.4) {
-      this.hurt(Math.round(20 * (1 - d / 3.6)) + 4, 'explosion');
-      pl.knock.x = Math.sign(pl.x - cx || 1) * 9 * (1 - d / 3.6);
-      pl.knock.y = -6 * (1 - d / 3.6);
-    }
-    st.data.stats.explosions++;
-    st.learn('explosion');
-    this.say('kaboom', '<b>KA-BOOM!</b> Bioxide doesn\'t like being whacked.', 'bad', 6);
-    chain.forEach(([xx, yy], k) => setTimeout(() => { if (this.game.scene === this && w.ore[w.idx(xx, yy)]) this.explode(xx, yy); }, 160 + k * 90));
   }
 
   quake(x, y) {
@@ -748,58 +491,23 @@ export default class MineScene extends Scene {
     this.fx.dustCloud(x + 0.5, y + 0.5, 3, [0.7, 0.55, 0.45]);
     this.say('quake', 'The ground lurches! Quakestone!', 'bad', 6);
     this.state.learn('cave_in');
+    this.sand.wake(x * M, y * M, 140);
   }
 
-  collapse(x, y, granular) {
-    const w = this.world;
-    if (!w.solid(x, y)) return;
-    this.fallers.add(x, y);
-    this.damaged.delete(w.idx(x, y));
+  collapse(x, y) {
+    this.tools.collapseCell(x, y);
     this.collapseCount = (this.collapseCount || 0) + 1;
     this.collapseT = 2;
-    if (granular) { this.state.learn('loose_ground'); this.audio.play('trickle'); }
-    else { this.audio.play('creak'); this.shake(0.12); }
+    this.audio.play('creak');
+    this.shake(0.12);
     if (this.collapseCount >= 3 && !this.caveInCounted) {
       this.caveInCounted = true;
-      this.state.data.stats.caveins++;
       this.state.learn('cave_in');
       this.audio.play('collapse');
       this.shake(0.4);
       this.say('cavein', '<b>Cave-in!</b>', 'bad', 5);
       if (!this.loops.rumble) { this.loops.rumble = this.audio.loop('rumble', { vol: 0.5 }); setTimeout(() => { if (this.loops.rumble) { this.loops.rumble.stop(1); this.loops.rumble = null; } }, 2500); }
     }
-  }
-
-  fallerLanded(f, x, y) {
-    const w = this.world;
-    const speed = f.vy;
-    const b = BLOCKS[f.block];
-    if (!w.solid(x, y) && y < w.H - 1) {
-      const nb = isGranular(f.block) ? f.block : B.RUBBLE;
-      w.setBlock(x, y, nb);
-      const i = w.idx(x, y);
-      if (f.ore) { w.ore[i] = f.ore; w.oreQ[i] = Math.max(1, f.oreQ * (speed > 8 ? 0.8 : 0.92)); w.flags[i] |= f.flags; w.hp[i] = w.maxHp(x, y); }
-      // rubble keeps falling if unsupported
-      if (!w.solid(x, y + 1)) this.stability.queue.push([x, y, 0.05]);
-      // crush plants
-      const plant = this.plants.at(x, y);
-      if (plant) this.plants.remove(plant);
-    }
-    this.debris.burst(f.x, -f.y - 0.3, 6 + Math.min(10, speed), b.debris || [b.color], { speed: 2 + speed * 0.3, size: [0.06, 0.18] });
-    this.fx.blockDust(f.x, f.y + 0.4, f.block, 10);
-    this.audio.play('thud', { vol: clamp(speed / 12, 0.3, 1) });
-    this.shake(clamp(speed / 60, 0.04, 0.2));
-  }
-
-  fallerHitPlayer(f) {
-    const b = BLOCKS[f.block];
-    this.debris.burst(f.x, -f.y, 14, b.debris || [b.color], { speed: 5, size: [0.06, 0.2] });
-    this.fx.blockDust(f.x, f.y, f.block, 12);
-    if (f.ore) this.pickups.spawn(ORES[f.ore].item, f.x, f.y, { q: Math.round(f.oreQ * 0.6) });
-    this.audio.play('break', { snd: b.snd });
-    this.hurt(isGranular(f.block) ? 4 : 11, 'rock');
-    this.player.knock.x = Math.sign(this.player.x - f.x || 1) * 3;
-    this.say('bonk', 'BONK! Watch the ceiling!', 'bad', 3);
   }
 
   spitEmber(x, y, dir) {
@@ -815,83 +523,75 @@ export default class MineScene extends Scene {
     if ((p.id === 'magmaite' || p.id === 'sunstone') && !st.protects('heat')) { this.burn(5, p.x, p.y); return false; }
     if (p.id === 'frostite' && !st.protects('cold')) { this.hurt(4, 'cold'); this.fx.frost(p.x - 0.5, p.y - 0.5); this.say('cold', 'Too cold to hold! Your paws go numb.', 'bad', 3); st.learn('freezing'); return false; }
     const counts = it.cat === 'mineral' || it.cat === 'gem';
-    if (counts && this.trip >= st.bagCapacity()) { this.say('bag', `Bag full! (${this.trip}/${st.bagCapacity()}) Ring a lift bell to head home.`, 'warn', 4); return false; }
+    if (counts && this.trip >= st.bagCapacity()) { this.say('bag', `Bag full! (${this.trip}/${st.bagCapacity()})${this.intro ? '' : ' Ring a lift bell to head home.'}`, 'warn', 4); return false; }
     const lot = st.addItem(p.id, it.q ? { q: p.q, p: p.p } : {});
     if (counts) { this.trip++; st.data.stats.ores++; }
     this.tripItems.push({ id: p.id, uid: lot && lot.uid });
     this.tripValue += sellPrice(p.id, p.q, p.p);
     this.audio.play(it.cat === 'gem' || p.p ? 'pickup_gem' : 'pickup', { pitch: 0.9 + Math.random() * 0.3 });
-    const label = it.q ? `+${it.name} <span style="color:${qColor(p.q)}">${Math.round(p.q)}%</span>` : `+${it.name}`;
     this.float(it.q ? `+${it.name} ${Math.round(p.q)}%` : `+${it.name}`, p.x, p.y - 0.5, it.q ? qColor(p.q) : '#e8ffd0', 0.85);
     const cat = it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'mineral' : it.cat === 'plant' ? 'plant' : null;
     if (cat) st.discover(cat, p.id);
+    if (this.game.ui.setBag) this.game.ui.setBag(this.trip, st.bagCapacity());
     this.updateHotbar();
     return true;
   }
 
-  // ------------------------------------------------------------------ periodic world behaviors
+  // ------------------------------------------------------------------ deposits doing their thing
   oreBehaviors(dt) {
     const w = this.world, st = this.state, pl = this.player, v = this.view;
     this.magnets = [];
     this.oreLights = [];
-    const x0 = Math.max(1, v.x0 - 6), x1 = Math.min(w.W - 2, v.x1 + 6), y0 = Math.max(1, v.y0 - 6), y1 = Math.min(w.H - 2, v.y1 + 6);
-    for (let y = y0; y <= y1; y++)
-      for (let x = x0; x <= x1; x++) {
-        const i = w.idx(x, y);
-        const oid = w.ore[i];
-        if (!oid) continue;
-        const o = ORES[oid];
-        const exposed = w.exposed(x, y);
-        // truffle scent drifts out of the dirt
-        if (o.tags.includes('scent') && !exposed && Math.hypot(pl.x - x, pl.y - y) < 6 && chance(dt * 1.5)) this.fx.scent(x, y);
-        if (!exposed) {
-          // the faintest glint betrays hidden ore under lamplight
-          if (chance(dt * 0.05) && this.lightAt(x + 0.5, y + 0.5) > 0.4) this.fx.glints(x, y);
-          continue;
-        }
-        if (o.glow) this.oreLights.push({ x: x + 0.5, y: y + 0.5, r: ((o.glow >> 16) & 255) / 255 * 0.7, g: ((o.glow >> 8) & 255) / 255 * 0.7, b: (o.glow & 255) / 255 * 0.7, radius: 3.2 });
-        if (o.tags.includes('void')) this.oreLights.push({ x: x + 0.5, y: y + 0.5, r: 0.8, g: 0.8, b: 0.7, radius: 3.5, neg: true, noOcc: true });
-        if (o.tags.includes('magnet')) this.magnets.push({ x: x + 0.5, y: y + 0.5 });
-        if (o.tags.includes('tarnish')) {
-          w.oreQ[i] = Math.max(1, w.oreQ[i] - dt * 0.5);
-          if (!this.flags.tarnish && Math.hypot(pl.x - x, pl.y - y) < 6) { this.flags.tarnishT = (this.flags.tarnishT || 0) + dt; if (this.flags.tarnishT > 6) { this.flags.tarnish = true; st.learn('tarnish'); this.say('tarnish', 'The moonsilver is dulling in the air...', 'warn', 30); } }
-        }
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const xx = x + dx, yy = y + dy;
-          if (!w.inb(xx, yy)) continue;
-          const j = w.idx(xx, yy);
-          const wet = w.fluid[j] > 0.2 && w.ftype[j] === 1;
-          if (o.tags.includes('hot')) {
-            if (wet) { w.fluid[j] = Math.max(0, w.fluid[j] - dt * 0.6); if (chance(dt * 6)) this.fx.steam(xx + 0.5, yy + 0.5, 2); if (chance(dt)) this.audio.play('sizzle'); }
-            const plant = this.plants.at(xx, yy);
-            if (plant && chance(dt * 0.4)) this.ignite(xx, yy);
-            if (w.block[j] === B.ROOTS && chance(dt * 0.3)) this.ignite(xx, yy);
-            if (w.block[j] === B.ICE && chance(dt * 0.5)) { w.setBlock(xx, yy, B.AIR); w.fluid[j] = 1; w.ftype[j] = 1; this.fx.steam(xx + 0.5, yy + 0.5, 6); }
-            if (chance(dt * 0.6)) this.fx.ember(x + 0.5, y + 0.3);
-          }
-          if (o.tags.includes('cold') && wet) {
-            w.setBlock(xx, yy, B.ICE);
-            this.fx.frost(xx, yy);
-            this.audio.play('freeze');
-            st.learn('freezing');
-          }
-          if (o.tags.includes('soluble') && wet) { w.oreQ[i] -= dt * 3; if (chance(dt * 3)) this.fx.bubbles(x + 0.5, y + 0.5); if (w.oreQ[i] <= 3) { w.ore[i] = 0; w.markDirty(x, y); } }
-          if (o.tags.includes('electric') && wet) this.electrify(xx, yy);
-          if (o.tags.includes('flammable') && w.fire[j] > 0 && chance(dt * 0.5)) this.ignite(x, y);
-        }
-        if (o.tags.includes('electric') && chance(dt * 0.8)) this.fx.spark(x + rand(0.1, 0.9), y + rand(0.1, 0.9), [0.5, 0.95, 1]);
+    const cx = (v.x0 + v.x1) / 2, cy = (v.y0 + v.y1) / 2;
+    const R = Math.max(v.x1 - v.x0, v.y1 - v.y0) / 2 + 6;
+    for (const d of w.depositsNear(cx, cy, R)) {
+      if (d.done) continue;
+      const o = ORES[d.oreId];
+      const c = this.depCenter(d);
+      if (o.tags.includes('scent') && !d.visible && Math.hypot(pl.x - c.x, pl.y - c.y) < 6 && chance(dt * 1.5)) this.fx.scent(c.x - 0.5, c.y - 0.5);
+      if (!d.visible) {
+        // the faintest glint betrays hidden ore under lamplight
+        if (d.stamped && chance(dt * 0.06) && this.lightAt(c.x, c.y) > 0.4) this.fx.glints(c.x - 0.5, c.y - 0.5);
+        continue;
       }
+      if (o.glow) this.oreLights.push({ x: c.x, y: c.y, r: ((o.glow >> 16) & 255) / 255 * 0.7, g: ((o.glow >> 8) & 255) / 255 * 0.7, b: (o.glow & 255) / 255 * 0.7, radius: 3.2 });
+      if (o.tags.includes('void')) this.oreLights.push({ x: c.x, y: c.y, r: 0.8, g: 0.8, b: 0.7, radius: 3.5, neg: true, noOcc: true });
+      if (o.tags.includes('magnet')) this.magnets.push({ x: c.x, y: c.y });
+      if (o.tags.includes('tarnish')) {
+        d.q = Math.max(1, d.q - dt * 0.5);
+        if (!this.flags.tarnish && Math.hypot(pl.x - c.x, pl.y - c.y) < 6) { this.flags.tarnishT = (this.flags.tarnishT || 0) + dt; if (this.flags.tarnishT > 6) { this.flags.tarnish = true; st.learn('tarnish'); this.say('tarnish', 'The moonsilver is dulling in the air...', 'warn', 30); } }
+      }
+      const x = Math.floor(c.x), y = Math.floor(c.y);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [0, 0]]) {
+        const xx = x + dx, yy = y + dy;
+        if (!w.inb(xx, yy)) continue;
+        const j = w.idx(xx, yy);
+        const wet = w.fluid[j] > 0.2 && w.ftype[j] === 1;
+        if (o.tags.includes('hot')) {
+          if (wet) { w.fluid[j] = Math.max(0, w.fluid[j] - dt * 0.6); if (chance(dt * 6)) this.fx.steam(xx + 0.5, yy + 0.5, 2); if (chance(dt)) this.audio.play('sizzle'); }
+          const plant = this.plants.at(xx, yy);
+          if (plant && chance(dt * 0.4)) this.ignite(xx, yy);
+          if (w.block[j] === B.ROOTS && chance(dt * 0.3)) this.ignite(xx, yy);
+          if (chance(dt * 0.6)) this.fx.ember(c.x, c.y - 0.2);
+        }
+        if (o.tags.includes('cold') && wet) { w.setBlock(xx, yy, B.ICE); w.fluid[j] = 0; w.ftype[j] = 0; this.fx.frost(xx, yy); this.audio.play('freeze'); st.learn('freezing'); }
+        if (o.tags.includes('soluble') && wet) { d.q -= dt * 3; if (chance(dt * 3)) this.fx.bubbles(c.x, c.y); if (d.q <= 3) this.tools.destroyDeposit(d, 'dissolved'); }
+        if (o.tags.includes('electric') && wet) this.electrify(xx, yy);
+        if (o.tags.includes('flammable') && w.fire[j] > 0 && chance(dt * 0.5)) this.ignite(x, y);
+      }
+      if (o.tags.includes('electric') && chance(dt * 0.8)) this.fx.spark(c.x + rand(-0.4, 0.4), c.y + rand(-0.4, 0.4), [0.5, 0.95, 1]);
+    }
   }
 
   electrify(x, y) {
     const w = this.world;
-    // flood a little region of connected water
     const seen = new Set();
     const stack = [[x, y]];
     while (stack.length && seen.size < 60) {
       const [cx, cy] = stack.pop();
+      if (!w.inb(cx, cy)) continue;
       const i = w.idx(cx, cy);
-      if (seen.has(i) || !w.inb(cx, cy) || w.fluid[i] < 0.2 || w.ftype[i] !== 1) continue;
+      if (seen.has(i) || w.fluid[i] < 0.2 || w.ftype[i] !== 1) continue;
       seen.add(i);
       w.flags[i] |= F.ELECTRIC;
       stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
@@ -910,6 +610,18 @@ export default class MineScene extends Scene {
     this.state.learn('fire');
   }
 
+  /** Fire finished with a cell: roots and boards burn away, nearby rock is blackened. */
+  burnCell(x, y) {
+    const w = this.world;
+    w.ensureCells(x, y, x, y);
+    for (let yy = y * M; yy < (y + 1) * M; yy++) for (let xx = x * M; xx < (x + 1) * M; xx++) {
+      const m = w.pmat(xx, yy);
+      if (m === B.ROOTS || m === B.BOARDS) w.clearPx(xx, yy);
+      else if (m && m < ORE_BASE && chance(0.5)) { w.pd[yy * w.MW + xx] |= 128; w.touchPx(xx, yy); }
+    }
+    this.tools.after(x * M + 16, y * M + 16, 'fire', 24);
+  }
+
   updateFire(dt) {
     const w = this.world, pl = this.player;
     this.fireLights = [];
@@ -921,13 +633,12 @@ export default class MineScene extends Scene {
       if (chance(dt * 4)) this.fx.smoke(x + 0.5, y + 0.2);
       const flick = 0.75 + Math.sin(this.time * 17 + i) * 0.15 + Math.random() * 0.1;
       if (this.fireLights.length < 20) this.fireLights.push({ x: x + 0.5, y: y + 0.5, r: 1.0 * flick, g: 0.5 * flick, b: 0.15 * flick, radius: 4 });
-      // spread
       if (chance(dt * 0.6)) {
         const [dx, dy] = pick([[1, 0], [-1, 0], [0, -1], [0, 1]]);
         const xx = x + dx, yy = y + dy;
         if (w.inb(xx, yy)) {
           const j = w.idx(xx, yy);
-          const flam = this.plants.at(xx, yy) || w.block[j] === B.ROOTS || (w.ore[j] && ORES[w.ore[j]].tags.includes('flammable') && w.exposed(xx, yy)) || w.hasFlag(xx, yy, F.BEAM);
+          const flam = this.plants.at(xx, yy) || w.block[j] === B.ROOTS || w.block[j] === B.BOARDS || w.hasFlag(xx, yy, F.BEAM);
           if (flam) this.ignite(xx, yy);
         }
       }
@@ -937,12 +648,10 @@ export default class MineScene extends Scene {
         this.fires.delete(i);
         const plant = this.plants.at(x, y);
         if (plant) { this.plants.remove(plant); this.fx.burnAt(x + 0.5, y + 0.5); }
-        if (w.block[i] === B.ROOTS) { this.fx.burnAt(x + 0.5, y + 0.5); w.setBlock(x, y, B.AIR); }
-        if (w.ore[i] && ORES[w.ore[i]].tags.includes('flammable')) { w.ore[i] = 0; w.markDirty(x, y); this.float('Coal burned away', x + 0.5, y, '#ffb07a', 0.8); }
+        if (w.block[i] === B.ROOTS || w.block[i] === B.BOARDS) { this.fx.burnAt(x + 0.5, y + 0.5); this.burnCell(x, y); }
         if (w.hasFlag(x, y, F.BEAM)) { w.setFlag(x, y, F.BEAM, false); this.stability.onOpened(x, y); this.say('beamburn', 'A support beam burned through!', 'bad'); }
       }
     }
-    // spat embers
     const keep = [];
     for (const e of this.embersFlying) {
       e.t += dt;
@@ -950,7 +659,7 @@ export default class MineScene extends Scene {
       e.x += e.vx * dt; e.y += e.vy * dt;
       this.fx.ember(e.x, e.y);
       if (Math.hypot(pl.x - e.x, pl.y - e.y) < 0.6) { this.burn(5, e.x, e.y); continue; }
-      if (w.solid(Math.floor(e.x), Math.floor(e.y)) || e.t > 3) {
+      if (w.solidPt(e.x, e.y) || e.t > 3) {
         const plant = this.plants.at(Math.floor(e.x), Math.floor(e.y) - 1);
         if (plant) this.ignite(plant.x, plant.y);
         continue;
@@ -958,7 +667,6 @@ export default class MineScene extends Scene {
       keep.push(e);
     }
     this.embersFlying = keep;
-    // fire ambience
     const near = [...this.fires].some((i) => Math.hypot((i % w.W) - pl.x, Math.floor(i / w.W) - pl.y) < 8);
     if (near && !this.loops.fire) this.loops.fire = this.audio.loop('fire', { vol: 0.45 });
     if (!near && this.loops.fire) { this.loops.fire.stop(0.6); this.loops.fire = null; }
@@ -967,20 +675,18 @@ export default class MineScene extends Scene {
   // ------------------------------------------------------------------ discovery scan
   scan() {
     const w = this.world, st = this.state, v = this.view;
-    for (let y = Math.max(0, v.y0); y <= Math.min(w.H - 1, v.y1); y++)
-      for (let x = Math.max(0, v.x0); x <= Math.min(w.W - 1, v.x1); x++) {
-        const i = w.idx(x, y);
-        if (!w.ore[i] || (w.flags[i] & F.SEEN)) continue;
-        if (!w.oreVisible(x, y)) continue;
-        if (this.lightAt(x + 0.5, y + 0.5) < 0.18) continue;
-        w.flags[i] |= F.SEEN;
-        const item = ORES[w.ore[i]].item;
-        this.fx.sparkle(x + 0.5, y + 0.5, [1, 0.95, 0.75]);
-        this.audio.play('sparkle', { gap: 0.25 });
-        const cat = ITEMS[item].cat === 'gem' ? 'gem' : ITEMS[item].cat === 'plant' ? 'plant' : 'mineral';
-        st.discover(cat, item);
-        if (w.exposed(x, y) && !this.flags.hiddenOre) { this.flags.hiddenOre = true; st.learn('hidden_ore'); }
-      }
+    const cx = (v.x0 + v.x1) / 2, cy = (v.y0 + v.y1) / 2;
+    for (const d of w.depositsNear(cx, cy, Math.max(v.x1 - v.x0, v.y1 - v.y0) / 2)) {
+      if (d.done || d.seen || !d.visible) continue;
+      const c = this.depCenter(d);
+      if (this.lightAt(c.x, c.y) < 0.18) continue;
+      d.seen = true;
+      this.fx.sparkle(c.x, c.y, [1, 0.95, 0.75]);
+      this.audio.play('sparkle', { gap: 0.25 });
+      const it = ITEMS[d.item];
+      st.discover(it.cat === 'gem' ? 'gem' : it.cat === 'plant' ? 'plant' : 'mineral', d.item);
+      if (!this.flags.hiddenOre) { this.flags.hiddenOre = true; st.learn('hidden_ore'); }
+    }
     for (const p of this.plants.map.values()) {
       if (p.x < v.x0 || p.x > v.x1 || p.y < v.y0 || p.y > v.y1 || p.seen) continue;
       if (this.lightAt(p.x + 0.5, p.y + 0.5) < 0.15) continue;
@@ -1017,26 +723,40 @@ export default class MineScene extends Scene {
   async leave(to, params = {}) {
     if (this.leaving) return;
     this.leaving = true;
-    this.audio.play('bell');
-    this.audio.play('gate');
-    this.state.learn('elevator');
+    this.face.exit('leave');
+    if (to !== 'town' || !params.from) { this.audio.play('bell'); this.audio.play('gate'); this.state.learn('elevator'); }
     const pl = this.player;
     const s = this.screen(pl.x, pl.y, 0);
     const center = [s.x / window.innerWidth, 1 - s.y / window.innerHeight];
     await wait(500);
     if (this.trip) this.game.ui.toast(`Hauled up <b>${this.trip}</b> finds (≈${formatGoldFull(this.tripValue)}g)`, { kind: 'good', dur: 4000 });
-    this.game.goto(to, { ...params, from: 'mine' }, { transition: 'iris', center });
+    this.game.goto(to, { from: 'mine', ...params }, { transition: 'iris', center });
   }
 
   faint() {
     if (this.fainting || this.leaving) return;
     this.fainting = true;
+    this.face.exit('faint');
     const st = this.state;
     this.audio.play('faint');
     this.player.rig.play('sleep');
     st.data.stats.faints++;
     st.learn('fainting');
-    // lose part of the haul
+    if (this.intro) {
+      // nobody can carry you out yet: you doze, then drag yourself up again
+      this.post.fade = 0;
+      const t0 = performance.now();
+      const fade = () => { if (this.game.scene !== this) return; const k = (performance.now() - t0) / 1000; this.post.fade = k < 1.2 ? k / 1.2 : k < 2.6 ? 1 : Math.max(0, 1 - (k - 2.6) / 1.2); if (k < 3.8) requestAnimationFrame(fade); else this.post.fade = 0; };
+      fade();
+      setTimeout(() => {
+        if (this.game.scene !== this) return;
+        st.data.energy = Math.max(40, Math.round(st.data.maxEnergy * 0.45));
+        st.emit('energy', {});
+        this.fainting = false;
+        this.game.ui.toast('You doze off in the dark... and wake up groggy. Food would help.', { kind: 'warn', dur: 5000 });
+      }, 2400);
+      return;
+    }
     let lost = 0;
     for (const t of this.tripItems) {
       if (!chance(0.4)) continue;
@@ -1055,59 +775,68 @@ export default class MineScene extends Scene {
   // ================================================================== frame
   updateView() {
     const cam = this.camera;
-    const dist = this.camDist - 0.5;
+    const dist = Math.max(1, cam.position.z - 0.5 || this.camDist - 0.5);
     const halfH = Math.tan((cam.fov * Math.PI) / 360) * dist;
     const halfW = halfH * cam.aspect;
-    const cx = this.camX, cy = this.camY;
-    const v = {
+    const cx = cam.position.x || this.camX, cy = -(cam.position.y || -this.camY);
+    this.view = {
       x0: Math.floor(cx - halfW) - 1, x1: Math.ceil(cx + halfW) + 1,
-      y0: Math.floor(cy - halfH) - 1, y1: Math.ceil(cy + halfH) + 1,
+      y0: Math.floor(cy - halfH) - 2, y1: Math.ceil(cy + halfH) + 2,
+      halfW, halfH,
     };
-    v.cx0 = Math.floor(v.x0 / CHUNK); v.cx1 = Math.floor(v.x1 / CHUNK);
-    v.cy0 = Math.floor(v.y0 / CHUNK); v.cy1 = Math.floor(v.y1 / CHUNK);
-    v.halfW = halfW; v.halfH = halfH;
-    this.view = v;
+  }
+  viewPx() {
+    const v = this.view;
+    return [v.x0 * M - 8, v.y0 * M - 8, (v.x1 + 1) * M + 8, (v.y1 + 1) * M + 8];
   }
 
   update(dt) {
-    // a few frames of hit-stop make heavy impacts feel weighty
     if (this.hitStop > 0) { this.hitStop -= dt; dt *= 0.08; }
     super.update(dt);
     const g = this.game, inp = g.input, st = this.state, w = this.world, pl = this.player;
     const U = this.renderer.U;
     U.time.value = this.time;
     this.post.flash = Math.max(0, (this.post.flash || 0) - dt * 2.5);
+    if (this.bonkT > 0) this.bonkT -= dt;
 
     // ---- input
-    if (!this.fainting && !this.leaving) {
+    const busy = this.fainting || this.leaving || (this.introCtl && this.introCtl.locked());
+    if (!busy) {
       for (let k = 0; k < SLOTS.length; k++) if (inp.pressed('Digit' + (k + 1))) this.selectSlot(k);
       if (inp.mouse.wheel) this.selectSlot(this.slot + Math.sign(inp.mouse.wheel));
-      if (inp.pressed('KeyQ')) { const f = this.bestFood(); if (f) { g.eat(f.id); this.updateHotbar(); } else this.say('nofood', 'No snacks in your bag.', 'warn'); }
+      if (inp.pressed('KeyQ')) { const f = this.bestFood(); if (f) { g.eat(f.id); this.updateHotbar(); this.face.impact('eat'); } else this.say('nofood', 'No snacks in your bag.', 'warn'); }
       if (inp.pressed('KeyE')) {
-        const bell = this.nearestBell();
+        const bell = !this.intro && this.nearestBell();
         if (bell) this.openLift();
+        else if (this.introCtl && this.introCtl.interact()) { /* handled */ }
         else if (this.target) this.grab(this.target);
       }
     }
+
+    // ---- first-person face mode decides whether the mole is walking or working
+    this.face.update(dt);
+
     // ---- player
     const zippy = st.hasBuff('zippy');
-    const pev = pl.update(dt, inp, { frozen: this.fainting || this.leaving, speed: zippy ? 1.25 : 1, jump: (st.hasBuff('bouncy') ? 1.3 : 1) * (st.equipped('boots')?.jump || 1), exhausted: st.energy < 8 });
+    const frozen = busy || this.face.on;
+    const pev = pl.update(dt, inp, { frozen, speed: zippy ? 1.25 : 1, jump: (st.hasBuff('bouncy') ? 1.3 : 1) * (st.equipped('boots')?.jump || 1), exhausted: st.energy < 8 });
     if (pev.jump) { this.audio.play('jump'); this.energy(0.25); }
     if (pev.landed) { this.audio.play('land', { hard: pev.landed > 9 }); this.fx.blockDust(pl.x, pl.feetY - 0.1, pl.groundBlock(), Math.min(8, pev.landed)); }
     if (pev.fallDamage) { this.hurt(Math.round(pev.fallDamage), 'fall'); this.say('fall', 'Oof! That was a long drop.', 'bad'); }
     if (pev.splash) { this.audio.play('splash'); this.fx.steam(pl.x, pl.y, 0); for (let k = 0; k < 8; k++) this.fx.bubbles(pl.x, pl.y); }
+    if (pev.buried > 6) { this.fx.dust(pl.x, pl.y, 6, [0.8, 0.72, 0.6], 0.4); if (chance(0.2)) this.audio.play('trickle'); }
     if (pev.climbing) { this.energy(1.0 * dt); if (chance(dt * 6)) { this.audio.play('climb'); this.fx.blockDust(pl.x + pl.wall * 0.3, pl.y, B.DIRT, 1); } }
     if (pl.onGround && Math.abs(pl.vx) > 0.5) {
       this.stepT -= dt * Math.abs(pl.vx) / 3.5;
       if (this.stepT <= 0) {
         this.stepT = 0.32;
-        const gb = BLOCKS[pl.groundBlock()];
-        const mat = !gb ? 'dirt' : gb.snd === 'stone' || gb.snd === 'hard' || gb.snd === 'crystal' || gb.snd === 'ice' ? 'stone' : gb.snd === 'sand' ? 'sand' : gb.snd === 'wood' ? 'wood' : 'dirt';
+        const gb = MAT[pl.groundBlock()];
+        const snd = gb?.snd;
+        const mat = !snd ? 'dirt' : snd === 'stone' || snd === 'hard' || snd === 'crystal' || snd === 'ice' ? 'stone' : snd === 'sand' ? 'sand' : snd === 'wood' ? 'wood' : 'dirt';
         this.audio.play('step', { mat });
       }
     }
     if (pl.inWater && chance(dt * 1.5)) this.audio.play('swim');
-    // hazards
     if (pl.inLava) { if (!st.protects('heat')) { st.useEnergy(18 * dt); pl.hurtT = 0.2; if (chance(dt * 4)) this.audio.play('sizzle'); this.say('lava', '<b>LAVA!</b> Get out!', 'bad', 2); } else st.useEnergy(3 * dt); for (let k = 0; k < 2; k++) this.fx.ember(pl.x, pl.y); }
     const ci = w.idx(clamp(Math.floor(pl.x), 0, w.W - 1), clamp(Math.floor(pl.y), 0, w.H - 1));
     if (pl.inWater && (w.flags[ci] & F.ELECTRIC) && chance(dt * 2)) this.zap(pl.x, pl.y, 3, 'The water is electrified!');
@@ -1127,7 +856,7 @@ export default class MineScene extends Scene {
         if (this.coldT > 4 && !this.flags.cold) { this.flags.cold = true; st.learn('freezing'); this.say('cold2', 'Brrr. The cold bites through your fur.', 'warn', 30); }
       }
     }
-    if (st.energy < 20 && !this.flags.lowEnergy) { this.flags.lowEnergy = true; st.learn('energy'); this.say('low', 'You\'re running low on energy. Eat something, or head home.', 'warn', 60); }
+    if (st.energy < 20 && !this.flags.lowEnergy) { this.flags.lowEnergy = true; st.learn('energy'); this.say('low', this.intro ? 'You\'re running low on energy. Something to eat would help.' : 'You\'re running low on energy. Eat something, or head home.', 'warn', 60); }
 
     // ---- targeting & tools
     this.target = this.computeTarget();
@@ -1143,20 +872,25 @@ export default class MineScene extends Scene {
       stepFluids(w, v.x0 - 14, v.y0 - 14, v.x1 + 14, v.y1 + 10, (kind, x, y) => this.fluidEvent(kind, x, y), this.fluidTick % 3 === 0);
       fluidChanged = true;
     }
+    this.sandT += dt;
+    let sandSteps = 0;
+    while (this.sandT > 1 / 90 && sandSteps < 3) { this.sandT -= 1 / 90; sandSteps++; if (this.sand.step() > 40 && chance(0.06)) this.audio.play('trickle', { vol: 0.5 }); }
+    this.sandT = Math.min(this.sandT, 0.05);
+    this.tools.updateIslands(dt);
     this.stability.update(dt);
-    this.fallers.update(dt, pl);
+    this.bodies.update(dt, pl);
     this.debris.update(dt);
     this.pickups.update(dt);
     this.plants.update(dt);
     this.creatures.update(dt);
     this.updateFire(dt);
+    if (this.introCtl) this.introCtl.update(dt);
     this.oreT -= dt;
     if (this.oreT <= 0) { this.oreBehaviors(0.25); this.oreT = 0.25; }
     this.scanT -= dt;
     if (this.scanT <= 0) { this.scan(); this.scanT = 0.5; }
     if (this.collapseT > 0) { this.collapseT -= dt; if (this.collapseT <= 0) { this.collapseCount = 0; this.caveInCounted = false; } }
-    // bottom of the zone → unlock the next lift stop
-    if (pl.y > w.H - 7 && !this.flags.bottom) {
+    if (!this.intro && pl.y > w.H - 7 && !this.flags.bottom) {
       this.flags.bottom = true;
       if (this.zone < MAX_ZONE && st.data.zoneMax <= this.zone) {
         st.data.zoneMax = this.zone + 1;
@@ -1169,60 +903,54 @@ export default class MineScene extends Scene {
         g.ui.toast('You\'ve reached the very heart of the world. It hums.', { kind: 'good', dur: 6000 });
       }
     }
-    // ambience
     const lavaNear = this.lavaNear;
     if (lavaNear && !this.loops.lava) this.loops.lava = this.audio.loop('lava', { vol: 0.35 });
     if (!lavaNear && this.loops.lava) { this.loops.lava.stop(0.8); this.loops.lava = null; }
     if (chance(dt * 0.25)) this.audio.play('drip', { vol: 0.5 });
-    // dust motes drifting through the lamplight, and drips from wet ceilings
     if (chance(dt * 9)) {
       const R = st.lightRadius() * 0.8;
       const mx = pl.x + rand(-R, R), my = pl.y + rand(-R, R);
-      if (!w.solid(Math.floor(mx), Math.floor(my))) this.fx.mote(mx, my);
+      if (!w.solidPt(mx, my)) this.fx.mote(mx, my);
     }
-    if ((this.zone === 2 || this.zone === 5 || this.zone === 3) && chance(dt * 1.2)) {
-      const dx = Math.floor(pl.x + rand(-8, 8)), dy = Math.floor(pl.y + rand(-5, 3));
-      if (w.solid(dx, dy - 1) && !w.solid(dx, dy)) this.fx.drip(dx + rand(0.3, 0.7), dy);
+    if ((this.zone === 2 || this.zone === 5 || this.zone === 3 || this.zone === 0) && chance(dt * 1.2)) {
+      const dx = pl.x + rand(-8, 8), dy = pl.y + rand(-5, 3);
+      if (w.solidPt(dx, dy - 0.1) && !w.solidPt(dx, dy + 0.1)) this.fx.drip(dx, dy + 0.1);
     }
 
-    // ---- camera
-    const lookAhead = pl.facing * 0.8;
-    const tx = pl.x + lookAhead, ty = pl.y - 0.4;
-    this.camX += (tx - this.camX) * Math.min(1, dt * 5);
-    this.camY += (ty - this.camY) * Math.min(1, dt * 6);
+    // ---- camera (face mode drives its own)
+    if (this.face.on || this.face.blend > 0) this.face.camera(dt);
+    else this.sideCamera(dt);
     this.updateView();
     const v = this.view;
-    if (this.overview) { this.camX = w.W / 2; this.camY = w.H / 2; }
-    else {
-      this.camX = clamp(this.camX, v.halfW + 0.5, w.W - v.halfW - 0.5);
-      this.camY = clamp(this.camY, v.halfH - 0.8, w.H - v.halfH);
+
+    // ---- pixels: generate ahead of the camera, refresh what changed
+    {
+      const [a, b, c, d] = this.viewPx();
+      this.gen.pump(a - CPX, b - CPX, c + CPX, d + CPX, 2);
     }
-    this.shakeAmp = Math.max(0, this.shakeAmp - dt * 1.2);
-    const sh = this.shakeAmp;
-    // a fixed, slightly raised side view: floors read as 3D voxel tops, the camera never rotates
-    this.camera.position.set(this.camX + (Math.random() - 0.5) * sh, -this.camY + 2.2 + (Math.random() - 0.5) * sh, this.camDist);
-    this.camera.lookAt(this.camX + (Math.random() - 0.5) * sh * 0.3, -this.camY - 0.15, 0);
-    this.updateView();
+    this.renderer.terrain.update(...this.viewPx(), 8);
 
     // ---- lighting
     this.lighting.compute(this.staticLights(), this.dynamicLights(dt), v.x0 - 6, v.y0 - 6, v.x1 + 6, v.y1 + 6, this.staticDirty);
     this.staticDirty = false;
 
     // ---- render data
-    this.renderer.updateChunks(v.cx0, v.cy0, v.cx1, v.cy1, 6);
-    this.renderer.updateOverlay(this.damaged, this.target && !this.target.far && this.slotUsesTarget() ? this.target : null);
+    const t = this.target;
+    const showMarker = t && !t.far && t.solid && ['pick', 'chisel', 'brush', 'drill'].includes(this.slotName) && !this.fainting;
+    this.renderer.setMarker(showMarker ? t.px : null, showMarker ? t.py : null, showMarker && t.ok);
     if (fluidChanged) this.renderer.updateFluids(v.x0, v.y0, v.x1, v.y1);
     this.renderSprites();
     const pxScale = (g.engine.height / 2) / Math.tan((this.camera.fov * Math.PI) / 360);
     this.renderer.dust.uPx.value = pxScale;
     this.renderer.glow.uPx.value = pxScale;
     this.renderer.dust.update(dt, (q) => {
-      if (w.solid(Math.floor(q.x), Math.floor(-q.y))) { if (q.vy < -2 && chance(0.3)) this.audio.play('drip', { vol: 0.3 }); q.life = Math.min(q.life, q.t + 0.15); q.vx = q.vy = 0; q.grav = 0; return false; }
+      if (w.solidPt(q.x, -q.y)) { if (q.vy < -2 && chance(0.3)) this.audio.play('drip', { vol: 0.3 }); q.life = Math.min(q.life, q.t + 0.15); q.vx = q.vy = 0; q.grav = 0; return false; }
       return false;
     });
     this.renderer.glow.update(dt);
     const L = this.lighting.sample(pl.x, pl.y - 0.2);
-    pl.updateVisual(dt, L, U.ambient.value, this.target ? this.target.mx - pl.x : pl.facing);
+    pl.updateVisual(dt, L, U.ambient.value, t ? t.mx - pl.x : pl.facing);
+    pl.rig.root.visible = !this.face.hidesPlayer();
 
     // ---- HUD
     this.hudT -= dt;
@@ -1231,14 +959,35 @@ export default class MineScene extends Scene {
       const depth = w.depthMeters(pl.y, this.zdef);
       const cap = st.bagCapacity();
       g.ui.setDepth(`<b>${Math.floor(depth)} m</b><br>${this.zdef.name}<br>Bag ${this.trip}/${cap}`);
-      const bell = this.nearestBell();
-      g.ui.setPrompt(bell && !this.leaving ? '<kbd>E</kbd> Ring the lift bell' : null);
-      if (SLOTS[this.slot] === 'drill') g.ui.setHotbarMeter(3, this.drillHeat);
+      const bell = !this.intro && this.nearestBell();
+      const ip = this.introCtl ? this.introCtl.prompt() : null;
+      g.ui.setPrompt(bell && !this.leaving ? '<kbd>E</kbd> Ring the lift bell' : ip);
+      if (this.slotName === 'drill') g.ui.setHotbarMeter(3, this.drillHeat);
       this.updateTooltip();
     }
   }
 
-  slotUsesTarget() { return ['pick', 'chisel', 'brush', 'drill', 'beam', 'stake'].includes(SLOTS[this.slot]); }
+  sideCamera(dt) {
+    const pl = this.player, w = this.world;
+    const lookAhead = pl.facing * 0.8;
+    const tx = pl.x + lookAhead, ty = pl.y - 0.4;
+    this.camX += (tx - this.camX) * Math.min(1, dt * 5);
+    this.camY += (ty - this.camY) * Math.min(1, dt * 6);
+    const halfH = Math.tan((this.camera.fov * Math.PI) / 360) * (this.camDist - 0.5);
+    const halfW = halfH * this.camera.aspect;
+    if (this.overview) { this.camX = w.W / 2; this.camY = w.H / 2; }
+    else {
+      this.camX = clamp(this.camX, halfW + 0.5, w.W - halfW - 0.5);
+      this.camY = clamp(this.camY, halfH - 0.8, w.H - halfH);
+    }
+    this.shakeAmp = Math.max(0, this.shakeAmp - dt * 1.2);
+    const sh = this.shakeAmp;
+    this.camera.fov = 36;
+    this.camera.updateProjectionMatrix();
+    this.camera.position.set(this.camX + (Math.random() - 0.5) * sh, -this.camY + 2.2 + (Math.random() - 0.5) * sh, this.camDist);
+    this.camera.lookAt(this.camX + (Math.random() - 0.5) * sh * 0.3, -this.camY - 0.15, 0);
+    this.renderer.terrain.shared.uFlat.value = 0;
+  }
 
   fluidEvent(kind, x, y) {
     const w = this.world;
@@ -1252,6 +1001,7 @@ export default class MineScene extends Scene {
     const out = [];
     this.plants.lights(out, v);
     if (this.oreLights) out.push(...this.oreLights);
+    if (this.introCtl) this.introCtl.lights(out);
     let lava = 0;
     this.lavaNear = false;
     const pl = this.player;
@@ -1265,7 +1015,7 @@ export default class MineScene extends Scene {
           if (Math.abs(x - pl.x) < 8 && Math.abs(y - pl.y) < 6) this.lavaNear = true;
         }
       }
-    for (const sy of w.stations) out.push({ x: w.shaftX + 0.5, y: sy === 3 ? 2 : sy - 0.4, r: 1.0, g: 0.72, b: 0.38, radius: 3.6, pierce: 0 });
+    if (!this.intro) for (const sy of w.stations) out.push({ x: w.shaftX + 0.5, y: sy === 3 ? 2 : sy - 0.4, r: 1.0, g: 0.72, b: 0.38, radius: 3.6, pierce: 0 });
     return out;
   }
 
@@ -1273,8 +1023,9 @@ export default class MineScene extends Scene {
     const st = this.state, pl = this.player;
     const out = [];
     const lp = pl.lampPos();
-    const R = st.lightRadius();
+    const R = st.lightRadius() * (this.introCtl ? this.introCtl.lampScale() : 1);
     out.push({ x: lp.x, y: lp.y, r: 1.15, g: 0.98, b: 0.74, radius: R, pierce: 1, near: 1.6 });
+    if (this.face.on) { const f = this.face.focus; out.push({ x: f.x, y: f.y, r: 0.55, g: 0.48, b: 0.38, radius: 2.6, noOcc: true }); }
     if (this.xrayOn) {
       const v = this.renderer.U.xray.value;
       for (let k = 1; k <= 3; k++) out.push({ x: v.x + Math.cos(v.z) * k * 1.6, y: -(v.y + Math.sin(v.z) * k * 1.6), r: 0.2, g: 0.55, b: 0.65, radius: 2.4, noOcc: true });
@@ -1283,11 +1034,10 @@ export default class MineScene extends Scene {
     this.fx.lights(out, dt);
     this.creatures.lights(out);
     this.pickups.lights(out);
-    // the mole glows faintly when Glowing Whiskers is active
     if (st.hasBuff('glow')) out.push({ x: pl.x, y: pl.y, r: 0.2, g: 0.45, b: 0.8, radius: 3, noOcc: true });
     if (st.hasBuff('sense')) {
-      const t = this.nearestHiddenOre(Math.floor(pl.x), Math.floor(pl.y), 6);
-      if (t && chance(dt * 4)) this.fx.glints(t.x, t.y);
+      const t = this.nearestHiddenDeposit(pl.x, pl.y, 6);
+      if (t && chance(dt * 4)) this.fx.glints(t.x - 0.5, t.y - 0.5);
     }
     return out;
   }
@@ -1300,7 +1050,6 @@ export default class MineScene extends Scene {
     this.plants.render(sb, A, v);
     this.creatures.render(sb, gb, A, v, this.time);
     this.pickups.render(sb, gb, A, this.time);
-    // beams, stakes, webs, fire
     for (let y = Math.max(0, v.y0); y <= Math.min(w.H - 1, v.y1); y++)
       for (let x = Math.max(0, v.x0); x <= Math.min(w.W - 1, v.x1); x++) {
         const i = w.idx(x, y);
@@ -1311,19 +1060,21 @@ export default class MineScene extends Scene {
         if (w.fire[i] > 0) gb.add(x + 0.5, -y - 1, 1, 1.1, A.uv(A.misc['fire' + (Math.floor(this.time * 10 + i) % 3)]), { anchor: 'bottom', z: 0.35, lit: 0 });
         if ((f & F.ELECTRIC) && w.fluid[i] > 0.2 && chance(0.05)) this.fx.spark(x + Math.random(), y + Math.random(), [0.6, 0.95, 1]);
       }
-    // lift bells, the cage at the top, and the down sign
-    for (const sy of w.stations) {
-      const bx = w.shaftX + 0.5, by = sy === 3 ? 2 : sy - 0.4;
-      if (by < v.y0 - 2 || by > v.y1 + 2) continue;
-      const swing = Math.sin(this.time * 2 + sy) * 0.08;
-      sb.add(bx, -by + 0.35, 0.7, 0.7, A.uv(A.misc.bell), { anchor: 'top', z: 0.25, rot: swing });
+    if (!this.intro) {
+      for (const sy of w.stations) {
+        const bx = w.shaftX + 0.5, by = sy === 3 ? 2 : sy - 0.4;
+        if (by < v.y0 - 2 || by > v.y1 + 2) continue;
+        const swing = Math.sin(this.time * 2 + sy) * 0.08;
+        sb.add(bx, -by + 0.35, 0.7, 0.7, A.uv(A.misc.bell), { anchor: 'top', z: 0.25, rot: swing });
+      }
+      if (v.y0 < 6) {
+        this.cageY = lerp(this.cageY, this.leaving ? -6 : 2.3, 0.04);
+        sb.add(w.shaftX + 0.5, -this.cageY - 0.5, 1.9, 1.9, A.uv(A.misc.lift), { anchor: 'center', z: -0.2 });
+      }
+      const last = w.stations[w.stations.length - 1];
+      if (this.zone < MAX_ZONE && last > v.y0 - 2 && last < v.y1 + 2) sb.add(w.shaftX + 1.6, -last - 1, 0.7, 0.7, A.uv(A.misc.sign), { anchor: 'bottom', z: 0.2 });
     }
-    if (v.y0 < 6) {
-      this.cageY = lerp(this.cageY, this.leaving ? -6 : 2.3, 0.04);
-      sb.add(w.shaftX + 0.5, -this.cageY - 0.5, 1.9, 1.9, A.uv(A.misc.lift), { anchor: 'center', z: -0.2 });
-    }
-    const last = w.stations[w.stations.length - 1];
-    if (this.zone < MAX_ZONE && last > v.y0 - 2 && last < v.y1 + 2) sb.add(w.shaftX + 1.6, -last - 1, 0.7, 0.7, A.uv(A.misc.sign), { anchor: 'bottom', z: 0.2 });
+    if (this.introCtl) this.introCtl.render(sb, gb, A);
     sb.end();
     gb.end();
   }
@@ -1332,26 +1083,26 @@ export default class MineScene extends Scene {
     const t = this.target;
     const tip = this.tooltip;
     const w = this.world;
-    if (!t || t.far || this.game.ui.isPanelOpen()) { tip.style.opacity = 0; return; }
+    if (!t || t.far || this.game.ui.isPanelOpen() || this.game.touch) { tip.style.opacity = 0; return; }
     let html = '';
-    if (t.solid && w.solid(t.x, t.y)) {
-      const i = w.idx(t.x, t.y);
-      const b = BLOCKS[w.block[i]];
-      html = `<b>${b.name}</b>`;
-      if (w.ore[i] && w.oreVisible(t.x, t.y)) {
-        const o = ORES[w.ore[i]];
-        const q = Math.round(w.oreQ[i]);
-        html += `<br>${ITEMS[o.item].name} <span style="color:${qColor(q)};font-weight:700">${q}%</span>`;
-        const frac = w.hp[i] / w.maxHp(t.x, t.y);
-        if (frac <= 0.38) html += ' <span style="color:#2a9a3a">· loose</span>';
+    if (t.solid) {
+      const d = t.ore ? w.depositAt(t.px, t.py) : null;
+      if (d && (d.visible || d.revealed)) {
+        const q = Math.round(d.q);
+        html = `<b>${ITEMS[d.item].name}</b> <span style="color:${qColor(q)};font-weight:700">${q}%</span>`;
+        const e = d.exp ?? 0;
+        html += e > 0.38 ? ' <span style="color:#2a9a3a">· loose</span>' : ` <span style="opacity:.7">· ${Math.round(e * 100)}% free</span>`;
+      } else {
+        const mt = MAT[d ? (d.host[(t.py - d.y0) * d.w + (t.px - d.x0)] || B.STONE) : t.mat];
+        if (mt && mt.name) html = `<b>${mt.name}</b>`;
+        const pickTier = this.state.equipped('pick')?.tier ?? 1;
+        if (mt && mt.tier > pickTier) html += '<br><span style="color:#c0402a">too hard</span>';
       }
-      const pickTier = this.state.equipped('pick')?.tier ?? 1;
-      if (b.tier > pickTier) html += '<br><span style="color:#c0402a">too hard</span>';
     } else {
-      const plant = this.plants.at(t.x, t.y);
+      const plant = this.plants.at(t.cx, t.cy);
       if (plant) html = `<b>${this.state.known('plant', PLANT_ITEM[plant.type]) ? ITEMS[PLANT_ITEM[plant.type]].name : '???'}</b>`;
-      else if (w.hasFlag(t.x, t.y, F.BEAM)) html = '<b>Support beam</b>';
-      else if (w.hasFlag(t.x, t.y, F.WEB)) html = '<b>Sticky web</b>';
+      else if (w.hasFlag(t.cx, t.cy, F.BEAM)) html = '<b>Support beam</b>';
+      else if (w.hasFlag(t.cx, t.cy, F.WEB)) html = '<b>Sticky web</b>';
     }
     if (!html) { tip.style.opacity = 0; return; }
     tip.innerHTML = html;
@@ -1363,11 +1114,17 @@ export default class MineScene extends Scene {
 
   onResize(wd, ht) {
     super.onResize(wd, ht);
+    if (this.face) this.face.resize();
   }
 
   exit() {
     for (const k of Object.keys(this.loops)) if (this.loops[k]) this.loops[k].stop(0.1);
+    if (this.face) this.face.dispose();
+    if (this.introCtl) this.introCtl.dispose();
+    this.bodies.dispose();
     this.renderer.dispose();
     super.exit();
   }
 }
+
+export { CPX, BLOCKS, isGranular, P_W, P_H };

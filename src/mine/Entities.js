@@ -54,16 +54,20 @@ export class Pickups {
       const ci = w.idx(clamp(Math.floor(p.x), 0, w.W - 1), clamp(Math.floor(p.y), 0, w.H - 1));
       if (w.fluid[ci] > 0.4) { p.vx *= 1 - 3 * dt; p.vy *= 1 - 4 * dt; if (w.ftype[ci] === 2 && !['magmaite', 'sunstone', 'obsidian_shard', 'ember_scale'].includes(p.id) && p.age > 1) { s.fx.burnItem(p); continue; } }
       let nx = p.x + p.vx * dt;
-      if (w.solid(Math.floor(nx + Math.sign(p.vx) * 0.2), Math.floor(p.y))) { p.vx = -p.vx * 0.3; nx = p.x; }
+      if (w.solidPt(nx + Math.sign(p.vx) * 0.18, p.y)) { p.vx = -p.vx * 0.3; nx = p.x; }
       let ny = p.y + p.vy * dt;
-      if (p.vy > 0 && w.solid(Math.floor(nx), Math.floor(ny + 0.25))) {
-        ny = Math.floor(ny + 0.25) - 0.25;
+      if (p.vy > 0 && w.solidPt(nx, ny + 0.22)) {
+        let g = 0;
+        while (w.solidPt(nx, ny + 0.22) && g++ < 24) ny -= 1 / 32;
         if (p.vy > 3) p.vy = -p.vy * 0.35; else p.vy = 0;
         p.vx *= 0.55;
-      } else if (p.vy < 0 && w.solid(Math.floor(nx), Math.floor(ny - 0.25))) {
-        ny = Math.floor(ny - 0.25) + 1.25;
+      } else if (p.vy < 0 && w.solidPt(nx, ny - 0.22)) {
+        let g = 0;
+        while (w.solidPt(nx, ny - 0.22) && g++ < 24) ny += 1 / 32;
         p.vy = p.float ? 0 : -p.vy * 0.2;
       }
+      if (!p.float && p.vy === 0 && !w.solidPt(nx, ny + 0.25)) p.vy = 0.5; // the floor was dug away
+      if (w.solidPt(nx, ny)) ny -= 2 / 32; // buried by sand: wriggle up
       p.x = nx; p.y = ny;
       if (Math.abs(p.vx) < 0.05) p.vx = 0;
       // collect (finds drift into your paws when close)
@@ -103,8 +107,28 @@ export class Plants {
   }
   add(p) {
     const w = this.s.world;
-    const plant = { ...p, frame: Math.random() < 0.5 ? 0 : 1, t: rand(0, 10), angle: 0, fx: rand(0, 5) };
+    const plant = { ...p, frame: Math.random() < 0.5 ? 0 : 1, t: rand(0, 10), angle: 0, fx: rand(0, 5), ox: rand(-0.18, 0.18), anchorT: 0 };
+    this.anchor(plant);
     this.map.set(w.idx(p.x, p.y), plant);
+  }
+  /** Find the real (pixel) surface the plant grows from. Returns false when it lost its support. */
+  anchor(p) {
+    const w = this.s.world;
+    const S = 1 / 32;
+    p.ok = false;
+    if (p.side === 'floor' || p.side === 'ceil') {
+      const x = p.x + 0.5 + p.ox;
+      p.ax = x;
+      if (p.side === 'floor') { for (let y = p.y + 0.15; y < p.y + 1.7; y += S) if (w.solidPt(x, y)) { p.ay = Math.floor(y * 32) / 32; p.ok = true; break; } }
+      else { for (let y = p.y + 0.85; y > p.y - 0.7; y -= S) if (w.solidPt(x, y)) { p.ay = (Math.floor(y * 32) + 1) / 32; p.ok = true; break; } }
+    } else {
+      const y = p.y + 0.5 + p.ox;
+      p.ay = y;
+      if (p.side === 'wallL') { for (let x = p.x + 0.85; x > p.x - 0.7; x -= S) if (w.solidPt(x, y)) { p.ax = (Math.floor(x * 32) + 1) / 32; p.ok = true; break; } }
+      else { for (let x = p.x + 0.15; x < p.x + 1.7; x += S) if (w.solidPt(x, y)) { p.ax = Math.floor(x * 32) / 32; p.ok = true; break; } }
+    }
+    if (p.ok && w.matPt(p.ax, p.ay + (p.side === 'floor' ? 0.02 : p.side === 'ceil' ? -0.02 : 0)) === 255) p.pending = true; else p.pending = false;
+    return p.ok;
   }
   at(x, y) { return this.map.get(this.s.world.idx(x, y)); }
   remove(plant) { this.map.delete(this.s.world.idx(plant.x, plant.y)); }
@@ -134,9 +158,13 @@ export class Plants {
     this.whisperT -= dt;
     for (const p of [...this.map.values()]) {
       p.t += dt;
-      const [sx, sy] = this.supportCell(p);
-      if (!w.solid(sx, sy)) { this.harvest(p, true); continue; }
-      if (w.solid(p.x, p.y)) { this.remove(p); continue; }
+      p.anchorT -= dt;
+      if (p.anchorT <= 0 || p.pending) {
+        p.anchorT = 0.35 + Math.random() * 0.2;
+        if (!this.anchor(p)) { this.harvest(p, true); continue; }
+        const inside = p.side === 'floor' ? w.solidPt(p.ax, p.ay - 0.3) : p.side === 'ceil' ? w.solidPt(p.ax, p.ay + 0.3) : p.side === 'wallL' ? w.solidPt(p.ax + 0.3, p.ay) : w.solidPt(p.ax - 0.3, p.ay);
+        if (inside && !p.pending) { this.remove(p); continue; }
+      }
       if (w.fluid[w.idx(p.x, p.y)] > 0.5 && w.ftype[w.idx(p.x, p.y)] === 2) { this.remove(p); s.fx.burnAt(p.x + 0.5, p.y + 0.5); continue; }
       if (w.fire[w.idx(p.x, p.y)] > 0) continue;
       if (p.type === 'whisper' && this.whisperT <= 0) {
@@ -162,11 +190,11 @@ export class Plants {
       const tiles = atlas.plants[p.type];
       if (!tiles) continue;
       const uv = atlas.uv(tiles[Math.floor(p.t * 1.5 + p.fx) % 2]);
-      const x = p.x + 0.5;
-      if (p.side === 'floor') batch.add(x, -p.y - 1, 0.95, 0.95, uv, { anchor: 'bottom', z: 0.05, sway: 1 });
-      else if (p.side === 'ceil') batch.add(x, -p.y, 0.95, 0.95, uv, { anchor: 'bottom', z: 0.05, rot: Math.PI + p.angle, sway: 0.6, swayTop: false });
-      else if (p.side === 'wallL') batch.add(p.x, -p.y - 0.5, 0.95, 0.95, uv, { anchor: 'bottom', rot: -Math.PI / 2, z: 0.05, sway: 0.5 });
-      else batch.add(p.x + 1, -p.y - 0.5, 0.95, 0.95, uv, { anchor: 'bottom', rot: Math.PI / 2, z: 0.05, sway: 0.5 });
+      if (p.ax === undefined) continue;
+      if (p.side === 'floor') batch.add(p.ax, -p.ay - 0.03, 0.95, 0.95, uv, { anchor: 'bottom', z: 0.05, sway: 1 });
+      else if (p.side === 'ceil') batch.add(p.ax, -p.ay + 0.03, 0.95, 0.95, uv, { anchor: 'bottom', z: 0.05, rot: Math.PI + p.angle, sway: 0.6, swayTop: false });
+      else if (p.side === 'wallL') batch.add(p.ax - 0.03, -p.ay, 0.95, 0.95, uv, { anchor: 'bottom', rot: -Math.PI / 2, z: 0.05, sway: 0.5 });
+      else batch.add(p.ax + 0.03, -p.ay, 0.95, 0.95, uv, { anchor: 'bottom', rot: Math.PI / 2, z: 0.05, sway: 0.5 });
     }
   }
   lights(out, view) {
@@ -174,7 +202,7 @@ export class Plants {
       const L = PLANT_LIGHT[p.type];
       if (!L) continue;
       if (p.x < view.x0 - 4 || p.x > view.x1 + 4 || p.y < view.y0 - 4 || p.y > view.y1 + 4) continue;
-      out.push({ x: p.x + 0.5, y: p.y + 0.5, r: L[0], g: L[1], b: L[2], radius: L[3], pierce: 0 });
+      out.push({ x: p.ax ?? p.x + 0.5, y: (p.ay ?? p.y + 1) - (p.side === 'floor' ? 0.4 : p.side === 'ceil' ? -0.4 : 0), r: L[0], g: L[1], b: L[2], radius: L[3], pierce: 0 });
     }
   }
 }
@@ -191,7 +219,7 @@ export class Creatures {
     return { type, x, y, vx: 0, vy: 0, t: rand(0, 10), state: 'idle', timer: rand(1, 4), facing: chance(0.5) ? 1 : -1, alive: true, shell: true, slime: true, scale: true, gem: true, cooldown: 0, home: { x, y }, flash: 0, xrayT: 0 };
   }
   near(c, r) { const p = this.s.player; return Math.hypot(p.x - c.x, p.y - c.y) < r; }
-  open(x, y) { return !this.s.world.solid(Math.floor(x), Math.floor(y)); }
+  open(x, y) { return !this.s.world.solidPt(x, y); }
 
   update(dt) {
     const s = this.s, w = s.world, pl = s.player, st = s.state;
@@ -281,25 +309,26 @@ export class Creatures {
     this.list = this.list.filter((c) => c.alive);
   }
 
-  onGround(c) { return this.s.world.solid(Math.floor(c.x), Math.floor(c.y + 0.45)); }
+  onGround(c) { return this.s.world.solidPt(c.x, c.y + 0.44); }
 
   walker(c, dt, speed, canTurn) {
     const w = this.s.world;
     c.vy = Math.min(c.vy + 20 * dt, 12);
     if (speed) c.vx = Math.sign(c.vx || c.facing) * speed;
     let nx = c.x + c.vx * dt;
-    const ahead = Math.floor(nx + Math.sign(c.vx) * 0.35);
-    if (c.vx && (w.solid(ahead, Math.floor(c.y)) || (this.onGround(c) && !w.solid(ahead, Math.floor(c.y + 1))))) {
+    const ahead = nx + Math.sign(c.vx) * 0.32;
+    if (c.vx && w.solidPt(ahead, c.y + 0.3) && !w.solidPt(ahead, c.y + 0.05) && !w.solidPt(ahead, c.y - 0.3)) c.y -= 0.2; // hop up a bump
+    else if (c.vx && (w.solidPt(ahead, c.y) || (this.onGround(c) && !w.solidPt(ahead, c.y + 0.9)))) {
       if (canTurn) c.vx = -c.vx; else c.vx = 0;
       nx = c.x;
     }
     c.x = nx;
     let ny = c.y + c.vy * dt;
-    if (c.vy > 0 && w.solid(Math.floor(c.x), Math.floor(ny + 0.45))) { ny = Math.floor(ny + 0.45) - 0.45; c.vy = 0; }
-    if (c.vy < 0 && w.solid(Math.floor(c.x), Math.floor(ny - 0.4))) { c.vy = 0; ny = c.y; }
+    if (c.vy > 0 && w.solidPt(c.x, ny + 0.44)) { let g = 0; while (w.solidPt(c.x, ny + 0.44) && g++ < 32) ny -= 1 / 32; c.vy = 0; }
+    if (c.vy < 0 && w.solidPt(c.x, ny - 0.38)) { c.vy = 0; ny = c.y; }
     c.y = ny;
     if (c.vx) c.facing = Math.sign(c.vx);
-    if (w.solid(Math.floor(c.x), Math.floor(c.y))) c.y -= 1; // pushed by rubble
+    if (w.solidPt(c.x, c.y)) c.y -= 2 / 32; // pushed by rubble
   }
 
   flier(c, dt, speed, target) {
@@ -316,12 +345,12 @@ export class Creatures {
 
   swimmer(c, dt, speed) {
     const w = this.s.world;
-    const wet = (x, y) => { if (!w.inb(Math.floor(x), Math.floor(y))) return false; const i = w.idx(Math.floor(x), Math.floor(y)); return !w.solid(Math.floor(x), Math.floor(y)) && w.fluid[i] > 0.45 && w.ftype[i] === (c.type === 'lava_newt' ? 2 : 1); };
+    const wet = (x, y) => { if (!w.inb(Math.floor(x), Math.floor(y))) return false; const i = w.idx(Math.floor(x), Math.floor(y)); return !w.solidPt(x, y) && w.fluid[i] > 0.45 && w.ftype[i] === (c.type === 'lava_newt' ? 2 : 1); };
     if (!wet(c.x, c.y)) {
       // flop toward lower ground / out of water
       c.vy = Math.min(c.vy + 20 * dt, 10);
       const ny = c.y + c.vy * dt;
-      if (!w.solid(Math.floor(c.x), Math.floor(ny + 0.3))) c.y = ny; else c.vy = 0;
+      if (!w.solidPt(c.x, ny + 0.3)) c.y = ny; else c.vy = 0;
       c.flop = (c.flop || 0) + dt;
       if (c.flop > 25) { c.alive = false; }
       return;
@@ -364,13 +393,13 @@ export class Creatures {
     const lit = s.lightAt(c.x, c.y);
     if (c.state === 'idle') {
       // roosting
-      if (w.solid(Math.floor(c.x), Math.floor(c.y - 0.6)) === false) { c.y -= dt * 2; }
+      if (!w.solidPt(c.x, c.y - 0.4)) { c.y -= dt * 2; }
       if ((lit > 0.75 && dist < 6) || dist < 1.5) { c.state = 'fly'; c.timer = rand(5, 9); s.audio.play('squeak'); c.flown = (c.flown || 0) + 1; }
     } else {
       this.flier(c, dt, 3.2, null);
       if (dist < 0.7 && c.cooldown <= 0) { s.player.knock.x = Math.sign(s.player.x - c.x || 1) * 3; s.audio.play('squeak'); c.cooldown = 1.5; }
       if (chance(dt * 0.05)) s.pickups.spawn('bat_guano', c.x, c.y, { vy: 1 });
-      if (c.timer <= 0 && !w.solid(Math.floor(c.x), Math.floor(c.y)) && w.solid(Math.floor(c.x), Math.floor(c.y) - 1)) { c.state = 'idle'; c.x = Math.floor(c.x) + 0.5; c.y = Math.floor(c.y) + 0.35; c.vx = c.vy = 0; }
+      if (c.timer <= 0 && !w.solidPt(c.x, c.y) && w.solidPt(c.x, c.y - 0.55)) { c.state = 'idle'; c.vx = c.vy = 0; }
       if (c.timer <= -6) { // find a ceiling by drifting up
         c.vy = -2;
       }
@@ -386,20 +415,20 @@ export class Creatures {
     }
     if (c.timer <= 0) {
       c.timer = 3;
-      c.target = s.nearestVisibleOre(c.x, c.y, 10);
+      c.target = s.nearestVisibleDeposit(c.x, c.y, 10);
     }
     const t = c.target;
-    if (t && w.ore[w.idx(t.x, t.y)]) {
-      const dx = t.x + 0.5 - c.x, dy = t.y + 0.5 - c.y;
-      if (Math.abs(dx) < 1.3 && Math.abs(dy) < 1.3) {
+    if (t && !t.done) {
+      const tx = (t.x0 + t.w / 2) / 32, ty = (t.y0 + t.h / 2) / 32;
+      const dx = tx - c.x, dy = ty - c.y;
+      if (Math.abs(dx) < 1.0 && Math.abs(dy) < 1.2) {
         // munch
         c.eating = true;
-        const i = w.idx(t.x, t.y);
-        w.oreQ[i] -= dt * 5;
+        t.q -= dt * 5;
         if (chance(dt * 1.2) && dist < 10) s.audio.play('slurp', { vol: 0.6 });
-        if (chance(dt * 3)) s.fx.crumbs(t.x + 0.5, t.y + 0.5, w.ore[i]);
+        if (chance(dt * 3)) { s.fx.crumbs(tx, ty, t.oreId); s.digger.chipOre(t, c.x * 32, c.y * 32, 1); }
         if (dist < 8 && !s.flags.slugs && s.isLit(c.x, c.y, 0.1)) { s.flags.slugs = true; s.state.learn('ore_slugs'); }
-        if (w.oreQ[i] <= 4) { w.ore[i] = 0; w.oreQ[i] = 0; w.markDirty(t.x, t.y); c.target = null; }
+        if (t.q <= 4) { s.digger.extract(t); s.tools.after(t.x0 + t.w / 2, t.y0 + t.h / 2, 'slug', 4); c.target = null; }
       } else {
         c.eating = false;
         c.vx = Math.sign(dx) * 0.45;
@@ -418,7 +447,7 @@ export class Creatures {
       c.x += c.vx * dt;
       c.y += c.vy * dt;
       if (c.vy > 0 && w.fluid[w.idx(Math.floor(c.x), Math.floor(c.y))] > 0.4) c.state = 'idle';
-      if (w.solid(Math.floor(c.x), Math.floor(c.y + 0.4))) { c.vy = 0; c.state = 'idle'; }
+      if (w.solidPt(c.x, c.y + 0.4)) { c.vy = 0; c.state = 'idle'; }
       return;
     }
     this.swimmer(c, dt, 0.8);
@@ -516,12 +545,12 @@ export class Creatures {
       if (c.type === 'gem_tortoise') size = 0.95;
       if (c.type === 'earthworm') {
         if (!c.exposed) continue;
-        const inside = s.world.solid(Math.floor(c.x), Math.floor(c.y));
+        const inside = s.world.solidPt(c.x, c.y);
         if (inside && s.lightAt(c.x, c.y) < 0.3) continue;
         size = inside ? 0.45 : 0.7;
       }
       const flipY = c.type === 'cave_bat' && c.state === 'idle';
-      const z = c.type === 'earthworm' && s.world.solid(Math.floor(c.x), Math.floor(c.y)) ? 0.51 : 0.12;
+      const z = c.type === 'earthworm' && s.world.solidPt(c.x, c.y) ? 0.51 : 0.12;
       batch.add(c.x, -c.y, size, size, uv, { z, flipX: c.facing < 0, flipY, tint, lit: c.type === 'void_wisp' ? 0 : 1 });
       if (c.type === 'void_wisp' && c.xrayT > 0) glowBatch.add(c.x, -c.y, 1.4, 1.4, atlas.uv(atlas.misc.glint), { z: 0.2, lit: 0, tint: [0.7, 0.5, 1, Math.min(1, c.xrayT / 2)] });
       if (c.type === 'crystal_spider') {

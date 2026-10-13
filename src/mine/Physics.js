@@ -1,4 +1,4 @@
-// Physical destruction: flying debris chunks, falling blocks, cave-ins and loose ground.
+// Tiny flying chips (instanced cubes) and cell-level cave-in logic (ceiling spans, quakes).
 import { B, BLOCKS, isSolid, isGranular } from './blocks.js';
 import { F } from './MineWorld.js';
 import { rand, clamp } from '../core/util.js';
@@ -12,9 +12,9 @@ export class Debris {
     this.tick = null; // optional sound callback
   }
   /** World-space (three) coordinates. */
-  spawn(x, y, z, vx, vy, vz, size, color, bounce = 0.3, life = 3) {
+  spawn(x, y, z, vx, vy, vz, size, color, bounce = 0.3, life = 3, free = false) {
     if (this.list.length >= this.swarm.cap) this.list.shift();
-    this.list.push({ x, y, z, vx, vy, vz, size, color, bounce, life, t: 0, rx: rand(0, 6), ry: rand(0, 6), rz: rand(0, 6), wx: rand(-12, 12), wy: rand(-12, 12), wz: rand(-12, 12), rest: false });
+    this.list.push({ x, y, z, vx, vy, vz, size, color, bounce, life, t: 0, rx: rand(0, 6), ry: rand(0, 6), rz: rand(0, 6), wx: rand(-12, 12), wy: rand(-12, 12), wz: rand(-12, 12), rest: false, free });
   }
   /** Burst of chunks from a cell face. dir: [dx, dy] bias in three coords. */
   burst(cx, cy, n, colors, { speed = 4, dir = [0, 0.4], size = [0.06, 0.18], bounce = 0.3, life = [1.6, 3.4], spread = 0.45, z = 0.35 } = {}) {
@@ -31,12 +31,17 @@ export class Debris {
     const w = this.w;
     const L = this.list;
     let n = 0;
-    const solidAt = (x, y) => w.solid(Math.floor(x), Math.floor(-y));
+    const solidAt = (x, y) => w.solidPt(x, -y);
     for (let i = 0; i < L.length; i++) {
       const d = L[i];
       d.t += dt;
       if (d.t > d.life) continue;
-      if (!d.rest) {
+      if (d.free && d.z > 0.5) {
+        d.vy -= 22 * dt;
+        d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt;
+        d.rx += d.wx * dt; d.ry += d.wy * dt; d.rz += d.wz * dt;
+        if (d.z > 7) continue;
+      } else if (!d.rest) {
         d.vy -= 22 * dt;
         const h = d.size * 0.5;
         let nx = d.x + d.vx * dt;
@@ -46,7 +51,7 @@ export class Debris {
           if (d.vy < -2.5 && this.tick && Math.random() < 0.3) this.tick(d);
           d.vy = -d.vy * d.bounce;
           d.vx *= 0.6; d.wx *= 0.5; d.wy *= 0.5; d.wz *= 0.5;
-          ny = Math.floor(ny - h) + 1 + h + 0.001;
+          { let g = 0; while (solidAt(nx, ny - h) && g++ < 24) ny += 1 / 32; }
           if (Math.abs(d.vy) < 0.9) { d.vy = 0; if (Math.abs(d.vx) < 0.25) d.rest = true; }
         } else if (solidAt(nx, ny + h)) { d.vy = -Math.abs(d.vy) * 0.2; ny = d.y; }
         d.x = nx; d.y = ny;
@@ -64,59 +69,6 @@ export class Debris {
       const d = L[i];
       const fade = d.life - d.t < 0.4 ? (d.life - d.t) / 0.4 : 1;
       sw.set(i, d.x, d.y, d.z, d.rx, d.ry, d.rz, d.size * fade, d.color);
-    }
-    sw.commit(n);
-  }
-}
-
-// ---------------------------------------------------------------- falling blocks
-export class Fallers {
-  constructor(swarm, world, renderer, hooks) {
-    this.swarm = swarm;
-    this.w = world;
-    this.r = renderer;
-    this.hooks = hooks;
-    this.list = [];
-  }
-  add(x, y) {
-    const w = this.w;
-    const i = w.idx(x, y);
-    const block = w.block[i];
-    if (!isSolid(block) || block === B.BEDROCK || block === B.TIMBER) return;
-    const f = { x: x + 0.5, y: y + 0.5, vy: 0.5, block, ore: w.ore[i], oreQ: w.oreQ[i], variant: w.variant[i], rot: rand(-0.05, 0.05), spin: rand(-1, 1), flags: w.flags[i] & F.REVEALED };
-    w.ore[i] = 0;
-    w.setBlock(x, y, B.AIR);
-    this.list.push(f);
-    if (this.hooks.start) this.hooks.start(f);
-  }
-  update(dt, player) {
-    const w = this.w;
-    let n = 0;
-    for (const f of this.list) {
-      f.vy = Math.min(f.vy + 26 * dt, 18);
-      const ny = f.y + f.vy * dt;
-      f.rot += f.spin * dt * 0.6;
-      const cx = Math.floor(f.x);
-      const below = Math.floor(ny + 0.5);
-      // hit the player?
-      if (player && Math.abs(player.x - f.x) < 0.5 + 0.31 && Math.abs(player.y - ny) < 0.5 + 0.42) {
-        this.hooks.hitPlayer(f);
-        continue;
-      }
-      if (w.solid(cx, below) || below >= w.H - 1) {
-        const cy = Math.floor(f.y);
-        f.y = cy + 0.5;
-        this.hooks.land(f, cx, cy);
-        continue;
-      }
-      f.y = ny;
-      this.list[n++] = f;
-    }
-    this.list.length = n;
-    const sw = this.swarm;
-    for (let i = 0; i < n; i++) {
-      const f = this.list[i];
-      sw.set(i, f.x, -f.y, 0, 0, 0, f.rot, 1, 0xffffff, this.r.tileUV(f.block, f.variant));
     }
     sw.commit(n);
   }
@@ -186,36 +138,6 @@ export class Stability {
         if (!w.inb(xx, yy) || !w.solid(xx, yy)) continue;
         if (!this.holds(xx, yy)) this.stress(xx, yy, 1.8 + Math.random() * 1.6);
       }
-    // islands cut free
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const xx = x + dx, yy = y + dy;
-      if (!w.solid(xx, yy)) continue;
-      const comp = this.component(xx, yy, 220);
-      if (comp) for (const i of comp) this.stress(i % w.W, Math.floor(i / w.W), 0.7 + Math.random() * 0.6);
-    }
-  }
-
-  /** Returns the cells of an unanchored solid component, or null if anchored. */
-  component(x, y, limit) {
-    const w = this.w;
-    const seen = new Set();
-    const stack = [w.idx(x, y)];
-    while (stack.length) {
-      const i = stack.pop();
-      if (seen.has(i)) continue;
-      seen.add(i);
-      if (seen.size > limit) return null;
-      const cx = i % w.W, cy = Math.floor(i / w.W);
-      if (cx <= 1 || cx >= w.W - 2 || cy <= 1 || cy >= w.H - 2) return null;
-      const b = w.block[i];
-      if (b === B.BEDROCK || b === B.TIMBER) return null;
-      if (w.flags[i] & F.STABLE && seen.size === 1) { /* natural ceilings still need a connection */ }
-      for (const j of [i - 1, i + 1, i - w.W, i + w.W]) {
-        if (!seen.has(j) && isSolid(w.block[j])) stack.push(j);
-        else if (!isSolid(w.block[j]) && w.flags[j] & F.BEAM) return null;
-      }
-    }
-    return seen;
   }
 
   /** A quake weakens everything around (quakestone). */
@@ -240,7 +162,7 @@ export class Stability {
         q[2] -= dt;
         if (q[2] > 0) { keep.push(q); continue; }
         const [x, y] = q;
-        if (isGranular(w.get(x, y)) && !w.solid(x, y + 1) && !this.supportedByBeam(x, y + 1)) this.hooks.collapse(x, y, true);
+        if (this.hooks.loose) this.hooks.loose(x, y);
       }
       this.queue = keep;
     }
@@ -252,8 +174,7 @@ export class Stability {
       if (w.stress[i] <= 0) {
         w.stress[i] = 0;
         this.stressed.delete(i);
-        const isolated = this.component(x, y, 220);
-        if (isolated || !this.holds(x, y, this.weakT > 0 ? 0.35 : 1)) this.hooks.collapse(x, y, false);
+        if (!this.holds(x, y, this.weakT > 0 ? 0.35 : 1)) this.hooks.collapse(x, y, false);
         else w.markDirty(x, y);
       }
     }

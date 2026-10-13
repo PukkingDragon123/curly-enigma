@@ -5,7 +5,7 @@
 // <query> is the URL query string, e.g. "scene=mine&zone=2&fresh=1".
 // steps.json is an array of actions run after the initial wait:
 //   {"wait": 500} | {"key": "KeyD", "hold": 400} | {"press": "KeyE"} | {"click": [x, y], "button": "left", "hold": 0}
-//   {"move": [x, y]} | {"shot": "file.png"} | {"eval": "window.__game.state.addGold(100)"} | {"type": "motherlode"}
+//   {"move": [x, y]} | {"down": [x, y]} | {"up": true} | {"keydown": "KeyD"} | {"keyup": "KeyD"} | {"shot": "file.png"} | {"eval": "window.__game.state.addGold(100)"} | {"type": "motherlode"}
 //   {"waitFor": "window.__game.sceneName === 'town'", "timeout": 30000}
 import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
@@ -44,6 +44,10 @@ for (const s of steps) {
   if (s.wait) await page.waitForTimeout(s.wait);
   if (s.waitFor) await page.waitForFunction(s.waitFor, null, { timeout: s.timeout || 60000, polling: 100 }).catch(() => console.log('[waitFor timeout]', s.waitFor));
   if (s.move) await page.mouse.move(s.move[0], s.move[1]);
+  if (s.down) { await page.mouse.move(s.down[0], s.down[1]); await page.mouse.down({ button: s.button || 'left' }); }
+  if (s.up) await page.mouse.up({ button: s.button || 'left' });
+  if (s.keydown) await page.keyboard.down(s.keydown);
+  if (s.keyup) await page.keyboard.up(s.keyup);
   if (s.click) {
     await page.mouse.move(s.click[0], s.click[1]);
     await page.mouse.down({ button: s.button || 'left' });

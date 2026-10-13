@@ -1,14 +1,18 @@
-// Procedural generation of a mine zone: layered materials, worm tunnels and caverns,
-// ore veins, geodes, water and lava pockets, plants, creatures and the lift stations.
+// Procedural generation of a mine zone. Builds a cheap plan — layered cell materials,
+// smooth cave/warp noise fields, ore deposits, geodes, fluid pockets, cave decorations,
+// lift stations — then lets ChunkGen turn it into pixels on demand.
 import { makeRng, makeNoise2D, clamp } from '../core/util.js';
 import { B, BLOCKS, ORES, ORE_ID, ORE_SPAWN, isSolid, isGranular } from './blocks.js';
 import { MineWorld, F } from './MineWorld.js';
 import { ITEMS } from '../data/items.js';
 import { settleFluids } from './Fluids.js';
+import { M, ORE_BASE, setOrePalette, tn } from './micro.js';
+import { ChunkGen, NODE, makeDeposit } from './MicroGen.js';
+import { oreBlob } from './oreBlobs.js';
 
 const ZONE_GEN = {
   1: {
-    W: 64, H: 92, tunnel: 0.045, cavern: 0.3, water: 3, lava: 0, pools: 4,
+    W: 64, H: 92, tunnel: 0.045, cavern: 0.3, water: 3, lava: 0, pools: 4, growth: { cover: 0.42 }, roots: 0.35, spikes: 0.12,
     material(x, y, t, n) {
       const a = n.a.fbm(x * 0.08, y * 0.08, 3), b = n.b.fbm(x * 0.12, y * 0.12, 2), c = n.c(x * 0.05, y * 0.16);
       if (t < 0.1) return b > 0.18 ? B.ROOTS : B.LOAM;
@@ -21,7 +25,7 @@ const ZONE_GEN = {
     },
   },
   2: {
-    W: 64, H: 96, tunnel: 0.045, cavern: 0.29, water: 7, lava: 0, pools: 7, quake: 0.47,
+    W: 64, H: 96, tunnel: 0.045, cavern: 0.29, water: 7, lava: 0, pools: 7, quake: 0.47, growth: { cover: 0.48 }, roots: 0.25, spikes: 0.2,
     material(x, y, t, n) {
       const a = n.a.fbm(x * 0.07, y * 0.09, 3), b = n.b.fbm(x * 0.12, y * 0.12, 2), c = n.c(x * 0.04, y * 0.22);
       if (t < 0.06) return B.DIRT;
@@ -34,7 +38,7 @@ const ZONE_GEN = {
     },
   },
   3: {
-    W: 64, H: 100, tunnel: 0.05, cavern: 0.27, water: 5, lava: 0, pools: 6, geodes: 5,
+    W: 64, H: 100, tunnel: 0.05, cavern: 0.27, water: 5, lava: 0, pools: 6, geodes: 5, growth: { cover: 0.55 }, spikes: 0.3, crystals: 0.25,
     material(x, y, t, n) {
       const a = n.a.fbm(x * 0.07, y * 0.07, 3), b = n.b.fbm(x * 0.1, y * 0.1, 2);
       if (t < 0.05) return B.MUDSTONE;
@@ -45,7 +49,7 @@ const ZONE_GEN = {
     },
   },
   4: {
-    W: 64, H: 100, tunnel: 0.05, cavern: 0.27, water: 3, lava: 9, pools: 6,
+    W: 64, H: 100, tunnel: 0.05, cavern: 0.27, water: 3, lava: 9, pools: 6, growth: { cover: 0.5 }, spikes: 0.25,
     material(x, y, t, n) {
       const a = n.a.fbm(x * 0.07, y * 0.08, 3), b = n.b.fbm(x * 0.11, y * 0.11, 2);
       if (t < 0.05) return B.GRANITE;
@@ -56,7 +60,7 @@ const ZONE_GEN = {
     },
   },
   5: {
-    W: 64, H: 100, tunnel: 0.05, cavern: 0.28, water: 7, lava: 0, pools: 8,
+    W: 64, H: 100, tunnel: 0.05, cavern: 0.28, water: 7, lava: 0, pools: 8, growth: { cover: 0.36 }, spikes: 0.35, crystals: 0.15,
     material(x, y, t, n) {
       const a = n.a.fbm(x * 0.07, y * 0.08, 3), b = n.b.fbm(x * 0.11, y * 0.11, 2), c = n.c(x * 0.05, y * 0.05);
       if (t < 0.05) return B.BASALT;
@@ -67,7 +71,7 @@ const ZONE_GEN = {
     },
   },
   6: {
-    W: 64, H: 104, tunnel: 0.052, cavern: 0.26, water: 2, lava: 7, pools: 6,
+    W: 64, H: 104, tunnel: 0.052, cavern: 0.26, water: 2, lava: 7, pools: 6, growth: { cover: 0.55 }, spikes: 0.25, crystals: 0.2,
     material(x, y, t, n) {
       const a = n.a.fbm(x * 0.07, y * 0.08, 3), b = n.b.fbm(x * 0.1, y * 0.1, 2), c = n.c(x * 0.06, y * 0.06);
       if (t < 0.05) return B.PERMAFROST;
@@ -99,7 +103,78 @@ const CREATURE_TABLE = {
 
 export const STATION_EVERY = 12;
 
+// ---------------------------------------------------------------- shared plan helpers
+/** Smooth warp fields so material borders wander instead of following cell edges. */
+export function warpFields(w, seed, amp = 15) {
+  const NW = Math.floor(w.MW / NODE) + 1, NH = Math.floor(w.MH / NODE) + 1;
+  const WX = new Float32Array(NW * NH), WY = new Float32Array(NW * NH);
+  const nx = makeNoise2D(seed + 801), ny = makeNoise2D(seed + 802);
+  for (let j = 0; j < NH; j++) for (let i = 0; i < NW; i++) {
+    const x = (i * NODE) / M, y = (j * NODE) / M;
+    WX[j * NW + i] = nx.fbm(x * 0.35, y * 0.35, 2) * amp * 2.2;
+    WY[j * NW + i] = ny.fbm(x * 0.35, y * 0.35, 2) * amp * 2.2;
+  }
+  return { WX, WY, NW, NH };
+}
+
+/** Register ore palettes once. */
+let palettesReady = false;
+export function ensureOrePalettes() {
+  if (palettesReady) return;
+  palettesReady = true;
+  for (const o of ORES) {
+    if (!o) continue;
+    const b = oreBlob(o.item, 0);
+    setOrePalette(o.id, b.pal, b.glow);
+  }
+}
+
+/** Plant a deposit pattern centered on pixel (px, py). */
+export function planDeposit(w, plan, oreId, px, py, q, seed) {
+  const o = ORES[oreId];
+  const blob = oreBlob(o.item, seed);
+  const d = makeDeposit(oreId, o.item, blob, Math.round(px - blob.w / 2), Math.round(py - blob.h / 2), q);
+  w.addDeposit(d);
+  plan.features.push({ kind: 'deposit', dep: d, x0: d.x0, y0: d.y0, x1: d.x0 + d.w, y1: d.y0 + d.h });
+  return d;
+}
+
+/** Pointy cave decorations made of pixels: stalactites / stalagmites (only fill air). */
+export function spikeFeature(px, py, len, base, dir, mat) {
+  const x0 = Math.floor(px - base), x1 = Math.ceil(px + base) + 1;
+  const y0 = dir > 0 ? Math.floor(py - 6) : Math.floor(py - len), y1 = dir > 0 ? Math.ceil(py + len) : Math.ceil(py + 6);
+  return {
+    kind: 'fill', mat, x0, y0, x1, y1,
+    test(x, y, cur) {
+      if (cur) return false;
+      const t = dir > 0 ? (y - (py - 6)) / (len + 6) : ((py + 6) - y) / (len + 6);
+      if (t < 0 || t > 1) return false;
+      const half = base * (1 - t) * (1 - t * 0.25) + 0.4;
+      return Math.abs(x + 0.5 - px - Math.sin(t * 5 + px) * 0.6) <= half;
+    },
+  };
+}
+
+/** A hanging root strand (thin wiggly line of root pixels, fills air only). */
+export function rootFeature(px, py, len, seed) {
+  return {
+    kind: 'fill', mat: B.ROOTS, x0: Math.floor(px - 8), x1: Math.ceil(px + 9), y0: Math.floor(py - 4), y1: Math.ceil(py + len),
+    test(x, y, cur) {
+      if (cur) return false;
+      const t = (y - py) / len;
+      if (t < -0.2 || t > 1) return false;
+      const cx = px + Math.sin(y * 0.18 + seed) * 2.5 * Math.max(0, t) + Math.sin(y * 0.5 + seed * 2) * 0.6;
+      const w = t > 0.85 ? 0.4 : 0.9;
+      if (Math.abs(x + 0.5 - cx) <= w) return true;
+      // little side rootlets
+      return t > 0.2 && t < 0.8 && (Math.floor(y + seed) % 9 === 0) && Math.abs(x + 0.5 - cx - 2) <= 1.2;
+    },
+  };
+}
+
+// ---------------------------------------------------------------- zone generation
 export function generateMine(zone, seed) {
+  ensureOrePalettes();
   const cfg = ZONE_GEN[zone] || ZONE_GEN[1];
   const W = cfg.W, H = cfg.H;
   const w = new MineWorld(zone, W, H);
@@ -110,39 +185,98 @@ export function generateMine(zone, seed) {
   };
   const sx = w.shaftX;
 
-  // 1. materials
+  // 1. cell materials
+  const cellMat = new Uint8Array(W * H);
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const i = w.idx(x, y);
       const m = cfg.material(x, y, y / H, n);
-      w.block[i] = m;
+      cellMat[i] = m;
       w.back[i] = isGranular(m) ? B.DIRT : m;
       w.variant[i] = (x * 7 + y * 13 + ((x * y) % 5)) & 3;
     }
-  // 2. caves: ridged worm tunnels + blobby caverns
-  for (let y = 6; y < H - 3; y++)
-    for (let x = 2; x < W - 2; x++) {
-      const t = Math.abs(n.cave.fbm(x * 0.055, y * 0.085, 3));
-      const c = n.cav2.fbm(x * 0.045, y * 0.06, 3) + (y / H) * 0.04;
-      if (t < cfg.tunnel || c > cfg.cavern) w.block[w.idx(x, y)] = B.AIR;
-    }
-  // 3. geodes
-  for (let g = 0; g < (cfg.geodes || 0); g++) {
-    const cx = rng.int(6, W - 7), cy = rng.int(12, H - 8), rx = rng.range(2.4, 3.6), ry = rng.range(2, 3);
-    for (let y = Math.floor(cy - ry - 1); y <= cy + ry + 1; y++)
-      for (let x = Math.floor(cx - rx - 1); x <= cx + rx + 1; x++) {
-        if (!w.inb(x, y)) continue;
-        const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
-        const i = w.idx(x, y);
-        if (d < 0.55) w.block[i] = B.AIR;
-        else if (d < 1.35) {
-          w.block[i] = B.GEODE;
-          w.back[i] = B.GEODE;
-          if (d < 0.95 && rng.chance(0.55)) { w.ore[i] = ORE_ID[rng.chance(0.6) ? 'amethyst' : 'quartz']; w.oreQ[i] = rng.range(80, 100); }
-        }
-      }
+  // granular overhangs would pour out at once: anchor them as stone in the plan
+  // (the pixel warp still leaves a few loose grains that trickle when disturbed)
+
+  // 2. smooth cave fields sampled every NODE pixels
+  const { WX, WY, NW, NH } = warpFields(w, seed);
+  const T = new Float32Array(NW * NH), C = new Float32Array(NW * NH);
+  for (let j = 0; j < NH; j++) for (let i = 0; i < NW; i++) {
+    const x = (i * NODE) / M, y = (j * NODE) / M;
+    T[j * NW + i] = n.cave.fbm(x * 0.055, y * 0.085, 3);
+    C[j * NW + i] = n.cav2.fbm(x * 0.045, y * 0.06, 3) + (y / H) * 0.04;
   }
-  // 4. ore veins
+  const plan = {
+    seed, cellMat, mode: 'caves', T, C, WX, WY, tunnel: cfg.tunnel, cavern: cfg.cavern,
+    region: { x0: 2, y0: 6, x1: W - 2, y1: H - 3 }, features: [], growth: cfg.growth,
+  };
+  const gen = new ChunkGen(w, plan);
+  w.gen = gen;
+
+  // approximate cell occupancy from the fields (exact once the chunk is generated)
+  const cellAirFrac = (x, y) => {
+    let air = 0, tot = 0;
+    for (let yy = 0; yy <= M; yy += NODE) for (let xx = 0; xx <= M; xx += NODE) { tot++; if (gen.planAir(x * M + xx, y * M + yy)) air++; }
+    return air / tot;
+  };
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = w.idx(x, y);
+      w.block[i] = cellAirFrac(x, y) >= 0.5 ? B.AIR : cellMat[i];
+    }
+
+  const carveCells = (x0, y0, x1, y1, round = 0) => {
+    plan.features.push({
+      kind: 'carve', x0: x0 * M, y0: y0 * M, x1: (x1 + 1) * M, y1: (y1 + 1) * M,
+      test: round ? (x, y) => {
+        const dx = Math.max(0, Math.max(x0 * M + round - x, x - ((x1 + 1) * M - round))), dy = Math.max(0, Math.max(y0 * M + round - y, y - ((y1 + 1) * M - round)));
+        return dx * dx + dy * dy <= round * round;
+      } : () => true,
+    });
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (w.inb(x, y)) { const i = w.idx(x, y); w.block[i] = B.AIR; w.ore[i] = 0; w.fluid[i] = 0; w.ftype[i] = 0; }
+  };
+  const fillCells = (x0, y0, x1, y1, mat, opts = {}) => {
+    plan.features.push({ kind: 'fill', mat, x0: x0 * M + (opts.dx0 || 0), y0: y0 * M + (opts.dy0 || 0), x1: (x1 + 1) * M - (opts.dx1 || 0), y1: (y1 + 1) * M - (opts.dy1 || 0), test: opts.test || (() => true), back: opts.back });
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (w.inb(x, y)) w.block[w.idx(x, y)] = mat;
+  };
+
+  // 3. geodes: crystal-lined hollow eggs
+  for (let g = 0; g < (cfg.geodes || 0); g++) {
+    const cx = rng.int(6, W - 7) + 0.5, cy = rng.int(12, H - 8) + 0.5, rx = rng.range(2.4, 3.6), ry = rng.range(2, 3);
+    const pcx = cx * M, pcy = cy * M, prx = rx * M, pry = ry * M;
+    const gs = rng.int(1, 9999);
+    plan.features.push({
+      kind: 'fill', mat: B.GEODE, x0: Math.floor(pcx - prx - 4), x1: Math.ceil(pcx + prx + 4), y0: Math.floor(pcy - pry - 4), y1: Math.ceil(pcy + pry + 4),
+      test(x, y) {
+        const dx = (x + 0.5 - pcx) / prx, dy = (y + 0.5 - pcy) / pry;
+        const d = Math.sqrt(dx * dx + dy * dy) + (tn(x, y, 8, gs) - 0.5) * 0.08;
+        if (d > 1.12) return false;
+        if (d > 0.82) return B.GEODE;
+        if (d > 0.62) {
+          // crystal teeth pointing inward
+          const a = Math.atan2(dy, dx);
+          const tooth = Math.abs(Math.sin(a * 11 + gs)) ;
+          return d > 0.62 + (1 - tooth) * 0.2 ? B.CRYSTALROCK : 0;
+        }
+        return 0;
+      },
+      det(x, y, m) { return m === B.CRYSTALROCK ? (((x + y) & 3) === 0 ? 15 : 10 + ((x * 7 + y * 3) % 3)) : 2 + ((x * 5 + y * 9) % 5); },
+    });
+    for (let y = Math.floor(cy - ry); y <= cy + ry; y++) for (let x = Math.floor(cx - rx); x <= cx + rx; x++) {
+      if (!w.inb(x, y)) continue;
+      const d = ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2;
+      if (d < 0.4) w.block[w.idx(x, y)] = B.AIR;
+      else if (d < 1.2) w.block[w.idx(x, y)] = B.GEODE;
+    }
+    // a couple of gem deposits in the rind
+    for (let k = 0; k < 3; k++) {
+      const a = rng() * Math.PI * 2;
+      const oid = ORE_ID[rng.chance(0.6) ? 'amethyst' : 'quartz'];
+      planDeposit(w, plan, oid, pcx + Math.cos(a) * prx * 0.78, pcy + Math.sin(a) * pry * 0.78, rng.range(80, 100), rng.int(1, 1e6));
+    }
+  }
+
+  // 4. ore deposits along veins
   const spawn = ORE_SPAWN[zone] || [];
   const values = spawn.map(([id]) => ITEMS[id].value).sort((a, b) => a - b);
   const median = values[Math.floor(values.length / 2)] || 0;
@@ -156,14 +290,16 @@ export function generateMine(zone, seed) {
       let y = deep ? rng.int(Math.floor(H * 0.25), H - 4) : rng.int(6, H - 4);
       const size = vein + rng.int(0, vein);
       for (let s = 0; s < size; s++) {
-        if (w.inb(x, y) && x > 0 && x < W - 1 && y > 4 && y < H - 2) {
+        if (w.inb(x, y) && x > 1 && x < W - 2 && y > 4 && y < H - 3) {
           const i = w.idx(x, y);
-          const blk = w.block[i];
-          const okBlock = isSolid(blk) && !isGranular(blk) && blk !== B.BEDROCK && blk !== B.TIMBER;
+          const blk = cellMat[i];
+          const okBlock = isSolid(w.block[i]) && !isGranular(blk) && blk !== B.BEDROCK && blk !== B.TIMBER;
           const truffleOk = item !== 'truffle' || blk === B.DIRT || blk === B.LOAM || blk === B.CLAY;
           if (okBlock && truffleOk && !w.ore[i]) {
             w.ore[i] = oid;
-            w.oreQ[i] = clamp(84 + (rng() + rng() + rng() - 1.5) * 14, 55, 100);
+            const q = clamp(84 + (rng() + rng() + rng() - 1.5) * 14, 55, 100);
+            w.oreQ[i] = q;
+            planDeposit(w, plan, oid, (x + 0.5) * M + rng.range(-6, 6), (y + 0.5) * M + rng.range(-6, 6), q, rng.int(1, 1e6));
           }
         }
         x += rng.int(-1, 1);
@@ -171,11 +307,15 @@ export function generateMine(zone, seed) {
       }
     }
   }
-  // 5. fluid pockets (sealed) and pools (in caves)
+
+  // 5. sealed fluid pockets and pools
   const pocket = (type, count) => {
     for (let k = 0; k < count; k++) {
       const cx = rng.int(4, W - 5), cy = rng.int(12, H - 6);
       const r = rng.range(1.4, 2.6);
+      const pcx = (cx + 0.5) * M, pcy = (cy + 0.5) * M, pr = r * M, ps = rng.int(1, 9999);
+      plan.features.push({ kind: 'carve', x0: Math.floor(pcx - pr - 2), x1: Math.ceil(pcx + pr + 2), y0: Math.floor(pcy - pr - 2), y1: Math.ceil(pcy + pr + 2),
+        test: (x, y) => Math.hypot(x + 0.5 - pcx, y + 0.5 - pcy) < pr * (0.92 + tn(x, y, 8, ps) * 0.16) });
       for (let y = Math.floor(cy - r); y <= cy + r; y++)
         for (let x = Math.floor(cx - r); x <= cx + r; x++) {
           if (!w.inb(x, y) || x < 2 || x > W - 3) continue;
@@ -190,7 +330,6 @@ export function generateMine(zone, seed) {
   };
   pocket(1, cfg.water);
   pocket(2, cfg.lava);
-  // pools: drop fluid onto some cave floors
   for (let k = 0; k < (cfg.pools || 0) * 6; k++) {
     const x = rng.int(3, W - 4), y = rng.int(10, H - 5);
     const i = w.idx(x, y);
@@ -200,58 +339,87 @@ export function generateMine(zone, seed) {
     }
   }
 
-  // 6. borders, arrival room, lift stations
+  // 6. cave decorations: stalactites, stalagmites, hanging roots, crystal clusters
+  for (let y = 7; y < H - 4; y++)
+    for (let x = 3; x < W - 3; x++) {
+      const i = w.idx(x, y);
+      if (w.block[i] !== B.AIR || w.fluid[i] > 0) continue;
+      const above = w.block[w.idx(x, y - 1)], below = w.block[w.idx(x, y + 1)];
+      const deep = !isSolid(w.block[w.idx(x, y + 1)]) && !isSolid(w.block[w.idx(x, y + 2)]);
+      if (isSolid(above) && !isGranular(above) && deep && rng.chance(cfg.spikes || 0)) {
+        plan.features.push(spikeFeature((x + rng.range(0.25, 0.75)) * M, y * M, rng.range(14, 38), rng.range(4, 8), 1, above));
+      } else if (isSolid(above) && cfg.roots && (above === B.DIRT || above === B.LOAM || above === B.ROOTS || above === B.CLAY) && rng.chance(cfg.roots)) {
+        plan.features.push(rootFeature((x + rng.range(0.2, 0.8)) * M, y * M, rng.range(14, 40), rng.int(1, 99)));
+      }
+      if (isSolid(below) && !isGranular(below) && !isSolid(above) && rng.chance((cfg.spikes || 0) * 0.6)) {
+        plan.features.push(spikeFeature((x + rng.range(0.25, 0.75)) * M, (y + 1) * M, rng.range(10, 28), rng.range(4, 9), -1, below));
+      }
+      if (cfg.crystals && isSolid(below) && rng.chance(cfg.crystals * 0.25)) {
+        const bx = (x + rng.range(0.2, 0.8)) * M, by = (y + 1) * M;
+        for (let k = 0; k < 3; k++) {
+          const f = spikeFeature(bx + rng.range(-5, 5), by + 2, rng.range(8, 18), rng.range(2, 3.5), -1, B.CRYSTALROCK);
+          f.det = (xx, yy) => (((xx + yy) % 5) === 0 ? 15 : 10 + ((xx * 3 + yy) % 3));
+          plan.features.push(f);
+        }
+      }
+    }
+
+  // 7. borders, arrival room, lift stations
+  const bseed = rng.int(1, 9999);
+  plan.features.push({ kind: 'fill', mat: B.BEDROCK, x0: 0, y0: 0, x1: w.MW, y1: w.MH, back: B.BEDROCK,
+    test(x, y) {
+      const e = 10 + tn(x, y, 16, bseed) * 18;
+      return x < M + e - 24 || x >= w.MW - M - e + 24 || y < M * 0.5 || y >= w.MH - M - e + 24;
+    } });
   for (let y = 0; y < H; y++) { w.block[w.idx(0, y)] = B.BEDROCK; w.block[w.idx(W - 1, y)] = B.BEDROCK; }
-  for (let x = 0; x < W; x++) { w.block[w.idx(x, 0)] = B.BEDROCK; w.block[w.idx(x, H - 1)] = B.BEDROCK; w.block[w.idx(x, H - 2)] = rng.chance(0.6) ? B.BEDROCK : w.block[w.idx(x, H - 2)]; }
-  const carve = (x0, y0, x1, y1) => {
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (w.inb(x, y)) { const i = w.idx(x, y); w.block[i] = B.AIR; w.ore[i] = 0; w.fluid[i] = 0; w.ftype[i] = 0; }
-  };
-  carve(sx - 5, 1, sx + 5, 3);
+  for (let x = 0; x < W; x++) { w.block[w.idx(x, 0)] = B.BEDROCK; w.block[w.idx(x, H - 1)] = B.BEDROCK; }
+  carveCells(sx - 5, 1, sx + 5, 3, 10);
   for (let x = sx - 5; x <= sx + 5; x++) {
     const i = w.idx(x, 4);
-    if (!isSolid(w.block[i]) || isGranular(w.block[i])) w.block[i] = zone === 1 ? B.DIRT : w.back[i];
+    if (!isSolid(w.block[i]) || isGranular(w.block[i])) { w.block[i] = zone === 1 ? B.DIRT : w.back[i]; cellMat[i] = w.block[i]; }
   }
-  for (let x = sx - 1; x <= sx + 1; x++) w.block[w.idx(x, 4)] = B.TIMBER;
+  plan.features.push({ kind: 'fill', mat: zone === 1 ? B.DIRT : B.STONE, x0: (sx - 5) * M, x1: (sx + 6) * M, y0: 4 * M, y1: 5 * M, test: (x, y, cur) => !cur || isGranular(cur) });
+  fillCells(sx - 1, 4, sx + 1, 4, B.TIMBER, { dy1: 18 });
   w.stations = [];
   for (let sy = 3; sy < H - 3; sy += STATION_EVERY) {
     w.stations.push(sy);
     if (sy > 3) {
-      carve(sx - 1, sy - 1, sx + 1, sy);
-      for (let x = sx - 1; x <= sx + 1; x++) w.block[w.idx(x, sy + 1)] = B.TIMBER;
+      carveCells(sx - 1, sy - 1, sx + 1, sy, 6);
+      fillCells(sx - 1, sy + 1, sx + 1, sy + 1, B.TIMBER, { dy1: 18 });
     }
   }
-  // bottom station sits just above the floor
   const bottom = H - 4;
   if (w.stations[w.stations.length - 1] !== bottom) {
     w.stations.push(bottom);
-    carve(sx - 2, bottom - 1, sx + 2, bottom);
-    for (let x = sx - 2; x <= sx + 2; x++) w.block[w.idx(x, bottom + 1)] = B.TIMBER;
+    carveCells(sx - 2, bottom - 1, sx + 2, bottom, 6);
+    fillCells(sx - 2, bottom + 1, sx + 2, bottom + 1, B.TIMBER, { dy1: 18 });
   }
   w.spawn = { x: sx + 2.5, y: 3 };
 
-  // 7. hp, stable ceilings
+  // 8. stable ceilings, fluids
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const i = w.idx(x, y);
-      w.hp[i] = w.maxHp(x, y);
       if (isSolid(w.block[i]) && y + 1 < H && !isSolid(w.block[w.idx(x, y + 1)])) w.flags[i] |= F.STABLE;
-      // natural granular overhangs would collapse instantly; make them stone-like rubble anchors
-      if (isGranular(w.block[i]) && y + 1 < H && !isSolid(w.block[w.idx(x, y + 1)])) {
-        w.block[i] = zone >= 4 ? B.BASALT : zone === 3 ? B.GRANITE : B.STONE;
-        w.hp[i] = w.maxHp(x, y);
-        w.flags[i] |= F.STABLE;
-      }
     }
-  // 8. settle fluids so pools rest naturally
   settleFluids(w, 260);
-  // frozen pools in the frost vault
   if (zone === 5) {
-    for (let i = 0; i < W * H; i++) if (w.fluid[i] > 0.5 && w.ftype[i] === 1 && rng.chance(0.35)) { w.block[i] = B.ICE; w.fluid[i] = 0; w.ftype[i] = 0; w.hp[i] = BLOCKS[B.ICE].hp; }
+    for (let i = 0; i < W * H; i++) if (w.fluid[i] > 0.5 && w.ftype[i] === 1 && rng.chance(0.35)) {
+      const x = i % W, y = Math.floor(i / W);
+      fillCells(x, y, x, y, B.ICE, { test: (xx, yy, cur) => !cur });
+      w.fluid[i] = 0; w.ftype[i] = 0;
+    }
   }
 
-  // 9. plants
+  const { plants, creatures } = populate(w, zone, rng, sx);
+  return { world: w, plants, creatures, gen };
+}
+
+/** Plants and creatures from the cell-level plan. */
+export function populate(w, zone, rng, sx = w.shaftX) {
+  const W = w.W, H = w.H;
   const plants = [];
-  const pt = PLANT_TABLE[zone];
+  const pt = PLANT_TABLE[zone] || PLANT_TABLE[1];
   const pickW = (list) => {
     const tot = list.reduce((s, [, wgt]) => s + wgt, 0);
     let r = rng() * tot;
@@ -272,18 +440,17 @@ export function generateMine(zone, seed) {
       plants.push({ type: pickW(list), x, y, side });
       occupied.add(i);
     }
-  // sparkmoss hugs exposed bioxide
-  for (let y = 1; y < H - 1; y++)
-    for (let x = 1; x < W - 1; x++) {
-      const i = w.idx(x, y);
-      if (w.ore[i] !== ORE_ID.bioxide) continue;
-      for (const [dx, dy, side] of [[1, 0, 'wallL'], [-1, 0, 'wallR'], [0, -1, 'floor']]) {
-        const j = w.idx(x + dx, y + dy);
-        if (w.block[j] === B.AIR && !occupied.has(j) && rng.chance(0.75)) { plants.push({ type: 'sparkmoss', x: x + dx, y: y + dy, side }); occupied.add(j); }
-      }
+  // sparkmoss hugs bioxide deposits
+  for (const d of w.deposits) {
+    if (ORES[d.oreId].item !== 'bioxide') continue;
+    const x = Math.floor((d.x0 + d.w / 2) / M), y = Math.floor((d.y0 + d.h / 2) / M);
+    for (const [dx, dy, side] of [[1, 0, 'wallL'], [-1, 0, 'wallR'], [0, -1, 'floor']]) {
+      if (!w.inb(x + dx, y + dy)) continue;
+      const j = w.idx(x + dx, y + dy);
+      if (w.block[j] === B.AIR && !occupied.has(j) && rng.chance(0.75)) { plants.push({ type: 'sparkmoss', x: x + dx, y: y + dy, side }); occupied.add(j); }
     }
+  }
 
-  // 10. creatures
   const creatures = [];
   const airCells = [], dirtCells = [], waterCells = [], lavaCells = [], floorCells = [], ceilCells = [];
   for (let y = 6; y < H - 2; y++)
@@ -299,8 +466,7 @@ export function generateMine(zone, seed) {
         }
       } else if (b === B.DIRT || b === B.LOAM || b === B.CLAY) dirtCells.push([x, y]);
     }
-  const bioxideCells = [];
-  for (let i = 0; i < W * H; i++) if (w.ore[i] === ORE_ID.bioxide) bioxideCells.push([i % W, Math.floor(i / W)]);
+  const bioxideCells = w.deposits.filter((d) => ORES[d.oreId].item === 'bioxide').map((d) => [Math.floor((d.x0 + d.w / 2) / M), Math.floor((d.y0 + d.h / 2) / M)]);
   for (const [type, count] of CREATURE_TABLE[zone] || []) {
     for (let k = 0; k < count; k++) {
       let pool = floorCells;
@@ -316,7 +482,7 @@ export function generateMine(zone, seed) {
       creatures.push({ type, x: x + 0.5, y: y + 0.5 });
     }
   }
-  return { world: w, plants, creatures };
+  return { plants, creatures };
 }
 
 export { ZONE_GEN };

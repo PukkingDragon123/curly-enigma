@@ -6,6 +6,9 @@ import { VoxelGrid, voxelMesh } from '../gfx/Voxel.js';
 import { B, BLOCKS } from './blocks.js';
 import { F } from './MineWorld.js';
 import { clamp } from '../core/util.js';
+import { M } from './micro.js';
+
+const STEP = 7; // pixels the mole steps up without jumping
 
 export const P_W = 0.62;
 export const P_H = 0.84;
@@ -51,55 +54,77 @@ export class Player {
     this.rig.holdItem(obj, 'R');
   }
 
-  overlapsSolid(x, y) {
+  // ---------------------------------------------------------------- pixel collision
+  /** Any solid pixel in the inclusive pixel rect? */
+  rectSolid(x0, y0, x1, y1) {
     const w = this.w;
-    const x0 = Math.floor(x - P_W / 2 + 0.001), x1 = Math.floor(x + P_W / 2 - 0.001);
-    const y0 = Math.floor(y - P_H / 2 + 0.001), y1 = Math.floor(y + P_H / 2 - 0.001);
-    for (let yy = y0; yy <= y1; yy++) for (let xx = x0; xx <= x1; xx++) if (w.solid(xx, yy)) return true;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (w.psolid(x, y)) return true;
     return false;
+  }
+  box(x, y) {
+    return [Math.floor((x - P_W / 2) * M + 0.001), Math.floor((y - P_H / 2) * M + 0.001), Math.ceil((x + P_W / 2) * M - 0.001) - 1, Math.ceil((y + P_H / 2) * M - 0.001) - 1];
+  }
+  overlapsSolid(x, y) {
+    const [x0, y0, x1, y1] = this.box(x, y);
+    return this.rectSolid(x0, y0, x1, y1);
   }
 
   moveX(dx) {
-    const w = this.w;
-    let nx = this.x + dx;
-    const y0 = Math.floor(this.y - P_H / 2 + 0.001), y1 = Math.floor(this.y + P_H / 2 - 0.001);
     this.wall = 0;
-    if (dx > 0) {
-      const c = Math.floor(nx + P_W / 2);
-      for (let y = y0; y <= y1; y++) if (w.solid(c, y)) { nx = c - P_W / 2 - 0.0005; this.vx = 0; this.wall = 1; break; }
-    } else if (dx < 0) {
-      const c = Math.floor(nx - P_W / 2);
-      for (let y = y0; y <= y1; y++) if (w.solid(c, y)) { nx = c + 1 + P_W / 2 + 0.0005; this.vx = 0; this.wall = -1; break; }
+    if (!dx) return;
+    const dir = Math.sign(dx);
+    let left = Math.abs(dx) * M;
+    while (left > 0) {
+      const step = Math.min(1, left);
+      left -= step;
+      const nx = this.x + (dir * step) / M;
+      const [x0, y0, x1, y1] = this.box(nx, this.y);
+      const col = dir > 0 ? x1 : x0;
+      if (!this.rectSolid(col, y0, col, y1)) { this.x = nx; continue; }
+      // a low bump at the feet? step up onto it
+      if (this.onGround || this.climbing) {
+        let top = y0;
+        while (top <= y1 && !this.w.psolid(col, top)) top++;
+        const h = y1 - top + 1;
+        if (h <= STEP && !this.rectSolid(x0, y0 - h, x1, y1 - h)) { this.x = nx; this.y -= h / M; this.stepped = true; continue; }
+      }
+      this.vx = 0;
+      this.wall = dir;
+      break;
     }
-    this.x = nx;
   }
 
   moveY(dy) {
-    const w = this.w;
-    let ny = this.y + dy;
-    const x0 = Math.floor(this.x - P_W / 2 + 0.001), x1 = Math.floor(this.x + P_W / 2 - 0.001);
-    let landed = false;
-    if (dy > 0) {
-      const r = Math.floor(ny + P_H / 2);
-      for (let x = x0; x <= x1; x++) if (w.solid(x, r)) { ny = r - P_H / 2 - 0.0005; landed = true; break; }
-    } else if (dy < 0) {
-      const r = Math.floor(ny - P_H / 2);
-      for (let x = x0; x <= x1; x++) if (w.solid(x, r)) { ny = r + 1 + P_H / 2 + 0.0005; this.vy = 0; break; }
+    if (!dy) return false;
+    const dir = Math.sign(dy);
+    let left = Math.abs(dy) * M;
+    while (left > 0) {
+      const step = Math.min(1, left);
+      left -= step;
+      const ny = this.y + (dir * step) / M;
+      const [x0, y0, x1, y1] = this.box(this.x, ny);
+      const row = dir > 0 ? y1 : y0;
+      if (!this.rectSolid(x0, row, x1, row)) { this.y = ny; continue; }
+      if (dir > 0) return true;
+      this.vy = 0;
+      return false;
     }
-    this.y = ny;
-    return landed;
-  }
-
-  touchingWall(side) {
-    const w = this.w;
-    const c = Math.floor(this.x + side * (P_W / 2 + 0.06));
-    const y0 = Math.floor(this.y - P_H / 2 + 0.05), y1 = Math.floor(this.y + P_H / 2 - 0.05);
-    for (let y = y0; y <= y1; y++) if (w.solid(c, y)) return true;
     return false;
   }
 
+  touchingWall(side) {
+    const [x0, y0, x1, y1] = this.box(this.x, this.y);
+    const col = side > 0 ? x1 + 2 : x0 - 2;
+    let n = 0, tot = 0;
+    for (let y = y0 + 3; y <= y1 - 3; y++) { tot++; if (this.w.psolid(col, y) || this.w.psolid(col - side, y)) n++; }
+    return n >= tot * 0.35;
+  }
+
   groundBlock() {
-    return this.w.get(Math.floor(this.x), Math.floor(this.feetY + 0.05));
+    const [x0, , x1, y1] = this.box(this.x, this.y);
+    const w = this.w;
+    for (let dy = 1; dy <= 3; dy++) for (let x = x0; x <= x1; x++) { const m = w.pmat(x, y1 + dy); if (m && m !== 255) return m >= 128 ? w.back[w.idx(Math.floor(this.x), Math.floor(this.y))] || B.STONE : m; }
+    return B.AIR;
   }
 
   /** Returns events: {landed, fallDamage, splash} */
@@ -184,11 +209,15 @@ export class Player {
     }
     this.onGround = landed || (this.vy >= 0 && this.solidBelow());
     if (this.onGround && this.vy > 0) this.vy = 0;
-    // un-stick if something filled our space (falling block, rubble)
+    if (this.onGround && wasGround && !ev.jump && this.vy >= 0 && !this.climbing) this.snapDown();
+    // un-stick if something filled our space (sand, rubble, a fallen chunk): rise out of it
     if (this.overlapsSolid(this.x, this.y)) {
-      for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, -2], [-1, -1], [1, -1]]) {
-        const nx = Math.floor(this.x) + dx + 0.5, ny = Math.floor(this.y) + dy + 0.5;
-        if (!this.overlapsSolid(nx, ny)) { this.x = nx; this.y = ny; break; }
+      let freed = false;
+      for (let h = 1; h <= 40 && !freed; h++) {
+        for (const dx of [0, -1, 1, -2, 2]) {
+          const nx = this.x + (dx * h * 0.25) / M, ny = this.y - h / M;
+          if (!this.overlapsSolid(nx, ny)) { this.x = nx; this.y = ny; freed = true; ev.buried = h; break; }
+        }
       }
     }
     this.x = clamp(this.x, 1 + P_W / 2, w.W - 1 - P_W / 2);
@@ -199,11 +228,17 @@ export class Player {
   }
 
   solidBelow() {
-    const w = this.w;
-    const r = Math.floor(this.feetY + 0.03);
-    const x0 = Math.floor(this.x - P_W / 2 + 0.001), x1 = Math.floor(this.x + P_W / 2 - 0.001);
-    for (let x = x0; x <= x1; x++) if (w.solid(x, r)) return true;
-    return false;
+    const [x0, , x1, y1] = this.box(this.x, this.y);
+    return this.rectSolid(x0 + 1, y1 + 1, x1 - 1, y1 + 1);
+  }
+
+  /** Walking down a gentle slope: glue the feet to the floor instead of hopping. */
+  snapDown() {
+    const [x0, , x1, y1] = this.box(this.x, this.y);
+    if (this.rectSolid(x0 + 1, y1 + 1, x1 - 1, y1 + 1)) return;
+    for (let h = 1; h <= STEP; h++) {
+      if (this.rectSolid(x0 + 1, y1 + h + 1, x1 - 1, y1 + h + 1)) { this.y += h / M; return; }
+    }
   }
 
   /** Update visuals (animation, tint from light). */

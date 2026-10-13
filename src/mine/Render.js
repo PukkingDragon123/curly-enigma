@@ -1,33 +1,10 @@
-// Mine rendering: lit voxel chunks, ore overlays, cracks, sprites, particles, debris,
-// falling blocks and fluids. Everything samples the shared light-grid texture.
+// Mine rendering: the pixel terrain (Terrain.js), sprites, particles, small chip cubes,
+// the target marker and fluids. Everything samples the shared light-grid texture.
 import * as THREE from 'three';
-import { B, BLOCKS, ORES, isSolid } from './blocks.js';
-import { F, CHUNK } from './MineWorld.js';
-import { buildBlockAtlas, buildSpriteAtlas } from './MineArt.js';
+import { buildSpriteAtlas } from './MineArt.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
-
-const LIGHT_GLSL = /* glsl */`
-uniform sampler2D lightMap;
-uniform vec2 worldSize;
-uniform vec3 ambient;
-uniform vec4 xray;
-uniform float xrayOn;
-uniform float time;
-vec3 lightAt(vec2 wp) {
-  vec2 uv = vec2(wp.x / worldSize.x, -wp.y / worldSize.y);
-  return texture2D(lightMap, uv).rgb * 2.0;
-}
-float xrayMask(vec2 wp) {
-  if (xrayOn < 0.5) return 0.0;
-  vec2 d = wp - xray.xy;
-  float r = length(d);
-  if (r > xray.w) return 0.0;
-  float a = atan(d.y, d.x);
-  float da = abs(mod(a - xray.z + 3.14159265, 6.2831853) - 3.14159265);
-  return smoothstep(0.5, 0.36, da) * smoothstep(xray.w, xray.w - 1.2, r) * smoothstep(0.2, 0.9, r);
-}
-float glowOf(float a) { return a < 0.97 ? clamp((0.97 - a) / 0.42, 0.0, 1.0) : 0.0; }
-`;
+import { Terrain, LIGHT_GLSL } from './Terrain.js';
+import { M } from './micro.js';
 
 export function makeUniforms(world) {
   return {
@@ -35,156 +12,9 @@ export function makeUniforms(world) {
     worldSize: { value: new THREE.Vector2(world.W, world.H) },
     ambient: { value: new THREE.Color(0.05, 0.045, 0.06) },
     time: { value: 0 },
-    hits: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(-99, -99, -10, 0)) },
     xray: { value: new THREE.Vector4(0, 0, 0, 0) },
     xrayOn: { value: 0 },
   };
-}
-
-function blockMaterial(U, map, { transparent = false, polygonOffset = 0 } = {}) {
-  return new THREE.ShaderMaterial({
-    uniforms: { ...U, map: { value: map } },
-    vertexShader: /* glsl */`
-      attribute float shade;
-      attribute vec2 cell;
-      uniform float time;
-      uniform vec4 hits[4];
-      varying vec2 vUv;
-      varying float vShade;
-      varying vec2 vWorld;
-      void main() {
-        vec3 p = position;
-        for (int i = 0; i < 4; i++) {
-          vec4 h = hits[i];
-          if (h.w > 0.0 && abs(cell.x - h.x) < 0.1 && abs(cell.y - h.y) < 0.1) {
-            float age = time - h.z;
-            if (age >= 0.0 && age < 0.3) {
-              float k = (1.0 - age / 0.3) * h.w;
-              vec2 c = vec2(h.x + 0.5, -h.y - 0.5);
-              p.xy = c + (p.xy - c) * (1.0 - 0.08 * k);
-              p.x += sin(age * 80.0) * 0.05 * k;
-              p.z += 0.05 * k;
-            }
-          }
-        }
-        vUv = uv;
-        vShade = shade;
-        vec4 wp = modelMatrix * vec4(p, 1.0);
-        vWorld = wp.xy;
-        gl_Position = projectionMatrix * viewMatrix * wp;
-      }`,
-    fragmentShader: /* glsl */`
-      uniform sampler2D map;
-      ${LIGHT_GLSL}
-      varying vec2 vUv;
-      varying float vShade;
-      varying vec2 vWorld;
-      void main() {
-        vec4 c = texture2D(map, vUv);
-        if (c.a < 0.5) discard;
-        float glow = glowOf(c.a);
-        vec3 L = ambient + lightAt(vWorld);
-        vec3 col = c.rgb * L * vShade + c.rgb * glow * 1.35;
-        float xm = xrayMask(vWorld);
-        if (xm > 0.0) {
-          float scan = step(0.65, fract(vWorld.y * 5.0 - time * 2.5)) * 0.07;
-          col = mix(col, vec3(0.02, 0.07, 0.1) + c.rgb * 0.1 + vec3(0.0, scan, scan * 1.3), xm * 0.82);
-        }
-        gl_FragColor = vec4(col, 1.0);
-      }`,
-    transparent,
-    polygonOffset: polygonOffset !== 0,
-    polygonOffsetFactor: polygonOffset,
-    polygonOffsetUnits: polygonOffset,
-  });
-}
-
-function oreMaterial(U, map) {
-  return new THREE.ShaderMaterial({
-    uniforms: { ...U, map: { value: map } },
-    vertexShader: /* glsl */`
-      attribute float shade;
-      attribute vec2 cell;
-      attribute float revealed;
-      uniform float time;
-      uniform vec4 hits[4];
-      varying vec2 vUv;
-      varying float vShade;
-      varying vec2 vWorld;
-      varying vec2 vCell;
-      varying float vRev;
-      void main() {
-        vec3 p = position;
-        for (int i = 0; i < 4; i++) {
-          vec4 h = hits[i];
-          if (h.w > 0.0 && abs(cell.x - h.x) < 0.1 && abs(cell.y - h.y) < 0.1) {
-            float age = time - h.z;
-            if (age >= 0.0 && age < 0.3) {
-              float k = (1.0 - age / 0.3) * h.w;
-              vec2 c = vec2(h.x + 0.5, -h.y - 0.5);
-              p.xy = c + (p.xy - c) * (1.0 - 0.08 * k);
-              p.x += sin(age * 80.0) * 0.05 * k;
-              p.z += 0.05 * k;
-            }
-          }
-        }
-        vUv = uv; vShade = shade; vCell = cell; vRev = revealed;
-        vec4 wp = modelMatrix * vec4(p, 1.0);
-        vWorld = wp.xy;
-        gl_Position = projectionMatrix * viewMatrix * wp;
-      }`,
-    fragmentShader: /* glsl */`
-      uniform sampler2D map;
-      ${LIGHT_GLSL}
-      varying vec2 vUv;
-      varying float vShade;
-      varying vec2 vWorld;
-      varying vec2 vCell;
-      varying float vRev;
-      void main() {
-        vec4 c = texture2D(map, vUv);
-        if (c.a < 0.5) discard;
-        float glow = glowOf(c.a);
-        vec3 L = ambient + lightAt(vWorld);
-        vec3 col = c.rgb * L * vShade + c.rgb * glow * 1.6;
-        float lum = dot(c.rgb, vec3(0.3, 0.59, 0.11));
-        float tw = pow(max(0.0, sin(time * 2.3 + vCell.x * 1.7 + vCell.y * 2.9 + vUv.x * 60.0)), 26.0);
-        col += vec3(1.0, 0.97, 0.86) * tw * step(0.5, lum) * (0.35 + min(1.2, length(L)) * 0.8);
-        float xm = xrayMask(vWorld);
-        col += c.rgb * xm * 1.1 + vec3(0.1, 0.55, 0.65) * xm * 0.25;
-        if (vRev > 0.5) col += vec3(0.04, 0.11, 0.13) * (0.6 + 0.4 * sin(time * 3.0 + vCell.x));
-        gl_FragColor = vec4(col, 1.0);
-      }`,
-    polygonOffset: true,
-    polygonOffsetFactor: -1,
-    polygonOffsetUnits: -1,
-  });
-}
-
-// ---------------------------------------------------------------- quad builder
-class QuadBuilder {
-  constructor() { this.pos = []; this.uv = []; this.shade = []; this.cell = []; this.extra = []; this.idx = []; this.n = 0; }
-  quad(p, uv, shade, cx, cy, extra = 0) {
-    // p: 4 corners [x,y,z] CCW; uv: [u0,v0,u1,v1]; shade: number or [4] per-corner
-    const [u0, v0, u1, v1] = uv;
-    for (const c of p) this.pos.push(c[0], c[1], c[2]);
-    this.uv.push(u0, v0, u1, v0, u1, v1, u0, v1);
-    for (let k = 0; k < 4; k++) { this.shade.push(typeof shade === 'number' ? shade : shade[k]); this.cell.push(cx, cy); this.extra.push(extra); }
-    const v = this.n * 4;
-    this.idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
-    this.n++;
-  }
-  geometry(extraName) {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
-    g.setAttribute('shade', new THREE.Float32BufferAttribute(this.shade, 1));
-    g.setAttribute('cell', new THREE.Float32BufferAttribute(this.cell, 2));
-    if (extraName) g.setAttribute(extraName, new THREE.Float32BufferAttribute(this.extra, 1));
-    g.setIndex(this.idx);
-    g.computeBoundingSphere();
-    return g;
-  }
 }
 
 // ---------------------------------------------------------------- sprite batch
@@ -458,20 +288,16 @@ export class CubeSwarm {
 
 // ---------------------------------------------------------------- the renderer
 export class MineRenderer {
-  constructor(scene3, world, lighting) {
+  constructor(scene3, world, lighting, opts = {}) {
     this.scene = scene3;
     this.w = world;
     this.L = lighting;
     this.U = makeUniforms(world);
     this.U.lightMap.value = lighting.tex;
-    this.blockAtlas = buildBlockAtlas();
     this.spriteAtlas = buildSpriteAtlas();
-    this.matBlock = blockMaterial(this.U, this.blockAtlas.tex);
-    this.matOre = oreMaterial(this.U, this.spriteAtlas.tex);
-    this.matOverlay = blockMaterial(this.U, this.blockAtlas.tex, { transparent: true, polygonOffset: -2 });
-    this.chunks = new Map();
     this.root = new THREE.Group();
     scene3.add(this.root);
+    this.terrain = new Terrain(this.root, world, this.U, { growth: opts.growth });
 
     this.sprites = new SpriteBatch(this.U, this.spriteAtlas.tex, 2200);
     this.glowSprites = new SpriteBatch(this.U, this.spriteAtlas.tex, 400, { additive: true, depthWrite: false });
@@ -480,31 +306,33 @@ export class MineRenderer {
     this.glowSprites.mesh.renderOrder = 5;
     this.root.add(this.sprites.mesh, this.glowSprites.mesh);
 
-    this.dust = new Particles(this.U, 2200, false);
-    this.glow = new Particles(this.U, 1600, true);
+    this.dust = new Particles(this.U, 2600, false);
+    this.glow = new Particles(this.U, 1800, true);
     this.dust.points.renderOrder = 6;
     this.glow.points.renderOrder = 7;
     this.root.add(this.dust.points, this.glow.points);
 
-    this.debris = new CubeSwarm(this.U, 700);
+    // tiny chips (single pixels and crumbs) as instanced cubes
+    this.debris = new CubeSwarm(this.U, 900);
     this.debris.mesh.layers.enable(LAYER_OUTLINE);
     this.root.add(this.debris.mesh);
-    this.fallers = new CubeSwarm(this.U, 96, this.blockAtlas.tex);
-    this.fallers.mesh.layers.enable(LAYER_OUTLINE);
-    this.root.add(this.fallers.mesh);
 
-    // overlays: cracks + selection
-    this.overlay = new THREE.Mesh(new THREE.BufferGeometry(), this.matOverlay);
-    this.overlay.renderOrder = 3;
-    this.overlay.frustumCulled = false;
-    this.root.add(this.overlay);
-    this.selMat = new THREE.MeshBasicMaterial({ map: this.blockAtlas.tex, transparent: true, depthTest: true, color: 0xffffff, alphaTest: 0.5 });
-    this.sel = new THREE.Mesh(new THREE.PlaneGeometry(1.06, 1.06), this.selMat);
-    const su = this.blockAtlas.uv(this.blockAtlas.selIdx);
-    const uvs = this.sel.geometry.attributes.uv;
-    uvs.setXY(0, su[0], su[3]); uvs.setXY(1, su[2], su[3]); uvs.setXY(2, su[0], su[1]); uvs.setXY(3, su[2], su[1]);
-    this.sel.renderOrder = 8;
-    this.root.add(this.sel);
+    // target marker: a little pixel reticle on the rock where the tool will land
+    const c = document.createElement('canvas');
+    c.width = c.height = 11;
+    const g = c.getContext('2d');
+    g.fillStyle = '#000';
+    for (const [x, y, w, h] of [[4, 0, 3, 3], [4, 8, 3, 3], [0, 4, 3, 3], [8, 4, 3, 3]]) g.fillRect(x, y, w, h);
+    g.fillStyle = '#fff';
+    for (const [x, y, w, h] of [[5, 0, 1, 3], [5, 8, 1, 3], [0, 5, 3, 1], [8, 5, 3, 1]]) g.fillRect(x, y, w, h);
+    const tex = new THREE.CanvasTexture(c);
+    tex.magFilter = tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    this.markerMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
+    this.marker = new THREE.Mesh(new THREE.PlaneGeometry(11 / M, 11 / M), this.markerMat);
+    this.marker.renderOrder = 20;
+    this.marker.visible = false;
+    this.root.add(this.marker);
 
     // fluids
     this.fluidGeo = new THREE.BufferGeometry();
@@ -529,17 +357,17 @@ export class MineRenderer {
         varying vec2 vWorld;
         void main() {
           vec3 col; float a;
+          vec2 px = floor(vWorld * 32.0);
           if (vData.x < 1.5) {
             vec3 L = ambient + lightAt(vWorld);
-            float surf = smoothstep(0.85, 1.0, vData.z);
-            float ripple = 0.5 + 0.5 * sin(vWorld.x * 6.0 + time * 1.7) * sin(vWorld.y * 5.0 - time * 1.3);
-            col = vec3(0.14, 0.38, 0.82) * (L * 0.85 + 0.05) + vec3(0.25, 0.5, 0.7) * L * (surf * 0.8 + ripple * 0.12);
-            a = 0.56 + surf * 0.2;
-            if (vData.y > 0.5 && vData.z > 0.0) {}
+            float surf = smoothstep(0.9, 1.0, vData.z);
+            float ripple = 0.5 + 0.5 * sin(px.x * 0.19 + time * 1.7) * sin(px.y * 0.16 - time * 1.3);
+            col = vec3(0.12, 0.34, 0.78) * (L * 0.85 + 0.05) + vec3(0.25, 0.5, 0.7) * L * (surf * 0.9 + step(0.8, ripple) * 0.12);
+            a = 0.58 + surf * 0.25;
           } else {
-            float n = sin(vWorld.x * 2.7 + time * 1.1) * sin(vWorld.y * 3.1 - time * 0.8) * 0.5 + 0.5;
-            float n2 = sin(vWorld.x * 7.0 - time * 2.0 + vWorld.y * 4.0) * 0.5 + 0.5;
-            col = mix(vec3(0.85, 0.2, 0.04), vec3(1.0, 0.72, 0.18), n * 0.7 + n2 * 0.3) * 1.25;
+            float n = sin(px.x * 0.085 + time * 1.1) * sin(px.y * 0.097 - time * 0.8) * 0.5 + 0.5;
+            float n2 = sin(px.x * 0.22 - time * 2.0 + px.y * 0.125) * 0.5 + 0.5;
+            col = mix(vec3(0.85, 0.2, 0.04), vec3(1.0, 0.72, 0.18), floor((n * 0.7 + n2 * 0.3) * 4.0) / 4.0) * 1.25;
             a = 0.96;
           }
           gl_FragColor = vec4(col, a);
@@ -553,118 +381,13 @@ export class MineRenderer {
     this.root.add(this.fluidMesh);
   }
 
-  tileUV(blockId, variant) {
-    const list = this.blockAtlas.index[blockId] || this.blockAtlas.index[B.STONE];
-    return this.blockAtlas.uv(list[variant % list.length]);
-  }
-
-  // ------------------------------------------------------------ chunks
-  buildChunk(cx, cy) {
-    const w = this.w;
-    const key = cx + ',' + cy;
-    const old = this.chunks.get(key);
-    if (old) {
-      this.root.remove(old.block, old.ore);
-      old.block.geometry.dispose();
-      old.ore.geometry.dispose();
-    }
-    const qb = new QuadBuilder();
-    const qo = new QuadBuilder();
-    const x0 = cx * CHUNK, y0 = cy * CHUNK;
-    const sx = w.shaftX;
-    for (let y = y0; y < Math.min(w.H, y0 + CHUNK); y++) {
-      for (let x = x0; x < Math.min(w.W, x0 + CHUNK); x++) {
-        if (x < 0 || y < 0) continue;
-        const i = w.idx(x, y);
-        const b = w.block[i];
-        const X0 = x, X1 = x + 1, Y0 = -y - 1, Y1 = -y;
-        if (isSolid(b)) {
-          const uv = this.tileUV(b, w.variant[i]);
-          qb.quad([[X0, Y0, 0.5], [X1, Y0, 0.5], [X1, Y1, 0.5], [X0, Y1, 0.5]], uv, 1, x, y);
-          if (!w.solid(x, y - 1)) qb.quad([[X0, Y1, 0.5], [X1, Y1, 0.5], [X1, Y1, -0.5], [X0, Y1, -0.5]], uv, 0.92, x, y);
-          if (!w.solid(x, y + 1)) qb.quad([[X0, Y0, -0.5], [X1, Y0, -0.5], [X1, Y0, 0.5], [X0, Y0, 0.5]], uv, 0.5, x, y);
-          if (!w.solid(x - 1, y)) qb.quad([[X0, Y0, -0.5], [X0, Y0, 0.5], [X0, Y1, 0.5], [X0, Y1, -0.5]], uv, 0.7, x, y);
-          if (!w.solid(x + 1, y)) qb.quad([[X1, Y0, 0.5], [X1, Y0, -0.5], [X1, Y1, -0.5], [X1, Y1, 0.5]], uv, 0.66, x, y);
-          if (w.ore[i]) {
-            const exposed = w.exposed(x, y);
-            if (exposed || (w.flags[i] & F.REVEALED)) {
-              const tiles = this.spriteAtlas.ore[w.ore[i]];
-              if (tiles) {
-                const ouv = this.spriteAtlas.uv(tiles[(x + y) & 1]);
-                qo.quad([[X0, Y0, 0.503], [X1, Y0, 0.503], [X1, Y1, 0.503], [X0, Y1, 0.503]], ouv, 1, x, y, exposed ? 0 : 1);
-              }
-            }
-          }
-        } else {
-          const bb = x === sx ? B.TIMBER : (w.back[i] || B.STONE);
-          const uv = this.tileUV(bb, w.variant[i] + 1);
-          const base = x === sx ? 0.42 : 0.27;
-          // corner occlusion: back-wall corners tucked against solid rock are darker
-          const S = (dx, dy) => (w.solid(x + dx, y + dy) ? 1 : 0);
-          const ao = (a, b, c) => base * (1 - 0.22 * (a + b) - 0.12 * (a && b ? 1 : c));
-          const l = S(-1, 0), r = S(1, 0), u = S(0, -1), d = S(0, 1);
-          const sh = [ao(l, d, S(-1, 1)), ao(r, d, S(1, 1)), ao(r, u, S(1, -1)), ao(l, u, S(-1, -1))];
-          qb.quad([[X0, Y0, -0.5], [X1, Y0, -0.5], [X1, Y1, -0.5], [X0, Y1, -0.5]], uv, sh, x, y);
-        }
-      }
-    }
-    const block = new THREE.Mesh(qb.geometry(), this.matBlock);
-    const ore = new THREE.Mesh(qo.geometry('revealed'), this.matOre);
-    block.frustumCulled = false;
-    ore.frustumCulled = false;
-    block.renderOrder = 0;
-    ore.renderOrder = 1;
-    this.root.add(block, ore);
-    this.chunks.set(key, { block, ore });
-  }
-
-  /** Build/refresh chunks around the camera. Limit rebuilds per frame. */
-  updateChunks(cx0, cy0, cx1, cy1, maxBuilds = 8) {
-    let built = 0;
-    for (let cy = cy0; cy <= cy1; cy++)
-      for (let cx = cx0; cx <= cx1; cx++) {
-        if (cx < 0 || cy < 0 || cx * CHUNK >= this.w.W || cy * CHUNK >= this.w.H) continue;
-        const key = cx + ',' + cy;
-        if (!this.chunks.has(key) || this.w.dirty.has(key)) {
-          if (built >= maxBuilds && this.chunks.has(key)) continue;
-          this.buildChunk(cx, cy);
-          this.w.dirty.delete(key);
-          built++;
-        }
-      }
-    // hide far chunks (keep them cached)
-    for (const [key, ch] of this.chunks) {
-      const [cx, cy] = key.split(',').map(Number);
-      const vis = cx >= cx0 - 1 && cx <= cx1 + 1 && cy >= cy0 - 1 && cy <= cy1 + 1;
-      ch.block.visible = vis;
-      ch.ore.visible = vis;
-    }
-  }
-
-  // ------------------------------------------------------------ cracks overlay
-  updateOverlay(damaged, target) {
-    const qb = new QuadBuilder();
-    const w = this.w;
-    const cs = this.blockAtlas.crackStart;
-    for (const i of damaged) {
-      const x = i % w.W, y = Math.floor(i / w.W);
-      const max = w.maxHp(x, y);
-      if (!max || !isFinite(max) || !BLOCKS[w.block[i]] || !isSolid(w.block[i])) continue;
-      const k = 1 - w.hp[i] / max;
-      if (k <= 0.02 && !w.stress[i]) continue;
-      const stage = Math.min(4, Math.floor((w.stress[i] ? Math.max(k, 0.7) : k) * 5));
-      const uv = this.blockAtlas.uv(cs + stage);
-      const X0 = x, X1 = x + 1, Y0 = -y - 1, Y1 = -y;
-      qb.quad([[X0, Y0, 0.506], [X1, Y0, 0.506], [X1, Y1, 0.506], [X0, Y1, 0.506]], uv, 1, x, y);
-    }
-    this.overlay.geometry.dispose();
-    this.overlay.geometry = qb.geometry();
-    if (target) {
-      this.sel.visible = true;
-      this.sel.position.set(target.x + 0.5, -target.y - 0.5, target.solid ? 0.52 : 0.0);
-      this.selMat.color.setHex(target.ok ? 0xffffff : 0xff6a5a);
-      this.selMat.opacity = 0.55 + Math.sin(performance.now() / 160) * 0.25;
-    } else this.sel.visible = false;
+  /** Point the reticle at a pixel (or hide it). */
+  setMarker(px, py, ok = true) {
+    if (px === null || px === undefined) { this.marker.visible = false; return; }
+    this.marker.visible = true;
+    this.marker.position.set((px + 0.5) / M, -(py + 0.5) / M, 0.56);
+    this.markerMat.color.setHex(ok ? 0xffffff : 0xff6a5a);
+    this.markerMat.opacity = 0.65 + Math.sin(performance.now() / 140) * 0.25;
   }
 
   // ------------------------------------------------------------ fluids
@@ -680,7 +403,7 @@ export class MineRenderer {
         const t = w.ftype[i];
         const above = y > 0 && w.fluid[i - w.W] > 0.02 && w.ftype[i - w.W] === t;
         const lvl = above ? 1 : Math.min(1, f);
-        const X0 = x, X1 = x + 1, Y0 = -y - 1, Y1 = -y - 1 + lvl;
+        const X0 = x, X1 = x + 1, Y0 = -y - 1, Y1 = -y - 1 + Math.round(lvl * M) / M;
         const z = 0.32;
         pos.push(X0, Y0, z, X1, Y0, z, X1, Y1, z, X0, Y1, z);
         const top = above ? 0 : 1;
@@ -698,17 +421,11 @@ export class MineRenderer {
     this.fluidMesh.geometry = g;
   }
 
-  setHit(slot, x, y, t, strength = 1) {
-    this.U.hits.value[slot % 4].set(x, y, t, strength);
-  }
-
   dispose() {
-    for (const ch of this.chunks.values()) { ch.block.geometry.dispose(); ch.ore.geometry.dispose(); }
-    this.chunks.clear();
-    this.blockAtlas.tex.dispose();
+    this.terrain.dispose();
     this.spriteAtlas.tex.dispose();
     this.L.tex.dispose();
     this.fluidGeo.dispose();
-    this.overlay.geometry.dispose();
+    this.markerMat.map.dispose();
   }
 }

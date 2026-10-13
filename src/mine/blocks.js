@@ -6,7 +6,7 @@
 export const B = {
   AIR: 0, DIRT: 1, LOAM: 2, CLAY: 3, SAND: 4, GRAVEL: 5, STONE: 6, MUDSTONE: 7, GRANITE: 8, CRYSTALROCK: 9,
   BASALT: 10, OBSIDIAN: 11, MAGMAROCK: 12, ASH: 13, PERMAFROST: 14, ICE: 15, SNOW: 16, CORE: 17, STARROCK: 18,
-  VOIDROCK: 19, BEDROCK: 20, ROOTS: 21, QUAKE: 22, RUBBLE: 23, TIMBER: 24, GEODE: 25, LIMESTONE: 26,
+  VOIDROCK: 19, BEDROCK: 20, ROOTS: 21, QUAKE: 22, RUBBLE: 23, TIMBER: 24, GEODE: 25, LIMESTONE: 26, BOARDS: 27,
 };
 
 export const BLOCKS = [];
@@ -38,6 +38,7 @@ def(B.ROOTS, { name: 'Tangled Roots', hp: 2, tier: 0, snd: 'wood', phys: 'solid'
 def(B.QUAKE, { name: 'Quakestone', hp: 3.5, tier: 1, snd: 'stone', phys: 'solid', span: 3, color: 0x8a4a3a, debris: [0x8a4a3a, 0x6a3a2a, 0xb06a5a], dust: 0xa87a6a, quake: true });
 def(B.RUBBLE, { name: 'Rubble', hp: 1.0, tier: 0, snd: 'stone', phys: 'granular', span: 0, color: 0x7a706a, debris: [0x7a706a, 0x5a524c, 0x9a908a], dust: 0xa09890 });
 def(B.TIMBER, { name: 'Shaft Timber', hp: Infinity, tier: 99, snd: 'wood', phys: 'solid', span: 999, color: 0x8a5a32, debris: [0x8a5a32], dust: 0x9a7a5a });
+def(B.BOARDS, { name: 'Old Boards', hp: 2.2, tier: 0, snd: 'wood', phys: 'solid', span: 999, color: 0x9a6a3a, debris: [0x9a6a3a, 0x7a4e2a, 0xb88450], dust: 0xb09070, flammable: true });
 def(B.GEODE, { name: 'Geode Shell', hp: 4, tier: 2, snd: 'crystal', phys: 'solid', span: 8, color: 0x7a6a8a, debris: [0x7a6a8a, 0xc89aff, 0xe8d8ff], dust: 0xc8b8e0 });
 
 export const isSolid = (id) => BLOCKS[id] && BLOCKS[id].phys !== 'none';
