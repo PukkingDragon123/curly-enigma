@@ -320,8 +320,9 @@ export class FaceMode {
     this.focus.x = fx; this.focus.y = fy;
     const dist = FACE_H / (2 * Math.tan((FACE_FOV * Math.PI) / 360));
     const sh = s.shakeAmp * 0.6;
-    const facePos = new THREE.Vector3(fx + (Math.random() - 0.5) * sh * 0.4, -fy + (Math.random() - 0.5) * sh * 0.4, 0.5 + dist);
-    const faceLook = new THREE.Vector3(fx, -fy, 0.5);
+    const kick = s.kick || { x: 0, y: 0, z: 0 };
+    const facePos = new THREE.Vector3(fx + kick.x * 0.5 + (Math.random() - 0.5) * sh * 0.4, -fy + kick.y * 0.5 + (Math.random() - 0.5) * sh * 0.4, 0.5 + dist + kick.z);
+    const faceLook = new THREE.Vector3(fx + kick.x * 0.5, -fy + kick.y * 0.5, 0.5);
     cam.fov = lerp(sideFov, FACE_FOV, k);
     // keep the framing continuous: interpolate the look point, then back off along the view axis
     const look = sideLook.clone().lerp(faceLook, k);

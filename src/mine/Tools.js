@@ -58,6 +58,7 @@ export class Tools {
     if (res.hard && !res.chunks.length && !res.chips.length) { this.tooHard(t, false); return; }
     const mt = MAT[t.mat];
     s.audio.play('hit', { snd: mt.snd || 'stone' });
+    s.impact(t, res.chunks.length ? 1 : 0.6);
     const away = this.away(t);
     for (const pcs of res.chunks) this.chunkOut(pcs, away, 1);
     this.chipsOut(res.chips, away, 3.2);
@@ -99,6 +100,7 @@ export class Tools {
     const res = s.digger.chisel(t.px + 0.5, t.py + 0.5, power, tier);
     if (!res.chips.length) { if (res.hard) this.tooHard(t, false); return; }
     this.chipsOut(res.chips, this.away(t), 1.8);
+    s.impact(t, 0.35);
     s.fx.sparks(t.x, t.y, 1, [1, 1, 0.8], 2);
     s.energy(0.14);
     this.after(t.px, t.py, 'chisel', 6);
@@ -237,6 +239,7 @@ export class Tools {
       if (o.tags.includes('resonant')) this.resonate(d, 2);
     } else if (o.item === 'diamond') s.say('diamond', 'Diamond doesn\'t chip. Its rock does.', 'good', 10);
     s.audio.play('hit', { snd: 'crystal', vol: 0.7 });
+    s.impact(t, 0.8);
     s.fx.sparks(t.x, t.y, 4, [1, 0.95, 0.8], 3);
     s.shake(0.03);
     s.energy(0.3);

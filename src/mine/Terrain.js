@@ -54,6 +54,7 @@ uniform vec2 uOrigin;
 uniform vec3 uGrowth;
 uniform float uFlat;
 uniform vec4 uSpeck;
+uniform vec4 hit;
 ${LIGHT_GLSL}
 varying vec3 vPos;
 varying vec4 vInfo;
@@ -117,6 +118,11 @@ void main() {
       col *= 1.0 + clamp(d * 0.9, -0.16, 0.16);
     }
     col = col * L + pc.rgb * glow * 1.35;
+    // impact flash where the tool just landed
+    if (hit.w > 0.01) {
+      float hd = length(vPos.xy - hit.xy) / hit.z;
+      if (hd < 1.0) col += vec3(1.0, 0.92, 0.8) * hit.w * (1.0 - hd) * (1.0 - hd) * (0.6 + 0.4 * step(0.5, h21(ip + floor(time * 30.0))));
+    }
     if (xm > 0.0) {
       float scan = step(0.65, fract(vPos.y * 5.0 - time * 2.5)) * 0.07;
       bool ore = m >= ${ORE_BASE}.0 && m < ${STAIN_BASE}.0;

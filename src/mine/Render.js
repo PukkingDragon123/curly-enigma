@@ -14,6 +14,7 @@ export function makeUniforms(world) {
     time: { value: 0 },
     xray: { value: new THREE.Vector4(0, 0, 0, 0) },
     xrayOn: { value: 0 },
+    hit: { value: new THREE.Vector4(0, 0, 0, 0) }, // impact flash: x, y (world), radius, strength
   };
 }
 

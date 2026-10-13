@@ -167,6 +167,14 @@ export default class MineScene extends Scene {
     if (p.visible) this.game.ui.floatText(text, p.x, p.y, color, size * (this.face.on ? 1.25 : 1));
   }
   shake(a) { if (this.state.data.settings.shake) this.shakeAmp = Math.max(this.shakeAmp, a); }
+  /** A tool landed: flash the rock there and kick the camera toward the blow. */
+  impact(t, k = 1) {
+    const h = this.renderer.U.hit.value;
+    h.set(t.x, -t.y, this.face.on ? 0.42 : 0.55, 0.55 * k);
+    if (!this.state.data.settings.shake) return;
+    const d = Math.hypot(t.dirx, t.diry) || 1;
+    this.kick = { x: (t.dirx / d) * 0.07 * k, y: (-t.diry / d) * 0.07 * k, z: this.face.on ? -0.35 * k : 0 };
+  }
   energy(n) {
     const st = this.state;
     if (st.hasBuff('sturdy')) n *= 0.6;
@@ -800,6 +808,8 @@ export default class MineScene extends Scene {
     U.time.value = this.time;
     this.post.flash = Math.max(0, (this.post.flash || 0) - dt * 2.5);
     if (this.bonkT > 0) this.bonkT -= dt;
+    { const h = U.hit.value; h.w = Math.max(0, h.w - dt * 7); }
+    if (this.kick) { const f = Math.max(0, 1 - dt * 18); this.kick.x *= f; this.kick.y *= f; this.kick.z *= f; }
 
     // ---- input
     const busy = this.fainting || this.leaving || (this.introCtl && this.introCtl.locked());
@@ -986,8 +996,9 @@ export default class MineScene extends Scene {
     const sh = this.shakeAmp;
     this.camera.fov = 36;
     this.camera.updateProjectionMatrix();
-    this.camera.position.set(this.camX + (Math.random() - 0.5) * sh, -this.camY + 2.2 + (Math.random() - 0.5) * sh, this.camDist);
-    this.camera.lookAt(this.camX + (Math.random() - 0.5) * sh * 0.3, -this.camY - 0.15, 0);
+    const kx = this.kick ? this.kick.x : 0, ky = this.kick ? this.kick.y : 0;
+    this.camera.position.set(this.camX + kx + (Math.random() - 0.5) * sh, -this.camY + 2.2 + ky + (Math.random() - 0.5) * sh, this.camDist);
+    this.camera.lookAt(this.camX + kx + (Math.random() - 0.5) * sh * 0.3, -this.camY - 0.15 + ky, 0);
     this.renderer.terrain.shared.uFlat.value = 0;
   }
 
