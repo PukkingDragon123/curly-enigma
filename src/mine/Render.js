@@ -476,6 +476,7 @@ export class MineRenderer {
     this.sprites = new SpriteBatch(this.U, this.spriteAtlas.tex, 2200);
     this.glowSprites = new SpriteBatch(this.U, this.spriteAtlas.tex, 400, { additive: true, depthWrite: false });
     this.sprites.mesh.renderOrder = 2;
+    this.sprites.mesh.layers.enable(LAYER_OUTLINE);
     this.glowSprites.mesh.renderOrder = 5;
     this.root.add(this.sprites.mesh, this.glowSprites.mesh);
 
@@ -704,5 +705,10 @@ export class MineRenderer {
   dispose() {
     for (const ch of this.chunks.values()) { ch.block.geometry.dispose(); ch.ore.geometry.dispose(); }
     this.chunks.clear();
+    this.blockAtlas.tex.dispose();
+    this.spriteAtlas.tex.dispose();
+    this.L.tex.dispose();
+    this.fluidGeo.dispose();
+    this.overlay.geometry.dispose();
   }
 }

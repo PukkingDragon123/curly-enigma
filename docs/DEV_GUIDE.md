@@ -101,3 +101,16 @@ Input is disabled automatically while a UI panel is open.
 - Never touch files you don't own. If a shared file needs a change, describe it in your final report instead.
 - Don't run `git` commands. The lead developer commits.
 - Use the shared renderer and the post pass. Keep the frame cheap: avoid hundreds of lights, and prefer emissive materials or baked vertex colors.
+
+## The mine (`src/mine/`, `src/scenes/MineScene.js`)
+
+- `blocks.js` defines block materials (`BLOCKS`, `B`) and embedded ores (`ORES`, `ORE_SPAWN`): hardness, pick tier, sound family, physics, span and tags such as `explosive`, `float` and `tarnish`.
+- `MineWorld.js` holds the grid storage (typed arrays): block, back wall, hp, ore, ore quality, flags (`F.REVEALED/STABLE/MINED/BEAM/STAKE/WEB/ELECTRIC/SEEN`), fluids, fire and stress. Grid y grows downward; three.js y is `-gridY`.
+- `MineGen.js` generates a zone: layered noise materials, worm tunnels and caverns, geodes, ore veins, sealed water and lava pockets (pre-settled), lift stations every 12 rows, plants and creatures.
+- `Lighting.js` is a per-cell RGB light grid with Bresenham ray occlusion, uploaded as a linear-filtered `DataTexture`. Every mine shader samples it, so lighting is smooth, colored and shadowed.
+- `Render.js` holds the chunked voxel meshes (16×16 cells) with back-wall AO, ore overlays, crack overlays and the selection box. It also holds the sprite batch (plants, creatures, items), pixel point particles, instanced debris and falling-block cubes, and the fluid mesh. Texture alpha in [0.55, 0.97) encodes emissive glow.
+- `Physics.js` covers flying debris, falling blocks, and `Stability`: ceiling span checks (arch bonus for low tunnels), island detection, loose ground and quakes.
+- `Fluids.js` is the water and lava automaton (lava + water → obsidian or steam).
+- `Entities.js` covers pickups (gravium floats, starmetal magnetism, hazards), plants (whisperweed points at hidden ore, sparkmoss zaps) and creature AI.
+- `Player.js` covers AABB physics in grid space (climbing, swimming, lava, ice, webs) and the voxel character with held tool models.
+- `MineScene.js` handles tools (pick swing timing, chisel, brush, drill heat, X-ray cone), ore damage and vibration, explosions, fire, ore behaviors, discovery scans, the lift bells, fainting and the HUD.

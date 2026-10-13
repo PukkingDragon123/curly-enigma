@@ -66,8 +66,9 @@ export class Pickups {
       }
       p.x = nx; p.y = ny;
       if (Math.abs(p.vx) < 0.05) p.vx = 0;
-      // collect
+      // collect (finds drift into your paws when close)
       const d = Math.hypot(pl.x - p.x, pl.y - p.y);
+      if (p.age > 0.5 && d < 1.6 && d > 0.3 && p.rejectT <= 0 && !p.float) { p.vx += ((pl.x - p.x) / d) * 14 * dt; p.vy += ((pl.y - p.y) / d) * 14 * dt; }
       if (p.age > 0.35 && d < 0.8 && p.rejectT <= 0) {
         if (s.tryPickup(p)) continue;
         p.rejectT = 1.2;
@@ -515,7 +516,9 @@ export class Creatures {
       if (c.type === 'gem_tortoise') size = 0.95;
       if (c.type === 'earthworm') {
         if (!c.exposed) continue;
-        size = 0.7;
+        const inside = s.world.solid(Math.floor(c.x), Math.floor(c.y));
+        if (inside && s.lightAt(c.x, c.y) < 0.3) continue;
+        size = inside ? 0.45 : 0.7;
       }
       const flipY = c.type === 'cave_bat' && c.state === 'idle';
       const z = c.type === 'earthworm' && s.world.solid(Math.floor(c.x), Math.floor(c.y)) ? 0.51 : 0.12;

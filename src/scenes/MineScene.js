@@ -663,6 +663,7 @@ export default class MineScene extends Scene {
     this.fx.blockDust(cx, cy, b.id, kind === 'brush' ? 4 : 10);
     this.audio.play('break', { snd: b.snd });
     this.shake(kind === 'brush' ? 0 : 0.07);
+    if (kind === 'pick') this.hitStop = 0.045;
     if (oreId) {
       const o = ORES[oreId];
       const item = o.item;
@@ -724,6 +725,7 @@ export default class MineScene extends Scene {
     this.fx.light(cx, cy, [1.2, 1.6, 2.0], 9, 0.6);
     this.audio.play('explode');
     this.audio.play('zap', { vol: 1 });
+    this.hitStop = 0.12;
     this.post.flash = 0.6; this.post.flashColor = 0xd8f6ff;
     this.shake(0.55);
     const d = Math.hypot(pl.x - cx, pl.y - cy);
@@ -973,6 +975,8 @@ export default class MineScene extends Scene {
         if (this.lightAt(x + 0.5, y + 0.5) < 0.18) continue;
         w.flags[i] |= F.SEEN;
         const item = ORES[w.ore[i]].item;
+        this.fx.sparkle(x + 0.5, y + 0.5, [1, 0.95, 0.75]);
+        this.audio.play('sparkle', { gap: 0.25 });
         const cat = ITEMS[item].cat === 'gem' ? 'gem' : ITEMS[item].cat === 'plant' ? 'plant' : 'mineral';
         st.discover(cat, item);
         if (w.exposed(x, y) && !this.flags.hiddenOre) { this.flags.hiddenOre = true; st.learn('hidden_ore'); }
@@ -1066,6 +1070,8 @@ export default class MineScene extends Scene {
   }
 
   update(dt) {
+    // a few frames of hit-stop make heavy impacts feel weighty
+    if (this.hitStop > 0) { this.hitStop -= dt; dt *= 0.08; }
     super.update(dt);
     const g = this.game, inp = g.input, st = this.state, w = this.world, pl = this.player;
     const U = this.renderer.U;
@@ -1168,6 +1174,16 @@ export default class MineScene extends Scene {
     if (lavaNear && !this.loops.lava) this.loops.lava = this.audio.loop('lava', { vol: 0.35 });
     if (!lavaNear && this.loops.lava) { this.loops.lava.stop(0.8); this.loops.lava = null; }
     if (chance(dt * 0.25)) this.audio.play('drip', { vol: 0.5 });
+    // dust motes drifting through the lamplight, and drips from wet ceilings
+    if (chance(dt * 9)) {
+      const R = st.lightRadius() * 0.8;
+      const mx = pl.x + rand(-R, R), my = pl.y + rand(-R, R);
+      if (!w.solid(Math.floor(mx), Math.floor(my))) this.fx.mote(mx, my);
+    }
+    if ((this.zone === 2 || this.zone === 5 || this.zone === 3) && chance(dt * 1.2)) {
+      const dx = Math.floor(pl.x + rand(-8, 8)), dy = Math.floor(pl.y + rand(-5, 3));
+      if (w.solid(dx, dy - 1) && !w.solid(dx, dy)) this.fx.drip(dx + rand(0.3, 0.7), dy);
+    }
 
     // ---- camera
     const lookAhead = pl.facing * 0.8;
@@ -1200,7 +1216,10 @@ export default class MineScene extends Scene {
     const pxScale = (g.engine.height / 2) / Math.tan((this.camera.fov * Math.PI) / 360);
     this.renderer.dust.uPx.value = pxScale;
     this.renderer.glow.uPx.value = pxScale;
-    this.renderer.dust.update(dt);
+    this.renderer.dust.update(dt, (q) => {
+      if (w.solid(Math.floor(q.x), Math.floor(-q.y))) { if (q.vy < -2 && chance(0.3)) this.audio.play('drip', { vol: 0.3 }); q.life = Math.min(q.life, q.t + 0.15); q.vx = q.vy = 0; q.grav = 0; return false; }
+      return false;
+    });
     this.renderer.glow.update(dt);
     const L = this.lighting.sample(pl.x, pl.y - 0.2);
     pl.updateVisual(dt, L, U.ambient.value, this.target ? this.target.mx - pl.x : pl.facing);

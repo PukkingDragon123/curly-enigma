@@ -108,5 +108,11 @@ export class FX {
   bubbles(x, y) { this.dustP.spawn({ x: x + rand(-0.3, 0.3), y: -y, z: 0.33, vx: 0, vy: rand(0.5, 1), life: rand(0.5, 1), size: 0.05, color: [0.75, 0.88, 1], alpha: 0.8, drag: 0.5, grav: -1 }); }
   scent(x, y) { this.glowP.spawn({ x: x + rand(0.2, 0.8), y: -y - rand(0.2, 0.8), z: 0.55, vx: rand(-0.15, 0.15), vy: rand(0.2, 0.5), life: rand(1.6, 2.6), size: 0.05, color: [0.95, 0.85, 0.4], alpha: 0.45, drag: 0.3 }); }
   frost(x, y) { for (let i = 0; i < 8; i++) this.glowP.spawn({ x: x + rand(0, 1), y: -y - rand(0, 1), z: 0.5, vx: rand(-0.3, 0.3), vy: rand(-0.2, 0.3), life: rand(0.5, 1.1), size: 0.05, color: [0.8, 0.95, 1], alpha: 0.9, drag: 1 }); }
+  mote(x, y) {
+    this.dustP.spawn({ x, y: -y, z: rand(-0.2, 0.9), vx: rand(-0.12, 0.12), vy: rand(-0.06, 0.1), life: rand(3, 6), size: rand(0.025, 0.045), color: [1, 0.95, 0.8], alpha: 0.75, drag: 0.1 });
+  }
+  drip(x, y) {
+    this.dustP.spawn({ x, y: -y, z: 0.2, vx: 0, vy: -0.4, life: 1.6, size: 0.05, color: [0.6, 0.8, 1], alpha: 0.9, drag: 0, grav: 9, collide: true, fade: false });
+  }
   glints(x, y) { this.glowP.spawn({ x: x + rand(0.15, 0.85), y: -y - rand(0.15, 0.85), z: 0.53, life: rand(0.25, 0.45), size: 0.06, color: [1, 1, 0.9], alpha: 0.9, drag: 0, fade: true }); }
 }

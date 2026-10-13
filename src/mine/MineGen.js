@@ -149,7 +149,7 @@ export function generateMine(zone, seed) {
   for (const [item, weight, vein] of spawn) {
     const oid = ORE_ID[item];
     if (!oid) continue;
-    const count = Math.round((weight * W * H) / 1000);
+    const count = Math.max(1, Math.round((weight * W * H) / 2800));
     const deep = ITEMS[item].value > median;
     for (let k = 0; k < count; k++) {
       let x = rng.int(2, W - 3);
