@@ -216,6 +216,7 @@ export class FaceMode {
     this.pushT = 0;
     this.idleT = 0;
     this.cool = 0;
+    this.restBlock = null; // x where the mole stepped back out on purpose
     this.look = { x: 0, y: 0 };
     this.anim = { kind: null, t: 0, dur: 0, target: null };
     this.cache = new Map();
@@ -259,7 +260,9 @@ export class FaceMode {
       const stuck = Math.abs(pl.x - (this.lastX ?? pl.x)) < 0.004;
       const pushing = ok && ax !== 0 && stuck && this.wallAhead(ax) < 0.6;
       this.pushT = pushing ? this.pushT + dt : 0;
-      const resting = ok && ax === 0 && Math.abs(pl.vx) < 0.2 && this.wallAhead(pl.facing) < 0.25 && !inp.mouseDown(0);
+      // after stepping back on purpose, standing still doesn't pull the view in again until the mole moves
+      if (this.restBlock !== null && Math.abs(pl.x - this.restBlock) > 0.3) this.restBlock = null;
+      const resting = ok && ax === 0 && this.restBlock === null && Math.abs(pl.vx) < 0.2 && this.wallAhead(pl.facing) < 0.25 && !inp.mouseDown(0);
       this.idleT = resting ? this.idleT + dt : 0;
       this.lastX = pl.x;
       if (this.pushT > 0.22) this.enter(ax);
@@ -281,7 +284,7 @@ export class FaceMode {
     this.pushT = this.idleT = 0;
     this.look.x = this.look.y = 0;
     s.audio.play('whoosh', { vol: 0.5, pitch: 0.7 });
-    if (s.game.ui.setFocusMode) s.game.ui.setFocusMode(true);
+    if (s.game.ui.setFocusMode) s.game.ui.setFocusMode(true, { onBack: () => this.exit('back') });
     if (!s.flags.faceMode) { s.flags.faceMode = true; s.state.learn('digging'); }
   }
 
@@ -290,6 +293,7 @@ export class FaceMode {
     const s = this.s;
     this.on = false;
     this.cool = why === 'away' || why === 'walk' ? 0.5 : 0.9;
+    this.restBlock = why === 'back' || why === 'down' ? s.player.x : null;
     s.audio.play('whoosh', { vol: 0.35, pitch: 1.2 });
     if (s.game.ui.setFocusMode) s.game.ui.setFocusMode(false);
   }
