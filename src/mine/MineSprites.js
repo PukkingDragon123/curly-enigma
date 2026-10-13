@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { PixelCanvas } from '../gfx/px/canvas.js';
 import { mat, mix } from '../gfx/px/color.js';
-import { Mask, vol, fill, sparkle, hash2, vnoise, bayer } from '../gfx/px/shade.js';
+import { Mask, vol, fill, sparkle, hash2, vnoise } from '../gfx/px/shade.js';
 import { ring, lineIn } from '../gfx/px/parts.js';
 import { leaf, leafMask, stem } from '../gfx/px/flora.js';
 import { oreArt } from '../gfx/px/ores.js';
@@ -78,10 +78,10 @@ const PLANT_DRAW = {
     lineIn(pc, 13, 30, 15, 31, R[4]);
   },
   fern(pc, f) {
-    const R = mat(0xd8dfcc, { cont: 1.1, sat: 0.8 });
-    frond(pc, 16, 31, 26, -1.75 + (f ? 0.06 : 0), 1.4, R);
-    frond(pc, 15, 31, 20, -1.4, -1.3 + (f ? 0.1 : 0), R);
-    frond(pc, 17, 31, 15, -1.95, 1.1, R);
+    const R = mat(0xd4dcc4, { cont: 1.2, sat: 0.8 });
+    frond(pc, 15, 31, 22, -2.35, -0.9 - (f ? 0.15 : 0), R);
+    frond(pc, 17, 31, 22, -0.8, 0.9 + (f ? 0.15 : 0), R);
+    frond(pc, 16, 31, 26, -1.6, 0.5 + (f ? 0.12 : 0), R);
   },
   whisper(pc, f) {
     const R = mat(0xa684c8, { cont: 1.1 });
@@ -181,10 +181,10 @@ const PLANT_DRAW = {
     for (const [x, y] of f ? [[5, 4], [9, 1], [24, 3], [28, 7]] : [[6, 6], [10, 3], [25, 5], [27, 10]]) { gl(pc, x, y, 0xc8a8e8, 0.5); pc.set(x + 1, y, 0x8a68b8); }
   },
   ashfern(pc, f) {
-    const R = mat(0x9a948e, { cont: 1.05 });
-    frond(pc, 16, 31, 26, -1.75 + (f ? 0.05 : 0), 1.4, R);
-    frond(pc, 15, 31, 20, -1.4, -1.3, R);
-    frond(pc, 17, 31, 15, -1.95, 1.1, R);
+    const R = mat(0x9a948e, { cont: 1.15 });
+    frond(pc, 15, 31, 22, -2.35, -0.9 - (f ? 0.12 : 0), R);
+    frond(pc, 17, 31, 22, -0.8, 0.9 + (f ? 0.12 : 0), R);
+    frond(pc, 16, 31, 26, -1.6, 0.5, R);
     for (const [x, y] of f ? [[24, 6], [6, 9], [20, 2]] : [[25, 7], [5, 10], [19, 3]]) { gl(pc, x, y, 0xff7a2a, 1); gl(pc, x, y - 1, 0xffc070, 0.8); }
   },
   ember(pc, f) {
@@ -254,14 +254,14 @@ function frond(pc, x0, y0, len, ang, curl, R) {
   for (let i = 0; i <= len; i++) { pts.push([x, y]); x += Math.cos(a); y += Math.sin(a); a += (curl * 2 * i) / (len * len); }
   const all = M();
   const leaflets = [];
-  for (let i = 3; i < pts.length - 1; i += 3) {
+  for (let i = 3; i < pts.length - 1; i += 2) {
     const [px, py] = pts[i];
     const t = i / pts.length;
     const la = Math.atan2(pts[i + 1][1] - py, pts[i + 1][0] - px);
-    const l = (1 - t) * 4.2 + 1.2;
+    const l = (1 - t) * 3.4 + 1.2;
     for (const s of [-1, 1]) {
       const a2 = la + s * (Math.PI / 2 - 0.5);
-      const m = leafMask(px, py, px + Math.cos(a2) * l, py + Math.sin(a2) * l, Math.max(0.6, l * 0.3), s * 0.5);
+      const m = leafMask(px, py, px + Math.cos(a2) * l, py + Math.sin(a2) * l, Math.max(0.6, l * 0.32), s * 0.5);
       leaflets.push(m); all.union(m);
     }
   }
@@ -384,7 +384,16 @@ const PICKUP_CATS = ['mineral', 'gem', 'plant', 'critter', 'drop', 'ingredient',
  *  items[itemId] → tile, plants[type] → [2 tiles], critters[type] → [4 tiles],
  *  misc[name] → tile, ore[oreId] → [2 tiles] (legacy whole-cell overlay).
  */
+let atlasCache = null;
+
 export function buildSpriteAtlas32() {
+  // the art is deterministic: paint it once per session, hand out a fresh texture each time
+  // (the mine disposes its texture on exit)
+  if (atlasCache) {
+    const c = atlasCache;
+    registerCreatureIcons(critterIconURL);
+    return { ...c, tex: makeTex(c.canvas), uv: (i) => tileUV(i, c.cols, c.rows) };
+  }
   const tiles = [];
   const put = (pc) => { tiles.push(pc); return tiles.length - 1; };
   const items = {};
@@ -418,10 +427,9 @@ export function buildSpriteAtlas32() {
   canvas.height = rows * T;
   const ctx = canvas.getContext('2d');
   tiles.forEach((pc, i) => ctx.drawImage(pc.commit(), (i % cols) * T, Math.floor(i / cols) * T));
-  const tex = makeTex(canvas);
-  const uv = (i) => tileUV(i, cols, rows);
+  atlasCache = { canvas, items, plants, critters, misc, ore, T, cols, rows };
   registerCreatureIcons(critterIconURL);
-  return { tex, canvas, items, plants, critters, misc, ore, uv, T, cols, rows };
+  return { ...atlasCache, tex: makeTex(canvas), uv: (i) => tileUV(i, cols, rows) };
 }
 
 /** A deposit centered in one 32×32 cell tile (legacy overlay; transparent = rock). */
@@ -502,13 +510,14 @@ export function oreBlob(itemId, seed = 1) {
   const idx = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) if (px[i] >= 0) idx[i] = lut.get(px[i]) || 0;
   const out = { w, h, pal, idx, glow, stain: stainFlags, item: itemId };
+  if (blobCache.size > 4000) blobCache.clear();
   blobCache.set(key, out);
   return out;
 }
 
 /** Simple textured host rock for previews. */
 function rockFill(pc, color, seed = 3) {
-  const R = mat(color, { cont: 0.45, hs: 0.5 });
+  const R = mat(color, { cont: 0.45, hs: 0.15 });
   for (let y = 0; y < pc.h; y++) for (let x = 0; x < pc.w; x++) {
     const n = vnoise(x * 0.16, y * 0.16, seed) * 0.75 + hash2(x, y, seed) * 0.25;
     pc.set(x, y, R[n > 0.74 ? 2 : n < 0.26 ? 4 : 3]);

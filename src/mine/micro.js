@@ -8,7 +8,10 @@ export const M = 32; // micro pixels per cell
 export const CPX = 256; // pixels per render chunk side (8 cells)
 export const CCELLS = CPX / M;
 export const APRON = 2; // extra pixels copied around each chunk texture (for edge shading)
-export const ORE_BASE = 128; // pixel material ids ≥ this are ore (ORE_BASE + ORES index)
+export const ORE_BASE = 128; // ore pixels: ORE_BASE + ORES index
+export const STAIN_BASE = 192; // tarnished host rock around a deposit: STAIN_BASE + ORES index (digs like rock)
+export const isOre = (m) => m >= ORE_BASE && m < STAIN_BASE;
+export const isStain = (m) => m >= STAIN_BASE && m < 255;
 
 // det byte: low 4 bits = palette shade, high bits = surface flags
 export const D_SHADE = 15;
@@ -156,12 +159,15 @@ for (let m = 0; m < 256; m++) SID[m] = STYLES.indexOf(MAT[m].style) + 1;
 
 /** Register the palette of an ore type (called by the generator once per ore). */
 export function setOrePalette(oreId, pal, glow) {
-  const mt = MAT[ORE_BASE + oreId];
   const o = ORES[oreId];
+  const mt = MAT[ORE_BASE + oreId];
   Object.assign(mt, { solid: true, gran: false, ore: true, oreId, hp: 3, tier: o.tier || 0, snd: 'crystal', sx: 6, sy: 6, style: 'ore', name: o.item });
+  // stained rock shares the palette but behaves like ordinary rock
+  const st = MAT[STAIN_BASE + oreId];
+  Object.assign(st, { solid: true, gran: false, ore: false, oreId, hp: 2.4, tier: 0, snd: 'stone', sx: 6, sy: 6, style: 'stain', name: 'Stained Rock', dust: 0x9a9088 });
   for (let i = 0; i < 16; i++) {
-    mt.pal[i] = pal[i] ?? pal[pal.length - 1] ?? 0xaaaaaa;
-    mt.glow[i] = glow ? glow[i] || 0 : 0;
+    mt.pal[i] = st.pal[i] = pal[i] ?? pal[pal.length - 1] ?? 0xaaaaaa;
+    mt.glow[i] = st.glow[i] = glow ? glow[i] || 0 : 0;
   }
 }
 

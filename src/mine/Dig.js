@@ -3,7 +3,7 @@
 // pops out as a physical chunk. Chisels chip single pixels, brushes sweep loose grit,
 // drills grind, blasts shatter.
 import { B } from './blocks.js';
-import { M, MAT, ORE_BASE, GRAN, D_CRACK, D_CRUST, D_SHADE, D_SCORCH, pieceId, pixelColor, tn } from './micro.js';
+import { M, MAT, ORE_BASE, GRAN, D_CRACK, D_CRUST, D_SHADE, D_SCORCH, pieceId, pixelColor, tn, isOre } from './micro.js';
 import { UNGEN } from './MineWorld.js';
 
 const UNBREAKABLE = new Uint8Array(256);
@@ -20,7 +20,7 @@ export class Digger {
   piece(x, y, max = 1400) {
     const w = this.w, MW = w.MW, pm = w.pm;
     const m = w.pmat(x, y);
-    if (!m || m >= ORE_BASE || UNBREAKABLE[m]) return null;
+    if (!m || isOre(m) || UNBREAKABLE[m]) return null;
     const id = pieceId(m, x, y);
     const out = [];
     const seen = new Set();
@@ -91,7 +91,7 @@ export class Digger {
     for (let yy = Math.floor(y - r); yy <= y + r; yy++)
       for (let xx = Math.floor(x - r); xx <= x + r; xx++) {
         const m = w.pmat(xx, yy);
-        if (!m || m >= ORE_BASE || UNBREAKABLE[m]) continue;
+        if (!m || isOre(m) || UNBREAKABLE[m]) continue;
         const d = (xx + 0.5 - x) ** 2 + (yy + 0.5 - y) ** 2;
         if (d > r * r) continue;
         if (filter && !filter(m, xx, yy)) continue;
@@ -114,7 +114,7 @@ export class Digger {
         const d = Math.hypot(xx + 0.5 - x, yy + 0.5 - y);
         if (d > R) continue;
         const m = w.pmat(xx, yy);
-        if (!m || m >= ORE_BASE) continue;
+        if (!m || isOre(m)) continue;
         if (UNBREAKABLE[m] || MAT[m].tier > tier) { if (d < 4) res.hard = true; continue; }
         if (GRAN[m]) continue;
         const k = pieceId(m, xx, yy) * 64 + m;
@@ -187,7 +187,7 @@ export class Digger {
     // ore pixels under the bit get shredded
     for (let yy = Math.floor(y - 3); yy <= y + 3; yy++) for (let xx = Math.floor(x - 3); xx <= x + 3; xx++) {
       const m = w.pmat(xx, yy);
-      if (m >= ORE_BASE && m !== UNGEN && (xx - x) ** 2 + (yy - y) ** 2 < 9 && Math.random() < dt * 14) out.ore.push([xx, yy]);
+      if (isOre(m) && (xx - x) ** 2 + (yy - y) ** 2 < 9 && Math.random() < dt * 14) out.ore.push([xx, yy]);
     }
     const c = w.pmat(Math.floor(x), Math.floor(y));
     if (c && !out.chips.length && (UNBREAKABLE[c] || MAT[c].tier > tier)) out.hard = true;
@@ -209,10 +209,10 @@ export class Digger {
         const d = Math.hypot(xx + 0.5 - x, yy + 0.5 - y);
         const edge = R * (0.78 + tn(xx, yy, 8, s) * 0.36);
         if (d > edge) {
-          if (d < edge + 5 && m < ORE_BASE) { w.pd[p] |= D_SCORCH; w.touchPx(xx, yy); }
+          if (d < edge + 5 && !isOre(m)) { w.pd[p] |= D_SCORCH; w.touchPx(xx, yy); }
           continue;
         }
-        if (m >= ORE_BASE) { ore.push([xx, yy]); continue; }
+        if (isOre(m)) { ore.push([xx, yy]); continue; }
         if ((MAT[m].hp || 0) > maxHp) continue;
         const k = ((xx / 12) | 0) + ((yy / 12) | 0) * 4096;
         let l = pieces.get(k);

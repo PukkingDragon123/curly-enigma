@@ -7,7 +7,7 @@ import { Scene } from '../core/Scene.js';
 import { clamp, rand, chance, pick, wait, el, formatGoldFull, lerp } from '../core/util.js';
 import { B, BLOCKS, ORES, isSolid, isGranular } from '../mine/blocks.js';
 import { F } from '../mine/MineWorld.js';
-import { M, CPX, MAT, ORE_BASE } from '../mine/micro.js';
+import { M, CPX, MAT, ORE_BASE, isStain } from '../mine/micro.js';
 import { generateMine } from '../mine/MineGen.js';
 import { stepFluids } from '../mine/Fluids.js';
 import { Lighting } from '../mine/Lighting.js';
@@ -1095,7 +1095,10 @@ export default class MineScene extends Scene {
         const e = d.exp ?? 0;
         html += e > 0.38 ? ' <span style="color:#2a9a3a">· loose</span>' : ` <span style="opacity:.7">· ${Math.round(e * 100)}% free</span>`;
       } else {
-        const mt = MAT[d ? (d.host[(t.py - d.y0) * d.w + (t.px - d.x0)] || B.STONE) : t.mat];
+        // hidden deposits (and their stained halo) read as the plain host rock
+        const sd = !d && isStain(t.mat) ? w.depositAt(t.px, t.py) : null;
+        const hd = d || (sd && !sd.visible && !sd.revealed ? sd : null);
+        const mt = MAT[hd ? (hd.host[(t.py - hd.y0) * hd.w + (t.px - hd.x0)] || B.STONE) : t.mat];
         if (mt && mt.name) html = `<b>${mt.name}</b>`;
         const pickTier = this.state.equipped('pick')?.tier ?? 1;
         if (mt && mt.tier > pickTier) html += '<br><span style="color:#c0402a">too hard</span>';

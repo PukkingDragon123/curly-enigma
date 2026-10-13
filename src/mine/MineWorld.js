@@ -4,7 +4,7 @@
 //  - the pixel layer (M×M pixels per cell): the actual rock you chip away. Cells derive their
 //    material from how many of their pixels are still solid.
 import { B, BLOCKS, ORES, isSolid } from './blocks.js';
-import { M, CPX, APRON, ORE_BASE, D_SHADE, MAT, GRAN } from './micro.js';
+import { M, CPX, APRON, ORE_BASE, D_SHADE, MAT, GRAN, isOre } from './micro.js';
 
 export const F = {
   REVEALED: 1, // (legacy) ore known to the player
@@ -218,7 +218,7 @@ export class MineWorld {
     if (!isSolid(id)) {
       for (let yy = y0; yy < y0 + M; yy++) for (let xx = x0; xx < x0 + M; xx++) {
         const m = this.pm[yy * this.MW + xx];
-        if (m && m < ORE_BASE && m !== B.BEDROCK) this.clearPx(xx, yy);
+        if (m && !isOre(m) && m !== B.BEDROCK && m !== UNGEN) this.clearPx(xx, yy);
       }
       this.setCellBlock(x, y, B.AIR);
       return;

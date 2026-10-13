@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { makeNoise2D, makeRng, clamp, lerp, rand, chance } from '../core/util.js';
 import { B, ORES, ORE_ID, isSolid, isGranular } from './blocks.js';
 import { MineWorld } from './MineWorld.js';
-import { M, CPX, tn } from './micro.js';
+import { M, CPX, tn, pixelColor } from './micro.js';
 import { ChunkGen, NODE } from './MicroGen.js';
 import { warpFields, ensureOrePalettes, planDeposit, spikeFeature, rootFeature } from './MineGen.js';
 import { settleFluids } from './Fluids.js';
@@ -178,6 +178,17 @@ export class IntroController {
     s.audio.play('trickle');
     s.shake(0.25);
     setTimeout(() => { if (g.scene === s) s.fx.dustCloud(s.player.x + 1.5, s.player.y - 0.8, 2.2, [0.6, 0.55, 0.5]); }, 300);
+    // the last pebbles of the cave-in still dropping from the ceiling
+    for (let k = 0; k < 5; k++) {
+      setTimeout(() => {
+        if (g.scene !== s) return;
+        const cx = (s.player.x + rand(-1.6, 2.6)) * M, cy = (s.player.y - 1.25) * M;
+        const r = rand(1.6, 3.4), pix = [];
+        for (let y = -4; y <= 4; y++) for (let x = -4; x <= 4; x++) if (x * x + y * y <= r * r) pix.push({ x: Math.round(cx + x), y: Math.round(cy + y), c: pixelColor(B.RUBBLE, 2 + ((x * 3 + y * 5) & 7)) });
+        s.bodies.spawn(pix, { vx: rand(-0.4, 0.4), vy: -rand(0, 1), vz: rand(-0.3, 0.3), min: 3 });
+        s.fx.trickle(cx / M - 0.5, cy / M);
+      }, 250 + k * rand(250, 700));
+    }
     const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     if (!coarse) g.ui.setHints('<kbd>A</kbd><kbd>D</kbd> move · <kbd>W</kbd>/<kbd>Space</kbd> jump &amp; climb · <kbd>Mouse</kbd> dig · walk into a wall to dig up close · <kbd>1</kbd>–<kbd>8</kbd> tools · <kbd>Q</kbd> snack');
     setTimeout(() => { if (g.scene === s) g.ui.setHints(null); }, 60000);

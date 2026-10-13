@@ -6,7 +6,7 @@
 //  - extruded side walls along every solid/air pixel edge, so dug tunnels read as real
 //    3D voxel relief from the slightly raised camera.
 import * as THREE from 'three';
-import { M, CPX, APRON, ORE_BASE, MAT, D_SHADE } from './micro.js';
+import { M, CPX, APRON, ORE_BASE, STAIN_BASE, MAT, D_SHADE } from './micro.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 
 const TEX = CPX + APRON * 2;
@@ -119,7 +119,7 @@ void main() {
     col = col * L + pc.rgb * glow * 1.35;
     if (xm > 0.0) {
       float scan = step(0.65, fract(vPos.y * 5.0 - time * 2.5)) * 0.07;
-      bool ore = m >= ${ORE_BASE}.0;
+      bool ore = m >= ${ORE_BASE}.0 && m < ${STAIN_BASE}.0;
       col = mix(col, (ore ? pc.rgb * 0.9 + 0.1 : vec3(0.02, 0.07, 0.1) + pc.rgb * 0.08) + vec3(0.0, scan, scan * 1.3), xm * 0.85);
     }
   } else if (kind < 1.5) {

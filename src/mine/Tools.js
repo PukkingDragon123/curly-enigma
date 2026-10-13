@@ -2,7 +2,7 @@
 // loosen, pop out), vibration, explosions, falling islands and cave-in chunks.
 import * as THREE from 'three';
 import { B, BLOCKS, ORES } from './blocks.js';
-import { M, MAT, ORE_BASE, GRAN, pixelColor, D_CRUST } from './micro.js';
+import { M, MAT, ORE_BASE, GRAN, pixelColor, D_CRUST, isOre } from './micro.js';
 import { UNGEN, F } from './MineWorld.js';
 import { ITEMS } from '../data/items.js';
 import { clamp, rand, chance, hexToRgb } from '../core/util.js';
@@ -35,7 +35,7 @@ export class Tools {
       const px = Math.floor(x * M), py = Math.floor(y * M);
       const m = w.pmat(px, py);
       if (m) {
-        const ore = m >= ORE_BASE && m !== UNGEN;
+        const ore = isOre(m);
         const breakable = m !== B.BEDROCK && m !== B.TIMBER && m !== UNGEN;
         return { px, py, x: (px + 0.5) / M, y: (py + 0.5) / M, cx: Math.floor(x), cy: Math.floor(y), solid: true, mat: m, ore, ok: breakable, mx, my, dirx: dx, diry: dy };
       }
@@ -463,7 +463,7 @@ export class Tools {
     for (const p of comp) {
       const m = w.pm[p];
       const x = p % MW, y = (p / MW) | 0;
-      if (m >= ORE_BASE) { const d = w.depositAt(x, y); if (d) deps.add(d); continue; }
+      if (isOre(m)) { const d = w.depositAt(x, y); if (d) deps.add(d); continue; }
       pix.push({ x, y, c: pixelColor(m, w.pd[p]), m });
     }
     for (const d of deps) this.pop(d, 'fall');

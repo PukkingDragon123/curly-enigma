@@ -2,7 +2,7 @@
 // materials, smooth noise fields sampled every 8 px, feature lists); this turns one
 // 256×256 chunk of that plan into pixels the first time something needs it.
 import { B } from './blocks.js';
-import { M, CPX, ORE_BASE, D_CRUST, D_GROWTH, MAT, GRAN, texel, tn, ih } from './micro.js';
+import { M, CPX, ORE_BASE, STAIN_BASE, D_CRUST, D_GROWTH, MAT, GRAN, texel, tn, ih } from './micro.js';
 import { UNGEN } from './MineWorld.js';
 
 export const NODE = 8; // pixel spacing of the plan's noise-field nodes
@@ -179,7 +179,7 @@ export class ChunkGen {
 
   stampDeposit(d, xa, ya, xb, yb, X0, Y0) {
     const tm = this.tm, td = this.td;
-    const mOre = ORE_BASE + d.oreId;
+    const mOre = ORE_BASE + d.oreId, mStain = STAIN_BASE + d.oreId;
     for (let y = ya; y < yb; y++) for (let x = xa; x < xb; x++) {
       const lx = x - d.x0, ly = y - d.y0;
       if (lx < 0 || ly < 0 || lx >= d.w || ly >= d.h) continue;
@@ -189,9 +189,9 @@ export class ChunkGen {
       const host = tm[o];
       if (!host || GRAN[host] || host === B.BEDROCK || host === B.TIMBER || host >= ORE_BASE || host === UNGEN) continue;
       const hi = ly * d.w + lx;
-      if (!d.hostSet[hi]) { d.hostSet[hi] = 1; d.host[hi] = host; d.hostDet[hi] = td[o]; d.stamped++; }
-      tm[o] = mOre;
-      td[o] = v;
+      if (!d.hostSet[hi]) { d.hostSet[hi] = 1; d.host[hi] = host; d.hostDet[hi] = td[o]; if (!(d.stain && d.stain[v])) d.stamped++; }
+      tm[o] = d.stain && d.stain[v] ? mStain : mOre;
+      td[o] = d.map ? d.map[v] : v;
     }
   }
 

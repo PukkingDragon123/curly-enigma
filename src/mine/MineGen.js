@@ -8,7 +8,7 @@ import { ITEMS } from '../data/items.js';
 import { settleFluids } from './Fluids.js';
 import { M, ORE_BASE, setOrePalette, tn } from './micro.js';
 import { ChunkGen, NODE, makeDeposit } from './MicroGen.js';
-import { oreBlob } from './oreBlobs.js';
+import { oreBlob } from './MineSprites.js';
 
 const ZONE_GEN = {
   1: {
@@ -117,23 +117,48 @@ export function warpFields(w, seed, amp = 15) {
   return { WX, WY, NW, NH };
 }
 
-/** Register ore palettes once. */
+/** Register ore palettes once: each ore type shares one 15-color palette (from its seed-1 art). */
 let palettesReady = false;
+const TYPE_PAL = [];
 export function ensureOrePalettes() {
   if (palettesReady) return;
   palettesReady = true;
   for (const o of ORES) {
     if (!o) continue;
-    const b = oreBlob(o.item, 0);
+    const b = oreBlob(o.item, 1);
+    TYPE_PAL[o.id] = b;
     setOrePalette(o.id, b.pal, b.glow);
   }
+}
+
+/** Map a deposit's own palette indices onto its ore type's shared palette (nearest color, same glow/stain kind). */
+function paletteMap(oreId, blob) {
+  const T = TYPE_PAL[oreId];
+  const map = new Uint8Array(16);
+  if (!T || T === blob) { for (let k = 0; k < 16; k++) map[k] = k; return map; }
+  const rgb = (c) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+  for (let k = 1; k < blob.pal.length && k < 16; k++) {
+    const a = rgb(blob.pal[k]);
+    let best = 1, bd = Infinity;
+    for (let j = 1; j < T.pal.length && j < 16; j++) {
+      const b = rgb(T.pal[j]);
+      let d = (a[0] - b[0]) ** 2 * 0.3 + (a[1] - b[1]) ** 2 * 0.59 + (a[2] - b[2]) ** 2 * 0.11;
+      if (!!(blob.glow[k] > 0.05) !== !!(T.glow[j] > 0.05)) d += 20000;
+      if (!!(blob.stain && blob.stain[k]) !== !!(T.stain && T.stain[j])) d += 30000;
+      if (d < bd) { bd = d; best = j; }
+    }
+    map[k] = best;
+  }
+  return map;
 }
 
 /** Plant a deposit pattern centered on pixel (px, py). */
 export function planDeposit(w, plan, oreId, px, py, q, seed) {
   const o = ORES[oreId];
-  const blob = oreBlob(o.item, seed);
+  const blob = oreBlob(o.item, (seed % 7) + 1);
   const d = makeDeposit(oreId, o.item, blob, Math.round(px - blob.w / 2), Math.round(py - blob.h / 2), q);
+  d.map = paletteMap(oreId, blob);
+  d.stain = blob.stain || null;
   w.addDeposit(d);
   plan.features.push({ kind: 'deposit', dep: d, x0: d.x0, y0: d.y0, x1: d.x0 + d.w, y1: d.y0 + d.h });
   return d;

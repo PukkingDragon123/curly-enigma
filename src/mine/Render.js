@@ -1,7 +1,7 @@
 // Mine rendering: the pixel terrain (Terrain.js), sprites, particles, small chip cubes,
 // the target marker and fluids. Everything samples the shared light-grid texture.
 import * as THREE from 'three';
-import { buildSpriteAtlas } from './MineArt.js';
+import { buildSpriteAtlas32 } from './MineSprites.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { Terrain, LIGHT_GLSL } from './Terrain.js';
 import { M } from './micro.js';
@@ -294,7 +294,7 @@ export class MineRenderer {
     this.L = lighting;
     this.U = makeUniforms(world);
     this.U.lightMap.value = lighting.tex;
-    this.spriteAtlas = buildSpriteAtlas();
+    this.spriteAtlas = buildSpriteAtlas32();
     this.root = new THREE.Group();
     scene3.add(this.root);
     this.terrain = new Terrain(this.root, world, this.U, { growth: opts.growth, speck: opts.speck });
