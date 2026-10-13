@@ -494,7 +494,7 @@ export function makeCharacter(spec, opts = {}) {
   let lampPos = null;
   if (hat) {
     const m = mk(hat.grid, hat.pivot);
-    const sink = spec.hat === 'helmet' || spec.hat === 'hardhat' || spec.hat === 'cap' || spec.hat === 'beanie' ? 4 : spec.hat === 'bandana' ? 3 : 1;
+    const sink = spec.hat === 'helmet' || spec.hat === 'hardhat' || spec.hat === 'cap' ? 3 : spec.hat === 'beanie' ? 4 : spec.hat === 'bandana' ? 3 : 1;
     m.position.set(0, (p.hh - sink) * s, 0);
     neck.add(m);
     if (hat.lamp) {

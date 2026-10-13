@@ -100,7 +100,7 @@ export class Particles {
 const R = (a, b) => a + Math.random() * (b - a);
 
 export function steam(fx, at, spread = 0.25, color = 0xf4f0ec) {
-  fx.emit({ pos: [at.x + R(-spread, spread), at.y, at.z + R(-spread, spread) * 0.7], vel: [R(-0.03, 0.03), R(0.18, 0.32), R(-0.02, 0.02)], color, size: R(0.035, 0.06), life: R(1.2, 2.0), grow: 1.4, alpha: 0.55, fade: 1.5 });
+  fx.emit({ pos: [at.x + R(-spread, spread), at.y, at.z + R(-spread, spread) * 0.7], vel: [R(-0.03, 0.03), R(0.22, 0.36), R(-0.02, 0.02)], color, size: R(0.009, 0.015), life: R(1.0, 1.7), grow: 0.9, alpha: 0.42, fade: 1.6 });
 }
 
 export function crumbs(fx, at, color, n = 8, floor = 0) {

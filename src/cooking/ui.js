@@ -96,6 +96,7 @@ export class CookUI {
           onclick: () => toggle(id),
           onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(id); } },
           onmouseenter: () => { info.innerHTML = `<b>${it.name}</b> · ${it.desc || ''}`; },
+          onmouseleave: () => { info.innerHTML = opts.matchInfo(sel); },
         }, [el('img', { class: 'pix', src: iconURL(id), alt: it.name }), el('span', { class: 'n' }, '×' + st.count(id))]));
       }
       scroll.append(grid);
@@ -139,6 +140,10 @@ export class CookUI {
     };
 
     const render = () => {
+      if (!panel.isConnected) return;
+      const before = sel.length;
+      sel = sel.filter((id) => st.count(id) > 0);
+      if (sel.length !== before) opts.onChange(sel.slice());
       tabs.innerHTML = '';
       const nCards = Object.keys(st.data.recipes || {}).filter((d) => DISHES[d] && d !== 'mystery_mush').length;
       for (const [k, label] of [['ings', 'Ingredients'], ['cards', `Recipe cards (${nCards})`]]) {

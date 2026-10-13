@@ -47,12 +47,15 @@ export class AudioSys {
     this.vol = { master: 0.9, music: 0.55, sfx: 0.85 };
     this.muted = false;
     this.activeLoops = new Set();
+    this.pendingLoops = new Set();
     this.music = { name: null, gain: null, timer: null, step: 0, nextTime: 0, track: null, params: {} };
   }
 
   init() {
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume().then(() => { for (const p of [...this.pendingLoops]) { this.pendingLoops.delete(p); p.start(); } }).catch(() => {});
+      }
       return;
     }
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -79,6 +82,11 @@ export class AudioSys {
       brown: makeNoiseBuffer(ctx, 'brown'),
     };
     this.applyVolumes();
+    const startPending = () => {
+      for (const p of [...this.pendingLoops]) { this.pendingLoops.delete(p); p.start(); }
+    };
+    if (ctx.state === 'running') startPending();
+    else ctx.resume().then(startPending).catch(() => {});
     if (this.pendingMusic) {
       const { name, params } = this.pendingMusic;
       this.pendingMusic = null;
@@ -226,9 +234,17 @@ export class AudioSys {
    */
   loop(name, params = {}) {
     const dummy = { set() {}, stop() {}, alive: false };
-    if (!this.ctx) return dummy;
     const def = this.loopDefs[name];
     if (!def) return dummy;
+    if (!this.ctx || this.ctx.state !== 'running') {
+      // queue until the first user gesture unlocks audio, then hand over to a real loop
+      const pend = { alive: true, real: null, params: { ...params } };
+      pend.set = (p) => { Object.assign(pend.params, p); if (pend.real) pend.real.set(p); };
+      pend.stop = (fade) => { pend.alive = false; if (pend.real) pend.real.stop(fade); this.pendingLoops.delete(pend); };
+      pend.start = () => { if (pend.alive && !pend.real) pend.real = this.loop(name, pend.params); };
+      this.pendingLoops.add(pend);
+      return pend;
+    }
     const ctx = this.ctx;
     const out = ctx.createGain();
     out.gain.value = 0.0001;
@@ -260,6 +276,7 @@ export class AudioSys {
 
   stopAllLoops() {
     for (const h of [...this.activeLoops]) h.stop(0.1);
+    for (const p of [...this.pendingLoops]) p.stop();
   }
 
   /** Helper for loops: a looping noise source through a filter into dest. */

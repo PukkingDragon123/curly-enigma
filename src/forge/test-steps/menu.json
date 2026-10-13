@@ -1,0 +1,50 @@
+[
+{
+"wait": 300
+},
+{
+"shot": "shots/forge-menu-01-hub.png"
+},
+{
+"press": "Digit1"
+},
+{
+"wait": 800
+},
+{
+"shot": "shots/forge-menu-02-smelt-list.png"
+},
+{
+"press": "Escape"
+},
+{
+"wait": 400
+},
+{
+"press": "Digit2"
+},
+{
+"wait": 800
+},
+{
+"shot": "shots/forge-menu-03-plan.png"
+},
+{
+"press": "Escape"
+},
+{
+"wait": 400
+},
+{
+"eval": "window.__game.scene.menus.mode"
+},
+{
+"press": "Escape"
+},
+{
+"wait": 2500
+},
+{
+"eval": "'scene now: ' + window.__game.sceneName"
+}
+]

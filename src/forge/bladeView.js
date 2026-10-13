@@ -46,6 +46,21 @@ export class BladeView {
     this.frame = this._makeFrame();
     this.group.add(this.frame);
     this.dots = null;
+    // ghost: where a charging blow would leave the column
+    this.ghostMat = new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.45, depthTest: false });
+    this.ghostMesh = new THREE.Mesh(unitBox, this.ghostMat);
+    this.ghostMesh.renderOrder = 28;
+    this.ghostMesh.visible = false;
+    this.group.add(this.ghostMesh);
+    this.ghostW = 0;
+    this.ghostCol = -1;
+  }
+
+  /** Show (col >= 0) or hide the predicted width of a column under a charging blow. */
+  ghost(col, w = 0) {
+    this.ghostCol = col;
+    this.ghostW = w;
+    this.ghostMesh.visible = col >= 0;
   }
 
   _makeFrame() {
@@ -108,7 +123,7 @@ export class BladeView {
       maxTh = Math.max(maxTh, th);
       c.mesh.scale.set(COL * 1.001, th, Math.max(0.006, 2 * c.disp * HWU * (1 + c.squash * 0.12)));
       c.mesh.position.set((i + 0.5) * COL, th / 2, 0);
-      applyHeat(c.mat, this.base, sim.T[i] ?? 20, 1.3);
+      applyHeat(c.mat, this.base, sim.T[i] ?? 20, 0.95);
       if (i === this.hover) c.mat.emissive.offsetHSL(0, 0, 0).addScalar(0.05);
       // crack marks
       const n = sim.cracks[i] || 0;
@@ -129,7 +144,7 @@ export class BladeView {
         k.position.set((i + 0.5) * COL + (j - 1) * 0.018, th + 0.002, (j % 2 ? 1 : -1) * Math.min(c.disp * HWU * 0.4, 0.03));
       });
     }
-    applyHeat(this.tangMat, this.base, sim.T[0] ?? 20, 1.0);
+    applyHeat(this.tangMat, this.base, sim.T[0] ?? 20, 0.7);
     if (this.dots) {
       this.dots.position.y = maxTh + 0.004;
       const col = this.dots.geometry.attributes.color;
@@ -142,6 +157,12 @@ export class BladeView {
         col.array[k * 3] = c[0] * pulse * hl; col.array[k * 3 + 1] = c[1] * pulse * hl; col.array[k * 3 + 2] = c[2] * pulse * hl;
       }
       col.needsUpdate = true;
+    }
+    if (this.ghostCol >= 0) {
+      const gw = Math.max(0.006, 2 * this.ghostW * HWU);
+      this.ghostMesh.scale.set(COL * 0.9, 0.004, gw);
+      this.ghostMesh.position.set((this.ghostCol + 0.5) * COL, maxTh + 0.006, 0);
+      this.ghostMat.opacity = 0.35 + 0.2 * Math.sin(time * 14);
     }
     // selection frame
     if (this.hover >= 0 && this.hover < sim.w.length) {
@@ -178,6 +199,7 @@ export class BladeView {
     this.tangMat.dispose();
     this.crackMat.dispose();
     this.frame.userData.mat.dispose();
+    this.ghostMat.dispose();
     if (this.dots) { this.dots.geometry.dispose(); this.dots.material.dispose(); }
   }
 }
@@ -225,7 +247,8 @@ export function buildWeapon(sim, opts = {}) {
           if (thin && isEdge) continue; // bevel: edges are one voxel thick
           let c = isEdge ? edge : z === 1 ? spine : mc;
           if (!hafted && dx === 0 && z !== 1 && y > 2 && i < L * 0.7 && r >= 2) c = dark; // fuller
-          if ((sim.cracks[i] || 0) > 0 && z !== 1 && k >= 1 && Math.abs(dx - (k === 1 ? -1 : 1)) <= Math.min(1, r - 1)) c = 0x1a1414;
+          const cr = sim.cracks[i] || 0;
+          if (cr > 0 && z !== 1 && r >= 2 && ((k === 1 && dx === -1) || (k === 2 && dx === 0) || (cr > 1 && k === 0 && dx === 1))) c = 0x1a1414;
           g.set(x, y, z, c);
         }
         if (veinC && !isEdge && Math.abs(dx) <= Math.max(0, r - 1) && rnd() < 0.2) veins.set(x, y, 0, veinC);

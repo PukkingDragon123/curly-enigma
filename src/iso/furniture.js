@@ -403,10 +403,12 @@ function beetleJar(id) {
   const g = fg(id, 20);
   g.cylinderY(8, 8, 4.5, 0, 6, (x, y, z) => (y === 5 ? (Math.round(Math.hypot(x - 7.5, z - 7.5)) % 2 ? 0xc8a070 : 0xa8804a) : jit(0x6a4a2a, x, y, z, 6, 0.1)));
   g.cylinderY(8, 8, 2.6, 16, 18, (x, y, z) => jit(0x9a7a5a, x, y, z, 3, 0.1));
+  g.cylinderY(8, 8, 3.4, 15, 16, (x, y, z) => (Math.hypot(x + 0.5 - 8, z + 0.5 - 8) > 2.6 ? 0xc8e8e8 : -1));
+  g.cylinderY(8, 8, 3.4, 6, 7, (x, y, z) => (Math.hypot(x + 0.5 - 8, z + 0.5 - 8) > 2.6 ? 0xb8d8d8 : -1));
   for (let y = 7; y < 14; y++) g.set(7 + (y > 10 ? 1 : 0), y, 8, 0x6a4a2a);
   g.set(9, 12, 8, 0x6ab84a); g.set(9, 13, 8, 0x7ac85a);
   grp.add(M(g));
-  const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.6, 10), new THREE.MeshBasicMaterial({ color: 0xd8f0f0, transparent: true, opacity: 0.22, depthWrite: false }));
+  const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.6, 10), new THREE.MeshBasicMaterial({ color: 0xe0fff8, transparent: true, opacity: 0.32, depthWrite: false }));
   jar.position.y = 6 / 16 + 0.3;
   grp.add(jar);
   const bg = new VoxelGrid(3, 2, 4);
@@ -416,7 +418,7 @@ function beetleJar(id) {
   grp.add(beetle);
   return {
     obj: grp,
-    lights: [{ x: 0, y: 0.65, z: 0, color: 0xc8ff7a, intensity: 3, distance: 4, flicker: 0.25, speed: 0.4, pool: 1.2, poolOpacity: 0.3, halo: 0.7, hy: 0.65, haloOpacity: 0.45 }],
+    lights: [{ x: 0, y: 0.9, z: 0.2, color: 0xc8ff7a, intensity: 1.8, distance: 3.5, flicker: 0.25, speed: 0.4, pool: 1.1, poolOpacity: 0.26, halo: 0.6, hy: 0.7, haloOpacity: 0.35 }],
     update(dt, t) {
       beetle.position.y = 0.55 + Math.sin(t * 2.3) * 0.12;
       beetle.position.x = Math.sin(t * 1.1) * 0.08;

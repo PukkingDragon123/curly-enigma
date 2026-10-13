@@ -24,8 +24,8 @@ const CREDITS_AT = 11.8;
 const POST = {
   farewell: { vignette: 0.42, tint: 0xfff0e0, saturation: 1.1, contrast: 1.05, brightness: 1 },
   ascent: { vignette: 0.5, tint: 0xffffff, saturation: 1.1, contrast: 1.05, brightness: 1 },
-  surface: { vignette: 0.2, tint: 0xfff6ee, saturation: 1.12, contrast: 1.04, brightness: 1.04 },
-  beach: { vignette: 0.16, tint: 0xfff0e4, saturation: 1.16, contrast: 1.05, brightness: 1.02 },
+  surface: { vignette: 0.2, tint: 0xfff6ee, saturation: 1.12, contrast: 1.04, brightness: 1.04, innerThresh: 0.9 },
+  beach: { vignette: 0.16, tint: 0xfff0e4, saturation: 1.12, contrast: 1.05, brightness: 1.02, innerThresh: 0.9 },
 };
 
 export default class EndingScene extends Scene {
@@ -71,7 +71,14 @@ export default class EndingScene extends Scene {
     if (start === 'credits') { start = 'beach'; at = Math.max(at, CREDITS_AT); }
     if (!PHASES.includes(start)) start = 'farewell';
     this.setPhase(start);
-    if (at > 0) for (let k = 0; k < at; k += 1 / 30) this.update(1 / 30);
+    if (at > 0) {
+      for (let k = 0; k < at; k += 1 / 30) this.update(1 / 30);
+      this.clearBubbles();
+    }
+    // dev: &cam=x,y,z,lookX,lookY,lookZ (or &cam=head,dx,dy,dz to frame the mole's face), &freeze=1 to stop time
+    this.devHead = params.cam && params.cam.startsWith('head');
+    this.devCam = params.cam ? params.cam.split(',').map(Number) : null;
+    this.frozen = !!params.freeze;
   }
 
   // ------------------------------------------------------------------ phases
@@ -202,7 +209,11 @@ export default class EndingScene extends Scene {
       const p = this.headScreen(b.rig, b);
       this.game.ui.moveBubble(b.key, p.x, p.y, p.visible);
     }
-    this.bubbles = this.bubbles.filter((b) => b.until > this.time);
+    this.bubbles = this.bubbles.filter((b) => {
+      if (b.until > this.time) return true;
+      this.game.ui.hideBubble(b.key);
+      return false;
+    });
   }
 
   clearBubbles() {
@@ -291,7 +302,7 @@ export default class EndingScene extends Scene {
   leave(to) {
     if (this.leaving) return;
     this.leaving = true;
-    this.game.goto(to, { from: 'ending' }, { transition: 'fade', dur: 0.8, color: to === 'title' ? 0x000000 : 0x000000 });
+    this.game.goto(to, { from: 'ending' }, { transition: 'fade', dur: 0.8 });
   }
 
   // ------------------------------------------------------------------ frame
@@ -308,6 +319,7 @@ export default class EndingScene extends Scene {
   }
 
   update(dt) {
+    if (this.frozen) dt = 0;
     super.update(dt);
     if (this.dead) return;
     this.phaseT += dt;
@@ -350,6 +362,20 @@ export default class EndingScene extends Scene {
         break;
       }
       default: break;
+    }
+    if (this.devHead) {
+      const c = this.devCam;
+      const hp = new THREE.Vector3();
+      this.mole.neck.getWorldPosition(hp);
+      hp.y += 0.3;
+      this.camera.position.set(hp.x + (c[1] || 0), hp.y + (c[2] || 0), hp.z + (c[3] || 1.2));
+      this.camera.lookAt(hp);
+    } else if (this.devCam && this.devCam.length >= 6) {
+      const c = this.devCam;
+      // during the ascent the offsets are relative to the (moving) cage
+      const o = this.phase === 'ascent' ? this.cage.root.position : new THREE.Vector3();
+      this.camera.position.set(o.x + c[0], o.y + c[1], o.z + c[2]);
+      this.camera.lookAt(o.x + c[3], o.y + c[4], o.z + c[5]);
     }
     this.updateBubbles();
     this.ensureLoops();

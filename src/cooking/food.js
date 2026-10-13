@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { VoxelGrid, voxelMesh } from '../gfx/Voxel.js';
 import { iconCanvas } from '../gfx/PixelArt.js';
+import { FIXED } from '../gfx/sprites16.js';
 import { ITEMS } from '../data/items.js';
 import { DISHES } from '../data/recipes.js';
 import { mixHex, shade } from '../core/util.js';
@@ -34,18 +35,23 @@ export function iconPixels(id) {
   return out;
 }
 
-/** Representative color of an item: average of its mid-tone pixels. */
+/** Representative color of an item: its most common mid-tone pixel color. */
+const ACCENTS = new Set(Object.values(FIXED));
 export function mainColor(id) {
   const { px } = iconPixels(id);
-  let r = 0, g = 0, b = 0, n = 0;
-  for (const c of px) {
-    if (c === null) continue;
-    const l = luma(c);
-    if (l < 0.22 || l > 0.95) continue;
-    r += (c >> 16) & 255; g += (c >> 8) & 255; b += c & 255; n++;
-  }
-  if (!n) return 0xc8a070;
-  return (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n);
+  const pick = (skipAccents) => {
+    const counts = new Map();
+    for (const c of px) {
+      if (c === null || (skipAccents && ACCENTS.has(c))) continue;
+      const l = luma(c);
+      if (l < 0.22 || l > 0.96) continue;
+      counts.set(c, (counts.get(c) || 0) + 1);
+    }
+    let best = null, bn = 0;
+    for (const [c, n] of counts) if (n > bn) { bn = n; best = c; }
+    return best;
+  };
+  return pick(true) ?? pick(false) ?? 0xc8a070;
 }
 
 /** Color of a dish (liquid / batter tint). */

@@ -10,6 +10,7 @@ export class TileMap {
     this.w = w;
     this.h = h;
     this.solid = new Uint8Array(w * h);
+    this.nav = new Uint8Array(w * h); // extra blocks for path finding only (round obstacles)
     this.mats = new Uint8Array(w * h);
     this.circles = [];
   }
@@ -17,6 +18,13 @@ export class TileMap {
   inb(tx, tz) { return tx >= 0 && tz >= 0 && tx < this.w && tz < this.h; }
   blocked(tx, tz) { return !this.inb(tx, tz) || this.solid[tx + tz * this.w] !== 0; }
   setSolid(tx, tz, v = 1) { if (this.inb(tx, tz)) this.solid[tx + tz * this.w] = v; }
+  navBlocked(tx, tz) { return this.blocked(tx, tz) || this.nav[tx + tz * this.w] !== 0; }
+  /** Mark tiles whose centers fall inside a circle as blocked for path finding. */
+  navCircle(x, z, r) {
+    for (let tz = Math.floor(z - r); tz <= Math.floor(z + r); tz++)
+      for (let tx = Math.floor(x - r); tx <= Math.floor(x + r); tx++)
+        if (this.inb(tx, tz) && (tx + 0.5 - x) ** 2 + (tz + 0.5 - z) ** 2 < r * r) this.nav[tx + tz * this.w] = 1;
+  }
   fill(x0, z0, w, d, v = 1) {
     for (let z = z0; z < z0 + d; z++) for (let x = x0; x < x0 + w; x++) this.setSolid(x, z, v);
   }
@@ -120,12 +128,12 @@ export class TileMap {
   }
 
   nearestFree(tx, tz, maxR = 6) {
-    if (!this.blocked(tx, tz)) return [tx, tz];
+    if (!this.navBlocked(tx, tz)) return [tx, tz];
     for (let r = 1; r <= maxR; r++)
       for (let dz = -r; dz <= r; dz++)
         for (let dx = -r; dx <= r; dx++) {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
-          if (!this.blocked(tx + dx, tz + dz)) return [tx + dx, tz + dz];
+          if (!this.navBlocked(tx + dx, tz + dz)) return [tx + dx, tz + dz];
         }
     return null;
   }
@@ -187,8 +195,8 @@ export class TileMap {
         for (let dx = -1; dx <= 1; dx++) {
           if (!dx && !dz) continue;
           const nx = cx + dx, nz = cz + dz;
-          if (this.blocked(nx, nz)) continue;
-          if (dx && dz && (this.blocked(cx + dx, cz) || this.blocked(cx, cz + dz))) continue;
+          if (this.navBlocked(nx, nz)) continue;
+          if (dx && dz && (this.navBlocked(cx + dx, cz) || this.navBlocked(cx, cz + dz))) continue;
           const ni = nx + nz * W;
           if (closed[ni]) continue;
           const ng = gs[cur] + (dx && dz ? 1.414 : 1);

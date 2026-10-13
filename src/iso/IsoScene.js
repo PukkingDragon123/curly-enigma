@@ -110,9 +110,10 @@ export class IsoScene extends Scene {
       if (it.enabled && !it.enabled()) continue;
       const x = it.actor ? it.actor.x : it.x, z = it.actor ? it.actor.z : it.z;
       const dx = x - p.x, dz = z - p.z;
-      const d = Math.hypot(dx, dz);
+      const dc = Math.hypot(dx, dz);
+      const d = Math.max(0, dc - (it.size || 0)); // big things measure from their edge
       if (d > it.r) continue;
-      const facing = d > 0.05 ? (dx * fx + dz * fz) / d : 1;
+      const facing = dc > 0.05 ? (dx * fx + dz * fz) / dc : 1;
       const score = d - facing * 0.45 - (it.priority || 0);
       if (score < bs) { bs = score; best = it; }
     }
@@ -124,6 +125,11 @@ export class IsoScene extends Scene {
     if (!this.player || this.locked || this.noPrompt) {
       this.focusIt = null;
       if (!this.keepPrompt) ui.setPrompt(null);
+      return;
+    }
+    if (this.seat) {
+      this.focusIt = null;
+      ui.setPrompt('<kbd>E</kbd> Stand up');
       return;
     }
     const it = this.findInteractable();
@@ -142,8 +148,13 @@ export class IsoScene extends Scene {
   say(actor, html, o = {}) {
     const ui = this.game.ui;
     ui.hideBubble(actor.key);
-    const s = this.toScreen(actor.headPos(_v));
-    ui.bubble(actor.key, html, s.x, s.y, { emote: !!o.emote, life: o.life ?? 3.4, name: o.name ?? null });
+    const emote = !!o.emote;
+    let s = this.clampBubble(this.toScreen(actor.headPos(_v)), emote);
+    const b = ui.bubble(actor.key, html, s.x, s.y, { emote, life: o.life ?? 3.4, name: o.name ?? null });
+    if (b && b.node) {
+      b.node.style.width = 'max-content';
+      s = this.clampBubble(this.toScreen(actor.headPos(_v)), emote, b.node.offsetWidth, b.node.offsetHeight);
+    }
     ui.moveBubble(actor.key, s.x, s.y, s.visible);
     this.anchors.set(actor.key, actor);
     if (!o.emote && o.babble !== false) {
@@ -159,11 +170,50 @@ export class IsoScene extends Scene {
     if (o.sound) this.game.audio.play('emote', { kind: o.sound });
   }
 
+  /**
+   * Keep speech bubbles on screen and clear of the HUD corners. Bubbles are centered on x and
+   * sit above y; bw/bh are the bubble's measured size when known.
+   */
+  clampBubble(s, emote, bw = 0, bh = 0) {
+    const e = this.game.engine;
+    const W = e.width * e.scale, H = e.height * e.scale;
+    const half = bw ? bw / 2 : emote ? 24 : Math.min(150, W * 0.2);
+    const h = (bh || (emote ? 32 : 62)) + 8; // + the tail
+    if (s.x < -60 || s.x > W + 60 || s.y < -40 || s.y > H + 120) s.visible = false;
+    s.x = Math.max(half + 6, Math.min(W - half - 6, s.x));
+    s.y = Math.max(h + 2, Math.min(H - 10, s.y));
+    for (const r of this.hudBoxes()) {
+      if (s.x + half > r.l && s.x - half < r.r && s.y - h < r.b && s.y > r.t) s.y = r.b + h;
+    }
+    return s;
+  }
+
+  /** The HUD corner panels in bubble-layer pixels, re-measured twice a second. */
+  hudBoxes() {
+    const now = performance.now();
+    if (this._hudB && now - this._hudT < 500) return this._hudB;
+    const ui = this.game.ui, out = [];
+    const o = ui.world?.getBoundingClientRect?.();
+    if (o) for (const n of [ui.tl, ui.tr]) {
+      const r = n?.getBoundingClientRect?.();
+      if (r && r.width > 0 && r.height > 0) out.push({ l: r.left - o.left - 6, r: r.right - o.left + 6, t: r.top - o.top - 6, b: r.bottom - o.top + 6 });
+    }
+    this._hudB = out;
+    this._hudT = now;
+    return out;
+  }
+
   updateAnchors() {
     const ui = this.game.ui;
+    // measure every bubble first (one layout pass), then move them all
+    const list = [];
     for (const [key, a] of this.anchors) {
-      if (!ui.bubbles.has(key)) { this.anchors.delete(key); continue; }
-      const s = this.toScreen(a.headPos(_v));
+      const b = ui.bubbles.get(key);
+      if (!b) { this.anchors.delete(key); continue; }
+      list.push([key, a, b.node.classList.contains('emote'), b.node.offsetWidth, b.node.offsetHeight]);
+    }
+    for (const [key, a, emote, w, h] of list) {
+      const s = this.clampBubble(this.toScreen(a.headPos(_v)), emote, w, h);
       ui.moveBubble(key, s.x, s.y, s.visible);
     }
   }
@@ -240,7 +290,7 @@ export class IsoScene extends Scene {
     if (!p) return;
     const inp = this.game.input;
     if (this.locked || this.noMove) {
-      if (!this.seat && !this.playerPosed) p.drive(dt, 0, 0, this.map);
+      if (!this.seat && !this.playerPosed && !p.scripted) p.drive(dt, 0, 0, this.map);
       return;
     }
     const ax = inp.axisX(), ay = inp.axisY();
@@ -296,7 +346,7 @@ export class IsoScene extends Scene {
     const inp = this.game.input;
     if (inp.enabled && inp.mouse.wheel && !this.noZoom) this.cam.zoomBy(inp.mouse.wheel);
     this.updatePlayer(dt);
-    if (this.nuggetAI && this.player) this.nuggetAI.update(dt, this.player);
+    if (this.nuggetAI && this.player && !this.nugget.scripted) this.nuggetAI.update(dt, this.player);
     for (const t of [...this.tickers]) t(dt, this.time);
     const f = this.camFocus || (this.player ? _v.set(this.player.x, 0.65, this.player.z) : null);
     if (f) this.cam.goal.set(f.x, f.y ?? 0.65, f.z);
@@ -327,6 +377,13 @@ export class IsoScene extends Scene {
       const tick = (dt) => { t += dt; if (t >= secs) { this.tickers.splice(this.tickers.indexOf(tick), 1); res(); } };
       this.tickers.push(tick);
     });
+  }
+
+  /** Run fn after `secs` of scene time (safe: dropped with the scene). */
+  later(secs, fn) {
+    let t = 0;
+    const tick = (dt) => { t += dt; if (t >= secs) { this.tickers.splice(this.tickers.indexOf(tick), 1); fn(); } };
+    this.tickers.push(tick);
   }
 
   /** Tween a value over scene time; fn(k) with k 0..1. */

@@ -1,0 +1,111 @@
+[
+{
+"wait": 300
+},
+{
+"press": "Digit1"
+},
+{
+"wait": 700
+},
+{
+"eval": "[...document.querySelectorAll('.fg-recipe')].find(r => r.textContent.includes('Bronze Ingot')).querySelector('.btn').click(); 'smelting bronze'"
+},
+{
+"wait": 1500
+},
+{
+"shot": "shots/forge-smelt-01-start.png"
+},
+{
+"key": "Space",
+"hold": 3500
+},
+{
+"shot": "shots/forge-smelt-02-pump.png"
+},
+{
+"key": "Space",
+"hold": 600
+},
+{
+"wait": 700
+},
+{
+"key": "Space",
+"hold": 600
+},
+{
+"wait": 700
+},
+{
+"key": "Space",
+"hold": 600
+},
+{
+"wait": 700
+},
+{
+"shot": "shots/forge-smelt-03-hold.png"
+},
+{
+"eval": "const a=window.__game.scene.activity; JSON.stringify({T: Math.round(a.sim.T), inBand: a.sim.inBand.toFixed(2), t: a.sim.time.toFixed(1)})"
+},
+{
+"key": "Space",
+"hold": 600
+},
+{
+"wait": 700
+},
+{
+"key": "Space",
+"hold": 600
+},
+{
+"wait": 700
+},
+{
+"key": "Space",
+"hold": 600
+},
+{
+"wait": 700
+},
+{
+"key": "Space",
+"hold": 600
+},
+{
+"wait": 700
+},
+{
+"key": "Space",
+"hold": 600
+},
+{
+"wait": 700
+},
+{
+"key": "Space",
+"hold": 600
+},
+{
+"wait": 700
+},
+{
+"wait": 6000
+},
+{
+"shot": "shots/forge-smelt-04-pour.png"
+},
+{
+"wait": 6000
+},
+{
+"shot": "shots/forge-smelt-05-done.png"
+},
+{
+"eval": "const st=window.__game.state; JSON.stringify({bronze: st.lotsOf('bronze_ingot').map(l=>l.q), alloys: st.known('mechanic','alloys'), smelting: st.known('mechanic','smelting')})"
+}
+]

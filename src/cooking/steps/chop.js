@@ -11,7 +11,7 @@ import { clamp, damp } from '../../core/util.js';
 const PX = 0.046;
 const DEPTH = 3;
 const GAP = 0.032;
-const EDGE = new THREE.Vector3(-0.0125, -0.0875, 0.49); // knife-local point on the edge, mid-blade
+const EDGE = new THREE.Vector3(-0.0125, -0.0625, 0.52); // knife-local point on the edge, mid-blade
 const _v = new THREE.Vector3();
 
 export class ChopStep extends Step {
@@ -58,7 +58,7 @@ export class ChopStep extends Step {
     // knife in the right paw
     this.knife = this.borrow('knife');
     this.knifeX = this.bx(x1 + 2.5);
-    this.roll = 0.75;
+    this.roll = 0.5;
     this.chopT = -1;
     this.misses = 0;
     this.finishT = -1;
@@ -105,14 +105,14 @@ export class ChopStep extends Step {
     }
     // chop animation: down fast, bite, back up
     let edgeY = this.top + 0.11;
-    let roll = 0.75;
+    let roll = 0.5;
     if (this.chopT >= 0) {
       this.chopT += dt;
       const t = this.chopT;
       const low = BOARD_TOP + 0.004;
-      if (t < 0.07) { const k = t / 0.07; edgeY = this.top + 0.11 + (low - this.top - 0.11) * k * k; roll = 0.75 - 0.45 * k; }
-      else if (t < 0.13) { edgeY = low; roll = 0.3; if (!this.didCut) { this.didCut = true; this.cut(); } }
-      else if (t < 0.32) { const k = (t - 0.13) / 0.19; edgeY = low + (this.top + 0.11 - low) * (1 - (1 - k) * (1 - k)); roll = 0.3 + 0.45 * k; }
+      if (t < 0.07) { const k = t / 0.07; edgeY = this.top + 0.11 + (low - this.top - 0.11) * k * k; roll = 0.5 - 0.32 * k; }
+      else if (t < 0.13) { edgeY = low; roll = 0.18; if (!this.didCut) { this.didCut = true; this.cut(); } }
+      else if (t < 0.32) { const k = (t - 0.13) / 0.19; edgeY = low + (this.top + 0.11 - low) * (1 - (1 - k) * (1 - k)); roll = 0.18 + 0.32 * k; }
       else this.chopT = -1;
     }
     this.roll = roll;

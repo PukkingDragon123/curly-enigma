@@ -1,0 +1,594 @@
+// Deep Town's townsfolk: little scenes with simple AI. Wanderers, a mole family,
+// kids playing tag, elders on benches, someone asleep, a busker, a frog fishing in
+// the fountain, a sweeping shrew, miners hauling ore and gossiping pairs. They emote,
+// sneeze, avoid each other and chat (optionally, never blocking) when you are near.
+import * as THREE from 'three';
+import { Actor } from './Actor.js';
+import { makeCharacter, randomSpec } from '../gfx/characters.js';
+import { TOWN_CHATTER } from '../data/shops.js';
+import { TOWN } from './townLayout.js';
+import { VoxelGrid, vmesh, V16 } from './vox.js';
+import { makeRng, rand, pick, chance, clamp } from '../core/util.js';
+import { midiToFreq } from '../core/Audio.js';
+
+const NAMES = ['Pebble', 'Rooty', 'Moss', 'Tuck', 'Clover', 'Burr', 'Dusty', 'Fern', 'Nib', 'Mabel', 'Toby', 'Hollis', 'Bea', 'Pip', 'Tansy', 'Wort', 'Clem',
+  'Dot', 'Ivo', 'Juniper', 'Nettle', 'Ollie', 'Rue', 'Sorrel', 'Thistle', 'Umber', 'Wren', 'Ginny', 'Barley', 'Cob', 'Loam', 'Marl'];
+
+const _v = new THREE.Vector3();
+
+function voiceFor(spec, rng) {
+  let v = { baby: 560, kid: 470, adult: 320, elder: 240 }[spec.age] ?? 320;
+  if (spec.species === 'frog') v = 180;
+  if (spec.species === 'badger') v -= 80;
+  if (spec.species === 'rabbit' || spec.species === 'shrew') v += 70;
+  return Math.round(v + rng.range(-30, 30));
+}
+
+// ---------------------------------------------------------------- held props
+function stickProp(len, col, head) {
+  const g = new VoxelGrid(5, len + 6, 5);
+  g.box(2, 0, 2, 1, len, 1, col);
+  if (head === 'broom') { g.box(0, len - 1, 1, 5, 2, 3, 0x8a6a3a); g.box(0, len + 1, 1, 5, 4, 3, 0xd8b860); }
+  return vmesh(g, { scale: V16, pivot: [2.5, len, 2.5] });
+}
+
+function lute() {
+  const g = new VoxelGrid(8, 16, 3);
+  g.ellipsoid(4, 4, 1.5, 3.6, 4, 1.4, (x, y) => (Math.hypot(x - 3.5, y - 4) < 1.2 ? 0x2a1a10 : 0xc8843a));
+  g.box(3, 8, 1, 2, 8, 1, 0x6a4226);
+  g.box(2, 15, 1, 4, 1, 1, 0x4a2a16);
+  for (let y = 3; y < 15; y++) g.set(4, y, 2, 0xe8e0d0);
+  const m = vmesh(g, { scale: V16, pivot: [4, 6, 1.5] });
+  m.rotation.set(0.3, 0, 0.9);
+  return m;
+}
+
+function fishingRod() {
+  const grp = new THREE.Group();
+  const g = new VoxelGrid(3, 26, 3);
+  g.box(1, 0, 1, 1, 22, 1, 0x8a6a3a);
+  g.box(0, 2, 0, 3, 3, 3, 0x5a3a22);
+  const rod = vmesh(g, { scale: V16, pivot: [1.5, 0, 1.5] });
+  rod.rotation.x = 1.15;
+  grp.add(rod);
+  const line = new VoxelGrid(1, 22, 1);
+  line.box(0, 0, 0, 1, 22, 1, 0xe8e8e0);
+  line.set(0, 0, 0, 0xe0402a);
+  const lm = vmesh(line, { scale: V16, pivot: [0.5, 22, 0.5] });
+  lm.position.set(0, Math.cos(1.15) * 22 * V16, Math.sin(1.15) * 22 * V16);
+  grp.add(lm);
+  grp.userData.rod = rod;
+  return grp;
+}
+
+function oreCrate() {
+  const g = new VoxelGrid(10, 7, 8);
+  g.box(0, 0, 0, 10, 5, 8, (x, y, z) => (y === 0 || x === 0 || x === 9 ? 0x5a3a22 : 0x8a5a32));
+  const ores = [0xd9773f, 0x2a2628, 0x9a6450, 0xbfc3c4];
+  for (let x = 1; x < 9; x++) for (let z = 1; z < 7; z++) if ((x + z) % 2 === 0) g.set(x, 5, z, ores[(x * 3 + z) % 4]);
+  return vmesh(g, { scale: V16, pivot: [5, 3, 4] });
+}
+
+// ---------------------------------------------------------------- the crowd
+export class Townsfolk {
+  constructor(scene) {
+    this.s = scene;
+    this.list = [];
+    this.chatT = rand(5, 9);
+    this.sneezeT = rand(8, 16);
+    this.rng = makeRng(2024);
+    this.nameI = 0;
+    this.lastLine = null;
+    this.buskT = 0;
+    this.buskI = 0;
+  }
+
+  make(seed, overrides, role, o = {}) {
+    const rng = makeRng(seed * 7 + 3);
+    const spec = randomSpec(seed, overrides);
+    const rig = makeCharacter(spec);
+    const name = o.name || NAMES[this.nameI++ % NAMES.length];
+    const a = new Actor(rig, { x: o.x, z: o.z, yaw: o.yaw ?? rng.range(0, 6.28), name, voice: voiceFor(spec, rng), radius: spec.age === 'baby' ? 0.17 : spec.age === 'kid' ? 0.21 : 0.25, shadow: spec.age === 'baby' ? 0.42 : spec.age === 'kid' ? 0.5 : 0.6 });
+    a.skipFar = true;
+    this.s.addActor(a);
+    const npc = { a, spec, role, name, st: { t: rand(0.5, 3) }, pause: 0, speed: o.speed ?? (spec.age === 'elder' ? 1.0 : spec.age === 'kid' ? 1.9 : 1.35), region: o.region, seat: o.seat };
+    this.list.push(npc);
+    this.s.addInteractable({ actor: a, r: 1.15, label: () => `Chat with ${name}`, action: () => this.talkTo(npc) });
+    return npc;
+  }
+
+  seatAt(npc, seat, sleeping = false) {
+    const a = npc.a;
+    a.collide = false;
+    a.pos.set(seat.x, 0, seat.z);
+    a.rig.face(seat.yaw, true);
+    a.body.position.y = 0.2;
+    a.rig.play('sit');
+    npc.seated = true;
+    if (sleeping) {
+      npc.sleeping = true;
+      a.after = () => {
+        a.rig.neck.rotation.x += 0.42;
+        a.rig.neck.rotation.z += 0.18;
+        for (const e of a.rig.eyes) e.scale.y = 0.2;
+      };
+    }
+  }
+
+  spawnAll() {
+    const B = TOWN.benches;
+    const seat = (b, side) => ({ x: b.x + Math.cos(b.yaw) * 0.42 * side, z: b.z - Math.sin(b.yaw) * 0.42 * side, yaw: b.yaw });
+    const plaza = { x0: 12, z0: 9, x1: 25, z1: 22 };
+    const town = { x0: 5, z0: 5, x1: 32, z1: 26 };
+    // elders on benches (one with a cane), someone asleep
+    const e1 = this.make(101, { species: 'mole', age: 'elder', cane: true }, 'bench', { x: 0, z: 0 });
+    this.seatAt(e1, seat(B[0], -1));
+    const e2 = this.make(102, { species: 'mole', age: 'elder', glasses: true, outfit: 'dress' }, 'bench', { x: 0, z: 0 });
+    this.seatAt(e2, seat(B[0], 1));
+    const e3 = this.make(103, { species: 'hedgehog', age: 'elder', cane: true }, 'bench', { x: 0, z: 0 });
+    this.seatAt(e3, seat(B[1], -1));
+    const sl = this.make(104, { species: 'badger', age: 'adult', body: 'chubby', hat: 'beanie' }, 'sleeper', { x: 0, z: 0 });
+    this.seatAt(sl, seat(B[2], 1), true);
+    // busker near the fountain
+    const bk = this.make(105, { species: 'golden', age: 'adult', hat: 'cap', hatColor: 0xc94a3a, outfit: 'vest', outfitColor: 0x6a3a6a, scarf: 0xe0b030 }, 'busker', { x: 21.7, z: 19.6, yaw: -2.3 });
+    bk.a.rig.holdItem(lute(), 'L');
+    bk.a.after = () => {
+      const r = bk.a.rig, t = r.t;
+      r.armL.rotation.set(-1.0, 0.2, 0.6);
+      r.armR.rotation.set(-1.1 + Math.sin(t * 13) * 0.22, -0.2, -0.4);
+      r.hip.position.y += Math.abs(Math.sin(t * 4.2)) * r.s * 1.2;
+      r.neck.rotation.z += Math.sin(t * 2.1) * 0.12;
+    };
+    // a frog fishing at the fountain
+    const fx = TOWN.fountain.x - TOWN.fountain.r - 0.05, fz = TOWN.fountain.z + 0.9;
+    const fr = this.make(106, { species: 'frog', age: 'adult', hat: 'bandana', hatColor: 0x3a6ac9, outfit: 'vest', outfitColor: 0x7a5a3a }, 'fisher', { x: fx, z: fz, yaw: Math.PI / 2 });
+    this.seatAt(fr, { x: fx, z: fz, yaw: Math.PI / 2 - 0.15 });
+    fr.a.body.position.y = 0.32;
+    const rod = fishingRod();
+    rod.rotation.x = -0.5;
+    fr.a.rig.holdItem(rod, 'R');
+    fr.rod = rod;
+    fr.st.t = rand(5, 9);
+    // a shrew sweeping the west promenade
+    const sw = this.make(107, { species: 'shrew', age: 'adult', outfit: 'apron', outfitColor: 0xd9d0b8, hat: 'bandana', hatColor: 0xc94a3a }, 'sweeper', { x: 5.3, z: 8, yaw: 0 });
+    const broom = stickProp(18, 0x8a6a3a, 'broom');
+    broom.rotation.x = 2.4;
+    sw.a.rig.holdItem(broom, 'R');
+    sw.st = { mode: 'sweep', t: 2, dir: 1, z0: 7, z1: 24 };
+    // miners hauling ore to the lift
+    for (let i = 0; i < 2; i++) {
+      const m = this.make(110 + i, { species: i ? 'starnose' : 'mole', age: 'adult', backpack: true, hat: 'hardhat', hatColor: 0xe0b030, outfit: 'overalls', dirt: 0.95, body: i ? 'stocky' : 'tall' }, 'miner', { x: TOWN.orePile.x + 1 + i, z: TOWN.orePile.z + 0.8, speed: 1.25 });
+      m.st = { mode: 'toPile', t: i * 3 };
+      m.crate = oreCrate();
+    }
+    // a family: parent and two babies
+    const par = this.make(120, { species: 'mole', age: 'adult', outfit: 'dress', outfitColor: 0xb8a070, hat: 'bow', hatColor: 0xc94a3a }, 'parent', { x: 15, z: 22, region: plaza, speed: 0.95 });
+    for (let i = 0; i < 2; i++) {
+      const b = this.make(121 + i, { species: 'mole', age: 'baby' }, 'baby', { x: 15 + i * 0.5, z: 22.6 });
+      b.parent = par;
+      b.slot = i ? 1 : -1;
+    }
+    // kids playing tag in the open south-east
+    const tagArea = { x0: 23.5, z0: 16.5, x1: 31.5, z1: 26 };
+    const kids = [];
+    for (let i = 0; i < 3; i++) {
+      const k = this.make(130 + i, { age: 'kid', species: ['mole', 'rabbit', 'starnose'][i] }, 'tag', { x: 26 + i * 1.6, z: 19 + i, region: tagArea, speed: 3.0 });
+      kids.push(k);
+    }
+    kids[0].it = true;
+    for (const k of kids) k.kids = kids;
+    // gossiping pairs
+    const pairs = [[{ x: 6.4, z: 9.6 }, { x: 7.2, z: 10.3 }], [{ x: 14.6, z: 24.2 }, { x: 15.5, z: 24.6 }]];
+    pairs.forEach((p, i) => {
+      const g1 = this.make(140 + i * 2, { age: 'adult' }, 'gossip', { x: p[0].x, z: p[0].z });
+      const g2 = this.make(141 + i * 2, { age: i ? 'elder' : 'adult' }, 'gossip', { x: p[1].x, z: p[1].z });
+      g1.mate = g2; g2.mate = g1;
+      g1.a.faceToward(p[1].x, p[1].z, true); g2.a.faceToward(p[0].x, p[0].z, true);
+      g1.st.t = rand(1, 3); g2.st.t = 99;
+      g1.speaker = true;
+    });
+    // window shoppers
+    this.make(150, { age: 'adult', species: 'vole' }, 'shopper', { x: 5.2, z: 13.4, yaw: -Math.PI / 2 });
+    this.make(151, { age: 'adult', species: 'molerat' }, 'shopper', { x: 25.4, z: 5.2, yaw: Math.PI });
+    // wanderers of all sorts
+    for (let i = 0; i < 5; i++) {
+      const r = i < 2 ? plaza : town;
+      const p = this.s.map.randomFree(this.rng, r.x0, r.z0, r.x1, r.z1, 0.4) || { x: 18, z: 22 };
+      this.make(160 + i * 3, i === 3 ? { age: 'elder' } : i === 4 ? { species: 'armadillo' } : {}, 'wander', { x: p.x, z: p.z, region: r });
+    }
+  }
+
+  // ------------------------------------------------------------ talking
+  talkTo(npc) {
+    const s = this.s;
+    const a = npc.a;
+    const p = s.player;
+    if (!npc.seated) a.faceToward(p.x, p.z);
+    p.faceToward(a.x, a.z);
+    npc.pause = 3.6;
+    let line;
+    if (npc.sleeping) {
+      line = pick(['Zzz... five more minutes...', 'Mmh? Wha... oh, hello. Zzz.', 'Zzz... shiny... so shiny...']);
+    } else if (npc.role === 'busker') {
+      line = pick(['A coin for the song? Only joking. Mostly.', 'This one is about the sun. I have never seen it.', '♪ Dig, dig, dig, little paws... ♪']);
+    } else if (npc.role === 'baby') {
+      line = pick(['Bah!', 'Mama! Chicken!', 'Hee hee!', 'Dirt!']);
+    } else if (npc.role === 'tag' && npc.it) {
+      line = pick(['You\'re it! No wait, I\'m it!', 'Can\'t talk, I\'m IT!']);
+    } else {
+      const pool = TOWN_CHATTER.filter((l) => l !== this.lastLine);
+      line = pick(pool);
+    }
+    this.lastLine = line;
+    s.say(a, line, { name: npc.name, voice: a.voice });
+  }
+
+  // ------------------------------------------------------------ frame
+  update(dt) {
+    const s = this.s;
+    const map = s.map;
+    const p = s.player;
+    for (const n of this.list) {
+      const a = n.a;
+      if (n.sneezing > 0) {
+        n.sneezing -= dt;
+        a.drive(dt, 0, 0, map, { anim: false });
+        if (!n.sneezed && n.sneezing < 0.45) {
+          n.sneezed = true;
+          const fy = a.rig.facing;
+          s.particles.dustPuff(a.x + Math.sin(fy) * 0.35, a.headY * 0.75, a.z + Math.cos(fy) * 0.35, 9, 0x9a7a5a);
+          if (p && a.dist(p.x, p.z) < 8) s.game.audio.play('sneeze');
+        }
+        if (n.sneezing <= 0) a.rig.play(n.seated ? 'sit' : 'idle');
+        continue;
+      }
+      if (n.pause > 0) {
+        n.pause -= dt;
+        if (!n.seated) a.drive(dt, 0, 0, map);
+        continue;
+      }
+      const fn = this['r_' + n.role];
+      if (fn) fn.call(this, n, dt);
+    }
+    // ambient chatter near the player (rate-limited, never blocking)
+    this.chatT -= dt;
+    if (this.chatT <= 0 && p) {
+      this.chatT = rand(7, 13);
+      const near = this.list.filter((n) => !n.sleeping && n.role !== 'baby' && n.a.dist(p.x, p.z) < 4.6 && !s.game.ui.bubbles.has(n.a.key));
+      if (near.length) {
+        const n = pick(near);
+        const pool = TOWN_CHATTER.filter((l) => l !== this.lastLine);
+        this.lastLine = pick(pool);
+        s.say(n.a, this.lastLine, { name: n.name, life: 4.2 });
+      }
+    }
+    // sneezes
+    this.sneezeT -= dt;
+    if (this.sneezeT <= 0) {
+      this.sneezeT = rand(12, 24);
+      const f = s.cam.focus;
+      const cand = this.list.filter((n) => !n.sleeping && n.role !== 'fisher' && Math.hypot(n.a.x - f.x, n.a.z - f.z) < 9);
+      if (cand.length) {
+        const n = pick(cand);
+        n.sneezing = 0.95;
+        n.sneezed = false;
+        n.a.rig.play('sneeze');
+      }
+    }
+  }
+
+  /** Push walkers apart and around the player. */
+  avoid(n) {
+    const a = n.a;
+    let ax = 0, az = 0;
+    const others = this.s.actors;
+    for (const o of others) {
+      if (o === a || !o.collide) continue;
+      const dx = a.x - o.x, dz = a.z - o.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > 0.64 || d2 < 1e-6) continue;
+      const d = Math.sqrt(d2);
+      ax += (dx / d) * (0.8 - d) * 3.2;
+      az += (dz / d) * (0.8 - d) * 3.2;
+    }
+    return { x: ax, z: az };
+  }
+
+  walkTo(n, x, z) {
+    n.a.setPath(this.s.map.findPath(n.a.x, n.a.z, x, z, n.a.radius));
+    return !!n.a.path;
+  }
+
+  idleFidget(n, dt) {
+    const a = n.a;
+    a.drive(dt, 0, 0, this.s.map);
+    n.st.look = (n.st.look ?? rand(1, 3)) - dt;
+    if (n.st.look <= 0) {
+      n.st.look = rand(1.5, 4);
+      const p = this.s.player;
+      if (p && a.dist(p.x, p.z) < 3 && chance(0.6)) {
+        a.faceToward(p.x, p.z);
+        if (chance(0.15)) a.rig.doEmote('wave', 1.0);
+      } else a.rig.face(a.rig.facing + rand(-1.4, 1.4));
+      if (chance(0.06)) this.s.emote(a, pick(['?', '!', '♪', '…']));
+    }
+  }
+
+  // ------------------------------------------------------------ roles
+  r_wander(n, dt) {
+    const st = n.st, a = n.a;
+    if (st.mode === 'walk') {
+      const r = a.followPath(dt, this.s.map, n.speed, { avoid: this.avoid(n) });
+      if (r !== 'moving') { st.mode = 'idle'; st.t = rand(2, 7); }
+      return;
+    }
+    this.idleFidget(n, dt);
+    st.t -= dt;
+    if (st.t <= 0) {
+      const R = n.region;
+      const q = this.s.map.randomFree(Math.random, R.x0, R.z0, R.x1, R.z1, 0.4);
+      if (q && this.walkTo(n, q.x, q.z)) st.mode = 'walk';
+      else st.t = 1;
+    }
+  }
+
+  r_parent(n, dt) { this.r_wander(n, dt); }
+
+  r_shopper(n, dt) {
+    const st = n.st;
+    if (st.mode === 'walk') {
+      const r = n.a.followPath(dt, this.s.map, n.speed, { avoid: this.avoid(n) });
+      if (r !== 'moving') { st.mode = 'look'; st.t = rand(9, 18); n.a.rig.face(st.face ?? 0); }
+      return;
+    }
+    n.a.drive(dt, 0, 0, this.s.map);
+    st.t = (st.t ?? rand(6, 12)) - dt;
+    if (chance(dt * 0.15)) n.a.rig.doEmote(pick(['nod', 'shake']), 0.8);
+    if (st.t <= 0) {
+      const sh = pick(TOWN.shops);
+      const mid = sh.a + sh.w / 2 + rand(-1.4, 1.4);
+      const [x, z, face] = sh.wall === 'N' ? [mid, TOWN.northFace + 2.1, Math.PI] : [TOWN.westFace + 2.1, mid, -Math.PI / 2];
+      st.face = face;
+      if (this.walkTo(n, x, z)) st.mode = 'walk'; else st.t = 3;
+    }
+  }
+
+  r_baby(n, dt) {
+    const a = n.a, par = n.parent.a;
+    const fy = par.rig.facing;
+    const bx = -Math.sin(fy), bz = -Math.cos(fy);
+    const tx = par.x + bx * 0.75 + bz * 0.45 * n.slot, tz = par.z + bz * 0.75 - bx * 0.45 * n.slot;
+    const d = Math.hypot(tx - a.x, tz - a.z);
+    if (d > 0.35) {
+      const sp = Math.min(2.6, d * 2.2);
+      const av = this.avoid(n);
+      a.drive(dt, ((tx - a.x) / d) * sp + av.x * 0.5, ((tz - a.z) / d) * sp + av.z * 0.5, this.s.map, { runAt: 2.4 });
+    } else {
+      a.drive(dt, 0, 0, this.s.map);
+      if (chance(dt * 0.25)) a.rig.doEmote('hop', 0.6);
+      if (chance(dt * 0.4)) a.faceToward(par.x, par.z);
+    }
+  }
+
+  r_tag(n, dt) {
+    const a = n.a, R = n.region, map = this.s.map;
+    if (n.frozen > 0) { n.frozen -= dt; a.drive(dt, 0, 0, map); return; }
+    const others = n.kids.filter((k) => k !== n);
+    let vx = 0, vz = 0;
+    if (n.it) {
+      let tgt = null, bd = Infinity;
+      for (const k of others) { const d = a.dist(k.a.x, k.a.z); if (d < bd) { bd = d; tgt = k; } }
+      if (tgt) {
+        const dx = tgt.a.x - a.x, dz = tgt.a.z - a.z, d = Math.hypot(dx, dz) || 1;
+        vx = (dx / d) * n.speed * 0.95; vz = (dz / d) * n.speed * 0.95;
+        if (d < 0.55) {
+          n.it = false; tgt.it = true; tgt.frozen = 1.0; n.frozen = 0.3;
+          this.s.emote(tgt.a, '!');
+          if (this.s.player && a.dist(this.s.player.x, this.s.player.z) < 9) this.s.game.audio.play('laugh', { pitch: 520 });
+        }
+      }
+    } else {
+      const it = others.find((k) => k.it);
+      const d = it ? a.dist(it.a.x, it.a.z) : 99;
+      if (it && d < 3.4) {
+        const dx = a.x - it.a.x, dz = a.z - it.a.z, l = Math.hypot(dx, dz) || 1;
+        vx = (dx / l) * n.speed; vz = (dz / l) * n.speed;
+      } else {
+        n.st.wt = (n.st.wt ?? 0) - dt;
+        if (n.st.wt <= 0 || !n.st.goal) { n.st.wt = rand(1.5, 3); n.st.goal = { x: rand(R.x0, R.x1), z: rand(R.z0, R.z1) }; }
+        const dx = n.st.goal.x - a.x, dz = n.st.goal.z - a.z, l = Math.hypot(dx, dz) || 1;
+        if (l > 0.4) { vx = (dx / l) * 1.4; vz = (dz / l) * 1.4; }
+      }
+    }
+    // stay in the play area
+    const m = 1.2;
+    if (a.x < R.x0 + m) vx += (R.x0 + m - a.x) * 4;
+    if (a.x > R.x1 - m) vx -= (a.x - R.x1 + m) * 4;
+    if (a.z < R.z0 + m) vz += (R.z0 + m - a.z) * 4;
+    if (a.z > R.z1 - m) vz -= (a.z - R.z1 + m) * 4;
+    const av = this.avoid(n);
+    a.drive(dt, vx + av.x * 0.4, vz + av.z * 0.4, map, { runAt: 2.0 });
+  }
+
+  r_bench(n, dt) {
+    const a = n.a;
+    n.st.t -= dt;
+    if (n.st.t <= 0) {
+      n.st.t = rand(2.5, 6);
+      const b = n.seat;
+      const roll = Math.random();
+      const base = a.rig.targetFacing;
+      if (roll < 0.35) { a.rig.face(base + rand(-0.6, 0.6)); this.s.later(1.5, () => a.rig.face(base)); }
+      else if (roll < 0.55) a.rig.doEmote('nod', 0.8);
+      else if (roll < 0.7) a.rig.talk(1.4);
+      void b;
+    }
+  }
+
+  r_sleeper(n, dt) {
+    n.st.t -= dt;
+    if (n.st.t <= 0) {
+      n.st.t = rand(3, 5);
+      this.s.emote(n.a, 'Zz', { life: 2.2 });
+      const p = this.s.player;
+      if (p && n.a.dist(p.x, p.z) < 3.5) this.s.game.audio.play('snore', { gap: 3 });
+    }
+  }
+
+  r_busker(n, dt) {
+    const s = this.s, a = n.a, p = s.player;
+    a.rig.play('idle');
+    n.st.t -= dt;
+    if (n.st.t <= 0) { n.st.t = rand(2.5, 4.5); s.emote(a, pick(['♪', '♫']), { life: 1.6 }); }
+    // soft plucked melody when you are close enough to hear it
+    const d = p ? a.dist(p.x, p.z) : 99;
+    if (d < 7.5) {
+      this.buskT -= dt;
+      if (this.buskT <= 0) {
+        const scale = [0, 2, 4, 7, 9, 12, 14, 16];
+        const step = [0, 2, 4, 5, 4, 2, 3, 1, 0, 4, 5, 7, 5, 4, 2, 0];
+        const note = 62 + scale[step[this.buskI++ % step.length] % scale.length];
+        this.buskT = this.buskI % 4 === 0 ? 0.48 : 0.24;
+        const vol = clamp(1 - d / 7.5, 0, 1) * 0.6;
+        s.game.audio.tone({ f: midiToFreq(note), type: 'triangle', dur: 0.22, vol: 0.07 * vol, release: 0.2, filter: 'lowpass', ff: 2400, reverb: 0.25 });
+        if (this.buskI % 2 === 0) s.game.audio.tone({ f: midiToFreq(note - 12), type: 'sine', dur: 0.3, vol: 0.05 * vol, release: 0.2 });
+      }
+    }
+  }
+
+  r_fisher(n, dt) {
+    const s = this.s, a = n.a;
+    n.st.t -= dt;
+    const rod = n.rod;
+    if (n.st.bite > 0) {
+      n.st.bite -= dt;
+      rod.rotation.x = -0.5 - Math.sin(n.st.bite * 18) * 0.15;
+      if (n.st.bite <= 0) {
+        rod.rotation.x = -0.9;
+        const fy = a.rig.facing;
+        const bx = a.x + Math.sin(fy) * 1.3, bz = a.z + Math.cos(fy) * 1.3;
+        s.particles.burst(7, { x: bx, y: 0.32, z: bz, vy: 1.2, life: 0.5, size: 1.5, color: 0xd8f6ff, alpha: 0.9, alpha2: 0, grav: 5 }, { x: 0.1, z: 0.1, v: 0.6 });
+        if (s.player && a.dist(s.player.x, s.player.z) < 7) s.game.audio.play('splash', { vol: 0.5 });
+        if (chance(0.5)) {
+          s.particles.spawn({ x: bx, y: 0.4, z: bz, vx: (a.x - bx) * 0.9, vz: (a.z - bz) * 0.9, vy: 2.2, grav: 6, life: 0.6, size: 3, color: 0xf0d8d8, alpha: 1, alpha2: 1 });
+          s.later(0.5, () => s.emote(a, '♥'));
+        } else s.later(0.3, () => s.emote(a, '?'));
+        s.later(0.9, () => { rod.rotation.x = -0.5; });
+      }
+      return;
+    }
+    if (n.st.t <= 0) {
+      n.st.t = rand(9, 16);
+      n.st.bite = 0.9;
+      s.emote(a, '!');
+    }
+  }
+
+  r_sweeper(n, dt) {
+    const s = this.s, a = n.a, st = n.st;
+    if (st.mode === 'sweep') {
+      a.drive(dt, 0, 0, s.map, { anim: false });
+      a.rig.play('brush');
+      st.t -= dt;
+      st.puff = (st.puff ?? 0) - dt;
+      if (st.puff <= 0) {
+        st.puff = 0.45;
+        const fy = a.rig.facing;
+        s.particles.dustPuff(a.x + Math.sin(fy) * 0.45, 0.05, a.z + Math.cos(fy) * 0.45, 3, 0x8a6a4a);
+      }
+      if (st.t <= 0) {
+        st.mode = 'step';
+        let nz = a.z + st.dir * rand(1.2, 2.4);
+        if (nz > st.z1 || nz < st.z0) { st.dir = -st.dir; nz = a.z + st.dir * 1.5; }
+        st.goal = { x: rand(4.6, 6.2), z: nz };
+        a.rig.play('idle');
+      }
+      return;
+    }
+    const g = st.goal;
+    const dx = g.x - a.x, dz = g.z - a.z, d = Math.hypot(dx, dz);
+    const av = this.avoid(n);
+    if (d > 0.15) a.drive(dt, (dx / d) * 0.8 + av.x, (dz / d) * 0.8 + av.z, s.map);
+    if (d <= 0.15 || a.speedNow < 0.05 && st.t < -2) {
+      st.mode = 'sweep';
+      st.t = rand(2, 4);
+      a.rig.face(st.dir > 0 ? 0 : Math.PI);
+    }
+    st.t -= dt;
+  }
+
+  r_miner(n, dt) {
+    const s = this.s, a = n.a, st = n.st;
+    const pile = TOWN.orePile, lift = TOWN.lift.front;
+    const avoid = this.avoid(n);
+    if (st.mode === 'toPile') {
+      if (!a.path && !this.walkTo(n, pile.x + 0.9, pile.z + 0.9)) { st.mode = 'rest'; st.t = rand(2, 4); return; }
+      const r = a.followPath(dt, s.map, n.speed, { avoid });
+      if (r !== 'moving') { st.mode = 'load'; st.t = rand(1.2, 2.2); a.faceToward(pile.x, pile.z); }
+      return;
+    }
+    if (st.mode === 'load') {
+      a.drive(dt, 0, 0, s.map, { anim: false });
+      a.rig.play('dig');
+      st.t -= dt;
+      if (st.t <= 0) {
+        a.rig.holdItem(n.crate, 'R');
+        n.crate.position.set(-0.17, -0.05, 0.1);
+        st.mode = 'toLift';
+        a.setPath(null);
+      }
+      return;
+    }
+    if (st.mode === 'toLift') {
+      if (!a.path && !this.walkTo(n, lift.x - 0.8 + (n.spec.seed % 2) * 1.6, lift.z + 0.6)) { st.mode = 'drop'; st.t = 0.5; return; }
+      const r = a.followPath(dt, s.map, n.speed * 0.85, { avoid, walkAnim: 'carry', idleAnim: 'carry' });
+      a.rig.play(a.speedNow > 0.2 ? 'carry' : 'carry');
+      if (a.speedNow > 0.2) {
+        // a walking bob while carrying (carry is an arm pose; legs need the walk cycle)
+        const r2 = a.rig;
+        r2.legL.rotation.x = Math.sin(r2.t * 9) * 0.5;
+        r2.legR.rotation.x = -Math.sin(r2.t * 9) * 0.5;
+      }
+      if (r !== 'moving') { st.mode = 'drop'; st.t = 0.8; a.faceToward(TOWN.lift.cage.x, TOWN.lift.cage.z); }
+      return;
+    }
+    if (st.mode === 'drop') {
+      a.drive(dt, 0, 0, s.map, { anim: false });
+      st.t -= dt;
+      if (st.t <= 0) {
+        a.rig.holdItem(null);
+        a.rig.play('idle');
+        if (s.player && a.dist(s.player.x, s.player.z) < 7) s.game.audio.play('clunk', { vol: 0.5 });
+        s.particles.dustPuff(a.x + Math.sin(a.rig.facing) * 0.5, 0.2, a.z + Math.cos(a.rig.facing) * 0.5, 5);
+        st.mode = chance(0.3) ? 'rest' : 'toPile';
+        st.t = rand(2, 4);
+        a.setPath(null);
+      }
+      return;
+    }
+    if (st.mode === 'rest') {
+      this.idleFidget(n, dt);
+      st.t -= dt;
+      if (st.t <= 0) st.mode = 'toPile';
+    }
+  }
+
+  r_gossip(n, dt) {
+    const s = this.s, a = n.a, m = n.mate;
+    a.drive(dt, 0, 0, s.map);
+    if (!n.speaker) return;
+    n.st.t -= dt;
+    if (n.st.t <= 0) {
+      n.st.t = rand(1.6, 3.4);
+      const talker = chance(0.5) ? n : m;
+      talker.a.rig.talk(rand(1, 2));
+      const p = s.player;
+      const near = p && a.dist(p.x, p.z) < 4.5;
+      if (near) s.game.audio.play('babble', { pitch: talker.a.voice, n: 3 });
+      const r = Math.random();
+      if (r < 0.12) { talker.a.rig.play('laugh'); s.later(1.1, () => talker.a.rig.play('idle')); if (near) s.game.audio.play('laugh', { pitch: talker.a.voice }); }
+      else if (r < 0.2) s.emote(talker.a, pick(['!', '?', '♥', '…']));
+      else if (r < 0.28) talker.a.rig.doEmote(pick(['nod', 'shake']), 0.9);
+    }
+  }
+}

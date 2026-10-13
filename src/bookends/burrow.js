@@ -6,7 +6,7 @@ import { VoxelGrid, voxMesh, jitf, hash3 } from './vox.js';
 import { makeCampfire, makeRock, makeLog, makeMushrooms, makeFlower, makePickaxe, makeRoot, makeNest, makeSack, makeLantern, S16 } from './props.js';
 import { Particles, Twinkles, SHAPE, makeGlow, makeSheetSprite, makeBeam, makeLightPool, makeBlobShadow, flameSheet, zzzTexture } from './fx.js';
 import { makeMole, makeChicken } from './actors.js';
-import { makeNoise2D, makeRng, mixHex, shade, clamp, lerp } from '../core/util.js';
+import { makeNoise2D, makeRng, shade, clamp } from '../core/util.js';
 
 const VS = 1 / 8;
 const ORE_PAL = {
@@ -76,16 +76,24 @@ function caveGrid() {
         if (z > frontCut + (y < 0 ? 0.3 : 0)) continue;
         const floor = y < bump;
         let inside = false;
+        let deep = false;
         if (!floor) {
           const dx = (x - CH.cx) / CH.rx, dy = (y - CH.cy) / CH.ry, dz = (z - CH.cz) / CH.rz;
-          const ledge = (Math.floor((y + n2(x * 0.3, z * 0.3) * 0.35) / 0.42) % 3 === 0) ? -0.05 : 0;
-          const e = dx * dx + dy * dy + dz * dz + n1(x * 0.45 + z * 0.33, y * 0.5) * 0.22 + n3(y * 1.3 + x * 0.5, z * 1.1 + x * 0.4) * 0.1 + ledge;
-          inside = e < 1;
+          const e0 = dx * dx + dy * dy + dz * dz;
+          if (e0 < 0.55) inside = true; // the noise can't reach this far: skip it
+          else if (e0 > 1.75) deep = true;
+          else {
+            const ledge = (Math.floor((y + n2(x * 0.3, z * 0.3) * 0.35) / 0.42) % 3 === 0) ? -0.05 : 0;
+            const e = e0 + n1(x * 0.45 + z * 0.33, y * 0.5) * 0.22 + n3(y * 1.3 + x * 0.5, z * 1.1 + x * 0.4) * 0.1 + ledge;
+            inside = e < 1;
+          }
           // the crack: a narrow wobbling slot through the ceiling above the beam
           const cxw = CRACK.x + Math.sin(y * 2.1) * 0.1 + (y - 4.5) * 0.25;
           if (y > 2.6 && Math.abs(x - cxw) < 0.14 && Math.abs(z - CRACK.z - (y - 4) * 0.05) < 0.3) inside = true;
         }
         if (inside) continue;
+        // deep rock is never seen: fill it without the colour work
+        if (deep && z < frontCut - 0.5) { g.set(i, j, k, 0x3a2a20); continue; }
         // solid: pick a colour
         let c;
         const front = z > frontCut - VS * 1.5;
@@ -340,6 +348,17 @@ export function buildBurrow(scene, textures) {
   const embers = new Particles({ max: 120, additive: true });
   root.add(embers.points);
 
+  // a few fireflies wandering the nook
+  const flies = new Particles({ max: 16, additive: true });
+  root.add(flies.points);
+  const flyHome = [];
+  const frng = makeRng(5);
+  for (let i = 0; i < 14; i++) {
+    const p = [frng.range(-5.5, 6), frng.range(0.6, 3.6), frng.range(-3, 1.8)];
+    flyHome.push({ p, ph: frng.range(0, 9), sp: frng.range(0.25, 0.55) });
+    flies.spawn({ pos: p.slice(), life: 1e9, color: frng.chance(0.5) ? 0xd8ff7a : 0xfff0a0, size: frng.chance(0.3) ? 2 : 1, fadeIn: 0 });
+  }
+
   // ore sparkles
   const twinkles = new Twinkles(cave.ores.map((o, i) => ({ pos: [o.pos.x + 0.06, o.pos.y + 0.08, o.pos.z + 0.2], color: o.color, size: 1, big: 5, bigShape: SHAPE.plus, speed: 0.7 + (i % 4) * 0.3, phase: i * 2.1, sharp: 12, base: 0 })));
   root.add(twinkles.points);
@@ -357,7 +376,8 @@ export function buildBurrow(scene, textures) {
   let t = 0;
   let emberAcc = 0;
   let moteAcc = 0;
-  let pokeT = 6;
+  let rubWait = 4;
+  let rubT = 0;
   const tmp = new THREE.Vector3();
   const update = (dt) => {
     t += dt;
@@ -382,6 +402,16 @@ export function buildBurrow(scene, textures) {
       });
     }
     embers.update(dt);
+    for (let i = 0; i < flyHome.length; i++) {
+      const f = flyHome[i];
+      const a = t * f.sp + f.ph;
+      flies.pos[i * 3] = f.p[0] + Math.sin(a) * 0.6 + Math.sin(a * 2.3) * 0.15;
+      flies.pos[i * 3 + 1] = f.p[1] + Math.sin(a * 1.7) * 0.25;
+      flies.pos[i * 3 + 2] = f.p[2] + Math.cos(a * 0.8) * 0.4;
+      flies.col[i * 4 + 3] = clamp(Math.sin(t * 1.3 + f.ph * 3) * 1.6 - 0.4, 0, 1) * 0.9;
+    }
+    flies.geo.attributes.position.needsUpdate = true;
+    flies.geo.attributes.aColor.needsUpdate = true;
     moteAcc += dt * 9;
     while (moteAcc > 1) { moteAcc -= 1; moteSpawn(); }
     motes.update(dt);
@@ -398,18 +428,20 @@ export function buildBurrow(scene, textures) {
       r.pivot.rotation.x = Math.sin(t * 0.47 + r.ph * 1.3) * r.amp * 0.7;
     }
 
-    // the mole warms his paws and now and then pokes the fire / glances up at the light
+    // the mole warms his paws (rubbing them now and then) and glances up at the light
     mole.update(dt);
-    pokeT -= dt;
+    rubWait -= dt;
+    if (rubWait < 0) { rubWait = 6 + Math.random() * 6; rubT = 1.4; }
+    let rub = 0;
+    if (rubT > 0) { rubT -= dt; rub = Math.sin(t * 19) * 0.16 * Math.min(1, rubT * 3); }
     const look = clamp(Math.sin(t * 0.21) * 2.2 - 1.2, 0, 1); // occasionally looks up at the beam
     mole.armL.rotation.x = -0.95 + Math.sin(t * 1.1) * 0.06;
     mole.armR.rotation.x = -0.95 + Math.sin(t * 1.1 + 0.6) * 0.06;
-    mole.armL.rotation.z = 0.25;
-    mole.armR.rotation.z = -0.25;
+    mole.armL.rotation.z = 0.25 + rub;
+    mole.armR.rotation.z = -0.25 + rub;
     mole.neck.rotation.x = -0.05 + Math.sin(t * 0.8) * 0.03 - look * 0.55;
     mole.neck.rotation.y = look * -0.5;
     mole.hip.position.y += Math.sin(t * 2) * mole.s * 0.15;
-    if (pokeT < 0) { pokeT = 7 + Math.random() * 6; mole.talkT = 0; }
 
     // Nugget dozes: eyes shut, head nodding slowly
     hen.update(dt);

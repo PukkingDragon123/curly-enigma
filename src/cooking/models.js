@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { VoxelGrid, voxelMesh } from '../gfx/Voxel.js';
 import { hashStr, shade, mixHex, makeRng } from '../core/util.js';
+import { PixelCanvas, pixelTexture } from '../gfx/PixelArt.js';
 
 export const PS = 1 / 40;
 
@@ -62,22 +63,22 @@ export function cuttingBoard() {
 
 /** Chef's knife along +z, edge down. Origin at the middle of the handle. */
 export function knife() {
-  const g = new VoxelGrid(4, 7, 38);
+  const g = new VoxelGrid(4, 7, 40);
   // handle
-  g.box(1, 2, 0, 2, 3, 10, (x, y, z) => jit((z + y) % 4 === 0 ? 0x4a2a18 : 0x5e3622, x, y, z, 3, 0.06));
-  g.set(1, 3, 3, 0xe8c860); g.set(1, 3, 7, 0xe8c860); g.set(2, 3, 3, 0xe8c860); g.set(2, 3, 7, 0xe8c860);
+  g.box(1, 1, 0, 2, 3, 12, (x, y, z) => jit((z + y) % 4 === 0 ? 0x4a2a18 : 0x5e3622, x, y, z, 3, 0.06));
+  for (const z of [3, 8]) { g.set(1, 2, z, 0xe8c860); g.set(2, 2, z, 0xe8c860); }
   // bolster
-  g.box(1, 1, 10, 2, 5, 2, 0x6e767e);
+  g.box(1, 0, 12, 2, 5, 2, 0x6e767e);
   // blade (1 voxel thick), tip rises toward the end
-  for (let z = 12; z < 38; z++) {
-    const bottom = z > 31 ? Math.round((z - 31) * 0.7) : 0;
-    const top = z < 33 ? 5 : 5 - Math.round((z - 32) * 0.9);
+  for (let z = 14; z < 40; z++) {
+    const bottom = z > 33 ? Math.round((z - 33) * 0.6) : 0;
+    const top = z < 35 ? 4 : 4 - Math.round((z - 34) * 0.8);
     for (let y = bottom; y <= top; y++) {
-      const c = y === bottom ? 0xeef4f8 : y === top ? 0x7c868e : (z + y * 3) % 13 === 0 ? 0xc8d0d8 : 0xaab4bc;
+      const c = y === bottom ? 0xf4f8fc : y === top ? 0x6c767e : y === bottom + 1 ? 0xd0d8e0 : (z + y * 3) % 11 === 0 ? 0xc8d0d8 : 0x98a2ac;
       g.set(1, y, z, c);
     }
   }
-  return vmesh(g, [2, 3.5, 5]);
+  return vmesh(g, [2, 2.5, 6]);
 }
 
 /** Wooden spoon along +z; bowl at the far end, facing up. Origin mid-handle. */
@@ -145,11 +146,11 @@ export function pot() {
   const H = 17, R = 13.5;
   const g = new VoxelGrid(36, H, 30);
   const cx = 18, cz = 15;
-  const cop = metal(0x9a5430, 4);
+  const cop = metal(0x6a3a28, 4);
   ring(g, cx, cz, R - 1, -1, 0, 1, 0x6a3420);
   ring(g, cx, cz, R, R - 1.6, 1, H - 1, (x, y, z, d, a) => (y === 3 || y === 12 ? shade(cop(x, y, z, d, a), 0.86) : cop(x, y, z, d, a)));
   ring(g, cx, cz, R - 1.6, -1, 1, 2, 0x4a2414);
-  ring(g, cx, cz, R + 0.6, R - 1.4, H - 1, H, (x, y, z, d, a) => mixHex(cop(x, y, z, d, a), 0xffd0a0, 0.25));
+  ring(g, cx, cz, R + 0.6, R - 1.4, H - 1, H, (x, y, z, d, a) => metal(0xc8a050, 5)(x, y, z, d, a));
   // side handles
   for (const s of [-1, 1]) {
     const hx = s < 0 ? cx - R - 3 : cx + R + 1;
@@ -288,42 +289,45 @@ export function flatFood(color, r = 9) {
 }
 
 // ---------------------------------------------------------------- stove
-/** Cast-iron stove top with two burners (left = pot, right = pan), brass rail at the front.
- *  Returns {group, burners: [{x, z}] (local), grates: [mesh]} */
+/** Cast-iron stove top with two burners (left = pot, right = pan) and a brass rail at the front.
+ *  The slab is a textured box (cheap); rims, prongs and glowing grates are small voxel meshes.
+ *  Returns {group, burners: [{x, z}] (local), grates: [mesh], height} — origin at the top center. */
 export function stoveTop(widthU, depthU) {
-  const W = Math.round(widthU / PS), D = Math.round(depthU / PS), H = 4;
-  const g = new VoxelGrid(W, H + 2, D);
-  const bz = Math.round(D * 0.48);
-  const centers = [0.27, 0.73].map((fx) => Math.round(W * fx));
-  const inHole = (x, z) => centers.some((bx) => Math.hypot(x + 0.5 - bx, z + 0.5 - bz) < 10.5);
-  const iron = (x, y, z) => {
-    if (inHole(x, z)) return y === 0 ? 0x1a1416 : -1;
-    let c = 0x2c282a;
-    if ((x * 3 + z * 7) % 19 === 0) c = 0x343032;
-    if (x < 2 || z < 2 || x >= W - 2 || z >= D - 2) c = 0x3e3a3c;
-    return jit(c, x, y, z, 5, 0.06);
-  };
-  g.box(0, 0, 0, W, H, D, iron);
-  // rivets along the edge
-  for (let x = 4; x < W - 3; x += 8) { g.set(x, H, 2, 0x5a5658); g.set(x, H, D - 3, 0x5a5658); }
-  for (let z = 6; z < D - 3; z += 8) { g.set(2, H, z, 0x5a5658); g.set(W - 3, H, z, 0x5a5658); }
+  const H = 4 * PS;
+  const TW = 64, TH = Math.round((64 * depthU) / widthU);
+  const pc = new PixelCanvas(TW, TH);
   const burners = [];
+  const centers = [0.27, 0.73].map((fx) => [fx * TW, 0.48 * TH]);
+  const holeR = (10.5 * PS / widthU) * TW;
+  for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++) {
+    let c = (x * 3 + y * 7) % 19 === 0 ? 0x343032 : (x * 5 + y * 3) % 23 === 0 ? 0x262224 : 0x2c282a;
+    if (x < 1 || y < 1 || x >= TW - 1 || y >= TH - 1) c = 0x3e3a3c;
+    for (const [cx, cy] of centers) if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) < holeR) c = 0x141012;
+    pc.set(x, y, c);
+  }
+  for (let x = 3; x < TW - 2; x += 5) { pc.set(x, 2, 0x5a5658); pc.set(x, TH - 3, 0x5a5658); }
+  for (let y = 6; y < TH - 3; y += 5) { pc.set(2, y, 0x5a5658); pc.set(TW - 3, y, 0x5a5658); }
+  const tex = pixelTexture(pc.commit());
+  const side = new THREE.MeshLambertMaterial({ color: 0x2a2628 });
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(widthU, H, depthU), [side, side, new THREE.MeshLambertMaterial({ map: tex }), side, side, side]);
+  slab.position.y = -H / 2;
+  const group = new THREE.Group();
+  group.add(slab);
   const grates = [];
-  for (const bx of centers) {
-    burners.push({ x: (bx - W / 2) * PS, z: (bz - D / 2) * PS });
-    // raised rim around the hole
-    ring(g, bx, bz, 12.2, 10.4, H, H + 1, (x, y, z, d, a) => metal(0x4a4648, 8)(x, y, z, d, a));
-    // pan supports (4 prongs)
+  for (const [cx, cy] of centers) {
+    const bx = (cx / TW - 0.5) * widthU, bz = (cy / TH - 0.5) * depthU;
+    burners.push({ x: bx, z: bz });
+    // raised rim + pan supports
+    const g = new VoxelGrid(28, 2, 28);
+    ring(g, 14, 14, 12.2, 10.4, 0, 1, (x, y, z, d, a) => metal(0x4a4648, 8)(x, y, z, d, a));
     for (let k = 0; k < 4; k++) {
       const a = k * Math.PI / 2 + Math.PI / 4;
-      for (let r = 7; r < 11; r++) g.set(Math.round(bx + Math.cos(a) * r - 0.5), H + 1, Math.round(bz + Math.sin(a) * r - 0.5), 0x4a4648);
+      for (let r = 7; r < 11; r++) g.set(Math.round(14 + Math.cos(a) * r - 0.5), 1, Math.round(14 + Math.sin(a) * r - 0.5), 0x4a4648);
     }
-  }
-  // brass towel rail at the front
-  for (let x = 3; x < W - 3; x++) { g.set(x, H + 1, D - 1, x % 9 === 0 ? 0x8a6a2a : 0xd8a840); }
-  const top = vmesh(g, [W / 2, H, D / 2]);
-  // glowing burner grates (unlit, tinted by flame strength)
-  for (const b of burners) {
+    const rim = vmesh(g, [14, 0, 14]);
+    rim.position.set(bx, 0, bz);
+    group.add(rim);
+    // glowing grate (unlit, tinted by flame strength)
     const gg = new VoxelGrid(22, 1, 22);
     ring(gg, 11, 11, 9.8, -1, 0, 1, (x, y, z, d, a) => {
       const spoke = Math.abs(Math.sin(a * 4)) < 0.25;
@@ -332,26 +336,36 @@ export function stoveTop(widthU, depthU) {
     });
     const mat = new THREE.MeshBasicMaterial({ vertexColors: true, color: 0x333333 });
     const m = vmesh(gg, [11, 1, 11], { material: mat, outline: false });
-    m.position.set(b.x, -(H - 1.2) * PS, b.z);
+    m.position.set(bx, 0.004, bz);
+    group.add(m);
     grates.push(m);
   }
-  const group = new THREE.Group();
-  group.add(top, ...grates);
-  return { group, burners, grates, height: H * PS };
+  // brass towel rail at the front
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(widthU - 0.12, 0.028, 0.028), new THREE.MeshLambertMaterial({ color: 0xd8a840 }));
+  rail.position.set(0, 0.03, depthU / 2 - 0.03);
+  rail.layers.enable(1);
+  group.add(rail);
+  for (const sx of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 0.03), new THREE.MeshLambertMaterial({ color: 0x8a6a2a }));
+    post.position.set(sx * (widthU / 2 - 0.08), 0.015, depthU / 2 - 0.03);
+    group.add(post);
+  }
+  return { group, burners, grates, height: H };
 }
 
 /** One flame tongue (unlit). */
 export function flameTongue() {
-  const g = new VoxelGrid(4, 9, 4);
-  for (let y = 0; y < 9; y++) {
-    const r = y < 3 ? 1.9 : y < 6 ? 1.4 : 0.9;
-    for (let z = 0; z < 4; z++) for (let x = 0; x < 4; x++) {
-      if (Math.hypot(x + 0.5 - 2, z + 0.5 - 2) > r) continue;
-      const core = Math.hypot(x + 0.5 - 2, z + 0.5 - 2) < 1 && y < 5;
-      g.set(x, y, z, core ? 0xfff6b0 : y < 3 ? 0xffc040 : y < 6 ? 0xff8a20 : 0xe8401a);
+  const g = new VoxelGrid(3, 7, 3);
+  for (let y = 0; y < 7; y++) {
+    const r = y < 3 ? 1.5 : y < 5 ? 1.05 : 0.6;
+    for (let z = 0; z < 3; z++) for (let x = 0; x < 3; x++) {
+      const d = Math.hypot(x + 0.5 - 1.5, z + 0.5 - 1.5);
+      if (d > r) continue;
+      const core = d < 0.8 && y < 4;
+      g.set(x, y, z, core ? 0xfff8c8 : y < 2 ? 0xffd860 : y < 4 ? 0xffb030 : y < 6 ? 0xff8a20 : 0xf0602a);
     }
   }
-  return vmesh(g, [2, 0, 2], { kind: 'basic', outline: false });
+  return vmesh(g, [1.5, 0, 1.5], { kind: 'basic', outline: false });
 }
 
 // ---------------------------------------------------------------- wall decor

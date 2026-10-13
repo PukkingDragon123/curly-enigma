@@ -60,8 +60,9 @@ export class Game {
       else if (e.code === 'Escape') this.ui.openMenu();
     });
 
-    window.addEventListener('beforeunload', () => this.state.save());
-    document.addEventListener('visibilitychange', () => { if (document.hidden) this.state.save(); });
+    const saveIfPlaying = () => { if (this.sceneName && this.sceneName !== 'title' && this.sceneName !== 'showroom') this.state.save(); };
+    window.addEventListener('beforeunload', saveIfPlaying);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) saveIfPlaying(); });
     window.claude?.hot?.snapshot?.(() => ({ save: JSON.stringify(this.state.data) }));
     this.state.on('gold', () => this.checkGoal());
     this.state.on('energy', () => {});
@@ -88,7 +89,7 @@ export class Game {
     this.engine.time += dt;
     const st = this.state;
     if (this.scene && !this.transitioning) {
-      st.data.playTime += dt;
+      if (this.sceneName !== 'title') st.data.playTime += dt;
       try { this.scene.update(dt); } catch (e) { console.error(e); this.reportError(e); }
       this.cheats();
     }

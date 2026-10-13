@@ -8,10 +8,11 @@ import { METALS, WEAPON_TYPES, FORGE_MAX_TEMP } from '../data/weapons.js';
 
 export const AMBIENT = 22;
 export const MIN_W = 0.25; // thinnest a column can be hammered
-export const BLOW = 1.8; // half-width moved by a full-power blow at ideal heat (× metal flow)
+export const BLOW = 1.2; // half-width moved by a full-power blow at ideal heat (× metal flow)
 const TIP = [0.36, 0.27, 0.18, 0.1]; // share of displaced metal pushed 1..4 columns toward the tip
 const GUARD = [0.09]; // share pushed back toward the guard
 const TOL = 0.1; // per-column slack before a deviation counts as error
+const ACC_GAIN = 1.8; // error weight: an untouched bar scores ~25-45%, careful work + grinding ~90%+
 export const HAFTED = new Set(['axe', 'mace', 'warhammer', 'spear']);
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -70,7 +71,7 @@ export class BladeSim {
     const n = Math.max(this.w.length, this.N);
     let e = 0;
     for (let i = 0; i < n; i++) e += Math.max(0, Math.abs((this.w[i] || 0) - (this.target[i] || 0)) - TOL);
-    return clamp(1 - e / this.targetSum, 0, 1);
+    return clamp(1 - ACC_GAIN * e / this.targetSum, 0, 1);
   }
 
   /** Per-column match state for the outline: -1 too thin, 0 good, 1 too thick. */
@@ -91,7 +92,7 @@ export class BladeSim {
       const thin = 0.55 + 1.4 / (w + 0.5);
       let T = this.T[i];
       if (inFire) {
-        const k = (0.08 + 0.11 * air) * m.heat * (0.7 + 0.3 * thin);
+        const k = (0.09 + 0.13 * air) * m.heat * (0.7 + 0.3 * thin);
         T += (fireT - T) * k * dt;
         T = Math.min(T, this.maxT);
       } else {
@@ -114,6 +115,22 @@ export class BladeSim {
   }
 
   // ---------------------------------------------------------------- hammer
+  /** How much a blow of this power would thin column i right now (no side effects). */
+  flowFactor(T) {
+    const [w0, w1] = this.m.work;
+    const kind = this.zone(T);
+    if (kind === 'cold') return 0.12 * clamp(1 - (w0 - T) / 300, 0, 1);
+    if (kind === 'burn') return 1.25;
+    if (kind === 'hot') return 1.2;
+    return 0.8 + 0.4 * (T - w0) / (w1 - w0);
+  }
+
+  predict(i, power) {
+    if (i < 0 || i >= this.w.length) return 0;
+    const a = Math.max(0, Math.min(BLOW * power * this.m.flow * this.flowFactor(this.T[i]), this.w[i] - MIN_W));
+    return this.w[i] - a;
+  }
+
   /**
    * Strike column i with power 0..1. Returns an event describing what happened.
    * rnd: random source (Math.random by default) for crack rolls.
@@ -124,11 +141,7 @@ export class BladeSim {
     const T = this.T[i];
     const [w0, w1] = m.work;
     const kind = this.zone(T);
-    let f;
-    if (kind === 'cold') f = 0.12 * clamp(1 - (w0 - T) / 300, 0, 1);
-    else if (kind === 'burn') f = 1.25;
-    else if (kind === 'hot') f = 1.2;
-    else f = 0.8 + 0.4 * (T - w0) / (w1 - w0);
+    const f = this.flowFactor(T);
     const before = this.accuracy();
     let a = BLOW * power * m.flow * f;
     a = Math.max(0, Math.min(a, this.w[i] - MIN_W));
@@ -138,14 +151,16 @@ export class BladeSim {
     this.lost += a - moved;
     let spill = 0;
     const grown = [];
-    for (let k = 0; k < GUARD.length; k++) {
-      const j = i - 1 - k;
-      if (j >= 0) this.w[j] += moved * GUARD[k];
-      else spill += moved * GUARD[k];
-    }
-    for (let k = 0; k < TIP.length; k++) {
-      const j = this._ensure(i + 1 + k, T, grown);
-      this.w[j] += moved * TIP[k] + (k === 0 ? spill : 0);
+    if (moved > 0.002) {
+      for (let k = 0; k < GUARD.length; k++) {
+        const j = i - 1 - k;
+        if (j >= 0) this.w[j] += moved * GUARD[k];
+        else spill += moved * GUARD[k];
+      }
+      for (let k = 0; k < TIP.length; k++) {
+        const j = this._ensure(i + 1 + k, T, grown);
+        this.w[j] += moved * TIP[k] + (k === 0 ? spill : 0);
+      }
     }
     // working metal warms it a touch
     this.T[i] += a * 6;
@@ -154,11 +169,11 @@ export class BladeSim {
     if (kind === 'cold') {
       this.coldStrikes++;
       const cold = clamp((w0 - T) / 250, 0.25, 1);
-      ev.stress = power * cold * 7;
+      ev.stress = power * cold * 4;
       this.stress += ev.stress;
-      if (power > 0.3 && this.cracks[i] < 3 && rnd() < power * cold * 0.9) {
+      if (power > 0.35 && this.cracks[i] < 3 && rnd() < power * cold * 0.6) {
         this.cracks[i]++;
-        this.stress += 3;
+        this.stress += 2;
         ev.crack = true;
       }
     } else if (kind === 'burn') {
@@ -199,7 +214,7 @@ export class BladeSim {
 
   /** 0..1 temper: stress from cold blows and burning both weaken the steel. */
   temperScore() {
-    return clamp(1 - (this.stress + this.burnt) / 60, 0, 1);
+    return clamp(1 - (this.stress + this.burnt) / 80, 0, 1);
   }
 
   /**

@@ -44,14 +44,14 @@ export class Kitchen {
   }
 
   buildLights() {
-    const hemi = new THREE.HemisphereLight(0xffe6c8, 0x4a2a1c, 1.35);
+    const hemi = new THREE.HemisphereLight(0xffe2c0, 0x3a2418, 1.05);
     this.root.add(hemi);
-    const key = new THREE.DirectionalLight(0xfff0dc, 1.35);
+    const key = new THREE.DirectionalLight(0xfff0dc, 1.15);
     key.position.set(-2.5, 4, 3.5);
     this.root.add(key);
     this.root.add(key.target);
     this.key = key;
-    const fire = new THREE.PointLight(0xff8a3a, 0, 2.4, 1.8);
+    const fire = new THREE.PointLight(0xffa060, 0, 2.0, 2);
     fire.position.set(2, 0.25, -0.1);
     this.root.add(fire);
     this.fireLight = fire;
@@ -146,13 +146,12 @@ export class Kitchen {
     }
     // flames around each burner
     for (let b = 0; b < 2; b++) {
-      const n = 10;
+      const n = 14;
       for (let i = 0; i < n; i++) {
         const f = M.flameTongue();
         const a = (i / n) * Math.PI * 2;
-        const r = 0.31;
-        f.scale.setScalar(1.3);
-        f.position.set(this.burners[b].x + Math.cos(a) * r, STOVE.top - 0.06, this.burners[b].z + Math.sin(a) * r);
+        const r = 0.29 + (i % 2) * 0.025;
+        f.position.set(this.burners[b].x + Math.cos(a) * r, STOVE.top + 0.005, this.burners[b].z + Math.sin(a) * r);
         f.rotation.y = -a;
         f.visible = false;
         f.userData = { a, ph: Math.random() * 10, sp: 9 + Math.random() * 7 };
@@ -245,7 +244,7 @@ export class Kitchen {
     P.plate = this.add(M.plate(), SPOTS.plate.x, 0, SPOTS.plate.z);
     P.pot = this.add(M.pot(), SPOTS.pot.x, STOVE.top + 0.03, SPOTS.pot.z);
     P.pan = this.add(M.pan(), SPOTS.pan.x, STOVE.top + 0.03, SPOTS.pan.z, -0.35);
-    P.knife = this.add(M.knife(), 0.82, 0.03, 0.42, -0.5);
+    P.knife = this.add(M.knife(), SPOTS.board.x + 0.36, BOARD_TOP + 0.012, SPOTS.board.z - 0.26, -1.25);
     P.knife.rotation.z = Math.PI / 2;
     P.spoon = this.add(M.spoon(), 1.65, 0.05, 0.62, 0.3);
     P.spatula = this.add(M.spatula(), 3.6, 0.03, 0.3, -0.2);
@@ -283,14 +282,14 @@ export class Kitchen {
         if (!f.visible) continue;
         const u = f.userData;
         const fl = 0.75 + Math.sin(t * u.sp + u.ph) * 0.18 + Math.sin(t * u.sp * 2.3 + u.ph * 2) * 0.12;
-        f.scale.set(1.3, Math.max(0.1, fl * h * 1.5), 1.3);
+        f.scale.set(1, Math.max(0.1, fl * h * 0.9), 1);
         f.rotation.z = Math.sin(t * 5 + u.ph) * 0.15;
       }
       const g = this.stove.grates[b];
       const k = 0.2 + h * (0.8 + Math.sin(t * 13 + b) * 0.08);
       g.material.color.setRGB(k, k * 0.92, k * 0.85);
-      if (h > light) { light = h; this.fireLight.position.set(this.burners[b].x, 0.32, this.burners[b].z + 0.12); }
+      if (h > light) { light = h; this.fireLight.position.set(this.burners[b].x, 0.05, this.burners[b].z + 0.5); }
     }
-    this.fireLight.intensity = light * (1.3 + Math.sin(t * 17) * 0.15 + Math.sin(t * 7.3) * 0.15);
+    this.fireLight.intensity = light * (0.2 + Math.sin(t * 17) * 0.03 + Math.sin(t * 7.3) * 0.03);
   }
 }

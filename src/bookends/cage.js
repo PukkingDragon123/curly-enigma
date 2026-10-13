@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { VoxelGrid, voxMesh, jitf, hash3 } from './vox.js';
 import { makeGlow } from './fx.js';
-import { mixHex, shade } from '../core/util.js';
+import { shade } from '../core/util.js';
 
 const S = 1 / 16;
 const W = 36, D = 28;
@@ -145,7 +145,7 @@ export function makeCage() {
   const barG = new VoxelGrid(1, 26, 1);
   for (let y = 0; y < 26; y++) barG.set(0, y, 0, y % 5 === 0 ? BRASS_HI : brass(0, y, 0));
   const bars = [];
-  const N = 10;
+  const N = 8;
   const zFront = (D + 1 - (D + 2) / 2 + 0.5) * S;
   for (let i = 0; i < N; i++) {
     const b = voxMesh(barG, { pivot: [0.5, 0, 0.5], scale: S });
@@ -159,25 +159,23 @@ export function makeCage() {
   const lattice = [];
   for (let i = 0; i < N - 1; i++) {
     const l = voxMesh(latG, { pivot: [2, 2, 0.5], scale: S });
-    l.position.set(0, 9 * S, zFront - 0.2 * S);
+    l.position.set(0, 8 * S, zFront - 0.2 * S);
     root.add(l);
-    const l2 = voxMesh(latG, { pivot: [2, 2, 0.5], scale: S });
-    l2.position.set(0, 21 * S, zFront - 0.2 * S);
-    root.add(l2);
-    lattice.push(l, l2);
+    lattice.push(l);
   }
   const xLeft = (-W / 2 + 2.5) * S, xRight = (W / 2 - 2.5) * S;
   const setGate = (k) => {
     k = Math.max(0, Math.min(1, k));
     for (let i = 0; i < N; i++) {
-      const open = xLeft + i * 1.0 * S;
+      const open = xLeft - 1.5 * S + i * 0.42 * S; // folded up against the left post
+
       const closed = xLeft + (i / (N - 1)) * (xRight - xLeft);
       bars[i].position.x = open + (closed - open) * k;
     }
     for (let i = 0; i < N - 1; i++) {
       const a = bars[i].position.x, b = bars[i + 1].position.x;
       const show = k > 0.85;
-      for (const l of [lattice[i * 2], lattice[i * 2 + 1]]) {
+      for (const l of [lattice[i]]) {
         l.visible = show;
         l.position.x = (a + b) / 2;
         l.scale.x = Math.max(0.2, (b - a) / (4 * S));
@@ -193,6 +191,7 @@ export function makeCage() {
 
   return {
     root,
+    cable,
     setGate,
     lampGlow,
     lampPos: lampPos.clone().add(new THREE.Vector3(0, -9 * S, 0)),

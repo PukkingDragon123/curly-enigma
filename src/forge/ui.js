@@ -5,8 +5,11 @@ import { el, clamp } from '../core/util.js';
 import { gaugeGradient, glowCss, heatWord } from './blackbody.js';
 
 const CSS = `
-.fg-layer { position: absolute; inset: 0; pointer-events: none; }
+.fg-layer { position: absolute; inset: 0; pointer-events: none; font-variant-ligatures: none; font-feature-settings: "liga" 0, "clig" 0; }
+.fg-nolig { font-variant-ligatures: none; font-feature-settings: "liga" 0, "clig" 0; }
 .fg-side { position: absolute; left: calc(var(--px) * 4); top: calc(var(--px) * 58); width: calc(var(--px) * 104); padding: calc(var(--px) * 5) calc(var(--px) * 5) calc(var(--px) * 4); gap: calc(var(--px) * 2); }
+.fg-side.act { width: calc(var(--px) * 84); padding: calc(var(--px) * 4) calc(var(--px) * 4) calc(var(--px) * 3); }
+.fg-side.act h2 { font-size: 1.45em; }
 .fg-side.wide { width: min(calc(100vw - var(--px) * 64), calc(var(--px) * 176)); max-height: calc(100vh - var(--px) * 66); }
 .fg-side.plan { width: min(calc(100vw - var(--px) * 64), calc(var(--px) * 212)); max-height: calc(100vh - var(--px) * 66); }
 .fg-side h2 { margin: 0 0 var(--px); font-size: 1.7em; }

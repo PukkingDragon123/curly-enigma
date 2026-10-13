@@ -79,8 +79,9 @@ function weaponRack(id, ctx) {
   const best = [...(ctx.weapons || [])].sort((a, b) => (b.value || 0) - (a.value || 0)).slice(0, 3);
   best.forEach((w, i) => {
     const m = weaponModel(w);
-    at(m, 32, 16, 9 + i * 7, 3, 8.5);
-    m.rotation.z = (i - 1) * 0.04;
+    at(m, 32, 16, 9 + i * 7, 2, 11.5);
+    m.rotation.x = -0.12;
+    m.rotation.z = (i - 1) * 0.05;
     grp.add(m);
   });
   return { obj: grp };
@@ -106,10 +107,11 @@ function gemCase(id, ctx) {
   g.box(4, 2, 4, 8, 9, 8, wd(WOOD, 2));
   g.box(3, 11, 3, 10, 2, 10, (x, y) => (y === 12 ? GOLD : WOOD_D));
   for (const [x, z] of [[3, 3], [12, 3], [3, 12], [12, 12]]) g.box(x, 13, z, 1, 10, 1, BRASS);
-  g.box(3, 23, 3, 10, 1, 10, BRASS);
+  for (let x = 3; x < 13; x++) { g.set(x, 23, 3, BRASS); g.set(x, 23, 12, BRASS); }
+  for (let z = 3; z < 13; z++) { g.set(3, 23, z, BRASS); g.set(12, 23, z, BRASS); }
   g.box(6, 13, 6, 4, 1, 4, 0xb8303a); // velvet cushion
   grp.add(M(g));
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.6, 0.56), new THREE.MeshBasicMaterial({ color: 0xcfefff, transparent: true, opacity: 0.18, depthWrite: false }));
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.6, 0.56), new THREE.MeshBasicMaterial({ color: 0xcfefff, transparent: true, opacity: 0.28, depthWrite: false }));
   glass.position.y = 13 / 16 + 0.3;
   grp.add(glass);
   const gem = bestGem(ctx.state);
@@ -125,7 +127,7 @@ function gemCase(id, ctx) {
   }
   return {
     obj: grp,
-    lights: gem ? [{ x: 0, y: 1.0, z: 0, color: col, intensity: 3, distance: 4, flicker: 0.05, speed: 0.4, pool: 1.0, poolOpacity: 0.25, halo: 0.6, hy: 1.0, haloOpacity: 0.35 }] : [],
+    lights: gem ? [{ x: 0, y: 1.05, z: 0.1, color: col, intensity: 1.6, distance: 3.5, flicker: 0.05, speed: 0.4, pool: 0.8, poolOpacity: 0.16, halo: 0.45, hy: 1.0, haloOpacity: 0.2 }] : [],
     update(dt, t) { if (gm) { gm.rotation.y = t * 0.8; gm.position.y = 14 / 16 + Math.sin(t * 1.7) * 0.02; } },
   };
 }
@@ -392,15 +394,16 @@ function fishTank(id) {
   for (const [x, h] of [[5, 9], [7, 6], [24, 10], [26, 7], [14, 5]]) for (let y = 0; y < h; y++) g.set(x + (y % 3 === 0 ? 1 : 0), 12 + y, 6 + (x % 4), y % 2 ? 0x4a9a4a : 0x5ab85a);
   g.box(18, 12, 7, 4, 3, 3, 0x7a7470);
   grp.add(M(g));
-  const water = new THREE.Mesh(new THREE.BoxGeometry(29 / 16, 11.5 / 16, 9.6 / 16), new THREE.MeshBasicMaterial({ color: 0x3aa8e0, transparent: true, opacity: 0.32, depthWrite: false }));
+  const water = new THREE.Mesh(new THREE.BoxGeometry(29 / 16, 11.5 / 16, 9.6 / 16), new THREE.MeshBasicMaterial({ color: 0x4ab8f0, transparent: true, opacity: 0.24, depthWrite: false }));
   water.position.set(0, (12 + 5.75) / 16, (8.5 - 8) / 16);
   grp.add(water);
   const fish = [];
   for (let i = 0; i < 2; i++) {
-    const f = new VoxelGrid(6, 3, 2);
-    f.box(1, 0, 0, 4, 3, 2, 0xf0d8d8); f.box(0, 1, 0, 1, 1, 2, 0xf0d8d8); f.set(5, 0, 0, 0xe8c0c0); f.set(5, 2, 0, 0xe8c0c0); f.set(5, 1, 0, -1);
-    f.set(1, 2, 1, 0xe0b8b8);
-    const m = vmesh(f, { scale: V16, pivot: [3, 1.5, 1] });
+    const f = new VoxelGrid(8, 4, 2);
+    f.box(1, 0, 0, 5, 4, 2, (x, y) => (y === 0 ? 0xfff0ea : 0xf8c0b0)); f.box(0, 1, 0, 1, 2, 2, 0xf8c0b0);
+    f.box(6, 0, 0, 2, 1, 2, 0xe8907a); f.box(6, 3, 0, 2, 1, 2, 0xe8907a); f.box(6, 1, 0, 1, 2, 2, 0xe8a090);
+    f.set(3, 3, 0, 0xe8907a); f.set(3, 3, 1, 0xe8907a);
+    const m = vmesh(f, { scale: V16, pivot: [4, 2, 1] });
     grp.add(m);
     fish.push(m);
   }
@@ -464,29 +467,42 @@ function statue(id) {
   const g = fg(id, 56);
   const marble = (x, y, z) => {
     const v = Math.sin(x * 0.7 + y * 0.35 + z * 0.5) + Math.sin(y * 0.9 - x * 0.3);
-    if (v > 1.65) return 0xb8b2aa;
-    return jit(0xe6e2da, x, y, z, 3, 0.04);
+    if (v > 1.7) return 0xbab4ac;
+    return jit(0xece8e0, x, y, z, 3, 0.035);
   };
-  const ped = (x, y, z) => jit(0x9a948e, x >> 1, y, z >> 1, 2, 0.08);
+  const shadowM = 0xa8a29a, dark = 0x6a645e;
+  const ped = (x, y, z) => jit(0x8a847e, x >> 1, y, z >> 1, 2, 0.08);
   g.box(2, 0, 2, 28, 3, 28, ped);
-  g.box(5, 3, 5, 22, 7, 22, ped);
+  g.box(5, 3, 5, 22, 7, 22, (x, y, z) => (y === 3 || y === 9 ? 0x7a746e : ped(x, y, z)));
   g.box(4, 10, 4, 24, 2, 24, (x, y) => (y === 11 ? 0xc8c2ba : 0xaaa49e));
-  g.box(11, 6, 26, 10, 3, 1, BRASS);
-  // the mole
-  g.ellipsoid(16, 21, 16, 7.5, 9, 6.5, marble);
-  g.ellipsoid(16, 34, 17, 7, 6, 6.5, marble);
-  g.box(14, 30, 23, 4, 3, 3, marble); g.box(15, 31, 26, 2, 2, 1, 0xd8d2ca);
-  g.box(11, 35, 23, 3, 1, 1, 0x8a847e); g.box(18, 35, 23, 3, 1, 1, 0x8a847e); // squint
-  g.box(11, 36, 22, 3, 1, 1, 0xa8a29a); g.box(18, 36, 22, 3, 1, 1, 0xa8a29a);
-  g.ellipsoid(16, 39, 17, 7.5, 3.5, 7, (x, y, z) => (y < 38 ? -1 : marble(x, y, z)));
-  g.box(14, 38, 23, 4, 2, 2, 0xd0cac2);
-  g.box(11, 12, 15, 4, 4, 5, marble); g.box(17, 12, 15, 4, 4, 5, marble);
-  // left paw on hip, right paw raising the pick
-  g.box(7, 20, 14, 3, 6, 4, marble); g.box(8, 18, 16, 3, 3, 4, marble);
-  for (let k = 0; k < 9; k++) g.box(22 + Math.floor(k * 0.35), 24 + k, 15, 3, 1, 4, marble);
-  g.box(24, 33, 14, 4, 3, 5, marble);
-  for (let k = 0; k < 18; k++) g.set(26, 30 + k, 16, 0xd8d2ca);
-  for (let k = -7; k <= 7; k++) g.box(26 + k, 47 - Math.round(Math.abs(k) * 0.4), 15, 1, 2, 3, marble);
+  g.box(11, 5, 27, 10, 3, 1, BRASS); g.box(12, 6, 28, 8, 1, 1, 0xffe08a);
+  // feet and stout legs
+  g.ellipsoid(12, 12, 19, 3.2, 1.6, 4, marble); g.ellipsoid(20, 12, 19, 3.2, 1.6, 4, marble);
+  g.box(10, 12, 14, 4, 4, 5, marble); g.box(18, 12, 14, 4, 4, 5, marble);
+  // round body with a belly
+  g.ellipsoid(16, 21, 16, 7.6, 7.5, 6.4, marble);
+  g.ellipsoid(16, 19, 20.5, 5, 5, 2.4, (x, y, z) => jit(0xf4f0e8, x, y, z, 4, 0.03));
+  // big chibi head
+  g.ellipsoid(16, 33, 16.5, 7.6, 6.4, 6.8, marble);
+  // snout and nose
+  g.ellipsoid(16, 30.5, 23, 3.4, 2.6, 2.6, marble);
+  g.box(15, 31, 25, 2, 2, 1, 0xd0c4c0);
+  // heroic squint + brows
+  g.box(11, 33, 22, 3, 1, 1, dark); g.box(18, 33, 22, 3, 1, 1, dark);
+  g.box(10, 35, 21, 4, 1, 2, shadowM); g.box(18, 35, 21, 4, 1, 2, shadowM);
+  // miner's helmet with a golden lamp
+  g.ellipsoid(16, 37, 16.5, 8, 4.6, 7.4, (x, y, z) => (y < 37 ? -1 : y === 37 ? shadowM : marble(x, y, z)));
+  g.box(14, 37, 23, 4, 3, 2, GOLD); g.box(15, 38, 25, 2, 1, 1, 0xfff0a0);
+  // left paw on the hip
+  g.box(6, 19, 14, 3, 7, 4, marble); g.box(7, 17, 17, 4, 3, 4, marble);
+  // right arm raised high, gripping the pick
+  for (let k = 0; k < 12; k++) g.box(22 + Math.floor(k * 0.25), 23 + k, 14, 3, 1, 4, marble);
+  g.box(23, 35, 13, 5, 4, 6, marble);
+  for (let k = 0; k < 16; k++) g.box(25 - Math.floor(k * 0.32), 37 + k, 15, 1, 1, 2, k > 13 ? marble : shadowM);
+  for (let k = -9; k <= 7; k++) {
+    const x = 20 + k, y = 52 - Math.round(Math.abs(k) * 0.42);
+    g.box(x, y, 15, 1, 2, 2, Math.abs(k) > 6 ? GOLD : marble);
+  }
   return { obj: M(g) };
 }
 

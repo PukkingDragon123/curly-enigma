@@ -34,7 +34,6 @@ export default class TitleScene extends Scene {
   // ------------------------------------------------------------------ DOM
   buildDom() {
     const g = this.game;
-    const st = g.state;
     const word = 'MOLEFORGE';
     const logo = el('h1', { class: 'big-title bk-logo', 'aria-label': word }, [...word].map((ch, i) => el('span', { class: ch === 'O' && i === 1 ? 'bk-o' : '', style: { '--i': i }, 'aria-hidden': 'true' }, ch)));
     const sub = el('div', { class: 'bk-sub bk-outline' }, [el('i'), 'One million gold to the surface', el('i')]);
@@ -57,7 +56,7 @@ export default class TitleScene extends Scene {
       if (i) controls.append(el('span', { class: 'dot' }, '·'));
       controls.append(el('kbd', {}, k), label);
     });
-    this.soundHint = el('div', { class: 'bk-sound bk-outline', role: 'status' }, [el('span', { class: 'note' }, '♪'), 'click anywhere for sound']);
+    this.soundHint = el('div', { class: 'bk-sound bk-outline', role: 'status' }, [el('span', { class: 'bk-sound-in' }, [el('span', { class: 'note' }, '♪'), 'click anywhere for sound'])]);
     this.root = el('div', { class: 'bk-root bk-title' }, [el('div', { class: 'bk-left' }, [logo, sub, menu]), controls, this.soundHint]);
     g.ui.world.append(this.root);
     this.own(() => this.root.remove());
@@ -66,18 +65,18 @@ export default class TitleScene extends Scene {
 
   hasProgress() {
     const d = this.game.state.data;
-    return !!this.game.state.flag('lastScene') || d.day > 1 || d.stats.blocks > 0 || d.stats.earned > 0 || d.weapons.length > 0 || Object.keys(d.index || {}).length > 0 || d.playTime > 60;
+    // (not playTime: the game loop also counts time spent idling on this screen)
+    return !!this.game.state.flag('lastScene') || d.day > 1 || d.stats.blocks > 0 || d.stats.earned > 0 || d.weapons.length > 0 || Object.keys(d.index || {}).length > 0;
   }
 
   canContinue() {
     return this.game.state.hasSave() && this.hasProgress();
   }
 
+  /** lastScene || 'home', but never back into the title, the ending or a dev scene. */
   continueTarget() {
-    const st = this.game.state;
-    const ls = st.flag('lastScene');
-    if (ls && CONTINUE_OK.has(ls)) return ls;
-    return st.flag('endingSeen') ? 'town' : 'home';
+    const ls = this.game.state.flag('lastScene');
+    return CONTINUE_OK.has(ls) ? ls : 'home';
   }
 
   doContinue() {
@@ -88,7 +87,8 @@ export default class TitleScene extends Scene {
   async newGame() {
     const g = this.game;
     const st = g.state;
-    if (st.hasSave()) {
+    // a save with no real progress (e.g. written on a page unload at the title) isn't worth a prompt
+    if (st.hasSave() && this.hasProgress()) {
       this.busy = true;
       const ok = await g.ui.confirm('<b>Start a new game?</b><br>Your current save will be erased.', 'Start fresh', 'Keep my save');
       this.busy = false;

@@ -2,7 +2,7 @@
 // through The Core, Frost Vault, Magma Deep, Crystal Grotto, Clayworks and Rootsoil while the
 // depth counter ticks from 400 m to 0 m and daylight grows overhead.
 import * as THREE from 'three';
-import { VoxelGrid, voxMesh, jitf, hash3, voxLine } from './vox.js';
+import { VoxelGrid, voxMesh, jitf, hash3 } from './vox.js';
 import { makeRoot, makeMushrooms, makeLantern, S16 } from './props.js';
 import { Particles, Twinkles, SHAPE, makeGlow, GLSL_BAYER } from './fx.js';
 import { ZONES } from '../data/zones.js';
@@ -16,27 +16,27 @@ const X_IN = 1.25; // grids start here (|x|)
 const NX = 36;
 const NZ = 11;
 const Z0 = -2.25;
-const CAM_DIST = 13;
-const CAM_UP = 1.3;
+const CAM_DIST = 9.2;
+const CAM_UP = 1.15;
 
 /** Zones from the bottom of the shaft (index 0 = The Core) to the top (5 = Rootsoil). */
 export const SHAFT_ZONES = [6, 5, 4, 3, 2, 1].map((id) => ({ id, name: ZONES[id].name, css: ZONES[id].color, top: ZONES[id].depth[0], bottom: ZONES[id].depth[1] }));
 
 const LOOK = [
   { // The Core
-    rock: [0x2a1838, 0x34204a, 0x221430, 0x3e2858, 0x2e1a40], back: 0x160c20, bg: 0x0c0614, hemi: [0xb08ae0, 0x2a1040], tint: 0xeedcff,
+    rock: [0x2c1a3c, 0x3c2454, 0x241432, 0x46305e, 0x321e48], back: 0x160c20, bg: 0x0c0614, hemi: [0xb08ae0, 0x2a1040], tint: 0xeedcff,
     glow: [0xc86aff, 0xff9ad0, 0xffe08a], spark: 0xffd8ff,
   },
   { // Frost Vault
-    rock: [0x3a5a7a, 0x4a6a8e, 0x2e4a66, 0x5a7a9a, 0x42627e], back: 0x14243a, bg: 0x08101c, hemi: [0xcfeaff, 0x1a3050], tint: 0xe6f4ff,
+    rock: [0x3a5a7a, 0x4e6e92, 0x2e4a66, 0x5e7e9e, 0x44647e], back: 0x14243a, bg: 0x08101c, hemi: [0xcfeaff, 0x1a3050], tint: 0xe6f4ff,
     glow: [0xbff6ff, 0x7fd0ff, 0xffffff], spark: 0xe8faff,
   },
   { // Magma Deep
-    rock: [0x2a1a1a, 0x3a2420, 0x241414, 0x4a2a22, 0x301c18], back: 0x140808, bg: 0x100404, hemi: [0xffa070, 0x3a0a04], tint: 0xffe6d4,
+    rock: [0x2a1a1c, 0x3c2622, 0x221416, 0x48302a, 0x30201e], back: 0x140808, bg: 0x100404, hemi: [0xffa070, 0x3a0a04], tint: 0xffe6d4,
     glow: [0xff6a1a, 0xffb040, 0xffe080], spark: 0xffc070,
   },
   { // Crystal Grotto
-    rock: [0x4a4a5e, 0x5a5a70, 0x3e3e50, 0x66667e, 0x52526a], back: 0x181826, bg: 0x0a0a16, hemi: [0xb8c8ff, 0x1a1a3a], tint: 0xe8eeff,
+    rock: [0x4a5274, 0x5c6890, 0x3c4464, 0x6a78a0, 0x505a80], back: 0x181826, bg: 0x0a0a16, hemi: [0xb8c8ff, 0x1a1a3a], tint: 0xe8eeff,
     glow: [0x7fd0ff, 0xbfe6ff, 0x4a86c9], spark: 0xd8f0ff,
   },
   { // Clayworks
@@ -44,13 +44,13 @@ const LOOK = [
     glow: [0xf2a32c, 0xffe08a, 0x7bf08a], spark: 0xffe0a0,
   },
   { // Rootsoil
-    rock: [0x6b4a32, 0x5e4029, 0x74503a, 0x7a5638, 0x664632], back: 0x22140c, bg: 0x100a06, hemi: [0xffe8c0, 0x2a1a0a], tint: 0xfff4e0,
+    rock: [0x6b4a32, 0x58402c, 0x7c5a3c, 0x4e3626, 0x6a4c34], back: 0x22140c, bg: 0x100a06, hemi: [0xffe8c0, 0x2a1a0a], tint: 0xfff4e0,
     glow: [0x7af0c0, 0xc0ffe0, 0xffe080], spark: 0xfff0b0,
   },
 ];
 
 // ------------------------------------------------------------------ decorations
-function crystalCluster(seed, cols, n = 5, len = 9) {
+function crystalCluster(seed, cols, n = 5, len = 9, base = 0x2a2a3a) {
   const rng = makeRng(seed);
   const g = new VoxelGrid(16, 16, 10);
   for (let i = 0; i < n; i++) {
@@ -67,7 +67,7 @@ function crystalCluster(seed, cols, n = 5, len = 9) {
       if (!tip && w > 1) { g.set(x, y + 1, bz, cols[0]); g.set(x, y, bz + 1, cols[2]); g.set(x, y + 1, bz + 1, cols[1]); }
     }
   }
-  g.box(0, 6, 3, 3, 5, 4, 0x2a2a3a);
+  g.box(0, 6, 3, 3, 5, 4, (x, y, z) => jitf(base, x, y, z, seed, 0.1));
   return g;
 }
 
@@ -100,13 +100,11 @@ function lavaDrip(seed) {
   return g;
 }
 
-function worm(seed) {
-  const rng = makeRng(seed);
+function worm() {
   const g = new VoxelGrid(8, 8, 3);
   const pts = [[0, 3], [1, 3], [2, 4], [3, 5], [4, 5], [5, 4], [5, 3]];
   pts.forEach(([x, y], i) => g.set(x, y, 1, i === pts.length - 1 ? 0xd88088 : (i % 2 ? 0xe8a0a8 : 0xf0b0b8)));
   g.set(5, 4, 2, 0x1a1012);
-  void rng;
   return g;
 }
 
@@ -132,6 +130,7 @@ function zoneSide(k, side, noise) {
   const g = new VoxelGrid(NX, ny, NZ);
   const gl = new VoxelGrid(NX, ny, NZ);
   const twinkles = [];
+  const faceZ = new Float32Array(NX * ny).fill(-99);
   const { n1, n2, n3, n4 } = noise;
   for (let j = 0; j < ny; j++) {
     const y = y0 + (j + 0.5) * VS;
@@ -143,38 +142,55 @@ function zoneSide(k, side, noise) {
       const x = side * ax;
       if (ax < edge) continue;
       const lip = clamp((ax - edge) / 1.2, 0, 1);
-      let front = -0.25 + n2(x * 0.22 + k * 5, y * 0.22) * 0.55 + n3(x * 0.7, y * 0.7) * 0.22 - (1 - lip) * 0.55;
+      // strata: coherent bands that step in and out like terraces
+      const bandH = k === 4 ? 0.75 : k === 2 ? 1.6 : 1.25;
+      const by = y + n2(x * 0.09 + k * 3, 7.7) * 1.3;
+      const band = Math.floor(by / bandH);
+      const bandOff = (hash3(band, k, side, 9) - 0.5) * 0.55;
+      let front = -0.3 + bandOff + n2(x * 0.1 + k * 5, y * 0.1) * 0.35 - (1 - lip) * 0.6;
+      const boulder = n3(x * 0.3 + k * 11, y * 0.3);
+      if (boulder > 0.36) front += 0.25;
       front = clamp(front, Z0 + VS * 2, Z0 + NZ * VS - 0.01);
       const kTop = Math.floor((front - Z0) / VS);
-      // colour for this column
-      const band = Math.floor((y + n2(x * 0.15, y * 0.05 + 9) * 1.4) / (k === 4 ? 0.9 : 1.6));
+      faceZ[j * NX + i] = Z0 + (kTop + 1) * VS;
       let c = L.rock[((band % L.rock.length) + L.rock.length) % L.rock.length];
+      if (boulder > 0.36) c = shade(c, 1.12);
       let glow = -1;
       const h = hash3(i, j, k * 7 + side, 1);
-      const vein = Math.abs(n4(x * 0.42 + k * 3, y * 0.42));
+      const seamY = by - band * bandH; // 0..bandH within the band
+      if (h < 0.012) c = shade(c, 0.82);
+      else if (h > 0.988) c = shade(c, 1.15);
       if (k === 0) {
-        if (vein < 0.035) glow = h < 0.5 ? L.glow[0] : L.glow[1];
-        else if (h < 0.004) { glow = L.glow[2]; twinkles.push([x, y, front + 0.2]); }
-        else if (n3(x * 0.5 + 40, y * 0.5) > 0.42) c = 0x0e0618;
+        const vein = Math.abs(n4(x * 0.35 + 4, y * 0.18));
+        if (vein < 0.014) glow = h < 0.85 ? 0x9a48d8 : 0xf0a0ff;
+        else if (n3(x * 0.45 + 40, y * 0.45) > 0.4) c = n3(x * 0.45 + 40, y * 0.45) > 0.47 ? 0x0a0412 : 0x5a2a8a; // voidstone pockets
+        if (h < 0.0045) { glow = h < 0.002 ? 0xffffff : 0xffe08a; twinkles.push([x, y, front + 0.2]); }
       } else if (k === 1) {
-        if (n3(x * 0.4 + 20, y * 0.4) > 0.25) c = h < 0.5 ? 0xaee8ff : 0xc8f0ff;
-        if (h < 0.0035) { glow = 0x5a8aff; twinkles.push([x, y, front + 0.2]); }
+        const ice = n3(x * 0.32 + 20, y * 0.32);
+        if (ice > 0.22) c = ice > 0.34 ? 0xd8f4ff : 0xaee0f8;
+        if (h < 0.003) { glow = 0x5a8aff; twinkles.push([x, y, front + 0.2]); }
       } else if (k === 2) {
-        if (vein < 0.06) glow = vein < 0.025 ? L.glow[2] : vein < 0.045 ? L.glow[1] : L.glow[0];
-        else if (vein < 0.09) c = 0x5a2a1a;
+        const vein = Math.abs(n4(x * 0.55, y * 0.16));
+        if (vein < 0.022) glow = vein < 0.009 ? L.glow[2] : L.glow[1];
+        else if (vein < 0.04) c = 0x6a2a14;
+        if (seamY < VS * 1.01 && hash3(band, 3, side, 4) < 0.45) glow = h < 0.5 ? L.glow[0] : L.glow[1]; // molten seams
       } else if (k === 3) {
-        if (h < 0.006) { glow = h < 0.003 ? 0x7fd0ff : 0xbfe6ff; twinkles.push([x, y, front + 0.2]); }
+        const geo = n3(x * 0.4 + 7, y * 0.4 + 3);
+        if (geo > 0.3) c = 0x1a1a30;
+        if (geo > 0.22 && geo <= 0.3) { glow = h < 0.5 ? 0x7fd0ff : 0xbfe6ff; if (h < 0.05) twinkles.push([x, y, front + 0.2]); }
+        if (h < 0.003) { glow = 0xbfe6ff; twinkles.push([x, y, front + 0.2]); }
       } else if (k === 4) {
-        if (h < 0.006) { glow = h < 0.004 ? 0xf2a32c : 0x7bf08a; if (h < 0.003) twinkles.push([x, y, front + 0.2]); }
-        if (vein < 0.02) c = 0x6a3a22;
+        if (h < 0.0035) { glow = h < 0.0022 ? 0xf2a32c : 0x7bf08a; twinkles.push([x, y, front + 0.2]); }
+        if (seamY < VS * 1.01) c = shade(c, 0.86);
       } else if (k === 5) {
-        if (vein < 0.03) c = h < 0.5 ? 0xa8845a : 0x8a6a48; // roots
-        else if (h < 0.03) c = 0x8a8278;
+        const root = Math.abs(n4(x * 0.2, y * 0.5));
+        if (root < 0.02) c = h < 0.5 ? 0xa8845a : 0x8a6a48;
+        else if (h < 0.006) c = 0x8a8278;
         if (topSoil) c = y > Y_TOP - 0.3 ? (h < 0.5 ? 0x5ab84a : 0x4a9a3a) : 0x4a3020;
       }
-      for (let kk = 0; kk <= kTop; kk++) {
-        g.set(i, j, kk, jitf(c, i, j, kk, k + 3, 0.08));
-      }
+      const cj = jitf(c, i, j, 0, k + 3, 0.035);
+      const cd = shade(c, 0.9);
+      for (let kk = 0; kk <= kTop; kk++) g.set(i, j, kk, kk >= kTop - 1 ? cj : cd);
       if (glow >= 0) { g.clear(i, j, kTop); gl.set(i, j, kTop, glow); }
     }
   }
@@ -189,9 +205,14 @@ function zoneSide(k, side, noise) {
   const pivot = [side > 0 ? -X_IN / VS : NX + X_IN / VS, -y0 / VS, -Z0 / VS];
   // the left side is mirrored: build it by flipping x indices
   if (side < 0) { mirrorX(g); mirrorX(gl); }
-  const rock = voxMesh(g, { scale: VS, pivot, solid: { nz: true, ny: k > 0, py: k < 5, nx: side < 0, px: side > 0 } });
+  const rock = voxMesh(g, { scale: VS, pivot, solid: { nz: true, ny: true, py: k < 5, nx: side < 0, px: side > 0 } });
   const glowM = voxMesh(gl, { scale: VS, pivot, kind: 'basic', outline: false });
-  return { rock, glow: glowM, twinkles };
+  const faceAt = (x, y) => {
+    const i = Math.floor((Math.abs(x) - X_IN) / VS), j = Math.floor((y - y0) / VS);
+    if (i < 0 || i >= NX || j < 0 || j >= ny) return -99;
+    return faceZ[j * NX + i];
+  };
+  return { rock, glow: glowM, twinkles, faceAt };
 }
 
 function mirrorX(g) {
@@ -206,24 +227,25 @@ function backWall(k, noise) {
   const L = LOOK[k];
   const extraBelow = k === 0 ? 8 : 0;
   const y0 = k * ZH - extraBelow;
-  const nx = 16, ny = Math.round((ZH + extraBelow) / VS), nz = 3;
+  const nx = 14, ny = Math.round((ZH + extraBelow) / VS), nz = 3;
   const g = new VoxelGrid(nx, ny, nz);
   for (let j = 0; j < ny; j++) {
     const y = y0 + (j + 0.5) * VS;
     const beam = Math.abs(((y + 1.5) % 3.2) - 1.6) < 0.13;
     for (let i = 0; i < nx; i++) {
-      const x = -2 + (i + 0.5) * VS;
+      const x = -1.75 + (i + 0.5) * VS;
       const depth = 1 + (noise.n3(x * 0.8, y * 0.6 + k * 9) > 0.1 ? 1 : 0);
       let c = jitf(mixHex(L.back, L.rock[(i + j) % L.rock.length], 0.35), i, j, k, 2, 0.1);
       for (let kk = 0; kk < depth; kk++) g.set(i, j, kk, c);
       if (beam) g.set(i, j, 2, jitf(0x5a3a22, i, j, 0, 4, 0.08));
     }
   }
-  return voxMesh(g, { scale: VS, pivot: [8, -y0 / VS, 3 + (Z0 + 0.25) / VS * -1 * 0 + 0], solid: { nz: true, ny: k > 0, py: k < 5, nx: true, px: true } });
+  return voxMesh(g, { scale: VS, pivot: [7, -y0 / VS, 3], solid: { nz: true, ny: k > 0, py: k < 5, nx: true, px: true } });
 }
 
 // ------------------------------------------------------------------ build
 export function buildShaft(ctx) {
+  let camDist = CAM_DIST;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(LOOK[0].bg);
   const camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.1, 80);
@@ -243,15 +265,17 @@ export function buildShaft(ctx) {
   const world = new THREE.Group();
   scene.add(world);
   const twinklePts = [];
+  const faces = [];
   for (let k = 0; k < 6; k++) {
+    faces[k] = {};
     for (const side of [-1, 1]) {
       const z = zoneSide(k, side, noise);
+      faces[k][side] = z.faceAt;
       world.add(z.rock, z.glow);
       for (const p of z.twinkles) twinklePts.push({ pos: p, color: LOOK[k].spark, size: 1, big: 3, bigShape: SHAPE.plus, speed: 1.5 + Math.random() * 2, phase: Math.random() * 9, sharp: 8, base: 0.15 });
     }
     const bw = backWall(k, noise);
-    bw.position.z = Z0 - 0.25 + 0.75;
-    bw.position.z = -2.5;
+    bw.position.z = -1.45;
     world.add(bw);
   }
   // guide rails (brass) on the back wall
@@ -281,7 +305,7 @@ export function buildShaft(ctx) {
       let m = null;
       if (k === 0 || k === 3) {
         const cols = k === 0 ? [0xc86aff, 0xf0c0ff, 0x8a3ad0] : [0x7fd0ff, 0xd8f4ff, 0x4a86c9];
-        m = decoMesh(`cr${k}${(y * 3) % 3 | 0}`, () => crystalCluster(k * 100 + ((y * 3) % 3 | 0), cols, k === 3 ? 6 : 4, k === 3 ? 12 : 8));
+        m = decoMesh(`cr${k}${(y * 3) % 3 | 0}`, () => crystalCluster(k * 100 + ((y * 3) % 3 | 0), cols, k === 3 ? 6 : 4, k === 3 ? 12 : 8, shade(L.rock[0], 0.8)));
         m.position.set(side * (edge + 0.05), y, -0.4 + rng.range(-0.6, 0.4));
         m.scale.x = -side;
         if (k === 3 && rng.chance(0.6)) {
@@ -292,8 +316,7 @@ export function buildShaft(ctx) {
         }
       } else if (k === 1) {
         m = decoMesh(`ice${(y * 7) % 3 | 0}`, () => icicles(10 + ((y * 7) % 3 | 0)), 'toon');
-        m.position.set(side * (edge - 0.2), y, -0.2);
-        if (side < 0) m.position.x -= 14 * S16 - 0.4;
+        m.position.set(side > 0 ? edge - 0.55 : -edge - 14 * S16 + 0.55, y, -0.2);
       } else if (k === 2) {
         m = decoMesh(`lava${(y * 5) % 3 | 0}`, () => lavaDrip(20 + ((y * 5) % 3 | 0)));
         m.position.set(side * (edge + 0.1), y, 0.0);
@@ -317,7 +340,7 @@ export function buildShaft(ctx) {
           deco.add(gl);
           glowHalos.push(gl);
         } else {
-          m = decoMesh(`worm${(y * 3) % 2 | 0}`, () => worm(1), 'toon');
+          m = decoMesh('worm', () => worm(), 'toon');
           m.position.set(side * (edge - 0.1), y, 0.25);
           m.scale.x = -side;
         }
@@ -337,6 +360,45 @@ export function buildShaft(ctx) {
     world.add(gl);
     lamps.push(gl);
   }
+  // decorations studding the rock faces, pointing at the camera
+  const frng = makeRng(31);
+  for (let k = 0; k < 6; k++) {
+    const count = k === 2 ? 6 : 13;
+    for (let n = 0; n < count * 2; n++) {
+      const side = n % 2 ? 1 : -1;
+      const x = side * frng.range(2.3, 5.0), y = k * ZH + frng.range(0.6, ZH - 0.6);
+      const fz = faces[k][side](x, y);
+      if (fz < -9) continue;
+      let m = null;
+      const base = shade(LOOK[k].rock[n % LOOK[k].rock.length], 0.8);
+      if (k === 0) {
+        const cols = frng.chance(0.3) ? [0xffe08a, 0xffffff, 0xc9862a] : [0xc86aff, 0xf0c0ff, 0x8a3ad0];
+        m = voxMesh(crystalCluster(700 + n, cols, frng.int(4, 6), frng.int(7, 11), base), { scale: S16, pivot: [1, 8, 5], kind: 'basic' });
+      } else if (k === 1) {
+        m = voxMesh(crystalCluster(720 + n, [0xbff6ff, 0xffffff, 0x7ab8e0], 4, 8, base), { scale: S16, pivot: [1, 8, 5], kind: 'basic' });
+      } else if (k === 2) {
+        m = voxMesh(crystalCluster(740 + n, [0x2a2238, 0x6b5a8a, 0x0e0a14], 4, 9, base), { scale: S16, pivot: [1, 8, 5] });
+      } else if (k === 3) {
+        m = voxMesh(crystalCluster(760 + n, [0x7fd0ff, 0xd8f4ff, 0x4a86c9], frng.int(5, 7), frng.int(10, 13), base), { scale: S16, pivot: [1, 8, 5], kind: 'basic' });
+        const gl = makeGlow({ color: 0x5ab0ff, size: 1.3, intensity: 0.3, levels: 4 });
+        gl.position.set(x, y, fz + 0.35);
+        deco.add(gl);
+        glowHalos.push(gl);
+      } else if (k === 4) {
+        m = voxMesh(crystalCluster(780 + n, [0xf2a32c, 0xffe08a, 0xa85a10], 3, 5, base), { scale: S16, pivot: [1, 8, 5], kind: 'basic' });
+      } else {
+        const ms = makeMushrooms(800 + n, { n: 3, cap: [0x5ae0a0, 0xb0ffd8, 0x2a9a6a], scale: 0.8 });
+        m = ms.group;
+        m.rotation.x = Math.PI / 2;
+      }
+      if (k !== 5) m.rotation.y = -Math.PI / 2;
+      m.rotation.z += frng.range(-0.4, 0.4);
+      m.position.set(x, y, fz - 0.05);
+      if (k !== 5) m.scale.setScalar(frng.range(1.1, 1.6));
+      deco.add(m);
+    }
+  }
+
   // surface: daylight above the topsoil
   const sky = new THREE.Mesh(new THREE.PlaneGeometry(60, 40), new THREE.ShaderMaterial({
     uniforms: { uTop: { value: new THREE.Color(0xbfe8ff) }, uBot: { value: new THREE.Color(0xfff6dc) } },
@@ -365,9 +427,9 @@ export function buildShaft(ctx) {
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
     fragmentShader: `uniform float uI; uniform vec3 uColor; varying vec2 vUv; ${GLSL_BAYER}
       void main(){
-        float rays = 0.75 + 0.25 * sin(vUv.x * 40.0 + sin(vUv.x * 7.0) * 3.0);
-        float i = pow(vUv.y, 2.2) * uI * rays;
-        float q = bk_steps(i, 6.0);
+        float rays = 0.7 + 0.3 * sin(vUv.x * 40.0 + sin(vUv.x * 7.0) * 3.0);
+        float i = smoothstep(0.35, 1.0, vUv.y) * uI * rays;
+        float q = bk_steps(i, 10.0);
         if (q <= 0.0) discard;
         gl_FragColor = vec4(uColor * q, 1.0);
       }`,
@@ -376,7 +438,7 @@ export function buildShaft(ctx) {
     depthTest: false,
     blending: THREE.AdditiveBlending,
   });
-  const god = new THREE.Mesh(new THREE.PlaneGeometry(20, 10), godMat);
+  const god = new THREE.Mesh(new THREE.PlaneGeometry(9, 4), godMat);
   god.renderOrder = 50;
   scene.add(god);
 
@@ -398,7 +460,7 @@ export function buildShaft(ctx) {
   const lines = Array.from({ length: speedN }, () => ({ x: 0, y: 0, z: 0, len: 1, a: 0 }));
   const resetLine = (l, anywhere) => {
     l.z = 2 + Math.random() * 7;
-    const half = (CAM_DIST - l.z) * Math.tan(THREE.MathUtils.degToRad(17)) * 1.9;
+    const half = (camDist - l.z) * Math.tan(THREE.MathUtils.degToRad(17)) * 1.9 * Math.max(0.6, camera.aspect / 1.78);
     l.x = (Math.random() * 2 - 1) * half;
     if (Math.abs(l.x) < 1.2 && l.z < 4) l.x += Math.sign(l.x || 1) * 1.2;
     l.y = anywhere ? (Math.random() * 2 - 1) * half * 0.6 : half * 0.6 + Math.random() * 2;
@@ -408,7 +470,7 @@ export function buildShaft(ctx) {
   for (const l of lines) resetLine(l, true);
 
   const { mole, hen, cage } = ctx;
-  const S = { t: 0, y: 0, v: 0, zone: 0, last: 0 };
+  const S = { t: 0, y: 0, zone: 0 };
   const dur = 14;
   const accel = 0.12;
   const heightAt = (u) => {
@@ -433,11 +495,13 @@ export function buildShaft(ctx) {
 
   const enter = () => {
     scene.add(cage.root);
+    if (cage.cable) cage.cable.visible = true;
+    cage.lampGlow.visible = true;
     seatRiders();
     cage.setGate(1);
     cage.root.position.set(0, 0, 0);
     cage.root.rotation.set(0, 0, 0);
-    S.t = 0; S.y = 0; S.last = 0; S.zone = -1;
+    S.t = 0; S.y = 0; S.zone = -1;
     motes.clear();
   };
 
@@ -458,7 +522,7 @@ export function buildShaft(ctx) {
     const speedK = clamp(vy / 9, 0, 1.4);
     cage.root.position.set(Math.sin(S.t * 23) * 0.008 * speedK, y, 0);
     cage.root.rotation.z = Math.sin(S.t * 2.3) * 0.012 * speedK;
-    camera.position.set(0, y + CAM_UP, CAM_DIST);
+    camera.position.set(0, y + CAM_UP, camDist);
     camera.quaternion.copy(camQuat);
     lampLight.position.set(0, y + 2.2, 0.4);
 
@@ -474,11 +538,11 @@ export function buildShaft(ctx) {
     tmpC2.set(A.tint).lerp(tmpC.set(B.tint), blend);
     const top = clamp((y - (Y_TOP - 26)) / 24, 0, 1);
     api.post.tint = tmpC2.getHex();
-    api.post.brightness = 1 + top * 0.35;
+    api.post.brightness = 1 + top * 0.18;
     api.post.vignette = 0.5 - top * 0.3;
     hemi.intensity = 1.6 + top * 1.6;
-    godMat.uniforms.uI.value = top * 1.1;
-    god.position.set(0, y + CAM_UP + 1.2, CAM_DIST - 6);
+    godMat.uniforms.uI.value = top * 0.9;
+    god.position.set(0, y + CAM_UP + 0.25, camDist - 3.2);
     if (k !== S.zone) {
       S.zone = k;
       if (k > 0) api.audio.play('whoosh');
@@ -508,7 +572,7 @@ export function buildShaft(ctx) {
     for (let i = 0; i < speedN; i++) {
       const l = lines[i];
       l.y -= vy * dt * (1 + (l.z - 2) * 0.08) * 1.15;
-      const half = (CAM_DIST - l.z) * Math.tan(THREE.MathUtils.degToRad(17));
+      const half = (camDist - l.z) * Math.tan(THREE.MathUtils.degToRad(17));
       if (l.y + l.len < -half - 0.5) resetLine(l, false);
       const len = l.len * (0.4 + speedK * 0.9);
       spPos[i * 6] = l.x; spPos[i * 6 + 1] = camY + l.y; spPos[i * 6 + 2] = l.z;
@@ -534,5 +598,7 @@ export function buildShaft(ctx) {
     cage.lampGlow.userData.glow.uIntensity.value = 0.55 + Math.sin(S.t * 9) * 0.05;
   };
 
-  return { scene, camera, enter, update, duration: dur, depthAt, heightAt };
+  // narrow screens: back off so the cage keeps some rock on either side
+  const onResize = () => { camDist = Math.max(CAM_DIST, 9.6 / Math.max(0.3, camera.aspect)); };
+  return { scene, camera, enter, update, duration: dur, depthAt, heightAt, onResize };
 }

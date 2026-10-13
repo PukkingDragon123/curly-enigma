@@ -79,6 +79,7 @@ export default class HomeScene extends IsoScene {
     this.ambientLoop('water', () => this.nearKindVol('fountain', 4, 0.22) + this.nearKindVol('fish_tank', 2.5, 0.08));
 
     if (from === 'newgame') this.wakeUp(this.findKind('bed'), true);
+    else if (from === 'faint' || from === 'bed' || from === 'sleep') this.wakeUp(this.findKind('bed'), false);
   }
 
   // ------------------------------------------------------------ furniture records
@@ -140,6 +141,7 @@ export default class HomeScene extends IsoScene {
   removePlaced(uid) {
     const rec = this.items.get(uid);
     if (!rec) return;
+    if (FURNITURE[rec.p.id]?.kind === 'coop' && this.nuggetAI) this.nuggetAI.wake();
     this.scene.remove(rec.obj);
     rec.obj.traverse((o) => {
       if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose();
@@ -236,7 +238,7 @@ export default class HomeScene extends IsoScene {
       const rec = this.findKind(from === 'forge' ? 'forge' : 'stove');
       if (rec) spot = this.besideItem(rec);
     }
-    if (from === 'newgame' || from === 'bed') {
+    if (from === 'newgame' || from === 'bed' || from === 'faint' || from === 'sleep') {
       const rec = this.findKind('bed');
       if (rec) spot = this.besideItem(rec);
     }

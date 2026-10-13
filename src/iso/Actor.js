@@ -122,6 +122,7 @@ export class Actor {
 
   update(dt) {
     this.rig.update(dt);
+    if (this.after) this.after(dt);
   }
 }
 
@@ -179,11 +180,13 @@ export class NuggetAI {
       const st = a.followPath(dt, map, 1.6, { accel: 10 });
       if (st !== 'moving') {
         const s = this.napSpot;
-        if (Math.hypot(s.x - a.x, s.z - a.z) < 0.9) {
+        if (Math.hypot(s.x - a.x, s.z - a.z) < 1.75) {
+          // hop up into the nest
           this.mode = 'nap';
           a.collide = false;
           a.pos.x = s.x; a.pos.z = s.z;
-          rig.face(s.yaw ?? 0);
+          rig.face(s.yaw ?? 0, true);
+          rig.flap(0.4);
         } else this.mode = 'follow';
       }
       return;

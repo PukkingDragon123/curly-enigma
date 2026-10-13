@@ -8,7 +8,7 @@ import { VoxelGrid, voxelMesh } from '../gfx/Voxel.js';
 import { jit } from './models.js';
 import { damp } from '../core/util.js';
 
-export const PAW_SCALE = 0.5;
+export const PAW_SCALE = 0.42;
 const V = PAW_SCALE / 16;
 const PALM_Z = 15.5; // palm center, in paw voxels from the back of the forearm
 const WRIST_Z = 13.5; // where the sleeve meets the paw (behind the palm center)

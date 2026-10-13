@@ -250,3 +250,30 @@ export class WaterTexture {
     this.texture.needsUpdate = true;
   }
 }
+
+/** A worn woven rug: warm stripes, a diamond border and frayed ends. */
+export function rugTexture(wU = 1.8, dU = 1.1, seed = 21) {
+  const rng = makeRng(seed);
+  const W = Math.round(wU * TPU), H = Math.round(dU * TPU);
+  const pc = new PixelCanvas(W, H);
+  const C = [0x8a2a24, 0xb8642a, 0x6a3a5a, 0xd8a85a, 0x4a2a20];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const ex = Math.min(x, W - 1 - x), ey = Math.min(y, H - 1 - y);
+    let c;
+    if (ex < 1) c = rng.chance(0.5) ? 0xd8c8a0 : -1; // fringe
+    else if (ex < 3 || ey < 2) c = C[4];
+    else if (ex < 4 || ey < 3) c = C[3];
+    else {
+      const band = Math.floor((x - 4) / 4) % 4;
+      c = [C[0], C[1], C[0], C[2]][band];
+      const dx = Math.abs(((x - 4) % 8) - 3.5), dy = Math.abs((y % 8) - 3.5);
+      if (dx + dy < 2) c = C[3];
+    }
+    if (c < 0) continue;
+    if (rng.chance(0.08)) c = shade(c, 0.8);
+    pc.set(x, y, c);
+  }
+  grime(pc, rng, 6, 0x1e120c, 50);
+  const t = tex(pc);
+  return t;
+}

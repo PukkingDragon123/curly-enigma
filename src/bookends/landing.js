@@ -2,40 +2,54 @@
 import * as THREE from 'three';
 import { VoxelGrid, voxMesh, jitf, hash3 } from './vox.js';
 import { makeLantern, makeMushrooms, makeRock, S16 } from './props.js';
-import { Particles, SHAPE, makeGlow, makeBlobShadow } from './fx.js';
+import { Particles, SHAPE, makeGlow, makeBlobShadow, fitFov } from './fx.js';
 import { signTexture } from './pixfont.js';
+import { PixelCanvas, pixelTexture } from '../gfx/PixelArt.js';
 import { makeFolk } from './actors.js';
 import { randomSpec } from '../gfx/characters.js';
 import { SHOPS } from '../data/shops.js';
-import { makeNoise2D, makeRng, shade, mixHex, clamp } from '../core/util.js';
+import { makeNoise2D, makeRng, shade, clamp } from '../core/util.js';
 
 const VS = 1 / 8;
 export const LIFT_X = 4.4;
 
-function platform() {
-  // wooden boardwalk with a brass-trimmed edge
-  const x0 = -11, x1 = 9.5, z0 = -4.5, z1 = 4;
-  const nx = Math.round((x1 - x0) / VS), nz = Math.round((z1 - z0) / VS);
-  const g = new VoxelGrid(nx, 5, nz);
-  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
-    const front = k >= nz - 1;
-    const plank = Math.floor(k / 3);
-    const seam = k % 3 === 2;
-    for (let j = 0; j < 5; j++) {
-      let c;
-      if (j < 4) c = 0x2a1a12;
-      else if (front) c = (i % 6 === 0) ? 0xffe08a : 0xc8902a;
-      else if (seam && hash3(i, 0, k, 3) < 0.9) c = 0x3a2416;
-      else c = jitf(plank % 2 ? 0x8a5a32 : 0x7a4e2c, i, j, k, plank, 0.08);
-      if (!front && j === 4 && (i + plank * 7) % 23 === 0) c = 0x5a3a22; // nail heads
-      g.set(i, j, k, c);
+function platform(textures) {
+  // the boardwalk is a lit pixel-art texture (cheap) with a chunky voxel brass edge
+  const x0 = -11.5, x1 = 10.5, z0 = -6.8, z1 = 5.6;
+  const W = Math.round((x1 - x0) * 8), D = Math.round((z1 - z0) * 8);
+  const pc = new PixelCanvas(W, D);
+  for (let z = 0; z < D; z++) {
+    const plank = Math.floor(z / 3);
+    const seam = z % 3 === 2;
+    const off = (plank * 37) % 23;
+    for (let x = 0; x < W; x++) {
+      let c = plank % 2 ? 0x8a5a32 : 0x7a4e2c;
+      if (seam) c = 0x3a2416;
+      else if ((x + off) % 46 === 0) c = 0x4a2e18; // plank ends
+      else if (((x + off) % 46 === 3 || (x + off) % 46 === 42) && z % 3 === 1) c = 0x5a3a22; // nails
+      else if (hash3(x, z, 0, 5) < 0.08) c = plank % 2 ? 0x94643a : 0x845634;
+      pc.set(x, z, c);
     }
   }
-  return { mesh: voxMesh(g, { scale: VS, pivot: [-x0 / VS, 5, -z0 / VS], solid: { ny: true, nz: true, nx: true, px: true } }) };
+  const tex = pixelTexture(pc.commit());
+  textures.push(tex);
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), new THREE.MeshToonMaterial({ map: tex, gradientMap: null }));
+  top.rotation.x = -Math.PI / 2;
+  top.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
+  const grp = new THREE.Group();
+  grp.add(top);
+  // brass-trimmed front edge
+  const nx = Math.round((x1 - x0) / VS);
+  const e = new VoxelGrid(nx, 4, 2);
+  for (let i = 0; i < nx; i++) for (let j = 0; j < 4; j++) for (let k = 0; k < 2; k++) e.set(i, j, k, j === 3 ? ((i % 6 === 0) ? 0xffe08a : 0xc8902a) : 0x2a1a12);
+  const edge = voxMesh(e, { scale: VS, pivot: [-x0 / VS, 4, 2] });
+  edge.position.z = z1 + VS * 2;
+  grp.add(edge);
+  return { mesh: grp };
 }
 
 function backWall() {
-  const x0 = -13, x1 = 12, y0 = -0.5, y1 = 9, z0 = -8, z1 = -4;
+  const x0 = -12.5, x1 = 11.5, y0 = -0.5, y1 = 9.5, z0 = -9.6, z1 = -7.3;
   const nx = Math.round((x1 - x0) / VS), ny = Math.round((y1 - y0) / VS), nz = Math.round((z1 - z0) / VS);
   const g = new VoxelGrid(nx, ny, nz);
   const n = makeNoise2D(5), n2 = makeNoise2D(9);
@@ -46,7 +60,7 @@ function backWall() {
       const y = y0 + (j + 0.5) * VS;
       // the shaft opening above the lift
       const inShaft = Math.abs(x - LIFT_X) < 1.5 && y > 6.2;
-      const relief = 0.6 + n(x * 0.35, y * 0.35) * 0.9 + n2(x * 1.1, y * 1.1) * 0.25 + (y > 6 ? (y - 6) * 0.5 : 0);
+      const relief = 0.6 + n(x * 0.3, y * 0.3) * 0.9 + (y > 6 ? (y - 6) * 0.4 : 0);
       const front = z1 - Math.max(0, relief);
       for (let k = 0; k < nz; k++) {
         const z = z0 + (k + 0.5) * VS;
@@ -60,7 +74,7 @@ function backWall() {
       }
     }
   }
-  return voxMesh(g, { scale: VS, pivot: [-x0 / VS, -y0 / VS, -z0 / VS], solid: { nz: true, ny: true, py: true, nx: true, px: true } });
+  return voxMesh(g, { scale: VS, pivot: [-x0 / VS, -y0 / VS, -z0 / VS], solid: { nz: true, ny: true, py: true, nx: true, px: true }, outline: false });
 }
 
 /** A little Deep Town house facade (box with roof and glowing windows). */
@@ -134,8 +148,8 @@ export function buildLanding(ctx) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x120c12);
   const camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.1, 120);
-  const camBase = new THREE.Vector3(-0.4, 3.0, 12.6);
-  const camLook = new THREE.Vector3(-0.4, 1.55, 0);
+  const camBase = new THREE.Vector3(-0.35, 2.85, 12.2);
+  const camLook = new THREE.Vector3(-0.35, 1.95, 0);
   camera.position.copy(camBase);
   camera.lookAt(camLook);
   const camQuat = camera.quaternion.clone();
@@ -149,13 +163,13 @@ export function buildLanding(ctx) {
   warm.position.set(-2.5, 3.2, 1.5);
   scene.add(warm);
 
-  scene.add(platform().mesh);
+  scene.add(platform(ctx.textures).mesh);
   scene.add(backWall());
 
   // Deep Town in the background
   const houses = [
-    [-9.5, -5.6, 26, 22, 0x8a6a4a, 0x8a2a2a], [-6.2, -6.2, 20, 30, 0x7a5a4a, 0x3a4a6a], [-3.4, -5.9, 22, 18, 0x9a7a5a, 0x6a3a2a],
-    [-0.6, -6.4, 18, 26, 0x6a5a4a, 0x2a5a4a], [8.2, -5.8, 20, 20, 0x8a6a4a, 0x7a2a3a],
+    [-10.2, -5.6, 26, 22, 0x8a6a4a, 0x8a2a2a], [-6.9, -6.3, 20, 30, 0x7a5a4a, 0x3a4a6a], [-3.9, -5.7, 22, 18, 0x9a7a5a, 0x6a3a2a],
+    [-1.0, -6.2, 18, 26, 0x6a5a4a, 0x2a5a4a], [8.8, -5.6, 20, 20, 0x8a6a4a, 0x7a2a3a],
   ];
   houses.forEach(([x, z, w, h, c, r], i) => {
     const hs = house(40 + i, w, h, c, r);
@@ -166,30 +180,31 @@ export function buildLanding(ctx) {
   // the lift tower: two pillars behind the cage, a lintel and the sign
   const tower = new VoxelGrid(44, 72, 6);
   for (const x0 of [0, 40]) tower.box(x0, 0, 1, 4, 72, 4, (x, y, z) => (y % 8 === 0 ? 0xffe08a : (x + z) % 3 ? 0xc8902a : 0xa8741a));
-  tower.box(0, 50, 1, 44, 3, 4, (x, y) => (y === 51 ? 0xffe08a : 0xb8801e));
-  for (let x = 4; x < 40; x += 4) for (let y = 53; y < 72; y++) if ((x + y) % 8 === 0) tower.set(x, y, 2, 0x8a5a14);
+  tower.box(0, 33, 1, 44, 3, 4, (x, y) => (y === 34 ? 0xffe08a : 0xb8801e));
+  for (let x = 4; x < 40; x += 4) for (let y = 36; y < 72; y++) if ((x + y) % 8 === 0) tower.set(x, y, 2, 0x8a5a14);
   const towerMesh = voxMesh(tower, { scale: VS, pivot: [22, 0, 3] });
   towerMesh.position.set(LIFT_X, 0, -1.6);
   scene.add(towerMesh);
   const sign = signMesh(['SURFACE EXPRESS'], { bg: 0x5a1a22, border2: 0xe0b040, text: 0xffe070 }, 4.4);
-  sign.mesh.position.set(LIFT_X, 6.85, -1.18);
+  sign.mesh.position.set(LIFT_X, 5.05, -1.18);
   scene.add(sign.mesh);
   ctx.textures.push(sign.texture);
-  const arrow = signMesh(['^ SUNSHINE ^'], { bg: 0x2a3a5a, border2: 0xe0b040, text: 0xfff0b0 }, 2.0);
-  arrow.mesh.position.set(LIFT_X - 2.75, 3.9, -1.5);
-  scene.add(arrow.mesh);
-  ctx.textures.push(arrow.texture);
 
   // the farewell banner the townsfolk painted
   const banner = signMesh(['BON VOYAGE!', 'WE ♥ YOU'], { bg: 0xf3e2bf, border: 0x6b4226, border2: 0xd6b97f, text: 0xc94a3a, shadow: 0xe8c890, grain: 0xe8d2a8, rivet: 0x6b4226 }, 3.6);
-  banner.mesh.position.set(-4.4, 4.75, -3.6);
+  banner.mesh.position.set(-5.3, 3.75, -3.05);
   banner.mesh.rotation.z = 0.02;
+  for (const bx of [-7.15, -3.45]) {
+    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.1, 4.3, 0.1), new THREE.MeshLambertMaterial({ color: 0x6b4226 }));
+    pole.position.set(bx, 2.15, -3.1);
+    scene.add(pole);
+  }
   scene.add(banner.mesh);
   ctx.textures.push(banner.texture);
 
   // lantern posts + glows
   const glows = [];
-  for (const [x, z] of [[-9.2, -2.4], [-3.0, -3.0], [1.9, -2.2], [7.6, -2.6]]) {
+  for (const [x, z] of [[-9.4, -2.9], [-1.4, -3.4], [1.9, -2.3], [7.8, -2.6]]) {
     const l = makeLantern({ post: 40 });
     l.group.position.set(x, 0, z);
     scene.add(l.group);
@@ -201,14 +216,14 @@ export function buildLanding(ctx) {
 
   // bunting
   const buntings = [
-    bunting(new THREE.Vector3(LIFT_X - 2.6, 5.2, -1.3), new THREE.Vector3(-3.0, 3.35, -2.9), 0.7, 1),
-    bunting(new THREE.Vector3(-3.0, 3.35, -2.9), new THREE.Vector3(-9.2, 3.35, -2.3), 0.6, 3),
-    bunting(new THREE.Vector3(1.9, 3.35, -2.1), new THREE.Vector3(-3.0, 3.35, -2.9), 0.5, 5),
+    bunting(new THREE.Vector3(LIFT_X - 2.6, 4.3, -1.35), new THREE.Vector3(-1.4, 3.25, -3.3), 0.45, 1),
+    bunting(new THREE.Vector3(-1.4, 3.25, -3.3), new THREE.Vector3(-9.4, 3.25, -2.8), 0.7, 3),
+    bunting(new THREE.Vector3(LIFT_X + 2.4, 4.3, -1.35), new THREE.Vector3(7.8, 3.25, -2.5), 0.3, 5),
   ];
   for (const b of buntings) scene.add(b.grp);
 
   // mushrooms & rocks for the corners
-  for (const [x, z, seed, sc] of [[-10.2, 1.6, 3, 1.2], [8.4, 1.0, 7, 1.0], [-7.6, -3.3, 11, 0.9]]) {
+  for (const [x, z, seed, sc] of [[-9.6, 2.6, 3, 1.3], [8.6, 2.2, 7, 1.1], [-8.2, -4.0, 11, 0.9], [6.6, 4.6, 13, 0.9]]) {
     const m = makeMushrooms(seed, { n: 4, scale: sc });
     m.group.position.set(x, 0, z);
     scene.add(m.group);
@@ -217,19 +232,18 @@ export function buildLanding(ctx) {
     scene.add(gl);
   }
   const rock = makeRock(14, { w: 20, h: 12, d: 14, color: 0x6a5a50, moss: 0.3 });
-  rock.position.set(7.4, 0, 2.6);
+  rock.position.set(7.6, 0, 3.4);
   scene.add(rock);
 
   // ---------------------------------------------------------------- the crowd
   const crowd = [];
-  const keeperIds = ['ticket', 'grocer', 'tools', 'assay'];
   const spots = [
-    { p: [2.35, -1.05], k: 'ticket' },
-    { p: [-0.95, 1.55], k: 'grocer' },
-    { p: [-3.55, 2.05], k: 'tools' },
-    { p: [-6.1, 1.1], k: 'assay' },
-    { p: [-0.1, -1.0] }, { p: [-1.75, -0.2] }, { p: [-2.7, -1.9] }, { p: [-4.3, -0.5] },
-    { p: [-5.3, -2.1] }, { p: [-7.2, -0.6] }, { p: [-2.1, 2.9], kid: true }, { p: [0.55, 2.5], kid: true },
+    { p: [2.45, 0.35], k: 'ticket' },
+    { p: [-0.55, 0.55], k: 'grocer' },
+    { p: [-2.55, 0.15], k: 'tools' },
+    { p: [-5.0, 0.4], k: 'assay' },
+    { p: [0.65, -0.85] }, { p: [-1.5, -1.1] }, { p: [-3.6, -1.35] }, { p: [-5.9, -1.6] },
+    { p: [-4.0, 1.45], kid: true }, { p: [-6.6, 0.0] }, { p: [-1.75, 1.75], kid: true }, { p: [0.35, 1.6], kid: true },
   ];
   spots.forEach((s, i) => {
     let spec;
@@ -245,7 +259,6 @@ export function buildLanding(ctx) {
     scene.add(sh);
     crowd.push({ rig, name: spec.name || null, keeper: !!s.k, home: new THREE.Vector3(s.p[0], 0, s.p[1]) });
   });
-  void keeperIds;
 
   // the travellers
   const { mole, hen, cage } = ctx;
@@ -264,14 +277,17 @@ export function buildLanding(ctx) {
   const enter = () => {
     scene.add(cage.root, mole.root, hen.root);
     events.clear();
+    cage.root.visible = true;
+    cage.lampGlow.visible = true;
+    if (cage.cable) cage.cable.visible = true;
     cage.root.position.set(LIFT_X, -cage.floorY, 0);
     cage.root.rotation.set(0, 0, 0);
     cage.setGate(0);
-    mole.root.position.set(1.3, 0, 1.65);
-    mole.face(-0.95, true);
+    mole.root.position.set(1.45, 0, 2.75);
+    mole.face(-0.5, true);
     mole.play('wave');
-    hen.root.position.set(1.95, 0, 2.3);
-    hen.face(-0.9, true);
+    hen.root.position.set(2.2, 0, 3.25);
+    hen.face(-0.6, true);
     hen.play('idle');
     state.t = 0;
     state.cageY = 0;
@@ -294,8 +310,8 @@ export function buildLanding(ctx) {
     return { x: l[1], z: l[2], moving: false, dir: null };
   };
   const seatX = { mole: -0.34, hen: 0.46 };
-  const molePath = [[1.75, 1.3, 1.65], [3.35, LIFT_X + 0.15, 1.75], [4.05, LIFT_X + seatX.mole, 0.05]];
-  const henPath = [[2.1, 1.95, 2.3], [3.75, LIFT_X + 0.65, 2.0], [4.5, LIFT_X + seatX.hen, 0.2]];
+  const molePath = [[1.75, 1.45, 2.75], [3.3, LIFT_X + 0.15, 1.8], [4.05, LIFT_X + seatX.mole, 0.05]];
+  const henPath = [[2.1, 2.2, 3.25], [3.75, LIFT_X + 0.7, 2.05], [4.5, LIFT_X + seatX.hen, 0.2]];
 
   const tmp = new THREE.Vector3();
   const tmp2 = new THREE.Vector3();
@@ -333,7 +349,7 @@ export function buildLanding(ctx) {
     // --- mole: wave, walk into the cage, hop onto the velvet seat
     if (t < 1.75) {
       mole.play('wave');
-      mole.face(-0.95);
+      mole.face(-0.5);
     } else if (t < 4.05) {
       const p = lerpPath(molePath, t);
       mole.root.position.set(p.x, 0, p.z);
@@ -350,7 +366,7 @@ export function buildLanding(ctx) {
     }
     // --- hen: trot after him and flap up beside him
     if (t < 2.1) {
-      hen.face(-0.9);
+      hen.face(-0.6);
     } else if (t < 4.5) {
       const p = lerpPath(henPath, t);
       hen.root.position.set(p.x, 0, p.z);
@@ -382,7 +398,8 @@ export function buildLanding(ctx) {
     mole.root.getWorldPosition(tmp2);
     for (const c of crowd) {
       tmp.copy(tmp2).sub(c.rig.root.position);
-      c.rig.face(Math.atan2(tmp.x, tmp.z));
+      // turn toward the travellers, but never so far that we lose their faces
+      c.rig.face(clamp(Math.atan2(tmp.x, tmp.z), -0.95, 0.95));
       c.rig.update(dt);
     }
     heartT -= dt;
@@ -418,5 +435,15 @@ export function buildLanding(ctx) {
     cage.lampGlow.userData.glow.uIntensity.value = 0.5 + Math.sin(t * 7) * 0.04;
   };
 
-  return { scene, camera, enter, update, state, crowd, duration: 7.6 };
+  const onResize = () => {
+    // narrow screens: frame the travellers and the lift rather than the whole crowd
+    const narrow = camera.aspect < 1.2;
+    camBase.x = narrow ? 2.3 : -0.35;
+    camLook.x = camBase.x;
+    camera.position.copy(camBase);
+    camera.lookAt(camLook);
+    camQuat.copy(camera.quaternion);
+    fitFov(camera, 34, narrow ? 40 : 56);
+  };
+  return { scene, camera, enter, update, state, crowd, duration: 7.6, onResize };
 }

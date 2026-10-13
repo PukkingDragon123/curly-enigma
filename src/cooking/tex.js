@@ -233,3 +233,15 @@ export function blobTex() {
   }
   return tex(pc);
 }
+
+/** Dithered flour dusting (white blob with ragged edges). */
+export function flourTex() {
+  const S = 32;
+  const pc = new PixelCanvas(S, S);
+  const rng = makeRng(17);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const d = Math.hypot(x + 0.5 - 16, (y + 0.5 - 16) * 1.15) / 16 + (rng() - 0.5) * 0.25;
+    if (d < 0.6 || (d < 0.95 && rng() < 1 - d)) pc.set(x, y, rng() < 0.2 ? 0xf0e6d0 : 0xfffaf0);
+  }
+  return tex(pc);
+}

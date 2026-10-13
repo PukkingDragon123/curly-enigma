@@ -8,6 +8,7 @@
 //   end()              cleanup: temp objects removed, borrowed props put back
 import * as THREE from 'three';
 import { clamp } from '../../core/util.js';
+import { disposeObject } from '../../core/Scene.js';
 
 export class Step {
   constructor(cook, opts = {}) {
@@ -56,13 +57,13 @@ export class Step {
   finish(score) {
     if (this.done) return;
     this.done = true;
-    this.score = clamp(Math.round(score), 0, 100);
+    this.score = clamp(Math.round(Number.isFinite(score) ? score : 0), 0, 100);
   }
 
   end() {
     for (const o of this.objs) {
       o.parent?.remove(o);
-      o.traverse?.((n) => { if (n.geometry && !n.geometry.userData?.shared) n.geometry.dispose(); });
+      disposeObject(o);
     }
     this.objs = [];
     for (const name of this.borrowed) this.k.restore(name);

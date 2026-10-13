@@ -170,10 +170,10 @@ export function makeBellows() {
     const g = new VoxelGrid(L + 4, 2, Wd + 2);
     for (let x = 0; x < L; x++) {
       const hw = shape(x);
-      for (let z = Math.round(Wd / 2 - hw) + 1; z < Math.round(Wd / 2 + hw) + 1; z++) g.set(x, 0, z, jit(top ? 0x9a6436 : 0x7a4a26, x, 0, z, 0.06));
+      for (let z = Math.round(Wd / 2 - hw) + 1; z < Math.round(Wd / 2 + hw) + 1; z++) g.set(x, 0, z, jit(top ? 0x6a4226 : 0x5a3a20, x, 0, z, 0.06));
     }
     // brass studs on the top board
-    if (top) for (let x = 3; x < L; x += 3) { g.set(x, 1, Math.round(Wd / 2) + 1 - shape(x) + 1, 0xd8a84a); g.set(x, 1, Math.round(Wd / 2) + shape(x) - 1, 0xd8a84a); }
+    if (top) for (let x = 3; x < L; x += 4) { g.set(x, 1, Math.round(Wd / 2) + 1 - shape(x) + 1, 0xb08a3a); g.set(x, 1, Math.round(Wd / 2) + shape(x) - 1, 0xb08a3a); }
     return g;
   };
   const bottom = mesh(board(false), [0, 0, Wd / 2 + 1]);
@@ -186,7 +186,7 @@ export function makeBellows() {
       const pleat = y % 2 === 1;
       const inset = pleat ? 1 : 0;
       for (let z = Math.round(Wd / 2 - hw + inset) + 1; z < Math.round(Wd / 2 + hw - inset) + 1; z++) {
-        lg.set(x, y, z, pleat ? 0x4a2814 : jit(0x6a3a1e, x, y, z, 0.08));
+        lg.set(x, y, z, pleat ? 0x2e1a10 : jit(0x4e2c18, x, y, z, 0.08));
       }
     }
   }
@@ -528,15 +528,19 @@ export function makeMossStrip(lenV, seed = 1) {
 }
 
 // ---------------------------------------------------------------- handheld
-/** Smithing hammer held in the mole's paw: handle along -y from the grip, head across z. */
+/** Smithing hammer held in the mole's paw: handle along -y from the grip, head across z.
+ * userData.face marks the striking face (for syncing blows). */
 export function makeHammer() {
-  const g = new VoxelGrid(3, 13, 7);
-  g.box(1, 3, 3, 1, 10, 1, (x, y, z) => (y > 10 ? 0x5a3a20 : jit(0x9a6a3a, x, y, z, 0.05)));
-  g.box(0, 0, 1, 3, 3, 5, (x, y, z) => (z === 1 || z === 5 ? 0x9aa0a8 : 0x4a484e));
-  const m = mesh(g, [1.5, 11.5, 3.5]);
-  m.rotation.x = Math.PI; // head ends up below the paw when the arm hangs
+  const g = new VoxelGrid(3, 8, 5);
+  g.box(1, 2, 2, 1, 6, 1, (x, y, z) => (y > 6 ? 0x5a3a20 : jit(0x9a6a3a, x, y, z, 0.05)));
+  g.box(0, 0, 0, 3, 2, 5, (x, y, z) => (z === 0 || z === 4 ? 0x9aa0a8 : 0x4a484e));
+  const m = mesh(g, [1.5, 7.5, 2.5]);
   const grp = new THREE.Group();
   grp.add(m);
+  const face = new THREE.Object3D();
+  face.position.set(0, -6.5 * V, -2.5 * V);
+  grp.add(face);
+  grp.userData.face = face;
   return grp;
 }
 
@@ -630,4 +634,51 @@ export function makeGem(color, s = 1) {
   g.box(0, 1, 0, 3, 1, 3, color); g.set(1, 0, 1, shade(color, 0.7)); g.set(1, 2, 1, mixHex(color, 0xffffff, 0.5));
   g.set(1, 1, 1, mixHex(color, 0xffffff, 0.3));
   return mesh(g, [1.5, 1.5, 1.5], { scale: V * s, kind: 'basic' });
+}
+
+/** Burlap sack of charcoal, slumped. */
+export function makeSack() {
+  const g = new VoxelGrid(9, 10, 8);
+  g.ellipsoid(4.5, 3.5, 4, 4.2, 3.6, 3.6, (x, y, z) => jit(0xb89a6a, x, y, z, 0.08));
+  g.box(3, 6, 3, 3, 2, 2, 0xa88a5a);
+  g.box(3, 8, 3, 3, 1, 2, 0x7a5a3a);
+  for (let x = 2; x < 7; x++) g.set(x, 7, 4, 0x2a2426);
+  g.set(4, 2, 7, 0x6a4a2a); g.set(5, 2, 7, 0x6a4a2a); g.set(4, 3, 7, 0x6a4a2a);
+  return mesh(g, [4.5, 0, 4]);
+}
+
+/** A little heap of offcuts, bent bars and a cracked old blade. */
+export function makeScrapPile(seed = 3) {
+  const rng = makeRng(seed);
+  const g = new VoxelGrid(12, 4, 10);
+  for (let i = 0; i < 9; i++) {
+    const x = rng.int(0, 8), z = rng.int(0, 8), len = rng.int(2, 4), y = rng.int(0, 2);
+    const col = rng.pick([0x5a5a62, 0x6a6e76, 0x8a5a3a, 0x7a4a2a, 0x4a4a50, 0xa86a3a]);
+    if (rng.chance(0.5)) g.box(x, y, z, len, 1, 1, col); else g.box(x, y, z, 1, 1, len, col);
+  }
+  g.box(2, 0, 7, 7, 1, 2, 0x8a8f96); g.set(8, 0, 7, 0x1a1414);
+  return mesh(g, [6, 0, 5]);
+}
+
+/** Three-legged wooden stool. */
+export function makeStool() {
+  const g = new VoxelGrid(8, 7, 8);
+  g.cylinderY(4, 4, 3.6, 6, 7, (x, y, z) => jit(0x9a6a3a, x, y, z, 0.06));
+  for (const [x, z] of [[1, 2], [6, 2], [4, 6]]) g.box(x, 0, z, 1, 6, 1, 0x6a4424);
+  g.box(2, 2, 3, 4, 1, 1, 0x5a3a20);
+  return mesh(g, [4, 0, 4]);
+}
+
+/** Stacked split logs for the hearth. */
+export function makeLogs() {
+  const g = new VoxelGrid(12, 7, 6);
+  const log = (x, y, len) => {
+    for (let i = 0; i < len; i++) for (let dy = 0; dy < 2; dy++) for (let dz = 0; dz < 2; dz++) {
+      const end = i === 0 || i === len - 1;
+      g.set(x + i, y + dy, 2 + dz, end ? (dy + dz) % 2 ? 0xc8a070 : 0xb08a5a : jit(0x5a3a22, x + i, y + dy, dz, 0.1));
+    }
+  };
+  log(0, 0, 12); log(0, 2, 11); log(1, 4, 10);
+  for (let x = 0; x < 12; x++) for (let y = 0; y < 6; y++) if (g.filled(x, y, 2)) { g.set(x, y, 1, g.get(x, y, 2)); g.set(x, y, 4, g.get(x, y, 3)); }
+  return mesh(g, [6, 0, 3]);
 }

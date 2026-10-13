@@ -559,3 +559,11 @@ export function disposeTextures(list) {
   for (const t of list) { try { t.dispose(); } catch (e) { /* noop */ } }
   list.length = 0;
 }
+
+/** Widen a perspective camera's vertical FOV on narrow screens so it keeps at least minHFov (degrees) across. */
+export function fitFov(camera, baseFov, minHFov) {
+  const a = camera.aspect || 1;
+  const need = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(minHFov) / 2) / a);
+  camera.fov = Math.max(baseFov, THREE.MathUtils.radToDeg(need));
+  camera.updateProjectionMatrix();
+}

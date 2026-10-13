@@ -95,7 +95,8 @@ export class SmeltGame {
     this.metalColor = metal?.color ?? 0xd9773f;
     const oreCol = ITEMS[firstOre]?.icon?.ore?.[0] ?? this.metalColor;
     this.cru = makeCrucible(oreCol);
-    this.home = sc.W.firePos.clone().add(new THREE.Vector3(0, -0.02, 0.05));
+    this.cru.group.scale.setScalar(0.66);
+    this.home = sc.W.firePos.clone().add(new THREE.Vector3(0, -0.03, 0.05));
     this.cru.group.position.copy(this.home);
     sc.scene.add(this.cru.group);
     sc.setShot('hearth');
@@ -117,7 +118,7 @@ export class SmeltGame {
     this.slagTxt = el('b');
     this.status = el('div', { class: 'fg-note' });
     const out = ITEMS[r.out];
-    this.panel = el('div', { class: 'panel fg-side fg-col' }, [
+    this.panel = el('div', { class: 'panel fg-side act fg-col' }, [
       el('div', { class: 'fg-kicker' }, 'Smelting'),
       el('h2', {}, out.name + (r.n > 1 ? ' ×' + r.n : '')),
       el('p', { class: 'sub', html: `${Object.entries(r.inputs).map(([id, n]) => `${n}× ${ITEMS[id].name}`).join(' + ')} + ${r.coal} coal · ore quality <b style="color:${qColor(this.taken.avgQ)}">${Math.round(this.taken.avgQ)}%</b>` }),
@@ -128,7 +129,7 @@ export class SmeltGame {
     ]);
     sc.layer.append(this.panel);
     this.nodes.push(this.panel);
-    this.game.ui.setHints('<kbd>Space</kbd> or hold the bellows: pump<br><kbd>Esc</kbd> stop smelting');
+    this.game.ui.setHints('<span class="fg-nolig"><kbd>Space</kbd> or hold the bellows: pump<br><kbd>Esc</kbd> stop smelting</span>');
     this.phase = 'heat';
     this.wasInBand = false;
     this.game.audio.play('place');
@@ -136,7 +137,7 @@ export class SmeltGame {
 
   onEscape() {
     if (this.phase !== 'heat') return true;
-    this.game.ui.confirm('Stop smelting? The ore and coal go back in your bag.', 'Stop', 'Keep going').then((yes) => {
+    this.game.ui.confirm('<b>Stop smelting?</b><br>The ore and coal go back in your bag.', 'Stop', 'Keep going').then((yes) => {
       if (!yes || this.phase !== 'heat') return;
       refundInputs(this.st, this.taken);
       this.phase = 'done';
@@ -164,7 +165,7 @@ export class SmeltGame {
 
   updateVisuals(dt) {
     const sim = this.sim, cru = this.cru, P = this.scene.particles;
-    applyHeat(cru.mat, 0x5a4a44, sim.T, 1.1);
+    applyHeat(cru.mat, 0xffffff, sim.T, 0.42);
     const k = sim.progress;
     cru.melt.scale.set(0.55 + k * 0.45, 1, 0.55 + k * 0.45);
     cru.melt.position.y = (1.6 + k * 3.6) * V;
@@ -176,7 +177,7 @@ export class SmeltGame {
       cru.chunks[i].scale.setScalar(s);
       cru.chunks[i].visible = s > 0.05;
     }
-    const top = _v.copy(cru.group.position).add(new THREE.Vector3(0, 7 * V, 0));
+    const top = _v.copy(cru.group.position).add(new THREE.Vector3(0, 5 * V, 0));
     if (sim.inBandNow && Math.random() < dt * 8) P.sparkle(top, 0xffd27a, 1, 0.12, 0.2);
     if (sim.overheat) {
       if (Math.random() < dt * 14) P.flakes(top, 1);
@@ -214,10 +215,11 @@ export class SmeltGame {
     this.q = ingotQuality(this.taken.avgQ, this.acc);
     this.game.ui.setHints(null);
     this.updateUI(0);
+    setHtml(this.status, this.acc >= 0.3 ? '<span class="fg-good">Molten! Pouring the ingot...</span>' : 'Pouring what melted...');
     const mold = sc.W.mold;
     const moldTop = mold.group.position.clone().add(new THREE.Vector3(0, mold.cavityTop, 0));
     const start = cru.group.position.clone();
-    const over = moldTop.clone().add(new THREE.Vector3(-0.2, 0.32, 0));
+    const over = moldTop.clone().add(new THREE.Vector3(-0.16, 0.24, 0));
     const pourT = Math.max(1000, sim.T);
     const stream = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: glowHex(pourT) }));
     stream.visible = false;
@@ -234,7 +236,8 @@ export class SmeltGame {
     const verdict = this.acc >= 0.9 ? ['Perfect melt!', '#ffd34a'] : this.acc >= 0.6 ? ['Good melt', '#8af07a'] : this.acc >= 0.3 ? ['Lumpy melt', '#e6dcc8'] : ['Barely melted', '#d96a5a'];
     sc.pop(verdict[0], start.clone().add(new THREE.Vector3(0, 0.35, 0)), verdict[1], 1);
     this.game.audio.play(this.acc >= 0.9 ? 'perfect' : this.acc >= 0.6 ? 'good' : 'oops');
-    sc.setShotRaw(new THREE.Vector3(moldTop.x + 0.1, moldTop.y + 0.95, moldTop.z + 1.55), new THREE.Vector3(moldTop.x - 0.35, moldTop.y + 0.12, moldTop.z - 0.1), 42);
+    sc.setShot('pour');
+    this.thermo.el.hidden = true;
     this.seq
       .wait(0.35)
       .add(0.7, (k) => { arcPoint(start, over, 0.25, ease.inOut(k), cru.group.position); })
@@ -242,6 +245,7 @@ export class SmeltGame {
       .add(0.35, (k) => { cru.group.rotation.z = -ease.out(k) * 1.15; })
       .call(() => { mold.fill.visible = true; })
       .add(1.3, (k, dt) => {
+        cru.group.updateMatrixWorld();
         spout.set(4.5 * V, 6.5 * V, 0).applyMatrix4(cru.group.matrixWorld);
         const a = spout, b = moldTop;
         stream.visible = k < 0.92;
@@ -255,7 +259,7 @@ export class SmeltGame {
       })
       .call(() => { stream.visible = false; })
       .add(0.35, (k) => { cru.group.rotation.z = -1.15 * (1 - ease.inOut(k)); })
-      .add(0.6, (k) => { arcPoint(over, start, 0.2, ease.inOut(k), cru.group.position); applyHeat(cru.mat, 0x5a4a44, 1100 * (1 - k * 0.6), 1.1); })
+      .add(0.6, (k) => { arcPoint(over, start, 0.2, ease.inOut(k), cru.group.position); applyHeat(cru.mat, 0xffffff, 1100 * (1 - k * 0.6), 0.42); })
       .add(1.0, (k) => { applyFill(fillMat, this.metalColor, pourT - (pourT - 380) * ease.out(k)); if (Math.random() < 0.15) P.smoke(moldTop, 0.12, 0.5); })
       .call(() => {
         mold.fill.visible = false;
@@ -265,11 +269,12 @@ export class SmeltGame {
         P.sparkle(moldTop, 0xfff0b0, 14, 0.2, 0.4);
       })
       .add(0.55, (k) => {
-        const land = moldTop.clone().add(new THREE.Vector3(0.38, -mold.group.position.y - mold.cavityTop + 0.0, 0.32));
+        const land = moldTop.clone().add(new THREE.Vector3(0.05, 0.0, 0.42));
+        land.y = 0.01;
         arcPoint(moldTop, land, 0.35, k, ingot.position);
         ingot.rotation.y = k * 4.5;
         ingot.rotation.z = Math.sin(k * Math.PI) * 0.8;
-        applyHeat(ingot.userData.mat, this.metalColor, 380 * (1 - k), 1);
+        applyHeat(ingot.userData.mat, 0xffffff, 380 * (1 - k), 1);
       })
       .call(() => { this.game.audio.play('place'); this.reward(); })
       .wait(1.4)

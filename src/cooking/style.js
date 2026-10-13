@@ -98,7 +98,7 @@ const CSS = /* css */`
 .ck-track .fill { position: absolute; left: calc(var(--px) * 2); right: calc(var(--px) * 2); bottom: calc(var(--px) * 1); background: var(--parch); box-shadow: inset calc(var(--px) * -1) 0 0 rgba(0,0,0,.2); }
 .ck-track .mark { position: absolute; left: calc(var(--px) * -4); right: calc(var(--px) * -4); height: calc(var(--px) * 2); background: #fff; box-shadow: 0 0 0 var(--px) #000; transform: translateY(50%); }
 .ck-track .mark::after { content: ''; position: absolute; right: calc(var(--px) * -4); top: 50%; transform: translateY(-50%); border: calc(var(--px) * 3) solid transparent; border-right-color: #fff; }
-.ck-gauge .btn { font-size: .85em; }
+.ck-gauge .btn { font-size: .85em; margin-top: calc(var(--px) * 2); }
 .ck-done { position: absolute; left: 50%; top: calc(var(--px) * 30); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: calc(var(--px) * 1.5); }
 .ck-hbar { position: relative; width: min(calc(var(--px) * 120), 60vw); height: calc(var(--px) * 9); border: var(--px) solid #000; box-shadow: inset 0 0 0 var(--px) rgba(255,255,255,.2), 0 calc(var(--px) * 2) 0 rgba(0,0,0,.4);
   background: linear-gradient(90deg, #f0e2c0 0%, #f0d890 35%, #e0a040 52%, #c8782a 68%, #6a3a1a 85%, #2a1a12 100%); }
@@ -119,7 +119,9 @@ const CSS = /* css */`
 @keyframes ckFloat { 0% { transform: translate(-50%, -50%) scale(.5); } 20% { transform: translate(-50%, -60%) scale(1.15); } 100% { transform: translate(-50%, calc(-50% - var(--px) * 14)) scale(1); opacity: 0; } }
 
 /* ---------- result ---------- */
-.ck-result { align-items: center; text-align: center; overflow: hidden; }
+.ck-result { align-items: center; text-align: center; overflow: hidden; bottom: auto; right: auto; left: calc(var(--px) * 5); top: calc(var(--px) * 56); max-height: calc(100vh - var(--px) * 61); animation: ckSlideInL .32s cubic-bezier(.2,1.3,.4,1); }
+.ck-result .scroll { overflow-y: auto; }
+@keyframes ckSlideInL { from { transform: translateX(calc(-100% - var(--px) * 10)); } }
 .ck-result .scroll { width: 100%; display: flex; flex-direction: column; align-items: center; }
 .ck-reveal { position: relative; width: calc(var(--px) * 56); height: calc(var(--px) * 56); display: grid; place-items: center; margin: calc(var(--px) * 1) 0 calc(var(--px) * 2); }
 .ck-rays { position: absolute; inset: calc(var(--px) * -10); background: repeating-conic-gradient(rgba(242,194,58,.45) 0 10deg, transparent 10deg 20deg); border-radius: 50%; animation: ckSpin 8s linear infinite; -webkit-mask: radial-gradient(circle, #000 35%, transparent 70%); mask: radial-gradient(circle, #000 35%, transparent 70%); }

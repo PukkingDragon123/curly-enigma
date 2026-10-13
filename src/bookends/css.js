@@ -20,7 +20,7 @@ const CSS = /* css */`
 @keyframes bkFadeUp { from { transform: translateY(calc(var(--px) * 6)); opacity: 0; } to { transform: none; opacity: 1; } }
 .bk-menu { display: flex; flex-direction: column; gap: calc(var(--px) * 3.5); margin-top: calc(var(--px) * 12); width: calc(var(--px) * 82); }
 .bk-menu .btn { width: 100%; text-align: left; font-size: 1.1em; padding: calc(var(--px) * 2.5) calc(var(--px) * 5); position: relative;
-  animation: bkSlideIn .5s cubic-bezier(.2,1.4,.4,1) both; animation-delay: calc(var(--i) * 90ms + 1.5s); }
+  animation: bkSlideIn .5s cubic-bezier(.2,1.4,.4,1) backwards; animation-delay: calc(var(--i) * 90ms + 1.5s); }
 .bk-menu .btn::after { content: '›'; position: absolute; right: calc(var(--px) * 4); opacity: 0; transition: opacity .15s, transform .15s; }
 .bk-menu .btn:hover::after, .bk-menu .btn:focus-visible::after { opacity: .8; transform: translateX(var(--px)); }
 @keyframes bkSlideIn { from { transform: translateX(calc(var(--px) * -24)); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -28,23 +28,16 @@ const CSS = /* css */`
   color: #f0dcc0; opacity: .85; animation: bkFadeUp 1s ease-out 2.2s both; white-space: nowrap; }
 .bk-controls kbd { font-size: .92em; margin-right: var(--px); text-shadow: none; }
 .bk-controls .dot { opacity: .5; margin: 0 calc(var(--px) * 2.5); }
-.bk-sound { position: absolute; right: calc(var(--px) * 7); top: calc(var(--px) * 6); font-size: .7em; color: #f6e6cc; display: flex; align-items: center; gap: calc(var(--px) * 2);
-  animation: bkFadeUp .8s ease-out 2.6s both; transition: opacity .6s; }
+.bk-sound { position: absolute; right: calc(var(--px) * 7); top: calc(var(--px) * 6); font-size: .7em; color: #f6e6cc;
+  animation: bkFadeUp .8s ease-out 2.6s both; }
+.bk-sound-in { display: flex; align-items: center; gap: calc(var(--px) * 2); transition: opacity .6s; }
 .bk-sound .note { display: inline-block; animation: bkNote 1.4s ease-in-out infinite; color: var(--gold); font-size: 1.3em; }
-.bk-sound.gone { opacity: 0; }
+.bk-sound.gone .bk-sound-in { opacity: 0; }
 @keyframes bkNote { 0%, 100% { transform: translateY(0) rotate(-8deg); } 50% { transform: translateY(calc(var(--px) * -2)) rotate(8deg); } }
 .bk-ver { position: absolute; right: calc(var(--px) * 7); bottom: calc(var(--px) * 5); font-size: .55em; opacity: .45; color: #f0dcc0; }
 .bk-credits-body p { margin: 0 0 calc(var(--px) * 2.5); max-width: 46ch; line-height: 1.35; }
 .bk-credits-body ul { margin: 0 0 calc(var(--px) * 3); padding-left: calc(var(--px) * 6); line-height: 1.45; }
 .bk-credits-body .muted { font-size: .85em; }
-
-@media (max-aspect-ratio: 5/4) {
-  .bk-left { left: 50%; top: calc(var(--px) * 10); transform: translateX(-50%); align-items: center; }
-  .bk-logo { font-size: calc(var(--px) * 30); }
-  .bk-sub { margin-left: 0; font-size: calc(var(--px) * 6); }
-  .bk-menu { position: fixed; left: 50%; bottom: calc(var(--px) * 18); transform: translateX(-50%); margin: 0; }
-  .bk-controls { white-space: normal; padding: 0 calc(var(--px) * 4); }
-}
 
 /* ---------- ending ---------- */
 .bk-depth { position: absolute; right: calc(var(--px) * 16); top: 50%; transform: translateY(-50%); text-align: right; transition: opacity .6s; }
@@ -88,6 +81,20 @@ const CSS = /* css */`
 .bk-dock .btn { font-size: .8em; padding: var(--px) calc(var(--px) * 3); }
 .bk-skip { position: absolute; right: calc(var(--px) * 6); bottom: calc(var(--px) * 6); font-size: .75em; padding: var(--px) calc(var(--px) * 3); opacity: .5; transition: opacity .3s; }
 .bk-skip:hover, .bk-skip:focus-visible { opacity: 1; }
+
+/* ---------- narrow screens (kept last so they win) ---------- */
+@media (max-aspect-ratio: 5/4) {
+  .bk-left { left: 0; right: 0; top: calc(var(--px) * 12); bottom: calc(var(--px) * 22); transform: none; align-items: center; }
+  .bk-logo { font-size: calc(var(--px) * 30); }
+  .bk-sub { margin-left: 0; font-size: calc(var(--px) * 6); }
+  .bk-menu { margin-top: auto; }
+  .bk-controls { white-space: normal; padding: 0 calc(var(--px) * 4); line-height: 1.9; }
+  .bk-sound { top: auto; bottom: calc(var(--px) * 16); right: 50%; transform: translateX(50%); }
+}
+@media (max-aspect-ratio: 1/1) {
+  .bk-depth { right: auto; left: 50%; top: auto; bottom: calc(var(--px) * 16); transform: translateX(-50%); text-align: center; }
+  .bk-skip { bottom: auto; top: calc(var(--px) * 6); }
+}
 `;
 
 let refs = 0;

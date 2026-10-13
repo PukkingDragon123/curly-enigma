@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { FLOORS, WALLS } from '../data/furniture.js';
 import { PixelCanvas, pixelTexture, ramp } from '../gfx/PixelArt.js';
 import { makeRng, hashStr, mixHex, shade } from '../core/util.js';
-import { VoxelGrid, vmesh, gmesh, jit, hash3, V16, V8, carve } from './vox.js';
+import { VoxelGrid, vmesh, vmeshG, gmesh, jit, hash3, V16, V8, carve } from './vox.js';
 import { posterCanvas } from './pixel.js';
 
 export const WALL_H = 3; // world units
@@ -155,17 +155,18 @@ function wallVoxel(style, u, v, seed, H) {
       return [col, 0];
     }
     default: {
-      // packed dirt with strata, pebbles and roots
+      // packed dirt with wavy strata, a few pebbles and old root runs
       const strata = Math.floor((v + Math.sin(u * 0.35 + seed) * 1.6) / 5);
-      let col = jit(shade(c, 0.9 + (strata % 3) * 0.07), u, v, 0, seed, 0.1);
-      const h = hash3(u, v, 7, seed);
-      if (h < 0.035) return [speckStone(u, v), 1];
-      if (h > 0.97) col = R[4];
+      let col = jit(shade(c, 0.88 + (strata % 3) * 0.08), u >> 1, v, 0, seed, 0.09);
+      const h = hash3(u >> 1, v, 7, seed);
+      if (h < 0.014) return [speckStone(u, v), 1];
+      if (h > 0.975) col = R[4];
+      if (Math.abs(v - (9 + Math.round(Math.sin(u * 0.21 + seed) * 2))) < 0.5 && hash3(u >> 3, 0, 9, seed) < 0.45) return [0x4a3020, 1];
       return [col, 0];
     }
   }
 }
-function speckStone(u, v) { return [0x8a8078, 0x6a625a, 0x9a8a78][(u * 7 + v * 3) % 3]; }
+function speckStone(u, v) { return [0x6e665e, 0x5a524a, 0x7a6e64][(u * 7 + v * 3) % 3]; }
 
 // ---------------------------------------------------------------- room
 export class HomeRoom {
@@ -258,7 +259,7 @@ export class HomeRoom {
     // a lip of packed floor on top of the cut edge
     for (let x = 0; x <= W * WV; x++) g.set(x, depth - 1, D * WV, jit(0x7a5a3a, x, 0, 0, 8, 0.1));
     for (let z = 0; z < D * WV; z++) g.set(W * WV, depth - 1, z, jit(0x6a4a30, z, 0, 0, 8, 0.1));
-    const m = vmesh(g, { scale: V8, pivot: [0, depth, 0] });
+    const m = vmeshG(g, { scale: V8, pivot: [0, depth, 0] });
     m.position.set(0, -0.001, 0);
     this.group.add(m);
   }
@@ -309,7 +310,7 @@ export class HomeRoom {
       g.set(a, v, D * WV + T - 1, jit(0x3a281a, a, v, 0, 2, 0.1));
       g.set(W * WV + T - 1, v, a, jit(0x3a281a, a, v, 1, 2, 0.1));
     }
-    const m = vmesh(g, { scale: V8, pivot: [T - 1, 0, T - 1] });
+    const m = vmeshG(g, { scale: V8, pivot: [T - 1, 0, T - 1] });
     this.group.add(m);
     this.wallMesh = m;
   }
@@ -398,30 +399,33 @@ export class HomeRoom {
     const rng = makeRng(W * 13 + D);
     const roots = new THREE.Group();
     const root = (len, seed) => {
-      const g = new VoxelGrid(7, len + 1, 3);
-      let x = 3;
+      const g = new VoxelGrid(9, len + 1, 3);
+      let x = 4;
       for (let y = len; y >= 0; y--) {
-        g.set(x, y, 1, jit(0x6a4a2a, x, y, 0, seed, 0.12));
-        if (y > len - 3) g.set(x + 1, y, 1, 0x5a3a20);
-        if (hash3(x, y, 0, seed) < 0.18) { const s = hash3(y, x, 1, seed) < 0.5 ? -1 : 1; g.set(x + s, y, 1, 0x7a5a3a); }
-        if (hash3(y, 0, 2, seed) < 0.25) x = Math.max(1, Math.min(5, x + (hash3(y, 1, 3, seed) < 0.5 ? -1 : 1)));
+        const k = y / len; // 1 at the top
+        const col = jit(mixHex(0x8a6a48, 0x3e2818, k), x, y, 0, seed, 0.1);
+        g.set(x, y, 1, col);
+        if (k > 0.55) g.set(x + 1, y, 1, shade(col, 0.85));
+        if (k > 0.8) g.set(x - 1, y, 1, shade(col, 0.9));
+        if (hash3(x, y, 0, seed) < 0.12 && y > 2) { const sdir = hash3(y, x, 1, seed) < 0.5 ? -1 : 1; g.set(x + sdir * 2, y - 1, 1, 0x7a5a3a); g.set(x + sdir, y, 1, 0x6a4a2a); }
+        if (hash3(y, 0, 2, seed) < 0.22) x = Math.max(1, Math.min(7, x + (hash3(y, 1, 3, seed) < 0.5 ? -1 : 1)));
       }
-      g.set(x, 0, 1, 0x8a6a4a);
-      return vmesh(g, { scale: V16, pivot: [3, len + 1, 1] });
+      g.set(x, 0, 1, 0xa88a68);
+      return vmesh(g, { scale: V16, pivot: [4, len + 1, 1] });
     };
     const top = WALL_H - 0.02;
     const posterSkip = (x) => x > 0.6 && x < 3.4;
-    for (let i = 0; i < Math.round(W * 0.6); i++) {
+    for (let i = 0; i < Math.round(W * 0.8); i++) {
       const x = 0.6 + rng() * (W - 1.2);
       if (posterSkip(x)) continue;
-      const m = root(rng.int(6, 16), i + 1);
+      const m = root(rng.int(8, 22), i + 1);
       m.position.set(x, top, 0.2 + rng() * 0.08);
       roots.add(m);
     }
-    for (let i = 0; i < Math.round(D * 0.5); i++) {
+    for (let i = 0; i < Math.round(D * 0.7); i++) {
       const z = 0.6 + rng() * (D - 1.2);
       if (Math.abs(z - (this.door.z + 0.5)) < 1.2) continue;
-      const m = root(rng.int(6, 14), 40 + i);
+      const m = root(rng.int(8, 20), 40 + i);
       m.rotation.y = Math.PI / 2;
       m.position.set(0.2 + rng() * 0.08, top, z);
       roots.add(m);

@@ -21,6 +21,8 @@ export default class ForgeScene extends Scene {
     this.music = 'forge';
     this.allowMenus = true;
     this.params = params;
+    // ?ts=N speeds this scene up for automated screenshot runs (headless WebGL is slow)
+    this.timeScale = clamp(parseFloat(params.ts) || 1, 0.25, 4);
     this.post = { vignette: 0.38, saturation: 1.1, contrast: 1.05, brightness: 1.06, tint: 0xfff0e4, innerThresh: 0.22 };
     this.scene.background = new THREE.Color(0x140c0a);
     this.scene.fog = new THREE.Fog(0x140c0a, 10, 19);
@@ -44,7 +46,7 @@ export default class ForgeScene extends Scene {
     this.placeMole('idle');
 
     // Nugget keeps warm on the crate by the hearth
-    this.hen = makeChicken();
+    this.hen = makeChicken({ scale: 0.85 });
     this.hen.root.position.copy(this.W.perch);
     this.hen.face(0.5, true);
     this.hen.play('sit');
@@ -197,30 +199,77 @@ export default class ForgeScene extends Scene {
   walkTo(name, pose = 'idle', onArrive = null) {
     const st = this.W.stations[name];
     const from = this.mole.root.position.clone();
-    const dist = from.distanceTo(st.pos);
     this.moleStation = name;
-    if (dist < 0.02) {
+    if (from.distanceTo(st.pos) < 0.02) {
       this.mole.face(st.yaw);
       this.molePose = pose;
       this.moleWalk = null;
       if (onArrive) onArrive();
       return;
     }
-    this.moleWalk = { from, to: st.pos.clone(), yaw: st.yaw, t: 0, dur: clamp(dist / 2.2, 0.25, 1.1), pose, onArrive };
+    const pts = this.route(from, st.pos.clone());
+    let len = 0;
+    for (let i = 1; i < pts.length; i++) len += pts[i].distanceTo(pts[i - 1]);
+    const speed = Math.max(2.0, len / 0.95);
+    this.moleWalk = { pts, len, d: 0, yaw: st.yaw, pose, onArrive, speed, gait: speed > 2.6 ? 'run' : 'walk' };
+  }
+
+  /** Shortest walk from a to b around the props: Dijkstra over a small visibility graph. */
+  route(a, b) {
+    const obs = this.W.obstacles, R = 0.16;
+    const blocked = (p, q) => {
+      const len = p.distanceTo(q);
+      const n = Math.max(2, Math.ceil(len / 0.05));
+      for (let k = 0; k <= n; k++) {
+        const t = k / n, along = t * len;
+        if (along < 0.1 || len - along < 0.1) continue;
+        const x = p.x + (q.x - p.x) * t, z = p.z + (q.z - p.z) * t;
+        for (const o of obs) {
+          if (o.r !== undefined) { if ((x - o.x) ** 2 + (z - o.z) ** 2 < (o.r + R) ** 2) return true; }
+          else if (x > o.x0 - R && x < o.x1 + R && z > o.z0 - R && z < o.z1 + R) return true;
+        }
+      }
+      return false;
+    };
+    const A = a.clone().setY(0), B = b.clone().setY(0);
+    if (!blocked(A, B)) return [a, b];
+    const nodes = [A, B, ...this.W.waypoints];
+    const n = nodes.length;
+    const dist = new Array(n).fill(Infinity), prev = new Array(n).fill(-1), done = new Array(n).fill(false);
+    dist[0] = 0;
+    for (;;) {
+      let u = -1;
+      for (let i = 0; i < n; i++) if (!done[i] && (u < 0 || dist[i] < dist[u])) u = i;
+      if (u < 0 || dist[u] === Infinity || u === 1) break;
+      done[u] = true;
+      for (let v = 0; v < n; v++) {
+        if (done[v] || v === u) continue;
+        const d = dist[u] + nodes[u].distanceTo(nodes[v]);
+        if (d < dist[v] && !blocked(nodes[u], nodes[v])) { dist[v] = d; prev[v] = u; }
+      }
+    }
+    if (prev[1] < 0) return [a, b];
+    const path = [];
+    for (let i = 1; i >= 0; i = prev[i]) path.unshift(i === 0 ? a : i === 1 ? b : nodes[i]);
+    return path;
   }
 
   updateMole(dt) {
     const rig = this.mole;
     const w = this.moleWalk;
     if (w) {
-      w.t = Math.min(1, w.t + dt / w.dur);
-      const k = w.t < 0.5 ? 2 * w.t * w.t : 1 - Math.pow(-2 * w.t + 2, 2) / 2;
-      rig.root.position.lerpVectors(w.from, w.to, k);
-      rig.root.position.y = lerp(w.from.y, w.to.y, k) + Math.sin(w.t * Math.PI) * 0.04;
-      rig.face(Math.atan2(w.to.x - w.from.x, w.to.z - w.from.z));
-      rig.play('walk', 1.3);
-      if (w.t >= 1) {
+      w.d = Math.min(w.len, w.d + dt * w.speed);
+      let d = w.d, i = 1;
+      while (i < w.pts.length - 1 && d > w.pts[i].distanceTo(w.pts[i - 1])) { d -= w.pts[i].distanceTo(w.pts[i - 1]); i++; }
+      const p0 = w.pts[i - 1], p1 = w.pts[i];
+      const segLen = Math.max(1e-5, p0.distanceTo(p1));
+      rig.root.position.lerpVectors(p0, p1, Math.min(1, d / segLen));
+      rig.root.position.y = lerp(p0.y, p1.y, Math.min(1, d / segLen)) + Math.abs(Math.sin(w.d * 5)) * 0.015;
+      rig.face(Math.atan2(p1.x - p0.x, p1.z - p0.z));
+      rig.play(w.gait, w.gait === 'run' ? 1.1 : 1.3);
+      if (w.d >= w.len) {
         this.moleWalk = null;
+        rig.root.position.copy(w.pts[w.pts.length - 1]);
         rig.face(w.yaw);
         this.molePose = w.pose;
         if (w.onArrive) w.onArrive();
@@ -278,7 +327,7 @@ export default class ForgeScene extends Scene {
     const g = f.glow * f.flick;
     this.W.hearth.coalMat.color.setRGB(0.55 + g * 0.6, 0.45 + g * 0.45, 0.4 + g * 0.3);
     this.W.hearth.emberMat.color.setScalar(0.35 + g * 0.35);
-    this.W.light.intensity = (5.5 + f.air * 7) * f.flick + (this.extraLight || 0);
+    this.W.light.intensity = (4.2 + f.air * 5) * f.flick + (this.extraLight || 0);
     this.W.light.color.setHSL(0.065 + f.air * 0.015, 1, 0.55 + f.air * 0.06);
     this.fireLoop.set({ vol: 0.3 + f.air * 0.45, intensity: f.air });
     // emitters
@@ -296,6 +345,17 @@ export default class ForgeScene extends Scene {
     const fp = this.W.firePos;
     for (let i = 0; i < 6; i++) this.particles.ember(_v.copy(fp), 0.5, 1.6);
     for (let i = 0; i < 8; i++) this.particles.flame(_v.copy(fp), 0.5, 1.4);
+  }
+
+  /** Quick smelt: a burst of sparks and steam over the ingot mold. */
+  quickSmeltFx(recipe, count) {
+    const m = this.W.mold.group.position;
+    const top = _v.set(m.x, m.y + 0.2, m.z);
+    this.particles.sparks(top, 18 + Math.min(30, count * 4), 0.7);
+    this.particles.sparkle(top, 0xffd27a, 12, 0.3, 0.4);
+    this.particles.smoke(top, 0.15, 0.8);
+    this.puff();
+    this.addShake(0.01);
   }
 
   // ---------------------------------------------------------------- ambience
@@ -335,6 +395,7 @@ export default class ForgeScene extends Scene {
 
   // ---------------------------------------------------------------- frame
   update(dt) {
+    dt *= this.timeScale;
     super.update(dt);
     if (this.activity) {
       try { this.activity.update(dt); } catch (e) { console.error(e); this.game.reportError(e); this.activity = null; this.endActivity(); }
