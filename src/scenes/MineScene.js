@@ -540,7 +540,7 @@ export default class MineScene extends Scene {
     if ((p.id === 'magmaite' || p.id === 'sunstone') && !st.protects('heat')) { this.burn(5, p.x, p.y); return false; }
     if (p.id === 'frostite' && !st.protects('cold')) { this.hurt(4, 'cold'); this.fx.frost(p.x - 0.5, p.y - 0.5); this.say('cold', 'Too cold to hold! Your paws go numb.', 'bad', 3); st.learn('freezing'); return false; }
     const counts = it.cat === 'mineral' || it.cat === 'gem';
-    if (counts && this.trip >= st.bagCapacity()) { this.say('bag', `Bag full! (${this.trip}/${st.bagCapacity()})${this.intro ? '' : ' Ring a lift bell to head home.'}`, 'warn', 4); return false; }
+    if (counts && this.trip >= st.bagCapacity()) { if (!(this.time - (this.toastCd.bag ?? -99) < 4)) this.player.rig.doEmote('sad', 1.4); this.say('bag', `Bag full! (${this.trip}/${st.bagCapacity()})${this.intro ? '' : ' Ring a lift bell to head home.'}`, 'warn', 4); return false; }
     const lot = st.addItem(p.id, it.q ? { q: p.q, p: p.p } : {});
     if (counts) { this.trip++; st.data.stats.ores++; }
     this.tripItems.push({ id: p.id, uid: lot && lot.uid });
@@ -548,7 +548,9 @@ export default class MineScene extends Scene {
     this.audio.play(it.cat === 'gem' || p.p ? 'pickup_gem' : 'pickup', { pitch: 0.9 + Math.random() * 0.3 });
     this.float(it.q ? `+${it.name} ${Math.round(p.q)}%` : `+${it.name}`, p.x, p.y - 0.5, it.q ? qColor(p.q) : '#e8ffd0', 0.85);
     const cat = it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'mineral' : it.cat === 'plant' ? 'plant' : null;
-    if (cat) st.discover(cat, p.id);
+    const fresh = cat ? st.discover(cat, p.id) : false;
+    // a face for the good ones: new finds, gems, pristine or high-quality pieces
+    if (fresh || it.cat === 'gem' || p.p || (it.q && p.q >= 90)) this.player.rig.doEmote('happy', fresh ? 1.8 : 1.2);
     if (this.game.ui.setBag) this.game.ui.setBag(this.trip, st.bagCapacity());
     this.updateHotbar();
     return true;
@@ -875,7 +877,7 @@ export default class MineScene extends Scene {
         if (this.coldT > 4 && !this.flags.cold) { this.flags.cold = true; st.learn('freezing'); this.say('cold2', 'Brrr. The cold bites through your fur.', 'warn', 30); }
       }
     }
-    if (st.energy < 20 && !this.flags.lowEnergy) { this.flags.lowEnergy = true; st.learn('energy'); this.say('low', this.intro ? 'You\'re running low on energy. Something to eat would help.' : 'You\'re running low on energy. Eat something, or head home.', 'warn', 60); }
+    if (st.energy < 20 && !this.flags.lowEnergy) { this.flags.lowEnergy = true; pl.rig.doEmote('sad', 2); st.learn('energy'); this.say('low', this.intro ? 'You\'re running low on energy. Something to eat would help.' : 'You\'re running low on energy. Eat something, or head home.', 'warn', 60); }
 
     // ---- targeting & tools
     this.target = this.computeTarget();

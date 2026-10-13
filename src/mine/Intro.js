@@ -248,6 +248,7 @@ export class IntroController {
       // a pat on the head
       s.audio.play('cluck', { n: 2 });
       s.fx.hearts(this.henPos.x, this.henPos.y - 0.3);
+      s.player.rig.doEmote('happy', 1.2);
       return;
     }
     if (!this.henReachable()) return;
@@ -257,6 +258,7 @@ export class IntroController {
     s.audio.play('bawk');
     s.audio.play('discover');
     this.hen.flap(1.4);
+    s.player.rig.doEmote('happy', 2.2);
     this.hen.play('idle');
     s.fx.hearts(this.henPos.x, this.henPos.y - 0.3);
     s.fx.sparkle(this.henPos.x, this.henPos.y - 0.2, [1, 0.9, 0.6]);

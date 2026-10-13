@@ -384,6 +384,7 @@ export class Tools {
     s.post.flash = 0.6; s.post.flashColor = 0xd8f6ff;
     s.shake(0.55);
     const dist = Math.hypot(pl.x - cx, pl.y - cy);
+    if (dist < 9) pl.rig.doEmote('surprise', 1.6);
     if (dist < 3.4) {
       s.hurt(Math.round(20 * (1 - dist / 3.6)) + 4, 'explosion');
       pl.knock.x = Math.sign(pl.x - cx || 1) * 9 * (1 - dist / 3.6);
@@ -522,6 +523,7 @@ export class Tools {
     s.state.data.stats.caveins++;
     // anything standing under it gets bonked
     const pl = s.player;
+    if (Math.hypot(pl.x - b.x, pl.y + b.y) < 7) pl.rig.doEmote('surprise', 1.3);
     if (Math.abs(pl.x - b.x) < b.hx + 0.35 && Math.abs(pl.y + b.y) < b.hy + 0.6) s.bonk(11);
     s.staticDirty = true;
   }
