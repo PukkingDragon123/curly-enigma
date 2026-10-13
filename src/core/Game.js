@@ -21,7 +21,7 @@ const SCENES = {
 };
 
 export class Game {
-  constructor(root) {
+  constructor(root, hotData = {}) {
     this.root = root;
     this.canvas = root.querySelector('#game');
     this.engine = new Engine(this.canvas);
@@ -31,8 +31,7 @@ export class Game {
     this.state = new State();
     this.params = new URLSearchParams(location.search);
     if (!this.params.has('fresh')) {
-      const hot = window.claude?.hot?.data;
-      if (hot && hot.save) this.state.load(hot.save);
+      if (hotData && hotData.save) this.state.load(hotData.save);
       else this.state.load();
     }
     this.ui = new UI(this);
