@@ -76,7 +76,7 @@ export default class HomeScene extends IsoScene {
       this.nuggetAI.home = { x0: 0, z0: 0, x1: W - 1, z1: D - 1 };
     }
     this.napT = rand(25, 45);
-    { const k = clamp((W + D - 18) / 12, 0.22, 0.85); this.cam.snap(_v.set(W / 2 + 0.2 + (this.player.x - W / 2 - 0.2) * k, 0.6, D / 2 + 0.4 + (this.player.z - D / 2 - 0.4) * k)); }
+    { const e = this.game.engine, k = Math.max(clamp((W + D - 18) / 12, 0.22, 0.85), e.width < e.height ? 0.75 : 0); this.cam.snap(_v.set(W / 2 + 0.2 + (this.player.x - W / 2 - 0.2) * k, 0.6, D / 2 + 0.4 + (this.player.z - D / 2 - 0.4) * k)); }
 
     // build mode
     this.build = new BuildMode(this);
@@ -563,7 +563,8 @@ export default class HomeScene extends IsoScene {
     this.build.update(dt);
     if (!this.build.active && this.player) {
       // soft follow: small rooms stay framed, big rooms follow the player more
-      const k = clamp((this.W + this.D - 18) / 12, 0.22, 0.85);
+      // (a phone held upright sees much less of the room across, so it follows more there)
+      const k = Math.max(clamp((this.W + this.D - 18) / 12, 0.22, 0.85), this.cam.aspect < 1 ? 0.75 : 0);
       const cx = this.W / 2 + 0.2, cz = this.D / 2 + 0.4;
       this.homeFocus = this.homeFocus || new THREE.Vector3();
       this.homeFocus.set(cx + (this.player.x - cx) * k, 0.6, cz + (this.player.z - cz) * k);

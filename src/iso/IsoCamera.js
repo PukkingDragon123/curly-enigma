@@ -71,14 +71,19 @@ export class IsoCamera {
     this.apply();
   }
 
+  /** World units visible vertically: zoom, stretched on tall screens so a phone held upright keeps a sensible width. */
+  get viewH() {
+    return Math.max(this.zoom, (this.zoom * 0.85) / Math.max(0.2, this.aspect));
+  }
+
   apply() {
     const c = this.cam;
-    const hh = this.zoom / 2, hw = hh * this.aspect;
+    const hh = this.viewH / 2, hw = hh * this.aspect;
     if (c.top !== hh || c.right !== hw) {
       c.left = -hw; c.right = hw; c.top = hh; c.bottom = -hh;
       c.updateProjectionMatrix();
     }
-    const upp = this.zoom / Math.max(1, this.pxH); // world units per render pixel
+    const upp = this.viewH / Math.max(1, this.pxH); // world units per render pixel
     const f = _f.copy(this.focus);
     if (this.shake > 0) {
       const s = this.shake * 0.12;

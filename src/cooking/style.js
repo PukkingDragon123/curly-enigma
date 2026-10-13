@@ -143,6 +143,13 @@ const CSS = /* css */`
 .ck-actions { display: flex; gap: calc(var(--px) * 2); flex-wrap: wrap; justify-content: center; margin-top: calc(var(--px) * 2); }
 /* 32px item art: keep every icon at a whole-number scale (1x / 2x / 3x) */
 @media (min-width: 1700px) and (min-height: 1000px) { .ck-reveal { width: calc(var(--icon) * 3); height: calc(var(--icon) * 3); } }
+/* phones held upright: the side panels become a bottom sheet across the whole width */
+@media (max-aspect-ratio: 4/5) {
+  .ck-side { left: calc(var(--px) * 4); right: calc(var(--px) * 4); width: auto; top: auto; bottom: calc(var(--px) * 4 + env(safe-area-inset-bottom, 0px)); max-height: 60vh; }
+  .ck-tray { flex-wrap: wrap; }
+  .ck-top { max-width: calc(100vw - var(--px) * 8); }
+  .ck-leave { bottom: auto; top: calc(var(--px) * 4 + env(safe-area-inset-top, 0px)); }
+}
 `;
 
 let injected = false;

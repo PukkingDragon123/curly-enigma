@@ -363,7 +363,7 @@ export class IsoScene extends Scene {
     this.cam.update(dt);
     this.lightPool.update(dt, this.cam.focus.x, this.cam.focus.z);
     this.glow.update();
-    this.particles.update(dt, 9 / this.cam.zoom);
+    this.particles.update(dt, 9 / this.cam.viewH);
     this.updateAnchors();
     this.updateLoops();
   }
