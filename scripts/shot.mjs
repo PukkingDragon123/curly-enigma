@@ -23,7 +23,7 @@ const [w, h] = opt('size', '1280x720').split('x').map((n) => parseInt(n, 10));
 const stepsFile = opt('steps', null);
 const steps = stepsFile ? JSON.parse(readFileSync(stepsFile, 'utf8')) : [];
 
-const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error', clearScreen: false });
+const server = await createServer({ server: { port: 0, host: '127.0.0.1', hmr: false, watch: null }, logLevel: 'error', clearScreen: false });
 await server.listen();
 const port = server.httpServer.address().port;
 const browser = await chromium.launch({

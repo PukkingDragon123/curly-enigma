@@ -81,7 +81,7 @@ const CSS = `
 .fg-recipe .why { font-size: .7em; color: #a83a1a; }
 .fg-recipe .btns { display: flex; flex-direction: column; gap: var(--px); align-items: stretch; }
 .fg-recipe .btn { font-size: .78em; padding: var(--px) calc(var(--px) * 3); }
-.fg-result { position: absolute; right: calc(var(--px) * 6); top: 50%; transform: translateY(-50%); width: calc(var(--px) * 112); padding: calc(var(--px) * 6); animation: pop .25s cubic-bezier(.2,1.5,.4,1); }
+.fg-result { position: absolute; right: calc(var(--px) * 6); top: min(calc(var(--px) * 100), calc(100% - var(--px) * 116)); width: calc(var(--px) * 112); padding: calc(var(--px) * 6); animation: pop .25s cubic-bezier(.2,1.5,.4,1); }
 .fg-stamp { position: absolute; right: calc(var(--px) * 5); top: calc(var(--px) * -10); width: calc(var(--px) * 30); height: calc(var(--px) * 30); display: grid; place-items: center; font-family: var(--font-display); font-size: 3.4em; line-height: 1;
   background: #2a1a12; border: calc(var(--px) * 1.5) solid currentColor; box-shadow: 0 0 0 var(--px) #000, 0 calc(var(--px) * 2) 0 rgba(0,0,0,.4); transform: rotate(8deg); animation: stamp .45s cubic-bezier(.3,1.8,.5,1) both .35s; }
 @keyframes stamp { from { transform: rotate(-20deg) scale(2.4); opacity: 0; } }
@@ -242,6 +242,15 @@ export class StrikeMeter {
 }
 
 /** Big pop-up word at a screen point. */
+/**
+ * Body for game.ui.confirm(): a short bold title, then the details pushed below the
+ * dialog's close button (which sits over the top-right corner of the text).
+ */
+export function confirmText(title, body) {
+  const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+  return `<b>${esc(title)}</b><span style="display:block;margin-top:calc(var(--px) * 4)">${esc(body)}</span>`;
+}
+
 export function popWord(parent, text, x, y, color = '#fff', size = 1) {
   const n = el('div', { class: 'fg-float', style: { left: x + 'px', top: y + 'px', color, fontSize: size * 1.6 + 'em' } }, text);
   parent.append(n);

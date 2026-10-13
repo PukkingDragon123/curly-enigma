@@ -44,7 +44,7 @@ html, body {
   image-rendering: pixelated; image-rendering: crisp-edges;
   outline: none; display: block;
 }
-#ui { position: absolute; inset: 0; pointer-events: none; z-index: 2; font-size: calc(var(--px) * 5.4); }
+#ui { position: absolute; inset: 0; pointer-events: none; z-index: 2; font-size: calc(var(--px) * 5.4); font-variant-ligatures: none; font-feature-settings: 'liga' 0; }
 #ui .interactive, #ui button, #ui .panel, #ui .hotbar-slot, #ui input { pointer-events: auto; }
 img.pix, .pix { image-rendering: pixelated; image-rendering: crisp-edges; }
 

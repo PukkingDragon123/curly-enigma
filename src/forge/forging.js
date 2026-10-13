@@ -9,7 +9,7 @@ import { COIN, qColor } from '../ui/UI.js';
 import { BladeSim, balanceScore, balanceTolerance, quenchResult, fireIdleFor, AMBIENT } from './bladeSim.js';
 import { BladeView, buildWeapon, COL } from './bladeView.js';
 import { applyHeat } from './blackbody.js';
-import { Thermo, Steps, StrikeMeter, bar, setText, setHtml } from './ui.js';
+import { Thermo, Steps, StrikeMeter, bar, setText, setHtml, confirmText } from './ui.js';
 import { Seq, ease, arcPoint, Lightning, INFUSION_FX } from './fx.js';
 import { makeCrystal } from './models.js';
 import { disposeTree } from './smelt.js';
@@ -103,7 +103,7 @@ export class ForgeRun {
   onEscape() {
     if (this.step === 'result') { this.scene.endActivity('main'); return true; }
     if (this.busy || this.step === 'grind') return true;
-    this.game.ui.confirm('<b>Abandon this blade?</b><br>The metal goes back into your bag as ingots.', 'Abandon', 'Keep forging').then((yes) => {
+    this.game.ui.confirm(confirmText('Abandon this blade?', 'The metal goes back into your bag as ingots.'), 'Abandon', 'Keep forging').then((yes) => {
       if (!yes || this.finished) return;
       this.refund();
       this.scene.endActivity('plan');
@@ -481,10 +481,10 @@ export class ForgeRun {
   finishShaping() {
     if (this.moving || this.swing || this.charge || this.asking) return;
     const acc = this.sim.accuracy();
-    if (acc < 0.4) {
+    if (acc < 0.5) {
       // a cheap guard against an early Enter: a barely-shaped blade wastes the ingots
       this.asking = true;
-      this.game.ui.confirm(`<b>Only ${Math.round(acc * 100)}% shaped.</b><br>The grindstone can only take off a little. Finish it anyway?`, 'Finish', 'Keep hammering').then((yes) => {
+      this.game.ui.confirm(confirmText(`Only ${Math.round(acc * 100)}% shaped.`, 'Grinding only trims a little. Finish it anyway?'), 'Finish', 'Keep hammering').then((yes) => {
         this.asking = false;
         if (yes && this.step === 'hammer' && !this.finished) { this.view.hover = -1; this.go('grind'); }
       });
@@ -922,6 +922,8 @@ export class ForgeRun {
     this.revealBack = fwd.clone();
     this.revealT = 0;
     this.gradeCol = new THREE.Color(grade.color);
+    // the blade glows in its own metal's tint, nudged toward the grade color (the halo carries the grade)
+    this.glowCol = new THREE.Color(this.m.color).lerp(this.gradeCol, 0.35);
     this.halo = makeHalo(grade.color);
     sc.scene.add(this.halo);
     this.game.audio.play('whoosh');
@@ -976,7 +978,7 @@ export class ForgeRun {
     this.carrier.rotation.y = this.revealSpin;
     this.carrier.rotation.z = Math.sin(this.time * 0.9) * 0.05;
     const glow = 0.07 + 0.05 * Math.sin(this.time * 3);
-    this.weapon.mat.emissive.copy(this.gradeCol).multiplyScalar(glow * k);
+    this.weapon.mat.emissive.copy(this.glowCol).multiplyScalar(glow * k);
     if (this.weapon.veinMat) this.weapon.veinMat.color.setScalar(0.8 + 0.3 * Math.sin(this.time * 5));
     if (Math.random() < dt * 14) P.sparkle(this.carrier.position, this.gradeCol.getHex(), 1, 0.5, 0.15);
     if (this.halo) {

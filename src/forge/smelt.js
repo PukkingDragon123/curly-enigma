@@ -8,7 +8,7 @@ import { qColor } from '../ui/UI.js';
 import { CrucibleSim } from './bladeSim.js';
 import { applyHeat, glowColor, glowHex } from './blackbody.js';
 import { makeCrucible, makeIngot, V } from './models.js';
-import { Thermo, bar, setText, setHtml } from './ui.js';
+import { Thermo, bar, setText, setHtml, confirmText } from './ui.js';
 import { Seq, ease, arcPoint } from './fx.js';
 
 const QUICK_ACC = 0.8;
@@ -137,7 +137,7 @@ export class SmeltGame {
 
   onEscape() {
     if (this.phase !== 'heat') return true;
-    this.game.ui.confirm('<b>Stop smelting?</b><br>The ore and coal go back in your bag.', 'Stop', 'Keep going').then((yes) => {
+    this.game.ui.confirm(confirmText('Stop smelting?', 'The ore and coal go back in your bag.'), 'Stop', 'Keep going').then((yes) => {
       if (!yes || this.phase !== 'heat') return;
       refundInputs(this.st, this.taken);
       this.phase = 'done';

@@ -6,7 +6,7 @@ import { mkdirSync } from 'node:fs';
 
 const outDir = process.argv[2] || 'shots/e2e';
 mkdirSync(outDir, { recursive: true });
-const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error', clearScreen: false });
+const server = await createServer({ server: { port: 0, host: '127.0.0.1', hmr: false, watch: null }, logLevel: 'error', clearScreen: false });
 await server.listen();
 const port = server.httpServer.address().port;
 const browser = await chromium.launch({

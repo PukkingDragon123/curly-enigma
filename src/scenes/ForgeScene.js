@@ -322,13 +322,16 @@ export default class ForgeScene extends Scene {
       f.compress += (0 - f.compress) * Math.min(1, dt * 6);
     }
     this.W.bellows.setCompress(f.compress);
-    f.glow += ((0.45 + f.air * 0.75) - f.glow) * Math.min(1, dt * 3);
+    // the magma hearth (forge level 2) never banks down: redder, brighter, always churning
+    const magma = (this.game.state.data.forgeLevel || 0) >= 2;
+    f.glow += (((magma ? 0.7 : 0.45) + f.air * 0.75) - f.glow) * Math.min(1, dt * 3);
     f.flick = 0.88 + 0.12 * Math.sin(this.time * 13.1) * Math.sin(this.time * 7.7 + 1.3) + (Math.random() - 0.5) * 0.08;
     const g = f.glow * f.flick;
-    this.W.hearth.coalMat.color.setRGB(0.55 + g * 0.6, 0.45 + g * 0.45, 0.4 + g * 0.3);
+    if (magma) this.W.hearth.coalMat.color.setRGB(0.8 + g * 0.6, 0.32 + g * 0.42, 0.18 + g * 0.2);
+    else this.W.hearth.coalMat.color.setRGB(0.55 + g * 0.6, 0.45 + g * 0.45, 0.4 + g * 0.3);
     this.W.hearth.emberMat.color.setScalar(0.35 + g * 0.35);
-    this.W.light.intensity = (4.2 + f.air * 5) * f.flick + (this.extraLight || 0);
-    this.W.light.color.setHSL(0.065 + f.air * 0.015, 1, 0.55 + f.air * 0.06);
+    this.W.light.intensity = ((magma ? 5.4 : 4.2) + f.air * 5) * f.flick + (this.extraLight || 0);
+    this.W.light.color.setHSL((magma ? 0.045 : 0.065) + f.air * 0.015, 1, 0.55 + f.air * 0.06);
     this.fireLoop.set({ vol: 0.3 + f.air * 0.45, intensity: f.air });
     // emitters
     const P = this.particles, fp = this.W.firePos, sp = f.spawn;

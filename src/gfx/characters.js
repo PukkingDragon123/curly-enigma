@@ -567,10 +567,14 @@ export class CharacterRig {
     if (instant) this.facing = yaw;
   }
 
+  /** Put an object in one paw (replacing only what that paw held). */
   holdItem(obj, hand = 'R') {
+    this.holds = this.holds || { L: null, R: null };
     const h = hand === 'R' ? this.handR : this.handL;
-    if (this.hold && this.hold.parent) this.hold.parent.remove(this.hold);
-    this.hold = obj;
+    const prev = this.holds[hand];
+    if (prev && prev.parent) prev.parent.remove(prev);
+    this.holds[hand] = obj || null;
+    if (hand === 'R') this.hold = obj || null;
     if (obj) h.add(obj);
   }
 

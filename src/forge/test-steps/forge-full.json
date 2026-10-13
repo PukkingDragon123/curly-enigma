@@ -1,317 +1,330 @@
 [
-{
-"eval": "window.__game.state.addItem('rubber_gloves'); window.__game.state.equip('rubber_gloves'); 'gloves on'"
-},
-{
-"wait": 300
-},
-{
-"press": "Digit2"
-},
-{
-"wait": 800
-},
-{
-"shot": "shots/forge-full-01-plan.png"
-},
-{
-"click": [
-185,
-487
-]
-},
-{
-"wait": 300
-},
-{
-"click": [
-505,
-340
-]
-},
-{
-"wait": 300
-},
-{
-"click": [
-505,
-462
-]
-},
-{
-"wait": 400
-},
-{
-"shot": "shots/forge-full-02-plan-picked.png"
-},
-{
-"press": "Enter"
-},
-{
-"wait": 1500
-},
-{
-"key": "Space",
-"hold": 6500
-},
-{
-"shot": "shots/forge-full-03-heat.png"
-},
-{
-"eval": "const a=window.__game.scene.activity; 'heat T=' + Math.round(a.sim.meanT())"
-},
-{
-"press": "KeyE"
-},
-{
-"wait": 2200
-},
-{
-"shot": "shots/forge-full-04-anvil.png"
-},
-{
-"key": "Space",
-"hold": 950
-},
-{
-"wait": 500
-},
-{
-"press": "KeyD"
-},
-{
-"key": "Space",
-"hold": 950
-},
-{
-"wait": 500
-},
-{
-"press": "KeyD"
-},
-{
-"key": "Space",
-"hold": 950
-},
-{
-"wait": 500
-},
-{
-"press": "KeyD"
-},
-{
-"key": "Space",
-"hold": 700
-},
-{
-"wait": 500
-},
-{
-"press": "KeyD"
-},
-{
-"key": "Space",
-"hold": 700
-},
-{
-"wait": 500
-},
-{
-"press": "KeyD"
-},
-{
-"shot": "shots/forge-full-05-struck.png"
-},
-{
-"eval": "const a=window.__game.scene.activity; JSON.stringify({acc: a.sim.accuracy().toFixed(2), w: a.sim.w.map(x=>+x.toFixed(2)), T: a.sim.T.map(Math.round)})"
-},
-{
-"press": "KeyE"
-},
-{
-"wait": 1500
-},
-{
-"key": "Space",
-"hold": 4500
-},
-{
-"press": "KeyE"
-},
-{
-"wait": 2200
-},
-{
-"press": "KeyA"
-},
-{
-"press": "KeyA"
-},
-{
-"press": "KeyA"
-},
-{
-"press": "KeyA"
-},
-{
-"key": "Space",
-"hold": 600
-},
-{
-"wait": 450
-},
-{
-"press": "KeyD"
-},
-{
-"key": "Space",
-"hold": 600
-},
-{
-"wait": 450
-},
-{
-"press": "KeyD"
-},
-{
-"key": "Space",
-"hold": 600
-},
-{
-"wait": 450
-},
-{
-"press": "KeyD"
-},
-{
-"key": "Space",
-"hold": 600
-},
-{
-"wait": 450
-},
-{
-"press": "KeyD"
-},
-{
-"key": "Space",
-"hold": 600
-},
-{
-"wait": 450
-},
-{
-"press": "KeyD"
-},
-{
-"key": "Space",
-"hold": 600
-},
-{
-"wait": 450
-},
-{
-"press": "KeyD"
-},
-{
-"shot": "shots/forge-full-06-struck2.png"
-},
-{
-"eval": "const a=window.__game.scene.activity; JSON.stringify({acc: a.sim.accuracy().toFixed(2), w: a.sim.w.map(x=>+x.toFixed(2)), strikes: a.sim.strikes, temper: a.sim.temperScore().toFixed(2)})"
-},
-{
-"press": "Enter"
-},
-{
-"wait": 2500
-},
-{
-"shot": "shots/forge-full-07-grind.png"
-},
-{
-"wait": 4000
-},
-{
-"shot": "shots/forge-full-08-balance.png"
-},
-{
-"key": "ArrowRight",
-"hold": 1500
-},
-{
-"wait": 800
-},
-{
-"eval": "const a=window.__game.scene.activity; if (a.bal) a.balW = (a.bal.Wneed/a.bal.Wmax) * 0.98; 'careful player levels it: ' + (a.bal && a.bal.mode)"
-},
-{
-"wait": 1600
-},
-{
-"shot": "shots/forge-full-09-balanced.png"
-},
-{
-"press": "Enter"
-},
-{
-"wait": 3000
-},
-{
-"key": "Space",
-"hold": 2500
-},
-{
-"shot": "shots/forge-full-10-quench-heat.png"
-},
-{
-"eval": "const a=window.__game.scene.activity; a.weaponT = (a.m.quench[0] + a.m.quench[1]) / 2; 'timed: ' + Math.round(a.weaponT)"
-},
-{
-"press": "KeyQ"
-},
-{
-"wait": 1300
-},
-{
-"shot": "shots/forge-full-11-plunge.png"
-},
-{
-"wait": 5000
-},
-{
-"shot": "shots/forge-full-12-infuse.png"
-},
-{
-"wait": 900
-},
-{
-"press": "Space"
-},
-{
-"wait": 700
-},
-{
-"shot": "shots/forge-full-13-infused.png"
-},
-{
-"wait": 6000
-},
-{
-"shot": "shots/forge-full-14-result.png"
-},
-{
-"eval": "JSON.stringify(window.__game.state.data.weapons.map(w=>({name:w.name, grade:w.grade, value:w.value, score:w.score})))"
-},
-{
-"eval": "JSON.stringify(Object.keys(window.__game.state.data.index).filter(k=>k.startsWith('mechanic')))"
-},
-{
-"press": "Enter"
-},
-{
-"wait": 1500
-},
-{
-"shot": "shots/forge-full-15-again.png"
-}
+ {
+  "eval": "window.__game.state.addItem('rubber_gloves'); window.__game.state.equip('rubber_gloves'); 'gloves on'"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "press": "Digit2"
+ },
+ {
+  "wait": 800
+ },
+ {
+  "shot": "shots/forge-full-01-plan.png"
+ },
+ {
+  "click": [
+   185,
+   487
+  ]
+ },
+ {
+  "wait": 300
+ },
+ {
+  "click": [
+   505,
+   340
+  ]
+ },
+ {
+  "wait": 300
+ },
+ {
+  "click": [
+   505,
+   462
+  ]
+ },
+ {
+  "wait": 400
+ },
+ {
+  "shot": "shots/forge-full-02-plan-picked.png"
+ },
+ {
+  "press": "Enter"
+ },
+ {
+  "wait": 1500
+ },
+ {
+  "eval": "(() => { clearInterval(window.__heatBot); window.__heatBot = setInterval(() => { const a = window.__game.scene.activity; const sim = a && a.sim; const want = sim && (a.step === 'heat' || a.step === 'toFire' || a.inFire) && sim.meanT() < (sim.m.work[0] + sim.m.work[1]) / 2 + 40; window.dispatchEvent(new KeyboardEvent(want ? 'keydown' : 'keyup', { code: 'Space', key: ' ' })); }, 60); return 'pumping to working heat'; })()"
+ },
+ {
+  "wait": 6500
+ },
+ {
+  "eval": "(() => { clearInterval(window.__heatBot); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ' })); const a = window.__game.scene.activity; return 'heat T=' + Math.round(a.sim.meanT()); })()"
+ },
+ {
+  "shot": "shots/forge-full-03-heat.png"
+ },
+ {
+  "press": "KeyE"
+ },
+ {
+  "wait": 2200
+ },
+ {
+  "shot": "shots/forge-full-04-anvil.png"
+ },
+ {
+  "key": "Space",
+  "hold": 950
+ },
+ {
+  "wait": 500
+ },
+ {
+  "press": "KeyD"
+ },
+ {
+  "key": "Space",
+  "hold": 950
+ },
+ {
+  "wait": 500
+ },
+ {
+  "press": "KeyD"
+ },
+ {
+  "key": "Space",
+  "hold": 950
+ },
+ {
+  "wait": 500
+ },
+ {
+  "press": "KeyD"
+ },
+ {
+  "key": "Space",
+  "hold": 700
+ },
+ {
+  "wait": 500
+ },
+ {
+  "press": "KeyD"
+ },
+ {
+  "key": "Space",
+  "hold": 700
+ },
+ {
+  "wait": 500
+ },
+ {
+  "press": "KeyD"
+ },
+ {
+  "shot": "shots/forge-full-05-struck.png"
+ },
+ {
+  "eval": "const a=window.__game.scene.activity; JSON.stringify({acc: a.sim.accuracy().toFixed(2), w: a.sim.w.map(x=>+x.toFixed(2)), T: a.sim.T.map(Math.round)})"
+ },
+ {
+  "press": "KeyE"
+ },
+ {
+  "wait": 1500
+ },
+ {
+  "eval": "(() => { clearInterval(window.__heatBot); window.__heatBot = setInterval(() => { const a = window.__game.scene.activity; const sim = a && a.sim; const want = sim && (a.step === 'heat' || a.step === 'toFire' || a.inFire) && sim.meanT() < (sim.m.work[0] + sim.m.work[1]) / 2 + 40; window.dispatchEvent(new KeyboardEvent(want ? 'keydown' : 'keyup', { code: 'Space', key: ' ' })); }, 60); return 'pumping to working heat'; })()"
+ },
+ {
+  "wait": 4500
+ },
+ {
+  "eval": "(() => { clearInterval(window.__heatBot); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ' })); const a = window.__game.scene.activity; return 'heat T=' + Math.round(a.sim.meanT()); })()"
+ },
+ {
+  "press": "KeyE"
+ },
+ {
+  "wait": 2200
+ },
+ {
+  "press": "KeyA"
+ },
+ {
+  "press": "KeyA"
+ },
+ {
+  "press": "KeyA"
+ },
+ {
+  "press": "KeyA"
+ },
+ {
+  "key": "Space",
+  "hold": 600
+ },
+ {
+  "wait": 450
+ },
+ {
+  "press": "KeyD"
+ },
+ {
+  "key": "Space",
+  "hold": 600
+ },
+ {
+  "wait": 450
+ },
+ {
+  "press": "KeyD"
+ },
+ {
+  "key": "Space",
+  "hold": 600
+ },
+ {
+  "wait": 450
+ },
+ {
+  "press": "KeyD"
+ },
+ {
+  "key": "Space",
+  "hold": 600
+ },
+ {
+  "wait": 450
+ },
+ {
+  "press": "KeyD"
+ },
+ {
+  "key": "Space",
+  "hold": 600
+ },
+ {
+  "wait": 450
+ },
+ {
+  "press": "KeyD"
+ },
+ {
+  "key": "Space",
+  "hold": 600
+ },
+ {
+  "wait": 450
+ },
+ {
+  "press": "KeyD"
+ },
+ {
+  "shot": "shots/forge-full-06-struck2.png"
+ },
+ {
+  "eval": "const a=window.__game.scene.activity; JSON.stringify({acc: a.sim.accuracy().toFixed(2), w: a.sim.w.map(x=>+x.toFixed(2)), strikes: a.sim.strikes, temper: a.sim.temperScore().toFixed(2)})"
+ },
+ {
+  "press": "Enter"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "(() => { const b = [...document.querySelectorAll('.panel .btn')].find(x => x.textContent.trim().startsWith('Finish')); if (b) { b.click(); return 'confirmed the low-shape finish'; } return 'no confirm needed'; })()"
+ },
+ {
+  "wait": 2500
+ },
+ {
+  "shot": "shots/forge-full-07-grind.png"
+ },
+ {
+  "wait": 4000
+ },
+ {
+  "shot": "shots/forge-full-08-balance.png"
+ },
+ {
+  "key": "ArrowRight",
+  "hold": 1500
+ },
+ {
+  "wait": 800
+ },
+ {
+  "eval": "const a=window.__game.scene.activity; if (a.bal) a.balW = (a.bal.Wneed/a.bal.Wmax) * 0.98; 'careful player levels it: ' + (a.bal && a.bal.mode)"
+ },
+ {
+  "wait": 1600
+ },
+ {
+  "shot": "shots/forge-full-09-balanced.png"
+ },
+ {
+  "press": "Enter"
+ },
+ {
+  "wait": 3000
+ },
+ {
+  "key": "Space",
+  "hold": 2500
+ },
+ {
+  "shot": "shots/forge-full-10-quench-heat.png"
+ },
+ {
+  "eval": "const a=window.__game.scene.activity; a.weaponT = (a.m.quench[0] + a.m.quench[1]) / 2; 'timed: ' + Math.round(a.weaponT)"
+ },
+ {
+  "press": "KeyQ"
+ },
+ {
+  "wait": 1300
+ },
+ {
+  "shot": "shots/forge-full-11-plunge.png"
+ },
+ {
+  "wait": 5000
+ },
+ {
+  "shot": "shots/forge-full-12-infuse.png"
+ },
+ {
+  "wait": 900
+ },
+ {
+  "press": "Space"
+ },
+ {
+  "wait": 700
+ },
+ {
+  "shot": "shots/forge-full-13-infused.png"
+ },
+ {
+  "wait": 6000
+ },
+ {
+  "shot": "shots/forge-full-14-result.png"
+ },
+ {
+  "eval": "JSON.stringify(window.__game.state.data.weapons.map(w=>({name:w.name, grade:w.grade, value:w.value, score:w.score})))"
+ },
+ {
+  "eval": "JSON.stringify(Object.keys(window.__game.state.data.index).filter(k=>k.startsWith('mechanic')))"
+ },
+ {
+  "press": "Enter"
+ },
+ {
+  "wait": 1500
+ },
+ {
+  "shot": "shots/forge-full-15-again.png"
+ }
 ]

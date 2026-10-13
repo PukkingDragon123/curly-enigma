@@ -317,7 +317,7 @@ export class UI {
     return new Promise((resolve) => {
       let done = false;
       const body = el('div', { class: 'menu-list' }, [
-        el('p', { html: text, style: { margin: 0, maxWidth: '44ch' } }),
+        el('p', { html: text, style: { margin: 0, maxWidth: '44ch', paddingRight: 'calc(var(--px) * 12)' } }),
         el('div', { class: 'row' }, [
           el('button', { class: 'btn', onclick: () => { done = true; h.close(); resolve(true); } }, yes),
           el('button', { class: 'btn alt', onclick: () => { done = true; h.close(); resolve(false); } }, no),
