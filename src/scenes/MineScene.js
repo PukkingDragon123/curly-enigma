@@ -125,6 +125,7 @@ export default class MineScene extends Scene {
     this.tripValue = 0;
     this.fluidT = 0;
     this.fluidTick = 0;
+    this.drops = []; // ceiling drips on their way into a pool
     this.oreT = 0;
     this.scanT = 0;
     this.hudT = 0;
@@ -944,7 +945,27 @@ export default class MineScene extends Scene {
     }
     if ((this.zone === 2 || this.zone === 5 || this.zone === 3 || this.zone === 0) && chance(dt * 1.2)) {
       const dx = pl.x + rand(-8, 8), dy = pl.y + rand(-5, 3);
-      if (w.solidPt(dx, dy - 0.1) && !w.solidPt(dx, dy + 0.1)) this.fx.drip(dx, dy + 0.1);
+      if (w.solidPt(dx, dy - 0.1) && !w.solidPt(dx, dy + 0.1)) {
+        this.fx.drip(dx, dy + 0.1);
+        // a drop that lands in a pool leaves a ring
+        const cx = Math.floor(dx);
+        for (let yy = dy + 0.1, k = 0; k < 480 && !w.solidPt(dx, yy); k++, yy += 1 / M) {
+          const i = w.idx(cx, Math.floor(yy)), f = w.fluid[i] || 0;
+          if (f > 0.05 && w.ftype[i] === 1 && yy >= Math.floor(yy) + 1 - Math.min(1, f)) {
+            const h = yy - dy - 0.1;
+            this.drops.push({ t: this.time + (-0.4 + Math.sqrt(0.16 + 18 * h)) / 9, x: dx, sy: yy });
+            break;
+          }
+        }
+      }
+    }
+    if (this.drops.length) {
+      this.drops = this.drops.filter((d) => {
+        if (this.time < d.t) return true;
+        this.renderer.ripple(d.x, -d.sy, 0.45);
+        this.fx.plip(d.x, d.sy);
+        return false;
+      });
     }
 
     // ---- camera (face mode drives its own)
