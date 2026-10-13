@@ -35,8 +35,8 @@ export class BuildMode {
     this.painting = false;
     this.lastPaint = null;
     const ui = this.game.ui;
-    this.btn = el('button', { class: 'btn interactive', title: 'Build mode (X)', 'aria-label': 'Build mode', style: { position: 'absolute', right: 'calc(var(--px) * 4)', bottom: 'calc(var(--px) * 5)', display: 'flex', alignItems: 'center', gap: 'calc(var(--px) * 2)', fontSize: '1.05em' }, onclick: () => this.toggle() }, [
-      el('img', { class: 'pix', src: iconURL('chair_wood'), alt: '', style: { width: 'calc(var(--px) * 12)', height: 'calc(var(--px) * 12)' } }), el('span', {}, 'Build'), el('kbd', { style: { marginLeft: 'var(--px)', marginRight: 0 } }, 'X'),
+    this.btn = el('button', { class: 'btn interactive build-btn', title: 'Build mode (X)', 'aria-label': 'Build mode', style: { position: 'absolute', right: 'calc(var(--px) * 4)', bottom: 'calc(var(--px) * 5)', display: 'flex', alignItems: 'center', gap: 'calc(var(--px) * 2)', fontSize: '1.05em' }, onclick: () => this.toggle() }, [
+      el('img', { class: 'pix', src: iconURL('chair_wood'), alt: '', style: { width: 'var(--icon-s, 32px)', height: 'var(--icon-s, 32px)' } }), el('span', {}, 'Build'), el('kbd', { style: { marginLeft: 'var(--px)', marginRight: 0 } }, 'X'),
     ]);
     ui.world.append(this.btn);
     this.drawer = null;
@@ -150,7 +150,8 @@ export class BuildMode {
       this.tabsEl.append(el('button', { class: 'tab' + (this.tab === k ? ' on' : ''), onclick: () => { this.tab = k; this.cancelSel(); this.renderDrawer(); this.game.audio.play('ui_click'); } }, label));
     }
     this.row.innerHTML = '';
-    const slot = (id, n, on, onclick, title) => el('div', { class: 'slot interactive' + (on ? ' on' : ''), title, style: { width: 'calc(var(--px) * 26)', minWidth: 'calc(var(--px) * 26)', height: 'calc(var(--px) * 26)' }, onclick }, [
+    // 32px icons at an integer scale (the UI's --icon is 32 or 64 CSS px) so their pixels stay even
+    const slot = (id, n, on, onclick, title) => el('div', { class: 'slot interactive' + (on ? ' on' : ''), title, style: { width: 'calc(var(--icon) + 14px)', minWidth: 'calc(var(--icon) + 14px)', height: 'calc(var(--icon) + 14px)' }, onclick }, [
       el('img', { class: 'pix', src: iconURL(id), alt: title }), n !== null ? el('span', { class: 'n' }, '×' + n) : null,
     ]);
     if (this.tab === 'furniture') {

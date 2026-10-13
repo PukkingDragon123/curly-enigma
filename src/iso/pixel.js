@@ -1,7 +1,7 @@
 // 2D pixel-art helpers for the iso scenes: a tiny bitmap font, glow / light-pool /
 // shadow / sunbeam textures, shop sign boards and the paintings and posters.
 import * as THREE from 'three';
-import { PixelCanvas, pixelTexture, drawIcon, ramp } from '../gfx/PixelArt.js';
+import { PixelCanvas, pixelTexture, drawIcon, drawIconSmall, ramp } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
 import { makeRng, mixHex, shade } from '../core/util.js';
 
@@ -25,6 +25,18 @@ const G = {
   '?': ['##.', '..#', '.#.', '...', '.#.'], '/': ['..#', '..#', '.#.', '#..', '#..'], ' ': ['..', '..', '..', '..', '..'],
   '·': ['.', '.', '#', '.', '.'], '$': ['.##', '##.', '.#.', '.##', '##.'],
 };
+
+/** Pixels of a string in the 3x5 font: [[x, y], ...] with y down from the top, at a scale. */
+export function textPixels(str, scale = 1) {
+  const out = [];
+  let cx = 0;
+  for (const ch of str.toUpperCase()) {
+    const g = G[ch] || G['?'];
+    for (let r = 0; r < 5; r++) for (let k = 0; k < g[r].length; k++) if (g[r][k] === '#') for (let j = 0; j < scale; j++) for (let i = 0; i < scale; i++) out.push([cx + k * scale + i, r * scale + j]);
+    cx += (g[0].length + 1) * scale;
+  }
+  return out;
+}
 
 export function textWidth(str, scale = 1) {
   let w = 0;
@@ -68,7 +80,7 @@ const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 /** Round light pool for the floor: stepped, dithered falloff (white, tint with material color). */
 export function poolTexture() {
   return cached('pool', () => {
-    const n = 48;
+    const n = 96;
     const pc = new PixelCanvas(n);
     for (let y = 0; y < n; y++)
       for (let x = 0; x < n; x++) {
@@ -115,27 +127,35 @@ export function shadowTexture() {
 /** Vertical sunbeam: dithered soft edges and faint streaks. */
 export function beamTexture() {
   return cached('beam', () => {
-    const w = 24, h = 96;
+    // 32 texels per world unit on the 2 x 16 beam plane, so the dither stays fine
+    const w = 64, h = 512;
     const pc = new PixelCanvas(w, h);
     const rng = makeRng(42);
-    const streak = Array.from({ length: w }, () => rng.range(0.7, 1.15));
+    // soft vertical streaks (smoothly varying across x) for a god-ray look
+    const knots = Array.from({ length: 10 }, () => rng.range(0.65, 1.2));
+    const streak = (x) => { const f = (x / w) * (knots.length - 1), i = Math.floor(f), t = f - i; const a = knots[i], b = knots[Math.min(knots.length - 1, i + 1)]; return a + (b - a) * (t * t * (3 - 2 * t)); };
     for (let y = 0; y < h; y++)
       for (let x = 0; x < w; x++) {
         const dx = Math.abs((x + 0.5) / w - 0.5) * 2;
-        let v = Math.pow(Math.max(0, 1 - dx), 0.9) * streak[x];
+        let v = Math.pow(Math.max(0, 1 - dx), 0.9) * streak(x);
         const fy = y / h;
-        v *= Math.min(1, (1 - fy) * 6) * (0.55 + 0.45 * fy); // fades out at the very bottom, brighter low
+        // fades out over the bottom ~3 units (so it doesn't wash over the booth behind the sun spot), brighter low
+        const lowFade = Math.min(1, (1 - fy) * (16 / 3));
+        v *= lowFade * lowFade * (0.55 + 0.45 * fy);
         v = Math.max(0, Math.min(1, v));
-        const lv = Math.floor(v * 5 + BAYER[(y % 4) * 4 + (x % 4)] / 16) / 5;
+        const lv = Math.floor(v * 6 + BAYER[(y % 4) * 4 + (x % 4)] / 16) / 6;
         if (lv > 0) pc.set(x, y, 0xffffff, Math.round(lv * 255));
       }
     return pixelTexture(pc.commit());
   });
 }
 
-export function iconCanvasFor(id) {
+/** An item's icon as a PixelCanvas: full size (32 px), or a clean small version when size < 32. */
+export function iconCanvasFor(id, size = 0) {
   const it = ITEMS[id];
-  return drawIcon(it?.icon || { k: '?' }, 7);
+  const spec = it?.icon || { k: '?' };
+  if (size && size < 32 && drawIconSmall) return drawIconSmall(spec, 7, size);
+  return drawIcon(spec, 7);
 }
 
 /** Texture from a PixelCanvas; caller owns it (disposed with its material). */
@@ -144,37 +164,58 @@ export function texFrom(pc) {
 }
 
 // ---------------------------------------------------------------- shop signs
+/** Blit src into dst at (dx,dy), scaled by an integer factor (or every other pixel when s = 0.5). */
+export function blitScaled(dst, src, dx, dy, s = 1) {
+  if (s === 1) { dst.blit(src, dx, dy); return; }
+  if (s < 1) {
+    const st = Math.round(1 / s);
+    for (let y = 0; y < src.h; y += st) for (let x = 0; x < src.w; x += st) { const a = src.alpha(x, y); if (a) dst.set(dx + x / st, dy + y / st, src.getHex(x, y), a); }
+    return;
+  }
+  for (let y = 0; y < src.h; y++) for (let x = 0; x < src.w; x++) {
+    const a = src.alpha(x, y);
+    if (a) for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) dst.set(dx + x * s + i, dy + y * s + j, src.getHex(x, y), a);
+  }
+}
+
 /**
  * A hanging/mounted shop sign: wooden board with a pixel icon and lettering.
- * opts: {w, h, text, icon (item id) | iconSpec, board, ink, trim}
+ * opts: {w, h (in 16-per-unit pixels), scale (texel density multiplier, 2 = 32 per unit), text, icon (item id) | iconSpec, board, ink, trim}
+ * Icons of any size (16 or 32 px) are fitted to a 16-unit square at the sign's scale.
  */
 export function signCanvas(opts) {
-  const w = opts.w || 48, h = opts.h || 20;
+  const k = opts.scale || 1;
+  const w = (opts.w || 48) * k, h = (opts.h || 20) * k;
   const pc = new PixelCanvas(w, h);
   const board = opts.board ?? 0x8a5a32;
   const R = ramp(board);
   pc.rect(0, 0, w, h, R[4]);
-  pc.rect(1, 1, w - 2, h - 2, board);
-  for (let y = 3; y < h - 1; y += 4) pc.rect(1, y, w - 2, 1, mixHex(board, R[4], 0.5)); // plank seams
+  pc.rect(k, k, w - 2 * k, h - 2 * k, board);
+  for (let y = 3 * k; y < h - k; y += 4 * k) pc.rect(k, y, w - 2 * k, Math.max(1, k >> 1), mixHex(board, R[4], 0.5)); // plank seams
   const rng = makeRng(w * 31 + h);
-  for (let i = 0; i < w * h * 0.06; i++) pc.set(rng.int(1, w - 2), rng.int(1, h - 2), rng.chance(0.5) ? R[2] : R[4]);
+  // wood grain streaks along each plank
+  for (let i = 0; i < w * h * 0.012; i++) { const x = rng.int(k, w - 4 * k), y = rng.int(k, h - 2 * k), len = rng.int(2, 6) * k; pc.rect(x, y, len, 1, rng.chance(0.5) ? R[2] : mixHex(board, R[4], 0.6)); }
+  for (let i = 0; i < w * h * 0.04; i++) pc.set(rng.int(k, w - 2 * k), rng.int(k, h - 2 * k), rng.chance(0.5) ? R[2] : R[4]);
   const trim = opts.trim ?? 0xd9a84a;
-  pc.rect(0, 0, w, 1, trim); pc.rect(0, h - 1, w, 1, shade(trim, 0.7)); pc.rect(0, 0, 1, h, shade(trim, 0.85)); pc.rect(w - 1, 0, 1, h, shade(trim, 0.7));
-  for (const [x, y] of [[1, 1], [w - 2, 1], [1, h - 2], [w - 2, h - 2]]) pc.set(x, y, 0xe8d8b0);
-  let tx = 3;
+  pc.rect(0, 0, w, k, trim); pc.rect(0, h - k, w, k, shade(trim, 0.7)); pc.rect(0, 0, k, h, shade(trim, 0.85)); pc.rect(w - k, 0, k, h, shade(trim, 0.7));
+  for (const [x, y] of [[k, k], [w - 2 * k, k], [k, h - 2 * k], [w - 2 * k, h - 2 * k]]) { pc.rect(x, y, k, k, 0xe8d8b0); if (k > 1) pc.set(x + 1, y + 1, 0x8a7a5a); }
+  let tx = 3 * k;
   if (opts.icon || opts.iconSpec) {
-    const ic = opts.iconSpec ? drawIcon(opts.iconSpec, 3) : iconCanvasFor(opts.icon);
-    const iy = Math.round((h - 16) / 2);
-    pc.blit(ic, 2, iy);
-    tx = 19;
+    const target = 16 * k;
+    const ic = opts.iconSpec ? (target < 32 ? drawIconSmall(opts.iconSpec, 3, target) : drawIcon(opts.iconSpec, 3)) : iconCanvasFor(opts.icon, target < 32 ? target : 0);
+    const sc = ic.w === target ? 1 : ic.w * 2 === target ? 2 : ic.w === target * 2 ? 0.5 : 1;
+    const sz = Math.round(ic.w * sc);
+    const iy = Math.round((h - sz) / 2);
+    blitScaled(pc, ic, 2 * k, iy, sc);
+    tx = 2 * k + sz + k;
   }
   if (opts.text) {
     const lines = opts.text.split('\n');
-    const lh = 7;
-    const y0 = Math.round((h - lines.length * lh + 1) / 2);
+    const lh = 7 * k;
+    const y0 = Math.round((h - lines.length * lh + k) / 2);
     lines.forEach((ln, i) => {
-      const cx = opts.icon || opts.iconSpec ? tx + (w - tx - 2) / 2 : w / 2;
-      drawTextCentered(pc, ln, cx, y0 + i * lh, opts.ink ?? 0xfff0c8, { shadow: R[5] });
+      const cx = opts.icon || opts.iconSpec ? tx + (w - tx - 2 * k) / 2 : w / 2;
+      drawTextCentered(pc, ln, cx, y0 + i * lh, opts.ink ?? 0xfff0c8, { shadow: R[5], scale: k });
     });
   }
   return pc;

@@ -10,7 +10,7 @@ import { Particles } from './Particles.js';
 import { LightPool } from './LightPool.js';
 import { Actor, NuggetAI } from './Actor.js';
 import { makeCharacter, playerSpec, makeChicken } from '../gfx/characters.js';
-import { poolTexture, glowTexture } from './pixel.js';
+import { GlowBatch } from './glow.js';
 import { clamp } from '../core/util.js';
 
 const _v = new THREE.Vector3();
@@ -37,7 +37,7 @@ export class IsoScene extends Scene {
     this.interactables = [];
     this.actors = [];
     this.anchors = new Map();
-    this.glows = [];
+    this.glow = new GlowBatch(this.scene);
     this.tickers = [];
     this.loops = [];
     this.locked = false;
@@ -249,37 +249,16 @@ export class IsoScene extends Scene {
   addLight(o) {
     const src = this.lightPool.add(o);
     src.extras = [];
-    if (o.pool) {
-      const m = new THREE.MeshBasicMaterial({ map: poolTexture(), color: o.poolColor ?? o.color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: o.poolOpacity ?? 0.32 });
-      const mesh = new THREE.Mesh(flatPlane(), m);
-      mesh.scale.set(o.pool * 2, 1, o.pool * 2);
-      mesh.position.set(o.poolX ?? o.x, o.poolY ?? 0.02, o.poolZ ?? o.z);
-      mesh.renderOrder = 3;
-      this.scene.add(mesh);
-      this.glows.push({ src, mat: m, base: m.opacity });
-      src.extras.push(mesh);
-    }
-    if (o.halo) {
-      const sm = new THREE.SpriteMaterial({ map: glowTexture(), color: o.haloColor ?? o.color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: o.haloOpacity ?? 0.5 });
-      const sp = new THREE.Sprite(sm);
-      sp.scale.set(o.halo, o.halo, 1);
-      sp.position.set(o.hx ?? o.x, o.hy ?? o.y, o.hz ?? o.z);
-      sp.renderOrder = 7;
-      this.scene.add(sp);
-      this.glows.push({ src, mat: sm, base: sm.opacity });
-      src.extras.push(sp);
-    }
+    if (o.pool) src.extras.push(this.glow.add({ kind: 'pool', x: o.poolX ?? o.x, y: o.poolY ?? 0.035, z: o.poolZ ?? o.z, w: o.pool * 2, h: o.pool * 2, color: o.poolColor ?? o.color, opacity: o.poolOpacity ?? 0.32, src }));
+    if (o.halo) src.extras.push(this.glow.add({ kind: 'halo', x: o.hx ?? o.x, y: o.hy ?? o.y, z: o.hz ?? o.z, w: o.halo, color: o.haloColor ?? o.color, opacity: o.haloOpacity ?? 0.5, src }));
     return src;
   }
 
   removeLight(src) {
     if (!src) return;
     this.lightPool.remove(src);
-    for (const e of src.extras || []) {
-      if (e.parent) e.parent.remove(e);
-      e.material.dispose();
-    }
-    this.glows = this.glows.filter((g) => g.src !== src);
+    for (const e of src.extras || []) this.glow.remove(e);
+    src.extras = [];
   }
 
   // ------------------------------------------------------------ sound
@@ -383,7 +362,7 @@ export class IsoScene extends Scene {
     this.updateInteract();
     this.cam.update(dt);
     this.lightPool.update(dt, this.cam.focus.x, this.cam.focus.z);
-    for (const g of this.glows) g.mat.opacity = g.base * (g.src.on ? g.src.k : 0);
+    this.glow.update();
     this.particles.update(dt, 9 / this.cam.zoom);
     this.updateAnchors();
     this.updateLoops();

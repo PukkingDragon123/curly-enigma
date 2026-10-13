@@ -11,10 +11,22 @@ import { VoxelGrid, vmesh, V16 } from './vox.js';
 import { makeRng, rand, pick, chance, clamp } from '../core/util.js';
 import { midiToFreq } from '../core/Audio.js';
 
-const NAMES = ['Pebble', 'Rooty', 'Moss', 'Tuck', 'Clover', 'Burr', 'Dusty', 'Fern', 'Nib', 'Mabel', 'Toby', 'Hollis', 'Bea', 'Pip', 'Tansy', 'Wort', 'Clem',
+const NAMES = ['Pebble', 'Rooty', 'Moss', 'Tuck', 'Clover', 'Burr', 'Dusty', 'Fern', 'Nib', 'Mabel', 'Toby', 'Bea', 'Pip', 'Tansy', 'Wort', 'Clem',
   'Dot', 'Ivo', 'Juniper', 'Nettle', 'Ollie', 'Rue', 'Sorrel', 'Thistle', 'Umber', 'Wren', 'Ginny', 'Barley', 'Cob', 'Loam', 'Marl'];
 
 const _v = new THREE.Vector3();
+const ELDER_LINES = [
+  'Came out of Shaft Seven like a cork from a bottle, you did.',
+  'Your burrow suits you. Needs more dirt, though.',
+  'Fifty years I have sat by that shaft. Never saw it sneeze before.',
+  'Save your coins, youngster. The surface is not cheap.',
+  'Grubb sells a fine pick. Do not tell him I said so.',
+];
+const VENDOR_LINES = {
+  shrooms: ['Fresh glowcaps! They glow all the way home!', 'Mushrooms, mushrooms, picked this morning!', 'Try the blue ones. Or do not. Your tummy.'],
+  fish: ['Blind fish! Still wiggling!', 'Caught in the Deep Lake, they never saw it coming.', 'Smell that? That is freshness.'],
+  gems: ['Shiny rocks, shinier prices!', 'Every stone polished by my own paws.', 'Found it in a geode. Probably.'],
+};
 
 function voiceFor(spec, rng) {
   let v = { baby: 560, kid: 470, adult: 320, elder: 240 }[spec.age] ?? 320;
@@ -105,6 +117,7 @@ export class Townsfolk {
     a.body.position.y = 0.2;
     a.rig.play('sit');
     npc.seated = true;
+    npc.seat = seat;
     if (sleeping) {
       npc.sleeping = true;
       a.after = () => {
@@ -129,6 +142,17 @@ export class Townsfolk {
     this.seatAt(e3, seat(B[1], -1));
     const sl = this.make(104, { species: 'badger', age: 'adult', body: 'chubby', hat: 'beanie' }, 'sleeper', { x: 0, z: 0 });
     this.seatAt(sl, seat(B[2], 1), true);
+    // the old-timer who sits by the boarded-up shaft and has seen everything
+    const el = this.make(108, { species: 'mole', age: 'elder', cane: true, glasses: true, outfit: 'vest', outfitColor: 0x6a4a3a, hat: 'cap', hatColor: 0x5a4a3a, brows: 'bushy' }, 'elder', { x: 0, z: 0, name: 'Old Hollis' });
+    this.seatAt(el, seat(B[4], -1));
+    this.elder = el;
+    // market stall keepers
+    (this.s.stallSpots || []).forEach((sp, i) => {
+      const v = this.make(170 + i, { age: 'adult', outfit: 'apron', outfitColor: [0xd9d0b8, 0x8ab0d0, 0xc8a0d8][i % 3], hat: i === 1 ? 'bandana' : 'none', hatColor: 0x3a6ac9, species: ['hedgehog', 'frog', 'molerat'][i % 3] }, 'vendor', { x: sp.x, z: sp.z, yaw: sp.yaw });
+      v.kind = sp.kind;
+      v.home = { x: sp.x, z: sp.z, yaw: sp.yaw };
+      v.a.collide = false;
+    });
     // busker near the fountain
     const bk = this.make(105, { species: 'golden', age: 'adult', hat: 'cap', hatColor: 0xc94a3a, outfit: 'vest', outfitColor: 0x6a3a6a, scarf: 0xe0b030 }, 'busker', { x: 21.7, z: 19.6, yaw: -2.3 });
     bk.a.rig.holdItem(lute(), 'L');
@@ -213,6 +237,10 @@ export class Townsfolk {
       line = pick(['A coin for the song? Only joking. Mostly.', 'This one is about the sun. I have never seen it.', '♪ Dig, dig, dig, little paws... ♪']);
     } else if (npc.role === 'baby') {
       line = pick(['Bah!', 'Mama! Chicken!', 'Hee hee!', 'Dirt!']);
+    } else if (npc.role === 'elder') {
+      line = pick(s.game.state.escaped ? ELDER_LINES : ['Mind the old shaft, youngster. Nothing comes out of there.', 'Shaft Seven caved in before you were born.']);
+    } else if (npc.role === 'vendor') {
+      line = pick(VENDOR_LINES[npc.kind] || VENDOR_LINES.shrooms);
     } else if (npc.role === 'tag' && npc.it) {
       line = pick(['You\'re it! No wait, I\'m it!', 'Can\'t talk, I\'m IT!']);
     } else {
@@ -422,6 +450,30 @@ export class Townsfolk {
       else if (roll < 0.55) a.rig.doEmote('nod', 0.8);
       else if (roll < 0.7) a.rig.talk(1.4);
       void b;
+    }
+  }
+
+  r_elder(n, dt) {
+    this.r_bench(n, dt);
+    // every now and then he leans on his cane and looks over at the old shaft
+    n.st.peek = (n.st.peek ?? rand(6, 12)) - dt;
+    if (n.st.peek <= 0) {
+      n.st.peek = rand(8, 16);
+      n.a.faceToward(TOWN.tunnel.cx, TOWN.northFace);
+      this.s.later(2.2, () => n.a.rig.face(n.seat?.yaw ?? TOWN.benches[4].yaw));
+    }
+  }
+
+  r_vendor(n, dt) {
+    const s = this.s, a = n.a, p = s.player;
+    a.drive(dt, 0, 0, s.map);
+    n.st.t -= dt;
+    const d = p ? a.dist(p.x, p.z) : 99;
+    if (d < 3.5) a.faceToward(p.x, p.z);
+    if (n.st.t <= 0) {
+      n.st.t = rand(4, 9);
+      if (d < 4.2 && !s.game.ui.bubbles.has(a.key)) s.say(a, pick(VENDOR_LINES[n.kind] || VENDOR_LINES.shrooms), { name: n.name, life: 3.2 });
+      else if (d >= 3.5) { a.rig.face(n.home.yaw + rand(-0.8, 0.8)); if (chance(0.3)) a.rig.doEmote(pick(['nod', 'wave']), 0.9); }
     }
   }
 

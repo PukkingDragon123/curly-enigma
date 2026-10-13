@@ -3,12 +3,14 @@
 // chunked draw calls.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { VoxelGrid, voxelMesh, voxelMaterial, meshGridGreedy } from '../gfx/Voxel.js';
+import { VoxelGrid, voxelMaterial, meshGridGreedy } from '../gfx/Voxel.js';
+import { fastMesh } from './mesher.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { shade, mixHex } from '../core/util.js';
 
 export { VoxelGrid };
 export const V16 = 1 / 16;
+export const V32 = 1 / 32;
 export const V8 = 1 / 8;
 
 /** Integer hash → [0,1). */
@@ -39,22 +41,19 @@ export function speck(cs, x, y, z, s = 0) {
 // Shared with the rest of the game: gfx/Voxel.js meshGridGreedy.
 export const greedyGeometry = meshGridGreedy;
 
-/** Greedy-meshed lit voxel mesh for big static grids. */
-export function vmeshG(grid, { scale = V16, pivot, kind = 'toon', outline = true } = {}) {
-  const geo = greedyGeometry(grid, { scale, pivot: pivot ?? [grid.w / 2, 0, grid.d / 2], shade: kind === 'basic' });
-  const mesh = new THREE.Mesh(geo, voxelMaterial(kind));
-  if (outline) mesh.layers.enable(LAYER_OUTLINE);
-  return mesh;
+/** Greedy-meshed lit voxel mesh for big static grids (fast iso mesher; opts.view culls unseen faces). */
+export function vmeshG(grid, { scale = V16, pivot, kind = 'toon', outline = true, view } = {}) {
+  return fastMesh(grid, { scale, pivot: pivot ?? [grid.w / 2, 0, grid.d / 2], kind, outline, view });
 }
 
 /** Lit (toon) voxel mesh. pivot defaults to bottom-center. */
-export function vmesh(grid, { scale = V16, pivot, kind = 'toon' } = {}) {
-  return voxelMesh(grid, { scale, pivot: pivot ?? [grid.w / 2, 0, grid.d / 2], kind, outline: true });
+export function vmesh(grid, { scale = V16, pivot, kind = 'toon', view } = {}) {
+  return fastMesh(grid, { scale, pivot: pivot ?? [grid.w / 2, 0, grid.d / 2], kind, outline: true, view });
 }
 
 /** Unlit, self-glowing voxel mesh (crystals, lantern glass, mushroom caps). */
-export function gmesh(grid, { scale = V16, pivot, outline = true } = {}) {
-  return voxelMesh(grid, { scale, pivot: pivot ?? [grid.w / 2, 0, grid.d / 2], kind: 'basic', shade: true, outline });
+export function gmesh(grid, { scale = V16, pivot, outline = true, view } = {}) {
+  return fastMesh(grid, { scale, pivot: pivot ?? [grid.w / 2, 0, grid.d / 2], kind: 'basic', shade: true, outline, view });
 }
 
 /** Wood plank fill: horizontal boards with seams along the given axis. */
@@ -82,7 +81,8 @@ export class Batch {
     obj.updateMatrixWorld(true);
     obj.traverse((m) => {
       if (!m.isMesh || !m.geometry || m.userData.noBatch) return;
-      if (!m.geometry.getAttribute('color') || m.geometry.getAttribute('uv')) return;
+      if (!m.geometry.getAttribute('color') || m.geometry.getAttribute('uv') || !m.geometry.index) return;
+      if (!m.visible || !m.geometry.index.count) { m.userData.batched = true; return; }
       const geo = m.geometry.clone().applyMatrix4(m.matrixWorld);
       geo.computeBoundingSphere();
       const c = geo.boundingSphere.center;
@@ -101,13 +101,15 @@ export class Batch {
    * Merge everything and add the meshes to parent. With viewDir (the fixed camera's
    * "back" vector), faces that can never face the camera are dropped.
    */
-  build(parent, viewDir = null) {
+  build(parent, viewDir = null, opts = {}) {
     const out = [];
     for (const e of this.groups.values()) {
-      let g = mergeGeometries(e.geos, false);
-      for (const x of e.geos) x.dispose();
+      let g = e.geos.length === 1 ? e.geos[0] : mergeGeometries(e.geos, false);
+      if (e.geos.length > 1) for (const x of e.geos) x.dispose();
       if (!g) continue;
       if (viewDir) g = cullHidden(g, viewDir);
+      if (!g.index.count) { g.dispose(); continue; }
+      if (opts.bake && !e.mat.isMeshBasicMaterial) opts.bake(g, e.mat);
       const mesh = new THREE.Mesh(g, e.mat);
       if (e.outline) mesh.layers.enable(LAYER_OUTLINE);
       parent.add(mesh);
@@ -124,29 +126,37 @@ export function cullHidden(g, dir) {
   const nor = g.getAttribute('normal').array;
   const pos = g.getAttribute('position').array;
   const col = g.getAttribute('color').array;
-  const map = new Int32Array(pos.length / 3).fill(-1);
-  const P = [], N = [], C = [], I = [];
-  let nv = 0;
-  for (let k = 0; k < idx.length; k += 3) {
+  const nvIn = pos.length / 3;
+  const map = new Int32Array(nvIn).fill(-1);
+  const keep = new Uint8Array(idx.length / 3);
+  let nv = 0, nt = 0;
+  for (let k = 0, t = 0; k < idx.length; k += 3, t++) {
     const a = idx[k];
     if (nor[a * 3] * dir.x + nor[a * 3 + 1] * dir.y + nor[a * 3 + 2] * dir.z <= 0.02) continue;
-    for (let j = 0; j < 3; j++) {
-      const v = idx[k + j];
-      if (map[v] < 0) {
-        map[v] = nv++;
-        P.push(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]);
-        N.push(nor[v * 3], nor[v * 3 + 1], nor[v * 3 + 2]);
-        C.push(col[v * 3], col[v * 3 + 1], col[v * 3 + 2]);
-      }
-      I.push(map[v]);
-    }
+    keep[t] = 1;
+    nt++;
+    for (let j = 0; j < 3; j++) { const v = idx[k + j]; if (map[v] < 0) map[v] = nv++; }
+  }
+  if (nt * 3 === idx.length && nv === nvIn) return g; // nothing to drop
+  const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), C = new Float32Array(nv * 3);
+  for (let v = 0; v < nvIn; v++) {
+    const m = map[v];
+    if (m < 0) continue;
+    P[m * 3] = pos[v * 3]; P[m * 3 + 1] = pos[v * 3 + 1]; P[m * 3 + 2] = pos[v * 3 + 2];
+    N[m * 3] = nor[v * 3]; N[m * 3 + 1] = nor[v * 3 + 1]; N[m * 3 + 2] = nor[v * 3 + 2];
+    C[m * 3] = col[v * 3]; C[m * 3 + 1] = col[v * 3 + 1]; C[m * 3 + 2] = col[v * 3 + 2];
+  }
+  const I = nv > 65535 ? new Uint32Array(nt * 3) : new Uint16Array(nt * 3);
+  for (let k = 0, t = 0, o = 0; k < idx.length; k += 3, t++) {
+    if (!keep[t]) continue;
+    I[o++] = map[idx[k]]; I[o++] = map[idx[k + 1]]; I[o++] = map[idx[k + 2]];
   }
   g.dispose();
   const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
-  out.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
-  out.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
-  out.setIndex(nv > 65535 ? new THREE.Uint32BufferAttribute(I, 1) : new THREE.Uint16BufferAttribute(I, 1));
+  out.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+  out.setAttribute('color', new THREE.BufferAttribute(C, 3));
+  out.setIndex(new THREE.BufferAttribute(I, 1));
   out.computeBoundingSphere();
   return out;
 }

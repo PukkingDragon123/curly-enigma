@@ -6,6 +6,8 @@ import * as THREE from 'three';
 import { FURNITURE } from '../data/furniture.js';
 import { VoxelGrid, vmesh, gmesh, jit, hash3, V16, shade, mixHex, carve } from './vox.js';
 import { buildDecor } from './furniture2.js';
+import { BUILDERS32 } from './furniture32.js';
+import { withView } from './mesher.js';
 
 export const WOOD = 0x8a5a32, WOOD_D = 0x5a3a22, WOOD_L = 0xb07a4a, IRON = 0x34343c, IRON_L = 0x55555f;
 export const STONE = 0x7a7470, STRAW = 0xd9b45a, BRASS = 0xc8a050, GOLD = 0xf2c23a;
@@ -413,7 +415,7 @@ function beetleJar(id) {
   grp.add(jar);
   const bg = new VoxelGrid(3, 2, 4);
   bg.box(0, 0, 0, 3, 2, 3, 0xd8ff8a); bg.box(0, 0, 3, 3, 1, 1, 0x2a2a3a); bg.set(1, 1, 1, 0xf0ffc0);
-  const beetle = GL(bg, [1.5, 0, 2], false);
+  const beetle = withView(null, () => GL(bg, [1.5, 0, 2], false)); // spins: keep every face
   beetle.position.y = 0.6;
   grp.add(beetle);
   return {
@@ -627,8 +629,10 @@ const BUILDERS = {
  * Returns { obj, lights, update, seats, lie, nap, setEggs, setPlant, ... }
  */
 export function buildFurniture(id, ctx = {}) {
+  // the 1/32 builders take priority; the 1/16 ones remain for everything not yet redone
+  const f32 = BUILDERS32[id];
   const fn = BUILDERS[id];
-  let res = fn ? fn(id, ctx) : buildDecor(id, ctx);
+  let res = f32 ? f32(id, ctx, plantModel) : fn ? fn(id, ctx) : buildDecor(id, ctx);
   if (!res) {
     const g = fg(id, 10);
     g.box(1, 0, 1, g.w - 2, 10, g.d - 2, wd(WOOD));

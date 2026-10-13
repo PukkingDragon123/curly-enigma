@@ -5,6 +5,7 @@ import { METALS, INFUSIONS } from '../data/weapons.js';
 import { ITEMS, sellPrice } from '../data/items.js';
 import { pixelTexture } from '../gfx/PixelArt.js';
 import { VoxelGrid, vmesh, gmesh, jit, hash3, V16, shade, mixHex, carve } from './vox.js';
+import { withView } from './mesher.js';
 import { paintingCanvas } from './pixel.js';
 import { waterMaterial } from './water.js';
 
@@ -121,7 +122,7 @@ function gemCase(id, ctx) {
     const hi = ITEMS[gem.id].icon?.c?.[1] ?? 0xffffff;
     const gg = new VoxelGrid(5, 6, 5);
     gg.ellipsoid(2.5, 3, 2.5, 2.3, 2.8, 2.3, (x, y, z) => (y > 3 && x < 3 ? hi : col));
-    gm = GL(gg, [2.5, 0, 2.5]);
+    gm = withView(null, () => GL(gg, [2.5, 0, 2.5])); // spins: keep every face
     gm.position.y = 14 / 16;
     grp.add(gm);
   }
@@ -354,13 +355,13 @@ function musicBox(id) {
   grp.add(M(g));
   const crank = new VoxelGrid(1, 3, 1);
   crank.box(0, 0, 0, 1, 3, 1, BRASS);
-  const cm = vmesh(crank, { scale: V16, pivot: [0.5, 0, 0.5] });
+  const cm = vmesh(crank, { scale: V16, pivot: [0.5, 0, 0.5], view: false });
   cm.rotation.z = Math.PI / 2;
   at(cm, 16, 16, 12.3, 10, 8);
   grp.add(cm);
   const dancer = new VoxelGrid(3, 5, 3);
   dancer.box(1, 0, 1, 1, 2, 1, 0xf0d0d8); dancer.box(0, 2, 0, 3, 1, 3, 0xf080a8); dancer.box(1, 3, 1, 1, 2, 1, 0xf0d0d8);
-  const dm = vmesh(dancer, { scale: V16, pivot: [1.5, 0, 1.5] });
+  const dm = vmesh(dancer, { scale: V16, pivot: [1.5, 0, 1.5], view: false });
   at(dm, 16, 16, 8, 12, 8);
   grp.add(dm);
   return {
@@ -403,7 +404,7 @@ function fishTank(id) {
     f.box(1, 0, 0, 5, 4, 2, (x, y) => (y === 0 ? 0xfff0ea : 0xf8c0b0)); f.box(0, 1, 0, 1, 2, 2, 0xf8c0b0);
     f.box(6, 0, 0, 2, 1, 2, 0xe8907a); f.box(6, 3, 0, 2, 1, 2, 0xe8907a); f.box(6, 1, 0, 1, 2, 2, 0xe8a090);
     f.set(3, 3, 0, 0xe8907a); f.set(3, 3, 1, 0xe8907a);
-    const m = vmesh(f, { scale: V16, pivot: [4, 2, 1] });
+    const m = vmesh(f, { scale: V16, pivot: [4, 2, 1], view: false });
     grp.add(m);
     fish.push(m);
   }

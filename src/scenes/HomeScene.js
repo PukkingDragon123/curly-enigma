@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { IsoScene } from '../iso/IsoScene.js';
 import { HomeRoom } from '../iso/HomeRoom.js';
 import { buildFurniture } from '../iso/furniture.js';
+import { withView, viewForYaw } from '../iso/mesher.js';
 import { footprint, roomSize, doorTile } from '../iso/homeLayout.js';
 import { BuildMode } from '../iso/BuildMode.js';
 import { WATER_TIME } from '../iso/water.js';
@@ -23,7 +24,9 @@ export default class HomeScene extends IsoScene {
     this.music = 'home';
     const st = this.game.state;
     const d = st.data;
+    const t0 = performance.now();
     st.flag('lastScene', 'home');
+    st.flag('homeVisited', true);
     if (!d.home.planters) d.home.planters = {};
     if (!d.home.floor) d.home.floor = {};
     const [W, D] = roomSize(d.home.level);
@@ -61,12 +64,17 @@ export default class HomeScene extends IsoScene {
     // player & Nugget
     const from = params.from || 'continue';
     this.spawnByFrom(from);
-    const coop = this.findKind('coop');
-    const nx = coop ? coop.p.x + 0.5 : this.player.x + 0.8, nz = coop ? coop.p.y + 1.4 : this.player.z + 0.6;
-    const ns = this.map.freeAt(nx, nz, 0.2) ? [nx, nz] : [this.player.x + 0.7, this.player.z + 0.5];
-    this.spawnNugget(ns[0], ns[1]);
-    this.map.resolve(this.nugget.pos, 0.17);
-    this.nuggetAI.home = { x0: 0, z0: 0, x1: W - 1, z1: D - 1 };
+    // Nugget lives here once she has been found on the way out of the tunnels
+    if (st.flag('nugget')) {
+      const coop = this.findKind('coop');
+      // she starts by her coop: in front of it, else beside or behind it, else next to the player
+      const cands = coop ? [[0.5, 1.35], [1.4, 0.5], [-0.4, 0.5], [0.5, -0.4], [1.4, 1.35], [-0.4, 1.35]].map(([dx, dz]) => [coop.p.x + dx, coop.p.y + dz]) : [];
+      cands.push([this.player.x + 0.8, this.player.z + 0.6], [this.player.x + 0.7, this.player.z + 0.5]);
+      const ns = cands.find(([x, z]) => x > 0.3 && z > 0.3 && x < W - 0.3 && z < D - 0.3 && this.map.freeAt(x, z, 0.2)) || cands[cands.length - 1];
+      this.spawnNugget(ns[0], ns[1]);
+      this.map.resolve(this.nugget.pos, 0.17);
+      this.nuggetAI.home = { x0: 0, z0: 0, x1: W - 1, z1: D - 1 };
+    }
     this.napT = rand(25, 45);
     { const k = clamp((W + D - 18) / 12, 0.22, 0.85); this.cam.snap(_v.set(W / 2 + 0.2 + (this.player.x - W / 2 - 0.2) * k, 0.6, D / 2 + 0.4 + (this.player.z - D / 2 - 0.4) * k)); }
 
@@ -80,6 +88,10 @@ export default class HomeScene extends IsoScene {
 
     if (from === 'newgame') this.wakeUp(this.findKind('bed'), true);
     else if (from === 'faint' || from === 'bed' || from === 'sleep') this.wakeUp(this.findKind('bed'), false);
+    this.buildMs = performance.now() - t0;
+    console.info(`[home] built in ${this.buildMs.toFixed(0)} ms (floor ${(this.room.floorMs || 0).toFixed(0)})`);
+    const r = this.game.engine?.renderer;
+    if (r && r.compileAsync) { try { await r.compileAsync(this.scene, this.camera); } catch (e) { console.warn(e); } }
   }
 
   // ------------------------------------------------------------ furniture records
@@ -102,7 +114,7 @@ export default class HomeScene extends IsoScene {
     const d = this.game.state.data;
     const pl = d.home.planters[p.uid];
     return {
-      eggs: d.chicken.eggs || 0,
+      eggs: this.eggCount(),
       planter: pl ? { ...pl, ready: pl.ready || pl.day < d.day } : null,
       items: ITEMS,
       weapons: d.weapons,
@@ -113,7 +125,8 @@ export default class HomeScene extends IsoScene {
   addPlaced(p) {
     const f = FURNITURE[p.id];
     if (!f) return null;
-    const res = buildFurniture(p.id, this.ctxFor(p));
+    // mesh only the faces the fixed iso camera can see for this rotation (the ghost keeps all)
+    const res = withView(viewForYaw((p.r || 0) * Math.PI / 2), () => buildFurniture(p.id, this.ctxFor(p)));
     const [fw, fd] = footprint(p.id, p.r);
     const obj = res.obj;
     obj.position.set(p.x + fw / 2, 0, p.y + fd / 2);
@@ -302,13 +315,19 @@ export default class HomeScene extends IsoScene {
     this.game.ui.floatText(text, s.x, s.y, color);
   }
 
+  /** Eggs waiting in the coop (none until Nugget has moved in). */
+  eggCount() {
+    const st = this.game.state;
+    return st.flag('nugget') ? st.data.chicken.eggs || 0 : 0;
+  }
+
   collectEggs(rec) {
     const st = this.game.state;
     const d = st.data;
-    const n = d.chicken.eggs || 0;
+    const n = this.eggCount();
     this.player.faceToward(rec.cx, rec.cz);
     if (n <= 0) {
-      this.game.audio.play('cluck', { n: 1 });
+      if (this.nugget) this.game.audio.play('cluck', { n: 1 });
       this.floatAt(rec.cx, 1.1, rec.cz, 'Just straw', '#e6dcc8');
       return;
     }
@@ -526,12 +545,13 @@ export default class HomeScene extends IsoScene {
   refreshDayVisuals() {
     for (const rec of [...this.items.values()]) {
       const k = FURNITURE[rec.p.id]?.kind;
-      if (k === 'coop' && rec.res.setEggs) rec.res.setEggs(this.game.state.data.chicken.eggs || 0);
+      if (k === 'coop' && rec.res.setEggs) rec.res.setEggs(this.eggCount());
       if (k === 'planter' && rec.res.setPlant) rec.res.setPlant(this.ctxFor(rec.p).planter, ITEMS);
     }
   }
 
   sendNuggetToNap(coop, secs) {
+    if (!this.nuggetAI) return;
     const n = coop.res.nap;
     const w = _v.set(n.x, 0, n.z).applyMatrix4(coop.obj.matrixWorld);
     this.nuggetAI.nap({ x: w.x, z: w.z, y: n.y, yaw: (coop.p.r || 0) * Math.PI / 2 }, secs);

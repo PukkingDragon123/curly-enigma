@@ -465,9 +465,10 @@ export function orePile() {
 export function moundHouse(seed) {
   const g = new VoxelGrid(40, 26, 36);
   const rng = makeRng(seed);
+  // earth in clods and moss in clumps (patches merge into big faces; per-voxel noise does not)
   g.ellipsoid(20, 0, 18, 18, 18, 16, (x, y, z) => {
-    const top = y > 12 && hash3(x, z, y, seed) < 0.7;
-    return top ? (hash3(z, x, y, 2) < 0.3 ? MOSS_L : MOSS) : jit(0x6a4a34, x >> 1, y >> 1, z >> 1, seed, 0.12);
+    const top = y > 12 && hash3(x >> 1, z >> 1, y >> 1, seed) < 0.7;
+    return top ? (hash3(z >> 1, x >> 1, y >> 1, 2) < 0.3 ? MOSS_L : MOSS) : shade(0x6a4a34, 0.9 + Math.floor(hash3(Math.floor(x / 3), Math.floor(y / 3), Math.floor(z / 3), seed) * 3) * 0.07);
   });
   // round window facing the camera (+z) and a little side window (+x)
   g.ellipsoid(20, 8, 33, 4, 4, 2, 0x4a3020);
