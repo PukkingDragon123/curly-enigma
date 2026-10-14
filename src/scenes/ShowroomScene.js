@@ -7,7 +7,9 @@
 // Params: zoom (ortho half-height), cx/cy/cz (look-at offset), yaw/pitch (camera, radians),
 //   rot (character facing), anim (force a rig state), seed, cols, gap, rowh, kind (toon|basic|lambert),
 //   t (pre-roll seconds), persp=1, only=<labels|species|indices>, set=key:val,... (spec overrides),
-//   stats=0 (hide the build-time overlay), labels=0, bg=<hex>.
+//   stats=0 (hide the build-time overlay), labels=0, bg=<hex>, lod=crowd, simplify=1 (crowd LOD
+//   at build time / in place). The overlay shows build time, triangles, meshes per character
+//   and the frame's draw calls (colour + outline mask + post).
 import * as THREE from 'three';
 import { Scene } from '../core/Scene.js';
 import { makeCharacter, randomSpec, playerSpec, makeChicken, SPECIES, makePaw, buildStats } from '../gfx/characters.js';
@@ -82,9 +84,11 @@ export default class ShowroomScene extends Scene {
       const [k, val] = kv.split(':');
       over[k] = val === 'true' ? true : val === 'false' ? false : val === 'null' ? null : /^(0x)?[0-9.]+$/.test(val) ? Number(val) : val;
     }
+    const lod = params.lod || undefined;
     const build = (spec, opts = {}) => {
-      const rig = makeCharacter({ ...spec, ...over }, { kind, ...opts });
-      stats.push({ ms: buildStats.ms, tris: buildStats.tris, label: spec.label || spec.species });
+      const rig = makeCharacter({ ...spec, ...over }, { kind, lod, ...opts });
+      if (params.simplify === '1') rig.simplify();
+      stats.push({ ms: buildStats.ms, tris: buildStats.tris, meshes: rig.meshes.length, label: spec.label || spec.species });
       return rig;
     };
 
@@ -148,7 +152,7 @@ export default class ShowroomScene extends Scene {
         const k = SHOPS[id].keeper;
         const t0 = performance.now();
         const c = renderPortrait(this.game.engine.renderer, { seed: 9, eyes: 'bead', dirt: 0.2, blush: true, ...k, hat: k.hat || 'none', glasses: k.glasses || false }, 72);
-        stats.push({ ms: performance.now() - t0, tris: 0, label: id });
+        stats.push({ ms: performance.now() - t0, tris: 0, meshes: 0, label: id });
         c.style.width = '216px'; c.style.height = '216px'; c.style.imageRendering = 'pixelated';
         wrap.append(el('div', { style: { color: '#f0e0c0', font: '12px monospace' } }, [c, el('div', {}, [k.name])]));
       }
@@ -243,10 +247,15 @@ export default class ShowroomScene extends Scene {
       const tot = stats.reduce((a, s) => a + s.ms, 0);
       const tris = stats.reduce((a, s) => a + s.tris, 0);
       const maxT = Math.max(...stats.map((s) => s.tris));
-      const line = `${stats.length} chars · build ${tot.toFixed(1)} ms total, ${(tot / stats.length).toFixed(2)} ms avg, first ${stats[0].ms.toFixed(1)} ms · tris avg ${Math.round(tris / stats.length)} max ${maxT}`;
+      const meshes = stats.reduce((a, s) => a + s.meshes, 0);
+      const line = `${stats.length} chars · build ${tot.toFixed(1)} ms total, ${(tot / stats.length).toFixed(2)} ms avg, first ${stats[0].ms.toFixed(1)} ms · tris avg ${Math.round(tris / stats.length)} max ${maxT} · ${(meshes / stats.length).toFixed(1)} meshes/char`;
       console.log('[showroom]', line);
       for (const s of stats) console.log('[showroom]', s.label, s.ms.toFixed(2), 'ms', s.tris, 'tris');
-      if (params.stats !== '0') this.game.ui.world.append(el('div', { style: { position: 'absolute', left: '8px', top: '6px', color: '#f0e0c0', font: '12px monospace', background: 'rgba(0,0,0,.45)', padding: '2px 6px' } }, [line]));
+      if (params.stats !== '0') {
+        this.statsEl = el('div', { style: { position: 'absolute', left: '8px', top: '6px', color: '#f0e0c0', font: '12px monospace', background: 'rgba(0,0,0,.45)', padding: '2px 6px', whiteSpace: 'pre' } }, [line]);
+        this.statsLine = line;
+        this.game.ui.world.append(this.statsEl);
+      }
     }
     // labels
     if (params.labels !== '0') {
@@ -270,6 +279,17 @@ export default class ShowroomScene extends Scene {
 
   setState(rig, st) {
     if (st === 'talk') { rig.play('idle'); rig.talkT = 1e9; } else rig.play(st);
+  }
+
+  render() {
+    // count every draw call of the frame (colour + outline mask + post) for the overlay
+    const info = this.game.engine.renderer.info;
+    info.autoReset = false;
+    info.reset();
+    super.render();
+    this.calls = info.render.calls;
+    info.autoReset = true;
+    if (this.statsEl && (this.callsT = (this.callsT || 0) + 1) % 20 === 1) this.statsEl.textContent = `${this.statsLine}\nframe: ${this.calls} draw calls, ${info.render.triangles} tris`;
   }
 
   update(dt) {

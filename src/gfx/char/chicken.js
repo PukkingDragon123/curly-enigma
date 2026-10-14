@@ -1,8 +1,10 @@
 // Nugget the hen at hi-res: layered scalloped feathers, a fanned tail, folded wings with
 // primaries, serrated comb, wattles, a two-part beak, scaly legs with toes, and an optional
-// woven straw hat with a ribbon. Same rig layout and API as the classic hen.
+// woven straw hat with a ribbon. Same rig layout and API as the classic hen; drawn as one
+// skinned mesh (two draw calls with the outline pass) riding on the rig groups.
 import * as THREE from 'three';
-import { Vox, mix, dk, lt, h3, cached, partMesh, PY, NY, PZ } from './vox.js';
+import { Vox, mix, dk, lt, h3, cached, PY, NY, PZ } from './vox.js';
+import { SkinAssembler, scaleVisible, charMaterial } from './skin.js';
 
 const V16 = 1 / 16;
 const COMB = 0xe0302a;
@@ -56,7 +58,9 @@ export function makeChicken(opts = {}) {
   const kind = opts.kind || 'toon';
   const bake = kind === 'basic';
   const feather = opts.color ?? 0xf6f0e4;
-  const mk = (geo, outline = true) => partMesh(geo, kind, vs, outline);
+  // one skinned mesh riding on the hen's groups (see skin.js)
+  const A = new SkinAssembler();
+  const R = [vs, vs, vs], L = [-vs, vs, vs];
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
@@ -108,8 +112,7 @@ export function makeChicken(opts = {}) {
     return v.geometry(bake, [0, 0, 0]);
   });
   body.position.y = s * 4;
-  const bodyMesh = mk(bodyGeo);
-  body.add(bodyMesh);
+  const bodyMesh = A.part(body, bodyGeo, { scale: R }); // breathes (the rig scales it)
 
   // ---------------------------------------------------------------- head
   const head = new THREE.Group();
@@ -153,7 +156,7 @@ export function makeChicken(opts = {}) {
     });
     return v.geometry(bake);
   });
-  head.add(mk(headGeo));
+  A.part(head, headGeo, { scale: R });
   // eyes on the front corners of the head so they read from the front
   const eyeGeo = cached(`hen-eye|${bake}`, () => {
     const v = new Vox(0, 3, 0, 3, 0, 1);
@@ -168,9 +171,7 @@ export function makeChicken(opts = {}) {
     // on the head's surface, turned slightly outward so they read from the front and side
     e.position.set(side * 3.05 * vs, 7.4 * vs, 4.75 * vs);
     e.rotation.y = side * 0.6;
-    const m = mk(eyeGeo);
-    if (side < 0) m.scale.x = -vs;
-    e.add(m);
+    A.part(e, eyeGeo, { scale: side < 0 ? L : R });
     head.add(e);
     return e;
   });
@@ -206,9 +207,7 @@ export function makeChicken(opts = {}) {
   const wings = [-1, 1].map((side) => {
     const w = new THREE.Group();
     w.position.set(side * 8.4 * vs, 8 * vs, -1 * vs);
-    const m = mk(wingGeo);
-    if (side < 0) m.scale.x = -vs;
-    w.add(m);
+    A.part(w, wingGeo, { scale: side < 0 ? L : R });
     body.add(w);
     return w;
   });
@@ -228,21 +227,16 @@ export function makeChicken(opts = {}) {
   const legs = [-1, 1].map((side) => {
     const l = new THREE.Group();
     l.position.set(side * 1.8 * s, 4 * s, 0);
-    const m = mk(legGeo);
-    if (side < 0) m.scale.x = -vs;
-    l.add(m);
+    A.part(l, legGeo, { scale: side < 0 ? L : R });
     root.add(l);
-    return l;
+    return scaleVisible(l); // .visible = false tucks the legs away (sitting)
   });
 
   let hat = null;
-  if (opts.hat === 'straw') {
-    hat = mk(hatGeo(bake));
-    hat.position.set(0, 12.2 * vs, -0.4 * vs);
-    hat.rotation.set(-0.12, 0, 0.1);
-    head.add(hat);
-  }
-  const rig = new ChickenRig({ root, body, head, wings, legs, eyes, s, bodyMesh, vs });
+  if (opts.hat === 'straw') hat = A.part(head, hatGeo(bake), { pos: [0, 12.2 * vs, -0.4 * vs], rot: [-0.12, 0, 0.1], scale: R });
+  const skin = A.build(charMaterial(kind), new THREE.Sphere(new THREE.Vector3(0, 0.5 * (opts.scale ?? 1), 0), 0.85 * (opts.scale ?? 1)));
+  root.add(skin.main);
+  const rig = new ChickenRig({ root, body, head, wings, legs, eyes, hat, s, bodyMesh, vs, skeleton: skin.skeleton, meshes: [skin.main] });
   root.userData.rig = rig;
   return rig;
 }
@@ -320,5 +314,11 @@ export class ChickenRig {
   }
   setTint(color) {
     this.root.traverse((o) => { if (o.isMesh && o.material && o.material.color) o.material.color.copy(color); });
+  }
+
+  /** Free the hen's GPU resources (its skinned geometry and bone texture). */
+  dispose() {
+    for (const m of this.meshes || []) m.geometry.dispose();
+    if (this.skeleton) this.skeleton.dispose();
   }
 }

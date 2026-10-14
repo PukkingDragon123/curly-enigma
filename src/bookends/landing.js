@@ -190,49 +190,6 @@ function signMesh(lines, style, width) {
 }
 
 /**
- * Collapse a background townsfolk rig into five meshes: legs (they only stand and wave), body,
- * the whole head (face as it is now: no blinking or chatter for the crowd) and the two arms.
- * The bones still drive everything, so waves, cheers and turns read the same; the crowd just
- * costs a third of the draws.
- */
-function simplifyRig(rig) {
-  rig.root.updateMatrixWorld(true);
-  const bones = new Set([rig.hip, rig.neck, rig.armL, rig.armR, rig.legL, rig.legR].filter(Boolean));
-  const visibleMeshes = (from, stop) => {
-    const out = [];
-    const walk = (o) => {
-      for (const c of o.children) {
-        if (stop.has(c) || !c.visible) continue;
-        if (c.isMesh) out.push(c);
-        walk(c);
-      }
-    };
-    walk(from);
-    return out;
-  };
-  const sameLayout = (geos) => {
-    const key = (g) => Object.keys(g.attributes).sort().join(',') + (g.index ? '|i' : '');
-    return geos.every((g) => key(g) === key(geos[0]));
-  };
-  const inv = new THREE.Matrix4(), rel = new THREE.Matrix4();
-  const merge = (target, items) => {
-    if (items.length < 2 || items.some((m) => m.material !== items[0].material)) return;
-    target.updateMatrixWorld(true);
-    inv.copy(target.matrixWorld).invert();
-    const geos = items.map((m) => m.geometry.clone().applyMatrix4(rel.multiplyMatrices(inv, m.matrixWorld)));
-    if (!sameLayout(geos)) { for (const g of geos) g.dispose(); return; }
-    const mesh = new THREE.Mesh(mergeGeometries(geos), items[0].material);
-    mesh.layers.mask = items[0].layers.mask;
-    for (const g of geos) g.dispose();
-    for (const m of items) m.parent.remove(m);
-    target.add(mesh);
-  };
-  merge(rig.neck, visibleMeshes(rig.neck, bones));
-  const legs = [rig.legL, rig.legR].filter(Boolean).flatMap((l) => visibleMeshes(l, new Set()));
-  merge(rig.root, legs);
-}
-
-/**
  * Build the landing scene. ctx: {mole, hen, cage, textures, game}
  */
 export function buildLanding(ctx) {
@@ -328,8 +285,8 @@ export function buildLanding(ctx) {
 
   // ---------------------------------------------------------------- the crowd
   const crowd = [];
-  // nine well-wishers: the four shopkeepers, three grown-ups and two kids (each rig is a dozen
-  // outlined draws, so the crowd is the farewell's biggest cost)
+  // nine well-wishers: the four shopkeepers, three grown-ups and two kids, built at the crowd
+  // level of detail (one skinned mesh each: two draws with the outline, faces still animate)
   const spots = [
     { p: [2.45, 0.35], k: 'ticket' },
     { p: [-0.55, 0.55], k: 'grocer' },
@@ -342,9 +299,8 @@ export function buildLanding(ctx) {
     let spec;
     if (s.k) spec = { ...SHOPS[s.k].keeper };
     else spec = randomSpec(9100 + i * 37, s.kid ? { age: 'kid' } : {});
-    const rig = makeFolk(spec);
+    const rig = makeFolk(spec, { lod: 'crowd' });
     rig.root.userData.dynamic = true;
-    simplifyRig(rig);
     rig.root.position.set(s.p[0], 0, s.p[1]);
     rig.play(i % 3 === 0 ? 'cheer' : 'wave');
     rig.t = Math.random() * 5;

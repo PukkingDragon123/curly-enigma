@@ -1,7 +1,10 @@
 // The character animation rig: procedural poses for every state, plus secondary motion
 // (breathing belly, squash on landing, ear/tail springs, whisker twitches) and a face that
 // blinks with lids and changes expression for emotes, talking, laughing, hurting and sneezing.
+// It only moves plain Object3D groups; the skinned mesh follows them (see skin.js). Face
+// variants are part bones whose .visible drives their scale.
 import { lerp } from '../../core/util.js';
+import { mergeSkinned, rebindDispose } from './skin.js';
 
 const GROUNDED = new Set(['idle', 'walk', 'run', 'carry', 'talk']);
 
@@ -383,5 +386,40 @@ export class CharacterRig {
   /** Tint all character materials (mine lighting). Requires a unique 'basic' material. */
   setTint(color) {
     this.root.traverse((o) => { if (o.isMesh && o.material && o.material.color) o.material.color.copy(color); });
+  }
+
+  /**
+   * Turn this rig into the crowd level of detail in place: one skinned mesh (two draw calls
+   * with the outline pass). Drops the whiskers and bakes the lamp lens into the skin; every
+   * animation (blinks, mouths, expressions, ears, tail, emotes) keeps working.
+   */
+  simplify() {
+    const k = this.skin;
+    if (!k || this.lod === 'crowd') return this;
+    if (k.detail) {
+      k.detail.parent?.remove(k.detail);
+      k.detail.geometry.dispose();
+      k.detail = null;
+      this.whiskers = null;
+    }
+    if (k.lens) {
+      k.lens.parent?.remove(k.lens);
+      k.assembler.attach(k.lensPart.bone, k.lensPart.geo);
+      k.lens = null;
+      const old = k.main.geometry;
+      k.main.userData.unbindDispose?.(); // keep the skeleton alive while swapping geometry
+      k.main.geometry = mergeSkinned(k.assembler.layers.main);
+      old.dispose();
+      rebindDispose(k.main, this.skeleton);
+    }
+    this.meshes = [k.main];
+    this.lod = 'crowd';
+    return this;
+  }
+
+  /** Free this character's GPU resources (its skinned geometries and bone texture). */
+  dispose() {
+    for (const m of this.meshes || []) if (m.isSkinnedMesh) m.geometry.dispose(); // the lens geometry is shared
+    if (this.skeleton) this.skeleton.dispose();
   }
 }
