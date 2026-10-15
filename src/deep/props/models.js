@@ -5,6 +5,7 @@
 // Mounts: 'floor' (pivot at the base, y up), 'ceil' (pivot at the top, hangs down), 'wall' (z = 0
 // is the rock face, the model sticks out along +z).
 import { PGrid, PU, meshPropSteps, rng32, hv, shade, mixc } from './grid.js';
+import { LIFT_BUILD } from './lifts.js';
 
 // ---------------------------------------------------------------- palettes
 const WOOD = 0x8a5a32, WOOD_D = 0x5e3a1e, WOOD_L = 0xb07a44, WOOD_G = 0x7a6650;
@@ -795,11 +796,19 @@ export const BUILD = {
 
 // ashfern shares the fern builder
 BUILD.ashfern = (r, v) => BUILD.blindfern(r, v, 'ash');
+// the old miners' lifts (cage parts, bell, plaque, counterweight, room furniture, landings)
+Object.assign(BUILD, LIFT_BUILD);
+// one-off models built from world data (a lift's skinned cage, its lamp): defineModel(key, fn)
+const CUSTOM = new Map();
+BUILD.custom = (r, v, p) => (CUSTOM.get(p)?.() || { grid: new PGrid(1, 1, 1), pivot: [0, 0, 0] });
+export function defineModel(key, fn) { if (!CUSTOM.has(key)) CUSTOM.set(key, fn); }
+export function forgetModel(key) { CUSTOM.delete(key); cache.delete('custom:0:' + key); }
 
 // ---------------------------------------------------------------- cache
 // glassy, faceted or stringy things: AO adds little there and costs a lot of vertices
 const NO_AO = new Set(['crystal', 'crystalC', 'frozen', 'icicle', 'obsidian', 'glowthread', 'roots', 'vine', 'blindfern', 'ashfern', 'whisperweed', 'rope', 'ladder', 'lantern', 'lanternC', 'shard', 'cave_carrot',
-  'urn', 'coil', 'fossil', 'charred', 'vent', 'core_lotus', 'gloomshroom', 'pepperroot', 'rubber_sap', 'rail']);
+  'urn', 'coil', 'fossil', 'charred', 'vent', 'core_lotus', 'gloomshroom', 'pepperroot', 'rubber_sap', 'rail',
+  'plaque', 'bell', 'bellpost', 'railing', 'deck', 'gatepost']);
 const cache = new Map();
 /** Meshed model for (type, variant, param), cached. */
 export function getModel(type, v = 0, p = 0) {
@@ -818,7 +827,7 @@ export function* modelSteps(type, v = 0, p = 0) {
   const b = BUILD[type](r, v, p);
   ms += performance.now() - t0;
   yield 'grid';
-  const it = meshPropSteps(b.grid, { pivot: b.pivot, sway: b.sway, ao: !NO_AO.has(type) });
+  const it = meshPropSteps(b.grid, { pivot: b.pivot, sway: b.sway, ao: !NO_AO.has(type), scale: b.scale });
   let res;
   for (;;) {
     t0 = performance.now();

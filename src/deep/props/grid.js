@@ -187,6 +187,7 @@ export function* meshPropSteps(grid, opts = {}) {
         emit(fi, Math.floor((key - 1) / 4), lv, lv, lv, lv, sl, a, b, w, h);
         a += w;
       }
+      if ((sl & 7) === 7) yield fi; // big grids mesh in slices
     }
     yield fi;
   }

@@ -4,7 +4,10 @@
 // and glow-worm threads in the grotto, obsidian, ember vents and charred timbers in the magma,
 // icicles and frozen crystals in the frost, floating void shards at the core), old-miner remnants
 // everywhere (rails, carts, ladders, timber props, rope, lanterns, signposts to Deep Town) and the
-// harvestable cave plants cooking needs.
+// harvestable cave plants cooking needs. The old miners' lifts (plan.lifts) are always dressed
+// (./props/lifts.js: a brass-and-iron cage skinned over the generator's timber cage, bell, name
+// plaque, counterweight + pulley, cable and head wheel, lamp, furniture; landings at the shaft
+// stops), and nothing else grows in a lift room or in front of its cage.
 //
 // Built and dropped per 32³ chunk near the player within a small per-frame budget. Every prop lives
 // in ONE merged, dynamically allocated vertex buffer (one draw call + its outline): each chunk owns
@@ -22,8 +25,9 @@ import { VOX, M } from './materials.js';
 import { OPAQUE } from './Mesher.js';
 import { h3, h3i } from './noise.js';
 import { LIGHT } from './TerrainMaterial.js';
-import { getModel, modelCached, modelStats, modelSteps } from './props/models.js';
+import { getModel, modelCached, modelStats, modelSteps, defineModel, forgetModel } from './props/models.js';
 import { rng32 } from './props/grid.js';
+import { liftSnapshot, liftLayoutSteps } from './props/lifts.js';
 
 const CM = CS / VOX; // chunk size in metres
 const R_BUILD = 19; // build chunks whose centre is this close to the eye (m)
@@ -74,6 +78,19 @@ const TYPES = {
   crate: { mount: 'floor', vars: 2, r: 0.36, h: 0.65, hug: true, back: 0.36, snd: 'wood' },
   barrel: { mount: 'floor', vars: 2, r: 0.32, h: 0.75, hug: true, back: 0.33, snd: 'wood' },
   pick: { mount: 'floor', vars: 1, r: 0.4, h: 0.85, hug: true, back: 0.12, snd: 'metal' },
+  // the old miners' lifts (placed by liftLayout; 'custom' models are skinned from the voxels)
+  cage: { mount: 'floor', vars: 1, r: 0.8, h: 2.1, model: 'custom', snd: 'metal' },
+  liftlamp: { mount: 'ceil', vars: 1, r: 0.2, model: 'custom', snd: 'metal' },
+  bell: { mount: 'wall', vars: 1, r: 0.25, sway: 0.012, snd: 'metal' },
+  plaque: { mount: 'wall', vars: 1, r: 0.5, snd: 'metal' },
+  counter: { mount: 'floor', vars: 1, r: 0.35, h: 2.2, snd: 'metal' },
+  sack: { mount: 'floor', vars: 2, r: 0.4, h: 0.6, snd: 'dirt' },
+  bench: { mount: 'floor', vars: 1, r: 0.5, h: 0.45, snd: 'wood' },
+  brazier: { mount: 'floor', vars: 1, r: 0.3, h: 0.6, snd: 'metal' },
+  railing: { mount: 'floor', vars: 1, r: 0.5, h: 1, snd: 'metal' },
+  gatepost: { mount: 'floor', vars: 1, r: 0.15, h: 1.6, snd: 'metal' },
+  bellpost: { mount: 'floor', vars: 1, r: 0.3, h: 1.8, sway: 0.008, snd: 'metal' },
+  deck: { mount: 'floor', vars: 1, r: 1.4, h: 0.1, snd: 'wood' },
   // harvestable plants (the type is the item id)
   glowcap: { mount: 'floor', vars: 2, r: 0.32, h: 0.6, plant: true, snd: 'dirt', brittle: true },
   cave_carrot: { mount: 'floor', vars: 2, r: 0.3, h: 0.6, plant: true, sway: 0.02, snd: 'dirt', brittle: true },
@@ -329,12 +346,27 @@ export class Props {
     this.chimeT = 0;
     this.murmurT = 0;
     this.stats = { chunks: 0, props: 0, verts: 0, ms: 0, worst: 0, buildMs: 0 };
-    // plan lanterns with nothing to show for them (the old passage); not the stations or the gate
+    this.lifts = this.plan.lifts || [];
+    this.liftRooms = this.lifts.filter((L) => L.id[0] === 'L');
+    // plan lanterns with nothing to show for them (the old passage); not the stations, lifts or the gate
     this.fixtures = this.plan.lights.filter((l) => l.lantern && !l.mouth && !this.blocked(l.x, l.y, l.z, 0));
     this.bio = this.plan.areas.filter((a) => a.item === 'bioxide');
     this.why = {};
+    this.liftJob = null;
+    this.stepMax = {}; // debug: slowest slice per kind of work
     this.outLights = [0, 1, 2].map(() => ({ x: 0, y: 0, z: 0, c: [0, 0, 0], r: 1, lantern: false, lava: false }));
     this.initPicked();
+    // while the scene is still loading: dress the lift we arrive in (and any other close by) right away,
+    // so a cage is there on the first frame and the code is warm before the first one is met on foot
+    const pl = ctx.player;
+    if (pl?.pos) {
+      const eye = pl.eye ? pl.eye() : pl.pos;
+      for (const L of this.lifts) {
+        if (Math.hypot(L.x - pl.pos.x, L.y - pl.pos.y, L.z - pl.pos.z) < 10 && this.liftReady(L)) {
+          try { this.buildLift(L, eye); } catch (e) { console.warn('props: lift', e); }
+        }
+      }
+    }
   }
 
   // ------------------------------------------------------------ harvest records
@@ -382,6 +414,10 @@ export class Props {
     for (const s of P.stations) if (x > s.x - 1.9 - pad && x < s.x + 1.9 + pad && y > s.y - 0.4 - pad && y < s.y + 2.6 + pad && z > s.z - 1.7 - pad && z < s.z + 1.7 + pad) return true;
     const T = P.town;
     if (Math.hypot(x - (T.x + 1.6), y - T.y, z - (T.z - 1.2)) < 3.6 + pad) return true;
+    // the old lifts: their rooms, the shaft over them, and the way out of the cage (toward +z)
+    for (const L of this.liftRooms || []) {
+      if (x > L.x - 1.7 - pad && x < L.x + 1.7 + pad && z > L.z - 1.7 - pad && z < L.z + 3.2 + pad && y > L.y - 0.5 - pad && y < L.y + 7 + pad) return true;
+    }
     return false;
   }
 
@@ -858,7 +894,7 @@ export class Props {
       cx: x, cy: mount === 'ceil' ? y - 0.3 : y + hh * 0.5, cz: z, rad: T.r,
       top: mount === 'ceil' ? y : y + hh, bot: mount === 'ceil' ? y - 0.6 : y - 0.05,
       react: T.react || null, cool: 0, gone: false, fixture: !!o.fixture, noLight: !!o.noLight,
-      light: null, emit: null,
+      light: null, emit: null, mtype: T.model || type, lift: !!o.lift,
     };
     // big things rest on more than one voxel
     if (mount === 'floor' && T.r >= 0.45) {
@@ -891,7 +927,7 @@ export class Props {
 
   /** Props waiting for a model that isn't meshed yet: one model is meshed per frame. */
   queueModel(p) {
-    const k = p.type + ':' + p.v + ':' + p.param;
+    const k = p.mtype + ':' + p.v + ':' + p.param;
     let a = this.pending.get(k);
     if (!a) this.pending.set(k, (a = []));
     a.push(p);
@@ -900,15 +936,22 @@ export class Props {
     // one model at a time, meshed in slices until the deadline (at least one slice a frame)
     if (!this.job) {
       for (const [k, list] of this.pending) {
-        const p = list[0];
-        this.job = { k, gen: modelSteps(p.type, p.v, p.param) };
+        // skip models nobody waits for any more (their chunk or lift was dropped meanwhile)
+        const p = list.find((q) => !q.gone && this.built.get(q.rec.key) === q.rec);
+        if (!p) { this.pending.delete(k); continue; }
+        this.job = { k, gen: modelSteps(p.mtype, p.v, p.param) };
         break;
       }
       if (!this.job) return;
     }
     const job = this.job;
     let res;
-    do res = job.gen.next(); while (!res.done && performance.now() < deadline);
+    do {
+      const t = performance.now();
+      res = job.gen.next();
+      const d = performance.now() - t, k = job.k.split(':')[0] + ':' + (res.done ? 'done' : res.value);
+      if (d > (this.stepMax[k] || 0)) this.stepMax[k] = d;
+    } while (!res.done && performance.now() < deadline);
     if (!res.done) return;
     this.job = null;
     const list = this.pending.get(job.k) || [];
@@ -953,7 +996,7 @@ export class Props {
     rec.wait = 0;
     for (const p of rec.props) {
       this.register(p);
-      if (modelCached(p.type, p.v, p.param)) this.finalize(p, getModel(p.type, p.v, p.param));
+      if (modelCached(p.mtype, p.v, p.param)) this.finalize(p, getModel(p.mtype, p.v, p.param));
       else { this.queueModel(p); rec.wait++; }
     }
     // shown once every model it needs is meshed (so each chunk is written about once)
@@ -994,12 +1037,110 @@ export class Props {
     rec.slot = slot;
   }
   dropChunk(rec) {
-    for (const p of rec.props) if (!p.gone) this.unregister(p);
+    if (rec.building) this.liftJob = null;
+    for (const p of rec.props) {
+      if (!p.gone) this.unregister(p);
+      if (p.mtype === 'custom') forgetModel(p.param); // one-off models are rebuilt from the voxels next time
+    }
     if (rec.slot) this.pool.free(rec.slot);
     rec.slot = null;
     this.built.delete(rec.key);
     this.dirty.delete(rec);
     this.urgent.delete(rec);
+  }
+
+  // ------------------------------------------------------------ the old lifts
+  /** Are the chunks round a lift's room all loaded (so its voxels can be read)? */
+  liftReady(L) {
+    const w = this.w;
+    const c0 = Math.floor((L.x - 2.3) / CM), c1 = Math.floor((L.x + 2.3) / CM);
+    const e0 = Math.floor((L.y - 0.6) / CM), e1 = Math.floor((L.y + 3.1) / CM);
+    const f0 = Math.floor((L.z - 2.3) / CM), f1 = Math.floor((L.z + 2.3) / CM);
+    for (let cz = f0; cz <= f1; cz++) for (let cy = e0; cy <= e1; cy++) for (let cx = c0; cx <= c1; cx++) if (!w.chunk(cx, cy, cz)) return false;
+    return true;
+  }
+  /** Dress one lift: the skinned cage, lamp, bell, plaque, counterweight, furniture (or a shaft stop's landing). */
+  buildLift(L, eye) {
+    const it = this.liftSteps(L, eye);
+    for (;;) { const r = it.next(); if (r.done) return r.value; }
+  }
+  /** buildLift as a generator (yields after the voxel snapshot and each heavy piece). */
+  *liftSteps(L, eye) {
+    let t0 = performance.now(), ms = 0;
+    const key = 'lift:' + L.id;
+    const rec = { key, lift: L, ch: null, props: [], slot: null, x: L.x, y: L.y + 1, z: L.z, wait: 0, building: true };
+    this.built.set(key, rec);
+    const c = { rec, occ: [] };
+    try {
+      const S = liftSnapshot(this.w, L, L.id[0] !== 's');
+      S.shaftX = this.plan.shaft.x; S.shaftZ = this.plan.shaft.z;
+      ms += performance.now() - t0;
+      yield 'snapshot';
+      const gen = liftLayoutSteps(S, L);
+      let r;
+      for (;;) {
+        t0 = performance.now();
+        r = gen.next();
+        ms += performance.now() - t0;
+        if (r.done) break;
+        yield r.value;
+        if (this.built.get(key) !== rec) return rec; // dropped meanwhile
+      }
+      t0 = performance.now();
+      for (const it of r.value) {
+        let v = it.v ?? 0, param = it.p ?? 0;
+        if (it.custom) { defineModel(it.key, it.custom); v = 0; param = it.key; }
+        // a piece whose rock was dug away stays gone
+        if (it.sup && !it.cageSup && OPAQUE[this.w.voxelAt(it.sup[0], it.sup[1], it.sup[2])] !== 1) continue;
+        const sv = it.sup || [Math.floor(L.x * VOX), Math.floor(L.y * VOX) - 1, Math.floor(L.z * VOX)];
+        const p = this.make(c, it.type, v, param, it.x, it.y, it.z, it.yaw || 0, it.mount, sv[0], sv[1], sv[2], (it.x * 3.7 + it.z * 1.3) % 1, { noLight: it.noLight, lift: true });
+        if (!p) continue;
+        if (it.cageSup) {
+          // the cage (and what hangs on it) stands on its timber: digging any of it re-dresses the lift
+          p.cage = true;
+          p.sup = S.cage.map(([vx, vy, vz]) => vkey(vx, vy, vz));
+          p.supMain = -1;
+        }
+      }
+    } catch (e) {
+      if (!this.warnedLift) { this.warnedLift = true; console.warn('props: lift dressing failed', L.id, e); }
+      rec.props.length = 0;
+    }
+    // standing right at it (arriving by lift): the cage itself is meshed now so it is there on the
+    // first frame; the rest follows within the frame budget (a few frames, under the fade-in)
+    const near = eye && Math.hypot(L.x - eye.x, L.y + 0.7 - eye.y, L.z - eye.z) < (this.age === 0 ? 12 : 6);
+    rec.wait = 0;
+    rec.building = false;
+    for (const p of rec.props) {
+      this.register(p);
+      if ((near && p.mtype === 'custom') || modelCached(p.mtype, p.v, p.param)) this.finalize(p, getModel(p.mtype, p.v, p.param));
+      else { this.queueModel(p); rec.wait++; }
+    }
+    // shown in two goes when arriving: the cage now, the furniture once it is meshed
+    if (near && rec.wait) { this.upload(rec); }
+    if (!rec.wait) this.upload(rec);
+    ms += performance.now() - t0;
+    this.stats.buildMs += ms;
+    this.stats.liftMs = Math.max(this.stats.liftMs || 0, ms);
+    return rec;
+  }
+  /** Advance the lift being dressed until the deadline (at least one step). */
+  liftWork(deadline) {
+    if (!this.liftJob) return;
+    let r;
+    do {
+      const t = performance.now();
+      r = this.liftJob.next();
+      const d = performance.now() - t, k = 'lift:' + (r.done ? 'done' : r.value);
+      if (d > (this.stepMax[k] || 0)) this.stepMax[k] = d;
+    } while (!r.done && performance.now() < deadline);
+    if (r.done) this.liftJob = null;
+  }
+  /** A lift's cage lost some timber: dress it again from the voxels as they are now. */
+  relift(rec) {
+    if (this.built.get(rec.key) !== rec) return;
+    this.dropChunk(rec);
+    this.scanT = 0;
   }
   neighborsLoaded(ch) {
     const w = this.w;
@@ -1017,7 +1158,8 @@ export class Props {
       this.lastCell = cell;
       const chunks = this.w.chunks;
       for (const rec of [...this.built.values()]) {
-        if (chunks.get(rec.key) !== rec.ch || Math.hypot(rec.x - eye.x, rec.y - eye.y, rec.z - eye.z) > R_DROP) this.dropChunk(rec);
+        const far = Math.hypot(rec.x - eye.x, rec.y - eye.y, rec.z - eye.z) > R_DROP;
+        if (rec.lift ? far || !this.liftReady(rec.lift) : far || chunks.get(rec.key) !== rec.ch) this.dropChunk(rec);
       }
       const q = [];
       for (const ch of chunks.values()) {
@@ -1025,12 +1167,22 @@ export class Props {
         const d = Math.hypot((ch.cx + 0.5) * CM - eye.x, (ch.cy + 0.5) * CM - eye.y, (ch.cz + 0.5) * CM - eye.z);
         if (d < R_BUILD) q.push([d, ch]);
       }
+      for (const L of this.lifts) {
+        if (this.built.has('lift:' + L.id)) continue;
+        const d = Math.hypot(L.x - eye.x, L.y + 1 - eye.y, L.z - eye.z);
+        if (d < R_BUILD) q.push([d - 3, null, L]);
+      }
       q.sort((a, b) => a[0] - b[0]);
       this.queue = q;
       this.qi = 0;
     }
     while (this.qi < this.queue.length && performance.now() - t0 < budget) {
-      const ch = this.queue[this.qi++][1];
+      const [, ch, L] = this.queue[this.qi++];
+      if (L) {
+        if (!this.liftJob && !this.built.has('lift:' + L.id) && this.liftReady(L)) this.liftJob = this.liftSteps(L, eye);
+        else if (this.liftJob) this.scanT = Math.min(this.scanT, 0.2); // come back for it soon
+        continue;
+      }
       if (this.built.has(ch.key) || this.w.chunks.get(ch.key) !== ch) continue;
       if (!this.neighborsLoaded(ch)) continue;
       this.buildChunk(ch);
@@ -1052,6 +1204,7 @@ export class Props {
     const deadline = t0 + (this.age < 3 ? 3 : 1.6);
     for (const rec of this.urgent) if (this.built.get(rec.key) === rec) this.upload(rec);
     this.urgent.clear();
+    if (this.liftJob) this.liftWork(t0 + (this.age < 3 ? 2 : 1));
     if (this.pending.size || this.job) this.meshPending(t0 + (this.age < 3 ? 2 : 1));
     const t2 = performance.now();
     this.stream(eye, deadline - performance.now());
@@ -1269,6 +1422,7 @@ export class Props {
       if (list) {
         for (const p of [...list]) {
           if (p.gone) continue;
+          if (p.cage) { this.relift(p.rec); continue; }
           if (k === p.supMain || ++p.lost >= 3) this.fall(p);
         }
       }
