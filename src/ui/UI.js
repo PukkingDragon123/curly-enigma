@@ -162,6 +162,8 @@ export class UI {
 
   /** Touch screens: hide (false) or restore (true) the joystick and buttons, e.g. during a cutscene. */
   setTouchControls(on) { this.root.classList.toggle('no-touch', on === false); }
+  /** The big first-person touch button: an icon URL, null (the pickaxe) or false (hidden). Reset on every scene change. */
+  setActionIcon(src) { this.actionIcon = src; this._applyActionIcon?.(src); }
 
   /**
    * First-person radar. provider() → { x, y, z, heading, range, explored: { size, cell, data, ox?, oz? },

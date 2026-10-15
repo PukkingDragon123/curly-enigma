@@ -12,6 +12,7 @@
 import { el } from '../core/util.js';
 import { SPR } from './uiSprites.js';
 import { DSPR } from './deepArt.js';
+import { iconURL } from '../gfx/PixelArt.js';
 
 export function setupTouch(game) {
   let built = false;
@@ -114,7 +115,11 @@ export function setupTouch(game) {
     // ---------------- first person: dig button, buttons around it, look pad under the HUD
     let digId = null;
     const digFace = el('img', { class: 'pix tc-dface', src: DSPR.bigBtn(false), alt: '' });
-    const dig = el('button', { class: 'tc-dig', 'aria-label': 'Dig (hold)', title: 'Dig (hold)' }, [digFace, el('img', { class: 'pix tc-dic', src: DSPR.pick(), alt: '' })]);
+    const digIcon = el('img', { class: 'pix tc-dic', src: DSPR.pick(), alt: '' });
+    const dig = el('button', { class: 'tc-dig', 'aria-label': 'Dig (hold)', title: 'Dig (hold)' }, [digFace, digIcon]);
+    // scenes pick what the big button shows: an icon URL, null (the pick) or false (no button)
+    ui._applyActionIcon = (src) => { digIcon.src = src || DSPR.pick(); dig.style.display = src === false ? 'none' : ''; };
+    ui._applyActionIcon(ui.actionIcon ?? null);
     const digDown = () => { inp.mouse.buttons[0] = true; inp.mouse.pressed[0] = true; };
     const digEnd = () => {
       if (digId === null) return;
@@ -198,6 +203,9 @@ export function setupTouch(game) {
     setInterval(() => {
       const b = game.scene && game.scene.build;
       const on = !!(b && b.active && ui.hudMode === 'home');
+      // first-person decorating: the big button places, so it shows a hammer
+      const fpBuild = !!(b && b.active && ui.hudMode === 'deep');
+      if (fpBuild !== ui._fpBuild) { ui._fpBuild = fpBuild; ui._applyActionIcon(fpBuild ? iconURL('support_beam') : ui.actionIcon ?? null); }
       if (on !== ui.root.classList.contains('building')) { ui.root.classList.toggle('building', on); if (on) releaseAll(); }
     }, 200);
   };

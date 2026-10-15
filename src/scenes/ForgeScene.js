@@ -27,6 +27,7 @@ const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 export default class ForgeScene extends Scene {
   async enter(params = {}) {
     this.hud = 'deep';
+    this.game.ui.setActionIcon?.(false); // walking the smithy has no primary action (stations use E)
     this.music = 'forge';
     this.allowMenus = true;
     this.params = params;

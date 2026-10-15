@@ -182,6 +182,7 @@ export class Game {
     this.scene = scene;
     this.sceneName = name;
     try {
+      this.ui.setActionIcon?.(null);
       await scene.enter(params);
     } catch (e) {
       console.error(e);
