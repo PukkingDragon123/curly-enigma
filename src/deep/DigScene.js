@@ -14,7 +14,7 @@ import { Ores } from './Ores.js';
 import { Nugget } from './Nugget.js';
 import { openLiftPanel, discoverLift, liftState, rideTo } from '../fps/lifts.js';
 import { makeTerrainUniforms, MAX_LIGHTS } from './TerrainMaterial.js';
-import { mouthBox, zoneAt, ZONE_DEPTHS } from './Generator.js';
+import { mouthBox, zoneAt, ZONE_DEPTHS, biomeAt, BIOMES, caveDensity } from './Generator.js';
 import { VOX, M, MAT, ORE_BASE, voxelColor } from './materials.js';
 import { h3 } from './noise.js';
 import { roomSize } from '../iso/homeLayout.js';
@@ -108,6 +108,28 @@ export default class DigScene extends Scene {
       pl.yaw = Math.atan2(-b.dir[0], -b.dir[2]);
     }
     this.spawnPos = pl.pos.clone();
+    // test hooks (docs/DEEP.md)
+    const plan = this.world.plan;
+    this.debug = {
+      biomeAt: (x, y, z) => biomeAt(plan, x, y, z),
+      density: (x, y, z) => caveDensity(plan, x, y, z),
+      /** an open spot with a floor (meters) where test(biome, depth, x, y, z) holds, or null */
+      find: (test, { r = 60, d0 = 4, d1 = 80, tries = 40000, seed = 1 } = {}) => {
+        let h = seed;
+        const rnd = () => ((h = (h * 16807) % 2147483647) / 2147483647);
+        for (let i = 0; i < tries; i++) {
+          const x = pl.pos.x + (rnd() * 2 - 1) * r, z = pl.pos.z + (rnd() * 2 - 1) * r;
+          let y = -(d0 + rnd() * (d1 - d0));
+          if (caveDensity(plan, x, y, z) < 0.04) continue;
+          let k = 0;
+          while (k++ < 60 && caveDensity(plan, x, y - 0.1, z) > 0) y -= 0.1;
+          if (k >= 60 || caveDensity(plan, x, y + 1.1, z) < 0.03) continue;
+          if (test(biomeAt(plan, x, y + 0.5, z), -y, x, y, z)) return { x, y: y + 0.1, z };
+        }
+        return null;
+      },
+      teleport: (x, y, z, yaw = pl.yaw, pitch = 0) => { pl.pos.set(x, y, z); pl.vel.set(0, 0, 0); pl.yaw = yaw; pl.pitch = pitch; this.terrain.warm(x, y + 0.5, z, 2); },
+    };
     this.terrain.warm(pl.pos.x, pl.pos.y + 0.5, pl.pos.z, 2);
     // first-person hands and tools (when the view model module is present)
     this.vm = null;
@@ -836,12 +858,28 @@ export default class DigScene extends Scene {
     if (zone !== this.zone) {
       this.zone = zone;
       st.data.zoneMax = Math.max(st.data.zoneMax || 1, zone);
-      this.U.ambient.value.setRGB(...AMBIENT[zone]);
-      this.U.fogCol.value.setRGB(...FOG[zone]);
-      this.scene.background.setRGB(...FOG[zone]);
       this.music = 'mine';
       g.ui.setDepth(`<b>${Math.floor(depth)} m</b><br>${ZONES[zone].name}`);
       if (this.time > 1) this.say('zone' + zone, `<b>${ZONES[zone].name}</b> · ${ZONES[zone].desc}`, 'good', 999);
+    }
+    // biomes: the light and fog lean their way; the first visit to each gets a word
+    if ((this.bioT = (this.bioT || 0) - dt) <= 0) {
+      this.bioT = 0.3;
+      const b = biomeAt(plan, pl.pos.x, pl.pos.y + 0.5, pl.pos.z);
+      if (b !== this.biome) {
+        this.biome = b;
+        const seen = (st.data.biomes ||= {});
+        if (b && !seen[BIOMES[b].id] && this.time > 1) { seen[BIOMES[b].id] = 1; this.say('bio' + b, `<b>${BIOMES[b].name}</b> · ${BIOMES[b].desc}`, 'good', 999); }
+      }
+    }
+    {
+      const B = BIOMES[this.biome || 0], A = AMBIENT[zone], F = FOG[zone];
+      const k = this.lightInit ? 1 - Math.exp(-dt * 1.2) : 1;
+      this.lightInit = true;
+      const amb = this.U.ambient.value, fog = this.U.fogCol.value;
+      amb.setRGB(amb.r + (A[0] + (B ? B.tint[0] : 0) - amb.r) * k, amb.g + (A[1] + (B ? B.tint[1] : 0) - amb.g) * k, amb.b + (A[2] + (B ? B.tint[2] : 0) - amb.b) * k);
+      fog.setRGB(fog.r + (F[0] + (B ? B.fog[0] : 0) - fog.r) * k, fog.g + (F[1] + (B ? B.fog[1] : 0) - fog.g) * k, fog.b + (F[2] + (B ? B.fog[2] : 0) - fog.b) * k);
+      this.scene.background.copy(fog);
     }
     st.data.deepest = Math.max(st.data.deepest || 0, depth);
     // energy
@@ -1047,7 +1085,8 @@ export default class DigScene extends Scene {
     this.hudT = 0.25;
     const pl = this.player, st = this.state;
     const depth = Math.max(0, -pl.pos.y);
-    this.game.ui.setDepth(`<b>${Math.floor(depth)} m</b><br>${ZONES[zoneAt(depth)].name}<br>Bag ${this.trip}/${st.bagCapacity()}`);
+    const bio = this.biome ? ' · ' + BIOMES[this.biome].name : '';
+    this.game.ui.setDepth(`<b>${Math.floor(depth)} m</b><br>${ZONES[zoneAt(depth)].name}${bio}<br>Bag ${this.trip}/${st.bagCapacity()}`);
     if (this.slotName === 'drill') this.game.ui.setHotbarMeter?.(SLOTS.indexOf('drill'), this.drillHeat);
   }
 

@@ -88,9 +88,13 @@ ctx = { scene3, world, U, fx, bodies, audio, state, ui, player, plan, owner }
 // owner: the DigScene (read-only use: owner.time, owner.toScreen(v3))
 ```
 
-Units are meters; one voxel is 1/8 m (`VOX = 8`), y is up, depth = −y. Use `world.solidAt(x,y,z)`
-(meters), `world.voxelAt(vx,vy,vz)` (voxels; unloaded = stone), `world.raycast(...)` and
-`world.setVoxel(vx,vy,vz,m)`. Meshes that should get the pixel outline enable `LAYER_OUTLINE`;
+Units are meters; one voxel is 1/16 m (`VOX = 16`; `VK = VOX / 8` scales anything authored for the
+old 1/8 m grid), y is up, depth = −y. Use `world.solidAt(x,y,z)` (meters),
+`world.voxelAt(vx,vy,vz)` (voxels; unloaded, virtual or pending = stone), `world.raycast(...)` and
+`world.setVoxel(vx,vy,vz,m)`. Chunks are 32³ voxels (2 m). A chunk that is rock all through is
+**virtual** (`ch.virtual`, `ch.vox === null`) until something digs into it; a chunk still being
+generated in a worker is **pending** (`ch.pending`, also `vox === null`). Code that walks
+`world.chunks` must skip chunks without `vox`. Meshes that should get the pixel outline enable `LAYER_OUTLINE`;
 lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, the mole's lamp, fog).
 
 **Enemies** (`new Enemies(ctx)`):
@@ -141,7 +145,31 @@ uniforms.
   `FPSPlayer.onLadder`), plank platforms (`M.BOARDS` 3×3), brick blocks (`M.BRICK` 2³).
 - Digging: plates are ~2–3 voxels (`STYLE_OF` scale), each blow adds 30% damage to the neighbouring
   plates, broken plates crumble into quarter-meter lumps plus grit; a short hit-stop on breaks.
-- The terrain shader draws 16×16 texels per voxel face (`TEXN`) with per-texel relief; object
-  materials use `texel: 128` to match. Hidden ore close under the surface glints (`ambient()`).
+- Digging (now): a pick blow bites a ragged round crater of small voxels sized by power against
+  hardness, sunk a little into the face; hard rock cracks over a few blows first (`Dig.strike`).
+- The terrain shader draws `128 / VOX` texels per voxel face (`TEXN`, 8 at VOX 16) with per-texel
+  relief; object materials use `texel: 128` to match. Hidden ore close under the surface glints (`ambient()`).
 - Ore clumps: when `src/deep/Clumps.js` exists, freed deposits become clumps (`clumps.spawn`),
   `clumps.capture()` takes over the tools while one is held; see the module header.
+
+## Engine at 1/16 m, caves and biomes
+
+- Streaming: `TerrainView.update` walks chunks nearest first. With `world.pool` (a `ChunkPool` of
+  2–3 workers running `src/deep/genWorker.js`, made by DigScene; `?workers=0` turns it off)
+  generation (`world.request` → `world.arrive`) and greedy meshing (`fillPad` → worker
+  `meshSolidRaw` → `rawToGeometry`) happen off the main thread. Dug chunks (`ch.urgent`) near the
+  player remesh on the main thread the same frame. Without workers everything runs in the frame
+  budget as before.
+- Caves (`caveDensity(plan, x, y, z)`, also used by `ChunkGen.isSolid` so virtual chunks are exact):
+  winding cave ways (two noises near zero, 1–2 m), tighter crawlways below 4 m (often crouch
+  height), big caverns that grow with depth and stand on stone pillars, and rare deep ravines.
+  Surfaces get smooth half-meter lumps; lone floating voxels are cleared.
+- Biomes in zones 1–3 (`biomeAt(plan, x, y, z)`, `BIOMES`): 1 Mossy Grotto (moss everywhere,
+  hanging vines), 2 Sandstone Hollows (`M.SANDSTONE` walls, sand floors that pour), 3 Mushroom
+  Hollow (`M.MYCEL` floors, glowcap buttons, giant `M.STEM`/`M.GLOWCAP` mushrooms). Topsoil roots
+  hang as thin tendrils. The light and fog lean toward the biome's tint; the first visit says so
+  and the HUD shows the biome after the zone name.
+- Player: `C` (touch: the crouch toggle) crouches (0.5 m tall, slower, won't walk off ledges); in
+  water it dives, and swimming forward under water follows the look.
+- Test hooks: `scene.debug.{ biomeAt(x,y,z), density(x,y,z), find(test(biome, depth, x, y, z),
+  { r, d0, d1 }) → {x,y,z} | null, teleport(x, y, z, yaw, pitch) }`.

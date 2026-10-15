@@ -14,6 +14,7 @@ export const M = {
   BASALT: 9, OBSIDIAN: 10, MAGMAROCK: 11, PERMAFROST: 12, ICE: 13, CORE: 14, STARROCK: 15, VOIDROCK: 16,
   BEDROCK: 17, ROOTS: 18, GRAVEL: 19, SAND: 20, TIMBER: 21, BOARDS: 22, BURROW: 23, CRYSTAL: 24,
   LANTERN: 25, RUBBLE: 26, SNOW: 27, ASH: 28, GEODE: 29, MOSS: 30, BRICK: 31, DOOR: 32, LADDER: 33,
+  SANDSTONE: 34, GLOWCAP: 35, STEM: 36, MYCEL: 37, VINES: 38,
   WATER: 40, LAVA: 41,
 };
 
@@ -54,6 +55,11 @@ const DEF = {
   [M.ASH]: { name: 'Ash', tones: [0x3a3634, 0x4a4644, 0x5a5654, 0x6a6664], accent: 0xff7a2a, hp: 0.4, snd: 'sand', gran: true },
   [M.GEODE]: { name: 'Geode Shell', tones: [0x4a3a5a, 0x5a4a6a, 0x6a5a7a, 0x7a6a8a], accent: 0xc89aff, hp: 3, snd: 'crystal' },
   [M.MOSS]: { name: 'Glow Moss', tones: [0x1e4a2a, 0x2a6a36, 0x368a44, 0x48a852], accent: 0x9affb0, hp: 0.5, snd: 'dirt', glow: 0.35 },
+  [M.SANDSTONE]: { name: 'Sandstone', tones: [0x8a6440, 0x9e744a, 0xb08454, 0xc29660], accent: 0xdcb47a, hp: 1.5, snd: 'stone' },
+  [M.GLOWCAP]: { name: 'Glowcap', tones: [0x3a6a9a, 0x4e8ac0, 0x66aadc, 0x8ad0f4], accent: 0xd8f4ff, hp: 0.35, snd: 'dirt', glow: 0.75 },
+  [M.STEM]: { name: 'Mushroom Stem', tones: [0x9a8a7a, 0xb0a08e, 0xc4b4a2, 0xd6c8b6], accent: 0xe8dccc, hp: 0.6, snd: 'wood' },
+  [M.MYCEL]: { name: 'Mycelium', tones: [0x4a3a4e, 0x5a4860, 0x6a5672, 0x7a6684], accent: 0xb89ad0, hp: 0.6, snd: 'dirt', glow: 0.08 },
+  [M.VINES]: { name: 'Hanging Vines', tones: [0x1e4224, 0x2a5a30, 0x367240, 0x448a4e], accent: 0x8ae09a, hp: 0.2, snd: 'dirt', glow: 0.18 },
   [M.BRICK]: { name: 'Old Brick', tones: [0x5a2a1e, 0x6e3424, 0x823e2a, 0x964a32], accent: 0xb8a890, hp: 4, snd: 'stone' },
   [M.WATER]: { name: 'Water', tones: [0x14325a, 0x1a4270, 0x225488, 0x2c66a0], accent: 0xa8d8ff, hp: 0, fluid: 1 },
   [M.LAVA]: { name: 'Lava', tones: [0xa82a08, 0xd8460c, 0xff7a1a, 0xffb43a], accent: 0xfff0a0, hp: 0, fluid: 2, glow: 1 },
@@ -69,7 +75,8 @@ const STYLE_OF = {
   [M.BEDROCK]: [STYLE.ROCK, 3, 1], [M.ROOTS]: [STYLE.SOIL, 1.4, 0.7], [M.GRAVEL]: [STYLE.GRAIN, 1, 0.8], [M.SAND]: [STYLE.GRAIN, 1, 0.3],
   [M.TIMBER]: [STYLE.WOOD, 8, 0.7], [M.BOARDS]: [STYLE.WOOD, 8, 0.7], [M.BURROW]: [STYLE.WOOD, 8, 0.5], [M.DOOR]: [STYLE.WOOD, 8, 0.9], [M.LADDER]: [STYLE.WOOD, 8, 0.9], [M.CRYSTAL]: [STYLE.CRYSTAL, 2, 0.6],
   [M.LANTERN]: [STYLE.GLOW, 2, 0.2], [M.RUBBLE]: [STYLE.GRAIN, 1.5, 0.8], [M.SNOW]: [STYLE.GRAIN, 1, 0.2], [M.ASH]: [STYLE.GRAIN, 1, 0.4],
-  [M.GEODE]: [STYLE.ROCK, 2.2, 0.8], [M.MOSS]: [STYLE.MOSS, 2.2, 0.5], [M.BRICK]: [STYLE.BRICK, 4, 0.9], [M.WATER]: [STYLE.FLUID, 4, 0], [M.LAVA]: [STYLE.FLUID, 4, 0],
+  [M.GEODE]: [STYLE.ROCK, 2.2, 0.8], [M.MOSS]: [STYLE.MOSS, 2.2, 0.5],
+  [M.SANDSTONE]: [STYLE.ROCK, 2.2, 0.3], [M.GLOWCAP]: [STYLE.GLOW, 1.5, 0.25], [M.STEM]: [STYLE.SOIL, 1.2, 0.3], [M.MYCEL]: [STYLE.MOSS, 2, 0.5], [M.VINES]: [STYLE.MOSS, 1.4, 0.4], [M.BRICK]: [STYLE.BRICK, 4, 0.9], [M.WATER]: [STYLE.FLUID, 4, 0], [M.LAVA]: [STYLE.FLUID, 4, 0],
 };
 
 export const MAT = [];

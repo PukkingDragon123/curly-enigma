@@ -212,6 +212,9 @@ export function addMouth(plan, wall, t) {
 
 // ---------------------------------------------------------------- chunk generation
 const S = 4; // coarse sample stride (voxels)
+// materials the dressing may cover or grow from (not timber, bricks, lanterns or ores)
+const NATURAL = new Uint8Array(256);
+for (const m of [M.DIRT, M.LOAM, M.CLAY, M.STONE, M.MUDSTONE, M.LIMESTONE, M.GRANITE, M.CRYSTALROCK, M.BASALT, M.OBSIDIAN, M.MAGMAROCK, M.PERMAFROST, M.ICE, M.CORE, M.STARROCK, M.VOIDROCK, M.ROOTS, M.GRAVEL, M.SAND, M.SNOW, M.ASH, M.SANDSTONE, M.MYCEL, M.MOSS]) NATURAL[m] = 1;
 const SH = Math.round(Math.log2(VOX / 4)); // voxel → quarter-meter cell shift (spike spacing)
 const NS = CS / S + 1; // 9 samples per axis
 
@@ -222,11 +225,51 @@ const NS = CS / S + 1; // 9 samples per axis
 export function caveDensity(p, x, y, z) {
   const depth = -y;
   if (depth < 2.5) return -1;
-  const [n0, n1, n2] = p.noise;
+  const [n0, n1, n2, n3] = p.noise;
+  // cave ways: long winding tunnels where two noises are both near zero, 1–2 m across
   const a = n0.n(x * 0.085, y * 0.11, z * 0.085), b = n1.n(x * 0.085 + 31.7, y * 0.11, z * 0.085 - 12.3);
-  const worm = 0.0036 - (a * a + b * b);
-  const cav = n2.fbm(x / 24, y / 15, z / 24, 3) - (depth < 8 ? 0.7 : depth < 25 ? 0.44 : 0.36);
-  return Math.max(worm * 40, cav);
+  let d = (0.0036 - (a * a + b * b)) * 40;
+  // crawlways: tighter and twistier, often low enough that you crouch through
+  if (depth > 4) {
+    const c = n2.n(x * 0.13 + 7.1, y * 0.17, z * 0.13 + 3.3), e = n3.n(x * 0.13 - 5.2, y * 0.17 + 9.9, z * 0.13);
+    d = Math.max(d, (0.0028 * Math.min(1, (depth - 4) / 2) - (c * c + e * e)) * 40);
+  }
+  // caverns: big chambers, larger and more common with depth, held up by stone pillars
+  let cav = n2.fbm(x / 24, y / 15, z / 24, 3) - (depth < 8 ? 0.7 : depth < 25 ? 0.44 : 0.36);
+  if (cav > -0.1) cav -= Math.max(0, n3.n(x / 2.4 + 17.5, y / 12, z / 2.4 - 23.5) - 0.38) * 2.4;
+  d = Math.max(d, cav);
+  // ravines: tall narrow cracks running for tens of meters
+  if (depth > 6) {
+    const r = Math.abs(n3.n(x / 34 + 50.5, 0.37, z / 34 - 50.5));
+    if (r < 0.05) {
+      const q = n1.n(x / 80 + 9.1, 2.7, z / 80 - 4.4);
+      if (q > 0) {
+        const t = (y + 9 + q * 60) / (3 + q * 14);
+        if (t > -1 && t < 1) d = Math.max(d, (0.026 * Math.min(1, q * 6) * (1 - t * t) - r) * 6);
+      }
+    }
+  }
+  return d;
+}
+
+/**
+ * Biomes (zones 1–3): 0 plain, 1 mossy grotto, 2 sandstone hollows, 3 mushroom hollow.
+ * Big regions from slow noise; they change materials and dressing, never the cave shapes.
+ */
+export const BIOMES = [
+  null,
+  { id: 'moss', name: 'Mossy Grotto', desc: 'glow moss on every stone and vines hanging from the roof', tint: [0.0, 0.035, 0.012], fog: [0.0, 0.008, 0.004] },
+  { id: 'dry', name: 'Sandstone Hollows', desc: 'warm and dusty; sand floors pour away under your paws', tint: [0.04, 0.022, 0.0], fog: [0.012, 0.006, 0.0] },
+  { id: 'fungus', name: 'Mushroom Hollow', desc: 'glowcaps taller than a mole, soft mycelium underfoot', tint: [0.012, 0.0, 0.04], fog: [0.004, 0.0, 0.012] },
+];
+export function biomeAt(p, x, y, z) {
+  const depth = -y;
+  if (depth < 3 || depth > ZONE_DEPTHS[3]) return 0;
+  const b = p.noise[3].n(x / 40 + 7.3, y / 50 + 1.9, z / 40 - 3.1);
+  if (b > 0.24) return 1;
+  if (b < -0.26) return 2;
+  if (p.noise[0].n(x / 46 - 11.5, y / 50 + 4.4, z / 46 + 5.2) > 0.27) return 3;
+  return 0;
 }
 
 /** trilinear sample of a coarse NS³ field at cell o with fractions fx, fy, fz */
@@ -247,6 +290,9 @@ export class ChunkGen {
     // two noises whose zero sets cross in thin tubes: roots hanging down through the topsoil
     this.ra = new Float32Array(NS * NS * NS);
     this.rb = new Float32Array(NS * NS * NS);
+    this.bio = new Uint8Array(NS * NS * NS); // biome per sample
+    this.patch = new Float32Array(NS * NS * NS); // moss / sand / mycelium patches
+    this.lump = new Float32Array(NS * NS * NS); // half-meter lumps on every cave surface
   }
 
   /**
@@ -268,6 +314,9 @@ export class ChunkGen {
       this.band[o] = depth + n3.fbm(x / 9, y / 9, z / 9, 2) * 3.2;
       this.pock[o] = n1.fbm(x / 6 + 100, y / 6, z / 6, 2);
       if (depth < 7) { this.ra[o] = n2.n(x / 1.1, y / 3.2, z / 1.1); this.rb[o] = n0.n(x / 1.1 + 40, y / 3.2, z / 1.1 - 40); } else { this.ra[o] = 1; this.rb[o] = 1; }
+      this.bio[o] = biomeAt(p, x, y, z);
+      this.patch[o] = n0.n(x / 1.6 + 3.3, y / 1.6, z / 1.6 - 7.7);
+      this.lump[o] = n1.n(x / 0.7 - 21.1, y / 0.7 + 5.5, z / 0.7 + 13.9) * 0.035;
     }
     const hx = p.house;
     for (let lz = 0; lz < CS; lz++) {
@@ -283,8 +332,9 @@ export class ChunkGen {
           // world shell
           if (xm < B.x0 + 1 || xm > B.x1 - 1 || zm < B.z0 + 1 || zm > B.z1 - 1 || ym < B.y0 + 1) { vox[vi] = M.BEDROCK; continue; }
           if (ym > B.y1 - 0.5) { vox[vi] = M.BEDROCK; continue; }
-          const rough = (h3(vx, vy, vz, p.seed) - 0.5) * 0.045;
-          const dens = tri(this.dens, o, fx, fy, fz) + rough;
+          // lumpy, not speckled: smooth half-meter lumps and a hair of per-voxel grain (together
+          // under isSolid's 0.05 margin)
+          const dens = tri(this.dens, o, fx, fy, fz) + tri(this.lump, o, fx, fy, fz) + (h3(vx, vy, vz, p.seed) - 0.5) * 0.012;
           if (dens > 0) { vox[vi] = 0; continue; }
           const band = tri(this.band, o, fx, fy, fz);
           const zone = zoneAt(Math.max(0, band));
@@ -293,7 +343,9 @@ export class ChunkGen {
           let m = (layer & 3) === 0 ? zm2.b : (layer & 3) === 2 ? zm2.c : zm2.a;
           if (zone === 1 && band > 14) m = (layer & 1) ? M.STONE : M.CLAY;
           if (tri(this.pock, o, fx, fy, fz) > 0.34) m = zm2.pocket;
-          if (zone === 1 && band < 4) {
+          const bio = this.bio[o];
+          if (bio === 2 && (m === M.DIRT || m === M.LOAM || m === M.CLAY || m === M.MUDSTONE)) m = M.SANDSTONE;
+          else if (zone === 1 && band < 4 && bio !== 2) {
             const t = 0.055 * (1 - Math.max(0, band) / 4);
             if (Math.abs(tri(this.ra, o, fx, fy, fz)) < t && Math.abs(tri(this.rb, o, fx, fy, fz)) < t) m = M.ROOTS;
           }
@@ -310,6 +362,8 @@ export class ChunkGen {
       if (bb[3] < cx0 || bb[0] > cx1 || bb[4] < cy0 || bb[1] > cy1 || bb[5] < cz0 || bb[2] > cz1) continue;
       this.stamp(f, vox, X0, Y0, Z0);
     }
+    // no lone voxels floating in the air
+    this.unspeck(vox);
     // decorations need to know where the air is
     this.decorate(vox, X0, Y0, Z0);
     // ore deposits last (inside rock only)
@@ -472,25 +526,105 @@ export class ChunkGen {
 
   /** Moss on floors, crystals and stalactites, glowing bits (only inside this chunk). */
   decorate(vox, X0, Y0, Z0) {
-    const p = this.plan;
-    const at = (x, y, z) => vox[x + CS * (y + CS * z)];
-    for (let z = 1; z < CS - 1; z++) for (let y = 1; y < CS - 1; y++) for (let x = 1; x < CS - 1; x++) {
-      const vi = x + CS * (y + CS * z);
+    const p = this.plan, seed = p.seed;
+    const P = this.patch;
+    const C2 = CS * CS;
+    for (let z = 0; z < CS; z++) for (let y = 1; y < CS - 1; y++) for (let x = 0; x < CS; x++) {
+      const vi = x + CS * y + C2 * z;
       const m = vox[vi];
-      if (!m || m === M.BURROW || m >= 40) continue;
+      if (!NATURAL[m]) continue;
+      const airUp = vox[vi + CS] === 0, airDown = vox[vi - CS] === 0;
+      const inX = x > 0 && x < CS - 1, inZ = z > 0 && z < CS - 1;
+      const airSide = inX && inZ && (vox[vi - 1] === 0 || vox[vi + 1] === 0 || vox[vi - C2] === 0 || vox[vi + C2] === 0);
+      if (!airUp && !airDown && !airSide) continue;
       const vx = X0 + x, vy = Y0 + y, vz = Z0 + z;
       const depth = -vy / VOX;
       const zone = zoneAt(depth);
-      const airUp = vox[vi + CS] === 0, airDown = vox[vi - CS] === 0;
+      const o = (x >> 2) + NS * ((y >> 2) + NS * (z >> 2));
+      const bio = this.bio[o];
+      const pt = tri(P, o, (x & 3) / 4, (y & 3) / 4, (z & 3) / 4);
+      const h = h3(vx, vy, vz, seed + 41);
       if (airUp) {
-        const h = h3(vx, vy, vz, p.seed + 41);
-        if (zone <= 3 && h < 0.42 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS;
-        // crystal spikes on cave floors (grotto, frost, core)
-        if ((zone === 3 || zone === 5 || zone === 6) && h3(vx >> SH, vy, vz >> SH, p.seed + 43) < 0.012) this.spike(vox, x, y + 1, z, 1, M.CRYSTAL, (4 + (h * 60 | 0) % 6) * VK);
+        // floors: moss patches, sand, mycelium
+        if (bio === 1) { if (pt > -0.45 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS; }
+        else if (bio === 2) { if (pt > -0.35) { vox[vi] = M.SAND; if (NATURAL[vox[vi - CS]]) vox[vi - CS] = M.SAND; } }
+        else if (bio === 3) { if (pt > -0.25) vox[vi] = M.MYCEL; }
+        else if (zone <= 3 && pt > 0.22 && h < 0.85 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS;
+        // mushrooms: a few giants per meter-cell anchor, glowcap buttons everywhere
+        if (bio === 3) {
+          const cx = Math.floor(vx / VOX), cz = Math.floor(vz / VOX);
+          if (h3(cx, cz, 2, seed + 63) < 0.5 && (vx - cx * VOX) === Math.floor(h3(cx, cz, 0, seed + 61) * VOX) && (vz - cz * VOX) === Math.floor(h3(cx, cz, 1, seed + 61) * VOX)) this.mushroom(vox, x, y + 1, z, h3(cx, cz, 3, seed + 67));
+          else if (h < 0.01 && vox[vi + CS] === 0) this.button(vox, x, y + 1, z, h < 0.004 ? 2 : 1);
+        } else if (zone === 2 && h < 0.0012 && vox[vi + CS] === 0) this.button(vox, x, y + 1, z, 1);
+        // crystal spikes on cave floors (grotto, frost, core); stalagmites in the upper zones
+        if ((zone === 3 || zone === 5 || zone === 6) && h3(vx >> SH, vy, vz >> SH, seed + 43) < 0.012) this.spike(vox, x, y + 1, z, 1, M.CRYSTAL, (4 + (h * 60 | 0) % 6) * VK);
+        else if (zone <= 2 && bio !== 3 && h3(vx >> SH, vy, vz >> SH, seed + 45) < 0.006) this.spike(vox, x, y + 1, z, 1, bio === 2 ? M.SANDSTONE : zone === 1 ? M.STONE : M.LIMESTONE, (3 + (h * 70 | 0) % 5) * VK);
       } else if (airDown) {
-        const h = h3(vx, vy, vz, p.seed + 47);
-        if (zone >= 2 && h3(vx >> SH, vy, vz >> SH, p.seed + 49) < 0.01) this.spike(vox, x, y - 1, z, -1, zone >= 5 ? M.ICE : m, (3 + (h * 50 | 0) % 6) * VK);
-        else if (zone === 3 && h < 0.004 / (VK * VK)) this.spike(vox, x, y - 1, z, -1, M.CRYSTAL, 3 * VK);
+        // ceilings: stalactites, crystals, hanging vines and roots
+        const h2 = h3(vx, vy, vz, seed + 47);
+        if (bio === 1 && pt > -0.3) vox[vi] = M.MOSS;
+        if (zone >= 2 && h3(vx >> SH, vy, vz >> SH, seed + 49) < 0.01) this.spike(vox, x, y - 1, z, -1, zone >= 5 ? M.ICE : m, (3 + (h2 * 50 | 0) % 6) * VK);
+        else if (zone === 3 && h2 < 0.004 / (VK * VK)) this.spike(vox, x, y - 1, z, -1, M.CRYSTAL, 3 * VK);
+        else if (bio === 1 && h2 < 0.03) this.strand(vox, x, y - 1, z, M.VINES, 3 + (h2 * 9000 | 0) % 12);
+        else if (zone === 1 && depth < 9 && bio !== 2 && h2 < 0.008) this.strand(vox, x, y - 1, z, M.ROOTS, 2 + (h2 * 9000 | 0) % 9);
+      } else if (bio === 1 && pt > 0.05) vox[vi] = M.MOSS; // mossy walls in the grotto
+    }
+  }
+
+  /** Clear voxels with air on all six sides (inside the chunk; natural materials only). */
+  unspeck(vox) {
+    const C2 = CS * CS;
+    for (let z = 1; z < CS - 1; z++) for (let y = 1; y < CS - 1; y++) for (let x = 1; x < CS - 1; x++) {
+      const vi = x + CS * y + C2 * z;
+      if (!NATURAL[vox[vi]]) continue;
+      if (vox[vi - 1] || vox[vi + 1] || vox[vi - CS] || vox[vi + CS] || vox[vi - C2] || vox[vi + C2]) continue;
+      vox[vi] = 0;
+    }
+  }
+
+  /** A glowcap button: a stem voxel or two and a little domed cap (needs a voxel of room around). */
+  button(vox, x, y, z, tall) {
+    const C2 = CS * CS;
+    if (x < 1 || x >= CS - 1 || z < 1 || z >= CS - 1 || y + tall + 2 >= CS) return;
+    for (let i = 0; i < tall; i++) if (vox[x + CS * (y + i) + C2 * z] === 0) vox[x + CS * (y + i) + C2 * z] = M.STEM; else return;
+    const t = y + tall;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      if (dx && dz) continue;
+      const vi = x + dx + CS * t + C2 * (z + dz);
+      if (vox[vi] === 0) vox[vi] = M.GLOWCAP;
+    }
+    if (vox[x + CS * (t + 1) + C2 * z] === 0) vox[x + CS * (t + 1) + C2 * z] = M.GLOWCAP;
+  }
+
+  /** A hanging strand (vines, roots): straight down through air, one voxel thick. */
+  strand(vox, x, y, z, m, len) {
+    for (let i = 0; i < len && y - i >= 0; i++) {
+      const vi = x + CS * (y - i + CS * z);
+      if (vox[vi] !== 0) return;
+      vox[vi] = m;
+    }
+  }
+
+  /** A giant glowcap: a pale stem and a domed glowing cap, only where it fits in this chunk. */
+  mushroom(vox, x, y, z, k) {
+    const sh = Math.round((0.4 + k * 0.8) * VOX), R = Math.round((0.24 + k * 0.34) * VOX), sr = k > 0.5 ? 2 : 1;
+    if (x - R < 0 || x + R >= CS || z - R < 0 || z + R >= CS || y + sh + 4 >= CS) return;
+    for (let i = 0; i < sh + 4; i++) if (vox[x + CS * (y + i + CS * z)] !== 0) return; // needs head room
+    const put = (xx, yy, zz, m) => { const vi = xx + CS * (yy + CS * zz); if (vox[vi] === 0) vox[vi] = m; };
+    for (let i = 0; i < sh; i++) {
+      const lean = Math.round(Math.sin(i / sh * 1.6) * k * 2); // a slight curve
+      for (let dz = -sr; dz <= sr; dz++) for (let dx = -sr; dx <= sr; dx++) if (dx * dx + dz * dz <= sr * sr + 0.5) put(x + dx + lean, y + i, z + dz, M.STEM);
+    }
+    const top = y + sh, lean = Math.round(Math.sin(1.6) * k * 2);
+    for (let l = 0; l < 4; l++) {
+      const r = R * Math.sqrt(1 - (l / 4.2) ** 2) - (l === 0 ? 0 : 0.5);
+      for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+        const d2 = dx * dx + dz * dz;
+        if (d2 > r * r) continue;
+        const xx = x + dx + lean;
+        if (xx < 0 || xx >= CS) continue;
+        // the underside is gills (stem-coloured) inside the rim
+        put(xx, top + l, z + dz, l === 0 && d2 < (r - 1.5) * (r - 1.5) ? M.STEM : M.GLOWCAP);
       }
     }
   }
