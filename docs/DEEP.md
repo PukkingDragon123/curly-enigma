@@ -55,12 +55,16 @@ vm.eat(itemId); vm.hurt(); vm.dispose();
 
 ## HUD (`hud = 'deep'`)
 
-- `ui.setRadar(provider | null)`: `provider()` returns
-  `{ x, y, z, heading, range, explored: { size, cell, data }, markers: [{ kind, x, y, z, label, color }] }`.
-  `heading` is the camera yaw: forward = (-sin h, 0, -cos h). `explored` is a size×size grid of
-  cells (`cell` m each) centered on the player: 0 unknown, 1 open, 2 water, 3 lava, 4 known rock.
-  Marker kinds: `home`, `town`, `ore`, `danger`, `enemy`, `station`, `stake`.
-- `ui.setCrosshair({ visible, kind, label, progress })`: kind `none` | `rock` | `ore` | `enemy` | `use`.
+- `ui.setRadar(provider | null, { heading: () => yaw })`: `provider(o)` returns
+  `{ x, y, z, heading, range, explored: { size, cell, data, ox, oz }, markers: [{ kind, x, y, z, label, color, r }] }`.
+  `heading` is the camera yaw: forward = (-sin h, 0, -cos h) (the optional `opts.heading` is read
+  every frame for smooth turning). `explored` is a size×size grid, row-major `data[iz * size + ix]`,
+  cell [0,0] at world (`ox`, `oz`): 0 unknown, 1 open, 2 water, 3 lava, 4 known rock. The survey map
+  calls `provider({ survey: true, y })` for a bigger grid on another layer.
+  Marker kinds: `home`, `town`, `ore`, `danger` (`r` = radius m), `enemy`, `station`, `stake`.
+- `ui.openSurvey()` (also M or a tap on the radar): the full map; its "Head home" calls `game.scene.headHome()`.
+- `ui.setCrosshair({ visible, kind, label, progress } | null)`: kind `none` | `rock` | `ore` | `enemy` | `use`.
+- The scene clears both on exit: `ui.setRadar(null)`, `ui.setCrosshair(null)`.
 - Touch in `deep`: stick (move, up = forward), drag on the right half to look (adds to
   `input.look`), buttons dig (holds mouse button 0), jump (Space), use (E), snack (Q), next tool (wheel).
 
