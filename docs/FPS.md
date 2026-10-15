@@ -82,3 +82,20 @@ game; tell the lead which test hooks your scene offers (e.g. `scene.debug.*`).
   `scene.debug.{ step, until, state, pump, smelt, forge, toAnvil, toFire, charge, release, strike,
   finishShaping, balance, quench, tap, heatTo, place, dock }`.
 - **Mine**: see DEEP.md (lifts, build tool, clumps).
+
+## Next: Old Star, the tavern, progression (in progress)
+
+- **Story flow (new):** `fall` → `deep { from: 'fall' }`: the mole tumbles into **Old Star's dig**, a
+  cave chamber near the mine entrance lift (`plan.prologue` in the world plan; its shape is stamped
+  by `src/deep/gen/prologue.js`). Old Star — an old star-nosed mole who has almost dug his way out —
+  is pinned by a rockfall; the mole digs him free and he teaches the basics (mining, clumps,
+  ladders, lifts) through `src/deep/Prologue.js`, then they ride the old lift up to **the tavern**:
+  `home { from: 'lift', first: true }`. Flag `prologue` marks it done.
+- **The tavern & house** (`home`): an old, cozy miners' tavern that is now your home: Old Star lives
+  there (his model: `src/gfx/char/starmole.js` → `makeStarMole(opts)`), his notes are pinned on a
+  board (`src/data/notes.js`), his old loot chest, the bar, the hearth, your room; the cage lift
+  down to the mine. **No digging outside the mine**: the burrow's walls can't be dug any more (the
+  lift is the way down; old tunnel mouths still work).
+- **Progression** (`src/data/upgrades.js`, `ui.openUpgrades()`): tool tiers, dynamite
+  (`src/deep/Explosives.js`), upgrades with rising costs, milestones; the tavern earns a little
+  each day (`state.tavernIncome()`).
