@@ -90,7 +90,12 @@ export default class DigScene extends Scene {
     this.vm = null;
     const load = vmModules['../fps/ViewModel.js'];
     if (load) {
-      try { const mod = await load(); this.vm = new mod.ViewModel(); this.vm.resize(g.engine.width / g.engine.height); } catch (e) { console.warn('view model failed', e); }
+      try {
+        const mod = await load();
+        this.vm = new mod.ViewModel();
+        this.vm.resize(g.engine.width / g.engine.height);
+        if (this.vm.world) this.scene.add(this.vm.world); // the x-ray beam haze lives in the world
+      } catch (e) { console.warn('view model failed', e); }
     }
     // enemies + fluids (optional modules; the scene runs without them)
     this.enemies = null;
@@ -240,7 +245,7 @@ export default class DigScene extends Scene {
     // hands and tools
     if (this.vm) {
       const lampK = clamp(st.lightRadius() / 5, 0.6, 1.6);
-      this.vm.update(dt, { speed: pl.speed, grounded: pl.grounded, climbing: pl.climbing, swimming: pl.inWater, look, lamp: { color: this.U.lampCol.value, intensity: lampK }, ambient: this.U.ambient.value });
+      this.vm.update(dt, { speed: pl.speed, grounded: pl.grounded, climbing: pl.climbing, swimming: pl.inWater, look, lamp: { color: this.U.lampCol.value, intensity: lampK }, ambient: this.U.ambient.value, camera: this.camera, heat: this.drillHeat });
     }
     this.hudTick(dt);
   }
@@ -270,7 +275,7 @@ export default class DigScene extends Scene {
     const it = this.toolItem(tool);
     if (this.swing) {
       this.swing.t += dt;
-      if (!this.swing.hit && this.swing.t >= this.swing.windup) { this.swing.hit = true; this.strike(); }
+      if (!this.swing.hit && this.swing.t >= this.swing.windup) { this.swing.hit = true; if (this.swing.fn) this.swing.fn(); else this.strike(); }
       if (this.swing.t >= this.swing.dur) this.swing = null;
     }
     if (this.vm) this.vm.use(tool, want && (tool === 'brush' || tool === 'drill' || tool === 'xray') && !!it);
@@ -284,7 +289,8 @@ export default class DigScene extends Scene {
         this.audio.play('whoosh', { vol: 0.25, pitch: 1.4 });
       }
     } else if (tool === 'chisel') {
-      if (this.useT <= 0) { this.useT = it.rate || 0.2; this.chiselHit(it); }
+      // the mallet cocks back and knocks the chisel home
+      if (this.useT <= 0 && !this.swing) { this.useT = (it.rate || 0.2) + 0.05; this.swing = { t: 0, windup: 0.1, dur: this.useT, hit: false, fn: () => this.chiselHit(it) }; if (this.vm) this.vm.swing('chisel', 0.1); }
     } else if (tool === 'brush') {
       if (this.useT <= 0) { this.useT = it.rate || 0.12; this.brushHit(it); }
     } else if (tool === 'drill') {
@@ -517,6 +523,7 @@ export default class DigScene extends Scene {
     this.stakes.push({ x, y, z });
     this.world.plan.lights.push({ x, y, z, c: [0.45, 0.85, 0.7], r: 6, stake: true });
     this.audio.play('glow');
+    if (this.vm) this.vm.swing('stake', 0.18);
     this.updateHotbar();
   }
 

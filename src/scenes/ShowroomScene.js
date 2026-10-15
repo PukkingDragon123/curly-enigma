@@ -4,6 +4,7 @@
 //   faces | states    every expression / rig state on one spec (&species=, &eyes=, &brows=, &player=1)
 //   hero              the player close up (&shades=1 adds the ending's sunglasses)
 //   hen | paw | portraits (shop keeper portraits through renderPortrait)
+//   fps               first-person paws and tools over a cave wall (keys and params: src/fps/viewmodel/demo.js)
 // Params: zoom (ortho half-height), cx/cy/cz (look-at offset), yaw/pitch (camera, radians),
 //   rot (character facing), anim (force a rig state), seed, cols, gap, rowh, kind (toon|basic|lambert),
 //   t (pre-roll seconds), persp=1, only=<labels|species|indices>, set=key:val,... (spec overrides),
@@ -67,6 +68,16 @@ export default class ShowroomScene extends Scene {
     this.rigs = [];
     this.labels = [];
     const add = (obj) => { this.scene.add(obj); return obj; };
+    if (mode === 'fps') {
+      // first-person paws and tools over a voxel cave wall (see src/fps/viewmodel/demo.js)
+      const { makeFpsDemo } = await import('../fps/viewmodel/demo.js');
+      this.fps = makeFpsDemo(this, params);
+      this.camera = this.fps.camera;
+      this.post = { ...this.post, overlay: this.fps.overlay };
+      this.onResize(this.game.engine.width, this.game.engine.height);
+      window.__showroom = this;
+      return;
+    }
 
     // lights similar to the iso scenes
     add(new THREE.HemisphereLight(0xfff0dd, 0x403050, 1.6));
@@ -294,6 +305,7 @@ export default class ShowroomScene extends Scene {
 
   update(dt) {
     super.update(dt);
+    if (this.fps) { this.fps.update(dt); return; }
     for (const r of this.rigs) {
       if (r.persist === 'peck' && r.peckT <= 0) r.peck();
       if (r.persist === 'flap' && r.flapT <= 0) r.flap(1);
@@ -310,6 +322,7 @@ export default class ShowroomScene extends Scene {
   }
 
   onResize(w, h) {
+    if (this.fps) { this.fps.resize(w, h); return; }
     const a = w / h;
     if (this.camera.isOrthographicCamera) {
       this.camera.left = -this.zoom * a; this.camera.right = this.zoom * a; this.camera.top = this.zoom; this.camera.bottom = -this.zoom;
