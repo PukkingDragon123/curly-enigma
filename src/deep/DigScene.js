@@ -14,7 +14,8 @@ import { Nugget } from './Nugget.js';
 import { openLiftPanel, discoverLift, liftState, rideTo } from '../fps/lifts.js';
 import { makeTerrainUniforms, MAX_LIGHTS } from './TerrainMaterial.js';
 import { mouthBox, zoneAt, ZONE_DEPTHS } from './Generator.js';
-import { VOX, M, MAT, ORE_BASE } from './materials.js';
+import { VOX, M, MAT, ORE_BASE, voxelColor } from './materials.js';
+import { h3 } from './noise.js';
 import { roomSize } from '../iso/homeLayout.js';
 import { ITEMS, sellPrice } from '../data/items.js';
 import { ZONES } from '../data/zones.js';
@@ -23,7 +24,7 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { clamp, rand, chance, hexToRgb, formatGoldFull } from '../core/util.js';
 
-const SLOTS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'build', 'food'];
+const SLOTS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'build', 'dynamite', 'food'];
 // what the build tool puts up: ladders to climb out of holes for free, platforms, blocks
 const BUILD = [
   { id: 'ladder', name: 'Ladder', hint: 'Aim at a wall' },
@@ -33,7 +34,7 @@ const BUILD = [
 const REACH = 2.3;
 const vmModules = import.meta.glob('../fps/ViewModel.js');
 // optional systems, built separately (see docs/DEEP.md): fantasy enemies, flowing fluids
-const extModules = import.meta.glob(['./Enemies.js', './Fluids.js', './Props.js', './Clumps.js']);
+const extModules = import.meta.glob(['./Enemies.js', './Fluids.js', './Props.js', './Clumps.js', './Prologue.js', './Explosives.js']);
 const col01 = (hex) => { const c = hexToRgb(hex); return [c.r / 255, c.g / 255, c.b / 255]; };
 
 export default class DigScene extends Scene {
@@ -87,7 +88,11 @@ export default class DigScene extends Scene {
     // arriving by lift: step out of its cage (the open side faces +z)
     const liftId = from === 'lift' ? params.lift || 'L0' : from === 'town' ? 's' + clamp(+params.station || 0, 0, 5) : null;
     const lift = liftId && this.world.plan.lifts.find((l) => l.id === liftId);
-    if (lift) {
+    if (from === 'fall' && this.world.plan.prologue) {
+      const P = this.world.plan.prologue;
+      pl.pos.set(P.x, P.y + 0.05, P.z);
+      pl.yaw = 0;
+    } else if (lift) {
       pl.pos.set(lift.x, lift.y + 0.02, lift.z + (liftId[0] === 'L' ? 0 : 0));
       pl.yaw = Math.PI;
       this.lastLift = lift;
@@ -115,8 +120,10 @@ export default class DigScene extends Scene {
     this.fluids = null;
     this.props = null;
     this.clumps = null;
-    const ctx = { scene: this.scene, world: this.world, U: this.U, fx: this.fx, bodies: this.bodies, audio: this.audio, state: st, ui: g.ui, player: pl, plan: this.world.plan, scene3: this.scene, owner: this };
-    for (const [path, Name, key] of [['./Enemies.js', 'Enemies', 'enemies'], ['./Fluids.js', 'Fluids', 'fluids'], ['./Props.js', 'Props', 'props'], ['./Clumps.js', 'Clumps', 'clumps']]) {
+    this.prologue = null;
+    this.explosives = null;
+    const ctx = { scene: this.scene, world: this.world, U: this.U, fx: this.fx, bodies: this.bodies, audio: this.audio, state: st, ui: g.ui, player: pl, plan: this.world.plan, scene3: this.scene, owner: this, params };
+    for (const [path, Name, key] of [['./Enemies.js', 'Enemies', 'enemies'], ['./Fluids.js', 'Fluids', 'fluids'], ['./Props.js', 'Props', 'props'], ['./Clumps.js', 'Clumps', 'clumps'], ['./Prologue.js', 'Prologue', 'prologue'], ['./Explosives.js', 'Explosives', 'explosives']]) {
       const load = extModules[path];
       if (!load) continue;
       try { const mod = await load(); this[key] = new mod[Name](ctx); } catch (e) { console.warn(Name + ' failed', e); }
@@ -125,6 +132,11 @@ export default class DigScene extends Scene {
     this.nugget = null;
     if (st.flag('nugget')) {
       try { this.nugget = new Nugget({ scene3: this.scene, world: this.world, player: pl, audio: this.audio, fx: this.fx, owner: this }); } catch (e) { console.warn('nugget failed', e); }
+    }
+    // the opening: the fall drops the mole into Old Star's dig
+    if (from === 'fall') {
+      const sp = this.prologue?.spawn?.();
+      if (sp) { pl.pos.set(sp.x, sp.y, sp.z); pl.yaw = sp.yaw ?? pl.yaw; this.terrain.warm(sp.x, sp.y + 0.5, sp.z, 2); }
     }
     if (this.fluids || this.props) this.world.onChange = (vx, vy, vz, old, m) => { this.fluids?.onVoxel(vx, vy, vz, old, m); this.props?.onVoxel?.(vx, vy, vz, old, m); };
     this.bodies.hooks = {
@@ -156,7 +168,14 @@ export default class DigScene extends Scene {
     if (slot === 'stake') return st.count('glow_stake') ? ITEMS.glow_stake : null;
     if (slot === 'food') return this.bestFood();
     if (slot === 'build') return ITEMS.support_beam;
+    if (slot === 'dynamite') return this.bestBlast();
     return st.equipped(slot);
+  }
+  /** The strongest explosive in the bag (items with a blast radius). */
+  bestBlast() {
+    let best = null;
+    for (const gr of this.state.inventory((it) => it && it.blast)) { const it = ITEMS[gr.id]; if (!best || it.blast > best.blast) best = it; }
+    return best;
   }
   bestFood() {
     let best = null;
@@ -168,10 +187,10 @@ export default class DigScene extends Scene {
   }
   updateHotbar() {
     const st = this.state;
-    const icons = { pick: 'pick_rusty', chisel: 'chisel_basic', brush: 'brush_basic', drill: 'drill_steam', xray: 'xray_lamp', stake: 'glow_stake', food: 'grub_bar' };
+    const icons = { dynamite: ITEMS.dynamite ? 'dynamite' : 'glow_stake', pick: 'pick_rusty', chisel: 'chisel_basic', brush: 'brush_basic', drill: 'drill_steam', xray: 'xray_lamp', stake: 'glow_stake', food: 'grub_bar' };
     const slots = SLOTS.map((s, i) => {
       const it = this.toolItem(s);
-      const n = s === 'stake' ? st.count('glow_stake') : s === 'food' && it ? st.count(it.id) : undefined;
+      const n = s === 'stake' ? st.count('glow_stake') : (s === 'food' || s === 'dynamite') && it ? st.count(it.id) : undefined;
       const label = s === 'build' ? `Build: ${BUILD[this.buildMode || 0].name}` : it ? it.name : '—';
       return { icon: iconURL(it ? it.id : icons[s]), key: String(i + 1), label, off: !it, n, meter: s === 'drill' && it ? this.drillHeat : undefined };
     });
@@ -238,6 +257,8 @@ export default class DigScene extends Scene {
     this.bodies.update(sdt, pl.eye(), pl.pos);
     if (this.fluids) this.fluids.update(dt, { player: pl, eye: pl.eye(), time: this.time });
     if (this.nugget) this.nugget.update(dt);
+    if (this.prologue) this.events(this.prologue.update(dt, { player: pl, eye: pl.eye(), time: this.time, busy }));
+    if (this.explosives) this.events(this.explosives.update(dt, { player: pl, eye: pl.eye(), time: this.time }));
     if (this.props) this.props.update(dt, { player: pl, eye: pl.eye(), time: this.time });
     if (this.enemies) {
       this.events(this.enemies.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy, lamp: this.U.lampRange.value }));
@@ -291,7 +312,7 @@ export default class DigScene extends Scene {
     if (!ui.setCrosshair) return;
     const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
     // something to pick or catch (props' plants, critters) comes first
-    const use = this.clumps?.target(eye, f, reach) || this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
+    const use = this.prologue?.target?.(eye, f, reach) || this.clumps?.target(eye, f, reach) || this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
     if (use) { ui.setCrosshair({ visible: true, kind: 'use', label: use.label }); return; }
     const foe = this.enemies?.hitTest(eye, f, reach);
     if (foe) { ui.setCrosshair(foe.passive ? { visible: true, kind: 'rock', label: foe.constructor.info?.name || '' } : { visible: true, kind: 'enemy' }); return; }
@@ -342,6 +363,12 @@ export default class DigScene extends Scene {
       this.energy(0.25 * dt);
     } else if (tool === 'stake') {
       if (this.useT <= 0 && inp.mousePressed(0)) { this.useT = 0.4; this.placeStake(); }
+    } else if (tool === 'dynamite') {
+      if (this.useT <= 0 && inp.mousePressed(0) && this.explosives) {
+        this.useT = 0.6;
+        const evs = this.explosives.throw(it, this.player.eye(), this.player.forward());
+        if (evs !== null && evs !== false) { st.removeItem(it.id, 1); this.events(evs); this.updateHotbar(); if (this.vm) this.vm.swing('none', 0.12); }
+      }
     } else if (tool === 'build') {
       if (this.useT <= 0 && inp.mousePressed(0)) { this.useT = 0.25; this.build(); }
     } else if (tool === 'food') {
@@ -572,6 +599,43 @@ export default class DigScene extends Scene {
     this.afterBreak(res.broken, [hit.nx, hit.ny, hit.nz], 0.5, 'drill');
   }
 
+  // ------------------------------------------------------------------ explosions
+  /**
+   * A blast at (x, y, z) meters with radius r: a round crater (bedrock, burrow and lift timbers
+   * hold), flying rock, ore shaken loose, enemies and the mole hurt by distance. power scales damage.
+   */
+  blast(x, y, z, r, power = 1) {
+    const w = this.world, R = r * VOX, cx = x * VOX, cy = y * VOX, cz = z * VOX;
+    const broken = [];
+    for (let vz = Math.floor(cz - R); vz <= cz + R; vz++) for (let vy = Math.floor(cy - R); vy <= cy + R; vy++) for (let vx = Math.floor(cx - R); vx <= cx + R; vx++) {
+      const d = Math.hypot(vx + 0.5 - cx, vy + 0.5 - cy, vz + 0.5 - cz) / R;
+      if (d > 1 - h3(vx, vy, vz, 13) * 0.18) continue; // a ragged rim
+      const m = w.voxelAt(vx, vy, vz);
+      if (!breakable(m) || m >= ORE_BASE || m === M.TIMBER || m === M.BOARDS) continue;
+      broken.push({ x: vx, y: vy, z: vz, m, c: voxelColor(m, vx, vy, vz, h3(vx, vy, vz, 1)) });
+      w.setVoxel(vx, vy, vz, 0);
+    }
+    // the ore inside the blast comes loose (chipped a little), debris flies outward
+    const pl = this.player, e = pl.eye();
+    const out = [e.x - x, e.y - y, e.z - z]; const ol = Math.hypot(...out) || 1;
+    if (broken.length) this.afterBreak(broken.slice(0, 600), out.map((v) => v / ol), power, 'blast');
+    for (const d of w.depositsNear(x, y, z, r + 0.4)) { const s = w.depState(d); if (!s.taken) s.q = Math.max(5, s.q - 12 * power); }
+    for (const f of this.ores.checkFree(x, y, z, 'blast')) this.popOre(f, out.map((v) => v / ol));
+    this.fx.sparks(x, y, z, 40, [1, 0.75, 0.35], [0, 0, 0], 7);
+    this.fx.dust(x, y, z, 30, [0.55, 0.47, 0.4], r * 0.6);
+    this.U.hit.value.set(x, y, z, 1);
+    this.audio.play('explode', { vol: 1 });
+    this.enemies?.blast?.(x, y, z, r, power);
+    const dist = Math.hypot(pl.pos.x - x, pl.pos.y + 0.4 - y, pl.pos.z - z);
+    this.shake(clamp(1.2 - dist / (r * 6), 0.2, 1));
+    if (dist < r * 1.3) {
+      this.hurt(Math.round(18 * power * (1 - dist / (r * 1.3)) + 4), 'blast');
+      const k = 5 * (1 - dist / (r * 1.3));
+      pl.vel.add(new THREE.Vector3(pl.pos.x - x, Math.max(0.6, pl.pos.y + 0.4 - y), pl.pos.z - z).normalize().multiplyScalar(k));
+    }
+    return broken.length;
+  }
+
   // ------------------------------------------------------------------ building
   cycleBuild() {
     this.buildMode = ((this.buildMode || 0) + 1) % BUILD.length;
@@ -680,6 +744,8 @@ export default class DigScene extends Scene {
     // pick a plant, catch a critter
     {
       const eye = pl.eye(), f = pl.forward(), reach = this.reach();
+      const pr = this.prologue?.use?.(eye, f, reach);
+      if (pr) { this.events(pr); return; }
       const cl = this.clumps?.use(eye, f, reach);
       if (cl) { this.events(cl); return; }
       const got = this.props?.use?.(eye, f, reach);
@@ -903,7 +969,7 @@ export default class DigScene extends Scene {
       if (d < l.r + 14) near.push([d - l.r * 0.3, l]);
     }
     // glowing enemies and hot fluids light the rock too
-    for (const src of [this.enemies, this.fluids, this.props, this.clumps]) {
+    for (const src of [this.enemies, this.fluids, this.props, this.clumps, this.prologue, this.explosives]) {
       for (const l of src?.lights?.(eye) || []) near.push([Math.hypot(l.x - eye.x, l.y - eye.y, l.z - eye.z) - l.r * 0.3, l]);
     }
     near.sort((a, b) => a[0] - b[0]);
@@ -1003,6 +1069,8 @@ export default class DigScene extends Scene {
     this.enemies?.dispose();
     this.nugget?.dispose();
     this.props?.dispose();
+    this.prologue?.dispose?.();
+    this.explosives?.dispose?.();
     this.events(this.clumps?.dispose());
     this.fluids?.dispose();
     this.world.onChange = null;

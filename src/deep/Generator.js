@@ -6,6 +6,7 @@ import { makeNoise3D, h3, h3i } from './noise.js';
 import { M, VOX, ORE_BASE } from './materials.js';
 import { ORE_ID, ORE_SPAWN } from '../data/ores.js';
 import { makeRng, clamp } from '../core/util.js';
+import { stampPrologue, PROLOGUE_BB } from './gen/prologue.js';
 
 export const CS = 32; // chunk size (voxels)
 export const BOUNDS = { x0: -96, x1: 96, z0: -96, z1: 96, y0: -216, y1: 8 }; // meters
@@ -106,7 +107,10 @@ export function makePlan(seed, opts = {}) {
     }
     return L;
   };
-  addLift('L0', 'Mine entrance', W / 2, -7, D / 2 - 4, 1);
+  const L0 = addLift('L0', 'Mine entrance', W / 2, -7, D / 2 - 4, 1);
+  // Old Star's dig: where the mole lands after the fall, a crawl away from the mine entrance
+  plan.prologue = { x: L0.x + 6, y: L0.y - 1.5, z: L0.z - 6 };
+  plan.features.push({ kind: 'prologue', ...plan.prologue, to: { x: L0.x + 1.4, y: L0.y, z: L0.z - 1.4 } });
   for (let zone = 1; zone <= 6; zone++) {
     for (let k = 0; k < 3; k++) {
       let x = 0, z = 0, y = 0;
@@ -182,6 +186,7 @@ function aabbOf(f) {
   else if (f.kind === 'gate') { f.bb = [f.x - 3, f.y - 1, f.z - 3, f.x + 3, f.y + 4, f.z + 3]; }
   else if (f.kind === 'shaft') { f.bb = [f.x - 1.4, f.y0, f.z - 1.4, f.x + 1.4, f.y1, f.z + 1.4]; }
   else if (f.kind === 'mouth') { f.bb = [f.x0 - pad, f.y0 - pad, f.z0 - pad, f.x1 + pad, f.y1 + pad, f.z1 + pad]; }
+  else if (f.kind === 'prologue') { f.bb = [f.x - PROLOGUE_BB, f.y - 2, f.z - PROLOGUE_BB, f.x + PROLOGUE_BB, f.y + 4, f.z + PROLOGUE_BB]; }
   else if (f.kind === 'cage') { f.bb = [f.x - 1.6, f.y - 0.3, f.z - 1.6, f.x + 1.6, f.y + 7, f.z + 1.6]; }
   return f;
 }
@@ -324,6 +329,7 @@ export class ChunkGen {
   }
 
   stamp(f, vox, X0, Y0, Z0) {
+    if (f.kind === 'prologue') { stampPrologue(f, vox, X0, Y0, Z0, CS); return; }
     const p = this.plan, bb = f.bb;
     const a = this.clip(bb[0], bb[1], bb[2], bb[3], bb[4], bb[5], X0, Y0, Z0);
     if (!a) return;

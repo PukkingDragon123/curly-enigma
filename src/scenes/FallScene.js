@@ -280,7 +280,7 @@ export default class FallScene extends Scene {
   leave(dur = 0.2) {
     if (this.leaving) return;
     this.leaving = true;
-    this.game.goto('home', { from: 'fall' }, { transition: 'fade', dur });
+    this.game.goto('deep', { from: 'fall' }, { transition: 'fade', dur }); // into Old Star's dig (docs/FPS.md)
   }
 
   // ------------------------------------------------------------------ frame
