@@ -1,6 +1,7 @@
-// Touch smoke test: a phone in landscape (or portrait with --portrait). Walks with the on-screen
-// stick, digs by tapping the rock, pushes into a wall until the face close-up takes over, taps
-// the backpack and the book open, and reports console errors.
+// Touch smoke test: a phone in landscape (or portrait with --portrait), first person underground.
+// Looks around by dragging the right half, walks with the floating stick on the left half, holds
+// the big dig button until rock breaks, taps the backpack and the book open, and reports console
+// errors.
 // Usage: node scripts/e2e-touch.mjs [outDir] [--portrait]
 import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
@@ -43,55 +44,45 @@ const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchP
 const tap = async (x, y, hold = 60) => { await touch('touchStart', [[x, y]]); await wait(hold); await touch('touchEnd', []); };
 const center = (sel) => ev((s) => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return r.width ? [r.left + r.width / 2, r.top + r.height / 2] : null; }, sel);
 
-await page.goto(`http://127.0.0.1:${port}/?fresh=1&scene=mine&zone=1`);
-await step('mine loads with touch controls', async () => {
-  if (!(await waitFor(() => window.__game && window.__game.sceneName === 'mine' && !window.__game.transitioning, 120000))) throw new Error('mine never loaded');
+await page.goto(`http://127.0.0.1:${port}/?fresh=1&scene=deep`);
+await step('underground loads with touch controls', async () => {
+  if (!(await waitFor(() => window.__game && window.__game.sceneName === 'deep' && !window.__game.transitioning, 120000))) throw new Error('deep never loaded');
   await wait(2500);
-  if (!(await center('.tc-stick'))) throw new Error('no on-screen stick');
-  await shot('01-mine');
+  if (!(await center('.tc-dig'))) throw new Error('no dig button');
+  if (!(await center('.tc-look'))) throw new Error('no look layer');
+  await shot('01-deep');
 });
-await step('stick walks the mole', async () => {
-  const c = await center('.tc-stick');
-  await ev(() => { window.__x0 = window.__game.scene.player.x; });
+await step('drag the right half to look around', async () => {
+  const vw = size.width, vh = size.height;
+  await ev(() => { window.__yaw0 = window.__game.scene.player.yaw; });
+  await touch('touchStart', [[vw * 0.7, vh * 0.4]]);
+  for (let k = 1; k <= 8; k++) { await touch('touchMove', [[vw * 0.7 - k * 12, vh * 0.4]]); await wait(40); }
+  await touch('touchEnd', []);
+  // frames are slow headless: give the scene time to read the look accumulator
+  if (!(await waitFor(() => Math.abs(window.__game.scene.player.yaw - window.__yaw0) > 0.05, 30000))) throw new Error('looking did not turn the camera');
+});
+await step('stick moves the mole', async () => {
+  const vw = size.width, vh = size.height;
+  await ev(() => { window.__p0 = window.__game.scene.player.pos.clone(); window.__wish = 0; });
+  const c = [vw * 0.18, vh * 0.7];
   await touch('touchStart', [c]);
   for (let k = 1; k <= 6; k++) { await touch('touchMove', [[c[0] + k * 9, c[1]]]); await wait(30); }
-  // walking right moves the mole (or, right at a wall, the face close-up takes over)
-  const ok = await waitFor(() => { const s = window.__game.scene; return Math.abs(s.player.x - window.__x0) > 0.6 || s.face.on; }, 90000);
+  // strafing right: the mole wants to move (and does, unless a wall is right there)
+  const ok = await waitFor(() => { const s = window.__game.scene; if (Math.hypot(s.wish.x, s.wish.z) > 0.3) window.__wish = 1; return window.__wish && s.player.pos.distanceTo(window.__p0) > 0.05; }, 60000);
   await touch('touchEnd', []);
-  if (!ok) throw new Error('the stick did not move the mole');
+  if (!ok && !(await ev(() => window.__wish))) throw new Error('the stick did not steer the mole');
 });
-await step('tap the rock to dig', async () => {
-  const air = () => ev(() => { const w = window.__game.scene.world; let n = 0; for (let i = 0; i < w.pm.length; i += 7) if (w.pm[i] === 0) n++; return n; });
-  const before = await air();
-  // the solid ground just in front of the mole's feet (toScreen gives page CSS pixels)
-  const p = await ev(() => { const s = window.__game.scene, pl = s.player, d = pl.facing || 1; const v = s.screen(pl.x + 0.7 * d, pl.y + 0.75); return [v.x, v.y]; });
-  await touch('touchStart', [p]);
-  await waitFor(() => false, 3500);
+await step('hold dig to break rock', async () => {
+  const edits = () => ev(() => { let n = 0; for (const m of window.__game.scene.world.edits.values()) n += m.size; return n; });
+  const before = await edits();
+  await ev(() => { const pl = window.__game.scene.player; pl.pitch = -0.1; });
+  const d = await center('.tc-dig');
+  await touch('touchStart', [d]);
+  const ok = await waitFor(() => { let n = 0; for (const m of window.__game.scene.world.edits.values()) n += m.size; return n > 0 && window.__game.scene.bodies.list.length + window.__game.scene.fx.soft.p.length > 0; }, 90000);
   await touch('touchEnd', []);
   await shot('02-dig');
-  const after = await air();
-  if (!(after > before)) throw new Error(`tapping did not dig (air samples ${before} → ${after})`);
-});
-await step('push into a wall → face close-up', async () => {
-  const c = await center('.tc-stick');
-  for (const dir of [1, -1]) {
-    if (await ev(() => window.__game.scene.face.on)) break;
-    await touch('touchStart', [c]);
-    for (let k = 1; k <= 6; k++) { await touch('touchMove', [[c[0] + dir * k * 9, c[1]]]); await wait(30); }
-    await waitFor(() => window.__game.scene.face.on, 90000);
-    await touch('touchEnd', []);
-  }
-  if (!(await ev(() => window.__game.scene.face.on))) throw new Error('face mode never engaged');
-  await wait(1500);
-  const vw = size.width, vh = size.height;
-  await touch('touchStart', [[vw * 0.6, vh * 0.45]]);
-  await waitFor(() => false, 2500);
-  await touch('touchEnd', []);
-  await shot('03-face');
-  const back = await center('.b-back');
-  if (back) await tap(back[0], back[1]);
-  else await ev(() => window.__game.scene.face.exit('test'));
-  if (!(await waitFor(() => !window.__game.scene.face.on, 30000))) throw new Error('could not leave face mode');
+  const after = await edits();
+  if (!ok || !(after > before)) throw new Error(`holding dig did not break rock (edited voxels ${before} → ${after})`);
 });
 await step('backpack and book open by tap', async () => {
   const bag = await center('.pack-bag');
