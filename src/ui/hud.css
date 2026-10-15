@@ -183,7 +183,7 @@ html.is-touch .journal-btn { opacity: .7; }
   text-align: right; color: var(--text-light); text-shadow: 0 var(--px) 0 #000; opacity: 0; transform: translateX(calc(var(--px) * 6));
   transition: opacity .6s, transform .6s; pointer-events: none;
 }
-#ui:not([data-hud=mine]) .depth { display: none; }
+#ui:not([data-hud=mine]):not([data-hud=deep]) .depth { display: none; }
 .depth.show { opacity: 1; transform: none; transition: opacity .2s, transform .3s var(--pop); }
 .depth img { width: calc(var(--px) * 8); height: calc(var(--px) * 13); order: 2; animation: plumbSwing 2.4s ease-in-out infinite; transform-origin: 50% 0; }
 @keyframes plumbSwing { 50% { transform: rotate(8deg); } }

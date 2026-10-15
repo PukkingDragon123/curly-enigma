@@ -85,7 +85,7 @@ export class Hud {
   }
 
   setMode(mode) {
-    if (mode !== 'mine') { this.setBag(null); this.setDepth(null); }
+    if (mode !== 'mine' && mode !== 'deep') { this.setBag(null); this.setDepth(null); }
     if (mode === 'none') { clearTimeout(this.calTimer); this.cal.hidden = true; }
   }
 
@@ -218,7 +218,7 @@ export class Hud {
     const first = this._depthHtml == null;
     this._depthHtml = h;
     this.depthTxt.innerHTML = h;
-    if (!first) { this.depthT = 2.4; this.depth.classList.add('show'); }
+    if (!first || this.ui.hudMode === 'deep') { this.depthT = 2.4; this.depth.classList.add('show'); }
   }
   setBag(n, cap, fromDepth = false) {
     if (n === null || n === undefined) {
@@ -275,7 +275,8 @@ export class Hud {
     if (this.peekT > 0) this.peekT -= dt;
     if (this.lampT > 0) this.lampT -= dt;
     this.lamp.classList.toggle('show', this.lampT > 0 || this.peekT > 0 || this.lamp.classList.contains('low'));
-    if (this.depthT > 0) { this.depthT -= dt; if (this.depthT <= 0) this.depth.classList.remove('show'); }
+    // in first person the depth stays up (hanging under the radar); elsewhere it fades after a moment
+    if (this.depthT > 0 && this.ui.hudMode !== 'deep') { this.depthT -= dt; if (this.depthT <= 0) this.depth.classList.remove('show'); }
     if (this.packTagT > 0 && !(this.bag && this.bag.n >= this.bag.cap)) { this.packTagT -= dt; if (this.packTagT <= 0) this.packTag.hidden = true; }
     this.charmT += dt;
     if (this.charmT > 1 && this.charmEls.size) { this.charmT = 0; this.renderCharms(); }

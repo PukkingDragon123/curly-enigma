@@ -4,10 +4,14 @@
 //  right thumb: round carved buttons that depend on the HUD mode
 //     mine → jump (Space) · use (KeyE) · snack (KeyQ) · next tool (wheel tick)
 //     town → use (KeyE) · home → use (KeyE) + build (KeyX) · none / mini → hidden
+//     deep (first person) → a big hold-to-dig button (mouse button 0), jump (Space), use (E),
+//       snack (Q), next tool; drags on the right half look around (input.look), the left half
+//       grabs the stick wherever the thumb lands, and plain taps never dig
 // Everything hides while a panel is open. In focus mode the stick dims and the buttons become
 // use, snack and back (back calls the scene's onBack, or taps KeyS, which leaves face mode).
 import { el } from '../core/util.js';
 import { SPR } from './uiSprites.js';
+import { DSPR } from './deepArt.js';
 
 export function setupTouch(game) {
   let built = false;
@@ -42,6 +46,8 @@ export function setupTouch(game) {
     };
     const stopStick = () => {
       pid = null;
+      stick.style.left = '';
+      stick.style.bottom = '';
       knob.style.transform = '';
       stick.classList.remove('on', 'up');
       for (const c of ['KeyA', 'KeyD', 'KeyW', 'KeyS']) release(c);
@@ -104,12 +110,87 @@ export function setupTouch(game) {
     });
 
     const pad = el('div', { class: 'tc-pad' }, [tool, jump, snack, use, buildB, back, rotB, doneB]);
-    const root = el('div', { class: 'tc' }, [stick, pad]);
+
+    // ---------------- first person: dig button, buttons around it, look pad under the HUD
+    let digId = null;
+    const digFace = el('img', { class: 'pix tc-dface', src: DSPR.bigBtn(false), alt: '' });
+    const dig = el('button', { class: 'tc-dig', 'aria-label': 'Dig (hold)', title: 'Dig (hold)' }, [digFace, el('img', { class: 'pix tc-dic', src: DSPR.pick(), alt: '' })]);
+    const digDown = () => { inp.mouse.buttons[0] = true; inp.mouse.pressed[0] = true; };
+    const digEnd = () => {
+      if (digId === null) return;
+      digId = null;
+      dig.classList.remove('on');
+      digFace.src = DSPR.bigBtn(false);
+      inp.mouse.buttons[0] = false;
+      inp.mouse.released[0] = true;
+    };
+    dig.addEventListener('pointerdown', (e) => {
+      swallow(e);
+      game.audio.init();
+      if (digId !== null) return;
+      digId = e.pointerId;
+      try { dig.setPointerCapture(digId); } catch (err) { /* noop */ }
+      dig.classList.add('on');
+      digFace.src = DSPR.bigBtn(true);
+      digDown();
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) dig.addEventListener(ev, (e) => { if (e.pointerId !== digId) return; e.stopPropagation(); digEnd(); });
+    // Input clears mouse button 0 on ANY pointerup: another finger lifting must not end the dig
+    window.addEventListener('pointerup', (e) => { if (digId !== null && e.pointerId !== digId) { inp.mouse.buttons[0] = true; inp.mouse.released[0] = false; } });
+    const dJump = key('jump', 'Space', 'Jump', 'tc-d d-jump');
+    const dUse = key('use', 'KeyE', 'Use', 'tc-d d-use');
+    const dSnack = key('snack', 'KeyQ', 'Snack', 'tc-d d-snack');
+    const dTool = btn('tool', 'Next tool', 'tc-d d-tool', () => { inp.mouse.wheel += 1; ui.belt?.poke(); });
+    const deepPad = el('div', { class: 'tc-deep' }, [dTool, dSnack, dUse, dJump, dig]);
+
+    const look = el('div', { class: 'tc-look' });
+    let lookId = null, lx = 0, ly = 0;
+    look.addEventListener('pointerdown', (e) => {
+      swallow(e);
+      game.audio.init();
+      if (e.clientX < window.innerWidth * 0.45) {
+        // left side: the stick jumps under the thumb
+        if (pid !== null) return;
+        const r = stick.getBoundingClientRect();
+        stick.style.left = Math.max(0, e.clientX - r.width / 2) + 'px';
+        stick.style.bottom = Math.max(0, window.innerHeight - e.clientY - r.height / 2) + 'px';
+        pid = e.pointerId;
+        const r2 = stick.getBoundingClientRect();
+        cx = r2.left + r2.width / 2;
+        cy = r2.top + r2.height / 2;
+        R = r2.width * 0.36;
+        try { look.setPointerCapture(pid); } catch (err) { /* noop */ }
+        stick.classList.add('on');
+        steer(e);
+        return;
+      }
+      if (lookId !== null) return;
+      lookId = e.pointerId;
+      lx = e.clientX;
+      ly = e.clientY;
+      try { look.setPointerCapture(lookId); } catch (err) { /* noop */ }
+    });
+    look.addEventListener('pointermove', (e) => {
+      if (e.pointerId === pid) { swallow(e); steer(e); return; }
+      if (e.pointerId !== lookId) return;
+      swallow(e);
+      inp.look.dx += e.clientX - lx;
+      inp.look.dy += e.clientY - ly;
+      lx = e.clientX;
+      ly = e.clientY;
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) look.addEventListener(ev, (e) => {
+      if (e.pointerId === pid) { e.stopPropagation(); stopStick(); }
+      if (e.pointerId === lookId) { e.stopPropagation(); lookId = null; }
+    });
+    ui.root.insertBefore(look, ui.hud);
+
+    const root = el('div', { class: 'tc' }, [stick, pad, deepPad]);
     ui.root.append(root);
     game.touch = root;
 
     // never leave keys stuck when the controls vanish (panels, scene changes, app switch)
-    const releaseAll = () => { stopStick(); for (const c of [...held]) release(c); };
+    const releaseAll = () => { stopStick(); digEnd(); lookId = null; for (const c of [...held]) release(c); };
     window.addEventListener('blur', releaseAll);
     document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
     new MutationObserver(() => { if (ui.root.classList.contains('panel-open') || ui.root.classList.contains('no-touch')) releaseAll(); }).observe(ui.root, { attributes: true, attributeFilter: ['class', 'data-hud'] });

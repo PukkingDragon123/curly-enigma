@@ -14,11 +14,16 @@ import { Belt } from './Belt.js';
 import { openBackpack } from './Backpack.js';
 import { openJournal } from './Journal.js';
 import { qColor } from './common.js';
+import { Radar } from './Radar.js';
+import { Crosshair } from './Crosshair.js';
+import { openSurvey } from './Survey.js';
+import { DSPR } from './deepArt.js';
 import './hud.css';
 import './backpack.css';
 import './book.css';
 import './shop.css';
 import './touch.css';
+import './deep.css';
 
 export const COIN = () => specURL('ui:coin', { k: 'coin' });
 export const BOLT = () => specURL('ui:bolt', { k: 'bolt' });
@@ -74,6 +79,51 @@ export class UI {
     this.belt = new Belt(this);
     this.hotbarEl = this.belt.el;
 
+    // first person ('deep'): radar, crosshair, and "click to look around" while the mouse is free
+    this.radar = new Radar(this);
+    this.crosshair = new Crosshair(this);
+    this.lookCatch = el('div', { class: 'look-catch', 'aria-label': 'Click to look around' }, [
+      el('div', { class: 'look-card' }, [
+        el('img', { class: 'pix', src: DSPR.mouse(), alt: '' }),
+        el('div', {}, [el('b', {}, 'Click to look around'), el('small', {}, [el('kbd', {}, 'Esc'), ' frees the mouse'])]),
+      ]),
+    ]);
+    this.lookCatch.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.game.audio.init?.();
+      this.game.input.lockPointer();
+    });
+    this.root.insertBefore(this.lookCatch, this.hud);
+    this._lockLostAt = -1e9;
+    document.addEventListener('pointerlockchange', () => {
+      const locked = document.pointerLockElement === game.canvas;
+      this.root.classList.toggle('locked', locked);
+      if (locked) this.root.classList.remove('lock-failed');
+      if (!locked && !this._unlocking) this._lockLostAt = performance.now();
+      this._unlocking = false;
+    });
+    document.addEventListener('pointerlockerror', () => {
+      // no pointer lock here (embedded page, old browser): let clicks reach the game, look with a
+      // right-drag. Input retries without raw movement first, so only give up if that fails too.
+      clearTimeout(this._lockFailT);
+      this._lockFailT = setTimeout(() => { if (!document.pointerLockElement) this.root.classList.add('lock-failed'); }, 500);
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (this.hudMode === 'deep' && this.root.classList.contains('lock-failed') && (e.buttons & 2)) {
+        this.game.input.look.dx += e.movementX || 0;
+        this.game.input.look.dy += e.movementY || 0;
+      }
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyM' || e.repeat || this.hudMode !== 'deep' || !this.radar.provider) return;
+      const top = this.panelStack[this.panelStack.length - 1];
+      if (top && top.kind === 'survey') { top.close(); return; }
+      if (this.panelStack.length || game.transitioning || game.scene?.allowMenus === false) return;
+      this.openSurvey();
+    });
+
     const st = game.state;
     st.on('discover', (e) => this.discoverCard(e));
 
@@ -92,6 +142,7 @@ export class UI {
   setHudMode(mode) {
     this.hudMode = mode;
     this.root.dataset.hud = mode;
+    if (mode !== 'deep') { this.crosshair.set(null); this.releasePointer(); }
     if (mode === 'none') { this.setHotbar(null); this.setPrompt(null); this.setHints(null); }
     this.status.setMode(mode);
   }
@@ -111,6 +162,30 @@ export class UI {
 
   /** Touch screens: hide (false) or restore (true) the joystick and buttons, e.g. during a cutscene. */
   setTouchControls(on) { this.root.classList.toggle('no-touch', on === false); }
+
+  /**
+   * First-person radar. provider() → { x, y, z, heading, range, explored: { size, cell, data, ox?, oz? },
+   * markers: [{ kind, x, y, z, label, color, r? }] }, called ~10×/s while hud = 'deep'.
+   * The survey map calls provider({ survey: true, y }) for other depth layers (it may ignore the args).
+   * opts.heading: optional () => yaw, read every frame for a perfectly smooth turn.
+   */
+  setRadar(provider, opts = {}) { this.radar.set(provider, opts); }
+
+  /** First-person crosshair: { visible, kind: 'none'|'rock'|'ore'|'enemy'|'use', label, progress } or null. */
+  setCrosshair(o) { this.crosshair.set(o); }
+
+  /** The big survey map (also opened by tapping the radar or pressing M). */
+  openSurvey() {
+    if (this.panelStack.some((p) => p.kind === 'survey')) return null;
+    return openSurvey(this.game, this.radar);
+  }
+
+  /** Give the mouse back (panels, scene changes) without counting it as the player's Esc. */
+  releasePointer() {
+    if (!this.game.input.pointerLocked && !document.pointerLockElement) return;
+    this._unlocking = true;
+    this.game.input.unlockPointer();
+  }
 
   /** Backpack fill for this trip (shown on the backpack itself). setBag(null) clears it. */
   setBag(n, cap) { this.status.setBag(n, cap); }
@@ -133,6 +208,7 @@ export class UI {
     this._lastT = now;
     this.status.update(rdt);
     this.belt.update(rdt);
+    this.radar.update(rdt);
     this._buffTimer = (this._buffTimer || 0) + dt;
     if (this._buffTimer > 5) { this._buffTimer = 0; this.game.state.tickBuffs(); }
   }
@@ -273,6 +349,8 @@ export class UI {
   clearWorld() {
     this.world.innerHTML = '';
     this.bubbles.clear();
+    this.radar.set(null);
+    this.crosshair.set(null);
     // a new scene starts clean: no face mode, no trip bag
     if (this.focus) this.setFocusMode(false);
     this.setTouchControls(true);
@@ -284,7 +362,7 @@ export class UI {
 
   openPanel({ title, sub, body, className = '', width, onClose, closable = true, noBack = false }) {
     this.game.audio.play('ui_open');
-    const generic = !/\b(bp-panel|ib-panel|sh-panel|jr-panel)\b/.test(className);
+    const generic = !/\b(bp-panel|ib-panel|sh-panel|jr-panel|sv-panel)\b/.test(className);
     const panel = el('div', { class: 'panel ' + (generic ? 'sheet ' : '') + className, role: 'dialog', 'aria-label': title || 'Panel', style: width ? { width } : {} });
     if (title) panel.append(el('h2', {}, title));
     if (sub) panel.append(el('p', { class: 'sub', html: sub }));
@@ -297,6 +375,7 @@ export class UI {
     this.overlay.append(back);
     this.panelStack.push(handle);
     this.root.classList.add('panel-open');
+    this.releasePointer();
     this.game.input.enabled = false;
     this.game.input.clearAll();
     return handle;
@@ -371,6 +450,8 @@ export class UI {
   // ------------------------------------------------------------ pause journal
   openMenu() {
     if (this.panelStack.length) return;
+    // in first person the browser spends the first Esc on freeing the mouse: don't also pause
+    if (this.hudMode === 'deep' && (this.game.input.pointerLocked || performance.now() - this._lockLostAt < 600)) return;
     openJournal(this.game);
   }
 }
