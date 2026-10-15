@@ -53,6 +53,11 @@ vm.use(kind, on);                        // continuous use: brush / drill / x-ra
 vm.eat(itemId); vm.hurt(); vm.dispose();
 ```
 
+Also: `vm.world` (a group the scene adds to its world scene once: the x-ray beam haze, which the
+overlay pass can't blend; pass `camera` to `update()` so it lines up), `update()` options `camera`
+and `heat` (0–1 drill glow), `vm.tipView(out)` (tool tip in view space), `vm.shake`, `vm.heat`,
+`vm.busy`; `TOOL_KINDS` and `VMV` (voxel size) are exported. Showroom: `?scene=showroom&mode=fps`.
+
 ## HUD (`hud = 'deep'`)
 
 - `ui.setRadar(provider | null, { heading: () => yaw })`: `provider(o)` returns
