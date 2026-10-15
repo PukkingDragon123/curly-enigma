@@ -85,9 +85,45 @@ export function paintHomeTile(S, tx, ty, id) {
     }
     if (hash2(tx, ty, 150) < 0.22) worm(S, x0 + hash2(tx, ty, 151) * T, y0 + 2, Math.PI / 2 + (hash2(tx, ty, 152) - 0.5), 18 + hash2(tx, ty, 153) * 20, { width: 2, color: 0x5a3e26, height: 1.2, seed: tx * 31 + ty, taper: true, wander: 0.4 });
     if (hash2(tx, ty, 160) < 0.3) worm(S, x0 + hash2(tx, ty, 161) * T, y0 + hash2(tx, ty, 162) * T, hash2(tx, ty, 163) * 6.28, 10 + hash2(tx, ty, 164) * 12, { width: 1.4, dark: 0.66, height: -0.5, seed: tx * 7 + ty * 3, wander: 0.9 });
+    roomFeatures(S, tx, ty);
   }
   // the stone painter writes whole cells: clip anything outside the tile back (re-painted by neighbours)
   void seed;
+}
+
+/**
+ * Things that belong to this burrow rather than to a tile: moss creeping out from the damp back
+ * walls, a path worn smooth from the old door into the room, and earth scattered around the spot
+ * under the hole in the ceiling. Dirt tiles only; positions are in room tiles.
+ */
+function roomFeatures(S, tx, ty) {
+  const T = HTPX, W = S.w / T, D = S.h / T;
+  const x0 = tx * T, y0 = ty * T;
+  // the worn path: door (west wall, near the front) → middle of the room
+  const ax = 0.3, az = D - 1.5, bx = W * 0.42, bz = D * 0.42;
+  const vx = bx - ax, vz = bz - az, L2 = vx * vx + vz * vz;
+  for (let y = y0; y < y0 + T; y++) for (let x = x0; x < x0 + T; x++) {
+    const px = (x + 0.5) / T, pz = (y + 0.5) / T, i = x + y * S.w;
+    // path
+    const k = Math.max(0, Math.min(1, ((px - ax) * vx + (pz - az) * vz) / L2));
+    const dp = Math.hypot(px - (ax + vx * k), pz - (az + vz * k)) + (hash2(x >> 2, y >> 2, 171) - 0.5) * 0.18;
+    if (dp < 0.42) {
+      S.c[i] = mul(mix(S.c[i], 0x86603e, 0.35), 1.04);
+      S.ht[i] *= 0.4;
+      S.wet[i] = Math.max(S.wet[i], 40);
+    }
+    // moss near the back walls (damp), in patches
+    const dw = Math.min(px, pz);
+    if (dw < 0.55) {
+      const m = hash2(x >> 3, y >> 3, 172) + (0.55 - dw) * 1.1 - 0.95 + (hash2(x >> 1, y >> 1, 173) - 0.5) * 0.25;
+      if (m > 0) {
+        const h = hash2(x, y, 174);
+        S.c[i] = h < 0.3 ? 0x3a6a2c : h < 0.75 ? 0x4a7a36 : h < 0.95 ? 0x5e9040 : 0x7ab84a;
+        S.ht[i] = 0.8 + hash2(x >> 1, y >> 1, 175) * 0.9;
+        S.wet[i] = 30;
+      }
+    }
+  }
 }
 
 /** Paint a whole room floor. floorMap: {"x,y": id}. Returns {S, tex}. */

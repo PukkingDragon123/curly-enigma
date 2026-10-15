@@ -1,14 +1,21 @@
 // The player's burrow: an isometric room you can walk around, decorate and live in.
-// Bed (sleep), home forge, stove, Nugget's coop, planters, the index desk, seats,
-// lamps and a build mode for placing furniture, painting floors and walls.
+// It is where the mole lands after falling from the surface (the hole and its shaft of light
+// stay), the base for digging: walk up to any wall and dig into the deep (tunnel mouths stay
+// open in the walls), and home to the bed (sleep), forge, stove, Nugget's coop, planters,
+// the index desk, seats, lamps and a build mode for furniture, floors and walls.
+// The door to Deep Town stays caved in until the way into town has been dug.
 import * as THREE from 'three';
 import { IsoScene } from '../iso/IsoScene.js';
 import { HomeRoom } from '../iso/HomeRoom.js';
 import { buildFurniture } from '../iso/furniture.js';
 import { withView, viewForYaw } from '../iso/mesher.js';
-import { footprint, roomSize, doorTile } from '../iso/homeLayout.js';
+import { footprint, roomSize, doorTile, digSpots, tunnelList, TUNNEL_SLOTS, HOLE, WINDOW_SLOTS, occupancy } from '../iso/homeLayout.js';
 import { BuildMode } from '../iso/BuildMode.js';
 import { WATER_TIME } from '../iso/water.js';
+import { beamTexture } from '../iso/pixel.js';
+import { holeHeap, toolsLeaning, broom, firewood, letterCrate, ragRug } from '../iso/homeDecor.js';
+import { glowShrooms, bucket } from '../iso/props.js';
+import { HomeLanding } from '../iso/homeLanding.js';
 import { FURNITURE } from '../data/furniture.js';
 import { ITEMS } from '../data/items.js';
 import { iconURL } from '../gfx/PixelArt.js';
@@ -17,6 +24,9 @@ import { midiToFreq } from '../core/Audio.js';
 
 const _v = new THREE.Vector3();
 const TUNE = [72, 76, 79, 76, 74, 77, 81, 77, 72, 76, 79, 84, 83, 79, 76, 74];
+const WALLS4 = ['n', 's', 'e', 'w'];
+/** Touch screens get "tap" wording. */
+const isTouch = () => document.documentElement.classList.contains('is-touch') || !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 
 export default class HomeScene extends IsoScene {
   async enter(params = {}) {
@@ -25,54 +35,70 @@ export default class HomeScene extends IsoScene {
     const st = this.game.state;
     const d = st.data;
     const t0 = performance.now();
+    const from = params.from || 'continue';
     st.flag('lastScene', 'home');
     st.flag('homeVisited', true);
+    if (from === 'fall') { st.flag('fallen', true); st.flag('nugget', true); }
     if (!d.home.planters) d.home.planters = {};
     if (!d.home.floor) d.home.floor = {};
     const [W, D] = roomSize(d.home.level);
     this.W = W;
     this.D = D;
-    this.initIso({ w: W, h: D, zoom: 9.6, minZoom: 6.5, maxZoom: 13, lights: 6, lightRange: 16, bg: 0x110b0f });
+    this.initIso({ w: W, h: D, zoom: 9.6, minZoom: 6.5, maxZoom: 13, lights: 6, lightRange: 16, bg: 0x0e090c });
     this.cam.bounds = null;
-    this.post = { vignette: 0.42 };
+    this.post = { vignette: 0.46 };
     WATER_TIME.value = 0;
 
     // lighting: warm burrow ambience + a key light that separates the voxel faces
-    this.scene.add(new THREE.HemisphereLight(0xffdcb8, 0x3a2418, 1.15));
-    const key = new THREE.DirectionalLight(0xffe2c4, 0.85);
+    this.scene.add(new THREE.HemisphereLight(0xffd8b0, 0x3a2418, 0.9));
+    const key = new THREE.DirectionalLight(0xffe2c4, 0.7);
     key.position.set(-3, 9, 7);
     this.scene.add(key);
 
+    // tunnels dug from these walls (owned by the deep scene; the one we just came out of is drawn even if unsaved)
+    const arrived = from === 'tunnel' && WALLS4.includes(params.wall) ? { wall: params.wall, t: parseFloat(params.t) } : null;
+    this.tunnels = tunnelList(d, arrived && isFinite(arrived.t) ? arrived : null).filter((tn) => (tn.wall === 'n' || tn.wall === 's' ? tn.t < W : tn.t < D));
+    TUNNEL_SLOTS.n = new Set(this.tunnels.filter((t) => t.wall === 'n').map((t) => Math.floor(t.t)));
+    TUNNEL_SLOTS.w = new Set(this.tunnels.filter((t) => t.wall === 'w').map((t) => Math.floor(t.t)));
+    this.doorOpen = !!st.flag('escaped');
+
     this.room = new HomeRoom(this.scene);
-    this.room.build(W, D, d.home.wall, d.home.floor);
+    this.room.build(W, D, d.home.wall, d.home.floor, { tunnels: this.tunnels, doorOpen: this.doorOpen, hole: HOLE });
     this.own(() => this.room.dispose());
     for (const L of this.room.sconces) {
-      this.addLight({ x: L.x, y: L.y, z: L.z, color: 0xffc27a, intensity: 6.5, distance: 8, flicker: 0.1, pool: 2.2, poolOpacity: 0.16, poolX: L.x + (L.z < 0.5 ? 0 : 1.1), poolZ: L.z + (L.z < 0.5 ? 1.1 : 0), halo: 0.75, haloOpacity: 0.5, priority: 3 });
+      this.addLight({ x: L.x, y: L.y, z: L.z, color: 0xffc27a, intensity: 6, distance: 8, flicker: 0.1, pool: 2.2, poolOpacity: 0.16, poolX: L.x + (L.z < 0.5 ? 0 : 1.1), poolZ: L.z + (L.z < 0.5 ? 1.1 : 0), halo: 0.75, haloOpacity: 0.5, priority: 3 });
     }
+    this.buildAmbience();
 
     // furniture
     this.items = new Map();
+    this.loose = [];
+    this.buildLoose();
     for (const p of d.home.placed) this.addPlaced(p);
     this.rebuildCollision();
 
-    // door to town, poster
+    // door to town (caved in until the way into Deep Town has been dug), poster
     const door = doorTile(W, D);
     this.doorPos = { x: 0.55, z: door.y + 0.5 };
-    this.addInteractable({ x: this.doorPos.x, z: this.doorPos.z, r: 1.15, label: 'Out to Deep Town', action: () => this.leave() });
+    if (this.doorOpen) this.addInteractable({ x: this.doorPos.x, z: this.doorPos.z, r: 1.15, label: 'Out to Deep Town', action: () => this.leave() });
+    else this.addInteractable({ x: this.doorPos.x, z: this.doorPos.z, r: 1.0, priority: -0.1, label: 'Blocked', action: () => this.blockedDoor() });
     this.addInteractable({ x: this.room.poster.cx, z: 0.7, r: 1.0, priority: -0.2, label: 'Look at the poster', action: () => this.lookPoster() });
+    this.addInteractable({ x: 0.75, z: WINDOW_SLOTS[0] + 0.5, r: 0.9, priority: -0.15, label: 'Peek through the window', action: () => this.peekWindow() });
 
     // player & Nugget
-    const from = params.from || 'continue';
-    this.spawnByFrom(from);
-    // Nugget lives here once she has been found on the way out of the tunnels
+    this.spawnByFrom(from, params);
+    // Nugget lives here once she has fallen with the mole (or been found on the way out)
     if (st.flag('nugget')) {
-      const coop = this.findKind('coop');
-      // she starts by her coop: in front of it, else beside or behind it, else next to the player
-      const cands = coop ? [[0.5, 1.35], [1.4, 0.5], [-0.4, 0.5], [0.5, -0.4], [1.4, 1.35], [-0.4, 1.35]].map(([dx, dz]) => [coop.p.x + dx, coop.p.y + dz]) : [];
-      cands.push([this.player.x + 0.8, this.player.z + 0.6], [this.player.x + 0.7, this.player.z + 0.5]);
-      const ns = cands.find(([x, z]) => x > 0.3 && z > 0.3 && x < W - 0.3 && z < D - 0.3 && this.map.freeAt(x, z, 0.2)) || cands[cands.length - 1];
-      this.spawnNugget(ns[0], ns[1]);
-      this.map.resolve(this.nugget.pos, 0.17);
+      if (from === 'fall') this.spawnNugget(HOLE.x + 0.3, HOLE.z + 0.2);
+      else {
+        const coop = this.findKind('coop');
+        // she starts by her coop: in front of it, else beside or behind it, else next to the player
+        const cands = coop ? [[0.5, 1.35], [1.4, 0.5], [-0.4, 0.5], [0.5, -0.4], [1.4, 1.35], [-0.4, 1.35]].map(([dx, dz]) => [coop.p.x + dx, coop.p.y + dz]) : [];
+        cands.push([this.player.x + 0.8, this.player.z + 0.6], [this.player.x + 0.7, this.player.z + 0.5]);
+        const ns = cands.find(([x, z]) => x > 0.3 && z > 0.3 && x < W - 0.3 && z < D - 0.3 && this.map.freeAt(x, z, 0.2)) || cands[cands.length - 1];
+        this.spawnNugget(ns[0], ns[1]);
+        this.map.resolve(this.nugget.pos, 0.17);
+      }
       this.nuggetAI.home = { x0: 0, z0: 0, x1: W - 1, z1: D - 1 };
     }
     this.napT = rand(25, 45);
@@ -86,12 +112,228 @@ export default class HomeScene extends IsoScene {
     this.ambientLoop('fire', () => this.nearKindVol('fireplace', 5, 0.4) + this.nearKindVol('stove', 3, 0.15));
     this.ambientLoop('water', () => this.nearKindVol('fountain', 4, 0.22) + this.nearKindVol('fish_tank', 2.5, 0.08));
 
-    if (from === 'newgame') this.wakeUp(this.findKind('bed'), true);
+    if (from === 'fall') { this.landing = new HomeLanding(this); this.landing.run(); }
+    else if (from === 'tunnel') this.stepOutOfTunnel(arrived);
+    else if (from === 'newgame') this.wakeUp(this.findKind('bed'), true);
     else if (from === 'faint' || from === 'bed' || from === 'sleep') this.wakeUp(this.findKind('bed'), false);
+    if (from !== 'fall' && !this.doorOpen && !this.tunnels.length) this.later(1.2, () => this.showDigHint());
     this.buildMs = performance.now() - t0;
     console.info(`[home] built in ${this.buildMs.toFixed(0)} ms (floor ${(this.room.floorMs || 0).toFixed(0)})`);
     const r = this.game.engine?.renderer;
     if (r && r.compileAsync) { try { await r.compileAsync(this.scene, this.camera); } catch (e) { console.warn(e); } }
+  }
+
+  // ------------------------------------------------------------ light, air and life
+  /** The shaft of light from the hole, the crystal window's glow, fungi, lanterns, motes and fireflies. */
+  buildAmbience() {
+    const room = this.room, H = HOLE, P = this.particles;
+    // light shaft from the hole the mole fell through
+    const mat = new THREE.MeshBasicMaterial({ map: beamTexture(0.17), color: 0xffd98a, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const L = 15, tilt = -0.05;
+    const mk = (w, op) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, L), mat.clone());
+      m.material.opacity = op;
+      // the card sits at the back of the shaft so things standing in the light stay in front of it
+      m.position.set(H.x - 0.42 - (L / 2) * Math.sin(tilt) * Math.SQRT1_2, (L / 2) * Math.cos(tilt) - 0.02, H.z - 0.42 + (L / 2) * Math.sin(tilt) * Math.SQRT1_2);
+      m.rotation.set(0, Math.PI / 4, tilt);
+      m.renderOrder = 8;
+      this.scene.add(m);
+      return m;
+    };
+    this.beam = [mk(1.8, 0.5), mk(1.0, 0.42)];
+    mat.dispose();
+    this.addLight({ x: H.x, y: 2.6, z: H.z, color: 0xffeccc, intensity: 8, distance: 5.5, flicker: 0, real: true, priority: 4, pool: 1.3, poolOpacity: 0.42, poolColor: 0xffe8b8 });
+    // lanterns hanging from the (cut-away) ceiling
+    for (const l of this.room.hanging) this.addLight({ x: l.x, y: l.y, z: l.z, color: 0xffb860, intensity: 3.5, distance: 4.5, flicker: 0.12, real: true, priority: 1, pool: 1.2, poolOpacity: 0.2, poolX: l.x, poolZ: l.z, halo: 0.55, haloOpacity: 0.55 });
+    // motes drifting in the shaft, and now and then a trickle of earth from the hole
+    P.addEmitter({ every: 0.14, emit: (p) => {
+      const y = rand(0.15, 4.2), a = rand(0, 6.28), r = Math.sqrt(Math.random()) * 0.42;
+      p.spawn({ x: H.x + Math.cos(a) * r, y, z: H.z + Math.sin(a) * r, vy: rand(-0.04, 0.05), vx: rand(-0.03, 0.03), life: rand(3, 5), size: rand(1, 1.6), color: 0xfff8dc, alpha: 0.85, alpha2: 0, add: true, wob: 0.12, blink: 4 });
+    } });
+    this.trickleT = rand(3, 6);
+    // the crystal window: a cool real light, a pool on the floor, a halo on the glass
+    const w = room.windowLight;
+    this.addLight({ x: w.x + 0.25, y: w.y, z: w.z, color: 0x6ad8ff, intensity: 3.2, distance: 4.6, flicker: 0.06, speed: 0.4, real: true, priority: 2, pool: 1.15, poolOpacity: 0.2, poolX: 1.0, poolZ: w.z, halo: 0.8, haloOpacity: 0.32, hx: 0.12, hy: w.y, hz: w.z });
+    // glowing fungi and the lanterns at the tunnel mouths
+    for (const f of room.fungi) this.addLight({ x: f.x, y: f.y, z: f.z, color: f.color, intensity: 0, real: false, pool: 0.65, poolOpacity: 0.16, halo: 0.42, haloOpacity: 0.3, flicker: 0.08, speed: 0.3 });
+    for (const l of room.lanterns) this.addLight({ x: l.x, y: l.y, z: l.z, color: 0xffb050, intensity: 2.2, distance: 3.2, flicker: 0.18, real: false, pool: 0.85, poolOpacity: 0.22, poolY: 0.035, poolX: l.x, poolZ: l.z, halo: 0.45, haloOpacity: 0.5 });
+    // fireflies around the window and the fungi
+    const spots = [{ x: 0.9, z: WINDOW_SLOTS[0] + 0.5, y: 1.2 }, ...room.fungi];
+    P.addEmitter({ every: 0.7, emit: (p) => {
+      const s = pick(spots);
+      p.spawn({ x: s.x + rand(-0.6, 0.6), y: s.y + rand(-0.2, 0.9), z: s.z + rand(-0.6, 0.6), vx: rand(-0.1, 0.1), vy: rand(-0.05, 0.08), vz: rand(-0.1, 0.1), life: rand(4, 7), size: rand(1.3, 2), color: pick([0xc8ff7a, 0x9affd8, 0xfff0a0]), alpha: 1, alpha2: 0, add: true, wob: 0.5, blink: rand(3, 6) });
+    } });
+  }
+
+  /** Loose things that sit on a floor tile and only show while the tile is free of furniture. */
+  buildLoose() {
+    const { W, D } = this;
+    const add = (tiles, make, x, z, yaw = 0, o = {}) => {
+      const obj = withView(viewForYaw(yaw), make);
+      obj.position.set(x, 0, z);
+      obj.rotation.y = yaw;
+      this.scene.add(obj);
+      const rec = { tiles, obj, ...o };
+      this.loose.push(rec);
+      return rec;
+    };
+    // the old owner's rag rug in the middle of the room (hidden under furniture and player rugs)
+    const rx = Math.min(W - 1.6, 5.6), rz = Math.min(D - 1.4, 4.6);
+    const rugTiles = [];
+    for (let y = Math.floor(rz - 0.8); y <= Math.floor(rz + 0.8 - 0.01); y++) for (let x = Math.floor(rx - 1.2); x <= Math.floor(rx + 1.2 - 0.01); x++) rugTiles.push({ x, y });
+    add(rugTiles, () => ragRug(2.4, 1.6, 6), rx, rz, 0, { rug: true });
+    // what came down with the mole, under the hole
+    this.heap = add([{ x: Math.floor(HOLE.x), y: Math.floor(HOLE.z) }], () => holeHeap(11), HOLE.x, HOLE.z, 0.3);
+    add([{ x: 0, y: 0 }], () => firewood(3), 0.42, 0.4, 0.2);
+    add([{ x: W - 1, y: 0 }], () => broom(2), W - 0.3, 0.05, -0.15);
+    add([{ x: W - 1, y: 0 }], () => letterCrate(5), W - 0.62, 0.48, -0.1);
+    add([{ x: 0, y: D - 3 }], () => toolsLeaning(1), 0.06, D - 2.5, Math.PI / 2);
+    add([{ x: 0, y: WINDOW_SLOTS[0] }], () => glowShrooms(7, 1, 0.55).obj, 0.32, WINDOW_SLOTS[0] + 0.5, 0.4);
+    // a bucket and a pot that the landing knocks over
+    const kx = Math.min(W - 1, Math.floor(HOLE.x) + 1), kz = Math.max(0, Math.floor(HOLE.z) - 1);
+    this.knock = add([{ x: kx, y: kz }], () => {
+      const g = new THREE.Group();
+      const b = bucket(false);
+      const bo = b.obj || b;
+      bo.position.set(-0.12, 0, 0.05);
+      const pot = glowShrooms(19, 2, 0.32).obj;
+      pot.position.set(0.22, 0, -0.12);
+      g.add(bo, pot);
+      return g;
+    }, kx + 0.5, kz + 0.5, 0.2);
+  }
+
+  /** Show loose things whose tiles are free; called after every furniture change. */
+  refreshLoose() {
+    const occ = occupancy(this.game.state.data.home.placed);
+    for (const r of this.loose) r.obj.visible = r.tiles.every((t) => !occ.floor.has(t.x + ',' + t.y) && !(r.rug && occ.rugs.has(t.x + ',' + t.y)));
+  }
+
+  /** The landing tips the bucket and the pot over. */
+  knockOver() {
+    const k = this.knock;
+    if (!k || !k.obj.visible) return;
+    const [b, pot] = k.obj.children;
+    this.game.audio.play('clunk', { vol: 0.6 });
+    this.tween(0.45, (t) => {
+      const e = 1 - (1 - t) ** 3;
+      if (b) { b.rotation.z = e * Math.PI / 2; b.position.set(-0.12 - e * 0.25, e * 0.12, 0.05 + e * 0.1); }
+      if (pot) { pot.rotation.x = e * 1.2; pot.position.set(0.22 + e * 0.1, 0, -0.12 + e * 0.15); }
+    });
+    this.particles.dustPuff(k.obj.position.x, 0.1, k.obj.position.z, 6, 0x7a5a3a);
+  }
+
+  // ------------------------------------------------------------ digging
+  /** One interactable per diggable wall spot (rebuilt when furniture changes what hangs on the walls). */
+  rebuildDigSpots() {
+    for (const it of this.digIts || []) this.removeInteractable(it);
+    this.digIts = [];
+    for (const s of digSpots(this.game.state.data.home.placed, this.W, this.D)) {
+      const tile = { x: Math.floor(s.x), y: Math.floor(s.z) };
+      const tn = this.tunnelAt(s);
+      this.digIts.push(this.addInteractable({
+        x: s.x, z: s.z, r: 0.66, priority: tn ? 0.1 : -0.35,
+        label: tn ? 'Into the tunnel' : 'Dig',
+        enabled: () => this.canDigHere(s, tile),
+        action: () => this.digAt(s),
+      }));
+    }
+  }
+
+  tunnelAt(s) { return this.tunnels.find((t) => t.wall === s.wall && Math.floor(t.t) === Math.floor(s.t)) || null; }
+
+  /** Facing the wall, on a free tile, not building. */
+  canDigHere(s, tile) {
+    const p = this.player;
+    if (!p || this.build?.active || this.map.blocked(tile.x, tile.y)) return false;
+    const f = p.rig.facing ?? 0;
+    return -(Math.sin(f) * s.nx + Math.cos(f) * s.nz) > 0.35;
+  }
+
+  async digAt(s) {
+    if (this.locked) return;
+    const p = this.player;
+    const tn = this.tunnelAt(s);
+    this.locked = true;
+    this.game.ui.setHints(null);
+    const wx = s.x - s.nx * 0.42, wz = s.z - s.nz * 0.42; // the wall face
+    p.faceToward(wx, wz, true);
+    if (tn) {
+      // walk into the dark mouth
+      p.collide = false;
+      await this.walkTo(p, s.x - s.nx * 0.55, s.z - s.nz * 0.55, 1.8);
+      this.game.audio.play('step', { mat: 'dirt' });
+    } else {
+      p.rig.play('dig');
+      for (let i = 0; i < 3; i++) {
+        await this.sleepFor(0.26);
+        this.game.audio.play(i === 2 ? 'debris' : 'chop', { pitch: 0.9 + i * 0.08 });
+        this.particles.dustPuff(wx, 0.5 + i * 0.12, wz, 7, 0x6a4a32);
+        this.particles.burst(5, { x: wx, y: 0.6, z: wz, vx: s.nx * 1.2, vz: s.nz * 1.2, vy: 1.2, life: 0.6, size: 2, color: 0x5a3e2a, alpha: 1, alpha2: 1, grav: 7 }, { x: 0.1, y: 0.1, z: 0.1, v: 0.6 });
+        this.cam.shake = 0.25;
+      }
+      p.rig.play('idle');
+    }
+    this.game.goto('deep', { from: 'home', wall: s.wall, t: s.t }, { transition: 'fade', dur: 0.5 });
+  }
+
+  /** Walk an actor (no collision) to a point. */
+  walkTo(a, x, z, speed = 1.8) {
+    return new Promise((res) => {
+      a.scripted = true;
+      const tick = (dt) => {
+        const dx = x - a.x, dz = z - a.z, dd = Math.hypot(dx, dz);
+        if (dd < 0.05) {
+          a.drive(dt, 0, 0, null);
+          a.scripted = false;
+          this.tickers.splice(this.tickers.indexOf(tick), 1);
+          res();
+          return;
+        }
+        const sp = Math.min(speed, dd * 4 + 0.3);
+        a.drive(dt, (dx / dd) * sp, (dz / dd) * sp, null, { accel: 20 });
+      };
+      this.tickers.push(tick);
+    });
+  }
+
+  /** Coming back up a tunnel: appear in its mouth and step into the room. */
+  async stepOutOfTunnel(tn) {
+    if (!tn) return;
+    const p = this.player;
+    const s = { n: [0, 1], s: [0, -1], w: [1, 0], e: [-1, 0] }[tn.wall];
+    const tx = p.x + s[0] * 0.75, tz = p.z + s[1] * 0.75;
+    this.locked = true;
+    p.collide = false;
+    this.particles.dustPuff(p.x, 0.2, p.z, 8, 0x6a4a32);
+    this.game.audio.play('step', { mat: 'dirt' });
+    await this.walkTo(p, tx, tz, 1.6);
+    p.collide = true;
+    this.map.resolve(p.pos, p.radius);
+    this.locked = false;
+  }
+
+  showDigHint() {
+    if (this.game.state.flag('escaped')) return;
+    this.game.ui.setHints(isTouch() ? 'Walk up to a wall and tap <b>Dig</b> to tunnel out' : 'Walk up to a wall and press <kbd>E</kbd> to dig your way out');
+    this.hintT = 14;
+  }
+
+  blockedDoor() {
+    const p = this.player;
+    p.faceToward(-1, this.doorPos.z);
+    p.rig.doEmote('shake', 1);
+    this.game.audio.play('debris', { vol: 0.5 });
+    this.particles.dustPuff(0.35, 0.6, this.doorPos.z, 6, 0x6a4a32);
+    this.say(p, pick(['Caved in solid. I\'ll have to dig another way.', 'Rocks all the way up. Better dig through a wall.']));
+  }
+
+  peekWindow() {
+    const p = this.player;
+    p.faceToward(-1, WINDOW_SLOTS[0] + 0.5);
+    this.emote(p, '✦', { color: '#3a9ad0' });
+    this.game.audio.play('glow');
+    this.particles.burst(6, { x: 0.3, y: 1.35, z: WINDOW_SLOTS[0] + 0.5, vx: 0.4, vy: 0.2, life: 1.4, size: 1.6, color: 0x9affd8, alpha: 1, alpha2: 0, add: true, wob: 0.6, blink: 5 }, { x: 0.05, y: 0.2, z: 0.25, v: 0.2 });
   }
 
   // ------------------------------------------------------------ furniture records
@@ -189,7 +431,12 @@ export default class HomeScene extends IsoScene {
       map.setMat(x, y, id === 'floor_plank' ? 'wood' : id === 'floor_dirt' || id === 'floor_moss' || id === 'floor_carpet' ? 'dirt' : 'stone');
     }
     for (const rec of this.items.values()) if (FURNITURE[rec.p.id]?.kind === 'rug') map.fillMat(rec.p.x, rec.p.y, rec.fw, rec.fd, 'dirt');
-    if (this.player && !this.seat && !this.playerPosed) this.map.resolve(this.player.pos, this.player.radius);
+    // the rubble choking the door to town
+    if (this.doorBlock) map.removeCircle(this.doorBlock);
+    this.doorBlock = this.doorOpen === false ? map.addCircle(0.15, this.D - 1.5, 0.62) : null;
+    this.refreshLoose();
+    this.rebuildDigSpots();
+    if (this.player && !this.seat && !this.playerPosed && !this.player.scripted) this.map.resolve(this.player.pos, this.player.radius);
   }
 
   addEmitters(rec) {
@@ -244,7 +491,7 @@ export default class HomeScene extends IsoScene {
   }
 
   // ------------------------------------------------------------ spawning
-  spawnByFrom(from) {
+  spawnByFrom(from, params = {}) {
     const W = this.W, D = this.D;
     let spot = null;
     if (from === 'forge' || from === 'stove' || from === 'cooking') {
@@ -255,12 +502,20 @@ export default class HomeScene extends IsoScene {
       const rec = this.findKind('bed');
       if (rec) spot = this.besideItem(rec);
     }
+    if (from === 'fall') spot = { x: HOLE.x, z: HOLE.z, yaw: 0.6 };
+    if (from === 'tunnel' && WALLS4.includes(params.wall)) {
+      // in the tunnel's mouth, facing into the room
+      const t = clamp(parseFloat(params.t) || 0.5, 0.3, (params.wall === 'n' || params.wall === 's' ? W : D) - 0.3);
+      spot = { n: { x: t, z: 0.12, yaw: 0 }, s: { x: t, z: D - 0.12, yaw: Math.PI }, w: { x: 0.12, z: t, yaw: Math.PI / 2 }, e: { x: W - 0.12, z: t, yaw: -Math.PI / 2 } }[params.wall];
+      spot.raw = true;
+    }
+    if (!spot && !this.doorOpen) spot = { x: HOLE.x + 0.6, z: HOLE.z + 0.6, yaw: 0.6 };
     if (!spot) {
       spot = { x: this.doorPos.x + 0.35, z: this.doorPos.z, yaw: Math.PI / 2 };
       if (from === 'town') this.game.audio.play('door');
     }
     this.spawnPlayer(spot.x, spot.z, spot.yaw ?? 0);
-    this.map.resolve(this.player.pos, this.player.radius);
+    if (!spot.raw && from !== 'fall') this.map.resolve(this.player.pos, this.player.radius);
     if (spot.face) this.player.faceToward(spot.face.x, spot.face.z, true);
   }
 
@@ -561,7 +816,8 @@ export default class HomeScene extends IsoScene {
   update(dt) {
     WATER_TIME.value += dt;
     this.build.update(dt);
-    if (!this.build.active && this.player) {
+    this.tickAmbience(dt);
+    if (!this.build.active && this.player && !(this.landing && !this.landing.done)) {
       // soft follow: small rooms stay framed, big rooms follow the player more
       // (a phone held upright sees much less of the room across, so it follows more there)
       const k = Math.max(clamp((this.W + this.D - 18) / 12, 0.22, 0.85), this.cam.aspect < 1 ? 0.75 : 0);
@@ -590,7 +846,26 @@ export default class HomeScene extends IsoScene {
     }
   }
 
+  /** Dirt trickling from the hole now and then; the dig hint fades once used or ignored. */
+  tickAmbience(dt) {
+    this.trickleT -= dt;
+    if (this.trickleT <= 0) {
+      this.trickleT = rand(4, 9);
+      const H = HOLE, n = 6 + Math.floor(Math.random() * 8);
+      for (let i = 0; i < n; i++) {
+        this.particles.spawn({ x: H.x + rand(-0.12, 0.12), y: rand(3.6, 4.6), z: H.z + rand(-0.12, 0.12), vy: -rand(0, 0.6), life: 1.4, size: rand(1.2, 2), color: 0x6a4a32, alpha: 1, alpha2: 1, grav: 6, fn: (q) => { if (q.y < 0.05) q.dead = true; } });
+      }
+      if (this.player && Math.hypot(this.player.x - H.x, this.player.z - H.z) < 4) this.game.audio.play('trickle', { vol: 0.35 });
+    }
+    if (this.hintT > 0) {
+      this.hintT -= dt;
+      const near = this.focusIt && this.digIts?.includes(this.focusIt);
+      if (this.hintT <= 0 || near) { this.hintT = 0; this.game.ui.setHints(null); }
+    }
+  }
+
   exit() {
+    this.game.ui.setHints(null);
     super.exit();
   }
 }

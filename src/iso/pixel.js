@@ -125,8 +125,9 @@ export function shadowTexture() {
 }
 
 /** Vertical sunbeam: dithered soft edges and faint streaks. */
-export function beamTexture() {
-  return cached('beam', () => {
+/** A dithered light shaft (white; tint with the material). fade = fraction of the height that fades out at the bottom. */
+export function beamTexture(fade = 3 / 16) {
+  return cached('beam' + fade, () => {
     // 32 texels per world unit on the 2 x 16 beam plane, so the dither stays fine
     const w = 64, h = 512;
     const pc = new PixelCanvas(w, h);
@@ -140,8 +141,8 @@ export function beamTexture() {
         let v = Math.pow(Math.max(0, 1 - dx), 0.9) * streak(x);
         const fy = y / h;
         // fades out over the bottom ~3 units (so it doesn't wash over the booth behind the sun spot), brighter low
-        const lowFade = Math.min(1, (1 - fy) * (16 / 3));
-        v *= lowFade * lowFade * (0.55 + 0.45 * fy);
+        const lowFade = Math.min(1, (1 - fy) / fade), topFade = Math.min(1, fy / 0.15);
+        v *= lowFade * lowFade * topFade * (0.55 + 0.45 * fy);
         v = Math.max(0, Math.min(1, v));
         const lv = Math.floor(v * 6 + BAYER[(y % 4) * 4 + (x % 4)] / 16) / 6;
         if (lv > 0) pc.set(x, y, 0xffffff, Math.round(lv * 255));

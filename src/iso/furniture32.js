@@ -227,6 +227,13 @@ function coop(id, ctx) {
   g.box(15, 27, 31, 2, 2, 1, 0xf2c23a); // a little gold star
   // a feeder dish and a water cup outside
   ring(g, 4, 30, 0, 2.6, 0, 2, 0xb8603a); for (let k = 0; k < 4; k++) g.set(3 + (k % 2), 2, 29 + (k >> 1), 0xe0c070);
+  // Nugget's corner: a water cup, loose straw and a few dropped feathers on the boards
+  ring(g, 27.5, 29.5, 0, 2.4, 4, 6, 0x8a8a94); ring(g, 27.5, 29.5, 0, 1.6, 5, 6, 0x4aa8e0);
+  for (let k = 0; k < 14; k++) {
+    const x = 1 + Math.floor(hash2(k, 1, 31) * 30), z = 26 + Math.floor(hash2(k, 2, 31) * 6);
+    if (g.get(x, 4, z) < 0) g.set(x, 4, z, k % 3 ? 0xe8c870 : 0xd9b45a);
+  }
+  for (const [x, z] of [[7, 28], [23, 31], [13, 29]]) { g.set(x, 4, z, 0xfff6ea); g.set(x + 1, 4, z, 0xe8dcc8); }
   grp.add(M(g));
   const eggs = new THREE.Group();
   grp.add(eggs);

@@ -28,6 +28,9 @@ import { disposeTextures } from '../iso/surface.js';
 import { MESH_STATS, withView, viewForYaw, meshDefaults } from '../iso/mesher.js';
 import { SHOPS } from '../data/shops.js';
 import { ZONES, MAX_ZONE } from '../data/zones.js';
+
+/** Depth bands of the first-person underground, by zone/station (docs/DEEP.md). */
+const DEEP_DEPTHS = [[0, 25], [0, 25], [25, 55], [55, 90], [90, 130], [130, 170], [170, 210]];
 import { makeCharacter } from '../gfx/characters.js';
 import { el, rand, pick, chance, clamp, makeRng } from '../core/util.js';
 
@@ -646,27 +649,33 @@ export default class TownScene extends IsoScene {
   openLiftPanel() {
     if (this.locked) return;
     const st = this.game.state;
-    const max = clamp(st.data.zoneMax || 1, 1, MAX_ZONE);
+    // lift stations found down in the deep (station 0, the top of the shaft, is always there)
+    const found = [...new Set([0, ...(st.data.deep?.stations || []).map((n) => n | 0).filter((n) => n >= 0)])].sort((a, b) => a - b);
     const list = el('div', { class: 'list' });
-    for (let z = 1; z <= max; z++) {
-      const Z = ZONES[z];
-      const tag = el('div', { style: { width: 'calc(var(--px) * 16)', height: 'calc(var(--px) * 16)', background: Z.color, border: 'var(--px) solid var(--wood-dk)', display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 700, textShadow: '0 var(--px) 0 #000', fontFamily: 'var(--font-display)', fontSize: '1.3em' } }, String(z));
-      const row = el('div', { class: 'li interactive', style: { cursor: 'pointer' }, onclick: () => { h.close(); this.rideDown(z); } }, [
+    for (const n of found) {
+      const Z = ZONES[n] || null;
+      const dep = DEEP_DEPTHS[n];
+      const color = n === 0 ? '#6a5a4a' : Z?.color || '#5a4a5a';
+      const tag = el('div', { style: { width: 'calc(var(--px) * 16)', height: 'calc(var(--px) * 16)', background: color, border: 'var(--px) solid var(--wood-dk)', display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 700, textShadow: '0 var(--px) 0 #000', fontFamily: 'var(--font-display)', fontSize: '1.3em' } }, String(n));
+      const name = n === 0 ? 'Top of the shaft' : Z ? `${Z.name} station` : `Station ${n}`;
+      const desc = n === 0 ? 'Just below town. Soft earth and roots: a good place to start digging.' : Z?.desc || 'A lift stop you found on the way down.';
+      const row = el('div', { class: 'li interactive', style: { cursor: 'pointer' }, onclick: () => { h.close(); this.rideDown(n); } }, [
         tag,
         el('div', {}, [
-          el('div', { class: 'name' }, Z.name),
-          el('div', { class: 'desc' }, Z.desc),
-          el('div', { class: 'desc', style: { color: '#9a3a22' } }, '⚠ ' + Z.hazard),
+          el('div', { class: 'name' }, name),
+          el('div', { class: 'desc' }, desc),
+          Z && n > 0 ? el('div', { class: 'desc', style: { color: '#9a3a22' } }, '⚠ ' + Z.hazard) : null,
         ]),
-        el('span', { class: 'price', style: { flexDirection: 'column', alignItems: 'flex-end', fontSize: '.85em' } }, [`${Z.depth[0]}–${Z.depth[1]} m`, el('span', { class: 'btn', style: { marginTop: 'calc(var(--px) * 1.5)', padding: '0 calc(var(--px) * 3)' } }, 'Go')]),
+        el('span', { class: 'price', style: { flexDirection: 'column', alignItems: 'flex-end', fontSize: '.85em' } }, [dep ? `${dep[0]}–${dep[1]} m` : '', el('span', { class: 'btn', style: { marginTop: 'calc(var(--px) * 1.5)', padding: '0 calc(var(--px) * 3)' } }, 'Go')]),
       ]);
       list.append(row);
     }
-    if (max < MAX_ZONE) {
+    const next = found[found.length - 1] + 1;
+    if (next <= MAX_ZONE) {
       list.append(el('div', { class: 'li locked' }, [
         el('div', { style: { width: 'calc(var(--px) * 16)', height: 'calc(var(--px) * 16)', background: '#3a2a2a', border: 'var(--px) solid var(--wood-dk)', display: 'grid', placeItems: 'center', color: '#a08070' } }, '?'),
-        el('div', {}, [el('div', { class: 'name' }, '???'), el('div', { class: 'desc' }, 'The cable goes deeper than any stop you have reached.')]),
-        el('span', { class: 'price' }, `${ZONES[max + 1].depth[0]}+ m`),
+        el('div', {}, [el('div', { class: 'name' }, '???'), el('div', { class: 'desc' }, 'The cable goes deeper. Find the next station down there and ring its bell.')]),
+        el('span', { class: 'price' }, DEEP_DEPTHS[next] ? `${DEEP_DEPTHS[next][0]}+ m` : ''),
       ]));
     }
     this.game.audio.play('babble', { pitch: BRAMBLE.voice, n: 4 });
@@ -694,7 +703,7 @@ export default class TownScene extends IsoScene {
     });
   }
 
-  async rideDown(zone) {
+  async rideDown(station) {
     if (this.locked) return;
     const st = this.game.state;
     const L = TOWN.lift;
@@ -723,7 +732,7 @@ export default class TownScene extends IsoScene {
       this.crank.wheel.rotation.z = k * 9;
     });
     loop.stop(0.3);
-    this.game.goto('mine', { zone }, { transition: 'fade', dur: 0.5 });
+    this.game.goto('deep', { from: 'town', station }, { transition: 'fade', dur: 0.5 });
   }
 
   async arrive() {
