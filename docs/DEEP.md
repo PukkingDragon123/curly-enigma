@@ -123,3 +123,10 @@ Harvesting and catching (all optional, called by DigScene when present):
   reach, tool)`, `enemies.brushAt(eye, dir, reach)` (while brushing), `enemies.xrayAt(eye, dir,
   reach)` (while the x-ray lamp is on) → event arrays like `update()`'s.
 - `reach` is already clipped to the rock the crosshair hits.
+
+Fluids internals: flowing levels live in `world.fluidChunks` (chunk key → Uint8Array, 1..8 eighths,
+0 = untouched/full); the mesher reads them for sloped surfaces. Air↔fluid changes are written by
+Fluids straight into `chunk.vox` and `world.edits` (they never change the rock mesh, so they skip
+`setVoxel` and `onChange`); anything that makes rock goes through `setVoxel`. `fluidUniforms(U)`
+adds `fRip`, `fRipK`, `fJig`, `fLake`, `fLakeDrop` (ripples, wobble, draining lakes) to the shared
+uniforms.
