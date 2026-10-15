@@ -588,6 +588,7 @@ export default class DigScene extends Scene {
       st.data.zoneMax = Math.max(st.data.zoneMax || 1, zone);
       this.U.ambient.value.setRGB(...AMBIENT[zone]);
       this.U.fogCol.value.setRGB(...FOG[zone]);
+      this.scene.background.setRGB(...FOG[zone]);
       this.music = 'mine';
       g.ui.setDepth(`<b>${Math.floor(depth)} m</b><br>${ZONES[zone].name}`);
       if (this.time > 1) this.say('zone' + zone, `<b>${ZONES[zone].name}</b> · ${ZONES[zone].desc}`, 'good', 999);
@@ -765,7 +766,7 @@ export default class DigScene extends Scene {
 }
 
 // per-zone lamp-free light and fog colours
-const AMBIENT = [null, [0.06, 0.05, 0.05], [0.07, 0.055, 0.05], [0.05, 0.05, 0.08], [0.09, 0.045, 0.035], [0.05, 0.065, 0.085], [0.06, 0.04, 0.085]];
-const FOG = [null, [0.02, 0.014, 0.012], [0.025, 0.016, 0.012], [0.012, 0.014, 0.03], [0.05, 0.015, 0.008], [0.015, 0.025, 0.035], [0.02, 0.008, 0.035]];
+const AMBIENT = [null, [0.1, 0.08, 0.07], [0.1, 0.08, 0.07], [0.07, 0.08, 0.12], [0.13, 0.06, 0.045], [0.07, 0.095, 0.12], [0.09, 0.06, 0.13]];
+const FOG = [null, [0.018, 0.012, 0.01], [0.02, 0.013, 0.01], [0.01, 0.012, 0.026], [0.04, 0.011, 0.005], [0.012, 0.02, 0.03], [0.018, 0.008, 0.03]];
 
 export { ZONE_DEPTHS };
