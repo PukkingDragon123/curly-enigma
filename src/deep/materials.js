@@ -1,7 +1,7 @@
 // Voxel materials of the underground: palettes (packed into a texture for the terrain shader),
 // hardness, granularity, glow, fluids, and ore materials (ORE_BASE + ore id).
 import * as THREE from 'three';
-import { ORES } from '../mine/blocks.js';
+import { ORES } from '../data/ores.js';
 import { ITEMS } from '../data/items.js';
 
 export const VOX = 8; // voxels per meter

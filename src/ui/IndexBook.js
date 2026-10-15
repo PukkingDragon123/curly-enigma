@@ -9,7 +9,7 @@ import { MECHANICS } from '../data/mechanics.js';
 import { DISHES, RECIPES, BUFFS } from '../data/recipes.js';
 import { WEAPON_TYPES, METALS, gradeFor } from '../data/weapons.js';
 import { ZONES } from '../data/zones.js';
-import * as blocks from '../mine/blocks.js';
+import * as blocks from '../data/ores.js';
 import { creatureIconURL } from './UI.js';
 import { onSwipe, put } from './common.js';
 

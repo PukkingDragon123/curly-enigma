@@ -4,7 +4,7 @@
 // Units: voxels (1/8 m) unless a name ends in M (meters). y is up; depth = -y.
 import { makeNoise3D, h3, h3i } from './noise.js';
 import { M, VOX, ORE_BASE } from './materials.js';
-import { ORE_ID, ORE_SPAWN } from '../mine/blocks.js';
+import { ORE_ID, ORE_SPAWN } from '../data/ores.js';
 import { makeRng, clamp } from '../core/util.js';
 
 export const CS = 32; // chunk size (voxels)

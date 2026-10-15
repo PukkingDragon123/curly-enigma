@@ -3,7 +3,7 @@
 // little voxel model of the deposit itself (pristine if it was never struck and came free with the
 // chisel or brush), which then flies into the backpack.
 import { VOX, MAT, ORE_BASE } from './materials.js';
-import { ORES } from '../mine/blocks.js';
+import { ORES } from '../data/ores.js';
 import { h3 } from './noise.js';
 
 export class Ores {

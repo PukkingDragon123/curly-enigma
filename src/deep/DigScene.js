@@ -17,7 +17,7 @@ import { VOX, M, MAT, ORE_BASE } from './materials.js';
 import { roomSize } from '../iso/homeLayout.js';
 import { ITEMS, sellPrice } from '../data/items.js';
 import { ZONES } from '../data/zones.js';
-import { ORES } from '../mine/blocks.js';
+import { ORES } from '../data/ores.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { clamp, rand, chance, hexToRgb, formatGoldFull } from '../core/util.js';

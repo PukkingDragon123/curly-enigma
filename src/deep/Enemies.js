@@ -11,7 +11,7 @@ import { zoneAt, CS } from './Generator.js';
 import { VOX, M, MAT } from './materials.js';
 import { OPAQUE } from './Mesher.js';
 import { ITEMS } from '../data/items.js';
-import { ORE_SPAWN } from '../mine/blocks.js';
+import { ORE_SPAWN } from '../data/ores.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { clamp, rand } from '../core/util.js';
 import { VB, VS, rgb } from './enemies/vox.js';
