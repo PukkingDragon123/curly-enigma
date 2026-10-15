@@ -2,9 +2,9 @@
 
 *One million gold to the surface.*
 
-You are a very dirty mole stuck deep underground. A one-way **Surface Express** ticket costs **1,000,000 gold**. Dig for ore, forge it into weapons, sell everything, and when you can finally afford the ticket, go up to the surface and take a beach vacation with your chicken, Nugget.
+You are a very dirty mole who fell down a sinkhole into an old burrow deep underground, along with your chicken, Nugget. A one-way **Surface Express** ticket costs **1,000,000 gold**. Dig for ore, forge it into weapons, sell everything, and when you can finally afford the ticket, go up to the surface and take a beach vacation with your chicken, Nugget.
 
-Moleforge is a pixel-art voxel game that runs in the browser. It combines a side-view mining game with a medieval blacksmith sim, cooking, home building and a cozy underground town. Every model, texture, sound effect and music track is generated in code. There are no asset files.
+Moleforge is a pixel-art voxel game that runs in the browser. It combines first-person voxel mining with a medieval blacksmith sim, cooking, home building and a cozy isometric underground town. Every model, texture, sound effect and music track is generated in code. There are no asset files.
 
 ## Play
 
@@ -19,23 +19,27 @@ npm run build:single # one self-contained HTML file in dist-single/
 
 | | |
 |---|---|
-| Move | `A` `D` (`W` `S` in town and home) |
-| Jump / climb walls | `W` / `Space` (moles grip dirt) |
+| Move | `W` `A` `S` `D` |
+| Look around (underground) | Mouse (click the view to capture it, `Esc` frees it) |
+| Jump / climb a wall | `Space` (hold it against a wall to climb) |
+| Run | `Shift` |
 | Dig / use tool | Left mouse (hold) |
-| Grab, harvest, catch | Right mouse |
-| Tools | `1`–`8` or mouse wheel |
-| Interact | `E` |
+| Tools | `1`–`7` or mouse wheel |
+| Interact (dig out of a wall at home, doors, lift bell) | `E` |
 | Quick snack | `Q` |
+| Map | `M` (or click the radar) |
 | Index Book / Backpack / Journal | `B` / `I` or `Tab` / `Esc` |
 | Build mode (home) | `X`, rotate with `R` |
 
-On touch screens a carved stone stick moves the mole, and round buttons jump, use, snack and switch tools. Tap the rock to dig there, and push into a wall for the close-up. In the close-up, drag to aim and tap the back button to step away. Tap the backpack or the Index Book in the corner to open them. The game works in landscape and portrait.
+On touch screens, underground, the left half of the screen is a floating stick and dragging the right half looks around; a big leather button digs (hold it), with jump, use, snack and next-tool buttons around it. In town and at home a carved stone stick moves the mole. Tap the backpack or the Index Book in the corner to open them, and the radar for the map. The game works in landscape and portrait.
 
 ## What's in it
 
-- **You start trapped.** You wake up in a collapsed tunnel with no way to town. Dig your way through, find Nugget, and break out through the old boarded-up passage to reach Deep Town for the first time.
-- **Pixel-perfect mining in a 2D side view of 3D voxel rock.** The camera never rotates. Rock is simulated pixel by pixel (32 per tile), with its own grain, plates, pebbles, roots and crystal veins. Each blow knocks out irregular fracture pieces that fly as physical voxel debris, so there's no tile grid to dig along. Loose overhangs fall and shatter into rubble piles. Ceilings creak and cave in when you dig too wide, so place support beams. Sand and gravel pour, water and lava flow and react, and fire spreads through roots and coal. Everything is lit by a colored light grid with real shadows.
-- **Face mode.** Press up against a rock wall and the view drops into a close, first-person 2D pixel-art view of the rock with your own paws swinging the tool. Step back and it zooms out again.
+- **It starts with a fall.** A sunny meadow, a sinkhole that gives way, and a long tumble down a shaft of roots, fossils, a waterfall and a glow-worm grotto, crashing through the roof of an abandoned burrow with Nugget. The door to town is caved in and the hole is far too high to climb: walk up to any wall of the house and dig your way out.
+- **First-person mining in a 3D voxel underground.** Your own furry paws hold the pick, chisel, brush, drill and lamp. Rock is made of eighth-meter voxels drawn as pixel art, split into plates along visible cracks: each blow lands on the plate under the crosshair and, when it gives, the plate crumbles out of the wall as tumbling chunks and grit. Tunnel anywhere: down, sideways, into caverns, lava lakes and flooded caves. The world is generated lazily around you, remembers every voxel you dug, and the tunnels you dig from the house stay open as doorways in its walls.
+- **Radar and survey map.** A brass radar shows the tunnels you've explored, the way to Deep Town, home, ore areas nearby, danger zones (lava, floods, nests, gas) and lift stations. The survey map lets you look at any depth.
+- **Nugget comes along.** The hen trots after you through the tunnels, hops up ledges, flutters down drops and clucks at ore showing in the rock.
+- **The town and the burrow stay isometric.** The house is a cozy timber-framed burrow with a crystal window, a light shaft from the hole you fell through, lanterns and clutter, and every tunnel you dug.
 - **Almost no interface.** Everything on screen is an object. Your gold is a coin pouch that drops in when it changes, energy is a lantern flame, buffs are charms, and the day is a tear-off calendar. Your tools hang on a leather belt that tucks away to just the one in your paw. The backpack in the corner fills and bulges as you dig, and the Index Book leans against it. The backpack opens into leather pockets with paper tags on every item. The Index Book has sketches and charcoal silhouettes, with pages that turn in 3D. Shops have hanging signs, the keeper's portrait, shelves and price tags, and the assay office weighs your ore on a brass scale. Messages are notes pinned with a tack, prompts are chalk slates, and the pause menu is a little green journal.
 - **Careful extraction.** Ore hides inside rock until it's exposed, brushed or X-rayed. Hitting ore with a pick or drill chips its quality, and heavy blows shake the ore next to them. A chisel removes the rock around ore safely, and brushing a loosened find out keeps it *pristine*. Tools: pickaxe, chisel, brush, drill (which overheats), X-ray lamp, support beams and glow stakes.
 - **Six depth zones:** Rootsoil, Clayworks, Crystal Grotto, Magma Deep, Frost Vault and The Core. They hold 29 minerals and gems, 15 plants and 15 creatures, many with their own behavior:
@@ -52,10 +56,10 @@ On touch screens a carved stone stick moves the mole, and round buttons jump, us
 
 ## Debug helpers
 
-- URL params: `?scene=mine&zone=3`, `?fresh=1` (ignore the save), `?gold=50000`, `?give=bioxide,iron_ingot`, `?overview=1` (in the mine)
+- URL params: `?scene=deep` (first person underground), `?scene=fall`, `?fresh=1` (ignore the save), `?gold=50000`, `?give=bioxide,iron_ingot`
 - Type `motherlode` in game for +250,000 gold, `deepdive` to unlock every lift stop, or `fullbelly` to restore energy.
-- `node scripts/shot.mjs "scene=mine&zone=2" shots/out.png` takes a headless screenshot (see `docs/DEV_GUIDE.md`).
+- `node scripts/shot.mjs "scene=deep&fresh=1" shots/out.png` takes a headless screenshot (see `docs/DEV_GUIDE.md`); `node scripts/e2e.mjs` and `node scripts/e2e-touch.mjs [--portrait]` play through the game headless.
 
 ## Tech
 
-Three.js 0.185 and Vite 7, plain ES modules. The canvas renders at 540–720 lines and is upscaled with nearest-neighbor filtering. Mine terrain is generated lazily in 256-pixel chunks from a cheap world plan and drawn as one extruded voxel mesh per chunk. A post pass adds 1px outlines, ordered dithering and a light color grade. Audio is synthesized with the Web Audio API. Progress is saved to `localStorage`.
+Three.js 0.185 and Vite 7, plain ES modules. The canvas renders at 540–720 lines and is upscaled with nearest-neighbor filtering. The underground is a seeded voxel world (1/8 m voxels in 32³ chunks) generated lazily around the player from a cheap world plan, greedy-meshed with per-vertex ambient occlusion and drawn by one pixel-art terrain shader (texels, rock plates and cracks, the helmet lamp and cave lights); dug voxels are saved run-length encoded. A post pass adds 1px outlines, ordered dithering and a light color grade. Audio is synthesized with the Web Audio API. Progress is saved to `localStorage`.

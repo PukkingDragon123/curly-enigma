@@ -117,7 +117,13 @@ export class Game {
   cheats() {
     const inp = this.input;
     if (inp.consumeTyped('motherlode')) { this.state.addGold(250000, 'cheat'); this.ui.toast('Motherlode! +250,000 gold', { kind: 'good' }); }
-    if (inp.consumeTyped('deepdive')) { this.state.data.zoneMax = 6; this.ui.toast('All lift stops unlocked', { kind: 'good' }); }
+    if (inp.consumeTyped('deepdive')) {
+      const d = this.state.data;
+      d.zoneMax = 6;
+      d.deep ||= { seed: 1 + Math.floor(Math.random() * 1e6), tunnels: [], stations: [] };
+      d.deep.stations = [0, 1, 2, 3, 4, 5];
+      this.ui.toast('All lift stops unlocked', { kind: 'good' });
+    }
     if (inp.consumeTyped('fullbelly')) { this.state.restoreEnergy(999); }
   }
 
