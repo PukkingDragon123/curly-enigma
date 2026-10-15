@@ -10,6 +10,7 @@ import { Digger, breakable } from './Dig.js';
 import { Bodies } from './Bodies.js';
 import { Particles } from './Particles.js';
 import { Ores } from './Ores.js';
+import { Nugget } from './Nugget.js';
 import { makeTerrainUniforms, MAX_LIGHTS } from './TerrainMaterial.js';
 import { mouthBox, zoneAt, ZONE_DEPTHS } from './Generator.js';
 import { VOX, M, MAT, ORE_BASE } from './materials.js';
@@ -99,6 +100,11 @@ export default class DigScene extends Scene {
       const load = extModules[path];
       if (!load) continue;
       try { const mod = await load(); this[key] = new mod[Name](ctx); } catch (e) { console.warn(Name + ' failed', e); }
+    }
+    // Nugget tags along once she's fallen down here with the mole
+    this.nugget = null;
+    if (st.flag('nugget')) {
+      try { this.nugget = new Nugget({ scene3: this.scene, world: this.world, player: pl, audio: this.audio, fx: this.fx, owner: this }); } catch (e) { console.warn('nugget failed', e); }
     }
     if (this.fluids) this.world.onChange = (vx, vy, vz, old, m) => this.fluids.onVoxel(vx, vy, vz, old, m);
     this.bodies.hooks = {
@@ -201,6 +207,7 @@ export default class DigScene extends Scene {
     // world sim
     this.bodies.update(dt, pl.eye(), pl.pos);
     if (this.fluids) this.fluids.update(dt, { player: pl, eye: pl.eye(), time: this.time });
+    if (this.nugget) this.nugget.update(dt);
     if (this.enemies) {
       const evs = this.enemies.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy, lamp: this.U.lampRange.value }) || [];
       for (const e of evs) {
@@ -758,6 +765,7 @@ export default class DigScene extends Scene {
     this.bodies.dispose();
     this.fx.dispose();
     this.enemies?.dispose();
+    this.nugget?.dispose();
     this.fluids?.dispose();
     this.world.onChange = null;
     if (this.vm) this.vm.dispose();
