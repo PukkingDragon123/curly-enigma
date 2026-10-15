@@ -5,9 +5,9 @@
 // icicles and frozen crystals in the frost, floating void shards at the core), old-miner remnants
 // everywhere (rails, carts, ladders, timber props, rope, lanterns, signposts to Deep Town) and the
 // harvestable cave plants cooking needs. The old miners' lifts (plan.lifts) are always dressed
-// (./props/lifts.js: a brass-and-iron cage skinned over the generator's timber cage, bell, name
-// plaque, counterweight + pulley, cable and head wheel, lamp, furniture; landings at the shaft
-// stops), and nothing else grows in a lift room or in front of its cage.
+// (./props/lifts.js: a dark iron cage skinned over the generator's timber cage, with its grille
+// door, plank floor, lamp and name plaque; plank landings at the shaft stops), and nothing else
+// grows in a lift room or in front of its cage.
 //
 // Built and dropped per 32³ chunk near the player within a small per-frame budget. Every prop lives
 // in ONE merged, dynamically allocated vertex buffer (one draw call + its outline): each chunk owns
@@ -26,8 +26,9 @@ import { OPAQUE } from './Mesher.js';
 import { h3, h3i } from './noise.js';
 import { LIGHT } from './TerrainMaterial.js';
 import { getModel, modelCached, modelStats, modelSteps, defineModel, forgetModel } from './props/models.js';
+import { key3, CB } from './World.js';
 import { rng32 } from './props/grid.js';
-import { liftSnapshot, liftLayoutSteps } from './props/lifts.js';
+import { liftSnapshotSteps, liftLayoutSteps } from './props/lifts.js';
 
 const CM = CS / VOX; // chunk size in metres
 const R_BUILD = 19; // build chunks whose centre is this close to the eye (m)
@@ -39,9 +40,16 @@ const vkey = (vx, vy, vz) => ((vx + 4096) * 8192 + (vy + 4096)) * 8192 + (vz + 4
 const MANMADE = new Uint8Array(256);
 for (const m of [M.TIMBER, M.BOARDS, M.BURROW, M.BRICK, M.DOOR, M.LANTERN, M.CRYSTAL]) MANMADE[m] = 1;
 const ground = (m) => OPAQUE[m] === 1 && m < 128 && !MANMADE[m];
-const DY5 = [0, 1, -1, 2, -2];
-const DY3 = [0, 1, -1];
-const DE = [0, 1, -1, 2, -2, 3]; // wall depth offsets tried (voxels, + = further in)
+// placement was tuned in 1/8 m steps: VK world voxels make one such step at any voxel size
+const VK = Math.max(1, Math.round(VOX / 8));
+const v8 = (n) => Math.round(n * VK); // a length in 1/8 m steps → world voxels
+const CELL = VOX; // a placement cell is 1 m
+const CPC = Math.max(1, Math.round(CS / VOX)); // cells per chunk (per axis)
+/** Voxel offsets 0, 1, -1, 2, -2, … within [lo, hi]. */
+const offs = (lo, hi) => { const a = [0]; for (let k = 1; k <= Math.max(-lo, hi); k++) { if (k <= hi) a.push(k); if (-k >= lo) a.push(-k); } return a; };
+const DY5 = offs(-v8(2), v8(2)); // ±1/4 m
+const DY3 = offs(-v8(1), v8(1)); // ±1/8 m
+const DE = offs(-v8(2), v8(3)); // wall depth offsets tried (+ = further in)
 const N8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]];
 
 // ---------------------------------------------------------------- prop types
@@ -80,16 +88,8 @@ const TYPES = {
   pick: { mount: 'floor', vars: 1, r: 0.4, h: 0.85, hug: true, back: 0.12, snd: 'metal' },
   // the old miners' lifts (placed by liftLayout; 'custom' models are skinned from the voxels)
   cage: { mount: 'floor', vars: 1, r: 0.8, h: 2.1, model: 'custom', snd: 'metal' },
-  liftlamp: { mount: 'ceil', vars: 1, r: 0.2, model: 'custom', snd: 'metal' },
-  bell: { mount: 'wall', vars: 1, r: 0.25, sway: 0.012, snd: 'metal' },
   plaque: { mount: 'wall', vars: 1, r: 0.5, snd: 'metal' },
-  counter: { mount: 'floor', vars: 1, r: 0.35, h: 2.2, snd: 'metal' },
-  sack: { mount: 'floor', vars: 2, r: 0.4, h: 0.6, snd: 'dirt' },
-  bench: { mount: 'floor', vars: 1, r: 0.5, h: 0.45, snd: 'wood' },
-  brazier: { mount: 'floor', vars: 1, r: 0.3, h: 0.6, snd: 'metal' },
   railing: { mount: 'floor', vars: 1, r: 0.5, h: 1, snd: 'metal' },
-  gatepost: { mount: 'floor', vars: 1, r: 0.15, h: 1.6, snd: 'metal' },
-  bellpost: { mount: 'floor', vars: 1, r: 0.3, h: 1.8, sway: 0.008, snd: 'metal' },
   deck: { mount: 'floor', vars: 1, r: 1.4, h: 0.1, snd: 'wood' },
   // harvestable plants (the type is the item id)
   glowcap: { mount: 'floor', vars: 2, r: 0.32, h: 0.6, plant: true, snd: 'dirt', brittle: true },
@@ -107,6 +107,9 @@ const TYPES = {
   frostbloom: { mount: 'floor', vars: 2, r: 0.25, h: 0.65, plant: true, snd: 'ice', brittle: true },
   core_lotus: { mount: 'floor', vars: 1, r: 0.4, h: 0.45, plant: true, snd: 'dirt', brittle: true },
 };
+
+// models sized (or coloured) to where they are put
+const PARAM_TYPES = new Set(['crystal', 'crystalC', 'roots', 'vine', 'glowthread', 'icicle', 'shard', 'post', 'ladder', 'rope', 'lanternC']);
 
 // decoration per zone: [type, weight] lists + chances per 1 m cell (floor / ceiling / wall)
 const DECOR = {
@@ -149,7 +152,8 @@ function pickW(list, h) {
 // ---------------------------------------------------------------- material
 function propMaterial(U) {
   return new THREE.ShaderMaterial({
-    uniforms: { ...U },
+    // texel: the same chunky per-texel dither as the rock and other objects (texels per metre)
+    uniforms: { ...U, texel: { value: 128 } },
     vertexShader: /* glsl */`
       attribute vec4 aNrm; // normal + sway weight (bytes)
       attribute vec4 aCol; // sRGB colour + glow (bytes)
@@ -160,8 +164,10 @@ function propMaterial(U) {
       varying vec3 vN;
       varying float vGlow;
       varying float vPh;
+      varying vec3 vTex;
       void main() {
         vec3 p = position;
+        vTex = position - aNrm.xyz * (0.5 / 128.0); // the texel this face is in (before any sway)
         float ph = aAnim.y, sw = aAnim.x * aNrm.w;
         p.x += sw * (sin(time * 1.3 + ph) * 0.7 + sin(time * 3.1 + ph * 1.7) * 0.3);
         p.z += sw * (cos(time * 1.1 + ph * 1.3) * 0.7 + sin(time * 2.6 + ph * 0.7) * 0.3);
@@ -178,16 +184,24 @@ function propMaterial(U) {
       uniform vec3 fogCol;
       uniform float fogDist;
       uniform float time;
+      uniform float texel;
       varying vec3 vColor;
       varying vec3 vWorld;
       varying vec3 vN;
       varying float vGlow;
       varying float vPh;
+      varying vec3 vTex;
+      float h3o(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.x + p.y) * p.z); }
       ${LIGHT}
       void main() {
         vec3 L = lightAt(vWorld, normalize(vN));
+        vec3 c = vColor;
+        if (texel > 0.0) {
+          vec3 q = floor(vTex * texel);
+          c *= 0.82 + 0.26 * h3o(q + 3.1) + 0.12 * h3o(floor(q * 0.25) + 5.3);
+        }
         float pulse = 0.82 + 0.18 * sin(time * 2.1 + vPh * 3.0);
-        vec3 col = vColor * L + vColor * vGlow * pulse;
+        vec3 col = c * L + c * vGlow * pulse;
         float dist = length(vWorld - lampPos);
         // glowing bits shine a little further through the dark
         float fogK = (1.0 - exp(-pow(dist / fogDist, 2.0) * 2.2)) * (1.0 - 0.35 * min(vGlow, 1.0));
@@ -211,7 +225,7 @@ class Pool {
     this.live = new Set();
     this.liveI = 0;
     this.high = 0;
-    this.resize(3 << 16, 9 << 15);
+    this.resize(1 << 18, 3 << 17); // 8 MB up front: growing (a full copy) is a hitch
   }
   resize(capV, capI) {
     const old = this.mesh.geometry;
@@ -329,6 +343,7 @@ export class Props {
     this.pool = new Pool(this.mat, this.scene3);
     this.built = new Map(); // chunk key → { ch, props, slot, x, y, z }
     this.support = new Map(); // voxel key → props resting on / hanging from it
+    this.cageSup = new Map(); // 1/8 m cell key → lift props standing on that bit of cage timber
     this.plants = new Set();
     this.lit = new Set();
     this.dirty = new Set(); // chunks whose models just arrived (written within the frame budget)
@@ -359,6 +374,17 @@ export class Props {
     // while the scene is still loading: dress the lift we arrive in (and any other close by) right away,
     // so a cage is there on the first frame and the code is warm before the first one is met on foot
     const pl = ctx.player;
+    // while the scene is still loading: mesh the models this zone uses most (first meshing is the slow
+    // one), so streaming in play only pays for the rarer ones
+    if (pl?.pos) {
+      const t0 = performance.now(), zone = zoneAt(-pl.pos.y);
+      const want = [...DECOR[zone].floor.slice(0, 2), ...DECOR[zone].ceil.slice(0, 1), ...PLANTS[zone].floor.slice(0, 1)].map((e) => e[0]);
+      for (const t of want) {
+        if (performance.now() - t0 > 120) break;
+        if (PARAM_TYPES.has(t)) continue; // sized to fit where they grow: no one variant to warm
+        try { getModel(t, 0, 0); } catch (e) { /* warm-up only */ }
+      }
+    }
     if (pl?.pos) {
       const eye = pl.eye ? pl.eye() : pl.pos;
       for (const L of this.lifts) {
@@ -384,6 +410,7 @@ export class Props {
     this.initPicked();
     for (const rec of [...this.built.values()]) this.dropChunk(rec);
     this.scanT = 0;
+    this.scanJob = null;
   }
 
   // ------------------------------------------------------------ world queries (metres, never generates)
@@ -400,6 +427,9 @@ export class Props {
     for (let k = 0; k <= n; k++) if (OPAQUE[this.w.voxelAt(vx, vy - k, vz)] === 1) return k;
     return n + 1;
   }
+  /** Open space straight up / down in metres (max m; a bit more if open). */
+  headM(x, y, z, m) { return this.headroom(x, y, z, Math.ceil(m * VOX)) / VOX; }
+  depthM(x, y, z, m) { return this.depthBelow(x, y, z, Math.ceil(m * VOX)) / VOX; }
 
   /** Places no prop may go: the burrow, tunnel mouths, the lift shaft and its stations, the town gate. */
   blocked(x, y, z, pad = 0.3) {
@@ -433,7 +463,7 @@ export class Props {
       for (const dy of DY5) if (OPAQUE[w.voxelAt(vx, vy + dy - 1, vz)] === 1 && OPAQUE[w.voxelAt(vx, vy + dy, vz)] !== 1) { fd = dy; break; }
       if (fd === 99) { this.no('ffCliff'); return false; }
       if (k === 6 && fd !== 0) { this.no('ffCenter'); return false; }
-      off += fd * fd;
+      off += (fd / VK) * (fd / VK);
     }
     if (off > 8) { this.no('ffRough'); return false; }
     for (let yy = y + 0.31; yy < y + h; yy += 0.25) {
@@ -452,7 +482,7 @@ export class Props {
       for (const dy of DY5) if (OPAQUE[w.voxelAt(vx, vy + dy, vz)] === 1 && OPAQUE[w.voxelAt(vx, vy + dy - 1, vz)] !== 1) { fd = dy; break; }
       if (fd === 99) { this.no('fcCliff'); return false; }
       if (k === 4 && fd !== 0) { this.no('fcCenter'); return false; }
-      off += fd * fd;
+      off += (fd / VK) * (fd / VK);
     }
     if (off > 6) this.no('fcRough');
     return off <= 6;
@@ -469,13 +499,22 @@ export class Props {
   // ------------------------------------------------------------ placement (one chunk)
   place(rec) {
     const ch = rec.ch, w = this.w, S = this.seed;
+    // a virtual chunk is solid rock through and through: nothing can stand in it
+    if (ch.virtual || !ch.vox) return;
     const X0 = ch.cx * CS, Y0 = ch.cy * CS, Z0 = ch.cz * CS;
-    const vox = ch.vox, ed = w.edits.get(ch.key);
+    const vox = ch.vox, ed = w.edits.get(ch.key), M1 = CS - 1;
     const inside = (lx, ly, lz) => lx >= 0 && ly >= 0 && lz >= 0 && lx < CS && ly < CS && lz < CS;
     const at = (lx, ly, lz) => (inside(lx, ly, lz) ? vox[lx + CS * (ly + CS * lz)] : w.voxelAt(X0 + lx, Y0 + ly, Z0 + lz));
     // the player's own tunnels stay bare (props only grow on the cave as it was generated)
-    const fresh = (lx, ly, lz) => !ed || !inside(lx, ly, lz) || !ed.has(lx + CS * (ly + CS * lz));
-    const c = { rec, X0, Y0, Z0, at, fresh, occ: [] };
+    const fresh = (lx, ly, lz) => {
+      if (inside(lx, ly, lz)) return !ed || !ed.has(lx + CS * (ly + CS * lz));
+      const vx = X0 + lx, vy = Y0 + ly, vz = Z0 + lz;
+      const e2 = w.edits.get(key3(vx >> CB, vy >> CB, vz >> CB));
+      return !e2 || !e2.has((vx & M1) + CS * ((vy & M1) + CS * (vz & M1)));
+    };
+    // reads stay within the chunk and its (loaded) neighbours, so placement never depends on what else is loaded
+    const reach = (lx, ly, lz) => lx >= -CS && ly >= -CS && lz >= -CS && lx < 2 * CS && ly < 2 * CS && lz < 2 * CS;
+    const c = { rec, X0, Y0, Z0, at, fresh, reach, occ: [] };
 
     // fast reject: a chunk of solid rock all through has no open voxels for a prop to stand in
     let open = false;
@@ -483,12 +522,17 @@ export class Props {
     if (!open && !this.fixturesIn(c).length) return;
 
     for (const l of this.fixturesIn(c)) this.placeFixture(c, l);
-    const czone = zoneAt(-((ch.cy + 0.5) * CM));
-    if (h3(ch.cx, ch.cy, ch.cz, S + 501) < CAMP[czone]) this.placeCamp(c, czone);
+    // camps are decided per 4 m block (the chunk at its low corner owns it), as with 4 m chunks
+    const B = Math.max(1, Math.round(4 / CM)), md = (a) => ((a % B) + B) % B;
+    if (!md(ch.cx) && !md(ch.cy) && !md(ch.cz)) {
+      const bx = Math.floor(ch.cx / B), by = Math.floor(ch.cy / B), bz = Math.floor(ch.cz / B);
+      const czone = zoneAt(-((by + 0.5) * 4));
+      if (h3(bx, by, bz, S + 501) < CAMP[czone]) this.placeCamp(c, czone, bx, by, bz, B * CS);
+    }
 
-    for (let cz = 0; cz < 4; cz++) for (let cy = 0; cy < 4; cy++) for (let cx = 0; cx < 4; cx++) {
-      const gx = ch.cx * 4 + cx, gy = ch.cy * 4 + cy, gz = ch.cz * 4 + cz;
-      const zone = zoneAt(-((Y0 + cy * 8 + 4) / VOX));
+    for (let cz = 0; cz < CPC; cz++) for (let cy = 0; cy < CPC; cy++) for (let cx = 0; cx < CPC; cx++) {
+      const gx = ch.cx * CPC + cx, gy = ch.cy * CPC + cy, gz = ch.cz * CPC + cz;
+      const zone = zoneAt(-((Y0 + cy * CELL + CELL / 2) / VOX));
       const Dz = DECOR[zone], Pz = PLANTS[zone];
       const hf = h3(gx, gy, gz, S + 101), hp = h3(gx, gy, gz, S + 103);
       if (hf < Dz.f || hp < Pz.f) {
@@ -529,23 +573,30 @@ export class Props {
     }
   }
 
+  /** A spot inside a 1 m cell (keeping clear of its edges), from a hash. */
+  cellPos(cc, h) { return cc * CELL + Math.floor((0.125 + h * 0.75) * CELL); }
+  /** Open voxels above (dir 1) or below (dir -1) a spot, a quarter metre's worth. */
+  clear(c, lx, ly, lz, dir) {
+    for (let k = 1; k <= v8(2); k++) if (c.at(lx, ly + dir * k, lz) !== 0) return false;
+    return true;
+  }
   findFloor(c, cx, cy, cz, gx, gy, gz) {
-    const lx = cx * 8 + 1 + Math.floor(h3(gx, gy, gz, this.seed + 211) * 6), lz = cz * 8 + 1 + Math.floor(h3(gx, gy, gz, this.seed + 223) * 6);
-    for (let ly = cy * 8 + 7; ly >= cy * 8; ly--) {
+    const lx = this.cellPos(cx, h3(gx, gy, gz, this.seed + 211)), lz = this.cellPos(cz, h3(gx, gy, gz, this.seed + 223));
+    for (let ly = cy * CELL + CELL - 1; ly >= cy * CELL; ly--) {
       if (c.at(lx, ly, lz) !== 0) continue;
       if (!ground(c.at(lx, ly - 1, lz))) continue;
-      if (c.at(lx, ly + 1, lz) !== 0 || c.at(lx, ly + 2, lz) !== 0) return null;
+      if (!this.clear(c, lx, ly, lz, 1)) return null;
       if (!c.fresh(lx, ly, lz)) return null;
       return { lx, ly, lz };
     }
     return null;
   }
   findCeil(c, cx, cy, cz, gx, gy, gz) {
-    const lx = cx * 8 + 1 + Math.floor(h3(gx, gy, gz, this.seed + 227) * 6), lz = cz * 8 + 1 + Math.floor(h3(gx, gy, gz, this.seed + 229) * 6);
-    for (let ly = cy * 8; ly <= cy * 8 + 7; ly++) {
+    const lx = this.cellPos(cx, h3(gx, gy, gz, this.seed + 227)), lz = this.cellPos(cz, h3(gx, gy, gz, this.seed + 229));
+    for (let ly = cy * CELL; ly <= cy * CELL + CELL - 1; ly++) {
       if (c.at(lx, ly, lz) !== 0) continue;
       if (!ground(c.at(lx, ly + 1, lz))) continue;
-      if (c.at(lx, ly - 1, lz) !== 0 || c.at(lx, ly - 2, lz) !== 0) return null;
+      if (!this.clear(c, lx, ly, lz, -1)) return null;
       if (!c.fresh(lx, ly, lz)) return null;
       return { lx, ly, lz };
     }
@@ -553,14 +604,14 @@ export class Props {
   }
   findWall(c, cx, cy, cz, gx, gy, gz) {
     const S = this.seed;
-    const lx = cx * 8 + 1 + Math.floor(h3(gx, gy, gz, S + 233) * 6), lz = cz * 8 + 1 + Math.floor(h3(gx, gy, gz, S + 239) * 6);
-    const ly = cy * 8 + 1 + Math.floor(h3(gx, gy, gz, S + 241) * 6);
+    const lx = this.cellPos(cx, h3(gx, gy, gz, S + 233)), lz = this.cellPos(cz, h3(gx, gy, gz, S + 239));
+    const ly = this.cellPos(cy, h3(gx, gy, gz, S + 241));
     if (c.at(lx, ly, lz) !== 0) return null;
     const d0 = Math.floor(h3(gx, gy, gz, S + 251) * 4);
     for (const dd of [0, 1, 2]) {
       const d = d0 ^ dd; // the hashed side, the opposite one, then a perpendicular
       const dx = d === 0 ? 1 : d === 1 ? -1 : 0, dz = d === 2 ? 1 : d === 3 ? -1 : 0;
-      for (let k = 1; k <= 7; k++) {
+      for (let k = 1; k <= v8(7); k++) {
         const m = c.at(lx + dx * k, ly, lz + dz * k);
         if (m === 0) continue;
         if (!ground(m)) break;
@@ -579,7 +630,7 @@ export class Props {
     for (let it = 0; it < 4; it++) {
       let best = null;
       for (const [dx, dz] of N8) {
-        const x = lx + dx * 2, z = lz + dz * 2;
+        const x = lx + dx * v8(2), z = lz + dz * v8(2);
         if (x < 0 || z < 0 || x >= CS || z >= CS) continue;
         for (const dy of DY5) {
           const y = ly + dy;
@@ -596,18 +647,23 @@ export class Props {
     return { lx, ly, lz };
   }
 
-  /** The nearest wall beside a floor spot (within 5 voxels): {dx, dz, k}. */
+  /** The nearest wall beside a floor spot (within 5/8 m): {dx, dz, k} (k in voxels). */
   nearWall(c, sp, first) {
     let best = null;
     const order = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    const h1 = v8(2), h2 = v8(5);
     for (let i = 0; i < 4; i++) {
       const [dx, dz] = order[(i + first) & 3];
-      for (let k = 1; k <= 5; k++) {
-        if (OPAQUE[c.at(sp.lx + dx * k, sp.ly + 2, sp.lz + dz * k)] === 1 && OPAQUE[c.at(sp.lx + dx * k, sp.ly + 5, sp.lz + dz * k)] === 1) {
+      for (let k = 1; k <= v8(5); k++) {
+        const x = sp.lx + dx * k, z = sp.lz + dz * k;
+        if (OPAQUE[c.at(x, sp.ly + h1, z)] === 1 && OPAQUE[c.at(x, sp.ly + h2, z)] === 1) {
           if (!best || k < best.k) best = { dx, dz, k };
           break;
         }
-        if (OPAQUE[c.at(sp.lx + dx * k, sp.ly, sp.lz + dz * k)] !== 1 && OPAQUE[c.at(sp.lx + dx * k, sp.ly - 1, sp.lz + dz * k)] !== 1) break; // floor drops away
+        // the floor drops away (an eighth of a metre or more)
+        let drop = OPAQUE[c.at(x, sp.ly, z)] !== 1;
+        for (let q = 1; q <= VK && drop; q++) if (OPAQUE[c.at(x, sp.ly - q, z)] === 1) drop = false;
+        if (drop) break;
       }
     }
     return best;
@@ -623,9 +679,9 @@ export class Props {
     if (!T) return null;
     const r = rng32(h3i(gx, gy, gz, this.seed + 307 + type.length * 13));
     if (o.x === undefined && !T.hug) sp = this.settle(c, sp, false);
-    let x = o.x ?? (c.X0 + sp.lx + 0.5) / VOX + (r() - 0.5) * 0.08;
+    let x = o.x ?? (c.X0 + sp.lx + 0.5) / VOX + (r() - 0.5) * 0.6 / VOX; // a nudge, staying over the same voxel
     const y = o.y ?? (c.Y0 + sp.ly) / VOX;
-    let z = o.z ?? (c.Z0 + sp.lz + 0.5) / VOX + (r() - 0.5) * 0.08;
+    let z = o.z ?? (c.Z0 + sp.lz + 0.5) / VOX + (r() - 0.5) * 0.6 / VOX;
     let yaw = o.yaw ?? r() * Math.PI * 2;
     let v = o.v ?? Math.floor(r() * T.vars);
     let fr = T.r * (T.hug ? 0.45 : 0.7), occR = T.r;
@@ -642,13 +698,14 @@ export class Props {
     if (!o.fixture && this.blocked(x, y, z, T.r + 0.15)) return this.no('blockedF');
     if (!o.noOcc && !this.free(c, x, z, occR)) return this.no('occ');
     let param = 0, h = T.h || 0.5;
+    const y1 = y + 0.5 / VOX; // inside the first open voxel
     if (type === 'post') {
-      const up = this.headroom(x, y + 0.06, z, 26);
-      if (up < 8 || up > 24) return this.no('postH');
-      param = up * 2; h = up / VOX - 0.1;
+      const up = this.headM(x, y1, z, 3.25);
+      if (up < 1 || up > 3) return this.no('postH');
+      param = Math.round(up * 16); h = up - 0.1;
     } else if (type === 'ladder') {
-      const up = this.headroom(x, y + 0.06, z, 24);
-      param = Math.min(36, Math.floor((up * 2 - 4) / 4) * 4, 20 + Math.floor(r() * 4) * 4);
+      const up = this.headM(x, y1, z, 3);
+      param = Math.min(36, Math.floor((up * 16 - 4) / 4) * 4, 20 + Math.floor(r() * 4) * 4);
       if (param < 16) return this.no('ladderH');
       h = param / 16;
     } else if (type === 'shard') {
@@ -657,12 +714,12 @@ export class Props {
     } else if (type === 'crystal' || type === 'frozen') {
       // the big clusters where there is room for them, small ones elsewhere
       if (type === 'crystal') param = this.paletteFor(zone, r());
-      const big = v % 2 === 0 && this.headroom(x, y + 0.06, z, 18) >= 16;
+      const big = v % 2 === 0 && this.headM(x, y1, z, 2.25) >= 2;
       v = big ? v - (v % 2) : v | 1;
       h = big ? 1.8 : 0.95; fr = big ? 0.38 : 0.24; occR = big ? 0.55 : 0.35;
     }
     if (!o.loose && !this.fitFloor(x, y, z, fr, h)) return this.no('fitFloor');
-    if (o.loose && (!this.solid(x, y - 0.06, z) || this.solid(x, y + 0.19, z))) return null;
+    if (o.loose && (!this.solid(x, y - 0.5 / VOX, z) || this.solid(x, y + 0.19, z))) return null;
     const vx = Math.floor(x * VOX), vy = Math.floor(y * VOX) - 1, vz = Math.floor(z * VOX);
     const p = this.make(c, type, v, param, x, y, z, yaw, 'floor', vx, vy, vz, r(), o);
     if (!p) return null;
@@ -677,11 +734,11 @@ export class Props {
     }
     return p;
   }
-  /** Floor height near y at (x, z) (±2 voxels), or NaN. */
+  /** Floor height near y at (x, z) (within a quarter metre), or NaN. */
   floorNear(x, y, z) {
-    for (let k = 2; k >= -2; k--) {
-      const yy = y + k / VOX;
-      if (!this.solid(x, yy + 0.06, z) && this.solid(x, yy - 0.06, z)) return Math.floor(yy * VOX) / VOX;
+    const vx = Math.floor(x * VOX), vz = Math.floor(z * VOX), vy = Math.round(y * VOX), w = this.w;
+    for (const k of DY5) {
+      if (OPAQUE[w.voxelAt(vx, vy + k, vz)] !== 1 && OPAQUE[w.voxelAt(vx, vy + k - 1, vz)] === 1) return (vy + k) / VOX;
     }
     return NaN;
   }
@@ -691,12 +748,11 @@ export class Props {
     if (!T) return null;
     const r = rng32(h3i(gx, gy, gz, this.seed + 401 + type.length * 17));
     if (o.x === undefined) sp = this.settle(c, sp, true);
-    const x = o.x ?? (c.X0 + sp.lx + 0.5) / VOX + (r() - 0.5) * 0.08;
+    const x = o.x ?? (c.X0 + sp.lx + 0.5) / VOX + (r() - 0.5) * 0.6 / VOX;
     const y = o.y ?? (c.Y0 + sp.ly + 1) / VOX;
-    const z = o.z ?? (c.Z0 + sp.lz + 0.5) / VOX + (r() - 0.5) * 0.08;
+    const z = o.z ?? (c.Z0 + sp.lz + 0.5) / VOX + (r() - 0.5) * 0.6 / VOX;
     const v = o.v ?? Math.floor(r() * T.vars);
-    const down = this.depthBelow(x, y - 0.06, z, 40);
-    const fd = down / VOX;
+    const fd = this.depthM(x, y - 0.5 / VOX, z, 5);
     let param = o.param ?? 0, L;
     if (o.param !== undefined) L = (param + 8) / 16;
     else if (T.len) {
@@ -722,12 +778,12 @@ export class Props {
     const r = rng32(h3i(gx, gy, gz, this.seed + 503 + type.length * 19));
     const { lx, ly, lz, dx, dz } = sp;
     const tx = dz ? 1 : 0, tz = dx ? 1 : 0; // along the wall
-    let lo = 0;
+    let lo = 0, sup = 0; // where the face sits (its most protruding part) / the rock right behind its middle
     if (!o.fixture) {
       // the rock face behind the prop: sample its depth over the prop's face; it may be ragged by
       // up to T.deep voxels (each model reaches that far back into the wall) and the prop sits on
       // its most protruding part
-      const f = T.flat || 1, deep = T.deep || 1;
+      const f = v8(T.flat || 1), deep = v8(T.deep || 1);
       let mn = 9, mx = -9;
       for (let t = -f; t <= f; t += f) for (let u = -f; u <= f; u += f) {
         let hit = 99;
@@ -737,12 +793,14 @@ export class Props {
         if (hit === 99) return this.no('flatW');
         if (hit < mn) mn = hit;
         if (hit > mx) mx = hit;
+        if (t === 0 && u === 0) sup = hit;
       }
       if (mx - mn > deep) return this.no('flatW2');
       lo = mn;
       let up = 0;
-      while (up <= T.maxUp && c.at(lx + dx * lo, ly - up - 1, lz + dz * lo) === 0) up++;
-      if (up < T.minUp || up > T.maxUp) return this.no('upW');
+      const maxUp = v8(T.maxUp), minUp = v8(T.minUp);
+      while (up <= maxUp && c.at(lx + dx * lo, ly - up - 1, lz + dz * lo) === 0) up++;
+      if (up < minUp || up > maxUp) return this.no('upW');
     }
     const jt = (r() - 0.5) * 0.08;
     const x = dx ? (c.X0 + lx + 0.5 + dx * (lo + 0.5)) / VOX : (c.X0 + lx + 0.5) / VOX + jt;
@@ -751,7 +809,7 @@ export class Props {
     const nx = -dx, nz = -dz;
     if (!o.fixture && this.blocked(x + nx * 0.2, y, z + nz * 0.2, T.r + 0.1)) return this.no('blockedW');
     const v = o.v ?? Math.floor(r() * T.vars);
-    const p = this.make(c, type, v, 0, x, y, z, Math.atan2(nx, nz), 'wall', c.X0 + lx + dx * (1 + lo), c.Y0 + ly, c.Z0 + lz + dz * (1 + lo), r(), o);
+    const p = this.make(c, type, v, 0, x, y, z, Math.atan2(nx, nz), 'wall', c.X0 + lx + dx * (1 + sup), c.Y0 + ly, c.Z0 + lz + dz * (1 + sup), r(), o);
     if (p) { p.nx = nx; p.nz = nz; }
     return p;
   }
@@ -763,17 +821,17 @@ export class Props {
   }
   placeFixture(c, l) {
     // hang it from the ceiling above the light if there is one close enough, else from a wall
-    const up = this.headroom(l.x, l.y, l.z, 22);
+    const up = this.headroom(l.x, l.y, l.z, v8(22));
     const hv = Math.floor(l.x * 13 + l.z * 7) & 1;
-    if (up <= 21) {
+    if (up <= v8(21)) {
       const yc = (Math.floor(l.y * VOX) + up) / VOX;
       const L = Math.max(1, Math.min(30, Math.round((yc - l.y) * 16 - 5.5)));
       const p = this.tryCeil(c, 'lanternC', null, Math.floor(l.x), Math.floor(l.y), Math.floor(l.z), 1, { x: l.x, y: yc, z: l.z, v: hv, param: L, fixture: true, noLight: true });
       if (p) return;
     }
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const vx = Math.floor(l.x * VOX), vy = Math.floor(l.y * VOX) + 3, vz = Math.floor(l.z * VOX);
-      for (let k = 1; k <= 10; k++) {
+      const vx = Math.floor(l.x * VOX), vy = Math.floor(l.y * VOX) + v8(3), vz = Math.floor(l.z * VOX);
+      for (let k = 1; k <= v8(10); k++) {
         if (OPAQUE[this.w.voxelAt(vx + dx * k, vy, vz + dz * k)] !== 1) continue;
         const sp = { lx: vx + dx * (k - 1) - c.X0, ly: vy - c.Y0, lz: vz + dz * (k - 1) - c.Z0, dx, dz };
         if (this.tryWall(c, 'lantern', sp, vx, vy, vz, 1, { fixture: true, noLight: true, v: hv })) return;
@@ -782,18 +840,24 @@ export class Props {
     }
   }
 
-  /** An old miners' camp: a run of rails, a cart, bits of gear by the walls, a sign to Deep Town. */
-  placeCamp(c, zone) {
-    const ch = c.rec.ch, S = this.seed;
-    const r = rng32(h3i(ch.cx, ch.cy, ch.cz, S + 601));
+  /**
+   * An old miners' camp: a run of rails, a cart, bits of gear by the walls, a sign to Deep Town.
+   * Laid out over a 4 m block (BS voxels a side) from the owning chunk's corner.
+   */
+  placeCamp(c, zone, bx, by, bz, BS) {
+    const S = this.seed;
+    const r = rng32(h3i(bx, by, bz, S + 601));
+    const hx = bx * 4, hy = by * 4, hz = bz * 4; // hash seeds for the camp's pieces
+    // stay where the world is surely loaded (this chunk and its neighbours), with room for the checks round each piece
+    const lo = Math.max(1, -CS + v8(6)), hi = Math.min(BS - 2, 2 * CS - v8(7));
     this.no('campTry');
     for (let tries = 0; tries < 20; tries++) {
-      const lx = 4 + Math.floor(r() * 24), lz = 4 + Math.floor(r() * 24);
+      const lx = v8(4) + Math.floor(r() * v8(24)), lz = v8(4) + Math.floor(r() * v8(24));
       let ly = -1;
-      for (let y = CS - 2; y >= 1; y--) {
+      for (let y = hi; y >= lo; y--) {
         if (c.at(lx, y, lz) === 0 && ground(c.at(lx, y - 1, lz)) && c.fresh(lx, y, lz)) {
           let open = true;
-          for (let k = 1; k <= 8; k++) if (c.at(lx, y + k, lz) !== 0) { open = false; break; }
+          for (let k = 1; k <= VOX; k++) if (c.at(lx, y + k, lz) !== 0) { open = false; break; }
           if (open) { ly = y; break; }
         }
       }
@@ -801,35 +865,39 @@ export class Props {
       const alongX = r() < 0.5;
       const ax = alongX ? 1 : 0, az = alongX ? 0 : 1;
       const yaw = alongX ? 0 : -Math.PI / 2;
-      // rail segments 1 m apart while the floor stays level (±1 voxel)
+      // rail segments 1 m apart while the floor stays level (±1/8 m)
       const segs = [];
       for (const dir of [1, -1]) {
-        let by = ly;
+        let fby = ly;
         for (let k = dir === 1 ? 0 : 1; k < 4; k++) {
-          const sx = lx + ax * 8 * k * dir, sz = lz + az * 8 * k * dir;
-          if (sx < 1 || sz < 1 || sx > CS - 2 || sz > CS - 2) break;
+          const sx = lx + ax * VOX * k * dir, sz = lz + az * VOX * k * dir;
+          if (sx < lo || sz < lo || sx > hi || sz > hi) break;
           let fy = -1;
-          for (const dy of DY3) if (c.at(sx, by + dy, sz) === 0 && ground(c.at(sx, by + dy - 1, sz)) && c.at(sx, by + dy + 2, sz) === 0) { fy = by + dy; break; }
+          for (const dy of DY3) if (c.at(sx, fby + dy, sz) === 0 && ground(c.at(sx, fby + dy - 1, sz)) && this.clear(c, sx, fby + dy, sz, 1)) { fy = fby + dy; break; }
           if (fy < 0 || !c.fresh(sx, fy, sz)) break;
           const x = (c.X0 + sx + 0.5) / VOX, y = (c.Y0 + fy) / VOX, z = (c.Z0 + sz + 0.5) / VOX;
           if (this.blocked(x, y, z, 0.8)) break;
-          const end = (sg) => this.solid(x + ax * 0.45 * sg, y - 0.06, z + az * 0.45 * sg) || this.solid(x + ax * 0.45 * sg, y - 0.19, z + az * 0.45 * sg);
+          const end = (sg) => this.solid(x + ax * 0.45 * sg, y - 0.5 / VOX, z + az * 0.45 * sg) || this.solid(x + ax * 0.45 * sg, y - 0.19, z + az * 0.45 * sg);
           if (!end(1) || !end(-1)) break;
           // the sleepers rest on the highest bumps under them (never buried in the floor)
           let top = y;
-          for (const t of [-0.4, -0.2, 0.2, 0.4]) if (this.solid(x + ax * t, y + 0.06, z + az * t) && !this.solid(x + ax * t, y + 0.19, z + az * t)) top = y + 1 / VOX;
+          for (const t of [-0.4, -0.2, 0.2, 0.4]) {
+            for (let q = v8(1); q >= 1; q--) {
+              if (this.solid(x + ax * t, y + (q - 0.5) / VOX, z + az * t) && !this.solid(x + ax * t, y + 0.19, z + az * t)) { top = Math.max(top, y + q / VOX); break; }
+            }
+          }
           segs.push({ x, y: top, z, sx, sz, fy });
-          by = fy;
+          fby = fy;
         }
       }
       if (segs.length < 2) { this.no('campShort'); continue; }
       this.no('campOk');
-      for (const s of segs) {
+      for (const sg of segs) {
         const v = r() < 0.2 ? 1 : 0;
-        this.make(c, 'rail', v, 0, s.x, s.y, s.z, yaw, 'floor', Math.floor(s.x * VOX), Math.floor(s.y * VOX) - 1, Math.floor(s.z * VOX), r());
+        this.make(c, 'rail', v, 0, sg.x, sg.y, sg.z, yaw, 'floor', Math.floor(sg.x * VOX), Math.floor(sg.y * VOX) - 1, Math.floor(sg.z * VOX), r());
       }
       const mid = segs[Math.floor(r() * segs.length)];
-      if (r() < 0.55 && this.headroom(mid.x, mid.y + 0.06, mid.z, 10) >= 9) {
+      if (r() < 0.55 && this.headM(mid.x, mid.y + 0.5 / VOX, mid.z, 1.25) >= 1.12) {
         this.make(c, 'cart', 0, 0, mid.x, mid.y, mid.z, yaw + (r() < 0.5 ? Math.PI : 0), 'floor', Math.floor(mid.x * VOX), Math.floor(mid.y * VOX) - 1, Math.floor(mid.z * VOX), r());
         c.occ.push([mid.x, mid.z, 0.6]);
       } else {
@@ -842,35 +910,37 @@ export class Props {
           c.occ.push([x, z, 0.65]);
         }
       }
-      for (const s of segs) c.occ.push([s.x, s.z, 0.35]);
+      for (const sg of segs) c.occ.push([sg.x, sg.z, 0.35]);
       // a sign at the end of the track
       const end = segs[segs.length - 1];
       const sx = end.x - az * 0.7, sz = end.z + ax * 0.7;
       const sy = this.floorNear(sx, end.y, sz);
-      if (sy === sy) this.tryFloor(c, 'sign', { lx: end.sx, ly: end.fy, lz: end.sz }, ch.cx * 4, ch.cy * 4 + 1, ch.cz * 4, zone, { x: sx, y: sy, z: sz });
+      if (sy === sy) this.tryFloor(c, 'sign', { lx: end.sx, ly: end.fy, lz: end.sz }, hx, hy + 1, hz, zone, { x: sx, y: sy, z: sz });
       // gear by the walls round about
       const gear = ['crate', 'barrel', 'post', 'pick', 'coil', 'ladder', 'crate', 'post'];
       for (let k = 0; k < 6; k++) {
-        const qx = Math.max(1, Math.min(CS - 2, lx + Math.round((r() - 0.5) * 22))), qz = Math.max(1, Math.min(CS - 2, lz + Math.round((r() - 0.5) * 22)));
+        const qx = Math.max(lo, Math.min(hi, lx + Math.round((r() - 0.5) * v8(22)))), qz = Math.max(lo, Math.min(hi, lz + Math.round((r() - 0.5) * v8(22))));
         let qy = -1;
-        for (let y = Math.min(CS - 3, ly + 6); y >= Math.max(1, ly - 6); y--) if (c.at(qx, y, qz) === 0 && ground(c.at(qx, y - 1, qz)) && c.at(qx, y + 1, qz) === 0) { qy = y; break; }
+        for (let y = Math.min(hi - 1, ly + v8(6)); y >= Math.max(lo, ly - v8(6)); y--) if (c.at(qx, y, qz) === 0 && ground(c.at(qx, y - 1, qz)) && c.at(qx, y + 1, qz) === 0) { qy = y; break; }
         if (qy < 0 || !c.fresh(qx, qy, qz)) continue;
-        this.tryFloor(c, gear[Math.floor(r() * gear.length)], { lx: qx, ly: qy, lz: qz }, ch.cx * 4 + k, ch.cy * 4 + 7, ch.cz * 4 - k, zone);
+        this.tryFloor(c, gear[Math.floor(r() * gear.length)], { lx: qx, ly: qy, lz: qz }, hx + k, hy + 7, hz - k, zone);
       }
       // and a lantern on a wall
       for (let k = 0; k < 4; k++) {
         const d = (k + Math.floor(r() * 4)) & 3;
         const dx = d === 0 ? 1 : d === 1 ? -1 : 0, dz = d === 2 ? 1 : d === 3 ? -1 : 0;
-        const wy = ly + 13 + Math.floor(r() * 3);
-        if (wy >= CS + 6) continue;
+        const wy = ly + v8(13) + Math.floor(r() * v8(3));
+        if (wy > hi + CS - 2) continue;
         let found = null;
-        for (let j = 1; j <= 24; j++) {
-          const m = c.at(lx + dx * j, wy, lz + dz * j);
+        for (let j = 1; j <= v8(24); j++) {
+          const qx = lx + dx * j, qz = lz + dz * j;
+          if (!c.reach(qx + dx * v8(4), wy, qz + dz * v8(4))) break;
+          const m = c.at(qx, wy, qz);
           if (m === 0) continue;
-          if (ground(m)) found = { lx: lx + dx * (j - 1), ly: wy, lz: lz + dz * (j - 1), dx, dz };
+          if (ground(m)) found = { lx: qx - dx, ly: wy, lz: qz - dz, dx, dz };
           break;
         }
-        if (found && this.tryWall(c, 'lantern', found, ch.cx * 4 + k, ch.cy * 4 + 9, ch.cz * 4, zone)) break;
+        if (found && this.tryWall(c, 'lantern', found, hx + k, hy + 9, hz, zone)) break;
       }
       return;
     }
@@ -969,6 +1039,11 @@ export class Props {
       if (!a) this.support.set(k, (a = []));
       a.push(p);
     }
+    if (p.cageKeys) for (const k of p.cageKeys) {
+      let a = this.cageSup.get(k);
+      if (!a) this.cageSup.set(k, (a = []));
+      a.push(p);
+    }
     if (p.item) this.plants.add(p);
     if (p.light) this.lit.add(p);
   }
@@ -979,6 +1054,13 @@ export class Props {
       const i = a.indexOf(p);
       if (i >= 0) a.splice(i, 1);
       if (!a.length) this.support.delete(k);
+    }
+    if (p.cageKeys) for (const k of p.cageKeys) {
+      const a = this.cageSup.get(k);
+      if (!a) continue;
+      const i = a.indexOf(p);
+      if (i >= 0) a.splice(i, 1);
+      if (!a.length) this.cageSup.delete(k);
     }
     this.plants.delete(p);
     this.lit.delete(p);
@@ -1054,9 +1136,12 @@ export class Props {
   liftReady(L) {
     const w = this.w;
     const c0 = Math.floor((L.x - 2.3) / CM), c1 = Math.floor((L.x + 2.3) / CM);
-    const e0 = Math.floor((L.y - 0.6) / CM), e1 = Math.floor((L.y + 3.1) / CM);
+    const e0 = Math.floor((L.y - 0.6) / CM), e1 = Math.floor((L.y + 3.1) / CM); // the room
     const f0 = Math.floor((L.z - 2.3) / CM), f1 = Math.floor((L.z + 2.3) / CM);
-    for (let cz = f0; cz <= f1; cz++) for (let cy = e0; cy <= e1; cy++) for (let cx = c0; cx <= c1; cx++) if (!w.chunk(cx, cy, cz)) return false;
+    for (let cz = f0; cz <= f1; cz++) for (let cy = e0; cy <= e1; cy++) for (let cx = c0; cx <= c1; cx++) {
+      const ch = w.chunk(cx, cy, cz);
+      if (!ch || ch.pending) return false;
+    }
     return true;
   }
   /** Dress one lift: the skinned cage, lamp, bell, plaque, counterweight, furniture (or a shaft stop's landing). */
@@ -1072,10 +1157,19 @@ export class Props {
     this.built.set(key, rec);
     const c = { rec, occ: [] };
     try {
-      const S = liftSnapshot(this.w, L, L.id[0] !== 's');
+      const sg = liftSnapshotSteps(this.w, L, L.id[0] !== 's');
+      let sr;
+      for (;;) {
+        sr = sg.next();
+        ms += performance.now() - t0;
+        if (sr.done) break;
+        yield sr.value;
+        if (this.built.get(key) !== rec) return rec; // dropped meanwhile
+        t0 = performance.now();
+      }
+      const S = sr.value;
       S.shaftX = this.plan.shaft.x; S.shaftZ = this.plan.shaft.z;
-      ms += performance.now() - t0;
-      yield 'snapshot';
+      rec.cageKeys = S.cage.map(([vx, vy, vz]) => vkey(vx, vy, vz));
       const gen = liftLayoutSteps(S, L);
       let r;
       for (;;) {
@@ -1096,9 +1190,11 @@ export class Props {
         const p = this.make(c, it.type, v, param, it.x, it.y, it.z, it.yaw || 0, it.mount, sv[0], sv[1], sv[2], (it.x * 3.7 + it.z * 1.3) % 1, { noLight: it.noLight, lift: true });
         if (!p) continue;
         if (it.cageSup) {
-          // the cage (and what hangs on it) stands on its timber: digging any of it re-dresses the lift
+          // the cage (and what hangs on it) stands on its timber: digging any of it re-dresses the lift.
+          // The snapshot's cells are 1/8 m: dug world voxels are matched to them (onVoxel).
           p.cage = true;
-          p.sup = S.cage.map(([vx, vy, vz]) => vkey(vx, vy, vz));
+          p.sup = [];
+          p.cageKeys = rec.cageKeys;
           p.supMain = -1;
         }
       }
@@ -1108,7 +1204,8 @@ export class Props {
     }
     // standing right at it (arriving by lift): the cage itself is meshed now so it is there on the
     // first frame; the rest follows within the frame budget (a few frames, under the fade-in)
-    const near = eye && Math.hypot(L.x - eye.x, L.y + 0.7 - eye.y, L.z - eye.z) < (this.age === 0 ? 12 : 6);
+    // (only while the scene is loading: in play everything is meshed in slices)
+    const near = this.age === 0 && eye && Math.hypot(L.x - eye.x, L.y + 0.7 - eye.y, L.z - eye.z) < 12;
     rec.wait = 0;
     rec.building = false;
     for (const p of rec.props) {
@@ -1142,39 +1239,65 @@ export class Props {
     this.dropChunk(rec);
     this.scanT = 0;
   }
+  /** Are the chunk's neighbours all there (generated, not waiting on a worker)? */
   neighborsLoaded(ch) {
     const w = this.w;
     for (let dz = -1; dz <= 1; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      if ((dx || dy || dz) && !w.chunk(ch.cx + dx, ch.cy + dy, ch.cz + dz)) return false;
+      if (!dx && !dy && !dz) continue;
+      const n = w.chunk(ch.cx + dx, ch.cy + dy, ch.cz + dz);
+      if (!n || n.pending) return false;
     }
     return true;
   }
 
+  /** Chunk offsets within R_BUILD of a chunk, nearest first (computed once). */
+  ring() {
+    if (this._ring) return this._ring;
+    const R = Math.ceil(R_BUILD / CM) + 1, out = [];
+    for (let dz = -R; dz <= R; dz++) for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const d = Math.hypot(dx, dy, dz) * CM;
+      if (d < R_BUILD + CM) out.push([d, dx, dy, dz]);
+    }
+    out.sort((a, b) => a[0] - b[0]);
+    return (this._ring = out);
+  }
+
+  /**
+   * Rescan what is around (a generator, spread over frames): drop what is too far or gone, then
+   * queue unbuilt chunks nearest first (walking the precomputed ring; lifts first).
+   */
+  *scanSteps(eye) {
+    const ex = eye.x, ey = eye.y, ez = eye.z;
+    const ecx = Math.floor(ex / CM), ecy = Math.floor(ey / CM), ecz = Math.floor(ez / CM);
+    const w = this.w, chunks = w.chunks;
+    let n = 0;
+    for (const rec of [...this.built.values()]) {
+      if (this.built.get(rec.key) !== rec) continue;
+      const far = Math.hypot(rec.x - ex, rec.y - ey, rec.z - ez) > R_DROP;
+      if (rec.lift ? far || !this.liftReady(rec.lift) : far || chunks.get(rec.key) !== rec.ch) this.dropChunk(rec);
+      if ((++n & 63) === 0) yield;
+    }
+    const q = [];
+    for (const L of this.lifts) {
+      if (this.built.has('lift:' + L.id)) continue;
+      if (Math.hypot(L.x - ex, L.y + 1 - ey, L.z - ez) < R_BUILD) q.push([0, null, L]);
+    }
+    this.queue = q;
+    this.qi = 0;
+    for (const [, dx, dy, dz] of this.ring()) {
+      const ch = w.chunk(ecx + dx, ecy + dy, ecz + dz);
+      if (ch && !ch.pending && !this.built.has(ch.key) && Math.hypot((ch.cx + 0.5) * CM - ex, (ch.cy + 0.5) * CM - ey, (ch.cz + 0.5) * CM - ez) < R_BUILD) q.push([0, ch]);
+      if ((++n & 127) === 0) yield;
+    }
+  }
+
   stream(eye, budget) {
     const t0 = performance.now();
-    const cell = Math.floor(eye.x / CM) + ',' + Math.floor(eye.y / CM) + ',' + Math.floor(eye.z / CM);
-    if (this.scanT <= 0 || cell !== this.lastCell) {
-      this.scanT = 0.4;
-      this.lastCell = cell;
-      const chunks = this.w.chunks;
-      for (const rec of [...this.built.values()]) {
-        const far = Math.hypot(rec.x - eye.x, rec.y - eye.y, rec.z - eye.z) > R_DROP;
-        if (rec.lift ? far || !this.liftReady(rec.lift) : far || chunks.get(rec.key) !== rec.ch) this.dropChunk(rec);
-      }
-      const q = [];
-      for (const ch of chunks.values()) {
-        if (this.built.has(ch.key)) continue;
-        const d = Math.hypot((ch.cx + 0.5) * CM - eye.x, (ch.cy + 0.5) * CM - eye.y, (ch.cz + 0.5) * CM - eye.z);
-        if (d < R_BUILD) q.push([d, ch]);
-      }
-      for (const L of this.lifts) {
-        if (this.built.has('lift:' + L.id)) continue;
-        const d = Math.hypot(L.x - eye.x, L.y + 1 - eye.y, L.z - eye.z);
-        if (d < R_BUILD) q.push([d - 3, null, L]);
-      }
-      q.sort((a, b) => a[0] - b[0]);
-      this.queue = q;
-      this.qi = 0;
+    if (!this.scanJob && this.scanT <= 0) { this.scanT = 0.5; this.scanJob = this.scanSteps(eye); }
+    if (this.scanJob) {
+      let r;
+      do r = this.scanJob.next(); while (!r.done && performance.now() - t0 < budget * 0.5);
+      if (r.done) this.scanJob = null;
     }
     while (this.qi < this.queue.length && performance.now() - t0 < budget) {
       const [, ch, L] = this.queue[this.qi++];
@@ -1183,9 +1306,12 @@ export class Props {
         else if (this.liftJob) this.scanT = Math.min(this.scanT, 0.2); // come back for it soon
         continue;
       }
-      if (this.built.has(ch.key) || this.w.chunks.get(ch.key) !== ch) continue;
+      if (ch.pending || this.built.has(ch.key) || this.w.chunks.get(ch.key) !== ch) continue;
       if (!this.neighborsLoaded(ch)) continue;
+      const tb = performance.now();
       this.buildChunk(ch);
+      const db = performance.now() - tb;
+      if (db > (this.stats.maxBuild || 0)) { this.stats.maxBuild = db; this.stats.maxBuildAt = ch.cx + ',' + ch.cy + ',' + ch.cz; }
     }
   }
 
@@ -1422,14 +1548,17 @@ export class Props {
       if (list) {
         for (const p of [...list]) {
           if (p.gone) continue;
-          if (p.cage) { this.relift(p.rec); continue; }
           if (k === p.supMain || ++p.lost >= 3) this.fall(p);
         }
+      }
+      if (this.cageSup.size) {
+        const cl = this.cageSup.get(vkey(Math.floor(vx / VK), Math.floor(vy / VK), Math.floor(vz / VK)));
+        if (cl && cl.length) this.relift(cl[0].rec);
       }
       // crystals nearby ring when the rock beside them is struck away
       if (this.chimeT <= this.time) {
         const x = (vx + 0.5) / VOX, y = (vy + 0.5) / VOX, z = (vz + 0.5) / VOX;
-        const rec = this.built.get(this.w.chunk(vx >> 5, vy >> 5, vz >> 5)?.key);
+        const rec = this.built.get(this.w.chunk(vx >> CB, vy >> CB, vz >> CB)?.key);
         if (rec) for (const p of rec.props) {
           if (p.gone || p.react !== 'chime') continue;
           if (Math.hypot(p.cx - x, p.cy - y, p.cz - z) < p.rad + 1.2) {
@@ -1443,7 +1572,7 @@ export class Props {
     } else {
       // rock (or cooled lava) filled space a prop stood in: it crumbles
       const x = (vx + 0.5) / VOX, y = (vy + 0.5) / VOX, z = (vz + 0.5) / VOX;
-      const rec = this.built.get(this.w.chunk(vx >> 5, vy >> 5, vz >> 5)?.key);
+      const rec = this.built.get(this.w.chunk(vx >> CB, vy >> CB, vz >> CB)?.key);
       if (!rec) return;
       for (const p of rec.props) {
         if (p.gone || Math.abs(p.cx - x) > p.rad || Math.abs(p.cz - z) > p.rad || y < p.bot || y > p.top) continue;
@@ -1542,6 +1671,7 @@ export class Props {
     this.mat.dispose();
     this.built.clear();
     this.support.clear();
+    this.cageSup.clear();
     this.plants.clear();
     this.lit.clear();
     this.near = [];
