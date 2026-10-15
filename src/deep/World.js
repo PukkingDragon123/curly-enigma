@@ -190,12 +190,16 @@ export class DeepWorld {
     // run-length encoded per chunk (dug tunnels are long runs of air along x)
     for (const [k, m] of this.edits) {
       const idx = [...m.keys()].sort((a, b) => a - b);
+      // flowing fluid keeps partial levels only in memory: shallow films save as air, so a reload
+      // never turns a thin puddle into a full voxel of water
+      const lv = this.fluidChunks?.get(k);
+      const val = lv ? (i) => { const v = m.get(i); return v && MAT[v]?.fluid && lv[i] && lv[i] < 4 ? 0 : v; } : (i) => m.get(i);
       const list = [];
       let end = 0;
       for (let i = 0; i < idx.length;) {
-        const start = idx[i], mat = m.get(start);
+        const start = idx[i], mat = val(start);
         let n = 1;
-        while (i + n < idx.length && idx[i + n] === start + n && m.get(idx[i + n]) === mat) n++;
+        while (i + n < idx.length && idx[i + n] === start + n && val(idx[i + n]) === mat) n++;
         list.push(start - end, n, mat);
         end = start + n;
         i += n;
