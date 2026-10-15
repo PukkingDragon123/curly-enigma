@@ -19,6 +19,7 @@ import { ITEMS, sellPrice } from '../data/items.js';
 import { ZONES } from '../data/zones.js';
 import { ORES } from '../mine/blocks.js';
 import { iconURL } from '../gfx/PixelArt.js';
+import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { clamp, rand, chance, hexToRgb, formatGoldFull } from '../core/util.js';
 
 const SLOTS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'food'];
@@ -300,6 +301,8 @@ export default class DigScene extends Scene {
       if (this.useT <= 0) { this.useT = 0.07; this.drillHit(it); }
     } else if (tool === 'xray') {
       this.U.xray.value = 1;
+      if (!this.xrayOn) { this.xrayOn = true; this.audio.play('xray_on'); }
+      this.energy(0.25 * dt);
     } else if (tool === 'stake') {
       if (this.useT <= 0 && inp.mousePressed(0)) { this.useT = 0.4; this.placeStake(); }
     } else if (tool === 'food') {
@@ -734,7 +737,53 @@ export default class DigScene extends Scene {
       U.lPos.value[i].set(l.x, l.y, l.z, l.r);
       U.lCol.value[i].set(l.c[0] * flick, l.c[1] * flick, l.c[2] * flick);
     }
+    this.xrayGhosts(this.U.xray.value > 0, eye);
+    if (!this.U.xray.value) this.xrayOn = false;
     U.xray.value = 0;
+  }
+
+  /** The x-ray lamp: ore deposits in its cone glow through the rock as see-through ghosts. */
+  xrayGhosts(on, eye) {
+    const G = (this.ghosts ||= new Map());
+    this.ghostScan = (this.ghostScan || 0) - 1;
+    if (on && this.ghostScan <= 0) {
+      this.ghostScan = 6;
+      const f = this.player.forward();
+      for (const d of this.world.depositsNear(eye.x, eye.y, eye.z, 7)) {
+        const s = this.world.depState(d);
+        if (s.taken) continue;
+        const dx = d.x - eye.x, dy = d.y - eye.y, dz = d.z - eye.z, l = Math.hypot(dx, dy, dz) || 1;
+        if ((dx * f.x + dy * f.y + dz * f.z) / l < 0.75) continue;
+        let gh = G.get(d.id);
+        if (!gh) {
+          const vox = this.ores.voxelsOf(d);
+          if (!vox.length) continue;
+          let x0 = 1e9, y0 = 1e9, z0 = 1e9, x1 = -1e9, y1 = -1e9, z1 = -1e9;
+          for (const v of vox) { x0 = Math.min(x0, v.x); y0 = Math.min(y0, v.y); z0 = Math.min(z0, v.z); x1 = Math.max(x1, v.x); y1 = Math.max(y1, v.y); z1 = Math.max(z1, v.z); }
+          const g = new VoxelGrid(x1 - x0 + 1, y1 - y0 + 1, z1 - z0 + 1);
+          // the ore's own colour pushed to full brightness, tinted toward the lamp's cyan
+          const a = col01(MAT[ORE_BASE + d.oreId].accent), mx = Math.max(0.05, ...a);
+          const c = new THREE.Color(...a.map((v, i) => (v / mx) * 0.7 + [0.45, 1, 0.9][i] * 0.3)).getHex();
+          for (const v of vox) g.set(v.x - x0, v.y - y0, v.z - z0, c);
+          const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending });
+          const mesh = new THREE.Mesh(meshGridGreedy(g, { scale: 1 / VOX, shade: true }), mat);
+          mesh.position.set(x0 / VOX, y0 / VOX, z0 / VOX);
+          mesh.renderOrder = 20;
+          this.scene.add(mesh);
+          gh = { mesh, k: 0, d };
+          G.set(d.id, gh);
+          if (!s.seen) { s.seen = true; this.revealed(d); }
+        }
+        gh.lit = this.time;
+      }
+    }
+    for (const [id, gh] of G) {
+      const want = on && this.time - (gh.lit || 0) < 0.4 && !this.world.depState(gh.d).taken ? 1 : 0;
+      gh.k += (want - gh.k) * Math.min(1, 0.1 + (want ? 0.12 : 0.2));
+      gh.mesh.material.opacity = gh.k * (0.85 + Math.sin(this.time * 9) * 0.15);
+      gh.mesh.visible = gh.k > 0.01;
+      if (!want && gh.k < 0.01) { this.scene.remove(gh.mesh); gh.mesh.geometry.dispose(); gh.mesh.material.dispose(); G.delete(id); }
+    }
   }
 
   hudTick(dt) {
@@ -778,6 +827,7 @@ export default class DigScene extends Scene {
     this.props?.dispose();
     this.fluids?.dispose();
     this.world.onChange = null;
+    for (const gh of this.ghosts?.values() || []) { gh.mesh.geometry.dispose(); gh.mesh.material.dispose(); }
     if (this.vm) this.vm.dispose();
     super.exit();
   }
