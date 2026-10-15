@@ -350,4 +350,4 @@ function buildShopInner(id, w) {
   return { obj: grp, door: { u: du, z: 1.0 }, lights, top, props, signs };
 }
 
-export { SHOP_LOOK };
+export { SHOP_LOOK, grindstone, pickBarrel, veggieCrate, chalkboard, mannequin, scales, blueprintRolls, easel, chairTable, strongbox };

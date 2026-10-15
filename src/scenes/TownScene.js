@@ -1,42 +1,40 @@
-// Deep Town: a cozy town in a huge cavern. Layered rock walls with an upper level of
-// burrows, walkways, laundry and lanterns; shops set into the walls; a fountain plaza with
-// market stalls; a waterfall; the sunbeam on the Surface Express booth; the mine lift with
-// Bramble at the crank; your burrow door; the old collapsed tunnel you escaped through;
-// and a crowd of townsfolk. Statics are merged, camera-culled and light-baked.
+// Deep Town in first person: a lantern-lit village in a great closed cavern. Strata walls with
+// burrows and walkways, a dome roof of stalactites, crystals and glow-worms, a sunbeam pouring
+// through a crack onto the Surface Express booth, shops tucked into the cliffs with counters and
+// keepers, the assay office's brass scale, the plaza fountain, market stalls, a waterfall, the
+// mine lift with Bramble at the crank, the back lanes with their mound houses, your burrow door,
+// the boarded tunnel you escape through, and a crowd of townsfolk who look round, wave and chat.
+// Built in town units under one scaled root (src/town/units.js); the mole walks in meters
+// (FPSRig + BoxWorld, docs/FPS.md).
 import * as THREE from 'three';
-import { IsoScene, flatPlane } from '../iso/IsoScene.js';
-import { Actor } from '../iso/Actor.js';
+import { Scene } from '../core/Scene.js';
+import { FPSRig, BoxWorld } from '../fps/FPSKit.js';
+import { openLiftPanel, rideTo, liftState } from '../fps/lifts.js';
+import { Actor, NuggetAI } from '../iso/Actor.js';
+import { makeCharacter, makeChicken } from '../gfx/characters.js';
 import { TOWN } from '../iso/townLayout.js';
-import * as TW from '../iso/townWorld.js';
-import * as TS from '../iso/townShops.js';
-import * as P from '../iso/props.js';
-import { buildShop } from '../iso/shopFront.js';
-import { markerArrow, homeEntrance } from '../iso/props2.js';
-import { ticketBooth32, velvetRope32 } from '../iso/booth.js';
-import { Townsfolk } from '../iso/TownNPCs.js';
-import { Batch, keepUnbatched } from '../iso/vox.js';
-import { WATER_TIME, waterMaterial } from '../iso/water.js';
-import { beamTexture, poolTexture } from '../iso/pixel.js';
 import { paintTownFloor, floorMaterialAt } from '../iso/townFloor.js';
-import { place, buildCave, buildUpper, buildRails } from '../iso/townBuild.js';
-import { tunnelFrame, tunnelBoards, brokenBoards, sealRubble } from '../iso/tunnel.js';
-import { TownArrival } from '../iso/townArrival.js';
-import { townLife } from '../iso/townLife.js';
+import { WATER_TIME } from '../iso/water.js';
 import { SignSheet } from '../iso/atlas.js';
-import { bakeLighting, caveAmbient } from '../iso/bake.js';
-import { disposeTextures } from '../iso/surface.js';
-import { MESH_STATS, withView, viewForYaw, meshDefaults } from '../iso/mesher.js';
+import { MESH_STATS } from '../iso/mesher.js';
+import { VoxelGrid, M16 } from '../iso/kit.js';
 import { SHOPS } from '../data/shops.js';
-import { ZONES, MAX_ZONE } from '../data/zones.js';
-
-/** Depth bands of the first-person underground, by zone/station (docs/DEEP.md). */
-const DEEP_DEPTHS = [[0, 25], [0, 25], [25, 55], [55, 90], [90, 130], [130, 170], [170, 210]];
-import { makeCharacter } from '../gfx/characters.js';
-import { el, rand, pick, chance, clamp, makeRng } from '../core/util.js';
+import { M, IM } from '../town/units.js';
+import { TownBuilder } from '../town/build.js';
+import { ceilingAt, ceilingInfo } from '../town/cave.js';
+import * as ST from '../town/statics.js';
+import { buildLift, PIT_DEPTH } from '../town/lift.js';
+import { Particles, GlowBatch, Lights, ShadowBatch, fxUniforms, glowWorms } from '../town/fx.js';
+import { Townsfolk } from '../town/folk.js';
+import { townLife } from '../town/life.js';
+import { sunbeam } from '../town/sunbeam.js';
+import { EscapeArrival } from '../town/arrival.js';
+import { pick, rand, chance, clamp, makeRng } from '../core/util.js';
 
 const _v = new THREE.Vector3();
-const SUN_TILT = -0.1; // how far the sunbeam leans toward its crack in the ceiling (negative: leans right on screen)
-const BRAMBLE = { name: 'Bramble', species: 'vole', age: 'elder', body: 'stocky', fur: 0x8a6a4a, outfit: 'overalls', outfitColor: 0x7a5a3a, hat: 'cap', hatColor: 0x3a5a3a, eyes: 'happy', brows: 'bushy', dirt: 0.6, seed: 31, blush: true, voice: 250 };
+const _w = new THREE.Vector3();
+const _f = new THREE.Vector3();
+export const BRAMBLE = { name: 'Bramble', species: 'vole', age: 'elder', body: 'stocky', fur: 0x8a6a4a, outfit: 'overalls', outfitColor: 0x7a5a3a, hat: 'cap', hatColor: 0x3a5a3a, eyes: 'happy', brows: 'bushy', dirt: 0.6, seed: 31, blush: true, voice: 250 };
 const BRAMBLE_LINES = [
   'Going down? Hop in, mind the gap.',
   'She creaks, but she has never dropped anyone. Twice.',
@@ -45,540 +43,339 @@ const BRAMBLE_LINES = [
   'Hold on to your helmet. And your chicken.',
 ];
 const WELCOME_BACK = ['Welcome back up! Still got all your claws?', 'Back in one piece! Mostly dirt, though.', 'Up you come. Old Vex will want a look at that haul.'];
-
-/** AO mode for the town's voxel statics (see meshDefaults). */
-const TOWN_AO = 'tops';
-/** Painted floor kept across visits: { key, tex }. */
+const NOTICES = ['LOST: one left mitten, ember-proof. Reward: a pie. — Dilly', 'BAND PRACTICE Thursdays at the fountain. Bring a spoon.', 'Please do NOT feed the glow-worms. — The Council', 'WANTED: brave digger for deep commissions. Ask Old Vex.', 'Mushroom swap, Sunday, back lane. No blue ones please.', 'Surface Express: ONE WAY ONLY. No refunds. No returns. No exceptions.'];
+const KNOCK = ['(muffled) Not today, thank you!', '(muffled) Who\'s there? ...Oh, it\'s the new one!', '(muffled) Kettle\'s on! Come back later!', '(muffled) Zzz... wha? Go \'way...', '(muffled) If that\'s about the begonias, I didn\'t do it!'];
+const EMOTE_COLORS = { '♥': '#e0404a', '!': '#c0402a', '?': '#3a6ac9', '♪': '#6a3a8a', '♫': '#6a3a8a', 'Zz': '#5a6a9a', '…': '#5a4030' };
 let FLOOR_CACHE = null;
 
-export default class TownScene extends IsoScene {
+export default class TownScene extends Scene {
   async enter(params = {}) {
-    this.hud = 'town';
+    const g = this.game, st = g.state;
+    this.hud = 'deep';
     this.music = 'town';
-    const st = this.game.state;
     st.flag('lastScene', 'town');
     const from = params.from || 'home';
+    this.from = from;
     if (from === 'escape') st.flag('escaped', true);
-    this.initIso({ w: TOWN.W, h: TOWN.H, zoom: 11.5, minZoom: 7, maxZoom: 14.5, lights: 6, lightRange: 11.5, bg: 0x07050a });
-    this.cam.bounds = { minX: 6.5, maxX: 30.5, minZ: 6.2, maxZ: 25.2 };
-    this.post = { vignette: 0.5, saturation: 1.12, contrast: 1.05 };
+    liftState(st);
+    this.post = { vignette: 0.42, saturation: 1.14, contrast: 1.06, outlineAlpha: 0.85, innerThresh: 0.25 };
     WATER_TIME.value = 0;
-
-    // cool cave ambience from above, warm bounce from the floor, a soft key from the upper left
-    this.scene.add(new THREE.HemisphereLight(0x9a90c8, 0x4a3426, 1.3));
-    const key = new THREE.DirectionalLight(0xffe2c8, 0.55);
+    // ---- the world: fog, the scaled town root, lights, effects
+    this.fogCol = new THREE.Color(0x120e1a);
+    this.scene.background = this.fogCol.clone();
+    this.scene.fog = new THREE.FogExp2(this.fogCol, 0.03);
+    this.root = new THREE.Group();
+    this.root.scale.setScalar(M);
+    this.scene.add(this.root);
+    this.root.updateMatrixWorld(true);
+    this.U = fxUniforms();
+    this.U.uFogCol.value.copy(this.fogCol);
+    this.U.uFogDist.value = 26;
+    this.world = new BoxWorld();
+    this.lights = new Lights(this.scene, 8, 13);
+    this.glow = new GlowBatch(this.root, this.U);
+    this.particles = new Particles(this.root, this.U, 1100);
+    this.shadowBatch = new ShadowBatch(this.root);
+    this.scene.add(new THREE.HemisphereLight(0x9a90d0, 0x6a4a34, 1.5));
+    const key = new THREE.DirectionalLight(0xffe2c8, 0.35);
     key.position.set(-4, 10, 6);
     this.scene.add(key);
-
-    const t0 = performance.now();
-    this.batch = new Batch(12);
-    this.faders = [];
-    this.shadows = [];
-    this.bakeLights = [];
-    this.unbatched = [];
+    this.tickers = [];
+    this.actors = [];
+    this.anchors = new Map();
+    this.loops = [];
+    this.talks = [];
+    this.locked = false;
+    this.ceilingAt = ceilingAt;
     this.signs = new SignSheet(1024);
+    this.B = new TownBuilder(this, TOWN.W, TOWN.H);
+    // ---- statics
+    if (params.meshlog) MESH_STATS.log = [];
+    const t0 = performance.now();
     const steps = {};
-    const run = (name, fn) => { const ts = performance.now(); fn(); steps[name] = Math.round(performance.now() - ts); };
-    // the town is big: AO only on upward faces (side-face AO at 1/32 cost ~130k triangles for ~2px of shading)
-    const prevMesh = meshDefaults({ ao: TOWN_AO });
-    try {
-    run('cave', () => buildCave(this));
-    run('upper', () => buildUpper(this));
-    run('shops', () => this.buildShops());
-    run('booth', () => this.buildBooth());
-    run('home', () => this.buildHomeDoor());
-    run('tunnel', () => this.buildTunnel(from === 'escape'));
-    run('lift', () => this.buildLift());
-    run('rails', () => buildRails(this));
-    run('plaza', () => this.buildPlaza());
-    run('market', () => this.buildMarket());
-    run('decor', () => this.buildDecor());
+    const run = (name, fn) => { const ts = performance.now(); const r = fn(); steps[name] = Math.round(performance.now() - ts); return r; };
+    const frames = run('cave', () => ST.buildCave(this));
+    run('upper', () => ST.buildUpper(this, frames));
+    run('roof', () => ST.buildRoof(this));
+    run('shops', () => ST.buildShops(this));
+    run('booth', () => ST.buildBooth(this));
+    run('home', () => ST.buildHomeDoor(this));
+    run('tunnel', () => ST.buildTunnel(this, from === 'escape'));
+    run('lift', () => { this.lift = buildLift(this); ST.buildLiftYard(this); });
+    run('rails', () => ST.buildRails(this));
+    run('plaza', () => ST.buildPlaza(this));
+    run('market', () => ST.buildMarket(this));
+    run('decor', () => ST.buildDecor(this));
     run('sun', () => this.buildSunbeam());
-    } finally { meshDefaults(prevMesh); }
-    const t1 = performance.now();
     run('floor', () => this.buildFloor());
-    const t2 = performance.now();
-    const statics = new THREE.Group();
-    this.scene.add(statics);
-    const amb = caveAmbient({ top: 7.6, fadeFrom: 3.6, minK: 0.12 });
-    const bake = (g) => bakeLighting(g, this.bakeLights, { ambient: amb });
-    this.batch.build(statics, this.cam.back, { bake });
-    for (const o of this.unbatched) keepUnbatched(o, this.scene);
+    const fin = run('merge', () => this.B.finish());
+    this.statics = fin.meshes.filter((m) => m.layers.isEnabled(1));
+    for (const m of this.statics) { m.geometry.computeBoundingSphere(); m.userData.ol = true; }
     const sheet = this.signs.build();
-    if (sheet) { bake(sheet.geometry); this.scene.add(sheet); }
+    if (sheet) { fin.bake(sheet.geometry); this.scene.add(sheet); }
+    this.map = this.B.map;
+    this.worms = glowWorms(this.root, this.U, this.roofWorms || []);
     this.buildMs = performance.now() - t0;
-    console.info('[town] mesher', JSON.stringify({ calls: MESH_STATS.calls, Mcells: +(MESH_STATS.cells / 1e6).toFixed(2), ms: Math.round(MESH_STATS.ms), ktris: Math.round(MESH_STATS.tris / 1000) }));
-    console.info(`[town] built in ${this.buildMs.toFixed(0)} ms (statics ${(t1 - t0).toFixed(0)}, floor ${(t2 - t1).toFixed(0)}, merge+bake ${(performance.now() - t2).toFixed(0)}) ${JSON.stringify(steps)}`);
-
+    if (MESH_STATS.log) { this.meshLog = MESH_STATS.log; MESH_STATS.log = null; }
+    console.info(`[town] built in ${this.buildMs.toFixed(0)} ms ${JSON.stringify(steps)} mesher ${JSON.stringify({ calls: MESH_STATS.calls, ms: Math.round(MESH_STATS.ms), ktris: Math.round(MESH_STATS.tris / 1000) })}`);
+    // ---- the mole
+    this.rig = await new FPSRig(this, { world: this.world, fov: 74, reach: 2.1, stepMat: 'stone', lamp: 0.45 }).init();
+    this.camera = this.rig.camera;
+    this.rig.lampCol.setRGB(1.2, 0.95, 0.7);
+    this.rig.ambient.setRGB(0.32, 0.28, 0.34);
+    this.player = this.makePlayerProxy();
+    // ---- people
     this.spawnKeepers();
     this.folk = new Townsfolk(this);
     this.folk.spawnAll();
     this.tickers.push((dt) => this.folk.update(dt));
     this.tickers.push((dt) => this.updateKeepers(dt));
+    if (st.flag('nugget')) this.spawnNugget();
     townLife(this);
-
-    // player + Nugget (only once she has been found on the way out)
-    const hasNugget = !!st.flag('nugget');
-    if (from === 'mine') {
-      this.spawnPlayer(TOWN.lift.cage.x, TOWN.lift.cage.z, 0);
-      if (hasNugget) this.spawnNugget(TOWN.lift.cage.x + 0.45, TOWN.lift.cage.z - 0.3);
-      this.arrive();
-    } else if (from === 'escape') {
-      const T = TOWN.tunnel;
-      this.spawnPlayer(T.cx, T.inside.z, 0);
-      if (hasNugget) this.spawnNugget(T.cx + 0.4, T.inside.z - 0.3);
-      this.arrival = new TownArrival(this);
+    this.buildInteractions();
+    if (!st.flag('homeVisited')) this.homeMarker = ST.makeHomeMarker(this);
+    // ---- arrival
+    const H = TOWN.home;
+    if (from === 'escape') {
+      this.arrival = new EscapeArrival(this);
       this.arrival.setup();
       this.arrival.run();
+    } else if (from === 'lift' || from === 'mine') {
+      this.arriveByLift();
     } else if (from === 'ending') {
-      // back from the surface: standing in the sunbeam by the booth
       const S = TOWN.sun;
-      this.spawnPlayer(S.x, S.z + 0.2, Math.PI * 0.75);
-      if (hasNugget) this.spawnNugget(S.x + 0.6, S.z + 0.7);
+      this.place(S.x, S.z + 0.4, Math.PI * 0.8);
     } else {
-      const sp = TOWN.home.spawn;
-      this.spawnPlayer(sp.x, sp.z, 0);
-      if (hasNugget) this.spawnNugget(sp.x + 0.7, sp.z + 0.4);
-      if (from === 'home') this.game.audio.play('door');
+      // out of the burrow door, looking down the street toward the plaza and the sunbeam
+      this.place(H.spawn.x, H.spawn.z + 0.3, Math.PI + 0.62);
+      if (this.nugget) this.nugget.pos.set(H.spawn.x + 0.7, 0, H.spawn.z + 0.7);
+      if (from === 'home') g.audio.play('door');
     }
-    this.ambientLoop('water', () => (this.player ? 0.3 * clamp(1 - Math.hypot(this.player.x - TOWN.fountain.x, this.player.z - TOWN.fountain.z) / 8, 0, 1) : 0));
-    this.ambientLoop('water', () => (this.player ? 0.42 * clamp(1 - Math.hypot(this.player.x - TOWN.falls.x, this.player.z - TOWN.falls.z) / 9, 0, 1) : 0), { intensity: 1 });
-    this.dripT = 3;
+    // ---- sound
+    const P = this.player;
+    this.ambientLoop('water', () => 0.3 * clamp(1 - Math.hypot(P.x - TOWN.fountain.x, P.z - TOWN.fountain.z) / 9, 0, 1));
+    this.ambientLoop('water', () => 0.42 * clamp(1 - Math.hypot(P.x - TOWN.falls.x, P.z - TOWN.falls.z) / 10, 0, 1), { intensity: 1 });
+    g.ui.setRadar?.(null);
+    g.ui.setDepth?.(null);
+    g.ui.setBag?.(null);
+    this.own(() => { for (const l of this.loops) if (l.h) l.h.stop(0.1); });
+    this.debug = this.makeDebug();
     await this.warmShaders();
   }
 
-  /** Compile every material before the first frame (in parallel where the GPU driver allows). */
   async warmShaders() {
     const r = this.game.engine?.renderer;
     if (!r || !r.compileAsync) return;
     try { await r.compileAsync(this.scene, this.camera); } catch (e) { console.warn(e); }
   }
 
-  // ------------------------------------------------------------ static world
-  /** Lights also bake into the static voxels around them (see iso/bake.js). */
+  // ------------------------------------------------------------ building helpers
+  /** A light source (TU): real point light (pooled), glow halo, floor pool, baked into the statics. */
   addLight(o) {
-    const src = super.addLight(o);
-    if (o.bake !== false && this.bakeLights) {
-      const power = o.bakePower ?? (o.intensity ? Math.min(1.3, o.intensity / 6) : 0.3);
-      const radius = o.bakeRadius ?? (o.intensity ? (o.distance ?? 5) * 0.95 : 2.4);
-      this.bakeLights.push({ x: o.x, y: o.y, z: o.z, color: o.color, power, radius });
-    }
+    const src = this.lights.add(o);
+    src.extras = [];
+    if (o.pool) src.extras.push(this.glow.add({ kind: 'pool', x: o.poolX ?? o.x, y: o.poolY ?? 0.035, z: o.poolZ ?? o.z, w: o.pool * 2, h: o.pool * 2, color: o.poolColor ?? o.color, opacity: o.poolOpacity ?? 0.32, src }));
+    if (o.halo) src.extras.push(this.glow.add({ kind: 'halo', x: o.hx ?? o.x, y: o.hy ?? o.y, z: o.hz ?? o.z, w: o.halo, color: o.haloColor ?? o.color, opacity: o.haloOpacity ?? 0.5, src }));
+    if (o.bake !== false && this.B) this.B.bakeLight(o);
     return src;
   }
 
-  addStatic(obj) {
-    this.batch.add(obj);
-    this.unbatched.push(obj);
+  removeLight(src) {
+    if (!src) return;
+    this.lights.remove(src);
+    for (const e of src.extras || []) this.glow.remove(e);
+    src.extras = [];
   }
 
   buildFloor() {
     const { W, H } = TOWN;
-    // the painted floor is deterministic: keep its texel data between visits (only the GPU copy is
-    // freed on exit, and re-uploaded on the way back in), so returning to town skips ~0.5 s of painting
-    const key = this.shadows.length + ':' + this.shadows.reduce((a, sh) => a + sh.x * 7 + sh.z * 13 + (sh.rx || 0) + (sh.rz || 0) + (sh.k || 0), 0).toFixed(3);
-    if (FLOOR_CACHE && FLOOR_CACHE.key === key) this.floorTex = FLOOR_CACHE.tex;
-    else {
-      if (FLOOR_CACHE) disposeTextures(FLOOR_CACHE.tex);
-      this.floorTex = paintTownFloor({ shadows: this.shadows });
-      FLOOR_CACHE = { key, tex: this.floorTex };
-    }
-    // per-tile quads so the lift shaft can be a real hole
+    if (!FLOOR_CACHE) FLOOR_CACHE = { tex: paintTownFloor({ shadows: this.B.shadows }) };
+    const t = this.floorTex = FLOOR_CACHE.tex;
+    t.map.minFilter = THREE.NearestMipmapNearestFilter;
+    t.map.generateMipmaps = true;
+    t.map.needsUpdate = true;
     const L = TOWN.lift;
     const hole = (x, z) => x >= L.cage.x - 1 && x < L.cage.x + 1 && z >= L.cage.z - 1 && z < L.cage.z + 1;
     const pos = [], uv = [], nor = [], idx = [];
     let v = 0;
     for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
       if (hole(x, z)) continue;
-      for (const [dx, dz] of [[0, 0], [0, 1], [1, 1], [1, 0]]) {
-        pos.push(x + dx, 0, z + dz);
-        uv.push((x + dx) / W, (z + dz) / H);
-        nor.push(0, 1, 0);
-      }
+      for (const [dx, dz] of [[0, 0], [0, 1], [1, 1], [1, 0]]) { pos.push(x + dx, 0, z + dz); uv.push((x + dx) / W, (z + dz) / H); nor.push(0, 1, 0); }
       idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
       v += 4;
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    g.setIndex(idx);
-    const t = this.floorTex;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
     const mat = new THREE.MeshPhongMaterial({ map: t.map, normalMap: t.normalMap, specularMap: t.specularMap, specular: 0x8a7e70, shininess: 24 });
-    this.scene.add(new THREE.Mesh(g, mat));
-    for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) this.map.setMat(x, z, floorMaterialAt(x + 0.5, z + 0.5));
-    // puddles: rippling water skins that pick up the lantern glow
-    this.puddles = [];
-    for (const [x, z, rx, rz] of TOWN.puddles) {
-      const m = new THREE.Mesh(flatPlane(), waterMaterial({ res: [Math.round(rx * 64), Math.round(rz * 64)], round: true, deep: 0x1c2430, mid: 0x2a3446, light: 0x56647c, foam: 0xb8c8e0, alpha: 0.82 }));
-      m.scale.set(rx * 2, 1, rz * 2);
-      m.position.set(x, 0.012, z);
-      m.renderOrder = 1;
-      this.scene.add(m);
-      this.puddles.push({ x, z, rx, rz });
-    }
-  }
-
-  buildShops() {
-    this.shopInfo = {};
-    for (const s of TOWN.shops) {
-      const b = buildShop(s.id, s.w, s.wall === 'N' ? 0 : Math.PI / 2);
-      const o = b.obj;
-      const toWorld = (lx, lz) => (s.wall === 'N' ? { x: s.a + lx, z: TOWN.northFace + lz } : { x: TOWN.westFace + lz, z: s.a + s.w - lx });
-      if (s.wall === 'N') o.position.set(s.a, 0, TOWN.northFace);
-      else { o.position.set(TOWN.westFace, 0, s.a + s.w); o.rotation.y = Math.PI / 2; }
-      this.addStatic(o);
-      o.updateMatrixWorld(true);
-      for (const sg of b.signs) this.signs.add(sg.pc, sg.w, sg.h, sg.anchor);
-      if (s.wall === 'N') this.map.fill(Math.floor(s.a), TOWN.northFace, Math.ceil(s.w), 1, 1);
-      else this.map.fill(TOWN.westFace, Math.floor(s.a), 1, Math.ceil(s.w), 1);
-      for (const pr of b.props) {
-        const w = toWorld(pr.x, pr.z);
-        this.map.addCircle(w.x, w.z, pr.r);
-        this.map.navCircle(w.x, w.z, pr.r + 0.25);
-        if (pr.shadow) this.shadows.push({ x: w.x, z: w.z, rx: pr.shadow.rx, rz: pr.shadow.rz, k: pr.shadow.k });
-      }
-      for (const l of b.lights) {
-        const w = toWorld(l.x, l.z);
-        this.addLight({ x: w.x, y: l.y, z: w.z, color: 0xffb860, intensity: 3.2, distance: 4.5, flicker: 0.16, pool: 1.1, poolOpacity: 0.26, halo: 0.55, haloOpacity: 0.55, bakePower: 0.9, bakeRadius: 3.4 });
-      }
-      const door = toWorld(b.door.u, 1.48);
-      this.shopInfo[s.id] = { door, yaw: s.wall === 'N' ? 0 : Math.PI / 2, wall: s.wall };
-      if (s.id === 'tools') this.grindstone = toWorld(4.35, 1.6);
-      // window light spilling onto the street
-      const fw = toWorld(b.door.u, 1.25);
-      this.addLight({ x: fw.x, y: 0.9, z: fw.z, color: 0xffb860, intensity: 0, real: false, pool: 1.5, poolOpacity: 0.14, bakePower: 0.4, bakeRadius: 2.6 });
-    }
-  }
-
-  buildBooth() {
-    const B = TOWN.booth;
-    const b = withView(viewForYaw(0), () => ticketBooth32());
-    b.obj.position.set(B.x0, 0, B.z0);
-    // the golden ticket bobs: keep it out of the static batch
-    b.obj.remove(b.ticket);
-    b.ticket.position.add(b.obj.position);
-    this.scene.add(b.ticket);
-    this.addStatic(b.obj);
-    this.ticketSign = b.ticket;
-    this.map.fill(B.x0, B.z0, B.w, B.d, 1);
-    for (const l of b.lights) this.addLight({ x: B.x0 + l.x, y: l.y, z: B.z0 + l.z, color: 0xffd890, intensity: 3, distance: 4.5, flicker: 0.08, pool: 1.0, poolOpacity: 0.22, halo: 0.45, haloOpacity: 0.5 });
-    this.addLight({ x: B.x0 + b.inside.x, y: b.inside.y, z: B.z0 + b.inside.z, color: 0xffc070, intensity: 0, real: false, pool: 0, halo: 0.3, haloOpacity: 0.35, bakePower: 0.8, bakeRadius: 1.6 });
-    const rope = withView(viewForYaw(0), () => velvetRope32());
-    rope.position.set(B.x0 + B.w / 2, 0, B.z0 + B.d + 0.72);
-    this.addStatic(rope);
-    this.shadows.push({ x: B.x0 + B.w / 2, z: B.z0 + B.d - 0.1, rx: 2.8, rz: 0.4, k: 0.55 });
-    // the clerk stands on a step just behind the ticket window
-    this.shopInfo.ticket = { door: { x: B.x0 + B.w / 2, z: B.z0 + 2.45 }, yaw: 0 };
-  }
-
-  buildHomeDoor() {
-    const h = TOWN.home;
-    const d = withView(viewForYaw(0), () => homeEntrance());
-    const ox = h.x0 + h.w / 2, oz = TOWN.northFace - 0.1;
-    d.obj.position.set(ox, 0, oz);
-    this.addStatic(d.obj);
-    this.map.fill(Math.floor(h.x0), TOWN.northFace, h.w, 1, 1);
-    this.map.addCircle(ox + d.pot.x, oz + d.pot.z, 0.26);
-    this.shadows.push({ x: ox + d.pot.x + 0.04, z: oz + d.pot.z + 0.05, rx: 0.3, rz: 0.22, k: 0.6 }, { x: ox + d.mailbox.x + 0.04, z: oz + d.mailbox.z + 0.03, rx: 0.22, rz: 0.2, k: 0.65 });
-    const lan = d.lights[0], peep = d.lights[1];
-    this.addLight({ x: ox + lan.x, y: lan.y, z: oz + lan.z, color: 0xffc070, intensity: 2.5, distance: 3.5, flicker: 0.12, real: false, pool: 1.0, poolOpacity: 0.26, poolZ: h.door.z + 0.75, poolX: ox + lan.x - 0.35, halo: 0.42, haloOpacity: 0.5 });
-    this.addLight({ x: ox + peep.x, y: peep.y, z: oz + peep.z + 0.1, color: 0xffd27a, intensity: 0, real: false, pool: 0.7, poolOpacity: 0.12, poolZ: h.door.z + 0.55, halo: 0.25, haloOpacity: 0.35, bakePower: 0.3, bakeRadius: 1.6 });
-    this.addInteractable({ x: h.door.x, z: h.door.z, r: 1.2, label: 'Go home', action: () => this.goHome() });
-    // until the burrow has been visited once, its door glows to show the way
-    if (!this.game.state.flag('homeVisited')) this.homeMarker = this.makeHomeMarker();
-  }
-
-  makeHomeMarker() {
-    const h = TOWN.home;
-    const ring = this.glow.add({ kind: 'pool', x: h.door.x, y: 0.04, z: h.door.z + 0.75, w: 1.5, h: 1.2, color: 0xffd27a, opacity: 0.4 });
-    const halo = this.glow.add({ kind: 'halo', x: h.door.x, y: 1.2, z: h.door.z - 0.25, w: 0.8, color: 0xffe0a0, opacity: 0.32 });
-    const ring2 = this.glow.add({ kind: 'ring', x: h.door.x, y: 2.3, z: h.door.z + 0.2, w: 0.5, color: 0xfff0b0, opacity: 0.9 });
-    const gem = markerArrow();
-    gem.position.set(h.door.x, 2.2, h.door.z + 0.3);
-    this.scene.add(gem);
-    return { ring, halo, ring2, gem, t: 0 };
-  }
-
-  buildTunnel(escape) {
-    const T = TOWN.tunnel, NF = TOWN.northFace;
-    const fr = tunnelFrame();
-    fr.position.set(T.cx, 0, NF);
-    this.addStatic(fr);
-    this.map.fill(Math.floor(T.x0), 0, Math.ceil(T.x1 - T.x0) + 1, NF, 1);
-    // the rubble that seals the mouth, the splintered boards, and (on arrival) the intact boards + sign
-    const seal = sealRubble();
-    seal.position.set(T.cx, 0, NF - 0.32);
-    const stubs = brokenBoards();
-    stubs.position.set(T.cx, 0, NF);
-    this.tunnel = { seal, stubs };
-    if (escape) {
-      // animated parts stay separate meshes until the dust settles
-      this.scene.add(seal, stubs);
-      seal.visible = false;
-      stubs.visible = false;
-      const bd = tunnelBoards();
-      const holder = new THREE.Group();
-      holder.position.set(T.cx, 0, NF + 0.1);
-      for (const b of bd.boards) holder.add(b);
-      holder.add(bd.sign);
-      this.scene.add(holder);
-      this.tunnel.boards = bd.boards;
-      this.tunnel.sign = bd.sign;
-    } else {
-      this.addStatic(seal);
-      this.addStatic(stubs);
-      // the old sign lies propped against the rubble
-      const bd = tunnelBoards();
-      bd.sign.position.set(T.cx + 0.55, 0.18, NF + 0.28);
-      bd.sign.rotation.set(-1.05, 0.2, 0.1);
-      this.scene.add(bd.sign);
-      for (const b of bd.boards) b.geometry.dispose();
-    }
-    this.shadows.push({ x: T.cx, z: NF + 0.25, rx: 1.1, rz: 0.35, k: 0.6 });
-    this.addInteractable({ x: T.cx, z: NF + 0.6, r: 1.0, priority: -0.6, label: 'Peer into the old tunnel', action: () => this.peerTunnel() });
-  }
-
-  peerTunnel() {
-    const p = this.player;
-    p.faceToward(TOWN.tunnel.cx, TOWN.northFace - 1);
-    this.emote(p, '…');
-    this.game.audio.play('drip');
-    this.particles.burst(4, { x: TOWN.tunnel.cx, y: 1.6, z: TOWN.northFace + 0.1, vy: -0.6, life: 0.9, size: 1.5, color: 0x8a7a6a, alpha: 0.8, alpha2: 0, grav: 3 }, { x: 0.5, v: 0.1 });
-  }
-
-  buildLift() {
-    const L = TOWN.lift;
-    const lf = TS.mineLift();
-    lf.obj.position.set(L.x0, 0, L.z0);
-    this.addStatic(lf.obj);
-    this.addLight({ x: L.x0 + lf.light.x, y: lf.light.y, z: L.z0 + lf.light.z, color: 0xffc070, intensity: 5, distance: 6, flicker: 0.12, pool: 1.6, poolOpacity: 0.26, halo: 0.6, haloOpacity: 0.55 });
-    this.map.fill(L.x0, L.z0, L.w, 1, 1);
-    this.map.fill(Math.floor(L.cage.x - 1), Math.floor(L.cage.z - 1), 2, 2, 1);
-    for (const [x, z] of [[L.x0 + 0.3, L.z0 + 3.7], [L.x0 + 3.7, L.z0 + 3.7]]) this.map.addCircle(x, z, 0.25);
-    const cage = TS.liftCage();
-    cage.obj.position.set(L.cage.x, 0, L.cage.z);
-    this.scene.add(cage.obj);
-    this.cage = cage;
-    const crank = TS.liftCrank();
-    crank.obj.position.set(L.crank.x, 0, L.crank.z);
-    crank.obj.rotation.y = Math.PI / 2;
-    this.scene.add(crank.obj);
-    this.crank = crank;
-    this.map.addCircle(L.crank.x, L.crank.z, 0.42);
-    this.map.navCircle(L.crank.x, L.crank.z, 0.6);
-    this.addInteractable({ x: L.front.x, z: L.front.z - 0.3, r: 1.35, label: 'Ride the lift', action: () => this.openLiftPanel() });
-    // the ore cart on the rails, the ore heap and the loading clutter
-    place(this, () => P.oreCart(2), TOWN.cart.x, TOWN.cart.z, 0, { solid: false });
-    this.map.addCircle(TOWN.cart.x, TOWN.cart.z - 0.32, 0.42);
-    this.map.addCircle(TOWN.cart.x, TOWN.cart.z + 0.32, 0.42);
-    this.map.navCircle(TOWN.cart.x, TOWN.cart.z, 0.9);
-    const pile = TW.orePile();
-    pile.position.set(TOWN.orePile.x, 0, TOWN.orePile.z);
-    pile.scale.setScalar(1.15);
-    this.addStatic(pile);
-    this.shadows.push({ x: TOWN.orePile.x, z: TOWN.orePile.z, rx: 0.75, rz: 0.7, k: 0.6 });
-    this.map.addCircle(TOWN.orePile.x, TOWN.orePile.z, 0.62);
-    this.map.navCircle(TOWN.orePile.x, TOWN.orePile.z, 0.8);
-    place(this, () => P.crate(8), 32.75, 7.85, 0.2);
-    place(this, () => P.barrel(9, { fill: 'coal' }), 32.85, 8.65);
-    place(this, () => P.ropeCoil(2), 29.0, 7.75, 0, { solid: false });
-    place(this, () => P.bucket(true), 32.6, 9.35, 0.4);
-  }
-
-  buildPlaza() {
-    const F = TOWN.fountain;
-    const f = TW.fountain();
-    this.addStatic(f.obj);
-    this.fountainInfo = f;
-    this.map.addCircle(F.x, F.z, F.r + 0.05);
-    this.map.navCircle(F.x, F.z, F.r + 0.45);
-    this.shadows.push({ x: F.x, z: F.z, rx: F.r + 0.25, rz: F.r + 0.25, k: 0.7, ox: 0.1, oz: 0.12 });
-    this.addLight({ x: F.x, y: f.crystal.y + 0.3, z: F.z, color: 0x7fd0ff, intensity: 7, distance: 7.5, flicker: 0.04, speed: 0.3, pool: 3.0, poolOpacity: 0.2, halo: 1.3, hy: f.crystal.y + 0.25, haloOpacity: 0.45, priority: 1 });
-    this.addInteractable({ x: F.x, z: F.z, size: F.r, r: 0.95, priority: -0.1, label: 'Toss a coin in (1 G)', action: () => this.tossCoin() });
-    const PS = this.particles;
-    PS.addEmitter({
-      every: 0.045,
-      emit: (p) => {
-        const a = Math.random() * Math.PI * 2;
-        const r0 = f.bowlR;
-        p.spawn({ x: F.x + Math.cos(a) * r0, y: f.bowlY, z: F.z + Math.sin(a) * r0, vx: Math.cos(a) * rand(0.35, 0.6), vz: Math.sin(a) * rand(0.35, 0.6), vy: rand(0.2, 0.6), grav: 5, life: 1.0, size: 1.5, color: 0xd8f6ff, color2: 0x7ac8f0, alpha: 0.95, alpha2: 0.4, fn: (q) => { if (q.y < f.basinY) { q.dead = true; if (Math.random() < 0.3) p.spawn({ x: q.x, y: f.basinY + 0.02, z: q.z, vy: 0.5, grav: 3, life: 0.25, size: 1, color: 0xffffff, alpha: 0.8 }); } } });
-      },
-      when: () => this.near(F.x, F.z, 14),
-    });
-    PS.addEmitter({
-      every: 0.12,
-      emit: (p) => p.spawn({ x: F.x + rand(-0.06, 0.06), y: f.crystal.y - 0.2, z: F.z + rand(-0.06, 0.06), vy: rand(0.9, 1.3), vx: rand(-0.3, 0.3), vz: rand(-0.3, 0.3), grav: 3.2, life: 0.9, size: 1.3, color: 0xe8fbff, alpha: 0.85, alpha2: 0.2, fn: (q) => { if (q.y < f.bowlY && q.t > 0.2) q.dead = true; } }),
-      when: () => this.near(F.x, F.z, 14),
-    });
-    // benches
-    this.benchSeats = [];
-    TOWN.benches.forEach((b, i) => {
-      place(this, () => P.bench(), b.x, b.z, b.yaw, { solid: false });
-      for (const side of [-1, 1]) {
-        const x = b.x + Math.cos(b.yaw) * 0.5 * side, z = b.z - Math.sin(b.yaw) * 0.5 * side;
-        this.map.addCircle(x, z, 0.32);
-        this.map.navCircle(x, z, 0.5);
-      }
-      const taken = { 0: [-1, 1], 1: [-1], 2: [1], 4: [1] }[i] || [];
-      for (const side of [-1, 1]) {
-        if (taken.includes(side)) continue;
-        const sx = b.x + Math.cos(b.yaw) * 0.42 * side, sz = b.z - Math.sin(b.yaw) * 0.42 * side;
-        this.benchSeats.push({ x: sx, z: sz, yaw: b.yaw, exitX: sx + Math.sin(b.yaw) * 0.85, exitZ: sz + Math.cos(b.yaw) * 0.85 });
-      }
-    });
-    for (const seat of this.benchSeats) this.addInteractable({ x: seat.x, z: seat.z, r: 0.95, priority: -0.4, label: 'Sit on the bench', action: () => this.sitOn({ ...seat, y: 0.22 }) });
-    // lamp posts
-    TOWN.lamps.forEach((l, i) => place(this, () => P.lampPost(i), l.x, l.z, i % 2 ? Math.PI / 2 : 0, { light: { intensity: 6, distance: 6.5, pool: 1.9, poolOpacity: 0.3, halo: 0.75, haloOpacity: 0.6 } }));
-    // giant glowing mushroom trees (fade when you walk behind them)
-    for (const t of TOWN.trees) {
-      const tr = TW.mushroomTree(t);
-      this.scene.add(tr.obj);
-      this.faders.push({ obj: tr.obj, mats: tr.mats, x: t.x, z: t.z, r: t.r, h: t.h, k: 1 });
-      this.map.addCircle(t.x, t.z, 0.42);
-      this.map.navCircle(t.x, t.z, 0.6);
-      this.shadows.push({ x: t.x, z: t.z, rx: t.r * 0.9, rz: t.r * 0.8, k: 0.72 });
-      this.addLight({ x: t.x, y: tr.light.y, z: t.z, color: tr.light.color, intensity: 5, distance: 7, flicker: 0.05, speed: 0.25, pool: t.r + 0.9, poolOpacity: 0.26, halo: 0, real: true });
-      this.particles.addEmitter({ every: 0.5, when: () => this.near(t.x, t.z, 12), emit: (p) => { const a = rand(0, 6.28), r = rand(0, t.r); p.spawn({ x: t.x + Math.cos(a) * r, y: t.h - 0.4, z: t.z + Math.sin(a) * r, vy: -rand(0.12, 0.25), life: rand(4, 7), size: 1.2, color: tr.light.color, alpha: 0.9, alpha2: 0, add: true, wob: 0.35 }); } });
-      for (let k = 0; k < 3; k++) this.spawnBeetle(t.x, t.z, t.h * 0.55);
-    }
-    // the notice board and a stone well
-    place(this, () => P.noticeBoard(), 11.6, 13.9, Math.PI / 2 - 0.35, { solid: false });
-    this.map.addCircle(11.6, 13.5, 0.25);
-    this.map.addCircle(11.6, 14.3, 0.25);
-    place(this, () => P.well(), 9.15, 10.85, 0.3);
-  }
-
-  buildMarket() {
-    this.stallSpots = [];
-    const Y = new THREE.Vector3(0, 1, 0);
-    TOWN.stalls.forEach((s, i) => {
-      place(this, () => P.marketStall(s.kind, i + 2), s.x, s.z, s.yaw);
-      // a lantern glow under the awning
-      _v.set(0.7, 0, 0.6).applyAxisAngle(Y, s.yaw);
-      this.addLight({ x: s.x + _v.x, y: 1.55, z: s.z + _v.z, color: 0xffc070, intensity: 0, real: false, pool: 1.3, poolOpacity: 0.16, halo: 0.45, haloOpacity: 0.45, flicker: 0.14, bakePower: 0.7, bakeRadius: 2.6 });
-      // the keeper stands behind the counter
-      _v.set(0, 0, -0.18).applyAxisAngle(Y, s.yaw);
-      this.stallSpots.push({ x: s.x + _v.x, z: s.z + _v.z, yaw: s.yaw, kind: s.kind });
-      // crates, sacks and a barrel beside it
-      _v.set(1.05, 0, 0.1).applyAxisAngle(Y, s.yaw);
-      place(this, () => (i % 2 ? P.sack({ color: 0xa88a5a }) : P.crate(i + 11)), s.x + _v.x, s.z + _v.z, s.yaw + 0.3);
-      _v.set(-1.05, 0, 0.25).applyAxisAngle(Y, s.yaw);
-      place(this, () => P.barrel(i + 21, { fill: s.kind === 'fish' ? 'water' : s.kind === 'gems' ? 'ore' : 'shrooms' }), s.x + _v.x, s.z + _v.z, s.yaw);
-    });
-  }
-
-  spawnBeetle(cx, cz, cy) {
-    const ph = rand(0, 6.28), rad = rand(0.8, 2.2), sp = rand(0.4, 0.9) * (chance(0.5) ? 1 : -1);
-    this.particles.spawn({
-      x: cx, y: cy, z: cz, life: 1e9, size: 1.6, color: 0xc8ff7a, alpha: 1, alpha2: 1, add: true, blink: 3,
-      fn: (q) => {
-        q.vx = q.vy = q.vz = 0;
-        const t = q.t * sp + ph;
-        q.x = cx + Math.cos(t) * rad + Math.sin(t * 2.3) * 0.3;
-        q.z = cz + Math.sin(t) * rad;
-        q.y = cy + Math.sin(t * 1.7) * 0.5;
-      },
-    });
-  }
-
-  buildDecor() {
-    const rng = makeRng(5);
-    // mound houses on the rims, with chimney smoke and glowing windows
-    this.chimneys = this.chimneys || [];
-    TOWN.houses.forEach((h, i) => {
-      const hs = TW.moundHouse(40 + i);
-      hs.obj.position.set(h.x, -0.15, h.z);
-      hs.obj.rotation.y = h.yaw + Math.PI;
-      this.addStatic(hs.obj);
-      hs.obj.updateMatrixWorld(true);
-      this.chimneys.push(new THREE.Vector3(hs.chimney.x, hs.chimney.y, hs.chimney.z).applyMatrix4(hs.obj.matrixWorld));
-      const wi = new THREE.Vector3(hs.window.x, hs.window.y, hs.window.z).applyMatrix4(hs.obj.matrixWorld);
-      this.addLight({ x: wi.x, y: wi.y, z: wi.z, color: 0xffb860, intensity: 0, real: false, halo: 0.9, haloOpacity: 0.4, flicker: 0.1 });
-    });
-    // glowing mushroom clumps along the edges
-    const clumps = [[4.2, 12.0, 0], [4.0, 21.2, 1], [10.0, 26.7, 2], [28.6, 26.7, 0], [32.8, 20.0, 1], [32.6, 11.0, 2], [8.6, 4.0, 1], [27.9, 4.25, 0], [32.6, 15.0, 3], [15.2, 26.9, 0], [23.4, 26.95, 1], [3.6, 9.4, 2], [3.7, 16.1, 0]];
-    clumps.forEach(([x, z, hue], i) => {
-      const ry = rng() * 6;
-      let c = null;
-      place(this, () => (c = P.glowShrooms(i * 5 + 2, hue, 0.85 + (i % 3) * 0.2)), x, z, ry, { solid: false, low: true });
-      this.map.addCircle(x, z, 0.28);
-      this.addLight({ x, y: 0.4, z, color: c.color, intensity: 0, real: false, pool: 0.9, poolOpacity: 0.24, halo: 0.6, haloOpacity: 0.28, flicker: 0.04, speed: 0.3, bakePower: 0.55, bakeRadius: 1.8 });
-    });
-    // stalagmites, crystals and rocks on the rims
-    for (const [x, z, h] of [[4.3, 26.6, 22], [33.0, 7.0, 26], [12.0, 27.15, 18], [20.5, 27.25, 24], [33.0, 19.4, 20], [26.2, 27.3, 16], [33.2, 24.6, 28], [7.4, 27.2, 14]]) place(this, () => P.stalagmite(Math.round(x * z), h), x, z, rng() * 6, { low: true });
-    for (const [x, z, s, hue] of [[3.8, 3.75, 1.1, 1], [33.25, 3.9, 1.0, 0], [33.0, 26.9, 1.15, 2], [4.0, 26.95, 0.95, 3], [17.6, 27.15, 0.8, 1]]) {
-      let c = null;
-      place(this, () => (c = P.crystals(Math.round(x * 13 + z), s, hue)), x, z, rng() * 6, { low: true });
-      this.addLight({ x, y: 0.8, z, color: c.color, intensity: 3.5, distance: 4.5, flicker: 0.05, speed: 0.3, pool: 1.5, poolOpacity: 0.26, halo: 1.2, hy: 0.7, haloOpacity: 0.3 });
-    }
-    for (const [x, z, w, d] of [[30.6, 26.9, 1.3, 0.8], [8.6, 26.95, 1.0, 0.7], [33.15, 22.3, 0.8, 1.2]]) place(this, () => P.rubble(Math.round(x + z), w, d), x, z, 0, { solid: false, low: true });
-    // barrels, crates & sacks: by the assay, the lift, the shops' gaps
-    const clutter = [[22.2, 4.6, 'b', 0], [21.7, 5.15, 'c', 0.3], [33.0, 10.3, 'c', 0.1], [32.9, 11.1, 'b', 0], [9.0, 4.4, 's', 0], [8.95, 5.0, 'b', 0], [3.75, 10.25, 'c', 0.2], [3.7, 15.9, 's', 0], [3.75, 21.25, 'b', 0], [15.6, 4.1, 'c', 0.15], [11.9, 4.15, 's', 0.4]];
-    for (const [x, z, k, ry] of clutter) {
-      const fill = rng() < 0.3 ? 'water' : null, sc = rng() < 0.5 ? 0xc8b08a : 0xa88a5a, yaw = ry + rng() * 0.4;
-      place(this, () => (k === 'b' ? P.barrel(Math.round(x * 3 + z), { fill }) : k === 'c' ? P.crate(Math.round(z * 5)) : P.sack({ color: sc })), x, z, yaw, { low: Math.hypot(x - TOWN.home.door.x, z - TOWN.home.door.z) > 3 });
-    }
-    place(this, () => P.handCart(3), 26.9, 15.6, -0.35);
-    place(this, () => P.woodpile(2), 14.3, 4.05, 0);
-    place(this, () => P.pottedFern(1), 16.1, 6.6, 0);
-    place(this, () => P.pottedFern(2), 20.9, 6.6, 0);
-    place(this, () => P.mailboxes(3, 2), 8.95, 6.35, 0);
-    // string lights: from the booth's roof to the plaza lamps, and along the promenades
-    const B = TOWN.booth;
-    const strands = [
-      [{ x: B.x0 + 0.2, y: 2.75, z: B.z0 + B.d }, { x: 14.3 + 0.3, y: 2.25, z: 11.2 }],
-      [{ x: B.x0 + B.w - 0.2, y: 2.75, z: B.z0 + B.d }, { x: 22.7 + 0.3, y: 2.25, z: 11.2 }],
-      [{ x: 6.7 + 0.3, y: 2.25, z: 7.2 }, { x: 15.35 + 0.3, y: 2.25, z: 5.35 }],
-      [{ x: 6.7 + 0.3, y: 2.25, z: 18.4 }, { x: 14.3 + 0.3, y: 2.25, z: 19.8 }],
-    ];
-    strands.forEach(([a, b], i) => {
-      const gl = TW.garland(a, b, i * 2);
-      this.addStatic(gl.obj);
-      const mid = gl.points[Math.floor(gl.points.length / 2)];
-      this.addLight({ x: mid.x, y: mid.y, z: mid.z, color: 0xffc080, intensity: 0, real: false, pool: 1.6, poolOpacity: 0.12, poolX: mid.x, poolZ: mid.z, flicker: 0.05, bakePower: 0.35, bakeRadius: 2 });
-    });
-    // ceiling drips at a few spots
-    this.drips = [[12.4, 3.4], [25.2, 3.4], [3.4, 17.6], [32.8, 13.5], [17.2, 3.5], [6.0, 3.4]];
+    this.root.add(new THREE.Mesh(geo, mat));
+    // the lift pit's floor, far down in the dark
+    const pitFloor = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x050304 }));
+    pitFloor.position.set(L.cage.x, -PIT_DEPTH + 0.05, L.cage.z);
+    this.root.add(pitFloor);
   }
 
   buildSunbeam() {
-    const S = TOWN.sun;
-    const beamMat = new THREE.MeshBasicMaterial({ map: beamTexture(), color: 0xfff1c8, transparent: true, opacity: 0.34, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-    const L = 16, tilt = SUN_TILT;
-    const beam = new THREE.Mesh(new THREE.PlaneGeometry(2.0, L), beamMat);
-    const off = L / 2;
-    beam.position.set(S.x - off * Math.sin(tilt) * Math.SQRT1_2, off * Math.cos(tilt) - 0.1, S.z + off * Math.sin(tilt) * Math.SQRT1_2);
-    beam.rotation.set(0, Math.PI / 4, tilt);
-    beam.renderOrder = 8;
-    this.scene.add(beam);
-    const inner = new THREE.Mesh(new THREE.PlaneGeometry(1.0, L), beamMat.clone());
-    inner.material.opacity = 0.24;
-    inner.position.copy(beam.position);
-    inner.rotation.copy(beam.rotation);
-    inner.renderOrder = 8;
-    this.scene.add(inner);
-    this.beam = { outer: beam, inner };
-    const spotMat = new THREE.MeshBasicMaterial({ map: poolTexture(), color: 0xfff0b0, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
-    const spot = new THREE.Mesh(flatPlane(), spotMat);
-    spot.scale.set(S.r * 2.6, 1, S.r * 2.3);
-    spot.position.set(S.x, 0.03, S.z);
-    spot.renderOrder = 3;
-    this.scene.add(spot);
-    this.addStatic(TW.sunPatch());
-    this.addLight({ x: S.x, y: 3.2, z: S.z, color: 0xfff0d0, intensity: 9, distance: 6, flicker: 0, real: true, priority: 4 });
-    this.particles.addEmitter({
-      every: 0.16,
-      when: () => this.near(S.x, S.z, 15),
-      emit: (p) => {
-        const y = rand(0.2, 6), a = rand(0, 6.28), r = rand(0, 0.8);
-        const lean = y * Math.tan(SUN_TILT) * Math.SQRT1_2;
-        p.spawn({ x: S.x + Math.cos(a) * r - lean, y, z: S.z + Math.sin(a) * r * 0.9 + lean, vy: rand(-0.05, 0.08), vx: rand(-0.05, 0.05), life: rand(3, 5.5), size: rand(1, 1.6), color: 0xfff8d8, alpha: 0.9, alpha2: 0, add: true, wob: 0.18, blink: 5 });
-      },
-    });
-    this.addInteractable({ x: S.x, z: S.z, size: 0.4, r: 0.9, priority: -0.5, label: 'Stand in the sunlight', action: () => this.bask() });
+    const info = ceilingInfo(), S = TOWN.sun;
+    const top = new THREE.Vector3(info.sun.x, ceilingAt(info.sun.x + 0.6, info.sun.z + 0.6) + 2.5, info.sun.z);
+    const bottom = new THREE.Vector3(S.x, -0.05, S.z);
+    const b = sunbeam(top, bottom, 1.1, 2.3);
+    this.root.add(b.mesh);
+    this.beamFx = b;
+    this.beam = { x0: bottom.x, y0: 0.2, z0: bottom.z, x1: top.x, y1: top.y - 3, z1: top.z };
+    this.glow.add({ kind: 'pool', x: S.x, y: 0.04, z: S.z, w: S.r * 2.8, h: S.r * 2.5, color: 0xfff0b0, opacity: 0.55 });
+    this.glow.add({ kind: 'halo', x: info.sun.x, y: top.y - 3.5, z: info.sun.z, w: 3.2, color: 0xfff6d0, opacity: 0.5 });
+    this.B.addStatic(sunPatchAt(S));
+    this.addLight({ x: S.x, y: 3.2, z: S.z, color: 0xfff0d0, intensity: 7, distance: 6, flicker: 0, real: true, priority: 4, bakePower: 1.2, bakeRadius: 3.6 });
   }
 
-  near(x, z, r) { const f = this.cam.focus; return (f.x - x) ** 2 + (f.z - z) ** 2 < r * r; }
+  // ------------------------------------------------------------ actors, talk, bubbles
+  makePlayerProxy() {
+    const rig = this.rig;
+    return {
+      pos: new THREE.Vector3(), radius: 0.22 * IM, collide: true, speedNow: 0, key: 'town-me', voice: 280,
+      rig: { facing: 0 },
+      get x() { return this.pos.x; }, get z() { return this.pos.z; },
+      dist(x, z) { return Math.hypot(x - this.pos.x, z - this.pos.z); },
+      headPos(out) { return out.copy(rig.player.pos).multiplyScalar(IM).setY(rig.player.pos.y * IM + 1.4); },
+    };
+  }
+
+  syncPlayerProxy() {
+    const p = this.player, pl = this.rig.player;
+    p.pos.set(pl.pos.x * IM, pl.pos.y * IM, pl.pos.z * IM);
+    p.rig.facing = pl.yaw + Math.PI;
+    p.speedNow = Math.hypot(pl.vel.x, pl.vel.z) * IM;
+  }
+
+  /** Put the mole at TU (x, z) facing yaw (0 looks north, π south). */
+  place(x, z, yaw = 0, pitch = 0) {
+    this.rig.place(x * M, 0.001, z * M, yaw, pitch);
+    this.syncPlayerProxy();
+  }
+
+  addActor(a) {
+    this.root.add(a.obj);
+    this.actors.push(a);
+    // blob shadows are drawn in one batch (ShadowBatch), not one mesh each
+    a.shadowSize = a.shadow.scale.x;
+    a.shadowOn = true;
+    a.shadow.visible = false;
+    a.shadow.removeFromParent();
+    return a;
+  }
+
+  /** Something to chat with: a sphere on the actor's chest that follows it (made in buildInteractions). */
+  addTalk(actor, label, action, o = {}) {
+    const t = { actor, label, action, r: o.r ?? 0.42, item: null };
+    this.talks.push(t);
+    if (this.rig && this.talkItemsBuilt) this.makeTalkItem(t);
+    return t;
+  }
+
+  near(x, z, r) { const p = this.player; return (p.x - x) ** 2 + (p.z - z) ** 2 < r * r; }
+
+  /** Is an actor's head in front of the camera and not too far? */
+  inView(a) {
+    const cam = this.rig.camera;
+    a.headPos(_v).multiplyScalar(M);
+    _w.copy(_v).sub(cam.position);
+    if (_w.length() > 14) return false;
+    cam.getWorldDirection(_f);
+    return _w.dot(_f) > 0.25 * _w.length();
+  }
+
+  say(actor, html, o = {}) {
+    const ui = this.game.ui;
+    ui.hideBubble(actor.key);
+    const emote = !!o.emote;
+    const s = this.bubbleAt(actor, emote);
+    ui.bubble(actor.key, html, s.x, s.y, { emote, life: o.life ?? 3.4, name: o.name ?? null });
+    ui.moveBubble(actor.key, s.x, s.y, s.visible);
+    this.anchors.set(actor.key, actor);
+    if (!emote && o.babble !== false) {
+      actor.headPos(_v);
+      const d = Math.hypot(_v.x - this.player.x, _v.z - this.player.z);
+      if (d < 9) this.game.audio.play('babble', { pitch: o.voice ?? actor.voice, n: clamp(Math.round(html.length / 9), 2, 8) });
+      if (actor.rig?.talk) actor.rig.talk(Math.min(2.2, 0.6 + html.length / 30));
+    }
+  }
+
+  emote(actor, sym, o = {}) {
+    const col = o.color || EMOTE_COLORS[sym] || '#2a1a12';
+    this.say(actor, `<span style="color:${col}">${sym}</span>`, { emote: true, life: o.life ?? 1.5, babble: false });
+    if (o.sound) this.game.audio.play('emote', { kind: o.sound });
+  }
+
+  /** Screen spot for a bubble above an actor's head (hidden when it's behind the mole or far away). */
+  bubbleAt(actor, emote) {
+    const cam = this.rig.camera, e = this.game.engine;
+    actor.headPos(_v).multiplyScalar(M);
+    _v.y += 0.06;
+    _w.copy(_v).sub(cam.position);
+    const d = _w.length();
+    cam.getWorldDirection(_f);
+    const front = _w.dot(_f) > 0.15 * d;
+    const s = e.toScreen(_v, cam);
+    const W = e.width * e.scale, H = e.height * e.scale;
+    s.visible = front && d < (emote ? 7 : 9.5) && s.x > -40 && s.x < W + 40 && s.y > -20 && s.y < H + 60;
+    // hidden behind a wall, a stall or the fountain (keepers stand inside their shops: skip them)
+    if (s.visible && !actor.indoors && d > 1.2) {
+      _f.copy(_w).normalize();
+      const hit = this.world.raycast(cam.position.x, cam.position.y, cam.position.z, _f.x, _f.y, _f.z, d);
+      if (hit && hit.dist < d - 0.35 && hit.box.tag !== 'lid') s.visible = false;
+    }
+    const half = emote ? 24 : Math.min(150, W * 0.2);
+    s.x = Math.max(half + 6, Math.min(W - half - 6, s.x));
+    s.y = Math.max(70, Math.min(H - 10, s.y));
+    return s;
+  }
+
+  updateAnchors() {
+    const ui = this.game.ui;
+    for (const [key, a] of this.anchors) {
+      const b = ui.bubbles.get(key);
+      if (!b) { this.anchors.delete(key); continue; }
+      const s = this.bubbleAt(a, b.node.classList.contains('emote'));
+      ui.moveBubble(key, s.x, s.y, s.visible);
+    }
+  }
+
+  // ------------------------------------------------------------ timers
+  later(secs, fn) {
+    let t = 0;
+    const tick = (dt) => { t += dt; if (t >= secs) { this.tickers.splice(this.tickers.indexOf(tick), 1); fn(); } };
+    this.tickers.push(tick);
+  }
+  sleepFor(secs) { return new Promise((res) => this.later(secs, res)); }
+  tween(secs, fn) {
+    return new Promise((res) => {
+      let t = 0;
+      fn(0);
+      const tick = (dt) => {
+        t += dt;
+        const k = Math.min(1, t / secs);
+        fn(k);
+        if (k >= 1) { this.tickers.splice(this.tickers.indexOf(tick), 1); res(); }
+      };
+      this.tickers.push(tick);
+    });
+  }
+
+  ambientLoop(name, vol, params = {}) { const l = { name, vol, params, h: null, cur: 0 }; this.loops.push(l); return l; }
+  updateLoops() {
+    const audio = this.game.audio;
+    for (const l of this.loops) {
+      const v = Math.max(0, l.vol());
+      if (!l.h || !l.h.alive) {
+        l.h = null;
+        if (v > 0.01 && audio.ctx && audio.ctx.state === 'running') l.h = audio.loop(l.name, { ...l.params, vol: v });
+      } else if (v <= 0.003) { l.h.stop(0.3); l.h = null; } else if (Math.abs(v - l.cur) > 0.005) l.h.set({ vol: v });
+      l.cur = v;
+    }
+  }
 
   // ------------------------------------------------------------ keepers
   spawnKeepers() {
@@ -586,52 +383,53 @@ export default class TownScene extends IsoScene {
     const mk = (id, spec, pos, yaw, label) => {
       const rig = makeCharacter({ seed: 9, eyes: 'bead', dirt: 0.2, blush: true, ...spec, hat: spec.hat || 'none', glasses: spec.glasses || false });
       const a = new Actor(rig, { x: pos.x, z: pos.z, yaw, name: spec.name, voice: spec.voice, radius: 0.27 });
+      a.body.position.y = pos.y || 0;
+      a.collide = false;
+      a.indoors = true;
       this.addActor(a);
-      a.solid = true;
-      const k = { id, a, spec, home: { x: pos.x, z: pos.z, yaw }, armed: true, cool: 0, lookT: rand(1, 4) };
+      a.shadowOn = !pos.y;
+      const k = { id, a, spec, home: { x: pos.x, z: pos.z, yaw }, armed: true, cool: 0, lookT: rand(1, 4), label };
       this.keepers.push(k);
-      this.addInteractable({ actor: a, r: id === 'ticket' ? 2.0 : 1.55, priority: 0.3, label, action: () => this.useKeeper(k) });
       return k;
     };
     for (const s of TOWN.shops) {
       const info = this.shopInfo[s.id];
       const sh = SHOPS[s.id];
-      mk(s.id, sh.keeper, info.door, info.yaw, s.id === 'assay' ? `Sell to ${sh.keeper.name}` : `Shop at ${sh.name}`);
+      mk(s.id, sh.keeper, info.keeper, info.yaw, s.id === 'assay' ? `Sell to ${sh.keeper.name}` : `Shop at ${sh.name}`);
     }
-    const tk = this.shopInfo.ticket;
-    const fox = mk('ticket', SHOPS.ticket.keeper, tk.door, 0, 'Surface Express tickets');
-    fox.a.collide = false;
-    fox.a.shadow.visible = false;
-    fox.a.body.position.y = 0.42; // standing on a step behind the ticket window
+    mk('ticket', SHOPS.ticket.keeper, this.shopInfo.ticket.keeper, 0, 'Surface Express tickets');
     const L = TOWN.lift;
-    this.bramble = mk('lift', BRAMBLE, L.op, Math.PI / 2 - 0.4, 'Ride the lift');
+    this.bramble = mk('lift', BRAMBLE, { x: L.op.x, z: L.op.z }, Math.PI / 2 - 0.4, 'Ride the lift');
+    this.bramble.a.collide = true;
+    this.bramble.a.indoors = false;
   }
 
   useKeeper(k) {
+    if (this.locked) return null;
     const p = this.player;
     k.a.faceToward(p.x, p.z);
-    p.faceToward(k.a.x, k.a.z);
     k.a.rig.doEmote('wave', 0.9);
     k.armed = false;
     k.cool = 25;
-    if (k.id === 'lift') { this.openLiftPanel(); return; }
-    this.game.ui.openShop(k.id);
+    if (k.id === 'lift') { this.openLift(); return null; }
+    this.game.audio.play('babble', { pitch: k.spec.voice, n: 3 });
+    return this.game.ui.openShop(k.id);
   }
 
   updateKeepers(dt) {
     const p = this.player;
-    if (!p) return;
     for (const k of this.keepers) {
       const a = k.a;
       const d = a.dist(p.x, p.z);
       k.cool -= dt;
-      if (d < 4.2 && !this.locked) {
+      if (d < 4.4 && !this.locked) {
         a.faceToward(p.x, p.z);
-        if (k.armed && d < 3.3) {
+        if (k.armed && d < 3.4 && this.inView(a)) {
           k.armed = false;
           k.cool = 25;
           const lines = k.id === 'lift' ? BRAMBLE_LINES : SHOPS[k.id].lines;
           this.say(a, pick(lines), { name: k.spec.name, voice: k.spec.voice, life: 4.5 });
+          if (chance(0.5)) a.rig.doEmote('wave', 1);
         }
       } else {
         k.lookT -= dt;
@@ -645,158 +443,187 @@ export default class TownScene extends IsoScene {
     }
   }
 
+  // ------------------------------------------------------------ Nugget
+  spawnNugget() {
+    const st = this.game.state;
+    const a = new Actor(makeChicken(), { x: TOWN.home.spawn.x + 0.6, z: TOWN.home.spawn.z + 0.6, name: st.data.chicken?.name || 'Nugget', voice: 620, radius: 0.17, headY: 0.68, shadow: 0.4 });
+    this.nugget = this.addActor(a);
+    this.nuggetAI = new NuggetAI(a, this);
+    this.addTalk(a, `Pet ${a.name}`, () => this.petNugget(), { r: 0.34 });
+  }
+
+  petNugget() {
+    const st = this.game.state, d = st.data, n = this.nugget;
+    if (d.chicken) { d.chicken.pets = (d.chicken.pets || 0) + 1; d.chicken.lastPetDay = d.day; }
+    st.dirty = true;
+    this.game.audio.play('cluck', { n: 2, pitch: 1.15, gap: 0 });
+    this.emote(n, '♥', { sound: 'love' });
+    this.nuggetAI.petted();
+    n.faceToward(this.player.x, this.player.z);
+    this.particles.hearts(n.x, 0.7, n.z);
+  }
+
+  // ------------------------------------------------------------ interactions (crosshair + E)
+  buildInteractions() {
+    const rig = this.rig;
+    const boxM = (b) => b.map((v) => v * M);
+    // shops: the serving window and the keeper behind it
+    for (const k of this.keepers) {
+      if (k.id === 'lift') continue;
+      const info = this.shopInfo[k.id];
+      rig.add({ box: boxM(info.win), label: k.label, reach: 2.4, enabled: () => !this.locked, action: () => this.useKeeper(k) });
+    }
+    // the lift: the cage, and Bramble at the crank
+    const c = TOWN.lift.cage;
+    rig.add({ box: boxM([c.x - 1.0, 0, c.z - 0.6, c.x + 1.0, 2.3, c.z + 1.2]), label: 'Ride the lift', reach: 2.4, enabled: () => !this.locked, action: () => this.openLift() });
+    // the burrow door
+    rig.add({ box: boxM(this.homeDoor.box), label: 'Go home', reach: 2.2, enabled: () => !this.locked, action: () => this.goHome() });
+    // the fountain, the well, the notice board, the sunbeam, the old tunnel
+    const F = TOWN.fountain;
+    rig.add({ x: F.x * M, y: 0.45 * M, z: F.z * M, r: (F.r + 0.1) * M, label: 'Toss a coin in (1 G)', reach: 1.6, enabled: () => !this.locked, action: () => this.tossCoin() });
+    rig.add({ x: this.well.x * M, y: 0.6 * M, z: this.well.z * M, r: 0.75 * M, label: 'Peer into the well', reach: 1.6, action: () => this.peerWell() });
+    rig.add({ x: 11.6 * M, y: 1.3 * M, z: 13.9 * M, r: 0.8 * M, label: 'Read the notices', reach: 1.9, action: () => this.readNotice() });
+    const S = TOWN.sun;
+    rig.add({ x: S.x * M, y: 0.1, z: S.z * M, r: S.r * 0.8 * M, label: 'Stand in the sunlight', reach: 2.0, enabled: () => !this.locked, action: () => this.bask() });
+    const Tu = TOWN.tunnel;
+    rig.add({ box: boxM([Tu.cx - 0.9, 0, TOWN.northFace - 0.6, Tu.cx + 0.9, 2.0, TOWN.northFace + 0.5]), label: 'Peer into the old tunnel', reach: 2, enabled: () => !this.locked && (!this.arrival || this.arrival.done), action: () => this.peerTunnel() });
+    for (const seat of this.benchSeats || []) rig.add({ x: seat.x * M, y: 0.3 * M, z: seat.z * M, r: 0.32 * M, label: 'Sit on the bench', reach: 1.6, enabled: () => !this.locked && !this.seat, action: () => this.sit(seat) });
+    for (const d of this.houseDoors || []) rig.add({ x: d.x * M, y: 0.8 * M, z: d.z * M, r: 0.6 * M, label: 'Knock', reach: 1.8, action: () => this.knock(d) });
+    // people: spheres on their chests that follow them
+    for (const t of this.talks) this.makeTalkItem(t);
+    this.talkItemsBuilt = true;
+    const br = this.bramble;
+    this.brambleItem = rig.add({ x: 0, y: 0, z: 0, r: 0.42 * M, label: 'Bramble: ride the lift', reach: 2.2, enabled: () => !this.locked, action: () => this.useKeeper(br) });
+  }
+
+  makeTalkItem(t) {
+    t.item = this.rig.add({ x: 0, y: -9, z: 0, r: t.r * M, label: typeof t.label === 'function' ? t.label() : t.label, reach: 2.0, enabled: () => !this.locked, action: () => t.action() });
+  }
+
+  updateTalkItems() {
+    for (const t of this.talks) {
+      const a = t.actor, it = t.item;
+      if (!it) continue;
+      it.x = a.pos.x * M; it.z = a.pos.z * M;
+      it.y = (a.pos.y + a.body.position.y + a.headY * 0.6) * M;
+    }
+    const b = this.bramble.a;
+    this.brambleItem.x = b.pos.x * M; this.brambleItem.z = b.pos.z * M; this.brambleItem.y = (b.headY * 0.6) * M;
+  }
+
   // ------------------------------------------------------------ the lift
-  openLiftPanel() {
-    if (this.locked) return;
-    const st = this.game.state;
-    // lift stations found down in the deep (station 0, the top of the shaft, is always there)
-    const found = [...new Set([0, ...(st.data.deep?.stations || []).map((n) => n | 0).filter((n) => n >= 0)])].sort((a, b) => a - b);
-    const list = el('div', { class: 'list' });
-    for (const n of found) {
-      const Z = ZONES[n] || null;
-      const dep = DEEP_DEPTHS[n];
-      const color = n === 0 ? '#6a5a4a' : Z?.color || '#5a4a5a';
-      const tag = el('div', { style: { width: 'calc(var(--px) * 16)', height: 'calc(var(--px) * 16)', background: color, border: 'var(--px) solid var(--wood-dk)', display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 700, textShadow: '0 var(--px) 0 #000', fontFamily: 'var(--font-display)', fontSize: '1.3em' } }, String(n));
-      const name = n === 0 ? 'Top of the shaft' : Z ? `${Z.name} station` : `Station ${n}`;
-      const desc = n === 0 ? 'Just below town. Soft earth and roots: a good place to start digging.' : Z?.desc || 'A lift stop you found on the way down.';
-      const row = el('div', { class: 'li interactive', style: { cursor: 'pointer' }, onclick: () => { h.close(); this.rideDown(n); } }, [
-        tag,
-        el('div', {}, [
-          el('div', { class: 'name' }, name),
-          el('div', { class: 'desc' }, desc),
-          Z && n > 0 ? el('div', { class: 'desc', style: { color: '#9a3a22' } }, '⚠ ' + Z.hazard) : null,
-        ]),
-        el('span', { class: 'price', style: { flexDirection: 'column', alignItems: 'flex-end', fontSize: '.85em' } }, [dep ? `${dep[0]}–${dep[1]} m` : '', el('span', { class: 'btn', style: { marginTop: 'calc(var(--px) * 1.5)', padding: '0 calc(var(--px) * 3)' } }, 'Go')]),
-      ]);
-      list.append(row);
-    }
-    const next = found[found.length - 1] + 1;
-    if (next <= MAX_ZONE) {
-      list.append(el('div', { class: 'li locked' }, [
-        el('div', { style: { width: 'calc(var(--px) * 16)', height: 'calc(var(--px) * 16)', background: '#3a2a2a', border: 'var(--px) solid var(--wood-dk)', display: 'grid', placeItems: 'center', color: '#a08070' } }, '?'),
-        el('div', {}, [el('div', { class: 'name' }, '???'), el('div', { class: 'desc' }, 'The cable goes deeper. Find the next station down there and ring its bell.')]),
-        el('span', { class: 'price' }, DEEP_DEPTHS[next] ? `${DEEP_DEPTHS[next][0]}+ m` : ''),
-      ]));
-    }
+  openLift() {
+    if (this.locked) return null;
+    this.bramble.a.faceToward(this.player.x, this.player.z);
     this.game.audio.play('babble', { pitch: BRAMBLE.voice, n: 4 });
-    const h = this.game.ui.openPanel({ title: 'The Lift', sub: '<b>Bramble:</b> Where to, digger?', body: el('div', { class: 'scroll', style: { maxHeight: 'min(calc(100vh - 180px), calc(var(--px) * 150))' } }, [list]), width: 'calc(var(--px) * 220)' });
+    return openLiftPanel(this.game, 'town', { sub: '<b>Bramble:</b> Where to, digger?', onRide: (id) => this.rideLift(id) });
   }
 
-  /** Walk an actor (no collision) to a point. */
-  walkTo(a, x, z, speed = 1.8) {
-    return new Promise((res) => {
-      a.collide = false;
-      a.scripted = true;
-      const tick = (dt) => {
-        const dx = x - a.x, dz = z - a.z, d = Math.hypot(dx, dz);
-        if (d < 0.06) {
-          a.drive(dt, 0, 0, null);
-          a.scripted = false;
-          this.tickers.splice(this.tickers.indexOf(tick), 1);
-          res();
-          return;
-        }
-        const sp = Math.min(speed, d * 4 + 0.3);
-        a.drive(dt, (dx / d) * sp, (dz / d) * sp, null, { accel: 20 });
-      };
-      this.tickers.push(tick);
-    });
-  }
-
-  async rideDown(station) {
+  /** The ride down: the gate opens, the mole steps in, the gate shuts, down into the dark. */
+  async rideLift(id) {
     if (this.locked) return;
-    const st = this.game.state;
-    const L = TOWN.lift;
+    const st = this.game.state, c = TOWN.lift.cage, au = this.game.audio;
     st.learn('elevator');
-    this.game.audio.play('bell');
     this.locked = true;
-    this.camFocus = new THREE.Vector3(L.cage.x - 0.5, 0.4, L.cage.z + 1.5);
-    const p = this.player, n = this.nugget;
     this.say(this.bramble.a, pick(['Hold on tight!', 'Down she goes!', 'Mind your whiskers!']), { name: 'Bramble', voice: BRAMBLE.voice });
-    await this.tween(0.4, (k) => { this.cage.gate.position.x = k * 0.85; });
-    this.game.audio.play('gate');
-    if (n) { this.nuggetAI.mode = 'petted'; this.nuggetAI.pettedT = 99; n.collide = false; this.walkTo(n, L.cage.x + 0.45, L.cage.z - 0.2, 2.4); }
-    await this.walkTo(p, L.front.x, L.front.z - 0.3, 2.2);
-    await this.walkTo(p, L.cage.x - 0.2, L.cage.z + 0.1, 1.8);
-    p.rig.face(0);
-    await this.tween(0.45, (k) => { this.cage.gate.position.x = (1 - k) * 0.85; });
-    this.game.audio.play('gate');
+    au.play('bell');
+    await this.tween(0.45, (k) => this.lift.gateOpen(k));
+    au.play('gate');
+    // step into the cage and turn round to face the gate
+    const pl = this.rig.player;
+    const x0 = pl.pos.x * IM, z0 = pl.pos.z * IM, yaw0 = pl.yaw, p0 = pl.pitch;
+    const tx = c.x, tz = c.z - 0.05;
+    this.cut = { pos: new THREE.Vector3(x0, 0, z0), yaw: yaw0, pitch: p0 };
+    const n = this.nugget;
+    if (n) { this.nuggetAI.mode = 'petted'; this.nuggetAI.pettedT = 99; n.collide = false; n.scripted = true; }
+    const nx0 = n?.x, nz0 = n?.z;
+    await this.tween(1.0, (k) => {
+      const e = k * k * (3 - 2 * k);
+      this.cut.pos.set(x0 + (tx - x0) * e, 0, z0 + (tz - z0) * e);
+      this.cut.yaw = lerpAngle(yaw0, Math.PI, e);
+      this.cut.pitch = p0 * (1 - e) - 0.08 * e;
+      if (n) n.pos.set(nx0 + (tx + 0.5 - nx0) * e, 0, nz0 + (tz - 0.35 - nz0) * e);
+    });
+    await this.tween(0.45, (k) => this.lift.gateOpen(1 - k));
+    au.play('gate');
     this.bramble.a.rig.play('dig');
-    const loop = this.game.audio.loop('elevator', { vol: 0.45 });
+    const loop = au.loop('elevator', { vol: 0.45 });
     await this.sleepFor(0.25);
-    await this.tween(1.7, (k) => {
-      const y = -k * k * 2.8;
-      this.cage.obj.position.y = y;
-      p.pos.y = y;
+    let gone = false;
+    await this.tween(2.4, (k) => {
+      const y = -k * k * 7;
+      this.lift.setY(y);
+      this.cut.pos.y = y;
       if (n) n.pos.y = y;
-      this.crank.wheel.rotation.z = k * 9;
+      this.lift.crank.wheel.children[0].rotation.z = k * 12;
+      this.rig.shake(0.06);
+      if (!gone && k > 0.6) { gone = true; this.leaving = true; rideTo(this.game, id); }
     });
     loop.stop(0.3);
-    this.game.goto('deep', { from: 'town', station }, { transition: 'fade', dur: 0.5 });
   }
 
-  async arrive() {
-    const L = TOWN.lift;
-    const p = this.player, n = this.nugget;
+  /** Arriving by lift: the cage rises out of the pit, the gate opens, the mole steps out. */
+  async arriveByLift() {
+    const L = TOWN.lift, c = L.cage, au = this.game.audio;
     this.locked = true;
-    p.collide = false;
-    if (n) { n.collide = false; this.nuggetAI.mode = 'petted'; this.nuggetAI.pettedT = 99; }
-    this.camFocus = new THREE.Vector3(L.cage.x - 0.5, 0.4, L.cage.z + 1.5);
-    this.cam.snap(this.camFocus);
-    const set = (y) => { this.cage.obj.position.y = y; p.pos.y = y; if (n) n.pos.y = y; };
-    set(-2.8);
+    this.place(c.x, c.z - 0.05, Math.PI);
+    this.cut = { pos: new THREE.Vector3(c.x, -5, c.z - 0.05), yaw: Math.PI, pitch: 0.05 };
+    const n = this.nugget;
+    if (n) { this.nuggetAI.mode = 'petted'; this.nuggetAI.pettedT = 99; n.collide = false; n.scripted = true; }
+    const set = (y) => { this.lift.setY(y); this.cut.pos.y = y; if (n) n.pos.set(c.x + 0.5, y, c.z - 0.35); };
+    set(-5);
+    this.lift.gateOpen(0);
     this.bramble.a.rig.play('dig');
     await this.sleepFor(0.2);
-    const loop = this.game.audio.loop('elevator', { vol: 0.45 });
-    await this.tween(1.7, (k) => { const e = 1 - (1 - k) * (1 - k); set(-2.8 * (1 - e) + 0.07 * e); this.crank.wheel.rotation.z = -k * 9; });
+    const loop = au.loop('elevator', { vol: 0.45 });
+    await this.tween(2.0, (k) => { const e = 1 - (1 - k) * (1 - k); set(-5 * (1 - e) + 0.07 * e); this.lift.crank.wheel.children[0].rotation.z = -k * 10; });
     loop.stop(0.2);
     await this.tween(0.3, (k) => set(0.07 * (1 - k)));
     set(0);
-    this.game.audio.play('clunk');
-    this.game.audio.play('bell');
+    au.play('clunk');
+    au.play('bell');
+    this.rig.shake(0.3);
     this.bramble.a.rig.play('idle');
-    await this.tween(0.45, (k) => { this.cage.gate.position.x = k * 0.85; });
-    this.game.audio.play('gate');
+    await this.tween(0.45, (k) => this.lift.gateOpen(k));
+    au.play('gate');
     this.say(this.bramble.a, pick(WELCOME_BACK), { name: 'Bramble', voice: BRAMBLE.voice });
-    if (n) this.walkTo(n, L.front.x + 0.7, L.front.z + 0.6, 2.4).then(() => { n.collide = true; this.nuggetAI.mode = 'follow'; });
-    await this.walkTo(p, L.front.x, L.front.z + 0.3, 2.0);
-    p.collide = true;
-    this.camFocus = null;
+    // step out onto the deck
+    const z0 = this.cut.pos.z, z1 = L.front.z + 0.25;
+    await this.tween(0.8, (k) => { const e = k * k * (3 - 2 * k); this.cut.pos.z = z0 + (z1 - z0) * e; if (n) n.pos.set(c.x + 0.5 + e * 0.4, 0, c.z - 0.35 + (z1 + 0.6 - c.z) * e); });
+    this.place(c.x, z1, this.cut.yaw, this.cut.pitch);
+    this.cut = null;
+    if (n) { n.collide = true; n.scripted = false; this.nuggetAI.mode = 'follow'; }
     this.locked = false;
-    this.tween(0.45, (k) => { this.cage.gate.position.x = (1 - k) * 0.85; }).then(() => this.game.audio.play('gate'));
+    this.tween(0.45, (k) => this.lift.gateOpen(1 - k)).then(() => au.play('gate'));
   }
 
   // ------------------------------------------------------------ other interactions
   goHome() {
+    if (this.locked) return;
     this.locked = true;
     this.game.state.flag('homeVisited', true);
     this.game.audio.play('door');
-    this.player.faceToward(TOWN.home.door.x, TOWN.home.door.z - 1);
-    const s = this.toScreen(this.player.headPos(_v));
-    const e = this.game.engine;
-    this.game.goto('home', { from: 'town' }, { transition: 'iris', center: [clamp(s.x / (e.width * e.scale), 0, 1), clamp(1 - s.y / (e.height * e.scale), 0, 1)] });
+    this.game.goto('home', { from: 'town' }, { transition: 'iris', center: [0.5, 0.5] });
   }
 
   tossCoin() {
-    const st = this.game.state;
-    const F = TOWN.fountain;
-    const p = this.player;
+    const st = this.game.state, F = TOWN.fountain, p = this.player;
     if (!st.spend(1, 'wish')) { this.game.audio.play('ui_error'); return; }
-    p.faceToward(F.x, F.z);
-    p.rig.doEmote('nod', 0.5);
     this.game.audio.play('coins');
-    const dx = F.x - p.x, dz = F.z - p.z, d = Math.hypot(dx, dz);
-    const tx = p.x + (dx / d) * (d - 1.1), tz = p.z + (dz / d) * (d - 1.1);
-    const T = 0.7;
+    const eyeY = this.rig.eye().y * IM;
+    const dx = F.x - p.x, dz = F.z - p.z, d = Math.hypot(dx, dz) || 1;
+    const tx = p.x + (dx / d) * Math.max(0.6, d - 1.2), tz = p.z + (dz / d) * Math.max(0.6, d - 1.2);
+    const T = 0.7, y0 = eyeY - 0.25, yT = this.fountainInfo?.basinY ?? 0.45;
+    const vy = (yT - y0 + 0.5 * 5 * T * T) / T;
     this.particles.spawn({
-      x: p.x, y: 1.0, z: p.z, vx: (tx - p.x) / T, vz: (tz - p.z) / T, vy: 2.2, grav: 2 * (2.2 * T + 1.0 - 0.25) / (T * T), life: T, size: 3.6, color: 0xffe070, alpha: 1, alpha2: 1, add: true, blink: 30,
+      x: p.x + (dx / d) * 0.3, y: y0, z: p.z + (dz / d) * 0.3, vx: (tx - p.x) / T, vz: (tz - p.z) / T, vy, grav: 5, life: T, size: 2.6, color: 0xffe070, alpha: 1, alpha2: 1, add: true, blink: 30,
       fn: (q) => {
-        if (Math.random() < 0.5) this.particles.spawn({ x: q.x, y: q.y, z: q.z, life: 0.3, size: 1.5, color: 0xfff0a0, alpha: 0.9, alpha2: 0, add: true });
-        if (q.t >= T - 0.02 && !q.done) {
+        if (Math.random() < 0.5) this.particles.spawn({ x: q.x, y: q.y, z: q.z, life: 0.3, size: 1.4, color: 0xfff0a0, alpha: 0.9, alpha2: 0, add: true });
+        if (q.t >= T - 0.03 && !q.done) {
           q.done = true;
           this.game.audio.play('bloop');
-          this.particles.burst(8, { x: q.x, y: 0.3, z: q.z, vy: 1.1, life: 0.45, size: 1.4, color: 0xd8f6ff, alpha: 0.9, alpha2: 0, grav: 5 }, { x: 0.05, z: 0.05, v: 0.5 });
-          this.later(0.25, () => { this.emote(p, '✦', { color: '#d9a020' }); this.game.audio.play('sparkle'); });
+          this.particles.burst(8, { x: q.x, y: yT + 0.02, z: q.z, vy: 1.1, life: 0.45, size: 1.4, color: 0xd8f6ff, alpha: 0.9, alpha2: 0, grav: 5 }, { x: 0.05, z: 0.05, v: 0.5 });
+          this.later(0.25, () => { this.game.audio.play('sparkle'); this.game.ui.toast('You make a wish. ✦', { dur: 1600 }); });
         }
       },
     });
@@ -804,95 +631,263 @@ export default class TownScene extends IsoScene {
 
   async bask() {
     const S = TOWN.sun;
-    const p = this.player;
     this.locked = true;
-    await this.walkTo(p, S.x, S.z + 0.1, 1.6);
-    p.collide = true;
-    p.rig.face(Math.PI * 0.75);
-    p.rig.play('cheer');
+    const pl = this.rig.player;
+    const x0 = pl.pos.x * IM, z0 = pl.pos.z * IM, yaw0 = pl.yaw, pitch0 = pl.pitch;
+    const info = ceilingInfo();
+    const yawUp = Math.atan2(-(info.sun.x - S.x), -(info.sun.z - S.z));
+    this.cut = { pos: new THREE.Vector3(x0, 0, z0), yaw: yaw0, pitch: pitch0 };
+    await this.tween(1.0, (k) => { const e = k * k * (3 - 2 * k); this.cut.pos.set(x0 + (S.x - x0) * e, 0, z0 + (S.z - z0) * e); this.cut.yaw = lerpAngle(yaw0, yawUp, e); this.cut.pitch = pitch0 + (1.2 - pitch0) * e; });
     this.game.audio.play('glow');
-    this.emote(p, '☀', { color: '#e0a020', life: 2.2 });
-    this.particles.burst(14, { x: S.x, y: 1.2, z: S.z, vy: 0.6, life: 1.6, size: 1.6, color: 0xfff6c8, alpha: 1, alpha2: 0, add: true, wob: 0.8 }, { x: 0.5, y: 0.6, z: 0.5, v: 0.3 });
-    await this.sleepFor(1.6);
-    p.rig.play('idle');
+    this.particles.burst(18, { x: S.x, y: 1.4, z: S.z, vy: 0.6, life: 1.8, size: 1.7, color: 0xfff6c8, alpha: 1, alpha2: 0, add: true, wob: 0.8 }, { x: 0.6, y: 0.7, z: 0.6, v: 0.3 });
+    await this.tween(1.8, (k) => { this.post.flash = Math.sin(k * Math.PI) * 0.16; this.post.flashColor = 0xfff0c8; });
+    this.post.flash = 0;
+    this.game.ui.toast('Warm sunlight on your nose. Someday…', { dur: 2200 });
+    await this.tween(0.8, (k) => { this.cut.pitch = 1.2 * (1 - k) + 0.05 * k; });
     if (this.nugget && this.nuggetAI) this.nuggetAI.petted();
+    this.place(S.x, S.z, this.cut.yaw, this.cut.pitch);
+    this.cut = null;
     this.locked = false;
+  }
+
+  sit(seat) {
+    this.seat = seat;
+    this.place(seat.x + Math.sin(seat.yaw) * 0.05, seat.z + Math.cos(seat.yaw) * 0.05, seat.yaw + Math.PI, 0);
+    this.game.audio.play('step', { mat: 'wood' });
+  }
+  standUp() {
+    const s = this.seat;
+    this.seat = null;
+    this.place(s.x + Math.sin(s.yaw) * 0.85, s.z + Math.cos(s.yaw) * 0.85, this.rig.player.yaw, this.rig.player.pitch);
+  }
+
+  peerWell() {
+    this.game.audio.play('drip');
+    this.later(0.5, () => this.game.audio.play('drip', { vol: 0.5 }));
+    this.later(0.9, () => this.game.audio.play('bloop', { vol: 0.3 }));
+    this.game.ui.toast('…drip. …drip. Deep down, something glints.', { dur: 2200 });
+  }
+  readNotice() {
+    this.game.audio.play('page');
+    this.game.ui.toast(`<b>Notice board:</b> ${pick(NOTICES)}`, { dur: 3600 });
+  }
+  knock(d) {
+    const au = this.game.audio;
+    au.play('thud', { vol: 0.4 });
+    this.later(0.18, () => au.play('thud', { vol: 0.35 }));
+    this.later(0.9, () => {
+      const anchor = { key: 'town-door-' + Math.round(d.x * 10), voice: 300, indoors: true, headPos: (out) => out.set(d.x, 1.5, d.z) };
+      this.say(anchor, pick(KNOCK), { life: 3 });
+    });
+  }
+  peerTunnel() {
+    this.game.audio.play('drip');
+    const Tu = TOWN.tunnel;
+    this.particles.burst(5, { x: Tu.cx, y: 1.7, z: TOWN.northFace + 0.1, vy: -0.6, life: 0.9, size: 1.6, color: 0x8a7a6a, alpha: 0.8, alpha2: 0, grav: 3 }, { x: 0.5, v: 0.1 });
+    this.game.ui.toast('Rubble all the way back. No way through any more.', { dur: 2000 });
   }
 
   // ------------------------------------------------------------ frame
   update(dt) {
-    WATER_TIME.value += dt;
     super.update(dt);
-    this.pushPlayerFromActors();
-    // tree fading when the player walks behind one
-    const p = this.player;
-    const cam = this.cam;
-    for (const f of this.faders) {
-      let target = 1;
-      if (p) {
-        const dx = p.x - f.x, dz = p.z - f.z;
-        const sx = dx * cam.right.x + dz * cam.right.z;
-        const up = dx * cam.groundUp.x + dz * cam.groundUp.z;
-        if (Math.abs(sx) < f.r + 0.35 && up > -0.2 && up < f.h * 1.55) target = 0.3;
+    WATER_TIME.value += dt;
+    const g = this.game, rig = this.rig;
+    if (!rig) return;
+    const busy = g.ui.isPanelOpen();
+    if (!this.hudClean) { this.hudClean = true; g.ui.setDepth?.(null); g.ui.setBag?.(null); g.ui.setRadar?.(null); }
+    for (const t of [...this.tickers]) t(dt, this.time);
+    if (this.cut) this.cutCamera(dt);
+    else {
+      rig.stepMat = floorMaterialAt(this.player.x, this.player.z);
+      if (this.seat) {
+        const inp = g.input;
+        if (!busy && (inp.axisX() || inp.axisY() || inp.pressed('Space'))) this.standUp();
       }
-      const nk = f.k + (target - f.k) * Math.min(1, dt * 6);
-      if (Math.abs(nk - f.k) > 0.001) {
-        f.k = nk;
-        for (const m of f.mats) { m.opacity = nk; m.depthWrite = nk > 0.95; }
-      }
+      rig.update(dt, { busy, frozen: this.locked || !!this.seat });
+      if (this.seat) { rig.camera.position.y -= 0.16; rig.camera.updateMatrixWorld(); }
+      this.pushPlayer();
     }
+    this.syncPlayerProxy();
+    if (this.nuggetAI && this.nugget && !this.nugget.scripted) this.nuggetAI.update(dt, this.player);
+    // actors: far ones update every few frames
+    const p = this.player;
+    for (const a of this.actors) {
+      if (a.skipFar) {
+        const dx = a.x - p.x, dz = a.z - p.z;
+        if (dx * dx + dz * dz > 400 && (a._skip = (a._skip || 0) + 1) % 4) continue;
+      }
+      a.update(dt);
+    }
+    this.updateTalkItems();
+    this.updateLOD();
+    this.shadowBatch.update(this.actors);
+    const cam = rig.camera;
+    _f.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    this.lights.update(dt, cam.position.x + _f.x * 3, cam.position.y, cam.position.z + _f.z * 3);
+    this.glow.update();
+    this.particles.update(dt);
+    if (this.worms) this.worms.time.value += dt;
+    if (this.beamFx) this.beamFx.time.value += dt;
+    const e = g.engine;
+    this.U.uPx.value = e.height / (2 * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2));
     if (this.ticketSign) this.ticketSign.position.y += Math.sin(this.time * 1.6) * 0.0016;
-    // the home door's glow until it has been visited
     const hm = this.homeMarker;
     if (hm) {
       hm.t += dt;
       const k = 0.65 + 0.35 * Math.sin(hm.t * 3);
-      hm.ring.mul = k; hm.halo.mul = k; hm.ring2.mul = 0.6 + 0.4 * Math.sin(hm.t * 3 + 1);
-      hm.ring2.y = 2.42 + Math.sin(hm.t * 2) * 0.06;
-      this.glow.place(hm.ring2);
+      hm.ring.mul = k; hm.halo.mul = k;
       hm.gem.position.y = 2.18 + Math.abs(Math.sin(hm.t * 3)) * 0.14;
       hm.gem.rotation.y = Math.sin(hm.t * 1.3) * 0.5;
-      if (p && Math.random() < dt * 3) this.particles.spawn({ x: TOWN.home.door.x + rand(-0.5, 0.5), y: rand(0.2, 1.8), z: TOWN.home.door.z + 0.25, vy: 0.25, life: 1.4, size: 1.5, color: 0xffe8a0, alpha: 1, alpha2: 0, add: true, blink: 6 });
     }
-    // grindstone sparks at Grubb's
-    this.sparkT = (this.sparkT ?? 3) - dt;
-    if (this.sparkT <= 0 && this.grindstone) {
-      this.sparkT = rand(3, 7);
-      if (this.near(this.grindstone.x, this.grindstone.z, 11)) {
-        this.particles.sparks(this.grindstone.x, 0.55, this.grindstone.z, 9, 0xffd060);
-        if (p && Math.hypot(p.x - this.grindstone.x, p.z - this.grindstone.z) < 6) this.game.audio.play('chisel');
-      }
+    this.updateAnchors();
+    this.updateLoops();
+  }
+
+  /**
+   * Level of detail for the eye: far statics and far townsfolk skip the outline pass (each outlined
+   * mesh is drawn twice), townsfolk out in the haze are not drawn at all.
+   */
+  updateLOD() {
+    this.lodT = (this.lodT || 0) - 1;
+    if (this.lodT > 0) return;
+    this.lodT = 6;
+    const cam = this.rig.camera.position;
+    const touch = this.rig.isTouch();
+    const [olStatic, olFolk, hideFolk] = touch ? [8, 6, 13] : [12, 9, 17];
+    for (const m of this.statics || []) {
+      const bs = m.geometry.boundingSphere;
+      const near = bs.center.distanceTo(cam) - bs.radius < olStatic;
+      if (near !== m.userData.ol) { m.userData.ol = near; if (near) m.layers.enable(1); else m.layers.disable(1); }
     }
-    // drips from the ceiling
-    this.dripT -= dt;
-    if (this.dripT <= 0) {
-      this.dripT = rand(1.2, 3);
-      const [x, z] = pick(this.drips);
-      if (this.near(x, z, 12)) {
-        this.particles.spawn({ x, y: 6.4, z, vy: -1, grav: 9, life: 1.3, size: 1.4, color: 0x9fd6ff, alpha: 0.9, alpha2: 0.9, fn: (q) => { if (q.y < 0.05 && !q.dead) { q.dead = true; this.particles.burst(4, { x: q.x, y: 0.05, z: q.z, vy: 0.7, grav: 5, life: 0.3, size: 1, color: 0xd8f6ff, alpha: 0.8, alpha2: 0 }, { x: 0.02, z: 0.02, v: 0.4 }); if (p && Math.hypot(p.x - x, p.z - z) < 5) this.game.audio.play('drip'); } } });
+    for (const a of this.actors) {
+      const d = Math.hypot(a.pos.x * M - cam.x, a.pos.z * M - cam.z);
+      const show = d < hideFolk;
+      if (a.obj.visible !== show) a.obj.visible = show;
+      const ol = d < olFolk;
+      if (a._ol !== ol) {
+        a._ol = ol;
+        a._olMeshes ||= (a.rig.meshes || []).filter((mesh) => mesh && mesh.layers.isEnabled(1));
+        for (const mesh of a._olMeshes) { if (ol) mesh.layers.enable(1); else mesh.layers.disable(1); }
       }
     }
   }
 
-  /** Keepers and grown-ups are solid: the player slides around them. */
-  pushPlayerFromActors() {
-    const p = this.player;
-    if (!p || !p.collide) return;
+  /** Scripted camera (cutscenes): the mole at this.cut.pos (TU), looking yaw/pitch, optional roll and dip. */
+  cutCamera(dt) {
+    const c = this.cut, rig = this.rig, pl = rig.player;
+    pl.pos.set(c.pos.x * M, c.pos.y * M, c.pos.z * M);
+    pl.vel.set(0, 0, 0);
+    pl.yaw = c.yaw;
+    pl.pitch = c.pitch;
+    pl.dip = c.dip ?? 0;
+    pl.eyeY = 0.72;
+    rig.syncCamera(dt);
+    if (c.roll) { rig.camera.rotation.z += c.roll; rig.camera.updateMatrixWorld(); }
+    if (rig.vm && !c.noPaws) rig.vm.update(dt, { speed: 0, grounded: true, climbing: false, swimming: false, look: { dx: 0, dy: 0 }, lamp: { color: rig.lampCol, intensity: rig.lampK }, ambient: rig.ambient, camera: rig.camera });
+    this.game.ui.setCrosshair?.(null);
+  }
+
+  /** Townsfolk are soft: the mole slides round them. */
+  pushPlayer() {
+    const pl = this.rig.player;
+    const px = pl.pos.x * IM, pz = pl.pos.z * IM, r = 0.22 * IM;
+    let ox = 0, oz = 0;
     for (const a of this.actors) {
-      if (a === p || a === this.nugget || !a.collide) continue;
-      const min = p.radius + a.radius * 0.9;
-      const dx = p.x - a.x, dz = p.z - a.z;
-      const d2 = dx * dx + dz * dz;
+      if (a === this.nugget || !a.collide) continue;
+      const min = r + a.radius * 0.85;
+      const dx = px - a.x, dz = pz - a.z, d2 = dx * dx + dz * dz;
       if (d2 >= min * min || d2 < 1e-6) continue;
       const d = Math.sqrt(d2);
-      p.pos.x = a.x + (dx / d) * min;
-      p.pos.z = a.z + (dz / d) * min;
+      ox += (dx / d) * (min - d) * 0.5;
+      oz += (dz / d) * (min - d) * 0.5;
     }
-    this.map.resolve(p.pos, p.radius);
+    if (!ox && !oz) return;
+    const nx = (px + ox) * M, nz = (pz + oz) * M;
+    if (!pl.hitsAt(nx, pl.pos.y, nz)) { pl.pos.x = nx; pl.pos.z = nz; }
+  }
+
+  render() {
+    if (!this.rig) return;
+    const vm = this.rig.vm;
+    if (this.cut?.noPaws) this.rig.vm = null;
+    this.rig.render(this.post);
+    this.rig.vm = vm;
+  }
+
+  onResize(w, h) {
+    if (!this.rig) return;
+    // phones held upright: open the vertical field of view so the street still fits across
+    const a = w / h;
+    this.rig.camera.fov = a < 1 ? Math.min(100, 74 + (1 - a) * 44) : 74;
+    this.rig.onResize(w, h);
   }
 
   exit() {
-    disposeTextures(this.floorTex);
+    this.rig?.dispose();
     super.exit();
   }
+
+  // ------------------------------------------------------------ test hooks (scripts/e2e.mjs)
+  makeDebug() {
+    const S = this;
+    return {
+      /** Open a shop panel the way E on its counter does. */
+      openShop(id) { S.locked = false; const k = S.keepers.find((q) => q.id === id); return k ? S.useKeeper(k) : S.game.ui.openShop(id); },
+      /** Chat with a townsperson (or a keeper) by name; returns the line said. */
+      talkTo(name) {
+        const n = S.folk.list.find((f) => f.name === name);
+        if (n) return S.folk.talkTo(n);
+        const k = S.keepers.find((q) => q.spec.name === name);
+        if (k) { const line = pick(k.id === 'lift' ? BRAMBLE_LINES : SHOPS[k.id].lines); S.say(k.a, line, { name: k.spec.name, voice: k.spec.voice }); return line; }
+        return null;
+      },
+      /** Ride the lift to a destination id ('home', 'L0', a mine lift id…); without an id, open Bramble's panel. */
+      useLift(id) { S.locked = false; if (id) return S.rideLift(id); return S.openLift(); },
+      goHome() { S.locked = false; S.goHome(); },
+      /** Teleport the mole (town units) facing yaw (0 north, π south). */
+      place(x, y, z, yaw = 0, pitch = 0) { S.cut = null; S.seat = null; S.rig.place(x * M, (y || 0) * M + 0.001, z * M, yaw, pitch); S.syncPlayerProxy(); },
+      /** Draw calls, triangles and update ms for one frame. */
+      perf() {
+        const r = S.game.engine.renderer;
+        const t0 = performance.now(); S.update(1 / 60); const ms = performance.now() - t0;
+        r.info.autoReset = false; r.info.reset(); S.render();
+        const out = { calls: r.info.render.calls, tris: r.info.render.triangles, updateMs: +ms.toFixed(2), particles: S.particles.count(), actors: S.actors.length };
+        r.info.autoReset = true;
+        return out;
+      },
+      names() { return S.folk.list.map((f) => f.name); },
+      /** Advance the scene by secs at 30 fps, letting scripted sequences (async) run between frames. */
+      async run(secs = 1) { const n = Math.round(secs * 30); for (let i = 0; i < n; i++) { S.update(1 / 30); await new Promise((r) => setTimeout(r, 0)); } return { t: S.time, locked: S.locked, scene: S.game.sceneName }; },
+      skipArrival() { if (S.arrival && !S.arrival.done) S.arrival.skip = true; },
+    };
+  }
 }
+
+function lerpAngle(a, b, t) {
+  let d = (b - a) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
+
+/** Grass tufts and three flowers for the sunbeam patch (1/16). */
+function sunPatchAt(S) {
+  const g = new VoxelGrid(48, 10, 44);
+  const rng = makeRng(321);
+  for (let k = 0; k < 90; k++) {
+    const x = rng.int(3, 44), z = rng.int(3, 40);
+    if (Math.hypot((x - 24) / 22, (z - 22) / 20) > 1) continue;
+    const h = rng.int(1, 5);
+    for (let y = 0; y < h; y++) g.set(x + (y === h - 1 && rng.chance(0.5) ? 1 : 0), y, z, y === h - 1 ? 0x8ad86a : 0x5aa83a);
+  }
+  for (const [fx, fz, c] of [[25, 22, 0xfff070], [14, 18, 0xffffff], [32, 28, 0xf0a0c0]]) {
+    for (let y = 0; y < 7; y++) g.set(fx, y, fz, 0x4a9a3a);
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) g.set(fx + dx, 7, fz + dz, c);
+    g.set(fx, 7, fz, 0xe0902a); g.set(fx, 8, fz, c);
+  }
+  const m = M16(g, [24, 0, 22]);
+  m.position.set(S.x, 0, S.z);
+  return m;
+}
+
+export { lerpAngle };

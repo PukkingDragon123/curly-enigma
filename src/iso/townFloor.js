@@ -111,7 +111,7 @@ export function paintTownFloor(extras = {}) {
     const n = at(cx, cy) * 0.45;
     return pathAt(wx + n, wz - n);
   };
-  for (const [x0, z0, x1, z1] of [[16.8, 5.8, 20.2, 9.6], [5.6, 13.8, 12.4, 17.2], [17, 21.6, 20, 27.6]]) {
+  for (const [x0, z0, x1, z1] of [[16.8, 5.8, 20.2, 9.6], [5.6, 13.8, 12.4, 17.2], [17, 21.6, 20, 32.4], [6.4, 30, 37.4, 32.4], [35, 11, 37.4, 32.4]]) {
     cobbles(S, { x0: T(x0), y0: T(z0), x1: T(x1), y1: T(z1), inside: pathIn }, { cell: 12, gap: 2, palette: COBBLE, mortar: MORTAR, seed: 51, jitter: 0.85, moss: 0.28, owner: 4 });
   }
 
@@ -175,7 +175,7 @@ export function paintTownFloor(extras = {}) {
         if (S.own[i] === 255) continue;
         S.own[i] |= 128;
         const wx = x / TPX;
-        const dn = wz - NF0, dw = wx - WF0, ds = TOWN.southRim - 0.15 - wz, de = TOWN.eastRim - 0.15 - wx;
+        const dn = wz - NF0, dw = wx - WF0, ds = TOWN.southFace - 0.15 - wz, de = TOWN.eastFace - 0.15 - wx;
         const edge = Math.min(dn, dw, ds + 0.15, de + 0.15);
         let k = 1;
         if (edge < band && (S.own[i] & 127) === 0) k = 0.82 + Math.max(0, edge) * 0.072;
@@ -189,8 +189,8 @@ export function paintTownFloor(extras = {}) {
   };
   shadeEdge(0, 0, S.w, T(NF0 + band));
   shadeEdge(0, T(NF0 + band), T(WF0 + band), S.h);
-  shadeEdge(T(WF0 + band), T(TOWN.southRim - band), S.w, S.h);
-  shadeEdge(T(TOWN.eastRim - band), T(NF0 + band), S.w, T(TOWN.southRim - band));
+  shadeEdge(T(WF0 + band), T(TOWN.southFace - band), S.w, S.h);
+  shadeEdge(T(TOWN.eastFace - band), T(NF0 + band), S.w, T(TOWN.southFace - band));
   for (let i = 0; i < S.own.length; i++) S.own[i] &= 127;
 
   // ------------------------------------------------ contact shadows of everything standing on the floor

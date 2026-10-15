@@ -113,12 +113,22 @@ Input is disabled automatically while a UI panel is open.
 - Don't run `git` commands. The lead developer commits.
 - Use the shared renderer and the post pass. Keep the frame cheap: avoid hundreds of lights, and prefer emissive materials or baked vertex colors.
 
-## Town and home (`src/iso/`, `TownScene.js`, `HomeScene.js`)
+## Everything is first person (`docs/FPS.md`)
 
-- Built at 1/32 voxels where the camera looks closely (shop fronts, the Surface Express booth, the burrow entrance, all 40 furniture pieces in `furniture32.js`) and at 1/16 or coarser for background decor (`kit.js` `lowRes()`).
-- `kit.js` is the modelling kit: structured material fills (wood grain, riveted iron, stone, cloth, straw, moss) and `sp3` sparse speckle, so plain runs still merge. `mesher.js` (`fastMesh`, `meshDefaults({ao})`) is a fast greedy mesher that can skip faces the fixed iso camera never sees. `bake.js` merges statics, and `atlas.js` / `surface.js` / `townFloor.js` / `homeFloor.js` paint the floors at 32 texels per tile.
-- Town pieces: `townCave.js` (strata walls, ledges, stalactites, waterfall in `waterfall.js`), `shopFront.js`, `booth.js`, `props.js` / `props2.js`, `tunnel.js`, `townLife.js` (vendors, fireflies, spores, smoke) and `townArrival.js` (the escape arrival: boards burst, the mole tumbles out, townsfolk react, Nugget trots to the new home). Scenes log `[town] built in … ms` with a step breakdown.
-- Budget: the town environment is about 400k triangles. Cave walls and rims skip the outline pass. Nugget, the coop and eggs only appear once `flag('nugget')` is set.
+The burrow, Deep Town, the forge and the mine are walked in first person with `src/fps/FPSKit.js`
+(`FPSRig` + `BoxWorld`) or the mine's own controller; the paws are `src/fps/ViewModel.js`; the lift
+network is `src/fps/lifts.js`. Scenes are in meters at mole scale (0.86 m tall, eyes at 0.72 m).
+
+- **Burrow** (`HomeScene.js`, `src/home/*`): the room is built in tile units (0.5 m per tile) from the
+  iso furniture models (`src/iso/furniture32.js` etc.) inside a group scaled to meters; walls, shell,
+  lift, build mode (`src/home/build.js`), landing, Nugget. Placement rules in `src/iso/homeLayout.js`.
+- **Deep Town** (`TownScene.js`, `src/town/*`): cave, statics, shops, lift, folk, life, arrival, fx;
+  layout in `src/iso/townLayout.js`, floors in `townFloor.js`, shop fronts `shopFront.js`, booth
+  `booth.js`. Townsfolk switch to crowd LOD when far; shopkeepers always render in full.
+- **Forge** (`ForgeScene.js`, `src/forge/*`): a walkable smithy; the smelting/forging simulations are
+  unchanged, the paws work through `vm.drive`.
+- Shared iso tools still in use: `kit.js` (modelling kit), `mesher.js` (`fastMesh`), `bake.js`,
+  `atlas.js` / `surface.js`, `LightPool.js`, `glow.js`, `pixel.js`, `Actor.js` / `TileMap.js`.
 
 ## Title, forge, cooking and ending
 

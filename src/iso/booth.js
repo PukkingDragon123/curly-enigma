@@ -4,11 +4,13 @@
 // with a sunburst, a framed beach poster and a departures board on the side, a velvet
 // interior with pigeonholes for the fox clerk, a tiled pagoda roof (hip ridges in gold,
 // upturned corners) with a clock dormer, and lanterns on the columns.
-// The visible faces of an iso booth are its front (+z), right side (+x) and top only, so the
-// hidden walls are never built. Local voxel coords: x 0..160 (5 tiles), z 0..96 (3 tiles), y up.
+// Both sides are built (first person walks all round it); the back stands against the rock.
+// Local voxel coords: x 0..160 (5 tiles), z 0..96 (3 tiles), y up.
 import * as THREE from 'three';
 import { VoxelGrid, C, wood, stone, line, sag, M32, G32, group, mulc, mixc, h3, S32 } from './kit.js';
-import { reliefMesh, ISO_BACK } from './mesher.js';
+import { reliefBuffers, reliefGeometry } from '../town/relief.js';
+import { voxelMaterial } from '../gfx/Voxel.js';
+import { LAYER_OUTLINE } from '../core/Engine.js';
 import { hash2 } from './surface.js';
 import { pixelTexture } from '../gfx/PixelArt.js';
 import { ticketSignCanvas, paintingCanvas, textPixels, textWidth } from './pixel.js';
@@ -67,7 +69,7 @@ function plinth() {
   const p = new Part(0, 0, 0, W, 6, D + 18);
   const st = stone(0x8a8078, { seed: 41, block: 6, mortar: 0x5a524a });
   // the top is mostly under the walls: plain there, coursed stone only on the faces the camera sees
-  p.box(0, 0, 0, W, 6, D, (x, y, z) => (y === 5 && (z >= D - 2 || x >= W - 2) ? (x + z) % 2 ? GOLD : GOLD_D : z === D - 1 || x === W - 1 ? st(x, y, z) : 0x6e665e));
+  p.box(0, 0, 0, W, 6, D, (x, y, z) => (y === 5 && (z >= D - 2 || x >= W - 2 || x < 2) ? (x + z) % 2 ? GOLD : GOLD_D : z === D - 1 || x === W - 1 || x === 0 ? st(x, y, z) : 0x6e665e));
   // two steps up to the ticket window, worn in the middle
   p.box(42, 0, D, 76, 4, 8, (x, y, z) => (y === 3 ? (z === D + 7 ? GOLD_D : mulc(0x9a9088, Math.abs(x - 80) < 16 ? 0.92 : 1)) : st(x, y, z)));
   p.box(36, 0, D + 8, 88, 2, 8, (x, y, z) => (y === 1 ? (z === D + 15 ? 0x6e665e : mulc(0x8a8078, Math.abs(x - 80) < 18 ? 0.9 : 1)) : st(x, y, z)));
@@ -165,29 +167,39 @@ function frontWall(glow) {
   return p.mesh();
 }
 
-function sideWall() {
-  const p = new Part(152, 6, -6, 16, 90, 108);
-  p.box(152, 6, 0, 8, TOP - 6, D, lacquer('z', 5));
-  // panel frames
+/** A side wall; side = 1 builds the right (+x) one, -1 mirrors it onto the left. */
+function sideWall(side = 1) {
+  const mx = (x) => (side > 0 ? x : W - 1 - x);
+  const raw = new Part(side > 0 ? 152 : -8, 6, -6, 16, 90, 108);
+  const p = {
+    set: (x, y, z, c) => raw.set(mx(x), y, z, c),
+    box: (x, y, z, w, h, d, c) => raw.box(side > 0 ? x : W - x - w, y, z, w, h, d, typeof c === 'function' ? (a, b, e) => c(mx(a), b, e) : c),
+  };
+  p.box(152, 6, 0, 8, TOP - 6, D, lacquer('z', side > 0 ? 5 : 6));
   for (const [z0, z1] of [[8, 46], [50, 88]]) { frameRectZ(p, z0, 10, z1, 27, 160, GOLD_D); p.box(160, 12, z0 + 2, 1, 1, z1 - z0 - 4, RED_L); }
-  // the beach poster's gold frame (the painting itself is a textured plane)
   frameRectZ(p, 26, 36, 70, 61, 160, GOLD);
   frameRectZ(p, 27, 37, 69, 60, 161, GOLD_L);
   for (let z = 27; z < 69; z++) p.set(161, 36, z, GOLD_D);
-  // departures board: dark slate, gold header, rows of chalk times, a red "delayed" dot
-  p.box(160, 30, 74, 1, 36, 16, 0x2a2024);
-  frameRectZ(p, 74, 30, 90, 66, 161, GOLD_D);
-  p.box(161, 60, 76, 1, 4, 12, GOLD);
-  for (let r = 0; r < 8; r++) {
-    const y = 56 - r * 3;
-    for (let z = 76; z < 88; z++) if (hash2(r, z, 7) < 0.72 && z !== 81) p.set(161, y, z, z < 81 ? 0xe8e0d0 : 0xb8c8d8);
-    if (r === 2 || r === 5) p.set(161, y, 87, 0xe03a2a);
+  if (side > 0) {
+    // departures board: dark slate, gold header, rows of chalk times, a red "delayed" dot
+    p.box(160, 30, 74, 1, 36, 16, 0x2a2024);
+    frameRectZ(p, 74, 30, 90, 66, 161, GOLD_D);
+    p.box(161, 60, 76, 1, 4, 12, GOLD);
+    for (let r = 0; r < 8; r++) {
+      const y = 56 - r * 3;
+      for (let z = 76; z < 88; z++) if (hash2(r, z, 7) < 0.72 && z !== 81) p.set(161, y, z, z < 81 ? 0xe8e0d0 : 0xb8c8d8);
+      if (r === 2 || r === 5) p.set(161, y, 87, 0xe03a2a);
+    }
+  } else {
+    // a brass clock-lamp on a bracket and a little timetable
+    p.box(160, 30, 76, 1, 24, 12, 0xf0e8d0);
+    frameRectZ(p, 76, 30, 88, 54, 161, GOLD_D);
+    for (let r = 0; r < 6; r++) for (let z = 78; z < 86; z++) if (hash2(r, z, 9) < 0.7) p.set(161, 50 - r * 3, z, 0x6a4a3a);
   }
-  // cornice along the right side
   p.box(160, 86, -1, 2, 2, D + 2, RED_D);
   p.box(160, 88, -3, 4, 2, D + 6, (x, y) => (y === 89 ? GOLD_L : GOLD));
   p.box(160, 90, -6, 6, 6, D + 12, (x, y, z) => (y === 90 && z % 4 === 0 ? GOLD_D : x === 165 && y === 95 ? GOLD : RED));
-  return p.mesh();
+  return raw.mesh();
 }
 
 function interior(glow) {
@@ -264,8 +276,11 @@ function roof() {
     const d = Math.hypot(u + 0.5 - fu, v + 0.5 - V / 2);
     if (d < 1.7) { depth[u + v * U] = 1 + 13 + 2 + (d < 1 ? 3 : 2); color[u + v * U] = d < 1 ? GOLD_L : GOLD; }
   }
-  const view = new THREE.Vector3(ISO_BACK.x, -ISO_BACK.z, ISO_BACK.y);
-  const m = reliefMesh(depth, color, U, V, { scale: 1 / R, view, sideShade: 0.78, topShade: 0.9 });
+  const Bf = reliefBuffers(U, V);
+  for (let v = 0; v < V; v++) for (let u = 0; u < U; u++) Bf.set(u, v, depth[u + v * U], color[u + v * U]);
+  const geo = reliefGeometry(Bf.depth, Bf.color, U, V, { scale: 1 / R, sideShade: 0.82, capShade: 0.9 });
+  const m = new THREE.Mesh(geo, voxelMaterial('toon'));
+  m.layers.enable(LAYER_OUTLINE);
   m.rotation.x = -Math.PI / 2;
   m.position.set(X0 * S32, 96 * S32, Z1 * S32);
   return m;
@@ -302,7 +317,7 @@ function dormer() {
 /** The full booth. Returns { obj, ticket, w, d, lights:[{x,y,z}] } in local units. */
 export function ticketBooth32() {
   const glow = new Part(-6, 50, 40, W + 12, 40, 72);
-  const grp = group(plinth(), frontWall(glow), sideWall(), ...interior(glow), roof(), dormer());
+  const grp = group(plinth(), frontWall(glow), sideWall(1), sideWall(-1), ...interior(glow), roof(), dormer());
   grp.add(glow.mesh(true));
   // the beach poster on the side
   const pc = paintingCanvas('beach');
@@ -310,6 +325,10 @@ export function ticketBooth32() {
   poster.position.set(160.4 * S32, 48.5 * S32, 48 * S32);
   poster.rotation.y = Math.PI / 2;
   grp.add(poster);
+  const poster2 = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.72), new THREE.MeshLambertMaterial({ map: pixelTexture(paintingCanvas('beach').commit()) }));
+  poster2.position.set(-1.4 * S32, 48.5 * S32, 48 * S32);
+  poster2.rotation.y = -Math.PI / 2;
+  grp.add(poster2);
   // the giant golden ticket over the roof
   const tpc = ticketSignCanvas();
   const tick = new THREE.Mesh(new THREE.PlaneGeometry(tpc.w / 15, tpc.h / 15), new THREE.MeshBasicMaterial({ map: pixelTexture(tpc.commit()), transparent: true, alphaTest: 0.5 }));

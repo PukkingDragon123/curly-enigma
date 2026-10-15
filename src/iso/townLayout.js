@@ -1,16 +1,23 @@
 // Deep Town layout: one place for every landmark so the floor painter, collision,
-// models and townsfolk all agree. Tiles are 1 world unit; x runs west→east, z north→south.
-// The camera looks from the south-east, so the north (z≈0) and west (x≈0) cave walls are
-// the tall back walls with shop fronts; the south and east edges are low rocky rims.
+// models and townsfolk all agree. Coordinates are town units (TU, the old iso tiles: an adult
+// mole stands 1.375 TU, see src/town/units.js); x runs west→east, z north→south.
+// The cavern is closed on all four sides: the north and west walls carry the shop fronts and the
+// cliff-side burrows, the old south and east rims are now the edge of the paved core, with the
+// back lanes (mound houses, the mushroom grove) running on to the south and east walls.
 
 export const TOWN = {
-  W: 36,
-  H: 30,
+  W: 46,
+  H: 40,
   northFace: 3, // rock face z on the north wall
   westFace: 3, // rock face x on the west wall
-  southRim: 27.5,
+  eastFace: 42, // rock face x on the east wall
+  southFace: 36.5, // rock face z on the south wall
+  southRim: 27.5, // edge of the paved core (the back lanes lie beyond)
   eastRim: 33.5,
-  wallH: 8.6, // height of the back walls (they fade into the dark well before the top)
+  wallH: 8.6, // height of the fine lower walls
+  wallTop: 19, // the walls run up into the ceiling
+  // the cavern roof: a squarish dome, highest over the plaza, lowest where it meets the walls
+  ceiling: { cx: 22.5, cz: 19.5, rx: 20.5, rz: 18.5, top: 24, edge: 15.5, base: 31 },
   plaza: { x: 18.5, z: 15.5, r: 7.2 },
   fountain: { x: 18.5, z: 15.5, r: 2.15 },
   sun: { x: 21.05, z: 7.95, r: 1.3 },
@@ -41,17 +48,22 @@ export const TOWN = {
     { x: 14.3, z: 11.2 }, { x: 22.7, z: 11.2 }, { x: 14.3, z: 19.8 }, { x: 22.7, z: 19.8 },
     { x: 6.7, z: 7.2 }, { x: 6.7, z: 18.4 }, { x: 15.35, z: 5.35 }, { x: 27.2, z: 8.6 },
     { x: 21.4, z: 25.0 }, { x: 10.9, z: 25.6 }, { x: 31.6, z: 17.2 },
+    { x: 20.1, z: 29.6 }, { x: 31.2, z: 29.7 }, { x: 34.9, z: 18.6 }, { x: 8.0, z: 29.5 },
   ],
   trees: [
     { x: 31.0, z: 22.6, h: 3.1, r: 1.55, hue: 0 },
     { x: 13.6, z: 26.1, h: 2.9, r: 1.45, hue: 1 },
     { x: 25.2, z: 26.3, h: 2.7, r: 1.35, hue: 2 },
+    { x: 16.4, z: 32.6, h: 3.6, r: 1.7, hue: 0 },
+    { x: 39.4, z: 33.4, h: 3.3, r: 1.6, hue: 1 },
+    { x: 4.9, z: 29.4, h: 2.6, r: 1.3, hue: 2 },
   ],
   // mine-cart track from the lift out toward the plaza (a curve joins the straights)
   track: [{ x: 31, z: 7.2 }, { x: 31, z: 11.1 }, { x: 29.6, z: 12.5 }, { x: 25.6, z: 12.5 }],
   cart: { x: 31, z: 9.7 },
   orePile: { x: 24.7, z: 13.6 },
-  houses: [{ x: 7.0, z: 29.6, yaw: Math.PI }, { x: 22.0, z: 30.0, yaw: Math.PI }, { x: 35.2, z: 14.0, yaw: -Math.PI / 2 }],
+  // mound houses in the back lanes (yaw: the way the front door faces; π = north, -π/2 = west)
+  houses: [{ x: 8.6, z: 33.4, yaw: Math.PI }, { x: 26.4, z: 33.7, yaw: Math.PI }, { x: 38.9, z: 23.6, yaw: -Math.PI / 2 }, { x: 39.1, z: 12.6, yaw: -Math.PI / 2 }],
   // market stalls around the plaza (decor; the keepers chat)
   stalls: [
     { x: 11.55, z: 20.9, yaw: Math.PI * 0.25, kind: 'shrooms' },
@@ -80,7 +92,9 @@ export function streetAt(x, z) {
 export function pathAt(x, z) {
   if (Math.abs(x - 18.5) < 1.25 && z > 6 && z < 9.2) return true; // booth → plaza
   if (Math.abs(z - 15.5) < 1.1 && x > 6 && x < 12) return true; // west path → plaza
-  if (Math.abs(x - 18.5) < 1.0 && z > 22 && z < 27.2) return true; // south path
+  if (Math.abs(x - 18.5) < 1.0 && z > 22 && z < 31.6) return true; // south path
+  if (Math.abs(z - 31.2) < 0.9 && x > 7 && x < 36.5) return true; // the back lane along the south houses
+  if (Math.abs(x - 36.2) < 0.9 && z > 11.5 && z < 31.2) return true; // and up the east side
   return false;
 }
 
