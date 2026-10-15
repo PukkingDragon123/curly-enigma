@@ -36,9 +36,13 @@ void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
   float sz = aSize * uPix;
-  if (uAtten > 0.5) sz = aSize * uScale / max(0.1, -mv.z);
-  gl_PointSize = max(1.0, floor(sz + 0.5));
   vColor = aColor;
+  if (uAtten > 0.5) {
+    // world-sized: grows as it nears the camera, but never into a screen-filling blob
+    sz = min(aSize * uScale / max(0.1, -mv.z), 28.0 * uPix);
+    vColor.a *= smoothstep(0.25, 0.6, -mv.z);
+  }
+  gl_PointSize = max(1.0, floor(sz + 0.5));
   vShape = aShape;
   vSpin = aSpin;
 }

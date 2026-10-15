@@ -91,6 +91,9 @@ const CSS = /* css */`
 .bk-dock { position: absolute; right: calc(var(--px) * 6); bottom: calc(var(--px) * 6); display: flex; gap: calc(var(--px) * 2); opacity: 0; transition: opacity .6s; }
 .bk-dock.on { opacity: .8; }
 .bk-dock .btn { font-size: .8em; padding: var(--px) calc(var(--px) * 3); }
+.bk-caption { position: absolute; left: 0; right: 0; top: 14%; text-align: center; font-family: var(--font-script); font-size: calc(var(--px) * 9); color: #fff8e8; opacity: 0; transition: opacity 1.2s ease; pointer-events: none; padding: 0 16px; }
+.bk-caption.on { opacity: 1; }
+.bk-caption small { display: block; font-family: var(--font); font-size: .45em; letter-spacing: .2em; text-transform: uppercase; opacity: .85; margin-top: calc(var(--px) * 2); }
 .bk-skip { position: absolute; right: calc(var(--px) * 6); bottom: calc(var(--px) * 6); font-size: .75em; padding: var(--px) calc(var(--px) * 3); opacity: .5; transition: opacity .3s; }
 .bk-skip:hover, .bk-skip:focus-visible { opacity: 1; }
 

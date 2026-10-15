@@ -8,7 +8,7 @@ import { useBookendStyles } from '../bookends/css.js';
 import { logoLetters, glintURL } from '../bookends/logo.js';
 import { disposeTextures, setPixelScale } from '../bookends/fx.js';
 
-const CONTINUE_OK = new Set(['town', 'home', 'mine', 'forge', 'cooking']);
+const CONTINUE_OK = new Set(['town', 'home', 'forge', 'cooking']); // the old mine and the deep fall back to home
 
 export default class TitleScene extends Scene {
   async enter(params = {}) {
@@ -101,8 +101,8 @@ export default class TitleScene extends Scene {
 
   doContinue() {
     this.busy = true;
-    // still trapped in the collapsed tunnels: pick the escape back up where it left off
-    if (!this.game.state.escaped) this.game.goto('mine', { intro: '1' });
+    // never fell yet (a save from before the opening): play the fall first
+    if (!this.game.state.flag('fallen')) this.game.goto('fall');
     else this.game.goto(this.continueTarget(), { from: 'continue' });
   }
 
@@ -119,8 +119,8 @@ export default class TitleScene extends Scene {
     this.busy = true;
     st.reset();
     st.wipeSave();
-    // every new game starts trapped deep underground: dig your way out first
-    g.goto('mine', { intro: '1' });
+    // every new game opens with the fall: the ground gives way under the mole and Nugget
+    g.goto('fall');
   }
 
   openSettings() {
