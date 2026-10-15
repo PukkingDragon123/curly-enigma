@@ -23,7 +23,13 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { clamp, rand, chance, hexToRgb, formatGoldFull } from '../core/util.js';
 
-const SLOTS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'food'];
+const SLOTS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'build', 'food'];
+// what the build tool puts up: ladders to climb out of holes for free, platforms, blocks
+const BUILD = [
+  { id: 'ladder', name: 'Ladder', hint: 'Aim at a wall' },
+  { id: 'planks', name: 'Plank platform', hint: 'Bridges gaps and makes floors' },
+  { id: 'block', name: 'Brick block', hint: 'Stairs, walls, plugging water' },
+];
 const REACH = 2.3;
 const vmModules = import.meta.glob('../fps/ViewModel.js');
 // optional systems, built separately (see docs/DEEP.md): fantasy enemies, flowing fluids
@@ -149,6 +155,7 @@ export default class DigScene extends Scene {
     if (slot === 'pick') return st.equipped('pick');
     if (slot === 'stake') return st.count('glow_stake') ? ITEMS.glow_stake : null;
     if (slot === 'food') return this.bestFood();
+    if (slot === 'build') return ITEMS.support_beam;
     return st.equipped(slot);
   }
   bestFood() {
@@ -165,15 +172,16 @@ export default class DigScene extends Scene {
     const slots = SLOTS.map((s, i) => {
       const it = this.toolItem(s);
       const n = s === 'stake' ? st.count('glow_stake') : s === 'food' && it ? st.count(it.id) : undefined;
-      return { icon: iconURL(it ? it.id : icons[s]), key: String(i + 1), label: it ? it.name : '—', off: !it, n, meter: s === 'drill' && it ? this.drillHeat : undefined };
+      const label = s === 'build' ? `Build: ${BUILD[this.buildMode || 0].name}` : it ? it.name : '—';
+      return { icon: iconURL(it ? it.id : icons[s]), key: String(i + 1), label, off: !it, n, meter: s === 'drill' && it ? this.drillHeat : undefined };
     });
     this.game.ui.setHotbar(slots, this.slot, (i) => this.selectSlot(i));
     const it = this.toolItem(this.slotName);
-    if (this.vm) this.vm.setTool(it ? this.slotName : (this.slotName === 'food' ? 'none' : 'none'), { item: it?.id });
+    if (this.vm) this.vm.setTool(this.slotName === 'build' ? 'beam' : it ? this.slotName : 'none', { item: it?.id });
   }
   selectSlot(i) {
     const n = (i + SLOTS.length) % SLOTS.length;
-    if (this.slot === n) return;
+    if (this.slot === n) { if (SLOTS[n] === 'build') this.cycleBuild(); return; }
     this.slot = n;
     this.audio.play('ui_click', { pitch: 1.3 });
     this.updateHotbar();
@@ -196,6 +204,7 @@ export default class DigScene extends Scene {
       for (let k = 0; k < SLOTS.length; k++) if (inp.pressed('Digit' + (k + 1))) this.selectSlot(k);
       if (inp.mouse.wheel) this.selectSlot(this.slot + Math.sign(inp.mouse.wheel));
       if (inp.pressed('KeyQ')) this.eatBest();
+      if (inp.pressed('KeyR') && this.slotName === 'build') this.cycleBuild();
       if (inp.pressed('KeyE')) this.interact();
     }
     // move
@@ -209,7 +218,7 @@ export default class DigScene extends Scene {
     if (ev.fallDamage) this.hurt(Math.round(ev.fallDamage), 'fall');
     if (ev.jump) this.energy(0.2);
     if (ev.splash) { this.audio.play('splash'); this.fx.splash(pl.pos.x, pl.pos.y + 0.4, pl.pos.z, 1.2); }
-    if (pl.climbing) { this.energy(0.9 * dt); if (chance(dt * 5)) this.audio.play('climb'); }
+    if (pl.climbing) { if (!pl.onLadder) this.energy(0.9 * dt); if (chance(dt * 5)) this.audio.play('climb'); }
     if (pl.inLava && !st.protects('heat')) { st.useEnergy(18 * dt); if (chance(dt * 4)) this.audio.play('sizzle'); this.say('lava', '<b>LAVA!</b> Get out!', 'bad', 2); for (let k = 0; k < 2; k++) this.fx.ember(pl.pos.x, pl.pos.y + 0.3, pl.pos.z); }
     if (pl.grounded && pl.speed > 0.6) {
       this.stepT = (this.stepT || 0) - dt * pl.speed / 2.4;
@@ -219,6 +228,7 @@ export default class DigScene extends Scene {
     const held = !!this.clumps?.capture();
     if (held) { if (this.vm) this.vm.use(this.slotName, false); }
     else { this.updateTarget(); this.useTools(dt, busy); }
+    this.updateGhost(held || busy);
     if (this.clumps) this.events(this.clumps.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy }));
     // world sim
     this.bodies.update(dt, pl.eye(), pl.pos);
@@ -328,6 +338,8 @@ export default class DigScene extends Scene {
       this.energy(0.25 * dt);
     } else if (tool === 'stake') {
       if (this.useT <= 0 && inp.mousePressed(0)) { this.useT = 0.4; this.placeStake(); }
+    } else if (tool === 'build') {
+      if (this.useT <= 0 && inp.mousePressed(0)) { this.useT = 0.25; this.build(); }
     } else if (tool === 'food') {
       if (this.useT <= 0 && inp.mousePressed(0)) { this.useT = 0.6; this.eatBest(); }
     }
@@ -553,6 +565,80 @@ export default class DigScene extends Scene {
     this.shake(0.12);
     this.kick.set((Math.random() - 0.5) * 0.006, (Math.random() - 0.5) * 0.006, 0);
     this.afterBreak(res.broken, [hit.nx, hit.ny, hit.nz], 0.5, 'drill');
+  }
+
+  // ------------------------------------------------------------------ building
+  cycleBuild() {
+    this.buildMode = ((this.buildMode || 0) + 1) % BUILD.length;
+    const b = BUILD[this.buildMode];
+    this.audio.play('ui_click', { pitch: 0.9 });
+    this.say('buildmode', `Build: <b>${b.name}</b> · ${b.hint}${this.isTouch() ? '' : ' · R to switch'}`, 'good', 0.3);
+    this.updateHotbar();
+  }
+
+  /** The voxels the build tool would fill for the current target, or null. */
+  buildCells() {
+    const hit = this.target;
+    if (!hit) return null;
+    const w = this.world, mode = BUILD[this.buildMode || 0].id;
+    const bx = hit.vx + hit.nx, by = hit.vy + hit.ny, bz = hit.vz + hit.nz;
+    const cells = [];
+    const add = (x, y, z) => { if (!w.voxelAt(x, y, z)) cells.push([x, y, z]); };
+    if (mode === 'ladder') {
+      if (hit.ny) return null; // ladders go on walls
+      const lx = hit.nx ? 0 : 1, lz = hit.nx ? 1 : 0;
+      // rails and rungs, 3 wide, from the floor below the aim up to the top of the wall (3 m each way)
+      let y0 = by, y1 = by;
+      while (y0 > by - 24 && !w.voxelAt(bx, y0 - 1, bz)) y0--;
+      while (y1 < by + 24 && !w.voxelAt(bx, y1 + 1, bz) && w.voxelAt(bx - hit.nx, y1 + 1, bz - hit.nz)) y1++;
+      for (let y = y0; y <= y1; y++) for (let k = -1; k <= 1; k++) {
+        const x = bx + lx * k, z = bz + lz * k;
+        if (k === 0 && (y & 1)) continue; // gaps between rungs
+        if (!w.voxelAt(x - hit.nx, y, z - hit.nz)) continue; // only against rock
+        add(x, y, z);
+      }
+    } else if (mode === 'planks') {
+      for (let z = -1; z <= 1; z++) for (let x = -1; x <= 1; x++) add(bx + x, by, bz + z);
+    } else {
+      const x0 = bx & ~1, y0 = by & ~1, z0 = bz & ~1;
+      for (let z = 0; z < 2; z++) for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) add(x0 + x, y0 + y, z0 + z);
+    }
+    if (!cells.length) return null;
+    // never inside the mole
+    const p = this.player.pos;
+    const ok = !cells.some(([x, y, z]) => (x + 1) / VOX > p.x - 0.22 && x / VOX < p.x + 0.22 && (y + 1) / VOX > p.y && y / VOX < p.y + 0.86 && (z + 1) / VOX > p.z - 0.22 && z / VOX < p.z + 0.22);
+    return { cells, ok, m: mode === 'ladder' ? M.LADDER : mode === 'planks' ? M.BOARDS : M.BRICK };
+  }
+
+  /** A see-through preview of what the build tool would put up. */
+  updateGhost(hide) {
+    const on = !hide && this.slotName === 'build';
+    const b = on ? this.buildCells() : null;
+    if (!this.ghost) {
+      this.ghost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x8aff8a, transparent: true, opacity: 0.28, depthWrite: false }));
+      this.ghost.renderOrder = 15;
+      this.scene.add(this.ghost);
+    }
+    this.ghost.visible = !!b;
+    if (!b) return;
+    let x0 = 1e9, y0 = 1e9, z0 = 1e9, x1 = -1e9, y1 = -1e9, z1 = -1e9;
+    for (const [x, y, z] of b.cells) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); z0 = Math.min(z0, z); x1 = Math.max(x1, x + 1); y1 = Math.max(y1, y + 1); z1 = Math.max(z1, z + 1); }
+    this.ghost.position.set((x0 + x1) / 2 / VOX, (y0 + y1) / 2 / VOX, (z0 + z1) / 2 / VOX);
+    this.ghost.scale.set((x1 - x0) / VOX + 0.01, (y1 - y0) / VOX + 0.01, (z1 - z0) / VOX + 0.01);
+    this.ghost.material.color.setHex(b.ok ? 0x8aff8a : 0xff6a5a);
+    this.ghost.material.opacity = 0.22 + Math.sin(this.time * 6) * 0.06;
+  }
+
+  build() {
+    const b = this.buildCells();
+    if (!b || !b.ok) { this.audio.play('ui_error', { vol: 0.5 }); return; }
+    for (const [x, y, z] of b.cells) this.world.setVoxel(x, y, z, b.m);
+    const [x, y, z] = b.cells[b.cells.length >> 1];
+    this.fx.dust((x + 0.5) / VOX, (y + 0.5) / VOX, (z + 0.5) / VOX, 6, [0.6, 0.5, 0.4], 0.15);
+    this.audio.play('place');
+    this.audio.play('hit', { snd: 'wood', vol: 0.4 });
+    if (this.vm) this.vm.swing('beam', 0.12);
+    this.energy(0.3);
   }
 
   placeStake() {

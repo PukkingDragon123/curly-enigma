@@ -1,7 +1,7 @@
 // First-person mole: an AABB walking through voxels (meters). Steps up rough floors, jumps, grips
 // and climbs walls (moles dig claws in), swims, and feeds the camera a little bob and landing dip.
 import * as THREE from 'three';
-import { VOX, MAT } from './materials.js';
+import { VOX, MAT, M } from './materials.js';
 import { OPAQUE } from './Mesher.js';
 import { clamp, damp } from '../core/util.js';
 
@@ -72,9 +72,14 @@ export class FPSPlayer {
     v.x += clamp(tx - v.x, -accel * dt, accel * dt);
     v.z += clamp(tz - v.z, -accel * dt, accel * dt);
 
-    // climbing: pushing into a wall with jump held — moles dig their claws in
+    // climbing: a ladder takes you up for free; otherwise pushing into a wall with jump held —
+    // moles dig their claws in
     this.climbing = false;
-    if (jumpHeld && !this.inWater && this.blocked && mv.y > 0.3) {
+    this.onLadder = this.ladderNear();
+    if (this.onLadder && !this.inWater && (mv.y > 0.3 || jumpHeld)) {
+      this.climbing = true;
+      v.y = 2.1;
+    } else if (jumpHeld && !this.inWater && this.blocked && mv.y > 0.3) {
       this.climbing = true;
       v.y = 2.3;
     } else if (this.inWater) {
@@ -115,6 +120,18 @@ export class FPSPlayer {
     this.eyeY = damp(this.eyeY, EYE, 14, dt);
     this.speed = hs;
     return ev;
+  }
+
+  /** Is a ladder voxel right against the mole (within a voxel of its body, chest high)? */
+  ladderNear() {
+    const w = this.w, p = this.pos;
+    const x0 = Math.floor((p.x - HW) * VOX) - 1, x1 = Math.floor((p.x + HW) * VOX) + 1;
+    const z0 = Math.floor((p.z - HW) * VOX) - 1, z1 = Math.floor((p.z + HW) * VOX) + 1;
+    for (const yy of [0.1, 0.45, 0.8]) {
+      const y = Math.floor((p.y + yy) * VOX);
+      for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) if (w.voxelAt(x, y, z) === M.LADDER) return true;
+    }
+    return false;
   }
 
   moveAxis(axis, d) {
