@@ -130,3 +130,18 @@ Fluids straight into `chunk.vox` and `world.edits` (they never change the rock m
 `setVoxel` and `onChange`); anything that makes rock goes through `setVoxel`. `fluidUniforms(U)`
 adds `fRip`, `fRipK`, `fJig`, `fLake`, `fLakeDrop` (ripples, wobble, draining lakes) to the shared
 uniforms.
+
+## Lifts, building, granular digging (current)
+
+- `plan.lifts`: `{ id, name, x, y, z, zone, depth }` — `L0` "Mine entrance" under the burrow, three
+  `L{zone}{k}` per zone (timber room, plank floor, cage, shaft: feature kinds `box` + `cage`), and the
+  town shaft stops `s0..s5`. Walking into a lift room calls `discoverLift`; E at the cage opens
+  `openLiftPanel` (src/fps/lifts.js). `goto('deep', { from: 'lift', lift: id })` spawns in the cage.
+- Build tool (slot 7, `R` / tapping the slot again switches): `M.LADDER` strips (climbable for free:
+  `FPSPlayer.onLadder`), plank platforms (`M.BOARDS` 3×3), brick blocks (`M.BRICK` 2³).
+- Digging: plates are ~2–3 voxels (`STYLE_OF` scale), each blow adds 30% damage to the neighbouring
+  plates, broken plates crumble into quarter-meter lumps plus grit; a short hit-stop on breaks.
+- The terrain shader draws 16×16 texels per voxel face (`TEXN`) with per-texel relief; object
+  materials use `texel: 128` to match. Hidden ore close under the surface glints (`ambient()`).
+- Ore clumps: when `src/deep/Clumps.js` exists, freed deposits become clumps (`clumps.spawn`),
+  `clumps.capture()` takes over the tools while one is held; see the module header.
