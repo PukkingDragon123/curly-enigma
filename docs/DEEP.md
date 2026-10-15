@@ -114,3 +114,12 @@ lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, t
 (mushrooms, crystal clusters, roots, old mining gear, signposts).
 - `update(dt, { player, eye, time })`, `onVoxel(vx, vy, vz, old, m)` (optional: a prop whose
   support was dug away should fall or go), `lights(eye)` (as above), `dispose()`.
+
+Harvesting and catching (all optional, called by DigScene when present):
+- `props.target(eye, dir, reach)` → `null | { label, kind: 'use' }`; `props.use(eye, dir, reach)` →
+  `null | { loot: { id }, say? }` (E / the use button). Picked spots regrow the next day
+  (`state.data.deep.picked`).
+- `enemies.catchTest(eye, dir, reach)` → `null | { label, kind: 'use' }`; `enemies.catch(eye, dir,
+  reach, tool)`, `enemies.brushAt(eye, dir, reach)` (while brushing), `enemies.xrayAt(eye, dir,
+  reach)` (while the x-ray lamp is on) → event arrays like `update()`'s.
+- `reach` is already clipped to the rock the crosshair hits.
