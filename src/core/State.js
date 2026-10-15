@@ -1,5 +1,6 @@
 // Persistent game state + save/load. All gameplay systems read and write through here.
-import { ITEMS, sellPrice } from '../data/items.js';
+import { ITEMS, sellPrice, setFindBonus } from '../data/items.js';
+import { UPGRADES, MILESTONES, upgradeEffect, upgradeCost, upgradeLock, milestoneValue } from '../data/upgrades.js';
 import { MECHANICS } from '../data/mechanics.js';
 import { CREATURES } from '../data/creatures.js';
 import { DISHES } from '../data/recipes.js';
@@ -43,7 +44,9 @@ export function defaultData() {
     index: {}, // "cat:id" → { day, n, best? }
     zoneMax: 1,
     deepest: 0,
-    stats: { blocks: 0, ores: 0, pristine: 0, weapons: 0, dishes: 0, earned: 0, faints: 0, caveins: 0, explosions: 0, trips: 0, bestWeapon: 0, eggs: 0 },
+    stats: { blocks: 0, ores: 0, pristine: 0, weapons: 0, dishes: 0, earned: 0, faints: 0, caveins: 0, explosions: 0, trips: 0, bestWeapon: 0, eggs: 0, blasts: 0, kills: 0, golems: 0 },
+    upgrades: {}, // upgrade board: id → level (data/upgrades.js)
+    progress: { ms: {}, tavern: null }, // milestones reached (id → day), the tavern's last takings
     buffs: [], // [{id, until}] until = playTime seconds
     flags: {},
     chicken: { name: 'Nugget', eggs: 0, pets: 0, lastPetDay: 0 },
@@ -60,6 +63,8 @@ export class State {
     this.handlers = {};
     this.dirty = false;
     this.lastSave = 0;
+    this.pendingMs = []; // milestones reached but not shown yet (takeMilestones)
+    this.applyUpgrades();
   }
 
   // ---------- events ----------
@@ -97,6 +102,11 @@ export class State {
       if (!this.data.home || !this.data.home.placed) this.data.home = defaultHome();
       // v1 saves began at home: they have already escaped the collapsed tunnels
       if (!(d.v >= 2)) { this.data.v = 2; this.data.flags = { ...this.data.flags, escaped: true, nugget: true }; }
+      this.data.upgrades = { ...(d.upgrades || {}) };
+      this.data.progress = { ...base.progress, ...(d.progress || {}) };
+      this.data.progress.ms = { ...(this.data.progress.ms || {}) };
+      this.pendingMs = [];
+      this.applyUpgrades();
       this.emit('load');
       return true;
     } catch (e) {
@@ -108,6 +118,8 @@ export class State {
     const settings = this.data.settings;
     this.data = defaultData();
     this.data.settings = settings;
+    this.pendingMs = [];
+    this.applyUpgrades();
     this.emit('load');
   }
   wipeSave() {
@@ -121,6 +133,7 @@ export class State {
     this.data.gold += n;
     if (n > 0) this.data.stats.earned += n;
     this.emit('gold', { delta: n, reason });
+    if (n > 0) this.checkMilestones();
   }
   canAfford(n) { return this.data.gold >= n; }
   spend(n, reason = '') {
@@ -279,6 +292,7 @@ export class State {
       e.best = Math.max(e.best || 0, weapon.score);
     }
     this.emit('weapon', { weapon, isNew: isNew && !prev });
+    this.checkMilestones();
     return weapon;
   }
   removeWeapon(wuid) {
@@ -305,8 +319,8 @@ export class State {
     }
     return false;
   }
-  bagCapacity() { return this.equipped('bag')?.cap ?? 14; }
-  lightRadius() { return (this.equipped('helmet')?.light ?? 5) + (this.hasBuff('glow') ? 2.5 : 0); }
+  bagCapacity() { return (this.equipped('bag')?.cap ?? 14) + this.upEffect('bag'); }
+  lightRadius() { return (this.equipped('helmet')?.light ?? 5) + (this.hasBuff('glow') ? 2.5 : 0) + this.upEffect('lamp'); }
 
   /** Buy: handles price + extra item requirements. Returns {ok, reason} */
   buy(id, price, qty = 1) {
@@ -375,7 +389,112 @@ export class State {
     const d = this.data;
     d.day++;
     this.emit('day', { day: d.day });
+    // the tavern's takings come in overnight
+    const inc = this.tavernIncome();
+    if (inc > 0) {
+      d.progress.tavern = { day: d.day, gold: inc };
+      this.addGold(inc, 'tavern');
+      this.emit('income', { gold: inc, day: d.day, source: 'tavern' });
+    }
+    this.checkMilestones();
   }
+
+  // ---------- progression: the upgrade board (data/upgrades.js) and milestones ----------
+  /** Level of an upgrade (0 = not bought). */
+  upgrade(id) { return this.data.upgrades?.[id] || 0; }
+  /** The upgrade's current effect value (see UPGRADES[id].effect). */
+  upEffect(id) { return upgradeEffect(id, this.upgrade(id)); }
+  /** Total upgrade levels bought. */
+  upgradeLevels() { return Object.values(this.data.upgrades || {}).reduce((s, n) => s + n, 0); }
+  /** Cost of the next level: { gold, items: {id: n} }, or null when maxed. */
+  upgradeCost(id) { return upgradeCost(id, this.upgrade(id)); }
+  /** Can the next level be bought? { ok, reason, cost, lock } */
+  canUpgrade(id, zoneNames) {
+    const u = UPGRADES[id];
+    if (!u) return { ok: false, reason: 'Unknown upgrade' };
+    const lock = upgradeLock(id, this, zoneNames);
+    if (lock) return { ok: false, reason: lock, lock };
+    const cost = this.upgradeCost(id);
+    if (!cost) return { ok: false, reason: 'Maxed out', max: true };
+    for (const [nid, n] of Object.entries(cost.items)) if (this.count(nid) < n) return { ok: false, reason: `Needs ${n}× ${ITEMS[nid]?.name || nid}`, cost };
+    if (!this.canAfford(cost.gold)) return { ok: false, reason: 'Not enough gold', cost };
+    return { ok: true, cost };
+  }
+  /** Buy the next level: pays gold and items, applies the effect. Returns { ok, reason, level }. */
+  buyUpgrade(id) {
+    const c = this.canUpgrade(id);
+    if (!c.ok) return c;
+    const { gold, items } = c.cost;
+    for (const [nid, n] of Object.entries(items)) this.removeItem(nid, n, { lowFirst: true });
+    this.spend(gold, 'upgrade');
+    const level = this.upgrade(id) + 1;
+    this.data.upgrades[id] = level;
+    // stamina is permanent max energy (sleep and fainting read data.maxEnergy), and tops you up
+    if (id === 'stamina') {
+      const add = upgradeEffect('stamina', level) - upgradeEffect('stamina', level - 1);
+      this.data.maxEnergy += add;
+      this.restoreEnergy(add);
+    }
+    this.applyUpgrades();
+    this.emit('upgrade', { id, level });
+    this.checkMilestones();
+    return { ok: true, level };
+  }
+  /** Keep derived bonuses (sale prices) in step with the upgrade levels. */
+  applyUpgrades() {
+    setFindBonus(1 + this.upEffect('appraise'));
+  }
+  /**
+   * Mining bonuses from the upgrade board. Multipliers are 1 when nothing's bought.
+   * power: × pick power · rate: × pick swing interval (lower = faster) · glint: × range of the
+   * hidden-ore glint · clean: × ore quality lost to scratches · blast: × blast radius · toss: ×
+   * throw speed · sticky: charges stick where they hit · spare: chance a thrown charge isn't used
+   * up · rest: energy/s regained standing still · nugget: Nugget's finds level · value: + fraction
+   * on ore/gem prices (already inside sellPrice).
+   */
+  mineBonus() {
+    return {
+      power: this.upEffect('power'),
+      rate: this.upEffect('swing'),
+      glint: this.upEffect('nose'),
+      clean: this.upEffect('steady'),
+      blast: this.upEffect('blast'),
+      toss: this.upEffect('throw'),
+      sticky: this.upEffect('sticky') > 0,
+      spare: this.upEffect('spare'),
+      rest: this.upEffect('rest'),
+      nugget: this.upEffect('nugget'),
+      value: this.upEffect('appraise'),
+    };
+  }
+  /** Gold the tavern takes in each night (paid in nextDay). */
+  tavernIncome() { return Math.round(this.upEffect('tavern')); }
+
+  /** Pay out every milestone reached (gold + items, once each). Returns the new ones. */
+  checkMilestones() {
+    if (this._msBusy || !this.data.progress) return [];
+    this._msBusy = true;
+    const got = [];
+    try {
+      const done = (this.data.progress.ms ||= {});
+      for (const m of MILESTONES) {
+        if (done[m.id] || milestoneValue(m, this) < m.at) continue;
+        done[m.id] = this.data.day;
+        got.push(m);
+        if (m.reward?.gold) this.addGold(m.reward.gold, 'milestone');
+        for (const [id, n] of Object.entries(m.reward?.items || {})) if (ITEMS[id]) this.addItem(id, { n, q: 100 });
+      }
+    } finally { this._msBusy = false; }
+    if (got.length) {
+      this.pendingMs.push(...got);
+      this.emit('milestone', { list: got });
+    }
+    return got;
+  }
+  /** Milestones reached since the last call (for toasts); clears the queue. */
+  takeMilestones() { const l = this.pendingMs; this.pendingMs = []; return l; }
+  /** Day a milestone was reached, or 0. */
+  milestone(id) { return this.data.progress?.ms?.[id] || 0; }
   unflag(k) {
     delete this.data.flags[k];
     this.dirty = true;

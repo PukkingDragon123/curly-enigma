@@ -99,3 +99,18 @@ game; tell the lead which test hooks your scene offers (e.g. `scene.debug.*`).
 - **Progression** (`src/data/upgrades.js`, `ui.openUpgrades()`): tool tiers, dynamite
   (`src/deep/Explosives.js`), upgrades with rising costs, milestones; the tavern earns a little
   each day (`state.tavernIncome()`).
+
+## Progression (as built)
+
+- **The Miners' Board** (`ui.openUpgrades(tab?)` → Promise of the panel handle; `src/ui/Upgrades.js`,
+  data in `src/data/upgrades.js`): 15 upgrades with levels and rising costs (Digging, Hauling,
+  Blasting, Tavern), a Tools tab with the pick ladder up to the Starmetal Pickaxe, and 26 milestones
+  that pay out. State: `upgrade(id)`, `upEffect(id)`, `buyUpgrade(id)`, `mineBonus()`,
+  `tavernIncome()` (paid each night in `nextDay()`, last night in `data.progress.tavern`),
+  `checkMilestones()` / `takeMilestones()`. The mine applies `mineBonus()` `power`, `rate`,
+  `glint`, `clean` (DigScene `bonus(k)`); the rest work inside Explosives and `sellPrice`.
+- **Dynamite** (`src/deep/Explosives.js`, slot `dynamite`): stick, bundle and blasting charge
+  (Grubb's sells them), thrown in an arc on a burning fuse; the blast goes through
+  `owner.blast(x, y, z, r, power)`. No blasting in the burrow, Deep Town, lift rooms or Old Star's
+  dig before the prologue. Test hooks: `scene.explosives.debug.{ list, boom, zones, protectedAt }`.
+- Hard rock needs a better pick by zone (`HARD_ROCK_TIER`, `pickForTier()` in `items.js`).

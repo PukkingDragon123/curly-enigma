@@ -8,17 +8,21 @@ export const SHOPS = {
     keeper: { name: 'Grubb', species: 'starnose', age: 'elder', fur: 0x4a3a34, outfit: 'apron', outfitColor: 0x7a5a3a, glasses: true, hat: 'none', voice: 210 },
     sign: 'pick',
     stock: [
-      { id: 'chisel_basic' }, { id: 'brush_basic' }, { id: 'support_beam' }, { id: 'glow_stake' },
+      { id: 'chisel_basic' }, { id: 'brush_basic' }, { id: 'support_beam' }, { id: 'glow_stake' }, { id: 'dynamite' },
       { id: 'pick_copper' }, { id: 'pick_iron', minZone: 2 }, { id: 'pick_steel', minZone: 3 },
       { id: 'drill_steam', minZone: 3 }, { id: 'xray_lamp', minZone: 2 }, { id: 'chisel_fine', minZone: 3 },
       { id: 'brush_badger', minZone: 3 }, { id: 'pick_mithril', minZone: 4 }, { id: 'xray_prism', minZone: 5 },
       { id: 'drill_lumite', minZone: 5 }, { id: 'pick_adamant', minZone: 5 },
+      // explosives: bigger charges once you've been deep enough to need them
+      { id: 'dynamite_bundle', minZone: 3 }, { id: 'blasting_charge', minZone: 4 },
+      { id: 'pick_starmetal', minZone: 6 },
     ],
     lines: [
       'A good pick is a mole\'s best friend. Second best is a chisel.',
       'Ore\'s worth more in one piece, kid. Don\'t go smashing it.',
       'Heard a ceiling creak? Get out from under it.',
       'Back in my day we dug with our claws. Uphill. Both ways.',
+      'Dynamite? Light it, throw it, and then you run. In that order, kid.',
     ],
   },
   grocer: {

@@ -157,6 +157,8 @@ export const ITEMS = {
     desc: 'Light and vicious. Digs core rock.' },
   pick_adamant: { name: 'Adamant Pickaxe', cat: 'tool', slot: 'pick', tier: 6, power: 6.5, rate: 0.24, price: 165000, value: 40000, icon: { k: 'tool', t: 'pick', c: 0x4fd9a0 },
     desc: 'Nothing is too hard. Not even adamant.' },
+  pick_starmetal: { name: 'Starmetal Pickaxe', cat: 'tool', slot: 'pick', tier: 7, power: 9.2, rate: 0.21, price: 420000, needs: { starmetal_ingot: 2 }, value: 110000, icon: { k: 'tool', t: 'pick', c: 0xffd27a },
+    desc: 'Forged from a fallen star. Goes through core rock like it remembers the way.' },
   chisel_basic: { name: 'Chisel', cat: 'tool', slot: 'chisel', power: 0.55, rate: 0.2, price: 120, value: 30, icon: { k: 'tool', t: 'chisel', c: 0xa0a6ae },
     desc: 'Slow, quiet, precise. Chips rock away from ore without hurting it.' },
   chisel_fine: { name: 'Fine Chisel', cat: 'tool', slot: 'chisel', power: 1.1, rate: 0.16, price: 7000, value: 1500, icon: { k: 'tool', t: 'chisel', c: 0x9fe0e6 },
@@ -177,6 +179,15 @@ export const ITEMS = {
     desc: 'A sturdy wooden prop. Place it under a ceiling you want to keep there.' },
   glow_stake: { name: 'Glow Stake', cat: 'consumable', price: 15, value: 3, icon: { k: 'tool', t: 'stake' },
     desc: 'A lumite-tipped stake. Lights up a spot for good.' },
+  // explosives: the dynamite slot throws the one with the biggest blast (src/deep/Explosives.js).
+  // blast = crater radius (m), power = how hard it hits (ore chips, creatures), fuse = seconds,
+  // toss = throw speed (m/s). Icons: src/deep/explosives/icon.js (drawn for spec t 'dynamite').
+  dynamite: { name: 'Dynamite', cat: 'consumable', blast: 0.9, power: 1, fuse: 2.2, toss: 7.5, price: 45, value: 10, icon: { k: 'tool', t: 'dynamite', n: 1 },
+    desc: 'A stick of mining dynamite. Light it, throw it, step back. Clears a good bite of rock at once.' },
+  dynamite_bundle: { name: 'Dynamite Bundle', cat: 'consumable', blast: 1.5, power: 1.25, fuse: 2.6, toss: 6.3, price: 180, value: 40, icon: { k: 'tool', t: 'dynamite', n: 3 },
+    desc: 'Three sticks and a shared fuse. Opens a whole room. Do not hold it.' },
+  blasting_charge: { name: 'Blasting Charge', cat: 'consumable', blast: 2.2, power: 1.6, fuse: 3, toss: 4.4, price: 650, value: 150, icon: { k: 'tool', t: 'dynamite', n: 0, charge: true },
+    desc: 'A heavy canister for the deep rock. It beeps faster and faster. Then it really does not.' },
 
   // ───────────── Equipment ─────────────
   helmet_basic: { name: 'Miner\'s Cap', cat: 'equip', slot: 'helmet', light: 5.5, value: 5, icon: { k: 'equip', t: 'helmet', c: 0xc9a23a }, desc: 'A candle on a hat.' },
@@ -221,13 +232,28 @@ export function item(id) {
   return ITEMS[id];
 }
 
+// Progression: the upgrade board's Keen Appraisal raises what ore and gems sell for. State keeps
+// this in step with the upgrade level (setFindBonus), so every price shown matches what's paid.
+let FIND_BONUS = 1;
+export function setFindBonus(k) { FIND_BONUS = k > 0 ? k : 1; }
+
 /** Sell price for an item at a quality (0-100) with pristine bonus. */
 export function sellPrice(id, q = 100, pristine = false) {
   const it = ITEMS[id];
   if (!it) return 0;
   const base = it.value || 0;
   const qq = it.q ? 0.25 + 0.75 * Math.max(0, Math.min(100, q)) / 100 : 1;
-  return Math.max(1, Math.round(base * qq * (pristine ? 1.25 : 1)));
+  const find = it.cat === 'mineral' || it.cat === 'gem' ? FIND_BONUS : 1;
+  return Math.max(1, Math.round(base * qq * (pristine ? 1.25 : 1) * find));
+}
+
+/**
+ * The pick tier hard rock (MAT hp > 3.5) needs, by zone: obsidian in the Magma Deep wants iron,
+ * the Frost Vault steel, the Core mithril. pickForTier(t) → the cheapest pick of that tier.
+ */
+export const HARD_ROCK_TIER = [0, 0, 0, 0, 3, 4, 5];
+export function pickForTier(t) {
+  return Object.values(ITEMS).filter((it) => it.slot === 'pick' && (it.tier || 1) >= t).sort((a, b) => (a.tier || 1) - (b.tier || 1))[0] || null;
 }
 
 export const CAT_LABEL = {

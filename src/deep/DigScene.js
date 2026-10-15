@@ -18,7 +18,7 @@ import { mouthBox, zoneAt, ZONE_DEPTHS, biomeAt, BIOMES, caveDensity } from './G
 import { VOX, M, MAT, ORE_BASE, voxelColor } from './materials.js';
 import { h3 } from './noise.js';
 import { roomSize } from '../iso/homeLayout.js';
-import { ITEMS, sellPrice } from '../data/items.js';
+import { ITEMS, sellPrice, HARD_ROCK_TIER, pickForTier } from '../data/items.js';
 import { ZONES } from '../data/zones.js';
 import { ORES } from '../data/ores.js';
 import { iconURL } from '../gfx/PixelArt.js';
@@ -367,7 +367,7 @@ export default class DigScene extends Scene {
     if (!want || !it) return;
     if (tool === 'pick') {
       if (!this.swing && this.useT <= 0) {
-        const rate = it.rate || 0.36;
+        const rate = (it.rate || 0.36) * this.bonus('rate');
         this.useT = rate * (st.hasBuff('zippy') ? 0.8 : 1) + 0.06;
         this.swing = { t: 0, windup: 0.13, dur: this.useT, hit: false };
         if (this.vm) this.vm.swing('pick', 0.13);
@@ -375,7 +375,7 @@ export default class DigScene extends Scene {
       }
     } else if (tool === 'chisel') {
       // the mallet cocks back and knocks the chisel home
-      if (this.useT <= 0 && !this.swing) { this.useT = (it.rate || 0.2) + 0.05; this.swing = { t: 0, windup: 0.1, dur: this.useT, hit: false, fn: () => this.chiselHit(it) }; if (this.vm) this.vm.swing('chisel', 0.1); }
+      if (this.useT <= 0 && !this.swing) { this.useT = (it.rate || 0.2) * this.bonus('rate') + 0.05; this.swing = { t: 0, windup: 0.1, dur: this.useT, hit: false, fn: () => this.chiselHit(it) }; if (this.vm) this.vm.swing('chisel', 0.1); }
     } else if (tool === 'brush') {
       if (this.useT <= 0) { this.useT = it.rate || 0.12; this.brushHit(it); }
     } else if (tool === 'drill') {
@@ -394,7 +394,7 @@ export default class DigScene extends Scene {
       if (this.useT <= 0 && inp.mousePressed(0) && this.explosives) {
         this.useT = 0.6;
         const evs = this.explosives.throw(it, this.player.eye(), this.player.forward());
-        if (evs !== null && evs !== false) { st.removeItem(it.id, 1); this.events(evs); this.updateHotbar(); if (this.vm) this.vm.swing('none', 0.12); }
+        if (evs !== null && evs !== false) { st.removeItem(it.id, 1); this.events(evs); this.updateHotbar(); if (this.vm) this.vm.swing('dynamite', 0.12); }
       }
     } else if (tool === 'build') {
       if (this.useT <= 0 && inp.mousePressed(0)) { this.useT = 0.25; this.build(); }
@@ -403,11 +403,18 @@ export default class DigScene extends Scene {
     }
   }
 
+  /** An upgrade multiplier from the Miners' Board (state.mineBonus), 1 when there is none. */
+  bonus(k) {
+    const b = this.state.mineBonus?.();
+    const v = b ? b[k] : 1;
+    return typeof v === 'number' && v > 0 ? v : 1;
+  }
+
   /** The pick lands (timed by the swing). */
   strike() {
     const st = this.state, hit = this.target;
     const it = st.equipped('pick');
-    const power = (it?.power || 1) * (st.hasBuff('strong') ? 1.3 : 1);
+    const power = (it?.power || 1) * (st.hasBuff('strong') ? 1.3 : 1) * this.bonus('power');
     if (this.enemies && it) {
       const eye = this.player.eye(), f = this.player.forward();
       const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
@@ -437,11 +444,11 @@ export default class DigScene extends Scene {
     }
     if (m >= ORE_BASE) {
       // direct hit on ore: sparks, quality chips
-      const r = this.ores.hitOre(hit.vx, hit.vy, hit.vz, power);
+      const r = this.ores.hitOre(hit.vx, hit.vy, hit.vz, power * this.bonus('clean'));
       this.audio.play('ore_damage');
       this.fx.sparks(px, py, pz, 10, col01(mat.accent), out, 3.5);
       if (r) {
-        this.game.ui.floatText?.(`-${Math.round(r.ore.frag * power)}%`, ...this.screenXY(px, py, pz), '#ff8a6a', 0.8);
+        this.game.ui.floatText?.(`-${Math.round(r.ore.frag * power * this.bonus('clean'))}%`, ...this.screenXY(px, py, pz), '#ff8a6a', 0.8);
         if (!this.flags.oreHit) { this.flags.oreHit = true; st.learn('ore_damage'); this.say('orehit', 'Careful! Hitting ore chips its quality. Clear the rock around it instead.', 'warn', 30); }
         if (r.s.q <= 0) this.shatter(r.d);
       }
@@ -450,7 +457,13 @@ export default class DigScene extends Scene {
     // rock
     const tier = it.tier || 1;
     const zone = zoneAt(-py);
-    if (mat.hp > 3.5 && tier < 3 && zone >= 4) { this.audio.play('clang'); this.fx.sparks(px, py, pz, 8, [1, 0.8, 0.4], out, 3); this.say('hard', `${mat.name} is too hard for this pickaxe.`, 'warn', 5); return; }
+    const needs = HARD_ROCK_TIER?.[zone] ?? (zone >= 4 ? 3 : 0);
+    if (mat.hp > 3.5 && tier < needs) {
+      this.audio.play('clang'); this.fx.sparks(px, py, pz, 8, [1, 0.8, 0.4], out, 3);
+      const want = pickForTier?.(needs);
+      this.say('hard', `${mat.name} is too hard for this pickaxe${want ? ` — you need at least a <b>${want.name}</b>` : ''}.`, 'warn', 5);
+      return;
+    }
     const res = this.digger.strike(hit.vx, hit.vy, hit.vz, power, [hit.nx, hit.ny, hit.nz]);
     this.audio.play('hit', { snd: mat.snd || 'stone' });
     const c = col01(mat.tones[2]);
@@ -620,7 +633,7 @@ export default class DigScene extends Scene {
     if (chance(0.5)) this.audio.play('hit', { snd: 'stone', vol: 0.4 });
     this.fx.sparks(px, py, pz, 3, [1, 0.7, 0.3], [hit.nx, hit.ny, hit.nz], 3);
     this.fx.dust(px, py, pz, 2, col01(MAT[hit.m]?.tones?.[1] ?? 0x806050), 0.05, [hit.nx, hit.ny, hit.nz]);
-    for (const o of res.ore) { const r2 = this.ores.hitOre(o.x, o.y, o.z, 0.5); if (r2 && r2.s.q <= 0) this.shatter(r2.d); }
+    for (const o of res.ore) { const r2 = this.ores.hitOre(o.x, o.y, o.z, 0.5 * this.bonus('clean')); if (r2 && r2.s.q <= 0) this.shatter(r2.d); }
     this.shake(0.12);
     this.kick.set((Math.random() - 0.5) * 0.006, (Math.random() - 0.5) * 0.006, 0);
     this.afterBreak(res.broken, [hit.nx, hit.ny, hit.nz], 0.5, 'drill');
@@ -646,7 +659,7 @@ export default class DigScene extends Scene {
     const pl = this.player, e = pl.eye();
     const out = [e.x - x, e.y - y, e.z - z]; const ol = Math.hypot(...out) || 1;
     if (broken.length) this.afterBreak(broken.slice(0, 600), out.map((v) => v / ol), power, 'blast');
-    for (const d of w.depositsNear(x, y, z, r + 0.4)) { const s = w.depState(d); if (!s.taken) s.q = Math.max(5, s.q - 12 * power); }
+    for (const d of w.depositsNear(x, y, z, r + 0.4)) { const s = w.depState(d); if (!s.taken) s.q = Math.max(5, s.q - 12 * power * this.bonus('clean')); }
     for (const f of this.ores.checkFree(x, y, z, 'blast')) this.popOre(f, out.map((v) => v / ol));
     this.fx.sparks(x, y, z, 40, [1, 0.75, 0.35], [0, 0, 0], 7);
     this.fx.dust(x, y, z, 30, [0.55, 0.47, 0.4], r * 0.6);
@@ -978,12 +991,13 @@ export default class DigScene extends Scene {
     this.glintT = (this.glintT || 0) - dt;
     if (this.glintT <= 0) {
       this.glintT = 0.12;
-      const ds = this.world.depositsNear(eye.x, eye.y, eye.z, 5.5);
+      const nose = this.bonus('glint');
+      const ds = this.world.depositsNear(eye.x, eye.y, eye.z, 5.5 * nose);
       const d = ds[(Math.random() * ds.length) | 0];
       if (d && !this.world.depState(d).taken) {
         const dx = eye.x - d.x, dy = eye.y - d.y, dz = eye.z - d.z, l = Math.hypot(dx, dy, dz) || 1;
         // walk from the ore toward the mole until open space: that's the rock face it shows on
-        for (let t = d.r; t < Math.min(1.1, l); t += 1 / VOX) {
+        for (let t = d.r; t < Math.min(1.1 * nose, l); t += 1 / VOX) {
           const x = d.x + (dx / l) * t + rand(-0.12, 0.12), y = d.y + (dy / l) * t + rand(-0.12, 0.12), z = d.z + (dz / l) * t + rand(-0.12, 0.12);
           if (this.world.solidAt(x, y, z)) continue;
           const c = col01(MAT[ORE_BASE + d.oreId]?.accent ?? 0xffffff);

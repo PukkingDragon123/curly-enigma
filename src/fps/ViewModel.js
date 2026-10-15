@@ -33,10 +33,11 @@ import { Pose, P, aim, aimZ, Spring, ease, easeOut, easeIn, clamp, wobble } from
 import { XrayBeam } from './viewmodel/beam.js';
 import { hammerGeo, tongsGeo, HAMMER_FACE, TONGS_JAW, TONGS_RIVET } from './viewmodel/smith.js';
 import { ITEMS } from '../data/items.js';
+import { explosiveModel } from '../deep/explosives/models.js';
 
 /** Meters per view-model voxel. */
 export const VMV = 0.0035;
-export const TOOL_KINDS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'beam', 'food', 'none', 'hammer', 'tongs', 'smith'];
+export const TOOL_KINDS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'beam', 'food', 'none', 'hammer', 'tongs', 'smith', 'dynamite'];
 export { HAMMER_FACE, TONGS_JAW };
 
 // ---------------------------------------------------------------- poses (right hand, camera space)
@@ -48,6 +49,7 @@ const BASE = {
   drill: P([0.14, -0.19, -0.31], [0.05, 1, 0.15], [-0.55, 0.05, -0.85]),
   xray: P([0.15, -0.185, -0.32], [0.05, 1, 0.12], [-0.5, 0.05, -0.86]),
   stake: P([0.125, -0.16, -0.34], [-0.6, 0.5, -0.62], [-0.55, -0.6, -0.6]),
+  dynamite: P([0.125, -0.16, -0.34], [-0.45, 0.7, -0.5], [-0.55, -0.6, -0.6]),
   beam: P([0.135, -0.135, -0.37], [1, 0.04, -0.1], [0, 0.45, -1]),
   food: P([0.13, -0.15, -0.31], [-0.15, 1, 0.3], [-0.35, 0.05, -1]),
   none: OPEN,
@@ -73,7 +75,7 @@ const SHOULDER = new THREE.Vector3(0.4, -0.6, 0.06);
 const WRIST_Z = 12; // voxels behind the grip/palm centre
 
 const TWO_HANDED = new Set(['drill', 'beam']);
-const SWING_TOOLS = new Set(['pick', 'chisel', 'stake', 'beam', 'none', 'drill', 'brush', 'xray', 'food', 'hammer', 'tongs', 'smith']);
+const SWING_TOOLS = new Set(['pick', 'chisel', 'stake', 'beam', 'none', 'drill', 'brush', 'xray', 'food', 'hammer', 'tongs', 'smith', 'dynamite']);
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _up = new THREE.Vector3();
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
@@ -338,6 +340,13 @@ export class ViewModel {
       T.glow = { color: s.color, k: 0.32 };
       T.tip = [0, 46, 0];
       T.light = [0, 38, 0];
+    } else if (kind === 'dynamite') {
+      // the stick (bundle, charge) from the mine's explosives, in meters: scaled to paw size
+      const e = explosiveModel(ITEMS[item] || ITEMS.dynamite);
+      const k = 0.6;
+      A.part(this.toolR, e.body, { scale: [k, k, k] });
+      const tip = e.tips[e.tips.length - 1];
+      T.tip = [tip.x * k / V, tip.y * k / V, tip.z * k / V];
     } else if (kind === 'beam') {
       A.part(this.toolR, beamGeo(), { scale: S });
       T.socket = { pos: [0, -2 * BEAM_GRIP, 0], q: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, Math.PI)) };

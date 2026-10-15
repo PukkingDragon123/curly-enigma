@@ -6,6 +6,7 @@ import { el } from '../core/util.js';
 import { iconURL, specURL, weaponIconURL } from '../gfx/PixelArt.js';
 import { critterIconURL } from '../gfx/critters32.js';
 import { ITEMS } from '../data/items.js';
+import { milestoneText } from '../data/upgrades.js';
 import { indexName } from '../core/State.js';
 import { installArt } from './uiArt.js';
 import { SPR } from './uiSprites.js';
@@ -126,6 +127,11 @@ export class UI {
 
     const st = game.state;
     st.on('discover', (e) => this.discoverCard(e));
+    // milestones reached outside the mine (in the mine the explosives perks announce them)
+    st.on('milestone', () => {
+      if (game.sceneName === 'deep') return;
+      for (const m of st.takeMilestones()) this.toast(milestoneText(m), { kind: 'good' });
+    });
 
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape' && this.panelStack.length) {
@@ -440,6 +446,13 @@ export class UI {
   // ------------------------------------------------------------ shops
   openShop(shopId) {
     return import('./ShopUI.js').then((m) => m.openShop(this.game, shopId));
+  }
+
+  // ------------------------------------------------------------ the Miners' Board (upgrades + milestones)
+  /** tab: 'dig' | 'haul' | 'blast' | 'home' | 'gear' | 'ms' (default: Digging, or Milestones when one is new). */
+  openUpgrades(tab) {
+    if (this.panelStack.some((p) => p.kind === 'upgrades')) return Promise.resolve(null);
+    return import('./Upgrades.js').then((m) => { const h = m.openUpgrades(this.game, tab); if (h) h.kind = 'upgrades'; return h; });
   }
 
   // ------------------------------------------------------------ index book (lazy import keeps UI light)

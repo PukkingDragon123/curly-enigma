@@ -3,6 +3,7 @@
 import { mat, mix } from './color.js';
 import { vol, fill, sparkle, hash2, vnoise, glowHalo } from './shade.js';
 import { M, ring, lineIn, grain, darkOf } from './parts.js';
+import { drawExplosiveIcon } from '../../deep/explosives/icon.js';
 
 const gl = (pc, x, y, c, g = 1) => { pc.set(x, y, c); pc.emit(x, y, g); };
 const WOOD = () => mat(0x9a6a3a, { cont: 1.05 });
@@ -811,6 +812,7 @@ export function drawGear(pc, spec, id, seed) {
       else if (t === 'xray') xrayLamp(pc, id || (spec.c === 0xe0a8ff ? 'xray_prism' : 'xray_lamp'));
       else if (t === 'beam') beamIcon(pc);
       else if (t === 'stake') stakeIcon(pc);
+      else if (t === 'dynamite') drawExplosiveIcon(pc, spec);
       else return false;
       return true;
     }
