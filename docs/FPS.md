@@ -67,3 +67,18 @@ rig.shake(a); rig.kick (Vector3 camera kick); rig.vm (the ViewModel, may be null
 Headless SwiftShader renders ~1 frame/s, so drive simulations with `scene.update(1/30)` loops in
 `node scripts/shot.mjs` evals, and look at the screenshots. `node scripts/e2e.mjs` plays the whole
 game; tell the lead which test hooks your scene offers (e.g. `scene.debug.*`).
+
+## As built
+
+- **Burrow** (`src/scenes/HomeScene.js`, `src/home/*`): 1 tile = 0.5 m (`src/home/units.js`), the
+  room group is built in tile units and scaled to meters. Wall pieces hang on all four walls
+  (`r`: 0 north, 1 west, 2 south, 3 east); the lift (2×2 + the row in front), the build bench, the
+  door and each tunnel mouth's front tile are reserved (`homeLayout.js`); older saves are fixed up
+  on load (`src/home/layoutfix.js`). Test hooks: `scene.debug.{ digOut(wall?), useLift(id),
+  toggleBuild(on?), placeAt(id, x, z, r), interact(label), labels(), stand(x, z, yaw, pitch),
+  aim(x, y, z), step(n), stats() }`.
+- **Forge** (`src/scenes/ForgeScene.js`, `src/forge/*`): a walkable smithy; ViewModel kinds
+  `hammer`, `tongs`, `smith`, paw steering `vm.drive`, `vm.toView`, `vm.jaw`. Test hooks:
+  `scene.debug.{ step, until, state, pump, smelt, forge, toAnvil, toFire, charge, release, strike,
+  finishShaping, balance, quench, tap, heatTo, place, dock }`.
+- **Mine**: see DEEP.md (lifts, build tool, clumps).
