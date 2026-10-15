@@ -315,6 +315,17 @@ export class ChunkGen {
         else if (d2 < 1.25 && f.fluid === M.LAVA && cur && cur < 40) vox[vi] = h3(vx, vy, vz, 5) < 0.5 ? M.MAGMAROCK : M.OBSIDIAN;
       } else if (f.kind === 'box' || f.kind === 'mouth') {
         if (xm < f.x0 || xm > f.x1 || ym < f.y0 || ym > f.y1 || zm < f.z0 || zm > f.z1) {
+          // the back of the burrow wall at the end of a mouth: a planked door in a timber frame
+          if (f.kind === 'mouth' && cur === M.BURROW) {
+            const lat = f.dir[0] ? zm : xm, l0 = f.dir[0] ? f.z0 : f.x0, l1 = f.dir[0] ? f.z1 : f.x1;
+            const ax = f.dir[0] ? xm : zm;
+            const end = f.dir[0] ? (f.dir[0] < 0 ? f.x1 : f.x0) : (f.dir[2] < 0 ? f.z1 : f.z0);
+            if (Math.abs(ax - end) < 0.13 && lat > l0 - 0.13 && lat < l1 + 0.13 && ym >= f.y0 && ym < f.y1 + 0.13) {
+              const edge = lat < l0 + 0.02 || lat > l1 - 0.02 || ym > f.y1 - 0.02;
+              vox[vi] = edge ? M.TIMBER : M.DOOR;
+            }
+            continue;
+          }
           // timber frames around station rooms
           if (f.timber && cur && cur !== M.BURROW) {
             const onEdgeX = xm < f.x0 + 0.01 || xm > f.x1 - 0.01;

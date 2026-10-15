@@ -15,8 +15,8 @@ export class Bodies {
     this.w = world;
     this.root = new THREE.Group();
     scene3.add(this.root);
-    this.mat = makeObjectMaterial(U);
-    this.glowMat = makeObjectMaterial(U, { emissive: 0.55 });
+    this.mat = makeObjectMaterial(U, { texel: 64 });
+    this.glowMat = makeObjectMaterial(U, { emissive: 0.3, texel: 64 });
     this.list = [];
     this.hooks = {};
   }
@@ -78,10 +78,12 @@ export class Bodies {
       }
       // ore pickups fly to the mole once they've hopped out
       if (b.pickup && b.t > (b.pickup.delay ?? 0.7) && playerEye) {
+        // into the backpack: aim below the eyes, shrink on the way in
         const d = new THREE.Vector3().subVectors(playerEye, b.pos);
-        d.y -= 0.25;
+        d.y -= 0.5;
         const dist = d.length();
-        if (dist < 0.3 || b.t > 4) { this.kill(b, true); if (this.hooks.collect) this.hooks.collect(b); continue; }
+        if (dist < 0.25 || b.t > 4) { this.kill(b, true); if (this.hooks.collect) this.hooks.collect(b); continue; }
+        b.mesh.scale.setScalar(Math.min(1, Math.max(0.15, dist / 0.9)));
         b.vel.lerp(d.multiplyScalar(Math.min(9, 3 + b.t * 4) / dist), Math.min(1, dt * 6));
         b.pos.addScaledVector(b.vel, dt);
         b.rot.x += b.spin.x * dt; b.rot.y += b.spin.y * dt * 2;

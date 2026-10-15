@@ -63,6 +63,7 @@ export default class DigScene extends Scene {
     this.slot = 0;
     this.trip = 0;
     this.tripValue = 0;
+    this.tripItems = [];
     this.useT = 0;
     this.swing = null;
     this.drillHeat = 0;
@@ -70,6 +71,7 @@ export default class DigScene extends Scene {
     this.shakeAmp = 0;
     this.flags = {};
     this.toastCd = {};
+    this.wish = { x: 0, z: 0 };
     // spawn
     const pl = this.player;
     if (from === 'town') {
@@ -105,7 +107,7 @@ export default class DigScene extends Scene {
       collect: (b) => this.collect(b.pickup),
     };
     this.updateHotbar();
-    if (g.ui.setRadar) g.ui.setRadar(() => this.radar());
+    if (g.ui.setRadar) g.ui.setRadar((o) => this.radar(o), { heading: () => this.player.yaw });
     g.ui.setBag?.(0, st.bagCapacity());
     if (!st.flag('escaped') && !this.flags.hintRadar) {
       this.flags.hintRadar = true;
@@ -178,6 +180,9 @@ export default class DigScene extends Scene {
     }
     // move
     const mv = { x: inp.axisX(), y: inp.axisY() };
+    // where the mole is trying to go (world xz), even when a wall stops it
+    const sy = Math.sin(pl.yaw), cy = Math.cos(pl.yaw);
+    this.wish = busy ? { x: 0, z: 0 } : { x: -sy * mv.y + cy * mv.x, z: -cy * mv.y - sy * mv.x };
     const exhausted = st.energy < 8;
     const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted, frozen: busy, speedMul: exhausted ? 0.6 : 1 });
     if (ev.landed) { this.audio.play('land', { hard: ev.landed > 8 }); this.fx.dust(pl.pos.x, pl.pos.y + 0.05, pl.pos.z, Math.min(10, ev.landed | 0), [0.5, 0.42, 0.34], 0.2); }
@@ -239,8 +244,11 @@ export default class DigScene extends Scene {
     const ui = this.game.ui;
     if (!ui.setCrosshair) return;
     if (!hit) { ui.setCrosshair({ visible: true, kind: 'none' }); return; }
+    if (this.enemies?.hitTest(eye, f, Math.min(REACH, hit.dist + 0.05))) { ui.setCrosshair({ visible: true, kind: 'enemy' }); return; }
     const m = MAT[hit.m];
     const ore = hit.m >= ORE_BASE;
+    if (hit.m === M.DOOR) { ui.setCrosshair({ visible: true, kind: 'use', label: 'Home' }); return; }
+    if (this.state.flag('escaped') && this.world.plan.stations.some((q) => Math.hypot(q.x - pl.pos.x, q.y - pl.pos.y, q.z - pl.pos.z) < 2.2)) { ui.setCrosshair({ visible: true, kind: 'use', label: 'Lift to Deep Town' }); return; }
     ui.setCrosshair({ visible: true, kind: ore ? 'ore' : breakable(hit.m) ? 'rock' : 'none', label: m ? m.name : '' });
   }
 
@@ -349,8 +357,33 @@ export default class DigScene extends Scene {
     const st = this.state;
     st.data.stats.blocks += broken.length > 6 ? 1 : 0;
     if (broken.length > 6) {
-      const sp = 1.4 + Math.random() * 1.6;
-      this.bodies.spawn(broken, { vel: [out[0] * sp + (Math.random() - 0.5), out[1] * sp + 1.2 + Math.random(), out[2] * sp + (Math.random() - 0.5)] });
+      // the plate crumbles as it comes out: a few tumbling lumps (quarter-meter cells), the rest grit
+      const cells = new Map();
+      for (const v of broken) {
+        const k = (v.x >> 1) + ',' + (v.y >> 1) + ',' + (v.z >> 1);
+        let c = cells.get(k);
+        if (!c) cells.set(k, (c = []));
+        c.push(v);
+      }
+      const lumps = [...cells.values()].sort((a, b) => b.length - a.length);
+      // merge neighbouring cells pairwise so lumps aren't all perfect cubes
+      let n = 0;
+      for (let i = 0; i < lumps.length; i++) {
+        const L = lumps[i];
+        if (!L.length) continue;
+        if (n < 6 && L.length >= 3) {
+          const j = lumps.findIndex((o, k) => k > i && o.length && Math.abs(o[0].x - L[0].x) + Math.abs(o[0].y - L[0].y) + Math.abs(o[0].z - L[0].z) <= 3);
+          if (j > 0 && chance(0.5)) { L.push(...lumps[j]); lumps[j] = []; }
+          const sp = 0.6 + Math.random() * 1.2;
+          this.bodies.spawn(L, { vel: [out[0] * sp + rand(-0.6, 0.6), out[1] * sp + rand(0.4, 1.6), out[2] * sp + rand(-0.6, 0.6)], life: 0.9 + Math.random() * 0.9, bounce: 0.45 });
+          n++;
+        } else {
+          const v = L[0];
+          this.fx.chips((v.x + 0.5) / VOX, (v.y + 0.5) / VOX, (v.z + 0.5) / VOX, Math.min(4, L.length), col01(v.c), out);
+        }
+      }
+      const v0 = broken[(broken.length / 2) | 0];
+      this.fx.dust((v0.x + 0.5) / VOX, (v0.y + 0.5) / VOX, (v0.z + 0.5) / VOX, 10, col01(MAT[v0.m]?.tones?.[1] ?? 0x806050), 0.18, [out[0] * 0.5, out[1] * 0.5, out[2] * 0.5]);
     } else if (broken.length) {
       const b = broken[0];
       this.fx.chips((b.x + 0.5) / VOX, (b.y + 0.5) / VOX, (b.z + 0.5) / VOX, 5, col01(b.c), out);
@@ -378,7 +411,7 @@ export default class DigScene extends Scene {
     if (pristine) this.audio.play('pristine');
     for (let k = 0; k < 6; k++) this.fx.glints(d.x, d.y, d.z);
     this.fx.dust(d.x, d.y, d.z, 8, [0.6, 0.55, 0.5], 0.1, out);
-    this.bodies.spawn(voxels, { vel: [out[0] * 2 + rand(-0.5, 0.5), 2.5, out[2] * 2 + rand(-0.5, 0.5)], glow, scale: 1.35, pickup: { id: d.item, q: Math.round(s.q), p: pristine, delay: 0.75 } });
+    this.bodies.spawn(voxels, { vel: [out[0] * 2 + rand(-0.5, 0.5), 2.5, out[2] * 2 + rand(-0.5, 0.5)], glow, scale: 0.85, pickup: { id: d.item, q: Math.round(s.q), p: pristine, delay: 0.75 } });
     if (!this.flags.firstOre) { this.flags.firstOre = true; this.say('ore1', `<b>${it?.name || 'Ore'}!</b> It popped out of the wall.`, 'good', 10); }
   }
 
@@ -399,7 +432,7 @@ export default class DigScene extends Scene {
     const counts = it.cat === 'mineral' || it.cat === 'gem';
     if (counts && this.trip >= st.bagCapacity()) { this.say('bag', `Bag full! (${this.trip}/${st.bagCapacity()}) Head home to unload.`, 'warn', 4); return; }
     st.addItem(p.id, it.q ? { q: p.q, p: p.p } : {});
-    if (counts) { this.trip++; st.data.stats.ores++; if (p.p) st.data.stats.pristine++; }
+    if (counts) { this.trip++; st.data.stats.ores++; if (p.p) st.data.stats.pristine++; this.tripItems.push(p.id); }
     this.tripValue += sellPrice(p.id, p.q, p.p);
     this.audio.play(it.cat === 'gem' || p.p ? 'pickup_gem' : 'pickup', { pitch: 0.9 + Math.random() * 0.3 });
     const cat = it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'mineral' : it.cat === 'plant' ? 'plant' : null;
@@ -496,8 +529,15 @@ export default class DigScene extends Scene {
   }
 
   interact() {
-    // ring a lift station bell
     const pl = this.player;
+    // the burrow door at the end of a tunnel
+    if (this.target && this.target.m === M.DOOR) {
+      let best = null, bd = 1e9;
+      for (const m of this.world.plan.mouths) { const d = Math.hypot((m.x0 + m.x1) / 2 - pl.pos.x, (m.z0 + m.z1) / 2 - pl.pos.z); if (d < bd) { bd = d; best = m; } }
+      if (best) { this.audio.play('door'); this.goHome(best.wall, best.t); }
+      return;
+    }
+    // ring a lift station bell
     for (const s of this.world.plan.stations) {
       if (Math.hypot(s.x - pl.pos.x, s.y - pl.pos.y, s.z - pl.pos.z) < 2.2) {
         if (!this.state.flag('escaped')) { this.say('lift0', 'The lift bell is rusted silent. Find the way into Deep Town first.', 'warn', 4); return; }
@@ -517,8 +557,8 @@ export default class DigScene extends Scene {
       const inX = pl.pos.x > b.x0 - 0.1 && pl.pos.x < b.x1 + 0.1, inZ = pl.pos.z > b.z0 - 0.1 && pl.pos.z < b.z1 + 0.1;
       if (!inX || !inZ || pl.pos.y > 0.6) continue;
       const toward = -(b.dir[0] * (pl.pos.x - (b.x0 + b.x1) / 2) + b.dir[2] * (pl.pos.z - (b.z0 + b.z1) / 2));
-      const moving = -(b.dir[0] * pl.vel.x + b.dir[2] * pl.vel.z);
-      if (toward > 0.32 && moving > 0.2 && this.time > 1.5) { this.goHome(mth.wall, mth.t); return; }
+      const moving = -(b.dir[0] * (pl.vel.x + this.wish.x) + b.dir[2] * (pl.vel.z + this.wish.z));
+      if (toward > 0.18 && moving > 0.2 && this.time > 1.5) { this.goHome(mth.wall, mth.t); return; }
     }
     // the town gate
     const T = plan.town;
@@ -585,6 +625,9 @@ export default class DigScene extends Scene {
     this.audio.play('faint');
     this.say('faint', 'You fainted... and woke up back home, missing part of your haul.', 'bad', 1);
     // lose half of this trip's finds
+    const lost = this.tripItems.filter((_, i) => i % 2 === 1);
+    for (const id of lost) st.removeItem(id, 1);
+    this.trip -= lost.length;
     st.data.energy = Math.round(st.data.maxEnergy * 0.5);
     this.goHome(this.lastMouth.wall, this.lastMouth.t);
   }
@@ -596,18 +639,17 @@ export default class DigScene extends Scene {
     for (let dz = -3; dz <= 3; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -3; dx <= 3; dx++) {
       const x = cx + dx, y = cy + dy, z = cz + dz;
       const m = w.voxelAt(Math.floor((x + 0.5) * VOX), Math.floor((y + 0.5) * VOX), Math.floor((z + 0.5) * VOX));
-      const v = !m ? 1 : m === M.WATER ? 2 : m === M.LAVA ? 3 : 4;
-      const k = x + ',' + y + ',' + z;
-      if (v !== 4 || !ex[k]) ex[k] = v;
+      const v = !m ? 1 : m === M.WATER ? 2 : m === M.LAVA ? 3 : 0;
+      if (v) ex[x + ',' + y + ',' + z] = v; // only open space is remembered; rock is everything else
     }
   }
 
   /** Data for the radar (see docs/DEEP.md). */
-  radar() {
+  radar(o = {}) {
     const pl = this.player, plan = this.world.plan, ex = this.deep.explored;
-    const size = 48, cell = 1, half = size / 2;
+    const size = o.survey ? 160 : 48, cell = 1, half = size / 2;
     const data = new Uint8Array(size * size);
-    const px = Math.floor(pl.pos.x), pz = Math.floor(pl.pos.z), py = Math.floor(pl.pos.y + 0.4);
+    const px = Math.floor(pl.pos.x), pz = Math.floor(pl.pos.z), py = o.survey && o.y !== undefined ? Math.floor(o.y) : Math.floor(pl.pos.y + 0.4);
     for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
       const x = px - half + i, z = pz - half + j;
       let v = 0;
@@ -620,19 +662,19 @@ export default class DigScene extends Scene {
     for (const s of plan.stations) if (this.deep.stations.includes(s.n)) markers.push({ kind: 'station', x: s.x, y: s.y, z: s.z, label: 'Lift' });
     for (const a of plan.areas) {
       const d = Math.hypot(a.x - pl.pos.x, (a.y - pl.pos.y) * 1.5, a.z - pl.pos.z);
-      if (d > 34) continue;
+      if (d > (o.survey ? 400 : 34)) continue;
       const it = ITEMS[a.item];
       const c = it?.icon?.ore?.[0] ?? it?.icon?.c?.[0] ?? 0xcccccc;
       markers.push({ kind: 'ore', x: a.x, y: a.y, z: a.z, label: it?.name || a.item, color: '#' + c.toString(16).padStart(6, '0') });
     }
     for (const dz of plan.dangers) {
       const d = Math.hypot(dz.x - pl.pos.x, (dz.y - pl.pos.y) * 1.5, dz.z - pl.pos.z);
-      if (d > 40) continue;
+      if (d > (o.survey ? 400 : 40)) continue;
       markers.push({ kind: 'danger', x: dz.x, y: dz.y, z: dz.z, r: dz.r, label: dz.kind === 'lava' ? 'Lava' : dz.kind === 'water' ? 'Flooded cave' : dz.kind === 'nest' ? 'Nest' : 'Gas', color: dz.kind === 'water' ? '#4aa8ff' : '#ff4a3a' });
     }
     for (const s of this.stakes) markers.push({ kind: 'stake', x: s.x, y: s.y, z: s.z });
     if (this.enemies?.radarMarkers) markers.push(...this.enemies.radarMarkers(pl.pos));
-    return { x: pl.pos.x, y: pl.pos.y, z: pl.pos.z, heading: pl.yaw, range: half * cell, explored: { size, cell, data }, markers };
+    return { x: pl.pos.x, y: pl.pos.y, z: pl.pos.z, heading: pl.yaw, range: o.survey ? half * cell : 22, explored: { size, cell, data, ox: px - half, oz: pz - half }, markers };
   }
 
   ambient(dt) {
@@ -710,7 +752,7 @@ export default class DigScene extends Scene {
     const g = this.game;
     g.input.unlockPointer();
     g.ui.setRadar?.(null);
-    g.ui.setCrosshair?.({ visible: false });
+    g.ui.setCrosshair?.(null);
     this.terrain.dispose();
     this.bodies.dispose();
     this.fx.dispose();

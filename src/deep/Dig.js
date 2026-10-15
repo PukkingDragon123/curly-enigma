@@ -29,7 +29,7 @@ export function plateOf(vx, vy, vz, S) {
   return best;
 }
 
-const UNBREAKABLE = new Set([M.BEDROCK, M.BURROW, M.LANTERN]);
+const UNBREAKABLE = new Set([M.BEDROCK, M.BURROW, M.LANTERN, M.DOOR]);
 export const breakable = (m) => m && !MAT[m]?.fluid && !UNBREAKABLE.has(m);
 
 export class Digger {

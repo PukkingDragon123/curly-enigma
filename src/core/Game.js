@@ -16,7 +16,6 @@ const SCENES = {
   mine: () => import('../scenes/MineScene.js'),
   deep: () => import('../scenes/DeepScene.js'),
   fall: () => import('../scenes/FallScene.js'),
-  dig: () => import('../deep/DigScene.js'), // first-person mine in development (becomes deep)
   forge: () => import('../scenes/ForgeScene.js'),
   cooking: () => import('../scenes/CookingScene.js'),
   ending: () => import('../scenes/EndingScene.js'),

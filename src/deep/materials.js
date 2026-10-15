@@ -11,7 +11,7 @@ export const M = {
   AIR: 0, DIRT: 1, LOAM: 2, CLAY: 3, STONE: 4, MUDSTONE: 5, LIMESTONE: 6, GRANITE: 7, CRYSTALROCK: 8,
   BASALT: 9, OBSIDIAN: 10, MAGMAROCK: 11, PERMAFROST: 12, ICE: 13, CORE: 14, STARROCK: 15, VOIDROCK: 16,
   BEDROCK: 17, ROOTS: 18, GRAVEL: 19, SAND: 20, TIMBER: 21, BOARDS: 22, BURROW: 23, CRYSTAL: 24,
-  LANTERN: 25, RUBBLE: 26, SNOW: 27, ASH: 28, GEODE: 29, MOSS: 30, BRICK: 31,
+  LANTERN: 25, RUBBLE: 26, SNOW: 27, ASH: 28, GEODE: 29, MOSS: 30, BRICK: 31, DOOR: 32,
   WATER: 40, LAVA: 41,
 };
 
@@ -42,6 +42,7 @@ const DEF = {
   [M.SAND]: { name: 'Sand', tones: [0x9a7a4a, 0xae8c58, 0xc09e68, 0xd0b078], accent: 0xe0c890, hp: 0.4, snd: 'sand', gran: true },
   [M.TIMBER]: { name: 'Old Timber', tones: [0x4a2c16, 0x5e3a1e, 0x724828, 0x865834], accent: 0x9aa0a8, hp: 2.5, snd: 'wood' },
   [M.BOARDS]: { name: 'Boards', tones: [0x5a3a1e, 0x704a28, 0x865a32, 0x9a6c3e], accent: 0xc8c8d0, hp: 1.6, snd: 'wood' },
+  [M.DOOR]: { name: 'Burrow Door', tones: [0x6a4424, 0x80542e, 0x966438, 0xaa7644], accent: 0xffd890, hp: 9999, snd: 'wood', glow: 0.06 },
   [M.BURROW]: { name: 'Burrow Wall', tones: [0x5a3820, 0x6e4628, 0x825432, 0x96643c], accent: 0xd8a860, hp: 9999, snd: 'wood' },
   [M.CRYSTAL]: { name: 'Crystal Cluster', tones: [0x6a6ac8, 0x8a8ae0, 0xaaaaf2, 0xd0d0ff], accent: 0xffffff, hp: 2.2, snd: 'crystal', glow: 0.55 },
   [M.LANTERN]: { name: 'Lantern', tones: [0xc87a2a, 0xe8a040, 0xffc860, 0xffe8a0], accent: 0xffffff, hp: 9999, snd: 'wood', glow: 1 },
@@ -63,7 +64,7 @@ const STYLE_OF = {
   [M.BASALT]: [STYLE.ROCK, 3, 0.9], [M.OBSIDIAN]: [STYLE.CRYSTAL, 5, 0.8], [M.MAGMAROCK]: [STYLE.ROCK, 3, 0.9], [M.PERMAFROST]: [STYLE.ICE, 4, 0.6],
   [M.ICE]: [STYLE.ICE, 6, 0.4], [M.CORE]: [STYLE.CRYSTAL, 4, 0.85], [M.STARROCK]: [STYLE.CRYSTAL, 4, 0.85], [M.VOIDROCK]: [STYLE.CRYSTAL, 4, 0.9],
   [M.BEDROCK]: [STYLE.ROCK, 3, 1], [M.ROOTS]: [STYLE.WOOD, 1.5, 0.6], [M.GRAVEL]: [STYLE.GRAIN, 1, 0.8], [M.SAND]: [STYLE.GRAIN, 1, 0.3],
-  [M.TIMBER]: [STYLE.WOOD, 8, 0.7], [M.BOARDS]: [STYLE.WOOD, 8, 0.7], [M.BURROW]: [STYLE.WOOD, 8, 0.5], [M.CRYSTAL]: [STYLE.CRYSTAL, 2, 0.6],
+  [M.TIMBER]: [STYLE.WOOD, 8, 0.7], [M.BOARDS]: [STYLE.WOOD, 8, 0.7], [M.BURROW]: [STYLE.WOOD, 8, 0.5], [M.DOOR]: [STYLE.WOOD, 8, 0.9], [M.CRYSTAL]: [STYLE.CRYSTAL, 2, 0.6],
   [M.LANTERN]: [STYLE.GLOW, 2, 0.2], [M.RUBBLE]: [STYLE.GRAIN, 1.5, 0.8], [M.SNOW]: [STYLE.GRAIN, 1, 0.2], [M.ASH]: [STYLE.GRAIN, 1, 0.4],
   [M.GEODE]: [STYLE.ROCK, 3, 0.8], [M.MOSS]: [STYLE.MOSS, 2.2, 0.5], [M.BRICK]: [STYLE.BRICK, 4, 0.9], [M.WATER]: [STYLE.FLUID, 4, 0], [M.LAVA]: [STYLE.FLUID, 4, 0],
 };

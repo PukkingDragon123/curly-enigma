@@ -127,7 +127,8 @@ export function makeTerrainMaterial(U) {
         vec2 pl = plates(q, max(S, 1.0));
         // tone: plate shade + clumps (a quarter voxel) + per-texel dither, all crisper up close
         float clump = hash3(floor(q * 2.0) + 5.3);
-        float tone = pl.x * 3.0 + ((px - 0.5) * 1.5 + (clump - 0.5) * 0.9) * near;
+        float tone = pl.x * 3.0 + ((px - 0.5) * 0.9 + (clump - 0.5) * 0.7) * near;
+        float bevel = 0.0;
         float seam = 0.0;
         float accent = 0.0;
         vec3 nn = n;
@@ -140,7 +141,8 @@ export function makeTerrainMaterial(U) {
           } else if (px > 0.82) accent = 1.0;
         } else if (style == 1.0) {
           // soil: soft clumps, pebbles
-          seam = smoothstep(0.08, 0.0, pl.y) * seamK * 0.6;
+          tone += ((px - 0.5) * 0.6 + (clump - 0.5) * 0.5) * near;
+          seam = step(pl.y, 0.1) * seamK * 0.6;
           if (hash3(floor(q * 2.0) + 11.0) > 0.93 && px > 0.35) accent = 1.0;
         } else if (style == 3.0) {
           // wood: grain running along the longest axis of the voxel's plank
@@ -158,7 +160,7 @@ export function makeTerrainMaterial(U) {
         } else if (style == 6.0) {
           // ore: chunky crystals / nuggets with bright facets
           tone = 1.0 + pl.x * 1.6 + (px > 0.7 ? 1.0 : 0.0);
-          seam = smoothstep(0.06, 0.0, pl.y) * 0.8;
+          seam = step(pl.y, 0.1) * 0.8;
           if (px > 0.9) accent = 1.0;
         } else if (style == 10.0) {
           // loose grain: gravel/sand pebbles per texel pair
@@ -166,7 +168,9 @@ export function makeTerrainMaterial(U) {
           seam = 0.0;
         } else {
           // rock, crystal, ice: plates with crack seams; plates tilt a little so light catches them
-          seam = smoothstep(0.07, 0.0, pl.y) * seamK;
+          // one-texel crack lines with a lit lip on the plate side (pixel-art bevel)
+          seam = step(pl.y, 0.1) * seamK;
+          bevel = step(0.1, pl.y) * step(pl.y, 0.24) * seamK;
           nn = normalize(n + (vec3(hash3(vec3(pl.x, 1.0, 2.0)), hash3(vec3(pl.x, 3.0, 1.0)), hash3(vec3(pl.x, 2.0, 5.0))) - 0.5) * 0.45);
           if (style == 2.0 || style == 8.0) { if (pl.y < 0.06) { seam = 0.0; accent = 1.0; } }
           else if (px > 0.975) accent = 1.0;
@@ -174,7 +178,7 @@ export function makeTerrainMaterial(U) {
         seam *= mix(0.55, 1.0, near);
         float ti = clamp(floor(tone + 0.5), 0.0, 3.0);
         vec3 base = accent > 0.5 ? pal(mat, 4.0) : pal(mat, ti);
-        base *= 1.0 - seam * 0.55;
+        base *= (1.0 - seam * 0.6) * (1.0 + bevel * 0.22 * near);
         float lit = (0.45 + 0.55 * vAo);
         lit *= 1.0 + n.y * 0.1;
         vec3 L = lightAt(vWorld, nn);
@@ -248,16 +252,25 @@ export function makeFluidMaterial(U) {
  * Vertex-coloured voxel objects lit like the terrain (debris, pickups, props, creatures).
  * opts.emissive: 0..1 self-light (glowing ore, crystals).
  */
+/**
+ * Lit, fogged vertex-colour material for voxel objects (debris, pickups, creatures).
+ * opts.emissive: self glow (0..1); opts.texel: pixel-art texels per object unit (0 = flat colours),
+ * e.g. 64 for a mesh built at 1/8 m per voxel → 8 texels per voxel face like the terrain.
+ */
 export function makeObjectMaterial(U, opts = {}) {
   return new THREE.ShaderMaterial({
-    uniforms: { ...U, emissive: { value: opts.emissive || 0 }, fade: { value: 1 } },
+    uniforms: { ...U, emissive: { value: opts.emissive || 0 }, fade: { value: 1 }, texel: { value: opts.texel || 0 }, flash: { value: 0 } },
     vertexShader: /* glsl */`
       attribute vec3 color;
       varying vec3 vColor;
       varying vec3 vWorld;
       varying vec3 vN;
+      varying vec3 vLocal;
+      varying vec3 vNo;
       void main() {
         vColor = color;
+        vLocal = position;
+        vNo = normal;
         vec4 wp = modelMatrix * vec4(position, 1.0);
         vWorld = wp.xyz;
         vN = normalize(mat3(modelMatrix) * normal);
@@ -268,14 +281,26 @@ export function makeObjectMaterial(U, opts = {}) {
       uniform float fogDist;
       uniform float emissive;
       uniform float time;
+      uniform float texel;
+      uniform float flash;
       varying vec3 vColor;
       varying vec3 vWorld;
       varying vec3 vN;
+      varying vec3 vLocal;
+      varying vec3 vNo;
+      float h3o(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.x + p.y) * p.z); }
       ${LIGHT}
       void main() {
         vec3 L = lightAt(vWorld, normalize(vN));
         vec3 c = vColor; // Color.setHex already converted to linear
+        if (texel > 0.0) {
+          // the same chunky texel dither as the rock it came from
+          vec3 q = floor(vLocal * texel - vNo * 0.5);
+          float n = h3o(q + 3.1), k = h3o(floor(q * 0.25) + 5.3);
+          c *= 0.8 + 0.3 * n + 0.14 * k;
+        }
         vec3 col = c * L + c * emissive * (0.8 + 0.2 * sin(time * 3.0));
+        col = mix(col, vec3(1.0, 0.95, 0.9), flash);
         float dist = length(vWorld - lampPos);
         col = mix(col, fogCol, 1.0 - exp(-pow(dist / fogDist, 2.0) * 2.2));
         gl_FragColor = vec4(col, 1.0);

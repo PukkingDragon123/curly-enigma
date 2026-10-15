@@ -173,7 +173,11 @@ export class DeepWorld {
       if (d.seed !== this.seed) return;
       for (const [k, list] of Object.entries(d.edits || {})) {
         const m = new Map();
-        for (let i = 0; i < list.length; i += 2) m.set(list[i], list[i + 1]);
+        if (d.v === 2) {
+          // runs: [gap from the previous run's end, length, material] × n
+          let at = 0;
+          for (let i = 0; i < list.length; i += 3) { at += list[i]; for (let j = 0; j < list[i + 1]; j++) m.set(at + j, list[i + 2]); at += list[i + 1]; }
+        } else for (let i = 0; i < list.length; i += 2) m.set(list[i], list[i + 1]);
         this.edits.set(+k, m);
       }
       for (const [id, s] of Object.entries(d.deps || {})) this.depositState.set(id, s);
@@ -183,10 +187,24 @@ export class DeepWorld {
   saveEdits() {
     if (!this.editsDirty) return;
     const edits = {};
-    for (const [k, m] of this.edits) { const list = []; for (const [i, v] of m) list.push(i, v); edits[k] = list; }
+    // run-length encoded per chunk (dug tunnels are long runs of air along x)
+    for (const [k, m] of this.edits) {
+      const idx = [...m.keys()].sort((a, b) => a - b);
+      const list = [];
+      let end = 0;
+      for (let i = 0; i < idx.length;) {
+        const start = idx[i], mat = m.get(start);
+        let n = 1;
+        while (i + n < idx.length && idx[i + n] === start + n && m.get(idx[i + n]) === mat) n++;
+        list.push(start - end, n, mat);
+        end = start + n;
+        i += n;
+      }
+      edits[k] = list;
+    }
     const deps = {};
     for (const [id, s] of this.depositState) if (s.taken || s.hits) deps[id] = s;
-    try { localStorage.setItem(WORLD_KEY, JSON.stringify({ seed: this.seed, edits, deps })); this.editsDirty = false; } catch (e) { console.warn('world save failed', e); }
+    try { localStorage.setItem(WORLD_KEY, JSON.stringify({ v: 2, seed: this.seed, edits, deps })); this.editsDirty = false; } catch (e) { console.warn('world save failed', e); }
   }
 
   static wipe() { try { localStorage.removeItem(WORLD_KEY); } catch (e) { /* noop */ } }

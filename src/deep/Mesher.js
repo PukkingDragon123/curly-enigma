@@ -76,8 +76,6 @@ export function meshChunk(world, ch) {
           const c00 = OPAQUE[pad[b - su - sw]], c10 = OPAQUE[pad[b + su - sw]], c01 = OPAQUE[pad[b - su + sw]], c11 = OPAQUE[pad[b + su + sw]];
           const a00 = ao(s1, t1, c00), a10 = ao(s2, t1, c10), a01 = ao(s1, t2, c01), a11 = ao(s2, t2, c11);
           key = ma | (a00 << 8) | (a10 << 10) | (a01 << 12) | (a11 << 14) | (1 << 16);
-        } else if (ma && FLUID[ma] && !mb) {
-          key = ma | (255 << 8) | (2 << 16); // fluid surface facing air
         }
         mask[i + j * CS] = key;
         if (key) any = true;
@@ -100,7 +98,7 @@ export function meshChunk(world, ch) {
       }
     }
   }
-  return { solid: toGeometry(solidOut), fluid: toGeometry(fluidOut) };
+  return { solid: toGeometry(solidOut), fluid: meshFluid(world, ch, X0, Y0, Z0) };
 }
 
 function emit(out, f, d, u, w, nd, s, i, j, wdt, hgt, key) {
