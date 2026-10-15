@@ -63,8 +63,10 @@ function woodGrain(a, b, x, y, z, seed = 1, base = WOOD) {
  * and a riveted copper hood. Origin: floor center of the base.
  * Returns { group, coalMat, emberMat, firePos, bedY, bed:{w,d}, size, tuyere }.
  */
-export function makeHearth() {
-  const W = 48, D = 36, H = 26;
+export function makeHearth(opts = {}) {
+  const W = 48, D = 36, H = opts.H ?? 26;
+  const right = !!opts.tuyereRight; // bellows socket on the +x side
+  const TY = opts.H ? H - 7 : 17; // tuyere centre height
   const g = new VoxelGrid(W + 2, H + 22, D + 2);
   const o = 1; // margin for the overhanging capstone
   // plinth course of stone, then brick
@@ -85,7 +87,8 @@ export function makeHearth() {
   }
   // capstone slab, overhanging by a voxel, with a worn lighter front edge
   g.box(0, H - 2, 0, W + 2, 2, D + 2, (x, y, z) => {
-    let c = pp([0x8a8078, 0x80766e, 0x948a80], x, y, z, 5, 3);
+    let c = pp([0x6e665e, 0x665e56, 0x766c64], x, y, z, 5, 3);
+    if (hash3(x >> 1, y, z >> 1, 14) < 0.22) c = shade(c, 0.8); // soot and scorch
     if (y === H - 1 && (z === D + 1 || x === 0 || x === W + 1)) c = shade(c, 1.12);
     if (y === H - 2) c = shade(c, 0.85);
     return c;
@@ -103,8 +106,9 @@ export function makeHearth() {
   }
   // ash pit arch at the front
   const ax = o + W / 2;
-  for (let x = ax - 9; x < ax + 9; x++) for (let y = 0; y < 13; y++) {
-    const dx = (x + 0.5 - ax) / 8.5, dy = Math.max(0, y - 6) / 7;
+  const AH = Math.min(13, H - 9), AS = AH - 6;
+  for (let x = ax - 9; x < ax + 9; x++) for (let y = 0; y < AH; y++) {
+    const dx = (x + 0.5 - ax) / 8.5, dy = Math.max(0, y - 6) / AS;
     if (dx * dx + dy * dy < 1) { g.clear(x, y, o + D - 1); g.clear(x, y, o + D - 2); g.set(x, y, o + D - 3, y < 2 ? 0x2a1c18 : 0x120c0a); }
     else if (dx * dx + dy * dy < 1.45 && y > 2) g.set(x, y, o + D - 1, pj(0x9a8c80, x, y, 0, 3, 0.05, 2)); // stone voussoirs
   }
@@ -116,14 +120,14 @@ export function makeHearth() {
     if (z === o + 4 && y < H + 3 && hash3(x, y, z, 12) < 0.25) c = 0x6a2a14;
     g.set(x, y, z, c);
   }
-  // tuyere flange on the left side (bellows nozzle socket)
-  g.box(0, 14, o + 16, 2, 6, 6, (x, y, z) => (y === 14 || y === 19 ? IRON_HI : IRON));
-  g.box(0, 15, o + 17, 1, 4, 4, 0x141012);
-  // poker and a little shovel hanging on the right side
-  for (let y = 6; y < H - 4; y++) g.set(o + W, y, o + 10, y < 9 ? 0x5a5a62 : IRON);
-  g.box(o + W, H - 5, o + 9, 1, 1, 3, IRON_HI);
-  for (let y = 9; y < H - 5; y++) g.set(o + W, y, o + 24, WOOD_HI);
-  g.box(o + W, 4, o + 22, 1, 5, 5, (x, y) => (y === 4 ? IRON_LO : IRON));
+  // tuyere flange (bellows nozzle socket) on one side, poker and shovel hanging on the other
+  const tx = right ? o + W - 1 : 0, px = right ? 0 : o + W;
+  g.box(tx, TY - 3, o + 16, 2, 6, 6, (x, y, z) => (y === TY - 3 || y === TY + 2 ? IRON_HI : IRON));
+  g.box(right ? tx + 1 : tx, TY - 2, o + 17, 1, 4, 4, 0x141012);
+  for (let y = 6; y < H - 4; y++) g.set(px, y, o + 10, y < 9 ? 0x5a5a62 : IRON);
+  g.box(px, H - 5, o + 9, 1, 1, 3, IRON_HI);
+  for (let y = 9; y < H - 5; y++) g.set(px, y, o + 24, WOOD_HI);
+  g.box(px, 4, o + 22, 1, 5, 5, (x, y) => (y === 4 ? IRON_LO : IRON));
   const group = new THREE.Group();
   const body = mesh(g, [(W + 2) / 2, 0, (D + 2) / 2]);
   group.add(body);
@@ -167,18 +171,47 @@ export function makeHearth() {
   pitMesh.userData.dynamic = true;
   group.add(pitMesh);
 
-  // copper hood + chimney pipe
+  // copper hood + chimney pipe, with a sooty lining that glows with the fire below it
   const hood = makeHood();
   hood.position.set(0, (H + 26) * P, -2 * P);
   group.add(hood);
+  const lining = makeHoodLining();
+  lining.mesh.position.copy(hood.position);
+  lining.mesh.userData.dynamic = true;
+  group.add(lining.mesh);
   return {
     group, coalMat, emberMat,
     bedY: bedY + 6 * P,
     firePos: new THREE.Vector3(bedX, bedY + 6 * P, bedZ),
     bed: { w: cw * P, d: cd * P },
     size: { w: W * P, h: H * P, d: D * P },
-    tuyere: new THREE.Vector3(-(W + 2) / 2 * P, 17 * P, (o + 19 - (D + 2) / 2) * P),
+    tuyere: new THREE.Vector3((right ? 1 : -1) * (W + 2) / 2 * P, (TY + 0.5) * P, (o + 19 - (D + 2) / 2) * P),
+    hood,
+    liningMat: lining.mat,
   };
+}
+
+/** The inside of the hood: soot with glowing flecks, one voxel inside the copper (unlit; tint it). */
+function makeHoodLining() {
+  const W = 52, D = 38, HH = 22;
+  const g = new VoxelGrid(W, HH, D);
+  for (let y = 1; y < HH - 1; y++) {
+    const t = y / (HH - 1);
+    const hw = Math.round((W / 2) * (1 - t * 0.62)) - 1, hd = Math.round((D / 2) * (1 - t * 0.55)) - 1;
+    const cx = W / 2, cz = D / 2;
+    for (let x = cx - hw; x < cx + hw; x++) for (let z = cz - hd; z < cz + hd; z++) {
+      const edge = x === cx - hw || x === cx + hw - 1 || z === cz - hd || z === cz + hd - 1;
+      if (!edge && y !== HH - 2) continue;
+      const r = hash3(x, y, z, 31);
+      let c = mixHex(0xc8683a, 0x3a2218, Math.min(1, t * 1.15));
+      if (r < 0.14) c = shade(c, 0.72);
+      else if (r > 0.9) c = shade(c, 1.12);
+      if (r > 0.985 && t > 0.2) c = 0xffc070; // a fleck of glowing soot
+      g.set(x, y, z, c);
+    }
+  }
+  const mat = glowMaterial();
+  return { mesh: mesh(g, [W / 2, 0, D / 2], { material: mat, outline: false }), mat };
 }
 
 function makeHood() {
@@ -226,8 +259,9 @@ function makeHood() {
  * Leather bellows on a trestle, nozzle toward +x. setCompress(k) squeezes it (0..1).
  * Origin: floor below the nozzle hinge. Returns { group, setCompress, grip, nozzleTip, length }.
  */
-export function makeBellows() {
+export function makeBellows(opts = {}) {
   const L = 28, Wd = 22; // in P voxels
+  const SH = opts.standH ?? 12; // trestle height (P voxels)
   const group = new THREE.Group();
   const shape = (x) => { // half-width of the pear-shaped board at x (0 = hinge, L = back)
     const t = x / L;
@@ -290,18 +324,18 @@ export function makeBellows() {
   const nozzle = mesh(ng, [14, 3, 3]);
 
   // trestle stand
-  const sg = new VoxelGrid(L + 4, 12, Wd + 4);
+  const sg = new VoxelGrid(L + 4, SH, Wd + 4);
   for (const sx of [3, L - 4]) {
-    sg.box(sx, 0, 2, 2, 12, 2, (x, y, z) => woodGrain(y, x, x, y, z, 7));
-    sg.box(sx, 0, Wd, 2, 12, 2, (x, y, z) => woodGrain(y, x, x, y, z, 8));
-    sg.box(sx, 10, 2, 2, 2, Wd, (x, y, z) => woodGrain(z, y, x, y, z, 9));
-    sg.box(sx, 3, 4, 2, 1, Wd - 4, WOOD_DK);
+    sg.box(sx, 0, 2, 2, SH, 2, (x, y, z) => woodGrain(y, x, x, y, z, 7));
+    sg.box(sx, 0, Wd, 2, SH, 2, (x, y, z) => woodGrain(y, x, x, y, z, 8));
+    sg.box(sx, SH - 2, 2, 2, 2, Wd, (x, y, z) => woodGrain(z, y, x, y, z, 9));
+    if (SH > 6) sg.box(sx, 3, 4, 2, 1, Wd - 4, WOOD_DK);
   }
-  sg.box(3, 5, Math.round(Wd / 2) + 1, L - 6, 2, 2, (x, y, z) => woodGrain(x, y, x, y, z, 10));
+  if (SH > 8) sg.box(3, 5, Math.round(Wd / 2) + 1, L - 6, 2, 2, (x, y, z) => woodGrain(x, y, x, y, z, 10));
   const stand = mesh(sg, [0, 0, (Wd + 4) / 2]);
 
   const body = new THREE.Group(); // positioned so the hinge is at the origin x
-  body.position.y = 6 * V;
+  body.position.y = SH * P;
   leather.position.set(0, 2 * V, 0);
   topPivot.position.set(0, 2 * V, 0);
   body.add(bottom, leather, topPivot);
@@ -309,7 +343,7 @@ export function makeBellows() {
   const flip = new THREE.Group();
   flip.rotation.y = Math.PI;
   flip.add(body, stand);
-  nozzle.position.set(7 * V, 6 * V + 2.5 * V, 0);
+  nozzle.position.set(7 * V, SH * P + 2.5 * V, 0);
   group.add(flip, nozzle);
   for (const o of [leather, topPivot]) o.userData.dynamic = true;
 
@@ -320,27 +354,28 @@ export function makeBellows() {
     topPivot.rotation.z = Math.atan2(s * 7 * V, L * P);
   };
   setCompress(0);
-  return { group, setCompress, grip, nozzleTip: new THREE.Vector3(7 * V, 8.5 * V, 0), length: L * P };
+  return { group, setCompress, grip, topPivot, nozzleTip: new THREE.Vector3(7 * V, SH * P + 2.5 * V, 0), length: L * P };
 }
 
 // ---------------------------------------------------------------- anvil & stump
 /** London-pattern anvil (horn, step, face, heel with hardy & pritchel holes) strapped to a stump.
  * Origin: floor center. Returns { group, faceY, faceLen, faceX }. */
-export function makeAnvil() {
+export function makeAnvil(opts = {}) {
   const group = new THREE.Group();
+  const SH = opts.stumpH ?? 8; // stump height (P voxels) under its top ring
   // stump with bark furrows, growth rings and iron straps
-  const sg = new VoxelGrid(28, 9, 28);
-  sg.cylinderY(14, 14, 13, 0, 8, (x, y, z) => {
+  const sg = new VoxelGrid(28, SH + 1, 28);
+  sg.cylinderY(14, 14, 13, 0, SH, (x, y, z) => {
     const dx = x + 0.5 - 14, dz = z + 0.5 - 14;
     const r = Math.hypot(dx, dz);
     if (r > 11.6) {
-      if (y === 2 || y === 6) return (Math.round(Math.atan2(dz, dx) * 8) % 4 === 0) ? 0x7a7880 : IRON;
+      if (y === 2 || y === SH - 2) return (Math.round(Math.atan2(dz, dx) * 8) % 4 === 0) ? 0x7a7880 : IRON;
       const furrow = Math.sin(Math.atan2(dz, dx) * 13 + y * 0.3) > 0.4;
       return furrow ? 0x3a2414 : pj(0x5a3a24, x, y, z, 3, 0.08, 2);
     }
     return 0x6a4428;
   });
-  sg.cylinderY(14, 14, 11.6, 8, 9, (x, y, z) => {
+  sg.cylinderY(14, 14, 11.6, SH, SH + 1, (x, y, z) => {
     const r = Math.hypot(x + 0.5 - 14, z + 0.5 - 14);
     if (r < 1.2) return 0x7a5030;
     return Math.round(r * 0.9) % 2 ? 0xa8804e : 0xc09460;
@@ -394,9 +429,9 @@ export function makeAnvil() {
   // maker's mark on the waist: a tiny mole paw
   for (const [dx, dy] of [[0, 0], [1, 1], [-1, 1], [0, 2], [2, 2], [-2, 2]]) ag.set(at(1) + dx, 2 + dy, 11, 0x5a5862);
   const anvil = mesh(ag, [X0, 0, 7]);
-  anvil.position.y = 8 * P;
+  anvil.position.y = SH * P;
   group.add(anvil);
-  return { group, faceY: 9 * V, faceLen: 15 * V, faceX: (11.5 - 11) * V };
+  return { group, faceY: (SH + 10) * P, faceLen: 15 * V, faceX: (11.5 - 11) * V };
 }
 
 /** Low wooden step the mole stands on at the anvil. */
@@ -1062,4 +1097,149 @@ export function makeBucket() {
   });
   for (let a = 0; a <= 12; a++) { const t = (a / 12) * Math.PI; g.set(7 + Math.cos(t) * 6, 10 + Math.sin(t) * 6, 7, 0xc8a070); }
   return mesh(g, [7, 0, 7]);
+}
+
+// ---------------------------------------------------------------- first-person extras
+/** An iron chain along -y (links alternate facing), len in P voxels. Origin: top centre. */
+export function makeChain(len = 20, seed = 1) {
+  const g = new VoxelGrid(5, len, 5);
+  for (let y = 0; y < len; y++) {
+    const link = Math.floor(y / 3), k = y % 3;
+    const face = link % 2 === 0;
+    const c = (hash3(link, seed, 1, 4) < 0.3 ? 0x5a5860 : 0x48464e);
+    if (k === 1) { if (face) { g.set(1, y, 2, c); g.set(3, y, 2, c); } else { g.set(2, y, 1, c); g.set(2, y, 3, c); } }
+    else g.set(2, y, 2, k === 0 ? shade(c, 1.25) : c);
+  }
+  return mesh(g, [2.5, len, 2.5]);
+}
+
+/** A twisted hemp rope hanging along -y (len in half-P voxels). Origin: top centre. */
+export function makeRope(len = 40, seed = 1) {
+  const g = new VoxelGrid(2, len, 2);
+  const C = [0xd0aa74, 0xb08a58, 0x8e6c42];
+  for (let y = 0; y < len; y++) for (let x = 0; x < 2; x++) for (let z = 0; z < 2; z++) {
+    const k = (y + (x ? 2 : 0) + (z ? 1 : 0)) % 4;
+    g.set(x, y, z, k === 0 ? C[2] : k === 3 ? C[0] : C[1]);
+  }
+  return mesh(g, [1, len, 1], { scale: P / 2 });
+}
+
+/**
+ * The bellows pull: a pulley on a bracket with a chain dropping to a wooden T-handle, and a second
+ * chain running off to the bellows. Origin: the pulley axle. Returns { group, handle, chain,
+ * dropLen (P), setPull(k), handleRest (local) }. setPull(k) lowers the handle by up to ~4 V.
+ */
+export function makeBellowsPull(drop = 22) {
+  const group = new THREE.Group();
+  // bracket + pulley wheel (turns as the chain runs)
+  const bg = new VoxelGrid(10, 6, 4);
+  bg.box(0, 3, 0, 10, 2, 4, (x, y) => (y === 4 ? IRON_HI : IRON));
+  bg.box(4, 0, 0, 2, 4, 1, IRON); bg.box(4, 0, 3, 2, 4, 1, IRON);
+  const bracket = mesh(bg, [5, 1, 2]);
+  group.add(bracket);
+  const wg = new VoxelGrid(7, 7, 2);
+  for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) {
+    const r = Math.hypot(x + 0.5 - 3.5, y + 0.5 - 3.5);
+    if (r > 3.6) continue;
+    for (let z = 0; z < 2; z++) wg.set(x, y, z, r < 1.2 ? 0x8a8890 : r > 2.8 ? 0x2e2c32 : (x + y) % 2 ? IRON : IRON_LO);
+  }
+  const wheel = mesh(wg, [3.5, 3.5, 1]);
+  wheel.userData.dynamic = true;
+  group.add(wheel);
+  // the drop rope and the handle (dynamic: the rope pays out with the pull)
+  const chain = makeRope(drop * 2, 3);
+  chain.position.set(3.5 * P, -3.5 * P, 0);
+  chain.userData.dynamic = true;
+  group.add(chain);
+  const hg = new VoxelGrid(12, 6, 4);
+  hg.box(0, 0, 0, 12, 3, 4, (x, y, z) => (x < 1 || x > 10 ? WOOD_DK : woodGrain(x, z, x, y, z, 77, [0x9a6a3a, 0x8e6034])));
+  hg.box(5, 3, 1, 2, 3, 2, (x, y) => (y === 5 ? IRON_HI : IRON)); // iron eye
+  for (const x of [3, 6, 9]) hg.set(x, 2, 3, 0x5a3420); // grip notches
+  const handle = mesh(hg, [6, 0, 2]);
+  handle.userData.dynamic = true;
+  group.add(handle);
+  const rest = new THREE.Vector3(3.5 * P, -(drop + 3.5 + 3) * P, 0);
+  const setPull = (k) => {
+    const extra = k * 8;
+    chain.scale.set(1, (drop + extra) / drop, 1);
+    handle.position.set(rest.x, rest.y - extra * P, 0);
+    wheel.rotation.z = -k * 2.2;
+  };
+  setPull(0);
+  return { group, handle, chain, wheel, setPull, dropLen: drop };
+}
+
+/**
+ * A stretchable chain segment between two world points: add it to the scene root, then call
+ * set(a, b) (world coordinates). s = world size of one model unit.
+ */
+export function makeChainSpan(seed = 5, s = 1) {
+  const N = 80;
+  const ch = makeRope(N, seed);
+  const grp = new THREE.Group();
+  ch.rotation.x = -Math.PI / 2; // the chain (hanging along -y from its top) now runs along +z
+  grp.add(ch);
+  grp.scale.setScalar(s);
+  grp.userData.dynamic = true;
+  grp.set = (a, b) => {
+    grp.position.copy(a);
+    grp.lookAt(b);
+    ch.scale.set(1, a.distanceTo(b) / s / (N * P / 2), 1);
+  };
+  return grp;
+}
+
+/** A plank door in a stone-and-timber frame, facing +z. W/H in P voxels. Origin: floor centre. */
+export function makeDoor(W = 32, H = 54) {
+  const g = new VoxelGrid(W + 10, H + 6, 6);
+  const cx = (W + 10) / 2;
+  // stone jambs and a timber lintel
+  for (const x0 of [0, W + 5]) g.box(x0, 0, 0, 5, H + 1, 5, (x, y, z) => {
+    const course = Math.floor(y / 6);
+    if (y % 6 === 5) return 0x2e2622;
+    return pp(STONES, x >> 1, course, z, 9 + x0, 1);
+  });
+  g.box(0, H + 1, 0, W + 10, 5, 6, (x, y, z) => (y === H + 5 ? shade(WOOD_HI, 0.9) : woodGrain(x, y, x, y, z, 88, [0x5a3a22, 0x50341e])));
+  // the door: vertical planks, two iron straps with nail heads, a ring pull and a little mole-hole peephole
+  g.box(5, 0, 1, W, H + 1, 3, (x, y, z) => {
+    const u = x - 5;
+    const plank = Math.floor(u / 6);
+    let c = woodGrain(y, u - plank * 6, x, y, z, 90 + plank, [0x7a4a28, 0x70442a, 0x84502c]);
+    if (u % 6 === 0) c = 0x3a2416;
+    const strap = Math.abs(y - 12) <= 1 || Math.abs(y - (H - 12)) <= 1;
+    if (strap && z === 3) c = (u % 5 === 2) ? 0x8a8890 : IRON;
+    else if (strap) c = IRON_LO;
+    return c;
+  });
+  // straps stand proud with nail heads
+  for (const yy of [12, H - 12]) for (let x = 6; x < W + 4; x++) { g.set(x, yy, 4, x % 5 === 2 ? 0x9a9aa2 : IRON); if (x > W - 4) { g.set(x, yy - 1, 4, IRON); g.set(x, yy + 1, 4, IRON); } }
+  // ring pull
+  const rx = 5 + W - 7, ry = Math.round(H * 0.48);
+  for (let a = 0; a < 12; a++) { const t = (a / 12) * Math.PI * 2; g.set(rx + Math.round(Math.cos(t) * 2.4), ry + Math.round(Math.sin(t) * 2.4) - 2, 5, 0xc8a040); }
+  g.box(rx - 1, ry, 4, 2, 2, 1, 0x8a6a24);
+  // round peephole with a brass rim
+  const hx = cx, hy = H - 8;
+  for (let y = hy - 3; y <= hy + 3; y++) for (let x = hx - 3; x <= hx + 3; x++) {
+    const r = Math.hypot(x + 0.5 - hx, y + 0.5 - hy);
+    if (r < 1.8) { g.set(x, y, 3, 0x120c08); g.set(x, y, 2, 0x120c08); g.set(x, y, 1, 0x2a1c12); }
+    else if (r < 3) g.set(x, y, 3, r > 2.4 ? BRASS_LO : BRASS);
+  }
+  return mesh(g, [cx, 0, 3]);
+}
+
+/** A rough stone plinth course for the foot of a wall (len along x, P voxels). */
+export function makePlinth(len = 64, h = 8, d = 4, seed = 2) {
+  const g = new VoxelGrid(len, h, d);
+  g.box(0, 0, 0, len, h, d, (x, y, z) => {
+    const course = Math.floor(y / 4);
+    const u = x + course * 5;
+    if (y % 4 === 3 && y < h - 1) return 0x2e2622;
+    if (u % 9 === 0) return 0x2e2622;
+    let c = pp(STONES, Math.floor(u / 9), course, z >> 2, seed, 1);
+    if (y === h - 1) c = shade(c, 1.12);
+    if (hash3(x, y, z, seed + 3) < 0.05) c = shade(c, 0.82);
+    if (hash3(x >> 1, y, seed, 6) < 0.05 && z === d - 1) c = pp([0x4a7a2a, 0x5a8a32], x, y, z, 3, 1); // moss
+    return c;
+  });
+  return mesh(g, [0, 0, 0]);
 }

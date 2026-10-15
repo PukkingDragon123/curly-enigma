@@ -21,8 +21,9 @@
 #ui[data-hud=deep] .hud-tl { left: calc(var(--sal) + var(--px) * 62); }
 #ui[data-hud=deep] .depth {
   left: calc(var(--sal) + var(--px) * 8); right: auto; top: calc(var(--sat) + var(--px) * 62); text-align: left;
-  opacity: 1; transform: none;
 }
+/* shown while a first-person scene has a depth to report (setDepth(null) hides it) */
+#ui[data-hud=deep] .depth.show { opacity: 1; transform: none; }
 #ui[data-hud=deep] .depth img { order: 0; }
 #ui[data-hud=deep] .depth-txt b { font-size: 27px; }
 #ui.panel-open .depth { opacity: 0; }

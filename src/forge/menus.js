@@ -41,26 +41,58 @@ export class Menus {
   hide() {
     if (this.panel) this.panel.remove();
     this.panel = null;
+    const was = this.mode;
     this.mode = 'hidden';
+    this.keyHandler = null;
+    if (was !== 'hidden') this.scene.menuChanged?.('hidden');
   }
 
   show(node, mode) {
     if (this.panel) this.panel.remove();
     this.panel = node;
+    const was = this.mode;
     this.mode = mode;
     this.scene.layer.append(node);
+    if (was !== mode) this.scene.menuChanged?.(mode);
+  }
+
+  /** Close a sub-menu: back to the hub if it came from there, else back to the smithy. */
+  back() {
+    this.game.audio.play('ui_close');
+    if (this.from === 'main') this.main(); else this.hide();
   }
 
   onEscape() {
     if (this.mode === 'main') { this.scene.leave(); return true; }
-    if (this.mode === 'smelt' || this.mode === 'plan') { this.game.audio.play('ui_close'); this.main(); return true; }
+    if (this.mode === 'smelt' || this.mode === 'plan') { this.back(); return true; }
     return false;
+  }
+
+  // ---------------------------------------------------------------- test helpers (scene.debug)
+  debugSmelt(id) {
+    const r = SMELTING.find((x) => x.id === id) || SMELTING[0];
+    if (!smeltStatus(this.state, r).ok) return 'cannot smelt ' + r.id + ': ' + smeltStatus(this.state, r).why;
+    this.startSmelt(r);
+    return 'smelting ' + r.id;
+  }
+
+  debugForge(sel = {}) {
+    const opt = this.planOptions();
+    this.sel.type = sel.type || this.sel.type || opt.types[0] || null;
+    const o2 = this.planOptions();
+    const usable = o2.metals.filter((m) => !m.why);
+    this.sel.metal = sel.metal || usable.sort((a, b) => ITEMS[b.m.ingot].value - ITEMS[a.m.ingot].value)[0]?.id || null;
+    this.sel.infusion = sel.infusion || null;
+    this.sel.gem = sel.gem || null;
+    if (!this.sel.type || !this.sel.metal) return 'nothing to forge';
+    this.startForge();
+    return 'forging ' + this.sel.metal + ' ' + this.sel.type;
   }
 
   update() {
     const inp = this.game.input;
     if (!this.keyHandler || this.game.ui.isPanelOpen()) return;
-    for (const code of ['Digit1', 'Digit2', 'Enter']) if (inp.pressed(code)) { this.keyHandler(code); break; }
+    for (const code of ['Digit1', 'Digit2', 'Enter']) if (inp.pressed(code)) { inp.consume(code); this.keyHandler(code); break; }
   }
 
   // ---------------------------------------------------------------- hub
@@ -82,8 +114,9 @@ export class Menus {
       el('p', { class: 'sub' }, `${HEARTH_NAMES[lvl] || HEARTH_NAMES[0]} · up to ${FORGE_MAX_TEMP[lvl]}°C`),
       big(iconURL('copper_ingot'), 'Smelt ore', `${ores} ore · ${st.count('coal')} coal`, '1', () => this.smeltList()),
       big(weaponIconURL('shortsword', 'iron'), 'Forge a weapon', `${ingots} ingot${ingots === 1 ? '' : 's'} · ${plans} plan${plans === 1 ? '' : 's'}`, '2', () => this.plan()),
-      forged ? el('div', { class: 'fg-note', html: `On the rack: <b>${forged}</b> forged weapon${forged === 1 ? '' : 's'}, waiting for the assay office.` }) : null,
-      el('div', { class: 'row', style: { marginTop: 'calc(var(--px) * 2)' } }, [
+      forged ? el('div', { class: 'fg-note', html: `In the barrel by the door: <b>${forged}</b> forged weapon${forged === 1 ? '' : 's'}, waiting for the assay office.` }) : null,
+      el('div', { class: 'row', style: { marginTop: 'calc(var(--px) * 2)', gap: 'calc(var(--px) * 2)', flexWrap: 'wrap' } }, [
+        el('button', { class: 'btn alt', onclick: () => { this.game.audio.play('ui_close'); this.hide(); } }, 'Look around'),
         el('button', { class: 'btn alt', onclick: () => this.scene.leave() }, ['Leave forge ', el('kbd', { style: { marginLeft: 'calc(var(--px)*1.5)', marginRight: 0 } }, 'Esc')]),
       ]),
     ]);
@@ -94,6 +127,7 @@ export class Menus {
 
   // ---------------------------------------------------------------- smelting list
   smeltList(refresh = false) {
+    if (!refresh) this.from = this.mode === 'main' ? 'main' : this.mode === 'smelt' ? this.from : null;
     const st = this.state;
     const lvl = st.data.forgeLevel || 0;
     const list = el('div', { class: 'list scroll', style: { maxHeight: 'calc(100vh - var(--px) * 118)' } });
@@ -129,7 +163,7 @@ export class Menus {
       el('p', { class: 'sub' }, `Coal in the bin: ${st.count('coal')} · Hearth tops out at ${FORGE_MAX_TEMP[lvl]}°C`),
       last ? el('div', { class: 'fg-note', html: last }) : null,
       list,
-      el('div', { class: 'row' }, [el('button', { class: 'btn alt', onclick: () => { this.game.audio.play('ui_close'); this.main(); } }, ['Back ', el('kbd', { style: { marginLeft: 'calc(var(--px)*1.5)', marginRight: 0 } }, 'Esc')])]),
+      el('div', { class: 'row' }, [el('button', { class: 'btn alt', onclick: () => this.back() }, ['Back ', el('kbd', { style: { marginLeft: 'calc(var(--px)*1.5)', marginRight: 0 } }, 'Esc')])]),
     ]);
     if (!refresh) this.game.audio.play('page');
     const scrollTop = this.mode === 'smelt' && this.panel ? this.panel.querySelector('.scroll')?.scrollTop : 0;
@@ -180,6 +214,7 @@ export class Menus {
   }
 
   plan(refresh = false) {
+    if (!refresh) this.from = this.mode === 'main' ? 'main' : this.mode === 'plan' ? this.from : null;
     const st = this.state;
     let opt = this.planOptions();
     const sel = this.sel;
@@ -246,7 +281,7 @@ export class Menus {
         el('div', { class: 'fg-col', style: { gap: 'var(--px)' } }, [el('div', { class: 'fg-section' }, 'Infusion · optional'), infGrid, el('div', { class: 'fg-section' }, 'Pommel gem · optional'), gemGrid]),
       ]),
       summary,
-      el('div', { class: 'row' }, [start, el('span', { class: 'spacer' }), el('button', { class: 'btn alt', onclick: () => { this.game.audio.play('ui_close'); this.main(); } }, ['Back ', el('kbd', { style: { marginLeft: 'calc(var(--px)*1.5)', marginRight: 0 } }, 'Esc')])]),
+      el('div', { class: 'row' }, [start, el('span', { class: 'spacer' }), el('button', { class: 'btn alt', onclick: () => this.back() }, ['Back ', el('kbd', { style: { marginLeft: 'calc(var(--px)*1.5)', marginRight: 0 } }, 'Esc')])]),
     ]);
     if (!refresh) this.game.audio.play('page');
     const scroller = this.mode === 'plan' && this.panel ? this.panel.querySelector('.scroll') : null;

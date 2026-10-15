@@ -6,8 +6,9 @@ import { METALS, FORGE_MAX_TEMP } from '../data/weapons.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { qColor } from '../ui/UI.js';
 import { CrucibleSim } from './bladeSim.js';
-import { applyHeat, glowColor, glowHex } from './blackbody.js';
-import { makeCrucible, makeIngot, V } from './models.js';
+import { applyHeat, glowColor, glowHex, glowAmount } from './blackbody.js';
+import { makeCrucible, makeIngot, V, P as PV } from './models.js';
+import { S, MS } from './world.js';
 import { Thermo, bar, setText, setHtml, confirmText } from './ui.js';
 import { Seq, ease, arcPoint } from './fx.js';
 
@@ -72,7 +73,14 @@ export function quickSmelt(st, r, n) {
 }
 
 const _v = new THREE.Vector3();
+const GRIP = new THREE.Vector3(0, 15 * PV, -8.6 * PV); // where the tongs hold the crucible's rim (local)
+const CS = 0.3; // crucible model scale (× the room's): a pot about 13 cm across
 
+/**
+ * Smelting at the hearth, in first person: the crucible sits in the coals with the tongs resting
+ * on its rim (left paw); the right paw works the bellows pull to hold the melt in its heat band.
+ * Then the tongs lift the crucible over to the ingot mold and pour.
+ */
 export class SmeltGame {
   constructor(scene, recipe) {
     this.scene = scene;
@@ -86,7 +94,7 @@ export class SmeltGame {
   }
 
   start() {
-    const sc = this.scene, st = this.st, r = this.r;
+    const sc = this.scene, st = this.st, r = this.r, W = sc.W;
     const lvl = st.data.forgeLevel || 0;
     this.taken = takeInputs(st, r);
     this.sim = new CrucibleSim(r, lvl);
@@ -95,13 +103,17 @@ export class SmeltGame {
     this.metalColor = metal?.color ?? 0xd9773f;
     const oreCol = ITEMS[firstOre]?.icon?.ore?.[0] ?? this.metalColor;
     this.cru = makeCrucible(oreCol);
-    this.cru.group.scale.setScalar(0.66);
-    this.home = sc.W.firePos.clone().add(new THREE.Vector3(0, -0.03, 0.05));
+    this.cru.group.scale.setScalar(CS * S);
+    this.cru.group.rotation.y = Math.PI; // spout toward the mold (west), the rim the tongs hold toward the smith
+    this.home = W.firePos.clone().add(new THREE.Vector3(0.0, -0.03, 0.04));
     this.cru.group.position.copy(this.home);
     sc.scene.add(this.cru.group);
-    sc.setShot('hearth');
-    sc.hammer.visible = false;
-    sc.walkTo('bellows', 'pump');
+    // first person: at the hearth, tongs on the crucible's rim, the other paw on the bellows pull
+    sc.dock('hearth');
+    sc.tool('tongs');
+    sc.paws.set('R', { mode: 'pull' });
+    sc.paws.set('L', { mode: 'tongs', at: () => this.gripWorld() });
+    sc.paws.jaw = 0.45;
     sc.pumpAllowed = true;
     // UI
     this.thermo = new Thermo(sc.layer, FORGE_MAX_TEMP[lvl]);
@@ -129,10 +141,22 @@ export class SmeltGame {
     ]);
     sc.layer.append(this.panel);
     this.nodes.push(this.panel);
-    this.game.ui.setHints('<span class="fg-nolig"><kbd>Space</kbd> or hold the bellows: pump<br><kbd>Esc</kbd> stop smelting</span>');
+    this.bigHint = el('div', { class: 'fg-big-hint' }, document.documentElement.classList.contains('is-touch') ? 'Hold the button to pump' : 'Hold to pump the bellows');
+    sc.layer.append(this.bigHint);
+    this.nodes.push(this.bigHint);
+    this.game.ui.setHints('<span class="fg-nolig">Hold the mouse or <kbd>Space</kbd>: pump the bellows<br><kbd>Esc</kbd> stop smelting</span>');
     this.phase = 'heat';
     this.wasInBand = false;
     this.game.audio.play('place');
+  }
+
+  /** The touch screen's big button. */
+  touchAction() { return this.phase === 'heat' ? { kind: 'pump', label: 'Pump' } : null; }
+
+  /** Where the tongs bite the crucible's rim (world). */
+  gripWorld(out = new THREE.Vector3()) {
+    this.cru.group.updateMatrixWorld(true);
+    return this.cru.group.localToWorld(out.copy(GRIP));
   }
 
   onEscape() {
@@ -154,11 +178,14 @@ export class SmeltGame {
       sim.step(dt, sc.fire.air);
       this.updateVisuals(dt);
       this.updateUI(dt);
+      if (this.bigHint && (sim.started || sc.fire.pumping)) { this.bigHint.remove(); this.bigHint = null; }
       if (sim.done) this.finish();
     } else if (this.phase === 'pour') {
       this.thermo.set(sim.T, dt);
       sim.T = Math.max(25, sim.T - dt * 120);
     }
+    sc.workSrc = this.phase === 'done' ? null : { pos: this.cru.group.position, T: this.phase === 'heat' ? sim.T : this.pourT ?? sim.T };
+    sc.paws.heat = Math.min(1, glowAmount(sim.T) * 0.6);
     this.seq.update(dt);
     this.cru.group.visible = this.phase !== 'done';
   }
@@ -177,8 +204,9 @@ export class SmeltGame {
       cru.chunks[i].scale.setScalar(s);
       cru.chunks[i].visible = s > 0.05;
     }
-    const top = _v.copy(cru.group.position).add(new THREE.Vector3(0, 5 * V, 0));
+    const top = _v.copy(cru.group.position).add(new THREE.Vector3(0, 5 * V * CS * S, 0));
     if (sim.inBandNow && Math.random() < dt * 8) P.sparkle(top, 0xffd27a, 1, 0.12, 0.2);
+    if (sim.T > this.r.temp[0] - 150 && Math.random() < dt * 5) P.glow.spawn(P.w({ x: top.x + (Math.random() - 0.5) * 0.04, y: top.y, z: top.z + (Math.random() - 0.5) * 0.04, vx: 0, vy: 0.25, vz: 0, life: 0.5, size: 0.012, size1: 0.004, color: 0xffe08a, color1: 0xff6a1a, gravity: -0.2 }));
     if (sim.overheat) {
       if (Math.random() < dt * 14) P.flakes(top, 1);
       if (Math.random() < dt * 3) this.game.audio.play('hiss');
@@ -207,25 +235,27 @@ export class SmeltGame {
   }
 
   finish() {
-    const sc = this.scene, sim = this.sim, cru = this.cru;
+    const sc = this.scene, sim = this.sim, cru = this.cru, W = sc.W;
     this.phase = 'pour';
     sc.pumpAllowed = false;
-    sc.molePose = 'idle';
     this.acc = sim.accuracy;
     this.q = ingotQuality(this.taken.avgQ, this.acc);
     this.game.ui.setHints(null);
     this.updateUI(0);
     setHtml(this.status, this.acc >= 0.3 ? '<span class="fg-good">Molten! Pouring the ingot...</span>' : 'Pouring what melted...');
-    const mold = sc.W.mold;
-    const moldTop = mold.group.position.clone().add(new THREE.Vector3(0, mold.cavityTop, 0));
+    const mold = W.mold;
+    const moldTop = W.moldTop.clone();
     const start = cru.group.position.clone();
-    const over = moldTop.clone().add(new THREE.Vector3(-0.16, 0.24, 0));
+    const spoutK = 4.5 * V * CS * S; // the spout sits this far west of the crucible's middle
+    const over = moldTop.clone().add(new THREE.Vector3(spoutK + 0.01, 0.1, 0.0));
     const pourT = Math.max(1000, sim.T);
+    this.pourT = pourT;
     const stream = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: glowHex(pourT) }));
     stream.visible = false;
     sc.scene.add(stream);
     this.stream = stream;
     const ingot = makeIngot(this.metalColor);
+    ingot.scale.setScalar(MS * S);
     ingot.visible = false;
     sc.scene.add(ingot);
     this.ingot = ingot;
@@ -234,50 +264,60 @@ export class SmeltGame {
     const P = sc.particles;
     const spout = new THREE.Vector3();
     const verdict = this.acc >= 0.9 ? ['Perfect melt!', '#ffd34a'] : this.acc >= 0.6 ? ['Good melt', '#8af07a'] : this.acc >= 0.3 ? ['Lumpy melt', '#e6dcc8'] : ['Barely melted', '#d96a5a'];
-    sc.pop(verdict[0], start.clone().add(new THREE.Vector3(0, 0.35, 0)), verdict[1], 1);
+    sc.pop(verdict[0], start.clone().add(new THREE.Vector3(0, 0.18, 0)), verdict[1], 1);
     this.game.audio.play(this.acc >= 0.9 ? 'perfect' : this.acc >= 0.6 ? 'good' : 'oops');
-    sc.setShot('pour');
     this.thermo.el.hidden = true;
+    // the tongs clamp the rim, the right paw lets go of the pull and comes round under the pot
+    sc.paws.jaw = 0;
+    sc.paws.set('R', null);
+    const blockTop = 13 * PV * S + 0.002; // the top of the stone block
+    const land = moldTop.clone().add(new THREE.Vector3(0.02, 0, 0.13));
+    land.y = blockTop;
+    const rest = moldTop.clone().add(new THREE.Vector3(0.06, 0, -0.14));
+    rest.y = blockTop;
     this.seq
       .wait(0.35)
-      .add(0.7, (k) => { arcPoint(start, over, 0.25, ease.inOut(k), cru.group.position); })
+      .call(() => sc.dock('mold', { dur: 0.9 }))
+      .add(0.8, (k) => { arcPoint(start, over, 0.12, ease.inOut(k), cru.group.position); })
       .call(() => { this.game.audio.play('pour'); })
       .add(0.35, (k) => { cru.group.rotation.z = -ease.out(k) * 1.15; })
       .call(() => { mold.fill.visible = true; })
-      .add(1.3, (k, dt) => {
+      .add(1.4, (k, dt) => {
         cru.group.updateMatrixWorld();
         spout.set(4.5 * V, 6.5 * V, 0).applyMatrix4(cru.group.matrixWorld);
         const a = spout, b = moldTop;
         stream.visible = k < 0.92;
-        stream.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
-        stream.scale.set(0.022, Math.max(0.01, a.y - b.y), 0.022);
-        stream.position.x = b.x;
+        stream.position.set(b.x, (a.y + b.y) / 2, b.z);
+        stream.scale.set(0.008, Math.max(0.005, a.y - b.y), 0.008);
+        stream.material.color.setHex(glowHex(pourT - k * 120));
         mold.fill.scale.y = Math.max(0.001, ease.out(k));
         applyFill(fillMat, this.metalColor, pourT);
-        if (Math.random() < dt * 40) P.glow.spawn({ x: b.x + (Math.random() - 0.5) * 0.06, y: b.y + 0.02, z: b.z + (Math.random() - 0.5) * 0.04, vx: (Math.random() - 0.5) * 0.6, vy: 0.4 + Math.random() * 0.6, vz: (Math.random() - 0.5) * 0.4, life: 0.4, size: 0.014, size1: 0.004, color: 0xffe08a, color1: 0xff6a1a, gravity: 4 });
+        if (Math.random() < dt * 40) P.glow.spawn(P.w({ x: b.x + (Math.random() - 0.5) * 0.025, y: b.y + 0.005, z: b.z + (Math.random() - 0.5) * 0.02, vx: (Math.random() - 0.5) * 0.6, vy: 0.4 + Math.random() * 0.6, vz: (Math.random() - 0.5) * 0.4, life: 0.4, size: 0.014, size1: 0.004, color: 0xffe08a, color1: 0xff6a1a, gravity: 4 }));
         if (Math.random() < dt * 6) P.smoke(b, 0.1, 0.6);
+        sc.workSrc = { pos: b, T: pourT };
       })
       .call(() => { stream.visible = false; })
       .add(0.35, (k) => { cru.group.rotation.z = -1.15 * (1 - ease.inOut(k)); })
-      .add(0.6, (k) => { arcPoint(over, start, 0.2, ease.inOut(k), cru.group.position); applyHeat(cru.mat, 0xffffff, 1100 * (1 - k * 0.6), 0.42); })
+      .call(() => sc.paws.set('R', { mode: 'low' }))
+      // set the hot pot down on the block beside the mold
+      .add(0.6, (k) => { arcPoint(over, rest, 0.05, ease.inOut(k), cru.group.position); applyHeat(cru.mat, 0xffffff, 1100 * (1 - k * 0.5), 0.42); })
+      .call(() => { sc.paws.jaw = 0.6; this.game.audio.play('place', { vol: 0.6 }); })
       .add(1.0, (k) => { applyFill(fillMat, this.metalColor, pourT - (pourT - 380) * ease.out(k)); if (Math.random() < 0.15) P.smoke(moldTop, 0.12, 0.5); })
       .call(() => {
         mold.fill.visible = false;
         ingot.visible = true;
-        ingot.position.copy(moldTop).add(new THREE.Vector3(0, -0.04, 0));
+        ingot.position.copy(moldTop).add(new THREE.Vector3(0, -0.012, 0));
         this.game.audio.play('ding');
         P.sparkle(moldTop, 0xfff0b0, 14, 0.2, 0.4);
       })
       .add(0.55, (k) => {
-        const land = moldTop.clone().add(new THREE.Vector3(0.05, 0.0, 0.42));
-        land.y = 0.01;
-        arcPoint(moldTop, land, 0.35, k, ingot.position);
+        arcPoint(moldTop, land, 0.08, k, ingot.position);
         ingot.rotation.y = k * 4.5;
         ingot.rotation.z = Math.sin(k * Math.PI) * 0.8;
         applyHeat(ingot.userData.mat, 0xffffff, 380 * (1 - k), 1);
       })
       .call(() => { this.game.audio.play('place'); this.reward(); })
-      .wait(1.4)
+      .wait(1.6)
       .call(() => { this.phase = 'done'; sc.endActivity('smelt'); });
   }
 
@@ -290,9 +330,9 @@ export class SmeltGame {
     const out = ITEMS[r.out];
     const msg = `+${r.n} ${out.name} <b style="color:${qColor(this.q)}">${this.q}%</b>`;
     this.game.ui.toast(msg, { icon: iconURL(r.out), kind: 'good' });
-    sc.pop(`+${r.n} ${out.name}`, this.ingot.position.clone().add(new THREE.Vector3(0, 0.25, 0)), '#ffd34a', 0.8);
+    sc.pop(`+${r.n} ${out.name}`, this.ingot.position.clone().add(new THREE.Vector3(0, 0.12, 0)), '#ffd34a', 0.8);
     sc.menus.lastSmelt = `Last pour: <b>${r.n}× ${out.name}</b> at <b style="color:${qColor(this.q)}">${this.q}%</b> (heat control ${Math.round(this.acc * 100)}%).` + (first ? ' Quick smelting unlocked for this recipe.' : '');
-    if (this.acc >= 0.9) { sc.molePose = 'cheer'; setTimeout(() => { if (sc.molePose === 'cheer') sc.molePose = 'idle'; }, 1200); }
+    if (this.acc >= 0.9) sc.henReact('great');
   }
 
   dispose() {
@@ -304,6 +344,8 @@ export class SmeltGame {
     if (this.ingot) { sc.scene.remove(this.ingot); disposeTree(this.ingot); }
     sc.W.mold.fill.visible = false;
     sc.pumpAllowed = false;
+    sc.workSrc = null;
+    sc.paws.heat = 0;
   }
 }
 

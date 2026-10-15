@@ -8,15 +8,16 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { COIN, qColor } from '../ui/UI.js';
 import { BladeSim, balanceScore, balanceTolerance, quenchResult, fireIdleFor, AMBIENT } from './bladeSim.js';
 import { BladeView, buildWeapon, COL } from './bladeView.js';
-import { applyHeat } from './blackbody.js';
+import { applyHeat, glowAmount } from './blackbody.js';
 import { Thermo, Steps, StrikeMeter, bar, setText, setHtml, confirmText } from './ui.js';
 import { Seq, ease, arcPoint, Lightning, INFUSION_FX } from './fx.js';
 import { makeCrystal } from './models.js';
 import { disposeTree } from './smelt.js';
 
-const REST_PH = 0.62; // hammer held up, ready (out of the close-up)
-const IMPACT_PH = 0.74; // swing phase where the face meets the blade (measured)
-const WIND_PH = 0.55; // full overhead windup
+// the right paw's hammer, as an angle about the elbow: 0 = the face on the metal
+const REST = 0.4; // held up over the aimed spot, ready
+const WIND = 1.35; // full wind-up: the wrist cocked, the head high over the work
+const SWING_T = 0.085; // seconds from release to contact
 const ENERGY_PER_STRIKE = 0.35;
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -84,6 +85,8 @@ export class ForgeRun {
     this.view.buildDots();
     this.view.setDotsVisible(false);
     sc.scene.add(this.view.group);
+    this.theta = REST;
+    sc.tool('smith'); // tongs in the left paw, the hammer in the right
     this.placeInFire(true);
     this.buildUI();
     this.game.audio.play('place');
@@ -126,8 +129,11 @@ export class ForgeRun {
     sc.extraLight = 0;
     if (this.savedPost) Object.assign(sc.post, this.savedPost);
     if (this.savedHemi) { sc.W.hemi.color.setHex(this.savedHemi.sky); sc.W.hemi.intensity = this.savedHemi.i; }
-    sc.W.grind.hub.rotation.x = 0;
     sc.pumpAllowed = false;
+    sc.workSrc = null;
+    sc.displayLight = null;
+    sc.paws.heat = 0;
+    sc.freezeLook = false;
     this.game.ui.setHints(null);
   }
 
@@ -188,7 +194,7 @@ export class ForgeRun {
   pollActionKeys() {
     if (!this.actionKeys || this.busy) return;
     const inp = this.game.input;
-    for (const [k, fn] of Object.entries(this.actionKeys)) if (inp.pressed(k)) { fn(); return; }
+    for (const [k, fn] of Object.entries(this.actionKeys)) if (inp.pressed(k)) { inp.consume(k); fn(); return; }
   }
 
   updateUI(dt) {
@@ -215,21 +221,63 @@ export class ForgeRun {
   }
 
   // ================================================================ blade placement
+  /** In the coals: the blade points from the smith into the fire (long ones lie across it). */
   firePose() {
     const fp = this.scene.W.firePos;
     const len = this.sim.length * COL;
-    return { pos: new THREE.Vector3(fp.x + len / 2 + 0.02, fp.y + 0.015, fp.z + 0.12), rot: new THREE.Euler(0.55, Math.PI, 0.05) };
+    const yaw = Math.PI / 2 + clamp((len - 0.42) * 1.2, 0, 0.55);
+    const dir = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)); // local +x (toward the tip)
+    const pos = fp.clone().addScaledVector(dir, -(len * 0.5 + 0.04)).add(new THREE.Vector3(0, 0.006, 0));
+    return { pos, rot: new THREE.Euler(0, yaw, -0.07) };
   }
 
+  /** On the anvil's face: tang toward the horn (left in view), tip toward the heel. */
   anvilPose() {
-    const af = this.scene.W.anvilFace;
-    return { pos: new THREE.Vector3(af.x - (this.sim.N * COL) / 2 - 0.02, af.y + 0.001, af.z), rot: new THREE.Euler(0, 0, 0) };
+    const W = this.scene.W, af = W.anvilFace;
+    const pos = af.clone().addScaledVector(W.anvilAxis, -(this.sim.N * COL) / 2 - 0.012).add(new THREE.Vector3(0, 0.001, 0));
+    return { pos, rot: new THREE.Euler(0, -Math.PI / 2, 0) };
   }
 
   placeInFire(instant = false) {
     const p = this.firePose();
     if (instant) { this.view.group.position.copy(p.pos); this.view.group.rotation.copy(p.rot); return; }
-    this.moveObj(this.view.group, p, 0.7, 0.35);
+    this.moveObj(this.view.group, p, 0.7, 0.12);
+  }
+
+  /** The touch screen's big button: { kind: 'pump' | 'strike', label } or null. */
+  touchAction() {
+    if (this.busy && this.step !== 'infuse') return null;
+    if (this.step === 'heat' || (this.step === 'quench' && !this.plunged && this.inFire)) return { kind: 'pump', label: 'Pump' };
+    if (this.step === 'hammer') return { kind: 'strike', label: 'Hold · strike' };
+    if (this.step === 'infuse' && this.infPhase === 'ring') return { kind: 'strike', label: 'Strike!' };
+    return null;
+  }
+
+  /** What the view should keep in frame at a station (ForgeScene.dockPose). */
+  framePoints(name) {
+    if (name === 'anvil') {
+      const p = this.anvilPose(), ax = this.scene.W.anvilAxis;
+      const L = Math.max(this.sim.N, this.sim.length) * COL;
+      return [p.pos.clone().addScaledVector(ax, -0.1), p.pos.clone().addScaledVector(ax, L + 0.02)];
+    }
+    if (name === 'bench' && this.bladeLen) {
+      const ft = this.scene.W.fulcrumTop;
+      return [ft.clone().add(_v2.set(-this.bladeLen * 0.6, 0, 0)), ft.clone().add(_v2.set(this.bladeLen * 0.6, 0, 0))];
+    }
+    return [];
+  }
+
+  /** The tongs' bite on the billet's tang (world). */
+  tangWorld(out = new THREE.Vector3()) {
+    this.view.group.updateMatrixWorld(true);
+    return this.view.group.localToWorld(this.view.tangPoint(out));
+  }
+
+  /** The tongs' bite on the finished weapon: just under the guard (world). */
+  hiltWorld(out = new THREE.Vector3()) {
+    const g = this.weapon.group;
+    g.updateMatrixWorld(true);
+    return g.localToWorld(out.set(0, -this.weapon.hiltLength * 0.22, 0));
   }
 
   /** Arc an object to a pose {pos, rot} (or {pos, quat}). */
@@ -259,22 +307,24 @@ export class ForgeRun {
   enter_heat() {
     const sc = this.scene;
     this.scene.allowMenus = false;
-    sc.setShot('hearth');
-    sc.hammer.visible = false;
-    sc.walkTo('bellows', 'pump');
+    sc.dock('hearth');
+    sc.paws.set('R', { mode: 'pull' });
+    sc.paws.set('L', { mode: 'tongs', at: () => this.tangWorld() });
+    sc.paws.jaw = 0;
     sc.pumpAllowed = true;
     this.view.setDotsVisible(false);
     this.view.hover = -1;
     this.setThermoMarks(false);
     this.thermo.el.hidden = false;
     this.setActions([{ label: 'To the anvil ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toAnvil() }]);
-    this.game.ui.setHints('<span class="fg-nolig"><kbd>Space</kbd> or hold the bellows: pump<br><kbd>E</kbd> carry it to the anvil · <kbd>Esc</kbd> abandon</span>');
+    this.game.ui.setHints('<span class="fg-nolig">Hold the mouse or <kbd>Space</kbd>: pump the bellows<br><kbd>E</kbd> carry it to the anvil · <kbd>Esc</kbd> abandon</span>');
   }
 
   update_heat(dt) {
     const sc = this.scene, sim = this.sim;
     const burning = sim.heatStep(dt, !this.moving, sc.fire.air);
     const T = sim.meanT();
+    this.workLight(sim.maxTemp());
     this.thermo.set(T, dt);
     this.burnFx(burning, dt);
     const [w0, w1] = this.m.work;
@@ -296,46 +346,48 @@ export class ForgeRun {
   }
 
   bladeCenter() {
-    return this.view.group.localToWorld(new THREE.Vector3(this.sim.length * COL * 0.5, 0.02, 0));
+    return this.view.group.localToWorld(new THREE.Vector3(this.sim.length * COL * 0.5, 0.012, 0));
+  }
+
+  /** Hot metal lights the room and the paws; the tong bits glow with it. */
+  workLight(T, pos = null) {
+    const sc = this.scene;
+    sc.workSrc = { pos: pos || this.bladeCenter(), T };
+    sc.paws.heat = Math.min(0.85, glowAmount(T) * 0.55);
   }
 
   toAnvil() {
     if (this.moving || this.step !== 'heat') return;
     this.game.audio.play('whoosh');
-    this.moveObj(this.view.group, this.anvilPose(), 0.65, 0.45, () => this.game.audio.play('place'));
+    this.moveObj(this.view.group, this.anvilPose(), 0.7, 0.14, () => this.game.audio.play('place'));
     this.go('hammer');
   }
 
   // ---------------------------------------------------------------- hammer
   enter_hammer() {
     const sc = this.scene;
-    sc.setShot('anvil');
+    sc.dock('anvil', { dur: 0.75 });
     sc.pumpAllowed = false;
-    sc.hammer.visible = true;
-    sc.walkTo('anvil', 'hammer', () => this.measureSwing());
     this.view.setDotsVisible(true);
-    this.selCol = this.selCol ?? 0;
+    this.selCol = this.selCol ?? Math.min(1, this.sim.w.length - 1);
     this.charge = null;
     this.swing = null;
-    this.swingPh = REST_PH;
-    this.mole = sc.mole;
+    this.theta = this.theta ?? REST;
+    sc.paws.set('L', { mode: 'tongs', at: () => this.tangWorld() });
+    sc.paws.set('R', { mode: 'hammer', at: () => this.hammerAt(), theta: () => this.theta });
+    sc.paws.jaw = 0;
     this.setActions([
       { label: 'Reheat ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toFire(), alt: true },
       { label: 'Done shaping ', keyLabel: 'Enter', key: ['Enter', 'NumpadEnter'], fn: () => this.finishShaping() },
     ]);
-    this.game.ui.setHints('<span class="fg-nolig">Press and hold on the blade, release to strike<br><kbd>A</kbd><kbd>D</kbd> pick a spot · hold <kbd>Space</kbd> to strike<br><kbd>E</kbd> reheat in the coals · <kbd>Esc</kbd> abandon</span>');
+    this.game.ui.setHints('<span class="fg-nolig">Point at a spot · hold the mouse to raise the hammer, let go to strike<br><kbd>A</kbd><kbd>D</kbd> move along · hold <kbd>Space</kbd> to strike<br><kbd>E</kbd> reheat in the coals · <kbd>Esc</kbd> abandon</span>');
   }
 
-  /** Measure where the hammer face lands relative to the mole at the impact pose. */
-  measureSwing() {
-    const rig = this.scene.mole;
-    rig.face(this.scene.W.stations.anvil.yaw, true);
-    rig.play('hammer');
-    rig.swingPhase = IMPACT_PH;
-    rig.update(0);
-    rig.root.updateMatrixWorld(true);
-    const f = this.scene.hammer.userData.face.getWorldPosition(new THREE.Vector3());
-    this.swingOff = f.sub(rig.root.position);
+  /** Where the hammer face comes down: the top of the aimed column (world). */
+  hammerAt(out = new THREE.Vector3()) {
+    const col = this.swing ? this.swing.col : this.charge ? this.charge.col : this.selCol;
+    this.view.group.updateMatrixWorld(true);
+    return this.view.group.localToWorld(this.view.colTop(clamp(col, 0, this.sim.w.length - 1), out));
   }
 
   toFire() {
@@ -343,19 +395,20 @@ export class ForgeRun {
     const lost = this.sim.scaleInFire();
     this.game.audio.play('whoosh');
     const p = this.firePose();
-    this.moveObj(this.view.group, p, 0.65, 0.45, () => { this.scene.puff(); this.game.audio.play('ignite'); });
-    if (lost > 0.01) this.popOnce('scale', 'scale flakes off', this.scene.W.firePos.clone().add(_v2.set(0, 0.35, 0)), '#c8b8a8', 0.6, 20);
+    this.moveObj(this.view.group, p, 0.7, 0.14, () => { this.scene.puff(); this.game.audio.play('ignite'); });
+    if (lost > 0.01) this.popOnce('scale', 'scale flakes off', this.scene.W.firePos.clone().add(_v2.set(0, 0.2, 0)), '#c8b8a8', 0.6, 20);
     this.go('heat');
   }
 
   update_hammer(dt) {
     const sc = this.scene, sim = this.sim, view = this.view, inp = this.game.input;
     sim.heatStep(dt, false, 0);
-    const ready = !this.moving && !sc.moleWalk;
-    // hover from the mouse
+    this.workLight(sim.maxTemp());
+    const ready = !this.moving && sc.docked;
+    // aim: the spot under the pointer (or A/D)
     let mouseCol = -1;
     if (ready && !this.charge && !this.swing) {
-      const hit = sc.mouseOnPlane(view.group.position.y + 0.03, _v);
+      const hit = sc.mouseOnPlane(view.group.position.y + view.maxTh, _v);
       if (hit) {
         const local = view.group.worldToLocal(_v.clone());
         mouseCol = view.pick(local.x, local.z);
@@ -365,11 +418,11 @@ export class ForgeRun {
       if (inp.pressed('KeyD', 'ArrowRight')) this.selCol = Math.min(sim.length - 1, this.selCol + 1);
     }
     this.selCol = clamp(this.selCol, 0, sim.w.length - 1);
-    view.hover = ready ? (this.charge ? this.charge.col : this.selCol) : -1;
-    // start a blow
+    view.hover = ready ? (this.charge ? this.charge.col : this.swing ? this.swing.col : this.selCol) : -1;
+    // start a blow: anywhere on the view swings at the aimed spot
     if (ready && !this.charge && !this.swing) {
       let src = null, col = -1;
-      if (inp.mousePressed(0) && mouseCol >= 0) { src = 'mouse'; col = mouseCol; }
+      if (inp.mousePressed(0)) { src = 'mouse'; col = mouseCol >= 0 ? mouseCol : this.selCol; }
       else if (inp.pressed('Space')) { src = 'key'; col = this.selCol; }
       if (src) {
         if (this.st.energy < ENERGY_PER_STRIKE) {
@@ -388,45 +441,13 @@ export class ForgeRun {
       const k = clamp(c.t / 0.9, 0, 1);
       c.power = Math.max(0.05, k * k * (3 - 2 * k));
       this.view.ghost(c.col, sim.predict(c.col, c.power));
-      this.swingPh = lerp(REST_PH, WIND_PH, ease.out(c.power));
+      this.theta = lerp(REST, WIND, ease.out(c.power));
       const s = sc.toScreen(this.colWorld(c.col));
       this.meter.show(s.x, s.y - 30, c.power, c.power >= 0.99 ? 'full' : '');
-      const released = c.src === 'mouse' ? !inp.mouseDown(0) : !inp.isDown('Space');
-      if (released) {
-        this.view.ghost(-1);
-        this.swing = { t: 0, from: this.swingPh, col: c.col, power: c.power, hit: false };
-        this.charge = null;
-        this.meter.hide();
-        this.game.audio.play('whoosh');
-      }
+      const released = c.src === 'mouse' ? !inp.mouseDown(0) : c.src === 'hold' ? false : !inp.isDown('Space');
+      if (released) this.release();
     }
-    if (this.swing) {
-      const s = this.swing;
-      s.t += dt;
-      if (s.t < 0.08) this.swingPh = lerp(s.from, IMPACT_PH, (s.t / 0.08) ** 2);
-      else {
-        if (!s.hit) { s.hit = true; this.resolveStrike(s.col, s.power); }
-        const r = (s.t - 0.08) / 0.22;
-        this.swingPh = IMPACT_PH - Math.sin(Math.min(1, r) * Math.PI) * (0.05 + 0.06 * s.power);
-        if (r >= 1) { this.swing = null; this.swingPh = lerp(IMPACT_PH, REST_PH, 0.6); }
-      }
-    } else if (!this.charge) this.swingPh = lerp(this.swingPh, REST_PH, Math.min(1, dt * 6));
-    // drive the mole
-    const rig = sc.mole;
-    if (!sc.moleWalk && sc.moleStation === 'anvil') {
-      sc.molePose = 'hammer';
-      rig.swingPhase = this.swingPh;
-      if (this.swingOff) {
-        const col = this.charge ? this.charge.col : this.swing ? this.swing.col : this.selCol;
-        const target = this.colWorld(col);
-        const st = sc.W.stations.anvil.pos;
-        const tx = clamp(target.x - this.swingOff.x, st.x - 0.75, st.x + 0.75);
-        const tz = clamp(target.z - this.swingOff.z, st.z - 0.2, st.z + 0.12);
-        const kk = Math.min(1, dt * 10);
-        rig.root.position.x += (tx - rig.root.position.x) * kk;
-        rig.root.position.z += (tz - rig.root.position.z) * kk;
-      }
-    }
+    this.updateSwing(dt);
     // readouts
     const show = view.hover >= 0 ? sim.T[view.hover] : sim.meanT();
     this.thermo.set(show, dt);
@@ -439,15 +460,60 @@ export class ForgeRun {
     } else this.setStatus('On the anvil.');
   }
 
+  /** Let the charged blow go: the hammer comes down on the aimed spot. */
+  release() {
+    const c = this.charge;
+    if (!c) return;
+    this.view.ghost(-1);
+    this.swing = { t: 0, from: this.theta, col: c.col, power: c.power, hit: false };
+    this.charge = null;
+    this.meter.hide();
+    this.game.audio.play('whoosh');
+  }
+
+  /** The swing: accelerate onto the metal, strike, bounce, settle back to ready. */
+  updateSwing(dt) {
+    const s = this.swing;
+    if (s) {
+      s.t += dt;
+      if (s.t < SWING_T) this.theta = s.from * (1 - (s.t / SWING_T) ** 2);
+      else {
+        if (!s.hit) { s.hit = true; this.theta = 0; (s.onHit || ((col, p) => this.resolveStrike(col, p)))(s.col, s.power); }
+        const r = (s.t - SWING_T) / 0.26;
+        this.theta = Math.sin(Math.min(1, r) * Math.PI) * (0.1 + 0.16 * s.power) + (r > 0.6 ? (REST * (r - 0.6) / 0.4) : 0);
+        if (r >= 1) { this.swing = null; this.theta = Math.min(REST, this.theta); }
+      }
+    } else if (!this.charge) this.theta += (REST - this.theta) * Math.min(1, dt * 7);
+  }
+
+  /** Test hook: aim at a column and hold the hammer up (charging) until debugRelease(). */
+  debugCharge(col, t = 0.6) {
+    if (this.step !== 'hammer' || this.swing) return false;
+    this.selCol = clamp(col ?? this.selCol, 0, this.sim.w.length - 1);
+    this.charge = { col: this.selCol, src: 'hold', t, power: 0 };
+    return true;
+  }
+
+  /** Test hook: aim at a column and strike with power 0..1. */
+  debugStrike(col, power = 0.8) {
+    if (this.step !== 'hammer' || this.swing) return false;
+    this.selCol = clamp(col ?? this.selCol, 0, this.sim.w.length - 1);
+    this.theta = lerp(REST, WIND, ease.out(power));
+    this.charge = { col: this.selCol, src: 'debug', t: 0, power };
+    this.release();
+    return true;
+  }
+
   colWorld(i) {
-    const t = this.sim.w[i] ?? 0;
-    return this.view.group.localToWorld(new THREE.Vector3((i + 0.5) * COL, 0.02 + t * 0.0045, 0));
+    this.view.group.updateMatrixWorld(true);
+    return this.view.group.localToWorld(this.view.colTop(clamp(i, 0, this.sim.w.length - 1), new THREE.Vector3()));
   }
 
   resolveStrike(i, power) {
     const sc = this.scene, st = this.st, sim = this.sim, P = sc.particles;
     const ev = sim.strike(i, power);
     if (!ev) return;
+    sc.rig.vm?.impact('hammer', 0.25 + power * 0.35);
     st.useEnergy(ENERGY_PER_STRIKE);
     st.learn('hammering');
     if (ev.kind === 'work') st.learn('working_heat');
@@ -458,8 +524,8 @@ export class ForgeRun {
       this.game.audio.play('clunk', { vol: 0.6 + power * 0.6 });
       P.flakes(pos, 4 + Math.round(power * 6));
       sc.addShake(0.006 + power * 0.01);
-      if (ev.crack) { this.game.audio.play('crack'); this.popOnce('crack', 'Crack!', pos.clone().add(_v2.set(0, 0.12, 0)), '#ff7a5a', 1, 0.5); }
-      else this.popOnce('cold', 'Too cold!', pos.clone().add(_v2.set(0, 0.12, 0)), '#9ad0ff', 0.9, 1.4);
+      if (ev.crack) { this.game.audio.play('crack'); this.popOnce('crack', 'Crack!', pos.clone().add(_v2.set(0, 0.08, 0)), '#ff7a5a', 1, 0.5); }
+      else this.popOnce('cold', 'Too cold!', pos.clone().add(_v2.set(0, 0.08, 0)), '#9ad0ff', 0.9, 1.4);
     } else {
       this.game.audio.play('clang', { pitch: 0.8 + thin * 0.45 + Math.random() * 0.06, vol: 0.55 + power * 0.6 });
       const n = 10 + Math.round(power * 28);
@@ -469,16 +535,16 @@ export class ForgeRun {
       P.scaleFlakes(pos, 3 + Math.round(power * 7), 0.45);
       sc.addShake(0.01 + power * 0.03);
       sc.impact(pos, power, this.sim.T[i] ?? 900);
-      sc.extraLight = 2.5 + power * 4;
+      sc.extraLight = 1.5 + power * 2.5;
       if (ev.kind === 'burn') {
         P.burnSpray(pos, 26);
         this.game.audio.play('sizzle');
-        this.popOnce('burn', 'Burning!', pos.clone().add(_v2.set(0, 0.14, 0)), '#ffffff', 0.9, 1.4);
+        this.popOnce('burn', 'Burning!', pos.clone().add(_v2.set(0, 0.09, 0)), '#ffffff', 0.9, 1.4);
         if (Math.random() < 0.3) sc.henReact('startle');
       }
     }
     const gain = ev.after - ev.before;
-    if (Math.abs(gain) >= 0.02) this.popOnce('gain', (gain > 0 ? '+' : '') + Math.round(gain * 100) + '%', pos.clone().add(_v2.set(0.08, 0.06, 0)), gain > 0 ? '#8af07a' : '#ff8a6a', 0.6, 0.15);
+    if (Math.abs(gain) >= 0.02) this.popOnce('gain', (gain > 0 ? '+' : '') + Math.round(gain * 100) + '%', pos.clone().add(_v2.set(0, 0.06, 0.03)), gain > 0 ? '#8af07a' : '#ff8a6a', 0.6, 0.15);
     if (ev.grown.length) this.game.audio.play('creak');
   }
 
@@ -506,22 +572,19 @@ export class ForgeRun {
     this.game.ui.setHints(null);
     this.view.setDotsVisible(false);
     this.thermo.el.hidden = true;
-    sc.setShot('grind');
-    sc.molePose = 'idle';
-    sc.hammer.visible = false;
+    sc.dock('grind', { dur: 0.8 });
+    sc.paws.set('R', { mode: 'low' });
     this.rawShape = this.sim.accuracy();
     const c = W.grindContact;
-    // the blade lies across the rim (along the axle), hilt toward the mole, and is drawn
-    // sideways so the stone runs along the edge; sparks fly off the top toward the camera
+    // the blade lies across the rim (along the axle), drawn sideways so the stone runs along the
+    // edge; the tongs hold its tang, sparks fly off the far side of the wheel
     const axle = W.grindAxle, tan = W.grindTan;
-    const rotY = Math.atan2(-axle.z, axle.x);
+    const rotY = Math.atan2(-axle.z, axle.x) + Math.PI; // the tang toward the smith's left paw
     const len = this.sim.length * COL;
-    const reach = Math.min(0.5, len * 0.8);
-    // hilt on the mole's right (-axle), tip out to its left; slide it so the stone runs along the edge
-    const pose = (u) => ({ pos: c.clone().addScaledVector(axle, -(0.12 + (reach - 0.12) * u)).add(_v2.set(0, 0.012, 0)), rot: new THREE.Euler(0, rotY, 0) });
+    const reach = Math.min(0.3, len * 0.8);
+    const pose = (u) => ({ pos: c.clone().addScaledVector(axle, 0.05 + (reach - 0.05) * u).add(_v2.set(0, 0.008, 0)), rot: new THREE.Euler(0, rotY, 0) });
     for (const st of ['heat', 'hammer']) if (!this.done.includes(st)) this.done.push(st);
-    sc.walkTo('grind', 'carry');
-    this.moveObj(this.view.group, pose(0), 0.7, 0.4);
+    this.moveObj(this.view.group, pose(0), 0.75, 0.12);
     this.seq.call(() => {
       this.grindLoop = this.game.audio.loop('grind', { vol: 0.35 });
       this.grindRes = this.sim.grind();
@@ -532,9 +595,10 @@ export class ForgeRun {
       const u = 0.5 - 0.5 * Math.cos(k * Math.PI * 4);
       this.view.group.position.copy(pose(u).pos);
       for (let i = 0; i < 4; i++) {
-        const sp = 1.4 + Math.random() * 2.2, side = (Math.random() - 0.5) * 0.12;
-        P.glow.spawn({ x: c.x + axle.x * side, y: c.y + 0.01, z: c.z + axle.z * side, vx: tan.x * sp + (Math.random() - 0.5) * 0.45, vy: 0.25 + Math.random() * 0.9, vz: tan.z * sp + (Math.random() - 0.5) * 0.45, life: 0.3 + Math.random() * 0.35, size: 0.018, size1: 0.005, color: 0xfff0b0, color1: 0xff7a1a, gravity: 4, drag: 1 });
+        const sp = 1.4 + Math.random() * 2.2, side = (Math.random() - 0.5) * 0.08;
+        P.glow.spawn(P.w({ x: c.x + axle.x * side, y: c.y + 0.006, z: c.z + axle.z * side, vx: tan.x * sp + (Math.random() - 0.5) * 0.45, vy: 0.25 + Math.random() * 0.9, vz: tan.z * sp + (Math.random() - 0.5) * 0.45, life: 0.3 + Math.random() * 0.35, size: 0.018, size1: 0.005, color: 0xfff0b0, color1: 0xff7a1a, gravity: 4, drag: 1 }));
       }
+      sc.extraLight = 0.6;
     });
     this.seq.call(() => {
       this.grindLoop?.stop();
@@ -542,9 +606,13 @@ export class ForgeRun {
       const r = this.grindRes;
       this.scores.shape = r.after;
       const msg = r.after - r.before >= 0.005 ? `Ground true: ${Math.round(r.before * 100)}% → ${Math.round(r.after * 100)}%` : `Shape ${Math.round(r.after * 100)}%`;
-      sc.pop(msg, c.clone().add(_v2.set(0, 0.35, 0)), '#ffd34a', 0.8);
+      sc.pop(msg, c.clone().add(_v2.set(0, 0.16, 0)), '#ffd34a', 0.8);
       this.game.audio.play(r.after > 0.85 ? 'good' : 'ding');
     }).wait(0.9).call(() => { this.busy = false; this.go('balance'); });
+  }
+
+  update_grind(dt) {
+    this.workLight(this.sim.maxTemp());
   }
 
   // ---------------------------------------------------------------- balance
@@ -556,18 +624,22 @@ export class ForgeRun {
     const startPos = this.view.group.position.clone();
     sc.scene.remove(this.view.group);
     this.carrier.position.copy(startPos);
-    this.orient.rotation.set(-Math.PI / 2, 0, -Math.PI / 2);
+    this.carrier.rotation.set(0, this.view.group.rotation.y, 0);
+    this.orient.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); // blade along the carrier's +x, lying flat
     this.bal = this.sim.balanceSetup();
     this.balW = 0;
     this.tiltAng = 0;
     this.tiltVel = 0;
     this.weapon.group.position.y = -this.bal.target * this.bladeLen;
-    sc.setShot('bench');
-    sc.walkTo('bench', 'idle');
+    sc.dock('bench', { dur: 0.9 });
+    sc.paws.set('L', { mode: 'tongs', at: () => this.hiltWorld() });
+    sc.paws.set('R', { mode: 'low' });
     this.busy = true;
-    this.moveObj(this.carrier, { pos: W.fulcrumTop.clone().add(_v2.set(0, 0.01, 0)), rot: new THREE.Euler(0, 0, 0) }, 0.9, 0.5, () => {
+    this.moveObj(this.carrier, { pos: W.fulcrumTop.clone().add(_v2.set(0, 0.006, 0)), rot: new THREE.Euler(0, 0, 0) }, 0.9, 0.15, () => {
       this.busy = false;
       this.game.audio.play('place');
+      sc.paws.jaw = 0.8; // let go: it rests on the fulcrum
+      sc.paws.set('L', { mode: 'low' });
     });
     const assist = !!this.inf?.balanceAssist;
     this.balTol = balanceTolerance(assist);
@@ -607,6 +679,7 @@ export class ForgeRun {
   update_balance(dt) {
     const sc = this.scene, inp = this.game.input;
     this.coolWeapon(dt);
+    this.workLight(this.weaponT, this.carrier.position);
     if (inp.isDown('ArrowLeft', 'KeyA')) this.balW = clamp(this.balW - dt * 0.25, 0, 1);
     if (inp.isDown('ArrowRight', 'KeyD')) this.balW = clamp(this.balW + dt * 0.25, 0, 1);
     if (document.activeElement !== this.slider) this.slider.value = String(Math.round(this.balW * 1000));
@@ -681,15 +754,17 @@ export class ForgeRun {
     this.thermo.el.hidden = false;
     this.thermo.setTitle(this.m.name);
     this.setThermoMarks(true);
-    sc.setShot('hearth');
-    sc.walkTo('bellows', 'pump');
+    sc.dock('hearth');
+    sc.paws.jaw = 0;
+    sc.paws.set('L', { mode: 'tongs', at: () => this.hiltWorld() });
+    sc.paws.set('R', { mode: 'pull' });
     sc.pumpAllowed = true;
     this.inFire = true;
     this.plunged = false;
     this.busy = true;
-    this.moveObj(this.carrier, this.quenchFirePose(), 0.8, 0.45, () => { this.busy = false; this.game.audio.play('ignite'); sc.puff(); });
+    this.moveObj(this.carrier, this.quenchFirePose(), 0.85, 0.15, () => { this.busy = false; this.game.audio.play('ignite'); sc.puff(); });
     this.setQuenchActions();
-    this.game.ui.setHints('<span class="fg-nolig"><kbd>Space</kbd> or hold the bellows: pump · <kbd>E</kbd> in/out of the fire<br><kbd>Q</kbd> or click the barrel: plunge · <kbd>Esc</kbd> abandon</span>');
+    this.game.ui.setHints('<span class="fg-nolig">Hold the mouse or <kbd>Space</kbd>: pump · <kbd>E</kbd> in/out of the fire<br><kbd>Q</kbd> plunge it in the barrel · <kbd>Esc</kbd> abandon</span>');
   }
 
   setQuenchActions() {
@@ -699,21 +774,25 @@ export class ForgeRun {
     ]);
   }
 
+  /** The finished blade in the coals (the carrier's +x runs along the blade). */
   quenchFirePose() {
     const fp = this.scene.W.firePos;
-    return { pos: new THREE.Vector3(fp.x - 0.05, fp.y + 0.06, fp.z + 0.06), rot: new THREE.Euler(0.75, Math.PI, 0) };
+    const yaw = Math.PI / 2 + clamp((this.bladeLen - 0.42) * 1.2, 0, 0.55);
+    const dir = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    return { pos: fp.clone().addScaledVector(dir, 0.03).add(_v2.set(0, 0.012, 0)), rot: new THREE.Euler(0, yaw, -0.06) };
   }
 
+  /** Held up out of the fire, tip raised, cooling in the air. */
   quenchHoldPose() {
     const fp = this.scene.W.firePos;
-    return { pos: new THREE.Vector3(fp.x + 0.2, fp.y + 0.32, fp.z + 0.62), rot: new THREE.Euler(0.9, Math.PI, 0.12) };
+    return { pos: fp.clone().add(_v2.set(0.06, 0.16, 0.2)), rot: new THREE.Euler(0, Math.PI / 2 + 0.25, 0.35) };
   }
 
   toggleQuenchFire() {
     if (this.busy || this.plunged) return;
     this.inFire = !this.inFire;
     this.busy = true;
-    this.moveObj(this.carrier, this.inFire ? this.quenchFirePose() : this.quenchHoldPose(), 0.45, 0.15, () => { this.busy = false; });
+    this.moveObj(this.carrier, this.inFire ? this.quenchFirePose() : this.quenchHoldPose(), 0.45, 0.06, () => { this.busy = false; });
     this.game.audio.play('whoosh');
     this.setQuenchActions();
   }
@@ -722,17 +801,17 @@ export class ForgeRun {
     const sc = this.scene, inp = this.game.input;
     const T = this.coolWeapon(dt, this.inFire && !this.busy, sc.fire.air);
     this.thermo.set(T, dt);
+    this.workLight(T, this.carrier.position);
     const [q0, q1] = this.m.quench;
     if (T > this.m.burn && !this.plunged) {
       this.sim.burnt += dt * 3 * Math.min(2, (T - this.m.burn) / 100 + 0.3);
       if (Math.random() < dt * 8) sc.particles.burnSpray(this.carrier.position, 5);
-      this.popOnce('qburn', 'Burning!', this.carrier.position.clone().add(_v2.set(0, 0.25, 0)), '#ffffff', 0.9, 3);
+      this.popOnce('qburn', 'Burning!', this.carrier.position.clone().add(_v2.set(0, 0.14, 0)), '#ffffff', 0.9, 3);
     }
     if (!this.plunged) {
       if (T >= q0 && T <= q1) this.setStatus('<span class="fg-good">Right in the hardening window!</span>');
       else if (T > q1) this.setStatus('<span class="fg-warn">Too hot to quench safely.</span>');
       else this.setStatus(this.inFire ? 'Heating up for the quench.' : 'Cooling in the air.');
-      if (inp.mousePressed(0) && !this.busy && sc.raycast([sc.W.barrel.group])) this.plunge();
     }
   }
 
@@ -742,44 +821,50 @@ export class ForgeRun {
     this.plunged = true;
     this.busy = true;
     sc.pumpAllowed = false;
-    sc.walkTo('barrel', 'carry');
-    sc.setShot('quench');
+    sc.dock('barrel', { dur: 0.6 });
+    sc.paws.set('R', { mode: 'low' });
     const Tp = this.weaponT;
     const res = quenchResult(this.m, Tp);
     this.setActions([]);
     this.game.ui.setHints(null);
     const top = W.barrelTop.clone();
-    const above = { pos: top.clone().add(_v2.set(0, 0.42 + this.bladeLen * 0.5, 0)), rot: new THREE.Euler(0, 0, -Math.PI / 2) };
-    const dunk = { pos: top.clone().add(_v2.set(0, 0.05 + this.bladeLen * 0.5 - this.bladeLen * 0.85, 0)), rot: new THREE.Euler(0, 0, -Math.PI / 2) };
+    const L = this.bladeLen;
+    // tip down over the water (the carrier's +x, along the blade, turns to point at the floor)
+    const down = new THREE.Euler(0, 0, -Math.PI / 2); // broad side toward the smith
+    const above = { pos: top.clone().add(_v2.set(0.02, 0.06 + L * 0.5, 0)), rot: down };
+    const dunk = { pos: top.clone().add(_v2.set(0.02, 0.03 + L * 0.5 - L * 0.85, 0)), rot: down };
     this.game.audio.play('whoosh');
-    this.moveObj(this.carrier, above, 0.55, 0.3);
-    this.seq.add(0.22, (k) => { this.carrier.position.lerpVectors(above.pos, dunk.pos, ease.in(k)); })
+    this.moveObj(this.carrier, above, 0.7, 0.04);
+    this.seq.add(0.2, (k) => { this.carrier.position.lerpVectors(above.pos, dunk.pos, ease.in(k)); })
       .call(() => {
         this.game.audio.play('quench');
         this.game.audio.play('steam');
-        P.steam(top, 70, 0.35, 1.3);
-        P.billow(top, 22, 0.3, 1.3);
-        P.bubbles(top, 14, 0.4);
-        for (let k = 0; k < 10; k++) P.streak.spawn({ x: top.x, y: top.y + 0.02, z: top.z, vx: (Math.random() - 0.5) * 1.6, vy: 1 + Math.random() * 1.6, vz: (Math.random() - 0.5) * 1.2, life: 0.4, color: 0xd8f4ff, color1: 0x5a8a98, gravity: 6, drag: 0.6, len: 0.02 });
+        P.steam(top, 70, 0.3, 1.3);
+        P.billow(top, 26, 0.3, 1.4);
+        P.bubbles(top, 14, 0.3);
+        for (let k = 0; k < 12; k++) P.streak.spawn(P.w({ x: top.x, y: top.y + 0.01, z: top.z, vx: (Math.random() - 0.5) * 1.6, vy: 1 + Math.random() * 1.6, vz: (Math.random() - 0.5) * 1.2, life: 0.4, color: 0xd8f4ff, color1: 0x5a8a98, gravity: 6, drag: 0.6, len: 0.02 }));
         W.water.splash(1.4);
         sc.waterEnergy = 1.2;
         sc.addShake(0.02);
+        sc.post.flash = Math.max(sc.post.flash || 0, 0.16);
+        sc.post.flashColor = 0xe8f2f4;
         this.st.learn('quenching');
         if (res.crack) { this.game.audio.play('crack'); setTimeout(() => this.game.audio.play('crack'), 160); }
       })
-      .add(1.1, (k, dt) => {
+      .add(1.2, (k, dt) => {
         this.weaponT = lerp(Tp, 60, ease.out(k));
         applyHeat(this.weapon.mat, 0xffffff, this.weaponT, 0.9);
-        if (Math.random() < dt * 30) P.steam(top, 2, 0.3, 0.8);
-        if (Math.random() < dt * 9 * (1 - k)) P.billow(top, 2, 0.25, 0.9);
-        if (Math.random() < dt * 20) P.bubbles(top, 2, 0.3);
+        if (Math.random() < dt * 30) P.steam(top, 2, 0.25, 0.8);
+        if (Math.random() < dt * 9 * (1 - k)) P.billow(top, 2, 0.22, 0.9);
+        if (Math.random() < dt * 20) P.bubbles(top, 2, 0.25);
+        this.carrier.position.x = dunk.pos.x + Math.sin(k * 30) * 0.004 * (1 - k); // the tongs tremble in the boil
       })
       .add(0.45, (k) => { this.carrier.position.lerpVectors(dunk.pos, above.pos, ease.out(k)); })
       .call(() => {
         this.scores.quench = res.score;
         if (res.crack) this.sim.cracks[Math.floor(this.sim.length * 0.4)] = Math.max(1, this.sim.cracks[Math.floor(this.sim.length * 0.4)] || 0);
         const words = res.kind === 'good' ? (res.score > 0.95 ? ['Perfect temper!', '#ffd34a'] : ['Hardened!', '#8af07a']) : res.kind === 'hot' ? (res.crack ? ['Cracked!', '#ff7a5a'] : ['Too hot, brittle', '#ffb07a']) : ['Too cold, soft', '#9ad0ff'];
-        sc.pop(words[0], top.clone().add(_v2.set(0, 0.6, 0)), words[1], 1);
+        sc.pop(words[0], top.clone().add(_v2.set(0, 0.3, 0)), words[1], 1);
         this.game.audio.play(res.kind === 'good' ? 'good' : 'oops');
         if (res.kind === 'good' && res.score > 0.95) sc.henReact('startle');
       })
@@ -792,24 +877,28 @@ export class ForgeRun {
     const sc = this.scene, W = sc.W;
     this.thermo.el.hidden = true;
     sc.pumpAllowed = false;
-    sc.walkTo('anvil', 'idle');
-    sc.hammer.visible = true;
-    sc.setShot('infuse');
+    sc.dock('anvil', { dur: 0.8 });
     const af = W.anvilFace;
     this.busy = true;
     this.infPhase = 'wait';
-    this.moveObj(this.carrier, { pos: new THREE.Vector3(af.x + 0.05, af.y + 0.03, af.z), rot: new THREE.Euler(0, 0, 0) }, 0.8, 0.4, () => {
+    // on the anvil like the billet was: the carrier's +x (the blade) along the face
+    this.moveObj(this.carrier, { pos: af.clone().add(_v2.set(0, 0.016, 0.02)), rot: new THREE.Euler(0, -Math.PI / 2, 0) }, 0.85, 0.12, () => {
       this.busy = false;
       this.game.audio.play('place');
       this.startRing();
     });
     this.crystal = makeCrystal(this.inf.color, 0.5);
-    this.crystal.mesh.position.set(af.x + 0.05, af.y + 0.2, af.z + 0.12);
+    this.crystal.mesh.scale.multiplyScalar(0.36);
+    this.crystalBase = af.clone().add(_v2.set(0, 0.1, 0.02));
+    this.crystal.mesh.position.copy(this.crystalBase);
     sc.scene.add(this.crystal.mesh);
     this.lightning = new Lightning(sc.scene, INFUSION_FX[this.sel.infusion]?.color ?? this.inf.color);
+    sc.paws.set('L', { mode: 'tongs', at: () => this.hiltWorld() });
+    sc.paws.set('R', { mode: 'hammer', at: () => this.crystal.mesh.position.clone().add(_v2.set(0, 0.03, 0)), theta: () => this.theta });
+    this.theta = REST + 0.25;
     this.setActions([]);
     this.setStatus(`${ITEMS[this.sel.infusion].name} hums above the blade.`);
-    this.game.ui.setHints('<span class="fg-nolig">Tap <kbd>Space</kbd> or click when the rings meet</span>');
+    this.game.ui.setHints('<span class="fg-nolig">Strike (click or <kbd>Space</kbd>) when the rings meet</span>');
   }
 
   startRing() {
@@ -828,11 +917,13 @@ export class ForgeRun {
   update_infuse(dt) {
     const sc = this.scene, inp = this.game.input;
     const c = this.crystal;
+    this.workLight(this.weaponT, this.carrier.position);
     if (c && c.mesh.visible) {
       c.mesh.rotation.y += dt * 2;
-      c.mesh.position.y += Math.sin(this.time * 3) * 0.0008;
+      c.mesh.position.y = this.crystalBase.y + Math.sin(this.time * 3) * 0.008;
       c.mat.color.setScalar(0.8 + Math.sin(this.time * 6) * 0.2);
     }
+    this.updateSwing(dt);
     if (this.infPhase === 'ring') {
       this.ringT += dt;
       const R0 = 48, k = this.ringT / 1.5;
@@ -840,14 +931,18 @@ export class ForgeRun {
       const s = sc.toScreen(c.mesh.position);
       for (const n of [this.ringTarget, this.ringMove]) { n.style.left = s.x + 'px'; n.style.top = s.y + 'px'; }
       this.ringMove.style.width = this.ringMove.style.height = Math.max(0, r * 2) + 'px';
-      const tap = inp.pressed('Space') || inp.mousePressed(0);
+      const tap = inp.pressed('Space') || inp.mousePressed(0) || this.debugTap;
+      this.debugTap = false;
       if (tap || r <= 2) {
         const e = Math.abs(r - R0) / R0;
         const q = tap ? (e < 0.12 ? 'perfect' : e < 0.3 ? 'good' : 'ok') : 'ok';
         this.infuseBonus = q === 'perfect' ? 4 : q === 'good' ? 2 : 0.5;
         this.infQ = q;
         this.ringTarget.remove(); this.ringMove.remove();
-        this.releaseInfusion();
+        this.infPhase = 'strike';
+        // the hammer comes down on the crystal: the infusion goes in with the blow
+        this.swing = { t: 0, from: Math.max(this.theta, 1.1), col: 0, power: 0.7, hit: false, onHit: () => this.releaseInfusion() };
+        this.game.audio.play('whoosh');
       }
     } else if (this.infPhase === 'fx') {
       this.fxT += dt;
@@ -858,7 +953,7 @@ export class ForgeRun {
       if (fx) fx.tick(sc.particles, this.lightning, base, tip, this.time, dt, k);
       this.lightning.update(dt);
       if (this.weapon.veinMat) this.weapon.veinMat.color.setScalar(0.6 + 0.5 * Math.abs(Math.sin(this.time * 8)) * k + 0.3);
-      if (this.sel.infusion === 'gravium') this.carrier.position.y = this.infBaseY + Math.sin(Math.min(1, this.fxT / 2.4) * Math.PI) * 0.12;
+      if (this.sel.infusion === 'gravium') this.carrier.position.y = this.infBaseY + Math.sin(Math.min(1, this.fxT / 2.4) * Math.PI) * 0.07;
       if (this.fxT > 2.6 && !this.infEnded) { this.infEnded = true; this.go('result'); }
     }
   }
@@ -869,17 +964,19 @@ export class ForgeRun {
     const pos = c.mesh.position.clone();
     const fx = INFUSION_FX[this.sel.infusion];
     const words = { perfect: ['Perfect infusion!', '#ffd34a'], good: ['Infused!', '#8af07a'], ok: ['Infused', '#e6dcc8'] }[this.infQ];
-    sc.pop(words[0], pos.clone().add(_v2.set(0, 0.2, 0)), words[1], 1);
+    sc.pop(words[0], pos.clone().add(_v2.set(0, 0.1, 0)), words[1], 1);
     this.game.audio.play(this.infQ === 'perfect' ? 'perfect' : 'good');
+    this.game.audio.play('clang', { pitch: 1.4, vol: 0.5 });
     if (fx?.sound) this.game.audio.play(fx.sound);
     this.game.audio.play('sparkle');
     P.sparkle(pos, this.inf.color, 30, 0.3, 0.3);
+    sc.impact(pos, 0.6, 1400);
     c.mesh.visible = false;
     this.st.learn('infusion');
     this.infPhase = 'fx';
     this.fxT = 0;
     this.infBaseY = this.carrier.position.y;
-    sc.extraLight = 4;
+    sc.extraLight = 3;
     sc.post.flash = 0.25;
     setTimeout(() => { sc.post.flash = 0; }, 90);
   }
@@ -906,41 +1003,48 @@ export class ForgeRun {
     this.finished = true;
     this.weaponRec = w;
     const grade = gradeFor(score);
-    // reveal: the blade floats in front of the camera, slowly turning and glowing
-    sc.setShot('reveal');
-    sc.walkTo('idle', 'idle');
+    // the reveal: you hold the new blade up in front of you, turning it in the firelight
+    sc.dock('reveal', { dur: 0.9 });
+    sc.freezeLook = true;
     this.savedPost = { vignette: sc.post.vignette, brightness: sc.post.brightness };
     this.savedHemi = { sky: sc.W.hemi.color.getHex(), i: sc.W.hemi.intensity };
-    const shot = sc.W.shots.reveal;
-    const fwd = shot.look.clone().sub(shot.pos).normalize();
-    const right = fwd.clone().cross(UP).normalize();
-    const spot = shot.pos.clone().addScaledVector(fwd, 1.7).addScaledVector(right, -0.42).add(_v2.set(0, -0.06, 0));
     const total = this.bladeLen + this.weapon.hiltLength;
-    const scale = clamp(0.95 / total, 0.5, 1.6);
+    this.revealScale = clamp(0.36 / total, 0.42, 1.25);
     this.weapon.mat.color.setRGB(1, 1, 1);
     this.weapon.mat.emissive.setRGB(0, 0, 0);
-    this.weapon.group.position.y = -(this.bladeLen - this.weapon.hiltLength) / 2;
+    this.weapon.group.position.y = 0;
     this.orient.rotation.set(0, 0, 0);
-    this.carrier.rotation.set(0, 0, 0);
-    this.carrier.scale.setScalar(scale);
-    this.revealSpin = 0;
     this.revealFrom = this.carrier.position.clone();
-    this.revealSpot = spot;
-    this.revealBack = fwd.clone();
+    this.revealFromQ = this.carrier.quaternion.clone();
     this.revealT = 0;
     this.gradeCol = new THREE.Color(grade.color);
     // the blade glows in its own metal's tint, nudged toward the grade color (the halo carries the grade)
     this.glowCol = new THREE.Color(this.m.color).lerp(this.gradeCol, 0.35);
     this.halo = makeHalo(grade.color);
+    this.halo.scale.setScalar(0.5);
     sc.scene.add(this.halo);
+    sc.paws.jaw = 0.8;
+    sc.paws.set('L', { mode: 'low' });
+    sc.paws.set('R', { mode: 'hold', at: () => this.gripWorld(), up: () => this.bladeUp(), fwd: () => this.knuckles(), snap: true });
     this.game.audio.play('whoosh');
     const later = (ms, fn) => setTimeout(() => { if (sc.game.scene === sc && sc.activity === this) fn(); }, ms);
     later(350, () => this.game.audio.play('fanfare'));
     later(1450, () => this.game.audio.play('success'));
-    if (grade.g === 'S' || grade.g === 'A') { later(900, () => sc.henReact('great')); sc.molePose = 'cheer'; }
+    if (grade.g === 'S' || grade.g === 'A') later(900, () => sc.henReact('great'));
     else if (grade.g === 'F') later(900, () => sc.henReact('bad'));
     this.buildCard(w, grade, { shape, temper, balance, quench: hasQ ? quench : null, bonus });
   }
+
+  /** The middle of the grip, where the fist closes (world). */
+  gripWorld(out = new THREE.Vector3()) {
+    const g = this.weapon.group;
+    g.updateMatrixWorld(true);
+    return g.localToWorld(out.set(0, -this.weapon.hiltLength * 0.5, 0));
+  }
+
+  bladeUp(out = new THREE.Vector3()) { return out.set(0, 1, 0).applyQuaternion(this.carrier.quaternion); }
+
+  knuckles(out = new THREE.Vector3()) { return out.set(0, 0, -1).applyQuaternion(this.carrier.quaternion).add(_v2.set(0, -0.25, 0)); }
 
   buildCard(w, grade, s) {
     const sc = this.scene;
@@ -976,28 +1080,42 @@ export class ForgeRun {
   }
 
   update_result(dt) {
-    const sc = this.scene, P = sc.particles;
+    const sc = this.scene, P = sc.particles, cam = sc.camera;
     this.revealT += dt;
     const k = Math.min(1, this.revealT / 0.9);
-    arcPoint(this.revealFrom, this.revealSpot, 0.4, ease.out(k), this.carrier.position);
-    this.carrier.position.y += Math.sin(this.time * 1.6) * 0.012 * k;
-    this.revealSpin += dt * (1.2 - 0.6 * k);
-    this.carrier.rotation.y = this.revealSpin;
-    this.carrier.rotation.z = Math.sin(this.time * 0.9) * 0.05;
+    // held up in front: a little right of centre, tilted toward the light, turning slowly
+    cam.updateMatrixWorld();
+    const fwd = _v.set(0, 0, -1).transformDirection(cam.matrixWorld);
+    const right = new THREE.Vector3(1, 0, 0).transformDirection(cam.matrixWorld);
+    const up = new THREE.Vector3(0, 1, 0).transformDirection(cam.matrixWorld);
+    const total = (this.bladeLen + this.weapon.hiltLength) * this.revealScale;
+    const spot = cam.position.clone().addScaledVector(fwd, 0.4).addScaledVector(right, 0.06).addScaledVector(up, -total * 0.18);
+    const s = this.revealScale;
+    const turn = Math.sin(this.time * 0.8) * 0.55 + 0.25;
+    const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(cam.position, spot, up));
+    q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI + turn, -0.18 + Math.sin(this.time * 1.3) * 0.04)));
+    arcPoint(this.revealFrom, spot, 0.08, ease.out(k), this.carrier.position);
+    this.carrier.quaternion.slerpQuaternions(this.revealFromQ, q, ease.out(k));
+    this.carrier.scale.setScalar(lerp(1, s, ease.out(k)));
+    this.carrier.position.y += Math.sin(this.time * 1.6) * 0.004 * k;
     const glow = 0.07 + 0.05 * Math.sin(this.time * 3);
     this.weapon.mat.emissive.copy(this.glowCol).multiplyScalar(glow * k);
     if (this.weapon.veinMat) this.weapon.veinMat.color.setScalar(0.8 + 0.3 * Math.sin(this.time * 5));
-    if (Math.random() < dt * 14) P.sparkle(this.carrier.position, this.gradeCol.getHex(), 1, 0.5, 0.15);
+    const mid = this.weapon.group.localToWorld(new THREE.Vector3(0, this.bladeLen * 0.5, 0));
+    if (Math.random() < dt * 14) P.sparkle(mid, this.gradeCol.getHex(), 1, 0.25, 0.1);
     if (this.halo) {
-      this.halo.position.copy(this.carrier.position).addScaledVector(this.revealBack, 0.35);
+      this.halo.position.copy(mid).addScaledVector(fwd, 0.3);
       this.halo.material.opacity = (0.4 + 0.1 * Math.sin(this.time * 2.4)) * k;
-      this.halo.scale.setScalar(0.95 + 0.05 * Math.sin(this.time * 1.7));
+      this.halo.scale.setScalar(0.42 + 0.03 * Math.sin(this.time * 1.7));
     }
-    sc.post.vignette = lerp(this.savedPost.vignette ?? 0.38, 0.75, k);
+    sc.post.vignette = lerp(this.savedPost.vignette ?? 0.38, 0.7, k);
     sc.W.hemi.color.setHex(this.savedHemi.sky).lerp(_white, 0.55 * k);
-    sc.W.hemi.intensity = lerp(this.savedHemi.i, this.savedHemi.i * 1.25, k);
-    sc.post.brightness = lerp(this.savedPost.brightness ?? 1, 0.92, k);
-    sc.extraLight = 2 * k;
+    sc.W.hemi.intensity = lerp(this.savedHemi.i, this.savedHemi.i * 1.3, k);
+    sc.post.brightness = lerp(this.savedPost.brightness ?? 1, 0.95, k);
+    sc.extraLight = 0.6 * k;
+    sc.workSrc = null;
+    // a cool display light from over your shoulder so the metal reads as metal in the firelight
+    sc.displayLight = { pos: cam.position.clone().addScaledVector(up, 0.25).addScaledVector(right, -0.2), color: 0xdce6ff, intensity: 0.9 * k };
     if (this.sel.infusion && INFUSION_FX[this.sel.infusion] && this.lightning) {
       const g = this.weapon.group;
       INFUSION_FX[this.sel.infusion].tick(P, this.lightning, g.localToWorld(new THREE.Vector3(0, 0, 0)), g.localToWorld(new THREE.Vector3(0, this.bladeLen, 0)), this.time, dt, 0.35);
@@ -1015,6 +1133,5 @@ export class ForgeRun {
     if (this.view && this.view.group.parent) this.view.update(dt, this.time);
     if (this.step !== 'result') this.updateUI(dt);
     this.pollActionKeys();
-    this.scene.extraLight = Math.max(0, (this.scene.extraLight || 0) - dt * 14);
   }
 }

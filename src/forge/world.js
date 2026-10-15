@@ -1,289 +1,299 @@
-// Builds the blacksmith corner: room shell, props, light and named stations/camera shots.
+// The smithy, built for first person in meters (the mole is 0.86 m tall, eyes at 0.72 m). The
+// voxel props in models.js are modelled in old "units" (1/32-unit voxels); each one is placed
+// with a uniform scale S, so the finest detail is ~2.2 cm. Returns the room handles, the
+// collision boxes, the interaction spots and the camera docks the activities use.
+//
+//   north wall (z = 0): the brick hearth with its copper hood, the bellows to its right (worked
+//   by a chain pull hanging at the hearth's front corner), the workbench and tool rack beyond.
+//   The smith's spot is in front of the hearth: the anvil is a quarter turn to the right, the
+//   quench barrel to the left, the ingot mold on a stone block at the hearth's left corner.
 import * as THREE from 'three';
 import { makeRng } from '../core/util.js';
 import {
-  V, makeHearth, makeBellows, makeAnvil, makePlatform, makeBarrel, makeGrindstone, makeToolRack, makeWorkbench,
+  V, P, makeHearth, makeBellows, makeAnvil, makeBarrel, makeGrindstone, makeToolRack, makeWorkbench,
   makeCoalBin, makeCrate, makeShelf, makeLantern, makeHerbBundle, makeVine, makeBeam, makeMossStrip, makeMold,
   makeSack, makeScrapPile, makeStool, makeLogs, makeStoneBlock, makeBladeBarrel, makeWallDisplay, makeBucket, makeTongs,
+  makeBellowsPull, makeChainSpan, makeDoor, makePlinth,
 } from './models.js';
 import { backWallTexture, sideWallTexture, floorTexture, postcardTexture, rugTexture, WaterTexture } from './textures.js';
 import { batchStatic } from '../bookends/batch.js';
 import { makeShimmer } from './fx.js';
+import { makeGlow } from '../bookends/fx.js';
 
-export const ROOM = { left: -4.1, right: 4.5, back: -2.3, front: 2.9, ceil: 4.0 };
+/** Meters per model unit. */
+export const S = 0.7;
+export const ROOM = { w: 5.6, d: 4.8, h: 2.5 };
+/** The ingot mold and ingots are modelled big: they're placed at this × S. */
+export const MS = 0.5;
+const U = (m) => m / S; // meters → model units (textures are laid out in units)
 
-function plane(w, h, tex, opts = {}) {
-  const mat = new THREE.MeshLambertMaterial({ map: tex, color: opts.color ?? 0xffffff });
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
-  return m;
+function plane(w, h, tex, color = 0xffffff) {
+  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({ map: tex, color }));
 }
 
 export function buildWorld(scene) {
   const t0 = performance.now();
-  const W = {};
+  const W = { boxes: [], docks: {}, hanging: [] };
   const R = ROOM;
-  const width = R.right - R.left, depth = R.front - R.back, height = R.ceil;
+  const root = new THREE.Group();
+  scene.add(root);
+  W.root = root;
+  const put = (obj, x, y, z, ry = 0, s = S) => {
+    obj.scale.multiplyScalar(s);
+    obj.position.set(x, y, z);
+    obj.rotation.y = ry;
+    root.add(obj);
+    return obj;
+  };
+  const solid = (x0, y0, z0, x1, y1, z1, tag = null) => W.boxes.push([x0, y0, z0, x1, y1, z1, tag]);
+  const world = (obj, local) => { obj.updateWorldMatrix(true, false); return obj.localToWorld(local.clone()); };
 
   // ---------------------------------------------------------------- shell
-  const hearthX = -1.25, hearthZ = R.back + 0.565;
-  const floor = plane(width, depth, floorTexture(width, depth, [hearthX - R.left - 1.25, 0, hearthX - R.left + 1.35, 1.75]));
+  const hearthX = 2.0;
+  const floor = plane(R.w, R.d, floorTexture(U(R.w), U(R.d), [U(hearthX - 0.95), 0, U(hearthX + 0.95), U(1.75)]));
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set((R.left + R.right) / 2, 0, (R.back + R.front) / 2);
-  scene.add(floor);
-  const back = plane(width, height, backWallTexture(width, height, [hearthX - R.left - 0.95, hearthX - R.left + 0.95]));
-  back.position.set((R.left + R.right) / 2, height / 2, R.back);
-  scene.add(back);
-  const sideD = depth;
-  const left = plane(sideD, height, sideWallTexture(sideD, height, [1.55, 0.9, 1.6, 0.95]));
-  left.rotation.y = Math.PI / 2;
-  left.position.set(R.left, height / 2, (R.back + R.front) / 2);
-  scene.add(left);
-  const right = plane(sideD, height, sideWallTexture(sideD, height, null, 13));
-  right.rotation.y = -Math.PI / 2;
-  right.position.set(R.right, height / 2, (R.back + R.front) / 2);
-  scene.add(right);
-  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), new THREE.MeshLambertMaterial({ color: 0x2a1810 }));
+  floor.position.set(R.w / 2, 0, R.d / 2);
+  root.add(floor);
+  const north = plane(R.w, R.h, backWallTexture(U(R.w), U(R.h), [U(hearthX - 0.68), U(hearthX + 0.68)]));
+  north.position.set(R.w / 2, R.h / 2, 0);
+  root.add(north);
+  const west = plane(R.d, R.h, sideWallTexture(U(R.d), U(R.h), [U(1.7), U(0.75), U(1.15), U(0.68)], 7));
+  west.rotation.y = Math.PI / 2;
+  west.position.set(0, R.h / 2, R.d / 2);
+  root.add(west);
+  const east = plane(R.d, R.h, sideWallTexture(U(R.d), U(R.h), null, 13));
+  east.rotation.y = -Math.PI / 2;
+  east.position.set(R.w, R.h / 2, R.d / 2);
+  root.add(east);
+  const south = plane(R.w, R.h, sideWallTexture(U(R.w), U(R.h), null, 17));
+  south.rotation.y = Math.PI;
+  south.position.set(R.w / 2, R.h / 2, R.d);
+  root.add(south);
+  // ceiling boards, smoked dark over the years
+  const ceil = plane(R.w, R.d, floorTexture(U(R.w), U(R.d), null, 23), 0x9a7a6a);
   ceil.rotation.x = Math.PI / 2;
-  ceil.position.set((R.left + R.right) / 2, height, (R.back + R.front) / 2);
-  scene.add(ceil);
+  ceil.position.set(R.w / 2, R.h, R.d / 2);
+  root.add(ceil);
+  // floor, ceiling and thick walls for the walker
+  solid(-1, -1, -1, R.w + 1, 0, R.d + 1); solid(-1, R.h, -1, R.w + 1, R.h + 1, R.d + 1);
+  solid(-1, 0, -1, 0, 3, R.d + 1); solid(R.w, 0, -1, R.w + 1, 3, R.d + 1);
+  solid(-1, 0, -1, R.w + 1, 3, 0); solid(-1, 0, R.d, R.w + 1, 3, R.d + 1);
 
-  // beams: wall plate, posts, ceiling joists
-  const plate = makeBeam(Math.round(width / V), 5, 4);
-  plate.position.set((R.left + R.right) / 2, 3.25, R.back + 0.13);
-  scene.add(plate);
-  const plateL = makeBeam(Math.round(sideD / V), 5, 4);
-  plateL.rotation.y = Math.PI / 2;
-  plateL.position.set(R.left + 0.13, 3.25, (R.back + R.front) / 2);
-  scene.add(plateL);
-  for (const x of [R.left + 0.14, 0.35, R.right - 0.14]) {
-    const post = makeBeam(4, Math.round(3.4 / V), 4);
-    post.position.set(x, 1.7, R.back + 0.14);
-    scene.add(post);
-  }
-  for (const x of [-2.2, 1.7]) {
-    const joist = makeBeam(Math.round(depth / V), 5, 4, 0x3e2616);
-    joist.rotation.y = Math.PI / 2;
-    joist.position.set(x, 3.75, (R.back + R.front) / 2);
-    scene.add(joist);
-  }
-  const moss = makeMossStrip(Math.round(width / V), 9);
-  moss.position.set((R.left + R.right) / 2, 3.25 + 2.5 * V, R.back + 0.13);
-  scene.add(moss);
+  // stone plinths along the foot of the walls, timber wall plates, corner posts and joists
+  const plinth = (len, x, z, ry) => { const p = makePlinth(Math.round(U(len) * 32), 8, 4, Math.round(x * 7 + z * 3)); put(p, x, 0, z, ry); };
+  plinth(R.w, 0, 0.0, 0);
+  plinth(R.d, 0.0, R.d, Math.PI / 2);
+  plinth(R.d, R.w, 0, -Math.PI / 2);
+  plinth(R.w, R.w, R.d, Math.PI);
+  const beamV = (m) => Math.round(U(m) * 16);
+  const plateN = makeBeam(beamV(R.w), 5, 4);
+  put(plateN, R.w / 2, R.h - 0.12, 0.1);
+  for (const [x, ry] of [[0.1, Math.PI / 2], [R.w - 0.1, Math.PI / 2]]) put(makeBeam(beamV(R.d), 5, 4), x, R.h - 0.12, R.d / 2, ry);
+  put(makeBeam(beamV(R.w), 5, 4), R.w / 2, R.h - 0.12, R.d - 0.1);
+  for (const [x, z] of [[0.1, 0.1], [R.w - 0.1, 0.1], [0.1, R.d - 0.1], [R.w - 0.1, R.d - 0.1], [3.62, 0.1]]) put(makeBeam(4, beamV(R.h), 4), x, R.h / 2, z);
+  for (const x of [0.9, 3.35, 4.75]) put(makeBeam(beamV(R.d), 6, 4, 0x3e2616), x, R.h - 0.18, R.d / 2, Math.PI / 2);
+  const moss = makeMossStrip(beamV(R.w), 9);
+  put(moss, R.w / 2, R.h - 0.05, 0.1);
 
-  // ---------------------------------------------------------------- hearth & bellows
-  const hearth = makeHearth();
-  hearth.group.position.set(hearthX, 0, hearthZ);
+  // ---------------------------------------------------------------- hearth, bellows, the pull
+  const hearth = makeHearth({ H: 18, tuyereRight: true });
   hearth.group.userData.dynamic = true;
-  scene.add(hearth.group);
+  put(hearth.group, hearthX, 0, 0.415);
   W.hearth = hearth;
-  W.firePos = hearth.firePos.clone().add(hearth.group.position);
-  const bellows = makeBellows();
-  const tuyere = hearth.tuyere.clone().add(hearth.group.position);
-  bellows.group.position.set(tuyere.x - bellows.nozzleTip.x, tuyere.y - bellows.nozzleTip.y, tuyere.z);
+  W.firePos = world(hearth.group, hearth.firePos);
+  W.coalTop = W.firePos.y;
+  solid(hearthX - 0.56, 0, 0, hearthX + 0.56, 0.5, 0.84, 'hearth');
+  solid(hearthX - 0.62, 0.9, 0, hearthX + 0.62, 2.6, 0.84, 'hood');
+  const bellows = makeBellows({ standH: 6 });
+  bellows.group.rotation.y = Math.PI; // nozzle toward -x, into the hearth's right side
+  const tuyere = world(hearth.group, hearth.tuyere);
+  const nz = bellows.nozzleTip.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiplyScalar(S);
   bellows.group.userData.dynamic = true;
-  scene.add(bellows.group);
+  put(bellows.group, tuyere.x - nz.x, 0, tuyere.z - nz.z, Math.PI);
   W.bellows = bellows;
-  // an invisible, generous hit box for clicking the bellows
-  const hit = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.9, 0.9), new THREE.MeshBasicMaterial({ visible: false }));
-  hit.position.set(bellows.group.position.x - 0.42, 0.45, bellows.group.position.z);
-  scene.add(hit);
-  W.bellowsHit = hit;
+  solid(tuyere.x, 0, tuyere.z - 0.28, tuyere.x + 0.98, 0.45, tuyere.z + 0.28, 'bellows');
+  // the pull: a pulley on the hood's front-right corner, a chain down to a T-handle by the fire
+  const pull = makeBellowsPull(24);
+  pull.group.position.set(21 * P, 41 * P, 19.5 * P);
+  pull.group.scale.setScalar(0.5);
+  hearth.group.add(pull.group);
+  W.pull = pull;
+  W.pullSpan = makeChainSpan(7, S);
+  root.add(W.pullSpan);
+  W.pullGrip = (out = new THREE.Vector3()) => { pull.handle.updateWorldMatrix(true, false); return pull.handle.localToWorld(out.set(0, 1.5 * P, 0)); };
+  W.pullTop = (out = new THREE.Vector3()) => { pull.group.updateWorldMatrix(true, false); return pull.group.localToWorld(out.set(0, 0, 0)); };
+  W.bellowsEnd = (out = new THREE.Vector3()) => { bellows.grip.updateWorldMatrix(true, false); return bellows.grip.getWorldPosition(out); };
+  // spare tongs hanging down the hearth's left side
+  for (const [dz, ry] of [[0.28, Math.PI / 2 + 0.1], [0.42, Math.PI / 2 - 0.08]]) {
+    const t = makeTongs(10);
+    put(t, hearthX - 0.575, 0.58, dz, 0, 0.6 * S);
+    t.rotation.set(0, ry, Math.PI / 2);
+  }
 
-  // ingot mold on a stone block between hearth and anvil
+  // ingot mold on a stone block at the hearth's left corner
   const blockG = makeStoneBlock(6.4);
-  blockG.position.set(hearthX + 1.25, 0, hearthZ + 0.25);
-  scene.add(blockG);
+  put(blockG, hearthX - 0.88, 0, 0.6);
   const mold = makeMold();
-  mold.group.position.set(hearthX + 1.25, 8 * V * 0.8, hearthZ + 0.25);
-  scene.add(mold.group);
+  mold.group.userData.dynamic = true;
+  put(mold.group, hearthX - 0.88, 13 * P * S, 0.6, 0, MS * S);
   W.mold = mold;
+  W.moldTop = world(mold.group, new THREE.Vector3(0, mold.cavityTop, 0));
+  solid(hearthX - 1.1, 0, 0.38, hearthX - 0.66, 0.42, 0.82, 'mold');
 
-  // ---------------------------------------------------------------- anvil station
-  const anvil = makeAnvil();
-  const anvilPos = new THREE.Vector3(0.55, 0, -0.42);
-  anvil.group.position.copy(anvilPos);
-  scene.add(anvil.group);
+  // ---------------------------------------------------------------- the anvil: a quarter turn right
+  // a mole's anvil: about half a mole long, its face at knuckle height (~0.37 m) on a tall stump
+  const AS = 0.5;
+  const anvil = makeAnvil({ stumpH: 14 });
+  const anvilPos = new THREE.Vector3(2.8, 0, 1.38);
+  put(anvil.group, anvilPos.x, 0, anvilPos.z, -Math.PI / 2, AS); // horn toward the hearth (north)
   W.anvil = anvil;
-  W.anvilFace = new THREE.Vector3(anvilPos.x + anvil.faceX, anvil.faceY, anvilPos.z);
-  const platform = makePlatform();
-  platform.position.set(anvilPos.x, 0, anvilPos.z - 0.62);
-  scene.add(platform);
+  W.anvilFace = world(anvil.group, new THREE.Vector3(anvil.faceX, anvil.faceY, 0));
+  W.anvilAxis = new THREE.Vector3(0, 0, 1); // along the face, horn → heel
+  solid(anvilPos.x - 0.2, 0, anvilPos.z - 0.2, anvilPos.x + 0.2, 0.4, anvilPos.z + 0.2, 'anvil');
+  solid(anvilPos.x - 0.1, 0.2, anvilPos.z - 0.5, anvilPos.x + 0.1, 0.4, anvilPos.z + 0.32, 'anvil');
 
-  // ---------------------------------------------------------------- quench barrel, grindstone, bench
+  // ---------------------------------------------------------------- quench barrel: to the left
   const water = new WaterTexture(40);
   W.water = water;
   const barrel = makeBarrel(water.texture);
-  const barrelPos = new THREE.Vector3(hearthX + 0.5, 0, hearthZ + 1.05);
-  barrel.group.position.copy(barrelPos);
   barrel.group.userData.dynamic = true;
-  scene.add(barrel.group);
+  const barrelPos = new THREE.Vector3(1.28, 0, 1.52);
+  put(barrel.group, barrelPos.x, 0, barrelPos.z);
   W.barrel = barrel;
-  W.barrelTop = new THREE.Vector3(barrelPos.x, barrel.waterY, barrelPos.z);
-  const grind = makeGrindstone();
-  grind.group.position.set(3.2, 0, -0.6);
-  grind.group.rotation.y = 0.3;
-  scene.add(grind.group);
-  W.grind = grind;
-  W.grindContact = grind.contact.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.3).add(grind.group.position);
-  W.grindAxle = new THREE.Vector3(Math.cos(0.3), 0, -Math.sin(0.3));
-  W.grindTan = new THREE.Vector3(Math.sin(0.3), 0, Math.cos(0.3)); // the rim's top runs this way, away from the grinder
-  const bench = makeWorkbench();
-  bench.group.position.set(2.75, 0, R.back + 0.4);
-  scene.add(bench.group);
-  W.bench = bench;
-  W.fulcrumTop = bench.fulcrumTop.clone().add(bench.group.position);
-  const rack = makeToolRack();
-  rack.position.set(2.7, 1.15, R.back + 0.02);
-  scene.add(rack);
-  const card = new THREE.Mesh(new THREE.PlaneGeometry(14 * V, 10 * V), new THREE.MeshLambertMaterial({ map: postcardTexture() }));
-  card.position.set(3.85, 1.75, R.back + 0.02);
-  card.rotation.z = 0.06;
-  scene.add(card);
+  W.barrelTop = new THREE.Vector3(barrelPos.x, barrel.waterY * S, barrelPos.z);
+  solid(barrelPos.x - 0.25, 0, barrelPos.z - 0.25, barrelPos.x + 0.25, 0.46, barrelPos.z + 0.25, 'barrel');
+  const bucket = makeBucket();
+  put(bucket, 0.9, 0, 1.95, 0.4);
 
-  // ---------------------------------------------------------------- decor
-  const coal = makeCoalBin();
-  coal.position.set(hearthX - 1.5, 0, hearthZ + 1.35);
-  coal.rotation.y = 0.25;
-  scene.add(coal);
-  W.coalBin = coal;
-  const crate = makeCrate();
-  crate.position.set(1.75, 0, -0.5);
-  crate.rotation.y = 0.3;
-  scene.add(crate);
-  W.perch = new THREE.Vector3(1.75, 8 * V, -0.5);
+  // ---------------------------------------------------------------- bench, rack, grindstone: the east side
+  const bench = makeWorkbench();
+  put(bench.group, 4.45, 0, 0.27);
+  W.bench = bench;
+  W.fulcrumTop = world(bench.group, bench.fulcrumTop);
+  W.candleMat = bench.candleMat;
+  solid(3.82, 0, 0, 5.08, 0.5, 0.52, 'bench');
+  const rack = makeToolRack();
+  put(rack, 4.45, 0.78, 0.015);
+  const card = new THREE.Mesh(new THREE.PlaneGeometry(14 * V * S, 10 * V * S), new THREE.MeshLambertMaterial({ map: postcardTexture() }));
+  card.position.set(5.32, 1.0, 0.012);
+  card.rotation.z = 0.06;
+  root.add(card);
+  const grind = makeGrindstone();
+  const grindPos = new THREE.Vector3(3.72, 0, 2.38);
+  put(grind.group, grindPos.x, 0, grindPos.z, 0.25);
+  W.grind = grind;
+  W.grindContact = world(grind.group, grind.contact);
+  W.grindAxle = new THREE.Vector3(Math.cos(0.25), 0, -Math.sin(0.25));
+  W.grindTan = new THREE.Vector3(Math.sin(0.25), 0, Math.cos(0.25));
+  solid(grindPos.x - 0.25, 0, grindPos.z - 0.22, grindPos.x + 0.25, 0.45, grindPos.z + 0.22, 'grind');
+  const stool = makeStool();
+  put(stool, 4.25, 0, 1.25);
+  solid(4.08, 0, 1.08, 4.42, 0.31, 1.42, 'stool');
   const shelf = makeShelf();
-  shelf.group.position.set(1.2, 1.75, R.back + 0.02);
-  scene.add(shelf.group);
+  put(shelf.group, R.w - 0.01, 1.2, 1.55, -Math.PI / 2);
   W.shelfGlow = shelf.glowMat;
-  const lantern = makeLantern(14);
-  lantern.group.position.set(0.95, 3.75 - (14 + 8) * V, -0.9);
-  scene.add(lantern.group);
+
+  // ---------------------------------------------------------------- the west side: coal, Nugget, firewood
+  const coal = makeCoalBin();
+  put(coal, 0.4, 0, 0.58, 0.1);
+  W.coalBin = coal;
+  solid(0.1, 0, 0.3, 0.7, 0.3, 0.86, 'coal');
+  const crate = makeCrate();
+  put(crate, 0.42, 0, 1.38, 0.2);
+  W.perch = new THREE.Vector3(0.42, 16 * P * S, 1.38);
+  solid(0.18, 0, 1.14, 0.66, 0.36, 1.62, 'crate');
+  const logs = makeLogs();
+  put(logs, 0.26, 0, 2.35, Math.PI / 2);
+  solid(0.08, 0, 2.05, 0.46, 0.3, 2.65, 'logs');
+  const sack = makeSack();
+  put(sack, 0.32, 0, 3.0, 0.6);
+  solid(0.1, 0, 2.8, 0.55, 0.42, 3.2, 'sack');
+  const scrap = makeScrapPile();
+  put(scrap, 3.55, 0, 3.15, 0.5);
+
+  // ---------------------------------------------------------------- the south side: door, finished work
+  const door = makeDoor(33, 54);
+  put(door, 1.25, 0, R.d - 0.04, Math.PI);
+  W.doorPos = new THREE.Vector3(1.25, 0.55, R.d - 0.1);
+  const blades = makeBladeBarrel(4);
+  put(blades, 5.05, 0, 4.28, 0.4);
+  solid(4.82, 0, 4.05, 5.28, 0.5, 4.5, 'blades');
+  W.bladeBarrel = new THREE.Vector3(5.05, 0.45, 4.28);
+  const display = makeWallDisplay();
+  put(display, 3.4, 1.35, R.d - 0.03, Math.PI);
+  const rug = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 0.8), new THREE.MeshLambertMaterial({ map: rugTexture(U(1.25), U(0.8)), transparent: true, alphaTest: 0.5 }));
+  rug.rotation.x = -Math.PI / 2;
+  rug.rotation.z = 0.05;
+  rug.position.set(1.7, 0.004, 3.55);
+  root.add(rug);
+
+  // ---------------------------------------------------------------- hanging things
+  const rng = makeRng(41);
+  const hang = (obj, phase, amp) => { obj.userData.dynamic = true; W.hanging.push({ obj, phase, amp }); };
+  const lantern = makeLantern(10);
+  put(lantern.group, 2.75, R.h - 0.18 - (10 + 8) * V * S - 0.02, 2.35);
   W.lanternMat = lantern.glassMat;
   W.lantern = lantern.group;
-  W.candleMat = bench.candleMat;
-
-  // floor clutter: rug, charcoal sack, logs, scrap heap, a stool
-  const rug = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.1), new THREE.MeshLambertMaterial({ map: rugTexture(1.8, 1.1), transparent: true, alphaTest: 0.5 }));
-  rug.rotation.x = -Math.PI / 2;
-  rug.rotation.z = 0.08;
-  rug.position.set(-1.05, 0.004, 1.05);
-  scene.add(rug);
-  const sack = makeSack();
-  sack.position.set(-3.55, 0, 0.25);
-  sack.rotation.y = 0.6;
-  scene.add(sack);
-  const logs = makeLogs();
-  logs.position.set(-3.75, 0, -0.62);
-  logs.rotation.y = Math.PI / 2;
-  scene.add(logs);
-  const scrap = makeScrapPile();
-  scrap.position.set(1.25, 0, 0.75);
-  scene.add(scrap);
-  const stool = makeStool();
-  stool.position.set(3.95, 0, 0.6);
-  scene.add(stool);
-  // finished work waiting to go to market, a shield on the wall, a bucket by the hearth
-  const blades = makeBladeBarrel(4);
-  blades.position.set(4.05, 0, -1.55);
-  blades.rotation.y = 0.4;
-  scene.add(blades);
-  const display = makeWallDisplay();
-  display.position.set(R.right - 0.04, 2.25, 0.35);
-  display.rotation.y = -Math.PI / 2;
-  scene.add(display);
-  const bucket = makeBucket();
-  bucket.position.set(hearthX - 1.05, 0, hearthZ + 0.62);
-  scene.add(bucket);
-  // spare tongs hanging from the hood's chain hooks
-  for (const [x, ry] of [[hearthX - 0.95, 0.15], [hearthX + 0.88, -0.2]]) {
-    const t = makeTongs(13);
-    t.rotation.set(0, ry, -Math.PI / 2);
-    t.position.set(x, 1.55, hearthZ - 0.15);
-    scene.add(t);
-  }
-
-  const rng = makeRng(41);
-  W.hanging = [];
-  const hang = (obj, phase, amp) => { obj.userData.dynamic = true; W.hanging.push({ obj, phase, amp }); };
-  // dried herbs along a rope under the wall plate
-  const herbXs = [-0.2, 0.15, 0.6, 1.15, 1.55, 2.0];
-  herbXs.forEach((x, i) => {
+  W.lanternPos = new THREE.Vector3(2.75, R.h - 0.18 - (10 + 8) * V * S + 0.12, 2.35);
+  [3.75, 4.05, 4.35, 4.65, 4.95, 5.25].forEach((x, i) => {
     const h = makeHerbBundle(i, 3 + (i % 3) * 2, 100 + i);
-    h.position.set(x, 3.2, R.back + 0.32);
-    scene.add(h);
+    put(h, x, R.h - 0.2, 0.3);
     hang(h, rng.range(0, 6), 0.03);
   });
-  // vines from the plate and joists
-  const vineSpots = [[-3.6, R.back + 0.3, 18], [-3.1, R.back + 0.28, 10], [-0.05, R.back + 0.3, 8], [2.35, R.back + 0.28, 14], [3.6, R.back + 0.3, 20], [4.0, R.back + 0.32, 9],
-    [R.left + 0.3, -1.2, 16], [R.left + 0.3, 0.2, 22], [R.left + 0.28, 1.2, 12]];
+  const vineSpots = [[0.6, 0.22, 18], [1.05, 0.22, 10], [3.0, 0.22, 8], [5.35, 0.24, 14], [0.22, 2.4, 16], [0.22, 3.6, 22], [5.38, 2.8, 12], [5.38, 3.9, 18], [2.4, R.d - 0.22, 10]];
   vineSpots.forEach(([x, z, len], i) => {
     const v = makeVine(len, 200 + i);
-    v.position.set(x, 3.25, z);
-    scene.add(v);
+    put(v, x, R.h - 0.1, z);
     hang(v, rng.range(0, 6), 0.02);
   });
-  for (const [x, len] of [[-2.2, 12], [-2.2, 7], [1.7, 15], [1.7, 9]]) {
+  for (const [x, len, z] of [[0.9, 12, 2.0], [3.35, 15, 3.2], [3.35, 8, 1.2], [4.75, 10, 2.6]]) {
     const v = makeVine(len, 300 + len);
-    v.position.set(x, 3.72, -1.0 + len * 0.06);
-    scene.add(v);
+    put(v, x, R.h - 0.22, z);
     hang(v, rng.range(0, 6), 0.025);
   }
 
-  // heat haze over the coals
-  W.shimmer = makeShimmer(1.25, 1.1);
-  W.shimmer.position.copy(W.firePos).add(new THREE.Vector3(0, 0.62, 0.05));
-  scene.add(W.shimmer);
+  // heat haze over the coals and a soft dithered glow above them
+  W.shimmer = makeShimmer(0.8, 0.75);
+  W.shimmer.position.copy(W.firePos).add(new THREE.Vector3(0, 0.06, 0.02));
+  root.add(W.shimmer);
+  W.fireGlow = makeGlow({ color: 0xff8a30, size: 0.9, intensity: 0.3, falloff: 1.5, levels: 6, renderOrder: 14 });
+  W.fireGlow.position.copy(W.firePos).add(new THREE.Vector3(0, 0.08, 0.05));
+  W.fireGlow.userData.dynamic = true;
+  root.add(W.fireGlow);
 
   // ---------------------------------------------------------------- light
-  const hemi = new THREE.HemisphereLight(0xd8b0a0, 0x4a2c1c, 2.45);
-  scene.add(hemi);
-  const fire = new THREE.PointLight(0xff8a3a, 7, 14, 1.2);
-  fire.position.copy(W.firePos).add(new THREE.Vector3(0.1, 0.45, 0.45));
-  scene.add(fire);
+  const hemi = new THREE.HemisphereLight(0xb89080, 0x3a2418, 0.95);
+  root.add(hemi);
+  const fire = new THREE.PointLight(0xff8a3a, 5, 7.5, 1.35);
+  fire.position.copy(W.firePos).add(new THREE.Vector3(0, 0.16, -0.06));
+  root.add(fire);
+  const lamp = new THREE.PointLight(0xffc070, 1.2, 4.5, 1.5);
+  lamp.position.copy(W.lanternPos);
+  root.add(lamp);
+  const work = new THREE.PointLight(0xff7a2a, 0, 1.6, 1.8); // hot metal lights its surroundings
+  root.add(work);
   W.light = fire;
+  W.lamp = lamp;
+  W.workLight = work;
   W.hemi = hemi;
 
-  // ---------------------------------------------------------------- stations & shots
-  const bp = bellows.group.position;
-  W.stations = {
-    bellows: { pos: new THREE.Vector3(bp.x - bellows.length - 0.33, 0, bp.z + 0.02), yaw: Math.PI / 2 },
-    anvil: { pos: new THREE.Vector3(anvilPos.x, 3 * V, anvilPos.z - 0.62), yaw: 0 },
-    hearth: { pos: new THREE.Vector3(hearthX - 0.2, 0, hearthZ + 1.12), yaw: Math.PI },
-    barrel: { pos: new THREE.Vector3(barrelPos.x + 0.56, 0, barrelPos.z - 0.12), yaw: -Math.PI / 2 },
-    bench: { pos: new THREE.Vector3(1.55, 0, R.back + 0.75), yaw: Math.PI / 2 },
-    grind: { pos: W.grindContact.clone().setY(0).addScaledVector(W.grindTan, -0.58), yaw: Math.atan2(W.grindTan.x, W.grindTan.z) },
-    idle: { pos: new THREE.Vector3(anvilPos.x, 3 * V, anvilPos.z - 0.62), yaw: 0.45 },
-  };
-  // walking obstacles (circles {x,z,r} and boxes {x0,x1,z0,z1}) and detour waypoints
-  W.obstacles = [
-    { x0: hearthX - 0.8, x1: hearthX + 0.8, z0: R.back - 0.1, z1: hearthZ + 0.62 },
-    { x0: bp.x - 0.95, x1: bp.x + 0.1, z0: bp.z - 0.38, z1: bp.z + 0.38 },
-    { x: barrelPos.x, z: barrelPos.z, r: 0.38 },
-    { x: coal.position.x, z: coal.position.z, r: 0.42 },
-    { x: mold.group.position.x, z: mold.group.position.z, r: 0.33 },
-    { x: anvilPos.x, z: anvilPos.z, r: 0.4 },
-    { x: crate.position.x, z: crate.position.z, r: 0.36 },
-    { x0: 1.85, x1: 3.65, z0: R.back - 0.1, z1: R.back + 0.78 },
-    { x: grind.group.position.x, z: grind.group.position.z, r: 0.38 },
-    { x: -3.55, z: 0.25, r: 0.3 }, { x: -3.75, z: -0.62, r: 0.25 }, { x: 1.25, z: 0.75, r: 0.38 }, { x: 3.95, z: 0.6, r: 0.28 },
-  ];
-  W.waypoints = [[-3.72, -1.08], [-2.3, -1.06], [-1.6, -0.02], [-0.15, -0.02], [-0.1, -0.95], [1.05, 0.0], [1.15, -1.15], [2.65, -1.15], [0.55, 0.35], [2.7, 0.05], [-1.45, -0.62], [3.9, -0.12], [2.43, -0.62]]
-    .map(([x, z]) => new THREE.Vector3(x, 0, z));
+  // ---------------------------------------------------------------- docks (camera stances for the work)
+  // stand: where the walker ends up; eye: the camera (the mole leans in); look: what it looks at
+  const dock = (name, stand, eye, look, fov = 64, pts = []) => { W.docks[name] = { name, stand: new THREE.Vector3(...stand), eye: new THREE.Vector3(...eye), look: new THREE.Vector3(...look), fov, pts }; };
+  const v3 = (p, x = 0, y = 0, z = 0) => p.clone().add(new THREE.Vector3(x, y, z));
+  const fp = W.firePos, af = W.anvilFace, bt = W.barrelTop, mt = W.moldTop, gc = W.grindContact, ft = W.fulcrumTop;
+  const pg = W.pullGrip(new THREE.Vector3());
+  dock('hearth', [2.24, 0, 1.24], [2.26, 0.74, 1.12], [fp.x + 0.32, fp.y - 0.02, fp.z + 0.02], 62, [v3(fp, -0.22), v3(fp, 0.16), v3(pg, 0, -0.05)]);
+  dock('anvil', [2.3, 0, 1.45], [2.34, 0.73, af.z], [af.x, af.y - 0.02, af.z], 60, [v3(af, 0, 0, -0.16), v3(af, 0, 0, 0.16)]);
+  dock('barrel', [1.86, 0, 1.5], [1.82, 0.74, bt.z], [bt.x + 0.04, bt.y - 0.04, bt.z], 64, [v3(bt, 0, 0, -0.18), v3(bt, 0, 0, 0.18), v3(bt, 0, 0.3)]);
+  dock('mold', [1.82, 0, 1.2], [1.72, 0.74, 1.1], [mt.x + 0.04, mt.y + 0.02, mt.z + 0.02], 60, [v3(mt, -0.06), v3(mt, 0.12, 0.12)]);
+  dock('grind', [3.2, 0, 1.85], [3.18, 0.76, 1.8], [gc.x, gc.y - 0.04, gc.z], 60, [v3(gc, -0.15), v3(gc, 0.2)]);
+  dock('bench', [4.4, 0, 1.0], [ft.x, 0.74, 0.92], [ft.x, ft.y + 0.02, ft.z], 60, [v3(ft, -0.24), v3(ft, 0.24)]);
+  dock('reveal', [2.3, 0, 1.6], [2.3, 0.72, 1.62], [1.8, 0.62, 2.6], 60);
+  dock('spawn', [2.25, 0, 2.15], [2.25, 0.72, 2.15], [2.2, 0.45, 0.6], 74);
+
   // merge the static props into a few big meshes (the moving/clickable groups are flagged dynamic)
-  const batches = batchStatic(scene);
+  const batches = batchStatic(root);
   W.stats = { ms: performance.now() - t0, batches: batches.length, batched: batches.reduce((n, b) => n + b.userData.batched, 0) };
-  const af = W.anvilFace;
-  W.shots = {
-    overview: { pos: new THREE.Vector3(3.1, 2.45, 4.0), look: new THREE.Vector3(-0.55, 0.95, -1.0), fov: 45 },
-    menu: { pos: new THREE.Vector3(3.0, 2.15, 4.3), look: new THREE.Vector3(-0.3, 1.05, -1.2), fov: 44 },
-    hearth: { pos: new THREE.Vector3(hearthX - 0.45, 2.15, hearthZ + 4.6), look: new THREE.Vector3(hearthX - 1.05, 0.72, hearthZ), fov: 42 },
-    pour: { pos: new THREE.Vector3(hearthX + 1.6, 2.2, hearthZ + 2.685), look: new THREE.Vector3(hearthX + 1.0, 0.55, hearthZ + 0.285), fov: 36 },
-    anvil: { pos: new THREE.Vector3(af.x + 0.05, af.y + 0.02 + 3.4 * Math.sin(0.98), af.z - 0.04 + 3.4 * Math.cos(0.98)), look: new THREE.Vector3(af.x + 0.05, af.y + 0.02, af.z - 0.04), fov: 23 },
-    infuse: { pos: new THREE.Vector3(af.x + 0.3, af.y + 1.55, af.z + 2.7), look: new THREE.Vector3(af.x + 0.05, af.y + 0.42, af.z - 0.2), fov: 38 },
-    quench: { pos: new THREE.Vector3(-1.4, 2.0, 2.6), look: new THREE.Vector3(-0.5, 0.85, -0.75), fov: 40 },
-    bench: { pos: new THREE.Vector3(W.fulcrumTop.x - 0.05, W.fulcrumTop.y + 0.95, W.fulcrumTop.z + 1.45), look: new THREE.Vector3(W.fulcrumTop.x - 0.05, W.fulcrumTop.y + 0.05, W.fulcrumTop.z), fov: 40 },
-    grind: { pos: new THREE.Vector3(W.grindContact.x - 0.35, 2.15, W.grindContact.z + 3.6), look: new THREE.Vector3(W.grindContact.x - 0.1, 0.8, W.grindContact.z - 0.2), fov: 34 },
-    reveal: { pos: new THREE.Vector3(2.4, 2.25, 3.55), look: new THREE.Vector3(-1.05, 0.9, -1.1), fov: 44 },
-  };
   return W;
 }

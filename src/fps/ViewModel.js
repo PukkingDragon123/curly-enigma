@@ -5,7 +5,7 @@
 //
 //   const vm = new ViewModel();
 //   vm.resize(aspect);
-//   vm.setTool('pick', { item: 'pick_iron' });   // pick chisel brush drill xray stake beam food none
+//   vm.setTool('pick', { item: 'pick_iron' });   // pick chisel brush drill xray stake beam food none hammer tongs smith
 //   vm.update(dt, { speed, grounded, climbing, swimming, look: {dx, dy}, lamp: {color, intensity}, ambient, heat, camera });
 //   vm.swing('pick', 0.3); vm.impact('pick', 1); vm.use('drill', true); vm.eat('grub_bar'); vm.hurt();
 //   engine.render(world, cam, { overlay: { scene: vm.scene, camera: vm.camera } });
@@ -15,6 +15,14 @@
 // vm.busy (an action or eat animation is playing), vm.world (a group to add to the WORLD scene
 // once: the x-ray beam cone lives there, lined up with the lens; pass `camera` = the world
 // camera to update() so it can follow).
+//
+// Smithing (the forge): 'hammer' (right paw), 'tongs' (left paw) and 'smith' (both). A scene can
+// steer the paws onto things in its world with vm.drive = { R, L, k } (each hand: { p, q, at,
+// grip, tool } in view-camera space: the tool point `at` (voxels, e.g. HAMMER_FACE / TONGS_JAW)
+// lands on p with orientation q; k 0..1 blends from the normal poses), vm.jaw (tongs opening
+// 0..1), and update() option `work` (or vm.work) = { pos (view space), color, intensity } for a
+// light on the paws from the fire or hot metal. vm.toView(worldPoint, worldCamera, out) maps a world point
+// into view space so a paw drawn there sits exactly over it.
 import * as THREE from 'three';
 import { SkinAssembler, scaleVisible, charMaterial } from '../gfx/char/skin.js';
 import {
@@ -23,11 +31,13 @@ import {
 } from './viewmodel/parts.js';
 import { Pose, P, aim, aimZ, Spring, ease, easeOut, easeIn, clamp, wobble } from './viewmodel/pose.js';
 import { XrayBeam } from './viewmodel/beam.js';
+import { hammerGeo, tongsGeo, HAMMER_FACE, TONGS_JAW, TONGS_RIVET } from './viewmodel/smith.js';
 import { ITEMS } from '../data/items.js';
 
 /** Meters per view-model voxel. */
 export const VMV = 0.0035;
-export const TOOL_KINDS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'beam', 'food', 'none'];
+export const TOOL_KINDS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'beam', 'food', 'none', 'hammer', 'tongs', 'smith'];
+export { HAMMER_FACE, TONGS_JAW };
 
 // ---------------------------------------------------------------- poses (right hand, camera space)
 const OPEN = P([0.2, -0.165, -0.35], [-0.25, 0.75, 0.62], [-0.3, 0.25, -1]);
@@ -41,7 +51,13 @@ const BASE = {
   beam: P([0.135, -0.135, -0.37], [1, 0.04, -0.1], [0, 0.45, -1]),
   food: P([0.13, -0.15, -0.31], [-0.15, 1, 0.3], [-0.35, 0.05, -1]),
   none: OPEN,
+  hammer: P([0.17, -0.2, -0.33], [-0.3, 1, -0.25], [-0.8, -0.1, -0.6]),
+  tongs: OPEN,
+  smith: P([0.17, -0.2, -0.33], [-0.3, 1, -0.25], [-0.8, -0.1, -0.6]),
 };
+const TONGS_L = P([0.15, -0.2, -0.3], [-0.12, 0.3, -1], [-0.2, -1, -0.25]); // left paw (mirrored on use): tongs out front, jaws down
+const HAS_TONGS = new Set(['tongs', 'smith']);
+const HAS_HAMMER = new Set(['hammer', 'smith']);
 const XRAY_ON = P([0.07, -0.13, -0.34], [0.02, 1, 0.08], [-0.2, 0.08, -1]);
 const MALLET = P([0.15, -0.15, -0.36], [-0.42, 1, 0.08], [-0.35, 0.1, -1]); // mirrored onto the left paw
 const CLIMB_UP = P([0.13, -0.01, -0.34], [0, 0.18, 1], [-0.12, 1, -0.12]);
@@ -57,10 +73,11 @@ const SHOULDER = new THREE.Vector3(0.4, -0.6, 0.06);
 const WRIST_Z = 12; // voxels behind the grip/palm centre
 
 const TWO_HANDED = new Set(['drill', 'beam']);
-const SWING_TOOLS = new Set(['pick', 'chisel', 'stake', 'beam', 'none', 'drill', 'brush', 'xray', 'food']);
+const SWING_TOOLS = new Set(['pick', 'chisel', 'stake', 'beam', 'none', 'drill', 'brush', 'xray', 'food', 'hammer', 'tongs', 'smith']);
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _up = new THREE.Vector3();
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
+const _m4 = new THREE.Matrix4(), _s3 = new THREE.Vector3();
 const _c = new THREE.Color(), _c2 = new THREE.Color();
 const UNIT = new THREE.Vector3(1, 1, 1);
 
@@ -100,7 +117,9 @@ export class ViewModel {
     this.key.position.set(0.12, 0.5, 0.3);
     this.key.target.position.set(0, -0.35, -0.6);
     this.glowLight = new THREE.PointLight(0x7fe7ff, 0, 0.9, 1.6);
-    this.scene.add(this.hemi, this.key, this.key.target, this.glowLight);
+    // a light the scene can place on the paws (the forge's fire, hot metal in the tongs)
+    this.workLight = new THREE.PointLight(0xff8a3a, 0, 3, 1.4);
+    this.scene.add(this.hemi, this.key, this.key.target, this.glowLight, this.workLight);
 
     // world-side effects (the x-ray beam): the game adds vm.world to its scene once
     this.beam = new XrayBeam();
@@ -140,6 +159,13 @@ export class ViewModel {
     this.R = new Pose(); this.L = new Pose();
     this.tmp = new Pose(); this.tmp2 = new Pose();
     this.leftFood = null;
+    // external steering (smithing): see the header
+    this.drive = null;
+    this.work = null; // default for update()'s `work` option
+    this.driveK = 0;
+    this.jaw = 0;
+    this.jawK = 0;
+    this.jaws = null;
     this.skin = null;
     this.bones = [];
     this.tool = {};
@@ -167,7 +193,7 @@ export class ViewModel {
     this.P = { base: {} };
     for (const [key, pose] of Object.entries(BASE)) this.P.base[key] = fit(pose);
     Object.assign(this.P, {
-      open: fit(OPEN), xrayOn: fit(XRAY_ON), mallet: fit(MALLET),
+      open: fit(OPEN), xrayOn: fit(XRAY_ON), mallet: fit(MALLET), tongsL: fit(TONGS_L),
       climbUp: fit(CLIMB_UP), climbDn: fit(CLIMB_DN), swimA: fit(SWIM_A), swimB: fit(SWIM_B), swimC: fit(SWIM_C),
       swipeUp: fit(SWIPE_UP), swipeHit: fit(SWIPE_HIT),
       mouth: new THREE.Vector3(MOUTH.x * L.x, MOUTH.y * L.y, MOUTH.z),
@@ -226,6 +252,20 @@ export class ViewModel {
     const parent = this.tool.tip ? this.toolR : this.handR;
     this.rig.updateMatrixWorld(true);
     return parent.localToWorld(out.set(tip[0] * VMV, tip[1] * VMV, tip[2] * VMV));
+  }
+
+  /**
+   * Map a world point into this view-model camera's space so that something drawn there lines up
+   * with it on screen (the world camera may have a different field of view): x and y stay, the
+   * depth stretches by the ratio of the two views. Directions: pass dir = true (normalised).
+   */
+  toView(p, worldCam, out = new THREE.Vector3(), dir = false) {
+    out.copy(p);
+    if (dir) out.transformDirection(worldCam.matrixWorldInverse);
+    else out.applyMatrix4(worldCam.matrixWorldInverse);
+    const k = Math.tan(THREE.MathUtils.degToRad(worldCam.fov) / 2) / Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2);
+    out.z *= k;
+    return dir ? out.normalize() : out;
   }
 
   dispose() {
@@ -307,6 +347,23 @@ export class ViewModel {
       T.food = [0, 1, 2, 3].map((st) => scaleVisible(A.part(this.toolR, foodGeo(item || 'grub_bar', st), { scale: F })));
       T.food.forEach((b, i) => { b.visible = i === 0; });
       T.tip = [0, 20, 0];
+    }
+    if (HAS_HAMMER.has(kind)) {
+      A.part(this.toolR, hammerGeo(), { scale: S });
+      T.tip = HAMMER_FACE;
+    }
+    this.jaws = null;
+    if (HAS_TONGS.has(kind)) {
+      // tongs in the left paw: the reins, two jaw bones on the rivet, and the jaws' inner faces
+      // on the glowing layer (they heat up holding hot work)
+      const tg = tongsGeo();
+      A.part(this.toolL, tg.reins, { scale: M });
+      const ja = A.part(this.toolL, tg.jawA, { scale: M, pos: [0, TONGS_RIVET * V, 0] });
+      const jb = A.part(this.toolL, tg.jawB, { scale: M, pos: [0, TONGS_RIVET * V, 0] });
+      A.attach(ja, tg.tipA, 'detail');
+      A.attach(jb, tg.tipB, 'detail');
+      this.jaws = [ja, jb];
+      T.tongs = true;
     }
     // the snack the left paw is eating
     this.foodL = null;
@@ -390,9 +447,12 @@ export class ViewModel {
       if (this.kind === 'none') gripR = false;
       // breathing
       R.rot(Math.sin(t * 1.9) * 0.012, 0, Math.sin(t * 0.8) * 0.01);
-      if (this.kind === 'chisel') L.copy(P.mallet).mirror(); else L.copy(P.open).mirror();
+      if (this.kind === 'chisel') L.copy(P.mallet).mirror();
+      else if (HAS_TONGS.has(this.kind)) L.copy(P.tongsL).mirror();
+      else L.copy(P.open).mirror();
       L.rot(Math.sin(t * 1.9 + 0.6) * 0.012, 0, 0);
-      gripL = this.kind === 'chisel';
+      gripL = this.kind === 'chisel' || HAS_TONGS.has(this.kind);
+      if (HAS_TONGS.has(this.kind)) leftItem = true;
       this.toolLayers(R, L, dt);
       if (this.tool.socket && !(this.eating && this.eating.hand === 'L')) {
         // the off paw holds the tool's second grip (rides on the right paw + tool)
@@ -403,7 +463,16 @@ export class ViewModel {
       }
       // stake/beam: it stays where it was set (the paw lets go), then a fresh one comes up
       if (this.placed > 0) { toolVis = this.placed < 0.08 || this.placed > 0.62; if (!toolVis) gripR = false; }
+      // a scene steering the paws onto its world (smithing)
+      const d = this.drive;
+      this.driveK += ((d ? d.k ?? 1 : 0) - this.driveK) * Math.min(1, dt * 9);
+      if (d && this.driveK > 0.001) {
+        const f = this.applyDrive(R, L, d, this.driveK);
+        if (f.R) { gripR = f.R.grip; toolVis = f.R.tool; }
+        if (f.L) { gripL = f.L.grip; leftItem = f.L.tool; }
+      }
     }
+    if (this.mode !== 'tool') this.driveK = Math.max(0, this.driveK - dt * 9);
 
     // ---- eating
     if (this.eating) {
@@ -444,6 +513,12 @@ export class ViewModel {
     this.gripL.visible = gripL; this.openL.visible = !gripL;
     this.toolR.visible = toolVis;
     this.toolL.visible = leftItem && !(this.eating && this.eating.hand === 'L');
+    if (this.jaws) {
+      this.jawK += (this.jaw - this.jawK) * Math.min(1, dt * 16);
+      const a = 0.015 + this.jawK * 0.2;
+      this.jaws[0].rotation.z = a;
+      this.jaws[1].rotation.z = -a;
+    }
     this.foodLGroup.visible = !!(this.eating && this.eating.hand === 'L' && this.eating.t < 1.2);
     if (this.tool.spin) this.tool.spin.rotation.z = this.spinA;
 
@@ -460,17 +535,19 @@ export class ViewModel {
     const b = this.bobAmp, ph = this.walkPh;
     const sh = this.shake * this.shake;
     const rig = this.rig;
-    const Ls = this.layout.s ?? 1;
+    const Ls = this.driveScale();
+    // steered paws hold still on their work: the rig's own motion fades out under a drive
+    const free = 1 - 0.9 * this.driveK;
     rig.scale.setScalar(Ls);
     rig.position.set(
-      sx + Math.sin(ph) * 0.012 * b + wobble(t * 23, 1) * 0.006 * sh + Math.sin(t * 0.7) * 0.002,
-      sy - Math.abs(Math.cos(ph)) * 0.015 * b + 0.006 * b + ld * 0.35 + air * 0.022 + Math.sin(t * 1.9) * 0.0035 + wobble(t * 21, 2) * 0.006 * sh - easeIn(this.stow) * 0.55,
-      wobble(t * 19, 3) * 0.004 * sh,
+      (sx + Math.sin(ph) * 0.012 * b + wobble(t * 23, 1) * 0.006 * sh + Math.sin(t * 0.7) * 0.002) * free,
+      (sy - Math.abs(Math.cos(ph)) * 0.015 * b + 0.006 * b + ld * 0.35 + air * 0.022 + Math.sin(t * 1.9) * 0.0035 + wobble(t * 21, 2) * 0.006 * sh) * free - easeIn(this.stow) * 0.55,
+      wobble(t * 19, 3) * 0.004 * sh * free,
     );
     rig.rotation.set(
-      sy * 1.6 + Math.abs(Math.cos(ph)) * 0.02 * b - air * 0.06 + ld * 0.6 + this.stow * 0.45,
-      -sx * 1.4,
-      Math.sin(ph) * 0.025 * b + sx * 0.6 + wobble(t * 17, 4) * 0.03 * sh,
+      (sy * 1.6 + Math.abs(Math.cos(ph)) * 0.02 * b - air * 0.06 + ld * 0.6) * free + this.stow * 0.45,
+      -sx * 1.4 * free,
+      (Math.sin(ph) * 0.025 * b + sx * 0.6 + wobble(t * 17, 4) * 0.03 * sh) * free,
     );
     if (Ls !== 1) rig.position.addScaledVector(this.layout.pivot, 1 - Ls);
 
@@ -497,7 +574,7 @@ export class ViewModel {
       const wind = ease(a / windEnd);
       const strike = clamp((a - windEnd) / (d - windEnd), 0, 1);
       const rec = ease((a - d - 0.1) / 0.35);
-      if (kind === 'pick') {
+      if (kind === 'pick' || kind === 'hammer' || kind === 'smith') {
         // wind up over the shoulder, snap down so the point lands at `dur`, hang, recover
         // the point lands near the crosshair at `dur`, then the arm sags back as the head bites
         const WIND = 0.8, HIT = -0.42;
@@ -565,6 +642,38 @@ export class ViewModel {
     if (kind === 'brush' && ub < 0.01 && !act) R.rot(0, 0, Math.sin(t * 1.3) * 0.02);
   }
 
+  /**
+   * Steer the paws onto view-space targets (see the header). Each hand target puts its tool point
+   * `at` (voxels) on `p` with orientation `q`; the steady rig frame (layout scale and pivot only)
+   * converts them into rig space. Returns the grip/tool flags of the steered hands.
+   */
+  applyDrive(R, L, d, k) {
+    // steered paws are drawn at true size (the narrow-screen shrink fades out under a drive)
+    const Ls = this.driveScale();
+    // steady rig frame: scale about the layout pivot (the swaying part is faded out while driven)
+    _s3.copy(this.layout.pivot || _v.set(0, 0, 0)).multiplyScalar(1 - Ls);
+    _m4.makeScale(Ls, Ls, Ls).setPosition(_s3).invert();
+    const out = {};
+    for (const [side, pose] of [['R', R], ['L', L]]) {
+      const tg = d[side];
+      if (!tg || !tg.p) continue;
+      const q = tg.q || pose.q;
+      const at = tg.at || [0, 0, 0];
+      _v.set(at[0] * VMV * Ls, at[1] * VMV * Ls, at[2] * VMV * Ls).applyQuaternion(q);
+      this.tmp.p.copy(tg.p).sub(_v).applyMatrix4(_m4);
+      this.tmp.q.copy(q);
+      pose.mix(this.tmp, k * (tg.k ?? 1));
+      out[side] = { grip: tg.grip ?? true, tool: tg.tool ?? true };
+    }
+    return out;
+  }
+
+  /** The rig's scale now: the layout's shrink, faded toward 1 while the paws are steered. */
+  driveScale() {
+    const Ls = this.layout.s ?? 1;
+    return Ls + (1 - Ls) * this.driveK;
+  }
+
   /** Left paw pose for the mallet blow: the head's face meets the chisel's struck cap. */
   malletHit(R, out) {
     const butt = this.tool.butt || [0, -33, 0];
@@ -609,6 +718,11 @@ export class ViewModel {
     const S = this.P.shoulder;
     _v.set(0, 0, WRIST_Z * VMV).applyQuaternion(hand.quaternion).add(hand.position); // wrist
     _v2.set(S.x * side, S.y, S.z);
+    // reaching out to steered work, the arm comes up from lower down (it stays out of the way)
+    // and is drawn a little slimmer
+    if (this.driveK > 0) _v2.lerp(_up.set(Math.max(0.42, S.x) * side, S.y * 1.7, S.z + 0.2), this.driveK);
+    const thin = 1 - 0.22 * this.driveK;
+    arm.scale.set(thin, thin, 1);
     arm.position.copy(_v);
     _v2.sub(_v);
     _up.set(0, 1, 0).applyQuaternion(hand.quaternion);
@@ -641,12 +755,21 @@ export class ViewModel {
       gl.set(T.lensColor).multiplyScalar(0.35 + u * (1.2 + Math.sin(t * 23) * 0.15));
       li = u * 0.5;
       this.glowLight.color.set(T.lensColor);
+    } else if (T.tongs) {
+      heatColor(this.heat, gl);
+      li = 0;
     } else if (T.glow) {
       gl.set(T.glow.color).multiplyScalar(T.glow.k + Math.sin(t * 2.6) * 0.12);
       li = T.kind === 'stake' && this.toolR.visible ? 0.18 : 0;
       this.glowLight.color.set(T.glow.color);
     } else gl.setRGB(0, 0, 0);
     this.glowLight.intensity = li;
+    const w = o.work || this.work; // (vm.work persists for scenes whose rig calls update())
+    if (w && w.intensity > 0) {
+      this.workLight.color.copy(colorOf(w.color, 0xff8a3a));
+      this.workLight.intensity = w.intensity;
+      if (w.pos) this.workLight.position.copy(w.pos);
+    } else this.workLight.intensity = 0;
     if (li > 0 && T.light) {
       this.rig.updateMatrixWorld(true);
       this.toolR.localToWorld(this.glowLight.position.set(T.light[0] * VMV, T.light[1] * VMV, T.light[2] * VMV));

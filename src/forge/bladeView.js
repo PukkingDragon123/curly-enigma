@@ -25,12 +25,18 @@ function getScaleTex() {
   }
   scaleTex = pixelTexture(pc.commit());
   scaleTex.colorSpace = THREE.NoColorSpace;
+  // the bar's slices are long and narrow: tile the mottling so it isn't smeared across them
+  scaleTex.wrapS = scaleTex.wrapT = THREE.RepeatWrapping;
+  scaleTex.repeat.set(0.4, 2.2);
   scaleTex.userData.shared = true;
   return scaleTex;
 }
 
-export const COL = 0.08; // world length of one column
-export const HWU = 0.028; // world units per half-width unit
+/** Meters per old forge unit for the blade (a mole-sized blade: a shortsword is ~45 cm). */
+export const BS = 0.62;
+export const COL = 0.08 * BS; // world length of one column
+export const HWU = 0.028 * BS; // world units per half-width unit
+const SUB = 3; // drawn slices per column (smooth outline between columns)
 
 /** Darkened "forge scale" look of a metal while it is being worked. */
 export function scaleColor(metal) {
@@ -39,7 +45,9 @@ export function scaleColor(metal) {
 
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
 unitBox.userData.shared = true;
-const thick = (w) => 0.02 + Math.min(6, w) * 0.0045;
+/** Thickness of the bar for a half-width (thin edges are hammered thinner too). */
+export const thick = (w) => (0.02 + Math.min(6, w) * 0.0045) * BS;
+const smooth = (t) => t * t * (3 - 2 * t);
 
 export class BladeView {
   constructor(sim) {
@@ -51,18 +59,22 @@ export class BladeView {
     for (let i = 0; i < sim.maxLen; i++) {
       const mat = voxelMaterial('toon', { unique: true, vertexColors: false, color: this.base, emissive: 0x000000 });
       mat.map = st; mat.emissiveMap = st;
-      const m = new THREE.Mesh(unitBox, mat);
-      m.visible = false;
-      m.layers.enable(1);
-      this.group.add(m);
-      this.cols.push({ mesh: m, mat, disp: sim.w[i] ?? 0, squash: 0, cracks: [] });
+      const slices = [];
+      for (let j = 0; j < SUB; j++) {
+        const m = new THREE.Mesh(unitBox, mat);
+        m.visible = false;
+        m.layers.enable(1);
+        this.group.add(m);
+        slices.push(m);
+      }
+      this.cols.push({ slices, mat, disp: sim.w[i] ?? 0, squash: 0, cracks: [] });
     }
     // tang: a stub the tongs hold
     const tm = voxelMaterial('toon', { unique: true, vertexColors: false, color: this.base, emissive: 0x000000 });
     tm.map = st; tm.emissiveMap = st;
     this.tang = new THREE.Mesh(unitBox, tm);
-    this.tang.scale.set(0.16, 0.022, 0.035);
-    this.tang.position.set(-0.08, 0.011, 0);
+    this.tang.scale.set(0.16 * BS, 0.02 * BS, 0.035 * BS);
+    this.tang.position.set(-0.08 * BS, 0.01 * BS, 0);
     this.tang.layers.enable(1);
     this.tangMat = tm;
     this.group.add(this.tang);
@@ -81,9 +93,13 @@ export class BladeView {
     this.ghostCol = -1;
     // a dithered heat haze around the bar while it glows
     this.halo = makeGlow({ color: 0xff8a30, size: 1, intensity: 0, falloff: 1.6, levels: 6, renderOrder: 18 });
-    this.halo.position.set(0, 0.03, 0);
+    this.halo.position.set(0, 0.03 * BS, 0);
     this.group.add(this.halo);
+    this.maxTh = 0.02 * BS;
   }
+
+  /** Where the tongs bite: the middle of the tang (local). */
+  tangPoint(out = new THREE.Vector3()) { return out.set(-0.11 * BS, 0.01 * BS, 0); }
 
   /** Show (col >= 0) or hide the predicted width of a column under a charging blow. */
   ghost(col, w = 0) {
@@ -110,8 +126,8 @@ export class BladeView {
     const t = this.sim.target;
     const pts = [];
     const segs = []; // column index owning each dot (-1 for caps)
-    const step = 0.016;
-    const y = 0.005;
+    const step = 0.016 * BS;
+    const y = 0.005 * BS;
     for (let i = 0; i < t.length; i++) {
       const x0 = i * COL, x1 = (i + 1) * COL;
       for (let x = x0 + step / 2; x < x1; x += step) for (const s of [-1, 1]) { pts.push(x, y, s * t[i] * HWU); segs.push(i); }
@@ -136,24 +152,45 @@ export class BladeView {
 
   setDotsVisible(v) { if (this.dots) this.dots.visible = v; }
 
-  /** Lift the dots above the thickest column so they read on top. */
+  /** Width of the drawn bar at local x (smooth between column centres). */
+  widthAt(x) {
+    const n = this.sim.w.length;
+    const f = x / COL - 0.5;
+    const i0 = Math.max(0, Math.min(n - 1, Math.floor(f)));
+    const i1 = Math.min(n - 1, i0 + 1);
+    const t = f < 0 ? 0 : Math.max(0, Math.min(1, f - i0));
+    const a = this.cols[i0].disp, b = this.cols[i1].disp;
+    // never interpolate into an empty column: the bar ends square
+    if (b < 0.03) return a;
+    return a + (b - a) * smooth(t);
+  }
+
+  /** Per-frame: ease the columns toward the simulation, heat colours, cracks, dots and frame. */
   update(dt, time) {
     const sim = this.sim;
-    let maxTh = 0.02;
+    let maxTh = 0.02 * BS;
     for (let i = 0; i < this.cols.length; i++) {
       const c = this.cols[i];
       const w = sim.w[i] ?? 0;
       c.disp += (w - c.disp) * Math.min(1, dt * 16);
       c.squash = Math.max(0, c.squash - dt * 5);
+    }
+    for (let i = 0; i < this.cols.length; i++) {
+      const c = this.cols[i];
       const vis = i < sim.w.length && c.disp > 0.03;
-      c.mesh.visible = vis;
-      if (!vis) { for (const k of c.cracks) k.visible = false; continue; }
-      const th = thick(c.disp) * (1 - c.squash * 0.45);
-      maxTh = Math.max(maxTh, th);
-      c.mesh.scale.set(COL * 1.001, th, Math.max(0.006, 2 * c.disp * HWU * (1 + c.squash * 0.12)));
-      c.mesh.position.set((i + 0.5) * COL, th / 2, 0);
+      if (!vis) { for (const m of c.slices) m.visible = false; for (const k of c.cracks) k.visible = false; continue; }
+      for (let j = 0; j < SUB; j++) {
+        const m = c.slices[j];
+        const x = (i + (j + 0.5) / SUB) * COL;
+        const hw = this.widthAt(x);
+        const th = thick(hw) * (1 - c.squash * 0.45);
+        maxTh = Math.max(maxTh, th);
+        m.visible = true;
+        m.scale.set(COL / SUB * 1.002, th, Math.max(0.004, 2 * hw * HWU * (1 + c.squash * 0.12)));
+        m.position.set(x, th / 2, 0);
+      }
       applyHeat(c.mat, this.base, sim.T[i] ?? 20, 0.95);
-      if (i === this.hover) c.mat.emissive.offsetHSL(0, 0, 0).addScalar(0.05);
+      if (i === this.hover) c.mat.emissive.addScalar(0.05);
       // crack marks
       const n = sim.cracks[i] || 0;
       while (c.cracks.length < n) {
@@ -161,31 +198,34 @@ export class BladeView {
         const seed = (i * 7 + c.cracks.length * 13) % 5;
         for (let s = 0; s < 3; s++) {
           const b = new THREE.Mesh(unitBox, this.crackMat);
-          b.scale.set(0.012, 0.004, 0.012);
-          b.position.set((s - 1) * 0.012 + (seed - 2) * 0.004, 0, (s % 2 ? 0.008 : -0.006) + (s - 1) * 0.01);
+          b.scale.set(0.012 * BS, 0.004 * BS, 0.012 * BS);
+          b.position.set(((s - 1) * 0.012 + (seed - 2) * 0.004) * BS, 0, ((s % 2 ? 0.008 : -0.006) + (s - 1) * 0.01) * BS);
           k.add(b);
         }
         this.group.add(k);
         c.cracks.push(k);
       }
+      const th = thick(c.disp);
       c.cracks.forEach((k, j) => {
         k.visible = true;
-        k.position.set((i + 0.5) * COL + (j - 1) * 0.018, th + 0.002, (j % 2 ? 1 : -1) * Math.min(c.disp * HWU * 0.4, 0.03));
+        k.position.set((i + 0.5) * COL + (j - 1) * 0.018 * BS, th + 0.002 * BS, (j % 2 ? 1 : -1) * Math.min(c.disp * HWU * 0.4, 0.03 * BS));
       });
     }
+    this.maxTh = maxTh;
     applyHeat(this.tangMat, this.base, sim.T[0] ?? 20, 0.7);
     // heat halo: centred on the bar, as bright as its hottest part
     let hot = 0, sumT = 0, sumX = 0;
     for (let i = 0; i < sim.w.length; i++) { const T = sim.T[i] ?? 20; const k = glowAmount(T); if (k > 0) { sumT += k; sumX += k * (i + 0.5) * COL; } if (T > hot) hot = T; }
     const gk = glowAmount(hot);
+    this.hot = hot;
     const hu = this.halo.userData.glow;
-    hu.uIntensity.value = Math.min(0.42, gk * 0.3) * (0.92 + Math.sin(time * 7.3) * 0.08);
+    hu.uIntensity.value = Math.min(0.3, gk * 0.22) * (0.92 + Math.sin(time * 7.3) * 0.08);
     if (gk > 0) hu.uColor.value.setHex(glowHex(hot));
-    hu.uSize.value.setScalar(0.35 + sim.length * COL * 1.15);
+    hu.uSize.value.setScalar(0.12 + sim.length * COL * 0.75);
     this.halo.position.x = sumT > 0 ? sumX / sumT : sim.length * COL * 0.5;
     this.halo.visible = gk > 0.02;
     if (this.dots) {
-      this.dots.position.y = maxTh + 0.004;
+      this.dots.position.y = maxTh + 0.004 * BS;
       const col = this.dots.geometry.attributes.color;
       const pulse = 0.75 + 0.25 * Math.sin(time * 5);
       const cGood = [0.35, 1, 0.4], cThick = [1, 0.62, 0.2], cThin = [0.55, 0.85, 1];
@@ -198,28 +238,35 @@ export class BladeView {
       col.needsUpdate = true;
     }
     if (this.ghostCol >= 0) {
-      const gw = Math.max(0.006, 2 * this.ghostW * HWU);
-      this.ghostMesh.scale.set(COL * 0.9, 0.004, gw);
-      this.ghostMesh.position.set((this.ghostCol + 0.5) * COL, maxTh + 0.006, 0);
+      const gw = Math.max(0.004, 2 * this.ghostW * HWU);
+      this.ghostMesh.scale.set(COL * 0.9, 0.004 * BS, gw);
+      this.ghostMesh.position.set((this.ghostCol + 0.5) * COL, maxTh + 0.006 * BS, 0);
       this.ghostMat.opacity = 0.35 + 0.2 * Math.sin(time * 14);
     }
     // selection frame
     if (this.hover >= 0 && this.hover < sim.w.length) {
       const c = this.cols[this.hover];
-      const hw = Math.max(c.disp, sim.target[this.hover] ?? 0) * HWU + 0.012;
-      const x0 = this.hover * COL - 0.004, x1 = (this.hover + 1) * COL + 0.004, y = maxTh + 0.006;
+      const hw = Math.max(c.disp, sim.target[this.hover] ?? 0) * HWU + 0.012 * BS;
+      const x0 = this.hover * COL - 0.004 * BS, x1 = (this.hover + 1) * COL + 0.004 * BS, y = maxTh + 0.006 * BS;
+      const e = 0.005 * BS, w = 0.007 * BS;
       const [a, b, l, r] = this.frame.children;
-      a.scale.set(x1 - x0, 0.004, 0.006); a.position.set((x0 + x1) / 2, y, hw);
-      b.scale.set(x1 - x0, 0.004, 0.006); b.position.set((x0 + x1) / 2, y, -hw);
-      l.scale.set(0.006, 0.004, hw * 2); l.position.set(x0, y, 0);
-      r.scale.set(0.006, 0.004, hw * 2); r.position.set(x1, y, 0);
+      a.scale.set(x1 - x0, e, w); a.position.set((x0 + x1) / 2, y, hw);
+      b.scale.set(x1 - x0, e, w); b.position.set((x0 + x1) / 2, y, -hw);
+      l.scale.set(w, e, hw * 2); l.position.set(x0, y, 0);
+      r.scale.set(w, e, hw * 2); r.position.set(x1, y, 0);
       this.frame.visible = true;
       this.frame.userData.mat.opacity = 0.6 + 0.4 * Math.sin(time * 9);
     } else this.frame.visible = false;
   }
 
-  /** World x-range (local) of column i center. */
+  /** Local x of column i's centre. */
   colX(i) { return (i + 0.5) * COL; }
+
+  /** Top of the bar over column i (local). */
+  colTop(i, out = new THREE.Vector3()) {
+    const c = this.cols[i];
+    return out.set((i + 0.5) * COL, thick(c ? c.disp : 1), 0);
+  }
 
   /** Hammer-impact squash on a column. */
   squash(i, k = 1) { if (this.cols[i]) this.cols[i].squash = Math.min(1, k); }
@@ -228,7 +275,7 @@ export class BladeView {
   pick(localX, localZ) {
     const i = Math.floor(localX / COL);
     if (i < 0 || i >= this.sim.w.length) return -1;
-    const hw = Math.max(this.sim.w[i], this.sim.target[i] ?? 0, 1.2) * HWU + 0.06;
+    const hw = Math.max(this.sim.w[i], this.sim.target[i] ?? 0, 1.2) * HWU + 0.06 * BS;
     if (Math.abs(localZ) > hw) return -1;
     return i;
   }

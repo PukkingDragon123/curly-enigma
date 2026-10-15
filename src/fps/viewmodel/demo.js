@@ -1,7 +1,8 @@
 // Showroom test bench for the first-person view model (?scene=showroom&mode=fps): a lit voxel
 // cave wall in front, the paws and tools composited through the engine's overlay pass, an auto
 // demo that cycles every tool and animation, and keyboard triggers:
-//   1-9 tool (pick chisel brush drill xray stake beam food none) · T next tier/variant
+//   1-9 tool (pick chisel brush drill xray stake beam food none; the auto demo also shows the
+//   smithing kinds hammer tongs smith) · T next tier/variant
 //   Space/click swing · E toggle use · Q eat · H hurt · J jump · W walk · R run · C climb · V swim
 //   arrow keys look · P pause the auto demo
 // Snapshot params: tool, item, act (swing|use|eat|hurt|walk|run|climb|swim|jump|land|look),
@@ -16,6 +17,7 @@ const VARIANTS = {
   chisel: ['chisel_basic', 'chisel_fine'], brush: ['brush_basic', 'brush_badger'],
   drill: ['drill_steam', 'drill_lumite'], xray: ['xray_lamp', 'xray_prism'],
   stake: [null], beam: [null], food: ['grub_bar', 'cave_carrot', 'hearty_pie', 'glowcap'], none: [null],
+  hammer: [null], tongs: [null], smith: [null],
 };
 
 function hash(x, y, s) {

@@ -103,9 +103,9 @@ export class ParticlePool {
 
   clear() { this.life.fill(0); }
 
-  update(dt, camera, viewHeightPx) {
+  update(dt, camera, viewHeightPx, k = 1) {
     if (camera && camera.isPerspectiveCamera) {
-      this.material.uniforms.uScale.value = viewHeightPx / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+      this.material.uniforms.uScale.value = k * viewHeightPx / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
     }
     const pos = this.aPos.array, col = this.aCol.array, size = this.aSize.array, alpha = this.aAlpha.array;
     let alive = 0;
@@ -218,29 +218,46 @@ export class StreakPool {
   dispose() { this.geo.dispose(); this.material.dispose(); }
 }
 
-/** Pools (glowing additive, soft alpha, flat chips, spark streaks) with preset emitters for the forge. */
+/**
+ * Pools (glowing additive, soft alpha, flat chips, spark streaks) with preset emitters for the forge.
+ * k = the particles' world scale: the presets were tuned in the old forge's units; the pools live
+ * in a group scaled by k, so preset positions are world points while their spreads, speeds and
+ * sizes shrink with k. Spawning straight into a pool: wrap world coordinates with P.w({...}).
+ */
 export class ForgeParticles {
-  constructor(scene) {
+  constructor(scene, k = 1) {
+    this.k = k;
+    this.group = new THREE.Group();
+    this.group.scale.setScalar(k);
     this.glow = new ParticlePool(1400, { additive: true });
     this.soft = new ParticlePool(700, { additive: false, round: true });
     this.flat = new ParticlePool(500, { additive: false });
     this.streak = new StreakPool(700);
-    scene.add(this.glow.points, this.soft.points, this.flat.points, this.streak.lines);
+    this.group.add(this.glow.points, this.soft.points, this.flat.points, this.streak.lines);
+    scene.add(this.group);
+    this._p = new THREE.Vector3();
   }
 
+  /** World point → pool space (a shared vector: use it right away). */
+  loc(p) { return this._p.set(p.x / this.k, p.y / this.k, p.z / this.k); }
+
+  /** Spawn options with world x/y/z → pool space (velocities and sizes stay in the tuned units). */
+  w(o) { o.x /= this.k; o.y /= this.k; o.z /= this.k; return o; }
+
   update(dt, camera, viewHeightPx) {
-    this.glow.update(dt, camera, viewHeightPx);
-    this.soft.update(dt, camera, viewHeightPx);
-    this.flat.update(dt, camera, viewHeightPx);
+    this.glow.update(dt, camera, viewHeightPx, this.k);
+    this.soft.update(dt, camera, viewHeightPx, this.k);
+    this.flat.update(dt, camera, viewHeightPx, this.k);
     this.streak.update(dt);
   }
 
   clear() { this.glow.clear(); this.soft.clear(); this.flat.clear(); this.streak.clear(); }
 
-  dispose() { this.glow.dispose(); this.soft.dispose(); this.flat.dispose(); this.streak.dispose(); }
+  dispose() { this.group.removeFromParent(); this.glow.dispose(); this.soft.dispose(); this.flat.dispose(); this.streak.dispose(); }
 
   /** Hammer-blow spark shower as streaks: a fan of bright scale fragments skidding off the anvil. */
   streaks(p, n = 30, power = 1, colorA = 0xfff6d0, colorB = 0xff6a1a) {
+    p = this.loc(p);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = (1.2 + Math.random() * 3.2) * (0.55 + power * 0.75);
@@ -256,6 +273,7 @@ export class ForgeParticles {
 
   /** Oxide scale knocked off hot metal: dark chips, some still glowing, bouncing off the anvil. */
   scaleFlakes(p, n = 8, glowing = 0.4) {
+    p = this.loc(p);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, sp = 0.35 + Math.random() * 1.1;
       const hot = Math.random() < glowing;
@@ -270,6 +288,7 @@ export class ForgeParticles {
 
   /** A billow of steam rising off the quench barrel. */
   billow(p, n = 12, spread = 0.25, power = 1) {
+    p = this.loc(p);
     for (let i = 0; i < n; i++) {
       this.soft.spawn({
         x: p.x + (Math.random() - 0.5) * spread, y: p.y + Math.random() * 0.06, z: p.z + (Math.random() - 0.5) * spread,
@@ -282,6 +301,7 @@ export class ForgeParticles {
 
   // ---------------------------------------------------------------- presets
   ember(p, spread = 0.3, heat = 1) {
+    p = this.loc(p);
     const hot = Math.random() < 0.3 * heat;
     this.glow.spawn({
       x: p.x + (Math.random() - 0.5) * spread, y: p.y, z: p.z + (Math.random() - 0.5) * spread * 0.6,
@@ -292,6 +312,7 @@ export class ForgeParticles {
   }
 
   flame(p, spread = 0.3, heat = 1) {
+    p = this.loc(p);
     const c = Math.random();
     this.glow.spawn({
       x: p.x + (Math.random() - 0.5) * spread, y: p.y + Math.random() * 0.03, z: p.z + (Math.random() - 0.5) * spread * 0.55,
@@ -302,6 +323,7 @@ export class ForgeParticles {
   }
 
   smoke(p, spread = 0.2, amount = 1) {
+    p = this.loc(p);
     this.soft.spawn({
       x: p.x + (Math.random() - 0.5) * spread, y: p.y, z: p.z + (Math.random() - 0.5) * spread * 0.5,
       vx: (Math.random() - 0.5) * 0.06, vy: 0.22 + Math.random() * 0.2, vz: (Math.random() - 0.5) * 0.05,
@@ -312,6 +334,7 @@ export class ForgeParticles {
 
   /** Hammer sparks: a radial burst of hot scale. */
   sparks(p, n = 24, power = 1, colorA = 0xfff0b0, colorB = 0xff7a1a) {
+    p = this.loc(p);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = (0.8 + Math.random() * 2.4) * (0.5 + power * 0.7);
@@ -327,6 +350,7 @@ export class ForgeParticles {
 
   /** Dull cold-strike flakes (dark scale chips). */
   flakes(p, n = 8) {
+    p = this.loc(p);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, sp = 0.4 + Math.random() * 0.9;
       this.flat.spawn({
@@ -340,6 +364,7 @@ export class ForgeParticles {
 
   /** Burning-steel "sparkler" spray: bright white stars that burst again mid-flight. */
   burnSpray(p, n = 40) {
+    p = this.loc(p);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * 2.6;
       this.glow.spawn({
@@ -363,6 +388,7 @@ export class ForgeParticles {
   }
 
   steam(p, n = 30, spread = 0.3, power = 1) {
+    p = this.loc(p);
     for (let i = 0; i < n; i++) {
       this.soft.spawn({
         x: p.x + (Math.random() - 0.5) * spread, y: p.y + Math.random() * 0.05, z: p.z + (Math.random() - 0.5) * spread,
@@ -374,6 +400,7 @@ export class ForgeParticles {
   }
 
   bubbles(p, n = 6, spread = 0.2) {
+    p = this.loc(p);
     for (let i = 0; i < n; i++) {
       this.flat.spawn({
         x: p.x + (Math.random() - 0.5) * spread, y: p.y, z: p.z + (Math.random() - 0.5) * spread,
@@ -385,6 +412,7 @@ export class ForgeParticles {
 
   /** Small glittering sparkles that drift (gems, infusions, success). */
   sparkle(p, color = 0xfff0a0, n = 10, spread = 0.4, rise = 0.25) {
+    p = this.loc(p);
     for (let i = 0; i < n; i++) {
       this.glow.spawn({
         x: p.x + (Math.random() - 0.5) * spread, y: p.y + (Math.random() - 0.5) * spread * 0.6, z: p.z + (Math.random() - 0.5) * spread,

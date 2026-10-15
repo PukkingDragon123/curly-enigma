@@ -1,50 +1,21 @@
 [
-{
-"wait": 300
-},
-{
-"shot": "shots/forge-menu-01-hub.png"
-},
-{
-"press": "Digit1"
-},
-{
-"wait": 800
-},
-{
-"shot": "shots/forge-menu-02-smelt-list.png"
-},
-{
-"press": "Escape"
-},
-{
-"wait": 400
-},
-{
-"press": "Digit2"
-},
-{
-"wait": 800
-},
-{
-"shot": "shots/forge-menu-03-plan.png"
-},
-{
-"press": "Escape"
-},
-{
-"wait": 400
-},
-{
-"eval": "window.__game.scene.menus.mode"
-},
-{
-"press": "Escape"
-},
-{
-"wait": 2500
-},
-{
-"eval": "'scene now: ' + window.__game.sceneName"
-}
+  { "wait": 300 },
+  { "eval": "JSON.stringify(window.__game.scene.debug.step(20))" },
+  { "shot": "shots/forge-menu-00-walk.png" },
+  { "press": "Digit1" },
+  { "eval": "JSON.stringify(window.__game.scene.debug.step(30))" },
+  { "shot": "shots/forge-menu-01-smelt-list.png" },
+  { "press": "Escape" },
+  { "eval": "JSON.stringify(window.__game.scene.debug.step(20))" },
+  { "press": "Digit2" },
+  { "eval": "JSON.stringify(window.__game.scene.debug.step(30))" },
+  { "shot": "shots/forge-menu-02-plan.png" },
+  { "press": "Escape" },
+  { "eval": "JSON.stringify(window.__game.scene.debug.step(20))" },
+  { "press": "Escape" },
+  { "eval": "JSON.stringify(window.__game.scene.debug.step(20))" },
+  { "shot": "shots/forge-menu-03-hub.png" },
+  { "press": "Escape" },
+  { "wait": 2500 },
+  { "eval": "'scene now: ' + window.__game.sceneName" }
 ]

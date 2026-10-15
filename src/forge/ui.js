@@ -3,12 +3,14 @@
 // the shared theme variables (parchment, wood, gold, pixel fonts).
 import { el, clamp } from '../core/util.js';
 import { gaugeGradient, glowCss, heatWord } from './blackbody.js';
+import { Px, art, INK } from '../ui/uiArt.js';
+import { DSPR } from '../ui/deepArt.js';
 
 const CSS = `
 .fg-layer { position: absolute; inset: 0; pointer-events: none; font-variant-ligatures: none; font-feature-settings: "liga" 0, "clig" 0; }
 .fg-nolig { font-variant-ligatures: none; font-feature-settings: "liga" 0, "clig" 0; }
 .fg-side { position: absolute; left: calc(var(--px) * 4); top: calc(var(--px) * 58); width: calc(var(--px) * 104); padding: calc(var(--px) * 5) calc(var(--px) * 5) calc(var(--px) * 4); gap: calc(var(--px) * 2); }
-.fg-side.act { width: calc(var(--px) * 84); padding: calc(var(--px) * 4) calc(var(--px) * 4) calc(var(--px) * 3); }
+.fg-side.act { top: calc(var(--px) * 8); width: calc(var(--px) * 84); padding: calc(var(--px) * 4) calc(var(--px) * 4) calc(var(--px) * 3); }
 .fg-side.act h2 { font-size: 1.45em; }
 .fg-side.wide { width: min(calc(100vw - var(--px) * 64), calc(var(--px) * 176)); max-height: calc(100vh - var(--px) * 66); }
 .fg-side.plan { width: min(calc(100vw - var(--px) * 64), calc(var(--px) * 212)); max-height: calc(100vh - var(--px) * 66); }
@@ -102,6 +104,14 @@ const CSS = `
 .fg-slider { width: 100%; accent-color: var(--wood); }
 .fg-big-hint { position: absolute; left: 50%; bottom: calc(var(--px) * 18); transform: translateX(-50%); font-family: var(--font-display); font-size: 1.6em; color: var(--text-light); text-shadow: 0 var(--px) 0 #000, 0 calc(var(--px) * 2) 0 rgba(0,0,0,.5); pointer-events: none; white-space: nowrap; }
 @media (max-width: 700px) { .fg-thermo { top: auto; bottom: calc(var(--px) * 30); } .fg-tube { height: calc(var(--px) * 60); } }
+.fg-tbtn { display: none; position: absolute; left: calc(env(safe-area-inset-left, 0px) + var(--px) * 6); bottom: calc(env(safe-area-inset-bottom, 0px) + var(--px) * 8); width: calc(var(--px) * 40); height: calc(var(--px) * 41); padding: 0; border: 0; background: none; pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none; }
+html.is-touch .fg-tbtn.on { display: block; }
+.fg-tbtn::before { content: ''; position: absolute; inset: calc(var(--px) * -4); }
+.fg-tbtn img { position: absolute; image-rendering: pixelated; pointer-events: none; }
+.fg-tbtn .face { inset: 0; width: 100%; height: 100%; }
+.fg-tbtn .ic { left: calc(var(--px) * 11.5); top: calc(var(--px) * 10.5); width: calc(var(--px) * 17); height: calc(var(--px) * 17); }
+.fg-tbtn.down .ic { transform: translateY(var(--px)); }
+.fg-tbtn span { position: absolute; left: 50%; top: calc(100% + var(--px)); transform: translateX(-50%); font-size: .62em; color: var(--text-light); text-shadow: 0 var(--px) 0 #000; white-space: nowrap; pointer-events: none; }
 `;
 
 let styleRefs = 0;
@@ -256,4 +266,111 @@ export function popWord(parent, text, x, y, color = '#fff', size = 1) {
   parent.append(n);
   setTimeout(() => n.remove(), 1350);
   return n;
+}
+
+// ---------------------------------------------------------------- touch: the big action button
+const GLYPHS = {
+  pump: () => {
+    // bellows: two boards and a pleated leather wedge, a nozzle to the right
+    const p = new Px(17, 17);
+    p.tpl([
+      '.................',
+      '..aaaaaaa........',
+      '.abbbbbbbaa......',
+      '.bccccccccbaa....',
+      '..dededededdbb...',
+      '..edededededdcbb.',
+      '..dededededdbbffg',
+      '..edededededdcbb.',
+      '..dededededdbb...',
+      '.bccccccccbaa....',
+      '.abbbbbbbaa......',
+      '..aaaaaaa........',
+    ], { a: 0x5a3420, b: 0xa06c3c, c: 0xc08a52, d: 0x6a3c22, e: 0x8a5432, f: 0x6a6870, g: 0x2a2426 }, 0, 2);
+    p.outline(INK);
+    return p;
+  },
+  strike: () => {
+    // a cross-peen hammer, head up-left, handle to the bottom right
+    const p = new Px(17, 17);
+    p.tpl([
+      '...aa............',
+      '..abba...........',
+      '.abccba..........',
+      'abccccba.........',
+      '.bcccccbd........',
+      '..bccccbdd.......',
+      '...bcccb.dd......',
+      '....bbb...dd.....',
+      '...........dd....',
+      '............dd...',
+      '.............dd..',
+      '..............ee.',
+      '...............e.',
+    ], { a: 0xf0f2f6, b: 0x8a8890, c: 0x5a5860, d: 0xc08a52, e: 0x6a3a20 }, 0, 1);
+    p.outline(INK);
+    return p;
+  },
+};
+
+/**
+ * A big round button for touch screens: holding it holds mouse button 0 (pump the bellows,
+ * raise the hammer), letting go releases it. set(kind | null, label).
+ */
+export class TouchAction {
+  constructor(parent, input) {
+    this.inp = input;
+    this.face = el('img', { class: 'face', src: DSPR.bigBtn(false), alt: '' });
+    this.icon = el('img', { class: 'ic', src: '', alt: '' });
+    this.label = el('span');
+    this.el = el('button', { class: 'fg-tbtn', 'aria-label': 'Action (hold)' }, [this.face, this.icon, this.label]);
+    parent.append(this.el);
+    this.id = null;
+    this.kind = null;
+    const down = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (this.id !== null) return;
+      this.id = e.pointerId;
+      try { this.el.setPointerCapture(this.id); } catch (err) { /* noop */ }
+      this.el.classList.add('down');
+      this.face.src = DSPR.bigBtn(true);
+      this.inp.mouse.buttons[0] = true;
+      this.inp.mouse.pressed[0] = true;
+    };
+    const up = (e) => {
+      if (e.pointerId !== this.id) return;
+      e.stopPropagation();
+      this.release();
+    };
+    this.el.addEventListener('pointerdown', down);
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) this.el.addEventListener(ev, up);
+    this.el.addEventListener('click', (e) => e.preventDefault());
+    // Input clears button 0 on ANY pointerup: another finger lifting must not end the hold
+    this.onWinUp = (e) => { if (this.id !== null && e.pointerId !== this.id) { this.inp.mouse.buttons[0] = true; this.inp.mouse.released[0] = false; } };
+    window.addEventListener('pointerup', this.onWinUp);
+  }
+
+  release() {
+    if (this.id === null) return;
+    this.id = null;
+    this.el.classList.remove('down');
+    this.face.src = DSPR.bigBtn(false);
+    this.inp.mouse.buttons[0] = false;
+    this.inp.mouse.released[0] = true;
+  }
+
+  set(kind, label = '') {
+    if (kind === this.kind) return;
+    this.kind = kind;
+    if (!kind) this.release();
+    this.el.classList.toggle('on', !!kind);
+    if (kind) this.icon.src = art('fg-glyph-' + kind, GLYPHS[kind]);
+    this.label.textContent = label;
+  }
+
+  remove() {
+    this.release();
+    window.removeEventListener('pointerup', this.onWinUp);
+    this.el.remove();
+  }
 }
