@@ -194,9 +194,9 @@ export class Enemy {
     this.flash = 1;
     this.shiver = 0.6;
     this.sqv -= 7;
-    const kb = (this.kb ?? 3.2) / this.mass;
+    const kb = (this.kb ?? 2.4) / this.mass;
     this.vel.x += dir.x * kb; this.vel.z += dir.z * kb;
-    this.vel.y += (this.info.flying ? dir.y * kb : 1.6 / this.mass);
+    this.vel.y += (this.info.flying ? dir.y * kb : 1.3 / this.mass);
     this.wake(true);
     this.onHit(power, dir);
     if (this.hp <= 0) this.mgr.kill(this, dir);

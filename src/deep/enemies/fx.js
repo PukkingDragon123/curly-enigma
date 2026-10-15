@@ -3,12 +3,17 @@ const TAU = Math.PI * 2;
 const R = (a, b) => a + Math.random() * (b - a);
 
 /** A ring of dust racing outward along the ground (golem slam). */
-export function shockRing(fx, x, y, z, r0, speed, color, n = 44) {
+export function shockRing(fx, x, y, z, r0, speed, color, n = 56) {
+  const light = color.map((k) => Math.min(1, k * 1.6 + 0.15));
   for (let i = 0; i < n; i++) {
-    const a = (i / n) * TAU + R(-0.05, 0.05), c = Math.cos(a), s = Math.sin(a);
-    const sp = speed * R(0.9, 1.1);
-    fx.spawn({ x: x + c * r0, y: y + R(0.02, 0.12), z: z + s * r0, vx: c * sp, vy: R(0.2, 0.9), vz: s * sp, life: R(0.55, 0.8), size: R(0.06, 0.1), grow: 0.25, color, alpha: 0.75, drag: 1.2, grav: 0.4 });
-    if (i % 2 === 0) fx.spawn({ x: x + c * r0, y: y + 0.05, z: z + s * r0, vx: c * sp * 0.8, vy: R(1.5, 3.5), vz: s * sp * 0.8, life: R(0.5, 0.9), size: R(0.014, 0.024), color: color.map((k) => k * 0.7), drag: 0.4, grav: 9, bounce: 0.4, fade: false });
+    const a = (i / n) * TAU + R(-0.04, 0.04), c = Math.cos(a), s = Math.sin(a);
+    const sp = speed * R(0.95, 1.05);
+    // the wave front: billowing dust riding along the floor at the wave's speed
+    fx.spawn({ x: x + c * r0, y: y + R(0.03, 0.1), z: z + s * r0, vx: c * sp, vy: R(0.3, 0.8), vz: s * sp, life: R(0.55, 0.7), size: R(0.09, 0.14), grow: 0.35, color: i % 3 ? color : light, alpha: 0.85, drag: 0.25, grav: 0.6 });
+    // a faint bright crest so it reads in the dark
+    if (i % 2 === 0) fx.spawn({ x: x + c * r0, y: y + 0.04, z: z + s * r0, vx: c * sp, vy: 0.1, vz: s * sp, life: 0.55, size: 0.035, color: light.map((k) => k * 0.55), glow: true, drag: 0.25 });
+    // pebbles kicked up behind it
+    if (i % 2 === 1) fx.spawn({ x: x + c * r0, y: y + 0.05, z: z + s * r0, vx: c * sp * 0.6, vy: R(1.8, 3.8), vz: s * sp * 0.6, life: R(0.5, 0.9), size: R(0.016, 0.028), color: color.map((k) => k * 0.7), drag: 0.4, grav: 9, bounce: 0.4, fade: false });
   }
 }
 

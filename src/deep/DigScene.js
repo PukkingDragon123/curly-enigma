@@ -270,7 +270,8 @@ export default class DigScene extends Scene {
     // something to pick or catch (props' plants, critters) comes first
     const use = this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
     if (use) { ui.setCrosshair({ visible: true, kind: 'use', label: use.label }); return; }
-    if (this.enemies?.hitTest(eye, f, reach)) { ui.setCrosshair({ visible: true, kind: 'enemy' }); return; }
+    const foe = this.enemies?.hitTest(eye, f, reach);
+    if (foe) { ui.setCrosshair(foe.passive ? { visible: true, kind: 'rock', label: foe.constructor.info?.name || '' } : { visible: true, kind: 'enemy' }); return; }
     if (!hit) { ui.setCrosshair({ visible: true, kind: 'none' }); return; }
     const m = MAT[hit.m];
     const ore = hit.m >= ORE_BASE;
