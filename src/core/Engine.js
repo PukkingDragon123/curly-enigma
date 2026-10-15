@@ -14,6 +14,9 @@ uniform sampler2D tColor;
 uniform sampler2D tDepth;
 uniform sampler2D tMask;
 uniform sampler2D tMaskDepth;
+uniform sampler2D tOverlay;
+uniform sampler2D tOverlayDepth;
+uniform float uOverlay;
 uniform vec2 uRes;
 uniform float uOutline;
 uniform vec3 uOutlineColor;
@@ -89,6 +92,24 @@ void main() {
       }
     }
     col = mix(col, uOutlineColor, edge * uOutlineAlpha);
+  }
+
+  // first-person overlay (hands and tools): its own colour + depth, outlined on its silhouette
+  // and on depth steps inside it
+  if (uOverlay > 0.5) {
+    vec4 o = texture2D(tOverlay, vUv);
+    float od = texture2D(tOverlayDepth, vUv).r;
+    float oe = 0.0;
+    for (int i = 0; i < 4; i++) {
+      vec2 off = i == 0 ? vec2(1.0, 0.0) : i == 1 ? vec2(-1.0, 0.0) : i == 2 ? vec2(0.0, 1.0) : vec2(0.0, -1.0);
+      vec2 uv2 = vUv + off * px;
+      float a2 = texture2D(tOverlay, uv2).a;
+      float od2 = texture2D(tOverlayDepth, uv2).r;
+      if (o.a < 0.5 && a2 > 0.5) oe = 1.0;
+      else if (o.a > 0.5 && a2 > 0.5 && od2 < od - 0.0015) oe = 1.0;
+    }
+    if (o.a > 0.5) col = o.rgb;
+    col = mix(col, uOutlineColor, oe * uOutlineAlpha);
   }
 
   col *= uBright * uTint;
@@ -179,12 +200,16 @@ export class Engine {
 
     this.rtScene = makeRT(this.width, this.height, true);
     this.rtMask = makeRT(this.width, this.height, false);
+    this.rtOverlay = makeRT(this.width, this.height, true);
 
     this.postUniforms = {
       tColor: { value: this.rtScene.texture },
       tDepth: { value: this.rtScene.depthTexture },
       tMask: { value: this.rtMask.texture },
       tMaskDepth: { value: this.rtMask.depthTexture },
+      tOverlay: { value: this.rtOverlay.texture },
+      tOverlayDepth: { value: this.rtOverlay.depthTexture },
+      uOverlay: { value: 0 },
       uRes: { value: new THREE.Vector2(this.width, this.height) },
       uOutline: { value: 1 },
       uOutlineColor: { value: new THREE.Color() },
@@ -249,6 +274,7 @@ export class Engine {
     this.canvas.style.height = this.height * s + 'px';
     this.rtScene.setSize(this.width, this.height);
     this.rtMask.setSize(this.width, this.height);
+    this.rtOverlay.setSize(this.width, this.height);
     this.postUniforms.uRes.value.set(this.width, this.height);
     for (const cb of this.resizeListeners) cb(this.width, this.height);
   }
@@ -264,7 +290,7 @@ export class Engine {
    * Render a scene through the pixel-art post pipeline.
    * @param {THREE.Scene} scene
    * @param {THREE.Camera} camera
-   * @param {object} post overrides for DEFAULT_POST
+   * @param {object} post overrides for DEFAULT_POST; post.overlay = {scene, camera} draws a first-person layer on top
    */
   render(scene, camera, post = {}) {
     const p = { ...DEFAULT_POST, ...post };
@@ -289,6 +315,16 @@ export class Engine {
       camera.layers.mask = mask;
       scene.background = bg;
       scene.fog = fog;
+    }
+
+    // first-person overlay ({scene, camera}): rendered on its own so it never clips into walls
+    const ov = post.overlay;
+    u.uOverlay.value = ov ? 1 : 0;
+    if (ov) {
+      r.setRenderTarget(this.rtOverlay);
+      r.setClearColor(0x000000, 0);
+      r.clear(true, true, false);
+      r.render(ov.scene, ov.camera);
     }
 
     u.uOutline.value = p.outline ? 1 : 0;

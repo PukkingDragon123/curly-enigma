@@ -18,6 +18,18 @@ export class Input {
       wheel: 0,
       moved: false,
     };
+    // first-person look: pointer-lock mouse movement and touch look-drags accumulate here (CSS px)
+    this.look = { dx: 0, dy: 0 };
+    this.pointerLocked = false;
+    document.addEventListener('pointerlockchange', () => {
+      this.pointerLocked = document.pointerLockElement === canvas;
+      for (const fn of this.listeners) fn({ type: 'pointerlock', code: this.pointerLocked ? 'Locked' : 'Unlocked' });
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!this.pointerLocked) return;
+      this.look.dx += e.movementX || 0;
+      this.look.dy += e.movementY || 0;
+    });
     this.typed = '';
     this.enabled = true;
     this.listeners = new Set();
@@ -65,6 +77,22 @@ export class Input {
       e.preventDefault();
       this.mouse.wheel += Math.sign(e.deltaY);
     }, { passive: false });
+  }
+
+  /** Ask for pointer lock (call from a user gesture). */
+  lockPointer() {
+    if (this.pointerLocked || !this.canvas.requestPointerLock) return;
+    try { const r = this.canvas.requestPointerLock({ unadjustedMovement: true }); if (r && r.catch) r.catch(() => { try { this.canvas.requestPointerLock(); } catch (e) { /* noop */ } }); } catch (e) { /* noop */ }
+  }
+  unlockPointer() {
+    if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) { /* noop */ }
+  }
+
+  /** Take (and reset) the accumulated look movement in CSS px. */
+  takeLook() {
+    const l = { dx: this.look.dx, dy: this.look.dy };
+    this.look.dx = this.look.dy = 0;
+    return l;
   }
 
   clearAll() {
