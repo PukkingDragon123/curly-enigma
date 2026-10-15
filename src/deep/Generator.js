@@ -1,0 +1,407 @@
+// The underground, generated chunk by chunk from a cheap plan: zone strata, spaghetti tunnels and
+// caverns, an old half-collapsed passage from the burrow toward Deep Town, the town gate, lift
+// stations, ore areas, lakes and nests (danger zones), crystals, stalactites, roots and moss.
+// Units: voxels (1/8 m) unless a name ends in M (meters). y is up; depth = -y.
+import { makeNoise3D, h3, h3i } from './noise.js';
+import { M, VOX, ORE_BASE } from './materials.js';
+import { ORE_ID, ORE_SPAWN } from '../mine/blocks.js';
+import { makeRng, clamp } from '../core/util.js';
+
+export const CS = 32; // chunk size (voxels)
+export const BOUNDS = { x0: -96, x1: 96, z0: -96, z1: 96, y0: -216, y1: 8 }; // meters
+export const ZONE_DEPTHS = [0, 25, 55, 90, 130, 170, 210]; // zone n spans ZONE_DEPTHS[n-1]..[n]
+
+export function zoneAt(depthM) {
+  for (let z = 1; z < ZONE_DEPTHS.length; z++) if (depthM < ZONE_DEPTHS[z]) return z;
+  return 6;
+}
+
+// primary / secondary strata and pocket materials per zone
+const ZMAT = [
+  null,
+  { a: M.DIRT, b: M.LOAM, c: M.CLAY, d: M.STONE, pocket: M.GRAVEL },
+  { a: M.CLAY, b: M.MUDSTONE, c: M.LIMESTONE, d: M.STONE, pocket: M.GRAVEL },
+  { a: M.GRANITE, b: M.CRYSTALROCK, c: M.STONE, d: M.LIMESTONE, pocket: M.SAND },
+  { a: M.BASALT, b: M.MAGMAROCK, c: M.OBSIDIAN, d: M.BASALT, pocket: M.ASH },
+  { a: M.PERMAFROST, b: M.ICE, c: M.STONE, d: M.PERMAFROST, pocket: M.SNOW },
+  { a: M.CORE, b: M.STARROCK, c: M.VOIDROCK, d: M.CORE, pocket: M.ASH },
+];
+
+/** Build the plan (deterministic for a seed). opts: { W, D, tunnels: [{wall, t}] } */
+export function makePlan(seed, opts = {}) {
+  const rng = makeRng(seed);
+  const W = opts.W || 10, D = opts.D || 8;
+  const plan = {
+    seed, W, D,
+    noise: [makeNoise3D(seed), makeNoise3D(seed + 11), makeNoise3D(seed + 23), makeNoise3D(seed + 37)],
+    house: { x0: 0, x1: W, z0: 0, z1: D, y0: 0, y1: 3 },
+    town: { x: 30, y: -15, z: -24, r: 5.5 },
+    shaft: { x: 38.5, z: -24.5 },
+    stations: [],
+    areas: [], // ore areas
+    dangers: [], // lakes, nests, gas
+    lights: [], // fixed light sources (lanterns, lava) in meters
+    features: [], // carve/fill shapes in meters: {kind, ...aabb}
+    mouths: [],
+  };
+  // lift stations at the top of each zone below the town
+  for (let n = 0; n <= 5; n++) {
+    const y = n === 0 ? plan.town.y - 1 : -ZONE_DEPTHS[n] - 2;
+    plan.stations.push({ n, x: plan.shaft.x + 2.6, y, z: plan.shaft.z, zone: n === 0 ? 1 : n + 1 });
+  }
+
+  // the old passage: from just outside the burrow's north-east corner toward the town gate
+  const start = { x: W + 2.2, y: 0.4, z: -2.2 };
+  const end = { x: plan.town.x - 4.5, y: plan.town.y - 2.6, z: plan.town.z + 3.2 };
+  const pts = [];
+  const steps = 26;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    pts.push({
+      x: start.x + (end.x - start.x) * t + Math.sin(t * 7.1 + seed) * 3.2 * Math.sin(t * Math.PI),
+      y: start.y + (end.y - start.y) * (t * t * (3 - 2 * t)) + Math.sin(t * 11 + seed * 0.3) * 0.6 * Math.sin(t * Math.PI),
+      z: start.z + (end.z - start.z) * t + Math.cos(t * 5.3 + seed) * 3 * Math.sin(t * Math.PI),
+    });
+  }
+  // carve pockets along it, leaving rock plugs to dig through (fewer plugs near the start)
+  let plug = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const segPlug = i > 2 && (i % 5 === 3 || rng.chance(0.12));
+    if (segPlug) { plug++; continue; }
+    for (let k = 0; k < 3; k++) {
+      const t = k / 3;
+      const r = rng.range(1.0, 1.5);
+      plan.features.push({ kind: 'sphere', x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t + r * 0.35, z: a.z + (b.z - a.z) * t, r, ry: r * 0.8, m: 0 });
+    }
+    if (i % 4 === 0) plan.lights.push({ x: b.x, y: b.y + 1.0, z: b.z, c: [1.0, 0.72, 0.38], r: 5, lantern: true });
+  }
+  plan.path = pts;
+  plan.plugs = plug;
+
+  // the town gate cavern: a big hall with a boarded gate (warm light behind it)
+  const T = plan.town;
+  plan.features.push({ kind: 'sphere', x: T.x - 2.5, y: T.y + 0.8, z: T.z + 2, r: T.r, ry: T.r * 0.62, m: 0 });
+  plan.features.push({ kind: 'gate', x: T.x + 1.6, y: T.y, z: T.z - 1.2 });
+  plan.lights.push({ x: T.x + 1.2, y: T.y + 1.4, z: T.z - 1.0, c: [1.4, 0.95, 0.5], r: 9 });
+  plan.lights.push({ x: T.x - 5, y: T.y + 2.2, z: T.z + 3, c: [1.0, 0.7, 0.35], r: 6, lantern: true });
+  // lift shaft + stations
+  plan.features.push({ kind: 'shaft', x: plan.shaft.x, z: plan.shaft.z, y0: -208, y1: T.y + 2 });
+  for (const s of plan.stations) {
+    plan.features.push({ kind: 'box', x0: s.x - 1.8, x1: s.x + 1.8, y0: s.y, y1: s.y + 2.2, z0: s.z - 1.6, z1: s.z + 1.6, m: 0, timber: true });
+    plan.lights.push({ x: s.x, y: s.y + 1.7, z: s.z, c: [1.0, 0.7, 0.36], r: 5, lantern: true });
+  }
+
+  // ore areas: per zone, clusters of one ore type (what the radar shows)
+  for (let zone = 1; zone <= 6; zone++) {
+    const spawn = ORE_SPAWN[zone] || [];
+    const total = spawn.reduce((s, e) => s + e[1], 0);
+    const count = zone === 1 ? 26 : 20;
+    for (let k = 0; k < count; k++) {
+      let r = rng() * total, item = spawn[0][0];
+      for (const [id, w] of spawn) { r -= w; if (r <= 0) { item = id; break; } }
+      const d0 = ZONE_DEPTHS[zone - 1] + 2, d1 = ZONE_DEPTHS[zone] - 2;
+      let x = rng.range(-70, 70), z = rng.range(-70, 70);
+      // the first ores are close to the burrow
+      if (zone === 1 && k < 8) { x = W / 2 + rng.range(-14, 14); z = D / 2 + rng.range(-14, 14); }
+      const y = -rng.range(d0, d1);
+      const rad = rng.range(2.5, 5);
+      const area = { id: plan.areas.length, item, oreId: ORE_ID[item], x, y, z, r: rad, zone, deposits: [] };
+      const n = Math.round(rng.range(5, 12) * (item === 'diamond' || item === 'sunstone' || item === 'voidstone' ? 0.5 : 1));
+      for (let i = 0; i < n; i++) {
+        const a = rng() * Math.PI * 2, b = (rng() - 0.5) * Math.PI, dd = Math.sqrt(rng()) * rad;
+        area.deposits.push({
+          x: x + Math.cos(a) * Math.cos(b) * dd, y: y + Math.sin(b) * dd * 0.6, z: z + Math.sin(a) * Math.cos(b) * dd,
+          r: rng.range(0.14, 0.32), q: clamp(84 + (rng() + rng() + rng() - 1.5) * 14, 50, 100), seed: rng.int(1, 1e6),
+        });
+      }
+      plan.areas.push(area);
+    }
+  }
+
+  // danger zones: lakes, lava, nests, gas
+  const addLake = (kind, zone, n) => {
+    for (let k = 0; k < n; k++) {
+      const x = rng.range(-70, 70), z = rng.range(-70, 70), y = -rng.range(ZONE_DEPTHS[zone - 1] + 4, ZONE_DEPTHS[zone] - 4), r = rng.range(3.5, 7);
+      plan.dangers.push({ kind, x, y, z, r, zone });
+      plan.features.push({ kind: 'lake', x, y, z, r, fluid: kind === 'lava' ? M.LAVA : M.WATER });
+      if (kind === 'lava') plan.lights.push({ x, y: y - r * 0.2, z, c: [1.6, 0.55, 0.16], r: r * 2.2, lava: true });
+    }
+  };
+  addLake('water', 1, 3); addLake('water', 2, 5); addLake('water', 3, 4); addLake('water', 5, 4);
+  addLake('lava', 4, 7); addLake('lava', 6, 4); addLake('lava', 3, 1);
+  for (let zone = 1; zone <= 6; zone++) {
+    for (let k = 0; k < 3 + zone; k++) {
+      const x = rng.range(-70, 70), z = rng.range(-70, 70), y = -rng.range(ZONE_DEPTHS[zone - 1] + 3, ZONE_DEPTHS[zone] - 3);
+      if (Math.hypot(x - W / 2, z - D / 2) < 14 && zone === 1) continue; // keep the burrow safe
+      plan.dangers.push({ kind: 'nest', x, y, z, r: rng.range(3, 5), zone });
+      plan.features.push({ kind: 'sphere', x, y, z, r: rng.range(3, 4.5), ry: 2.2, m: 0 });
+    }
+    if (zone >= 2 && zone <= 4) for (let k = 0; k < 2; k++) {
+      const x = rng.range(-70, 70), z = rng.range(-70, 70), y = -rng.range(ZONE_DEPTHS[zone - 1] + 3, ZONE_DEPTHS[zone] - 3);
+      plan.dangers.push({ kind: 'gas', x, y, z, r: rng.range(3, 5), zone });
+    }
+  }
+  for (const f of plan.features) aabbOf(f);
+  return plan;
+}
+
+function aabbOf(f) {
+  const pad = 0.5;
+  if (f.kind === 'sphere') { f.bb = [f.x - f.r - pad, f.y - (f.ry || f.r) - pad, f.z - f.r - pad, f.x + f.r + pad, f.y + (f.ry || f.r) + pad, f.z + f.r + pad]; }
+  else if (f.kind === 'lake') { f.bb = [f.x - f.r - 1, f.y - f.r * 0.6 - 1, f.z - f.r - 1, f.x + f.r + 1, f.y + f.r * 0.5 + 1, f.z + f.r + 1]; }
+  else if (f.kind === 'box') { f.bb = [f.x0 - pad, f.y0 - pad, f.z0 - pad, f.x1 + pad, f.y1 + pad, f.z1 + pad]; }
+  else if (f.kind === 'gate') { f.bb = [f.x - 3, f.y - 1, f.z - 3, f.x + 3, f.y + 4, f.z + 3]; }
+  else if (f.kind === 'shaft') { f.bb = [f.x - 1.4, f.y0, f.z - 1.4, f.x + 1.4, f.y1, f.z + 1.4]; }
+  else if (f.kind === 'mouth') { f.bb = [f.x0 - pad, f.y0 - pad, f.z0 - pad, f.x1 + pad, f.y1 + pad, f.z1 + pad]; }
+  return f;
+}
+
+/** A tunnel mouth dug out of the burrow wall (meters): the small alcove the mole starts in. */
+export function mouthBox(plan, wall, t) {
+  const { W, D } = plan;
+  const hw = 0.6, h = 1.35, depth = 1.1;
+  if (wall === 'n') return { x0: t - hw, x1: t + hw, z0: -depth - 0.45, z1: -0.45, y0: 0, y1: h, dir: [0, 0, -1] };
+  if (wall === 's') return { x0: t - hw, x1: t + hw, z0: D + 0.45, z1: D + 0.45 + depth, y0: 0, y1: h, dir: [0, 0, 1] };
+  if (wall === 'w') return { x0: -0.45 - depth, x1: -0.45, z0: t - hw, z1: t + hw, y0: 0, y1: h, dir: [-1, 0, 0] };
+  return { x0: W + 0.45, x1: W + 0.45 + depth, z0: t - hw, z1: t + hw, y0: 0, y1: h, dir: [1, 0, 0] };
+}
+
+export function addMouth(plan, wall, t) {
+  const b = mouthBox(plan, wall, t);
+  const f = aabbOf({ kind: 'mouth', wall, t, ...b });
+  plan.features.push(f);
+  plan.mouths.push(f);
+  plan.lights.push({ x: (b.x0 + b.x1) / 2 - b.dir[0] * 0.5, y: 1.0, z: (b.z0 + b.z1) / 2 - b.dir[2] * 0.5, c: [1.2, 0.8, 0.45], r: 4, mouth: true });
+  return f;
+}
+
+// ---------------------------------------------------------------- chunk generation
+const S = 4; // coarse sample stride (voxels)
+const NS = CS / S + 1; // 9 samples per axis
+
+/** trilinear sample of a coarse NS³ field at cell o with fractions fx, fy, fz */
+function tri(f, o, fx, fy, fz) {
+  const c00 = f[o] + (f[o + 1] - f[o]) * fx, c10 = f[o + NS] + (f[o + NS + 1] - f[o + NS]) * fx;
+  const o2 = o + NS * NS;
+  const c01 = f[o2] + (f[o2 + 1] - f[o2]) * fx, c11 = f[o2 + NS] + (f[o2 + NS + 1] - f[o2 + NS]) * fx;
+  const c0 = c00 + (c10 - c00) * fy, c1 = c01 + (c11 - c01) * fy;
+  return c0 + (c1 - c0) * fz;
+}
+
+export class ChunkGen {
+  constructor(plan) {
+    this.plan = plan;
+    this.dens = new Float32Array(NS * NS * NS);
+    this.band = new Float32Array(NS * NS * NS);
+    this.pock = new Float32Array(NS * NS * NS);
+  }
+
+  /**
+   * Fill vox (Uint8Array CS³, index x + CS*(y + CS*z)) for chunk (cx, cy, cz).
+   * Returns the ore deposits that reach into this chunk: [{id, oreId, item, x, y, z, r, q, seed}].
+   */
+  generate(cx, cy, cz, vox) {
+    const deps = [];
+    const p = this.plan, [n0, n1, n2, n3] = p.noise;
+    const X0 = cx * CS, Y0 = cy * CS, Z0 = cz * CS;
+    const B = BOUNDS;
+    // coarse fields
+    for (let k = 0; k < NS; k++) for (let j = 0; j < NS; j++) for (let i = 0; i < NS; i++) {
+      const x = (X0 + i * S) / VOX, y = (Y0 + j * S) / VOX, z = (Z0 + k * S) / VOX;
+      const depth = -y;
+      // spaghetti tunnels: where two noise fields are both near zero
+      const a = n0.n(x * 0.085, y * 0.11, z * 0.085), b = n1.n(x * 0.085 + 31.7, y * 0.11, z * 0.085 - 12.3);
+      const worm = 0.0062 - (a * a + b * b);
+      // caverns: rarer near the top, bigger deeper
+      const cav = n2.fbm(x / 24, y / 15, z / 24, 3) - (depth < 8 ? 0.6 : depth < 25 ? 0.34 : 0.27);
+      let d = Math.max(worm * 40, cav);
+      if (depth < 2.5) d = -1; // the ground near the surface stays solid
+      const o = i + NS * (j + NS * k);
+      this.dens[o] = d;
+      this.band[o] = depth + n3.fbm(x / 9, y / 9, z / 9, 2) * 3.2;
+      this.pock[o] = n1.fbm(x / 6 + 100, y / 6, z / 6, 2);
+    }
+    const hx = p.house;
+    for (let lz = 0; lz < CS; lz++) {
+      const kz = lz / S | 0, fz = (lz % S) / S;
+      for (let ly = 0; ly < CS; ly++) {
+        const jy = ly / S | 0, fy = (ly % S) / S;
+        for (let lx = 0; lx < CS; lx++) {
+          const ix = lx / S | 0, fx = (lx % S) / S;
+          const o = ix + NS * (jy + NS * kz);
+          const vx = X0 + lx, vy = Y0 + ly, vz = Z0 + lz;
+          const xm = vx / VOX, ym = vy / VOX, zm = vz / VOX;
+          const vi = lx + CS * (ly + CS * lz);
+          // world shell
+          if (xm < B.x0 + 1 || xm > B.x1 - 1 || zm < B.z0 + 1 || zm > B.z1 - 1 || ym < B.y0 + 1) { vox[vi] = M.BEDROCK; continue; }
+          if (ym > B.y1 - 0.5) { vox[vi] = M.BEDROCK; continue; }
+          const rough = (h3(vx, vy, vz, p.seed) - 0.5) * 0.045;
+          const dens = tri(this.dens, o, fx, fy, fz) + rough;
+          if (dens > 0) { vox[vi] = 0; continue; }
+          const band = tri(this.band, o, fx, fy, fz);
+          const zone = zoneAt(Math.max(0, band));
+          const zm2 = ZMAT[zone];
+          const layer = Math.floor(band / 2.6);
+          let m = (layer & 3) === 0 ? zm2.b : (layer & 3) === 2 ? zm2.c : zm2.a;
+          if (zone === 1 && band > 14) m = (layer & 1) ? M.STONE : M.CLAY;
+          if (tri(this.pock, o, fx, fy, fz) > 0.34) m = zm2.pocket;
+          if (zone === 1 && band < 4 && h3(vx >> 2, vy >> 2, vz >> 2, 7) < 0.18) m = M.ROOTS;
+          vox[vi] = m;
+        }
+      }
+    }
+    // the burrow: solid planked walls (the house itself lives in the iso scene)
+    this.fillBox(vox, X0, Y0, Z0, hx.x0 - 0.45, hx.y0 - 0.5, hx.z0 - 0.45, hx.x1 + 0.45, hx.y1 + 0.6, hx.z1 + 0.45, M.BURROW);
+    // features
+    const cx0 = X0 / VOX, cy0 = Y0 / VOX, cz0 = Z0 / VOX, cx1 = (X0 + CS) / VOX, cy1 = (Y0 + CS) / VOX, cz1 = (Z0 + CS) / VOX;
+    for (const f of p.features) {
+      const bb = f.bb;
+      if (bb[3] < cx0 || bb[0] > cx1 || bb[4] < cy0 || bb[1] > cy1 || bb[5] < cz0 || bb[2] > cz1) continue;
+      this.stamp(f, vox, X0, Y0, Z0);
+    }
+    // decorations need to know where the air is
+    this.decorate(vox, X0, Y0, Z0);
+    // ore deposits last (inside rock only)
+    for (const a of p.areas) {
+      if (a.x + a.r + 1 < cx0 || a.x - a.r - 1 > cx1 || a.y + a.r < cy0 - 1 || a.y - a.r > cy1 + 1 || a.z + a.r + 1 < cz0 || a.z - a.r - 1 > cz1) continue;
+      a.deposits.forEach((d, i) => { if (this.stampDeposit(d, a, vox, X0, Y0, Z0)) deps.push({ id: `a${a.id}_${i}`, oreId: a.oreId, item: a.item, ...d }); });
+    }
+    // scattered common ore everywhere
+    const zone = zoneAt(Math.max(0, -(cy0 + 2)));
+    const spawn = ORE_SPAWN[zone] || [];
+    const hc = h3i(cx, cy, cz, p.seed + 5);
+    const nScatter = hc % 3;
+    for (let k = 0; k < nScatter && spawn.length; k++) {
+      const e = spawn[(hc >>> (4 + k * 3)) % Math.min(3, spawn.length)];
+      const d = { x: cx0 + h3(cx, cy, cz, k + 1) * 4, y: cy0 + h3(cx, cy, cz, k + 9) * 4, z: cz0 + h3(cx, cy, cz, k + 17) * 4, r: 0.12 + h3(cx, cy, cz, k + 3) * 0.12, q: 70 + h3(cx, cy, cz, k + 5) * 25, seed: hc + k };
+      if (this.stampDeposit(d, { oreId: ORE_ID[e[0]], item: e[0] }, vox, X0, Y0, Z0)) deps.push({ id: `s${cx}_${cy}_${cz}_${k}`, oreId: ORE_ID[e[0]], item: e[0], ...d });
+    }
+    return deps;
+  }
+
+  fillBox(vox, X0, Y0, Z0, x0, y0, z0, x1, y1, z1, m) {
+    const a = this.clip(x0, y0, z0, x1, y1, z1, X0, Y0, Z0);
+    if (!a) return;
+    for (let z = a[2]; z < a[5]; z++) for (let y = a[1]; y < a[4]; y++) for (let x = a[0]; x < a[3]; x++) vox[x + CS * (y + CS * z)] = m;
+  }
+
+  /** meters AABB → local voxel range [x0,y0,z0,x1,y1,z1) or null */
+  clip(x0, y0, z0, x1, y1, z1, X0, Y0, Z0) {
+    const lx0 = Math.max(0, Math.floor(x0 * VOX) - X0), ly0 = Math.max(0, Math.floor(y0 * VOX) - Y0), lz0 = Math.max(0, Math.floor(z0 * VOX) - Z0);
+    const lx1 = Math.min(CS, Math.ceil(x1 * VOX) - X0), ly1 = Math.min(CS, Math.ceil(y1 * VOX) - Y0), lz1 = Math.min(CS, Math.ceil(z1 * VOX) - Z0);
+    if (lx0 >= lx1 || ly0 >= ly1 || lz0 >= lz1) return null;
+    return [lx0, ly0, lz0, lx1, ly1, lz1];
+  }
+
+  stamp(f, vox, X0, Y0, Z0) {
+    const p = this.plan, bb = f.bb;
+    const a = this.clip(bb[0], bb[1], bb[2], bb[3], bb[4], bb[5], X0, Y0, Z0);
+    if (!a) return;
+    for (let z = a[2]; z < a[5]; z++) for (let y = a[1]; y < a[4]; y++) for (let x = a[0]; x < a[3]; x++) {
+      const vx = X0 + x, vy = Y0 + y, vz = Z0 + z;
+      const xm = (vx + 0.5) / VOX, ym = (vy + 0.5) / VOX, zm = (vz + 0.5) / VOX;
+      const vi = x + CS * (y + CS * z);
+      const cur = vox[vi];
+      if (cur === M.BEDROCK && f.kind !== 'mouth') continue;
+      if (f.kind === 'sphere') {
+        const dx = (xm - f.x) / f.r, dy = (ym - f.y) / (f.ry || f.r), dz = (zm - f.z) / f.r;
+        const d2 = dx * dx + dy * dy + dz * dz + (h3(vx, vy, vz, 3) - 0.5) * 0.12;
+        if (d2 < 1 && cur !== M.BURROW) vox[vi] = f.m;
+      } else if (f.kind === 'lake') {
+        const dx = (xm - f.x) / f.r, dy = (ym - f.y) / (f.r * 0.55), dz = (zm - f.z) / f.r;
+        const d2 = dx * dx + dy * dy + dz * dz + (h3(vx, vy, vz, 4) - 0.5) * 0.1;
+        if (d2 < 1 && cur !== M.BURROW) vox[vi] = ym < f.y - f.r * 0.12 ? f.fluid : 0;
+        else if (d2 < 1.25 && f.fluid === M.LAVA && cur && cur < 40) vox[vi] = h3(vx, vy, vz, 5) < 0.5 ? M.MAGMAROCK : M.OBSIDIAN;
+      } else if (f.kind === 'box' || f.kind === 'mouth') {
+        if (xm < f.x0 || xm > f.x1 || ym < f.y0 || ym > f.y1 || zm < f.z0 || zm > f.z1) {
+          // timber frames around station rooms
+          if (f.timber && cur && cur !== M.BURROW) {
+            const onEdgeX = xm < f.x0 + 0.01 || xm > f.x1 - 0.01;
+            const post = (Math.abs(xm - f.x0) < 0.25 || Math.abs(xm - f.x1) < 0.25) && (Math.abs(zm - f.z0) < 0.25 || Math.abs(zm - f.z1) < 0.25);
+            const beam = ym > f.y1 && ym < f.y1 + 0.25;
+            if (post || (beam && !onEdgeX)) vox[vi] = M.TIMBER;
+          }
+          continue;
+        }
+        if (f.kind === 'mouth') {
+          // frame the mouth with warm planks on the burrow side
+          vox[vi] = 0;
+        } else vox[vi] = f.m;
+      } else if (f.kind === 'shaft') {
+        const d = Math.hypot(xm - f.x, zm - f.z);
+        if (d < 1.1) vox[vi] = 0;
+        else if (d < 1.35 && (Math.abs(ym * 2 % 3) < 0.25 || Math.abs(xm - f.x) < 0.15 || Math.abs(zm - f.z) < 0.15)) vox[vi] = M.TIMBER;
+      } else if (f.kind === 'gate') {
+        // brick arch with a boarded gate in it; lanterns either side
+        const dx = xm - f.x, dz = zm - f.z, dy = ym - f.y;
+        const along = dx * 0.6 + dz * 0.8, across = -dx * 0.8 + dz * 0.6; // gate faces south-west, toward the hall
+        if (Math.abs(across) < 0.4 && Math.abs(along) < 2.4 && dy > -0.2 && dy < 3.2) {
+          const inner = Math.abs(along) < 1.3 && dy < 2.4;
+          vox[vi] = inner ? (Math.abs(across) < 0.12 ? M.BOARDS : 0) : M.BRICK;
+          if (inner && Math.abs(across) < 0.12 && (Math.floor(along * 8) % 6 === 0)) vox[vi] = M.TIMBER;
+        } else if (Math.abs(across - 0.55) < 0.15 && Math.abs(Math.abs(along) - 1.9) < 0.16 && Math.abs(dy - 1.8) < 0.16) vox[vi] = M.LANTERN;
+      }
+    }
+  }
+
+  /** Moss on floors, crystals and stalactites, glowing bits (only inside this chunk). */
+  decorate(vox, X0, Y0, Z0) {
+    const p = this.plan;
+    const at = (x, y, z) => vox[x + CS * (y + CS * z)];
+    for (let z = 1; z < CS - 1; z++) for (let y = 1; y < CS - 1; y++) for (let x = 1; x < CS - 1; x++) {
+      const vi = x + CS * (y + CS * z);
+      const m = vox[vi];
+      if (!m || m === M.BURROW || m >= 40) continue;
+      const vx = X0 + x, vy = Y0 + y, vz = Z0 + z;
+      const depth = -vy / VOX;
+      const zone = zoneAt(depth);
+      const airUp = vox[vi + CS] === 0, airDown = vox[vi - CS] === 0;
+      if (airUp) {
+        const h = h3(vx, vy, vz, p.seed + 41);
+        if (zone <= 3 && h < 0.42 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS;
+        // crystal spikes on cave floors (grotto, frost, core)
+        if ((zone === 3 || zone === 5 || zone === 6) && h3(vx >> 1, vy, vz >> 1, p.seed + 43) < 0.012) this.spike(vox, x, y + 1, z, 1, M.CRYSTAL, 4 + (h * 60 | 0) % 6);
+      } else if (airDown) {
+        const h = h3(vx, vy, vz, p.seed + 47);
+        if (zone >= 2 && h3(vx >> 1, vy, vz >> 1, p.seed + 49) < 0.01) this.spike(vox, x, y - 1, z, -1, zone >= 5 ? M.ICE : m, 3 + (h * 50 | 0) % 6);
+        else if (zone === 3 && h < 0.004) this.spike(vox, x, y - 1, z, -1, M.CRYSTAL, 3);
+      }
+    }
+  }
+
+  spike(vox, x, y, z, dir, m, len) {
+    for (let i = 0; i < len; i++) {
+      const yy = y + dir * i;
+      if (yy < 0 || yy >= CS) return;
+      const r = i < len * 0.35 ? 1 : 0;
+      for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+        const xx = x + dx, zz = z + dz;
+        if (xx < 0 || zz < 0 || xx >= CS || zz >= CS) continue;
+        if (r && dx && dz) continue;
+        const vi = xx + CS * (yy + CS * zz);
+        if (vox[vi] === 0) vox[vi] = m;
+      }
+    }
+  }
+
+  stampDeposit(d, area, vox, X0, Y0, Z0) {
+    if (!area.oreId) return false;
+    const a = this.clip(d.x - d.r - 0.2, d.y - d.r - 0.2, d.z - d.r - 0.2, d.x + d.r + 0.2, d.y + d.r + 0.2, d.z + d.r + 0.2, X0, Y0, Z0);
+    if (!a) return false;
+    const mo = ORE_BASE + area.oreId;
+    let n = 0;
+    for (let z = a[2]; z < a[5]; z++) for (let y = a[1]; y < a[4]; y++) for (let x = a[0]; x < a[3]; x++) {
+      const vx = X0 + x, vy = Y0 + y, vz = Z0 + z;
+      const dx = (vx + 0.5) / VOX - d.x, dy = (vy + 0.5) / VOX - d.y, dz = (vz + 0.5) / VOX - d.z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) / d.r + (h3(vx, vy, vz, d.seed) - 0.5) * 0.5;
+      if (dist > 1) continue;
+      const vi = x + CS * (y + CS * z);
+      const cur = vox[vi];
+      if (!cur || cur >= 40 || cur === M.BEDROCK || cur === M.BURROW || cur === M.TIMBER || cur === M.BRICK) continue;
+      vox[vi] = mo;
+      n++;
+    }
+    return n > 0;
+  }
+}

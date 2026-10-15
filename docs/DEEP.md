@@ -63,3 +63,40 @@ vm.eat(itemId); vm.hurt(); vm.dispose();
 - `ui.setCrosshair({ visible, kind, label, progress })`: kind `none` | `rock` | `ore` | `enemy` | `use`.
 - Touch in `deep`: stick (move, up = forward), drag on the right half to look (adds to
   `input.look`), buttons dig (holds mouse button 0), jump (Space), use (E), snack (Q), next tool (wheel).
+
+## Optional systems: enemies and fluids
+
+`src/deep/DigScene.js` (registered as scene `dig` while in development; it becomes `deep`) loads
+`src/deep/Enemies.js` and `src/deep/Fluids.js` if they exist, and runs fine without them. Both
+classes are constructed with one context object:
+
+```js
+ctx = { scene3, world, U, fx, bodies, audio, state, ui, player, plan, owner }
+// scene3: THREE.Scene of the cave · world: DeepWorld (voxels, raycast, plan) · U: terrain uniforms
+// fx: Particles (spawn/dust/chips/sparks/glints/ember/mote/firefly/splash) · bodies: Bodies (voxel debris)
+// audio.play(name, opts) · state: game State · ui: game UI (toast, floatText) · player: FPSPlayer
+// plan: world.plan (town, stations, areas, dangers [{kind:'water'|'lava'|'nest'|'gas', x,y,z,r,zone}], lights)
+// owner: the DigScene (read-only use: owner.time, owner.toScreen(v3))
+```
+
+Units are meters; one voxel is 1/8 m (`VOX = 8`), y is up, depth = −y. Use `world.solidAt(x,y,z)`
+(meters), `world.voxelAt(vx,vy,vz)` (voxels; unloaded = stone), `world.raycast(...)` and
+`world.setVoxel(vx,vy,vz,m)`. Meshes that should get the pixel outline enable `LAYER_OUTLINE`;
+lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, the mole's lamp, fog).
+
+**Enemies** (`new Enemies(ctx)`):
+- `update(dt, { player, eye, forward, time, busy, lamp })` → array of events:
+  `{ damage: n, kind, push: [x,y,z] }` (energy lost + knockback), `{ say: html, key, tone, cd }` (a toast),
+  `{ loot: { id, q, p } }` (an item for the backpack — goes through the same path as ore pickups).
+- `hitTest(eye, dir, reach)` → an enemy the pick would hit before `reach` meters, or null.
+- `damage(enemy, power, dir)`: a pick blow (knockback, flash, maybe defeat).
+- `radarMarkers(pos)` → `[{ kind: 'enemy', x, y, z, label, color }]` for nearby awake enemies.
+- `lights(eye)` → `[{ x, y, z, c: [r,g,b], r }]` glowing enemies (≤ 3).
+- `dispose()`.
+
+**Fluids** (`new Fluids(ctx)`):
+- `onVoxel(vx, vy, vz, old, m)`: called on every voxel edit (digging next to a lake starts a flow).
+- `update(dt, { player, eye, time })`: flow simulation, splashes, ripples.
+- `lights(eye)` → as above (lava glow), `dispose()`.
+- The fluid surface material is `makeFluidMaterial(U)` in `TerrainMaterial.js`; the mesher emits
+  fluid faces into a separate geometry (`meshChunk(...).fluid`).
