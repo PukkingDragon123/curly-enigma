@@ -223,3 +223,28 @@ export class Particles {
 }
 
 export { VOX };
+
+// ------------------------------------------------------------ clump presets (Clumps.js)
+// Close-up chipping happens half a metre from the eyes, so these are small and slow.
+/** Tiny rock flakes knocked off a held clump: pop out along `out`, fall and bounce on the floor. */
+Particles.prototype.flakes = function flakes(x, y, z, n, color, out, size = 0.011, speed = 1) {
+  for (let i = 0; i < n; i++) {
+    const sp = (0.35 + Math.random() * 0.9) * speed;
+    this.spawn({ x: x + (Math.random() - 0.5) * size * 2, y: y + (Math.random() - 0.5) * size * 2, z: z + (Math.random() - 0.5) * size * 2,
+      vx: out[0] * sp + (Math.random() - 0.5) * 0.7 * speed, vy: out[1] * sp + (0.2 + Math.random() * 0.8) * speed, vz: out[2] * sp + (Math.random() - 0.5) * 0.7 * speed,
+      life: 0.8 + Math.random() * 0.7, size: size * (0.6 + Math.random() * 0.7), color, alpha: 1, drag: 0.4, grav: 7, bounce: 0.3, fade: false });
+  }
+};
+/** A small soft puff of dust (brush strokes, crumbling crust). */
+Particles.prototype.puff = function puff(x, y, z, n, color, out = [0, 0, 0], spread = 0.02) {
+  for (let i = 0; i < n; i++) {
+    const ox = (Math.random() - 0.5) * spread * 2, oy = (Math.random() - 0.5) * spread * 2, oz = (Math.random() - 0.5) * spread * 2;
+    this.spawn({ x: x + ox, y: y + oy, z: z + oz, vx: out[0] * 0.35 + ox * 3, vy: out[1] * 0.35 + 0.05 + Math.random() * 0.12, vz: out[2] * 0.35 + oz * 3,
+      life: 0.6 + Math.random() * 0.8, size: 0.008 + Math.random() * 0.01, grow: 0.035, color, alpha: 0.3 + Math.random() * 0.2, drag: 2.6, grav: -0.1 });
+  }
+};
+/** A bright twinkle on clean ore (a little cross of glints). */
+Particles.prototype.twinkle = function twinkle(x, y, z, color = [1, 1, 0.9], size = 0.012) {
+  this.spawn({ x, y, z, life: 0.45, size: size * 1.6, grow: -size * 2, color, glow: true, drag: 0 });
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) this.spawn({ x: x + dx * size, y: y + dy * size, z, vx: dx * 0.04, vy: dy * 0.04, life: 0.3, size: size * 0.7, color, glow: true, alpha: 0.7, drag: 0 });
+};

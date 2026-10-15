@@ -196,7 +196,8 @@ export default class DigScene extends Scene {
     this.U.time.value = this.time;
     const busy = this.leaving || g.ui.isPanelOpen();
     // look
-    const look = inp.takeLook();
+    let look = inp.takeLook();
+    if (this.clumps?.filterLook) look = this.clumps.filterLook(look) ?? look; // turning a held clump
     if (!busy) pl.look(look.dx, look.dy, this.isTouch() ? 0.0055 : 0.0026);
     if (!busy && inp.mousePressed(0) && !inp.pointerLocked && !this.isTouch()) { inp.lockPointer(); inp.mouse.pressed[0] = false; }
     // tools
