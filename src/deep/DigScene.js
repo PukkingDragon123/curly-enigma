@@ -231,14 +231,17 @@ export default class DigScene extends Scene {
     this.updateGhost(held || busy);
     if (this.clumps) this.events(this.clumps.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy }));
     // world sim
-    this.bodies.update(dt, pl.eye(), pl.pos);
+    // hit-stop: the world holds its breath for a few frames when a blow breaks rock
+    const sdt = this.hitStop > 0 ? dt * 0.15 : dt;
+    this.hitStop = Math.max(0, (this.hitStop || 0) - dt);
+    this.bodies.update(sdt, pl.eye(), pl.pos);
     if (this.fluids) this.fluids.update(dt, { player: pl, eye: pl.eye(), time: this.time });
     if (this.nugget) this.nugget.update(dt);
     if (this.props) this.props.update(dt, { player: pl, eye: pl.eye(), time: this.time });
     if (this.enemies) {
       this.events(this.enemies.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy, lamp: this.U.lampRange.value }));
     }
-    this.fx.update(dt);
+    this.fx.update(sdt);
     this.ambient(dt);
     this.updateProgress(dt);
     // camera (with kick and shake)
@@ -401,7 +404,8 @@ export default class DigScene extends Scene {
     if (mat.snd === 'stone' || mat.snd === 'crystal') this.fx.sparks(px, py, pz, 3, [1, 0.8, 0.45], out, 2.5);
     this.ores.vibrate(px, py, pz, power * 0.4);
     this.afterBreak(res.broken, out, power, 'pick');
-    if (res.broken.length > 6) { this.audio.play('break', { snd: mat.snd || 'stone' }); this.shake(0.25); }
+    if (res.broken.length > 6) { this.audio.play('break', { snd: mat.snd || 'stone' }); this.shake(0.25); this.hitStop = 0.05; }
+    else if (res.broken.length) this.hitStop = Math.max(this.hitStop || 0, 0.025);
   }
 
   /** Broken voxels fly out as a chunk; check ore around; stats. */
