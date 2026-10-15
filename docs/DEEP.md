@@ -104,3 +104,8 @@ lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, t
 - `lights(eye)` → as above (lava glow), `dispose()`.
 - The fluid surface material is `makeFluidMaterial(U)` in `TerrainMaterial.js`; the mesher emits
   fluid faces into a separate geometry (`meshChunk(...).fluid`).
+
+**Props** (`new Props(ctx)`, `src/deep/Props.js`): decoration placed in the caves near the player
+(mushrooms, crystal clusters, roots, old mining gear, signposts).
+- `update(dt, { player, eye, time })`, `onVoxel(vx, vy, vz, old, m)` (optional: a prop whose
+  support was dug away should fall or go), `lights(eye)` (as above), `dispose()`.

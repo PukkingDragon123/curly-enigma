@@ -25,7 +25,7 @@ const SLOTS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'food'];
 const REACH = 2.3;
 const vmModules = import.meta.glob('../fps/ViewModel.js');
 // optional systems, built separately (see docs/DEEP.md): fantasy enemies, flowing fluids
-const extModules = import.meta.glob(['./Enemies.js', './Fluids.js']);
+const extModules = import.meta.glob(['./Enemies.js', './Fluids.js', './Props.js']);
 const col01 = (hex) => { const c = hexToRgb(hex); return [c.r / 255, c.g / 255, c.b / 255]; };
 
 export default class DigScene extends Scene {
@@ -95,8 +95,9 @@ export default class DigScene extends Scene {
     // enemies + fluids (optional modules; the scene runs without them)
     this.enemies = null;
     this.fluids = null;
+    this.props = null;
     const ctx = { scene: this.scene, world: this.world, U: this.U, fx: this.fx, bodies: this.bodies, audio: this.audio, state: st, ui: g.ui, player: pl, plan: this.world.plan, scene3: this.scene, owner: this };
-    for (const [path, Name, key] of [['./Enemies.js', 'Enemies', 'enemies'], ['./Fluids.js', 'Fluids', 'fluids']]) {
+    for (const [path, Name, key] of [['./Enemies.js', 'Enemies', 'enemies'], ['./Fluids.js', 'Fluids', 'fluids'], ['./Props.js', 'Props', 'props']]) {
       const load = extModules[path];
       if (!load) continue;
       try { const mod = await load(); this[key] = new mod[Name](ctx); } catch (e) { console.warn(Name + ' failed', e); }
@@ -106,7 +107,7 @@ export default class DigScene extends Scene {
     if (st.flag('nugget')) {
       try { this.nugget = new Nugget({ scene3: this.scene, world: this.world, player: pl, audio: this.audio, fx: this.fx, owner: this }); } catch (e) { console.warn('nugget failed', e); }
     }
-    if (this.fluids) this.world.onChange = (vx, vy, vz, old, m) => this.fluids.onVoxel(vx, vy, vz, old, m);
+    if (this.fluids || this.props) this.world.onChange = (vx, vy, vz, old, m) => { this.fluids?.onVoxel(vx, vy, vz, old, m); this.props?.onVoxel?.(vx, vy, vz, old, m); };
     this.bodies.hooks = {
       tick: (b, sp) => { if (chance(0.6)) this.audio.play('debris', { vol: clamp(sp / 8, 0.2, 0.7) }); if (sp > 3) this.fx.dust(b.pos.x, b.pos.y - b.r, b.pos.z, 2, [0.5, 0.42, 0.34], 0.05); },
       gone: (b) => this.fx.dust(b.pos.x, b.pos.y, b.pos.z, 3, [0.5, 0.42, 0.34], 0.06),
@@ -208,6 +209,7 @@ export default class DigScene extends Scene {
     this.bodies.update(dt, pl.eye(), pl.pos);
     if (this.fluids) this.fluids.update(dt, { player: pl, eye: pl.eye(), time: this.time });
     if (this.nugget) this.nugget.update(dt);
+    if (this.props) this.props.update(dt, { player: pl, eye: pl.eye(), time: this.time });
     if (this.enemies) {
       const evs = this.enemies.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy, lamp: this.U.lampRange.value }) || [];
       for (const e of evs) {
@@ -713,7 +715,7 @@ export default class DigScene extends Scene {
       if (d < l.r + 14) near.push([d - l.r * 0.3, l]);
     }
     // glowing enemies and hot fluids light the rock too
-    for (const src of [this.enemies, this.fluids]) {
+    for (const src of [this.enemies, this.fluids, this.props]) {
       for (const l of src?.lights?.(eye) || []) near.push([Math.hypot(l.x - eye.x, l.y - eye.y, l.z - eye.z) - l.r * 0.3, l]);
     }
     near.sort((a, b) => a[0] - b[0]);
@@ -766,6 +768,7 @@ export default class DigScene extends Scene {
     this.fx.dispose();
     this.enemies?.dispose();
     this.nugget?.dispose();
+    this.props?.dispose();
     this.fluids?.dispose();
     this.world.onChange = null;
     if (this.vm) this.vm.dispose();
