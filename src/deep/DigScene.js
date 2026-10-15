@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { Scene } from '../core/Scene.js';
 import { DeepWorld } from './World.js';
 import { TerrainView } from './Terrain.js';
+import { ChunkPool } from './ChunkPool.js';
 import { FPSPlayer } from './Player.js';
 import { Digger, breakable } from './Dig.js';
 import { Bodies } from './Bodies.js';
@@ -59,6 +60,10 @@ export default class DigScene extends Scene {
     liftState(st);
     this.lastMouth = { wall, t };
     this.world = new DeepWorld({ seed: deep.seed, W, D, tunnels: deep.tunnels });
+    // generate and mesh far chunks in workers (?workers=0 keeps it all on the main thread)
+    if (!/[?&]workers=0/.test(location.search)) {
+      try { this.world.pool = new ChunkPool({ seed: deep.seed, opts: { W, D }, tunnels: deep.tunnels.map((m) => ({ wall: m.wall, t: m.t })) }); } catch (err) { this.world.pool = null; }
+    }
     this.scene.background = new THREE.Color(0x030203);
     this.fov = 74;
     this.camera = new THREE.PerspectiveCamera(this.fov, g.engine.width / g.engine.height, 0.03, 60);
@@ -233,7 +238,7 @@ export default class DigScene extends Scene {
     const sy = Math.sin(pl.yaw), cy = Math.cos(pl.yaw);
     this.wish = busy ? { x: 0, z: 0 } : { x: -sy * mv.y + cy * mv.x, z: -cy * mv.y - sy * mv.x };
     const exhausted = st.energy < 8;
-    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted, frozen: busy, speedMul: exhausted ? 0.6 : 1 });
+    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted, crouch: inp.isDown('KeyC'), frozen: busy, speedMul: exhausted ? 0.6 : 1 });
     if (ev.landed) { this.audio.play('land', { hard: ev.landed > 8 }); this.fx.dust(pl.pos.x, pl.pos.y + 0.05, pl.pos.z, Math.min(10, ev.landed | 0), [0.5, 0.42, 0.34], 0.2); }
     if (ev.fallDamage) this.hurt(Math.round(ev.fallDamage), 'fall');
     if (ev.jump) this.energy(0.2);
@@ -424,7 +429,7 @@ export default class DigScene extends Scene {
     const tier = it.tier || 1;
     const zone = zoneAt(-py);
     if (mat.hp > 3.5 && tier < 3 && zone >= 4) { this.audio.play('clang'); this.fx.sparks(px, py, pz, 8, [1, 0.8, 0.4], out, 3); this.say('hard', `${mat.name} is too hard for this pickaxe.`, 'warn', 5); return; }
-    const res = this.digger.strike(hit.vx, hit.vy, hit.vz, power);
+    const res = this.digger.strike(hit.vx, hit.vy, hit.vz, power, [hit.nx, hit.ny, hit.nz]);
     this.audio.play('hit', { snd: mat.snd || 'stone' });
     const c = col01(mat.tones[2]);
     this.fx.dust(px, py, pz, 5, col01(mat.tones[1]), 0.06, out);
@@ -586,7 +591,7 @@ export default class DigScene extends Scene {
     const hit = this.target;
     if (!hit) return;
     const cx = hit.vx + 0.5, cy = hit.vy + 0.5, cz = hit.vz + 0.5;
-    const r = 1.5 + (it.power || 3) * 0.25;
+    const r = (1.5 + (it.power || 3) * 0.25) * (VOX / 8);
     const res = this.digger.drill(cx, cy, cz, r);
     const px = (hit.vx + 0.5) / VOX, py = (hit.vy + 0.5) / VOX, pz = (hit.vz + 0.5) / VOX;
     this.energy(0.08);
@@ -658,19 +663,25 @@ export default class DigScene extends Scene {
       const lx = hit.nx ? 0 : 1, lz = hit.nx ? 1 : 0;
       // rails and rungs, 3 wide, from the floor below the aim up to the top of the wall (3 m each way)
       let y0 = by, y1 = by;
-      while (y0 > by - 24 && !w.voxelAt(bx, y0 - 1, bz)) y0--;
-      while (y1 < by + 24 && !w.voxelAt(bx, y1 + 1, bz) && w.voxelAt(bx - hit.nx, y1 + 1, bz - hit.nz)) y1++;
-      for (let y = y0; y <= y1; y++) for (let k = -1; k <= 1; k++) {
+      const reach = 3 * VOX;
+      while (y0 > by - reach && !w.voxelAt(bx, y0 - 1, bz)) y0--;
+      while (y1 < by + reach && !w.voxelAt(bx, y1 + 1, bz) && w.voxelAt(bx - hit.nx, y1 + 1, bz - hit.nz)) y1++;
+      const half = Math.max(1, Math.round(VOX / 8)); // rails a third of a meter apart
+      for (let y = y0; y <= y1; y++) for (let k = -half; k <= half; k++) {
         const x = bx + lx * k, z = bz + lz * k;
-        if (k === 0 && (y & 1)) continue; // gaps between rungs
+        if (Math.abs(k) < half && (Math.floor(y * 8 / VOX) & 1)) continue; // gaps between rungs
         if (!w.voxelAt(x - hit.nx, y, z - hit.nz)) continue; // only against rock
         add(x, y, z);
       }
     } else if (mode === 'planks') {
-      for (let z = -1; z <= 1; z++) for (let x = -1; x <= 1; x++) add(bx + x, by, bz + z);
+      // a 3/8 m square plank, one voxel thick
+      const n = Math.round(VOX * 3 / 8), o = n >> 1;
+      for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) add(bx + x - o, by, bz + z - o);
     } else {
-      const x0 = bx & ~1, y0 = by & ~1, z0 = bz & ~1;
-      for (let z = 0; z < 2; z++) for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) add(x0 + x, y0 + y, z0 + z);
+      // a quarter-meter brick on a quarter-meter grid
+      const n = Math.max(2, VOX >> 2), mk = ~(n - 1);
+      const x0 = bx & mk, y0 = by & mk, z0 = bz & mk;
+      for (let z = 0; z < n; z++) for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) add(x0 + x, y0 + y, z0 + z);
     }
     if (!cells.length) return null;
     // never inside the mole
@@ -1064,6 +1075,7 @@ export default class DigScene extends Scene {
     g.ui.setRadar?.(null);
     g.ui.setCrosshair?.(null);
     this.terrain.dispose();
+    this.world.pool?.dispose();
     this.bodies.dispose();
     this.fx.dispose();
     this.enemies?.dispose();

@@ -4,7 +4,9 @@ import * as THREE from 'three';
 import { ORES } from '../data/ores.js';
 import { ITEMS } from '../data/items.js';
 
-export const VOX = 8; // voxels per meter
+export const VOX = 16; // voxels per meter (6.25 cm voxels)
+/** Plate and style scales in the tables below are authored for 1/8 m voxels. */
+export const VK = VOX / 8;
 export const ORE_BASE = 128;
 
 export const M = {
@@ -64,7 +66,7 @@ const STYLE_OF = {
   [M.MUDSTONE]: [STYLE.ROCK, 2.4, 0.7], [M.LIMESTONE]: [STYLE.ROCK, 3, 0.6], [M.GRANITE]: [STYLE.ROCK, 2.8, 0.85], [M.CRYSTALROCK]: [STYLE.CRYSTAL, 2.6, 0.9],
   [M.BASALT]: [STYLE.ROCK, 2.4, 0.9], [M.OBSIDIAN]: [STYLE.CRYSTAL, 3, 0.8], [M.MAGMAROCK]: [STYLE.ROCK, 2.4, 0.9], [M.PERMAFROST]: [STYLE.ICE, 2.6, 0.6],
   [M.ICE]: [STYLE.ICE, 3.2, 0.4], [M.CORE]: [STYLE.CRYSTAL, 2.6, 0.85], [M.STARROCK]: [STYLE.CRYSTAL, 2.6, 0.85], [M.VOIDROCK]: [STYLE.CRYSTAL, 2.6, 0.9],
-  [M.BEDROCK]: [STYLE.ROCK, 3, 1], [M.ROOTS]: [STYLE.WOOD, 1.5, 0.6], [M.GRAVEL]: [STYLE.GRAIN, 1, 0.8], [M.SAND]: [STYLE.GRAIN, 1, 0.3],
+  [M.BEDROCK]: [STYLE.ROCK, 3, 1], [M.ROOTS]: [STYLE.SOIL, 1.4, 0.7], [M.GRAVEL]: [STYLE.GRAIN, 1, 0.8], [M.SAND]: [STYLE.GRAIN, 1, 0.3],
   [M.TIMBER]: [STYLE.WOOD, 8, 0.7], [M.BOARDS]: [STYLE.WOOD, 8, 0.7], [M.BURROW]: [STYLE.WOOD, 8, 0.5], [M.DOOR]: [STYLE.WOOD, 8, 0.9], [M.LADDER]: [STYLE.WOOD, 8, 0.9], [M.CRYSTAL]: [STYLE.CRYSTAL, 2, 0.6],
   [M.LANTERN]: [STYLE.GLOW, 2, 0.2], [M.RUBBLE]: [STYLE.GRAIN, 1.5, 0.8], [M.SNOW]: [STYLE.GRAIN, 1, 0.2], [M.ASH]: [STYLE.GRAIN, 1, 0.4],
   [M.GEODE]: [STYLE.ROCK, 2.2, 0.8], [M.MOSS]: [STYLE.MOSS, 2.2, 0.5], [M.BRICK]: [STYLE.BRICK, 4, 0.9], [M.WATER]: [STYLE.FLUID, 4, 0], [M.LAVA]: [STYLE.FLUID, 4, 0],
@@ -124,7 +126,7 @@ export function makePaletteTexture() {
     const st = d.style || [0, 4, 0.7];
     const o6 = (m * W + 6) * 4;
     data[o6] = st[0];
-    data[o6 + 1] = Math.round(st[1] * 16);
+    data[o6 + 1] = Math.min(255, Math.round(st[1] * VK * 16));
     data[o6 + 2] = Math.round(st[2] * 255);
     data[o6 + 3] = 255;
   }

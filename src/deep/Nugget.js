@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { makeChicken } from '../gfx/characters.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
+import { VOX } from './materials.js';
 
 const HW = 0.1, H = 0.3, GRAV = 12;
 const _v = new THREE.Vector3();
@@ -45,7 +46,7 @@ export class Nugget {
     for (let i = 0; i < 16; i++) {
       const a = back + (i % 2 ? 1 : -1) * Math.floor((i + 1) / 2) * 0.5;
       const x = p.x + Math.sin(a) * dist, z = p.z + Math.cos(a) * dist;
-      for (let dy = 0.6; dy >= -0.6; dy -= 0.125) {
+      for (let dy = 0.6; dy >= -0.6; dy -= 1 / VOX) {
         const y = p.y + dy;
         if (!this.hits(x, y, z) && this.solid(x, y - 0.06, z)) { this.pos.set(x, y, z); this.vel.set(0, 0, 0); return true; }
       }
@@ -120,7 +121,7 @@ export class Nugget {
     if (this.hits(p.x, p.y, nz)) { blocked = true; v.z = 0; } else p.z = nz;
     const ny = p.y + v.y * dt;
     if (this.hits(p.x, ny, p.z)) {
-      if (v.y < 0) { this.grounded = true; p.y = Math.ceil(ny * 8) / 8 - 0.0001; if (this.hits(p.x, p.y, p.z)) p.y += 0.125; }
+      if (v.y < 0) { this.grounded = true; p.y = Math.ceil(ny * VOX) / VOX - 0.0001; if (this.hits(p.x, p.y, p.z)) p.y += 1 / VOX; }
       v.y = 0;
     } else { p.y = ny; this.grounded = false; }
     if (blocked && this.grounded && speed > 0) {

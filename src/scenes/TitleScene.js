@@ -70,7 +70,7 @@ export default class TitleScene extends Scene {
     }, label));
     const menu = el('nav', { class: 'bk-menu', 'aria-label': 'Main menu' }, this.buttons);
 
-    const keys = [['WASD', 'move'], ['Mouse', 'dig/aim'], ['E', 'interact'], ['B', 'Index Book'], ['I', 'inventory'], ['Esc', 'menu']];
+    const keys = [['WASD', 'move'], ['C', 'crouch/dive'], ['Mouse', 'dig/aim'], ['E', 'interact'], ['B', 'Index Book'], ['I', 'inventory'], ['Esc', 'menu']];
     const controls = el('div', { class: 'bk-controls bk-outline' });
     keys.forEach(([k, label], i) => {
       if (i) controls.append(el('span', { class: 'dot' }, '·'));

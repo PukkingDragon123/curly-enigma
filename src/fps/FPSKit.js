@@ -184,7 +184,7 @@ export class FPSRig {
     if (!busy) pl.look(look.dx, look.dy, this.isTouch() ? 0.0055 : 0.0026);
     if (!busy && inp.mousePressed(0) && !inp.pointerLocked && !this.isTouch()) { inp.lockPointer(); inp.mouse.pressed[0] = false; }
     const mv = { x: inp.axisX(), y: inp.axisY() };
-    const ev = pl.update(dt, mv, { jump: !busy && inp.pressed('Space'), jumpHeld: !busy && inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight'), frozen: busy || !!opts.frozen, speedMul: opts.speedMul ?? 1 });
+    const ev = pl.update(dt, mv, { jump: !busy && inp.pressed('Space'), jumpHeld: !busy && inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight'), crouch: !busy && inp.isDown('KeyC'), frozen: busy || !!opts.frozen, speedMul: opts.speedMul ?? 1 });
     if (ev.landed) g.audio.play('land', { hard: ev.landed > 8 });
     if (pl.grounded && pl.speed > 0.6) {
       this.stepT -= dt * pl.speed / 2.4;

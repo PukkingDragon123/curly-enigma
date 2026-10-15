@@ -3,7 +3,7 @@
 // stations, ore areas, lakes and nests (danger zones), crystals, stalactites, roots and moss.
 // Units: voxels (1/8 m) unless a name ends in M (meters). y is up; depth = -y.
 import { makeNoise3D, h3, h3i } from './noise.js';
-import { M, VOX, ORE_BASE } from './materials.js';
+import { M, VOX, VK, ORE_BASE } from './materials.js';
 import { ORE_ID, ORE_SPAWN } from '../data/ores.js';
 import { makeRng, clamp } from '../core/util.js';
 import { stampPrologue, PROLOGUE_BB } from './gen/prologue.js';
@@ -212,7 +212,22 @@ export function addMouth(plan, wall, t) {
 
 // ---------------------------------------------------------------- chunk generation
 const S = 4; // coarse sample stride (voxels)
+const SH = Math.round(Math.log2(VOX / 4)); // voxel → quarter-meter cell shift (spike spacing)
 const NS = CS / S + 1; // 9 samples per axis
+
+/**
+ * Open space where the result is > 0 (meters): spaghetti tunnels where two noise fields are both
+ * near zero, and caverns (rare near the top, bigger deeper). The ground near the surface stays solid.
+ */
+export function caveDensity(p, x, y, z) {
+  const depth = -y;
+  if (depth < 2.5) return -1;
+  const [n0, n1, n2] = p.noise;
+  const a = n0.n(x * 0.085, y * 0.11, z * 0.085), b = n1.n(x * 0.085 + 31.7, y * 0.11, z * 0.085 - 12.3);
+  const worm = 0.0036 - (a * a + b * b);
+  const cav = n2.fbm(x / 24, y / 15, z / 24, 3) - (depth < 8 ? 0.7 : depth < 25 ? 0.44 : 0.36);
+  return Math.max(worm * 40, cav);
+}
 
 /** trilinear sample of a coarse NS³ field at cell o with fractions fx, fy, fz */
 function tri(f, o, fx, fy, fz) {
@@ -229,6 +244,9 @@ export class ChunkGen {
     this.dens = new Float32Array(NS * NS * NS);
     this.band = new Float32Array(NS * NS * NS);
     this.pock = new Float32Array(NS * NS * NS);
+    // two noises whose zero sets cross in thin tubes: roots hanging down through the topsoil
+    this.ra = new Float32Array(NS * NS * NS);
+    this.rb = new Float32Array(NS * NS * NS);
   }
 
   /**
@@ -244,17 +262,12 @@ export class ChunkGen {
     for (let k = 0; k < NS; k++) for (let j = 0; j < NS; j++) for (let i = 0; i < NS; i++) {
       const x = (X0 + i * S) / VOX, y = (Y0 + j * S) / VOX, z = (Z0 + k * S) / VOX;
       const depth = -y;
-      // spaghetti tunnels: where two noise fields are both near zero
-      const a = n0.n(x * 0.085, y * 0.11, z * 0.085), b = n1.n(x * 0.085 + 31.7, y * 0.11, z * 0.085 - 12.3);
-      const worm = 0.0036 - (a * a + b * b);
-      // caverns: rare near the top, bigger deeper; mostly the mole digs its own way
-      const cav = n2.fbm(x / 24, y / 15, z / 24, 3) - (depth < 8 ? 0.7 : depth < 25 ? 0.44 : 0.36);
-      let d = Math.max(worm * 40, cav);
-      if (depth < 2.5) d = -1; // the ground near the surface stays solid
+      const d = caveDensity(p, x, y, z);
       const o = i + NS * (j + NS * k);
       this.dens[o] = d;
       this.band[o] = depth + n3.fbm(x / 9, y / 9, z / 9, 2) * 3.2;
       this.pock[o] = n1.fbm(x / 6 + 100, y / 6, z / 6, 2);
+      if (depth < 7) { this.ra[o] = n2.n(x / 1.1, y / 3.2, z / 1.1); this.rb[o] = n0.n(x / 1.1 + 40, y / 3.2, z / 1.1 - 40); } else { this.ra[o] = 1; this.rb[o] = 1; }
     }
     const hx = p.house;
     for (let lz = 0; lz < CS; lz++) {
@@ -280,7 +293,10 @@ export class ChunkGen {
           let m = (layer & 3) === 0 ? zm2.b : (layer & 3) === 2 ? zm2.c : zm2.a;
           if (zone === 1 && band > 14) m = (layer & 1) ? M.STONE : M.CLAY;
           if (tri(this.pock, o, fx, fy, fz) > 0.34) m = zm2.pocket;
-          if (zone === 1 && band < 4 && h3(vx >> 2, vy >> 2, vz >> 2, 7) < 0.18) m = M.ROOTS;
+          if (zone === 1 && band < 4) {
+            const t = 0.055 * (1 - Math.max(0, band) / 4);
+            if (Math.abs(tri(this.ra, o, fx, fy, fz)) < t && Math.abs(tri(this.rb, o, fx, fy, fz)) < t) m = M.ROOTS;
+          }
           vox[vi] = m;
         }
       }
@@ -302,16 +318,65 @@ export class ChunkGen {
       a.deposits.forEach((d, i) => { if (this.stampDeposit(d, a, vox, X0, Y0, Z0)) deps.push({ id: `a${a.id}_${i}`, oreId: a.oreId, item: a.item, ...d }); });
     }
     // scattered common ore everywhere
-    const zone = zoneAt(Math.max(0, -(cy0 + 2)));
+    for (const sd of this.scatter(cx, cy, cz)) if (this.stampDeposit(sd, sd, vox, X0, Y0, Z0)) deps.push(sd);
+    return deps;
+  }
+
+  /** The common ore scattered through this chunk (about one deposit per 20 m³ of rock). */
+  scatter(cx, cy, cz) {
+    const p = this.plan, CM = CS / VOX;
+    const cx0 = cx * CM, cy0 = cy * CM, cz0 = cz * CM;
+    const zone = zoneAt(Math.max(0, -(cy0 + CM / 2)));
     const spawn = ORE_SPAWN[zone] || [];
     const hc = h3i(cx, cy, cz, p.seed + 5);
-    const nScatter = 1 + hc % 3;
-    for (let k = 0; k < nScatter && spawn.length; k++) {
+    const per = (CM * CM * CM) / 20; // expected deposits in this chunk
+    const n = Math.floor(per) + (((hc >>> 8) % 1000) / 1000 < per - Math.floor(per) ? 1 : 0);
+    const out = [];
+    for (let k = 0; k < n && spawn.length; k++) {
       const e = spawn[(hc >>> (4 + k * 3)) % Math.min(3, spawn.length)];
-      const d = { x: cx0 + h3(cx, cy, cz, k + 1) * 4, y: cy0 + h3(cx, cy, cz, k + 9) * 4, z: cz0 + h3(cx, cy, cz, k + 17) * 4, r: 0.14 + h3(cx, cy, cz, k + 3) * 0.14, q: 70 + h3(cx, cy, cz, k + 5) * 25, seed: hc + k };
-      if (this.stampDeposit(d, { oreId: ORE_ID[e[0]], item: e[0] }, vox, X0, Y0, Z0)) deps.push({ id: `s${cx}_${cy}_${cz}_${k}`, oreId: ORE_ID[e[0]], item: e[0], ...d });
+      out.push({ id: `s${cx}_${cy}_${cz}_${k}`, oreId: ORE_ID[e[0]], item: e[0], x: cx0 + h3(cx, cy, cz, k + 1) * CM, y: cy0 + h3(cx, cy, cz, k + 9) * CM, z: cz0 + h3(cx, cy, cz, k + 17) * CM, r: 0.14 + h3(cx, cy, cz, k + 3) * 0.14, q: 70 + h3(cx, cy, cz, k + 5) * 25, seed: hc + k });
     }
-    return deps;
+    return out;
+  }
+
+  /** Deposits reaching into a chunk without generating it (for chunks that are solid rock). */
+  depositsFor(cx, cy, cz) {
+    const p = this.plan, CM = CS / VOX;
+    const cx0 = cx * CM, cy0 = cy * CM, cz0 = cz * CM, cx1 = cx0 + CM, cy1 = cy0 + CM, cz1 = cz0 + CM;
+    const out = [];
+    for (const a of p.areas) {
+      if (a.x + a.r + 1 < cx0 || a.x - a.r - 1 > cx1 || a.y + a.r < cy0 - 1 || a.y - a.r > cy1 + 1 || a.z + a.r + 1 < cz0 || a.z - a.r - 1 > cz1) continue;
+      a.deposits.forEach((d, i) => {
+        if (d.x + d.r < cx0 || d.x - d.r > cx1 || d.y + d.r < cy0 || d.y - d.r > cy1 || d.z + d.r < cz0 || d.z - d.r > cz1) return;
+        out.push({ id: `a${a.id}_${i}`, oreId: a.oreId, item: a.item, ...d });
+      });
+    }
+    for (const sd of this.scatter(cx, cy, cz)) out.push(sd);
+    return out;
+  }
+
+  /**
+   * True when the chunk is rock all the way through: no cave reaches into it and no feature
+   * touches it. Such chunks are never generated or meshed until something digs into them.
+   */
+  isSolid(cx, cy, cz) {
+    const p = this.plan, CM = CS / VOX;
+    const cx0 = cx * CM, cy0 = cy * CM, cz0 = cz * CM, cx1 = cx0 + CM, cy1 = cy0 + CM, cz1 = cz0 + CM;
+    const hx = p.house;
+    if (cx1 > hx.x0 - 1 && cx0 < hx.x1 + 1 && cy1 > hx.y0 - 1 && cy0 < hx.y1 + 1 && cz1 > hx.z0 - 1 && cz0 < hx.z1 + 1) return false;
+    // a margin around the chunk too: its outer voxels are the walls of any cave next door
+    const mg = 0.35;
+    for (const f of p.features) {
+      const bb = f.bb;
+      if (bb[3] < cx0 - mg || bb[0] > cx1 + mg || bb[4] < cy0 - mg || bb[1] > cy1 + mg || bb[5] < cz0 - mg || bb[2] > cz1 + mg) continue;
+      return false;
+    }
+    const X0 = cx * CS, Y0 = cy * CS, Z0 = cz * CS;
+    for (let k = -1; k <= NS; k++) for (let j = -1; j <= NS; j++) for (let i = -1; i <= NS; i++) {
+      const x = (X0 + i * S) / VOX, y = (Y0 + j * S) / VOX, z = (Z0 + k * S) / VOX;
+      if (caveDensity(p, x, y, z) > -0.05) return false;
+    }
+    return true;
   }
 
   fillBox(vox, X0, Y0, Z0, x0, y0, z0, x1, y1, z1, m) {
@@ -421,11 +486,11 @@ export class ChunkGen {
         const h = h3(vx, vy, vz, p.seed + 41);
         if (zone <= 3 && h < 0.42 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS;
         // crystal spikes on cave floors (grotto, frost, core)
-        if ((zone === 3 || zone === 5 || zone === 6) && h3(vx >> 1, vy, vz >> 1, p.seed + 43) < 0.012) this.spike(vox, x, y + 1, z, 1, M.CRYSTAL, 4 + (h * 60 | 0) % 6);
+        if ((zone === 3 || zone === 5 || zone === 6) && h3(vx >> SH, vy, vz >> SH, p.seed + 43) < 0.012) this.spike(vox, x, y + 1, z, 1, M.CRYSTAL, (4 + (h * 60 | 0) % 6) * VK);
       } else if (airDown) {
         const h = h3(vx, vy, vz, p.seed + 47);
-        if (zone >= 2 && h3(vx >> 1, vy, vz >> 1, p.seed + 49) < 0.01) this.spike(vox, x, y - 1, z, -1, zone >= 5 ? M.ICE : m, 3 + (h * 50 | 0) % 6);
-        else if (zone === 3 && h < 0.004) this.spike(vox, x, y - 1, z, -1, M.CRYSTAL, 3);
+        if (zone >= 2 && h3(vx >> SH, vy, vz >> SH, p.seed + 49) < 0.01) this.spike(vox, x, y - 1, z, -1, zone >= 5 ? M.ICE : m, (3 + (h * 50 | 0) % 6) * VK);
+        else if (zone === 3 && h < 0.004 / (VK * VK)) this.spike(vox, x, y - 1, z, -1, M.CRYSTAL, 3 * VK);
       }
     }
   }
@@ -434,11 +499,12 @@ export class ChunkGen {
     for (let i = 0; i < len; i++) {
       const yy = y + dir * i;
       if (yy < 0 || yy >= CS) return;
-      const r = i < len * 0.35 ? 1 : 0;
+      // a cone: thick at the root, a single voxel at the tip
+      const r = Math.round((1 - i / len) * VK * 1.4);
       for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
         const xx = x + dx, zz = z + dz;
         if (xx < 0 || zz < 0 || xx >= CS || zz >= CS) continue;
-        if (r && dx && dz) continue;
+        if (dx * dx + dz * dz > r * r + 0.5) continue;
         const vi = xx + CS * (yy + CS * zz);
         if (vox[vi] === 0) vox[vi] = m;
       }

@@ -26,7 +26,7 @@ const LAVA_EVERY = 2; // lava moves on every 2nd tick (thick and slow)
 const BUDGET = 400; // cells per substep; the rest wait their turn
 const REMESH = 3; // chunks per frame whose fluid surface gets rebuilt after level changes
 const SIM_R = 24; // meters: flows farther from the mole sleep until it comes back
-const MAX_DRAIN = 16000; // voxels a lake may lose (keeps the saved edits small)
+const MAX_DRAIN = 16000 * (VOX / 8) ** 3; // voxels a lake may lose (keeps the saved edits small)
 const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const D6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const WATER_C = [0.62, 0.84, 1];
@@ -104,6 +104,7 @@ export class Fluids {
       if (!ch) return -1;
       this.lc = ch;
     }
+    if (!ch.vox) return M.STONE; // solid rock all through (a virtual chunk)
     return ch.vox[(vx & CMASK) + CS * ((vy & CMASK) + CS * (vz & CMASK))];
   }
   /** Stored level at a voxel (0 = untouched: full if it's fluid). */
@@ -134,7 +135,7 @@ export class Fluids {
     return this.key(S.cx * CS + lx, S.cy * CS + ly, S.cz * CS + lz);
   }
   /** Material at key k (-1 when its chunk isn't loaded). */
-  mk(k) { const ch = this.slots[k >> LB].ch; return ch ? ch.vox[k & LMASK] : -1; }
+  mk(k) { const ch = this.slots[k >> LB].ch; return ch ? (ch.vox ? ch.vox[k & LMASK] : M.STONE) : -1; }
   /** Level at key k: 1..8 (untouched fluid counts as full). */
   lk(k) { const a = this.slots[k >> LB].lv; return (a && a[k & LMASK]) || 8; }
   kx(k) { return this.slots[k >> LB].cx * CS + (k & CMASK); }
@@ -158,7 +159,7 @@ export class Fluids {
    */
   setF(k, m) {
     const w = this.w, S = this.slots[k >> LB], ch = S.ch, i = k & LMASK;
-    if (!ch || ch.vox[i] === m) return;
+    if (!ch || !ch.vox || ch.vox[i] === m) return;
     ch.vox[i] = m;
     let ed = w.edits.get(ch.key);
     if (!ed) w.edits.set(ch.key, (ed = new Map()));
@@ -304,7 +305,7 @@ export class Fluids {
   /** One cell's turn. Returns the work done (0 for cells that were just skipped). */
   cell(k, S, vx, vy, vz, lavaOK) {
     const ch = S.ch, li = k & LMASK;
-    if (!ch) { this.sleep.add(k); return 0; }
+    if (!ch || !ch.vox) { this.sleep.add(k); return 0; }
     const m = ch.vox[li];
     if (!FLUID[m]) { if (S.lv && S.lv[li]) this.lvDel(k); return 0; }
     const lava = m === M.LAVA;
@@ -469,7 +470,7 @@ export class Fluids {
       }
       const [k, t0] = it.value;
       const S = this.slots[k >> LB];
-      if (!S || !S.ch) continue;
+      if (!S || !S.ch || !S.ch.vox) continue;
       const vx = this.kx(k), vy = this.ky(k), vz = this.kz(k);
       if (Math.abs(vx - px) > R || Math.abs(vz - pz) > R || Math.abs(vy - py) > R) continue;
       const m = S.ch.vox[k & LMASK];

@@ -2,7 +2,7 @@
 // "plates", bevelled voxel edges up close, baked AO, the helmet lamp and up to 8 point lights,
 // glowing materials, fog) and fluid surfaces (water / lava).
 import * as THREE from 'three';
-import { makePaletteTexture } from './materials.js';
+import { makePaletteTexture, VOX } from './materials.js';
 
 export const MAX_LIGHTS = 8;
 
@@ -109,13 +109,13 @@ export function makeTerrainMaterial(U) {
         vec3 n = vNormal;
         float dist = length(vWorld - lampPos);
         float near = clamp(1.0 - (dist - 3.0) / 5.0, 0.0, 1.0); // pixel detail fades with distance
-        vec3 vox = floor(vWorld * 8.0 - n * 0.5);
+        vec3 vox = floor(vWorld * ${VOX}.0 - n * 0.5);
         // face axes and the texel (8x8 per voxel face) this fragment is in
         vec3 t1 = abs(n.x) > 0.5 ? vec3(0., 0., 1.) : vec3(1., 0., 0.);
         vec3 t2 = abs(n.y) > 0.5 ? vec3(0., 0., 1.) : vec3(0., 1., 0.);
-        vec3 lp = vWorld * 8.0 - vox;
+        vec3 lp = vWorld * ${VOX}.0 - vox;
         vec2 uv = vec2(dot(lp, t1), dot(lp, t2));
-        const float TEXN = 16.0; // texels per voxel face (128 per meter)
+        const float TEXN = ${128 / VOX}.0; // texels per voxel face (128 per meter)
         vec2 tx = clamp(floor(uv * TEXN), 0.0, TEXN - 1.0);
         vec3 q = vox + (tx.x + 0.5) / TEXN * t1 + (tx.y + 0.5) / TEXN * t2 + n * 0.49;
         vec4 st = texture2D(palette, vec2(6.5 / 8.0, (vMat + 0.5) / 256.0));
@@ -150,7 +150,7 @@ export function makeTerrainMaterial(U) {
           // wood: grain running along the longest axis of the voxel's plank
           float g = sin((dot(q, t1) * 8.0 + hash3(floor(q * 0.25)) * 9.0) * 0.9) + (px - 0.5) * 0.8;
           tone = 1.5 + g * 1.2;
-          seam = step(TEXN - 1.0, mod(floor(dot(q, t2) * TEXN), TEXN)) * 0.8;
+          seam = step(TEXN * ${VOX / 8}.0 - 1.0, mod(floor(dot(q, t2) * TEXN), TEXN * ${VOX / 8}.0)) * 0.8; // a plank every 1/8 m
         } else if (style == 4.0) {
           // brick: courses of 4×2 voxels with mortar lines
           vec3 b = q * vec3(0.5, 1.0, 0.5);

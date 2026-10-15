@@ -3,7 +3,10 @@
 // plate comes out along its cracks as one tumbling chunk. Soil plates are small and go in one
 // blow; hard rock takes a few. The chisel nibbles single voxels, the drill bores a round hole.
 import { VOX, M, MAT, ORE_BASE, voxelColor } from './materials.js';
+import { clamp } from '../core/util.js';
 import { h3 } from './noise.js';
+
+const QSH = Math.round(Math.log2(VOX / 4)); // voxel → quarter-meter cell
 
 // --- the shader's hash33 / hash3, in JS (float precision differs a little; only seams care)
 const fract = (x) => x - Math.floor(x);
@@ -40,41 +43,47 @@ export class Digger {
   }
 
   /**
-   * A pickaxe blow on voxel (vx, vy, vz). power: tool strength (1 = rusty pick).
-   * Returns { broken: [{x, y, z, m, c}], material, chips } — broken voxels are already removed.
+   * A pickaxe blow on voxel (vx, vy, vz), struck through the face with normal n: knocks a round,
+   * ragged bite of small voxels out of the rock around the point — bigger for a stronger pick,
+   * smaller in harder rock. Hard rock (hp > 1.6) takes a blow or two to crack before it gives.
+   * Returns { broken: [{x, y, z, m, c}], material, cracked } — broken voxels are already removed.
    */
-  strike(vx, vy, vz, power) {
+  strike(vx, vy, vz, power, n = [0, 0, 0]) {
     const w = this.w;
     const m = w.voxelAt(vx, vy, vz);
     const mat = MAT[m];
     if (!breakable(m) || m >= ORE_BASE) return { broken: [], material: m };
-    const S = mat.style ? mat.style[1] : 3;
-    const plate = plateOf(vx, vy, vz, Math.max(1, S));
-    const key = plate + ':' + (S | 0);
-    const dmg = (this.damage.get(key) || 0) + power / Math.max(0.3, mat.hp);
-    // the blow cracks the plates around the one it lands on: the next blows bite faster
-    const seen = new Set([key]);
-    for (const [dx, dy, dz] of N6) {
-      const x = vx + dx, y = vy + dy, z = vz + dz, m2 = w.voxelAt(x, y, z);
-      if (!breakable(m2) || m2 >= ORE_BASE) continue;
-      const S2 = MAT[m2].style ? MAT[m2].style[1] : 3;
-      const k2 = plateOf(x, y, z, Math.max(1, S2)) + ':' + (S2 | 0);
-      if (seen.has(k2)) continue;
-      seen.add(k2);
-      this.damage.set(k2, Math.min(0.92, (this.damage.get(k2) || 0) + 0.3 * power / Math.max(0.3, MAT[m2].hp)));
-    }
-    if (dmg < 1) {
-      this.damage.set(key, dmg);
-      // a chip off the surface every blow: the voxel itself goes if it's exposed and soft enough
-      const chips = [];
-      if (mat.hp < 1.5 || dmg > 0.5) {
-        chips.push({ x: vx, y: vy, z: vz, m, c: voxelColor(m, vx, vy, vz, h3(vx, vy, vz, 1)) });
-        w.setVoxel(vx, vy, vz, 0);
+    const hp = Math.max(0.3, mat.hp);
+    // cracking: damage per quarter-meter cell of rock
+    if (hp > 1.6) {
+      const q = QSH, key = ((vx >> q) + 4096) * 67108864 + ((vy >> q) + 4096) * 8192 + ((vz >> q) + 4096);
+      const dmg = (this.damage.get(key) || 0) + (power * 1.6) / hp;
+      if (dmg < 1) {
+        this.damage.set(key, dmg);
+        // the face splinters a little where it was hit
+        return { broken: this.bite(vx + 0.5 - n[0] * 0.5, vy + 0.5 - n[1] * 0.5, vz + 0.5 - n[2] * 0.5, 1.3, null), material: m, cracked: dmg };
       }
-      return { broken: chips, material: m, cracked: dmg };
+      this.damage.delete(key);
     }
-    this.damage.delete(key);
-    return { broken: this.takePlate(vx, vy, vz, S, plate), material: m };
+    const R = clamp(0.08 + 0.16 * Math.sqrt(power / hp), 0.08, 0.34) * VOX; // voxels
+    // the centre sinks into the rock so most of the ball takes rock out
+    const cx = vx + 0.5 - n[0] * R * 0.45, cy = vy + 0.5 - n[1] * R * 0.45, cz = vz + 0.5 - n[2] * R * 0.45;
+    return { broken: this.bite(cx, cy, cz, R, m), material: m };
+  }
+
+  /** Remove breakable, non-ore voxels within a ragged ball (voxel units) and return them. */
+  bite(cx, cy, cz, R, hostM) {
+    const w = this.w, out = [];
+    const r0 = Math.floor(R + 1);
+    for (let z = Math.floor(cz) - r0; z <= Math.floor(cz) + r0; z++) for (let y = Math.floor(cy) - r0; y <= Math.floor(cy) + r0; y++) for (let x = Math.floor(cx) - r0; x <= Math.floor(cx) + r0; x++) {
+      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy, z + 0.5 - cz);
+      if (d > R * (0.78 + 0.34 * h3(x, y, z, 31))) continue;
+      const m = w.voxelAt(x, y, z);
+      if (!breakable(m) || m >= ORE_BASE) continue;
+      out.push({ x, y, z, m, c: voxelColor(m, x, y, z, h3(x, y, z, 1)) });
+      w.setVoxel(x, y, z, 0);
+    }
+    return out;
   }
 
   /** Remove the plate containing (vx, vy, vz): flood fill same-plate voxels of breakable rock. */
@@ -101,14 +110,11 @@ export class Digger {
     return out;
   }
 
-  /** Chisel: remove the voxel and maybe one exposed neighbour — precise, never hurts ore. */
+  /** Chisel: a tiny precise bite (the voxel and its nearest neighbours) — never hurts ore. */
   chisel(vx, vy, vz) {
-    const w = this.w;
-    const m = w.voxelAt(vx, vy, vz);
+    const m = this.w.voxelAt(vx, vy, vz);
     if (!breakable(m) || m >= ORE_BASE) return [];
-    const out = [{ x: vx, y: vy, z: vz, m, c: voxelColor(m, vx, vy, vz, h3(vx, vy, vz, 1)) }];
-    w.setVoxel(vx, vy, vz, 0);
-    return out;
+    return this.bite(vx + 0.5, vy + 0.5, vz + 0.5, 0.6 + VOX / 16, m);
   }
 
   /** Drill: bore a small round hole (radius r voxels) at the point; ore voxels only get chipped. */

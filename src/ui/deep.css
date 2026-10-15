@@ -75,6 +75,8 @@ html.is-touch #ui[data-hud=deep]:not(.panel-open):not(.no-touch) > .tc-look { di
 .d-use { right: calc(var(--px) * 37); bottom: calc(var(--px) * 41); }
 .d-tool { right: calc(var(--px) * 1); bottom: calc(var(--px) * 51); }
 .d-snack { right: 0; bottom: calc(var(--px) * 87); }
+.d-crouch { right: calc(var(--px) * 74); bottom: calc(var(--px) * 1); }
+.tc-btn.lit .tc-face { filter: brightness(1.25) sepia(.5); }
 .tc-dig { position: absolute; right: 0; bottom: 0; width: calc(var(--px) * 40); height: calc(var(--px) * 41); padding: 0; border: 0; background: none; pointer-events: auto; touch-action: none; opacity: .92; }
 .tc-dig::before { content: ''; position: absolute; inset: calc(var(--px) * -3); }
 .tc-dig.on { opacity: 1; }

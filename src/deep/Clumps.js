@@ -251,7 +251,7 @@ export class Clumps {
       const k = key(x, y, z);
       if (done.has(k)) return;
       done.add(k);
-      if (h3(x, y, z, 77) > p || cut.length >= 48) return;
+      if (h3(x, y, z, 77) > p || cut.length >= 48 * (VOX / 8) ** 2) return;
       const m = w.voxelAt(x, y, z);
       if (!m || m >= ORE_BASE || !breakable(m) || MANMADE.has(m) || MAT[m]?.fluid) return;
       // leave rock that holds back water or lava

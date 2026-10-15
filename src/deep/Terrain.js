@@ -1,13 +1,20 @@
 // Streams chunks around the player: generates and meshes the nearest first within a per-frame
 // time budget, remeshes dug chunks right away, culls by view direction and fog distance, and
-// unloads far chunks (their edits live on in the world's edit store).
+// unloads far chunks (their edits live on in the world's edit store). With a worker pool
+// (world.pool, src/deep/ChunkPool.js) generation and greedy meshing of new chunks happen off the
+// main thread; dug chunks next to the player are still remeshed here, the same frame.
 import * as THREE from 'three';
 import { CS } from './Generator.js';
 import { VOX } from './materials.js';
-import { meshChunk } from './Mesher.js';
+import { meshChunk, meshChunkFluid, fillPad, rawToGeometry, PAD, FLUID } from './Mesher.js';
 import { makeTerrainMaterial, makeFluidMaterial } from './TerrainMaterial.js';
 
-const CM = CS / VOX; // chunk size in meters (4)
+const CM = CS / VOX; // chunk size in meters
+
+function hasFluid(v) {
+  for (let i = 0; i < v.length; i++) if (FLUID[v[i]]) return true;
+  return false;
+}
 
 export class TerrainView {
   constructor(scene3, world, U) {
@@ -16,10 +23,11 @@ export class TerrainView {
     scene3.add(this.root);
     this.mat = makeTerrainMaterial(U);
     this.fluidMat = makeFluidMaterial(U);
-    this.radius = 5; // chunks
-    this.keepRadius = 7;
+    this.radius = Math.round(16 / CM); // chunks (16 m)
+    this.keepRadius = Math.round(20 / CM);
     this.queue = [];
     this.stats = { gen: 0, mesh: 0, tris: 0 };
+    this.jobs = 0;
     world.onUnload = (ch) => this.drop(ch);
   }
 
@@ -40,8 +48,8 @@ export class TerrainView {
     const pcx = Math.floor(x / CM), pcy = Math.floor(y / CM), pcz = Math.floor(z / CM);
     // 1. dug chunks near the player first (they must update this frame)
     for (const ch of w.chunks.values()) {
-      if (!ch.dirty || !ch.mesh && !ch.wasMeshed) continue;
-      if (Math.abs(ch.cx - pcx) > 2 || Math.abs(ch.cy - pcy) > 2 || Math.abs(ch.cz - pcz) > 2) continue;
+      if (!ch.dirty || !ch.mesh && !ch.wasMeshed || !ch.urgent && w.pool?.ok) continue;
+      if (Math.abs(ch.cx - pcx) > 3 || Math.abs(ch.cy - pcy) > 3 || Math.abs(ch.cz - pcz) > 3) continue;
       this.build(ch);
     }
     // 2. new chunks, nearest first (re-sorted when the player crosses a chunk border)
@@ -63,52 +71,94 @@ export class TerrainView {
         if (dx * dx + dy * dy + dz * dz > this.keepRadius * this.keepRadius) w.unload(ch);
       }
     }
-    while (this.qi < this.queue.length && performance.now() - t0 < budgetMs) {
-      const [, cx, cy, cz] = this.queue[this.qi];
+    // walk the queue from the nearest unfinished chunk; with workers, chunks still waiting on
+    // their neighbours are skipped (not waited on) so the pool stays busy
+    const pool = w.pool && w.pool.ok ? w.pool : null;
+    let j = this.qi, full = false;
+    while (j < this.queue.length && !full && performance.now() - t0 < budgetMs && j - this.qi < 600) {
+      const e = this.queue[j];
+      if (e[4]) { if (j === this.qi) this.qi++; j++; continue; }
+      const cx = e[1], cy = e[2], cz = e[3];
       // a chunk can only be meshed once its neighbours exist (faces and AO read them)
       let ready = true;
-      for (let dz = -1; dz <= 1; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-        if (!w.chunk(cx + dx, cy + dy, cz + dz)) { w.ensure(cx + dx, cy + dy, cz + dz); this.stats.gen++; ready = false; }
-        if (performance.now() - t0 > budgetMs) break;
+      for (let dz = -1; dz <= 1 && !full; dz++) for (let dy = -1; dy <= 1 && !full; dy++) for (let dx = -1; dx <= 1; dx++) {
+        let n = w.chunk(cx + dx, cy + dy, cz + dz);
+        if (!n) {
+          n = w.request(cx + dx, cy + dy, cz + dz);
+          if (!n) { full = true; break; } // the pool is busy: next frame
+          this.stats.gen++;
+        }
+        if (n.pending) ready = false;
+        if (!pool && performance.now() - t0 > budgetMs) { ready = false; full = true; break; }
       }
-      if (!ready) continue;
-      const ch = w.chunk(cx, cy, cz);
-      if (ch.dirty) this.build(ch);
-      this.qi++;
+      if (full) break;
+      if (ready) {
+        const ch = w.chunk(cx, cy, cz);
+        if (ch.dirty && !ch.virtual && !this.mesh(ch, pool)) break;
+        e[4] = true;
+        if (j === this.qi) this.qi++;
+      }
+      j++;
     }
     // remaining dirty chunks in range (neighbours of fresh ones), as budget allows
     if (performance.now() - t0 < budgetMs) {
       for (const ch of w.chunks.values()) {
-        if (!ch.dirty || !ch.wasMeshed) continue;
-        this.build(ch);
+        if (!ch.dirty || !ch.wasMeshed || ch.pending) continue;
+        if (!this.mesh(ch, pool)) break;
         if (performance.now() - t0 > budgetMs) break;
       }
     }
   }
 
-  build(ch) {
-    const r = meshChunk(this.w, ch);
+  /** Mesh a chunk: in a worker when there is a pool, else right here. False when the pool is full. */
+  mesh(ch, pool) {
+    if (!pool) { this.build(ch); return true; }
+    const pad = fillPad(this.w, ch, new Uint8Array(PAD * PAD * PAD));
+    const id = ++this.jobs;
+    if (!pool.send({ t: 'mesh', pad }, [pad.buffer], (m) => this.meshed(ch, id, m))) return false;
+    ch.meshJob = id;
     ch.dirty = false;
     ch.wasMeshed = true;
     this.stats.mesh++;
-    const ox = (ch.cx * CS) / VOX, oy = (ch.cy * CS) / VOX, oz = (ch.cz * CS) / VOX;
-    const set = (prop, geo, mat, order) => {
-      let m = ch[prop];
-      if (!geo) { if (m) { this.root.remove(m); m.geometry.dispose(); ch[prop] = null; } return; }
-      if (!m) {
-        m = new THREE.Mesh(geo, mat);
-        m.position.set(ox, oy, oz);
-        m.scale.setScalar(1 / VOX);
-        m.matrixAutoUpdate = false;
-        m.updateMatrix();
-        m.renderOrder = order;
-        m.frustumCulled = true;
-        this.root.add(m);
-        ch[prop] = m;
-      } else { m.geometry.dispose(); m.geometry = geo; }
-    };
-    set('mesh', r.solid, this.mat, 0);
-    set('fluidMesh', r.fluid, this.fluidMat, 5);
+    return true;
+  }
+
+  /** A worker's mesh came back (ignored if the chunk was rebuilt or unloaded meanwhile). */
+  meshed(ch, id, m) {
+    if (ch.meshJob !== id) return;
+    ch.meshJob = 0;
+    if (this.w.chunks.get(ch.key) !== ch || !ch.vox) return;
+    if (!m) { ch.dirty = true; return; } // the worker died: redo it here
+    this.set(ch, 'mesh', m.raw ? rawToGeometry(m.raw) : null, this.mat, 0);
+    this.set(ch, 'fluidMesh', hasFluid(ch.vox) ? meshChunkFluid(this.w, ch) : null, this.fluidMat, 5);
+  }
+
+  build(ch) {
+    if (ch.virtual) { ch.dirty = false; return; } // solid rock all through: nothing to draw
+    const r = meshChunk(this.w, ch);
+    ch.dirty = false;
+    ch.wasMeshed = true;
+    ch.meshJob = 0; // a worker mesh still on its way is older than this one
+    ch.urgent = false;
+    this.stats.mesh++;
+    this.set(ch, 'mesh', r.solid, this.mat, 0);
+    this.set(ch, 'fluidMesh', r.fluid, this.fluidMat, 5);
+  }
+
+  set(ch, prop, geo, mat, order) {
+    let m = ch[prop];
+    if (!geo) { if (m) { this.root.remove(m); m.geometry.dispose(); ch[prop] = null; } return; }
+    if (!m) {
+      m = new THREE.Mesh(geo, mat);
+      m.position.set((ch.cx * CS) / VOX, (ch.cy * CS) / VOX, (ch.cz * CS) / VOX);
+      m.scale.setScalar(1 / VOX);
+      m.matrixAutoUpdate = false;
+      m.updateMatrix();
+      m.renderOrder = order;
+      m.frustumCulled = true;
+      this.root.add(m);
+      ch[prop] = m;
+    } else { m.geometry.dispose(); m.geometry = geo; }
   }
 
   drop(ch) {

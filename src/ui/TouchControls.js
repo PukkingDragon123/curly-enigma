@@ -146,7 +146,13 @@ export function setupTouch(game) {
     const dUse = key('use', 'KeyE', 'Use', 'tc-d d-use');
     const dSnack = key('snack', 'KeyQ', 'Snack', 'tc-d d-snack');
     const dTool = btn('tool', 'Next tool', 'tc-d d-tool', () => { inp.mouse.wheel += 1; ui.belt?.poke(); });
-    const deepPad = el('div', { class: 'tc-deep' }, [dTool, dSnack, dUse, dJump, dig]);
+    // crouch is a toggle on touch (in water it dives)
+    const dCrouch = btn('crouch', 'Crouch / dive', 'tc-d d-crouch', () => {
+      const low = !held.has('KeyC');
+      if (low) press('KeyC'); else release('KeyC');
+      dCrouch.classList.toggle('lit', low);
+    });
+    const deepPad = el('div', { class: 'tc-deep' }, [dTool, dSnack, dUse, dJump, dCrouch, dig]);
 
     const look = el('div', { class: 'tc-look' });
     let lookId = null, lx = 0, ly = 0;
@@ -195,7 +201,7 @@ export function setupTouch(game) {
     game.touch = root;
 
     // never leave keys stuck when the controls vanish (panels, scene changes, app switch)
-    const releaseAll = () => { stopStick(); digEnd(); lookId = null; for (const c of [...held]) release(c); };
+    const releaseAll = () => { stopStick(); digEnd(); lookId = null; for (const c of [...held]) release(c); dCrouch.classList.remove('lit'); };
     window.addEventListener('blur', releaseAll);
     document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
     new MutationObserver(() => { if (ui.root.classList.contains('panel-open') || ui.root.classList.contains('no-touch')) releaseAll(); }).observe(ui.root, { attributes: true, attributeFilter: ['class', 'data-hud'] });

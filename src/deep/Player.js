@@ -1,5 +1,7 @@
 // First-person mole: an AABB walking through voxels (meters). Steps up rough floors, jumps, grips
-// and climbs walls (moles dig claws in), swims, and feeds the camera a little bob and landing dip.
+// and climbs walls (moles dig claws in), crouches (low tunnels, and no walking off ledges while
+// crouched), swims and dives (crouch sinks, jump rises, swimming forward follows the look), and
+// feeds the camera a little bob and landing dip.
 import * as THREE from 'three';
 import { VOX, MAT, M } from './materials.js';
 import { OPAQUE } from './Mesher.js';
@@ -8,6 +10,8 @@ import { clamp, damp } from '../core/util.js';
 const HW = 0.22; // half width
 const HEIGHT = 0.86;
 const EYE = 0.72;
+const HEIGHT_C = 0.5; // crouched
+const EYE_C = 0.4;
 const STEP = 0.32;
 const GRAV = 15;
 
@@ -25,6 +29,8 @@ export class FPSPlayer {
     this.bobT = 0;
     this.dip = 0; // landing dip (meters)
     this.eyeY = EYE;
+    this.h = HEIGHT; // body height now (lower while crouched)
+    this.crouched = false;
     this.lastFall = 0;
     this.blocked = false;
   }
@@ -38,7 +44,7 @@ export class FPSPlayer {
     for (let z = e; z <= f; z++) for (let y = c; y <= d; y++) for (let x = a; x <= b; x++) if (OPAQUE[w.voxelAt(x, y, z)]) return true;
     return false;
   }
-  hitsAt(px, py, pz) { return this.boxHits(px - HW, py, pz - HW, px + HW, py + HEIGHT, pz + HW); }
+  hitsAt(px, py, pz, h = this.h) { return this.boxHits(px - HW, py, pz - HW, px + HW, py + h, pz + HW); }
 
   forward(out = new THREE.Vector3()) { return out.set(-Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch)); }
   eye(out = new THREE.Vector3()) { return out.set(this.pos.x, this.pos.y + this.eyeY - this.dip, this.pos.z); }
@@ -49,7 +55,7 @@ export class FPSPlayer {
   }
 
   /** mv: {x: strafe, y: forward} in -1..1; returns events {landed, fell, splash}. */
-  update(dt, mv, { jump = false, jumpHeld = false, run = false, frozen = false, speedMul = 1 } = {}) {
+  update(dt, mv, { jump = false, jumpHeld = false, run = false, crouch = false, frozen = false, speedMul = 1 } = {}) {
     const ev = {};
     dt = Math.min(dt, 1 / 20);
     const w = this.w, p = this.pos, v = this.vel;
@@ -62,7 +68,20 @@ export class FPSPlayer {
     this.headUnder = MAT[head]?.fluid === 1;
     if (this.inWater && !wasWater && v.y < -2) ev.splash = -v.y;
 
-    let speed = (run ? 3.9 : 2.7) * speedMul;
+    // crouch (in water the same key dives); standing up needs head room
+    const wantLow = crouch && !frozen && !this.inWater;
+    if (wantLow && !this.crouched) { this.crouched = true; this.h = HEIGHT_C; }
+    else if (!wantLow && this.crouched) {
+      if (!this.hitsAt(p.x, p.y, p.z, HEIGHT)) { this.crouched = false; this.h = HEIGHT; }
+      else if (this.inWater) { // pinned under a ledge in water: slip down instead of sticking
+        this.crouched = false; this.h = HEIGHT;
+        for (let s = 1 / VOX; s <= 0.4; s += 1 / VOX) if (!this.hitsAt(p.x, p.y - s, p.z)) { p.y -= s; break; }
+      }
+    }
+    this.lowCeiling = this.crouched && !wantLow;
+
+    let speed = (run && !this.crouched ? 3.9 : 2.7) * speedMul;
+    if (this.crouched) speed *= 0.45;
     if (this.inWater || this.inLava) speed *= 0.6;
     if (frozen) mv = { x: 0, y: 0 };
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
@@ -85,6 +104,9 @@ export class FPSPlayer {
     } else if (this.inWater) {
       v.y += -GRAV * 0.18 * dt;
       v.y *= Math.max(0, 1 - 3 * dt);
+      // under water, swimming forward goes where you look; crouch dives, jump rises
+      if (this.headUnder && mv.y > 0.3) v.y += (Math.sin(this.pitch) * speed * mv.y - v.y) * Math.min(1, 4 * dt);
+      if (crouch && !frozen) { v.y = Math.min(v.y, -2.0); this.diving = true; } else this.diving = false;
       if (jumpHeld) v.y = Math.max(v.y, 2.2);
     } else if (this.inLava) {
       v.y += -GRAV * 0.1 * dt; v.y *= Math.max(0, 1 - 5 * dt);
@@ -117,7 +139,7 @@ export class FPSPlayer {
     const hs = Math.hypot(v.x, v.z);
     if (this.grounded && hs > 0.3) this.bobT += dt * hs * 2.6;
     this.dip = damp(this.dip, 0, 9, dt);
-    this.eyeY = damp(this.eyeY, EYE, 14, dt);
+    this.eyeY = damp(this.eyeY, this.crouched ? EYE_C : EYE, 14, dt);
     this.speed = hs;
     return ev;
   }
@@ -138,7 +160,14 @@ export class FPSPlayer {
     if (!d) return false;
     const p = this.pos;
     const nx = axis === 0 ? p.x + d : p.x, nz = axis === 2 ? p.z + d : p.z;
-    if (!this.hitsAt(nx, p.y, nz)) { p.x = nx; p.z = nz; return false; }
+    if (!this.hitsAt(nx, p.y, nz)) {
+      // crouched on the ground: don't walk off a ledge (a step's drop is fine)
+      if (this.crouched && this.grounded && !this.boxHits(nx - HW, p.y - STEP, nz - HW, nx + HW, p.y, nz + HW)) {
+        if (axis === 0) this.vel.x = 0; else this.vel.z = 0;
+        return false;
+      }
+      p.x = nx; p.z = nz; return false;
+    }
     // step up onto low ledges (rough voxel floors)
     if (this.grounded || this.climbing) {
       for (let s = 1 / VOX; s <= STEP + 1e-4; s += 1 / VOX) {
@@ -169,11 +198,11 @@ export class FPSPlayer {
       const top = Math.floor((p.y + d) * VOX + 1) / VOX;
       if (!this.hitsAt(p.x, top, p.z) && top <= p.y + 1e-6) p.y = top;
     } else {
-      const ceil = Math.floor((p.y + HEIGHT + d) * VOX) / VOX - HEIGHT - 1e-4;
+      const ceil = Math.floor((p.y + this.h + d) * VOX) / VOX - this.h - 1e-4;
       if (!this.hitsAt(p.x, ceil, p.z) && ceil >= p.y) p.y = ceil;
     }
     return false;
   }
 }
 
-export { HW, HEIGHT, EYE };
+export { HW, HEIGHT, EYE, HEIGHT_C, EYE_C };

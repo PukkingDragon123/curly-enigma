@@ -10,10 +10,12 @@ const key3 = (cx, cy, cz) => ((cx + 512) * 1024 + (cy + 512)) * 1024 + (cz + 512
 const CB = Math.log2(CS);
 
 export class Chunk {
-  constructor(cx, cy, cz) {
+  /** virtual: solid rock all the way through (and around): no voxels kept, nothing to mesh */
+  constructor(cx, cy, cz, virtual = false) {
     this.cx = cx; this.cy = cy; this.cz = cz;
     this.key = key3(cx, cy, cz);
-    this.vox = new Uint8Array(CS * CS * CS);
+    this.virtual = virtual;
+    this.vox = virtual ? null : new Uint8Array(CS * CS * CS);
     this.deps = [];
     this.dirty = true;
     this.mesh = null;
@@ -39,11 +41,22 @@ export class DeepWorld {
   // ------------------------------------------------------------ chunks
   chunk(cx, cy, cz) { return this.chunks.get(key3(cx, cy, cz)); }
 
-  /** Generate (or return) a chunk; applies saved edits. */
-  ensure(cx, cy, cz) {
+  /**
+   * Generate (or return) a chunk; applies saved edits. Chunks that are solid rock through and
+   * through stay virtual (no voxels) unless real is asked for (digging into one).
+   */
+  ensure(cx, cy, cz, real = false) {
     const k = key3(cx, cy, cz);
     let ch = this.chunks.get(k);
-    if (ch) return ch;
+    if (ch) { if (real && ch.virtual) this.materialize(ch); return ch; }
+    if (!real && !this.edits.has(k) && this.gen.isSolid(cx, cy, cz)) {
+      ch = new Chunk(cx, cy, cz, true);
+      ch.deps = this.gen.depositsFor(cx, cy, cz);
+      ch.dirty = false;
+      this.chunks.set(k, ch);
+      this.virtualCount = (this.virtualCount || 0) + 1;
+      return ch;
+    }
     ch = new Chunk(cx, cy, cz);
     ch.deps = this.gen.generate(cx, cy, cz, ch.vox);
     const ed = this.edits.get(k);
@@ -59,8 +72,64 @@ export class DeepWorld {
     return ch;
   }
 
+  /**
+   * Ask the worker pool for a chunk (generation off the main thread). Until it arrives the chunk
+   * is a pending placeholder that reads as stone. Without workers this is ensure().
+   * Returns the chunk, or null when the pool is full (try again next frame).
+   */
+  request(cx, cy, cz) {
+    const k = key3(cx, cy, cz);
+    let ch = this.chunks.get(k);
+    if (ch) return ch;
+    const pool = this.pool;
+    if (!pool || !pool.ok) return this.ensure(cx, cy, cz);
+    ch = new Chunk(cx, cy, cz, true);
+    ch.pending = true;
+    ch.deps = [];
+    ch.dirty = false;
+    const ok = pool.send({ t: 'gen', cx, cy, cz, real: this.edits.has(k) }, null, (m) => this.arrive(ch, m));
+    if (!ok) return null;
+    this.chunks.set(k, ch);
+    return ch;
+  }
+
+  /** A generated chunk back from a worker. */
+  arrive(ch, m) {
+    if (!ch.pending || this.chunks.get(ch.key) !== ch) return; // built here meanwhile, or unloaded
+    ch.pending = false;
+    if (!m) { this.chunks.delete(ch.key); this.ensure(ch.cx, ch.cy, ch.cz); return; } // the worker died
+    ch.deps = m.deps;
+    if (m.virtual) { ch.virtual = true; this.virtualCount = (this.virtualCount || 0) + 1; return; }
+    ch.virtual = false;
+    ch.vox = m.vox;
+    const ed = this.edits.get(ch.key);
+    if (ed) for (const [i, v] of ed) ch.vox[i] = v;
+    ch.dirty = true;
+    this.genCount++;
+    // already drawn neighbours may show new faces against it
+    for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+      const n = this.chunks.get(key3(ch.cx + dx, ch.cy + dy, ch.cz + dz));
+      if (n && n.wasMeshed) n.dirty = true;
+    }
+  }
+
+  /** Turn a virtual chunk into real voxels (generated exactly as if it had been all along). */
+  materialize(ch) {
+    if (!ch.virtual) return ch;
+    ch.virtual = false;
+    ch.pending = false;
+    ch.vox = new Uint8Array(CS * CS * CS);
+    ch.deps = this.gen.generate(ch.cx, ch.cy, ch.cz, ch.vox);
+    const ed = this.edits.get(ch.key);
+    if (ed) for (const [i, m] of ed) ch.vox[i] = m;
+    ch.dirty = true;
+    this.genCount++;
+    return ch;
+  }
+
   unload(ch) {
     this.chunks.delete(ch.key);
+    if (this._lastCh === ch) { this._lastK = null; this._lastCh = null; }
     if (this.onUnload) this.onUnload(ch);
   }
 
@@ -71,8 +140,10 @@ export class DeepWorld {
 
   /** Material at a voxel. Unloaded chunks read as solid stone (never as air). */
   voxelAt(vx, vy, vz) {
-    const ch = this.chunks.get(key3(vx >> CB, vy >> CB, vz >> CB));
-    if (!ch) return M.STONE;
+    const k = key3(vx >> CB, vy >> CB, vz >> CB);
+    let ch = this._lastK === k ? this._lastCh : null;
+    if (!ch) { ch = this.chunks.get(k); if (!ch) return M.STONE; this._lastK = k; this._lastCh = ch; }
+    if (!ch.vox) return M.STONE;
     return ch.vox[(vx & (CS - 1)) + CS * ((vy & (CS - 1)) + CS * (vz & (CS - 1)))];
   }
 
@@ -80,6 +151,7 @@ export class DeepWorld {
   matAt(x, y, z) {
     const vx = Math.floor(x * VOX), vy = Math.floor(y * VOX), vz = Math.floor(z * VOX);
     const ch = this.ensure(vx >> CB, vy >> CB, vz >> CB);
+    if (!ch.vox) return M.STONE;
     return ch.vox[(vx & (CS - 1)) + CS * ((vy & (CS - 1)) + CS * (vz & (CS - 1)))];
   }
   solidAt(x, y, z) { return OPAQUE[this.matAt(x, y, z)] === 1; }
@@ -87,13 +159,14 @@ export class DeepWorld {
   /** Change one voxel (voxel coords). Records the edit and dirties meshes. */
   setVoxel(vx, vy, vz, m) {
     const cx = vx >> CB, cy = vy >> CB, cz = vz >> CB;
-    const ch = this.ensure(cx, cy, cz);
+    const ch = this.ensure(cx, cy, cz, true);
     const lx = vx & (CS - 1), ly = vy & (CS - 1), lz = vz & (CS - 1);
     const i = lx + CS * (ly + CS * lz);
     const old = ch.vox[i];
     if (old === m) return old;
     ch.vox[i] = m;
     ch.dirty = true;
+    ch.urgent = true; // dug: remesh this frame, here
     let ed = this.edits.get(ch.key);
     if (!ed) this.edits.set(ch.key, (ed = new Map()));
     ed.set(i, m);
@@ -105,7 +178,7 @@ export class DeepWorld {
     if (this.onChange) this.onChange(vx, vy, vz, old, m);
     return old;
   }
-  dirtyChunk(cx, cy, cz) { const n = this.chunks.get(key3(cx, cy, cz)); if (n) n.dirty = true; }
+  dirtyChunk(cx, cy, cz) { const n = this.chunks.get(key3(cx, cy, cz)); if (n) { n.dirty = true; n.urgent = true; } }
 
   // ------------------------------------------------------------ queries
   /**

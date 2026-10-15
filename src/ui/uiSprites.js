@@ -424,6 +424,7 @@ function roundBtnSprite(down = false) {
 }
 
 const ICONS = {
+  crouch: ['...aaa...', '...aaa...', '...aaa...', '.aaaaaaa.', '..aaaaa..', '...aaa...', '....a....', '.........', 'aaaaaaaaa'],
   jump: ['....a....', '...aaa...', '..aaaaa..', '.aaaaaaa.', '...aaa...', '...aaa...', '...aaa...', '.........', '.a.a.a.a.'],
   use: ['...a.a...', '..aa.aa.a', '..aa.aa.a', '..aa.aa.a', 'a.aaaaaaa', 'aaaaaaaaa', '.aaaaaaa.', '..aaaaa..', '...aaa...'],
   snack: ['......a..', '.....a...', '..aaaaa..', '.aAaaaaa.', 'aaaaaaaaa', 'aaaaaaaaa', '.aaaaaaa.', '..aaaaa..', '.........'],

@@ -40,8 +40,14 @@ const mask = new Int32Array(CS * CS);
  */
 export function meshChunk(world, ch) {
   const X0 = ch.cx * CS, Y0 = ch.cy * CS, Z0 = ch.cz * CS;
-  const v = ch.vox;
-  // fill the padded copy
+  fillPad(world, ch, pad);
+  return { solid: rawToGeometry(meshSolidRaw(pad)), fluid: meshFluid(world, ch, X0, Y0, Z0) };
+}
+
+/** The chunk plus a one-voxel apron from its neighbours, into out (Uint8Array P³). */
+export function fillPad(world, ch, out = new Uint8Array(P * P * P)) {
+  const X0 = ch.cx * CS, Y0 = ch.cy * CS, Z0 = ch.cz * CS;
+  const v = ch.vox, pad = out;
   for (let z = 0; z < P; z++) for (let y = 0; y < P; y++) {
     const inYZ = y > 0 && y < P - 1 && z > 0 && z < P - 1;
     const row = (y + P * z) * P;
@@ -54,6 +60,14 @@ export function meshChunk(world, ch) {
       for (let x = 0; x < P; x++) pad[row + x] = world.voxelAt(X0 + x - 1, Y0 + y - 1, Z0 + z - 1);
     }
   }
+  return out;
+}
+
+/**
+ * Greedy-mesh the solid faces of a padded chunk (pure: runs in a worker too).
+ * Returns { pos: Uint8Array, dat: Uint8Array, idx: Uint16Array|Uint32Array } or null.
+ */
+export function meshSolidRaw(pad) {
   solidOut.reset(); fluidOut.reset();
   const stride = [1, P, P * P];
   for (let f = 0; f < 6; f++) {
@@ -98,7 +112,7 @@ export function meshChunk(world, ch) {
       }
     }
   }
-  return { solid: toGeometry(solidOut), fluid: meshFluid(world, ch, X0, Y0, Z0) };
+  return toRaw(solidOut);
 }
 
 function emit(out, f, d, u, w, nd, s, i, j, wdt, hgt, key) {
@@ -120,12 +134,9 @@ function emit(out, f, d, u, w, nd, s, i, j, wdt, hgt, key) {
   }
 }
 
-function toGeometry(out) {
+function toRaw(out) {
   if (!out.n) return null;
   const nv = out.n * 4;
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Uint8BufferAttribute(out.pos.slice(0, nv * 3), 3));
-  g.setAttribute('vdata', new THREE.Uint8BufferAttribute(out.dat.slice(0, nv * 4), 4));
   const idx = nv > 65535 ? new Uint32Array(out.n * 6) : new Uint16Array(out.n * 6);
   // AX orders the in-plane axes so corners 0→1→2→3 wind outward; the flip bit picks the diagonal
   for (let q = 0; q < out.n; q++) {
@@ -133,10 +144,21 @@ function toGeometry(out) {
     if (out.dat[v * 4 + 3]) { idx[o] = v + 1; idx[o + 1] = v + 2; idx[o + 2] = v + 3; idx[o + 3] = v + 1; idx[o + 4] = v + 3; idx[o + 5] = v; }
     else { idx[o] = v; idx[o + 1] = v + 1; idx[o + 2] = v + 2; idx[o + 3] = v; idx[o + 4] = v + 2; idx[o + 5] = v + 3; }
   }
-  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  return { pos: out.pos.slice(0, nv * 3), dat: out.dat.slice(0, nv * 4), idx };
+}
+
+/** Raw mesh arrays → BufferGeometry (main thread). */
+export function rawToGeometry(raw) {
+  if (!raw) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Uint8BufferAttribute(raw.pos, 3));
+  g.setAttribute('vdata', new THREE.Uint8BufferAttribute(raw.dat, 4));
+  g.setIndex(new THREE.BufferAttribute(raw.idx, 1));
   g.boundingSphere = new THREE.Sphere(new THREE.Vector3(CS / 2, CS / 2, CS / 2), CS * 0.87);
   return g;
 }
+
+export { P as PAD };
 
 // ------------------------------------------------------------------ fluids
 // Fluid surfaces are meshed per voxel (not greedy) so the shader can bend them into waves and
@@ -191,7 +213,7 @@ function vat(world, vx, vy, vz) {
   const cx = vx >> CBITS, cy = vy >> CBITS, cz = vz >> CBITS;
   if (!vch || vch.cx !== cx || vch.cy !== cy || vch.cz !== cz) {
     vch = world.chunk(cx, cy, cz);
-    if (!vch) return world.voxelAt(vx, vy, vz);
+    if (!vch || !vch.vox) { vch = null; return world.voxelAt(vx, vy, vz); } // missing or virtual
   }
   return vch.vox[(vx & CMK) + CS * ((vy & CMK) + CS * (vz & CMK))];
 }
