@@ -15,8 +15,8 @@ export class Bodies {
     this.w = world;
     this.root = new THREE.Group();
     scene3.add(this.root);
-    this.mat = makeObjectMaterial(U, { texel: 64 });
-    this.glowMat = makeObjectMaterial(U, { emissive: 0.3, texel: 64 });
+    this.mat = makeObjectMaterial(U, { texel: 128 });
+    this.glowMat = makeObjectMaterial(U, { emissive: 0.3, texel: 128 });
     this.list = [];
     this.hooks = {};
   }

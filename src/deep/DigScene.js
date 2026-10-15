@@ -397,6 +397,11 @@ export default class DigScene extends Scene {
     if (!broken.length) return;
     const st = this.state;
     st.data.stats.blocks += broken.length > 6 ? 1 : 0;
+    // grit: a spray of tiny chips for every broken bit
+    {
+      const v = broken[0];
+      this.fx.chips((v.x + 0.5) / VOX, (v.y + 0.5) / VOX, (v.z + 0.5) / VOX, Math.min(14, 3 + broken.length), col01(v.c), out);
+    }
     if (broken.length > 6) {
       // the plate crumbles as it comes out: a few tumbling lumps (quarter-meter cells), the rest grit
       const cells = new Map();
@@ -763,6 +768,24 @@ export default class DigScene extends Scene {
 
   ambient(dt) {
     const pl = this.player, eye = pl.eye();
+    // hidden ore glints through the rock it's buried in (only ore close under the surface)
+    this.glintT = (this.glintT || 0) - dt;
+    if (this.glintT <= 0) {
+      this.glintT = 0.12;
+      const ds = this.world.depositsNear(eye.x, eye.y, eye.z, 5.5);
+      const d = ds[(Math.random() * ds.length) | 0];
+      if (d && !this.world.depState(d).taken) {
+        const dx = eye.x - d.x, dy = eye.y - d.y, dz = eye.z - d.z, l = Math.hypot(dx, dy, dz) || 1;
+        // walk from the ore toward the mole until open space: that's the rock face it shows on
+        for (let t = d.r; t < Math.min(1.1, l); t += 1 / VOX) {
+          const x = d.x + (dx / l) * t + rand(-0.12, 0.12), y = d.y + (dy / l) * t + rand(-0.12, 0.12), z = d.z + (dz / l) * t + rand(-0.12, 0.12);
+          if (this.world.solidAt(x, y, z)) continue;
+          const c = col01(MAT[ORE_BASE + d.oreId]?.accent ?? 0xffffff);
+          this.fx.glints(x - (dx / l) * 0.03, y - (dy / l) * 0.03, z - (dz / l) * 0.03, c.map((v) => Math.min(1, v * 0.6 + 0.45)));
+          break;
+        }
+      }
+    }
     // dust motes in the lamp beam
     if (chance(dt * 14)) {
       const f = pl.forward();

@@ -115,19 +115,20 @@ export function makeTerrainMaterial(U) {
         vec3 t2 = abs(n.y) > 0.5 ? vec3(0., 0., 1.) : vec3(0., 1., 0.);
         vec3 lp = vWorld * 8.0 - vox;
         vec2 uv = vec2(dot(lp, t1), dot(lp, t2));
-        vec2 tx = clamp(floor(uv * 8.0), 0.0, 7.0);
-        vec3 q = vox + (tx.x + 0.5) / 8.0 * t1 + (tx.y + 0.5) / 8.0 * t2 + n * 0.49 + 0.5 * (1.0 - abs(n)) * 0.0;
+        const float TEXN = 16.0; // texels per voxel face (128 per meter)
+        vec2 tx = clamp(floor(uv * TEXN), 0.0, TEXN - 1.0);
+        vec3 q = vox + (tx.x + 0.5) / TEXN * t1 + (tx.y + 0.5) / TEXN * t2 + n * 0.49;
         vec4 st = texture2D(palette, vec2(6.5 / 8.0, (vMat + 0.5) / 256.0));
         float style = floor(st.r * 255.0 + 0.5);
         float S = st.g * 255.0 / 16.0;
         float seamK = st.b;
         vec4 info = texture2D(palette, vec2(5.5 / 8.0, (vMat + 0.5) / 256.0));
         float mat = vMat;
-        float px = hash3(floor(q * 8.0) + 3.1); // per-texel noise
+        float px = hash3(floor(q * TEXN) + 3.1); // per-texel noise
         float vh = hash3(vox);
         vec2 pl = plates(q, max(S, 1.0));
         // tone: plate shade + clumps (a quarter voxel) + per-texel dither, all crisper up close
-        float clump = hash3(floor(q * 2.0) + 5.3);
+        float clump = hash3(floor(q * 2.0) + 5.3) * 0.6 + hash3(floor(q * TEXN * 0.25) + 9.1) * 0.4;
         float tone = pl.x * 3.0 + ((px - 0.5) * 0.9 + (clump - 0.5) * 0.7) * near;
         float bevel = 0.0;
         float seam = 0.0;
@@ -149,7 +150,7 @@ export function makeTerrainMaterial(U) {
           // wood: grain running along the longest axis of the voxel's plank
           float g = sin((dot(q, t1) * 8.0 + hash3(floor(q * 0.25)) * 9.0) * 0.9) + (px - 0.5) * 0.8;
           tone = 1.5 + g * 1.2;
-          seam = step(7.0, mod(floor(dot(q, t2) * 8.0), 8.0)) * 0.8;
+          seam = step(TEXN - 1.0, mod(floor(dot(q, t2) * TEXN), TEXN)) * 0.8;
         } else if (style == 4.0) {
           // brick: courses of 4×2 voxels with mortar lines
           vec3 b = q * vec3(0.5, 1.0, 0.5);
@@ -175,6 +176,16 @@ export function makeTerrainMaterial(U) {
           nn = normalize(n + (vec3(hash3(vec3(pl.x, 1.0, 2.0)), hash3(vec3(pl.x, 3.0, 1.0)), hash3(vec3(pl.x, 2.0, 5.0))) - 0.5) * 0.45);
           if (style == 2.0 || style == 8.0) { if (pl.y < 0.06) { seam = 0.0; accent = 1.0; } }
           else if (px > 0.975) accent = 1.0;
+        }
+        // pixel-art relief: every texel tilts a little on a bumpy height field (two octaves) so the
+        // helmet lamp rakes across each face and the rock reads as grainy, chiselled stuff
+        {
+          float bumpK = style == 3.0 ? 0.35 : style == 1.0 ? 0.75 : style == 2.0 || style == 8.0 ? 0.45 : style == 4.0 ? 0.5 : 1.0;
+          vec3 q1 = q + t1 / TEXN, q2 = q + t2 / TEXN;
+          float hC = hash3(floor(q * TEXN * 0.25) + 1.7) * 0.35 + hash3(floor(q * TEXN * 0.5) + 2.3) * 0.35 + px * 0.3;
+          float hX = hash3(floor(q1 * TEXN * 0.25) + 1.7) * 0.35 + hash3(floor(q1 * TEXN * 0.5) + 2.3) * 0.35 + hash3(floor(q1 * TEXN) + 3.1) * 0.3;
+          float hY = hash3(floor(q2 * TEXN * 0.25) + 1.7) * 0.35 + hash3(floor(q2 * TEXN * 0.5) + 2.3) * 0.35 + hash3(floor(q2 * TEXN) + 3.1) * 0.3;
+          nn = normalize(nn + (t1 * (hC - hX) + t2 * (hC - hY)) * 0.85 * bumpK * (0.35 + 0.65 * near));
         }
         seam *= mix(0.55, 1.0, near);
         float ti = clamp(floor(tone + 0.5), 0.0, 3.0);

@@ -29,6 +29,7 @@ export function plateOf(vx, vy, vz, S) {
   return best;
 }
 
+const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const UNBREAKABLE = new Set([M.BEDROCK, M.BURROW, M.LANTERN, M.DOOR]);
 export const breakable = (m) => m && !MAT[m]?.fluid && !UNBREAKABLE.has(m);
 
@@ -51,6 +52,17 @@ export class Digger {
     const plate = plateOf(vx, vy, vz, Math.max(1, S));
     const key = plate + ':' + (S | 0);
     const dmg = (this.damage.get(key) || 0) + power / Math.max(0.3, mat.hp);
+    // the blow cracks the plates around the one it lands on: the next blows bite faster
+    const seen = new Set([key]);
+    for (const [dx, dy, dz] of N6) {
+      const x = vx + dx, y = vy + dy, z = vz + dz, m2 = w.voxelAt(x, y, z);
+      if (!breakable(m2) || m2 >= ORE_BASE) continue;
+      const S2 = MAT[m2].style ? MAT[m2].style[1] : 3;
+      const k2 = plateOf(x, y, z, Math.max(1, S2)) + ':' + (S2 | 0);
+      if (seen.has(k2)) continue;
+      seen.add(k2);
+      this.damage.set(k2, Math.min(0.92, (this.damage.get(k2) || 0) + 0.3 * power / Math.max(0.3, MAT[m2].hp)));
+    }
     if (dmg < 1) {
       this.damage.set(key, dmg);
       // a chip off the surface every blow: the voxel itself goes if it's exposed and soft enough
