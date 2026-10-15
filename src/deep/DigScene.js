@@ -217,12 +217,7 @@ export default class DigScene extends Scene {
     if (this.nugget) this.nugget.update(dt);
     if (this.props) this.props.update(dt, { player: pl, eye: pl.eye(), time: this.time });
     if (this.enemies) {
-      const evs = this.enemies.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy, lamp: this.U.lampRange.value }) || [];
-      for (const e of evs) {
-        if (e.damage) { this.hurt(e.damage, e.kind || 'enemy'); if (e.push) pl.vel.add(new THREE.Vector3(...e.push)); }
-        if (e.say) this.say(e.key || e.say, e.say, e.tone || 'warn', e.cd ?? 4);
-        if (e.loot) this.collect(e.loot);
-      }
+      this.events(this.enemies.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy, lamp: this.U.lampRange.value }));
     }
     this.fx.update(dt);
     this.ambient(dt);
@@ -251,6 +246,19 @@ export default class DigScene extends Scene {
     this.hudTick(dt);
   }
 
+  /** Events from enemies, critters and props: damage, toasts, loot for the backpack. */
+  events(evs) {
+    const pl = this.player;
+    for (const e of evs || []) {
+      if (e.damage) { this.hurt(e.damage, e.kind || 'enemy'); if (e.push) pl.vel.add(new THREE.Vector3(...e.push)); }
+      if (e.say) this.say(e.key || e.say, e.say, e.tone || 'warn', e.cd ?? 4);
+      if (e.loot) this.collect(e.loot);
+    }
+  }
+
+  /** Reach along the crosshair, clipped to the rock it hits. */
+  reach() { return this.target ? Math.min(REACH, this.target.dist + 0.05) : REACH; }
+
   updateTarget() {
     const pl = this.player;
     const eye = pl.eye(), f = pl.forward();
@@ -258,8 +266,12 @@ export default class DigScene extends Scene {
     this.target = hit;
     const ui = this.game.ui;
     if (!ui.setCrosshair) return;
+    const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
+    // something to pick or catch (props' plants, critters) comes first
+    const use = this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
+    if (use) { ui.setCrosshair({ visible: true, kind: 'use', label: use.label }); return; }
+    if (this.enemies?.hitTest(eye, f, reach)) { ui.setCrosshair({ visible: true, kind: 'enemy' }); return; }
     if (!hit) { ui.setCrosshair({ visible: true, kind: 'none' }); return; }
-    if (this.enemies?.hitTest(eye, f, Math.min(REACH, hit.dist + 0.05))) { ui.setCrosshair({ visible: true, kind: 'enemy' }); return; }
     const m = MAT[hit.m];
     const ore = hit.m >= ORE_BASE;
     if (hit.m === M.DOOR) { ui.setCrosshair({ visible: true, kind: 'use', label: 'Home' }); return; }
@@ -301,6 +313,7 @@ export default class DigScene extends Scene {
       if (this.useT <= 0) { this.useT = 0.07; this.drillHit(it); }
     } else if (tool === 'xray') {
       this.U.xray.value = 1;
+      this.events(this.enemies?.xrayAt?.(this.player.eye(), this.player.forward(), 6));
       if (!this.xrayOn) { this.xrayOn = true; this.audio.play('xray_on'); }
       this.energy(0.25 * dt);
     } else if (tool === 'stake') {
@@ -478,6 +491,7 @@ export default class DigScene extends Scene {
   }
 
   brushHit(it) {
+    this.events(this.enemies?.brushAt?.(this.player.eye(), this.player.forward(), this.reach()));
     const hit = this.target;
     if (!hit) return;
     const px = (hit.vx + 0.5 + hit.nx * 0.5) / VOX, py = (hit.vy + 0.5 + hit.ny * 0.5) / VOX, pz = (hit.vz + 0.5 + hit.nz * 0.5) / VOX;
@@ -549,6 +563,14 @@ export default class DigScene extends Scene {
 
   interact() {
     const pl = this.player;
+    // pick a plant, catch a critter
+    {
+      const eye = pl.eye(), f = pl.forward(), reach = this.reach();
+      const got = this.props?.use?.(eye, f, reach);
+      if (got) { this.events([got]); if (this.vm) this.vm.impact('none', 0.3); return; }
+      const evs = this.enemies?.catch?.(eye, f, reach, this.slotName);
+      if (evs && evs.length) { this.events(evs); if (this.vm) this.vm.impact('none', 0.3); return; }
+    }
     // the burrow door at the end of a tunnel
     if (this.target && this.target.m === M.DOOR) {
       let best = null, bd = 1e9;
