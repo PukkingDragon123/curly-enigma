@@ -10,6 +10,8 @@ export function liftState(st) {
   d.deep ||= { seed: 1 + Math.floor(Math.random() * 1e6), tunnels: [], stations: [] };
   const D = d.deep;
   D.lifts ||= [];
+  // the burrow's own lift always goes down to the mine entrance
+  if (!D.lifts.some((l) => l.id === 'L0')) D.lifts.unshift({ id: 'L0', name: 'Mine entrance', depth: 7, zone: 1 });
   for (const n of D.stations || []) {
     const id = 's' + n;
     if (!D.lifts.some((l) => l.id === id)) D.lifts.push({ id, name: n === 0 ? 'Below Deep Town' : `${ZONES[n]?.name || 'Deep'} station`, depth: 0, zone: n || 1 });

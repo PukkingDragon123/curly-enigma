@@ -11,6 +11,7 @@ import { Bodies } from './Bodies.js';
 import { Particles } from './Particles.js';
 import { Ores } from './Ores.js';
 import { Nugget } from './Nugget.js';
+import { openLiftPanel, discoverLift, liftState, rideTo } from '../fps/lifts.js';
 import { makeTerrainUniforms, MAX_LIGHTS } from './TerrainMaterial.js';
 import { mouthBox, zoneAt, ZONE_DEPTHS } from './Generator.js';
 import { VOX, M, MAT, ORE_BASE } from './materials.js';
@@ -26,7 +27,7 @@ const SLOTS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'food'];
 const REACH = 2.3;
 const vmModules = import.meta.glob('../fps/ViewModel.js');
 // optional systems, built separately (see docs/DEEP.md): fantasy enemies, flowing fluids
-const extModules = import.meta.glob(['./Enemies.js', './Fluids.js', './Props.js']);
+const extModules = import.meta.glob(['./Enemies.js', './Fluids.js', './Props.js', './Clumps.js']);
 const col01 = (hex) => { const c = hexToRgb(hex); return [c.r / 255, c.g / 255, c.b / 255]; };
 
 export default class DigScene extends Scene {
@@ -48,6 +49,7 @@ export default class DigScene extends Scene {
     const from = params.from || 'home';
     const wall = params.wall || 'n', t = params.t !== undefined ? +params.t : W / 2;
     if (from === 'home' && !deep.tunnels.some((m) => m.wall === wall && Math.abs(m.t - t) < 0.9)) deep.tunnels.push({ wall, t });
+    liftState(st);
     this.lastMouth = { wall, t };
     this.world = new DeepWorld({ seed: deep.seed, W, D, tunnels: deep.tunnels });
     this.scene.background = new THREE.Color(0x030203);
@@ -76,10 +78,14 @@ export default class DigScene extends Scene {
     this.wish = { x: 0, z: 0 };
     // spawn
     const pl = this.player;
-    if (from === 'town') {
-      const s = this.world.plan.stations[clamp(+params.station || 0, 0, 5)];
-      pl.pos.set(s.x, s.y + 0.02, s.z);
-      pl.yaw = Math.PI / 2;
+    // arriving by lift: step out of its cage (the open side faces +z)
+    const liftId = from === 'lift' ? params.lift || 'L0' : from === 'town' ? 's' + clamp(+params.station || 0, 0, 5) : null;
+    const lift = liftId && this.world.plan.lifts.find((l) => l.id === liftId);
+    if (lift) {
+      pl.pos.set(lift.x, lift.y + 0.02, lift.z + (liftId[0] === 'L' ? 0 : 0));
+      pl.yaw = Math.PI;
+      this.lastLift = lift;
+      discoverLift(st, lift);
     } else {
       const b = mouthBox(this.world.plan, wall, t);
       pl.pos.set((b.x0 + b.x1) / 2 + b.dir[0] * 0.15, 0.01, (b.z0 + b.z1) / 2 + b.dir[2] * 0.15);
@@ -102,8 +108,9 @@ export default class DigScene extends Scene {
     this.enemies = null;
     this.fluids = null;
     this.props = null;
+    this.clumps = null;
     const ctx = { scene: this.scene, world: this.world, U: this.U, fx: this.fx, bodies: this.bodies, audio: this.audio, state: st, ui: g.ui, player: pl, plan: this.world.plan, scene3: this.scene, owner: this };
-    for (const [path, Name, key] of [['./Enemies.js', 'Enemies', 'enemies'], ['./Fluids.js', 'Fluids', 'fluids'], ['./Props.js', 'Props', 'props']]) {
+    for (const [path, Name, key] of [['./Enemies.js', 'Enemies', 'enemies'], ['./Fluids.js', 'Fluids', 'fluids'], ['./Props.js', 'Props', 'props'], ['./Clumps.js', 'Clumps', 'clumps']]) {
       const load = extModules[path];
       if (!load) continue;
       try { const mod = await load(); this[key] = new mod[Name](ctx); } catch (e) { console.warn(Name + ' failed', e); }
@@ -209,8 +216,10 @@ export default class DigScene extends Scene {
       if (this.stepT <= 0) { this.stepT = 1; this.audio.play('step', { vol: 0.35 }); this.energy(0.04); }
     }
     // dig / use
-    this.updateTarget();
-    this.useTools(dt, busy);
+    const held = !!this.clumps?.capture();
+    if (held) { if (this.vm) this.vm.use(this.slotName, false); }
+    else { this.updateTarget(); this.useTools(dt, busy); }
+    if (this.clumps) this.events(this.clumps.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy }));
     // world sim
     this.bodies.update(dt, pl.eye(), pl.pos);
     if (this.fluids) this.fluids.update(dt, { player: pl, eye: pl.eye(), time: this.time });
@@ -268,7 +277,7 @@ export default class DigScene extends Scene {
     if (!ui.setCrosshair) return;
     const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
     // something to pick or catch (props' plants, critters) comes first
-    const use = this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
+    const use = this.clumps?.target(eye, f, reach) || this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
     if (use) { ui.setCrosshair({ visible: true, kind: 'use', label: use.label }); return; }
     const foe = this.enemies?.hitTest(eye, f, reach);
     if (foe) { ui.setCrosshair(foe.passive ? { visible: true, kind: 'rock', label: foe.constructor.info?.name || '' } : { visible: true, kind: 'enemy' }); return; }
@@ -276,7 +285,7 @@ export default class DigScene extends Scene {
     const m = MAT[hit.m];
     const ore = hit.m >= ORE_BASE;
     if (hit.m === M.DOOR) { ui.setCrosshair({ visible: true, kind: 'use', label: 'Home' }); return; }
-    if (this.state.flag('escaped') && this.world.plan.stations.some((q) => Math.hypot(q.x - pl.pos.x, q.y - pl.pos.y, q.z - pl.pos.z) < 2.2)) { ui.setCrosshair({ visible: true, kind: 'use', label: 'Lift to Deep Town' }); return; }
+    if (this.liftNear()) { ui.setCrosshair({ visible: true, kind: 'use', label: `Ride the lift` }); return; }
     ui.setCrosshair({ visible: true, kind: ore ? 'ore' : breakable(hit.m) ? 'rock' : 'none', label: m ? m.name : '' });
   }
 
@@ -436,6 +445,14 @@ export default class DigScene extends Scene {
   }
 
   popOre(f, out) {
+    if (this.clumps) {
+      // the ore comes out wrapped in its rock: pick it up, chip it clean, bag it
+      this.audio.play('ore_free');
+      for (let k = 0; k < 6; k++) this.fx.glints(f.d.x, f.d.y, f.d.z);
+      this.clumps.spawn(f, out);
+      if (!this.flags.firstOre) { this.flags.firstOre = true; this.say('ore1', `<b>${ITEMS[f.d.item]?.name || 'Ore'}!</b> A clump broke out of the wall. Pick it up (E) and chip it clean.`, 'good', 10); }
+      return;
+    }
     const { d, s, voxels, pristine } = f;
     const it = ITEMS[d.item];
     const glow = !!(ORES[d.oreId].glow);
@@ -567,6 +584,8 @@ export default class DigScene extends Scene {
     // pick a plant, catch a critter
     {
       const eye = pl.eye(), f = pl.forward(), reach = this.reach();
+      const cl = this.clumps?.use(eye, f, reach);
+      if (cl) { this.events(cl); return; }
       const got = this.props?.use?.(eye, f, reach);
       if (got) { this.events([got]); if (this.vm) this.vm.impact('none', 0.3); return; }
       const evs = this.enemies?.catch?.(eye, f, reach, this.slotName);
@@ -579,14 +598,31 @@ export default class DigScene extends Scene {
       if (best) { this.audio.play('door'); this.goHome(best.wall, best.t); }
       return;
     }
-    // ring a lift station bell
-    for (const s of this.world.plan.stations) {
-      if (Math.hypot(s.x - pl.pos.x, s.y - pl.pos.y, s.z - pl.pos.z) < 2.2) {
-        if (!this.state.flag('escaped')) { this.say('lift0', 'The lift bell is rusted silent. Find the way into Deep Town first.', 'warn', 4); return; }
-        this.leave('town', { from: 'mine' });
-        return;
-      }
+    // ring a lift's bell: ride home, to town, or to any lift found so far
+    const L = this.liftNear();
+    if (L) {
+      if (discoverLift(this.state, L)) this.liftFound(L);
+      openLiftPanel(this.game, L.id, { title: L.name, sub: `${L.depth} m · an old miners' lift. Where to?`, onRide: (id) => this.rideLift(id) });
     }
+  }
+
+  /** The lift whose cage the mole is standing at (within reach), or null. */
+  liftNear() {
+    const pl = this.player;
+    for (const L of this.world.plan.lifts) if (Math.abs(L.y - pl.pos.y) < 1.6 && Math.hypot(L.x - pl.pos.x, L.z - pl.pos.z) < 2.0) return L;
+    return null;
+  }
+  liftFound(L) {
+    this.audio.play('ding');
+    this.audio.play('bell', { vol: 0.4 });
+    this.say('lift' + L.id, `<b>Lift found: ${L.name}!</b> Ring its bell (E) to ride up home whenever you're tired, and come back down here later.`, 'good', 99);
+  }
+  rideLift(id) {
+    if (this.leaving) return;
+    this.leaving = true;
+    this.world.saveEdits();
+    this.state.data.stats.trips++;
+    rideTo(this.game, id);
   }
 
   /** Discovery of stations, the town gate, the way back home, zone changes, energy. */
@@ -613,13 +649,12 @@ export default class DigScene extends Scene {
         return;
       }
     }
-    // lift stations
-    for (const s of plan.stations) {
-      if (this.deep.stations.includes(s.n)) continue;
-      if (Math.hypot(s.x - pl.pos.x, s.y - pl.pos.y, s.z - pl.pos.z) < 2.6) {
-        this.deep.stations.push(s.n);
-        this.audio.play('ding');
-        this.say('station' + s.n, `<b>Lift station found!</b> ${s.n === 0 ? 'Right below Deep Town.' : `The lift can now stop at ${ZONES[s.zone].name}.`}`, 'good', 99);
+    // lifts: walking into one's room remembers it
+    for (const L of plan.lifts) {
+      if (Math.abs(L.y - pl.pos.y) > 2.5 || Math.hypot(L.x - pl.pos.x, L.z - pl.pos.z) > 2.6) continue;
+      if (discoverLift(st, L)) {
+        this.liftFound(L);
+        if (L.id[0] === 's' && !this.deep.stations.includes(+L.id.slice(1))) this.deep.stations.push(+L.id.slice(1));
       }
     }
     // zones and depth
@@ -638,7 +673,8 @@ export default class DigScene extends Scene {
     st.data.deepest = Math.max(st.data.deepest || 0, depth);
     // energy
     if (st.energy <= 0 && !this.fainting) this.faint();
-    else if (st.energy < 20 && !this.flags.low) { this.flags.low = true; this.say('low', 'Running low on energy. Eat something, or head home.', 'warn', 60); }
+    else if (st.energy < 25 && !this.flags.low) { this.flags.low = true; this.say('low', 'Running low on energy! Eat something, or find a lift (the radar shows them) and ride up home.', 'warn', 60); }
+    else if (st.energy > 40) this.flags.low = false;
     // remember explored cells for the radar
     this.exploreT = (this.exploreT || 0) - dt;
     if (this.exploreT <= 0) { this.exploreT = 0.25; this.explore(); }
@@ -702,7 +738,12 @@ export default class DigScene extends Scene {
     const markers = [];
     markers.push({ kind: 'home', x: this.W / 2, y: 1, z: this.D / 2, label: 'Home' });
     markers.push({ kind: 'town', x: plan.town.x, y: plan.town.y, z: plan.town.z, label: 'Deep Town' });
-    for (const s of plan.stations) if (this.deep.stations.includes(s.n)) markers.push({ kind: 'station', x: s.x, y: s.y, z: s.z, label: 'Lift' });
+    // lifts: known ones by name, unknown ones nearby as a faint signal to dig toward
+    const known = new Set(liftState(this.state).map((l) => l.id));
+    for (const L of plan.lifts) {
+      if (known.has(L.id)) markers.push({ kind: 'station', x: L.x, y: L.y, z: L.z, label: L.name });
+      else if (Math.hypot(L.x - pl.pos.x, (L.y - pl.pos.y) * 1.5, L.z - pl.pos.z) < (o.survey ? 60 : 26)) markers.push({ kind: 'station', x: L.x, y: L.y, z: L.z, label: '? lift', color: '#8a7a5a' });
+    }
     for (const a of plan.areas) {
       const d = Math.hypot(a.x - pl.pos.x, (a.y - pl.pos.y) * 1.5, a.z - pl.pos.z);
       if (d > (o.survey ? 400 : 34)) continue;
@@ -748,7 +789,7 @@ export default class DigScene extends Scene {
       if (d < l.r + 14) near.push([d - l.r * 0.3, l]);
     }
     // glowing enemies and hot fluids light the rock too
-    for (const src of [this.enemies, this.fluids, this.props]) {
+    for (const src of [this.enemies, this.fluids, this.props, this.clumps]) {
       for (const l of src?.lights?.(eye) || []) near.push([Math.hypot(l.x - eye.x, l.y - eye.y, l.z - eye.z) - l.r * 0.3, l]);
     }
     near.sort((a, b) => a[0] - b[0]);
@@ -848,6 +889,7 @@ export default class DigScene extends Scene {
     this.enemies?.dispose();
     this.nugget?.dispose();
     this.props?.dispose();
+    this.events(this.clumps?.dispose());
     this.fluids?.dispose();
     this.world.onChange = null;
     for (const gh of this.ghosts?.values() || []) { gh.mesh.geometry.dispose(); gh.mesh.material.dispose(); }

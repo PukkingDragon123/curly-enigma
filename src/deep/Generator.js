@@ -38,6 +38,7 @@ export function makePlan(seed, opts = {}) {
     town: { x: 30, y: -15, z: -24, r: 5.5 },
     shaft: { x: 38.5, z: -24.5 },
     stations: [],
+    lifts: [], // old lifts all over the mine: find one and you can ride it home
     areas: [], // ore areas
     dangers: [], // lakes, nests, gas
     lights: [], // fixed light sources (lanterns, lava) in meters
@@ -92,11 +93,38 @@ export function makePlan(seed, opts = {}) {
     plan.lights.push({ x: s.x, y: s.y + 1.7, z: s.z, c: [1.0, 0.7, 0.36], r: 5, lantern: true });
   }
 
+  // lifts: the mine entrance under the burrow, three buried in every zone, the town shaft stops
+  const LIFT_NAMES = [null, ['Root Cellar', 'Wormwood', 'Old Hollow'], ['Clay Pit', 'Potter\'s Drop', 'Redbank'], ['Glimmer Gallery', 'Prism Well', 'Geode Hall'],
+    ['Cinder Stair', 'Ember Pit', 'Ashfall'], ['Rime Gate', 'Icicle Run', 'Coldheart'], ['Starfall', 'Void Steps', 'Heartstone']];
+  const addLift = (id, name, x, y, z, zone, room = true) => {
+    const L = { id, name, x, y, z, zone, depth: Math.round(-y) };
+    plan.lifts.push(L);
+    if (room) {
+      plan.features.push({ kind: 'box', x0: x - 1.5, x1: x + 1.5, y0: y, y1: y + 2.3, z0: z - 1.5, z1: z + 1.5, m: 0, timber: true });
+      plan.features.push({ kind: 'cage', x, y, z });
+      plan.lights.push({ x: x + 0.9, y: y + 1.7, z: z + 0.9, c: [1.0, 0.72, 0.38], r: 5.5, lantern: true, lift: id });
+    }
+    return L;
+  };
+  addLift('L0', 'Mine entrance', W / 2, -7, D / 2 - 4, 1);
+  for (let zone = 1; zone <= 6; zone++) {
+    for (let k = 0; k < 3; k++) {
+      let x = 0, z = 0, y = 0;
+      for (let tries = 0; tries < 20; tries++) {
+        x = rng.range(-62, 62); z = rng.range(-62, 62);
+        y = -rng.range(ZONE_DEPTHS[zone - 1] + 4, ZONE_DEPTHS[zone] - 4);
+        if (Math.hypot(x - plan.town.x, z - plan.town.z) > 12 && Math.hypot(x - W / 2, z - D / 2) > 10) break;
+      }
+      addLift(`L${zone}${k}`, LIFT_NAMES[zone][k], x, y, z, zone);
+    }
+  }
+  for (const st of plan.stations) addLift('s' + st.n, st.n === 0 ? 'Below Deep Town' : `Shaft stop ${st.n}`, st.x, st.y, st.z, st.zone, false);
+
   // ore areas: per zone, clusters of one ore type (what the radar shows)
   for (let zone = 1; zone <= 6; zone++) {
     const spawn = ORE_SPAWN[zone] || [];
     const total = spawn.reduce((s, e) => s + e[1], 0);
-    const count = zone === 1 ? 26 : 20;
+    const count = zone === 1 ? 34 : 28;
     for (let k = 0; k < count; k++) {
       let r = rng() * total, item = spawn[0][0];
       for (const [id, w] of spawn) { r -= w; if (r <= 0) { item = id; break; } }
@@ -154,6 +182,7 @@ function aabbOf(f) {
   else if (f.kind === 'gate') { f.bb = [f.x - 3, f.y - 1, f.z - 3, f.x + 3, f.y + 4, f.z + 3]; }
   else if (f.kind === 'shaft') { f.bb = [f.x - 1.4, f.y0, f.z - 1.4, f.x + 1.4, f.y1, f.z + 1.4]; }
   else if (f.kind === 'mouth') { f.bb = [f.x0 - pad, f.y0 - pad, f.z0 - pad, f.x1 + pad, f.y1 + pad, f.z1 + pad]; }
+  else if (f.kind === 'cage') { f.bb = [f.x - 1.6, f.y - 0.3, f.z - 1.6, f.x + 1.6, f.y + 7, f.z + 1.6]; }
   return f;
 }
 
@@ -212,9 +241,9 @@ export class ChunkGen {
       const depth = -y;
       // spaghetti tunnels: where two noise fields are both near zero
       const a = n0.n(x * 0.085, y * 0.11, z * 0.085), b = n1.n(x * 0.085 + 31.7, y * 0.11, z * 0.085 - 12.3);
-      const worm = 0.0062 - (a * a + b * b);
-      // caverns: rarer near the top, bigger deeper
-      const cav = n2.fbm(x / 24, y / 15, z / 24, 3) - (depth < 8 ? 0.6 : depth < 25 ? 0.34 : 0.27);
+      const worm = 0.0036 - (a * a + b * b);
+      // caverns: rare near the top, bigger deeper; mostly the mole digs its own way
+      const cav = n2.fbm(x / 24, y / 15, z / 24, 3) - (depth < 8 ? 0.7 : depth < 25 ? 0.44 : 0.36);
       let d = Math.max(worm * 40, cav);
       if (depth < 2.5) d = -1; // the ground near the surface stays solid
       const o = i + NS * (j + NS * k);
@@ -271,10 +300,10 @@ export class ChunkGen {
     const zone = zoneAt(Math.max(0, -(cy0 + 2)));
     const spawn = ORE_SPAWN[zone] || [];
     const hc = h3i(cx, cy, cz, p.seed + 5);
-    const nScatter = hc % 3;
+    const nScatter = 1 + hc % 3;
     for (let k = 0; k < nScatter && spawn.length; k++) {
       const e = spawn[(hc >>> (4 + k * 3)) % Math.min(3, spawn.length)];
-      const d = { x: cx0 + h3(cx, cy, cz, k + 1) * 4, y: cy0 + h3(cx, cy, cz, k + 9) * 4, z: cz0 + h3(cx, cy, cz, k + 17) * 4, r: 0.12 + h3(cx, cy, cz, k + 3) * 0.12, q: 70 + h3(cx, cy, cz, k + 5) * 25, seed: hc + k };
+      const d = { x: cx0 + h3(cx, cy, cz, k + 1) * 4, y: cy0 + h3(cx, cy, cz, k + 9) * 4, z: cz0 + h3(cx, cy, cz, k + 17) * 4, r: 0.14 + h3(cx, cy, cz, k + 3) * 0.14, q: 70 + h3(cx, cy, cz, k + 5) * 25, seed: hc + k };
       if (this.stampDeposit(d, { oreId: ORE_ID[e[0]], item: e[0] }, vox, X0, Y0, Z0)) deps.push({ id: `s${cx}_${cy}_${cz}_${k}`, oreId: ORE_ID[e[0]], item: e[0], ...d });
     }
     return deps;
@@ -343,6 +372,20 @@ export class ChunkGen {
         const d = Math.hypot(xm - f.x, zm - f.z);
         if (d < 1.1) vox[vi] = 0;
         else if (d < 1.35 && (Math.abs(ym * 2 % 3) < 0.25 || Math.abs(xm - f.x) < 0.15 || Math.abs(zm - f.z) < 0.15)) vox[vi] = M.TIMBER;
+      } else if (f.kind === 'cage') {
+        // an old lift: plank floor, a timber cage with a roof, the shaft going up through the rock
+        const dx = xm - f.x, dz = zm - f.z, dy = ym - f.y;
+        const ax = Math.abs(dx), az = Math.abs(dz);
+        if (dy < 0 && dy > -0.13 && ax < 1.5 && az < 1.5) vox[vi] = M.BOARDS;
+        else if (dy >= 0 && dy < 2.05 && ax < 0.7 && az < 0.7) {
+          const post = ax > 0.56 && az > 0.56;
+          const rail = (ax > 0.58 || az > 0.58) && (Math.abs(dy - 0.55) < 0.07 || dy > 1.9) && !(dz > 0.58 && dy < 1.9);
+          const roof = dy > 1.92;
+          vox[vi] = post || rail || roof ? (roof && ax < 0.5 && az < 0.5 ? M.BOARDS : M.TIMBER) : 0;
+        } else if (dy >= 2.05 && dy < 6.5 && ax < 0.62 && az < 0.62) {
+          // the shaft: open, with timber rings every so often and the cable
+          vox[vi] = (ax > 0.5 || az > 0.5) && Math.abs((dy * 2) % 2 - 1) < 0.1 ? M.TIMBER : ax < 0.07 && az < 0.07 ? M.TIMBER : 0;
+        } else if (dy >= 0.9 && dy < 1.15 && Math.abs(dx - 0.95) < 0.09 && Math.abs(dz - 0.95) < 0.09) vox[vi] = M.LANTERN;
       } else if (f.kind === 'gate') {
         // brick arch with a boarded gate in it; lanterns either side
         const dx = xm - f.x, dz = zm - f.z, dy = ym - f.y;
