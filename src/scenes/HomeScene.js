@@ -1,211 +1,437 @@
-// The player's burrow: an isometric room you can walk around, decorate and live in.
-// It is where the mole lands after falling from the surface (the hole and its shaft of light
-// stay), the base for digging: walk up to any wall and dig into the deep (tunnel mouths stay
-// open in the walls), and home to the bed (sleep), forge, stove, Nugget's coop, planters,
-// the index desk, seats, lamps and a build mode for furniture, floors and walls.
-// The door to Deep Town stays caved in until the way into town has been dug.
+// The player's burrow, in first person: a cozy timber-framed room 5 × 4 m under a boarded ceiling
+// (it grows with room upgrades), where the mole crash-landed through the roof (the hole and its
+// shaft of daylight stay). Walk it with the mouse and WASD (or the touch stick and look pad):
+// sleep in the bed, cook at the stove, work the forge, collect Nugget's eggs, sow the planters,
+// sit down, light the lamps; dig out through any free wall spot (hold E) into the mine, walk back
+// into tunnels you dug before, ride the old brass lift in the corner down to the mine, and leave
+// through the door to Deep Town once the way has been dug. X (or E at the build bench) is build
+// mode: furniture, floors and wall styles placed straight into the room in first person.
 import * as THREE from 'three';
-import { IsoScene } from '../iso/IsoScene.js';
-import { HomeRoom } from '../iso/HomeRoom.js';
+import { Scene } from '../core/Scene.js';
+import { FPSRig, BoxWorld } from '../fps/FPSKit.js';
+import { liftState } from '../fps/lifts.js';
+import { Particles } from '../deep/Particles.js';
+import { LightPool } from '../iso/LightPool.js';
 import { buildFurniture } from '../iso/furniture.js';
-import { withView, viewForYaw } from '../iso/mesher.js';
-import { footprint, roomSize, doorTile, digSpots, tunnelList, TUNNEL_SLOTS, HOLE, WINDOW_SLOTS, occupancy } from '../iso/homeLayout.js';
-import { BuildMode } from '../iso/BuildMode.js';
-import { WATER_TIME } from '../iso/water.js';
-import { beamTexture } from '../iso/pixel.js';
+import { footprint, roomSize, digSpots, tunnelList, TUNNEL_SLOTS, HOLE, WINDOW_SLOTS, occupancy, liftTiles, benchTiles } from '../iso/homeLayout.js';
 import { holeHeap, toolsLeaning, broom, firewood, letterCrate, ragRug } from '../iso/homeDecor.js';
 import { glowShrooms, bucket } from '../iso/props.js';
-import { HomeLanding } from '../iso/homeLanding.js';
 import { FURNITURE } from '../data/furniture.js';
 import { ITEMS } from '../data/items.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { el, rand, pick, clamp } from '../core/util.js';
-import { midiToFreq } from '../core/Audio.js';
+import { T, CEIL, MOUTH_HW, MOUTH_H, DOOR_HW, DOOR_H } from '../home/units.js';
+import { HomeShell } from '../home/shell.js';
+import { HomeLift, liftBoxes } from '../home/lift.js';
+import { FPGlow } from '../home/glow.js';
+import { LightShaft } from '../home/fx.js';
+import { HomeNugget } from '../home/nugget.js';
+import { FPBuild } from '../home/build.js';
+import { Landing } from '../home/landing.js';
+import { relocateBlocked, besideItem } from '../home/layoutfix.js';
+import { HomeMoves } from '../home/moves.js';
+import { HomeLiving } from '../home/living.js';
 
 const _v = new THREE.Vector3();
-const TUNE = [72, 76, 79, 76, 74, 77, 81, 77, 72, 76, 79, 84, 83, 79, 76, 74];
-const WALLS4 = ['n', 's', 'e', 'w'];
-/** Touch screens get "tap" wording. */
-const isTouch = () => document.documentElement.classList.contains('is-touch') || !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+const _w = new THREE.Vector3();
 
-export default class HomeScene extends IsoScene {
+/** Ray (origin o, direction d) against a box: entry distance or null. */
+function rayBox3(o, d, x0, y0, z0, x1, y1, z1) {
+  let t0 = 0, t1 = Infinity;
+  for (const [oo, dd, a, b] of [[o.x, d.x, x0, x1], [o.y, d.y, y0, y1], [o.z, d.z, z0, z1]]) {
+    if (Math.abs(dd) < 1e-9) { if (oo < a || oo > b) return null; continue; }
+    let ta = (a - oo) / dd, tb = (b - oo) / dd;
+    if (ta > tb) [ta, tb] = [tb, ta];
+    t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+    if (t0 > t1) return null;
+  }
+  return t0;
+}
+const WALLS4 = ['n', 's', 'e', 'w'];
+const isTouch = () => document.documentElement.classList.contains('is-touch');
+/** Iso light intensities were tuned for 1 m tiles; a tile is 0.5 m now (inverse-square falloff). */
+const ISO_LIGHT = 0.3;
+
+export default class HomeScene extends Scene {
   async enter(params = {}) {
-    this.hud = 'home';
+    this.hud = 'deep';
     this.music = 'home';
-    const st = this.game.state;
-    const d = st.data;
+    const g = this.game, st = g.state, d = st.data;
     const t0 = performance.now();
     const from = params.from || 'continue';
+    this.from = from;
     st.flag('lastScene', 'home');
     st.flag('homeVisited', true);
     if (from === 'fall') { st.flag('fallen', true); st.flag('nugget', true); }
     if (!d.home.planters) d.home.planters = {};
     if (!d.home.floor) d.home.floor = {};
+    // the burrow's own lift always knows the mine entrance right below (lifts.js seeds 'L0')
+    liftState(st);
     const [W, D] = roomSize(d.home.level);
     this.W = W;
     this.D = D;
-    this.initIso({ w: W, h: D, zoom: 9.6, minZoom: 6.5, maxZoom: 13, lights: 6, lightRange: 16, bg: 0x0e090c });
-    this.cam.bounds = null;
-    this.post = { vignette: 0.46 };
-    WATER_TIME.value = 0;
+    this.tickers = [];
+    this.loops = [];
+    this.anchors = new Map();
+    this.scripted = false;
+    this.locked = false;
+    this.post = { vignette: 0.48, outlineAlpha: 0.72, innerThresh: 0.22, saturation: 1.02, contrast: 1.06 };
+    this.scene.background = new THREE.Color(0x0b0708);
 
-    // lighting: warm burrow ambience + a key light that separates the voxel faces
-    this.scene.add(new THREE.HemisphereLight(0xffd8b0, 0x3a2418, 0.9));
-    const key = new THREE.DirectionalLight(0xffe2c4, 0.7);
-    key.position.set(-3, 9, 7);
-    this.scene.add(key);
-
-    // tunnels dug from these walls (owned by the deep scene; the one we just came out of is drawn even if unsaved)
+    // tunnels dug from these walls (the deep scene owns them; the one we just came out of is drawn even if unsaved)
     const arrived = from === 'tunnel' && WALLS4.includes(params.wall) ? { wall: params.wall, t: parseFloat(params.t) } : null;
     this.tunnels = tunnelList(d, arrived && isFinite(arrived.t) ? arrived : null).filter((tn) => (tn.wall === 'n' || tn.wall === 's' ? tn.t < W : tn.t < D));
-    TUNNEL_SLOTS.n = new Set(this.tunnels.filter((t) => t.wall === 'n').map((t) => Math.floor(t.t)));
-    TUNNEL_SLOTS.w = new Set(this.tunnels.filter((t) => t.wall === 'w').map((t) => Math.floor(t.t)));
+    for (const w of WALLS4) TUNNEL_SLOTS[w] = new Set(this.tunnels.filter((t) => t.wall === w).map((t) => Math.floor(t.t)));
+    this.arrivedTunnel = arrived && this.tunnels.find((t) => t.wall === arrived.wall && Math.floor(t.t) === Math.floor(arrived.t));
     this.doorOpen = !!st.flag('escaped');
+    // older saves: anything standing where the lift, the bench, the door or a tunnel now needs room moves
+    if (relocateBlocked(st, W, D)) st.save();
 
-    this.room = new HomeRoom(this.scene);
-    this.room.build(W, D, d.home.wall, d.home.floor, { tunnels: this.tunnels, doorOpen: this.doorOpen, hole: HOLE });
-    this.own(() => this.room.dispose());
-    for (const L of this.room.sconces) {
-      this.addLight({ x: L.x, y: L.y, z: L.z, color: 0xffc27a, intensity: 6, distance: 8, flicker: 0.1, pool: 2.2, poolOpacity: 0.16, poolX: L.x + (L.z < 0.5 ? 0 : 1.1), poolZ: L.z + (L.z < 0.5 ? 1.1 : 0), halo: 0.75, haloOpacity: 0.5, priority: 3 });
-    }
-    this.buildAmbience();
+    // ---- the room (tile units, scaled to meters) and the shell
+    this.room = new THREE.Group();
+    this.room.scale.setScalar(T);
+    this.scene.add(this.room);
+    this.shell = new HomeShell(this.room, this.scene);
+    this.shell.build(W, D, d.home.wall, d.home.floor, { tunnels: this.tunnels, doorOpen: this.doorOpen, hole: HOLE });
+    this.own(() => this.shell.dispose());
 
-    // furniture
+    // ---- light: warm ambience, the shaft from the hole, a pool of point lights for every lamp
+    this.scene.add(new THREE.HemisphereLight(0xf0d0b0, 0x24160e, 0.42));
+    const sun = new THREE.DirectionalLight(0xffe8c8, 0.32);
+    sun.position.set(HOLE.x * T + 0.6, 6, HOLE.z * T + 0.9);
+    sun.target.position.set(HOLE.x * T, 0, HOLE.z * T);
+    this.scene.add(sun, sun.target);
+    this.lights = new LightPool(this.scene, 10, { range: 40 });
+    this.glow = new FPGlow(this.scene, 256);
+    this.shadows = new FPGlow(this.scene, 96, { shadow: true });
+    this.fxU = { fogCol: { value: new THREE.Color(0x0b0708) }, fogDist: { value: 80 } };
+    this.world = new BoxWorld();
+    this.fx = new Particles(this.scene, this.world, this.fxU);
+    this.own(() => this.fx.dispose());
+    this.shaft = new LightShaft(this.scene, { x: HOLE.x * T, z: HOLE.z * T, top: CEIL + 0.02, bottom: 0, r0: 0.4, r1: 0.6 });
+    this.addShellLights();
+
+    // ---- the lift in the corner
+    this.liftT = liftTiles(W, D);
+    this.lift = new HomeLift(this.room, this.liftT);
+    this.liftLight = this.addLight({ ...this.lift.lanternPos(_v).multiplyScalar(T), color: 0xffb860, intensity: 0.7, distance: 2.2, flicker: 0.1, halo: 0.16, haloOpacity: 0.55, priority: 1 });
+
+    // ---- first person
+    this.rig = await new FPSRig(this, { world: this.world, fov: 74, reach: 2.1, stepMat: 'dirt', lamp: 0.55 }).init();
+    this.camera = this.rig.camera;
+    this.rig.lampCol.setRGB(1.2, 0.98, 0.78);
+    this.rig.ambient.setRGB(0.42, 0.34, 0.3);
+    this.own(() => this.rig.dispose());
+    this.fx.setPixelScale(g.engine.height, this.rig.fov);
+
+    // ---- furniture, loose things, collision, interactables
     this.items = new Map();
     this.loose = [];
     this.buildLoose();
     for (const p of d.home.placed) this.addPlaced(p);
+    this.addFixedInteractions();
     this.rebuildCollision();
 
-    // door to town (caved in until the way into Deep Town has been dug), poster
-    const door = doorTile(W, D);
-    this.doorPos = { x: 0.55, z: door.y + 0.5 };
-    if (this.doorOpen) this.addInteractable({ x: this.doorPos.x, z: this.doorPos.z, r: 1.15, label: 'Out to Deep Town', action: () => this.leave() });
-    else this.addInteractable({ x: this.doorPos.x, z: this.doorPos.z, r: 1.0, priority: -0.1, label: 'Blocked', action: () => this.blockedDoor() });
-    this.addInteractable({ x: this.room.poster.cx, z: 0.7, r: 1.0, priority: -0.2, label: 'Look at the poster', action: () => this.lookPoster() });
-    this.addInteractable({ x: 0.75, z: WINDOW_SLOTS[0] + 0.5, r: 0.9, priority: -0.15, label: 'Peek through the window', action: () => this.peekWindow() });
-
-    // player & Nugget
+    // ---- the mole and Nugget
     this.spawnByFrom(from, params);
-    // Nugget lives here once she has fallen with the mole (or been found on the way out)
     if (st.flag('nugget')) {
-      if (from === 'fall') this.spawnNugget(HOLE.x + 0.3, HOLE.z + 0.2);
+      let nx, nz;
+      if (from === 'fall') { nx = HOLE.x + 0.9; nz = HOLE.z + 0.6; }
       else {
         const coop = this.findKind('coop');
-        // she starts by her coop: in front of it, else beside or behind it, else next to the player
-        const cands = coop ? [[0.5, 1.35], [1.4, 0.5], [-0.4, 0.5], [0.5, -0.4], [1.4, 1.35], [-0.4, 1.35]].map(([dx, dz]) => [coop.p.x + dx, coop.p.y + dz]) : [];
-        cands.push([this.player.x + 0.8, this.player.z + 0.6], [this.player.x + 0.7, this.player.z + 0.5]);
-        const ns = cands.find(([x, z]) => x > 0.3 && z > 0.3 && x < W - 0.3 && z < D - 0.3 && this.map.freeAt(x, z, 0.2)) || cands[cands.length - 1];
-        this.spawnNugget(ns[0], ns[1]);
-        this.map.resolve(this.nugget.pos, 0.17);
+        const pt = this.rig.player.pos;
+        const cands = coop ? [[0.5, 1.35], [1.4, 0.5], [-0.4, 0.5], [0.5, -0.4]].map(([dx, dz]) => [coop.p.x + dx, coop.p.y + dz]) : [];
+        cands.push([pt.x / T + 1.2, pt.z / T + 0.8], [pt.x / T + 0.8, pt.z / T - 0.9]);
+        const ok = cands.find(([x, z]) => x > 0.3 && z > 0.3 && x < W - 0.3 && z < D - 0.3 && !this.tileBlocked(Math.floor(x), Math.floor(z)));
+        [nx, nz] = ok || cands[cands.length - 1];
       }
-      this.nuggetAI.home = { x0: 0, z0: 0, x1: W - 1, z1: D - 1 };
+      this.nug = new HomeNugget(this, W, D, nx, nz);
+      this.fillNuggetMap();
+      const nA = this.nug.actor;
+      this.addIt({
+        r: 0.22, label: () => `Pet ${nA.name}`, sphereFn: (v) => v.set(nA.pos.x * T, (nA.pos.y + nA.body.position.y) * T + 0.15, nA.pos.z * T),
+        action: () => this.petNugget(),
+      });
     }
     this.napT = rand(25, 45);
-    { const e = this.game.engine, k = Math.max(clamp((W + D - 18) / 12, 0.22, 0.85), e.width < e.height ? 0.75 : 0); this.cam.snap(_v.set(W / 2 + 0.2 + (this.player.x - W / 2 - 0.2) * k, 0.6, D / 2 + 0.4 + (this.player.z - D / 2 - 0.4) * k)); }
-
-    // build mode
-    this.build = new BuildMode(this);
-    this.own(() => this.build.dispose());
     this.musicBox = { on: false, t: 0, i: 0 };
-    this.ambientLoop('forge_fire', () => this.nearKindVol('forge', 4.5, 0.35));
-    this.ambientLoop('fire', () => this.nearKindVol('fireplace', 5, 0.4) + this.nearKindVol('stove', 3, 0.15));
-    this.ambientLoop('water', () => this.nearKindVol('fountain', 4, 0.22) + this.nearKindVol('fish_tank', 2.5, 0.08));
 
-    if (from === 'fall') { this.landing = new HomeLanding(this); this.landing.run(); }
-    else if (from === 'tunnel') this.stepOutOfTunnel(arrived);
+    // ---- build mode, sounds
+    this.build = new FPBuild(this);
+    this.own(() => this.build.dispose());
+    this.ambientLoop('forge_fire', () => this.nearKindVol('forge', 3, 0.35));
+    this.ambientLoop('fire', () => this.nearKindVol('fireplace', 3, 0.4) + this.nearKindVol('stove', 2, 0.15));
+    this.ambientLoop('water', () => this.nearKindVol('fountain', 2.5, 0.22) + this.nearKindVol('fish_tank', 1.5, 0.08));
+    this.own(() => { for (const l of this.loops) if (l.h) l.h.stop(0.1); });
+    this.own(() => { for (const k of this.anchors.keys()) g.ui.hideBubble(k); g.ui.setHints(null); });
+    g.ui.setRadar?.(null);
+    g.ui.setDepth?.(null);
+    g.ui.setBag?.(null);
+    // the first-person HUD keeps the mine's depth plumb-bob up; there is no depth at home
+    const dep = g.ui.status?.depth;
+    if (dep) { dep.style.visibility = 'hidden'; this.own(() => { dep.style.visibility = ''; }); }
+    this.hammerBtn();
+
+    // ---- arrival
+    if (from === 'fall') { this.landing = new Landing(this); this.landing.run(); }
+    else if (from === 'lift') this.arriveByLift();
+    else if (from === 'tunnel') this.stepOutOfTunnel(this.arrivedTunnel);
     else if (from === 'newgame') this.wakeUp(this.findKind('bed'), true);
     else if (from === 'faint' || from === 'bed' || from === 'sleep') this.wakeUp(this.findKind('bed'), false);
-    if (from !== 'fall' && !this.doorOpen && !this.tunnels.length) this.later(1.2, () => this.showDigHint());
+    else if (from === 'town') g.audio.play('door');
+    if (from !== 'fall' && !this.doorOpen && !this.tunnels.length) this.later(1.6, () => this.showDigHint());
+    this.debug = this.makeDebug();
     this.buildMs = performance.now() - t0;
-    console.info(`[home] built in ${this.buildMs.toFixed(0)} ms (floor ${(this.room.floorMs || 0).toFixed(0)})`);
-    const r = this.game.engine?.renderer;
+    console.info(`[home] built in ${this.buildMs.toFixed(0)} ms (shell ${this.shell.ms.toFixed(0)}: ${Object.entries(this.shell.steps).map(([k, v]) => k + ' ' + v).join(', ')})`);
+    const r = g.engine?.renderer;
     if (r && r.compileAsync) { try { await r.compileAsync(this.scene, this.camera); } catch (e) { console.warn(e); } }
   }
 
-  // ------------------------------------------------------------ light, air and life
-  /** The shaft of light from the hole, the crystal window's glow, fungi, lanterns, motes and fireflies. */
-  buildAmbience() {
-    const room = this.room, H = HOLE, P = this.particles;
-    // light shaft from the hole the mole fell through
-    const mat = new THREE.MeshBasicMaterial({ map: beamTexture(0.17), color: 0xffd98a, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-    const L = 15, tilt = -0.05;
-    const mk = (w, op) => {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, L), mat.clone());
-      m.material.opacity = op;
-      // the card sits at the back of the shaft so things standing in the light stay in front of it
-      m.position.set(H.x - 0.42 - (L / 2) * Math.sin(tilt) * Math.SQRT1_2, (L / 2) * Math.cos(tilt) - 0.02, H.z - 0.42 + (L / 2) * Math.sin(tilt) * Math.SQRT1_2);
-      m.rotation.set(0, Math.PI / 4, tilt);
-      m.renderOrder = 8;
-      this.scene.add(m);
-      return m;
-    };
-    this.beam = [mk(1.8, 0.5), mk(1.0, 0.42)];
-    mat.dispose();
-    this.addLight({ x: H.x, y: 2.6, z: H.z, color: 0xffeccc, intensity: 8, distance: 5.5, flicker: 0, real: true, priority: 4, pool: 1.3, poolOpacity: 0.42, poolColor: 0xffe8b8 });
-    // lanterns hanging from the (cut-away) ceiling
-    for (const l of this.room.hanging) this.addLight({ x: l.x, y: l.y, z: l.z, color: 0xffb860, intensity: 3.5, distance: 4.5, flicker: 0.12, real: true, priority: 1, pool: 1.2, poolOpacity: 0.2, poolX: l.x, poolZ: l.z, halo: 0.55, haloOpacity: 0.55 });
-    // motes drifting in the shaft, and now and then a trickle of earth from the hole
-    P.addEmitter({ every: 0.14, emit: (p) => {
-      const y = rand(0.15, 4.2), a = rand(0, 6.28), r = Math.sqrt(Math.random()) * 0.42;
-      p.spawn({ x: H.x + Math.cos(a) * r, y, z: H.z + Math.sin(a) * r, vy: rand(-0.04, 0.05), vx: rand(-0.03, 0.03), life: rand(3, 5), size: rand(1, 1.6), color: 0xfff8dc, alpha: 0.85, alpha2: 0, add: true, wob: 0.12, blink: 4 });
-    } });
-    this.trickleT = rand(3, 6);
-    // the crystal window: a cool real light, a pool on the floor, a halo on the glass
-    const w = room.windowLight;
-    this.addLight({ x: w.x + 0.25, y: w.y, z: w.z, color: 0x6ad8ff, intensity: 3.2, distance: 4.6, flicker: 0.06, speed: 0.4, real: true, priority: 2, pool: 1.15, poolOpacity: 0.2, poolX: 1.0, poolZ: w.z, halo: 0.8, haloOpacity: 0.32, hx: 0.12, hy: w.y, hz: w.z });
-    // glowing fungi and the lanterns at the tunnel mouths
-    for (const f of room.fungi) this.addLight({ x: f.x, y: f.y, z: f.z, color: f.color, intensity: 0, real: false, pool: 0.65, poolOpacity: 0.16, halo: 0.42, haloOpacity: 0.3, flicker: 0.08, speed: 0.3 });
-    for (const l of room.lanterns) this.addLight({ x: l.x, y: l.y, z: l.z, color: 0xffb050, intensity: 2.2, distance: 3.2, flicker: 0.18, real: false, pool: 0.85, poolOpacity: 0.22, poolY: 0.035, poolX: l.x, poolZ: l.z, halo: 0.45, haloOpacity: 0.5 });
-    // fireflies around the window and the fungi
-    const spots = [{ x: 0.9, z: WINDOW_SLOTS[0] + 0.5, y: 1.2 }, ...room.fungi];
-    P.addEmitter({ every: 0.7, emit: (p) => {
-      const s = pick(spots);
-      p.spawn({ x: s.x + rand(-0.6, 0.6), y: s.y + rand(-0.2, 0.9), z: s.z + rand(-0.6, 0.6), vx: rand(-0.1, 0.1), vy: rand(-0.05, 0.08), vz: rand(-0.1, 0.1), life: rand(4, 7), size: rand(1.3, 2), color: pick([0xc8ff7a, 0x9affd8, 0xfff0a0]), alpha: 1, alpha2: 0, add: true, wob: 0.5, blink: rand(3, 6) });
-    } });
+  // ------------------------------------------------------------ lights
+  /**
+   * A light source (meters): { x, y, z, color, intensity, distance, flicker, speed, real, priority,
+   * halo (size m), haloOpacity, pool (radius m), poolX, poolZ, poolY, poolOpacity, poolColor }.
+   */
+  addLight(o) {
+    const src = this.lights.add({ real: true, ...o });
+    src.extras = [];
+    if (o.halo) src.extras.push(this.glow.add({ kind: 'halo', x: o.hx ?? o.x, y: o.hy ?? o.y, z: o.hz ?? o.z, w: o.halo, color: o.haloColor ?? o.color, opacity: o.haloOpacity ?? 0.5, src }));
+    if (o.pool) src.extras.push(this.glow.add({ kind: 'pool', x: o.poolX ?? o.x, y: o.poolY ?? 0.006, z: o.poolZ ?? o.z, w: o.pool * 2, color: o.poolColor ?? o.color, opacity: o.poolOpacity ?? 0.25, src }));
+    return src;
   }
 
-  /** Loose things that sit on a floor tile and only show while the tile is free of furniture. */
+  removeLight(src) {
+    if (!src) return;
+    this.lights.remove(src);
+    for (const e of src.extras || []) this.glow.remove(e);
+    src.extras = [];
+  }
+
+  addShellLights() {
+    const sh = this.shell;
+    for (const l of sh.lightsM()) {
+      if (l.kind === 'sconce') this.addLight({ ...l, intensity: 1.05, distance: 3.2, flicker: 0.1, halo: 0.2, haloOpacity: 0.55, priority: 2 });
+      else if (l.kind === 'hanging') this.addLight({ ...l, intensity: 1.0, distance: 3.4, flicker: 0.12, halo: 0.2, haloOpacity: 0.6, pool: 0.55, poolX: l.x, poolZ: l.z, poolOpacity: 0.14, priority: 2 });
+      else if (l.kind === 'window') this.addLight({ ...l, x: l.x + 0.05, intensity: 1.1, distance: 3.0, flicker: 0.06, speed: 0.4, halo: 0.42, haloOpacity: 0.3, hx: 0.02, pool: 0.55, poolX: 0.45, poolZ: l.z, poolOpacity: 0.16, priority: 3 });
+      else if (l.kind === 'hole') this.addLight({ ...l, y: CEIL - 0.25, intensity: 3.2, distance: 5.2, flicker: 0, priority: 6, pool: 0.62, poolX: l.x, poolZ: l.z, poolOpacity: 0.34, poolColor: 0xffe8b8 });
+      else this.addLight({ ...l, intensity: 0.75, distance: 2.4, flicker: 0.18, halo: 0.16, haloOpacity: 0.55, pool: 0.4, poolOpacity: 0.14, priority: 1 });
+    }
+    for (const f of sh.fungi) this.addLight({ x: f.x * T, y: f.y * T, z: f.z * T, color: f.color, intensity: 0, real: false, halo: 0.22, haloOpacity: 0.28, pool: 0.32, poolOpacity: 0.12, flicker: 0.08, speed: 0.3 });
+    // the paper lanterns glow softly
+    for (const s of sh.strings || []) for (let i = 1; i < s.length - 1; i++) this.glow.add({ kind: 'halo', x: s[i].x * T, y: (s[i].y - 0.1) * T, z: s[i].z * T, w: 0.11, color: [0xffd060, 0xff8a6a, 0x9ae07a, 0x8ac8ff, 0xffa0d0, 0xfff0b0][i % 6], opacity: 0.32 });
+    // the bright disc of daylight far up the hole
+    this.glow.add({ kind: 'halo', x: HOLE.x * T, y: CEIL + 2.6, z: HOLE.z * T, w: 1.6, color: 0xfff0c0, opacity: 0.55 });
+  }
+
+  // ------------------------------------------------------------ interactables
+  /** A crosshair target (meters). o: { box | x,y,z,r | sphereFn, label (string or fn), action, enabled, kind, reach } */
+  addIt(o) {
+    const it = { kind: 'use', ...o };
+    if (typeof o.label === 'function') Object.defineProperty(it, 'label', { get: o.label, enumerable: true });
+    if (o.sphereFn) {
+      const v = new THREE.Vector3();
+      Object.defineProperty(it, 'x', { get: () => o.sphereFn(v).x, enumerable: true });
+      Object.defineProperty(it, 'y', { get: () => v.y, enumerable: true });
+      Object.defineProperty(it, 'z', { get: () => v.z, enumerable: true });
+    }
+    const en = o.enabled;
+    it.enabled = () => this.canInteract() && (!en || en());
+    return this.rig.add(it);
+  }
+
+  canInteract() { return !this.scripted && !this.seat && !this.build?.active && !this.dig?.done; }
+
+  addFixedInteractions() {
+    const { W, D } = this;
+    const dz = this.shell.door.z * T;
+    if (this.doorOpen) this.addIt({ box: [0, 0, dz - DOOR_HW, 0.08, DOOR_H, dz + DOOR_HW], label: 'Out to Deep Town', action: () => this.leave() });
+    else this.addIt({ box: [0, 0.3, dz - DOOR_HW, 0.3, DOOR_H, dz + DOOR_HW], label: 'Caved in', action: () => this.blockedDoor() });
+    const wz = (WINDOW_SLOTS[0] + 0.5) * T;
+    this.addIt({ box: [0, 0.82, wz - 0.3, 0.1, 1.28, wz + 0.3], label: 'Peek through the window', action: () => this.peekWindow() });
+    const P = this.shell.poster;
+    this.addIt({ box: [(P.cx - P.w / 2) * T, (P.cy - P.h / 2) * T, 0, (P.cx + P.w / 2) * T, (P.cy + P.h / 2) * T, 0.06], label: 'Look at the poster', action: () => this.lookPoster() });
+    const L = this.liftT;
+    this.addIt({ box: [L.x * T, 0, L.y * T, W * T, 1.42, D * T], label: () => (this.inCage() ? 'Pull the lever' : 'Ride the lift'), action: () => this.useLift() });
+    const B = benchTiles(W, D);
+    this.addIt({ box: [B.x * T + 0.1, 0, B.y * T, W * T, 1.6, (B.y + B.d) * T], label: 'Build bench: decorate', action: () => this.build.toggle(true) });
+    this.addIt({ box: [(HOLE.x - 0.9) * T, 0, (HOLE.z - 0.8) * T, (HOLE.x + 0.9) * T, 0.12, (HOLE.z + 0.8) * T], label: 'Look up the hole', reach: 1.4, enabled: () => this.loose.includes(this.heap) && this.heap.obj.visible, action: () => this.lookUpHole() });
+  }
+
+  /** One crosshair target per diggable wall spot (and per tunnel mouth); rebuilt with the furniture. */
+  rebuildDigSpots() {
+    for (const it of this.digIts || []) this.rig.remove(it);
+    this.digIts = [];
+    for (const s of digSpots(this.game.state.data.home.placed, this.W, this.D, this.tunnels)) {
+      const tile = { x: Math.floor(s.x), y: Math.floor(s.z) };
+      const box = this.spotBox(s);
+      if (s.tunnel) {
+        this.digIts.push(this.addIt({ box, spot: s, label: 'Into the tunnel', enabled: () => !this.tileBlocked(tile.x, tile.y), action: () => this.walkIntoTunnel(s) }));
+      } else {
+        this.digIts.push(this.addIt({ box, spot: s, kind: 'rock', reach: 1.5, label: () => (isTouch() ? 'Dig through (hold dig)' : 'Dig through (hold E)'), enabled: () => !this.tileBlocked(tile.x, tile.y), action: () => this.startDig(s) }));
+      }
+    }
+  }
+
+  /** A wall spot's face as a box (meters); tunnel spots cover the open mouth. */
+  spotBox(s) {
+    const { W, D } = this;
+    const a0 = s.k * T, a1 = (s.k + 1) * T;
+    const c = s.t * T;
+    if (s.tunnel) {
+      const h = MOUTH_H - 0.05, hw = MOUTH_HW;
+      if (s.wall === 'n') return [c - hw, 0, -0.35, c + hw, h, 0.02];
+      if (s.wall === 's') return [c - hw, 0, D * T - 0.02, c + hw, h, D * T + 0.35];
+      if (s.wall === 'w') return [-0.35, 0, c - hw, 0.02, h, c + hw];
+      return [W * T - 0.02, 0, c - hw, W * T + 0.35, h, c + hw];
+    }
+    const y0 = 0.04, y1 = 1.3, e = 0.035;
+    if (s.wall === 'n') return [a0, y0, -0.01, a1, y1, e];
+    if (s.wall === 's') return [a0, y0, D * T - e, a1, y1, D * T + 0.01];
+    if (s.wall === 'w') return [-0.01, y0, a0, e, y1, a1];
+    return [W * T - e, y0, a0, W * T + 0.01, y1, a1];
+  }
+
+  // ------------------------------------------------------------ collision
+  /** Is floor tile (tx, ty) out of the room or under furniture / the lift / the bench? */
+  tileBlocked(tx, ty) {
+    if (tx < 0 || ty < 0 || tx >= this.W || ty >= this.D) return true;
+    return !!this.blockedTiles?.has(tx + ',' + ty);
+  }
+
+  rebuildCollision() {
+    const { W, D } = this, w = this.world;
+    const Wm = W * T, Dm = D * T, L = this.liftT;
+    w.clear();
+    // floor (minus the lift pit), the pit's bottom, ceiling
+    w.add(-2, -1, -2, Wm + 2, 0, L.y * T, 'shell');
+    w.add(-2, -1, L.y * T, L.x * T, 0, Dm + 2, 'shell');
+    w.add(Wm, -1, L.y * T, Wm + 2, 0, Dm + 2, 'shell');
+    w.add(L.x * T, -3, L.y * T, Wm, -2.6, Dm, 'shell');
+    w.add(-2, CEIL, -2, Wm + 2, CEIL + 1, Dm + 2, 'shell');
+    // walls, with gaps where tunnel mouths open
+    const wall = (name, x0, z0, x1, z1) => {
+      const along = name === 'n' || name === 's';
+      const gaps = this.tunnels.filter((t) => t.wall === name).map((t) => [t.t * T - MOUTH_HW, t.t * T + MOUTH_HW]).sort((a, b) => a[0] - b[0]);
+      let a = along ? x0 : z0;
+      const end = along ? x1 : z1;
+      for (const [g0, g1] of [...gaps, [end, end]]) {
+        if (g0 > a) { if (along) w.add(a, -1, z0, g0, CEIL + 1, z1, 'shell'); else w.add(x0, -1, a, x1, CEIL + 1, g0, 'shell'); }
+        a = Math.max(a, g1);
+      }
+      // the tunnels' tubes: side walls and a roof
+      for (const t of this.tunnels.filter((tt) => tt.wall === name)) {
+        const c = t.t * T, hw = MOUTH_HW;
+        const out = name === 'n' ? [-1.6, 0] : name === 's' ? [Dm, Dm + 1.6] : name === 'w' ? [-1.6, 0] : [Wm, Wm + 1.6];
+        if (along) {
+          w.add(c - hw - 0.4, -1, out[0], c - hw, CEIL, out[1], 'shell'); w.add(c + hw, -1, out[0], c + hw + 0.4, CEIL, out[1], 'shell');
+          w.add(c - hw, MOUTH_H, out[0], c + hw, CEIL, out[1], 'shell');
+        } else {
+          w.add(out[0], -1, c - hw - 0.4, out[1], CEIL, c - hw, 'shell'); w.add(out[0], -1, c + hw, out[1], CEIL, c + hw + 0.4, 'shell');
+          w.add(out[0], MOUTH_H, c - hw, out[1], CEIL, c + hw, 'shell');
+        }
+      }
+    };
+    wall('n', -2, -2, Wm + 2, 0);
+    wall('s', -2, Dm, Wm + 2, Dm + 2);
+    wall('w', -2, -2, 0, Dm + 2);
+    wall('e', Wm, -2, Wm + 2, Dm + 2);
+    // corner posts
+    for (const [x0, z0] of [[0, 0], [Wm - 0.1875, 0], [0, Dm - 0.1875]]) w.add(x0, 0, z0, x0 + 0.1875, CEIL, z0 + 0.1875, 'shell');
+    // the build bench, the lift cage, the rubble in the caved-in door
+    const B = benchTiles(W, D);
+    w.add(B.x * T + 0.06, 0, B.y * T, Wm, 0.5, (B.y + B.d) * T, 'shell');
+    for (const b of liftBoxes(L, this.gateShut)) w.add(...b, 'lift');
+    if (!this.doorOpen) { const dz = this.shell.door.z * T; w.add(0, 0, dz - 0.4, 0.375, 0.5, dz + 0.4, 'shell'); }
+    // furniture
+    this.blockedTiles = new Set();
+    for (let y = L.y; y < L.y + L.d; y++) for (let x = L.x; x < L.x + L.w; x++) this.blockedTiles.add(x + ',' + y);
+    for (let y = B.y; y < B.y + B.d; y++) this.blockedTiles.add(B.x + ',' + y);
+    for (const rec of this.items.values()) {
+      const f = FURNITURE[rec.p.id];
+      if (!f || f.kind === 'rug' || f.kind === 'wall') continue;
+      for (let y = rec.p.y; y < rec.p.y + rec.fd; y++) for (let x = rec.p.x; x < rec.p.x + rec.fw; x++) this.blockedTiles.add(x + ',' + y);
+      const bb = rec.bbox;
+      const h = clamp(bb.max.y, 0.45, CEIL - 0.1);
+      w.add(Math.max(rec.p.x * T, bb.min.x) + 0.02, 0, Math.max(rec.p.y * T, bb.min.z) + 0.02, Math.min((rec.p.x + rec.fw) * T, bb.max.x) - 0.02, h, Math.min((rec.p.y + rec.fd) * T, bb.max.z) - 0.02, rec.p.uid);
+    }
+    this.refreshLoose();
+    this.rebuildDigSpots();
+    this.refreshStepMap();
+    if (this.nug) this.fillNuggetMap();
+    // never leave the mole stuck inside something new
+    if (this.rig && !this.scripted && !this.seat) this.unstick();
+  }
+
+  fillNuggetMap() {
+    this.nug.setBlocked((map) => {
+      for (const k of this.blockedTiles) { const [x, y] = k.split(',').map(Number); map.setSolid(x, y, 1); }
+      if (!this.doorOpen) map.setSolid(0, this.D - 2, 1);
+    });
+  }
+
+  /** Push the mole out of anything solid (after furniture moved under it). */
+  unstick() {
+    const pl = this.rig.player;
+    if (!pl.hitsAt(pl.pos.x, pl.pos.y, pl.pos.z)) return;
+    for (let r = 0.1; r < 3; r += 0.1) for (let a = 0; a < 12; a++) {
+      const x = pl.pos.x + Math.cos(a / 12 * Math.PI * 2) * r, z = pl.pos.z + Math.sin(a / 12 * Math.PI * 2) * r;
+      if (x < 0.25 || z < 0.25 || x > this.W * T - 0.25 || z > this.D * T - 0.25) continue;
+      if (!pl.hitsAt(x, 0, z)) { pl.pos.set(x, 0, z); return; }
+    }
+  }
+
+  /** Footstep sounds follow the floor under the mole (rugs are soft). */
+  refreshStepMap() {
+    const floors = this.game.state.data.home.floor;
+    this.stepMats = new Map();
+    for (let y = 0; y < this.D; y++) for (let x = 0; x < this.W; x++) {
+      const id = floors[`${x},${y}`] || 'floor_dirt';
+      this.stepMats.set(x + ',' + y, id === 'floor_plank' ? 'wood' : id === 'floor_dirt' || id === 'floor_moss' ? 'dirt' : id === 'floor_carpet' ? 'sand' : 'stone');
+    }
+    const occ = occupancy(this.game.state.data.home.placed, null, this.W, this.D);
+    for (const k of occ.rugs.keys()) this.stepMats.set(k, 'sand');
+    for (const r of this.loose) if (r.rug && r.obj.visible) for (const t of r.tiles) this.stepMats.set(t.x + ',' + t.y, 'sand');
+    const L = this.liftT;
+    for (let y = L.y; y < L.y + L.d; y++) for (let x = L.x; x < L.x + L.w; x++) this.stepMats.set(x + ',' + y, 'wood');
+  }
+
+  // ------------------------------------------------------------ loose things
+  /** Things that sit on a floor tile and only show while the tile is free of furniture. */
   buildLoose() {
     const { W, D } = this;
     const add = (tiles, make, x, z, yaw = 0, o = {}) => {
-      const obj = withView(viewForYaw(yaw), make);
+      const obj = make();
       obj.position.set(x, 0, z);
       obj.rotation.y = yaw;
-      this.scene.add(obj);
+      this.room.add(obj);
       const rec = { tiles, obj, ...o };
       this.loose.push(rec);
       return rec;
     };
-    // the old owner's rag rug in the middle of the room (hidden under furniture and player rugs)
-    const rx = Math.min(W - 1.6, 5.6), rz = Math.min(D - 1.4, 4.6);
+    const rx = Math.min(W - 1.6, 5.6), rz = Math.min(D - 1.6, 4.4);
     const rugTiles = [];
     for (let y = Math.floor(rz - 0.8); y <= Math.floor(rz + 0.8 - 0.01); y++) for (let x = Math.floor(rx - 1.2); x <= Math.floor(rx + 1.2 - 0.01); x++) rugTiles.push({ x, y });
     add(rugTiles, () => ragRug(2.4, 1.6, 6), rx, rz, 0, { rug: true });
-    // what came down with the mole, under the hole
     this.heap = add([{ x: Math.floor(HOLE.x), y: Math.floor(HOLE.z) }], () => holeHeap(11), HOLE.x, HOLE.z, 0.3);
-    add([{ x: 0, y: 0 }], () => firewood(3), 0.42, 0.4, 0.2);
-    add([{ x: W - 1, y: 0 }], () => broom(2), W - 0.3, 0.05, -0.15);
-    add([{ x: W - 1, y: 0 }], () => letterCrate(5), W - 0.62, 0.48, -0.1);
-    add([{ x: 0, y: D - 3 }], () => toolsLeaning(1), 0.06, D - 2.5, Math.PI / 2);
-    add([{ x: 0, y: WINDOW_SLOTS[0] }], () => glowShrooms(7, 1, 0.55).obj, 0.32, WINDOW_SLOTS[0] + 0.5, 0.4);
-    // a bucket and a pot that the landing knocks over
-    const kx = Math.min(W - 1, Math.floor(HOLE.x) + 1), kz = Math.max(0, Math.floor(HOLE.z) - 1);
+    add([{ x: 0, y: 0 }], () => firewood(3), 0.48, 0.42, 0.2);
+    add([{ x: W - 1, y: 0 }], () => broom(2), W - 0.36, 0.12, -0.15);
+    add([{ x: W - 1, y: 0 }], () => letterCrate(5), W - 0.7, 0.55, -0.1);
+    add([{ x: 0, y: D - 3 }], () => toolsLeaning(1), 0.12, D - 2.5, Math.PI / 2);
+    add([{ x: 0, y: WINDOW_SLOTS[0] }], () => glowShrooms(7, 1, 0.55).obj, 0.36, WINDOW_SLOTS[0] + 0.5, 0.4);
+    const kx = Math.min(W - 3, Math.floor(HOLE.x) + 1), kz = Math.max(0, Math.floor(HOLE.z) - 1);
     this.knock = add([{ x: kx, y: kz }], () => {
-      const g = new THREE.Group();
+      const grp = new THREE.Group();
       const b = bucket(false);
-      const bo = b.obj || b;
-      bo.position.set(-0.12, 0, 0.05);
+      (b.obj || b).position.set(-0.12, 0, 0.05);
       const pot = glowShrooms(19, 2, 0.32).obj;
       pot.position.set(0.22, 0, -0.12);
-      g.add(bo, pot);
-      return g;
+      grp.add(b.obj || b, pot);
+      return grp;
     }, kx + 0.5, kz + 0.5, 0.2);
   }
 
-  /** Show loose things whose tiles are free; called after every furniture change. */
   refreshLoose() {
-    const occ = occupancy(this.game.state.data.home.placed);
+    const occ = occupancy(this.game.state.data.home.placed, null, this.W, this.D);
     for (const r of this.loose) r.obj.visible = r.tiles.every((t) => !occ.floor.has(t.x + ',' + t.y) && !(r.rug && occ.rugs.has(t.x + ',' + t.y)));
   }
 
@@ -220,134 +446,23 @@ export default class HomeScene extends IsoScene {
       if (b) { b.rotation.z = e * Math.PI / 2; b.position.set(-0.12 - e * 0.25, e * 0.12, 0.05 + e * 0.1); }
       if (pot) { pot.rotation.x = e * 1.2; pot.position.set(0.22 + e * 0.1, 0, -0.12 + e * 0.15); }
     });
-    this.particles.dustPuff(k.obj.position.x, 0.1, k.obj.position.z, 6, 0x7a5a3a);
+    k.obj.getWorldPosition(_v);
+    this.fx.dust(_v.x, 0.08, _v.z, 8, [0.48, 0.36, 0.24], 0.12);
   }
 
-  // ------------------------------------------------------------ digging
-  /** One interactable per diggable wall spot (rebuilt when furniture changes what hangs on the walls). */
-  rebuildDigSpots() {
-    for (const it of this.digIts || []) this.removeInteractable(it);
-    this.digIts = [];
-    for (const s of digSpots(this.game.state.data.home.placed, this.W, this.D)) {
-      const tile = { x: Math.floor(s.x), y: Math.floor(s.z) };
-      const tn = this.tunnelAt(s);
-      this.digIts.push(this.addInteractable({
-        x: s.x, z: s.z, r: 0.66, priority: tn ? 0.1 : -0.35,
-        label: tn ? 'Into the tunnel' : 'Dig',
-        enabled: () => this.canDigHere(s, tile),
-        action: () => this.digAt(s),
-      }));
-    }
-  }
-
-  tunnelAt(s) { return this.tunnels.find((t) => t.wall === s.wall && Math.floor(t.t) === Math.floor(s.t)) || null; }
-
-  /** Facing the wall, on a free tile, not building. */
-  canDigHere(s, tile) {
-    const p = this.player;
-    if (!p || this.build?.active || this.map.blocked(tile.x, tile.y)) return false;
-    const f = p.rig.facing ?? 0;
-    return -(Math.sin(f) * s.nx + Math.cos(f) * s.nz) > 0.35;
-  }
-
-  async digAt(s) {
-    if (this.locked) return;
-    const p = this.player;
-    const tn = this.tunnelAt(s);
-    this.locked = true;
-    this.game.ui.setHints(null);
-    const wx = s.x - s.nx * 0.42, wz = s.z - s.nz * 0.42; // the wall face
-    p.faceToward(wx, wz, true);
-    if (tn) {
-      // walk into the dark mouth
-      p.collide = false;
-      await this.walkTo(p, s.x - s.nx * 0.55, s.z - s.nz * 0.55, 1.8);
-      this.game.audio.play('step', { mat: 'dirt' });
-    } else {
-      p.rig.play('dig');
-      for (let i = 0; i < 3; i++) {
-        await this.sleepFor(0.26);
-        this.game.audio.play(i === 2 ? 'debris' : 'chop', { pitch: 0.9 + i * 0.08 });
-        this.particles.dustPuff(wx, 0.5 + i * 0.12, wz, 7, 0x6a4a32);
-        this.particles.burst(5, { x: wx, y: 0.6, z: wz, vx: s.nx * 1.2, vz: s.nz * 1.2, vy: 1.2, life: 0.6, size: 2, color: 0x5a3e2a, alpha: 1, alpha2: 1, grav: 7 }, { x: 0.1, y: 0.1, z: 0.1, v: 0.6 });
-        this.cam.shake = 0.25;
-      }
-      p.rig.play('idle');
-    }
-    this.game.goto('deep', { from: 'home', wall: s.wall, t: s.t }, { transition: 'fade', dur: 0.5 });
-  }
-
-  /** Walk an actor (no collision) to a point. */
-  walkTo(a, x, z, speed = 1.8) {
-    return new Promise((res) => {
-      a.scripted = true;
-      const tick = (dt) => {
-        const dx = x - a.x, dz = z - a.z, dd = Math.hypot(dx, dz);
-        if (dd < 0.05) {
-          a.drive(dt, 0, 0, null);
-          a.scripted = false;
-          this.tickers.splice(this.tickers.indexOf(tick), 1);
-          res();
-          return;
-        }
-        const sp = Math.min(speed, dd * 4 + 0.3);
-        a.drive(dt, (dx / dd) * sp, (dz / dd) * sp, null, { accel: 20 });
-      };
-      this.tickers.push(tick);
-    });
-  }
-
-  /** Coming back up a tunnel: appear in its mouth and step into the room. */
-  async stepOutOfTunnel(tn) {
-    if (!tn) return;
-    const p = this.player;
-    const s = { n: [0, 1], s: [0, -1], w: [1, 0], e: [-1, 0] }[tn.wall];
-    const tx = p.x + s[0] * 0.75, tz = p.z + s[1] * 0.75;
-    this.locked = true;
-    p.collide = false;
-    this.particles.dustPuff(p.x, 0.2, p.z, 8, 0x6a4a32);
-    this.game.audio.play('step', { mat: 'dirt' });
-    await this.walkTo(p, tx, tz, 1.6);
-    p.collide = true;
-    this.map.resolve(p.pos, p.radius);
-    this.locked = false;
-  }
-
-  showDigHint() {
-    if (this.game.state.flag('escaped')) return;
-    this.game.ui.setHints(isTouch() ? 'Walk up to a wall and tap <b>Dig</b> to tunnel out' : 'Walk up to a wall and press <kbd>E</kbd> to dig your way out');
-    this.hintT = 14;
-  }
-
-  blockedDoor() {
-    const p = this.player;
-    p.faceToward(-1, this.doorPos.z);
-    p.rig.doEmote('shake', 1);
-    this.game.audio.play('debris', { vol: 0.5 });
-    this.particles.dustPuff(0.35, 0.6, this.doorPos.z, 6, 0x6a4a32);
-    this.say(p, pick(['Caved in solid. I\'ll have to dig another way.', 'Rocks all the way up. Better dig through a wall.']));
-  }
-
-  peekWindow() {
-    const p = this.player;
-    p.faceToward(-1, WINDOW_SLOTS[0] + 0.5);
-    this.emote(p, '✦', { color: '#3a9ad0' });
-    this.game.audio.play('glow');
-    this.particles.burst(6, { x: 0.3, y: 1.35, z: WINDOW_SLOTS[0] + 0.5, vx: 0.4, vy: 0.2, life: 1.4, size: 1.6, color: 0x9affd8, alpha: 1, alpha2: 0, add: true, wob: 0.6, blink: 5 }, { x: 0.05, y: 0.2, z: 0.25, v: 0.2 });
-  }
-
-  // ------------------------------------------------------------ furniture records
+  // ------------------------------------------------------------ furniture
   findKind(kind) {
     for (const it of this.items.values()) if (FURNITURE[it.p.id]?.kind === kind || it.p.id === kind) return it;
     return null;
   }
 
   nearKindVol(kind, range, vol) {
-    if (!this.player) return 0;
+    if (!this.rig) return 0;
     let best = Infinity;
+    const p = this.rig.player.pos;
     for (const it of this.items.values()) {
       if (FURNITURE[it.p.id]?.kind !== kind && it.p.id !== kind) continue;
-      best = Math.min(best, Math.hypot(it.cx - this.player.x, it.cz - this.player.z));
+      best = Math.min(best, Math.hypot(it.cx * T - p.x, it.cz * T - p.z));
     }
     return best < range ? vol * (1 - best / range) : 0;
   }
@@ -355,38 +470,34 @@ export default class HomeScene extends IsoScene {
   ctxFor(p) {
     const d = this.game.state.data;
     const pl = d.home.planters[p.uid];
-    return {
-      eggs: this.eggCount(),
-      planter: pl ? { ...pl, ready: pl.ready || pl.day < d.day } : null,
-      items: ITEMS,
-      weapons: d.weapons,
-      state: this.game.state,
-    };
+    return { eggs: this.eggCount(), planter: pl ? { ...pl, ready: pl.ready || pl.day < d.day } : null, items: ITEMS, weapons: d.weapons, state: this.game.state };
   }
 
   addPlaced(p) {
     const f = FURNITURE[p.id];
     if (!f) return null;
-    // mesh only the faces the fixed iso camera can see for this rotation (the ghost keeps all)
-    const res = withView(viewForYaw((p.r || 0) * Math.PI / 2), () => buildFurniture(p.id, this.ctxFor(p)));
+    const res = buildFurniture(p.id, this.ctxFor(p));
     const [fw, fd] = footprint(p.id, p.r);
     const obj = res.obj;
     obj.position.set(p.x + fw / 2, 0, p.y + fd / 2);
     obj.rotation.y = (p.r || 0) * Math.PI / 2;
-    this.scene.add(obj);
-    obj.updateMatrixWorld(true);
-    const rec = { p, res, obj, fw, fd, cx: p.x + fw / 2, cz: p.y + fd / 2, lights: [], its: [], emitters: [] };
+    this.room.add(obj);
+    this.room.updateMatrixWorld(true);
+    const bbox = new THREE.Box3().setFromObject(obj);
+    if (!isFinite(bbox.max.y)) bbox.set(new THREE.Vector3(p.x * T, 0, p.y * T), new THREE.Vector3((p.x + fw) * T, 0.4, (p.y + fd) * T));
+    const rec = { p, res, obj, fw, fd, cx: p.x + fw / 2, cz: p.y + fd / 2, bbox, lights: [], its: [], emitters: [], shadow: null };
     const toWorld = (x, y, z) => _v.set(x, y, z).applyMatrix4(obj.matrixWorld);
     for (const l of res.lights) {
-      const w = toWorld(l.x, l.y, l.z).clone();
-      const o = { ...l, x: w.x, y: w.y, z: w.z };
-      if (l.poolX !== undefined || l.poolZ !== undefined) { const pw = toWorld(l.poolX ?? 0, 0, l.poolZ ?? 0); o.poolX = pw.x; o.poolZ = pw.z; }
-      if (l.hx !== undefined || l.hy !== undefined || l.hz !== undefined) { const hw = toWorld(l.hx ?? l.x, l.hy ?? l.y, l.hz ?? l.z); o.hx = hw.x; o.hy = hw.y; o.hz = hw.z; }
-      if (l.intensity === 0 && l.real !== false) o.real = false;
+      const wp = toWorld(l.x, l.y, l.z).clone();
+      const o = { color: l.color, x: wp.x, y: wp.y, z: wp.z, intensity: (l.intensity ?? 4) * ISO_LIGHT, distance: (l.distance ?? 5) * T * 0.9, flicker: l.flicker ?? 0.1, speed: l.speed ?? 1, real: l.intensity !== 0 && l.real !== false, priority: l.priority ?? 1 };
+      if (l.pool) { const pw = toWorld(l.poolX ?? l.x, 0, l.poolZ ?? l.z); o.pool = l.pool * T * 0.75; o.poolX = pw.x; o.poolZ = pw.z; o.poolOpacity = (l.poolOpacity ?? 0.3) * 0.7; }
+      if (l.halo) { const hw = toWorld(l.hx ?? l.x, l.hy ?? l.y, l.hz ?? l.z); o.halo = l.halo * T * 0.7; o.hx = hw.x; o.hy = hw.y; o.hz = hw.z; o.haloOpacity = l.haloOpacity ?? 0.5; }
       const src = this.addLight(o);
       src.on = !this.game.state.flag('lampOff:' + p.uid);
       rec.lights.push(src);
     }
+    // a soft contact shadow on the floor
+    if (f.kind !== 'rug' && f.kind !== 'wall') rec.shadow = this.shadows.add({ kind: 'pool', x: rec.cx * T, y: 0.004, z: rec.cz * T, w: (fw * 1.05 + 0.25) * T, h: (fd * 1.05 + 0.25) * T, color: 0, opacity: 0.5 });
     this.addEmitters(rec);
     this.addItemInteractions(rec);
     this.items.set(p.uid, rec);
@@ -396,15 +507,15 @@ export default class HomeScene extends IsoScene {
   removePlaced(uid) {
     const rec = this.items.get(uid);
     if (!rec) return;
-    if (FURNITURE[rec.p.id]?.kind === 'coop' && this.nuggetAI) this.nuggetAI.wake();
-    this.scene.remove(rec.obj);
+    if (FURNITURE[rec.p.id]?.kind === 'coop' && this.nug) this.nug.ai.wake();
+    this.room.remove(rec.obj);
     rec.obj.traverse((o) => {
       if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose();
       if (o.material && !o.material.userData?.shared) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
     });
     for (const s of rec.lights) this.removeLight(s);
-    for (const it of rec.its) this.removeInteractable(it);
-    for (const e of rec.emitters) this.particles.removeEmitter(e);
+    for (const it of rec.its) this.rig.remove(it);
+    if (rec.shadow) this.shadows.remove(rec.shadow);
     this.items.delete(uid);
   }
 
@@ -416,456 +527,314 @@ export default class HomeScene extends IsoScene {
     this.addPlaced(p);
   }
 
-  rebuildCollision() {
-    const map = this.map;
-    map.solid.fill(0);
-    for (const rec of this.items.values()) {
-      const f = FURNITURE[rec.p.id];
-      if (!f || f.kind === 'rug' || f.kind === 'wall') continue;
-      map.fill(rec.p.x, rec.p.y, rec.fw, rec.fd, 1);
-    }
-    // floor sounds follow the painted floor
-    const floors = this.game.state.data.home.floor;
-    for (let y = 0; y < this.D; y++) for (let x = 0; x < this.W; x++) {
-      const id = floors[`${x},${y}`] || 'floor_dirt';
-      map.setMat(x, y, id === 'floor_plank' ? 'wood' : id === 'floor_dirt' || id === 'floor_moss' || id === 'floor_carpet' ? 'dirt' : 'stone');
-    }
-    for (const rec of this.items.values()) if (FURNITURE[rec.p.id]?.kind === 'rug') map.fillMat(rec.p.x, rec.p.y, rec.fw, rec.fd, 'dirt');
-    // the rubble choking the door to town
-    if (this.doorBlock) map.removeCircle(this.doorBlock);
-    this.doorBlock = this.doorOpen === false ? map.addCircle(0.15, this.D - 1.5, 0.62) : null;
-    this.refreshLoose();
-    this.rebuildDigSpots();
-    if (this.player && !this.seat && !this.playerPosed && !this.player.scripted) this.map.resolve(this.player.pos, this.player.radius);
-  }
-
+  /** Embers, steam, bubbles and spray from furniture (local spots → meters). */
   addEmitters(rec) {
-    const r = rec.res, P = this.particles;
+    const r = rec.res;
     const w = (o) => _v.set(o.x, o.y, o.z).applyMatrix4(rec.obj.matrixWorld).clone();
-    if (r.embers) {
-      const e = w(r.embers);
-      rec.emitters.push(P.addEmitter({ every: 0.22, emit: (p) => p.spawn({ x: e.x + rand(-0.3, 0.3), y: e.y, z: e.z + rand(-0.1, 0.1), vy: rand(0.6, 1.2), vx: rand(-0.1, 0.1), life: rand(0.8, 1.6), size: 1.2, color: 0xffc040, color2: 0xff4a10, alpha: 1, alpha2: 0, add: true, wob: 0.6 }) }));
-    }
-    if (r.steam) {
-      const e = w(r.steam);
-      rec.emitters.push(P.addEmitter({ every: 0.45, emit: (p) => p.spawn({ x: e.x + rand(-0.05, 0.05), y: e.y, z: e.z, vy: rand(0.3, 0.5), life: rand(1.2, 1.8), size: 2, size2: 4, color: 0xf0f0f0, alpha: 0.4, alpha2: 0, wob: 0.4 }) }));
-    }
-    if (r.bubbles) {
-      const e = w(r.bubbles);
-      const top = r.bubbles.top;
-      rec.emitters.push(P.addEmitter({ every: 0.5, emit: (p) => p.spawn({ x: e.x + rand(-0.04, 0.04), y: e.y, z: e.z, vy: 0.35, life: (top - r.bubbles.y) / 0.35, size: 1.4, color: 0xe8f8ff, alpha: 0.8, alpha2: 0.5 }) }));
-    }
-    if (r.spray) {
-      const e = w(r.spray);
-      const s = r.spray;
-      rec.emitters.push(P.addEmitter({
-        every: 0.05,
-        emit: (p) => {
-          const a = Math.random() * Math.PI * 2;
-          p.spawn({ x: e.x, y: e.y, z: e.z, vx: Math.cos(a) * rand(0.2, 0.45), vz: Math.sin(a) * rand(0.2, 0.45), vy: rand(0.6, 0.9), grav: 4, life: 0.75, size: 1.4, color: 0xd8f6ff, color2: 0x7ac8f0, alpha: 0.9, alpha2: 0.3, fn: (q) => { if (q.y < rec.obj.position.y + s.basinY) q.dead = true; } });
-        },
-      }));
-    }
+    if (r.embers) { const e = w(r.embers); rec.emitters.push({ every: 0.18, t: 0, fn: () => this.fx.ember(e.x + rand(-0.12, 0.12), e.y, e.z + rand(-0.05, 0.05)) }); }
+    if (r.steam) { const e = w(r.steam); rec.emitters.push({ every: 0.3, t: 0, fn: () => this.fx.spawn({ x: e.x + rand(-0.02, 0.02), y: e.y, z: e.z + rand(-0.02, 0.02), vx: rand(-0.04, 0.04), vy: rand(0.18, 0.3), vz: rand(-0.04, 0.04), life: rand(1.2, 1.8), size: 0.01, grow: 0.022, color: [0.92, 0.9, 0.88], alpha: 0.22, drag: 0.8, grav: -0.1 }) }); }
+    if (r.bubbles) { const e = w(r.bubbles); const top = (r.bubbles.top - r.bubbles.y) * T; rec.emitters.push({ every: 0.5, t: 0, fn: () => this.fx.spawn({ x: e.x + rand(-0.02, 0.02), y: e.y, z: e.z, vy: 0.18, life: top / 0.18, size: 0.008, color: [0.9, 0.97, 1], alpha: 0.8, drag: 0 }) }); }
+    if (r.spray) { const e = w(r.spray); rec.emitters.push({ every: 0.06, t: 0, fn: () => { const a = Math.random() * Math.PI * 2; this.fx.droplet(e.x, e.y, e.z, Math.cos(a) * rand(0.1, 0.22), rand(0.3, 0.45), Math.sin(a) * rand(0.1, 0.22), 0.45, [0.8, 0.94, 1], 0.008); } }); }
   }
 
   addItemInteractions(rec) {
-    const p = rec.p;
-    const f = FURNITURE[p.id];
-    const st = this.game.state;
-    const r = Math.max(rec.fw, rec.fd) / 2 + 0.72;
-    const add = (o) => rec.its.push(this.addInteractable({ x: rec.cx, z: rec.cz, r, ...o }));
+    const p = rec.p, f = FURNITURE[p.id], st = this.game.state;
+    const b = rec.bbox;
+    const box = [b.min.x - 0.02, 0, b.min.z - 0.02, b.max.x + 0.02, Math.max(0.3, b.max.y) + 0.02, b.max.z + 0.02];
+    // the box only narrows it down: the crosshair must really be on the model (see updateAim)
+    const add = (o) => rec.its.push(this.addIt({ box, enabled: () => this.aimRec === rec, ...o }));
     switch (f.kind) {
       case 'bed': add({ label: 'Sleep', action: () => this.trySleep(rec) }); break;
       case 'forge': add({ label: 'Work the forge', action: () => this.go('forge', rec) }); break;
       case 'stove': add({ label: 'Cook', action: () => this.go('cooking', rec) }); break;
-      case 'coop': add({ label: () => (st.data.chicken.eggs > 0 ? `Collect eggs (${st.data.chicken.eggs})` : 'Check the coop'), action: () => this.collectEggs(rec) }); break;
+      case 'coop': add({ label: () => (this.eggCount() > 0 ? `Collect eggs (${st.data.chicken.eggs})` : 'Check the coop'), action: () => this.collectEggs(rec) }); break;
       case 'planter': add({ label: () => this.planterLabel(rec), action: () => this.usePlanter(rec) }); break;
       case 'desk': add({ label: 'Write in the Index Book', action: () => { this.game.audio.play('page'); this.game.ui.openIndex(); } }); break;
       case 'seat': add({ label: 'Sit', action: () => this.sitAt(rec) }); break;
-      case 'light':
-        add({ label: () => (rec.lights[0]?.on === false ? 'Light it' : 'Put it out'), action: () => this.toggleLamp(rec), priority: -0.3 });
-        break;
+      case 'light': add({ label: () => (rec.lights[0]?.on === false ? 'Light it' : 'Put it out'), action: () => this.toggleLamp(rec) }); break;
       default:
         if (p.id === 'music_box') add({ label: () => (this.musicBox.on ? 'Stop the music box' : 'Wind the music box'), action: () => this.toggleMusicBox() });
     }
   }
 
-  // ------------------------------------------------------------ spawning
-  spawnByFrom(from, params = {}) {
-    const W = this.W, D = this.D;
-    let spot = null;
-    if (from === 'forge' || from === 'stove' || from === 'cooking') {
-      const rec = this.findKind(from === 'forge' ? 'forge' : 'stove');
-      if (rec) spot = this.besideItem(rec);
-    }
-    if (from === 'newgame' || from === 'bed' || from === 'faint' || from === 'sleep') {
-      const rec = this.findKind('bed');
-      if (rec) spot = this.besideItem(rec);
-    }
-    if (from === 'fall') spot = { x: HOLE.x, z: HOLE.z, yaw: 0.6 };
-    if (from === 'tunnel' && WALLS4.includes(params.wall)) {
-      // in the tunnel's mouth, facing into the room
-      const t = clamp(parseFloat(params.t) || 0.5, 0.3, (params.wall === 'n' || params.wall === 's' ? W : D) - 0.3);
-      spot = { n: { x: t, z: 0.12, yaw: 0 }, s: { x: t, z: D - 0.12, yaw: Math.PI }, w: { x: 0.12, z: t, yaw: Math.PI / 2 }, e: { x: W - 0.12, z: t, yaw: -Math.PI / 2 } }[params.wall];
-      spot.raw = true;
-    }
-    if (!spot && !this.doorOpen) spot = { x: HOLE.x + 0.6, z: HOLE.z + 0.6, yaw: 0.6 };
-    if (!spot) {
-      spot = { x: this.doorPos.x + 0.35, z: this.doorPos.z, yaw: Math.PI / 2 };
-      if (from === 'town') this.game.audio.play('door');
-    }
-    this.spawnPlayer(spot.x, spot.z, spot.yaw ?? 0);
-    if (!spot.raw && from !== 'fall') this.map.resolve(this.player.pos, this.player.radius);
-    if (spot.face) this.player.faceToward(spot.face.x, spot.face.z, true);
-  }
-
-  /** A free spot next to an item, preferring its front. */
-  besideItem(rec) {
-    const { p, fw, fd } = rec;
-    const yaw = (p.r || 0) * Math.PI / 2;
-    const fx = Math.round(Math.sin(yaw)), fz = Math.round(Math.cos(yaw));
-    const cands = [];
-    const push = (x, y) => { if (!this.map.blocked(x, y)) cands.push({ x: x + 0.5, z: y + 0.5 }); };
-    // front row first
-    if (fz > 0) for (let x = p.x; x < p.x + fw; x++) push(x, p.y + fd);
-    if (fz < 0) for (let x = p.x; x < p.x + fw; x++) push(x, p.y - 1);
-    if (fx > 0) for (let y = p.y; y < p.y + fd; y++) push(p.x + fw, y);
-    if (fx < 0) for (let y = p.y; y < p.y + fd; y++) push(p.x - 1, y);
-    for (let y = p.y - 1; y <= p.y + fd; y++) for (let x = p.x - 1; x <= p.x + fw; x++) push(x, y);
-    const c = cands[0];
-    if (!c) return null;
-    return { x: c.x, z: c.z, face: { x: rec.cx, z: rec.cz } };
-  }
-
-  // ------------------------------------------------------------ interactions
-  go(scene, rec) {
-    this.locked = true;
-    this.player.faceToward(rec.cx, rec.cz);
-    this.game.audio.play(scene === 'forge' ? 'clunk' : 'stir');
-    this.game.goto(scene, { from: 'home' });
-  }
-
-  leave() {
-    this.locked = true;
-    this.game.audio.play('door');
-    this.player.faceToward(-1, this.doorPos.z);
-    this.game.goto('town', { from: 'home' }, { transition: 'iris', center: this.screenUV(this.player) });
-  }
-
-  screenUV(a) {
-    const s = this.toScreen(a.headPos(_v));
-    const e = this.game.engine;
-    return [clamp(s.x / (e.width * e.scale), 0, 1), clamp(1 - s.y / (e.height * e.scale), 0, 1)];
-  }
-
-  lookPoster() {
-    const p = this.player;
-    p.faceToward(this.room.poster.cx, -1);
-    this.emote(p, '☀', { color: '#e0a020' });
-    this.game.audio.play('glow');
-  }
-
-  floatAt(x, y, z, text, color = '#fff') {
-    const s = this.toScreen(_v.set(x, y, z));
-    this.game.ui.floatText(text, s.x, s.y, color);
-  }
-
-  /** Eggs waiting in the coop (none until Nugget has moved in). */
-  eggCount() {
-    const st = this.game.state;
-    return st.flag('nugget') ? st.data.chicken.eggs || 0 : 0;
-  }
-
-  collectEggs(rec) {
-    const st = this.game.state;
-    const d = st.data;
-    const n = this.eggCount();
-    this.player.faceToward(rec.cx, rec.cz);
-    if (n <= 0) {
-      if (this.nugget) this.game.audio.play('cluck', { n: 1 });
-      this.floatAt(rec.cx, 1.1, rec.cz, 'Just straw', '#e6dcc8');
-      return;
-    }
-    st.addItem('egg', { n });
-    d.chicken.eggs = 0;
-    d.stats.eggs = (d.stats.eggs || 0) + n;
-    st.learn('eggs');
-    this.game.audio.play('cluck', { n: 2, gap: 0 });
-    this.game.audio.play('pickup', { pitch: 1.2 });
-    if (rec.res.setEggs) rec.res.setEggs(0);
-    this.floatAt(rec.cx, 1.1, rec.cz, `+${n} egg${n > 1 ? 's' : ''}`, '#fff4d0');
-    if (this.nugget) this.emote(this.nugget, '♥');
-    st.save();
-  }
-
-  planterLabel(rec) {
-    const d = this.game.state.data;
-    const pl = d.home.planters[rec.p.uid];
-    if (!pl) return 'Plant something';
-    if (pl.ready || pl.day < d.day) return `Harvest ${ITEMS[pl.id]?.name || ''}`;
-    return 'Check the sprout';
-  }
-
-  usePlanter(rec) {
-    const st = this.game.state;
-    const d = st.data;
-    const uid = rec.p.uid;
-    const pl = d.home.planters[uid];
-    this.player.faceToward(rec.cx, rec.cz);
-    if (pl && (pl.ready || pl.day < d.day)) {
-      st.addItem(pl.id, { n: 3 });
-      delete d.home.planters[uid];
-      st.learn('planting');
-      this.game.audio.play('pickup');
-      this.game.audio.play('sparkle');
-      this.particles.burst(8, { x: rec.cx, y: 0.6, z: rec.cz, vy: 1, life: 0.7, size: 1.5, color: 0xa8f07a, alpha: 1, alpha2: 0, add: true, grav: 2 }, { x: 0.2, z: 0.2, v: 0.6 });
-      this.floatAt(rec.cx, 1, rec.cz, `+3 ${ITEMS[pl.id]?.name || ''}`, '#d8ffb0');
-      rec.res.setPlant?.(null, ITEMS);
-      st.save();
-      return;
-    }
-    if (pl) {
-      this.emote(this.player, '…');
-      this.floatAt(rec.cx, 0.9, rec.cz, 'Growing', '#d8ffb0');
-      return;
-    }
-    const plants = st.inventory((it) => it && it.cat === 'plant');
-    if (!plants.length) {
-      this.game.audio.play('ui_error');
-      this.floatAt(rec.cx, 0.9, rec.cz, 'No plants to sow', '#e6dcc8');
-      return;
-    }
-    const list = el('div', { class: 'list' });
-    const h = this.game.ui.openPanel({ title: 'Planter', sub: 'Pick something to plant.', body: el('div', { class: 'scroll', style: { maxHeight: 'calc(var(--px) * 110)' } }, [list]), width: 'calc(var(--px) * 170)' });
-    for (const g of plants) {
-      const it = ITEMS[g.id];
-      list.append(el('div', { class: 'li interactive', style: { cursor: 'pointer' }, onclick: () => {
-        if (st.count(g.id) <= 0) return;
-        st.removeItem(g.id, 1);
-        d.home.planters[uid] = { id: g.id, day: d.day };
-        this.game.audio.play('place');
-        this.particles.dustPuff(rec.cx, 0.45, rec.cz, 6, 0x5a3a22);
-        rec.res.setPlant?.({ id: g.id, ready: false }, ITEMS);
-        st.save();
-        h.close();
-      } }, [el('img', { class: 'pix', src: iconURL(g.id), alt: '' }), el('div', {}, [el('div', { class: 'name' }, it.name), el('div', { class: 'desc' }, it.desc || '')]), el('span', { class: 'price' }, '×' + g.n)]));
-    }
-  }
-
-  sitAt(rec) {
-    const seats = rec.res.seats || [{ x: 0, z: 0, y: 0.4, yaw: 0 }];
-    let best = seats[0], bd = Infinity;
-    for (const s of seats) {
-      const w = _v.set(s.x, 0, s.z).applyMatrix4(rec.obj.matrixWorld);
-      const dd = Math.hypot(w.x - this.player.x, w.z - this.player.z);
-      if (dd < bd) { bd = dd; best = s; }
-    }
-    const w = _v.set(best.x, 0, best.z).applyMatrix4(rec.obj.matrixWorld).clone();
-    const yaw = (best.yaw || 0) + (rec.p.r || 0) * Math.PI / 2;
-    const ex = w.x + Math.sin(yaw) * 0.8, ez = w.z + Math.cos(yaw) * 0.8;
-    const exit = this.map.freeAt(ex, ez, 0.25) ? { x: ex, z: ez } : { x: this.player.x, z: this.player.z };
-    this.sitOn({ x: w.x, z: w.z, y: best.y - 0.2, yaw, exitX: exit.x, exitZ: exit.z });
-  }
-
-  toggleLamp(rec) {
-    const st = this.game.state;
-    const on = !(rec.lights[0]?.on ?? true);
-    for (const s of rec.lights) s.on = on;
-    if (on) { delete st.data.flags['lampOff:' + rec.p.uid]; st.dirty = true; } else st.flag('lampOff:' + rec.p.uid, true);
-    rec.obj.traverse((o) => { if (o.isMesh && o.material?.type === 'MeshBasicMaterial' && o.material.vertexColors) o.visible = on; });
-    this.game.audio.play('click');
-  }
-
-  toggleMusicBox() {
-    const mb = this.musicBox;
-    mb.on = !mb.on;
-    mb.t = 0;
-    this.game.audio.play('click');
-  }
-
-  tickMusicBox(dt) {
-    const mb = this.musicBox;
-    if (!mb.on) return;
-    const rec = this.findKind('music_box');
-    if (!rec) { mb.on = false; return; }
-    mb.t -= dt;
-    if (mb.t <= 0) {
-      mb.t = 0.32;
-      const note = TUNE[mb.i++ % TUNE.length];
-      const a = this.game.audio;
-      const dist = Math.hypot(rec.cx - this.player.x, rec.cz - this.player.z);
-      const vol = clamp(1.2 - dist / 9, 0.15, 1);
-      a.tone({ f: midiToFreq(note), type: 'sine', dur: 0.5, vol: 0.05 * vol, release: 0.4, reverb: 0.5 });
-      a.tone({ f: midiToFreq(note + 12), type: 'sine', dur: 0.15, vol: 0.015 * vol, reverb: 0.3 });
-      if (mb.i % 6 === 0) {
-        this.particles.spawn({ x: rec.cx + rand(-0.15, 0.15), y: 0.95, z: rec.cz, vy: 0.4, vx: rand(-0.1, 0.1), life: 1.4, size: 2, color: 0xf0d0ff, alpha: 1, alpha2: 0, add: true, wob: 0.5 });
+  /** Which placed piece the crosshair is really on (a ray against its voxel meshes), within reach. */
+  updateAim() {
+    const rig = this.rig, eye = rig.eye(_v), f = rig.forward(_w);
+    const reach = rig.reach + 0.2;
+    this.ray ||= new THREE.Raycaster();
+    this.ray.set(eye, f);
+    this.ray.far = reach;
+    let best = null, bt = reach;
+    for (const rec of this.items.values()) {
+      const b = rec.bbox;
+      const t = rayBox3(eye, f, b.min.x - 0.03, -0.01, b.min.z - 0.03, b.max.x + 0.03, b.max.y + 0.03, b.max.z + 0.03);
+      if (t === null || t >= bt) continue;
+      for (const h of this.ray.intersectObject(rec.obj, true)) {
+        if (h.distance >= bt) break;
+        let vis = true;
+        for (let o = h.object; o && o !== this.room; o = o.parent) if (!o.visible) { vis = false; break; }
+        if (vis) { bt = h.distance; best = rec; break; }
       }
     }
+    this.aimRec = best;
+    this.aimT = bt;
   }
 
-  // ------------------------------------------------------------ bed
-  bedPose(rec) {
-    const lie = rec.res.lie || { y: 0.5, foot: 0.75 };
-    const yaw = (rec.p.r || 0) * Math.PI / 2;
-    return { lie, yaw };
-  }
-
-  lieDown(rec) {
-    const p = this.player;
-    const { lie, yaw } = this.bedPose(rec);
-    this.playerPosed = true;
-    p.collide = false;
-    p.vx = p.vz = 0;
-    p.pos.set(rec.cx, 0, rec.cz);
-    p.rig.face(0, true);
-    p.body.rotation.order = 'YXZ';
-    p.body.rotation.set(-Math.PI / 2, yaw, 0);
-    const lx = lie.x || 0, lz = lie.foot;
-    p.body.position.set(Math.cos(yaw) * lx + Math.sin(yaw) * lz, lie.y + 0.12, -Math.sin(yaw) * lx + Math.cos(yaw) * lz);
-    p.rig.play('sleep');
-    p.shadow.visible = false;
-  }
-
-  sitUpInBed(rec) {
-    const p = this.player;
-    const { lie, yaw } = this.bedPose(rec);
-    p.body.rotation.set(0, 0, 0);
-    p.body.position.set(0, lie.y - 0.25, 0);
-    p.pos.set(rec.cx + Math.sin(yaw) * 0.15, 0, rec.cz + Math.cos(yaw) * 0.15);
-    p.rig.face(yaw + Math.PI / 2, true);
-    p.rig.play('sit');
-  }
-
-  getUp(rec) {
-    const p = this.player;
-    const spot = this.besideItem(rec) || { x: rec.cx + 1, z: rec.cz };
-    p.body.rotation.set(0, 0, 0);
-    p.body.position.set(0, 0, 0);
-    p.pos.set(spot.x, 0, spot.z);
-    p.collide = true;
-    p.shadow.visible = true;
-    this.map.resolve(p.pos, p.radius);
-    p.faceToward(this.W * 0.6, this.D * 0.7, true);
-    p.rig.play('idle');
-    this.playerPosed = false;
-  }
-
-  async wakeUp(rec, first = false) {
-    if (!rec) return;
-    this.locked = true;
-    this.lieDown(rec);
-    if (first) this.post.fade = 1;
-    if (first) await this.tween(1.6, (k) => { this.post.fade = 1 - k; });
-    await this.sleepFor(first ? 1.0 : 0.4);
-    this.game.audio.play('yawn');
-    this.emote(this.player, '…', { life: 1.4 });
-    await this.sleepFor(0.8);
-    this.sitUpInBed(rec);
-    this.game.audio.play('step', { mat: 'wood' });
-    await this.sleepFor(0.9);
-    this.getUp(rec);
-    this.player.rig.doEmote('hop', 0.5);
-    this.game.audio.play('land', { vol: 0.5 });
-    if (this.nugget && this.nuggetAI) { this.nuggetAI.wake(); this.game.audio.play('cluck', { n: 2 }); }
-    this.locked = false;
-    if (first) this.game.ui.toast(`Day ${this.game.state.data.day}`);
-  }
-
-  async trySleep(rec) {
-    const ok = await this.game.ui.confirm('Sleep until morning?', 'Sleep', 'Not yet');
-    if (!ok || this.locked) return;
-    const st = this.game.state;
-    const d = st.data;
-    this.locked = true;
-    this.game.audio.play('yawn');
-    this.lieDown(rec);
-    const coop = this.findKind('coop');
-    if (coop && coop.res.nap) this.sendNuggetToNap(coop, 999);
-    const eggsBefore = d.chicken.eggs || 0;
-    await this.tween(1.4, (k) => { this.post.fade = k; });
-    this.game.audio.play('snore');
-    await this.sleepFor(1.3);
-    this.game.audio.play('snore');
-    this.game.sleep();
-    this.refreshDayVisuals();
-    await this.sleepFor(0.8);
-    await this.tween(1.2, (k) => { this.post.fade = 1 - k; });
-    this.post.fade = 0;
-    const laid = (d.chicken.eggs || 0) - eggsBefore;
-    const name = d.chicken.name || 'Nugget';
-    this.game.ui.toast(`<b>Day ${d.day}</b>` + (laid > 0 ? ` · ${name} laid ${laid === 1 ? 'an egg' : laid + ' eggs'}!` : ''), { kind: 'good', dur: 3400 });
-    await this.wakeUp(rec, false);
-  }
-
-  refreshDayVisuals() {
-    for (const rec of [...this.items.values()]) {
-      const k = FURNITURE[rec.p.id]?.kind;
-      if (k === 'coop' && rec.res.setEggs) rec.res.setEggs(this.eggCount());
-      if (k === 'planter' && rec.res.setPlant) rec.res.setPlant(this.ctxFor(rec.p).planter, ITEMS);
+  // ------------------------------------------------------------ spawning
+  spawnByFrom(from, params = {}) {
+    const { W, D } = this;
+    let spot = null;
+    if (from === 'forge' || from === 'stove' || from === 'cooking') { const rec = this.findKind(from === 'forge' ? 'forge' : 'stove'); if (rec) spot = besideItem(this, rec); }
+    if (from === 'newgame' || from === 'bed' || from === 'faint' || from === 'sleep') { const rec = this.findKind('bed'); if (rec) spot = besideItem(this, rec); }
+    if (from === 'fall') spot = { x: HOLE.x, z: HOLE.z, yaw: 0.6 };
+    if (from === 'lift') { const L = this.liftT; spot = { x: L.x + 1.05, z: L.y + 1.1, yaw: 0 }; }
+    if (from === 'tunnel' && this.arrivedTunnel) {
+      const tn = this.arrivedTunnel;
+      spot = { n: { x: tn.t, z: -0.75, yaw: Math.PI }, s: { x: tn.t, z: D + 0.75, yaw: 0 }, w: { x: -0.75, z: tn.t, yaw: -Math.PI / 2 }, e: { x: W + 0.75, z: tn.t, yaw: Math.PI / 2 } }[tn.wall];
     }
+    if (from === 'town' && this.doorOpen) spot = { x: 1.2, z: this.shell.door.z, yaw: -Math.PI / 2 };
+    if (!spot) spot = this.doorOpen && from !== 'continue' ? { x: 1.2, z: this.shell.door.z, yaw: -Math.PI / 2 } : { x: HOLE.x + 1.2, z: HOLE.z + 1.1, yaw: -2.4 };
+    if (spot.face) spot.yaw = Math.atan2(-(spot.face.x - spot.x), -(spot.face.z - spot.z));
+    this.rig.place(spot.x * T, 0, spot.z * T, spot.yaw ?? 0, -0.08);
+    if (from !== 'tunnel' && from !== 'lift') this.unstick();
   }
 
-  sendNuggetToNap(coop, secs) {
-    if (!this.nuggetAI) return;
-    const n = coop.res.nap;
-    const w = _v.set(n.x, 0, n.z).applyMatrix4(coop.obj.matrixWorld);
-    this.nuggetAI.nap({ x: w.x, z: w.z, y: n.y, yaw: (coop.p.r || 0) * Math.PI / 2 }, secs);
+  // ------------------------------------------------------------ scripted moves
+  /** Take the camera for a cutscene: cam = { x, y, z (eye, m), yaw, pitch, roll }. */
+  beginScript(paws = true) {
+    this.scripted = true;
+    this.hidePaws = !paws;
+    const pl = this.rig.player;
+    this.cam = { x: pl.pos.x, y: pl.pos.y + pl.eyeY, z: pl.pos.z, yaw: pl.yaw, pitch: pl.pitch, roll: 0 };
+    this.game.ui.setCrosshair?.(null);
+  }
+
+  endScript() {
+    const pl = this.rig.player, c = this.cam;
+    if (c) { pl.pos.set(c.x, Math.max(0, c.y - pl.eyeY), c.z); pl.vel.set(0, 0, 0); pl.yaw = c.yaw; pl.pitch = clamp(c.pitch, -1.4, 1.4); }
+    this.scripted = false;
+    this.hidePaws = false;
+    this.cam = null;
+    this.rig.syncCamera(0);
+  }
+
+  /** Walk the scripted camera to (x, z) meters at eye height, turning to face along the way. */
+  walkCam(x, z, speed = 1.6, faceYaw = null) {
+    const c = this.cam;
+    const x0 = c.x, z0 = c.z, d = Math.hypot(x - x0, z - z0);
+    const yaw0 = c.yaw, yaw1 = faceYaw ?? (d > 0.05 ? Math.atan2(-(x - x0), -(z - z0)) : c.yaw);
+    const dy = Math.atan2(Math.sin(yaw1 - yaw0), Math.cos(yaw1 - yaw0));
+    return this.tween(Math.max(0.25, d / speed), (k) => {
+      const e = k * k * (3 - 2 * k);
+      c.x = x0 + (x - x0) * e; c.z = z0 + (z - z0) * e;
+      c.yaw = yaw0 + dy * Math.min(1, k * 2.2);
+      c.pitch += (-0.05 - c.pitch) * 0.08;
+      c.bob = Math.sin(k * d * 9) * 0.012 * (1 - k);
+      c.moving = k < 1 && d > 0.05;
+      if (Math.floor(k * d * 3) !== this._stepK) { this._stepK = Math.floor(k * d * 3); this.game.audio.play('step', { vol: 0.3, mat: this.stepMatAt(c.x, c.z) }); }
+    });
+  }
+
+  stepMatAt(x, z) { return this.stepMats?.get(Math.floor(x / T) + ',' + Math.floor(z / T)) || 'dirt'; }
+
+  updateScriptCam(dt) {
+    const c = this.cam, cam = this.camera, rig = this.rig;
+    rig.shakeAmp = Math.max(0, rig.shakeAmp - dt * 1.4);
+    const sh = rig.shakeAmp * 0.05;
+    cam.position.set(c.x + (Math.random() - 0.5) * sh, c.y + (c.bob || 0) + (Math.random() - 0.5) * sh, c.z + (Math.random() - 0.5) * sh);
+    cam.rotation.set(c.pitch, c.yaw, c.roll || 0, 'YXZ');
+    cam.updateMatrixWorld();
+    const pl = rig.player;
+    pl.pos.set(c.x, Math.max(-3, c.y - pl.eyeY), c.z);
+    pl.yaw = c.yaw;
+    if (rig.vm) rig.vm.update(dt, { speed: c.moving ? 1.5 : 0, grounded: true, look: { dx: 0, dy: 0 }, lamp: { color: rig.lampCol, intensity: rig.lampK }, ambient: rig.ambient, camera: cam });
+  }
+
+  // ------------------------------------------------------------ HUD bits
+  /** A small hammer button (desktop: shows the X key; touch: tap to decorate). */
+  hammerBtn() {
+    const b = el('button', { class: 'btn interactive', title: 'Build mode (X)', 'aria-label': 'Decorate', style: { position: 'absolute', right: 'calc(var(--sar, 0px) + var(--px) * 4)', top: 'calc(var(--sat, 0px) + var(--px) * 44)', display: 'flex', alignItems: 'center', gap: 'calc(var(--px) * 2)', fontSize: '1em', pointerEvents: 'auto', zIndex: 4 }, onclick: (e) => { e.stopPropagation(); this.build.toggle(); } }, [
+      el('img', { class: 'pix', src: iconURL('chair_wood'), alt: '', style: { width: 'var(--icon-s, 32px)', height: 'var(--icon-s, 32px)' } }), el('kbd', { style: { margin: 0 } }, 'X'),
+    ]);
+    // in the HUD layer: above the "click to look around" catcher, so it works with a free mouse
+    this.game.ui.hud.append(b);
+    this.hammer = b;
   }
 
   // ------------------------------------------------------------ frame
   update(dt) {
-    WATER_TIME.value += dt;
+    super.update(dt);
+    const g = this.game, inp = g.input;
+    for (const t of [...this.tickers]) t(dt, this.time);
+    if (this.scripted) {
+      inp.takeLook(); // the mouse doesn't steer a cutscene (and mustn't pile up for afterwards)
+      if (this.seat && this.seat.ready && (inp.pressed('KeyE') || inp.axisX() || inp.axisY() || inp.pressed('Space'))) { inp.consume('KeyE'); this.standUp(); }
+      this.updateScriptCam(dt);
+      if (this.seat) g.ui.setCrosshair?.({ visible: true, kind: 'use', label: 'Stand up' });
+    } else {
+      const busy = g.ui.isPanelOpen();
+      this.updateAim();
+      const ev = this.rig.update(dt, { busy, frozen: !!this.dig });
+      void ev;
+      this.rig.stepMat = this.stepMatAt(this.rig.player.pos.x, this.rig.player.pos.z);
+      if (!busy) {
+        if (this.rig.primaryPressed && !this.build.active && !this.dig && this.rig.target?.spot && !this.rig.target.spot.tunnel) this.startDig(this.rig.target.spot);
+        this.updateDig(dt);
+        if (this.dig && !this.dig.done) g.ui.setCrosshair?.({ visible: true, kind: 'rock', label: 'Digging…', progress: this.dig.k });
+        if (!this.build.active && !this.dig && this.rig.tool !== 'none') this.rig.setTool('none');
+        if (!this.build.active && inp.pressed('KeyQ')) this.snack();
+        this.checkTunnels();
+      }
+    }
     this.build.update(dt);
     this.tickAmbience(dt);
-    if (!this.build.active && this.player && !(this.landing && !this.landing.done)) {
-      // soft follow: small rooms stay framed, big rooms follow the player more
-      // (a phone held upright sees much less of the room across, so it follows more there)
-      const k = Math.max(clamp((this.W + this.D - 18) / 12, 0.22, 0.85), this.cam.aspect < 1 ? 0.75 : 0);
-      const cx = this.W / 2 + 0.2, cz = this.D / 2 + 0.4;
-      this.homeFocus = this.homeFocus || new THREE.Vector3();
-      this.homeFocus.set(cx + (this.player.x - cx) * k, 0.6, cz + (this.player.z - cz) * k);
-      this.camFocus = this.homeFocus;
-    }
-    super.update(dt);
-    const env = { near: 99, audio: this.game.audio, playing: this.musicBox.on };
+    // furniture life
+    const pl = this.rig.player.pos;
+    const env = { near: 99, audio: g.audio, playing: false };
     for (const rec of this.items.values()) {
+      for (const e of rec.emitters) { if (rec.lights.length && rec.lights[0].on === false) continue; e.t -= dt; if (e.t <= 0) { e.t = e.every; e.fn(); } }
       if (!rec.res.update) continue;
-      env.near = this.player ? Math.hypot(rec.cx - this.player.x, rec.cz - this.player.z) : 99;
+      env.near = Math.hypot(rec.cx * T - pl.x, rec.cz * T - pl.z) / T;
       env.playing = this.musicBox.on && rec.p.id === 'music_box';
       rec.res.update(dt, this.time, env);
     }
     this.tickMusicBox(dt);
     // Nugget naps in her coop now and then
-    if (this.nuggetAI && !this.locked) {
-      this.napT -= dt;
-      const coop = this.findKind('coop');
-      if (this.napT <= 0) {
-        this.napT = rand(40, 70);
-        if (coop && coop.res.nap && this.nuggetAI.mode === 'follow' && this.nuggetAI.idleFor > 3) this.sendNuggetToNap(coop, rand(14, 24));
+    if (this.nug) {
+      this.nug.update(dt, this.rig.player);
+      if (!this.scripted) {
+        this.napT -= dt;
+        if (this.napT <= 0) {
+          this.napT = rand(40, 70);
+          const coop = this.findKind('coop');
+          if (coop && coop.res.nap && this.nug.ai.mode === 'follow' && this.nug.ai.idleFor > 3) this.sendNuggetToNap(coop, rand(14, 24));
+        }
       }
     }
+    this.lift.update(dt, this.time);
+    this.lights.update(dt, pl.x, pl.z);
+    this.glow.update(this.camera);
+    this.shadows.update(this.camera);
+    this.shaft.update(this.time);
+    this.fx.update(dt);
+    this.updateAnchors();
+    this.updateLoops();
   }
 
-  /** Dirt trickling from the hole now and then; the dig hint fades once used or ignored. */
+  /** Motes in the light shaft, dirt trickling from the hole, fireflies by the window. */
   tickAmbience(dt) {
-    this.trickleT -= dt;
+    this.moteT = (this.moteT || 0) - dt;
+    if (this.moteT <= 0) {
+      this.moteT = 0.08;
+      const p = this.shaft.sample(_v);
+      this.fx.spawn({ x: p.x, y: p.y, z: p.z, vx: rand(-0.02, 0.02), vy: rand(-0.015, 0.02), vz: rand(-0.02, 0.02), life: rand(3, 5), size: rand(0.006, 0.011), color: [1, 0.95, 0.78], alpha: 0.9, glow: true, drag: 0.05 });
+    }
+    this.trickleT = (this.trickleT ?? rand(3, 6)) - dt;
     if (this.trickleT <= 0) {
       this.trickleT = rand(4, 9);
-      const H = HOLE, n = 6 + Math.floor(Math.random() * 8);
-      for (let i = 0; i < n; i++) {
-        this.particles.spawn({ x: H.x + rand(-0.12, 0.12), y: rand(3.6, 4.6), z: H.z + rand(-0.12, 0.12), vy: -rand(0, 0.6), life: 1.4, size: rand(1.2, 2), color: 0x6a4a32, alpha: 1, alpha2: 1, grav: 6, fn: (q) => { if (q.y < 0.05) q.dead = true; } });
-      }
-      if (this.player && Math.hypot(this.player.x - H.x, this.player.z - H.z) < 4) this.game.audio.play('trickle', { vol: 0.35 });
+      const n = 5 + Math.floor(Math.random() * 7);
+      for (let i = 0; i < n; i++) this.fx.spawn({ x: HOLE.x * T + rand(-0.08, 0.08), y: CEIL + rand(0, 0.6), z: HOLE.z * T + rand(-0.08, 0.08), vy: -rand(0, 0.4), life: 1.2, size: rand(0.008, 0.014), color: [0.42, 0.29, 0.2], alpha: 1, grav: 9, fade: false, bounce: 0.1 });
+      const p = this.rig.player.pos;
+      if (Math.hypot(p.x - HOLE.x * T, p.z - HOLE.z * T) < 2) this.game.audio.play('trickle', { vol: 0.3 });
+    }
+    this.flyT = (this.flyT || 0) - dt;
+    if (this.flyT <= 0) {
+      this.flyT = 0.9;
+      const spots = [{ x: 0.35, y: 0.9, z: (WINDOW_SLOTS[0] + 0.5) * T }, ...this.shell.fungi.map((f) => ({ x: f.x * T, y: f.y * T + 0.1, z: f.z * T }))];
+      const s = pick(spots);
+      this.fx.firefly(s.x + rand(-0.25, 0.25), s.y + rand(-0.1, 0.35), s.z + rand(-0.25, 0.25), pick([[0.78, 1, 0.48], [0.6, 1, 0.85], [1, 0.94, 0.62]]));
     }
     if (this.hintT > 0) {
       this.hintT -= dt;
-      const near = this.focusIt && this.digIts?.includes(this.focusIt);
-      if (this.hintT <= 0 || near) { this.hintT = 0; this.game.ui.setHints(null); }
+      const near = this.rig.target && this.digIts?.includes(this.rig.target);
+      if (this.hintT <= 0 || near || this.dig) { this.hintT = 0; this.game.ui.setHints(null); }
     }
   }
 
+  // ------------------------------------------------------------ timelines and sound
+  sleepFor(secs) { return new Promise((res) => { let t = 0; const tick = (dt) => { t += dt; if (t >= secs) { this.tickers.splice(this.tickers.indexOf(tick), 1); res(); } }; this.tickers.push(tick); }); }
+  later(secs, fn) { let t = 0; const tick = (dt) => { t += dt; if (t >= secs) { this.tickers.splice(this.tickers.indexOf(tick), 1); fn(); } }; this.tickers.push(tick); }
+  tween(secs, fn) {
+    return new Promise((res) => {
+      let t = 0;
+      fn(0);
+      const tick = (dt) => { t += dt; const k = Math.min(1, t / secs); fn(k); if (k >= 1) { this.tickers.splice(this.tickers.indexOf(tick), 1); res(); } };
+      this.tickers.push(tick);
+    });
+  }
+
+  ambientLoop(name, vol, params = {}) { const l = { name, vol, params, h: null, cur: 0 }; this.loops.push(l); return l; }
+  updateLoops() {
+    const audio = this.game.audio;
+    for (const l of this.loops) {
+      const v = Math.max(0, l.vol());
+      if (!l.h || !l.h.alive) {
+        l.h = null;
+        if (v > 0.01 && audio.ctx && audio.ctx.state === 'running') l.h = audio.loop(l.name, { ...l.params, vol: v });
+      } else if (v <= 0.003) { l.h.stop(0.3); l.h = null; } else if (Math.abs(v - l.cur) > 0.005) l.h.set({ vol: v });
+      l.cur = v;
+    }
+  }
+
+  render() {
+    if (!this.rig) return;
+    if (this.hidePaws) this.game.engine.render(this.scene, this.camera, this.post);
+    else this.rig.render(this.post);
+  }
+
+  onResize(w, h) {
+    if (this.rig) this.rig.onResize(w, h);
+    if (this.fx && this.rig) this.fx.setPixelScale(h, this.rig.fov);
+  }
+
+  // ------------------------------------------------------------ test hooks
+  makeDebug() {
+    const s = this;
+    return {
+      /** Dig straight out through a free spot on `wall` (default: the first free one). */
+      digOut(wall) {
+        const spots = digSpots(s.game.state.data.home.placed, s.W, s.D, s.tunnels).filter((p) => !p.tunnel && (!wall || p.wall === wall) && !s.tileBlocked(Math.floor(p.x), Math.floor(p.z)));
+        const sp = spots[Math.floor(spots.length / 2)];
+        if (!sp) return null;
+        s.digOut(sp);
+        return { wall: sp.wall, t: sp.t };
+      },
+      /** Ride the lift to a destination id ('L0' the mine entrance, 'town', any found mine lift). */
+      useLift(id = 'L0') { s.scripted = false; s.riding = false; s.rideLift(id); return true; },
+      toggleBuild(on) { s.build.toggle(on); return s.build.active; },
+      /** Place furniture id at tile (x, z) with rotation r (adds one to storage if needed). */
+      placeAt(id, x, z, r = 0) { return s.build.placeDirect(id, x, z, r); },
+      /** Run the interactable whose label contains `label` (case-insensitive). */
+      interact(label) {
+        const want = String(label).toLowerCase();
+        const it = s.rig.items.find((i) => String(i.label || '').toLowerCase().includes(want));
+        if (!it) return false;
+        it.action?.(it);
+        return true;
+      },
+      /** Every interactable label right now. */
+      labels() { return s.rig.items.filter((i) => !i.enabled || i.enabled()).map((i) => String(i.label)); },
+      /** Aim at a point (meters) from where the mole stands. */
+      aim(x, y, z) { const e = s.rig.eye(_v); s.rig.player.yaw = Math.atan2(-(x - e.x), -(z - e.z)); s.rig.player.pitch = Math.atan2(y - e.y, Math.hypot(x - e.x, z - e.z)); s.rig.syncCamera(0); },
+      /** Stand at (x, z) meters facing yaw. */
+      stand(x, z, yaw = 0, pitch = 0) { s.rig.place(x, 0, z, yaw, pitch); },
+      /** Run the simulation n frames. */
+      step(n = 30, dt = 1 / 30) { for (let k = 0; k < n; k++) s.update(dt); },
+      /** Draw calls and triangles for one frame. */
+      stats() { const r = s.game.engine.renderer; r.info.autoReset = false; r.info.reset(); s.render(); const o = { ...r.info.render }; r.info.autoReset = true; return o; },
+      get target() { return s.rig.target ? String(s.rig.target.label) : null; },
+    };
+  }
+
   exit() {
+    this.game.ui.setCrosshair?.(null);
     this.game.ui.setHints(null);
+    this.hammer?.remove();
     super.exit();
   }
+}
+
+// digging, tunnels and the lift (src/home/moves.js); living in the burrow (src/home/living.js)
+for (const M of [HomeMoves, HomeLiving]) {
+  for (const k of Object.getOwnPropertyNames(M.prototype)) if (k !== 'constructor') Object.defineProperty(HomeScene.prototype, k, Object.getOwnPropertyDescriptor(M.prototype, k));
 }

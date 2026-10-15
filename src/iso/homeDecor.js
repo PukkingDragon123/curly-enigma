@@ -301,6 +301,7 @@ export function bracketFungi(seed = 1, n = 3, hue = 0) {
       const d = Math.hypot((x + 0.5 - cx) / r, z / (r * 0.8));
       if (d > 1) continue;
       gl.set(x, Math.round(cy), z, d > 0.82 ? pal[1] : (x + z) % 4 === 0 ? pal[1] : pal[0]);
+      if (d < 0.7) gl.set(x, Math.round(cy) + 1, z, d > 0.5 ? pal[0] : pal[1]); // a domed cap
       g.set(x, Math.round(cy) - 1, z, d > 0.7 ? pal[2] : mulc(pal[2], 0.8));
     }
   }

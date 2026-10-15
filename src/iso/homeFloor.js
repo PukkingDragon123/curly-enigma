@@ -136,12 +136,12 @@ export function paintHomeFloor(W, D, floorMap) {
   return { S, tex };
 }
 
-/** Contact shadow along the two back walls + extra darkness in the back corner. */
+/** Contact shadow along all four walls (first person sees every one) + extra darkness in the corners. */
 export function shadeHomeEdges(S, x0, y0, x1, y1) {
   const T = HTPX;
   for (let y = Math.max(0, y0); y < Math.min(S.h, y1); y++) for (let x = Math.max(0, x0); x < Math.min(S.w, x1); x++) {
-    const dn = y / T, dw = x / T;
-    const m = Math.min(dn, dw);
+    const dn = y / T, dw = x / T, ds = (S.h - 1 - y) / T, de = (S.w - 1 - x) / T;
+    const m = Math.min(dn, dw, ds, de);
     if (m > 0.6) continue;
     const k = 0.55 + (m / 0.6) * 0.45 + (((x ^ y) & 1) ? 0.02 : 0);
     const i = x + y * S.w;
