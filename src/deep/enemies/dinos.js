@@ -112,7 +112,7 @@ export class Raptor extends Beast {
       go(A) { const t = this.targetPos(A); const dx = t.x - this.pos.x, dz = t.z - this.pos.z, d = Math.hypot(dx, dz) || 1; const v = Math.min(8, Math.max(0, d - 0.5) / 0.48); this.vel.set(dx / d * v, 3.8, dz / d * v); this.sqv += 6; this.sound('screech', { pitch: 1.5, vol: 0.7 }); },
       hit(A) { return A.t > 0.55 || this.strikeAt(A, this.reachPoint(0.15, -0.1), 0.38, { dmg: this.info.dmg * 1.3, push: 3.4, kind: 'claw' }); } },
   ];
-  static nestStyle = () => ({ style: 'twigs', r: 0.75, eggs: 3, eggR: 3, item: 'raptor_egg', eggCols: [0x7a5a3a, 0xe0caa0, 0xfff4dc] });
+  static nestStyle = () => ({ style: 'twigs', r: 0.75, eggs: 3, eggR: 3, item: 'dino_egg', eggCols: [0x7a5a3a, 0xe0caa0, 0xfff4dc] });
 
   constructor(mgr, o) {
     super(mgr, o);
@@ -391,7 +391,7 @@ export class Shellback extends Beast {
       start() { this.sound('grunt', { pitch: 1.1 }); },
       hit(A) { this.tailTip(_w); const ok = this.strikeAt(A, _w, 0.8, { dmg: this.info.dmg * 1.4, push: 6.5, up: 3, heavy: true, kind: 'tail' }); if (ok) this.sound('smash', { vol: 0.9 }); return ok; } },
   ];
-  static nestStyle = () => ({ style: 'twigs', r: 0.9, eggs: 3, eggR: 3.6, item: 'shellback_egg', eggCols: [0x4a6a3a, 0xb8d098, 0xe8f4d8] });
+  static nestStyle = () => ({ style: 'twigs', r: 0.9, eggs: 3, eggR: 3.6, item: 'dino_egg', eggCols: [0x4a6a3a, 0xb8d098, 0xe8f4d8] });
 
   constructor(mgr, o) {
     super(mgr, o);

@@ -306,7 +306,7 @@ export class Enemies {
     const [hw0, clear0] = this.space(kind);
     const clear = clear0 * roomy, hw = hw0 * roomy;
     const bump = hw > 0.4 ? 0.42 : 0.26; // a big walker can stand on a rougher floor
-    const stride = hw > 0.55 ? 3 : hw > 0.28 ? 2 : 1;
+    const stride = hw > 0.4 ? 3 : hw > 0.24 ? 2 : 1;
     for (let i = 0; i < tries; i++) {
       let x, z, y = cy;
       if (ray && i % 2 === 0) {
@@ -326,12 +326,12 @@ export class Enemies {
         const a = Math.random() * Math.PI * 2, d = rand(rMin, rMax);
         x = cx + Math.cos(a) * d; z = cz + Math.sin(a) * d;
       }
+      // cheap checks first: streamed in, not a safe place, not on top of the mole
+      if (!this.loaded(x, y, z) || this.excluded(x, y, z, 2) || Math.hypot(x - this.pc.x, z - this.pc.z) < 2.5) continue;
       const f = this.floorAt(x, y, z, clear, 6, ray && i % 2 === 0 ? 1 : 4);
       if (!f) continue;
-      if (!this.loaded(f.x, f.y, f.z) || this.excluded(f.x, f.y, f.z, 2)) continue;
-      if (boxHits(this.world, f.x - hw, f.y + bump, f.z - hw, f.x + hw, f.y + clear, f.z + hw, stride)) continue; // bumps underfoot are fine
       if (hidden && this.inView(f.x, f.y + 0.4, f.z)) continue;
-      if (Math.hypot(f.x - this.pc.x, f.z - this.pc.z) < 2.5) continue;
+      if (boxHits(this.world, f.x - hw, f.y + bump, f.z - hw, f.x + hw, f.y + clear, f.z + hw, stride)) continue; // bumps underfoot are fine
       return f;
     }
     return null;
@@ -852,7 +852,7 @@ export class Enemies {
       const egg = this.eco.eggAt(eye, dir, reach);
       if (egg) {
         const id = this.eco.takeEgg(egg);
-        const ev = [{ loot: { id, p: false } }];
+        const ev = [{ loot: { id, q: ITEMS[id]?.q ? Math.round(rand(72, 96)) : undefined, p: false } }];
         if (egg.nest.guards !== undefined) ev.push({ say: `You took a <b>${ITEMS[id]?.name || 'egg'}</b>. Its parents won't be happy...`, key: 'enemy_egg', tone: 'warn', cd: 60 });
         return ev;
       }

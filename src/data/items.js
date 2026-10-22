@@ -145,8 +145,6 @@ export const ITEMS = {
   armor_plate: { name: 'Shellback Plate', cat: 'drop', value: 300, icon: { k: 'loot', t: 'plate', c: 0x8e7048 }, tags: ['armor', 'forge'], lootCol: 0xd4b47c, desc: 'A bony plate from a shellback. Light, hard, and lovely on a shield.' },
   ptero_feather: { name: 'Pterosaur Feather', cat: 'drop', value: 110, icon: { k: 'loot', t: 'feather', c: 0xd8703a }, tags: ['feather'], lootCol: 0xe09060, desc: 'A long rust-red quill. Fletchers and hat-makers in town go wild for these.' },
   dino_meat: { name: 'Dino Steak', cat: 'ingredient', value: 45, icon: { k: 'loot', t: 'meat' }, tags: ['meat', 'cook'], lootCol: 0xc8463a, desc: 'A thick, marbled cut. Sears beautifully over a hot hearth.' },
-  raptor_egg: { name: 'Raptor Egg', cat: 'ingredient', value: 220, icon: { k: 'loot', t: 'egg', c: 0xe0caa0 }, tags: ['egg', 'cook'], lootCol: 0xe0caa0, desc: 'Speckled and warm. The pack will want it back.' },
-  shellback_egg: { name: 'Shellback Egg', cat: 'ingredient', value: 180, icon: { k: 'loot', t: 'egg', c: 0xb8d098 }, tags: ['egg', 'cook'], lootCol: 0xb8d098, desc: 'A big green egg with a leathery shell. Makes an omelette for a whole family.' },
   drake_egg: { name: 'Drake Egg', cat: 'ingredient', value: 1500, icon: { k: 'loot', t: 'egg', c: 0x8a2e1a }, tags: ['egg', 'cook', 'heat'], lootCol: 0xe0703a, desc: 'Hot to the touch, and heavy. Cook it, sell it, or think very hard about it.' },
 
   // ───────────── Nugget's food (hen: how much it fills her, 0..1; inventory part) ─────────────

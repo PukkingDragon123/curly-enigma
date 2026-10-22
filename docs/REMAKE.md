@@ -953,3 +953,62 @@ models for the new plants, added to `props/models.js` `BUILD`), `src/cooking/ico
 - **For other parts**: shops could stock `drake_meat` (120g, Rocco / trading post) and the grocer
   `stone_thyme`, `cave_garlic`, `tunnel_tuber`; monsters could drop `drake_meat` (rock drakes) and
   `grub`. Quests can ask for dishes by id and quality (`cook {dish, score}`).
+
+## Monsters, ecosystem and combat (monsters part): as built
+
+Files: `src/deep/Enemies.js` (the manager: frame, places, spawning helpers, pick vs creature, kills,
+carcass hand-off, loot, shots, hazards, radar, lights) and `src/deep/enemies/`:
+`combat.js` (blocking, parries, the mole's blows) · `beast.js` (the shared brain + `Group`) ·
+`rig.js` (procedural legs with 2-bone IK, tail/neck chains, head look) · `eco.js` (carcasses,
+nests and eggs, food, prey, noise) · `spawn.js` (who lives where) · `material.js` (creature shader:
+coloured flash, telegraph rim, dithered translucency) · `sfx.js` (all creature/combat sounds) ·
+`loot.js` · `lootArt.js` (loot item icons, hooked into `gfx/PixelArt.js`) · `debug.js` ·
+`species.js` (registry) · species: `kobold.js`, `troll.js`, `spider.js` (+ `Webs`), `slime.js`,
+`wraith.js`, `drake.js`, `dinos.js` (raptor, tyrant, shellback, pterosaur), the older folk
+(`rock.js`, `golem.js` (crystal golem, finished), `wisp.js`, `imp.js`, `wyrm.js`, `puffer.js`,
+`bats.js`, `critters.js`), `icons.js` (Index Book portraits for all of them).
+Data: `src/data/creatures.js` (index entries), `src/data/items.js` (loot: `kobold_trinket
+beast_hide troll_tusk spider_fang slime_gel wraith_ash drake_scale raptor_claw tyrant_tooth
+armor_plate ptero_feather dino_meat drake_egg`, each with `tags` such as `forge`, `cook`, `egg`,
+`meat` for the forge and cooking parts). Nests of raptors and shellbacks give the cooking part's
+`dino_egg`; drakes are harvested for its `drake_meat`; kobolds sometimes carry `grub`.
+`src/fps/ViewModel.js`: `vm.block(on)` (guard pose: a hafted tool held crossways in both paws,
+otherwise crossed forearms; up in ~0.08 s) and `vm.guardHit(k, parried)`.
+`src/ui/TouchControls.js`: a hold-to-block button (holds `F`, shield glyph) in the first-person pad;
+it glows while a hostile is within 9 m (`enemies.threat()`).
+
+- **Combat.** Every creature blow goes through `combat.incoming()`. Guard up and the blow from in
+  front (±70°): blocked (¼ damage, ½ shove, energy cost; heavy blows ~60% through) or, inside the
+  first 0.2 s × `skill('block')`, **parried**: no damage, the attacker recoils (0.45 s, a short
+  opening); with the **`riposte`** perk it staggers 1.3 s and the next hit is a **crit** (×2.5).
+  Telegraphs: wind-ups glow on the rim (yellow = block/parry it, red = too heavy, dodge) and a
+  glint + ping marks the instant before the blow. Unblockable: shockwaves (jump them), spores,
+  webs on the floor, a wraith's grasp, the tyrant's bite; fire and thrown rocks can be blocked but
+  not parried. The mole's blows: combos (3rd hit within ~1 s = SMASH finisher), crits, poise
+  (enough blows stagger and interrupt), hit-stop (the creature freezes, `damage()` returns
+  `hitStop/shake/kick` for the scene), `skill('damage')`. Attack tokens: only 1–3 creatures swing
+  at once (by zone); the rest circle on pack slots.
+- **Creatures** (by zone/biome, a difficulty curve through each zone): kobold miner bands with
+  lanterns (zones 1–3), cave slimes (all; big ones split), giant cave spiders with webs (1–4),
+  cave trolls asleep in dens (2–6, hate light), ruin wraiths in `plan.ruins` and deep (3, 5, 6),
+  cave drakes on hoard roosts with eggs (4–6, fire breath), crystal golems (2–6), and in the
+  **dino caverns** (`biomeAt == 4`): raptor packs, shellback herds with young and nests, pterosaur
+  flocks under tall roofs, a cave tyrant in big halls. Caps: 13 hostiles, one raptor pack, one
+  tyrant/drake/golem, two trolls. Lairs at `plan.dangers` nests; nothing spawns in the burrow,
+  town, stations, lifts or `plan.burrows`.
+- **Ecosystem** (only near the mole): hunger; grazers crop moss/mycelium/glowcaps/vines and Props
+  plants; hunters take smaller prey (packs take bigger), the victim's herd turns on the attacker;
+  flesh creatures leave a **carcass** (the body keels over, scavengers and hunters eat it, it sinks
+  to bones) that the mole can harvest once (E); nests with eggs (E takes one, the parents come);
+  sleep and waking (noise, lamp, being close; crouching sneaks closer); wandering and long walks
+  between caves; fleeing (predators, blasts, a broken band); territory; light-shy species flinch
+  from the lamp; `noise()` from running, fights, roars, blasts.
+- **Acts**: `kill { kind }` (the mole's kills, incl. its dynamite), `nest { id, kind, zone }` when the
+  last guardian of a lair/nest falls (`lair<n>` for `plan.dangers` lairs, `nest:<kind>:x,z`,
+  `roost:x,z`). Blocks: DigScene emits `block { perfect }` from the events.
+- **Test hooks** (`scene.enemies.debug`): `spawn(kind, x, y, z, { awake, asleep, group: n, baby })`,
+  `list()`, `get(i | kind)`, `clear()`, `auto(on)`, `peace(on)`, `block(on)` / `unblock()`,
+  `hit(e, power)`, `step(n)`, `stage(kind, { n, dist, depth, test(biome, depth), awake })` (finds a
+  roomy, level cave from the generator's shapes, teleports, spawns in front), `portrait(e, {dist,
+  turn})`, `sheet(e, {angles, size})` (renders the real rig with plain lighting into an overlay),
+  `look(e)`, `clean()`, `eco()`, `perf()`, `info()`; `enemies.combat.log` (the last blows).

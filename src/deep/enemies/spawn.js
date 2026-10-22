@@ -218,8 +218,9 @@ export class Spawner {
     if (PACK_CAP[kind] && [...groups].filter((g) => g.kind === kind).length >= PACK_CAP[kind] + (zone >= 5 ? 1 : 0)) kind = dino ? 'shellback' : (WANDER[zone] || WANDER[1])[0][0];
     const S = m.species(kind);
     const big = S?.info?.space?.[1] > 2;
-    const spot = m.findSpot(kind, pl.pos.x, pl.pos.y, pl.pos.z, big ? 10 : 7, big ? 20 : 17, { tries: 24, ray: true });
-    if (!spot) { this.spawnT = 1.2; this.stats.failed++; return; }
+    const spot = m.findSpot(kind, pl.pos.x, pl.pos.y, pl.pos.z, big ? 10 : 7, big ? 20 : 17, { tries: 14, ray: true });
+    if (!spot) { this.fails = (this.fails || 0) + 1; this.spawnT = Math.min(6, 1.2 * this.fails); this.stats.failed++; return; }
+    this.fails = 0;
     if (kind === 'tyrant' && this.roomy(spot.x, spot.y, spot.z, 4.5, 6) < 5) kind = 'raptor';
     if (kind === 'pterosaur' && airAbove(m.world, spot.x, spot.y + 0.3, spot.z, 6) < 4.5) kind = 'shellback';
     this.stats.spawned++;

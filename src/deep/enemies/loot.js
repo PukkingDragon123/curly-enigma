@@ -21,7 +21,7 @@ export function lootFor(e) {
     case 'shade_bat': add('bat_guano', 0.3); break;
     case 'crystal_golem': out.push(...e.lootList()); break;
     // the newer folk
-    case 'kobold': add('kobold_trinket', e.chief ? 1 : 0.35); if (Math.random() < 0.55) out.push(ore(e.chief ? 4 : 3)); if (e.chief) add('gold_ore', 0.25); break;
+    case 'kobold': add('kobold_trinket', e.chief ? 1 : 0.35); add('grub', 0.25); if (Math.random() < 0.55) out.push(ore(e.chief ? 4 : 3)); if (e.chief) add('gold_ore', 0.25); break;
     case 'cave_troll': add('troll_tusk', 0.8); add('beast_hide', 1); if (Math.random() < 0.5) out.push(ore(4)); break;
     case 'cave_spider': add('spider_fang', 0.75); add('spider_silk', 0.8); break;
     case 'ruin_wraith': add('wraith_ash', 0.7); if (Math.random() < 0.25) out.push(z >= 5 ? 'sapphire' : 'amethyst'); break;

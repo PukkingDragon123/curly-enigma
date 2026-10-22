@@ -328,8 +328,8 @@ const BUILD = {
   outpost(f, k) {
     const L = k.L;
     // the plated counter
-    k.box(-1.62, 0.55, -0.98, -0.56, 0, 0.56, (lu, lv, ly) => (ly < 0.0625 || Math.floor(lu * VOX) % 9 === 0 ? M.STAINED : M.IRONPLATE));
-    k.box(-1.68, 0.61, -1.04, -0.5, 0.56, 0.625, M.STAINED);
+    k.box(-1.62, 0.55, -0.98, -0.56, 0, 0.44, (lu, lv, ly) => (ly < 0.0625 || Math.floor(lu * VOX) % 9 === 0 ? M.STAINED : M.IRONPLATE));
+    k.box(-1.68, 0.61, -1.04, -0.5, 0.44, 0.5, M.STAINED);
     // heavy supply shelves on the +u wall
     k.shelves(0.92, 2.02, 0.4, [0.44, 0.88, 1.28], 1.42, { board: M.STAINED, frame: M.TIMBER, bay: 0.4 });
     // a cot on the −u wall
@@ -350,9 +350,9 @@ const BUILD = {
     k.prop('blanket', ...uvOf(wallPoint(f, -1.76, 0.32, 0.3)), 0.2, -1.76, {});
     k.prop('maptable', -1.98, -0.78, 0.5, 0.4);
     k.wallProp('banner', 0, 0.03, 1.25);
-    k.prop('ledger', -1.1, -0.74, 0.625, 0.2, { v: 2 });
-    k.prop('dynamite', 0.15, -0.72, 0.625, -0.4);
-    k.prop('lanternpost', -1.45, -0.72, 0.625, 0);
+    k.prop('ledger', -1.1, -0.74, 0.5, 0.2, { v: 2 });
+    k.prop('dynamite', 0.15, -0.72, 0.5, -0.4);
+    k.prop('lanternpost', -1.45, -0.72, 0.5, 0);
     k.wallProp('pickrack', -0.78, 0.03, 0.5);
     k.prop('stove', 0.9, -1.85, 0, -0.5);
     k.box(-1.0, -0.1, -1.72, -1.12, 0, 0.125, (lu) => (Math.floor(lu * VOX) % 6 === 0 ? M.IRONPLATE : M.STAINED));

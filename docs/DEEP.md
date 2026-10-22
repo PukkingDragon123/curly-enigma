@@ -98,11 +98,19 @@ generated in a worker is **pending** (`ch.pending`, also `vox === null`). Code t
 lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, the mole's lamp, fog).
 
 **Enemies** (`new Enemies(ctx)`):
-- `update(dt, { player, eye, forward, time, busy, lamp })` → array of events:
-  `{ damage: n, kind, push: [x,y,z] }` (energy lost + knockback), `{ say: html, key, tone, cd }` (a toast),
-  `{ loot: { id, q, p } }` (an item for the backpack — goes through the same path as ore pickups).
-- `hitTest(eye, dir, reach)` → an enemy the pick would hit before `reach` meters, or null.
-- `damage(enemy, power, dir)`: a pick blow (knockback, flash, maybe defeat).
+- `update(dt, { player, eye, forward, time, busy, lamp, blocking, blockT })` → array of events:
+  `{ damage: n, kind, push: [x,y,z], blocked?, parried? }` (energy lost + knockback; a blocked blow is
+  already reduced, a parried one is 0), `{ energy: n }` (the cost of holding / taking blows on the
+  guard), `{ say: html, key, tone, cd }` (a toast), `{ loot: { id, q, p } }` (an item for the
+  backpack — same path as ore pickups), `{ shake: k }` and `{ hitStop: s }` (optional feel).
+  `blockT` = seconds since the guard went up (a perfect block is the first ~0.2 s).
+- `hitTest(eye, dir, reach)` → an enemy (or a spider web) the pick would hit before `reach`, or null.
+- `damage(enemy, power, dir)`: a pick blow (combos, crits after a parry, poise and stagger,
+  knockback, hit-stop) → `{ hitStop, shake, kick, tag, combo }` for the scene to apply.
+- `noise(x, y, z, r, kind)`: something loud happened there (digging, a fall): sleepers may wake,
+  hunters come and look. `blast()` calls it itself. `threat()` → `{ kind, dist }` of the nearest
+  hostile after the mole (or null).
+- `debug`: test hooks (`src/deep/enemies/debug.js`: spawn, list, stage, portrait, sheet, block, …).
 - `radarMarkers(pos)` → `[{ kind: 'enemy', x, y, z, label, color }]` for nearby awake enemies.
 - `lights(eye)` → `[{ x, y, z, c: [r,g,b], r }]` glowing enemies (≤ 3).
 - `dispose()`.
