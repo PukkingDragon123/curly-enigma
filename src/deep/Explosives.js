@@ -330,7 +330,7 @@ export class Explosives {
     const st = this.st, owner = this.owner;
     const { x, y, z } = s.pos;
     const mb = st?.mineBonus?.() || {};
-    const r = s.item.blast * (mb.blast || 1), power = s.item.power ?? 1;
+    const r = s.item.blast * (mb.blast || 1) * (this.ctx.state?.skill?.('blast') || 1), power = s.item.power ?? 1;
     const zone = this.protectedAt(x, y, z, r + 0.6);
     if (zone) {
       // too close to something precious: the fuse sputters out and the charge goes back in the bag

@@ -829,6 +829,7 @@ export class Clumps {
     if (tool === 'brush') this.fx?.puff(hp.x, hp.y, hp.z, 3, col01(c.g.pal[2]), [out.x, out.y, out.z], 0.015);
     if (res.oreHit) {
       loss *= this.st?.mineBonus?.().clean ?? 1; // Steady Paws (the Miners' Board)
+      loss /= this.st?.skill?.('clean') || 1; // the skill tree's steady paws
       c.qLoss += loss;
       c.dmgN += res.oreHit;
       this.audio?.play('ore_damage');

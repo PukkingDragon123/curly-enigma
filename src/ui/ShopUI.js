@@ -118,10 +118,10 @@ export function openShop(game, shopId) {
   // a good standing on the shelf, price tag dangling from the lip
   const good = (id) => {
     const it = ITEMS[id];
-    const p = it.price ?? 0;
+    const p = it.price ?? 0, pay = st.buyPrice ? st.buyPrice(p) : p; // st.buy applies the haggle discount itself
     const owned = isUnique(it) && st.owns(id);
-    const can = st.canAfford(p) && (!it.needs || Object.entries(it.needs).every(([nid, n]) => st.count(nid) >= n));
-    const tagTxt = owned ? (it.slot && st.data.equip[it.slot] === id ? 'In use' : 'Owned') : formatGoldFull(p);
+    const can = st.canAfford(pay) && (!it.needs || Object.entries(it.needs).every(([nid, n]) => st.count(nid) >= n));
+    const tagTxt = owned ? (it.slot && st.data.equip[it.slot] === id ? 'In use' : 'Owned') : formatGoldFull(pay);
     const b = el('button', {
       class: 'sh-good' + (picked === id ? ' on' : '') + (owned ? ' owned' : '') + (!owned && !can ? ' dear' : ''), title: it.name, 'aria-label': `${it.name}, ${tagTxt}`,
       onclick: () => { picked = id; game.audio.play('ui_click'); for (const n of stock.children) n.classList.toggle('on', n === b); renderCounter(true); },
@@ -148,7 +148,7 @@ export function openShop(game, shopId) {
       if (it.slot && st.data.equip[it.slot] !== id) actions.append(el('button', { class: 'btn alt', onclick: () => { st.equip(id); game.audio.play('ui_click'); render(); } }, 'Equip'));
       else actions.append(el('span', { class: 'sh-owned' }, it.slot ? 'Equipped' : 'Owned'));
     } else {
-      actions.append(price(p, 'big'));
+      actions.append(price(st.buyPrice ? st.buyPrice(p) : p, 'big'));
       const doBuy = (qty) => {
         const r = st.buy(id, p, qty);
         if (r.ok) {

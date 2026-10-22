@@ -232,7 +232,7 @@ export default class DigScene extends Scene {
     this.audio.play('ui_click', { pitch: 1.3 });
     this.updateHotbar();
   }
-  energy(n) { if (n > 0) this.state.useEnergy(this.state.hasBuff('sturdy') ? n * 0.6 : n); }
+  energy(n) { if (n > 0) this.state.useEnergy((this.state.hasBuff('sturdy') ? n * 0.6 : n) / (this.state.skill?.('stamina') || 1)); }
   shake(a) { if (this.state.data.settings.shake) this.shakeAmp = Math.max(this.shakeAmp, a); }
 
   // ------------------------------------------------------------------ frame
@@ -266,7 +266,7 @@ export default class DigScene extends Scene {
     const sy = Math.sin(pl.yaw), cy = Math.cos(pl.yaw);
     this.wish = busy ? { x: 0, z: 0 } : { x: -sy * mv.y + cy * mv.x, z: -cy * mv.y - sy * mv.x };
     const exhausted = st.energy < 8;
-    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted, crouch: inp.isDown('KeyC'), frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (this.blocking ? 0.55 : 1) * (this.nugget?.carrying ? 0.7 : 1) });
+    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted, crouch: inp.isDown('KeyC'), frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (st.skill?.('speed') || 1) * (this.blocking ? 0.55 : 1) * (this.nugget?.carrying ? 0.7 : 1) });
     if (ev.landed) { this.audio.play('land', { hard: ev.landed > 8 }); this.fx.dust(pl.pos.x, pl.pos.y + 0.05, pl.pos.z, Math.min(10, ev.landed | 0), [0.5, 0.42, 0.34], 0.2); }
     if (ev.fallDamage) this.hurt(Math.round(ev.fallDamage), 'fall');
     if (ev.jump) this.energy(0.2);
@@ -427,8 +427,9 @@ export default class DigScene extends Scene {
   bonus(k) {
     const b = this.state.mineBonus?.();
     const v = b ? b[k] : 1;
-    const s = this.state.skill?.(k);
-    return (typeof v === 'number' && v > 0 ? v : 1) * (typeof s === 'number' && s > 0 ? s : 1);
+    const s = this.state.skill?.(k), m = typeof s === 'number' && s > 0 ? s : 1;
+    // skills read ≥ 1 = better; swing time (rate) and ore scratches (clean) go down as they go up
+    return (typeof v === 'number' && v > 0 ? v : 1) * (k === 'rate' || k === 'clean' ? 1 / m : m);
   }
 
   /** The pick lands (timed by the swing). */
@@ -802,6 +803,8 @@ export default class DigScene extends Scene {
 
   hurt(n, kind, guarded = false) {
     if (n <= 0) return;
+    const st = this.state;
+    n /= (st.skill?.('hide') || 1) * (kind === 'fall' ? st.skill?.('fall') || 1 : 1);
     this.state.useEnergy(n);
     this.act('hurt', { n, by: kind });
     if (guarded) return; // the block already rang
