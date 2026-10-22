@@ -361,11 +361,12 @@ export class Eco {
     }
   }
   findPrey(e) {
-    const m = this.mgr, my = e.info.tier ?? 2;
+    const m = this.mgr, g = e.group;
+    const my = (e.info.tier ?? 2) + (e.info.social === 'pack' && g?.alive?.() >= 3 ? 1.5 : 0);
     let best = null, bd = (e.info.sight ?? 12) * 0.9;
     for (const c of m.list) {
       if (!c.alive || c === e || c.kind === e.kind || c.group === e.group && c.group) continue;
-      const t = c.passive ? 0 : c.info.flesh ? (c.info.tier ?? 1) : -1;
+      const t = c.passive ? 0 : c.info.flesh ? (c.baby ? 0.5 : c.info.tier ?? 1) : -1;
       if (t < 0 || t >= my || (t === 0 && my > 2) || c.info.inedible) continue;
       if (e.info.prey && !e.info.prey.includes(c.kind) && !(t === 0 && e.info.prey.includes('critter'))) continue;
       const d = Math.hypot(c.pos.x - e.pos.x, c.pos.z - e.pos.z) + Math.abs(c.pos.y - e.pos.y) * 2;

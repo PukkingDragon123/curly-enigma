@@ -132,6 +132,22 @@ export const ITEMS = {
   spark_dust: { name: 'Spark Dust', cat: 'drop', value: 60, icon: { k: 'drop', t: 'spark' }, desc: 'Static-charged dust shed by spark mites.' },
   ember_scale: { name: 'Ember Scale', cat: 'drop', value: 220, icon: { k: 'drop', t: 'scale' }, desc: 'A still-warm scale from a lava newt.' },
   wisp_essence: { name: 'Wisp Essence', cat: 'drop', value: 900, icon: { k: 'drop', t: 'wisp' }, desc: 'A captured flicker of something that eats light.' },
+  // creature loot (src/deep/enemies/loot.js; icons: enemies/lootArt.js). tags: what other parts may use them for
+  kobold_trinket: { name: 'Kobold Trinket', cat: 'drop', value: 90, icon: { k: 'loot', t: 'trinket' }, tags: ['trinket'], desc: 'A carved bone charm on a string. Every kobold carries one for luck. Traders love them.' },
+  beast_hide: { name: 'Thick Hide', cat: 'drop', value: 70, icon: { k: 'loot', t: 'hide', c: 0x8a7a52 }, tags: ['hide', 'forge'], lootCol: 0xb89a6a, desc: 'Tough, warty hide. Wraps a fine grip on a forged blade.' },
+  troll_tusk: { name: 'Troll Tusk', cat: 'drop', value: 380, icon: { k: 'loot', t: 'tusk' }, tags: ['trophy', 'forge'], lootCol: 0xf0e4c8, desc: 'Yellowed, chipped and very heavy. Carvers and smiths both pay well.' },
+  spider_fang: { name: 'Spider Fang', cat: 'drop', value: 140, icon: { k: 'loot', t: 'fang', c: 0x8ae05a }, tags: ['venom', 'forge'], lootCol: 0xa0e070, desc: 'Still beaded with venom. Set into a blade, it bites back.' },
+  slime_gel: { name: 'Slime Gel', cat: 'drop', value: 28, icon: { k: 'loot', t: 'gel', c: 0x6ad07a }, tags: ['jelly', 'cook'], lootCol: 0x7ae08a, desc: 'A wobbly scoop of cave slime. Sets any broth, cleans any rust.' },
+  wraith_ash: { name: 'Wraith Ash', cat: 'drop', value: 720, icon: { k: 'loot', t: 'ash', c: 0x8affe0 }, tags: ['magic', 'forge'], lootCol: 0x9affe0, desc: 'Cold grey ash that glows in the dark. What is left of a wraith, and still a little angry.' },
+  drake_scale: { name: 'Drake Scale', cat: 'drop', value: 650, icon: { k: 'loot', t: 'scale', c: 0xc0562a }, tags: ['heat', 'forge'], lootCol: 0xff8a4a, desc: 'A palm-sized scale that shrugs off fire. Smiths quench with it for luck.' },
+  raptor_claw: { name: 'Raptor Claw', cat: 'drop', value: 160, icon: { k: 'loot', t: 'claw' }, tags: ['trophy', 'forge'], lootCol: 0xf0e4cc, desc: 'The sickle claw of a cave raptor. Wickedly sharp.' },
+  tyrant_tooth: { name: 'Tyrant Tooth', cat: 'drop', value: 1800, icon: { k: 'loot', t: 'tooth' }, tags: ['trophy', 'forge'], lootCol: 0xfff4e0, desc: 'A serrated tooth as long as your arm. Proof you met the king of the dino caverns and walked away.' },
+  armor_plate: { name: 'Shellback Plate', cat: 'drop', value: 300, icon: { k: 'loot', t: 'plate', c: 0x8e7048 }, tags: ['armor', 'forge'], lootCol: 0xd4b47c, desc: 'A bony plate from a shellback. Light, hard, and lovely on a shield.' },
+  ptero_feather: { name: 'Pterosaur Feather', cat: 'drop', value: 110, icon: { k: 'loot', t: 'feather', c: 0xd8703a }, tags: ['feather'], lootCol: 0xe09060, desc: 'A long rust-red quill. Fletchers and hat-makers in town go wild for these.' },
+  dino_meat: { name: 'Dino Steak', cat: 'ingredient', value: 45, icon: { k: 'loot', t: 'meat' }, tags: ['meat', 'cook'], lootCol: 0xc8463a, desc: 'A thick, marbled cut. Sears beautifully over a hot hearth.' },
+  raptor_egg: { name: 'Raptor Egg', cat: 'ingredient', value: 220, icon: { k: 'loot', t: 'egg', c: 0xe0caa0 }, tags: ['egg', 'cook'], lootCol: 0xe0caa0, desc: 'Speckled and warm. The pack will want it back.' },
+  shellback_egg: { name: 'Shellback Egg', cat: 'ingredient', value: 180, icon: { k: 'loot', t: 'egg', c: 0xb8d098 }, tags: ['egg', 'cook'], lootCol: 0xb8d098, desc: 'A big green egg with a leathery shell. Makes an omelette for a whole family.' },
+  drake_egg: { name: 'Drake Egg', cat: 'ingredient', value: 1500, icon: { k: 'loot', t: 'egg', c: 0x8a2e1a }, tags: ['egg', 'cook', 'heat'], lootCol: 0xe0703a, desc: 'Hot to the touch, and heavy. Cook it, sell it, or think very hard about it.' },
 
   // ───────────── Nugget's food (hen: how much it fills her, 0..1; inventory part) ─────────────
   chicken_feed: { name: 'Chicken Feed', cat: 'feed', value: 3, price: 6, hen: 0.5, stack: 24, icon: { k: 'hen', t: 'feed' },

@@ -138,11 +138,11 @@ export class Legs {
   /** IK: place thighs, shins and feet. */
   solve() {
     const e = this.e;
-    e.root.updateMatrixWorld(true);
+    e.root.updateWorldMatrix(true, false);
     _rinv.copy(e.root.matrixWorld).invert();
     let lastParent = null;
     for (const L of this.legs) {
-      if (L.parent !== lastParent) { lastParent = L.parent; _inv.copy(L.parent.matrixWorld).invert(); }
+      if (L.parent !== lastParent) { lastParent = L.parent; L.parent.updateWorldMatrix(true, false); _inv.copy(L.parent.matrixWorld).invert(); }
       _f.copy(L.foot).applyMatrix4(_inv);
       _h.copy(L.hipV);
       _d.subVectors(_f, _h);

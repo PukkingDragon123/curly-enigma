@@ -39,6 +39,9 @@ export class HomeMoves {
     return pos.x > SHAFT.x0 + 0.02 && pos.x < SHAFT.x1 && pos.z > SHAFT.z0 && pos.z < SHAFT.z1;
   }
 
+  /** The cage goes straight to his practice dig: the mining lesson is on and not done yet down there. */
+  lessonRide() { return this.lessonStage?.() === 'mine' && !this.game.state.flag('prologue'); }
+
   /** E at the lift: during the mining lesson straight down to his dig; otherwise the brass panel of destinations. */
   useLift() {
     if (this.scripted || this.riding) return null;
@@ -47,7 +50,7 @@ export class HomeMoves {
       a.play('clunk', { vol: 0.5 });
       this.tween(0.3, (k) => this.lift.setLever(Math.sin(k * Math.PI)));
     } else a.play('click');
-    if (this.lessonStage?.() === 'mine') { this.rideLift('L0'); return 'L0'; }
+    if (this.lessonRide()) { this.rideLift('L0'); return 'L0'; }
     return openLiftPanel(this.game, 'home', { title: 'The Old Lift', sub: 'A brass panel, worn smooth by sixty years of paws. Where to?', onRide: (id) => this.rideLift(id) });
   }
 
@@ -58,7 +61,7 @@ export class HomeMoves {
     this.build?.toggle(false);
     this.beginScript();
     const a = this.game.audio;
-    const lesson = this.lessonStage?.() === 'mine' && id === 'L0';
+    const lesson = this.lessonRide() && id === 'L0';
     if (lesson) this.onLessonRide?.();
     if (!this.inCage()) {
       const d = Math.hypot(this.cam.x - LIFT.outX, this.cam.z - LIFT.cz);

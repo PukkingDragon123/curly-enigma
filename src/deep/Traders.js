@@ -109,7 +109,7 @@ export class Traders {
     B.group.name = 'burrow-' + b.id;
     const props = L.props.slice();
     // the sign over the door outside, and a lamp in the porch beside it
-    props.push({ type: 'signboard', u: 0, v: f.rz + 0.32, y: 2.12, rot: 0, p: b.kind });
+    props.push({ type: 'signboard', u: 0, v: f.rz + 1.0, y: 1.98, rot: 0, p: b.kind });
     props.push({ type: 'hanglamp', u: 0.84, v: f.rz + 0.55, y: 'ceil', rot: 0, variant: 0, porch: true });
     let t0 = performance.now();
     for (const p of props) {

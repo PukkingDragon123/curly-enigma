@@ -81,7 +81,7 @@ export function creatureMaterial(U, opts = {}) {
         vec3 col = c * L + c * emissive * (0.8 + 0.2 * sin(time * 3.0));
         if (rim > 0.0) {
           float f = 1.0 - max(0.0, dot(normalize(cameraPosition - vWorld), n));
-          col += rimCol * rim * (0.25 + 1.6 * f * f);
+          col += rimCol * rim * (0.12 + 1.5 * f * f);
         }
         col = mix(col, flashCol, flash);
         float dist = length(vWorld - lampPos);

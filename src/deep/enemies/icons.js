@@ -9,8 +9,28 @@ import { buildWyrm } from './wyrm.js';
 import { buildPuffer } from './puffer.js';
 import { buildBat } from './bats.js';
 import { M } from '../materials.js';
+import { buildKobold } from './kobold.js';
+import { buildTroll } from './troll.js';
+import { buildSpider } from './spider.js';
+import { buildSlime } from './slime.js';
+import { buildWraith } from './wraith.js';
+import { buildDrake } from './drake.js';
+import { buildRaptor, buildTyrant, buildShellback, buildPtero } from './dinos.js';
 
 const vox = (geo, ox = 0, oy = 0, oz = 0, mirror = false) => ({ v: geo?.userData?.vox || [], o: [ox, oy, oz], mirror });
+/** A part turned about its own origin (rz around z, then rx around x, ry around y) before it's placed. */
+const rvox = (geo, ox, oy, oz, rz = 0, rx = 0, ry = 0, mirror = false) => {
+  const cz = Math.cos(rz), sz = Math.sin(rz), cx = Math.cos(rx), sx = Math.sin(rx), cy = Math.cos(ry), sy = Math.sin(ry);
+  const v = (geo?.userData?.vox || []).map(({ x, y, z, c }) => {
+    let X = x * cz - y * sz, Y = x * sz + y * cz, Z = z;
+    const Y2 = Y * cx - Z * sx; Z = Y * sx + Z * cx; Y = Y2;
+    const X2 = X * cy + Z * sy; Z = -X * sy + Z * cy; X = X2;
+    return { x: Math.round(X), y: Math.round(Y), z: Math.round(Z), c };
+  });
+  return { v, o: [ox, oy, oz], mirror };
+};
+/** Chain segments laid out one after another along -z (tails). */
+const chain = (geos, ox, oy, oz, step, dy = 0) => geos.map((g, i) => vox(g, ox, oy + dy * i, oz - step * i));
 
 /** Each species posed for its portrait: a list of voxel parts with offsets (model voxels). */
 const POSES = {
@@ -27,6 +47,65 @@ const POSES = {
     const parts = [vox(G.torso, 0, 13), vox(G.glow, 0, 13), vox(G.eyes, 0, 13), vox(G.arm, 12, 31), vox(G.arm, -13, 31, 0, true), vox(G.leg, 5, 13), vox(G.leg, -6, 13)];
     for (const S of G.shards) parts.push(vox(S.geo, 0, 13));
     return parts;
+  },
+  kobold: () => {
+    const G = buildKobold(1, false), H = 8;
+    return [vox(G.foot, 2, 0), vox(G.foot, -2, 0), vox(G.shin, 2, H - 4), vox(G.shin, -2, H - 4), vox(G.thigh, 2, H), vox(G.thigh, -2, H),
+      ...chain(G.tail, 0, H + 2.5, -2.4, 3.6), vox(G.torso, 0, H), vox(G.head, 0, H + 10, 0.6), vox(G.jaw, 0, H + 12.9, 1.2), vox(G.eyes, 0, H + 10, 0.6), vox(G.flame, 0, H + 23, -0.9),
+      vox(G.arm, 4.1, H + 9, 0.2), vox(G.arm, -4.1, H + 9, 0.2, true), rvox(G.pick, 4, H + 3, 2.2, 0, 0.5), vox(G.lant, -5, H + 3, 2.2), vox(G.glass, -5, H + 3, 2.2)];
+  },
+  cave_troll: () => {
+    const G = buildTroll(3), H = 16;
+    return [vox(G.foot, 5, 0), vox(G.foot, -5, 0), vox(G.shin, 5, H - 8.5), vox(G.shin, -5, H - 8.5), vox(G.thigh, 5, H), vox(G.thigh, -5, H),
+      vox(G.torso, 0, H), vox(G.head, 0, H + 16.5, 9.5), vox(G.jaw, 0, H + 18.5, 10.5), vox(G.eyes, 0, H + 16.5, 9.5),
+      vox(G.arm, 12.5, H + 17, 0.5), vox(G.arm, -12.5, H + 17, 0.5, true), rvox(G.club, 13, H - 5, 5.5, -0.3, 0.4)];
+  },
+  cave_spider: () => {
+    const G = buildSpider(3), H = 8;
+    const parts = [vox(G.body, 0, H), vox(G.eyes, 0, H), vox(G.fang, 1.4, H - 1.5, 7), vox(G.fang, -1.4, H - 1.5, 7, true)];
+    if (G.glow) parts.push(vox(G.glow, 0, H));
+    for (let i = 0; i < 4; i++) for (const sd of [1, -1]) {
+      const z = 3 - i * 2.4, ry = (i - 1.5) * -0.45;
+      parts.push(rvox(G.fem, sd * 3, H, z, sd * 2.3, 0, sd * ry));
+      parts.push(rvox(G.tib, sd * (3 + 9.5 * Math.cos(sd * ry)), H + 6, z + 9.5 * Math.sin(sd * ry), sd * 0.45, 0, sd * ry));
+    }
+    return parts;
+  },
+  cave_slime: () => {
+    const G = buildSlime(1);
+    return [vox(G.jelly), vox(G.face), vox(G.items[0], 0, 5, 0)];
+  },
+  ruin_wraith: () => {
+    const G = buildWraith(3);
+    return [vox(G.tat, 0, 14), vox(G.robe, 0, 14), vox(G.hood, 0, 33, 0.5), vox(G.eyes, 0, 33, 0.5), rvox(G.arm, 6.6, 32, 0.5, 0.5, -0.8), rvox(G.arm, -6.6, 32, 0.5, 0.5, -0.8, 0, true)];
+  },
+  cave_drake: () => {
+    const G = buildDrake(4), H = 11;
+    const parts = [vox(G.body, 0, H), vox(G.neck, 0, H + 2.5, 8.5), vox(G.neck, 0, H + 3.5, 12.7), vox(G.head, 0, H + 4.5, 16.9), vox(G.jaw, 0, H + 4.5, 18.9), vox(G.eyes, 0, H + 4.5, 16.9),
+      ...chain(G.tail, 0, H, -8, 5.3, -0.3), rvox(G.wing, 4.5, H + 4, 4, 0.5), rvox(G.wing, -4.5, H + 4, 4, 0.5, 0, 0, true)];
+    if (G.glow) parts.push(vox(G.glow, 0, H));
+    for (const [f, sd] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) parts.push(vox(G.thigh, sd * 4.6, H - 2, f * 6), vox(G.shin, sd * 4.6, H - 8.5, f * 6), vox(G.foot, sd * 4.6, 0, f * 6));
+    return parts;
+  },
+  raptor: () => {
+    const G = buildRaptor(0), H = 12;
+    return [vox(G.foot, 2.6, 0), vox(G.foot, -2.6, 0), vox(G.shin, 2.6, H - 5.5), vox(G.shin, -2.6, H - 5.5), vox(G.thigh, 2.6, H), vox(G.thigh, -2.6, H),
+      vox(G.body, 0, H), ...chain(G.tail, 0, H + 0.5, -5, 4.8), vox(G.head, 0, H + 6.5, 8), vox(G.jaw, 0, H + 7.3, 9.5), vox(G.eyes, 0, H + 6.5, 8), vox(G.arm, 3, H + 0.5, 5.5), vox(G.arm, -3, H + 0.5, 5.5, true)];
+  },
+  tyrant: () => {
+    const G = buildTyrant(), H = 21;
+    return [vox(G.foot, 6.5, 0), vox(G.foot, -6.5, 0), vox(G.shin, 6.5, H - 9.5, 1), vox(G.shin, -6.5, H - 9.5, 1), vox(G.thigh, 6.5, H), vox(G.thigh, -6.5, H),
+      vox(G.body, 0, H), ...chain(G.tail, 0, H + 1, -12, 7.6), vox(G.head, 0, H + 11, 16), vox(G.jaw, 0, H + 11, 18), vox(G.eyes, 0, H + 11, 16), vox(G.arm, 6.5, H + 2, 12), vox(G.arm, -6.5, H + 2, 12, true)];
+  },
+  shellback: () => {
+    const G = buildShellback(), H = 9;
+    const parts = [vox(G.shell, 0, H), vox(G.head, 0, H - 0.5, 9.5), vox(G.jaw, 0, H - 0.2, 11), vox(G.eyes, 0, H - 0.5, 9.5), ...chain(G.tail, 0, H - 1, -9.5, 4.8)];
+    for (const [f, sd] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) parts.push(vox(G.thigh, sd * 6, H - 3, f * 6), vox(G.shin, sd * 6, H - 6.6, f * 6), vox(G.foot, sd * 6, 0, f * 6));
+    return parts;
+  },
+  pterosaur: () => {
+    const G = buildPtero();
+    return [vox(G.body), vox(G.head, 0, 2.5, 6), vox(G.eyes, 0, 2.5, 6), rvox(G.wing, 2, 1, 1.5, 0.25), rvox(G.wing, -2, 1, 1.5, 0.25, 0, 0, true), vox(G.leg, 1.2, -1.5, -3), vox(G.leg, -1.2, -1.5, -3)];
   },
   gloom_wisp: () => {
     const G = buildWisp(2);

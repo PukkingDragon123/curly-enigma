@@ -50,7 +50,7 @@ export class WorkshopLife {
     // the Miners' Board, the lift, the coal cart, the winch
     const m = c.minersAt;
     this.addIt({ box: [m.x - 0.6, m.y, m.z - 0.12, m.x + 0.6, m.y + 0.8, m.z + 0.05], label: 'Miners\' Board', action: () => this.useMinersBoard() });
-    const liftLabel = () => (this.inCage() ? 'Pull the lever' : this.lessonStage?.() === 'mine' ? 'Ride down to the dig' : 'Ride the lift');
+    const liftLabel = () => (this.inCage() ? 'Pull the lever' : this.lessonRide?.() ? 'Ride down to the dig' : 'Ride the lift');
     const SH = this.shaftBox;
     this.addIt({ box: SH, label: liftLabel, action: () => this.useLift() });
     this.addIt({ box: [S.cart.x - 0.4, Y, S.cart.z - 0.3, S.cart.x + 0.4, Y + 0.62, S.cart.z + 0.3], label: () => (this.cartReady() ? 'Take coal from the cart' : 'The old mine cart'), action: () => this.useCart() });
@@ -128,6 +128,8 @@ export class WorkshopLife {
       return null;
     }
     star.attend();
+    // back from the dig with his copper (but not by the cage): hand it over now
+    if (this.lessonStage?.() === 'mine' && this.game.state.count('copper_ore') > 0 && !star.scripted) { this.onLessonArrival('lift'); return 'copper'; }
     if (this.lessonTalk?.()) return 'lesson';
     const line = this.nextTip();
     star.say(line.text, { mood: line.mood });

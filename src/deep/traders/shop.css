@@ -52,7 +52,7 @@
 .tr-ico { width: calc(var(--px) * 8); height: calc(var(--px) * 8); vertical-align: middle; margin-right: var(--px); }
 
 /* the haggle: a meter with a green zone and a swinging needle */
-.tr-haggle { grid-template-columns: var(--icon) minmax(0, 1fr); margin: calc(var(--px) * 2); }
+.tr-haggle { margin: calc(var(--px) * 2); }
 .tr-hrow { display: flex; align-items: center; gap: calc(var(--px) * 2); flex-wrap: wrap; font-size: 14px; color: #7a5a3a; margin-top: calc(var(--px) * 2); }
 .tr-dots { display: inline-flex; gap: var(--px); margin-right: calc(var(--px) * 3); }
 .tr-dots i { width: calc(var(--px) * 4); height: calc(var(--px) * 4); background: #c8b090; box-shadow: inset 0 0 0 var(--px) #8a6a4a; }
@@ -106,6 +106,10 @@
   .tr-haggle .sh-pay { justify-content: center; }
 }
 @media (max-height: 520px) {
+  .shop-burrow .sh-keeper { flex-direction: row; align-items: flex-start; gap: calc(var(--px) * 3); }
+  .shop-burrow .sh-say { -webkit-line-clamp: 3; }
+  .shop-burrow .sh-say::before { left: calc(var(--px) * -6); top: calc(var(--px) * 4); border-left: 0; border-right: calc(var(--px) * 6) solid #fffaf0; border-top: calc(var(--px) * 4) solid transparent; border-bottom: calc(var(--px) * 4) solid transparent; width: calc(var(--px) * 6); height: calc(var(--px) * 8); }
+  .shop-burrow .sh-room { grid-template-columns: minmax(0, 46%) minmax(0, 1fr); }
   .tr-meter { height: calc(var(--px) * 8); margin-top: calc(var(--px) * 2); }
   .tr-hrow { margin-top: var(--px); }
 }

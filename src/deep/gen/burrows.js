@@ -185,6 +185,7 @@ const BUILD = {
     k.wallProp('chalkboard', -1.18, 0.02, 0.62, { v: 0 });
     k.wallProp('pickrack', -1.62, 0.02, 0.5);
     k.prop('lanternpost', -0.7, -0.62, 0.5625, 0);
+    k.box(-0.86, 0.1, -1.78, -1.06, 0, 0.125, (lu) => (Math.floor(lu * VOX) % 5 === 0 ? M.STAINED : M.FLOORBOARD)); // a step behind the counter
     L.npc = { u: -0.38, v: -1.42, rot: 0 };
     L.spots.counter = { u: -0.38, v: -0.66 };
     L.sign = { text: 'TRADING POST', icon: 'scale' };
@@ -251,6 +252,7 @@ const BUILD = {
     k.prop('rug', 0.2, 0.45, 0, 0.1, { v: 1 });
     k.prop('stool', -0.85, -0.2, 0, 0.4);
     k.prop('logs', -2.3, 0.75, 0, 0.9);
+    k.box(-0.18, 0.62, -2.06, -1.56, 0, 0.125, M.STAINED);
     L.npc = { u: 0.22, v: -1.78, rot: 0 };
     L.spots.counter = { u: 0.22, v: -1.24 };
     L.sign = { text: 'HERBALIST', icon: 'leaf' };
@@ -267,7 +269,7 @@ const BUILD = {
     // crate stacks round the walls, every one a little askew
     const stack = [
       [2.55, -0.95, 0, 0.6], [2.62, -0.25, 0, 0.56], [2.5, -0.6, 0.6, 0.5], [2.75, 0.45, 0, 0.5], [2.6, 0.42, 0.5, 0.42],
-      [1.85, -1.85, 0, 0.56], [1.3, -2.25, 0, 0.5], [1.82, -1.85, 0.56, 0.46],
+      [1.92, -1.42, 0, 0.56], [1.9, -1.42, 0.56, 0.46],
       [-1.95, 1.72, 0, 0.5], [-2.45, 1.2, 0, 0.56], [-2.4, 1.18, 0.56, 0.44],
       [2.15, 1.55, 0, 0.46], [-1.62, -2.0, 0, 0.5],
     ];
@@ -301,8 +303,8 @@ const BUILD = {
     k.prop('gramophone', 2.55, -0.25, 0.56, -1.4);
     k.prop('painting', -1.7, 0.42, 0, 1.3);
     k.prop('mannequin', -1.72, -1.45, 0, 0.6);
-    k.prop('chest', 1.25, -2.25, 0.5, 0.4, { v: 0 });
-    k.prop('sacks', 2.0, -1.2, 0, -0.8);
+    k.prop('chest', 1.91, -1.42, 1.02, 0.9, { v: 0, scale: 0.8 });
+    k.prop('sacks', 2.35, -0.95, 0, -0.8);
     k.prop('coins', -0.45, -1.0, 0.625, 0.3, { v: 1 });
     k.prop('ledger', 0.25, -1.08, 0.625, -0.25, { v: 1 });
     k.prop('jewels', -0.75, -1.12, 0.625, 0.5);
@@ -313,9 +315,10 @@ const BUILD = {
     k.prop('cratedoor', S.door.u, S.door.v, 0, sa, { anim: 'secret' });
     // the stash nook behind it
     k.prop('stashchest', S.nookAt.u + sd.du * 0.35, S.nookAt.v + sd.dv * 0.35, 0, sa, { stash: true });
-    k.prop('lantern', S.nookAt.u - sd.dv * 0.6, S.nookAt.v + sd.du * 0.6, 0.85, sa + Math.PI / 2);
+    k.prop('lantern', S.nookAt.u - sd.dv * 0.55, S.nookAt.v + sd.du * 0.55, 0, sa + Math.PI / 2, { scale: 0.8 });
     k.light(S.nookAt.u, S.nookAt.v, 0.9, [1.0, 0.66, 0.32], 2.6, { lantern: true, nook: true });
     k.prop('stuckpick', S.nookAt.u + sd.du * 0.62, S.nookAt.v + sd.dv * 0.62, 0.55, sa);
+    k.crate(0.02, -1.74, 0, 0.62, 0.5, 0.125);
     L.npc = { u: 0.02, v: -1.72, rot: 0 };
     L.spots.counter = { u: 0.02, v: -1.0 };
     L.sign = { text: 'STORAGE', icon: 'key', sub: 'NO QUESTIONS' };
@@ -352,6 +355,7 @@ const BUILD = {
     k.prop('lanternpost', -1.45, -0.72, 0.625, 0);
     k.wallProp('pickrack', -0.78, 0.03, 0.5);
     k.prop('stove', 0.9, -1.85, 0, -0.5);
+    k.box(-1.0, -0.1, -1.72, -1.12, 0, 0.125, (lu) => (Math.floor(lu * VOX) % 6 === 0 ? M.IRONPLATE : M.STAINED));
     L.npc = { u: -0.55, v: -1.42, rot: 0 };
     L.spots.counter = { u: -0.55, v: -0.76 };
     L.sign = { text: 'DEEP OUTPOST', icon: 'pick' };
@@ -418,7 +422,7 @@ export function stampBurrow(f, vox, X0, Y0, Z0, CS) {
         if (pm !== -1) m = pm;
       }
     } else if (e < 1.06 && ym < 0 && ym >= -V) {
-      m = (D.worn && h3(vx >> 2, 3, vz >> 3, 87) < 0.18) ? M.STAINED : floorM; // the floor
+      m = (D.worn && h3(vx >> 2, 3, vz >> 3, 87) < 0.1) ? M.STAINED : floorM; // the floor
     } else if (e < 1.0 && ym < -V && ym > -0.3 && !cur) {
       m = M.DIRT; // fill under the floor where a cave ran below
     } else if (e < E2 && ym >= -V && ym < top + SHELL && cur && cur !== M.TIMBER && cur !== M.LADDER && cur !== M.LANTERN) {
@@ -440,12 +444,13 @@ export function stampBurrow(f, vox, X0, Y0, Z0, CS) {
       if (au < doorW && ym >= -V && ym < 0 && v < rz + 0.4) m = M.STAINED; // a worn sill
     }
     // a porch outside the door: room for the sign hanging over it and a lamp
-    if (v > rz + 0.12 && v < rz + 1.0 && Math.abs(u) < 1.05 && ym >= 0 && ym < 2.15 && !(Math.abs(u) < doorW && ym < doorH)) {
-      const au = Math.abs(u), top = 2.15 - Math.max(0, au - 0.6) * 0.9;
-      if (ym < top) m = (au > 0.92 && ym < 1.9 && Math.abs(v - rz - 0.55) < 0.07) ? M.TIMBER : 0;
-      else if (ym < top + 0.07 && Math.abs(v - rz - 0.55) < 0.07) m = M.TIMBER;
+    if (v > rz + 0.12 && v < rz + 1.7 && Math.abs(u) < 1.05 && ym >= 0 && ym < 2.15 && !(Math.abs(u) < doorW && ym < doorH)) {
+      const au = Math.abs(u), top = 2.15 - Math.max(0, au - 0.6) * 0.9 - Math.max(0, v - rz - 0.9) * 0.6;
+      const beam = Math.abs(v - rz - 0.55) < 0.07 || Math.abs(v - rz - 1.45) < 0.07;
+      if (ym < top) m = (au > 0.92 && ym < top - 0.2 && beam) ? M.TIMBER : 0;
+      else if (ym < top + 0.07 && beam) m = M.TIMBER;
     }
-    if (v > rz + 0.12 && v < rz + 1.0 && Math.abs(u) < 1.05 && ym >= -V && ym < 0) m = m === -1 ? (D.floor === M.FLAGSTONE ? M.FLAGSTONE : M.STAINED) : m;
+    if (v > rz + 0.12 && v < rz + 1.7 && Math.abs(u) < 1.05 && ym >= -V && ym < 0) m = m === -1 ? (D.floor === M.FLAGSTONE ? M.FLAGSTONE : M.STAINED) : m;
     // Rocco's passage: a crate-stack door in the back wall, a short tunnel, the stash nook
     if (sec) {
       const along = u * sec.du + v * sec.dv, side = u * -sec.dv + v * sec.du;

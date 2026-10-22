@@ -71,6 +71,13 @@ export class Beast extends Enemy {
   decide() {
     const m = this.mgr, I = this.I;
     if (this.nest && this.mode !== 'fight') this.guardNest();
+    // attacked by another creature: fight back (the herd joins in), or run if it's far bigger
+    const by = this.threatBy;
+    if (by && by.alive && m.time - this.threatT < 7) {
+      if (I.aggro === 'timid' || this.baby || (by.info.tier ?? 1) > (I.tier ?? 1) + 1.5) { this.fleeFrom = { x: by.pos.x, z: by.pos.z, k: 1 }; if (this.mode !== 'flee') { this.setMode('flee'); this.onFlee?.(); } return; }
+      if (this.mode !== 'hunt' || this.prey !== by) { this.prey = by; this.setMode('hunt'); this.onNotice?.(); }
+      return;
+    }
     const th = this.threat();
     if (th) { this.fleeFrom = th; if (this.mode !== 'flee') { this.setMode('flee'); this.onFlee?.(); this.alertGroup(null); } return; }
     if (this.mode === 'flee' && this.modeT < 2.5) return;
@@ -489,7 +496,11 @@ export class Beast extends Enemy {
     const d = Math.hypot(at.x - t.center.x, at.y - t.center.y, at.z - t.center.z);
     if (d > r + t.hitR * t.size + 0.15) return false;
     const l = Math.hypot(t.pos.x - this.pos.x, t.pos.z - this.pos.z) || 1;
-    const k = clamp((o.prey ?? 0.3) * (this.I.tier ?? 2) / (t.info.tier ?? 1), 0.12, 0.8);
+    const k = clamp((o.prey ?? 0.3) * (this.I.tier ?? 2) / (t.baby ? 0.5 : t.info.tier ?? 1), 0.12, 0.8);
+    // the victim (and its herd or pack) knows who did it
+    const call = (c) => { c.threatBy = this; c.threatT = m.time; };
+    call(t);
+    if (t.group?.members) for (const c of t.group.members) if (c !== t && c.alive && Math.hypot(c.pos.x - t.pos.x, c.pos.z - t.pos.z) < 10) call(c);
     t.takeHit(t.maxHp * k, { x: (t.pos.x - this.pos.x) / l, y: 0.3, z: (t.pos.z - this.pos.z) / l }, { by: this, kb: 0.8 });
     this.fx.dust(t.center.x, t.center.y, t.center.z, 4, m.dustCol(t.pos), 0.1);
     this.sound('chomp', { vol: 0.8 });

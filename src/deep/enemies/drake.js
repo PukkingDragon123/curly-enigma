@@ -109,7 +109,7 @@ export class Drake extends Beast {
       go() { this.vel.x += Math.sin(this.yaw) * 2.6; this.vel.z += Math.cos(this.yaw) * 2.6; this.sound('chomp', {}); },
       hit(A) { return this.strikeAt(A, this.mouthPos(_v), 0.42, { dmg: this.info.dmg, push: 3.4, kind: 'bite' }); } },
     { id: 'tail', range: [0, 2.4], arc: Math.PI, tell: 0.6, dur: 0.4, hitAt: 0.12, rec: 0.6, cd: [1.6, 2.6], w: 1.2,
-      when(e) { const t = e.mgr.pc; return Math.abs(Math.atan2(t.x - e.pos.x, t.z - e.pos.z) - e.yaw) > 1.1; },
+      when(e, d, tg) { const t = tg && tg !== 'player' ? tg.pos : e.mgr.pc; return Math.abs(((Math.atan2(t.x - e.pos.x, t.z - e.pos.z) - e.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > 1.1; },
       start() { this.sound('growl', { pitch: 1.2, dur: 0.5 }); },
       hit(A) { this.tailTip(_w); return this.strikeAt(A, _w, 0.7, { dmg: this.info.dmg * 0.9, push: 5, up: 2.2, kind: 'tail' }); } },
     { id: 'breath', range: [1.8, 6.5], arc: 0.45, tell: 1.0, dur: 1.1, rec: 0.8, cd: [4, 6], w: 1.6, heavy: true,

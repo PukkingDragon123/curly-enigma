@@ -133,7 +133,7 @@ export class BakeStep extends Step {
     // paws: right on the peel's handle, left fanning the fire
     const h = this.peel.position;
     this.R.speed = 24;
-    this.R.goal.set(h.x + 0.12, h.y + 0.1, h.z + 0.55);
+    this.R.goal.set(h.x + 0.32, h.y + 0.06, h.z + 0.58);
     this.R.setPose({ pitch: 0.5, roll: 0.4, yaw: 0.6 });
     const m = this.mouth();
     this.L.goal.set(m.x - 0.62, m.y + 0.06 + Math.sin(this.t * 6) * 0.01, m.z + 0.3);

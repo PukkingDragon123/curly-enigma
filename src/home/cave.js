@@ -281,7 +281,7 @@ export class CaveHall {
     this.light({ kind: 'ruin', x: gp.x, y: gp.y, z: gp.z + 0.25, color: 0x4ad8c0, intensity: 0.9, distance: 3.2, flicker: 0.15, speed: 0.35, halo: 0.55, haloOpacity: 0.22, priority: 3, power: 0.5, radius: 2.2, rock: [0.25, 0.75, 0.7], reach: 3.6 });
     this.boxes.push([S.sealed.x - 1.0, Y, sw.z - 0.2, S.sealed.x + 1.0, Y + 2.2, sw.z + 0.25]);
     // a soft fill over the dais (baked and on the rock only): the old stone reads pale in the gloom
-    this.light({ kind: 'ruinfill', x: S.dais.x - 0.3, y: Y + 1.7, z: S.dais.z + 1.1, color: 0xffd2a0, intensity: 0, real: false, power: 0.55, radius: 2.8, rock: [0.42, 0.36, 0.28], reach: 3.6 });
+    this.light({ kind: 'ruinfill', x: S.dais.x - 0.3, y: Y + 1.7, z: S.dais.z + 1.1, color: 0xffe2c0, intensity: 0, real: false, power: 1.05, radius: 3.4, rock: [0.42, 0.36, 0.28], reach: 3.6 });
     for (const [i, p] of S.pillars.entries()) {
       const pl = lowRes(() => RP.pillar(p.h, true, 47 + i * 3));
       this.place(pl.obj, p.x, p.z, i * 0.7, Y + (Math.abs(p.x - S.dais.x) < 1.1 ? 14 / 64 : 0));
@@ -315,12 +315,14 @@ export class CaveHall {
     this.boxAt(S.winch.x, S.winch.z, 0.42, 0.32, 0.9, S.winch.yaw);
     // a beam across the bay with pulley blocks, the winch rope going up over it
     const by = Math.min(this.rock.roofAt(7.6, -5.6), this.rock.roofAt(7.6, -3.4)) - 0.16;
-    const bm = TP.sagBeam(Math.round(2.6 * 64), 2, 39);
-    this.place(bm, 7.6, -4.45 + 1.3, Math.PI / 2, by);
-    for (const [z, len] of [[-5.15, 0.5], [-3.95, 0.8]]) {
+    // (only where the roof is high enough to keep it over your head; else the blocks hang off the rock)
+    if (by > Y + 2.05) {
+      const bm = TP.sagBeam(Math.round(2.6 * 64), 2, 39);
+      this.place(bm, 7.6, -4.45 + 1.3, Math.PI / 2, by);
+    }
+    for (const z of [-5.15, -3.95]) {
       const p = RP.pulley(61 + Math.round(z * 3));
       this.place(p, 7.6, z, 0.2, by - 0.02);
-      void len;
     }
     // the Miners' Board on a pit frame by the lift
     const mw = this.wallAt(S.miners.x, -4.4, 0, 1, Y + 0.7);

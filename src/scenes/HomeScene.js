@@ -72,6 +72,9 @@ export default class HomeScene extends Scene {
     const marks = {};
     let tm = t0;
     const mark = (k) => { const n = performance.now(); marks[k] = Math.round(n - tm); tm = n; };
+    // UI icons are canvases read back as data URLs: make the build button's now, while the GPU is idle
+    // (later, a readback waits for the cave's first heavy frames: seconds on software GL)
+    this.buildIconURL = iconURL('chair_wood');
     const from = params.from || 'continue';
     this.arrivalLesson = params.lesson || null; // cooking { tutorial } comes back with lesson: 'cook_done' | 'cook'
     this.from = from;
@@ -206,12 +209,14 @@ export default class HomeScene extends Scene {
     this.ambientLoop('fire', () => this.nearPointVol(H, 4.2, 0.42) + this.nearKindVol('fireplace', 3, 0.4));
     this.ambientLoop('water', () => this.nearPointVol(P, 2.4, 0.12) + this.nearKindVol('fountain', 2.5, 0.22) + this.nearKindVol('fish_tank', 1.5, 0.08));
     this.ambientLoop('wind', () => (this.rig.player.pos.z < HALL.z1 ? 0.035 : 0.015));
+    mark('loops');
     this.own(() => { for (const l of this.loops) if (l.h) l.h.stop(0.1); });
     this.own(() => { for (const k of this.anchors.keys()) g.ui.hideBubble(k); g.ui.setHints(null); g.ui.tutor?.hide(); });
     g.ui.setRadar?.(null);
     g.ui.setDepth?.(null);
     g.ui.setBag?.(null);
     g.ui.setActionIcon?.(false);
+    mark('hud');
     // the first-person HUD keeps the mine's depth plumb-bob up; there is no depth at home
     const dep = g.ui.status?.depth;
     if (dep) { dep.style.visibility = 'hidden'; this.own(() => { dep.style.visibility = ''; }); }
@@ -234,6 +239,7 @@ export default class HomeScene extends Scene {
     console.info(`[home] built in ${this.buildMs.toFixed(0)} ms [${steps(marks)}] (room ${this.shell.ms.toFixed(0)}: ${steps(this.shell.steps)}; cave ${this.cave.ms.toFixed(0)}: ${steps(this.cave.steps)})`);
     const r = g.engine?.renderer;
     if (r && r.compileAsync) { try { await r.compileAsync(this.scene, this.camera); } catch (e) { console.warn(e); } }
+    this.entered = true;
   }
 
   /** A hello from Old Star when you come home after the lessons (not every time). */
@@ -695,7 +701,7 @@ export default class HomeScene extends Scene {
   /** A small hammer button (desktop: shows the X key; touch: tap to decorate). */
   hammerBtn() {
     const b = el('button', { class: 'btn interactive', title: 'Build mode (X)', 'aria-label': 'Decorate', style: { position: 'absolute', right: 'calc(var(--sar, 0px) + var(--px) * 4)', top: 'calc(var(--sat, 0px) + var(--px) * 44)', display: 'flex', alignItems: 'center', gap: 'calc(var(--px) * 2)', fontSize: '1em', pointerEvents: 'auto', zIndex: 4 }, onclick: (e) => { e.stopPropagation(); this.toggleBuildHere(); } }, [
-      el('img', { class: 'pix', src: iconURL('chair_wood'), alt: '', style: { width: 'var(--icon-s, 32px)', height: 'var(--icon-s, 32px)' } }), el('kbd', { style: { margin: 0 } }, 'X'),
+      el('img', { class: 'pix', src: this.buildIconURL || iconURL('chair_wood'), alt: '', style: { width: 'var(--icon-s, 32px)', height: 'var(--icon-s, 32px)' } }), el('kbd', { style: { margin: 0 } }, 'X'),
     ]);
     // in the HUD layer: above the "click to look around" catcher, so it works with a free mouse
     this.game.ui.hud.append(b);
@@ -749,7 +755,17 @@ export default class HomeScene extends Scene {
     this.tickMusicBox(dt);
     // Nugget naps in her coop now and then
     if (this.nug) {
-      this.nug.update(dt, this.rig.player);
+      // her walking coop keeps to your room (its tile grid): while you're out in the cave she waits
+      // just inside, by the steps up to the arch
+      const P = this.rig.player;
+      let who = P;
+      if (P.pos.z < 0.35) {
+        const st0 = (this.nugStandIn ||= { pos: new THREE.Vector3(), yaw: 0 });
+        st0.pos.set(THREE.MathUtils.clamp(P.pos.x, 0.7, this.W * T - 0.7), P.pos.y, 1.05);
+        st0.yaw = P.yaw;
+        who = st0;
+      }
+      this.nug.update(dt, who);
       if (!this.scripted) {
         this.napT -= dt;
         if (this.napT <= 0) {
@@ -806,7 +822,9 @@ export default class HomeScene extends Scene {
   }
 
   render() {
-    if (!this.rig) return;
+    // (nothing to see until enter() is done: the transition's black covers it, and a frame of the
+    // half-built cave is pure cost while it loads)
+    if (!this.rig || !this.entered) return;
     if (this.hidePaws) this.game.engine.render(this.scene, this.camera, this.post);
     else this.rig.render(this.post);
   }

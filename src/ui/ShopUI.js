@@ -52,6 +52,8 @@ function gradeOk(g, min) {
 export function openShop(game, shopId) {
   const shop = SHOPS[shopId];
   if (!shop) return null;
+  // the burrow folk in the mine have their own counter (src/deep/traders/shop.js)
+  if (shop.panel === 'burrow') return import('../deep/traders/shop.js').then((m) => m.openBurrowShop(game, shopId, { folk: game.scene?.traders?.find?.(shopId)?.built?.folk, ctx: game.scene?.traders?.c }));
   const st = game.state;
   const ui = game.ui;
   game.audio.play('babble', { pitch: shop.keeper.voice, n: 6 });

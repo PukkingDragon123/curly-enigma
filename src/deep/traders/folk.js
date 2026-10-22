@@ -111,7 +111,7 @@ export class Folk {
   // ------------------------------------------------------------ talking
   /** Say a line: a speech bubble over the head, the mouth moving, a face, a voice. */
   say(text, o = {}) {
-    if (!text) return;
+    if (!text || this.disposed) return;
     const rig = this.rig;
     const secs = o.dur ?? Math.min(6, 1.6 + text.length * 0.045);
     if (o.expr) rig.setExpression(o.expr, { hold: secs + 0.5 });
@@ -148,6 +148,7 @@ export class Folk {
   }
   /** A reaction after something happened at the counter. kind: bought | sold | poor | bye | haggle-up | haggle-miss | haggle-angry */
   react(kind, text) {
+    if (this.disposed) return;
     const map = { bought: ['happy', 'nod'], sold: ['happy', 'nod'], poor: ['sad', 'shake'], bye: [this.npc === 'herbalist' ? 'stern' : 'happy', 'wave'], up: ['surprised', null], miss: ['smug', 'shake'], angry: ['angry', 'shake'], deal: ['smug', 'hop'], laugh: ['laugh', 'hop'] };
     const [expr, emote] = map[kind] || ['neutral', null];
     if (text) this.say(text, { expr, emote, sound: kind !== 'bye' });
@@ -220,6 +221,7 @@ export class Folk {
   }
 
   dispose() {
+    this.disposed = true;
     this.c.ui?.hideBubble?.(this.bubbleKey);
     this.rig.root.parent?.remove(this.rig.root);
     try { this.rig.dispose?.(); } catch (e) { /* noop */ }

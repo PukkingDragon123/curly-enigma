@@ -142,8 +142,7 @@ export class GrateStep extends Step {
     this.R.speed = 26;
     this.R.goal.set(this.face.x + 0.14, this.y + 0.04, this.face.z + 0.18);
     this.R.setPose({ pitch: 0.3, roll: 0.6, yaw: 1.1 });
-    this.L.goal.set(this.grater.position.x - 0.3, this.top + 0.05, this.grater.position.z + 0.12);
-    this.L.setPose({ pitch: 0.75, roll: 0.3, yaw: 0.8 });
+    this.rest(this.L, -0.08, 0.06);
   }
 
   timeout() { this.liveOk = true; this.stop(); if (this.finishT < 0) this.finish(0); }

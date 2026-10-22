@@ -1556,7 +1556,7 @@ export class Props {
     this.audio?.play('brush', { vol: 0.4 });
     openForage(game, p.item, { protects }).then((res) => {
       this.foraging = null;
-      if (!res || res.cancel || p.gone) return;
+      if (!res || res.cancel || p.gone || this.disposed) return;
       this.deliver(this.harvest(p, res));
     }).catch((e) => { console.warn('forage failed', e); this.foraging = null; });
     return { forage: p.item };
@@ -1761,6 +1761,7 @@ export class Props {
     return { ...this.stats, fallers: this.fallers.length, lights: this.lit.size, plants: this.plants.size, cap: this.pool.capV, models: modelStats() };
   }
   dispose() {
+    this.disposed = true;
     for (const f of this.fallers) { this.scene3?.remove(f.mesh); f.mesh.geometry.dispose(); }
     this.fallers = [];
     this.pool.dispose();

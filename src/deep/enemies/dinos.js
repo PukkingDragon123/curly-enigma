@@ -232,7 +232,7 @@ export class Tyrant extends Beast {
     { id: 'bite', range: [0, 3.4], arc: 0.45, tell: 1.0, dur: 0.4, hitAt: 0.12, rec: 1.1, cd: [2, 3.2], w: 2.2, heavy: true,
       start() { this.sound('roar_big', { pitch: 1.1, vol: 0.9 }); },
       go() { this.vel.x += Math.sin(this.yaw) * 3; this.vel.z += Math.cos(this.yaw) * 3; this.sound('chomp', { vol: 1 }); this.mgr.shake(this, 0.3); },
-      hit(A) { return this.strikeAt(A, this.mouthPos(_v), 0.7, { dmg: this.info.dmg * 1.4, push: 6, up: 3, heavy: true, unblockable: true, kind: 'bite' }); } },
+      hit(A) { return this.strikeAt(A, this.reachPoint(1.2, -0.9), 0.85, { dmg: this.info.dmg * 1.4, push: 6, up: 3, heavy: true, unblockable: true, kind: 'bite' }); } },
     { id: 'stomp', range: [0, 3], arc: Math.PI, tell: 0.85, dur: 0.5, hitAt: 0.1, rec: 1, cd: [3, 4.5], w: 1, heavy: true,
       start() { this.sound('grunt', { pitch: 0.5 }); },
       hit(A) {
@@ -245,7 +245,7 @@ export class Tyrant extends Beast {
         return true;
       } },
     { id: 'tail', range: [0, 3.6], arc: Math.PI, tell: 0.7, dur: 0.45, hitAt: 0.15, rec: 0.8, cd: [2, 3], w: 1.4,
-      when(e) { const t = e.mgr.pc; return Math.abs(((Math.atan2(t.x - e.pos.x, t.z - e.pos.z) - e.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > 1.2; },
+      when(e, d, tg) { const t = tg && tg !== 'player' ? tg.pos : e.mgr.pc; return Math.abs(((Math.atan2(t.x - e.pos.x, t.z - e.pos.z) - e.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > 1.2; },
       start() { this.sound('growl', { pitch: 0.6, dur: 0.6 }); },
       hit(A) { this.tailTip(_w); return this.strikeAt(A, _w, 1.1, { dmg: this.info.dmg * 0.8, push: 7, up: 2.5, kind: 'tail' }); } },
   ];
@@ -387,7 +387,7 @@ export class Shellback extends Beast {
       tick(A, dt) { if (A.phase === 'go') this.push(Math.sin(this.yaw) * 4.5, Math.cos(this.yaw) * 4.5, 12, dt); },
       hit(A) { return this.strikeAt(A, this.reachPoint(0.2, -0.1), 0.45, { dmg: this.info.dmg, push: 5, up: 2.5 }); } },
     { id: 'club', range: [0, 2.8], arc: Math.PI, tell: 0.9, dur: 0.5, hitAt: 0.18, rec: 0.8, cd: [2.4, 3.4], w: 1.5, heavy: true,
-      when(e) { const t = e.mgr.pc; return !e.baby && Math.abs(((Math.atan2(t.x - e.pos.x, t.z - e.pos.z) - e.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > 1; },
+      when(e, d, tg) { const t = tg && tg !== 'player' ? tg.pos : e.mgr.pc; return !e.baby && Math.abs(((Math.atan2(t.x - e.pos.x, t.z - e.pos.z) - e.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > 1; },
       start() { this.sound('grunt', { pitch: 1.1 }); },
       hit(A) { this.tailTip(_w); const ok = this.strikeAt(A, _w, 0.8, { dmg: this.info.dmg * 1.4, push: 6.5, up: 3, heavy: true, kind: 'tail' }); if (ok) this.sound('smash', { vol: 0.9 }); return ok; } },
   ];

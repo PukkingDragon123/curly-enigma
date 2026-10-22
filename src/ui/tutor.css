@@ -8,8 +8,12 @@
 }
 html.is-touch .tutor, .tutor.top { bottom: auto; top: calc(var(--sat) + var(--px) * 8); }
 @media (max-height: 520px) { .tutor { bottom: calc(var(--sab) + var(--px) * 30); } }
+/* phones held upright: below the HUD's top-right column (book, backpack, the build button at home) */
+@media (orientation: portrait) and (max-width: 640px) { html.is-touch .tutor { top: calc(var(--sat) + var(--px) * 52 + var(--icon-s, 32px)); } }
 #ui[data-hud=none] .tutor, #ui[data-hud=mini] .tutor { bottom: calc(var(--sab) + var(--px) * 12); }
 html.is-touch #ui[data-hud=none] .tutor, html.is-touch #ui[data-hud=mini] .tutor, #ui .tutor.top { bottom: auto; }
+/* a window (a dialog, the book, the backpack) has the floor: the card steps aside till it closes */
+#ui.panel-open .tutor { opacity: 0; visibility: hidden; transition: opacity .15s, visibility 0s .15s; }
 
 .tt-card {
   position: relative; display: flex; align-items: flex-start; gap: calc(var(--px) * 4);

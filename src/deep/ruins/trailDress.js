@@ -108,9 +108,10 @@ export class TrailDress {
       const seen = new Set([e.home?.text]);
       const boards = e.boards.filter((b) => !seen.has(b.text) && seen.add(b.text)).slice(0, 3);
       if (e.home) boards.push(e.home);
-      // stand it against the wall to the right of the way out, just past the mouth
+      // stand it against the wall to the right of the way out, just inside the mouth (past it the
+      // way may drop down a ladder shaft)
       const seg = { a: e.p, b: { x: e.p.x + e.out[0], y: e.p.y, z: e.p.z + e.out[1] } };
-      this.signs.push({ kind: 'sign', seg, s: 0.25, side: 1, boards });
+      this.signs.push({ kind: 'sign', seg, s: -0.7, side: 1, boards });
     }
     this.items.push(...this.signs);
   }
@@ -129,7 +130,7 @@ export class TrailDress {
     return null;
   }
   segPoint(f, s, side, out = {}) {
-    const dx = f.b.x - f.a.x, dz = f.b.z - f.a.z, L = Math.hypot(dx, dz) || 1, t = Math.max(0, Math.min(1, s / L));
+    const dx = f.b.x - f.a.x, dz = f.b.z - f.a.z, L = Math.hypot(dx, dz) || 1, t = s / L; // may run past the ends
     const ux = dx / L, uz = dz / L, off = side * ((TRAIL_W / 2) - 0.32);
     out.x = f.a.x + dx * t - uz * off; out.z = f.a.z + dz * t + ux * off; out.y = f.a.y + (f.b.y - f.a.y) * t;
     out.ux = ux; out.uz = uz;
@@ -139,8 +140,17 @@ export class TrailDress {
   // ------------------------------------------------------------ build
   build(it) {
     const R = this.R, mat = R.mat;
-    const p = this.segPoint(it.seg, it.s, it.side || 0);
-    const fy = this.floorAt(p.x, p.y, p.z);
+    let p = this.segPoint(it.seg, it.s, it.side || 0);
+    let fy = this.floorAt(p.x, p.y, p.z);
+    if (fy === null && it.kind !== 'rails' && it.kind !== 'cart') {
+      // no floor right there (a shaft, a chasm): try a little to either side and back
+      for (const [ds, sd] of [[-0.5, 1], [0, -1], [-0.5, -1], [0.5, 1], [-1, 1], [0.5, -1]]) {
+        if (!this.real(p.x, p.y, p.z)) break;
+        const q = this.segPoint(it.seg, it.s + ds, (it.side || 1) * sd);
+        const f = this.floorAt(q.x, q.y, q.z);
+        if (f !== null) { p = q; fy = f; it.s += ds; it.side = (it.side || 1) * sd; break; }
+      }
+    }
     if (fy === null) return false;
     const g = new THREE.Group();
     g.position.set(p.x, fy, p.z);

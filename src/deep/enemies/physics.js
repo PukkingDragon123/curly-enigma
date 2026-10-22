@@ -41,6 +41,10 @@ export function walk(w, b, dt, grav = 16) {
   // big bodies sample their box sparsely (a stride of 2–3 voxels)
   const sd = b.stride ?? (hw > 0.55 ? 3 : hw > 0.28 ? 2 : 1);
   const hits = (x, y, z) => boxHits(w, x - hw, y, z - hw, x + hw, y + h, z + hw, sd);
+  // the box was free where it stood: a move only has to check the slab its leading face sweeps
+  const sweepX = (x0, x1) => (x1 > x0 ? boxHits(w, x0 + hw, p.y, p.z - hw, x1 + hw, p.y + h, p.z + hw, sd) : boxHits(w, x1 - hw, p.y, p.z - hw, x0 - hw, p.y + h, p.z + hw, sd));
+  const sweepZ = (z0, z1) => (z1 > z0 ? boxHits(w, p.x - hw, p.y, z0 + hw, p.x + hw, p.y + h, z1 + hw, sd) : boxHits(w, p.x - hw, p.y, z1 - hw, p.x + hw, p.y + h, z0 - hw, sd));
+  const sweepY = (dy) => (dy > 0 ? boxHits(w, p.x - hw, p.y + h, p.z - hw, p.x + hw, p.y + h + dy, p.z + hw, sd) : boxHits(w, p.x - hw, p.y + dy, p.z - hw, p.x + hw, p.y, p.z + hw, sd));
   // fluids: water floats, lava floats fire-folk (others sink in and burn — the caller decides)
   const fl = fluidAt(w, p.x, p.y + h * 0.4, p.z);
   b.inFluid = fl;
@@ -60,7 +64,7 @@ export function walk(w, b, dt, grav = 16) {
       const d = (ax === 0 ? v.x : v.z) * sdt;
       if (!d) continue;
       const nx = ax === 0 ? p.x + d : p.x, nz = ax === 2 ? p.z + d : p.z;
-      if (!hits(nx, p.y, nz)) { p.x = nx; p.z = nz; continue; }
+      if (!(ax === 0 ? sweepX(p.x, nx) : sweepZ(p.z, nz))) { p.x = nx; p.z = nz; continue; }
       let stepped = false;
       if (was || grounded) {
         for (let st = 1 / VOX; st <= (b.step ?? 0.26) + 1e-4; st += Math.max(1, sd - 1) / VOX) {
@@ -70,11 +74,12 @@ export function walk(w, b, dt, grav = 16) {
       if (!stepped) { if (ax === 0) v.x *= -0.15; else v.z *= -0.15; ev.bumped = true; }
     }
     const dy = v.y * sdt;
-    if (!hits(p.x, p.y + dy, p.z)) p.y += dy;
+    if (dy && !sweepY(dy)) p.y += dy;
+    else if (!dy) { /* resting */ }
     else {
       if (dy < 0) {
         const top = Math.floor((p.y + dy) * VOX + 1) / VOX;
-        if (top <= p.y + 1e-6 && !hits(p.x, top, p.z)) p.y = top;
+        if (top < p.y - 1e-6 && !hits(p.x, top, p.z)) p.y = top;
         grounded = true;
         if (!was && !ev.landed) ev.landed = -v.y;
       } else ev.ceil = true;
@@ -82,8 +87,10 @@ export function walk(w, b, dt, grav = 16) {
     }
   }
   if (!grounded && v.y <= 0 && boxHits(w, p.x - hw, p.y - 0.03, p.z - hw, p.x + hw, p.y, p.z + hw, sd)) grounded = true;
-  // spawned or pushed into rock: nudge up
-  if (hits(p.x, p.y, p.z)) { p.y += 1 / VOX; v.y = Math.max(v.y, 0); }
+  // spawned or pushed into rock: nudge up (a full check now and then, or after a bump)
+  b._fullT = (b._fullT || 0) + 1;
+  if ((ev.bumped || ev.ceil || b._fullT > 8) && hits(p.x, p.y, p.z)) { p.y += 1 / VOX; v.y = Math.max(v.y, 0); }
+  if (b._fullT > 8) b._fullT = 0;
   b.grounded = grounded;
   if (grounded) {
     const f = Math.max(0, 1 - (b.friction ?? 10) * dt);

@@ -192,7 +192,7 @@ class Dials extends Puzzle {
 }
 
 // ------------------------------------------------------------------ light beams
-const BEAM_W = 0.035;
+const BEAM_W = 0.05;
 class Beams extends Puzzle {
   build() {
     const s = this.s, B = this.P.beam;
@@ -211,8 +211,8 @@ class Beams extends Puzzle {
     s.put(sk.base, B.recv.a, 4, B.recv.b);
     this.crys = s.put(sk.crystal, B.recv.a, 4 + 7 * 0.5, B.recv.b, [1, 0], this.R.dimMat);
     this.segs = [];
-    this.coreMat = new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
-    this.haloMat = new THREE.MeshBasicMaterial({ color: 0xffb860, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false });
+    this.coreMat = new THREE.MeshBasicMaterial({ color: 0xfff6d0, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false });
+    this.haloMat = new THREE.MeshBasicMaterial({ color: 0xffb048, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false });
     this.box = new THREE.BoxGeometry(1, 1, 1);
     for (let k = 0; k < 8; k++) {
       const c = new THREE.Mesh(this.box, this.coreMat), h = new THREE.Mesh(this.box, this.haloMat);
@@ -280,7 +280,7 @@ class Beams extends Puzzle {
       if (!p1) { c.visible = h.visible = false; return; }
       s.wp(p0[0], B.y + 0.5, p0[1], a); s.wp(p1[0], B.y + 0.5, p1[1], b);
       const len = a.distanceTo(b);
-      for (const [m, wdt] of [[c, BEAM_W], [h, BEAM_W * 4]]) {
+      for (const [m, wdt] of [[c, BEAM_W], [h, BEAM_W * 4.5]]) {
         m.visible = len > 0.01;
         m.position.copy(a).add(b).multiplyScalar(0.5);
         m.lookAt(b);
@@ -331,8 +331,8 @@ class Beams extends Puzzle {
     }
     // shimmer and sparkle
     const f = 0.85 + Math.sin(this.t * 31) * 0.08 + Math.sin(this.t * 7) * 0.07;
-    this.coreMat.opacity = 0.9 * f;
-    this.haloMat.opacity = 0.2 * f;
+    this.coreMat.opacity = Math.min(1, 1.05 * f);
+    this.haloMat.opacity = 0.3 * f;
     const tr = this.trace;
     if (tr && Math.random() < dt * 14) {
       const k = Math.floor(Math.random() * (tr.pts.length - 1)), t = Math.random();

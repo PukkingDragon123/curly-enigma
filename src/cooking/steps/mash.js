@@ -142,7 +142,7 @@ export class MashStep extends Step {
     // paws: right on the masher handle, left steadying the vessel
     const top = this.tool.position;
     this.R.speed = 30;
-    this.R.goal.set(top.x + 0.06, top.y + 0.3, top.z + 0.1);
+    this.R.goal.set(top.x + 0.08, top.y + 0.2, top.z + 0.22);
     this.R.setPose({ pitch: 0.8, roll: 0.35, yaw: 0.8 });
     const lr = this.vessel === 'pot' ? 0.46 : 0.42;
     this.L.goal.set(this.center.x - lr, this.surfaceY + 0.05, this.center.z + 0.08);

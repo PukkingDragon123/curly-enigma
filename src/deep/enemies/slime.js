@@ -87,7 +87,7 @@ export class Slime extends Beast {
     this.faceMat = this.material({ rimK: 0 });
     this.body = this.group3(this.root);
     this.part(G.jelly, this.mat, this.body);
-    this.face = this.part(G.face, this.faceMat, this.body);
+    this.faceM = this.part(G.face, this.faceMat, this.body);
     // whatever it swallowed, bobbing inside
     const pick = Math.floor(Math.random() * G.items.length);
     this.inside = new THREE.Mesh(G.items[pick], this.coreMat);
@@ -148,7 +148,7 @@ export class Slime extends Beast {
     this.inside.position.y = (4.5 + Math.sin(t * 1.7) * 1.2 + this.sq * 3) * VS;
     this.inside.rotation.y += dt * 0.6;
     this.eyeOpen = this.asleep ? 0.3 : 1;
-    this.face.scale.y = this.blinkD > 0 ? 0.3 : 1;
+    this.faceM.scale.y = this.blinkD > 0 ? 0.3 : 1;
     if (this.G.glow > 0.3 && Math.random() < dt * 3 && this.dist < 12) this.fx.spawn({ x: this.center.x + rand(-0.2, 0.2), y: this.pos.y + this.size * 0.5, z: this.center.z + rand(-0.2, 0.2), vy: 0.3, life: 0.8, size: 0.02, color: this.G.light, glow: true, drag: 1 });
   }
 

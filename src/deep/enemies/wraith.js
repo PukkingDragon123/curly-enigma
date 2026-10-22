@@ -84,12 +84,12 @@ export class Wraith extends Beast {
   static attacks = [
     { id: 'claw', range: [0, 1.9], arc: 0.7, tell: 0.7, dur: 0.4, hitAt: 0.12, rec: 0.6, cd: [1.3, 2.2], w: 2.5,
       start() { this.sound('wail', { pitch: 1.3, vol: 0.6 }); },
-      go() { this.vel.x += Math.sin(this.yaw) * 4; this.vel.z += Math.cos(this.yaw) * 4; this.sound('whoosh', { vol: 0.6 }); },
+      go(A) { this.lunge(A, 6); this.sound('whoosh', { vol: 0.6 }); },
       hit(A) { return this.strikeAt(A, this.reachPoint(0.25, 0.1), 0.42, { dmg: this.info.dmg, push: 2.8, kind: 'claw' }); } },
     { id: 'grasp', range: [0, 2.4], arc: 0.6, tell: 1.15, dur: 0.5, hitAt: 0.1, rec: 1, cd: [3.5, 5], w: 1, heavy: true,
       start() { this.sound('wail', { pitch: 0.85, vol: 1 }); },
       tick(A, dt) { if (A.phase === 'tell' && this.dist < 14) { const p = this.handPos(_v); mote(this.fx, p.x, p.y, p.z, this.G.mist, 0.035, 0.6); } },
-      go() { this.vel.x += Math.sin(this.yaw) * 5; this.vel.z += Math.cos(this.yaw) * 5; },
+      go(A) { this.lunge(A, 7); },
       hit(A) {
         const p = this.reachPoint(0.2, 0.1);
         if (A.target === 'player' && this.gapToPlayer(p.x, p.y, p.z, 0.45) < 0) {
@@ -133,6 +133,12 @@ export class Wraith extends Beast {
     this.awake = true;
   }
 
+  /** Swoop at the target: straight at it, a little faster the further it is. */
+  lunge(A, sp) {
+    const t = this.targetPos(A), dx = t.x - this.pos.x, dz = t.z - this.pos.z, d = Math.hypot(dx, dz) || 1;
+    const v = Math.min(sp, Math.max(1.5, (d - 0.5) / 0.35));
+    this.vel.x = dx / d * v; this.vel.z = dz / d * v;
+  }
   handPos(out) { this.shoulders[0].updateWorldMatrix(true, false); return this.shoulders[0].localToWorld(out.set(0, -13 * WV, 6 * WV)); }
 
   /** Beast steering → floating: hold a hover height over the floor, drift. */
@@ -144,8 +150,11 @@ export class Wraith extends Beast {
   move(dt) {
     this.floorT -= dt;
     if (this.floorT <= 0) { this.floorT = 0.2; this.floor = airBelow(this.w, this.pos.x, this.pos.y, this.pos.z, 3); }
-    const want = (this.atk?.a.id === 'claw' && this.atk.phase === 'tell' ? 0.6 : 0.3) + Math.sin(this.t * 1.3) * 0.06;
-    this.vel.y += ((want - this.floor) * 2.2 - this.vel.y) * Math.min(1, dt * 3);
+    const lift = (this.atk?.a.id === 'claw' && this.atk.phase === 'tell' ? 0.3 : 0) + Math.sin(this.t * 1.3) * 0.06;
+    // drift at the mole's height when after it (it flies), else just above the floor
+    let dy = (0.3 + lift - this.floor);
+    if (this.mode === 'fight' || this.atk) dy = Math.max(dy, this.mgr.pl.pos.y + 0.2 + lift - this.pos.y);
+    this.vel.y += (clamp(dy, -1.5, 1.5) * 2.2 - this.vel.y) * Math.min(1, dt * 3);
     super.move(dt);
   }
 

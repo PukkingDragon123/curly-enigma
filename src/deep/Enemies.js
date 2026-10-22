@@ -232,7 +232,7 @@ export class Enemies {
         const unloaded = !this.world.chunk(Math.floor(vx / CS), Math.floor(vy / CS), Math.floor(vz / CS));
         gone = far || unloaded || e.pos.y < -230;
       }
-      if (gone) { this.tokens.delete(e); e.dispose(); this.list.splice(i, 1); }
+      if (gone) { this.tokens.delete(e); e.alive = false; e.dispose(); this.list.splice(i, 1); }
     }
   }
 
@@ -583,7 +583,7 @@ export class Enemies {
     const blow = this.combat.playerHit(e, power);
     const p = e.lastHit;
     this.noise(p.x, p.y, p.z, 5, 'fight');
-    if (e.pickHit) { e.pickHit(blow.power, dir, e.hitPart, e.hitIdx, blow); if (blow.tag) this.combat.flourish(e, blow, p); return this.feel(blow); }
+    if (e.pickHit) { e.lastHitT = this.time; e.lastHitBy = 'player'; e.pickHit(blow.power, dir, e.hitPart, e.hitIdx, blow); if (blow.tag) this.combat.flourish(e, blow, p); return this.feel(blow); }
     if (e.passive) {
       this.fx.dust(p.x, p.y, p.z, 3, this.dustCol(e.pos), 0.04);
       sparkle(this.fx, p.x, p.y, p.z, 3, [1, 1, 0.85], 1, 2, 0.015, 0.3);
@@ -802,7 +802,7 @@ export class Enemies {
       const dir = { x: dx / l, y: Math.max(0.35, dy / l), z: dz / l };
       if (e.asleep) e.wakeUp?.(true);
       e.wake?.(true);
-      if (e.blastHit) { e.blastHit(k, power, dir, x, y, z, r); continue; }
+      if (e.blastHit) { e.lastHitT = this.time; e.lastHitBy = 'blast'; e.blastHit(k, power, dir, x, y, z, r); continue; }
       const kb = 7 * k * power / (e.mass || 1);
       e.vel.x += dir.x * kb; e.vel.y += (e.info.flying ? dir.y : Math.max(dir.y, 0.5)) * kb; e.vel.z += dir.z * kb;
       e.sqv -= 6 * k; e.shiver = Math.max(e.shiver, 0.8 * k);

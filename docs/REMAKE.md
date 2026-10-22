@@ -428,11 +428,11 @@ you, and your hen. Sets `flag('fallen')`, `flag('nugget')`, starts the chain
 (`game.quests?.start('lessons')`), emits `lesson wake` + `talk oldstar`, stage → `mine`.
 
 **The lessons** (`src/home/lessons.js`; the objective line follows `NEXT[stage]`):
-- `mine`: the lift is labelled "Ride down to the dig" and goes straight to
-  `deep { from: 'lift', lift: 'L0', lesson: 'mine' }` (emits `lesson lift`); the mine-lessons part
-  takes over there and comes back with `home { from: 'lift', lesson: 'mine' }`. With copper ore in
-  the bag he sniffs it (`lesson copper_home`), gives coal if you're short, stage → `forge`;
-  without it he sends you back down.
+- `mine`: until `flag('prologue')` is set, the lift is labelled "Ride down to the dig" and goes
+  straight to `deep { from: 'lift', lift: 'L0', lesson: 'mine' }` (emits `lesson lift`); the
+  mine-lessons part takes over there and comes back with `home { from: 'lift', lesson: 'mine' }`.
+  With copper ore in the bag he sniffs it (`lesson copper_home`), gives coal if you're short, stage
+  → `forge` (talking to him with copper does the same); without it he sends you back down.
 - `forge`: the forge / anvil says "Forge with Old Star" → `forge { from: 'home', tutorial: true }`
   (below). The forge sets the stage to `cook`; back home he admires the blade (grade line).
 - `cook`: the hearth says "Cook with Old Star" → `cooking { from: 'home', tutorial: true }` (eggs
@@ -452,6 +452,14 @@ home. The forge's activities call `scene.lesson?.event('step' | 'strike' | 'melt
 'result', data)`; the forge also emits `act smelt { id, recipe, q }` and `act forge { weapon, metal,
 grade, score }`. Skills: timing windows widen by `state.skill?.('forge')` (work and quench bands,
 the pour band, balance tolerance), and a blow's energy is divided by `state.skill?.('stamina')`.
+
+**Load and cost**: the cave is built in steps that yield to the browser between them, and the scene
+renders nothing until `enter()` is done (the transition's black covers it), so a headless load is
+~5 s and the page stays responsive. In view: ~0.3 M triangles of props plus the rock chunks
+(frustum-culled), one 10-slot light pool, glows as sprites.
+
+**Nugget at home**: her walking coop (`src/home/nugget.js`, inventory part) keeps to your room's tile
+grid; while you're out in the cave she waits just inside, by the steps. "Pet" aims at `nug.head()`.
 
 **Test hooks**: `__game.scene.debug` at home: `useLift(id)`, `toggleBuild(on)`, `placeAt(id, x, z, r)`,
 `interact(label)`, `labels()`, `talk()`, `openNotes(i)`, `minersBoard(tab)`, `openChest()`,
@@ -477,6 +485,79 @@ Query strings: `?scene=home&fresh=1&from=fall` (wake-up), `?scene=forge&fresh=1&
 Each is also a plan feature (`kind: 'burrow' | 'ruin' | 'trail'`, with a `bb`) whose voxels are
 stamped by the owning part's `stamp*(f, vox, X0, Y0, Z0, CS)` (pure: it may run in a worker).
 Voxel material ids (`src/deep/materials.js`): base 0–42, ruins 96–119, NPC burrows 120–127, ores 128+.
+
+## NPC burrows and traders (traders part): as built
+
+**The burrows** (`src/deep/gen/burrows.js`, pure): each `plan.burrows` kind is its own place in
+voxels, and lists the 3D props `Traders.js` puts in it (`burrowLayout(f)` → pieces, props, the
+keeper's spot, lights, Rocco's secret passage; `roomToWorld/worldToRoom/roomYaw/wallPoint` convert
+room space). All rooms get a timber-framed door, a **porch** outside it with a hanging **sign**
+(TRADING POST / HERBALIST / STORAGE · NO QUESTIONS / DEEP OUTPOST) and a lamp, and a step behind
+the counter for the keeper. New materials 120–127 (`FLOORBOARD PLASTER TARP IRONPLATE FLAGSTONE
+STAINED COMPOST CRATEWOOD`, `hp 9999` and `unbreakable: true`).
+- **Trading Post**: plank wainscot + limewash dome with cross beams, a long panelled counter (scale
+  with swinging pans, ledger, bell, coins, lamp), three shelves of goods on the back wall, a display
+  table of ore baskets and a gem box, crates, barrels, sacks, a chalkboard (WE BUY ORE&GEMS), a rug.
+- **Herbalist's Hollow**: earthen walls, a flagstone hearth with a bubbling cauldron over embers
+  under a brick hood, raised compost beds of glowing mushrooms, a work table (mortar, herbs, book),
+  jar and potion shelves, a seed-drawer cabinet, a drying beam hung with herbs, peppers and garlic.
+- **Rocco's Storage**: crate stacks everywhere, two tarp-covered heaps, a crate counter, weapons
+  racks, a barrel of blades, the gramophone, a surface painting, a mannequin, a mounted fish, a
+  coat rack, a lost & found box, the swinging lantern (its light swings too), the NO QUESTIONS
+  sign on chains, and a **secret back door**: a crate stack in the back wall with tell-tale hinges.
+  E once: it rattles (Rocco gets nervous); E again: the plug goes (world edits, so it stays open),
+  the crate slab swings open, a timbered passage leads to his **stash nook** (chest: gold + a gem,
+  once; he notices) and an unfinished dig with a pick stuck in it and a TODO note.
+- **Deep Outpost**: brick walls with an iron band, flagstones, an iron-plated counter, heavy supply
+  shelves (dynamite crates, rope, oil, stakes, helmets), a cot, sandbags by the door, a brazier,
+  a stove, a map table, a banner.
+
+**The keepers** (`src/deep/traders/folk.js`; specs in `SHOPS[id].keeper`, chibi build): Barnaby
+Burr (trader mole, cheery), Granny Thistle (herbalist hedgehog, grumpy), **Rocco** (a fox rig
+repainted as a raccoon in `traders/rocco.js`: mask, white brows, grey cheeks round a white muzzle,
+ringed tail, rimmed ears, shifty eyes that dart, a too-big coat whose front panel swings open on
+hidden pockets: `rig.openCoat(k)`), Warden Brask (outpost badger, stern; dozes when nobody's about
+and jolts awake when you come in). They idle in character, look at you (`rig.lookAt`), greet you
+once per visit with an expression and a speech bubble, chat now and then, react to every trade.
+
+**The counters** (`src/deep/traders/shop.js`, styles reuse `ui/shop.css` + `traders/shop.css`):
+the town shop room (sign, keeper portrait with changing faces, speech, shelves with tags, counter
+card, ledger) with tabs **Buy · Sell · Jobs**; Rocco: **Weapons · Deal · Oddities · Shinies · Jobs**.
+Prices: `shopPrice` (stock price, else value × 2.2 × markup) shown and charged through
+`state.buyPrice` / `state.buy` (the Haggler skill); selling pays `sellPrice × buys.mult` (× today's
+**wanted** item bonus). Rocco pays `value × grade mult (S 1.45 … F 0.6) × today's craving (+25%)
+× haggling × state.skill('fence')`; **haggling** is a timing meter (push in the green: +6–12%,
+miss: −5% and his patience drops; 3 pushes, 3 patience). **Deals** (one a day): a hot order (a
+weapon type at 180%), a mystery crate, a tip (marks the nearest untouched geode on the radar as a
+stake), or a swap (your cheapest blade for an oddity). Rewards spill to the home stash when the
+pack is full. Saves under `state.data.traders = { met, found, haggle, deals, tips, sold, stash,
+secret, doorHint }`.
+
+**Events**: `reach {place: 'burrow:<kind>'}` on walking in · `talk {npc}` when a counter opens
+(quests deliver/offer then; the speech shows `quests.forNpc(npc).lines`) · `buy {id, gold, from, n}`
+· `sell {id, gold, to, n}` · weapons `sell {id: type, weapon: {type, metal, grade, score}, gold,
+to: 'rocco'}` · `puzzle {id: 'rocco_door'}`. **Jobs** tab: the npc's active requests (deliveries
+with have/need), news lines, an **Any work?** button (`game.quests.offer(npc)`) and **Hand it over**
+(re-emits `talk`). NPC ids: `trader herbalist rocco outpost`.
+
+**Module API** (`src/deep/Traders.js`, `new Traders(ctx)`): `update(dt, {player, eye, time})` →
+`[]` · `target(eye, dir, reach)` → `{label, kind: 'use'}` (keepers, the secret door, the stash) ·
+`use(eye, dir, reach)` → `[]` · `lights(eye)` → ≤ 4 lights (lamps, fires, the swinging lantern) ·
+`onVoxel()` · `dispose()`. A burrow builds within ~22 m (a few ms a frame) and drops past 30 m.
+`ui.openShop('trader'|'herbalist'|'rocco'|'outpost')` also opens these counters (`panel: 'burrow'`,
+one line in `ui/ShopUI.js`).
+
+**Test hooks**: `scene.traders.debug` — `list()`, `go(id, 'door'|'counter'|'out'|'secret')`,
+`build(id)`, `talk(id)` / `shop(id, tab)` (returns the panel; `panel.debug.tab(k)`,
+`.haggle(i)`, `.push(x)`), `say(id, text)`, `secret()`, `stash()`, `folk(id)`, `layout(id)`.
+
+**Hooks the lead still needs** (DigScene/Generator/Props/Dig): load `./Traders.js` like Props
+(`extModules` + `['./Traders.js', 'Traders', 'traders']`), call `this.events(this.traders.update(dt,
+{ player: pl, eye: pl.eye(), time: this.time }))` next to `props.update`, `this.traders?.dispose()`
+in `exit()`; stamp burrow features **after** trails (`plan.features.sort((a, b) => (a.kind ===
+'burrow') - (b.kind === 'burrow'))` before `aabbOf`), else trail frames land inside the rooms;
+keep cave props out of burrows in `Props.blocked`; and treat `MAT[m].unbreakable` as unbreakable in
+`Dig.js` (blasts).
 
 ## Ruins, trails and puzzles (ruins part): as built
 
@@ -537,7 +618,10 @@ gold hoard (`hoard: true`), weathered marble, verdigris bronze.
 **Trails** (`src/deep/gen/trails.js`, now mine; `src/deep/ruins/trailDress.js`). The stamp adds
 cave-ins (`trailCollapse(f)`: a rubble plug with a snapped cap beam, only where the trail ran
 through solid rock, never in burrows or caves) and plank decks on timber stringers wherever the
-floor is missing (chasms, open caves, water), and leaves ruin stone alone. At play time: a
+floor is missing (chasms, open caves, water), and leaves ruin stone alone. Loose rock (anything
+`gran`: gravel, sand, ash, snow, rubble) within ~0.4 m of a trail tunnel or ladder shaft, and
+anywhere in a ruin's box that the ruin doesn't build, is packed into dirt so nothing pours in (the
+trodden gravel floor and the cave-in plugs themselves stay loose). At play time: a
 signpost at every place's way out with hand-painted arrow boards (1/64 m voxel paint, readable from
 both sides) turned along each trail toward its far end and one pointing back in (names from
 `plan.lifts`, `plan.burrows`, Deep Town), milestones halfway along long trails, iron rails on the
@@ -547,7 +631,8 @@ and hand ropes with hangers along every plank bridge. Signposts are readable wit
 **Test hooks**: `scene.ruins.debug` — `list()`, `go(id, where, look)` (where: `entry|mid|door|room|
 puzzle` or a local `[a, y, b]`; look: `idol|door|chest|dials|beams|plates|lever|switch|valve|shaft|
 gallery`), `solve(id)`, `reset(id)`, `press(id, i | 'chest')`, `puzzle(id)`, `site(id)`, `trail()`,
-`sign(k)`. Headless the shrine/vault/well/hall walkthroughs are in the report.
+`sign(k)`. Screenshots: `shots/ruins/` (every ruin kind, each puzzle before/after, the treasure
+room, trail signpost, cave-in, plank bridge, relic icons, phone portrait/landscape).
 
 **Lead hooks wanted** (DigScene and friends are the lead's): construct `Ruins` like Props
 (`'./Ruins.js'` in the module glob and list, key `ruins`); call
@@ -819,7 +904,8 @@ models for the new plants, added to `props/models.js` `BUILD`), `src/cooking/ico
   strains, then snaps; ceiling plants pull down), **peel** (slow steady drag; sparkmoss zaps unless
   you let go on the crackle), **pick** (ripe berries only, timed), **dig** (scrub the soil off, then
   ease it out; a grub wriggles the band), **lift** (raise the egg slowly, lean against the wobble).
-  Hazards: emberbloom burns, frostbloom numbs, gloomshroom spores on yanks (gear protects). Mouse
+  Hazards: emberbloom burns, frostbloom numbs, gloomshroom spores on yanks (gear protects). With
+  the backpack full (`state.canAdd`) the plant is left growing and a warning is said. Mouse
   (also pointer-locked), touch, or keys (Space/E grip, W/S pull, A/D wiggle). Esc leaves the plant.
 - **Quality**: every plant and dish is now a quality item (`q`, `p` = pristine: whole with roots).
   `props.use()` returns `{ forage: id }` at once; when the plant is out, Props calls
@@ -842,7 +928,8 @@ models for the new plants, added to `props/models.js` `BUILD`), `src/cooking/ico
   knead have combo streaks. Score = 80% steps + 20% ingredient quality; it becomes the dish's `q`.
   The pantry is the backpack **plus the stash at home**; a one-short combo gets a sniff hint.
   Recipes are discovered by cooking (`discover('recipe', dish, { best })`, recipe cards in the pantry).
-  Emits `act { type: 'cook', dish, score, isNew }`.
+  Emits `act { type: 'cook', dish, score, isNew }`. Dishes that don't fit the backpack go to the
+  stash at home (`spill`). The kitchen got a hearth oven and Old Star's cave-rock back wall.
 - **Buffs** (`BUFFS` in recipes.js, timed by the dish's quality: 0.6×–1.4× of `secs`):
   `zippy strong hearty glow warm cool guard lucky pack sturdy bouncy sense`. `game.eat` →
   `foodBuffs(game, id, q)` (hook in Game.js). The HUD strip (`ui.buffs`, hook in UI.js) shows each as

@@ -56,6 +56,7 @@ const WANDER_CAP = [0, 2, 3, 3, 3, 4, 4];
 const GRACE = [0, 75, 25, 15, 10, 10, 10];
 // at most this many of the big ones around at once
 const UNIQUE = { crystal_golem: 1, cave_troll: 2, cave_drake: 1, tyrant: 1 };
+const PACK_CAP = { raptor: 1, kobold: 2, ruin_wraith: 1 };
 
 const pick = (table) => {
   let r = Math.random() * table.reduce((s, e) => s + e[1], 0);
@@ -213,6 +214,8 @@ export class Spawner {
     let [kind, , minD] = pick(dino ? DINO : WANDER[zone] || WANDER[1]);
     if (minD && -pl.pos.y < minD) kind = (WANDER[zone] || WANDER[1])[0][0];
     if (UNIQUE[kind] && m.list.filter((e) => e.alive && (e.kind === kind || e.key === kind)).length >= UNIQUE[kind]) kind = dino ? 'raptor' : (WANDER[zone] || WANDER[1])[0][0];
+    // one hunting pack at a time (two in the deepest zones)
+    if (PACK_CAP[kind] && [...groups].filter((g) => g.kind === kind).length >= PACK_CAP[kind] + (zone >= 5 ? 1 : 0)) kind = dino ? 'shellback' : (WANDER[zone] || WANDER[1])[0][0];
     const S = m.species(kind);
     const big = S?.info?.space?.[1] > 2;
     const spot = m.findSpot(kind, pl.pos.x, pl.pos.y, pl.pos.z, big ? 10 : 7, big ? 20 : 17, { tries: 24, ray: true });
