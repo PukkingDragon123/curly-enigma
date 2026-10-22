@@ -217,6 +217,11 @@ export class Spider extends Beast {
   ];
   static lair(m, e, n) { m.webs?.lair(n.x, e.pos.y, n.z, 3); e.lurk = true; e.fallAsleep(); }
 
+  /** The shared model for a zone; Enemies' prewarm builds it before a first sighting. */
+  static warm(mgr, zone) {
+    const z = zone >= 4 ? 4 : zone >= 3 ? 3 : 1;
+    return mgr.geo('spider|' + z, () => buildSpider(z));
+  }
   constructor(mgr, o) {
     super(mgr, o);
     this.hw = 0.34; this.h = 0.62; this.cy = 0.36; this.hitR = 0.38;
@@ -224,8 +229,7 @@ export class Spider extends Beast {
     this.size = rand(0.95, 1.12) * (this.zone >= 4 ? 1.15 : 1);
     this.step = 0.3; this.friction = 11;
     this.springK = 200; this.springC = 10; this.sqScale = 0.6;
-    const z = this.zone >= 4 ? 4 : this.zone >= 3 ? 3 : 1;
-    const G = this.G = mgr.geo('spider|' + z, () => buildSpider(z));
+    const G = this.G = Spider.warm(mgr, this.zone);
     this.hitCol = G.hide;
     this.mat = this.material({});
     this.eyeMat = this.material({ emissive: 1.4, rimK: 0.3 });

@@ -127,6 +127,11 @@ export class Drake extends Beast {
     m.spawner.register(n, `roost:${Math.round(n.x)},${Math.round(n.z)}`, 'drake_roost', e.zone, [e]);
   }
 
+  /** The shared model for a zone; Enemies' prewarm builds it before a first sighting. */
+  static warm(mgr, zone) {
+    const z = zone >= 6 ? 6 : zone >= 5 ? 5 : 4;
+    return mgr.geo('drake|' + z, () => buildDrake(z));
+  }
   constructor(mgr, o) {
     super(mgr, o);
     this.hw = 0.42; this.h = 1.1; this.cy = 0.6; this.hitR = 0.55;
@@ -134,8 +139,7 @@ export class Drake extends Beast {
     this.size = rand(0.95, 1.1);
     this.step = 0.32; this.friction = 10;
     this.springK = 140; this.springC = 10; this.sqScale = 0.4;
-    const z = this.zone >= 6 ? 6 : this.zone >= 5 ? 5 : 4;
-    const G = this.G = mgr.geo('drake|' + z, () => buildDrake(z));
+    const G = this.G = Drake.warm(mgr, this.zone);
     this.hitCol = G.hide;
     this.mat = this.material({});
     this.memMat = this.material({});

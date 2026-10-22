@@ -57,6 +57,7 @@ const GRACE = [0, 75, 25, 15, 10, 10, 10];
 // at most this many of the big ones around at once
 const UNIQUE = { crystal_golem: 1, cave_troll: 2, cave_drake: 1, tyrant: 1 };
 const PACK_CAP = { raptor: 1, kobold: 2, ruin_wraith: 1 };
+const LAIR_KIND = { '@spider_lair': 'cave_spider', '@troll_den': 'cave_troll', '@drake_roost': 'cave_drake' };
 
 const pick = (table) => {
   let r = Math.random() * table.reduce((s, e) => s + e[1], 0);
@@ -123,6 +124,18 @@ export class Spawner {
       if (!w.raycast(x, y + 0.9, z, Math.cos(a), 0, Math.sin(a), r)) n++;
     }
     return n;
+  }
+
+  /** Species keys a zone is likely to show, most common first ([kind, extra]; Enemies.prewarm). */
+  likely(zone, dino) {
+    const out = [], seen = new Set();
+    const add = (k, x) => { const id = k + (x ? '+' : ''); if (!seen.has(id)) { seen.add(id); out.push([k, x]); } };
+    if (dino) for (const [k] of DINO) add(k);
+    for (const [k] of [...(WANDER[zone] || [])].sort((a, b) => b[1] - a[1])) add(k);
+    for (const g of LAIRS[zone] || []) for (const k of g) {
+      if (k === '@kobold_camp') { add('kobold'); add('kobold', true); } else add(LAIR_KIND[k] || k);
+    }
+    return out;
   }
 
   tick(dt) {

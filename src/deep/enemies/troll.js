@@ -147,6 +147,11 @@ export class Troll extends Beast {
       go() { this.hurl(); } },
   ];
 
+  /** The shared model for a zone; Enemies' prewarm builds it before a first sighting. */
+  static warm(mgr, zone) {
+    const z = zone >= 5 ? 5 : zone >= 4 ? 4 : 3;
+    return mgr.geo('troll|' + z, () => buildTroll(z));
+  }
   constructor(mgr, o) {
     super(mgr, o);
     this.hw = 0.42; this.h = 2.0; this.cy = 1.1; this.hitR = 0.62;
@@ -154,8 +159,7 @@ export class Troll extends Beast {
     this.size = rand(0.95, 1.08);
     this.step = 0.34; this.friction = 9;
     this.springK = 120; this.springC = 11; this.sqScale = 0.4;
-    const z = this.zone >= 5 ? 5 : this.zone >= 4 ? 4 : 3;
-    const G = this.G = mgr.geo('troll|' + z, () => buildTroll(z));
+    const G = this.G = Troll.warm(mgr, this.zone);
     this.hitCol = G.hide;
     this.mat = this.material({});
     this.eyeMat = this.material({ emissive: 1.1, rimK: 0 });

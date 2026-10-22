@@ -276,13 +276,19 @@ export default class DigScene extends Scene {
     const sy = Math.sin(pl.yaw), cy = Math.cos(pl.yaw);
     this.wish = busy ? { x: 0, z: 0 } : { x: -sy * mv.y + cy * mv.x, z: -cy * mv.y - sy * mv.x };
     const exhausted = st.energy < 8;
-    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted, crouch: inp.isDown('KeyC'), frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (st.skill?.('speed') || 1) * (this.blocking ? 0.55 : 1) * (this.nugget?.carrying ? 0.7 : 1) });
+    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted, crouch: inp.isDown('KeyC'), jumpMul: st.hasBuff('bouncy') ? 1.35 : 1, frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (st.skill?.('speed') || 1) * (this.blocking ? 0.55 : 1) * (this.nugget?.carrying ? 0.7 : 1) });
     if (ev.landed) { this.audio.play('land', { hard: ev.landed > 8 }); this.fx.dust(pl.pos.x, pl.pos.y + 0.05, pl.pos.z, Math.min(10, ev.landed | 0), [0.5, 0.42, 0.34], 0.2); }
     if (ev.fallDamage) this.hurt(Math.round(ev.fallDamage), 'fall');
     if (ev.jump) this.energy(0.2);
     if (ev.splash) { this.audio.play('splash'); this.fx.splash(pl.pos.x, pl.pos.y + 0.4, pl.pos.z, 1.2); }
     if (pl.climbing) { if (!pl.onLadder) this.energy(0.9 * dt); if (chance(dt * 5)) this.audio.play('climb'); }
-    if (pl.inLava && !st.protects('heat')) { st.useEnergy(18 * dt); if (chance(dt * 4)) this.audio.play('sizzle'); this.say('lava', '<b>LAVA!</b> Get out!', 'bad', 2); for (let k = 0; k < 2; k++) this.fx.ember(pl.pos.x, pl.pos.y + 0.3, pl.pos.z); }
+    // the deep zones wear you down a little: frost in the Frost Vault, heat in the Magma Deep
+    {
+      const z = this.zone || 1;
+      if (z === 5 && !st.protects('cold')) { st.useEnergy(0.22 * dt * (st.hasBuff('warm') ? 0.3 : 1)); if (!st.hasBuff('warm')) this.say('cold', 'Brr. The cold is <b>sapping your energy</b>. A warm meal would help.', 'warn', 120); }
+      else if (z === 4 && !st.protects('heat')) { st.useEnergy(0.18 * dt * (st.hasBuff('cool') ? 0.4 : 1)); if (!st.hasBuff('cool')) this.say('heat', 'The heat down here is <b>draining you</b>. Something cooling to eat would help.', 'warn', 120); }
+    }
+    if (pl.inLava && !st.protects('heat')) { st.useEnergy(18 * dt * (st.hasBuff('cool') ? 0.4 : 1)); if (chance(dt * 4)) this.audio.play('sizzle'); this.say('lava', '<b>LAVA!</b> Get out!', 'bad', 2); for (let k = 0; k < 2; k++) this.fx.ember(pl.pos.x, pl.pos.y + 0.3, pl.pos.z); }
     if (pl.grounded && pl.speed > 0.6) {
       this.stepT = (this.stepT || 0) - dt * pl.speed / 2.4;
       if (this.stepT <= 0) { this.stepT = 1; this.audio.play('step', { vol: 0.35 }); this.energy(0.04); }
@@ -578,7 +584,10 @@ export default class DigScene extends Scene {
       if (!this.flags.firstOre) { this.flags.firstOre = true; this.say('ore1', `<b>${ITEMS[f.d.item]?.name || 'Ore'}!</b> A clump broke out of the wall. Pick it up (E) and chip it clean.`, 'good', 10); }
       return;
     }
-    const { d, s, voxels, pristine } = f;
+    const { d, s, voxels } = f;
+    let pristine = f.pristine;
+    // a lucky meal: better ore, and a better chance it comes out whole
+    if (this.state.hasBuff('lucky')) { s.q = Math.min(100, s.q + 10); if (!pristine && s.q >= 85 && chance(0.2)) pristine = true; }
     const it = ITEMS[d.item];
     const glow = !!(ORES[d.oreId].glow);
     this.audio.play('ore_free');
@@ -620,7 +629,7 @@ export default class DigScene extends Scene {
     const cat = it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'mineral' : it.cat === 'plant' ? 'plant' : null;
     if (cat) st.discover(cat, p.id);
     this.act(it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'ore' : it.cat === 'plant' || it.cat === 'ingredient' ? 'forage' : 'loot', { id: p.id, q: p.q, pristine: !!p.p });
-    this.game.ui.toast(`+ <b>${it.name}</b>${it.q ? ` ${p.q}%` : ''}${p.p ? ' · <b>pristine</b>' : ''}`, { icon: iconURL(p.id), kind: 'good' });
+    this.game.ui.toast(`+ <b>${it.name}</b>${it.q ? ` ${p.q ?? 100}%` : ''}${p.p ? ' · <b>pristine</b>' : ''}`, { icon: iconURL(p.id), kind: 'good' });
     this.showBag();
     this.updateHotbar();
   }
@@ -1081,7 +1090,7 @@ export default class DigScene extends Scene {
     this.glintT = (this.glintT || 0) - dt;
     if (this.glintT <= 0) {
       this.glintT = 0.06;
-      const nose = this.bonus('glint');
+      const nose = this.bonus('glint') * (this.state.hasBuff('sense') ? 1.4 : 1);
       const ds = this.world.depositsNear(eye.x, eye.y, eye.z, 6.5 * nose);
       const d = ds[(Math.random() * ds.length) | 0];
       if (d && !this.world.depState(d).taken) {

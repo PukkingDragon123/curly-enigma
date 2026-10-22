@@ -105,13 +105,17 @@ export class Wraith extends Beast {
       } },
   ];
 
+  /** The shared model for a zone; Enemies' prewarm builds it before a first sighting. */
+  static warm(mgr, zone) {
+    const z = zone >= 6 ? 6 : zone >= 5 ? 5 : 3;
+    return mgr.geo('wraith|' + z, () => buildWraith(z));
+  }
   constructor(mgr, o) {
     super(mgr, o);
     this.rad = 0.26; this.hw = 0.25; this.h = 1.3; this.cy = 0.8; this.hitR = 0.45;
     this.mass = 1.2; this.kb = 2.6;
     this.size = rand(0.95, 1.08);
-    const z = this.zone >= 6 ? 6 : this.zone >= 5 ? 5 : 3;
-    const G = this.G = mgr.geo('wraith|' + z, () => buildWraith(z));
+    const G = this.G = Wraith.warm(mgr, this.zone);
     this.hitCol = G.dark;
     this.mat = this.material({ alpha: 0.9 });
     this.tatMat = this.material({ alpha: 0.6, wobble: 0.012 });

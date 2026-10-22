@@ -159,6 +159,11 @@ export class Kobold extends Beast {
   ];
   static nestStyle = null;
 
+  /** The shared model for a zone; Enemies' prewarm builds it before a first sighting. */
+  static warm(mgr, zone, chief = false) {
+    const z = zone >= 5 ? 5 : zone >= 3 ? 3 : 1;
+    return mgr.geo('kobold|' + z + '|' + (chief ? 1 : 0), () => buildKobold(z, chief));
+  }
   constructor(mgr, o) {
     super(mgr, o);
     this.chief = !!o.chief;
@@ -167,8 +172,7 @@ export class Kobold extends Beast {
     this.size = this.chief ? 1.18 : rand(0.92, 1.06);
     this.step = 0.2;
     this.springK = 260; this.springC = 10;
-    const z = this.zone >= 5 ? 5 : this.zone >= 3 ? 3 : 1;
-    const G = this.G = mgr.geo('kobold|' + z + '|' + (this.chief ? 1 : 0), () => buildKobold(z, this.chief));
+    const G = this.G = Kobold.warm(mgr, this.zone, this.chief);
     this.hitCol = G.hide;
     this.mat = this.material({});
     this.eyeMat = this.material({ emissive: 1.3, rimK: 0 });

@@ -55,7 +55,7 @@ export class FPSPlayer {
   }
 
   /** mv: {x: strafe, y: forward} in -1..1; returns events {landed, fell, splash}. */
-  update(dt, mv, { jump = false, jumpHeld = false, run = false, crouch = false, frozen = false, speedMul = 1 } = {}) {
+  update(dt, mv, { jump = false, jumpHeld = false, run = false, crouch = false, frozen = false, speedMul = 1, jumpMul = 1 } = {}) {
     const ev = {};
     dt = Math.min(dt, 1 / 20);
     const w = this.w, p = this.pos, v = this.vel;
@@ -113,7 +113,7 @@ export class FPSPlayer {
       if (jumpHeld) v.y = Math.max(v.y, 1.6);
     } else {
       v.y -= GRAV * dt;
-      if (jump && this.grounded) { v.y = 5.0; ev.jump = true; }
+      if (jump && this.grounded) { v.y = 5.0 * jumpMul; ev.jump = true; }
     }
     v.y = Math.max(v.y, -18);
 

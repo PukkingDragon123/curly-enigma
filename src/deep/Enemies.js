@@ -107,6 +107,7 @@ export class Enemies {
     this.zone = 1;
     this.safe = false;
     this.perf = 0; this.perfAvg = 0;
+    this.warmT = 1.5; this.warmQ = []; this.warmId = null;
     this.dt = 1 / 60;
     this.autoSpawn = true; // tests switch this off and use debug.spawn
     this.queue = []; // events raised outside update (pick blows) go out with the next frame
@@ -129,6 +130,20 @@ export class Enemies {
 
   // ------------------------------------------------------------------ shared resources
   species(key) { return SPECIES[key === 'bats' ? 'bat' : key]; }
+  /** Builds one not-yet-built model this zone is likely to need (meshing a troll is ~30 ms). */
+  prewarm() {
+    this.warmT = 0.4;
+    const depth = -this.pl.pos.y, dino = depth > 24 && depth < 137;
+    const id = this.zone + (dino ? 'd' : '');
+    if (this.warmId !== id) { this.warmId = id; this.warmQ = this.spawner.likely(this.zone, dino); }
+    while (this.warmQ.length) {
+      const [kind, x] = this.warmQ.shift();
+      const cls = SPECIES[kind];
+      if (!cls?.warm) continue;
+      cls.warm(this, this.zone, x);
+      return;
+    }
+  }
   geo(key, build) {
     let g = this.geos.get(key);
     if (!g) { g = build(); this.geos.set(key, g); }
@@ -215,6 +230,8 @@ export class Enemies {
     this.eco.update(dt);
     this.webs?.update?.(dt);
     this.sweep();
+    // build the zone's likely models ahead of a first sighting, one per calm frame (never mid-fight)
+    if ((this.warmT -= dt) <= 0 && this.autoSpawn && performance.now() - t0 < 4 && !this.threat()) this.prewarm();
     this.perf = performance.now() - t0;
     this.perfAvg += (this.perf - this.perfAvg) * 0.05;
     this.inUpdate = false;

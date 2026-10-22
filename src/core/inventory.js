@@ -252,6 +252,7 @@ export function bagSlots(state) {
   n += Math.floor((state.upEffect?.('bag') || 0) / 4);
   const carry = state.skill?.('carry') || 1;
   if (carry > 1) n += Math.round((carry - 1) * 6);
+  if (state.hasBuff?.('pack')) n += 1; // a packed lunch tied on: one more pocket while it lasts
   return Math.max(1, Math.min(MAX_SLOTS, n));
 }
 

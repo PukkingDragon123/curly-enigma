@@ -23,7 +23,7 @@ export class BakeStep extends Step {
     const O = SPOTS.oven;
     this.oven = this.P.oven;
     this.floorY = this.oven.position.y + 0.005;
-    this.inside = V3(O.x, this.floorY, O.z + 0.02);
+    this.inside = V3(O.x, this.floorY, O.z + 0.17); // just inside the arch, so you can watch the crust brown
     this.out = V3(O.x + 0.05, this.floorY + 0.02, O.z + 0.8);
     this.mat = voxelMaterial('toon', { unique: true });
     this.food = this.temp(standeeMesh(this.opts.dish || 'herb_bread', { px: 0.016, material: this.mat }));

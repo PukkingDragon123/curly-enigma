@@ -114,13 +114,15 @@ export class Raptor extends Beast {
   ];
   static nestStyle = () => ({ style: 'twigs', r: 0.75, eggs: 3, eggR: 3, item: 'dino_egg', eggCols: [0x7a5a3a, 0xe0caa0, 0xfff4dc] });
 
+  /** The shared model; Enemies' prewarm builds it before a first sighting. */
+  static warm(mgr, zone) { return mgr.geo('raptor|' + (zone % 3), () => buildRaptor(zone % 3)); }
   constructor(mgr, o) {
     super(mgr, o);
     this.hw = 0.24; this.h = 0.85; this.cy = 0.55; this.hitR = 0.36;
     this.mass = 1.8; this.kb = 2.6;
     this.size = rand(0.92, 1.08);
     this.step = 0.28; this.friction = 10; this.springK = 220; this.springC = 10; this.sqScale = 0.5;
-    const G = this.G = mgr.geo('raptor|' + (this.zone % 3), () => buildRaptor(this.zone % 3));
+    const G = this.G = Raptor.warm(mgr, this.zone);
     this.hitCol = G.hide;
     this.mat = this.material({});
     this.eyeMat = this.material({ emissive: 0.7, rimK: 0 });
@@ -250,13 +252,15 @@ export class Tyrant extends Beast {
       hit(A) { this.tailTip(_w); return this.strikeAt(A, _w, 1.1, { dmg: this.info.dmg * 0.8, push: 7, up: 2.5, kind: 'tail' }); } },
   ];
 
+  /** The shared model; Enemies' prewarm builds it before a first sighting. */
+  static warm(mgr) { return mgr.geo('tyrant', () => buildTyrant()); }
   constructor(mgr, o) {
     super(mgr, o);
     this.hw = 0.62; this.h = 2.6; this.cy = 1.7; this.hitR = 0.95;
     this.mass = 16; this.kb = 0.8;
     this.size = rand(0.95, 1.05);
     this.step = 0.42; this.friction = 8; this.springK = 90; this.springC = 10; this.sqScale = 0.25;
-    const G = this.G = mgr.geo('tyrant', () => buildTyrant());
+    const G = this.G = Tyrant.warm(mgr);
     this.hitCol = G.hide;
     this.mat = this.material({});
     this.eyeMat = this.material({ emissive: 0.8, rimK: 0 });
@@ -393,6 +397,8 @@ export class Shellback extends Beast {
   ];
   static nestStyle = () => ({ style: 'twigs', r: 0.9, eggs: 3, eggR: 3.6, item: 'dino_egg', eggCols: [0x4a6a3a, 0xb8d098, 0xe8f4d8] });
 
+  /** The shared model; Enemies' prewarm builds it before a first sighting. */
+  static warm(mgr) { return mgr.geo('shellback', () => buildShellback()); }
   constructor(mgr, o) {
     super(mgr, o);
     this.baby = !!o.baby;
@@ -401,7 +407,7 @@ export class Shellback extends Beast {
     this.size = this.baby ? rand(0.42, 0.5) : rand(0.92, 1.08);
     if (this.baby) { this.hp = this.maxHp *= 0.3; this.mass = 1.5; this.hw = 0.2; this.h = 0.45; }
     this.step = 0.3; this.friction = 10; this.springK = 130; this.springC = 10; this.sqScale = 0.4;
-    const G = this.G = mgr.geo('shellback', () => buildShellback());
+    const G = this.G = Shellback.warm(mgr);
     this.hitCol = G.hide;
     this.mat = this.material({});
     this.eyeMat = this.material({ rimK: 0 });
@@ -512,12 +518,14 @@ export class Pterosaur extends Beast {
       done() { this.diving = false; } },
   ];
 
+  /** The shared model; Enemies' prewarm builds it before a first sighting. */
+  static warm(mgr) { return mgr.geo('ptero', () => buildPtero()); }
   constructor(mgr, o) {
     super(mgr, o);
     this.rad = 0.25; this.hw = 0.25; this.h = 0.4; this.cy = 0; this.hitR = 0.36;
     this.mass = 1.2; this.kb = 3;
     this.size = rand(0.95, 1.08);
-    const G = this.G = mgr.geo('ptero', () => buildPtero());
+    const G = this.G = Pterosaur.warm(mgr);
     this.hitCol = G.hide;
     this.mat = this.material({});
     this.eyeMat = this.material({ emissive: 0.5, rimK: 0 });

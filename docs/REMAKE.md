@@ -947,7 +947,8 @@ models for the new plants, added to `props/models.js` `BUILD`), `src/cooking/ico
   `INGREDIENTS`, plants get `q`), `Game.eat` (`foodBuffs`), `UI.js` (`ui.buffs = new BuffStrip`,
   ticked in `ui.update`), `Props.js` (harvest section, plant tables, `twinkle` call in `update`).
 - **Test hooks**: `scene.debug` in cooking: `start(dish | ids, { q })`, `auto(score, delay)`,
-  `run(secs)`, `finishStep(score)`, `state()`, `result()`. `window.__forage`: `open(id, opts)`,
+  `run(secs)`, `finishStep(score)`, `toLive()`, `next(score)`, `toResult()`, `state()`, `result()`
+  (`?bag=24` for room). `window.__forage`: `open(id, opts)`,
   `sim(id, 'good'|'rush'|'yank'|'soft'|fn)` (headless, also in node), `active.drive(script, secs)`,
   `active.step(input, secs)`, `specs`. Props: `props.debugPlants(x, y, z, r)`. URL `?tutorial=1`.
 - **For other parts**: shops could stock `drake_meat` (120g, Rocco / trading post) and the grocer
@@ -1012,3 +1013,8 @@ it glows while a hostile is within 9 m (`enemies.threat()`).
   roomy, level cave from the generator's shapes, teleports, spawns in front), `portrait(e, {dist,
   turn})`, `sheet(e, {angles, size})` (renders the real rig with plain lighting into an overlay),
   `look(e)`, `clean()`, `eco()`, `perf()`, `info()`; `enemies.combat.log` (the last blows).
+- **Performance.** Only the mole's surroundings live (creatures past ~30 m are swept; far ones
+  think at a lower rate); bodies walk with swept-slab collision; `enemies.update` stays ~0.3–1.5 ms
+  with a dozen creatures. Models mesh with a fast greedy mesher in `vox.js` (same look as
+  `meshGridGreedy`, ~3.5× faster) and the zone's likely species are built ahead of time, one per
+  calm frame (`enemies.prewarm()`, never mid-fight), so a first troll or tyrant doesn't hitch.

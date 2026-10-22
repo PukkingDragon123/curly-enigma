@@ -67,6 +67,11 @@ export class Slime extends Beast {
       hit(A) { return A.t > 0.5 || this.strikeAt(A, this.center, this.hitR * this.size * 0.9, { dmg: this.info.dmg * this.size, push: 3, up: 2 }); } },
   ];
 
+  /** The shared model for a zone; Enemies' prewarm builds it before a first sighting. */
+  static warm(mgr, zone) {
+    const z = clamp(zone, 1, 6);
+    return mgr.geo('slime|' + z, () => buildSlime(z));
+  }
   constructor(mgr, o) {
     super(mgr, o);
     this.tierN = o.split ?? (Math.random() < 0.25 ? 2 : Math.random() < 0.6 ? 1 : 0);
@@ -80,7 +85,7 @@ export class Slime extends Beast {
     this.step = 0.15;
     const z = clamp(this.zone, 1, 6);
     if (z === 4) this.lavaProof = true;
-    const G = this.G = mgr.geo('slime|' + z, () => buildSlime(z));
+    const G = this.G = Slime.warm(mgr, this.zone);
     this.hitCol = G.col;
     this.mat = this.material({ alpha: 0.82, emissive: G.glow, wobble: 0.006 });
     this.coreMat = this.material({ emissive: G.glow * 0.5, rimK: 0 });
