@@ -52,7 +52,7 @@ export function mushroomTree(t) {
     const top = 4 + Math.sqrt(Math.max(0, 1 - d * d)) * 14;
     const bot = 3 + (1 - d) * 5;
     if (y > top || y < bot) continue;
-    if (y < bot + 1.2 && d < 0.94) { gill.set(x, y, z, Math.floor(Math.atan2(dz, dx) * 9) % 2 ? lo : mulc(lo, 0.8)); continue; }
+    if (y < bot + 1.2 && d < 0.94) { gill.set(x, y, z, Math.floor(Math.atan2(dz, dx) * 5) % 2 ? lo : mulc(lo, 0.8)); continue; }
     const spot = hash2(Math.floor(x / 4), Math.floor(z / 4), Math.floor(y / 4) + t.hue) < 0.16 && y > top - 2;
     cap.set(x, y, z, spot ? hi : y > top - 1.5 ? mixc(c, hi, 0.25) : c);
   }

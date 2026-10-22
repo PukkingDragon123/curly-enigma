@@ -232,6 +232,7 @@ export function shopBuilding(id, w) {
   bk.box(0, 0, 0, bk.w, bk.h, 3, (x, y, z) => (z === 2 && (x === 0 || y === 0 || x === bk.w - 1 || y === bk.h - 1) ? mulc(s.board, 1.2) : mulc(s.board, 0.67 * sp3(x >> 2, y, z, 2))));
   const bkm = M32(bk, [bk.w / 2, bk.h / 2, 3]);
   bkm.position.set(wcx / V, sy, FRONT + 0.1);
+  bkm.userData.lod = 'keep'; // a coarser board would swallow the painted sign in front of it
   grp.add(bkm);
   const lights = [];
   for (const lx of [0.06, w - 0.06]) {

@@ -11,7 +11,7 @@ import { reliefBuffers, reliefGeometry } from './relief.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
 
 export const FACE_D = 1.9; // TU from a wall's back plane to its nominal face
-const LOW_TOP = 7.5; // fine (1/16) relief below this height, coarse (1/8) above
+const LOW_TOP = 3.2; // fine (1/16) relief below this height (where the eye gets close), coarse (1/8) above
 const CHUNK = 6;
 
 // strata from the floor up: [top height, colour, relief (TU, + sticks out), kind]
@@ -87,7 +87,7 @@ export function buildWalls(opts = {}) {
     const S = wallSampler(fr, flats, holes);
     for (let c0 = fr.u0; c0 < fr.u1 - 0.01; c0 += CHUNK) {
       const c1 = Math.min(fr.u1, c0 + CHUNK);
-      const low = fr.axis === 'N' || fr.axis === 'W' ? LOW_TOP : 4.6;
+      const low = LOW_TOP;
       for (const [y0, y1, res] of [[0, low, 16], [low, TOWN.wallTop, 8]]) {
         const m = wallChunk(fr, S, c0, c1, y0, y1, res);
         if (m) meshes.push(m);
@@ -153,6 +153,8 @@ function wallSampler(fr, flats, holes) {
     if (!coarse && (edgeV < 1 || joint)) dOff -= 1;
     let d = F + dOff;
     if (flat && j < flat.top * WV) d = F + (flat.d ?? -0.06) * WV;
+    // rock hidden behind a building: one flat colour so it collapses into a few big faces
+    if (flat && flat.hide && j < flat.hide * WV) return [d, mul(bc, 0.7)];
     let tint = null;
     for (const h of holes) if (uw > h.ua[0] && uw < h.ua[1] && j >= h.y0 * WV && j < h.y1 * WV && (!h.shape || h.shape(along(uw) - h.c, j / WV))) { d = Math.min(d, F - h.depth * WV); tint = h.tint || tint; }
     // colour

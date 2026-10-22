@@ -19,18 +19,20 @@ import * as THREE from 'three';
 import { clamp } from '../core/util.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { FUR, SPECIES, randomSpec, playerSpec, proportions, normSpec, DIGGERS } from './char/spec.js';
-import { glowMaterial, lum } from './char/vox.js';
+import { glowMaterial, lum, mix as mixc } from './char/vox.js';
 import { SkinAssembler, scaleVisible, charMaterial } from './char/skin.js';
 import { buildHead, earGeo } from './char/head.js';
-import { eyeSet, browGeo, browSize, mouthGeo, mouthSize, whiskerGeo } from './char/face.js';
+import { eyeSet, browGeo, browSize, mouthGeo, mouthSize, whiskerGeo, fxGeo } from './char/face.js';
 import { buildBody, buildTail } from './char/body.js';
 import { buildArm, buildLeg } from './char/limbs.js';
+import { buildArmParts, buildLegParts } from './char/jointed.js';
+import { EXPRESSIONS } from './char/expr.js';
 import { buildHat, buildGlasses, buildCane } from './char/hats.js';
 import { CharacterRig } from './char/rig.js';
 import { makeChicken, ChickenRig } from './char/chicken.js';
 import { makePaw } from './char/paw.js';
 
-export { FUR, SPECIES, randomSpec, playerSpec, CharacterRig, makeChicken, ChickenRig, makePaw };
+export { FUR, SPECIES, randomSpec, playerSpec, CharacterRig, makeChicken, ChickenRig, makePaw, EXPRESSIONS };
 
 const V16 = 1 / 16; // classic world units per voxel at scale 1
 
@@ -40,15 +42,20 @@ export const buildStats = { ms: 0, tris: 0, meshes: 0, count: 0, totalMs: 0 };
 /**
  * Build a character. Returns a CharacterRig with .root (THREE.Group) you add to a scene.
  * opts.kind: material kind ('toon' | 'lambert' | 'basic'); opts.scale extra scale;
- * opts.lod: 'crowd' for background folk (one mesh: no whiskers, the lamp lens baked in).
+ * opts.lod: 'crowd' for background folk (one mesh: no whiskers, the lamp lens baked in);
+ * opts.build: 'tall' (default: grown-up proportions with elbows and knees) or 'classic' (the old
+ * chibi rig; the default for spec.player and spec.build === 'classic').
  *
  * The whole character is one skinned mesh (+ whiskers, + the glowing lamp lens) riding on the
  * classic rig groups, which stay plain Object3Ds you can pose, scale and parent things to.
+ * The rig has the expression API (rig.setExpression, setMood, talk, lookAt, blink: see rig.js).
  */
 export function makeCharacter(specIn, opts = {}) {
   const t0 = performance.now();
   const spec = normSpec(specIn || {});
-  const p = proportions(spec);
+  const build = opts.build || spec.build || (spec.player ? 'classic' : 'tall');
+  const p = proportions(spec, { build });
+  const jointed = !!p.tall;
   const u = V16 * p.scale * (opts.scale ?? 1); // classic unit (rig.s)
   const vs = u / 2; // hi-res voxel size
   const kind = opts.kind || 'toon';
@@ -71,8 +78,21 @@ export function makeCharacter(specIn, opts = {}) {
   // ------------------------------------------------------------------ legs
   const legL = group(root, -p.bw * 0.27 * u, p.lh * u + u, 0);
   const legR = group(root, p.bw * 0.27 * u, p.lh * u + u, 0);
-  A.part(legR, buildLeg(spec, p, 1, bake).geo, { scale: R });
-  A.part(legL, buildLeg(spec, p, -1, bake).geo, { scale: L });
+  let kneeL = null, kneeR = null, shinLen = 0;
+  if (jointed) {
+    // thigh on the hip joint, shin and foot on the knee
+    const lr = buildLegParts(spec, p, 1, bake), ll = buildLegParts(spec, p, -1, bake);
+    kneeR = group(legR, 0, -lr.T * vs, 0);
+    kneeL = group(legL, 0, -ll.T * vs, 0);
+    A.part(legR, lr.thigh, { scale: R });
+    A.part(legL, ll.thigh, { scale: L });
+    A.part(kneeR, lr.shin, { scale: R });
+    A.part(kneeL, ll.shin, { scale: L });
+    shinLen = (lr.S + 2) * vs;
+  } else {
+    A.part(legR, buildLeg(spec, p, 1, bake).geo, { scale: R });
+    A.part(legL, buildLeg(spec, p, -1, bake).geo, { scale: L });
+  }
 
   // ------------------------------------------------------------------ body & tail
   hip.position.y = p.lh * u + u * 0.5;
@@ -105,17 +125,25 @@ export function makeCharacter(specIn, opts = {}) {
     return g;
   });
 
-  // brows
+  // brows: everyone has them so every face can emote; 'none' gets soft tone-on-tone brows
   let brows = null;
-  if (spec.brows && spec.brows !== 'none') {
-    const col = spec.age === 'elder' ? 0xf0ece4 : lum(spec.fur) < 0.25 ? 0x9a8a80 : (sp === 'badger' ? 0xf0f0ea : 0x2a1c1c);
-    const bs = browSize(spec.brows);
+  {
+    const soft = !spec.brows || spec.brows === 'none';
+    const kind = soft ? 'soft' : spec.brows;
+    const darkFur = lum(spec.fur) < 0.3;
+    const col = soft
+      ? (sp === 'badger' ? 0xd8d8d0 : spec.age === 'elder' ? 0xd8d0c8 : darkFur ? mixc(spec.fur, 0x0c0608, 0.72) : mixc(spec.fur, 0x1c1214, 0.55))
+      : spec.age === 'elder' ? 0xf0ece4 : lum(spec.fur) < 0.25 ? 0x9a8a80 : (sp === 'badger' ? 0xf0f0ea : 0x2a1c1c);
+    const bs = browSize(kind);
     brows = info.eyes.map((e, i) => {
-      const y = (info.browY + 0.5 + bs.h / 2) * vs;
-      const g = group(neck, e.x * vs + (spec.brows === 'bushy' ? e.side * vs : 0), y, info.browZ[i] * vs);
+      const y = (info.browY + (soft ? -0.3 : 0.5) + bs.h / 2) * vs;
+      const g = group(neck, e.x * vs + (kind === 'bushy' ? e.side * vs : 0), y, info.browZ[i] * vs);
       g.userData.side = e.side;
       g.userData.y = y;
-      A.part(g, browGeo(spec.brows, e.side, col, bake), { scale: R });
+      g.userData.z = g.position.z;
+      g.userData.lean = true; // lifted brows slide back over the curve of the forehead
+      g.rotation.order = 'ZXY';
+      A.part(g, browGeo(kind, e.side, col, bake), { scale: R });
       return g;
     });
   }
@@ -123,10 +151,10 @@ export function makeCharacter(specIn, opts = {}) {
   // mouths: resting shapes on the face, open shapes in rig.mouth (compat: .visible shows it)
   const mi = info.mouth;
   const frog = mi.kind === 'frog';
-  const restSet = frog ? { rest: 'frogRest', smile: 'frogSmile', frown: 'frogFrown', line: 'frogRest' }
-    : { rest: mi.kind === 'bunny' ? 'bunny' : mi.teeth ? 'restT' : 'rest', smile: 'smile', frown: 'frown', line: 'line' };
-  const openSet = frog ? { talk: 'frogTalk', laugh: 'frogTalk', oh: 'frogTalk', grimace: 'frogTalk' }
-    : { talk: mi.teeth || mi.buck ? 'talkT' : 'talk', laugh: mi.teeth ? 'laughT' : 'laugh', oh: 'oh', grimace: 'grimace' };
+  const restSet = frog ? { rest: 'frogRest', smile: 'frogSmile', frown: 'frogFrown', line: 'frogRest', grin: 'frogGrin', smirk: 'frogSmile', wobble: 'frogFrown', hmm: 'frogRest' }
+    : { rest: mi.kind === 'bunny' ? 'bunny' : mi.teeth ? 'restT' : 'rest', smile: 'smileB', frown: 'frownB', line: 'line', grin: 'grin', smirk: 'smirk', wobble: 'wobble', hmm: 'hmm' };
+  const openSet = frog ? { talk: 'frogTalk', laugh: 'frogTalk', oh: 'frogOh', grimace: 'frogTalk', talkS: 'frogTalk', grinO: 'frogTalk', ohS: 'frogOh', snarl: 'frogTalk', wail: 'frogOh', yawn: 'frogOh' }
+    : { talk: mi.teeth || mi.buck ? 'talkT' : 'talk', laugh: mi.teeth ? 'laughBT' : 'laughB', oh: 'ohB', grimace: 'grimace', talkS: 'talkS', grinO: 'grinB', ohS: 'ohS', snarl: 'snarl', wail: 'wailB', yawn: 'yawn' };
   const mouthTop = (mi.y + 1.5) * vs;
   const mkMouthGroup = (set, dz) => {
     const g = group(neck, 0, mouthTop, (mi.z + dz) * vs);
@@ -139,9 +167,24 @@ export function makeCharacter(specIn, opts = {}) {
     g.userData.variants = variants;
     return g;
   };
-  const mouthRest = mkMouthGroup(restSet, 0.02);
+  const mouthRest = mkMouthGroup(restSet, jointed ? 0.3 : 0.02);
   const mouth = scaleVisible(mkMouthGroup(openSet, 0.35), new THREE.Vector3(1, 1, 1));
   mouth.visible = false;
+
+  // expression extras in front of the face, hidden until an expression shows them
+  const X = info.expr;
+  let fx = null;
+  if (X) {
+    const fxPart = (kind, at, dz = 0.3) => {
+      const g = group(neck, at.x * vs, at.y * vs, (at.z + dz) * vs);
+      const b = scaleVisible(A.part(g, fxGeo(kind, bake), { scale: R }));
+      b.visible = false;
+      b.userData.side = at.side;
+      b.userData.y = 0;
+      return b;
+    };
+    fx = { blush: X.cheeks.map((c) => fxPart('blush', c, 0.25)), tears: X.tears.map((c) => fxPart('tear', c, 0.4)), sweat: fxPart('sweat', X.sweat, 0.4), vein: fxPart('vein', X.vein, 0.3) };
+  }
 
   // whiskers: hairline (half thickness), outside the outline pass so they stay delicate
   let whiskers = null;
@@ -198,18 +241,34 @@ export function makeCharacter(specIn, opts = {}) {
   }
 
   // ------------------------------------------------------------------ arms
-  const shoulderY = (p.bh - 1.5) * u;
-  const armL = group(hip, -(p.bw / 2 + 1.2) * u, shoulderY, u * 0.5);
-  const armR = group(hip, (p.bw / 2 + 1.2) * u, shoulderY, u * 0.5);
-  const arm = buildArm(spec, p, bake);
-  A.part(armR, arm.geo, { scale: R });
-  A.part(armL, arm.geo, { scale: L });
-  // sockets at the paws for held items
-  const handL = group(armL, 0, -(p.ah + 1) * u, u);
-  const handR = group(armR, 0, -(p.ah + 1) * u, u);
+  const shoulderY = (p.bh - (jointed ? 2 : 1.5)) * u;
+  const sx = jointed ? p.bw / 2 + 0.9 : p.bw / 2 + 1.2;
+  const armL = group(hip, -sx * u, shoulderY, u * 0.5);
+  const armR = group(hip, sx * u, shoulderY, u * 0.5);
+  let elbowL = null, elbowR = null, handL, handR;
+  if (jointed) {
+    // upper arm on the shoulder, forearm and paw on the elbow; the held-item socket at the paw
+    const ap = buildArmParts(spec, p, bake);
+    elbowR = group(armR, 0, -ap.UA * vs, 0);
+    elbowL = group(armL, 0, -ap.UA * vs, 0);
+    A.part(armR, ap.upper, { scale: R });
+    A.part(armL, ap.upper, { scale: L });
+    A.part(elbowR, ap.lower, { scale: R });
+    A.part(elbowL, ap.lower, { scale: L });
+    handR = group(elbowR, 0, ap.socket[1] * vs, ap.socket[2] * vs);
+    handL = group(elbowL, 0, ap.socket[1] * vs, ap.socket[2] * vs);
+  } else {
+    const arm = buildArm(spec, p, bake);
+    A.part(armR, arm.geo, { scale: R });
+    A.part(armL, arm.geo, { scale: L });
+    // sockets at the paws for held items
+    handL = group(armL, 0, -(p.ah + 1) * u, u);
+    handR = group(armR, 0, -(p.ah + 1) * u, u);
+  }
   if (spec.cane) {
     // long enough to reach the floor from the resting paw
-    const handH = (p.lh + 0.5 + p.bh - 1.5 - (p.ah + 1)) * 2;
+    handR.updateWorldMatrix(true, false);
+    const handH = jointed ? Math.round(root.worldToLocal(handR.getWorldPosition(new THREE.Vector3())).y / vs) - 1 : (p.lh + 0.5 + p.bh - 1.5 - (p.ah + 1)) * 2;
     A.part(handR, buildCane(handH + 1, bake), { scale: R });
   }
 
@@ -227,7 +286,9 @@ export function makeCharacter(specIn, opts = {}) {
     breath: spec.body === 'chubby' ? 0.022 : spec.age === 'baby' ? 0.02 : 0.013,
     digger: DIGGERS.has(sp), skeleton: skin.skeleton, meshes, lod: crowd ? 'crowd' : 'full',
     skin: { assembler: A, main: skin.main, detail: skin.detail, lens, lensPart },
+    elbowL, elbowR, kneeL, kneeR, shinLen, legX0: p.bw * 0.27 * u, fx, build,
   });
+  if (spec.mood && spec.mood !== 'neutral') rig.setMood(spec.mood);
   // face anchors in neck-local space, for props that dress the face (sunglasses, masks, bubbles)
   const eyeZ = Math.max(...info.eyes.map((e) => e.z));
   rig.anchors = {
@@ -256,23 +317,31 @@ export function uniqueMaterial(rig, kind = 'basic') {
   return m;
 }
 
-/** Quick portrait renderer: draws a character head-and-shoulders into a 2D canvas. */
-export function renderPortrait(renderer, spec, size = 96) {
+/**
+ * Quick portrait renderer: draws a character head-and-shoulders into a 2D canvas.
+ * o.expression: the face to wear (see rig.setExpression); o.build: as makeCharacter.
+ */
+export function renderPortrait(renderer, spec, size = 96, o = {}) {
   const scene = new THREE.Scene();
   scene.add(new THREE.HemisphereLight(0xfff4e0, 0x4a3050, 1.4));
   const dl = new THREE.DirectionalLight(0xffffff, 1.2);
   dl.position.set(1, 2, 3);
   scene.add(dl);
-  const rig = makeCharacter({ ...spec }, { kind: 'toon' });
-  rig.update(0.016);
+  const rig = makeCharacter({ ...spec }, { kind: 'toon', build: o.build });
+  if (o.expression) rig.setExpression(o.expression, { body: false });
+  rig.blinkT = 99; rig.blinkK = -1; // eyes open for the picture
+  for (let i = 0; i < 12; i++) rig.update(0.05);
   scene.add(rig.root);
-  // head-and-shoulders: frame from the chest up (tall hats may crop, as in a real portrait)
-  const h = rig.height;
+  rig.root.updateMatrixWorld(true);
+  // head-and-shoulders: frame the head with a little chest below (tall hats may crop, as in a real portrait)
+  const a = rig.anchors;
+  const head = rig.neck.localToWorld(new THREE.Vector3(0, a.headH * 0.36, 0));
+  const span = a.headH * 2.15;
   const cam = new THREE.PerspectiveCamera(30, 1, 0.01, 50);
-  const dist = (h * 0.47) / Math.tan((15 * Math.PI) / 180);
+  const dist = (span * 0.5) / Math.tan((15 * Math.PI) / 180);
   const dir = new THREE.Vector3(0.2, 0.14, 1).normalize();
-  cam.position.set(dir.x * dist, h * 0.78 + dir.y * dist, dir.z * dist);
-  cam.lookAt(0, h * 0.78, 0);
+  cam.position.set(head.x + dir.x * dist, head.y + dir.y * dist, head.z + dir.z * dist);
+  cam.lookAt(head.x, head.y, head.z);
   const rim = new THREE.DirectionalLight(0xffd8a0, 0.8);
   rim.position.set(-2, 1.5, -2);
   scene.add(rim);

@@ -29,11 +29,16 @@ import { Townsfolk } from '../town/folk.js';
 import { townLife } from '../town/life.js';
 import { sunbeam } from '../town/sunbeam.js';
 import { EscapeArrival } from '../town/arrival.js';
+import { RigLOD } from '../town/lod.js';
+import { KEEPER_MOODS, moodOf } from '../town/moods.js';
+import { updatePatches, cullPatches, disposePatches } from '../town/batch.js';
 import { pick, rand, chance, clamp, makeRng } from '../core/util.js';
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
 const _f = new THREE.Vector3();
+const _proj = new THREE.Matrix4();
+const _frustum = new THREE.Frustum();
 export const BRAMBLE = { name: 'Bramble', species: 'vole', age: 'elder', body: 'stocky', fur: 0x8a6a4a, outfit: 'overalls', outfitColor: 0x7a5a3a, hat: 'cap', hatColor: 0x3a5a3a, eyes: 'happy', brows: 'bushy', dirt: 0.6, seed: 31, blush: true, voice: 250 };
 const BRAMBLE_LINES = [
   'Going down? Hop in, mind the gap.',
@@ -45,6 +50,17 @@ const BRAMBLE_LINES = [
 const WELCOME_BACK = ['Welcome back up! Still got all your claws?', 'Back in one piece! Mostly dirt, though.', 'Up you come. Old Vex will want a look at that haul.'];
 const NOTICES = ['LOST: one left mitten, ember-proof. Reward: a pie. — Dilly', 'BAND PRACTICE Thursdays at the fountain. Bring a spoon.', 'Please do NOT feed the glow-worms. — The Council', 'WANTED: brave digger for deep commissions. Ask Old Vex.', 'Mushroom swap, Sunday, back lane. No blue ones please.', 'Surface Express: ONE WAY ONLY. No refunds. No returns. No exceptions.'];
 const KNOCK = ['(muffled) Not today, thank you!', '(muffled) Who\'s there? ...Oh, it\'s the new one!', '(muffled) Kettle\'s on! Come back later!', '(muffled) Zzz... wha? Go \'way...', '(muffled) If that\'s about the begonias, I didn\'t do it!'];
+/** Grown-up extras for the keepers' looks (the shop data only names the basics). */
+const KEEPER_LOOKS = {
+  tools: { belt: 2, shirt: 0x9a3a32, rolled: true, boots: 0x4a2e1e, brows: 'bushy', dirt: 0.5 },
+  grocer: { shirt: 0x6a8ab0, rolled: true, belt: 0, boots: false },
+  furniture: { shirt: 0xd8ccb0, belt: 0, boots: 0x6a4a2a, rolled: true },
+  blueprints: { belt: 0, boots: 0x3a2a22 },
+  outfitter: { belt: 1, boots: 0x7a5232 },
+  assay: { belt: 0, boots: 0x3a2a22, brows: 'bushy' },
+  ticket: { belt: 0, boots: 0x1e1618 },
+  lift: { shirt: 0xb84a3a, rolled: true, belt: 2, boots: 0x5a3a24 },
+};
 const EMOTE_COLORS = { '♥': '#e0404a', '!': '#c0402a', '?': '#3a6ac9', '♪': '#6a3a8a', '♫': '#6a3a8a', 'Zz': '#5a6a9a', '…': '#5a4030' };
 let FLOOR_CACHE = null;
 
@@ -93,7 +109,10 @@ export default class TownScene extends Scene {
     if (params.meshlog) MESH_STATS.log = [];
     const t0 = performance.now();
     const steps = {};
-    const run = (name, fn) => { const ts = performance.now(); const r = fn(); steps[name] = Math.round(performance.now() - ts); return r; };
+    if (params.tstats) this.B.stats = [];
+    this.noFolkLOD = this.noStaticLOD = !!params.nolod;
+    if (params.l1gain) this.l1Gain = +params.l1gain;
+    const run = (name, fn) => { const ts = performance.now(); this.B.tag = name; const r = fn(); steps[name] = Math.round(performance.now() - ts); return r; };
     const frames = run('cave', () => ST.buildCave(this));
     run('upper', () => ST.buildUpper(this, frames));
     run('roof', () => ST.buildRoof(this));
@@ -108,14 +127,16 @@ export default class TownScene extends Scene {
     run('decor', () => ST.buildDecor(this));
     run('sun', () => this.buildSunbeam());
     run('floor', () => this.buildFloor());
-    const fin = run('merge', () => this.B.finish());
-    this.statics = fin.meshes.filter((m) => m.layers.isEnabled(1));
-    for (const m of this.statics) { m.geometry.computeBoundingSphere(); m.userData.ol = true; }
+    const fin = run('merge', () => this.B.finish({ levels: [{ step: M / 16, fine: 0, minGain: this.l1Gain ?? 0.3 }, { step: M / 8, fine: M / 16 }, { step: M / 4, fine: M / 8 }] }));
+    this.patches = fin.patches;
+    this.blocks = fin.blocks;
+    this.allStatics = fin.patches.flatMap((p) => (p.outline ? [p.mesh, p.outline] : [p.mesh])).concat(fin.blocks.map((b) => b.mesh).filter(Boolean));
     const sheet = this.signs.build();
     if (sheet) { fin.bake(sheet.geometry); this.scene.add(sheet); }
     this.map = this.B.map;
     this.worms = glowWorms(this.root, this.U, this.roofWorms || []);
     this.buildMs = performance.now() - t0;
+    this.buildSteps = steps;
     if (MESH_STATS.log) { this.meshLog = MESH_STATS.log; MESH_STATS.log = null; }
     console.info(`[town] built in ${this.buildMs.toFixed(0)} ms ${JSON.stringify(steps)} mesher ${JSON.stringify({ calls: MESH_STATS.calls, ms: Math.round(MESH_STATS.ms), ktris: Math.round(MESH_STATS.tris / 1000) })}`);
     // ---- the mole
@@ -124,6 +145,8 @@ export default class TownScene extends Scene {
     this.rig.lampCol.setRGB(1.2, 0.95, 0.7);
     this.rig.ambient.setRGB(0.32, 0.28, 0.34);
     this.player = this.makePlayerProxy();
+    /** Where townsfolk look when they look at the mole (world meters: the camera). */
+    this.eyeTarget = new THREE.Vector3().copy(this.camera.position);
     // ---- people
     this.spawnKeepers();
     this.folk = new Townsfolk(this);
@@ -159,6 +182,9 @@ export default class TownScene extends Scene {
     g.ui.setDepth?.(null);
     g.ui.setBag?.(null);
     this.own(() => { for (const l of this.loops) if (l.h) l.h.stop(0.1); });
+    // keepers react to what changes hands across their counters
+    this.own(st.on('gold', (e) => { if (this.shopKeeper && e && e.delta) this.keeperDeal(e.delta); }));
+    this.own(st.on('act', (e) => { if (this.shopKeeper && e && (e.type === 'buy' || e.type === 'sell')) this.keeperDeal(e.type === 'buy' ? -(e.gold || 1) : (e.gold || 1)); }));
     this.debug = this.makeDebug();
     await this.warmShaders();
   }
@@ -215,6 +241,7 @@ export default class TownScene extends Scene {
     const pitFloor = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x050304 }));
     pitFloor.position.set(L.cage.x, -PIT_DEPTH + 0.05, L.cage.z);
     this.root.add(pitFloor);
+    this.pitFloor = pitFloor;
   }
 
   buildSunbeam() {
@@ -299,7 +326,9 @@ export default class TownScene extends Scene {
       actor.headPos(_v);
       const d = Math.hypot(_v.x - this.player.x, _v.z - this.player.z);
       if (d < 9) this.game.audio.play('babble', { pitch: o.voice ?? actor.voice, n: clamp(Math.round(html.length / 9), 2, 8) });
-      if (actor.rig?.talk) actor.rig.talk(Math.min(2.2, 0.6 + html.length / 30));
+      if (actor.rig?.talk) actor.rig.talk(Math.min(2.6, 0.6 + html.length / 28));
+      // say it with a face (o.mood, or a reading of the line), held a little past the words
+      if (actor.rig?.setExpression && o.mood !== false) actor.rig.setExpression(o.mood || moodOf(html), { hold: Math.max(2.2, (o.life ?? 3.4) * 0.8) });
     }
   }
 
@@ -381,14 +410,22 @@ export default class TownScene extends Scene {
   spawnKeepers() {
     this.keepers = [];
     const mk = (id, spec, pos, yaw, label) => {
-      const rig = makeCharacter({ seed: 9, eyes: 'bead', dirt: 0.2, blush: true, ...spec, hat: spec.hat || 'none', glasses: spec.glasses || false });
+      const rig = makeCharacter({ seed: 9, eyes: 'bead', dirt: 0.2, blush: true, ...KEEPER_LOOKS[id], ...spec, hat: spec.hat || 'none', glasses: spec.glasses || false });
       const a = new Actor(rig, { x: pos.x, z: pos.z, yaw, name: spec.name, voice: spec.voice, radius: 0.27 });
       a.body.position.y = pos.y || 0;
+      // grown-up keepers: stand so the eyes sit in the upper part of the serving window
+      const win = this.shopInfo[id]?.win;
+      if (win && rig.anchors) {
+        const eye = rig.hip.position.y + rig.neck.position.y + rig.anchors.eyes.y;
+        const want = win[1] + (win[4] - win[1]) * 0.6;
+        a.body.position.y = Math.max((pos.y || 0) - 0.5, Math.min((pos.y || 0) + 0.2, want - eye));
+      }
       a.collide = false;
       a.indoors = true;
       this.addActor(a);
       a.shadowOn = !pos.y;
-      const k = { id, a, spec, home: { x: pos.x, z: pos.z, yaw }, armed: true, cool: 0, lookT: rand(1, 4), label };
+      const k = { id, a, spec, home: { x: pos.x, z: pos.z, yaw }, armed: true, cool: 0, lookT: rand(1, 4), label, faces: KEEPER_MOODS[id] || KEEPER_MOODS.grocer };
+      rig.setMood(k.faces.mood);
       this.keepers.push(k);
       return k;
     };
@@ -409,11 +446,45 @@ export default class TownScene extends Scene {
     const p = this.player;
     k.a.faceToward(p.x, p.z);
     k.a.rig.doEmote('wave', 0.9);
+    k.a.rig.setExpression(k.faces.greet, { hold: 2.5 });
+    k.a.rig.lookAt(this.eyeTarget);
     k.armed = false;
     k.cool = 25;
     if (k.id === 'lift') { this.openLift(); return null; }
     this.game.audio.play('babble', { pitch: k.spec.voice, n: 3 });
-    return this.game.ui.openShop(k.id);
+    this.shopKeeper = k;
+    k.a.rig.talk(1.6);
+    const h = this.game.ui.openShop(k.id);
+    Promise.resolve(h).then((panel) => {
+      // when the shop closes: a wave goodbye (pleased if you bought something)
+      const done = () => { if (this.shopKeeper === k) this.shopKeeper = null; k.a.rig.setExpression(k.sold ? 'happy' : 'neutral', { hold: 2 }); if (k.sold) k.a.rig.doEmote('wave', 1); k.sold = 0; };
+      const prev = panel?.onClose;
+      if (panel && 'onClose' in panel) panel.onClose = () => { prev?.(); done(); };
+      else this.watchShopClose(k, done);
+    }).catch(() => {});
+    return h;
+  }
+
+  /** Fallback for shop panels without an onClose hook: poll until no panel is open. */
+  watchShopClose(k, done) {
+    const tick = () => { if (!this.game.ui.isPanelOpen()) { this.tickers.splice(this.tickers.indexOf(tick), 1); done(); } };
+    this.tickers.push(tick);
+  }
+
+  /** Money changed hands while a shop was open: the keeper reacts (a buy, a sale, a big one). */
+  keeperDeal(delta) {
+    const k = this.shopKeeper;
+    if (!k || !delta) return;
+    if (this.time - (this.lastDealT ?? -9) < 0.3) return; // a gold change and an 'act' for the same deal
+    this.lastDealT = this.time;
+    const big = Math.abs(delta) >= 500;
+    const face = big ? k.faces.big : delta < 0 ? k.faces.buy : (k.faces.sell || 'happy');
+    k.sold = (k.sold || 0) + 1;
+    k.a.rig.setExpression(face, { hold: big ? 3 : 2.2 });
+    if (face === 'laugh' || face === 'happy') k.a.rig.doEmote('hop', 0.6);
+    else if (face === 'surprised') k.a.rig.doEmote('hop', 0.4);
+    k.a.rig.talk(1.2);
+    this.game.audio.play('babble', { pitch: k.spec.voice, n: 2 });
   }
 
   updateKeepers(dt) {
@@ -424,14 +495,17 @@ export default class TownScene extends Scene {
       k.cool -= dt;
       if (d < 4.4 && !this.locked) {
         a.faceToward(p.x, p.z);
+        if (!a.rig.lookTarget) a.rig.lookAt(this.eyeTarget);
         if (k.armed && d < 3.4 && this.inView(a)) {
           k.armed = false;
           k.cool = 25;
           const lines = k.id === 'lift' ? BRAMBLE_LINES : SHOPS[k.id].lines;
-          this.say(a, pick(lines), { name: k.spec.name, voice: k.spec.voice, life: 4.5 });
+          const line = pick(lines);
+          this.say(a, line, { name: k.spec.name, voice: k.spec.voice, life: 4.5, mood: chance(0.5) ? k.faces.greet : moodOf(line) });
           if (chance(0.5)) a.rig.doEmote('wave', 1);
         }
       } else {
+        if (a.rig.lookTarget && this.shopKeeper !== k) a.rig.lookAt(null);
         k.lookT -= dt;
         if (k.lookT <= 0) {
           k.lookT = rand(2, 5);
@@ -480,7 +554,8 @@ export default class TownScene extends Scene {
     rig.add({ box: boxM(this.homeDoor.box), label: 'Go home', reach: 2.2, enabled: () => !this.locked, action: () => this.goHome() });
     // the fountain, the well, the notice board, the sunbeam, the old tunnel
     const F = TOWN.fountain;
-    rig.add({ x: F.x * M, y: 0.45 * M, z: F.z * M, r: (F.r + 0.1) * M, label: 'Toss a coin in (1 G)', reach: 1.6, enabled: () => !this.locked, action: () => this.tossCoin() });
+    // the basin only (a flat box, not a big sphere), so the folk on the benches round it can be talked to
+    rig.add({ box: boxM([F.x - F.r - 0.1, 0, F.z - F.r - 0.1, F.x + F.r + 0.1, 0.85, F.z + F.r + 0.1]), label: 'Toss a coin in (1 G)', reach: 1.6, enabled: () => !this.locked, action: () => this.tossCoin() });
     rig.add({ x: this.well.x * M, y: 0.6 * M, z: this.well.z * M, r: 0.75 * M, label: 'Peer into the well', reach: 1.6, action: () => this.peerWell() });
     rig.add({ x: 11.6 * M, y: 1.3 * M, z: 13.9 * M, r: 0.8 * M, label: 'Read the notices', reach: 1.9, action: () => this.readNotice() });
     const S = TOWN.sun;
@@ -708,15 +783,22 @@ export default class TownScene extends Scene {
       this.pushPlayer();
     }
     this.syncPlayerProxy();
+    this.eyeTarget.copy(rig.camera.position);
     if (this.nuggetAI && this.nugget && !this.nugget.scripted) this.nuggetAI.update(dt, this.player);
-    // actors: far ones update every few frames
+    // actors: far, hidden or behind-the-camera ones animate every few frames (time accumulates,
+    // so held expressions and blinks keep their pace)
     const p = this.player;
     for (const a of this.actors) {
-      if (a.skipFar) {
+      a._acc = (a._acc || 0) + dt;
+      const every = !a.obj.visible ? 6 : a._behind ? 3 : 1;
+      let skip = every > 1 && (a._skip = (a._skip || 0) + 1) % every;
+      if (!skip && a.skipFar) {
         const dx = a.x - p.x, dz = a.z - p.z;
-        if (dx * dx + dz * dz > 400 && (a._skip = (a._skip || 0) + 1) % 4) continue;
+        if (dx * dx + dz * dz > 400 && (a._skipF = (a._skipF || 0) + 1) % 4) skip = true;
       }
-      a.update(dt);
+      if (skip) continue;
+      a.update(Math.min(a._acc, 0.25));
+      a._acc = 0;
     }
     this.updateTalkItems();
     this.updateLOD();
@@ -753,16 +835,19 @@ export default class TownScene extends Scene {
     this.lodT = 6;
     const cam = this.rig.camera.position;
     const touch = this.rig.isTouch();
-    const [olStatic, olFolk, hideFolk] = touch ? [8, 6, 13] : [12, 9, 17];
-    for (const m of this.statics || []) {
-      const bs = m.geometry.boundingSphere;
-      const near = bs.center.distanceTo(cam) - bs.radius < olStatic;
-      if (near !== m.userData.ol) { m.userData.ol = near; if (near) m.layers.enable(1); else m.layers.disable(1); }
-    }
+    const [olStatic, olFolk, hideFolk] = touch ? [4, 4, 11] : [6, 5, 14];
+    const [lod1, lod2] = touch ? [3, 6] : [4, 8];
+    if (this.lift) this.lift.setOutline(Math.hypot(TOWN.lift.cage.x * M - cam.x, TOWN.lift.cage.z * M - cam.z) < (touch ? 5 : 8));
+    if (this.pitFloor) this.pitFloor.visible = !!this.lift && this.lift.cage.obj.position.y < -0.3;
+    updatePatches(this.blocks || [], cam, this.lodDist || (touch ? [2.5, 7, 13] : [3.5, 9, 16]), this.olDist ?? olStatic, this.noStaticLOD);
     for (const a of this.actors) {
       const d = Math.hypot(a.pos.x * M - cam.x, a.pos.z * M - cam.z);
       const show = d < hideFolk;
+      // behind the camera (and not right beside it): animate less often
+      const fx = -Math.sin(this.rig.player.yaw), fz = -Math.cos(this.rig.player.yaw);
+      a._behind = d > 2.2 && ((a.pos.x * M - cam.x) * fx + (a.pos.z * M - cam.z) * fz) < -0.35 * d;
       if (a.obj.visible !== show) a.obj.visible = show;
+      if (show && a.rig && !this.noFolkLOD) (a._lod ||= new RigLOD(a.rig)).set(d < lod1 ? 0 : d < lod2 ? 1 : 2);
       const ol = d < olFolk;
       if (a._ol !== ol) {
         a._ol = ol;
@@ -800,6 +885,7 @@ export default class TownScene extends Scene {
       const d = Math.sqrt(d2);
       ox += (dx / d) * (min - d) * 0.5;
       oz += (dz / d) * (min - d) * 0.5;
+      if (a.npc && pl.vel.lengthSq() > 1.2) this.folk.bumped(a.npc);
     }
     if (!ox && !oz) return;
     const nx = (px + ox) * M, nz = (pz + oz) * M;
@@ -808,6 +894,13 @@ export default class TownScene extends Scene {
 
   render() {
     if (!this.rig) return;
+    if (this.blocks) {
+      const cam = this.rig.camera;
+      cam.updateMatrixWorld();
+      _proj.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+      _frustum.setFromProjectionMatrix(_proj);
+      cullPatches(this.blocks, _frustum);
+    }
     const vm = this.rig.vm;
     if (this.cut?.noPaws) this.rig.vm = null;
     this.rig.render(this.post);
@@ -823,6 +916,8 @@ export default class TownScene extends Scene {
   }
 
   exit() {
+    for (const a of this.actors || []) a._lod?.dispose();
+    disposePatches(this.patches || [], this.blocks || []);
     this.rig?.dispose();
     super.exit();
   }
@@ -856,6 +951,23 @@ export default class TownScene extends Scene {
         return out;
       },
       names() { return S.folk.list.map((f) => f.name); },
+      /** Static patches in view: triangles (k) by level, outline triangles, counts. */
+      patches() {
+        const cam = S.rig.camera, fr = new THREE.Frustum();
+        cam.updateMatrixWorld(); fr.setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+        const r = { n: S.patches.length, blocks: 0, lv: [0, 0, 0, 0], tris: [0, 0, 0, 0], ol: 0, olN: 0, calls: 0 };
+        const cnt = (g) => Math.min(g.index.count, g.drawRange.count) / 3;
+        for (const b of S.blocks) {
+          if (b.mesh?.visible) { r.blocks++; r.calls++; r.lv[b.level] += b.children.length; r.tris[b.level] += cnt(b.mesh.geometry); }
+        }
+        for (const p of S.patches) {
+          if (!p.mesh.visible) continue;
+          r.calls++; r.lv[p.level]++; r.tris[p.level] += cnt(p.mesh.geometry);
+          if (p.outline?.visible) { r.ol += cnt(p.outline.geometry); r.olN++; }
+        }
+        r.tris = r.tris.map((t) => Math.round(t / 1000)); r.ol = Math.round(r.ol / 1000);
+        return r;
+      },
       /** Advance the scene by secs at 30 fps, letting scripted sequences (async) run between frames. */
       async run(secs = 1) { const n = Math.round(secs * 30); for (let i = 0; i < n; i++) { S.update(1 / 30); await new Promise((r) => setTimeout(r, 0)); } return { t: S.time, locked: S.locked, scene: S.game.sceneName }; },
       skipArrival() { if (S.arrival && !S.arrival.done) S.arrival.skip = true; },

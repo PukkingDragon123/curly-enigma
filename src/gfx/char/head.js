@@ -427,6 +427,19 @@ function makeHead(spec, p, bake) {
     ? { x: sn.side - 0.6, y: sn.cy + 0.3, z: (sn.front + hz) / 2 + 1.2, len: sp === 'shrew' ? 7 : sp === 'starnose' ? 5 : 6, color: darkFur ? mix(muzzle, 0xf4ece4, 0.45) : mix(lum(muzzle) > 0.6 ? muzzle : fur, 0x241a1c, 0.55) }
     : null;
 
+  // spots for the expression extras (blush, tears, a sweat drop, an anger mark), on the surface
+  const onFace = (x, y, side = 1) => {
+    const xi = Math.floor(x), yi = Math.round(y);
+    const z = v.frontZ(xi, yi);
+    return { side, x: xi + 0.5, y: yi + 0.5, z: isFinite(z) ? z + 1 : hz };
+  };
+  const exprSpots = {
+    cheeks: [-1, 1].map((side) => onFace(side > 0 ? cheekX - 0.5 : -cheekX - 0.5, cheekY, side)),
+    tears: eyes.map((e) => onFace(e.cx + e.side * 1.4 - 0.5, e.y0 - 1.2, e.side)),
+    sweat: onFace(hx - 3.5, Math.min(H - 3, ey0 + fp.h + 3), 1),
+    vein: onFace(-hx + 3.5, Math.min(H - 2.5, ey0 + fp.h + 4.5), -1),
+  };
+
   v.resolve({ [FUR]: furPaint, [MUZ]: muzPaint, [NOSE]: nosePaint, [SKIN]: skinPaint, [TOOTH]: toothPaint, [SHELL]: shellPaint, [PAD]: padPaint, [STAR]: starPaint, [WHITE]: whitePaint, [QUILL]: (x, y, z) => ((x + 99) % 3 === 0 ? 0x5a3a22 : 0x3a2416) });
 
   const lip = sp === 'molerat' ? dk(skin, 0.45) : sp === 'frog' ? dk(fur, 0.55) : darkFur ? dk(muzzle, 0.62) : dk(muzzle, 0.6);
@@ -450,6 +463,7 @@ function makeHead(spec, p, bake) {
     noseY,
     snoutFront,
     topAt: top,
+    expr: exprSpots,
   };
   return { geo, info };
 }

@@ -9,9 +9,10 @@ import { Actor } from '../iso/Actor.js';
 import { makeCharacter, randomSpec } from '../gfx/characters.js';
 import { TOWN_CHATTER } from '../data/shops.js';
 import { TOWN } from '../iso/townLayout.js';
-import { VoxelGrid, vmesh, V16 } from '../iso/vox.js';
 import { makeRng, rand, pick, chance, clamp } from '../core/util.js';
 import { midiToFreq } from '../core/Audio.js';
+import { ROLE_MOODS, moodOf } from './moods.js';
+import { broom as makeBroom, lute, fishingRod, oreCrate } from './props.js';
 
 const NAMES = ['Pebble', 'Rooty', 'Moss', 'Tuck', 'Clover', 'Burr', 'Dusty', 'Fern', 'Nib', 'Mabel', 'Toby', 'Bea', 'Pip', 'Tansy', 'Wort', 'Clem',
   'Dot', 'Ivo', 'Juniper', 'Nettle', 'Ollie', 'Rue', 'Sorrel', 'Thistle', 'Umber', 'Wren', 'Ginny', 'Barley', 'Cob', 'Loam', 'Marl'];
@@ -39,47 +40,7 @@ function voiceFor(spec, rng) {
   return Math.round(v + rng.range(-30, 30));
 }
 
-// ---------------------------------------------------------------- held props
-function stickProp(len, col, head) {
-  const g = new VoxelGrid(5, len + 6, 5);
-  g.box(2, 0, 2, 1, len, 1, col);
-  if (head === 'broom') { g.box(0, len - 1, 1, 5, 2, 3, 0x8a6a3a); g.box(0, len + 1, 1, 5, 4, 3, 0xd8b860); }
-  return vmesh(g, { scale: V16, pivot: [2.5, len, 2.5] });
-}
-function lute() {
-  const g = new VoxelGrid(8, 16, 3);
-  g.ellipsoid(4, 4, 1.5, 3.6, 4, 1.4, (x, y) => (Math.hypot(x - 3.5, y - 4) < 1.2 ? 0x2a1a10 : 0xc8843a));
-  g.box(3, 8, 1, 2, 8, 1, 0x6a4226);
-  g.box(2, 15, 1, 4, 1, 1, 0x4a2a16);
-  for (let y = 3; y < 15; y++) g.set(4, y, 2, 0xe8e0d0);
-  const m = vmesh(g, { scale: V16, pivot: [4, 6, 1.5] });
-  m.rotation.set(0.3, 0, 0.9);
-  return m;
-}
-function fishingRod() {
-  const grp = new THREE.Group();
-  const g = new VoxelGrid(3, 26, 3);
-  g.box(1, 0, 1, 1, 22, 1, 0x8a6a3a);
-  g.box(0, 2, 0, 3, 3, 3, 0x5a3a22);
-  const rod = vmesh(g, { scale: V16, pivot: [1.5, 0, 1.5] });
-  rod.rotation.x = 1.15;
-  grp.add(rod);
-  const ln = new VoxelGrid(1, 22, 1);
-  ln.box(0, 0, 0, 1, 22, 1, 0xe8e8e0);
-  ln.set(0, 0, 0, 0xe0402a);
-  const lm = vmesh(ln, { scale: V16, pivot: [0.5, 22, 0.5] });
-  lm.position.set(0, Math.cos(1.15) * 22 * V16, Math.sin(1.15) * 22 * V16);
-  grp.add(lm);
-  return grp;
-}
-function oreCrate() {
-  const g = new VoxelGrid(10, 7, 8);
-  g.box(0, 0, 0, 10, 5, 8, (x, y, z) => (y === 0 || x === 0 || x === 9 ? 0x5a3a22 : 0x8a5a32));
-  const ores = [0xd9773f, 0x2a2628, 0x9a6450, 0xbfc3c4];
-  for (let x = 1; x < 9; x++) for (let z = 1; z < 7; z++) if ((x + z) % 2 === 0) g.set(x, 5, z, ores[(x * 3 + z) % 4]);
-  return vmesh(g, { scale: V16, pivot: [5, 3, 4] });
-}
-
+// ---------------------------------------------------------------- held props (props.js)
 // ---------------------------------------------------------------- the crowd
 export class Townsfolk {
   constructor(scene) {
@@ -103,6 +64,10 @@ export class Townsfolk {
     a.skipFar = true;
     this.s.addActor(a);
     const npc = { a, spec, role, name, st: { t: rand(0.5, 3) }, pause: 0, speed: o.speed ?? (spec.age === 'elder' ? 1.0 : spec.age === 'kid' ? 1.9 : 1.35), region: o.region, seat: o.seat, armed: true };
+    // a resting face for the role (some folk are cheerful, some grumpy, some half asleep)
+    npc.mood = o.mood || rng.pick(ROLE_MOODS[role] || ROLE_MOODS.wander);
+    rig.setMood(npc.mood);
+    a.npc = npc;
     this.list.push(npc);
     this.s.addTalk(a, () => `Chat with ${name}`, () => this.talkTo(npc));
     return npc;
@@ -114,16 +79,15 @@ export class Townsfolk {
     a.pos.set(seat.x, 0, seat.z);
     a.rig.face(seat.yaw, true);
     a.body.position.y = seat.y ?? 0.2;
+    a.rig.seatY = a.body.position.y; // grown-up legs reach down for the floor
+    a.headY = a.rig.height + 0.12 - Math.max(0, a.rig.p.lh - 1.5) * a.rig.s; // sitting: the head is lower (bubbles, talk spot)
     a.rig.play('sit');
     npc.seated = true;
     npc.seat = seat;
     if (sleeping) {
       npc.sleeping = true;
-      a.after = () => {
-        a.rig.neck.rotation.x += 0.42;
-        a.rig.neck.rotation.z += 0.18;
-        for (const e of a.rig.eyes) e.scale.y = 0.2;
-      };
+      npc.mood = 'asleep';
+      a.rig.setMood('asleep');
     }
   }
 
@@ -174,7 +138,7 @@ export class Townsfolk {
     fr.st.t = rand(5, 9);
     // a shrew sweeping the west promenade
     const sw = this.make(107, { species: 'shrew', age: 'adult', outfit: 'apron', outfitColor: 0xd9d0b8, hat: 'bandana', hatColor: 0xc94a3a }, 'sweeper', { x: 5.3, z: 8, yaw: 0 });
-    const broom = stickProp(18, 0x8a6a3a, 'broom');
+    const broom = makeBroom();
     broom.rotation.x = 2.4;
     sw.a.rig.holdItem(broom, 'R');
     sw.st = { mode: 'sweep', t: 2, dir: 1, z0: 7, z1: 26 };
@@ -246,8 +210,25 @@ export class Townsfolk {
     else line = pick(TOWN_CHATTER.filter((l) => l !== this.lastLine));
     this.lastLine = line;
     if (!npc.sleeping && !npc.seated && chance(0.4)) a.rig.doEmote(pick(['nod', 'wave']), 0.9);
-    s.say(a, line, { name: npc.name, voice: a.voice });
+    // the face: woken sleepers grumble, the rest say it with the line's mood
+    let mood = npc.sleeping ? 'sleepy' : npc.role === 'baby' ? pick(['laugh', 'happy', 'surprised']) : npc.role === 'busker' ? 'happy' : moodOf(line);
+    if (npc.sleeping && chance(0.3)) mood = 'angry';
+    s.say(a, line, { name: npc.name, voice: a.voice, mood, life: 3.6 });
+    if (!npc.sleeping) a.rig.lookAt(s.eyeTarget);
+    npc.lookHold = 4;
     return line;
+  }
+
+  /** The mole bumped into someone: a start, then a look (grumpy folk glare, the rest shrug it off). */
+  bumped(npc) {
+    const s = this.s, a = npc.a;
+    if (npc.bumpT > 0 || npc.sleeping) return;
+    npc.bumpT = 4;
+    a.rig.setExpression('surprised', { hold: 0.7 });
+    s.later(0.7, () => a.rig.setExpression(npc.mood === 'stern' || npc.mood === 'smug' || chance(0.3) ? 'angry' : 'worried', { hold: 1.8 }));
+    a.rig.lookAt(s.eyeTarget);
+    npc.lookHold = 3;
+    if (!s.game.ui.bubbles.has(a.key) && chance(0.6)) s.say(a, pick(['Oof!', 'Hey! Watch the paws!', 'Oi!', 'Mind where you dig!', 'Pardon you!']), { name: npc.name, life: 2, mood: 'angry' });
   }
 
   /** Townsfolk turn to look at a spot, some walk over to gawk (the escape arrival). */
@@ -260,6 +241,9 @@ export class Townsfolk {
       const gx = tx + Math.cos(ang) * 2.2 * (i % 2 ? 1 : -1) * 0.8, gz = tz + Math.sin(ang) * 2.0 + 0.6;
       f.gawk = { x: tx, z: tz, t: 7 + i };
       f.a.setPath(s.map.findPath(f.a.x, f.a.z, gx, gz, f.a.radius));
+      // the faces of a crowd watching someone crawl out of a caved-in shaft
+      f.a.rig.setExpression(pick(['surprised', 'surprised', 'worried', 'thinking']), { hold: 3 + i * 0.4 });
+      s.later(3.2 + i * 0.4, () => f.a.rig.setExpression(pick(['happy', 'thinking', 'smug', 'worried']), { hold: 3.5 }));
     });
   }
 
@@ -268,6 +252,14 @@ export class Townsfolk {
     const s = this.s, map = s.map, p = s.player;
     for (const n of this.list) {
       const a = n.a;
+      // eyes on the mole when it is close (unless busy running about or asleep)
+      if (n.bumpT > 0) n.bumpT -= dt;
+      if (n.lookHold > 0) n.lookHold -= dt;
+      else if (p && !n.sleeping && n.role !== 'tag') {
+        const d = a.dist(p.x, p.z);
+        const want = d < (n.seated ? 2.8 : 3.4) && a.speedNow < 0.6;
+        if (want !== !!a.rig.lookTarget) a.rig.lookAt(want ? s.eyeTarget : null);
+      }
       if (n.sneezing > 0) {
         n.sneezing -= dt;
         a.drive(dt, 0, 0, map, { anim: false });
@@ -300,7 +292,9 @@ export class Townsfolk {
           n.armed = false;
           if (!n.seated) { a.faceToward(p.x, p.z); a.setPath(null); n.pause = 1.6; }
           if (chance(0.55)) a.rig.doEmote('wave', 1.0);
-          if (chance(0.3) && !s.game.ui.bubbles.has(a.key)) s.say(a, pick(n.role === 'doorstep' ? DOORSTEP : HELLOS), { name: n.name, life: 2.8 });
+          // a face for the newcomer: most light up, some are startled, grumps stay grumpy
+          a.rig.setExpression(n.mood === 'stern' ? (chance(0.5) ? 'smug' : 'stern') : chance(0.25) ? 'surprised' : 'happy', { hold: rand(1.6, 2.6) });
+          if (chance(0.3) && !s.game.ui.bubbles.has(a.key)) s.say(a, pick(n.role === 'doorstep' ? DOORSTEP : HELLOS), { name: n.name, life: 2.8, mood: 'happy' });
           if (n.pause > 0) continue;
         } else if (d > 5) n.armed = true;
       }
@@ -315,7 +309,7 @@ export class Townsfolk {
       if (near.length) {
         const n = pick(near);
         this.lastLine = pick(TOWN_CHATTER.filter((l) => l !== this.lastLine));
-        s.say(n.a, this.lastLine, { name: n.name, life: 4.2 });
+        s.say(n.a, this.lastLine, { name: n.name, life: 4.2, mood: moodOf(this.lastLine) });
       }
     }
     // sneezes
@@ -442,6 +436,9 @@ export class Townsfolk {
         if (d < 0.55) {
           n.it = false; tgt.it = true; tgt.frozen = 1.0; n.frozen = 0.3;
           this.s.emote(tgt.a, '!');
+          tgt.a.rig.setExpression('surprised', { hold: 0.9 });
+          this.s.later(0.9, () => tgt.a.rig.setExpression('angry', { hold: 1.2, body: false }));
+          n.a.rig.setExpression('laugh', { hold: 1.5, body: false });
           const p = this.s.player;
           if (p && a.dist(p.x, p.z) < 9) this.s.game.audio.play('laugh', { pitch: 520 });
         }
@@ -552,13 +549,13 @@ export class Townsfolk {
         if (s.player && a.dist(s.player.x, s.player.z) < 7) s.game.audio.play('splash', { vol: 0.5 });
         if (chance(0.5)) {
           s.particles.spawn({ x: bx, y: 0.55, z: bz, vx: (a.x - bx) * 0.9, vz: (a.z - bz) * 0.9, vy: 2.2, grav: 6, life: 0.6, size: 3.5, color: 0xf0d8d8, alpha: 1, alpha2: 1 });
-          s.later(0.5, () => s.emote(a, '♥'));
-        } else s.later(0.3, () => s.emote(a, '?'));
+          s.later(0.5, () => { s.emote(a, '♥'); a.rig.setExpression('laugh', { hold: 2 }); });
+        } else s.later(0.3, () => { s.emote(a, '?'); a.rig.setExpression(chance(0.5) ? 'sad' : 'angry', { hold: 2.2 }); });
         s.later(0.9, () => { rod.rotation.x = -0.5; });
       }
       return;
     }
-    if (n.st.t <= 0) { n.st.t = rand(9, 16); n.st.bite = 0.9; s.emote(a, '!'); }
+    if (n.st.t <= 0) { n.st.t = rand(9, 16); n.st.bite = 0.9; s.emote(a, '!'); a.rig.setExpression('surprised', { hold: 1 }); }
   }
 
   r_sweeper(n, dt) {
@@ -622,6 +619,7 @@ export class Townsfolk {
         a.rig.holdItem(null);
         a.rig.play('idle');
         if (s.player && a.dist(s.player.x, s.player.z) < 7) s.game.audio.play('clunk', { vol: 0.5 });
+        a.rig.setExpression(chance(0.5) ? 'happy' : 'sleepy', { hold: 2 });
         s.particles.dustPuff(a.x + Math.sin(a.rig.facing) * 0.5, 0.2, a.z + Math.cos(a.rig.facing) * 0.5, 5);
         st.mode = chance(0.3) ? 'rest' : 'toPile';
         st.t = rand(2, 4);
@@ -640,7 +638,10 @@ export class Townsfolk {
     if (n.st.t <= 0) {
       n.st.t = rand(1.6, 3.4);
       const talker = chance(0.5) ? n : m;
+      const listener = talker === n ? m : n;
       talker.a.rig.talk(rand(1, 2));
+      talker.a.rig.setExpression(pick(['happy', 'smug', 'worried', 'surprised', 'neutral', 'thinking']), { hold: rand(1.4, 2.6) });
+      listener.a.rig.setExpression(pick(['surprised', 'happy', 'thinking', 'worried', 'laugh']), { hold: rand(1.2, 2.2), body: chance(0.6) });
       const p = s.player;
       const near = p && a.dist(p.x, p.z) < 4.5;
       if (near) s.game.audio.play('babble', { pitch: talker.a.voice, n: 3 });

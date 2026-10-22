@@ -41,9 +41,34 @@ function mirrorPupil(rows) {
   return mirror(rows).map((r) => r.replace(/W/g, 'D')).map((r, i) => (i === 1 ? r.replace(/^(\.?S?)D/, '$1W') : r));
 }
 
+/** The open eye ringed with white (startled), one pixel bigger all round. */
+function widen(rows) {
+  const h = rows.length, w = rows[0].length;
+  const out = [];
+  for (let r = -1; r <= h; r++) {
+    let row = '';
+    for (let x = -1; x <= w; x++) {
+      const ch = r >= 0 && r < h && x >= 0 && x < w ? rows[r][x] : '.';
+      if (ch !== '.') { row += ch === 'S' ? 'S' : ch; continue; }
+      let near = false;
+      for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const rr = r + dy, xx = x + dx;
+        if (rr >= 0 && rr < h && xx >= 0 && xx < w && rows[rr][xx] !== '.' && (dx === 0 || dy === 0)) { near = true; break; }
+      }
+      row += near ? 'S' : '.';
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+/** The eye shifted up a row (glancing up), the bottom row left to the socket. */
+function glanceUp(rows) { return rows.slice(1).concat([rows[0].replace(/./g, '.')]); }
+
 /**
- * Eye variants for one side: {w, h, variants: {open, half, sad, angry, shut, happy, squeeze}}.
- * Each geometry is pivoted at the template center with its back face at z = 0.
+ * Eye variants for one side: {w, h, variants: {open, half, sad, angry, shut, happy, squeeze,
+ * smile, wide, smug, drowsy, up, squint}}. Each geometry is pivoted at the template center
+ * with its back face at z = 0.
  */
 export function eyeSet(type, side, lid, iris, bake) {
   const base = EYES[type] || EYES.bead;
@@ -66,6 +91,13 @@ export function eyeSet(type, side, lid, iris, bake) {
     })(),
     happy: HAPPY,
     squeeze: side > 0 ? mirror(SQUEEZE) : SQUEEZE,
+    // the expression set: cheeks pushing up, popped wide, half-lidded, heavy, glancing, narrowed
+    smile: lidify(open, (x, r, w, hh) => r >= hh - (hh >= 5 ? 2 : 1) && !(r === hh - 2 && (x === 0 || x === w - 1))),
+    wide: widen(open),
+    smug: lidify(open, (x, r, w, hh) => r < Math.ceil(hh * 0.45) || r === hh - 1),
+    drowsy: lidify(open, (x, r, w, hh) => r < Math.ceil(hh * 0.62)),
+    up: lidify(glanceUp(open), (x, r, w, hh) => r === hh - 1),
+    squint: lidify(open, (x, r, w, hh) => r < Math.max(1, Math.floor(hh * 0.34)) || r >= hh - Math.max(1, Math.floor(hh * 0.3))),
   };
   const variants = {};
   for (const [name, rows] of Object.entries(defs)) {
@@ -86,6 +118,7 @@ export function eyeFootprint(type) {
 // ---------------------------------------------------------------- brows
 // drawn for the +x brow (outer end on the right)
 const BROWS = {
+  soft: ['.BBBB.', 'BBBBBB'], // everyone's brows (tone on tone) so every face can emote
   bushy: ['.BBBBB.', 'BBBBBBB', 'B.B.B.B'],
   angry: ['BB...', '.BBB.', '...BB'], // inner end low
   worried: ['...BB', '.BBB.', 'BB...'], // inner end high
@@ -129,6 +162,27 @@ const MOUTHS = {
   frogSmile: ['D..........D', 'DD........DD', '.DDDDDDDDDD.'],
   frogTalk: ['DMMMMMMMMMMD', '.MMMTTTTMMM.', '..MMTTTTMM..'],
   frogFrown: ['.DDDDDDDDDD.', 'D..........D'],
+  // the expression set
+  grin: ['D......D', '.DWWWWD.', '..DDDD..'],
+  smirk: ['......D', 'DDDDDD.'],
+  wobble: ['.D..D.', 'D.DD.D'],
+  hmm: ['..DDDD', 'DD....'],
+  talkS: ['DMMMMD', '.MTTM.'],
+  grinO: ['DWWWWD', 'MMMMMM', '.MTTM.'],
+  ohS: ['.MM.', 'MTTM', '.MM.'],
+  snarl: ['.MWWM.', 'MMMMMM', 'D....D'],
+  wail: ['..MM..', '.MMMM.', 'MMTTMM', 'D....D'],
+  yawn: ['.MMMM.', 'MMMMMM', 'MMMMMM', 'MMTTMM', '.MMMM.'],
+  // bigger shapes for the grown-up faces (old rigs keep the small ones)
+  smileB: ['D......D', '.D....D.', '..DDDD..'],
+  frownB: ['..DDDD..', '.D....D.', 'D......D'],
+  laughB: ['DMMMMMMD', 'MMMMMMMM', 'MMMTTMMM', '.MMTTMM.', '..MMMM..'],
+  laughBT: ['DMWWWWMD', 'MMMMMMMM', 'MMMTTMMM', '.MMTTMM.', '..MMMM..'],
+  ohB: ['..MM..', '.MMMM.', 'MMMMMM', 'MMTTMM', '.MMMM.'],
+  grinB: ['DWWWWWWD', '.MMMMMM.', '..MTTM..'],
+  wailB: ['..MMMM..', '.MMMMMM.', 'MMMTTMMM', 'D......D'],
+  frogGrin: ['D..........D', '.DWWWWWWWWD.', '..DDDDDDDD..'],
+  frogOh: ['...MMMMMM...', '..MMTTTTMM..', '...MMMMMM...'],
 };
 
 export function mouthGeo(name, lip, bake) {
@@ -145,6 +199,24 @@ export function mouthGeo(name, lip, bake) {
 export function mouthSize(name) {
   const rows = MOUTHS[name] || MOUTHS.rest;
   return { w: rows[0].length, h: rows.length };
+}
+
+// ---------------------------------------------------------------- expression extras
+// little flat pieces that sit in front of the face: cheek blush, a tear, a sweat drop, an anger mark
+const FX = {
+  blush: { rows: ['.PPPP', 'PpPP.'], pal: { P: 0xf47a92, p: 0xffb0c0 } },
+  tear: { rows: ['W', 'B', 'B', 'b'], pal: { W: 0xf4fcff, B: 0x8ad0f8, b: 0x5aa8e8 } },
+  sweat: { rows: ['.B.', 'BWB', 'BBB', '.b.'], pal: { W: 0xf4fcff, B: 0x9ad8f8, b: 0x6ab0e8 } },
+  vein: { rows: ['.R.R.', 'RR.RR', '.....', 'RR.RR', '.R.R.'], pal: { R: 0xe8303a } },
+};
+
+/** Geometry of an expression extra ('blush' | 'tear' | 'sweat' | 'vein'), pivoted at its center. */
+export function fxGeo(kind, bake) {
+  const f = FX[kind];
+  return cachedGeo(`fx|${kind}|${bake}`, () => {
+    const v = templateVox(f.rows, f.pal, 1);
+    return v.geometry(bake, [v.w / 2, v.h / 2, 0]);
+  });
 }
 
 // ---------------------------------------------------------------- whiskers

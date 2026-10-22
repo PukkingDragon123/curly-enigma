@@ -7,6 +7,7 @@ import { PATCH_COLORS, SKIN_PINK } from './spec.js';
 
 // material ids for the body grid
 const FUR = 1, CLOTH = 3, CLOTH2 = 4, STRAP = 5, POCKET = 7, SCARF = 8, PACK = 9, PACK2 = 10, SHELL = 11, SKIN = 12, COLLAR = 13, TIE = 14, SASH = 15, QUILL = 18;
+const BELT = 19, LEATHER = 20, TUFT = 21, IRON = 22, HANDLE = 23;
 
 export const TROUSERS = 0x4a3c34;
 const SHIRT_UNDER = 0xeee6d6;
@@ -29,6 +30,7 @@ export function sleeveColor(spec) {
   if (o === 'shirt' || o === 'dress') return spec.outfitColor;
   if (o === 'suit') return spec.outfitColor;
   if (o === 'vest') return SHIRT_UNDER;
+  if ((o === 'overalls' || o === 'apron') && spec.shirt) return spec.shirt;
   return null;
 }
 
@@ -44,7 +46,8 @@ function fabricAt(c, fabric, x, y, z) {
 
 function bodyKey(spec, p, bake) {
   return ['body', spec.species, spec.fur, p.bw, p.bh, p.bd, spec.outfit, spec.outfitColor, spec.scarf || 0, spec.backpack ? 1 : 0,
-    Math.round((spec.dirt ?? 0.4) * 10), spec.seed, spec.patches || 0, spec.fabric || 'plain', spec.age, spec.body, bake].join('|');
+    Math.round((spec.dirt ?? 0.4) * 10), spec.seed, spec.patches || 0, spec.fabric || 'plain', spec.age, spec.body, bake,
+    p.tall ? `T${spec.shirt || 0}.${spec.belt || 0}` : ''].join('|');
 }
 
 export function buildBody(spec, p, bake) {
@@ -70,13 +73,27 @@ function makeBody(spec, p, bake) {
   // ---------------------------------------------------------------- torso
   const nTop = chubby ? 2.7 : 3, nBot = chubby ? 3 : stocky ? 3.6 : 3.3;
   const baseM = sp === 'molerat' ? SKIN : FUR;
-  v.seRows(0, 0, -1, H + 1, bx + 1, bz + 1, (yc) => {
-    const ty = (yc - by) / by;
-    // flatter front and back so clothes sit on clean planes
-    return [bx * (1 - Math.max(0, ty) * 0.1) - 0.1, bz - 0.1, ty < 0 ? nBot : nTop, ty, 4.4];
-  }, 0, baseM);
-  if (chubby) v.ell(0, by * 0.8, bz * 0.38, bx * 0.82, by * 0.78, bz * 0.72, 0, baseM);
-  else if (spec.body !== 'slim') v.ell(0, by * 0.75, bz * 0.3, bx * 0.72, by * 0.65, bz * 0.7, 0, baseM);
+  if (p.tall) {
+    // a grown-up torso: hips, a waist, a deep chest and rounded shoulders the head sits on
+    const belly = chubby ? 1 : stocky ? 0.45 : 0;
+    const g = (t, c, w) => Math.exp(-(((t - c) / w) ** 2));
+    v.seRows(0, 0, -1, H + 1, bx * 1.1 + 1, bz * 1.3 + 1, (yc) => {
+      const ty = (yc - by) / by;
+      const chest = g(ty, 0.38, 0.5), waist = g(ty, -0.1, 0.3), hips = g(ty, -0.7, 0.34);
+      const wx = 0.84 + 0.16 * chest + 0.08 * hips - 0.08 * waist * (1 - belly) + 0.05 * belly * waist;
+      const wz = 0.86 + 0.14 * chest - 0.05 * waist * (1 - belly) + 0.2 * belly * g(ty, -0.15, 0.5);
+      return [bx * wx - 0.1, bz * wz - 0.1, ty < 0 ? 3.4 : 2.9, ty, 3.4];
+    }, 0, baseM);
+    if (chubby) v.ell(0, by * 0.78, bz * 0.42, bx * 0.8, by * 0.62, bz * 0.74, 0, baseM);
+  } else {
+    v.seRows(0, 0, -1, H + 1, bx + 1, bz + 1, (yc) => {
+      const ty = (yc - by) / by;
+      // flatter front and back so clothes sit on clean planes
+      return [bx * (1 - Math.max(0, ty) * 0.1) - 0.1, bz - 0.1, ty < 0 ? nBot : nTop, ty, 4.4];
+    }, 0, baseM);
+    if (chubby) v.ell(0, by * 0.8, bz * 0.38, bx * 0.82, by * 0.78, bz * 0.72, 0, baseM);
+    else if (spec.body !== 'slim') v.ell(0, by * 0.75, bz * 0.3, bx * 0.72, by * 0.65, bz * 0.7, 0, baseM);
+  }
 
   const front = (x, y) => v.frontZ(x, y);
   const yw = Math.round(H * 0.42); // waist line
@@ -278,6 +295,8 @@ function makeBody(spec, p, bake) {
     }
   }
 
+  if (p.tall) tallDetails(v, spec, p, { H, bx, by, bz, yw, outfit, bibTop, bibHalf, front, dilate, seed, fur });
+
   // ---------------------------------------------------------------- paint
   const dirt = Math.round((spec.dirt ?? 0.4) * 10) / 10; // quantized like the cache key
   const dustC = darkFur ? 0x8a6a48 : 0x5a4028;
@@ -286,7 +305,11 @@ function makeBody(spec, p, bake) {
   for (let i = 0; i < nSpots; i++) {
     const low = rng() < 0.72;
     const a = rng.range(-Math.PI, Math.PI);
-    spots.push({ x: Math.cos(a) * bx * 0.85, y: low ? rng.range(0, H * 0.45) : rng.range(H * 0.45, H * 0.9), z: Math.sin(a) * bz * 0.85 + (rng() < 0.6 ? bz * 0.3 : 0), r: rng.range(2.2, 3.6), c: rng() < 0.5 ? dustC : 0x4a3420, a: rng.range(0.28, 0.45) });
+    const sx = Math.cos(a) * bx * 0.85, sy = low ? rng.range(0, H * 0.45) : rng.range(H * 0.45, H * 0.9), sz = Math.sin(a) * bz * 0.85 + (rng() < 0.6 ? bz * 0.3 : 0);
+    const r = rng.range(2.2, 3.6), dusty = rng() < 0.5, al = rng.range(0.28, 0.45);
+    // grown-ups: darker, fainter grime (pale dust blotches read as camouflage on a big shirt)
+    if (p.tall) spots.push({ x: sx, y: sy * 0.8, z: sz, r: r * 0.9, c: 0x4a3420, a: al * 0.62 });
+    else spots.push({ x: sx, y: sy, z: sz, r, c: dusty ? dustC : 0x4a3420, a: al });
   }
   // contact shadow where the head sits on the shoulders
   const neckShade = (c, x, y, z, e) => {
@@ -332,9 +355,11 @@ function makeBody(spec, p, bake) {
   };
 
   const ocTwill = (x, y, z) => (outfit === 'overalls' ? oc : fabricAt(oc, fabric, x, y, z));
+  const tee = p.tall && spec.shirt ? spec.shirt : 0; // a shirt under the overalls / apron
   const torsoCloth = (x, y, z) => {
     // what the torso surface is wearing at this point (null = fur)
-    if (outfit === 'overalls') return y < yw ? 'pants' : null;
+    if (outfit === 'overalls') return y < yw ? 'pants' : tee ? 'tee' : null;
+    if (outfit === 'apron' && tee && y >= yw - 2) return 'tee';
     if (outfit === 'shirt') return y >= yw - 2 || baby ? 'shirt' : 'shorts';
     if (outfit === 'dress') return 'dress';
     if (outfit === 'vest') {
@@ -360,6 +385,7 @@ function makeBody(spec, p, bake) {
       else if (cl === 'shirt' || cl === 'dress' || cl === 'vest' || cl === 'jacket') c = fabricAt(oc, cl === 'vest' || cl === 'jacket' ? 'plain' : fabric, x, y, z);
       else if (cl === 'shorts' || cl === 'trousers') c = cl === 'trousers' && outfit === 'suit' ? dk(oc, 0.25) : TROUSERS;
       else if (cl === 'under') c = SHIRT_UNDER;
+      else if (cl === 'tee') c = fabricAt(tee, fabric === 'plain' && (spec.seed & 1) ? 'plaid' : fabric, x, y, z);
       // seams: side seams and a waist seam
       if ((cl === 'pants' || cl === 'trousers' || cl === 'shorts') && y === yw - 1 - (cl === 'pants' ? 0 : 3)) c = dk(c, 0.18);
       if ((e & (PX | NX)) && !(e & (PZ | NZ)) && Math.abs(z) < 1 && cl !== 'under') c = dk(c, 0.1);
@@ -460,15 +486,114 @@ function makeBody(spec, p, bake) {
     return grime(c, x, y, z);
   };
   const collarPaint = (x, y, z, e) => {
-    let c = outfit === 'dress' ? 0xf8f4ec : outfit === 'shirt' ? lt(oc, 0.5) : 0xf4efe4;
+    let c = outfit === 'dress' ? 0xf8f4ec : outfit === 'shirt' ? lt(oc, 0.5) : tee && (outfit === 'overalls' || outfit === 'apron') ? dk(tee, 0.12) : 0xf4efe4;
     if (y === H - 3 || (e & NY)) c = dk(c, 0.1);
     return c;
   };
   const tiePaint = (x, y) => (y >= H - 3 ? 0xa83a32 : y % 3 === 0 ? 0xd85a4a : 0xc94a3a);
   const sashPaint = (x, y, z, e) => (y === yw + 2 ? lt(dk(oc, 0.3), 0.05) : dk(oc, 0.3));
 
-  v.resolve({ [FUR]: furPaint, [SKIN]: skinPaint, [CLOTH]: clothPaint, [CLOTH2]: cloth2Paint, [STRAP]: strapPaint, [POCKET]: pocketPaint, [SCARF]: scarfPaint, [PACK]: packPaint, [PACK2]: pack2Paint, [SHELL]: shellPaint, [COLLAR]: collarPaint, [TIE]: tiePaint, [SASH]: sashPaint, [QUILL]: (x, y, z) => ((x + 99) % 3 === 0 ? 0x5a3a22 : 0x3a2416) });
+  const beltC = outfit === 'suit' ? 0x2a2224 : 0x5a3a24;
+  const beltPaint = (x, y, z, e) => {
+    let c = beltC;
+    if (e & PY) c = lt(c, 0.12);
+    else if (e & NY) c = dk(c, 0.22);
+    else if ((x + 40) % 3 === 0 && (e & (PZ | NZ))) c = dk(c, 0.08); // stitched edge
+    return grime(c, x, y, z);
+  };
+  const leatherPaint = (x, y, z, e) => {
+    let c = 0x7a5232;
+    if (e & PY) c = lt(c, 0.14);
+    else if (e & NY) c = dk(c, 0.25);
+    if ((e & PZ) && h3(x, y, z, seed + 9) < 0.12) c = lt(c, 0.1); // scuffs
+    return grime(c, x, y, z);
+  };
+  const tuftPaint = (x, y, z, e) => {
+    const cl = torsoCloth(x, y, z);
+    let c = cl && z > 0 ? lt(belly, 0.12) : backDark(fur, z);
+    if (e & PY) c = lt(c, 0.1);
+    return c;
+  };
+  const ironPaint = (x, y, z, e) => ((e & PY) ? 0x9a9aa4 : (e & PZ) ? 0x6a6a74 : 0x4a4a54);
+  const handlePaint = (x, y) => ((y + 40) % 4 === 0 ? 0x6a4226 : 0x8a5a32);
+  v.resolve({ [FUR]: furPaint, [SKIN]: skinPaint, [CLOTH]: clothPaint, [CLOTH2]: cloth2Paint, [STRAP]: strapPaint, [POCKET]: pocketPaint, [SCARF]: scarfPaint, [PACK]: packPaint, [PACK2]: pack2Paint, [SHELL]: shellPaint, [COLLAR]: collarPaint, [TIE]: tiePaint, [SASH]: sashPaint, [QUILL]: (x, y, z) => ((x + 99) % 3 === 0 ? 0x5a3a22 : 0x3a2416),
+    [BELT]: beltPaint, [LEATHER]: leatherPaint, [TUFT]: tuftPaint, [IRON]: ironPaint, [HANDLE]: handlePaint });
   return { geo: v.geometry(bake), info: { yw, bibTop } };
+}
+
+// ---------------------------------------------------------------- grown-up details
+/**
+ * The tall build's extra tailoring (all on the torso grid, before painting): under-shirt collars,
+ * a button placket and a chest pocket on shirts, belts with a brass buckle and loops, a tool belt
+ * with a pouch and a hammer, a watch chain on waistcoats, a fur tuft at the open collar and
+ * a ragged fur fringe where the fur shows.
+ */
+function tallDetails(v, spec, p, o) {
+  const { H, bx, bz, yw, outfit, front, dilate, seed } = o;
+  const BRASS2 = 0xe8c060;
+  const onFront = (x, y, c) => { const z = front(x, y); if (isFinite(z)) v.set(x, y, z + 1, c); return z; };
+  const tee = spec.shirt && (outfit === 'overalls' || outfit === 'apron');
+  // collars: the under-shirt's points show above the bib; open collars get a tuft of chest fur
+  if (tee) dilate((x, y, z) => z > 2 && y >= H - 3 && Math.abs(x + 0.5) < 5 && Math.abs(x + 0.5) > 1.5, COLLAR);
+  if (outfit === 'shirt' || outfit === 'vest' || tee) dilate((x, y, z) => z > 2 && y >= H - 4 && Math.abs(x + 0.5) < 1.6 && ((x + y) & 1) === 0, TUFT);
+  // shirts: a placket with buttons down the middle and a chest pocket with a flap
+  if (outfit === 'shirt' && spec.age !== 'kid') {
+    for (let y = yw - 1; y < H - 4; y++) {
+      onFront(-1, y, dk(spec.outfitColor, 0.2));
+      if ((y - yw) % 3 === 0) onFront(0, y, 0xf4ecdc);
+    }
+    const px = Math.round(bx * 0.35), py = H - 9;
+    for (let x = px; x < px + 4; x++) for (let y = py; y < py + 4; y++) {
+      const top = y === py + 3;
+      onFront(x, y, top ? dk(spec.outfitColor, 0.25) : (x === px || x === px + 3 || y === py) && (x + y) % 2 ? lt(spec.outfitColor, 0.3) : dk(spec.outfitColor, 0.06));
+    }
+    onFront(px + 1, py + 2, 0xf4ecdc);
+    // a pencil in the pocket
+    if (seed % 3 === 0) for (let y = py + 3; y < py + 6; y++) onFront(px + 2, y, y === py + 5 ? 0xf09aa6 : 0xe0b030);
+  }
+  // waistcoats: a gold watch chain from a button to the pocket
+  if ((outfit === 'vest' || outfit === 'suit') && (spec.age === 'elder' || seed % 2 === 0)) {
+    const pts = [];
+    for (let i = 0; i <= 8; i++) { const t = i / 8; pts.push([Math.round(1 + t * (bx * 0.55)), Math.round(yw + 3 - Math.sin(t * Math.PI) * 2.2 - t)]); }
+    for (const [x, y] of pts) onFront(x, y, (x + y) % 2 ? BRASS2 : 0xb08a30);
+  }
+  // belts
+  const belt = spec.belt || 0;
+  if (belt && outfit !== 'dress') {
+    const low = outfit === 'overalls' || outfit === 'apron';
+    const by0 = low ? yw - 4 : yw - 2, by1 = by0 + 2;
+    dilate((x, y) => y >= by0 && y < by1, BELT);
+    // buckle: a brass frame with a dark tongue, off the middle on a tool belt
+    const bxk = belt === 2 ? 1 : -2;
+    for (let x = bxk; x < bxk + 4; x++) for (let y = by0 - 1; y <= by1; y++) {
+      const z = front(x, y);
+      if (!isFinite(z)) continue;
+      const edge = x === bxk || x === bxk + 3 || y === by0 - 1 || y === by1;
+      v.set(x, y, z + 1, edge ? (y === by1 ? BRASS2 : 0xc8a048) : (x === bxk + 1 ? 0x3a2a1a : 0x5a3a24));
+    }
+    // loops
+    for (const lx of [-Math.round(bx * 0.6), Math.round(bx * 0.6) - 1]) for (let y = by0 - 1; y <= by1; y++) onFront(lx, y, 0x4a2e1c);
+    if (belt === 2) {
+      // a leather pouch on the right hip, a hammer hanging in a loop on the left
+      const pxc = Math.round(bx * 0.72), pz = Math.round(bz * 0.2);
+      v.fill(pxc - 2.5, pxc + 2.5, by0 - 6, by1, pz - 2.5, pz + 2.5, (x, y, z) => Math.abs(x - pxc) <= 2.4 && y >= by0 - 5.5 && Math.abs(z - pz) <= 2.2 && !v.has(Math.floor(x), Math.floor(y), Math.floor(z)) && Math.abs(x) > bx * 0.55, 0, LEATHER);
+      v.fill(pxc - 3, pxc + 3, by0 - 1, by1 + 1, pz - 3, pz + 3, (x, y, z) => Math.abs(x - pxc) <= 2.9 && y >= by0 - 0.5 && Math.abs(z - pz) <= 2.7 && !v.has(Math.floor(x), Math.floor(y), Math.floor(z)), 0, BELT);
+      const hx = -Math.round(bx * 0.82) - 1, hz = Math.round(bz * 0.15);
+      for (let y = by0 - 9; y < by0 + 1; y++) for (const dx of [0, -1]) if (!v.has(hx + dx, y, hz)) v.setM(hx + dx, y, hz, HANDLE);
+      v.fill(hx - 3, hx + 2, by0 + 1, by0 + 3, hz - 3, hz + 4, (x, y, z) => !v.has(Math.floor(x), Math.floor(y), Math.floor(z)), 0, IRON);
+    }
+  }
+  // a ragged fringe of fur where the fur shows (flanks and back), so the outline reads furry
+  if (spec.species !== 'molerat' && spec.species !== 'frog' && spec.species !== 'armadillo') {
+    const furry = outfit === 'none' || ((outfit === 'overalls' || outfit === 'apron') && !tee);
+    dilate((x, y, z) => {
+      if (y < 2 || y > H - 2) return false;
+      if (!furry && y > yw - (outfit === 'overalls' ? 0 : 3)) return false;
+      if (outfit !== 'none' && y < yw) return false;
+      const side = Math.abs(x + 0.5) > bx * 0.78 || z < -bz * 0.6;
+      return side && h3(x >> 1, y, z >> 1, seed + 21) < 0.09;
+    }, TUFT);
+  }
 }
 
 // ---------------------------------------------------------------- tails

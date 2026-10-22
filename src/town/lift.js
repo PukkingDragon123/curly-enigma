@@ -5,12 +5,15 @@
 // the scene changes (lifts.js rideTo); arriving, the cage rises out of the pit and the mole steps
 // out. Town units; the scene supplies tween/sleep helpers and the rig.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VoxelGrid, C, wood, beam, iron, stone, line, ring, M32, G32, M16, group, mulc, sp3, h3 } from '../iso/kit.js';
 import { hash2 } from '../iso/surface.js';
 import { signCanvas } from '../iso/pixel.js';
 import { TOWN } from '../iso/townLayout.js';
 import { ceilingInfo } from './cave.js';
 import { M } from './units.js';
+import { voxelMaterial } from '../gfx/Voxel.js';
+import { LAYER_OUTLINE } from '../core/Engine.js';
 
 const CAGE = 1.86; // cage width (TU)
 const CAGE_H = 2.2;
@@ -70,21 +73,10 @@ export function liftTower() {
   const cm = M16(cab, [1, 0, 1]);
   cm.position.set(c.x - 0.4, TOWER_H - 0.4, c.z);
   grp.add(cm);
-  // the pit: plank lining going down into the dark, a stone curb round the mouth
-  const pit = new VoxelGrid(38, PIT_DEPTH * 16, 38);
-  const lining = wood(0x5a3e28, { axis: 'x', across: 'y', pw: 5, seed: 7 });
-  for (let y = 0; y < pit.h; y++) {
-    // timber-lined, with a frame every metre or so, fading into the dark within a few metres
-    const f = Math.max(0.03, 1 - Math.pow(y / (pit.h * 0.45), 0.8));
-    for (let k = 0; k < 38; k++) for (const [x, z] of [[k, 0], [k, 37], [0, k], [37, k]]) {
-      const frame = y % 26 < 4, post = k < 3 || k > 34;
-      const c2 = frame || post ? (frame ? 0x4a3220 : 0x3e2a1a) : lining(x + z, y, 0);
-      pit.set(x, pit.h - 1 - y, z, mulc(c2, f));
-    }
-  }
-  const pm = M16(pit, [19, pit.h, 19]);
-  pm.position.set(c.x, 0, c.z);
-  grp.add(pm);
+  // the pit: a timbered shaft into the rock, fading into the dark; a stone curb round the mouth
+  const shaft = pitShaft();
+  shaft.position.set(c.x, 0, c.z);
+  grp.add(shaft);
   const curb = new VoxelGrid(80, 4, 80);
   const st = stone(0x8a8078, { seed: 9 });
   for (let x = 0; x < 80; x++) for (let z = 0; z < 80; z++) {
@@ -109,6 +101,131 @@ export function liftTower() {
   return { obj: grp, wheel: wm, sign: { pc: sign, x: c.x, y: 2.6 * 1 + 0.55, z: c.z + (P1 - D / 2 + 4) / 16 + 0.06 }, light: { x: lx, y: 2.45, z: lz } };
 }
 
+/**
+ * The shaft under the cage (local origin = centre of the mouth, going down PIT_DEPTH): square
+ * timber sets every metre or so with corner posts, rough rock bulging between them, lagging boards
+ * on the back wall, the cage's iron guide rails, a ladder and two cables, all fading into the
+ * dark. Fine (1/16) near the top where the light reaches, coarse (1/8) further down.
+ */
+function pitShaft() {
+  const grp = new THREE.Group();
+  const IN = 2.0; // the opening (TU), same as the hole in the floor
+  const part = (res, y0, y1) => {
+    const n = Math.round(IN * res), wall = Math.round(0.25 * res), Wd = n + wall * 2;
+    const H = Math.round((y1 - y0) * res);
+    const g = new VoxelGrid(Wd, H, Wd);
+    const k = 16 / res;
+    const setEvery = Math.round(1.25 * res), setH = Math.max(1, Math.round(3 / k));
+    const lag = wood(0x4a3424, { axis: 'y', across: 'x', pw: Math.max(2, Math.round(5 / k)), seed: 5 });
+    for (let yy = 0; yy < H; yy++) {
+      const depthTU = y0 + (H - 1 - yy + 0.5) / res; // TU below the mouth
+      const f = Math.max(0.025, 1 - Math.pow(depthTU / (PIT_DEPTH * 0.42), 0.75));
+      const yAbs = Math.round(depthTU * res);
+      const isSet = yAbs % setEvery < setH && depthTU > 0.12;
+      for (let side = 0; side < 4; side++) for (let u = 0; u < Wd; u++) {
+        for (let t = 0; t < wall; t++) {
+          // t = 0 at the shaft's inner face, growing into the rock
+          const [x, z] = side === 0 ? [wall - 1 - t, u] : side === 1 ? [Wd - wall + t, u] : side === 2 ? [u, wall - 1 - t] : [u, Wd - wall + t];
+          const inner = u >= wall && u < Wd - wall;
+          const corner = !inner && (u < wall - 1 || u >= Wd - wall + 1);
+          const post = u >= wall - Math.round(2 / k) && u < wall + Math.round(2 / k) || u >= Wd - wall - Math.round(2 / k) && u < Wd - wall + Math.round(2 / k);
+          const rd = 1 + Math.floor(h3(Math.floor(u * k / 3), Math.floor(yAbs * k / 3), side, 31) * 3 / k) ; // rock surface depth
+          let col = 0;
+          if (corner) col = t >= 0 ? mulc(0x4a4038, 0.85 + h3(u, yAbs, side, 3) * 0.2) : 0;
+          else if (isSet && t < Math.round(2 / k) + 1) col = mulc(yAbs % setEvery === 0 ? 0x5e4228 : 0x6a4a2e, 0.9 + h3(u >> 2, yAbs, side, 7) * 0.15);
+          else if (post && t < Math.round(2 / k) + 1) col = mulc(0x5a3e26, 0.9 + h3(side, yAbs >> 2, u, 9) * 0.12);
+          else if (side === 2 && t === Math.round(1 / k) && inner && h3(Math.floor(u * k / 5), Math.floor(yAbs / setEvery), 1, 11) > 0.25) col = lag(u, yAbs, 0);
+          else if (t >= Math.min(rd, wall - 1)) {
+            const strat = Math.floor((yAbs * k + Math.sin(u * k * 0.2 + side) * 3) / 9) % 3;
+            col = mulc([0x5a4e46, 0x4e443e, 0x645448][strat], 0.85 + Math.floor(h3(Math.floor(u * k / 2), Math.floor(yAbs * k / 2), side, 13) * 3) * 0.08);
+            if (h3(u, yAbs, side, 17) < 0.02 * k) col = 0x6a6a5a; // a wet glint
+          }
+          if (col) g.set(x, yy, z, mulc(col, f));
+        }
+      }
+      // the cage's guide rails (iron) on both side walls, a ladder in the back-right corner, two cables
+      const fr = (c2) => mulc(c2, f);
+      const mid = Math.floor(Wd / 2);
+      if (res >= 8) {
+        g.set(wall, yy, mid, fr(0x6a6a74)); g.set(Wd - wall - 1, yy, mid, fr(0x6a6a74));
+        if (res === 16) { g.set(wall, yy, mid - 1, fr(0x4a4a54)); g.set(Wd - wall - 1, yy, mid - 1, fr(0x4a4a54)); }
+        const lx = Wd - wall - Math.round(6 / k);
+        g.set(lx, yy, wall, fr(0x5a3e26)); g.set(lx + Math.max(1, Math.round(3 / k)), yy, wall, fr(0x5a3e26));
+        if (yAbs % Math.max(1, Math.round(4 / k)) === 0) for (let x = lx; x <= lx + Math.max(1, Math.round(3 / k)); x++) g.set(x, yy, wall, fr(0x6a4a2e));
+        g.set(wall + Math.round(4 / k), yy, wall, fr(0x2e2e36));
+        if (res === 16) g.set(wall + 9, yy, wall, fr(0x3a3a44));
+      }
+    }
+    const m = M16(g, [Wd / 2, H, Wd / 2]);
+    if (res !== 16) m.scale.setScalar(16 / res);
+    m.position.y = -y0;
+    return m;
+  };
+  grp.add(part(16, 0, 1.25), part(8, 1.25, 4), part(4, 4, PIT_DEPTH));
+  return grp;
+}
+
+/** A mine cart on the rails by the lift, loaded with coal and a few dull lumps of ore. */
+export function coalCart(seed = 2) {
+  const g = new VoxelGrid(30, 34, 40);
+  const ir = iron(0x4a4a54, seed);
+  for (let y = 6; y < 24; y++) {
+    const f = Math.floor((y - 6) / 6);
+    g.box(3 - f, y, 3 - f, 24 + f * 2, 1, 34 + f * 2, (x, yy, z) => {
+      const edge = x === 3 - f || x === 26 + f || z === 3 - f || z === 36 + f;
+      if (!edge) return -1;
+      if (yy === 6 || yy === 23 || yy % 6 === 0) return C.ironL;
+      if ((z % 8 === 3 || x % 8 === 3) && yy % 3 === 1) return 0x6a6a74;
+      return ir(x, yy, z);
+    });
+  }
+  g.box(3, 6, 3, 24, 1, 34, ir);
+  for (let x = 4; x < 26; x++) for (let z = 4; z < 36; z++) {
+    const h = 22 + Math.round(2.6 * Math.sin(x * 0.28) * Math.sin(z * 0.2) + hash2(x >> 1, z >> 1, 3) * 2);
+    for (let y = 18; y < h; y++) {
+      const lump = h3(x >> 1, y >> 1, z >> 1, 9);
+      g.set(x, y, z, lump < 0.07 ? 0x8a5a3e : lump < 0.1 ? 0x7a7068 : mulc(0x2a2628, 0.85 + Math.floor(h3(x >> 1, y, z >> 1, 4) * 3) * 0.12));
+    }
+  }
+  for (const z of [9, 30]) {
+    g.box(1, 4, z, 28, 2, 2, C.ironD);
+    for (const x of [0, 28]) {
+      for (let y = 0; y < 10; y++) for (let zz = z - 5; zz < z + 7; zz++) {
+        const d = Math.hypot(y + 0.5 - 5, zz + 0.5 - (z + 1));
+        if (d < 5.2) g.set(x, y, zz, d > 4 ? C.ironD : d < 1.5 ? C.ironL : 0x2e2e36);
+      }
+    }
+  }
+  return { obj: M32(g, [15, 0, 20]), shadow: { rx: 0.55, rz: 0.75, k: 0.55 } };
+}
+
+/** A W×H pixel texture (1/32 TU texels, row 0 at the bottom); the colour function's 0 is see-through. */
+function pixelTexture(W, H, pix) {
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const c = pix(x, y);
+    if (!c) continue;
+    const i = ((H - 1 - y) * W + x) * 4;
+    img.data[i] = (c >> 16) & 255; img.data[i + 1] = (c >> 8) & 255; img.data[i + 2] = c & 255; img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+/** Flat pixel panels (a lattice): double-sided, alpha-tested, lit like the voxels and outlined. */
+function pixelMesh(geo, tex) {
+  const mat = new THREE.MeshToonMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, gradientMap: voxelMaterial('toon').gradientMap });
+  const m = new THREE.Mesh(geo, mat);
+  m.layers.enable(LAYER_OUTLINE);
+  m.userData.noBatch = true;
+  return m;
+}
+
 /** The brass cage (local origin = floor centre). Returns { obj, gate, lamp, cableTop }. */
 export function liftCage() {
   const S = Math.round(CAGE * 32), Hh = Math.round(CAGE_H * 32);
@@ -123,34 +240,42 @@ export function liftCage() {
   g.box(2, Hh, 2, S - 4, 2, S - 4, 0x6a5a3a);
   ring(g, S / 2, S / 2, 0, 4, Hh + 2, Hh + 5, C.iron);
   g.box(S / 2 - 1, Hh + 5, S / 2 - 1, 2, 3, 2, C.ironL);
-  // lattice on the back and both sides, a hand rail
+  // lattice on the back and both sides (alpha-tested pixel panels: a voxel lattice is thousands
+  // of tiny faces), brass bars and a hand rail
   const lattice = (u, y) => ((u + y) % 8 === 0 || (u - y + 800) % 8 === 0) && y > 4;
-  for (let y = 3; y < Hh - 3; y++) for (let u = 3; u < S - 3; u++) {
-    if (lattice(u, y)) { g.set(u, y, 0, 0xb08a40); g.set(0, y, u, 0xb08a40); g.set(S - 1, y, u, 0xb08a40); }
-  }
   for (let u = 0; u < S; u++) for (const y of [3, 22, Hh - 4]) { g.set(u, y, 0, C.brass); g.set(0, y, u, C.brass); g.set(S - 1, y, u, C.brass); }
   for (let u = 4; u < S - 4; u++) { g.set(u, 24, 2, 0x8a5a32); g.set(2, 24, u, 0x8a5a32); g.set(S - 3, 24, u, 0x8a5a32); }
+  const panelPix = (u, y) => (u >= 3 && u < S - 3 && y >= 3 && y < Hh - 3 && lattice(u, y) ? mulc(0xb08a40, 0.92 + h3(u >> 2, y >> 2, 0, 5) * 0.16) : 0);
   // a lamp under the roof
   glow.box(S / 2 - 3, Hh - 9, S / 2 - 3, 6, 6, 6, (x, y) => (y > Hh - 6 ? C.glowW : C.glowO));
   g.box(S / 2 - 4, Hh - 3, S / 2 - 4, 8, 1, 8, C.iron);
-  const body = group(M32(g, [S / 2, 0, S / 2]), G32(glow, [S / 2, 0, S / 2]));
-  // the folding gate across the front (slides sideways)
-  const gt = new VoxelGrid(S, Hh - 6, 2);
-  for (let x = 1; x < S - 1; x++) for (let y = 0; y < Hh - 6; y++) {
-    const d = (x + y) % 10 === 0 || (x - y + 1000) % 10 === 0;
-    if (d || y === 0 || y === Hh - 7 || y === 22) gt.set(x, y, 0, y === 22 ? 0xffe08a : C.brass);
-  }
-  for (let y = 0; y < Hh - 6; y++) gt.set(S - 2, y, 1, C.brass);
-  const gate = M32(gt, [S / 2, 0, 1]);
-  gate.position.set(0, 3 / 32, (S / 2 - 1) / 32);
-  body.add(gate);
-  // the cable from the hook up to the wheel
+  // the cage, its cable (from the hook up to the wheel) and the lattice panels: one mesh each
   const cab = new VoxelGrid(2, Math.round((TOWER_H - CAGE_H - 0.9) * 32), 2);
   cab.box(0, 0, 0, 2, cab.h, 2, (x, y) => (y % 7 === 0 ? 0x5a5a64 : 0x3a3a44));
+  const shell = M32(g, [S / 2, 0, S / 2]);
   const cm = M32(cab, [1, 0, 1]);
-  cm.position.y = (Hh + 8) / 32;
-  body.add(cm);
-  return { obj: body, gate, cable: cm, size: S / 32, height: Hh / 32, lamp: { x: 0, y: (Hh - 6) / 32, z: 0 } };
+  shell.geometry = mergeGeometries([shell.geometry, cm.geometry.clone().translate(0, (Hh + 8) / 32, 0)]);
+  cm.geometry.dispose();
+  const lampGlow = G32(glow, [S / 2, 0, S / 2]);
+  lampGlow.userData.ol = false;
+  const body = group(shell, lampGlow);
+  const tex = pixelTexture(S, Hh, panelPix);
+  const place = (rotY, x, z) => new THREE.Matrix4().makeRotationY(rotY).setPosition(x, 0, z);
+  const pg = (m) => new THREE.PlaneGeometry(S / 32, Hh / 32).translate(0, Hh / 64, 0).applyMatrix4(m);
+  const panels = pixelMesh(mergeGeometries([
+    pg(place(0, 0, -S / 2 / 32 + 0.5 / 32)), pg(place(Math.PI / 2, -S / 2 / 32 + 0.5 / 32, 0)), pg(place(-Math.PI / 2, S / 2 / 32 - 0.5 / 32, 0)),
+  ]), tex);
+  body.add(panels);
+  // the folding gate across the front (slides sideways)
+  const gatePix = (x, y) => {
+    if (x < 1 || x >= S - 1 || y < 0 || y >= Hh - 6) return 0;
+    const d = (x + y) % 10 === 0 || (x - y + 1000) % 10 === 0;
+    return d || y === 0 || y === Hh - 7 || y === 22 || x === S - 2 ? (y === 22 ? 0xffe08a : C.brass) : 0;
+  };
+  const gate = pixelMesh(new THREE.PlaneGeometry(S / 32, (Hh - 6) / 32).translate(0, (Hh - 6) / 64, 0.5 / 32), pixelTexture(S, Hh - 6, gatePix));
+  gate.position.set(0, 3 / 32, (S / 2 - 1) / 32);
+  body.add(gate);
+  return { obj: body, gate, size: S / 32, height: Hh / 32, lamp: { x: 0, y: (Hh - 6) / 32, z: 0 } };
 }
 
 /** Bramble's crank: a timber stand with a big spoked wheel, a gear and a bell on a post. */
@@ -166,7 +291,8 @@ export function liftCrank() {
   g.ellipsoid(18.5, 50, 18, 4.4, 6, 4.4, (x, y) => (y > 49 ? C.gold : 0xd9a84a));
   g.box(18, 43, 17, 1, 2, 1, 0x6a5a3a);
   line(g, [[18.5, 42, 18], [18.5, 30, 18]], 0.5, C.rope);
-  grp.add(M32(g, [15, 0, 11]));
+  const body = M32(g, [15, 0, 11]);
+  grp.add(body);
   const wheel = new VoxelGrid(40, 40, 4);
   for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) {
     const d = Math.hypot(x + 0.5 - 20, y + 0.5 - 20);
@@ -183,10 +309,10 @@ export function liftCrank() {
   const hd = new VoxelGrid(4, 4, 12);
   hd.box(1, 1, 0, 2, 2, 12, C.woodL);
   const hm = M32(hd, [2, 2, 0]);
-  hm.position.set(16 / 32, 0, 2 / 32);
-  wm.add(hm);
+  wm.geometry = mergeGeometries([wm.geometry, hm.geometry.clone().translate(16 / 32, 0, 2 / 32)]);
+  hm.geometry.dispose();
   grp.add(holder);
-  return { obj: grp, wheel: holder, bell: { x: (18.5 - 15) / 32, y: 50 / 32, z: (18 - 11) / 32 } };
+  return { obj: grp, body, wheel: holder, bell: { x: (18.5 - 15) / 32, y: 50 / 32, z: (18 - 11) / 32 } };
 }
 
 /** Build everything into the scene S (root, B, addLight, signs). Returns the lift handle. */
@@ -203,6 +329,11 @@ export function buildLift(S) {
   const crank = liftCrank();
   crank.obj.position.set(L.crank.x, 0, L.crank.z);
   crank.obj.rotation.y = Math.PI / 2;
+  // the stand and bell are static (batched); only the wheel turns
+  const stand = new THREE.Group();
+  stand.position.copy(crank.obj.position); stand.rotation.copy(crank.obj.rotation);
+  stand.add(crank.body);
+  B.addStatic(stand);
   S.root.add(crank.obj);
   // collision: the tower posts, the cage (a solid block while it waits at the top), the crank
   const P = 1.3;
@@ -214,6 +345,12 @@ export function buildLift(S) {
     /** move the cage (and its lamp) to height y (TU) */
     setY(y) { cage.obj.position.y = y; cageLight.y = cage.lamp.y + y; },
     gateOpen(k) { cage.gate.position.x = k * 0.82; },
+    /** The moving parts join the outline pass only when the eye is near. */
+    setOutline(on) {
+      if (this.ol === on) return;
+      this.ol = on;
+      for (const o of [cage.obj, crank.obj]) o.traverse((m) => { if (m.isMesh && m.userData.ol !== false) { if (on) m.layers.enable(LAYER_OUTLINE); else m.layers.disable(LAYER_OUTLINE); } });
+    },
   };
 }
 

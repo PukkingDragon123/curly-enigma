@@ -17,7 +17,8 @@ import { buildWalls, buildCeiling, buildTalus, wallFrames, wallPoint, worldToU, 
 import { shopBuilding, FRONT } from './shops.js';
 import { ticketBooth32 as boothFPS, velvetRope32 } from '../iso/booth.js';
 import { moundHouse, mushroomTree, fountain } from './nature.js';
-import { LID } from './build.js';
+import { coalCart } from './lift.js';
+import { LID, cullFaces } from './build.js';
 import { M } from './units.js';
 
 const _v = new THREE.Vector3();
@@ -26,7 +27,7 @@ const LEDGE_Y = 4.36;
 // ---------------------------------------------------------------- the cavern
 export function buildCave(S) {
   const B = S.B, T = TOWN, Tu = T.tunnel, F = T.falls;
-  const shopFlat = (s) => ({ a: s.a + 0.04, b: s.a + s.w - 0.04, top: 4.5, d: -1.75 });
+  const shopFlat = (s) => ({ a: s.a + 0.04, b: s.a + s.w - 0.04, top: 4.5, d: -1.75, hide: 3.0 });
   const flats = {
     N: T.shops.filter((s) => s.wall === 'N').map(shopFlat).concat([
       { a: T.booth.x0 - 0.1, b: T.booth.x0 + T.booth.w + 0.1, top: 1.2 },
@@ -44,7 +45,7 @@ export function buildCave(S) {
   };
   const walls = buildWalls({ flats, holes });
   for (const m of walls.meshes) B.addStatic(m);
-  for (const m of buildCeiling()) B.addStatic(m);
+  for (const m of buildCeiling()) B.addStatic(m, { cls: 'roof' });
   // rubble banks: clear of the house doors and the back lane
   const keep = (x, z) => !T.houses.some((h) => Math.hypot(x - h.x, z - h.z) < 2.6) && !(x > 34.6 && x < 37.8 && z > 11 && z < 32);
   for (const m of buildTalus(keep)) B.addStatic(m);
@@ -276,7 +277,7 @@ export function buildRoof(S) {
       const st = lowRes(() => P.stalactite(Math.round(ox * 31 + oz), h));
       st.obj.position.set(ox, ceilingAt(ox, oz) + 0.1, oz);
       st.obj.scale.setScalar(1.4 + rng() * 1.2);
-      B.addStatic(st.obj, { outline: false });
+      B.addStatic(st.obj, { outline: false, cls: 'roof' });
     }
     void y;
   }
@@ -290,7 +291,7 @@ export function buildRoof(S) {
     c.obj.position.set(x, ceilingAt(x, z) + 0.12, z);
     c.obj.rotation.set(Math.PI, rng() * 6, 0);
     c.obj.scale.setScalar(1.6);
-    B.addStatic(c.obj, { outline: false });
+    B.addStatic(c.obj, { outline: false, cls: 'roof' });
     crys.push({ x, y: ceilingAt(x, z) - 0.9, z, color: c.color });
     S.glow.add({ kind: 'cpool', x, y: ceilingAt(x, z) - 0.25, z, w: 6, h: 6, color: c.color, opacity: 0.32 });
     S.addLight({ x, y: ceilingAt(x, z) - 1.0, z, color: c.color, intensity: 0, real: false, halo: 2.4, haloOpacity: 0.32, flicker: 0.05, speed: 0.3, bakePower: 1.1, bakeRadius: 4.5 });
@@ -338,6 +339,8 @@ export function buildShops(S) {
     const N = s.wall === 'N';
     const back = (N ? Tn.northFace : Tn.westFace) + 1 - FRONT;
     const toWorld = (lx, lz) => (N ? { x: s.a + lx, z: back + lz } : { x: back + lz, z: s.a + s.w - lx });
+    // the back of the building and of everything inside looks into the rock: drop those faces
+    cullFaces(o, (n, c) => n.z < -0.9 && c.z < FRONT - 0.9);
     if (N) o.position.set(s.a, 0, back);
     else { o.position.set(back, 0, s.a + s.w); o.rotation.y = Math.PI / 2; }
     B.addStatic(o);
@@ -360,7 +363,9 @@ export function buildShops(S) {
     }
     for (const l of b.lights) {
       const w = toWorld(l.x, l.z);
-      if (l.kind === 'inside') S.addLight({ x: w.x, y: l.y, z: w.z, color: 0xffc070, intensity: 2.2, distance: 3.2, flicker: 0.08, real: true, halo: 0.5, haloOpacity: 0.4, bakePower: 0.75, bakeRadius: 2.2, priority: 1.5 });
+      // the lamp over the keeper: its real light sits a little in front of the (now taller)
+      // keeper's head and softer, so faces read instead of glowing
+      if (l.kind === 'inside') { const wf = toWorld(l.x, l.z + 0.6); S.addLight({ x: wf.x, y: l.y + 0.12, z: wf.z, hx: w.x, hy: l.y, hz: w.z, color: 0xffc070, intensity: 1.25, distance: 3.6, flicker: 0.08, real: true, halo: 0.5, haloOpacity: 0.4, bakePower: 0.75, bakeRadius: 2.2, priority: 1.5 }); }
       else S.addLight({ x: w.x, y: l.y, z: w.z, color: 0xffb860, intensity: 1.8, distance: 3.6, flicker: 0.16, pool: 1.0, poolOpacity: 0.2, halo: 0.5, haloOpacity: 0.5, bakePower: 0.55, bakeRadius: 2.4 });
     }
     // the warm light spilling out of the window onto the street
@@ -383,11 +388,12 @@ export function buildShops(S) {
 export function buildBooth(S) {
   const B = S.B, Bo = TOWN.booth;
   const b = boothFPS();
+  cullFaces(b.obj, (n, c) => n.z < -0.9 && c.z < 0.45);
   b.obj.position.set(Bo.x0, 0, Bo.z0);
   b.obj.remove(b.ticket);
   b.ticket.position.add(b.obj.position);
   S.root.add(b.ticket);
-  B.addStatic(b.obj);
+  B.addStatic(b.obj, { nolod: true });
   S.ticketSign = b.ticket;
   for (const l of b.lights) S.addLight({ x: Bo.x0 + l.x, y: l.y, z: Bo.z0 + l.z, color: 0xffd890, intensity: 3, distance: 4.5, flicker: 0.08, pool: 1.0, poolOpacity: 0.22, halo: 0.45, haloOpacity: 0.5 });
   S.addLight({ x: Bo.x0 + b.inside.x, y: b.inside.y, z: Bo.z0 + b.inside.z, color: 0xffc070, intensity: 2.4, distance: 3, real: true, pool: 0, halo: 0.3, haloOpacity: 0.35, bakePower: 0.9, bakeRadius: 1.8, priority: 1 });
@@ -548,7 +554,7 @@ export function buildPlaza(S) {
   const B = S.B, F = TOWN.fountain;
   const f = fountain(F);
   f.obj.position.set(F.x, 0, F.z);
-  B.addStatic(f.obj);
+  B.addStatic(f.obj, { nolod: true });
   S.fountainInfo = f;
   B.solidCircle(F.x, F.z, F.r + 0.05, 0.75);
   B.solidCircle(F.x, F.z, 0.7, 2.6);
@@ -567,7 +573,7 @@ export function buildPlaza(S) {
     }
   });
   // lamp posts
-  TOWN.lamps.forEach((l, i) => B.place(() => P.lampPost(i), l.x, l.z, i % 2 ? Math.PI / 2 : 0, { h: 3, light: { intensity: 6, distance: 6.5, pool: 1.9, poolOpacity: 0.3, halo: 0.75, haloOpacity: 0.6 } }));
+  TOWN.lamps.forEach((l, i) => B.place(() => P.lampPost(i), l.x, l.z, i % 2 ? Math.PI / 2 : 0, { h: 3, nolod: true, light: { intensity: 6, distance: 6.5, pool: 1.9, poolOpacity: 0.3, halo: 0.75, haloOpacity: 0.6 } }));
   // giant glowing mushroom trees
   S.trees = [];
   for (const t of TOWN.trees) {
@@ -610,7 +616,7 @@ export function buildMarket(S) {
 // ---------------------------------------------------------------- the lift's surroundings (cart, ore)
 export function buildLiftYard(S) {
   const B = S.B;
-  B.place(() => P.oreCart(2), TOWN.cart.x, TOWN.cart.z, 0, { solid: false });
+  B.place(() => coalCart(2), TOWN.cart.x, TOWN.cart.z, 0, { solid: false });
   B.solidRot(TOWN.cart.x, TOWN.cart.z, 0.62, 1.2, 0, 0, 1.0);
   const pile = TW.orePile();
   pile.position.set(TOWN.orePile.x, 0, TOWN.orePile.z);
@@ -693,7 +699,7 @@ export function buildDecor(S) {
   S.bunting = [];
   strands.forEach(([a, b], i) => {
     const gl = garland32(a, b, i * 2);
-    for (const o of gl.parts) B.addStatic(o);
+    for (const o of gl.parts) B.addStatic(o, { nolod: 'keep' });
     for (const bl of gl.bulbs) S.glow.add({ kind: 'halo', x: bl.x, y: bl.y - 0.02, z: bl.z, w: 0.2, color: bl.c, opacity: 0.35 });
     const mid = gl.points[Math.floor(gl.points.length / 2)];
     S.addLight({ x: mid.x, y: mid.y, z: mid.z, color: 0xffc080, intensity: 0, real: false, pool: 1.6, poolOpacity: 0.1, poolX: mid.x, poolZ: mid.z, flicker: 0.05, bakePower: 0.3, bakeRadius: 2 });
