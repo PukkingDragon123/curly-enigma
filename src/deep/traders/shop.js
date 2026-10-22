@@ -356,8 +356,8 @@ export function openBurrowShop(game, shopId, o = {}) {
       const each = g.lots ? g.lots.reduce((s, l) => s + offerFor(shop, st, l.id, l.q, l.p), 0) : offerFor(shop, st, g.id) * g.n;
       total += each;
       const meta = g.lots
-        ? [pips(g.avgQ, g.lots.some((l) => l.p)), el('span', { html: `${g.n} pcs · <b style="color:${qColor(g.avgQ)}">${g.avgQ}%</b>${g.id === want ? ' · <b class="tr-want">wanted!</b>' : ''}` })]
-        : [el('span', { html: `${g.n} pcs · ${CAT_LABEL[it.cat] || ''}${g.id === want ? ' · <b class="tr-want">wanted!</b>' : ''}` })];
+        ? [pips(g.avgQ, g.lots.some((l) => l.p)), el('span', { html: `${g.n} pcs · <em class="tr-inl" style="color:${qColor(g.avgQ)}">${g.avgQ}%</em>${g.id === want ? ' · <em class="tr-want">wanted!</em>' : ''}` })]
+        : [el('span', { html: `${g.n} pcs · ${CAT_LABEL[it.cat] || ''}${g.id === want ? ' · <em class="tr-want">wanted!</em>' : ''}` })];
       ledger.append(el('div', { class: 'sh-line' + (g.id === want ? ' tr-wanted-line' : '') }, [
         el('img', { class: 'pix', src: iconURL(g.id), alt: '' }),
         el('div', { class: 'sh-line-txt' }, [el('b', {}, it.name), el('span', { class: 'sh-meta' }, meta)]),
@@ -424,7 +424,7 @@ export function openBurrowShop(game, shopId, o = {}) {
       const tag = h && h.day === today(st) ? (h.patience <= 0 ? ' · final offer' : h.k > 0 ? ` · haggled +${Math.round(h.k * 100)}%` : '') : '';
       ledger.append(el('div', { class: 'sh-line' + (haggle?.w.uid === w.uid ? ' tr-on' : '') }, [
         el('img', { class: 'pix', src: weaponIconURL(w.type, w.metal, w.infusion), alt: '' }),
-        el('div', { class: 'sh-line-txt' }, [el('b', {}, w.name), el('span', { html: `Grade <b style="color:${gr.color}" class="sh-grade">${w.grade || gr.g}</b> · worth ${formatGoldFull(w.value)}${w.type === craving ? ' · <b class="tr-want">he wants it!</b>' : ''}${tag}` })]),
+        el('div', { class: 'sh-line-txt' }, [el('b', {}, w.name), el('span', { html: `Grade <em style="color:${gr.color}" class="tr-g">${w.grade || gr.g}</em> · worth ${formatGoldFull(w.value)}${w.type === craving ? ' · <em class="tr-want">he wants it!</em>' : ''}${tag}` })]),
         price(off.gold),
         el('div', { class: 'sh-line-btns' }, [
           el('button', { class: 'btn alt', disabled: !!(h && h.day === today(st) && (h.tries <= 0 || h.patience <= 0)), onclick: () => startHaggle(w) }, 'Haggle'),
@@ -435,7 +435,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     if (!ws.length) ledger.append(el('p', { class: 'sh-note sh-empty' }, 'No blades on you. Forge one at Old Star\'s and bring it here. Rocco pays well for good ones.'));
     stock.append(ledger);
     if (haggle) renderHaggle();
-    else counter.append(el('p', { class: 'sh-note tr-hint' }, ws.length ? 'Pick a blade. Sell it, or haggle: push when the needle\'s in the green. Push your luck too often and he\'ll stop playing.' : 'Rocco buys forged weapons. Better grades, better prices.'));
+    else foot.append(el('p', { class: 'sh-note tr-hint' }, ws.length ? 'Sell a blade, or haggle: push when the needle\'s in the green. Push your luck too often and he stops playing.' : 'Rocco buys forged weapons. Better grades, better prices.'));
   };
   const sellWeapon = (w, bonus = null, line = null) => {
     const off = weaponOffer(st, w);
@@ -463,7 +463,8 @@ export function openBurrowShop(game, shopId, o = {}) {
     haggle = { w, h, t: Math.random(), speed: 0.9 + (H.tries - h.tries) * 0.35, zone: 0.25 + Math.random() * 0.5, width: Math.max(0.1, 0.24 - (H.tries - h.tries) * 0.05), result: null };
     au.play('ui_click');
     speak(pick(['Haggle with ME? Ha! Go on then.', 'Alright, alright. Make me an offer.', 'You drive a hard bargain. Let\'s see how hard.']), 'smug');
-    rerender();
+    render();
+    scroll.scrollTop = 0;
   };
   const renderHaggle = () => {
     const { w, h } = haggle;
@@ -475,7 +476,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     const meter = el('div', { class: 'tr-meter' }, [zone, el('i', { class: 'tr-zone-c' }), needle]);
     const dots = (n, max, cls) => el('span', { class: 'tr-dots ' + cls }, Array.from({ length: max }, (_, i) => el('i', { class: i < n ? 'on' : '' })));
     const push = el('button', { class: 'btn big tr-push', disabled: h.tries <= 0 || h.patience <= 0, onclick: () => doPush() }, h.tries <= 0 || h.patience <= 0 ? 'No more haggling' : 'Push!');
-    counter.append(el('div', { class: 'sh-card tr-haggle' }, [
+    const card = el('div', { class: 'sh-card tr-haggle' }, [
       el('div', { class: 'sh-card-icon' }, [el('img', { class: 'pix', src: weaponIconURL(w.type, w.metal, w.infusion), alt: '' })]),
       el('div', { class: 'sh-card-txt' }, [
         el('div', { class: 'sh-card-name' }, [el('b', {}, w.name), el('small', {}, 'Haggling')]),
@@ -483,7 +484,8 @@ export function openBurrowShop(game, shopId, o = {}) {
       ]),
       meter,
       el('div', { class: 'sh-pay' }, [price(off.gold, 'big'), push, el('button', { class: 'btn alt', onclick: () => sellWeapon(w) }, 'Deal!'), el('button', { class: 'btn alt', onclick: () => { stopHaggle(); speak('Suit yourself.', 'smug'); rerender(); } }, 'Leave it')]),
-    ]));
+    ]);
+    stock.insertBefore(card, stock.children[1] || null);
     let last = performance.now();
     const tick = (now) => {
       if (!haggle || !needle.isConnected) return;
@@ -503,7 +505,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     if (h.tries <= 0 || h.patience <= 0) return;
     const d = Math.abs((haggle.x ?? 0.5) - haggle.zone), half = haggle.width / 2;
     h.tries--;
-    const meter = counter.querySelector('.tr-meter');
+    const meter = stock.querySelector('.tr-meter');
     if (d <= half) {
       const k = H.step[0] + (H.step[1] - H.step[0]) * (1 - d / half);
       h.k = +(h.k + k).toFixed(3);
@@ -559,7 +561,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     if (done) act.append(el('p', { class: 'sh-note tr-done' }, 'Done for today. Come back tomorrow for another... opportunity.'));
     card.append(el('small', {}, done ? 'Sold out' : 'Today only'), el('div', { class: 'sh-poster-icon' }, [el('img', { class: 'pix', src: icon, alt: '' })]), el('b', {}, title), el('p', {}, text), act);
     stock.append(card);
-    counter.append(el('p', { class: 'sh-note tr-hint' }, 'One shady deal a day. They change every morning.'));
+    foot.append(el('p', { class: 'sh-note tr-hint' }, 'One shady deal a day. They change every morning.'));
   };
   const openCrate = (D) => {
     if (!st.spend(D.price, 'buy')) { speak(pick(shop.poor), 'sad'); return; }

@@ -6,10 +6,20 @@
 .sh-portrait.bump { animation: trBump .35s var(--pop); }
 @keyframes trBump { 40% { transform: scale(1.08) rotate(-2deg); } }
 
+/* the keeper: portrait on top, what they say underneath (burrow folk talk a lot) */
+.shop-burrow .sh-keeper { flex-direction: column; align-items: stretch; gap: calc(var(--px) * 4); }
+.shop-burrow .sh-portrait { align-self: flex-start; }
+.shop-burrow .sh-say { margin-top: 0; max-height: calc(var(--px) * 58); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; }
+.shop-burrow .sh-say::before { left: calc(var(--px) * 8); top: calc(var(--px) * -6); width: calc(var(--px) * 8); height: calc(var(--px) * 6); background: none; border-left: calc(var(--px) * 4) solid transparent; border-right: calc(var(--px) * 4) solid transparent; border-bottom: calc(var(--px) * 6) solid #fffaf0; box-sizing: border-box; filter: drop-shadow(0 calc(var(--px) * -1) 0 var(--ink)); }
+.shop-burrow .sh-say b { display: inline; margin-right: calc(var(--px) * 2); }
+.shop-burrow .sh-room { grid-template-columns: minmax(calc(var(--px) * 96), 34%) minmax(0, 1fr); }
+.tr-inl { font-style: normal; color: inherit; }
+.tr-g { font-style: normal; text-shadow: 0 var(--px) 0 #000; }
+
 /* modes: ledgers fill the wall, the counter only when there's something on it */
 .sh[data-mode=jobs] .sh-stock, .sh[data-mode=deal] .sh-stock, .sh[data-mode=weapons] .sh-stock { display: block; background: none; min-height: 0; }
-.sh[data-mode=jobs] .sh-counter, .sh[data-mode=deal] .sh-counter { display: none; }
-.sh[data-mode=jobs] .sh-room, .sh[data-mode=deal] .sh-room { grid-template-rows: auto 1fr auto; grid-template-areas: 'keeper wall' '. wall' 'foot wall'; }
+.sh[data-mode=jobs] .sh-counter, .sh[data-mode=deal] .sh-counter, .sh[data-mode=weapons] .sh-counter { display: none; }
+.sh[data-mode=jobs] .sh-room, .sh[data-mode=deal] .sh-room, .sh[data-mode=weapons] .sh-room { grid-template-rows: auto 1fr auto; grid-template-areas: 'keeper wall' '. wall' 'foot wall'; }
 .sh[data-mode=jobs] .sh-foot { flex-direction: column; align-items: stretch; gap: calc(var(--px) * 2); }
 
 /* tab badges */
@@ -42,7 +52,7 @@
 .tr-ico { width: calc(var(--px) * 8); height: calc(var(--px) * 8); vertical-align: middle; margin-right: var(--px); }
 
 /* the haggle: a meter with a green zone and a swinging needle */
-.tr-haggle { grid-template-columns: var(--icon) minmax(0, 1fr); }
+.tr-haggle { grid-template-columns: var(--icon) minmax(0, 1fr); margin: calc(var(--px) * 2); }
 .tr-hrow { display: flex; align-items: center; gap: calc(var(--px) * 2); flex-wrap: wrap; font-size: 14px; color: #7a5a3a; margin-top: calc(var(--px) * 2); }
 .tr-dots { display: inline-flex; gap: var(--px); margin-right: calc(var(--px) * 3); }
 .tr-dots i { width: calc(var(--px) * 4); height: calc(var(--px) * 4); background: #c8b090; box-shadow: inset 0 0 0 var(--px) #8a6a4a; }
@@ -88,8 +98,11 @@
 .tr-prog { margin-top: calc(var(--px) * 2); }
 
 @media (max-width: 640px) {
-  .sh[data-mode=jobs] .sh-room, .sh[data-mode=deal] .sh-room { grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: 'keeper' 'wall' 'foot'; }
-  .sh[data-mode=weapons] .sh-counter { max-height: 46vh; }
+  .sh[data-mode=jobs] .sh-room, .sh[data-mode=deal] .sh-room, .sh[data-mode=weapons] .sh-room { grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: 'keeper' 'wall' 'foot'; }
+  .shop-burrow .sh-room { grid-template-columns: minmax(0, 1fr); }
+  .shop-burrow .sh-keeper { flex-direction: row; align-items: flex-start; }
+  .shop-burrow .sh-say { -webkit-line-clamp: 4; }
+  .shop-burrow .sh-say::before { left: calc(var(--px) * -6); top: calc(var(--px) * 4); border-left: 0; border-right: calc(var(--px) * 6) solid #fffaf0; border-top: calc(var(--px) * 4) solid transparent; border-bottom: calc(var(--px) * 4) solid transparent; width: calc(var(--px) * 6); height: calc(var(--px) * 8); }
   .tr-haggle .sh-pay { justify-content: center; }
 }
 @media (max-height: 520px) {

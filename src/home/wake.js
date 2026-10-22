@@ -152,6 +152,9 @@ export class HomeWake {
     const fx = this.wakeFx;
     ui.setTouchControls?.(false);
     this.hammer && (this.hammer.style.visibility = 'hidden');
+    // no "click to look around" card over your eyelids: it's a cutscene till you're on your feet
+    const lc = ui.lookCatch;
+    if (lc) { lc.style.visibility = 'hidden'; this.own(() => { lc.style.visibility = ''; }); }
     this.beginScript(false);
     this.waking = true;
     const c = this.cam;
@@ -242,8 +245,9 @@ export class HomeWake {
     }
     // SPLASH
     fx.splash(1);
-    this.post.flash = 0.85;
     this.post.flashColor = 0xd8f0ff;
+    this.post.flash = 0.85;
+    this.tween(0.9, (k) => { this.post.flash = 0.85 * (1 - k) * (1 - k); }).then(() => { this.post.flash = 0; });
     a.play('splash', { vol: 1 });
     a.noise({ color: 'white', filter: 'lowpass', f: 2200, f2: 600, dur: 0.6, vol: 0.3 });
     gasp(a);
@@ -294,6 +298,7 @@ export class HomeWake {
     this.waking = false;
     ui.setTouchControls?.(true);
     if (this.hammer) this.hammer.style.visibility = '';
+    if (lc) lc.style.visibility = '';
     // the lessons begin
     sd.woke = true;
     g.quests?.start?.('lessons');
