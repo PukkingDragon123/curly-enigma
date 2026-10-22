@@ -15,9 +15,9 @@ import { rand, clamp } from '../../core/util.js';
 import { clearLine } from './physics.js';
 
 const LOOKS = {
-  4: { s: [0x241414, 0x3a1c18, 0x58261c, 0x7a3a26], belly: [0xa0502a, 0xd8803a], horn: 0x2a2220, mem: [0x5a1a12, 0x8a2e1a], eye: 0xffd040, fire: [[1, 0.85, 0.3], [1, 0.45, 0.1], [0.6, 0.15, 0.05]], light: [1.6, 0.6, 0.18], glow: 0xff7a1a },
-  5: { s: [0x1e2e44, 0x2e4462, 0x46648a, 0x6a8cb4], belly: [0xa8c8e0, 0xe0f0ff], horn: 0xe0eef8, mem: [0x2a4a6a, 0x4a7aa0], eye: 0x9affff, fire: [[0.85, 1, 1], [0.5, 0.85, 1], [0.25, 0.45, 0.8]], light: [0.6, 1.1, 1.6], glow: 0x9ae8ff },
-  6: { s: [0x1a1024, 0x2a1838, 0x40244e, 0x5a3470], belly: [0x7a4aa0, 0xb07ae0], horn: 0x1a1220, mem: [0x3a1a5a, 0x6a2e9a], eye: 0xff8aff, fire: [[1, 0.8, 1], [0.8, 0.4, 1], [0.4, 0.15, 0.6]], light: [1.2, 0.6, 1.7], glow: 0xd07aff },
+  4: { s: [0x4a1a14, 0x6e2618, 0x94381e, 0xc0562a], belly: [0xd8803a, 0xf0b060], horn: 0x2a2220, mem: [0x5a1a12, 0x8a2e1a], eye: 0xffd040, fire: [[1, 0.85, 0.3], [1, 0.45, 0.1], [0.6, 0.15, 0.05]], light: [1.6, 0.6, 0.18], glow: 0xff7a1a },
+  5: { s: [0x2e4a6a, 0x46688e, 0x6a90b8, 0x96b8dc], belly: [0xa8c8e0, 0xe0f0ff], horn: 0xe0eef8, mem: [0x2a4a6a, 0x4a7aa0], eye: 0x9affff, fire: [[0.85, 1, 1], [0.5, 0.85, 1], [0.25, 0.45, 0.8]], light: [0.6, 1.1, 1.6], glow: 0x9ae8ff },
+  6: { s: [0x2e1a44, 0x46285e, 0x62387e, 0x844aa4], belly: [0x7a4aa0, 0xb07ae0], horn: 0x1a1220, mem: [0x3a1a5a, 0x6a2e9a], eye: 0xff8aff, fire: [[1, 0.8, 1], [0.8, 0.4, 1], [0.4, 0.15, 0.6]], light: [1.2, 0.6, 1.7], glow: 0xd07aff },
 };
 const lookFor = (z) => LOOKS[z >= 6 ? 6 : z >= 5 ? 5 : 4];
 const HIP = 11;
@@ -32,36 +32,36 @@ export function buildDrake(zone) {
     return ((x + y + z) & 3) === 0 && n < 0.5 ? mul(S[Math.floor(k * 4)], 0.85) : S[Math.floor(k * 4)];
   };
   const body = new VB(101), bs = sc(body);
-  body.ell(0, 0, 0, 6, 5.4, 10, bs);
-  body.ell(0, 1, 6, 5.2, 5, 5, bs); // chest
-  for (let z = -9; z <= 9; z += 2) { const h = body.hitFrom(0, 12, z, 0, -1, 0); if (h) body.cap(0, h[1], z, 0, h[1] + 2.5 - Math.abs(z) * 0.12, z - 1.4, 0.7, L.horn); } // spine ridge
+  body.ell(0, 0, -0.5, 6.4, 5.8, 8.4, bs);
+  body.ell(0, 1, 5, 5.6, 5.4, 4.6, bs); // chest
+  for (let z = -8; z <= 8; z += 2) { const h = body.hitFrom(0, 12, z, 0, -1, 0); if (h) body.cap(0, h[1], z, 0, h[1] + 2.5 - Math.abs(z) * 0.12, z - 1.4, 0.7, L.horn); } // spine ridge
   const glow = new VB(102);
   // a glowing throat seam under the chest
   for (let z = 3; z <= 10; z++) { const h = body.hitFrom(0, -10, z, 0, 1, 0); if (h) { body.del(...h); glow.set(h[0], h[1], h[2], z % 3 ? L.glow : 0xffffff); } }
   // neck segments and head (pivots at their base, pointing +z)
-  const neck = new VB(103); neck.cap(0, 0, 0, 0, 1.2, 5.5, 3, sc(neck, 0.4));
-  for (let z = 1; z <= 5; z += 2) neck.set(0, 3 + Math.round(z * 0.2), z, L.horn);
+  const neck = new VB(103); neck.cap(0, 0, 0, 0, 1, 4.2, 3.2, sc(neck, 0.4));
+  for (let z = 1; z <= 4; z += 2) neck.set(0, 3 + Math.round(z * 0.2), z, L.horn);
   const head = new VB(104), hs = sc(head, 0.45);
-  head.ell(0, 1.2, 1.5, 3.4, 3, 3.6, hs);
-  head.ell(0, 0.6, 5.5, 2.5, 1.8, 3.5, hs); // snout
+  head.ell(0, 1.4, 1.6, 4.6, 4, 4.6, hs);
+  head.ell(0, 0.4, 6, 3.3, 2.4, 3.6, hs); // snout
   for (const sd of [1, -1]) {
-    head.cap(sd * 2.2 - (sd < 0 ? 1 : 0), 3.2, 0, sd * 3.4 - (sd < 0 ? 1 : 0), 6.5, -4.5, 0.8, (x, y, z, t) => (t > 0.7 ? mix(L.horn, 0xffffff, 0.3) : L.horn));
-    head.cap(sd * 3 - (sd < 0 ? 1 : 0), 1, -1, sd * 4.6 - (sd < 0 ? 1 : 0), 1.6, -3.4, 0.6, L.horn); // cheek spikes
+    head.cap(sd * 2.8 - (sd < 0 ? 1 : 0), 4.2, 0, sd * 4.4 - (sd < 0 ? 1 : 0), 8, -4.5, 1.1, (x, y, z, t) => (t > 0.7 ? mix(L.horn, 0xffffff, 0.3) : L.horn));
+    head.cap(sd * 4 - (sd < 0 ? 1 : 0), 1, -1, sd * 6 - (sd < 0 ? 1 : 0), 1.6, -3.4, 0.7, L.horn); // cheek spikes
   }
-  head.set(-2, 1, 9, 0x140a08); head.set(1, 1, 9, 0x140a08); // nostrils
+  head.set(-2, 1, 9, 0x140a08); head.set(1, 1, 9, 0x140a08); head.set(-2, 1, 10, 0x140a08); head.set(1, 1, 10, 0x140a08); // nostrils
   const eyeAt = [];
-  for (const sd of [1, -1]) { const h = head.hitFrom(sd * 6, 2.2, 3.2, -sd, 0, 0); if (h) { eyeAt.push(h); head.set(...h, 0x100808); } }
+  for (const sd of [1, -1]) { const h = head.hitFrom(sd * 2.4 - (sd < 0 ? 1 : 0), 2.6, 14, sd * -0.15, 0, -1); if (h) { eyeAt.push(h); head.set(...h, 0x100808); } }
   const jaw = new VB(105);
   jaw.ell(0, -0.8, 4.5, 2.3, 1, 3.6, (x, y, z, nx, ny) => (ny < -0.2 ? L.belly[0] : S[1]));
   for (let z = 2; z <= 8; z += 2) for (const sd of [1, -1]) jaw.set(sd > 0 ? 1 : -2, 0, z, 0xfff4e0);
   const eyes = new VB(), angry = new VB();
   for (const [vb, mad] of [[eyes, false], [angry, true]]) for (const [ex, ey, ez] of eyeAt) {
     const sd = ex > 0 ? 1 : -1;
-    vb.set(ex + sd, ey, ez, L.eye); vb.set(ex + sd, ey, ez + 1, L.eye); vb.set(ex + sd, ey + 1, ez + (mad ? 1 : 0), mad ? L.eye : 0xffffff);
+    for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++) vb.set(ex + dx * sd, ey + dy, ez + 1, dy === 1 && dx === 0 ? (mad ? -1 : 0xffffff) : dy === 0 && dx === 1 ? 0x100808 : L.eye);
   }
   // legs
-  const thigh = new VB(106); thigh.cap(0, 0, 0, 0, -6.5, 0, 2.5, sc(thigh, 0.45));
-  const shin = new VB(107); shin.cap(0, 0, 0, 0, -6.5, 0, 1.8, sc(shin, 0.3));
+  const thigh = new VB(106); thigh.cap(0, 0, 0, 0, -6.5, 0, 2.8, sc(thigh, 0.45));
+  const shin = new VB(107); shin.cap(0, 0, 0, 0, -6.5, 0, 2.1, sc(shin, 0.3));
   const foot = new VB(108); foot.ell(0, 0.8, 1, 2.2, 1.2, 2.6, S[1]);
   for (const x of [-2, 0, 2]) { foot.set(x, 0, 4, L.horn); foot.set(x, 0, 5, 0xf0e8e0); }
   // tail segments (pivot at the base, pointing -z), the last with a spade of spikes
@@ -89,7 +89,7 @@ export function buildDrake(zone) {
   }
   return {
     body: body.geo(0, 0, 0), glow: glow.size ? glow.geo(0, 0, 0) : null, neck: neck.geo(0, 0, 0), head: head.geo(0, 0, 0), jaw: jaw.geo(0, 0, 0),
-    eyes: eyes.geo(0, 2.2, 0), angry: angry.geo(0, 2.2, 0), thigh: thigh.geo(0, 0, 0), shin: shin.geo(0, 0, 0), foot: foot.geo(0, 0, 0),
+    eyes: eyes.geo(0, 2.6, 0), angry: angry.geo(0, 2.6, 0), thigh: thigh.geo(0, 0, 0), shin: shin.geo(0, 0, 0), foot: foot.geo(0, 0, 0),
     tail: tail.map((t) => t.geo(0, 0, 0)), wing: wing.geo(0, 0, 0), hide: c01(S[2]), fire: L.fire, light: L.light,
   };
 }
@@ -147,17 +147,17 @@ export class Drake extends Beast {
     if (G.glow) this.part(G.glow, this.glowMat, this.bodyG);
     // neck: two segments, then the head
     this.necks = [];
-    let p = this.group3(this.bodyG, 0, 2.5 * VS, 9.5 * VS);
+    let p = this.group3(this.bodyG, 0, 2.5 * VS, 8.5 * VS);
     this.part(G.neck, this.mat, p); this.necks.push(p);
-    p = this.group3(p, 0, 1.2 * VS, 5.5 * VS); this.part(G.neck, this.mat, p); this.necks.push(p);
-    this.head = this.group3(p, 0, 1.2 * VS, 5.5 * VS);
+    p = this.group3(p, 0, 1 * VS, 4.2 * VS); this.part(G.neck, this.mat, p); this.necks.push(p);
+    this.head = this.group3(p, 0, 1 * VS, 4.2 * VS);
     this.part(G.head, this.mat, this.head);
     this.jaw = this.group3(this.head, 0, 0, 2 * VS);
     this.part(G.jaw, this.mat, this.jaw);
-    this.eyes = this.part(G.eyes, this.eyeMat, this.head, 0, 2.2 * VS, 0);
+    this.eyes = this.part(G.eyes, this.eyeMat, this.head, 0, 2.6 * VS, 0);
     this.headObj = this.head; this.headTop = 4 * VS; this.headFwd = 3 * VS;
     // tail
-    let tp = this.group3(this.bodyG, 0, 0, -9 * VS);
+    let tp = this.group3(this.bodyG, 0, 0, -8 * VS);
     this.tail = G.tail.map((g, i) => { const s = i ? this.group3(tp, 0, -0.3 * VS, -5.3 * VS) : tp; this.part(g, this.mat, s); tp = s; return s; });
     this.tailChain = new Chain(this.tail, { sway: 0.16, swayHz: 3, lag: 0.2, droop: 0.06 });
     // wings, folded along the back

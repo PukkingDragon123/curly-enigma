@@ -127,13 +127,13 @@ Object.assign(SHOPS, {
   trader: {
     name: 'The Trading Post', panel: 'burrow', npc: 'trader', burrow: 'trader', sign: 'scale',
     keeper: { name: 'Barnaby Burr', species: 'mole', age: 'adult', body: 'chubby', fur: 0x55443c, eyes: 'happy', outfit: 'apron', outfitColor: 0x8a6a3a, shirt: 0x3a6a9a, rolled: true, hat: 'cap', hatColor: 0x8a2a2a, glasses: false, brows: 'bushy', dirt: 0.25, blush: true, belt: 1, boots: 0x4a2e1e, mood: 'happy', voice: 250, seed: 311 },
-    title: 'General store', height: 0.98,
+    title: 'General store', height: 0.8,
     markup: 1.0,
     stock: [
       { id: 'support_beam' }, { id: 'glow_stake' }, { id: 'dynamite' }, { id: 'grub_bar' }, { id: 'tea_flask' },
       { id: 'hearty_pie' }, { id: 'worm' }, { id: 'cave_carrot' }, { id: 'chisel_basic' }, { id: 'brush_basic' },
-      { id: 'bag_medium' }, { id: 'lamp_glowcap' }, { id: 'crate' }, { id: 'barrel' }, { id: 'rug_round' },
-      { id: 'dynamite_bundle', minZone: 3 }, { id: 'bag_large', minZone: 3 },
+      { id: 'chicken_feed' }, { id: 'cave_seeds' }, { id: 'bag_medium' }, { id: 'bag_large', minZone: 2 }, { id: 'bag_huge', minZone: 4 },
+      { id: 'lamp_glowcap' }, { id: 'crate' }, { id: 'barrel' }, { id: 'rug_round' }, { id: 'dynamite_bundle', minZone: 3 },
     ],
     buys: { cats: ['mineral', 'gem', 'ingot'], mult: 0.85, label: 'Ore & gems' },
     wanted: ['copper_ore', 'tin_ore', 'iron_ore', 'coal', 'silver_ore', 'quartz', 'amber', 'amethyst', 'gold_ore', 'lumite', 'ruby'], wantedMult: 1.4,
@@ -143,6 +143,8 @@ Object.assign(SHOPS, {
       'Everything on these shelves came down the rails. Mostly in one piece.',
       'I buy ore and gems. Clean lumps fetch more. Pristine ones, more still.',
       'Beams! Stakes! Snacks! The three pillars of not dying down here.',
+      'Bigger pack, bigger haul. A satchel has twice the pockets of that sack of yours.',
+      'Feed for your hen, seeds for your hen. I don\'t judge.',
       'The rails go on to Deep Town. I used to ride them. Before the cart lost a wheel.',
       'Rocco? Down past the herbalist? Don\'t buy anything that ticks.',
     ],
@@ -154,13 +156,13 @@ Object.assign(SHOPS, {
   herbalist: {
     name: 'Herbalist\'s Hollow', panel: 'burrow', npc: 'herbalist', burrow: 'herbalist', sign: 'leaf',
     keeper: { name: 'Granny Thistle', species: 'hedgehog', age: 'elder', body: 'normal', fur: 0xc8a47a, eyes: 'sleepy', outfit: 'dress', outfitColor: 0x4a6a3a, fabric: 'dots', hat: 'bandana', hatColor: 0x7a3a5a, glasses: true, brows: 'bushy', scarf: 0x8a5a2a, dirt: 0.3, blush: true, cane: false, mood: 'stern', voice: 380, seed: 512 },
-    title: 'Herbs, brews and cuttings', height: 0.86,
+    title: 'Herbs, brews and cuttings', height: 0.72,
     markup: 1.1,
     stock: [
       { id: 'glowcap', price: 30 }, { id: 'cave_carrot' }, { id: 'pepperroot', price: 45 }, { id: 'blindfern', price: 26 },
       { id: 'whisperweed', price: 95 }, { id: 'sparkmoss', price: 85, minZone: 2 }, { id: 'rubber_sap', price: 55, minZone: 2 },
       { id: 'crystal_lily', price: 220, minZone: 3 }, { id: 'gloomshroom', price: 110, minZone: 3 }, { id: 'frostbloom', price: 360, minZone: 5 },
-      { id: 'honey' }, { id: 'mushroom' }, { id: 'flour' }, { id: 'butter' },
+      { id: 'cave_seeds' }, { id: 'honey' }, { id: 'mushroom' }, { id: 'flour' }, { id: 'butter' },
       { id: 'tea_flask' }, { id: 'bubble_tea', price: 180 }, { id: 'glowcap_soup', price: 95 }, { id: 'crystal_tea', price: 560, minZone: 3 },
     ],
     buys: { cats: ['plant', 'critter', 'drop'], mult: 1.0, catMult: { plant: 1.2 }, label: 'Herbs & critters' },
@@ -183,7 +185,7 @@ Object.assign(SHOPS, {
     name: 'Rocco\'s Storage', panel: 'burrow', npc: 'rocco', burrow: 'raccoon', sign: 'key',
     // built on the fox and repainted as a raccoon (src/deep/traders/rocco.js), in a long coat
     keeper: { name: 'Rocco', raccoon: true, voice: 190, species: 'fox', age: 'adult', body: 'chubby', fur: 0x8c888a, eyes: 'wide', eyeColor: 0x3a2a1a, outfit: 'shirt', outfitColor: 0x7a3030, fabric: 'stripe', hat: 'cap', hatColor: 0x3a3436, brows: 'angry', earring: 0xe8c050, dirt: 0.35, blush: false, mood: 'smug', seed: 4077, patches: 1, freckles: false, tuft: false, shirt: 0x8a3a3a, belt: 0, boots: 0x2e2420, rolled: false },
-    title: 'No questions asked', height: 1.0,
+    title: 'No questions asked', height: 0.84,
     markup: 1.25,
     stock: [
       { id: 'amber_bug', price: 1400 }, { id: 'fossil', price: 190 }, { id: 'spider_silk', price: 210 }, { id: 'echo_crystal', price: 1050, minZone: 2 },
@@ -215,7 +217,7 @@ Object.assign(SHOPS, {
   outpost: {
     name: 'The Deep Outpost', panel: 'burrow', npc: 'outpost', burrow: 'outpost', sign: 'pick',
     keeper: { name: 'Warden Brask', species: 'badger', age: 'adult', body: 'stocky', fur: 0x7a7a7c, eyes: 'bead', outfit: 'vest', outfitColor: 0x5a3a24, shirt: 0x6a7a4a, hat: 'helmet', hatColor: 0xd8a020, brows: 'angry', scarf: 0x8a2a2a, dirt: 0.7, blush: false, belt: 2, boots: 0x3a2a22, mood: 'stern', voice: 150, seed: 913 },
-    title: 'Last stop for supplies', height: 1.02,
+    title: 'Last stop for supplies', height: 0.82,
     markup: 1.6,
     stock: [
       { id: 'dynamite' }, { id: 'dynamite_bundle' }, { id: 'blasting_charge', minZone: 4 }, { id: 'support_beam' }, { id: 'glow_stake' },

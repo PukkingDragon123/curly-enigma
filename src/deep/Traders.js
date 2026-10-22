@@ -494,7 +494,7 @@ export class Traders {
     const gold = 180 + z * 140;
     st.addGold(gold, 'stash');
     const gem = ['amber', 'amethyst', 'ruby', 'emerald'][Math.min(3, z - 1)];
-    const gotGem = ITEMS[gem] && st.addItem(gem, { q: 92 }) != null;
+    const gotGem = !!ITEMS[gem] && st.addItem(gem, { q: 92, spill: true }) != null; // no room: it goes home to the stash
     this.audio?.play('coins', { n: 8 });
     this.audio?.play('pickup_gem');
     this.ui?.toast?.(`Rocco's stash: <b>${gold}</b> gold${gotGem ? ` and a <b>${ITEMS[gem].name}</b>` : ''}.`, { kind: 'good', icon: gotGem ? iconURL(gem) : undefined });

@@ -568,7 +568,8 @@ export function openBurrowShop(game, shopId, o = {}) {
     const r = Math.random(), z = Math.max(1, st.data.zoneMax || 1);
     const gems = ['amber', 'amethyst', 'ruby', 'emerald', 'sapphire', 'diamond'].filter((g) => ITEMS[g]);
     let got = null, gold = 0, line;
-    const give = (id, n = 1) => { for (let i = 0; i < n; i++) if (st.addItem(id, ITEMS[id].q ? { q: 70 + Math.round(Math.random() * 28) } : {}) == null) { gold += ITEMS[id].value || 20; } got = id; };
+    let spilled = false;
+    const give = (id, n = 1) => { for (let i = 0; i < n; i++) { const fits = st.canAdd ? st.canAdd(id, 1) : true; st.addItem(id, { ...(ITEMS[id].q ? { q: 70 + Math.round(Math.random() * 28) } : {}), spill: true }); if (!fits) spilled = true; } got = id; };
     if (r < 0.28) { gold = Math.round(D.price * (0.4 + Math.random() * 2.4)); line = gold > D.price ? 'Coins! Lucky you. Lucky ME, I sold it.' : 'Coins. Some coins. Coins are coins.'; }
     else if (r < 0.5) { give(gems[Math.min(gems.length - 1, Math.floor(Math.random() * (z + 1)))]); line = 'A gem! I KNEW there was a gem in one of those.'; }
     else if (r < 0.64) { give(pick(['truffle', 'crystal_lily', 'wisp_essence', 'amber_bug'].filter((i) => ITEMS[i]))); line = 'Ooh, that\'s a rare one. Shouldn\'t have sold it so cheap.'; }
@@ -578,7 +579,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     if (gold) st.addGold(gold, 'crate');
     au.play('crack'); setTimeout(() => au.play(got === 'dust_fluff' ? 'oops' : 'fanfare'), 260);
     const what = got ? ITEMS[got].name : '';
-    ui.toast(`The crate held ${got ? `<b>${what}</b>` : ''}${got && gold ? ' and ' : ''}${gold ? `<b>${formatGoldFull(gold)}</b> gold` : ''}!`, { kind: got === 'dust_fluff' ? 'warn' : 'good', icon: got ? iconURL(got) : SPR.coin() });
+    ui.toast(`The crate held ${got ? `<b>${what}</b>` : ''}${got && gold ? ' and ' : ''}${gold ? `<b>${formatGoldFull(gold)}</b> gold` : ''}!${spilled ? ' (No room in your pack: it went home to your stash.)' : ''}`, { kind: got === 'dust_fluff' ? 'warn' : 'good', icon: got ? iconURL(got) : SPR.coin() });
     speak(line, got === 'dust_fluff' ? 'laugh' : 'surprised');
     folk?.react(got === 'dust_fluff' ? 'laugh' : 'deal');
     rerender();
@@ -607,10 +608,9 @@ export function openBurrowShop(game, shopId, o = {}) {
     rerender();
   };
   const doSwap = (D, w) => {
-    if (!st.canAdd(D.item, 1) && ITEMS[D.item].cat !== 'furniture') { speak('Your pack\'s full. Make room and come back.', 'thinking'); return; }
     const gone = st.removeWeapon(w.uid);
     if (!gone) return;
-    st.addItem(D.item, ITEMS[D.item].q ? { q: 90 } : {});
+    st.addItem(D.item, { ...(ITEMS[D.item].q ? { q: 90 } : {}), spill: true }); // the blade's pocket is free now; if not, it goes home
     T.deals[today(st)] = true;
     st.emit('act', { type: 'sell', id: w.type, weapon: { type: w.type, metal: w.metal, grade: w.grade, score: w.score }, gold: 0, to: npc, swap: D.item });
     st.emit('act', { type: 'buy', id: D.item, gold: 0, from: npc });

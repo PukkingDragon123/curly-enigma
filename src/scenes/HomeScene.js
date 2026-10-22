@@ -818,6 +818,9 @@ export default class HomeScene extends Scene {
   makeDebug() {
     const s = this;
     const find = (label) => { const want = String(label).toLowerCase(); return s.rig.items.find((i) => String(i.label || '').toLowerCase().includes(want)); };
+    // one frame, then a few microtask turns so awaited tweens and lines carry on (no render in between)
+    const frame = async (dt) => { s.update(dt); s.game.ui.update(dt); s.game.input.endFrame(); for (let i = 0; i < 12; i++) await null; };
+    const k0 = () => ({ waking: !!s.waking, scripted: !!s.scripted, lesson: s.lessonStage(), line: s.game.ui.tutor?.active?.html?.slice(0, 60) ?? null });
     return {
       /** Ride the lift to a destination id ('L0' the mine entrance, 'town', any found mine lift). */
       useLift(id = 'L0') { s.scripted = false; s.riding = false; s.rideLift(id); return true; },
