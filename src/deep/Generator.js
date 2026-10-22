@@ -9,7 +9,7 @@ import { makeRng, clamp } from '../core/util.js';
 import { stampPrologue, PROLOGUE_BB, prologueLayout, prologueInside } from './gen/prologue.js';
 import { stampTrail, trailBB, trailLanterns, TRAIL_W, TRAIL_H } from './gen/trails.js';
 import { stampBurrow, burrowBB, burrowDoor } from './gen/burrows.js';
-import { stampRuin, ruinBB } from './gen/ruins.js';
+import { stampRuin, ruinBB, ruinDoor } from './gen/ruins.js';
 
 export const CS = 32; // chunk size (voxels)
 export const BOUNDS = { x0: -96, x1: 96, z0: -96, z1: 96, y0: -216, y1: 8 }; // meters
@@ -252,6 +252,18 @@ function addPlaces(plan, rng, L0) {
   const l2 = nearestLift(rocco, 2); if (l2) addTrail(plan, rng, 'rocco-' + l2.id, burrowOut(rocco), liftOut(l2), {});
   const l4 = nearestLift(outpost, 4); if (l4) addTrail(plan, rng, 'outpost-' + l4.id, burrowOut(outpost), liftOut(l4), { rails: true });
   const s3 = plan.lifts.find((L) => L.id === 's3'); if (s3) addTrail(plan, rng, 'outpost-s3', burrowOut(outpost), { p: { x: s3.x, y: s3.y, z: s3.z }, d: [1, 0] }, {});
+  // most ruins have an old trail out to the nearest lift of their zone (its own rng, so the rest
+  // of the world stays as it was)
+  const rr = makeRng(plan.seed + 7777);
+  for (const r of plan.ruins) {
+    if (rr() > 0.65) continue;
+    const f = plan.features.find((q) => q.kind === 'ruin' && q.id === r.id);
+    const L = nearestLift(r, r.zone);
+    if (!f || !L || Math.hypot(L.x - r.x, L.z - r.z) > 70) continue;
+    const door = ruinDoor(aabbOf(f));
+    const l = Math.hypot(door.dx, door.dz) || 1;
+    addTrail(plan, rr, 'ruin-' + r.id, { p: { x: door.x, y: door.y, z: door.z }, d: [door.dx / l, door.dz / l] }, liftOut(L), { rails: rr() < 0.3 });
+  }
 }
 
 /** An old trail from place A to place B: out of A's door, gentle slopes, a ladder shaft where it drops. */

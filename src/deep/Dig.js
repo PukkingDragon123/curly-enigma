@@ -34,7 +34,7 @@ export function plateOf(vx, vy, vz, S) {
 
 const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const UNBREAKABLE = new Set([M.BEDROCK, M.BURROW, M.LANTERN, M.DOOR]);
-export const breakable = (m) => m && !MAT[m]?.fluid && !UNBREAKABLE.has(m);
+export const breakable = (m) => m && !MAT[m]?.fluid && !MAT[m]?.ward && !UNBREAKABLE.has(m);
 
 export class Digger {
   constructor(world) {

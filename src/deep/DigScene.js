@@ -36,7 +36,7 @@ const BUILD = [
 const REACH = 2.3;
 const vmModules = import.meta.glob('../fps/ViewModel.js');
 // optional systems, built separately (see docs/DEEP.md): fantasy enemies, flowing fluids
-const extModules = import.meta.glob(['./Enemies.js', './Fluids.js', './Props.js', './Clumps.js', './Prologue.js', './Explosives.js']);
+const extModules = import.meta.glob(['./Enemies.js', './Fluids.js', './Props.js', './Clumps.js', './Prologue.js', './Explosives.js', './Ruins.js', './Traders.js']);
 const col01 = (hex) => { const c = hexToRgb(hex); return [c.r / 255, c.g / 255, c.b / 255]; };
 
 export default class DigScene extends Scene {
@@ -150,8 +150,10 @@ export default class DigScene extends Scene {
     this.clumps = null;
     this.prologue = null;
     this.explosives = null;
+    this.ruins = null;
+    this.traders = null;
     const ctx = { scene: this.scene, world: this.world, U: this.U, fx: this.fx, bodies: this.bodies, audio: this.audio, state: st, ui: g.ui, player: pl, plan: this.world.plan, scene3: this.scene, owner: this, params };
-    for (const [path, Name, key] of [['./Enemies.js', 'Enemies', 'enemies'], ['./Fluids.js', 'Fluids', 'fluids'], ['./Props.js', 'Props', 'props'], ['./Clumps.js', 'Clumps', 'clumps'], ['./Prologue.js', 'Prologue', 'prologue'], ['./Explosives.js', 'Explosives', 'explosives']]) {
+    for (const [path, Name, key] of [['./Enemies.js', 'Enemies', 'enemies'], ['./Fluids.js', 'Fluids', 'fluids'], ['./Props.js', 'Props', 'props'], ['./Clumps.js', 'Clumps', 'clumps'], ['./Prologue.js', 'Prologue', 'prologue'], ['./Explosives.js', 'Explosives', 'explosives'], ['./Ruins.js', 'Ruins', 'ruins'], ['./Traders.js', 'Traders', 'traders']]) {
       const load = extModules[path];
       if (!load) continue;
       try { const mod = await load(); this[key] = new mod[Name](ctx); } catch (e) { console.warn(Name + ' failed', e); }
@@ -301,6 +303,8 @@ export default class DigScene extends Scene {
     if (this.prologue) this.events(this.prologue.update(dt, { player: pl, eye: pl.eye(), time: this.time, busy }));
     if (this.explosives) this.events(this.explosives.update(dt, { player: pl, eye: pl.eye(), time: this.time }));
     if (this.props) this.props.update(dt, { player: pl, eye: pl.eye(), time: this.time });
+    if (this.ruins) this.events(this.ruins.update(dt, { player: pl, eye: pl.eye(), time: this.time }));
+    if (this.traders) this.events(this.traders.update(dt, { player: pl, eye: pl.eye(), time: this.time, busy }));
     if (this.enemies) {
       this.events(this.enemies.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy, lamp: this.U.lampRange.value, blocking: !!this.blocking, blockT: this.blockT || 0 }));
     }
@@ -1067,6 +1071,8 @@ export default class DigScene extends Scene {
     for (const s of this.stakes) markers.push({ kind: 'stake', x: s.x, y: s.y, z: s.z });
     if (this.enemies?.radarMarkers) markers.push(...this.enemies.radarMarkers(pl.pos));
     markers.push(...(this.nugget?.radarMarkers?.() || []));
+    if (this.ruins?.radarMarkers) markers.push(...this.ruins.radarMarkers(pl.pos, !!o.survey));
+    if (this.traders?.radarMarkers) markers.push(...this.traders.radarMarkers(pl.pos, !!o.survey));
     return { x: pl.pos.x, y: pl.pos.y, z: pl.pos.z, heading: pl.yaw, range: o.survey ? half * cell : 22, explored: { size, cell, data, ox: px - half, oz: pz - half }, markers };
   }
 
@@ -1222,6 +1228,8 @@ export default class DigScene extends Scene {
     this.props?.dispose();
     this.prologue?.dispose?.();
     this.explosives?.dispose?.();
+    this.ruins?.dispose?.();
+    this.traders?.dispose?.();
     this.events(this.clumps?.dispose());
     this.fluids?.dispose();
     this.world.onChange = null;

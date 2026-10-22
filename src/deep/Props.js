@@ -22,7 +22,7 @@ import * as THREE from 'three';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { ITEMS } from '../data/items.js';
 import { CS, zoneAt, biomeAt } from './Generator.js';
-import { VOX, M } from './materials.js';
+import { VOX, M, MAT } from './materials.js';
 import { OPAQUE } from './Mesher.js';
 import { h3, h3i } from './noise.js';
 import { LIGHT } from './TerrainMaterial.js';
@@ -43,6 +43,7 @@ const vkey = (vx, vy, vz) => ((vx + 4096) * 8192 + (vy + 4096)) * 8192 + (vz + 4
 // voxels props may stand on / hang from (natural rock; not the burrow, timbering, ore or crystal spikes)
 const MANMADE = new Uint8Array(256);
 for (const m of [M.TIMBER, M.BOARDS, M.BURROW, M.BRICK, M.DOOR, M.LANTERN, M.CRYSTAL]) MANMADE[m] = 1;
+for (let m = 0; m < 256; m++) if (MAT[m]?.made) MANMADE[m] = 1; // ruin stone, burrow furniture
 const ground = (m) => OPAQUE[m] === 1 && m < 128 && !MANMADE[m];
 // placement was tuned in 1/8 m steps: VK world voxels make one such step at any voxel size
 const VK = Math.max(1, Math.round(VOX / 8));
@@ -465,6 +466,10 @@ export class Props {
     for (const s of P.stations) if (x > s.x - 1.9 - pad && x < s.x + 1.9 + pad && y > s.y - 0.4 - pad && y < s.y + 2.6 + pad && z > s.z - 1.7 - pad && z < s.z + 1.7 + pad) return true;
     const T = P.town;
     if (Math.hypot(x - (T.x + 1.6), y - T.y, z - (T.z - 1.2)) < 3.6 + pad) return true;
+    // inside ruins and NPC burrows: they're dressed by their own modules
+    for (const b of (this.dressed ||= P.features.filter((f) => (f.kind === 'ruin' || f.kind === 'burrow') && f.bb).map((f) => f.bb))) {
+      if (x > b[0] - pad && x < b[3] + pad && y > b[1] - pad && y < b[4] + pad && z > b[2] - pad && z < b[5] + pad) return true;
+    }
     // the old lifts: their rooms, the shaft over them, and the way out of the cage (toward +z)
     for (const L of this.liftRooms || []) {
       if (x > L.x - 1.7 - pad && x < L.x + 1.7 + pad && z > L.z - 1.7 - pad && z < L.z + 3.2 + pad && y > L.y - 0.5 - pad && y < L.y + 7 + pad) return true;

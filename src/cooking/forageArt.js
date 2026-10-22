@@ -332,7 +332,7 @@ function herbForm(pc, s) {
   const crown = M(SW, SH).ellipse(SX, AY, 3, 1.6);
   ring(pc, crown, SR); fill(pc, crown, SR[4]);
   hairRoots(pc, SX, AY + 1, 6, s.depth + 3, 0xb8a080, 13);
-  return { gripY: AY - 5, rootEnd: AY + s.depth + 5 };
+  return { gripY: s.small ? AY - 3 : AY - 5, rootEnd: AY + s.depth + 5 };
 }
 
 function flowerForm(pc, s) {

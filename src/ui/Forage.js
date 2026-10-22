@@ -802,7 +802,12 @@ class ForageView {
     // the paw
     const gy = SOIL - (SOIL - (sp.gripY - sp.ay + SOIL)) - lift - stretch;
     const gripping = !!this.sim.wasGrip && !done;
-    if (gripping || (done && !done.snapped && endT < 0.6)) this.drawPaw(f, PX - 1 + Math.round((sim.wx || 0) * 2), gy, true);
+    if (gripping || (done && !done.snapped && endT < 0.6)) {
+      this.drawPaw(f, PX - 1 + Math.round((sim.wx || 0) * 2), gy, true);
+      // leaves and caps above the fist stay in front of it: the paw only hides the stem it grips
+      const cut = Math.max(0, sp.gripY - 5);
+      if (cut > 0) blit(f, sp, ox, oyBase - stretch - topLift, { r0: 0, r1: Math.min(cut, r1), fn: tint });
+    }
     else this.drawPaw(f, PX + 14, SOIL - 22 + Math.round(Math.sin(this.time * 2) * 1.5), false);
   }
 
@@ -1050,6 +1055,8 @@ export function openForage(game, id, opts = {}) {
     const api = {
       view, sim: view.sim, id,
       close: () => end({ cancel: true }),
+      /** Close now and hand over the result (tests: headless frames are slow). */
+      finish: () => end(view.sim.done ? { ...view.sim.done } : { cancel: true }),
       /** Play a script through the real view for `secs` (tests): fixed 30 fps steps, no rAF needed. */
       drive(script = 'good', secs = 8, after = 1.7) {
         view.driving = true;
