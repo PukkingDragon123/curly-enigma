@@ -11,6 +11,8 @@ import * as THREE from 'three';
 import { Actor, NuggetAI } from '../iso/Actor.js';
 import { TileMap } from '../iso/TileMap.js';
 import { makeCoop } from '../gfx/char/coop.js';
+import { CoopGear } from '../gfx/char/coopGear.js';
+import * as W from '../core/weight.js';
 import { ITEMS } from '../data/items.js';
 import * as Inv from '../core/inventory.js';
 import { T } from './units.js';
@@ -50,6 +52,8 @@ export class HomeNugget {
     this.map = new TileMap(W, D);
     const st = this.st;
     this.coop = makeCoop({ height: COOP_H, kind: 'toon' });
+    this.gear = new CoopGear(this.coop); // the parts built onto her coop, and her cargo
+    this.dress();
     this.hen = this.coop.hen;
     this.rigA = new CoopAsHen(this.coop);
     this.actor = new Actor(this.rigA, { x, z, name: st.data.chicken.name || 'Nugget', voice: 620, radius: 0.5, headY: COOP_H * 0.82, shadow: 0.0001 });
@@ -125,7 +129,9 @@ export class HomeNugget {
   }
   coopOpened() { this.panelOpen = true; this.s.game.audio.play('door'); }
   coopClosed() { if (this.panelOpen) this.s.game.audio.play('door'); this.panelOpen = false; }
-  coopTouched() { this.coop.shake(0.35); }
+  coopTouched() { this.coop.shake(0.35); this.dress(); }
+  /** Show what's installed and how loaded the shelves are. */
+  dress() { this.gear.set(W.coopLevels(this.st), Inv.coopLoad(this.st).r); }
 
   /** Mark blocked tiles: fn(map) fills them (furniture, lift, bench...). */
   setBlocked(fill) {
@@ -149,6 +155,8 @@ export class HomeNugget {
     else if (this.rigA.sulk) this.actor.drive(dt, 0, 0, this.map, { anim: false });
     this.rigA.speed = this.actor.speedNow;
     this.coop.setDoor(this.panelOpen ? 1 : 0);
+    this.dressT = (this.dressT || 0) - dt;
+    if (this.dressT <= 0) { this.dressT = 0.5; this.dress(); }
     this.actor.update(dt);
   }
 }

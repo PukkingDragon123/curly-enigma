@@ -1,6 +1,10 @@
 // The backpack: the inventory as a big, open leather rucksack (rows of pockets, Minecraft-like).
-//  - main compartment (canvas lining): the pockets. A new mole has 6; a bigger bag (bought in the
-//    shops) unpicks more rows, sewn-shut pockets show what's still to come
+//  - main compartment (canvas lining): the pockets, in rows of nine. A new mole has 9; a bigger
+//    bag (bought in the shops) unpicks more rows, sewn-shut pockets show what's still to come.
+//    A spring scale shows the load: past what the bag carries comfortably the mole slows down
+//    (core/weight.js), and heavy ore belongs on Nugget's coop
+//  - the coop side: her shelves, her load, Unload ore, and the coop's upgrades: parts forged at
+//    the home forge (data/coopParts.js) installed here
 //  - tool loops + gear hooks on the side = equipment (click → tag with Equip)
 //  - front pockets = Index Book, coin pouch, savings jar toward the Surface Ticket, calendar,
 //    snacks; or, near Nugget's coop, the coop's straw cubbies and her feed bowl; or, at home,
@@ -18,6 +22,8 @@ import { BUFFS } from '../data/recipes.js';
 import { GOAL_GOLD } from '../core/State.js';
 import { gradeFor } from '../data/weapons.js';
 import * as Inv from '../core/inventory.js';
+import * as W from '../core/weight.js';
+import { COOP_PARTS } from '../data/coopParts.js';
 import { SPR } from './uiSprites.js';
 import { qColor, pips, stagger, put } from './common.js';
 import { SlotDnD, slotEl, stackIcon, stackName, bounce } from './invGrid.js';
@@ -72,9 +78,10 @@ export function openBackpack(game, opts = {}) {
   const grid = el('div', { class: 'bp-grid', role: 'grid', 'aria-label': 'Backpack pockets' });
   const scroll = el('div', { class: 'bp-scroll' }, [grid]);
   const count = el('span', { class: 'bp-count' });
+  const scale = el('span', { class: 'bp-scale', title: 'How heavy your pack is' });
   const tidyB = el('button', { class: 'bp-tool', title: 'Tidy up (sort and stack)', 'aria-label': 'Tidy up', onclick: () => tidy('bag') }, [el('img', { class: 'pix', src: INV_ART.brush(), alt: '' }), el('span', {}, 'Tidy')]);
   const toss = el('div', { class: 'bp-toss', 'data-drop': 'toss', title: 'Drop a stack here to throw it away' }, [el('img', { class: 'pix', src: INV_ART.toss(false), alt: '' }), el('span', {}, 'Toss')]);
-  const bar = el('div', { class: 'bp-bar' }, [count, el('i', { class: 'spacer' }), tidyB, toss]);
+  const bar = el('div', { class: 'bp-bar' }, [count, scale, el('i', { class: 'spacer' }), tidyB, toss]);
   const tag = el('div', { class: 'bp-tag', hidden: true });
   const twine = el('i', { class: 'bp-twine', hidden: true });
   const tip = el('div', { class: 'inv-tip', hidden: true, role: 'tooltip' });
@@ -106,7 +113,7 @@ export function openBackpack(game, opts = {}) {
   // ---------------------------------------------------------------- the pockets
   const nextBag = () => {
     const cur = Inv.bagSlots(st);
-    for (const id of BAGS) if ((ITEMS[id]?.slots || 0) > cur - Math.floor((st.upEffect?.('bag') || 0) / 4) && (ITEMS[id]?.slots || 0) > (st.equipped('bag')?.slots || 6)) return ITEMS[id];
+    for (const id of BAGS) if ((ITEMS[id]?.slots || 0) > cur - Math.floor((st.upEffect?.('bag') || 0) / 4) && (ITEMS[id]?.slots || 0) > (st.equipped('bag')?.slots || 9)) return ITEMS[id];
     return null;
   };
   const renderGrid = (animate) => {
@@ -129,6 +136,21 @@ export function openBackpack(game, opts = {}) {
     const f = Inv.bagFill(st);
     count.innerHTML = `<b>${f.used}</b>/${f.slots} pockets`;
     count.classList.toggle('full', f.full);
+    renderScale();
+  };
+  /** The spring scale: kg carried vs what the bag carries comfortably. */
+  const renderScale = () => {
+    const L = Inv.bagLoad(st);
+    const k = clamp(L.r / 2, 0, 1);
+    scale.innerHTML = '';
+    scale.className = 'bp-scale ' + L.tier;
+    scale.title = `${W.TIER_LABEL[L.tier]}. You carry ${L.carry.toFixed(0)} kg comfortably; past that you slow down. Twice that is the most you can lift.`;
+    put(scale,
+      el('img', { class: 'pix', src: INV_ART.weight ? INV_ART.weight() : iconURL('iron_ore'), alt: '' }),
+      el('span', { html: `<b>${L.kg.toFixed(1)}</b>/${L.carry.toFixed(0)} kg` }),
+      el('i', { class: 'bp-scale-bar' }, [el('i', { style: { width: (k * 100).toFixed(1) + '%', background: W.TIER_COLOR[L.tier] } }), el('u', { style: { left: '50%' } })]),
+      L.tier !== 'light' && L.tier !== 'good' ? el('em', {}, W.TIER_LABEL[L.tier]) : null,
+    );
   };
 
   // ---------------------------------------------------------------- equipment (tool loops + gear hooks)
@@ -233,16 +255,38 @@ export function openBackpack(game, opts = {}) {
     const slots = Inv.coopSlots(st);
     const cg = el('div', { class: 'bp-cgrid' });
     slots.forEach((s, i) => cg.append(slotEl(s, { c: 'coop', i, frame: 'cubby', hide: dnd?.heldFrom('coop', i) || 0, sel: selKey === `slot:coop:${i}` })));
-    const lvl = d.level || 0;
-    const cost = Inv.COOP_COST[lvl + 1];
-    const up = cost ? el('button', { class: 'btn alt bp-shelf', title: 'More room on the coop', onclick: () => upgradeCoop() }, [`Nail on a shelf · `, el('span', { class: 'gold-txt' }, formatGoldFull(cost) + 'g')]) : el('small', { class: 'bp-none' }, 'Every shelf is up.');
+    const CL = Inv.coopLoad(st);
+    const load = el('div', { class: 'bp-coop-load ' + CL.tier, title: `Her legs carry ${CL.carry.toFixed(0)} kg comfortably; a heavy coop walks slower and hops lower.` }, [
+      el('span', { html: `Load <b>${CL.kg.toFixed(1)}</b>/${CL.carry.toFixed(0)} kg` }),
+      el('i', { class: 'bp-scale-bar' }, [el('i', { style: { width: (clamp(CL.r / 1.5, 0, 1) * 100).toFixed(1) + '%', background: W.TIER_COLOR[CL.tier] } })]),
+      el('button', { class: 'btn alt sm', title: 'Move ore, ingots and other heavy things from your pack onto her shelves', onclick: () => unloadHeavy() }, 'Unload ore'),
+    ]);
     const coop = el('div', { class: 'bp-coop' }, [
       el('div', { class: 'bp-coop-head' }, [portrait, el('div', {}, [el('b', {}, `${name}'s Coop`), el('small', {}, moodTxt), meter])]),
       el('div', { class: 'bp-coop-feed' }, [bowl, el('small', {}, henFoodLine())]),
       el('div', { class: 'bp-coop-shelf' }, [el('div', { class: 'bp-coop-sign' }, [el('span', {}, `Shelves ${Inv.usedSlots(slots)}/${slots.length}`), el('button', { class: 'bp-tool sm', title: 'Tidy the shelves', 'aria-label': 'Tidy the shelves', onclick: () => tidy('coop') }, [el('img', { class: 'pix', src: INV_ART.brush(), alt: '' })])]), cg]),
-      up,
+      load,
+      renderUpgrades(),
     ]);
     return coop;
+  };
+  /** The coop's upgrades: a row per track, level pips, and Install when you carry the next part. */
+  const renderUpgrades = () => {
+    const lv = W.coopLevels(st);
+    const box = el('div', { class: 'bp-ups' }, [el('div', { class: 'bp-coltitle' }, 'Build onto the coop')]);
+    for (const track of W.COOP_TRACKS) {
+      const T = W.COOP_UP[track], L = lv[track], max = T.levels.length - 1;
+      const nx = Inv.nextPart(st, track);
+      const pips = el('span', { class: 'bp-up-pips' }, Array.from({ length: max }, (_, k) => el('i', { class: k < L ? 'on' : '' })));
+      const row = el('div', { class: 'bp-up' + (nx?.have ? ' ready' : '') }, [
+        el('img', { class: 'pix', src: iconURL(nx ? nx.id : Object.keys(COOP_PARTS).filter((id) => COOP_PARTS[id].track === track).pop()), alt: '' }),
+        el('div', {}, [el('b', {}, T.name), pips, el('small', { html: nx ? (nx.have ? `<b>${nx.part.name}</b> ready to fit` : `Next: <b>${nx.part.name}</b> · forge it at home (${Object.entries(nx.part.ingots).map(([id, n]) => `${n}× ${ITEMS[id]?.name || id}`).join(', ')}${nx.part.extra ? ', ' + Object.entries(nx.part.extra).map(([id, n]) => `${n}× ${ITEMS[id]?.name || id}`).join(', ') : ''})`) : 'All built.' })]),
+        nx?.have ? el('button', { class: 'btn sm', onclick: () => install(nx.id) }, 'Install') : null,
+      ]);
+      row.title = T.desc;
+      box.append(row);
+    }
+    return box;
   };
   const henFoodLine = () => {
     const g = st.inventory(henFood);
@@ -278,6 +322,13 @@ export function openBackpack(game, opts = {}) {
     if (d === 'trunk' && j >= to.length) { while (to.length <= j) to.push(null); }
     const cap = capOf(d);
     if (j >= 0 && j >= cap) return 0;
+    if (d === 'coop' && c !== 'coop') {
+      // her legs only carry so much: whole swaps are fine if they don't make her heavier
+      const s0 = from[i], tj = j >= 0 ? to[j] : null;
+      const room = Inv.coopRoomKg(st, s0.id) + (tj && !Inv.sameKind(tj, s0) ? Math.floor(W.stackKg(tj) / Math.max(0.01, W.kgOf(s0.id))) : 0);
+      if (room <= 0) { heavyToast(); return 0; }
+      k = Math.min(k, room);
+    }
     const moved = Inv.transfer(st, from, i, to, j, k, cap === Infinity ? to.length + 99 : cap);
     if (d === 'trunk' || c === 'trunk') { while (to.length && !to[to.length - 1]) to.pop(); while (from.length && !from[from.length - 1] && c === 'trunk') from.pop(); }
     if (moved > 0 && (c === 'coop' || d === 'coop')) nug?.coopTouched?.(d === 'coop' ? 'in' : 'out');
@@ -340,16 +391,45 @@ export function openBackpack(game, opts = {}) {
   };
   const feedBest = () => feed(null, -1);
 
-  const upgradeCoop = () => {
-    const r = Inv.upgradeCoop(st);
-    if (!r.ok) { sfx('nope'); ui.toast(r.reason, { kind: 'warn', dur: 1800 }); return; }
-    audio.play('ui_buy');
-    audio.play('place');
-    ui.toast(`<b>A new shelf!</b> The coop holds ${r.slots} now.`, { kind: 'good', dur: 2200 });
-    nug?.coopTouched?.('shelf');
+  let heavyT = 0;
+  const heavyToast = () => {
+    if (performance.now() - heavyT < 1500) return;
+    heavyT = performance.now();
+    ui.toast(`<b>${st.data.chicken?.name || 'Nugget'}'s legs are buckling!</b> The coop can't carry more. Fit stronger legs (forge them at home).`, { kind: 'warn', dur: 2600 });
+  };
+  /** Ore, ingots and the other heavy things from the pack onto her shelves, heaviest first. */
+  const unloadHeavy = () => {
+    const bagS = Inv.bag(st), coopS = Inv.coopSlots(st);
+    const order = bagS.map((s, i) => [s, i]).filter(([s]) => s && !s.w && (ITEMS[s.id]?.cat === 'mineral' || ITEMS[s.id]?.cat === 'ingot' || ITEMS[s.id]?.cat === 'part' || W.kgOf(s.id) >= 0.8));
+    order.sort((a, b) => W.stackKg(b[0]) - W.stackKg(a[0]));
+    let moved = 0, stopped = false;
+    for (const [s, i] of order) {
+      const room = Inv.coopRoomKg(st, s.id);
+      if (room <= 0) { stopped = true; continue; }
+      moved += Inv.transfer(st, bagS, i, coopS, -1, room, coopS.length);
+    }
+    if (moved > 0) { sfx('tidy'); audio.play('cluck', { n: 2 }); nug?.coopTouched?.('in'); }
+    else sfx('nope');
+    if (stopped) heavyToast();
+    else if (!moved) ui.toast('Nothing heavy to unload (or her shelves are full).', { kind: 'warn', dur: 1800 });
+    closeTag();
     render(false);
-    const nodes = root.querySelectorAll('.inv-slot[data-c="coop"]');
-    nodes.forEach((n, k) => { if (k >= nodes.length - (r.added || 0)) bounce(n, 'tidied'); });
+  };
+  /** Build a part onto the coop (the hammering is quick; the coop shows it at once). */
+  const install = (id, from = 'bag') => {
+    const has = Inv.countIn(Inv.bag(st), id) > 0 ? 'bag' : Inv.countIn(Inv.coopSlots(st), id) > 0 ? 'coop' : from;
+    const r = Inv.installPart(st, id, { from: has });
+    if (!r.ok) { sfx('nope'); ui.toast(r.reason, { kind: 'warn', dur: 2000 }); return; }
+    for (let k = 0; k < 4; k++) audio.play('hit', { snd: 'metal', vol: 0.5, delay: k * 0.14 });
+    audio.play('ui_buy');
+    const T = W.COOP_UP[r.track];
+    const what = r.track === 'shelves' ? `The coop holds ${Inv.coopSlots(st).length} now.` : r.track === 'legs' ? `She carries about ${W.coopCarry(st).toFixed(0)} kg now.` : r.track === 'nest' ? 'She\'ll lay more often.' : r.track === 'chute' ? 'When your pack is full or too heavy, what you dig rolls onto her shelves.' : 'Her roof lantern lights the way.';
+    ui.toast(`<b>${r.name}</b> fitted! ${T.name} ${r.level}. ${what}`, { kind: 'good', icon: iconURL(id), dur: 3200 });
+    nug?.coopTouched?.('install', r);
+    closeTag();
+    render(false);
+    const nodes = root.querySelectorAll('.bp-up');
+    nodes.forEach((n) => bounce(n, 'tidied'));
   };
 
   // ---------------------------------------------------------------- selection + paper tag
@@ -451,11 +531,18 @@ export function openBackpack(game, opts = {}) {
     if (it.energy || it.food) info.push(`Restores <b>${it.energy ?? it.food}</b> energy` + (it.buff ? ` · ${BUFFS[it.buff]?.name || it.buff}` : '') + (it.maxEnergy ? ` · +${it.maxEnergy} max energy` : ''));
     if (it.hen) info.push(`Nugget eats it: fills her <b>${Math.round(it.hen * 100)}%</b>`);
     info.push(`${n} in this ${c === 'bag' ? 'pocket' : c === 'coop' ? 'cubby' : 'slot'} · stacks to ${Inv.stackMax(s.id)}`);
+    info.push(`Weighs <b>${W.kgOf(s.id) < 0.1 ? W.kgOf(s.id).toFixed(2) : W.kgOf(s.id).toFixed(1)} kg</b>${n > 1 ? ` each (${W.stackKg(s).toFixed(1)} kg here)` : ''}`);
+    const part = COOP_PARTS[s.id];
+    if (part) {
+      const L = W.coopLevels(st)[part.track];
+      info.push(part.level <= L ? 'The coop already has this.' : part.level > L + 1 ? `Fits after the ${W.COOP_UP[part.track].name.toLowerCase()} level ${part.level - 1} part.` : `Fits the coop now: <b>${W.COOP_UP[part.track].name} ${part.level}</b>.`);
+    }
     const actions = el('div', { class: 'bp-actions' });
     if (c === 'bag' && (it.cat === 'food' || (it.food && game.scene?.allowEatRaw !== false))) {
       actions.append(el('button', { class: 'btn', onclick: () => { game.eat(s.id); render(); refreshTag(); } }, it.cat === 'food' ? 'Eat' : 'Eat raw'));
     }
     if (it.hen && st.flag('nugget') && (side === 'coop' || nug)) actions.append(el('button', { class: 'btn', onclick: () => feed(c, i) }, 'Feed Nugget'));
+    if (part && st.flag('nugget') && coopNear() && part.level === W.coopLevels(st)[part.track] + 1) actions.append(el('button', { class: 'btn', onclick: () => install(s.id, c) }, 'Install on the coop'));
     const to = other(c);
     if (to) actions.append(el('button', { class: 'btn alt', onclick: () => { const m = move(c, i, to, -1, Infinity); sfx(m > 0 ? 'drop' : 'nope'); closeTag(); render(); } }, to === 'bag' ? 'Take' : to === 'coop' ? 'To the coop' : 'To the trunk'));
     if (n > 1) actions.append(el('button', { class: 'btn alt', title: 'Take half into your paw (right-click or long-press)', onclick: () => { closeTag(); dnd.hand = { c, i, k: Math.ceil(n / 2) }; dnd.ghostFor(s, Math.ceil(n / 2)); const r = grid.getBoundingClientRect(); dnd.showGhost(r.left + r.width / 2, r.top + 30); sfx('split'); render(); } }, 'Split'));
@@ -487,7 +574,7 @@ export function openBackpack(game, opts = {}) {
       tagClose(),
       tagHead(stackIcon({ w }), w.name, 'Forged weapon', el('span', { class: 'bp-grade', style: { color: g.color, borderColor: g.color } }, `Grade ${g.g}`)),
       el('p', { class: 'bp-desc', html: `Forged on day ${w.day}. Metal quality ${w.matQ}% · craft score ${Math.round(w.score)}` + (w.gem ? ` · socketed ${ITEMS[w.gem]?.name}` : '') }),
-      facts([`Worth about <span class="gold-txt">${formatGoldFull(w.value)}g</span> at the assay office.`, 'Takes a whole pocket.']),
+      facts([`Worth about <span class="gold-txt">${formatGoldFull(w.value)}g</span> at the assay office.`, `Takes a whole pocket · weighs <b>${W.weaponKg(w).toFixed(1)} kg</b>.`]),
       actions,
     );
   };
@@ -500,7 +587,7 @@ export function openBackpack(game, opts = {}) {
     if (cur) {
       if (cur.tier) info.push(`Pick tier ${cur.tier} · power ${cur.power}`);
       if (cur.light) info.push(`Lamp radius ${cur.light}`);
-      if (cur.slots) info.push(`${cur.slots} pockets` + (Inv.bagSlots(st) > cur.slots ? ` (+${Inv.bagSlots(st) - cur.slots} sewn in)` : ''));
+      if (cur.slots) info.push(`${cur.slots} pockets` + (Inv.bagSlots(st) > cur.slots ? ` (+${Inv.bagSlots(st) - cur.slots} sewn in)` : '') + ` · carries <b>${W.carryOf(st).toFixed(0)} kg</b> comfortably`);
       if (cur.protect) info.push(`Protects from ${cur.protect.join(', ')}`);
       if (cur.radius) info.push(`Sees ${cur.radius} cells through rock`);
       if (cur.climb) info.push(`Climbing ×${cur.climb}` + (cur.jump ? ` · jump ×${cur.jump}` : ''));

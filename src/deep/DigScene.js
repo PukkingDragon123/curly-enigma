@@ -25,6 +25,7 @@ import { ORES } from '../data/ores.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { clamp, rand, chance, hexToRgb, formatGoldFull } from '../core/util.js';
+import * as W from '../core/weight.js';
 
 const SLOTS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'build', 'dynamite', 'food'];
 // what the build tool puts up: ladders to climb out of holes for free, platforms, blocks
@@ -176,8 +177,8 @@ export default class DigScene extends Scene {
       // a find that won't fit waits on the floor (unless Nugget is close enough to take it)
       canTake: (b) => {
         const id = b.pickup?.id;
-        if (!id || !st.canAdd || st.canAdd(id, 1) || this.nugget?.near?.(4.5)) return true;
-        this.bagFull(id);
+        if (!id || !st.canAdd || this.whereTo(id)) return true;
+        if (st.canAdd(id, 1)) this.tooHeavy(id); else this.bagFull(id);
         return false;
       },
     };
@@ -276,7 +277,10 @@ export default class DigScene extends Scene {
     const sy = Math.sin(pl.yaw), cy = Math.cos(pl.yaw);
     this.wish = busy ? { x: 0, z: 0 } : { x: -sy * mv.y + cy * mv.x, z: -cy * mv.y - sy * mv.x };
     const exhausted = st.energy < 8;
-    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted, crouch: inp.isDown('KeyC'), jumpMul: st.hasBuff('bouncy') ? 1.35 : 1, frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (st.skill?.('speed') || 1) * (this.blocking ? 0.55 : 1) * (this.nugget?.carrying ? 0.7 : 1) });
+    const load = this.weigh(dt);
+    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted && load.run, crouch: inp.isDown('KeyC'), jumpMul: (st.hasBuff('bouncy') ? 1.35 : 1) * load.jump, frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (st.skill?.('speed') || 1) * (this.blocking ? 0.55 : 1) * (this.nugget?.carrying ? 0.7 : 1) * load.speed });
+    // hauling a heavy pack is hard work
+    if (load.r > 1 && !busy && (mv.x || mv.y) && pl.grounded) this.energy(dt * 0.3 * Math.min(2, load.r - 1));
     if (ev.landed > 8) this.enemies?.noise?.(pl.pos.x, pl.pos.y, pl.pos.z, 3, 'land');
     if (ev.landed) { this.audio.play('land', { hard: ev.landed > 8 }); this.fx.dust(pl.pos.x, pl.pos.y + 0.05, pl.pos.z, Math.min(10, ev.landed | 0), [0.5, 0.42, 0.34], 0.2); }
     if (ev.fallDamage) this.hurt(Math.round(ev.fallDamage), 'fall');
@@ -619,9 +623,11 @@ export default class DigScene extends Scene {
     const it = ITEMS[p.id];
     if (!it) return;
     const counts = it.cat === 'mineral' || it.cat === 'gem';
-    const fits = st.canAdd ? st.canAdd(p.id, 1) : !(counts && this.trip >= st.bagCapacity());
-    if (!fits && this.nugget?.takeFind?.(p)) {
-      this.game.ui.toast(`Nugget tucks the <b>${it.name}</b> into her coop.`, { icon: iconURL(p.id) });
+    const to = st.canAdd ? this.whereTo(p.id) : 'bag';
+    const fits = to === 'bag' || (!st.canAdd && !(counts && this.trip >= st.bagCapacity()));
+    if (to === 'coop' && this.nugget?.takeFind?.(p, this.chuteRange())) {
+      const name = st.data.chicken?.name || 'Nugget';
+      this.game.ui.toast(W.coopUp(st, 'chute').on && !this.nugget.near(4.5) ? `The <b>${it.name}</b> rolls down the chute onto ${name}'s shelves.` : `${name} tucks the <b>${it.name}</b> into her coop.`, { icon: iconURL(p.id) });
       if (counts) { st.data.stats.ores++; if (p.p) st.data.stats.pristine++; }
       this.act(it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'ore' : 'loot', { id: p.id, q: p.q, pristine: !!p.p });
       return;
@@ -638,6 +644,51 @@ export default class DigScene extends Scene {
     this.game.ui.toast(`+ <b>${it.name}</b>${it.q ? ` ${p.q ?? 100}%` : ''}${p.p ? ' · <b>pristine</b>' : ''}`, { icon: iconURL(p.id), kind: 'good' });
     this.showBag();
     this.updateHotbar();
+  }
+
+  /** Ore chute range (m): how close Nugget must be to take a find (7 m with the chute fitted). */
+  chuteRange() { return W.coopUp(this.state, 'chute').on ? 7 : 4.5; }
+
+  /**
+   * Where a find goes: 'bag', 'coop' (the pack is full or too heavy and Nugget can take it; with
+   * the ore chute, heavy finds roll onto her shelves as soon as you're loaded), or null (nowhere).
+   */
+  whereTo(id) {
+    const st = this.state, nug = this.nugget;
+    const bagOk = st.canAdd(id, 1) && (st.canLift?.(id, 1) ?? true);
+    const coopOk = !!nug?.canTake?.(id, this.chuteRange());
+    if (coopOk && W.coopUp(st, 'chute').on && ITEMS[id]?.cat !== 'gem' && W.kgOf(id) >= 0.4 && (this.load?.r ?? 0) >= 1) return 'coop';
+    return bagOk ? 'bag' : coopOk ? 'coop' : null;
+  }
+
+  /**
+   * The pack's weight, re-weighed a few times a second: { kg, carry, r, speed, jump, run, tier }.
+   * Speaks up the first time it gets heavy (and the HUD's scale shows it).
+   */
+  weigh(dt) {
+    this.loadT = (this.loadT || 0) - dt;
+    if (!this.load || this.loadT <= 0) {
+      this.loadT = 0.25;
+      const st = this.state;
+      this.load = st.bagLoad ? st.bagLoad() : { kg: 0, carry: 15, r: 0, speed: 1, jump: 1, run: true, tier: 'light' };
+      this.game.ui.setLoad?.(this.load);
+      const t = this.load.tier, name = st.data.chicken?.name || 'Nugget';
+      if ((t === 'heavy' || t === 'over' || t === 'max') && !st.flag('tipHeavy')) {
+        st.flag('tipHeavy', true);
+        this.say('heavy', `Oof, your pack is <b>heavy</b>: you can't run and every step costs energy. Ore weighs a lot. ${st.flag('nugget') ? `Put it on <b>${name}'s coop</b> (<b>E</b> on the coop, or <b>Unload ore</b> in the backpack).` : 'Take it home and lighten the load.'}`, 'warn', 9999);
+      } else if (t === 'max' && this.lastTier !== 'max') this.say('heavymax', `You can't lift any more! Unload onto ${name}'s coop or head home.`, 'warn', 12);
+      this.lastTier = t;
+    }
+    return this.load;
+  }
+
+  /** Too heavy to pick something up (a short note, not every frame). */
+  tooHeavy(id) {
+    if ((this.heavyT || 0) > this.time) return;
+    this.heavyT = this.time + 4;
+    this.audio.play('ui_error');
+    const it = ITEMS[id], name = this.state.data.chicken?.name || 'Nugget';
+    this.game.ui.toast(`<b>Too heavy!</b> You can't lift the ${it ? it.name : 'find'} as well.${this.state.flag('nugget') ? ` Unload ore onto ${name}'s coop.` : ''}`, { kind: 'warn', icon: it ? iconURL(id) : undefined, dur: 2600 });
   }
 
   /** The bag strip: pockets used / pockets (or finds this trip / capacity on old inventories). */

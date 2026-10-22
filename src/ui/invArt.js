@@ -242,6 +242,19 @@ function brushIcon() {
   return p;
 }
 
+// a brass spring scale with a hook (the backpack's load readout)
+function weightIcon() {
+  const p = new Px(12, 12);
+  const BR = [0x5a3a12, 0x9a6a22, 0xd8a43a, 0xf6d47a];
+  p.rect(5, 0, 2, 2, BR[1]); p.set(5, 0, BR[2]); // the ring
+  p.rect(3, 2, 6, 6, BR[1]); p.rect(4, 3, 4, 4, 0xf2e6c8); p.set(3, 2, BR[2]); p.set(4, 2, BR[3]);
+  p.line(4, 6, 7, 3, 0xc23c2c); p.set(5, 5, 0x3a2a1a); // the needle
+  p.rect(5, 8, 2, 2, 0x6a625c); // the hook
+  p.set(6, 10, 0x8a827a); p.set(5, 11, 0x8a827a); p.set(4, 10, 0x8a827a);
+  p.outline(0x24150d);
+  return p;
+}
+
 const sprite = (key, fn) => art('inv:' + key, fn);
 export const INV_ART = {
   sewn: () => sprite('sewn', sewnPocket),
@@ -251,6 +264,7 @@ export const INV_ART = {
   bowl: (f = 0) => sprite('bowl' + f, () => bowl(Math.max(0, Math.min(4, f | 0)))),
   hen: (mood = 'ok') => sprite('hen:' + mood, () => henWindow(mood)),
   brush: () => sprite('brush', brushIcon),
+  weight: () => sprite('weight', weightIcon),
 };
 
 /** Publish the frames as CSS custom properties (--inv-*) on an element. */

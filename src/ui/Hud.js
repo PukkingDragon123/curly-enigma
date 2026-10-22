@@ -54,7 +54,11 @@ export class Hud {
       el('img', { class: 'pix', src: SPR.bookPeek(), alt: '' }), this.badge,
     ]);
     this.packBtn = el('button', { class: 'pack-bag', title: 'Backpack (I)', 'aria-label': 'Backpack', onclick: () => ui.openInventory() }, [this.packImg, this.packTag]);
-    this.pack = el('div', { class: 'pack' }, [this.bookBtn, this.packBtn]);
+    // the load gauge: a little spring scale hanging off the bag's strap (mine only)
+    this.loadFill = el('i');
+    this.loadTxt = el('span', { class: 'pack-load-t' });
+    this.loadEl = el('div', { class: 'pack-load', hidden: true, title: 'How heavy your pack is' }, [el('b', {}, [this.loadFill]), this.loadTxt]);
+    this.pack = el('div', { class: 'pack' }, [this.bookBtn, this.packBtn, this.loadEl]);
     this.menuBtn = el('button', { class: 'journal-btn', title: 'Journal (Esc)', 'aria-label': 'Pause menu', onclick: () => ui.openMenu() }, [
       el('img', { class: 'pix', src: SPR.journalIcon(), alt: '' }),
     ]);
@@ -247,6 +251,20 @@ export class Hud {
       }
       if (prev || n > 0) { this.packTag.hidden = false; this.packTagT = 2.4; }
     }
+  }
+
+  /** The pack's weight (core/weight.js loadState) or null to hide the gauge. */
+  setLoad(L) {
+    if (!L) { this.loadEl.hidden = true; this.load = null; return; }
+    this.loadEl.hidden = false;
+    const k = Math.max(0, Math.min(1, L.r / 2));
+    this.loadFill.style.height = (k * 100).toFixed(1) + '%';
+    this.loadEl.className = 'pack-load ' + L.tier;
+    const heavy = L.tier === 'heavy' || L.tier === 'over' || L.tier === 'max';
+    this.loadTxt.textContent = heavy ? `${L.kg.toFixed(0)}/${L.carry.toFixed(0)} kg` : '';
+    this.loadTxt.hidden = !heavy;
+    this.loadEl.title = `${L.kg.toFixed(1)} kg of ${L.carry.toFixed(0)} kg`;
+    this.load = L;
   }
 
   setBadge(on) {

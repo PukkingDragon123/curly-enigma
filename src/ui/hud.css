@@ -285,3 +285,18 @@ html.is-touch .loop .k { display: none; }
 .disc small { display: block; font-size: 8px; letter-spacing: .14em; text-transform: uppercase; color: #8a4a22; }
 .disc b { display: block; font-family: var(--font-script); font-weight: 400; font-size: var(--fs-s); line-height: 1; color: var(--sepia); margin-top: calc(var(--px) * 1); }
 @media (min-width: 901px) and (min-height: 601px) { .disc small { font-size: 16px; letter-spacing: .06em; } }
+
+/* the load gauge: a thin brass scale beside the bag (fills green → amber → red past the bag's carry) */
+.pack-load { position: absolute; right: calc(var(--px) * -6); top: calc(var(--px) * 4); width: calc(var(--px) * 4); height: calc(var(--px) * 24); z-index: 2; pointer-events: auto; }
+.pack-load > b { position: absolute; inset: 0; display: block; background: #2a160a; box-shadow: 0 0 0 var(--px) #120804, inset 0 calc(var(--px) * 12) 0 -1px rgba(255, 255, 255, .04); overflow: hidden; }
+.pack-load > b > i { position: absolute; left: 0; right: 0; bottom: 0; display: block; background: #8fd06a; transition: height .35s var(--pop), background .3s; }
+.pack-load > b::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: var(--px); background: rgba(255, 243, 208, .7); }
+.pack-load.good > b > i { background: #d8c05a; }
+.pack-load.heavy > b > i { background: #ff9a3a; }
+.pack-load.over > b > i, .pack-load.max > b > i { background: #ff4a3a; }
+.pack-load.max { animation: fullWiggle 1.6s ease-in-out infinite; }
+.pack-load-t {
+  position: absolute; right: calc(100% + var(--px) * 3); top: calc(var(--px) * 26); white-space: nowrap; font-size: 16px; line-height: 1; color: #fff4e8;
+  background: #b8602a; padding: var(--px) calc(var(--px) * 2); box-shadow: 0 0 0 var(--px) #5a240c, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35);
+}
+.pack-load.over .pack-load-t, .pack-load.max .pack-load-t { background: #b8322a; }

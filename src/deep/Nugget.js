@@ -16,6 +16,8 @@
 // dispose(). Test hooks: nugget.debug.* (see the bottom).
 import * as THREE from 'three';
 import { makeCoop } from '../gfx/char/coop.js';
+import { CoopGear } from '../gfx/char/coopGear.js';
+import * as W from '../core/weight.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { VOX, MAT } from './materials.js';
 import { ITEMS } from '../data/items.js';
@@ -47,6 +49,7 @@ export class Nugget {
     this.st = ctx.owner?.state || ctx.state;
     this.ui = ctx.owner?.game?.ui || ctx.ui;
     this.coop = makeCoop({ height: COOP_H, kind: 'toon' });
+    this.gear = new CoopGear(this.coop); // the parts built onto her coop, and her cargo
     this.root = this.coop.root;
     this.hen = this.coop.hen;
     ctx.scene3.add(this.root);
@@ -173,6 +176,15 @@ export class Nugget {
       if (this.trail.length > 240) this.trail.splice(0, this.trail.length - 240);
     }
 
+    // what's built on, and how loaded she is (legs, hop, the cargo on the racks)
+    this.dressT = (this.dressT || 0) - dt;
+    if (this.dressT <= 0) {
+      this.dressT = 0.4;
+      this.load = Inv.coopLoad(st);
+      this.legs = W.coopLegs(st);
+      this.gear.set(W.coopLevels(st), this.load.r);
+      this.lampLv = W.coopUp(st, 'lamp').light;
+    }
     if (this.mode === 'carried') this.updateCarried(dt);
     else this.updateWalk(dt);
 
@@ -216,7 +228,7 @@ export class Nugget {
       if (direct) { this.trail.length = 0; left = dPl; tx = pl.pos.x; tz = pl.pos.z; ty = pl.pos.y; }
       else if (this.trail.length) { tx = this.trail[0].x; tz = this.trail[0].z; ty = this.trail[0].y; }
       else { tx = pl.pos.x; tz = pl.pos.z; ty = pl.pos.y; left = dPl; }
-      if (left > FOLLOW) speed = left > 5 ? 3.9 : left > 2.6 ? 3 : 1.9;
+      if (left > FOLLOW) speed = (left > 5 ? 3.9 : left > 2.6 ? 3 : 1.9) * (this.legs?.speed ?? 1) * (1 - (1 - (this.load?.speed ?? 1)) * 0.7);
       // the next step is a crawlway or deep water: she can't go there
       const nx = this.trail[0];
       if (nx && left > FOLLOW && Math.hypot(nx.x - p.x, nx.z - p.z) < 0.9) {
@@ -253,7 +265,8 @@ export class Nugget {
       v.y = 0;
     } else { p.y = ny; this.grounded = false; }
     if (blocked && this.grounded && speed > 0) {
-      if (!this.hits(p.x + ux * 0.18, p.y + HOP, p.z + uz * 0.18)) { v.y = 3.7; this.grounded = false; this.coop.hop(); this.c.audio.play('cluck', { vol: 0.25, n: 1 }); }
+      const hop = (this.legs?.hop ?? HOP) - ((this.load?.r ?? 0) > 1 ? 0.08 : 0);
+      if (!this.hits(p.x + ux * 0.18, p.y + hop, p.z + uz * 0.18)) { v.y = 3.7 * Math.sqrt(hop / HOP); this.grounded = false; this.coop.hop(); this.c.audio.play('cluck', { vol: 0.25, n: 1 }); }
       else this.blockedT += dt;
     }
     // no progress for a while: she's stuck (what's in the way decides how)
@@ -469,7 +482,15 @@ export class Nugget {
   }
   coopOpened() { this.panelOpen = true; this.c.audio.play('door'); }
   coopClosed() { if (this.panelOpen) this.c.audio.play('door'); this.panelOpen = false; }
-  coopTouched() { this.coop.shake(0.35); }
+  coopTouched(what, r) {
+    this.coop.shake(what === 'install' ? 0.8 : 0.35);
+    this.dressT = 0; // re-dress now
+    if (what === 'install') {
+      this.c.audio.play('cluck', { n: 3, pitch: 1.2 });
+      const p = this.pos;
+      this.c.fx?.sparks?.(p.x, p.y + 0.5, p.z, 10, [1, 0.8, 0.45], [0, 1, 0], 2.5);
+    }
+  }
 
   // ------------------------------------------------------------------ interaction (DigScene)
   /** The coop under the crosshair within reach? */
@@ -518,9 +539,10 @@ export class Nugget {
    * The backpack is full: a find goes onto the coop's shelves instead, if she's close by (or
    * carried) and there's room. p: a pickup { id, q, p }. Returns true when it went in.
    */
-  takeFind(p) {
+  takeFind(p, range = 4.5) {
     const it = ITEMS[p?.id];
-    if (!it || !(this.carrying || this.near(4.5)) || this.mode === 'stuck') return false;
+    if (!it || !(this.carrying || this.near(range)) || this.mode === 'stuck') return false;
+    if (Inv.coopRoomKg(this.st, p.id) < 1) return false; // her legs can't take more
     const units = it.q ? [{ uid: Math.random().toString(36).slice(2, 10), id: p.id, q: Math.round(p.q ?? 100), p: !!p.p }] : 1;
     const left = Inv.putIn(Inv.coopSlots(this.st), p.id, units);
     if (Array.isArray(left) ? left.length : left > 0) return false;
@@ -528,6 +550,12 @@ export class Nugget {
     this.coop.shake(0.4);
     this.c.audio.play('cluck', { n: 1, pitch: 1.2 });
     return true;
+  }
+
+  /** Could she take one of these right now (close enough, room on the shelves and in her legs)? */
+  canTake(id, range = 4.5) {
+    if (!ITEMS[id] || !(this.carrying || this.near(range)) || this.mode === 'stuck') return false;
+    return Inv.roomFor(Inv.coopSlots(this.st), id) > 0 && Inv.coopRoomKg(this.st, id) > 0;
   }
 
   /** A radar marker while she's out of sight (kind 'nugget'). */
@@ -540,7 +568,10 @@ export class Nugget {
   lights() {
     if (this.carrying) return [];
     const p = this.pos;
-    return [{ x: p.x, y: p.y + 0.45, z: p.z, c: [1, 0.72, 0.35], r: 1.6 }];
+    const out = [{ x: p.x, y: p.y + 0.45, z: p.z, c: [1, 0.72, 0.35], r: 1.6 }];
+    // the roof lantern (a coop part): warm, or the lumite's big green glow
+    if (this.lampLv) out.push({ x: p.x, y: p.y + COOP_H + 0.1, z: p.z, c: this.lampLv >= 2 ? [0.55, 1, 0.6] : [1, 0.8, 0.45], r: this.lampLv >= 2 ? 6.5 : 4.2 });
+    return out;
   }
 
   // ------------------------------------------------------------------ test hooks
@@ -551,6 +582,9 @@ export class Nugget {
       hunger: (food) => { this.st.data.coop.food = food; return Inv.henMood(this.st); },
       stuck: (kind = 'ledge') => { this.setMode('stuck', kind); return this.mode; },
       carry: () => { if (this.mode !== 'stuck') this.setMode('stuck', 'ledge'); return this.pickUp(); },
+      /** Build a part onto the coop (gives it first): returns installPart's result. */
+      install: (id, q = 80) => { this.st.addItem(id, { q, spill: true }); const r = Inv.installPart(this.st, id); this.coopTouched('install', r); return r; },
+      load: () => { const L = Inv.coopLoad(this.st); return { kg: +L.kg.toFixed(2), carry: L.carry, r: +L.r.toFixed(3), levels: W.coopLevels(this.st), gear: this.gear.meshes.length }; },
       put: () => this.putDown(),
       egg: () => { this.coop.layEgg(); return true; },
       teleport: (x, y, z) => { this.pos.set(x, y, z); this.vel.set(0, 0, 0); this.trail.length = 0; this.root.position.copy(this.pos); },
@@ -564,6 +598,7 @@ export class Nugget {
   dispose() {
     this.root.parent?.remove(this.root);
     this.c.scene3.remove(this.amb, this.lamp);
+    this.gear.dispose();
     this.coop.dispose();
     this.lamp.dispose?.();
   }

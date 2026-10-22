@@ -228,11 +228,11 @@ export const ITEMS = {
   spring_boots: { name: 'Spring Boots', cat: 'equip', slot: 'boots', grip: 1, climb: 1.6, jump: 1.35, price: 30000, value: 8000, icon: { k: 'equip', t: 'boots', c: 0x3a8ad9 }, desc: 'Gravium-sprung soles. Boing.' },
   // backpacks: slots = pockets in the inventory grid (rows of 6, core/inventory.js); cap = the old
   // "finds per trip" (bagCapacity(), kept until the mine counts pockets instead)
-  bag_small: { name: 'Burlap Sack', cat: 'equip', slot: 'bag', slots: 6, cap: 14, value: 2, icon: { k: 'equip', t: 'bag', c: 0xb8996a }, desc: 'Six pockets. Room for a few finds and a snack.' },
-  bag_medium: { name: 'Leather Satchel', cat: 'equip', slot: 'bag', slots: 12, cap: 22, price: 700, value: 150, icon: { k: 'equip', t: 'bag', c: 0x8a5a2a }, desc: 'Twelve pockets: two rows, stitched tight.' },
-  bag_large: { name: 'Miner\'s Pack', cat: 'equip', slot: 'bag', slots: 18, cap: 34, price: 5000, value: 1200, icon: { k: 'equip', t: 'bag', c: 0x5a6a3a }, desc: 'Eighteen pockets and a frame that sits right on the shoulders.' },
-  bag_huge: { name: 'Expedition Pack', cat: 'equip', slot: 'bag', slots: 24, cap: 50, price: 30000, value: 7000, icon: { k: 'equip', t: 'bag', c: 0x3a5a8a }, desc: 'Twenty-four pockets for the long digs.' },
-  bag_bottomless: { name: 'Bottomless Bag', cat: 'equip', slot: 'bag', slots: 36, cap: 90, price: 150000, value: 35000, icon: { k: 'equip', t: 'bag', c: 0x6a2a8a }, desc: 'Thirty-six pockets. Do not look inside.' },
+  bag_small: { name: 'Burlap Sack', cat: 'equip', slot: 'bag', slots: 9, cap: 14, carry: 15, value: 2, icon: { k: 'equip', t: 'bag', c: 0xb8996a }, desc: 'Nine pockets and a rope strap. Carries about 15 kg before your knees complain.' },
+  bag_medium: { name: 'Leather Satchel', cat: 'equip', slot: 'bag', slots: 18, cap: 22, carry: 24, price: 700, value: 150, icon: { k: 'equip', t: 'bag', c: 0x8a5a2a }, desc: 'Eighteen pockets in two rows, and padded straps: about 24 kg.' },
+  bag_large: { name: 'Miner\'s Pack', cat: 'equip', slot: 'bag', slots: 27, cap: 34, carry: 36, price: 5000, value: 1200, icon: { k: 'equip', t: 'bag', c: 0x5a6a3a }, desc: 'Twenty-seven pockets and a frame that sits right on the shoulders: about 36 kg.' },
+  bag_huge: { name: 'Expedition Pack', cat: 'equip', slot: 'bag', slots: 36, cap: 50, carry: 52, price: 30000, value: 7000, icon: { k: 'equip', t: 'bag', c: 0x3a5a8a }, desc: 'Thirty-six pockets and a hip belt for the long digs: about 52 kg.' },
+  bag_bottomless: { name: 'Bottomless Bag', cat: 'equip', slot: 'bag', slots: 45, cap: 90, carry: 80, price: 150000, value: 35000, icon: { k: 'equip', t: 'bag', c: 0x6a2a8a }, desc: 'Forty-five pockets, and it weighs less the more you put in. About 80 kg. Do not look inside.' },
 
   // ───────────── Key items ─────────────
   exit_ticket: { name: 'Surface Ticket', cat: 'key', value: 0, price: 1000000, icon: { k: 'ticket' },
@@ -244,6 +244,7 @@ import { FURNITURE, FLOORS, WALLS } from './furniture.js';
 import { BLUEPRINTS } from './weapons.js';
 import { DISHES, INGREDIENTS } from './recipes.js';
 import { RELIC_ITEMS } from '../deep/ruins/relics.js'; // ruins part: relics found in the ruins' treasure rooms
+import { partItems } from './coopParts.js'; // parts for Nugget's coop, forged at home and installed on the coop
 
 for (const [id, f] of Object.entries(FURNITURE)) ITEMS[id] = { cat: 'furniture', ...f };
 for (const [id, f] of Object.entries(FLOORS)) ITEMS[id] = { cat: 'floor', ...f };
@@ -253,6 +254,7 @@ for (const [id, d] of Object.entries(DISHES)) ITEMS[id] = { cat: 'food', ...d };
 // cooking part: the new cave ingredients; foraged plants carry a quality (how well they were pulled)
 for (const [id, d] of Object.entries(INGREDIENTS)) ITEMS[id] = { ...d };
 for (const [id, d] of Object.entries(RELIC_ITEMS)) ITEMS[id] = { ...d };
+for (const [id, d] of Object.entries(partItems())) ITEMS[id] = d;
 for (const it of Object.values(ITEMS)) if (it.cat === 'plant') it.q = true;
 
 for (const [id, it] of Object.entries(ITEMS)) it.id = id;
@@ -288,5 +290,5 @@ export function pickForTier(t) {
 export const CAT_LABEL = {
   mineral: 'Mineral', gem: 'Gem', ingot: 'Ingot', plant: 'Plant', critter: 'Critter', drop: 'Creature Drop',
   ingredient: 'Ingredient', food: 'Food', tool: 'Tool', equip: 'Equipment', furniture: 'Furniture',
-  floor: 'Flooring', wallpaper: 'Wall Style', blueprint: 'Blueprint', consumable: 'Supply', key: 'Key Item', feed: 'Hen Feed', relic: 'Relic',
+  floor: 'Flooring', wallpaper: 'Wall Style', blueprint: 'Blueprint', consumable: 'Supply', key: 'Key Item', feed: 'Hen Feed', relic: 'Relic', part: 'Coop Part',
 };

@@ -126,6 +126,7 @@ await step("Old Star's cooking lesson", async () => {
     const on = (a) => { if (a.type === 'lesson' && a.step === 'cook_done') lesson = true; };
     window.__game.state.on('act', on);
     d.auto(90, 0.2);
+    d.start(window.__game.scene.lesson?.dish || 'glowcap_soup'); // pick his ingredients and Cook!
     const res = d.toResult();
     for (let k = 0; k < 120 && !lesson; k++) window.__game.scene.update(1 / 30);
     return { res: !!res, dish: res?.dish, lesson };

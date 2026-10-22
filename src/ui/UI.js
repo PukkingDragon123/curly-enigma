@@ -206,6 +206,8 @@ export class UI {
 
   /** Backpack fill for this trip (shown on the backpack itself). setBag(null) clears it. */
   setBag(n, cap) { this.status.setBag(n, cap); }
+  /** The pack's weight gauge (the mine): a core/weight.js load, or null. */
+  setLoad(L) { this.status.setLoad?.(L); }
 
   setDepth(html) { this.status.setDepth(html); }
 
@@ -375,6 +377,7 @@ export class UI {
     if (this.focus) this.setFocusMode(false);
     this.setTouchControls(true);
     this.status.setBag(null);
+    this.status.setLoad?.(null);
   }
 
   // ------------------------------------------------------------ panels

@@ -220,6 +220,10 @@ export class State {
   }
   /** Will n of this item fit in the backpack? */
   canAdd(id, n = 1) { return Inv.canAdd(this, id, n); }
+  /** Can the mole lift n more of it (weight: core/weight.js)? */
+  canLift(id, n = 1) { return Inv.canLift(this, id, n); }
+  /** The backpack's load: { kg, carry, r, speed, jump, run, tier, max }. */
+  bagLoad() { return Inv.bagLoad(this); }
   /** Backpack pockets unlocked (bag + upgrades + skills). */
   bagSlots() { return Inv.bagSlots(this); }
   /** { used, slots, free, full } pockets of the backpack. */

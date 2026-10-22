@@ -19,17 +19,18 @@
 // every change), so code that reads them keeps working; never write to them directly.
 import { ITEMS } from '../data/items.js';
 import { uid as mkUid } from './util.js';
+import { COOP_PARTS } from '../data/coopParts.js';
+import * as W from './weight.js';
 
-export const COLS = 6; // pockets per row in the backpack
-export const MAX_SLOTS = 48;
-/** The coop's shelves by level, and what the next level costs (gold). */
-export const COOP_SLOTS = [4, 6, 9, 12];
-export const COOP_COST = [0, 300, 1200, 4500];
+export const COLS = 9; // pockets per row in the backpack (Minecraft-like rows of nine)
+export const MAX_SLOTS = 54;
+/** The coop's shelves by Shelves level (the levels come from parts installed on it: installPart). */
+export const COOP_SLOTS = W.COOP_UP.shelves.levels.map((l) => l.slots);
 
 const OWNED = new Set(['tool', 'equip', 'blueprint', 'floor', 'wallpaper', 'key']);
-const STACK_BY_CAT = { mineral: 16, gem: 8, ingot: 8, plant: 16, critter: 8, drop: 16, ingredient: 16, food: 8, consumable: 10, feed: 24 };
+const STACK_BY_CAT = { mineral: 16, gem: 8, ingot: 8, plant: 16, critter: 8, drop: 16, ingredient: 16, food: 8, consumable: 10, feed: 24, part: 4 };
 /** Sort order of categories in a tidied container. */
-const CAT_ORDER = ['weapon', 'gem', 'mineral', 'ingot', 'consumable', 'food', 'feed', 'ingredient', 'plant', 'critter', 'drop'];
+const CAT_ORDER = ['weapon', 'part', 'gem', 'mineral', 'ingot', 'consumable', 'food', 'feed', 'ingredient', 'plant', 'critter', 'drop'];
 
 /** Does this item live in slots? (false for tools, gear, blueprints, floors, keys, furniture) */
 export function slotted(id) {
@@ -248,10 +249,10 @@ try {
 export function bagSlots(state) {
   if (DEV_BAG) return DEV_BAG;
   const bag = state.equipped?.('bag');
-  let n = bag?.slots ?? 6;
+  let n = bag?.slots ?? 9;
   n += Math.floor((state.upEffect?.('bag') || 0) / 4);
   const carry = state.skill?.('carry') || 1;
-  if (carry > 1) n += Math.round((carry - 1) * 6);
+  if (carry > 1) n += Math.round((carry - 1) * COLS);
   if (state.hasBuff?.('pack')) n += 1; // a packed lunch tied on: one more pocket while it lasts
   return Math.max(1, Math.min(MAX_SLOTS, n));
 }
@@ -306,6 +307,18 @@ export function canAdd(state, id, n = 1) {
   if (!slotted(id)) return !!ITEMS[id];
   const s = bag(state);
   return roomFor(s, id, bagSlots(state)) >= n;
+}
+/** The mole's load: { kg, carry, r, speed, jump, run, tier, max } (core/weight.js). */
+export function bagLoad(state) { return W.moleLoad(state, bag(state).slice(0, bagSlots(state))); }
+/** Can the mole lift n more of this item (by weight: up to twice what it carries comfortably)? */
+export function canLift(state, id, n = 1) { return !slotted(id) || W.canLift(state, bag(state), id, n); }
+/** The coop's load over its shelves (core/weight.js coopLoad). */
+export function coopLoad(state) { return W.coopLoad(state, coopSlots(state)); }
+/** Units of `id` the coop can still take by weight. */
+export function coopRoomKg(state, id) {
+  const kg = W.kgOf(id);
+  if (kg <= 0) return Infinity;
+  return Math.max(0, Math.floor((W.coopCarry(state) * 1.5 - W.loadOf(coopSlots(state))) / kg + 1e-6));
 }
 /** { used, slots, free, full } of the backpack (full = no empty pocket left). */
 export function bagFill(state) {
@@ -544,17 +557,47 @@ export function feedHen(state, id = null, from = 'bag') {
   return { ok: true, id, food: c.food, mood: henMood(state) };
 }
 
-/** Nail another shelf on the coop: { ok, slots, added } or { ok: false, reason }. */
-export function upgradeCoop(state) {
+/**
+ * Build a forged part onto the coop (data/coopParts.js): it must be the next level of its track.
+ * `from`: 'bag' | 'coop' (where the part is), lotUid: which one (default: the best). Returns
+ * { ok, id, track, level, q, name } or { ok: false, reason }. Emits 'items' and act 'install'.
+ */
+export function installPart(state, id, { from = 'bag', lotUid = null } = {}) {
+  const P = COOP_PARTS[id];
+  if (!P) return { ok: false, reason: 'That isn\'t a coop part.' };
+  const lv = W.coopLevels(state)[P.track];
+  if (P.level <= lv) return { ok: false, reason: `The coop already has that (${W.COOP_UP[P.track].name} ${lv}).` };
+  if (P.level > lv + 1) {
+    const need = Object.entries(COOP_PARTS).find(([, q]) => q.track === P.track && q.level === lv + 1);
+    return { ok: false, reason: `Install the ${need ? need[1].name : 'earlier part'} first.` };
+  }
+  const slots = from === 'coop' ? coopSlots(state) : bag(state);
+  let lot = null;
+  if (lotUid) {
+    for (let i = 0; i < slots.length && !lot; i++) {
+      const s = slots[i];
+      if (!s?.lots || s.id !== id) continue;
+      const k = s.lots.findIndex((l) => l.uid === lotUid);
+      if (k >= 0) { lot = s.lots.splice(k, 1)[0]; if (!s.lots.length) slots[i] = null; }
+    }
+  } else lot = takeFrom(slots, id, 1)[0] || null;
+  if (!lot) return { ok: false, reason: `You don't have a ${P.name}.` };
   const c = state.data.coop || (state.data.coop = defaultCoop());
-  const lvl = c.level || 0;
-  if (lvl >= COOP_SLOTS.length - 1) return { ok: false, reason: 'The coop can\'t take another shelf.' };
-  const cost = COOP_COST[lvl + 1];
-  if (!state.spend(cost, 'coop')) return { ok: false, reason: `A shelf costs ${cost}g.` };
-  c.level = lvl + 1;
-  const slots = coopSlots(state).length;
-  state.emit('items', { id: null, n: 0, coop: true });
-  return { ok: true, slots, added: COOP_SLOTS[lvl + 1] - COOP_SLOTS[lvl] };
+  if (P.track === 'shelves') c.level = P.level;
+  else (c.up ||= {})[P.track] = P.level;
+  (c.upQ ||= {})[P.track] = lot.q ?? 70;
+  coopSlots(state);
+  sync(state);
+  state.emit('items', { id, n: -1, coop: true, install: P.track });
+  state.emit('act', { type: 'install', part: id, track: P.track, level: P.level, q: lot.q });
+  return { ok: true, id, track: P.track, level: P.level, q: lot.q, name: P.name };
+}
+/** The next part a track needs: { id, part, have (in the bag or on the coop) } or null when maxed. */
+export function nextPart(state, track) {
+  const lv = W.coopLevels(state)[track];
+  const e = Object.entries(COOP_PARTS).find(([, p]) => p.track === track && p.level === lv + 1);
+  if (!e) return null;
+  return { id: e[0], part: e[1], have: countIn(bag(state), e[0]) + countIn(coopSlots(state), e[0]) };
 }
 
 /**
@@ -566,7 +609,8 @@ export function tickHen(state, dt, o = {}) {
   const c = state.data.coop || (state.data.coop = defaultCoop());
   c.food = Math.max(0, (c.food ?? 0.8) - dt * (o.rate ?? 1 / 720));
   if (o.lay === false || c.food < 0.45) return null;
-  c.layT = (c.layT ?? 240) - dt * (c.food > 0.75 ? 1.3 : 1) * (o.layK ?? 1);
+  const nest = W.coopUp(state, 'nest').lay * W.partMult(state, 'nest');
+  c.layT = (c.layT ?? 240) - dt * (c.food > 0.75 ? 1.3 : 1) * (o.layK ?? 1) * nest;
   if (c.layT > 0) return null;
   c.layT = 200 + Math.random() * 160;
   c.laid = (c.laid || 0) + 1;
@@ -575,6 +619,7 @@ export function tickHen(state, dt, o = {}) {
 
 /** Something Nugget scratched up onto the coop's shelves (id, n, q): true, or false when full. */
 export function findToCoop(state, id, n = 1, q = 100) {
+  if (coopRoomKg(state, id) < n) return false; // her legs can't take more
   const units = isQ(id) ? Array.from({ length: n }, () => lotOf(id, q, false)) : n;
   const left = putIn(coopSlots(state), id, units);
   if (Array.isArray(left) ? left.length : left > 0) return false;
