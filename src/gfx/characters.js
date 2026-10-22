@@ -43,8 +43,8 @@ export const buildStats = { ms: 0, tris: 0, meshes: 0, count: 0, totalMs: 0 };
  * Build a character. Returns a CharacterRig with .root (THREE.Group) you add to a scene.
  * opts.kind: material kind ('toon' | 'lambert' | 'basic'); opts.scale extra scale;
  * opts.lod: 'crowd' for background folk (one mesh: no whiskers, the lamp lens baked in);
- * opts.build: 'tall' (default: grown-up proportions with elbows and knees) or 'classic' (the old
- * chibi rig; the default for spec.player and spec.build === 'classic').
+ * opts.build: 'classic' (default: the cute, blocky chibi rig everyone wears) or 'tall' (grown-up
+ * proportions with elbows and knees, only when asked for).
  *
  * The whole character is one skinned mesh (+ whiskers, + the glowing lamp lens) riding on the
  * classic rig groups, which stay plain Object3Ds you can pose, scale and parent things to.
@@ -53,7 +53,7 @@ export const buildStats = { ms: 0, tris: 0, meshes: 0, count: 0, totalMs: 0 };
 export function makeCharacter(specIn, opts = {}) {
   const t0 = performance.now();
   const spec = normSpec(specIn || {});
-  const build = opts.build || spec.build || (spec.player ? 'classic' : 'tall');
+  const build = opts.build || spec.build || 'classic';
   const p = proportions(spec, { build });
   const jointed = !!p.tall;
   const u = V16 * p.scale * (opts.scale ?? 1); // classic unit (rig.s)
