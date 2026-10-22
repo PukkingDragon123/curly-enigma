@@ -116,6 +116,23 @@ await step("Old Star's forge lesson", async () => {
   if (r.made !== 1) throw new Error('the forge lesson made no dagger: ' + JSON.stringify(r));
   await shot('03c-forge-lesson-done');
 });
+await step("Old Star's cooking lesson", async () => {
+  await go('cooking', { from: 'home', tutorial: true });
+  await wait(3000);
+  await shot('03e-cooking-lesson');
+  const r = await page.evaluate(() => {
+    const d = window.__game.scene.debug;
+    let lesson = false;
+    const on = (a) => { if (a.type === 'lesson' && a.step === 'cook_done') lesson = true; };
+    window.__game.state.on('act', on);
+    d.auto(90, 0.2);
+    const res = d.toResult();
+    for (let k = 0; k < 120 && !lesson; k++) window.__game.scene.update(1 / 30);
+    return { res: !!res, dish: res?.dish, lesson };
+  });
+  if (!r.res) throw new Error('the cooking lesson made no dish: ' + JSON.stringify(r));
+  await shot('03f-cooking-done');
+});
 await step('down the lift to the mine', async () => {
   await go('deep', { from: 'lift', lift: 'L0' });
   await wait(2500);
