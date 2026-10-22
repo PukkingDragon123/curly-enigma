@@ -7,6 +7,9 @@ import { M, VOX, VK, ORE_BASE } from './materials.js';
 import { ORE_ID, ORE_SPAWN } from '../data/ores.js';
 import { makeRng, clamp } from '../core/util.js';
 import { stampPrologue, PROLOGUE_BB, prologueLayout, prologueInside } from './gen/prologue.js';
+import { stampTrail, trailBB, trailLanterns, TRAIL_W, TRAIL_H } from './gen/trails.js';
+import { stampBurrow, burrowBB, burrowDoor } from './gen/burrows.js';
+import { stampRuin, ruinBB } from './gen/ruins.js';
 
 export const CS = 32; // chunk size (voxels)
 export const BOUNDS = { x0: -96, x1: 96, z0: -96, z1: 96, y0: -216, y1: 8 }; // meters
@@ -45,6 +48,10 @@ export function makePlan(seed, opts = {}) {
     lights: [], // fixed light sources (lanterns, lava) in meters
     features: [], // carve/fill shapes in meters: {kind, ...aabb}
     mouths: [],
+    burrows: [], // NPC homes and shops you walk to (gen/burrows.js, Traders.js)
+    ruins: [], // old ruins with puzzles (gen/ruins.js, Ruins.js)
+    trails: [], // old dug tunnels joining lifts, burrows and the town (gen/trails.js)
+    geodes: [], // hidden gem pockets
   };
   // lift stations at the top of each zone below the town
   for (let n = 0; n <= 5; n++) {
@@ -174,8 +181,111 @@ export function makePlan(seed, opts = {}) {
       plan.dangers.push({ kind: 'gas', x, y, z, r: rng.range(3, 5), zone });
     }
   }
+  addPlaces(plan, rng, L0);
   for (const f of plan.features) aabbOf(f);
   return plan;
+}
+
+// ---------------------------------------------------------------- burrows, ruins, geodes, trails
+const far = (plan, x, y, z, d) => plan.lifts.every((L) => Math.hypot(L.x - x, L.y - y, L.z - z) > d) && plan.burrows.every((b) => Math.hypot(b.x - x, b.y - y, b.z - z) > d) && plan.ruins.every((r) => Math.hypot(r.x - x, r.y - y, r.z - z) > d);
+
+function addPlaces(plan, rng, L0) {
+  const T = plan.town, pro = plan.prologue;
+  // NPC burrows (the folk who live down here): near the trails, at a few depths
+  const burrow = (id, kind, name, x, y, z, yaw, zone, size = 1) => {
+    const b = { id, kind, name, x, y, z, yaw, zone };
+    plan.burrows.push(b);
+    plan.features.push({ kind: 'burrow', id, burrow: kind, x, y, z, yaw, rx: 3.1 * size, rz: 2.6 * size, h: 2.4 * size });
+    return b;
+  };
+  const jit = () => rng.range(-2.5, 2.5);
+  const trader = burrow('trader', 'trader', 'Trading Post', L0.x - 16 + jit(), L0.y - 2.5, L0.z + 13 + jit(), Math.PI * 0.25, 1, 1.1);
+  const herb = burrow('herbalist', 'herbalist', "Herbalist's Hollow", L0.x + 25 + jit(), -21, L0.z + 18 + jit(), -Math.PI * 0.6, 1);
+  const rocco = burrow('raccoon', 'raccoon', "Rocco's Storage", -26 + jit(), -38, -28 + jit(), Math.PI * 0.8, 2, 1.15);
+  const outpost = burrow('outpost', 'outpost', 'Deep Outpost', -18 + jit(), -98, 38 + jit(), Math.PI, 4, 1.1);
+  // ruins: one near the top, two in each zone below
+  const KINDS = ['hall', 'shrine', 'vault', 'well'];
+  for (let zone = 1; zone <= 6; zone++) {
+    const n = zone === 1 ? 1 : 2;
+    for (let k = 0; k < n; k++) {
+      let x = 0, y = 0, z = 0;
+      for (let tries = 0; tries < 30; tries++) {
+        x = rng.range(-70, 70); z = rng.range(-70, 70);
+        y = -rng.range(ZONE_DEPTHS[zone - 1] + 6, ZONE_DEPTHS[zone] - 6);
+        if (far(plan, x, y, z, 16) && Math.hypot(x - T.x, z - T.z) > 16 && Math.hypot(x - pro.x, y - pro.y, z - pro.z) > 18) break;
+      }
+      const r = rng.range(4, 6.2);
+      const ruin = { id: `R${zone}${k}`, kind: KINDS[(zone + k) % KINDS.length], x, y, z, yaw: rng.range(0, Math.PI * 2), r, zone, seed: rng.int(1, 1e6) };
+      plan.ruins.push(ruin);
+      plan.features.push({ kind: 'ruin', id: ruin.id, ruin: ruin.kind, x, y, z, yaw: ruin.yaw, r, h: rng.range(3.4, 4.6), seed: ruin.seed });
+    }
+  }
+  // geodes: hidden hollow gem pockets in solid rock (ore glints show through)
+  const GEMS = [null, ['quartz', 'amber'], ['amber', 'amethyst', 'quartz'], ['amethyst', 'echo_crystal'], ['ruby', 'emerald'], ['sapphire', 'emerald', 'diamond'], ['diamond', 'sunstone', 'voidstone']];
+  for (let zone = 1; zone <= 6; zone++) {
+    for (let k = 0; k < 9; k++) {
+      const item = GEMS[zone][rng.int(0, GEMS[zone].length - 1)];
+      if (ORE_ID[item] === undefined) continue;
+      const x = rng.range(-72, 72), z = rng.range(-72, 72), y = -rng.range(ZONE_DEPTHS[zone - 1] + 3, ZONE_DEPTHS[zone] - 3);
+      if (zone === 1 && Math.hypot(x - L0.x, z - L0.z) < 8) continue;
+      const r = rng.range(0.55, 1.05);
+      const area = { id: plan.areas.length, item, oreId: ORE_ID[item], x, y, z, r: r + 0.4, zone, deposits: [], geode: true };
+      const n = Math.round(rng.range(3, 6));
+      for (let i = 0; i < n; i++) {
+        const a = rng() * Math.PI * 2, b = (rng() - 0.6) * Math.PI * 0.8;
+        area.deposits.push({ x: x + Math.cos(a) * Math.cos(b) * r * 0.72, y: y + Math.sin(b) * r * 0.72, z: z + Math.sin(a) * Math.cos(b) * r * 0.72, r: rng.range(0.1, 0.17), q: clamp(88 + (rng() + rng() - 1) * 12, 60, 100), seed: rng.int(1, 1e6) });
+      }
+      plan.areas.push(area);
+      plan.geodes.push({ x, y, z, r, item, zone });
+      plan.features.push({ kind: 'geode', x, y, z, r });
+    }
+  }
+  // trails: old dug tunnels you can walk between places
+  const liftOut = (L) => ({ p: { x: L.x, y: L.y, z: L.z + 1.0 }, d: [0, 1] }); // the cages open to +z
+  const burrowOut = (b) => { const f = plan.features.find((q) => q.kind === 'burrow' && q.id === b.id); const dd = burrowDoor(f); const l = Math.hypot(dd.x - b.x, dd.z - b.z) || 1; return { p: { x: b.x, y: b.y, z: b.z }, d: [(dd.x - b.x) / l, (dd.z - b.z) / l], skip: Math.max(f.rx, f.rz) }; };
+  const nearestLift = (b, zone) => plan.lifts.filter((L) => L.id[0] === 'L' && L.id !== 'L0' && (zone ? L.zone === zone : true)).sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) - Math.hypot(c.x - b.x, c.y - b.y, c.z - b.z))[0];
+  const townIn = { p: { x: T.x - 4.2, y: T.y - 0.4, z: T.z + 4.5 }, d: [-0.7, 0.7] };
+  addTrail(plan, rng, 'home-trader', liftOut(L0), burrowOut(trader), { rails: true });
+  addTrail(plan, rng, 'trader-town', burrowOut(trader), townIn, { rails: true });
+  addTrail(plan, rng, 'home-herbalist', liftOut(L0), burrowOut(herb), {});
+  addTrail(plan, rng, 'herbalist-rocco', burrowOut(herb), burrowOut(rocco), { rails: true });
+  const l2 = nearestLift(rocco, 2); if (l2) addTrail(plan, rng, 'rocco-' + l2.id, burrowOut(rocco), liftOut(l2), {});
+  const l4 = nearestLift(outpost, 4); if (l4) addTrail(plan, rng, 'outpost-' + l4.id, burrowOut(outpost), liftOut(l4), { rails: true });
+  const s3 = plan.lifts.find((L) => L.id === 's3'); if (s3) addTrail(plan, rng, 'outpost-s3', burrowOut(outpost), { p: { x: s3.x, y: s3.y, z: s3.z }, d: [1, 0] }, {});
+}
+
+/** An old trail from place A to place B: out of A's door, gentle slopes, a ladder shaft where it drops. */
+function addTrail(plan, rng, id, A, B, opts) {
+  const seed = rng.int(1, 1e6);
+  const out = (P, k) => ({ x: P.p.x + P.d[0] * k, y: P.p.y, z: P.p.z + P.d[1] * k });
+  const a1 = out(A, (A.skip || 0) + 2.6), b1 = out(B, (B.skip || 0) + 2.6);
+  const segs = [{ a: { ...A.p }, b: a1 }];
+  let from = a1, to = b1, endShaft = 0;
+  const H = Math.hypot(to.x - from.x, to.z - from.z), dy = to.y - from.y, maxDrop = H * 0.32;
+  if (Math.abs(dy) > maxDrop + 0.4) {
+    const need = Math.abs(dy) - maxDrop;
+    if (dy < 0) { const s = { x: from.x, y: from.y - need, z: from.z }; segs.push({ a: from, b: s, ladder: true }); from = s; }
+    else { endShaft = need; to = { x: to.x, y: to.y - need, z: to.z }; }
+  }
+  const len = Math.hypot(to.x - from.x, to.z - from.z), n = Math.max(1, Math.round(len / 5.5));
+  const nx = -(to.z - from.z) / (len || 1), nz = (to.x - from.x) / (len || 1);
+  let prev = from;
+  for (let i = 1; i <= n; i++) {
+    const t = i / n, side = i < n ? Math.sin(t * Math.PI) * rng.range(-2.6, 2.6) : 0;
+    const p = { x: from.x + (to.x - from.x) * t + nx * side, y: from.y + (to.y - from.y) * t, z: from.z + (to.z - from.z) * t + nz * side };
+    segs.push({ a: prev, b: p });
+    prev = p;
+  }
+  if (endShaft) segs.push({ a: b1, b: to, ladder: true });
+  segs.push({ a: b1, b: { ...B.p } });
+  const pts = [A.p];
+  for (const sg of segs) {
+    const f = { kind: 'trail', a: sg.a, b: sg.b, ladder: !!sg.ladder, rails: !!opts.rails, w: TRAIL_W, h: TRAIL_H, seed: seed + pts.length, trail: id };
+    plan.features.push(f);
+    pts.push(sg.b);
+    for (const L of trailLanterns(f)) plan.lights.push({ x: L.x, y: L.y, z: L.z, c: [1.0, 0.7, 0.36], r: 4.5, lantern: true, trail: id });
+  }
+  plan.trails.push({ id, pts });
 }
 
 function aabbOf(f) {
@@ -188,6 +298,10 @@ function aabbOf(f) {
   else if (f.kind === 'mouth') { f.bb = [f.x0 - pad, f.y0 - pad, f.z0 - pad, f.x1 + pad, f.y1 + pad, f.z1 + pad]; }
   else if (f.kind === 'prologue') { f.bb = [f.x - PROLOGUE_BB, f.y - 2, f.z - PROLOGUE_BB, f.x + PROLOGUE_BB, f.y + 4, f.z + PROLOGUE_BB]; }
   else if (f.kind === 'cage') { f.bb = [f.x - 1.6, f.y - 0.3, f.z - 1.6, f.x + 1.6, f.y + 7, f.z + 1.6]; }
+  else if (f.kind === 'trail') { f.bb = trailBB(f); }
+  else if (f.kind === 'burrow') { f.bb = burrowBB(f); }
+  else if (f.kind === 'ruin') { f.bb = ruinBB(f); }
+  else if (f.kind === 'geode') { f.bb = [f.x - f.r - 0.2, f.y - f.r - 0.2, f.z - f.r - 0.2, f.x + f.r + 0.2, f.y + f.r + 0.2, f.z + f.r + 0.2]; }
   return f;
 }
 
@@ -238,6 +352,15 @@ export function caveDensity(p, x, y, z) {
   let cav = n2.fbm(x / 24, y / 15, z / 24, 3) - (depth < 8 ? 0.7 : depth < 25 ? 0.44 : 0.36);
   if (cav > -0.1) cav -= Math.max(0, n3.n(x / 2.4 + 17.5, y / 12, z / 2.4 - 23.5) - 0.38) * 2.4;
   d = Math.max(d, cav);
+  // halls: huge open caverns below 18 m, tens of meters across, stood on pillars; dinosaur
+  // country (a few wide regions between 26 and 135 m) is almost all hall
+  if (depth > 18) {
+    let hall = n3.fbm(x / 52 + 3.1, y / 26, z / 52 - 7.7, 2) - 0.4 + Math.min(0.06, (depth - 18) * 0.004);
+    const dino = dinoAt(p, x, y, z);
+    if (dino > 0) hall += dino * 0.34;
+    if (hall > -0.15) hall -= Math.max(0, n3.n(x / 3.2 + 41.5, y / 16, z / 3.2 - 5.5) - 0.42) * 2.4;
+    d = Math.max(d, hall);
+  }
   // ravines: tall narrow cracks running for tens of meters
   if (depth > 6) {
     const r = Math.abs(n3.n(x / 34 + 50.5, 0.37, z / 34 - 50.5));
@@ -252,8 +375,18 @@ export function caveDensity(p, x, y, z) {
   return d;
 }
 
+/** How much of dinosaur country a point is in (0..1): wide regions between 26 and 135 m down. */
+export function dinoAt(p, x, y, z) {
+  const depth = -y;
+  if (depth < 26 || depth > 135) return 0;
+  const n = p.noise[0].n(x / 85 + 13.7, 0.73, z / 85 - 6.1);
+  const fade = Math.min(1, (depth - 26) / 8, (135 - depth) / 8);
+  return Math.max(0, Math.min(1, (n - 0.35) / 0.1)) * fade;
+}
+
 /**
- * Biomes (zones 1–3): 0 plain, 1 mossy grotto, 2 sandstone hollows, 3 mushroom hollow.
+ * Biomes (zones 1–3, and dinosaur country): 0 plain, 1 mossy grotto, 2 sandstone hollows,
+ * 3 mushroom hollow, 4 dino caverns.
  * Big regions from slow noise; they change materials and dressing, never the cave shapes.
  */
 export const BIOMES = [
@@ -261,9 +394,11 @@ export const BIOMES = [
   { id: 'moss', name: 'Mossy Grotto', desc: 'glow moss on every stone and vines hanging from the roof', tint: [0.0, 0.035, 0.012], fog: [0.0, 0.008, 0.004] },
   { id: 'dry', name: 'Sandstone Hollows', desc: 'warm and dusty; sand floors pour away under your paws', tint: [0.04, 0.022, 0.0], fog: [0.012, 0.006, 0.0] },
   { id: 'fungus', name: 'Mushroom Hollow', desc: 'glowcaps taller than a mole, soft mycelium underfoot', tint: [0.012, 0.0, 0.04], fog: [0.004, 0.0, 0.012] },
+  { id: 'dino', name: 'Dino Caverns', desc: 'huge warm halls of ferns and ancient bones, and something big breathing in the dark', tint: [0.03, 0.035, 0.0], fog: [0.01, 0.012, 0.002] },
 ];
 export function biomeAt(p, x, y, z) {
   const depth = -y;
+  if (dinoAt(p, x, y, z) > 0.5) return 4;
   if (depth < 3 || depth > ZONE_DEPTHS[3]) return 0;
   const b = p.noise[3].n(x / 40 + 7.3, y / 50 + 1.9, z / 40 - 3.1);
   if (b > 0.24) return 1;
@@ -449,6 +584,9 @@ export class ChunkGen {
 
   stamp(f, vox, X0, Y0, Z0) {
     if (f.kind === 'prologue') { stampPrologue(f, vox, X0, Y0, Z0, CS); return; }
+    if (f.kind === 'trail') { stampTrail(f, vox, X0, Y0, Z0, CS); return; }
+    if (f.kind === 'burrow') { stampBurrow(f, vox, X0, Y0, Z0, CS); return; }
+    if (f.kind === 'ruin') { stampRuin(f, vox, X0, Y0, Z0, CS); return; }
     const p = this.plan, bb = f.bb;
     const a = this.clip(bb[0], bb[1], bb[2], bb[3], bb[4], bb[5], X0, Y0, Z0);
     if (!a) return;
@@ -511,6 +649,12 @@ export class ChunkGen {
           // the shaft: open, with timber rings every so often and the cable
           vox[vi] = (ax > 0.5 || az > 0.5) && Math.abs((dy * 2) % 2 - 1) < 0.1 ? M.TIMBER : ax < 0.07 && az < 0.07 ? M.TIMBER : 0;
         } else if (dy >= 0.9 && dy < 1.15 && Math.abs(dx - 0.95) < 0.09 && Math.abs(dz - 0.95) < 0.09) vox[vi] = M.LANTERN;
+      } else if (f.kind === 'geode') {
+        // a hollow stone egg: a hard shell, a lining of crystal spikes, air inside
+        const d = Math.hypot(xm - f.x, ym - f.y, zm - f.z) / f.r + (h3(vx, vy, vz, 29) - 0.5) * 0.08;
+        if (d < 0.6) vox[vi] = h3(vx, vy, vz, 31) < 0.06 && d > 0.48 ? M.CRYSTAL : 0;
+        else if (d < 0.8) vox[vi] = h3(vx >> 1, vy >> 1, vz >> 1, 33) < 0.3 + (d - 0.6) * 2 ? M.CRYSTAL : 0;
+        else if (d < 1) vox[vi] = M.GEODE;
       } else if (f.kind === 'gate') {
         // brick arch with a boarded gate in it; lanterns either side
         const dx = xm - f.x, dz = zm - f.z, dy = ym - f.y;
@@ -554,12 +698,18 @@ export class ChunkGen {
         if (bio === 1) { if (pt > -0.45 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS; }
         else if (bio === 2) { if (pt > -0.35) { vox[vi] = M.SAND; if (NATURAL[vox[vi - CS]]) vox[vi - CS] = M.SAND; } }
         else if (bio === 3) { if (pt > -0.25) vox[vi] = M.MYCEL; }
+        else if (bio === 4) { if (pt > 0.05 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS; }
         else if (zone <= 3 && pt > 0.22 && h < 0.85 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS;
         // mushrooms: a few giants per meter-cell anchor, glowcap buttons everywhere
         if (bio === 3) {
           const cx = Math.floor(vx / VOX), cz = Math.floor(vz / VOX);
           if (h3(cx, cz, 2, seed + 63) < 0.5 && (vx - cx * VOX) === Math.floor(h3(cx, cz, 0, seed + 61) * VOX) && (vz - cz * VOX) === Math.floor(h3(cx, cz, 1, seed + 61) * VOX)) this.mushroom(vox, x, y + 1, z, h3(cx, cz, 3, seed + 67));
           else if (h < 0.01 && vox[vi + CS] === 0) this.button(vox, x, y + 1, z, h < 0.004 ? 2 : 1);
+        } else if (bio === 4) {
+          // dinosaur country: ferns everywhere, and now and then the bones of something huge
+          const cx = Math.floor(vx / VOX), cz = Math.floor(vz / VOX);
+          if (h3(cx, cz, 5, seed + 71) < 0.07 && (vx - cx * VOX) === Math.floor(h3(cx, cz, 0, seed + 73) * VOX) && (vz - cz * VOX) === Math.floor(h3(cx, cz, 1, seed + 73) * VOX)) this.ribs(vox, x, y + 1, z, h3(cx, cz, 3, seed + 75));
+          else if (h < 0.035 && vox[vi + CS] === 0) this.fern(vox, x, y + 1, z, h);
         } else if (zone === 2 && h < 0.0012 && vox[vi + CS] === 0) this.button(vox, x, y + 1, z, 1);
         // crystal spikes on cave floors (grotto, frost, core); stalagmites in the upper zones
         if ((zone === 3 || zone === 5 || zone === 6) && h3(vx >> SH, vy, vz >> SH, seed + 43) < 0.012) this.spike(vox, x, y + 1, z, 1, M.CRYSTAL, (4 + (h * 60 | 0) % 6) * VK);
@@ -599,6 +749,31 @@ export class ChunkGen {
       if (vox[vi] === 0) vox[vi] = M.GLOWCAP;
     }
     if (vox[x + CS * (t + 1) + C2 * z] === 0) vox[x + CS * (t + 1) + C2 * z] = M.GLOWCAP;
+  }
+
+  /** A cave fern: a little rosette of fronds arching out of the floor. */
+  fern(vox, x, y, z, h) {
+    const C2 = CS * CS, tall = 2 + ((h * 997) | 0) % 3;
+    const put = (xx, yy, zz) => { if (xx < 0 || xx >= CS || zz < 0 || zz >= CS || yy < 0 || yy >= CS) return; const vi = xx + CS * yy + C2 * zz; if (vox[vi] === 0) vox[vi] = M.FERN; };
+    for (let i = 0; i < tall; i++) put(x, y + i, z);
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { put(x + dx, y + tall - 1, z + dz); put(x + dx * 2, y + tall - 2, z + dz * 2); }
+  }
+
+  /** Ribs of something enormous: bone arches sticking out of the floor (only where they fit). */
+  ribs(vox, x, y, z, k) {
+    const C2 = CS * CS, R = Math.round((0.35 + k * 0.4) * VOX), n = 3 + ((k * 7) | 0) % 3, gap = 4;
+    const along = k > 0.5;
+    const len = (n - 1) * gap;
+    if ((along ? x + len : x) >= CS - 1 || (along ? z : z + len) >= CS - 1 || x - R < 1 || z - R < 1 || x + R >= CS - 1 || z + R >= CS - 1 || y + R + 1 >= CS) return;
+    for (let i = 0; i < n; i++) {
+      const ox = along ? x + i * gap : x, oz = along ? z : z + i * gap;
+      const r = R * (1 - Math.abs(i - (n - 1) / 2) / n * 0.6);
+      for (let a = 0; a <= 40; a++) {
+        const t = a / 40 * Math.PI, c = Math.cos(t) * r, h = Math.sin(t) * r * 1.15;
+        const xx = along ? ox : ox + Math.round(c), zz = along ? oz + Math.round(c) : oz, yy = y + Math.round(h);
+        for (const dt of [0, 1]) { const vi = xx + CS * (yy + dt) + C2 * zz; if (xx >= 0 && xx < CS && zz >= 0 && zz < CS && yy + dt < CS && vox[vi] === 0) vox[vi] = M.BONE; }
+      }
+    }
   }
 
   /** A hanging strand (vines, roots): straight down through air, one voxel thick. */

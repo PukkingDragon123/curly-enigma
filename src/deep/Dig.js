@@ -57,7 +57,7 @@ export class Digger {
     // cracking: damage per quarter-meter cell of rock
     if (hp > 1.6) {
       const q = QSH, key = ((vx >> q) + 4096) * 67108864 + ((vy >> q) + 4096) * 8192 + ((vz >> q) + 4096);
-      const dmg = (this.damage.get(key) || 0) + (power * 1.6) / hp;
+      const dmg = (this.damage.get(key) || 0) + (power * 2.3) / hp;
       if (dmg < 1) {
         this.damage.set(key, dmg);
         // the face splinters a little where it was hit
@@ -65,7 +65,7 @@ export class Digger {
       }
       this.damage.delete(key);
     }
-    const R = clamp(0.08 + 0.16 * Math.sqrt(power / hp), 0.08, 0.34) * VOX; // voxels
+    const R = clamp(0.11 + 0.2 * Math.sqrt(power / hp), 0.1, 0.46) * VOX; // voxels
     // the centre sinks into the rock so most of the ball takes rock out
     const cx = vx + 0.5 - n[0] * R * 0.45, cy = vy + 0.5 - n[1] * R * 0.45, cz = vz + 0.5 - n[2] * R * 0.45;
     return { broken: this.bite(cx, cy, cz, R, m), material: m };

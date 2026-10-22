@@ -254,13 +254,19 @@ export default class DigScene extends Scene {
       if (inp.pressed('KeyR') && this.slotName === 'build') this.cycleBuild();
       if (inp.pressed('KeyE')) this.interact();
     }
+    // block: hold mouse 2 or F (touch: the block button holds F); not while turning a held clump
+    const blockIn = !busy && !this.clumps?.held && (inp.isDown('KeyF') || (inp.mouseDown(2) && !this.isTouch()));
+    if (blockIn && !this.blocking) this.blockT = 0;
+    this.blocking = blockIn;
+    this.blockT = blockIn ? (this.blockT || 0) + dt : 0;
+    this.vm?.block?.(blockIn);
     // move
     const mv = { x: inp.axisX(), y: inp.axisY() };
     // where the mole is trying to go (world xz), even when a wall stops it
     const sy = Math.sin(pl.yaw), cy = Math.cos(pl.yaw);
     this.wish = busy ? { x: 0, z: 0 } : { x: -sy * mv.y + cy * mv.x, z: -cy * mv.y - sy * mv.x };
     const exhausted = st.energy < 8;
-    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted, crouch: inp.isDown('KeyC'), frozen: busy, speedMul: exhausted ? 0.6 : 1 });
+    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted, crouch: inp.isDown('KeyC'), frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (this.blocking ? 0.55 : 1) * (this.nugget?.carrying ? 0.7 : 1) });
     if (ev.landed) { this.audio.play('land', { hard: ev.landed > 8 }); this.fx.dust(pl.pos.x, pl.pos.y + 0.05, pl.pos.z, Math.min(10, ev.landed | 0), [0.5, 0.42, 0.34], 0.2); }
     if (ev.fallDamage) this.hurt(Math.round(ev.fallDamage), 'fall');
     if (ev.jump) this.energy(0.2);
@@ -288,7 +294,7 @@ export default class DigScene extends Scene {
     if (this.explosives) this.events(this.explosives.update(dt, { player: pl, eye: pl.eye(), time: this.time }));
     if (this.props) this.props.update(dt, { player: pl, eye: pl.eye(), time: this.time });
     if (this.enemies) {
-      this.events(this.enemies.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy, lamp: this.U.lampRange.value }));
+      this.events(this.enemies.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy, lamp: this.U.lampRange.value, blocking: !!this.blocking, blockT: this.blockT || 0 }));
     }
     this.fx.update(sdt);
     this.ambient(dt);
@@ -321,11 +327,25 @@ export default class DigScene extends Scene {
   events(evs) {
     const pl = this.player;
     for (const e of evs || []) {
-      if (e.damage) { this.hurt(e.damage, e.kind || 'enemy'); if (e.push) pl.vel.add(new THREE.Vector3(...e.push)); }
+      if (e.damage) {
+        if (e.parried) { this.audio.play('clang', { pitch: 1.3 }); this.shake(0.25); this.hitStop = Math.max(this.hitStop || 0, 0.08); this.post.flash = 0.25; this.post.flashColor = 0xfff0c0; this.act('block', { perfect: true }); }
+        else if (e.blocked) { this.audio.play('clang', { vol: 0.7 }); this.shake(0.3); this.act('block', { perfect: false }); }
+        this.hurt(e.damage, e.kind || 'enemy', !!(e.blocked || e.parried));
+        if (e.push) pl.vel.add(new THREE.Vector3(...e.push));
+      } else if (e.parried || e.blocked) {
+        this.audio.play('clang', { pitch: e.parried ? 1.3 : 1 }); this.shake(e.parried ? 0.25 : 0.15);
+        if (e.parried) { this.hitStop = Math.max(this.hitStop || 0, 0.08); this.post.flash = 0.25; this.post.flashColor = 0xfff0c0; }
+        this.act('block', { perfect: !!e.parried });
+      }
+      if (e.energy) this.state.useEnergy(e.energy);
       if (e.say) this.say(e.key || e.say, e.say, e.tone || 'warn', e.cd ?? 4);
       if (e.loot) this.collect(e.loot);
+      if (e.act) this.act(e.act.type, e.act);
     }
   }
+
+  /** Tell everyone what the player did (quests, skills, milestones, the map: docs/REMAKE.md). */
+  act(type, data = {}) { this.state.emit('act', { ...data, type }); }
 
   /** Reach along the crosshair, clipped to the rock it hits. */
   reach() { return this.target ? Math.min(REACH, this.target.dist + 0.05) : REACH; }
@@ -339,7 +359,7 @@ export default class DigScene extends Scene {
     if (!ui.setCrosshair) return;
     const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
     // something to pick or catch (props' plants, critters) comes first
-    const use = this.prologue?.target?.(eye, f, reach) || this.clumps?.target(eye, f, reach) || this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
+    const use = this.prologue?.target?.(eye, f, reach) || this.clumps?.target(eye, f, reach) || this.nugget?.target?.(eye, f, reach) || this.traders?.target?.(eye, f, reach) || this.ruins?.target?.(eye, f, reach) || this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
     if (use) { ui.setCrosshair({ visible: true, kind: 'use', label: use.label }); return; }
     const foe = this.enemies?.hitTest(eye, f, reach);
     if (foe) { ui.setCrosshair(foe.passive ? { visible: true, kind: 'rock', label: foe.constructor.info?.name || '' } : { visible: true, kind: 'enemy' }); return; }
@@ -355,7 +375,7 @@ export default class DigScene extends Scene {
     const inp = this.game.input, st = this.state;
     this.useT -= dt;
     this.drillHeat = Math.max(0, this.drillHeat - dt * (this.slotName === 'drill' && inp.mouseDown(0) ? 0 : 0.35));
-    const want = !busy && inp.mouseDown(0) && (inp.pointerLocked || this.isTouch()) && !this.leaving;
+    const want = !busy && inp.mouseDown(0) && (inp.pointerLocked || this.isTouch()) && !this.leaving && !this.blocking;
     const tool = this.slotName;
     const it = this.toolItem(tool);
     if (this.swing) {
@@ -407,7 +427,8 @@ export default class DigScene extends Scene {
   bonus(k) {
     const b = this.state.mineBonus?.();
     const v = b ? b[k] : 1;
-    return typeof v === 'number' && v > 0 ? v : 1;
+    const s = this.state.skill?.(k);
+    return (typeof v === 'number' && v > 0 ? v : 1) * (typeof s === 'number' && s > 0 ? s : 1);
   }
 
   /** The pick lands (timed by the swing). */
@@ -480,6 +501,7 @@ export default class DigScene extends Scene {
   afterBreak(broken, out, power, tool) {
     if (!broken.length) return;
     const st = this.state;
+    this.act('dig', { mat: broken[0].m, n: broken.length, tool });
     st.data.stats.blocks += broken.length > 6 ? 1 : 0;
     // grit: a spray of tiny chips for every broken bit
     {
@@ -575,6 +597,7 @@ export default class DigScene extends Scene {
     this.audio.play(it.cat === 'gem' || p.p ? 'pickup_gem' : 'pickup', { pitch: 0.9 + Math.random() * 0.3 });
     const cat = it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'mineral' : it.cat === 'plant' ? 'plant' : null;
     if (cat) st.discover(cat, p.id);
+    this.act(it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'ore' : it.cat === 'plant' || it.cat === 'ingredient' ? 'forage' : 'loot', { id: p.id, q: p.q, pristine: !!p.p });
     this.game.ui.toast(`+ <b>${it.name}</b>${it.q ? ` ${p.q}%` : ''}${p.p ? ' · <b>pristine</b>' : ''}`, { icon: iconURL(p.id), kind: 'good' });
     this.game.ui.setBag?.(this.trip, st.bagCapacity());
     this.updateHotbar();
@@ -645,6 +668,7 @@ export default class DigScene extends Scene {
    * hold), flying rock, ore shaken loose, enemies and the mole hurt by distance. power scales damage.
    */
   blast(x, y, z, r, power = 1) {
+    this.act('blast', { r, power });
     const w = this.world, R = r * VOX, cx = x * VOX, cy = y * VOX, cz = z * VOX;
     const broken = [];
     for (let vz = Math.floor(cz - R); vz <= cz + R; vz++) for (let vy = Math.floor(cy - R); vy <= cy + R; vy++) for (let vx = Math.floor(cx - R); vx <= cx + R; vx++) {
@@ -776,8 +800,11 @@ export default class DigScene extends Scene {
     this.updateHotbar();
   }
 
-  hurt(n, kind) {
+  hurt(n, kind, guarded = false) {
+    if (n <= 0) return;
     this.state.useEnergy(n);
+    this.act('hurt', { n, by: kind });
+    if (guarded) return; // the block already rang
     this.audio.play('hurt');
     this.shake(0.5);
     if (this.vm) this.vm.hurt();
@@ -794,6 +821,10 @@ export default class DigScene extends Scene {
       if (pr) { this.events(pr); return; }
       const cl = this.clumps?.use(eye, f, reach);
       if (cl) { this.events(cl); return; }
+      for (const mod of [this.nugget, this.traders, this.ruins]) {
+        const r = mod?.use?.(eye, f, reach);
+        if (r) { this.events(Array.isArray(r) ? r : [r]); if (this.vm) this.vm.impact('none', 0.3); return; }
+      }
       const got = this.props?.use?.(eye, f, reach);
       if (got) { this.events([got]); if (this.vm) this.vm.impact('none', 0.3); return; }
       const evs = this.enemies?.catch?.(eye, f, reach, this.slotName);
@@ -939,12 +970,26 @@ export default class DigScene extends Scene {
     const pl = this.player, w = this.world;
     const ex = this.deep.explored;
     const cx = Math.floor(pl.pos.x), cy = Math.floor(pl.pos.y + 0.4), cz = Math.floor(pl.pos.z);
+    let fresh = 0;
     for (let dz = -3; dz <= 3; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -3; dx <= 3; dx++) {
       const x = cx + dx, y = cy + dy, z = cz + dz;
       const m = w.voxelAt(Math.floor((x + 0.5) * VOX), Math.floor((y + 0.5) * VOX), Math.floor((z + 0.5) * VOX));
       const v = !m ? 1 : m === M.WATER ? 2 : m === M.LAVA ? 3 : 0;
-      if (v) ex[x + ',' + y + ',' + z] = v; // only open space is remembered; rock is everything else
+      const k = x + ',' + y + ',' + z;
+      if (v) { if (!ex[k]) fresh++; ex[k] = v; } // only open space is remembered; rock is everything else
     }
+    if (fresh) this.act('explore', { zone: zoneAt(-pl.pos.y), biome: this.biome || 0, cell: cx + ',' + cy + ',' + cz, n: fresh });
+    // places: walking into a burrow, a ruin, Deep Town's hall or a lift room
+    const plan = w.plan, near = (this.nearPlaces ||= new Set());
+    const at = (id, x, y, z, r) => {
+      const d = Math.hypot(x - pl.pos.x, (y - pl.pos.y) * 1.5, z - pl.pos.z);
+      if (d < r && !near.has(id)) { near.add(id); this.act('reach', { place: id }); }
+      else if (d > r + 3) near.delete(id);
+    };
+    for (const b of plan.burrows || []) at(b.id, b.x, b.y, b.z, 4);
+    for (const r of plan.ruins || []) at(r.id, r.x, r.y, r.z, r.r + 1);
+    for (const L of plan.lifts) at(L.id, L.x, L.y, L.z, 2.6);
+    at('town', plan.town.x, plan.town.y, plan.town.z, 8);
   }
 
   /** Data for the radar (see docs/DEEP.md). */
@@ -990,9 +1035,9 @@ export default class DigScene extends Scene {
     // hidden ore glints through the rock it's buried in (only ore close under the surface)
     this.glintT = (this.glintT || 0) - dt;
     if (this.glintT <= 0) {
-      this.glintT = 0.12;
+      this.glintT = 0.06;
       const nose = this.bonus('glint');
-      const ds = this.world.depositsNear(eye.x, eye.y, eye.z, 5.5 * nose);
+      const ds = this.world.depositsNear(eye.x, eye.y, eye.z, 6.5 * nose);
       const d = ds[(Math.random() * ds.length) | 0];
       if (d && !this.world.depState(d).taken) {
         const dx = eye.x - d.x, dy = eye.y - d.y, dz = eye.z - d.z, l = Math.hypot(dx, dy, dz) || 1;

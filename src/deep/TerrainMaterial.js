@@ -161,9 +161,9 @@ export function makeTerrainMaterial(U) {
           tone = hash3(vec3(floor(dot(b, t1) + off), row, 1.0)) * 3.0 + (px - 0.5) * 0.8;
         } else if (style == 6.0) {
           // ore: chunky crystals / nuggets with bright facets
-          tone = 1.0 + pl.x * 1.6 + (px > 0.7 ? 1.0 : 0.0);
+          tone = 1.0 + pl.x * 1.6 + (px > 0.62 ? 1.0 : 0.0);
           seam = step(pl.y, 0.1) * 0.8;
-          if (px > 0.9) accent = 1.0;
+          if (px > 0.8) accent = 1.0;
         } else if (style == 10.0) {
           // loose grain: gravel/sand pebbles per texel pair
           tone = hash3(floor(q * 4.0)) * 3.2;
@@ -199,6 +199,12 @@ export function makeTerrainMaterial(U) {
         float glow = info.r;
         if (glow > 0.0) col += base * glow * (0.6 + 0.4 * sin(time * 1.7 + vh * 6.283)) * (accent > 0.5 ? 1.6 : 0.55);
         if (style == 2.0 && accent > 0.5) col += base * 0.25 * L;
+        // ore reads from across a cave: a little light of its own and facets that twinkle
+        if (style == 6.0) {
+          col += base * 0.16;
+          float tw = step(0.975, hash3(floor(q * TEXN) + floor(time * 2.5 + vh * 7.0) * 0.37));
+          col += pal(mat, 4.0) * tw * 1.4;
+        }
         // impact flash on the struck rock
         float hd = length(vWorld - hit.xyz);
         col += vec3(1.0, 0.86, 0.6) * hit.w * clamp(1.0 - hd / 0.45, 0.0, 1.0);
