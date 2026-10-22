@@ -6,7 +6,7 @@ import { makeNoise3D, h3, h3i } from './noise.js';
 import { M, VOX, VK, ORE_BASE } from './materials.js';
 import { ORE_ID, ORE_SPAWN } from '../data/ores.js';
 import { makeRng, clamp } from '../core/util.js';
-import { stampPrologue, PROLOGUE_BB } from './gen/prologue.js';
+import { stampPrologue, PROLOGUE_BB, prologueLayout, prologueInside } from './gen/prologue.js';
 
 export const CS = 32; // chunk size (voxels)
 export const BOUNDS = { x0: -96, x1: 96, z0: -96, z1: 96, y0: -216, y1: 8 }; // meters
@@ -110,7 +110,7 @@ export function makePlan(seed, opts = {}) {
   const L0 = addLift('L0', 'Mine entrance', W / 2, -7, D / 2 - 4, 1);
   // Old Star's dig: where the mole lands after the fall, a crawl away from the mine entrance
   plan.prologue = { x: L0.x + 6, y: L0.y - 1.5, z: L0.z - 6 };
-  plan.features.push({ kind: 'prologue', ...plan.prologue, to: { x: L0.x + 1.4, y: L0.y, z: L0.z - 1.4 } });
+  plan.features.push({ kind: 'prologue', ...plan.prologue, to: { x: L0.x + 1.4, y: L0.y, z: L0.z - 1.4 }, lift: { x: L0.x, y: L0.y, z: L0.z } });
   for (let zone = 1; zone <= 6; zone++) {
     for (let k = 0; k < 3; k++) {
       let x = 0, z = 0, y = 0;
@@ -529,6 +529,10 @@ export class ChunkGen {
     const p = this.plan, seed = p.seed;
     const P = this.patch;
     const C2 = CS * CS;
+    // Old Star's dig is dressed by the story (src/deep/Prologue.js): no moss, vines or spikes there
+    if (this.pro === undefined) this.pro = p.features.find((f) => f.kind === 'prologue') || null;
+    const pf = this.pro, pbb = pf && pf.bb;
+    const PL = pbb && !(pbb[3] < X0 / VOX || pbb[0] > (X0 + CS) / VOX || pbb[4] < Y0 / VOX || pbb[1] > (Y0 + CS) / VOX || pbb[5] < Z0 / VOX || pbb[2] > (Z0 + CS) / VOX) ? prologueLayout(pf) : null;
     for (let z = 0; z < CS; z++) for (let y = 1; y < CS - 1; y++) for (let x = 0; x < CS; x++) {
       const vi = x + CS * y + C2 * z;
       const m = vox[vi];
@@ -538,6 +542,7 @@ export class ChunkGen {
       const airSide = inX && inZ && (vox[vi - 1] === 0 || vox[vi + 1] === 0 || vox[vi - C2] === 0 || vox[vi + C2] === 0);
       if (!airUp && !airDown && !airSide) continue;
       const vx = X0 + x, vy = Y0 + y, vz = Z0 + z;
+      if (PL && prologueInside(PL, (vx + 0.5) / VOX, (vy + 0.5) / VOX, (vz + 0.5) / VOX, 0.5)) continue;
       const depth = -vy / VOX;
       const zone = zoneAt(depth);
       const o = (x >> 2) + NS * ((y >> 2) + NS * (z >> 2));
