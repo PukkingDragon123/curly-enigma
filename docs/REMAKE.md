@@ -85,9 +85,9 @@ your section of it true when you finish (add an "As built" note under your part)
 | **Inventory and Nugget's walking coop** | `src/core/inventory.js`, `src/ui/Backpack.js`, `src/deep/Nugget.js`, `src/home/nugget.js`, `src/gfx/char/coop.js` (`makeCoop(opts)`), `src/gfx/char/chicken.js` |
 | **Cooking and foraging** | `src/scenes/CookingScene.js`, `src/cooking/*`, `src/data/recipes.js`, `src/ui/Forage.js`, the harvesting part of `src/deep/Props.js` |
 | **Monsters, ecosystem, combat** | `src/deep/Enemies.js`, `src/deep/enemies/*`, `src/data/creatures.js`, block poses in `src/fps/ViewModel.js` |
-| **Characters, NPC burrows, traders** | `src/gfx/characters.js`, `src/gfx/char/*` (not hero/coop/chicken/starmole), `src/deep/gen/burrows.js`, `src/deep/Traders.js`, `src/data/shops.js` |
+| **NPC burrows and traders** (Rocco the raccoon too) | `src/deep/gen/burrows.js`, `src/deep/Traders.js`, `src/deep/traders/*`, `src/data/shops.js` |
 | **Ruins, trails, puzzles** | `src/deep/gen/ruins.js`, `src/deep/gen/trails.js`, `src/deep/Ruins.js` |
-| **Deep Town** | `src/scenes/TownScene.js`, `src/town/*` |
+| **Deep Town and characters** (taller NPCs, expressions) | `src/scenes/TownScene.js`, `src/town/*`, `src/gfx/characters.js`, `src/gfx/char/*` (not hero/coop/chicken/starmole) |
 | **Lead** | `src/deep/DigScene.js`, `Generator.js` (cave shapes, biomes, plan hooks), `World/Terrain/Mesher/Dig/Player/TerrainMaterial`, `scripts/e2e.mjs`, integration |
 
 ## Characters: expressions and taller folk (Deep Town part)
@@ -118,6 +118,33 @@ rig.blink()                // blinks now (they also blink on their own, expressi
   without options keep the classic build (Old Star and the hero are untouched); pass
   `makeCharacter(spec, { build: 'classic' })` to get the old shape.
 - `renderPortrait(renderer, spec, size, { expression })` frames the head and shoulders.
+
+## Old Star's tutor (home part): `game.ui.tutor`
+
+`src/ui/Tutor.js`, created by `UI` (one hook in `UI.js`: built in the constructor, ticked from
+`ui.update`). A parchment card with Old Star's pixel-art portrait (his face changes with the mood,
+blinks, his star nose wiggles, his mouth moves while the words type out in his mumbly voice).
+
+```js
+await game.ui.tutor?.say(html, { mood, key, wait, dur, name, sound })  // resolves when the line is gone
+game.ui.tutor?.hide(key?)        // hide the line (with a key: only if that line is showing)
+game.ui.tutor?.next()            // carry on, as the player would (tests)
+game.ui.tutor?.active            // { key, mood, html, wait } or null
+```
+
+- `mood`: `calm` (default) · `happy` · `stern` · `proud` · `worried` · `laugh`.
+- `key`: the line's id. Saying the same key again while it is up updates it in place (no retyping
+  if the text is the same), so a per-frame tip can be re-said safely; `hide(key)` leaves other lines
+  alone.
+- `wait: true`: the card stays until the player carries on (`E`, `Space`, `Enter`, a click or a
+  tap on the card; while it waits those keys don't reach the game). Use it for scripted lines you
+  `await`. Without `wait` it goes after a reading time; `dur` (seconds) overrides that, and
+  `dur: Infinity` keeps it up until `hide()` or the next line (step-by-step instructions).
+- A new line replaces the one showing (whose promise then resolves). `name` defaults to
+  `'Old Star'`; `sound: false` mutes his voice. HTML: `<b>` (rust red), `<i>` (soft), `.gold-txt`.
+- Placement: bottom-centre on desktop, top-centre on touch screens (clear of the thumbs).
+- `import { starPortrait, starPortraitURL, MOODS } from '../ui/Tutor.js'` gives the portrait as a
+  40×40 canvas / data URL per mood (for the book, notes or a quest card).
 
 ## Plan hooks in the mine (lead)
 
