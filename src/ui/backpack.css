@@ -470,4 +470,6 @@
   .bp { --slot-w: min(var(--slot-w0), calc((100vw - 52px - var(--sal) - var(--sar)) / 9 - var(--gap))); }
   .bp-scale-bar { width: calc(var(--px) * 14); }
   .bp-scale em { display: none; }
+  .bp-bar { flex-wrap: wrap; row-gap: calc(var(--px) * 2); }
+  .bp-bar .spacer { flex-basis: 0; }
 }
