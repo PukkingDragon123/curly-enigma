@@ -1,6 +1,11 @@
-// The kitchen at home. Pick 1–3 ingredients from the pantry, then cook them in first person
-// (the mole's own paws, Cooking-Mama style) through the recipe's minigame steps, and see what
-// comes out. Unknown combos make Mystery Mush. Recipes are recorded in the Index Book.
+// The kitchen at home. Pick 1–4 ingredients from the pantry, then cook them in first person
+// (the mole's own paws, Cooking-Mama style) through the recipe's minigame steps (src/cooking/steps:
+// chop crack stir season fry pour knead plate simmer flip grate roll bake mash), and see what comes
+// out. Unknown combos make Mystery Mush. Recipes are recorded in the Index Book when first cooked.
+// The score is the steps' average helped by the ingredients' quality; it becomes the dish's quality
+// (which stretches its buff). Emits act { type: 'cook', dish, score }.
+// cooking { tutorial: true }: Old Star's cooking lesson (src/cooking/lesson.js).
+// Test hooks: scene.debug (see the bottom of enter()).
 import * as THREE from 'three';
 import { Scene, disposeObject } from '../core/Scene.js';
 import { Kitchen, SPOTS, BOARD_TOP } from '../cooking/kitchen.js';
@@ -10,10 +15,13 @@ import { CookUI, gradeOf, STEP_LABEL } from '../cooking/ui.js';
 import { Contents, VESSEL } from '../cooking/vessels.js';
 import { makeStep } from '../cooking/steps/index.js';
 import { chopQueue, dishColor, slabMesh, spriteCells, standeeMesh } from '../cooking/food.js';
-import { findRecipe, DISHES } from '../data/recipes.js';
+import { findRecipe, closeRecipe, DISHES, RECIPES, MAX_INGS } from '../data/recipes.js';
+import { buffSecs } from '../cooking/buffs.js';
+import { kitchenData, ingredientQ, pantryCount, pantryTake, pantryGive } from '../cooking/quality.js';
+import { CookLesson } from '../cooking/lesson.js';
 import { ITEMS } from '../data/items.js';
 import { makeChicken } from '../gfx/characters.js';
-import { pick } from '../core/util.js';
+import { pick, clamp } from '../core/util.js';
 
 // camera per station: offset from the station point, and look-at offset
 const CAM = {
@@ -23,6 +31,7 @@ const CAM = {
   plate: { off: [0, 1.45, 1.3], look: [0, 0.05, -0.2] },
   pot: { off: [0, 1.62, 1.3], look: [0, 0.18, -0.16] },
   pan: { off: [0, 1.5, 1.3], look: [0, 0.06, -0.2] },
+  oven: { off: [0.05, 1.15, 1.85], look: [0, 0.26, -0.2] },
   pantry: { at: 'board', off: [0.6, 1.6, 2.15], look: [0.6, 0.36, -0.6] },
   result: { at: 'plate', off: [-0.45, 1.45, 1.75], look: [-0.45, 0.24, -0.25] },
 };
@@ -89,10 +98,56 @@ export default class CookingScene extends Scene {
     this.updateCamera(0);
     this.pawIdle(0, true);
 
+    // Old Star's lesson (cooking { tutorial: true })
+    this.lesson = params.tutorial && params.tutorial !== '0' ? new CookLesson(this) : null;
+    this.installDebug();
     // dev/test shortcuts: ?cook=a,b&steps=chop,stir
-    const pre = (params.cook || '').split(',').filter((id) => ITEMS[id] && this.game.state.count(id) > 0).slice(0, 3);
+    const pre = (params.cook || '').split(',').filter((id) => ITEMS[id] && pantryCount(this.game.state, id) > 0).slice(0, MAX_INGS);
     if (pre.length) this.startCooking(pre);
     else this.openPantry();
+    this.lesson?.start();
+  }
+
+  /**
+   * Test hooks (scene.debug):
+   *   start(dishOrIds, { give: true, q }) cook a recipe (gives the ingredients when missing)
+   *   auto(score, delay = 0.6)            finish every live step with this score after `delay` s
+   *   run(secs, dt = 1/30)                drive scene.update headless; returns state()
+   *   finishStep(score)                   end the current live step now
+   *   toLive() / next(score) / toResult() step through deterministically
+   *   state()                             { phase, dish, step, stepI, steps, results, score }
+   *   result()                            the last committed result
+   */
+  installDebug() {
+    const sc = this;
+    this.debug = {
+      start(what, o = {}) {
+        const st = sc.game.state;
+        let ids = Array.isArray(what) ? what : null;
+        if (!ids) { const R = findRecipeFor(what); ids = R ? Object.keys(R.ing) : []; }
+        if (o.give !== false) for (const id of ids) if (pantryCount(st, id) < 1) pantryGive(st, id, ITEMS[id]?.q ? { q: o.q ?? 85 } : {});
+        if (sc.phase !== 'pantry') { sc.resetKitchen(); sc.openPantry(); }
+        sc.selected = ids.slice();
+        return sc.startCooking(ids);
+      },
+      auto(score = 90, delay = 0.6) { sc.autoScore = score; sc.autoDelay = delay; return true; },
+      run(secs = 1, dt = 1 / 30) { for (let t = 0; t < secs; t += dt) sc.update(dt); return sc.debug.state(); },
+      finishStep(score = 90) { if (sc.step && sc.phase === 'live') sc.step.finish(score); return sc.debug.state(); },
+      /** Run until the current step is live (its minigame running). */
+      toLive() { for (let i = 0; i < 400 && sc.phase !== 'live' && !['finale', 'result', 'pantry'].includes(sc.phase); i++) sc.update(1 / 30); return sc.debug.state(); },
+      /** Finish the current step with `score` and run on to the next step's intro (or the finale). */
+      next(score = 90) {
+        sc.debug.toLive();
+        if (sc.phase !== 'live') return sc.debug.state();
+        sc.step.finish(score);
+        for (let i = 0; i < 300 && (sc.phase === 'live' || sc.phase === 'feedback'); i++) sc.update(1 / 30);
+        return sc.debug.state();
+      },
+      /** Run to the result card. */
+      toResult() { for (let i = 0; i < 400 && sc.phase !== 'result'; i++) sc.update(1 / 30); return sc.debug.result(); },
+      state() { return { phase: sc.phase, dish: sc.dish, step: sc.step ? sc.steps[sc.stepI] : null, stepI: sc.stepI, steps: sc.steps, results: sc.results, score: sc.score, ingQ: sc.ingQ, lesson: sc.lesson?.stage ?? null }; },
+      result() { return sc.lastResult || null; },
+    };
   }
 
   // ------------------------------------------------------------------ helpers
@@ -181,7 +236,7 @@ export default class CookingScene extends Scene {
     this.step = null;
     this.setView('pantry');
     const st = this.game.state;
-    this.selected = this.selected.filter((id) => st.count(id) > 0);
+    this.selected = this.selected.filter((id) => pantryCount(st, id) > 0);
     this.ui.openPantry({
       selected: this.selected,
       onChange: (ids) => { this.selected = ids; this.syncPreviews(); },
@@ -200,6 +255,13 @@ export default class CookingScene extends Scene {
     if (r && st.data.recipes[r.dish] !== undefined) {
       const g = gradeOf(st.data.recipes[r.dish]);
       return `<b>${DISHES[r.dish].name}</b> · recipe card, best <b style="color:${g.color}">${g.g}</b>`;
+    }
+    // one short of something? the nose knows (a little hint toward undiscovered recipes)
+    const near = !r && ids.length < MAX_INGS ? closeRecipe(ids, (d) => st.data.recipes[d] !== undefined) : null;
+    if (near) {
+      const it = ITEMS[near.missing];
+      const what = it?.cat === 'plant' ? 'something that grows' : it?.cat === 'critter' ? 'something that wriggles' : it?.cat === 'mineral' ? 'something salty' : 'something from the grocer';
+      return `${names} · <i>who knows what this makes?</i><span class="ck-sniff">Your nose twitches: one more thing would make this sing... ${what}?</span>`;
     }
     return `${names} · <i>who knows what this makes?</i>`;
   }
@@ -239,15 +301,23 @@ export default class CookingScene extends Scene {
     if (this.leaving) return;
     this.leaving = true;
     this.game.audio.play('door');
-    this.game.goto('home', { from: 'stove' });
+    this.lesson?.leave();
+    this.game.goto('home', { from: 'cooking', lesson: this.lesson ? (this.lesson.done ? 'cook_done' : 'cook') : undefined });
   }
 
   // ------------------------------------------------------------------ cooking flow
   startCooking(ids) {
     if (this.phase !== 'pantry' || !ids.length) return false; // ignore double clicks while the panel slides out
     const st = this.game.state;
-    if (ids.some((id) => st.count(id) < 1)) { this.game.ui.toast('Missing an ingredient!', { kind: 'warn' }); return false; }
-    for (const id of ids) st.removeItem(id, 1);
+    if (ids.some((id) => pantryCount(st, id) < 1)) { this.game.ui.toast('Missing an ingredient!', { kind: 'warn' }); return false; }
+    if (this.lesson && !this.lesson.allow(ids)) return false;
+    // the best of each goes in; its quality helps the dish
+    const used = [];
+    for (const id of ids) {
+      const lot = pantryTake(st, id);
+      used.push({ id, q: lot && lot.q !== undefined ? lot.q + (lot.p ? 5 : 0) : undefined });
+    }
+    this.ingQ = clamp(ingredientQ(used), 0, 100);
     const r = findRecipe(Object.fromEntries(ids.map((id) => [id, 1])));
     this.dish = r ? r.dish : 'mystery_mush';
     this.steps = r ? r.steps.slice() : ['chop', 'stir'];
@@ -266,11 +336,13 @@ export default class CookingScene extends Scene {
     this.ui.closeSide();
     const known = st.data.recipes[this.dish] !== undefined;
     this.ui.stepHud(known ? DISHES[this.dish].name : '???', this.steps);
+    if (this.lesson) this.ui.top?.classList.add('lesson');
     this.ui.title('LET\'S COOK!', ids.map((id) => ITEMS[id].name).join(' + '));
     this.game.audio.play('ding');
     this.phase = 'start';
     this.phaseT = 0;
     this.setView('board');
+    this.lesson?.onStart(this.dish);
     return true;
   }
 
@@ -280,6 +352,12 @@ export default class CookingScene extends Scene {
     if (kind === 'chop') o.item = this.chopQ[this.chopI++ % this.chopQ.length];
     if (kind === 'stir') o.vessel = f.where === 'bowl' || f.where === 'cup' ? f.where : 'pot';
     if (kind === 'season') o.vessel = ['pot', 'bowl', 'pan'].includes(f.where) ? f.where : 'bowl';
+    if (kind === 'fry' && !f.pieces && !f.egg) o.item = this.chopQ[0];
+    if (kind === 'grate') {
+      // grate the hard, grate-able thing: truffle, garlic, carrot... (else whatever is choppy)
+      const pref = ['truffle', 'cave_garlic', 'cave_carrot', 'core_lotus', 'tunnel_tuber', 'glow_moss'];
+      o.item = pref.find((id) => this.ings.includes(id)) || this.chopQ[0];
+    }
     return o;
   }
 
@@ -296,6 +374,7 @@ export default class CookingScene extends Scene {
     this.ui.timer(null);
     this.phase = 'intro';
     this.phaseT = 0;
+    this.lesson?.onStep(kind, this.step);
   }
 
   askStop() {
@@ -364,7 +443,9 @@ export default class CookingScene extends Scene {
     this.ui.clearHud();
     this.stopHeat();
     const n = this.results.length;
-    this.score = n ? this.results.reduce((s, r) => s + r.score, 0) / n : 0;
+    this.stepScore = n ? this.results.reduce((s, r) => s + r.score, 0) / n : 0;
+    // quality affects the score: 80% how you cooked, 20% what went in
+    this.score = clamp(this.stepScore * 0.8 + (this.ingQ ?? 85) * 0.2, 0, 100);
     this.useLeftovers(SPOTS.plate.clone().setY(0.1));
     this.setView('result');
     this.showDishModel();
@@ -396,11 +477,13 @@ export default class CookingScene extends Scene {
     const grade = gradeOf(score).g;
     const made = d === 'mystery_mush' ? 1 : grade === 'Perfect' ? 2 : 1;
     const isNew = !st.known('recipe', d);
-    st.addItem(d, { n: made });
+    pantryGive(st, d, { n: made, q: d === 'mystery_mush' ? Math.min(score, 30) : score });
     if (d !== 'mystery_mush') st.data.recipes[d] = Math.max(st.data.recipes[d] || 0, score);
-    st.discover('recipe', d);
+    st.discover('recipe', d, { best: Math.max(st.data.index['recipe:' + d]?.best || 0, score) });
     st.learn('recipes');
     st.data.stats.dishes = (st.data.stats.dishes || 0) + 1;
+    kitchenData(st).cooked++;
+    st.emit('act', { type: 'cook', dish: d, score, isNew });
     st.save();
     return { score, grade, made, isNew };
   }
@@ -410,8 +493,11 @@ export default class CookingScene extends Scene {
     this.phase = 'result';
     this.phaseT = 0;
     const line = pick(this.dish === 'mystery_mush' ? LINES.mush : LINES[res.grade]);
+    this.lastResult = { dish: this.dish, ...res, ingQ: this.ingQ, steps: this.results.slice() };
+    const it = ITEMS[this.dish];
     this.ui.openResult({
       dish: this.dish, score: res.score, isNew: res.isNew, made: res.made, line,
+      buffSecs: it?.buff ? buffSecs(this.game.state, it, res.score) * (this.game.state.skill?.('buff') || 1) : 0, ingQ: this.ingQ,
       steps: this.results,
       onEat: () => { if (this.game.eat(this.dish)) this.nuggetSay('Cluck!', 1.5); },
       onAgain: () => { this.game.audio.play('ui_click'); this.resetKitchen(); this.openPantry(); },
@@ -419,6 +505,7 @@ export default class CookingScene extends Scene {
     });
     this.showNugget(res.grade);
     this.cheer = { t0: this.time, amp: { Perfect: 1, Great: 0.7, Good: 0.35, Okay: 0, Burnt: -1 }[res.grade] ?? 0 };
+    this.lesson?.onResult(this.lastResult);
   }
 
   resetKitchen() {
@@ -573,14 +660,16 @@ export default class CookingScene extends Scene {
       if (this.phaseT > 1.15) {
         this.phase = 'live';
         this.phaseT = 0;
-        this.ui.hint(this.step.hint);
+        this.ui.hint(this.lesson ? null : this.step.hint);
       }
     } else if (ph === 'live') {
+      if (this.autoScore !== undefined && !this.step.done && this.phaseT > (this.autoDelay ?? 0.6)) this.step.finish(this.autoScore);
       this.step.update(dt, true);
       this.ui.timer(this.step.timeLeft());
       if (this.step.done) {
         const s = this.step.score;
         this.results.push({ kind: this.steps[this.stepI], score: s });
+        this.lesson?.onStepDone(this.steps[this.stepI], s);
         this.ui.markStep(this.stepI, s);
         this.ui.hint(null);
         this.ui.timer(null);
@@ -612,3 +701,6 @@ export default class CookingScene extends Scene {
     super.exit();
   }
 }
+
+const RECIPES_BY_DISH = Object.fromEntries(RECIPES.map((r) => [r.dish, r]));
+function findRecipeFor(dish) { return RECIPES_BY_DISH[dish] || null; }

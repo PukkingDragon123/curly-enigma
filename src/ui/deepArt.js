@@ -73,6 +73,7 @@ export const GLYPH = {
   up: ['..o..', '.ooo.', 'ooooo'],
   down: ['ooooo', '.ooo.', '..o..'],
   you: ['..o..', '.ooo.', 'oo.oo', 'o...o'],
+  ruin: ['ooooo', '.o.o.', '.o.o.', 'ooooo'], // ruins part: two pillars under a lintel (Ruins.radarMarkers)
   // rim arrows, pointing outward in 8 directions (N, NE, E, SE, S, SW, W, NW)
   a0: ['..o..', '.ooo.', 'ooooo'],
   a1: ['oooo', '.ooo', '..oo', '...o'],

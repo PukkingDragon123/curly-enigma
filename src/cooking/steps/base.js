@@ -29,6 +29,14 @@ export class Step {
     this.objs = [];
     this.borrowed = [];
     this.limit = 0; // seconds of live time before auto-finish (0 = none)
+    // the skill tree's `cook` multiplier widens every good window (state.skill('cook') ≥ 1)
+    this.skill = Math.max(1, cook.game.state.skill?.('cook') || 1);
+  }
+
+  /** A good window [lo, hi] widened round its centre by the cook skill (clamped to [min, max]). */
+  win(lo, hi, min = 0, max = Infinity) {
+    const c = (lo + hi) / 2, h = ((hi - lo) / 2) * this.skill;
+    return [Math.max(min, c - h), Math.min(max, c + h)];
   }
 
   /** Station name for the camera (board | bowl | cup | plate | pot | pan). */

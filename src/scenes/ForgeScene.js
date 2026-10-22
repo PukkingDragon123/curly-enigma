@@ -16,6 +16,7 @@ import { Menus } from '../forge/menus.js';
 import { Paws } from '../forge/paws.js';
 import { makeGlow } from '../bookends/fx.js';
 import { glowHex, glowAmount } from '../forge/blackbody.js';
+import { ForgeLesson } from '../forge/tutorial.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -119,6 +120,12 @@ export default class ForgeScene extends Scene {
     else if (params.open === 'main') this.menus.main();
     this.syncHud(true);
     this.installDebug();
+    // Old Star's forging lesson (from home, during his lessons): he talks you through it
+    if (params.tutorial === true || params.tutorial === 'true' || params.tutorial === '1' || params.tutorial === 1) {
+      this.lesson = new ForgeLesson(this);
+      this.own(() => this.lesson?.dispose());
+      this.lesson.start();
+    }
   }
 
   // ---------------------------------------------------------------- flow
@@ -192,7 +199,7 @@ export default class ForgeScene extends Scene {
     const af = W.anvilFace;
     rig.add({ box: [af.x - 0.2, 0.1, af.z - 0.75, af.x + 0.2, af.y + 0.08, af.z + 0.45], label: 'Forge a weapon', enabled: free, action: () => { this.game.audio.play('ui_click'); this.menus.plan(); } });
     const d = W.doorPos;
-    rig.add({ box: [d.x - 0.4, 0, d.z - 0.12, d.x + 0.4, 1.25, d.z + 0.12], label: this.from === 'town' ? 'Back to town' : 'Back to the burrow', enabled: free, action: () => this.leave() });
+    rig.add({ box: [d.x - 0.4, 0, d.z - 0.12, d.x + 0.4, 1.25, d.z + 0.12], label: this.from === 'town' ? 'Back to town' : 'Back to the cave', enabled: free, action: () => this.leave() });
     rig.add({ x: W.barrelTop.x, y: W.barrelTop.y, z: W.barrelTop.z, r: 0.26, label: 'Quench barrel', enabled: free, action: () => {
       this.game.audio.play('splash', { vol: 0.5 });
       W.water.splash(0.8);
@@ -555,6 +562,7 @@ export default class ForgeScene extends Scene {
       u.uSize.value.setScalar(0.06 + (1 - k) * 0.12 + this.impactPower * 0.08);
       this.impactGlow.visible = k > 0.01;
     }
+    this.lesson?.update(dt);
     if (this.activity) {
       try { this.activity.update(dt); } catch (e) { console.error(e); this.game.reportError(e); this.activity = null; this.endActivity(); }
     } else {

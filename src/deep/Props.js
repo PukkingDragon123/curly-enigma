@@ -15,12 +15,13 @@
 //
 // API (DigScene): new Props(ctx) · update(dt, {player, eye, time}) · onVoxel(vx, vy, vz, old, m) ·
 // lights(eye) → ≤ 3 point lights · target(eye, dir, reach) → {label, kind: 'use'} | null ·
-// use(eye, dir, reach) → {loot: {id}, say?, damage?} | null · dispose() · info() (debug stats).
+// use(eye, dir, reach) → { forage } (opens the foraging minigame, src/ui/Forage.js; the loot then
+// reaches the mine through owner.events) | null · dispose() · info() (debug stats).
 // Models live in ./props/models.js (builders) and ./props/grid.js (voxel grid + mesher).
 import * as THREE from 'three';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { ITEMS } from '../data/items.js';
-import { CS, zoneAt } from './Generator.js';
+import { CS, zoneAt, biomeAt } from './Generator.js';
 import { VOX, M } from './materials.js';
 import { OPAQUE } from './Mesher.js';
 import { h3, h3i } from './noise.js';
@@ -29,6 +30,9 @@ import { getModel, modelCached, modelStats, modelSteps, defineModel, forgetModel
 import { key3, CB } from './World.js';
 import { rng32 } from './props/grid.js';
 import { liftSnapshotSteps, liftLayoutSteps } from './props/lifts.js';
+// cooking part: the foraging minigame and the new forage plants' models (registered into BUILD)
+import { openForage } from '../ui/Forage.js';
+import '../cooking/plantModels.js';
 
 const CM = CS / VOX; // chunk size in metres
 const R_BUILD = 19; // build chunks whose centre is this close to the eye (m)
@@ -106,6 +110,15 @@ const TYPES = {
   emberbloom: { mount: 'floor', vars: 2, r: 0.25, h: 0.8, plant: true, snd: 'dirt', brittle: true },
   frostbloom: { mount: 'floor', vars: 2, r: 0.25, h: 0.65, plant: true, snd: 'ice', brittle: true },
   core_lotus: { mount: 'floor', vars: 1, r: 0.4, h: 0.45, plant: true, snd: 'dirt', brittle: true },
+  // cooking part: more things to forage (models in src/cooking/plantModels.js)
+  cave_berry: { mount: 'floor', vars: 2, r: 0.4, h: 0.65, plant: true, sway: 0.015, snd: 'dirt', brittle: true },
+  stone_thyme: { mount: 'floor', vars: 2, r: 0.25, h: 0.4, plant: true, sway: 0.012, snd: 'dirt', brittle: true },
+  tunnel_tuber: { mount: 'floor', vars: 2, r: 0.35, h: 0.6, plant: true, sway: 0.02, snd: 'dirt', brittle: true },
+  cave_garlic: { mount: 'floor', vars: 2, r: 0.3, h: 0.65, plant: true, sway: 0.015, snd: 'dirt', brittle: true },
+  glow_moss: { mount: 'wall', vars: 2, r: 0.4, flat: 2, deep: 1, minUp: 1, maxUp: 14, plant: true, snd: 'dirt', brittle: true },
+  truffle: { mount: 'floor', vars: 1, r: 0.25, h: 0.25, plant: true, snd: 'dirt', brittle: true },
+  grub: { mount: 'floor', vars: 1, r: 0.25, h: 0.25, plant: true, snd: 'dirt', brittle: true },
+  dino_egg: { mount: 'floor', vars: 2, r: 0.5, h: 0.85, plant: true, snd: 'dirt', brittle: true },
 };
 
 // models sized (or coloured) to where they are put
@@ -128,12 +141,20 @@ const DECOR = {
 };
 // the old mine's plant table (zone → mount → [item, weight]) + chances per cell: sparse finds
 const PLANTS = {
-  1: { floor: [['glowcap', 4], ['cave_carrot', 5], ['blindfern', 3]], ceil: [['whisperweed', 1]], wall: [], f: 0.03, c: 0.008, w: 0 },
-  2: { floor: [['glowcap', 3], ['pepperroot', 3], ['cave_carrot', 2], ['blindfern', 2]], ceil: [['rubber_sap', 4], ['whisperweed', 2]], wall: [], f: 0.028, c: 0.016, w: 0 },
-  3: { floor: [['bubblebulb', 3], ['gloomshroom', 2], ['glowcap', 2], ['crystal_lily', 0.8]], ceil: [['whisperweed', 1.5], ['rubber_sap', 1]], wall: [['sparkmoss', 1]], f: 0.026, c: 0.01, w: 0.012 },
-  4: { floor: [['ashfern', 4], ['emberbloom', 2.5], ['pepperroot', 2], ['gloomshroom', 1]], ceil: [], wall: [['sparkmoss', 1]], f: 0.026, c: 0, w: 0.004 },
+  1: { floor: [['glowcap', 4], ['cave_carrot', 4], ['blindfern', 2.5], ['cave_berry', 3], ['stone_thyme', 2.5], ['tunnel_tuber', 3], ['grub', 1.5]], ceil: [['whisperweed', 1]], wall: [['glow_moss', 1]], f: 0.052, c: 0.008, w: 0.006 },
+  2: { floor: [['glowcap', 2.5], ['pepperroot', 3], ['cave_carrot', 2], ['blindfern', 1.5], ['cave_garlic', 3], ['tunnel_tuber', 2], ['stone_thyme', 2], ['grub', 1.5], ['truffle', 0.5], ['cave_berry', 1]], ceil: [['rubber_sap', 4], ['whisperweed', 2]], wall: [['glow_moss', 1]], f: 0.046, c: 0.016, w: 0.004 },
+  3: { floor: [['bubblebulb', 3], ['gloomshroom', 2], ['glowcap', 2], ['crystal_lily', 0.8], ['cave_garlic', 1], ['truffle', 0.6], ['grub', 0.8]], ceil: [['whisperweed', 1.5], ['rubber_sap', 1]], wall: [['sparkmoss', 1], ['glow_moss', 1]], f: 0.04, c: 0.01, w: 0.014 },
+  4: { floor: [['ashfern', 4], ['emberbloom', 2.5], ['pepperroot', 2], ['gloomshroom', 1], ['truffle', 0.5]], ceil: [], wall: [['sparkmoss', 1]], f: 0.026, c: 0, w: 0.004 },
   5: { floor: [['frostbloom', 3], ['gloomshroom', 1.5], ['glowcap', 1.5]], ceil: [['whisperweed', 1]], wall: [], f: 0.024, c: 0.006, w: 0 },
   6: { floor: [['core_lotus', 0.7], ['emberbloom', 2], ['frostbloom', 1.5], ['crystal_lily', 1.5]], ceil: [['whisperweed', 1]], wall: [], f: 0.02, c: 0.005, w: 0 },
+};
+// cooking part: biomes lean the finds (Generator BIOMES: 1 mossy grotto, 2 sandstone, 3 mushroom
+// hollow, 4 dino caverns); f/w multiply the zone's chances
+const BIO_PLANTS = {
+  1: { floor: [['cave_berry', 5], ['glowcap', 2], ['blindfern', 3], ['stone_thyme', 2], ['cave_carrot', 2]], wall: [['glow_moss', 3]], f: 1.4, w: 3 },
+  2: { floor: [['pepperroot', 4], ['cave_garlic', 4], ['stone_thyme', 3], ['tunnel_tuber', 2]], f: 1.1 },
+  3: { floor: [['glowcap', 5], ['gloomshroom', 3], ['truffle', 1.2], ['bubblebulb', 2], ['grub', 1.5]], f: 1.6 },
+  4: { floor: [['dino_egg', 1.4], ['blindfern', 4], ['ashfern', 2], ['cave_berry', 2], ['grub', 2]], f: 1.3 },
 };
 const CAMP = [0, 0.32, 0.26, 0.16, 0.1, 0.1, 0.05]; // chance per chunk (with room for one) of an old miners' camp
 const CRYSTAL_PALS = { 3: ['violet', 'cyan', 'pink'], 6: ['violet', 'pink', 'cyan'] };
@@ -533,8 +554,10 @@ export class Props {
     for (let cz = 0; cz < CPC; cz++) for (let cy = 0; cy < CPC; cy++) for (let cx = 0; cx < CPC; cx++) {
       const gx = ch.cx * CPC + cx, gy = ch.cy * CPC + cy, gz = ch.cz * CPC + cz;
       const zone = zoneAt(-((Y0 + cy * CELL + CELL / 2) / VOX));
-      const Dz = DECOR[zone], Pz = PLANTS[zone];
+      const Dz = DECOR[zone];
+      let Pz = PLANTS[zone];
       const hf = h3(gx, gy, gz, S + 101), hp = h3(gx, gy, gz, S + 103);
+      if (hp < Pz.f * 1.6 || h3(gx, gy, gz, S + 127) < 0.045) Pz = this.plantsAt(Pz, gx, gy, gz);
       if (hf < Dz.f || hp < Pz.f) {
         const sp = this.findFloor(c, cx, cy, cz, gx, gy, gz);
         this.no(sp ? 'floorFound' : 'floorNone');
@@ -1346,6 +1369,7 @@ export class Props {
       if (top && top.rec && this.built.get(top.rec.key) === top.rec) this.upload(top.rec);
     }
     const t4 = performance.now();
+    this.twinkle(dt, eye); // cooking part: forageables glint so you spot them (further with the `sense` perk)
     this.updateFallers(dt);
     this.nearT -= dt;
     if (this.nearT <= 0) { this.nearT = 0.3; this.collectNear(eye); }
@@ -1481,7 +1505,18 @@ export class Props {
     return out;
   }
 
-  // ------------------------------------------------------------ plants: aim + harvest
+  // ------------------------------------------------------------ plants: aim + harvest (cooking part)
+  // E on a plant opens the foraging minigame (src/ui/Forage.js): use() returns { forage } at once
+  // (DigScene stops there), and when the plant is out its loot reaches the mine through
+  // owner.events([{ loot: { id, q, p } }, ...]) like any other find. Esc leaves the plant be.
+  /** The zone's plant table, leaned by the biome at this 1 m cell. */
+  plantsAt(Pz, gx, gy, gz) {
+    let b = 0;
+    try { b = biomeAt(this.plan, gx + 0.5, gy + 0.5, gz + 0.5) || 0; } catch (e) { b = 0; }
+    const B = BIO_PLANTS[b];
+    if (!B) return Pz;
+    return { ...Pz, floor: B.floor || Pz.floor, wall: B.wall || Pz.wall, f: Pz.f * (B.f || 1), w: Math.max(Pz.w, 0.004) * (B.w || 1) };
+  }
   pick(eye, dir, reach) {
     let best = null, bt = 1e9;
     for (const p of this.plants) {
@@ -1498,24 +1533,85 @@ export class Props {
     return best;
   }
   target(eye, dir, reach) {
-    const p = this.pick(eye, dir, reach);
-    return p ? { label: ITEMS[p.item]?.name || p.item, kind: 'use' } : null;
-  }
-  use(eye, dir, reach) {
+    if (this.foraging) return null;
     const p = this.pick(eye, dir, reach);
     if (!p) return null;
+    const verb = { cave_berry: 'Pick', glow_moss: 'Peel', sparkmoss: 'Peel', truffle: 'Dig up', grub: 'Dig up', dino_egg: 'Lift' }[p.item] || 'Pull';
+    return { label: `${verb} ${ITEMS[p.item]?.name || p.item}`, kind: 'use' };
+  }
+  use(eye, dir, reach) {
+    if (this.foraging) return { forage: 'busy' };
+    const p = this.pick(eye, dir, reach);
+    if (!p) return null;
+    const game = this.ctx.ui?.game || this.ctx.owner?.game;
+    const st = this.state;
+    // no room in the backpack: leave it growing (the slots inventory drops what doesn't fit)
+    if (st?.canAdd && !st.canAdd(p.item, 1)) {
+      this.audio?.play('ui_error');
+      return { say: `Your backpack is full: no room for <b>${ITEMS[p.item]?.name || p.item}</b>.`, key: 'forage-full', tone: 'warn', cd: 2 };
+    }
+    if (!game?.ui?.openPanel || this.ctx.params?.forage === 'instant') return this.harvest(p, { q: 100 })[0] || null;
+    const protects = { heat: !!st?.protects?.('heat'), cold: !!st?.protects?.('cold'), zap: !!st?.protects?.('zap') };
+    this.foraging = p;
+    this.audio?.play('brush', { vol: 0.4 });
+    openForage(game, p.item, { protects }).then((res) => {
+      this.foraging = null;
+      if (!res || res.cancel || p.gone) return;
+      this.deliver(this.harvest(p, res));
+    }).catch((e) => { console.warn('forage failed', e); this.foraging = null; });
+    return { forage: p.item };
+  }
+  /** Take the plant and make the events for it (loot, a toast, hurts from the minigame). */
+  harvest(p, res = {}) {
     const st = this.state, it = ITEMS[p.item];
     if (st?.data) { this.picked[p.key] = st.data.day ?? 0; st.dirty = true; }
     this.pop(p);
     this.remove(p);
-    const out = { loot: { id: p.item } };
-    if (p.item === 'emberbloom' && !st?.protects?.('heat')) { out.damage = 3; out.kind = 'burn'; out.say = 'Ouch! <b>Emberbloom</b> really is on fire. Mitts would help.'; out.key = 'ember'; this.audio?.play('sizzle'); }
-    else if (p.item === 'sparkmoss' && !st?.protects?.('zap')) { out.damage = 2; out.kind = 'zap'; out.say = '<b>Sparkmoss</b> bites! Your whiskers crackle.'; out.key = 'spark'; this.audio?.play('zap', { vol: 0.5 }); }
-    else if (p.item === 'gloomshroom') { out.say = 'Sleepy spores... <i>achoo!</i>'; out.key = 'gloom'; out.tone = 'good'; this.audio?.play('sneeze'); }
-    else if (p.item === 'crystal_lily') this.audio?.play('ding');
-    else if (p.item === 'core_lotus') { this.audio?.play('sparkle'); out.say = `A <b>${it?.name || 'Core Lotus'}</b>! Legendary in mole cooking.`; out.tone = 'good'; out.key = 'lotus'; }
-    else if (p.item === 'bubblebulb') this.audio?.play('bloop');
-    return out;
+    const evs = [];
+    let n = res.n ?? 1;
+    while (n > 1 && st?.canAdd && !st.canAdd(p.item, n)) n--; // a second handful only if it fits
+    const q = Math.round(res.q ?? 100);
+    for (let i = 0; i < n; i++) evs.push({ loot: { id: p.item, q, p: !!res.p } });
+    const burns = res.burns || 0, zaps = res.zaps || 0;
+    if (burns) evs.push({ damage: 3 * burns, kind: 'burn', say: `Ouch! <b>${it?.name || 'It'}</b> really is on fire. Mitts would help.`, key: 'ember' });
+    if (zaps) evs.push({ damage: 2 * zaps, kind: 'zap', say: '<b>Sparkmoss</b> bites! Rubber gloves would help.', key: 'spark' });
+    if (res.spores) evs.push({ say: 'Sleepy spores... <i>achoo!</i>', key: 'gloom', tone: 'good' });
+    if (p.item === 'core_lotus') { this.audio?.play('sparkle'); evs.push({ say: `A <b>${it?.name || 'Core Lotus'}</b>! Legendary in mole cooking.`, tone: 'good', key: 'lotus' }); }
+    if (res.p) evs.push({ say: `<b>Pristine</b> ${it?.name || p.item}: whole, roots and all.`, tone: 'good', key: 'pristine-forage', cd: 1 });
+    return evs;
+  }
+  /** Hand deferred events to the mine (DigScene.events), or straight to the backpack without one. */
+  deliver(evs) {
+    if (!evs?.length) return;
+    const o = this.ctx.owner;
+    if (o?.events) { o.events(evs); return; }
+    for (const e of evs) if (e.loot) this.state?.addItem?.(e.loot.id, ITEMS[e.loot.id]?.q ? { q: e.loot.q, p: e.loot.p, spill: true } : { spill: true });
+  }
+  /** Now and then a forageable plant near you glints; with the skill tree's `sense` perk from further, more often. */
+  twinkle(dt, eye) {
+    if (!this.fx || !this.plants.size) return;
+    this.twT = (this.twT || 0) - dt;
+    if (this.twT > 0) return;
+    const sense = this.state?.skill?.('sense') || 0;
+    const R = sense ? 18 : 7;
+    this.twT = sense ? 0.12 : 0.35;
+    let best = null, n = 0;
+    for (const p of this.plants) {
+      if (p.gone || !p.m || p === this.foraging) continue;
+      const d = Math.hypot(p.cx - eye.x, p.cy - eye.y, p.cz - eye.z);
+      if (d > R || d < 1.2) continue;
+      if (Math.random() < 1 / ++n) best = p; // a random one in range
+    }
+    if (!best) return;
+    const c = best.emit?.c || best.m.main || [1, 0.95, 0.7];
+    const k = sense ? 1.2 : 0.8;
+    this.fx.glints(best.cx + (Math.random() - 0.5) * best.rad, best.top + 0.05, best.cz + (Math.random() - 0.5) * best.rad, [Math.min(1, c[0] * k + 0.3), Math.min(1, c[1] * k + 0.3), Math.min(1, c[2] * k + 0.3)]);
+  }
+  /** Test hooks: plants near a point, and forage the nearest (opens the minigame). */
+  debugPlants(x, y, z, r = 12) {
+    const out = [];
+    for (const p of this.plants) if (!p.gone && Math.hypot(p.cx - x, p.cy - y, p.cz - z) < r) out.push({ item: p.item, x: p.cx, y: p.cy, z: p.cz, key: p.key, d: Math.hypot(p.cx - x, p.cy - y, p.cz - z) });
+    return out.sort((a, b) => a.d - b.d);
   }
   /** A little burst of leaves / petals / glow where a plant was picked. */
   pop(p) {

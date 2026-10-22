@@ -96,7 +96,7 @@ await step('backpack and book open by tap', async () => {
   const book = await center('.pack-book');
   if (book) {
     await tap(book[0], book[1]);
-    if (!(await waitFor(() => window.__game.ui.panelStack.some((p) => p.kind === 'book'), 15000))) throw new Error('tapping the book did not open the Index Book');
+    if (!(await waitFor(() => window.__game.ui.panelStack.some((p) => p.kind === 'book' || p.kind === 'tome'), 15000))) throw new Error('tapping the book did not open the book');
     await wait(1500);
     await shot('05-book');
     await ev(() => window.__game.ui.closeAllPanels());

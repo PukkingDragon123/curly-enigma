@@ -92,7 +92,6 @@ export class FPBuild {
     this.active = on;
     this.game.audio.play(on ? 'ui_open' : 'ui_close');
     if (on) {
-      if (s.dig) s.dig = null;
       this.helpers.visible = true;
       this.equipHammer(true);
       this.openStrip();
@@ -503,7 +502,7 @@ export class FPBuild {
   // ------------------------------------------------------------ frame
   update(dt) {
     const inp = this.game.input, s = this.s;
-    if (inp.pressed('KeyX') && !s.scripted && !this.game.ui.isPanelOpen()) this.toggle();
+    if (inp.pressed('KeyX') && !s.scripted && !this.game.ui.isPanelOpen()) (s.toggleBuildHere ? s.toggleBuildHere() : this.toggle());
     if (!this.active) return;
     if (s.scripted) return;
     if (!this.useHammerKind && s.rig.vm) s.rig.vm.toolR.visible = false;

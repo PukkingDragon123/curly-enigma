@@ -71,7 +71,9 @@ export function buildWyrm(zone) {
 const _v = new THREE.Vector3();
 
 export class Wyrm extends Enemy {
-  static info = { id: 'crystal_wyrm', name: 'Crystal Wyrmling', color: '#a8a8ff', hits: 3.5, dmg: 6, flying: true, snd: 'crystal' };
+  static info = { id: 'crystal_wyrm', name: 'Crystal Wyrmling', color: '#a8a8ff', hits: 3.5, dmg: 6, flying: true, snd: 'crystal', poise: 2 };
+  static tells = { coil: [0.75] };
+  static resume = 'circle';
   constructor(mgr, o) {
     super(mgr, o);
     this.rad = 0.16; this.cy = 0; this.hitR = 0.19;

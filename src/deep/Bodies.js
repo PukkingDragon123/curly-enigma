@@ -77,7 +77,10 @@ export class Bodies {
         if (b.dying <= 0) { this.kill(b); continue; }
       }
       // ore pickups fly to the mole once they've hopped out
-      if (b.pickup && b.t > (b.pickup.delay ?? 0.7) && playerEye) {
+      // (a find that won't fit right now waits where it landed: hooks.canTake)
+      const wait = b.pickup && b.t > (b.pickup.delay ?? 0.7) && this.hooks.canTake && !this.hooks.canTake(b);
+      if (wait) b.t = Math.min(b.t, 5);
+      if (b.pickup && !wait && b.t > (b.pickup.delay ?? 0.7) && playerEye) {
         // into the backpack: aim below the eyes, shrink on the way in
         const d = new THREE.Vector3().subVectors(playerEye, b.pos);
         d.y -= 0.5;

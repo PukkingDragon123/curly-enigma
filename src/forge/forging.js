@@ -80,7 +80,8 @@ export class ForgeRun {
     this.infLot = sel.infusion ? st.removeItem(sel.infusion, 1)[0] : null;
     this.gemLot = sel.gem ? st.removeItem(sel.gem, 1)[0] : null;
     this.gemQ = this.gemLot ? this.gemLot.q : undefined;
-    this.sim = new BladeSim(sel.type, sel.metal, this.level);
+    this.skill = st.skill?.('forge') || 1; // the Smithing skill widens the good windows
+    this.sim = new BladeSim(sel.type, sel.metal, this.level, this.skill);
     this.view = new BladeView(this.sim);
     this.view.buildDots();
     this.view.setDotsVisible(false);
@@ -173,8 +174,8 @@ export class ForgeRun {
   setThermoMarks(quench) {
     const m = this.m;
     const marks = [];
-    if (quench && m.quench) marks.push({ kind: 'quench', range: m.quench, label: 'quench' });
-    else marks.push({ kind: 'work', range: m.work, label: 'work' });
+    if (quench && m.quench) marks.push({ kind: 'quench', range: this.sim?.quenchRange || m.quench, label: 'quench' });
+    else marks.push({ kind: 'work', range: this.sim?.workRange || m.work, label: 'work' });
     marks.push({ kind: 'burn', at: m.burn, label: 'burn' });
     if (m.burn < this.maxT - 60) marks.push({ kind: 'max', at: this.maxT, label: 'max' });
     this.thermo.setMarks(marks);
@@ -301,6 +302,7 @@ export class ForgeRun {
     this.meter.hide();
     const fn = this['enter_' + step];
     if (fn) fn.call(this);
+    this.scene.lesson?.event('step', { step, run: this });
   }
 
   // ---------------------------------------------------------------- heat
@@ -327,7 +329,7 @@ export class ForgeRun {
     this.workLight(sim.maxTemp());
     this.thermo.set(T, dt);
     this.burnFx(burning, dt);
-    const [w0, w1] = this.m.work;
+    const [w0, w1] = this.sim.workRange;
     if (T >= w0 && !this.wasWorkHot) { this.wasWorkHot = true; this.game.audio.play('glow'); this.popOnce('workheat', 'Working heat', this.bladeCenter(), '#ffd34a', 0.8, 4); }
     if (T < w0 - 30) this.wasWorkHot = false;
     if (burning > 0) this.setStatus('<span class="fg-warn">It is burning! Sparks are its grain giving way.</span>');
@@ -355,6 +357,9 @@ export class ForgeRun {
     sc.workSrc = { pos: pos || this.bladeCenter(), T };
     sc.paws.heat = Math.min(0.85, glowAmount(T) * 0.55);
   }
+
+  /** Energy a hammer blow costs (the Stamina skill makes it less). */
+  strikeEnergy() { return ENERGY_PER_STRIKE / Math.max(1, this.st.skill?.('stamina') || 1); }
 
   toAnvil() {
     if (this.moving || this.step !== 'heat') return;
@@ -425,7 +430,7 @@ export class ForgeRun {
       if (inp.mousePressed(0)) { src = 'mouse'; col = mouseCol >= 0 ? mouseCol : this.selCol; }
       else if (inp.pressed('Space')) { src = 'key'; col = this.selCol; }
       if (src) {
-        if (this.st.energy < ENERGY_PER_STRIKE) {
+        if (this.st.energy < this.strikeEnergy()) {
           this.game.audio.play('oops');
           this.popOnce('tired', 'Too tired to swing', this.colWorld(col), '#ffb0a0', 0.8, 2);
           this.game.ui.toast('You are out of energy. Eat something (bag) or rest.', { kind: 'warn' });
@@ -514,7 +519,7 @@ export class ForgeRun {
     const ev = sim.strike(i, power);
     if (!ev) return;
     sc.rig.vm?.impact('hammer', 0.25 + power * 0.35);
-    st.useEnergy(ENERGY_PER_STRIKE);
+    st.useEnergy(this.strikeEnergy());
     st.learn('hammering');
     if (ev.kind === 'work') st.learn('working_heat');
     const pos = this.colWorld(i);
@@ -546,6 +551,7 @@ export class ForgeRun {
     const gain = ev.after - ev.before;
     if (Math.abs(gain) >= 0.02) this.popOnce('gain', (gain > 0 ? '+' : '') + Math.round(gain * 100) + '%', pos.clone().add(_v2.set(0, 0.06, 0.03)), gain > 0 ? '#8af07a' : '#ff8a6a', 0.6, 0.15);
     if (ev.grown.length) this.game.audio.play('creak');
+    this.scene.lesson?.event('strike', { ev, gain, run: this });
   }
 
   finishShaping() {
@@ -642,7 +648,7 @@ export class ForgeRun {
       sc.paws.set('L', { mode: 'low' });
     });
     const assist = !!this.inf?.balanceAssist;
-    this.balTol = balanceTolerance(assist);
+    this.balTol = balanceTolerance(assist, this.skill);
     const label = this.bal.mode === 'pommel' ? (this.sim.type === 'spear' ? 'Butt-cap weight' : 'Pommel weight') : 'Head weight';
     this.balLabel = el('span', {}, label);
     this.balVal = el('b');
@@ -722,7 +728,7 @@ export class ForgeRun {
 
   confirmBalance() {
     if (this.busy) return;
-    const s = balanceScore(this.balFrac, this.bal.target, !!this.inf?.balanceAssist);
+    const s = balanceScore(this.balFrac, this.bal.target, !!this.inf?.balanceAssist, this.skill);
     this.scores.balance = s;
     this.st.learn('balance');
     this.game.audio.play(s > 0.9 ? 'perfect' : s > 0.6 ? 'good' : 'oops');
@@ -802,7 +808,7 @@ export class ForgeRun {
     const T = this.coolWeapon(dt, this.inFire && !this.busy, sc.fire.air);
     this.thermo.set(T, dt);
     this.workLight(T, this.carrier.position);
-    const [q0, q1] = this.m.quench;
+    const [q0, q1] = this.sim.quenchRange || this.m.quench;
     if (T > this.m.burn && !this.plunged) {
       this.sim.burnt += dt * 3 * Math.min(2, (T - this.m.burn) / 100 + 0.3);
       if (Math.random() < dt * 8) sc.particles.burnSpray(this.carrier.position, 5);
@@ -824,7 +830,7 @@ export class ForgeRun {
     sc.dock('barrel', { dur: 0.6 });
     sc.paws.set('R', { mode: 'low' });
     const Tp = this.weaponT;
-    const res = quenchResult(this.m, Tp);
+    const res = quenchResult(this.m, Tp, this.skill);
     this.setActions([]);
     this.game.ui.setHints(null);
     const top = W.barrelTop.clone();
@@ -935,7 +941,8 @@ export class ForgeRun {
       this.debugTap = false;
       if (tap || r <= 2) {
         const e = Math.abs(r - R0) / R0;
-        const q = tap ? (e < 0.12 ? 'perfect' : e < 0.3 ? 'good' : 'ok') : 'ok';
+        const k = this.skill || 1;
+        const q = tap ? (e < 0.12 * k ? 'perfect' : e < 0.3 * k ? 'good' : 'ok') : 'ok';
         this.infuseBonus = q === 'perfect' ? 4 : q === 'good' ? 2 : 0.5;
         this.infQ = q;
         this.ringTarget.remove(); this.ringMove.remove();
@@ -1003,6 +1010,8 @@ export class ForgeRun {
     this.finished = true;
     this.weaponRec = w;
     const grade = gradeFor(score);
+    st.emit?.('act', { type: 'forge', weapon: this.sel.type, metal: this.sel.metal, grade: grade.g, score });
+    this.scene.lesson?.event('result', { grade, score, weapon: w, run: this });
     // the reveal: you hold the new blade up in front of you, turning it in the firelight
     sc.dock('reveal', { dur: 0.9 });
     sc.freezeLook = true;

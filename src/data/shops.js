@@ -113,6 +113,132 @@ export const SHOPS = {
   },
 };
 
+// ---------------------------------------------------------------------------------------------
+// The folk in the mine's burrows (src/deep/Traders.js, panel in src/deep/traders/shop.js). Walk to
+// their burrow and press E on them. `panel: 'burrow'` routes ui.openShop(id) to the burrow panel.
+//   npc: the id quests use (talk/sell/buy acts) · burrow: plan.burrows kind · markup: × buy prices
+//   stock: what they sell ({ id, price?, minZone? }; price defaults to the item's price, else its
+//   value × 2.2) · buys: what they buy ({ cats, ids, mult, label }) · wanted: one of these pays
+//   wantedMult today · height: metres · greet/lines/bought/sold/poor/bye: what they say
+//   rocco: the raccoon's weapon offers ({ grade multipliers, craving, haggle }) and daily deals.
+export const BURROW_SHOPS = ['trader', 'herbalist', 'rocco', 'outpost'];
+
+Object.assign(SHOPS, {
+  trader: {
+    name: 'The Trading Post', panel: 'burrow', npc: 'trader', burrow: 'trader', sign: 'scale',
+    keeper: { name: 'Barnaby Burr', species: 'mole', age: 'adult', body: 'chubby', fur: 0x55443c, eyes: 'happy', outfit: 'apron', outfitColor: 0x8a6a3a, shirt: 0x3a6a9a, rolled: true, hat: 'cap', hatColor: 0x8a2a2a, glasses: false, brows: 'bushy', dirt: 0.25, blush: true, belt: 1, boots: 0x4a2e1e, mood: 'happy', voice: 250, seed: 311 },
+    title: 'General store', height: 0.98,
+    markup: 1.0,
+    stock: [
+      { id: 'support_beam' }, { id: 'glow_stake' }, { id: 'dynamite' }, { id: 'grub_bar' }, { id: 'tea_flask' },
+      { id: 'hearty_pie' }, { id: 'worm' }, { id: 'cave_carrot' }, { id: 'chisel_basic' }, { id: 'brush_basic' },
+      { id: 'bag_medium' }, { id: 'lamp_glowcap' }, { id: 'crate' }, { id: 'barrel' }, { id: 'rug_round' },
+      { id: 'dynamite_bundle', minZone: 3 }, { id: 'bag_large', minZone: 3 },
+    ],
+    buys: { cats: ['mineral', 'gem', 'ingot'], mult: 0.85, label: 'Ore & gems' },
+    wanted: ['copper_ore', 'tin_ore', 'iron_ore', 'coal', 'silver_ore', 'quartz', 'amber', 'amethyst', 'gold_ore', 'lumite', 'ruby'], wantedMult: 1.4,
+    greet: ['Welcome, welcome! Mind the step, and the other step.', 'A customer! Come in out of the dark.', 'Ah, the new digger! Old Star\'s apprentice, yes?', 'Back again! I saved you the good shelf.'],
+    lines: [
+      'Ore\'s worth a little less up here than in town. But town is a long walk, isn\'t it?',
+      'Everything on these shelves came down the rails. Mostly in one piece.',
+      'I buy ore and gems. Clean lumps fetch more. Pristine ones, more still.',
+      'Beams! Stakes! Snacks! The three pillars of not dying down here.',
+      'The rails go on to Deep Town. I used to ride them. Before the cart lost a wheel.',
+      'Rocco? Down past the herbalist? Don\'t buy anything that ticks.',
+    ],
+    bought: ['Pleasure doing business!', 'Use it well!', 'Good choice, very good choice.', 'That one\'s a bestseller. Well, a seller.'],
+    sold: ['Into the crate it goes!', 'Lovely lumps. Lovely.', 'I\'ll get a fair price in town for these. Fair-ish.'],
+    poor: ['Bit short, are we? It happens to the best of us. Mostly to me.', 'No credit, I\'m afraid. I tried credit once.'],
+    bye: ['Come back soon! Mind the dark.', 'Safe digging!', 'Off you go, then. Bring me shiny things.'],
+  },
+  herbalist: {
+    name: 'Herbalist\'s Hollow', panel: 'burrow', npc: 'herbalist', burrow: 'herbalist', sign: 'leaf',
+    keeper: { name: 'Granny Thistle', species: 'hedgehog', age: 'elder', body: 'normal', fur: 0xc8a47a, eyes: 'sleepy', outfit: 'dress', outfitColor: 0x4a6a3a, fabric: 'dots', hat: 'bandana', hatColor: 0x7a3a5a, glasses: true, brows: 'bushy', scarf: 0x8a5a2a, dirt: 0.3, blush: true, cane: false, mood: 'stern', voice: 380, seed: 512 },
+    title: 'Herbs, brews and cuttings', height: 0.86,
+    markup: 1.1,
+    stock: [
+      { id: 'glowcap', price: 30 }, { id: 'cave_carrot' }, { id: 'pepperroot', price: 45 }, { id: 'blindfern', price: 26 },
+      { id: 'whisperweed', price: 95 }, { id: 'sparkmoss', price: 85, minZone: 2 }, { id: 'rubber_sap', price: 55, minZone: 2 },
+      { id: 'crystal_lily', price: 220, minZone: 3 }, { id: 'gloomshroom', price: 110, minZone: 3 }, { id: 'frostbloom', price: 360, minZone: 5 },
+      { id: 'honey' }, { id: 'mushroom' }, { id: 'flour' }, { id: 'butter' },
+      { id: 'tea_flask' }, { id: 'bubble_tea', price: 180 }, { id: 'glowcap_soup', price: 95 }, { id: 'crystal_tea', price: 560, minZone: 3 },
+    ],
+    buys: { cats: ['plant', 'critter', 'drop'], mult: 1.0, catMult: { plant: 1.2 }, label: 'Herbs & critters' },
+    wanted: ['glowcap', 'whisperweed', 'pepperroot', 'sparkmoss', 'gloomshroom', 'crystal_lily', 'rubber_sap', 'bubblebulb', 'ashfern', 'emberbloom'], wantedMult: 1.5,
+    greet: ['Hmph. Wipe your paws.', 'Oh, it\'s you. Don\'t touch the purple ones.', 'In or out, dear. The draught bruises my basil.', 'You smell of rock dust. Sit. No, not there.'],
+    lines: [
+      'Mint, for the head. Pepperroot, for the cold. Patience, for everything else.',
+      'Plant a glowcap in a planter and you\'ll have three by morning. Don\'t tell anyone I said.',
+      'I pay well for herbs. I do NOT pay for squashed herbs.',
+      'That cauldron has been simmering since before your grandmother dug her first hole.',
+      'Whisperweed leans toward ore, they say. It leans toward gossip, I say.',
+      'Old Star still owes me for a jar of salve. Tell him I remember.',
+    ],
+    bought: ['Water it. Talk to it. Not too much.', 'Mind you use it before it turns.', 'There. Now go away and be healthy.'],
+    sold: ['Hm. These will do.', 'Fresh enough. Barely.', 'Into the drying rack with you.'],
+    poor: ['Herbs cost money, dear. Money costs digging.', 'Come back when your pockets jingle.'],
+    bye: ['Mind the purple ones on your way out.', 'Wrap up warm.', 'Off with you.'],
+  },
+  rocco: {
+    name: 'Rocco\'s Storage', panel: 'burrow', npc: 'rocco', burrow: 'raccoon', sign: 'key',
+    // built on the fox and repainted as a raccoon (src/deep/traders/rocco.js), in a long coat
+    keeper: { name: 'Rocco', raccoon: true, voice: 190, species: 'fox', age: 'adult', body: 'chubby', fur: 0x8c888a, eyes: 'wide', eyeColor: 0x3a2a1a, outfit: 'shirt', outfitColor: 0x7a3030, fabric: 'stripe', hat: 'cap', hatColor: 0x3a3436, brows: 'angry', earring: 0xe8c050, dirt: 0.35, blush: false, mood: 'smug', seed: 4077, patches: 1, freckles: false, tuft: false, shirt: 0x8a3a3a, belt: 0, boots: 0x2e2420, rolled: false },
+    title: 'No questions asked', height: 1.0,
+    markup: 1.25,
+    stock: [
+      { id: 'amber_bug', price: 1400 }, { id: 'fossil', price: 190 }, { id: 'spider_silk', price: 210 }, { id: 'echo_crystal', price: 1050, minZone: 2 },
+      { id: 'gravium', price: 960, minZone: 2 }, { id: 'truffle', price: 1150, minZone: 2 }, { id: 'wisp_essence', price: 2100, minZone: 3 },
+      { id: 'bp_mace', price: 1800, minZone: 2 }, { id: 'bp_spear', price: 3600, minZone: 2 }, { id: 'bp_longsword', price: 7200, minZone: 3 }, { id: 'bp_rapier', price: 30000, minZone: 4 },
+      { id: 'music_box', price: 2600 }, { id: 'painting_sun', price: 1100 }, { id: 'plushie', price: 220 }, { id: 'clock', price: 2200 },
+      { id: 'xray_lamp', price: 5900, minZone: 2 }, { id: 'spring_boots', price: 26000, minZone: 4 },
+    ],
+    oddities: 7, // how many of the stock he has out today
+    buys: { cats: ['gem'], weapons: true, mult: 0.9, label: 'Weapons & shinies' },
+    grade: { S: 1.45, A: 1.3, B: 1.12, C: 0.95, D: 0.8, F: 0.6 },
+    craving: 1.25, // today's favourite weapon type pays this much more
+    haggle: { tries: 3, patience: 3, step: [0.06, 0.12], miss: 0.05 },
+    greet: ['Psst. Hey. You. Yeah, you. Come in, close the... there\'s no door. Fine.', 'Welcome to Rocco\'s! Everything\'s legal. Probably.', 'Ah! My favourite customer. Don\'t tell the others.', 'Shh! ...Oh, it\'s you. Thought you were the herbalist.'],
+    lines: [
+      'I buy blades. Good ones, bad ones, ones with a little history. No questions.',
+      'That painting? Genuine surface art. That\'s the SUN. Very rare. Very hot.',
+      'The tarp? Don\'t worry about the tarp.',
+      'A forged blade with a good grade? Rocco pays like a king. A small, nervous king.',
+      'Everything here fell off a cart. Lots of carts. Unlucky carts.',
+      'Those crates at the back aren\'t hiding anything. Definitely not a door.',
+      'Haggle all you like. I love haggling. I\'m very bad at it. Ha. Ha.',
+    ],
+    bought: ['Pleasure! It was never here. You were never here.', 'Excellent taste. Questionable source. Excellent taste.', 'Mind the tag, it says "evidence". Typo.'],
+    sold: ['Ooh. OOH. This one\'s going to a good home. A secret home.', 'Into the coat it goes.', 'Lovely. Nobody saw that.'],
+    poor: ['No gold, no goods. That\'s the only rule. Well, the main rule.', 'Credit? Do I look like a bank? Don\'t answer that.'],
+    bye: ['You didn\'t see me. I didn\'t see you.', 'Come back with more pointy things!', 'Use the front door. Not the... other one.'],
+  },
+  outpost: {
+    name: 'The Deep Outpost', panel: 'burrow', npc: 'outpost', burrow: 'outpost', sign: 'pick',
+    keeper: { name: 'Warden Brask', species: 'badger', age: 'adult', body: 'stocky', fur: 0x7a7a7c, eyes: 'bead', outfit: 'vest', outfitColor: 0x5a3a24, shirt: 0x6a7a4a, hat: 'helmet', hatColor: 0xd8a020, brows: 'angry', scarf: 0x8a2a2a, dirt: 0.7, blush: false, belt: 2, boots: 0x3a2a22, mood: 'stern', voice: 150, seed: 913 },
+    title: 'Last stop for supplies', height: 1.02,
+    markup: 1.6,
+    stock: [
+      { id: 'dynamite' }, { id: 'dynamite_bundle' }, { id: 'blasting_charge', minZone: 4 }, { id: 'support_beam' }, { id: 'glow_stake' },
+      { id: 'grub_bar' }, { id: 'tea_flask' }, { id: 'hearty_pie' }, { id: 'spicy_omelette', price: 160 }, { id: 'ember_curry', price: 520 },
+      { id: 'frost_parfait', price: 700, minZone: 5 }, { id: 'pepperroot', price: 45 }, { id: 'rubber_gloves' }, { id: 'heat_suit', minZone: 4 },
+    ],
+    buys: { cats: ['mineral', 'gem'], mult: 0.65, label: 'Ore & gems' },
+    greet: ['Halt. ...Fine. You look harmless. Wipe your boots.', 'Another one, this deep? You\'re either brave or lost.', 'Supplies are dear down here. Hauling them\'s dearer.', 'Hm. Still breathing. Good. Keep it that way.'],
+    lines: [
+      'Everything down here costs more. Blame the stairs.',
+      'Heat suits. Get one before the Magma Deep gets you.',
+      'I\'ll take your ore. Not for much. Long way up with it.',
+      'Dynamite: light, throw, run. If you mix up the order, it\'s on you.',
+      'Saw a light down the east tunnel last night. Didn\'t go look. That\'s how you get old.',
+      'This post has stood forty years. I\'ve stood it twelve. Mostly awake.',
+    ],
+    bought: ['Signed for. Don\'t lose it.', 'Supplies issued.', 'Use it wisely. Or at least quickly.'],
+    sold: ['Logged. It goes up on the next haul.', 'Fine. Not much, mind.', 'It\'ll fetch more in town. Your feet, your choice.'],
+    poor: ['No coin, no kit. Outpost rules.', 'Short. Come back richer.'],
+    bye: ['Stay out of the lava.', 'Back before the lamps go out.', 'Dismissed.'],
+  },
+});
+
 /** Ambient townsfolk chatter. Hints, gossip and nonsense, never instructions. */
 export const TOWN_CHATTER = [
   'My cousin grabbed Bioxide bare-pawed. His fur stood up for a week!',

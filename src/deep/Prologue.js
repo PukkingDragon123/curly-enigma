@@ -1,47 +1,50 @@
-// The opening: the fall drops the mole into Old Star's dig (src/deep/gen/prologue.js), a chamber an
-// old star-nosed mole has been digging for forty years. He has almost got out, but a rockfall pins
-// his legs. Through play he teaches the basics, one at a time, with short lines in a speech bubble:
-//   rocks   dig the rocks off him (each one crumbles after a few blows; he cheers)
-//   ore     the copper glinting in the wall: dig round it, it breaks out as a clump; pick it up,
-//           chip it clean (he gives you his spare chisel), bag it   → src/deep/Clumps.js
-//   ledge   his map is up on a ledge: put up a ladder with the build tool (slot 7), climb, take it
-//           (the radar appears; until then it is hidden)
-//   lifts   he tells about the old lifts, then leads the way down his crawl (walking ahead, waiting
-//           when you lag), to the last plug of earth before the mine-entrance lift; you break
-//           through, he steps into the cage, you ring the bell and ride up together:
-//           goto('home', { from: 'lift', first: true }) with flags prologue, fallen, nugget.
-// Talking to him (E) shows what to do next and offers "Skip the lessons". Wander off and he calls
-// you back (the radar comes back with him on it). Returning players (flag 'prologue') get nothing:
-// the module stays inert. Progress is kept in state.data.deep.prologue.step, so a game continued
-// mid-way picks up where it was (an arrival by lift hears him through the wall).
+// Old Star's mining lesson (docs/REMAKE.md › the lessons). After waking up in his cave workshop you
+// ride the cage lift down with him (deep { from: 'lift', lift: 'L0' }) and he walks you through his
+// practice dig (src/deep/gen/prologue.js), beside you, reacting to what you do:
+//   plug     the lift room's south wall is his loam plug: your first hole            → mine_rock
+//   walk     follow him down his crawl into the dig                                   → reach dig
+//   ore      dig the loam round the copper in the west wall, not the ore itself       → mine_ore
+//   held     pick the clump up, chip it clean with his spare chisel, bag it           → mine_clean
+//   gem      the south wall winks: dig in, a geode, take the amethyst                 → mine_gem
+//   ledge    a ladder (build tool) up to the ledge, take his map (the book's map;
+//            the radar comes on)                                                     → mine_ladder, mine_map
+//   critter  a rock-nibbler comes out of its hole: hold your guard as it jumps
+//            (mouse 2 / F; the scene's own block), then a tap of the pick            → mine_block
+//   back     back through the crawl to the cage with the copper, ring the bell:
+//            home { from: 'lift', lesson: 'mine' }; flag 'prologue' = lesson done    → mine_done
+// He talks through the tutor (game.ui.tutor.say(html, { mood, key })), falling back on a speech
+// bubble over his head; the step's instruction stays up between his other lines. Talking to him (E)
+// shows what to do and offers to skip this lesson (or all of them: lesson 'skip').
+// Progress lives in state.data.deep.prologue.step, so a lesson left half way picks up where it was.
+// Active only while flag('prologue') is unset and the mole came down by the L0 cage (else inert).
 //
 // DigScene hooks: spawn() · update(dt, { player, eye, time, busy }) → events · target(eye, dir, reach)
 // · use(eye, dir, reach) → events | null · lights(eye) · dispose(). Test hooks: prologue.debug.*.
 import * as THREE from 'three';
 import { VOX, M, MAT, ORE_BASE } from './materials.js';
-import { OPAQUE } from './Mesher.js';
 import { CS } from './Generator.js';
-import { prologueLayout, prologueOreVoxels, prologueRockVoxels, prologueWants, prologueBoxes, prologueInside } from './gen/prologue.js';
+import { prologueLayout, prologueOreVoxels, prologueGeodeVoxels, prologueWants, prologueBoxes, prologueInside, prologueCarved } from './gen/prologue.js';
 import { OldStarActor } from './prologue/oldstar.js';
 import { Dressing } from './prologue/dressing.js';
 import { Talk } from './prologue/talk.js';
-import { LINES, GOALS, NAME, VOICE, pickLine } from './prologue/lines.js';
+import { Nibbler } from './prologue/critter.js';
+import { LINES, MOOD, GOALS, NAME, VOICE, pickLine } from './prologue/lines.js';
 import { ITEMS } from '../data/items.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { el, clamp, rand, pick } from '../core/util.js';
 
-const GIFT_CHISEL = true; // Old Star hands over his spare chisel for the clump lesson
-const STEPS = ['intro', 'rocks', 'freed', 'ore', 'loose', 'held', 'ledge', 'climb', 'map', 'lifts', 'walk', 'plug', 'cage', 'ride'];
-// where a continued game resumes for each step
-const RESUME = { intro: 'rocks', freed: 'ore', loose: 'ore', held: 'ore', climb: 'ledge', lifts: 'walk', ride: 'cage' };
+const GIFT_CHISEL = true; // Old Star hands over his spare chisel for the clump
+export const STEPS = ['arrive', 'plug', 'walk', 'ore', 'loose', 'held', 'gem', 'gemfound', 'ledge', 'climb', 'map', 'critter', 'back', 'cage', 'ride'];
+// where a lesson left half way picks up (the clump and the gem are found again from the world)
+const RESUME = { loose: 'ore', held: 'ore', gemfound: 'gem', climb: 'ledge', map: 'ledge', cage: 'back', ride: 'back' };
 const CB = Math.log2(CS);
 const MANMADE = new Set([M.LADDER, M.BOARDS, M.BRICK, M.TIMBER, M.LANTERN, M.DOOR, M.BURROW]);
 // what the generator's cave dressing turns surfaces into (moss, sand, mycelium...)
 const DECOR = new Set([M.MOSS, M.SAND, M.MYCEL, M.VINES, M.ROOTS, M.SNOW, M.ASH].filter((m) => m !== undefined));
+const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
 const col01 = (hex) => [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
-const ease = (t) => t * t * (3 - 2 * t);
-const wrapA = (a) => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
+const after = (a, b) => STEPS.indexOf(a) > STEPS.indexOf(b);
 
 export class Prologue {
   constructor(ctx) {
@@ -52,26 +55,30 @@ export class Prologue {
     this.ui = ctx.ui;
     this.audio = ctx.audio;
     this.fx = ctx.fx;
+    const params = ctx.params || {};
     const feat = ctx.plan?.features?.find((f) => f.kind === 'prologue');
-    this.on = !!feat && !!ctx.plan.prologue && !this.st.flag('prologue');
-    this.from = ctx.params?.from || 'home';
-    // a save from before the opening existed (it never fell into the dig): nothing to teach
-    if (this.on && this.from !== 'fall' && !this.st.data.deep?.prologue) { this.st.flag('prologue', true); this.on = false; }
+    this.from = params.from || 'home';
+    const liftId = this.from === 'lift' ? params.lift || 'L0' : null;
+    this.on = !!feat && !!ctx.plan.prologue && !this.st.flag('prologue') && (liftId === 'L0' || this.from === 'fall' || !!params.lesson);
     this.debug = { on: () => this.on };
     if (!this.on) return;
     const L = this.L = prologueLayout(feat);
     this.time = 0;
     this.cd = {};
-    this.lineQ = null;
     this.co = null;
     this.coWait = 0;
     this.ev = [];
-    // the save: how far we got (and the opening's flags: Nugget fell down with the mole)
+    this.emitted = [];
+    this.lineId = 0;
+    this.lineDone = true;
+    this.lineEnd = 0;
+    this.tipKey = null;
+    // the save: how far the lesson got
     const deep = this.st.data.deep ||= { seed: 1, tunnels: [], stations: [] };
-    this.save = deep.prologue ||= { step: 'intro' };
-    // Nugget fell in too (DigScene brings her along once this is set). 'fallen' and 'prologue'
-    // are set when the opening ends: a game quit half way continues with the fall, back in here.
-    this.st.flag('nugget', true);
+    this.save = deep.prologue ||= { step: 'arrive' };
+    if (!STEPS.includes(this.save.step)) this.save.step = 'arrive';
+    const resume = RESUME[this.save.step] || this.save.step;
+    this.after = after(resume, 'walk') ? resume : null;
     // the scene's own first-visit hints would talk over Old Star: he does the explaining
     if (this.owner?.flags) { this.owner.flags.hintRadar = true; this.owner.flags.firstOre = true; }
     // nothing else grows in his dig (props are placed later, per chunk)
@@ -81,41 +88,35 @@ export class Prologue {
       props.blocked = function (x, y, z, pad = 0.3) { return prologueInside(L, x, y, z, pad) || orig.call(this, x, y, z, pad); };
       this.unpatch = () => { props.blocked = orig; };
     }
-    // Old Star, his camp, his voice
-    // where to pick up: a fresh fall plays the landing first; a later step resumes after it
-    const saved = RESUME[this.save.step] || this.save.step || 'rocks';
-    this.after = STEPS.indexOf(saved) > STEPS.indexOf('rocks') ? saved : 'rocks';
-    const resume = this.from === 'fall' ? 'intro' : saved === 'intro' ? 'rocks' : saved;
-    this.step = resume;
-    const at = resume === 'intro' ? this.after : resume;
-    this.star = new OldStarActor(ctx, this.standFor(at));
-    if (STEPS.indexOf(at) <= STEPS.indexOf('rocks')) this.star.play('pinned');
+    // Old Star (in the cage beside you), his dig, his voice, the critter in its hole
+    this.star = new OldStarActor(ctx, L.spots.arrive);
     this.dress = new Dressing(ctx, L);
-    if (STEPS.indexOf(at) > STEPS.indexOf('map')) this.dress.takeMap();
     this.talk = new Talk(this.ui, this.owner.game.engine, NAME);
+    this.nibbler = new Nibbler(ctx, L);
     this.lantern = new THREE.PointLight(0xffb870, 2.4, 7.5, 1.2);
     this.lantern.position.set(L.lantern.x, L.lantern.y + 0.3, L.lantern.z);
     ctx.scene3.add(this.lantern);
-    // the rocks on his legs, the copper, the plug: voxel lists to watch
-    this.rocks = prologueRockVoxels(L).map((vox, i) => ({ vox, n0: -1, last: -1, hits: 0, gone: STEPS.indexOf(at) > STEPS.indexOf('rocks'), need: i === 0 ? 3 : 2 }));
+    // what the lessons hang on: voxel lists to watch
     this.oreVox = prologueOreVoxels(L);
-    this.ore = { n0: -1, near0: -1, nearLast: -1, hits: 0, free: STEPS.indexOf(at) > STEPS.indexOf('ore') };
-    this.plug = { vox: null, n0: -1, last: -1, hits: 0, open: STEPS.indexOf(at) > STEPS.indexOf('plug') };
+    this.geodeVox = prologueGeodeVoxels(L);
+    this.ore = { n0: -1, nearLast: -1, hits: 0, free: after(resume, 'ore') };
+    this.geode = { n0: -1, last: -1, open: after(resume, 'gem') };
+    this.plug = { vox: null, n0: -1, last: -1, hits: 0, open: false };
+    if (after(resume, 'gem')) this.dress.takeGem();
+    if (after(resume, 'map')) this.dress.takeMap();
     this.scrubbed = new Set();
     this.ores0 = this.st.data.stats.ores;
-    this.radarShown = STEPS.indexOf(at) > STEPS.indexOf('map');
+    this.radarShown = after(resume, 'map');
     this.setupDebug();
-    this.enter(resume, true);
+    this.enter('arrive');
   }
 
   // ------------------------------------------------------------------ DigScene hooks
+  /** Only for an arrival by the old 'fall' route: put the mole in the cage, as if by lift. */
   spawn() {
     if (!this.on) return null;
-    const s = this.L.spawn, o = this.L.o;
-    // the whole chamber meshed before the first frame (the landing looks round it)
-    try { this.owner.terrain?.warm?.(o.x + 0.4, o.y + 1.2, o.z, 3); } catch (e) { /* streaming catches up */ }
-    this.intro = { t: 0, landed: false, landT: 0, yaw0: 0.35, x: s.x, z: s.z };
-    return { x: s.x, y: s.y, z: s.z, yaw: this.intro.yaw0 };
+    const c = this.L.cage;
+    return { x: c.x, y: c.y + 0.02, z: c.z, yaw: Math.PI };
   }
 
   update(dt, o) {
@@ -124,59 +125,59 @@ export class Prologue {
     this.ev = [];
     const pl = o.player, eye = o.eye;
     if (!this.started) this.start(pl);
-    // the opening shot, the ride: the mole stays put
-    if (this.step === 'intro') this.updateIntro(dt, pl);
     if (this.hold) { pl.pos.x = this.hold.x; pl.pos.z = this.hold.z; pl.vel.x = 0; pl.vel.z = 0; }
     this.scrub();
     this.watch(dt, pl);
     if (!o.busy || this.leaving) {
       this.runScript(dt);
       this.stepLogic(dt, pl, eye);
+      for (const e of this.nibbler.update(dt, { player: pl })) this.critterEvent(e);
     }
-    // Old Star: looks at you while he talks (unless something else holds his eye)
+    // Old Star looks at you while he talks (unless something else holds his eye)
     const st = this.star;
-    if (!this.lookPoint) st.lookAt = _w.copy(eye);
-    else st.lookAt = this.lookPoint;
+    st.lookAt = this.lookPoint || _w.copy(eye);
+    st.avoid = pl.pos;
     st.update(dt, eye);
+    if (st.blockedT > 0.7 && !o.busy) this.sayCd('excuse', 9);
     this.dress.update(dt);
-    // glints: the copper in the wall, the map tube on the ledge
+    // glints: the copper in the wall, the geode's wink, the map tube, the amethyst
     this.glintT = (this.glintT || 0) - dt;
     if (this.glintT <= 0) {
-      this.glintT = 0.22;
-      if ((this.step === 'ore' || this.step === 'freed') && !this.ore.free) this.oreGlint();
-      if (this.dress.map && STEPS.indexOf(this.step) >= STEPS.indexOf('ledge')) { const p = this.dress.mapPoint(_v); this.fx?.glints(p.x + rand(-0.2, 0.2), p.y + rand(0, 0.08), p.z + rand(-0.25, 0.25), [1, 0.85, 0.5]); }
+      this.glintT = 0.2;
+      if (this.step === 'ore' && !this.ore.free) this.oreGlint();
+      if (this.step === 'gem' && !this.geode.open) this.geodeGlint();
+      if (this.dress.gem && this.geode.open && Math.random() < 0.6) { const p = this.dress.gemPoint(_v); this.fx?.glints(p.x + rand(-0.06, 0.06), p.y + rand(-0.04, 0.06), p.z + rand(-0.06, 0.06), [0.85, 0.6, 1]); }
+      if (this.dress.map && (this.step === 'ledge' || this.step === 'climb' || this.step === 'map')) { const p = this.dress.mapPoint(_v); this.fx?.glints(p.x + rand(-0.2, 0.2), p.y + rand(0, 0.08), p.z + rand(-0.25, 0.25), [1, 0.85, 0.5]); }
     }
-    // the bubble over his head, the objective tag
+    // words: the step's instruction comes back whenever he isn't saying something else
+    this.tipTick(dt);
     this.talk.update(dt, this.star.headWorld(_v).add(_w.set(0, 0.08, 0)), this.owner.camera);
-    this.talk.goal(this.goalText());
-    // the radar: hidden until he gives you his map (or you're lost without him)
-    if (!this.radarShown && Math.hypot(pl.pos.x - this.L.o.x, pl.pos.z - this.L.o.z) > 14) this.showRadar();
+    this.talk.goal(this.owner.game.quests ? '' : this.goalText());
+    this.guardButton(this.step === 'critter' && this.nibbler.active);
     return this.ev;
   }
 
   target(eye, dir, reach) {
-    if (!this.on || this.step === 'intro' || this.step === 'ride' || this.leaving) return null;
+    if (!this.on || this.step === 'ride' || this.leaving) return null;
     if (this.owner.clumps?.capture?.()) return null;
     const t = this.pickAt(eye, dir, reach);
     if (!t) return null;
     if (t === 'star') return { label: this.step === 'cage' && this.inCage() ? 'Ride up with Old Star' : 'Talk to Old Star', kind: 'use' };
     if (t === 'map') return { label: 'Take Old Star\'s map', kind: 'use' };
-    if (t === 'cage') return { label: this.step === 'cage' ? 'Ring the bell: ride up with Old Star' : 'The old lift', kind: 'use' };
+    if (t === 'gem') return { label: 'Take the amethyst', kind: 'use' };
+    if (t === 'cage') return { label: 'Ring the bell: up with Old Star', kind: 'use' };
     return null;
   }
 
   use(eye, dir, reach) {
-    if (!this.on || this.step === 'intro' || this.step === 'ride' || this.leaving) return null;
+    if (!this.on || this.step === 'ride' || this.leaving) return null;
     const cl = this.owner.clumps;
     if (cl?.capture?.() || cl?.held) return null; // E bags the clump in paw
     const t = this.pickAt(eye, dir, reach);
     if (!t) return null;
     if (t === 'map') { this.takeMap(); return []; }
-    if (t === 'cage' || (t === 'star' && this.step === 'cage' && this.inCage())) {
-      if (this.step === 'cage' && this.inCage()) this.ride();
-      else this.say(LINES.notWithout, { now: true });
-      return [];
-    }
+    if (t === 'gem') return this.takeGem();
+    if (t === 'cage' || (t === 'star' && this.step === 'cage' && this.inCage())) { this.ride(); return []; }
     if (t === 'star') { this.openTalk(); return []; }
     return null;
   }
@@ -188,6 +189,10 @@ export class Prologue {
     out[1].x = L.candle.x; out[1].y = L.ledge.y + 0.3; out[1].z = L.candle.z;
     const lp = this.star.rig.lampWorld(_v);
     out[2].x = lp.x; out[2].y = lp.y; out[2].z = lp.z;
+    if (this.geode.open && this.dress.gem) {
+      out[3] ||= { x: 0, y: 0, z: 0, c: [0.55, 0.3, 0.8], r: 1.4 };
+      out[3].x = L.gem.x; out[3].y = L.gem.y + 0.1; out[3].z = L.gem.z - 0.1;
+    } else out.length = 3;
     return out;
   }
 
@@ -197,78 +202,69 @@ export class Prologue {
     this.star?.dispose();
     this.dress?.dispose();
     this.talk?.dispose();
+    this.nibbler?.dispose();
+    this.guardButton(false);
+    this.tutor?.hide?.('os-tip');
     if (this.lantern) { this.c.scene3.remove(this.lantern); this.lantern.dispose?.(); }
   }
 
   // ------------------------------------------------------------------ steps
-  /** Where Old Star stands (or sits) for a step. */
-  standFor(step) {
-    const L = this.L, o = L.o;
-    const i = STEPS.indexOf(step);
-    if (i <= STEPS.indexOf('rocks')) return { ...L.star };
-    if (i <= STEPS.indexOf('held')) return { x: o.x - 2.2, y: o.y, z: o.z + 1.0, yaw: -Math.PI / 2 - 0.4 };
-    if (i <= STEPS.indexOf('lifts')) return { x: o.x + 1.85, y: o.y, z: o.z + 0.9, yaw: Math.PI / 2 + 0.5 };
-    if (step === 'walk' || step === 'plug') return { ...L.nookSide, yaw: Math.PI };
-    return { ...L.cage, yaw: 0 };
+  get tutor() { return this.owner?.game?.ui?.tutor || null; }
+
+  /** Tell the quests (docs/REMAKE.md: act 'lesson' steps), once each. */
+  lesson(step) {
+    if (this.emitted.includes(step)) return;
+    this.emitted.push(step);
+    this.act('lesson', { step });
+  }
+  act(type, data = {}) {
+    if (typeof this.owner?.act === 'function') this.owner.act(type, data);
+    else this.st.emit?.('act', { ...data, type });
   }
 
-  enter(step, resume = false) {
+  enter(step, quiet = false) {
     this.step = step;
-    if (STEPS.indexOf(step) > STEPS.indexOf(this.save.step) && this.save.step !== 'done') this.save.step = step; // never back
+    if (after(step, this.save.step)) this.save.step = step;
     this.stepT = 0;
     this.lookPoint = null;
-    const L = this.L, star = this.star;
+    this.co = null;
+    this.setTip(null);
     switch (step) {
-      case 'intro': break;
-      case 'rocks':
-        star.play('pinned');
-        if (resume && this.from !== 'fall') this.run(this.callScript());
-        break;
-      case 'freed': this.run(this.freedScript()); break;
-      case 'ore':
-        if (resume) { star.pos.set(this.standFor('ore').x, L.o.y, this.standFor('ore').z); star.play('point'); star.faceTo(L.ore); }
-        this.run(this.oreScript(resume));
-        break;
+      case 'arrive': this.run(this.arriveScript()); break;
+      case 'plug': this.run(this.plugScript()); break;
+      case 'walk': this.run(this.walkScript(quiet)); break;
+      case 'ore': this.run(this.oreScript()); break;
       case 'loose': this.run(this.looseScript()); break;
       case 'held': this.run(this.heldScript()); break;
-      case 'ledge': this.run(this.ledgeScript(resume)); break;
-      case 'climb': this.run(this.lineScript(['ladderUp'])); break;
-      case 'map': this.run(this.lineScript(['mapTake'])); break;
-      case 'lifts': this.run(this.liftsScript()); break;
-      case 'walk': this.run(this.walkScript(resume)); break;
-      case 'plug': this.run(this.plugScript()); break;
-      case 'cage': this.run(this.cageScript(resume)); break;
+      case 'gem': this.run(this.gemScript()); break;
+      case 'gemfound': this.run(this.gemFoundScript()); break;
+      case 'ledge': this.run(this.ledgeScript()); break;
+      case 'climb': this.setTip(null); this.say('ladderUp'); break;
+      case 'map': this.setTip('mapTip'); break;
+      case 'critter': this.run(this.critterScript()); break;
+      case 'back': this.run(this.backScript()); break;
+      case 'cage': this.run(this.cageScript()); break;
       case 'ride': break;
     }
   }
 
   goalText() {
-    if (this.from === 'lift' && !this.plug.open && this.inLiftRoom(this.owner.player)) return 'Old Star is calling through the south wall';
     if (this.step === 'ledge' && this.ladderCount() >= 6) return GOALS.climb;
     return GOALS[this.step] ?? '';
   }
 
-  /** First frame: lights, the radar, where a continued game puts the mole. */
+  /** First frame: lights, the radar (his map shows it), the opening lesson act. */
   start(pl) {
     this.started = true;
     this.star.light(!!this.owner.nugget);
     this.radarFn = (o) => {
       const r = this.owner.radar(o);
-      r.markers = r.markers.filter((m) => m.kind !== 'town');
       if (!this.leaving) r.markers.push({ kind: 'home', x: this.star.pos.x, y: this.star.pos.y + 0.5, z: this.star.pos.z, label: NAME, color: 0xff8ab0 });
       return r;
     };
     if (this.radarShown) this.showRadar(); else this.ui.setRadar?.(null);
-    // continued mid-way (not by the fall, not by lift): back in his dig, facing him
-    if (this.from !== 'fall' && this.from !== 'lift') {
-      const o = this.L.o;
-      pl.pos.set(o.x + 0.6, o.y + 0.05, o.z - 0.3);
-      pl.vel.set(0, 0, 0);
-      const s = this.star.pos;
-      pl.yaw = Math.atan2(-(s.x - pl.pos.x), -(s.z - pl.pos.z));
-      pl.pitch = -0.12;
-      this.owner.terrain?.warm?.(pl.pos.x, pl.pos.y + 0.5, pl.pos.z, 2);
-    }
+    this.lesson('dig');
+    void pl;
   }
 
   showRadar() {
@@ -276,62 +272,69 @@ export class Prologue {
     this.ui.setRadar?.(this.radarFn, { heading: () => this.owner.player.yaw });
   }
 
-  /** The landing: falling through the roof, a thump, seeing stars, a look round, Old Star calling. */
-  updateIntro(dt, pl) {
-    const I = this.intro || (this.intro = { t: 0, landed: true, landT: 0, yaw0: pl.yaw, x: pl.pos.x, z: pl.pos.z });
-    I.t += dt;
-    if (!I.landed) {
-      pl.pitch = Math.max(-1.25, pl.pitch - dt * 1.6);
-      if (pl.grounded || I.t > 2.5) {
-        I.landed = true;
-        I.landT = 0;
-        I.yawL = pl.yaw;
-        this.hold = { x: pl.pos.x, z: pl.pos.z };
-        this.audio.play('thud', { vol: 0.8 });
-        this.owner.shake?.(0.7);
-        if (this.owner.post) { this.owner.post.flash = 0.5; this.owner.post.flashColor = 0xfff0d8; }
-        this.fx?.dust(pl.pos.x, pl.pos.y + 0.05, pl.pos.z, 18, [0.55, 0.45, 0.36], 0.45);
-        for (let k = 0; k < 8; k++) this.fx?.chips(pl.pos.x + rand(-0.4, 0.4), pl.pos.y + 2.4, pl.pos.z + rand(-0.4, 0.4), 1, [0.45, 0.35, 0.26], [0, -1, 0]);
-      }
-      return;
-    }
-    I.landT += dt;
-    const t = I.landT;
-    const s = this.star.headWorld(_v);
-    const toYaw = Math.atan2(-(s.x - pl.pos.x), -(s.z - pl.pos.z));
-    const toPitch = Math.atan2(s.y - (pl.pos.y + 0.72), Math.hypot(s.x - pl.pos.x, s.z - pl.pos.z));
-    // dazed: the head lolls, little stars circle
-    if (t < 1.4) {
-      pl.pitch += (-0.55 - pl.pitch) * Math.min(1, dt * 2.5);
-      if (this.owner.kick) this.owner.kick.z = Math.sin(t * 4.2) * 0.07 * (1 - t / 1.4);
-      if (Math.random() < dt * 22) this.dizzy(pl, t);
-    } else if (t < 2.5) {
-      // a look round the chamber
-      const k = (t - 1.4) / 1.1;
-      pl.yaw = I.yawL + Math.sin(k * Math.PI) * 0.55;
-      pl.pitch += (-0.05 - pl.pitch) * Math.min(1, dt * 3);
+  // ------------------------------------------------------------------ talking
+  /** Say a line (a LINES key, or text). o: { mood, dur, key }. Returns a predicate: the line is over. */
+  say(line, o = {}) {
+    const touch = this.owner.isTouch?.();
+    const k = typeof line === 'string' && LINES[line] !== undefined ? line : null;
+    let text = k ? LINES[k] : line;
+    if (Array.isArray(text)) text = pick(text);
+    text = pickLine(text, touch);
+    if (!text) return () => true;
+    const mood = o.mood || (k && MOOD[k]) || 'calm';
+    const plain = text.replace(/<[^>]+>/g, '');
+    const dur = o.dur ?? clamp(1.4 + plain.length * 0.05, 2.2, 6.5);
+    const id = ++this.lineId;
+    this.lineDone = false;
+    const until = this.time + dur + plain.length / 42 * 0.4;
+    const tutor = this.tutor;
+    if (tutor) {
+      this.talk.hide();
+      const p = tutor.say(text, { mood, key: o.key || 'os-' + (k || 'line'), dur: o.dur });
+      p?.then?.(() => { if (this.lineId === id) { this.lineDone = true; this.lineEnd = this.time; } });
     } else {
-      // and toward the voice
-      const k = ease(clamp((t - 2.5) / 0.9, 0, 1));
-      pl.yaw = I.yawL + wrapA(toYaw - I.yawL) * k;
-      pl.pitch += (toPitch - pl.pitch) * Math.min(1, dt * 4);
+      this.talk.show(text, dur);
+      const d = this.owner.player ? this.star.pos.distanceTo(this.owner.player.pos) : 3;
+      this.audio.play('babble', { pitch: VOICE.pitch * rand(0.95, 1.05), n: clamp(Math.round(plain.length / 9), 2, 8), wave: VOICE.wave, vol: d > 9 ? 0.5 : 1 });
     }
-    const again = this.after !== 'rocks';
-    if (t > 1.0 && !I.said) { I.said = true; this.say(again ? LINES.again : LINES.hello, { dur: 2.6 }); this.star.rig.waveArm = !again; }
-    if (t > 3.5) {
-      this.star.rig.waveArm = false;
-      this.hold = null;
-      if (again) { this.enter(this.after, true); return; }
-      this.enter('rocks');
-      this.run(this.lineScript(['overHere', 'rocks']));
-    }
+    this.star.rig.talk(Math.min(dur * 0.8, 0.6 + plain.length / 26));
+    this.star.mood(mood, dur);
+    if (Math.random() < 0.4) this.star.rig.sniff?.(0.7);
+    this.lineUntil = until;
+    return () => this.lineId !== id || this.lineDone || this.time > until;
   }
+  /** A line at most every cd seconds (per key), and never over a scripted one. */
+  sayCd(key, cd = 8) {
+    if (this.cd[key] && this.time - this.cd[key] < cd) return false;
+    if (this.co && !this.lineOver()) return false;
+    this.cd[key] = this.time;
+    this.say(key);
+    return true;
+  }
+  lineOver() { return this.lineDone || this.time > (this.lineUntil || 0); }
 
-  dizzy(pl, t) {
-    const a = this.time * 5 + Math.random() * 6.28, r = 0.18;
-    const f = pl.forward(_w);
-    const cx = pl.pos.x + f.x * 0.6, cy = pl.pos.y + 0.95, cz = pl.pos.z + f.z * 0.6;
-    this.fx?.spawn({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a * 2) * 0.03, z: cz + Math.sin(a) * r, vx: -Math.sin(a) * 0.5, vz: Math.cos(a) * 0.5, life: 0.5, size: 0.02, color: [1, 0.9, 0.4], glow: true });
+  /** The step's standing instruction (a LINES key, or null). */
+  setTip(key) {
+    this.tipKey = key;
+    this.tipShown = null;
+    if (!key) { this.tutor?.hide?.('os-tip'); }
+  }
+  tipTick() {
+    const key = this.tipKey;
+    if (!key) return;
+    const tutor = this.tutor;
+    if (tutor) {
+      const act = tutor.active;
+      if (act && act.key !== 'os-tip') return; // he's saying something else
+      if (!act && this.time - (this.lineEnd || 0) < 0.6 && !this.lineOver()) return;
+      if (act && this.tipShown === key) return;
+      const text = pickLine(LINES[key], this.owner.isTouch?.());
+      tutor.say(text, { mood: MOOD[key] || 'calm', key: 'os-tip', dur: Infinity });
+      this.tipShown = key;
+    } else if (!this.talk.showing && this.time - (this.tipAt || -99) > 7) {
+      this.tipAt = this.time;
+      this.talk.show(pickLine(LINES[key], this.owner.isTouch?.()), 6);
+    }
   }
 
   // ------------------------------------------------------------------ scripts (generators: yield seconds or a predicate)
@@ -350,76 +353,78 @@ export class Prologue {
     }
   }
 
-  /** Say a line (key into LINES, or text): returns how long it shows. */
-  say(line, o = {}) {
-    const touch = this.owner.isTouch?.();
-    let text = typeof line === 'string' && LINES[line] !== undefined ? LINES[line] : line;
-    if (Array.isArray(text)) text = pick(text);
-    text = pickLine(text, touch);
-    if (!text) return 0;
-    const plain = text.replace(/<[^>]+>/g, '');
-    const dur = o.dur ?? clamp(1.5 + plain.length * 0.052, 2.2, 6.5);
-    this.talk.show(text, dur);
-    const d = this.owner.player ? this.star.pos.distanceTo(this.owner.player.pos) : 3;
-    this.audio.play('babble', { pitch: VOICE.pitch * rand(0.95, 1.05), n: clamp(Math.round(plain.length / 9), 2, 8), wave: VOICE.wave, vol: d > 9 ? 0.5 : 1 });
-    this.star.rig.talk(Math.min(dur * 0.75, 0.6 + plain.length / 28));
-    if (Math.random() < 0.5) this.star.rig.sniff(0.8);
-    return dur;
-  }
-  /** A line at most every cd seconds (per key). */
-  sayCd(key, cd = 8) {
-    if (this.cd[key] && this.time - this.cd[key] < cd) return 0;
-    if (this.talk.showing && this.co) return 0;
-    this.cd[key] = this.time;
-    return this.say(key);
-  }
-
-  *lineScript(keys) { for (const k of keys) yield this.say(k) + 0.25; }
-
-  *callScript() {
-    // a continued game: he calls out once you're near
-    yield () => this.near(9);
-    yield this.say('overHere');
-    yield this.say('rocks');
-  }
-
-  *freedScript() {
-    const star = this.star;
-    star.rig.squash = 1;
-    star.play('stretch');
-    this.audio.play('success', { vol: 0.5 });
-    yield 0.4;
-    yield this.say('free') + 0.1;
-    star.play('dust');
-    yield 0.9;
+  *arriveScript() {
+    const star = this.star, L = this.L, S = L.spots;
     star.play('idle');
-    // a step out of the rubble, toward you
-    const o = this.L.o;
-    star.walk([{ x: star.pos.x + 0.35, y: o.y, z: star.pos.z - 0.35 }], null, 0.8);
-    yield this.say('name') + 0.2;
-    if (this.owner.nugget) { star.rig.doEmote('surprise', 1); yield this.say('hen') + 0.2; }
-    this.enter('ore');
+    yield 0.4;
+    // out of the cage (its open side is +z), a word over his shoulder once there's room to see him,
+    // then on to the plug
+    const pl = this.owner.player;
+    star.walk([{ x: S.arrive.x, y: L.lift.y, z: L.lift.z + 0.55 }, { x: L.lift.x + 0.2, y: L.lift.y, z: L.lift.z + 1.5 }], null, 0.9);
+    star.squeeze = 2.2; // it's a small cage: he edges past you rather than waiting for you to move
+    yield () => !star.path || this.stepT > 4;
+    if (pl) star.faceTo(pl.pos);
+    const said = this.say(this.after ? 'again' : 'arrive');
+    yield 1.6;
+    star.walk([{ x: L.lift.x + 0.15, y: L.lift.y, z: L.lift.z + 1.9 }, S.plug], () => { star.faceTo(this.plugFace()); }, 0.9);
+    yield said;
+    yield () => !star.path;
+    if (this.after) {
+      if (this.after === 'back') { this.after = null; this.enter('cage'); return; }
+      this.enter(this.plugOpen() ? 'walk' : 'plug', true);
+      return;
+    }
+    if (this.plugOpen()) { this.enter('walk'); return; }
+    this.enter('plug');
   }
 
-  *oreScript(resume) {
-    const star = this.star, L = this.L, sp = this.standFor('ore');
-    if (!resume) {
-      star.walk([{ x: sp.x, y: L.o.y, z: sp.z }], () => { star.faceTo(L.ore); star.play('point'); });
-      yield () => !star.path;
-    }
+  *plugScript() {
+    const star = this.star, L = this.L, pc = this.plugFace();
+    star.faceTo(pc);
+    star.play('point');
+    this.lookPoint = new THREE.Vector3(pc.x, pc.y, pc.z);
+    yield this.say('plug');
+    this.lookPoint = null;
+    star.play('idle');
+    this.setTip('plugTip');
+  }
+
+  *walkScript(quiet) {
+    const star = this.star, L = this.L, LP = (x, z) => ({ x: L.lift.x + x, y: L.lift.y, z: L.lift.z + z });
+    const C = L.crawl;
+    const ez = this.entryZ();
+    const path = [LP(0.35, ez), LP(1.25, ez + 0.05), L.corner, ...C.slice(0, -1).reverse(), { x: L.mouth.x + 0.35, y: L.o.y, z: L.mouth.z - 0.5 }, L.spots[this.after && this.after !== 'back' ? this.after : 'ore'] || L.spots.ore];
+    this.walking = true;
+    if (this.walkFromPlug) { this.walkFromPlug = false; star.play('cheer'); yield this.say('plugDone'); }
+    star.play('beckon');
+    if (!quiet) yield this.say('follow');
+    star.play('idle');
+    star.walk(path, null, 1.0);
+    yield () => !star.path;
+    this.walking = false;
+    yield this.say('welcome');
+    this.enter(this.after || 'ore', true);
+    this.after = null;
+  }
+
+  *oreScript() {
+    const star = this.star, L = this.L, sp = L.spots.ore;
+    if (star.pos.distanceTo(_v.set(sp.x, sp.y, sp.z)) > 0.4) { star.walk([sp]); yield () => !star.path; }
+    if (this.ore.free) { this.enter('loose', true); return; }
     this.lookPoint = new THREE.Vector3(L.ore.x, L.ore.y, L.ore.z);
     star.faceTo(L.ore);
     star.play('point');
-    yield this.say('oreSee') + 0.3;
+    yield this.say('oreSee');
     this.lookPoint = null;
-    yield this.say('oreDig');
     star.play('idle');
+    this.setTip('oreTip');
   }
 
   *looseScript() {
     this.star.play('cheer');
     yield this.say('oreLoose');
     this.star.play('idle');
+    this.setTip('looseTip');
   }
 
   *heldScript() {
@@ -430,174 +435,270 @@ export class Prologue {
       this.owner.updateHotbar?.();
       this.ui.toast(`+ <b>${ITEMS.chisel_basic.name}</b> from Old Star`, { icon: iconURL('chisel_basic'), kind: 'good' });
       this.audio.play('pickup', { pitch: 0.9 });
-      yield this.say('oreChisel') + 0.2;
+      yield this.say('oreChisel');
     }
-    yield this.say('oreHeld');
+    this.setTip('heldTip');
   }
 
-  *ledgeScript(resume) {
-    const star = this.star, L = this.L, sp = this.standFor('ledge');
-    star.walk([{ x: sp.x, y: L.o.y, z: sp.z }], () => { star.faceTo(L.map); star.play('point'); });
+  *gemScript() {
+    const star = this.star, L = this.L, sp = L.spots.gem;
+    star.walk([sp]);
     yield () => !star.path;
-    this.lookPoint = this.dress.mapPoint(new THREE.Vector3());
-    yield this.say('ledge') + 0.3;
-    yield this.say('ladder');
-    this.lookPoint = null;
-    star.play('idle');
-  }
-
-  *liftsScript() {
-    const star = this.star;
-    star.faceTo(this.owner.player.pos);
-    star.play('idle');
-    yield this.say('mapGot') + 0.3;
-    yield this.say('lifts') + 0.3;
-    star.play('beckon');
-    yield this.say('follow');
-    this.enter('walk');
-  }
-
-  *walkScript(resume) {
-    const star = this.star, L = this.L;
-    if (resume) {
-      star.pos.set(L.nookSide.x, L.nookSide.y, L.nookSide.z);
-    } else {
-      const pts = [{ x: L.mouth.x + 0.35, y: L.o.y, z: L.mouth.z - 0.45 }, ...L.crawl.slice(1), L.corner, { x: L.nook.x + 0.6, y: L.nook.y, z: L.nook.z }, L.nookSide];
-      star.walk(pts, null, 1.05);
-      yield () => !star.path;
-    }
-    this.enter('plug');
-  }
-
-  *plugScript() {
-    const star = this.star, L = this.L;
-    star.face(Math.PI);
+    if (this.geode.open) { this.enter('gemfound', true); return; }
+    this.lookPoint = new THREE.Vector3(L.geode.x, L.geode.y, L.geode.wallZ);
+    star.faceTo({ x: L.geode.x, z: L.geode.wallZ });
     star.play('point');
-    this.lookPoint = new THREE.Vector3((L.plug.x0 + L.plug.x1) / 2, L.plug.y0 + 0.5, L.plug.z0 + 0.2);
-    yield () => this.near(2.6);
-    yield this.say('plug') + 0.2;
-    this.lookPoint = null;
+    yield this.say('gemSee');
     star.play('idle');
-    yield this.say('plugGo');
+    this.setTip('gemTip');
   }
 
-  *cageScript(resume) {
-    const star = this.star, L = this.L;
-    if (!resume) {
-      star.play('cheer');
-      this.audio.play('fanfare', { vol: 0.5 });
-      yield this.say('out') + 0.1;
-      star.play('idle');
-      star.walk([{ x: L.door.x, y: L.door.y, z: L.door.z + 0.9 }, L.door, L.cage], () => { star.face(0); star.play('beckon'); });
-      yield () => !star.path;
-    } else {
-      star.pos.set(L.cage.x, L.cage.y, L.cage.z);
-      star.face(0, true);
+  *gemFoundScript() {
+    this.star.play('cheer');
+    this.audio.play('sparkle');
+    yield this.say('gemOpen');
+    this.star.play('idle');
+    this.setTip('gemTake');
+  }
+
+  *ledgeScript() {
+    const star = this.star, L = this.L, sp = L.spots.ledge;
+    star.walk([sp], null);
+    yield () => !star.path;
+    star.faceTo(L.map);
+    star.play('point');
+    this.lookPoint = this.dress.mapPoint(new THREE.Vector3());
+    yield this.say('ledge');
+    this.lookPoint = null;
+    star.play('idle');
+    this.setTip('ladderTip');
+  }
+
+  *critterScript() {
+    const star = this.star, L = this.L, pl = this.owner.player;
+    // down off the ledge first, and a moment's peace
+    yield () => pl.pos.y < L.ledge.y - 0.6 && pl.grounded;
+    yield 1.2;
+    star.walk([L.spots.critter]);
+    yield () => !star.path;
+    this.audio.play('click', { vol: 0.6, pitch: 0.7 });
+    this.audio.play('debris', { vol: 0.4 });
+    this.lookPoint = new THREE.Vector3(L.burrow.x, L.burrow.y, L.burrow.z);
+    star.faceTo(L.burrow);
+    star.play('point');
+    yield this.say('scratch');
+    this.nibbler.emerge();
+    star.play('idle');
+    this.lookPoint = null;
+    this.setTip('blockTip');
+  }
+
+  *backScript() {
+    const star = this.star, L = this.L, LP = (x, z) => ({ x: L.lift.x + x, y: L.lift.y, z: L.lift.z + z });
+    this.walking = true;
+    star.play('beckon');
+    yield this.say('done');
+    star.play('idle');
+    const C = L.crawl;
+    star.walk([{ x: L.mouth.x + 0.35, y: L.o.y, z: L.mouth.z - 0.5 }, ...C.slice(1), LP(1.25, this.entryZ() + 0.05), LP(0.3, this.entryZ() - 0.05), LP(0.1, 1.7), L.door, L.cage], () => { star.face(0); star.play('beckon'); }, 1.0);
+    yield () => !star.path;
+    this.walking = false;
+    this.enter('cage');
+  }
+
+  /**
+   * Where (z, world meters) to cross between the trail and his crawl: the trail's timber frames can
+   * stand right by the hole, so he picks the clearest lane near its middle (once the chunks are in).
+   */
+  entryZ() {
+    if (this.entryZc != null) return this.entryZc;
+    const f = this.L.lift, w = this.w;
+    let best = f.z + 2.55, bestCost = Infinity;
+    for (let z = f.z + 2.2; z <= f.z + 2.951; z += 0.05) {
+      let n = 0;
+      for (let x = f.x + 0.25; x < f.x + 0.85; x += 1 / VOX) for (let y = f.y + 0.3; y < f.y + 1.0; y += 2 / VOX) for (let dz = -0.24; dz <= 0.24; dz += 1 / VOX) {
+        const m = w.voxelAt(Math.floor(x * VOX), Math.floor(y * VOX), Math.floor((z + dz) * VOX));
+        if (m && !MAT[m]?.fluid) n++;
+      }
+      const cost = n * 10 + Math.abs(z - (f.z + 2.55));
+      if (cost < bestCost) { bestCost = cost; best = z; }
     }
+    if (bestCost < 10) this.entryZc = best; // a clear lane: keep it (else the chunks aren't in yet)
+    return best;
+  }
+
+  *cageScript() {
+    const star = this.star, L = this.L;
+    if (!this.inCage()) { star.walk([L.door, L.cage], null, 1.0); yield () => !star.path; }
+    star.face(0);
     star.play('beckon');
     yield () => this.near(3.2);
-    yield this.say('cage') + 0.2;
+    yield this.say('cage');
     star.play('idle');
-    yield this.say('bell');
+    this.setTip('bell');
   }
 
   // ------------------------------------------------------------------ per-step checks
   stepLogic(dt, pl, eye) {
     this.stepT += dt;
-    const step = this.step, star = this.star;
+    const step = this.step, star = this.star, L = this.L;
     const far = star.pos.distanceTo(pl.pos);
-    // wandered off: he calls you back (not while he's walking you somewhere)
-    if (far > 9 && step !== 'intro' && step !== 'ride' && step !== 'walk' && !(this.from === 'lift' && step === 'rocks')) {
-      this.sayCd('comeBack', 11);
-      if (step !== 'rocks') star.play('beckon');
+    // wandered off: he calls you back (not while he's leading the way)
+    if (far > 10 && !this.walking && step !== 'ride') { if (this.sayCd('comeBack', 12)) star.play('beckon'); }
+    // walking ahead: wait (and call) when you fall behind
+    if (this.walking && star.path) {
+      if (far > 3.8 && !star.paused) { star.paused = true; star.faceTo(pl.pos); star.play('beckon'); star.rig.play('beckon'); this.sayCd('wait', 8); }
+      else if (star.paused && far < 2.6) { star.paused = false; star.play('idle'); }
+      else if (!star.paused && Math.random() < dt * 0.06) this.sayCd(step === 'back' ? 'back' : 'walk', 10);
     }
-    // arriving by lift with him still in the dig: he's heard through the wall
-    if (this.from === 'lift' && !this.plug.open && far > 4 && this.inLiftRoom(pl)) {
-      if (!this.cd.wall || this.time - this.cd.wall > 14) { this.cd.wall = this.time; this.say('Hello? Somebody at the old lift? I\'m just through the south wall, dig toward me!', { dur: 5 }); }
+    // the chamber reached
+    if (!this.reached && prologueInside(L, pl.pos.x, pl.pos.y + 0.3, pl.pos.z, -0.3) && pl.pos.z < L.o.z + 2.5) { this.reached = true; this.act('reach', { place: 'dig' }); }
+    // pick swings: on the ore (a telling-off), on the critter (a bonk)
+    const sw = this.owner.swing;
+    if (sw && sw.hit && !this.swingSeen) {
+      this.swingSeen = true;
+      const tg = this.owner.target, f = pl.forward(_w);
+      if (this.nibbler.active && this.nibbler.hit(eye, f, 2.3) !== null) this.bonkNibbler(f);
+      else if (step === 'ore' && tg && tg.m >= ORE_BASE && Math.hypot((tg.vx + 0.5) / VOX - L.ore.x, (tg.vz + 0.5) / VOX - L.ore.z) < 0.5) this.sayCd('oreHit', 6);
     }
-    if (step === 'rocks') {
-      if (!this.co && this.stepT > 14 && far < 9) { this.sayCd('rocksAgain', 13); }
-      if (this.rocks.every((r) => r.gone)) this.enter('freed');
+    if (!sw) this.swingSeen = false;
+    if (step === 'plug') {
+      if (this.plug.open) { this.lesson('mine_rock'); this.enter('walk'); this.walkFromPlug = true; }
     } else if (step === 'ore') {
       if (this.ore.free) this.enter(this.owner.clumps ? 'loose' : 'held');
-      // the pick on the ore itself
-      const sw = this.owner.swing, tg = this.owner.target;
-      if (sw && sw.hit && !this.swingSeen && tg && tg.m >= ORE_BASE && Math.hypot((tg.vx + 0.5) / VOX - this.L.ore.x, (tg.vz + 0.5) / VOX - this.L.ore.z) < 0.5) { this.swingSeen = true; this.sayCd('oreHit', 6); }
-      if (!sw) this.swingSeen = false;
     } else if (step === 'loose') {
       const cl = this.owner.clumps, c = this.clump;
-      if (!cl || !c) this.bagged(); // nothing to pick up (bagged in an earlier session)
+      if (!cl || !c) this.bagged();
       else if (c.state === 'gone' || c.state === 'stash') { if (this.st.data.stats.ores > this.ores0 || c.state === 'gone') this.bagged(); }
       else if (cl.held === c) this.enter('held');
       this.lookPoint = c && c.state === 'world' ? c.pos : null;
     } else if (step === 'held') {
       const cl = this.owner.clumps, c = this.clump;
       if (this.st.data.stats.ores > this.ores0) this.bagged();
-      else if (cl && c && c.state === 'world' && cl.held !== c) { this.say('oreDropped'); this.enter('loose'); }
-      else if (!c && this.stepT > 1) this.bagged(); // no clumps module: the ore flew straight to the bag
+      else if (cl && c && c.state === 'world' && cl.held !== c) { this.say('oreDropped'); this.enter('loose', true); this.setTip('looseTip'); }
+      else if (!c && this.stepT > 1) this.bagged();
+      else if (cl?.held === c && this.owner.slotName === 'pick' && this.stepT > 6) this.sayCd('heldPick', 30);
+    } else if (step === 'gem') {
+      if (this.geode.open) this.enter('gemfound');
+      else if (!this.co && this.stepT > 18 && !this.looking(L.geode, 0.8)) this.sayCd('gemWhere', 18);
     } else if (step === 'ledge' || step === 'climb' || step === 'map') {
       const n = this.ladderCount();
       if (step === 'ledge' && n >= 6) this.enter('climb');
       if (step === 'ledge' && this.owner.slotName === 'build' && this.owner.buildMode > 0) this.sayCd('ladderMode', 9);
       if (step !== 'map' && this.onLedge(pl)) {
         if (n < 6) this.say('claws');
+        this.lesson('mine_ladder');
         this.enter('map');
       }
-      if (step === 'ledge' && !this.co && this.stepT > 16) this.sayCd('ladder', 16);
+      if (step === 'ledge' && !this.co && this.stepT > 20) this.sayCd('ladderTip', 20);
       this.lookPoint = step === 'map' ? null : this.dress.mapPoint(_v.clone());
-    } else if (step === 'plug') {
-      if (this.plug.open) this.enter('cage');
-    } else if (step === 'walk') {
-      // walking ahead; waiting (and calling) when you fall behind
-      if (star.path) {
-        if (far > 3.8 && !star.paused) { star.paused = true; star.faceTo(pl.pos); star.play('beckon'); star.rig.play('beckon'); this.sayCd('wait', 7); }
-        else if (star.paused && far < 2.6) { star.paused = false; star.play('idle'); }
-        else if (!star.paused && Math.random() < dt * 0.08) this.sayCd('walk', 9);
-      }
+    } else if (step === 'critter') {
+      const nb = this.nibbler;
+      if (nb.active) this.lookPoint = _v.copy(nb.pos).setY(nb.pos.y + 0.1).clone();
+      if (nb.state === 'dizzy' && !this.dizzyAt) { this.dizzyAt = this.time; this.setTip('bonkTip'); this.say('bonkTip'); }
+      // a hand from Old Star if it drags on: he shoos it with his pick
+      const stuck = nb.active && nb.state !== 'flee' && (nb.hits >= 4 || this.stepT > 70 || (this.dizzyAt && this.time - this.dizzyAt > 9));
+      if (stuck && !this.shooing) this.shoo();
+      if (!nb.active && nb.state === 'gone' && !this.critterDone) { this.critterDone = true; this.lesson('mine_block'); this.after = null; this.run(this.afterCritter()); }
+    } else if (step === 'cage') {
+      // a mole already in the cage gets a nudge to ring
     }
+  }
+
+  *afterCritter() {
+    this.setTip(null);
+    yield this.say(this.shooing ? 'fled' : 'fled');
+    yield 0.4;
+    this.enter('back');
+  }
+
+  critterEvent(e) {
+    if (e.tell) { this.star.mood('worried', 1.2); this.star.rig.sniff?.(0.6); this.tipShown = null; return; }
+    if (e.guarded !== undefined) {
+      if (e.guarded === 'parried') this.say('parried');
+      else if (e.guarded === 'blocked') { if (this.nibbler.blocks < 2) this.say('blocked'); }
+      else this.say('blockLate');
+      return;
+    }
+    if (e.damage || e.blocked || e.parried) this.ev.push(e); // the scene hurts the mole or rings the guard
+  }
+
+  bonkNibbler(f) {
+    const r = this.nibbler.bonk(f);
+    if (r === 'recoil' && this.nibbler.blocks < 2) this.sayCd('bonkEarly', 12);
+    if (r) this.owner.vm?.impact?.('pick', 0.5);
+  }
+
+  shoo() {
+    this.shooing = true;
+    const star = this.star, nb = this.nibbler;
+    star.faceTo(nb.pos);
+    star.walk([{ x: nb.pos.x + (star.pos.x - nb.pos.x) * 0.4, y: nb.pos.y, z: nb.pos.z + (star.pos.z - nb.pos.z) * 0.4 }], () => {
+      star.faceTo(nb.pos);
+      star.swing();
+      this.audio.play('whoosh', { vol: 0.5 });
+      setTimeout(() => { this.audio.play('hit', { snd: 'stone', vol: 0.5 }); nb.flee(); }, 300);
+    }, 1.6);
+    this.say('shoo');
   }
 
   near(r) { const p = this.owner.player.pos; return this.star.pos.distanceTo(p) < r; }
   inCage() { const s = this.star.pos, c = this.L.cage; return Math.hypot(s.x - c.x, s.z - c.z) < 0.4 && !this.star.path; }
-  inLiftRoom(pl) { const R = this.L.room; return pl.pos.x > R.x0 && pl.pos.x < R.x1 && pl.pos.z > R.z0 && pl.pos.z < R.z1 && Math.abs(pl.pos.y - R.y0) < 1.5; }
   onLedge(pl) { const G = this.L.ledge; return pl.pos.x > G.x0 - 0.12 && pl.pos.y > G.y - 0.15 && pl.pos.y < G.y + 0.6 && pl.pos.z > G.z0 - 0.1 && pl.pos.z < G.z1 + 0.1 && pl.grounded; }
-
-  bagged() {
-    if (this.step === 'ledge' || STEPS.indexOf(this.step) > STEPS.indexOf('ledge')) return;
-    this.say('oreBagged');
-    this.star.rig.doEmote('nod', 1);
-    this.enter('ledge');
+  /** Is the mole looking roughly at p (cos of the angle > c)? */
+  looking(p, c) {
+    const pl = this.owner.player, e = pl.eye(_v), f = pl.forward(_w);
+    const dx = p.x - e.x, dy = p.y - e.y, dz = p.z - e.z, l = Math.hypot(dx, dy, dz) || 1;
+    return (dx * f.x + dy * f.y + dz * f.z) / l > c;
   }
 
-  // ------------------------------------------------------------------ the world: rocks, ore, plug, ladder
+  bagged() {
+    if (after(this.step, 'held')) return;
+    this.lesson('mine_clean');
+    this.say('oreBagged');
+    this.star.rig.doEmote('nod', 1);
+    this.enter('gem');
+  }
+
+  // ------------------------------------------------------------------ the world: plug, ore, geode, ladder
   loaded(vx, vy, vz) {
     const ch = this.w.chunk?.(vx >> CB, vy >> CB, vz >> CB);
     return !!ch && !ch.pending && (!!ch.vox || ch.virtual);
   }
   solid(vx, vy, vz) { const m = this.w.voxelAt(vx, vy, vz); return m !== 0 && !(MAT[m]?.fluid); }
 
-  /** Watch the voxels the lessons hang on. */
-  watch(dt, pl) {
-    // the rocks pinning him: a few blows and each one crumbles off
-    if (this.step === 'rocks' || this.step === 'intro') {
-      for (let i = 0; i < this.rocks.length; i++) {
-        const r = this.rocks[i];
-        if (r.gone || !r.vox.length) continue;
-        const [x0, y0, z0] = r.vox[0];
-        if (!this.loaded(x0, y0, z0)) continue;
-        let n = 0;
-        for (const [x, y, z] of r.vox) if (this.solid(x, y, z)) n++;
-        if (r.n0 < 0) { r.n0 = n; r.last = n; if (n < 4) r.gone = true; continue; }
-        if (n < r.last) { r.hits++; r.last = n; this.star.rig.doEmote(r.hits === 1 ? 'surprise' : 'happy', 0.6); }
-        if (r.hits >= r.need || n < r.n0 * 0.5) this.crumbleRock(i, pl);
-      }
-    }
-    // the copper and the plug are bigger voxel counts: ten times a second is plenty
+  /** The middle of the plug's face, on the trail side (meters). */
+  plugFace() { const P = this.L.plug; return { x: P.x0, y: P.y0 + 0.5, z: this.L.nook.z }; }
+
+  /** Is the plug already dug through (a lesson resumed, or dug from the far side)? */
+  plugOpen() {
+    if (this.plug.open) return true;
+    const P = this.plugVoxels();
+    if (!P.length || !this.loaded(P[0][0], P[0][1], P[0][2])) return false;
+    let n = 0;
+    for (const [x, y, z] of P) if (this.solid(x, y, z)) n++;
+    if (n < P.length * 0.35) this.plug.open = true;
+    return this.plug.open;
+  }
+
+  /** Watch the voxels the lessons hang on (ten times a second). */
+  watch(dt) {
     this.watchT = (this.watchT || 0) - dt;
     if (this.watchT > 0) return;
     this.watchT = 0.1;
+    // the plug: a few good blows and the old loam gives way
+    if (this.step === 'plug' && !this.plug.open) {
+      const P = this.plugVoxels();
+      if (P.length && this.loaded(P[0][0], P[0][1], P[0][2])) {
+        let n = 0;
+        for (const [x, y, z] of P) if (this.solid(x, y, z)) n++;
+        if (this.plug.n0 < 0) { this.plug.n0 = n; this.plug.last = n; if (n < P.length * 0.35) { this.plug.open = true; return; } }
+        if (n < this.plug.last) { this.plug.hits++; this.plug.last = n; if (this.plug.hits < 3) this.sayCd('plugMore', 3); }
+        if (this.plug.hits >= 3 || (this.plug.hits >= 2 && n < this.plug.n0 * 0.6)) this.breakPlug();
+      }
+    }
     // the copper: dig round it and it breaks out
-    if ((this.step === 'ore' || this.step === 'freed') && !this.ore.free && this.oreVox.length) {
+    if (this.step === 'ore' && !this.ore.free && this.oreVox.length) {
       const [x0, y0, z0] = this.oreVox[0];
       if (this.loaded(x0, y0, z0)) {
         const e = this.oreExposure();
@@ -607,43 +708,33 @@ export class Prologue {
           this.clump = this.owner.clumps?.list?.find((c) => c.dep === 'oldstar_copper' && c.state === 'world') || null;
           return;
         }
-        if (this.ore.n0 < 0) { this.ore.n0 = e.frac; this.ore.near0 = e.near; this.ore.nearLast = e.near; }
-        if (e.near < this.ore.nearLast) { this.ore.hits++; this.ore.nearLast = e.near; if (this.ore.hits === 2 && this.step === 'ore') this.sayCd('oreClose', 20); }
-        if (this.step === 'ore' && (e.frac > Math.max(0.55, this.ore.n0 + 0.22) || this.ore.hits >= 4)) this.freeOre(pl);
+        if (this.ore.n0 < 0) { this.ore.n0 = e.frac; this.ore.nearLast = e.near; }
+        if (e.near < this.ore.nearLast) { this.ore.hits++; this.ore.nearLast = e.near; if (this.ore.hits === 2) this.sayCd('oreClose', 20); }
+        if (e.frac > Math.max(0.55, this.ore.n0 + 0.22) || this.ore.hits >= 4) this.freeOre();
       }
     }
-    // the plug before the lift: three good blows and the old earth gives way
-    if (this.step === 'plug' && !this.plug.open) {
-      const P = this.plugVoxels();
-      if (P.length && this.loaded(P[0][0], P[0][1], P[0][2])) {
+    // the geode: dig in far enough and it's open
+    if (this.step === 'gem' && !this.geode.open && this.geodeVox.length) {
+      const [x0, y0, z0] = this.geodeVox[0];
+      if (this.loaded(x0, y0, z0)) {
         let n = 0;
-        for (const [x, y, z] of P) if (this.solid(x, y, z)) n++;
-        if (this.plug.n0 < 0) { this.plug.n0 = n; this.plug.last = n; if (n < P.length * 0.45) { this.breakPlug(); return; } }
-        if (n < this.plug.last) { this.plug.hits++; this.plug.last = n; }
-        if (this.plug.hits >= 3 || n < this.plug.n0 * 0.82) this.breakPlug();
+        for (const [x, y, z] of this.geodeVox) if (this.w.voxelAt(x, y, z) === M.GEODE) n++;
+        if (this.geode.n0 < 0) { this.geode.n0 = n; this.geode.last = n; }
+        if (n < this.geode.last) { if (this.geode.last === this.geode.n0) this.sayCd('gemDig', 30); this.geode.last = n; }
+        if (n < this.geode.n0 * 0.93 || n < this.geodeVox.length * 0.7) this.openGeode();
+        // (also open when the loam in front is gone and the crystals show)
+        else if (this.time % 1 < 0.1 && this.gemVisible()) this.openGeode();
       }
     }
   }
 
-  /** Voxels of rock i crumble away (lumps tumble off his legs). */
-  crumbleRock(i, quiet = false) {
-    const r = this.rocks[i];
-    if (r.gone) return;
-    r.gone = true;
-    const broken = [];
-    for (const [x, y, z] of r.vox) {
-      const m = this.w.voxelAt(x, y, z);
-      if (!m || MAT[m]?.fluid || m >= ORE_BASE || MANMADE.has(m)) continue;
-      broken.push({ x, y, z, m, c: MAT[m]?.tones?.[1 + ((x + y + z) & 1)] ?? 0x707070 });
-      this.w.setVoxel(x, y, z, 0);
-    }
-    this.debris(broken, [Math.sin(this.L.star.yaw), 0.6, Math.cos(this.L.star.yaw)]);
-    this.audio.play('break', { snd: 'stone', vol: 0.8 });
-    this.owner.shake?.(0.15);
-    const left = this.rocks.filter((q) => !q.gone).length;
-    if (quiet) return;
-    this.say(left === 0 ? 'Oh! Oh, that\'s the last of them!' : LINES.rockCheer[Math.min(LINES.rockCheer.length - 1, this.rocks.length - 1 - left)], { dur: 2.2 });
-    this.star.rig.doEmote('happy', 1.2);
+  /** Is the amethyst in plain view from the eye (nothing solid in between)? */
+  gemVisible() {
+    const pl = this.owner.player, e = pl.eye(_v), p = this.dress.gemPoint(_w);
+    const dx = p.x - e.x, dy = p.y - e.y, dz = p.z - e.z, d = Math.hypot(dx, dy, dz);
+    if (d > 3) return false;
+    const h = this.w.raycast(e.x, e.y, e.z, dx / d, dy / d, dz / d, d - 0.06);
+    return !h;
   }
 
   /** Broken voxels: a few tumbling lumps (the scene's debris bodies), dust and grit. */
@@ -682,7 +773,7 @@ export class Prologue {
     const o = this.L.ore;
     let near = 0;
     const r = 0.45;
-    for (let vz = Math.floor((o.z - r) * VOX); vz <= Math.floor((o.z + r) * VOX); vz += 1) for (let vy = Math.floor((o.y - r) * VOX); vy <= Math.floor((o.y + r) * VOX); vy += 1) for (let vx = Math.floor((o.x - r) * VOX); vx <= Math.floor((o.x + r) * VOX); vx += 1) {
+    for (let vz = Math.floor((o.z - r) * VOX); vz <= Math.floor((o.z + r) * VOX); vz++) for (let vy = Math.floor((o.y - r) * VOX); vy <= Math.floor((o.y + r) * VOX); vy++) for (let vx = Math.floor((o.x - r) * VOX); vx <= Math.floor((o.x + r) * VOX); vx++) {
       const dx = (vx + 0.5) / VOX - o.x, dy = (vy + 0.5) / VOX - o.y, dz = (vz + 0.5) / VOX - o.z;
       if (dx * dx + dy * dy + dz * dz > r * r) continue;
       const m = w.voxelAt(vx, vy, vz);
@@ -696,8 +787,22 @@ export class Prologue {
     this.fx?.glints(o.x + 0.2 + rand(-0.02, 0.06), o.y + rand(-0.15, 0.15), o.z + rand(-0.17, 0.17), [1, 0.72, 0.42]);
   }
 
+  /** The geode winks through its hand's width of loam: a sparkle on the wall in front of it. */
+  geodeGlint() {
+    if (Math.random() < 0.45) return;
+    const G = this.L.geode, w = this.w;
+    const x = G.x + rand(-0.18, 0.18), y = G.y + rand(-0.16, 0.16);
+    // from the room toward the wall until rock: that's where it shows
+    for (let z = G.wallZ - 0.6; z < G.z; z += 1 / VOX) {
+      const m = w.voxelAt(Math.floor(x * VOX), Math.floor(y * VOX), Math.floor(z * VOX));
+      if (!m || MAT[m]?.fluid) continue;
+      this.fx?.glints(x, y, z - 0.04, [0.8, 0.6, 1]);
+      break;
+    }
+  }
+
   /** The copper comes out of the wall wrapped in its rock: a clump (or a pickup without Clumps). */
-  freeOre(pl) {
+  freeOre() {
     if (this.ore.free) return;
     this.ore.free = true;
     const L = this.L, o = L.ore, mo = o.m, mat = MAT[mo];
@@ -713,6 +818,26 @@ export class Prologue {
     this.owner.popOre?.({ d, s, voxels, pristine: true }, o.face);
     this.clump = this.owner.clumps?.list?.length > n0 ? this.owner.clumps.list[this.owner.clumps.list.length - 1] : null;
     this.star.rig.doEmote('hop', 1);
+    this.lesson('mine_ore');
+  }
+
+  openGeode() {
+    if (this.geode.open) return;
+    this.geode.open = true;
+    this.fx?.sparks?.(this.L.gem.x, this.L.gem.y + 0.05, this.L.gem.z - 0.2, 14, [0.8, 0.55, 1], [0, 0.3, -1], 2);
+  }
+
+  takeGem() {
+    if (!this.dress.gem) return null;
+    this.dress.takeGem();
+    this.lesson('mine_gem');
+    if (!after(this.step, 'gemfound')) this.run(this.gemGotScript());
+    return [{ loot: { id: ITEMS[this.L.geode.item] ? this.L.geode.item : 'quartz', q: 92, p: true } }];
+  }
+  *gemGotScript() {
+    this.setTip(null);
+    yield this.say('gemGot');
+    this.enter('ledge');
   }
 
   plugVoxels() {
@@ -720,7 +845,7 @@ export class Prologue {
     const P = this.L.plug, out = [];
     for (let vz = Math.floor(P.z0 * VOX); vz < Math.ceil(P.z1 * VOX); vz++) for (let vy = Math.floor(P.y0 * VOX); vy < Math.ceil(P.y1 * VOX); vy++) for (let vx = Math.floor(P.x0 * VOX); vx < Math.ceil(P.x1 * VOX); vx++) {
       const x = (vx + 0.5) / VOX, y = (vy + 0.5) / VOX, z = (vz + 0.5) / VOX;
-      if (x > P.x0 && x < P.x1 && y > P.y0 && y < P.y1 && z > P.z0 && z < P.z1) out.push([vx, vy, vz]);
+      if (x > P.x0 && x < P.x1 && y > P.y0 && y < P.y1 && z > P.z0 && z < P.z1 && prologueCarved(this.L, x, y, z)) out.push([vx, vy, vz]);
     }
     this.plug.vox = out;
     return out;
@@ -736,7 +861,7 @@ export class Prologue {
       broken.push({ x, y, z, m, c: MAT[m]?.tones?.[1 + ((x + y) & 1)] ?? 0x6a5040 });
       this.w.setVoxel(x, y, z, 0);
     }
-    this.debris(broken, [0, 0.4, -1]);
+    this.debris(broken, [-1, 0.4, 0]);
     this.audio.play('collapse', { vol: 0.6 });
     this.audio.play('break', { snd: 'dirt' });
     this.owner.shake?.(0.35);
@@ -754,13 +879,11 @@ export class Prologue {
   }
 
   /**
-   * The generator dresses caves after the features are stamped (moss, vines, stalagmites,
-   * mushrooms). Whatever grew in the dug-out space of his dig is cleared once per loaded chunk
-   * (never what the mole built: ladders, planks, bricks).
+   * Whatever the generator grew in the dug-out space of his dig (it skips most of it now) is
+   * cleared once per loaded chunk (never what the mole built: ladders, planks, bricks).
    */
   scrub() {
     if (!this.toScrub) {
-      // every chunk the layout touches, once
       const seen = new Set();
       this.toScrub = [];
       for (const bx of prologueBoxes(this.L)) {
@@ -798,27 +921,25 @@ export class Prologue {
         const vx = X0 + x, vy = Y0 + y, vz = Z0 + z;
         const m = w.voxelAt(vx, vy, vz);
         if (!m || MANMADE.has(m) || MAT[m]?.fluid || m >= ORE_BASE) continue;
+        if (!DECOR.has(m)) continue; // only the cave dressing; dug rock stays dug, rock stays rock
         const want = prologueWants(L, (vx + 0.5) / VOX, (vy + 0.5) / VOX, (vz + 0.5) / VOX);
         if (want === 0) clear.push(vx, vy, vz, 0);
-        else if (want > 0 && want !== m && want !== M.LOAM && DECOR.has(m)) clear.push(vx, vy, vz, want); // mossed-over rocks are rocks again
+        else if (want > 0 && want !== m && want !== M.LOAM) clear.push(vx, vy, vz, want);
       }
     }
     for (let i = 0; i < clear.length; i += 4) w.setVoxel(clear[i], clear[i + 1], clear[i + 2], clear[i + 3]);
   }
 
-  // ------------------------------------------------------------------ the crosshair: him, the map, the cage
+  // ------------------------------------------------------------------ the crosshair: him, the map, the gem, the cage
   pickAt(eye, dir, reach) {
     const step = this.step;
-    // the map tube on the ledge
-    if (this.dress.map && STEPS.indexOf(step) >= STEPS.indexOf('ledge') && STEPS.indexOf(step) <= STEPS.indexOf('map')) {
-      const p = this.dress.mapPoint(_v);
+    const ray = (p, r, far) => {
       const ox = p.x - eye.x, oy = p.y - eye.y, oz = p.z - eye.z;
       const along = ox * dir.x + oy * dir.y + oz * dir.z;
-      if (along > 0 && along < reach + 0.2) {
-        const d2 = ox * ox + oy * oy + oz * oz - along * along;
-        if (d2 < 0.24 * 0.24) return 'map';
-      }
-    }
+      return along > 0 && along < far && ox * ox + oy * oy + oz * oz - along * along < r * r;
+    };
+    if (this.dress.map && (step === 'ledge' || step === 'climb' || step === 'map') && ray(this.dress.mapPoint(_v), 0.24, reach + 0.2)) return 'map';
+    if (this.dress.gem && this.geode.open && ray(this.dress.gemPoint(_v), 0.16, 2.4)) return 'gem';
     // a clump lying in front of him wins
     const hit = this.star.hit(eye, dir, reach);
     if (hit !== null) {
@@ -830,12 +951,8 @@ export class Prologue {
       }
       return 'star';
     }
-    // the lift cage (before he's in it, you're not leaving without him; a mole who came down by
-    // lift can still ride it back up)
-    if ((this.from !== 'lift' || step === 'cage') && this.owner.liftNear?.()) {
-      const L = this.w.plan.lifts.find((l) => l.id === 'L0');
-      if (L && Math.hypot(L.x - this.owner.player.pos.x, L.z - this.owner.player.pos.z) < 2.3) return 'cage';
-    }
+    // the cage, with him in it
+    if (step === 'cage' && this.inCage() && this.owner.liftNear?.()) return 'cage';
     return null;
   }
 
@@ -844,40 +961,58 @@ export class Prologue {
     this.dress.takeMap();
     this.audio.play('pickup_gem', { pitch: 0.9 });
     this.audio.play('discover');
-    this.ui.toast('<b>Old Star\'s star-nose map</b> · your radar shows the way home and every lift you find', { kind: 'good', dur: 4200 });
+    this.ui.toast('<b>Old Star\'s map</b> · every lift and every place you find, in your book', { kind: 'good', dur: 4200 });
     this.showRadar();
-    this.enter('lifts');
+    this.lesson('mine_ladder');
+    this.lesson('mine_map');
+    this.setTip(null);
+    this.run(this.mapScript());
+  }
+  *mapScript() {
+    yield this.say('mapGot');
+    if (typeof this.ui.openBook === 'function') { yield 0.3; try { this.ui.openBook('map'); } catch (e) { /* the book isn't ready */ } }
+    this.enter('critter');
   }
 
   // ------------------------------------------------------------------ talking to him, skipping, the ride
   openTalk() {
     if (this.panel) return;
+    this.act('talk', { npc: 'oldstar' });
     const touch = this.owner.isTouch?.();
     const what = GOALS[this.step] || 'Follow Old Star';
     const hint = {
-      rocks: LINES.rocks, ore: LINES.oreDig, loose: LINES.oreLoose, held: LINES.oreHeld, ledge: LINES.ladder, climb: LINES.ladderUp,
-      map: LINES.mapTake, lifts: LINES.follow, walk: LINES.follow, plug: LINES.plug, cage: LINES.bell, freed: LINES.name,
+      arrive: LINES.plug, plug: LINES.plugTip, walk: LINES.follow, ore: LINES.oreTip, loose: LINES.looseTip, held: LINES.heldTip, gem: LINES.gemTip,
+      gemfound: LINES.gemTake, ledge: LINES.ladderTip, climb: LINES.ladderUp, map: LINES.mapTip, critter: LINES.blockTip, back: LINES.done, cage: LINES.bell,
     }[this.step];
-    this.say(hint || LINES.walk);
+    this.say(hint || LINES.walk, { mood: 'calm' });
     const body = el('div', { class: 'cf-body' }, [
       el('p', { class: 'cf-text', html: `<b>${what}.</b><br>${pickLine(hint, touch) || ''}` }),
       el('div', { class: 'cf-row', style: { flexWrap: 'wrap', gap: 'calc(var(--px) * 4)' } }, [
         el('button', { class: 'btn', onclick: () => this.panel?.close() }, 'Right you are'),
-        el('button', { class: 'btn alt', onclick: () => this.confirmSkip() }, 'Skip the lessons'),
+        el('button', { class: 'btn alt', onclick: () => this.confirmSkip(false) }, 'Skip this lesson'),
+        el('button', { class: 'btn alt', onclick: () => this.confirmSkip(true) }, 'Skip all lessons'),
       ]),
     ]);
-    this.panel = this.ui.openPanel({ title: NAME, sub: 'An old star-nosed mole, forty years down here.', body, width: 'min(calc(var(--px) * 150), calc(100vw - 32px))', onClose: () => { this.panel = null; } });
+    this.panel = this.ui.openPanel({ title: NAME, sub: 'Forty years down here, and he still digs for fun.', body, width: 'min(calc(var(--px) * 160), calc(100vw - 32px))', onClose: () => { this.panel = null; } });
   }
 
-  async confirmSkip() {
+  async confirmSkip(all) {
     this.panel?.close();
-    const ok = await this.ui.confirm('<b>Skip Old Star\'s lessons?</b><br>You\'ll ride straight up to his tavern with him.', 'Skip', 'Keep learning');
-    if (ok) this.skip();
+    const ok = await this.ui.confirm(all ? '<b>Skip all of Old Star\'s lessons?</b><br>Mining, forging and cooking: you\'ll find your own way.' : '<b>Skip the mining lesson?</b><br>You\'ll ride straight back up with him.', 'Skip', 'Keep learning');
+    if (ok) this.skip(all);
   }
 
-  skip() {
+  skip(all = false) {
     if (this.leaving) return;
-    this.say(LINES.skip, { dur: 3 });
+    const st = this.st;
+    if (!st.count?.('copper_ore') && ITEMS.copper_ore) {
+      // a full backpack spills it into the trunk at home (where it's going anyway)
+      const fits = st.canAdd ? st.canAdd('copper_ore') : true;
+      st.addItem('copper_ore', { q: 80, spill: true });
+      this.ui.toast(`+ <b>${ITEMS.copper_ore.name}</b> 80% from Old Star${fits ? '' : ' (in your trunk at home)'}`, { icon: iconURL('copper_ore'), kind: 'good' });
+      this.say('skipCopper', { dur: 3 });
+    } else this.say('skip', { dur: 3 });
+    if (all) this.lesson('skip');
     this.ride(true);
   }
 
@@ -898,56 +1033,95 @@ export class Prologue {
     setTimeout(() => {
       const g = this.owner.game;
       if (g.scene !== this.owner) return;
-      const params = { from: 'lift', first: true };
+      const params = { from: 'lift', lesson: 'mine' };
       const opts = { transition: 'fade', dur: 0.8, color: 0x0a0605 };
       if (typeof this.owner.leave === 'function') this.owner.leave('home', params, opts);
       else g.goto('home', params, opts);
-    }, skipped ? 1400 : 1100);
+    }, skipped ? 1500 : 1100);
   }
 
-  /** The opening is done: flags for the rest of the game. */
+  /** The lesson is done: the flag, the quests, his gifts. */
   finish() {
     const st = this.st;
     st.flag('prologue', true);
-    st.flag('fallen', true);
-    st.flag('nugget', true);
     this.save.step = 'done';
     st.learn?.('elevator');
+    this.lesson('mine_done');
+    if (GIFT_CHISEL && !st.owns?.('chisel_basic') && !st.equipped('chisel') && ITEMS.chisel_basic) { st.addItem('chisel_basic'); st.equip('chisel_basic'); }
+    // a copper lump left in the wall was never a real deposit: it becomes loam
     if (!this.ore.free) for (const [x, y, z] of this.oreVox) if (this.w.voxelAt(x, y, z) === this.L.ore.m && this.loaded(x, y, z)) this.w.setVoxel(x, y, z, M.LOAM);
-    if (GIFT_CHISEL && !st.owns('chisel_basic') && !st.equipped('chisel') && ITEMS.chisel_basic) { st.addItem('chisel_basic'); st.equip('chisel_basic'); }
+    this.tutor?.hide?.('os-tip');
+    this.tipKey = null;
+  }
+
+  // ------------------------------------------------------------------ touch: a guard button while the critter is about
+  /** The lesson's critter while it is after the mole (same shape as enemies.threat()), or null. */
+  threat() {
+    const nb = this.nibbler, p = this.owner?.player;
+    if (!nb || !nb.active || nb.state === 'flee' || nb.state === 'dizzy' || !p) return null;
+    return { kind: 'nibbler', dist: nb.pos.distanceTo(p.pos) };
+  }
+
+  guardButton(on) {
+    // the touch controls have their own block button now (.d-block, "Block (hold)"): it glows while
+    // the nibbler is out; this one only stands in when there is none
+    const theirs = document.querySelector('.d-block, [aria-label^="Block"]:not(.os-guard)');
+    if (on) theirs?.classList.add('lit');
+    const want = on && this.owner.isTouch?.() && !theirs;
+    if (!want) {
+      if (this.guardEl) { this.guardEl.remove(); this.guardEl = null; this.owner.game.input.down.delete('KeyF'); }
+      return;
+    }
+    if (this.guardEl) return;
+    const inp = this.owner.game.input;
+    const b = el('button', { class: 'os-guard interactive', 'aria-label': 'Block', title: 'Hold to block' }, [el('span', {}, '⛨'), el('small', {}, 'hold')]);
+    const down = (e) => { e.preventDefault(); e.stopPropagation(); inp.down.add('KeyF'); b.classList.add('on'); };
+    const up = (e) => { e?.stopPropagation?.(); inp.down.delete('KeyF'); b.classList.remove('on'); };
+    b.addEventListener('pointerdown', down);
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, up);
+    (this.ui.root || document.body).append(b);
+    this.guardEl = b;
   }
 
   // ------------------------------------------------------------------ test hooks
   setupDebug() {
     const D = this.debug;
     const pl = () => this.owner.player;
+    D.steps = STEPS;
     D.step = () => this.step;
+    D.emitted = () => this.emitted.slice();
     D.layout = () => this.L;
     D.star = () => ({ x: this.star.pos.x, y: this.star.pos.y, z: this.star.pos.z, state: this.star.state, path: !!this.star.path });
+    /** Jump to a step: everything before it is done (the plug broken, the ore freed, the geode open...). */
     D.go = (step) => {
       const i = STEPS.indexOf(step);
       if (i < 0) return false;
       this.co = null;
       this.hold = null;
-      if (i > STEPS.indexOf('rocks')) for (let k = 0; k < this.rocks.length; k++) if (!this.rocks[k].gone) this.crumbleRock(k, true);
-      if (i > STEPS.indexOf('ore') && !this.ore.free) this.freeOre(pl());
-      if (i > STEPS.indexOf('map')) this.dress.takeMap();
-      if (i > STEPS.indexOf('map')) this.showRadar();
+      this.walking = false;
+      this.after = null;
       if (i > STEPS.indexOf('plug')) this.breakPlug();
-      const s = this.standFor(step);
+      if (i > STEPS.indexOf('ore') && !this.ore.free) this.freeOre();
+      if (i > STEPS.indexOf('gem')) this.openGeode();
+      if (i > STEPS.indexOf('gemfound')) this.dress.takeGem();
+      if (i > STEPS.indexOf('map')) { this.dress.takeMap(); this.showRadar(); }
+      const spot = { arrive: 'arrive', plug: 'plug', walk: 'plug', ore: 'ore', loose: 'ore', held: 'ore', gem: 'gem', gemfound: 'gem', ledge: 'ledge', climb: 'ledge', map: 'ledge', critter: 'ledge', back: 'critter' }[step];
+      const s = spot ? this.L.spots[spot] : { ...this.L.cage, yaw: 0 };
       this.star.stop();
       this.star.pos.set(s.x, s.y, s.z);
       this.star.face(s.yaw ?? 0, true);
-      this.star.play(i <= STEPS.indexOf('rocks') ? 'pinned' : 'idle');
+      this.star.play('idle');
       this.enter(step, true);
       return step;
     };
-    D.clearRocks = () => { for (let k = 0; k < this.rocks.length; k++) this.crumbleRock(k); };
-    D.freeOre = () => this.freeOre(pl());
+    D.breakPlug = () => this.breakPlug();
+    D.freeOre = () => this.freeOre();
     D.clump = () => this.clump;
     D.grab = () => this.owner.clumps?.debug?.grab(this.clump);
     D.clean = () => this.owner.clumps?.debug?.clean();
     D.bag = () => { const cl = this.owner.clumps; if (cl?.held) cl.use(pl().eye(), pl().forward(), 2); };
+    D.openGeode = () => this.openGeode();
+    D.takeGem = () => { const e = this.takeGem(); if (e) this.owner.events?.(e); return !!e; };
     D.ladder = () => {
       // what the build tool puts up: a strip of ladder against the wall under the ledge
       const Z = this.L.ladderZone, zc = (Z.z0 + Z.z1) / 2, x = Math.ceil(this.L.ledge.wallX * VOX - 0.5) - 1;
@@ -960,9 +1134,12 @@ export class Prologue {
     };
     D.toLedge = () => { const G = this.L.ledge; D.stand(G.x0 + 0.45, G.y + 0.02, (G.z0 + G.z1) / 2 - 0.2, -Math.PI / 2 - 0.3, -0.25); };
     D.takeMap = () => this.takeMap();
-    D.breakPlug = () => this.breakPlug();
+    D.critter = () => this.nibbler;
+    /** Hold the guard (as F would) or let go. */
+    D.guard = (on = true) => { const d = this.owner.game.input.down; if (on) d.add('KeyF'); else d.delete('KeyF'); };
+    D.bonk = () => this.bonkNibbler(pl().forward(new THREE.Vector3()));
     D.ride = () => this.ride();
-    D.skip = () => this.skip();
+    D.skip = (all = false) => this.skip(all);
     D.talk = () => this.openTalk();
     D.say = (k) => this.say(k);
     /** Put the mole somewhere (world meters), facing yaw/pitch. */
@@ -974,5 +1151,3 @@ export class Prologue {
     D.run = (sec = 1) => { const s = this.owner; for (let k = 0; k < Math.round(sec * 30); k++) s.update(1 / 30); return this.step; };
   }
 }
-
-const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];

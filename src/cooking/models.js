@@ -656,3 +656,122 @@ export function spiceRack() {
   }
   return vmesh(g, [17, 0, 0]);
 }
+
+// ---------------------------------------------------------------- Old Star's baking & prep tools (cooking remake)
+/**
+ * A domed clay hearth oven on a stone plinth: rough rendered clay over bricks, an arched mouth
+ * facing +z with a soot-black lip, a little chimney, and a bed of embers inside (emissive).
+ * Origin at the centre of the hearth floor (the baking spot). userData.mouthY: hearth height.
+ */
+export function hearthOven() {
+  const k = 2, W = 44 * k / 2, H = 34, D = 40;
+  const g = new VoxelGrid(W + 4, H + 12, D + 4);
+  const cx = (W + 4) / 2, cz = D / 2 + 1;
+  const CLAY = [0xc07a4a, 0xb06a40, 0xcc8a58], BRICK = [0x9a4a32, 0x8a4030, 0xa85a3a];
+  // stone plinth
+  g.rbox(1, 0, 1, W + 2, 6, D + 2, (x, y, z) => {
+    const row = Math.floor(y / 3), col = Math.floor((x + (row % 2) * 3) / 6);
+    let c = hash3(col, row, Math.floor(z / 6), 4) < 0.5 ? 0x8a8278 : 0x7a7268;
+    if (y % 3 === 2 || (x + (row % 2) * 3) % 6 === 0) c = 0x5a524a;
+    return jit(c, x, y, z, 2, 0.05);
+  }, 1);
+  // the dome (clay over brick, worn so the bricks show in patches)
+  g.ellipsoid(cx, 6, cz, W / 2, H - 4, D / 2, (x, y, z) => {
+    if (y < 6) return -1;
+    const patch = hash3(Math.floor(x / 5), Math.floor(y / 4), Math.floor(z / 5), 7) < 0.22;
+    if (patch) {
+      const row = Math.floor(y / 2), col = Math.floor((x + z + (row % 2) * 2) / 4);
+      return (y % 2 === 0 || (x + z + (row % 2) * 2) % 4 === 0) ? 0x6a3a28 : BRICK[(col + row) % 3];
+    }
+    let c = CLAY[Math.floor(hash3(x, y, z, 3) * 3)];
+    if (y > H - 8) c = shade(c, 1.06);
+    return jit(c, x, y, z, 5, 0.04);
+  });
+  // hollow inside
+  g.ellipsoid(cx, 6, cz, W / 2 - 3, H - 8, D / 2 - 3, () => -1);
+  // arched mouth on the +z side, with a soot-dark brick lip
+  const mw = 9, mh = 15;
+  for (let z = Math.floor(cz); z < D + 4; z++) for (let y = 6; y < 6 + mh + 3; y++) for (let x = Math.floor(cx - mw - 3); x <= cx + mw + 3; x++) {
+    const dx = x + 0.5 - cx, dy = y - 6;
+    const inArch = Math.abs(dx) < mw && (dy < mh - mw * 0.6 || dx * dx + (dy - (mh - mw * 0.6)) ** 2 * 2.2 < mw * mw);
+    const lip = !inArch && Math.abs(dx) < mw + 3 && (dy < mh - mw * 0.6 + 2 || dx * dx + (dy - (mh - mw * 0.6)) ** 2 * 2.2 < (mw + 3) ** 2);
+    if (inArch && z > cz + 2) g.clear(x, y, z);
+    else if (lip && g.filled(x, y, z) && z > D - 4) g.set(x, y, z, (Math.floor(Math.atan2(dy, dx) * 4) % 2) ? 0x3a2420 : 0x4a2c24);
+  }
+  // embers glowing at the back of the hearth floor
+  for (let i = 0; i < 40; i++) {
+    const x = cx + (hash3(i, 1, 2, 9) - 0.5) * (W - 10), z = cz - 6 + (hash3(i, 3, 4, 9) - 0.5) * 10;
+    g.set(x, 6, z, [0xff7a20, 0xffb040, 0xd84a1a, 0x3a2a20][Math.floor(hash3(i, 5, 6, 9) * 4)]);
+  }
+  // chimney stub
+  g.cylinderY(cx + 5, cz - 6, 3.2, H - 4, H + 9, (x, y, z) => jit(y > H + 6 ? 0x5a3a2a : BRICK[(x + y + z) % 3], x, y, z, 6, 0.05));
+  g.cylinderY(cx + 5, cz - 6, 1.6, H - 2, H + 10, () => -1);
+  const m = vmesh(g, [cx, 6, cz], { scale: PS });
+  m.userData.mouthY = 0;
+  return m;
+}
+
+/** Wooden baking peel (paddle along +z, handle toward the cook). Origin at the paddle centre. */
+export function bakingPeel() {
+  const g = new VoxelGrid(22, 2, 52);
+  g.rbox(0, 0, 0, 22, 1, 20, (x, y, z) => jit((x + z * 3) % 9 === 0 ? 0xb08048 : 0xc8985a, x, y, z, 3, 0.05), 3);
+  g.box(9, 0, 20, 4, 2, 32, (x, y, z) => jit(z > 46 ? 0x6a4228 : 0xa87840, x, y, z, 4, 0.05));
+  return vmesh(g, [11, 1, 10]);
+}
+
+export const GRATER_K = 0.6;
+/** Box grater: four tin faces with punched teeth and a handle on top. Origin at the bottom centre. */
+export function grater() {
+  const W = 12, H = 26, D = 9;
+  const g = new VoxelGrid(W, H + 5, D);
+  const tin = (x, y, z) => {
+    const face = z === 0 || z === D - 1 || x === 0 || x === W - 1;
+    if (!face) return -1;
+    const lit = x === 0 || z === D - 1 ? 1.08 : 0.86;
+    // punched teeth on the front face: little dark slots with a bright burr above each
+    if (z === D - 1 && x > 1 && x < W - 2 && y > 2 && y < H - 2) {
+      if ((x + (Math.floor(y / 3) % 2) * 2) % 4 === 0 && y % 3 === 0) return 0x2a2a30;
+      if ((x + (Math.floor(y / 3) % 2) * 2) % 4 === 0 && y % 3 === 1) return 0xf0f4f8;
+    }
+    if (x === 0 && y % 4 === 2 && z > 1 && z < D - 2) return 0x3a3a42;
+    return jit(shade(0xb8c0c8, lit), x, y, z, 5, 0.04);
+  };
+  g.box(0, 0, 0, W, H, D, tin);
+  g.box(0, H - 1, 0, W, 1, D, 0x8a929a);
+  // a rolled rim at the base and the handle loop
+  g.box(0, 0, 0, W, 1, D, 0x7a828a);
+  for (let x = 2; x < W - 2; x++) { g.set(x, H + 4, Math.floor(D / 2), 0x4a2a18); g.set(x, H + 3, Math.floor(D / 2), 0x5e3622); }
+  for (const x of [2, W - 3]) for (let y = H; y < H + 4; y++) g.set(x, y, Math.floor(D / 2), 0x8a929a);
+  const m = vmesh(g, [W / 2, 0, D / 2], { scale: PS * GRATER_K });
+  m.userData.height = H * PS * GRATER_K;
+  m.userData.depth = D * PS * GRATER_K;
+  return m;
+}
+
+/** Rolling pin along x with turned handles. Origin at the centre of the barrel. */
+export function rollingPin() {
+  const L = 44, g = new VoxelGrid(L, 7, 7);
+  for (let x = 0; x < L; x++) {
+    const handle = x < 8 || x >= L - 8;
+    const r = handle ? (x % 8 === 0 || x % 8 === 7 ? 1.6 : 2) : 3.3;
+    for (let y = 0; y < 7; y++) for (let z = 0; z < 7; z++) {
+      const d = Math.hypot(y + 0.5 - 3.5, z + 0.5 - 3.5);
+      if (d > r) continue;
+      const lit = (3.5 - y) + (z - 3.5) * 0.4;
+      const base = handle ? 0x8a5a30 : 0xd8b07a;
+      g.set(x, y, z, jit(lit > 1.4 ? shade(base, 1.12) : lit < -1.4 ? shade(base, 0.82) : base, x, y, z, 8, 0.03));
+    }
+  }
+  return vmesh(g, [L / 2, 3.5, 3.5]);
+}
+
+/** Potato masher: wavy steel foot on a stem with a wooden handle (along +y). Origin at the foot. */
+export function masher() {
+  const g = new VoxelGrid(14, 30, 6);
+  for (let x = 1; x < 13; x++) { const y = Math.round(Math.sin(x * 0.9) * 1.2) + 1; g.set(x, y, 2, 0xc8d0d8); g.set(x, y, 3, 0x98a2ac); g.set(x, y + 1, 2, 0x88929c); }
+  for (const x of [1, 12]) for (let y = 1; y < 8; y++) { g.set(x, y, 2, 0xa8b0b8); g.set(x, y, 3, 0xa8b0b8); }
+  for (let x = 1; x < 13; x++) g.set(x, 8, 2, 0xa8b0b8);
+  for (let y = 8; y < 16; y++) { g.set(6, y, 2, 0xb8c0c8); g.set(7, y, 2, 0x98a2ac); }
+  g.box(5, 16, 1, 4, 13, 4, (x, y, z) => jit(y % 5 === 0 ? 0x4e2e1a : 0x6a4228, x, y, z, 10, 0.05));
+  return vmesh(g, [7, 0, 3]);
+}

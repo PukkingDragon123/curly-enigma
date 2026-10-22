@@ -71,6 +71,8 @@ export function buildImp(zone) {
 
 export class Imp extends Enemy {
   static info = { id: 'ember_imp', name: 'Ember Imp', color: '#ff7a3a', hits: 2, dmg: 4, lavaProof: true, fire: true, snd: 'flesh' };
+  static tells = { windup: [0.55] };
+  static resume = 'kite';
   constructor(mgr, o) {
     super(mgr, o);
     this.hw = 0.14; this.h = 0.42; this.cy = 0.3; this.hitR = 0.27;

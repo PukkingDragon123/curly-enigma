@@ -50,6 +50,8 @@ export function buildWisp(zone) {
 
 export class Wisp extends Enemy {
   static info = { id: 'gloom_wisp', name: 'Gloom Wisp', color: '#a87ae0', hits: 2, dmg: 4, flying: true, snd: 'crystal' };
+  static tells = { charge: [0.55] };
+  static resume = 'stalk';
   constructor(mgr, o) {
     super(mgr, o);
     this.rad = 0.2; this.cy = 0; this.hitR = 0.26;

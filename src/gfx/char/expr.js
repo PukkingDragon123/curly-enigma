@@ -74,9 +74,14 @@ export function gesture(r, e, w, et, sitting) {
       hip.rotation.x -= 0.1 * w;
       if (!sitting) hip.position.y += Math.abs(Math.sin(t * 15)) * s * 0.5 * w;
       // paws on the belly
-      armL.rotation.x -= 0.2 * w; armR.rotation.x -= 0.2 * w;
-      armL.rotation.z += 0.22 * w; armR.rotation.z -= 0.22 * w;
-      if (eL) { eL.rotation.x -= 1.35 * w; eR.rotation.x -= 1.35 * w; eL.rotation.y -= 0.5 * w; eR.rotation.y += 0.5 * w; }
+      if (eL) {
+        armL.rotation.x -= 0.2 * w; armR.rotation.x -= 0.2 * w;
+        armL.rotation.z += 0.22 * w; armR.rotation.z -= 0.22 * w;
+        eL.rotation.x -= 1.35 * w; eR.rotation.x -= 1.35 * w; eL.rotation.y -= 0.5 * w; eR.rotation.y += 0.5 * w;
+      } else {
+        armL.rotation.x -= (0.55 + Math.sin(t * 15) * 0.08) * w; armR.rotation.x -= (0.55 - Math.sin(t * 15) * 0.08) * w;
+        armL.rotation.z += 0.3 * w; armR.rotation.z -= 0.3 * w;
+      }
       break;
     }
     case 'sad': {
@@ -113,8 +118,8 @@ export function gesture(r, e, w, et, sitting) {
       neck.rotation.x += 0.12 * w;
       neck.rotation.z += Math.sin(t * 1.4) * 0.06 * w;
       // paws wringing together in front of the chest
-      armL.rotation.x -= 0.6 * w; armR.rotation.x -= 0.6 * w;
-      armL.rotation.z += 0.32 * w; armR.rotation.z -= 0.32 * w;
+      armL.rotation.x -= (eL ? 0.6 : 1.0 + Math.sin(t * 6) * 0.08) * w; armR.rotation.x -= (eL ? 0.6 : 1.0 - Math.sin(t * 6) * 0.08) * w;
+      armL.rotation.z += (eL ? 0.32 : 0.5) * w; armR.rotation.z -= (eL ? 0.32 : 0.5) * w;
       if (eL) { eL.rotation.x -= (1.25 + Math.sin(t * 6) * 0.1) * w; eR.rotation.x -= (1.25 - Math.sin(t * 6) * 0.1) * w; }
       break;
     }
@@ -128,6 +133,10 @@ export function gesture(r, e, w, et, sitting) {
         armL.rotation.x += 0.18 * w; armR.rotation.x += 0.18 * w;
         eL.rotation.z += 1.55 * w; eR.rotation.z -= 1.55 * w;
         eL.rotation.x -= 0.25 * w; eR.rotation.x -= 0.25 * w;
+      } else {
+        // chibi arms are too short for hips: paws tucked behind the back, chest out
+        armL.rotation.x += 0.45 * w; armR.rotation.x += 0.45 * w;
+        armL.rotation.z += 0.12 * w; armR.rotation.z -= 0.12 * w;
       }
       break;
     }
@@ -147,7 +156,9 @@ export function gesture(r, e, w, et, sitting) {
         armL.rotation.x -= 0.4 * w; armL.rotation.z += 0.3 * w;
         eL.rotation.x -= 1.3 * w;
       } else {
-        armR.rotation.x -= 0.9 * w;
+        // the paw up at the chin
+        armR.rotation.x -= (1.95 + Math.sin(t * 3) * 0.05) * w; armR.rotation.z -= 0.55 * w;
+        armL.rotation.x -= 0.5 * w; armL.rotation.z += 0.35 * w;
       }
       break;
     }

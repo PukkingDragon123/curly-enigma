@@ -96,9 +96,16 @@ const CSS = /* css */`
 .bk-caption small { display: block; font-family: var(--font); font-size: .45em; letter-spacing: .2em; text-transform: uppercase; opacity: .85; margin-top: calc(var(--px) * 2); }
 .bk-skip { position: absolute; right: calc(var(--px) * 6); bottom: calc(var(--px) * 6); font-size: .75em; padding: var(--px) calc(var(--px) * 3); opacity: .5; transition: opacity .3s; }
 .bk-skip:hover, .bk-skip:focus-visible { opacity: 1; }
+/* cinematic letterbox for the journey (off on tall screens, where every row counts) */
+.bk-bars i { position: absolute; left: 0; right: 0; height: 7vh; background: #000; transition: transform 1.4s cubic-bezier(.2,.7,.2,1); pointer-events: none; }
+.bk-bars i:first-child { top: 0; transform: translateY(-100%); }
+.bk-bars i:last-child { bottom: 0; transform: translateY(100%); }
+.bk-bars.on i { transform: none; }
+.bk-fall .bk-caption { top: 12%; }
 
 /* ---------- narrow screens (kept last so they win) ---------- */
 @media (max-aspect-ratio: 5/4) {
+  .bk-bars { display: none; }
   .bk-left { left: 0; right: 0; top: calc(var(--px) * 12); bottom: calc(var(--px) * 22); transform: none; align-items: center; }
   .bk-logo { --lp: calc(var(--px) * 1.5); }
   .bk-sub { margin-left: 0; font-size: calc(var(--px) * 6); }

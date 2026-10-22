@@ -1,0 +1,119 @@
+/* The lift map (src/fps/liftPanel.js): a pixel-art cross-section of the earth in a brass frame,
+   with parchment tags for the stops. One canvas pixel = one --px. */
+.lp-panel .lp-body { display: flex; flex-direction: column; gap: calc(var(--px) * 2); min-height: 0; }
+.lp-panel .lp-scroll {
+  position: relative; overflow-y: auto; overflow-x: hidden; width: max-content; max-width: 100%;
+  max-height: calc(100vh - 16px - var(--sat) - var(--sab) - var(--px) * 62);
+  min-height: calc(var(--px) * 60);
+  padding: 0; margin: 0 auto;
+  border: var(--px) solid var(--wood-dk);
+  box-shadow: inset 0 0 0 var(--px) var(--brass-dk), 0 0 0 var(--px) var(--brass), 0 calc(var(--px) * 2) 0 var(--px) rgba(20, 10, 6, .45);
+  background: #140c0a;
+  scrollbar-color: var(--brass-dk) #2a1a12;
+}
+.lp-map { position: relative; overflow: hidden; }
+.lp-canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+
+.lp-zone {
+  position: absolute; display: flex; flex-direction: column; pointer-events: none;
+  font: 16px/1 var(--font); text-transform: uppercase; letter-spacing: 0;
+  padding: var(--px) calc(var(--px) * 1.5) calc(var(--px) * 1.5);
+  background: rgba(20, 12, 10, .72); box-shadow: 0 0 0 var(--px) rgba(20, 12, 10, .35);
+  text-shadow: 0 var(--px) 0 #140c0a;
+}
+.lp-zone b { font-weight: 400; white-space: normal; word-break: break-word; }
+.lp-zone small { font-size: 8px; line-height: 1.6; color: #f3e2bf; opacity: .85; }
+.lp-tick {
+  position: absolute; right: 0; font: 8px/1 var(--font); color: #f3e2bf; padding: 0 var(--px);
+  background: rgba(20, 12, 10, .75); pointer-events: none;
+}
+
+.lp-stop {
+  position: absolute; display: flex; align-items: center; gap: calc(var(--px) * 1.5);
+  height: max(calc(var(--px) * 7), 20px); padding: 0 calc(var(--px) * 2) 0 calc(var(--px) * 3);
+  font: 16px/1 var(--font); color: var(--ink); white-space: nowrap; cursor: pointer; text-align: left;
+  background: linear-gradient(90deg, var(--zc) 0 var(--px), var(--parch) var(--px)) padding-box;
+  border: var(--px) solid var(--wood-dk);
+  box-shadow: inset 0 calc(var(--px) * -1) 0 var(--parch-3), 0 var(--px) 0 rgba(10, 4, 4, .5);
+  transition: transform .12s var(--pop), filter .12s;
+  z-index: 2;
+}
+.lp-stop .lp-ico { font-style: normal; color: var(--wood); }
+.lp-stop .lp-depth { color: var(--ink-soft); font-size: 8px; padding-top: calc(var(--px) * .5); }
+button.lp-stop:hover, button.lp-stop:focus-visible {
+  transform: translateX(var(--px)); filter: brightness(1.06);
+  background: linear-gradient(90deg, var(--zc) 0 var(--px), #fff4c8 var(--px)) padding-box;
+  box-shadow: inset 0 calc(var(--px) * -1) 0 var(--brass), 0 0 0 var(--px) var(--gold), 0 var(--px) 0 rgba(10, 4, 4, .5);
+  z-index: 3;
+}
+button.lp-stop:hover::after, button.lp-stop:focus-visible::after {
+  content: 'ride ›'; font-size: 8px; color: var(--gold-dk); margin-left: var(--px);
+}
+button.lp-stop:active { transform: translateX(var(--px)) translateY(var(--px)); }
+.lp-stop.here {
+  cursor: default; color: #3a2008;
+  background: linear-gradient(to bottom, #fff3c0 0 var(--px), #f2c23a var(--px) calc(100% - var(--px)), #b07a14 calc(100% - var(--px))) padding-box;
+}
+.lp-stop.here .lp-depth { color: #6a4210; }
+.lp-here {
+  font: 8px/1 var(--font); font-style: normal; text-transform: uppercase; color: #fff4e8;
+  background: #c23c2c; padding: var(--px) calc(var(--px) * 1.5); margin-left: var(--px);
+  box-shadow: 0 0 0 var(--px) #5a140c;
+  animation: lpBob 1.6s ease-in-out infinite;
+}
+@keyframes lpBob { 50% { transform: translateX(calc(var(--px) * -1)); } }
+
+.lp-lead { position: absolute; width: var(--px); background: rgba(242, 210, 140, .7); pointer-events: none; z-index: 1; }
+.lp-glow {
+  position: absolute; width: calc(var(--px) * 9); height: calc(var(--px) * 9); pointer-events: none; z-index: 1;
+  background: radial-gradient(closest-side, rgba(255, 214, 120, .55), rgba(255, 170, 60, .18) 60%, transparent);
+  animation: lpGlow 2.4s ease-in-out infinite;
+}
+.lp-glow.here { width: calc(var(--px) * 13); height: calc(var(--px) * 13); margin: calc(var(--px) * -2); background: radial-gradient(closest-side, rgba(255, 230, 150, .75), rgba(255, 170, 60, .25) 60%, transparent); }
+@keyframes lpGlow { 50% { opacity: .55; } }
+
+.lp-pin { position: absolute; width: calc(var(--px) * 9); height: calc(var(--px) * 9); cursor: help; }
+.lp-pin:hover { box-shadow: 0 0 0 var(--px) rgba(242, 194, 58, .6); }
+
+.lp-tw { position: absolute; width: var(--px); height: var(--px); pointer-events: none; opacity: 0; animation: lpTw 3s ease-in-out infinite; }
+.lp-tw.z3 { background: #e0f8ff; box-shadow: 0 0 0 var(--px) rgba(120, 220, 255, .35); }
+.lp-tw.z4 { background: #ffe070; box-shadow: 0 0 0 var(--px) rgba(255, 110, 30, .4); }
+.lp-tw.z5 { background: #ffffff; box-shadow: 0 0 0 var(--px) rgba(190, 230, 255, .35); }
+.lp-tw.z6 { background: #fff4b0; box-shadow: 0 0 0 var(--px) rgba(200, 150, 255, .45); }
+@keyframes lpTw { 0%, 70%, 100% { opacity: 0; } 80% { opacity: 1; } 90% { opacity: .4; } }
+
+.lp-smoke { position: absolute; width: var(--px); height: var(--px); pointer-events: none; }
+.lp-smoke::before, .lp-smoke::after {
+  content: ''; position: absolute; width: calc(var(--px) * 2); height: calc(var(--px) * 2); background: #ece8ec; opacity: 0;
+  animation: lpSmoke 3.2s linear infinite;
+}
+.lp-smoke::after { animation-delay: 1.6s; }
+@keyframes lpSmoke {
+  0% { transform: translate(0, 0); opacity: .9; }
+  100% { transform: translate(calc(var(--px) * 6), calc(var(--px) * -10)); opacity: 0; }
+}
+
+.lp-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--px) * 2) calc(var(--px) * 5); font-size: 8px; color: var(--ink-soft); text-transform: uppercase; }
+.lp-legend span { display: inline-flex; align-items: center; gap: calc(var(--px) * 1.5); }
+.lp-k { display: inline-block; width: calc(var(--px) * 3); height: calc(var(--px) * 3); }
+.lp-k.lit { background: #ffc040; box-shadow: 0 0 0 var(--px) rgba(255, 210, 110, .5); }
+.lp-k.unk { background: #1a1214; box-shadow: 0 0 0 var(--px) #8a7a6a; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-glow, .lp-tw, .lp-here, .lp-smoke::before, .lp-smoke::after { animation: none; }
+}
+
+/* small notes painted onto the surface: where the mole fell in, the locked way up */
+.lp-note {
+  position: absolute; pointer-events: none; z-index: 1; white-space: nowrap;
+  font: 8px/1 var(--font); text-transform: uppercase; color: #fff6e0;
+  padding: calc(var(--px) * .5) var(--px); background: rgba(20, 12, 10, .62);
+  text-shadow: 0 var(--px) 0 #140c0a;
+}
+.lp-note::after {
+  content: ''; position: absolute; left: calc(var(--px) * 3); bottom: calc(var(--px) * -2);
+  border: var(--px) solid transparent; border-top-color: rgba(20, 12, 10, .62);
+}
+.lp-note.gold { display: flex; flex-direction: column; gap: calc(var(--px) * .5); pointer-events: auto; cursor: help; color: #ffe08a; box-shadow: 0 0 0 var(--px) rgba(216, 168, 64, .6); }
+.lp-note.gold b { font-weight: 400; }
+.lp-note.gold small { font-size: 8px; color: #fff4c8; }

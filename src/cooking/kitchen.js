@@ -16,6 +16,7 @@ export const SPOTS = {
   cup: new THREE.Vector3(-1.4, 0, -0.1),
   board: new THREE.Vector3(0, 0, -0.1),
   plate: new THREE.Vector3(1.02, 0, -0.08),
+  oven: new THREE.Vector3(4.75, 0, -0.42), // the hearth oven's baking spot (on the right counter)
   pot: null, // filled from the stove burners
   pan: null,
 };
@@ -233,7 +234,7 @@ export class Kitchen {
     setOutline(port, true);
     this.root.add(port);
     const chalk = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.64), new THREE.MeshLambertMaterial({ map: chalkboardTex() }));
-    chalk.position.set(4.6, 1.05, z + 0.015);
+    chalk.position.set(5.95, 1.05, z + 0.015);
     setOutline(chalk, true);
     this.root.add(chalk);
     // over the stove: a utensil rail with a ladle and pans
@@ -262,15 +263,15 @@ export class Kitchen {
       this.sway.push({ obj: pan, amp: 0.035, sp: 0.9 + i * 0.13, ph: i * 1.7, axis: 'z' });
     });
     // right side: spice rack, garlic
-    this.add(M.spiceRack(), 4.4, 0.42, z + 0.01);
+    this.add(M.spiceRack(), 6.05, 0.42, z + 0.01);
     const gb = M.garlicBraid(4); gb.scale.setScalar(1.2); this.add(gb, 3.95, 1.9, z + 0.14);
     // counter clutter (kept away from the stations)
     this.add(M.sack(0xe8dcc0), -3.35, 0, -0.75, 0.4);
     this.add(M.utensilCrock(), -1.85, 0, -1.0);
     this.add(M.candle(), 1.32, 0, -0.95);
     this.add(M.potPlant(0x6aa84a), -3.1, 0, -1.0);
-    this.add(M.crock(0x7a8a6a), 4.0, 0, -0.85, 0.5);
-    this.add(M.sack(0xd8c8a0), 4.6, 0, -0.5, -0.5);
+    this.add(M.crock(0x7a8a6a), 3.75, 0, -0.95, 0.5);
+    this.add(M.sack(0xd8c8a0), 5.75, 0, -0.45, -0.5);
   }
 
   buildProps() {
@@ -287,6 +288,14 @@ export class Kitchen {
     P.spatula = this.add(M.spatula(), 3.6, 0.03, 0.3, -0.2);
     P.shaker = this.add(M.saltShaker(), 1.38, 0, -0.55);
     P.jug = this.add(M.jug(), -0.95, 0, -0.8, 0.4);
+    // baking and prep tools (cooking remake): the hearth oven, its peel, the grater, rolling pin, masher
+    P.oven = this.add(M.hearthOven(), SPOTS.oven.x, 0.15 * 0.78, SPOTS.oven.z);
+    P.oven.scale.setScalar(0.78);
+    P.peel = this.add(M.bakingPeel(), SPOTS.oven.x + 0.6, 0.02, 0.38, -0.5);
+    P.grater = this.add(M.grater(), -4.05, 0, -0.85, 0.35);
+    P.pin = this.add(M.rollingPin(), -2.95, 0.09, -0.95, 0.12);
+    P.masher = this.add(M.masher(), -4.45, 0.05, -0.35, 0.4);
+    P.masher.rotation.set(0, 0.4, Math.PI / 2);
     // rest transforms so tools can go back after a step
     this.rest = {};
     for (const [k, o] of Object.entries(P)) this.rest[k] = { pos: o.position.clone(), quat: o.quaternion.clone(), parent: this.root };
@@ -300,11 +309,12 @@ export class Kitchen {
     r.parent.add(o);
     o.position.copy(r.pos);
     o.quaternion.copy(r.quat);
-    o.scale.setScalar(1);
+    o.scale.setScalar(name === 'oven' ? 0.78 : 1);
     o.visible = true;
   }
 
-  setBurner(i, on) { this.burnerOn[i] = on ? 1 : 0; }
+  /** Burner flame: on = true/false or a level 0..1 (the simmer knob). */
+  setBurner(i, on) { this.burnerOn[i] = typeof on === 'number' ? Math.max(0, Math.min(1, on)) : on ? 1 : 0; }
 
   update(dt) {
     this.t += dt;
@@ -327,6 +337,9 @@ export class Kitchen {
       g.material.color.setRGB(k, k * 0.92, k * 0.85);
       if (h > light) { light = h; this.fireLight.position.set(this.burners[b].x, 0.05, this.burners[b].z + 0.5); }
     }
+    // the hearth oven's fire (BakeStep sets ovenHeat 0..1)
+    const oh = (this.ovenHeat || 0) * 1.6;
+    if (oh > light) { light = oh; this.fireLight.position.set(SPOTS.oven.x, 0.35, SPOTS.oven.z + 0.55); }
     this.fireLight.intensity = light * (0.2 + Math.sin(t * 17) * 0.03 + Math.sin(t * 7.3) * 0.03);
   }
 }

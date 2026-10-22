@@ -4,8 +4,10 @@ import { AudioSys } from './Audio.js';
 import { registerSounds } from './sounds.js';
 import { State, GOAL_GOLD } from './State.js';
 import { UI } from '../ui/UI.js';
+import { Quests } from './quests.js';
 import { ITEMS } from '../data/items.js';
 import { BUFFS } from '../data/recipes.js';
+import { foodBuffs } from '../cooking/buffs.js';
 import { clamp, wait, el } from './util.js';
 
 // Scenes load lazily so each one stays self-contained.
@@ -37,6 +39,7 @@ export class Game {
       else this.state.load();
     }
     this.ui = new UI(this);
+    this.quests = new Quests(this); // quest chains, listening to state 'act' events (src/core/quests.js)
     this.scene = null;
     this.sceneName = null;
     this.transitioning = false;
@@ -56,7 +59,7 @@ export class Game {
       if (this.transitioning || !this.scene) return;
       if (this.ui.isPanelOpen()) return;
       if (!this.scene.allowMenus) return;
-      if (e.code === 'KeyB') this.ui.openIndex();
+      if (e.code === 'KeyB') this.ui.openBook();
       else if (e.code === 'KeyI' || e.code === 'Tab') this.ui.openInventory();
       else if (e.code === 'Escape') this.ui.openMenu();
     });
@@ -181,6 +184,7 @@ export class Game {
     const scene = new Cls(this);
     this.scene = scene;
     this.sceneName = name;
+    this.engine.sceneName = name; // per-scene post defaults (Engine SCENE_POST)
     try {
       this.ui.setActionIcon?.(null);
       await scene.enter(params);
@@ -221,12 +225,10 @@ export class Game {
     if (!it || st.count(id) <= 0) return false;
     const energy = it.energy ?? it.food ?? 0;
     if (!energy && !it.buff) return false;
-    st.removeItem(id, 1);
-    st.restoreEnergy(energy);
-    if (it.buff) {
-      st.addBuff(it.buff, 300);
-      this.ui.toast(`${BUFFS[it.buff].name}: ${BUFFS[it.buff].desc}`, { kind: 'good' });
-    }
+    const took = st.removeItem(id, 1);
+    st.restoreEnergy(energy * (st.skill?.('hearty') || 1));
+    // cooking part: timed food buffs, longer for a better dish (src/cooking/buffs.js)
+    if (it.buff) foodBuffs(this, id, Array.isArray(took) ? took[0]?.q : undefined);
     if (it.maxEnergy) {
       st.data.maxEnergy += it.maxEnergy;
       st.restoreEnergy(it.maxEnergy);

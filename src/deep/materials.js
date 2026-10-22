@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { ORES } from '../data/ores.js';
 import { ITEMS } from '../data/items.js';
+import { RM, RUIN_MATS } from './ruins/mats.js';
 
 export const VOX = 16; // voxels per meter (6.25 cm voxels)
 /** Plate and style scales in the tables below are authored for 1/8 m voxels. */
@@ -84,6 +85,23 @@ const STYLE_OF = {
 export const MAT = [];
 for (let i = 0; i < 256; i++) MAT.push(null);
 for (const [id, d] of Object.entries(DEF)) MAT[id] = { id: +id, hp: 1, glow: 0, gran: false, fluid: 0, style: STYLE_OF[id] || [STYLE.ROCK, 4, 0.7], ...d };
+// the ruins' carved stone, mosaics, runes and seals (ids 96+, src/deep/ruins/mats.js)
+Object.assign(M, RM);
+for (const [id, d] of Object.entries(RUIN_MATS)) MAT[id] = { id: +id, hp: 1, glow: 0, gran: false, fluid: 0, ...d, style: [STYLE[d.style[0]], d.style[1], d.style[2]] };
+
+// The folk's burrows (gen/burrows.js, NPC burrows part): fittings a pick doesn't dig (unbreakable),
+// ids 120-127 (the ruins have 96-119) so ore deposits (< 40 only) and trail floors leave them alone.
+Object.assign(M, { FLOORBOARD: 120, PLASTER: 121, TARP: 122, IRONPLATE: 123, FLAGSTONE: 124, STAINED: 125, COMPOST: 126, CRATEWOOD: 127 });
+for (const [id, d] of Object.entries({
+  [M.FLOORBOARD]: { name: 'Floorboards', tones: [0x6a4424, 0x7e5430, 0x94663a, 0xa87846], accent: 0xd8b07a, snd: 'wood', style: [STYLE.WOOD, 8, 0.6] },
+  [M.PLASTER]: { name: 'Limewash', tones: [0xa89878, 0xbcac8a, 0xccbe9c, 0xdad0b0], accent: 0x8a7a5a, snd: 'dirt', style: [STYLE.SOIL, 3, 0.25] },
+  [M.TARP]: { name: 'Oilcloth Tarp', tones: [0x3a3c26, 0x4a4c30, 0x5a5c3a, 0x6a6c46], accent: 0x8a7a4a, snd: 'dirt', style: [STYLE.SOIL, 4, 0.5] },
+  [M.IRONPLATE]: { name: 'Iron Plate', tones: [0x2c2e34, 0x3a3d44, 0x484c54, 0x585c66], accent: 0x9aa0aa, snd: 'metal', style: [STYLE.ROCK, 6, 0.9] },
+  [M.FLAGSTONE]: { name: 'Flagstones', tones: [0x4a4642, 0x58534e, 0x66605a, 0x746d66], accent: 0x8c847a, snd: 'stone', style: [STYLE.ROCK, 3.4, 1] },
+  [M.STAINED]: { name: 'Stained Wood', tones: [0x3a2414, 0x4a2e1a, 0x5a3820, 0x6a4428], accent: 0xb08850, snd: 'wood', style: [STYLE.WOOD, 8, 0.8] },
+  [M.COMPOST]: { name: 'Compost', tones: [0x2a1c14, 0x34241a, 0x3e2c20, 0x4a3626], accent: 0x6a5a3a, snd: 'dirt', style: [STYLE.SOIL, 1.4, 0.4] },
+  [M.CRATEWOOD]: { name: 'Crate Wood', tones: [0x6a4a26, 0x80592e, 0x966a38, 0xaa7c44], accent: 0x4a3018, snd: 'wood', style: [STYLE.WOOD, 8, 0.9] },
+})) MAT[id] = { id: +id, hp: 9999, unbreakable: true, glow: 0, gran: false, fluid: 0, ...d };
 
 // ore voxels: colors from the item art
 for (let o = 1; o < ORES.length; o++) {

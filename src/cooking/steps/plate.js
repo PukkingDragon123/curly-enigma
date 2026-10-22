@@ -109,7 +109,8 @@ export class PlateStep extends Step {
       puff(this.fx, at.clone().add(V3(0, 0.02, 0)), 0xd8c8a8, 8, 0.15);
       return;
     }
-    this.final = dx < 0.04 ? 100 : clamp(100 - ((dx - 0.04) / (PLATE_R - 0.04)) * 100, 0, 100);
+    const bull = 0.04 * this.skill;
+    this.final = dx < bull ? 100 : clamp(100 - ((dx - bull) / (PLATE_R - bull)) * 100, 0, 100);
     this.audio.play('plate');
     this.cook.shake(0.003);
     if (this.final >= 85) { sparkle(this.fx, at.clone().add(V3(0, 0.12, 0)), 14); this.float('Bullseye!', at.clone().add(V3(0, 0.38, 0)), '#ffe066'); }

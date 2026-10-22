@@ -51,14 +51,16 @@ export class KneadStep extends Step {
       if (d < bd) { bd = d; best = n; }
     }
     this.squish(side);
-    if (!best || bd > WINDOW) return;
+    if (!best || bd > WINDOW * this.skill) return;
     best.hit = true;
     const at = this.dough.getWorldPosition(new THREE.Vector3()).add(V3(side === 'L' ? -0.18 : 0.18, 0.35, 0));
-    if (best.side !== side) { best.res = 'miss'; best.score = 0; this.float('Wrong paw!', at, '#ff9a8a'); return; }
-    const s = bd < 0.075 ? 100 : bd < 0.15 ? 75 : 45;
+    if (best.side !== side) { best.res = 'miss'; best.score = 0; this.streak = 0; this.float('Wrong paw!', at, '#ff9a8a'); return; }
+    const s = bd < 0.075 * this.skill ? 100 : bd < 0.15 * this.skill ? 75 : 45;
     best.res = s === 100 ? 'perfect' : 'ok';
     best.score = s;
-    this.float(s === 100 ? 'Perfect!' : s === 75 ? 'Good' : 'Late', at, s === 100 ? '#ffe066' : s === 75 ? '#9af07a' : '#9fdcff');
+    this.streak = s >= 75 ? (this.streak || 0) + 1 : 0;
+    if (this.streak >= 3) { this.audio.tone({ f: 520 * Math.pow(1.06, Math.min(12, this.streak)), type: 'square', dur: 0.05, vol: 0.035 }); puff(this.fx, at.clone().add(V3(0, -0.2, 0)), 0xfff4c0, 3 + Math.min(8, this.streak), 0.1); }
+    this.float(this.streak >= 3 ? `${s === 100 ? 'Perfect' : 'Good'} ×${this.streak}` : s === 100 ? 'Perfect!' : s === 75 ? 'Good' : 'Late', at, s === 100 ? '#ffe066' : s === 75 ? '#9af07a' : '#9fdcff');
     this.lane?.flash();
   }
 
@@ -88,7 +90,7 @@ export class KneadStep extends Step {
         this.tickI++;
       }
       for (const n of this.notes) {
-        if (!n.hit && now - n.t > WINDOW) { n.hit = true; n.res = 'miss'; n.score = 0; this.float('Miss', this.dough.getWorldPosition(new THREE.Vector3()).add(V3(n.side === 'L' ? -0.2 : 0.2, 0.3, 0)), '#ff9a8a'); }
+        if (!n.hit && now - n.t > WINDOW * this.skill) { n.hit = true; n.res = 'miss'; n.score = 0; this.float('Miss', this.dough.getWorldPosition(new THREE.Vector3()).add(V3(n.side === 'L' ? -0.2 : 0.2, 0.3, 0)), '#ff9a8a'); }
       }
       if (this.notes.every((n) => n.hit)) {
         this.finishT = 0;

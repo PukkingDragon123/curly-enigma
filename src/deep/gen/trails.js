@@ -1,6 +1,10 @@
 // Old trails: tunnels the old miners dug by hand between the lifts, the burrows and the town. A
 // flat, trodden floor, a rounded roof, walls with pick marks, timber frames every few steps,
 // sleepers of an old cart track, a lantern now and then, and ladder shafts where the way drops.
+// Here and there the roof has come down (a plug of rubble and a snapped cap beam to dig through,
+// only where the trail ran through solid rock); where the way crosses open cave, a chasm or
+// water, the old miners laid a plank deck on timber stringers (Ruins.js adds the hand ropes, the
+// signposts, the rails, carts and lost tools).
 //
 // Pure and deterministic (it runs in the chunk workers too). A trail is a chain of plan features,
 // one straight segment each: { kind: 'trail', a: {x,y,z}, b: {x,y,z}, w, h, seed, ladder?, rails? }.
@@ -30,6 +34,17 @@ export function trailLanterns(f) {
   return out;
 }
 
+/** The cave-in on a segment, if it has one: { s, hl } (metres along it, half length). */
+export function trailCollapse(f) {
+  if (f.ladder) return null;
+  const len = Math.hypot(f.b.x - f.a.x, f.b.z - f.a.z);
+  if (len < 4.2 || h3(f.seed, 3, 1, 77) > 0.3) return null;
+  return { s: len * (0.3 + h3(f.seed, 5, 2, 78) * 0.4), hl: 0.45 + h3(f.seed, 6, 3, 79) * 0.45 };
+}
+
+const NATURAL = (m) => m > 0 && m < 40 && m !== M.TIMBER && m !== M.BOARDS && m !== M.BURROW && m !== M.LANTERN && m !== M.BRICK && m !== M.DOOR && m !== M.LADDER && m !== M.BEDROCK;
+const FLUIDM = (m) => m === M.WATER || m === M.LAVA;
+
 /** Carve one segment into a chunk (vox: Uint8Array CS³, chunk origin X0/Y0/Z0 in voxels). */
 export function stampTrail(f, vox, X0, Y0, Z0, CS) {
   const bb = f.bb || trailBB(f);
@@ -43,6 +58,7 @@ export function stampTrail(f, vox, X0, Y0, Z0, CS) {
   const len = Math.hypot(dx, dz) || 1e-6;
   const ux = dx / len, uz = dz / len; // along
   const lan = trailLanterns(f);
+  const col = trailCollapse(f);
   for (let z = lz0; z < lz1; z++) for (let y = ly0; y < ly1; y++) for (let x = lx0; x < lx1; x++) {
     const vx = X0 + x, vy = Y0 + y, vz = Z0 + z;
     const xm = (vx + 0.5) / VOX, ym = (vy + 0.5) / VOX, zm = (vz + 0.5) / VOX;
@@ -61,8 +77,19 @@ export function stampTrail(f, vox, X0, Y0, Z0, CS) {
     const endOk = (s >= 0 && s <= len) || Math.hypot(s < 0 ? s : s - len, lat) < hw;
     const vi = x + CS * (y + CS * z);
     const cur = vox[vi];
-    if (cur === M.BEDROCK || cur === M.BURROW || cur === M.LANTERN) continue;
+    if (cur === M.BEDROCK || cur === M.BURROW || cur === M.LANTERN || cur >= 96) continue;
     if (inside && endOk) {
+      // a cave-in: the roof came down here (only where the trail ran through solid rock)
+      if (col && NATURAL(cur)) {
+        const ds = Math.abs(s - col.s) / col.hl + (h3(vx >> 1, vy >> 1, vz >> 1, f.seed + 3) - 0.5) * 0.35;
+        const top = h * (1.25 - ds * ds * 0.55);
+        if (ds < 1.5 && up < top) {
+          // a snapped cap beam lies slantwise through the heap
+          const beam = Math.abs(up - (0.35 + (s - col.s) * 0.45)) < 0.07 && Math.abs(lat - (s - col.s) * 0.5) < 0.42 && al < wl - 0.05;
+          vox[vi] = beam ? M.TIMBER : h3(vx >> 2, vy >> 2, vz >> 2, f.seed + 4) < 0.22 ? cur : M.RUBBLE;
+          continue;
+        }
+      }
       vox[vi] = 0;
       // timber frames: posts against the walls and a cap beam under the arch
       const fs = ((s % FRAME) + FRAME) % FRAME;
@@ -74,9 +101,18 @@ export function stampTrail(f, vox, X0, Y0, Z0, CS) {
       if (f.rails && up < 1 / VOX && al < 0.42 && ((s % 0.5) + 0.5) % 0.5 < 0.13) vox[vi] = M.TIMBER;
       // a lantern hanging under a cap beam
       for (const L of lan) if (Math.abs(xm - L.x) < 0.07 && Math.abs(zm - L.z) < 0.07 && ym > L.y - 0.07 && ym < L.y + 0.1) vox[vi] = M.LANTERN;
-    } else if (up >= -1 / VOX && up < 0 && al < wl - 0.05 && endOk && cur) {
-      // a trodden floor: packed earth, gravel in the wetter stretches
-      if (cur !== M.TIMBER && cur < 40) vox[vi] = h3(vx >> 2, vy, vz >> 2, f.seed) < 0.3 ? M.GRAVEL : M.DIRT;
+    } else if (up >= -1 / VOX && up < 0 && al < wl - 0.02 && endOk) {
+      if (cur && !FLUIDM(cur)) {
+        // a trodden floor: packed earth, gravel in the wetter stretches
+        if (cur !== M.TIMBER && cur < 40) vox[vi] = h3(vx >> 2, vy, vz >> 2, f.seed) < 0.3 ? M.GRAVEL : M.DIRT;
+      } else if (s > 0.05 && s < len - 0.05 || cur === 0) {
+        // nothing underfoot (open cave, a chasm, water): a plank deck on timber stringers
+        const stringer = al > wl - 0.17;
+        const plank = ((s * 8) % 1 + 1) % 1 < 0.78;
+        if (stringer || plank) vox[vi] = stringer ? M.TIMBER : M.BOARDS;
+      }
+    } else if (up >= -2 / VOX && up < -1 / VOX && al > wl - 0.17 && al < wl - 0.02 && endOk && (!cur || FLUIDM(cur))) {
+      vox[vi] = M.TIMBER; // the stringers are two voxels deep
     }
   }
 }

@@ -2,6 +2,7 @@
 // straight from their voxel models (a 3/4 orthographic projection, painter's order, top light,
 // dark outline). No WebGL needed.
 import { buildMimic, buildGolem, rockPalette } from './rock.js';
+import { buildCrystalGolem } from './golem.js';
 import { buildWisp } from './wisp.js';
 import { buildImp } from './imp.js';
 import { buildWyrm } from './wyrm.js';
@@ -20,6 +21,12 @@ const POSES = {
   rubble_golem: () => {
     const G = buildGolem(rockPalette(M.GRANITE), 3, 11);
     return [vox(G.torso, 0, 7), vox(G.glow, 0, 7), vox(G.eyes, 0, 7), vox(G.arm, 10, 20), vox(G.arm, -10, 20, 0, true), vox(G.leg, 5, 7), vox(G.leg, -5, 7)];
+  },
+  crystal_golem: () => {
+    const G = buildCrystalGolem(rockPalette(M.CLAY), 3, 23);
+    const parts = [vox(G.torso, 0, 13), vox(G.glow, 0, 13), vox(G.eyes, 0, 13), vox(G.arm, 12, 31), vox(G.arm, -13, 31, 0, true), vox(G.leg, 5, 13), vox(G.leg, -6, 13)];
+    for (const S of G.shards) parts.push(vox(S.geo, 0, 13));
+    return parts;
   },
   gloom_wisp: () => {
     const G = buildWisp(2);

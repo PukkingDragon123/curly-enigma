@@ -72,6 +72,8 @@ export class Swarm {
 
 export class Bat extends Enemy {
   static info = { id: 'shade_bat', name: 'Shade Bat', color: '#c86aa8', hits: 0.9, dmg: 2, flying: true, snd: 'flesh' };
+  static tells = { aim: [0.4] };
+  static resume = 'fly';
   constructor(mgr, o) {
     super(mgr, o);
     this.rad = 0.1; this.cy = 0; this.hitR = 0.19;

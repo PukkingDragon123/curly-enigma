@@ -81,6 +81,16 @@ export class VB {
     }
     return this;
   }
+  /** First filled voxel walking from (x, y, z) along (dx, dy, dz) (steps of one voxel), or null. */
+  hitFrom(x, y, z, dx, dy, dz, max = 40) {
+    const l = Math.hypot(dx, dy, dz) || 1;
+    dx /= l; dy /= l; dz /= l;
+    for (let i = 0; i < max; i++) {
+      const px = Math.round(x + dx * i), py = Math.round(y + dy * i), pz = Math.round(z + dz * i);
+      if (this.has(px, py, pz)) return [px, py, pz];
+    }
+    return null;
+  }
   /** Is a voxel's face toward (dx, dy, dz) open? */
   open(x, y, z, dx, dy, dz) { return !this.has(x + dx, y + dy, z + dz); }
   list() {
@@ -90,11 +100,28 @@ export class VB {
   }
   get size() { return this.v.size; }
 
+  /** Drop voxels buried on all six sides (big models: far fewer voxels to keep and burst). */
+  hollow() {
+    const kill = [];
+    for (const [k] of this.v) {
+      const x = (k & 255) - 128, y = ((k >> 8) & 255) - 128, z = ((k >> 16) & 255) - 128;
+      if (this.has(x + 1, y, z) && this.has(x - 1, y, z) && this.has(x, y + 1, z) && this.has(x, y - 1, z) && this.has(x, y, z + 1) && this.has(x, y, z - 1)
+        && this.has(x + 2, y, z) && this.has(x - 2, y, z) && this.has(x, y + 2, z) && this.has(x, y - 2, z) && this.has(x, y, z + 2) && this.has(x, y, z - 2)) kill.push(k);
+    }
+    for (const k of kill) this.v.delete(k);
+    return this;
+  }
+  /** Copy another model's voxels in at an offset. */
+  merge(o, dx = 0, dy = 0, dz = 0) {
+    for (const v of o.list()) this.set(v.x + dx, v.y + dy, v.z + dz, v.c);
+    return this;
+  }
+
   /**
-   * Greedy mesh, VS meters per voxel. (px, py, pz) is the model-space pivot (in voxels) that becomes
-   * the mesh origin. Returns the geometry with userData { vox, pivot } for debris.
+   * Greedy mesh, `vs` meters per voxel (VS by default). (px, py, pz) is the model-space pivot (in
+   * voxels) that becomes the mesh origin. Returns the geometry with userData { vox, pivot, vs } for debris.
    */
-  geo(px = 0, py = 0, pz = 0) {
+  geo(px = 0, py = 0, pz = 0, vs = VS) {
     let x0 = 1e9, y0 = 1e9, z0 = 1e9, x1 = -1e9, y1 = -1e9, z1 = -1e9;
     const L = this.list();
     for (const v of L) {
@@ -105,9 +132,10 @@ export class VB {
     if (!L.length) { x0 = y0 = z0 = 0; x1 = y1 = z1 = 0; }
     const g = new VoxelGrid(x1 - x0 + 1, y1 - y0 + 1, z1 - z0 + 1);
     for (const v of L) g.set(v.x - x0, v.y - y0, v.z - z0, v.c);
-    const geo = meshGridGreedy(g, { scale: VS, pivot: [px - x0, py - y0, pz - z0], shade: true });
+    const geo = meshGridGreedy(g, { scale: vs, pivot: [px - x0, py - y0, pz - z0], shade: true });
     geo.userData.vox = L;
     geo.userData.pivot = [px, py, pz];
+    geo.userData.vs = vs;
     return geo;
   }
 }

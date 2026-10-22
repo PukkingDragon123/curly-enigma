@@ -50,7 +50,7 @@ export class Hud {
     this.packImg = el('img', { class: 'pix pack-img', src: SPR.pack(0), alt: '' });
     this.packTag = el('span', { class: 'pack-tag', hidden: true });
     this.badge = el('i', { class: 'pack-badge', hidden: true });
-    this.bookBtn = el('button', { class: 'pack-book', title: 'Index Book (B)', 'aria-label': 'Index Book', onclick: (e) => { e.stopPropagation(); ui.openIndex(); } }, [
+    this.bookBtn = el('button', { class: 'pack-book', title: 'Book (B)', 'aria-label': 'Book: quests, map, skills, index', onclick: (e) => { e.stopPropagation(); if (ui.openBook) ui.openBook(); else ui.openIndex(); } }, [
       el('img', { class: 'pix', src: SPR.bookPeek(), alt: '' }), this.badge,
     ]);
     this.packBtn = el('button', { class: 'pack-bag', title: 'Backpack (I)', 'aria-label': 'Backpack', onclick: () => ui.openInventory() }, [this.packImg, this.packTag]);

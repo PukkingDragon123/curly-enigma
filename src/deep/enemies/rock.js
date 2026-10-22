@@ -1,11 +1,15 @@
 // Rock folk: the Pebble Mimic (a pebble that hops at you) and the Rubble Golem (a boulder that
-// unfolds, lumbers after you and slams the ground). Both are painted from the rock they sit on, so
-// asleep they look just like part of the cave until you get close.
+// unfolds, lumbers after you and slams the ground; its glowing chest seam is a weak spot). Both are
+// painted from the rock they sit on, so asleep they look just like part of the cave until you get
+// close. (Crystal on a creature means "mine me": see golem.js; rubble golems carry none.)
+import * as THREE from 'three';
 import { Enemy, smooth, easeBack, TAU } from './base.js';
 import { VB, VS, mul, mix, c01, ramp } from './vox.js';
 import { shockRing, puff, pebbles, sparkle } from './fx.js';
 import { MAT, M } from '../materials.js';
 import { rand, clamp } from '../../core/util.js';
+
+const _s = new THREE.Vector3();
 
 // glow colors per zone (golem cores, cracks)
 const CORE = [null, 0xffc860, 0xffb040, 0xb8a0ff, 0xff7a1a, 0x9ae8ff, 0xd8a0ff];
@@ -73,6 +77,8 @@ export function buildMimic(pal, zone, seed) {
 
 export class Mimic extends Enemy {
   static info = { id: 'pebble_mimic', name: 'Pebble Mimic', color: '#d8b070', hits: 2, dmg: 2, snd: 'stone' };
+  static tells = { windup: [0.45] };
+  static resume = 'hop';
   constructor(mgr, o) {
     super(mgr, o);
     this.hw = 0.18; this.h = 0.34; this.cy = 0.2; this.hitR = 0.27;
@@ -223,9 +229,10 @@ export function buildGolem(pal, zone, seed) {
   const sockets = [[1, 12], [2, 12], [3, 12], [1, 13], [2, 13], [3, 13], [-2, 12], [-3, 12], [-4, 12], [-2, 13], [-3, 13], [-4, 13]];
   for (const [x, y] of sockets) torso.set(x, y, front(torso, x, y), dark);
   for (let x = -3; x <= 2; x++) torso.set(x, 9 + (x === -3 || x === 2 ? 1 : 0), front(torso, x, 9 + (x === -3 || x === 2 ? 1 : 0)), dark);
-  // glowing seam down the chest
-  let cx = 0;
-  for (let y = 2; y <= 8; y++) { cx += torso.n(0, y, 0, 3) < 0.5 ? -1 : 1; cx = clamp(cx, -2, 2); const z = front(torso, cx, y); torso.del(cx, y, z); glow.set(cx, y, z, y % 3 === 0 ? 0xffffff : core); }
+  // glowing seam down the chest (its weak spot)
+  let cx = 0, sz = 0;
+  for (let y = 2; y <= 8; y++) { cx += torso.n(0, y, 0, 3) < 0.5 ? -1 : 1; cx = clamp(cx, -2, 2); const z = front(torso, cx, y); torso.del(cx, y, z); glow.set(cx, y, z, y % 3 === 0 ? 0xffffff : core); sz += z; }
+  const seam = [0, 5, sz / 7];
   // zone dressing
   torso.paint((x, y, z, c) => {
     if (zone <= 2 && y > 9 && torso.open(x, y, z, 0, 1, 0) && torso.n(x, y, z, 9) < 0.55) return torso.n(x, y, z, 11) < 0.5 ? 0x3a7a3a : 0x5aa84a; // moss
@@ -236,12 +243,6 @@ export function buildGolem(pal, zone, seed) {
     for (const [x, y, z] of torso.list().map((v) => [v.x, v.y, v.z])) {
       if (torso.n(x, y, z, 13) < 0.06 && (torso.open(x, y, z, 0, 0, 1) || torso.open(x, y, z, 1, 0, 0) || torso.open(x, y, z, -1, 0, 0))) { torso.del(x, y, z); glow.set(x, y, z, zone === 4 ? (torso.n(x, y, z, 14) < 0.5 ? 0xff7a1a : 0xffc040) : 0xffe08a); }
     }
-  }
-  if (zone === 3 || zone === 5 || zone === 6) {
-    // crystals growing out of the shoulders and back
-    const cc = zone === 3 ? [0x8a8ae8, 0xc8c8ff, 0xffffff] : zone === 5 ? [0x8ad0f0, 0xd8f4ff, 0xffffff] : [0xb070f0, 0xe0b0ff, 0xffffff];
-    const spike = (x, y, z, dx, dy, dz, len) => { for (let i = 0; i < len; i++) { const px = Math.round(x + dx * i), py = Math.round(y + dy * i), pz = Math.round(z + dz * i); glow.set(px, py, pz, cc[Math.min(2, (i * 3 / len) | 0)]); if (i < len / 2) { glow.set(px + 1, py, pz, cc[0]); glow.set(px, py, pz - 1, cc[0]); } } };
-    spike(7, 16, -1, 0.3, 1, -0.3, 6); spike(-8, 16, 0, -0.3, 1, -0.2, 5); spike(-1, 15, -6, 0, 1, -0.6, 7); spike(3, 14, -6, 0.3, 0.8, -0.7, 5);
   }
   // legs (pivot at the hip)
   const leg = new VB(seed + 2);
@@ -262,12 +263,14 @@ export function buildGolem(pal, zone, seed) {
   }
   return {
     torso: torso.geo(0, 0, 0), glow: glow.size ? glow.geo(0, 0, 0) : null, leg: leg.geo(0, 0, 0), arm: arm.geo(0, 0, 0),
-    eyes: eyes.geo(0, 13, 0), angry: angry.geo(0, 13, 0), dust: c01(T[1]), chip: c01(T[2]), core: c01(core),
+    eyes: eyes.geo(0, 13, 0), angry: angry.geo(0, 13, 0), dust: c01(T[1]), chip: c01(T[2]), core: c01(core), seam,
   };
 }
 
 export class Golem extends Enemy {
-  static info = { id: 'rubble_golem', name: 'Rubble Golem', color: '#c8a070', hits: 4.5, dmg: 5, snd: 'stone' };
+  static info = { id: 'rubble_golem', name: 'Rubble Golem', color: '#c8a070', hits: 4.5, dmg: 5, snd: 'stone', poise: 2 };
+  static tells = { raise: [0.8, true] };
+  static resume = 'chase';
   constructor(mgr, o) {
     super(mgr, o);
     this.hw = 0.3; this.h = 0.9; this.cy = 0.5; this.hitR = 0.5;
@@ -296,6 +299,19 @@ export class Golem extends Enemy {
     this.pose = { lean: 0, arm: 0, armOut: 0 };
     this.lost = 0;
     this.tellT = rand(2, 6);
+    // the glowing seam: a weak spot (Enemies.damage multiplies blows that land on it)
+    this.spheres.push({ x: 0, y: 0, z: 0, r: 0, part: 'core', idx: 0, prio: 0.14, weak: 1.75 });
+  }
+
+  updateSpheres() {
+    super.updateSpheres();
+    const s = this.spheres[1];
+    if (!s) return;
+    this.root.updateMatrixWorld(true);
+    const [x, y, z] = this.G.seam;
+    _s.set(x * VS, y * VS, z * VS).applyMatrix4(this.torsoG.matrixWorld);
+    s.x = _s.x; s.y = _s.y; s.z = _s.z;
+    s.r = this.wakeK > 0.5 ? 2.6 * VS * this.size : 0;
   }
 
   think(dt) {
@@ -383,7 +399,7 @@ export class Golem extends Enemy {
     // fists landing right on the mole
     if (this.gapToPlayer(fx, y + 0.3, fz, 0.45) < 0) {
       const [dx, dz] = this.dirToPlayer();
-      this.hurtPlayer(this.info.dmg * 1.2, [dx * 4.5, 3, dz * 4.5]);
+      this.hurtPlayer(this.info.dmg * 1.2, [dx * 4.5, 3, dz * 4.5], this.kind, { heavy: true });
     }
   }
 

@@ -11,7 +11,8 @@ import { makeCage } from '../bookends/cage.js';
 import { makeSunglasses } from '../bookends/props.js';
 import { buildLanding } from '../bookends/landing.js';
 import { buildShaft, SHAFT_ZONES } from '../bookends/shaft.js';
-import { buildBeach } from '../bookends/beach.js';
+import { buildBeach, BEACH_SUN } from '../bookends/beach.js';
+import { mixGrade } from '../core/Engine.js';
 import { buildCredits } from '../bookends/credits.js';
 import { HEART } from '../ui/UI.js';
 
@@ -22,11 +23,17 @@ const BEACH_LINE_OFF = 10.5;
 const CREDITS_AT = 11.8;
 
 const POST = {
-  farewell: { vignette: 0.42, tint: 0xfff0e0, saturation: 1.1, contrast: 1.05, brightness: 1 },
-  ascent: { vignette: 0.5, tint: 0xffffff, saturation: 1.1, contrast: 1.05, brightness: 1 },
-  surface: { vignette: 0.2, tint: 0xfff6ee, saturation: 1.12, contrast: 1.04, brightness: 1.04, innerThresh: 0.9 },
-  beach: { vignette: 0.16, tint: 0xfff0e4, saturation: 1.12, contrast: 1.05, brightness: 1.02, innerThresh: 0.9 },
+  farewell: { vignette: 0.42, tint: 0xfff0e0, saturation: 1.1, contrast: 1.05, brightness: 1, grade: 'town', bloom: 0.6, bloomThreshold: 0.76 },
+  ascent: { vignette: 0.5, tint: 0xffffff, saturation: 1.1, contrast: 1.05, brightness: 1, bloom: 0.7, bloomThreshold: 0.74 },
+  surface: { vignette: 0.2, tint: 0xfff6ee, saturation: 1.12, contrast: 1.04, brightness: 1.04, innerThresh: 0.9, grade: 'dusk', gradeMix: 0.7, bloom: 0.8, bloomThreshold: 0.82, fringe: 0.8 },
+  beach: {
+    vignette: 0.16, tint: 0xfff0e4, saturation: 1.12, contrast: 1.05, brightness: 1.02, innerThresh: 0.9,
+    grade: 'dusk', gradeMix: 0.8, bloom: 0.6, bloomThreshold: 0.84,
+    rays: 0.7, raysDir: BEACH_SUN, raysSky: 1, raysColor: 0xffc890, raysRadius: 0.5, raysDecay: 0.96,
+  },
 };
+// the ride up: each stratum gets its own light (SHAFT_ZONES ids → Engine GRADES)
+const ZONE_GRADE = { 1: 'warm', 2: 'warm', 3: 'cool', 4: 'magma', 5: 'frost', 6: 'core' };
 
 export default class EndingScene extends Scene {
   async enter(params = {}) {
@@ -278,6 +285,8 @@ export default class EndingScene extends Scene {
   }
 
   setDepth(m, zoneIdx, k) {
+    const zid = SHAFT_ZONES[zoneIdx] && SHAFT_ZONES[zoneIdx].id;
+    if (zid && this.phase === 'ascent') this.gradeTarget = ZONE_GRADE[zid] || null;
     const v = String(Math.max(0, Math.round(m)));
     if (this.depthNum.textContent !== v) this.depthNum.textContent = v;
     const z = SHAFT_ZONES[zoneIdx];
@@ -347,6 +356,12 @@ export default class EndingScene extends Scene {
       }
       case 'ascent': {
         v.ascent.update(dt, this.api);
+        // blend smoothly from one stratum's light to the next
+        if (this.gradeTarget !== this.gradeTo) { this.gradeFrom = this.gradeCur || this.gradeTarget; this.gradeTo = this.gradeTarget; this.gradeK = 0; }
+        this.gradeK = Math.min(1, (this.gradeK || 0) + dt / 1.2);
+        this.gradeCur = mixGrade(this.gradeFrom, this.gradeTo, this.gradeK);
+        post.grade = this.gradeCur;
+        post.gradeMix = 0.85;
         const d = v.ascent.duration;
         post.fade = clamp(1 - t / 0.5, 0, 1);
         post.flash = clamp((t - (d - 0.8)) / 0.7, 0, 1) ** 1.5;

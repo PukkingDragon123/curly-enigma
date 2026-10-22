@@ -41,23 +41,47 @@ await step('new game → the fall', async () => {
   if ((await scene()) !== 'fall') throw new Error('not falling: ' + (await scene()));
   await shot('02-fall');
   await page.evaluate(() => window.__game.scene.skip());
-  for (let i = 0; i < 80 && ((await scene()) !== 'home' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
-  if ((await scene()) !== 'home') throw new Error('did not land home: ' + (await scene()));
+  // the fall ends in Old Star's dig, in the mine
+  for (let i = 0; i < 120 && ((await scene()) !== 'deep' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
+  if ((await scene()) !== 'deep') throw new Error('did not land in the dig: ' + (await scene()));
 });
-await step('home landing', async () => {
-  await wait(4000);
-  const f = await page.evaluate(() => [window.__game.state.flag('fallen'), window.__game.state.flag('nugget'), window.__game.state.flag('escaped')]);
-  if (!f[0] || !f[1]) throw new Error('landing flags missing: ' + f);
-  if (f[2]) throw new Error('escaped flag set on a new game');
-  await shot('02b-home-landing');
+await step("Old Star's lessons → ride up to the tavern", async () => {
+  await wait(2500);
+  const s0 = await page.evaluate(() => { const P = window.__game.scene.prologue; if (!P) return null; P.debug.run(3); return P.debug.step(); });
+  if (!s0) throw new Error('no prologue in the dig');
+  await shot('02b-oldstar-pinned');
+  // play the lessons through the test hooks: rocks, the copper clump, the ladder and map, the plug, the lift
+  const seen = await page.evaluate(() => {
+    const d = window.__game.scene.prologue.debug, out = [d.step()];
+    const go = (fn, sec = 2.5) => { if (d[fn]) d[fn](); d.run(sec); const st = d.step(); if (out[out.length - 1] !== st) out.push(st); };
+    go('clearRocks', 4); go('freeOre', 3); go('grab', 1.5); go('clean', 2); go('bag', 2);
+    return out;
+  });
+  await shot('02c-oldstar-lessons');
+  const more = await page.evaluate(() => {
+    const d = window.__game.scene.prologue.debug, out = [d.step()];
+    const go = (fn, sec = 2.5) => { if (d[fn]) d[fn](); d.run(sec); const st = d.step(); if (out[out.length - 1] !== st) out.push(st); };
+    go('ladder', 2); go('toLedge', 2); go('takeMap', 3); go('breakPlug', 3);
+    return out;
+  });
+  if (!(seen.length + more.length > 4)) throw new Error('the lessons did not move on: ' + seen.concat(more).join(' '));
+  await shot('02d-oldstar-plug');
+  // the last bit (the walk to the cage and the ride) is skipped: it rides up with all flags set
+  await page.evaluate(() => window.__game.scene.prologue.debug.skip());
+  for (let i = 0; i < 160 && ((await scene()) !== 'home' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
+  if ((await scene()) !== 'home') throw new Error('did not ride up home: ' + (await scene()) + ' after ' + seen.concat(more).join(' '));
+  await wait(3000);
+  const f = await page.evaluate(() => ['prologue', 'fallen', 'nugget', 'escaped'].map((k) => window.__game.state.flag(k)));
+  if (!f[0] || !f[1] || !f[2]) throw new Error('opening flags missing: ' + f);
+  if (f[3]) throw new Error('escaped flag set on a new game');
+  await shot('02e-tavern-arrival');
 });
-await step('dig out of the burrow wall → first person', async () => {
-  // first-person burrow: dig straight out through a free wall spot (scene.debug.digOut)
-  await page.evaluate(() => window.__game.scene.debug.digOut());
+await step('home lift → the mine entrance', async () => {
+  // no digging outside the mine: the cage lift in the house is the way down
+  await page.evaluate(() => window.__game.scene.debug.useLift('L0'));
   for (let i = 0; i < 120 && ((await scene()) !== 'deep' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
   if ((await scene()) !== 'deep') throw new Error('not underground: ' + (await scene()));
   await wait(2500);
-  if (!(await page.evaluate(() => window.__game.state.data.deep.tunnels.length))) throw new Error('tunnel not remembered');
   await shot('03-deep');
 });
 // headless frames are slow: the deep steps drive the simulation directly with scene.update()
@@ -154,15 +178,14 @@ await step('town lift → deep station → back up', async () => {
   if (r.locked) throw new Error('still in the cage after the ride up');
   await wait(500);
 });
-await step('tunnel home', async () => {
-  const t = await page.evaluate(() => window.__game.state.data.deep.tunnels[0]);
-  await go('deep', { from: 'home', wall: t.wall, t: t.t });
+await step('mine lift home', async () => {
+  await go('deep', { from: 'lift', lift: 'L0' });
   await wait(2000);
-  await page.evaluate(() => window.__game.scene.headHome());
+  await page.evaluate(() => import('/src/fps/lifts.js').then((m) => m.rideTo(window.__game, 'home')));
   for (let i = 0; i < 80 && ((await scene()) !== 'home' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
   if ((await scene()) !== 'home') throw new Error('did not get home: ' + (await scene()));
   await wait(2500);
-  await shot('08-home-from-tunnel');
+  await shot('08-home-by-lift');
   await go('town', { from: 'home' });
   await wait(1500);
 });
@@ -240,6 +263,24 @@ await step('home again + sleep', async () => {
   const d1 = await page.evaluate(() => window.__game.state.data.day);
   if (d1 !== d0 + 1) throw new Error('day did not advance');
   await shot('12-home');
+});
+await step('tavern: Old Star, his notes and his chest', async () => {
+  const r = await page.evaluate(() => {
+    const d = window.__game.scene.debug;
+    const line = d.talk();
+    const note = d.openNotes();
+    const panel = !!document.querySelector('.nt-panel');
+    window.__game.ui.closeAllPanels();
+    return { line, note, panel, read: (window.__game.state.data.notesRead || []).length, labels: d.labels().length };
+  });
+  if (!r.line) throw new Error('Old Star had nothing to say');
+  if (!r.panel || !r.read) throw new Error('notes: ' + JSON.stringify(r));
+  await page.evaluate(() => { window.__chestDone = null; window.__game.scene.debug.openChest().then((x) => { window.__chestDone = x || []; }); });
+  // the loot flies to the backpack in real time (DOM animations), the lid in game time: drive both
+  for (let i = 0; i < 120 && !(await page.evaluate(() => window.__chestDone)); i++) { await page.evaluate(() => window.__game.scene.debug.step(10)); await wait(100); }
+  const got = await page.evaluate(() => window.__chestDone);
+  if (!got || !got.length) throw new Error('the chest gave nothing');
+  await shot('12b-tavern');
 });
 await step('index book', async () => {
   await page.evaluate(() => window.__game.ui.openIndex());

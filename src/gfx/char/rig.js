@@ -567,7 +567,8 @@ export class CharacterRig {
     // brows: lift and tilt ease toward the expression (each side can differ)
     const bc = this.browCur;
     const bt = brow || [0, 0];
-    const tL = [bt[0], bt[1]], tR = bt.length > 2 ? [bt[2], bt[3]] : tL;
+    const lk = this.elbowR ? 1 : 0.8; // chibi faces: the same moods, a touch less travel
+    const tL = [bt[0] * lk, bt[1]], tR = bt.length > 2 ? [bt[2] * lk, bt[3]] : tL;
     const kb = 1 - Math.exp(-dt * 16);
     bc[0] += (tL[0] - bc[0]) * kb; bc[1] += (tL[1] - bc[1]) * kb;
     bc[2] += (tR[0] - bc[2]) * kb; bc[3] += (tR[1] - bc[3]) * kb;

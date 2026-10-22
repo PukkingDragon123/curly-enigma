@@ -14,6 +14,8 @@ import { makeNoise2D, makeRng, clamp, lerp } from '../core/util.js';
 const VS = 1 / 8;
 const RX = 8.6, RZ = 6.6, P = 2.4;
 const SUN_DIR = new THREE.Vector3(-0.22, 0.058, -1).normalize();
+/** Toward the setting sun (god rays in the ending's beach). */
+export const BEACH_SUN = SUN_DIR;
 const GB = { x0: -11.5, x1: 11.5, z0: -9.5, z1: 9.5, y0: -0.75 };
 const CAGE_YAW = Math.PI; // the riders face the sunset when they arrive
 

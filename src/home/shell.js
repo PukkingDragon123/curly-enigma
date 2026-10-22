@@ -1,31 +1,30 @@
-// The first-person burrow's shell: four full walls and a boarded ceiling (1/64 m voxel reliefs with
-// every face meshed), the painted floor, corner posts, the door to town, the crystal window, tunnel
-// mouths on any wall, the Surface Express poster, a high ledge of jars, herbs, sconces, hanging
-// lanterns, strings of paper lanterns between the joists, roots, cobwebs, glowing bracket fungi,
-// the build bench and the hole the mole fell through. Static dressing is merged into a few draw
-// calls with the fixed lights baked into its colors. Built in tile units inside `room` (scaled to
-// meters); merged meshes go to `world` (meters).
+// Your room's shell (the back room of Old Star's tavern): four full walls and a boarded ceiling
+// (1/64 m voxel reliefs with every face meshed), the painted floor, corner posts, the crystal window,
+// the archway down to the tavern hall in the north wall, old tunnel mouths, the Surface Express
+// poster, a high ledge of jars, herbs, sconces, hanging lanterns, strings of paper lanterns between
+// the joists, roots, cobwebs, glowing bracket fungi and the build bench. Static dressing is merged
+// into a few draw calls with the fixed lights baked into its colors. Built in tile units inside
+// `room` (scaled to meters); merged meshes go to `world` (meters).
 import * as THREE from 'three';
 import { pixelTexture } from '../gfx/PixelArt.js';
 import { makeRng, hashStr } from '../core/util.js';
 import { posterCanvas } from '../iso/pixel.js';
-import { VoxelGrid, C, wood, iron, line, ring, M32, G32, group, mulc, mixc, h3 } from '../iso/kit.js';
+import { VoxelGrid, C, wood, iron, line, ring, M32, G32, group, mulc, h3 } from '../iso/kit.js';
 import { hash2, noiseSampler, disposeTextures } from '../iso/surface.js';
 import { paintHomeFloor, repaintHomeTile } from '../iso/homeFloor.js';
 import { bakeLighting } from '../iso/bake.js';
 import { Batch, keepUnbatched } from '../iso/vox.js';
-import { WINDOW_SLOTS, POSTER_SLOTS, liftTiles, benchTiles } from '../iso/homeLayout.js';
+import { WINDOW_SLOTS, POSTER_SLOTS, benchTiles } from '../iso/homeLayout.js';
 import { cobweb } from '../iso/homeDecor.js';
 import { hangingLantern } from '../iso/props.js';
 import { meshReliefTex, reliefTexture } from './relief.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { wallVoxel, wallDetail, nearestPost, ceilVoxel, PLATE } from './walls.js';
-import { T, VPT, CEIL, WALL_V, FACE, MOUTH_HW, DOOR_HW } from './units.js';
-import { inDoor, inMouth, WINDOW, MOUTH_LANTERN, townDoor, doorRubble, crystalWindow, tunnelMouth, cornerPost, buildBench, holeShaft, brokenBoards, hangingRoot, wallFungi } from './props.js';
+import { T, VPT, CEIL, WALL_V, FACE, MOUTH_HW, ARCH } from './units.js';
+import { inMouth, WINDOW, MOUTH_LANTERN, crystalWindow, tunnelMouth, cornerPost, buildBench, hangingRoot, wallFungi } from './props.js';
 
 const CT = CEIL / T; // ceiling height in tiles
-const HOLE_R = 0.86; // tiles
 const S32 = 1 / 32;
 
 export class HomeShell {
@@ -37,16 +36,14 @@ export class HomeShell {
     this.toDispose = [];
   }
 
-  /** opts: { tunnels: [{wall, t}], doorOpen, hole: {x, z} } */
+  /** opts: { tunnels: [{wall, t}] } */
   build(W, D, wallId, floorMap, opts) {
     const t0 = performance.now();
     this.W = W;
     this.D = D;
     this.opts = opts;
     this.tunnels = opts.tunnels || [];
-    this.hole = opts.hole;
-    this.door = { z: D - 1.5 }; // door centre on the west wall (tiles)
-    this.lift = liftTiles(W, D);
+    this.arch = { x: ARCH.x / T }; // the archway's centre on the north wall (tiles)
     this.bench = benchTiles(W, D);
     const steps = {};
     const step = (name, fn) => { const a = performance.now(); fn(); steps[name] = Math.round(performance.now() - a); };
@@ -57,28 +54,25 @@ export class HomeShell {
     step('ceiling', () => this.buildCeiling());
     this.decor = new THREE.Group();
     this.room.add(this.decor);
-    step('door', () => this.buildDoor());
     step('window', () => this.buildWindow());
     step('poster', () => this.buildPoster());
     step('dressing', () => this.buildDressing());
     step('tunnels', () => this.buildTunnels());
-    step('hole', () => this.buildHole());
     step('merge', () => this.mergeDecor());
     this.steps = steps;
     this.ms = performance.now() - t0;
   }
 
   // ------------------------------------------------------------ planning
-  /** Joists across the ceiling (x in tiles), clear of the hole and the lift's pulley opening. */
+  /** Joists across the ceiling (x in tiles), evenly spaced and clear of the archway below. */
   planJoists() {
-    const { W } = this, hx = this.hole.x, lx = this.lift.x + 1;
+    const { W } = this;
     const xs = [];
-    for (let x = hx - 1.2; x > 0.7; x -= 2.4) xs.push(x);
-    for (let x = hx + 1.2; x < W - 0.7; x += 2.4) xs.push(x);
-    this.joists = xs.filter((x) => Math.abs(x - lx) > 0.8).sort((a, b) => a - b);
+    for (let x = 2.05; x < W - 0.7; x += 2.4) xs.push(x);
+    this.joists = xs;
   }
 
-  /** Fixed lights (meters): sconces, hanging lanterns, the window, tunnel lanterns, the hole. */
+  /** Fixed lights (tiles): sconces, hanging lanterns, the window, tunnel lanterns, the archway. */
   planLights() {
     const { W, D } = this;
     const sy = 2.75;
@@ -92,6 +86,8 @@ export class HomeShell {
     const j1 = near(W * 0.72), j2 = near(W * 0.28);
     if (j1 !== undefined) this.hanging.push({ x: j1, z: D * 0.32, len: 0.55 });
     if (j2 !== undefined && j2 !== j1) this.hanging.push({ x: j2, z: D * 0.7, len: 0.7 });
+    // an oil lamp on a chain from the patch in the roof, over the middle of the room
+    this.hanging.push({ x: Math.min(W - 2, 3.3), z: Math.min(D - 2, 3.4), len: 0.7, top: CT - 0.1, big: true });
     this.windowLight = { x: 0.45, y: WINDOW.cy / 32, z: WINDOW_SLOTS[0] + 0.5 };
     this.lanterns = [];
     this.tunnelInfo = this.tunnels.map((tn) => {
@@ -105,12 +101,12 @@ export class HomeShell {
     // every light in tiles; converted to meters when baked / handed to the scene
     this.lightsT = [
       ...this.sconces.map((l) => ({ ...l, kind: 'sconce', color: 0xffb860 })),
-      ...this.hanging.map((l) => ({ x: l.x, y: CT - 0.35 - l.len - 0.3, z: l.z, kind: 'hanging', color: 0xffb060 })),
+      ...this.hanging.map((l) => ({ x: l.x, y: (l.top ?? CT - 0.34) - 0.01 - l.len - 0.3, z: l.z, kind: l.big ? 'lamp' : 'hanging', color: 0xffb060 })),
       { ...this.windowLight, kind: 'window', color: 0x6ad8ff },
-      { x: this.hole.x, y: CT - 0.4, z: this.hole.z, kind: 'hole', color: 0xfff0d0 },
       ...this.lanterns.map((l) => ({ ...l, kind: 'lantern', color: 0xffb050 })),
+      // firelight from the hall coming up through the archway
+      { x: this.arch.x, y: 1.2, z: 0.35, kind: 'arch', color: 0xff9a50 },
     ];
-    if (this.opts.doorOpen) this.lightsT.push({ x: 0.3, y: 2.4, z: this.door.z, kind: 'lantern', color: 0xffc070 });
   }
 
   /** Point on the floor plan in front of a wall at `a` tiles along it, `out` tiles into the room. */
@@ -147,9 +143,7 @@ export class HomeShell {
     this.floorMs = performance.now() - t0;
     const tex = this.floor.tex;
     for (const t of [tex.map, tex.normalMap]) { t.generateMipmaps = true; t.minFilter = THREE.NearestMipmapNearestFilter; t.needsUpdate = true; }
-    // the floor minus the lift's pit
-    const L = this.lift;
-    const rects = [[0, 0, W, L.y], [0, L.y, L.x, D]];
+    const rects = [[0, 0, W, D]];
     const pos = [], uv = [], nor = [], idx = [];
     for (const [x0, z0, x1, z1] of rects) {
       if (x1 <= x0 || z1 <= z0) continue;
@@ -177,8 +171,11 @@ export class HomeShell {
   /** Openings cut through a wall: [{ c (voxels along), hw (voxels), test(du, v) }]. */
   openings(wall) {
     const out = [];
+    if (wall === 'n') {
+      const hw = ARCH.hw * 64, top = ARCH.h * 64, base = top - hw;
+      out.push({ c: this.arch.x * VPT, hw: hw + 8, test: (du, v) => Math.abs(du) <= hw && (v < base || du * du + (v - base) ** 2 <= hw * hw) });
+    }
     if (wall === 'w') {
-      out.push({ c: this.door.z * VPT, hw: DOOR_HW * 64 + 8, test: (du, v) => inDoor(du, v) });
       const wc = (WINDOW_SLOTS[0] + 0.5) * VPT;
       out.push({ c: wc, hw: WINDOW.r + 7, test: (du, v) => Math.hypot(du, v + 0.5 - WINDOW.cy) <= WINDOW.r + 0.5 });
     }
@@ -194,7 +191,6 @@ export class HomeShell {
     const n = noiseSampler(6, seed + 1, 2, 0.5, 4000, 200);
     const H = WALL_V;
     const geos = [];
-    const L = this.lift;
     const TW = Math.max(W, D) * VPT, TH = H * 4;
     const tex = new Uint8Array(TW * TH * 4);
     const bake = this.texelBaker();
@@ -208,8 +204,6 @@ export class HomeShell {
       if (wall === 'n' || wall === 's') posts = this.joists.map((x) => x * VPT);
       else { const k = Math.max(1, Math.round(U / 80)); posts = Array.from({ length: k - 1 }, (_, i) => ((i + 1) * U) / k); }
       posts = posts.filter((p) => p > 16 && p < U - 16 && !ops.some((o) => Math.abs(p - o.c) < o.hw + 6));
-      if (wall === 's') posts = posts.filter((p) => p < L.x * VPT - 8);
-      if (wall === 'e') posts = posts.filter((p) => p < L.y * VPT - 8);
       const depth = new Int16Array(U * H);
       const ws = seed + wall.charCodeAt(0) * 3;
       const nrm = { n: [0, 0, 1], s: [0, 0, -1], w: [1, 0, 0], e: [-1, 0, 0] }[wall];
@@ -290,25 +284,15 @@ export class HomeShell {
     const tex = new Uint8Array(U * V * 4);
     const bake = this.texelBaker();
     const jo = this.joists.map((x) => x * VPT);
-    const hx = this.hole.x * VPT, hz = this.hole.z * VPT, hr = HOLE_R * VPT;
-    const L = this.lift, lx = (L.x + 1) * VPT, lz = (L.y + 1) * VPT;
+    // where the roof was patched long ago: a square of newer boards, nailed over
+    const px = Math.min(U - 60, 3.3 * VPT), pz = Math.min(V - 50, 3.4 * VPT);
     for (let v = 0; v < V; v++) for (let u = 0; u < U; u++) {
       const q = u + v * U;
-      // the hole: ragged, with board ends snapping at different lengths
-      const dh = Math.hypot(u + 0.5 - hx, v + 0.5 - hz);
-      const rag = (hash2(Math.floor(v / 10), 7, 3) - 0.5) * 9 + (hash2(u >> 2, v >> 2, 5) - 0.5) * 3;
-      if (dh < hr + rag) { depth[q] = 0; continue; }
-      // the drum opening over the lift: a square with a timber trim
-      const ax = Math.abs(u + 0.5 - lx), az = Math.abs(v + 0.5 - lz);
-      let c, rel;
-      if (ax < 15 && az < 15) { depth[q] = 0; continue; }
-      if (ax < 20 && az < 20) { rel = 9; c = (ax > 18.5 || az > 18.5) ? 0x3e2616 : mulc(0x6a4428, 0.94 + ((u + v) % 3) * 0.03); }
-      else {
-        [c, rel] = ceilVoxel(u, v, seed, jo);
-        if (dh < hr + 14 && rel < 3) c = mulc(mixc(c, 0x3a2a1a, 0.3), 0.9); // dirt round the hole
-        const gr = hash2(Math.floor(u / 9), v, 41);
-        if (gr < 0.16) c = mulc(c, 0.92); else if (gr > 0.92) c = mulc(c, 1.06);
-      }
+      let [c, rel] = ceilVoxel(u, v, seed, jo);
+      const gr = hash2(Math.floor(u / 9), v, 41);
+      if (gr < 0.16) c = mulc(c, 0.92); else if (gr > 0.92) c = mulc(c, 1.06);
+      const ax = Math.abs(u + 0.5 - px), az = Math.abs(v + 0.5 - pz);
+      if (rel < 3 && ax < 30 && az < 26) { c = (az > 24 || ax > 28) ? 0x3e2616 : mulc(0x8a6440, 0.92 + ((v >> 3) % 2) * 0.06 + (hash2(u >> 3, v, 5) < 0.1 ? -0.08 : 0)); rel = 3; if ((ax > 25 || az > 21) && (u + v) % 7 === 0) c = 0x8a8a92; }
       depth[q] = F + rel;
       const k = bake(u / 64, CEIL - rel / 64 - 0.01, v / 64, 0, -1, 0);
       const o = q * 4;
@@ -329,8 +313,8 @@ export class HomeShell {
   bakeLightsM() {
     const out = [];
     for (const l of this.lightsT) {
-      const power = { sconce: 0.55, hanging: 0.45, window: 0.8, hole: 0.6, lantern: 0.5 }[l.kind] ?? 0.4;
-      const radius = { sconce: 1.5, hanging: 1.6, window: 1.5, hole: 2.2, lantern: 1.2 }[l.kind] ?? 1.1;
+      const power = { sconce: 0.55, hanging: 0.45, lamp: 0.7, window: 0.8, arch: 0.45, lantern: 0.5 }[l.kind] ?? 0.4;
+      const radius = { sconce: 1.5, hanging: 1.6, lamp: 2.4, window: 1.5, arch: 1.4, lantern: 1.2 }[l.kind] ?? 1.1;
       out.push({ x: l.x * T, y: l.y * T, z: l.z * T, color: l.color, power, radius });
     }
     for (const l of this.extraBake || []) out.push(l);
@@ -351,33 +335,7 @@ export class HomeShell {
     };
   }
 
-  // ------------------------------------------------------------ door, window, poster
-  buildDoor() {
-    const open = !!this.opts.doorOpen;
-    const d = townDoor(open, 4);
-    this.onWall(d.frame, 'w', this.door.z);
-    this.decor.add(d.frame);
-    // the leaf swings: keep it out of the merge
-    const holder = new THREE.Group();
-    this.onWall(holder, 'w', this.door.z);
-    holder.add(d.hinge);
-    this.room.add(holder);
-    this.doorLeaf = d.hinge;
-    if (open) {
-      // a woven mat in front of the door
-      const mat = new VoxelGrid(30, 1, 40);
-      mat.box(0, 0, 0, 30, 1, 40, (x, y, z) => ((x + z) % 6 < 3 ? 0x9a6a3a : 0xb08048));
-      for (let z = 0; z < 40; z += 2) { mat.set(0, 0, z, 0xd8b878); mat.set(29, 0, z, 0xd8b878); }
-      const mm = M32(mat, [15, 0, 20]);
-      mm.position.set(0.55, 0.002, this.door.z);
-      this.decor.add(mm);
-    } else {
-      const r = doorRubble(4);
-      this.onWall(r, 'w', this.door.z);
-      this.decor.add(r);
-    }
-  }
-
+  // ------------------------------------------------------------ window, poster
   buildWindow() {
     const cw = crystalWindow(3);
     const grp = group(cw.obj, cw.pocket);
@@ -421,7 +379,7 @@ export class HomeShell {
       add(p);
     }
     // roots creeping down the walls from under the crown plates, avoiding openings
-    const blocked = (wall, a) => this.tunnels.some((t) => t.wall === wall && Math.abs(t.t - a) < 1.1) || (wall === 'w' && (Math.abs(a - this.door.z) < 1.3 || Math.abs(a - (WINDOW_SLOTS[0] + 0.5)) < 0.9));
+    const blocked = (wall, a) => this.tunnels.some((t) => t.wall === wall && Math.abs(t.t - a) < 1.1) || (wall === 'w' && Math.abs(a - (WINDOW_SLOTS[0] + 0.5)) < 0.9) || (wall === 'n' && Math.abs(a - this.arch.x) < 1.4);
     for (const wall of ['n', 'w', 's', 'e']) {
       const len = wall === 'n' || wall === 's' ? W : D;
       for (let i = 0; i < Math.round(len * 0.55); i++) {
@@ -433,8 +391,7 @@ export class HomeShell {
     // roots poking down through the ceiling boards
     for (let i = 0; i < Math.round(W * D * 0.12); i++) {
       const x = 0.5 + rng() * (W - 1), z = 0.5 + rng() * (D - 1);
-      if (Math.hypot(x - this.hole.x, z - this.hole.z) < 1.4 || this.joists.some((j) => Math.abs(j - x) < 0.3)) continue;
-      if (x > this.lift.x - 0.3 && z > this.lift.y - 0.3) continue;
+      if (this.joists.some((j) => Math.abs(j - x) < 0.3)) continue;
       const r = hangingRoot(0.15 + rng() * 0.45, 90 + i);
       r.position.set(x, CT, z);
       add(r);
@@ -448,7 +405,7 @@ export class HomeShell {
     // hanging lanterns from the joists
     for (const [i, l] of this.hanging.entries()) {
       const hl = hangingLantern(l.len, i + 3);
-      hl.obj.position.set(l.x, CT - 0.34, l.z);
+      hl.obj.position.set(l.x, l.top ?? CT - 0.34, l.z);
       add(hl.obj);
     }
     // strings of paper lanterns sagging between joists
@@ -585,23 +542,13 @@ export class HomeShell {
     (this.strings ||= []).push(pts.map((p) => ({ x: p.x, y: p.y, z: p.z })));
   }
 
-  // ------------------------------------------------------------ tunnels and the hole
+  // ------------------------------------------------------------ old tunnels
   buildTunnels() {
     for (const tn of this.tunnelInfo) {
       const tm = tunnelMouth(tn.seed);
       this.onWall(tm.obj, tn.wall, tn.t);
       this.decor.add(tm.obj);
     }
-  }
-
-  buildHole() {
-    const H = this.hole;
-    const shaft = holeShaft(HOLE_R + 0.06, 6.5, 11);
-    shaft.position.set(H.x, CT + 8 * S32, H.z);
-    this.decor.add(shaft);
-    const bb = brokenBoards(HOLE_R, 5);
-    bb.position.set(H.x, CT, H.z);
-    this.decor.add(bb);
   }
 
   // ------------------------------------------------------------ merge

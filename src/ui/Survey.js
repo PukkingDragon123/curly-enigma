@@ -1,328 +1,1010 @@
-// The survey map: the radar's notes drawn up as an ink map on graph paper, clipped to a board.
-// North is up. Drag to pan, +/− (or the wheel) to zoom, the depth ruler on the side picks the layer.
-// "Head home" calls the scene's headHome() hook.
-import { el, clamp } from '../core/util.js';
-import { Px, mixHex } from './uiArt.js';
-import { DSPR, plotGlyph } from './deepArt.js';
-import { gridSampler, MARK_COLOR, LEVEL_GAP } from './Radar.js';
+// The hand-drawn map (the Map chapter of the book). Old Star's way of mapping: ink on parchment,
+// and only where you have actually walked. Tunnels are inked as dug passages (a firm wall line,
+// hachures and cross-hatching for the rock, stipple fading into blank paper), water gets a blue
+// wash and wave lines, landmarks get little doodles with hand-lettered names. Ground you walked
+// since the map was last opened is inked in by a quill when you open it.
+// Layers are the zones (the one you're in by default). Drag to pan, wheel / pinch / +− to zoom,
+// pins to mark your own spots. Data: state.data.deep.explored ("x,y,z" → 1 open, 2 water, 3 lava,
+// 1 m cells, recorded by the mine), the world plan (lifts, burrows, ruins, trails, lakes), quests.
+// Save: state.data.atlas = { pins: [{ id, zone, x, z, kind }], seen: { zone: ord } }.
+//   renderMap(host, game, { focus }) → controller { resize, dispose, focus, setZone, debug }
+//   openSurvey(game) opens the book at the map (old callers: the radar, M).
+import { el, clamp, makeNoise2D } from '../core/util.js';
+import { Px } from './uiArt.js';
+import { INKC, WASH, hand, textW, paperPatch, wline, wcircle, DOODLE, youArrow, questMark, compass, scaleBar, hash } from './mapInk.js';
+import { BART, PIN_KINDS, PIN_NAMES, pinPx } from './bookArt.js';
+import { SFX } from './bookSfx.js';
+import { ZONE_DEPTHS, ZONE_NAMES } from '../data/quests.js';
 import { ZONES } from '../data/zones.js';
+import { ITEMS } from '../data/items.js';
+import './atlas.css';
 
-// depth bands (meters below the burrow floor), per docs/DEEP.md
-const BANDS = [[0, 25], [25, 55], [55, 90], [90, 130], [130, 170], [170, 210]];
-const MAX_DEPTH = 210;
-const INK = 0x4a2c16, PAPER = 0xf2e1b9;
-const INK_FOR = { home: 0xb8402c, town: 0x8a5a10, station: 0x7a4a14, stake: 0x2e7a3a, enemy: 0xc0302a, danger: 0xc0302a };
-const NAMES = { home: 'Home', town: 'Deep Town', station: 'Lift station', stake: 'Glow stake', enemy: 'Creature', danger: 'Danger', ore: 'Ore' };
-
-export function zoneAt(depth) {
-  const i = BANDS.findIndex(([a, b]) => depth >= a && depth < b);
-  const k = i < 0 ? (depth < 0 ? 0 : BANDS.length - 1) : i;
-  return { i: k, name: ZONES[k + 1]?.name || '', color: ZONES[k + 1]?.color || '#8a6a48' };
-}
-
+const ZOOMS = [1, 2, 3, 4, 6];
+const PAPER = 0xf2e1b9, FLOOR = 0xfbf2dc;
 const pxUnit = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 3;
+const keyXZ = (x, z) => (x + 2048) * 4096 + (z + 2048);
 
-/** Small legend swatches. */
-function legendIcon(kind) {
-  const p = new Px(9, 9);
-  if (kind === 'open') { p.rect(1, 1, 7, 7, 0xfaf0d6); p.box(1, 1, 7, 7, INK); }
-  else if (kind === 'rock') { p.rect(1, 1, 7, 7, 0xe2cba0); for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++) if ((i + j) % 3 === 0 && i > 0 && j > 0 && i < 8 && j < 8) p.set(i, j, 0x9a7a52); }
-  else if (kind === 'water') { p.rect(1, 1, 7, 7, 0xa8cbe0); p.box(1, 1, 7, 7, 0x2a5a8a); p.set(3, 4, 0x6a9ac0); p.set(5, 5, 0x6a9ac0); }
-  else if (kind === 'lava') { p.rect(1, 1, 7, 7, 0xf0a878); p.box(1, 1, 7, 7, 0xa8321e); p.set(4, 4, 0xd8603a); }
-  else if (kind === 'you') { p.poly([[4.5, 0.5], [8, 8], [4.5, 6], [1, 8]], 0xd0302a); p.outline(0x2a1408); }
-  else if (kind === 'danger') { for (let a = 0; a < 16; a++) if (a % 2 === 0) p.set(Math.round(4 + Math.cos(a / 16 * Math.PI * 2) * 3.4), Math.round(4 + Math.sin(a / 16 * Math.PI * 2) * 3.4), INK_FOR.danger); p.set(4, 4, INK_FOR.danger); }
-  else if (kind === 'ore') { plotGlyph(p, 'ore', 4.5, 4.5, 0xd9773f, 0x2a1a10); }
-  else plotGlyph(p, kind, 4.5, 4.5, INK_FOR[kind] || INK, 0xfaf0d6);
-  return p.url();
+/** Zone (1..6) of a depth in meters (positive down). */
+export function zoneOfDepth(d) {
+  for (let z = 1; z < ZONE_DEPTHS.length; z++) if (d < ZONE_DEPTHS[z]) return z;
+  return 6;
 }
-const LEGEND = [['you', 'You'], ['home', 'Home'], ['town', 'Deep Town'], ['station', 'Lift station'], ['stake', 'Glow stake'], ['ore', 'Ore'], ['danger', 'Danger'], ['enemy', 'Creature'], ['open', 'Tunnel'], ['rock', 'Rock'], ['water', 'Water'], ['lava', 'Lava']];
-const legendCache = new Map();
+const zoneOfY = (y) => zoneOfDepth(-(y + 0.5));
+/** Kept for old imports: { i, name, color } of a depth. */
+export function zoneAt(depth) {
+  const z = zoneOfDepth(depth);
+  return { i: z - 1, name: ZONE_NAMES[z], color: ZONES[z]?.color || '#8a6a48' };
+}
 
-export function openSurvey(game, radar) {
-  const ui = game.ui;
-  if (!radar || !radar.provider) return null;
-  let base = radar.poll() || radar.data;
-  if (!base) return null;
-  const youDepth = -base.y;
-  let layer = Math.round(youDepth); // meters (positive down)
-  let data = base;
-  let zoom = 0; // art px per meter (0 = fit)
-  let vcx = base.x, vcz = base.z;
+/** The book at the map. */
+export function openSurvey(game) { return game.ui.openBook ? game.ui.openBook('map') : null; }
+
+// ---------------------------------------------------------------- explored cells, indexed by zone
+const IDX = { src: null, n: 0, zones: new Map() };
+/** Per zone: Map(keyXZ → { x, z, v, y0, y1, ord }). Incremental: only new keys are parsed. */
+export function exploredIndex(st) {
+  const ex = st.data.deep?.explored || {};
+  const keys = Object.keys(ex);
+  if (IDX.src !== ex || keys.length < IDX.n) { IDX.src = ex; IDX.n = 0; IDX.zones = new Map(); }
+  for (let i = IDX.n; i < keys.length; i++) {
+    const k = keys[i];
+    const c1 = k.indexOf(','), c2 = k.indexOf(',', c1 + 1);
+    const x = +k.slice(0, c1), y = +k.slice(c1 + 1, c2), z = +k.slice(c2 + 1);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    const v = ex[k] | 0 || 1;
+    const zone = zoneOfY(y);
+    let m = IDX.zones.get(zone);
+    if (!m) IDX.zones.set(zone, (m = new Map()));
+    const kk = keyXZ(x, z);
+    const c = m.get(kk);
+    if (!c) m.set(kk, { x, z, v, y0: y, y1: y, ord: i });
+    else { if (v < c.v) c.v = v; if (y < c.y0) c.y0 = y; if (y > c.y1) c.y1 = y; }
+  }
+  IDX.n = keys.length;
+  return IDX;
+}
+
+// ---------------------------------------------------------------- the world plan (also outside the mine)
+let planCache = { key: null, plan: null };
+async function loadPlan(game) {
+  const sc = game.scene;
+  if (sc?.world?.plan) return sc.world.plan;
+  const d = game.state.data;
+  if (!d.deep?.seed) return null;
+  try {
+    const [{ makePlan }, { roomSize }] = await Promise.all([import('../deep/Generator.js'), import('../iso/homeLayout.js')]);
+    const [W, D] = roomSize(d.home?.level || 0);
+    const key = `${d.deep.seed}:${W}:${D}`;
+    if (planCache.key !== key) planCache = { key, plan: makePlan(d.deep.seed, { W, D, tunnels: (d.deep.tunnels || []).map((m) => ({ wall: m.wall, t: m.t })) }) };
+    return planCache.plan;
+  } catch (e) { console.warn('map: no plan', e); return null; }
+}
+
+// ---------------------------------------------------------------- parchment (paper space, cached per size)
+const paperCache = new Map();
+function paperFor(W, H) {
+  const key = W + 'x' + H;
+  if (paperCache.has(key)) return paperCache.get(key);
+  const N = makeNoise2D(41);
+  const buf = new Uint8ClampedArray(W * H * 4);
+  const br = (PAPER >> 16) & 255, bg = (PAPER >> 8) & 255, bb = PAPER & 255;
+  const stains = [
+    { x: W * 0.8, y: H * 0.74, r: Math.min(W, H) * 0.15, ring: true, a0: 0.6, a1: 5.4 },
+    { x: W * 0.13, y: H * 0.2, r: Math.min(W, H) * 0.09, ring: false },
+    { x: W * 0.55, y: H * 0.93, r: Math.min(W, H) * 0.06, ring: true, a0: 2.2, a1: 7.9 },
+  ];
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let f = 1 + N.fbm(x / 38, y / 38, 3) * 0.1 + N(x / 7 + 11, y / 7) * 0.025;
+      const e = Math.min(x, y, W - 1 - x, H - 1 - y);
+      if (e < 10) f -= ((10 - e) / 10) ** 2 * (0.12 + N(x / 5, y / 5) * 0.06);
+      let r = br * f, g = bg * f, b = bb * f;
+      for (const s of stains) {
+        const d = Math.hypot(x - s.x, (y - s.y) * 1.15) + N(x / 9 + s.r, y / 9) * 3;
+        if (s.ring) {
+          const a = (Math.atan2(y - s.y, x - s.x) + Math.PI * 2) % (Math.PI * 2);
+          const inArc = (a > s.a0 % (Math.PI * 2) && a < s.a1 % (Math.PI * 2)) || (s.a1 > Math.PI * 2 && a < s.a1 - Math.PI * 2);
+          const ring = Math.abs(d - s.r);
+          if (ring < 1.6 && inArc) { const k = (1.6 - ring) / 1.6 * 0.16; r -= 70 * k; g -= 85 * k; b -= 95 * k; }
+          else if (d < s.r) { r -= 4; g -= 6; b -= 9; }
+        } else if (d < s.r) {
+          const k = d > s.r - 1.5 ? 0.1 : 0.04;
+          r -= 60 * k; g -= 70 * k; b -= 90 * k;
+        }
+      }
+      const h = hash(x, y, 13);
+      if (h < 0.004) { r -= 40; g -= 45; b -= 50; } else if (h > 0.996) { r += 10; g += 10; b += 8; }
+      const i = (y * W + x) * 4;
+      buf[i] = r; buf[i + 1] = g; buf[i + 2] = b; buf[i + 3] = 255;
+    }
+  // paper fibres
+  for (let k = 0; k < (W * H) / 260; k++) {
+    const x = Math.floor(hash(k, 1, 5) * W), y = Math.floor(hash(k, 2, 5) * H), len = 2 + Math.floor(hash(k, 3, 5) * 4), dy = hash(k, 4, 5) < 0.5 ? 0 : 1;
+    for (let t = 0; t < len; t++) {
+      const xx = x + t, yy = y + (t > len / 2 ? dy : 0);
+      if (xx >= W || yy >= H) continue;
+      const i = (yy * W + xx) * 4;
+      buf[i] -= 12; buf[i + 1] -= 13; buf[i + 2] -= 14;
+    }
+  }
+  // the folds: a crease down the middle and across, light on one side, shadow on the other
+  const crease = (x, y, light) => { if (x < 0 || y < 0 || x >= W || y >= H) return; const i = (y * W + x) * 4, d = light ? 9 : -16; buf[i] += d; buf[i + 1] += d; buf[i + 2] += d; };
+  const fx = Math.round(W / 2), fy = Math.round(H / 2);
+  for (let y = 0; y < H; y++) if (hash(fx, y, 51) < 0.9) { crease(fx, y, false); crease(fx + 1, y, true); }
+  for (let x = 0; x < W; x++) if (hash(x, fy, 52) < 0.9) { crease(x, fy, false); crease(x, fy + 1, true); }
+  if (paperCache.size > 6) paperCache.clear();
+  paperCache.set(key, buf);
+  return buf;
+}
+
+// ---------------------------------------------------------------- the map
+export function renderMap(host, game, opts = {}) {
+  const st = game.state;
+  const atlas = (st.data.atlas ||= { pins: [], seen: {} });
+  atlas.pins ||= [];
+  atlas.seen ||= {};
+  const noise = makeNoise2D(7);
   let px = pxUnit();
-  let map = null, W = 0, H = 0, sc = null;
-  const scratch = () => { if (!sc || sc.w !== W || sc.h !== H) sc = new Px(W, H); sc.d.fill(0); return sc; };
+  let plan = null, planReady = false;
+  let W = 0, H = 0, map = null, frame = null;
+  let zone = 1, k = 3, vcx = 0, vcz = 0;
+  let pinMode = null; // pin kind being placed
+  let anim = null; // the ink-in animation
+  let hits = []; // hover targets { x, y (map px), r, label, sub }
+  let paintTaken = []; // lettering boxes of the sheet being drawn
+  let dead = false;
+  let raf = 0;
 
-  // ---------------- structure
-  const labels = el('div', { class: 'sv-labels' });
-  const canvasHost = el('div', { class: 'sv-canvas' }, [labels]);
-  const tip = el('div', { class: 'sv-tip', hidden: true });
-  const zoomIn = el('button', { class: 'sv-zb', 'aria-label': 'Zoom in', onclick: () => setZoom(zoom + 1) }, '+');
-  const zoomOut = el('button', { class: 'sv-zb', 'aria-label': 'Zoom out', onclick: () => setZoom(zoom - 1) }, '−');
-  if (!legendCache.has('you')) legendCache.set('you', legendIcon('you'));
-  const recenter = el('button', { class: 'sv-zb', 'aria-label': 'Center on you', title: 'Center on you', onclick: () => { vcx = data.x; vcz = data.z; game.audio.play('ui_click'); redraw(); } }, [el('img', { class: 'pix', src: legendCache.get('you'), alt: '' })]);
-  const mapEl = el('div', { class: 'sv-map' }, [canvasHost, tip, el('img', { class: 'pix sv-compass', src: DSPR.compass(), alt: '' }), el('div', { class: 'sv-zoom' }, [zoomIn, zoomOut, recenter])]);
+  // ---------------- where the mole is
+  const where = () => {
+    const sc = game.scene, name = game.sceneName;
+    if (sc?.player?.pos && (name === 'deep' || name === 'mine')) return { x: sc.player.pos.x, y: sc.player.pos.y, z: sc.player.pos.z, yaw: sc.player.yaw || 0, live: true };
+    const W0 = plan?.W ?? 10, D0 = plan?.D ?? 8;
+    if (name === 'town' && plan) return { x: plan.town.x, y: plan.town.y, z: plan.town.z, yaw: 0, place: 'town' };
+    return { x: W0 / 2, y: 0.5, z: D0 / 2, yaw: 0, place: 'home' };
+  };
 
-  const knob = el('i', { class: 'sv-knob' });
-  const youMark = el('i', { class: 'sv-you', title: 'You are here' });
-  const bands = BANDS.map(([a, b], i) => {
-    const z = ZONES[i + 1];
-    const band = el('div', { class: 'sv-band', title: `${z?.name || ''} · ${a}–${b} m`, style: { flexGrow: String(b - a) } });
-    band.style.setProperty('--zc', z?.color || '#8a6a48');
-    return band;
-  });
-  const track = el('div', { class: 'sv-track' }, [...bands, knob, youMark]);
-  const ruler = el('div', { class: 'sv-ruler' }, [
-    el('button', { class: 'sv-step', 'aria-label': 'Shallower', title: 'Shallower', onclick: () => setLayer(layer - 5) }, [el('img', { class: 'pix', src: DSPR.tri('up', 0x4a2c16), alt: '' })]),
-    track,
-    el('button', { class: 'sv-step', 'aria-label': 'Deeper', title: 'Deeper', onclick: () => setLayer(layer + 5) }, [el('img', { class: 'pix', src: DSPR.tri('down', 0x4a2c16), alt: '' })]),
-    el('button', { class: 'sv-here', onclick: () => setLayer(Math.round(youDepth)) }, 'Here'),
+  // ---------------- DOM
+  const canvasHost = el('div', { class: 'at-canvas' });
+  const quill = el('img', { class: 'pix at-quill', src: BART.quill(), alt: '', hidden: true });
+  const tip = el('div', { class: 'at-tip', hidden: true });
+  const mapEl = el('div', { class: 'at-map', tabindex: '0', 'aria-label': 'Map: drag to look around' }, [canvasHost, quill, tip]);
+  const zoneTitle = el('h2', { class: 'ib-title at-title' });
+  const zoneSub = el('div', { class: 'at-sub' });
+  const zb = (label, aria, fn) => el('button', { class: 'at-zb', 'aria-label': aria, title: aria, onclick: fn }, label);
+  const youBtn = el('button', { class: 'at-zb at-you', 'aria-label': 'Back to you', title: 'Back to you', onclick: () => { recenter(); SFX.flick(game.audio); } }, [legendIcon('you', true)]);
+  const zoomBox = el('div', { class: 'at-zoom' }, [zb('+', 'Zoom in', () => setZoom(1)), zb('−', 'Zoom out', () => setZoom(-1)), youBtn]);
+  const layers = el('nav', { class: 'at-layers', 'aria-label': 'Depth layers' });
+  const pinBtn = el('button', { class: 'at-tool at-pinbtn', title: 'Place pins', onclick: () => setPinMode(pinMode ? null : atlas.lastPin || 'pin') }, [el('img', { class: 'pix', src: BART.pin('pin'), alt: '' }), el('span', {}, 'Pins')]);
+  const keyBtn = el('button', { class: 'at-tool', title: 'The key', onclick: () => { root.classList.toggle('show-key'); SFX.flick(game.audio); } }, [el('span', {}, 'Key')]);
+  const pinBar = el('div', { class: 'at-pinbar', hidden: true }, [
+    el('span', { class: 'at-pinhint' }, 'Tap the map to pin · tap a pin to pull it'),
+    ...PIN_KINDS.map((kd) => el('button', { class: 'at-pk', 'data-k': kd, title: PIN_NAMES[kd], 'aria-label': PIN_NAMES[kd], onclick: () => setPinMode(kd) }, [el('img', { class: 'pix', src: BART.pin(kd), alt: '' })])),
+    el('button', { class: 'at-tool', onclick: () => setPinMode(null) }, 'Done'),
   ]);
-  const layerTxt = el('span', { class: 'sv-layer' });
-  const dists = el('div', { class: 'sv-dists' });
-  const legend = el('ul', { class: 'sv-legend' }, LEGEND.map(([k, label]) => {
-    if (!legendCache.has(k)) legendCache.set(k, legendIcon(k));
-    return el('li', {}, [el('img', { class: 'pix', src: legendCache.get(k), alt: '' }), label]);
-  }));
-  const canHome = typeof game.scene?.headHome === 'function';
-  const homeBtn = el('button', { class: 'btn sv-home', disabled: !canHome, title: canHome ? 'Follow the safest known way back to the burrow' : 'No way home is known from here', onclick: () => { h.close(); try { game.scene.headHome(); } catch (e) { console.warn(e); } } }, 'Head home');
-  const keyBtn = el('button', { class: 'btn alt sv-keybtn', onclick: () => root.classList.toggle('show-key') }, 'Key');
-  const root = el('div', { class: 'sv' }, [
-    el('img', { class: 'pix sv-clip', src: DSPR.clip(), alt: '' }),
-    el('div', { class: 'sv-sheet' }, [
-      el('header', { class: 'sv-head' }, [el('h2', {}, 'Survey Map'), layerTxt, el('span', { class: 'spacer' }), dists]),
-      el('div', { class: 'sv-body' }, [mapEl, ruler]),
-      el('footer', { class: 'sv-foot' }, [legend, el('span', { class: 'spacer' }), keyBtn, el('button', { class: 'btn alt', onclick: () => h.close() }, 'Back'), homeBtn]),
-    ]),
+  const canHome = typeof game.scene?.headHome === 'function' && game.sceneName === 'deep';
+  const homeBtn = canHome ? el('button', { class: 'btn at-home', title: 'Follow the safest known way back home', onclick: () => { opts.onClose?.(); try { game.scene.headHome(); } catch (e) { console.warn(e); } } }, 'Head home') : null;
+  const KEY = [['you', 'You'], ['home', "Old Star's"], ['lift', 'Lift'], ['town', 'Deep Town'], ['burrow', 'Burrow'], ['ruin', 'Ruins'], ['lake', 'Water'], ['nest', 'Nest'], ['ore', 'Ore'], ['quest', 'Quest'], ['trail', 'Old trail'], ['stake', 'Glow stake']];
+  const legend = el('ul', { class: 'at-key' }, KEY.map(([kd, label]) => el('li', {}, [legendIcon(kd), label])));
+  const root = el('div', { class: 'at' }, [
+    el('header', { class: 'at-head' }, [el('div', { class: 'at-tt' }, [zoneTitle, zoneSub]), el('span', { class: 'spacer' }), pinBtn, keyBtn]),
+    el('div', { class: 'at-body' }, [mapEl, el('div', { class: 'at-side' }, [layers, zoomBox]), legend]),
+    el('footer', { class: 'at-foot' }, [pinBar, el('span', { class: 'at-hint' }, 'Drag to look around · wheel or +/− to zoom'), el('span', { class: 'spacer' }), homeBtn]),
   ]);
+  host.append(root);
 
-  // ---------------- layer
-  const setLayer = (d) => {
-    layer = clamp(Math.round(d), 0, MAX_DEPTH);
-    const fresh = radar.poll({ survey: true, y: -layer });
-    data = fresh || base;
-    game.audio.play('ui_click', { pitch: 1.2 });
-    layoutRuler();
+  // ---------------- layers (zones)
+  const zoneHas = (z) => (exploredIndex(st).zones.get(z)?.size || 0) > 0;
+  const questZones = () => {
+    const out = new Set();
+    for (const t of questTargets()) if (t.zone) out.add(t.zone);
+    return out;
+  };
+  const renderLayers = () => {
+    layers.innerHTML = '';
+    const me = zoneOfY(where().y);
+    const qz = questZones();
+    for (let z = 1; z <= 6; z++) {
+      const open = z === 1 || zoneHas(z) || z === me;
+      const b = el('button', {
+        class: 'at-layer' + (z === zone ? ' on' : '') + (open ? '' : ' locked') + (z === me ? ' here' : ''),
+        disabled: !open, title: open ? `${ZONE_NAMES[z]} · ${ZONE_DEPTHS[z - 1]}–${ZONE_DEPTHS[z]} m` : 'Not walked yet',
+        onclick: () => setZone(z),
+      }, [el('b', {}, String(z)), el('span', {}, open ? ZONE_NAMES[z] : '???'), qz.has(z) && z !== zone ? el('i', { class: 'at-qdot', title: 'A quest leads here' }) : null]);
+      b.style.setProperty('--zc', ZONES[z]?.color || '#8a6a48');
+      layers.append(b);
+    }
+  };
+  const setZone = (z, { quiet = false, center = true } = {}) => {
+    z = clamp(z | 0, 1, 6);
+    if (z === zone && !center) return;
+    finishAnim();
+    zone = z;
+    if (!quiet) { game.audio.play('page'); }
+    if (center) recenter(false);
+    renderLayers();
+    titles();
+    startReveal();
+  };
+  const titles = () => {
+    zoneTitle.textContent = `The ${ZONE_NAMES[zone]}`.replace('The The', 'The');
+    const me = where();
+    const here = zoneOfY(me.y) === zone;
+    zoneSub.textContent = `${ZONE_DEPTHS[zone - 1]}–${ZONE_DEPTHS[zone]} m down${here ? ' · you are here' : ''}`;
+  };
+
+  // ---------------- view
+  const recenter = (redrawNow = true) => {
+    const me = where();
+    if (zoneOfY(me.y) === zone) { vcx = me.x; vcz = me.z; }
+    else {
+      // the middle of what you've walked in this layer, or the shaft
+      const m = exploredIndex(st).zones.get(zone);
+      if (m && m.size) { let sx = 0, sz = 0, n = 0; for (const c of m.values()) { sx += c.x; sz += c.z; n++; } vcx = sx / n; vcz = sz / n; }
+      else if (plan) { vcx = plan.shaft.x; vcz = plan.shaft.z; }
+    }
+    if (redrawNow) redraw();
+  };
+  const setZoom = (dir, at) => {
+    const i = ZOOMS.indexOf(k);
+    const j = clamp(i + dir, 0, ZOOMS.length - 1);
+    if (j === i) return;
+    finishAnim();
+    if (at) {
+      // keep the world point under the cursor still
+      const wx = vcx + (at.x - W / 2) / k, wz = vcz + (at.y - H / 2) / k;
+      const nk = ZOOMS[j];
+      vcx = wx - (at.x - W / 2) / nk; vcz = wz - (at.y - H / 2) / nk;
+    }
+    k = ZOOMS[j];
+    SFX.flick(game.audio);
     redraw();
   };
-  const layoutRuler = () => {
-    knob.style.top = (layer / MAX_DEPTH * 100).toFixed(2) + '%';
-    youMark.style.top = (clamp(youDepth, 0, MAX_DEPTH) / MAX_DEPTH * 100).toFixed(2) + '%';
-    const z = zoneAt(layer);
-    layerTxt.textContent = `${layer} m · ${z.name}${Math.abs(layer - youDepth) <= LEVEL_GAP ? ' · you are here' : ''}`;
-  };
-  let dragRuler = null;
-  track.addEventListener('pointerdown', (e) => { e.preventDefault(); dragRuler = e.pointerId; try { track.setPointerCapture(e.pointerId); } catch (err) { /* noop */ } rulerTo(e); });
-  track.addEventListener('pointermove', (e) => { if (e.pointerId === dragRuler) rulerTo(e); });
-  for (const ev of ['pointerup', 'pointercancel']) track.addEventListener(ev, (e) => { if (e.pointerId === dragRuler) dragRuler = null; });
-  const rulerTo = (e) => {
-    const r = track.getBoundingClientRect();
-    const d = clamp((e.clientY - r.top) / r.height, 0, 1) * MAX_DEPTH;
-    const snapped = Math.round(d / 5) * 5;
-    if (snapped !== layer) setLayer(snapped);
-  };
-
-  // ---------------- map drawing
-  const fitZoom = () => {
-    const ex = data.explored;
-    // open close enough to read the tunnels around you (about 48 m across), never smaller than 1 px/m
-    const span = Math.min(48, ex ? ex.size * (ex.cell || 1) : (data.range || 24) * 2);
-    return clamp(Math.floor(Math.min(W, H) / span), 1, 5);
-  };
-  const setZoom = (z) => {
-    const nz = clamp(z, 1, 6);
-    if (nz === zoom) return;
-    zoom = nz;
-    game.audio.play('ui_click');
-    redraw();
-  };
-  const toMap = (wx, wz) => [W / 2 + (wx - vcx) * zoom, H / 2 + (wz - vcz) * zoom];
 
   const resize = () => {
+    if (dead) return;
     px = pxUnit();
-    const r = mapEl.getBoundingClientRect();
-    const w = Math.max(40, Math.floor(r.width / px)), hh = Math.max(40, Math.floor(r.height / px));
-    if (!map || w !== W || hh !== H) {
-      W = w; H = hh;
+    // layout size, not the rect: the book opens with a little scale animation
+    const w = Math.max(40, Math.floor(mapEl.clientWidth / px)), h = Math.max(40, Math.floor(mapEl.clientHeight / px));
+    let fresh = false;
+    if (!map || w !== W || h !== H) {
+      fresh = true;
+      W = w; H = h;
       map = new Px(W, H);
+      [map.c, map.ctx] = cpuCanvas(W, H); // drawn on the CPU every redraw: keep it off the GPU
       map.c.className = 'pix';
       canvasHost.querySelector('canvas')?.remove();
       canvasHost.prepend(map.c);
+      finishAnim();
     }
     map.c.style.width = W * px + 'px';
     map.c.style.height = H * px + 'px';
-    canvasHost.style.width = W * px + 'px';
-    canvasHost.style.height = H * px + 'px';
-    if (!zoom) zoom = fitZoom();
+    if (fresh && !anim) draw(); // never show a blank sheet
+    else redraw();
+  };
+  const redraw = () => { if (!raf && !dead) raf = requestAnimationFrame(() => { raf = 0; draw(); }); };
+
+  // ---------------- what's on the map
+  function near(m, x, z, r, maxOrd) {
+    if (!m) return false;
+    const x0 = Math.floor(x - r), x1 = Math.floor(x + r), z0 = Math.floor(z - r), z1 = Math.floor(z + r);
+    for (let zz = z0; zz <= z1; zz++)
+      for (let xx = x0; xx <= x1; xx++) {
+        const c = m.get(keyXZ(xx, zz));
+        if (c && c.ord <= maxOrd && (xx + 0.5 - x) ** 2 + (zz + 0.5 - z) ** 2 <= r * r) return true;
+      }
+    return false;
+  }
+  function landmarks(z, maxOrd) {
+    const out = [];
+    const m = exploredIndex(st).zones.get(z);
+    const q = st.data.quests;
+    const lessonsAt = q?.active?.lessons ? q.active.lessons.s : q?.done?.lessons ? 99 : 0;
+    const W0 = plan?.W ?? 10, D0 = plan?.D ?? 8;
+    if (z === 1) out.push({ kind: 'home', x: W0 / 2, z: D0 / 2, label: "Old Star's", sub: 'His workshop, and the cage lift down to the mine' });
+    if (!plan) return out;
+    const P = plan.prologue;
+    if (P && zoneOfY(P.y) === z && (lessonsAt >= 1 || near(m, P.x, P.z, 6, maxOrd))) out.push({ kind: 'dig', x: P.x, z: P.z, label: "Star's dig", sub: 'Old Star\'s practice dig' });
+    const T = plan.town;
+    const townKnown = st.flag('escaped') || near(exploredIndex(st).zones.get(zoneOfY(T.y)), T.x, T.z, 9, maxOrd);
+    if (zoneOfY(T.y) === z && townKnown) out.push({ kind: 'town', x: T.x, z: T.z, label: 'Deep Town', sub: 'Shops, the assay office, the Surface Express' });
+    if (townKnown && plan.shaft) out.push({ kind: 'shaft', x: plan.shaft.x, z: plan.shaft.z, label: z === zoneOfY(T.y) ? '' : 'Town shaft', sub: 'The town lift shaft runs down through every layer', small: true });
+    const lifts = new Set((st.data.deep?.lifts || []).map((l) => l.id));
+    for (const L of plan.lifts || []) {
+      if (L.id[0] === 's' || L.id === 'L0' || zoneOfY(L.y) !== z) continue;
+      if (!lifts.has(L.id) && !near(m, L.x, L.z, 2.5, maxOrd)) continue;
+      out.push({ kind: 'lift', x: L.x, z: L.z, label: L.id === 'L0' ? 'Mine lift' : L.name, sub: `Old lift · ${Math.round(-L.y)} m`, small: true });
+    }
+    for (const b of plan.burrows || []) {
+      if (zoneOfY(b.y) !== z) continue;
+      if (!near(m, b.x, b.z, 7, maxOrd) && !atlas.known?.['burrow:' + b.id]) continue;
+      out.push({ kind: 'burrow', variant: b.kind, x: b.x, z: b.z, label: b.name || b.kind, sub: { trader: 'Trades ore and supplies', herbalist: 'Herbs, tinctures, opinions', raccoon: 'Buys blades. No questions.', outpost: 'A warden and a warm stove' }[b.kind] || 'Somebody lives here' });
+    }
+    for (const r of plan.ruins || []) {
+      if (zoneOfY(r.y) !== z || (!near(m, r.x, r.z, (r.r || 5) + 3, maxOrd) && !atlas.known?.['ruin:' + r.id])) continue;
+      out.push({ kind: 'ruin', x: r.x, z: r.z, label: 'Ruins', sub: `Old ${r.kind || 'hall'} of fitted stone` });
+    }
+    for (const d of plan.dangers || []) {
+      if (zoneOfY(d.y) !== z || !near(m, d.x, d.z, (d.r || 4) + 2, maxOrd)) continue;
+      const kind = d.kind === 'water' ? 'lake' : d.kind === 'lava' ? 'lava' : d.kind === 'nest' ? 'nest' : 'gas';
+      out.push({ kind, x: d.x, z: d.z, r: d.r, label: { lake: 'Lake', lava: 'Lava', nest: 'Nest', gas: 'Bad air' }[kind], sub: { lake: 'Deep water. Dig beside it and it comes to see you.', lava: 'Hot. Very.', nest: 'Something lives here. Something bitey.', gas: 'Don\'t breathe. Don\'t strike sparks.' }[kind], danger: kind === 'nest' || kind === 'gas' || kind === 'lava' });
+    }
+    for (const a of plan.areas || []) {
+      if (zoneOfY(a.y) !== z || !near(m, a.x, a.z, a.geode ? 1.6 : 2.6, maxOrd)) continue;
+      const it = ITEMS[a.item];
+      const c = it?.icon?.ore?.[0] ?? it?.icon?.c?.[0] ?? 0xd9773f;
+      out.push({ kind: 'ore', x: a.x, z: a.z, label: '', sub: it?.name || a.item, color: c, small: true, title: it?.name || a.item });
+    }
+    for (const s of st.data.deep?.stakes || []) if (zoneOfY(s.y) === z) out.push({ kind: 'stake', x: s.x, z: s.z, label: '', title: 'Glow stake', small: true });
+    return out;
+  }
+  function questTargets() {
+    const Q = game.quests;
+    if (!Q || !plan) return [];
+    const out = [];
+    const me = where();
+    const W0 = plan.W ?? 10, D0 = plan.D ?? 8;
+    for (const v of Q.active()) {
+      const w = v.step?.where;
+      if (!w) continue;
+      let p = null, known = true;
+      if (w.place === 'home') p = { x: W0 / 2, y: 0.5, z: D0 / 2 };
+      else if (w.place === 'dig' && plan.prologue) p = plan.prologue;
+      else if (w.place === 'town') { p = plan.town; known = !!st.flag('escaped'); }
+      else if (w.burrow) { p = (plan.burrows || []).find((b) => b.id === w.burrow || b.kind === w.burrow); known = !!p && near(exploredIndex(st).zones.get(zoneOfY(p.y)), p.x, p.z, 7, Infinity); }
+      else if (w.ruin || w.danger) {
+        const list = w.ruin ? plan.ruins || [] : (plan.dangers || []).filter((d) => d.kind === w.danger);
+        let best = null, bd = Infinity;
+        for (const r of list) { const d = Math.hypot(r.x - me.x, (r.y - me.y) * 2, r.z - me.z); if (d < bd) { bd = d; best = r; } }
+        p = best;
+        known = !!p && near(exploredIndex(st).zones.get(zoneOfY(p.y)), p.x, p.z, (p.r || 4) + 3, Infinity);
+      } else if (w.zone) { out.push({ id: v.id, title: v.title, zone: w.zone, onlyZone: true, tracked: v.tracked }); continue; }
+      if (!p) continue;
+      out.push({ id: v.id, title: v.title, text: v.text, x: p.x, y: p.y, z: p.z, zone: zoneOfY(p.y), known, tracked: v.tracked });
+    }
+    return out;
+  }
+
+  // ---------------- drawing
+  /** Draw the layer into `out` (a Px). maxOrd hides cells walked after it (for the ink-in). */
+  function paint(out, maxOrd = Infinity, { fx = true } = {}) {
+    const p = out, d = p.d;
+    d.set(paperFor(W, H));
+    hits = [];
+    const ox = Math.round(vcx * k - W / 2), oz = Math.round(vcz * k - H / 2); // world px of the left/top edge
+    const m = exploredIndex(st).zones.get(zone);
+    // pencil survey grid every 10 m
+    const g = 10 * k;
+    for (let i = 0; i < W; i++) {
+      const wx = i + ox;
+      if (((wx % g) + g) % g === 0) for (let j = 0; j < H; j++) if (hash(wx, j + oz, 3) < 0.55) p.set(i, j, INKC.pencil, 34);
+    }
+    for (let j = 0; j < H; j++) {
+      const wz = j + oz;
+      if (((wz % g) + g) % g === 0) for (let i = 0; i < W; i++) if (hash(i + ox, wz, 4) < 0.55) p.set(i, j, INKC.pencil, 34);
+    }
+    // ---- the open field: a meter grid around the view, softened, sampled per pixel with wobble
+    const mx0 = Math.floor(ox / k) - 3, mz0 = Math.floor(oz / k) - 3;
+    const GW = Math.ceil(W / k) + 7, GH = Math.ceil(H / k) + 7;
+    const G = new Uint8Array(GW * GH);
+    let any = false;
+    if (m && m.size) {
+      if (m.size < GW * GH) {
+        for (const c of m.values()) {
+          if (c.ord > maxOrd) continue;
+          const gx = c.x - mx0, gz = c.z - mz0;
+          if (gx >= 0 && gz >= 0 && gx < GW && gz < GH) { G[gz * GW + gx] = c.v; any = true; }
+        }
+      } else {
+        for (let gz = 0; gz < GH; gz++) for (let gx = 0; gx < GW; gx++) {
+          const c = m.get(keyXZ(gx + mx0, gz + mz0));
+          if (c && c.ord <= maxOrd) { G[gz * GW + gx] = c.v; any = true; }
+        }
+      }
+    }
+    const M = new Uint8Array(W * H); // 0 rock/unknown, 1 open, 2 water, 3 lava
+    if (any) {
+      const F = new Float32Array(GW * GH), T = new Float32Array(GW * GH);
+      for (let i = 0; i < G.length; i++) F[i] = G[i] ? 1 : 0;
+      for (let gz = 0; gz < GH; gz++) for (let gx = 0; gx < GW; gx++) {
+        const i = gz * GW + gx;
+        T[i] = (F[i] * 2 + (gx > 0 ? F[i - 1] : 0) + (gx < GW - 1 ? F[i + 1] : 0)) / 4;
+      }
+      for (let gz = 0; gz < GH; gz++) for (let gx = 0; gx < GW; gx++) {
+        const i = gz * GW + gx;
+        F[i] = (T[i] * 2 + (gz > 0 ? T[i - GW] : 0) + (gz < GH - 1 ? T[i + GW] : 0)) / 4;
+      }
+      const wob = 0.34;
+      for (let j = 0; j < H; j++) {
+        const wz = (j + oz + 0.5) / k;
+        for (let i = 0; i < W; i++) {
+          const wx = (i + ox + 0.5) / k;
+          const sx = wx + noise(wx * 0.33, wz * 0.33) * wob - mx0 - 0.5, sz = wz + noise(wx * 0.33 + 31, wz * 0.33 + 17) * wob - mz0 - 0.5;
+          const ix = Math.floor(sx), iz = Math.floor(sz);
+          if (ix < 0 || iz < 0 || ix >= GW - 1 || iz >= GH - 1) continue;
+          const fx_ = sx - ix, fz = sz - iz;
+          const a = F[iz * GW + ix], b = F[iz * GW + ix + 1], c = F[(iz + 1) * GW + ix], e = F[(iz + 1) * GW + ix + 1];
+          const f = (a * (1 - fx_) + b * fx_) * (1 - fz) + (c * (1 - fx_) + e * fx_) * fz;
+          if (f <= 0.33) continue;
+          const gi = Math.round(sz) * GW + Math.round(sx);
+          let v = G[gi] || 0;
+          if (!v) v = G[iz * GW + ix] || G[iz * GW + ix + 1] || G[(iz + 1) * GW + ix] || G[(iz + 1) * GW + ix + 1] || 1;
+          M[j * W + i] = v;
+        }
+      }
+    }
+    // tidy the edge: lone specks go, pinholes fill
+    for (let j = 1; j < H - 1; j++)
+      for (let i = 1; i < W - 1; i++) {
+        const q = j * W + i;
+        const n = (M[q - 1] ? 1 : 0) + (M[q + 1] ? 1 : 0) + (M[q - W] ? 1 : 0) + (M[q + W] ? 1 : 0);
+        if (M[q] && n <= 1) M[q] = 0;
+        else if (!M[q] && n >= 3) M[q] = M[q - 1] || M[q + 1] || M[q - W] || M[q + W];
+      }
+    // ---- distance from the open ground (chamfer 2-3, halved)
+    const CAP = 26;
+    const D = new Uint8Array(W * H).fill(CAP);
+    for (let i = 0; i < M.length; i++) if (M[i]) D[i] = 0;
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+      const q = j * W + i;
+      let v = D[q];
+      if (!v) continue;
+      if (i > 0) v = Math.min(v, D[q - 1] + 2);
+      if (j > 0) { v = Math.min(v, D[q - W] + 2); if (i > 0) v = Math.min(v, D[q - W - 1] + 3); if (i < W - 1) v = Math.min(v, D[q - W + 1] + 3); }
+      D[q] = v;
+    }
+    for (let j = H - 1; j >= 0; j--) for (let i = W - 1; i >= 0; i--) {
+      const q = j * W + i;
+      let v = D[q];
+      if (!v) continue;
+      if (i < W - 1) v = Math.min(v, D[q + 1] + 2);
+      if (j < H - 1) { v = Math.min(v, D[q + W] + 2); if (i < W - 1) v = Math.min(v, D[q + W + 1] + 3); if (i > 0) v = Math.min(v, D[q + W - 1] + 3); }
+      D[q] = v;
+    }
+    // ---- ink: floors, washes, hatching, stipple, walls (a better mapper inks more of the rock round a tunnel)
+    const inkK = clamp(st.skill?.('ink') || 1, 1, 2);
+    const sx = (k >= 3 ? 4 : 3);
+    for (let j = 0; j < H; j++) {
+      const wy = j + oz;
+      for (let i = 0; i < W; i++) {
+        const q = j * W + i, wx = i + ox;
+        const v = M[q];
+        if (v) {
+          if (v === 2) {
+            p.set(i, j, 0xc4dce0, 255);
+            if (((wy + Math.round(Math.sin(wx * 0.7) * 1.2)) % 4 + 4) % 4 === 0 && hash(wx >> 2, wy, 8) < 0.8) p.set(i, j, INKC.blue, 190);
+          } else if (v === 3) {
+            p.set(i, j, 0xf4b088, 255);
+            if (((wx + wy) % 3 + 3) % 3 === 0 && hash(wx, wy >> 1, 9) < 0.5) p.set(i, j, INKC.red, 150);
+          } else {
+            p.set(i, j, FLOOR, 200);
+            if (hash(wx, wy, 6) < 0.008) p.set(i, j, INKC.pencil, 110);
+          }
+          continue;
+        }
+        const dd = D[q] / 2;
+        if (dd > 12) continue;
+        const press = noise(wx * 0.11, wy * 0.11);
+        const hw = Math.min(11, (4 + press * 2.6) * (0.8 + inkK * 0.2));
+        // a faint wash of rock tone hugging the walls
+        if (dd < 5) p.set(i, j, 0xc8a878, Math.round(70 * (1 - dd / 5)));
+        if (dd <= hw) {
+          // hatching: parallel diagonal strokes, broken into hand-sized pieces, thinning outward
+          const l1 = wx + wy, l2 = wx - wy;
+          if (((l1 % 3) + 3) % 3 === 0) {
+            const line = Math.floor(l1 / 3), seg = Math.floor((l2 + hash(line, 1) * 11) / 8);
+            const keep = hash(line, seg, 11), cut = (l2 + hash(line, 1) * 11) % 8;
+            if (cut > 0.5 && keep > 0.08 + (dd / hw) ** 1.4 * 0.75) p.set(i, j, dd < 2.5 ? INKC.ink2 : INKC.sepia, Math.round(240 - (dd / hw) * 90));
+          }
+          // where the pen pressed, a second pass across
+          if (press > 0.18 && dd < 2.4 && ((l2 % 3) + 3) % 3 === 0) {
+            const line = Math.floor(l2 / 3), seg = Math.floor((l1 + hash(line, 2) * 9) / 6);
+            if (hash(line, seg, 12) > 0.35) p.set(i, j, INKC.sepia, 170);
+          }
+        } else if (hash(wx, wy, 14) < 0.05 * (1 - (dd - hw) / (12 - hw))) p.set(i, j, INKC.sepia, 160);
+      }
+    }
+    // hachures: short ticks out from the wall
+    for (let j = 1; j < H - 1; j++)
+      for (let i = 1; i < W - 1; i++) {
+        const q = j * W + i;
+        if (D[q] !== 2 || hash(i + ox, j + oz, 21) > 0.26) continue;
+        let gx = D[q + 1] - D[q - 1], gy = D[q + W] - D[q - W];
+        const l = Math.hypot(gx, gy) || 1;
+        gx /= l; gy /= l;
+        const len = 2 + Math.floor(hash(i + ox, j + oz, 22) * 2.5);
+        for (let t = 0; t <= len; t++) {
+          const x = Math.round(i + gx * t), y = Math.round(j + gy * t);
+          if (x < 0 || y < 0 || x >= W || y >= H || M[y * W + x]) break;
+          p.set(x, y, INKC.ink2, 235 - t * 30);
+        }
+      }
+    // the wall line, heavier where the pen pressed
+    for (let j = 0; j < H; j++)
+      for (let i = 0; i < W; i++) {
+        const q = j * W + i;
+        const v = M[q];
+        if (v) {
+          const edge = (i > 0 && !M[q - 1]) || (i < W - 1 && !M[q + 1]) || (j > 0 && !M[q - W]) || (j < H - 1 && !M[q + W]);
+          if (edge) p.set(i, j, v === 2 ? INKC.blue : v === 3 ? INKC.red : INKC.ink, 255);
+        } else if (D[q] === 2 && noise((i + ox) * 0.09 + 5, (j + oz) * 0.09) > 0.3) p.set(i, j, INKC.ink2, 200);
+      }
+
+    // ---- trails: the old miners' tunnels, dashed where you've walked them
+    if (plan?.trails) {
+      const rails = new Set((plan.features || []).filter((f) => f.kind === 'trail' && f.rails).map((f) => f.trail));
+      for (const t of plan.trails) {
+        const pts = t.pts || [];
+        for (let s = 1; s < pts.length; s++) {
+          const a = pts[s - 1], b = pts[s];
+          if (zoneOfY((a.y + b.y) / 2) !== zone) continue;
+          const len = Math.hypot(b.x - a.x, b.z - a.z);
+          const n = Math.max(1, Math.ceil(len * k));
+          let walked = 0;
+          for (let e = 0; e <= n; e++) {
+            const tt = e / n, x = a.x + (b.x - a.x) * tt, z = a.z + (b.z - a.z) * tt;
+            const c = m?.get(keyXZ(Math.floor(x), Math.floor(z)));
+            if (!c || c.ord > maxOrd) { walked = 0; continue; }
+            walked++;
+            const ix = Math.round(x * k - ox), iz = Math.round(z * k - oz);
+            if (ix < 0 || iz < 0 || ix >= W || iz >= H) continue;
+            const dash = Math.floor((e + hash(s, 3) * 4) / 2) % 2 === 0;
+            if (dash) p.set(ix, iz, 0x8a3a1a, 230);
+            if (rails.has(t.id) && e % 4 === 0 && k >= 2) {
+              const ux = (b.z - a.z) / (len || 1), uz = -(b.x - a.x) / (len || 1);
+              p.set(Math.round(ix + ux * 1.5), Math.round(iz + uz * 1.5), INKC.sepia, 200);
+              p.set(Math.round(ix - ux * 1.5), Math.round(iz - uz * 1.5), INKC.sepia, 200);
+            }
+          }
+          void walked;
+        }
+      }
+    }
+
+    // ---- landmarks, labels, pins, quests, you
+    const toMap = (x, z) => [x * k - ox, z * k - oz];
+    const inView = (sx, sy, pad = 6) => sx >= -pad && sy >= -pad && sx < W + pad && sy < H + pad;
+    const taken = (paintTaken = []);
+    const free = (r) => !taken.some((q) => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1]);
+    const label = (text, cx, cy, col = INKC.ink, prefer = 'below', seed = 1) => {
+      if (!text) return;
+      const w = textW(text), h = 7;
+      const tries = prefer === 'below' ? [[0, 1], [0, -1], [1, 0], [-1, 0]] : [[1, 0], [0, 1], [0, -1], [-1, 0]];
+      for (const [dx, dy] of tries) {
+        const x = Math.round(dx === 0 ? cx.x - w / 2 : dx > 0 ? cx.x1 + 3 : cx.x0 - w - 3);
+        const y = Math.round(dy === 0 ? cx.y - h / 2 : dy > 0 ? cx.y1 + 2 : cx.y0 - h - 1);
+        const r = [x - 2, y - 1, x + w + 2, y + h + 1];
+        if (x < 2 || y < 1 || x + w > W - 2 || y + h > H - 1 || !free(r)) continue;
+        paperPatch(p, x, y, w, h, PAPER, 215);
+        hand(p, text, x, y, col, { seed });
+        taken.push(r);
+        return true;
+      }
+      return false;
+    };
+    const L = landmarks(zone, maxOrd);
+    // danger rings first, under everything
+    for (const lm of L) {
+      if (!lm.danger || !lm.r) continue;
+      const [sx_, sy_] = toMap(lm.x, lm.z);
+      if (!inView(sx_, sy_, lm.r * k + 4)) continue;
+      const rr = lm.r * k;
+      for (let a = 0; a < 64; a++) if (a % 4 < 2) p.set(Math.round(sx_ + Math.cos((a / 64) * 6.283) * rr), Math.round(sy_ + Math.sin((a / 64) * 6.283) * rr), INKC.redLt, 170);
+    }
+    const order = { ore: 0, stake: 0, shaft: 1, lift: 2, lake: 3, lava: 3, gas: 3, nest: 3, ruin: 4, burrow: 5, dig: 6, town: 7, home: 8 };
+    L.sort((a, b) => (order[a.kind] || 0) - (order[b.kind] || 0));
+    const drawn = [];
+    for (const lm of L) {
+      const [sx_, sy_] = toMap(lm.x, lm.z);
+      if (!inView(sx_, sy_, 14)) continue;
+      if ((lm.kind === 'ore' || lm.kind === 'stake') && k < 2) continue;
+      const fn = DOODLE[lm.kind] || DOODLE.lift;
+      const b = lm.kind === 'burrow' ? fn(p, sx_, sy_, 3, lm.variant) : lm.kind === 'ore' ? fn(p, sx_, sy_, 2, lm.color) : fn(p, sx_, sy_, 2);
+      taken.push(b);
+      drawn.push({ lm, b, sx: sx_, sy: sy_ });
+      hits.push({ x: sx_, y: sy_, r: Math.max(5, (b[2] - b[0]) / 2), label: lm.title || lm.label || '', sub: lm.sub || '' });
+    }
+    // labels: big places first (the list is sorted small → big)
+    for (let i = drawn.length - 1; i >= 0; i--) {
+      const { lm, b } = drawn[i];
+      if (!lm.label || (lm.small && k < 2)) continue;
+      label(lm.label, { x: (b[0] + b[2]) / 2, y: (b[1] + b[3]) / 2, x0: b[0], y0: b[1], x1: b[2], y1: b[3] }, lm.danger ? INKC.red : lm.kind === 'lake' ? INKC.blue : INKC.ink, 'below', i + 7);
+    }
+    // spot depths along your tunnels (a surveyor's habit), sparse
+    if (m && k >= 3) {
+      const B = 18;
+      const seen = new Set();
+      for (const c of m.values()) {
+        if (c.ord > maxOrd) continue;
+        const bx = Math.floor(c.x / B), bz = Math.floor(c.z / B), key = bx * 9973 + bz;
+        if (seen.has(key)) continue;
+        if (hash(c.x, c.z, 41) > 0.2) continue;
+        const [sx_, sy_] = toMap(c.x + 0.5, c.z + 0.5);
+        if (sx_ < 8 || sy_ < 8 || sx_ > W - 16 || sy_ > H - 10) continue;
+        seen.add(key);
+        const t = String(Math.round(-(c.y0 + c.y1) / 2));
+        const r = [sx_ + 2, sy_ - 3, sx_ + 4 + textW(t), sy_ + 4];
+        if (!free(r)) continue;
+        p.set(Math.round(sx_), Math.round(sy_), INKC.pencil); p.set(Math.round(sx_) - 1, Math.round(sy_), INKC.pencil, 140); p.set(Math.round(sx_) + 1, Math.round(sy_), INKC.pencil, 140);
+        hand(p, t, sx_ + 2, sy_ - 4, INKC.pencil, { seed: c.ord, lean: false });
+        taken.push(r);
+      }
+    }
+    // pins
+    for (const pin of atlas.pins) {
+      if (pin.zone !== zone) continue;
+      const [sx_, sy_] = toMap(pin.x, pin.z);
+      if (!inView(sx_, sy_)) continue;
+      const pp = pinPx(pin.kind);
+      p.blit(pp, Math.round(sx_ - 6), Math.round(sy_ - (pin.kind === 'pin' ? 13 : 7)));
+      hits.push({ x: sx_, y: sy_ - 4, r: 6, label: pin.label || PIN_NAMES[pin.kind] || 'Pin', sub: 'Your pin', pin });
+    }
+    // quests
+    const now = performance.now() / 1000;
+    for (const t of questTargets()) {
+      if (t.onlyZone || t.zone !== zone) continue;
+      const [sx_, sy_] = toMap(t.x, t.z);
+      if (!inView(sx_, sy_, 8)) { if (t.tracked) edgeArrow(p, sx_, sy_, INKC.red, t.title); continue; }
+      if (t.tracked || !t.known) questMark(p, sx_, sy_, { pencil: !t.known, seed: 3, t: now });
+      else flag(p, sx_, sy_);
+      hits.push({ x: sx_, y: sy_, r: 8, label: t.title, sub: t.known ? t.text : `${t.text} · somewhere about here` });
+    }
+    // home, when it's off the page
+    if (zone === 1) {
+      const W0 = plan?.W ?? 10, D0 = plan?.D ?? 8;
+      const [hx, hy] = toMap(W0 / 2, D0 / 2);
+      if (!inView(hx, hy, -4)) edgeArrow(p, hx, hy, INKC.ink2, "Old Star's");
+    }
+    // Nugget and you
+    const me = where();
+    const nug = game.scene?.nugget?.pos;
+    if (nug && game.sceneName === 'deep' && zoneOfY(nug.y) === zone) {
+      const [nx, ny] = toMap(nug.x, nug.z);
+      if (inView(nx, ny, 0)) { DOODLE.nugget(p, nx, ny); hits.push({ x: nx, y: ny, r: 5, label: 'Nugget', sub: 'Your hen' }); }
+    }
+    if (zoneOfY(me.y) === zone) {
+      const [ux, uy] = toMap(me.x, me.z);
+      if (inView(ux, uy, 0)) {
+        youArrow(p, ux, uy, -Math.sin(me.yaw), -Math.cos(me.yaw));
+        hits.push({ x: ux, y: uy, r: 6, label: 'You', sub: me.live ? `${Math.round(-me.y)} m down` : me.place === 'town' ? 'In Deep Town' : "At Old Star's" });
+      } else if (fx) edgeArrow(p, ux, uy, 0xc8302a, 'You');
+    }
+    // the chrome on the sheet: compass, scale
+    if (fx) {
+      compass(p, W - 18, 22, 11);
+      scaleBar(p, 8, H - 14, k, PAPER);
+    }
+    if (!any && fx) {
+      const msg = zone === 1 ? 'NOT WALKED YET' : 'NOTHING WALKED HERE YET';
+      const w = textW(msg);
+      paperPatch(p, Math.round(W / 2 - w / 2), Math.round(H / 2 + 14), w, 7, PAPER, 230);
+      hand(p, msg, W / 2 - w / 2, H / 2 + 14, INKC.pencil, { seed: 9 });
+    }
+  }
+
+  /** A small red flag: another quest wants you here. */
+  function flag(p, x, y) {
+    x = Math.round(x); y = Math.round(y);
+    p.vl(x, y - 8, y, INKC.ink);
+    p.poly([[x + 1, y - 8], [x + 5, y - 6.5], [x + 1, y - 5]], INKC.red);
+    p.set(x - 1, y, INKC.ink2); p.set(x + 1, y, INKC.ink2);
+  }
+
+  /** Off-page: a pencil arrow at the edge pointing to it, and its name. */
+  function edgeArrow(p, tx, ty, color, text) {
+    const cx = W / 2, cy = H / 2;
+    const dx = tx - cx, dy = ty - cy;
+    const s = Math.min((W / 2 - 10) / Math.abs(dx || 1e-6), (H / 2 - 10) / Math.abs(dy || 1e-6));
+    const ex = cx + dx * s, ey = cy + dy * s;
+    const l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+    wline(p, ex - ux * 8, ey - uy * 8, ex, ey, color, { amp: 0.3 });
+    wline(p, ex, ey, ex - ux * 3 - uy * 3, ey - uy * 3 + ux * 3, color, { amp: 0 });
+    wline(p, ex, ey, ex - ux * 3 + uy * 3, ey - uy * 3 - ux * 3, color, { amp: 0 });
+    const meters = Math.round(l / k);
+    const lab = `${text} ${meters} M`;
+    const w = textW(lab);
+    let lx = clamp(Math.round(ex - ux * 12 - w / 2), 3, W - w - 3), ly = clamp(Math.round(ey - uy * 12 - 3), 3, H - 10);
+    // slide along the edge until it's clear of other lettering
+    const clear = (x, y) => !paintTaken.some((q) => x - 2 < q[2] && x + w + 2 > q[0] && y - 1 < q[3] && y + 8 > q[1]);
+    for (let t = 1; t < 12 && !clear(lx, ly); t++) {
+      const off = (t % 2 ? 1 : -1) * Math.ceil(t / 2) * 8;
+      const nx = Math.abs(uy) > Math.abs(ux) ? clamp(lx + off, 3, W - w - 3) : lx, ny = Math.abs(uy) > Math.abs(ux) ? ly : clamp(ly + off, 3, H - 10);
+      if (clear(nx, ny)) { lx = nx; ly = ny; break; }
+    }
+    paintTaken.push([lx - 2, ly - 1, lx + w + 2, ly + 8]);
+    paperPatch(p, lx, ly, w, 7, PAPER, 200);
+    hand(p, lab, lx, ly, color, { seed: 5 });
+    hits.push({ x: ex, y: ey, r: 7, label: text, sub: `${meters} m that way` });
+  }
+
+  function draw() {
+    if (!map || dead) return;
+    if (!planReady) { map.d.set(paperFor(W, H)); map.ctx.putImageData(map.img, 0, 0); return; }
+    if (anim) return; // the ink-in owns the canvas
+    paint(map);
+    map.ctx.putImageData(map.img, 0, 0);
+  }
+
+  // ---------------- the ink-in: ground walked since the last look gets inked by the quill
+  function startReveal() {
+    finishAnim();
+    if (!planReady || !map) { redraw(); return; }
+    const m = exploredIndex(st).zones.get(zone);
+    if (!m || !m.size) { redraw(); return; }
+    let maxOrd = -1;
+    for (const c of m.values()) if (c.ord > maxOrd) maxOrd = c.ord;
+    let seen = atlas.seen[zone];
+    if (seen === undefined) seen = -1;
+    const fresh = [];
+    for (const c of m.values()) if (c.ord > seen) fresh.push(c);
+    atlas.seen[zone] = maxOrd;
+    if (!fresh.length) { redraw(); return; }
+    fresh.sort((a, b) => a.ord - b.ord);
+    // a long first look: older ground is simply there, the quill does the last stretch
+    const cap = 500;
+    const startOrd = fresh.length > cap ? fresh[fresh.length - cap].ord - 1 : seen;
+    const path = fresh.filter((c) => c.ord > startOrd);
+    const before = new Px(W, H), after = new Px(W, H);
+    paint(before, startOrd);
+    paint(after, Infinity);
+    const ox = Math.round(vcx * k - W / 2), oz = Math.round(vcz * k - H / 2);
+    const pts = [];
+    for (const c of path) {
+      const x = (c.x + 0.5) * k - ox, y = (c.z + 0.5) * k - oz;
+      if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
+      pts.push([x, y]);
+    }
+    if (!pts.length) { redraw(); return; }
+    map.d.set(before.d);
+    map.ctx.putImageData(map.img, 0, 0);
+    const R = Math.max(7, Math.round((2.4 * k + 6) * (st.skill?.('ink') || 1))); // the quill's stroke widens with Map ink
+    const dur = clamp(0.5 + pts.length * 0.012, 0.7, 3.2);
+    const mask = new Uint8Array(W * H);
+    const t0 = performance.now();
+    let done = 0, lastSfx = 0;
+    anim = { after, stop: false };
+    quill.hidden = false;
+    const stepAnim = () => {
+      if (dead || !anim || anim.stop) return;
+      const t = clamp((performance.now() - t0) / 1000 / dur, 0, 1);
+      const upto = Math.floor(t * pts.length);
+      for (; done < upto; done++) {
+        const [cx, cy] = pts[done];
+        for (let y = Math.max(0, Math.floor(cy - R)); y < Math.min(H, cy + R); y++)
+          for (let x = Math.max(0, Math.floor(cx - R)); x < Math.min(W, cx + R); x++) {
+            const q = y * W + x;
+            if (mask[q]) continue;
+            const dd = (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2;
+            if (dd > R * R * (0.8 + hash(x, y, 31) * 0.4)) continue;
+            mask[q] = 1;
+            const i4 = q * 4;
+            map.d[i4] = after.d[i4]; map.d[i4 + 1] = after.d[i4 + 1]; map.d[i4 + 2] = after.d[i4 + 2]; map.d[i4 + 3] = after.d[i4 + 3];
+          }
+      }
+      map.ctx.putImageData(map.img, 0, 0);
+      const cur = pts[Math.min(pts.length - 1, done)];
+      quill.style.transform = `translate(${Math.round(cur[0] * px)}px, ${Math.round(cur[1] * px)}px) rotate(${Math.sin(t * 40) * 8}deg)`;
+      const now = performance.now();
+      if (now - lastSfx > 120) { lastSfx = now; SFX.brush(game.audio, { vol: 0.9 }); if (hash(done, 3) < 0.3) SFX.scratch(game.audio, { n: 2, vol: 0.6 }); }
+      if (t >= 1) { finishAnim(); return; }
+      anim.raf = requestAnimationFrame(stepAnim);
+    };
+    anim.raf = requestAnimationFrame(stepAnim);
+  }
+  function finishAnim() {
+    if (!anim) return;
+    const a = anim;
+    anim = null;
+    a.stop = true;
+    cancelAnimationFrame(a.raf);
+    quill.hidden = true;
+    if (map && a.after && a.after.w === W && a.after.h === H) { map.d.set(a.after.d); map.ctx.putImageData(map.img, 0, 0); }
+    redraw();
+  }
+
+  // ---------------- pins
+  const setPinMode = (kind) => {
+    pinMode = kind;
+    if (kind) atlas.lastPin = kind;
+    pinBar.hidden = !kind;
+    root.classList.toggle('pinning', !!kind);
+    for (const b of pinBar.querySelectorAll('.at-pk')) b.classList.toggle('on', b.dataset.k === kind);
+    SFX.flick(game.audio);
+  };
+  const pinAt = (mx, my) => {
+    // pull an existing pin, or push a new one in
+    const hit = hits.find((h) => h.pin && Math.hypot(h.x - mx, h.y - my) < 6);
+    if (hit) {
+      atlas.pins = atlas.pins.filter((q) => q !== hit.pin);
+      game.audio.play('ui_click', { vol: 0.5 });
+    } else {
+      const ox = Math.round(vcx * k - W / 2), oz = Math.round(vcz * k - H / 2);
+      const x = (mx + ox) / k, z = (my + oz) / k;
+      if (atlas.pins.length >= 60) atlas.pins.shift();
+      atlas.pins.push({ id: Date.now().toString(36), zone, x: +x.toFixed(2), z: +z.toFixed(2), kind: pinMode || 'pin' });
+      SFX.pin(game.audio);
+    }
+    st.dirty = true;
     redraw();
   };
 
-  let raf = 0;
-  const redraw = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); };
-  const draw = () => {
-    if (!map) return;
-    const p = map;
-    const sample = gridSampler(data);
-    const k = zoom;
-    const at = (i, j) => sample(vcx + (i + 0.5 - W / 2) / k, vcz + (j + 0.5 - H / 2) / k);
-    const cells = new Uint8Array(W * H);
-    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) cells[j * W + i] = at(i, j);
-    const cAt = (i, j) => (i < 0 || j < 0 || i >= W || j >= H ? 0 : cells[j * W + i]);
-    for (let j = 0; j < H; j++)
-      for (let i = 0; i < W; i++) {
-        const wx = vcx + (i + 0.5 - W / 2) / k, wz = vcz + (j + 0.5 - H / 2) / k;
-        const v = cells[j * W + i];
-        let c = PAPER;
-        // graph paper: thin lines every 5 m, darker every 25 m
-        const gx = ((wx % 5) + 5) % 5, gz = ((wz % 5) + 5) % 5;
-        if (gx < 1 / k || gz < 1 / k) c = (((wx % 25) + 25) % 25 < 1 / k || ((wz % 25) + 25) % 25 < 1 / k) ? 0xd8bf8e : 0xe6d2a6;
-        if (v === 4) c = (i + j) % 3 === 0 ? 0x9a7a52 : mixHex(c, 0xd8bf8a, 0.55);
-        else if (v >= 1 && v <= 3) {
-          let e = false;
-          for (const [oi, oj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const n = cAt(i + oi, j + oj); if (n === 0 || n === 4) { e = true; break; } }
-          if (v === 1) c = e ? INK : 0xfaf0d6;
-          else if (v === 2) c = e ? 0x2a5a8a : (i * 3 + j * 5) % 9 === 0 ? 0x6a9ac0 : 0xa8cbe0;
-          else c = e ? 0xa8321e : (i * 7 + j * 3) % 11 === 0 ? 0xd8603a : 0xf0a878;
-        }
-        p.set(i, j, c);
-      }
-    // markers
-    labels.innerHTML = '';
-    const marks = data.markers || [];
-    const off = (m) => Math.abs((-(m.y ?? data.y)) - layer) > LEVEL_GAP * 2;
-    for (const m of marks) {
-      if (m.kind !== 'danger') continue;
-      const [sx, sy] = toMap(m.x, m.z);
-      const rr = (m.r || 4) * k;
-      const a = off(m) ? 90 : 255;
-      for (let s = 0; s < 64; s++) {
-        if (s % 4 >= 2) continue;
-        const t = (s / 64) * Math.PI * 2;
-        p.set(Math.round(sx + Math.cos(t) * rr), Math.round(sy + Math.sin(t) * rr), INK_FOR.danger, a);
-      }
-      for (let j = Math.floor(sy - rr); j <= sy + rr; j++)
-        for (let i = Math.floor(sx - rr); i <= sx + rr; i++)
-          if ((i + j) % 4 === 0 && Math.hypot(i + 0.5 - sx, j + 0.5 - sy) < rr - 1) p.set(i, j, 0xe07a5a, Math.round(a * 0.7));
-    }
-    const edgeLabel = (m, color) => {
-      // out of view: an arrow on the map's edge pointing at it
-      const [sx, sy] = toMap(m.x, m.z);
-      const dx = sx - W / 2, dy = sy - H / 2;
-      const s = Math.min((W / 2 - 6) / Math.abs(dx || 1e-6), (H / 2 - 6) / Math.abs(dy || 1e-6));
-      const ex = W / 2 + dx * s, ey = H / 2 + dy * s;
-      const d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
-      const pts = [[ex + ux * 4, ey + uy * 4], [ex - ux * 2 - uy * 3, ey - uy * 2 + ux * 3], [ex - ux * 2 + uy * 3, ey - uy * 2 - ux * 3]];
-      const o = scratch();
-      o.poly(pts, color);
-      o.outline(0xfaf0d6);
-      p.blit(o);
-      const dist = Math.round(Math.hypot(m.x - data.x, m.z - data.z));
-      addLabel(`${m.label || NAMES[m.kind]} ${dist} m`, ex - ux * 8, ey - uy * 8, 'edge');
-    };
-    const addLabel = (text, x, y, cls = '') => {
-      const l = el('span', { class: 'sv-lab ' + cls }, text);
-      // anchor toward the inside of the map so labels near an edge stay readable
-      const ax = x < W * 0.28 ? '0%' : x > W * 0.72 ? '-100%' : '-50%';
-      l.style.left = Math.round(clamp(x, 2, W - 2) * px) + 'px';
-      l.style.top = Math.round(clamp(y, 2, H - 8) * px) + 'px';
-      l.style.transform = `translate(${ax}, ${cls === 'edge' ? '-50%' : '0'})`;
-      labels.append(l);
-      // keep labels from piling on top of each other: nudge down until it's clear
-      const mine = () => l.getBoundingClientRect();
-      for (let tries = 0; tries < 4; tries++) {
-        const r = mine();
-        const hit = placed.find((q) => r.left < q.right && r.right > q.left && r.top < q.bottom && r.bottom > q.top);
-        if (!hit) break;
-        l.style.top = (parseFloat(l.style.top) + (hit.bottom - r.top) + 2) + 'px';
-      }
-      placed.push(mine());
-    };
-    const placed = [];
-    for (const m of marks) {
-      if (m.kind === 'danger') continue;
-      const [sx, sy] = toMap(m.x, m.z);
-      const inView = sx >= 2 && sy >= 2 && sx < W - 2 && sy < H - 2;
-      const ink = m.kind === 'ore' ? mixHex(m.color ?? MARK_COLOR.ore, 0x2a1a10, 0.2) : INK_FOR[m.kind] ?? INK;
-      if (!inView) { if (m.kind === 'home' || m.kind === 'town') edgeLabel(m, ink); continue; }
-      const faded = off(m);
-      const a = faded ? 110 : 255;
-      const glyph = m.kind === 'ore' ? 'ore' : m.kind;
-      if (faded && m.kind !== 'home' && m.kind !== 'town') plotGlyph(p, -(m.y ?? 0) < layer ? 'up' : 'down', sx, sy, ink, 0xfaf0d6, a);
-      else plotGlyph(p, glyph, sx, sy, ink, m.kind === 'ore' ? 0x2a1a10 : 0xfaf0d6, a);
-      if ((m.kind === 'home' || m.kind === 'town' || m.kind === 'station') && !faded) addLabel(m.label || NAMES[m.kind], sx, sy + 4, m.kind);
-    }
-    // you
-    const [ux, uy] = toMap(data.x, data.z);
-    const hd = data.heading || 0, fx = -Math.sin(hd), fz = -Math.cos(hd);
-    const rx = -fz, rz = fx;
-    const ya = Math.abs(layer - youDepth) <= LEVEL_GAP * 2 ? 255 : 120;
-    const o = scratch();
-    o.poly([[ux + fx * 5, uy + fz * 5], [ux - fx * 3 + rx * 3.5, uy - fz * 3 + rz * 3.5], [ux - fx * 1.5, uy - fz * 1.5], [ux - fx * 3 - rx * 3.5, uy - fz * 3 - rz * 3.5]], 0xd0302a);
-    o.outline(0x2a1408);
-    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) if (o.a(i, j)) p.set(i, j, o.get(i, j), ya);
-    p.ctx.putImageData(p.img, 0, 0);
-
-    // distance chips
-    dists.innerHTML = '';
-    for (const kind of ['home', 'town']) {
-      const m = marks.find((x) => x.kind === kind);
-      if (!m) continue;
-      const d = Math.round(Math.hypot(m.x - base.x, m.z - base.z));
-      const dd = Math.round(-(m.y ?? 0) - youDepth);
-      if (!legendCache.has(kind)) legendCache.set(kind, legendIcon(kind));
-      dists.append(el('span', { class: 'sv-chip' }, [el('img', { class: 'pix', src: legendCache.get(kind), alt: '' }), `${m.label || NAMES[kind]} ${d} m${Math.abs(dd) > LEVEL_GAP ? (dd < 0 ? ` · ${-dd} m up` : ` · ${dd} m down`) : ''}`]));
-    }
-  };
-
-  // ---------------- pan, zoom, tooltips
-  let drag = null;
+  // ---------------- input: drag, pinch, wheel, taps
+  const ptrs = new Map();
+  let drag = null, pinch = null;
+  const local = (e) => { const r = canvasHost.getBoundingClientRect(); return { x: (e.clientX - r.left) / px, y: (e.clientY - r.top) / px }; };
   mapEl.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button')) return;
     e.preventDefault();
-    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0 };
+    mapEl.focus({ preventScroll: true });
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     try { mapEl.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
+    if (anim) { finishAnim(); }
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) }; drag = null; return; }
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0 };
   });
   mapEl.addEventListener('pointermove', (e) => {
+    if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && ptrs.size === 2) {
+      const [a, b] = [...ptrs.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d / pinch.d > 1.35) { setZoom(1); pinch.d = d; } else if (d / pinch.d < 0.74) { setZoom(-1); pinch.d = d; }
+      return;
+    }
     if (drag && e.pointerId === drag.id) {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       drag.moved += Math.abs(dx) + Math.abs(dy);
       drag.x = e.clientX; drag.y = e.clientY;
-      vcx -= dx / (zoom * px);
-      vcz -= dy / (zoom * px);
+      vcx -= dx / (k * px);
+      vcz -= dy / (k * px);
       tip.hidden = true;
       redraw();
     } else if (e.pointerType === 'mouse') hover(e);
   });
-  for (const ev of ['pointerup', 'pointercancel']) mapEl.addEventListener(ev, (e) => {
+  const up = (e) => {
+    ptrs.delete(e.pointerId);
+    if (ptrs.size < 2) pinch = null;
     if (!drag || e.pointerId !== drag.id) return;
-    if (drag.moved < 6) hover(e, true);
+    const moved = drag.moved;
     drag = null;
-  });
-  mapEl.addEventListener('wheel', (e) => { e.preventDefault(); setZoom(zoom + (e.deltaY < 0 ? 1 : -1)); }, { passive: false });
-  const hover = (e, sticky = false) => {
-    const r = canvasHost.getBoundingClientRect();
-    const mx = (e.clientX - r.left) / px, my = (e.clientY - r.top) / px;
-    let best = null, bd = 6;
-    for (const m of data.markers || []) {
-      const [sx, sy] = toMap(m.x, m.z);
-      const d = Math.hypot(sx - mx, sy - my) - (m.kind === 'danger' ? (m.r || 4) * zoom : 0);
-      if (d < bd) { bd = d; best = m; }
+    if (moved < 7) {
+      const at = local(e);
+      if (pinMode) pinAt(at.x, at.y);
+      else hover(e, true);
     }
-    if (!best) { if (sticky || !tip.hidden) tip.hidden = true; return; }
-    const dist = Math.round(Math.hypot(best.x - base.x, best.z - base.z));
-    const dd = Math.round(-(best.y ?? base.y) - youDepth);
+  };
+  mapEl.addEventListener('pointerup', up);
+  mapEl.addEventListener('pointercancel', up);
+  mapEl.addEventListener('wheel', (e) => { e.preventDefault(); setZoom(e.deltaY < 0 ? 1 : -1, local(e)); }, { passive: false });
+  const hover = (e, sticky = false) => {
+    const at = local(e);
+    let best = null, bd = 1e9;
+    for (const h of hits) { const d = Math.hypot(h.x - at.x, h.y - at.y) - h.r; if (d < bd) { bd = d; best = h; } }
+    if (!best || bd > 3) { if (sticky || !tip.hidden) tip.hidden = true; return; }
     tip.innerHTML = '';
-    tip.append(el('b', {}, best.label || NAMES[best.kind] || best.kind), el('span', {}, `${dist} m away${Math.abs(dd) > LEVEL_GAP ? (dd < 0 ? `, ${-dd} m up` : `, ${dd} m down`) : ''}`));
-    tip.style.left = Math.round(e.clientX - mapEl.getBoundingClientRect().left) + 'px';
-    tip.style.top = Math.round(e.clientY - mapEl.getBoundingClientRect().top) + 'px';
+    tip.append(el('b', {}, best.label || ''), best.sub ? el('span', {}, best.sub) : '');
+    const r = mapEl.getBoundingClientRect();
+    tip.style.left = Math.round(clamp(e.clientX - r.left, 40, r.width - 40)) + 'px';
+    tip.style.top = Math.round(e.clientY - r.top) + 'px';
     tip.hidden = false;
   };
+  const onKey = (e) => {
+    if (dead || !root.isConnected) return;
+    const top = game.ui.panelStack[game.ui.panelStack.length - 1];
+    if (!top || !top.el.contains(root)) return;
+    const step = 24 / k;
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') vcx -= step;
+    else if (e.code === 'ArrowRight' || e.code === 'KeyD') vcx += step;
+    else if (e.code === 'ArrowUp' || e.code === 'KeyW') vcz -= step;
+    else if (e.code === 'ArrowDown' || e.code === 'KeyS') vcz += step;
+    else if (e.code === 'Equal' || e.code === 'NumpadAdd') { setZoom(1); return; }
+    else if (e.code === 'Minus' || e.code === 'NumpadSubtract') { setZoom(-1); return; }
+    else if (e.code === 'PageUp') { if (zone > 1) setZone(zone - 1); return; }
+    else if (e.code === 'PageDown') { if (zone < 6) setZone(zone + 1); return; }
+    else if (e.code === 'KeyC') { recenter(); return; }
+    else return;
+    e.preventDefault();
+    finishAnim();
+    redraw();
+  };
+  window.addEventListener('keydown', onKey);
+  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => resize()) : null;
+  ro?.observe(mapEl);
 
-  game.audio.play('page');
-  const onResize = () => resize();
-  window.addEventListener('resize', onResize);
-  const h = ui.openPanel({ body: root, className: 'sv-panel', onClose: () => { window.removeEventListener('resize', onResize); if (raf) cancelAnimationFrame(raf); } });
-  h.kind = 'survey';
-  layoutRuler();
-  requestAnimationFrame(resize);
-  return h;
+  // ---------------- focus on something (a quest, a place)
+  const focus = (f) => {
+    if (!f) return;
+    if (f.quest) {
+      const t = questTargets().find((q) => q.id === f.quest);
+      if (t) {
+        if (t.zone && t.zone !== zone) setZone(t.zone, { center: false, quiet: true });
+        if (t.x !== undefined) { vcx = t.x; vcz = t.z; }
+      }
+    } else if (f.x !== undefined) {
+      if (f.zone) setZone(f.zone, { center: false, quiet: true });
+      vcx = f.x; vcz = f.z;
+    }
+    redraw();
+  };
+
+  // ---------------- start
+  const me0 = where();
+  zone = zoneOfY(me0.y);
+  vcx = me0.x; vcz = me0.z;
+  titles();
+  renderLayers();
+  requestAnimationFrame(() => { resize(); });
+  loadPlan(game).then((pl) => {
+    if (dead) return;
+    plan = pl;
+    planReady = true;
+    const me = where();
+    zone = zoneOfY(me.y);
+    vcx = me.x; vcz = me.z;
+    titles();
+    renderLayers();
+    if (opts.focus) focus(opts.focus);
+    if (!map) requestAnimationFrame(() => { resize(); startReveal(); });
+    else startReveal();
+  });
+
+  const ctl = {
+    el: root,
+    resize,
+    focus,
+    setZone: (z) => setZone(z),
+    onEscape: () => { if (pinMode) { setPinMode(null); return true; } if (root.classList.contains('show-key')) { root.classList.remove('show-key'); return true; } return false; },
+    dispose() {
+      if (dead) return;
+      dead = true;
+      finishAnim();
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+      window.removeEventListener('keydown', onKey);
+      root.remove();
+    },
+    debug: {
+      state: () => ({ zone, k, vcx: +vcx.toFixed(2), vcz: +vcz.toFixed(2), W, H, planReady, anim: !!anim, pins: atlas.pins.length, hits: hits.map((h) => h.label).filter(Boolean), landmarks: planReady ? landmarks(zone, Infinity).map((l) => l.kind + ':' + (l.label || l.title || '')) : [], quests: questTargets().map((q) => `${q.id}@${q.zone}${q.known ? '' : '?'}`) }),
+      ready: () => planReady && !!map,
+      finish: () => finishAnim(),
+      zoom: (z) => { k = ZOOMS.includes(z) ? z : k; redraw(); },
+      center: (x, z) => { vcx = x; vcz = z; redraw(); },
+      zone: (z) => setZone(z),
+      pin: (x, z, kind = 'pin') => { atlas.pins.push({ id: 'd' + atlas.pins.length, zone, x, z, kind }); redraw(); },
+      pinMode: (kd) => setPinMode(kd),
+      reveal: (fromOrd) => { if (fromOrd !== undefined) atlas.seen[zone] = fromOrd; startReveal(); },
+      draw: () => { finishAnim(); paint(map); map.ctx.putImageData(map.img, 0, 0); },
+    },
+  };
+  return ctl;
 }
+
+// ---------------------------------------------------------------- the key's little pictures
+// Drawn once as pixels and painted into small canvases (no data-URL readbacks).
+const legendCache = new Map();
+/** A software-backed canvas: cheap putImageData, no GPU readbacks. */
+function cpuCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  return [c, ctx];
+}
+function legendIcon(kind, small = false) {
+  let img = legendCache.get(kind + (small ? ':s' : ''));
+  if (!img) {
+    const p = small ? new Px(13, 13) : new Px(26, 22);
+    const cx = small ? 6.5 : 13, cy = small ? 7 : 11;
+    if (kind === 'you') youArrow(p, cx, cy, 0, -1);
+    else if (kind === 'quest') questMark(p, cx, cy + 3, { seed: 3 });
+    else if (kind === 'trail') { for (let x = 3; x < 23; x++) if (Math.floor(x / 2) % 2 === 0) p.set(x, cy, 0x8a3a1a); for (let x = 4; x < 23; x += 4) { p.set(x, cy - 2, INKC.sepia); p.set(x, cy + 2, INKC.sepia); } }
+    else if (kind === 'burrow') DOODLE.burrow(p, cx - 2, cy + 1, 3, 'trader');
+    else if (kind === 'ore') DOODLE.ore(p, cx, cy, 2, 0xd9773f);
+    else if (DOODLE[kind]) DOODLE[kind](p, cx, cy, 2);
+    img = p.img;
+    legendCache.set(kind + (small ? ':s' : ''), img);
+  }
+  const [c, ctx] = cpuCanvas(img.width, img.height);
+  ctx.putImageData(img, 0, 0);
+  c.className = 'pix at-ic';
+  return c;
+}
+export { legendIcon, cpuCanvas };

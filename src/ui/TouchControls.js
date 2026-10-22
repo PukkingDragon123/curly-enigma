@@ -5,7 +5,8 @@
 //     mine → jump (Space) · use (KeyE) · snack (KeyQ) · next tool (wheel tick)
 //     town → use (KeyE) · home → use (KeyE) + build (KeyX) · none / mini → hidden
 //     deep (first person) → a big hold-to-dig button (mouse button 0), jump (Space), use (E),
-//       snack (Q), next tool; drags on the right half look around (input.look), the left half
+//       snack (Q), next tool, block (holds F: the guard; it glows while something hostile is
+//       close); drags on the right half look around (input.look), the left half
 //       grabs the stick wherever the thumb lands, and plain taps never dig
 // Everything hides while a panel is open. In focus mode the stick dims and the buttons become
 // use, snack and back (back calls the scene's onBack, or taps KeyS, which leaves face mode).
@@ -13,6 +14,25 @@ import { el } from '../core/util.js';
 import { SPR } from './uiSprites.js';
 import { DSPR } from './deepArt.js';
 import { iconURL } from '../gfx/PixelArt.js';
+
+/** An 11×11 shield glyph in the style of the other button icons (cream, a dark outline). */
+let shieldURL = null;
+function shieldIcon() {
+  if (shieldURL) return shieldURL;
+  const T = ['..aaaaaaa..', '.abbbcbbba.', '.abbbcbbba.', '.abbbcbbba.', '.accccccca.', '.abbbcbbba.', '..abbcbba..', '..abbcbba..', '...abcba...', '....aba....', '.....a.....'];
+  const C = { a: '#f6e8c8', b: '#e6cfa0', c: '#a8784a' };
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 11;
+  const g = cv.getContext('2d');
+  const on = (x, y) => T[y]?.[x] && T[y][x] !== '.';
+  for (let y = 0; y < 11; y++) for (let x = 0; x < 11; x++) {
+    if (on(x, y)) { g.fillStyle = C[T[y][x]]; g.fillRect(x, y, 1, 1); }
+    else if (on(x + 1, y) || on(x - 1, y) || on(x, y + 1) || on(x, y - 1)) { g.fillStyle = '#2a1a10'; g.fillRect(x, y, 1, 1); }
+  }
+  g.fillStyle = '#ffffff'; g.fillRect(3, 1, 1, 2); // a glint
+  shieldURL = cv.toDataURL();
+  return shieldURL;
+}
 
 export function setupTouch(game) {
   let built = false;
@@ -152,7 +172,11 @@ export function setupTouch(game) {
       if (low) press('KeyC'); else release('KeyC');
       dCrouch.classList.toggle('lit', low);
     });
-    const deepPad = el('div', { class: 'tc-deep' }, [dTool, dSnack, dUse, dJump, dCrouch, dig]);
+    // block: hold to raise the guard (DigScene reads KeyF)
+    const dBlock = key('use', 'KeyF', 'Block (hold)', 'tc-d d-block');
+    dBlock.querySelector('.tc-ic').src = shieldIcon();
+    dBlock.style.cssText = 'right: calc(var(--px) * 70); bottom: calc(var(--px) * 37);';
+    const deepPad = el('div', { class: 'tc-deep' }, [dTool, dSnack, dUse, dJump, dCrouch, dBlock, dig]);
 
     const look = el('div', { class: 'tc-look' });
     let lookId = null, lx = 0, ly = 0;
@@ -213,6 +237,9 @@ export function setupTouch(game) {
       const fpBuild = !!(b && b.active && ui.hudMode === 'deep');
       if (fpBuild !== ui._fpBuild) { ui._fpBuild = fpBuild; ui._applyActionIcon(fpBuild ? iconURL('support_beam') : ui.actionIcon ?? null); }
       if (on !== ui.root.classList.contains('building')) { ui.root.classList.toggle('building', on); if (on) releaseAll(); }
+      // the block button glows while something hostile is close
+      const th = ui.hudMode === 'deep' ? game.scene?.enemies?.threat?.() : null;
+      dBlock.classList.toggle('lit', !!(th && th.dist < 9));
     }, 200);
   };
   const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;

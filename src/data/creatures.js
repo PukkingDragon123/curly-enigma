@@ -49,4 +49,6 @@ export const CREATURES = {
     desc: 'A little dragon of crystal segments that swims through the air of big caverns. It coils back before it lunges. Shatters into glitter.' },
   ember_imp: { name: 'Ember Imp', zones: [4, 6], catch: 'hit', drop: 'ember_scale', color: 0xff7a3a,
     desc: 'A giggling fire sprite that never stops bouncing. Lobs blobs of ember that bounce off the rock. Hates water.' },
+  crystal_golem: { name: 'Crystal Golem', zones: [2, 3, 4, 5, 6], catch: 'hit', drop: 'amethyst', color: 0x9ad8ff,
+    desc: 'A hill of living rock with a glowing crystal cluster growing from its back. Picks bounce off its hide, and it always turns to face you, but slowly. Dodge the slam, circle behind it and mine the crystal off shard by shard until it crumbles.' },
 };

@@ -1,14 +1,14 @@
-// Living in the burrow (mixed into HomeScene): the door, the window and the poster, Nugget's
-// eggs and petting, the planters, sitting down, lamps, the music box, snacks, and the bed: lying
-// down, sleeping through to the next day and getting up again, all in first person.
+// Living in your room (mixed into HomeScene): the window and the poster, Nugget's eggs and petting,
+// the planters, sitting down (in your room or by Old Star's hearth), lamps, the music box, snacks, and the
+// bed: lying down, sleeping through to the next day and getting up again, all in first person.
 import * as THREE from 'three';
-import { HOLE, WINDOW_SLOTS } from '../iso/homeLayout.js';
+import { WINDOW_SLOTS } from '../iso/homeLayout.js';
 import { FURNITURE } from '../data/furniture.js';
 import { ITEMS } from '../data/items.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { el, rand, pick, clamp } from '../core/util.js';
 import { midiToFreq } from '../core/Audio.js';
-import { T, CEIL } from './units.js';
+import { T } from './units.js';
 import { besideItem } from './layoutfix.js';
 
 const _v = new THREE.Vector3();
@@ -24,25 +24,6 @@ export class HomeLiving {
     void rec;
   }
 
-  async leave() {
-    if (this.scripted) return;
-    this.beginScript();
-    this.game.audio.play('door');
-    const dz = this.shell.door.z * T;
-    await this.walkCam(0.55, dz, 1.8, Math.PI / 2);
-    this.tween(0.5, (k) => { if (this.shell.doorLeaf) this.shell.doorLeaf.rotation.y = -k * 1.3; });
-    this.game.goto('town', { from: 'home' }, { transition: 'iris', dur: 0.6 });
-  }
-
-  blockedDoor() {
-    this.game.audio.play('debris', { vol: 0.5 });
-    this.rig.shake(0.12);
-    const dz = this.shell.door.z * T;
-    this.fx.dust(0.3, 0.7, dz, 8, [0.45, 0.34, 0.24], 0.2);
-    this.fx.grain(0.2, 1.1, dz, [0.4, 0.3, 0.2]);
-    this.think(pick(['Caved in solid. I\'ll have to dig another way… or try that old lift.', 'Rocks all the way up. Better dig through a wall.']));
-  }
-
   peekWindow() {
     this.game.audio.play('glow');
     const wz = (WINDOW_SLOTS[0] + 0.5) * T;
@@ -53,11 +34,6 @@ export class HomeLiving {
   lookPoster() {
     this.game.audio.play('glow');
     this.think('<b>The Surface Express.</b> One way, back to the sun… for a million gold.');
-  }
-
-  lookUpHole() {
-    this.think(pick(['Way, way up there: daylight. Too high to climb.', 'That\'s where I came in. Not the front door I\'d have picked.']));
-    this.fx.grain(HOLE.x * T + rand(-0.1, 0.1), CEIL - 0.05, HOLE.z * T + rand(-0.1, 0.1), [0.42, 0.3, 0.2]);
   }
 
   /** The mole's own thoughts: a bubble low in the middle of the view. */
@@ -143,9 +119,9 @@ export class HomeLiving {
     }
   }
 
-  /** Sit down: the view drops to the seat, facing the way it faces. E or a step stands up. */
+  /** Sit down: the view drops to the seat, facing the way it faces. E or a step stands up. rec: a placed piece or a hall seat ({ obj, seats }). */
   sitAt(rec) {
-    const seats = rec.res.seats || [{ x: 0, z: 0, y: 0.4, yaw: 0 }];
+    const seats = rec.res?.seats || rec.seats || [{ x: 0, z: 0, y: 0.4, yaw: 0 }];
     const pl = this.rig.player;
     let best = seats[0], bd = Infinity;
     for (const s of seats) {
@@ -154,7 +130,7 @@ export class HomeLiving {
       if (dd < bd) { bd = dd; best = s; }
     }
     const w = _v.set(best.x, best.y ?? 0.4, best.z).applyMatrix4(rec.obj.matrixWorld).clone();
-    const f = (best.yaw || 0) + (rec.p.r || 0) * Math.PI / 2;
+    const f = (best.yaw || 0) + rec.obj.rotation.y;
     this.beginScript(true);
     const back = { x: pl.pos.x, z: pl.pos.z };
     this.seat = { back, rec };
@@ -176,7 +152,7 @@ export class HomeLiving {
     if (!s || !s.ready) return;
     this.seat = null;
     const c = this.cam;
-    const x0 = c.x, z0 = c.z, y0 = c.y, eye = this.rig.player.eyeY;
+    const x0 = c.x, z0 = c.z, y0 = c.y, eye = this.rig.player.eyeY + this.floorY(s.back.x, s.back.z);
     this.game.audio.play('step', { mat: 'wood' });
     this.tween(0.35, (k) => { c.x = x0 + (s.back.x - x0) * k; c.z = z0 + (s.back.z - z0) * k; c.y = y0 + (eye - y0) * k; }).then(() => { this.endScript(); this.unstick(); });
   }
@@ -258,7 +234,7 @@ export class HomeLiving {
       const p = fn();
       const s = this.toScreen(p);
       const e = this.game.engine;
-      const vis = s.visible && s.x > -40 && s.x < e.width * e.scale + 40 && s.y > 0;
+      const vis = s.visible && s.x > -40 && s.x < e.width * e.scale + 40 && s.y > 0 && !this.hideFrom?.get(k)?.();
       ui.moveBubble(k, s.x, s.y, vis);
     }
   }

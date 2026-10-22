@@ -1,7 +1,8 @@
-// Old Star's camp, dressed: the crate he writes at (papers, ink, a mug) with his lantern on it, his
-// bedroll and pillow sack, years of tally marks scratched in the wall over his bed, notes pinned up
-// by the table, a bucket of ore he picked out, his old ladder (snapped), a barrel of tools, a stool,
-// a little "LIFT" sign at the crawl, and up on the ledge his map in a brass tube by a candle stub.
+// Old Star's practice dig, dressed: the crate he writes at (papers, ink, a mug) with his lantern on
+// it, a bedroll for naps, years of tally marks scratched in the wall, notes pinned up by the table, a
+// bucket of ore he picked out, his old ladder (snapped), a barrel of tools, a stool, a little "LIFT"
+// sign at the crawl, up on the ledge his map in a brass tube by a candle stub, and an amethyst in
+// the geode in the south wall (inside the rock until it is dug open).
 // Built from small voxel models (1/32 m) merged into one mesh lit like the rock
 // (makeObjectMaterial); the lantern glass and the candle flame glow on their own; the map tube is
 // separate so it can be taken.
@@ -196,6 +197,21 @@ function mapTube() {
   return v;
 }
 
+/** A little cluster of amethyst points on a crust of geode, as it sits in the hollow. */
+function amethyst() {
+  const v = new Vox(-6, 6, 0, 12, -6, 6);
+  v.ell(0, 0.6, 0, 4.4, 1.4, 4.2, (x, y, z) => (h3(x, y, z, 3) < 0.3 ? 0x6a5a7a : 0x4a3e5a));
+  const pts = [[0, 0, 0, 7.5, 0.0], [-2, 0, 1, 5, -0.35], [2, 0, -1, 5.5, 0.35], [1, 0, 2, 4, 0.5], [-1.5, 0, -2, 4.5, -0.45]];
+  for (const [x0, , z0, h, lean] of pts) {
+    for (let y = 0; y < h; y++) {
+      const t = y / h, r = 1.25 * (1 - Math.max(0, t - 0.6) * 2.2);
+      const cx = x0 + lean * y * 0.45, cz = z0 + lean * y * 0.25;
+      v.fill(cx - 2, cx + 2, y + 1, y + 1, cz - 2, cz + 2, (x, yy, z) => Math.abs(x - cx) + Math.abs(z - cz) * 0.8 <= r + 0.3, (x, yy, z) => (t > 0.75 ? 0xf0d8ff : x < cx ? 0x8a4ac8 : (yy + Math.round(z)) % 3 === 0 ? 0xc898f0 : 0xa060e0));
+    }
+  }
+  return v;
+}
+
 function candle() {
   const v = new Vox(-4, 4, 0, 8, -4, 4);
   v.cylY(0, 0, 3.2, 0, 1, IRON_L); // the tin dish
@@ -276,6 +292,15 @@ export class Dressing {
     this.map.position.set(L.map.x, L.ledge.y, L.map.z);
     this.map.layers.enable(LAYER_OUTLINE);
     this.group.add(this.map);
+    // the amethyst in the geode (hidden in the rock until it's dug open)
+    const gm = amethyst().geometry(false);
+    gm.scale(S * 0.8, S * 0.8, S * 0.8);
+    this.gemMat = makeObjectMaterial(ctx.U, { emissive: 0.5 });
+    this.gem = new THREE.Mesh(gm, this.gemMat);
+    this.gem.position.set(L.gem.x, L.gem.y - 0.02, L.gem.z);
+    this.gem.rotation.y = 0.4;
+    this.gem.layers.enable(LAYER_OUTLINE);
+    this.group.add(this.gem);
     ctx.scene3.add(this.group);
     this.t = 0;
   }
@@ -284,6 +309,10 @@ export class Dressing {
   mapPoint(out = new THREE.Vector3()) { return out.set(this.L.map.x, this.L.ledge.y + 5.5 * S, this.L.map.z); }
 
   takeMap() { if (this.map) { this.group.remove(this.map); this.map.geometry.dispose(); this.map = null; } }
+
+  /** The amethyst's middle (for the crosshair and its sparkle). */
+  gemPoint(out = new THREE.Vector3()) { return out.set(this.L.gem.x, this.L.gem.y + 0.08, this.L.gem.z); }
+  takeGem() { if (this.gem) { this.group.remove(this.gem); this.gem.geometry.dispose(); this.gem = null; } }
 
   update(dt) {
     this.t += dt;
@@ -298,6 +327,8 @@ export class Dressing {
     this.glass.geometry.dispose();
     this.flame.geometry.dispose();
     this.map?.geometry.dispose();
+    this.gem?.geometry.dispose();
+    this.gemMat.dispose();
     this.mat.dispose();
     this.glowMat.dispose();
   }

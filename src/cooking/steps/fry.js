@@ -8,7 +8,7 @@ import { droplets, smoke, sparkle } from '../fx.js';
 import { clamp } from '../../core/util.js';
 
 const SIDE_TIME = 3.4;
-const WIN = [0.55, 0.8];
+const WIN = [0.55, 0.8]; // the golden window (widened by the cook skill: this.W)
 const RAW = new THREE.Color(1, 1, 1);
 const GOLD = new THREE.Color(1.0, 0.78, 0.46);
 const BURNT = new THREE.Color(0.14, 0.1, 0.08);
@@ -20,6 +20,7 @@ export class FryStep extends Step {
   get hint() { return '<kbd>Click</kbd> or flick the mouse up to flip when it\'s golden · both sides'; }
 
   begin() {
+    this.W = this.win(WIN[0], WIN[1], 0.3, 1);
     const f = this.cook.food;
     this.pan = this.borrow('pan');
     this.panRest = this.pan.position.clone();
@@ -80,9 +81,9 @@ export class FryStep extends Step {
     if (this.flipT >= 0 || this.side > 1) return;
     const d = this.d;
     let s;
-    if (d >= WIN[0] && d <= WIN[1]) s = 100 - (Math.abs(d - (WIN[0] + WIN[1]) / 2) / ((WIN[1] - WIN[0]) / 2)) * 18;
-    else if (d < WIN[0]) s = clamp(82 - (WIN[0] - d) * 240, 0, 82);
-    else s = clamp(82 - (d - WIN[1]) * 230, 0, 82);
+    if (d >= this.W[0] && d <= this.W[1]) s = 100 - (Math.abs(d - (this.W[0] + this.W[1]) / 2) / ((this.W[1] - this.W[0]) / 2)) * 18;
+    else if (d < this.W[0]) s = clamp(82 - (this.W[0] - d) * 240, 0, 82);
+    else s = clamp(82 - (d - this.W[1]) * 230, 0, 82);
     if (auto) s = 0;
     this.scores.push(s);
     this.flipT = 0;
@@ -90,14 +91,14 @@ export class FryStep extends Step {
     this.audio.play('flip');
     this.audio.play('whoosh');
     const at = this.food.getWorldPosition(new THREE.Vector3());
-    const word = auto ? 'Burnt!' : d < WIN[0] ? (d < 0.3 ? 'Still raw!' : 'A bit pale') : d > WIN[1] ? 'Too dark!' : 'Golden!';
+    const word = auto ? 'Burnt!' : d < this.W[0] ? (d < 0.3 ? 'Still raw!' : 'A bit pale') : d > this.W[1] ? 'Too dark!' : 'Golden!';
     this.float(word, at.clone().add(V3(0, 0.3, 0)), s >= 80 ? '#ffe066' : s >= 45 ? '#9fdcff' : '#ff9a8a');
     if (s >= 90) sparkle(this.fx, at.clone().add(V3(0, 0.1, 0)), 10);
     if (auto || d > 1) for (let i = 0; i < 6; i++) smoke(this.fx, at.clone().add(V3(0, 0.05, 0)), 0.15);
   }
 
   tick(dt, live) {
-    if (this.t > 0.5 && !this.bar) { this.bar = this.ui.hbar({ win: WIN, label: 'Side 1' }); this.bar.setWin(WIN[0], WIN[1]); }
+    if (this.t > 0.5 && !this.bar) { this.bar = this.ui.hbar({ win: this.W, label: 'Side 1' }); this.bar.setWin(this.W[0], this.W[1]); }
     const inp = this.input;
     // cook the side facing down (only while it's in the pan and the step is running)
     if (this.flipT < 0 && this.side < 2 && live) {

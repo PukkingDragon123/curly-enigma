@@ -75,6 +75,8 @@ const CSS = `
 .fg-section { font-size: .7em; letter-spacing: .12em; text-transform: uppercase; color: var(--wood); font-weight: 700; margin: calc(var(--px) * 2) 0 var(--px); }
 .fg-recipe { display: grid; grid-template-columns: var(--icon) 1fr auto; gap: calc(var(--px) * 3); align-items: center; padding: calc(var(--px) * 1.5) calc(var(--px) * 2); background: var(--parch-2); border: var(--px) solid var(--parch-3); }
 .fg-recipe.locked { opacity: .62; }
+.fg-recipe.fg-lesson { order: -1; border-color: var(--gold); box-shadow: 0 0 0 var(--px) var(--gold-dk), 0 0 calc(var(--px) * 4) rgba(242, 194, 58, .6); animation: fgLesson 1.2s ease-in-out infinite; }
+@keyframes fgLesson { 50% { box-shadow: 0 0 0 var(--px) var(--gold-dk), 0 0 calc(var(--px) * 8) rgba(242, 194, 58, .9); } }
 .fg-recipe img { width: var(--icon); height: var(--icon); }
 .fg-recipe .name { font-weight: 700; }
 .fg-recipe .ins { font-size: .72em; color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 0 calc(var(--px) * 3); align-items: center; }

@@ -167,7 +167,7 @@ export function makeCharacter(specIn, opts = {}) {
     g.userData.variants = variants;
     return g;
   };
-  const mouthRest = mkMouthGroup(restSet, jointed ? 0.3 : 0.02);
+  const mouthRest = mkMouthGroup(restSet, 0.28); // a hair in front, so the wider shapes never sink into the face
   const mouth = scaleVisible(mkMouthGroup(openSet, 0.35), new THREE.Vector3(1, 1, 1));
   mouth.visible = false;
 

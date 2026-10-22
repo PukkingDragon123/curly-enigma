@@ -24,7 +24,7 @@ export class SeasonStep extends Step {
     this.shaker = this.borrow('shaker');
     this.shaker.scale.setScalar(0.95);
     const mid = 0.6 + (Math.random() - 0.5) * 0.14;
-    this.zone = [mid - 0.075, mid + 0.075];
+    this.zone = this.win(mid - 0.075, mid + 0.075, 0.05, 0.98);
     this.amount = 0;
     this.shakes = 0;
     this.jolt = 0;

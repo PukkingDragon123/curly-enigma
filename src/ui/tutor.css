@@ -1,0 +1,81 @@
+/* Old Star's speech card (src/ui/Tutor.js): a parchment card, his portrait in a riveted brass frame
+   on the left, the words typing themselves out. Bottom-centre on desktop, at the top on touch
+   screens (the thumbs own the bottom). */
+.tutor {
+  position: absolute; left: 0; right: 0; bottom: calc(var(--sab) + var(--px) * 50); z-index: 4;
+  display: flex; justify-content: center; pointer-events: none;
+  padding: 0 calc(var(--sar) + 16px) 0 calc(var(--sal) + 16px);
+}
+html.is-touch .tutor, .tutor.top { bottom: auto; top: calc(var(--sat) + var(--px) * 8); }
+@media (max-height: 520px) { .tutor { bottom: calc(var(--sab) + var(--px) * 30); } }
+#ui[data-hud=none] .tutor, #ui[data-hud=mini] .tutor { bottom: calc(var(--sab) + var(--px) * 12); }
+html.is-touch #ui[data-hud=none] .tutor, html.is-touch #ui[data-hud=mini] .tutor, #ui .tutor.top { bottom: auto; }
+
+.tt-card {
+  position: relative; display: flex; align-items: flex-start; gap: calc(var(--px) * 4);
+  width: min(calc(var(--px) * 196), 100%); box-sizing: border-box;
+  pointer-events: auto; cursor: pointer; color: var(--ink);
+  border-style: solid; border-width: calc(var(--px) * 8);
+  border-image: var(--a-parch) 8 / calc(var(--px) * 8) repeat;
+  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box;
+  padding: calc(var(--px) * 1) calc(var(--px) * 2) calc(var(--px) * 1) 0;
+  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(12, 6, 8, .55));
+}
+.tutor.out .tt-card { animation: ttOut .2s ease-in forwards; }
+.tt-card.pop { animation: ttIn .32s var(--pop); }
+@keyframes ttIn { from { transform: translateY(calc(var(--px) * 10)) scale(.94); opacity: 0; } }
+@keyframes ttOut { to { transform: translateY(calc(var(--px) * 6)); opacity: 0; } }
+html.is-touch .tt-card.pop, .tutor.top .tt-card.pop { animation-name: ttInTop; }
+html.is-touch .tutor.out .tt-card, .tutor.top.out .tt-card { animation-name: ttOutTop; }
+@keyframes ttInTop { from { transform: translateY(calc(var(--px) * -10)) scale(.94); opacity: 0; } }
+@keyframes ttOutTop { to { transform: translateY(calc(var(--px) * -6)); opacity: 0; } }
+
+/* the portrait: 40×40 art in a riveted brass frame (46×46 in all), hanging off the card's left edge */
+.tt-face {
+  flex: none; position: relative; margin: calc(var(--px) * -9) 0 calc(var(--px) * -5) calc(var(--px) * -9);
+  width: calc(var(--px) * 46); height: calc(var(--px) * 46);
+  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(12, 6, 8, .5));
+}
+.tt-face-c { display: block; width: 100%; height: 100%; transform-origin: 50% 90%; }
+.tt-face-c.bump { animation: ttBump .34s var(--pop); }
+@keyframes ttBump { 0% { transform: scale(1, 1); } 35% { transform: scale(1.06, .94) translateY(var(--px)); } 70% { transform: scale(.97, 1.04); } 100% { transform: none; } }
+.tt-card[data-mood=laugh] .tt-face-c { animation: ttLaugh .28s steps(2) infinite; }
+@keyframes ttLaugh { 50% { transform: translateY(calc(var(--px) * -1)); } }
+.tt-card[data-mood=worried] .tt-face-c { animation: ttShiver .5s steps(2) infinite; }
+@keyframes ttShiver { 25% { transform: translateX(calc(var(--px) * -0.5)); } 75% { transform: translateX(calc(var(--px) * 0.5)); } }
+
+.tt-body { flex: 1; min-width: 0; padding-top: calc(var(--px) * 1); }
+.tt-name {
+  font-family: var(--font-head); font-size: var(--fs-h); line-height: .8; color: var(--wood-2);
+  margin-bottom: calc(var(--px) * 2); letter-spacing: .02em;
+}
+.tt-card[data-mood=stern] .tt-name { color: #8a2e1a; }
+.tt-card[data-mood=worried] .tt-name { color: #3a5a7a; }
+.tt-card[data-mood=proud] .tt-name, .tt-card[data-mood=happy] .tt-name, .tt-card[data-mood=laugh] .tt-name { color: #9a6a12; }
+.tt-text { font-size: var(--fs); line-height: 1.38; text-wrap: pretty; min-height: calc(var(--px) * 12); }
+.tt-text b { color: #7a2e14; font-weight: 400; }
+.tt-text i { color: var(--ink-soft); font-style: normal; }
+.tt-text .gold-txt { color: var(--gold-dk); }
+.tt-ghost { visibility: hidden; }
+.tt-next {
+  display: none; position: absolute; right: calc(var(--px) * 1); bottom: calc(var(--px) * -2);
+  align-items: center; gap: calc(var(--px) * 1); font-size: var(--fs); color: var(--wood-2);
+}
+.tutor.waits .tt-next { display: flex; animation: ttNudge 1s steps(2) infinite; }
+.tt-next i { font-style: normal; }
+.tt-next kbd { margin: 0; }
+.tt-tap { display: none; }
+html.is-touch .tt-next kbd { display: none; }
+html.is-touch .tt-tap { display: inline; }
+@keyframes ttNudge { 50% { transform: translateX(calc(var(--px) * 1)); } }
+
+@media (max-width: 560px) {
+  .tt-card { gap: calc(var(--px) * 3); }
+}
+
+/* heard through a daze: the face a dark smear, the words swimming */
+.tt-card.muffled .tt-face-c { filter: blur(calc(var(--px) * 1.5)) brightness(.35) saturate(.4); }
+.tt-card.muffled .tt-text { filter: blur(calc(var(--px) * .6)); animation: ttSwim 2.4s ease-in-out infinite; color: #5a4636; }
+.tt-card.muffled .tt-name { color: #8a7a6a; }
+.tt-card.muffled { filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(12, 6, 8, .55)) brightness(.82) sepia(.25); }
+@keyframes ttSwim { 0%, 100% { transform: translateX(0) skewX(0); } 50% { transform: translateX(calc(var(--px) * 1.5)) skewX(-3deg); } }

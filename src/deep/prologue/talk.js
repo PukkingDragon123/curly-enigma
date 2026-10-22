@@ -31,6 +31,12 @@ const CSS = `
 .os-goal::before { content: '\\2605 '; color: #f2c23a; }
 .os-goal.off { opacity: 0; transform: translateX(-50%) translateY(calc(var(--px) * -3)); }
 .os-goal.done { color: #b8f09a; }
+.os-guard { position: absolute; right: calc(var(--sar) + 118px); bottom: calc(var(--sab) + 196px); z-index: 4; width: 64px; height: 64px;
+  border-radius: 50%; border: 3px solid #3a2212; background: radial-gradient(circle at 40% 35%, #b88a4a, #7a5228); color: #fff4dc;
+  display: grid; place-items: center; font-family: var(--font); line-height: 1; box-shadow: 0 3px 0 rgba(0,0,0,.45); touch-action: none; padding: 0; }
+.os-guard span { font-size: 28px; margin-top: 4px; }
+.os-guard small { font-size: 10px; margin-top: -6px; }
+.os-guard.on { transform: translateY(2px); background: radial-gradient(circle at 40% 35%, #e8c070, #a07030); box-shadow: 0 1px 0 rgba(0,0,0,.45); }
 @media (max-width: 900px), (max-height: 600px) {
   .os-say, .os-goal { font-size: 16px; }
   .os-goal { top: calc(var(--sat) + var(--px) * 90); white-space: normal; text-align: center; max-width: 76vw; }

@@ -13,12 +13,16 @@ import { SPR } from './uiSprites.js';
 import { Hud } from './Hud.js';
 import { Belt } from './Belt.js';
 import { openBackpack } from './Backpack.js';
-import { openJournal } from './Journal.js';
+import { openJournal, openBook } from './Journal.js';
+import { openPauseMenu } from './PauseMenu.js';
 import { qColor } from './common.js';
 import { Radar } from './Radar.js';
 import { Crosshair } from './Crosshair.js';
-import { openSurvey } from './Survey.js';
+import { Tracker } from './Tracker.js';
 import { DSPR } from './deepArt.js';
+import { Tutor } from './Tutor.js';
+import { installSkillFeedback, openSkills } from './SkillTree.js';
+import { BuffStrip } from '../cooking/buffs.js';
 import './hud.css';
 import './backpack.css';
 import './book.css';
@@ -82,6 +86,7 @@ export class UI {
 
     // first person ('deep'): radar, crosshair, and "click to look around" while the mouse is free
     this.radar = new Radar(this);
+    this.tracker = new Tracker(this); // the objective strip (quests part)
     this.crosshair = new Crosshair(this);
     this.lookCatch = el('div', { class: 'look-catch', 'aria-label': 'Click to look around' }, [
       el('div', { class: 'look-card' }, [
@@ -97,6 +102,10 @@ export class UI {
       this.game.input.lockPointer();
     });
     this.root.insertBefore(this.lookCatch, this.hud);
+    // Old Star's speech card (src/ui/Tutor.js): ui.tutor.say(html, { mood, key, wait }), ui.tutor.hide()
+    this.tutor = new Tutor(this);
+    // food buffs: a strip of dish icons with timers in the top-left cluster (cooking part, src/cooking/buffs.js)
+    try { this.buffs = new BuffStrip(this); } catch (e) { console.warn('buff strip failed', e); }
     this._lockLostAt = -1e9;
     document.addEventListener('pointerlockchange', () => {
       const locked = document.pointerLockElement === game.canvas;
@@ -117,16 +126,16 @@ export class UI {
         this.game.input.look.dy += e.movementY || 0;
       }
     });
+    // M: the book at the map (the book itself handles B / M while it's open)
     window.addEventListener('keydown', (e) => {
-      if (e.code !== 'KeyM' || e.repeat || this.hudMode !== 'deep' || !this.radar.provider) return;
-      const top = this.panelStack[this.panelStack.length - 1];
-      if (top && top.kind === 'survey') { top.close(); return; }
+      if (e.code !== 'KeyM' || e.repeat || this.hudMode === 'none') return;
       if (this.panelStack.length || game.transitioning || game.scene?.allowMenus === false) return;
-      this.openSurvey();
+      this.openBook('map');
     });
 
     const st = game.state;
     st.on('discover', (e) => this.discoverCard(e));
+    installSkillFeedback(this); // skill XP ribbon, level-up notes, nudges (src/ui/SkillTree.js)
     // milestones reached outside the mine (in the mine the explosives perks announce them)
     st.on('milestone', () => {
       if (game.sceneName === 'deep') return;
@@ -182,11 +191,11 @@ export class UI {
   /** First-person crosshair: { visible, kind: 'none'|'rock'|'ore'|'enemy'|'use', label, progress } or null. */
   setCrosshair(o) { this.crosshair.set(o); }
 
-  /** The big survey map (also opened by tapping the radar or pressing M). */
-  openSurvey() {
-    if (this.panelStack.some((p) => p.kind === 'survey')) return null;
-    return openSurvey(this.game, this.radar);
-  }
+  /** The map (also opened by tapping the radar or pressing M): the book at its Map chapter. */
+  openSurvey() { return this.openBook('map'); }
+
+  /** The book (src/ui/Journal.js): tab 'quests' | 'map' | 'skills' | 'index' | 'notes'; opts.focus for the map. */
+  openBook(tab, opts) { return openBook(this.game, tab, opts); }
 
   /** Give the mouse back (panels, scene changes) without counting it as the player's Esc. */
   releasePointer() {
@@ -217,6 +226,9 @@ export class UI {
     this.status.update(rdt);
     this.belt.update(rdt);
     this.radar.update(rdt);
+    this.tracker.update(rdt);
+    this.tutor?.update(rdt);
+    this.buffs?.update(rdt);
     this._buffTimer = (this._buffTimer || 0) + dt;
     if (this._buffTimer > 5) { this._buffTimer = 0; this.game.state.tickBuffs(); }
   }
@@ -455,6 +467,13 @@ export class UI {
     return import('./Upgrades.js').then((m) => { const h = m.openUpgrades(this.game, tab); if (h) h.kind = 'upgrades'; return h; });
   }
 
+  // ------------------------------------------------------------ skill tree on its own (the book's Skills tab shows the same page)
+  openSkills(line) {
+    const open = this.panelStack.find((p) => p.kind === 'skills');
+    if (open) { if (line) open.debug?.line(line); return open; }
+    return openSkills(this.game, line);
+  }
+
   // ------------------------------------------------------------ index book (lazy import keeps UI light)
   openIndex(cat, id) {
     this.status.setBadge(false);
@@ -462,12 +481,12 @@ export class UI {
     import('./IndexBook.js').then((m) => { const h = m.openIndexBook(this.game, cat, id); if (h) h.kind = 'book'; });
   }
 
-  // ------------------------------------------------------------ pause journal
+  // ------------------------------------------------------------ pause menu (hanging signs: ui/PauseMenu.js)
   openMenu() {
     if (this.panelStack.length) return;
     // in first person the browser spends the first Esc on freeing the mouse: don't also pause
     if (this.hudMode === 'deep' && (this.game.input.pointerLocked || performance.now() - this._lockLostAt < 600)) return;
-    openJournal(this.game);
+    return openPauseMenu(this.game);
   }
 }
 

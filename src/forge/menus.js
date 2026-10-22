@@ -146,11 +146,11 @@ export class Menus {
       const btns = el('div', { class: 'btns' });
       const go = el('button', { class: 'btn', disabled: !s.ok, onclick: () => this.startSmelt(r) }, 'Smelt');
       btns.append(go);
-      if (s.ok && s.learned) {
+      if (s.ok && s.learned && !this.scene.lesson) {
         btns.append(el('button', { class: 'btn alt', title: 'Smelts every batch you can afford at once (steady 80% heat control).', onclick: () => this.quick(r, s.batches) }, `Quick ×${s.batches}`));
       }
       const outName = s.known ? `${out.name}${r.n > 1 ? ' ×' + r.n : ''}` : '???';
-      list.append(el('div', { class: 'fg-recipe' + (s.ok ? '' : ' locked') }, [
+      list.append(el('div', { class: 'fg-recipe' + (s.ok ? '' : ' locked') + (this.scene.lesson?.highlight === r.id ? ' fg-lesson' : '') }, [
         el('img', { class: 'pix', src: iconURL(r.out), alt: '', style: s.known ? {} : { filter: 'brightness(0) opacity(.4)' } }),
         el('div', {}, [el('div', { class: 'name' }, outName), ins, s.why ? el('div', { class: 'why' }, s.why) : null]),
         btns,

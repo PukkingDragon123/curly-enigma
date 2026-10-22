@@ -957,12 +957,19 @@ export class Clumps {
     this.save(c);
   }
 
+  /** No pocket for this clump's ore (and Nugget isn't close enough to take it)? */
+  noRoom(c, counts) {
+    const st = this.st;
+    if (st.canAdd) { const id = this.lootOf(c)?.id; return !!id && !st.canAdd(id, 1) && !this.owner.nugget?.near?.(4.5); }
+    return counts && (this.owner.trip ?? 0) >= st.bagCapacity();
+  }
+
   /** Into the backpack (if there's room): it flies down into the bag, then the loot event. */
   stash(c) {
     const it = c.it, st = this.st, owner = this.owner;
     const counts = it.cat === 'mineral' || it.cat === 'gem';
-    if (counts && st && (owner.trip ?? 0) >= st.bagCapacity()) {
-      this.say('bagfull', `Bag full! (${owner.trip}/${st.bagCapacity()}) Drop it (<b>G</b>) or head home to unload.`, 'warn', 4);
+    if (st && this.noRoom(c, counts)) {
+      this.say('bagfull', `No room in your backpack! Drop it (<b>G</b>), let Nugget carry it, or head home to unload.`, 'warn', 4);
       this.audio?.play('ui_error');
       return false;
     }
@@ -1113,7 +1120,7 @@ export class Clumps {
     if (h) {
       this.held = null;
       const it = h.it, st = this.st, counts = it.cat === 'mineral' || it.cat === 'gem';
-      if (!(counts && st && (this.owner.trip ?? 0) >= st.bagCapacity())) { ev.push({ loot: this.lootOf(h) }); this.unsave(h); this.kill(h); }
+      if (!(st && this.noRoom(h, counts))) { ev.push({ loot: this.lootOf(h) }); this.unsave(h); this.kill(h); }
       else {
         // set it down at the mole's feet, to be found next time
         const pl = this.ctx.player;

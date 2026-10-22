@@ -1,104 +1,30 @@
-// The opening: a quiet afternoon in the meadow above Deep Town, the mole and Nugget at the lip of
-// a sinkhole... until the lip gives way. They tumble ~50 m down the shaft past roots, banded clay,
-// an underground waterfall and a glow-worm grotto, bounce off three ledges (Nugget flapping
-// uselessly the whole way) and crash through the roof of an old abandoned burrow. Cut to black on
-// the impact; the home scene plays the landing. ~17.5 s, skippable (Esc, tap, the Skip button).
-// Dev: ?scene=fall&at=secs to start later, &freeze=1 to stop time.
+// The journey: up on the surface, the young blacksmith mole walks an old forest trail at golden
+// hour (tall pines, light shafts, mist on the stream, birds, pollen) with Nugget's walking coop
+// stomping along beside him and Nugget peeking out of its window. They cross a stream (he takes
+// the log bridge, the coop wades), and in a sunny clearing find a strange old chest spilling
+// gold and gems. He walks up to it... the ground sags, cracks race across the clearing, the crust
+// gives way and he tumbles down a dark shaft. Darkness, a heartbeat, muffled ringing: he blacks
+// out. Ends with goto('home', { from: 'fall' }) (the home scene wakes him). ~34 s, skippable
+// (Skip, Esc, a tap).
+// Dev: ?scene=fall&at=secs to start later, &freeze=1 to stop time. Test hooks: scene.debug.
 import * as THREE from 'three';
 import { Scene } from '../core/Scene.js';
+import { mixGrade } from '../core/Engine.js';
 import { el, clamp, lerp } from '../core/util.js';
 import { useBookendStyles } from '../bookends/css.js';
-import { disposeTextures, setPixelScale, Particles, SHAPE, fitFov, GLSL_BAYER } from '../bookends/fx.js';
-import { makeMole, makeChicken } from '../bookends/actors.js';
-import { buildMeadow, MEADOW } from '../bookends/meadow.js';
-import { buildFallShaft, FALL_ZONES } from '../bookends/fallshaft.js';
+import { disposeTextures, setPixelScale, Particles, SHAPE, fitFov } from '../bookends/fx.js';
+import { buildForest, FOREST, SUN_DIR, groundH, HOLE_R } from '../bookends/forest.js';
+import { buildFallShaft } from '../bookends/fallshaft.js';
+import { makeHeroMole } from '../gfx/char/hero.js';
+import { loadCoop, birdsong, heartbeat, muffle } from '../bookends/journey.js';
 
-const T_CAPTION = [0.5, 3.6];
-const T_CRACK = 4.2;
-const T_DROP = 5.6;
-const FALL = 10.8; // seconds of falling
-const T_CRASH = T_DROP + FALL;
-const T_OUT = T_CRASH + 0.85;
-const BOUNCES = [
-  { tau: 2.2, ang: -Math.PI / 2 + 0.55, kind: 'moss' },
-  { tau: 4.6, ang: Math.PI / 2 + 0.3, kind: 'clay' },
-  { tau: 7.0, ang: -0.35, kind: 'crystal' },
-];
-const BODY = 0.45; // the mole's centre above his feet
+// the timeline (seconds): shots A..I
+const T = { A: 0, B: 5.2, C: 9.6, D: 14.6, E: 19.2, F: 24.2, G: 27.8, H: 29.3, I: 32.2, END: 36.8 };
+const CAP = [0.8, 4.6];
+const WALK = 1.05; // m/s
 const smooth = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
-const bump = (x, w) => (Math.abs(x) < w ? 0.5 + 0.5 * Math.cos((x / w) * Math.PI) : 0);
-
-/**
- * Pre-simulate the mole's fall (centre of mass) at 120 Hz, recording 60 Hz samples: drag to a
- * dreamy terminal velocity, a gentle wander, and a pull toward each wall just before the ledge
- * he will bounce off. The shaft then puts its ledges exactly where he hits.
- */
-function simulateFall(start) {
-  const dt = 1 / 120, g = 9.8, vt = 5.6, kd = g / (vt * vt);
-  const n = Math.ceil(FALL * 60) + 4;
-  const S = new Float32Array(n * 5); // x y z vy spin
-  let x = start.x, y = start.y, z = start.z, vx = 0, vy = 0, vz = 0, spin = 0, spinV = 0.8;
-  const contacts = [];
-  let bi = 0;
-  for (let s = 0; s < n * 2; s++) {
-    const tau = s * dt;
-    if (s % 2 === 0) { const i = s / 2; S[i * 5] = x; S[i * 5 + 1] = y; S[i * 5 + 2] = z; S[i * 5 + 3] = vy; S[i * 5 + 4] = spin; }
-    const B = BOUNCES[bi];
-    let tx = 0.3 * Math.sin(0.9 * tau), tz = 0.3 * Math.cos(0.7 * tau);
-    if (B && tau > B.tau - 1.0) { tx = Math.cos(B.ang) * 1.25; tz = Math.sin(B.ang) * 1.25; }
-    vx += ((tx - x) * 6 - vx * 3.2) * dt;
-    vz += ((tz - z) * 6 - vz * 3.2) * dt;
-    vy += (-g - Math.sign(vy) * kd * vy * vy) * dt;
-    x += vx * dt; y += vy * dt; z += vz * dt;
-    spin += spinV * dt;
-    spinV += ((bi % 2 ? -0.9 : 0.9) - spinV) * dt * 0.7;
-    if (B && tau >= B.tau) {
-      contacts.push({ ...B, x, y, z });
-      const nx = Math.cos(B.ang), nz = Math.sin(B.ang);
-      vx = -nx * 2.0 - nz * 0.4; vz = -nz * 2.0 + nx * 0.4; vy = 2.3;
-      spinV = bi % 2 ? -6 : 6;
-      bi++;
-    }
-  }
-  const at = (tau, out) => {
-    const f = clamp(tau, 0, FALL + 0.05) * 60, i = Math.min(n - 2, Math.floor(f)), k = f - i;
-    for (let c = 0; c < 5; c++) out[c] = S[i * 5 + c] + (S[(i + 1) * 5 + c] - S[i * 5 + c]) * k;
-    return out;
-  };
-  return { at, contacts };
-}
-
-/** Where to put the ledge he bounces off: the octagon face, position along it, reach, height. */
-function ledgeFor(c) {
-  const ang = Math.atan2(c.z, c.x);
-  const face = ((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8;
-  const th = (face * Math.PI) / 4;
-  const rho = c.x * Math.cos(th) + c.z * Math.sin(th);
-  const u = clamp(-c.x * Math.sin(th) + c.z * Math.cos(th), -0.5, 0.5);
-  return { face, u, y: c.y - 0.02, reach: Math.min(2.1, rho + 0.32), w: 1.7, ang: th, kind: c.kind };
-}
-
-// ------------------------------------------------------------------ waterfall
-const WATER_VERT = 'varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }';
-const WATER_FRAG = /* glsl */`
-uniform float uTime; uniform vec3 uFog; uniform float uNear; uniform float uFar;
-varying vec2 vUv; varying vec3 vW;
-${GLSL_BAYER}
-float h1(float n) { return fract(sin(n * 91.3) * 43758.5453); }
-void main() {
-  float col = floor(vUv.x * 22.0);
-  float sp = 1.6 + h1(col) * 1.4;
-  float p = fract(vUv.y * 9.0 + uTime * sp + h1(col + 7.0));
-  float edge = min(vUv.x, 1.0 - vUv.x) * 2.0;
-  float a = smoothstep(0.0, 0.35, edge) * (0.75 + 0.25 * step(0.55, p));
-  if (bk_bayer4(gl_FragCoord.xy) > a) discard;
-  vec3 c = mix(vec3(0.22, 0.48, 0.72), vec3(0.75, 0.92, 1.0), step(0.72, p));
-  float foam = max(smoothstep(0.88, 1.0, vUv.y), smoothstep(0.1, 0.0, vUv.y));
-  c = mix(c, vec3(1.0), foam * step(0.3, h1(floor(vUv.y * 60.0) + col)));
-  float d = length(vW - cameraPosition);
-  c = mix(c, uFog, smoothstep(uNear, uFar, d));
-  gl_FragColor = vec4(c, 1.0);
-}`;
+const ease = (a, b, x) => smooth((x - a) / (b - a));
+const _v = new THREE.Vector3();
 
 export default class FallScene extends Scene {
   async enter(params = {}) {
@@ -116,142 +42,96 @@ export default class FallScene extends Scene {
     this.fired = new Set();
     this.shake = 0;
     this.leaving = false;
+    this.sag = 0;
+    this.cur = { s: 0, cs: 0 };
 
     const sc = this.scene;
-    sc.background = new THREE.Color(0xcfeaf8);
-    sc.fog = new THREE.Fog(0xcfeaf8, 45, 150);
-    this.camera = new THREE.PerspectiveCamera(44, this.game.engine.aspect, 0.05, 260);
+    this.haze = new THREE.Color(0xcad6bc);
+    this.dark = new THREE.Color(0x080605);
+    sc.background = this.haze.clone();
+    sc.fog = new THREE.Fog(this.haze.clone(), 14, 74);
+    this.camera = new THREE.PerspectiveCamera(48, this.game.engine.aspect, 0.05, 200);
 
-    // ---- the meadow
-    const tm = performance.now();
-    this.meadow = buildMeadow();
-    this.textures.push(...this.meadow.textures);
-    sc.add(this.meadow.group, this.meadow.sky);
-    for (const p of this.meadow.pieces) sc.add(p.mesh); // the falling lip outlives the meadow's visibility
-    const msMeadow = performance.now() - tm;
+    // ---- the forest
+    // phones and 'Simple' shaders get a lighter forest
+    const lite = this.game.engine.fx !== 'high' || params.lite === '1';
+    this.F = buildForest({ lite });
+    this.textures.push(...this.F.textures);
+    sc.add(this.F.group, this.F.sky);
+    this.own(() => this.F.dispose());
 
-    // ---- lights: sun and sky up top, the mole's helmet lamp down below
-    this.hemi = new THREE.HemisphereLight(0xc8e6ff, 0x5a7a3a, 1.6);
-    this.sun = new THREE.DirectionalLight(0xfff0d8, 2.2);
-    this.sun.position.copy(this.meadow.sun).multiplyScalar(30);
-    sc.add(this.hemi, this.sun);
+    // ---- light: a low warm sun through the trees, sky and fill
+    this.hemi = new THREE.HemisphereLight(0xc4dcf0, 0x4a5a2c, 1.15);
+    // down the shaft a little warm light falls with him (the daylight from the hole, bounced)
+    this.fallLight = new THREE.PointLight(0xffd8a8, 0, 7, 1.4);
+    sc.add(this.fallLight);
+    this.sun = new THREE.DirectionalLight(0xffdcaa, 2.5);
+    this.sun.position.copy(SUN_DIR).multiplyScalar(30);
+    this.fill = new THREE.DirectionalLight(0xd6e2ff, 0.55);
+    this.fill.position.set(0.5, 0.6, 1).multiplyScalar(30);
+    sc.add(this.hemi, this.sun, this.fill);
 
     // ---- the travellers
-    const S = MEADOW.slab;
-    this.mole = makeMole();
-    this.hen = makeChicken({});
-    this.molePivot = new THREE.Group();
-    this.henPivot = new THREE.Group();
-    this.molePivot.add(this.mole.root);
-    this.henPivot.add(this.hen.root);
-    this.mole.root.position.y = -BODY;
-    this.hen.root.position.y = -0.28;
-    const ma = S.angle + 0.12, ha = S.angle - 0.34;
-    this.moleHome = new THREE.Vector3(Math.cos(ma) * 2.55, BODY, Math.sin(ma) * 2.55);
-    this.henHome = new THREE.Vector3(Math.cos(ha) * 2.95, 0.28, Math.sin(ha) * 2.95);
-    this.molePivot.position.copy(this.moleHome);
-    this.henPivot.position.copy(this.henHome);
-    this.mole.face(0, true);
-    this.mole.play('idle');
-    this.hen.face(0.7, true);
-    this.hen.play('idle');
-    sc.add(this.molePivot, this.henPivot);
-    this.lamp = new THREE.PointLight(0xffd8a0, 0, 7, 1.6);
-    (this.mole.lamp || this.mole.neck).add(this.lamp);
+    this.hero = makeHeroMole({ height: 0.86 });
+    this.heroPivot = new THREE.Group(); // tumbling happens round his middle
+    this.heroPivot.add(this.hero.root);
+    this.hero.root.position.y = -0.42;
+    sc.add(this.heroPivot);
+    this.own(() => this.hero.dispose());
+    this.coop = await loadCoop({ height: 1.15 });
+    sc.add(this.coop.root);
+    this.own(() => this.coop.dispose?.());
+    this.coop.onStep = (side, k) => this.coopStep(side, k);
+    if (!this.coop.isPlaceholder) console.log('[fall] using the coop model');
 
-    // ---- the fall, worked out in advance; the shaft is built around it
-    this.sim = simulateFall(this.moleHome);
-    this.simOut = new Float32Array(5);
-    this.contacts = this.sim.contacts;
-    this.ledges = this.contacts.map(ledgeFor);
-    this.floorY = this.sim.at(FALL, this.simOut)[1] - BODY + 0.05;
-    const wf = { face: 5, u: 0, yTop: FALL_ZONES.clay - 1.2, yBot: FALL_ZONES.wet + 0.6 };
-    const ts = performance.now();
-    this.shaft = buildFallShaft({ floorY: this.floorY, ledges: this.ledges, waterfall: wf });
+    // ---- the shaft under the clearing (streams in while they walk)
+    this.shaft = buildFallShaft({ floorY: -60, ledges: [], waterfall: null, land: { x: 0, z: 0, a: 0 } });
     sc.add(this.shaft.group);
-    this.shaft.ensure(-9); // whatever shows through the hole from up top
-    const msShaft = performance.now() - ts;
-    this.waterfall = this.makeWaterfall(wf);
-    // the abyss: a black plug a little way below the camera hides (and lets us skip) everything deeper
-    this.plug = new THREE.Mesh(new THREE.CircleGeometry(4.6, 24), new THREE.MeshBasicMaterial({ color: 0x050403, fog: false }));
-    this.plug.rotation.x = -Math.PI / 2;
-    this.plug.renderOrder = -10;
-    sc.add(this.plug);
-    // what shows through the broken roof for a heartbeat: the dim, dusty burrow below
-    this.burrowGlow = new THREE.Group();
-    const room = new THREE.Mesh(new THREE.CylinderGeometry(3.3, 3.3, 3, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0x24160c, side: THREE.BackSide, fog: false }));
-    room.position.y = this.floorY - 2.0;
-    const rug = new THREE.Mesh(new THREE.CircleGeometry(3.3, 20), new THREE.MeshBasicMaterial({ color: 0x4a2e18, fog: false }));
-    rug.rotation.x = -Math.PI / 2;
-    rug.position.y = this.floorY - 3.4;
-    this.burrowGlow.add(room, rug);
-    this.burrowGlow.visible = false;
-    sc.add(this.burrowGlow);
+    this.shaft.ensure(-3);
 
-    // ---- particles: dust, debris (pebbles, leaves, splinters), sparks, motes, feathers, spray
-    this.dust = new Particles({ max: 420, additive: false, atten: true });
-    this.debris = new Particles({ max: 360, additive: false, atten: true });
-    this.sparks = new Particles({ max: 220, additive: true, atten: true });
-    this.motes = new Particles({ max: 300, additive: true, atten: true });
-    this.feathers = new Particles({ max: 90, additive: false, atten: true });
-    this.spray = new Particles({ max: 260, additive: false, atten: true });
-    this.pools = [this.dust, this.debris, this.sparks, this.motes, this.feathers, this.spray];
+    // ---- particles
+    this.dust = new Particles({ max: 500, additive: false, atten: true });
+    this.debris = new Particles({ max: 400, additive: false, atten: true });
+    this.sparks = new Particles({ max: 260, additive: true, atten: true });
+    this.motes = new Particles({ max: 360, additive: true, atten: true });
+    this.leaves = new Particles({ max: 90, additive: false, atten: true });
+    this.splash = new Particles({ max: 260, additive: false, atten: true });
+    this.coins = new Particles({ max: 220, additive: false, atten: true });
+    this.pools = [this.dust, this.debris, this.sparks, this.motes, this.leaves, this.splash, this.coins];
     for (const p of this.pools) sc.add(p.points);
-    this.makeStreaks();
 
-    // ---- DOM: an opening card and the skip button
-    this.caption = el('div', { class: 'bk-caption bk-outline' }, ['One sunny afternoon, far above Deep Town', el('small', {}, 'the mole and Nugget go for a walk')]);
+    // ---- DOM: caption, letterbox bars, skip
+    this.caption = el('div', { class: 'bk-caption bk-outline' }, ['Far above the Deep', el('small', {}, 'an old forest trail, late in the day')]);
+    this.bars = el('div', { class: 'bk-bars' }, [el('i'), el('i')]);
     this.skipBtn = el('button', { class: 'btn alt bk-skip', type: 'button', onclick: (e) => { e.stopPropagation(); this.skip(); } }, 'Skip ›');
-    this.root = el('div', { class: 'bk-root bk-fall' }, [this.caption, this.skipBtn]);
+    this.root = el('div', { class: 'bk-root bk-fall' }, [this.bars, this.caption, this.skipBtn]);
     this.game.ui.world.append(this.root);
     this.own(() => this.root.remove());
     const onKey = (e) => { if (e.code === 'Escape') this.skip(); };
-    const onTap = (e) => { if (this.t > 0.6 && !(e.target && e.target.closest && e.target.closest('button'))) this.skip(); };
+    const onTap = (e) => { if (this.t > 0.8 && !(e.target && e.target.closest && e.target.closest('button'))) this.skip(); };
     window.addEventListener('keydown', onKey);
     window.addEventListener('pointerdown', onTap);
     this.own(() => { window.removeEventListener('keydown', onKey); window.removeEventListener('pointerdown', onTap); });
+    requestAnimationFrame(() => this.bars.classList.add('on'));
 
-    this.post.vignette = 0.22;
-    this.post.saturation = 1.08;
+    this.post.vignette = 0.24;
+    this.post.saturation = 1.1;
+    this.post.contrast = 1.04;
     this.onResize(this.game.engine.width, this.game.engine.height);
+    this.place(0, 0);
     try { this.game.engine.renderer.compile(sc, this.camera); } catch (e) { /* optional */ }
-    console.log(`[fall] built in ${Math.round(performance.now() - t0)} ms (meadow ${Math.round(msMeadow)}, shaft head ${Math.round(msShaft)}; the rest of the shaft streams in while they stand at the lip)`);
+    console.log(`[fall] built in ${Math.round(performance.now() - t0)} ms (forest ${JSON.stringify(this.F.stats)})`);
 
+    this.debug = {
+      at: (secs) => { const k = Math.max(0, secs - this.t); for (let s = 0; s < k; s += 1 / 30) this.update(1 / 30); return this.t; },
+      time: () => this.t,
+      shot: () => this.shotIndex,
+      skip: () => this.skip(),
+      state: () => ({ t: this.t, shot: this.shotIndex, hero: this.hero.state, sag: this.sag, s: this.cur.s, coop: !this.coop.isPlaceholder }),
+    };
     const at = parseFloat(params.at) || 0;
-    if (at > 0) for (let k = 0; k < at; k += 1 / 30) this.update(1 / 30);
+    if (at > 0) this.debug.at(at);
     this.frozen = !!params.freeze;
-  }
-
-  // ------------------------------------------------------------------ builders
-  makeWaterfall(wf) {
-    const th = (wf.face * Math.PI) / 4;
-    const h = wf.yTop - wf.yBot;
-    const mat = new THREE.ShaderMaterial({
-      uniforms: { uTime: { value: 0 }, uFog: { value: new THREE.Color(0x0b0806) }, uNear: { value: 4 }, uFar: { value: 18 } },
-      vertexShader: WATER_VERT, fragmentShader: WATER_FRAG, side: THREE.DoubleSide,
-    });
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(1.15, h, 1, 1), mat);
-    const r = 2.38;
-    m.position.set(Math.cos(th) * r, (wf.yTop + wf.yBot) / 2 - 0.3, Math.sin(th) * r);
-    m.lookAt(0, m.position.y, 0);
-    this.scene.add(m);
-    return { mesh: m, mat, top: new THREE.Vector3(Math.cos(th) * 2.4, wf.yTop - 0.4, Math.sin(th) * 2.4), bottom: new THREE.Vector3(Math.cos(th) * 2.35, wf.yBot, Math.sin(th) * 2.35) };
-  }
-
-  /** Vertical streaks of dust hanging in the shaft: as everyone falls past, they whip upward. */
-  makeStreaks() {
-    const N = 64;
-    this.streaks = Array.from({ length: N }, () => ({ x: 0, y: 99, z: 0, a: 0 }));
-    this.stPos = new Float32Array(N * 6);
-    this.stCol = new Float32Array(N * 8);
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(this.stPos, 3).setUsage(THREE.DynamicDrawUsage));
-    g.setAttribute('color', new THREE.BufferAttribute(this.stCol, 4).setUsage(THREE.DynamicDrawUsage));
-    this.stGeo = g;
-    const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-    lines.frustumCulled = false;
-    lines.renderOrder = 40;
-    this.scene.add(lines);
   }
 
   // ------------------------------------------------------------------ helpers
@@ -263,27 +143,23 @@ export default class FallScene extends Scene {
     if (!h || h.alive === false) this.loops[name] = this.game.audio.loop(name, { vol, fadeIn: 0.5 });
     else h.set({ vol });
   }
-  /** Where the mole's centre is at scene time t, plus his vertical speed and tumble. */
-  moleAt(t, out = new THREE.Vector3()) {
-    if (t < T_DROP) return out.copy(this.moleHome);
-    const s = this.sim.at(t - T_DROP, this.simOut);
-    return out.set(s[0], s[1] - Math.max(0, t - T_CRASH) * 4.5, s[2]); // ...and on through the roof
-  }
-  shaftRadius(y) { return y > -1 ? 3.6 : y > -8.5 ? lerp(3.4, 2.45, smooth((-1 - y) / 7.5)) : 2.45; }
 
   skip() {
     if (this.leaving) return;
+    if (this.game.transitioning) { this.pendingSkip = true; return; }
     this.sfx('whoosh');
     this.leave(0.35);
   }
 
-  leave(dur = 0.2) {
+  leave(dur = 0.3) {
     if (this.leaving) return;
     this.leaving = true;
-    this.game.goto('deep', { from: 'fall' }, { transition: 'fade', dur }); // into Old Star's dig (docs/FPS.md)
+    this.unmuffle?.();
+    this.game.goto('home', { from: 'fall' }, { transition: 'fade', dur });
   }
 
-  // ------------------------------------------------------------------ frame
+  render() { this.game.engine.render(this.scene, this.camera, this.post); }
+
   onResize(w, h) {
     setPixelScale(h);
     if (!this.camera) return;
@@ -291,411 +167,471 @@ export default class FallScene extends Scene {
     this.camera.updateProjectionMatrix();
   }
 
+  exit() {
+    this.leaving = true;
+    this.unmuffle?.();
+    super.exit();
+  }
+
+  // ------------------------------------------------------------------ where everyone is
+  /** The hero's trail position s (m) at time t; cuts jump ahead along the trail. */
+  heroS(t) {
+    const L = FOREST.trail.length, X = FOREST.trail.cross.s;
+    if (t < T.C) return 6.5 + WALK * t;
+    if (t < T.D) return X - 3.8 + WALK * (t - T.C);
+    // into the clearing, slowing to a stop when he sees it...
+    if (t < T.E) return L - 7.4 + 3.8 * (1 - Math.pow(1 - (t - T.D) / (T.E - T.D), 1.6));
+    // ...a look, then slowly up to the chest: he stops right at the spill
+    return lerp(L - 3.6, L - 0.05, ease(T.E + 1.0, T.E + 4.0, t));
+  }
+  /** The coop's s: a step behind; it hangs back at the clearing's edge. */
+  coopS(t) {
+    const L = FOREST.trail.length;
+    if (t < T.D) return this.heroS(t) - 0.8;
+    return Math.min(this.heroS(t) - 0.8, L - 5.2 + (t > T.F + 1.2 ? -0.7 * ease(T.F + 1.2, T.F + 2.2, t) : 0));
+  }
+
+  /** Put the hero and the coop where they belong at time t (dt drives their animation). */
+  place(t, dt) {
+    const hero = this.hero, coop = this.coop, tr = FOREST.trail;
+    const s = this.heroS(t), cs = this.coopS(t);
+    const vH = dt > 0 ? (s - this.cur.s) / dt : 0, vC = dt > 0 ? (cs - this.cur.cs) / dt : 0;
+    const jump = Math.abs(s - this.cur.s) > 1; // a cut
+    this.cur.s = s; this.cur.cs = cs;
+    const P = tr.at(s), Q = tr.at(cs);
+    const fallen = t >= T.G;
+    // the hero: a little left of the middle of the trail
+    if (!fallen) {
+      const off = t < T.E ? -0.22 : -0.22 * (1 - ease(T.E, T.E + 2.5, t));
+      let x = P.x - P.tz * off, z = P.z + P.tx * off;
+      let y = groundH(x, z);
+      const B = FOREST.bridge;
+      if (B && Math.abs(s - B.s) < B.half + 0.2) y = Math.max(y, B.y - Math.sin(clamp(1 - Math.abs(s - B.s) / B.half, 0, 1) * Math.PI / 2) * 0.05);
+      // on the crust: he sinks with it
+      if (Math.hypot(x, z) < HOLE_R + 0.3) y -= this.sag * 0.13;
+      this.heroPivot.position.set(x, y + 0.42, z);
+      this.heroPivot.rotation.set(0, 0, 0);
+      // walking windows: on the trail, and the last slow steps up to the chest
+      const speed = jump ? WALK : Math.abs(vH);
+      const walking = t < T.E || (t > T.E + 1.0 && t < T.E + 4.0);
+      if (walking) {
+        if (speed > 0.12) { hero.play('walk', clamp(speed / WALK, 0.55, 1.25)); hero.face(P.yaw); }
+        else if (hero.state === 'walk') hero.play('idle');
+      }
+    }
+    hero.update(dt);
+    // the coop: on the right, half a step behind, wading beside the bridge
+    {
+      const off = t < T.D ? 0.72 : lerp(0.72, 1.3, ease(T.D, T.E, t));
+      const x = Q.x - Q.tz * off, z = Q.z + Q.tx * off;
+      coop.root.position.set(x, groundH(x, z), z);
+      if (!this.coopFace) coop.face(Q.yaw, true);
+      const sp = jump ? WALK : Math.abs(vC);
+      if (!this.coopFace) coop.face(Q.yaw);
+      coop.update(dt, { speed: sp, moving: sp > 0.05 });
+    }
+    return P;
+  }
+
+  // ------------------------------------------------------------------ frame
   update(dt) {
     if (this.frozen) dt = 0;
     super.update(dt);
     if (this.leaving) return;
+    if (this.pendingSkip) { this.pendingSkip = false; this.skip(); return; }
     const t = (this.t += dt);
+    // the shaft walls stream in a few ms a frame while they walk; they must be ready for the fall
+    this.shaft.prebuild(t < T.F ? 2 : 3);
+    if (t > T.F) this.shaft.ensure(-14);
+    if (t > T.G) this.shaft.ensure(Math.max(-40, Math.min(this.camera.position.y, this.heroPivot.position.y) - 12));
+    this.story(t, dt);
+    this.place(t, dt);
+    this.updateFall(t, dt);
+    this.updateCamera(t, dt);
+    this.updateWorld(t, dt);
+    if (t >= T.END) this.leave(0.4);
+  }
+
+  // ------------------------------------------------------------------ the story beats
+  story(t, dt) {
     const au = this.game.audio;
-
-    // keep streaming the shaft: a few ms a frame, never letting the camera outrun it
-    this.shaft.prebuild(t < T_DROP ? 3 : 2);
-
-    this.story(t, dt, au);
-    const C = this.updateTravellers(t, dt);
-    this.updateCamera(t, dt, C);
-    // up top the shaft streams in the background; once falling, it must reach past the fog
-    if (t > T_DROP - 0.2) this.shaft.ensure(Math.min(this.camera.position.y, C.y) - 16);
-    this.updateWorld(t, dt, C);
-    if (t >= T_OUT) this.leave(0.2);
-  }
-
-  story(t, dt, au) {
-    const M = this.meadow;
-    this.once('wind', 0, () => this.loop('wind', 0.12));
-    this.once('cap', T_CAPTION[0], () => this.caption.classList.add('on'));
-    this.once('capoff', T_CAPTION[1], () => this.caption.classList.remove('on'));
-    this.once('cluck', 1.1, () => this.sfx('cluck', { n: 2 }));
-    this.once('chirp', 1.8, () => this.sfx('chirp'));
-    this.once('peck1', 1.5, () => this.hen.peck());
-    this.once('peck2', 2.7, () => { this.hen.peck(); this.sfx('cluck', { n: 1 }); });
-    this.once('chirp2', 3.1, () => this.sfx('chirp'));
-    // the lip gives way
-    this.once('creak', T_CRACK, () => { this.sfx('creak'); this.loop('rumble', 0.55); au.stopMusic(1.2); this.shake = 0.02; });
-    this.once('crack1', T_CRACK + 0.35, () => { this.sfx('crack'); this.mole.doEmote('surprise', 1.8); this.sfx('squeak'); this.crackPuff(1); });
-    this.once('bawk', T_CRACK + 0.6, () => { this.sfx('bawk'); this.hen.flap(1.2); });
-    this.once('crack2', T_CRACK + 0.85, () => { this.sfx('crack'); this.sfx('trickle'); this.crackPuff(2); this.shake = 0.05; });
-    this.once('drop', T_DROP, () => {
-      this.sfx('collapse'); this.sfx('whoosh'); this.shake = 0.09;
-      this.mole.play('fall');
-      this.burstDrop();
-      for (const p of M.pieces) {
-        const out = p.home.clone().setY(0).normalize();
-        p.vel = new THREE.Vector3(out.x * 0.5 + (Math.random() - 0.5) * 0.3, -1.2 - Math.random() * 0.8, out.z * 0.5 + (Math.random() - 0.5) * 0.3);
-        p.spin = new THREE.Vector3((Math.random() - 0.5) * 2.5, (Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 2.5);
-      }
+    this.once('amb', 0, () => { this.loop('wind', 0.1); });
+    this.once('cap', CAP[0], () => this.caption.classList.add('on'));
+    this.once('capoff', CAP[1], () => this.caption.classList.remove('on'));
+    // birdsong now and then while they walk
+    this.birdT = (this.birdT ?? 0.6) - dt;
+    if (t < T.F && this.birdT <= 0) { this.birdT = 1.2 + Math.random() * 2.6; birdsong(au, { pan: Math.random() * 1.6 - 0.8, pitch: 0.8 + Math.random() * 0.5 }); }
+    this.once('cluck1', 2.2, () => this.sfx('cluck', { n: 2 }));
+    this.once('peck', 6.4, () => this.coop.peck?.());
+    this.once('cluck2', 7.6, () => this.sfx('cluck', { n: 3, pitch: 1.1 }));
+    this.once('nod', 8.2, () => this.hero.doEmote('nod', 1));
+    // the bridge: planks thud under him, the coop splashes through
+    this.once('bridge', T.C + 0.2, () => { this.sfx('cluck', { n: 1 }); });
+    // the clearing: something glitters
+    this.once('glint', T.D + 1.6, () => { this.sfx('sparkle', { vol: 0.6 }); this.hero.doEmote('surprise', 1.3); });
+    this.once('stop', T.E, () => { this.hero.play('peer'); this.hero.look(0, 0.1); });
+    this.once('bawk', T.E + 0.35, () => { this.sfx('bawk'); this.coop.shake?.(1); });
+    this.once('walk2', T.E + 1.0, () => this.hero.look(0, 0));
+    this.once('cluckno', T.E + 1.6, () => { this.sfx('cluck', { n: 4, pitch: 1.25 }); this.coop.hop?.(); });
+    this.once('coins', T.E + 3.6, () => this.sfx('coins', { n: 5 }));
+    this.once('reach', T.E + 4.0, () => this.hero.play('reach'));
+    this.once('chime', T.E + 4.3, () => this.sfx('sparkle', { vol: 0.8 }));
+    // the ground goes
+    this.once('creak', T.F, () => { this.sfx('creak'); this.loop('rumble', 0.5); au.stopMusic(1.4); this.shake = 0.015; this.hero.play('idle'); this.hero.look(0, 0.35); });
+    this.once('crack1', T.F + 0.6, () => { this.sfx('crack'); this.sfx('rumble_hit'); this.hero.doEmote('surprise', 2); this.hero.play('brace'); this.F.cracks.mesh.visible = true; });
+    this.once('bawk2', T.F + 0.9, () => { this.sfx('bawk', { pitch: 1.1 }); this.coop.hop?.(); this.coop.shake?.(1.5); });
+    this.once('crack2', T.F + 1.7, () => { this.sfx('crack'); this.sfx('trickle'); this.shake = 0.05; });
+    this.once('look', T.F + 2.2, () => { this.hero.look(-0.4, 0.3); this.sfx('squeak'); });
+    this.once('crack3', T.F + 2.9, () => { this.sfx('crack'); this.sfx('debris'); this.shake = 0.08; });
+    this.once('break', T.G, () => this.breakGround());
+    this.once('bawk3', T.G + 0.5, () => this.sfx('bawk', { pitch: 1.2 }));
+    this.once('coopturn', T.G + 0.3, () => { // the coop wheels round to stare down the hole
+      this.coopFace = true;
+      const c = this.coop.root.position;
+      this.coop.face(Math.atan2(-c.x, -c.z));
+      this.coop.hop?.();
     });
-    // falling: wind roars with speed, the rumble dies away, ledges, the waterfall, the grotto
-    if (t >= T_DROP) {
-      const s = this.sim.at(t - T_DROP, this.simOut);
-      const sp = clamp(-s[3] / 5.6, 0, 1);
-      this.loop('wind', 0.12 + sp * 0.75);
-      this.loop('rumble', Math.max(0, 0.55 - (t - T_DROP) * 0.25));
-      const wd = this.camera.position.distanceTo(this.waterfall.bottom.clone().lerp(this.waterfall.top, 0.5));
-      this.loop('water', clamp(1 - wd / 9, 0, 1) * 0.8);
-      this.contacts.forEach((c, i) => this.once('bounce' + i, T_DROP + c.tau, () => this.bounce(c, i)));
-      this.once('grotto', T_DROP + 6.1, () => this.sfx('sparkle', { vol: 0.5 }));
-      this.once('bawk2', T_DROP + 1.4, () => this.sfx('bawk'));
-      this.once('bawk3', T_DROP + 5.6, () => this.sfx('bawk', { pitch: 1.15 }));
-      this.once('deb', T_DROP + 3.2, () => this.sfx('debris'));
-      this.once('deb2', T_DROP + 8.4, () => this.sfx('debris'));
-      this.once('crash', T_CRASH, () => this.crash());
+    this.once('whoosh', T.G + 0.4, () => { this.sfx('whoosh'); this.loop('wind', 0.6); });
+    this.once('deb', T.H + 0.6, () => this.sfx('debris'));
+    this.once('dark', T.H + 1.2, () => { this.unmuffle = muffle(au, 360); this.loop('rumble', 0); });
+    this.once('thud', T.I - 0.25, () => { this.sfx('thud', { vol: 1 }); this.sfx('land', { hard: true }); this.loop('wind', 0); });
+    // knocked out: the heart thumps in the dark, slowing
+    const beats = [T.I + 0.5, T.I + 1.55, T.I + 2.7, T.I + 3.95];
+    beats.forEach((b, i) => this.once('beat' + i, b, () => heartbeat(au, 0.5 - i * 0.08)));
+    // the sagging ground and the cracks
+    if (t >= T.F && t < T.G) {
+      const k = ease(T.F, T.G, t);
+      this.sag = k * k;
+      this.F.cracks.uniforms.uReveal.value = ease(T.F + 0.55, T.G - 0.3, t);
+      if (Math.random() < dt * 30) this.crackDust();
     }
   }
 
-  crackPuff(stage) {
-    for (const p of this.meadow.pieces) {
-      p.mesh.position.copy(p.home).add(new THREE.Vector3((Math.random() - 0.5) * 0.04 * stage, -0.025 * stage, (Math.random() - 0.5) * 0.04 * stage));
-      p.mesh.rotation.set((Math.random() - 0.5) * 0.04 * stage, 0, (Math.random() - 0.5) * 0.04 * stage);
-      for (let i = 0; i < 10 * stage; i++) {
-        const a = Math.random() * Math.PI * 2;
-        this.dust.spawn({ pos: [p.home.x + Math.cos(a) * 0.5, 0.05, p.home.z + Math.sin(a) * 0.5], vel: [(Math.random() - 0.5) * 0.6, 0.3 + Math.random() * 0.5, (Math.random() - 0.5) * 0.6], life: 1.4, color: 0x9a7a5a, color2: 0x6a5040, size: 0.08, size2: 0.22, alpha: 0.55, drag: 1.5, shape: SHAPE.round });
-      }
-    }
-    for (let i = 0; i < 18 * stage; i++) {
-      const a = MEADOW.slab.angle + (Math.random() - 0.5) * 1.2, r = MEADOW.holeR + Math.random() * 0.2;
-      this.debris.spawn({ pos: [Math.cos(a) * r, -0.05, Math.sin(a) * r], vel: [(Math.random() - 0.5) * 0.3, -Math.random(), (Math.random() - 0.5) * 0.3], life: 2.2, color: Math.random() < 0.5 ? 0x5a3e2a : 0x8a8278, size: 0.04 + Math.random() * 0.04, gravity: 9, shape: SHAPE.square });
+  coopStep(side, k = 1) {
+    const c = this.coop.root.position;
+    const wet = groundH(c.x, c.z) < -0.45;
+    if (this.t > T.F + 3) return;
+    if (wet) {
+      this.sfx('splash', { vol: 0.6 });
+      for (let i = 0; i < 16; i++) this.splash.spawn({ pos: [c.x + (Math.random() - 0.5) * 0.4, -0.45, c.z + (Math.random() - 0.5) * 0.4], vel: [(Math.random() - 0.5) * 1.4, 1.2 + Math.random() * 1.6, (Math.random() - 0.5) * 1.4], life: 0.9, color: 0xe8f6ff, color2: 0x8ac0e0, size: 0.035, size2: 0.02, gravity: 9, shape: SHAPE.square });
+    } else {
+      this.sfx('step', { mat: 'dirt', vol: 0.8 });
+      for (let i = 0; i < 4; i++) this.dust.spawn({ pos: [c.x + (Math.random() - 0.5) * 0.3, groundH(c.x, c.z) + 0.03, c.z + (Math.random() - 0.5) * 0.3], vel: [(Math.random() - 0.5) * 0.4, 0.15 + Math.random() * 0.2, (Math.random() - 0.5) * 0.4], life: 0.9, color: 0xb89a70, color2: 0x8a7458, size: 0.05, size2: 0.12, alpha: 0.4, drag: 2, shape: SHAPE.round });
     }
   }
 
-  burstDrop() {
-    const c = this.moleHome;
-    for (let i = 0; i < 60; i++) {
-      const leaf = i % 3 === 0;
-      this.debris.spawn({
-        pos: [c.x + (Math.random() - 0.5) * 2.2, 0.05 + Math.random() * 0.3, c.z + (Math.random() - 0.5) * 1.2],
-        vel: [(Math.random() - 0.5) * 1.2, leaf ? 0.6 + Math.random() : -Math.random() * 2, (Math.random() - 0.5) * 1.2],
-        life: leaf ? 4 : 3, color: leaf ? (Math.random() < 0.5 ? 0x6ab448 : 0x8ad060) : Math.random() < 0.6 ? 0x5a3e2a : 0x3e5a2a,
-        size: leaf ? 0.06 : 0.035 + Math.random() * 0.05, gravity: leaf ? 1.2 : 9, drag: leaf ? 1.2 : 0.2, wobble: leaf ? 0.6 : 0, spin: leaf ? 6 : 0, shape: leaf ? SHAPE.confetti : SHAPE.square,
-      });
-    }
-    for (let i = 0; i < 40; i++) this.dust.spawn({ pos: [c.x + (Math.random() - 0.5) * 2.4, 0.1, c.z + (Math.random() - 0.5) * 1.4], vel: [(Math.random() - 0.5) * 0.8, 0.4 + Math.random() * 0.8, (Math.random() - 0.5) * 0.8], life: 2.2, color: 0xa88a66, color2: 0x7a6248, size: 0.1, size2: 0.32, alpha: 0.5, drag: 1.2, shape: SHAPE.round });
+  crackDust() {
+    const tips = this.F.cracks.tips(this.F.cracks.uniforms.uReveal.value);
+    const p = tips.length ? tips[(Math.random() * tips.length) | 0] : null;
+    if (p) for (let i = 0; i < 3; i++) this.dust.spawn({ pos: [p.x, 0.04, p.z], vel: [(Math.random() - 0.5) * 0.5, 0.25 + Math.random() * 0.4, (Math.random() - 0.5) * 0.5], life: 1.2, color: 0xa88a66, color2: 0x7a6248, size: 0.04, size2: 0.12, alpha: 0.45, drag: 1.6, shape: SHAPE.round });
+    // grit trickling into the gaps between the crust pieces
+    const a = Math.random() * Math.PI * 2, r = Math.random() * HOLE_R;
+    this.debris.spawn({ pos: [Math.cos(a) * r, -this.sag * 0.1, Math.sin(a) * r], vel: [0, -0.3, 0], life: 1.4, color: Math.random() < 0.5 ? 0x5a3e2a : 0x7a6a58, size: 0.025, gravity: 6, shape: SHAPE.square });
   }
 
-  bounce(c, i) {
-    const crystal = c.kind === 'crystal';
-    this.sfx('thud', { vol: 1 });
-    this.sfx('hit');
-    this.sfx(crystal ? 'break' : 'debris');
-    if (crystal) this.sfx('sparkle');
-    this.sfx(i === 1 ? 'hurt' : 'squeak');
-    this.mole.play('hurt');
-    this.hurtT = 0.5;
-    this.hen.flap(1);
-    this.shake = 0.11;
-    this.post.flash = 0.35;
-    this.post.flashColor = crystal ? 0xbfe8ff : 0xfff2d8;
-    const nx = Math.cos(c.ang), nz = Math.sin(c.ang);
-    const px = c.x + nx * 0.3, pz = c.z + nz * 0.3, py = c.y - 0.05;
-    const rockCol = c.kind === 'moss' ? [0x5a3e2a, 0x3e5a2a] : c.kind === 'clay' ? [0xb8603a, 0xd88a50] : [0x7fd0ff, 0xd8f4ff];
-    for (let k = 0; k < 45; k++) {
-      this.debris.spawn({ pos: [px, py + Math.random() * 0.3, pz], vel: [-nx * (1 + Math.random() * 2.5) + (Math.random() - 0.5) * 2, Math.random() * 2.5, -nz * (1 + Math.random() * 2.5) + (Math.random() - 0.5) * 2], life: 2.2, color: rockCol[k % 2], size: 0.03 + Math.random() * 0.06, gravity: 9.8, shape: crystal ? SHAPE.diamond : SHAPE.square });
-    }
-    for (let k = 0; k < (crystal ? 60 : 30); k++) {
-      this.sparks.spawn({ pos: [px, py + 0.1, pz], vel: [-nx * (2 + Math.random() * 3) + (Math.random() - 0.5) * 3, (Math.random() - 0.2) * 3, -nz * (2 + Math.random() * 3) + (Math.random() - 0.5) * 3], life: 0.5 + Math.random() * 0.4, color: crystal ? 0xffffff : 0xfff0a0, color2: crystal ? 0x5ab0ff : 0xff7a20, size: 0.05, size2: 0.01, gravity: 4, drag: 1.5, shape: crystal ? SHAPE.plus : SHAPE.square });
-    }
-    for (let k = 0; k < 24; k++) this.dust.spawn({ pos: [px, py, pz], vel: [(Math.random() - 0.5) * 1.5 - nx, Math.random() * 1.2, (Math.random() - 0.5) * 1.5 - nz], life: 1.6, color: crystal ? 0xa0b8e0 : 0x8a7058, color2: 0x3a3030, size: 0.08, size2: 0.3, alpha: 0.5, drag: 1.8, shape: SHAPE.round });
-    this.featherPuff(8);
-  }
-
-  featherPuff(n) {
-    const h = this.henPivot.position;
-    for (let k = 0; k < n; k++) this.feathers.spawn({ pos: [h.x, h.y, h.z], vel: [(Math.random() - 0.5) * 1.6, 1 + Math.random() * 1.5, (Math.random() - 0.5) * 1.6], life: 2.6, color: Math.random() < 0.2 ? 0xe8d8c0 : 0xfff8ee, size: 0.05, gravity: 0.8, drag: 2, wobble: 0.7, spin: 7, shape: SHAPE.confetti });
-  }
-
-  crash() {
-    const mid = this.shaft.floorMiddle;
-    if (mid) { mid.visible = false; mid.userData.broken = true; }
-    this.burrowGlow.visible = true;
+  breakGround() {
     this.sfx('collapse', { vol: 1 });
     this.sfx('break', { vol: 1 });
-    this.sfx('thud', { vol: 1 });
+    this.sfx('crack');
     this.sfx('rumble_hit');
-    this.mole.play('hurt');
-    this.shake = 0.25;
-    this.post.flash = 1;
-    this.post.flashColor = 0xfff2dc;
-    const c = this.molePivot.position;
-    for (let k = 0; k < 120; k++) {
-      const wood = k % 3 === 0;
-      this.debris.spawn({ pos: [c.x + (Math.random() - 0.5) * 0.8, this.floorY + 0.1, c.z + (Math.random() - 0.5) * 0.8], vel: [(Math.random() - 0.5) * 6, 1 + Math.random() * 5, (Math.random() - 0.5) * 6], life: 1.6, color: wood ? 0x7a6a58 : 0x5a3e2a, size: wood ? 0.09 : 0.05, gravity: 12, spin: 9, shape: wood ? SHAPE.confetti : SHAPE.square });
+    this.shake = 0.16;
+    this.post.flash = 0.25;
+    this.post.flashColor = 0xfff2d8;
+    this.hero.play('fall');
+    this.hero.doEmote('surprise', 3);
+    this.fallStart = { y: this.heroPivot.position.y, x: this.heroPivot.position.x, z: this.heroPivot.position.z };
+    for (const p of this.F.crust) {
+      const out = p.home.clone().setY(0);
+      const r = out.length();
+      out.normalize();
+      p.vel = new THREE.Vector3(-out.x * (0.2 + Math.random() * 0.4), -0.6 - Math.random() * 1.2 - (1 - r / HOLE_R) * 0.8, -out.z * (0.2 + Math.random() * 0.4));
+      p.spin = new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 3);
     }
-    for (let k = 0; k < 70; k++) this.dust.spawn({ pos: [c.x, this.floorY + 0.2, c.z], vel: [(Math.random() - 0.5) * 4, Math.random() * 3, (Math.random() - 0.5) * 4], life: 1.8, color: 0xa88a66, color2: 0x4a3a2a, size: 0.12, size2: 0.5, alpha: 0.7, drag: 2.2, shape: SHAPE.round });
-    this.featherPuff(14);
+    this.chestFall = { vy: -0.4, spin: 1.6 };
+    this.F.spill.mesh.visible = false;
+    // the spill bursts into a shower of coins and gems
+    for (let i = 0; i < 140; i++) {
+      const gem = i % 9 === 0;
+      this.coins.spawn({
+        pos: [(Math.random() - 0.5) * 0.8, 0.05 + Math.random() * 0.2, 0.1 + Math.random() * 0.8],
+        vel: [(Math.random() - 0.5) * 1.6, 0.6 + Math.random() * 2.4, (Math.random() - 0.5) * 1.6 - 0.4],
+        life: 3.2, color: gem ? [0xff5a7a, 0x5ae0ff, 0x7aff8a][i % 3] : Math.random() < 0.5 ? 0xffd040 : 0xf2b030, color2: gem ? 0xffffff : 0xa86a10,
+        size: gem ? 0.045 : 0.04, gravity: 9.8, spin: 12, shape: gem ? SHAPE.diamond : SHAPE.confetti,
+      });
+    }
+    for (let i = 0; i < 90; i++) {
+      const a = Math.random() * Math.PI * 2, r = HOLE_R * (0.8 + Math.random() * 0.4);
+      this.dust.spawn({ pos: [Math.cos(a) * r, 0.05, Math.sin(a) * r], vel: [Math.cos(a) * 0.4, 0.4 + Math.random() * 1.2, Math.sin(a) * 0.4], life: 2, color: 0xa88a66, color2: 0x6a5440, size: 0.05, size2: 0.16, alpha: 0.35, drag: 1.4, shape: SHAPE.round });
+    }
+    for (let i = 0; i < 70; i++) {
+      const a = Math.random() * Math.PI * 2, r = Math.random() * HOLE_R;
+      const leaf = i % 3 === 0;
+      this.debris.spawn({ pos: [Math.cos(a) * r, 0.02, Math.sin(a) * r], vel: [(Math.random() - 0.5) * 1.2, leaf ? 1 : -Math.random() * 2, (Math.random() - 0.5) * 1.2], life: 2.6, color: leaf ? 0x6ab448 : Math.random() < 0.6 ? 0x5a3e2a : 0x3e5a2a, size: leaf ? 0.05 : 0.04, gravity: leaf ? 1.5 : 9, drag: leaf ? 1 : 0.2, spin: leaf ? 6 : 0, shape: leaf ? SHAPE.confetti : SHAPE.square });
+    }
+    this.F.cracks.uniforms.uReveal.value = 1;
   }
 
-  updateTravellers(t, dt) {
-    const mole = this.mole, hen = this.hen;
-    const C = this.moleAt(t, this._c || (this._c = new THREE.Vector3()));
-    this.molePivot.position.copy(C);
-    if (t < T_DROP) {
-      // a beat of calm: he peers over the edge, she pecks about, the ground starts to go
-      mole.update(dt);
-      const peer = smooth((t - 1.4) / 1.2) * (1 - smooth((t - T_CRACK - 0.2) / 0.4));
-      mole.neck.rotation.x = 0.55 * peer;
-      if (t > T_CRACK + 0.3) { mole.neck.rotation.x = -0.15; mole.armL.rotation.set(-0.8, 0, 0.5); mole.armR.rotation.set(-0.8, 0, -0.5); }
-      hen.update(dt);
-      if (t > T_CRACK + 0.5 && Math.random() < dt * 3) hen.flap(0.4);
-      const wob = t > T_CRACK ? Math.sin(t * 40) * 0.01 * smooth((t - T_CRACK) / 1) : 0;
-      this.molePivot.position.y = BODY - (t > T_CRACK + 0.85 ? 0.05 : t > T_CRACK + 0.35 ? 0.025 : 0) + wob;
-      this.henPivot.position.copy(this.henHome);
-      this.henPivot.position.y += this.molePivot.position.y - BODY;
-      return C;
-    }
-    const tau = t - T_DROP;
-    const s = this.sim.at(tau, this.simOut);
-    // tumbling, arms and legs going everywhere (hurt for a moment after each ledge)
-    this.molePivot.rotation.set(s[4], 0, Math.sin(s[4] * 0.5) * 0.5);
-    if (this.hurtT > 0) { this.hurtT -= dt; if (this.hurtT <= 0) mole.play('fall'); }
-    mole.update(dt);
-    if (!(this.hurtT > 0)) {
-      mole.armL.rotation.set(-2.6 + Math.sin(t * 13) * 0.5, 0, 0.6 + Math.sin(t * 9) * 0.3);
-      mole.armR.rotation.set(-2.6 + Math.sin(t * 11 + 1) * 0.5, 0, -0.6 - Math.sin(t * 8) * 0.3);
-      mole.legL.rotation.x = Math.sin(t * 10) * 0.7;
-      mole.legR.rotation.x = -Math.sin(t * 10) * 0.7;
-    }
-    // Nugget: orbiting him, flapping uselessly, passing him when he bounces
-    let ang = 2.2 + tau * 0.9, dy = 0.55 + Math.sin(tau * 2.1) * 0.25;
-    for (const c of this.contacts) {
-      const b = bump(tau - c.tau, 0.8);
-      ang = lerp(ang, c.ang + Math.PI, b);
-      dy -= 1.0 * bump(tau - c.tau - 0.35, 0.6);
-    }
-    const r = 0.85 + Math.sin(tau * 1.3) * 0.15;
-    const target = this._h || (this._h = new THREE.Vector3());
-    target.set(C.x + Math.cos(ang) * r, C.y + dy, C.z + Math.sin(ang) * r);
-    const lim = this.shaftRadius(target.y) - 0.55;
-    const rr = Math.hypot(target.x, target.z);
-    if (rr > lim) { target.x *= lim / rr; target.z *= lim / rr; }
-    const start = this._hs || (this._hs = this.henHome.clone());
-    const k = smooth(tau / 1.2);
-    this.henPivot.position.set(lerp(start.x, target.x, k), lerp(start.y + s[1] - this.moleHome.y, target.y, k), lerp(start.z, target.z, k));
-    this.henPivot.rotation.set(Math.sin(tau * 2.3) * 0.6, tau * 1.4, Math.cos(tau * 1.7) * 0.5);
-    hen.update(dt);
-    this.flapT = (this.flapT || 0) - dt;
-    if (this.flapT < 0) { this.flapT = 0.28 + Math.random() * 0.25; hen.flap(0.35); if (Math.random() < 0.35) this.featherPuff(1); }
-    // falling slabs of the lip
-    for (const p of this.meadow.pieces) {
-      if (!p.vel) continue;
+  /** The crust sagging and falling, the chest tumbling, the hero dropping into the dark. */
+  updateFall(t, dt) {
+    const F = this.F;
+    // the crust: sags toward the middle, trembles, then the pieces drop
+    for (const p of F.crust) {
+      if (!p.vel) {
+        const r = p.home.length();
+        const k = this.sag;
+        const tremble = t > T.F ? (Math.random() - 0.5) * 0.006 * (1 + k * 3) : 0;
+        p.mesh.position.set(p.home.x * (1 - k * 0.02), -k * 0.13 * (1 - (r / HOLE_R) * 0.55) + tremble, p.home.z * (1 - k * 0.02));
+        const ax = r > 0.05 ? -p.home.z / r : 0, az = r > 0.05 ? p.home.x / r : 0;
+        p.mesh.rotation.set(ax * k * 0.16 * (r / HOLE_R), 0, az * k * 0.16 * (r / HOLE_R) * -1);
+        continue;
+      }
       p.vel.y -= 9.8 * dt;
-      p.vel.y *= Math.exp(-0.15 * dt);
       p.mesh.position.addScaledVector(p.vel, dt);
       p.mesh.rotation.x += p.spin.x * dt; p.mesh.rotation.y += p.spin.y * dt; p.mesh.rotation.z += p.spin.z * dt;
-      const pr = Math.hypot(p.mesh.position.x, p.mesh.position.z), plim = this.shaftRadius(p.mesh.position.y) - 0.6;
-      if (pr > plim) { p.mesh.position.x *= plim / pr; p.mesh.position.z *= plim / pr; }
-      // gone once they have dropped out of the light (or would swing into the lens)
-      if (tau > 2.6 || (tau > 0.6 && p.mesh.position.distanceTo(this.camera.position) < 1.6)) p.mesh.visible = false;
+      if (p.mesh.position.y < -26) p.mesh.visible = false;
     }
-    return C;
+    // the chest rides the middle piece down, then tumbles
+    const ch = F.chest.group;
+    if (!this.chestFall) {
+      ch.position.y = -this.sag * 0.13;
+      ch.rotation.z = Math.sin(t * 31) * 0.01 * this.sag;
+      F.spill.mesh.position.y = -this.sag * 0.11;
+      F.spill.mesh.rotation.x = -this.sag * 0.12;
+    } else {
+      const c = this.chestFall;
+      c.vy -= 9.8 * dt;
+      ch.position.y += c.vy * dt;
+      ch.rotation.x += c.spin * dt;
+      F.chest.lidPivot.rotation.x = -1.15 - Math.sin(t * 14) * 0.5;
+      if (ch.position.y < -30) ch.visible = false;
+    }
+    F.chestGlow.position.set(ch.position.x, ch.position.y + 0.45, ch.position.z);
+    // the hero: free fall, tumbling, drifting to the middle of the shaft
+    if (this.fallStart) {
+      const tau = t - T.G;
+      const P = this.heroPivot.position;
+      const fs = this.fallStart;
+      // falling with drag: about 5.5 m/s at most, so the dark comes before the bottom does
+      const vt = 5.5, g = 9.8;
+      const drop = (vt * vt / g) * Math.log(Math.cosh((g * tau) / vt));
+      P.set(lerp(fs.x, 0.1, smooth(tau / 1.2)), fs.y - drop, lerp(fs.z, 0.15, smooth(tau / 1.2)));
+      this.heroPivot.rotation.set(-tau * 2.6, tau * 0.7, Math.sin(tau * 3) * 0.6);
+    }
   }
 
   // ------------------------------------------------------------------ camera
-  shot(i, t, C, o) {
-    const H = this.henPivot.position;
-    const tau = t - T_DROP;
-    o.roll = 0; o.fov = 50;
+  shot(i, t, o) {
+    const H = this.heroPivot.position, C = this.coop.root.position;
+    const tr = FOREST.trail;
+    o.roll = 0; o.fov = 46;
     switch (i) {
-      case 0: { // establishing: across the sinkhole at the pair on the far lip
-        const u = smooth(t / T_CRACK);
-        o.pos.set(lerp(1.7, 0.8, u), lerp(1.8, 1.35, u), lerp(5.6, 4.2, u));
-        o.look.set(-0.25, 0.5, -2.6);
+      case 0: { // the canopy and its light, craning down to the pair coming up the trail
+        const u = ease(T.A, T.B, t);
+        const P = tr.at(this.cur.s);
+        o.pos.set(H.x + lerp(1.4, 1.5, u), lerp(3.6, 1.3, u), H.z + lerp(6.5, 3.4, u));
+        _v.set(H.x - 0.6 + P.tx * 0, lerp(2.6, 0.55, u), H.z - lerp(14, 0, u));
+        o.look.copy(_v);
+        o.fov = lerp(52, 44, u);
+        break;
+      }
+      case 1: { // walking with them: ahead and to the side, low, faces in the sun
+        const P = tr.at(this.cur.s + 2.6);
+        const u = (t - T.B) / (T.C - T.B);
+        o.pos.set(P.x - P.tz * lerp(1.7, 1.2, u), P.y + 0.72, P.z + P.tx * lerp(1.7, 1.2, u));
+        o.look.set((H.x * 2 + C.x) / 3, H.y + 0.25, (H.z * 2 + C.z) / 3);
         o.fov = 44;
         break;
       }
-      case 1: { // the crack: push in
-        const u = smooth((t - T_CRACK) / (T_DROP - T_CRACK));
-        o.pos.set(lerp(0.8, 0.35, u), lerp(1.35, 1.05, u), lerp(4.2, 2.7, u));
-        o.look.set(-0.2, 0.35, -2.55);
-        o.fov = lerp(44, 40, u);
+      case 2: { // the footbridge from downstream, low over the water
+        const B = FOREST.bridge;
+        const q = FOREST.stream.curve.getPointAt(clamp(FOREST.trail.cross.s / FOREST.trail.length, 0, 1));
+        const u = (t - T.C) / (T.D - T.C);
+        o.pos.set(B.x + 3.4 - u * 0.6, B.y + 0.35, B.z + 2.4 - u * 0.4);
+        o.look.set(lerp(B.x + 0.5, H.x, 0.65), B.y + 0.35, lerp(B.z, H.z, 0.65));
+        o.fov = 48;
+        void q;
         break;
       }
-      case 2: // the drop: over the hole, tipping down after them
-        o.pos.set(0.3, Math.min(1.9, C.y + 2.7), 0.7 - smooth(tau / 1.2) * 0.4);
-        o.look.copy(C);
-        o.fov = 52;
+      case 3: { // into the clearing over his left shoulder: the chest glitters in a beam of light ahead
+        const u = ease(T.D, T.E, t);
+        const P = tr.at(this.cur.s);
+        const lx = P.tz, lz = -P.tx; // his left
+        o.pos.set(H.x + lx * lerp(1.25, 1.0, u) - P.tx * lerp(2.6, 2.0, u), H.y + lerp(0.85, 0.7, u), H.z + lz * lerp(1.25, 1.0, u) - P.tz * lerp(2.6, 2.0, u));
+        o.look.set(lerp(H.x + P.tx * 2, 0, 0.65), lerp(H.y + 0.1, 0.3, 0.7), lerp(H.z + P.tz * 2, -0.1, 0.65));
+        o.fov = lerp(46, 40, u);
         break;
-      case 3: { // chase from above, the abyss below them
-        const a = 0.4 + tau * 0.22;
-        o.pos.set(C.x + Math.cos(a) * 0.9, C.y + 3.1, C.z + Math.sin(a) * 0.9);
-        o.look.set(C.x, C.y - 1.4, C.z);
-        o.roll = Math.sin(tau * 0.8) * 0.08;
+      }
+      case 4: { // low, side on: he walks into frame, up to the chest, and reaches for it
+        const u = ease(T.E + 1.0, T.F, t);
+        o.pos.set(lerp(-3.7, -3.0, u), lerp(0.78, 0.62, u), lerp(3.0, 2.5, u));
+        o.look.set(lerp(0.2, 0.05, u), 0.4, lerp(2.0, 0.9, u));
+        o.fov = 46;
+        break;
+      }
+      case 5: { // the ground sags and cracks race outward
+        const u = ease(T.F, T.G, t);
+        o.pos.set(lerp(2.2, 3.1, u), lerp(1.5, 2.6, u), lerp(2.7, 3.6, u));
+        o.look.set(0, lerp(0.35, 0.05, u), 0.3);
+        o.fov = lerp(46, 52, u);
+        break;
+      }
+      case 6: { // it breaks: from above, down into the hole after him
+        const tau = t - T.G;
+        o.pos.set(0.9, 3.3 - tau * 0.4, 2.0);
+        o.look.set(H.x * 0.6, Math.max(H.y, -6), H.z * 0.6);
         o.fov = 54;
         break;
       }
-      case 4: { // swinging round them from across the shaft, walls (and the waterfall) whipping past
-        const a = Math.atan2(C.z, C.x) + Math.PI + Math.sin((tau - 3.4) * 0.6) * 0.8;
-        const r = Math.min(1.75, this.shaftRadius(C.y) - 0.6);
-        o.pos.set(Math.cos(a) * r, C.y + 0.35, Math.sin(a) * r);
-        o.look.set((C.x * 2 + H.x) / 3, (C.y * 2 + H.y) / 3 + 0.1, (C.z * 2 + H.z) / 3);
-        o.roll = Math.sin(tau * 1.1) * 0.12;
-        o.fov = 64;
+      case 7: { // falling with him from below: the light of the hole shrinking above
+        const tau = t - T.H;
+        const gap = lerp(3.2, 1.5, smooth(tau / 2.2));
+        o.pos.set(0.45, H.y - gap, 0.55);
+        o.look.set(H.x * 0.5, H.y + 0.6, H.z * 0.5);
+        o.roll = Math.sin(tau * 1.3) * 0.14;
+        o.fov = 60;
         break;
       }
-      case 5: // from below: them tumbling toward us, daylight a speck far above
-        o.pos.set(C.x * 0.4 + 0.5, C.y - 2.9, C.z * 0.4 + 0.4);
-        o.look.set(C.x, C.y + 0.35, C.z);
-        o.roll = Math.sin(tau * 0.9) * 0.1;
-        o.fov = 58;
+      default: { // out cold at the bottom of the dark: looking up at a far-off speck of light
+        o.pos.set(0.2, this.bottomY ?? -24, 0.3);
+        o.look.set(0, 1, 0.05);
+        o.fov = 50;
         break;
-      default: // the burrow roof rushing up
-        o.pos.set(C.x * 0.3 - 0.9, C.y + 2.7, C.z * 0.3 + 0.7);
-        o.look.set(C.x * 0.5, this.floorY, C.z * 0.5);
-        o.fov = 56;
-        break;
+      }
     }
     return o;
   }
 
-  updateCamera(t, dt, C) {
-    const starts = [0, T_CRACK, T_DROP, T_DROP + 1.2, T_DROP + 3.4, T_DROP + 6.2, T_DROP + 9.0];
+  updateCamera(t, dt) {
+    const starts = [T.A, T.B, T.C, T.D, T.E + 1.0, T.F, T.G, T.H, T.I]; // D holds while he stops and stares
     let i = 0;
     while (i + 1 < starts.length && t >= starts[i + 1]) i++;
+    this.shotIndex = i;
     const A = this._sa || (this._sa = { pos: new THREE.Vector3(), look: new THREE.Vector3() });
     const B = this._sb || (this._sb = { pos: new THREE.Vector3(), look: new THREE.Vector3() });
-    this.shot(i, t, C, A);
-    const blend = i > 1 ? 0.9 : 0.5;
-    const k = i > 0 ? smooth((t - starts[i]) / blend) : 1;
-    if (k < 1) {
-      this.shot(i - 1, t, C, B);
+    this.shot(i, t, A);
+    // hard cuts, except the shots that flow on from the one before
+    const blendFrom = { 1: 0.9, 5: 0.5, 6: 0.25 };
+    const bl = blendFrom[i];
+    if (bl && t - starts[i] < bl) {
+      const k = smooth((t - starts[i]) / bl);
+      this.shot(i - 1, t, B);
       A.pos.lerpVectors(B.pos, A.pos, k);
       A.look.lerpVectors(B.look, A.look, k);
       A.roll = lerp(B.roll, A.roll, k);
       A.fov = lerp(B.fov, A.fov, k);
     }
-    // stay inside the shaft, and off the ledges
     const cam = this.camera;
     cam.position.copy(A.pos);
-    if (t > T_DROP + 0.6) {
-      const y = cam.position.y;
-      let lim = this.shaftRadius(y) - 0.55;
-      const ca = Math.atan2(cam.position.z, cam.position.x);
-      for (const L of this.ledges) {
-        if (Math.abs(y - L.y) > 1.3) continue;
-        const d = Math.abs(Math.atan2(Math.sin(ca - L.ang), Math.cos(ca - L.ang)));
-        if (d < 0.8) lim = Math.min(lim, L.reach - 0.4);
-      }
-      const r = Math.hypot(cam.position.x, cam.position.z);
-      if (r > lim) { cam.position.x *= lim / r; cam.position.z *= lim / r; }
-    }
-    // shake
-    this.shake = Math.max(0, this.shake - dt * (this.t > T_DROP ? 0.25 : 0.04));
-    if (t > T_CRACK && t < T_DROP) this.shake = Math.max(this.shake, 0.012 + 0.03 * smooth((t - T_CRACK) / (T_DROP - T_CRACK)));
+    // keep the camera out of the ground (and out of the trees' trunks)
+    if (i < 6) cam.position.y = Math.max(cam.position.y, groundH(cam.position.x, cam.position.z) + 0.25);
+    // handheld drift, plus shake
+    const hh = i < 5 ? 0.012 : 0.004;
+    cam.position.x += Math.sin(t * 0.7) * hh; cam.position.y += Math.sin(t * 0.9 + 1) * hh;
+    this.shake = Math.max(0, this.shake - dt * 0.12);
+    if (t > T.F && t < T.G) this.shake = Math.max(this.shake, 0.008 + 0.03 * ease(T.F, T.G, t));
     const sh = this.shake;
-    if (sh > 0) cam.position.add(new THREE.Vector3((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh));
+    if (sh > 0) cam.position.add(_v.set((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh));
     cam.lookAt(A.look);
     if (A.roll) cam.rotateZ(A.roll);
-    // Nugget may orbit him, but never into the lens
-    if (t > T_DROP) {
-      const hp = this.henPivot.position;
-      const away = this._aw || (this._aw = new THREE.Vector3());
-      away.subVectors(hp, cam.position);
-      const d = away.length();
-      if (d < 1.5) hp.addScaledVector(away.normalize(), 1.5 - d);
-    }
-    fitFov(cam, A.fov, 48);
+    fitFov(cam, A.fov, 46);
     cam.updateMatrixWorld();
     for (const p of this.pools) p.setScaleFromCamera(cam, this.game.engine.height);
   }
 
   // ------------------------------------------------------------------ world
-  updateWorld(t, dt, C) {
-    const cam = this.camera;
-    const sc = this.scene;
-    // daylight drains away as they drop; the helmet lamp takes over
-    const dl = Math.pow(clamp(1 + cam.position.y / 10, 0, 1), 1.4);
-    this.hemi.intensity = 0.5 + 1.1 * dl;
-    this.sun.intensity = 2.2 * dl;
-    this.lamp.intensity = t > T_DROP ? (1 - dl) * 4.5 * (0.92 + Math.sin(t * 23) * 0.08) : 0;
-    const fogK = 1 - dl;
-    sc.fog.color.setRGB(lerp(0.81, 0.043, fogK), lerp(0.92, 0.031, fogK), lerp(0.97, 0.024, fogK));
-    sc.fog.near = lerp(45, 4, fogK);
-    sc.fog.far = lerp(150, 19, fogK);
-    sc.background.copy(sc.fog.color);
-    // nothing past the fog is worth drawing: pull the far plane in (the sky dome ignores it)
-    const far = Math.max(24, sc.fog.far + 2);
-    if (Math.abs(cam.far - far) > 0.5) { cam.far = far; cam.updateProjectionMatrix(); }
-    // near the top the fog is thin, so a black plug ~24 m down stands in for the abyss; the shaft
-    // bands below it (and, while it is dark, beyond the fog) are not drawn at all
-    const plugY = cam.position.y - 24;
-    this.plug.visible = cam.position.y > -14;
-    this.plug.position.set(0, plugY, 0);
-    const cut = this.plug.visible ? plugY : cam.position.y - sc.fog.far - 1;
-    for (const m of this.shaft.group.children) if (m.isMesh && m.geometry.boundingBox) m.visible = !m.userData.broken && m.geometry.boundingBox.max.y > cut;
-    this.post.vignette = 0.22 + fogK * 0.25;
-    if (this.post.flash > 0) this.post.flash = Math.max(0, this.post.flash - dt * 2.4);
-    if (t > T_CRASH + 0.12) this.post.fade = clamp((t - T_CRASH - 0.12) / 0.3, 0, 1);
-
-    this.meadow.update(dt, cam);
-    // from down the shaft only the sky shows through the hole: skip the meadow unless we look back up at it
-    const lookY = cam.getWorldDirection(this._ld || (this._ld = new THREE.Vector3())).y;
-    this.meadow.group.visible = cam.position.y > -2.5 || (cam.position.y > -9 && lookY > 0.2);
-    this.shaft.update(dt);
-    const wm = this.waterfall.mat.uniforms;
-    wm.uTime.value = t;
-    wm.uFog.value.copy(sc.fog.color);
-    wm.uNear.value = sc.fog.near;
-    wm.uFar.value = sc.fog.far;
-
-    // surface life: leaves from the trees, pollen and butterflies in the sun
-    if (t < T_DROP + 1) {
-      if (Math.random() < dt * 3) this.debris.spawn({ pos: [-4.2 + (Math.random() - 0.5) * 3, 3.5 + Math.random(), -5.6 + (Math.random() - 0.5) * 3], vel: [0.5, -0.3, 0.6], life: 6, color: Math.random() < 0.6 ? 0x6ab448 : 0xc8b040, size: 0.07, gravity: 0.25, drag: 0.6, wobble: 0.8, spin: 5, shape: SHAPE.confetti });
-      if (Math.random() < dt * 8) this.motes.spawn({ pos: [(Math.random() - 0.5) * 8, 0.3 + Math.random() * 2, -3 + (Math.random() - 0.5) * 6], vel: [0.1, 0.05, 0], life: 3, color: 0xfff2a0, size: 0.025, wobble: 0.3, flicker: 0.5 });
-      if (Math.random() < dt * 1.5) this.motes.spawn({ pos: [(Math.random() - 0.5) * 6, 0.4 + Math.random() * 1.2, -2 + (Math.random() - 0.5) * 5], vel: [(Math.random() - 0.5) * 0.6, 0.1, (Math.random() - 0.5) * 0.6], life: 4, color: Math.random() < 0.5 ? 0xffe066 : 0xff9ad0, size: 0.06, wobble: 1.2, flicker: 0.9, shape: SHAPE.diamond });
-    }
-    // the fall: dust and grit tumbling with them, drips by the waterfall, motes rushing past
-    if (t >= T_DROP && t < T_CRASH) {
-      const s = this.sim.at(t - T_DROP, this.simOut);
-      const vy = s[3];
-      if (Math.random() < dt * 14) this.debris.spawn({ pos: [C.x + (Math.random() - 0.5) * 1.6, C.y + (Math.random() - 0.3) * 2, C.z + (Math.random() - 0.5) * 1.6], vel: [(Math.random() - 0.5) * 0.4, vy * (0.9 + Math.random() * 0.2), (Math.random() - 0.5) * 0.4], life: 1.4, color: Math.random() < 0.5 ? 0x5a3e2a : 0x7a6a58, size: 0.03 + Math.random() * 0.04, gravity: 2, shape: SHAPE.square });
-      for (let k = 0; k < 3; k++) {
-        const a = Math.random() * Math.PI * 2, r = 0.5 + Math.random() * 1.6;
-        this.motes.spawn({ pos: [Math.cos(a) * r, cam.position.y - 6 - Math.random() * 6, Math.sin(a) * r], vel: [0, 0, 0], life: 2, color: C.y < FALL_ZONES.wet ? 0x9ad8ff : 0xffe8c0, size: 0.02 + Math.random() * 0.02, flicker: 0.4 });
-      }
-      const wf = this.waterfall;
-      if (Math.abs(cam.position.y - (wf.top.y + wf.bottom.y) / 2) < 12) {
-        for (let k = 0; k < 4; k++) {
-          const src = k % 2 ? wf.bottom : wf.top;
-          this.spray.spawn({ pos: [src.x + (Math.random() - 0.5) * 1.0, src.y + Math.random() * 0.3, src.z + (Math.random() - 0.5) * 1.0], vel: [(Math.random() - 0.5) * 1.6 - src.x * 0.3, Math.random() * 1.6, (Math.random() - 0.5) * 1.6 - src.z * 0.3], life: 1.3, color: 0xeaf6ff, color2: 0x9ac8e8, size: 0.04, size2: 0.12, alpha: 0.7, gravity: 2.5, drag: 1.2 });
-        }
-      }
-    }
-    for (const p of this.pools) p.update(dt);
-    this.updateStreaks(t, cam);
-  }
-
-  updateStreaks(t, cam) {
-    const fallSp = t >= T_DROP && t < T_CRASH ? clamp(-this.sim.at(t - T_DROP, this.simOut)[3] / 5.6, 0, 1) : 0;
+  updateWorld(t, dt) {
+    const cam = this.camera, sc = this.scene, F = this.F;
     const cy = cam.position.y;
-    for (let i = 0; i < this.streaks.length; i++) {
-      const l = this.streaks[i];
-      if (l.y > cy + 4 || l.y < cy - 16) {
-        const a = Math.random() * Math.PI * 2, r = 0.5 + Math.random() * 1.5;
-        l.x = Math.cos(a) * r; l.z = Math.sin(a) * r;
-        l.y = cy - 3 - Math.random() * 12;
-        l.a = 0.12 + Math.random() * 0.22;
-      }
-      const len = 0.3 + fallSp * 1.4;
-      this.stPos.set([l.x, l.y, l.z, l.x, l.y + len, l.z], i * 6);
-      const a = l.a * fallSp;
-      this.stCol.set([1, 0.95, 0.85, 0, 1, 0.95, 0.85, a], i * 8);
+    // daylight drains away below the ground; the dark takes over
+    const dl = Math.pow(clamp(1 + cy / 7, 0, 1), 1.3);
+    this.hemi.intensity = 0.12 + 1.03 * dl;
+    this.sun.intensity = 2.5 * dl;
+    this.fill.intensity = 0.55 * dl;
+    const fogK = 1 - dl;
+    sc.fog.color.copy(this.haze).lerp(this.dark, fogK);
+    sc.fog.near = lerp(14, 3, fogK);
+    sc.fog.far = lerp(74, 22, fogK);
+    sc.background.copy(sc.fog.color);
+    const far = Math.max(24, sc.fog.far + 4);
+    if (Math.abs(cam.far - far) > 0.5) { cam.far = far; cam.updateProjectionMatrix(); }
+    F.sky.position.copy(cam.position);
+    // the shaft below the hole: only bands near the camera
+    const cut = cy - sc.fog.far - 1;
+    for (const m of this.shaft.group.children) if (m.isMesh && m.geometry.boundingBox) m.visible = m.geometry.boundingBox.max.y > cut && m.geometry.boundingBox.min.y < cy + 30;
+    F.group.visible = true; // from down the shaft the crowns still frame the hole
+    // post: golden light through the trees on the surface, then down into the dark
+    const p = this.post;
+    p.grade = mixGrade('sunny', 'deep', fogK);
+    p.gradeMix = 0.85;
+    p.bloom = lerp(0.55, 0.7, fogK);
+    p.bloomThreshold = lerp(0.8, 0.7, fogK);
+    p.vignette = lerp(0.24, 0.62, fogK);
+    p.saturation = lerp(1.1, 0.9, fogK);
+    if (cy > -0.5) {
+      p.rays = 0.95; p.raysDir = SUN_DIR; p.raysPos = null; p.raysSky = 1; p.raysThreshold = 0.86; p.raysColor = 0xffe2a8; p.raysRadius = 0.5; p.raysDecay = 0.965;
+    } else {
+      // the light from the hole above
+      p.rays = 0.8 * (1 - ease(T.I - 1, T.I + 1, t)); p.raysDir = null; p.raysPos = this._holeP || (this._holeP = new THREE.Vector3(0, 0.5, 0)); p.raysSky = 1; p.raysThreshold = 0.8; p.raysColor = 0xfff0c8; p.raysRadius = 0.35; p.raysDecay = 0.95;
     }
-    this.stGeo.attributes.position.needsUpdate = true;
-    this.stGeo.attributes.color.needsUpdate = true;
-  }
+    if (p.flash > 0) p.flash = Math.max(0, p.flash - dt * 2.4);
+    // black out: the light fades, the eyes close round the speck of light far above
+    if (t >= T.H + 1.0) {
+      const k = ease(T.H + 1.0, T.I - 0.1, t);
+      p.fade = k * 0.92;
+      p.fadeColor = 0x000000;
+    }
+    if (t >= T.I) {
+      if (this.bottomY == null) this.bottomY = this.heroPivot.position.y + 0.3;
+      const u = t - T.I;
+      // a few slow blinks, each one narrower, then nothing
+      const blink = Math.max(0, Math.sin(Math.min(u, 3.4) * 2.2)) * (1 - u / 3.4);
+      const R = Math.hypot(this.game.engine.width, this.game.engine.height);
+      p.fade = clamp(1 - blink * 0.85, 0, 1);
+      p.iris = blink > 0.02 ? R * 0.25 * blink : 0;
+      p.irisCenter = [0.5, 0.62];
+      p.vignette = 1.2;
+    }
+    if (t > T.END - 1.2) { p.fade = 1; p.iris = -1; }
 
-  exit() {
-    this.leaving = true;
-    console.log(`[fall] shaft streamed: ${JSON.stringify(this.shaft.stats())}`);
-    super.exit();
+    // the light that falls with him: from just above his head
+    const H0 = this.heroPivot.position;
+    this.fallLight.position.set(H0.x + 0.3, H0.y + 1.4, H0.z + 0.5);
+    this.fallLight.intensity = t > T.G ? 3.2 * fogK * (1 - ease(T.H + 1.2, T.I, t)) : 0;
+    F.update(dt, cam, sc.fog);
+    this.shaft.update?.(dt);
+    // the bars come off for the fall
+    if (t > T.G && !this._barsOff) { this._barsOff = true; this.bars.classList.remove('on'); }
+
+    // surface life: pollen in the light, fireflies in the shade, a leaf or two
+    if (t < T.G + 0.5 && cy > -1) {
+      const H = this.heroPivot.position;
+      if (Math.random() < dt * 14) this.motes.spawn({ pos: [H.x + (Math.random() - 0.5) * 9, 0.3 + Math.random() * 2.6, H.z + (Math.random() - 0.5) * 9], vel: [0.06, 0.03, -0.02], life: 4, color: 0xfff2b0, size: 0.022, wobble: 0.3, flicker: 0.5, fadeIn: 0.5 });
+      if (Math.random() < dt * 3) this.motes.spawn({ pos: [H.x + (Math.random() - 0.5) * 12, 0.2 + Math.random() * 1.2, H.z + (Math.random() - 0.5) * 12], vel: [(Math.random() - 0.5) * 0.3, 0.05, (Math.random() - 0.5) * 0.3], life: 3.5, color: 0xd8ff70, color2: 0x8aff40, size: 0.035, wobble: 1, flicker: 0.95, fadeIn: 0.4, shape: SHAPE.plus });
+      if (Math.random() < dt * 1.6) this.leaves.spawn({ pos: [H.x + (Math.random() - 0.5) * 6, 4 + Math.random() * 2, H.z + (Math.random() - 0.5) * 6], vel: [0.5, -0.4, 0.3], life: 7, color: Math.random() < 0.6 ? 0x8ab448 : 0xd8a040, size: 0.05, gravity: 0.2, drag: 0.8, wobble: 0.9, spin: 5, shape: SHAPE.confetti });
+    }
+    // the stream: louder near the bridge
+    if (t < T.D) {
+      const B = FOREST.bridge;
+      const d = Math.hypot(cam.position.x - B.x, cam.position.z - B.z);
+      this.loop('water', clamp(1 - d / 14, 0, 1) * 0.55);
+    } else this.loop('water', 0);
+    // the fall: grit and motes rushing past
+    if (t >= T.G && t < T.I) {
+      const H = this.heroPivot.position;
+      if (Math.random() < dt * 22) this.debris.spawn({ pos: [H.x + (Math.random() - 0.5) * 1.6, H.y + (Math.random() - 0.2) * 2, H.z + (Math.random() - 0.5) * 1.6], vel: [(Math.random() - 0.5) * 0.4, -9 * (t - T.G) * (0.85 + Math.random() * 0.2), (Math.random() - 0.5) * 0.4], life: 1.2, color: Math.random() < 0.5 ? 0x5a3e2a : 0x7a6a58, size: 0.03 + Math.random() * 0.03, gravity: 6, shape: SHAPE.square });
+      for (let k = 0; k < 2; k++) { const a = Math.random() * 6.28, r = 0.4 + Math.random() * 1.6; this.motes.spawn({ pos: [Math.cos(a) * r, cy - 3 - Math.random() * 6, Math.sin(a) * r], vel: [0, 0, 0], life: 1.6, color: 0xffe8c0, size: 0.018, flicker: 0.4 }); }
+    }
+    // hero footsteps (on the bridge they ring hollow)
+    const hr = this.hero;
+    if (hr.state === 'walk') {
+      const ph = Math.floor(hr.t * 8.5 / Math.PI);
+      if (ph !== this._stepPh) {
+        this._stepPh = ph;
+        const B = FOREST.bridge;
+        const onBridge = B && Math.abs(this.cur.s - B.s) < B.half;
+        this.sfx('step', { mat: onBridge ? 'wood' : 'dirt', vol: 0.7 });
+      }
+    }
+    for (const pl of this.pools) pl.update(dt);
   }
 }

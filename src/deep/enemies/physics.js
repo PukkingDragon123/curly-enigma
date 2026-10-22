@@ -8,12 +8,25 @@ export function matAt(w, x, y, z) { return w.voxelAt(Math.floor(x * VOX), Math.f
 /** 0 none, 1 water, 2 lava */
 export function fluidAt(w, x, y, z) { return MAT[matAt(w, x, y, z)]?.fluid || 0; }
 
-/** Any solid voxel inside [x0,x1]×[y0,y1]×[z0,z1]? */
-export function boxHits(w, x0, y0, z0, x1, y1, z1) {
+/**
+ * Any solid voxel inside [x0,x1]×[y0,y1]×[z0,z1]? s > 1 samples every s-th voxel (always
+ * including the box edges): big creatures would otherwise read tens of thousands of voxels.
+ */
+export function boxHits(w, x0, y0, z0, x1, y1, z1, s = 1) {
   const a = Math.floor(x0 * VOX), b = Math.floor((x1 - 1e-4) * VOX);
   const c = Math.floor(y0 * VOX), d = Math.floor((y1 - 1e-4) * VOX);
   const e = Math.floor(z0 * VOX), f = Math.floor((z1 - 1e-4) * VOX);
-  for (let z = e; z <= f; z++) for (let y = c; y <= d; y++) for (let x = a; x <= b; x++) if (OPAQUE[w.voxelAt(x, y, z)] === 1) return true;
+  if (s <= 1) {
+    for (let z = e; z <= f; z++) for (let y = c; y <= d; y++) for (let x = a; x <= b; x++) if (OPAQUE[w.voxelAt(x, y, z)] === 1) return true;
+    return false;
+  }
+  for (let z = e; ; z = Math.min(f, z + s)) {
+    for (let y = c; ; y = Math.min(d, y + s)) {
+      for (let x = a; ; x = Math.min(b, x + s)) { if (OPAQUE[w.voxelAt(x, y, z)] === 1) return true; if (x >= b) break; }
+      if (y >= d) break;
+    }
+    if (z >= f) break;
+  }
   return false;
 }
 
@@ -25,7 +38,9 @@ export function walk(w, b, dt, grav = 16) {
   const p = b.pos, v = b.vel, hw = b.hw, h = b.h;
   const ev = b.ev;
   ev.landed = 0; ev.bumped = false; ev.ceil = false;
-  const hits = (x, y, z) => boxHits(w, x - hw, y, z - hw, x + hw, y + h, z + hw);
+  // big bodies sample their box sparsely (a stride of 2–3 voxels)
+  const sd = b.stride ?? (hw > 0.55 ? 3 : hw > 0.28 ? 2 : 1);
+  const hits = (x, y, z) => boxHits(w, x - hw, y, z - hw, x + hw, y + h, z + hw, sd);
   // fluids: water floats, lava floats fire-folk (others sink in and burn — the caller decides)
   const fl = fluidAt(w, p.x, p.y + h * 0.4, p.z);
   b.inFluid = fl;
@@ -48,7 +63,7 @@ export function walk(w, b, dt, grav = 16) {
       if (!hits(nx, p.y, nz)) { p.x = nx; p.z = nz; continue; }
       let stepped = false;
       if (was || grounded) {
-        for (let st = 1 / VOX; st <= (b.step ?? 0.26) + 1e-4; st += 1 / VOX) {
+        for (let st = 1 / VOX; st <= (b.step ?? 0.26) + 1e-4; st += Math.max(1, sd - 1) / VOX) {
           if (!hits(nx, p.y + st, nz) && !hits(p.x, p.y + st, p.z)) { p.y += st; p.x = nx; p.z = nz; stepped = true; break; }
         }
       }
@@ -66,7 +81,7 @@ export function walk(w, b, dt, grav = 16) {
       v.y = 0;
     }
   }
-  if (!grounded && v.y <= 0 && boxHits(w, p.x - hw, p.y - 0.03, p.z - hw, p.x + hw, p.y, p.z + hw)) grounded = true;
+  if (!grounded && v.y <= 0 && boxHits(w, p.x - hw, p.y - 0.03, p.z - hw, p.x + hw, p.y, p.z + hw, sd)) grounded = true;
   // spawned or pushed into rock: nudge up
   if (hits(p.x, p.y, p.z)) { p.y += 1 / VOX; v.y = Math.max(v.y, 0); }
   b.grounded = grounded;

@@ -112,7 +112,7 @@ export class StirStep extends Step {
       // too fast → slosh over the rim
       this.spillCd -= dt;
       const tps = Math.abs(this.omega) / (Math.PI * 2);
-      if (tps > 2.3 && this.spillCd <= 0) {
+      if (tps > 2.3 * this.skill && this.spillCd <= 0) {
         this.spills++;
         this.spillCd = 0.55;
         this.audio.play('splash', { vol: 0.5 });

@@ -6,8 +6,10 @@ import { CREATURES } from '../data/creatures.js';
 import { DISHES } from '../data/recipes.js';
 import { WEAPON_TYPES, weaponValue, weaponName, gradeFor } from '../data/weapons.js';
 import { uid, clamp } from './util.js';
+import { slotKey, currentSlot, listSlots, useSlot, deleteSlot, completionOf } from './saves.js';
+import { attachSkills, defaultSkills, fillSkills } from './skills.js';
+import * as Inv from './inventory.js';
 
-const SAVE_KEY = 'moleforge.save.v1';
 export const GOAL_GOLD = 1000000;
 
 function defaultHome() {
@@ -32,9 +34,12 @@ export function defaultData() {
     day: 1,
     energy: 100,
     maxEnergy: 100,
-    lots: [], // [{uid, id, q, p}] items with quality
-    counts: { grub_bar: 2, support_beam: 3 }, // stackables
-    weapons: [], // forged weapons
+    lots: [], // read-only mirror of the backpack's quality lots [{uid, id, q, p}] (core/inventory.js)
+    counts: { grub_bar: 2, support_beam: 3, chicken_feed: 6 }, // read-only mirror of the backpack's stackables
+    weapons: [], // read-only mirror of the forged weapons in the backpack
+    inv: Inv.defaultInv(), // the backpack: slots of stacks (core/inventory.js)
+    coop: Inv.defaultCoop(), // Nugget's walking coop: its shelves, how fed she is (deep/Nugget.js)
+    stash: { slots: [] }, // what didn't fit, kept at home
     owned: { pick_rusty: 1, helmet_basic: 1, bag_small: 1, bp_dagger: 1, floor_dirt: 1, wall_dirt: 1 },
     equip: { pick: 'pick_rusty', chisel: null, brush: null, drill: null, xray: null, helmet: 'helmet_basic', gloves: null, suit: null, boots: null, bag: 'bag_small' },
     furniture: {}, // unplaced furniture: id → count
@@ -54,6 +59,7 @@ export function defaultData() {
     settings: { music: 0.55, sfx: 0.85, pixel: 0, shake: 1 },
     playTime: 0,
     created: Date.now(),
+    skills: defaultSkills(), // the skill tree: XP, levels, points, stamped nodes (core/skills.js)
   };
 }
 
@@ -64,6 +70,8 @@ export class State {
     this.dirty = false;
     this.lastSave = 0;
     this.pendingMs = []; // milestones reached but not shown yet (takeMilestones)
+    this.slot = currentSlot(); // save slot in use, 0..2 (core/saves.js)
+    attachSkills(this); // state.skill(key), addSkillPoints(n), 'act' → XP (core/skills.js)
     this.applyUpgrades();
   }
 
@@ -80,11 +88,12 @@ export class State {
 
   // ---------- persistence ----------
   hasSave() {
-    try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; }
+    try { return !!localStorage.getItem(slotKey(this.slot)); } catch (e) { return false; }
   }
   save() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(this.data));
+      this.data.saved = Date.now();
+      localStorage.setItem(slotKey(this.slot), JSON.stringify(this.data));
       this.dirty = false;
       this.lastSave = performance.now();
       return true;
@@ -94,7 +103,7 @@ export class State {
   }
   load(raw) {
     try {
-      const json = raw || localStorage.getItem(SAVE_KEY);
+      const json = raw || localStorage.getItem(slotKey(this.slot));
       if (!json) return false;
       const d = typeof json === 'string' ? JSON.parse(json) : json;
       const base = defaultData();
@@ -105,6 +114,8 @@ export class State {
       this.data.upgrades = { ...(d.upgrades || {}) };
       this.data.progress = { ...base.progress, ...(d.progress || {}) };
       this.data.progress.ms = { ...(this.data.progress.ms || {}) };
+      this.data.skills = fillSkills(d.skills, this.data);
+      this.invStashed = Inv.loadInventory(this, d); // old saves: pack the items into slots (core/inventory.js)
       this.pendingMs = [];
       this.applyUpgrades();
       this.emit('load');
@@ -123,8 +134,17 @@ export class State {
     this.emit('load');
   }
   wipeSave() {
-    try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* noop */ }
+    try { localStorage.removeItem(slotKey(this.slot)); } catch (e) { /* noop */ }
   }
+  // ---------- save slots (core/saves.js) ----------
+  /** [{ i, used, completion, gold, day, playTime, scene, fallen, saved, current }] for the 3 slots. */
+  listSlots() { return listSlots(this); }
+  /** Switch to slot i and load it (fresh data if empty; opts.fresh wipes it for a new game). */
+  useSlot(i, opts) { return useSlot(this, i, opts); }
+  /** Delete slot i's save (and its mine). */
+  deleteSlot(i) { return deleteSlot(this, i); }
+  /** How far this save is, 0..100 (formula in core/saves.js and docs/REMAKE.md). */
+  completion() { return completionOf(this.data); }
 
   // ---------- gold ----------
   get gold() { return this.data.gold; }
@@ -161,7 +181,7 @@ export class State {
 
   // ---------- buffs ----------
   addBuff(id, seconds = 300) {
-    const until = this.data.playTime + seconds;
+    const until = this.data.playTime + seconds * (this.skill?.('buff') ?? 1); // Slow Simmer etc.
     const b = this.data.buffs.find((x) => x.id === id);
     if (b) b.until = Math.max(b.until, until);
     else this.data.buffs.push({ id, until });
@@ -182,15 +202,6 @@ export class State {
     const it = ITEMS[id];
     if (!it) { console.warn('unknown item', id); return null; }
     const n = opts.n ?? 1;
-    if (it.q) {
-      let last = null;
-      for (let i = 0; i < n; i++) {
-        last = { uid: uid(), id, q: Math.round(clamp(opts.q ?? 100, 0, 100)), p: !!opts.p };
-        this.data.lots.push(last);
-      }
-      this.emit('items', { id, n });
-      return last;
-    }
     if (it.cat === 'tool' || it.cat === 'equip' || it.cat === 'blueprint' || it.cat === 'floor' || it.cat === 'wallpaper' || it.cat === 'key') {
       this.data.owned[id] = 1;
       if (it.cat === 'blueprint' && it.kind === 'forge') this.data.forgeLevel = Math.max(this.data.forgeLevel, it.level);
@@ -203,36 +214,33 @@ export class State {
       this.emit('items', { id, n });
       return this.data.furniture[id];
     }
-    this.data.counts[id] = (this.data.counts[id] || 0) + n;
-    this.emit('items', { id, n });
-    return this.data.counts[id];
+    // everything else goes in the backpack's slots: null + emit('full') when it doesn't fit
+    // (opts.spill: what doesn't fit goes to the stash at home instead)
+    return Inv.addToBag(this, id, opts);
   }
+  /** Will n of this item fit in the backpack? */
+  canAdd(id, n = 1) { return Inv.canAdd(this, id, n); }
+  /** Backpack pockets unlocked (bag + upgrades + skills). */
+  bagSlots() { return Inv.bagSlots(this); }
+  /** { used, slots, free, full } pockets of the backpack. */
+  bagFill() { return Inv.bagFill(this); }
 
   /** Count of an item (lots + stack). */
   count(id) {
     const it = ITEMS[id];
     if (!it) return 0;
-    if (it.q) return this.data.lots.reduce((s, l) => s + (l.id === id ? 1 : 0), 0);
     if (it.cat === 'furniture') return this.data.furniture[id] || 0;
     if (it.cat === 'tool' || it.cat === 'equip' || it.cat === 'blueprint' || it.cat === 'floor' || it.cat === 'wallpaper' || it.cat === 'key') return this.data.owned[id] ? 1 : 0;
-    return this.data.counts[id] || 0;
+    return Inv.countIn(Inv.bag(this), id);
   }
   owns(id) { return this.count(id) > 0; }
 
-  lotsOf(id) { return this.data.lots.filter((l) => l.id === id); }
+  lotsOf(id) { return Inv.lotsIn(Inv.bag(this), id); }
 
   /** Remove n of an item. For quality items removes the highest quality first unless lowFirst. Returns removed lots (or count). */
   removeItem(id, n = 1, { lowFirst = false } = {}) {
     const it = ITEMS[id];
     if (!it) return [];
-    if (it.q) {
-      const lots = this.lotsOf(id).sort((a, b) => (lowFirst ? a.q - b.q : b.q - a.q));
-      const take = lots.slice(0, n);
-      const set = new Set(take.map((l) => l.uid));
-      this.data.lots = this.data.lots.filter((l) => !set.has(l.uid));
-      this.emit('items', { id, n: -take.length });
-      return take;
-    }
     if (it.cat === 'furniture') {
       const have = this.data.furniture[id] || 0;
       const k = Math.min(have, n);
@@ -241,34 +249,14 @@ export class State {
       this.emit('items', { id, n: -k });
       return k;
     }
-    const have = this.data.counts[id] || 0;
-    const k = Math.min(have, n);
-    this.data.counts[id] = have - k;
-    if (!this.data.counts[id]) delete this.data.counts[id];
-    this.emit('items', { id, n: -k });
-    return k;
+    return Inv.removeFromBag(this, id, n, { lowFirst });
   }
 
-  removeLot(lotUid) {
-    const i = this.data.lots.findIndex((l) => l.uid === lotUid);
-    if (i < 0) return null;
-    const [l] = this.data.lots.splice(i, 1);
-    this.emit('items', { id: l.id, n: -1 });
-    return l;
-  }
+  removeLot(lotUid) { return Inv.removeLotFromBag(this, lotUid); }
 
   /** Grouped inventory view: [{id, n, avgQ, lots?}] */
   inventory(filter = () => true) {
-    const out = [];
-    const groups = {};
-    for (const l of this.data.lots) {
-      if (!filter(ITEMS[l.id])) continue;
-      (groups[l.id] ||= []).push(l);
-    }
-    for (const [id, lots] of Object.entries(groups)) {
-      out.push({ id, n: lots.length, avgQ: Math.round(lots.reduce((s, l) => s + l.q, 0) / lots.length), lots });
-    }
-    for (const [id, n] of Object.entries(this.data.counts)) if (n > 0 && filter(ITEMS[id])) out.push({ id, n });
+    const out = Inv.groups(Inv.bag(this), filter);
     for (const [id, n] of Object.entries(this.data.furniture)) if (n > 0 && filter(ITEMS[id])) out.push({ id, n });
     return out;
   }
@@ -278,8 +266,8 @@ export class State {
     const weapon = { uid: uid(), day: this.data.day, ...w };
     weapon.grade = gradeFor(weapon.score).g;
     weapon.name = weapon.name || weaponName(weapon);
-    weapon.value = weaponValue(weapon, ITEMS);
-    this.data.weapons.push(weapon);
+    weapon.value = Math.round(weaponValue(weapon, ITEMS) * (this.skill?.('craft') ?? 1) * (weapon.gem ? this.skill?.('gemset') ?? 1 : 1)); // smithing skills
+    Inv.addWeaponToBag(this, weapon); // a free pocket, or the stash at home when the bag is full
     this.data.stats.weapons++;
     this.data.stats.bestWeapon = Math.max(this.data.stats.bestWeapon, weapon.value);
     const key = 'weapon:' + weapon.type;
@@ -296,9 +284,8 @@ export class State {
     return weapon;
   }
   removeWeapon(wuid) {
-    const i = this.data.weapons.findIndex((w) => w.uid === wuid);
-    if (i < 0) return null;
-    const [w] = this.data.weapons.splice(i, 1);
+    const w = Inv.removeWeaponFromBag(this, wuid);
+    if (!w) return null;
     this.emit('items', { id: 'weapon', n: -1 });
     return w;
   }
@@ -307,6 +294,8 @@ export class State {
   equip(id) {
     const it = ITEMS[id];
     if (!it || !it.slot || !this.owns(id)) return false;
+    // a smaller bag can't hold what's in the pockets it doesn't have
+    if (it.slot === 'bag' && (it.slots ?? 6) < Inv.bagFill(this).used) return false;
     this.data.equip[it.slot] = id;
     this.emit('equip', { slot: it.slot, id });
     return true;
@@ -319,23 +308,27 @@ export class State {
     }
     return false;
   }
-  bagCapacity() { return (this.equipped('bag')?.cap ?? 14) + this.upEffect('bag'); }
-  lightRadius() { return (this.equipped('helmet')?.light ?? 5) + (this.hasBuff('glow') ? 2.5 : 0) + this.upEffect('lamp'); }
+  bagCapacity() { return Math.round(((this.equipped('bag')?.cap ?? 14) + this.upEffect('bag')) * (this.skill?.('carry') ?? 1)); }
+  lightRadius() { return ((this.equipped('helmet')?.light ?? 5) + (this.hasBuff('glow') ? 2.5 : 0) + this.upEffect('lamp')) * (this.skill?.('lamp') ?? 1); }
+  /** A shop price after the Haggler skills (state.buy charges this; show it on price tags). */
+  buyPrice(price) { const k = this.skill?.('haggle') ?? 1; return k > 1 && price > 0 ? Math.max(1, Math.round(price / k)) : price; }
 
   /** Buy: handles price + extra item requirements. Returns {ok, reason} */
   buy(id, price, qty = 1) {
     const it = ITEMS[id];
     if (!it) return { ok: false, reason: 'Unknown item' };
-    const total = price * qty;
+    const total = this.buyPrice(price) * qty;
     if (it.needs) {
       for (const [nid, n] of Object.entries(it.needs)) {
         if (this.count(nid) < n * qty) return { ok: false, reason: `Needs ${n * qty}× ${ITEMS[nid].name}` };
       }
     }
     if (!this.canAfford(total)) return { ok: false, reason: 'Not enough gold' };
+    if (!this.canAdd(id, qty)) return { ok: false, reason: 'No room in your backpack', full: true };
     if (it.needs) for (const [nid, n] of Object.entries(it.needs)) this.removeItem(nid, n * qty, { lowFirst: true });
     this.spend(total, 'buy');
     for (let i = 0; i < qty; i++) this.addItem(id, it.q ? { q: 100 } : {});
+    if (total < price * qty) this.emit('skill', { type: 'perk', key: 'haggle', text: `Haggled <b>${price * qty - total}g</b> off`, quiet: true });
     if ((it.cat === 'tool' || it.cat === 'equip') && it.slot) {
       const cur = this.equipped(it.slot);
       if (!cur || (it.price || 0) >= (cur.price || 0)) this.equip(id);
@@ -442,7 +435,7 @@ export class State {
   }
   /** Keep derived bonuses (sale prices) in step with the upgrade levels. */
   applyUpgrades() {
-    setFindBonus(1 + this.upEffect('appraise'));
+    setFindBonus((1 + this.upEffect('appraise')) * (this.skill?.('sell') ?? 1)); // + the Trading skills
   }
   /**
    * Mining bonuses from the upgrade board. Multipliers are 1 when nothing's bought.
@@ -482,7 +475,7 @@ export class State {
         done[m.id] = this.data.day;
         got.push(m);
         if (m.reward?.gold) this.addGold(m.reward.gold, 'milestone');
-        for (const [id, n] of Object.entries(m.reward?.items || {})) if (ITEMS[id]) this.addItem(id, { n, q: 100 });
+        for (const [id, n] of Object.entries(m.reward?.items || {})) if (ITEMS[id]) this.addItem(id, { n, q: 100, spill: true });
       }
     } finally { this._msBusy = false; }
     if (got.length) {

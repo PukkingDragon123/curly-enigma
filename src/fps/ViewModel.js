@@ -10,6 +10,10 @@
 //   vm.swing('pick', 0.3); vm.impact('pick', 1); vm.use('drill', true); vm.eat('grub_bar'); vm.hurt();
 //   engine.render(world, cam, { overlay: { scene: vm.scene, camera: vm.camera } });
 //
+// Guard (combat): vm.block(on) every frame raises the held tool across the view (a pick or hammer
+// haft held crossways in both paws; other tools: forearms crossed); vm.guardHit(k, parried) jolts
+// the guard when a blow lands on it (a parry snaps it forward with a ring).
+//
 // Extras: vm.tipView(out) (tool tip in view-camera space, for sparks and dust), vm.shake (0..1,
 // for the world camera), vm.heat (drill heat 0..1, simulated unless update() passes `heat`),
 // vm.busy (an action or eat animation is playing), vm.world (a group to add to the WORLD scene
@@ -69,6 +73,11 @@ const SWIM_B = P([0.25, -0.11, -0.34], [0.55, 0.45, 0.7], [0.5, 0.2, -1]);
 const SWIM_C = P([0.12, -0.2, -0.29], [0.15, 0.5, 0.85], [-0.4, 0.1, -1]);
 const SWIPE_UP = P([0.23, -0.07, -0.26], [-0.5, 0.6, 0.7], [-0.25, 0.75, -0.6]);
 const SWIPE_HIT = P([0.02, -0.23, -0.44], [-0.4, 0.8, -0.5], [-0.55, -0.6, -0.6]);
+// guard: the haft held crossways in front of the face (handle pointing left, blade up), or the
+// forearms crossed (tools without a haft); mirrored onto the left paw where it is a second hand
+const GUARD = P([0.135, -0.085, -0.29], [-1, 0.22, 0.12], [0.05, 1, -0.35]);
+const GUARD_ARM = P([0.06, -0.04, -0.25], [-0.72, 0.7, 0.15], [-0.2, 0.35, -1]);
+const HAFTED = new Set(['pick', 'hammer', 'smith', 'chisel', 'stake', 'beam']);
 const EAT_Q = aim([-0.1, 1, 0.25], [-0.45, 0.05, -1]);
 const MOUTH = new THREE.Vector3(0.03, -0.052, -0.225); // where the snack is held for munching (just above the mouth, in view)
 const SHOULDER = new THREE.Vector3(0.4, -0.6, 0.06);
@@ -158,6 +167,10 @@ export class ViewModel {
     this.sway = { x: new Spring(90, 13), y: new Spring(90, 13) };
     this.land = new Spring(170, 15);
     this.recoil = new Spring(220, 16);
+    this.guarding = false;
+    this.guardK = 0;
+    this.guardKick = new Spring(240, 15);
+    this.parryT = 0;
     this.R = new Pose(); this.L = new Pose();
     this.tmp = new Pose(); this.tmp2 = new Pose();
     this.leftFood = null;
@@ -197,7 +210,7 @@ export class ViewModel {
     Object.assign(this.P, {
       open: fit(OPEN), xrayOn: fit(XRAY_ON), mallet: fit(MALLET), tongsL: fit(TONGS_L),
       climbUp: fit(CLIMB_UP), climbDn: fit(CLIMB_DN), swimA: fit(SWIM_A), swimB: fit(SWIM_B), swimC: fit(SWIM_C),
-      swipeUp: fit(SWIPE_UP), swipeHit: fit(SWIPE_HIT),
+      swipeUp: fit(SWIPE_UP), swipeHit: fit(SWIPE_HIT), guard: fit(GUARD), guardArm: fit(GUARD_ARM),
       mouth: new THREE.Vector3(MOUTH.x * L.x, MOUTH.y * L.y, MOUTH.z),
       shoulder: new THREE.Vector3(SHOULDER.x * (0.4 + 0.6 * L.x), SHOULDER.y * L.y, SHOULDER.z),
     });
@@ -237,6 +250,16 @@ export class ViewModel {
     const hand = this.kind === 'food' ? 'R' : 'L';
     this.eating = { t: 0, id: itemId, hand, bites: 3 };
     if (hand === 'L' && itemId !== this.leftFood) { this.leftFood = itemId; this.rebuild(); }
+  }
+
+  /** Hold the guard up (call every frame; the lift is quick so a perfect block can be timed). */
+  block(on) { this.guarding = !!on; }
+
+  /** A blow landed on the guard: k 0..1+ how hard; parried: a perfect block (snaps forward, rings). */
+  guardHit(k = 1, parried = false) {
+    this.guardKick.kick(parried ? -10 * k : 14 * k);
+    this.shake = Math.max(this.shake, (parried ? 0.35 : 0.5) * k);
+    if (parried) this.parryT = 0.35;
   }
 
   /** A pained flinch. */
@@ -482,6 +505,35 @@ export class ViewModel {
       }
     }
     if (this.mode !== 'tool') this.driveK = Math.max(0, this.driveK - dt * 9);
+
+    // ---- guard (combat): up fast, down a little slower
+    const gWant = this.guarding && this.mode === 'tool' && !this.eating && !this.pending ? 1 : 0;
+    this.guardK += (gWant - this.guardK) * Math.min(1, dt * (gWant ? 26 : 11));
+    this.parryT = Math.max(0, this.parryT - dt);
+    const gk = this.guardKick.step(dt);
+    if (this.guardK > 0.002) {
+      const k = ease(this.guardK);
+      const P = this.P;
+      if (HAFTED.has(this.kind)) {
+        // both paws on the haft
+        this.tmp.copy(P.guard);
+        this.tmp.move(0, Math.sin(t * 2.1) * 0.002, gk * 0.004).rot(-gk * 0.03, 0, gk * 0.015);
+        if (this.parryT > 0) this.tmp.move(0, 0.01 * Math.sin(this.parryT / 0.35 * Math.PI), -0.03 * Math.sin(this.parryT / 0.35 * Math.PI));
+        R.mix(this.tmp, k);
+        this.tmp2.copy(this.tmp);
+        this.tmp2.p.copy(this.tmp.point(0, 38 * VMV, 0));
+        this.tmp2.rot(0, 0, Math.PI);
+        L.mix(this.tmp2, k);
+        if (k > 0.5) { gripL = true; leftItem = this.kind === 'chisel' ? false : leftItem; }
+      } else {
+        // forearms crossed in front of the face
+        this.tmp.copy(P.guardArm).move(0, 0, gk * 0.004).rot(-gk * 0.03, 0, 0);
+        R.mix(this.tmp, k);
+        this.tmp2.copy(P.guardArm).mirror().move(0.01, -0.012, gk * 0.004).rot(-gk * 0.03, 0, 0);
+        L.mix(this.tmp2, k);
+        if (k > 0.5) gripL = true;
+      }
+    }
 
     // ---- eating
     if (this.eating) {

@@ -59,7 +59,10 @@ function insetMap(occ, W, H) {
 
 /** Representative color of an item: its most common mid-tone pixel color. */
 const ACCENTS = new Set(Object.values(FIXED));
+// icons whose most common colour isn't the food itself (stems, moss, nests...)
+const MAIN_COL = { glowcap: 0x4ab0ff, gloomshroom: 0x6a3a8a, cave_berry: 0xd02a40, glow_moss: 0x5ab84a, stone_thyme: 0x86a06a, dino_egg: 0xf0d870, truffle: 0x4a3a30, grub: 0xf0e0c0, crystal_lily: 0xb4ecff, core_lotus: 0xff7ac0, emberbloom: 0xffa030, frostbloom: 0xd0f2ff };
 export function mainColor(id) {
+  if (MAIN_COL[id] !== undefined) return MAIN_COL[id];
   const { px } = iconPixels(id);
   const pick = (skipAccents) => {
     const counts = new Map();

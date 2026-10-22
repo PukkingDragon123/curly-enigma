@@ -1,9 +1,9 @@
-// Home placement rules: footprints, occupancy, and what may go where. The burrow is a grid of
-// tiles (W × D, see roomSize); in first person every one of its four walls is real, so wall
-// pieces hang on any wall: rotation r picks the wall (0 north, 1 west, 2 south, 3 east), and
-// floor pieces that stand against a wall (fireplace, bookshelf, clock) do the same. A few tiles
-// are kept clear: the door to town, the lift in the south-east corner, the build bench and the
-// floor in front of every tunnel mouth.
+// Home placement rules: footprints, occupancy, and what may go where. Your room (the back room of
+// Old Star's tavern) is a grid of tiles (W × D, see roomSize); in first person every one of its
+// four walls is real, so wall pieces hang on any wall: rotation r picks the wall (0 north, 1 west,
+// 2 south, 3 east), and floor pieces that stand against a wall (fireplace, bookshelf, clock) do the
+// same. A few spots are kept clear: the archway down to the tavern hall in the north wall, the
+// build bench and the floor in front of every old tunnel mouth.
 import { FURNITURE } from '../data/furniture.js';
 import { ROOM_SIZES } from '../data/weapons.js';
 
@@ -15,8 +15,8 @@ export const TALL_WALL = new Set(['bookshelf', 'clock', 'fireplace']);
 export const POSTER_SLOTS = [1, 2];
 /** West-wall slot holding the round window into the crystal cave. */
 export const WINDOW_SLOTS = [2];
-/** Where the fall broke through the ceiling (the light shaft lands here). */
-export const HOLE = { x: 3.25, z: 3.45 };
+/** North-wall slots taken by the archway down the steps into the tavern hall (centre x = 5 tiles). */
+export const ARCH_SLOTS = [4, 5];
 
 export function roomSize(level) {
   return ROOM_SIZES[Math.max(0, Math.min(ROOM_SIZES.length - 1, level | 0))];
@@ -31,33 +31,25 @@ export const isWallHung = (id) => FURNITURE[id]?.kind === 'wall';
 export const isRug = (id) => FURNITURE[id]?.kind === 'rug';
 export const isStorable = (id) => !FUNCTIONAL.has(FURNITURE[id]?.kind);
 
-export function doorTile(W, D) { return { x: 0, y: D - 2 }; }
-/** West-wall slots covered by the door. */
-export function doorSlots(W, D) { return [D - 2, D - 1]; }
-/** The lift cage: 2 × 2 tiles in the south-east corner. */
-export function liftTiles(W, D) { return { x: W - 2, y: D - 2, w: 2, d: 2 }; }
 /** The build bench against the east wall. */
 export function benchTiles(W, D) { return { x: W - 1, y: 2, w: 1, d: 2 }; }
 /** Wall slots holding tunnel mouths (filled in by the home scene from the save). */
 export const TUNNEL_SLOTS = { n: new Set(), w: new Set(), s: new Set(), e: new Set() };
 /** Slots nothing else may use, per wall. */
-export function reservedW(W, D) { return [...doorSlots(W, D), ...WINDOW_SLOTS, ...TUNNEL_SLOTS.w]; }
-export function reservedN() { return [...POSTER_SLOTS, ...TUNNEL_SLOTS.n]; }
-export function reservedS(W, D) { return [W - 2, W - 1, ...TUNNEL_SLOTS.s]; }
-export function reservedE(W, D) { const b = benchTiles(W, D); return [D - 2, D - 1, b.y, b.y + 1, ...TUNNEL_SLOTS.e]; }
+export function reservedW() { return [...WINDOW_SLOTS, ...TUNNEL_SLOTS.w]; }
+export function reservedN() { return [...POSTER_SLOTS, ...ARCH_SLOTS, ...TUNNEL_SLOTS.n]; }
+export function reservedS() { return [...TUNNEL_SLOTS.s]; }
+export function reservedE(W, D) { const b = benchTiles(W, D); return [b.y, b.y + 1, ...TUNNEL_SLOTS.e]; }
 const RESERVED = { n: (W, D) => reservedN(), w: reservedW, s: reservedS, e: reservedE };
 /** Wall for a wall-piece rotation, and the rotation that faces into the room from a wall. */
 export const WALL_OF_R = ['n', 'w', 's', 'e'];
 export const R_OF_WALL = { n: 0, w: 1, s: 2, e: 3 };
 
-/** Floor tiles nothing may stand on: door, lift, bench and the tiles in front of tunnel mouths. */
+/** Floor tiles nothing may stand on: the way to the archway, the bench and the tiles in front of tunnel mouths. */
 export function fixedTiles(W, D) {
   const out = new Map();
   const put = (x, y, why) => out.set(x + ',' + y, why);
-  put(0, D - 2, 'Keep the door clear'); put(0, D - 1, 'Keep the door clear');
-  const L = liftTiles(W, D);
-  for (let y = L.y; y < L.y + L.d; y++) for (let x = L.x; x < L.x + L.w; x++) put(x, y, 'That\'s the lift');
-  for (let x = L.x; x < L.x + L.w; x++) put(x, L.y - 1, 'Keep the lift gate clear');
+  for (const k of ARCH_SLOTS) { put(k, 0, 'Keep the way to the tavern clear'); put(k, 1, 'Keep the way to the tavern clear'); }
   const B = benchTiles(W, D);
   for (let y = B.y; y < B.y + B.d; y++) put(B.x, y, 'That\'s the build bench');
   for (const k of TUNNEL_SLOTS.n) put(k, 0, 'Keep the tunnel clear');
@@ -66,38 +58,6 @@ export function fixedTiles(W, D) {
   for (const k of TUNNEL_SLOTS.e) put(W - 1, k, 'Keep the tunnel clear');
   return out;
 }
-
-/**
- * Wall spots the mole can dig from (DEEP.md: wall 'n' z=0, 's' z=D, 'w' x=0, 'e' x=W; t = tile
- * centre along the wall, x for n/s and z for e/w). Skips the corners, the door, poster, window,
- * lift, bench, anything hung on (or standing tall against) the wall, and the slots right next to a
- * tunnel mouth. Returns [{wall, t, k, x, z, nx, nz}] where (x, z) is the floor point in front of
- * the wall (tiles) and (nx, nz) points into the room. tunnels: [{wall, t}] (existing mouths are
- * included, flagged `tunnel: true`).
- */
-export function digSpots(placed, W, D, tunnels = []) {
-  const occ = occupancy(placed, null, W, D);
-  const out = [];
-  const near = (wall, k) => tunnels.some((tn) => tn.wall === wall && Math.abs(Math.floor(tn.t) - k) === 1);
-  const isT = (wall, k) => tunnels.some((tn) => tn.wall === wall && Math.floor(tn.t) === k);
-  const add = (wall, len, mk) => {
-    const res = RESERVED[wall](W, D);
-    const used = occ['wall' + wall.toUpperCase()];
-    for (let k = 0; k < len; k++) {
-      const tunnel = isT(wall, k);
-      if (!tunnel && (k === 0 || k === len - 1 || res.includes(k) || used.has(k) || near(wall, k))) continue;
-      out.push({ wall, t: k + 0.5, k, tunnel, ...mk(k + 0.5) });
-    }
-  };
-  add('n', W, (t) => ({ x: t, z: 0.42, nx: 0, nz: 1 }));
-  add('s', W, (t) => ({ x: t, z: D - 0.42, nx: 0, nz: -1 }));
-  add('w', D, (t) => ({ x: 0.42, z: t, nx: 1, nz: 0 }));
-  add('e', D, (t) => ({ x: W - 0.42, z: t, nx: -1, nz: 0 }));
-  return out;
-}
-
-/** The floor tile in front of a wall spot. */
-export function spotTile(s) { return { x: Math.floor(s.x), y: Math.floor(s.z) }; }
 
 /** Tunnels from the save (deep scene owns them), normalized and deduplicated by wall + tile. */
 export function tunnelList(data, extra = null) {

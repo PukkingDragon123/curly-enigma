@@ -55,21 +55,35 @@ export function batchStatic(root, { skip = null } = {}) {
     const big = gr.verts > 65535;
     const idx = big ? new Uint32Array(gr.idx) : new Uint16Array(gr.idx);
     let vo = 0, io = 0;
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    const e = _m.elements, ne = _n.elements;
     for (const o of gr.items) {
       _m.multiplyMatrices(_inv, o.matrixWorld);
       _n.getNormalMatrix(_m);
       const flip = _m.determinant() < 0;
       const g = o.geometry;
       const P = g.attributes.position, N = g.attributes.normal, C = g.attributes.color, I = g.index;
+      const fast = !P.isInterleavedBufferAttribute && !N.isInterleavedBufferAttribute && !C.isInterleavedBufferAttribute && P.itemSize === 3 && N.itemSize === 3 && C.itemSize === 3;
+      const pa = P.array, na = N.array, ca = C.array;
+      const nk = N.normalized ? (na instanceof Int8Array ? 1 / 127 : na instanceof Int16Array ? 1 / 32767 : 1) : 1;
+      const ck = C.normalized ? (ca instanceof Uint8Array ? 1 / 255 : ca instanceof Uint16Array ? 1 / 65535 : 1) : 1;
       for (let i = 0; i < P.count; i++) {
-        _v.fromBufferAttribute(P, i).applyMatrix4(_m);
-        pos[(vo + i) * 3] = _v.x; pos[(vo + i) * 3 + 1] = _v.y; pos[(vo + i) * 3 + 2] = _v.z;
-        _v.fromBufferAttribute(N, i).applyMatrix3(_n).normalize();
-        nor[(vo + i) * 3] = _v.x; nor[(vo + i) * 3 + 1] = _v.y; nor[(vo + i) * 3 + 2] = _v.z;
-        col[(vo + i) * 3] = C.getX(i); col[(vo + i) * 3 + 1] = C.getY(i); col[(vo + i) * 3 + 2] = C.getZ(i);
+        let px, py, pz, nx, ny, nz;
+        if (fast) { px = pa[i * 3]; py = pa[i * 3 + 1]; pz = pa[i * 3 + 2]; nx = na[i * 3] * nk; ny = na[i * 3 + 1] * nk; nz = na[i * 3 + 2] * nk; }
+        else { _v.fromBufferAttribute(P, i); px = _v.x; py = _v.y; pz = _v.z; _v.fromBufferAttribute(N, i); nx = _v.x; ny = _v.y; nz = _v.z; }
+        const X = e[0] * px + e[4] * py + e[8] * pz + e[12], Y = e[1] * px + e[5] * py + e[9] * pz + e[13], Z = e[2] * px + e[6] * py + e[10] * pz + e[14];
+        const o3 = (vo + i) * 3;
+        pos[o3] = X; pos[o3 + 1] = Y; pos[o3 + 2] = Z;
+        if (X < x0) x0 = X; if (X > x1) x1 = X; if (Y < y0) y0 = Y; if (Y > y1) y1 = Y; if (Z < z0) z0 = Z; if (Z > z1) z1 = Z;
+        let tx = ne[0] * nx + ne[3] * ny + ne[6] * nz, ty = ne[1] * nx + ne[4] * ny + ne[7] * nz, tz = ne[2] * nx + ne[5] * ny + ne[8] * nz;
+        const l = Math.hypot(tx, ty, tz) || 1;
+        nor[o3] = tx / l; nor[o3 + 1] = ty / l; nor[o3 + 2] = tz / l;
+        if (fast) { col[o3] = ca[i * 3] * ck; col[o3 + 1] = ca[i * 3 + 1] * ck; col[o3 + 2] = ca[i * 3 + 2] * ck; }
+        else { col[o3] = C.getX(i); col[o3 + 1] = C.getY(i); col[o3 + 2] = C.getZ(i); }
       }
+      const ia = I.array;
       for (let i = 0; i < I.count; i += 3) {
-        const a = I.getX(i) + vo, b = I.getX(i + 1) + vo, c = I.getX(i + 2) + vo;
+        const a = ia[i] + vo, b = ia[i + 1] + vo, c = ia[i + 2] + vo;
         if (flip) { idx[io++] = a; idx[io++] = c; idx[io++] = b; } else { idx[io++] = a; idx[io++] = b; idx[io++] = c; }
       }
       vo += P.count;
@@ -79,7 +93,8 @@ export function batchStatic(root, { skip = null } = {}) {
     geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
-    geo.computeBoundingSphere();
+    geo.boundingBox = new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1));
+    geo.boundingSphere = geo.boundingBox.getBoundingSphere(new THREE.Sphere());
     const mesh = new THREE.Mesh(geo, gr.mat);
     mesh.renderOrder = gr.order;
     if (gr.outline) mesh.layers.enable(LAYER_OUTLINE);

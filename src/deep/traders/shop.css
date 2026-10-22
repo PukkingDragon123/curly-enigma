@@ -1,0 +1,98 @@
+/* ---------- the burrow folk's counter: extras on top of ui/shop.css ---------- */
+.shop-burrow .sh-sign h2 { color: #ffe4b0; }
+.shop-rocco .sh-room { background: var(--a-woodDkT) 0 0 / calc(var(--px) * 32) calc(var(--px) * 20) repeat padding-box, #3a2a22 padding-box; }
+.shop-herbalist .sh-room { background: var(--a-woodDkT) 0 0 / calc(var(--px) * 32) calc(var(--px) * 20) repeat padding-box, #3e3a1e padding-box; }
+.shop-outpost .sh-room { background: var(--a-woodDkT) 0 0 / calc(var(--px) * 32) calc(var(--px) * 20) repeat padding-box, #4a2a1e padding-box; }
+.sh-portrait.bump { animation: trBump .35s var(--pop); }
+@keyframes trBump { 40% { transform: scale(1.08) rotate(-2deg); } }
+
+/* modes: ledgers fill the wall, the counter only when there's something on it */
+.sh[data-mode=jobs] .sh-stock, .sh[data-mode=deal] .sh-stock, .sh[data-mode=weapons] .sh-stock { display: block; background: none; min-height: 0; }
+.sh[data-mode=jobs] .sh-counter, .sh[data-mode=deal] .sh-counter { display: none; }
+.sh[data-mode=jobs] .sh-room, .sh[data-mode=deal] .sh-room { grid-template-rows: auto 1fr auto; grid-template-areas: 'keeper wall' '. wall' 'foot wall'; }
+.sh[data-mode=jobs] .sh-foot { flex-direction: column; align-items: stretch; gap: calc(var(--px) * 2); }
+
+/* tab badges */
+.sh-tab { position: relative; }
+.tr-badge {
+  position: absolute; right: calc(var(--px) * -2); top: calc(var(--px) * -3); min-width: calc(var(--px) * 6); height: calc(var(--px) * 6);
+  padding: 0 var(--px); font-style: normal; font-size: 13px; line-height: calc(var(--px) * 6); text-align: center; color: #fff6e0;
+  background: #3d7a2e; box-shadow: 0 0 0 var(--px) #1a3a10; text-shadow: none;
+}
+.tr-badge.hot { background: #b83a24; box-shadow: 0 0 0 var(--px) #4a1408; animation: trPulse 1.2s ease-in-out infinite; }
+@keyframes trPulse { 50% { transform: scale(1.18); } }
+
+/* wanted today */
+.tr-wanted { margin-top: calc(var(--px) * 8); }
+.tr-wanted-row { display: flex; align-items: center; gap: calc(var(--px) * 3); justify-content: center; text-align: left; }
+.tr-wanted-row img { width: var(--icon); height: var(--icon); }
+.tr-wanted-row p { margin: 0; }
+.tr-want { color: #3d7a2e; font-weight: 400; }
+.tr-wanted-line { background: linear-gradient(to right, rgba(110, 170, 70, .18), transparent); }
+
+/* Rocco's banner and weapons */
+.tr-banner {
+  display: flex; align-items: center; gap: calc(var(--px) * 3); margin: calc(var(--px) * 2); padding: calc(var(--px) * 2) calc(var(--px) * 3);
+  font-size: 16px; line-height: 1.25; color: #f6e2c0; background: rgba(40, 20, 30, .55); box-shadow: inset 0 0 0 var(--px) #6a3a5a;
+}
+.tr-banner img { width: var(--icon-s); height: var(--icon-s); flex: none; }
+.tr-banner b { color: #ffd76a; font-weight: 400; }
+.sh-line.tr-on { background: rgba(255, 210, 110, .25); }
+.tr-hint { margin: calc(var(--px) * 3); }
+.tr-ico { width: calc(var(--px) * 8); height: calc(var(--px) * 8); vertical-align: middle; margin-right: var(--px); }
+
+/* the haggle: a meter with a green zone and a swinging needle */
+.tr-haggle { grid-template-columns: var(--icon) minmax(0, 1fr); }
+.tr-hrow { display: flex; align-items: center; gap: calc(var(--px) * 2); flex-wrap: wrap; font-size: 14px; color: #7a5a3a; margin-top: calc(var(--px) * 2); }
+.tr-dots { display: inline-flex; gap: var(--px); margin-right: calc(var(--px) * 3); }
+.tr-dots i { width: calc(var(--px) * 4); height: calc(var(--px) * 4); background: #c8b090; box-shadow: inset 0 0 0 var(--px) #8a6a4a; }
+.tr-dots.tries i.on { background: #e8b030; box-shadow: inset 0 0 0 var(--px) #8a5a10; }
+.tr-dots.pat i.on { background: #d8504a; box-shadow: inset 0 0 0 var(--px) #6a1a14; border-radius: 50% 50% 20% 20%; }
+.tr-meter {
+  grid-column: 1 / -1; position: relative; height: calc(var(--px) * 10); margin: calc(var(--px) * 3) var(--px) 0;
+  background: linear-gradient(to right, #8a2a1e, #c86a2a 30%, #c86a2a 70%, #8a2a1e); box-shadow: 0 0 0 var(--px) #3a1a0a, 0 0 0 calc(var(--px) * 2) #b08040, inset 0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .25);
+}
+.tr-zone { position: absolute; top: 0; bottom: 0; background: linear-gradient(to bottom, #b8f07a, #5aa83a); box-shadow: inset 0 0 0 var(--px) #2a5a1a; }
+.tr-zone-c { display: none; }
+.tr-needle {
+  position: absolute; top: calc(var(--px) * -3); bottom: calc(var(--px) * -3); width: calc(var(--px) * 2); margin-left: calc(var(--px) * -1);
+  background: #fff6e0; box-shadow: 0 0 0 var(--px) #2a160a, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35);
+}
+.tr-meter.hit { animation: trHit .38s; }
+.tr-meter.miss { animation: nope .35s; }
+@keyframes trHit { 30% { filter: brightness(1.6) saturate(1.4); transform: scale(1.03); } }
+.tr-push { min-width: calc(var(--px) * 30); }
+.tr-push:not([disabled]) { animation: boardGlow 1.4s ease-in-out infinite; }
+
+/* deals */
+.tr-deal p { font-style: italic; }
+.tr-deal-act { display: flex; flex-direction: column; align-items: center; gap: calc(var(--px) * 2); margin-top: calc(var(--px) * 4); }
+.tr-deal-act .btn { display: inline-flex; align-items: center; gap: calc(var(--px) * 2); }
+.tr-deal-act .sh-note { color: #7a5a3a; text-shadow: none; }
+.tr-done { font-style: normal; }
+.tr-pop { animation: trCrate .6s var(--pop); }
+@keyframes trCrate { 0% { transform: scale(.9) rotate(-3deg); } 40% { transform: scale(1.06) rotate(2deg); } }
+
+/* jobs */
+.tr-jobs { display: flex; flex-direction: column; gap: calc(var(--px) * 3); }
+.tr-news { font-size: 16px; line-height: 1.3; color: #3a2414; padding: calc(var(--px) * 2) calc(var(--px) * 3); background: rgba(255, 240, 190, .6); box-shadow: inset calc(var(--px) * 2) 0 0 #c8902a; }
+.tr-news b { color: #a8321e; font-weight: 400; }
+.tr-job { padding: calc(var(--px) * 2) 0; border-bottom: var(--px) dashed rgba(110, 74, 42, .4); }
+.tr-job:last-child { border-bottom: 0; }
+.tr-job > b { display: block; font-family: var(--font-head); font-weight: 400; font-size: var(--fs-h); line-height: 1; color: var(--sepia); }
+.tr-job p { margin: var(--px) 0 0; font-size: 16px; line-height: 1.3; color: #4a3020; }
+.tr-need { display: flex; gap: calc(var(--px) * 3); flex-wrap: wrap; margin-top: calc(var(--px) * 2); }
+.tr-need-it { display: inline-flex; align-items: center; gap: var(--px); font-size: 16px; color: #a8321e; }
+.tr-need-it.ok { color: #3d7a2e; }
+.tr-need-it img { width: var(--icon-s); height: var(--icon-s); }
+.tr-prog { margin-top: calc(var(--px) * 2); }
+
+@media (max-width: 640px) {
+  .sh[data-mode=jobs] .sh-room, .sh[data-mode=deal] .sh-room { grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: 'keeper' 'wall' 'foot'; }
+  .sh[data-mode=weapons] .sh-counter { max-height: 46vh; }
+  .tr-haggle .sh-pay { justify-content: center; }
+}
+@media (max-height: 520px) {
+  .tr-meter { height: calc(var(--px) * 8); margin-top: calc(var(--px) * 2); }
+  .tr-hrow { margin-top: var(--px); }
+}

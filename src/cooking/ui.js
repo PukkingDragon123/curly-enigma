@@ -3,9 +3,10 @@
 import { el, clamp } from '../core/util.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
-import { DISHES, BUFFS, RECIPES } from '../data/recipes.js';
+import { DISHES, BUFFS, RECIPES, MAX_INGS } from '../data/recipes.js';
 import { BOLT } from '../ui/UI.js';
 import { ensureStyles } from './style.js';
+import { pantryItems, pantryCount, pantryLots } from './quality.js';
 
 export const GRADES = [
   { g: 'Perfect', min: 90, color: '#d89a10' },
@@ -16,7 +17,7 @@ export const GRADES = [
 ];
 export const gradeOf = (score) => GRADES.find((x) => score >= x.min) || GRADES[GRADES.length - 1];
 
-export const STEP_LABEL = { chop: 'Chop', crack: 'Crack', stir: 'Stir', season: 'Season', fry: 'Fry', pour: 'Pour', knead: 'Knead', plate: 'Plate' };
+export const STEP_LABEL = { chop: 'Chop', crack: 'Crack', stir: 'Stir', season: 'Season', fry: 'Fry', pour: 'Pour', knead: 'Knead', plate: 'Plate', simmer: 'Simmer', flip: 'Flip', grate: 'Grate', roll: 'Roll', bake: 'Bake', mash: 'Mash' };
 
 const COOKABLE_CATS = ['plant', 'critter', 'ingredient'];
 const COOKABLE_EXTRA = ['salt_crystal', 'egg'];
@@ -24,6 +25,18 @@ export function isCookable(id) {
   const it = ITEMS[id];
   return !!it && (COOKABLE_CATS.includes(it.cat) || COOKABLE_EXTRA.includes(id));
 }
+
+/** A small quality pip for a pantry slot (quality items only). */
+function qPip(st, id) {
+  if (!ITEMS[id]?.q) return null;
+  const lots = pantryLots(st, id);
+  if (!lots.length) return null;
+  const best = Math.max(...lots.map((l) => l.q));
+  const p = lots.some((l) => l.p && l.q === best);
+  const col = best >= 90 ? '#d89a10' : best >= 70 ? '#3a9a3a' : best >= 45 ? '#3a7ab8' : '#a83a2a';
+  return el('span', { class: 'q' + (p ? ' p' : ''), style: { background: col }, title: `best ${best}%${p ? ' · pristine' : ''}` }, String(best));
+}
+export const fmtSecs = (s) => (s >= 60 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : `${Math.round(s)}s`);
 
 export class CookUI {
   constructor(game) {
@@ -47,7 +60,7 @@ export class CookUI {
     let sel = opts.selected.slice();
     let tab = opts.tab || 'ings';
     const panel = el('div', { class: 'panel ck-side', role: 'dialog', 'aria-label': 'Pantry' });
-    const title = el('h2', {}, ['Pantry', el('small', {}, 'pick 1 to 3')]);
+    const title = el('h2', {}, ['Pantry', el('small', {}, `pick 1 to ${MAX_INGS}`)]);
     const tabs = el('div', { class: 'tabs' });
     const scroll = el('div', { class: 'ck-scroll' });
     const info = el('div', { class: 'ck-info' });
@@ -62,7 +75,7 @@ export class CookUI {
 
     const items = () => {
       const out = [];
-      for (const g of st.inventory((it) => it && isCookable(it.id))) if (st.count(g.id) > 0) out.push(g.id);
+      for (const g of pantryItems(st, (it) => it && isCookable(it.id))) if (g.n > 0) out.push(g.id);
       const order = { plant: 0, critter: 1, ingredient: 2, mineral: 3 };
       out.sort((a, b) => (order[ITEMS[a].cat] - order[ITEMS[b].cat]) || ITEMS[a].name.localeCompare(ITEMS[b].name));
       return out;
@@ -71,7 +84,7 @@ export class CookUI {
     const toggle = (id) => {
       const i = sel.indexOf(id);
       if (i >= 0) sel.splice(i, 1);
-      else if (sel.length < 3) sel.push(id);
+      else if (sel.length < MAX_INGS) sel.push(id);
       else { this.game.audio.play('ui_error'); this.nudge(tray); return; }
       this.game.audio.play('ui_click', { pitch: i >= 0 ? 0.8 : 1.2 });
       opts.onChange(sel.slice());
@@ -97,7 +110,7 @@ export class CookUI {
           onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(id); } },
           onmouseenter: () => { info.innerHTML = `<b>${it.name}</b> · ${it.desc || ''}`; },
           onmouseleave: () => { info.innerHTML = opts.matchInfo(sel); },
-        }, [el('img', { class: 'pix', src: iconURL(id), alt: it.name }), el('span', { class: 'n' }, '×' + st.count(id))]));
+        }, [el('img', { class: 'pix', src: iconURL(id), alt: it.name }), el('span', { class: 'n' }, '×' + pantryCount(st, id)), qPip(st, id)]));
       }
       scroll.append(grid);
     };
@@ -110,10 +123,10 @@ export class CookUI {
         const r = RECIPES.find((x) => x.dish === dish);
         if (!r) continue;
         const ings = Object.keys(r.ing);
-        const have = ings.every((id) => st.count(id) >= r.ing[id]);
+        const have = ings.every((id) => pantryCount(st, id) >= r.ing[id]);
         const best = st.data.recipes[dish] || 0;
         const gr = gradeOf(best);
-        const missing = ings.filter((id) => st.count(id) < 1).length;
+        const missing = ings.filter((id) => pantryCount(st, id) < 1).length;
         wrap.append(el('div', {
           class: 'ck-card interactive' + (have ? '' : ' missing'), role: 'button', tabindex: 0, title: have ? 'Use these ingredients' : 'Missing ingredients',
           onclick: () => {
@@ -127,8 +140,9 @@ export class CookUI {
         }, [
           el('img', { class: 'pix', src: iconURL(dish), alt: '' }),
           el('div', {}, [
-            el('div', { class: 'nm' }, DISHES[dish].name),
-            el('div', { class: 'ings' }, [...ings.map((id) => el('img', { class: 'pix' + (st.count(id) < 1 ? ' no' : ''), src: iconURL(id), title: ITEMS[id]?.name, alt: ITEMS[id]?.name })), missing ? el('span', {}, `need ${missing}`) : null]),
+            el('div', { class: 'nm' }, [DISHES[dish].name, DISHES[dish].buff ? el('span', { class: 'ck-buffchip', style: { background: BUFFS[DISHES[dish].buff].color } }, BUFFS[DISHES[dish].buff].name) : null]),
+            el('div', { class: 'stp' }, r.steps.map((k) => STEP_LABEL[k] || k).join(' › ')),
+            el('div', { class: 'ings' }, [...ings.map((id) => el('img', { class: 'pix' + (pantryCount(st, id) < 1 ? ' no' : ''), src: iconURL(id), title: ITEMS[id]?.name, alt: ITEMS[id]?.name })), missing ? el('span', {}, `need ${missing}`) : null]),
           ]),
           el('div', { class: 'gr', style: { color: gr.color } }, [gr.g, el('small', {}, `best ${Math.round(best)}`)]),
         ]));
@@ -142,7 +156,7 @@ export class CookUI {
     const render = () => {
       if (!panel.isConnected) return;
       const before = sel.length;
-      sel = sel.filter((id) => st.count(id) > 0);
+      sel = sel.filter((id) => pantryCount(st, id) > 0);
       if (sel.length !== before) opts.onChange(sel.slice());
       tabs.innerHTML = '';
       const nCards = Object.keys(st.data.recipes || {}).filter((d) => DISHES[d] && d !== 'mystery_mush').length;
@@ -154,7 +168,7 @@ export class CookUI {
       if (tab === 'ings') renderIngs(); else renderCards();
       scroll.scrollTop = keep;
       tray.innerHTML = '';
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < MAX_INGS; i++) {
         const id = sel[i];
         if (i > 0) tray.append(el('span', { class: 'ck-plus' }, '+'));
         tray.append(id
@@ -350,7 +364,8 @@ export class CookUI {
     const panel = el('div', { class: 'panel ck-side ck-result', role: 'dialog', 'aria-label': 'Dish result' });
     const stats = el('div', { class: 'ck-stats' }, [
       el('span', { class: 'ck-stat' }, [el('img', { class: 'pix', src: BOLT(), alt: '' }), `+${d.energy} energy`]),
-      d.buff ? el('span', { class: 'ck-stat', style: { color: BUFFS[d.buff].color, background: '#2a1a12', borderColor: '#000' } }, BUFFS[d.buff].name) : null,
+      ...[d.buff, d.buff2].filter(Boolean).map((b) => el('span', { class: 'ck-stat', title: BUFFS[b].desc, style: { color: BUFFS[b].color, background: '#2a1a12', borderColor: '#000' } }, `${BUFFS[b].name} ${r.buffSecs ? fmtSecs(r.buffSecs) : ''}`)),
+      r.ingQ !== undefined ? el('span', { class: 'ck-stat' }, `Ingredients ${Math.round(r.ingQ)}%`) : null,
       d.maxEnergy ? el('span', { class: 'ck-stat' }, `+${d.maxEnergy} max energy`) : null,
       el('span', { class: 'ck-stat' }, `×${r.made} made`),
     ]);

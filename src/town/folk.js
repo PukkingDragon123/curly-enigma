@@ -78,8 +78,10 @@ export class Townsfolk {
     a.collide = false;
     a.pos.set(seat.x, 0, seat.z);
     a.rig.face(seat.yaw, true);
-    a.body.position.y = seat.y ?? 0.2;
-    a.rig.seatY = a.body.position.y; // grown-up legs reach down for the floor
+    // sit on the seat's surface (top), the sitting pose drops the hips to 2 units: the body's
+    // bottom lands on the slats; or at an explicit body height (y)
+    a.body.position.y = seat.top != null ? seat.top - a.rig.s * 2 + 0.01 : seat.y ?? 0.2;
+    a.rig.seatY = a.body.position.y; // jointed legs reach down for the floor
     a.headY = a.rig.height + 0.12 - Math.max(0, a.rig.p.lh - 1.5) * a.rig.s; // sitting: the head is lower (bubbles, talk spot)
     a.rig.play('sit');
     npc.seated = true;
@@ -93,7 +95,8 @@ export class Townsfolk {
 
   spawnAll() {
     const B = TOWN.benches;
-    const seat = (b, side) => ({ x: b.x + Math.cos(b.yaw) * 0.42 * side, z: b.z - Math.sin(b.yaw) * 0.42 * side, yaw: b.yaw });
+    // the plaza benches' seat slats are 15/32 TU up (iso/props.js bench)
+    const seat = (b, side) => ({ x: b.x + Math.cos(b.yaw) * 0.42 * side, z: b.z - Math.sin(b.yaw) * 0.42 * side, yaw: b.yaw, top: 15 / 32 });
     const plaza = { x0: 12, z0: 9, x1: 25, z1: 22 };
     const town = { x0: 5, z0: 5, x1: 32, z1: 26 };
     const lanes = { x0: 8, z0: 28, x1: 36, z1: 31 };

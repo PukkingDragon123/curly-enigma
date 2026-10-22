@@ -116,7 +116,7 @@ export const ITEMS = {
     desc: 'Blooms only near the planet\'s heart. Legendary in mole cooking.' },
 
   // ───────────── Critters (caught alive) & drops ─────────────
-  worm: { name: 'Earthworm', cat: 'critter', value: 6, price: 10, icon: { k: 'critter', t: 'worm' },
+  worm: { name: 'Earthworm', cat: 'critter', value: 6, price: 10, hen: 0.3, stack: 16, icon: { k: 'critter', t: 'worm' },
     desc: 'Wriggly, protein-rich, a mole classic. Chickens love them too.' },
   glow_beetle: { name: 'Glow Beetle', cat: 'critter', value: 35, icon: { k: 'critter', t: 'beetle' },
     desc: 'A beetle with a lantern for a bottom. Lovely in a jar.' },
@@ -132,6 +132,14 @@ export const ITEMS = {
   spark_dust: { name: 'Spark Dust', cat: 'drop', value: 60, icon: { k: 'drop', t: 'spark' }, desc: 'Static-charged dust shed by spark mites.' },
   ember_scale: { name: 'Ember Scale', cat: 'drop', value: 220, icon: { k: 'drop', t: 'scale' }, desc: 'A still-warm scale from a lava newt.' },
   wisp_essence: { name: 'Wisp Essence', cat: 'drop', value: 900, icon: { k: 'drop', t: 'wisp' }, desc: 'A captured flicker of something that eats light.' },
+
+  // ───────────── Nugget's food (hen: how much it fills her, 0..1; inventory part) ─────────────
+  chicken_feed: { name: 'Chicken Feed', cat: 'feed', value: 3, price: 6, hen: 0.5, stack: 24, icon: { k: 'hen', t: 'feed' },
+    desc: 'Cracked corn and grit in a little sack. Nugget\'s favourite, and she will tell you so.' },
+  cave_seeds: { name: 'Cave Seeds', cat: 'feed', value: 4, price: 8, hen: 0.3, stack: 24, icon: { k: 'hen', t: 'seeds' },
+    desc: 'A twist of paper full of seeds shaken from cave grasses. A hen can live on these. Just about.' },
+  fat_grub: { name: 'Fat Grub', cat: 'critter', value: 9, hen: 0.45, stack: 16, icon: { k: 'hen', t: 'grub' },
+    desc: 'A plump grub dug out of rotten roots. Moles shudder. Hens swoon.' },
 
   // ───────────── Basic ingredients (shop) ─────────────
   flour: { name: 'Root Flour', cat: 'ingredient', value: 4, price: 8, icon: { k: 'ingr', t: 'flour' }, desc: 'Ground from dried roots.' },
@@ -204,11 +212,13 @@ export const ITEMS = {
   thermal_suit: { name: 'Thermal Suit', cat: 'equip', slot: 'suit', protect: ['heat', 'cold'], price: 80000, value: 20000, icon: { k: 'equip', t: 'suit', c: 0x6a8ad9 }, desc: 'Handles fire and frost alike.' },
   grip_boots: { name: 'Grip Boots', cat: 'equip', slot: 'boots', grip: 1, climb: 1.4, price: 1500, value: 400, icon: { k: 'equip', t: 'boots', c: 0x6a4a2a }, desc: 'Studded soles. Faster climbing, no slipping on ice.' },
   spring_boots: { name: 'Spring Boots', cat: 'equip', slot: 'boots', grip: 1, climb: 1.6, jump: 1.35, price: 30000, value: 8000, icon: { k: 'equip', t: 'boots', c: 0x3a8ad9 }, desc: 'Gravium-sprung soles. Boing.' },
-  bag_small: { name: 'Burlap Sack', cat: 'equip', slot: 'bag', cap: 14, value: 2, icon: { k: 'equip', t: 'bag', c: 0xb8996a }, desc: 'Holds 14 finds per trip.' },
-  bag_medium: { name: 'Leather Satchel', cat: 'equip', slot: 'bag', cap: 22, price: 700, value: 150, icon: { k: 'equip', t: 'bag', c: 0x8a5a2a }, desc: 'Holds 22 finds per trip.' },
-  bag_large: { name: 'Miner\'s Pack', cat: 'equip', slot: 'bag', cap: 34, price: 5000, value: 1200, icon: { k: 'equip', t: 'bag', c: 0x5a6a3a }, desc: 'Holds 34 finds per trip.' },
-  bag_huge: { name: 'Expedition Pack', cat: 'equip', slot: 'bag', cap: 50, price: 30000, value: 7000, icon: { k: 'equip', t: 'bag', c: 0x3a5a8a }, desc: 'Holds 50 finds per trip.' },
-  bag_bottomless: { name: 'Bottomless Bag', cat: 'equip', slot: 'bag', cap: 90, price: 150000, value: 35000, icon: { k: 'equip', t: 'bag', c: 0x6a2a8a }, desc: 'Holds 90 finds. Do not look inside.' },
+  // backpacks: slots = pockets in the inventory grid (rows of 6, core/inventory.js); cap = the old
+  // "finds per trip" (bagCapacity(), kept until the mine counts pockets instead)
+  bag_small: { name: 'Burlap Sack', cat: 'equip', slot: 'bag', slots: 6, cap: 14, value: 2, icon: { k: 'equip', t: 'bag', c: 0xb8996a }, desc: 'Six pockets. Room for a few finds and a snack.' },
+  bag_medium: { name: 'Leather Satchel', cat: 'equip', slot: 'bag', slots: 12, cap: 22, price: 700, value: 150, icon: { k: 'equip', t: 'bag', c: 0x8a5a2a }, desc: 'Twelve pockets: two rows, stitched tight.' },
+  bag_large: { name: 'Miner\'s Pack', cat: 'equip', slot: 'bag', slots: 18, cap: 34, price: 5000, value: 1200, icon: { k: 'equip', t: 'bag', c: 0x5a6a3a }, desc: 'Eighteen pockets and a frame that sits right on the shoulders.' },
+  bag_huge: { name: 'Expedition Pack', cat: 'equip', slot: 'bag', slots: 24, cap: 50, price: 30000, value: 7000, icon: { k: 'equip', t: 'bag', c: 0x3a5a8a }, desc: 'Twenty-four pockets for the long digs.' },
+  bag_bottomless: { name: 'Bottomless Bag', cat: 'equip', slot: 'bag', slots: 36, cap: 90, price: 150000, value: 35000, icon: { k: 'equip', t: 'bag', c: 0x6a2a8a }, desc: 'Thirty-six pockets. Do not look inside.' },
 
   // ───────────── Key items ─────────────
   exit_ticket: { name: 'Surface Ticket', cat: 'key', value: 0, price: 1000000, icon: { k: 'ticket' },
@@ -218,13 +228,18 @@ export const ITEMS = {
 // Floors & wallpapers & furniture are defined in furniture.js and merged in.
 import { FURNITURE, FLOORS, WALLS } from './furniture.js';
 import { BLUEPRINTS } from './weapons.js';
-import { DISHES } from './recipes.js';
+import { DISHES, INGREDIENTS } from './recipes.js';
+import { RELIC_ITEMS } from '../deep/ruins/relics.js'; // ruins part: relics found in the ruins' treasure rooms
 
 for (const [id, f] of Object.entries(FURNITURE)) ITEMS[id] = { cat: 'furniture', ...f };
 for (const [id, f] of Object.entries(FLOORS)) ITEMS[id] = { cat: 'floor', ...f };
 for (const [id, f] of Object.entries(WALLS)) ITEMS[id] = { cat: 'wallpaper', ...f };
 for (const [id, b] of Object.entries(BLUEPRINTS)) ITEMS[id] = { cat: 'blueprint', ...b };
 for (const [id, d] of Object.entries(DISHES)) ITEMS[id] = { cat: 'food', ...d };
+// cooking part: the new cave ingredients; foraged plants carry a quality (how well they were pulled)
+for (const [id, d] of Object.entries(INGREDIENTS)) ITEMS[id] = { ...d };
+for (const [id, d] of Object.entries(RELIC_ITEMS)) ITEMS[id] = { ...d };
+for (const it of Object.values(ITEMS)) if (it.cat === 'plant') it.q = true;
 
 for (const [id, it] of Object.entries(ITEMS)) it.id = id;
 
@@ -259,5 +274,5 @@ export function pickForTier(t) {
 export const CAT_LABEL = {
   mineral: 'Mineral', gem: 'Gem', ingot: 'Ingot', plant: 'Plant', critter: 'Critter', drop: 'Creature Drop',
   ingredient: 'Ingredient', food: 'Food', tool: 'Tool', equip: 'Equipment', furniture: 'Furniture',
-  floor: 'Flooring', wallpaper: 'Wall Style', blueprint: 'Blueprint', consumable: 'Supply', key: 'Key Item',
+  floor: 'Flooring', wallpaper: 'Wall Style', blueprint: 'Blueprint', consumable: 'Supply', key: 'Key Item', feed: 'Hen Feed', relic: 'Relic',
 };

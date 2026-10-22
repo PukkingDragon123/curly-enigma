@@ -65,6 +65,7 @@ export function quickSmelt(st, r, n) {
     const t = takeInputs(st, r);
     const q = ingotQuality(t.avgQ, QUICK_ACC);
     st.addItem(r.out, { q, n: r.n });
+    st.emit?.('act', { type: 'smelt', id: r.out, recipe: r.id, q, quick: true });
     count += r.n; qsum += q * r.n;
   }
   if (!count) return null;
@@ -97,7 +98,7 @@ export class SmeltGame {
     const sc = this.scene, st = this.st, r = this.r, W = sc.W;
     const lvl = st.data.forgeLevel || 0;
     this.taken = takeInputs(st, r);
-    this.sim = new CrucibleSim(r, lvl);
+    this.sim = new CrucibleSim(r, lvl, st.skill?.('forge') || 1); // the Smithing skill widens the pouring band
     const firstOre = Object.keys(r.inputs)[0];
     const metal = METALS[ITEMS[r.out].metal];
     this.metalColor = metal?.color ?? 0xd9773f;
@@ -119,7 +120,7 @@ export class SmeltGame {
     this.thermo = new Thermo(sc.layer, FORGE_MAX_TEMP[lvl]);
     this.thermo.setTitle('Crucible');
     this.thermo.setMarks([
-      { kind: 'melt', range: r.temp, label: 'pour heat' },
+      { kind: 'melt', range: this.sim.band, label: 'pour heat' },
       { kind: 'burn', at: this.sim.slagT, label: 'slag' },
     ]);
     this.timeBar = bar('warm');
@@ -229,7 +230,7 @@ export class SmeltGame {
     if (!sim.started) s = 'The crucible sits in the coals.';
     else if (sim.overheat) s = '<span class="fg-warn">Too hot! Slag is forming.</span>';
     else if (sim.inBandNow) s = '<span class="fg-good">Melting nicely.</span>';
-    else if (sim.T < this.r.temp[0]) s = 'Not hot enough to melt.';
+    else if (sim.T < sim.band[0]) s = 'Not hot enough to melt.';
     else s = 'Above pouring heat.';
     setHtml(this.status, s);
   }
@@ -264,6 +265,7 @@ export class SmeltGame {
     const P = sc.particles;
     const spout = new THREE.Vector3();
     const verdict = this.acc >= 0.9 ? ['Perfect melt!', '#ffd34a'] : this.acc >= 0.6 ? ['Good melt', '#8af07a'] : this.acc >= 0.3 ? ['Lumpy melt', '#e6dcc8'] : ['Barely melted', '#d96a5a'];
+    sc.lesson?.event('melt', { acc: this.acc, run: this });
     sc.pop(verdict[0], start.clone().add(new THREE.Vector3(0, 0.18, 0)), verdict[1], 1);
     this.game.audio.play(this.acc >= 0.9 ? 'perfect' : this.acc >= 0.6 ? 'good' : 'oops');
     this.thermo.el.hidden = true;
@@ -324,6 +326,8 @@ export class SmeltGame {
   reward() {
     const st = this.st, r = this.r, sc = this.scene;
     st.addItem(r.out, { q: this.q, n: r.n });
+    st.emit?.('act', { type: 'smelt', id: r.out, recipe: r.id, q: this.q });
+    sc.lesson?.event('ingot', { id: r.out, q: this.q, run: this });
     const first = !st.flag('forge.smelted.' + r.id);
     st.flag('forge.smelted.' + r.id, true);
     learnFor(st, r);

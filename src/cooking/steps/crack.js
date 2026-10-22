@@ -16,12 +16,13 @@ export class CrackStep extends Step {
     const S = this.S;
     this.rimY = 12 * 0.025;
     this.bowlTop = V3(S.x, this.rimY, S.z);
+    this.eggScale = this.cook.ings?.includes('dino_egg') ? 2.3 : 1.45; // a dino egg is a big one
     this.egg = this.temp(egg(false));
-    this.egg.scale.setScalar(1.45);
+    this.egg.scale.setScalar(this.eggScale);
     this.eggPos = V3(S.x + 0.26, this.rimY + 0.17, S.z + 0.02);
     this.egg.position.copy(this.eggPos);
     const mid = 0.68 + (Math.random() - 0.5) * 0.12;
-    this.zone = [mid - 0.085, mid + 0.085];
+    this.zone = this.win(mid - 0.085, mid + 0.085, 0.05, 0.98);
     this.power = 0;
     this.phaseP = Math.random() * 2;
     this.speed = 1.15;
@@ -131,7 +132,7 @@ export class CrackStep extends Step {
         const pos = this.egg.position.clone();
         this.egg.parent.remove(this.egg);
         this.egg = this.temp(egg(true));
-        this.egg.scale.setScalar(1.45);
+        this.egg.scale.setScalar(this.eggScale);
         this.egg.position.copy(pos);
         this.dented = true;
       }

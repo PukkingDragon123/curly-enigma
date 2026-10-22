@@ -182,7 +182,8 @@ export class ChopStep extends Step {
     if (!best) return;
     const dpx = bd / PX;
     best.cut = true;
-    best.score = dpx <= 0.35 ? 100 : clamp(100 - (dpx - 0.35) * 55, 0, 100);
+    const tol = 0.35 * this.skill; // the cook skill widens a clean cut
+    best.score = dpx <= tol ? 100 : clamp(100 - (dpx - tol) * 55 / this.skill, 0, 100);
     // where the blade really landed (column boundary under the knife)
     let b = clamp(Math.round((kx - this.base.x - this.pieceShift(best.b)) / this.px + this.cx), x0 + 1, x1);
     if (this.cuts.includes(b)) b = best.b;
@@ -191,7 +192,10 @@ export class ChopStep extends Step {
     for (const p of this.pieces) if (p.a === b || p.b === b) p.hop = 1;
     audio.play('chop');
     crumbs(this.fx, impact, this.color, 7, BOARD_TOP);
-    const word = best.score >= 90 ? 'Perfect!' : best.score >= 65 ? 'Nice!' : best.score >= 35 ? 'Okay' : 'Wonky';
+    // clean cuts in a row build a combo: rising chime, bigger sparkle
+    this.combo = best.score >= 90 ? (this.combo || 0) + 1 : 0;
+    if (this.combo >= 2) { audio.tone({ f: 660 * Math.pow(1.12, this.combo), type: 'triangle', dur: 0.09, vol: 0.06 }); sparkle(this.fx, impact.clone().setY(this.top + 0.08), 4 + this.combo * 3); }
+    const word = this.combo >= 2 ? `Perfect ×${this.combo}!` : best.score >= 90 ? 'Perfect!' : best.score >= 65 ? 'Nice!' : best.score >= 35 ? 'Okay' : 'Wonky';
     const col = best.score >= 90 ? '#ffe066' : best.score >= 65 ? '#9af07a' : best.score >= 35 ? '#9fdcff' : '#ff9a8a';
     this.float(word, V3(kx, this.top + 0.12, this.base.z), col);
     if (best.score >= 90) sparkle(this.fx, impact, 6);

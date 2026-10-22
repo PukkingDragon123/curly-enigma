@@ -47,7 +47,7 @@ function fabricAt(c, fabric, x, y, z) {
 function bodyKey(spec, p, bake) {
   return ['body', spec.species, spec.fur, p.bw, p.bh, p.bd, spec.outfit, spec.outfitColor, spec.scarf || 0, spec.backpack ? 1 : 0,
     Math.round((spec.dirt ?? 0.4) * 10), spec.seed, spec.patches || 0, spec.fabric || 'plain', spec.age, spec.body, bake,
-    p.tall ? `T${spec.shirt || 0}.${spec.belt || 0}` : ''].join('|');
+    `${p.tall ? 'T' : 'C'}${spec.shirt || 0}.${spec.belt || 0}`].join('|');
 }
 
 export function buildBody(spec, p, bake) {
@@ -295,7 +295,8 @@ function makeBody(spec, p, bake) {
     }
   }
 
-  if (p.tall) tallDetails(v, spec, p, { H, bx, by, bz, yw, outfit, bibTop, bibHalf, front, dilate, seed, fur });
+  // tailoring: the grown-up build gets all of it, the chibi build the bits that suit it
+  tallDetails(v, spec, p, { H, bx, by, bz, yw, outfit, bibTop, bibHalf, front, dilate, seed, fur, chibi: !p.tall });
 
   // ---------------------------------------------------------------- paint
   const dirt = Math.round((spec.dirt ?? 0.4) * 10) / 10; // quantized like the cache key
@@ -355,7 +356,7 @@ function makeBody(spec, p, bake) {
   };
 
   const ocTwill = (x, y, z) => (outfit === 'overalls' ? oc : fabricAt(oc, fabric, x, y, z));
-  const tee = p.tall && spec.shirt ? spec.shirt : 0; // a shirt under the overalls / apron
+  const tee = spec.shirt && spec.age !== 'baby' ? spec.shirt : 0; // a shirt under the overalls / apron
   const torsoCloth = (x, y, z) => {
     // what the torso surface is wearing at this point (null = fur)
     if (outfit === 'overalls') return y < yw ? 'pants' : tee ? 'tee' : null;
@@ -529,7 +530,8 @@ function makeBody(spec, p, bake) {
  * a ragged fur fringe where the fur shows.
  */
 function tallDetails(v, spec, p, o) {
-  const { H, bx, bz, yw, outfit, front, dilate, seed } = o;
+  const { H, bx, bz, yw, outfit, front, dilate, seed, chibi } = o;
+  if (spec.age === 'baby') return;
   const BRASS2 = 0xe8c060;
   const onFront = (x, y, c) => { const z = front(x, y); if (isFinite(z)) v.set(x, y, z + 1, c); return z; };
   const tee = spec.shirt && (outfit === 'overalls' || outfit === 'apron');
@@ -561,7 +563,7 @@ function tallDetails(v, spec, p, o) {
   const belt = spec.belt || 0;
   if (belt && outfit !== 'dress') {
     const low = outfit === 'overalls' || outfit === 'apron';
-    const by0 = low ? yw - 4 : yw - 2, by1 = by0 + 2;
+    const by0 = low ? yw - (chibi ? 3 : 4) : yw - 2, by1 = by0 + 2;
     dilate((x, y) => y >= by0 && y < by1, BELT);
     // buckle: a brass frame with a dark tongue, off the middle on a tool belt
     const bxk = belt === 2 ? 1 : -2;
@@ -573,7 +575,12 @@ function tallDetails(v, spec, p, o) {
     }
     // loops
     for (const lx of [-Math.round(bx * 0.6), Math.round(bx * 0.6) - 1]) for (let y = by0 - 1; y <= by1; y++) onFront(lx, y, 0x4a2e1c);
-    if (belt === 2) {
+    if (belt === 2 && chibi) {
+      // a chubby little pouch on the hip
+      const pxc = Math.round(bx * 0.62), pz = Math.round(bz * 0.35);
+      v.fill(pxc - 2, pxc + 2, by0 - 4, by1, pz - 2, pz + 2, (x, y, z) => Math.abs(x - pxc) <= 1.9 && y >= by0 - 3.5 && Math.abs(z - pz) <= 1.8 && !v.has(Math.floor(x), Math.floor(y), Math.floor(z)), 0, LEATHER);
+    }
+    if (belt === 2 && !chibi) {
       // a leather pouch on the right hip, a hammer hanging in a loop on the left
       const pxc = Math.round(bx * 0.72), pz = Math.round(bz * 0.2);
       v.fill(pxc - 2.5, pxc + 2.5, by0 - 6, by1, pz - 2.5, pz + 2.5, (x, y, z) => Math.abs(x - pxc) <= 2.4 && y >= by0 - 5.5 && Math.abs(z - pz) <= 2.2 && !v.has(Math.floor(x), Math.floor(y), Math.floor(z)) && Math.abs(x) > bx * 0.55, 0, LEATHER);
@@ -584,7 +591,8 @@ function tallDetails(v, spec, p, o) {
     }
   }
   // a ragged fringe of fur where the fur shows (flanks and back), so the outline reads furry
-  if (spec.species !== 'molerat' && spec.species !== 'frog' && spec.species !== 'armadillo') {
+  // (not on the round chibi bodies: their silhouette stays clean and blocky)
+  if (!chibi && spec.species !== 'molerat' && spec.species !== 'frog' && spec.species !== 'armadillo') {
     const furry = outfit === 'none' || ((outfit === 'overalls' || outfit === 'apron') && !tee);
     dilate((x, y, z) => {
       if (y < 2 || y > H - 2) return false;

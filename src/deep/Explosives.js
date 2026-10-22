@@ -138,7 +138,7 @@ export class Explosives {
     }
     // Spare Sticks: sometimes it was an extra one (DigScene takes one from the bag after this)
     if (mb.spare > 0 && Math.random() < mb.spare && st) {
-      st.addItem(item.id);
+      st.addItem(item.id, { spill: true });
       evs.push({ say: `Spare ${item.name.toLowerCase()}! Grubb packed an extra.`, key: 'dynspare', tone: 'good', cd: 2 });
     }
     return evs;
@@ -336,7 +336,7 @@ export class Explosives {
       // too close to something precious: the fuse sputters out and the charge goes back in the bag
       this.audio?.play('hiss');
       this.fx?.dust(x, y + 0.05, z, 8, [0.4, 0.38, 0.36], 0.08);
-      st?.addItem(s.item.id);
+      st?.addItem(s.item.id, { spill: true });
       owner?.updateHotbar?.();
       this.say(`The fuse sputtered out: no blasting near ${zone.name}. You fish the ${s.item.name.toLowerCase()} back out.`, 'warn', 'dynfizzle', 3);
       return;

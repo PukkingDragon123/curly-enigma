@@ -23,6 +23,7 @@ const CATS = [
   { id: 'weapon', label: 'Weapons', color: '#6a6a7a', icon: () => weaponIconURL(Object.keys(WEAPON_TYPES)[0], 'iron'), list: () => Object.keys(WEAPON_TYPES) },
   { id: 'recipe', label: 'Recipes', color: '#c0702a', icon: () => iconURL(Object.keys(DISHES)[0]), list: () => Object.keys(DISHES) },
   { id: 'mechanic', label: 'Mechanics', color: '#6a3a8a', icon: bookIcon, list: () => Object.keys(MECHANICS) },
+  { id: 'relic', label: 'Relics', color: '#b08a2a', icon: () => iconURL('relic_idol'), list: () => Object.keys(ITEMS).filter((k) => ITEMS[k].cat === 'relic') }, // ruins part
 ];
 
 const PLANT_ZONES = {
@@ -153,6 +154,7 @@ export function openIndexBook(game, startCat, startId) {
       if (cat === 'weapon') hint = st.owns('bp_' + sel) ? 'You have the plans. Forge one!' : 'Plans for this are sold at Inkwell Plans.';
       if (cat === 'recipe') hint = 'Some combination of ingredients makes this. Experiment at the stove.';
       if (cat === 'mechanic') hint = 'You\'ll understand this one when it happens to you.';
+      if (cat === 'relic') hint = `Said to lie sealed in ${ITEMS[sel]?.where || 'the old ruins'}.`;
       put(right,
         back,
         el('div', { class: 'ib-entryhead' }, [
@@ -191,6 +193,9 @@ export function openIndexBook(game, startCat, startId) {
       if (st.data.recipes[sel]) lines.push(`<b>Best attempt:</b> ${Math.round(st.data.recipes[sel])} / 100`);
     } else if (cat === 'mechanic') {
       lines.push(MECHANICS[sel].desc);
+    } else if (cat === 'relic') {
+      const it = ITEMS[sel];
+      lines.push(it.desc, `<b>Found in:</b> ${it.where}`, `<b>Worth:</b> <span class="gold-txt">${formatGoldFull(it.value)}g</span>`);
     }
     const [first, ...rest] = lines;
     put(right,

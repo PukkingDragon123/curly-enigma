@@ -1,14 +1,40 @@
-// Title screen: a cozy voxel burrow diorama with a drifting camera, the MOLEFORGE logo and
-// the main menu (Continue / New Game / Settings / Credits).
+// Title screen: a tough blacksmith mole forging in a cave (bookends/titleForge.js) behind the
+// MOLEFORGE logo and a menu of carved wooden signs hanging from an iron wall bracket
+// (ui/signs.js). Continue / New Game raises the signs out of the way and brings up the three save
+// stones on a ledge (bookends/titleStones.js); the camera pushes in on the anvil meanwhile.
+//
+// Debug (scene.debug): openStones(), closeStones(), pick(i), fake(i, pct) (pretend slot i is at
+// pct% to see the gem stages), smash(i) (play the delete animation), shot('menu'|'stones'),
+// step(sec) (advance the diorama by hand), menu (the sign menu).
 import * as THREE from 'three';
 import { Scene } from '../core/Scene.js';
 import { el } from '../core/util.js';
-import { buildBurrow, BURROW } from '../bookends/burrow.js';
+import { buildForgeCave } from '../bookends/titleForge.js';
+import { makeSaveStones, GEMS } from '../bookends/titleStones.js';
 import { useBookendStyles } from '../bookends/css.js';
 import { logoLetters, glintURL } from '../bookends/logo.js';
 import { disposeTextures, setPixelScale } from '../bookends/fx.js';
+import { makeSignMenu } from '../ui/signs.js';
+import { openSettings } from '../ui/PauseMenu.js';
 
-const CONTINUE_OK = new Set(['town', 'home', 'forge', 'cooking']); // the old mine and the deep fall back to home
+const CONTINUE_OK = new Set(['town', 'home', 'forge', 'cooking']); // the mine and the deep fall back to home
+
+const TITLE_CSS = /* css */`
+.tt-left .tt-menu { margin-top: calc(var(--px) * 9); }
+.tt-left { transition: opacity .35s; }
+.bk-title.stones .tt-left { opacity: 0; }
+.bk-title.stones .bk-controls, .bk-title.stones .bk-sound { visibility: hidden; }
+.tt-back { position: absolute; left: 0; top: 0; }
+@media (max-height: 520px) and (min-aspect-ratio: 5/4) {
+  .tt-left .bk-logo { --lp: calc(var(--px) * 1.5); }
+  .tt-left .bk-sub { margin-top: calc(var(--px) * 2.5); }
+  .tt-left .tt-menu { margin-top: calc(var(--px) * 3); }
+}
+@media (max-aspect-ratio: 5/4) {
+  .tt-left .tt-menu { margin-top: auto; }
+  .bk-title .bk-sound { top: calc(var(--px) * 52 + env(safe-area-inset-top, 0px)); bottom: auto; }
+}
+`;
 
 export default class TitleScene extends Scene {
   async enter(params = {}) {
@@ -16,22 +42,36 @@ export default class TitleScene extends Scene {
     this.music = 'title';
     this.allowMenus = false;
     this.params = params;
-    this.post = { vignette: 0.5, saturation: 1.12, contrast: 1.06, tint: 0xfff2e8, levels: 40 };
+    // ember grade, hot glow on the fire, the blade and the sparks; shafts of light through the
+    // forge smoke from the firepot
+    this.post = {
+      vignette: 0.55, saturation: 1.12, contrast: 1.08, tint: 0xfff0e4, levels: 40,
+      grade: 'forge', gradeMix: 0.7, bloom: 0.9, bloomThreshold: 0.7, bloomRadius: 1.2,
+      rays: 0.32, raysSky: 0, raysThreshold: 0.66, raysColor: 0xffb070, raysRadius: 0.55, raysDecay: 0.95,
+      flash: 0, flashColor: 0xffd8a0,
+    };
     this.textures = [];
     this.own(useBookendStyles());
     this.own(() => disposeTextures(this.textures));
+    const style = document.createElement('style');
+    style.textContent = TITLE_CSS;
+    document.head.append(style);
+    this.own(() => style.remove());
 
-    this.camera = new THREE.PerspectiveCamera(30, this.game.engine.aspect, 0.1, 100);
-    this.camBase = new THREE.Vector3();
-    this.camLook = new THREE.Vector3();
-    this.dio = buildBurrow(this.scene, this.textures);
+    this.camera = new THREE.PerspectiveCamera(32, this.game.engine.aspect, 0.1, 100);
+    this.cam = { pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 32, init: false };
+    this.shotName = 'menu';
+    this.dio = await buildForgeCave(this.scene, this.textures, { audio: this.game.audio, standin: params.smith === 'standin' }); // ?smith=standin: the fallback mole
+    this.post.raysPos = this.dio.fire.clone().add(new THREE.Vector3(0, 0.35, 0));
     const st = this.dio.stats;
-    console.log(`[title] burrow built in ${st.total.toFixed(0)} ms (cave grid ${st.grid.toFixed(0)} ms, shell mesh ${st.shell.toFixed(0)} ms, ${Math.round(st.shellTris / 1000)}k tris; ${st.batched} props → ${st.batches} batches)`);
+    console.log(`[title] forge built in ${st.total.toFixed(0)} ms (cave grid ${st.grid.toFixed(0)} ms, shell ${st.shell.toFixed(0)} ms, ${Math.round(st.shellTris / 1000)}k tris, ${st.batches} batches; smith: ${this.dio.smith.kind})`);
     setPixelScale(this.game.engine.height);
-    this.layoutCamera(this.game.engine.width, this.game.engine.height);
+    this.layoutCamera(this.game.engine.width, this.game.engine.height, true);
+    this.fireLoop = this.game.audio.loop('forge_fire', { vol: 0.32 });
+    this.own(() => this.fireLoop?.stop?.());
 
     this.buildDom();
-    // compile shaders up front so the first frames don't hitch
+    this.debug = this.makeDebug();
     try { this.game.engine.renderer.compile(this.scene, this.camera); } catch (e) { /* optional */ }
   }
 
@@ -39,14 +79,14 @@ export default class TitleScene extends Scene {
   buildDom() {
     const g = this.game;
     const word = 'MOLEFORGE';
-    const letters = logoLetters().map((L, i) => el('span', { class: L.hot ? 'hot' : '', style: { '--i': i }, 'aria-hidden': 'true' }, [
+    const cssVars = (e, vars) => { for (const [k, v] of Object.entries(vars)) e.style.setProperty(k, String(v)); return e; }; // el() can't set custom properties
+    const letters = logoLetters().map((L, i) => cssVars(el('span', { class: L.hot ? 'hot' : '', 'aria-hidden': 'true' }, [
       el('img', { class: 'pix', src: L.url, alt: '', draggable: 'false', style: { width: `calc(var(--lp) * ${L.w})`, height: `calc(var(--lp) * ${L.h})` } }),
-    ]));
+    ]), { '--i': i }));
     const glint = glintURL();
-    const sparkles = [[1, 0.18, 0.22, 0], [8, 0.25, 0.12, 1.9], [5, 0.4, 0.05, 3.3]].map(([li, x, y, d]) => el('img', { class: 'pix bk-glint', src: glint, alt: '', style: { '--gl': li, '--gx': x, '--gy': y, animationDelay: `${2.6 + d}s` } }));
+    const sparkles = [[1, 0.18, 0.22, 0], [8, 0.25, 0.12, 1.9], [5, 0.4, 0.05, 3.3]].map(([li, x, y, d]) => cssVars(el('img', { class: 'pix bk-glint', src: glint, alt: '', style: { animationDelay: `${2.6 + d}s` } }), { '--gl': li, '--gx': x, '--gy': y }));
     const embers = Array.from({ length: 9 }, (_, i) => el('i', { class: 'bk-ember', style: { left: `${46 + ((i * 37) % 52)}%`, animationDelay: `${(i * 0.53) % 2.6 + 2}s`, animationDuration: `${2.1 + (i % 4) * 0.35}s` } }));
     const logo = el('h1', { class: 'bk-logo', 'aria-label': word }, [...letters, ...sparkles, ...embers]);
-    // position each glint over its letter once laid out
     requestAnimationFrame(() => {
       for (const sp of sparkles) {
         const li = +sp.style.getPropertyValue('--gl');
@@ -57,40 +97,94 @@ export default class TitleScene extends Scene {
       }
     });
     const sub = el('div', { class: 'bk-sub bk-outline' }, [el('i'), 'One million gold to the surface', el('i')]);
-
-    const items = [];
-    if (this.canContinue()) items.push(['Continue', () => this.doContinue()]);
-    items.push(['New Game', () => this.newGame()]);
-    items.push(['Settings', () => this.openSettings()]);
-    items.push(['Credits', () => this.openCredits()]);
-    this.buttons = items.map(([label, fn], i) => el('button', {
-      class: 'btn' + (i === 0 ? '' : ' alt'), style: { '--i': i }, type: 'button',
-      onclick: () => { if (this.busy) return; g.audio.play('ui_click'); fn(); },
-      onpointerenter: () => g.audio.play('ui_hover'),
-    }, label));
-    const menu = el('nav', { class: 'bk-menu', 'aria-label': 'Main menu' }, this.buttons);
-
-    const keys = [['WASD', 'move'], ['C', 'crouch/dive'], ['Mouse', 'dig/aim'], ['E', 'interact'], ['B', 'Index Book'], ['I', 'inventory'], ['Esc', 'menu']];
+    const menuSlot = el('div', { class: 'tt-menu' });
+    const keys = [['WASD', 'move'], ['C', 'crouch/dive'], ['Mouse', 'dig/aim'], ['E', 'interact'], ['B', 'the book'], ['I', 'backpack'], ['Esc', 'menu']];
     const controls = el('div', { class: 'bk-controls bk-outline' });
     keys.forEach(([k, label], i) => {
       if (i) controls.append(el('span', { class: 'dot' }, '·'));
       controls.append(el('kbd', {}, k), label);
     });
     this.soundHint = el('div', { class: 'bk-sound bk-outline', role: 'status' }, [el('span', { class: 'bk-sound-in' }, [el('span', { class: 'note' }, '♪'), (window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 'tap' : 'click') + ' anywhere for sound'])]);
-    this.root = el('div', { class: 'bk-root bk-title' }, [el('div', { class: 'bk-left' }, [logo, sub, menu]), controls, this.soundHint]);
+    this.left = el('div', { class: 'bk-left tt-left' }, [logo, sub, menuSlot]);
+    this.root = el('div', { class: 'bk-root bk-title' }, [this.left, controls, this.soundHint]);
     g.ui.world.append(this.root);
     this.own(() => this.root.remove());
     this.audioOn = false;
+
+    const anySave = g.state.listSlots().some((s) => s.used);
+    const items = [
+      { label: anySave ? 'Continue' : 'New Game', primary: true, onClick: () => this.openStones() },
+      { label: 'Settings', onClick: () => this.openSettings() },
+      { label: 'Credits', onClick: () => this.openCredits() },
+    ];
+    const short = window.innerHeight < 520 && window.innerWidth > window.innerHeight;
+    this.menu = makeSignMenu(menuSlot, items, { audio: g.audio, layer: this.root, mount: 'bracket', label: 'Main menu', breeze: 0.35, gap: short ? 4 : 7, top: short ? 8 : 12 });
+    this.own(() => this.menu.destroy());
+
+    // the save stones
+    this.stones = makeSaveStones(this.root, {
+      audio: g.audio,
+      slots: () => g.state.listSlots(),
+      onPick: (i, info) => this.pickSlot(i, info),
+      onDelete: (i) => g.ui.confirm(`<b>Smash save stone ${i + 1}?</b><br>The ${GEMS[i].name.toLowerCase()} and everything in it will be gone for good.`, 'Smash it', 'Keep it'),
+      afterDelete: (i) => { g.state.deleteSlot(i); this.refreshMenu(); },
+    });
+    this.own(() => this.stones.destroy());
+    this.onKey = (e) => {
+      if (e.key === 'Escape' && this.stones.open && !g.ui.isPanelOpen()) { e.preventDefault(); this.closeStones(); }
+    };
+    window.addEventListener('keydown', this.onKey);
+    this.own(() => window.removeEventListener('keydown', this.onKey));
   }
 
-  hasProgress() {
-    const d = this.game.state.data;
-    // (not playTime: the game loop also counts time spent idling on this screen)
-    return !!this.game.state.flag('lastScene') || d.day > 1 || d.stats.blocks > 0 || d.stats.earned > 0 || d.weapons.length > 0 || Object.keys(d.index || {}).length > 0;
+  /** The first sign reads Continue while any stone holds a save. */
+  refreshMenu() {
+    const anySave = this.game.state.listSlots().some((s) => s.used);
+    const want = anySave ? 'Continue' : 'New Game';
+    if (this.menu.items[0].label !== want) this.menu.setLabel(0, want);
   }
 
-  canContinue() {
-    return this.game.state.hasSave() && this.hasProgress();
+  openStones() {
+    if (this.busy || this.stones.open) return;
+    this.root.classList.add('stones');
+    this.menu.raise(true);
+    this.setShot('stones');
+    this.stones.show();
+    // a single sign to go back, dangling from the roof at the top left
+    const holder = el('div', { class: 'tt-back' });
+    holder.style.left = 'calc(var(--px) * 8 + env(safe-area-inset-left, 0px))';
+    this.root.append(holder);
+    this.backMenu = makeSignMenu(holder, [{ label: 'Back', onClick: () => this.closeStones() }], { audio: this.game.audio, layer: this.root, mount: 'ceiling', top: 4, label: 'Back', autofocus: false, breeze: 0.2 });
+    this.backHolder = holder;
+  }
+
+  closeStones() {
+    if (this.busy || !this.stones.open) return;
+    this.stones.hide();
+    this.root.classList.remove('stones');
+    this.setShot('menu');
+    this.backMenu?.raise(true);
+    const bm = this.backMenu, bh = this.backHolder;
+    setTimeout(() => { bm?.destroy(); bh?.remove(); }, 500);
+    this.backMenu = null;
+    this.menu.raise(false);
+    setTimeout(() => this.menu.focus(0), 300);
+  }
+
+  pickSlot(i, info) {
+    if (this.busy) return;
+    const g = this.game, st = g.state;
+    this.busy = true;
+    if (info && info.used) {
+      st.useSlot(i);
+      // never fell yet (a save from before the opening): play the fall first
+      if (!st.flag('fallen')) g.goto('fall');
+      else g.goto(this.continueTarget(), { from: 'continue' });
+    } else {
+      // every new game opens with the fall: the ground gives way under the mole and Nugget
+      st.useSlot(i, { fresh: true });
+      g.goto('fall');
+    }
   }
 
   /** lastScene || 'home', but never back into the title, the ending or a dev scene. */
@@ -99,58 +193,13 @@ export default class TitleScene extends Scene {
     return CONTINUE_OK.has(ls) ? ls : 'home';
   }
 
-  doContinue() {
-    this.busy = true;
-    // never fell yet (a save from before the opening): play the fall first
-    if (!this.game.state.flag('fallen')) this.game.goto('fall');
-    else this.game.goto(this.continueTarget(), { from: 'continue' });
-  }
-
-  async newGame() {
-    const g = this.game;
-    const st = g.state;
-    // a save with no real progress (e.g. written on a page unload at the title) isn't worth a prompt
-    if (st.hasSave() && this.hasProgress()) {
-      this.busy = true;
-      const ok = await g.ui.confirm('<b>Start a new game?</b><br>Your current save will be erased.', 'Start fresh', 'Keep my save');
-      this.busy = false;
-      if (!ok) return;
-    }
-    this.busy = true;
-    st.reset();
-    st.wipeSave();
-    // every new game opens with the fall: the ground gives way under the mole and Nugget
-    g.goto('fall');
-  }
-
   openSettings() {
-    const g = this.game;
-    const s = g.state.data.settings;
-    const range = (id, label, key) => {
-      const out = el('span', { class: 'muted', style: { minWidth: '3ch', textAlign: 'right', fontVariantNumeric: 'tabular-nums' } }, String(Math.round(s[key] * 100)));
-      const input = el('input', {
-        id, type: 'range', min: 0, max: 1, step: 0.05, value: s[key],
-        oninput: (e) => {
-          s[key] = parseFloat(e.target.value);
-          out.textContent = String(Math.round(s[key] * 100));
-          g.audio.setVolumes({ [key]: s[key] });
-        },
-        onchange: () => { if (key === 'sfx') g.audio.play('ui_click'); },
-      });
-      return el('label', { class: 'setting', for: id }, [label, el('span', { class: 'row', style: { gap: 'calc(var(--px) * 2)', flexWrap: 'nowrap' } }, [input, out])]);
-    };
-    const body = el('div', { class: 'menu-list' }, [
-      range('bk-music', 'Music', 'music'),
-      range('bk-sfx', 'Sound', 'sfx'),
-      el('p', { class: 'muted', style: { margin: 0, fontSize: '.75em' } }, 'More options live in the in-game menu (Esc).'),
-    ]);
-    // only touch the save file if there already is one; otherwise settings ride along with the new game
-    g.ui.openPanel({ title: 'Settings', body, onClose: () => { if (g.state.hasSave()) g.state.save(); } });
+    openSettings(this.game, { onClose: () => setTimeout(() => this.menu.focus(1), 30) });
   }
 
   openCredits() {
     const body = el('div', { class: 'bk-credits-body' }, [
-      el('p', {}, 'A dirty little mole, a very good chicken, and one million gold between them and the sun.'),
+      el('p', {}, 'A tough little mole, a very good chicken, an old star-nosed smith, and one million gold between them and the sun.'),
       el('ul', {}, [
         el('li', {}, 'Made with Three.js'),
         el('li', {}, 'Every sound synthesized in the browser'),
@@ -159,36 +208,52 @@ export default class TitleScene extends Scene {
       ]),
       el('p', { class: 'muted' }, 'Thank you for digging with us.'),
     ]);
-    this.game.ui.openPanel({ title: 'Credits', sub: 'MOLEFORGE', body });
+    this.game.ui.openPanel({ title: 'Credits', sub: 'MOLEFORGE', body, onClose: () => setTimeout(() => this.menu.focus(2), 30) });
   }
 
   // ------------------------------------------------------------------ camera
-  layoutCamera(w, h) {
-    const aspect = w / h;
-    this.camera.aspect = aspect;
-    if (aspect >= 1.25) {
-      // menu on the left: frame the campfire right of centre
-      const shift = THREE.MathUtils.clamp((aspect - 1.25) * 1.6, 0, 1.6);
-      this.camBase.set(1.15 - shift * 0.55, 2.3, 9.3);
-      this.camLook.set(1.15 - shift * 0.55, 1.3, -0.6);
-      this.camera.fov = 30;
-    } else {
-      // tall screens: logo on top, menu at the bottom, diorama in the middle
-      this.camBase.set(BURROW.mole.x - 0.4, 2.9, 13.5);
-      this.camLook.set(BURROW.mole.x - 0.4, 1.7, -0.6);
-      this.camera.fov = 44;
+  setShot(name) { this.shotName = name; }
+
+  shot() {
+    const aspect = this.camera.aspect;
+    const set = this.dio.shots[this.shotName] || this.dio.shots.menu;
+    return aspect >= 1.25 ? set.wide : set.tall;
+  }
+
+  layoutCamera(w, h, snap = false) {
+    this.camera.aspect = w / h;
+    const s = this.shot();
+    if (snap || !this.cam.init) {
+      this.cam.pos.copy(s.pos); this.cam.look.copy(s.look); this.cam.fov = s.fov; this.cam.init = true;
     }
     // dev: ?cam=x,y,z,lookX,lookY,lookZ[,fov] to inspect the diorama
-    const dc = this.params && this.params.cam ? this.params.cam.split(',').map(Number) : null;
+    const dc = this.params && this.params.cam ? String(this.params.cam).split(',').map(Number) : null;
     if (dc && dc.length >= 6) {
-      this.camBase.set(dc[0], dc[1], dc[2]);
-      this.camLook.set(dc[3], dc[4], dc[5]);
-      if (dc[6]) this.camera.fov = dc[6];
+      this.camFixed = { pos: new THREE.Vector3(dc[0], dc[1], dc[2]), look: new THREE.Vector3(dc[3], dc[4], dc[5]), fov: dc[6] || 32 };
     }
-    this.camera.position.copy(this.camBase);
-    this.camera.lookAt(this.camLook);
-    this.camQuat = this.camera.quaternion.clone();
-    this.camera.updateProjectionMatrix();
+    this.applyCamera(0);
+  }
+
+  applyCamera(t) {
+    const c = this.camera;
+    if (this.camFixed) {
+      c.position.copy(this.camFixed.pos); c.fov = this.camFixed.fov; c.lookAt(this.camFixed.look); c.updateProjectionMatrix();
+      return;
+    }
+    const { pos, look, fov } = this.cam;
+    // a slow cinematic drift: orbit a little around the anvil, breathe in and out
+    const off = new THREE.Vector3().subVectors(pos, look);
+    const yaw = Math.sin(t * 0.07) * 0.075 + Math.sin(t * 0.023 + 1) * 0.045;
+    off.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    off.multiplyScalar(1 + Math.sin(t * 0.05) * 0.035);
+    c.position.copy(look).add(off);
+    c.position.y += Math.sin(t * 0.11) * 0.05;
+    // the blows shake the camera a touch (if the player allows it)
+    const shake = this.dio.shake * (this.game.state.data.settings.shake ?? 1);
+    if (shake > 0) c.position.add(new THREE.Vector3((Math.random() - 0.5) * 0.02 * shake, (Math.random() - 0.5) * 0.016 * shake, 0));
+    c.fov = fov;
+    c.lookAt(look);
+    c.updateProjectionMatrix();
   }
 
   onResize(w, h) {
@@ -199,15 +264,15 @@ export default class TitleScene extends Scene {
   // ------------------------------------------------------------------ frame
   update(dt) {
     super.update(dt);
-    const t = this.time;
-    this.dio.update(dt);
-    // slow drift: the camera floats but never turns (the beach gets that honour)
-    this.camera.position.set(
-      this.camBase.x + Math.sin(t * 0.11) * 0.42 + Math.sin(t * 0.23) * 0.1,
-      this.camBase.y + Math.sin(t * 0.17) * 0.13,
-      this.camBase.z + Math.sin(t * 0.07) * 0.45 - 0.2,
-    );
-    this.camera.quaternion.copy(this.camQuat);
+    this.dio.update(dt, this.camera);
+    // glide toward the current framing
+    const s = this.shot();
+    const k = 1 - Math.exp(-dt * 2.2);
+    this.cam.pos.lerp(s.pos, k);
+    this.cam.look.lerp(s.look, k);
+    this.cam.fov += (s.fov - this.cam.fov) * k;
+    this.applyCamera(this.time);
+    this.post.flash = this.dio.flash * 0.07;
 
     const ctx = this.game.audio.ctx;
     const on = !!(ctx && ctx.state === 'running');
@@ -215,5 +280,27 @@ export default class TitleScene extends Scene {
       this.audioOn = on;
       this.soundHint.classList.toggle('gone', on);
     }
+  }
+
+  // ------------------------------------------------------------------ test hooks
+  makeDebug() {
+    const self = this;
+    return {
+      get menu() { return self.menu; },
+      get stones() { return self.stones; },
+      get smith() { return self.dio.smith; },
+      openStones() { self.openStones(); },
+      closeStones() { self.closeStones(); },
+      pick(i) { const info = self.game.state.listSlots()[i]; self.pickSlot(i, info); },
+      /** Pretend slot i is at pct% complete (null to stop pretending). */
+      fake(i, pct) { self.stones.setFake(i, pct); },
+      smash(i) { return self.stones.smash(i); },
+      shot(name) { self.setShot(name); const s = self.shot(); self.cam.pos.copy(s.pos); self.cam.look.copy(s.look); self.cam.fov = s.fov; },
+      /** Advance the diorama (and the sign/stone animations) by `sec` seconds in 1/30 s steps. */
+      step(sec = 1) {
+        const n = Math.round(sec * 30);
+        for (let i = 0; i < n; i++) { self.update(1 / 30); self.menu.step(1 / 30); self.backMenu?.step(1 / 30); if (self.stones.open) self.stones.step(1 / 30); }
+      },
+    };
   }
 }

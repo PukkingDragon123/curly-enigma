@@ -119,6 +119,23 @@ const CSS = /* css */`
   text-shadow: 0 var(--px) 0 #000, var(--px) 0 0 #000, calc(var(--px) * -1) 0 0 #000, 0 calc(var(--px) * -1) 0 #000; animation: ckFloat .9s ease-out forwards; }
 @keyframes ckFloat { 0% { transform: translate(-50%, -50%) scale(.5); } 20% { transform: translate(-50%, -60%) scale(1.15); } 100% { transform: translate(-50%, calc(-50% - var(--px) * 14)) scale(1); opacity: 0; } }
 
+/* quality pips, buff chips, steps on cards */
+.ck-grid .slot .q { position: absolute; left: calc(var(--px) * -1); top: calc(var(--px) * -1); min-width: calc(var(--px) * 7); padding: 0 calc(var(--px) * .5); font-size: 10px; line-height: calc(var(--px) * 5); color: #fff; text-align: center; box-shadow: 0 0 0 var(--px) #2a1a12; }
+.ck-grid .slot .q.p::after { content: '★'; margin-left: 1px; color: #fff6b0; }
+.ck-buffchip { display: inline-block; margin-left: calc(var(--px) * 2); padding: 0 calc(var(--px) * 1.5); font-size: .58em; font-weight: 700; color: #2a1a12; vertical-align: middle; box-shadow: 0 0 0 var(--px) #2a1a12; }
+.ck-card .stp { font-size: .58em; color: var(--ink-soft); letter-spacing: .03em; text-transform: uppercase; margin-top: calc(var(--px) * .5); }
+.ck-sniff { display: block; margin-top: var(--px); color: #a8402a; }
+/* the rolling widget: one bar per strip of dough */
+.ck-roll { position: absolute; right: calc(var(--px) * 8); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: calc(var(--px) * 2); animation: ckGaugeIn .3s cubic-bezier(.2,1.4,.4,1); }
+.ck-roll .lbl { font-size: .62em; font-weight: 700; color: var(--text-light); text-shadow: 0 var(--px) 0 #000; letter-spacing: .06em; text-transform: uppercase; }
+.ck-rollbars { display: flex; gap: var(--px); padding: var(--px); background: #2a1a12; box-shadow: 0 0 0 var(--px) #000, inset 0 0 0 var(--px) #4a3020; }
+.ck-rollbars span { position: relative; width: calc(var(--px) * 5); height: min(calc(var(--px) * 60), 34vh); background: #1a100c; }
+.ck-rollbars span b { position: absolute; left: 0; right: 0; background: rgba(138, 224, 90, .3); border-top: var(--px) dashed #9af07a; border-bottom: var(--px) dashed #9af07a; }
+.ck-rollbars span i { position: absolute; left: var(--px); right: var(--px); bottom: 0; background: #f3e2bf; transition: height .08s; }
+.ck-roll .btn { font-size: .85em; }
+/* Old Star's lesson: the step HUD sits a bit lower so his card has room on touch screens */
+.is-touch .ck-top.lesson { top: calc(var(--px) * 40); }
+
 /* ---------- result ---------- */
 .ck-result { align-items: center; text-align: center; overflow: hidden; bottom: auto; right: auto; left: calc(var(--px) * 5); top: calc(var(--px) * 56); max-height: calc(100vh - var(--px) * 61); animation: ckSlideInL .32s cubic-bezier(.2,1.3,.4,1); }
 .ck-result .scroll { overflow-y: auto; }

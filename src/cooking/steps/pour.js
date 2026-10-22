@@ -29,7 +29,7 @@ export class PourStep extends Step {
     this.tilt = 0.15;
     this.flow = 0;
     const mid = 0.78 + (Math.random() - 0.5) * 0.08;
-    this.band = [mid - 0.075, mid + 0.075];
+    this.band = this.win(mid - 0.075, mid + 0.075, 0.1, 0.97);
     this.poured = false;
     this.idleT = 0;
     this.pourSfx = 0;

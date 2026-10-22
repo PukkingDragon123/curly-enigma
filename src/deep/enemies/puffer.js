@@ -57,6 +57,8 @@ export function buildPuffer(zone) {
 
 export class Puffer extends Enemy {
   static info = { id: 'spore_puffer', name: 'Spore Puffer', color: '#ff8a6a', hits: 2.5, dmg: 1.2, snd: 'flesh' };
+  static tells = { inflate: [0.95, true] };
+  static resume = 'approach';
   constructor(mgr, o) {
     super(mgr, o);
     this.hw = 0.17; this.h = 0.5; this.cy = 0.3; this.hitR = 0.3;

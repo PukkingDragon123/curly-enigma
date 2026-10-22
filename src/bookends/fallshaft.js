@@ -2,12 +2,15 @@
 // the mole and Nugget tumble down it. Eight 1/16 relief faces (an octagon) per depth band: an
 // undercut funnel under the hole, then Rootsoil (roots, worm holes, pebbles), Clayworks (banded
 // terracotta, fossils), a wet stone stretch with an underground waterfall, the Crystal Grotto
-// (glowing crystal seams and glow worms), and old packed earth over an abandoned burrow whose
-// roof boards make the floor. The ledges they bounce off are placed where the fall puts them.
+// (glowing crystal seams and glow worms), and old packed earth down to a plug of roots and rock
+// with lantern light leaking through its cracks: Old Star's dig, a cave lit by a single lantern,
+// lies underneath. The ledges they bounce off are placed where the fall puts them.
 // Walls stream in 4 m bands (prebuild / ensure) so nothing ever blocks a frame for long.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { meshRelief, hash3, fshade, fmix } from './vox.js';
+import { meshRelief, hash3, fshade, fmix, VoxelGrid, voxMesh } from './vox.js';
+import { makeLantern, makePickaxe, makeRock, makeSack } from './props.js';
+import { makeGlow } from './fx.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
 import { makeNoise2D, clamp, lerp } from '../core/util.js';
 import { PIX } from './fx.js';
@@ -33,7 +36,7 @@ const ROCK = [
   [0xb8603a, 0xc8743f, 0x9a4e30, 0xd88a50], // clay
   [0x4e5a66, 0x5a6672, 0x46525e, 0x627080], // wet stone
   [0x4a5274, 0x5c6890, 0x3c4464, 0x505a80], // crystal grotto
-  [0x6a4a32, 0x58402c, 0x7c5a3c, 0x4e3626], // old packed earth
+  [0x5e4430, 0x4e3a28, 0x6c5038, 0x44301f], // old packed earth, rooty
 ];
 
 /**
@@ -42,6 +45,7 @@ const ROCK = [
  */
 export function buildFallShaft(opts) {
   const { floorY, ledges = [], waterfall = null } = opts;
+  const land = opts.land || { x: 0, z: 0, a: 0.6 }; // where they come down in the cave
   const group = new THREE.Group();
   group.name = 'fall-shaft';
   const n1 = makeNoise2D(41), n2 = makeNoise2D(42), n3 = makeNoise2D(43), n4 = makeNoise2D(44);
@@ -190,55 +194,177 @@ export function buildFallShaft(opts) {
     return g;
   }
 
-  /** The floor: packed earth over the old burrow, crossed by its weathered roof boards. */
-  function buildFloor() {
+  /**
+   * The floor of the shaft: a plug of packed earth and stones bound by thick tangled roots, with
+   * warm lantern light leaking up through the cracks from the cave underneath. The middle (where
+   * they land) is its own piece so it can give way; the glowing cracks are unlit meshes.
+   */
+  function buildPlug() {
     const R = 3.1, Wf = Math.ceil((2 * R) / VS);
-    const h = new Uint16Array(Wf * Wf), top = new Uint32Array(Wf * Wf);
-    for (let k = 0; k < Wf; k++) for (let i = 0; i < Wf; i++) {
-      const x = -R + (i + 0.5) * VS, z = -R + (k + 0.5) * VS;
-      if (Math.hypot(x, z) > R) continue;
-      const q = i + Wf * k;
-      let lv = 6 + Math.round(n2(x * 1.2, z * 1.2) * 1.5);
-      const hh = hash3(i, k, 9, 1);
-      let c = fshade(hh < 0.5 ? 0x5a3e2a : 0x4e3624, PATCH[(hash3(i >> 1, k >> 1, 9, 2) * 3) | 0]);
-      if (Math.abs(n4(x * 0.5, z * 0.9)) < 0.025) { c = 0x8a6a48; lv += 1; } // roots
-      // three roof boards, grey and split, with rusty nails
-      for (let b = 0; b < 3; b++) {
-        const cz = -0.75 + b * 0.62 + (b === 1 ? 0.04 : 0);
-        if (Math.abs(z - cz) < 0.24 && Math.abs(x + (b - 1) * 0.3) < 1.9 - b * 0.3) {
-          const edge = Math.abs(z - cz) > 0.2;
-          c = edge ? 0x5a4a3c : ((Math.floor(x * 6 + b) % 5) === 0 ? 0x6a5a4a : 0x7a6a58);
-          if (Math.abs(Math.abs(x) - 1.2) < 0.04 && Math.abs(z - cz) < 0.06) c = 0x8a4a2a;
-          if (Math.abs(n1(x * 3 + b, 5)) < 0.03) c = 0x3a2a20; // splits
-          lv = 8;
+    const n = Wf * Wf;
+    const h = new Uint16Array(n), top = new Uint32Array(n), gh = new Uint16Array(n), gc = new Uint32Array(n);
+    // a few thick roots crossing the plug, as polylines (x, z)
+    const roots = [];
+    for (let r = 0; r < 7; r++) {
+      const a = r * 0.9 + n1(r, 9) * 0.6;
+      const off = (r % 3 - 1) * 0.9 + n2(r, 4) * 0.5;
+      const pts = [];
+      for (let t = -1; t <= 1.001; t += 0.125) {
+        const along = t * R * 1.1;
+        const wob = n3(r * 3.1, t * 2.2) * 0.35;
+        pts.push([Math.cos(a) * along - Math.sin(a) * (off + wob), Math.sin(a) * along + Math.cos(a) * (off + wob)]);
+      }
+      roots.push({ pts, w: 0.07 + (r % 3) * 0.035 });
+    }
+    const rootDist = (x, z) => {
+      let best = 9, bw = 0.08;
+      for (const rt of roots) {
+        const P = rt.pts;
+        for (let i = 0; i + 1 < P.length; i++) {
+          const ax = P[i][0], az = P[i][1], bx = P[i + 1][0] - ax, bz = P[i + 1][1] - az;
+          const t = clamp(((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz), 0, 1);
+          const d = Math.hypot(x - ax - bx * t, z - az - bz * t) - rt.w;
+          if (d < best) { best = d; bw = rt.w; }
         }
       }
-      if (hh > 0.99) { c = 0x8a8278; lv += 1; }
+      return [best, bw];
+    };
+    for (let k = 0; k < Wf; k++) for (let i = 0; i < Wf; i++) {
+      const x = -R + (i + 0.5) * VS, z = -R + (k + 0.5) * VS;
+      const r = Math.hypot(x, z);
+      if (r > R) continue;
+      const q = i + Wf * k;
+      const hh = hash3(i, k, 9, 1);
+      let lv = 6 + Math.round(n2(x * 1.2, z * 1.2) * 1.5);
+      let c = fshade(hh < 0.5 ? 0x4e3624 : 0x46301f, PATCH[(hash3(i >> 1, k >> 1, 9, 2) * 3) | 0]);
+      const [rd, rw] = rootDist(x, z);
+      if (rd < 0) {
+        // a root: raised and rounded, lit along its top, bark rings
+        const t = -rd / rw;
+        lv = 7 + Math.round(t * 3);
+        c = t > 0.6 ? 0xb08a5c : t > 0.25 ? 0x8a6a46 : 0x6a4e34;
+        if ((Math.floor((x + z) * 9) & 3) === 0) c = fshade(c, 0.86);
+      } else if (rd < 0.04) c = 0x2e2016; // the dark seam beside a root
+      else if (hh > 0.985) { c = 0x8a8278; lv += 1; } // pebbles
+      else if (n4(x * 1.4, z * 1.4) > 0.42) { c = hh < 0.5 ? 0x6a6258 : 0x5a5248; lv += 1; } // stones in the earth
+      // cracks with lantern light coming up through them (only in the middle, where the cave is)
+      const crack = Math.abs(n1(x * 1.3 + 4, z * 1.3)) < 0.035 + (1 - r / 2.6) * 0.02;
+      if (rd > 0.02 && crack && r < 2.5) {
+        lv = 3;
+        gh[q] = 3; gc[q] = hh < 0.3 ? 0xffd08a : hh < 0.7 ? 0xf0a050 : 0xc87a3a;
+        top[q] = 0;
+      } else top[q] = c;
+      h[q] = lv;
+    }
+    // the middle (where they land) is its own piece so it can give way
+    const hIn = new Uint16Array(n), gIn = new Uint16Array(n);
+    for (let k = 0; k < Wf; k++) for (let i = 0; i < Wf; i++) {
+      const x = -R + (i + 0.5) * VS, z = -R + (k + 0.5) * VS;
+      if (Math.hypot(x, z) < 1.15 + n1(Math.atan2(z, x) * 3, 4) * 0.25) {
+        const q = i + Wf * k;
+        hIn[q] = h[q]; h[q] = 0; gIn[q] = gh[q]; gh[q] = 0;
+      }
+    }
+    const opt = { W: Wf, D: Wf, top, side: (q) => fshade(top[q] || 0x3a2a1c, 0.75), U: [VS, 0, 0], V: [0, 0, VS], N: [0, VS, 0], origin: [-R, floorY - 0.5, -R] };
+    const gopt = { ...opt, top: gc, side: null, walls: false, ao: false };
+    const parts = {
+      outer: new THREE.Mesh(meshRelief({ ...opt, h }), ROCK_MAT),
+      inner: new THREE.Mesh(meshRelief({ ...opt, h: hIn }), ROCK_MAT),
+      glowOuter: new THREE.Mesh(meshRelief({ ...gopt, h: gh }), GLOW_MAT),
+      glowInner: new THREE.Mesh(meshRelief({ ...gopt, h: gIn }), GLOW_MAT),
+    };
+    parts.outer.name = 'plug';
+    parts.inner.name = 'plug-middle';
+    const g = new THREE.Group();
+    for (const m of Object.values(parts)) { tris += m.geometry.index.count / 3; g.add(m); }
+    // a few roots dangling into the hole once it opens (and under the plug)
+    g.userData.middle = [parts.inner, parts.glowInner];
+    return g;
+  }
+
+  /**
+   * Old Star's dig: a dark cave under the plug, its floor 4.6 m down, lit by one lantern on a
+   * crate beside a heap of loose soil (where the travellers land), rubble, a pickaxe, a bedroll.
+   */
+  function buildCavern(land) {
+    const g = new THREE.Group();
+    g.name = 'cavern';
+    const R = 5.4, Wc = Math.ceil((2 * R) / VS);
+    const y0 = floorY - 4.6;
+    const h = new Uint16Array(Wc * Wc), top = new Uint32Array(Wc * Wc);
+    for (let k = 0; k < Wc; k++) for (let i = 0; i < Wc; i++) {
+      const x = -R + (i + 0.5) * VS, z = -R + (k + 0.5) * VS;
+      const r = Math.hypot(x, z);
+      if (r > R) continue;
+      const q = i + Wc * k;
+      const hh = hash3(i, k, 21, 3);
+      // the floor rises toward the walls; a soft heap of fallen soil where they land
+      const dl = Math.hypot(x - land.x, z - land.z);
+      let lv = 4 + Math.round(Math.max(0, r - 3.2) * 6 + n2(x * 0.9, z * 0.9) * 2) + Math.round(Math.max(0, 1 - dl / 1.1) * 5);
+      let c = fshade(hh < 0.5 ? 0x4a3828 : 0x42301f, PATCH[(hash3(i >> 1, k >> 1, 21, 4) * 3) | 0]);
+      if (dl < 1.1) c = hh < 0.5 ? 0x6a5038 : 0x5e4630; // loose soil
+      else if (n4(x * 0.8 + 3, z * 0.8) > 0.35) { c = hh < 0.4 ? 0x5a5248 : 0x4e463e; lv += 1 + (hh < 0.2 ? 1 : 0); } // rubble
+      else if (Math.abs(n3(x * 0.7, z * 0.7)) < 0.03) c = 0x2a1e14; // old cart ruts
+      if (hh > 0.992) c = 0x8a8278;
       h[q] = lv;
       top[q] = c;
     }
-    // the middle (where they land) is its own piece so it can give way
-    const hIn = new Uint16Array(Wf * Wf);
-    for (let k = 0; k < Wf; k++) for (let i = 0; i < Wf; i++) {
-      const x = -R + (i + 0.5) * VS, z = -R + (k + 0.5) * VS;
-      if (Math.hypot(x, z) < 1.05 + n1(Math.atan2(z, x) * 3, 4) * 0.25) { hIn[i + Wf * k] = h[i + Wf * k]; h[i + Wf * k] = 0; }
+    const floor = new THREE.Mesh(meshRelief({ W: Wc, D: Wc, h, top, side: (q) => fshade(top[q], 0.8), U: [VS, 0, 0], V: [0, 0, VS], N: [0, VS, 0], origin: [-R, y0 - 0.25, -R] }), ROCK_MAT);
+    tris += floor.geometry.index.count / 3;
+    g.add(floor);
+    // the cave walls and roof: dark rock the lantern barely reaches (cheap, seen only at the edges)
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.2, R - 0.4, 5.2, 24, 1, true), new THREE.MeshLambertMaterial({ color: 0x2a1e16, side: THREE.BackSide }));
+    wall.position.y = y0 + 2.4;
+    g.add(wall);
+    const topY = (x, z) => y0 - 0.25 + h[Math.min(Wc - 1, Math.max(0, Math.floor((z + R) / VS))) * Wc + Math.min(Wc - 1, Math.max(0, Math.floor((x + R) / VS)))] * VS;
+    // the camp: a crate with the lantern on it, a pickaxe against a boulder, a bedroll, a coil of rope
+    const lx = land.x + Math.cos(land.a) * 1.25, lz = land.z + Math.sin(land.a) * 1.25;
+    const crate = new VoxelGrid(16, 14, 14);
+    crate.box(0, 0, 0, 16, 14, 14, (x, y, z) => (x === 0 || x === 15 || y === 0 || y === 13 || z === 0 || z === 13 ? 0x5a3a22 : (x + y * 2) % 5 === 0 ? 0x7a5432 : 0x8a6440));
+    const cm = voxMesh(crate, { scale: 1 / 32, pivot: [8, 0, 7] });
+    cm.position.set(lx, topY(lx, lz), lz);
+    cm.rotation.y = land.a + 0.4;
+    g.add(cm);
+    const lan = makeLantern({ color: 0xffc060 });
+    lan.group.position.set(lx, cm.position.y + 14 / 32, lz);
+    lan.group.scale.setScalar(1.2);
+    g.add(lan.group);
+    const lanternPos = lan.glowPos.clone().multiplyScalar(1.2).add(lan.group.position);
+    const pick = makePickaxe();
+    pick.scale.setScalar(0.9);
+    const px = land.x + Math.cos(land.a + 2.1) * 1.6, pz = land.z + Math.sin(land.a + 2.1) * 1.6;
+    pick.position.set(px, topY(px, pz), pz);
+    pick.rotation.set(0.2, land.a, 0.42);
+    g.add(pick);
+    const rk = makeRock(5, { w: 16, h: 9, d: 13, color: 0x5a5248 });
+    rk.position.set(px + 0.25, topY(px, pz) - 0.05, pz + 0.1);
+    g.add(rk);
+    const bed = makeSack(4, 0x8a5a3a);
+    const bx = land.x + Math.cos(land.a - 1.9) * 1.7, bz = land.z + Math.sin(land.a - 1.9) * 1.7;
+    bed.position.set(bx, topY(bx, bz), bz);
+    bed.scale.set(1.6, 0.5, 1.0);
+    bed.rotation.y = land.a;
+    g.add(bed);
+    for (let i = 0; i < 5; i++) {
+      const a = land.a + 3.4 + i * 0.5, d = 2.6 + (i % 2) * 0.6;
+      const r2 = makeRock(30 + i, { w: 14 + i * 2, h: 7 + i, d: 12, color: i % 2 ? 0x4e463e : 0x5a5248 });
+      const x = land.x + Math.cos(a) * d, z = land.z + Math.sin(a) * d;
+      r2.position.set(x, topY(x, z) - 0.04, z);
+      r2.rotation.y = i * 1.7;
+      r2.scale.set(0.8 + (i % 3) * 0.2, 0.6, 0.8 + (i % 2) * 0.2);
+      g.add(r2);
     }
-    const opt = { W: Wf, D: Wf, top, side: (q) => fshade(top[q], 0.8), U: [VS, 0, 0], V: [0, 0, VS], N: [0, VS, 0], origin: [-R, floorY - 0.5, -R] };
-    const outer = new THREE.Mesh(meshRelief({ ...opt, h }), ROCK_MAT);
-    const inner = new THREE.Mesh(meshRelief({ ...opt, h: hIn }), ROCK_MAT);
-    outer.name = 'burrow-roof';
-    inner.name = 'burrow-roof-middle';
-    tris += outer.geometry.index.count / 3 + inner.geometry.index.count / 3;
-    const g = new THREE.Group();
-    g.add(outer, inner);
-    g.userData.middle = inner;
-    return g;
+    const glow = makeGlow({ color: 0xffb050, size: 2.6, intensity: 0.75, falloff: 1.8, levels: 5 });
+    glow.position.copy(lanternPos);
+    g.add(glow);
+    g.updateMatrixWorld(true);
+    return { group: g, lanternPos, floorY: y0, landY: topY(land.x, land.z), glow };
   }
 
   // ---- streaming: bands top to bottom, rows generated one band ahead of the meshing
   const faces = sections.map((sec) => Array.from({ length: 8 }, (_, fi) => makeFace(sec, fi)));
   let builtTo = 0; // lowest y covered by built meshes
-  let floor = null, floorMiddle = null;
+  let floor = null, floorMiddle = null, cavern = null;
   function* build() {
     for (const secFaces of faces) {
       const rows = secFaces[0].rows;
@@ -264,10 +390,13 @@ export function buildFallShaft(opts) {
       }
       for (const F of secFaces) { F.h = F.top = F.base = F.gh = F.gc = null; } // done with this section
     }
-    floor = buildFloor();
+    floor = buildPlug();
     group.add(floor);
-    for (const m of floor.children) group.attach(m); // flat list: the scene culls meshes one by one
     floorMiddle = floor.userData.middle;
+    for (const m of [...floor.children]) group.attach(m); // flat list: the scene culls meshes one by one
+    yield 'plug';
+    cavern = buildCavern(land);
+    group.add(cavern.group);
     builtTo = -Infinity;
   }
   const gen = build();
@@ -323,8 +452,10 @@ export function buildFallShaft(opts) {
     group, prebuild, ensure, update, glowworms,
     get builtTo() { return builtTo; },
     get done() { return done; },
-    /** The roof boards they crash through (hide it on impact). */
+    /** The middle of the root plug they crash through: [rock, glowing cracks] (hide on impact). */
     get floorMiddle() { return floorMiddle; },
+    /** Old Star's dig below: { group, lanternPos, floorY, landY, glow } once built. */
+    get cavern() { return cavern; },
     stats: () => ({ ms: Math.round(ms), tris: Math.round(tris), worst }),
   };
 }

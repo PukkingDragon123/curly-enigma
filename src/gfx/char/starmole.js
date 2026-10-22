@@ -17,6 +17,10 @@
 // 'point' (left paw pointing ahead), 'beckon' ("this way!"), 'lean' (both paws on the pick),
 // 'stretch' and 'dust' (patting himself down), and:
 //   rig.sniff(sec)          the star flutters and the nose lifts
+//   rig.setExpression(name, { hold })  the shared face API (rig.js / expr.js): lids, brows, mouth,
+//                           blush, tears, sweat and an anger mark; his star joins in, flaring
+//                           when glad or surprised, folding when worried or sad, bristling cross
+//   rig.faceMood = 'happy'  an extra star mood, used while the face itself is neutral
 //   rig.look(yaw, pitch)    turn the head (radians, relative to the body; smoothed)
 //   rig.setLamp(k)          helmet lamp glow 0..1 (default 0.55: dim)
 //   rig.setPick(on)         his walking pick: true / false, or null = automatic (hidden while he
@@ -28,7 +32,7 @@ import { normSpec, proportions, PATCH_COLORS } from './spec.js';
 import { Vox, mix, dk, lt, h3, furColor, cached, PX, NX, PY, NY, PZ, NZ } from './vox.js';
 import { SkinAssembler, scaleVisible, charMaterial } from './skin.js';
 import { buildHead, skullRow } from './head.js';
-import { eyeSet, browGeo, browSize, mouthGeo, mouthSize, whiskerGeo } from './face.js';
+import { eyeSet, browGeo, browSize, mouthGeo, mouthSize, whiskerGeo, fxGeo } from './face.js';
 import { buildBody, buildTail } from './body.js';
 import { buildArm, buildLeg } from './limbs.js';
 import { buildHat, buildGlasses } from './hats.js';
@@ -355,16 +359,33 @@ export class StarMoleRig extends CharacterRig {
     this.lookPitch += (this.lookPitchT - this.lookPitch) * kl;
     neck.rotation.y += this.lookYaw;
     neck.rotation.x -= this.lookPitch;
-    // the star
+    // the star: it shows how he feels. Glad or surprised, it flares wide open; worried or sad, it
+    // folds forward like a shy anemone; cross, it bristles (stiff and quick). The mood comes from
+    // the face (rig.expression, from setExpression) or rig.faceMood.
+    const ex = (this.expression !== 'neutral' && this.expression) || this.faceMood || 'neutral';
+    const flareT = /^(happy|laugh|joy|surprise|surprised|proud|smug)$/.test(ex) ? 1 : 0;
+    const foldT = /^(sad|worried|scared|sleepy|tired|asleep)$/.test(ex) ? 1 : 0;
+    const stiffT = /^(angry|stern)$/.test(ex) ? 1 : 0;
+    const km = Math.min(1, dt * 5);
+    this.starFlare = (this.starFlare || 0) + (flareT - (this.starFlare || 0)) * km;
+    this.starFold = (this.starFold || 0) + (foldT - (this.starFold || 0)) * km;
+    this.starStiff = (this.starStiff || 0) + (stiffT - (this.starStiff || 0)) * km;
     const busy = this.sniffT > 0 ? 1 : this.talkT > 0 || st === 'talk' ? 0.6 : 0;
     this.starK = (this.starK || 0) + (busy - (this.starK || 0)) * Math.min(1, dt * 8);
-    const k = this.starK;
+    const k = this.starK, fl = this.starFlare, fo = this.starFold, sf = this.starStiff;
+    const amp = 1 - sf * 0.6, spd = 1 + sf * 1.5;
     for (const r of this.star) {
-      const w1 = Math.sin(t * (2.1 + k * 13) + r.ph) * (0.07 + k * 0.22);
-      const w2 = Math.sin(t * (1.7 + k * 11) + r.ph * 1.7) * (0.06 + k * 0.3) + k * 0.18 * (0.5 + 0.5 * Math.sin(t * 9 + r.ph * 0.5));
-      _q1.setFromAxisAngle(AZ, r.a + w1);
-      _q2.setFromAxisAngle(AY, -(r.tilt + w2));
+      const w1 = Math.sin(t * (2.1 + k * 13) * spd + r.ph) * (0.07 + k * 0.22) * amp;
+      const w2 = Math.sin(t * (1.7 + k * 11) * spd + r.ph * 1.7) * (0.06 + k * 0.3) * amp + k * 0.18 * (0.5 + 0.5 * Math.sin(t * 9 + r.ph * 0.5));
+      // folding: the rays droop toward the chin as well as forward
+      let toChin = -Math.PI / 2 - r.a;
+      while (toChin > Math.PI) toChin -= Math.PI * 2;
+      while (toChin < -Math.PI) toChin += Math.PI * 2;
+      _q1.setFromAxisAngle(AZ, r.a + w1 + toChin * fo * 0.22);
+      _q2.setFromAxisAngle(AY, -(r.tilt + w2 - fl * 0.32 + fo * 0.55));
       r.bone.quaternion.copy(_q1).multiply(_q2);
+      const sc = 1 + fl * 0.12 - fo * 0.1;
+      r.bone.scale.setScalar(this.vs * sc);
     }
     this.pickAuto();
     // the dim helmet lamp flickers a little
@@ -469,6 +490,20 @@ export function makeStarMole(opts = {}) {
   const mouthRest = mkMouthGroup(restSet, 0.02);
   const mouth = scaleVisible(mkMouthGroup(openSet, 0.35), new THREE.Vector3(1, 1, 1));
   mouth.visible = false;
+  // expression extras (blush, tears, a sweat drop, an anger mark), hidden until a face shows them
+  const X = info.expr;
+  let fx = null;
+  if (X) {
+    const fxPart = (kind, at, dz) => {
+      const g = group(neck, at.x * vs, at.y * vs, (at.z + dz) * vs);
+      const b = scaleVisible(A.part(g, fxGeo(kind, bake), { scale: R }));
+      b.visible = false;
+      b.userData.side = at.side;
+      b.userData.y = 0;
+      return b;
+    };
+    fx = { blush: X.cheeks.map((c) => fxPart('blush', c, 0.25)), tears: X.tears.map((c) => fxPart('tear', c, 0.4)), sweat: fxPart('sweat', X.sweat, 0.4), vein: fxPart('vein', X.vein, 0.3) };
+  }
   let whiskers = null;
   if (info.whisk) {
     const w = info.whisk;
@@ -543,7 +578,7 @@ export function makeStarMole(opts = {}) {
 
   const rig = new StarMoleRig({
     root, hip, neck, headMesh, armL, armR, legL, legR, handL, handR, eyes, mouth, tail, lamp: lampPos, height: h, s: u, spec, p,
-    vs, bodyMesh, brows, mouthRest, whiskers, ears: null, eyeType: spec.eyes, restMouth: 'rest',
+    vs, bodyMesh, brows, mouthRest, whiskers, fx, ears: null, eyeType: spec.eyes, restMouth: 'rest',
     breath: 0.016, digger: true, skeleton: skin.skeleton, meshes, lod: 'full',
     skin: { assembler: A, main: skin.main, detail: skin.detail, lens, lensPart: null },
   });

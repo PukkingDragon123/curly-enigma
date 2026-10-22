@@ -19,6 +19,7 @@ import { VOX, M, MAT, ORE_BASE, voxelColor } from './materials.js';
 import { h3 } from './noise.js';
 import { roomSize } from '../iso/homeLayout.js';
 import { ITEMS, sellPrice, HARD_ROCK_TIER, pickForTier } from '../data/items.js';
+import * as EngineFx from '../core/Engine.js';
 import { ZONES } from '../data/zones.js';
 import { ORES } from '../data/ores.js';
 import { iconURL } from '../gfx/PixelArt.js';
@@ -170,10 +171,17 @@ export default class DigScene extends Scene {
       tick: (b, sp) => { if (chance(0.6)) this.audio.play('debris', { vol: clamp(sp / 8, 0.2, 0.7) }); if (sp > 3) this.fx.dust(b.pos.x, b.pos.y - b.r, b.pos.z, 2, [0.5, 0.42, 0.34], 0.05); },
       gone: (b) => this.fx.dust(b.pos.x, b.pos.y, b.pos.z, 3, [0.5, 0.42, 0.34], 0.06),
       collect: (b) => this.collect(b.pickup),
+      // a find that won't fit waits on the floor (unless Nugget is close enough to take it)
+      canTake: (b) => {
+        const id = b.pickup?.id;
+        if (!id || !st.canAdd || st.canAdd(id, 1) || this.nugget?.near?.(4.5)) return true;
+        this.bagFull(id);
+        return false;
+      },
     };
     this.updateHotbar();
     if (g.ui.setRadar) g.ui.setRadar((o) => this.radar(o), { heading: () => this.player.yaw });
-    g.ui.setBag?.(0, st.bagCapacity());
+    this.showBag();
     if (!st.flag('escaped') && !this.flags.hintRadar) {
       this.flags.hintRadar = true;
       setTimeout(() => { if (g.scene === this) this.say('radar', 'Your radar hums: <b>Deep Town</b> is somewhere down there. Dig toward it.', 'good', 99); }, 2500);
@@ -373,6 +381,7 @@ export default class DigScene extends Scene {
 
   useTools(dt, busy) {
     const inp = this.game.input, st = this.state;
+    if (this.nugget?.carrying) return; // paws full: carrying her coop
     this.useT -= dt;
     this.drillHeat = Math.max(0, this.drillHeat - dt * (this.slotName === 'drill' && inp.mouseDown(0) ? 0 : 0.35));
     const want = !busy && inp.mouseDown(0) && (inp.pointerLocked || this.isTouch()) && !this.leaving && !this.blocking;
@@ -591,8 +600,16 @@ export default class DigScene extends Scene {
     const it = ITEMS[p.id];
     if (!it) return;
     const counts = it.cat === 'mineral' || it.cat === 'gem';
-    if (counts && this.trip >= st.bagCapacity()) { this.say('bag', `Bag full! (${this.trip}/${st.bagCapacity()}) Head home to unload.`, 'warn', 4); return; }
-    st.addItem(p.id, it.q ? { q: p.q, p: p.p } : {});
+    const fits = st.canAdd ? st.canAdd(p.id, 1) : !(counts && this.trip >= st.bagCapacity());
+    if (!fits && this.nugget?.takeFind?.(p)) {
+      this.game.ui.toast(`Nugget tucks the <b>${it.name}</b> into her coop.`, { icon: iconURL(p.id) });
+      if (counts) { st.data.stats.ores++; if (p.p) st.data.stats.pristine++; }
+      this.act(it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'ore' : 'loot', { id: p.id, q: p.q, pristine: !!p.p });
+      return;
+    }
+    // no room: it goes to the trunk at home rather than being lost
+    st.addItem(p.id, { ...(it.q ? { q: p.q, p: p.p } : {}), spill: true });
+    if (!fits) this.game.ui.toast(`No room in your backpack: the <b>${it.name}</b> waits in the trunk at home.`, { icon: iconURL(p.id), kind: 'warn' });
     if (counts) { this.trip++; st.data.stats.ores++; if (p.p) st.data.stats.pristine++; this.tripItems.push(p.id); }
     this.tripValue += sellPrice(p.id, p.q, p.p);
     this.audio.play(it.cat === 'gem' || p.p ? 'pickup_gem' : 'pickup', { pitch: 0.9 + Math.random() * 0.3 });
@@ -600,8 +617,23 @@ export default class DigScene extends Scene {
     if (cat) st.discover(cat, p.id);
     this.act(it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'ore' : it.cat === 'plant' || it.cat === 'ingredient' ? 'forage' : 'loot', { id: p.id, q: p.q, pristine: !!p.p });
     this.game.ui.toast(`+ <b>${it.name}</b>${it.q ? ` ${p.q}%` : ''}${p.p ? ' · <b>pristine</b>' : ''}`, { icon: iconURL(p.id), kind: 'good' });
-    this.game.ui.setBag?.(this.trip, st.bagCapacity());
+    this.showBag();
     this.updateHotbar();
+  }
+
+  /** The bag strip: pockets used / pockets (or finds this trip / capacity on old inventories). */
+  showBag() {
+    const st = this.state, f = st.bagFill?.();
+    if (f) this.game.ui.setBag?.(f.used, f.slots);
+    else this.game.ui.setBag?.(this.trip, st.bagCapacity());
+  }
+
+  /** The backpack is full (a short note, not every frame). */
+  bagFull(id) {
+    if ((this.bagFullT || 0) > this.time) return;
+    this.bagFullT = this.time + 4;
+    this.audio.play('ui_error');
+    import('../ui/Backpack.js').then((m) => { if (m.bagFullToast) m.bagFullToast(this.game, id); else this.say('bag', 'Your backpack is full!', 'warn', 4); });
   }
 
   chiselHit(it) {
@@ -902,6 +934,9 @@ export default class DigScene extends Scene {
     // zones and depth
     const depth = Math.max(0, -pl.pos.y);
     const zone = zoneAt(depth);
+    // each stratum has its own light; under water the view goes murky
+    this.post.grade = EngineFx.ZONE_GRADES?.[zone] || this.post.grade;
+    this.post.underwater = pl.headUnder ? 1 : 0;
     if (zone !== this.zone) {
       this.zone = zone;
       st.data.zoneMax = Math.max(st.data.zoneMax || 1, zone);
@@ -974,7 +1009,8 @@ export default class DigScene extends Scene {
     const ex = this.deep.explored;
     const cx = Math.floor(pl.pos.x), cy = Math.floor(pl.pos.y + 0.4), cz = Math.floor(pl.pos.z);
     let fresh = 0;
-    for (let dz = -3; dz <= 3; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -3; dx <= 3; dx++) {
+    const R = Math.round(3 * (this.state.skill?.('ink') || 1)); // cave sense inks more around you
+    for (let dz = -R; dz <= R; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -R; dx <= R; dx++) {
       const x = cx + dx, y = cy + dy, z = cz + dz;
       const m = w.voxelAt(Math.floor((x + 0.5) * VOX), Math.floor((y + 0.5) * VOX), Math.floor((z + 0.5) * VOX));
       const v = !m ? 1 : m === M.WATER ? 2 : m === M.LAVA ? 3 : 0;
@@ -1030,6 +1066,7 @@ export default class DigScene extends Scene {
     }
     for (const s of this.stakes) markers.push({ kind: 'stake', x: s.x, y: s.y, z: s.z });
     if (this.enemies?.radarMarkers) markers.push(...this.enemies.radarMarkers(pl.pos));
+    markers.push(...(this.nugget?.radarMarkers?.() || []));
     return { x: pl.pos.x, y: pl.pos.y, z: pl.pos.z, heading: pl.yaw, range: o.survey ? half * cell : 22, explored: { size, cell, data, ox: px - half, oz: pz - half }, markers };
   }
 
@@ -1080,7 +1117,7 @@ export default class DigScene extends Scene {
       if (d < l.r + 14) near.push([d - l.r * 0.3, l]);
     }
     // glowing enemies and hot fluids light the rock too
-    for (const src of [this.enemies, this.fluids, this.props, this.clumps, this.prologue, this.explosives]) {
+    for (const src of [this.enemies, this.fluids, this.props, this.clumps, this.prologue, this.explosives, this.nugget, this.traders, this.ruins]) {
       for (const l of src?.lights?.(eye) || []) near.push([Math.hypot(l.x - eye.x, l.y - eye.y, l.z - eye.z) - l.r * 0.3, l]);
     }
     near.sort((a, b) => a[0] - b[0]);
@@ -1148,7 +1185,8 @@ export default class DigScene extends Scene {
     const pl = this.player, st = this.state;
     const depth = Math.max(0, -pl.pos.y);
     const bio = this.biome ? ' · ' + BIOMES[this.biome].name : '';
-    this.game.ui.setDepth(`<b>${Math.floor(depth)} m</b><br>${ZONES[zoneAt(depth)].name}${bio}<br>Bag ${this.trip}/${st.bagCapacity()}`);
+    const f = st.bagFill?.();
+    this.game.ui.setDepth(`<b>${Math.floor(depth)} m</b><br>${ZONES[zoneAt(depth)].name}${bio}<br>Bag ${f ? `${f.used}/${f.slots}` : `${this.trip}/${st.bagCapacity()}`}`);
     if (this.slotName === 'drill') this.game.ui.setHotbarMeter?.(SLOTS.indexOf('drill'), this.drillHeat);
   }
 

@@ -48,6 +48,8 @@ export function journeyStats(state) {
  * Build the credits DOM. Returns {el, start(), update(dt), finish(), shown, done}.
  * handlers: {onRelax, onTown, onTitle, onClick}
  */
+const withI = (i, e) => { e.style.setProperty('--i', String(i)); return e; }; // el() can't set custom properties
+
 export function buildCredits(game, handlers) {
   const st = game.state;
   const hen = (st.data.chicken && st.data.chicken.name) || 'Nugget';
@@ -63,9 +65,9 @@ export function buildCredits(game, handlers) {
   const endBlock = el('div', { class: 'bk-endblock' }, [el('div', { class: 'bk-thanks bk-outline' }, 'Thanks for playing!'), end]);
 
   // the same pixel logo as the title screen (gold MOLE, hot-metal FORGE), bobbing gently
-  const logo = el('div', { class: 'bk-logo bk-roll-logo', role: 'img', 'aria-label': 'MOLEFORGE' }, logoLetters().map((L, i) => el('span', { class: L.hot ? 'hot' : '', style: { '--i': i } }, [
+  const logo = el('div', { class: 'bk-logo bk-roll-logo', role: 'img', 'aria-label': 'MOLEFORGE' }, logoLetters().map((L, i) => withI(i, el('span', { class: L.hot ? 'hot' : '' }, [
     el('img', { class: 'pix', src: L.url, alt: '', draggable: 'false', style: { width: `calc(var(--lp) * ${L.w})`, height: `calc(var(--lp) * ${L.h})` } }),
-  ])));
+  ]))));
   const roll = el('div', { class: 'bk-roll bk-outline' }, [
     logo,
     el('div', { class: 'tag' }, 'A game about digging your way out'),

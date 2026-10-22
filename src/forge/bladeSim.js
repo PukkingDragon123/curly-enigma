@@ -22,12 +22,23 @@ export function fireIdleFor(metal, maxT) {
   return Math.min(maxT, clamp(metal.work[1] - 40, 160, 950));
 }
 
+/** A temperature window [lo, hi] widened round its middle by k (the Smithing skill, ≥ 1). */
+export function widen(range, k = 1, lo = -Infinity, hi = Infinity) {
+  if (!range || !(k > 1)) return range;
+  const mid = (range[0] + range[1]) / 2, half = (range[1] - range[0]) / 2 * k;
+  return [Math.max(lo, mid - half), Math.min(hi, mid + half)];
+}
+
 export class BladeSim {
-  constructor(type, metal, forgeLevel = 0) {
+  /** skill: state.skill('forge') (≥ 1) — the working window widens with it. */
+  constructor(type, metal, forgeLevel = 0, skill = 1) {
     this.type = type;
     this.metal = metal;
     this.def = WEAPON_TYPES[type];
     this.m = METALS[metal];
+    this.skill = Math.max(1, skill || 1);
+    this.workRange = widen(this.m.work, this.skill, AMBIENT + 60, this.m.burn - 10);
+    this.quenchRange = this.m.quench ? widen(this.m.quench, this.skill, AMBIENT + 60, this.m.burn - 10) : null;
     this.maxT = FORGE_MAX_TEMP[forgeLevel] ?? FORGE_MAX_TEMP[0];
     this.target = this.def.profile.slice();
     this.N = this.target.length;
@@ -107,7 +118,7 @@ export class BladeSim {
 
   /** Classify a temperature for this metal. */
   zone(T) {
-    const [w0, w1] = this.m.work;
+    const [w0, w1] = this.workRange;
     if (T > this.m.burn) return 'burn';
     if (T > w1) return 'hot';
     if (T >= w0) return 'work';
@@ -117,7 +128,7 @@ export class BladeSim {
   // ---------------------------------------------------------------- hammer
   /** How much a blow of this power would thin column i right now (no side effects). */
   flowFactor(T) {
-    const [w0, w1] = this.m.work;
+    const [w0, w1] = this.workRange;
     const kind = this.zone(T);
     if (kind === 'cold') return 0.12 * clamp(1 - (w0 - T) / 300, 0, 1);
     if (kind === 'burn') return 1.25;
@@ -139,7 +150,7 @@ export class BladeSim {
     if (i < 0 || i >= this.w.length) return null;
     const m = this.m;
     const T = this.T[i];
-    const [w0, w1] = m.work;
+    const [w0, w1] = this.workRange;
     const kind = this.zone(T);
     const f = this.flowFactor(T);
     const before = this.accuracy();
@@ -296,19 +307,19 @@ export class BladeSim {
   }
 }
 
-/** 0..1 balance score from the distance to the target (gravium widens tolerance). */
-export function balanceScore(frac, target, assist = false) {
-  const tol = assist ? 0.15 : 0.045;
+/** 0..1 balance score from the distance to the target (gravium and the Smithing skill widen tolerance). */
+export function balanceScore(frac, target, assist = false, skill = 1) {
+  const tol = balanceTolerance(assist, skill);
   const d = Math.abs(frac - target);
   if (d <= tol) return 1 - 0.25 * (d / tol);
   return Math.max(0, 0.75 * (1 - (d - tol) / (tol * 1.5)));
 }
 
-export function balanceTolerance(assist) { return assist ? 0.15 : 0.045; }
+export function balanceTolerance(assist, skill = 1) { return (assist ? 0.15 : 0.045) * Math.max(1, skill || 1); }
 
-/** Grade a quench from the plunge temperature. */
-export function quenchResult(metal, T) {
-  const [q0, q1] = metal.quench;
+/** Grade a quench from the plunge temperature (the window widens with the Smithing skill). */
+export function quenchResult(metal, T, skill = 1) {
+  const [q0, q1] = widen(metal.quench, skill, AMBIENT + 60, metal.burn - 10);
   const mid = (q0 + q1) / 2, half = (q1 - q0) / 2;
   if (T >= q0 && T <= q1) return { kind: 'good', crack: false, score: 1 - 0.15 * Math.abs(T - mid) / half };
   if (T > q1) {
@@ -322,9 +333,10 @@ export function quenchResult(metal, T) {
 
 /** Smelting crucible: the bellows' air drives the temperature, which decays toward ambient. */
 export class CrucibleSim {
-  constructor(recipe, forgeLevel = 0) {
+  /** skill: state.skill('forge') (≥ 1) — the pouring band widens with it. */
+  constructor(recipe, forgeLevel = 0, skill = 1) {
     this.recipe = recipe;
-    this.band = recipe.temp;
+    this.band = widen(recipe.temp, Math.max(1, skill || 1), 100, recipe.temp[1] + 140);
     this.maxT = FORGE_MAX_TEMP[forgeLevel] ?? FORGE_MAX_TEMP[0];
     this.R = 450 * (this.maxT / 1550);
     this.D = 0.22;
@@ -337,7 +349,7 @@ export class CrucibleSim {
     this.overheat = false;
     this.started = false;
   }
-  get slagT() { return this.band[1] + 150; }
+  get slagT() { return Math.max(this.band[1] + 10, this.recipe.temp[1] + 150); }
   step(dt, air) {
     this.T += (air * this.R - (this.T - 25) * this.D) * dt;
     this.T = clamp(this.T, 25, this.maxT);
