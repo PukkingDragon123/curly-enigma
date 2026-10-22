@@ -307,9 +307,10 @@ coop.setNugget(on);                         // the hen in the window (false: an 
 ## Inventory, the coop's shelves, Nugget (inventory part): as built
 
 **Slots** (`src/core/inventory.js`). What the mole carries is a grid of stacks: `data.inv.slots`
-(rows of 6). A new mole has **6 pockets**; the equipped bag's `slots` sets it (`bag_small` 6,
-`bag_medium` 12, `bag_large` 18, `bag_huge` 24, `bag_bottomless` 36, bought in the shops), plus 1
-per 2 levels of Deeper Pockets and pockets from `skill('carry')` (max 48). Stacks: ores 16, gems 8,
+(rows of **9**, Minecraft-like). A new mole has **9 pockets**; the equipped bag's `slots` sets it
+(`bag_small` 9, `bag_medium` 18, `bag_large` 27, `bag_huge` 36, `bag_bottomless` 45, bought in the
+shops), plus 1 per 2 levels of Deeper Pockets and pockets from `skill('carry')` (max 54). Weight
+and the coop's parts: see "Weight, the coop's load and coop parts" below. Stacks: ores 16, gems 8,
 ingots 8, plants 16, critters 8, food 8, supplies 10, hen feed 24 (`stack` on an item overrides).
 Quality items stack per item (the stack keeps its lots and shows the average). Forged weapons take a
 pocket each. Tools, gear, blueprints, floors, wall styles, keys and unplaced furniture take none.
@@ -323,8 +324,8 @@ pocket each. Tools, gear, blueprints, floors, wall styles, keys and unplaced fur
 - Old saves migrate on load (food and supplies first; what doesn't fit waits in the stash).
 - **Test URLs**: `?bag=N` gives N pockets; any `?give=` lifts the bag to 48 so test setups never
   drop items. In evals: `state.data.owned.bag_bottomless = 1; state.equip('bag_bottomless')`.
-- **Coop shelves**: `data.coop = { level, slots, food, laid, layT, ... }`, 4/6/9/12 shelves ("Nail
-  on a shelf" in the coop panel: 300/1200/4500g). Stash: `data.stash.slots` (grows).
+- **Coop shelves**: `data.coop = { level, up, upQ, slots, food, laid, layT, ... }`, 6/9/12/18/27
+  shelves by the Shelves part installed (`level`). Stash: `data.stash.slots` (grows).
 - **Nugget's care**: `Inv.feedHen(state, id?, from)` (emits `act {type:'feed', who:'nugget', id}`),
   `Inv.henMood(state)` → `happy | ok | peckish | hungry`, `Inv.tickHen`, `Inv.eggToCoop`. Hen food:
   items with `hen` (how much it fills her): `chicken_feed` 0.5 (new, feed sack icon), `fat_grub`
@@ -357,6 +358,47 @@ teleport(x,y,z), open(), aim(), coop }`. **At home** (`src/home/nugget.js`): the
 room's tile grid, same `HomeNugget` interface (actor, ai, setBlocked, update); it adds its own E
 interaction (Feed / Open the coop) through `scene.addIt`; `scene.nug.debug.{ state, feed, hunger,
 egg, open }`.
+
+## Weight, the coop's load and coop parts (lead): as built
+
+Files: `src/core/weight.js` (weights, carry, load tiers, coop tracks), `src/data/coopParts.js` (the
+parts), `src/core/inventory.js` (`bagLoad`, `canLift`, `coopLoad`, `coopRoomKg`, `installPart`,
+`nextPart`), `src/gfx/char/coopGear.js` (what's built on the coop model, and its cargo), the coop side
+of `src/ui/Backpack.js`, the HUD gauge (`ui.setLoad(load)` in `src/ui/Hud.js`), `src/deep/DigScene.js`
+(`weigh()`, `whereTo(id)`, `tooHeavy`), `src/deep/Nugget.js` (legs, load, lantern, gear).
+- **Weight.** Every slotted item weighs something (`kgOf(id)`: ore ~1–1.8 kg, ingots ~1 kg, gems
+  0.12, herbs 0.08, food 0.3, a forged weapon 0.5 + 0.75 per ingot; `kg` on an item overrides). The bag
+  carries `carry` kg comfortably (`bag_small` 15, satchel 24, pack 36, expedition 52, bottomless 80),
+  × `skill('carry')`, +6 with the `pack` buff, +4 with `strong`. `state.bagLoad()` →
+  `{ kg, carry, r, speed, jump, run, tier, max }`; tiers: `light` (≤0.6), `good` (≤1), `heavy` (≤1.5:
+  walk ×0.9→0.6, no running, jump ×0.8, walking costs energy), `over` (≤2: ×0.6→0.4, jump ×0.5),
+  `max` (≥2: ×0.35, nothing more can be lifted: `state.canLift(id, n)` is false). Weight only matters
+  in the mine; shops and quest rewards still hand things over (the pack just gets heavier).
+- **In the mine.** Pickups that don't fit by pockets or weight wait on the floor (or go to Nugget if
+  she can take them: `nugget.canTake(id, range)`). The first heavy load gets a tutor line; the HUD's
+  scale beside the backpack fills green → amber → red and shows `kg/carry` when heavy.
+- **The coop carries the load.** The coop side of the backpack shows her load and has **Unload ore**
+  (ore, ingots, parts and anything ≥0.8 kg, heaviest first, as far as her legs allow). Her legs carry
+  `coopCarry(state)` kg comfortably (Legs track: 20/35/55/85/130, × part quality, × Nugget skills)
+  and take at most 1.5× that; a loaded coop walks slower and hops lower.
+- **Coop parts** (the user's ask: forge a component, then build it on). `COOP_PARTS` in
+  `data/coopParts.js`: one part per level of five tracks (Shelves: copper brackets → steel cargo rack;
+  Legs: copper bands → iron-shod talons → steel braces → mithril spurs; Nest box: tin → bronze pan →
+  silver bell; Ore chute; Roof lantern: tin → lumite). Parts are quality items (`cat: 'part'`, the
+  forging score is `q`; a finer part works up to ×1.1). They're forged at the home forge (forge part:
+  `src/forge/parts.js`) and installed from the coop side of the backpack (**Install** on its track
+  row, or on the part's tag): `Inv.installPart(state, id, { from })` checks the order, sets
+  `data.coop.level` (shelves) / `data.coop.up[track]`, keeps `data.coop.upQ[track]`, emits `items`
+  and `act { type: 'install', part, track, level, q }`.
+- **Effects.** Shelves: 6/9/12/18/27 cubbies. Legs: carry, walking speed, hop height. Nest: laying
+  ×1.35/1.7/2.1. Ore chute: when your pack is heavy (r ≥ 1) or full, what you dig (not gems) rolls
+  onto her shelves if she's within 7 m. Roof lantern: a 4.2 m warm light / 6.5 m lumite glow.
+- **On the model** (`CoopGear`): shelf brackets on the side walls, a rack on the back, a roof rack,
+  bands/shoes/braces/spurs on the legs, a nest box under the round window (+ pan, + bell), a copper
+  chute down the left wall, a lantern under the ridge; cargo (crates, sacks, ore lumps) piles up on the
+  racks as her load grows. Same at home (`src/home/nugget.js`).
+- **Test hooks**: `scene.nugget.debug.install(id, q)` (gives the part and fits it), `.load()` →
+  `{ kg, carry, r, levels, gear }`; `state.bagLoad()`, `scene.load`.
 
 ## Old Star's tutor (home part): `game.ui.tutor`
 

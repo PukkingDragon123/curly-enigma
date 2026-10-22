@@ -50,7 +50,8 @@ On touch screens the left half of the screen is a floating stick and dragging th
 - **NPC burrows.** Walk the trails to the trading post, the herbalist's hollow and the deep outpost, and sell your weapons to **Rocco**, a shady raccoon with a storage burrow, a haggling meter and a secret door.
 - **Deep Town.** A cavern village of chibi folk with faces that smile, frown, gossip and startle, shops, the assay office and the ticket office (the way up: 1,000,000 gold).
 - **Nugget's walking coop.** Feed her and her coop follows you through the tunnels, carrying your extra finds; she sulks when hungry, gets stuck on ledges and in crawlways, and you carry her.
-- **Inventory like Minecraft.** Six pockets to start; backpacks add rows. Drag, split and sort; what doesn't fit waits in the trunk at home.
+- **Inventory like Minecraft, with weight.** Nine pockets to start; backpacks add rows of nine. Drag, split and sort; what doesn't fit waits in the trunk at home. Everything weighs something: a pack full of ore slows you down, stops you running and tires you out, so unload it onto Nugget's coop.
+- **Build onto the coop.** Forge parts at home (shelf racks, leg bands and braces, a nest box, an ore chute, a roof lantern) and fit them on Nugget's coop: more shelves, stronger legs that carry more, more eggs, finds that roll down the chute, light in the tunnels. You can see every part on her coop.
 - **Quests, the book and the map.** Old Star and the burrow folk give quests that advance as you play. The leather book holds your quests, Old Star's notes, the Index, the skill tree and a hand-drawn map that is only inked where you have actually walked.
 - **Skill tree.** Mining, smithing, cooking, combat, exploring, foraging and trading earn XP from doing them; spend the points on 78 skills stamped into the book with wax seals.
 - **Progression.** The Miners' Board (upgrades with gold), a ladder of pickaxes, dynamite, milestones, and a tavern income at home.

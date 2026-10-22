@@ -260,6 +260,29 @@ await step('deep: Nugget eats, follows, gets carried', async () => {
   if (r.err) throw new Error(r.err);
   if (!r.carrying || r.after) throw new Error('carry/put: ' + JSON.stringify(r));
 });
+await step('deep: a heavy pack slows you; unload onto the coop; fit a coop part', async () => {
+  const r = await page.evaluate(() => {
+    const g = window.__game, s = g.scene, st = g.state, n = s.nugget?.debug;
+    if (!n) return { err: 'no Nugget' };
+    n.here?.();
+    for (let i = 0; i < 16; i++) st.addItem('iron_ore', { q: 70 });
+    for (let k = 0; k < 12; k++) s.update(1 / 30);
+    const heavy = { kg: st.bagLoad().kg, speed: s.load?.speed, run: s.load?.run };
+    g.ui.openInventory();
+    const btn = document.querySelector('.bp-coop-load button');
+    btn?.click();
+    const after = st.bagLoad().kg, coop = n.load();
+    g.ui.closeAllPanels();
+    const fit = n.install('legs_copper', 80);
+    for (let k = 0; k < 15; k++) s.update(1 / 30);
+    return { heavy, btn: !!btn, after, coop, fit: fit.ok, legs: n.load().levels.legs, gear: n.load().gear };
+  });
+  if (r.err) throw new Error(r.err);
+  if (!(r.heavy.speed < 1) || r.heavy.run) throw new Error('a heavy pack did not slow the mole: ' + JSON.stringify(r.heavy));
+  if (!r.btn || !(r.after < r.heavy.kg) || !(r.coop.kg > 0)) throw new Error('unload onto the coop: ' + JSON.stringify(r));
+  if (!r.fit || r.legs !== 1 || !(r.gear > 0)) throw new Error('coop part: ' + JSON.stringify(r));
+  await shot('04e-coop-loaded');
+});
 await step('deep: block a kobold, then fight it', async () => {
   const r = await page.evaluate(() => {
     const s = window.__game.scene, en = s.enemies, d = en?.debug, st = window.__game.state;
