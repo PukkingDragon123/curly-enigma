@@ -19,7 +19,7 @@ function portrait(game, shopId) {
   const k = SHOPS[shopId].keeper;
   let url = '';
   try {
-    const c = renderPortrait(game.engine.renderer, { seed: 9, eyes: 'bead', dirt: 0.2, blush: true, ...k, hat: k.hat || 'none', glasses: k.glasses || false }, 72);
+    const c = renderPortrait(game.engine.renderer, { seed: 9, eyes: 'bead', dirt: 0.2, blush: true, ...k, hat: k.hat || 'none', glasses: k.glasses || false }, 72, { expression: 'happy' });
     url = c.toDataURL();
   } catch (e) { /* noop */ }
   portraitCache.set(shopId, url);
