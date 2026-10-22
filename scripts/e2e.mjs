@@ -259,6 +259,33 @@ await step('deep: Nugget eats, follows, gets carried', async () => {
   if (r.err) throw new Error(r.err);
   if (!r.carrying || r.after) throw new Error('carry/put: ' + JSON.stringify(r));
 });
+await step('deep: block a kobold, then fight it', async () => {
+  const r = await page.evaluate(() => {
+    const s = window.__game.scene, en = s.enemies, d = en?.debug, st = window.__game.state;
+    if (!d) return { err: 'no creatures in the mine' };
+    const staged = d.stage('kobold', { dist: 2.2, awake: true });
+    if (!staged?.spawned) return { err: 'no cave for a fight' };
+    const e = d.get('kobold');
+    st.data.energy = 100;
+    d.block(true);
+    const c = en.combat, b0 = c.stats.blocked + c.stats.parried;
+    for (let k = 0; k < 360 && c.stats.blocked + c.stats.parried === b0; k++) { d.look(e); s.update(1 / 30); }
+    const guarded = c.stats.blocked + c.stats.parried - b0;
+    d.unblock();
+    const kills0 = st.data.stats?.kills ?? 0;
+    let acts = 0;
+    const onAct = (a) => { if (a?.type === 'kill') acts++; };
+    st.on?.('act', onAct);
+    for (let k = 0; k < 40 && e.alive; k++) { st.data.energy = 100; d.look(e); d.hit(e, 4); for (let j = 0; j < 6; j++) s.update(1 / 30); }
+    st.off?.('act', onAct);
+    for (let k = 0; k < 30; k++) s.update(1 / 30);
+    return { guarded, log: c.log.slice(-3), dead: !e.alive, acts, kills: (st.data.stats?.kills ?? 0) - kills0 };
+  });
+  if (r.err) throw new Error(r.err);
+  if (!(r.guarded > 0)) throw new Error('no blow was blocked: ' + JSON.stringify(r.log));
+  if (!r.dead) throw new Error('the kobold would not go down: ' + JSON.stringify(r));
+  await shot('04f-fight');
+});
 await step('skills: activities give XP, a skill gets stamped', async () => {
   const r = await page.evaluate(() => {
     const st = window.__game.state, d = st.skillsDebug;

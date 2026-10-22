@@ -82,11 +82,11 @@ export class Wraith extends Beast {
     lavaProof: true, inedible: true, patience: 14,
   };
   static attacks = [
-    { id: 'claw', range: [0, 1.9], arc: 0.7, tell: 0.7, dur: 0.4, hitAt: 0.12, rec: 0.6, cd: [1.3, 2.2], w: 2.5,
+    { id: 'claw', range: [0, 2.4], arc: 0.7, tell: 0.7, dur: 0.4, hitAt: 0.12, rec: 0.6, cd: [1.3, 2.2], w: 2.5,
       start() { this.sound('wail', { pitch: 1.3, vol: 0.6 }); },
       go(A) { this.lunge(A, 6); this.sound('whoosh', { vol: 0.6 }); },
-      hit(A) { return this.strikeAt(A, this.reachPoint(0.25, 0.1), 0.42, { dmg: this.info.dmg, push: 2.8, kind: 'claw' }); } },
-    { id: 'grasp', range: [0, 2.4], arc: 0.6, tell: 1.15, dur: 0.5, hitAt: 0.1, rec: 1, cd: [3.5, 5], w: 1, heavy: true,
+      hit(A) { return this.strikeAt(A, this.reachPoint(0.3, 0.1), 0.55, { dmg: this.info.dmg, push: 2.8, kind: 'claw' }); } },
+    { id: 'grasp', range: [0, 2.2], arc: 0.6, tell: 1.15, dur: 0.5, hitAt: 0.1, rec: 1, cd: [3.5, 5], w: 1, heavy: true,
       start() { this.sound('wail', { pitch: 0.85, vol: 1 }); },
       tick(A, dt) { if (A.phase === 'tell' && this.dist < 14) { const p = this.handPos(_v); mote(this.fx, p.x, p.y, p.z, this.G.mist, 0.035, 0.6); } },
       go(A) { this.lunge(A, 7); },
