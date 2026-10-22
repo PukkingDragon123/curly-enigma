@@ -31,63 +31,96 @@ const step = async (label, fn) => {
   console.log(`${errors.length > before ? '✗' : '✓'} ${label}${errors.length > before ? '\n   ' + errors.slice(before).join('\n   ') : ''}`);
 };
 
-await page.goto(`http://127.0.0.1:${port}/?fresh=1`);
+await page.goto(`http://127.0.0.1:${port}/?fresh=1&bag=48`); // bag=48: the test adds a lot of stuff
 await wait(3500);
 await step('title loads', async () => { if ((await scene()) !== 'title') throw new Error('not on title'); await shot('01-title'); });
-await step('new game → the fall', async () => {
-  await page.evaluate(() => { window.__game.state.reset(); window.__game.goto('fall', {}, { transition: 'none' }); });
-  for (let i = 0; i < 80 && (await scene()) !== 'fall'; i++) await wait(250);
+await step('save stones → new game → the journey', async () => {
+  // the title's three save stones: an empty one starts a new adventure
+  await page.evaluate(() => { const d = window.__game.scene.debug; d.openStones(); d.step?.(2); });
   await wait(2500);
-  if ((await scene()) !== 'fall') throw new Error('not falling: ' + (await scene()));
-  await shot('02-fall');
+  await shot('01b-stones');
+  await page.evaluate(() => window.__game.scene.debug.pick(0));
+  for (let i = 0; i < 120 && (await scene()) !== 'fall'; i++) await wait(250);
+  if ((await scene()) !== 'fall') throw new Error('no journey: ' + (await scene()));
+  await wait(4000);
+  await shot('02-journey');
   await page.evaluate(() => window.__game.scene.skip());
-  // the fall ends in Old Star's dig, in the mine
-  for (let i = 0; i < 120 && ((await scene()) !== 'deep' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
-  if ((await scene()) !== 'deep') throw new Error('did not land in the dig: ' + (await scene()));
-});
-await step("Old Star's lessons → ride up to the tavern", async () => {
-  await wait(2500);
-  const s0 = await page.evaluate(() => { const P = window.__game.scene.prologue; if (!P) return null; P.debug.run(3); return P.debug.step(); });
-  if (!s0) throw new Error('no prologue in the dig');
-  await shot('02b-oldstar-pinned');
-  // play the lessons through the test hooks: rocks, the copper clump, the ladder and map, the plug, the lift
-  const seen = await page.evaluate(() => {
-    const d = window.__game.scene.prologue.debug, out = [d.step()];
-    const go = (fn, sec = 2.5) => { if (d[fn]) d[fn](); d.run(sec); const st = d.step(); if (out[out.length - 1] !== st) out.push(st); };
-    go('clearRocks', 4); go('freeOre', 3); go('grab', 1.5); go('clean', 2); go('bag', 2);
-    return out;
-  });
-  await shot('02c-oldstar-lessons');
-  const more = await page.evaluate(() => {
-    const d = window.__game.scene.prologue.debug, out = [d.step()];
-    const go = (fn, sec = 2.5) => { if (d[fn]) d[fn](); d.run(sec); const st = d.step(); if (out[out.length - 1] !== st) out.push(st); };
-    go('ladder', 2); go('toLedge', 2); go('takeMap', 3); go('breakPlug', 3);
-    return out;
-  });
-  if (!(seen.length + more.length > 4)) throw new Error('the lessons did not move on: ' + seen.concat(more).join(' '));
-  await shot('02d-oldstar-plug');
-  // the last bit (the walk to the cage and the ride) is skipped: it rides up with all flags set
-  await page.evaluate(() => window.__game.scene.prologue.debug.skip());
+  // the ground gives way, the mole blacks out... and wakes at Old Star's forge
   for (let i = 0; i < 160 && ((await scene()) !== 'home' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
-  if ((await scene()) !== 'home') throw new Error('did not ride up home: ' + (await scene()) + ' after ' + seen.concat(more).join(' '));
-  await wait(3000);
-  const f = await page.evaluate(() => ['prologue', 'fallen', 'nugget', 'escaped'].map((k) => window.__game.state.flag(k)));
-  if (!f[0] || !f[1] || !f[2]) throw new Error('opening flags missing: ' + f);
-  if (f[3]) throw new Error('escaped flag set on a new game');
-  await shot('02e-tavern-arrival');
+  if ((await scene()) !== 'home') throw new Error('did not wake up at home: ' + (await scene()));
 });
-await step('home lift → the mine entrance', async () => {
-  // no digging outside the mine: the cage lift in the house is the way down
-  await page.evaluate(() => window.__game.scene.debug.useLift('L0'));
-  for (let i = 0; i < 120 && ((await scene()) !== 'deep' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
-  if ((await scene()) !== 'deep') throw new Error('not underground: ' + (await scene()));
+await step('waking up: cold water and Old Star', async () => {
+  await wait(1500);
+  await shot('02b-waking');
+  const r = await page.evaluate(() => window.__game.scene.debug.finishWake());
+  if (!r || r.waking) throw new Error('still waking: ' + JSON.stringify(r));
+  const f = await page.evaluate(() => ['fallen', 'nugget', 'escaped'].map((k) => window.__game.state.flag(k)));
+  if (!f[0] || !f[1]) throw new Error('waking flags missing: ' + f);
+  if (f[2]) throw new Error('escaped flag set on a new game');
+  const q = await page.evaluate(() => window.__game.quests?.active?.().map((x) => x.id || x) || []);
+  if (!q.includes('lessons')) throw new Error('the lessons quest did not start: ' + JSON.stringify(q));
+  await shot('02c-old-star');
+});
+await step("Old Star's mining lesson (down the lift and back)", async () => {
+  await page.evaluate(() => window.__game.scene.debug.interact('Ride down to the dig') || window.__game.scene.debug.useLift('L0'));
+  for (let i = 0; i < 160 && ((await scene()) !== 'deep' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
+  if ((await scene()) !== 'deep') throw new Error('not down at the dig: ' + (await scene()));
   await wait(2500);
-  await shot('03-deep');
+  if (!(await page.evaluate(() => !!window.__game.scene.prologue))) throw new Error('no lesson in the dig');
+  await page.evaluate(() => { const s = window.__game.scene; for (let k = 0; k < 90; k++) s.update(1 / 30); });
+  await shot('03-dig-lesson');
+  // the lesson is played through by its own tests; here: skip this lesson, which rides home
+  await page.evaluate(() => window.__game.scene.prologue.debug.skip(false));
+  for (let i = 0; i < 200 && ((await scene()) !== 'home' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
+  if ((await scene()) !== 'home') throw new Error('did not ride home: ' + (await scene()));
+  if (!(await page.evaluate(() => window.__game.state.flag('prologue')))) throw new Error('mining lesson not marked done');
+  // Old Star sniffs the copper and sends you to his forge
+  const stage = await page.evaluate(() => window.__game.scene.debug.run(600, 1 / 30, () => {
+    const t = window.__game.ui.tutor;
+    if (t?.active?.wait) { t.next(); t.next(); }
+    return window.__game.scene.lessonStage() === 'forge';
+  }).then(() => window.__game.scene.lessonStage()));
+  if (stage !== 'forge') throw new Error('the forge lesson did not come next: ' + stage);
+});
+await step("Old Star's forge lesson", async () => {
+  await go('forge', { from: 'home', tutorial: true });
+  await wait(3000);
+  await shot('03b-forge-lesson');
+  const r = await page.evaluate(() => {
+    const sc = window.__game.scene, d = sc.debug, st = window.__game.state;
+    st.data.energy = 100;
+    st.addItem('copper_ore', { q: 90, n: 4, spill: true }); st.addItem('coal', { q: 90, n: 4, spill: true });
+    d.smelt('smelt_copper');
+    for (let n = 0; sc.activity && sc.activity.phase === 'heat' && n < 900; n++) { const a = sc.activity; d.pump(a.sim.T < a.r.temp[0] * 0.35 + a.r.temp[1] * 0.65); d.step(1); }
+    d.pump(false);
+    d.until('idle', 900);
+    const before = st.data.weapons.length;
+    d.forge({ type: 'dagger', metal: 'copper' });
+    for (let n = 0; n < 900; n++) { const a = sc.activity; if (a.sim.meanT() >= (a.m.work[0] + a.m.work[1]) / 2) break; d.pump(true); d.step(1); }
+    d.pump(false);
+    d.toAnvil();
+    d.until('docked', 120);
+    for (const c of [0, 1, 2, 3, 2, 3, 4]) { d.strike(c, 0.6); d.step(12); }
+    d.finishShaping();
+    d.until('balance', 600);
+    d.balance(true);
+    d.until('result', 600);
+    d.step(60);
+    return { made: st.data.weapons.length - before, lesson: st.data.oldstar?.lesson, stage: sc.lesson?.debug?.stage?.() };
+  });
+  if (r.made !== 1) throw new Error('the forge lesson made no dagger: ' + JSON.stringify(r));
+  await shot('03c-forge-lesson-done');
+});
+await step('down the lift to the mine', async () => {
+  await go('deep', { from: 'lift', lift: 'L0' });
+  await wait(2500);
+  if (await page.evaluate(() => !!window.__game.scene.prologue?.debug?.on?.())) throw new Error('the lesson came back after it was done');
+  await shot('03d-mine');
 });
 // headless frames are slow: the deep steps drive the simulation directly with scene.update()
 await step('deep: dig out an ore', async () => {
   const r = await page.evaluate(() => {
-    const s = window.__game.scene, w = s.world, pl = s.player, V = 8;
+    const s = window.__game.scene, w = s.world, pl = s.player, V = 16;
     const ores0 = window.__game.state.data.stats.ores;
     for (const a of w.plan.areas.slice(0, 6)) {
       s.terrain.warm(a.x, a.y, a.z, 2);
@@ -129,13 +162,68 @@ await step('deep: dig out an ore', async () => {
   const got = await page.evaluate(() => { const s = window.__game.scene; for (let k = 0; k < 90; k++) s.update(1 / 30); return window.__game.state.data.stats.ores; });
   if (!(got > r.ores0)) throw new Error('the ore never reached the backpack');
 });
-await step('deep: radar + survey map', async () => {
+await step('deep: radar + the hand-drawn map in the book', async () => {
   const n = await page.evaluate(() => window.__game.scene.radar().markers.length);
   if (!(n >= 2)) throw new Error('radar has no markers');
-  await page.evaluate(() => window.__game.ui.openSurvey());
-  await wait(1200);
-  await shot('04b-survey');
+  await page.evaluate(() => window.__game.ui.openBook('map'));
+  await wait(2500);
+  await page.evaluate(() => window.__game.ui.book?.map?.debug?.finish?.());
+  await wait(800);
+  await shot('04b-map');
   await page.evaluate(() => window.__game.ui.closeAllPanels());
+});
+await step('deep: a ruin puzzle opens to treasure', async () => {
+  const r = await page.evaluate(async () => {
+    const s = window.__game.scene, d = s.ruins?.debug;
+    if (!d) return { err: 'no ruins module' };
+    const acts = [];
+    const off = (a) => { if (a.type === 'puzzle' || a.type === 'relic') acts.push(a.type); };
+    window.__game.state.on('act', off);
+    await d.go('R10', 'door', 'door');
+    for (let k = 0; k < 60; k++) s.update(1 / 30);
+    d.solve('R10');
+    for (let k = 0; k < 150; k++) s.update(1 / 30);
+    await d.go('R10', 'room', 'chest');
+    for (let k = 0; k < 40; k++) s.update(1 / 30);
+    d.press('R10', 'chest');
+    for (let k = 0; k < 60; k++) s.update(1 / 30);
+    return { acts, open: d.list().find((x) => x.id === 'R10')?.open };
+  });
+  if (r.err) throw new Error(r.err);
+  if (!r.open || !r.acts.includes('puzzle')) throw new Error('the ruin did not open: ' + JSON.stringify(r));
+  await shot('04d-ruin-treasure');
+});
+await step('deep: Nugget eats, follows, gets carried', async () => {
+  const r = await page.evaluate(() => {
+    const s = window.__game.scene, n = s.nugget?.debug;
+    if (!n) return { err: 'no Nugget in the mine' };
+    n.here?.();
+    n.feed?.();
+    for (let k = 0; k < 60; k++) s.update(1 / 30);
+    const fed = n.state?.();
+    n.carry?.();
+    for (let k = 0; k < 20; k++) s.update(1 / 30);
+    const carrying = !!s.nugget.carrying;
+    n.put?.();
+    for (let k = 0; k < 20; k++) s.update(1 / 30);
+    return { fed, carrying, after: !!s.nugget.carrying };
+  });
+  if (r.err) throw new Error(r.err);
+  if (!r.carrying || r.after) throw new Error('carry/put: ' + JSON.stringify(r));
+});
+await step('skills: activities give XP, a skill gets stamped', async () => {
+  const r = await page.evaluate(() => {
+    const st = window.__game.state, d = st.skillsDebug;
+    if (!d) return { err: 'no skills' };
+    d.xp('mining', 5000);
+    const pts = st.data.skills?.points ?? null;
+    const before = JSON.stringify(st.data.skills?.unlocked || st.data.skills?.nodes || {}).length;
+    d.unlockAll?.('mining');
+    const after = JSON.stringify(st.data.skills?.unlocked || st.data.skills?.nodes || {}).length;
+    return { pts, grew: after > before, power: st.skill('power') };
+  });
+  if (r.err) throw new Error(r.err);
+  if (!r.grew || !(r.power > 1)) throw new Error('skills: ' + JSON.stringify(r));
 });
 await step('deep: reach the town gate → escape', async () => {
   await page.evaluate(() => {
@@ -264,7 +352,7 @@ await step('home again + sleep', async () => {
   if (d1 !== d0 + 1) throw new Error('day did not advance');
   await shot('12-home');
 });
-await step('tavern: Old Star, his notes and his chest', async () => {
+await step("Old Star's cave: talk, his notes and his chest", async () => {
   const r = await page.evaluate(() => {
     const d = window.__game.scene.debug;
     const line = d.talk();
@@ -282,11 +370,15 @@ await step('tavern: Old Star, his notes and his chest', async () => {
   if (!got || !got.length) throw new Error('the chest gave nothing');
   await shot('12b-tavern');
 });
-await step('index book', async () => {
-  await page.evaluate(() => window.__game.ui.openIndex());
-  await wait(1000);
-  await shot('13-index');
+await step('the book: quests, skills, index', async () => {
+  for (const tab of ['quests', 'skills', 'index']) {
+    await page.evaluate((t) => { window.__game.ui.closeAllPanels(); return window.__game.ui.openBook(t); }, tab);
+    await wait(1500);
+    await shot('13-book-' + tab);
+  }
   await page.evaluate(() => window.__game.ui.closeAllPanels());
+  const q = await page.evaluate(() => window.__game.quests.debug.list().length);
+  if (!(q > 0)) throw new Error('no quests listed');
 });
 await step('ticket → ending', async () => {
   await go('town', { from: 'home' });
