@@ -982,6 +982,7 @@ it glows while a hostile is within 9 m (`enemies.threat()`).
   front (±70°): blocked (¼ damage, ½ shove, energy cost; heavy blows ~60% through) or, inside the
   first 0.2 s × `skill('block')`, **parried**: no damage, the attacker recoils (0.45 s, a short
   opening); with the **`riposte`** perk it staggers 1.3 s and the next hit is a **crit** (×2.5).
+  The `guard` food buff halves blocked damage and widens the parry window ×1.4.
   Telegraphs: wind-ups glow on the rim (yellow = block/parry it, red = too heavy, dodge) and a
   glint + ping marks the instant before the blow. Unblockable: shockwaves (jump them), spores,
   webs on the floor, a wraith's grasp, the tyrant's bite; fire and thrown rocks can be blocked but

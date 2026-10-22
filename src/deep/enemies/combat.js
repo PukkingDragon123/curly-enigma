@@ -3,7 +3,8 @@
 // Their attacks → incoming(): every blow a creature lands goes through here. While the mole holds
 // a guard (DigScene passes { blocking, blockT } to enemies.update; blockT = seconds since the guard
 // went up) a blow from in front (within ~70° of where the mole looks) is blocked:
-//   blocked   damage cut to a quarter (heavy blows: ~60%), half the shove, costs energy
+//   blocked   damage cut to a quarter (heavy blows: ~60%; halved again with the 'guard' food buff),
+//             half the shove, costs energy
 //             → { damage, kind, push, blocked: true } + { energy } (DigScene: act block, perfect false)
 //   parried   guard raised in the last PARRY seconds before the blow lands: no damage, the attacker
 //             is thrown off balance (a short recoil, a brief opening); with the Riposte perk
@@ -21,7 +22,7 @@ import * as THREE from 'three';
 import { clamp, rand } from '../../core/util.js';
 import { sparkle } from './fx.js';
 
-export const PARRY = 0.2; // perfect-block window (s), widened by the 'block' skill
+export const PARRY = 0.2; // perfect-block window (s), widened by the 'block' skill and the 'guard' food buff
 const COMBO_WIN = 1.05;
 const GUARD_COS = Math.cos(1.22); // ±70° around the view
 const HOLD_DRAIN = 0.9; // energy per second while the guard is up
@@ -92,7 +93,8 @@ export class Combat {
       return ev;
     }
     const sk = this.skill('block');
-    const perfect = this.blockT <= PARRY * Math.min(1.6, sk) && !heavy && !o.noParry && !NOPARRY.has(kind);
+    const guard = !!m.state?.hasBuff?.('guard'); // food buff (Iron Belly): soaks more, wider parry
+    const perfect = this.blockT <= PARRY * Math.min(1.6, sk) * (guard ? 1.4 : 1) && !heavy && !o.noParry && !NOPARRY.has(kind);
     const g = this.guardPoint(dx, dz);
     const ev = { damage: 0, kind, push: [push[0] * 0.5, Math.min(push[1], 1.5) * 0.5, push[2] * 0.5], blocked: true };
     if (perfect) {
@@ -118,7 +120,7 @@ export class Combat {
       if (this.stats.parried === 1) m.say('parry1', this.perk('riposte') ? 'Perfect block! It\'s <b>reeling</b>: hit it now for a heavy counter.' : 'Perfect block! Strike back <b>right away</b> for a heavy counter.', 'good', 9999);
     } else {
       const k = heavy ? 0.6 : 0.25;
-      ev.damage = Math.max(heavy ? 1 : 0, Math.round(n * k / sk));
+      ev.damage = Math.max(heavy ? 1 : 0, Math.round(n * k / sk * (guard ? 0.5 : 1)));
       if (heavy) ev.push = [push[0] * 0.8, Math.min(push[1], 2) * 0.6, push[2] * 0.8];
       this.stats.blocked++;
       m.events.push({ energy: Math.round(n * (heavy ? 0.5 : 0.3) / sk * 10) / 10 });
