@@ -62,7 +62,12 @@ await step('waking up: cold water and Old Star', async () => {
   await shot('02c-old-star');
 });
 await step("Old Star's mining lesson (down the lift and back)", async () => {
-  await page.evaluate(() => window.__game.scene.debug.interact('Ride down to the dig') || window.__game.scene.debug.useLift('L0'));
+  // the cage ride is a scripted animation on scene time: drive it (headless frames are slow)
+  await page.evaluate(async () => {
+    const d = window.__game.scene.debug;
+    if (!d.interact('Ride down to the dig')) d.useLift('L0');
+    await d.run(900, 1 / 30, () => window.__game.transitioning || window.__game.sceneName !== 'home');
+  });
   for (let i = 0; i < 160 && ((await scene()) !== 'deep' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
   if ((await scene()) !== 'deep') throw new Error('not down at the dig: ' + (await scene()));
   await wait(2500);
@@ -192,6 +197,32 @@ await step('deep: a ruin puzzle opens to treasure', async () => {
   if (r.err) throw new Error(r.err);
   if (!r.open || !r.acts.includes('puzzle')) throw new Error('the ruin did not open: ' + JSON.stringify(r));
   await shot('04d-ruin-treasure');
+});
+await step('deep: NPC burrows — the trading post and Rocco', async () => {
+  const r = await page.evaluate(async () => {
+    const s = window.__game.scene, d = s.traders?.debug;
+    if (!d) return { err: 'no traders module' };
+    const list = d.list();
+    d.go('trader', 'counter');
+    for (let k = 0; k < 60; k++) s.update(1 / 30);
+    const shop = await d.shop('trader', 'buy');
+    return { n: list.length, kinds: list.map((b) => b.kind), shop: !!shop };
+  });
+  if (r.err) throw new Error(r.err);
+  if (r.n < 4 || !r.shop) throw new Error('burrows: ' + JSON.stringify(r));
+  await wait(2500);
+  await shot('04e-trading-post');
+  await page.evaluate(() => window.__game.ui.closeAllPanels());
+  const rocco = await page.evaluate(async () => {
+    const s = window.__game.scene, d = s.traders.debug;
+    d.go('raccoon', 'counter');
+    for (let k = 0; k < 60; k++) s.update(1 / 30);
+    return !!(await d.shop('raccoon', 'weapons'));
+  });
+  if (!rocco) throw new Error("Rocco's counter did not open");
+  await wait(2500);
+  await shot('04f-rocco');
+  await page.evaluate(() => window.__game.ui.closeAllPanels());
 });
 await step('deep: Nugget eats, follows, gets carried', async () => {
   const r = await page.evaluate(() => {

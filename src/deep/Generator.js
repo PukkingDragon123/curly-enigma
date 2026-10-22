@@ -182,6 +182,8 @@ export function makePlan(seed, opts = {}) {
     }
   }
   addPlaces(plan, rng, L0);
+  // burrows stamp last, so the trails ending in them don't cut through their furniture
+  plan.features.sort((a, b) => (a.kind === 'burrow') - (b.kind === 'burrow'));
   for (const f of plan.features) aabbOf(f);
   return plan;
 }

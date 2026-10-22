@@ -1029,7 +1029,6 @@ export default class DigScene extends Scene {
       if (d < r && !near.has(id)) { near.add(id); this.act('reach', { place: id }); }
       else if (d > r + 3) near.delete(id);
     };
-    for (const b of plan.burrows || []) at(b.id, b.x, b.y, b.z, 4);
     for (const r of plan.ruins || []) at(r.id, r.x, r.y, r.z, r.r + 1);
     for (const L of plan.lifts) at(L.id, L.x, L.y, L.z, 2.6);
     at('town', plan.town.x, plan.town.y, plan.town.z, 8);
