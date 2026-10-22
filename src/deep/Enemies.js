@@ -162,10 +162,10 @@ export class Enemies {
     const [r, g, b] = rgb(d.tones[1]);
     return [r / 255, g / 255, b / 255];
   }
-  /** Toughness: tracks the pick you'd expect at that depth (and the one you have). */
+  /** Toughness: tracks the pick you'd expect at that depth (and the one you have; food buffs don't count, they're meant to help). */
   hpScale(zone) {
     const pick = this.state.equipped?.('pick');
-    const p = (pick?.power || 1) * (this.state.hasBuff?.('strong') ? 1.3 : 1);
+    const p = pick?.power || 1;
     return clamp(ZONE_POWER[zone] || 1, p * 0.8, p * 1.3);
   }
   near(e, r) { return (e.dist ?? 99) < r; }

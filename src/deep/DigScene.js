@@ -277,6 +277,7 @@ export default class DigScene extends Scene {
     this.wish = busy ? { x: 0, z: 0 } : { x: -sy * mv.y + cy * mv.x, z: -cy * mv.y - sy * mv.x };
     const exhausted = st.energy < 8;
     const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted, crouch: inp.isDown('KeyC'), jumpMul: st.hasBuff('bouncy') ? 1.35 : 1, frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (st.skill?.('speed') || 1) * (this.blocking ? 0.55 : 1) * (this.nugget?.carrying ? 0.7 : 1) });
+    if (ev.landed > 8) this.enemies?.noise?.(pl.pos.x, pl.pos.y, pl.pos.z, 3, 'land');
     if (ev.landed) { this.audio.play('land', { hard: ev.landed > 8 }); this.fx.dust(pl.pos.x, pl.pos.y + 0.05, pl.pos.z, Math.min(10, ev.landed | 0), [0.5, 0.42, 0.34], 0.2); }
     if (ev.fallDamage) this.hurt(Math.round(ev.fallDamage), 'fall');
     if (ev.jump) this.energy(0.2);
@@ -346,15 +347,17 @@ export default class DigScene extends Scene {
     const pl = this.player;
     for (const e of evs || []) {
       if (e.damage) {
-        if (e.parried) { this.audio.play('clang', { pitch: 1.3 }); this.shake(0.25); this.hitStop = Math.max(this.hitStop || 0, 0.08); this.post.flash = 0.25; this.post.flashColor = 0xfff0c0; this.act('block', { perfect: true }); }
-        else if (e.blocked) { this.audio.play('clang', { vol: 0.7 }); this.shake(0.3); this.act('block', { perfect: false }); }
+        // a blocked blow (combat.js already rang it and queued the shake): a parry flashes gold
+        if (e.parried) { this.post.flash = 0.25; this.post.flashColor = 0xfff0c0; this.act('block', { perfect: true }); }
+        else if (e.blocked) this.act('block', { perfect: false });
         this.hurt(e.damage, e.kind || 'enemy', !!(e.blocked || e.parried));
         if (e.push) pl.vel.add(new THREE.Vector3(...e.push));
       } else if (e.parried || e.blocked) {
-        this.audio.play('clang', { pitch: e.parried ? 1.3 : 1 }); this.shake(e.parried ? 0.25 : 0.15);
-        if (e.parried) { this.hitStop = Math.max(this.hitStop || 0, 0.08); this.post.flash = 0.25; this.post.flashColor = 0xfff0c0; }
+        if (e.parried) { this.post.flash = 0.25; this.post.flashColor = 0xfff0c0; }
         this.act('block', { perfect: !!e.parried });
       }
+      if (e.shake) this.shake(e.shake);
+      if (e.hitStop) this.hitStop = Math.max(this.hitStop || 0, e.hitStop);
       if (e.energy) this.state.useEnergy(e.energy);
       if (e.say) this.say(e.key || e.say, e.say, e.tone || 'warn', e.cd ?? 4);
       if (e.loot) this.collect(e.loot);
@@ -461,8 +464,10 @@ export default class DigScene extends Scene {
       const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
       const e = this.enemies.hitTest(eye, f, reach);
       if (e) {
-        this.enemies.damage(e, power, f);
-        this.kick.set(-0.016 * power, (Math.random() - 0.5) * 0.012, (Math.random() - 0.5) * 0.014);
+        const r = this.enemies.damage(e, power, f); // combos, crits, finishers: { hitStop, shake, kick }
+        if (r) { this.hitStop = Math.max(this.hitStop || 0, r.hitStop || 0); if (r.shake) this.shake(r.shake); }
+        const k = r?.kick || 1;
+        this.kick.set(-0.016 * power * k, (Math.random() - 0.5) * 0.012 * k, (Math.random() - 0.5) * 0.014 * k);
         if (this.vm) this.vm.impact('pick', Math.min(1, 0.6 + power * 0.15));
         this.energy(0.3);
         return;
@@ -507,6 +512,7 @@ export default class DigScene extends Scene {
     }
     const res = this.digger.strike(hit.vx, hit.vy, hit.vz, power, [hit.nx, hit.ny, hit.nz]);
     this.audio.play('hit', { snd: mat.snd || 'stone' });
+    this.enemies?.noise?.(px, py, pz, 4, 'dig'); // the ring of the pick carries
     const c = col01(mat.tones[2]);
     this.fx.dust(px, py, pz, 5, col01(mat.tones[1]), 0.06, out);
     this.fx.chips(px, py, pz, 4 + (Math.random() * 4 | 0), c, out);
@@ -698,6 +704,7 @@ export default class DigScene extends Scene {
     const r = (1.5 + (it.power || 3) * 0.25) * (VOX / 8);
     const res = this.digger.drill(cx, cy, cz, r);
     const px = (hit.vx + 0.5) / VOX, py = (hit.vy + 0.5) / VOX, pz = (hit.vz + 0.5) / VOX;
+    this.enemies?.noise?.(px, py, pz, 4, 'dig');
     this.energy(0.08);
     if (chance(0.5)) this.audio.play('hit', { snd: 'stone', vol: 0.4 });
     this.fx.sparks(px, py, pz, 3, [1, 0.7, 0.3], [hit.nx, hit.ny, hit.nz], 3);
