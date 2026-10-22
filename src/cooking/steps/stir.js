@@ -14,7 +14,7 @@ const _y = new THREE.Vector3();
 export class StirStep extends Step {
   get station() { return this.opts.vessel || 'pot'; }
   get title() { return 'STIR!'; }
-  get hint() { return `Move the mouse in <kbd>circles</kbd> around the ${this.vessel === 'cup' ? 'cup' : this.vessel}`; }
+  get hint() { return this.touch ? `Drag your finger in <b>circles</b> around the ${this.vessel === 'cup' ? 'cup' : this.vessel}` : `Move the mouse in <kbd>circles</kbd> around the ${this.vessel === 'cup' ? 'cup' : this.vessel}`; }
 
   begin() {
     this.vessel = this.opts.vessel || 'pot';

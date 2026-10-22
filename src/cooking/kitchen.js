@@ -2,7 +2,7 @@
 // cast-iron stove with burners and flames, and all the props the minigames use.
 import * as THREE from 'three';
 import * as M from './models.js';
-import { wallPlanksTex, counterTex, beamTex, caveViewTex, nuggetPortraitTex, chalkboardTex, tilesTex } from './tex.js';
+import { wallPlanksTex, caveWallTex, counterTex, beamTex, caveViewTex, nuggetPortraitTex, chalkboardTex, tilesTex } from './tex.js';
 import { setOutline } from '../gfx/Voxel.js';
 import { makeRng } from '../core/util.js';
 import { flameSheet, makeSheetSprite } from '../bookends/fx.js';
@@ -69,7 +69,7 @@ export class Kitchen {
   buildRoom() {
     // back wall
     const wallW = 12, wallH = 3.2;
-    const wall = new THREE.Mesh(new THREE.PlaneGeometry(wallW, wallH), new THREE.MeshLambertMaterial({ map: wallPlanksTex([wallW / 4, wallH / 3]) }));
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(wallW, wallH), new THREE.MeshLambertMaterial({ map: caveWallTex([wallW / 4, wallH / 3]) })); // Old Star's cave rock (was wallPlanksTex)
     wall.position.set(0, wallH / 2 - 0.3, WALL_Z);
     this.root.add(wall);
     // a band of hand-made tiles behind the counter (sooty behind the stove)

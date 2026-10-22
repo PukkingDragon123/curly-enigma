@@ -43,6 +43,8 @@ export class Step {
   get station() { return 'board'; }
   get title() { return 'COOK!'; }
   get hint() { return ''; }
+  /** Playing by touch? (hints say tap / drag instead of click / keys) */
+  get touch() { return this.cook.lastPointer === 'touch' || document.documentElement.classList.contains('is-touch'); }
 
   begin() {}
 

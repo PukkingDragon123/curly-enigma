@@ -99,9 +99,9 @@ export class ForgeRun {
     if (this.refunded || this.finished) return;
     this.refunded = true;
     const st = this.st;
-    for (const l of this.lots || []) st.addItem(l.id, { q: l.q, p: l.p });
-    if (this.infLot) st.addItem(this.infLot.id, { q: this.infLot.q, p: this.infLot.p });
-    if (this.gemLot) st.addItem(this.gemLot.id, { q: this.gemLot.q, p: this.gemLot.p });
+    for (const l of this.lots || []) st.addItem(l.id, { spill: true, q: l.q, p: l.p });
+    if (this.infLot) st.addItem(this.infLot.id, { spill: true, q: this.infLot.q, p: this.infLot.p });
+    if (this.gemLot) st.addItem(this.gemLot.id, { spill: true, q: this.gemLot.q, p: this.gemLot.p });
   }
 
   onEscape() {

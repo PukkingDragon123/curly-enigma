@@ -29,7 +29,7 @@ const HALF = 0.34; // half width of the dough sheet (m)
 export class RollStep extends Step {
   get station() { return 'board'; }
   get title() { return 'ROLL!'; }
-  get hint() { return this.cook.lastPointer === 'touch' ? '<b>Drag</b> up & down to roll · drag left/right to lean on the thick side' : 'Move the mouse <kbd>up & down</kbd> to roll · left/right leans on that side (<kbd>W</kbd>/<kbd>S</kbd> + <kbd>A</kbd>/<kbd>D</kbd>)'; }
+  get hint() { return this.touch ? '<b>Drag</b> up & down to roll · drag left/right to lean on the thick side' : 'Move the mouse <kbd>up & down</kbd> to roll · left/right leans on that side (<kbd>W</kbd>/<kbd>S</kbd> + <kbd>A</kbd>/<kbd>D</kbd>)'; }
 
   begin() {
     this.B = this.win(BAND[0], BAND[1], 0.05, 1);

@@ -19,7 +19,7 @@ const G = 4.2;
 export class FlipStep extends Step {
   get station() { return 'pan'; }
   get title() { return 'FLIP!'; }
-  get hint() { return this.cook.lastPointer === 'touch' ? '<b>Tap</b> to toss when it\'s golden · <b>drag</b> the pan under it to catch' : '<kbd>Click</kbd> to toss when golden · move the mouse (or <kbd>A</kbd>/<kbd>D</kbd>) to catch it'; }
+  get hint() { return this.touch ? '<b>Tap</b> to toss when it\'s golden · <b>drag</b> the pan under it to catch' : '<kbd>Click</kbd> to toss when golden · move the mouse (or <kbd>A</kbd>/<kbd>D</kbd>) to catch it'; }
 
   begin() {
     this.W = this.win(WIN[0], WIN[1], 0.3, 1);

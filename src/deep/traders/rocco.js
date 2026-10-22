@@ -89,6 +89,7 @@ function raccoonize(rig) {
       const band = dy > -2.6 + Math.max(0, ax - eyeX - 1) * 0.35 && dy < 1.9 - Math.max(0, ax - eyeX) * 0.2;
       if (front && band && ax < hb[3] * 0.98 && !(white && dy < -1.4)) paint(i, ax < 0.9 && dy < 0.5 ? 0x5a5658 : 0x262224, 0.3);
       else if (front && dy >= 1.9 && dy < 3.6 && ax > 0.8 && ax < eyeX + 2.6) paint(i, 0xf2eee6, 0.25); // white brows
+      else if (white && dy < -1.4 && (ax > eyeX + 0.6 || z < eyeZ - 2.2)) paint(i, 0x9a9698, 0.5); // grey cheeks round a white muzzle
       else if (!white && y > hb[4] - 2.5 && z < 0) paint(i, 0x6e6a6c); // a darker crown
     } else if (tailB.has(b)) {
       const ring = Math.floor((-z - 1) / 2.4);
@@ -113,10 +114,10 @@ function addCoat(rig) {
   if (r[0] > r[3]) return;
   const vs = rig.vs;
   const cx = (r[0] + r[3]) / 2, cz = (r[2] + r[5]) / 2;
-  const rx = (r[3] - r[0]) / 2 + 1.1, rz = (r[5] - r[2]) / 2 + 1.1;
+  const rx = (r[3] - r[0]) / 2 + 0.8, rz = (r[5] - r[2]) / 2 + 0.8;
   // the skirt hangs down past the knees: from the hip, most of the leg
   const legV = (rig.p.lh || 7) * 2;
-  const y0 = Math.floor(r[1] - legV * 0.5), y1 = Math.ceil(r[4] + 2);
+  const y0 = Math.floor(r[1] - legV * 0.38), y1 = Math.ceil(r[4] + 2);
   const W = Math.ceil(rx * 2 + 6), D = Math.ceil(rz * 2 + 6), H = y1 - y0 + 1;
   const ox = cx - W / 2, oz = cz - D / 2; // grid → part-local
   const main = new VoxelGrid(W, H, D), flap = new VoxelGrid(W, H, D);

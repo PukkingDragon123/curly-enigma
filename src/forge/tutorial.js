@@ -51,9 +51,9 @@ export class ForgeLesson {
   async start() {
     const st = this.st;
     // enough to learn with
-    if (st.count('copper_ingot') < 1 && st.count('copper_ore') < 2) st.addItem('copper_ore', { q: 70, n: 2 - st.count('copper_ore') });
-    if (st.count('coal') < 1) st.addItem('coal', { n: 3 });
-    if (!st.owns('bp_dagger')) st.addItem('bp_dagger', { n: 1 });
+    if (st.count('copper_ingot') < 1 && st.count('copper_ore') < 2) st.addItem('copper_ore', { spill: true, q: 70, n: 2 - st.count('copper_ore') });
+    if (st.count('coal') < 1) st.addItem('coal', { spill: true, n: 3 });
+    if (!st.owns('bp_dagger')) st.addItem('bp_dagger', { spill: true, n: 1 });
     await this.loadStar();
     this.sc.dock?.('here');
     await this.say('My forge! Mind the sparks, they bite. First we melt your copper into an <b>ingot</b>.', 'proud', { wait: true });

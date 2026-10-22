@@ -88,23 +88,26 @@ export class CaveHall {
     this.drips = [];
   }
 
-  /** opts: { doorOpen, notes (count) } */
-  build(opts = {}) {
+  /**
+   * opts: { doorOpen, notes (count) }. pause: optional async () => void awaited between the steps
+   * (the scene yields to the browser there, so a long build doesn't freeze the page).
+   */
+  async build(opts = {}, pause = null) {
     const t0 = performance.now();
     this.opts = opts;
     const st = {};
-    const step = (k, fn) => { const a = performance.now(); fn(); st[k] = Math.round(performance.now() - a); };
-    step('rock', () => { this.rock = new CaveRock().build(); this.world.add(this.rock.group); });
+    const step = async (k, fn) => { const a = performance.now(); fn(); st[k] = Math.round(performance.now() - a); if (pause) await pause(); };
+    await step('rock', () => { this.rock = new CaveRock().build(); this.world.add(this.rock.group); });
     this.decor = new THREE.Group();
     this.room.add(this.decor);
-    step('forge', () => this.buildForge());
-    step('hearth', () => this.buildHearth());
-    step('wall', () => this.buildWestWall());
-    step('ruins', () => this.buildRuins());
-    step('gear', () => this.buildGear());
-    step('ways', () => this.buildWays());
-    step('life', () => this.buildLife());
-    step('merge', () => this.merge());
+    await step('forge', () => this.buildForge());
+    await step('hearth', () => this.buildHearth());
+    await step('wall', () => this.buildWestWall());
+    await step('ruins', () => this.buildRuins());
+    await step('gear', () => this.buildGear());
+    await step('ways', () => this.buildWays());
+    await step('life', () => this.buildLife());
+    await step('merge', () => this.merge());
     this.collide();
     this.steps = { ...st, ...Object.fromEntries(Object.entries(this.rock.stats).map(([k, v]) => ['rock.' + k, v])) };
     this.ms = performance.now() - t0;

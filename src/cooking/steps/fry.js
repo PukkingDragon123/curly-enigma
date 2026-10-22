@@ -17,7 +17,7 @@ const HANDLE = new THREE.Vector3(-0.0125, 0.075, 0.68); // pan-local grip on the
 export class FryStep extends Step {
   get station() { return 'pan'; }
   get title() { return 'FRY!'; }
-  get hint() { return '<kbd>Click</kbd> or flick the mouse up to flip when it\'s golden · both sides'; }
+  get hint() { return this.touch ? '<b>Tap</b> or flick up to flip when it\'s golden · both sides' : '<kbd>Click</kbd> or flick the mouse up to flip when it\'s golden · both sides'; }
 
   begin() {
     this.W = this.win(WIN[0], WIN[1], 0.3, 1);

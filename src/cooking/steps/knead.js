@@ -14,7 +14,7 @@ const WINDOW = 0.26;
 export class KneadStep extends Step {
   get station() { return 'board'; }
   get title() { return 'KNEAD!'; }
-  get hint() { return 'On the beat: <kbd>Left click</kbd>/<kbd>A</kbd> and <kbd>Right click</kbd>/<kbd>D</kbd>, alternating'; }
+  get hint() { return this.touch ? 'On the beat: tap the <b>left</b> and <b>right</b> half of the screen, alternating' : 'On the beat: <kbd>Left click</kbd>/<kbd>A</kbd> and <kbd>Right click</kbd>/<kbd>D</kbd>, alternating'; }
 
   begin() {
     const S = this.S;

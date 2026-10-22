@@ -10,7 +10,7 @@ import { clamp, damp, mixHex, shade } from '../../core/util.js';
 export class MashStep extends Step {
   get station() { return this.vessel; }
   get title() { return 'MASH!'; }
-  get hint() { return this.cook.lastPointer === 'touch' ? '<b>Tap</b> the lumps to mash them · steady, not frantic' : 'Aim at a lump and <kbd>Click</kbd> / <kbd>Space</kbd> to mash · steady, not frantic'; }
+  get hint() { return this.touch ? '<b>Tap</b> the lumps to mash them · steady, not frantic' : 'Aim at a lump and <kbd>Click</kbd> / <kbd>Space</kbd> to mash · steady, not frantic'; }
 
   constructor(cook, opts) {
     super(cook, opts);
@@ -112,6 +112,7 @@ export class MashStep extends Step {
       this.lastM = m ? m.clone() : null;
       const dx = this.aim.x - this.center.x, dz = this.aim.z - this.center.z, d = Math.hypot(dx, dz);
       if (d > this.r) { this.aim.x = this.center.x + dx / d * this.r; this.aim.z = this.center.z + dz / d * this.r; }
+      if (inp.mousePressed(0) && m && this.touch) { this.aim.x = m.x; this.aim.z = m.z; } // a tap mashes right where it lands
       if (inp.mousePressed(0) || inp.pressed('Space', 'Enter')) this.mash();
     }
     // the plunge

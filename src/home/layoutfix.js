@@ -15,7 +15,7 @@ export function relocateBlocked(st, W, D) {
     if (spot) { p.x = spot.x; p.y = spot.y; p.r = spot.r; changed = true; continue; }
     if (isStorable(p.id)) {
       home.placed.splice(home.placed.indexOf(p), 1);
-      st.addItem(p.id, { n: 1 });
+      st.addItem(p.id, { spill: true, n: 1 });
       changed = true;
     }
   }

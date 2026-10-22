@@ -7,7 +7,7 @@ import { clamp } from '../../core/util.js';
 export class SeasonStep extends Step {
   get station() { return this.opts.vessel || 'pot'; }
   get title() { return 'SEASON!'; }
-  get hint() { return 'Shake: move the mouse <kbd>up & down</kbd> or click · <kbd>Space</kbd> when it\'s just right'; }
+  get hint() { return this.touch ? '<b>Tap</b> or drag up & down to shake · <b>Done</b> when it\'s just right' : 'Shake: move the mouse <kbd>up & down</kbd> or click · <kbd>Space</kbd> when it\'s just right'; }
 
   begin() {
     this.vessel = this.opts.vessel || 'pot';

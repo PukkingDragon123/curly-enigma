@@ -45,7 +45,7 @@ export function takeInputs(st, r) {
 }
 
 export function refundInputs(st, taken) {
-  for (const l of [...taken.ores, ...taken.coal]) st.addItem(l.id, { q: l.q, p: l.p });
+  for (const l of [...taken.ores, ...taken.coal]) st.addItem(l.id, { spill: true, q: l.q, p: l.p });
 }
 
 export function ingotQuality(avgQ, acc) {
@@ -64,7 +64,7 @@ export function quickSmelt(st, r, n) {
     if (!smeltStatus(st, r).ok) break;
     const t = takeInputs(st, r);
     const q = ingotQuality(t.avgQ, QUICK_ACC);
-    st.addItem(r.out, { q, n: r.n });
+    st.addItem(r.out, { spill: true, q, n: r.n });
     st.emit?.('act', { type: 'smelt', id: r.out, recipe: r.id, q, quick: true });
     count += r.n; qsum += q * r.n;
   }
@@ -325,7 +325,7 @@ export class SmeltGame {
 
   reward() {
     const st = this.st, r = this.r, sc = this.scene;
-    st.addItem(r.out, { q: this.q, n: r.n });
+    st.addItem(r.out, { spill: true, q: this.q, n: r.n });
     st.emit?.('act', { type: 'smelt', id: r.out, recipe: r.id, q: this.q });
     sc.lesson?.event('ingot', { id: r.out, q: this.q, run: this });
     const first = !st.flag('forge.smelted.' + r.id);

@@ -15,7 +15,7 @@ const PLATE_R = 0.32;
 export class PlateStep extends Step {
   get station() { return 'plate'; }
   get title() { return 'PLATE IT!'; }
-  get hint() { return '<kbd>Click</kbd> to drop it in the middle of the plate'; }
+  get hint() { return this.touch ? '<b>Tap</b> to drop it in the middle of the plate' : '<kbd>Click</kbd> to drop it in the middle of the plate'; }
 
   begin() {
     this.limit = 8;

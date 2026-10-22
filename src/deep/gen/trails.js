@@ -8,7 +8,7 @@
 //
 // Pure and deterministic (it runs in the chunk workers too). A trail is a chain of plan features,
 // one straight segment each: { kind: 'trail', a: {x,y,z}, b: {x,y,z}, w, h, seed, ladder?, rails? }.
-import { M, VOX } from '../materials.js';
+import { M, VOX, MAT } from '../materials.js';
 import { h3 } from '../noise.js';
 
 export const TRAIL_W = 1.3; // meters, wall to wall
@@ -38,12 +38,14 @@ export function trailLanterns(f) {
 export function trailCollapse(f) {
   if (f.ladder) return null;
   const len = Math.hypot(f.b.x - f.a.x, f.b.z - f.a.z);
-  if (len < 4.2 || h3(f.seed, 3, 1, 77) > 0.3) return null;
+  if (len < 4.2 || h3(f.seed, 3, 1, 77) > 0.18) return null;
   return { s: len * (0.3 + h3(f.seed, 5, 2, 78) * 0.4), hl: 0.45 + h3(f.seed, 6, 3, 79) * 0.45 };
 }
 
 const NATURAL = (m) => m > 0 && m < 40 && m !== M.TIMBER && m !== M.BOARDS && m !== M.BURROW && m !== M.LANTERN && m !== M.BRICK && m !== M.DOOR && m !== M.LADDER && m !== M.BEDROCK;
 const FLUIDM = (m) => m === M.WATER || m === M.LAVA;
+/** Loose stuff (gravel, sand, ash, snow, rubble) pours once disturbed: packed hard round a tunnel. */
+export const looseM = (m) => !!(MAT[m] && MAT[m].gran);
 
 /** Carve one segment into a chunk (vox: Uint8Array CS³, chunk origin X0/Y0/Z0 in voxels). */
 export function stampTrail(f, vox, X0, Y0, Z0, CS) {
@@ -113,6 +115,9 @@ export function stampTrail(f, vox, X0, Y0, Z0, CS) {
       }
     } else if (up >= -2 / VOX && up < -1 / VOX && al > wl - 0.17 && al < wl - 0.02 && endOk && (!cur || FLUIDM(cur))) {
       vox[vi] = M.TIMBER; // the stringers are two voxels deep
+    } else if (looseM(cur) && up >= -0.12 && up < h + 0.4 && al < wl + 0.4 && s > -hw - 0.4 && s < len + hw + 0.4) {
+      // the walls and roof round the tunnel hold their shape: loose stuff packed into earth
+      vox[vi] = M.DIRT;
     }
   }
 }
@@ -124,9 +129,10 @@ function ladderShaft(f, vox, X0, Y0, Z0, CS, lx0, lx1, ly0, ly1, lz0, lz1) {
   for (let z = lz0; z < lz1; z++) for (let y = ly0; y < ly1; y++) for (let x = lx0; x < lx1; x++) {
     const xm = (X0 + x + 0.5) / VOX, ym = (Y0 + y + 0.5) / VOX, zm = (Z0 + z + 0.5) / VOX;
     const ax = xm - cx, az = zm - cz;
-    if (Math.abs(ax) > hs || Math.abs(az) > hs || ym < bot || ym > top + TRAIL_H) continue;
+    if (Math.abs(ax) > hs + 0.4 || Math.abs(az) > hs + 0.4 || ym < bot - 0.1 || ym > top + TRAIL_H + 0.4) continue;
     const vi = x + CS * (y + CS * z);
     const cur = vox[vi];
+    if (Math.abs(ax) > hs || Math.abs(az) > hs || ym < bot || ym > top + TRAIL_H) { if (looseM(cur)) vox[vi] = M.DIRT; continue; }
     if (cur === M.BEDROCK || cur === M.BURROW) continue;
     // the ladder: two rails and rungs against the -z wall, from the bottom to the top lip
     const onWall = az < -hs + 0.12;

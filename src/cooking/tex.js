@@ -285,3 +285,58 @@ export function flourTex() {
   }
   return tex(pc);
 }
+
+/**
+ * Old Star's cave wall behind the hearth: rough rock plates (Voronoi cells) with dark cracks, lit
+ * top-left lips, mineral flecks, damp moss creeping up from the bottom and a few root threads.
+ * 32 px per unit, tiles seamlessly (cells wrap).
+ */
+export function caveWallTex(repeat = [1, 1]) {
+  const W = 128, H = 96;
+  const pc = new PixelCanvas(W, H);
+  const rng = makeRng(93);
+  const pts = [];
+  for (let i = 0; i < 46; i++) pts.push([rng.range(0, W), rng.range(0, H), rng.pick([0x6a5a50, 0x625248, 0x72604f, 0x5a4c44, 0x685a52, 0x7a6a5a])]);
+  const cell = (x, y) => {
+    let a = 1e9, b = 1e9, ia = 0;
+    for (let i = 0; i < pts.length; i++) {
+      for (const [ox, oy] of [[0, 0], [W, 0], [-W, 0], [0, H], [0, -H]]) {
+        const d = (x - pts[i][0] - ox) ** 2 + (y - pts[i][1] - oy) ** 2;
+        if (d < a) { b = a; a = d; ia = i; } else if (d < b) b = d;
+      }
+    }
+    return { i: ia, edge: Math.sqrt(b) - Math.sqrt(a) };
+  };
+  const grid = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) grid.push(cell(x, y));
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const g = grid[y * W + x];
+    let c = pts[g.i][2];
+    if (g.edge < 1.2) c = 0x2a2020; // crack
+    else if (g.edge < 2.4) {
+      // the lip: lit if the crack is below/right of us (light from the top left)
+      const up = grid[((y + 2) % H) * W + x].edge < 1.2 || grid[y * W + (x + 2) % W].edge < 1.2;
+      c = up ? shade(c, 1.18) : shade(c, 0.82);
+    } else if ((x * 7 + y * 13) % 29 === 0) c = shade(c, 1.1);
+    else if ((x * 11 + y * 5) % 31 === 0) c = shade(c, 0.9);
+    pc.set(x, y, c);
+  }
+  // mineral flecks
+  for (let i = 0; i < 60; i++) { const x = rng.int(0, W - 1), y = rng.int(0, H - 1); if (grid[y * W + x].edge > 2) pc.set(x, y, rng.chance(0.3) ? 0xc8b088 : 0x8a7a6a); }
+  // damp moss creeping up the lower part
+  for (let x = 0; x < W; x++) {
+    const h = Math.max(0, Math.round(10 + Math.sin(x * 0.21) * 6 + Math.sin(x * 0.07 + 1) * 5 + rng.range(-2, 2)));
+    for (let k = 0; k < h; k++) {
+      const y = H - 1 - k;
+      if (grid[y * W + x].edge < 1.2) continue;
+      if (rng.chance(0.75 - k / (h + 4))) pc.set(x, y, k > h - 2 ? 0x7aa04a : (x + k) % 3 ? 0x4e7a3a : 0x3e6a32);
+    }
+  }
+  // root threads hanging down from the top
+  for (let i = 0; i < 5; i++) {
+    let x = rng.int(0, W - 1);
+    const L = rng.int(10, 30);
+    for (let y = 0; y < L; y++) { pc.set(x, y, y % 4 ? 0x4a3020 : 0x5a3a26); if (rng.chance(0.3)) x = (x + (rng.chance(0.5) ? 1 : W - 1)) % W; }
+  }
+  return tex(pc, repeat);
+}

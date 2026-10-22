@@ -326,7 +326,7 @@ export class FPBuild {
     const i = d.home.placed.indexOf(p);
     if (i >= 0) { d.home.placed.splice(i, 1); this.s.removePlaced(p.uid); }
     this.returnPlanter(p);
-    st.addItem(p.id, { n: 1 });
+    st.addItem(p.id, { spill: true, n: 1 });
     this.s.rebuildCollision();
     this.game.audio.play('remove');
     const [fw, fd] = footprint(p.id, p.r);
@@ -341,7 +341,7 @@ export class FPBuild {
     const st = this.game.state, d = st.data;
     const pl = d.home.planters?.[p.uid];
     if (!pl) return;
-    if (pl.ready || pl.day < d.day) { st.addItem(pl.id, { n: 3 }); st.learn('planting'); } else st.addItem(pl.id, { n: 1 });
+    if (pl.ready || pl.day < d.day) { st.addItem(pl.id, { spill: true, n: 3 }); st.learn('planting'); } else st.addItem(pl.id, { spill: true, n: 1 });
     delete d.home.planters[p.uid];
   }
 
@@ -355,7 +355,7 @@ export class FPBuild {
     this.mark.visible = false;
     const st = this.game.state;
     this.returnPlanter(p);
-    st.addItem(p.id, { n: 1 });
+    st.addItem(p.id, { spill: true, n: 1 });
     this.game.audio.play('remove');
     st.save();
     this.render();
@@ -443,7 +443,7 @@ export class FPBuild {
     const st = this.game.state;
     const chk = canPlace(st.data.home.placed, this.s.W, this.s.D, id, x, y, r);
     if (!chk.ok) return chk;
-    if ((st.data.furniture[id] || 0) <= 0) st.addItem(id, { n: 1 });
+    if ((st.data.furniture[id] || 0) <= 0) st.addItem(id, { spill: true, n: 1 });
     const wasActive = this.active;
     if (!wasActive) this.toggle(true);
     this.sel = { type: 'new', id };

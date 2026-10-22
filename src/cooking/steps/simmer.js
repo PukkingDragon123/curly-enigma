@@ -13,7 +13,7 @@ const BAND = [0.46, 0.7];
 export class SimmerStep extends Step {
   get station() { return 'pot'; }
   get title() { return 'SIMMER!'; }
-  get hint() { return this.cook.lastPointer === 'touch' ? '<b>Hold</b> to turn the heat up · let go to ease off · keep it in the band' : '<kbd>Hold</kbd> click / <kbd>Space</kbd> to turn the heat up · let go to ease off'; }
+  get hint() { return this.touch ? '<b>Hold</b> to turn the heat up · let go to ease off · keep it in the band' : '<kbd>Hold</kbd> click / <kbd>Space</kbd> to turn the heat up · let go to ease off'; }
 
   begin() {
     this.B = this.win(BAND[0], BAND[1], 0.05, 1);

@@ -12,7 +12,7 @@ const JUG_S = 0.68;
 export class PourStep extends Step {
   get station() { return 'cup'; }
   get title() { return 'POUR!'; }
-  get hint() { return '<kbd>Hold</kbd> to pour · let go when the level is in the band'; }
+  get hint() { return this.touch ? '<b>Hold</b> to pour · let go when the level is in the band' : '<kbd>Hold</kbd> to pour · let go when the level is in the band'; }
 
   begin() {
     this.limit = 11;

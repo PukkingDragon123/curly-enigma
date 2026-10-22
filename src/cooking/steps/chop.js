@@ -17,7 +17,7 @@ const _v = new THREE.Vector3();
 export class ChopStep extends Step {
   get station() { return 'board'; }
   get title() { return 'CHOP!'; }
-  get hint() { return '<kbd>Click</kbd> when the knife is on a dotted line'; }
+  get hint() { return this.touch ? '<b>Drag</b> the knife onto a dotted line and <b>tap</b>' : '<kbd>Click</kbd> when the knife is on a dotted line'; }
 
   begin() {
     this.limit = 11;

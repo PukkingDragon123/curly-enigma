@@ -62,7 +62,7 @@ export class HomeLiving {
       this.floatAt(rec.cx * T, y, rec.cz * T, 'Just straw', '#e6dcc8');
       return;
     }
-    st.addItem('egg', { n });
+    st.addItem('egg', { spill: true, n });
     d.chicken.eggs = 0;
     d.stats.eggs = (d.stats.eggs || 0) + n;
     st.learn('eggs');
@@ -88,7 +88,7 @@ export class HomeLiving {
     const pl = d.home.planters[uid];
     const cx = rec.cx * T, cz = rec.cz * T, top = rec.bbox.max.y;
     if (pl && (pl.ready || pl.day < d.day)) {
-      st.addItem(pl.id, { n: 3 });
+      st.addItem(pl.id, { spill: true, n: 3 });
       delete d.home.planters[uid];
       st.learn('planting');
       this.game.audio.play('pickup');

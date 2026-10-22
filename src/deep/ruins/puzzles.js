@@ -65,13 +65,13 @@ class Levers extends Puzzle {
     const P = this.P, seq = this.save.seq || 0;
     if (P.order[seq] === i) {
       this.save.seq = seq + 1;
-      setTimeout(() => {
+      this.R.later(0.28, (out) => {
         sx.chime(seq + 1);
         this.s.setRunes(seq + 1);
         const rp = this.s.runePos(seq * 2), rq = this.s.runePos(seq * 2 + 1);
         for (const p of [rp, rq]) this.R.fx.sparks(p.x, p.y, p.z, 6, [0.5, 1, 1], [0, 0, 0], 1.2);
-        if (seq + 1 >= P.levers.length) this.R.later(0.5, (out) => this.s.solve(out));
-      }, 280);
+        if (seq + 1 >= P.levers.length) this.R.later(0.5, (o) => this.s.solve(o));
+      });
       return [];
     }
     // wrong: they all clatter back up
@@ -180,11 +180,11 @@ class Dials extends Puzzle {
     sx.grind(link >= 0 ? 0.7 : 0.5, 0.4);
     setTimeout(() => sx.click(link >= 0 ? 0.8 : 1), 380);
     const n = this.matched();
-    setTimeout(() => {
+    this.R.later(0.42, () => {
       this.s.setRunes(n);
       if (n > before) sx.chime(n);
       if (n === P.dials.length) this.R.later(0.3, (out) => this.s.solve(out));
-    }, 420);
+    });
     if (link >= 0 && !this.save.linkHint) { this.save.linkHint = 1; return [{ say: 'The drum next to it turned too.', key: 'link', cd: 20 }]; }
     return [];
   }

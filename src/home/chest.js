@@ -9,6 +9,7 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { el, rand, pick } from '../core/util.js';
 import { T } from './units.js';
 import { starData } from './starData.js';
+import { openBackpack } from '../ui/Backpack.js';
 
 const _v = new THREE.Vector3();
 
@@ -85,12 +86,14 @@ export class LootChest {
     a.play('creak', { vol: 0.8 });
     a.play('door', { vol: 0.25 });
     if (!items.length) {
-      // only dust and the smell of old pennies
-      await s.tween(0.35, (k) => this.setLid(Math.sin(k * Math.PI / 2) * 0.32));
+      // no gift today: it's your trunk (what doesn't fit in the backpack lives in here)
+      await s.tween(0.4, (k) => this.setLid(Math.sin(k * Math.PI / 2) * 0.95));
       s.fx.dust(lidTop.x, lidTop.y, lidTop.z, 8, [0.6, 0.52, 0.42], 0.08);
-      s.think(pick(['Empty. Old Star tucks something in most mornings.', 'Just dust and the smell of old pennies. Tomorrow, maybe.']), 2.6);
-      await s.sleepFor(0.6);
-      await s.tween(0.3, (k) => this.setLid(0.32 * (1 - k)));
+      let h = null;
+      try { h = openBackpack(this.g, { side: 'trunk' }); } catch (e) { console.warn('[home] trunk', e); }
+      if (!h) s.think(pick(['Empty. Old Star tucks something in most mornings.', 'Just dust and the smell of old pennies. Tomorrow, maybe.']), 2.6);
+      while (h && !h.closed && s.game.scene === s) await s.sleepFor(0.15);
+      await s.tween(0.35, (k) => this.setLid(0.95 * (1 - k)));
       a.play('clunk', { vol: 0.35 });
       this.busy = false;
       return [];
@@ -112,7 +115,7 @@ export class LootChest {
     for (const it of items) {
       if (it.gold) st.addGold(it.gold, 'chest');
       else {
-        st.addItem(it.id, { n: it.n });
+        st.addItem(it.id, { spill: true, n: it.n });
         const def = ITEMS[it.id];
         if (def?.slot && !st.data.equip[def.slot]) st.equip(it.id);
       }

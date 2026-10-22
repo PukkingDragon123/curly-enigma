@@ -16,7 +16,7 @@ const BURNT = new THREE.Color(0.22, 0.15, 0.1);
 export class BakeStep extends Step {
   get station() { return 'oven'; }
   get title() { return 'BAKE!'; }
-  get hint() { return this.cook.lastPointer === 'touch' ? 'Tap <b>Stoke</b> to keep the fire up · <b>tap</b> the oven to pull it out when golden' : '<kbd>F</kbd> / <kbd>Right click</kbd> stokes the fire · <kbd>Click</kbd> / <kbd>Space</kbd> pulls it out at golden'; }
+  get hint() { return this.touch ? 'Tap <b>Stoke</b> to keep the fire up · <b>tap</b> the oven to pull it out when golden' : '<kbd>F</kbd> / <kbd>Right click</kbd> stokes the fire · <kbd>Click</kbd> / <kbd>Space</kbd> pulls it out at golden'; }
 
   begin() {
     this.limit = 0;

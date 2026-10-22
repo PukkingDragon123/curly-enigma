@@ -81,9 +81,9 @@ export class HomeLessons {
     const stage = sd.lesson;
     sd.skipped = true;
     const gifts = [];
-    if (stage === 'mine' || stage === 'wake') { st.addItem('copper_ingot', { q: 70, n: 1 }); gifts.push('copper_ingot'); }
-    if (st.count('coal') < 3) { st.addItem('coal', { n: 3 }); gifts.push('coal'); }
-    if (stage !== 'done') { st.addItem('mushroom', { n: 2 }); }
+    if (stage === 'mine' || stage === 'wake') { st.addItem('copper_ingot', { spill: true, q: 70, n: 1 }); gifts.push('copper_ingot'); }
+    if (st.count('coal') < 3) { st.addItem('coal', { spill: true, n: 3 }); gifts.push('coal'); }
+    if (stage !== 'done') { st.addItem('mushroom', { spill: true, n: 2 }); }
     this.setLesson('done');
     this.lessonAct('skip');
     this.game.audio.play('page');
@@ -117,7 +117,7 @@ export class HomeLessons {
         this.sniffSound?.();
         await star.say('Ooh. Let me sniff it. <i>*snff*</i> Copper! Good clean copper. You didn\'t smash it. I knew you had paws on you.', { mood: 'proud', wait: true });
         this.lessonAct('copper_home');
-        if (st.count('coal') < 2) { st.addItem('coal', { n: 3 }); this.game.ui.toast('Old Star gives you <b>3 coal</b>', { icon: iconURL('coal'), kind: 'good' }); }
+        if (st.count('coal') < 2) { st.addItem('coal', { spill: true, n: 3 }); this.game.ui.toast('Old Star gives you <b>3 coal</b>', { icon: iconURL('coal'), kind: 'good' }); }
         this.setLesson('forge');
         star.say(NEXT.forge.text, { mood: NEXT.forge.mood });
         this.placeStarForLesson();
@@ -164,9 +164,9 @@ export class HomeLessons {
   prepForgeLesson() {
     const st = this.game.state;
     const gave = [];
-    if (st.count('copper_ingot') < 1 && st.count('copper_ore') < 2) { st.addItem('copper_ore', { q: 70, n: 2 - st.count('copper_ore') }); gave.push('copper ore'); }
-    if (st.count('coal') < 2) { st.addItem('coal', { n: 3 }); gave.push('coal'); }
-    if (!st.owns('bp_dagger')) st.addItem('bp_dagger', { n: 1 });
+    if (st.count('copper_ingot') < 1 && st.count('copper_ore') < 2) { st.addItem('copper_ore', { spill: true, q: 70, n: 2 - st.count('copper_ore') }); gave.push('copper ore'); }
+    if (st.count('coal') < 2) { st.addItem('coal', { spill: true, n: 3 }); gave.push('coal'); }
+    if (!st.owns('bp_dagger')) st.addItem('bp_dagger', { spill: true, n: 1 });
     if (gave.length) this.game.ui.toast(`Old Star tops you up: ${gave.join(' and ')}`, { icon: iconURL('coal'), kind: 'good' });
   }
 
@@ -176,8 +176,8 @@ export class HomeLessons {
     sd.dishesAtLesson = st.data.stats?.dishes || 0;
     const food = st.inventory((it) => it && (it.cat === 'food' || it.cat === 'plant' || it.cat === 'ingredient'));
     if (food.length < 2) {
-      st.addItem('egg', { n: 2 });
-      st.addItem('mushroom', { n: 2 });
+      st.addItem('egg', { spill: true, n: 2 });
+      st.addItem('mushroom', { spill: true, n: 2 });
       this.game.ui.toast('Old Star hands you <b>2 eggs</b> and <b>2 mushrooms</b>', { icon: iconURL('egg'), kind: 'good' });
     }
   }

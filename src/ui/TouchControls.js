@@ -238,7 +238,7 @@ export function setupTouch(game) {
       if (fpBuild !== ui._fpBuild) { ui._fpBuild = fpBuild; ui._applyActionIcon(fpBuild ? iconURL('support_beam') : ui.actionIcon ?? null); }
       if (on !== ui.root.classList.contains('building')) { ui.root.classList.toggle('building', on); if (on) releaseAll(); }
       // the block button glows while something hostile is close
-      const th = ui.hudMode === 'deep' ? game.scene?.enemies?.threat?.() : null;
+      const th = ui.hudMode === 'deep' ? game.scene?.enemies?.threat?.() || game.scene?.prologue?.threat?.() : null;
       dBlock.classList.toggle('lit', !!(th && th.dist < 9));
     }, 200);
   };

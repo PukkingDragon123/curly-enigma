@@ -90,10 +90,10 @@ your section of it true when you finish (add an "As built" note under your part)
 | **Monsters, ecosystem, combat** | `src/deep/Enemies.js`, `src/deep/enemies/*`, `src/data/creatures.js`, block poses in `src/fps/ViewModel.js` |
 | **NPC burrows and traders** (Rocco the raccoon too) | `src/deep/gen/burrows.js`, `src/deep/Traders.js`, `src/deep/traders/*`, `src/data/shops.js` |
 | **Ruins, trails, puzzles** | `src/deep/gen/ruins.js`, `src/deep/gen/trails.js`, `src/deep/Ruins.js` |
-| **Deep Town and characters** (taller NPCs, expressions) | `src/scenes/TownScene.js`, `src/town/*`, `src/gfx/characters.js`, `src/gfx/char/*` (not hero/coop/chicken/starmole) |
+| **Deep Town and characters** (chibi folk, expressions) | `src/scenes/TownScene.js`, `src/town/*`, `src/gfx/characters.js`, `src/gfx/char/*` (not hero/coop/chicken/starmole) |
 | **Lead** | `src/deep/DigScene.js`, `Generator.js` (cave shapes, biomes, plan hooks), `World/Terrain/Mesher/Dig/Player/TerrainMaterial`, `scripts/e2e.mjs`, integration |
 
-## Characters: expressions and taller folk (Deep Town part)
+## Characters: expressions (Deep Town part)
 
 The Deep Town part also builds the characters (`src/gfx/characters.js`, `src/gfx/char/*` except
 `hero.js`, `coop.js`, `chicken.js`, `starmole.js`). `makeCharacter(spec, opts)` keeps its API.
@@ -115,12 +115,15 @@ rig.lookAt(target)         // THREE.Vector3 (world) or Object3D (followed); null
 rig.blink()                // blinks now (they also blink on their own, expression-aware)
 ```
 
-- **Taller folk:** adults are built with longer bodies and legs (about 2.8 heads tall instead of 2):
-  a townsfolk adult is ~1.6–1.7 rig units tall (≈1.0 m in Deep Town, was ≈0.82 m). Kids and babies
-  stay small and round. Heads are unchanged, so neck-space anchors (`rig.anchors`, sunglasses,
-  bubbles from `rig.height`) still work. `spec.player` (the old player mole) and `proportions(spec)`
-  without options keep the classic build (Old Star and the hero are untouched); pass
-  `makeCharacter(spec, { build: 'classic' })` to get the old shape.
+- **Chibi folk (the default).** The player asked for the old cute, blocky chibi style, so
+  `makeCharacter` builds the classic rig unless asked otherwise (`opts.build` / `spec.build`).
+  The chibi build gets the expressions and the tailoring that suits it: shirts under overalls and
+  aprons, button plackets and chest pockets, belts with brass buckles (and a little pouch),
+  watch chains, a tuft of chest fur at open collars. Gestures are made for short chibi arms (paw to
+  the chin, paws wringing, paws on the belly, paws tucked behind a proud back).
+- **The tall build** (`build: 'tall'`: about 2.8 heads tall, elbows and knees, boots, rolled
+  sleeves, hands with thumbs) still exists for whoever asks for it; nothing in Deep Town uses it.
+  Heads are the same in both builds, so neck-space anchors (`rig.anchors`) work either way.
 - `renderPortrait(renderer, spec, size, { expression })` frames the head and shoulders.
 - `EXPRESSIONS` (exported from `characters.js`) lists the names.
 
@@ -148,8 +151,8 @@ stream so old seeds keep their look).
   `rig.seatY` (seat height in rig units: sitting folk reach the floor or dangle their feet),
   `rig.fx`, `rig.build`. Classic rigs (Old Star, the hero, `spec.player`) have no joints and pose
   exactly as before, but get the whole expression API (their own mouth sets fall back sensibly).
-- A tall adult is ~18–22k triangles (classic ~13k); the town's `RigLOD` snaps far folk to 2 and 4
-  voxels (6k, 1.5k) and keeps every face variant.
+- A chibi townsperson is ~13k triangles (a tall one ~18–22k); the town's `RigLOD` snaps far folk to
+  2 and 4 voxels and keeps every face variant.
 
 ## Deep Town (as built)
 
@@ -163,8 +166,9 @@ stream so old seeds keep their look).
   they look at you, greet you with a face, and react while their shop is open to money changing
   hands (`state` `gold` events, and `act` `buy`/`sell` when those are emitted): a happy hop for a
   sale, a laugh or a gasp for a big one, a wave goodbye. Each stands so its eyes sit in the upper
-  part of the serving window (taller folk); the lamp over the keeper is softer and sits in front of
-  the face so faces read. The fountain's "toss a coin" target is the basin only, so the folk on the
+  part of the serving window (whatever its height); the lamp over the keeper is softer and sits in
+  front of the face so faces read. Folk on the plaza benches sit on the slats (`seat.top`), their
+  bubbles anchored at the sitting head. The fountain's "toss a coin" target is the basin only, so the folk on the
   benches round it can be talked to.
 - **Props at 1/32** (`src/town/props.js`): broom, lute, fishing rod, ore crate.
 - **Performance**: the previous agent's static batching and patch LOD (`src/town/batch.js`,
@@ -396,7 +400,8 @@ is collision only (`CaveWorld`). Props are code-made voxels (`src/home/caveProps
   flames, bellows on a pole (pump them), anvil, a cold-water quench trough (splash your face),
   his bucket, a tool rack, a coal heap, his cot (where he sleeps) with a crate and candle;
 - **hearth** (W): cooking fire with a pot and kettle, armchair, table and stools, a herb line, shelf,
-  log stack; his **notes board** and **chest** on the west wall;
+  log stack; his **notes board** and **chest** on the west wall (his gift in it most mornings;
+  otherwise it's your **trunk**: `openBackpack(game, { side: 'trunk' })`);
 - **ruins** (NE): a sealed carved doorway with a faint teal glow, broken pillars, a fallen drum, a
   cracked mosaic, a dais;
 - **lift bay** (E): the cage lift in its shaft (`useLift` / `openLiftPanel` / `rideTo` as before),
@@ -451,9 +456,11 @@ the pour band, balance tolerance), and a blow's energy is divided by `state.skil
 **Test hooks**: `__game.scene.debug` at home: `useLift(id)`, `toggleBuild(on)`, `placeAt(id, x, z, r)`,
 `interact(label)`, `labels()`, `talk()`, `openNotes(i)`, `minersBoard(tab)`, `openChest()`,
 `clock(h)`, `star(spot?)` (his state; a spot name from `STAR_SPOTS` puts him there), `lesson(stage?)`,
-`skipLessons()`, `finishWake(maxFrames)` (plays the wake-up through, carrying on every card),
+`skipLessons()`, `await finishWake(maxFrames)` (plays the wake-up through, carrying on every card),
 `wakeFx()`, `arrive(from)` (as if back from `'lift' | 'forge' | 'cooking'`), `aim(x, y, z)`,
-`stand(x, z, yaw, pitch)`, `step(n, dt)`, `stats()` (draw calls, triangles), `spots`. Forge:
+`stand(x, z, yaw, pitch)`, `step(n, dt)` (synchronous), `await run(n, dt, until?)` (frames with the
+scripted scenes' awaits let through: use it for the wake-up and Old Star's lines; `step` alone
+can't move an awaited sequence on), `stats()` (draw calls, triangles), `spots`. Forge:
 `scene.lesson.debug.stage()` plus the forge's own `scene.debug` (smelt, forge, pump, strike...).
 Tutor: `ui.tutor.next()` (the first press finishes the typing, the second carries on), `ui.tutor.active`.
 Query strings: `?scene=home&fresh=1&from=fall` (wake-up), `?scene=forge&fresh=1&tutorial=1&from=home`.
@@ -576,8 +583,9 @@ lump so `copper_home` can still happen).
   objective tag is only drawn while `game.quests` doesn't exist.
 - Talking to him (E): what to do now + "Skip this lesson" / "Skip all lessons".
 - Progress: `state.data.deep.prologue.step`; a lesson left half way resumes on the next ride down.
-- Touch: while the critter is out, a "hold to block" button appears unless the touch controls
-  already have a `[aria-label="Block"]` button.
+- Touch: the touch controls' block button (`.d-block`) is lit while the critter is out; a stand-in
+  "hold to block" button appears only if there is none. `scene.prologue.threat()` gives the critter
+  as `{ kind, dist }` (like `enemies.threat()`) for the button glow and the music.
 - His rig: `StarMoleRig` (`makeStarMole`) wears the shared faces (`rig.setExpression`, expr.js:
   lids, brows, mouth, blush / tears / sweat / anger mark); his star joins in: it flares when he's
   glad or surprised, folds when worried or sad, bristles when stern.

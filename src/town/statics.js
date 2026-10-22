@@ -363,8 +363,8 @@ export function buildShops(S) {
     }
     for (const l of b.lights) {
       const w = toWorld(l.x, l.z);
-      // the lamp over the keeper: its real light sits a little in front of the (now taller)
-      // keeper's head and softer, so faces read instead of glowing
+      // the lamp over the keeper: its real light sits a little in front of the keeper's head
+      // and softer, so faces (and their expressions) read instead of glowing
       if (l.kind === 'inside') { const wf = toWorld(l.x, l.z + 0.6); S.addLight({ x: wf.x, y: l.y + 0.12, z: wf.z, hx: w.x, hy: l.y, hz: w.z, color: 0xffc070, intensity: 1.25, distance: 3.6, flicker: 0.08, real: true, halo: 0.5, haloOpacity: 0.4, bakePower: 0.75, bakeRadius: 2.2, priority: 1.5 }); }
       else S.addLight({ x: w.x, y: l.y, z: w.z, color: 0xffb860, intensity: 1.8, distance: 3.6, flicker: 0.16, pool: 1.0, poolOpacity: 0.2, halo: 0.5, haloOpacity: 0.5, bakePower: 0.55, bakeRadius: 2.4 });
     }

@@ -9,7 +9,7 @@ import { clamp } from '../../core/util.js';
 export class CrackStep extends Step {
   get station() { return 'bowl'; }
   get title() { return 'CRACK!'; }
-  get hint() { return '<kbd>Click</kbd> when the swinging power is in the gold zone'; }
+  get hint() { return this.touch ? '<b>Tap</b> when the swinging power is in the gold zone' : '<kbd>Click</kbd> when the swinging power is in the gold zone'; }
 
   begin() {
     this.limit = 9;

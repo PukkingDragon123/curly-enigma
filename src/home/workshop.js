@@ -46,7 +46,7 @@ export class WorkshopLife {
     // his notes and his chest
     const b = c.boardAt;
     this.addIt({ box: [b.x - 0.1, b.y, b.z - 0.55, b.x + 0.12, b.y + 0.95, b.z + 0.55], label: () => { const n = this.unreadNotes(); return n ? `Read Old Star's notes (${n} new)` : 'Read Old Star\'s notes'; }, action: () => this.readNotes(this.noteUnderCrosshair()) });
-    this.addIt({ box: [S.chest.x - 0.33, Y, S.chest.z - 0.33, S.chest.x + 0.33, Y + 0.42, S.chest.z + 0.33], label: () => (this.chest?.hasLoot ? 'Open Old Star\'s chest' : 'Old Star\'s chest'), action: () => this.chest?.use() });
+    this.addIt({ box: [S.chest.x - 0.33, Y, S.chest.z - 0.33, S.chest.x + 0.33, Y + 0.42, S.chest.z + 0.33], label: () => (this.chest?.hasLoot ? 'Open Old Star\'s chest' : 'Open the trunk'), action: () => this.chest?.use() });
     // the Miners' Board, the lift, the coal cart, the winch
     const m = c.minersAt;
     this.addIt({ box: [m.x - 0.6, m.y, m.z - 0.12, m.x + 0.6, m.y + 0.8, m.z + 0.05], label: 'Miners\' Board', action: () => this.useMinersBoard() });
@@ -234,7 +234,7 @@ export class WorkshopLife {
     if (!this.cartReady()) { this.game.audio.play('clunk', { vol: 0.4 }); this.think(pick(['Just coal dust and a lost button. It fills again overnight, Old Star says.', 'Empty. Tomorrow.']), 2.6); return 0; }
     sd.cartDay = st.data.day;
     const n = 3;
-    st.addItem('coal', { n });
+    st.addItem('coal', { spill: true, n });
     this.game.audio.play('debris', { vol: 0.5 });
     this.later(0.3, () => this.game.audio.play('pickup'));
     const p = SPOTS.cart;
@@ -278,7 +278,7 @@ export class WorkshopLife {
     if (sd.glints[i]) return;
     sd.glints[i] = 1;
     const g = this.cave.glints[i];
-    if (g.gem) { st.addItem('quartz', { q: 70, n: 1 }); this.game.audio.play('pickup_gem'); this.floatAt(g.x, g.y + 0.15, g.z, '+1 Quartz', '#bff6ff'); }
+    if (g.gem) { st.addItem('quartz', { spill: true, q: 70, n: 1 }); this.game.audio.play('pickup_gem'); this.floatAt(g.x, g.y + 0.15, g.z, '+1 Quartz', '#bff6ff'); }
     else { const n = 5 + i * 3; st.addGold(n, 'rubble'); this.game.audio.play('coins', { n: 3 }); this.floatAt(g.x, g.y + 0.15, g.z, `+${n} gold`, '#ffd34a'); }
     if (this.glintHalos?.[i]) { this.glow.remove(this.glintHalos[i]); this.glintHalos[i] = null; }
     this.hideGlint?.(i);

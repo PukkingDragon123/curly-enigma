@@ -360,6 +360,7 @@ export class Tutor {
     this.el.hidden = false;
     this.el.classList.toggle('waits', line.wait);
     this.el.classList.toggle('top', opts.place === 'top');
+    this.muteTracker(isTouch() || opts.place === 'top');
     this.card.classList.toggle('muffled', line.muffled);
     this.el.classList.remove('out');
     this.card.classList.remove('pop');
@@ -404,9 +405,19 @@ export class Tutor {
       this.el.classList.add('out');
       const el0 = this.el;
       clearTimeout(this.outT);
-      this.outT = setTimeout(() => { if (!this.cur) el0.hidden = true; }, 220);
+      this.outT = setTimeout(() => { if (!this.cur) { el0.hidden = true; this.muteTracker(false); } }, 220);
     }
     c.resolve?.();
+  }
+
+  /**
+   * At the top of the screen (always on touch screens) the card sits where the quest tracker's scroll
+   * hangs: hide that while a line is up (only undoing a mute of our own).
+   */
+  muteTracker(on) {
+    const tr = this.ui?.tracker;
+    if (!tr?.mute) return;
+    if (on) { if (!this.trMuted && !tr.muted) { tr.mute(true); this.trMuted = true; } } else if (this.trMuted) { this.trMuted = false; if (tr.muted) tr.mute(false); }
   }
 
   setMood(mood, instant = false) {

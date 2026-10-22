@@ -11,7 +11,7 @@ import { clamp, damp, mixHex, shade } from '../../core/util.js';
 export class GrateStep extends Step {
   get station() { return 'board'; }
   get title() { return 'GRATE!'; }
-  get hint() { return this.cook.lastPointer === 'touch' ? '<b>Drag</b> up and down to grate · stop in the band · mind your knuckles!' : 'Move the mouse <kbd>up & down</kbd> (or tap <kbd>S</kbd>) to grate · <kbd>Space</kbd> to stop · mind your knuckles!'; }
+  get hint() { return this.touch ? '<b>Drag</b> up and down to grate · stop in the band · mind your knuckles!' : 'Move the mouse <kbd>up & down</kbd> (or tap <kbd>S</kbd>) to grate · <kbd>Space</kbd> to stop · mind your knuckles!'; }
 
   begin() {
     this.limit = 12;

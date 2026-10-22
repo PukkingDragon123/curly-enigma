@@ -110,8 +110,11 @@ export default class HomeScene extends Scene {
     this.shell = new HomeShell(this.room, this.scene);
     this.shell.build(W, D, d.home.wall, d.home.floor, { tunnels: [] });
     this.own(() => this.shell.dispose());
+    // the build is long on slow machines: breathe between its steps (nothing renders yet: no rig)
+    const pause = () => new Promise((r) => setTimeout(r, 0));
+    await pause();
     this.cave = new CaveHall(this.room, this.scene);
-    this.cave.build({ doorOpen: this.doorOpen, notes: this.notes.length });
+    await this.cave.build({ doorOpen: this.doorOpen, notes: this.notes.length }, pause);
     this.own(() => this.cave.dispose());
     this.lift = this.cave.lift;
     this.holeTop = this.cave.rock.roofAt(HOLE.x, HOLE.z, HALL.y + 2.4);
@@ -186,7 +189,7 @@ export default class HomeScene extends Scene {
       this.fillNuggetMap();
       const nA = this.nug.actor;
       this.addIt({
-        r: 0.22, label: () => `Pet ${nA.name}`, sphereFn: (v) => v.set(nA.pos.x * T, (nA.pos.y + nA.body.position.y) * T + 0.15, nA.pos.z * T),
+        r: 0.22, label: () => `Pet ${nA.name}`, sphereFn: (v) => (this.nug.head ? this.nug.head(v) : v.set(nA.pos.x * T, (nA.pos.y + nA.body.position.y) * T + 0.15, nA.pos.z * T)),
         action: () => this.petNugget(),
       });
     }

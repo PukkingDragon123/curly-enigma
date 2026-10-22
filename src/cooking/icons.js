@@ -4,7 +4,7 @@
 import { mat, mix } from '../gfx/px/color.js';
 import { vol, fill, sparkle, hash2, vnoise } from '../gfx/px/shade.js';
 import { M, ring, lineIn } from '../gfx/px/parts.js';
-import { leaf, stem } from '../gfx/px/flora.js';
+import { leaf } from '../gfx/px/flora.js';
 
 /** Icon spec for recipes.js / items: t = drawing, c = the dish's tint (liquids in the 3D kitchen). */
 export function cookIcon(t, c) { return c === undefined ? { k: 'cook', t } : { k: 'cook', t, c }; }
@@ -123,24 +123,34 @@ function berries(pc) {
 }
 
 function thyme(pc) {
-  const W = mat(0x6a5a3a);
-  const L = mat(0x86a06a, { cont: 1.1, sat: 0.8 });
-  const sprigs = [[8, 29, 13, 4], [14, 30, 19, 3], [19, 29, 26, 7], [11, 29, 6, 10]];
+  const W = mat(0x7a5a3a, { cont: 1.1 });
+  const L = mat(0x9ab878, { cont: 1.15, sat: 0.85 });
+  // a little bunch: woody stems fanning up from a twine knot, tiny paired leaves with gaps between
+  const sprigs = [[16, 26, 7, 5], [16, 26, 15, 2], [16, 26, 24, 4], [16, 26, 28, 12], [16, 26, 4, 13]];
   for (const [x0, y0, x1, y1] of sprigs) {
     lineIn(pc, x0, y0, x1, y1, W[3]);
-    const n = 8;
+    const n = 6;
     for (let i = 1; i <= n; i++) {
-      const t = i / (n + 1), x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t;
-      const m = M().ellipse(x - 1.4, y, 1.4, 0.9).ellipse(x + 1.4, y - 0.6, 1.4, 0.9);
-      ring(pc, m, L); vol(pc, m, L, { round: 0.8 });
+      const t = 0.18 + (i / n) * 0.8, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t;
+      const dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy), px = -dy / l, py = dx / l;
+      for (const sd of [-1, 1]) {
+        const lx = x + px * sd * 1.6, ly = y + py * sd * 1.6;
+        const m = M().ellipse(lx, ly, 1.3, 1);
+        fill(pc, m, i % 2 ? L[2] : L[3]);
+        pc.set(lx - 0.5, ly - 0.5, L[1]);
+        pc.set(lx + 0.5, ly + 0.5, L[4]);
+      }
     }
-    gl(pc, x1, y1, L[0], 0);
+    pc.set(x1, y1, L[1]); pc.set(x1, y1 - 1, L[0]);
   }
-  // tied with twine
+  // tiny lilac flowers on two tips
+  for (const [x, y] of [[15, 1], [24, 3]]) { pc.set(x, y, 0xc8a0e0); pc.set(x + 1, y, 0xe0c8f0); }
+  // the stems below the knot, and the twine
+  for (let i = -2; i <= 2; i++) lineIn(pc, 16 + i * 0.5, 26, 16 + i * 1.2, 30, W[i & 1 ? 2 : 4]);
   const TW = mat(0xc8a870);
-  for (let x = 9; x <= 20; x++) { pc.set(x, 25, TW[2]); pc.set(x, 26, TW[4]); }
-  pc.set(21, 27, TW[3]); pc.set(22, 28, TW[3]);
-  for (const [x, y] of [[23, 5], [5, 7]]) pc.set(x, y, 0xe8f0d8, 200);
+  const knot = M().ellipse(16, 26, 3.2, 1.6);
+  ring(pc, knot, TW); fill(pc, knot, TW[2]);
+  pc.set(15, 26, TW[4]); pc.set(17, 26, TW[4]); pc.set(19, 28, TW[3]); pc.set(20, 29, TW[3]);
 }
 
 function tuber(pc) {
@@ -514,4 +524,3 @@ export function drawCookIcon(pc, spec) {
   return true;
 }
 
-export { stem };

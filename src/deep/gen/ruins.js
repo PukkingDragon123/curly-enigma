@@ -6,7 +6,10 @@
 //
 // Pure and deterministic (it runs in the chunk workers too). Plan feature:
 // { kind: 'ruin', id, ruin: 'hall'|'shrine'|'vault'|'well', x, y, z, yaw, r, h, seed }
-import { VOX } from '../materials.js';
+import { VOX, M, MAT } from '../materials.js';
+
+const LOOSE = new Uint8Array(256);
+for (let m = 1; m < 256; m++) if (MAT[m]?.gran) LOOSE[m] = 1;
 import { frame, toLocal, toWorld, zoneOf, puzzleFor } from '../ruins/common.js';
 import { hallLayout, hallVox } from '../ruins/hall.js';
 import { shrineLayout, shrineVox } from '../ruins/shrine.js';
@@ -79,6 +82,7 @@ export function stampRuin(f, vox, X0, Y0, Z0, CS) {
       if (cur === 17) continue; // bedrock: the world's shell stays
       const m = fn(L, a, ly, b, cur, vx, vy, vz);
       if (m >= 0) vox[vi] = m;
+      else if (cur < 40 && LOOSE[cur]) vox[vi] = M.DIRT; // loose rock round the ruin is packed (it would pour in)
     }
   }
 }
