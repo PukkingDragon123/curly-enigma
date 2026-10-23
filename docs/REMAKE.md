@@ -1086,7 +1086,8 @@ hooks are unchanged; the forge (its own pass) and the backpack (lead) were left 
   tokens, the current one gold; each finished step gets a star / check / dot / cross stamp), a
   wind-up **kitchen timer** (24-frame dial, rattles red when low), the hint on a **chalk slate**,
   a "Stop" plaque (calls the scene's `askStop`, so touch players can stop too: one-line hookup in
-  `CookingScene.stepHud(...)`). **Gauges** are glass tubes with brass caps on a notched plank (zone
+  `CookingScene.stepHud(...)`; during Old Star's lesson on touch screens the ticket moves to the bottom,
+  clear of his card). **Gauges** are glass tubes with brass caps on a notched plank (zone
   notch, brass pointer); doneness is a brass bar with Raw→Burnt and a wooden-spoon pointer;
   kneading tokens slide along a floured board; the roll strips sit on a plank. **Result**: a
   pinned recipe card with the dish in a wooden frame (rays behind), a grade **rosette** (gold /

@@ -343,8 +343,9 @@ const CSS = /* css */`
 .ck-rollbars span b { position: absolute; left: 0; right: 0; background: rgba(138, 224, 90, .3); border-top: var(--px) solid #9af07a; border-bottom: var(--px) solid #9af07a; }
 .ck-rollbars span i { position: absolute; left: var(--px); right: var(--px); bottom: 0; background: #f3e2bf; transition: height .08s; box-shadow: inset 0 var(--px) 0 rgba(255, 255, 255, .6); }
 .ck-roll .btn { font-size: 16px; }
-/* Old Star's lesson: the step HUD sits a bit lower so his card has room on touch screens */
-.is-touch .ck-top.lesson { top: calc(var(--px) * 40); }
+/* Old Star's lesson on touch screens: his card is at the top, so the order ticket moves to the bottom
+   (the lesson has no hint slate there) */
+.is-touch .ck-top.lesson { top: auto; bottom: calc(var(--px) * 6 + var(--sab)); }
 
 /* ---------- the result: a framed recipe card with a rosette ---------- */
 .ck-result { right: auto; left: calc(var(--px) * 5 + var(--sal)); top: calc(var(--px) * 56 + var(--sat)); width: min(calc(var(--px) * 160), calc(50vw - var(--px) * 6)); animation: ckSlideInL .32s cubic-bezier(.2,1.3,.4,1); }
@@ -437,6 +438,7 @@ const CSS = /* css */`
   .ck-pantry { height: 66vh; }
   .ck-result { max-height: 72vh; }
   .ck-top { top: calc(var(--px) * 32 + var(--sat)); max-width: calc(100vw - var(--px) * 8); }
+  .is-touch .ck-top.lesson { bottom: calc(var(--px) * 34 + var(--sab)); }
   .ck-slate { white-space: normal; text-wrap: balance; }
   .ck-hint { left: auto; right: calc(var(--px) * 4 + var(--sar)); transform: none; max-width: calc(100vw - var(--px) * 58); animation: none; }
   .ck-leave { bottom: auto; top: calc(var(--px) * 16 + var(--sat)); }
