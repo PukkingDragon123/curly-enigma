@@ -217,6 +217,8 @@ export const XP_RULES = {
     if (typeof g === 'number') g = g >= 92 ? 'S' : g >= 80 ? 'A' : g >= 66 ? 'B' : g >= 50 ? 'C' : g >= 34 ? 'D' : 'F';
     return { smithing: 30 + (GRADE_XP[g] ?? 12) };
   },
+  part: (e) => ({ smithing: 20 + (GRADE_XP[e.grade] ?? 10) * 0.7 }), // a coop part forged at home
+  install: (e, k) => { if (k.first('install:' + e.part)) k.bonus('smithing', 10); return null; },
   cook: (e, k) => { if (e.dish != null && k.first('dish:' + e.dish)) k.bonus('cooking', 20); return { cooking: 18 + 0.32 * Math.max(0, Math.min(100, e.score ?? 60)) }; },
   kill: (e, k) => ({ combat: k.killXp(e.kind) }),
   block: (e) => ({ combat: e.perfect ? 4 : 1.5 }),

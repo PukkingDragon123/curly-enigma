@@ -21,6 +21,7 @@ import { drawCookIcon } from '../cooking/icons.js'; // cooking part: new ingredi
 import { drawHenIcon } from '../ui/invArt.js'; // inventory part: Nugget's food ({ k: 'hen' })
 import { drawRelic } from '../deep/ruins/relicArt.js'; // ruins part: relics ({ k: 'relic' })
 import { drawLootIcon } from '../deep/enemies/lootArt.js'; // creatures part: hides, fangs, eggs ({ k: 'loot' })
+import { drawPartIcon } from '../forge/partArt.js'; // coop parts forged at home ({ k: 'cooppart' })
 
 export { PixelCanvas };
 
@@ -82,7 +83,7 @@ export function drawIconArt(spec, seed = 1, id = null) {
   const pc = new PixelCanvas(ICON);
   id = id || idOfSpec(spec);
   const ok = drawMineral(pc, spec, id, seed) || drawGear(pc, spec, id, seed) || drawFlora(pc, spec, id, seed) ||
-    drawFauna(pc, spec, id, seed) || drawFood(pc, spec, id, seed) || drawHome(pc, spec, id, seed) || drawCookIcon(pc, spec, id, seed) || drawHenIcon(pc, spec) || drawRelic(pc, spec) || drawLootIcon(pc, spec);
+    drawFauna(pc, spec, id, seed) || drawFood(pc, spec, id, seed) || drawHome(pc, spec, id, seed) || drawCookIcon(pc, spec, id, seed) || drawHenIcon(pc, spec) || drawRelic(pc, spec) || drawLootIcon(pc, spec) || drawPartIcon(pc, spec);
   if (!ok) unknown(pc);
   return pc;
 }

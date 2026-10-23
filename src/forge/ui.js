@@ -1,122 +1,16 @@
-// Forge DOM widgets layered in game.ui.world: thermometer gauge, side panel, bars, strike meter,
-// action buttons and the result card. Styles are injected once with an fg- prefix and reuse
-// the shared theme variables (parchment, wood, gold, pixel fonts).
+// Forge DOM widgets layered in game.ui.world, drawn as decorated objects (pixel art from
+// forgeArt.js, styles in forge.css): the brass thermometer with its glass bulb and burner flame,
+// the rune-ring strike gauge, rune medallions for the steps, brass gauges for the stats, the
+// guild certificate for results, floating words and the touch screen's big action button.
 import { el, clamp } from '../core/util.js';
-import { gaugeGradient, glowCss, heatWord } from './blackbody.js';
+import { gaugeGradient, glowCss, glowHex, glowAmount, heatWord } from './blackbody.js';
 import { Px, art, INK } from '../ui/uiArt.js';
 import { DSPR } from '../ui/deepArt.js';
-
-const CSS = `
-.fg-layer { position: absolute; inset: 0; pointer-events: none; font-variant-ligatures: none; font-feature-settings: "liga" 0, "clig" 0; }
-.fg-nolig { font-variant-ligatures: none; font-feature-settings: "liga" 0, "clig" 0; }
-.fg-side { position: absolute; left: calc(var(--px) * 4); top: calc(var(--px) * 58); width: calc(var(--px) * 104); padding: calc(var(--px) * 5) calc(var(--px) * 5) calc(var(--px) * 4); gap: calc(var(--px) * 2); }
-.fg-side.act { top: calc(var(--px) * 8); width: calc(var(--px) * 84); padding: calc(var(--px) * 4) calc(var(--px) * 4) calc(var(--px) * 3); }
-.fg-side.act h2 { font-size: 1.45em; }
-.fg-side.wide { width: min(calc(100vw - var(--px) * 64), calc(var(--px) * 176)); max-height: calc(100vh - var(--px) * 66); }
-.fg-side.plan { width: min(calc(100vw - var(--px) * 64), calc(var(--px) * 212)); max-height: calc(100vh - var(--px) * 66); }
-.fg-side h2 { margin: 0 0 var(--px); font-size: 1.7em; }
-.fg-side .sub { margin: 0 0 calc(var(--px) * 2); font-size: .78em; }
-.fg-kicker { font-size: .62em; letter-spacing: .14em; text-transform: uppercase; color: var(--wood-2); font-weight: 700; }
-.fg-big { display: grid; grid-template-columns: var(--icon) 1fr auto; gap: calc(var(--px) * 3); align-items: center; text-align: left; width: 100%; padding: calc(var(--px) * 2) calc(var(--px) * 3); }
-.fg-big img { width: var(--icon); height: var(--icon); }
-.fg-big b { display: block; font-size: 1.05em; line-height: 1.1; }
-.fg-big small { display: block; font-weight: 500; font-size: .7em; color: var(--ink-soft); line-height: 1.25; }
-.fg-big kbd { font-size: .7em; }
-.fg-col { display: flex; flex-direction: column; gap: calc(var(--px) * 2); min-height: 0; }
-.fg-row { display: flex; gap: calc(var(--px) * 2); align-items: center; }
-.fg-stat { display: grid; grid-template-columns: 1fr auto; gap: var(--px) calc(var(--px) * 2); align-items: center; font-size: .78em; }
-.fg-stat b { font-variant-numeric: tabular-nums; }
-.fg-bar { height: calc(var(--px) * 4); background: #2a1a12; border: var(--px) solid var(--wood-dk); position: relative; overflow: hidden; grid-column: 1 / -1; }
-.fg-bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--energy); box-shadow: inset 0 calc(var(--px) * -1) 0 rgba(0,0,0,.25); }
-.fg-bar > i.warm { background: linear-gradient(90deg, #c8401a, #ffb03a); }
-.fg-bar > i.bad { background: var(--danger); }
-.fg-bar > i.cool { background: var(--cool); }
-.fg-bar > s { position: absolute; top: 0; bottom: 0; width: var(--px); background: #fff8; }
-.fg-steps { display: flex; flex-wrap: wrap; gap: var(--px); margin: var(--px) 0 calc(var(--px) * 2); }
-.fg-step { font-size: .62em; padding: 0 calc(var(--px) * 1.5); border: var(--px) solid var(--parch-3); color: var(--ink-soft); background: var(--parch-2); line-height: 1.6; }
-.fg-step.on { background: var(--gold); color: var(--ink); border-color: var(--wood-dk); font-weight: 700; }
-.fg-step.done { background: #c8d8a0; color: #2a4a1a; border-color: #7a9a5a; }
-.fg-note { font-size: .72em; color: var(--ink-soft); line-height: 1.3; }
-.fg-note b { color: var(--ink); }
-.fg-warn { color: #a83a1a; font-weight: 700; }
-.fg-good { color: #2a7a2a; font-weight: 700; }
-.fg-actions { position: absolute; right: calc(var(--px) * 4); bottom: calc(var(--px) * 5 + env(safe-area-inset-bottom, 0px)); display: flex; gap: calc(var(--px) * 3); align-items: flex-end; flex-wrap: wrap; justify-content: flex-end; max-width: 70vw; }
-.fg-actions .btn kbd { margin-left: calc(var(--px) * 1.5); margin-right: 0; font-size: .75em; }
-.fg-thermo { position: absolute; right: calc(var(--px) * 4); top: calc(var(--px) * 46); width: calc(var(--px) * 46); display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--px) * 2);
-  background: rgba(20, 12, 10, .82); border: var(--px) solid #000; box-shadow: inset 0 0 0 var(--px) var(--wood); padding: calc(var(--px) * 3); }
-.fg-thermo-title { font-size: .6em; letter-spacing: .14em; color: var(--parch-3); text-transform: uppercase; align-self: center; }
-.fg-tube { position: relative; width: calc(var(--px) * 8); height: calc(var(--px) * 92); margin-right: calc(var(--px) * 6); background: #1a1210; border: var(--px) solid #000; box-shadow: 0 0 0 var(--px) #5a4030; }
-.fg-tube-scale { position: absolute; inset: 0; opacity: .28; }
-.fg-tube-fill { position: absolute; left: 0; right: 0; bottom: 0; background-position: bottom; background-repeat: no-repeat; }
-.fg-band { position: absolute; left: calc(var(--px) * -3); right: calc(var(--px) * -3); border: var(--px) solid; pointer-events: none; }
-.fg-band.work { border-color: #8af07a; background: rgba(138, 240, 122, .16); }
-.fg-band.quench { border-color: #7ad0ff; background: rgba(122, 208, 255, .2); }
-.fg-band.melt { border-color: #8af07a; background: rgba(138, 240, 122, .2); }
-.fg-line { position: absolute; left: calc(var(--px) * -3); right: calc(var(--px) * -3); height: var(--px); }
-.fg-line.burn { background: #ff5a3a; box-shadow: 0 0 0 var(--px) rgba(255, 90, 58, .3); }
-.fg-line.max { background: #fff; opacity: .5; }
-.fg-tag { position: absolute; right: calc(100% + var(--px) * 5); transform: translateY(50%); font-size: .55em; white-space: nowrap; text-shadow: 0 var(--px) 0 #000; line-height: 1; }
-.fg-needle { position: absolute; left: calc(100% + var(--px) * 2); width: 0; height: 0; transform: translateY(50%); border-top: calc(var(--px) * 3) solid transparent; border-bottom: calc(var(--px) * 3) solid transparent; border-right: calc(var(--px) * 4) solid #fff; filter: drop-shadow(0 var(--px) 0 #000); }
-.fg-read { align-self: stretch; text-align: center; font-family: var(--font-display); font-size: 1.9em; line-height: .9; color: var(--text-light); text-shadow: 0 var(--px) 0 #000; font-variant-numeric: tabular-nums; }
-.fg-read small { display: block; font-family: var(--font); font-size: .34em; letter-spacing: .08em; color: var(--parch-3); margin-top: var(--px); }
-.fg-meter { position: absolute; width: calc(var(--px) * 6); height: calc(var(--px) * 30); background: #1a1210; border: var(--px) solid #000; box-shadow: 0 0 0 var(--px) var(--wood); transform: translate(calc(var(--px) * 10), -50%); }
-.fg-meter > i { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(to top, #c8401a, #ffb03a 60%, #fff0b0); }
-.fg-meter > b { position: absolute; left: calc(var(--px) * -2); right: calc(var(--px) * -2); height: var(--px); background: #fff; opacity: .6; }
-.fg-meter > span { position: absolute; left: calc(100% + var(--px) * 2); bottom: 0; font-size: .55em; white-space: nowrap; text-shadow: 0 var(--px) 0 #000; }
-.fg-chipline { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 1.5); }
-.fg-pick { position: relative; display: grid; grid-template-columns: var(--icon-s) 1fr; gap: calc(var(--px) * 2); align-items: center; padding: var(--px) calc(var(--px) * 2); background: var(--parch-2); border: var(--px) solid var(--parch-3); cursor: pointer; font: inherit; color: var(--ink); text-align: left; font-size: .78em; line-height: 1.15; }
-.fg-pick img { width: var(--icon-s); height: var(--icon-s); }
-.fg-pick:hover { border-color: var(--wood); background: #fff4d0; }
-.fg-pick.on { border-color: var(--gold-dk); background: #fff1c0; box-shadow: inset 0 0 0 var(--px) var(--gold); }
-.fg-pick[disabled] { opacity: .5; cursor: not-allowed; filter: grayscale(.6); }
-.fg-pick small { display: block; color: var(--ink-soft); font-size: .85em; }
-.fg-pick .why { color: #a83a1a; }
-.fg-grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--px) * 64), 1fr)); gap: calc(var(--px) * 1.5); }
-.fg-section { font-size: .7em; letter-spacing: .12em; text-transform: uppercase; color: var(--wood); font-weight: 700; margin: calc(var(--px) * 2) 0 var(--px); }
-.fg-recipe { display: grid; grid-template-columns: var(--icon) 1fr auto; gap: calc(var(--px) * 3); align-items: center; padding: calc(var(--px) * 1.5) calc(var(--px) * 2); background: var(--parch-2); border: var(--px) solid var(--parch-3); }
-.fg-recipe.locked { opacity: .62; }
-.fg-recipe.fg-lesson { order: -1; border-color: var(--gold); box-shadow: 0 0 0 var(--px) var(--gold-dk), 0 0 calc(var(--px) * 4) rgba(242, 194, 58, .6); animation: fgLesson 1.2s ease-in-out infinite; }
-@keyframes fgLesson { 50% { box-shadow: 0 0 0 var(--px) var(--gold-dk), 0 0 calc(var(--px) * 8) rgba(242, 194, 58, .9); } }
-.fg-recipe img { width: var(--icon); height: var(--icon); }
-.fg-recipe .name { font-weight: 700; }
-.fg-recipe .ins { font-size: .72em; color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 0 calc(var(--px) * 3); align-items: center; }
-.fg-recipe .ins img { width: var(--icon-s); height: var(--icon-s); vertical-align: middle; margin: calc(var(--px) * -2) 0; }
-.fg-recipe .ins .miss { color: #b0301a; font-weight: 700; }
-.fg-recipe .why { font-size: .7em; color: #a83a1a; }
-.fg-recipe .btns { display: flex; flex-direction: column; gap: var(--px); align-items: stretch; }
-.fg-recipe .btn { font-size: .78em; padding: var(--px) calc(var(--px) * 3); }
-.fg-result { position: absolute; right: calc(var(--px) * 6); top: min(calc(var(--px) * 100), calc(100% - var(--px) * 116)); width: calc(var(--px) * 112); padding: calc(var(--px) * 6); animation: pop .25s cubic-bezier(.2,1.5,.4,1); }
-.fg-stamp { position: absolute; right: calc(var(--px) * 5); top: calc(var(--px) * -10); width: calc(var(--px) * 30); height: calc(var(--px) * 30); display: grid; place-items: center; font-family: var(--font-display); font-size: 3.4em; line-height: 1;
-  background: #2a1a12; border: calc(var(--px) * 1.5) solid currentColor; box-shadow: 0 0 0 var(--px) #000, 0 calc(var(--px) * 2) 0 rgba(0,0,0,.4); transform: rotate(8deg); animation: stamp .45s cubic-bezier(.3,1.8,.5,1) both .35s; }
-@keyframes stamp { from { transform: rotate(-20deg) scale(2.4); opacity: 0; } }
-.fg-stamp small { position: absolute; bottom: calc(var(--px) * -6); font-family: var(--font); font-size: .17em; letter-spacing: .1em; white-space: nowrap; text-transform: uppercase; color: currentColor; text-shadow: 0 var(--px) 0 #000; }
-.fg-value { font-family: var(--font-display); font-size: 2.2em; color: var(--gold-dk); line-height: 1; display: flex; align-items: center; gap: calc(var(--px) * 2); }
-.fg-value img { width: var(--icon-s); height: var(--icon-s); }
-.fg-break { display: grid; grid-template-columns: auto 1fr auto; gap: var(--px) calc(var(--px) * 2); align-items: center; font-size: .75em; margin: calc(var(--px) * 2) 0; }
-.fg-break .fg-bar { grid-column: auto; height: calc(var(--px) * 3); }
-.fg-float { position: absolute; transform: translate(-50%, -50%); font-family: var(--font-display); font-size: 1.6em; white-space: nowrap; pointer-events: none; text-shadow: 0 var(--px) 0 #000, var(--px) 0 0 #000, calc(var(--px) * -1) 0 0 #000, 0 calc(var(--px) * -1) 0 #000; animation: fgFloat 1.3s ease-out forwards; }
-@keyframes fgFloat { 0% { transform: translate(-50%, -30%) scale(.6); opacity: 0; } 15% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; } 30% { transform: translate(-50%, -55%) scale(1); } 100% { transform: translate(-50%, -140%); opacity: 0; } }
-.fg-ring { position: absolute; border: calc(var(--px) * 1.5) solid; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 0 var(--px) #000; }
-.fg-tip { position: absolute; transform: translate(-50%, -100%); font-size: .7em; white-space: nowrap; text-shadow: 0 var(--px) 0 #000; color: var(--text-light); pointer-events: none; }
-.fg-ruler { position: absolute; height: calc(var(--px) * 7); transform: translateY(-50%); pointer-events: none; }
-.fg-ruler .track { position: absolute; left: 0; right: 0; top: 50%; height: var(--px); background: #f3e2bf; box-shadow: 0 var(--px) 0 #000; }
-.fg-ruler .zone { position: absolute; top: 0; bottom: 0; background: rgba(138, 240, 122, .35); border: var(--px) solid #8af07a; }
-.fg-ruler .mark { position: absolute; top: calc(var(--px) * -4); width: 0; height: 0; transform: translateX(-50%); border-left: calc(var(--px) * 3) solid transparent; border-right: calc(var(--px) * 3) solid transparent; border-top: calc(var(--px) * 5) solid #ffd34a; filter: drop-shadow(0 var(--px) 0 #000); }
-.fg-ruler .lab { position: absolute; top: calc(100% + var(--px) * 2); transform: translateX(-50%); font-size: .55em; white-space: nowrap; text-shadow: 0 var(--px) 0 #000; }
-.fg-slider { width: 100%; accent-color: var(--wood); }
-.fg-big-hint { position: absolute; left: 50%; bottom: calc(var(--px) * 18); transform: translateX(-50%); font-family: var(--font-display); font-size: 1.6em; color: var(--text-light); text-shadow: 0 var(--px) 0 #000, 0 calc(var(--px) * 2) 0 rgba(0,0,0,.5); pointer-events: none; white-space: nowrap; }
-@media (max-width: 700px) { .fg-thermo { top: auto; bottom: calc(var(--px) * 30); } .fg-tube { height: calc(var(--px) * 60); } }
-.fg-tbtn { display: none; position: absolute; left: calc(env(safe-area-inset-left, 0px) + var(--px) * 6); bottom: calc(env(safe-area-inset-bottom, 0px) + var(--px) * 8); width: calc(var(--px) * 40); height: calc(var(--px) * 41); padding: 0; border: 0; background: none; pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none; }
-html.is-touch .fg-tbtn.on { display: block; }
-.fg-tbtn::before { content: ''; position: absolute; inset: calc(var(--px) * -4); }
-.fg-tbtn img { position: absolute; image-rendering: pixelated; pointer-events: none; }
-.fg-tbtn .face { inset: 0; width: 100%; height: 100%; }
-.fg-tbtn .ic { left: calc(var(--px) * 11.5); top: calc(var(--px) * 10.5); width: calc(var(--px) * 17); height: calc(var(--px) * 17); }
-.fg-tbtn.down .ic { transform: translateY(var(--px)); }
-.fg-tbtn span { position: absolute; left: 50%; top: calc(100% + var(--px)); transform: translateX(-50%); font-size: .62em; color: var(--text-light); text-shadow: 0 var(--px) 0 #000; white-space: nowrap; pointer-events: none; }
-`;
+import { fart, medal, seal, ribbon, installForgeArt } from './forgeArt.js';
+import CSS from './forge.css?inline';
 
 let styleRefs = 0;
+/** Inject the forge's stylesheet (ref-counted; the returned function removes it). */
 export function injectStyles() {
   let s = document.getElementById('forge-styles');
   if (!s) {
@@ -132,10 +26,13 @@ export function injectStyles() {
   };
 }
 
-/** A small horizontal bar; returns { el, set(v, cls) }. */
+/** Publish the forge art (--fa-*) on the layer the forge's DOM lives in. */
+export function decorateLayer(layer) { installForgeArt(layer); return layer; }
+
+/** A brass gauge (decorated bar); returns { el, fill, set(v, cls) }. cls: '' | 'warm' | 'bad' | 'cool'. */
 export function bar(cls = '') {
   const fill = el('i', { class: cls });
-  const node = el('div', { class: 'fg-bar' }, [fill]);
+  const node = el('div', { class: 'fg-bar' }, [el('span', { class: 'fg-bar-in' }, [fill, el('u')])]);
   let last = -1, lastCls = cls;
   return {
     el: node,
@@ -156,28 +53,37 @@ export function setHtml(node, html) {
   if (node._h !== html) { node._h = html; node.innerHTML = html; }
 }
 
-/** Vertical thermometer with bands/lines (work, quench, melt, burn, max). */
+/**
+ * The brass thermometer: a glass tube on an enamel scale with painted zones (work, quench,
+ * melt bands; burn and max lines), a glass bulb that glows with the metal's color and a
+ * burner flame that grows with the heat. API: setTitle, setMarks, set(T, dt), setMax, remove.
+ */
 export class Thermo {
   constructor(parent, maxT) {
     this.maxT = maxT;
     this.scale = el('div', { class: 'fg-tube-scale' });
     this.fill = el('div', { class: 'fg-tube-fill' });
     this.needle = el('div', { class: 'fg-needle' });
-    this.tube = el('div', { class: 'fg-tube' }, [this.scale, this.fill, this.needle]);
+    this.tube = el('div', { class: 'fg-tube' }, [this.scale, this.fill]);
+    this.zones = el('div', { class: 'fg-zones' });
+    this.glowDot = el('i');
+    this.bulb = el('div', { class: 'fg-bulb' }, [this.glowDot, el('img', { class: 'pix', src: fart('bulb'), alt: '' })]);
+    this.flame = el('div', { class: 'fg-flame' });
     this.num = el('span');
     this.word = el('small');
     this.read = el('div', { class: 'fg-read' }, [this.num, this.word]);
     this.title = el('div', { class: 'fg-thermo-title' }, 'Heat');
-    this.el = el('div', { class: 'fg-thermo' }, [this.title, this.tube, this.read]);
+    this.col = el('div', { class: 'fg-tm-col' }, [el('img', { class: 'pix fg-tm-cap', src: fart('cap'), alt: '' }), el('div', { class: 'fg-tm-glass' }, [this.zones, this.tube, this.needle]), this.bulb, this.flame]);
+    this.el = el('div', { class: 'fg-thermo' }, [this.title, this.col, this.read]);
     this.marks = [];
     parent.append(this.el);
     this.setMax(maxT);
     this.shown = 20;
+    this.lastZone = null;
   }
   setMax(maxT) {
     this.maxT = maxT;
-    const g = gaugeGradient(maxT);
-    this.scale.style.background = g;
+    const g = gaugeGradient(maxT, '#4a3c36');
     this.fill.style.backgroundImage = g;
   }
   pct(t) { return clamp(t / this.maxT, 0, 1) * 100; }
@@ -186,18 +92,19 @@ export class Thermo {
   setMarks(marks) {
     for (const m of this.marks) m.remove();
     this.marks = [];
+    this.ranges = [];
     for (const m of marks) {
       let node;
       if (m.range) {
         const b = this.pct(m.range[0]), t = this.pct(m.range[1]);
         node = el('div', { class: 'fg-band ' + m.kind, style: { bottom: b + '%', height: Math.max(0.6, t - b) + '%' } },
-          [el('span', { class: 'fg-tag', style: { bottom: '50%', color: m.kind === 'quench' ? '#9adcff' : '#a8f49a' } }, m.label)]);
+          [el('span', { class: 'fg-tag' }, m.label)]);
+        this.ranges.push(m);
       } else {
         const p = this.pct(m.at);
-        node = el('div', { class: 'fg-line ' + m.kind, style: { bottom: p + '%' } },
-          [el('span', { class: 'fg-tag', style: { bottom: '0', color: m.kind === 'burn' ? '#ff8a6a' : '#e8dcc8' } }, m.label)]);
+        node = el('div', { class: 'fg-line ' + m.kind, style: { bottom: p + '%' } }, [el('span', { class: 'fg-tag' }, m.label)]);
       }
-      this.tube.append(node);
+      this.zones.append(node);
       this.marks.push(node);
     }
   }
@@ -210,17 +117,28 @@ export class Thermo {
     setText(this.num, Math.round(t) + '°C');
     setText(this.word, heatWord(t));
     this.num.style.color = t > 450 ? glowCss(Math.min(t, 1400)) : '#fbf1dc';
+    // the bulb glows with the metal, the burner flame grows with it
+    const g = glowAmount(t);
+    this.glowDot.style.background = g > 0 ? glowCss(Math.max(t, 600)) : '#5a4a44';
+    this.glowDot.style.opacity = (0.55 + Math.min(0.45, g * 0.4)).toFixed(2);
+    this.flame.style.setProperty('--k', (0.45 + Math.min(1, t / Math.max(600, this.maxT * 0.75)) * 0.75).toFixed(2));
+    // light the painted zone the needle sits in
+    let zone = null;
+    for (const m of this.ranges || []) if (t >= m.range[0] && t <= m.range[1]) zone = m.kind;
+    if (zone !== this.lastZone) { this.lastZone = zone; this.el.dataset.zone = zone || ''; }
   }
   remove() { this.el.remove(); }
 }
 
-/** Step chips: [{id, label}] */
+/** Rune medallions for the steps: [{id, label}] (id picks the rune: heat, hammer, grind, balance, quench, infuse, result, shape). */
 export class Steps {
   constructor(parent, steps) {
     this.el = el('div', { class: 'fg-steps' });
     this.items = new Map();
     for (const s of steps) {
-      const n = el('span', { class: 'fg-step' }, s.label);
+      const img = el('img', { class: 'pix', src: medal(s.id, 'off'), alt: '' });
+      const n = el('span', { class: 'fg-step' }, [img, el('small', {}, s.label)]);
+      n._img = img; n._id = s.id; n._st = 'off';
       this.items.set(s.id, n);
       this.el.append(n);
     }
@@ -228,32 +146,138 @@ export class Steps {
   }
   set(active, done = []) {
     for (const [id, n] of this.items) {
-      const cls = 'fg-step' + (active.includes(id) ? ' on' : done.includes(id) ? ' done' : '');
-      if (n.className !== cls) n.className = cls;
+      const st = active.includes(id) ? 'on' : done.includes(id) ? 'done' : 'off';
+      if (n._st === st) continue;
+      n._st = st;
+      n.className = 'fg-step ' + st;
+      n._img.src = medal(n._id, st);
     }
   }
 }
 
-/** Hold-to-charge strike meter that follows a screen point. */
+// ---------------------------------------------------------------- the rune ring (strike gauge)
+const RING = 36; // canvas size (art px)
+const RUNE_N = 12;
+const A0 = Math.PI * 0.75, SPAN = Math.PI * 1.5; // from the bottom-left, clockwise round to the bottom-right
+const rgb = (h) => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
+
+/**
+ * A ring of carved rune stones round a little anvil: it lights up stone by stone as the
+ * hammer goes up, with an optional painted zone (good) and gold band (perfect). show(x, y, v,
+ * label) at a screen point, zone([a, b], [p0, p1]) or zone(null), flash('good' | 'perfect' |
+ * 'bad'), hide().
+ */
 export class StrikeMeter {
   constructor(parent) {
-    this.fill = el('i');
-    this.sweet = el('b', { style: { bottom: '88%' } });
+    this.cv = el('canvas', { class: 'pix', width: RING, height: RING });
+    this.ctx = this.cv.getContext('2d');
+    this.img = this.ctx.createImageData(RING, RING);
     this.label = el('span');
-    this.el = el('div', { class: 'fg-meter', hidden: true }, [this.fill, this.sweet, this.label]);
+    this.el = el('div', { class: 'fg-meter', hidden: true }, [this.cv, this.label]);
     parent.append(this.el);
+    this.z = null; this.pz = null;
+    this.flashT = 0; this.flashKind = null;
+    this.v = 0;
+    this.t = 0;
   }
+  zone(z, perfect = null) { this.z = z; this.pz = perfect; this.draw(); }
+  flash(kind) { this.flashKind = kind; this.flashT = 1; this.el.dataset.flash = kind; clearTimeout(this._ft); this._ft = setTimeout(() => { this.el.dataset.flash = ''; }, 420); }
   show(x, y, v, label = '') {
     this.el.hidden = false;
     this.el.style.left = x + 'px';
     this.el.style.top = y + 'px';
-    this.fill.style.height = (clamp(v, 0, 1) * 100).toFixed(1) + '%';
+    this.v = clamp(v, 0, 1);
+    this.t += 1;
     setText(this.label, label);
+    this.draw();
   }
   hide() { this.el.hidden = true; }
+  draw() {
+    const d = this.img.data, c = RING / 2, v = this.v;
+    d.fill(0);
+    const put = (x, y, h, a = 255) => { const i = (y * RING + x) * 4; const [r, g, b] = rgb(h); d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = a; };
+    const flash = this.flashT > 0 ? this.flashKind : null;
+    for (let y = 0; y < RING; y++) for (let x = 0; x < RING; x++) {
+      const dx = x + 0.5 - c, dy = y + 0.5 - c, r = Math.hypot(dx, dy);
+      if (r > 16.6 || r < 8.4) continue;
+      let ang = Math.atan2(dy, dx) - A0;
+      while (ang < 0) ang += Math.PI * 2;
+      const f = ang / SPAN;
+      if (f > 1) { // the gap at the bottom: a brass clasp
+        if (r > 10 && r < 15 && Math.abs(dx) < 2.5) put(x, y, r > 13.5 ? 0x6e4a1a : 0xdcae4e);
+        continue;
+      }
+      if (r > 15.6 || r < 9.4) { put(x, y, INK); continue; } // outline
+      const stone = Math.floor(f * RUNE_N), sf = f * RUNE_N - stone;
+      if (sf < 0.07 || sf > 0.95) { put(x, y, 0x1a100a); continue; } // gaps between stones
+      const lit = f <= v;
+      const inZ = this.z && f >= this.z[0] && f <= this.z[1];
+      const inP = this.pz && f >= this.pz[0] && f <= this.pz[1];
+      let col;
+      if (lit) {
+        col = f > 0.85 ? 0xfff2b0 : f > 0.55 ? 0xffc04a : 0xff7a2a;
+        if (inP) col = 0xfff6c0; else if (inZ) col = 0xd8ffa0;
+      } else {
+        col = inP ? 0x8a6a1a : inZ ? 0x3a5a2a : 0x4a3a32;
+      }
+      if (flash === 'good' || flash === 'perfect') col = flash === 'perfect' ? 0xfff6c0 : 0xb8ff8a;
+      else if (flash === 'bad') col = 0xff5a3a;
+      // bevel: light on the outer top-left rim, dark inside
+      if (r > 14.4 && dx + dy < 0) col = mix(col, 0xffffff, 0.25);
+      else if (r < 10.6) col = mix(col, 0x000000, 0.35);
+      // a carved rune dot in each stone
+      if (Math.abs(sf - 0.5) < 0.12 && Math.abs(r - 12.5) < 0.9) col = lit ? 0xffffff : mix(col, 0x000000, 0.4);
+      put(x, y, col);
+    }
+    // the little anvil in the middle (it jumps when the gauge is full)
+    const up = v >= 0.99 ? -1 : 0;
+    const anv = ['..aaaaaa..', 'aaaaaaaaa.', '.aaaaaaa..', '...aaa....', '..aaaaa...'];
+    for (let j = 0; j < anv.length; j++) for (let i = 0; i < anv[j].length; i++) if (anv[j][i] === 'a') put(13 + i, 16 + j + up, j === 0 ? 0xb8b8c0 : j < 2 ? 0x8a8a92 : 0x5a5a62);
+    this.ctx.putImageData(this.img, 0, 0);
+    if (this.flashT > 0) this.flashT = Math.max(0, this.flashT - 0.25);
+  }
+}
+const mix = (a, b, t) => {
+  const A = rgb(a), Bc = rgb(b);
+  return (Math.round(A[0] + (Bc[0] - A[0]) * t) << 16) | (Math.round(A[1] + (Bc[1] - A[1]) * t) << 8) | Math.round(A[2] + (Bc[2] - A[2]) * t);
+};
+
+// ---------------------------------------------------------------- the guild certificate (results)
+/**
+ * A framed certificate with a wax seal for the grade.
+ * o: { kicker, title, grade: {g, word, color}, value (html, optional), note (html), rows: [{label, v, extra}], buttons: [{label, key, alt, fn}] }
+ * Returns the element (hidden until shown).
+ */
+export function certificate(o) {
+  const g = o.grade;
+  const hex = parseInt(String(g.color).replace('#', ''), 16) || 0xc23c2c;
+  const rows = el('div', { class: 'fg-break' });
+  for (const r of o.rows || []) {
+    const b = bar(r.v > 0.85 ? '' : r.v > 0.6 ? 'warm' : 'bad');
+    b.set(r.v);
+    rows.append(el('span', {}, r.label), b.el, el('b', {}, Math.round(r.v * 100) + '%' + (r.extra || '')));
+  }
+  const btns = el('div', { class: 'fg-cert-btns' });
+  for (const b of o.buttons || []) {
+    btns.append(el('button', { class: 'fg-stampbtn' + (b.alt ? ' alt' : ''), onclick: b.fn }, [b.label, b.key ? el('kbd', {}, b.key) : null]));
+  }
+  return el('div', { class: 'fg-cert interactive', hidden: true }, [
+    el('div', { class: 'fg-cert-seal', style: `--gc:${g.color}` }, [
+      el('img', { class: 'pix fg-ribbon', src: ribbon(0xc23c2c), alt: '' }),
+      el('img', { class: 'pix fg-wax', src: seal(hex), alt: '' }),
+      el('b', {}, g.g),
+      el('small', {}, g.word),
+    ]),
+    el('div', { class: 'fg-kicker' }, o.kicker || ''),
+    el('h2', {}, o.title),
+    o.value ? el('div', { class: 'fg-value', html: o.value }) : null,
+    o.note ? el('div', { class: 'fg-note', html: o.note }) : null,
+    rows,
+    o.extra || null,
+    btns,
+  ]);
 }
 
-/** Big pop-up word at a screen point. */
 /**
  * Body for game.ui.confirm(): a short bold title, then the details pushed below the
  * dialog's close button (which sits over the top-right corner of the text).
@@ -263,6 +287,7 @@ export function confirmText(title, body) {
   return `<b>${esc(title)}</b><span style="display:block;margin-top:calc(var(--px) * 4)">${esc(body)}</span>`;
 }
 
+/** Big pop-up word at a screen point. */
 export function popWord(parent, text, x, y, color = '#fff', size = 1) {
   const n = el('div', { class: 'fg-float', style: { left: x + 'px', top: y + 'px', color, fontSize: size * 1.6 + 'em' } }, text);
   parent.append(n);
@@ -376,3 +401,5 @@ export class TouchAction {
     this.el.remove();
   }
 }
+
+export { glowHex };

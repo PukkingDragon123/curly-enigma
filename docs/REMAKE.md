@@ -51,7 +51,8 @@ your section of it true when you finish (add an "As built" note under your part)
   `hurt {n, by}` · `explore {zone, biome, cell}` · `reach {place}` · `talk {npc}` ·
   `sell {id, gold, to}` · `buy {id, gold, from}` · `feed {who}` · `puzzle {id}` · `sleep` ·
   `blast` · `lesson {step}` · `relic {id, ruin}` (a relic from a ruin's chest; `puzzle` also carries
-  `kind, ruin, zone`). Add a type if you need one; write it here.
+  `kind, ruin, zone`) · `part {part, track, level, grade, score}` (a coop part forged at home) ·
+  `install {part, track, level, q}` (a part built onto the coop). Add a type if you need one; write it here.
 - **Old Star talks through the tutor** (`ui.tutor`, owned by the home part):
   `ui.tutor.say(html, { mood, key, wait })` (a speech card with his portrait; mood: `calm`,
   `happy`, `stern`, `proud`, `worried`, `laugh`), `ui.tutor.hide()`. Always call it as
@@ -1061,3 +1062,125 @@ it glows while a hostile is within 9 m (`enemies.threat()`).
   with a dozen creatures. Models mesh with a fast greedy mesher in `vox.js` (same look as
   `meshGridGreedy`, ~3.5× faster) and the zone's likely species are built ahead of time, one per
   calm frame (`enemies.prewarm()`, never mid-fight), so a first troll or tyrant doesn't hitch.
+
+## Decorated UI pass (ui-pass part): as built
+
+Every screen that was still a flat panel is now a thing in the world, drawn in code at a whole
+multiple of `--px` (art helpers: `ui/uiArt.js` Px + `art()`; the frames `--a-wood`, `--a-sign`,
+`--a-note`, `--a-slate`, `--a-parch`, `--a-chain`, `--a-tackRed`). Game logic and the scenes' debug
+hooks are unchanged; the forge (its own pass) and the backpack (lead) were left alone.
+
+- **Cooking** (`src/cooking/ui.js` rewritten with the same API, `style.js` restyled, new
+  `src/cooking/kitchenArt.js` with the sprites, published as `--a-ck-*`):
+  the **pantry** is a wooden cupboard under a hanging "Pantry" sign; plants stand in wicker
+  baskets, critters in slatted crates, basics in corked glass jars (the icon shows through the
+  glass), on shelf planks with brass shelf plates and paper count tags (best quality pip on the
+  container; picked goods glow, hop and get a green check). The **recipe box** tab shows card
+  dividers (one per known recipe) over a lined index card: dish, buff chip, steps as wooden tokens,
+  ingredient chips (missing ones greyed with a red seal), a grade rosette, "Into the pot"; flip with
+  the ◀ ▶ arrows, ← →, swipe or the dividers (page-turn animation, `page` sound). The 1–4 slots are a
+  **copper pot on the stove**: chosen ingredients drop into the broth with a splash and bob (tap to
+  fish one out), empty spots are rings on the surface, steam rises; "Cook!" is a **brass service
+  bell** (rings, wobbles, `bell` sound). The match line is a pinned paper slip; "Back home" is a
+  hanging door plaque. **Step HUD**: an order ticket pinned at the top (dish name; steps as wooden
+  tokens, the current one gold; each finished step gets a star / check / dot / cross stamp), a
+  wind-up **kitchen timer** (24-frame dial, rattles red when low), the hint on a **chalk slate**,
+  a "Stop" plaque (calls the scene's `askStop`, so touch players can stop too: one-line hookup in
+  `CookingScene.stepHud(...)`). **Gauges** are glass tubes with brass caps on a notched plank (zone
+  notch, brass pointer); doneness is a brass bar with Raw→Burnt and a wooden-spoon pointer;
+  kneading tokens slide along a floured board; the roll strips sit on a plank. **Result**: a
+  pinned recipe card with the dish in a wooden frame (rays behind), a grade **rosette** (gold /
+  green / blue / brown / charcoal) that stamps on, a stamp per step, paper tags for energy / buff /
+  quality, and wooden plank buttons. Layouts: right column on desktop, a bottom sheet in portrait
+  (`max-aspect-ratio: 4/5`), and in short windows (`max-height: 520px`) the pot counter steps out
+  beside the cupboard and the result card goes two-column.
+- **Talk menus** (`src/ui/choices.js` + `choices.css`, `openTalkMenu(game, { name, face, line,
+  sub, options, onClose })`): a wooden board under a hanging name sign, the speaker's portrait in a
+  wooden frame with a speech bubble, the choices as pinned paper notes (primary note yellow, a
+  pointing paw on hover/focus, number keys 1–n and ↑ ↓). Used by Old Star's lesson menu at home
+  (`home/lessons.js lessonTalk`) and in the mine (`deep/Prologue.js openTalk`).
+- **Planter** (`openSeedTray` in the same module, used by `home/living.js usePlanter`): a seed box
+  of paper seed packets (crimped top, picture window, coloured band) with count tags; picking one
+  "sows" it.
+- **Settings** (`ui/PauseMenu.js openSettings`, shared with the title screen): the same wooden
+  board and sign, brass name plates, wooden option tabs (gold when on), slider values on paper tags.
+- Already decorated and kept: shops / assay / ticket window, the Miners' Board, the lift
+  cross-section, the book (quests, map, skills, index), Old Star's notes, the tutor card, pause
+  signs, confirm stamps, toasts, the backpack. The title's Credits stays a pinned parchment sheet.
+
+## As built: coop parts at the forge, and the forge's decorated UI (forge part)
+
+**Files**: `src/forge/parts.js` (`partStatus`, `PartRun`), `src/forge/partModel.js` (`PartView`, the
+voxel shapes), `src/forge/partArt.js` (the `{ k: 'cooppart' }` icons, one line in
+`gfx/PixelArt.js drawIconArt`), `src/forge/menus.js` (rewritten, same API + `partsList`, `startPart`,
+`partRows`), `src/forge/ui.js` (same widget API, redrawn), `src/forge/forgeArt.js` (the forge UI's
+pixel art, published on the forge layer as `--fa-*`), `src/forge/forge.css` (replaces the old CSS
+string; still injected only while the forge runs), `src/scenes/ForgeScene.js` (key 3, a "Coop parts"
+spot at the workbench, `endActivity('parts')`, `open: 'parts'`, debug hooks), `forging.js` (result
+card → certificate).
+
+**Flow.** Hub → **Coop parts** (key `3`, also `3` while walking, or E at the workbench) opens Nugget's
+coop schematic: per track (numbered callouts on a blue-ink drawing of the coop) the parts as taped
+cards with icon, level pips (installed / this one), ingots and extras with `need× name (have)`, the
+metal's working range (red when the hearth can't reach it), quench note, desc, and a **Forge** stamp.
+A part is forgeable when it is the next level (`level === installed + 1`; earlier ones show
+"Installed", later ones "Install the X first"), you have the inputs and the hearth reaches the metal's
+work range; carried parts show "You're carrying N". The first time the list opens Old Star explains
+where parts go (flag `forge.partsTip`; not during his lesson).
+**PartRun** (`step`: `heat` ⇄ `hammer` → `quench` (when `part.quench`) → `result`): the ingots (best
+first) and extras are taken (Esc → "Leave this part?" refunds them; so does leaving mid-run). Heat
+the bar in the coals with the bellows into its work band (brass thermometer; tin barely wants the fire:
+pumping burns it), E carries it to the anvil. Each blow: hold mouse / Space / the touch button to raise
+the hammer, the **rune ring** fills, let go in the green zone (gold = perfect; zone width by part
+level × Smithing skill, it moves every blow). perfect/good = one blow of shaping, too soft 0.4, too hard
+0.6 (and a dent); blows on metal below its work range don't move it, ring, flake and may **crack** it
+(dark voxels stay on the part). The bar cools ~5%/s of its heat above the room, so 1–3 reheats per
+part (E). `part.strikes` blows shape it; quench parts then cool/heat into the blue band (E in/out of
+the fire) and **Q** plunges them in the barrel (`quenchResult`). Result: the part held up in the
+tongs in a grade halo + the **guild certificate**. Score: craft = shape·0.55 + heat·0.25 + quench·0.2
+(no quench: shape·0.65 + heat·0.35), shape = mean blow quality (perfect 1, good .86, soft .6, hard
+.42), heat = 1 − 0.06/cold blow − 0.1/crack − burn; **q = craft × (0.85 + 0.15 × ingot quality)**.
+Output: `state.addItem(id, { q, spill: true })`, `act { type: 'part', part, track, level, grade,
+score }`, a toast, Enter → back to the schematic. About 30 s (tin) to 2 min (mithril, 14 blows).
+**The model** (`PartView`): every part is 300–800 voxels (7.5 mm) with three poses: a stubby hot
+**bar** (the ingots), the **flat blanks** (straps straightened and cut to anvil length, sheets
+flattened: a disk for bells and pans, a net for the nest box) and the **finished part**. Blows morph
+bar → blanks (drawing out from the tongs' end) then blanks → part (bending, raising, folding), with a
+squash, a dent where the hammer lands and a gold ring on the next spot. Shapes per track: shelves
+(L bracket with brace and lip; scrolled bracket; iron rack with side brackets; steel cargo rack with
+raised rails), legs (two banded rings with clasps; three hooked talon caps on a heel band; bars
+with bowed leaf springs and cuffs; U heel band with a star rowel), nest (tin box with a hen-sized dip,
+straw set in at the end; domed pierced warming pan with a handle; bell with a hanging loop),
+chute (funnel + sloped U trough), lamp (tin lantern with a candle; caged dome with lumite crystals set
+in when shaped). Hot metal glows by temperature (blackbody, mottled per voxel), with heat haze.
+
+**The forge's UI, redrawn as things in the smithy** (all keys kept; touch: the big hold button):
+- **Hub**: a chalkboard hanging on chains (oak frame, chalk title and doodles, chalk tray), three
+  pinned paper cards with coloured tacks (Smelt ore 1, Forge a weapon 2, Coop parts 3; wobble on
+  hover), chalk links "Look around" / "Leave forge", the hearth level on a painted sign below it.
+- **Smelting**: the smith's ledger (stitched leather covers, ruled pages, a ribbon): left page coal,
+  hearth, the last pour as a margin note; right page one inked entry per recipe (ores + coal → ingot
+  icons, have/need, a flame chip with the pour band), **Smelt** / **Quick ×N** as rubber stamps.
+- **Weapon plan**: a blueprint taped up (blue grid, white margin rule): plans as chalk boxes, metals /
+  infusions / gems as round tokens, the weapon traced big in white chalk in the middle with its
+  numbers, a red **Forge it** stamp.
+- **Activities**: a leather clipboard work order (title, rune medallions for the steps, brass gauges
+  for the stats), the brass thermometer (glass tube on an enamel scale, gold work / blue quench bands
+  painted on and lit when the needle is in them, burn and max lines, a glass bulb glowing with the
+  metal's colour, a burner flame that grows with the heat), the rune-ring strike gauge (also used by
+  weapon forging), wooden plates for the actions, results on a framed **guild certificate** with a
+  wax seal for the grade (ribbons, stamp-in), brass gauges, stamp buttons.
+- Phones: the panels fill the width below the HUD; ledger and schematic stack to one column.
+
+**Test hooks** (`scene.debug`): `part(id, { give, score, q, blow, run })` (gives missing inputs
+when `give`, starts the part and plays it to the result headless; `score` forces the final quality,
+`blow: 'perfect' | 'good' | 'soft' | 'hard' | 0..1`, `run: false` only starts it) → `{ id, step,
+score, grade, blows, cracks, carrying, toStash }`; `partsList()` (opens it, returns rows `{ id, name,
+track, level, status: 'installed' | 'ready' | 'locked', why, need, have, carrying, works, hot }`);
+`partStrike(kind)`; and the forge's own `heatTo(T)`, `toAnvil()`, `toFire()`, `quench(T)`, `until(step)`,
+`state()` work on a part run too (`state().shape` = shaping progress). On the run: `debugStrike(_, v)`,
+`debugCharge(_, v)`, `release()`, `sim` (`T`, `workRange`, `quenchRange`, `progress`, `blows`,
+`cracks`), `zoneR`/`perfR`, `forceScore`. Also `menus.partRows()`, `partStatus(state, id)`,
+`partStats(id)` (voxel counts) from `partModel.js`. URL: `?scene=forge&open=parts`.
+Screenshots: `shots/parts/` (`ui-*` desktop menus, `phone-*` portrait, `run-*` copper bands,
+`iron-*` talons with the quench, `models-*` every part in each pose, `art-sheet.png`).

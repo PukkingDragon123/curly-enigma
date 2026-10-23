@@ -80,7 +80,8 @@ game; tell the lead which test hooks your scene offers (e.g. `scene.debug.*`).
 - **Forge** (`src/scenes/ForgeScene.js`, `src/forge/*`): a walkable smithy; ViewModel kinds
   `hammer`, `tongs`, `smith`, paw steering `vm.drive`, `vm.toView`, `vm.jaw`. Test hooks:
   `scene.debug.{ step, until, state, pump, smelt, forge, toAnvil, toFire, charge, release, strike,
-  finishShaping, balance, quench, tap, heatTo, place, dock }`.
+  finishShaping, balance, quench, tap, heatTo, place, dock, part, partStrike, partsList }`
+  (coop parts: see REMAKE.md › "As built: coop parts at the forge").
 - **Mine**: see DEEP.md (lifts, build tool, clumps).
 
 ## Next: Old Star, the tavern, progression (in progress)

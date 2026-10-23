@@ -9,7 +9,7 @@ import { COIN, qColor } from '../ui/UI.js';
 import { BladeSim, balanceScore, balanceTolerance, quenchResult, fireIdleFor, AMBIENT } from './bladeSim.js';
 import { BladeView, buildWeapon, COL } from './bladeView.js';
 import { applyHeat, glowAmount } from './blackbody.js';
-import { Thermo, Steps, StrikeMeter, bar, setText, setHtml, confirmText } from './ui.js';
+import { Thermo, Steps, StrikeMeter, bar, setText, setHtml, confirmText, certificate } from './ui.js';
 import { Seq, ease, arcPoint, Lightning, INFUSION_FX } from './fx.js';
 import { makeCrystal } from './models.js';
 import { disposeTree } from './smelt.js';
@@ -1057,30 +1057,20 @@ export class ForgeRun {
 
   buildCard(w, grade, s) {
     const sc = this.scene;
-    const row = (label, v, extra = '') => {
-      const b = bar(v > 0.85 ? '' : v > 0.6 ? 'warm' : 'bad');
-      b.set(v);
-      return [el('span', {}, label), b.el, el('b', {}, Math.round(v * 100) + '%' + extra)];
-    };
-    const brk = el('div', { class: 'fg-break' }, [
-      ...row('Shape', s.shape),
-      ...row('Temper', s.temper),
-      ...row('Balance', s.balance),
-      ...(s.quench !== null ? row('Quench', s.quench) : []),
-    ]);
-    const card = el('div', { class: 'panel fg-result' }, [
-      el('div', { class: 'fg-stamp', style: { color: grade.color } }, [grade.g, el('small', {}, grade.word)]),
-      el('div', { class: 'fg-kicker' }, 'Forged · craft score ' + Math.round(w.score)),
-      el('h2', { style: { marginRight: 'calc(var(--px) * 30)' } }, w.name),
-      el('div', { class: 'fg-value' }, [el('img', { class: 'pix', src: COIN(), alt: '' }), formatGoldFull(w.value) + ' g']),
-      el('div', { class: 'fg-note', html: `Material quality <b style="color:${qColor(w.matQ)}">${w.matQ}%</b>` + (w.gem ? ` · ${ITEMS[w.gem].name} pommel` : '') + (s.bonus ? ` · infusion +${s.bonus}` : '') }),
-      brk,
-      el('div', { class: 'row' }, [
-        el('button', { class: 'btn', onclick: () => { this.game.audio.play('ui_click'); sc.endActivity('plan'); } }, ['Forge another ', el('kbd', { style: { marginLeft: 'calc(var(--px)*1.5)', marginRight: 0 } }, 'Enter')]),
-        el('button', { class: 'btn alt', onclick: () => sc.leave() }, 'Leave'),
-      ]),
-    ]);
-    card.hidden = true;
+    const rows = [{ label: 'Shape', v: s.shape }, { label: 'Temper', v: s.temper }, { label: 'Balance', v: s.balance }];
+    if (s.quench !== null) rows.push({ label: 'Quench', v: s.quench });
+    const card = certificate({
+      kicker: 'Forged · craft score ' + Math.round(w.score),
+      title: w.name,
+      grade,
+      value: `<img class="pix" src="${COIN()}" alt="">${formatGoldFull(w.value)} g`,
+      note: `Material quality <b style="color:${qColor(w.matQ)}">${w.matQ}%</b>` + (w.gem ? ` · ${ITEMS[w.gem].name} pommel` : '') + (s.bonus ? ` · infusion +${s.bonus}` : ''),
+      rows,
+      buttons: [
+        { label: 'Forge another', key: 'Enter', fn: () => { this.game.audio.play('ui_click'); sc.endActivity('plan'); } },
+        { label: 'Leave', alt: true, fn: () => sc.leave() },
+      ],
+    });
     sc.layer.append(card);
     this.nodes.push(card);
     this.card = card;
