@@ -335,7 +335,7 @@ export default class CookingScene extends Scene {
     this.hideNugget();
     this.ui.closeSide();
     const known = st.data.recipes[this.dish] !== undefined;
-    this.ui.stepHud(known ? DISHES[this.dish].name : '???', this.steps);
+    this.ui.stepHud(known ? DISHES[this.dish].name : '???', this.steps, { onStop: () => { if (!this.game.ui.isPanelOpen() && this.phase !== 'finale') this.askStop(); } });
     if (this.lesson) this.ui.top?.classList.add('lesson');
     this.ui.title('LET\'S COOK!', ids.map((id) => ITEMS[id].name).join(' + '));
     this.game.audio.play('ding');

@@ -32,6 +32,8 @@ import { LINES, MOOD, GOALS, NAME, VOICE, pickLine } from './prologue/lines.js';
 import { ITEMS } from '../data/items.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { el, clamp, rand, pick } from '../core/util.js';
+import { openTalkMenu } from '../ui/choices.js';
+import { starPortraitURL } from '../ui/Tutor.js';
 
 const GIFT_CHISEL = true; // Old Star hands over his spare chisel for the clump
 export const STEPS = ['arrive', 'plug', 'walk', 'ore', 'loose', 'held', 'gem', 'gemfound', 'ledge', 'climb', 'map', 'critter', 'back', 'cage', 'ride'];
@@ -985,15 +987,17 @@ export class Prologue {
       gemfound: LINES.gemTake, ledge: LINES.ladderTip, climb: LINES.ladderUp, map: LINES.mapTip, critter: LINES.blockTip, back: LINES.done, cage: LINES.bell,
     }[this.step];
     this.say(hint || LINES.walk, { mood: 'calm' });
-    const body = el('div', { class: 'cf-body' }, [
-      el('p', { class: 'cf-text', html: `<b>${what}.</b><br>${pickLine(hint, touch) || ''}` }),
-      el('div', { class: 'cf-row', style: { flexWrap: 'wrap', gap: 'calc(var(--px) * 4)' } }, [
-        el('button', { class: 'btn', onclick: () => this.panel?.close() }, 'Right you are'),
-        el('button', { class: 'btn alt', onclick: () => this.confirmSkip(false) }, 'Skip this lesson'),
-        el('button', { class: 'btn alt', onclick: () => this.confirmSkip(true) }, 'Skip all lessons'),
-      ]),
-    ]);
-    this.panel = this.ui.openPanel({ title: NAME, sub: 'Forty years down here, and he still digs for fun.', body, width: 'min(calc(var(--px) * 160), calc(100vw - 32px))', onClose: () => { this.panel = null; } });
+    // his talk board (ui/choices.js): portrait, what to do now, and the choices as pinned notes
+    this.panel = openTalkMenu({ ui: this.ui, audio: this.audio }, {
+      name: NAME, face: starPortraitURL('calm'), sub: 'Forty years down here, and he still digs for fun.',
+      line: `<b>${what}.</b><br>${pickLine(hint, touch) || ''}`,
+      options: [
+        { label: 'Right you are', primary: true, onClick: () => this.panel?.close() },
+        { label: 'Skip this lesson', sub: 'Ride straight back up with him.', onClick: () => this.confirmSkip(false) },
+        { label: 'Skip all lessons', sub: 'Mining, forging and cooking: find your own way.', onClick: () => this.confirmSkip(true) },
+      ],
+      onClose: () => { this.panel = null; },
+    });
   }
 
   async confirmSkip(all) {

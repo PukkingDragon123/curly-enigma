@@ -5,11 +5,11 @@ import * as THREE from 'three';
 import { WINDOW_SLOTS } from '../iso/homeLayout.js';
 import { FURNITURE } from '../data/furniture.js';
 import { ITEMS } from '../data/items.js';
-import { iconURL } from '../gfx/PixelArt.js';
-import { el, rand, pick, clamp } from '../core/util.js';
+import { rand, pick, clamp } from '../core/util.js';
 import { midiToFreq } from '../core/Audio.js';
 import { T } from './units.js';
 import { besideItem } from './layoutfix.js';
+import { openSeedTray } from '../ui/choices.js';
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -102,21 +102,21 @@ export class HomeLiving {
     if (pl) { this.floatAt(cx, top + 0.1, cz, 'Growing', '#d8ffb0'); return; }
     const plants = st.inventory((it) => it && it.cat === 'plant');
     if (!plants.length) { this.game.audio.play('ui_error'); this.floatAt(cx, top + 0.1, cz, 'No plants to sow', '#e6dcc8'); return; }
-    const list = el('div', { class: 'list' });
-    const h = this.game.ui.openPanel({ title: 'Planter', sub: 'Pick something to plant.', body: el('div', { class: 'scroll', style: { maxHeight: 'calc(var(--px) * 110)' } }, [list]), width: 'calc(var(--px) * 170)' });
-    for (const gi of plants) {
-      const it = ITEMS[gi.id];
-      list.append(el('div', { class: 'li interactive', style: { cursor: 'pointer' }, onclick: () => {
-        if (st.count(gi.id) <= 0) return;
-        st.removeItem(gi.id, 1);
-        d.home.planters[uid] = { id: gi.id, day: d.day };
+    // a wooden seed box of paper seed packets (ui/choices.js)
+    const h = openSeedTray(this.game, {
+      title: 'Planter', note: 'Pick a seed to sow. It grows by morning.',
+      items: plants.map((gi) => ({ id: gi.id, n: gi.n })),
+      onPick: (id) => {
+        if (st.count(id) <= 0) return;
+        st.removeItem(id, 1);
+        d.home.planters[uid] = { id, day: d.day };
         this.game.audio.play('place');
         this.fx.dust(cx, top, cz, 6, [0.36, 0.24, 0.14], 0.08);
-        rec.res.setPlant?.({ id: gi.id, ready: false }, ITEMS);
+        rec.res.setPlant?.({ id, ready: false }, ITEMS);
         st.save();
-        h.close();
-      } }, [el('img', { class: 'pix', src: iconURL(gi.id), alt: '' }), el('div', {}, [el('div', { class: 'name' }, it.name), el('div', { class: 'desc' }, it.desc || '')]), el('span', { class: 'price' }, '×' + gi.n)]));
-    }
+        setTimeout(() => h.close(), 260);
+      },
+    });
   }
 
   /** Sit down: the view drops to the seat, facing the way it faces. E or a step stands up. rec: a placed piece or a hall seat ({ obj, seats }). */

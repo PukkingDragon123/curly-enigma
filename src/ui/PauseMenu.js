@@ -7,6 +7,7 @@
 import { el } from '../core/util.js';
 import { makeSignMenu } from './signs.js';
 import { formatPlayTime } from '../core/saves.js';
+import './choices.css';
 
 const GEM_NAMES = ['Ruby', 'Emerald', 'Sapphire'];
 const GEM_COL = ['#f04652', '#3ccc74', '#4a98ff'];
@@ -51,6 +52,27 @@ const CSS = /* css */`
 .pm-lever.on::after { left: calc(100% - var(--px) * 11); }
 .pm-note { margin: 0; font-size: .75em; color: var(--ink-soft); }
 @media (pointer: coarse) { .pm-opts button { min-height: 36px; } .pm-lever { min-height: 30px; } }
+/* the settings board: brass name plates and wooden switches on dark wood */
+.modal-back > .panel.tk-panel.pm-setpanel { width: min(calc(100vw - 16px - var(--sal) - var(--sar)), calc(var(--px) * 150)); }
+.pm-board .tk-board { padding: calc(var(--px) * 11) calc(var(--px) * 6) calc(var(--px) * 5); }
+.pm-board .pm-set { min-width: 0; gap: calc(var(--px) * 5); }
+.pm-board .pm-row > span:first-child { justify-self: start; padding: var(--px) calc(var(--px) * 4) calc(var(--px) * 1.5); color: #4a2c0a; line-height: 1;
+  background: linear-gradient(to bottom, #fff3c0 0 var(--px), #f2c96a var(--px) calc(100% - var(--px) * 2), #a8772c calc(100% - var(--px) * 2));
+  box-shadow: 0 0 0 var(--px) #3a2410, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35); }
+.pm-board .pm-num { min-width: 4ch; text-align: center; color: var(--ink); background: #f8ecd2; padding: var(--px) var(--px) 0; line-height: 1; box-shadow: 0 0 0 var(--px) var(--paper-edge); }
+.pm-board .pm-slider::-webkit-slider-runnable-track { background: #26160c; box-shadow: 0 0 0 var(--px) #c08a52, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .3), inset 0 var(--px) 0 #000; }
+.pm-board .pm-slider::-moz-range-track { background: #26160c; box-shadow: 0 0 0 var(--px) #c08a52, inset 0 var(--px) 0 #000; }
+.pm-board .pm-opts { gap: calc(var(--px) * 2); }
+.pm-board .pm-opts button { font-size: 16px; line-height: 1; color: #f6e2c0; padding: calc(var(--px) * 1.5) calc(var(--px) * 3) calc(var(--px) * 2.5); text-shadow: 0 var(--px) 0 #2a160a;
+  border: var(--px) solid transparent; border-image: var(--a-cut) 1 / var(--px) stretch; box-shadow: none;
+  background: linear-gradient(to bottom, #b07a46 0 var(--px), #8a5a32 var(--px) calc(100% - var(--px) * 2), #5e3a1f calc(100% - var(--px) * 2)) padding-box; transition: transform .12s var(--pop); }
+.pm-board .pm-opts button:hover { transform: translateY(calc(var(--px) * -1)); }
+.pm-board .pm-opts button.on { color: var(--ink); text-shadow: none; box-shadow: none;
+  background: linear-gradient(to bottom, #fff3c0 0 var(--px), #e8be5a var(--px) calc(100% - var(--px) * 2), #a8772c calc(100% - var(--px) * 2)) padding-box; }
+.pm-board .pm-lever { box-shadow: 0 0 0 var(--px) #c08a52, inset 0 var(--px) 0 #000; background: #26160c; }
+.pm-board .pm-lever.on { background: #3d6a30; box-shadow: 0 0 0 var(--px) #c08a52, inset 0 var(--px) 0 #1a3014; }
+.pm-board .pm-note { text-align: center; font-size: 16px; color: #e8cfa0; text-shadow: 0 var(--px) 0 #1a0c04; }
+@media (min-width: 1700px) and (min-height: 1000px) { .pm-board .pm-opts button, .pm-board .pm-note { font-size: 24px; } }
 `;
 let cssEl = null;
 function css() {
@@ -100,7 +122,12 @@ export function openSettings(game, { onClose } = {}) {
     el('div', { class: 'pm-row' }, [el('span', {}, 'Screen shake'), lever]),
     el('p', { class: 'pm-note' }, 'Settings are kept with your save.'),
   ]);
-  const h = game.ui.openPanel({ title: 'Settings', body, onClose: () => { if (game.state.hasSave()) game.state.save(); onClose?.(); } });
+  // a wooden control board under a hanging sign (the board styles live in ui/choices.css)
+  const board = el('div', { class: 'tk pm-board' }, [
+    el('div', { class: 'tk-sign' }, [el('i', { class: 'tk-chain l' }), el('i', { class: 'tk-chain r' }), el('h2', {}, 'Settings')]),
+    el('div', { class: 'tk-board' }, [body]),
+  ]);
+  const h = game.ui.openPanel({ body: board, className: 'tk-panel pm-setpanel', onClose: () => { if (game.state.hasSave()) game.state.save(); onClose?.(); } });
   if (!document.documentElement.classList.contains('is-touch')) setTimeout(() => body.querySelector('input')?.focus({ preventScroll: true }), 40);
   return h;
 }

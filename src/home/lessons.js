@@ -11,11 +11,12 @@
 // Talking to him during the lessons offers "What now?" and "Skip the lessons" (lesson { step: 'skip' }).
 // Acts emitted here: lesson { step: wake | lift | copper_home | cook_done | skip }, talk { npc: 'oldstar' },
 // reach { place: 'home' }.
-import { el, pick } from '../core/util.js';
+import { pick } from '../core/util.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
 import { starData } from './starData.js';
 import { starPortraitURL } from '../ui/Tutor.js';
+import { openTalkMenu } from '../ui/choices.js';
 
 /** What he says the next step is, per stage. */
 const NEXT = {
@@ -57,15 +58,16 @@ export class HomeLessons {
     const star = this.star, g = this.game;
     const n = NEXT[stage];
     const close = () => h?.close();
-    const opt = (label, sub, fn, alt = true) => el('button', { class: 'btn ' + (alt ? 'alt' : '') + ' ls-opt', onclick: () => { g.audio.play('ui_click'); close(); fn(); } }, [el('b', {}, label), sub ? el('small', {}, sub) : null]);
-    const body = el('div', { class: 'ls-talk' }, [
-      el('div', { class: 'ls-head' }, [el('img', { class: 'pix ls-face', src: starPortraitURL(n?.mood || 'calm'), alt: '' }), el('p', { html: 'Old Star squints at you over his spectacles. <i>"Well?"</i>' })]),
-      opt('What do I do next?', null, () => star.say(n.text, { mood: n.mood }), false),
-      opt('Skip the lessons', 'I know my way round a mine, a forge and a pan.', () => this.confirmSkip()),
-      opt('Never mind', null, () => star.say(pick(['Hmph. Mind the fire, then.', 'Go on, go on.', 'Sixty years I\'ve waited. I can wait a bit longer.']), { mood: 'calm' })),
-    ]);
-    const h = g.ui.openPanel({ title: 'Old Star', body, className: 'ls-panel', width: 'min(calc(var(--px) * 150), calc(100vw - 32px))' });
-    this.injectLessonCss();
+    const opt = (label, sub, fn, primary = false) => ({ label, sub, primary, onClick: () => { close(); fn(); } });
+    const h = openTalkMenu(g, {
+      name: 'Old Star', face: starPortraitURL(n?.mood || 'calm'),
+      line: 'Old Star squints at you over his spectacles. <i>"Well?"</i>',
+      options: [
+        opt('What do I do next?', null, () => star.say(n.text, { mood: n.mood }), true),
+        opt('Skip the lessons', 'I know my way round a mine, a forge and a pan.', () => this.confirmSkip()),
+        opt('Never mind', null, () => star.say(pick(['Hmph. Mind the fire, then.', 'Go on, go on.', 'Sixty years I\'ve waited. I can wait a bit longer.']), { mood: 'calm' })),
+      ],
+    });
     return true;
   }
 
@@ -180,18 +182,5 @@ export class HomeLessons {
       st.addItem('mushroom', { spill: true, n: 2 });
       this.game.ui.toast('Old Star hands you <b>2 eggs</b> and <b>2 mushrooms</b>', { icon: iconURL('egg'), kind: 'good' });
     }
-  }
-
-  injectLessonCss() {
-    if (document.getElementById('ls-css')) return;
-    document.head.append(el('style', { id: 'ls-css' }, `
-      .ls-talk { display: flex; flex-direction: column; gap: calc(var(--px) * 2); }
-      .ls-head { display: flex; gap: calc(var(--px) * 3); align-items: center; margin-bottom: calc(var(--px) * 1); }
-      .ls-face { width: calc(var(--px) * 40); height: calc(var(--px) * 40); flex: none; box-shadow: 0 0 0 var(--px) #4a3010, 0 0 0 calc(var(--px) * 2) #c89a3a; }
-      .ls-head p { margin: 0; line-height: 1.35; }
-      .ls-opt { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: calc(var(--px) * .5); }
-      .ls-opt b { font-weight: 400; }
-      .ls-opt small { color: var(--ink-soft); font-size: .85em; }
-    `));
   }
 }
