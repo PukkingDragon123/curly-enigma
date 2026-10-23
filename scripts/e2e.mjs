@@ -420,6 +420,18 @@ await step('forge', async () => {
   if (forged.made !== 1) throw new Error('forging made no weapon: ' + JSON.stringify(forged));
   await wait(1500);
   await shot('10b-forge-result');
+  // ... and a part for Nugget's coop (the shelf brackets: the next Shelves level)
+  const part = await page.evaluate(() => {
+    const sc = window.__game.scene, d = sc.debug, st = window.__game.state;
+    sc.activity?.onEscape?.();
+    d.until?.('idle', 300);
+    st.data.energy = 100;
+    const before = st.count('shelf_copper');
+    const r = d.part('shelf_copper', { give: true });
+    return { r, made: st.count('shelf_copper') - before };
+  });
+  if (!(part.made >= 1)) throw new Error('forging a coop part: ' + JSON.stringify(part));
+  await shot('10c-forge-part');
 });
 await step('cooking', async () => {
   await page.evaluate(() => { const st = window.__game.state; ['glowcap', 'salt_crystal', 'egg', 'pepperroot'].forEach((i) => st.addItem(i, { n: 3 })); });
