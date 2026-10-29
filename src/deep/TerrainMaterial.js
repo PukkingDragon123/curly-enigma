@@ -403,8 +403,9 @@ export function makeTerrainMaterial(U) {
           }
         }
         // pixel-art relief: every texel tilts a little on a bumpy height field (two octaves) so the
-        // helmet lamp rakes across each face and the rock reads as grainy, chiselled stuff
-        {
+        // helmet lamp rakes across each face and the rock reads as grainy, chiselled stuff (not
+        // past 12 m, where the fog has it)
+        if (dist < 12.0) {
           float bumpK = style == 3.0 ? 0.35 : style == 1.0 ? 0.6 : style == 2.0 || style == 8.0 ? 0.35 : style == 4.0 ? 0.5 : style == 5.0 ? 0.9 : 0.6;
           vec3 q1 = q + t1 / TEXN, q2 = q + t2 / TEXN;
           float hC = hash3(floor(q * TEXN * 0.25) + 1.7) * 0.5 + hash3(floor(q * TEXN * 0.5) + 2.3) * 0.32 + px * 0.18;
@@ -432,8 +433,9 @@ export function makeTerrainMaterial(U) {
         seam *= mix(0.55, 1.0, near);
         float ti = clamp(floor(tone + 0.5), 0.0, 3.0);
         vec3 base = accent > 0.5 ? pal(mat, 4.0) : pal(mat, ti);
-        // crystal seams glow in the stone's own colour, not white
-        if (accent > 0.5 && style == 2.0) base = mix(pal(mat, 3.0), base, 0.35) * 1.15;
+        // crystal seams glow in the stone's own colour when its accent is plain white (star rock's
+        // gold veins and the like stay as they are)
+        if (accent > 0.5 && style == 2.0 && max(base.r, max(base.g, base.b)) - min(base.r, min(base.g, base.b)) < 0.12) base = mix(pal(mat, 3.0), base, 0.35) * 1.15;
         base *= (1.0 - seam * 0.62) * (1.0 + bevel * 0.24 * near + bev * 0.14);
         // each layer of the strata a little warmer or cooler than the next
         base *= 1.0 + ((hash3(vec3(layer, 1.3, 9.1)) - 0.5) * vec3(0.4, 0.28, 0.14) + (mod(layer, 2.0) - 0.5) * 0.2) * ex.a;

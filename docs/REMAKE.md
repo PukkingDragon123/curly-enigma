@@ -1500,7 +1500,8 @@ fields: `roots`, `delicate`; `drake_egg`). `src/ui/Forage.js` is now a small com
 (`openForage` → the 3D gather, `simulate` re-exported); `src/cooking/forageArt.js` is gone.
 Touched elsewhere: `Props.js` harvest section only (`use()` → `gather(p)`, `hidePlant(p, on)`,
 `debugGather`, `target()` warms the model, `harvest()` skips its own burst when `res.fx`), and
-`fps/ViewModel.js` (`vm.drive.shoulder = { R, L }`: where a steered forearm comes from).
+`fps/ViewModel.js` (`vm.drive.shoulder = { R, L }`: where a steered forearm comes from; a steered
+forearm stretches up to 1.7× so its end never shows when the paw reaches far).
 
 **How it hooks into the mine** (no DigScene change needed): a see-through `ui.openPanel` makes the
 scene `busy` (no walking/looking/digging; Esc reaches the session first: in play it lets go of the
@@ -1519,9 +1520,12 @@ of the camera (`vegetation.U.uPush[1..2]`, after `vegetation.update`).
   out from the stem, clods shift), dirt flicks. As it rises, **roots tear out one by one** (a zip of
   dirt along each, clods hop, a fibrous rip sound; if the soil isn't loose yet they rip shorter) and
   lie on the soil. Over the band the stem **flushes red**, shivers, creaks; past `snap` it **snaps**
-  (the top hangs from the paw, a stub stays). Delicate plants (caps, glass lily, lotus) also strain
+  (the top jerks up in the paw, swinging, a stub stays in the soil; both torn ends ragged with white fibres). Delicate plants (caps, glass lily, lotus) also strain
   on **jerky** pulls: a slow steady hand. At the end it **pops** out (flash, POP!, sparkles, clods
-  burst, the hole, roots dangling) and is held up turning slowly beside its result tag.
+  burst, the hole, roots dangling) and is held up turning slowly beside its result tag: the
+  camera turns to it and leans back a little where there's room (fov widened only if it must, so
+  head to root tips fit), it's held clear of the ground, and the grass round it leans aside. Small
+  finds (berries, truffle, grub) rest on the open palm, the wrist below them, not in front.
 - **pick** (cave berries): a **timing** game: a gold ring closes on one berry at a time; tap as it
   touches a **red** one (perfect / good; early or late squishes it); **green** ones get a green ring:
   leave them. The paw reaches and pinches; streaks raise the pitch; the handful is held up after.
@@ -1774,8 +1778,10 @@ rest sleeps and wakes when you come back).
   ice in 5, obsidian for lava) laid where caves meet the pocket below the waterline (a tunnel ends
   in a wet clay wall: dig through and get flooded), and caves meeting the air dome above the water
   open onto the lake. Where a carved room, trail or burrow crosses the shell, the level drops to
-  just under it (`f.wl`). Same in the workers. Existing saves: lakes look the same except for the
-  new shells (and lower water where a trail ran through one).
+  just under it (`f.wl`). A lake whose basin stands mostly in open cavern (one or two a world)
+  holds no water and gets no shell (it would hang there as a floating bowl), and loses its danger
+  marker and lava glow. Same in the workers. Existing saves: lakes look the same except for the
+  new shells (and lower or no water where a trail or a cavern ran through one).
 - Saved: air↔water goes into the world's edits as before; part-filled levels are saved under
   `moleforge.fluids.v1` (per seed, every 20 s and on exit) and come back on load (tested: a settled
   pool reloads cell for cell; films under 4/8 still save as air, by `World.saveEdits`).
@@ -1820,7 +1826,9 @@ whole-pixel offsets:
 - Caustics on the rock (`WaterMap` + `patchTerrain`): a 128² map (16 m, 1/8 m texels) of water
   tops/bottoms round the mole tells the terrain shader where water is; floors and walls under
   water get a dancing caustic network (stepped, fading with depth), walls just above a pool get
-  the wavering light it throws back (up to 1.6 m), and the waterline gets a dark wet band. Added
+  the wavering light it throws back (up to 1.6 m), the waterline gets a dark wet band, and rock
+  right beside water below its surface looks damp (a lake's clay shell seen from a tunnel: water
+  behind this wall; the ceilings there drip). Added
   at runtime to the terrain material (onBeforeCompile; `col *= wc_light(vWorld)` just before the
   cave-look part's `col = caveAir(...)`, or before its last `gl_FragColor = vec4(col, …)`); if
   neither is found the terrain is left alone and the water shader draws the caustics on the floor
@@ -1862,13 +1870,14 @@ so frame times are noisy; best-of-n):
   into the shallows with water filling the screen old 0.81–1.02 s vs new 0.82–1.45 s (640×360:
   up to ~25 % more, the reflections and caustics; 'low' fx drops the reflections); with no water in
   sight there's nothing to pay (mine entrance A/B, same either way).
-- e2e up to the town gate: every step's checks pass; three deep steps hit the 30 s screenshot
-  timeout (frames over 30 s at load 30, other parts' e2e runs alongside; no water in those views,
-  and the A/B above shows no cost there).
+- `E2E_UNTIL="town gate" node scripts/e2e.mjs`: all 16 steps pass (an earlier run at load 30
+  hit 30 s screenshot timeouts in three deep steps; no water in those views, and the A/B above
+  shows no cost there).
 
 Screenshots (`shots/water/`): `before-*` / `after-*` pairs at the same seed and camera (the old
 surface material vs this part's, terrain caustics off vs on): `lake-shore`, `lake-shallows`,
 `lake-under`, `lake-up` (Snell's window); `before-oldsim-*` the old flow and look (a pour on a ramp
 that never settled, the old lake); `after-pool*` / `after-waterfall` (a pool room with a spring
 pouring off a shelf and a lantern), `after-breach-0..3` (dig through to a full reservoir: the gush,
-the waterfall from the hole, the flood); `dev/` the iterations.
+the waterfall from the hole, the flood), `after-lake-shell` (a cave tunnel ending in a lake's damp
+clay shell); `e2e/` the last e2e run; `dev/` the iterations.

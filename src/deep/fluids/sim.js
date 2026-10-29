@@ -21,7 +21,7 @@
 // changes are written straight into the chunk and the world's edits (they never change the rock
 // mesh); anything that makes rock goes through world.setVoxel. Part-filled levels are saved under
 // `moleforge.fluids.v1` (per world seed) so a reload brings pools back exactly.
-import { VOX, M, MAT } from '../materials.js';
+import { VOX, M } from '../materials.js';
 import { OPAQUE, FLUID, meshChunkFluid } from '../Mesher.js';
 import { CS } from '../Generator.js';
 import { lakeTop } from './lakes.js';
@@ -921,4 +921,3 @@ const OPEN = [[0, 1, 0], [0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0]];
 const LIST = new Int32Array(LEVEL_MAX + 8), STACK = new Int32Array(LEVEL_MAX * 4 + 16);
 // scratch for a cell's sideways candidates
 const CX = new Int32Array(4), CZ = new Int32Array(4), CL = new Int32Array(4), CM_ = new Int32Array(4), CK = new Int32Array(4), CD = new Int32Array(4);
-export { MAT };

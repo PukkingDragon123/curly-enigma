@@ -84,6 +84,7 @@ const TERRAIN_GLSL = /* glsl */`
         mult *= 1.0 + vec3(0.45, 0.75, 1.0) * c * 0.45 * wcK.y * fade;
       }
       if (h > -0.03 && h < 0.07 && near > 0.75) mult *= 0.72; // wet rock at the waterline
+      else if (h < -0.03 && h > -2.5) mult *= 1.0 - 0.2 * smoothstep(0.5, 0.9, near); // damp: water behind this wall
     }
     return mult;
   }

@@ -352,7 +352,7 @@ export function makeWaterMaterial(U, grab) {
         }
         for (int i = 0; i < ${MAX_IMPACTS}; i++) {
           vec4 im = wImp[i];
-          if (im.w <= 0.0) continue;
+          if (im.w <= 0.0 || !top) continue;
           vec3 dq = vWorld - im.xyz;
           if (abs(dq.y) > 0.25) continue;
           float d = length(dq.xz);
@@ -393,8 +393,8 @@ export function makeWaterMaterial(U, grab) {
             col = mix(col, hi * (L * 1.15 + 0.06), crest * mix(0.4, 0.2, dk) * clamp(1.0 - (dist - 3.0) / 6.0, 0.0, 1.0));
           }
           // flowing water shows its streaks and flecks running downstream
-          col = mix(col, hi * (L * 1.1 + 0.05), step(0.76, streak) * smoothstep(0.15, 0.6, fs) * 0.5);
-          fm = max(fm, step(0.86 - fs * 0.08, fleck) * step(0.3, fs));
+          col = mix(col, hi * (L * 1.1 + 0.05), step(0.78, streak) * smoothstep(0.15, 0.6, fs) * 0.35);
+          fm = max(fm, step(0.9 - fs * 0.05, fleck) * step(0.35, fs) * step(0.4, clump));
           fm = max(fm, step(1.8, hn) * step(0.35, grain));
           // reflection: the cave's glow toward grazing angles, plus what a short march finds above
           float F = 0.02 + 0.98 * pow(1.0 - nv, 5.0);
@@ -472,7 +472,7 @@ export function makeWaterMaterial(U, grab) {
           vec3 behind = grab ? texture2D(tGrab, suv + vec2(floor((s - 0.5) * 4.0) * uGrab.x, 0.0)).rgb : sheet;
           col = behind * tint * 0.55 + sheet * 0.55;
           float lip = step(0.95, run) * step(0.6, s);
-          col = mix(col, acc * (Ls * 0.9 + 0.14), clamp(lip + fm * 0.6, 0.0, 1.0) * 0.6);
+          col = mix(col, acc * (Ls * 0.9 + 0.14), clamp(lip + fm * 0.4, 0.0, 1.0) * 0.4);
           alpha = 0.85;
         }
         col = mix(col, fogCol, fogK);

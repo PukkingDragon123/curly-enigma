@@ -250,7 +250,8 @@ export class PullStage extends Stage {
   /** Stem frame at rest height y (plant-local): position + rotation. Cached per voxel row. */
   frame(y) {
     const S = this.model.S;
-    const key = Math.round(y / S * 2);
+    // (after a snap the two torn pieces are different frames at the same height)
+    const key = Math.round(y / S * 2) * 2 + (this.snapT >= 0 && y >= this.snapY ? 1 : 0);
     let f = this.frames.get(key);
     if (f && f.gen === this.gen) return f;
     if (!f) { f = { p: new THREE.Vector3(), q: new THREE.Quaternion(), thin: 1, gen: -1 }; this.frames.set(key, f); }
@@ -316,8 +317,8 @@ export class PullStage extends Stage {
       // after a snap, the torn ends stay apart (quads choose a side by their centre)
       if (this.snapT >= 0) {
         const qy = this.quadY[i];
-        if (qy < this.snapY && y > this.snapY) y = this.snapY;
-        if (qy >= this.snapY && y < this.snapY) y = this.snapY + 1e-4;
+        if (qy < this.snapY && y >= this.snapY) y = this.snapY - 1e-4;
+        if (qy >= this.snapY && y < this.snapY) y = this.snapY;
       }
       const f = this.frame(y);
       _v.set(P0[j] * f.thin, 0, P0[j + 2] * f.thin).applyQuaternion(f.q).add(f.p);
@@ -378,10 +379,16 @@ export class PullStage extends Stage {
     T.z = clamp(T.z, -0.6, 0.6); T.x = clamp(T.x, -0.5, 0.5);
     if (this.snapT >= 0) {
       this.snapT += dt;
-      this.snapUp = easeOutBack(this.snapT / 0.3) * 0.09;
+      this.snapUp = easeOutBack(this.snapT / 0.3) * 0.12;
       this.swing = Math.sin(this.snapT * 9) * Math.exp(-this.snapT * 2.2) * 0.35;
     }
     this.pose(dt);
+    if (this.tuftTop) {
+      // the torn end of the top piece rides with it
+      const f = this.frame(this.snapY + 1e-3);
+      this.tuftTop.position.copy(f.p);
+      this.tuftTop.quaternion.copy(f.q);
+    }
     this.updateRoots(dt);
     // straining: the stem flushes red and shivers; in the band it shimmers
     const strainK = this.snapT >= 0 || this.popT >= 0 ? 0 : clamp((vis.strain - 0.2) * 0.75, 0, 0.55);
@@ -459,6 +466,27 @@ export class PullStage extends Stage {
     this.dirt(p.x, this.base0 + p.y, p.z, 14, 0.9, col);
     this.dirt(p.x, this.base0 + p.y, p.z, 8, 0.6, 0xf4ecd8); // torn white fibres
     this.swing = 0;
+    // ragged white fibres on both torn ends: up from the stub, down from the piece in the paw
+    const sf = this.frame(this.snapY - 1e-3);
+    this.tuftStub = this.tuft(1);
+    this.tuftStub.position.copy(sf.p);
+    this.tuftStub.quaternion.copy(sf.q);
+    this.tuftTop = this.tuft(-1);
+  }
+  tuft(dir) {
+    const S = this.model.S, r = this.model.stemR ?? S * 2;
+    if (!this.fibreG) { this.fibreG = cubeGeo(0xf4ecd8); this.geos.push(this.fibreG); }
+    const g = new THREE.Group();
+    this.plant.add(g);
+    for (let i = 0; i < 7; i++) {
+      const a = i * 2.4 + (dir > 0 ? 0 : 1.1), rr = r * (i % 2 ? 0.75 : 0.35);
+      const len = S * (1.5 + ((i * 5 + (dir > 0 ? 1 : 2)) % 4));
+      const m = mesh(this.fibreG, this.mat, g);
+      m.scale.set(S * 0.6, len, S * 0.6);
+      m.position.set(Math.cos(a) * rr, dir * len * 0.45, Math.sin(a) * rr);
+      m.rotation.set(Math.sin(a) * 0.4 * dir, 0, -Math.cos(a) * 0.4 * dir);
+    }
+    return g;
   }
 
   // ------------------------------------------------------------ for the paws, camera and light

@@ -187,7 +187,7 @@ export function makePlan(seed, opts = {}) {
   plan.features.sort((a, b) => (a.kind === 'burrow') - (b.kind === 'burrow'));
   for (const f of plan.features) aabbOf(f);
   // lakes get a watertight shell and hold water only below rooms carved into them (fluids/lakes.js)
-  settleLakes(plan, zoneAt);
+  settleLakes(plan, zoneAt, caveDensity);
   return plan;
 }
 

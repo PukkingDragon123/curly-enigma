@@ -52,6 +52,7 @@ export class Bodies {
       mesh, pos, vel: new THREE.Vector3(...(opts.vel || [0, 0, 0])),
       rot: new THREE.Euler(), spin: new THREE.Vector3(...(opts.spin || [(Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9])),
       r, n, t: 0, life: opts.life ?? 1.6 + Math.random() * 1.2, rest: 0, dying: 0, pickup: opts.pickup || null, bounce: opts.bounce ?? 0.35,
+      float: !!opts.float, mat: opts.mat ?? null, // Fluids: wood floats, rock sinks
     };
     this.list.push(b);
     while (this.list.length > MAX) this.kill(this.list.find((q) => !q.pickup) || this.list[0], true);

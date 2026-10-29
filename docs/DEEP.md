@@ -170,6 +170,7 @@ Fluids internals (`src/deep/fluids/`):
   level: under any room, trail or burrow carved through its shell) and `f.shell` (clay, limestone
   or ice; obsidian for lava) that the stamp lays where natural caves meet the pocket below the
   waterline, so tunnels end in a wet clay wall and caves meeting the air dome open onto the lake.
+  A basin standing mostly in open cavern gets no water and no shell (and no danger marker).
 - Air↔fluid changes are written straight into `chunk.vox` and `world.edits` (they never change the
   rock mesh, so they skip `setVoxel` and `onChange`); anything that makes rock goes through
   `setVoxel`. Part-filled levels are saved under `moleforge.fluids.v1` (per world seed) and come

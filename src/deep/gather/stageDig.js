@@ -144,6 +144,6 @@ export class DigStage extends Stage {
   gripWorld(out = new THREE.Vector3()) { this.plant.updateMatrixWorld(); return this.plant.localToWorld(out.set(0.008, 0.05, -0.022)); }
   headWorld(out = new THREE.Vector3()) { return this.gripWorld(out); }
   middle(out = new THREE.Vector3()) { return out.set(0, 0.02, 0); }
-  showSize() { return { span: 0.26, w: 0.24 }; }
+  showSize() { return { span: 0.17, w: 0.15 }; }
   focus() { return { at: new THREE.Vector3(0, this.base0 + 0.04, 0), h: 0.3, w: 0.44 }; }
 }

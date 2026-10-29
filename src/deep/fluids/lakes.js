@@ -70,16 +70,45 @@ function shellOf(f, zone) {
 }
 
 /**
- * Give every lake of the plan its level (`f.wl`, meters: the stamp fills fluid below it) and its
- * shell material (`f.shell`: laid in open cave just outside the pocket, below the waterline).
+ * How much of the ground round a lake's basin (below its waterline, just outside the shell) is open
+ * cave (0..1). A basin standing mostly in open air isn't a pocket in the rock: a shell there would
+ * hang in the cavern like a floating bowl.
  */
-export function settleLakes(plan, zoneAt) {
+function openness(plan, f, wl, density) {
+  const ry = f.r * 0.55;
+  let open = 0, n = 0;
+  for (let y = f.y - ry + 0.2; y < wl; y += 0.4) {
+    const dy = (y - f.y) / ry, k = 1 - dy * dy;
+    if (k <= 0) continue;
+    const rr = f.r * Math.sqrt(k) * 1.2 + 0.15;
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      n++;
+      if (density(plan, f.x + Math.cos(a) * rr, y, f.z + Math.sin(a) * rr) > 0) open++;
+    }
+  }
+  if (density(plan, f.x, f.y - ry - 0.3, f.z) > 0) { open += 4; n += 4; } // nothing under its floor
+  return n ? open / n : 0;
+}
+
+/**
+ * Give every lake of the plan its level (`f.wl`, meters: the stamp fills fluid below it) and its
+ * shell material (`f.shell`: laid in open cave just outside the pocket, below the waterline). A
+ * lake whose basin is mostly open cavern holds no water (and gets no shell): it's just more cave.
+ */
+export function settleLakes(plan, zoneAt, density) {
   if (!plan.features.some((f) => f.kind === 'lake')) return;
   if (!plan.features.every((f) => f.bb)) return; // needs the features' boxes
   for (const f of plan.features) {
     if (f.kind !== 'lake' || f.wl !== undefined) continue;
     f.wl = lakeLevel(plan, f);
     f.shell = shellOf(f, zoneAt ? zoneAt(-f.y) : 1);
+    if (density && openness(plan, f, f.wl, density) > 0.45) {
+      f.wl = f.y - f.r * 0.56 - 0.5; f.shell = 0;
+      // no lake there after all: no danger marker, no lava glow
+      plan.dangers = plan.dangers.filter((d) => !(d.x === f.x && d.y === f.y && d.z === f.z));
+      plan.lights = plan.lights.filter((l) => !(l.lava && l.x === f.x && l.z === f.z));
+    }
   }
 }
 

@@ -286,7 +286,7 @@ export default class DigScene extends Scene {
     if (ev.landed) { this.audio.play('land', { hard: ev.landed > 8 }); this.fx.dust(pl.pos.x, pl.pos.y + 0.05, pl.pos.z, Math.min(10, ev.landed | 0), [0.5, 0.42, 0.34], 0.2); }
     if (ev.fallDamage) this.hurt(Math.round(ev.fallDamage), 'fall');
     if (ev.jump) this.energy(0.2);
-    if (ev.splash) { this.audio.play('splash'); this.fx.splash(pl.pos.x, pl.pos.y + 0.4, pl.pos.z, 1.2); }
+    if (ev.splash && !this.fluids) { this.audio.play('splash'); this.fx.splash(pl.pos.x, pl.pos.y + 0.4, pl.pos.z, 1.2); } // Fluids splashes on its own
     if (pl.climbing) { if (!pl.onLadder) this.energy(0.9 * dt); if (chance(dt * 5)) this.audio.play('climb'); }
     // the deep zones wear you down a little: frost in the Frost Vault, heat in the Magma Deep
     {
@@ -559,7 +559,7 @@ export default class DigScene extends Scene {
           const j = lumps.findIndex((o, k) => k > i && o.length && Math.abs(o[0].x - L[0].x) + Math.abs(o[0].y - L[0].y) + Math.abs(o[0].z - L[0].z) <= 3);
           if (j > 0 && chance(0.5)) { L.push(...lumps[j]); lumps[j] = []; }
           const sp = 0.6 + Math.random() * 1.2;
-          this.bodies.spawn(L, { vel: [out[0] * sp + rand(-0.6, 0.6), out[1] * sp + rand(0.4, 1.6), out[2] * sp + rand(-0.6, 0.6)], life: 0.9 + Math.random() * 0.9, bounce: 0.45 });
+          this.bodies.spawn(L, { vel: [out[0] * sp + rand(-0.6, 0.6), out[1] * sp + rand(0.4, 1.6), out[2] * sp + rand(-0.6, 0.6)], life: 0.9 + Math.random() * 0.9, bounce: 0.45, mat: L[0].m });
           n++;
         } else {
           const v = L[0];
@@ -1009,7 +1009,7 @@ export default class DigScene extends Scene {
     const zone = zoneAt(depth);
     // each stratum has its own light; under water the view goes murky
     this.post.grade = EngineFx.ZONE_GRADES?.[zone] || this.post.grade;
-    this.post.underwater = pl.headUnder ? 1 : 0;
+    this.post.underwater = this.fluids?.uwK ?? (pl.headUnder ? 1 : 0); // Fluids fades it in and out
     if (zone !== this.zone) {
       this.zone = zone;
       st.data.zoneMax = Math.max(st.data.zoneMax || 1, zone);
