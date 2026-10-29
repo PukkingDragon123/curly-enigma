@@ -37,7 +37,7 @@ const BUILD = [
 const REACH = 2.3;
 const vmModules = import.meta.glob('../fps/ViewModel.js');
 // optional systems, built separately (see docs/DEEP.md): fantasy enemies, flowing fluids
-const extModules = import.meta.glob(['./Enemies.js', './Fluids.js', './Props.js', './Clumps.js', './Prologue.js', './Explosives.js', './Ruins.js', './Traders.js']);
+const extModules = import.meta.glob(['./Enemies.js', './Fluids.js', './Props.js', './Clumps.js', './Prologue.js', './Explosives.js', './Ruins.js', './Traders.js', './Vegetation.js']);
 const col01 = (hex) => { const c = hexToRgb(hex); return [c.r / 255, c.g / 255, c.b / 255]; };
 
 export default class DigScene extends Scene {
@@ -153,8 +153,9 @@ export default class DigScene extends Scene {
     this.explosives = null;
     this.ruins = null;
     this.traders = null;
+    this.vegetation = null; // grass, ferns, roots, vines: textured cards that sway (Vegetation.js, optional)
     const ctx = { scene: this.scene, world: this.world, U: this.U, fx: this.fx, bodies: this.bodies, audio: this.audio, state: st, ui: g.ui, player: pl, plan: this.world.plan, scene3: this.scene, owner: this, params };
-    for (const [path, Name, key] of [['./Enemies.js', 'Enemies', 'enemies'], ['./Fluids.js', 'Fluids', 'fluids'], ['./Props.js', 'Props', 'props'], ['./Clumps.js', 'Clumps', 'clumps'], ['./Prologue.js', 'Prologue', 'prologue'], ['./Explosives.js', 'Explosives', 'explosives'], ['./Ruins.js', 'Ruins', 'ruins'], ['./Traders.js', 'Traders', 'traders']]) {
+    for (const [path, Name, key] of [['./Enemies.js', 'Enemies', 'enemies'], ['./Fluids.js', 'Fluids', 'fluids'], ['./Props.js', 'Props', 'props'], ['./Clumps.js', 'Clumps', 'clumps'], ['./Prologue.js', 'Prologue', 'prologue'], ['./Explosives.js', 'Explosives', 'explosives'], ['./Ruins.js', 'Ruins', 'ruins'], ['./Traders.js', 'Traders', 'traders'], ['./Vegetation.js', 'Vegetation', 'vegetation']]) {
       const load = extModules[path];
       if (!load) continue;
       try { const mod = await load(); this[key] = new mod[Name](ctx); } catch (e) { console.warn(Name + ' failed', e); }
@@ -316,6 +317,7 @@ export default class DigScene extends Scene {
     if (this.props) this.props.update(dt, { player: pl, eye: pl.eye(), time: this.time });
     if (this.ruins) this.events(this.ruins.update(dt, { player: pl, eye: pl.eye(), time: this.time }));
     if (this.traders) this.events(this.traders.update(dt, { player: pl, eye: pl.eye(), time: this.time, busy }));
+    if (this.vegetation) this.events(this.vegetation.update(dt, { player: pl, eye: pl.eye(), time: this.time, busy }));
     if (this.enemies) {
       this.events(this.enemies.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy, lamp: this.U.lampRange.value, blocking: !!this.blocking, blockT: this.blockT || 0 }));
     }
@@ -1189,7 +1191,7 @@ export default class DigScene extends Scene {
       if (d < l.r + 14) near.push([d - l.r * 0.3, l]);
     }
     // glowing enemies and hot fluids light the rock too
-    for (const src of [this.enemies, this.fluids, this.props, this.clumps, this.prologue, this.explosives, this.nugget, this.traders, this.ruins]) {
+    for (const src of [this.enemies, this.fluids, this.props, this.clumps, this.prologue, this.explosives, this.nugget, this.traders, this.ruins, this.vegetation]) {
       for (const l of src?.lights?.(eye) || []) near.push([Math.hypot(l.x - eye.x, l.y - eye.y, l.z - eye.z) - l.r * 0.3, l]);
     }
     near.sort((a, b) => a[0] - b[0]);
@@ -1296,6 +1298,7 @@ export default class DigScene extends Scene {
     this.explosives?.dispose?.();
     this.ruins?.dispose?.();
     this.traders?.dispose?.();
+    this.vegetation?.dispose?.();
     this.events(this.clumps?.dispose());
     this.fluids?.dispose();
     this.world.onChange = null;
