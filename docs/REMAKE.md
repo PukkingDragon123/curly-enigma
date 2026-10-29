@@ -223,28 +223,25 @@ scene.add(rig.root); rig.play('walk'); rig.face(yaw); rig.update(dt); /* exit: *
 
 ## Journey intro, surface, post shaders, lift map (journey part): as built
 
-**The journey** (`src/scenes/FallScene.js`, ~37 s, skippable by Skip / Esc / a tap): golden hour
-on an old forest trail (`src/bookends/forest.js`). A crane down the trail into the sun, a tracking
-shot of the hero and Nugget's coop (`makeCoop`, loaded with `import.meta.glob`; a stand-in hut in
-`bookends/journey.js` if the file is ever missing), the stream: he takes the log footbridge, the
-coop wades and splashes. The clearing: the strange chest glints in a beam of light, he stops,
-stares, Nugget squawks, he walks up and reaches for it. The crust sags, cracks race over the
-clearing, it breaks, the chest and a shower of coins and gems go down with him, a fall down the
-dark shaft (`bookends/fallshaft.js`, streamed in while they walk) seen from below against the
-shrinking hole, then darkness: muffled hearing (a lowpass on the master bus, restored on exit), a
+**The journey** (`src/scenes/FallScene.js`, ~42 s, skippable by Skip / Esc / a tap; rebuilt in wave 4,
+see "As built: the forest (wave 4)" at the end of this file): golden hour in an old forest. The
+hero and Nugget's coop (`makeCoop`, loaded with `import.meta.glob`; a stand-in hut in
+`bookends/journey.js` if the file is ever missing) walk the trail, cross the stream (he takes the
+log footbridge, the coop wades), find the strange chest glinting in a clearing; it spills gold light,
+the crust sags, cracks race, it breaks, a fall down the dark shaft (`bookends/fallshaft.js`, streamed
+in while they walk), then darkness: muffled hearing (a lowpass on the master bus, restored on exit), a
 slowing heartbeat, a few heavy blinks (iris) at the speck of light far above. Ends with
 `goto('home', { from: 'fall' })`.
-- Files: `bookends/forest.js` (layout: trail, stream, clearing; terrain, trees, undergrowth, props,
-  light shafts, mist, birds, butterflies, backdrop treelines), `forestfx.js` (sun-dapple toon
-  material keyed to a canopy-openness map, the stream shader, mist sheets), `foresttrees.js` (tall
-  pines at two levels of detail, stump, footbridge, signpost; chunked instancing), `chest.js` (the
-  chest, the spill, the breakable crust, the crack decal), `journey.js` (coop loader, birdsong,
-  heartbeat, muffle). The old meadow (`bookends/meadow.js`) is gone; `landscape.js` and
-  `meadowfx.js` are still used for oaks, birches, bushes, grass and sprites.
-- Phones (and the 'Simple'/'Off' shader levels) get a lighter forest (`buildForest({ lite })`).
-- Test hooks: `?scene=fall&at=secs` (start later), `&freeze=1`, `&lite=1`;
-  `scene.debug.{ at(secs), time(), shot(), state(), skip() }`. `scene.skip()` is safe at any time
-  (if it lands mid-transition it waits for it, then leaves for `home`).
+- Files: `bookends/forest.js` (layout and build), `bookends/forest/*` (air and sky, trees, floor,
+  grass, far trees, animals, sounds), `forestfx.js` (the forest's toon material, the stream, mist),
+  `foresttrees.js` (stump, footbridge, signpost; chunked instancing), `chest.js` (the chest, the
+  spill, the breakable crust, the crack decal), `journey.js` (coop loader, heartbeat, muffle),
+  `meadowfx.js` (shared uniforms, sprite sheets). `landscape.js` and the old meadow are gone.
+- Tiers: full, lite (phones, 'Simple'/'Off' shaders, `&lite=1`), software (SwiftShader/llvmpipe; `&lite=0` forces full).
+- Test hooks: `?scene=fall&at=secs` (start later), `&freeze=1`, `&lite=0|1`;
+  `scene.debug.{ at(secs), time(), shot(), state(), skip(), perf(), tris(), cam(), hold() }`.
+  `scene.skip()` is safe at any time (mid-transition it waits; while the forest is still being
+  built it cancels the build), then leaves for `home`.
 
 **Post shaders** (`src/core/Engine.js`). On top of outlines, dither and vignette: bloom (quantized,
 dithered halos), god rays (`raysDir` toward a sun, `raysPos` toward a lamp or a hole, or
@@ -580,12 +577,15 @@ Query strings: `?scene=home&fresh=1&from=fall` (wake-up), `?scene=forge&fresh=1&
 - `plan.burrows: [{ id, kind: 'trader'|'herbalist'|'raccoon'|..., x, y, z, yaw, zone }]`
 - `plan.ruins: [{ id, kind, x, y, z, yaw, r, zone, seed }]`
 - `plan.trails: [{ id, pts: [{x,y,z}...], from, to }]` (old dug tunnels joining lifts, burrows,
-  ruins and the town)
+  ruins and the town) — **empty since wave 4** (no human works in the caves; burrows have natural
+  `passage` features, `plan.ruins` are dungeons; `plan.remains` and `plan.signs` are where the lost
+  miners and the lift signs are: see "As built: natural caves, dungeons, the lifts")
 - biomes now include `4` **dino caverns** (huge caves, ferns, giant bones) for the creatures part.
 
 Each is also a plan feature (`kind: 'burrow' | 'ruin' | 'trail'`, with a `bb`) whose voxels are
 stamped by the owning part's `stamp*(f, vox, X0, Y0, Z0, CS)` (pure: it may run in a worker).
-Voxel material ids (`src/deep/materials.js`): base 0–42, ruins 96–119, NPC burrows 120–127, ores 128+.
+Voxel material ids (`src/deep/materials.js`): base 0–42, dungeons and lift stations 64–79, built
+blocks 80–95, ruins 96–119, NPC burrows 120–127, ores 128+.
 
 ## NPC burrows and traders (traders part): as built
 
@@ -1910,9 +1910,348 @@ better, and caves have vines and no grass: mushrooms and dirt, not much grass."
 | **Natural caves & dungeons** | `Generator.js` `addPlaces`/stamps, `src/deep/gen/*`, `src/deep/ruins/*` + `Ruins.js` (ruins become Minecraft-like dungeons), `Props.js` placement tables, `src/deep/veg/flora.js` (vines, mushrooms, dirt; little grass), the lift stations' look and protection (unbreakable), `Traders.js` only for the trails that led to the burrows |
 | **Building** | new `src/deep/Build.js` (Minecraft-like placing of blocks, torches/lanterns, ladders, doors…), the `build` tool section of `DigScene.js` (`build()`, `cycleBuild`, the build hotbar), `Dig.js` (which tool breaks what: built blocks need the right tool), block items in `data/items.js` (additive) |
 | **Forest** | the journey / surface forest: `src/bookends/journey.js` and its art, `src/scenes/FallScene.js` visuals |
-| **House** | `src/home/house.js`, `houseProps.js`, `surfaces.js`, `plan.js`, `vista.js`, `shell.js`, `walls.js`, `src/scenes/HomeScene.js` structure, `src/iso/homeLayout.js`; old saves must load the new house (never the old bare cave) |
+| **House → old cave camp** | the user clarified: "new house: old house in a cave, like a camp, super old, bad". Old Star's home becomes an old, run-down camp in a natural cave hollow (shack of warped planks and tarps against the rock, sagging cot, fire pit and kettle as the cooking spot, a crude stone forge, a rusty lift cage in a rock shaft, crates, an oil lantern), characterful, not empty. Owns `src/home/house.js`, `houseProps.js`, `surfaces.js`, `plan.js`, `vista.js`, `shell.js`, `walls.js`, `src/scenes/HomeScene.js` structure, `src/iso/homeLayout.js`; old saves and every entry path load the camp |
 | **Lead** | `DigScene.js` (except the build section), `World.js`, `Terrain.js`, `scripts/e2e.mjs`, integration |
 
 Rules as in wave 3 (no git, build passes, keep debug hooks and e2e working, `E2E_UNTIL`, phones portrait and
 landscape, performance, screenshots in `shots/<part>/`, an "As built" section here, don't edit another
 part's files except the small hooks named above; use unique file names in the shared scratchpad).
+
+### As built: natural caves, dungeons, the lifts (wave 4)
+
+The ask: "Human infrastructure: make it 0 now, but have roguelike dungeons etc." · "the elevator area
+can't be destroyed, make it more like Minecraft too" · "caves have vines and no grass: mushrooms and
+dirt, not much grass."
+
+**No human works in the caves.** The generator makes no trails any more (no timber frames, sleepers,
+rails, plank decks, ladder shafts, cave-ins, trail lanterns), the old passage from the burrow toward
+Deep Town is a string of natural pockets without lanterns, and Props' tables only grow what grows or
+lies there naturally (glowing mushroom clusters, shelf fungus, roots, vines, bones, fossils, crystals,
+obsidian, vents, ice): no posts, crates, barrels, carts, rope, ladders, lanterns, lantern posts,
+signposts, urns, charred timbers or miners' camps (`placeCamp` is gone). `src/deep/ruins/trailDress.js`
+is deleted; `src/deep/gen/trails.js` is a stub keeping `TRAIL_W`, `trailCollapse()` (→ null) etc. for
+old imports. Kept: the lift stations, the NPC burrows, Deep Town and its gate, Old Star's dig.
+
+**Natural passages** (`src/deep/gen/passages.js`, feature kind `passage`, pure): every burrow's door
+opens onto a winding cave tunnel (rounded, lumpy, a flat floor, 0.8–1 m radius) that `planPassage`
+lays to the nearest open, floored cave within 26 m in front of the door; one more joins the mine
+entrance's doorway (narrow past Old Star's loam plug, so his lesson keeps its plug) to the Trading
+Post. They never cut bedrock, burrow walls, anything made (ids 43–127) or water.
+
+**Dungeons** (`src/deep/ruins/dungeon.js`; `plan.ruins` and the `ruin` features are dungeons now; the
+old hall/shrine/vault/well layouts are deleted). Built on a 0.5 m block grid (8 voxels; every block one
+material, so walls read block by block), hidden in solid rock: the generator (`placeDungeon` in
+`Generator.addPlaces`, its own rng stream) puts each one where its rooms are rock all through, far
+from the places, lakes and lairs, and turns its front toward the nearest cave you can stand in; a short
+natural crawl (part of the dungeon's stamp) joins them. Caves that run into a dungeon break through its
+walls and ceiling (only floors, the door wall and water-holding walls are always laid).
+- **Monster Room** (`cell`, zones 1, 2, 5 + two plain ones in every zone): a cobble / mossy cobble room
+  (3–4 m, 2 m high), a monster spawner in the middle, two chests by the walls, cobwebs in the corners
+  and one across the way in (a real, sticky web when the creatures part is loaded), a lost miner's
+  remains. Behind the back wall a sealed strongroom: a hidden switch behind a cracked panel
+  (`switch`, odd zones) or four levers in wall niches pulled in the lintel's order (`levers`).
+- **Flooded Crypt** (`crypt`, zones 2, 3): a stone-brick hall (courses with mortar, mossy and cracked
+  bricks) lined with two rows of tomb niches (skulls, bone dust), a spawner, a chest alcove, a dart
+  trap by the way in; a stair of quarter-block steps goes down into a lower crypt full of black water;
+  the sealed door is down there. The drain wheel at the top of the stair empties it layer by layer
+  (`valve`; it waits for the chunks below to stream in, and a drained crypt stays dry on reload).
+- **Starfolk Vault** (`vault`, zones 3, 5, 6): a tall antechamber of the Starfolk's fitted stone on four
+  marble pillars with gold bands, a gold-edged mosaic path, a frieze, one corner fallen in (a heap of
+  blocks under a broken chimney), braziers; three symbol drums on an altar under a jade mural
+  (`dials`) or three pressure plates (`plates`). Stone guardians (golems; crystal golems from zone 3)
+  wake when you walk in. Its strongroom is the old gilded treasure room.
+- **Deep Fortress** (`fortress`, zones 4, 6): a long dark-brick hall on half pillars (nether-brick
+  look: `XBRICK*`), two side rooms with fire-imp spawners and chests, a lava pit behind iron bars, a
+  dart trap; a sun crystal and three mirrors (`beams`) or four levers open its door.
+- Every puzzle kind still turns up (cell switch/levers, crypt valve, vault dials/plates, fortress
+  beams/levers); the eleven dungeons with a strongroom keep the ids `R10 R20 R21 R30 R31 R40 R41 R50
+  R51 R60 R61` and their relics (`ruin.relic`, the relics' `where` texts updated) in `plan.ruins` (so
+  the quests, the map and the creatures part's wraiths see the same eleven places as before); the
+  plain monster rooms are `plan.rooms` (`R12, R13, R22, …, R63`: no door, no relic, found only by
+  exploring; same `ruin` features, run by Ruins.js too). Lore carvings still read (`LORE_KIND`: cell →
+  hall texts, crypt → well, vault → vault, fortress → shrine).
+- **Spawners** (`site.js`): an iron cage block (`M.SPAWNER`, a frame with bars, a flame turning inside)
+  that breeds the dungeon's creatures through `enemies.spawnGroup` every 7–14 s while the mole is
+  within 10 m (2–4 alive at once by zone; it respects `enemies.autoSpawn`, `peace` and safe places).
+  Dig a quarter of its cage away and it breaks (`act { type: 'spawner', id, kind, zone }`). Kinds: slimes
+  and spiders up top, kobolds in the clay, wraiths in the crypts and deep, fire imps in the fortresses.
+- **Chests**: the strongroom's (gold, the zone's gems, the relic, as before) and the dungeon chests
+  (plain wooden ones: some gold and 2–3 things for the depth: ingots, dynamite, torches, food, silk, a
+  gem, now and then a weapon blueprint).
+- **Traps**: a pressure plate in the floor; three darts fly out of holes in the wall (damage by zone,
+  `{ damage, kind: 'dart', push }`), every 3 s while you stand on it.
+- **Lost miners' remains** (one in every dungeon with a strongroom): bones, a snapped pick and a
+  satchel; E: a purse of gold the first time and a page of Hobb's journal (`lore.readJournal`), `act
+  look { at: 'cavein' }` (the quests' old cave-in steps are done here now).
+- New voxel materials, ids 64–79 (`src/deep/ruins/mats.js`, `RM.*`, all `made: true`; names prefixed so
+  they don't clash with the building part's `BM.*` in `M`): `DCOB DMOSSCOB DBRICKA DBRICKB DMOSSBRICK
+  DCRACKBRICK DMORTAR XBRICKA XBRICKB XMORTAR SPAWNER BARS`, and the lifts' `LIFTBRICK LIFTPLANK
+  LIFTRAIL LIFTCOB` (`unbreakable`, `clean`).
+
+**The lift stations** (`src/deep/gen/lifts.js`, features `lift` / `stop` / `shaft`, stamped last):
+Minecraft-plain cobblestone rooms (smooth stone at the corners and under the ceiling), a plank car
+framed in iron in the middle, iron guide posts at its corners and rails up the 1.5 m shaft over it
+(capped 6 m up), a doorway in the +z wall; the town shaft is lined with cobble (a smooth band every
+2 m) with a rail each side, its stops are stone rooms opening onto it with a doorway east. Every voxel
+of a station is unbreakable (`Dig.breakable` already refuses `MAT.unbreakable`; blasts go through it),
+and the shell is laid even where a cave runs through. Nothing grows on them (`MAT.clean`, a one-line
+hook in `TerrainMaterial.surfacePalette`). The fittings are models (`src/deep/ruins/liftKit.js`, run
+by Ruins.js): a lever on a stone post beside the car (E: it clunks over and the lift map opens;
+anywhere in the room still works too), a plank sign with the station's name and depth (E: reads it,
+`act look { at: 'signpost' }`), two torches. Props no longer dresses lifts (`props/lifts.js` unused).
+
+**Vegetation** (`src/deep/veg/flora.js`, new sprites in `veg/sprites.js`): floors grow mushrooms of
+many kinds — brown caps, red toadstools, ink caps, tall glowing stalks (cyan, blue, violet), glowing
+buttons, ember caps (magma), frost caps — and pebbles; vines (cave vines hung with glow berries
+lower down) and roots hang from the roofs; mushrooms grow out of walls. Grass only in the first 6 m
+and, thin, in the mossy grotto and the dino caverns (still lush: ferns, moss, flowers). Generator
+`decorate()`: plain cave floors in zones 1–3 are packed dirt and gravel (a little moss only near the
+top); the grotto keeps its moss. A little grows on the dungeons' mossy blocks (FERT).
+
+**Test hooks** (`scene.ruins.debug`): `list()` / `dungeons()` (id, kind, name, puzzle, zone, plain,
+open, spawners, chests, relic), `find(kind | 'plain')` (the nearest), `go(id, where, look)` (where:
+`entry | mid | door | room | puzzle | [a, y, b]`; look: `door | chest | mid | spawner | lever | switch
+| dials | beams | plates | valve | shaft | gallery`), `solve`, `reset`, `press(id, i | 'chest')`,
+`loot(id, i)`, `spawner(id, i, 'info' | 'go' | 'break')`, `lift(id, 'go' | 'pull')`, `puzzle(id)`;
+`trail()` / `sign()` return null. The e2e step "deep: a ruin puzzle opens to treasure" runs unchanged
+(R10 is a monster room with the hidden switch).
+
+**Hooks the lead still needs** (other parts' files; not edited):
+- `src/core/questWhere.js`: `caveIns(plan)` → `plan.remains` (`[{ x, y, z, ruin }]`, the lost miners'
+  remains), `trailEnds(plan)` → `plan.signs` (the lift stations' signs); the `g.ruin` labels
+  `{ hall, shrine, vault, well }` → `{ cell: 'A monster room', crypt: 'A flooded crypt', vault: 'A Starfolk
+  vault', fortress: 'A deep fortress' }` (`DUNGEON_NAMES` in `ruins/dungeon.js`); `SIGHT_NAMES.cavein` →
+  'A lost miner's remains', `.signpost` → 'A lift station sign'.
+- `src/data/sideQuests.js` hints that mention trails, cave-ins and signposts (lo_fenn_line, v_tuck_signs,
+  v_tuck_pick, lo_hollis_shaft7) and "halls of fitted stone"; `lo_talpa_shrine` has `where: { ruin:
+  'shrine' }` (now `vault`: the drums are there). `src/ui/Journal.js` sight labels (cavein, signpost),
+  `src/ui/Survey.js` "Old ${kind} of fitted stone" (use `DUNGEON_NAMES`), `src/data/lore.js` header.
+- The building part's block shader (`src/deep/build/shader.js`) could draw the dungeon cobble / stone
+  bricks / deep bricks and the lift stone with its block patterns too (ids 64–79), if it takes a list
+  of ids → patterns.
+
+Screenshots: `shots/natural/` (`before-*` the old trails, cages, ruins and grass at seed 4242;
+`after-*` the same and the new dungeons, lifts, passages, caves; `dev/` the iterations).
+
+### Building: voxel ids claimed (wave 4)
+
+Material ids **80–95** are taken by the building part (placed blocks: cobble, stone bricks, clay bricks,
+planks, logs ×3 axes, glass, dirt block, torch bracket, lantern hook, door ×2, chest, workbench; see
+`src/deep/materials.js` "building"). Placed blocks sit on a **0.5 m grid** (8×8×8 voxels). Protected
+areas (no placing, no breaking placed blocks): lift rooms, Deep Town, NPC burrows, the home, Old Star's
+dig during the lesson; the natural-caves part makes the lift stations themselves unbreakable.
+(Full "As built" notes follow when the part is done.)
+
+### As built: the cinematic tutorial (wave 4)
+
+A new game is now a forced, cinematic onboarding: cutscenes with letterbox bars between the lessons,
+and in between one control at a time, each with a prompt card drawn for the device, the world held
+to the lesson, and the HUD coming in piece by piece. Quest / act / flag outcomes are unchanged
+(`lesson` steps, `talk oldstar`, `reach`, `flag('fallen' | 'nugget' | 'prologue')`, `quests.start('lessons')`).
+
+**The layer: `src/ui/Onboard.js` + `onboard.css` (`game.ui.onboard`, made by `UI` before the tutor).**
+- `TUT` levels: `CINEMA 0 · LOOK 1 · WALK 2 · USE 3 · QUEST 4 · DIG 5 · TOOLS 6 · PACK 7 · MAP 8 · GUARD 9 · FULL 10`.
+  `ui.setTutorialLevel(n, { force, reveal })` (UI.js) raises it (never lowers unless `force`). Each HUD
+  piece is hidden by `#ui.obh-<piece>` until its level: `xh` crosshair (LOOK) · `stick` (WALK) · touch `use`
+  (USE) · `quest` strip + waymarks (QUEST) · `belt`, touch `dig`, jump/crouch (DIG) · touch `tool` (TOOLS) ·
+  `pack` backpack + load gauge (PACK) · `book`, `radar` (MAP) · touch `guard` (GUARD) · touch `snack`,
+  `purse` (gold, lantern, buffs, skill chip, calendar) and the home's build button (FULL). A piece that
+  comes in pops in (scale + glint), with a ring of sparkles and a name tag ("Backpack · I", "Your task · B",
+  "Radar · M map"…), once the player can see it (first person, no panel, no cutscene). The scenes' own key
+  hints (`.hint-keys`) stay. Saved in `state.data.onboard = { level, seen: [control ids], home, done }`,
+  created by the wake-up (`onboard.begin()`); **a save without it is at FULL** (old saves, `?fresh=1&scene=…`
+  tests: the whole HUD as before). `lesson cook_done` or `lesson skip` → FULL.
+- `cinema(on, { skip, hold })`: letterbox (the cutscene talk's own bars through `game.convo.bars(on)` when
+  it has them, else ours, the same height), the HUD tucked away, and a **hold-to-skip** ring at the bottom
+  left: hold Space / Enter / E (a tap only carries a line on), or hold the ring on a touch screen;
+  `skip()` runs once when the ring is full (~1.1 s; it drains when let go).
+- `teach(id, opts)` → `{ promise, settled, done, complete(), close(), id }`: the prompt card ("Learn" ribbon,
+  or "Tip" for `optional`): a glyph, a title, a line, a brass meter fed by `opts.progress()` (0..1), done by
+  `progress ≥ 1` or `opts.done()`; then a green check stamps on, sparkles, `success` + `sparkle` sounds, it
+  flies off. Per device (`CONTROLS`): PC key caps that light while held (WASD cluster, Shift, Space, C, E, F,
+  Q, I, B, M, 1–8) and a pixel mouse whose button lights; touch: the real control's art in the card, and on
+  the real control a pulsing ring and a pointing mole paw (`spot`), a ghost paw dragging across the right
+  half for "look". Options: `title`, `subPc` / `subT`, `spot`, `min`, `optional`, `place: 'low' | 'left'`.
+  A desktop prompt that needs the mouse says "Click the view first" while the pointer isn't caught.
+- `spot(target, { label })`: ring + paw on a DOM element, a touch control name (`stick use dig jump crouch
+  block snack tool`), a HUD piece (`pack book radar belt quest menu`) or a selector. `mark(pos, { label })`:
+  a bobbing gold chevron (and a label) over a world point, an arrow at the screen edge when it's off screen.
+  `talk(html, { who, mood, wait, camera }, fallback)`: a line that waits goes through `game.convo.say`.
+- Hooks in shared files: `UI.js` (import, `this.onboard = new Onboard(this)` before the tutor,
+  `setTutorialLevel`, `onboard.update(rdt)` in `update`, `onboard.clear()` in `clearWorld`, and the
+  closed-handle guard in `closePanel`);
+  `TouchControls.js` (`ui.touchEl(name)` → the real control, `ui.touchHi(el, on)` → `.tc-hi`).
+
+**Home (`src/home/wake.js`, `src/home/lessons.js`).**
+- The wake-up is a cutscene (letterbox, hold to skip): the eyelids as before (only the canvas is blurred,
+  never the interface; no muffled card), the view settles on Old Star and pushes in while he talks
+  (cutscene talk, close shot): five short lines, then you get up. A skip dips to black and cuts to its end.
+- Then, one control at a time (`scene.homeTutor()` → `{ step, … }`): **look** (crosshair comes in; the
+  meter fills as you look round) → **walk** to him at the top of the steps (the stick comes in; a marker over
+  him) → **talk** (E / the hand; the use button comes in; near him E works without aiming) → a short
+  cutscene: his first task → the **quest strip** unrolls → **follow** him down to the lift (he waits and
+  beckons when you fall behind, not when you've run ahead; a "Shift runs" tip on a PC) → **ride down** (E).
+  Soft walls: each step has its rooms (`ZONES`); stepping into another room puts you back at the last good
+  spot, he calls you back, and the view swings round to the goal. When you haven't looked for a while the
+  view eases toward what matters. Only what the step needs can be used (`ALLOW`); during the forge / cook
+  stages the lift, the front door, the build bench and the bed wait (`LOCKED`). `debug.interact()` still
+  reaches anything (the e2e's "Ride down to the dig" works from any step).
+- Back with the copper / the blade / the meal: cutscenes (he walks over, sniffs, talks), then a marker and
+  a "Forge with Old Star" / "Cook with Old Star" prompt at the anvil / the range, the house held to the way
+  there. The graduation cutscene ends with the whole HUD coming in and a "Q: snack" tip.
+- A game picked up mid-tutorial (reload, sleep) resumes the step (`state.data.onboard.home`).
+
+**The dig (`src/deep/Prologue.js`).** Cutscene beats (`beat(keys, { look })`: bars, held in place, the
+view eased to what he shows you, his lines one by one through the cutscene talk; a hold skips): stepping
+out of the cage, the plug, the welcome, the copper, the geode, the ledge, the scratching. Prompts and levels:
+**Dig** (the belt and the pick button come in) → **Crouch** tip in his crawl → **Pick it up** → the chisel
+(TOOLS: the tool button) → **Chip it clean** (meter = how clean) → **Bag it** → **Your backpack** (PACK:
+press I / tap it) → **Take the amethyst** → **The build tool** → **Build a ladder** (meter = rungs) →
+**Take Old Star's map** → **Open your map** (MAP: radar + book; M / tap the radar) → **Hop down** (Space) →
+**Guard up!** (GUARD: the shield button; meter = blocks) → **Bonk it!** → **Ring the bell**. The L0 cage
+is locked until that last step ("The cage: after the lesson"; he calls you back). A lesson picked
+up half way gets its level (`LEVEL_AT`); skipping goes to GUARD. Test hooks: `prologue.debug.tut()`
+(`{ beat, prompt, level }`), `debug.cut()` (skip the beat), `debug.run(sec, carry = true)` (carries waiting
+lines on, so step-by-step tests still move).
+
+**The forge (`src/forge/tutorial.js`)** opens with a cutscene (two lines; it ends as soon as work starts, so
+nothing waits behind it) and prompts at the bottom of the screen: smelt your copper (click / tap), pump the
+bellows (hold the button or Space / the big button; meter = time in the band), forge a dagger, heat it,
+to the anvil (E), hammer (hold, let go), grind, balance (drag). `scene.lesson.debug.prompt()`.
+**The kitchen (`src/cooking/lesson.js`)**: a cutscene opening (it ends when cooking starts), a prompt for the
+pantry and one per step (chop / simmer / season… each with its own control), top left.
+
+**Test hooks**: `ui.onboard.debug.{ state(), level(n), complete(), skip(), cinema(on), hidden(), history(),
+teach(id), spot(t), clear() }`; `scene.homeTutor()`, `scene.startHomeTutor(step)` at home.
+Screenshots: `shots/tutorial/` (`pc-*` 1280×720, `ph-*` 390×844 touch, `phL-*` 844×390 touch;
+`before/` the old wake-up).
+
+**With cutscene talk.** Lines Old Star waits on go through `ui.onboard.talk()` → `game.convo.say('oldstar',
+html, { mood, wait: true, camera })` (the wake-up asks for `camera: 'close'`); passing tips stay on his card
+(`star.say(html, { convo: false })` at home, `ui.tutor` in the dig / forge / kitchen) so they never hold the
+player. The letterbox is the convo's (`game.convo.bars(on)`) with ours under it at the same height; the
+skip ring sits above both (z 6). The forge and the kitchen end their opening talk as soon as work starts
+(the forge's bellows and the kitchen's steps pause while a talk holds the player). e2e drivers carry lines
+on with `ui.tutor.next()` (it forwards to `game.convo.next()`).
+**Open with cutscene talk (seen 10:15–11:30):** `Convo.endSession` sets `s.hold.closed = true` before
+`ui.closePanel(s.hold)`, which then returns early, so a closed `convo` handle stays on `ui.panelStack` after
+every talk: `isPanelOpen()` stays true, `#ui.panel-open` hides the touch controls and the tutor card, and the
+first-person scenes treat the player as busy (no walking, no E). The tutorial's own layer ignores closed
+handles (`onboard.panelUp()`), and since `ui.closeAllPanels()` looped forever on such a handle (a hang on the
+next scene change), `UI.closePanel` now takes an already-closed handle off the stack (and clears `panel-open`
+and re-enables input when it was the last): a marked 6-line guard. Please still close the hold the usual
+way. Also: with `bars(true)` and no line, the empty floating label shows at the top left.
+
+### Cutscene talk: the API (wave 4, in progress; "As built" follows)
+
+`game.convo` (also `ui.convo`; `src/ui/Convo.js`, `convo.css`), the camera director `game.convo.director`
+(`src/fx/director.js`), speakers `src/fx/speakers.js`. Talking to someone zooms in on their real 3D
+model (close-up / over the shoulder / two-shot, by the room there is), letterbox bars, you're held
+(the talk sits on `ui.panelStack` with no backdrop: `isPanelOpen()` is true, Esc leaves), the words
+float beside their head (typed, their voice), answers float in on your side; then the camera eases back.
+```js
+const r = await game.convo.play({ who, name, lines: ['Hi!', { text, mood, who, camera, gesture, wait, dur, sub, key }],
+                                   camera: 'auto', choices: [{ label, sub, value, primary }], keep, hold });
+// r = { choice (value or index) | null, index, skipped }
+game.convo.say(who, html, opts) → Promise<r>          // or the tutor's shape: say(html, { who, mood, wait, dur, key, rig, head })
+game.convo.ask(who, html, choices, opts) → Promise<value | null>
+game.convo.bars(on)        // the letterbox alone, for your own scripted scenes (a talk keeps its own)
+game.convo.end()  .next()  .pick(i)  .active → { who, html, mood, wait, typed, held, choices, camera } | null
+game.convo.speaker(who)    // the 3D speaker here, or null
+```
+- `who`: `'oldstar'` (home: the house's Old Star; the dig: `scene.prologue.star`), `'rocco' | 'trader' |
+  'herbalist' | 'outpost'`, a Deep Town shop id, a villager id or a name, or an object: an Actor, a town
+  folk record, a burrow Folk, Old Star, anything with `rig` (+ `head(out)`). In the tutor's shape,
+  `rig` / `head()` are used when there is no model of `who` in this scene.
+- `camera`: `'auto'` (a two-shot to open, close-ups for their lines, over your shoulder for answers),
+  `'close' | 'ots' | 'two' | 'wide' | 'hero' | 'face'` (first person, turned to them) | `'none'`.
+  Only scenes with the director hook move the camera (home, town, the mine); elsewhere (forge, kitchen)
+  the words float by the speaker's head on the scene's own camera.
+- `wait` (default true): the player carries the line on (click, tap, E, Space, Enter); `wait: false`
+  goes after `dur` seconds (a wick burns down). `hold` (default true): the cutscene proper. In the
+  tutor's shape (`say(html, {...})`) `hold` defaults to `wait`: a tip that doesn't wait floats by
+  Old Star without stopping you or moving the camera. `key`: the same key again while it's up only
+  updates the words. Lines said within 0.4 s of each other stay one cutscene (no zoom out and in).
+- Markup: `<b> <i> <small> .gold-txt`, `<em>` (shaky), `<big>` (loud), `<w>wavy</w>`.
+- Drivers and tests: `ui.tutor.active` / `ui.tutor.next()` report and carry on a convo line too
+  (`active.convo: true`), so the e2e loops `if (t.active?.wait) t.next()` keep working.
+- Routed through it already: `openTalkMenu` (when the speaker is here in 3D; `convo: false` keeps the
+  board), `questTalk` (offers, hand-ins, choices, tales, reminders), Old Star's `star.say` at home
+  (`convo: true`, or `wait: true` while he isn't scripted, or while a talk with him is up; `convo:
+  false` keeps the card), E on him, town folk chat, keepers (a word at the window, then the shop),
+  burrow keepers and Rocco (`src/deep/traders/talk.js`: their news, then the counter on the tab asked).
+- Hooks (one line each, marked `[convo hook]`): `HomeScene.update`, `TownScene.update`,
+  `DigScene.update`: `this.game.convo?.director?.apply(camera, dt)` right after the camera is set.
+- **For the cinematic tutorial** (answers to your notes above): your call shape `game.convo.say(html,
+  { who: 'oldstar', mood, wait, key, dur, rig, head })` works as is (a promise; `wait: true` waits for
+  the player and is a held cutscene; a line that doesn't wait floats by Old Star without holding you).
+  `game.convo.active` → `{ wait, … }` and `game.convo.next()` are there (and `ui.tutor.active/next()`
+  forward to them). The letterbox is `game.convo.bars(on)`. **A bug to fix on your side:**
+  `Onboard.js` toggles the class `panel` on `.ob-layer` while a window is open, and the generic `.panel`
+  style (styles.css: parchment background, border, shadow) paints the whole screen as paper under
+  every panel and every talk; please rename that class (`convo.css` guards it during a talk meanwhile).
+
+### As built: the forest (wave 4)
+
+The user: "Make the forest scene 100x better." The journey (`src/scenes/FallScene.js`, ~42 s) now
+plays in an old forest at golden hour, built by `src/bookends/forest.js` from `src/bookends/forest/*`:
+
+- **Air and light** (`forest/atmos.js`): layered exponential height fog with aerial perspective
+  (golden toward the low sun, blue-green away from it, thick in the hollows, thin in the crowns),
+  quantized and dithered; every forest material ends in `faApply`. A painted sky (banded gradient,
+  drifting clouds lit peach and rose from below, a crisp sun with a halo) whose horizon is the fog's
+  own colour. `setAir(k)` blends it all to the dark of the shaft. A golden-hour grade object (warm
+  highlights, cool shade), bloom, post god rays toward the sun, ~20 camera-facing light shafts that
+  breathe with the canopy (motes drift in them). The canopy-openness map is splatted from the real
+  crowns, so the sun dapples fall where the leaves open.
+- **Material** (`forestfx.js` `forestToon`): dappled sun, dimmer and greener sky light under the
+  canopy, the fog, crown sway (by world height) or plant sway (by each plant's own height), leaf
+  shimmer (its cell size is a uniform: one program for every leaf LOD), backlit translucent leaves.
+  The stream ribbon had been back-face culled (invisible) since it was made; it is double-sided now.
+- **Trees** (`forest/trees.js`): `makeBroadleaf` (oak, beech, maple, birch: a branch skeleton,
+  lumpy sun-lit leaf clumps, moss on the shady side) and `kind: 'giant'`: six ancient giants (a gate
+  over the trail, one by the stream, three round the clearing) with buttress roots, a hollow at the
+  foot, a coat of moss, ivy and shelf fungi; `makeConifer` (spruce, pine), `makeSnag`. Instanced per
+  variant and chunked; near trees detailed, the rest of the box low-res, and beyond it ~3,000 pixel-art
+  billboards in one draw (`forest/far.js`) out to 100 m over a coarse 1 m ground ring.
+- **Floor** (`forest/flora.js`, `forest/grass.js`): voxel ferns, moss cushions, six kinds of
+  mushroom (and a fairy ring round the chest), foxgloves, bilberry and holly, mossy boulders, great
+  fallen logs, roots arching out by the giants, trail litter (pebbles, twigs, fallen leaves); a 20-cell
+  woodland pixel atlas (grass with golden seed heads, bluebell drifts, anemone carpets, campion,
+  forget-me-nots, wild strawberries, sorrel, moss, bracken, reeds). Ground voxels 1/7 m (fine steps
+  on the trail, terraces off it; phones 1/6 m round the trail only).
+- **Animals** (`forest/critters.js`): a squirrel (on a log, bounds to a giant and spirals up it), a
+  rabbit (hops off into the ferns), a roe doe in the clearing (grazes, looks up at the glint, bolts at
+  the first crack), robins (fly off as he nears), a woodpecker drumming on a giant, a frog on a
+  stepping stone (leaps in when the coop splashes); swallows, butterflies (one flutters past Nugget's
+  window), dragonflies over the stream, fireflies, pollen, drifting leaves, a flock bursting out.
+- **Sound** (`forest/sound.js`, presets `forest_*`): leaves rustling in gusts, a babbling brook, an
+  evening chorus (trills, robin, wren, cuckoo, wood pigeon), squirrel chatter, wing flutters, a
+  woodpecker's drum, frog croaks, a deer's snort, roots snapping, trees groaning, the lid's creak and
+  a magical chord for the gold.
+- **Shots** (`T` in FallScene.js): a crane down the trail into the light, tracking from his left,
+  Nugget at her window, low front tracking (boots and chicken feet, dust), the stream (bridge, wading,
+  the frog), into the clearing (the doe, the chest glinting in its beam), the chest (the lid creaks
+  wider, gold light pours out, sparks rise), his face lit gold from below, Nugget's alarm (trees
+  shake, birds burst into the sky), cracks racing and roots snapping, the break from above, the fall,
+  black. Every shot has portrait framing (`minH`, narrower look offsets).
+- **Ground contact**: a blob shadow under him, dust and kicked leaves at every footfall, hollow knocks
+  on the bridge, the coop's stomps (dust, leaves) and splashes.
+- **Tiers and cost** (`buildForest({ lite, soft })`): full (desktop with 'High' shaders); lite
+  (phones, 'Simple'/'Off', `&lite=1`); software (auto when the GL renderer is SwiftShader/llvmpipe:
+  thinner, a 32 m draw distance, no outline pass; `&lite=0` forces full). Measured per frame with
+  the outline pass: full 1.5–3.9 M triangles, 230–590 draw calls (the opening crane is the heaviest);
+  lite 1.0–1.9 M, 150–400. Instanced chunks past 68 m (lite 44, software 32) are hidden; every
+  shader is compiled up front (hidden objects and the outline-mask variants too), so nothing compiles
+  mid-sequence. On this shared box (load average 25–40 on 4 cores) `update()` measured ~10 ms and the
+  build 7–33 s full / 6–14 s lite depending on the load; both should be several times faster on an
+  idle machine. A Skip
+  pressed while it builds cancels the build.
+- **Engine** (additive): `post.outlineFar` (metres; outlines fade out toward it, default 0 = never).
+- **Hooks**: `scene.debug.{ at, time, shot, state, skip }` as before, plus `perf()` (draw calls,
+  triangles, update and render ms), `tris()` (visible triangles by part), `cam(pos, look, fov)` (pin
+  the camera; `cam()` releases it), `hold(on)` (keep the next frame: screenshots on a software
+  renderer). `?scene=fall&at=secs&freeze=1&lite=0|1`.
+- Gone: `bookends/landscape.js` and the old pine generator (nothing used them any more).
+- Screenshots: `shots/forest/before-desk-*` / `before-phone-*` (the old forest),
+  `after-desk-*` (1280×720) and `after-phone-*` (390×844 touch), named by the second they show.
