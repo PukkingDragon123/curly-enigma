@@ -143,14 +143,15 @@ export function hut(s) {
   };
 }
 
-/** A 1×2 tunnel off to the −x side of the hut room, a torch every few blocks on its wall. */
-export function tunnel(s, o, len = 14) {
+/** A 1×2 tunnel off to the −x side of the hut room, torches on alternate walls every few blocks. */
+export function tunnel(s, o, len = 16) {
   const t0 = [o[0] - 3, o[1], o[2] + 2];
   clearCells(s, [t0[0] - len, t0[1], t0[2]], [t0[0], t0[1] + 1, t0[2]], true);
   let n = 0;
-  for (let k = 1; k < len; k += 4) {
+  for (let k = 2, side = 0; k < len; k += 3, side ^= 1) {
     const cx = t0[0] - k;
-    const r = fix(s, 'torch', cx * BS + 4, t0[1] * BS + 11, (t0[2] + 1) * BS - 1, [0, 0, -1]);
+    const z = side ? (t0[2] + 1) * BS - 1 : t0[2] * BS, nz = side ? -1 : 1;
+    const r = fix(s, 'torch', cx * BS + 4, t0[1] * BS + 10, z, [0, 0, nz]);
     if (r.ok) n++;
   }
   return { torches: n, start: [(t0[0] + 0.5) / 2, t0[1] / 2 + 0.02, (t0[2] + 0.5) / 2], end: [(t0[0] - len + 0.5) / 2, t0[1] / 2, (t0[2] + 0.5) / 2] };

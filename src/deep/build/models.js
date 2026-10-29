@@ -24,7 +24,7 @@ const IRON = [0x1e1a1a, 0x2e2a2a, 0x46403e, 0x6a625e];
 /** Torch: { body, flame, top } (meters, base centre at the origin, standing up +y). */
 export function torchModel() {
   return cached('torch', () => {
-    const S = 1 / 32;
+    const S = 1 / 46; // about 37 cm with its flame (a Minecraft torch is 10/16 of a block)
     const g = new VoxelGrid(6, 17, 6), f = new VoxelGrid(6, 17, 6);
     for (let y = 0; y < 9; y++) for (let x = 2; x < 4; x++) for (let z = 2; z < 4; z++) g.set(x, y, z, WOOD[(x + z + (y >> 1)) % 3]);
     // a wrap of coal and pitch at the head

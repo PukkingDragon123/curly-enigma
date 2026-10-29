@@ -79,19 +79,22 @@ export default class HomeScene extends Scene {
     const marks = {};
     let tm = t0;
     const mark = (k) => { const n = performance.now(); marks[k] = Math.round(n - tm); tm = n; };
-    // UI icons are canvases read back as data URLs: the build button's is read back without waiting
-    // (a data URL would stall until the GPU has drawn everything queued: seconds on software GL)
+    // UI icons are canvases read back as data URLs: the build button's is drawn once the camp is in
+    // (drawing it here waited on the GPU to finish everything the last scene queued: up to 25 s on
+    // software GL coming from the journey) and read back without waiting
     this.buildIconURL = null;
-    try { iconCanvas('chair_wood').toBlob((b) => { if (!b) return; this.buildIconURL = URL.createObjectURL(b); if (this.hammerImg) this.hammerImg.src = this.buildIconURL; }); } catch (e) { this.buildIconURL = iconURL('chair_wood'); }
+    const makeIcon = () => { if (this.buildIconURL || this.gone) return; try { iconCanvas('chair_wood').toBlob((b) => { if (!b) return; this.buildIconURL = URL.createObjectURL(b); if (this.hammerImg) this.hammerImg.src = this.buildIconURL; }); } catch (e) { this.buildIconURL = iconURL('chair_wood'); if (this.hammerImg) this.hammerImg.src = this.buildIconURL; } };
     const from = params.from || 'continue';
     // the wait while the house is built (or put back together): src/home/loading.js
     const loading = this.loading = houseLoading(g, { dark: from === 'fall' || from === 'newgame' });
     this.own(() => loading.done());
+    mark('loadscreen');
     this.arrivalLesson = params.lesson || null; // cooking { tutorial } comes back with lesson: 'cook_done' | 'cook'
     this.from = from;
     st.flag('lastScene', 'home');
     st.flag('homeVisited', true);
     if (from === 'fall') { st.flag('fallen', true); st.flag('nugget', true); }
+    mark('flags');
     if (!d.home.planters) d.home.planters = {};
     if (!d.home.floor) d.home.floor = {};
     // [camp5] your nook is a corner of Old Star's cave camp: bare packed earth unless you've laid a
@@ -105,6 +108,7 @@ export default class HomeScene extends Scene {
       for (let y = 0; y < d0 && all; y++) for (let x = 0; x < w0; x++) if (d.home.floor[x + ',' + y] !== 'floor_plank') { all = false; break; }
       if (all) d.home.floor = {};
     }
+    mark('camp5');
     starData(st);
     // Old Star's forge and hearth are in the cave now: the room's own come out of the save
     if (d.home.placed.some((p) => IN_THE_CAVE.has(FURNITURE[p.id]?.kind))) d.home.placed = d.home.placed.filter((p) => !IN_THE_CAVE.has(FURNITURE[p.id]?.kind));
@@ -125,6 +129,7 @@ export default class HomeScene extends Scene {
     for (const w of ['n', 's', 'e', 'w']) TUNNEL_SLOTS[w] = new Set();
     this.doorOpen = !!st.flag('escaped');
     if (relocateBlocked(st, W, D)) st.save();
+    mark('relocate');
     this.notes = loadNotes();
     mark('prep');
 
@@ -271,6 +276,7 @@ export default class HomeScene extends Scene {
     if (r && r.compileAsync) { try { await r.compileAsync(this.scene, this.camera); } catch (e) { console.warn(e); } }
     this.entered = true;
     loading.done();
+    setTimeout(makeIcon, 1800);
   }
 
   /** A hello from Old Star when you come home after the lessons (not every time). */
@@ -972,6 +978,7 @@ export default class HomeScene extends Scene {
   }
 
   exit() {
+    this.gone = true;
     this.game.ui.setCrosshair?.(null);
     this.game.ui.setHints(null);
     this.game.ui.setTouchControls?.(true);

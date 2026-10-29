@@ -329,8 +329,9 @@ export class Onboard {
         if (!this.skipWrap.isConnected) root.append(this.skipWrap);
         this.skipWrap.append(skipEl);
         this.fitBars();
-        // the cutscene talk's own letterbox when there is one (one set of bars for both)
-        if (typeof this.game.convo?.bars === 'function') { c.classList.add('ext'); try { this.game.convo.bars(true); } catch (e) { c.classList.remove('ext'); } }
+        // (the cutscene talk's own bars slide in over these when he talks: the same height and colour, so
+        // they read as one letterbox; its bars(true) isn't asked for, since with no line up it also shows
+        // its empty name label at the top left)
         void c.offsetWidth;
         c.classList.add('on');
         this.cine = { el: c, skipEl, fill, t: 0, skip: null, fired: false, ptr: false };
@@ -565,6 +566,10 @@ export class Onboard {
     m.node.style.top = cy + 'px';
     m.node.classList.toggle('edge', edge);
     if (edge) m.node.style.setProperty('--ang', Math.atan2(y - cy, x - cx).toFixed(3) + 'rad');
+    // its name stays on screen (a marker near an edge slides its label inward)
+    const hw = m.lab.offsetWidth / 2;
+    const dx = hw ? clamp(cx, hw + 6, W - hw - 6) - cx : 0;
+    if (dx !== m.dx) { m.dx = dx; m.lab.style.translate = dx ? `${dx.toFixed(0)}px 0` : ''; }
   }
 
   // ------------------------------------------------------------ talk (Old Star's lines)

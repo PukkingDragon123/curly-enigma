@@ -28,6 +28,21 @@ const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _eu = new THREE.Euler(0, 0, 0, 'YXZ');
 const heroMods = import.meta.glob('../gfx/char/hero.js');
 
+/** Closest distance between segments [a, b] and [c, d]. */
+function segDist(a, b, c, d) {
+  const u = _sa.subVectors(b, a), v = _sb.subVectors(d, c), w = _sc.subVectors(a, c);
+  const A = u.dot(u), B = u.dot(v), C = v.dot(v), D = u.dot(w), E = v.dot(w), den = A * C - B * B;
+  let sN, sD = den, tN, tD = den;
+  if (den < 1e-8) { sN = 0; sD = 1; tN = E; tD = C; } else {
+    sN = B * E - C * D; tN = A * E - B * D;
+    if (sN < 0) { sN = 0; tN = E; tD = C; } else if (sN > sD) { sN = sD; tN = E + B; tD = C; }
+  }
+  if (tN < 0) { tN = 0; sN = clamp(-D, 0, A); sD = A; } else if (tN > tD) { tN = tD; sN = clamp(-D + B, 0, A); sD = A; }
+  const sc = Math.abs(sN) < 1e-8 ? 0 : sN / sD, tc = Math.abs(tN) < 1e-8 ? 0 : tN / tD;
+  return _sd.copy(w).addScaledVector(u, sc).addScaledVector(v, -tc).length();
+}
+const _sa = new THREE.Vector3(), _sb = new THREE.Vector3(), _sc = new THREE.Vector3(), _sd = new THREE.Vector3();
+
 export class Director {
   constructor(game) {
     this.game = game;
@@ -206,6 +221,10 @@ export class Director {
     const dist = A.length();
     if (dist < 1e-3) A.set(0, 0, 1); else A.multiplyScalar(1 / dist);
     const S = new THREE.Vector3(A.z, 0, -A.x);
+    // where their face points (the way they're turning to): a back isn't a shot
+    const fy = sp.rig?.targetFacing ?? sp.rig?.facing;
+    const F = fy == null ? A.clone() : new THREE.Vector3(Math.sin(fy), 0, Math.cos(fy));
+    const toYou = F.dot(A); // 1: facing you, -1: their back to you
     const base = { kind, eyesS, eyeP, feetP, A, S, h, dist, portrait };
     const vf = (f, minH) => this.fovFor(f, minH);
     if (kind === 'face') {
@@ -213,7 +232,8 @@ export class Director {
     }
     if (kind === 'close' || kind === 'hero') {
       const who = kind === 'hero' ? eyeP : eyesS;
-      const dir = kind === 'hero' ? A.clone().negate() : A; // toward the one listening
+      // toward the one listening (in front of their face when they're turned away from you)
+      const dir = kind === 'hero' ? A.clone().negate() : toYou > 0.35 ? A : toYou < -0.3 ? F : A.clone().add(F).normalize();
       const hh = kind === 'hero' ? 0.86 : h;
       const fov = vf(portrait ? 58 : 44, 34);
       const tanV = Math.tan(THREE.MathUtils.degToRad(fov) / 2), tanH = tanV * this.aspect();
@@ -243,23 +263,32 @@ export class Director {
       return { ...base, p: best.p, fov, side: best.side, comp: { x: sx, y: portrait ? 0.34 : 0.16 }, label: portrait ? 'below' : looks > 0 ? 'right' : 'left', fixed: true, hero: kind === 'hero', focus: kind === 'hero' ? 'hero' : 'speaker', drift: 0.05 };
     }
     if (kind === 'ots') {
-      if (dist < 0.45) return null;
+      if (dist < 0.45 || toYou < 0) return null;
       const fov = vf(portrait ? 64 : 50, 42);
       const Ap = A.clone().negate(); // from you toward them
       let best = null;
+      // your body (it stands in for you: a capsule from the knees to the top of the head), which
+      // mustn't hide their face
+      const b0 = feetP.clone().addScaledVector(UP, 0.2), b1 = feetP.clone().addScaledVector(UP, 0.92);
+      // a little above your eyes, less when they're shorter than you (a kid: the camera comes down)
+      const up = clamp(eyesS.y - eyeP.y + 0.28, 0.06, 0.3);
       for (const side of this.sides(o)) {
-        const want = eyeP.clone().addScaledVector(Ap, -0.9).addScaledVector(S, 0.6 * side).addScaledVector(UP, 0.3);
-        const r = this.reach(eyeP, want);
-        const full = eyeP.distanceTo(want);
-        if (r < full * 0.6) continue;
-        const p = this.roomy(eyeP.clone().add(_a.subVectors(want, eyeP).normalize().multiplyScalar(r)), 0.18);
-        if (!p) continue;
-        // can the camera see their face from there, past your head?
-        const see = this.reach(p, eyesS);
-        if (see < p.distanceTo(eyesS) - 0.2) continue;
-        if (!this.inFrame(p, eyesS, fov, { x: 0, y: 0 }, [eyesS], 0.9, 0.9)) continue;
-        if (!best || r > best.r) best = { r, p, side };
-        if (r >= full - 0.01) break;
+        for (const wide of [0.6, 0.85, 1.05]) {
+          const want = eyeP.clone().addScaledVector(Ap, -0.9).addScaledVector(S, wide * side).addScaledVector(UP, up);
+          const r = this.reach(eyeP, want);
+          const full = eyeP.distanceTo(want);
+          if (r < full * 0.6) continue;
+          const p = this.roomy(eyeP.clone().add(_a.subVectors(want, eyeP).normalize().multiplyScalar(r)), 0.18);
+          if (!p) continue;
+          // can the camera see their face from there, past your head (not hidden behind it)?
+          const see = this.reach(p, eyesS);
+          if (see < p.distanceTo(eyesS) - 0.2) continue;
+          if (!this.inFrame(p, eyesS, fov, { x: 0, y: 0 }, [eyesS], 0.9, 0.9)) continue;
+          if (segDist(p, eyesS, b0, b1) < 0.3) continue;
+          if (!best || r > best.r) best = { r, p, side };
+          if (r >= full - 0.01) break;
+        }
+        if (best) break;
       }
       if (!best) return null;
       // your shoulder on one side of the frame (the answers float there), their face across from it
@@ -269,7 +298,7 @@ export class Director {
       return { ...base, p: best.p, fov, side: best.side, comp: { x: portrait ? 0.1 * you : -0.26 * you, y: portrait ? 0.26 : 0.16 }, label: portrait ? 'below' : you > 0 ? 'left' : 'right', fixed: true, hero: true, focus: 'speaker', drift: 0.03, choices: you > 0 ? 'right' : 'left' };
     }
     if (kind === 'two') {
-      if (portrait || dist < 0.5 || dist > 3.2) return null;
+      if (portrait || dist < 0.5 || dist > 3.2 || toYou < -0.3) return null;
       const mid = eyesS.clone().add(eyeP).multiplyScalar(0.5);
       const d = clamp(0.9 + dist * 0.8, 1.2, 3.2);
       let best = null;
@@ -412,7 +441,9 @@ export class Director {
     // the paws go while the camera is away from the eyes; your body stands in for them
     const away = camera.position.distanceTo(this.base.p);
     this.hideVm(e > 0.04);
-    this.heroFrame(dt, shot, away > 0.3 && shot.hero);
+    // (only once the camera is well clear of where your head is: easing out of your eyes it would
+    // pass through the back of your own head)
+    this.heroFrame(dt, shot, away > 0.45 && e > 0.55 && shot.hero);
   }
 
   restore() {

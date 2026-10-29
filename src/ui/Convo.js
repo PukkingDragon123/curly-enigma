@@ -269,7 +269,13 @@ export class Convo {
    */
   tick(dt, src) {
     if (src === 'sim') this.simT += dt;
-    else { this.wallT += Math.max(dt, this.simT); this.simT = 0; }
+    else {
+      // (the real time since the last UI frame: the game caps its dt on slow frames)
+      const now = performance.now(), real = this.wallAt ? Math.min(1, Math.max(0, (now - this.wallAt) / 1000)) : dt;
+      this.wallAt = now;
+      this.wallT += Math.max(real, this.simT);
+      this.simT = 0;
+    }
     const s = this.s;
     if (!s) return;
     const now = this.clock();
@@ -396,9 +402,9 @@ export class Convo {
     b.hero = heroLine;
     if (b.dur == null) b.dur = clamp(2.2 + plain(b.html).length * 0.05, 2.6, 9);
     if (b.speaker) { s.held.add(b.speaker); s.speaker = b.speaker; }
+    this.animate(b); // (first: they start turning to you, and the shot is planned for their face)
     this.frameFor(b);
     this.showLabel(b);
-    this.animate(b);
     // the words
     const sp = b.speaker;
     const mouth = heroLine ? { talk: (on) => this.director.hero?.talk(on) } : sp ? { talk: (on) => sp.talk(on) } : this.face;

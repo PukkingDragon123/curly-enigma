@@ -84,7 +84,11 @@ function homeStar(scene) {
 function digStar(scene) {
   const st = scene?.prologue?.star;
   if (!st?.rig) return null;
-  return rigSpeaker(st.rig, { key: 'oldstar', who: 'oldstar', name: 'Old Star', obj: st.root, feet: (out) => out.copy(st.pos), turnTo: () => {} });
+  return rigSpeaker(st.rig, {
+    key: 'oldstar', who: 'oldstar', name: 'Old Star', obj: st.root, head: (out) => st.headWorld(out), feet: (out) => out.copy(st.pos),
+    // (he turns to you when he isn't walking somewhere; the lesson turns him back as it goes on)
+    turnTo: (x, z) => { if (!st.moving) st.face(Math.atan2(x - st.pos.x, z - st.pos.z)); },
+  });
 }
 
 function townPerson(scene, rec, npc) {

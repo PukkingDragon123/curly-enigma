@@ -184,6 +184,8 @@ export default class FallScene extends Scene {
     this.buildMs = Math.round(performance.now() - t0);
     this.ready = true;
     this.loadCard?.remove(); this.loadCard = null;
+    // build Old Star's camp in the background while the journey plays, so waking up doesn't wait
+    import('../home/houseLoad.js').then((m) => m.prebuildHouse?.(this.game)).catch(() => {});
     console.log(`[fall] built in ${this.buildMs} ms (forest ${JSON.stringify(this.F.stats)})`);
 
     this.debug = {

@@ -433,6 +433,9 @@ game.ui.tutor?.active            // { key, mood, html, wait } or null
 ## Old Star's house, waking up, lessons (home part): as built
 
 (Wave 3 replaced the cave workshop with a full house and the cold-water wake-up with eyelids.)
+**Wave 4 replaced the house with an old camp in a cave: see "As built: Old Star's camp, an old house in
+a cave (wave 4, house part)" near the end. What follows is the wave-3 house; the stations, lessons,
+Old Star and the test hooks work the same in the camp.**
 
 **The home** (`home`): your bedroom (the save's tile grid: build mode, the bed, Nugget's coop, your
 trunk) opens through a round-topped doorway and three worn steps (`ARCH`, `STAIRS` in
@@ -2165,8 +2168,8 @@ to the lesson, and the HUD coming in piece by piece. Quest / act / flag outcomes
   hints (`.hint-keys`) stay. Saved in `state.data.onboard = { level, seen: [control ids], home, done }`,
   created by the wake-up (`onboard.begin()`); **a save without it is at FULL** (old saves, `?fresh=1&scene=…`
   tests: the whole HUD as before). `lesson cook_done` or `lesson skip` → FULL.
-- `cinema(on, { skip, hold })`: letterbox (the cutscene talk's own bars through `game.convo.bars(on)` when
-  it has them, else ours, the same height), the HUD tucked away, and a **hold-to-skip** ring at the bottom
+- `cinema(on, { skip, hold })`: letterbox (ours; the cutscene talk's own bars slide in over them when he
+  talks, the same height and colour), the HUD tucked away, and a **hold-to-skip** ring at the bottom
   left: hold Space / Enter / E (a tap only carries a line on), or hold the ring on a touch screen;
   `skip()` runs once when the ring is full (~1.1 s; it drains when let go).
 - `teach(id, opts)` → `{ promise, settled, done, complete(), close(), id }`: the prompt card ("Learn" ribbon,
@@ -2240,8 +2243,9 @@ Screenshots: `shots/tutorial/` (`pc-*` 1280×720, `ph-*` 390×844 touch, `phL-*`
 **With cutscene talk.** Lines Old Star waits on go through `ui.onboard.talk()` → `game.convo.say('oldstar',
 html, { mood, wait: true, camera })` (the wake-up asks for `camera: 'close'`); passing tips stay on his card
 (`star.say(html, { convo: false })` at home, `ui.tutor` in the dig / forge / kitchen) so they never hold the
-player. The letterbox is the convo's (`game.convo.bars(on)`) with ours under it at the same height; the
-skip ring sits above both (z 6). The forge and the kitchen end their opening talk as soon as work starts
+player. The letterbox is ours, with the convo's sliding in over it at the same height while he talks (we don't
+call `game.convo.bars(true)`: with no line up it shows an empty name label); the skip ring sits above
+both (z 6). The forge and the kitchen end their opening talk as soon as work starts
 (the forge's bellows and the kitchen's steps pause while a talk holds the player). e2e drivers carry lines
 on with `ui.tutor.next()` (it forwards to `game.convo.next()`).
 **Open with cutscene talk (seen 10:15–11:30):** `Convo.endSession` sets `s.hold.closed = true` before
@@ -2256,8 +2260,8 @@ way. Also: with `bars(true)` and no line, the empty floating label shows at the 
 rebuilding the camp).** The e2e: `scene.debug.finishWake()`, `debug.interact('Ride down to the dig')`
 (the cage's item label at stage `mine`; `debug.useLift('L0')` is its fallback), `debug.run(frames, dt,
 until)`, `scene.lessonStage()`. If `enter()` throws before `this.debug = this.makeDebug()`, every lesson step
-of the e2e fails with "d.interact is not a function" (seen 11:30: `addHouseInteractions` reading
-`skylight` of undefined). The tutorial: `tickWakeFx(dt)` called every frame from `update` (it drives
+of the e2e fails with "d.interact is not a function" (seen 11:30 while the camp was half rebuilt:
+`addHouseInteractions` reading `skylight` of undefined; fine again by 11:35). The tutorial: `tickWakeFx(dt)` called every frame from `update` (it drives
 `tickHomeTutor`); `wakeFromFall()` on `from === 'fall' | 'newgame'`; `questSpot('lift' | 'forge' |
 'hearth')`, `shell.hearth` (optional), `findKind('bed')`, `lieDown`, `floorY`, `unstick`; the script camera
 (`beginScript` / `endScript` / `cam` / `tween` / `later` / `sleepFor` / `tickers` / `scripted`); `rig.items`
@@ -2379,13 +2383,18 @@ before the shop, once per 90 s per keeper; Bramble's lift goes straight to the p
 skipped: for screenshots), `game.convo.debug.state()` → `{ active, weight, shot, live, hero, held,
 queue }`, `game.convo.director.{ weight, shot, live(), settle(), frame(o), release(), reset(),
 toScreen(v) }`, `game.convo.next() / pick(i) / end()`, `game.convo.speaker(who)`.
-**Screenshots** (`shots/convo/`): `before-*` (the old talk: the blue hero portrait in
-`before-portraits`, the smeared faces in `before-home-tutor-dpr3`, `before-deep-rocco`, the waking blur
-in `before-wake-*`), `after-portraits` (the cast now), `after-tutor-card`; the talks at 1280×720:
-`after-oldstar-*`, `after-mabel-*` (a village quest offer: over the shoulder with answers, then her
-close-up), `after-grubb-*` (a keeper's offer through his window), `after-hazel-*` (a keeper's word,
-then the shop), `after-rocco-*` (Rocco's burrow, then his counter), `after-folk-*`, `after-fallback`
-(no model here: the portrait in the label); phones: `phone-*` (390×844, dpr 2–3) and `land-*` (844×390).
+**Screenshots** (`shots/convo/`): before: `before-portraits` (the blue cast: "You" blue-grey all
+over), `before-home-tutor-dpr3` / `before-home-talk-dpr3` / `before-deep-tutor` / `before-deep-rocco`
+(phone, dpr 3: smeared faces), `before-wake-blur-desktop` / `-phone` (the waking's canvas blur).
+After, 1280×720: `after-portraits` (the cast now), `after-tutor-card`, `after-tutor-muffled`;
+`after-oldstar-1-opening` (a scripted `play()`: two-shot), `-2-you` (your line: your close-up),
+`-3-answers` (over your shoulder, answers on your side), `-4-tip` (E on him at home);
+`after-dig-oldstar` (his talk in the dig); `after-mabel-1/2` (a village quest offer, then her thanks
+with the quest toast); `after-grubb-1` (a keeper's offer through his window); `after-hazel-1/2` (a
+keeper's word at the window, then the shop); `after-rocco-1/2`, `after-trader-1/2` (burrow talk, then
+the counter); `after-folk-1` (a passing chat); `after-fallback` (no model here: the portrait rides in
+the label). Phones: `phone-*` (390×844 touch, dpr 2; `phone-mabel` at dpr 3, `after-phone3-tutor-*`)
+and `land-*` (844×390).
 
 ### As built: the forest (wave 4)
 
@@ -2456,3 +2465,98 @@ plays in an old forest at golden hour, built by `src/bookends/forest.js` from `s
 - Gone: `bookends/landscape.js` and the old pine generator (nothing used them any more).
 - Screenshots: `shots/forest/before-desk-*` / `before-phone-*` (the old forest),
   `after-desk-*` (1280×720) and `after-phone-*` (390×844 touch), named by the second they show.
+
+### As built: Old Star's camp, an old house in a cave (wave 4, house part)
+
+The ask: "The house is a really bad cave, small cave with almost nothing." then "I said new house: old
+house in a cave, like a camp, super old, bad." The wave-3 house is gone (and so is the bigger house
+this part first built in wave 4: garden, terrace, workshop, larder; its prop files are removed,
+its screenshots kept in `shots/house/discarded-house/`). Old Star now lives in an old, run-down camp in a natural
+cave hollow, smaller than the house was, with every station where the lessons expect it.
+
+**Why someone could still see the old bare cave** (found, and fixed):
+- **Old saves kept their own floors.** The wave-3 boards (`flag('boards')`) were laid only on a floor
+  nobody had painted; saves from the first iso build (a tile or two painted) or the v2 burrow (explicit
+  `floor_dirt` tiles), with stone walls and a level-2/3 room lit for a level-0 one, woke in a big dark
+  earth room. Now every save gets the camp (it is built by code, nothing of it is in the save), your
+  nook is a corner of the same cave whatever the save holds (`wall_dirt` = the cave's rock, propped by
+  grey timbers), a bigger room gets more lights (`shellSurf.js planLights`), and `[camp5]` in
+  `HomeScene.enter` turns a floor that is still only the wave-3 auto-boards back to earth, once.
+- **The artifact keeps your save across republishes** (`window.claude.hot` hands the last snapshot back),
+  so the published page kept loading an old save.
+- The house used to build on the main thread with only the transition's black over it.
+
+**The camp** (`src/home/plan.js`: `hollowSD` (the hollow's rough outline, m), `lean`, `ceilAt`,
+`walkable`, `ROOMS` = zones `kitchen` / `smithy` / `living` / `hall` (the lessons' soft walls and the
+quest texts keep their names), `HOLE_SHAFT`; `src/home/caveShell.js`: the rock as one 1/16 m voxel
+volume (the mine's block size) with strata, soot over the forge, damp moss under the drips and round
+the spring, roots, dripstones, rubble along the foot of the walls, a packed-earth floor worn pale on
+the paths, straw by the shack, the hole up through the roof to a speck of grey daylight; `caveBoxes()`
+its collision; `src/home/campProps.js`; `src/home/house.js` places it all):
+- **his shack** (middle, against the north rock): warped grey planks, battens, newer boards nailed
+  over gaps, a sagging patched tarp roof hanging over the front, a sacking curtain for a door, a
+  shutter hanging off one hinge, a lantern on a hook; inside his sagging cot and its darned quilt,
+  his old armchair (sit), a crate with the gramophone (wind it), books, candle stubs, cobwebs; his
+  notes board on the shack's east wall; outside a drying line of socks, straw, the alarm clock on a
+  crate (the camp's clock), a log basket;
+- **the kitchen corner** (south-west): the fire pit in its ring of stones with the tripod, the pot and
+  the soot-black kettle (**the cooking spot**: "Cook at the range" / "Cook with Old Star"), two logs
+  to sit on, a plank table with one wobbly stool and a crate, herbs drying from the roof, crates,
+  sacks and a water barrel along the rock (the food crate: a snack once a day), a shelf on pegs;
+  **the side nook**: the spring seeping out of a crack into a basin of stones ("Drink from the spring",
+  +energy once a day), glowing mushrooms (pick some, once a day), a crystal cluster;
+- **the forge corner** (north-west): his old stone forge with its pipe up a crack in the roof
+  (**the forge station**), the bellows (pump them), the anvil on its stump, the quench trough and
+  bucket, coal, scrap, a grindstone, tools leaning on the rock, horseshoes, a lantern;
+- **the east end**: the rusty cage lift in its rock shaft (`lift.js`: brass gone brown and green, iron
+  flaking; it still runs), the old door to Deep Town in a tunnel mouth (rubble until `escaped`), his
+  chest, the coal cart, the Miners' Board on two posts, the packed suitcase, boots, his slate of the
+  million propped on a crate against the rock;
+- **the hole you fell through** over the middle, roots round it, a thin shaft of grey light (god rays
+  when you're under it), what came down with you on the floor (coins and a gem to pick up);
+- light: dim and warm, the fire pit and the forge the brightest, a few lanterns and candle stubs,
+  glowing mushrooms in the damp corners; deep shadow up under the rock (baked per vertex);
+- life: fires, embers, smoke, the kettle singing, drips from the roof into puddles (rings), the spring,
+  spores in the hole's light, dirt trickling down the hole, the alarm clock ticking, the gramophone.
+- **your nook** (the save's tile room, up the steps): the same rock walls and roof between grey
+  timbers (bought wall styles keep their own look), earth floor, roots, cobwebs, glowing fungi, the
+  crystal crack, the hearth where Old Star sits when you wake, the build bench, your trunk.
+- Old Star's places (`STAR_SPOTS`): `anvil`, `bellows`, `fire`, `board`, `lift`, `ruins` (his slate),
+  `pool` (the spring), `books`, `hearth` (by the fire), `armchair` (sit), `cot` (sleep).
+  `questSpot(name)`: `lift`, `passage`, `hole`, `hearth`/`fire`, `forge`/`anvil` as before.
+
+**Building it fast, never half-built** (`src/home/houseLoad.js`, `houseJobs.js`, `houseWorker.js`,
+`pack.js`, `loading.js`): four camp jobs (`rock`, `west`, `east`, `ways`) and your nook's walls
+(`shell`) run in parallel in inline build workers (`?worker&inline`: works in the single-file build;
+`?houseWorkers=N`, `0` = main thread), packed small (16-bit positions in each mesh's box, 8-bit normals,
+16-bit colours and indices) and sent back as transferables; the main thread takes jobs too while the
+scene waits; a failed job leaves its part bare rather than no camp. Finished jobs are kept for coming
+back (dropped on leaving on phones / ≤ 4 GB devices); `prebuildHouse(game)` can start early (**lead**:
+call it from the journey or the title, e.g. `import('../home/houseLoad.js').then((m) =>
+m.prebuildHouse(game))`). A loading screen (a swinging lantern, a burning wick bar, "Patching the
+tarp…") covers it; nothing renders until it's all in (`scene.entered`). The mesher's shaded quads are
+merged along their runs (`pack.js mergeQuads`, exact). `src/home/rooms.js` draws the camp and your nook
+only when seen (through the arch).
+
+**Numbers** (Node CPU on the shared, heavily loaded test box, `node shots/tmp/house-node.mjs`): the
+rock 1.1 s, west 0.9 s, east 0.65 s, ways 0.25 s, your nook's walls 1.1 s: ~4 s of CPU in all, split
+over the workers (the wave-4 house was 12 s, the wave-3 house ~6 s on the main thread). ~310 k triangles
+(rock 79 k, west 106 k, east 109 k, ways 18 k) plus your nook's walls 89 k; ~20 MB of packed buffers
+(the house was ~85 MB). Headless (SwiftShader, 3 workers, load average ~25) the camp is ready ~20 s
+after the scene starts (most of it waiting for CPU); drawn per view 0.35–1.3 M triangles including the
+outline pass, 30–110 draw calls (desktop), less on a phone.
+
+**Test hooks**: as before (`debug.interact(label)`, `debug.star(spot)`, `stand`, `step`, `run`, `stats`…);
+`scene.cave.holeTop`, `scene.cave.buildMs`, `scene.cave.workers`, `scene.buildMarks`, `scene.cull.key`.
+Scripts (house part, `shots/tmp/`): `house-view.mjs` (named viewpoints, `--touch`, `--size`),
+`house-paths.mjs` (every way in, old saves from each earlier version, `--single`), `house-node.mjs`
+(job timings), `house-rock.mjs` (the rock's cost), `house-star.mjs` (Old Star's paths to every spot),
+`house-grid.mjs` (his walk grid as text).
+
+**Screenshots** (`shots/house/`): the camp from each viewpoint at 1280×720 (`camp-*`, `forge-corner`,
+`fire-pit`, `spring-nook`, `shack-*`, `east-lift`, `door-deeptown`, `hole-up`, `bedroom*`), `phone-*`
+390×844, `phoneL-*` 844×390, `star-*` (Old Star at his places); `paths/` (each way in and each old save:
+arrive / woke / behind), `paths-single/` (the single-file build from file://); `e2e/` (the full run);
+the discarded wave-4 house in `discarded-house/`.
+
+**Also seen** (not mine): the lift panel's map (`src/fps/liftPanel.js`) still draws the old house's rooms.

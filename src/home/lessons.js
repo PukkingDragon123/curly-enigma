@@ -50,7 +50,7 @@ const NEXT = {
 const SLACK = { look: 1.2, walk: 2.2, 'walk-done': 2.2, talk: 2.2, follow: 3.2, lift: 3.2, forgeGo: 3.6, cookGo: 3.6 };
 /** What the crosshair may use in each step (by label); null: anything but the lift and the door. */
 const ALLOW = {
-  look: /^$/, walk: /^$/, 'walk-done': /^$/, talk: /old star/i, follow: /^$/, lift: /lift|cage|dig|lever|old star/i,
+  look: /^$/, walk: /^$/, 'walk-done': /^$/, talk: /^talk to old star/i, follow: /^$/, lift: /lift|cage|dig|lever|^talk to old star/i,
 };
 const LOCKED = /lift|cage|lever|ride down|deep town|front door|passage|build bench|^sleep$/i;
 
@@ -328,7 +328,7 @@ export class HomeLessons {
     switch (step) {
       case 'look': {
         ob?.setLevel(TUT.LOOK);
-        this.later(0.5, () => { if (this.tut === t) this.starLine('Have a look round first. Get your bearings. The room won\'t bite.', { mood: 'happy', dur: 5 }); });
+        this.later(0.5, () => { if (this.tut === t) this.starLine('Have a look round first. Get your bearings. The cave won\'t bite.', { mood: 'happy', dur: 5 }); });
         t.h = ob?.teach('look', { progress: () => t.look / 2.2, min: 1.2 });
         t.h?.promise.then((ok) => { if (ok && this.tut === t) this.later(0.3, () => this.tut === t && this.startHomeTutor('walk')); });
         break;
@@ -443,7 +443,9 @@ export class HomeLessons {
 
   tutAllows(it) {
     if (!this.tutorialOn()) return true;
-    const label = String(it.label || '');
+    // (most labels are functions of the moment: 'Talk to Old Star', 'Ride down to the dig'…)
+    let label = '';
+    try { label = String((typeof it.label === 'function' ? it.label(it) : it.label) || ''); } catch (e) { /* noop */ }
     const t = this.tut, re = t && ALLOW[t.step];
     if (re) return re.test(label);
     // any other time in the lessons: the lift and the front door wait (but the mining lesson rides it)
