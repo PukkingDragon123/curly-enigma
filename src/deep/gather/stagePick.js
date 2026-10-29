@@ -108,6 +108,7 @@ export class PickStage extends Stage {
       ring.material.uniforms.uCol.value.set(!B.ripe ? 0x8ad06a : near ? 0xffffff : 0xffd040);
       ring.material.uniforms.uW.value = near ? 0.3 : 0.18;
       ring.material.uniforms.uFill.value = near && B.ripe ? 1 : 0;
+      ring.material.uniforms.uDash.value = B.ripe ? 0 : 1;
       ring.material.uniforms.uA.value = u > 1 ? Math.max(0, 1 - (u - 1) * 4) : 1;
       this.reachP.lerp(_v.copy(b.m.position).add(_v2.set(0.035, -0.005, 0.03)), 1 - Math.exp(-dt * 10));
     } else ring.visible = false;
@@ -170,6 +171,6 @@ export class PickStage extends Stage {
   }
   headWorld(out = new THREE.Vector3()) { return this.toWorld(out.set(0, this.base0 + this.bushH * 0.6, 0)); }
   middle(out = new THREE.Vector3()) { return this.bushPlant ? out.set(0, 0, 0) : out.set(0, this.bushH * 0.5, 0); }
-  showSize() { return this.bushPlant ? { span: 0.14, w: 0.14 } : { span: this.bushH, w: 0.3 }; }
+  showSize() { return this.bushPlant ? { span: 0.3, w: 0.28 } : { span: this.bushH, w: 0.3 }; }
   focus() { return { at: new THREE.Vector3(0, this.base0 + this.bushH * 0.5, 0), h: this.bushH + 0.06, w: 0.3 }; }
 }

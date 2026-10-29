@@ -24,7 +24,7 @@ import * as HP from './houseProps.js';
 import { HouseSurfaces } from './surfaces.js';
 import { buildVista } from './vista.js';
 import { ROOM, DOORS, WINDOWS, FY, WALL, sideInfo, roomAt } from './plan.js';
-import { T, HALL, ARCH, STAIRS, FRONT, HOLE, STEP_H, STEP_D, floorAt } from './units.js';
+import { T, HALL, ARCH, STAIRS, SHAFT, FRONT, HOLE, STEP_H, STEP_D, floorAt } from './units.js';
 import { HomeLift, LIFT } from './lift.js';
 import { makeRng } from '../core/util.js';
 
@@ -451,9 +451,9 @@ export class StarHouse {
     this.sconceLight(s2, 'hall');
     this.plant(5.32, -3.25, 'fern');
     // the lift's lanterns
-    this.liftLantern = this.light({ kind: 'lift', ...this.lift.lanternPos(new THREE.Vector3()).multiplyScalar(T), color: 0xffb860, intensity: 0.7, distance: 2.4, flicker: 0.1, halo: 0.16, haloOpacity: 0.55, priority: 2, power: 0.3, radius: 1.6, room: 'hall' });
+    this.liftLantern = this.light({ kind: 'lift', ...this.lift.lanternPos(new THREE.Vector3()).multiplyScalar(T), color: 0xffb860, intensity: 0.4, distance: 2.0, flicker: 0.1, halo: 0.16, haloOpacity: 0.55, priority: 2, power: 0.16, radius: 1.3, room: 'hall' });
     const lp = this.lift.lanternM;
-    if (lp) this.light({ kind: 'portal', x: lp.x, y: lp.y, z: lp.z, color: 0xffb050, intensity: 0.75, distance: 3.2, flicker: 0.12, halo: 0.18, haloOpacity: 0.55, pool: 0.6, poolOpacity: 0.15, priority: 4, power: 0.38, radius: 2.0, room: 'hall' });
+    if (lp) this.light({ kind: 'portal', x: lp.x, y: lp.y, z: lp.z, color: 0xffb050, intensity: 0.25, distance: 2.2, flicker: 0.12, halo: 0.18, haloOpacity: 0.55, pool: 0.6, poolOpacity: 0.15, priority: 4, power: 0.22, radius: 1.6, room: 'hall' });
   }
 
   // ------------------------------------------------------------ doors, steps, windows
@@ -486,6 +486,16 @@ export class StarHouse {
       this.light({ kind: 'door', x: P.x, y: Y + 0.95, z: P.z + 0.15, color: 0xffd090, intensity: 0.8, distance: 2.8, flicker: 0.08, halo: 0.25, haloOpacity: 0.4, priority: 3, power: 0.4, radius: 1.6, room: 'hall' });
     }
     this.boxes.push([P.x - 0.6, Y, P.z - 0.6, P.x + 0.6, Y + 1.6, P.z - 0.02]); // the door itself and the tunnel behind
+    // the earth under the house: from inside the lift shaft (riding up or down) you see its face,
+    // timbered at the landing, not the cavern painted round the house
+    const under = new THREE.Mesh(new THREE.BoxGeometry(SHAFT.x0 - HALL.x0, 3.6, -HALL.z0 + 0.5), new THREE.MeshLambertMaterial({ color: 0x2a1c12 }));
+    under.position.set((HALL.x0 + SHAFT.x0) / 2, Y - 1.8 - 0.004, (HALL.z0 - 0.5) / 2);
+    this.world.add(under);
+    this.meshes.push(under);
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, SHAFT.z1 - SHAFT.z0), new THREE.MeshLambertMaterial({ color: 0x4a2e1c }));
+    lip.position.set(SHAFT.x0 - 0.02, Y - 0.09, (SHAFT.z0 + SHAFT.z1) / 2); // the landing's oak sill
+    this.world.add(lip);
+    this.meshes.push(lip);
     // the steps' collision
     for (let i = 1; i <= 2; i++) this.boxes.push([STAIRS.x0, Y, HALL.z1 - i * STEP_D, STAIRS.x1, -i * STEP_H, HALL.z1 - (i - 1) * STEP_D]);
   }

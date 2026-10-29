@@ -29,7 +29,7 @@ function eggGeo(spec) {
   const g = new PGrid(16, 22, 16);
   g.ell(8, 11, 8, 6.6, 9.6, 6.6, (x, y, z, dx, dy, dz) => {
     const lit = -dx * 0.6 + dy * 0.7 + dz * 0.2;
-    if (hv(x >> 1, y >> 1, z >> 1, 31) < 0.1) return C.spot;
+    if (hv(x >> 1, y >> 1, z >> 1, 31) < 0.12) return shade(C.spot, 0.85);
     if (hv(x, y, z, 32) < 0.04) return shade(C.spot, 1.2);
     return lit > 0.75 ? shade(C.shell, 1.08) : lit > 0.1 ? shade(C.shell, 0.86) : shade(C.shell, 0.68);
   });
@@ -58,6 +58,7 @@ export class LiftStage extends Stage {
     this.nest = mesh(ng, this.mat, this.root);
     this.nest.position.y = this.base0;
     this.keepOut = [this.nest];
+    this.mat.uniforms.uExpo.value = 0.62; // a pale shell right under the lamp
     this.plant = new THREE.Group();
     this.root.add(this.plant);
     const eg = eggGeo(spec);
@@ -101,6 +102,6 @@ export class LiftStage extends Stage {
   gripWorld(out = new THREE.Vector3()) { this.plant.updateMatrixWorld(); return this.plant.localToWorld(out.set(0, this.eggH * 0.45, 0)); }
   headWorld(out = new THREE.Vector3()) { return this.gripWorld(out); }
   middle(out = new THREE.Vector3()) { return out.set(0, this.eggH * 0.5, 0); }
-  showSize() { return { span: 0.28, w: 0.24 }; }
+  showSize() { return { span: 0.42, w: 0.36 }; }
   focus() { return { at: new THREE.Vector3(0, this.base0 + 0.12, 0), h: 0.32, w: 0.4 }; }
 }

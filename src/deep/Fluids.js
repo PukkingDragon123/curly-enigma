@@ -74,6 +74,7 @@ export class Fluids {
       // phones and the low settings: no reflections
       const q = ctx.owner?.game?.engine?.fx;
       this.U.wLook.value.z = q === 'low' || q === 'off' ? 0 : 1;
+      if (q === 'off') this.wmap.off = true; // no caustics either
     }
     this.debug = {
       /** 'new' | 'old': the fluid surface material, for before/after comparisons */

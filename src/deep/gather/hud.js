@@ -6,7 +6,7 @@
 // result tag pinned beside the plant held up in the paw.
 import { el } from '../../core/util.js';
 import { ITEMS } from '../../data/items.js';
-import { iconURL } from '../../gfx/PixelArt.js';
+import { iconCanvas } from '../../gfx/PixelArt.js';
 import { Px, PAL, INK } from '../../ui/uiArt.js';
 import { SPR } from '../../ui/uiSprites.js';
 
@@ -19,6 +19,7 @@ const CSS = /* css */`
 #ui.gathering .toasts { left: auto; right: calc(var(--sar) + var(--px) * 4); top: calc(var(--sat) + var(--px) * 4); align-items: flex-end; transform: scale(.8); transform-origin: 100% 0; }
 .gt-hud.still, .gt-hud.still * { animation-delay: -10s !important; animation-duration: .001s !important; transition: none !important; }
 .gt-hud.still .gt-pop { animation: none !important; transform: translate(-50%, -120%); }
+html.gt-still #ui *, html.gt-still .modal-back { transition: none !important; animation-duration: .001s !important; animation-delay: -10s !important; }
 .gt-hud { position: absolute; inset: 0; pointer-events: none; font-family: var(--font); font-size: var(--fs-ui); color: var(--ink); }
 .modal-back.gt-back { background: radial-gradient(ellipse at 50% 46%, rgba(0,0,0,0) 55%, rgba(6,3,6,.42)); padding: 0; place-items: stretch; animation: gtFade .5s ease-out; touch-action: none; cursor: grab; }
 .modal-back.gt-back.gripping { cursor: grabbing; }
@@ -35,7 +36,8 @@ const CSS = /* css */`
 @keyframes gtDrop { 0% { transform: translateX(-50%) translateY(-160%) rotate(-6deg); } 60% { transform: translateX(-50%) rotate(3deg); } 100% { transform: translateX(-50%) rotate(0); } }
 .gt-sign.swing { animation: gtSwing .5s ease-out; }
 @keyframes gtSwing { 30% { transform: translateX(-50%) rotate(-3deg); } 65% { transform: translateX(-50%) rotate(2deg); } }
-.gt-sign img { width: var(--icon-s); height: var(--icon-s); image-rendering: pixelated; }
+.gt-icon { width: var(--icon-s); height: var(--icon-s); image-rendering: pixelated; display: block; }
+.gt-icon.big { width: var(--icon); height: var(--icon); margin: 0 auto; }
 .gt-name { font-family: var(--font-head); font-size: var(--fs-h); line-height: 1; color: #fff1d0; text-shadow: 0 var(--px) 0 #3a2212, var(--px) 0 0 #3a2212, calc(var(--px) * -1) 0 0 #3a2212, 0 calc(var(--px) * -1) 0 #3a2212; }
 .gt-verb { font-family: var(--font-display); font-size: calc(var(--fs-h) * .8); line-height: 1; color: #fff4d0; padding: 0 calc(var(--px) * 2) calc(var(--px) * .5); margin-left: calc(var(--px) * 1);
   background: #a8402a; box-shadow: 0 0 0 var(--px) #4a1a10, inset 0 calc(var(--px) * -1) 0 #6a2414, inset 0 var(--px) 0 #d0684a; transform: rotate(-4deg); animation: gtVerb .8s ease-in-out infinite alternate; }
@@ -98,6 +100,16 @@ const CSS = /* css */`
 `;
 let styled = false;
 function ensureCss() { if (!styled) { styled = true; document.head.append(el('style', { id: 'gt-styles' }, CSS)); } }
+
+/** The item's icon as a canvas (no data URL: nothing to encode while the close-up opens). */
+const iconCache = new Map();
+function iconEl(id, cls = 'gt-icon') {
+  let src = iconCache.get(id);
+  if (!src) { try { src = iconCanvas(id); } catch (e) { src = null; } iconCache.set(id, src); }
+  const c = el('canvas', { class: cls, width: src?.width || 32, height: src?.height || 32 });
+  if (src) c.getContext('2d').drawImage(src, 0, 0);
+  return c;
+}
 
 // ---------------------------------------------------------------- pixel bits
 function plate(p, x0, y0, w, h, R = W) {
@@ -363,7 +375,7 @@ export class GatherHud {
     const touch = document.documentElement.classList.contains('is-touch');
     this.root = el('div', { class: 'gt-hud' });
     const word = { pull: spec.twist ? 'TWIST!' : o.down ? 'PULL!' : 'PULL!', dig: 'DIG!', peel: 'PEEL!', pick: 'PICK!', lift: 'LIFT!' }[spec.tech] || 'PULL!';
-    this.sign = el('div', { class: 'gt-sign' }, [el('img', { src: iconURL(id), alt: '' }), el('span', { class: 'gt-name' }, it?.name || id), el('span', { class: 'gt-verb' }, word)]);
+    this.sign = el('div', { class: 'gt-sign' }, [iconEl(id), el('span', { class: 'gt-name' }, it?.name || id), el('span', { class: 'gt-verb' }, word)]);
     const G = { pull: PullGauge, dig: DigGauge, peel: PeelGauge, pick: PickGauge, lift: LiftGauge }[spec.tech] || PullGauge;
     this.gauge = new G(spec, sim);
     this.gaugeEl = el('div', { class: 'gt-gauge' }, [this.gauge.cv.c]);
@@ -435,7 +447,7 @@ export class GatherHud {
     const col = r.p ? '#b07a14' : r.q >= 70 ? '#3a7a2a' : r.q >= 40 ? '#3a6a9a' : '#a83a2a';
     const touch = document.documentElement.classList.contains('is-touch');
     this.card = el('div', { class: 'gt-card' }, [
-      el('img', { src: iconURL(this.id), alt: '', style: { width: 'var(--icon)', height: 'var(--icon)', imageRendering: 'pixelated' } }),
+      iconEl(this.id, 'gt-icon big'),
       el('div', { class: 'nm' }, it?.name || this.id),
       el('div', { class: 'q', style: { color: col } }, r.empty ? '—' : `${r.q}%`),
       el('div', { class: 'st', html: '★'.repeat(stars) + `<i>${'★'.repeat(5 - stars)}</i>` }),

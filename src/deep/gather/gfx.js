@@ -154,7 +154,7 @@ export const srgb = (hex) => [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 25
 /** A camera-facing ring (for the berry timing ring and other markers drawn in the world). */
 export function ringMesh(color = 0xffe066) {
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uCol: { value: new THREE.Color(color) }, uA: { value: 1 }, uW: { value: 0.16 }, uFill: { value: 0 } },
+    uniforms: { uCol: { value: new THREE.Color(color) }, uA: { value: 1 }, uW: { value: 0.16 }, uFill: { value: 0 }, uDash: { value: 0 } },
     transparent: true, depthWrite: false, depthTest: false,
     vertexShader: /* glsl */`
       varying vec2 vUv;
@@ -170,9 +170,12 @@ export function ringMesh(color = 0xffe066) {
       uniform float uA;
       uniform float uW;
       uniform float uFill;
+      uniform float uDash;
       varying vec2 vUv;
       void main() {
         float r = length(vUv);
+        // dashed (a berry to leave alone): every other arc is cut out
+        if (uDash > 0.5 && fract(atan(vUv.y, vUv.x) / 6.2831853 * 12.0) > 0.55) discard;
         // pixel-art ring: hard edges, a dark outline both sides
         float ring = step(1.0 - uW, r) * step(r, 1.0);
         float edge = step(1.0 - uW - 0.07, r) * step(r, 1.07) - ring;

@@ -485,7 +485,9 @@ the named places; the scene still calls it `scene.cave`):
   candle, the wardrobe, your trunk at the foot of the bed, firewood, a fern, Nugget's corner (straw,
   feed sack, water dish), the rag rug;
 - life: fires breathing, embers, steam, the clock, the pump's drip, dust motes in the lamplight and
-  the windows' teal glow, timbers creaking, soft contact shadows under the furniture.
+  the windows' teal glow, timbers creaking, soft contact shadows under the furniture;
+- under the floors: a block of dark earth (what you see from the lift shaft riding up or down), with
+  an oak sill at the landing.
 
 **Old Star** (`src/home/oldstar.js`, the `StarMoleRig` with `setExpression` moods): walks the whole
 home (house, steps and your bedroom) on an A* grid rebuilt with the collision, works the anvil
@@ -546,7 +548,7 @@ on the shared, heavily loaded test box (props ~6 s, walls/ceilings/floors ~2–4
 `scene.questSpot(name)` (`lift`, `passage`, `hole`, `hearth`, `forge`) places the quest markers.
 
 **Screenshots** (`shots/home/`): the wake-up `wake-1…9`, `phone-wake-*` (390×844), `phoneL-wake-*`
-(844×390); the rooms `bedroom-*`, `living-*`, `kitchen-*`, `smithy-*`, `hall-*`, `window*`, and the
+(844×390); arriving by the lift `lift-arrive-*`; the rooms `bedroom-*`, `living-*`, `kitchen-*`, `smithy-*`, `hall-*`, `window*`, and the
 same on phones (`phone-*`, `phoneL-*`); the old cave for comparison in `shots/home/before/`.
 
 **Left for other parts** (text that still mentions the old cave or the bucket): the quest hint for
@@ -1001,6 +1003,15 @@ waypoint, a hand-in, a choice, a tale, the gaze eye; d1–d2 the mine's strip an
 book (quests, an "ask around" page, lore), the carving and journal readers, the notice board; p1–p3
 phone portrait).
 
+**Hooks wanted from other parts** (not applied): home: E on Old Star's bookshelf →
+`game.lore.readShelf('oldstar')` (his ledger: the million he almost had); dialogue: the talk board
+gets `who` (from `npcWho`) and markup in `line` (`<b>`, `<small>`, `.qtk-reward`): keep those working.
+Small hooks applied in shared files: `TownScene.js` (makes `townQuests`, `useKeeper(k, direct)`,
+`k.item`, `look` acts from bask / well / tunnel / fountain, the notice board; `debug.openShop` goes
+straight to the shop), `folk.js` (names, `npcId`, `talk` → `townQuests.talk`), `Ruins.js` and
+`ruins/trailDress.js` (lore), `Radar.js` + `deepArt.js` (the quest mark), `PixelArt.js` +
+`data/items.js` (quest items).
+
 ## Skill tree (skills part): as built
 
 Files: `src/core/skills.js` (XP, levels, points, effects, perks), `src/data/skills.js` (lines, keys,
@@ -1429,14 +1440,49 @@ here when done. Headless testing: `node scripts/shot.mjs` (see its header), driv
 `scene.update(1/30)` loops. Don't edit another part's files: if you need a hook there, say so in your
 report.
 
-### Cave look part: coordination (in progress)
+### As built: cave look — shaders, light and air (wave 3)
 
-- `src/deep/TerrainMaterial.js` is shared: the cave-look part edits `makeTerrainUniforms`,
-  `makeTerrainMaterial`, the `LIGHT` chunk (`lightAt(p, n)` keeps its signature) and
-  `makeObjectMaterial`; `makeFluidMaterial` / `FLUID_SURF` / `fluidUniforms` belong to the water
-  part. Both parts edit this file with small in-place edits (never rewrite the whole file).
-- New uniforms are only ever added to `makeTerrainUniforms()` (every material that spreads `U`
-  gets them); 0 is always a safe value for them.
+The rock, its light and the air between were redone in the files this part owns; the API details
+are in `docs/DEEP.md` › "Cave look". Shots: `shots/caves/<spot>-after.png` next to
+`<spot>-orig.png` (the same moment with the old terrain shader, no atmosphere, the old grades) and
+`<spot>-before.png` (the start of wave 3); spots: rootsoil, moss, sandstone, clayworks, fungus,
+crystal, dino, magma, frost, core, lantern, lava, hall.
+
+- **Rock** (`TerrainMaterial.js`): plates are rounded stones (a lit and a shaded side under the
+  lamp) instead of per-texel speckle; convex voxel edges get a one-pixel chamfer (mesher flags,
+  +4.5% quads), so every ledge and step reads; strata (alternating layers, tone and tint per layer,
+  a hairline between) on limestone, sandstone, mudstone, clay, dirt; big warm/cool patches, iron
+  and lime streaks running down walls, damp patches with a sheen (zone mood), moss on upward faces
+  (mossy grotto, dino caverns, a little in the topsoil), rime (frost vault), cracks that glow and
+  breathe in volcanic rock (magma deep); round pebbles in soil; the moss / mycelium side faces drape
+  in patches (the old per-voxel stripes are gone); crystal and ice: flat facets, an inner layer that
+  parallaxes, glow in the stone's own colour, glints and sparkles; a soft highlight shoulder so pale
+  stone under the lamp keeps its colour.
+- **Light** (`LIGHT`): soft-windowed inverse-square lamp (a wide flood with a hot centre) and point
+  lights, wrap diffuse, AO that darkens the ambient fully and direct light a little, a cool
+  hemisphere ambient against the warm lamp, zone sky / bounce light (lava glow from below in the
+  magma deep), Blinn-Phong glints quantized into pixel steps, a warm rim where the lamp grazes.
+- **Air** (`AIR`, `src/deep/Atmosphere.js`): fog that reaches the dark at the edge of the streamed
+  world (no silhouettes against a flat "sky"), a darker void overhead, the lamp's flood in the dust,
+  ground mist pooling in pits, one dithered halo per light in the dusty air, motes round the eye
+  that catch the lamp (dust, sand, glitter, spores, glowing spores, pollen, embers, snow, void
+  sparks by zone and biome), light shafts toward a bright lantern ahead in tall halls (Engine post
+  hook), a little extra bloom where things glow. Split-toned zone grades (`rootsoil`, `clay`,
+  `grotto`), `SCENE_POST.deep` saturation 1.16 / contrast 1.06.
+- **Particles**: lamp-lit motes (1–3 px specks, bright in the beam, gone outside it), round pixel
+  discs for points of 3 px and more, big soft puffs that thin out in dithered steps, swirl, twinkle.
+  The "big translucent squares" in `shots/e2e/02c-old-star.png` are not particles: they are the
+  water beads on the lens of the old wake-up splash (`WakeFx` in `src/home/wake.js`, home part),
+  which the eyelid wake-up replaces.
+- **Other parts**: vegetation already uses `LIGHT` + `AIR`; props, creatures and traders use
+  `LIGHT` but still their own fog line: switching it to `col = caveAir(col, vWorld, dist)` (with
+  `${AIR}` after `${LIGHT}`) makes far objects melt into the same dark as the rock. Every light in
+  `DigScene.lights()` gets a halo, so lights with a big `r` but no visible source should keep `r`
+  modest.
+- **Lead hooks** (optional, not applied): the deep `FOG` table could be a little darker now that
+  the far fog is the scene's "sky"; DigScene's own beam motes (`ambient()`, `fx.mote`) can stay
+  (they are lit now) or go (Atmosphere spawns motes).
+- **Perf**: PERF_NOTE
 
 ### As built: 3D gathering (wave 3)
 
@@ -1496,11 +1542,16 @@ where things happen (Loose!, Rip!, POP!, Perfect ×3, Too soon!, Crack!), a pape
 have it), a Leave plaque, and the result tag (icon, %, stars, word, ×2, PRISTINE seal / TORN stamp).
 Phones: gauge bottom-right, tag at the top, wider framing. Touch: hold and drag anywhere.
 
+**After**: a harvest leaves the turned soil and the hole for 40 s; letting go puts the real prop
+back a moment before the close-up model goes. While a plant is aimed at, `Props.target()` calls
+`warmGather(p, props)`: its model is built and the close-up shaders compiled in idle time, so E
+opens at once. Per frame the session costs ~0.3 ms (stem deformation, roots, clods, paws, HUD).
+
 **Results** are unchanged: `{ id, q, p, n, burns, zaps, spores, ... }` → `props.harvest` → loot
 events → DigScene `collect` → `act forage {id, q, pristine}`. Quality maths as before (sims.js).
 
 **Test hooks**: `window.__gather` = `{ open(id, { standIn }), run(id, { score, script, real }),
-sim(id, script), active, still, specs, last }`; on a session: `drive(script, secs, { pause, until,
+sim(id, script), active, still, prof, specs, last }`; on a session: `drive(script, secs, { pause, until,
 stopAtShow })`, `step(dt, input)`, `state()`, `go(phase)`, `holdShow`, `paused`. `__gather.run('glowcap',
 { score: 80 })` plays a stand-in to the end headless; `{ real: true }` uses the nearest real plant
 (harvests it). `window.__forage.sim` still works. `props.debugGather(p)`. Screenshots: `shots/gather/`.
@@ -1680,3 +1731,116 @@ builders in `props/models.js`; builders may now return `ao: false`):
 Screenshots: `shots/vegetation/` (`before-*` the old look at random spots; `after-<biome>.png` /
 `after-<biome>-noveg.png` the same camera with and without the cards in all six zones and four
 biomes; `close-*` close-ups; `room-*` the new props in a carved showroom; `atlas.png` the sprites).
+
+### As built: water (wave 3)
+
+The ask: "add water physics and better visuals". All in `src/deep/Fluids.js` (ties the parts
+together; the mole and the things in the water) and `src/deep/fluids/` (`sim.js` the flow,
+`water.js` the surface shader, `caustics.js` the water light on the rock, `fx.js` particles and
+sounds, `lakes.js` lake levels and shells at plan time). The contract is in `docs/DEEP.md`
+(Fluids, Fluids internals).
+
+**Physics** (`fluids/sim.js`, `FlowSim`): a cellular automaton at voxel size (1/16 m) with levels in
+eighths, typed arrays per chunk, 20 steps a second, time-budgeted (≈2 ms flow + 2.5 ms surface
+rebuilds a frame, each chunk's fluid mesh at most every 0.15 s), only within 24 m of the mole (the
+rest sleeps and wakes when you come back).
+- Water falls two cells a step through open air (a continuous ribbon: the mesher stretches each
+  falling cell one cell down), fills part-filled water below, spills over an edge into lower
+  part-filled water (water levels across layers), keeps running the way a stream was going (it
+  moves on even a step downhill until it hits a wall), and levels out sideways.
+- Pools rest flat: a resting cell still a step off its neighbours seeds a levelling pass that
+  shares the water of the whole connected surface evenly (no more mounds sloping 1/8 per cell).
+  Everything settles and the queue empties (the old flow never settled: a 2.7 m³ pour on a ramp
+  was still active after 60 s; now it's still after ~25–30 s, same CPU).
+- Puddles: films ≤ 2/8 soak into porous floors (dirt, loam, sand, gravel, moss, mycelium, ash,
+  snow, roots, rubble, clay) in 5–9 s, 1/8 films dry off stone in ~30–40 s, deeper water stays.
+- Lakes are reservoirs (dig into one: it gushes out, up to 512 eighths a step, from the top layer,
+  which sinks smoothly in the shader and is removed a few thousand cells a frame; it waits while
+  part of the layer isn't loaded). After 48 000 voxels (12 m³) the rest above the hole drains away
+  into the rock (the lake sinks below the opening at 5 layers a second), so a lake is never left
+  as a wall of water facing air. Lava: every other step, thick, cools to rock; water + lava →
+  obsidian/basalt and steam.
+- Lakes at plan time (`fluids/lakes.js`, from the end of `makePlan`; **one 3-line hook in
+  `Generator.js`**: the import, `settleLakes(plan, zoneAt)` before `return plan`, and in the lake
+  stamp `ym < (f.wl ?? …)` plus the shell line): natural caves crossed most lakes below their
+  waterline, leaving walls of water standing in tunnels and even floating blocks of water in
+  caverns. Now each lake gets a watertight shell (`f.shell`: clay in strata 1–2, limestone in 3,
+  ice in 5, obsidian for lava) laid where caves meet the pocket below the waterline (a tunnel ends
+  in a wet clay wall: dig through and get flooded), and caves meeting the air dome above the water
+  open onto the lake. Where a carved room, trail or burrow crosses the shell, the level drops to
+  just under it (`f.wl`). Same in the workers. Existing saves: lakes look the same except for the
+  new shells (and lower water where a trail ran through one).
+- Saved: air↔water goes into the world's edits as before; part-filled levels are saved under
+  `moleforge.fluids.v1` (per seed, every 20 s and on exit) and come back on load (tested: a settled
+  pool reloads cell for cell; films under 4/8 still save as air, by `World.saveEdits`).
+- Springs (`fluids.debug.spring(x, y, z, rate)`): a cell that keeps pouring, for tests and set
+  pieces.
+
+**The mole in water** (`Fluids.swim`, `bodyFx`; **a small hook in `src/deep/Player.js`**, which no
+part owns: `FPSPlayer.wade` and `.flow`, set by Fluids every frame): wading through shallow water
+slows you (up to 45 % at knee depth) with a splash, a ring and a slosh every step; currents carry
+you (added to the walking target, so you can swim against them; falling water pushes you under);
+buoyancy springs you to ride the waves with a little overshoot; splash crown, rings, jelly wobble
+and foam on the way in; wake rings and foam while swimming; bubbles from the snout; looking down
+while swimming (or crouch) dives. Under water: murky blue-green fog, drifting specks catching the
+lamp, and every sound muffled (a low-pass on the master bus, 18 kHz → 420 Hz with depth, restored
+on surfacing). Rocks that fall in splash and sink trailing bubbles; finds whose item `cat` is light
+(food, plants, ingredients, drops…) waiting on the floor bob on the surface and drift with the
+current; bodies with `b.float` or a wooden `b.mat` float too (see hooks).
+
+**Visuals** (`fluids/water.js`, `fluids/caustics.js`), still 64 texels per meter, stepped tones,
+whole-pixel offsets:
+- `WaterGrab` blits the engine's scene target (colour + depth) when the first water surface of the
+  frame draws (one blit, nothing re-rendered). Water then refracts what's under it (whole-pixel
+  offsets from the wave normals, never borrowing what's in front), tints and fogs it by the water
+  the eye looks through (Beer-Lambert, red goes first, in six steps), and colours even shallow
+  water a little; the surface writes depth now, so bubbles and droplets behind it hide properly.
+- Animated normals: the swell, ripple rings and jelly wobble as before, plus two octaves of fine
+  texel ripples drifting downstream (they break the lights' reflections into glitter).
+- Reflections: Fresnel toward grazing angles with a 9-step screen-space march (lit walls, lanterns,
+  glowing things show in the water; off on the 'low'/'off' fx settings, phones).
+- Glints: the helmet lamp right below you and every nearby light across the water, sharp, in
+  pixel clusters; short crest-line dashes riding the swell near the eye.
+- Flow you can see: streaks and flecks carried downstream by a two-phase flow map, from the
+  surface slope and from the sim's own running directions (a per-column flow texture, so a level
+  stream still shows which way it runs).
+- Foam: at shores (the mesher's shore flags, clumped and lapping), along the ragged edge of a
+  spreading film, on ripple crests, and churning wherever falling water lands (`wImp[6]`, points
+  that build up while a fall keeps hitting and fade after).
+- Falling water: translucent blue-green with a few bright threads racing down, the world behind it
+  bent; spray, mist, droplets and a ring where it lands. From below, the surface is a Snell's
+  window onto the cave above with a bright rim, dark total reflection around it and a drifting
+  light network.
+- Caustics on the rock (`WaterMap` + `patchTerrain`): a 128² map (16 m, 1/8 m texels) of water
+  tops/bottoms round the mole tells the terrain shader where water is; floors and walls under
+  water get a dancing caustic network (stepped, fading with depth), walls just above a pool get
+  the wavering light it throws back (up to 1.6 m), and the waterline gets a dark wet band. Added
+  at runtime to the terrain material (onBeforeCompile; `col *= wc_light(vWorld)` just before the
+  cave-look part's `col = caveAir(...)`, or before its last `gl_FragColor = vec4(col, …)`); if
+  neither is found the terrain is left alone and the water shader draws the caustics on the floor
+  it sees through instead.
+- Lava keeps its own look (crust plates, glowing seams, heat pulses), unchanged.
+- Drips from wet ceilings: over any water near the mole drops swell, fall and ring the surface;
+  over the damp rock right round it they spatter on stone (`fx.dripAt`).
+
+**Hooks for the lead** (not applied):
+- `Terrain.js`: Fluids swaps its material in at start (`owner.terrain.fluidMat`), so nothing is
+  needed; to build with it from the first frame, `this.fluidMat = makeWaterMaterial(U, grab)` from
+  `./fluids/water.js` (and a `new WaterGrab()`).
+- `DigScene.js`: `this.post.underwater = pl.headUnder ? 1 : 0` could be
+  `this.fluids?.uwK ?? (pl.headUnder ? 1 : 0)` (Fluids eases it in and out over ~0.15 s). The
+  `ev.splash` handler plays a splash and particles that Fluids also plays (two splash sounds on a
+  high jump into water): it can go.
+- Floating debris: `Bodies.spawn` could copy `opts.float` / `opts.mat` onto the body and DigScene
+  pass the broken voxels' material, then timber, boards, ladders and roots float (Fluids already
+  reads `b.float` / `b.mat`).
+- `World.saveEdits` drops water films under 4/8 (saved as air); with the levels saved by Fluids it
+  could keep them.
+
+**Cave look part**: the terrain material gets `wc_light()` patched in at runtime (above); keep a
+`vWorld` varying and either `col = caveAir(col, …)` or a final `gl_FragColor = vec4(col, …)` and
+it keeps working. `makeFluidMaterial` / `FLUID_SURF` in `TerrainMaterial.js` are only the fallback
+now (the live copy of `fsurf` is in `fluids/water.js`, mirrored by `Fluids.waveAt`).
+
+Test hooks: `scene.fluids.debug.{ pour(x, y, z, r, m), spring(x, y, z, rate, m), look('old' |
+'new'), stats(), sim }`.

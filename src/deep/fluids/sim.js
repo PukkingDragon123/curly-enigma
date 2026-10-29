@@ -506,7 +506,8 @@ export class FlowSim {
       const nk = this.nb(k, d[0], 0, d[1]);
       const nm = this.mk(nk);
       const ln = nm === 0 ? 0 : nm === m ? this.lk(nk) : 99;
-      if (ln < l - 1) {
+      // a running stream moves on even a step downhill (it stops at a wall or when level)
+      if (ln < l) {
         const t = (l - ln + 1) >> 1;
         this.put(nk, m, ln + t, nm);
         this.slots[nk >> LB].md[nk & LM] = dir;
@@ -795,6 +796,7 @@ export class FlowSim {
   // ------------------------------------------------------------------ edits from the game
   onVoxel(vx, vy, vz, old, m) {
     if (this.self) return;
+    this.lc = null;
     const fo = FLUID[old], fm = FLUID[m];
     if (fo || fm) {
       const k = this.key(vx, vy, vz);
@@ -811,6 +813,7 @@ export class FlowSim {
   }
   /** Pour fluid into a cell from outside the flow (a bucket, a spring): returns what fit. */
   add(vx, vy, vz, m, l) {
+    this.lc = null;
     const cur = this.vox(vx, vy, vz);
     if (cur < 0 || (cur && cur !== m)) return 0;
     const k = this.key(vx, vy, vz);
@@ -883,7 +886,12 @@ export class FlowSim {
     }
     // keep chunks we didn't load this time
     for (const [k, list] of Object.entries(this.saved || {})) if (!(k in out) && !this.slotOf.has(+k)) out[k] = list;
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, seed: this.w.seed, c: out })); this.dirtySave = false; this.saved = out; } catch (e) { /* storage full or blocked: levels stay in memory */ }
+    try {
+      const json = JSON.stringify({ v: 1, seed: this.w.seed, c: out });
+      // a flood that big isn't worth the room (the world's edits keep the water; levels read full)
+      if (json.length > 900000) localStorage.removeItem(SAVE_KEY); else localStorage.setItem(SAVE_KEY, json);
+      this.dirtySave = false; this.saved = out;
+    } catch (e) { /* storage full or blocked: levels stay in memory */ }
   }
   load() {
     let d = null;

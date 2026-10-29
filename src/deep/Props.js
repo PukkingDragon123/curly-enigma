@@ -1560,7 +1560,7 @@ export class Props {
     // 3D gathering: build its close-up model while it's being looked at, so E opens at once
     if (this.warmed !== p) {
       this.warmed = p;
-      const w = () => { if (this.warmed === p && !this.foraging && !p.gone) warmGather(p); };
+      const w = () => { if (this.warmed === p && !this.foraging && !p.gone) warmGather(p, this); };
       if (typeof requestIdleCallback === 'function') requestIdleCallback(w, { timeout: 500 }); else setTimeout(w, 60);
     }
     const verb = { cave_berry: 'Pick', glow_moss: 'Peel', sparkmoss: 'Peel', truffle: 'Dig up', grub: 'Dig up', dino_egg: 'Lift' }[p.item] || 'Pull';

@@ -11,11 +11,16 @@
 // close-up's length). DigScene may call `gather.frame(dt)` itself after setting the camera; the
 // wrapper then stands down (one frame each, never two).
 //
-// Test hooks: window.__gather = { open(id, o), run(id, o), sim(id, script, o), active, specs }.
+// Test hooks: window.__gather = { open(id, o), run(id, o), sim(id, script, o), active, specs,
+// still (no CSS animation, for screenshots), prof (per-section frame times in state().prof) };
+// a session: drive(script, secs, { pause, until, stopAtShow }), step(dt, input), state(), go(phase).
+// warmGather(plant, props) (Props calls it while a plant is aimed at) builds its model and compiles
+// the close-up shaders ahead, so pressing E doesn't hitch.
 import * as THREE from 'three';
 import { forageSpec, FORAGE } from '../../cooking/forage.js';
 import { makeSim, scriptInput, simulate } from './sims.js';
 import { warmPlant } from './models.js';
+import { gatherMaterial, cubeGeo } from './gfx.js';
 import { PullStage } from './stagePull.js';
 import { PickStage } from './stagePick.js';
 import { PeelStage } from './stagePeel.js';
@@ -46,10 +51,32 @@ let active = null;
 const seedOf = (p) => ((Math.round(p.x * 64) * 73856093) ^ (Math.round(p.z * 64) * 19349663)) & 0xffff;
 
 /** Build a plant's close-up model ahead (call when it's aimed at; cheap if already warm). */
-export function warmGather(plant) {
+export function warmGather(plant, props = null) {
+  const owner = props?.ctx?.owner;
+  if (owner) warmShaders(owner);
   const spec = forageSpec(plant.item);
   if (spec.tech !== 'pull') return;
   warmPlant(plant.item, spec, seedOf(plant));
+}
+
+/** Compile the close-up's shaders once, in the background, before the first E (no hitch then). */
+let warmedFor = null;
+function warmShaders(owner) {
+  const r = owner.game?.engine?.renderer;
+  if (!r || warmedFor === owner || !owner.U) return;
+  warmedFor = owner;
+  try {
+    const sc = new THREE.Scene();
+    const mat = gatherMaterial(owner.U);
+    const geo = cubeGeo();
+    const a = new THREE.Mesh(geo, mat);
+    const b = new THREE.InstancedMesh(geo, mat, 1);
+    b.setColorAt(0, new THREE.Color(1, 1, 1));
+    const c = new THREE.InstancedMesh(geo, mat, 1);
+    sc.add(a, b, c);
+    const done = () => { geo.dispose(); mat.dispose(); };
+    if (r.compileAsync) r.compileAsync(sc, owner.camera).then(done, done); else { r.compile(sc, owner.camera); done(); }
+  } catch (e) { /* only a warm-up */ }
 }
 
 /** Start gathering `plant` (a Props plant record, or a test stand-in). */
@@ -115,7 +142,7 @@ class Session {
       this.handle = ui.openPanel({ body: this.hud.root, className: 'gt-panel', closable: true, noBack: true, onClose: () => this.onClosed() });
     });
     this.handle.back.classList.add('gt-back');
-    if (typeof window !== 'undefined' && window.__gather?.still) this.hud.root.classList.add('still'); // tests: no CSS animation
+    if (typeof window !== 'undefined' && window.__gather?.still) { this.hud.root.classList.add('still'); document.documentElement.classList.add('gt-still'); } // tests: no CSS animation
     this.handle.onEscape = () => { this.escape(); return true; };
     this.input = new GatherInput({ down: this.down, tech: this.spec.tech });
     this.input.attach(this.handle.back);
@@ -302,11 +329,19 @@ class Session {
     v.inBand = !!sim.inBand;
     v.grip = !!sim.wasGrip;
     v.jerk = sim.jerk ?? 0;
+    const P = typeof window !== 'undefined' && window.__gather?.prof ? (this.profT = this.profT || {}) : null;
+    let tq = P ? performance.now() : 0;
+    const lap = (k) => { if (!P) return; const n = performance.now(); P[k] = Math.max(P[k] || 0, n - tq); tq = n; };
+    lap('sim');
     this.applyCamera(dt);
+    lap('camera');
     if ((this.phase === 'show' || this.phase === 'out') && this.showFrom && !this.cancelled && !this.sim.done?.snapped) this.present(dt);
     this.stage.update(dt, v, cam);
+    lap('stage');
     this.paws(dt);
+    lap('paws');
     this.syncOccluders();
+    lap('occ');
     // the grass round the plant leans aside while you work on it
     const veg = this.owner.vegetation?.U;
     if (veg?.uPush?.value?.[2] && veg.uPushK?.value && this.reach > 0.01) {
@@ -314,11 +349,12 @@ class Session {
       veg.uPush.value[1].set(P.x, P.y - (this.down ? 0.2 : 0), P.z, 0.3);
       veg.uPushK.value[1] = this.reach;
       // and the stuff between us and it, so nothing stands in front of the close-up
-      _v.copy(this.camPos).lerp(P, 0.45);
-      veg.uPush.value[2].set(_v.x, P.y, _v.z, 0.32);
+      _v.copy(this.camPos).lerp(P, 0.3);
+      veg.uPush.value[2].set(_v.x, P.y, _v.z, 0.45);
       veg.uPushK.value[2] = this.reach;
     }
     this.hudFrame(dt);
+    lap('hud');
     if (this.light && this.plant.light) {
       const hw = this.stage.headWorld(_v);
       this.plant.light.x = hw.x; this.plant.light.y = hw.y; this.plant.light.z = hw.z;
@@ -360,9 +396,92 @@ class Session {
     if (k > 0 && k < 1) cam.position.y += Math.sin(Math.PI * k) * 0.035 * (this.down ? -1 : 1);
     _q.copy(this.camQ);
     if (this.vis.pv > 0 && this.phase === 'play') _q.multiply(new THREE.Quaternion().setFromAxisAngle(_v2.set(1, 0, 0), this.vis.pv * 0.02 * (this.down ? -1 : 1)));
+    const sk = this.showCamQ && !this.cancelled ? this.showK || 0 : 0;
+    if (sk > 0) _q.slerp(this.showCamQ, sk);
     cam.quaternion.slerpQuaternions(this.fpsQ, _q, k);
     const fov0 = this.owner.fov || 74;
-    cam.fov = fov0 + (this.fov - fov0) * k;
+    const fovC = this.fov + ((this.showFov || this.fov) - this.fov) * sk;
+    cam.fov = fov0 + (fovC - fov0) * k;
+    const post = this.owner.post;
+    if (post) { if (this.vig0 === undefined) this.vig0 = post.vignette ?? 0.5; post.vignette = this.vig0 + (0.95 - this.vig0) * k; }
+    cam.updateProjectionMatrix();
+    cam.updateMatrixWorld(true);
+    this.owner.fx?.setPixelScale?.(this.game.engine.height, cam.fov);
+  }
+
+  /** After the pop: the plant is held up in front of the camera, turning slowly, then put away. */
+  /** Where it's held up for its result (worked out once, at the start of the show). */
+  planShow() {
+    const st = this.stage;
+    const portrait = this.game.engine.width / this.game.engine.height < 0.85;
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camQ);
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camQ);
+    const sz = st.showSize?.();
+    const span = sz ? sz.span : st.model ? st.model.stemLen + st.model.headH + (st.model.body?.depth ?? 0.03) + 0.05 : st.focus().h;
+    const wide = sz ? sz.w : st.focus().w;
+    const aspect = this.game.engine.width / this.game.engine.height;
+    const vf = THREE.MathUtils.degToRad(this.fov), hf = 2 * Math.atan(Math.tan(vf / 2) * aspect);
+    const fit = Math.max(span * 1.55 / (2 * Math.tan(vf / 2)), wide / (portrait ? 0.7 : 0.4) / (2 * Math.tan(hf / 2)));
+    // along the line to where it grew (open air), never past it, and not into the ground
+    const dist = clamp(fit, 0.3, this.camDist * 0.82);
+    const side = portrait ? 0 : dist * 0.26;
+    const goal = this.camPos.clone().addScaledVector(fwd, dist).addScaledVector(right, side);
+    if (!this.down && this.at.mount === 'floor') goal.y = Math.max(goal.y, this.at.pos.y + span * 0.5 + 0.04);
+    if (portrait) goal.y -= dist * 0.1;
+    this.showGoal = goal;
+    // the camera turns to it (keeping it off to the side for the tag) and widens if it must
+    const look = goal.clone().addScaledVector(right, -side);
+    if (portrait) look.y += dist * 0.18;
+    _m.lookAt(this.camPos, look, WORLD_UP);
+    this.showCamQ = new THREE.Quaternion().setFromRotationMatrix(_m);
+    const d = this.camPos.distanceTo(goal);
+    const need = THREE.MathUtils.radToDeg(2 * Math.atan(Math.max(span * 0.66, wide * 0.66 / Math.max(0.5, aspect * (portrait ? 0.7 : 0.45))) / d));
+    this.showFov = clamp(need, this.fov, portrait ? 84 : 76);
+  }
+
+  /** After the pop: the plant is held up in front of the camera, turning slowly, then put away. */
+  present(dt) {
+    const st = this.stage, cam = this.owner.camera;
+    if (!st.middle) return;
+    if (!this.showGoal) this.planShow();
+    const right = _v2.set(1, 0, 0).applyQuaternion(this.camQ);
+    const mid = st.middle(new THREE.Vector3());
+    const goalLocal = st.root.worldToLocal(this.showGoal.clone()).sub(mid);
+    if (this.sim.done?.snapped && st.model) goalLocal.y -= st.model.stemLen * 0.2;
+    const k = ease(this.phase === 'show' ? this.pt / 0.45 : 1);
+    this.showK = k;
+    st.plant.position.lerpVectors(this.showFrom, goalLocal, k);
+    // a slow turn to show it off
+    this.spin = (this.spin || 0) + dt * (this.phase === 'show' ? 0.9 : 0);
+    st.plant.quaternion.copy(this.showQ).multiply(_q.setFromAxisAngle(WORLD_UP, Math.sin(this.spin) * 0.5));
+    if (this.phase === 'out' && !this.cancelled) {
+      // into the bag: down and to the side, shrinking
+      const o = easeOut(this.pt / 0.4);
+      const down = st.root.worldToLocal(cam.position.clone().addScaledVector(_v3.set(0, -1, 0), 0.4).addScaledVector(right, 0.25)).sub(mid);
+      st.plant.position.lerpVectors(goalLocal, down, o);
+      st.plant.scale.setScalar(Math.max(0.001, 1 - o));
+    }
+  }
+
+  applyCamera(dt) {
+    const cam = this.owner.camera, k = this.camK;
+    // a held, breathing close-up: a little drift, a shiver as the stem strains, a nod after the pop
+    const sh = (this.sim.strain ?? 0) > 0.4 ? (this.sim.strain - 0.4) * 0.006 : 0;
+    this.kick = damp(this.kick || 0, 0, 6, dt);
+    _v.copy(this.camPos);
+    _v.x += Math.sin(this.t * 0.9) * 0.003 + (Math.random() - 0.5) * sh;
+    _v.y += Math.sin(this.t * 1.3) * 0.002 + (Math.random() - 0.5) * sh - this.kick * 0.01;
+    cam.position.lerpVectors(this.fpsPos, _v, k);
+    // a little arc on the way in and out: the mole leans down to it
+    if (k > 0 && k < 1) cam.position.y += Math.sin(Math.PI * k) * 0.035 * (this.down ? -1 : 1);
+    _q.copy(this.camQ);
+    if (this.vis.pv > 0 && this.phase === 'play') _q.multiply(new THREE.Quaternion().setFromAxisAngle(_v2.set(1, 0, 0), this.vis.pv * 0.02 * (this.down ? -1 : 1)));
+    const sk = this.showCamQ && !this.cancelled ? this.showK || 0 : 0;
+    if (sk > 0) _q.slerp(this.showCamQ, sk);
+    cam.quaternion.slerpQuaternions(this.fpsQ, _q, k);
+    const fov0 = this.owner.fov || 74;
+    const fovC = this.fov + ((this.showFov || this.fov) - this.fov) * sk;
+    cam.fov = fov0 + (fovC - fov0) * k;
     const post = this.owner.post;
     if (post) { if (this.vig0 === undefined) this.vig0 = post.vignette ?? 0.5; post.vignette = this.vig0 + (0.95 - this.vig0) * k; }
     cam.updateProjectionMatrix();
@@ -608,7 +727,7 @@ class Session {
   }
   state() {
     const s = this.sim;
-    return { id: this.id, phase: this.phase, tech: this.spec.tech, t: Math.round(this.t * 100) / 100, pv: s.pv, prog: s.prog, loose: s.loose, strain: s.strain, done: s.done, cam: { d: this.camDist, want: this.camWant, fov: this.fov }, ms: Math.round((this.ms || 0) * 100) / 100, msMax: Math.round((this.msMax || 0) * 100) / 100 };
+    return { id: this.id, phase: this.phase, tech: this.spec.tech, t: Math.round(this.t * 100) / 100, pv: s.pv, prog: s.prog, loose: s.loose, strain: s.strain, done: s.done, prof: this.profT, cam: { d: this.camDist, want: this.camWant, fov: this.fov }, ms: Math.round((this.ms || 0) * 100) / 100, msMax: Math.round((this.msMax || 0) * 100) / 100 };
   }
 }
 

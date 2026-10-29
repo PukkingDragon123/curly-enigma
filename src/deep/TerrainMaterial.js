@@ -145,8 +145,8 @@ const LIGHT = /* glsl */`
   // a dim hemisphere, cooler than the lamp (shade reads blue-grey next to its warm pool): tops a
   // little brighter, ceilings darker, plus the zone's sky and bounce
   vec3 ambientAt(vec3 n) {
-    vec3 a = mix(ambient, vec3(dot(ambient, vec3(0.3, 0.5, 0.2))) * vec3(0.8, 0.95, 1.3), 0.4);
-    return a * (0.62 + 0.2 * n.y) + skyCol * (0.55 + 0.45 * n.y) + bounce * (0.55 - 0.45 * n.y);
+    vec3 a = mix(ambient, vec3(dot(ambient, vec3(0.3, 0.5, 0.2))) * vec3(0.82, 0.95, 1.25), 0.3);
+    return a * (0.72 + 0.2 * n.y) + skyCol * (0.55 + 0.45 * n.y) + bounce * (0.55 - 0.45 * n.y);
   }
   // the helmet lamp: inverse-square-ish with a soft window at its range
   float lampAtt(float d) {
@@ -346,7 +346,7 @@ export function makeTerrainMaterial(U) {
           }
         } else if (style == 1.0) {
           // soil: soft clods, pores, a pebble here and there
-          tone += (pl.x - 0.5) * 0.8 + ((px - 0.5) * 0.4 + (clump - 0.5) * 0.5) * near + (N2.r - 0.5) * 1.0;
+          tone += (pl.x - 0.5) * 0.7 + ((px - 0.5) * 0.4 + (clump - 0.5) * 0.45) * near + (N2.r - 0.5) * 0.6 + strat * 0.5;
           nn = normalize(n + dome * 0.7);
           seam = step(pl.y, 0.1) * seamK * 0.55 + step(px, 0.035) * 0.5 * near;
           // pebbles: little round stones, a few per voxel face at most
@@ -380,7 +380,7 @@ export function makeTerrainMaterial(U) {
         } else if (style == 10.0) {
           // loose grain: gravel/sand pebbles per texel pair
           tone = hash3(floor(q * 4.0)) * 2.6 + 0.2 + (N2.r - 0.5) * 0.8;
-          glin = 0.008;
+          glin = 0.0045;
         } else if (style == 7.0) {
           tone = 1.0 + pl.x * 1.5 + (px - 0.5) * 0.6;
           wrap = 0.6;
@@ -436,13 +436,14 @@ export function makeTerrainMaterial(U) {
         if (accent > 0.5 && style == 2.0) base = mix(pal(mat, 3.0), base, 0.35) * 1.15;
         base *= (1.0 - seam * 0.62) * (1.0 + bevel * 0.24 * near + bev * 0.14);
         // each layer of the strata a little warmer or cooler than the next
-        base *= 1.0 + ((hash3(vec3(layer, 1.3, 9.1)) - 0.5) * vec3(0.4, 0.28, 0.14) + (mod(layer, 2.0) - 0.5) * 0.12) * ex.a;
+        base *= 1.0 + ((hash3(vec3(layer, 1.3, 9.1)) - 0.5) * vec3(0.4, 0.28, 0.14) + (mod(layer, 2.0) - 0.5) * 0.2) * ex.a;
         float spec = ex.r, gloss = ex.g;
 
         // ---- the zone's mood on natural rock and soil (grow): big tint patches, mineral streaks,
         // damp, moss and rime on upward faces
         if (grow > 0.0) {
-          base *= 1.0 + ((N1.b - 0.5) * vec3(0.26, 0.22, 0.18) + (N1.g - 0.5) * vec3(0.1, 0.0, -0.1)) * grow;
+          // big patches: lighter and darker, warmer (iron) and cooler (clay, lime)
+          base *= 1.0 + ((N1.b - 0.5) * vec3(0.26, 0.22, 0.18) + (N1.g - 0.5) * vec3(0.3, 0.06, -0.24)) * grow;
           float side = 1.0 - abs(n.y);
           vec4 SK = texture(noise3, vec3(qw.x * 0.42, qw.y * 0.045, qw.z * 0.42) + 0.63); // streaks running down
           float stain = smoothstep(0.68, 0.8, SK.g) * side * grow;
@@ -495,9 +496,10 @@ export function makeTerrainMaterial(U) {
           vec3 ioff;
           vec2 pi = plates(floor(qi * TEXN) / TEXN, max(S * 0.8, 1.0), ioff);
           float inner = step(pi.y, 0.08) * (1.0 - step(pl.y, 0.1));
-          vec3 acc = pal(mat, 4.0);
+          // the glow is the stone's own colour (its accent is often white, which would wash it out)
+          vec3 own = pal(mat, 2.0) * 1.3, acc = mix(pal(mat, 3.0), pal(mat, 4.0), 0.35);
           float fres = pow(1.0 - vn, 2.0);
-          col += acc * ex.b * (inner * (0.08 + glow * 0.45) + (0.02 + glow * 0.22) * (0.4 + fres)) * (0.5 + 0.5 * near);
+          col += (acc * inner * (0.08 + glow * 0.4) + own * (0.015 + glow * 0.16) * (0.3 + fres)) * ex.b * (0.5 + 0.5 * near);
           col += base * ex.b * min(dot(L, vec3(0.33)), 0.6) * 0.18; // light soaking through
         }
         if (style == 2.0 && accent > 0.5) col += base * 0.25 * L;
@@ -515,6 +517,10 @@ export function makeTerrainMaterial(U) {
           col += vec3(1.0, 0.3, 0.05) * crack * mood.w * pulse * 0.75;
           col += vec3(0.3, 0.06, 0.015) * mood.w * hpt * 0.16 * pulse;
         }
+        // a soft shoulder: pale ice and crystal right under the lamp keep their colour instead of
+        // clipping to white
+        vec3 hi = max(col - 0.62, 0.0);
+        col = min(col, 0.62) + hi / (1.0 + hi * 1.6);
         // impact flash on the struck rock
         float hd = length(vWorld - hit.xyz);
         col += vec3(1.0, 0.86, 0.6) * hit.w * clamp(1.0 - hd / 0.45, 0.0, 1.0);

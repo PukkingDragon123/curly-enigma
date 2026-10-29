@@ -54,7 +54,7 @@ await step('save stones → new game → the journey', async () => {
   for (let i = 0; i < 160 && ((await scene()) !== 'home' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
   if ((await scene()) !== 'home') throw new Error('did not wake up at home: ' + (await scene()));
 });
-await step('waking up: cold water and Old Star', async () => {
+await step("waking up in Old Star's house", async () => {
   await wait(1500);
   await shot('02b-waking');
   const r = await page.evaluate(() => window.__game.scene.debug.finishWake());

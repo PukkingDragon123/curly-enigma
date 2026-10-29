@@ -69,8 +69,8 @@ export const FORAGE = {
   glow_moss: { tech: 'peel', form: 'mat', speed: [0.12, 0.4], col: { a: 0x3a8a3a, b: 0x5ab84a, spark: 0xb8ffb0, under: 0x2a4a22 }, glow: 0x9af08a,
     tip: 'Grip the edge and <b>peel slowly</b>: too fast and the mat tears.' },
   // ---- the rest
-  cave_berry: { tech: 'pick', form: 'bush', ripe: 0xd02a40, unripe: 0x9ac85a, col: { leaf: 0x4e8a3a, stem: 0x6a4a2a }, berries: 11,
-    tip: 'Pick the <b>red</b> ones. Green ones aren\'t ready: leave them.' },
+  cave_berry: { tech: 'pick', form: 'bush', ripe: 0xd02a40, unripe: 0x9ac85a, col: { leaf: 0x4e8a3a, stem: 0x6a4a2a }, berries: 10,
+    tip: 'Tap as the gold ring touches a <b>red</b> berry. A dashed ring is a green one: <b>leave it</b>.' },
   truffle: { tech: 'dig', form: 'buried', fragile: true, band: [0.2, 0.5], snap: 0.7, hold: 1.0, col: { body: 0x3a2a24, hi: 0x6a5048 },
     tip: 'Follow your nose: <b>scrub</b> the soil away, then ease it out.' },
   grub: { tech: 'dig', form: 'buried', wriggle: true, band: [0.25, 0.55], snap: 0.8, hold: 1.1, col: { body: 0xf0e0c0, hi: 0xffffff, head: 0xc8782a },

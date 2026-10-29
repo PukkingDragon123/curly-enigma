@@ -115,12 +115,19 @@ lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, t
 - `lights(eye)` → `[{ x, y, z, c: [r,g,b], r }]` glowing enemies (≤ 3).
 - `dispose()`.
 
-**Fluids** (`new Fluids(ctx)`):
+**Fluids** (`new Fluids(ctx)`, parts in `src/deep/fluids/`):
 - `onVoxel(vx, vy, vz, old, m)`: called on every voxel edit (digging next to a lake starts a flow).
-- `update(dt, { player, eye, time })`: flow simulation, splashes, ripples.
+- `update(dt, { player, eye, time })`: flow simulation, swimming, splashes, ripples, drips, sound.
 - `lights(eye)` → as above (lava glow), `dispose()`.
-- The fluid surface material is `makeFluidMaterial(U)` in `TerrainMaterial.js`; the mesher emits
-  fluid faces into a separate geometry (`meshChunk(...).fluid`).
+- It sets `player.wade` (0..1: shallow water slows the legs) and `player.flow` (Vector3 m/s: the
+  current, added to the walking target) each frame; FPSPlayer reads both.
+- Bodies in water: rocks splash and sink, finds whose item `cat` is light (food, plants, drops…)
+  and bodies with `b.float` (or `b.mat` a wooden material) bob on the surface and drift.
+- The fluid surface material is `makeWaterMaterial(U, grab)` in `fluids/water.js`; Fluids swaps it
+  into `owner.terrain.fluidMat` when it starts (TerrainView still creates the old
+  `makeFluidMaterial(U)` first; `fluids.debug.look('old' | 'new')` swaps for comparisons). The
+  mesher emits fluid faces into a separate geometry (`meshChunk(...).fluid`).
+- Test hooks: `fluids.debug.{ pour(x, y, z, r, m), spring(x, y, z, rate, m), look(k), stats(), sim }`.
 
 **Props** (`new Props(ctx)`, `src/deep/Props.js`): decoration placed in the caves near the player
 (mushrooms, crystal clusters, roots, old mining gear, signposts).
@@ -144,12 +151,42 @@ Harvesting and catching (all optional, called by DigScene when present):
   reach)` (while the x-ray lamp is on) → event arrays like `update()`'s.
 - `reach` is already clipped to the rock the crosshair hits.
 
-Fluids internals: flowing levels live in `world.fluidChunks` (chunk key → Uint8Array, 1..8 eighths,
-0 = untouched/full); the mesher reads them for sloped surfaces. Air↔fluid changes are written by
-Fluids straight into `chunk.vox` and `world.edits` (they never change the rock mesh, so they skip
-`setVoxel` and `onChange`); anything that makes rock goes through `setVoxel`. `fluidUniforms(U)`
-adds `fRip`, `fRipK`, `fJig`, `fLake`, `fLakeDrop` (ripples, wobble, draining lakes) to the shared
-uniforms.
+Fluids internals (`src/deep/fluids/`):
+- `sim.js` (`FlowSim`): the flow, a cellular automaton at voxel size with levels in eighths, kept
+  in typed arrays per chunk ("slots": levels, running direction, step of the last change, queue
+  flags). Levels are shared with the mesher as `world.fluidChunks` (chunk key → Uint8Array, 1..8,
+  0 = untouched/full). Rules per step (20 a second): fall (two cells a step through open air), fill
+  a part-filled cell below, spill over an edge into lower part-filled water, keep running the way
+  a stream was going, level out sideways; at rest, a pool still sloping is levelled as a whole.
+  Films ≤ 2/8 soak into porous floors (dirt, sand, gravel, moss…) in seconds and 1/8 films dry off
+  stone in half a minute; deeper water stays (puddles). Lava moves every other step and cools to
+  rock; water meeting lava makes obsidian and steam. Work is time-budgeted (≈2 ms flow, 2.5 ms
+  fluid remesh, each chunk at most every 0.15 s), only within 24 m of the mole.
+- Lakes (plan features `kind: 'lake'`) are reservoirs: what flows out is taken from the top layer,
+  which sinks smoothly in the shader and is removed a few thousand cells a frame once spent; a lake
+  gives at most 512 eighths a step and 48 000 voxels in all, then the rest above the opening drains
+  away into the rock (it sinks below the hole), so no wall of water is ever left facing open air.
+  Plan time (`fluids/lakes.js`, called at the end of `makePlan`): each lake gets `f.wl` (its water
+  level: under any room, trail or burrow carved through its shell) and `f.shell` (clay, limestone
+  or ice; obsidian for lava) that the stamp lays where natural caves meet the pocket below the
+  waterline, so tunnels end in a wet clay wall and caves meeting the air dome open onto the lake.
+- Air↔fluid changes are written straight into `chunk.vox` and `world.edits` (they never change the
+  rock mesh, so they skip `setVoxel` and `onChange`); anything that makes rock goes through
+  `setVoxel`. Part-filled levels are saved under `moleforge.fluids.v1` (per world seed) and come
+  back on load (`World.saveEdits` still stores films under 4/8 as air).
+- `water.js`: the surface shader. `WaterGrab` blits the engine's scene target (colour + depth) the
+  moment the first water surface draws (all opaque geometry is in); water then refracts it, tints
+  and fogs it by the water depth along the eye ray, reflects the lit cave (short screen-space
+  march, off on 'low'/'off' fx), and draws foam, crest lines, flow streaks, glitter and falls.
+  `fluidUniforms(U)` adds `fRip`, `fRipK`, `fJig`, `fLake`, `fLakeDrop` (ripples, wobble, draining
+  lakes); `waterUniforms(U)` adds `wImp[6]` (foam where falling water lands) and `wLook`.
+- `caustics.js`: `WaterMap`, a 128² map (1/8 m texels) of water top/bottom round the mole, its
+  shore distance and the flow (`U.wcMap`, `U.wcFlow`, `U.wcO`, `U.wcK`). `patchTerrain(mat)` adds
+  `wc_light(vWorld)` to the terrain material at runtime (onBeforeCompile, before its final
+  `gl_FragColor = vec4(col, …)`): caustics under water, wavering light on the walls above it, a
+  wet band at the waterline. It leaves the material alone if that line or `vWorld` is missing.
+- `fx.js`: falls, landing spray and foam, foam on fast flows, steam, drips from wet ceilings (over
+  water: a ring; over the damp rock round it: a spatter), bubbles, lava bloops and spits, crumbs.
 
 ## Lifts, building, granular digging (current)
 

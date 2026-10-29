@@ -12,7 +12,6 @@
 import * as THREE from 'three';
 import { el } from '../core/util.js';
 import { resolveTarget, bearing } from '../core/questWhere.js';
-import { QUESTS } from '../data/quests.js';
 import { BART } from './bookArt.js';
 
 const _v = new THREE.Vector3(), _f = new THREE.Vector3(), _w = new THREE.Vector3();
@@ -225,7 +224,7 @@ export class QuestMarks {
 
   updateWaypoint() {
     const g = this.game, ui = g.ui, t = this.target, sc = g.scene;
-    const hide = !t?.pos || ui.isPanelOpen() || ui.focus || ui.tracker?.muted || ui.root.classList.contains('no-touch');
+    const hide = !t?.pos || ui.isPanelOpen() || ui.focus || ui.tracker?.muted || ui.root.classList.contains('no-touch') || this.gaze.t > 0;
     if (hide) { this.way.hidden = true; return; }
     const b = bearing(g, t);
     if (!b || b.d3 < (t.r ? Math.min(2.5, t.r * 0.5) : 2.2)) { this.way.hidden = true; return; }
@@ -290,4 +289,3 @@ export class QuestMarks {
   setEye() { this.eyeRing.style.setProperty('--k', Math.min(1, this.gaze.t / GAZE_T).toFixed(3)); }
 }
 
-export { QUESTS };

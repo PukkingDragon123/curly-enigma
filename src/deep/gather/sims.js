@@ -301,7 +301,7 @@ export class PickSim extends Sim {
     this.ripeN = this.berries.filter((b) => b.ripe).length;
     // the running order: every ripe berry once, with 2-3 green decoys mixed in (never first)
     const ripe = this.berries.map((b, i) => (b.ripe ? i : -1)).filter((i) => i >= 0).sort(() => this.r() - 0.5);
-    const green = this.berries.map((b, i) => (b.ripe ? -1 : i)).filter((i) => i >= 0).sort(() => this.r() - 0.5).slice(0, Math.min(3, Math.round(n * 0.25)));
+    const green = this.berries.map((b, i) => (b.ripe ? -1 : i)).filter((i) => i >= 0).sort(() => this.r() - 0.5).slice(0, Math.min(2, Math.round(n * 0.25)));
     const seq = [...ripe];
     for (const g of green) seq.splice(1 + Math.floor(this.r() * (seq.length - 1)), 0, g);
     this.seq = seq;
@@ -316,7 +316,7 @@ export class PickSim extends Sim {
     if (this.si >= this.seq.length) { this.end(); return; }
     const i = this.seq[this.si];
     // the rings speed up a little as you go; skill slows them
-    const dur = (1.05 - Math.min(0.3, this.si * 0.03)) * (1 + (this.k - 1) * 0.5);
+    const dur = (0.98 - Math.min(0.28, this.si * 0.035)) * (1 + (this.k - 1) * 0.5);
     this.beat = { i, ripe: this.berries[i].ripe, dur, t: 0, u: 0, pressed: false };
     this.emit('beat', { i, ripe: this.beat.ripe });
   }
@@ -345,7 +345,7 @@ export class PickSim extends Sim {
         this.score += perfect ? 1 : 0.82;
         this.emit('pick', { i: B.i, perfect, n: this.picked, streak: this.streak });
       } else { br.state = 'squashed'; this.squashed++; this.streak = 0; this.emit('squash', { i: B.i, ripe: true, early: err < 0 }); }
-      this.beat = null; this.gap = 0.28;
+      this.beat = null; this.gap = 0.24;
       return;
     }
     if (err > GOOD + 0.05) {

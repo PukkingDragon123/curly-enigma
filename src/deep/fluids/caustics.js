@@ -90,7 +90,9 @@ const TERRAIN_GLSL = /* glsl */`
 
 /**
  * Add the water light to the terrain material (a ShaderMaterial whose fragment shader ends with
- * `gl_FragColor = vec4(col, ...)` and has `vWorld`). Returns false (and leaves it alone) otherwise.
+ * `gl_FragColor = vec4(col, ...)` and has `vWorld`): `col *= wc_light(vWorld)` goes in just before
+ * `col = caveAir(...)` (the cave's fog) if there is one, else before that last line. Returns false
+ * (and leaves the material alone) when those aren't there.
  */
 export function patchTerrain(mat, U) {
   if (!mat || !mat.isShaderMaterial || mat.userData.wcPatched) return !!mat?.userData?.wcPatched;
@@ -104,8 +106,10 @@ export function patchTerrain(mat, U) {
     let f = sh.fragmentShader;
     const hits = [...f.matchAll(/gl_FragColor\s*=\s*vec4\(\s*col\s*,/g)];
     if (!hits.length || !main.test(f)) return;
-    const last = hits[hits.length - 1];
-    f = f.slice(0, last.index) + 'col *= wc_light(vWorld);\n        ' + f.slice(last.index);
+    // before the cave's air (fog) when there is one, else right before the colour goes out
+    const air = [...f.matchAll(/col\s*=\s*caveAir\(/g)];
+    const at = air.length ? air[air.length - 1] : hits[hits.length - 1];
+    f = f.slice(0, at.index) + 'col *= wc_light(vWorld);\n        ' + f.slice(at.index);
     f = f.replace(main, (s) => TERRAIN_GLSL + '\n' + s);
     sh.fragmentShader = f;
     sh.uniforms.wcMap = U.wcMap; sh.uniforms.wcO = U.wcO; sh.uniforms.wcK = U.wcK;

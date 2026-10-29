@@ -54,7 +54,7 @@ export class PeelStage extends Stage {
     this.imA = new THREE.InstancedMesh(gA, this.mat, plain.length);
     this.imS = new THREE.InstancedMesh(gS, this.mat, Math.max(1, sparks.length));
     const col = new THREE.Color();
-    plain.forEach((t, i) => { const h = lin(shade(t.k < 0.5 ? C.a : C.b, 0.75 + t.k * 0.3)); col.setRGB(h[0], h[1], h[2]); this.imA.setColorAt(i, col); t.im = this.imA; t.i = i; });
+    plain.forEach((t, i) => { const h = lin(shade(t.k < 0.5 ? C.a : C.b, 0.95 + t.k * 0.35)); col.setRGB(h[0], h[1], h[2]); this.imA.setColorAt(i, col); t.im = this.imA; t.i = i; });
     sparks.forEach((t, i) => { const h = lin(C.spark); col.setRGB(h[0], h[1], h[2]); this.imS.setColorAt(i, col); t.im = this.imS; t.i = i; });
     for (const im of [this.imA, this.imS]) { im.frustumCulled = false; if (im.instanceColor) im.instanceColor.needsUpdate = true; this.plant.add(im); }
     // the bare rock under it: a damp stain revealed as it comes away
@@ -62,7 +62,9 @@ export class PeelStage extends Stage {
     for (let y = 0; y < rows * 2 + 2; y++) for (let x = 0; x < cols * 2 + 2; x++) {
       const dx = (x + 0.5 - cols - 1) / (cols + 0.5), dy = (y + 0.5 - rows - 1) / (rows + 0.5);
       if (dx * dx + dy * dy > 1) continue;
-      g.set(x, y, 0, hv(x, y, 0, 3) < 0.3 ? shade(C.under, 0.85) : shade(C.under, 0.66));
+      // damp bare rock: the wall's own colour, darker where the mat was
+      const T0 = this.tones();
+      g.set(x, y, 0, hv(x, y, 0, 3) < 0.3 ? shade(T0[1], 0.7) : shade(T0[0], 0.75));
     }
     const sg = voxGeo(g, { pivot: [cols + 1, rows + 1, 0], scale: T / 2, ao: false });
     this.geos.push(sg);

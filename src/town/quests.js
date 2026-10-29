@@ -8,7 +8,6 @@
 // Test hooks: scene.townQuests.debug.{ talk(npc), notices(), who(), pos(npc) }.
 import * as THREE from 'three';
 import { M } from './units.js';
-import { VILLAGERS } from '../data/villagers.js';
 import { QUESTS, QUEST_ORDER, npcName, NPCS } from '../data/quests.js';
 import { questTalk } from '../ui/questTalk.js';
 import { openTalkMenu } from '../ui/choices.js';
@@ -154,4 +153,3 @@ function handLabel(Q, npc) {
   return m.kind === 'deliver' ? 'hand it over' : m.kind === 'choose' ? 'decide' : 'tell them';
 }
 
-export { pick };

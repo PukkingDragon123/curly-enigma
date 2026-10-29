@@ -39,7 +39,7 @@ export class Stage {
 
   /** The floor's material under the plant (clods take its colours). */
   floorMaterial() {
-    const w = this.ctx.world, p = this.at.pos, u = this.at.up;
+    const w = this.ctx.world, p = this.at.pos, u = this.at.mount === 'wall' ? this.at.toward : this.at.up;
     for (let k = 1; k <= 4; k++) {
       const x = p.x - u.x * k / VOX, y = p.y - u.y * k / VOX, z = p.z - u.z * k / VOX;
       const m = w.voxelAt(Math.floor(x * VOX), Math.floor(y * VOX), Math.floor(z * VOX));
@@ -92,7 +92,7 @@ export class Stage {
       const mound = (o.mound ?? 0.02) * Math.pow(near, 1.5);
       // turned earth: the floor's own tones, darker and duller (it's damp underneath)
       const tone = T[Math.min(3, Math.floor(r() * 2.2 + near * 1.2))];
-      const dull = mixc(tone, 0x2a221c, 0.3 + r() * 0.15);
+      const dull = mixc(tone, 0x2a221c, (o.dark ?? 0.3) + r() * 0.15);
       const col = lin(hv(i, 3, 5, 9) < 0.12 ? shade(dull, 1.25) : shade(dull, 0.8 + near * 0.15));
       c.setRGB(col[0], col[1], col[2]);
       im.setColorAt(i, c);

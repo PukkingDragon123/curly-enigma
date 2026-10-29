@@ -45,9 +45,15 @@ export class DigStage extends Stage {
     this.buildHole(0.075);
     this.hole.scale.setScalar(1);
     // the heap: clods piled into a mound; the top ones go first
-    this.buildSoil({ r0: 0.0, r1: 0.12, n: 190, mound: 0.06 });
+    this.buildSoil({ r0: 0.0, r1: 0.12, n: 230, mound: 0.06, dark: 0.45 });
+    // heaped up: a dome of loose clods over the find
     for (const c of this.clods) {
-      c.th = clamp(1 - (c.rest.y - this.base0) / 0.07 + (c.k - 0.5) * 0.25 - c.near * 0.1, 0.02, 0.95);
+      const dome = Math.max(0, 1 - (c.R / 0.11) ** 2);
+      c.rest.y += dome * 0.055 * (0.35 + c.k * 0.65);
+    }
+    this.writeClods();
+    for (const c of this.clods) {
+      c.th = clamp(1 - (c.rest.y - this.base0) / 0.09 + (c.k - 0.5) * 0.25 - c.near * 0.1, 0.06, 0.95);
       c.swept = false;
     }
     this.plant = new THREE.Group();
@@ -88,7 +94,7 @@ export class DigStage extends Stage {
     // clods swept off as the cover goes
     const cleared = 1 - clamp(sim.cover ?? 0, 0, 1);
     for (const c of this.clods) {
-      if (c.swept || c.th > cleared + 0.04) continue;
+      if (c.swept || c.th > cleared) continue;
       c.swept = true;
       c.flying = true; c.settled = false;
       const side = Math.sign(sim.wx || (Math.random() - 0.5)) || 1;
@@ -127,11 +133,17 @@ export class DigStage extends Stage {
       const fwd = this.dirWorld(new THREE.Vector3(-this.scrub * 0.3, -0.35, -1).normalize());
       return { R: { pos, up, fwd, fist: false }, L: null };
     }
+    if (o.held) {
+      // out: it rests in the open paw, held up
+      const pos = this.plant.localToWorld(new THREE.Vector3(0, -0.012, 0));
+      return { R: { pos, up: this.dirWorld(new THREE.Vector3(0, -1, 0)), fwd: this.dirWorld(new THREE.Vector3(-0.3, 0.25, -1).normalize()), fist: false }, L: null };
+    }
     return { R: { pos: this.gripWorld(new THREE.Vector3()), up, fwdView: [-1, -0.08, -0.55], fist: o.gripping, hover: true }, L: null };
   }
-  gripWorld(out = new THREE.Vector3()) { this.plant.updateMatrixWorld(); return this.plant.localToWorld(out.set(0, 0.022, 0.004)); }
+  /** The paw closes on it from above and behind (so it shows in front of the claws). */
+  gripWorld(out = new THREE.Vector3()) { this.plant.updateMatrixWorld(); return this.plant.localToWorld(out.set(0.008, 0.05, -0.022)); }
   headWorld(out = new THREE.Vector3()) { return this.gripWorld(out); }
   middle(out = new THREE.Vector3()) { return out.set(0, 0.02, 0); }
-  showSize() { return { span: 0.14, w: 0.14 }; }
+  showSize() { return { span: 0.26, w: 0.24 }; }
   focus() { return { at: new THREE.Vector3(0, this.base0 + 0.04, 0), h: 0.3, w: 0.44 }; }
 }
