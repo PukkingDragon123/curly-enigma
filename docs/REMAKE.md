@@ -1891,3 +1891,28 @@ that never settled, the old lake); `after-pool*` / `after-waterfall` (a pool roo
 pouring off a shelf and a lantern), `after-breach-0..3` (dig through to a full reservoir: the gush,
 the waterfall from the hole, the flood), `after-lake-shell` (a cave tunnel ending in a lake's damp
 clay shell); `e2e/` the last e2e run; `dev/` the iterations.
+
+## Wave 4: Minecraft feel, cinematic tutorial, cutscene talk (the user's ask, and who owns what)
+
+The user's words (three messages): "The house is a really bad cave, small cave with almost nothing;
+[make it and the] tutorial better: forced, cinematic, don't show too much UI yet, have mobile and PC
+tutorial, super polished interactive cutscenes, forced tutorial. Remove human infrastructure in the
+cave, make it like Minecraft, and the elevator area can't be destroyed, make it more like Minecraft
+too. Add building and destroying buildings, but it needs tools." · "Fix the UI blur issue: the UI gets
+a weird blue effect. NPC dialogue: make it like a zoom-in interactive cutscene with floating text." ·
+"Human infrastructure: make it 0 now, but have roguelike dungeons etc. Make the forest scene 100x
+better, and caves have vines and no grass: mushrooms and dirt, not much grass."
+
+| Part | Owns |
+|---|---|
+| **Cinematic tutorial** | the lessons flow: `src/home/lessons.js`, `src/home/wake.js`, `src/deep/Prologue.js` (mining lesson), `src/forge/tutorial.js`, `src/cooking/lesson.js`; new `src/ui/Onboard.js` (+css: control prompts drawn per device, PC keys vs touch gestures); a "tutorial UI level" (`ui.setTutorialLevel(n)`: which HUD pieces show) in `src/ui/Hud.js` / `UI.js` (small, additive) |
+| **Cutscene talk** | new `src/ui/Convo.js` (+css) and a camera director (`src/fx/director.js` or similar): NPC talk zooms in on the speaker's real 3D model with letterbox bars and floating text beside the head, choices floating too; routes `ui/choices.js`, `ui/questTalk.js`, Old Star's talk, town folk, keepers, burrow traders and Rocco through it; `src/ui/Tutor.js` (tips only, no blur); the UI blur / blue-tint bug. May add one camera-hook line per scene (`HomeScene`, `TownScene`, `DigScene`) |
+| **Natural caves & dungeons** | `Generator.js` `addPlaces`/stamps, `src/deep/gen/*`, `src/deep/ruins/*` + `Ruins.js` (ruins become Minecraft-like dungeons), `Props.js` placement tables, `src/deep/veg/flora.js` (vines, mushrooms, dirt; little grass), the lift stations' look and protection (unbreakable), `Traders.js` only for the trails that led to the burrows |
+| **Building** | new `src/deep/Build.js` (Minecraft-like placing of blocks, torches/lanterns, ladders, doors…), the `build` tool section of `DigScene.js` (`build()`, `cycleBuild`, the build hotbar), `Dig.js` (which tool breaks what: built blocks need the right tool), block items in `data/items.js` (additive) |
+| **Forest** | the journey / surface forest: `src/bookends/journey.js` and its art, `src/scenes/FallScene.js` visuals |
+| **House** | `src/home/house.js`, `houseProps.js`, `surfaces.js`, `plan.js`, `vista.js`, `shell.js`, `walls.js`, `src/scenes/HomeScene.js` structure, `src/iso/homeLayout.js`; old saves must load the new house (never the old bare cave) |
+| **Lead** | `DigScene.js` (except the build section), `World.js`, `Terrain.js`, `scripts/e2e.mjs`, integration |
+
+Rules as in wave 3 (no git, build passes, keep debug hooks and e2e working, `E2E_UNTIL`, phones portrait and
+landscape, performance, screenshots in `shots/<part>/`, an "As built" section here, don't edit another
+part's files except the small hooks named above; use unique file names in the shared scratchpad).
