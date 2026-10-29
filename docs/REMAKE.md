@@ -1515,8 +1515,11 @@ plant, after the pop it carries on); the session runs once per scene frame right
 placed its camera by wrapping `vm.update` for the close-up (it sets `owner.gather` while active).
 It overrides camera position/rotation/fov (and the particles' pixel scale, the vignette), sets
 `vm.drive`, hides the HUD chrome (`#ui.gathering`), hides the plant's prop (`props.hidePlant`) and
-moves its light with the plant's head, and leans the vegetation aside round the plant and in front
-of the camera (`vegetation.U.uPush[1..2]`, after `vegetation.update`).
+moves its light with the plant's head, and presses the vegetation aside and down (tips into the
+soil, so big fronds don't lie across the close-up) round the plant, in front of the camera and,
+after the pop, round where it's held up (`vegetation.U.uPush[1..2]` with `uPushK` 2–2.4, written
+after `vegetation.update`). A "clear this sphere" uniform in the vegetation shader would do this
+more cleanly (optional, for the vegetation owner).
 
 **Techniques, in 3D** (5–15 s each; all from the cooking part's tuned sims, so scores are fair):
 - **pull** (mushrooms, roots, herbs, flowers, bulbs; ceiling plants upside down): the fist closes

@@ -347,15 +347,15 @@ class Session {
     const veg = this.owner.vegetation?.U;
     if (veg?.uPush?.value?.[2] && veg.uPushK?.value && this.reach > 0.01) {
       const P = this.at.pos;
-      // (pressed well aside: big fronds would otherwise splay across the close-up)
+      // (pressed right down, tips into the soil: big fronds would otherwise lie across the close-up)
       veg.uPush.value[1].set(P.x, P.y - (this.down ? 0.2 : 0), P.z, 0.36);
-      veg.uPushK.value[1] = this.reach * 1.7;
+      veg.uPushK.value[1] = this.reach * 2.4;
       // and the stuff between us and it, so nothing stands in front of the close-up
       _v.copy(this.camPos).lerp(P, 0.4);
       // and once it's held up, the stuff round where it's held
       if (this.showGoal && this.showK > 0 && !this.cancelled) _v.lerp(this.showGoal, this.showK);
       veg.uPush.value[2].set(_v.x, P.y, _v.z, 0.5);
-      veg.uPushK.value[2] = this.reach * 1.3;
+      veg.uPushK.value[2] = this.reach * 2;
     }
     this.hudFrame(dt);
     lap('hud');
