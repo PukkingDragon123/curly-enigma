@@ -292,19 +292,29 @@ await step('deep: block a kobold, then fight it', async () => {
   const r = await page.evaluate(() => {
     const s = window.__game.scene, en = s.enemies, d = en?.debug, st = window.__game.state;
     if (!d) return { err: 'no creatures in the mine' };
-    const staged = d.stage('kobold', { dist: 2.2, awake: true });
-    if (!staged?.spawned) return { err: 'no cave for a fight' };
-    const e = d.get('kobold');
-    st.data.energy = 100;
     // a card or panel left open pauses the mine (and the creatures): note it, close it
     const ui = window.__game.ui, open0 = ui.panelStack.map((p) => p.node?.className || p.kind || '?');
     ui.closeAllPanels();
-    d.block(true);
     const c = en.combat, b0 = c.stats.blocked + c.stats.parried, t0 = en.time;
-    for (let k = 0; k < 360 && c.stats.blocked + c.stats.parried === b0; k++) { if (ui.isPanelOpen()) ui.closeAllPanels(); d.look(e); s.update(1 / 30); }
+    // stage a kobold in a roomy cave and hold the guard up; if it wanders off or vanishes, stage again
+    let e = null, tries = 0, gone = 0;
+    for (; tries < 3 && c.stats.blocked + c.stats.parried === b0; tries++) {
+      const staged = d.stage('kobold', { dist: 2.2, awake: true });
+      if (!staged?.spawned) continue;
+      e = d.get('kobold');
+      if (!e) continue;
+      st.data.energy = 100;
+      d.block(true);
+      for (let k = 0; k < 360 && c.stats.blocked + c.stats.parried === b0; k++) {
+        if (ui.isPanelOpen()) ui.closeAllPanels();
+        if (!e.alive || !en.list.includes(e)) { gone++; break; }
+        d.look(e); s.update(1 / 30);
+      }
+      d.unblock();
+    }
+    if (!e) return { err: 'no cave for a fight' };
     const dtBlock = +(en.time - t0).toFixed(2);
     const guarded = c.stats.blocked + c.stats.parried - b0;
-    d.unblock();
     const kills0 = st.data.stats?.kills ?? 0;
     let acts = 0;
     const onAct = (a) => { if (a?.type === 'kill') acts++; };
@@ -312,10 +322,10 @@ await step('deep: block a kobold, then fight it', async () => {
     for (let k = 0; k < 40 && e.alive; k++) { st.data.energy = 100; d.look(e); d.hit(e, 4); for (let j = 0; j < 6; j++) s.update(1 / 30); }
     st.off?.('act', onAct);
     for (let k = 0; k < 30; k++) s.update(1 / 30);
-    return { guarded, log: c.log.slice(-3), dead: !e.alive, acts, kills: (st.data.stats?.kills ?? 0) - kills0, open0, dtBlock, leaving: !!s.leaving, kobold: d.list().find((x) => x.kind === 'kobold') || null };
+    return { guarded, log: c.log.slice(-3), dead: !e.alive, acts, kills: (st.data.stats?.kills ?? 0) - kills0, open0, dtBlock, tries, gone, leaving: !!s.leaving, kobold: d.list().find((x) => x.kind === 'kobold') || null };
   });
   if (r.err) throw new Error(r.err);
-  if (!(r.guarded > 0)) throw new Error('no blow was blocked: ' + JSON.stringify({ log: r.log, open0: r.open0, dtBlock: r.dtBlock, leaving: r.leaving, kobold: r.kobold }));
+  if (!(r.guarded > 0)) throw new Error('no blow was blocked: ' + JSON.stringify({ log: r.log, open0: r.open0, dtBlock: r.dtBlock, tries: r.tries, gone: r.gone, leaving: r.leaving, kobold: r.kobold }));
   if (!r.dead) throw new Error('the kobold would not go down: ' + JSON.stringify(r));
   await shot('04f-fight');
 });
