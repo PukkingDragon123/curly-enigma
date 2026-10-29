@@ -113,6 +113,8 @@ export default class DigScene extends Scene {
     // test hooks (docs/DEEP.md)
     const plan = this.world.plan;
     this.debug = {
+      /** Play a gathering minigame to the end headless (deep/gather: window.__gather.run). */
+      gather: (id, o) => window.__gather?.run?.(id, o),
       biomeAt: (x, y, z) => biomeAt(plan, x, y, z),
       density: (x, y, z) => caveDensity(plan, x, y, z),
       /** an open spot with a floor (meters) where test(biome, depth, x, y, z) holds, or null */
@@ -252,7 +254,7 @@ export default class DigScene extends Scene {
     super.update(dt);
     const g = this.game, inp = g.input, pl = this.player, st = this.state;
     this.U.time.value = this.time;
-    const busy = this.leaving || g.ui.isPanelOpen();
+    const busy = this.leaving || g.ui.isPanelOpen() || !!this.gather; // a 3D gathering close-up has the paws
     // look
     let look = inp.takeLook();
     if (this.clumps?.filterLook) look = this.clumps.filterLook(look) ?? look; // turning a held clump
@@ -334,6 +336,7 @@ export default class DigScene extends Scene {
     this.camera.position.set(eye.x + (Math.random() - 0.5) * sh * 0.05, eye.y + bob + (Math.random() - 0.5) * sh * 0.05, eye.z + (Math.random() - 0.5) * sh * 0.05);
     this.camera.rotation.set(pl.pitch + this.kick.x, pl.yaw + this.kick.y, this.kick.z, 'YXZ');
     this.camera.updateMatrixWorld();
+    this.gather?.frame?.(dt); // the gathering close-up (deep/gather) steers the camera and paws
     // terrain + lights
     this.terrain.update(pl.pos.x, pl.pos.y + 0.5, pl.pos.z, 7);
     this.terrain.cull(eye.x, eye.y, eye.z, this.U.fogDist.value + 2);

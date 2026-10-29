@@ -868,10 +868,24 @@ export class Enemies {
     if (!e) {
       const egg = this.eco.eggAt(eye, dir, reach);
       if (egg) {
+        const said = (id) => (egg.nest.guards !== undefined ? [{ say: `You took a <b>${ITEMS[id]?.name || 'egg'}</b>. Its parents won't be happy...`, key: 'enemy_egg', tone: 'warn', cd: 60 }] : []);
+        // the 3D close-up (deep/gather): both paws cup the egg and lean against its wobble
+        if (this.owner?.camera && !this.owner.gather) {
+          const p = egg.nest.eggPos(egg.egg, new THREE.Vector3());
+          egg.egg.mesh.visible = false;
+          import('./gather/index.js')
+            .then(({ openGather }) => openGather({ ctx: { owner: this.owner } }, { item: egg.nest.item, x: p.x, y: p.y, z: p.z, mount: 'floor' }))
+            .then((r) => {
+              if (egg.egg.mesh) egg.egg.mesh.visible = true;
+              if (!r || r.cancel || egg.egg.taken) return;
+              const id = this.eco.takeEgg(egg);
+              for (const ev of [{ loot: { id, q: r.q, p: !!r.p } }, ...said(id)]) this.queueEv(ev);
+            })
+            .catch(() => { if (egg.egg.mesh) egg.egg.mesh.visible = true; });
+          return [];
+        }
         const id = this.eco.takeEgg(egg);
-        const ev = [{ loot: { id, q: ITEMS[id]?.q ? Math.round(rand(72, 96)) : undefined, p: false } }];
-        if (egg.nest.guards !== undefined) ev.push({ say: `You took a <b>${ITEMS[id]?.name || 'egg'}</b>. Its parents won't be happy...`, key: 'enemy_egg', tone: 'warn', cd: 60 });
-        return ev;
+        return [{ loot: { id, q: ITEMS[id]?.q ? Math.round(rand(72, 96)) : undefined, p: false } }, ...said(id)];
       }
       const c = this.eco.harvestAt(eye, dir, reach);
       if (c) {
