@@ -277,8 +277,9 @@ export class OldStar {
   /**
    * Say something: through the tutor card (his portrait, a mood) when you're near or it matters,
    * with his mouth moving and a sniff. o: { mood, wait, key, dur, card: false (a bubble over him) }.
-   * Cutscene talk (game.convo) instead when o.convo, or o.wait and he isn't scripted, or a talk with
-   * him is up (o.convo: false keeps the card); o.camera / o.gesture go to the cutscene.
+   * Cutscene talk (game.convo) instead when o.convo, or o.wait and he isn't scripted, or a held talk
+   * with him is up; a remark that doesn't wait floats by his head (convo, not held); o.convo: false
+   * keeps the card. o.camera / o.gesture go to the cutscene.
    */
   say(html, o = {}) {
     const ui = this.g.ui;
@@ -286,9 +287,11 @@ export class OldStar {
     // cutscene talk (src/ui/Convo.js): when you talked to him (o.convo), a line you carry on yourself
     // while he isn't in a scripted scene, or while a talk with him is still up
     const cv = this.g.convo;
-    if (o.card !== false && cv && o.convo !== false && (o.convo || (o.wait && !this.scripted && !this.s.scripted) || cv.talkingTo('oldstar')) && cv.speaker('oldstar')) {
-      this.sniff();
-      return cv.say('oldstar', html, { mood, wait: o.wait ?? !!o.convo, dur: o.dur, camera: o.camera, gesture: o.gesture });
+    if (o.card !== false && cv && o.convo !== false && cv.speaker('oldstar')) {
+      const held = o.convo || (o.wait && !this.scripted && !this.s.scripted) || (cv.talkingTo('oldstar') && !!cv.active?.held);
+      if (held) { this.sniff(); return cv.say('oldstar', html, { mood, wait: o.wait ?? !!o.convo, dur: o.dur, camera: o.camera, gesture: o.gesture, key: o.key }); }
+      // a passing remark: the words float by him (no bars, your camera stays yours, nothing held)
+      if (!o.wait) { this.sniff(); return cv.say('oldstar', html, { mood, wait: false, hold: false, dur: o.dur, key: o.key, gesture: o.gesture }); }
     }
     this.rig.talk?.(Math.min(3.2, 0.8 + html.replace(/<[^>]*>/g, '').length / 26));
     this.feel(mood, 3);

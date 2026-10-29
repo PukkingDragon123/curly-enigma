@@ -389,7 +389,7 @@ export default class DigScene extends Scene {
     if (!ui.setCrosshair) return;
     const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
     // something to pick or catch (props' plants, critters) comes first
-    const use = this.prologue?.target?.(eye, f, reach) || this.clumps?.target(eye, f, reach) || this.nugget?.target?.(eye, f, reach) || this.traders?.target?.(eye, f, reach) || this.ruins?.target?.(eye, f, reach) || this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
+    const use = this.prologue?.target?.(eye, f, reach) || this.clumps?.target(eye, f, reach) || this.nugget?.target?.(eye, f, reach) || this.traders?.target?.(eye, f, reach) || this.ruins?.target?.(eye, f, reach) || this.builder?.target?.(eye, f, reach) || this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
     if (use) { ui.setCrosshair({ visible: true, kind: 'use', label: use.label }); return; }
     const foe = this.enemies?.hitTest(eye, f, reach);
     if (foe) { ui.setCrosshair(foe.passive ? { visible: true, kind: 'rock', label: foe.constructor.info?.name || '' } : { visible: true, kind: 'enemy' }); return; }
@@ -883,7 +883,7 @@ export default class DigScene extends Scene {
       if (pr) { this.events(pr); return; }
       const cl = this.clumps?.use(eye, f, reach);
       if (cl) { this.events(cl); return; }
-      for (const mod of [this.nugget, this.traders, this.ruins]) {
+      for (const mod of [this.nugget, this.traders, this.ruins, this.builder]) { // builder: doors, chests, the workbench
         const r = mod?.use?.(eye, f, reach);
         if (r) { this.events(Array.isArray(r) ? r : [r]); if (this.vm) this.vm.impact('none', 0.3); return; }
       }
@@ -1253,6 +1253,7 @@ export default class DigScene extends Scene {
     this.ruins?.dispose?.();
     this.traders?.dispose?.();
     this.vegetation?.dispose?.();
+    this.builder?.dispose?.();
     this.events(this.clumps?.dispose());
     this.fluids?.dispose();
     this.world.onChange = null;

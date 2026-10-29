@@ -41,7 +41,7 @@
 .bd-tab:hover, .bd-tab:focus-visible { transform: translateY(calc(var(--px) * -1)); }
 .bd-tab.on { color: #3a2208; background: #e8b84a; box-shadow: 0 0 0 var(--px) #5a3a08, inset 0 var(--px) 0 #ffe08a, inset 0 calc(var(--px) * -2) 0 #b07a14, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35); text-shadow: 0 var(--px) 0 #ffe8a0; }
 .bd-badge { position: absolute; right: calc(var(--px) * -3); top: calc(var(--px) * -4); font-family: var(--font); font-size: 16px; line-height: 1; padding: var(--px) calc(var(--px) * 1.5) 0; color: #fff;
-  background: #3a8a2a; box-shadow: 0 0 0 var(--px) #1a3a0e; }
+  background: #3a8a2a; box-shadow: 0 0 0 var(--px) #1a3a0e; text-shadow: 0 var(--px) 0 #1a3a0e; }
 
 .bd-pane { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #a06c3c transparent; padding: calc(var(--px) * 2) calc(var(--px) * 1); }
 
@@ -185,5 +185,11 @@
   .bd-board { padding-top: calc(var(--px) * 7); }
   .bd-tabs { margin-bottom: calc(var(--px) * 2); }
   .bd-grid { grid-template-columns: repeat(auto-fill, minmax(calc(var(--px) * 28), 1fr)); gap: calc(var(--px) * 3); }
-  .bd-foot { margin-top: calc(var(--px) * 2); }
+  .bd-foot { margin-top: calc(var(--px) * 2); flex-wrap: nowrap; }
+  /* landscape phones: slate, lever and the build plank share one row (the slate keeps two lines) */
+  .bd-slate { flex: 1 1 auto; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+    padding-bottom: 0; border-bottom: calc(var(--px) * 1.5) solid transparent; } /* the border hides the third line's top */
+  .bd-lever, .bd-done { flex: none; }
+  .bd-done { font-size: var(--fs-s); padding: calc(var(--px) * 1.5) calc(var(--px) * 5) calc(var(--px) * 2); }
+  .bd-note { padding: var(--px) calc(var(--px) * 2); }
 }

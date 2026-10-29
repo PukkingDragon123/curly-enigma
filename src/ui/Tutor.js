@@ -176,7 +176,8 @@ export class Tutor {
   /** Hide the line (only if it is `key`, when given). */
   hide(key) {
     const c = this.cur;
-    if (!c || (key && c.key !== key)) return;
+    if (!c) { this.game.convo?.hide?.(key); return; } // (a passing line of Old Star's floats by him now)
+    if (key && c.key !== key) return;
     this.finish(c);
   }
 

@@ -2109,7 +2109,8 @@ two and hops one, like a Minecraft player; doorways are 1 wide × 2 high.
 - **The picker** (R, or tapping the build slot again; `build/picker.js` + `build.css`): a wooden board under
   a hanging sign; Blocks (crates with counts, greyed when you have none, the chalk slate says where to get
   them; shape tokens with tiny isometric drawings; the Gather lever; "Build!") and Craft (pinned recipe
-  cards, ingredient chips red when short, a workbench badge, Make). Phones: 4 columns, one card per row.
+  cards, ingredient chips red when short, a workbench badge, Make). Phones: 4 columns, one card per row;
+  landscape phones keep the slate, lever and Build! in one row so two shelves of crates show.
 - **The look** (`build/shader.js`): the terrain material is patched at runtime (like `fluids/caustics.js`,
   anchored before `float ti = clamp(floor(tone + 0.5)…`): 32 "block pixels" per face with the same pattern
   on every block (cobble stones, brick courses, plank boards with staggered joints and nails, log bark and
@@ -2359,6 +2360,17 @@ idle time and reused, pack and hammer off) stands where you stand facing them, l
 nodding when you answer; it's added to the scene with a `scene.own` detach so it's never disposed
 with a scene. FOV is restored when the camera is home.
 
+**Passing lines** (`hold: false`; the tutor shape's default for a line that doesn't wait; Old Star's
+`star.say` for any remark that doesn't wait, so his tips in the tutorial too): no bars, no camera
+move, nothing held, the HUD stays; the words float by his head with a wick burning down, and when
+he's off screen the label carries his live face (top of the screen on touch, low on desktop). A
+passing line after a held talk has finished ends that talk and floats on its own. `game.convo.hide
+(key)` (and `ui.tutor.hide(key)`, which forwards to it when the card is empty) takes one down. The
+talk's clock runs on the wall clock (frames and a 100 ms timer) or the scene's time, whichever is
+ahead, so lines time out even when frames starve. The label stays hidden until a line is shown
+(`bars(true)` alone shows only the bars). A talk ends through `ui.closePanel(hold)` (its handle off
+the window stack, input back), so a scene change mid-talk (`closeAllPanels`) is clean.
+
 **Routing** (small edits, marked): `ui/choices.js` (`openTalkMenu` → `convoTalkMenu` first),
 `ui/questTalk.js` (asides as cutscene lines; a reminder then the shop), `home/oldstar.js` (`say`),
 `home/workshop.js` (E on Old Star: `convo: true`), `town/quests.js` (`greet(k)`: a word at the window
@@ -2399,7 +2411,8 @@ After, 1280×720: `after-portraits` (the cast now), `after-tutor-card`, `after-t
 with the quest toast); `after-grubb-1` (a keeper's offer through his window); `after-hazel-1/2` (a
 keeper's word at the window, then the shop); `after-rocco-1/2`, `after-trader-1/2` (burrow talk, then
 the counter); `after-folk-1` (a passing chat); `after-fallback` (no model here: the portrait rides in
-the label). Phones: `phone-*` (390×844 touch, dpr 2; `phone-mabel` at dpr 3, `after-phone3-tutor-*`)
+the label). `tut-ph-home-05-walk` (the phone tutorial's walk step: Old Star's passing line as a
+floating label, his face in it while he's off screen). Phones: `phone-*` (390×844 touch, dpr 2; `phone-mabel` at dpr 3, `after-phone3-tutor-*`)
 and `land-*` (844×390).
 
 ### As built: the forest (wave 4)

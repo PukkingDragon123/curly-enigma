@@ -34,7 +34,7 @@ html.is-touch .cv-hint { right: 50%; transform: translate(50%, -50%); }
   filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(6, 3, 6, .6));
   transform-origin: 0 50%; will-change: transform;
 }
-.cv-say.gone { opacity: 0; transition: opacity .18s; }
+.cv-say.gone { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .18s, visibility 0s .18s; }
 .cv.out .cv-say { opacity: 0; scale: .92; transition: opacity .25s, scale .25s; }
 .cv-say.pop { animation: cvPop .42s var(--pop) both; }
 .cv-say.swap .cv-body { animation: cvSwap .26s ease-out; }
@@ -67,6 +67,7 @@ html.is-touch .cv-hint { right: 50%; transform: translate(50%, -50%); }
 }
 .cv-say.pop .cv-plate { animation: cvPlate .55s var(--pop) .1s both; }
 @keyframes cvPlate { from { transform: translateY(calc(var(--px) * -6)) rotate(-6deg); opacity: 0; } 60% { transform: rotate(2deg); } }
+.cv-say.plate-r .cv-plate { left: auto; right: calc(var(--px) * 2); }
 .cv-name { font-family: var(--font-head); font-size: var(--fs-h); line-height: calc(var(--px) * 12); color: #ffe6a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 var(--px) 0 #3a0f0a; }
 .cv-say[data-kind=folk] .cv-plate { border-image-source: var(--dl-ribbonGreen); }
 .cv-say[data-kind=hero] .cv-plate { border-image-source: var(--dl-ribbonBlue); }

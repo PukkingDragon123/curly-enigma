@@ -123,7 +123,7 @@ export class Convo {
     this.tail = el('i', { class: 'cv-tail', 'aria-hidden': 'true' });
     this.faceEl = el('div', { class: 'cv-face' });
     this.body = el('div', { class: 'cv-body' }, [this.subEl, this.textEl, this.nextEl, this.wick]);
-    this.label = el('div', { class: 'cv-say', role: 'status', 'aria-live': 'polite' }, [this.tail, this.plate, this.faceEl, this.body]);
+    this.label = el('div', { class: 'cv-say gone', role: 'status', 'aria-live': 'polite' }, [this.tail, this.plate, this.faceEl, this.body]);
     this.choicesEl = el('div', { class: 'cv-choices', role: 'menu' });
     this.root = el('div', { class: 'cv', hidden: true }, [this.barT, this.barB, this.label, this.choicesEl]);
     this.ui.root.insertBefore(this.root, this.ui.overlay);
@@ -250,6 +250,17 @@ export class Convo {
   /** End the cutscene now (pending lines resolve as skipped). */
   end() { this.endSession(false); }
 
+  /**
+   * Take a line down, as ui.tutor.hide(key) does: the line said with this key, or (no key) a passing
+   * line floating by someone. A held cutscene is left alone without a key (end() ends it).
+   */
+  hide(key) {
+    const b = this.cur;
+    if (!b || (key ? b.lineKey !== key : !!this.s?.hold)) return false;
+    this.finishBeat(b);
+    return true;
+  }
+
   /** Test hooks: settle() (the camera all the way to the shot now, the words typed), state(). */
   get debug() {
     const cv = this;
@@ -271,7 +282,7 @@ export class Convo {
     if (src === 'sim') this.simT += dt;
     else {
       // (the real time since the last UI frame: the game caps its dt on slow frames)
-      const now = performance.now(), real = this.wallAt ? Math.min(1, Math.max(0, (now - this.wallAt) / 1000)) : dt;
+      const now = performance.now(), real = this.wallAt ? Math.min(2.5, Math.max(0, (now - this.wallAt) / 1000)) : dt;
       this.wallAt = now;
       this.wallT += Math.max(real, this.simT);
       this.simT = 0;
@@ -289,6 +300,8 @@ export class Convo {
   }
 
   enqueue(beat, o = {}) {
+    // a passing line (not held) after a held talk has said everything: that talk ends, the line floats
+    if (this.s?.hold && beat.hold === false && !this.cur && !this.q.length) this.endSession(false);
     if (!this.s) this.beginSession(beat.hold !== false);
     else if (beat.hold !== false && !this.s.hold) this.holdOn();
     const s = this.s;
@@ -303,6 +316,8 @@ export class Convo {
   /** A talk starts. held: you're held (the cutscene proper); else the words just float by them. */
   beginSession(held = true) {
     this.relock = false;
+    // a timer as well as the frames: lines time out by the clock even when frames starve
+    if (!this.clockT) this.clockT = setInterval(() => { if (!this.s) { clearInterval(this.clockT); this.clockT = 0; return; } if (performance.now() - (this.wallAt || 0) > 150) this.tick(0, 'wall'); }, 100);
     this.s = { hold: null, n: 0, keep: false, endAt: null, held: new Set(), t0: this.clock() };
     clearTimeout(this.hideT);
     this.root.hidden = false;
@@ -361,7 +376,8 @@ export class Convo {
     for (const sp of s.held) { try { sp.hold(false); sp.lookAt(null); sp.talk(false); } catch (e) { /* gone */ } }
     this.director.release();
     this.disposeFace();
-    if (s.hold && !s.hold.closed) { s.hold.closed = true; this.ui.closePanel(s.hold); }
+    // (closePanel marks it closed and takes it off the stack; its onClose finds no session and returns)
+    if (s.hold && !s.hold.closed) this.ui.closePanel(s.hold);
     if (s.mutedTracker && this.ui.tracker?.muted) this.ui.tracker.mute(false);
     this.ui.root.classList.remove('cv-on');
     this.root.classList.remove('held', 'typed', 'choosing', 'timed');
@@ -628,12 +644,23 @@ export class Convo {
       cy = H - bar - ch - (portrait ? 12 : 18);
       this.choicesEl.style.transform = `translate(${Math.round(cx)}px, ${Math.round(cy)}px)`;
     }
+    const held = !!this.s?.hold;
+    // a passing line (not held: no bars) from someone off screen carries their live face instead
+    if (!held && b.speaker) {
+      const off = !head;
+      if (off) this.ensureFace(b.cast, b.mood);
+      if (L.classList.contains('portrait') !== off) { L.classList.toggle('portrait', off); this.lab.ok = false; }
+    }
     const plateH = this.plate.hidden ? 0 : this.plate.offsetHeight; // (the name ribbon rides above the label)
-    const lo = bar + m + plateH, hi = H - bar - m - (choosing ? ch + 22 : 0);
+    const barH = held || this.root.classList.contains('bars') ? bar : 0;
+    const lo = barH + m + plateH, hi = H - barH - m - (choosing ? ch + 22 : 0);
     let x, y, side;
     if (!head) {
-      // nobody to point at: low in the frame, centred
-      x = (W - lw) / 2; y = Math.max(lo, Math.min(hi - lh, H * (portrait ? 0.56 : 0.6) - lh / 2)); side = 'none';
+      // nobody to point at: low in the frame, centred (a passing line: where the tips go, clear of
+      // the thumbs on a touch screen and of the HUD's corners)
+      x = (W - lw) / 2; side = 'none';
+      if (held) y = Math.max(lo, Math.min(hi - lh, H * (portrait ? 0.56 : 0.6) - lh / 2));
+      else y = isTouch() ? Math.max(lo, H * (portrait ? 0.16 : 0.12)) : Math.max(lo, Math.min(hi - lh, H * 0.78 - lh));
     } else {
       const pref = shot?.label || (portrait ? 'below' : head.x < W / 2 ? 'right' : 'left');
       const order = { right: ['right', 'above', 'left', 'below'], left: ['left', 'above', 'right', 'below'], below: ['below', 'above', 'right', 'left'], above: ['above', 'right', 'left', 'below'] }[pref] || ['right', 'left', 'below', 'above'];
@@ -661,10 +688,17 @@ export class Convo {
     // the tail: on the edge facing the head, pointing at the mouth
     const t = this.tail;
     t.dataset.side = side;
+    let plateR = false;
     if (head && side !== 'none') {
       if (side === 'right' || side === 'left') t.style.top = `${Math.round(clamp(head.y + head.r * 0.15 - this.lab.y, 14, lh - 22))}px`, t.style.left = '';
-      else t.style.left = `${Math.round(clamp(head.x - this.lab.x, 18, lw - 26))}px`, t.style.top = '';
+      else {
+        const tx = Math.round(clamp(head.x - this.lab.x, 18, lw - 26));
+        t.style.left = `${tx}px`; t.style.top = '';
+        // (a tail on the top edge under the name ribbon: the ribbon moves to the other end)
+        plateR = side === 'below' && !this.plate.hidden && tx < this.plate.offsetWidth + 16;
+      }
     }
+    if (L.classList.contains('plate-r') !== plateR) L.classList.toggle('plate-r', plateR);
   }
 }
 
