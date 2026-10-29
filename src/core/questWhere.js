@@ -21,9 +21,9 @@ const TOWN_SIGHTS = {
 const DEEP_SIGHTS = { lake: 'water', lava: 'lava', nest: 'nest' };
 const SIGHT_NAMES = { lake: 'An underground lake', lava: 'A lava pool', nest: 'A creature lair', signpost: 'An old signpost', cavein: 'A cave-in on an old trail', ruin: 'An old ruin' };
 const BURROW_NPC = { trader: 'trader', herbalist: 'herbalist', rocco: 'raccoon', outpost: 'outpost' };
-const HOME_LIFT = { x: 8.25, y: 0.6, z: -4.9 }, HOME_PASSAGE = { x: 3.25, y: 0.8, z: -10.05 }, HOME_HOLE = { x: 4.35, y: 2.6, z: -3.7 };
+const HOME_LIFT = { x: 7.3, y: 0.5, z: -3.4 }, HOME_PASSAGE = { x: 6.2, y: 0.4, z: -5.6 }, HOME_HOLE = { x: 3.7, y: 2.0, z: -1.45 }; // defaults; the home scene's questSpot() wins
 /** A named spot at home: the home scene may say where (scene.questSpot(name) → {x,y,z} m), else the cave's defaults. */
-const HOME_SPOTS = { hearth: { x: -2.55, y: 0.7, z: -4.15, label: "Old Star's hearth", sub: 'cook here' }, forge: { x: -0.72, y: 0.9, z: -9.08, label: 'The forge and anvil', sub: 'smelt and forge here' } };
+const HOME_SPOTS = { hearth: { x: -3.95, y: 0.7, z: -2.75, label: 'The kitchen range', sub: 'cook here' }, forge: { x: -2.3, y: 0.9, z: -5.5, label: 'The forge and anvil', sub: 'smelt and forge here' } };
 const HOME_KEYS = { lift: ['lift'], passage: ['passage', 'front'], hole: ['hole'], hearth: ['fire', 'hearth'], forge: ['anvil', 'forge'] };
 function homeSpot(sc, name, def) {
   try {
@@ -165,7 +165,7 @@ export function resolveTarget(game, view) {
     else if (g.scene === 'home') { const d = TOWN.home.door; out.via = 'home'; out.pos = { x: d.x * TU, y: 1, z: d.z * TU }; say("Old Star's", 'home through your burrow door'); }
   } else if (here === 'home') {
     if (g.scene === 'deep') { out.via = 'lift'; out.pos = homeSpot(sc, 'lift', HOME_LIFT); say('The mine', 'ride the cage lift down'); }
-    else if (g.scene === 'town') { out.via = 'passage'; out.pos = homeSpot(sc, 'passage', HOME_PASSAGE); say('Deep Town', 'out through the passage'); }
+    else if (g.scene === 'town') { out.via = 'passage'; out.pos = homeSpot(sc, 'passage', HOME_PASSAGE); say('Deep Town', 'out through the front door'); }
   }
   return out;
 }

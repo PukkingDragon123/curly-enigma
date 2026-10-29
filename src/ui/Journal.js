@@ -62,7 +62,7 @@ export function whereText(v) {
   if (!g) return '';
   if (g.npc) return `${npcName(g.npc)} · ${NPCS[g.npc]?.where || ''}${NPCS[g.npc]?.town ? ' (Deep Town)' : ''}`;
   if (g.burrow) return NPCS[Object.keys(NPCS).find((k) => NPCS[k].burrow === g.burrow)]?.where || 'A burrow in the mine';
-  if (g.place === 'home') return "Old Star's workshop (home)";
+  if (g.place === 'home') return "Old Star's house (home)";
   if (g.place === 'town') return 'Deep Town';
   if (g.place === 'dig') return "Old Star's dig, by the first lift";
   if (g.zone) return `The ${ZONE_NAMES[g.zone]}, ${ZONE_DEPTHS[g.zone - 1]} m down`;

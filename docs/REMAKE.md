@@ -922,8 +922,8 @@ burrow, ruin, danger, zone, sight, biome, or the hearth/forge for cooking and sm
 t)` → `{ dist, dy, rel, d3 }`. In the mine: burrows, the nearest unopened ruin (by kind), dangers,
 cave-ins (`caveIns(plan)`), trail mouths, the town gate, home. In town: people's heads
 (`scene.questNpcPos`), the sunbeam, well, tunnel, fountain, falls, notice board. At home: Old Star,
-the hearth, the forge, the hole (read from the home scene's `debug.spots`: lift, passage/front,
-hole, fire, anvil; `scene.questSpot(name)` → `{x,y,z}` overrides any of `lift passage hole hearth forge`). A goal in another scene points at the way there
+the hearth, the forge, the hole (the home scene's `questSpot(name)` → `{x,y,z}` for `lift passage hole hearth forge`,
+else its `debug.spots`, else defaults). A goal in another scene points at the way there
 (the town lift, your burrow door, the cage lift, the passage, the town gate).
 
 **Clarity**:
@@ -990,7 +990,7 @@ fell under his cart; he dug Hollis out; Rocco's grandfather found the cart.
   counter: "May I read your books?"; Old Star's shelf needs a hook at home, see the report). Every read emits `act lore`; a new find
   toasts. The reader (`src/ui/loreReader.js`, `lore.css`): a charcoal rubbing with raised runes, a torn
   journal page, a book page, a tale on parchment; "Written in your book" on new ones.
-- Old Star's notes (`src/data/notes.js`) are updated for the cave workshop (no tavern) and got four
+- Old Star's notes (`src/data/notes.js`) are updated for his house (no tavern, no cave workshop) and got four
   more (the carvings, his stamp, Shaft Seven, hens).
 
 **Test hooks**: `game.quests.debug.{ list, step, complete, start, act, reset, data, give(id) }` (give:

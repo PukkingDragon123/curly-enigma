@@ -31,7 +31,7 @@ export const ZONE_NAMES = [null, 'Rootsoil', 'Clayworks', 'Crystal Grotto', 'Mag
 
 /** The folk who hand out work. ink: their color on the quest page and the map. */
 export const NPCS = {
-  oldstar: { name: 'Old Star', short: 'Old Star', where: 'His workshop', ink: '#8a3a1a', mood: 'calm' },
+  oldstar: { name: 'Old Star', short: 'Old Star', where: 'His house above the mine', ink: '#8a3a1a', mood: 'calm' },
   trader: { name: 'the trader', short: 'Trader', where: 'The Trading Post', burrow: 'trader', ink: '#7a5a14' },
   herbalist: { name: 'the herbalist', short: 'Herbalist', where: "Herbalist's Hollow", burrow: 'herbalist', ink: '#3d6a2a' },
   rocco: { name: 'Rocco', short: 'Rocco', where: "Rocco's Storage", burrow: 'raccoon', ink: '#4a4a6a' },
@@ -86,11 +86,11 @@ export const QUESTS = {
   // ======================================================== the lessons (the tutorial chain)
   lessons: {
     title: "Old Star's Lessons", giver: 'oldstar', kind: 'main',
-    intro: 'You fell through my roof, slept in my quench trough and ate my last grub bar. Fine. I\'ll teach you to dig, forge and cook, and we\'ll both earn our way out of this hole.',
+    intro: 'You fell through my roof, slept a whole day in my spare bed and ate my last grub bar. Fine. I\'ll teach you to dig, forge and cook, and we\'ll both earn our way out of this hole.',
     outro: 'That\'s all I know, more or less. The rest is a million gold and a great deal of digging. Off you go.',
     steps: [
-      { id: 'wake', text: 'Get up and meet Old Star', hint: 'He\'s the one holding the empty bucket.', lesson: 'wake', on: { type: 'talk', npc: 'oldstar' } },
-      { id: 'lift', text: 'Ride the cage lift down to his dig', hint: 'The cage in the corner of the workshop. "Mind the gate," he says. He always says.', lesson: ['lift', 'dig'], on: [{ type: 'reach', place: 'dig' }, { type: 'reach', place: 'lift:L0' }], where: { place: 'dig' } },
+      { id: 'wake', text: 'Get up and meet Old Star', hint: 'The old star-nosed mole poking at the bedroom fire. He\'s been waiting for you to wake up.', lesson: 'wake', on: { type: 'talk', npc: 'oldstar' } },
+      { id: 'lift', text: 'Ride the cage lift down to his dig', hint: 'The cage lift in his hall. "Mind the gate," he says. He always says.', lesson: ['lift', 'dig'], on: [{ type: 'reach', place: 'dig' }, { type: 'reach', place: 'lift:L0' }], where: { place: 'dig' } },
       { id: 'rock', text: 'Dig through the rock', hint: 'Swing at the wall. Rock is patient. Be less patient.', lesson: 'mine_rock', where: { place: 'dig' } },
       { id: 'ore', text: 'Dig round the copper till it breaks free', hint: 'Never hit the ore. Dig the earth round it and it comes away on its own, wrapped in its rock.', lesson: 'mine_ore', on: { type: 'ore', id: 'copper_ore' }, where: { place: 'dig' } },
       { id: 'clean', text: 'Chip the clump clean and bag it', hint: 'Turn it in your paws. Chisel along the ore, brush the dust off.', lesson: 'mine_clean', where: { place: 'dig' } },

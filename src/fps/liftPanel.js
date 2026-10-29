@@ -231,7 +231,7 @@ function paintDetails(pc, S, seed, avoid) {
 }
 
 // the surface and the top of the earth (canvas px)
-const HOME_DEPTH = 5; // Old Star's cave, a few metres under the clearing
+const HOME_DEPTH = 5; // Old Star's house, a few metres under the clearing
 const HOLE_X = SX - 19; // where the mole fell in
 const WAYUP_X = SX - 38; // the Surface Express shaft up from Deep Town (locked: a million gold)
 
@@ -339,37 +339,41 @@ function paintSurface(pc, wayUp) {
   }
 }
 
-/** Under the clearing: the hole he fell through, Old Star's cave workshop, the express shaft. */
+/** Under the clearing: the hole he fell through, Old Star's house (cut away), the express shaft. */
 function paintHome(pc, S, wayUp, townY) {
   const hy = Math.round(S.y(HOME_DEPTH));
   const x0 = SX - 32, x1 = SX + 7, cyT = hy - 7, cyB = hy + 5;
-  // the cave pocket
-  for (let y = cyT - 1; y <= cyB + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) {
-    const e = ((x - (x0 + x1) / 2) / ((x1 - x0) / 2 + 0.5)) ** 2 + ((y - (cyT + cyB) / 2) / ((cyB - cyT) / 2 + 0.5)) ** 4 + (hash(x, y, 31) - 0.5) * 0.12;
-    if (e < 1) {
-      // lamplit rock: warmer toward the forge on the left
-      const warm = clamp(1 - (x - x0) / (x1 - x0) * 1.3, 0, 1);
-      const c = y > cyB - 2 ? 0x3a2618 : e > 0.75 ? 0x24160e : 0x33200f;
-      pc.set(x, y, mixHex(c, 0x6a3a1a, warm * (e < 0.75 ? 0.45 : 0.2)));
-    }
-    else if (e < 1.18) pc.set(x, y, shade(pc.getHex(x, y), 0.6));
+  // the dug pocket the house sits in: packed earth round a timber frame
+  for (let y = cyT - 2; y <= cyB + 2; y++) for (let x = x0 - 2; x <= x1 + 2; x++) {
+    const edge = x < x0 || x > x1 || y < cyT || y > cyB;
+    pc.set(x, y, edge ? (hash(x, y, 31) < 0.5 ? 0x2a1a10 : 0x22140c) : 0x000000);
   }
-  // the floor, stalactites, glow-worms on the ceiling
-  for (let x = x0 + 2; x < x1 - 1; x++) pc.set(x, cyB, x % 3 ? 0x4a3424 : 0x3a281c);
-  for (let x = x0 + 4; x < x1 - 2; x += 5) { pc.set(x, cyT + 1, 0x3a2a20); if (x % 2) pc.set(x, cyT + 2, 0x3a2a20); }
-  for (let x = x0 + 3; x < x1 - 2; x += 3) if (hash(x, 2, 33) < 0.6) pc.set(x, cyT + (x % 2), 0x7ae8ff);
-  // Old Star's forge: the hearth glowing, its chimney up through the rock
-  const fx = x0 + 4;
-  pc.rect(fx, cyB - 4, 5, 4, 0x6a5a58);
-  pc.rect(fx + 1, cyB - 3, 3, 2, 0xffa030); pc.set(fx + 2, cyB - 3, 0xfff0a0);
-  for (let y = cyT - 6; y < cyB - 4; y++) pc.set(fx + 2, y, y < cyT ? 0x3a2a26 : 0x5a4a48);
-  for (let j = -3; j <= 3; j++) for (let i = -4; i <= 4; i++) { const d = Math.hypot(i, j * 1.4); if (d > 2.4 && d < 4.4 && (i + j) % 2 === 0) pc.set(fx + 2 + i, cyB - 2 + j, mixHex(pc.getHex(fx + 2 + i, cyB - 2 + j), 0xff8020, 0.4)); }
-  // the anvil, the quench trough, his bed, Old Star himself
-  stamp(pc, fx + 8, cyB - 2, [[0, 0, 0x6a6e76], [1, 0, 0x8a8e96], [2, 0, 0x6a6e76], [3, 0, 0x5a5e66], [-1, 0, 0x6a6e76], [1, 1, 0x4a4e56], [2, 1, 0x4a4e56], [0, 2, 0x5a3a22], [3, 2, 0x5a3a22], [1, 2, 0x5a3a22], [2, 2, 0x5a3a22]]);
-  pc.rect(fx + 14, cyB - 2, 4, 2, 0x5a3a22); pc.set(fx + 15, cyB - 2, 0x3a7ab0); pc.set(fx + 16, cyB - 2, 0x5a9ad0);
-  stamp(pc, fx + 20, cyB - 4, [[1, 0, 0x5a5050], [0, 1, 0x4a4044], [1, 1, 0x4a4044], [2, 1, 0xf07090], [0, 2, 0x76643e], [1, 2, 0x76643e], [0, 3, 0x76643e], [1, 3, 0x76643e]]);
-  pc.rect(x1 - 9, cyB - 1, 5, 1, 0xa83a2a); pc.set(x1 - 9, cyB - 2, 0xe8dcc0);
-  // the hole he fell through: a crooked dark crack from the clearing to the cave roof
+  // rooms: lime plaster above an oak wainscot, warm lamplight; partitions are timber posts
+  const rooms = [[x0, x0 + 9, 0x3a2a1a], [x0 + 10, x0 + 24, 0xe8d8b0], [x0 + 25, x1, 0xd8c8a0]]; // smithy, living room, bedroom
+  for (const [a, b, wall] of rooms) for (let y = cyT; y <= cyB; y++) for (let x = a; x <= b; x++) {
+    const low = y >= cyB - 2;
+    const c = wall === 0x3a2a1a ? ((x + y) % 3 ? 0x6a3a26 : 0x5a2e1e) /* the smithy's brick */ : low ? 0x7a5a3a : wall;
+    pc.set(x, y, mixHex(c, 0xffb050, 0.12));
+  }
+  for (let x = x0; x <= x1; x++) { pc.set(x, cyT, 0x5a3a22); pc.set(x, cyB, x % 3 ? 0x8a6038 : 0x6a4428); } // ceiling beam, floorboards
+  for (const x of [x0, x0 + 9, x0 + 24, x1]) for (let y = cyT; y <= cyB; y++) pc.set(x, y, 0x5a3a22); // the posts
+  // round windows onto the glowing cavern
+  for (const wx of [x0 + 13, x0 + 21, x1 - 3]) {
+    for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) pc.set(wx + i, cyT + 3 + j, Math.abs(i) + Math.abs(j) === 2 ? 0x8a6a3a : 0x6ac8e8);
+  }
+  // the living room's fireplace and its chimney up through the earth, a wisp of smoke
+  const fx = x0 + 16;
+  pc.rect(fx, cyB - 4, 3, 3, 0x8a8078); pc.set(fx + 1, cyB - 2, 0xffa030); pc.set(fx + 1, cyB - 3, 0xffd060);
+  for (let y = cyT - 6; y < cyB - 4; y++) pc.set(fx + 1, y, y < cyT ? 0x5a5048 : 0x8a8078);
+  pc.set(fx + 2, cyT - 7, 0x9a9090); pc.set(fx + 1, cyT - 8, 0x8a8080);
+  // the smithy's forge glow, the anvil
+  pc.rect(x0 + 2, cyB - 3, 3, 2, 0x3a3434); pc.set(x0 + 3, cyB - 2, 0xff8020);
+  stamp(pc, x0 + 6, cyB - 2, [[0, 0, 0x6a6e76], [1, 0, 0x8a8e96], [-1, 0, 0x6a6e76], [0, 1, 0x4a4e56]]);
+  // the armchair and rug, your bed with its red quilt, Old Star by the fire
+  pc.rect(x0 + 11, cyB - 2, 2, 2, 0x3a6a3a); pc.rect(x0 + 13, cyB - 1, 8, 1, 0xa83a2a);
+  pc.rect(x1 - 6, cyB - 2, 5, 1, 0xc84a3a); pc.set(x1 - 6, cyB - 2, 0xe8dcc0); pc.rect(x1 - 6, cyB - 1, 5, 1, 0x6a4428);
+  stamp(pc, fx + 4, cyB - 4, [[1, 0, 0x76643e], [0, 1, 0x4a4044], [1, 1, 0x4a4044], [2, 1, 0xf07090], [0, 2, 0x76643e], [1, 2, 0x76643e], [1, 3, 0x5a5050]]);
+  // the hole he fell through: a crooked dark crack from the clearing to the house's roof
   let x = HOLE_X;
   for (let y = GROUND - 2; y <= cyT + 1; y++) {
     x += Math.round(Math.sin(y * 0.9) * 0.6);
@@ -388,7 +392,7 @@ function paintHome(pc, S, wayUp, townY) {
   return { hy, cyT, cyB };
 }
 
-/** The shaft (from the floor of Old Star's cave), its timbers and the cable. knownTo: canvas y of the deepest known stop. */
+/** The shaft (from the floor of Old Star's house), its timbers and the cable. knownTo: canvas y of the deepest known stop. */
 function paintShaft(pc, S, knownTo, top) {
   const bottom = S.H - CORE_PAD + 4;
   for (let y = top; y < bottom; y++) {

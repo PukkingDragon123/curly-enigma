@@ -474,7 +474,7 @@ export const SIDE_QUESTS = {
     intro: 'You came out of Shaft Seven like a cork from a bottle, youngster. Forty years nothing\'s come out of there. The night it fell, it took a million gold and nearly your Old Star. Ask him about it. He won\'t tell you. Ask anyway.',
     outro: 'So now you know. He dug me out with his paws, that night. Me and two others. Then he went home and never came back. I\'ve been sitting by this tunnel ever since, waiting to thank him.',
     steps: [
-      { id: 'ask', text: 'Ask Old Star about Shaft Seven', hint: 'At home, in his workshop. Talk to him (E).', talk: 'oldstar', say: { by: 'oldstar', text: 'Hollis talks too much. ...It was a million. Near enough. It went down a crack. That\'s all. Mind the fire.', mood: 'worried' } },
+      { id: 'ask', text: 'Ask Old Star about Shaft Seven', hint: 'At home, in his house above the mine. Talk to him (E).', talk: 'oldstar', say: { by: 'oldstar', text: 'Hollis talks too much. ...It was a million. Near enough. It went down a crack. That\'s all. Mind the fire.', mood: 'worried' } },
       { id: 'read', text: 'Read 2 pages of the old foreman\'s journal', hint: 'Pages are tucked into the tools left at cave-ins on the old trails (E on a dropped pick or shovel).', on: { type: 'lore', src: 'journal' }, unique: 'id', n: 2, where: { sight: 'cavein' } },
       { id: 'back', text: 'Go back to Old Hollis', hint: 'His bench by the boarded tunnel in Deep Town.', talk: 'hollis' },
     ],
@@ -508,7 +508,7 @@ export const BURROW_QUESTS = {
     title: 'Rocco Makes Amends', giver: 'rocco', kind: 'request', from: 'rocco', urgent: true, requires: ['lo_hollis_cart'], when: (st) => !!st.flag('starToldRocco'), gives: { rocco_purse: 1 },
     intro: 'Fine! FINE. Grandpa found a cart in the deep, full of gold with little stars on. He... spent most of it. On this burrow. Here. It\'s what\'s left. Take it to the old star-nose. Tell him... tell him sorry. Don\'t tell him I cried. Raccoons don\'t cry.',
     outro: 'He laughed? He LAUGHED? ...Good. That\'s good.',
-    steps: [{ id: 'bring', text: 'Bring Rocco\'s purse to Old Star', hint: 'At home, in his workshop.', deliver: { to: 'oldstar', items: { rocco_purse: 1 } }, say: { by: 'oldstar', text: 'Star-stamped. Every one. Forty years. ...Ha! A raccoon! I\'ll put it on the mantel. Not for spending. For remembering.', mood: 'laugh' } }],
+    steps: [{ id: 'bring', text: 'Bring Rocco\'s purse to Old Star', hint: 'At home, in his house above the mine.', deliver: { to: 'oldstar', items: { rocco_purse: 1 } }, say: { by: 'oldstar', text: 'Star-stamped. Every one. Forty years. ...Ha! A raccoon! I\'ll put it on the mantel. Not for spending. For remembering.', mood: 'laugh' } }],
     reward: { sp: 2, items: { music_box: 1 }, lore: ['os_sorry'] },
   },
   tr_gems: {

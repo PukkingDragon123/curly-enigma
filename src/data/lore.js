@@ -17,7 +17,7 @@
 // Old Star's pinned notes (src/data/notes.js) are their own shelf, 'notes'.
 
 export const SHELVES = [
-  { id: 'notes', label: "Old Star's Notes", sub: 'Pinned on the board in his workshop', ink: '#8a3a1a' },
+  { id: 'notes', label: "Old Star's Notes", sub: 'Pinned on the board in his house', ink: '#8a3a1a' },
   { id: 'oldstar', label: 'Old Star', sub: 'Who he was, and the million he almost had', ink: '#8a3a1a' },
   { id: 'town', label: 'Deep Town', sub: 'Tales from the plaza benches', ink: '#7a5a14' },
   { id: 'miners', label: 'The Old Miners', sub: 'The Lantern & Pick Company, and Hobb\'s journal', ink: '#5a4a2a' },

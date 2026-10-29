@@ -1,4 +1,4 @@
-// Old Star's notes: forty years of scribbles from his dig, pinned up on the board in his workshop.
+// Old Star's notes: forty years of scribbles from his dig, pinned up on the board in his house.
 // They're also the first shelf of the book's Lore chapter (src/core/lore.js).
 // Handwritten tips and a little lore, in his voice. Short: each fits a small paper card.
 // NOTES = [{ id, title, text }]; text may use \n for line breaks. Signed "O.S." where he'd sign.
@@ -66,8 +66,8 @@ export const NOTES = [
   },
   {
     id: 'tavern',
-    title: 'This old workshop',
-    text: 'This was the Company smithy, once. Songs, sparks, mud on every chair.\nThen the Rumble came, the lift jammed, the miners left, and I went down for one last look. Forty years, that look took.',
+    title: 'This old house',
+    text: 'This was the Company smith\'s house, once. Songs, sparks, mud on every chair.\nThen the Rumble came, the lift jammed, the miners left, and I went down for one last look. Forty years, that look took.',
   },
   {
     id: 'town',
