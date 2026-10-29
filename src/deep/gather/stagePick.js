@@ -140,8 +140,9 @@ export class PickStage extends Stage {
         const n = Math.min(9, this.sim.picked);
         for (let i = 0; i < n; i++) {
           const m = mesh(this.ripeG, this.mat, this.hand);
-          const a = i * 2.4, rr = i ? 0.012 + (i % 3) * 0.004 : 0;
-          m.position.set(Math.cos(a) * rr, Math.floor(i / 4) * 0.012 - 0.006, Math.sin(a) * rr);
+          const a = i * 2.4, rr = i ? 0.017 + (i % 3) * 0.006 : 0;
+          m.position.set(Math.cos(a) * rr, Math.floor(i / 4) * 0.014 - 0.006, Math.sin(a) * rr);
+          m.rotation.set(i * 0.7, i * 1.3, 0);
           this.occlude(m);
         }
         this.hand.position.copy(this.reachP).add(this.plant.position);

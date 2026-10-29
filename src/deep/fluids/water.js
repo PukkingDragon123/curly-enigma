@@ -305,11 +305,9 @@ export function makeWaterMaterial(U, grab) {
         // lights' reflections into glitter and gives the refraction its shimmer)
         if (top) {
           float nearK = clamp(1.0 - (dist - 2.0) / 9.0, 0.0, 1.0);
-          vec2 rq = uv * 7.0 - flow * time * 1.2 + vec2(time * 0.35, -time * 0.27);
+          vec2 rq = uv * 9.0 - flow * time * 1.3 + vec2(time * 0.4, -time * 0.3);
           float r0 = vnoise(rq), rx = vnoise(rq + vec2(0.45, 0.0)), rz = vnoise(rq + vec2(0.0, 0.45));
-          vec2 rq2 = uv * 13.0 + vec2(-time * 0.6, time * 0.5) - flow * time * 1.6;
-          float s0 = vnoise(rq2), sx = vnoise(rq2 + vec2(0.45, 0.0)), sz = vnoise(rq2 + vec2(0.0, 0.45));
-          vec2 g = (vec2(rx - r0, rz - r0) * 0.5 + vec2(sx - s0, sz - s0) * 0.3) * (0.3 + 0.7 * nearK) * (0.4 + 0.6 * amp);
+          vec2 g = vec2(rx - r0, rz - r0) * 0.7 * (0.3 + 0.7 * nearK) * (0.4 + 0.6 * amp);
           vec3 nd = normalize(vec3(-hs.y - g.x, 1.0, -hs.z - g.y));
           n = under ? -nd : nd;
           nv = max(dot(n, V), 0.0);
@@ -368,8 +366,11 @@ export function makeWaterMaterial(U, grab) {
           vec2 fd = fs > 0.05 ? flow / length(flow) : vec2(0.8, 0.6);
           vec2 sq = vec2(dot(uv, fd), dot(uv, vec2(-fd.y, fd.x)));
           vec2 fl = vec2(fs, 0.0);
-          float streak = flowNoise(vec2(sq.x * 0.9, sq.y * 7.0), fl, 1.0);
-          float fleck = flowNoise(vec2(sq.x * 3.0, sq.y * 3.0), fl * 3.0, 1.0);
+          float streak = 0.0, fleck = 0.0;
+          if (fs > 0.1) { // only where it runs
+            streak = flowNoise(vec2(sq.x * 0.9, sq.y * 7.0), fl, 1.0);
+            fleck = flowNoise(vec2(sq.x * 3.0, sq.y * 3.0), fl * 3.0, 1.0);
+          }
           float hn = clamp(hs.x / (0.02 * amp), -3.0, 3.0);
           // what's below, tinted and fogged by the water in between (stepped like the palette)
           vec3 absorb = vec3(0.95, 0.34, 0.2) * wLook.x;
@@ -385,10 +386,12 @@ export function makeWaterMaterial(U, grab) {
           col = below * T + scat * (1.0 - T);
           col *= 1.0 + 0.12 * (step(1.3, hn) - step(hn, -1.3));
           // pixel crest lines: short light dashes along the wavelets, drifting with the swell and flow
-          vec2 cd = normalize(vec2(0.8, 0.6) + fd * fs * 3.0);
-          float cph = dot(uv, cd) * 6.0 + vnoise(uv * 2.3 + time * 0.2) * 2.4 - time * (1.0 + fs * 3.0);
-          float crest = step(0.93, fract(cph)) * step(0.55, vnoise(uv * 3.0 + vec2(time * 0.5, -time * 0.3)));
-          col = mix(col, hi * (L * 1.15 + 0.06), crest * mix(0.4, 0.2, dk) * clamp(1.0 - (dist - 3.0) / 6.0, 0.0, 1.0));
+          if (dist < 9.0) {
+            vec2 cd = normalize(vec2(0.8, 0.6) + fd * fs * 3.0);
+            float cph = dot(uv, cd) * 6.0 + vnoise(uv * 2.3 + time * 0.2) * 2.4 - time * (1.0 + fs * 3.0);
+            float crest = step(0.93, fract(cph)) * step(0.55, vnoise(uv * 3.0 + vec2(time * 0.5, -time * 0.3)));
+            col = mix(col, hi * (L * 1.15 + 0.06), crest * mix(0.4, 0.2, dk) * clamp(1.0 - (dist - 3.0) / 6.0, 0.0, 1.0));
+          }
           // flowing water shows its streaks and flecks running downstream
           col = mix(col, hi * (L * 1.1 + 0.05), step(0.76, streak) * smoothstep(0.15, 0.6, fs) * 0.5);
           fm = max(fm, step(0.86 - fs * 0.08, fleck) * step(0.3, fs));
@@ -396,10 +399,10 @@ export function makeWaterMaterial(U, grab) {
           // reflection: the cave's glow toward grazing angles, plus what a short march finds above
           float F = 0.02 + 0.98 * pow(1.0 - nv, 5.0);
           vec3 refl = fogCol * 1.4 + scat * 0.3;
-          if (grab && wLook.z > 0.5 && F > 0.06) {
+          if (grab && wLook.z > 0.5 && F > 0.1) {
             vec3 R = reflect(rd, n);
-            float t = 0.12;
-            for (int i = 0; i < 9; i++) {
+            float t = 0.15;
+            for (int i = 0; i < 7; i++) {
               vec3 Q = vWorld + R * t;
               vec4 cp = uVP * vec4(Q, 1.0);
               if (cp.w <= 0.0) break;
@@ -412,7 +415,7 @@ export function makeWaterMaterial(U, grab) {
                 refl = texture2D(tGrab, su).rgb * tint * 0.85 + fogCol * 0.4;
                 break;
               }
-              t *= 1.6;
+              t *= 1.75;
             }
           }
           col = mix(col, refl, clamp(F * 0.95, 0.0, 0.85));

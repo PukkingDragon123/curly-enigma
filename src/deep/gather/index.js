@@ -426,7 +426,15 @@ class Session {
     const dist = clamp(fit, 0.3, this.camDist * 0.82);
     const side = portrait ? 0 : dist * 0.26;
     const goal = this.camPos.clone().addScaledVector(fwd, dist).addScaledVector(right, side);
-    if (!this.down && this.at.mount === 'floor') goal.y = Math.max(goal.y, this.at.pos.y + span * 0.5 + 0.04);
+    if (!this.down && this.at.mount === 'floor') {
+      // clear of the ground under it (a long root hangs a way below the paw)
+      const w = this.owner.world;
+      let top = this.at.pos.y;
+      for (const [ox, oz] of [[0, 0], [0.12, 0], [-0.12, 0], [0, 0.12], [0, -0.12]]) {
+        for (let y = goal.y + 0.3; y > goal.y - 1.5; y -= 1 / 16) if (w.solidAt(goal.x + ox, y, goal.z + oz)) { top = Math.max(top, y + 1 / 16); break; }
+      }
+      goal.y = Math.max(goal.y, top + span * 0.5 + 0.05);
+    }
     if (portrait) goal.y -= dist * 0.1;
     this.showGoal = goal;
     // the camera turns to it (keeping it off to the side for the tag) and widens if it must

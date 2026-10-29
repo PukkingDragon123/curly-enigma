@@ -82,7 +82,8 @@ export class WorkshopLife {
       if (o.box) it.box = o.box; else Object.assign(it, { x: o.x, y: o.y, z: o.z, r: o.r });
       it.action = () => {
         this.game.audio.play(o.books ? 'page' : 'glow', { vol: 0.4 });
-        if (o.books) { const [t, txt] = pick(BOOKS); this.think(`${t}: ${txt}`, 5); }
+        // his shelf of books: the lore reader (his ledger among them) when the quests part is loaded
+        if (o.books) { if (this.game.lore?.readShelf) this.game.lore.readShelf('oldstar'); else { const [t, txt] = pick(BOOKS); this.think(`${t}: ${txt}`, 5); } }
         else if (o.clock) this.lookClock();
         else if (o.window) this.lookOut();
         else this.think(pick(o.lines), 4.2);

@@ -35,9 +35,10 @@ export const CAUSTIC_GLSL = /* glsl */`
     return f2 - f1;
   }
   float wc_caustic(vec2 p, float t) {
-    float a = wc_edge(p * 2.7, t * 0.9);
-    float b = wc_edge(p * 3.6 + vec2(1.7, 4.2), 2.0 - t * 0.7);
-    return clamp(1.0 - a * 6.5, 0.0, 1.0) + clamp(1.0 - b * 7.5, 0.0, 1.0) * 0.6;
+    // one moving cell network, its threads bent by a slow warp (cheap: one 3×3 cell search)
+    vec2 w = vec2(sin(p.y * 2.1 + t * 0.7), sin(p.x * 1.9 - t * 0.6)) * 0.18;
+    float a = wc_edge(p * 2.9 + w, t * 0.9);
+    return clamp(1.0 - a * 5.5, 0.0, 1.0) * 1.25;
   }
 `;
 
