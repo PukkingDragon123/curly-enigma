@@ -136,7 +136,7 @@ export class DigStage extends Stage {
       if (o.cam) r.applyQuaternion(o.cam.quaternion); else this.dirWorld(r);
       r.addScaledVector(up, -r.dot(up)).normalize();
       const away = new THREE.Vector3().crossVectors(up, r);
-      const pos = c.addScaledVector(r, 0.065 + this.scrub * 0.035).addScaledVector(away, -0.03);
+      const pos = c.addScaledVector(r, 0.1 + this.scrub * 0.035).addScaledVector(away, -0.045);
       const fwd = new THREE.Vector3().addScaledVector(r, -0.6 - this.scrub * 0.25).addScaledVector(away, 0.75).addScaledVector(up, -0.35).normalize();
       return { R: { pos, up, fwd, fist: false }, L: null };
     }
