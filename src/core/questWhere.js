@@ -8,7 +8,6 @@
 import { TOWN } from '../iso/townLayout.js';
 import { M as TU } from '../town/units.js';
 import { NPCS, ZONE_DEPTHS, ZONE_NAMES, npcName } from '../data/quests.js';
-import { trailCollapse } from '../deep/gen/trails.js';
 
 const TOWN_SIGHTS = {
   sunbeam: () => ({ x: TOWN.sun.x, y: 0.4, z: TOWN.sun.z, label: 'The sunbeam', r: 4.5 }),
@@ -19,7 +18,8 @@ const TOWN_SIGHTS = {
   notices: () => ({ x: 11.6, y: 1.3, z: 13.9, label: 'The notice board', r: 4 }),
 };
 const DEEP_SIGHTS = { lake: 'water', lava: 'lava', nest: 'nest' };
-const SIGHT_NAMES = { lake: 'An underground lake', lava: 'A lava pool', nest: 'A creature lair', signpost: 'An old signpost', cavein: 'A cave-in on an old trail', ruin: 'An old ruin' };
+const SIGHT_NAMES = { lake: 'An underground lake', lava: 'A lava pool', nest: 'A creature lair', signpost: 'A lift station sign', cavein: 'A lost miner\'s remains', ruin: 'An old dungeon' };
+const RUIN_NAMES = { cell: 'A monster room', crypt: 'A flooded crypt', vault: 'A Starfolk vault', fortress: 'A deep fortress' }; // ruins/dungeon.js DUNGEON_NAMES
 const BURROW_NPC = { trader: 'trader', herbalist: 'herbalist', rocco: 'raccoon', outpost: 'outpost' };
 const HOME_LIFT = { x: 7.3, y: 0.5, z: -3.4 }, HOME_PASSAGE = { x: 6.2, y: 0.4, z: -5.6 }, HOME_HOLE = { x: 3.7, y: 2.0, z: -1.45 }; // defaults; the home scene's questSpot() wins
 /** A named spot at home: the home scene may say where (scene.questSpot(name) → {x,y,z} m), else the cave's defaults. */
@@ -75,25 +75,13 @@ function nearest(list, p) {
   return best;
 }
 
-/** Cave-ins along the old trails (where the miners left their tools: Hobb's pages). */
+/** The lost miners' remains in the dungeons (where Hobb's pages are; the quests' old 'cavein' sights). */
 export function caveIns(plan) {
-  if (plan._caveIns) return plan._caveIns;
-  const out = [];
-  for (const f of plan.features || []) {
-    if (f.kind !== 'trail') continue;
-    const c = trailCollapse(f);
-    if (!c) continue;
-    const L = Math.hypot(f.b.x - f.a.x, f.b.z - f.a.z) || 1, t = Math.max(0, (c.s - c.hl - 0.55) / L);
-    out.push({ x: f.a.x + (f.b.x - f.a.x) * t, y: f.a.y + (f.b.y - f.a.y) * t + 0.4, z: f.a.z + (f.b.z - f.a.z) * t });
-  }
-  return (plan._caveIns = out);
+  return plan.remains || [];
 }
-/** Trail mouths (where signposts stand). */
+/** The lift stations' name signs (the quests' old 'signpost' sights). */
 function trailEnds(plan) {
-  if (plan._trailEnds) return plan._trailEnds;
-  const out = [];
-  for (const T of plan.trails || []) for (const p of [T.pts?.[0], T.pts?.[T.pts.length - 1]]) if (p) out.push({ x: p.x, y: p.y + 1, z: p.z });
-  return (plan._trailEnds = out);
+  return plan.signs || [];
 }
 
 /** In the mine: the position of a deep goal (or null), in plan meters. */
@@ -108,7 +96,7 @@ function deepPos(game, sc, g, me) {
     const open = list.filter((r) => !save[r.id]?.chest);
     if (open.length) list = open;
     const r = nearest(list, me);
-    return r ? { x: r.x, y: r.y + 1, z: r.z, label: { hall: 'A pillared hall', shrine: 'A star shrine', vault: 'A sealed vault', well: 'A drowned well' }[r.kind] || 'An old ruin', sub: save[r.id]?.seen ? 'You\'ve been here' : 'Somewhere about here' } : null;
+    return r ? { x: r.x, y: r.y + 1, z: r.z, label: RUIN_NAMES[r.kind] || 'An old dungeon', sub: save[r.id]?.seen ? 'You\'ve been here' : 'Somewhere about here' } : null;
   }
   if (g.danger || DEEP_SIGHTS[g.sight]) {
     const kind = g.danger || DEEP_SIGHTS[g.sight];

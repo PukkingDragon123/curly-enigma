@@ -322,7 +322,9 @@ export async function buildForest(opts = {}) {
     const a = Math.atan2(z, x);
     return Math.hypot(x, z) < HOLE_R + n1(Math.cos(a) * 1.7, Math.sin(a) * 1.7) * 0.18;
   };
-  for (let k = 0; k < D; k++) for (let i = 0; i < W; i++) {
+  for (let k = 0; k < D; k++) {
+    if (k % 64 === 63) { await tick(); if (cancelled()) return bail(); }
+    for (let i = 0; i < W; i++) {
     const x = TB.x0 + (i + 0.5) * VS, z = TB.z0 + (k + 0.5) * VS;
     const q = i + W * k;
     const ci = Math.floor(x / VS), ck = Math.floor(z / VS);
@@ -332,6 +334,7 @@ export async function buildForest(opts = {}) {
     const terr = td > 2.8 && sd > 2.4 && Math.hypot(x, z) > CLEAR_R + 1.5 ? (td > 6 ? 3 : 2) : 1;
     h[q] = Math.max(1, Math.round(H / (VY * terr)) * terr + BASE);
     top[q] = groundColor(x, z, i, k, nearTree(x, z));
+    }
   }
   const side = (q, level) => {
     const lv = h[q] - level;
@@ -390,15 +393,19 @@ export async function buildForest(opts = {}) {
     stats.tris[name] = (stats.tris[name] || 0) + triCount(geo) * items.length;
   };
   const K = soft ? { w: 4, l: 2.6, c: 3.5, g: 4, gl: 2 } : lite ? { w: 4, l: 3, c: 4, g: 5, gl: 2.5 } : { w: 5, l: 3.6, c: 5, g: 6, gl: 3 };
-  const near = {
-    beech: lite ? [makeBroadleaf(101, { kind: 'beech', k: K.w, kl: K.l })] : [makeBroadleaf(101, { kind: 'beech', k: K.w, kl: K.l }), makeBroadleaf(117, { kind: 'beech', k: K.w, kl: K.l, height: 14.5, crownR: 4.6 })],
-    oak: [makeBroadleaf(131, { kind: 'oak', k: K.w, kl: K.l })],
-    birch: lite ? [makeBroadleaf(141, { kind: 'birch', k: K.w, kl: K.l })] : [makeBroadleaf(141, { kind: 'birch', k: K.w, kl: K.l }), makeBroadleaf(149, { kind: 'birch', k: K.w, kl: K.l, height: 10, leaf: [0xe8d868, 0xc8bc4c, 0xa49c3c, 0x7a7a30, 0x50542a] })],
-    maple: [makeBroadleaf(151, { kind: 'maple', k: K.w, kl: K.l, height: 11, crownR: 3.6 })],
-    spruce: lite ? [makeConifer(161, { kind: 'spruce', k: K.c, height: 14 })] : [makeConifer(161, { kind: 'spruce', k: K.c, height: 14 }), makeConifer(167, { kind: 'spruce', k: K.c, height: 16.5, spread: 2.7 })],
-    pine: [makeConifer(171, { kind: 'pine', k: K.c, height: 17, spread: 2.2 })],
-    snag: [makeSnag(181, { height: 7.5, k: 7 })],
-  };
+  const near = {};
+  for (const [kind, makers] of Object.entries({
+    beech: lite ? [() => makeBroadleaf(101, { kind: 'beech', k: K.w, kl: K.l })] : [() => makeBroadleaf(101, { kind: 'beech', k: K.w, kl: K.l }), () => makeBroadleaf(117, { kind: 'beech', k: K.w, kl: K.l, height: 14.5, crownR: 4.6 })],
+    oak: [() => makeBroadleaf(131, { kind: 'oak', k: K.w, kl: K.l })],
+    birch: lite ? [() => makeBroadleaf(141, { kind: 'birch', k: K.w, kl: K.l })] : [() => makeBroadleaf(141, { kind: 'birch', k: K.w, kl: K.l }), () => makeBroadleaf(149, { kind: 'birch', k: K.w, kl: K.l, height: 10, leaf: [0xe8d868, 0xc8bc4c, 0xa49c3c, 0x7a7a30, 0x50542a] })],
+    maple: [() => makeBroadleaf(151, { kind: 'maple', k: K.w, kl: K.l, height: 11, crownR: 3.6 })],
+    spruce: lite ? [() => makeConifer(161, { kind: 'spruce', k: K.c, height: 14 })] : [() => makeConifer(161, { kind: 'spruce', k: K.c, height: 14 }), () => makeConifer(167, { kind: 'spruce', k: K.c, height: 16.5, spread: 2.7 })],
+    pine: [() => makeConifer(171, { kind: 'pine', k: K.c, height: 17, spread: 2.2 })],
+    snag: [() => makeSnag(181, { height: 7.5, k: 7 })],
+  })) {
+    near[kind] = [];
+    for (const make of makers) { near[kind].push(make()); await tick(); if (cancelled()) return bail(); }
+  }
   await tick();
   if (cancelled()) return bail();
   const mid = lite ? { spruce: [makeConifer(161, { kind: 'spruce', k: 3, height: 14, lod: true })] } : {

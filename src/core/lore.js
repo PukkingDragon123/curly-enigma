@@ -3,7 +3,7 @@
 // thing to read at each kind of spot:
 //   lore.add(id, { quiet, from }) → true if new · lore.has(id) · lore.shelf(id) → [{ entry, found }]
 //   lore.readCarving({ id, kind }) → entry (a ruin's carved wall: the next carving for its kind)
-//   lore.readJournal(spotKey) → entry (Hobb's journal pages, in order, tucked in tools at cave-ins)
+//   lore.readJournal(spotKey) → entry (Hobb's journal pages, in order, in the lost miners' satchels)
 //   lore.tale(npc) → entry | null (the next tale this villager hasn't told you)
 //   lore.readShelf(id) → opens a little shelf of books (Old Star's, Talpa's...)
 //   lore.unread() → count of found-but-unread entries (the book's tab dot) · lore.markRead(id)
@@ -97,7 +97,7 @@ export class Lore {
     return LORE_BY_ID[id];
   }
 
-  /** The tools at a cave-in: the next page of Hobb's journal (the same page stays with the same spot). */
+  /** A lost miner's satchel (ruins/site.js): the next page of Hobb's journal (the same page stays with the same spot). */
   readJournal(spotKey) {
     const key = 'page:' + spotKey;
     let id = this.data.spots[key];

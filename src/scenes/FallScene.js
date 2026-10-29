@@ -37,19 +37,10 @@ const GRADE = { lift: [0.0, 0.006, 0.022], gamma: [1.02, 1.0, 0.98], gain: [1.1,
 const DEEP = { lift: [0.005, 0.015, 0.04], gamma: [0.97, 1.0, 1.05], gain: [0.96, 1.0, 1.06] };
 const mixG = (a, b, k) => ({ lift: a.lift.map((v, i) => lerp(v, b.lift[i], k)), gamma: a.gamma.map((v, i) => lerp(v, b.gamma[i], k)), gain: a.gain.map((v, i) => lerp(v, b.gain[i], k)) });
 
-/** A software rasterizer (no GPU): draw the light forest. */
-function softwareGL(renderer) {
-  try {
-    const gl = renderer.getContext();
-    const ext = gl.getExtension('WEBGL_debug_renderer_info');
-    const name = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
-    return /swiftshader|llvmpipe|software|softpipe/i.test(name);
-  } catch (e) { return false; }
-}
-
 export default class FallScene extends Scene {
   async enter(params = {}) {
     const t0 = performance.now();
+    this.ready = false; // (nothing is drawn until it's all built: the screen is faded out meanwhile)
     this.hud = 'none';
     this.allowMenus = false;
     this.music = 'title';
@@ -77,7 +68,7 @@ export default class FallScene extends Scene {
     setAir(0);
 
     // ---- the forest (phones, 'Simple' shaders and software GL get a lighter one; ?lite=0 / 1 forces it)
-    const soft = params.lite !== '0' && params.lite !== '1' && softwareGL(this.game.engine.renderer);
+    const soft = params.lite !== '0' && params.lite !== '1' && !!this.game.engine.softwareGL;
     const lite = params.lite === '1' || soft || (params.lite !== '0' && this.game.engine.fx !== 'high');
     this.lite = soft ? 'soft' : lite;
     this.F = await buildForest({ lite, soft, cancel: () => this.pendingSkip });
@@ -180,8 +171,9 @@ export default class FallScene extends Scene {
     if (soft) this.post.outline = false; // (a software rasterizer can't afford the outline pass)
     this.onResize(this.game.engine.width, this.game.engine.height);
     this.place(0, 0);
-    this.precompile();
+    await this.precompile();
     this.buildMs = Math.round(performance.now() - t0);
+    this.ready = true;
     console.log(`[fall] built in ${this.buildMs} ms (forest ${JSON.stringify(this.F.stats)})`);
 
     this.debug = {
@@ -220,20 +212,30 @@ export default class FallScene extends Scene {
    * later when the cracks, the shaft, the flock or the gold appear: everything shown, and both the
    * colour pass and the outline-mask pass (which draws without fog).
    */
-  precompile() {
+  async precompile() {
     const r = this.game.engine.renderer, sc = this.scene, cam = this.camera;
     const hidden = [];
     sc.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
-    const lights = [this.chestLight, this.fallLight].map((l) => [l, l.intensity]);
-    try {
-      r.compile(sc, cam);
-      const fog = sc.fog;
-      sc.fog = null;
-      r.compile(sc, cam);
-      sc.fog = fog;
-    } catch (e) { /* optional */ }
+    // a few meshes at a time, yielding in between (without parallel shader compiles a software
+    // renderer would otherwise block the page for a long while)
+    const meshes = [];
+    sc.traverse((o) => { if ((o.isMesh || o.isPoints) && o.material) meshes.push(o); });
+    const seen = new Set();
+    const fog = sc.fog;
+    for (const withFog of [true, false]) {
+      sc.fog = withFog ? fog : null;
+      let n = 0;
+      for (const m of meshes) {
+        const key = (withFog ? 'f' : 'n') + m.material.uuid + (m.isInstancedMesh ? 'i' : '') + (m.isSkinnedMesh ? 's' : '');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        try { r.compile(m, cam, sc); } catch (e) { /* optional */ }
+        await new Promise((res) => setTimeout(res, 0));
+        n++;
+      }
+    }
+    sc.fog = fog;
     for (const o of hidden) o.visible = false;
-    for (const [l, k] of lights) l.intensity = k;
   }
 
   // ------------------------------------------------------------------ helpers
@@ -261,6 +263,7 @@ export default class FallScene extends Scene {
   }
 
   render() {
+    if (!this.ready) return;
     // debug.hold(): draw one more frame, then keep it (screenshots on a slow software renderer)
     if (this.hold === 2) return;
     if (this.hold === 1) this.hold = 2;

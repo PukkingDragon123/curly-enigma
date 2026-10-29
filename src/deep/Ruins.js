@@ -243,7 +243,7 @@ export class Ruins {
         const sp = s.spawners[i];
         if (!sp) return null;
         if (what === 'break' && !sp.broken) s.breakSpawner(sp, R.queue);
-        if (what === 'go') { const P = s.P, q = P.spawners[i]; return stand(s, q.a - 30, 0, q.b, [q.a, q.y + 4, q.b]); }
+        if (what === 'go') { const P = s.P, q = P.spawners[i]; return stand(s, q.a - 18, 0, q.b, [q.a, q.y + 4, q.b]); }
         return { broken: sp.broken, cage: s.loaded(sp.sp.a, sp.sp.y, sp.sp.b) ? s.cageCount(sp.sp) : null, n0: sp.n0, alive: sp.mine.filter((e) => e.alive).length, kinds: sp.sp.kinds };
       },
       /** Stand in a lift station (id, e.g. 'L0', 'L31', 's2'), looking at its lever; 'pull' pulls it. */

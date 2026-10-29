@@ -204,8 +204,9 @@ Fluids internals (`src/deep/fluids/`):
 - No human works in the caves (wave 4): no trails, timber, lanterns, carts, crates or signposts.
   Burrows are reached by natural `passage` features (`src/deep/gen/passages.js`); `plan.ruins` are
   dungeons (`src/deep/ruins/dungeon.js`, see REMAKE.md › Natural caves & dungeons).
-- Build tool (slot 7, `R` / tapping the slot again switches): `M.LADDER` strips (climbable for free:
-  `FPSPlayer.onLadder`), plank platforms (`M.BOARDS` 3×3), brick blocks (`M.BRICK` 2³).
+- Build tool (slot 7): Minecraft-like blocks on a 0.5 m grid, ladders, torches, lanterns, doors, chests, a
+  workbench; the dig slot picks the right tool (pick / axe / spade / shears) and placed blocks break whole.
+  See REMAKE.md › "As built: building and breaking, with tools" (`src/deep/Build.js`, `src/deep/build/`).
 - Digging: plates are ~2–3 voxels (`STYLE_OF` scale), each blow adds 30% damage to the neighbouring
   plates, broken plates crumble into quarter-meter lumps plus grit; a short hit-stop on breaks.
 - Digging (now): a pick blow bites a ragged round crater of small voxels sized by power against

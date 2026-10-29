@@ -1,18 +1,20 @@
 // Old Star's lessons at home (mixed into HomeScene): a forced, cinematic tutorial. The chain (quest
 // `lessons`, src/data/quests.js) moves on `act` events; this keeps its own stage in
 // state.data.oldstar.lesson so the home knows what Old Star wants next:
-//   wake   → the waking-up cutscene (wake.js); then, at home, one control at a time:
-//            look round (mouse / drag) → walk to him at the steps (WASD / the stick) → talk to him
-//            (E / the hand) → he gives you the first task (the quest strip comes in) → follow him
-//            down to the lift (Shift to run, on a PC) → ride down (E). The house is held to the way
-//            there (soft walls at the doors he isn't taking; he calls you back), the camera eases
-//            round to him when you've lost him, and only what the lesson needs can be used.
-//   mine   → the lift goes straight to his practice dig (deep { from: 'lift', lift: 'L0', lesson:
+//   wake   → the waking-up cutscene (wake.js); then, one control at a time: look round (mouse /
+//            drag) → walk over to him (WASD / the stick) → talk to him (E / the hand) → he gives you
+//            the first task (the quest strip comes in) → follow him to the cage lift (Shift to run,
+//            on a PC) → ride down (E). You're held to the way there by a soft funnel (wander more than
+//            a few steps off it and you're put back, he calls you back), the camera eases round to
+//            what matters when you've lost it, and only what the lesson needs can be used.
+//   mine   → the cage goes straight to his practice dig (deep { from: 'lift', lift: 'L0', lesson:
 //            'mine' }; deep/Prologue.js teaches there)
-//   forge  → back with copper: a cutscene (he sniffs it, gives you coal), then to his smithy and the
-//            anvil (forge { from: 'home', tutorial: true }; src/forge/tutorial.js)
-//   cook   → back with your first blade: a cutscene, then to his kitchen range
+//   forge  → back with copper: a cutscene (he sniffs it, gives you coal), then to his forge
+//            (forge { from: 'home', tutorial: true }; src/forge/tutorial.js)
+//   cook   → back with your first blade: a cutscene, then to his fire pit
 //            (cooking { from: 'home', tutorial: true }; src/cooking/lesson.js)
+// The beats are written against the home's stations (questSpot('lift' | 'forge' | 'hearth'), his
+// spots, the lift / forge / cooking functions), not against rooms: the home is his old cave camp.
 //   done   → back with a meal in you: the graduation cutscene, the whole HUD, free play.
 // While a lesson is on (the tutorial UI level below full: src/ui/Onboard.js) the lift and the front
 // door wait (the lift opens for the mining lesson only). Talking to him offers "What now?" and
@@ -29,10 +31,6 @@ import { starData } from './starData.js';
 import { starPortraitURL } from '../ui/Tutor.js';
 import { openTalkMenu } from '../ui/choices.js';
 import { TUT } from '../ui/Onboard.js';
-import { HALL, STAIRS, ARCH } from './units.js';
-import { roomAt, doorAt } from './plan.js';
-import { SPOTS, STAR_SPOTS } from './house.js';
-import { LIFT } from './lift.js';
 
 const _v = new THREE.Vector3();
 const ease = (k) => k * k * (3 - 2 * k);
@@ -40,22 +38,21 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /** What he says the next step is, per stage. */
 const NEXT = {
-  mine: { text: 'First lesson: mining. The cage lift is in the hall, by the coal cart. It goes straight down to my practice dig. Bring me back some <b>copper ore</b>: the orange specks in the rock.', mood: 'calm', where: 'lift' },
-  forge: { text: 'Copper\'s no good as rock. Come through to my <b>smithy</b>: we\'ll melt it into an ingot and hammer you out a blade. E on the anvil.', mood: 'happy', where: 'anvil' },
-  cook: { text: 'A smith who doesn\'t eat is a skeleton with a hammer. Into the <b>kitchen</b> with you: let\'s cook something. E on the range.', mood: 'happy', where: 'fire' },
+  mine: { text: 'First lesson: mining. That rusty old cage in the rock shaft goes straight down to my practice dig. Bring me back some <b>copper ore</b>: the orange specks in the rock.', mood: 'calm', where: 'lift' },
+  forge: { text: 'Copper\'s no good as rock. Over to my <b>forge</b>: we\'ll melt it into an ingot and hammer you out a blade. E on the forge.', mood: 'happy', where: 'anvil' },
+  cook: { text: 'A smith who doesn\'t eat is a skeleton with a hammer. To the <b>fire pit</b> with you: the kettle\'s on, let\'s cook something. E at the fire.', mood: 'happy', where: 'fire' },
 };
 
-/** Which parts of the home each tutorial step lets you walk in (the rest has a soft wall). */
-const ZONES = {
-  look: ['bedroom'], walk: ['bedroom'], 'walk-done': ['bedroom'], talk: ['bedroom'],
-  follow: ['bedroom', 'arch', 'stairs', 'living', 'hall'], lift: ['arch', 'stairs', 'living', 'hall'],
-  forgeGo: ['hall', 'living', 'smithy'], cookGo: ['smithy', 'living', 'kitchen'],
-};
+/**
+ * The soft funnel per step: how far from its goal (a point) you may get beyond your closest approach
+ * so far (m). Wander further and you're put back where you were; he calls you back.
+ */
+const SLACK = { look: 1.2, walk: 2.2, 'walk-done': 2.2, talk: 2.2, follow: 3.2, lift: 3.2, forgeGo: 3.6, cookGo: 3.6 };
 /** What the crosshair may use in each step (by label); null: anything but the lift and the door. */
 const ALLOW = {
-  look: /^$/, walk: /^$/, 'walk-done': /^$/, talk: /old star/i, follow: /^$/, lift: /lift|dig|lever|old star/i,
+  look: /^$/, walk: /^$/, 'walk-done': /^$/, talk: /old star/i, follow: /^$/, lift: /lift|cage|dig|lever|old star/i,
 };
-const LOCKED = /lift|lever|ride down|deep town|front door|build bench|^sleep$/i;
+const LOCKED = /lift|cage|lever|ride down|deep town|front door|passage|build bench|^sleep$/i;
 
 export class HomeLessons {
   lessonStage() { return starData(this.game.state).lesson; }
@@ -217,14 +214,14 @@ export class HomeLessons {
         this.placeStarForLesson();
         this.startHomeTutor('forgeGo');
       } else {
-        this.starLine('Back already? No copper? It\'s in my practice dig, the orange specks in the rock. Back down you go: the lift in the hall will take you.', { mood: 'stern' });
+        this.starLine('Back already? No copper? It\'s in my practice dig, the orange specks in the rock. Back down you go: the cage will take you.', { mood: 'stern' });
         this.startHomeTutor('lift');
       }
       return;
     }
     if (stage === 'forge' && from === 'forge') {
       // the forge's tutorial moves the stage on when the blade is done (state.data.oldstar.lesson = 'cook')
-      this.starLine('Still warm from the forge? Come on, back to it. The anvil won\'t hammer itself. I\'ve asked.', { mood: 'stern' });
+      this.starLine('Still warm from the forge? Come on, back to it. The forge won\'t hammer itself. I\'ve asked.', { mood: 'stern' });
       this.startHomeTutor('forgeGo');
       return;
     }
@@ -325,9 +322,7 @@ export class HomeLessons {
     const pl = this.rig.player;
     const t = this.tut = { step, t: 0, look: 0, walked: 0, lookIdle: 0, yaw: pl.yaw, pitch: pl.pitch, px: pl.pos.x, pz: pl.pos.z, ok: { x: pl.pos.x, z: pl.pos.z }, cd: {}, h: null, mark: null };
     if (ob?.data) ob.data.home = step;
-    // starting outside the step's ground (back from bed, say): free to walk out of it, not back in
-    const z0 = this.zoneAt(pl.pos.x, pl.pos.z);
-    if (ZONES[step] && !this.zoneOk(z0, ZONES[step])) t.extra = z0 === 'bedroom' ? ['bedroom', 'arch', 'stairs'] : [z0];
+    t.best = Infinity; // the closest you've been to the step's goal (the funnel narrows as you go)
     this.gateItems();
     if (star?.rig) star.nextT = 999;
     switch (step) {
@@ -340,13 +335,14 @@ export class HomeLessons {
       }
       case 'walk': {
         ob?.setLevel(TUT.WALK);
-        const spot = this.archSpot();
+        const spot = this.meetSpot();
         if (star?.rig) {
           star.scripted = true;
           star.walkTo(spot.x, spot.z, 1.0).then(() => { if (this.tut !== t) return; star.faceTo(pl.pos.x, pl.pos.z); star.gesture('beckon', 2.2); });
-          this.starLine('Come on, then. Over here, by the steps. One paw after the other.', { mood: 'calm', dur: 5 });
+          this.starLine('Come on, then. Over here, by me. One paw after the other.', { mood: 'calm', dur: 5 });
         }
         t.target = () => (star?.rig ? star.head(_v).clone() : new THREE.Vector3(spot.x, 0.9, spot.z));
+        t.goal = () => (star?.rig ? star.pos : spot);
         t.mark = ob?.mark(() => _v.copy(t.target()).add(new THREE.Vector3(0, 0.22, 0)), { label: 'Old Star' });
         t.h = ob?.teach('walk', { progress: () => t.walked / 2.4 });
         break;
@@ -355,20 +351,22 @@ export class HomeLessons {
         ob?.setLevel(TUT.USE);
         if (star?.rig) { star.scripted = false; star.faceTo(pl.pos.x, pl.pos.z); }
         t.target = () => star.head(_v).clone();
+        t.goal = () => star.pos;
         t.mark = ob?.mark(() => _v.copy(t.target()).add(new THREE.Vector3(0, 0.22, 0)), { label: '' });
         t.h = ob?.teach('talk', { title: 'Talk to Old Star', done: () => !!t.talked, min: 0.5 });
         break;
       }
       case 'follow': {
         ob?.setLevel(TUT.QUEST);
-        const L = STAR_SPOTS.lift;
+        const L = this.liftSpot();
         if (star?.rig) {
           star.scripted = true;
-          star.goTo('lift');
+          if (!star.goTo('lift')) star.walkTo(L.x, L.z, 1.05);
           star.speed = 1.05;
           star.lessonSpot = 'lift';
         }
-        t.target = () => (star?.rig ? star.head(_v).clone() : new THREE.Vector3(L.x, 0.4, L.z));
+        t.target = () => (star?.rig ? star.head(_v).clone() : new THREE.Vector3(L.x, L.y, L.z));
+        t.goal = () => L;
         t.mark = ob?.mark(() => _v.copy(t.target()).add(new THREE.Vector3(0, 0.22, 0)), { label: 'Follow Old Star' });
         // a PC tip on the way: Shift runs
         if (!this.rig.isTouch()) this.later(2.5, () => { if (this.tut === t && !t.h) t.h = ob?.teach('run', { optional: true, progress: () => (t.ran || 0) / 0.9 }); });
@@ -376,19 +374,21 @@ export class HomeLessons {
       }
       case 'lift': {
         ob?.setLevel(TUT.QUEST);
-        const liftPos = new THREE.Vector3(LIFT.outX + 0.2, HALL.y + 0.95, LIFT.cz);
+        const liftPos = this.liftSpot();
         t.target = () => liftPos;
-        t.mark = ob?.mark(() => liftPos, { label: 'The lift' });
+        t.goal = () => liftPos;
+        t.mark = ob?.mark(() => liftPos, { label: 'The cage' });
         if (star?.rig && star.spot !== 'lift') { star.scripted = false; this.placeStarForLesson(); }
-        t.h = ob?.teach('use', { title: 'Ride down', subPc: 'Look at the lift and press <kbd>E</kbd>', subT: 'Look at the lift, tap the hand button', done: () => !!this.riding });
+        t.h = ob?.teach('use', { title: 'Ride down', subPc: 'Look at the cage and press <kbd>E</kbd>', subT: 'Look at the cage, tap the hand button', done: () => !!this.riding });
         break;
       }
       case 'forgeGo': case 'cookGo': {
         const forge = step === 'forgeGo';
-        const S = forge ? SPOTS.anvil : SPOTS.fire;
-        const pos = forge ? new THREE.Vector3(S.x, HALL.y + 0.85, S.z) : new THREE.Vector3(S.x, HALL.y + 0.9, -2.9);
+        const q = this.questSpot?.(forge ? 'forge' : 'hearth');
+        const pos = q ? new THREE.Vector3(q.x, q.y, q.z) : this.rig.player.pos.clone();
         t.target = () => pos;
-        t.mark = ob?.mark(() => pos, { label: forge ? 'The anvil' : 'The range' });
+        t.goal = () => pos;
+        t.mark = ob?.mark(() => pos, { label: forge ? 'The forge' : 'The fire pit' });
         t.near = 0;
         t.h = null;
         break;
@@ -396,8 +396,22 @@ export class HomeLessons {
     }
   }
 
-  /** The bedroom side of the arch, where he waits for you at the top of the steps (meters). */
-  archSpot() { return { x: ARCH.x + 0.35, z: 0.75 }; }
+  /**
+   * Where he waits for you to walk over: a couple of steps from where you stand, toward the fire
+   * (the home's cooking spot), so the first walk is short and goes somewhere (meters).
+   */
+  meetSpot() {
+    const p = this.rig.player.pos, f = this.questSpot?.('hearth') || this.questSpot?.('lift');
+    const dx = f ? f.x - p.x : 1, dz = f ? f.z - p.z : -1, d = Math.hypot(dx, dz) || 1;
+    const k = Math.min(2.4, Math.max(1.2, d - 1.1));
+    return { x: p.x + (dx / d) * k, z: p.z + (dz / d) * k };
+  }
+
+  /** The cage lift's spot (meters, from questSpot('lift')): where you stand to ride it. */
+  liftSpot() {
+    const q = this.questSpot?.('lift');
+    return q ? new THREE.Vector3(q.x, q.y, q.z) : this.rig.player.pos.clone();
+  }
 
   leaveStep() {
     const t = this.tut;
@@ -437,23 +451,6 @@ export class HomeLessons {
     return true;
   }
 
-  /** Which part of the home (x, z) is in: 'bedroom' | 'arch' | 'stairs' | a room id | 'door:a|b' | null. */
-  zoneAt(x, z) {
-    if (z >= -0.02) return 'bedroom';
-    if (z >= HALL.z1 - 1e-4) return 'arch';
-    if (x >= STAIRS.x0 && x <= STAIRS.x1 && z >= STAIRS.z0) return 'stairs';
-    const r = roomAt(x, z);
-    if (r) return r.id;
-    const d = doorAt(x, z);
-    return d ? `door:${d.a}|${d.b}` : null;
-  }
-
-  zoneOk(zone, list) {
-    if (!zone || !list) return true;
-    if (zone.startsWith('door:')) { const [a, b] = zone.slice(5).split('|'); return list.includes(a) && list.includes(b); }
-    return list.includes(zone);
-  }
-
   /** Per frame (from tickWakeFx): the step's checks, the soft walls, the camera nudge. */
   tickHomeTutor(dt) {
     // a game picked up mid-tutorial (a reload, waking from bed): the step comes back once you're free
@@ -473,11 +470,19 @@ export class HomeLessons {
     if (moved < 0.5) t.walked += moved;
     t.px = pl.pos.x; t.pz = pl.pos.z;
     if (pl.speed > 2.6 && inp.isDown('ShiftLeft', 'ShiftRight')) t.ran = (t.ran || 0) + dt;
-    // the soft walls: back to the last good spot, and he calls you back
-    const zones = ZONES[t.step];
-    const zone = this.zoneAt(pl.pos.x, pl.pos.z);
-    if (t.extra && this.zoneOk(zone, zones)) t.extra = null; // in the lesson's ground now: no way back
-    if (this.zoneOk(zone, zones) || (t.extra && this.zoneOk(zone, t.extra))) { t.ok.x = pl.pos.x; t.ok.z = pl.pos.z; }
+    // the soft funnel: no more than a few steps further from the goal than your closest approach
+    // (the look step: from where you stood); past it you're put back, and he calls you back
+    const goal = t.step === 'look' ? t.ok0 || (t.ok0 = { x: pl.pos.x, z: pl.pos.z }) : t.goal?.();
+    const slack = SLACK[t.step];
+    let out = false;
+    if (goal && slack) {
+      const d = Math.hypot(pl.pos.x - goal.x, pl.pos.z - goal.z);
+      // (following him: running on ahead toward the cage is fine)
+      if (t.step === 'follow' && star?.rig) { const L = this.liftSpot(); if (Math.hypot(pl.pos.x - L.x, pl.pos.z - L.z) < Math.hypot(star.pos.x - L.x, star.pos.z - L.z)) t.best = Math.min(t.best, d); }
+      t.best = Math.min(t.best, Math.max(d, t.step === 'look' ? 0 : 0.8));
+      out = d > t.best + slack;
+    }
+    if (!out) { t.ok.x = pl.pos.x; t.ok.z = pl.pos.z; }
     else {
       pl.pos.x = t.ok.x; pl.pos.z = t.ok.z;
       pl.vel.x = 0; pl.vel.z = 0;
@@ -485,7 +490,7 @@ export class HomeLessons {
       t.lookIdle = 99; // and the view swings back to where the lesson is
       if (this.tutCd('wall', 5)) {
         this.game.audio.play('ui_error', { vol: 0.25 });
-        this.starLine(pick(t.step === 'forgeGo' ? ['The smithy, dear! Through the living room, on the left.', 'Not that way. The anvil\'s in the smithy.'] : t.step === 'cookGo' ? ['The kitchen! The range is in the kitchen.', 'This way, dear. The pot\'s calling.'] : ['Not that way! Follow me.', 'This way, dear! The lift\'s in the hall.', 'Hoi! Stay with me.']), { mood: 'stern', key: 'tut-wall', dur: 3 });
+        this.starLine(pick(t.step === 'forgeGo' ? ['The forge, dear! It\'s this way.', 'Not that way. The forge is over here.'] : t.step === 'cookGo' ? ['The fire pit! The kettle\'s waiting.', 'This way, dear. The pot\'s calling.'] : t.step === 'look' ? ['Easy! Find your feet first.', 'Steady. Just look about for now.'] : ['Not that way! Stay with me.', 'This way, dear! The cage is over here.', 'Hoi! Stay with me.']), { mood: 'stern', key: 'tut-wall', dur: 3 });
       }
     }
     // the camera eases round to what matters when you've stopped looking for it
@@ -512,14 +517,16 @@ export class HomeLessons {
       case 'follow': {
         if (star?.rig) {
           // he waits for you when you fall behind (not when you've run on ahead), and beckons
-          const ahead = Math.hypot(pl.pos.x - LIFT.outX, pl.pos.z - LIFT.cz) < Math.hypot(star.pos.x - LIFT.outX, star.pos.z - LIFT.cz);
+          const L = this.liftSpot();
+          const ahead = Math.hypot(pl.pos.x - L.x, pl.pos.z - L.z) < Math.hypot(star.pos.x - L.x, star.pos.z - L.z);
           if (t.paused && ahead) { t.paused = false; star.mode = 'walk'; }
           if (star.path && !t.paused && !ahead && dist > 4.2) { t.paused = true; star.mode = 'idle'; star.faceTo(pl.pos.x, pl.pos.z); star.rig.play?.('idle'); star.gesture('beckon', 1.6); if (this.tutCd('keepup', 9)) this.starLine(pick(['Keep up! My knees are older than your whole family.', 'This way, dear!']), { mood: 'stern', dur: 3 }); }
           else if (t.paused && dist < 2.6) { t.paused = false; star.mode = 'walk'; }
-          if (!star.path && !t.arrived) { t.arrived = true; star.faceTo(LIFT.cx, LIFT.cz); star.gesture('beckon', 2); }
+          if (!star.path && !t.arrived) { t.arrived = true; star.faceTo(pl.pos.x, pl.pos.z); star.gesture('beckon', 2); }
         }
         if (t.h && t.h.id === 'run' && t.h.done) t.h = null;
-        const nearLift = Math.hypot(pl.pos.x - LIFT.outX, pl.pos.z - LIFT.cz) < 2.6;
+        const LS = this.liftSpot();
+        const nearLift = Math.hypot(pl.pos.x - LS.x, pl.pos.z - LS.z) < 2.6;
         if (nearLift && (t.arrived || dist < 2.4)) {
           if (t.h && !t.h.done) t.h.close();
           t.h = null;
@@ -534,7 +541,7 @@ export class HomeLessons {
         const near = Math.hypot(pl.pos.x - p.x, pl.pos.z - p.z) < 2.4;
         if (near && !t.h) {
           const forge = t.step === 'forgeGo';
-          t.h = this.game.ui.onboard?.teach('use', { title: forge ? 'Forge with Old Star' : 'Cook with Old Star', subPc: `Look at the ${forge ? 'anvil' : 'range'} and press <kbd>E</kbd>`, subT: `Look at the ${forge ? 'anvil' : 'range'}, tap the hand button` });
+          t.h = this.game.ui.onboard?.teach('use', { title: forge ? 'Forge with Old Star' : 'Cook with Old Star', subPc: `Look at the ${forge ? 'forge' : 'fire'} and press <kbd>E</kbd>`, subT: `Look at the ${forge ? 'forge' : 'fire'}, tap the hand button` });
         }
         break;
       }
@@ -563,7 +570,7 @@ export class HomeLessons {
     t.mark = null;
     await this.cutscene(async ({ line }) => {
       star?.gesture?.('point', 2);
-      await line('First lesson: <b>mining</b>. My cage lift is in the hall, and it goes straight down to my practice dig.', 'calm');
+      await line('First lesson: <b>mining</b>. See that rusty old cage in the rock shaft? It goes straight down to my practice dig.', 'calm');
       await line('Bring me back some <b>copper ore</b>: the orange specks in the rock. I\'ll show you the way. Follow me!', 'happy');
     });
     if (this.tut !== t) return;

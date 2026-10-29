@@ -68,7 +68,7 @@ export function whereText(v) {
   if (g.zone) return `The ${ZONE_NAMES[g.zone]}, ${ZONE_DEPTHS[g.zone - 1]} m down`;
   if (g.ruin) return g.ruin === 'nearest' ? 'An old ruin (your map marks the nearest)' : `A ${{ shrine: 'star shrine', vault: 'sealed vault', hall: 'pillared hall', well: 'drowned well' }[g.ruin] || 'ruin'} (your map marks the nearest)`;
   if (g.danger === 'nest') return 'A creature lair (red rings on your radar)';
-  if (g.sight) return { lake: 'An underground lake (blue on your radar)', lava: 'A lava pool in the Magma Deep', cavein: 'A cave-in on an old trail', signpost: 'The old trails\' signposts', sunbeam: 'The sunbeam, Deep Town', well: 'The old well, Deep Town', tunnel: 'The boarded tunnel, Deep Town', fountain: 'The fountain, Deep Town' }[g.sight] || '';
+  if (g.sight) return { lake: 'An underground lake (blue on your radar)', lava: 'A lava pool in the Magma Deep', cavein: 'A lost miner\'s remains, in an old dungeon', signpost: 'The lift stations\' name signs', sunbeam: 'The sunbeam, Deep Town', well: 'The old well, Deep Town', tunnel: 'The boarded tunnel, Deep Town', fountain: 'The fountain, Deep Town' }[g.sight] || '';
   if (g.biome) return { dino: 'The dino caverns (huge caves, ferns, bones)', fungus: 'The Mushroom Hollow', dry: 'The Sandstone Hollows', moss: 'Mossy caves' }[g.biome] || 'Somewhere in the mine';
   return g.scene === 'deep' ? 'Anywhere in the mine' : g.scene === 'home' ? "At Old Star's" : '';
 }
@@ -284,7 +284,7 @@ export function openBook(game, tab, opts = {}) {
         list.append(ul);
       }
       put(left, head('Lore', `${L.count()} of ${L.total()} found`), list,
-        el('footer', { class: 'bk-foot' }, [el('span', {}, 'Folk on the benches tell tales. Ruins have carvings. Cave-ins hide old pages.')]));
+        el('footer', { class: 'bk-foot' }, [el('span', {}, 'Folk on the benches tell tales. Dungeons have carvings. Lost miners carry old pages.')]));
     },
     right() {
       right.innerHTML = '';
@@ -299,7 +299,7 @@ export function openBook(game, tab, opts = {}) {
       put(right, back(), el('div', { class: 'bk-lorepage' }, [loreSheet(e)]));
     },
   };
-  const SRC_HINT = { carving: 'Carved in a ruin', journal: 'A page by a cave-in', tale: 'Someone in Deep Town knows', relic: 'In a ruin\'s treasure room', book: 'In a book somewhere', quest: 'At the end of a quest', note: '' };
+  const SRC_HINT = { carving: 'Carved in a ruin', journal: 'A lost miner\'s satchel', tale: 'Someone in Deep Town knows', relic: 'In a ruin\'s treasure room', book: 'In a book somewhere', quest: 'At the end of a quest', note: '' };
   const pickLore = (id, shelf) => {
     lastLore = id;
     lastShelf = shelf;

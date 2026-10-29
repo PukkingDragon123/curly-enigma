@@ -76,7 +76,7 @@ function deeper(n) {
     title: `Deeper: ${name}`, giver: 'oldstar', kind: 'story', auto: true,
     requires: n === 2 ? ['lessons'] : [`os_deeper${n - 1}`],
     intro: ZONE_LINES[n][0], outro: ZONE_LINES[n][1],
-    steps: [{ id: 'reach', text: `Reach the ${name} (${top} m down)`, hint: `Dig down, ride a lift, or follow an old trail below ${top} m.`, on: { type: 'explore', zone: n }, check: (st) => deepest(st) >= top + 1, where: { zone: n } }],
+    steps: [{ id: 'reach', text: `Reach the ${name} (${top} m down)`, hint: `Dig down, ride a lift, or follow the caves below ${top} m.`, on: { type: 'explore', zone: n }, check: (st) => deepest(st) >= top + 1, where: { zone: n } }],
     reward: ZONE_REWARD[n],
   };
 }

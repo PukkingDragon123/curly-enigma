@@ -16,6 +16,9 @@ export const SHOPS = {
       // explosives: bigger charges once you've been deep enough to need them
       { id: 'dynamite_bundle', minZone: 3 }, { id: 'blasting_charge', minZone: 4 },
       { id: 'pick_starmetal', minZone: 6 },
+      // building part: the right tools for wood and soil (Dig.js toolRule)
+      { id: 'axe_copper' }, { id: 'spade_copper' }, { id: 'shears' }, { id: 'axe_iron', minZone: 2 }, { id: 'spade_iron', minZone: 2 },
+      { id: 'axe_steel', minZone: 3 }, { id: 'spade_steel', minZone: 3 },
     ],
     lines: [
       'A good pick is a mole\'s best friend. Second best is a chisel.',
@@ -134,6 +137,9 @@ Object.assign(SHOPS, {
       { id: 'hearty_pie' }, { id: 'worm' }, { id: 'cave_carrot' }, { id: 'chisel_basic' }, { id: 'brush_basic' },
       { id: 'chicken_feed' }, { id: 'cave_seeds' }, { id: 'bag_medium' }, { id: 'bag_large', minZone: 2 }, { id: 'bag_huge', minZone: 4 },
       { id: 'lamp_glowcap' }, { id: 'crate' }, { id: 'barrel' }, { id: 'rug_round' }, { id: 'dynamite_bundle', minZone: 3 }, { id: 'drake_meat', minZone: 2 },
+      // building part: blocks and tools for building down here
+      { id: 'blk_torch' }, { id: 'blk_ladder' }, { id: 'blk_planks' }, { id: 'blk_log' }, { id: 'blk_lantern' }, { id: 'axe_copper' }, { id: 'spade_copper' },
+      { id: 'blk_glass', minZone: 2 }, { id: 'blk_bricks', minZone: 2 }, { id: 'blk_door', minZone: 2 }, { id: 'blk_chest', minZone: 2 },
     ],
     buys: { cats: ['mineral', 'gem', 'ingot'], mult: 0.85, label: 'Ore & gems' },
     wanted: ['copper_ore', 'tin_ore', 'iron_ore', 'coal', 'silver_ore', 'quartz', 'amber', 'amethyst', 'gold_ore', 'lumite', 'ruby'], wantedMult: 1.4,

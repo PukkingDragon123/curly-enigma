@@ -38,7 +38,15 @@ const handles = new Set();
 const studios = new Map(); // key → [Studio]
 const MAX_STUDIOS = 10;
 const SS = 2; // supersampling of the 3D render (folded down to the art grid by fold())
-const DENSITY = 2; // live portraits: canvas pixels per art pixel (the face drawn finer than the frame)
+/**
+ * Live portraits: canvas pixels per art pixel. One canvas pixel per CSS pixel (--px: 2, 3 or 4), so
+ * the face is drawn as finely as the page shows it, at a whole-number scale (crisp, never smeared).
+ */
+function liveDensity() {
+  let px = 3;
+  try { px = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 3; } catch (e) { /* no DOM */ }
+  return Math.max(1, Math.min(4, Math.round(px)));
+}
 let raf = 0, lastT = 0, rr = 0;
 const perf = { rendered: 0, ms: 0, frames: 0, composeMs: 0, composed: 0 };
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _c = new THREE.Color();
@@ -265,8 +273,8 @@ const PAINT = {
       for (let x = 0; x < W; x++) { const y = Math.round(y0 + x * s + Math.sin(x * 0.3 + i) * 1.2); if ((x + i) % 5 !== 0) R.set(x, y, 0x0c0814, 0.5); }
     }
     R.speckle(0.05, 0x2e2638, 0.6, r);
-    R.glow(W * 0.12, H * 0.08, W * 0.75, 0x2a7a78, 0.42, 4);
-    R.glow(W * 0.9, H * 0.9, W * 0.5, 0x6a3a8a, 0.25, 3);
+    R.glow(W * 0.12, H * 0.08, W * 0.75, 0x7a5228, 0.4, 4); // a lamp somewhere up the tunnel
+    R.glow(W * 0.9, H * 0.9, W * 0.5, 0x5a3a5a, 0.2, 3);
     // roots from the roof
     for (let i = 0; i < 3; i++) { let x = r() * W, y = 0; for (let k = 0; k < H * 0.3; k++) { R.set(x, y, 0x1a1210); x += (r() - 0.5) * 1.2; y += 1; } }
     R.vignette(0.4);
@@ -378,7 +386,7 @@ const PAINT = {
 /** Motes drawn over the backdrop each frame: [color, count, kind]. */
 const MOTES = {
   forge: { c: [0xffd070, 0xff8a2a, 0xffb040], n: 7, kind: 'rise', from: [0.75, 1] },
-  cave: { c: [0x8af0e0, 0x5ac8c0], n: 6, kind: 'twinkle' },
+  cave: { c: [0xffe0a0, 0xe0b878], n: 6, kind: 'twinkle' },
   town: { c: [0xffe08a, 0xffc060], n: 5, kind: 'twinkle' },
   shop: { c: [0xfff0c0, 0xe8d0a0], n: 4, kind: 'drift' },
   assay: { c: [0xfff0c0], n: 3, kind: 'drift' },
@@ -392,18 +400,20 @@ const MOTES = {
 
 /** Lights per backdrop: hemisphere sky/ground, key, cool fill, warm rim, outline ink. */
 const LIGHTS = {
-  forge: { sky: 0xffe8d0, ground: 0x3a2018, hemi: 1.0, key: 0xfff0dc, keyI: 1.7, fill: 0x8090ff, fillI: 0.4, rim: 0xff8a3a, rimI: 3.0, ink: 0x120808 },
-  cave: { sky: 0xe0e8ff, ground: 0x241a30, hemi: 1.0, key: 0xfff4e8, keyI: 1.6, fill: 0x60a0ff, fillI: 0.45, rim: 0x60f0e0, rimI: 2.4, ink: 0x0a0812 },
-  town: { sky: 0xfff0e0, ground: 0x2a2030, hemi: 1.05, key: 0xfff0dc, keyI: 1.6, fill: 0x8090ff, fillI: 0.4, rim: 0xffb060, rimI: 2.4, ink: 0x0e0a14 },
-  shop: { sky: 0xfff0e0, ground: 0x3a2418, hemi: 1.1, key: 0xfff2dc, keyI: 1.6, fill: 0x90a0ff, fillI: 0.35, rim: 0xffc070, rimI: 2.4, ink: 0x140a06 },
-  trader: { sky: 0xfff4e4, ground: 0x3a2a1a, hemi: 1.15, key: 0xfff4e0, keyI: 1.6, fill: 0x90a0ff, fillI: 0.35, rim: 0xffc070, rimI: 2.2, ink: 0x140c06 },
+  // (fills are a soft, nearly neutral lavender and rims are lamplight: the old saturated blue fills
+  // and cyan rims turned every face in the interface blue, the hero's most of all)
+  forge: { sky: 0xffe8d0, ground: 0x3a2018, hemi: 1.0, key: 0xfff0dc, keyI: 1.7, fill: 0xb4a8c8, fillI: 0.3, rim: 0xff8a3a, rimI: 3.0, ink: 0x120808 },
+  cave: { sky: 0xf6ece0, ground: 0x2a2024, hemi: 1.05, key: 0xfff4e8, keyI: 1.65, fill: 0xb0a4c4, fillI: 0.3, rim: 0xffb070, rimI: 2.2, ink: 0x0c0808 },
+  town: { sky: 0xfff0e0, ground: 0x2a2030, hemi: 1.05, key: 0xfff0dc, keyI: 1.6, fill: 0xb4a8c8, fillI: 0.3, rim: 0xffb060, rimI: 2.4, ink: 0x0e0a14 },
+  shop: { sky: 0xfff0e0, ground: 0x3a2418, hemi: 1.1, key: 0xfff2dc, keyI: 1.6, fill: 0xb8acc8, fillI: 0.28, rim: 0xffc070, rimI: 2.4, ink: 0x140a06 },
+  trader: { sky: 0xfff4e4, ground: 0x3a2a1a, hemi: 1.15, key: 0xfff4e0, keyI: 1.6, fill: 0xb8acc8, fillI: 0.28, rim: 0xffc070, rimI: 2.2, ink: 0x140c06 },
   herb: { sky: 0xf0ffe0, ground: 0x203018, hemi: 1.05, key: 0xfff4dc, keyI: 1.6, fill: 0x70c0a0, fillI: 0.4, rim: 0xd8f080, rimI: 2.4, ink: 0x080e06 },
-  storage: { sky: 0xf0e8ff, ground: 0x281a24, hemi: 1.0, key: 0xfff0dc, keyI: 1.6, fill: 0xa080ff, fillI: 0.45, rim: 0xffa040, rimI: 2.6, ink: 0x0e080e },
-  outpost: { sky: 0xffe8d8, ground: 0x30140c, hemi: 1.0, key: 0xfff0dc, keyI: 1.6, fill: 0x8090ff, fillI: 0.35, rim: 0xff7a40, rimI: 2.8, ink: 0x120604 },
-  coop: { sky: 0xfff4e0, ground: 0x3a2412, hemi: 1.15, key: 0xfff4e4, keyI: 1.5, fill: 0x90a0ff, fillI: 0.3, rim: 0xffd080, rimI: 2.2, ink: 0x1a0c06 },
+  storage: { sky: 0xf6eee8, ground: 0x281a24, hemi: 1.0, key: 0xfff0dc, keyI: 1.6, fill: 0xb8a0d0, fillI: 0.32, rim: 0xffa040, rimI: 2.6, ink: 0x0e080e },
+  outpost: { sky: 0xffe8d8, ground: 0x30140c, hemi: 1.0, key: 0xfff0dc, keyI: 1.6, fill: 0xb4a8c8, fillI: 0.28, rim: 0xff7a40, rimI: 2.8, ink: 0x120604 },
+  coop: { sky: 0xfff4e0, ground: 0x3a2412, hemi: 1.15, key: 0xfff4e4, keyI: 1.5, fill: 0xb8acc8, fillI: 0.25, rim: 0xffd080, rimI: 2.2, ink: 0x1a0c06 },
 };
 LIGHTS.assay = { ...LIGHTS.shop, rim: 0xffe0a0 };
-LIGHTS.ticket = { ...LIGHTS.shop, rim: 0x90f0e0 };
+LIGHTS.ticket = { ...LIGHTS.shop, rim: 0xffe6b0 };
 
 const bgCache = new Map();
 function backdrop(kind, W, H) {
@@ -565,7 +575,7 @@ class Handle {
     // live portraits draw at twice the art grid (D): the face keeps its features (a 40-pixel face
     // smeared them into blobs); the box on the page stays W × H art pixels, the backdrop keeps the
     // art grid. Stills (toasts, the strip) stay at 1.
-    this.D = Math.max(1, Math.round(o.density ?? (el ? DENSITY : 1)));
+    this.D = Math.max(1, Math.round(o.density ?? (el ? liveDensity() : 1)));
     this.CW = this.W * this.D;
     this.CH = this.H * this.D;
     this.canvas.width = this.CW;
@@ -573,7 +583,7 @@ class Handle {
     this.canvas.setAttribute('aria-hidden', 'true');
     this.ctx = this.canvas.getContext('2d');
     this.img = this.ctx.createImageData(this.CW, this.CH);
-    this.ss = o.ss ?? (this.D > 1 ? 1 : SS); // supersampling: rendered at ss× and folded down to the grid
+    this.ss = o.ss ?? SS; // supersampling: rendered at ss× and folded down to the grid
     this.px = new Uint8Array(this.CW * this.CH * this.ss * this.ss * 4);
     this.small = new Uint8Array(this.CW * this.CH * 4);
     this.bg = upscale(backdrop(this.kind, this.W, this.H), this.W, this.H, this.D);

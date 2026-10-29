@@ -1,151 +1,147 @@
-// Old Star's house: the floor plan (meters, pure data). His home is dug into the rock beside a great
-// glowing cavern, three worn steps down from your bedroom (the save's tile room, south of here):
-//   the living room   the heart of it, straight down the steps: his fireplace, a round window on
-//                     the glow garden, his armchair and the settee, bookshelves, the big rug
-//   the kitchen       west, through a door: the cooking range (the cooking station), the pantry
-//                     shelves, the sink and pump under its window, the dining table
-//   the larder        down a step from the kitchen, south: cool stone, cheeses, barrels, jars
-//   the smithy        north-west: the forge and its hood, bellows, anvil, quench trough, tool racks,
-//                     and the box bed where he sleeps (warm from the forge)
-//   the workshop      north of the smithy: his tinkering bench, the little railway, a loft of crates
-//   the glow garden   north of the living room, under a skylight: Marigold's mushroom beds, a rill,
-//                     her bench, and a hot spring bath in the corner
-//   the terrace       out of the garden onto the cliff: the whole cavern below, a telescope
-//   the hall          east: the cage lift down to the mine, the front door (the way to Deep Town),
-//                     coats and boots, the Miners' Board, his old trunk, the coal cart, his dream wall
-// Each room is a box (x0..x1, z0..z1) on the house floor; walls stand on the room's edges (rooms
-// sit WALL apart, so a shared wall is WALL thick). Openings are cut by the side they're in: doors
-// (shared by both rooms of a wall), round windows, the arch up to your room and the lift. The
-// terrace is open (no walls or roof of its own: a balustrade and the cavern).
-import { HALL, ARCH, SHAFT } from './units.js';
+// Old Star's camp: the floor plan (meters, pure data and shape functions). His home is an old,
+// run-down camp in a natural cave hollow, three worn steps down a rock passage from your nook (the
+// save's tile room, south of here). One rough hollow plus a side nook, its parts still named as the
+// old house's rooms were (the lessons and the quests say "the smithy", "the kitchen", "the hall"):
+//   the kitchen (south-west)  the fire pit with its tripod and kettle (the cooking spot), the plank
+//                             table and the wobbly stool, crates of stores; in the side nook the
+//                             spring dripping out of the rock into a stone basin
+//   the smithy (north-west)   his old stone forge with its pipe up a crack in the rock, the bellows,
+//                             the anvil on its stump, the quench trough, coal, tools against the rock
+//   the living (middle)       his shack of warped grey planks and patched tarps built against the
+//                             north rock (his cot, his armchair, his notes), the hole you fell through
+//                             overhead with a thin shaft of light
+//   the hall (east)           the rusty cage lift in its rock shaft, the old door to Deep Town in a
+//                             tunnel mouth, his chest, the coal cart, the Miners' Board
+// The rock (caveShell.js) is carved from hollowSD (a rough signed distance over the floor plan: the
+// walls wander, lean in overhead and meet a low domed roof, ceilAt) and so is the collision.
+import { HALL, ARCH, SHAFT, FRONT, HOLE } from './units.js';
 
-/** The house floor (m): the cave's old floor height, three steps below your room. */
+/** The camp's floor (m): the cave's floor height, three steps below your nook. */
 export const FY = HALL.y;
-/** Interior wall thickness (m). */
+/** (Old: interior wall thickness, m. The camp has none; kept for the old surfaces module.) */
 export const WALL = 0.2;
-/** Voxels per meter for the house surfaces. */
+/** Voxels per meter for the props (1/64 m). */
 export const VPM = 64;
 
-/** The rooms: bounds (m), ceiling height above the floor (m), and their dressing. */
+/** The parts of the hollow (zones: the lessons' soft walls, Old Star's places), bounds in m, a rough roof height. */
 export const ROOMS = [
-  { id: 'living', name: 'the living room', x0: -0.6, x1: 4.8, z0: -5.8, z1: HALL.z1, h: 2.3, wall: 'plaster', wains: 'sage', floor: 'oak', ceil: 'oak', plaster: 0xdcc69c },
-  { id: 'kitchen', name: 'the kitchen', x0: -5.0, x1: -0.8, z0: -3.4, z1: HALL.z1, h: 2.2, wall: 'plaster', wains: 'tile', floor: 'terracotta', ceil: 'pine', plaster: 0xe2d0a6 },
-  { id: 'smithy', name: 'the smithy', x0: -5.0, x1: -0.8, z0: -7.2, z1: -3.6, h: 2.45, wall: 'brick', wains: 'stone', floor: 'flag', ceil: 'sooty' },
-  { id: 'hall', name: 'the hall', x0: 5.0, x1: SHAFT.x0, z0: -5.8, z1: HALL.z1, h: 2.2, wall: 'plaster', wains: 'oak', floor: 'pine', ceil: 'oak', plaster: 0xd2b88c },
-  { id: 'garden', name: 'the glow garden', x0: -0.6, x1: 4.8, z0: -10.2, z1: -6.0, h: 3.5, wall: 'stone', floor: 'mossflag', ceil: 'oak', skylight: { x: 2.15, z: -8.1, r: 0.95 } },
-  { id: 'terrace', name: 'the terrace', x0: -0.2, x1: 4.4, z0: -11.8, z1: -10.4, h: 4.6, open: true, walls: ['s', 'e', 'w'], wall: 'stone', sideWall: { e: 'rock', w: 'rock' }, floor: 'terrace' },
-  { id: 'workshop', name: 'the workshop', x0: -5.0, x1: -0.8, z0: -10.2, z1: -7.4, h: 3.1, wall: 'plaster', wains: 'oak', floor: 'pine', ceil: 'pine', plaster: 0xd8c49a },
-  { id: 'larder', name: 'the larder', x0: -5.0, x1: -1.4, z0: -0.11, z1: 2.7, h: 2.1, wall: 'stone', floor: 'flag', ceil: 'slab', cool: true },
+  { id: 'kitchen', name: 'the camp kitchen', x0: -5.3, x1: 0.6, z0: -3.0, z1: HALL.z1, h: 2.1 },
+  { id: 'smithy', name: 'the forge corner', x0: -5.3, x1: 0.6, z0: -6.7, z1: -3.0, h: 2.1 },
+  { id: 'living', name: 'the shack', x0: 0.6, x1: 4.9, z0: -6.7, z1: HALL.z1, h: 2.3 },
+  { id: 'hall', name: 'the lift and the way out', x0: 4.9, x1: SHAFT.x0 + 0.02, z0: -6.7, z1: HALL.z1, h: 2.0 },
 ];
 export const ROOM = Object.fromEntries(ROOMS.map((r) => [r.id, r]));
 
-/** Doorways between rooms (m): the wall they're in (x = for a wall along z, z = for one along x), centre, width, height. */
-export const DOORS = [
-  { id: 'kitchen', a: 'living', b: 'kitchen', x: -0.7, c: -1.75, w: 0.92, h: 1.44 },
-  { id: 'smithy', a: 'living', b: 'smithy', x: -0.7, c: -4.75, w: 0.92, h: 1.44 },
-  { id: 'back', a: 'kitchen', b: 'smithy', z: -3.5, c: -2.35, w: 0.92, h: 1.44 },
-  { id: 'hall', a: 'living', b: 'hall', x: 4.9, c: -2.35, w: 1.0, h: 1.48 },
-  { id: 'garden', a: 'living', b: 'garden', z: -5.9, c: 0.42, w: 0.9, h: 1.5 },
-  { id: 'workshop', a: 'smithy', b: 'workshop', z: -7.3, c: -4.2, w: 0.86, h: 1.44 },
-  { id: 'potting', a: 'workshop', b: 'garden', x: -0.7, c: -8.75, w: 0.86, h: 1.44 },
-  { id: 'larder', a: 'kitchen', b: 'larder', z: -0.21, c: -2.0, w: 0.86, h: 1.4 },
-  { id: 'terrace', a: 'garden', b: 'terrace', z: -10.3, c: 2.15, w: 1.9, h: 2.05, arch: true },
+/** No doors inside a cave: one open hollow. (Kept for the code that walks the old house's lists.) */
+export const DOORS = [];
+/** The way to Deep Town: an old door in a tunnel mouth in the north rock (m). */
+export const FRONT_DOOR = { room: 'hall', side: 'n', c: FRONT.x, w: 0.74, h: 1.2 };
+/** No windows in a cave. */
+export const WINDOWS = [];
+
+// ---------------------------------------------------------------- noise (pure, the same everywhere)
+function hash(x, y, z, s) {
+  let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(z | 0, 2147483647) + Math.imul(s | 0, 1274126177)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+const sm = (t) => t * t * (3 - 2 * t);
+/** Smooth value noise in 2D, -1..1. */
+export function n2(x, z, s = 0) {
+  const xi = Math.floor(x), zi = Math.floor(z), fx = sm(x - xi), fz = sm(z - zi);
+  const a = hash(xi, 0, zi, s), b = hash(xi + 1, 0, zi, s), c = hash(xi, 0, zi + 1, s), d = hash(xi + 1, 0, zi + 1, s);
+  return (a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz) * 2 - 1;
+}
+/** Smooth value noise in 3D, -1..1. */
+export function n3(x, y, z, s = 0) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const fx = sm(x - xi), fy = sm(y - yi), fz = sm(z - zi);
+  const l = (dy, dz) => { const a = hash(xi, yi + dy, zi + dz, s), b = hash(xi + 1, yi + dy, zi + dz, s); return a + (b - a) * fx; };
+  const p = l(0, 0) + (l(1, 0) - l(0, 0)) * fy;
+  const q = l(0, 1) + (l(1, 1) - l(0, 1)) * fy;
+  return (p + (q - p) * fz) * 2 - 1;
+}
+export { hash as hash3 };
+
+// ---------------------------------------------------------------- the hollow's shape (meters)
+/** Rounded box signed distance in the floor plan. */
+function sdBox(x, z, x0, x1, z0, z1, r) {
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, hx = (x1 - x0) / 2 - r, hz = (z1 - z0) / 2 - r;
+  const qx = Math.abs(x - cx) - hx, qz = Math.abs(z - cz) - hz;
+  return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - r;
+}
+/** The hollow's parts: [x0, x1, z0, z1, corner radius, rough (the wall wanders)]. */
+const SHAPES = [
+  [-3.85, 7.7, -5.72, -0.38, 1.15, 1], // the hollow
+  [-5.15, -3.3, -3.1, -1.25, 0.7, 1], // the spring nook (west)
+  [6.7, SHAFT.x0, SHAFT.z0 - 0.3, SHAFT.z1 + 0.3, 0, 0], // the lift bay: a flat face for its portal
+  [FRONT.x - 0.52, FRONT.x + 0.52, FRONT.z, -5.25, 0, 0], // the door to Deep Town, in a flat face
+  [ARCH.x - 0.44, ARCH.x + 0.44, -1.1, 0.02, 0, 0], // the passage up to your nook
 ];
+/** How far the rough walls wander out (m). */
+export function wob(x, z) { return 0.2 + 0.15 * n2(x * 1.15 + 3.1, z * 1.15 - 1.7, 11) + 0.07 * n2(x * 3.3, z * 3.3, 12); }
 
-/** The front door to Deep Town, in the hall's north wall (m). */
-export const FRONT_DOOR = { room: 'hall', side: 'n', c: 6.2, w: 0.74, h: 1.2 };
+/**
+ * Signed distance to the hollow's wall at floor level (m): < 0 inside. Never past the lift shaft's
+ * face (x 7.8) nor into the rock between the hollow and your nook (z -0.31) except up the passage.
+ */
+export function hollowSD(x, z) {
+  let d = Infinity;
+  const w = wob(x, z);
+  for (const [x0, x1, z0, z1, r, rough] of SHAPES) d = Math.min(d, sdBox(x, z, x0, x1, z0, z1, r) - (rough ? w : 0));
+  d = Math.max(d, x - SHAFT.x0);
+  if (Math.abs(x - ARCH.x) > 0.44) d = Math.max(d, z - (HALL.z1 - 0.02));
+  if (Math.abs(x - FRONT.x) < 0.95) d = Math.max(d, FRONT.z - z); // the door's face stays flat
+  return d;
+}
 
-/** Round windows (m): room, side, centre along the wall, centre height over the floor, radius. */
-export const WINDOWS = [
-  { room: 'living', side: 'n', c: 3.65, cy: 0.98, r: 0.3 },
-  { room: 'kitchen', side: 'w', c: -1.85, cy: 1.0, r: 0.3 },
-  { room: 'hall', side: 'n', c: 7.22, cy: 0.98, r: 0.26 },
-  { room: 'garden', side: 'n', c: 0.35, cy: 1.15, r: 0.36 },
-  { room: 'garden', side: 'n', c: 3.95, cy: 1.15, r: 0.36 },
-  { room: 'workshop', side: 'n', c: -2.9, cy: 1.35, r: 0.44 },
-  { room: 'workshop', side: 'w', c: -8.8, cy: 1.0, r: 0.28 },
-  { room: 'larder', side: 'w', c: 1.35, cy: 1.15, r: 0.22 },
-];
+/** Can you stand at (x, z) (m): inside the hollow, a hand's width off the rock. */
+export function walkable(x, z) { return hollowSD(x, z) < -0.14; }
 
-/** Side of a room → the wall's line, which way it runs and which way it faces (into the room). */
+/** How far the walls lean in at h m over the floor (m added to the distance). */
+export function lean(h) { return h < 0.75 ? 0 : (h - 0.75) * (h - 0.75) * 0.42; }
+
+/** The roof over (x, z) (m, absolute y): a low dome, highest in the middle, the passage at the arch's height. */
+export function ceilAt(x, z) {
+  if (Math.abs(x - ARCH.x) <= 0.44 && z > -1.1) return Math.min(ARCH.h + 0.02, FY + 1.75 + (z + 1.1) * 0.6);
+  const inner = Math.max(0, Math.min(1, -hollowSD(x, z) / 2.1));
+  return FY + 1.5 + 0.95 * sm(inner) + 0.12 * n2(x * 0.8 + 5, z * 0.8, 13);
+}
+
+/** The hole you fell through: a ragged shaft up through the roof (m). */
+export const HOLE_SHAFT = { x: HOLE.x, z: HOLE.z, r: 0.48, top: FY + 3.4 };
+
+/** The part of the hollow (zone) at (x, z), or null in the rock. */
+export function roomAt(x, z) {
+  for (const r of ROOMS) if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return hollowSD(x, z) < 0 ? r : null;
+  return null;
+}
+
+/** (No doorways in a cave.) */
+export function doorAt() { return null; }
+
+/** (Old house: a room's wall line. Kept for the old surfaces module.) */
 export function sideInfo(r, side) {
   if (side === 'n') return { fixed: 'z', at: r.z0, a0: r.x0, a1: r.x1, nx: 0, nz: 1 };
   if (side === 's') return { fixed: 'z', at: r.z1, a0: r.x0, a1: r.x1, nx: 0, nz: -1 };
   if (side === 'w') return { fixed: 'x', at: r.x0, a0: r.z0, a1: r.z1, nx: 1, nz: 0 };
   return { fixed: 'x', at: r.x1, a0: r.z0, a1: r.z1, nx: -1, nz: 0 };
 }
+/** (Old house: the openings in a wall. None in a cave.) */
+export function openingsOf() { return []; }
 
-/**
- * The openings in one side of a room: [{ kind: 'door'|'arch'|'front'|'lift'|'window', c (m along),
- * w, h (m over the floor; windows: r, cy) }].
- */
-export function openingsOf(r, side) {
-  const S = sideInfo(r, side);
-  const out = [];
-  const near = (v, at) => Math.abs(v - at) < WALL;
-  for (const d of DOORS) {
-    if (d.a !== r.id && d.b !== r.id) continue;
-    const kind = d.arch ? 'arch' : 'door';
-    if (d.x !== undefined && S.fixed === 'x' && near(d.x, S.at)) out.push({ kind, id: d.id, c: d.c, w: d.w, h: d.h });
-    if (d.z !== undefined && S.fixed === 'z' && near(d.z, S.at)) out.push({ kind, id: d.id, c: d.c, w: d.w, h: d.h });
-  }
-  if (r.id === 'living' && side === 's') out.push({ kind: 'arch', c: ARCH.x, w: ARCH.hw * 2, h: ARCH.h - FY });
-  if (r.id === FRONT_DOOR.room && side === FRONT_DOOR.side) out.push({ kind: 'front', c: FRONT_DOOR.c, w: FRONT_DOOR.w, h: FRONT_DOOR.h });
-  if (r.id === 'hall' && side === 'e') out.push({ kind: 'lift', c: (SHAFT.z0 + SHAFT.z1) / 2, w: SHAFT.z1 - SHAFT.z0, h: SHAFT.h });
-  for (const w of WINDOWS) if (w.room === r.id && w.side === side) out.push({ kind: 'window', c: w.c, r: w.r, cy: w.cy, w: w.r * 2, h: w.cy + w.r });
-  return out;
-}
-
-/** The room whose floor is at (x, z) (m), or null (walls, doorways and the rock between rooms). */
-export function roomAt(x, z) {
-  for (const r of ROOMS) if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return r;
-  return null;
-}
-
-/** In a doorway's gap through its wall (m)? */
-export function doorAt(x, z) {
-  for (const d of DOORS) {
-    if (d.x !== undefined && Math.abs(x - d.x) <= WALL / 2 + 0.01 && Math.abs(z - d.c) <= d.w / 2) return d;
-    if (d.z !== undefined && Math.abs(z - d.z) <= WALL / 2 + 0.01 && Math.abs(x - d.c) <= d.w / 2) return d;
-  }
-  return null;
-}
-
-/** The whole house's bounds (m), and the middle (for the cavern outside). */
-export const BOUNDS = {
-  x0: Math.min(...ROOMS.map((r) => r.x0)) - 0.4, x1: Math.max(...ROOMS.map((r) => r.x1)) + 1.6,
-  z0: Math.min(...ROOMS.map((r) => r.z0)) - 0.4, z1: HALL.z1,
-};
+/** The camp's bounds (m), and the middle. */
+export const BOUNDS = { x0: -5.4, x1: SHAFT.x1 + 0.4, z0: FRONT.z - 0.9, z1: HALL.z1 };
 export const MID = { x: (BOUNDS.x0 + BOUNDS.x1) / 2, z: (BOUNDS.z0 + BOUNDS.z1) / 2 };
 
-/** Is (x, z) out on the terrace (or its steps)? */
-export function onTerrace(x, z) { const r = ROOM.terrace; return x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1; }
+/** (No terrace in a cave.) */
+export function onTerrace() { return false; }
 
 /**
- * The openings you can see one room from another through (for drawing only the rooms in view):
- * [{ a, b, box: [x0, y0, z0, x1, y1, z1] }]; b 'outside' for the cavern, 'bedroom' for your room.
+ * The openings you can see one part of the home from another through (for drawing only what's in
+ * view): the camp is one open hollow; your nook looks into it through the arch.
  */
 export function portals() {
-  const out = [];
-  const T2 = WALL / 2 + 0.02;
-  for (const d of DOORS) {
-    const h = FY + d.h, w = d.w / 2;
-    if (d.x !== undefined) out.push({ a: d.a, b: d.b, box: [d.x - T2, FY, d.c - w, d.x + T2, h, d.c + w] });
-    else out.push({ a: d.a, b: d.b, box: [d.c - w, FY, d.z - T2, d.c + w, h, d.z + T2] });
-  }
-  for (const w of WINDOWS) {
-    const r = ROOM[w.room], S = sideInfo(r, w.side), y = FY + w.cy;
-    const box = S.fixed === 'z' ? [w.c - w.r, y - w.r, S.at - 0.3, w.c + w.r, y + w.r, S.at + 0.3] : [S.at - 0.3, y - w.r, w.c - w.r, S.at + 0.3, y + w.r, w.c + w.r];
-    // (a window may look into another room: the living room's into the garden, the garden's onto the terrace)
-    const bx = S.fixed === 'z' ? w.c : S.at - S.nx * (WALL + 0.25), bz = S.fixed === 'z' ? S.at - S.nz * (WALL + 0.25) : w.c;
-    const beyond = roomAt(bx, bz);
-    out.push({ a: w.room, b: beyond ? beyond.id : 'outside', box });
-    if (beyond?.open) out.push({ a: w.room, b: 'outside', box });
-  }
-  out.push({ a: 'living', b: 'bedroom', box: [ARCH.x - ARCH.hw, FY, HALL.z1 - 0.7, ARCH.x + ARCH.hw, ARCH.h, 0.05] });
-  const t = ROOM.terrace;
-  out.push({ a: 'terrace', b: 'outside', box: [t.x0 - 6, FY - 8, t.z0 - 30, t.x1 + 6, FY + 12, t.z1] });
-  const g = ROOM.garden, sk = g.skylight;
-  out.push({ a: 'garden', b: 'outside', box: [sk.x - sk.r, FY + g.h - 0.1, sk.z - sk.r, sk.x + sk.r, FY + g.h + 4, sk.z + sk.r] });
-  return out;
+  return [{ a: 'camp', b: 'bedroom', box: [ARCH.x - ARCH.hw, FY, HALL.z1 - 0.7, ARCH.x + ARCH.hw, ARCH.h, 0.05] }];
 }

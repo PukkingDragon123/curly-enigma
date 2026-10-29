@@ -323,7 +323,7 @@ export function renderMap(host, game, opts = {}) {
     }
     for (const r of plan.ruins || []) {
       if (zoneOfY(r.y) !== z || (!near(m, r.x, r.z, (r.r || 5) + 3, maxOrd) && !atlas.known?.['ruin:' + r.id])) continue;
-      out.push({ kind: 'ruin', x: r.x, z: r.z, label: 'Ruins', sub: `Old ${r.kind || 'hall'} of fitted stone` });
+      out.push({ kind: 'ruin', x: r.x, z: r.z, label: 'Ruins', sub: { cell: 'A monster room', crypt: 'A flooded crypt', vault: 'A Starfolk vault', fortress: 'A deep fortress' }[r.kind] || 'An old dungeon' });
     }
     for (const d of plan.dangers || []) {
       if (zoneOfY(d.y) !== z || !near(m, d.x, d.z, (d.r || 4) + 2, maxOrd)) continue;

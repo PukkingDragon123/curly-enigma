@@ -161,10 +161,10 @@ export const SIDE_QUESTS = {
   }),
   lo_fenn_line: V({
     title: 'The Fennimore Line', from: 'ticket', kind: 'lore', requires: ['v_fenn_sun'], when: reached(2),
-    intro: 'My grandfather Augustus built the Express up the old stair. The miners kept a journal of those days; the pages blew all over the trails in the Rumble. Find a few and read them. You\'ll see what a scoundrel he was. Lovely man.',
+    intro: 'My grandfather Augustus built the Express up the old stair. The miners kept a journal of those days; the pages went down with the miners the Rumble swallowed. Find a few and read them. You\'ll see what a scoundrel he was. Lovely man.',
     outro: '"He has never said a true word in his life." Ha! That\'s Grandfather. Take this, darling, and keep the pages.',
     steps: [
-      { id: 'read', text: 'Read 3 pages of Hobb\'s journal', hint: 'The miners left their tools at the cave-ins along the old trails. Pages are tucked in the handles: E on a dropped pick or shovel.', on: { type: 'lore', src: 'journal' }, unique: 'id', n: 3, where: { sight: 'cavein' } },
+      { id: 'read', text: 'Read 3 pages of Hobb\'s journal', hint: 'The miners lost in the Rumble lie in the old dungeons, a page or two in every satchel: E on their remains.', on: { type: 'lore', src: 'journal' }, unique: 'id', n: 3, where: { sight: 'cavein' } },
       { id: 'tell', text: 'Tell Mr. Fennimore what you read', hint: 'The ticket booth under the sunbeam.', talk: 'ticket' },
     ],
     reward: { gold: 900, sp: 1, lore: ['t_express'] },
@@ -193,20 +193,20 @@ export const SIDE_QUESTS = {
 
   // ================================================================== Grandpa Tuck
   v_tuck_signs: V({
-    title: 'The Company Signposts', from: 'tuck', requires: ['os_lifts'],
-    intro: 'The Company put a signpost at every junction. Painted the boards myself, some of them. Go and read three for me, would you? I want to know if my spelling held up.',
+    title: 'The Company Signs', from: 'tuck', requires: ['os_lifts'],
+    intro: 'The Company put a name board up at every lift station. Painted them myself, some of them. Go and read three for me, would you? I want to know if my spelling held up.',
     outro: '"Clayworkes." Hm. That one was Pell. Thank you, youngster. Here, an old miner\'s wage.',
     steps: [
-      { id: 'read', text: 'Read 3 old trail signposts', hint: 'Signposts stand where the old trails leave lifts, burrows and the town. E to read.', on: { type: 'look', at: 'signpost' }, n: 3, where: { sight: 'signpost' } },
+      { id: 'read', text: 'Read 3 lift station signs', hint: 'Every lift station has its name board on the wall by the car. E to read.', on: { type: 'look', at: 'signpost' }, n: 3, where: { sight: 'signpost' } },
     ],
     reward: { gold: 400 },
   }),
   v_tuck_pick: V({
     title: 'Tuck\'s Old Pick', from: 'tuck', requires: ['v_tuck_signs'],
-    intro: 'Lost my old pick at a cave-in, the day of the Long Rumble. Left it sticking out of the rubble and ran. T.T. on the handle. If you find a pick by a cave-in, have a look at the handle for me.',
+    intro: 'Lost my old pick the day of the Long Rumble. Lent it to a lad who never came back up. T.T. on the handle. If you find a lost miner down there, have a look at his pick for me.',
     outro: 'T.T. Tobias Tuck. Well I never. Sixty years! Keep it on your wall, youngster. It\'s done its digging.',
     steps: [
-      { id: 'find', text: 'Search a dropped pick at a trail cave-in', hint: 'The old trails are blocked by cave-ins here and there; the miners left their tools by them. E on a pick or shovel.', on: { type: 'look', at: 'cavein' }, grant: { tuck_pick: 1 }, where: { sight: 'cavein' }, say: { text: 'Under the rubble, a second pick: <b>T.T.</b> burnt into the handle.' } },
+      { id: 'find', text: 'Search a lost miner\'s remains', hint: 'Miners lost in the Long Rumble lie in the old dungeons, their picks still by them. E on the remains.', on: { type: 'look', at: 'cavein' }, grant: { tuck_pick: 1 }, where: { sight: 'cavein' }, say: { text: 'By the bones, a snapped pick: <b>T.T.</b> burnt into the handle.' } },
       { id: 'bring', text: 'Show Grandpa Tuck his old pick', hint: 'The north bench on the plaza.', deliver: { to: 'tuck', items: { tuck_pick: 1 } } },
     ],
     reward: { gold: 600, items: { trophy_pick: 1 } },
@@ -237,7 +237,7 @@ export const SIDE_QUESTS = {
     intro: 'Last thing: the music. Lark wants to sing the old Sun Hymn, but nobody remembers it. It\'s carved in the ruins, they say, in bumpy letters. Take a rubbing of any old carving to Lark, and then come and stand in the sun with us.',
     outro: 'Look at them all, eyes shut, faces up. Best festival in forty years. Thank you, dear. Here, from all of us.',
     steps: [
-      { id: 'rub', text: 'Read a carving in an old ruin', hint: 'Ruins are halls of fitted stone. E on a carved frieze or rune wall reads it.', on: { type: 'lore', src: 'carving' }, grant: { sun_hymn: 1 }, where: { ruin: 'nearest' }, say: { text: 'You rub charcoal over the raised runes: <b>a rubbing of the Sun Hymn</b>.' } },
+      { id: 'rub', text: 'Read a carving in an old ruin', hint: 'The old dungeons are rooms of fitted stone hidden in the rock. E on a carved frieze or rune wall reads it.', on: { type: 'lore', src: 'carving' }, grant: { sun_hymn: 1 }, where: { ruin: 'nearest' }, say: { text: 'You rub charcoal over the raised runes: <b>a rubbing of the Sun Hymn</b>.' } },
       { id: 'lark', text: 'Bring the rubbing to Lark', hint: 'Lark busks by the fountain.', deliver: { to: 'lark', items: { sun_hymn: 1 } }, say: { by: 'lark', text: '♪ It goes up at the end! Like a question! ♪ Oh, it\'s PERFECT.' } },
       { id: 'sun', text: 'Join the festival: stand in the sunbeam', hint: 'The sunlit patch in front of the ticket booth. E to stand in it.', look: 'sunbeam' },
     ],
@@ -297,7 +297,7 @@ export const SIDE_QUESTS = {
     intro: 'They say the old ones in the ruins had noses like mine. Star-noses! There\'s an idol in the shrines, with a nose. I just want to see it. Could you... could you find one?',
     outro: 'It\'s got MY nose! Twenty-two fingers! I knew it. I KNEW it.',
     steps: [
-      { id: 'find', text: 'Find a Star-Nose Idol in a ruin', hint: 'It waits in a Star Shrine\'s treasure room in the Rootsoil. Solve the shrine\'s puzzle to get in.', on: { type: 'relic', id: 'relic_idol' }, check: (st) => st.count('relic_idol') > 0, where: { ruin: 'nearest' } },
+      { id: 'find', text: 'Find a Star-Nose Idol in a ruin', hint: 'It waits in the sealed strongroom of a monster room in the Rootsoil. Find the hidden switch to get in.', on: { type: 'relic', id: 'relic_idol' }, check: (st) => st.count('relic_idol') > 0, where: { ruin: 'nearest' } },
       { id: 'show', text: 'Show the idol to Nubs', hint: 'Nubs hauls ore from the pile to the town lift.', talk: 'nubs', need: (st) => st.count('relic_idol') > 0 },
     ],
     reward: { gold: 600, lore: ['s_noses'] },
@@ -417,7 +417,7 @@ export const SIDE_QUESTS = {
     intro: 'The ruins are carved with raised runes nobody can read. I have a theory. Read the carvings in two different ruins, with your paws, mind, not your eyes, and tell me what they say.',
     outro: '"We came down from the cold with our noses to the stone"? Fas-cin-a-ting. They wrote for TOUCH. They wrote for noses! Here: my notes, and a fee.',
     steps: [
-      { id: 'read', text: 'Read the carvings in 2 different ruins', hint: 'Ruins are halls of fitted stone. E on a carved frieze or a rune wall. The walls by the sealed door are carved.', on: { type: 'lore', src: 'carving' }, unique: 'ruin', n: 2, where: { ruin: 'nearest' } },
+      { id: 'read', text: 'Read the carvings in 2 different ruins', hint: 'The old dungeons are rooms of fitted stone hidden in the rock. E on a carved frieze or a rune wall. The walls by the sealed door are carved.', on: { type: 'lore', src: 'carving' }, unique: 'ruin', n: 2, where: { ruin: 'nearest' } },
       { id: 'tell', text: 'Tell Professor Talpa what they say', hint: 'Inkwell Plans, on the west wall of Deep Town.', talk: 'blueprints' },
     ],
     reward: { gold: 700, sp: 1, lore: ['s_read'] },
@@ -433,10 +433,10 @@ export const SIDE_QUESTS = {
   }),
   lo_talpa_shrine: V({
     title: 'The Star Shrine', from: 'blueprints', kind: 'lore', requires: ['lo_talpa_relic'],
-    intro: 'The shrines have idols, and the idols have eyes that are said to light up. Wake one. Solve a Star Shrine\'s puzzle, see its eyes open, and come and tell me what its face looked like. I need to be sure.',
+    intro: 'The shrines have idols, and the idols have eyes that are said to light up. Wake one. Solve a Starfolk vault\'s puzzle, see its eyes open, and come and tell me what its face looked like. I need to be sure.',
     outro: 'A star nose. Of course. OF COURSE. The Old Ones never left. Look at Grubb! Look at young Nubs! They had GRANDCHILDREN.',
     steps: [
-      { id: 'wake', text: 'Wake the idol in a Star Shrine', hint: 'Star Shrines are round domed rooms with a seated idol. Their puzzles are symbol drums or light beams.', on: { type: 'puzzle', kind: ['dials', 'beams'] }, where: { ruin: 'shrine' } },
+      { id: 'wake', text: 'Wake the eyes of a Starfolk vault', hint: 'Starfolk vaults are tall halls on marble pillars (Crystal Grotto and deeper). Their puzzles are symbol drums; the deep fortresses\' are light beams.', on: { type: 'puzzle', kind: ['dials', 'beams'] }, where: { ruin: 'vault' } },
       { id: 'tell', text: 'Tell Professor Talpa about the idol\'s face', hint: 'Inkwell Plans in Deep Town.', talk: 'blueprints' },
     ],
     reward: { gold: 3000, sp: 2, lore: ['s_kin'] },
@@ -475,7 +475,7 @@ export const SIDE_QUESTS = {
     outro: 'So now you know. He dug me out with his paws, that night. Me and two others. Then he went home and never came back. I\'ve been sitting by this tunnel ever since, waiting to thank him.',
     steps: [
       { id: 'ask', text: 'Ask Old Star about Shaft Seven', hint: 'At home, in his house above the mine. Talk to him (E).', talk: 'oldstar', say: { by: 'oldstar', text: 'Hollis talks too much. ...It was a million. Near enough. It went down a crack. That\'s all. Mind the fire.', mood: 'worried' } },
-      { id: 'read', text: 'Read 2 pages of the old foreman\'s journal', hint: 'Pages are tucked into the tools left at cave-ins on the old trails (E on a dropped pick or shovel).', on: { type: 'lore', src: 'journal' }, unique: 'id', n: 2, where: { sight: 'cavein' } },
+      { id: 'read', text: 'Read 2 pages of the old foreman\'s journal', hint: 'Pages are in the satchels of the miners lost in the old dungeons (E on the remains).', on: { type: 'lore', src: 'journal' }, unique: 'id', n: 2, where: { sight: 'cavein' } },
       { id: 'back', text: 'Go back to Old Hollis', hint: 'His bench by the boarded tunnel in Deep Town.', talk: 'hollis' },
     ],
     reward: { gold: 800, sp: 1, lore: ['os_shaft7', 'os_stamp'] },

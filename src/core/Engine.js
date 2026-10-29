@@ -495,6 +495,15 @@ export class Engine {
     this.renderer.setPixelRatio(1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = false;
+    // the GPU's name, read once now (later the query has to wait for the GPU's queue): software
+    // rasterizers ('SwiftShader', 'llvmpipe') get lighter scenes (engine.softwareGL)
+    this.gpuName = '';
+    try {
+      const gl = this.renderer.getContext();
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      this.gpuName = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
+    } catch (e) { /* unknown */ }
+    this.softwareGL = /swiftshader|llvmpipe|softpipe|software/i.test(this.gpuName);
     this.pixelOffset = 0;
     this.width = 640;
     this.height = 360;

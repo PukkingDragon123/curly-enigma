@@ -605,7 +605,8 @@ export class Convo {
       cy = H - bar - ch - (portrait ? 12 : 18);
       this.choicesEl.style.transform = `translate(${Math.round(cx)}px, ${Math.round(cy)}px)`;
     }
-    const lo = bar + m, hi = H - bar - m - (choosing ? ch + 22 : 0);
+    const plateH = this.plate.hidden ? 0 : this.plate.offsetHeight; // (the name ribbon rides above the label)
+    const lo = bar + m + plateH, hi = H - bar - m - (choosing ? ch + 22 : 0);
     let x, y, side;
     if (!head) {
       // nobody to point at: low in the frame, centred

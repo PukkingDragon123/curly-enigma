@@ -34,9 +34,9 @@ export function torchModel() {
     for (let y = 11; y < 15; y++) for (let x = 1; x < 5; x++) for (let z = 1; z < 5; z++) {
       const edge = x === 1 || x === 4 || z === 1 || z === 4;
       if (edge && (y > 12 || ((x === 1 || x === 4) && (z === 1 || z === 4)))) continue;
-      f.set(x, y, z, edge ? 0xff8a20 : y === 11 ? 0xffc040 : y === 12 ? 0xffe070 : 0xfff2b0);
+      f.set(x, y, z, edge ? 0xe86018 : y === 11 ? 0xff9a28 : y === 12 ? 0xffc848 : 0xffe8a0);
     }
-    f.set(2, 15, 3, 0xffe080); f.set(3, 15, 2, 0xfff4c0); f.set(3, 16, 3, 0xffd060);
+    f.set(2, 15, 3, 0xffb040); f.set(3, 15, 2, 0xffd878); f.set(3, 16, 3, 0xff9a30);
     const o = { scale: S, pivot: [3, 0, 3], shade: true };
     return { body: meshGridGreedy(g, o), flame: meshGridGreedy(f, o), top: new THREE.Vector3(0, 13 * S, 0), size: 17 * S };
   });
@@ -46,9 +46,10 @@ export function torchModel() {
  * Lantern: { body, glow, height } (meters): an iron frame with warm glass, a cap and a ring.
  * mode 'hang' adds a chain above (the origin is the hook), 'stand' sits on the origin.
  */
+export const LANTERN_S = 1 / 46; // meters per lantern voxel (a lantern about 15 cm across)
 export function lanternModel(mode = 'hang') {
   return cached('lantern:' + mode, () => {
-    const S = 1 / 32;
+    const S = LANTERN_S;
     const chain = mode === 'hang' ? 4 : 0;
     const H = 11 + chain;
     const g = new VoxelGrid(7, H, 7), f = new VoxelGrid(7, H, 7);
@@ -81,7 +82,7 @@ export function lanternModel(mode = 'hang') {
 /** A wall bracket arm for a lantern on a wall: from the wall (origin) out along +z. */
 export function bracketModel() {
   return cached('bracket', () => {
-    const S = 1 / 32;
+    const S = LANTERN_S * 1.15;
     const g = new VoxelGrid(3, 6, 8);
     for (let z = 0; z < 8; z++) g.set(1, 5, z, IRON[2 + (z & 1)]);
     for (let k = 0; k < 4; k++) g.set(1, 1 + k, k, IRON[2]);

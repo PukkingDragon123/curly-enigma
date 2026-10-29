@@ -5,10 +5,11 @@
 // LORE = [{ id, shelf, src, title, text, by?, ruin?, page?, relic? }]
 //   shelf: a SHELVES id (the book's sections)
 //   src:   where it's found:
-//     'carving'  ruin walls: E on the carved frieze in a ruin (src/deep/Ruins.js) reads the next
-//                carving of that ruin's kind (`ruin`), or any carving left
-//     'journal'  pages of a foreman's journal, tucked into the tools left at trail cave-ins
-//                (src/deep/ruins/trailDress.js), read in page order
+//     'carving'  dungeon walls: E on the carved frieze in a dungeon (src/deep/Ruins.js) reads the next
+//                carving of that kind (`ruin`: ruins/dungeon.js LORE_KIND maps the dungeons onto
+//                hall / well / vault / shrine), or any carving left
+//     'journal'  pages of a foreman's journal, in the satchels of the miners lost in the dungeons
+//                (src/deep/ruins/site.js searchRemains), read in page order
 //     'tale'     told by Deep Town's folk when you chat with them (`by`: a VILLAGERS id)
 //     'relic'    learnt when a ruin's relic comes out of its chest (`relic`: the item id)
 //     'book'     books: quest rewards and shelves (game.lore.readShelf(id))

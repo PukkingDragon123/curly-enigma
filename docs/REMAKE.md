@@ -1993,7 +1993,7 @@ Minecraft-plain cobblestone rooms (smooth stone at the corners and under the cei
 framed in iron in the middle, iron guide posts at its corners and rails up the 1.5 m shaft over it
 (capped 6 m up), a doorway in the +z wall; the town shaft is lined with cobble (a smooth band every
 2 m) with a rail each side, its stops are stone rooms opening onto it with a doorway east. Every voxel
-of a station is unbreakable (`Dig.breakable` already refuses `MAT.unbreakable`; blasts go through it),
+of a station is unbreakable (`Dig.breakable` already refuses `MAT.unbreakable`, and blasts ask it too),
 and the shell is laid even where a cave runs through. Nothing grows on them (`MAT.clean`, a one-line
 hook in `TerrainMaterial.surfacePalette`). The fittings are models (`src/deep/ruins/liftKit.js`, run
 by Ruins.js): a lever on a stone post beside the car (E: it clunks over and the lift map opens;
@@ -2016,31 +2016,130 @@ open, spawners, chests, relic), `find(kind | 'plain')` (the nearest), `go(id, wh
 `trail()` / `sign()` return null. The e2e step "deep: a ruin puzzle opens to treasure" runs unchanged
 (R10 is a monster room with the hidden switch).
 
-**Hooks the lead still needs** (other parts' files; not edited):
+**Small hooks done in other files** (no wave-4 owner; text and lookups only):
 - `src/core/questWhere.js`: `caveIns(plan)` → `plan.remains` (`[{ x, y, z, ruin }]`, the lost miners'
-  remains), `trailEnds(plan)` → `plan.signs` (the lift stations' signs); the `g.ruin` labels
-  `{ hall, shrine, vault, well }` → `{ cell: 'A monster room', crypt: 'A flooded crypt', vault: 'A Starfolk
-  vault', fortress: 'A deep fortress' }` (`DUNGEON_NAMES` in `ruins/dungeon.js`); `SIGHT_NAMES.cavein` →
-  'A lost miner's remains', `.signpost` → 'A lift station sign'.
-- `src/data/sideQuests.js` hints that mention trails, cave-ins and signposts (lo_fenn_line, v_tuck_signs,
-  v_tuck_pick, lo_hollis_shaft7) and "halls of fitted stone"; `lo_talpa_shrine` has `where: { ruin:
-  'shrine' }` (now `vault`: the drums are there). `src/ui/Journal.js` sight labels (cavein, signpost),
-  `src/ui/Survey.js` "Old ${kind} of fitted stone" (use `DUNGEON_NAMES`), `src/data/lore.js` header.
+  remains), the `signpost` sight → `plan.signs` (the lift stations' name signs, `[{ x, y, z, lift }]`);
+  the ruin labels are the dungeon names; `SIGHT_NAMES.cavein / .signpost` say remains / lift sign.
+- `src/data/sideQuests.js` (Hobb's journal, Tuck's signs and pick, Hollis's pages, the carvings, the
+  idol, Talpa's "Star Shrine" step: now `where: { ruin: 'vault' }`, "wake the eyes of a Starfolk vault",
+  still `on: puzzle dials | beams`), `src/data/quests.js` (zone hint: "follow the caves"),
+  `src/ui/Journal.js` (sight labels, lore hints), `src/ui/Survey.js` (a ruin's map label: the dungeon
+  name), `src/data/lore.js` and `src/core/lore.js` header comments. The quests' acts are unchanged
+  (`look cavein` = search a lost miner's remains, `look signpost` = read a lift station's sign).
+- `src/deep/TerrainMaterial.js`: one line, `!d.clean` in `surfacePalette`'s `natural` (no moss on the
+  lift stations).
+
+**Left for the lead**:
 - The building part's block shader (`src/deep/build/shader.js`) could draw the dungeon cobble / stone
   bricks / deep bricks and the lift stone with its block patterns too (ids 64–79), if it takes a list
   of ids → patterns.
+- The map still has an "Old trail" key entry and a trails layer (`Survey.js`; `plan.trails` is empty, so
+  nothing draws); drop them when convenient.
+- e2e: in this busy box (load 25–37) every full run hung in the first `go()` after "Old Star's forge
+  lesson" (into the cooking lesson; into the mine when cooking is skipped), and "Old Star's mining
+  lesson" fails on `d.interact is not a function` (home part). With those steps skipped (a copy of
+  e2e.mjs that sets the flags `fallen nugget prologue`), every deep step through "reach the town gate →
+  escape" passes with no errors; "a ruin puzzle opens to treasure" is unchanged.
 
-Screenshots: `shots/natural/` (`before-*` the old trails, cages, ruins and grass at seed 4242;
-`after-*` the same and the new dungeons, lifts, passages, caves; `dev/` the iterations).
+Screenshots: `shots/natural/` at seed 4242: `before-*` (the old trails, timber, signposts, the lift
+cage, the old ruins, grass) and `after-*` from the same cameras (`L0`, `L0-cage`, `trail`, `sign`,
+`lift-L30`, `station-s2`, `cave-z1..z5`, `grotto`, `mushroom`), plus `after-dungeon-cell-R10`
+(`-door`, `-entry`, `-open`), `after-dungeon-plain-R12`, `after-dungeon-crypt-R21` (`-stair`),
+`after-dungeon-vault-R31` (`-dials`), `after-dungeon-fortress-R40` (`-beams`, `-side`),
+`after-lift-L0-car`, `after-lift-L30-lever`; `e2e/` the deep e2e run; `dev/` the iterations.
 
-### Building: voxel ids claimed (wave 4)
+### As built: building and breaking, with tools (wave 4, building part)
 
-Material ids **80–95** are taken by the building part (placed blocks: cobble, stone bricks, clay bricks,
-planks, logs ×3 axes, glass, dirt block, torch bracket, lantern hook, door ×2, chest, workbench; see
-`src/deep/materials.js` "building"). Placed blocks sit on a **0.5 m grid** (8×8×8 voxels). Protected
-areas (no placing, no breaking placed blocks): lift rooms, Deep Town, NPC burrows, the home, Old Star's
-dig during the lesson; the natural-caves part makes the lift stations themselves unbreakable.
-(Full "As built" notes follow when the part is done.)
+Minecraft-like building in the mine. **Placed things are plain voxels** of the building materials
+(ids **80–95**, `src/deep/build/mats.js`, registered by `materials.js` as `M.B_*`; all `built` + `made`), so
+they collide, light, save and load with the dug rock (`World.saveEdits`), and torches/lanterns come back
+from the saved edits. A **block is 8×8×8 voxels = 0.5 m**: the mole (0.86 m, jumps 0.83 m) stands under
+two and hops one, like a Minecraft player; doorways are 1 wide × 2 high.
+
+- **Blocks** (`src/deep/build/blocks.js` `BLOCKS`, ladder first so the mining lesson's `buildMode 0` is still
+  the ladder): cobble, stone bricks, clay bricks, planks, logs (axis = the face you click: `B_LOG_X/Y/Z`), dirt,
+  glass; **shapes**: block, slab (top/bottom by where you aim), stairs (tall side away from you, upside down
+  under a ceiling), post (a quarter-block pillar; logs/planks on a wall lie as beams), pane (glass, across your
+  view). **Ladder**: a click puts up a run from the floor to the top of the wall (one ladder per block; it
+  hugs rough rock; `M.LADDER`, climbable as before). **Torch** (wall or floor) and **lantern** (ceiling,
+  floor, or a wall bracket): one marker voxel + a model (`build/models.js`) whose light goes into
+  `plan.lights` (flicker + glow halo from DigScene.lights / Atmosphere, like glow stakes); a torch whose
+  wall is dug away drops. **Door**: a 1-voxel leaf, hinge column just outside the doorway (an open door
+  never narrows the 0.5 m opening; the mole is 0.44 m wide), `B_DOOR_CW/CCW` = which way it swings, open
+  state in `data.build.doors`; E / click opens and shuts it. **Chest**: a voxel box, 18 slots kept in
+  `state.data.build.chests["seed:cx,cy,cz"]` (the backpack's drag & drop; Store all / Take all); breaking
+  it (or a blast) puts its things in your pack (spill to the trunk at home); a chest whose block is gone from
+  the saved world gives its things back on load. **Workbench**: crafting station.
+- **Placing** (slot 7): the face you aim at snaps the block to its cell (rough rock: the block fills the air
+  round it when the cell is ≥45% open, else the next cell out); a **ghost** (shaded green, red when not
+  allowed, with the cell outline) and the crosshair say what goes there or why not ("Too much rock in the
+  way", "You're standing there", "Not here: the Mine entrance lift", "No Cobblestone left"). Click places,
+  holding repeats (0.26 s). Clicking a door / chest / workbench uses it. During Old Star's lesson ladders
+  are free (`!flag('prologue')`); after it a save gets 8 ladders + 6 torches once (`data.build.kit`).
+- **Breaking with tools** (`src/deep/Dig.js`): `toolWant(m)` → `pick` (rock, ore, stone blocks) · `axe`
+  (timber, boards, roots, mushroom stalks, planks, logs, ladders, doors, chests, benches) · `spade` (dirt,
+  loam, clay, sand, gravel, snow, ash, moss, mycelium; dirt blocks) · `shears` (vines, ferns) · `any`
+  (glass, torches, lanterns). `toolRule(m, kind)` → `{ mul, ok, keep }`: placed stone needs a pick
+  (`ok: false` otherwise), placed wood with a pick ×0.3, dirt ×0.6; natural rock and soil dig as before
+  with the pick (no change to the core loop), natural wood resists it (×0.35, roots ×0.6, stalks ×0.5),
+  vines tear without shears (nothing kept). The **dig slot picks the best tool you own** for what's under
+  the crosshair (Build.js → `digger.kit`, the paw shows the axe / spade / shears: the ViewModel hook
+  below); the crosshair says "Planks · an axe would be quicker". A placed block takes damage per unit (cell,
+  door, torch: `Digger.strikeBuilt`), shows **Minecraft crack stages** and a dark outline, then comes out
+  whole and **pops back into your pack** (a mini block flying to you; trunk at home if it won't fit / too
+  heavy). Blows (rusty pick / right tool): cobble 3, planks 5 / 1 (copper axe), log 6 / 2, dirt 2 / 1, glass 1.
+  Pick bites, chisels and drills never chew placed blocks; dynamite does (a chewed block that kept <24
+  voxels crumbles).
+- **Where blocks come from.** **Gather** (on by default, a lever in the picker): digging natural rock keeps a
+  block per 512 voxels dug (cobble from stone and crystal rock, dirt from soil, logs from timber / roots /
+  stalks, clay, sand, half a cobble from gravel, vines with shears), never into your last free pocket and
+  never past 95% of a comfortable load, only after the lesson. **Crafting** (`build/craft.js`, the picker's
+  Craft tab): anywhere: log → 4 planks, plank → 4 sticks, stick + coal → 4 torches, 4 planks → workbench;
+  at a workbench (within 3 m): sticks → ladders (or sticks + vines), 4 cobble → 4 stone bricks, 4 clay +
+  coal → bricks, 4 sand + coal → glass, planks → door / chest, torch + iron ingot → 2 lanterns, stone
+  hatchet / spade (sticks + cobble). **Shops**: Grubb's sells copper/iron/steel axes and spades and shears;
+  the Trading Post sells torches, ladders, planks, logs, lanterns, axes, spades (glass, bricks, doors, chests
+  from zone 2). Items (`src/data/buildItems.js`, merged by `items.js`): `blk_*` (cat `block`, stacks 32,
+  2–8 for lanterns/doors/chests/benches; 0.02–2 kg), `stick sand_pile clay_lump vine_cut` (cat `craft`),
+  `axe_* spade_* shears` (cat `tool`, slots `axe spade shears`, tiers 1–4, owned not slotted).
+- **The picker** (R, or tapping the build slot again; `build/picker.js` + `build.css`): a wooden board under
+  a hanging sign; Blocks (crates with counts, greyed when you have none, the chalk slate says where to get
+  them; shape tokens with tiny isometric drawings; the Gather lever; "Build!") and Craft (pinned recipe
+  cards, ingredient chips red when short, a workbench badge, Make). Phones: 4 columns, one card per row.
+- **The look** (`build/shader.js`): the terrain material is patched at runtime (like `fluids/caustics.js`,
+  anchored before `float ti = clamp(floor(tone + 0.5)…`): 32 "block pixels" per face with the same pattern
+  on every block (cobble stones, brick courses, plank boards with staggered joints and nails, log bark and
+  rings, crumbly dirt, door boards with braces and iron studs, chest bands and a brass lock, a workbench top
+  with a vise), a hairline where blocks meet and bevelled outer edges from the mesher's convex flags; moss,
+  strata and damp are off on them. **Glass** discards its inner texels (frame + two glints stay) and
+  Build.js draws the faces the mesher culled behind it (`rebuildGlass`). `?bklook=0` skips the patch (A/B).
+- **No building** (placing; placed blocks can't exist there to break) near the home, Deep Town, lift rooms
+  and NPC burrows (`Build.protectedZones`, like Explosives'); the lift stations' own rock is the
+  natural-caves part's. Building is allowed in Old Star's dig (the ladder lesson).
+- **Acts** (new types): `build {id, item, shape, n}` · `unbuild {id, item}` · `craft {id, n, recipe}`.
+- **Test hooks**: `scene.builder.debug.{ select(id, shape), place(), plan(), aim(x,y,z), give(n, ids), tools(),
+  free(on), kit(), hit(n), use(), fixtures(), glass(), gather(on), picker(tab), protectedAt(x,y,z), patched(),
+  clearing(w,d,h) }`; `src/deep/build/demo.js` (`setup`, `hut`, `tunnel`, `breakTest`, `put`, `fix`,
+  `clearCells`, `stand`): a hut and a lit tunnel through the real planner. Screenshots: `shots/build/`.
+
+**Files**: new `src/deep/Build.js`, `src/deep/build/{mats,blocks,shader,models,art,craft,picker,demo}.js`,
+`build.css`, `src/data/buildItems.js`. Small hooks: `materials.js` (register `BUILD_MATS`), `items.js`
+(merge `BUILD_ITEMS`, two `CAT_LABEL`s), `gfx/PixelArt.js` (`drawBuildIcon`: `{ k: 'block' | 'btool' }`),
+`fps/ViewModel.js` (`setTool(kind, { item, geo })`: custom held geometry in that kind's pose — axes,
+spades, shears, the block in the paw), `data/shops.js` (stock lines), `Dig.js` (tool rules, placed units),
+DigScene's build section (`BUILD` table gone; `toolItem('build')`, the hotbar label/count and paw tool,
+hold-to-place, `cycleBuild` → picker, `updateGhost` drives `this.builder`, `build()` → `builder.place()`).
+
+**Hooks wanted from the lead** (it works without them): in `DigScene.interact()` add `this.builder` to
+`[this.nugget, this.traders, this.ruins]` (its `use(eye, f, reach)` returns `[]` when it opened a door /
+chest / bench, else null; until then Build answers E itself when nothing else did); optionally
+`this.builder?.target?.(eye, f, reach)` in `updateTarget()`'s use chain (Build already sets the crosshair);
+`this.builder?.dispose?.()` in `exit()` (it also stands down by itself on the next act after the scene is
+gone). For the **tutorial part**: the belt's slot 7 now shows the selected block (a ladder), not a beam, and
+R / tapping it again opens the block picker (the "R switches" / "tap the beam" lines still hold in spirit);
+in Old Star's dig the overhang above the ledge ladder leaves 0.86 m only once you're on the ledge, so
+climbing off the top needs a crouch (it did with the old ladder too). For **TouchControls**: the big dig
+button could show the selected block's icon while slot 7 is up (`scene.builder.item()`).
 
 ### As built: the cinematic tutorial (wave 4)
 
@@ -2082,23 +2181,30 @@ to the lesson, and the HUD coming in piece by piece. Quest / act / flag outcomes
   closed-handle guard in `closePanel`);
   `TouchControls.js` (`ui.touchEl(name)` → the real control, `ui.touchHi(el, on)` → `.tc-hi`).
 
-**Home (`src/home/wake.js`, `src/home/lessons.js`).**
+**Home (`src/home/wake.js`, `src/home/lessons.js`).** Written against the home's stations, not its rooms
+(the home is becoming Old Star's old cave camp): `questSpot('lift' | 'forge' | 'hearth')`, his spots
+(`star.goTo('lift')`, `placeStarForLesson`), the cage / forge / cooking functions, your bed (`findKind('bed')`).
 - The wake-up is a cutscene (letterbox, hold to skip): the eyelids as before (only the canvas is blurred,
-  never the interface; no muffled card), the view settles on Old Star and pushes in while he talks
-  (cutscene talk, close shot): five short lines, then you get up. A skip dips to black and cuts to its end.
+  never the interface; no muffled card), Old Star crouched at the fire nearest your cot (the room's own
+  hearth if there is one, else `questSpot('hearth')`), the view settles on him and pushes in while he
+  talks (cutscene talk, close shot): five short lines, then you get up. A skip dips to black and cuts to
+  its end.
 - Then, one control at a time (`scene.homeTutor()` → `{ step, … }`): **look** (crosshair comes in; the
-  meter fills as you look round) → **walk** to him at the top of the steps (the stick comes in; a marker over
-  him) → **talk** (E / the hand; the use button comes in; near him E works without aiming) → a short
-  cutscene: his first task → the **quest strip** unrolls → **follow** him down to the lift (he waits and
-  beckons when you fall behind, not when you've run ahead; a "Shift runs" tip on a PC) → **ride down** (E).
-  Soft walls: each step has its rooms (`ZONES`); stepping into another room puts you back at the last good
-  spot, he calls you back, and the view swings round to the goal. When you haven't looked for a while the
-  view eases toward what matters. Only what the step needs can be used (`ALLOW`); during the forge / cook
-  stages the lift, the front door, the build bench and the bed wait (`LOCKED`). `debug.interact()` still
+  meter fills as you look round) → **walk** over to him (he stops a couple of steps off toward the fire;
+  the stick comes in; a marker over him) → **talk** (E / the hand; the use button comes in; near him E
+  works without aiming) → a short cutscene: his first task → the **quest strip** unrolls → **follow** him
+  to the cage (he waits and beckons when you fall behind, not when you've run ahead; a "Shift runs" tip
+  on a PC) → **ride down** (E).
+- Held to the lesson by a soft funnel (`SLACK`): per step, a few steps further from its goal (him, the
+  cage, the forge, the fire) than your closest approach so far puts you back where you were, he calls
+  you back, and the view swings round to the goal; when you haven't looked for a while the view eases
+  toward what matters. Only what the step needs can be used (`ALLOW`, by label); during the forge / cook
+  stages the cage, the way out, the build bench and the bed wait (`LOCKED`). `debug.interact()` still
   reaches anything (the e2e's "Ride down to the dig" works from any step).
 - Back with the copper / the blade / the meal: cutscenes (he walks over, sniffs, talks), then a marker and
-  a "Forge with Old Star" / "Cook with Old Star" prompt at the anvil / the range, the house held to the way
-  there. The graduation cutscene ends with the whole HUD coming in and a "Q: snack" tip.
+  a "Forge with Old Star" / "Cook with Old Star" prompt at the forge / the fire pit. The graduation
+  cutscene ends with the whole HUD coming in and a "Q: snack" tip. His lines are worded for a cave camp
+  (the cage, the forge, the fire pit and its kettle; no house, hall or kitchen).
 - A game picked up mid-tutorial (reload, sleep) resumes the step (`state.data.onboard.home`).
 
 **The dig (`src/deep/Prologue.js`).** Cutscene beats (`beat(keys, { look })`: bars, held in place, the
@@ -2190,6 +2296,12 @@ game.convo.speaker(who)    // the 3D speaker here, or null
   `Onboard.js` toggles the class `panel` on `.ob-layer` while a window is open, and the generic `.panel`
   style (styles.css: parchment background, border, shadow) paints the whole screen as paper under
   every panel and every talk; please rename that class (`convo.css` guards it during a talk meanwhile).
+  **And the waking (`wake.js`, yours):** the user's "UI blur" complaint is partly the wake: a CSS
+  `filter: blur()` on the whole game canvas, plus the `.wake-lids` canvas (`filter: blur(13px)`, a full
+  screen layer above the HUD) that is never removed after the wake (it stays, transparent but filtered,
+  for the whole visit home). Please drop the CSS blur (pixel art blurred reads as a broken screen; do
+  the daze with the lids, the vignette and `post.fade` / `brightness`) and remove the lids canvas when
+  the eyes are open (`wakeFx.dispose()`).
 
 ### As built: the forest (wave 4)
 

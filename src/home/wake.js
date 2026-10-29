@@ -3,12 +3,12 @@
 // E, or of the ring on a touch screen, skips it: never a tap). Dark; a slow heartbeat; the world
 // comes back muffled, as if through water (a low-pass on the whole mix that opens as you come round).
 // Heavy eyelids crack open on the beams over the bed and sink shut again; a second, longer look, the
-// head rolling on the pillow; a third, and the room comes into focus: the fire in the bedroom hearth,
-// and Old Star crouched at it with a poker, his back to you. He hears you stir, straightens up, turns
-// round, and the view eases in on him while he talks (each line waits for you): who he is, how you
-// came down through his ceiling, the million gold for the way up, his offer to teach you. Then you
-// sit up and get out of bed, and the tutorial at home takes over (lessons.js: look, walk, talk,
-// follow him to the lift). The overlay (WakeFx) draws the lids as a dark mask with soft edges and
+// head rolling on the pillow; a third, and his camp comes into focus: the fire (the room's own hearth
+// when there is one, else the home's cooking fire: questSpot('hearth')), and Old Star crouched at it
+// with a poker, his back to you. He hears you stir, straightens up, turns round, and the view eases
+// in on him while he talks (each line waits for you): who he is, how you came tumbling down, the
+// million gold for the way up, his offer to teach you. Then you sit up and get out of your cot, and
+// the tutorial at home takes over (lessons.js: look, walk, talk, follow him to the cage lift). The overlay (WakeFx) draws the lids as a dark mask with soft edges and
 // lashes, warm where the light comes through them; only the world (the canvas) is ever blurred, never
 // the interface. Sets flags fallen + nugget, starts the `lessons` quest and emits lesson { step: 'wake' }
 // (and talk oldstar), as before.
@@ -179,10 +179,22 @@ export class HomeWake {
     for (let i = 0; i < 3; i++) a.noise({ color: 'pink', filter: 'bandpass', f: 1800, q: 2, dur: 0.06, vol: 0.12, delay: i * 0.11 });
   }
 
-  /** Where Old Star tends the bedroom fire (meters): { x, z, face: { x, z } }. */
+  /** The fire nearest your bed (meters): the room's own hearth if it has one, else the home's cooking fire. */
+  wakeFire() {
+    const h = this.shell?.hearth;
+    if (h && Number.isFinite(h.x)) return { x: h.x, z: h.z, own: true };
+    const q = this.questSpot?.('hearth');
+    return q ? { x: q.x, z: q.z } : null;
+  }
+
+  /** Where Old Star tends that fire, his back to you (meters): { x, z, face: { x, z } }. */
   hearthSpot() {
-    const h = this.shell.hearth;
-    return { x: h.x + 0.12, z: h.z - 0.92, face: { x: h.x, z: h.z } };
+    const f = this.wakeFire(), p = this.cam || this.rig.player.pos;
+    if (!f) return { x: p.x + 1.2, z: p.z - 1.2, face: { x: p.x + 2, z: p.z - 2 } };
+    if (f.own) return { x: f.x + 0.12, z: f.z - 0.92, face: { x: f.x, z: f.z } };
+    // on your side of the fire, facing it
+    const dx = p.x - f.x, dz = p.z - f.z, d = Math.hypot(dx, dz) || 1;
+    return { x: f.x + (dx / d) * 0.8, z: f.z + (dz / d) * 0.8, face: { x: f.x, z: f.z } };
   }
 
   /**
@@ -275,7 +287,7 @@ export class HomeWake {
       c.pitch = base.pitch + sway.pitch + Math.sin(sway.t * 0.37 + 1) * 0.035 * s;
       c.roll = base.roll * (0.35 + 0.65 * s) + Math.sin(sway.t * 0.43 + 2) * 0.04 * s;
     };
-    // Old Star crouched at the bedroom fire with the poker, his back to you
+    // Old Star crouched at the fire with the poker, his back to you
     if (star?.rig) {
       star.scripted = true;
       star.stand();
@@ -284,7 +296,7 @@ export class HomeWake {
       star.faceTo(H.face.x, H.face.z, true);
       star.setPose('poke');
       star.lean(0.32);
-      star.spot = 'bedroom';
+      star.spot = 'wake';
     }
     // the cutscene: letterbox bars, and a hold (never a tap) skips it
     const cut = (this.wakeCut = { on: false });
@@ -330,7 +342,7 @@ export class HomeWake {
       blurTo(0, 2.4);
       glowTo(0, 1);
       tween(2.6, (k) => { this.post.vignette = 0.95 + (post0 - 0.95) * ease(k); });
-      const fire = this.shell.hearth;
+      const fire = this.wakeFire() || this.hearthSpot();
       const towards = Math.atan2(-(fire.x - c.x), -(fire.z - c.z));
       const dYaw = Math.atan2(Math.sin(towards - base.yaw), Math.cos(towards - base.yaw));
       look(dYaw * 0.85, -0.95, 2.4);
@@ -353,13 +365,13 @@ export class HomeWake {
         r.gesture('wave', 1.4);
         this.zoomTo(this.fov0 - 12, 2.2, tween);
       } else await go(sleep(0.6));
-      await line('Ah! You\'re awake. Easy now: the room likes to spin the first time.', 'happy');
+      await line('Ah! You\'re awake. Easy now: the cave likes to spin the first time.', 'happy');
       star?.rig && star.gesture('point', 1.6);
-      await line('You came down through my ceiling last night, you and a hen in a walking house. I\'m <b>Old Star</b>. This room\'s yours now.', 'calm');
+      await line('You came tumbling down out of the rock last night, you and a hen in a walking hut. Out cold. I\'m <b>Old Star</b>. That cot\'s yours now.', 'calm');
       await line('Sixty years I\'ve been stuck down here. The way up is the Surface Express, and a ticket costs a <span class="gold-txt">million gold</span>.', 'worried');
       await line('So here\'s my offer. I\'ll teach you to <b>dig</b>, to <b>forge</b> and to <b>cook</b>. We earn that million together, and we <b>both</b> ride out of here.', 'proud');
       if (this.nug) { a.play('cluck', { n: 2 }); this.nugEmote?.('♥'); }
-      await line('Your hen\'s fine, by the way. Made herself at home in the corner. Up you get, then!', 'happy');
+      await line('Your hen\'s fine, by the way. Made herself at home by the crates. Up you get, then!', 'happy');
       // ---- sit up and get out of bed (on its side)
       this.wakeSway = null;
       sway.amp = 0;

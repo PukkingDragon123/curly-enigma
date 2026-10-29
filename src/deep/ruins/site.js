@@ -202,7 +202,18 @@ export class Site {
       // across the way in: a web you have to cut through (it sticks, it tears)
       const p = this.wp(w.a + w.da * 0.5, w.y - w.r * VOX, w.b + w.db * 0.5);
       const wd = [w.da * this.L.F[0] + w.db * this.L.Rv[0], w.da * this.L.F[1] + w.db * this.L.Rv[1]];
-      try { const web = en.webs.add(p.x, p.y, p.z, Math.atan2(wd[0], wd[1]), w.r); if (web) this.realWebs.push(web); return; } catch (e) { /* decorative then */ }
+      try {
+        const web = en.webs.add(p.x, p.y, p.z, Math.atan2(wd[0], wd[1]), w.r);
+        if (web) {
+          // drawn as the dungeon's own (sparser, Minecraft-ish) cobweb; the creatures part's web logic
+          const g = MD.cobweb(Math.round(w.r * 32), this.L.seed + i);
+          this.geos.push(g);
+          web.mesh.geometry = g;
+          web.mesh.material = this.R.webMat;
+          this.realWebs.push(web);
+          return;
+        }
+      } catch (e) { /* decorative then */ }
     }
     const rv = Math.round(w.r * 32);
     const m = new THREE.Mesh(MD.cobweb(rv, this.L.seed + i), R.webMat);
@@ -237,7 +248,7 @@ export class Site {
     this.puzzle?.dispose?.();
     this.puzzle = null;
     const en = this.R.owner?.enemies;
-    for (const w of this.realWebs || []) { if (w.alive) { try { en.webs.remove(w); } catch (e) { /* gone */ } } else this.save.webCut = 1; }
+    for (const w of this.realWebs || []) { if (w.alive) { try { en.webs.remove(w); } catch (e) { /* gone */ } } else if (w.hp <= 0) this.save.webCut = 1; }
     this.realWebs = [];
     for (const d of this.darts || []) this.group.remove(d.m);
     this.darts = [];
@@ -353,6 +364,7 @@ export class Site {
       for (let k = 0; k < 14; k++) R.fx.spawn({ x: p.x + (Math.random() - 0.5) * 0.5, y: p.y + Math.random() * 0.6, z: p.z + (Math.random() - 0.5) * 0.5, vx: (Math.random() - 0.5) * 0.6, vy: 0.4 + Math.random() * 0.8, vz: (Math.random() - 0.5) * 0.6, life: 0.6 + Math.random() * 0.6, size: 0.03, color: this.P.theme === 'deep' ? [1, 0.5, 0.15] : [0.7, 0.45, 1], glow: true, drag: 1.5 });
       R.fx.dust(p.x, p.y + 0.1, p.z, 6, [0.25, 0.22, 0.28], 0.3);
     }
+    if (!got.length) s.t = 1 + Math.random(); // no room to stand just now (the mole too close): soon again
     if (got.length) {
       R.sfx.spawn(Math.max(0.2, 1 - d / SPAWN_R));
       if (!this.R.hintSpawner) { this.R.hintSpawner = true; out.push({ say: 'The <b>spawner</b> breeds monsters while you\'re near. Break its cage with your pick!', key: 'spawner', cd: 60 }); }

@@ -181,7 +181,7 @@ export class ForgeLesson {
         this.star?.rig?.play?.(g === 'F' || g === 'D' ? 'laugh' : 'cheer');
       });
       this.later(8.2, () => {
-        this.say('That\'s yours: sell it in town, or keep it for luck. Now come on, into the kitchen: all this hammering, I\'m starving. We\'ll <b>cook</b>.', 'happy', { key: 'step', dur: Infinity });
+        this.say('That\'s yours: sell it in town, or keep it for luck. Now come on, over to the fire pit: all this hammering, I\'m starving. We\'ll <b>cook</b>.', 'happy', { key: 'step', dur: Infinity });
         this.stage = 'leave';
       });
     }

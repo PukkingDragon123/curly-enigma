@@ -37,7 +37,7 @@ import {
   shapeHas, doorVoxels, readDoor, unitOf, DOOR_MATS,
 } from './build/blocks.js';
 import { patchBuildLook } from './build/shader.js';
-import { torchModel, lanternModel, bracketModel, crackTextures, miniBlockGeo, heldGeo, blockColors } from './build/models.js';
+import { torchModel, lanternModel, bracketModel, crackTextures, miniBlockGeo, heldGeo, blockColors, LANTERN_S } from './build/models.js';
 import { burrowBB } from './gen/burrows.js';
 
 const REACH = 2.3;
@@ -90,7 +90,7 @@ export class Build {
     this.data = d;
     this.seed = this.w.seed;
     this.objMat = makeObjectMaterial(this.U, {});
-    this.glowMat = makeObjectMaterial(this.U, { emissive: 1.9 });
+    this.glowMat = makeObjectMaterial(this.U, { emissive: 1.35 });
     this.credit = {};
     this.fixtures = new Map(); // 'x,y,z' → fixture
     this.glass = new Set(); // glass voxel keys 'x,y,z'
@@ -783,7 +783,8 @@ export class Build {
         holder.rotation.y = yaw;
         holder.add(arm);
         g.add(holder);
-        const tip = new THREE.Vector3(0, 0.15, 0.22).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        const k = LANTERN_S * 1.15; // the bracket's own voxel size: its arm's end is at (y 5, z 7.5)
+        const tip = new THREE.Vector3(0, 5 * k, 7.5 * k).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
         g.userData.lanternAt = new THREE.Vector3(holder.position.x + tip.x, holder.position.y + tip.y, holder.position.z + tip.z);
       }
       const body = new THREE.Mesh(lm.body, this.objMat), glow = new THREE.Mesh(lm.glow, this.glowMat);
@@ -815,7 +816,8 @@ export class Build {
       if (f.m === BM.B_TORCH && f.flame) {
         const k = 1 + Math.sin(t * 13) * 0.08 + Math.sin(t * 29) * 0.06;
         f.flame.scale.set(1 / Math.sqrt(k), k, 1 / Math.sqrt(k));
-        if (d2 < 14 * 14 && Math.random() < dt * 2.2 && f.top) this.fx.ember?.(f.top.x + rnd(-0.02, 0.02), f.top.y + 0.04, f.top.z + rnd(-0.02, 0.02));
+        // now and then a spark lifts off the flame
+        if (d2 < 12 * 12 && Math.random() < dt * 1.5 && f.top) this.fx.spawn?.({ x: f.top.x + rnd(-0.015, 0.015), y: f.top.y + 0.05, z: f.top.z + rnd(-0.015, 0.015), vx: rnd(-0.08, 0.08), vy: rnd(0.25, 0.5), vz: rnd(-0.08, 0.08), life: rnd(0.35, 0.7), size: rnd(0.006, 0.01), color: Math.random() < 0.5 ? [1, 0.55, 0.15] : [1, 0.82, 0.4], glow: true, drag: 0.6, grav: -0.15 });
       } else if (f.swing && f.sup && f.sup[1] >= 0) {
         f.swing.rotation.z = Math.sin(t * 1.3) * 0.04;
         f.swing.rotation.x = Math.sin(t * 0.9) * 0.03;
@@ -954,14 +956,19 @@ export class Build {
         const fx = p.fix;
         let geo;
         if (p.kind === 'torch') geo = torchModel().body.clone();
-        else geo = lanternModel(fx.n[1] < 0 ? 'hang' : 'stand').body.clone();
+        else geo = lanternModel(fx.n[1] > 0 ? 'stand' : 'hang').body.clone();
         const H = 0.5 / VOX;
         const m4 = new THREE.Matrix4();
+        const cx = (fx.x + 0.5) / VOX, cy = (fx.y + 0.5) / VOX, cz = (fx.z + 0.5) / VOX;
         if (p.kind === 'torch' && fx.n[1] === 0) {
           m4.makeRotationY(Math.atan2(fx.n[0], fx.n[2])).multiply(new THREE.Matrix4().makeRotationX(0.42));
           geo.applyMatrix4(m4);
-          geo.translate((fx.x + 0.5) / VOX - fx.n[0] * H * 0.6, (fx.y + 0.5) / VOX - H * 0.6, (fx.z + 0.5) / VOX - fx.n[2] * H * 0.6);
-        } else geo.translate((fx.x + 0.5) / VOX, (fx.y + 0.5) / VOX + (fx.n[1] < 0 ? H : -H), (fx.z + 0.5) / VOX);
+          geo.translate(cx - fx.n[0] * H * 0.6, cy - H * 0.6, cz - fx.n[2] * H * 0.6);
+        } else if (p.kind === 'lantern' && fx.n[1] === 0) {
+          // hanging off the end of a wall bracket (see dressFixture)
+          const k = LANTERN_S * 1.15;
+          geo.translate(cx - fx.n[0] * H + fx.n[0] * 7.5 * k, cy - 0.06 + 5 * k, cz - fx.n[2] * H + fx.n[2] * 7.5 * k);
+        } else geo.translate(cx, cy + (fx.n[1] < 0 ? H : -H + (p.kind === 'torch' ? 1 / VOX : 0)), cz);
         this.ghost.geometry = geo;
         this.ghost.position.set(0, 0, 0);
         this.ghost.scale.setScalar(1);

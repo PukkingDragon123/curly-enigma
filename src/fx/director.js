@@ -85,10 +85,10 @@ export class Director {
   ray(o, dir, max) {
     const w = this.game.scene?.world;
     if (w?.boxes) {
-      // a box world (home, town): skip lids, people's own boxes and boxes we start inside
+      // a box world (home, town): skip Old Star's own box and boxes we start inside
       let best = Infinity;
       for (const b of w.boxes) {
-        if (b.tag === 'lid' || b.tag === 'star' || (o.x > b.x0 && o.x < b.x1 && o.y > b.y0 && o.y < b.y1 && o.z > b.z0 && o.z < b.z1)) continue;
+        if (b.tag === 'star' || (o.x > b.x0 && o.x < b.x1 && o.y > b.y0 && o.y < b.y1 && o.z > b.z0 && o.z < b.z1)) continue;
         const t = rayBox(o.x, o.y, o.z, dir.x, dir.y, dir.z, b.x0, b.y0, b.z0, b.x1, b.y1, b.z1);
         if (t !== null && t < best && t <= max) best = t;
       }
@@ -97,7 +97,7 @@ export class Director {
     if (!w?.raycast) return Infinity;
     try {
       const h = w.raycast(o.x, o.y, o.z, dir.x, dir.y, dir.z, max);
-      return h && h.dist != null && (!h.box || h.box.tag !== 'lid') ? h.dist : Infinity;
+      return h && h.dist != null ? h.dist : Infinity;
     } catch (e) { return Infinity; }
   }
 
