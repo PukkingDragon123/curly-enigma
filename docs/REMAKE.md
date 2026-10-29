@@ -1185,3 +1185,33 @@ track, level, status: 'installed' | 'ready' | 'locked', why, need, have, carryin
 `partStats(id)` (voxel counts) from `partModel.js`. URL: `?scene=forge&open=parts`.
 Screenshots: `shots/parts/` (`ui-*` desktop menus, `phone-*` portrait, `run-*` copper bands,
 `iron-*` talons with the quench, `models-*` every part in each pose, `art-sheet.png`).
+
+## Wave 3: polish (the user's ask, and who owns what)
+
+The user's words: "For the dialogue make the box look 100x better and use the 3D model instead of
+2D, never use character 2D art. Also add a lot more side quests from the village and lore, and caves
+look 100x better. Also have new shaders and make all caves have better vegetation, custom 2D plant /
+grass textured. Add water physics and better visuals, and props like lanterns or plants a lot more high
+resolution and realistic, like a lantern has a support. Also remake the QTE for plants / gathering in
+3D, very polished. The environment needs to look 100x better. Game quests and missions need to be
+clear. Make you drop in a home, a full home, not whatever this is. Make the level bar better too, more
+grand, wooden, detailed. The wake-up scene: you just woke up, no splash, an eyelid effect."
+
+| Part | Owns |
+|---|---|
+| **Dialogue & 3D portraits** | `src/ui/Tutor.js` + css, a new live 3D portrait renderer (`src/gfx/portrait3d.js`), every character portrait in the UI (tutor, `src/ui/choices.js`, `src/ui/ShopUI.js`, `src/deep/traders/shop.js`, the coop hen in `src/ui/Backpack.js` / `invArt.js`), the XP / level chip (`src/ui/SkillTree.js` chip, the skill toasts) |
+| **Cave look: shaders & atmosphere** | `src/deep/TerrainMaterial.js`, `src/deep/Mesher.js` (normals/AO data only, same layout or coordinated), `src/core/Engine.js` post (grades, bloom, god rays, fog), `src/deep/Particles.js` (dust motes etc.), the lighting in `DigScene.lights()` (tell the lead) |
+| **Vegetation & props** | new `src/deep/Vegetation.js` (loaded by DigScene: `new Vegetation(ctx)`, `update(dt, o)` → events, `lights(eye)`, `dispose()`), `src/deep/Props.js` visuals (keep the harvest hooks working), `Generator.js` `decorate()` and new materials in `materials.js` (ids coordinated in this doc) |
+| **Water** | `src/deep/Fluids.js` and its shaders: flow, splashes, swimming feel, waterfalls, drips, puddles |
+| **3D gathering** | the foraging / gathering minigames (`src/ui/Forage.js` and the cooking part's forage code) remade as in-world 3D close-ups; Props.js only at the harvest call site |
+| **Quests & lore** | `src/data/quests.js`, `src/core/quests.js`, `src/ui/Tracker.js` + quest markers (world, radar, map), village side quests and NPC lines (`src/town/*` talk hooks), lore (`src/data/notes.js`, new lore data, ruin inscriptions via `src/deep/Ruins.js` hooks) |
+| **Home & waking up** | `src/home/*`, `src/scenes/HomeScene.js`: Old Star's place becomes a full, furnished home you wake up in (eyelids opening, no splash); the lessons, forge, kitchen, lift, bed, trunk and Nugget keep working |
+| **Lead** | `DigScene.js`, `World.js`, `Terrain.js`, `scripts/e2e.mjs`, integration |
+
+Rules for every part: no git (the lead commits); `npx vite build` must pass; keep every `scene.debug`
+hook and the e2e flow (`scripts/e2e.mjs`: read it, don't edit it; `E2E_UNTIL="label"` stops after a
+step); work in phones' portrait and landscape too; performance matters (the mine must stay smooth:
+measure); screenshot before/after into `shots/<part>/` and look at them; write an "As built" section
+here when done. Headless testing: `node scripts/shot.mjs` (see its header), drive scenes with
+`scene.update(1/30)` loops. Don't edit another part's files: if you need a hook there, say so in your
+report.
