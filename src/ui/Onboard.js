@@ -574,6 +574,8 @@ export class Onboard {
    * fallback(). Passing tips (no wait) stay on the tutor card: they never hold the player.
    */
   talk(html, opts = {}, fallback = null) {
+    // (a lesson carrying on after its scene has gone says nothing in the next one)
+    if (opts.scene && this.game.scene !== opts.scene) return Promise.resolve();
     const cv = this.game.convo;
     if (cv && typeof cv.say === 'function' && opts.wait) {
       try { return Promise.resolve(cv.say(opts.who || 'oldstar', html, { mood: opts.mood, wait: true, gesture: opts.gesture, camera: opts.camera })); } catch (e) { console.warn('[onboard] convo', e); }

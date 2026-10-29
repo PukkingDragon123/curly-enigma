@@ -26,7 +26,7 @@ import { iconURL, iconCanvas } from '../gfx/PixelArt.js';
 import { el, rand, pick, clamp } from '../core/util.js';
 import { T, CEIL, HALL, ARCH, SHAFT, FRONT, HOLE, STAIRS, floorAt } from '../home/units.js';
 import { HomeShell } from '../home/shell.js';
-import { StarHouse, SPOTS } from '../home/house.js';
+import { StarHouse, SPOTS, SHACK } from '../home/house.js';
 import { loadHouse, dropHouseCache } from '../home/houseLoad.js';
 import { houseLoading } from '../home/loading.js';
 import { ROOM, roomAt, doorAt, onTerrace } from '../home/plan.js';
@@ -94,26 +94,16 @@ export default class HomeScene extends Scene {
     if (from === 'fall') { st.flag('fallen', true); st.flag('nugget', true); }
     if (!d.home.planters) d.home.planters = {};
     if (!d.home.floor) d.home.floor = {};
-    // your room gets floorboards like the rest of the house (once, on a floor nobody has painted yet)
-    if (!st.flag('boards')) {
+    // [camp5] your nook is a corner of Old Star's cave camp: bare packed earth unless you've laid a
+    // floor yourself. The wave-3 house laid boards over a new room's whole floor by itself
+    // (flag('boards')); a floor that is still nothing but those boards goes back to earth, once.
+    if (!st.flag('camp5')) {
+      st.flag('camp5', true);
       st.flag('boards', true);
-      if (!Object.keys(d.home.floor).length) { const [w0, d0] = roomSize(d.home.level); for (let y = 0; y < d0; y++) for (let x = 0; x < w0; x++) d.home.floor[x + ',' + y] = 'floor_plank'; }
-    }
-    // [house4] saves from before the house was a house kept bare earth wherever nobody had painted
-    // (a tile or two painted was enough to skip the boards above), and a room grown since has bare
-    // earth in its new tiles: boards over all the earth once, then over each new strip when it grows
-    {
       const [w0, d0] = roomSize(d.home.level);
-      const was = st.flag('house4') ? String(d.home.boarded || '0x0').split('x').map(Number) : [0, 0];
-      if (was[0] < w0 || was[1] < d0) {
-        for (let y = 0; y < d0; y++) for (let x = 0; x < w0; x++) {
-          if (x < was[0] && y < was[1]) continue;
-          const k = x + ',' + y;
-          if (!d.home.floor[k] || d.home.floor[k] === 'floor_dirt') d.home.floor[k] = 'floor_plank';
-        }
-        d.home.boarded = w0 + 'x' + d0;
-        st.flag('house4', true);
-      }
+      let all = true;
+      for (let y = 0; y < d0 && all; y++) for (let x = 0; x < w0; x++) if (d.home.floor[x + ',' + y] !== 'floor_plank') { all = false; break; }
+      if (all) d.home.floor = {};
     }
     starData(st);
     // Old Star's forge and hearth are in the cave now: the room's own come out of the save
@@ -128,7 +118,7 @@ export default class HomeScene extends Scene {
     this.anchors = new Map();
     this.hideFrom = new Map(); // bubble key → () => true while it's out of sight
     this.scripted = false;
-    this.post = { vignette: 0.38, outlineAlpha: 0.7, innerThresh: 0.22, saturation: 1.08, contrast: 1.05, brightness: 1.06 };
+    this.post = { vignette: 0.46, outlineAlpha: 0.7, innerThresh: 0.22, saturation: 0.98, contrast: 1.08, brightness: 1.06 };
     this.scene.background = new THREE.Color(0x05060a);
     // no digging out of the home: no tunnel mouths in your walls any more
     this.tunnels = [];
@@ -155,13 +145,13 @@ export default class HomeScene extends Scene {
     this.cave.workers = house.workers;
     this.own(() => this.cave.dispose());
     this.lift = this.cave.lift;
-    this.holeTop = HALL.y + ROOM.living.h;
+    this.holeTop = this.cave.holeTop?.y ?? HALL.y + 2.4; // (up the hole you fell through)
     mark('build');
 
-    // ---- light: warm ambience, a pool of point lights shared by every lamp, glows and contact shadows
-    // (the ground colour is the warm bounce off the floorboards: ceilings and the undersides of things aren't black)
-    this.scene.add(new THREE.HemisphereLight(0xf4d8b8, 0x8a6446, 0.68));
-    const fill = new THREE.DirectionalLight(0xffd0a0, 0.1);
+    // ---- light: a dim cave, a pool of point lights shared by the fires, lanterns and candles, glows and contact shadows
+    // (the ground colour is the warm bounce off the earth: undersides of things aren't black)
+    this.scene.add(new THREE.HemisphereLight(0xb8c2d4, 0x4e4034, 0.5));
+    const fill = new THREE.DirectionalLight(0xffd0a0, 0.06);
     fill.position.set(2, 6, 2);
     this.scene.add(fill);
     this.lights = new LightPool(this.scene, 10, { range: 40 });
@@ -503,11 +493,10 @@ export default class HomeScene extends Scene {
     if (!this.inBedroom(x, z) || z < 0) {
       if (z > STAIRS.z0 - 0.05 && x >= STAIRS.x0 && x <= STAIRS.x1) return 'stone';
       if (this.inCage({ x, z })) return 'wood';
-      const r = roomAt(x, z);
-      if (!r) return 'wood';
-      if (r.id === 'living' && Math.abs(x - 2.05) < 1.35 && Math.abs(z + 4.1) < 1.0) return 'sand'; // the big rug
-      if (r.id === 'hall' && Math.abs(x - 6.25) < 0.36 && Math.abs(z + 2.95) < 1.7) return 'sand'; // the runner
-      return r.floor === 'oak' || r.floor === 'pine' ? 'wood' : 'stone';
+      // the camp: packed earth, straw by the shack, its own plank floor inside
+      if (x > SHACK.x - SHACK.W / 2 && x < SHACK.x + SHACK.W / 2 && z > SHACK.z - SHACK.D && z < SHACK.z) return 'wood';
+      if (Math.abs(x - SHACK.x + 1.05) < 0.4 && Math.abs(z - SHACK.z - 0.45) < 0.3) return 'sand';
+      return 'dirt';
     }
     return this.stepMats?.get(Math.floor(x / T) + ',' + Math.floor(z / T)) || 'dirt';
   }
@@ -572,12 +561,12 @@ export default class HomeScene extends Scene {
     return best < range ? vol * (1 - best / range) : 0;
   }
 
-  /** 1 in the same room as pt, less through a doorway, faint further off (sound through the walls). */
+  /** 1 in the camp with pt, less from your nook (sound round the corner). */
   sameRoomK(pt) {
     const p = this.rig?.player.pos;
     if (!p) return 1;
-    const a = roomAt(p.x, p.z), b = roomAt(pt.x, pt.z);
-    return !a || !b || a === b ? 1 : 0.35;
+    // (the camp is one open hollow; your nook is round the corner up the steps)
+    return this.inBedroom(p.x, p.z) && p.z > 0.6 ? 0.45 : 1;
   }
 
   nearPointVol(pt, range, vol) {
@@ -701,13 +690,13 @@ export default class HomeScene extends Scene {
     let spot = null;
     if (from === 'bed' || from === 'faint' || from === 'sleep') { const rec = this.findKind('bed'); const s = rec && besideItem(this, rec); if (s) spot = { x: s.x * T, z: s.z * T, face: { x: s.face.x * T, z: s.face.z * T } }; }
     if (from === 'forge') spot = { x: SPOTS.anvil.x + 0.55, z: SPOTS.anvil.z + 0.9, face: { x: SPOTS.forge.x, z: SPOTS.forge.z } };
-    if (from === 'cooking' || from === 'stove') spot = { x: SPOTS.fire.x + 0.35, z: -1.8, face: { x: SPOTS.fire.x, z: -3.2 } };
+    if (from === 'cooking' || from === 'stove') spot = { x: SPOTS.fire.x + 0.62, z: SPOTS.fire.z + 0.6, face: { x: SPOTS.fire.x, z: SPOTS.fire.z } };
     if (from === 'lift') spot = { x: LIFT.cx, z: LIFT.cz, yaw: Math.PI / 2 };
     if (from === 'town' || from === 'tunnel') spot = this.doorOpen && from === 'town' ? { x: FRONT.x, z: this.cave.passage.z + 0.85, yaw: Math.PI } : { x: LIFT.outX - 0.2, z: LIFT.cz, yaw: Math.PI / 2 };
     void SHAFT;
     if (from === 'fall' || from === 'newgame') { const rec = this.findKind('bed'); const s = rec && besideItem(this, rec); if (s) spot = { x: s.x * T, z: s.z * T, yaw: 0 }; }
     // otherwise: at the foot of the steps, looking into the living room
-    if (!spot) spot = { x: ARCH.x + 0.05, z: STAIRS.z0 - 0.75, face: { x: 2.1, z: -5.0 } };
+    if (!spot) spot = { x: ARCH.x + 0.05, z: STAIRS.z0 - 0.75, face: { x: 2.2, z: -4.6 } };
     if (spot.face) spot.yaw = Math.atan2(-(spot.face.x - spot.x), -(spot.face.z - spot.z));
     this.rig.place(spot.x, this.floorY(spot.x, spot.z), spot.z, spot.yaw ?? 0, -0.06);
     if (from !== 'lift') this.unstick();
@@ -916,7 +905,7 @@ export default class HomeScene extends Scene {
     const at = {
       lift: { x: LIFT.outX, y: Y + 1.0, z: LIFT.cz },
       passage: { x: FRONT.x, y: Y + 0.9, z: FRONT.z + 0.2 },
-      hole: { x: HOLE.x, y: Y + ROOM.living.h, z: HOLE.z },
+      hole: { x: HOLE.x, y: Y + 2.2, z: HOLE.z },
       hearth: { x: S.fire.x, y: Y + 0.9, z: S.fire.z + 0.3 },
       forge: { x: S.anvil.x, y: Y + 0.9, z: S.anvil.z },
     };

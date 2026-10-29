@@ -32,6 +32,7 @@ import * as Inv from '../core/inventory.js';
 import { kgOf } from '../core/weight.js';
 import { toolWant, toolRule, TOOL_NAMES } from './Dig.js';
 import { BM } from './build/mats.js';
+import { RM } from './ruins/mats.js';
 import {
   BS, BLOCKS, BLOCK, BLOCK_OF_ITEM, SHAPES, DIRS, dirIndex, rotCW, rotCCW, familyOf, isBuilt, LOG_AXIS,
   shapeHas, doorVoxels, readDoor, unitOf, DOOR_MATS,
@@ -51,6 +52,8 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 /** What digging a natural material keeps: [item, blocks per 512 voxels] or null. */
 function yieldOf(m, kind) {
   if (!m || m >= ORE_BASE || isBuilt(m)) return null;
+  if (m === RM.DCOB || m === RM.DMOSSCOB) return ['blk_cobble', 1]; // a dungeon's walls are good building stone
+  if (m === RM.DBRICKA || m === RM.DBRICKB || m === RM.DMOSSBRICK || m === RM.DCRACKBRICK) return ['blk_stonebrick', 1];
   const d = MAT[m];
   if (!d || d.made || d.unbreakable || d.fluid) return null;
   if (m === M.CLAY) return ['clay_lump', 1.2];

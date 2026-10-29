@@ -1,9 +1,10 @@
-// Your bedroom's shell, up the steps from Old Star's house: four full walls of lime plaster in a
-// timber frame over a painted wainscot, and a boarded ceiling (1/64 m voxel reliefs with every face
-// meshed), the painted floor, corner posts, the round crystal window, the doorway down to the house
-// in the north wall, old tunnel mouths, the Surface Express poster, its own little hearth with a
-// fire in the south wall (where Old Star sits when you wake), a high ledge of jars, herbs, sconces,
-// hanging lanterns, a string of paper lanterns and the build bench. Static dressing is merged into
+// Your nook's shell, up the steps from Old Star's camp: four walls of the cave's rock propped by old
+// grey timbers (or the wall style you've bought), a rock roof between grey joists (1/64 m voxel
+// reliefs with every face meshed), the earth floor (or what you've laid), corner posts, a crack of
+// glowing crystal in the west wall, the doorway down to the camp in the north wall, old tunnel
+// mouths, the Surface Express poster, a little hearth with a fire in the south wall (where Old Star
+// sits when you wake), a high ledge of jars, herbs, candle sconces, hanging lanterns, roots,
+// cobwebs, glowing fungi and the build bench. Static dressing is merged into
 // a few draw calls with the fixed lights baked into its colors. Built in tile units inside `room`
 // (scaled to meters); merged meshes go to `world` (meters).
 import * as THREE from 'three';
@@ -23,7 +24,8 @@ import { voxelMaterial } from '../gfx/Voxel.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { wallVoxel, wallDetail, nearestPost, ceilVoxel } from './walls.js';
 import { T, VPT, CEIL, WALL_V, FACE, MOUTH_HW, ARCH } from './units.js';
-import { inMouth, WINDOW, MOUTH_LANTERN, crystalWindow, tunnelMouth, cornerPost, buildBench } from './props.js';
+import { inMouth, WINDOW, MOUTH_LANTERN, crystalWindow, tunnelMouth, cornerPost, buildBench, hangingRoot, wallFungi } from './props.js';
+import { cobweb } from './campProps.js';
 import { ShellBase, CT, texturedToon, mergeIndexed, packShellSurfaces } from './shellSurf.js';
 import { unquantize, CSCALE } from './pack.js';
 
@@ -168,12 +170,27 @@ export class HomeShell extends ShellBase {
       hl.obj.position.set(l.x, l.top ?? CT - 0.34, l.z);
       add(hl.obj);
     }
-    // strings of paper lanterns sagging between joists
-    const J = this.joists;
-    if (J.length >= 3) this.lightString({ x: J[1], z: D * 0.62 }, { x: J[2], z: D * 0.68 }, 9);
-    else if (J.length >= 2) this.lightString({ x: J[0], z: D * 0.62 }, { x: J[1], z: D * 0.68 }, 9);
-    // (no roots, cobwebs or fungi: it's a bedroom in a house now)
+    // roots through the roof, cobwebs in the top corners, fungi glowing on the damp walls (it's a cave)
+    for (let k = 0; k < 6; k++) {
+      const r = hangingRoot(0.35 + hash2(k, 1, 77) * 0.55, 60 + k);
+      r.position.set(0.8 + hash2(k, 2, 77) * (W - 1.6), CT - 0.05, 0.7 + hash2(k, 3, 77) * (D - 1.4));
+      add(r);
+    }
+    for (const [x, z, yaw, sz] of [[0.14, 0.14, Math.PI / 4, 0.3], [W - 0.14, D - 0.14, -Math.PI * 0.75, 0.28], [W - 0.14, 0.14, -Math.PI / 4, 0.24]]) {
+      const w = cobweb(sz, Math.round(x * 7 + z));
+      w.position.set(x, CT - 0.95, z);
+      w.rotation.y = yaw;
+      add(w);
+    }
     this.fungi = [];
+    for (const [wall, a, y, hue, seed] of [['w', Math.min(this.D - 1.2, 5.2), 0.35, 0, 5], ['e', Math.min(this.D - 0.8, 6.4), 0.2, 1, 6]]) {
+      const f = wallFungi(seed, 3, hue);
+      this.onWall(f.obj, wall, a, y, 0.02);
+      add(f.obj);
+      const P = this.wallPose(wall, a);
+      this.fungi.push({ x: P.x + Math.sin(P.yaw) * 0.4, y: y + 0.7, z: P.z + Math.cos(P.yaw) * 0.4, color: f.color }); // (tiles)
+    }
+    void D;
     // the build bench against the east wall
     const B = this.bench;
     const bb = buildBench(8);

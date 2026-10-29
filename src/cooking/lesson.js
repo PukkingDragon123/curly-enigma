@@ -69,16 +69,18 @@ export class CookLesson {
   }
 
   say(html, o = {}) {
+    if (this.game.scene !== this.sc) return Promise.resolve(); // (the kitchen has gone: nothing more to say)
     const t = this.game.ui.tutor;
     const card = () => { if (!t?.say) return Promise.resolve(); try { return Promise.resolve(t.say(html, { key: 'cook-lesson', ...o })); } catch (e) { return Promise.resolve(); } };
     // a line he waits on is a little cutscene (game.convo) when there is one
-    if (o.wait && this.game.ui.onboard) return this.game.ui.onboard.talk(html, { mood: o.mood, wait: true }, card);
+    if (o.wait && this.game.ui.onboard) return this.game.ui.onboard.talk(html, { mood: o.mood, wait: true, scene: this.sc }, card);
     return card();
   }
 
   /** A prompt card for a control (the one before goes): top left, clear of the pantry and the pot. */
   teach(id, o = {}) {
     this.obH?.close?.();
+    if (this.game.scene !== this.sc) { this.obH = null; return null; }
     this.obH = this.game.ui.onboard?.teach(id, { place: 'left', ...o }) || null;
     return this.obH;
   }
@@ -105,7 +107,7 @@ export class CookLesson {
     this.game.ui.onboard?.cinema(true, { skip: () => this.endCine() });
     await this.say(`Right, apprentice. A miner who can't cook is a miner who faints halfway down a shaft. We'll make my <b>${DISHES[this.dish].name}</b>${gave ? `. Here, take a ${names} off my shelf` : ''}.`, { mood: 'happy', wait: true });
     this.endCine();
-    if (this.sc.phase === 'pantry' && !this.done) this.pantryTip();
+    if (this.game.scene === this.sc && this.sc.phase === 'pantry' && !this.done) this.pantryTip();
   }
 
   pantryTip() {

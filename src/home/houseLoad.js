@@ -1,15 +1,15 @@
-// Building Old Star's house without stopping the game. The house is a few big jobs (houseJobs.js:
-// one per room, the doors between them, the cavern outside, your bedroom's walls); they run in
+// Building Old Star's camp without stopping the game. The camp is a few big jobs (houseJobs.js:
+// the rock, the west and east of the hollow, the steps and door, your nook's walls); they run in
 // parallel in build workers (houseWorker.js) and come back packed (pack.js), and the scene puts them
 // together (StarHouse.assemble). While the scene is waiting for them (its loading screen is up) the
 // main thread takes jobs off the queue too, so a slow or busy worker never holds it up; without
 // workers at all (blocked, or ?houseWorkers=0) the main thread does them all, yielding between
 // jobs. Every finished job is kept (keyed by what it depends on: the notes on the board, whether the
-// front door is open), so coming home again (from the lift, the forge, the kitchen, town) reuses it
-// instead of building it all over, and prebuildHouse(game) can start it early in the workers only
-// (during the journey, on the title) so the house is ready when you get there.
+// door to Deep Town is open), so coming home again (from the lift, the forge, the kitchen, town)
+// reuses it instead of building it all over, and prebuildHouse(game) can start it early in the
+// workers only (during the journey, on the title) so the camp is ready when you get there.
 //
-//   loadHouse(want, onProgress) → Promise<{ jobs, vista, shell, ms, workers, built }>   want: houseWant(state)
+//   loadHouse(want, onProgress) → Promise<{ jobs, vista (null), shell, ms, workers, built }>   want: houseWant(state)
 //   onProgress({ k: 0..1, label }) while it builds (and once more at the end)
 import HouseWorker from './houseWorker.js?worker&inline';
 import { JOBS, runJob } from './houseJobs.js';
@@ -17,11 +17,11 @@ import { loadNotes } from './notes.js';
 import { roomSize } from '../iso/homeLayout.js';
 
 /** Bump when the house's build changes shape (keys only: nothing is stored across page loads). */
-const VERSION = 4;
+const VERSION = 5;
 /** Rough relative cost of each job (for the progress bar and to start the big ones first). */
-const COST = { living: 3, kitchen: 2.6, smithy: 2, hall: 1.6, garden: 3, terrace: 1.6, workshop: 2.4, larder: 2.2, ways: 0.8, vista: 0.6, shell: 1.4 };
+const COST = { rock: 2.6, west: 2.2, east: 1.8, ways: 0.6, shell: 1.6 };
 /** What each job depends on (besides the code): the keys of `want` that change it. */
-const DEPENDS = { living: ['notes'], hall: ['doorOpen'], ways: ['doorOpen', 'notes'], shell: ['W', 'D', 'wallId'] };
+const DEPENDS = { east: ['notes'], ways: ['doorOpen', 'notes'], shell: ['W', 'D', 'wallId'] };
 const JOB_TIMEOUT = 60000;
 const KEEP = 24; // packed jobs kept
 
@@ -47,7 +47,7 @@ export function prebuildHouse(game) {
 }
 
 /** Is everything for `want` built already? */
-export function houseReady(want) { return [...JOBS, 'vista', 'shell'].every((id) => cache.has(jobKey(id, want))); }
+export function houseReady(want) { return [...JOBS, 'shell'].every((id) => cache.has(jobKey(id, want))); }
 
 /** Forget what's kept (memory is short). */
 export function dropHouseCache() { cache.clear(); }
@@ -61,7 +61,7 @@ export async function loadHouse(want, onProgress = null, opts = {}) {
   const r = getRunner();
   if (!opts.background) r.foreground++;
   const jobIds = JOBS.filter((id) => id !== 'ways');
-  const total = jobIds.reduce((s, id) => s + (COST[id] ?? 2), 0) + COST.ways + COST.vista + COST.shell;
+  const total = jobIds.reduce((s, id) => s + (COST[id] ?? 2), 0) + COST.ways + COST.shell;
   let done = 0, built = 0;
   const tick = (id) => { done += COST[id] ?? 2; onProgress?.({ k: Math.min(0.99, done / total), label: id }); };
   onProgress?.({ k: 0, label: 'start' });
@@ -83,13 +83,12 @@ export async function loadHouse(want, onProgress = null, opts = {}) {
   try {
     const opt = { doorOpen: want.doorOpen, notes: want.notes };
     const shellP = get('shell', { kind: 'shell', W: want.W, D: want.D, wallId: want.wallId });
-    const vistaP = get('vista', { kind: 'vista' });
     const jobs = await Promise.all(jobIds.map((id) => get(id, { kind: 'room', id, opts: opt })));
     const lights = jobs.flatMap((p) => p.lights);
     jobs.push(await get('ways', { kind: 'room', id: 'ways', opts: opt, lights }));
-    const [vista, shell] = await Promise.all([vistaP, shellP]);
+    const shell = await shellP;
     onProgress?.({ k: 1, label: 'done' });
-    return { jobs, vista: vista.vista, shell: shell.surf, ms: Math.round(performance.now() - t0), workers: r.n, built };
+    return { jobs, vista: null, shell: shell.surf, ms: Math.round(performance.now() - t0), workers: r.n, built };
   } finally {
     if (!opts.background) r.foreground--;
     r.pump();
@@ -100,7 +99,6 @@ export async function loadHouse(want, onProgress = null, opts = {}) {
 function runHere(job) {
   try { return runJob(job).msg; } catch (e) {
     console.error(`[home] building ${job.id || job.kind} failed`, e);
-    if (job.kind === 'vista') return { kind: 'vista', vista: null };
     if (job.kind === 'shell') return { kind: 'shell', surf: null };
     return { kind: 'room', id: job.id, meshes: [], surf: [], nodes: [], meta: {}, lights: [], boxes: [], shadowSpots: [], looks: [], waters: [], drips: [], steps: {}, ms: 0, failed: String(e?.message || e) };
   }

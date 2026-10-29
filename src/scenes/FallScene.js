@@ -67,6 +67,11 @@ export default class FallScene extends Scene {
     this.camera = new THREE.PerspectiveCamera(48, this.game.engine.aspect, 0.05, 220);
     setAir(0);
 
+    // ---- while the forest grows (a few seconds on a phone): a quiet card and a way past it
+    const loadSkip = el('button', { class: 'btn alt bk-skip', type: 'button', onclick: (e) => { e.stopPropagation(); this.pendingSkip = true; } }, 'Skip ›');
+    this.loadCard = el('div', { class: 'bk-root bk-loading' }, [el('div', { class: 'bk-load' }, [el('i', { class: 'bk-load-leaf' }), el('span', {}, 'The forest stirs…')]), loadSkip]);
+    this.game.ui.world.append(this.loadCard);
+    this.own(() => this.loadCard?.remove());
     // ---- the forest (phones, 'Simple' shaders and software GL get a lighter one; ?lite=0 / 1 forces it)
     const soft = params.lite !== '0' && params.lite !== '1' && !!this.game.engine.softwareGL;
     const lite = params.lite === '1' || soft || (params.lite !== '0' && this.game.engine.fx !== 'high');
@@ -75,6 +80,7 @@ export default class FallScene extends Scene {
     this.textures.push(...this.F.textures);
     this.own(() => this.F.dispose());
     if (this.F.cancelled) { // skipped while it was still being built: straight on to waking up
+      this.loadCard?.remove(); this.loadCard = null;
       this.debug = { at: () => this.t, time: () => this.t, shot: () => 0, skip: () => this.skip(), state: () => ({ t: this.t, skipped: true }), perf: () => ({}), cam: () => false, hold: () => false, tris: () => ({}) };
       return;
     }
@@ -171,9 +177,13 @@ export default class FallScene extends Scene {
     if (soft) this.post.outline = false; // (a software rasterizer can't afford the outline pass)
     this.onResize(this.game.engine.width, this.game.engine.height);
     this.place(0, 0);
+    // frame the opening shot now: the fade-in draws a few frames before the first update
+    this.updateCamera(0, 0);
+    this.updateWorld(0, 0);
     await this.precompile();
     this.buildMs = Math.round(performance.now() - t0);
     this.ready = true;
+    this.loadCard?.remove(); this.loadCard = null;
     console.log(`[fall] built in ${this.buildMs} ms (forest ${JSON.stringify(this.F.stats)})`);
 
     this.debug = {
@@ -263,7 +273,8 @@ export default class FallScene extends Scene {
   }
 
   render() {
-    if (!this.ready) return;
+    // still building: draw nothing but black (cheap), so no stale frame of the last scene lingers
+    if (!this.ready) { if (this.camera) this.game.engine.render(this._blank || (this._blank = new THREE.Scene()), this.camera, { outline: false, bloom: 0, rays: 0, fade: 1 }); return; }
     // debug.hold(): draw one more frame, then keep it (screenshots on a slow software renderer)
     if (this.hold === 2) return;
     if (this.hold === 1) this.hold = 2;

@@ -96,6 +96,12 @@ const CSS = /* css */`
 .bk-caption small { display: block; font-family: var(--font); font-size: .45em; letter-spacing: .2em; text-transform: uppercase; opacity: .85; margin-top: calc(var(--px) * 2); }
 .bk-skip { position: absolute; right: calc(var(--px) * 6); bottom: calc(var(--px) * 6); font-size: .75em; padding: var(--px) calc(var(--px) * 3); opacity: .5; transition: opacity .3s; }
 .bk-skip:hover, .bk-skip:focus-visible { opacity: 1; }
+/* while the forest grows: a falling leaf and a line of italic text, low on a dark screen */
+.bk-loading { background: #0a0806; }
+.bk-load { position: absolute; left: 50%; bottom: 22%; transform: translateX(-50%); display: flex; align-items: center; gap: calc(var(--px) * 4); color: #e8d8b0; font-family: var(--font-head); font-size: var(--fs-h); opacity: .85; white-space: nowrap; animation: bkLoadIn 1.2s ease-out both; }
+.bk-load-leaf { width: calc(var(--px) * 6); height: calc(var(--px) * 6); background: #c8a040; box-shadow: calc(var(--px) * 2) calc(var(--px) * 2) 0 #7a8a30; transform: rotate(45deg); animation: bkLeaf 2.4s ease-in-out infinite; }
+@keyframes bkLeaf { 0%, 100% { transform: translateY(calc(var(--px) * -3)) rotate(20deg); } 50% { transform: translateY(calc(var(--px) * 3)) rotate(70deg); } }
+@keyframes bkLoadIn { from { opacity: 0; } }
 /* cinematic letterbox for the journey (off on tall screens, where every row counts) */
 .bk-bars i { position: absolute; left: 0; right: 0; height: 7vh; background: #000; transition: transform 1.4s cubic-bezier(.2,.7,.2,1); pointer-events: none; }
 .bk-bars i:first-child { top: 0; transform: translateY(-100%); }

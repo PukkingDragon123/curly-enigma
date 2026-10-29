@@ -1,5 +1,5 @@
-// Old Star's cage lift down to the mine, in its own shaft behind the hall's east wall. On the
-// hall side a heavy timber portal with iron straps carries a small brass plaque (a pick and Old
+// Old Star's cage lift down to the mine, old and rusty but working, in its own rock shaft at the
+// east end of the camp. On the camp side a heavy timber portal with iron straps carries a small brass plaque (a pick and Old
 // Star's star), a call lever on a brass quadrant with a bell above it and a lantern on a hook. The
 // shaft is lined with timber cribbing, with oak guide rails on both sides; a spoked sheave turns
 // up in the dark, its cable running down to the cage's crosshead and, behind the cage, to a cast
@@ -14,10 +14,12 @@ import { hash2 } from '../iso/surface.js';
 import { T, HALL, SHAFT } from './units.js';
 
 const S = 1 / 32;
-const BRASS = 0xc09a48, BRASS_L = 0xf0d488, BRASS_D = 0x86642a, PATINA = 0x6a9a82;
-const IRON = 0x33333b, IRON_L = 0x5a5a66, IRON_D = 0x222228;
-const brass = (x, y, z) => (h3(x, y, z, 5) < 0.015 ? PATINA : y % 23 === 0 ? BRASS_L : y % 17 === 0 ? BRASS_D : BRASS);
-const iron = (x, y, z) => (h3(x, y, z, 3) < 0.015 ? 0x7a4a2a : IRON);
+// (old and rusty now: the brass gone brown and green, the iron flaking rust; it still runs)
+const BRASS = 0x8a6a3e, BRASS_L = 0xa88a58, BRASS_D = 0x5a4228, PATINA = 0x5a7a62;
+const IRON = 0x3a3436, IRON_L = 0x5a5250, IRON_D = 0x262224;
+const RUST = 0x7a4a2a, RUST_D = 0x5a3420;
+const brass = (x, y, z) => { const h = h3(x >> 1, y >> 1, z >> 1, 5); return h < 0.12 ? PATINA : h > 0.86 ? RUST : y % 23 === 0 ? BRASS_L : y % 17 === 0 ? BRASS_D : BRASS; };
+const iron = (x, y, z) => { const h = h3(x >> 1, y >> 1, z >> 1, 3); return h < 0.16 ? RUST : h > 0.9 ? RUST_D : IRON; };
 
 /** Shaft dimensions (voxels, 1/64 m): the well, the cage inside it, the counterweight lane behind. */
 const WELL = Math.round((SHAFT.x1 - SHAFT.x0) * 64); // 74 across (x) and deep (z)

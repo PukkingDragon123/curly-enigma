@@ -2092,7 +2092,8 @@ two and hops one, like a Minecraft player; doorways are 1 wide × 2 high.
   voxels crumbles).
 - **Where blocks come from.** **Gather** (on by default, a lever in the picker): digging natural rock keeps a
   block per 512 voxels dug (cobble from stone and crystal rock, dirt from soil, logs from timber / roots /
-  stalks, clay, sand, half a cobble from gravel, vines with shears), never into your last free pocket and
+  stalks, clay, sand, half a cobble from gravel, vines with shears; dungeon cobble and stone bricks give
+  cobble and stone bricks), never into your last free pocket and
   never past 95% of a comfortable load, only after the lesson. **Crafting** (`build/craft.js`, the picker's
   Craft tab): anywhere: log → 4 planks, plank → 4 sticks, stick + coal → 4 torches, 4 planks → workbench;
   at a workbench (within 3 m): sticks → ladders (or sticks + vines), 4 cobble → 4 stone bricks, 4 clay +
@@ -2111,7 +2112,11 @@ two and hops one, like a Minecraft player; doorways are 1 wide × 2 high.
   on every block (cobble stones, brick courses, plank boards with staggered joints and nails, log bark and
   rings, crumbly dirt, door boards with braces and iron studs, chest bands and a brass lock, a workbench top
   with a vise), a hairline where blocks meet and bevelled outer edges from the mesher's convex flags; moss,
-  strata and damp are off on them. **Glass** discards its inner texels (frame + two glints stay) and
+  strata and damp are off on them. The **dungeons' cobble** (`RM.DCOB`, `RM.DMOSSCOB`, ids 64–65) gets the
+  same stones (no block hairline: dungeons sit on their own voxel origin, not on the world's 8-voxel grid;
+  snapping `frame(f)`'s `CX/CY/CZ` to multiples of 8 would line their blocks up with placed ones, and the
+  hairline could then go on them too). Lift stations' `unbreakable` stays unbreakable (`Dig.breakable`
+  is checked before any tool rule). **Glass** discards its inner texels (frame + two glints stay) and
   Build.js draws the faces the mesher culled behind it (`rebuildGlass`). `?bklook=0` skips the patch (A/B).
 - **No building** (placing; placed blocks can't exist there to break) near the home, Deep Town, lift rooms
   and NPC burrows (`Build.protectedZones`, like Explosives'); the lift stations' own rock is the
@@ -2247,8 +2252,21 @@ handles (`onboard.panelUp()`), and since `ui.closeAllPanels()` looped forever on
 next scene change), `UI.closePanel` now takes an already-closed handle off the stack (and clears `panel-open`
 and re-enables input when it was the last): a marked 6-line guard. Please still close the hold the usual
 way. Also: with `bars(true)` and no line, the empty floating label shows at the top left.
+**For the home part (what the tutorial and the e2e lean on in `HomeScene`; please keep these names when
+rebuilding the camp).** The e2e: `scene.debug.finishWake()`, `debug.interact('Ride down to the dig')`
+(the cage's item label at stage `mine`; `debug.useLift('L0')` is its fallback), `debug.run(frames, dt,
+until)`, `scene.lessonStage()`. If `enter()` throws before `this.debug = this.makeDebug()`, every lesson step
+of the e2e fails with "d.interact is not a function" (seen 11:30: `addHouseInteractions` reading
+`skylight` of undefined). The tutorial: `tickWakeFx(dt)` called every frame from `update` (it drives
+`tickHomeTutor`); `wakeFromFall()` on `from === 'fall' | 'newgame'`; `questSpot('lift' | 'forge' |
+'hearth')`, `shell.hearth` (optional), `findKind('bed')`, `lieDown`, `floorY`, `unstick`; the script camera
+(`beginScript` / `endScript` / `cam` / `tween` / `later` / `sleepFor` / `tickers` / `scripted`); `rig.items`
+(each `{ label, enabled, action }`: the tutorial wraps `enabled`); `riding` (the cage ride); `star` (`say`,
+`goTo`, `walkTo`, `placeAt`, `faceTo`, `gesture`, `sniff`, `pos`); and the calls into lessons.js from the
+scene: `talkStar` → `lessonTalk()`, `onLessonRide()`, `onLessonArrival(from)`, `placeStarForLesson()`,
+`prepForgeLesson()`, `prepCookLesson()`.
 
-### Cutscene talk: the API (wave 4, in progress; "As built" follows)
+### As built: cutscene talk, and the UI blur / blue bug (wave 4)
 
 `game.convo` (also `ui.convo`; `src/ui/Convo.js`, `convo.css`), the camera director `game.convo.director`
 (`src/fx/director.js`), speakers `src/fx/speakers.js`. Talking to someone zooms in on their real 3D
@@ -2302,6 +2320,72 @@ game.convo.speaker(who)    // the 3D speaker here, or null
   for the whole visit home). Please drop the CSS blur (pixel art blurred reads as a broken screen; do
   the daze with the lids, the vignette and `post.fade` / `brightness`) and remove the lids canvas when
   the eyes are open (`wakeFx.dispose()`).
+
+**How a talk plays** (`Convo.js`): a talk is a *session* on the window stack (a hold handle `{ kind:
+'convo' }` with no backdrop): the scenes stop moving you, menus and keys wait, `#ui.cv-on` steps the
+HUD out (the toasts stay), the pointer stays locked (a click anywhere carries on; it comes free only
+while answers are up, and is taken back on the pick). Each line is a *beat*: the speaker is found
+(`findSpeaker`), the director frames them, they turn to you (`turnTo`), look at your eyes, hold still
+(town folk pause, Old Star stops his chores, burrow keepers go `busy`), pull the line's face
+(`setExpression` from the mood) and a gesture (nod / wave / shake / hop / cheer by mood, or `gesture`),
+and their mouth flaps while the words type (`typeText`, their voice blips from the portrait cast or
+the actor's own pitch; a breath at sentence ends). The words: a scrap of parchment with the name on a
+ribbon (red for Old Star, green for folk and keepers, blue for you), a sub-title (the quest), the text,
+a key cap / "tap" and a bobbing brass arrow when it waits, a wick when it goes by itself; it floats
+beside the head on screen (the side with room in front of their face, below it on a phone held
+upright, never under the bars or the answers), eased after the camera, a tail pointing at the mouth.
+Answers: paper notes with brass number discs floating in on your side of the frame (over your
+shoulder), a brass pointer on the one in focus. Your own lines (`who: 'hero'`) cut to a close-up of
+you. No 3D model of the speaker in this scene: the label carries their live portrait instead.
+
+**The director** (`src/fx/director.js`): every shot is planned once against the scene's ray test
+(the mine's voxels, the home's and town's boxes, skipping Old Star's own box and boxes the ray starts
+inside): the camera keeps 12 cm off walls along the line and 24 cm all round (`roomy`), must see the
+face, and a two-shot must fit both heads in the frame (the lens widens 44–62°) or it isn't taken. Then
+the pose is recomputed each frame (they breathe and turn): fixed camera, the look smoothed, a slow
+push in, the head on a third with room toward where they look. Shot to shot eases 0.75 s; in 0.85 s,
+out 0.7 s (cubic). The paws are hidden while the camera is away; your mole (`makeHeroMole`, built at
+idle time and reused, pack and hammer off) stands where you stand facing them, looking at their face,
+nodding when you answer; it's added to the scene with a `scene.own` detach so it's never disposed
+with a scene. FOV is restored when the camera is home.
+
+**Routing** (small edits, marked): `ui/choices.js` (`openTalkMenu` → `convoTalkMenu` first),
+`ui/questTalk.js` (asides as cutscene lines; a reminder then the shop), `home/oldstar.js` (`say`),
+`home/workshop.js` (E on Old Star: `convo: true`), `town/quests.js` (`greet(k)`: a word at the window
+before the shop, once per 90 s per keeper; Bramble's lift goes straight to the panel), `town/folk.js`
+(chat), `deep/Traders.js` (E on a keeper → `burrowTalk`, `openShop(b, tab, extra)`),
+`deep/traders/shop.js` (`o.talked`: no second talk act), new `deep/traders/talk.js`, `ui/UI.js`
+(makes `ui.convo`, ticks it), `ui/Tutor.js` (`active` / `next()` forward to a convo line).
+
+**The UI blur / blue bug**, root causes and fixes:
+- *Blue*: the live 3D portraits (`gfx/portrait3d.js`) were lit with saturated blue fill lights
+  (`0x8090ff`, `0x60a0ff`) and cyan rims (`0x60f0e0`, the ticket window `0x90f0e0`), over a teal-glow
+  cave backdrop with cyan motes: every face in the dialogue box, the talk boards, the shops and the
+  strip had a blue cast, and "You" (the hero's lines) came out blue-grey all over. Fills are now a
+  soft near-neutral lavender at lower strength, rims are lamplight, the cave backdrop glows amber.
+- *Blur*: those portraits were drawn at the art grid (40–48 px) and blown up 3× with a mode filter
+  (smeared blobs: Old Star's star nose a pink smudge). Live portraits now draw one canvas pixel per
+  CSS pixel (`--px`: 2–4, so a whole-number scale on every screen, crisp at any DPR), the backdrop
+  still on the art grid; stills (toasts, the strip) stay small.
+- *Blur*: the tutor's "muffled" card blurred the face and the words (`filter: blur`); now the face is
+  dimmed and the words swim, nothing blurred. The waking's CSS blur on the game canvas and its
+  leftover blurred full-screen lids layer belong to `wake.js` (see the note above).
+- Checked and not at fault: the game canvas (drawn at CSS pixels, shown `image-rendering: pixelated`:
+  crisp at dpr 1, 2 and 3; phones with a fractional dpr (2.625…) get uneven but sharp pixels, and the
+  Tiny5 text there is antialiased by the browser, which only a UI-wide snap of `--px` to device
+  pixels would fix), the post grades and the underwater tint (only with the head under water).
+
+**Test hooks**: `game.convo.debug.settle()` (the camera all the way in, the words typed, entrances
+skipped: for screenshots), `game.convo.debug.state()` → `{ active, weight, shot, live, hero, held,
+queue }`, `game.convo.director.{ weight, shot, live(), settle(), frame(o), release(), reset(),
+toScreen(v) }`, `game.convo.next() / pick(i) / end()`, `game.convo.speaker(who)`.
+**Screenshots** (`shots/convo/`): `before-*` (the old talk: the blue hero portrait in
+`before-portraits`, the smeared faces in `before-home-tutor-dpr3`, `before-deep-rocco`, the waking blur
+in `before-wake-*`), `after-portraits` (the cast now), `after-tutor-card`; the talks at 1280×720:
+`after-oldstar-*`, `after-mabel-*` (a village quest offer: over the shoulder with answers, then her
+close-up), `after-grubb-*` (a keeper's offer through his window), `after-hazel-*` (a keeper's word,
+then the shop), `after-rocco-*` (Rocco's burrow, then his counter), `after-folk-*`, `after-fallback`
+(no model here: the portrait in the label); phones: `phone-*` (390×844, dpr 2–3) and `land-*` (844×390).
 
 ### As built: the forest (wave 4)
 
@@ -2359,7 +2443,12 @@ plays in an old forest at golden hour, built by `src/bookends/forest.js` from `s
   build 7–33 s full / 6–14 s lite depending on the load; both should be several times faster on an
   idle machine. A Skip
   pressed while it builds cancels the build.
-- **Engine** (additive): `post.outlineFar` (metres; outlines fade out toward it, default 0 = never).
+- **Engine** (additive): `post.outlineFar` (metres; outlines fade out toward it, default 0 = never);
+  `engine.gpuName` and `engine.softwareGL` (read once at start-up: asking later stalls until the GPU's
+  queue drains, which cost the journey 5 s on SwiftShader).
+- **Loading**: the scene draws black until it is built (no stale frame of the title), yields often
+  while building and compiles its shaders a few at a time, so the page stays responsive; it frames
+  the opening shot before the fade-in.
 - **Hooks**: `scene.debug.{ at, time, shot, state, skip }` as before, plus `perf()` (draw calls,
   triangles, update and render ms), `tris()` (visible triangles by part), `cam(pos, look, fov)` (pin
   the camera; `cam()` releases it), `hold(on)` (keep the next frame: screenshots on a software

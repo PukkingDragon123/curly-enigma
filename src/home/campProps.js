@@ -64,7 +64,6 @@ export function shack({ W = 2.6, D = 1.6, Hf = 1.5, Hb = 1.95, dc = -0.25, dw = 
   boards(VW, (i) => [i, VD, 0, 1], () => HF, (i) => i >= d0 && i < d1);
   for (let x = 0; x < VW; x++) {
     if (x >= d0 && x < d1) for (let y = 0; y < HF; y++) g.clear(X(x), y, Z(VD));
-    if (x >= d0 && x < d1 && false) continue;
   }
   for (let x = d0; x < d1; x++) for (let y = DH; y < HF; y++) g.set(X(x), y, Z(VD), GREY[(x >> 2) % GREY.length]); // the boards over the door
   for (let x = w0; x < w1; x++) for (let y = wy0; y < wy1; y++) g.clear(X(x), y, Z(VD));
@@ -90,6 +89,12 @@ export function shack({ W = 2.6, D = 1.6, Hf = 1.5, Hb = 1.95, dc = -0.25, dw = 
   boards(VD, (i) => [0, i, -1, 0], (i) => roofY(i));
   boards(VD, (i) => [VW - 1, i, 1, 0], (i) => roofY(i));
   boards(VW, (i) => [i, 0, 0, -1], () => HB);
+  // a floor of old boards inside, worn and gapped
+  for (let z = 1; z < VD; z++) {
+    if (z % 6 === 5) continue;
+    const col = mulc(GREY[Math.floor(hash2(z >> 1, 2, seed) * GREY.length)], 0.86);
+    for (let x = 1; x < VW - 1; x++) g.set(X(x), 0, Z(z), (x + z * 13) % 31 === 0 ? mulc(col, 0.7) : col);
+  }
   // battens across the outside, nails at their crossings
   for (const by of [v(0.3), HF - 5]) {
     for (let x = -1; x <= VW; x++) if (x < d0 - 1 || x > d1) g.set(X(x), by, Z(VD) + 1, (x % 9 === 0) ? 0x2a2a2e : 0x5e564a);
@@ -300,4 +305,16 @@ export function crateTable(seed = 89) {
   ring(g, 20, 20, 0, 3, H, H + 1, 0xe8dcc0); ring(g, 20, 20, 0, 1.6, H + 1, H + 5, 0xece2c8); g.set(20, H + 5, 20, 0x2a2018);
   gl.set(20, H + 6, 20, P.flameO); gl.set(20, H + 7, 20, P.flameY);
   return { obj: group(M32(g, [15, 0, 15]), G32(gl, [15, 0, 15])), flame: { x: T(20 - 15 + 0.5), y: T(H + 7), z: T(20 - 15 + 0.5) } };
+}
+
+/** Two rough posts and a crossbar to hang a board on (floor piece, 1/32 m): w m apart, h m tall, the board's face toward +z. */
+export function boardPosts(w = 1.05, h = 1.4, seed = 91) {
+  const W = Math.round(w * 32), H = Math.round(h * 32);
+  const g = new VoxelGrid(W + 6, H + 2, 6);
+  for (const x of [1, W + 2]) for (let y = 0; y < H; y++) for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) {
+    if (a !== 1 && b !== 1 && (y + x) % 3) continue;
+    g.set(x + a, y, b, hash2(y >> 2, a + b * 3 + x, seed) < 0.35 ? 0x4a3a2a : 0x5e5244);
+  }
+  for (const y of [Math.round(H * 0.3), H - 4]) for (let x = 0; x < W + 6; x++) g.set(x, y, 0, x % 7 === 0 ? 0x2a2a2e : GREY[(x >> 3) % GREY.length]);
+  return M32(g, [W / 2 + 3, 0, 2], { scale: S16 });
 }

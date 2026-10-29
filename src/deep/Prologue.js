@@ -377,7 +377,7 @@ export class Prologue {
     this.lineDone = false;
     this.lineUntil = Infinity;
     const tutor = this.tutor;
-    const p = this.ob ? this.ob.talk(text, { wait: true, mood }, () => tutor?.say(text, { mood, key: 'os-beat', wait: true })) : Promise.resolve(tutor?.say(text, { mood, key: 'os-beat', wait: true }));
+    const p = this.ob ? this.ob.talk(text, { wait: true, mood, scene: this.owner }, () => tutor?.say(text, { mood, key: 'os-beat', wait: true })) : Promise.resolve(tutor?.say(text, { mood, key: 'os-beat', wait: true }));
     Promise.resolve(p).then(() => {
       if (this.lineId === id) { this.lineDone = true; this.lineEnd = this.time; this.lineUntil = this.time; }
       if (this.curBeat === b && b.i === i && !b.done) this.beatNext(b);

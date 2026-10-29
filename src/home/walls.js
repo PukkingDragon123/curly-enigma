@@ -1,8 +1,9 @@
-// Your bedroom's walls and ceiling as 1/64 m voxel reliefs, seen from inside in first person.
-// Every wall gets the same heavy timber frame (posts on stone footings, iron straps, knee braces,
-// a crown plate with beam ends) around an infill in the chosen wall style (the first one, still
-// called wall_dirt in the save, is lime plaster over the earth above a painted wainscot, like the
-// rest of Old Star's house); the ceiling is a deck of boards on joists.
+// Your nook's walls and ceiling as 1/64 m voxel reliefs, seen from inside in first person.
+// The first style (still called wall_dirt in the save) is the cave's own rock, lumpy and layered,
+// cracked, rooty up top and mossy at the foot, held up by old grey pit props and a grey crown
+// beam, like the rest of Old Star's camp; the styles you buy get the heavy timber frame (posts on
+// stone footings, iron straps, knee braces, a crown plate with beam ends) round their infill. The
+// ceiling is the rock between old grey joists (the bought styles keep a deck of boards).
 import { WALLS } from '../data/furniture.js';
 import { hash2 } from '../iso/surface.js';
 import { mulc, mixc, sp3 } from '../iso/kit.js';
@@ -47,8 +48,37 @@ function frameVoxel(u, v, seed, post) {
   return null;
 }
 
+const ROCK = [0x5a5550, 0x4c4844, 0x635e57, 0x433f3c, 0x58524a, 0x4e4a45];
+const GREYW = 0x5e574e; // old timber gone grey
+
+/** The cave's rock round your nook, propped by old grey timbers: [color, relief, kind]. */
+function rockWallVoxel(u, v, seed, post) {
+  const H = WALL_V;
+  if (post && post.d <= 4) { // a pit prop: a grey post on a flat stone
+    const pu = Math.round(post.d * post.side + 4);
+    if (v < 8) return [mulc(0x6a6258, v === 7 ? 1.1 : 0.95), 9, 'stone'];
+    const edge = pu === 0 || pu === 8;
+    return [edge ? mulc(GREYW, 0.7) : mulc(GREYW, Math.floor(v / 11 + pu) % 3 === 0 ? 0.92 : 1.02), edge ? 7 : 8, 'woody'];
+  }
+  if (v >= H - 9) return [v === H - 9 ? mulc(GREYW, 0.72) : mulc(GREYW, 0.94 + ((v + (u >> 5)) % 3) * 0.04), v === H - 9 ? 6 : 7, 'woodx']; // the crown beam
+  // the rock: lumps, layers, cracks; roots near the top, moss and earth at the foot
+  const lump = n2(u / 21, v / 21, seed + 3) * 0.7 + n2(u / 7, v / 7, seed + 4) * 0.3;
+  let rel = Math.max(0, Math.round(4 + lump * 5));
+  const band = Math.floor((v + 7 * n2(u / 45, 1.5, seed + 5)) / 13);
+  let c = ROCK[((band % ROCK.length) + ROCK.length) % ROCK.length];
+  const b = hash2(u >> 2, v >> 2, seed + 6);
+  c = mulc(c, b < 0.2 ? 0.88 : b > 0.85 ? 1.1 : 1);
+  const crack = Math.abs(n2(u / 11, v / 11, seed + 7));
+  if (crack < 0.05) { c = 0x2a2420; rel = Math.max(0, rel - 3); }
+  if (v < 18 && hash2(u >> 2, v >> 2, seed + 8) < 0.3) c = v < 9 ? 0x4a3a2a : 0x4a5a30; // earth, moss
+  if (v > H - 34 && (u * 7 + seed) % 41 < 2 && hash2(u, v >> 3, seed + 9) < 0.7) { c = 0x3e2c1e; rel += 1; } // root hairs
+  if (v > 60 && v < H - 30 && hash2(u >> 3, v >> 3, seed + 10) < 0.02) c = 0x7ae0c8; // a speck of glow-moss
+  return [c, rel, 'rock'];
+}
+
 /** [color, relief] for wall voxel (u along, v up) in style id. relief in voxels (+ = sticks out). */
 export function wallVoxel(style, u, v, seed, n, post) {
+  if (style === 'wall_dirt' || !WALLS[style]) return rockWallVoxel(u, v, seed, post);
   const w = WALLS[style] || WALLS.wall_dirt;
   const c = w.color;
   const H = WALL_V;
@@ -141,6 +171,7 @@ export function wallVoxel(style, u, v, seed, n, post) {
  * old owner's claw scrapes. Returns the new sRGB colour.
  */
 export function wallDetail(style, u, v, c, seed, rel, kind) {
+  if (kind === 'rock') return c;
   const h = hash2(u, v, seed + 21);
   if (kind === 'woody' || kind === 'woodx' || kind === 'woodd' || kind === 'endgrain') {
     // grain streaks along the timber
@@ -184,16 +215,25 @@ export function nearestPost(posts, u) {
  * The ceiling deck seen from below: [color, relief] at (u along x, v along z) in voxels.
  * joists: joist centre u positions. Boards run along x, 10 voxels wide; joists run along z.
  */
-export function ceilVoxel(u, v, seed, joists) {
-  // joists: 10 voxels wide, standing 11 voxels below the boards
+export function ceilVoxel(u, v, seed, joists, rock = true) {
+  // joists: 10 voxels wide, standing 11 voxels below the boards (old grey timbers under the rock)
   for (let i = 0; i < joists.length; i++) {
     const d = u + 0.5 - joists[i];
     if (Math.abs(d) < 5) {
       const edge = Math.abs(d) > 4;
       const g = Math.floor(v / 13 + i * 3) % 4 === 0 ? 0.93 : 1;
       if (v % 61 === 30 && Math.abs(d) < 1) return [0x3a3a44, 12]; // an iron dog spike
+      if (rock) return [edge ? 0x34302a : mulc(GREYW, g), edge ? 10 : 11];
       return [edge ? mulc(0x3e2616, 1) : mulc(0x5e3c22, g * sp3(u, v, 7, seed, 0.06, 0.08)), edge ? 10 : 11];
     }
+  }
+  if (rock) {
+    // the cave's roof: lumpy dark rock, cracks, roots poking through
+    const lump = n2(u / 19, v / 19, seed + 13) * 0.7 + n2(u / 6, v / 6, seed + 14) * 0.3;
+    let c = mulc(ROCK[Math.floor(hash2(u >> 3, v >> 3, seed + 15) * ROCK.length)], 0.82);
+    if (Math.abs(n2(u / 10, v / 10, seed + 16)) < 0.05) c = 0x241e1a;
+    if ((u * 5 + v * 3) % 53 < 2 && hash2(u >> 2, v >> 2, seed + 17) < 0.5) c = 0x3e2c1e;
+    return [c, Math.max(0, Math.round(3 + lump * 4))];
   }
   const row = Math.floor(v / 10), lv = v % 10;
   const off = (row * 53) % 140;

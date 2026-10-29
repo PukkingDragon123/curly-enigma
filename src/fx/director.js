@@ -160,6 +160,7 @@ export class Director {
     if (!shot) shot = this.plan('face', sp, pl, o);
     shot.speaker = sp;
     shot.subject = o.subject || 'speaker';
+    if (!this.axisSide && shot.kind !== 'face' && shot.side) this.axisSide = shot.side;
     shot.t = 0;
     // ease from wherever the camera is now (the eyes, or the last shot)
     if (this.w > 0 && this.shot) { this.from = { p: this.pose.p.clone(), q: this.pose.q.clone(), fov: this.pose.fov }; this.switchT = 0; }
@@ -245,10 +246,9 @@ export class Director {
       if (dist < 0.45) return null;
       const fov = vf(portrait ? 64 : 50, 42);
       const Ap = A.clone().negate(); // from you toward them
-      const Sp = new THREE.Vector3(Ap.z, 0, -Ap.x);
       let best = null;
       for (const side of this.sides(o)) {
-        const want = eyeP.clone().addScaledVector(Ap, -0.9).addScaledVector(Sp, 0.6 * side).addScaledVector(UP, 0.3);
+        const want = eyeP.clone().addScaledVector(Ap, -0.9).addScaledVector(S, 0.6 * side).addScaledVector(UP, 0.3);
         const r = this.reach(eyeP, want);
         const full = eyeP.distanceTo(want);
         if (r < full * 0.6) continue;
@@ -290,7 +290,10 @@ export class Director {
         if (r >= d - 0.01) break;
       }
       if (!best) return null;
-      return { ...base, p: best.p, fov: best.fov, side: best.side, comp: { x: 0, y: 0.1 }, label: 'above', fixed: true, hero: true, focus: 'mid', drift: 0.03 };
+      // the words go beside them on the side away from you (or above, when that's the frame's edge)
+      const f = _a.subVectors(mid, best.p).normalize(), rgt = _b.crossVectors(f, UP).normalize();
+      const you = Math.sign(_c.subVectors(eyeP, eyesS).dot(rgt)) || 1;
+      return { ...base, p: best.p, fov: best.fov, side: best.side, comp: { x: 0, y: 0.1 }, label: you > 0 ? 'left' : 'right', fixed: true, hero: true, focus: 'mid', drift: 0.03, choices: you > 0 ? 'right' : 'left' };
     }
     if (kind === 'wide') {
       const Ap = A.clone().negate();
@@ -321,9 +324,13 @@ export class Director {
     return true;
   }
 
-  /** Which side of the line to try first (alternating gives a little variety between shots). */
+  /**
+   * Which side of the line between you to try first: the side the talk started on (shots stay on one
+   * side of the line, so nobody seems to swap places), else alternating between talks.
+   */
   sides(o) {
-    if (o.side) return [o.side, -o.side];
+    const s = o.side || this.axisSide;
+    if (s) return [s, -s];
     this.flip = !this.flip;
     return this.flip ? [1, -1] : [-1, 1];
   }
@@ -409,6 +416,7 @@ export class Director {
   }
 
   restore() {
+    this.axisSide = null;
     const c = this.cam;
     if (c && this.fov0 != null) { if (Math.abs(c.fov - this.fov0) > 1e-4) { c.fov = this.fov0; c.updateProjectionMatrix(); } this.fov0 = null; }
     this.restoreVm();
@@ -434,7 +442,8 @@ export class Director {
       this.detachHero();
       s.scene.add(rig.root);
       this.heroScene = s;
-      s.own?.(() => this.detachHero());
+      // (taken out before the scene disposes what's in it: the body is reused in every scene)
+      if (!s.convoHeroOwned) { s.convoHeroOwned = true; s.own?.(() => this.detachHero()); }
       const pl = this.player();
       if (pl) {
         rig.root.position.copy(pl.pos);
@@ -448,9 +457,9 @@ export class Director {
     const pl = this.player();
     if (pl) {
       rig.root.position.lerp(pl.pos, 0.5);
-      const e = shot.speaker.eyes(_a);
+      const e = shot.speaker.eyes(this.heroLook ||= new THREE.Vector3());
       rig.face(Math.atan2(e.x - pl.pos.x, e.z - pl.pos.z));
-      rig.lookAt(_b.copy(e));
+      rig.lookAt(e);
     }
     rig.update(dt);
   }

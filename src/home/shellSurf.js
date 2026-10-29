@@ -275,13 +275,13 @@ export class ShellBase {
   ambientM() {
     const W = this.W * T, D = this.D * T;
     return (x, y, z, nx, ny, nz, out) => {
-      let k = 0.86;
+      let k = 0.7; // (a nook in a cave: dimmer than the old bedroom)
       if (y > 1.3) k *= Math.max(0.42, 1 - (y - 1.3) * 0.62);
       if (y < 0.3) k *= 0.8 + y * 0.66;
       const de = Math.min(x, z, W - x, D - z), dc = Math.min(Math.hypot(x, z), Math.hypot(W - x, z), Math.hypot(x, D - z), Math.hypot(W - x, D - z));
       if (dc < 0.9) k *= 0.7 + dc * 0.33;
       if (de < 0.4 && y > 1.4) k *= 0.85 + de * 0.37;
-      out[0] = k; out[1] = k * 0.93; out[2] = k * 0.88;
+      out[0] = k * 0.9; out[1] = k * 0.92; out[2] = k; // (cool shade: the hearth and lanterns are the warm)
     };
   }
 }

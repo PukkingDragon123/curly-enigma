@@ -228,13 +228,14 @@ export class HomeWake {
    */
   starLine(html, o = {}) {
     const star = this.star, ui = this.game.ui;
+    if (this.game.scene !== this) return Promise.resolve(); // (the home has gone: nothing more to say)
     if (!star?.rig) return Promise.resolve(ui.tutor?.say(html, o));
     const ob = ui.onboard;
     // a line he waits on is a little cutscene (game.convo: the camera on him, the words by his head);
     // a passing tip is his card, which never holds you up
     if (ob && o.wait && this.game.convo?.say) {
       star.sniff?.();
-      return ob.talk(html, { mood: o.mood, wait: true, camera: o.camera, gesture: o.gesture }, () => star.say(html, o));
+      return ob.talk(html, { mood: o.mood, wait: true, camera: o.camera, gesture: o.gesture, scene: this }, () => star.say(html, o));
     }
     // (a passing tip stays on his card even while a talk with him is still winding down)
     return Promise.resolve(star.say(html, o.wait ? o : { ...o, convo: false }));

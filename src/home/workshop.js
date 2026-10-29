@@ -1,11 +1,11 @@
-// Life in Old Star's house (mixed into HomeScene): everything you can use down the steps (Old
-// Star, his forge and anvil, the bellows, the quench trough, the kitchen range, his armchair, the
-// settee and the chairs, the notes board, his chest, the Miners' Board, the lift, the front door,
-// the coal cart, the pump at the sink, the coins in what came down with you, the books, the
-// windows, his keepsakes), the house clock (an hour every 90 s of play since you got up: Old Star
-// sleeps late at night), Old Star's paths across the floors, and the house's ambience: the clock
-// ticking, the pump dripping, embers, smoke and steam, dust motes in the lamplight, dirt trickling
-// through the boards over the hole, the old timbers creaking and the forge breathing.
+// Life in Old Star's camp (mixed into HomeScene): everything you can use down the steps (Old
+// Star, his forge and anvil, the bellows, the quench trough, the fire pit (the cooking spot), his
+// armchair, the logs and the stool, the notes board, his chest, the Miners' Board, the lift, the
+// door to Deep Town, the coal cart, the spring, the coins in what came down with you, the books, his
+// slate), the camp's clock (an hour every 90 s of play since you got up: Old Star sleeps late at
+// night), Old Star's paths across the floor, and the camp's ambience: the clock ticking, the spring
+// dripping, embers, smoke and steam, dust motes in the lamplight, dirt trickling down the hole you
+// fell through, the old planks creaking and the forge breathing.
 import * as THREE from 'three';
 import { HALL, HOLE, T } from './units.js';
 import { SPOTS } from './house.js';
@@ -48,10 +48,10 @@ export class WorkshopLife {
     this.addIt({ box: [S.anvil.x - 0.32, Y, S.anvil.z - 0.3, S.anvil.x + 0.32, Y + 0.75, S.anvil.z + 0.3], label: forgeLabel, action: () => this.useForge() });
     this.addIt({ box: [S.bellows.x - 0.48, Y + 0.2, S.bellows.z - 0.26, S.bellows.x + 0.48, Y + 0.75, S.bellows.z + 0.26], label: 'Pump the bellows', action: () => this.pumpBellows() });
     this.addIt({ box: [S.trough.x - 0.22, Y, S.trough.z - 0.52, S.trough.x + 0.22, Y + 0.45, S.trough.z + 0.52], label: 'The quench trough', action: () => this.lookTrough() });
-    // the kitchen range
+    // the fire pit (the cooking spot: the old label kept for the lessons and the tests)
     const cookLabel = () => (this.lessonStage?.() === 'cook' ? 'Cook with Old Star' : 'Cook at the range');
     const F = S.fire;
-    this.addIt({ box: [F.x - 0.6, Y, -3.4, F.x + 0.6, Y + 1.2, -2.5], label: cookLabel, action: () => this.useHearth() });
+    this.addIt({ box: [F.x - 0.45, Y, F.z - 0.45, F.x + 0.45, Y + 0.95, F.z + 0.45], label: cookLabel, action: () => this.useHearth() });
     for (const f of c.furn) {
       if (f.id === 'chair') this.addIt({ box: f.box, label: 'Sit', action: () => this.sitAt(f) });
       if (f.id === 'sofa') this.addIt({ x: S.sofa.x, y: Y + 0.3, z: S.sofa.z, r: 0.4, label: 'Sit on the settee', action: () => this.sitAt(f) });
@@ -59,7 +59,7 @@ export class WorkshopLife {
     }
     // his notes and his chest
     const b = c.boardAt;
-    this.addIt({ box: [b.x - 0.12, b.y, b.z - 0.55, b.x + 0.1, b.y + 0.95, b.z + 0.55], label: () => { const n = this.unreadNotes(); return n ? `Read Old Star's notes (${n} new)` : 'Read Old Star\'s notes'; }, action: () => this.readNotes(this.noteUnderCrosshair()) });
+    this.addIt({ box: [b.x - (b.nx > 0 ? 0.04 : 0.12), b.y, b.z - 0.55, b.x + (b.nx > 0 ? 0.14 : 0.1), b.y + 0.95, b.z + 0.55], label: () => { const n = this.unreadNotes(); return n ? `Read Old Star's notes (${n} new)` : 'Read Old Star\'s notes'; }, action: () => this.readNotes(this.noteUnderCrosshair()) });
     this.addIt({ box: [S.chest.x - 0.33, Y, S.chest.z - 0.3, S.chest.x + 0.33, Y + 0.42, S.chest.z + 0.3], label: () => (this.chest?.hasLoot ? 'Open Old Star\'s chest' : 'Open the trunk'), action: () => this.chest?.use() });
     // the Miners' Board, the lift, the coal cart
     const m = c.minersAt;
@@ -68,13 +68,13 @@ export class WorkshopLife {
     const SH = this.shaftBox;
     this.addIt({ box: SH, label: liftLabel, action: () => this.useLift() });
     this.addIt({ box: [S.cart.x - 0.3, Y, S.cart.z - 0.4, S.cart.x + 0.3, Y + 0.62, S.cart.z + 0.4], label: () => (this.cartReady() ? 'Take coal from the cart' : 'The old mine cart'), action: () => this.useCart() });
-    // the front door to Deep Town
+    // the old door to Deep Town
     const P = c.passage;
     if (this.doorOpen) this.addIt({ box: [P.x - 0.45, Y, P.z - 0.1, P.x + 0.45, Y + 1.2, P.z + 0.35], label: 'Through to Deep Town', action: () => this.leave() });
     else this.addIt({ box: [P.x - 0.55, Y, P.z - 0.1, P.x + 0.55, Y + 1.2, P.z + 0.55], label: 'The front door: caved in', action: () => this.blockedDoor() });
-    // the pump, the coins in what came down with you
+    // the spring, the coins in what came down with you
     const pump = c.dyn.pump;
-    this.addIt({ x: pump.x, y: pump.y - 0.05, z: pump.z, r: 0.22, label: () => (this.poolToday() ? 'The pump' : 'Drink from the pump'), action: () => this.drinkPool() });
+    this.addIt({ x: pump.x, y: pump.y - 0.12, z: pump.z + 0.05, r: 0.24, label: () => (this.poolToday() ? 'The spring' : 'Drink from the spring'), action: () => this.drinkPool() });
     for (const [i, g] of (c.glints || []).entries()) this.addIt({ x: g.x, y: g.y, z: g.z, r: 0.14, label: g.gem ? 'Pick up the gem' : 'Pick up the coins', enabled: () => !this.glintTaken(i), action: () => this.takeGlint(i) });
     // things to look at
     for (const o of c.looks) {
@@ -105,7 +105,7 @@ export class WorkshopLife {
     const h = this.clockHours(), hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
     const say = `${((hh + 11) % 12) + 1}:${String(mm).padStart(2, '0')} ${hh < 12 ? 'in the morning' : hh < 18 ? 'in the afternoon' : 'in the evening'}`;
     this.game.audio.play('click', { vol: 0.3 });
-    this.think(`Tick, tock. It says ${say}, give or take. Old Star winds it every Sunday, whichever day that is.`, 4.2);
+    this.think(`A battered alarm clock, one bell bent flat. It says ${say}, give or take. Old Star winds it every Sunday, whichever day that is.`, 4.2);
   }
 
   lookOut() {
@@ -184,11 +184,10 @@ export class WorkshopLife {
       portrait: [['Marigold. Best cook in Deep Town, worst singer. She\'d have liked you.', 'calm']],
       sea: [['That\'s the sea. Blue all the way to the edge. One day I\'ll tell you if the painting\'s any good.', 'happy']],
       books: [['Borrow anything you like. Bring it back with fewer jam stains than I would.', 'laugh'], ['I\'ve read every one twice. The soup book three times.', 'happy']],
-      window: [['Best view in the deep, and no way down to it. That\'s life, isn\'t it.', 'calm'], ['See the lights far over? Burrows like mine. Nobody can reach anybody. We wave on Sundays.', 'laugh']],
-      hole: [['Came down through my ceiling like a sack of turnips, you did. Hen and all. I\'ve nailed it shut since.', 'laugh'], ['That\'s sixty feet of loose dirt up there. We go out the proper way: the Surface Express.', 'calm']],
+      hole: [['Came down through my roof like a sack of turnips, you did. Hen and all. Landed on my good dirt.', 'laugh'], ['That\'s sixty feet of loose rock up there. We go out the proper way: the Surface Express.', 'calm']],
       bellows: [['Easy on my bellows! Long, steady pulls. You\'ll learn.', 'stern'], ['Hear that roar? That\'s the forge saying thank you.', 'happy']],
       coins: [['Fell in with you, those. Keep \'em. First coins toward the million.', 'happy']],
-      pool: [['Best water in the deep, that pump. Sixty years and it\'s never once run dry.', 'proud']],
+      pool: [['Best water in the deep, that spring. Sixty years and it\'s never once run dry.', 'proud']],
     }[what] || this.houseAsides?.(what);
     if (!lines) return;
     const [text, mood] = pick(lines);
@@ -305,7 +304,7 @@ export class WorkshopLife {
     const w = this.cave.dyn.poolWater, pump = this.cave.dyn.pump;
     a.play('creak', { vol: 0.35 });
     this.later(0.25, () => a.play('splash', { vol: 0.25 }));
-    if (w) for (let i = 0; i < 3; i++) this.later(0.2 + i * 0.12, () => this.cave.ripple('pool', pump.x + rand(-0.03, 0.03), pump.z + rand(-0.03, 0.03), 1.2));
+    if (w) for (let i = 0; i < 3; i++) this.later(0.2 + i * 0.12, () => this.cave.ripple('pool', w.x + rand(-0.05, 0.05), w.z + rand(-0.05, 0.05), 1.2));
     for (let i = 0; i < 10; i++) this.fx.droplet(pump.x + rand(-0.01, 0.01), pump.y - 0.02, pump.z + rand(-0.01, 0.01), rand(-0.05, 0.05), rand(-0.6, -0.2), rand(-0.05, 0.05), 0.4, [0.7, 0.88, 1], 0.008);
     this.rig.vm?.impact('none', 0.25);
     if (!this.poolToday()) {
@@ -493,27 +492,29 @@ export class WorkshopLife {
       this.fx.spawn({ x: pt.x + rand(-0.06, 0.06), y: pt.y, z: pt.z + rand(-0.06, 0.06), vx: rand(-0.02, 0.02), vy: rand(0.12, 0.22), vz: rand(-0.02, 0.02), life: rand(1.6, 2.4), size: 0.02, grow: 0.05, color: [0.92, 0.9, 0.88], alpha: 0.16, drag: 0.5, grav: -0.03 });
       if (Math.random() < 0.6) this.fx.spawn({ x: k.x, y: k.y + 0.02, z: k.z, vx: 0.05, vy: rand(0.15, 0.25), vz: rand(-0.02, 0.02), life: 1.2, size: 0.012, grow: 0.03, color: [0.92, 0.92, 0.9], alpha: 0.28, drag: 0.8, grav: -0.08 });
     }
-    // the pump drips into the sink (rings on the water)
+    // the spring drips into its basin, the roof drips onto the floor and into its puddles (rings on the water)
     for (const d of c.drips) {
       d.t -= dt;
       if (d.t <= 0) {
         d.t = d.every * rand(0.8, 1.25);
-        const w = c.dyn.poolWater, gy = w ? w.y : c.ground(d.x, d.z);
+        const w = d.pool ? c.dyn.poolWater : (c.waters || []).find((q) => q.name.startsWith('puddle') && Math.hypot(q.x - d.x, q.z - d.z) < 0.3);
+        const gy = w ? w.y : c.ground(d.x, d.z);
         const fall = Math.max(0.05, d.y - gy);
+        if (Math.hypot(p.x - d.x, p.z - d.z) > 9) continue;
         this.fx.droplet(d.x, d.y, d.z, 0, -0.2, 0, Math.sqrt((2 * fall) / 9.8) + 0.05, [0.7, 0.88, 1], 0.008);
         this.later(Math.sqrt((2 * fall) / 9.8), () => {
-          if (w) c.ripple('pool', d.x, d.z, 0.8);
+          if (w) c.ripple(w.name, d.pool ? w.x + rand(-0.04, 0.04) : d.x, d.pool ? w.z + rand(-0.04, 0.04) : d.z, 0.8);
           const dist = Math.hypot(p.x - d.x, p.z - d.z);
           if (dist < 4) a.play('drip', { vol: clamp(0.5 - dist / 8, 0.03, 0.35) });
         });
       }
     }
-    // the clock ticks (in the living room)
+    // the alarm clock ticks (on its crate by the shack)
     this.tickT = (this.tickT || 0) - dt;
     if (this.tickT <= 0) {
       this.tickT = 1;
       const C = SPOTS.clock, dist = Math.hypot(p.x - C.x, p.z - C.z);
-      if (dist < 4.5 && p.z < 0) { this.tock = !this.tock; a.tone({ f: this.tock ? 1900 : 2300, type: 'square', dur: 0.012, vol: clamp(0.03 - dist / 160, 0.004, 0.03), filter: 'bandpass', ff: 2400 }); }
+      if (dist < 3.5 && p.z < 0) { this.tock = !this.tock; a.tone({ f: this.tock ? 1900 : 2300, type: 'square', dur: 0.012, vol: clamp(0.03 - dist / 160, 0.004, 0.03), filter: 'bandpass', ff: 2400 }); }
     }
     // dirt trickling through the boards over the hole you fell through, now and then
     this.holeT = (this.holeT || 6) - dt;

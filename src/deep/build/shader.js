@@ -1,5 +1,6 @@
 // The look of placed blocks: patches the terrain material at runtime (onBeforeCompile, like
-// fluids/caustics.js) so every building material (ids 80..95, ./mats.js) is drawn with a crisp
+// fluids/caustics.js) so every building material (ids 80..95, ./mats.js; and the dungeons' cobble,
+// 64-65) is drawn with a crisp
 // Minecraft-like block texture on the 0.5 m grid: 32 "block pixels" per block face (2×2 terrain
 // texels each), the same pattern on every block so walls read block by block, a hairline where two
 // blocks meet, bevelled outer edges (the mesher's convex-edge flags) the lamp picks out, and glass
@@ -10,6 +11,7 @@
 // (`float ti = clamp(floor(tone + 0.5), 0.0, 3.0);`); false leaves it alone (blocks then look like
 // plain bricks: still usable).
 import { BM } from './mats.js';
+import { RM } from '../ruins/mats.js';
 
 const ANCHOR = /float ti = clamp\(floor\(tone \+ 0\.5\), 0\.0, 3\.0\);/;
 const MAIN = /void\s+main\s*\(\s*\)\s*\{/;
@@ -37,8 +39,9 @@ const FUNCS = /* glsl */`
 
 // injected right before `float ti = ...` (all the terrain shader's locals are in scope)
 const BODY = /* glsl */`
-  if (vMat > ${BM.B_COBBLE - 0.5} && vMat < ${BM.B_BENCH + 0.5}) {
+  if ((vMat > ${BM.B_COBBLE - 0.5} && vMat < ${BM.B_BENCH + 0.5}) || (vMat > ${RM.DCOB - 0.5} && vMat < ${RM.DMOSSCOB + 0.5})) {
     float bm = floor(vMat + 0.5);
+    bool dcob = bm < ${RM.DMOSSCOB + 0.5}; // the dungeons' cobble (natural-caves part) gets the same stones
     vec3 cellc = floor(q / 8.0);
     vec3 bq = q - cellc * 8.0;                  // voxels inside the block, 0..8
     float fu = dot(bq, t1), fv = dot(bq, t2);    // on this face (t2 is up on walls)
@@ -50,14 +53,15 @@ const BODY = /* glsl */`
     bool cut = false;
     tone = 1.5; seam = 0.0; accent = 0.0; bevel = 0.0; glin = 0.0; wrap = 0.35;
     vec3 tilt = vec3(0.0);
-    grow = 0.0; ex.a = 0.0; ex.r = 0.06; ex.g = 0.2;
+    if (!dcob) { grow = 0.0; ex.a = 0.0; } // placed blocks stay clean; dungeon walls keep the zone's moss
+    ex.r = 0.06; ex.g = 0.2;
     // a hairline where two blocks meet (only on faces running across the seam)
     float edgeP = min(min(P.x, 31.0 - P.x), min(P.y, 31.0 - P.y));
 
-    if (bm < ${BM.B_COBBLE + 0.5}) {
+    if (dcob || bm < ${BM.B_COBBLE + 0.5}) {
       // cobblestone: rounded stones in dark mortar
       vec4 v = bk_vor(P, 8.0, fs);
-      if (v.y < 0.13) { accent = 1.0; tone = 0.0; }
+      if (v.y < 0.13) { if (dcob) { tone = 0.0; seam = 0.45; } else { accent = 1.0; tone = 0.0; } }
       else {
         tone = 0.7 + v.x * 2.2 + (pn - 0.5) * 0.7 + clamp(v.w * (n.y > 0.5 ? 0.0 : 1.4) - v.z * 0.4, -0.7, 0.7);
         seam = clamp(0.32 - v.y, 0.0, 0.32) * 1.4;
@@ -208,7 +212,7 @@ const BODY = /* glsl */`
     }
 
     // block hairline: where this block's face meets the next one's
-    if (edgeP < 0.5 && bm != ${BM.B_GLASS}.0 && bm < ${BM.B_TORCH - 0.5}) seam = max(seam, 0.28);
+    if (edgeP < 0.5 && !dcob && bm != ${BM.B_GLASS}.0 && bm < ${BM.B_TORCH - 0.5}) seam = max(seam, 0.28);
     // bevel on the outer edges (the mesher's convex-edge flags): lit on top / left, shaded under
     if (vEdge > 0.5 && dist < 10.0) {
       vec3 lean = vec3(0.0);
@@ -221,7 +225,6 @@ const BODY = /* glsl */`
     }
     nn = normalize(n + tilt * (0.45 + 0.55 * near));
     seam *= mix(0.6, 1.0, near);
-    mat = bm;
     if (cut) discard;
   }
 `;

@@ -1,12 +1,10 @@
-// Drawing only the rooms you can see. Every room's merged meshes (StarHouse.roomMeshes, and your
-// bedroom's walls, ceiling, floor and dressing) are shown only while the camera is in that room or
-// can see into it through a doorway or window (plan.js portals(): an opening seen in the view's
-// frustum makes the room behind it visible, and so on, the view narrowed to each opening's patch of
-// the screen as it goes deeper: an open door seen through another door). Cheap, and it keeps the
-// triangles drawn to the room or two you're looking at.
+// Drawing only what you can see: the camp (one open hollow) and your nook are shown only while the
+// camera is in them or can see into the other through the arch between them (plan.js portals()),
+// the view narrowed to the arch's patch of the screen. Cheap, and it keeps the triangles drawn to
+// the part of the home you're in. (Rooms seen through a small opening skip the outline pass.)
 import * as THREE from 'three';
-import { portals, roomAt, doorAt } from './plan.js';
-import { SHAFT } from './units.js';
+import { portals } from './plan.js';
+import { ARCH } from './units.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 
 /** A room seen through an opening keeps its ink outlines only while it fills this much of the screen (NDC area, of 4). */
@@ -21,7 +19,7 @@ export class RoomCull {
       const box = new THREE.Box3(new THREE.Vector3(p.box[0], p.box[1], p.box[2]), new THREE.Vector3(p.box[3], p.box[4], p.box[5]));
       for (const [a, b] of [[p.a, p.b], [p.b, p.a]]) { if (!this.links.has(a)) this.links.set(a, []); this.links.get(a).push({ to: b, box }); }
     }
-    this.groups = new Map(Object.entries(s.cave.roomMeshes || {}));
+    this.groups = new Map([['camp', Object.values(s.cave.roomMeshes || {}).flat()]]);
     const sh = s.shell;
     this.groups.set('bedroom', [sh.wallMesh, sh.ceilMesh, sh.floorMesh, ...(sh.decorMeshes || [])].filter(Boolean));
     for (const list of this.groups.values()) for (const m of list) m.userData.ink = m.layers.isEnabled(LAYER_OUTLINE);
@@ -33,15 +31,11 @@ export class RoomCull {
     this.enabled = true;
   }
 
-  /** The rooms the camera stands in (none: show everything). */
+  /** The parts the camera stands in (none: show everything). */
   roomsAt(p) {
-    if (this.s.inBedroom?.(p.x, p.z)) return p.z < 0.45 ? ['bedroom', 'living'] : ['bedroom'];
-    const r = roomAt(p.x, p.z);
-    if (r) return [r.id];
-    const d = doorAt(p.x, p.z);
-    if (d) return [d.a, d.b];
-    if (p.x >= SHAFT.x0 - 0.3 && p.x <= SHAFT.x1 + 0.4 && p.z >= SHAFT.z0 - 0.4 && p.z <= SHAFT.z1 + 0.4) return ['hall'];
-    return null;
+    if (this.s.inBedroom?.(p.x, p.z)) return p.z < 0.45 ? ['bedroom', 'camp'] : ['bedroom'];
+    if (Math.abs(p.x - ARCH.x) < 0.6 && p.z > -1.3) return ['camp', 'bedroom'];
+    return ['camp'];
   }
 
   update(camera) {

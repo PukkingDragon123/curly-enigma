@@ -1,8 +1,8 @@
-// Old Star, the old star-nosed mole blacksmith whose house this is. He goes about his day between
+// Old Star, the old star-nosed mole blacksmith whose camp this is. He goes about his day between
 // his places (STAR_SPOTS in house.js): hammering at the anvil (clang, sparks off the face), pumping
-// the bellows (the coals flare), stirring the pot on the range, a sit in his mossy armchair by the
-// fire, rereading his notes or a book, a look at the lift or at his dream wall in the hall, and at
-// night he sleeps in his box bed in the smithy (snoring). He turns his head to follow you when you're near, his
+// the bellows (the coals flare), stirring the pot on the fire, a sit in his old armchair in the
+// shack, rereading his notes or a book, a look at the lift or at his slate of the million, a drink
+// at the spring, and at night he sleeps on his cot in the shack (snoring). He turns his head to follow you when you're near, his
 // star nose wiggles when he sniffs you out. E has him talk (the lessons, or a tip for where you
 // are). His model is src/gfx/char/starmole.js (makeStarMole); expressions come from the rig when
 // it has them (setExpression), and he talks through the tutor card (game.ui.tutor).
@@ -267,7 +267,7 @@ export class OldStar {
   pickHaunt() {
     const hrs = this.s.clockHours();
     if (hrs >= 21.5) return 'cot';
-    const opts = [['anvil', 4], ['bellows', 1.6], ['fire', 2.4], ['armchair', 2], ['board', 1.2], ['books', 1.0], ['hearth', 0.8], ['lift', 0.6], ['ruins', 0.8], ['pool', 0.5], ['garden', 1.4], ['terrace', 0.9], ['drawings', 1.0], ['workbench', 0.8], ['larder', 0.5]] /* (house part: the rooms out back) */.filter(([n]) => n !== this.spot);
+    const opts = [['anvil', 4], ['bellows', 1.6], ['fire', 2.4], ['armchair', 2], ['board', 1.2], ['books', 1.0], ['hearth', 0.8], ['lift', 0.6], ['ruins', 0.8], ['pool', 0.5]].filter(([n]) => n !== this.spot);
     let t = Math.random() * opts.reduce((a, o) => a + o[1], 0);
     for (const [n, w] of opts) { t -= w; if (t <= 0) return n; }
     return 'anvil';

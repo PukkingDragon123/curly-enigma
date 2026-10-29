@@ -33,16 +33,18 @@ export class ForgeLesson {
 
   /** Say something as Old Star (card at the top: the work is low in the view; a line he waits on is cutscene talk). */
   say(html, mood = 'calm', o = {}) {
+    if (this.g.scene !== this.sc) return Promise.resolve(); // (the forge has gone: nothing more to say)
     this.star?.rig?.talk?.(Math.min(3, 0.8 + html.length / 30));
     if (this.star?.rig?.setExpression) { try { this.star.rig.setExpression(mood, { hold: 3 }); } catch (e) { /* older rig */ } }
     const card = () => this.ui.tutor?.say(html, { mood, place: 'top', ...o }) || Promise.resolve();
-    if (o.wait && this.ui.onboard) return this.ui.onboard.talk(html, { mood, wait: true }, card);
+    if (o.wait && this.ui.onboard) return this.ui.onboard.talk(html, { mood, wait: true, scene: this.sc }, card);
     return card();
   }
 
   /** A prompt card for a control (the one before goes). Low on the screen: the work is in the middle. */
   teach(id, o = {}) {
     this.obH?.close?.();
+    if (this.g.scene !== this.sc) { this.obH = null; return null; }
     this.obH = this.ui.onboard?.teach(id, { place: 'low', ...o }) || null;
     return this.obH;
   }

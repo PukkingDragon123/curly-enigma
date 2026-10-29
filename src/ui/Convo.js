@@ -260,11 +260,16 @@ export class Convo {
   }
 
   // ------------------------------------------------------------ sessions and beats
-  clock() { return Math.max(this.simT, this.wallT); }
+  /** The talk's clock: wall time, or scene time when the scene runs ahead (tests step frames by hand). */
+  clock() { return this.wallT + this.simT; }
 
-  /** Time from the scene (sim) and from the wall: whichever runs (tests drive frames synchronously). */
+  /**
+   * Time from the scene (sim, the director's hook) and from the wall (UI.update): per UI frame the
+   * clock moves by whichever went further, so neither counts twice and either alone keeps it going.
+   */
   tick(dt, src) {
-    if (src === 'sim') this.simT += dt; else this.wallT += dt;
+    if (src === 'sim') this.simT += dt;
+    else { this.wallT += Math.max(dt, this.simT); this.simT = 0; }
     const s = this.s;
     if (!s) return;
     const now = this.clock();
@@ -315,6 +320,9 @@ export class Convo {
     g.input.enabled = false;
     g.input.clearAll();
     s.hold = hold;
+    // the quest strip and the "!" / "?" over people's heads step out of the shot too
+    const tr = ui.tracker;
+    if (tr?.mute && !tr.muted) { tr.mute(true); s.mutedTracker = true; }
     void this.root.offsetWidth;
     this.root.classList.add('held', 'bars');
     g.audio.play('page', { vol: 0.22, pitch: 0.8 });
@@ -348,11 +356,15 @@ export class Convo {
     this.director.release();
     this.disposeFace();
     if (s.hold && !s.hold.closed) { s.hold.closed = true; this.ui.closePanel(s.hold); }
+    if (s.mutedTracker && this.ui.tracker?.muted) this.ui.tracker.mute(false);
     this.ui.root.classList.remove('cv-on');
     this.root.classList.remove('held', 'typed', 'choosing', 'timed');
     if (!this.barsOn) this.root.classList.remove('bars');
     this.root.classList.add('out');
     this.choicesEl.textContent = '';
+    // the words go with the talk (the bars may stay up for someone's scripted scene: bars(true))
+    this.label.classList.add('gone');
+    this.lastBeat = null;
     this.hideSoon();
     void skipped;
   }
@@ -440,11 +452,16 @@ export class Convo {
     if (b.hero) kinds = ['hero', 'ots', 'face'];
     else if (cam !== 'auto') kinds = [cam === 'two-shot' ? 'two' : cam === 'over' ? 'ots' : cam, 'close', 'ots', 'face'];
     else if (b.choices?.length) kinds = ['ots', 'close', 'two', 'face'];
-    else if (b.n === 0) kinds = ['two', 'ots', 'close', 'face'];
+    else if (b.n === 0) kinds = this.q.length ? ['two', 'ots', 'close', 'face'] : ['ots', 'close', 'two', 'face']; // a longer talk opens on you both
     else kinds = ['close', 'ots', 'two', 'face'];
     // keep the framing for a run of lines from the same speaker (no reframing every line)
     const prev = d.shot;
-    if (prev && d.want && prev.speaker === sp && !b.hero && prev.subject !== 'hero' && cam === 'auto' && b.n > 0 && !(b.choices?.length && prev.kind === 'close' && (b.n % 2 === 0))) { this.shot = prev; return; }
+    if (prev && d.want && prev.speaker === sp && !b.hero && prev.subject !== 'hero' && cam === 'auto' && b.n > 0) {
+      // the same speaker again: stay on their close-up (or over your shoulder while you answer);
+      // only the opening two-shot cuts in
+      const want = b.choices?.length ? 'ots' : 'close';
+      if (prev.kind === want || prev.kind === 'face' || (prev.kind !== 'two' && !b.choices?.length) || (b.choices?.length && prev.kind !== 'close' && prev.kind !== 'two')) { this.shot = prev; return; }
+    }
     this.shot = d.frame({ speaker: sp, kinds, subject: b.hero ? 'hero' : 'speaker' });
   }
 
@@ -613,7 +630,7 @@ export class Convo {
       x = (W - lw) / 2; y = Math.max(lo, Math.min(hi - lh, H * (portrait ? 0.56 : 0.6) - lh / 2)); side = 'none';
     } else {
       const pref = shot?.label || (portrait ? 'below' : head.x < W / 2 ? 'right' : 'left');
-      const order = { right: ['right', 'left', 'below', 'above'], left: ['left', 'right', 'below', 'above'], below: ['below', 'above', 'right', 'left'], above: ['above', 'below', 'right', 'left'] }[pref] || ['right', 'left', 'below', 'above'];
+      const order = { right: ['right', 'above', 'left', 'below'], left: ['left', 'above', 'right', 'below'], below: ['below', 'above', 'right', 'left'], above: ['above', 'right', 'left', 'below'] }[pref] || ['right', 'left', 'below', 'above'];
       const gap = head.r * 0.9 + 16;
       const at = (s) => {
         if (s === 'right') return { x: head.x + gap, y: head.y - lh * 0.55 };

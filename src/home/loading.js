@@ -1,5 +1,5 @@
-// The wait while Old Star's house is built (or put back together): a dark screen with a little
-// lantern swinging on its chain, the house's name, a wick of a progress bar that burns along with
+// The wait while Old Star's camp is built (or put back together): a dark screen with a little
+// lantern swinging on its chain, the camp's name, a wick of a progress bar that burns along with
 // an ember at its tip, and what's being done ("Stoking the fire", "Winding the clock"...). CSS
 // animations only, so it keeps moving even while the page is busy. After the fall it's quieter:
 // just the ember line and three dots (you're out cold).
@@ -8,10 +8,9 @@
 import { el } from '../core/util.js';
 
 const LINES = {
-  start: 'Opening the shutters', living: 'Stoking the fire', kitchen: 'Putting the kettle on', smithy: 'Banking the forge',
-  hall: 'Sweeping the hall', garden: 'Watering the glowcaps', terrace: 'Wiping the telescope', workshop: 'Oiling the little train',
-  larder: 'Counting the cheeses', ways: 'Oiling the hinges', vista: 'Lighting the cavern', shell: 'Airing your room',
-  rooms: 'Lighting the lamps', star: 'Waking Old Star', done: 'Home',
+  start: 'Lighting a candle stub', rock: 'Sweeping the cave', west: 'Putting the kettle on', east: 'Patching the tarp',
+  ways: 'Kicking the steps clear', shell: 'Shaking out your blanket',
+  rooms: 'Trimming the lantern wicks', star: 'Waking Old Star', done: 'Home',
 };
 
 let styled = false;
@@ -59,8 +58,8 @@ export function houseLoading(game, opts = {}) {
       style();
       bar = el('em');
       what = el('div', { class: 'hl-what' }, opts.dark ? '' : LINES.start);
-      root = el('div', { class: 'hl-back' + (opts.dark ? ' dark' : ''), role: 'status', 'aria-label': 'Loading Old Star\'s house' }, [
-        el('div', { class: 'hl-card' }, [el('div', { class: 'hl-lamp', 'aria-hidden': 'true' }, [el('i'), el('b')]), el('div', { class: 'hl-title' }, 'Old Star\'s house'), el('div', { class: 'hl-wick' }, [bar]), what]),
+      root = el('div', { class: 'hl-back' + (opts.dark ? ' dark' : ''), role: 'status', 'aria-label': 'Loading Old Star\'s camp' }, [
+        el('div', { class: 'hl-card' }, [el('div', { class: 'hl-lamp', 'aria-hidden': 'true' }, [el('i'), el('b')]), el('div', { class: 'hl-title' }, 'Old Star\'s camp'), el('div', { class: 'hl-wick' }, [bar]), what]),
       ]);
       (game.ui?.overlay || document.body).append(root);
     } catch (e) { /* no DOM to show it in */ }

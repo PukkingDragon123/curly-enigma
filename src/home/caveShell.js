@@ -36,8 +36,8 @@ const PATHS = [[2.5, -1.0, 2.6, -3.6], [2.6, -2.6, 6.9, -3.35], [2.4, -2.2, -1.2
 /** Soot: the forge's pipe goes up a crack in the north rock here (m). */
 export const FLUE = { x: -2.0, z: -5.75 };
 
-const ROCK = [0x5c5046, 0x4f453d, 0x665a4c, 0x453d36, 0x5a4e42, 0x50483f];
-const DIRT = [0x5a4632, 0x4e3c2a, 0x624e38];
+const ROCK = [0x5a5550, 0x4c4844, 0x635e57, 0x433f3c, 0x58524a, 0x4e4a45];
+const DIRT = [0x564634, 0x4b3d2e, 0x5e4e3a];
 
 function pathK(x, z) {
   let best = 0;

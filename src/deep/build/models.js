@@ -112,7 +112,9 @@ export function crackTextures() {
       c.width = c.height = 32;
       const ctx = c.getContext('2d');
       const len = Math.round(4 + (s + 1) * 3.2);
-      ctx.fillStyle = 'rgba(12, 8, 6, 0.9)';
+      // a dark crack with a pale lip under it (the light catches the broken edge)
+      for (let i = 0; i < Math.min(paths.length, 2 + s); i++) for (const [x, y] of paths[i].slice(0, len)) { ctx.fillStyle = 'rgba(255, 240, 220, 0.32)'; ctx.fillRect(x, y + 1, 1, 1); }
+      ctx.fillStyle = 'rgba(10, 6, 4, 1)';
       for (let i = 0; i < Math.min(paths.length, 2 + s); i++) for (const [x, y] of paths[i].slice(0, len)) ctx.fillRect(x, y, 1, 1);
       if (s >= 4) { ctx.fillStyle = 'rgba(12, 8, 6, 0.35)'; for (let i = 0; i < 4 + s * 6; i++) ctx.fillRect((rnd() * 32) | 0, (rnd() * 32) | 0, 1, 1); }
       const t = new THREE.CanvasTexture(c);
