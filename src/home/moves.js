@@ -1,6 +1,6 @@
-// The mole's scripted moves at home (mixed into HomeScene): the old cage lift (up to the portal,
-// into the cage, the gate rattles shut, the bell, the lever, down into the dark; rising back up
-// into the cave), and the old passage to Deep Town (through its door once the way is found, caved
+// The mole's scripted moves at home (mixed into HomeScene): the old cage lift in the hall (up to
+// the portal, into the cage, the gate rattles shut, the bell, the lever, down into the dark; rising
+// back up into the hall), and the front door to Deep Town (through it once the way is found, caved
 // in until then). There is no digging out of the home: the lift is the way down.
 import * as THREE from 'three';
 import { openLiftPanel, rideTo } from '../fps/lifts.js';
@@ -29,9 +29,9 @@ export class HomeMoves {
     this.rig.shake(0.12);
     this.fx.dust(P.x, HALL.y + 0.7, P.z + 0.4, 8, [0.45, 0.34, 0.24], 0.2);
     this.fx.grain?.(P.x, HALL.y + 1.0, P.z + 0.3, [0.4, 0.3, 0.2]);
-    this.think('Caved in solid. Deep Town\'s up there somewhere… I\'ll have to find the way round, down in the mine.');
+    this.think('The door opens on a wall of rubble. Deep Town\'s up there somewhere… I\'ll have to find the way round, down in the mine.');
     const star = this.star;
-    if (star && !star.scripted && star.mode !== 'sleep' && this.lessonStage?.() === 'done') this.later(1.2, () => star.say('Came down the year the old shaft closed. Take the lift: the town gate\'s down in the mine somewhere. Find it from below and we\'ll have a road again.', { mood: 'worried' }));
+    if (star && !star.scripted && star.mode !== 'sleep' && this.lessonStage?.() === 'done') this.later(1.2, () => star.say('Came down the year the old passage fell in. Take the lift: the town gate\'s down in the mine somewhere. Find it from below and we\'ll have a road again.', { mood: 'worried' }));
   }
 
   // ------------------------------------------------------------ the lift
@@ -111,7 +111,7 @@ export class HomeMoves {
     for (const e of L.extras || []) e.y = p.y;
   }
 
-  /** Coming up from the mine: the cage rises into its portal, the gate folds back, step out into the cave. */
+  /** Coming up from the mine: the cage rises into its portal, the gate folds back, step out into the hall. */
   async arriveByLift() {
     this.beginScript();
     const a = this.game.audio;

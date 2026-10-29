@@ -1,28 +1,29 @@
-// Your room's shell (the back room of Old Star's tavern): four full walls and a boarded ceiling
-// (1/64 m voxel reliefs with every face meshed), the painted floor, corner posts, the crystal window,
-// the archway down to the tavern hall in the north wall, old tunnel mouths, the Surface Express
-// poster, a high ledge of jars, herbs, sconces, hanging lanterns, strings of paper lanterns between
-// the joists, roots, cobwebs, glowing bracket fungi and the build bench. Static dressing is merged
-// into a few draw calls with the fixed lights baked into its colors. Built in tile units inside
-// `room` (scaled to meters); merged meshes go to `world` (meters).
+// Your bedroom's shell, up the steps from Old Star's house: four full walls of lime plaster in a
+// timber frame over a painted wainscot, and a boarded ceiling (1/64 m voxel reliefs with every face
+// meshed), the painted floor, corner posts, the round crystal window, the doorway down to the house
+// in the north wall, old tunnel mouths, the Surface Express poster, its own little hearth with a
+// fire in the south wall (where Old Star sits when you wake), a high ledge of jars, herbs, sconces,
+// hanging lanterns, a string of paper lanterns and the build bench. Static dressing is merged into
+// a few draw calls with the fixed lights baked into its colors. Built in tile units inside `room`
+// (scaled to meters); merged meshes go to `world` (meters).
 import * as THREE from 'three';
 import { pixelTexture } from '../gfx/PixelArt.js';
-import { makeRng, hashStr } from '../core/util.js';
+import { hashStr } from '../core/util.js';
 import { posterCanvas } from '../iso/pixel.js';
 import { VoxelGrid, C, wood, iron, line, ring, M32, G32, group, mulc, h3 } from '../iso/kit.js';
 import { hash2, noiseSampler, disposeTextures } from '../iso/surface.js';
 import { paintHomeFloor, repaintHomeTile } from '../iso/homeFloor.js';
 import { bakeLighting } from '../iso/bake.js';
 import { Batch, keepUnbatched } from '../iso/vox.js';
-import { WINDOW_SLOTS, POSTER_SLOTS, benchTiles } from '../iso/homeLayout.js';
-import { cobweb } from '../iso/homeDecor.js';
+import { WINDOW_SLOTS, POSTER_SLOTS, HEARTH_X, benchTiles } from '../iso/homeLayout.js';
+import { bedroomHearth } from './houseProps.js';
 import { hangingLantern } from '../iso/props.js';
 import { meshReliefTex, reliefTexture } from './relief.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
-import { wallVoxel, wallDetail, nearestPost, ceilVoxel, PLATE } from './walls.js';
+import { wallVoxel, wallDetail, nearestPost, ceilVoxel } from './walls.js';
 import { T, VPT, CEIL, WALL_V, FACE, MOUTH_HW, ARCH } from './units.js';
-import { inMouth, WINDOW, MOUTH_LANTERN, crystalWindow, tunnelMouth, cornerPost, buildBench, hangingRoot, wallFungi } from './props.js';
+import { inMouth, WINDOW, MOUTH_LANTERN, crystalWindow, tunnelMouth, cornerPost, buildBench } from './props.js';
 
 const CT = CEIL / T; // ceiling height in tiles
 const S32 = 1 / 32;
@@ -57,6 +58,7 @@ export class HomeShell {
     step('window', () => this.buildWindow());
     step('poster', () => this.buildPoster());
     step('dressing', () => this.buildDressing());
+    step('hearth', () => this.buildHearth());
     step('tunnels', () => this.buildTunnels());
     step('merge', () => this.mergeDecor());
     this.steps = steps;
@@ -78,7 +80,7 @@ export class HomeShell {
     const sy = 2.75;
     this.sconceSpots = [
       { wall: 'n', a: 3.55 }, { wall: 'w', a: Math.max(3.4, Math.min(D - 2.7, 4.3)) },
-      { wall: 's', a: Math.round(W / 2) - 0.5 }, { wall: 'e', a: Math.min(D - 2.6, 4.9) },
+      { wall: 's', a: 2.2 }, { wall: 'e', a: Math.min(D - 2.6, 4.9) },
     ];
     this.sconces = this.sconceSpots.map((s) => { const p = this.wallPoint(s.wall, s.a, 0.42); return { x: p.x, y: sy, z: p.z, wall: s.wall, a: s.a }; });
     const near = (v) => this.joists.slice().sort((a, b) => Math.abs(a - v) - Math.abs(b - v))[0];
@@ -104,8 +106,10 @@ export class HomeShell {
       ...this.hanging.map((l) => ({ x: l.x, y: (l.top ?? CT - 0.34) - 0.01 - l.len - 0.3, z: l.z, kind: l.big ? 'lamp' : 'hanging', color: 0xffb060 })),
       { ...this.windowLight, kind: 'window', color: 0x6ad8ff },
       ...this.lanterns.map((l) => ({ ...l, kind: 'lantern', color: 0xffb050 })),
-      // firelight from the hall coming up through the archway
+      // firelight from the house coming up through the doorway
       { x: this.arch.x, y: 1.2, z: 0.35, kind: 'arch', color: 0xff9a50 },
+      // the bedroom's own fire
+      { x: HEARTH_X, y: 0.55, z: D - 0.75, kind: 'hearth', color: 0xff8a3a },
     ];
   }
 
@@ -243,7 +247,7 @@ export class HomeShell {
     });
     const merged = mergeIndexed(geos);
     merged.applyMatrix4(new THREE.Matrix4().makeScale(T, T, T));
-    const mesh = new THREE.Mesh(merged, voxelMaterial('toon', { map: reliefTexture(tex, TW, TH), unique: true }));
+    const mesh = new THREE.Mesh(merged, texturedToon(reliefTexture(tex, TW, TH)));
     mesh.layers.enable(LAYER_OUTLINE);
     this.world.add(mesh);
     this.wallMesh = mesh;
@@ -303,7 +307,7 @@ export class HomeShell {
     const m = new THREE.Matrix4().makeRotationX(Math.PI / 2).setPosition(0, CT + F * S32, 0);
     geo.applyMatrix4(m);
     geo.applyMatrix4(new THREE.Matrix4().makeScale(T, T, T));
-    const mesh = new THREE.Mesh(geo, voxelMaterial('toon', { map: reliefTexture(tex, U, V), unique: true }));
+    const mesh = new THREE.Mesh(geo, texturedToon(reliefTexture(tex, U, V), 0.25));
     mesh.layers.enable(LAYER_OUTLINE);
     this.world.add(mesh);
     this.ceilMesh = mesh;
@@ -313,8 +317,8 @@ export class HomeShell {
   bakeLightsM() {
     const out = [];
     for (const l of this.lightsT) {
-      const power = { sconce: 0.55, hanging: 0.45, lamp: 0.7, window: 0.8, arch: 0.45, lantern: 0.5 }[l.kind] ?? 0.4;
-      const radius = { sconce: 1.5, hanging: 1.6, lamp: 2.4, window: 1.5, arch: 1.4, lantern: 1.2 }[l.kind] ?? 1.1;
+      const power = { sconce: 0.3, hanging: 0.3, lamp: 0.45, window: 0.8, arch: 0.45, lantern: 0.45, hearth: 0.6 }[l.kind] ?? 0.4;
+      const radius = { sconce: 1.5, hanging: 1.6, lamp: 2.4, window: 1.5, arch: 1.4, lantern: 1.2, hearth: 2.6 }[l.kind] ?? 1.1;
       out.push({ x: l.x * T, y: l.y * T, z: l.z * T, color: l.color, power, radius });
     }
     for (const l of this.extraBake || []) out.push(l);
@@ -369,32 +373,12 @@ export class HomeShell {
   // ------------------------------------------------------------ dressing
   buildDressing() {
     const { W, D } = this;
-    const rng = makeRng(W * 13 + D);
     const add = (m) => { this.decor.add(m); return m; };
-    const top = CT - PLATE / VPT;
     // corner posts
     for (const [x, z] of [[0, 0], [W, 0], [0, D], [W, D]]) {
       const p = cornerPost(WALL_V, x * 3 + z);
       p.position.set(x + (x ? -0.12 : 0.12), 0, z + (z ? -0.12 : 0.12));
       add(p);
-    }
-    // roots creeping down the walls from under the crown plates, avoiding openings
-    const blocked = (wall, a) => this.tunnels.some((t) => t.wall === wall && Math.abs(t.t - a) < 1.1) || (wall === 'w' && Math.abs(a - (WINDOW_SLOTS[0] + 0.5)) < 0.9) || (wall === 'n' && Math.abs(a - this.arch.x) < 1.4);
-    for (const wall of ['n', 'w', 's', 'e']) {
-      const len = wall === 'n' || wall === 's' ? W : D;
-      for (let i = 0; i < Math.round(len * 0.55); i++) {
-        const a = 0.6 + rng() * (len - 1.2);
-        if (blocked(wall, a) || (wall === 'n' && a > 0.6 && a < 3.4)) continue;
-        add(this.onWall(hangingRoot(0.3 + rng() * 0.6, i * 7 + wall.charCodeAt(0)), wall, a, top, 0.26));
-      }
-    }
-    // roots poking down through the ceiling boards
-    for (let i = 0; i < Math.round(W * D * 0.12); i++) {
-      const x = 0.5 + rng() * (W - 1), z = 0.5 + rng() * (D - 1);
-      if (this.joists.some((j) => Math.abs(j - x) < 0.3)) continue;
-      const r = hangingRoot(0.15 + rng() * 0.45, 90 + i);
-      r.position.set(x, CT, z);
-      add(r);
     }
     // the high ledge along the north wall: jars, pots, books, candles, a bowl of mushrooms
     this.buildLedge(3.75, Math.max(5.2, W - 1.1), 3.65);
@@ -410,30 +394,31 @@ export class HomeShell {
     }
     // strings of paper lanterns sagging between joists
     const J = this.joists;
-    if (J.length >= 2) this.lightString({ x: J[0], z: D * 0.24 }, { x: J[1], z: D * 0.3 }, 4);
-    if (J.length >= 3) this.lightString({ x: J[1], z: D * 0.66 }, { x: J[2], z: D * 0.72 }, 9);
-    else if (J.length >= 2) this.lightString({ x: J[0], z: D * 0.7 }, { x: J[1], z: D * 0.74 }, 9);
-    // cobwebs in the top corners
-    const web = (wall, a, mirror, seed) => add(this.onWall(cobweb(26, seed, mirror), wall, a, top, 0.05));
-    web('n', 0.35, false, 1); web('w', D - 0.35, false, 2); web('s', 0.35, true, 3); web('e', 0.35, false, 4);
-    web('n', W - 0.35, true, 5);
-    // glowing bracket fungi low on the walls
+    if (J.length >= 3) this.lightString({ x: J[1], z: D * 0.62 }, { x: J[2], z: D * 0.68 }, 9);
+    else if (J.length >= 2) this.lightString({ x: J[0], z: D * 0.62 }, { x: J[1], z: D * 0.68 }, 9);
+    // (no roots, cobwebs or fungi: it's a bedroom in a house now)
     this.fungi = [];
-    const fspots = [['s', 1.6, 0], ['w', D - 3.6, 1], ['e', 0.9, 2], ['n', W - 0.7, 1]];
-    for (const [wall, a, hue] of fspots) {
-      if (blocked(wall, a)) continue;
-      const f = wallFungi(7 + hue, 3, hue);
-      this.onWall(f.obj, wall, a, 0.2, 0.01);
-      add(f.obj);
-      const p = this.wallPoint(wall, a, 0.3);
-      this.fungi.push({ x: p.x, y: 0.55, z: p.z, color: f.color });
-    }
     // the build bench against the east wall
     const B = this.bench;
     const bb = buildBench(8);
     bb.rotation.y = -Math.PI / 2;
     bb.position.set(B.x + 0.5, 0, B.y + 1);
     add(bb);
+  }
+
+  /** The bedroom's hearth on the south wall: live flames, its light, where Old Star tends it. */
+  buildHearth() {
+    const { D } = this;
+    const h = bedroomHearth(WALL_V, 107);
+    this.onWall(h.obj, 's', HEARTH_X);
+    // the flames stay live: keep them out of the merge, straight in the room
+    for (const f of h.flames) f.userData.noBatch = true;
+    this.decor.add(h.obj);
+    this.room.updateMatrixWorld(true);
+    const fire = new THREE.Vector3(h.fire.x, h.fire.y, h.fire.z).applyMatrix4(h.obj.matrixWorld);
+    this.hearth = { x: HEARTH_X * T, z: D * T, fire, update: h.update, flames: h.flames, candles: h.candles.map((c) => new THREE.Vector3(c.x, c.y, c.z).applyMatrix4(h.obj.matrixWorld)) };
+    // its collision (meters): the surround and the irons' stand
+    this.hearthBoxes = [[HEARTH_X * T - 0.62, 0, D * T - 0.36, HEARTH_X * T + 0.62, CEIL, D * T], [HEARTH_X * T + 0.62, 0, D * T - 0.6, HEARTH_X * T + 0.78, 0.55, D * T - 0.36]];
   }
 
   buildLedge(x0, x1, y) {
@@ -586,6 +571,21 @@ function sconce() {
   sgl.box(3, 2, 8, 9, 13, 9, (xx, y) => (y > 9 ? 0xffd890 : 0xffb24a));
   sgl.box(6, 5, 11, 3, 5, 3, 0xfff2c0);
   return group(M32(sg, [7, 0, 0]), G32(sgl, [7, 0, 0]));
+}
+
+/**
+ * A toon material showing a baked texture (and glowing a little with it: the bake reads in the
+ * corners too). The maps are set after creation: voxelMaterial keys its cache on JSON of its
+ * options, which would serialise a texture texel by texel.
+ */
+function texturedToon(tex, glow = 0.12) {
+  const m = voxelMaterial('toon', { unique: true });
+  m.map = tex;
+  m.emissive.setHex(0xffffff);
+  m.emissiveMap = tex;
+  m.emissiveIntensity = glow;
+  m.needsUpdate = true;
+  return m;
 }
 
 /** Merge indexed geometries with the same attributes (position, normal, color). */

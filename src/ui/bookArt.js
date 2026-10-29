@@ -135,6 +135,14 @@ function tabIcon(kind) {
     p.hl(6, 10, 5, 0xdcae4e); p.hl(6, 9, 7, 0xdcae4e);
     p.rect(9, 12, 2, 3, RED);
     p.outline(L.ol);
+  } else if (kind === 'lore') {
+    // an old tome with a carved star on its cover and a teal rune ribbon
+    p.rect(3, 2, 10, 12, 0x3a5a6a); p.rect(3, 2, 2, 12, 0x24404c);
+    p.rect(12, 3, 2, 10, P.base); p.vl(13, 3, 12, P.mid);
+    for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; p.set(Math.round(8.5 + Math.cos(a) * 2), Math.round(7.5 + Math.sin(a) * 2), 0xf2c23a); }
+    p.set(8, 7, 0xffe8a0); p.set(9, 8, 0xe8708a);
+    p.rect(6, 12, 2, 3, 0x3cc8d8);
+    p.outline(L.ol);
   } else if (kind === 'notes') {
     // a note pinned with a red tack
     p.poly([[3, 3], [13, 2], [14, 13], [4, 14]], P.base);
@@ -219,6 +227,14 @@ function giver(id) {
     for (const [x, y] of [[6, 9], [8, 7], [9, 10], [11, 8], [7, 11], [10, 6]]) { p.disk(x, y, 1.6, 0x5a9a3a); p.set(x, y - 1, 0x8ac85a); }
     p.line(7, 12, 11, 6, 0x3a6a24);
     p.outline(SEPIA);
+  } else if (id !== 'outpost') {
+    // a Deep Town neighbour: a mound house with a round door, a lamp and a curl of smoke
+    p.ellipse(13, 19, 11, 7, 0x8a6a4a); p.rect(2, 19, 23, 6, 0x8a6a4a); p.ellipse(13, 17, 10, 5, 0x6a9a4a);
+    p.disk(13, 21, 3.4, 0x5a3a1e); p.rect(10, 21, 7, 4, 0x5a3a1e); p.set(15, 21, 0xdcae4e);
+    p.disk(20, 18, 1.6, 0xf6be4a); p.set(20, 17, 0xffe8a0);
+    p.vl(6, 9, 13, 0x7a4a3a); p.rect(5, 12, 3, 2, 0x7a4a3a);
+    for (const [x, y] of [[7, 7], [6, 5], [7, 3], [8, 2]]) p.set(x, y, 0x9a9aa8);
+    p.outline(SEPIA);
   } else {
     // the outpost: a lantern under a pennant
     p.vl(6, 2, 23, 0x6a4a2a); p.poly([[7, 3], [16, 6], [7, 9]], RED);
@@ -256,12 +272,29 @@ function pin(kind) {
     p.vl(5, 10, 11, 0x9a8a78); p.vl(7, 10, 11, 0x9a8a78);
   } else if (kind === 'heart') {
     p.disk(4, 5, 2.6, 0xe8604a); p.disk(8, 5, 2.6, 0xe8604a); p.poly([[1.5, 6], [10.5, 6], [6, 12]], 0xe8604a); p.set(3, 3, 0xff9a7a);
+  } else if (kind === 'quest') {
+    // the waypoint: a brass-rimmed gold diamond with a red heart-of-the-matter
+    p.poly([[6, 0], [11.5, 6.5], [6, 13], [0.5, 6.5]], 0xa8772c);
+    p.poly([[6, 2], [9.8, 6.5], [6, 11], [2.2, 6.5]], 0xf2c23a);
+    p.poly([[6, 2], [6, 6.5], [2.2, 6.5]], 0xffe8a0);
+    p.disk(6, 6.5, 1.5, 0xc23c2c); p.set(5, 6, 0xff9a7a);
   }
   p.outline(0x2a1408);
   return p;
 }
 
+/** An open eye (12×9): the "take a good look" goals. */
+function eye() {
+  const p = new Px(13, 10);
+  p.ellipse(6.5, 5, 6, 3.2, 0xf6f0e0);
+  p.disk(6.5, 5, 2.4, 0x3a6a8a); p.disk(6.5, 5, 1.2, 0x140c0a); p.set(5, 4, 0xffffff);
+  p.hl(2, 10, 1, SEPIA); p.hl(1, 2, 2, SEPIA); p.hl(10, 11, 2, SEPIA);
+  p.outline(SEPIA);
+  return p;
+}
+
 export const BART = {
+  eye: () => art('b:eye', eye),
   strip: () => art('b:strip', strip),
   quill: () => art('b:quill', quill),
   stamp: (c) => art('b:stamp' + (c || ''), () => stamp(c || RED)),

@@ -1,8 +1,8 @@
-// Old Star's workshop, prop by prop, at 1/64 m voxels (1/32 of a tile; the room group is scaled to
+// Old Star's smithy, prop by prop, at 1/64 m voxels (1/32 of a tile; the room group is scaled to
 // meters): his forge (a fieldstone hearth with a glowing coal bed, an iron hood and a chimney pipe
-// up into the rock), the big leather bellows, the anvil on its stump, the stone quench trough and
-// the bucket he throws, the tool rack, his cot, the cooking hearth (a ring of stones, a tripod and
-// a pot, the kettle), a table and stools, shelves of jars, drying herbs and a coal heap.
+// up through the roof), the big leather bellows, the anvil on its stump, the stone quench trough
+// and his bucket, the tool rack, a cot, a campfire hearth (a ring of stones, a tripod and a pot, the
+// kettle), a table and stools, shelves of jars, drying herbs and a coal heap.
 // Conventions (as tavernProps.js): floor pieces are centred at their foot with the front toward
 // +z; wall pieces have x along the wall, origin on the wall at floor level, +z out of the wall.
 // Returns { obj, ...parts }; points in `lights` are local tile units.

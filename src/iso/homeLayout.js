@@ -1,9 +1,10 @@
-// Home placement rules: footprints, occupancy, and what may go where. Your room (the back room of
-// Old Star's tavern) is a grid of tiles (W × D, see roomSize); in first person every one of its
-// four walls is real, so wall pieces hang on any wall: rotation r picks the wall (0 north, 1 west,
-// 2 south, 3 east), and floor pieces that stand against a wall (fireplace, bookshelf, clock) do the
-// same. A few spots are kept clear: the archway down to the tavern hall in the north wall, the
-// build bench and the floor in front of every old tunnel mouth.
+// Home placement rules: footprints, occupancy, and what may go where. Your room (the bedroom up
+// the steps from Old Star's house) is a grid of tiles (W × D, see roomSize); in first person every
+// one of its four walls is real, so wall pieces hang on any wall: rotation r picks the wall (0
+// north, 1 west, 2 south, 3 east), and floor pieces that stand against a wall (fireplace,
+// bookshelf, clock) do the same. A few spots are kept clear: the doorway down to the house in the
+// north wall, the bedroom's own hearth in the south wall, the build bench and the floor in front of
+// every old tunnel mouth.
 import { FURNITURE } from '../data/furniture.js';
 import { ROOM_SIZES } from '../data/weapons.js';
 
@@ -15,8 +16,11 @@ export const TALL_WALL = new Set(['bookshelf', 'clock', 'fireplace']);
 export const POSTER_SLOTS = [1, 2];
 /** West-wall slot holding the round window into the crystal cave. */
 export const WINDOW_SLOTS = [2];
-/** North-wall slots taken by the archway down the steps into the tavern hall (centre x = 5 tiles). */
+/** North-wall slots taken by the doorway down the steps into the house (centre x = 5 tiles). */
 export const ARCH_SLOTS = [4, 5];
+/** South-wall slots taken by the bedroom's hearth (centre x = 6.5 tiles), and the floor in front of it. */
+export const HEARTH_SLOTS = [5, 6, 7];
+export const HEARTH_X = 6.5;
 
 export function roomSize(level) {
   return ROOM_SIZES[Math.max(0, Math.min(ROOM_SIZES.length - 1, level | 0))];
@@ -38,7 +42,7 @@ export const TUNNEL_SLOTS = { n: new Set(), w: new Set(), s: new Set(), e: new S
 /** Slots nothing else may use, per wall. */
 export function reservedW() { return [...WINDOW_SLOTS, ...TUNNEL_SLOTS.w]; }
 export function reservedN() { return [...POSTER_SLOTS, ...ARCH_SLOTS, ...TUNNEL_SLOTS.n]; }
-export function reservedS() { return [...TUNNEL_SLOTS.s]; }
+export function reservedS() { return [...HEARTH_SLOTS, ...TUNNEL_SLOTS.s]; }
 export function reservedE(W, D) { const b = benchTiles(W, D); return [b.y, b.y + 1, ...TUNNEL_SLOTS.e]; }
 const RESERVED = { n: (W, D) => reservedN(), w: reservedW, s: reservedS, e: reservedE };
 /** Wall for a wall-piece rotation, and the rotation that faces into the room from a wall. */
@@ -49,7 +53,8 @@ export const R_OF_WALL = { n: 0, w: 1, s: 2, e: 3 };
 export function fixedTiles(W, D) {
   const out = new Map();
   const put = (x, y, why) => out.set(x + ',' + y, why);
-  for (const k of ARCH_SLOTS) { put(k, 0, 'Keep the way to the tavern clear'); put(k, 1, 'Keep the way to the tavern clear'); }
+  for (const k of ARCH_SLOTS) { put(k, 0, 'Keep the way downstairs clear'); put(k, 1, 'Keep the way downstairs clear'); }
+  for (const k of HEARTH_SLOTS) put(k, D - 1, 'That\'s the hearth');
   const B = benchTiles(W, D);
   for (let y = B.y; y < B.y + B.d; y++) put(B.x, y, 'That\'s the build bench');
   for (const k of TUNNEL_SLOTS.n) put(k, 0, 'Keep the tunnel clear');

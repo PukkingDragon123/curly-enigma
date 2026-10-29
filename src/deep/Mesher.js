@@ -1,6 +1,11 @@
-// Greedy chunk mesher with per-vertex ambient occlusion. Faces merge when material and all four
-// corner AO values match; per-voxel color variation happens in the shader (by world position), so
-// big flat walls stay a handful of quads. Solid faces and fluid surfaces come out separately.
+// Greedy chunk mesher with per-vertex ambient occlusion. Faces merge when material, all four
+// corner AO values and the voxel's open sides match; per-voxel color variation happens in the
+// shader (by world position), so big flat walls stay a handful of quads. Solid faces and fluid
+// surfaces come out separately.
+//   solid vdata: face (0..5), material, corner AO (0..3), bits: 1 = flipped diagonal, 2..16 = the
+//   voxel's convex edges along the shader's face axes (-t1, +t1, -t2, +t2; t1 = x, or z on x faces,
+//   t2 = y, or z on y faces): the neighbour in the face's own layer is open, so the surface turns
+//   away there and the shader can bevel that texel row.
 import * as THREE from 'three';
 import { CS } from './Generator.js';
 import { MAT } from './materials.js';
@@ -15,6 +20,9 @@ for (let m = 1; m < 256; m++) {
 export { OPAQUE, FLUID };
 
 const ao = (x, y, z) => (x && y ? 0 : 3 - x - y - z);
+let EDGES = true;
+/** Convex-edge flags on (default) or off (test hook: fewer, bigger quads without them). */
+export function setEdgeFlags(on) { EDGES = !!on; }
 
 // face directions: 0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z
 const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -74,6 +82,8 @@ export function meshSolidRaw(pad) {
     const [d, u, w] = AX[f];
     const nd = DIRS[f][d];
     const sd = stride[d], su = stride[u], sw = stride[w];
+    // the shader's face axes (TerrainMaterial: t1 = x unless on an x face, t2 = y unless on a y face)
+    const e1 = stride[d === 0 ? 2 : 0], e2 = stride[d === 1 ? 2 : 1];
     for (let s = 0; s < CS; s++) {
       // build the mask for slice s
       let any = false;
@@ -90,6 +100,7 @@ export function meshSolidRaw(pad) {
           const c00 = OPAQUE[pad[b - su - sw]], c10 = OPAQUE[pad[b + su - sw]], c01 = OPAQUE[pad[b - su + sw]], c11 = OPAQUE[pad[b + su + sw]];
           const a00 = ao(s1, t1, c00), a10 = ao(s2, t1, c10), a01 = ao(s1, t2, c01), a11 = ao(s2, t2, c11);
           key = ma | (a00 << 8) | (a10 << 10) | (a01 << 12) | (a11 << 14) | (1 << 16);
+          if (EDGES) key |= (!OPAQUE[pad[a - e1]] | (!OPAQUE[pad[a + e1]] << 1) | (!OPAQUE[pad[a - e2]] << 2) | (!OPAQUE[pad[a + e2]] << 3)) << 20;
         }
         mask[i + j * CS] = key;
         if (key) any = true;
@@ -107,7 +118,7 @@ export function meshSolidRaw(pad) {
           hgt++;
         }
         for (let jj = 0; jj < hgt; jj++) for (let k = 0; k < wdt; k++) mask[i + k + (j + jj) * CS] = 0;
-        emit(key >> 16 === 2 ? fluidOut : solidOut, f, d, u, w, nd, s, i, j, wdt, hgt, key);
+        emit(((key >> 16) & 3) === 2 ? fluidOut : solidOut, f, d, u, w, nd, s, i, j, wdt, hgt, key);
         i += wdt;
       }
     }
@@ -119,7 +130,7 @@ function emit(out, f, d, u, w, nd, s, i, j, wdt, hgt, key) {
   if (out.n + 1 > out.cap) out.grow();
   const q = out.n++;
   const plane = nd > 0 ? s + 1 : s;
-  const fluid = (key >> 16) === 2;
+  const fluid = ((key >> 16) & 3) === 2;
   for (let c = 0; c < 4; c++) {
     const cu = c === 1 || c === 2 ? i + wdt : i, cw = c >= 2 ? j + hgt : j;
     const aoc = c === 0 ? (key >> 8) & 3 : c === 1 ? (key >> 10) & 3 : c === 2 ? (key >> 14) & 3 : (key >> 12) & 3;
@@ -129,8 +140,9 @@ function emit(out, f, d, u, w, nd, s, i, j, wdt, hgt, key) {
     out.dat[od] = f;
     out.dat[od + 1] = key & 255;
     out.dat[od + 2] = fluid ? 3 : aoc;
-    // flip the quad diagonal when AO is anisotropic (stored on every vertex of the quad)
-    out.dat[od + 3] = !fluid && ((key >> 8) & 3) + ((key >> 14) & 3) < ((key >> 10) & 3) + ((key >> 12) & 3) ? 1 : 0;
+    // flip the quad diagonal when AO is anisotropic (stored on every vertex of the quad), and the
+    // convex-edge bits
+    out.dat[od + 3] = (!fluid && ((key >> 8) & 3) + ((key >> 14) & 3) < ((key >> 10) & 3) + ((key >> 12) & 3) ? 1 : 0) | (((key >> 20) & 15) << 1);
   }
 }
 
@@ -141,7 +153,7 @@ function toRaw(out) {
   // AX orders the in-plane axes so corners 0→1→2→3 wind outward; the flip bit picks the diagonal
   for (let q = 0; q < out.n; q++) {
     const v = q * 4, o = q * 6;
-    if (out.dat[v * 4 + 3]) { idx[o] = v + 1; idx[o + 1] = v + 2; idx[o + 2] = v + 3; idx[o + 3] = v + 1; idx[o + 4] = v + 3; idx[o + 5] = v; }
+    if (out.dat[v * 4 + 3] & 1) { idx[o] = v + 1; idx[o + 1] = v + 2; idx[o + 2] = v + 3; idx[o + 3] = v + 1; idx[o + 4] = v + 3; idx[o + 5] = v; }
     else { idx[o] = v; idx[o + 1] = v + 1; idx[o + 2] = v + 2; idx[o + 3] = v; idx[o + 4] = v + 2; idx[o + 5] = v + 3; }
   }
   return { pos: out.pos.slice(0, nv * 3), dat: out.dat.slice(0, nv * 4), idx };

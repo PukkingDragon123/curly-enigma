@@ -26,7 +26,8 @@
 // lands on p with orientation q; k 0..1 blends from the normal poses), vm.jaw (tongs opening
 // 0..1), and update() option `work` (or vm.work) = { pos (view space), color, intensity } for a
 // light on the paws from the fire or hot metal. vm.toView(worldPoint, worldCamera, out) maps a world point
-// into view space so a paw drawn there sits exactly over it.
+// into view space so a paw drawn there sits exactly over it. vm.drive.shoulder = { R: [x, y, z], L }
+// (optional, view space) is where a steered forearm comes from (gathering: from the side, clear of the plant).
 import * as THREE from 'three';
 import { SkinAssembler, scaleVisible, charMaterial } from '../gfx/char/skin.js';
 import {
@@ -781,7 +782,12 @@ export class ViewModel {
     _v2.set(S.x * side, S.y, S.z);
     // reaching out to steered work, the arm comes up from lower down (it stays out of the way)
     // and is drawn a little slimmer
-    if (this.driveK > 0) _v2.lerp(_up.set(Math.max(0.42, S.x) * side, S.y * 1.7, S.z + 0.2), this.driveK);
+    // (a drive may say where its shoulders are instead: vm.drive.shoulder = { R: [x, y, z], L })
+    if (this.driveK > 0) {
+      const sh = this.drive?.shoulder?.[side > 0 ? 'R' : 'L'];
+      if (sh) _up.set(sh[0], sh[1], sh[2]); else _up.set(Math.max(0.42, S.x) * side, S.y * 1.7, S.z + 0.2);
+      _v2.lerp(_up, this.driveK);
+    }
     const thin = 1 - 0.22 * this.driveK;
     arm.scale.set(thin, thin, 1);
     arm.position.copy(_v);

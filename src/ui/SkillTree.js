@@ -14,6 +14,7 @@ import { canUnlock, nodeState, unlock, respec, respecCost, spentIn, fxOf, lineIn
 import { nodeURL, lineSealURL, lineBigURL, tokenURL, selRingURL, pipURL, NODE_PX } from './skillArt.js';
 import { SPR } from './uiSprites.js';
 import { mixHex } from './uiArt.js';
+import { DL, installDialogArt } from './dialogArt.js';
 import { put } from './common.js';
 import './skilltree.css';
 
@@ -655,43 +656,100 @@ export function installSkillFeedback(ui) {
     else ui.openSkills(line);
   };
 
-  // ---- the XP ribbon (slides in by the left edge when a line learns something)
+  // ---- the level plaque (slides in by the left edge when a line learns something): a carved oak
+  // plaque, the line's seal in a milled brass ring, its name and level, a brass-rimmed glass tube
+  // the XP fills like liquid (a shine rolling over it, the new part glowing), a paper tag with +N.
+  // Levelling up: a ribbon swings down ("Level up!"), the seal stamps, sparks burst, the tube floods.
+  installDialogArt();
+  const hex = (c) => '#' + (c >>> 0).toString(16).padStart(6, '0');
   const chipSeal = el('img', { class: 'pix', alt: '' });
-  const chipBar = el('i');
-  const chipLv = el('em');
-  const chipN = el('b');
-  const chip = el('div', { class: 'sk-chip', 'aria-hidden': 'true' }, [chipSeal, el('div', { class: 'sk-chip-t' }, [el('div', { class: 'sk-chip-bar' }, [chipBar]), chipLv]), chipN]);
+  const chipMedal = el('div', { class: 'sk-chip-medal' }, [chipSeal]);
+  const chipName = el('em');
+  const chipLvN = el('span', { class: 'sk-chip-lv' });
+  const chipFill = el('i', { class: 'sk-chip-fill' }, [el('i', { class: 'sk-chip-shine' })]);
+  const chipGain = el('i', { class: 'sk-chip-gain' });
+  const chipBar = el('div', { class: 'sk-chip-bar' }, [chipGain, chipFill, el('i', { class: 'sk-chip-glass' })]);
+  const chipN = el('b', { class: 'sk-chip-n' });
+  const chipRibbon = el('div', { class: 'sk-chip-ribbon' }, [el('span', {}, 'Level up!')]);
+  const chipBurst = el('div', { class: 'sk-chip-burst' });
+  const chip = el('div', { class: 'sk-chip', 'aria-hidden': 'true' }, [
+    chipRibbon, chipMedal,
+    el('div', { class: 'sk-chip-t' }, [el('div', { class: 'sk-chip-head' }, [chipName, chipLvN]), chipBar]),
+    chipN, chipBurst,
+  ]);
   ui.hud.append(chip);
   const acc = {};
-  let chipT = 0, chipLine = null, chipShown = 0;
+  let chipT = 0, chipLine = null, chipShown = 0, chipFrac = 0, lvlT = 0;
+  const burst = (host, n = 12, r = 22) => {
+    host.textContent = '';
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random() * 0.4, d = r * (0.6 + Math.random() * 0.6);
+      host.append(el('img', { class: 'pix sk-spark', src: DL.spark(i), alt: '', style: { '--dx': (Math.cos(a) * d).toFixed(1), '--dy': (Math.sin(a) * d).toFixed(1), '--sd': (Math.random() * 0.12).toFixed(2) + 's' } }));
+    }
+  };
+  const setFill = (frac, instant = false) => {
+    if (instant) { chipFill.style.transition = 'none'; chipFill.style.width = (frac * 100).toFixed(1) + '%'; void chipFill.offsetWidth; chipFill.style.transition = ''; }
+    else chipFill.style.width = (frac * 100).toFixed(1) + '%';
+  };
   const showChip = (line, n, lvl = false) => {
     const L = LINE[line];
     const info = lineInfo(st, line);
-    if (chipLine !== line) { chipSeal.src = lineSealURL(L); chip.style.setProperty('--lc', L.ink); chipShown = 0; }
+    const fresh = chipLine !== line || !chip.classList.contains('show');
+    if (chipLine !== line) {
+      chipSeal.src = lineSealURL(L);
+      chip.style.setProperty('--lc', L.ink);
+      chip.style.setProperty('--l1', hex(L.pal[0])); chip.style.setProperty('--l2', hex(L.pal[1])); chip.style.setProperty('--l3', hex(L.pal[2])); chip.style.setProperty('--l4', hex(L.pal[3]));
+      chipShown = 0;
+      setFill(info.frac, true);
+      chipFrac = info.frac;
+    }
     chipLine = line;
     chipShown += n;
+    chipName.textContent = L.name;
+    chipLvN.textContent = String(info.level);
     chipN.textContent = lvl ? `Lv ${info.level}!` : `+${Math.max(1, Math.round(chipShown))}`;
-    chipLv.textContent = `${L.name} ${info.level}`;
-    chipBar.style.width = (info.frac * 100).toFixed(1) + '%';
+    clearTimeout(lvlT);
+    if (lvl) {
+      // the tube floods to the brim, flashes, and starts over at the new level
+      setFill(1);
+      lvlT = setTimeout(() => { chip.classList.add('flood'); setFill(info.frac, true); chipFrac = info.frac; setTimeout(() => chip.classList.remove('flood'), 500); }, 650);
+      burst(chipBurst, 14, 24);
+      chip.classList.remove('lvl'); void chip.offsetWidth;
+    } else {
+      // the new part glows where it came in
+      const from = fresh ? Math.max(0, info.frac - 0.06) : chipFrac;
+      if (info.frac > from) {
+        chipGain.style.left = (from * 100).toFixed(1) + '%';
+        chipGain.style.width = ((info.frac - from) * 100).toFixed(1) + '%';
+        chipGain.classList.remove('on'); void chipGain.offsetWidth; chipGain.classList.add('on');
+      }
+      setFill(info.frac);
+      chipFrac = info.frac;
+    }
     chip.classList.add('show');
     chip.classList.toggle('lvl', lvl);
     chip.classList.remove('tick'); void chip.offsetWidth; chip.classList.add('tick');
     clearTimeout(chipT);
-    chipT = setTimeout(() => { chip.classList.remove('show'); chipShown = 0; }, lvl ? 3400 : 2400);
+    chipT = setTimeout(() => { if (keepChip) return; chip.classList.remove('show'); chipShown = 0; }, lvl ? 3800 : 2600);
   };
+  // test hook: ui.levelPlaque.show(line, n, levelUp), .keep(true) holds it up (screenshots)
+  let keepChip = false;
+  ui.levelPlaque = { el: chip, show: (line = 'mining', n = 10, lvl = false) => showChip(line, n, lvl), keep: (on = true) => { keepChip = !!on; if (!on) chip.classList.remove('show'); } };
 
-  // ---- level-up note (a pinned toast with the line's seal pressing in)
+  // ---- level-up card (a wooden plaque pinned to the toasts: a ribbon, the line's big seal stamping in, sparks)
   const levelToast = (e) => {
     const L = LINE[e.line];
     const big = e.level % 5 === 0;
+    const sparks = el('div', { class: 'sk-chip-burst' });
     const t = el('div', { class: 'toast good sk-toast' + (big ? ' big' : ''), role: 'status', title: 'Open your skills' }, [
-      el('img', { class: 'pix toast-tack', src: SPR.tack(0x5a9a3a), alt: '' }),
-      el('img', { class: 'pix sk-toast-seal', src: lineSealURL(L), alt: '' }),
+      el('div', { class: 'sk-toast-ribbon' }, [el('span', {}, big ? `Level ${e.level}!` : 'Level up!')]),
+      el('div', { class: 'sk-toast-medal' }, [el('img', { class: 'pix sk-toast-seal', src: lineBigURL(L), alt: '' }), sparks]),
       el('span', { class: 'toast-text', html: `<b>${L.name}</b> is now <b>level ${e.level}</b>!<small>+${e.points} skill point${e.points > 1 ? 's' : ''} · ${isTouch() ? 'tap to spend' : '<kbd>B</kbd> to spend'}</small>` }),
     ]);
     t.style.setProperty('--lc', L.ink);
     t.addEventListener('click', () => openTree(e.line));
     ui.toasts.append(t);
+    setTimeout(() => burst(sparks, big ? 16 : 10, big ? 30 : 22), 260);
     while (ui.toasts.children.length > 4) ui.toasts.firstChild.remove();
     setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 360); }, big ? 5200 : 4200);
   };
@@ -740,6 +798,7 @@ export function installSkillFeedback(ui) {
       acc[e.line] = 0;
       showChip(e.line, 0, true);
       game.audio.play('sk_level');
+      setTimeout(() => game.audio.play('sparkle', { vol: 0.6 }), 320);
       levelToast(e);
       const s = st.data.skills;
       if (s) s.nudge = st.data.playTime || 0; // the toast is the nudge

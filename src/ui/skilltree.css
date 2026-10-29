@@ -231,30 +231,80 @@
 }
 
 /* ---------- feedback anywhere ---------- */
+/* the level plaque: carved oak, the line's seal in a milled brass ring, a brass-rimmed XP tube */
 .sk-chip {
   position: absolute; z-index: 5; left: calc(var(--sal) + var(--px) * 4); top: 40%; display: flex; align-items: center; gap: calc(var(--px) * 2);
-  border-style: solid; border-width: calc(var(--px) * 5); border-image: var(--a-note) 5 / calc(var(--px) * 5) repeat; background: #f8ecd2 padding-box;
-  padding: 0 calc(var(--px) * 1); color: var(--ink); pointer-events: none;
-  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .4));
-  transform: translateX(calc(-100% - var(--px) * 12)) rotate(-2deg); opacity: 0; transition: transform .35s var(--pop), opacity .25s;
+  border-style: solid; border-width: calc(var(--px) * 7); border-image: var(--dl-plaque) 7 fill / calc(var(--px) * 7) repeat;
+  padding: 0 calc(var(--px) * 1) 0 0; margin-left: 0; color: #ffe6b0; pointer-events: none;
+  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .45));
+  transform: translateX(calc(-100% - var(--px) * 16)) rotate(-2deg); opacity: 0; transition: transform .4s var(--pop), opacity .25s;
 }
 .sk-chip.show { transform: translateX(0) rotate(-1deg); opacity: 1; }
-.sk-chip > img { width: calc(var(--px) * 13); height: calc(var(--px) * 13); }
-.sk-chip.tick > img { animation: skBump .35s var(--pop); }
-.sk-chip-t { display: flex; flex-direction: column; gap: calc(var(--px) * 1); }
-.sk-chip-bar { position: relative; width: calc(var(--px) * 34); height: calc(var(--px) * 3); background: rgba(110, 74, 42, .15); box-shadow: 0 0 0 var(--px) #5a3a20; }
-.sk-chip-bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--lc, #8a5a32); transition: width .45s var(--soft); }
-.sk-chip-t em { font-style: normal; font-size: 8px; line-height: 1; color: #8a6a48; white-space: nowrap; }
-.sk-chip > b { font-weight: 400; color: var(--lc, #6a2a14); white-space: nowrap; min-width: calc(var(--px) * 9); }
-.sk-chip.lvl > b { font-family: var(--font-head); font-size: var(--fs-h); line-height: 1; animation: skBump .5s var(--pop); }
+.sk-chip-medal { position: relative; flex: none; width: calc(var(--px) * 21); height: calc(var(--px) * 21); margin: calc(var(--px) * -4) 0 calc(var(--px) * -4) calc(var(--px) * -4); background: var(--dl-medal) 0 0 / 100% 100%; }
+.sk-chip-medal > img { position: absolute; left: calc(var(--px) * 4); top: calc(var(--px) * 4); width: calc(var(--px) * 13); height: calc(var(--px) * 13); }
+.sk-chip.tick .sk-chip-medal > img { animation: skBump .35s var(--pop); }
+.sk-chip-t { display: flex; flex-direction: column; gap: calc(var(--px) * 1); min-width: calc(var(--px) * 62); }
+.sk-chip-head { display: flex; align-items: baseline; justify-content: space-between; gap: calc(var(--px) * 3); line-height: 1; }
+.sk-chip-head em { font-style: normal; font-family: var(--font-head); font-size: var(--fs-h); line-height: calc(var(--px) * 8); color: #ffe6b0; text-shadow: 0 var(--px) 0 #2a1408; white-space: nowrap; }
+.sk-chip-lv { font-size: var(--fs); line-height: 1; color: #2a1408; white-space: nowrap; padding: 0 calc(var(--px) * 2); background: linear-gradient(#fff3c0 0 var(--px), #f2c23a var(--px) calc(100% - var(--px)), #a8772c calc(100% - var(--px))); box-shadow: 0 0 0 var(--px) #3a2410; }
+.sk-chip-lv::before { content: 'Lv '; }
+/* the XP tube: brass rim, dark glass, liquid in the line's colours with a shine rolling across */
+.sk-chip-bar { position: relative; width: calc(var(--px) * 62); height: calc(var(--px) * 12); box-sizing: border-box;
+  border-style: solid; border-width: calc(var(--px) * 3); border-image: var(--dl-tube) 3 fill / calc(var(--px) * 3) repeat; }
+.sk-chip-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; overflow: hidden; transition: width .55s var(--soft);
+  background: repeating-linear-gradient(90deg, transparent 0 calc(var(--px) * 5), rgba(255, 255, 255, .16) calc(var(--px) * 5) calc(var(--px) * 6)) 0 0 / calc(var(--px) * 12) 100%,
+    linear-gradient(to bottom, var(--l1, #f0c890) 0 var(--px), var(--l2, #c08850) var(--px) calc(var(--px) * 3), var(--l3, #93602e) calc(var(--px) * 3) calc(var(--px) * 5), var(--l4, #623c1a) calc(var(--px) * 5));
+  animation: skFlow 1.2s steps(6) infinite; }
+@keyframes skFlow { to { background-position: calc(var(--px) * 12) 0, 0 0; } }
+.sk-chip-fill::after { content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: var(--px); background: #fffbe0; box-shadow: calc(var(--px) * -1) 0 0 var(--l1, #f0c890); }
+.sk-chip-shine { position: absolute; top: 0; bottom: 0; left: -30%; width: calc(var(--px) * 4); background: rgba(255, 250, 220, .5); transform: skewX(-25deg); animation: skShine 2.6s steps(26) infinite; }
+@keyframes skShine { 0%, 40% { left: -30%; } 100% { left: 130%; } }
+.sk-chip-gain { position: absolute; top: 0; bottom: 0; width: 0; background: #fff6c8; opacity: 0; pointer-events: none; }
+.sk-chip-gain.on { animation: skGain .9s ease-out; }
+@keyframes skGain { 0% { opacity: .9; } 100% { opacity: 0; } }
+.sk-chip-glass { position: absolute; left: 0; right: 0; top: 0; height: var(--px); background: rgba(255, 255, 255, .28); pointer-events: none; }
+.sk-chip.flood .sk-chip-bar { animation: skFlood .5s ease-out; }
+@keyframes skFlood { 0% { filter: brightness(2) saturate(1.4); } 100% { filter: none; } }
+/* the +N on a paper tag hanging off the plaque */
+.sk-chip-n { position: relative; flex: none; font-weight: 400; color: var(--ink); white-space: nowrap; min-width: calc(var(--px) * 9); text-align: center;
+  border-style: solid; border-width: calc(var(--px) * 5); border-image: var(--a-note) 5 / calc(var(--px) * 5) repeat; background: #f8ecd2 padding-box;
+  margin: calc(var(--px) * -5) calc(var(--px) * -4) calc(var(--px) * -5) 0; padding: 0 var(--px); transform: rotate(4deg); }
+.sk-chip.tick .sk-chip-n { animation: skTag .45s var(--pop); }
+@keyframes skTag { 30% { transform: rotate(-6deg) translateY(calc(var(--px) * -2)); } }
+.sk-chip.lvl .sk-chip-n { color: #7a2e14; font-family: var(--font-head); font-size: var(--fs-h); line-height: calc(var(--px) * 9); }
+/* levelling up: the ribbon swings down, the seal stamps, sparks fly, the plaque glows */
+.sk-chip-ribbon { position: absolute; left: 50%; top: calc(var(--px) * -21); z-index: 2; box-sizing: border-box; height: calc(var(--px) * 16); min-width: calc(var(--px) * 46);
+  border-style: solid; border-width: 0 calc(var(--px) * 10); border-image: var(--dl-ribbon) 0 10 fill / 0 calc(var(--px) * 10) repeat;
+  display: flex; justify-content: center; transform: translateX(-50%) translateY(calc(var(--px) * -6)) rotate(-8deg); transform-origin: 50% 0; opacity: 0; pointer-events: none;
+  filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 6, .5)); }
+.sk-chip-ribbon span { font-family: var(--font-head); font-size: var(--fs-h); line-height: calc(var(--px) * 12); color: #ffe6a8; white-space: nowrap; text-shadow: 0 var(--px) 0 #3a0f0a; }
+.sk-chip.lvl .sk-chip-ribbon { animation: skRibbon .7s var(--pop) .1s forwards; }
+@keyframes skRibbon { 0% { opacity: 0; transform: translateX(-50%) translateY(calc(var(--px) * -8)) rotate(-8deg); } 55% { opacity: 1; transform: translateX(-50%) rotate(3deg); } 80% { transform: translateX(-50%) rotate(-1.5deg); } 100% { opacity: 1; transform: translateX(-50%) rotate(0); } }
+.sk-chip.lvl .sk-chip-medal > img { animation: skStampMini .6s cubic-bezier(.3, 1.5, .5, 1) both; }
+.sk-chip.lvl { filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .45)) drop-shadow(0 0 calc(var(--px) * 3) rgba(255, 214, 110, .75)); }
+.sk-chip.lvl .sk-chip-head em { animation: skBump .5s var(--pop) .15s; }
+.sk-chip-burst { position: absolute; left: calc(var(--px) * 3.5); top: 50%; width: 0; height: 0; pointer-events: none; z-index: 3; }
+.sk-spark { position: absolute; left: calc(var(--px) * -3.5); top: calc(var(--px) * -3.5); width: calc(var(--px) * 7); height: calc(var(--px) * 7); opacity: 0;
+  animation: skSpark .85s cubic-bezier(.2, .8, .4, 1) var(--sd, 0s) both; }
+@keyframes skSpark { 0% { opacity: 1; transform: translate(0, 0) scale(.4); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(var(--dx) * var(--px)), calc(var(--dy) * var(--px))) scale(1) rotate(45deg); } }
 #ui[data-hud=none] .sk-chip, #ui.panel-open .sk-chip, #ui.focus .sk-chip { display: none; }
 @media (max-height: 500px) { .sk-chip { top: 30%; } }
 
+/* the level-up card pinned to the toasts: a carved plaque, a ribbon, the big seal in brass, sparks */
 .toast.sk-toast, .toast.sk-nudge { pointer-events: auto; cursor: pointer; }
+.toast.sk-toast { border-width: calc(var(--px) * 7); border-image: var(--dl-plaque) 7 / calc(var(--px) * 7) repeat;
+  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box; padding: calc(var(--px) * 4) calc(var(--px) * 3) calc(var(--px) * 1) calc(var(--px) * 1); margin-top: calc(var(--px) * 10); overflow: visible; }
+.sk-toast-ribbon { position: absolute; left: 50%; top: calc(var(--px) * -18); z-index: 2; box-sizing: border-box; height: calc(var(--px) * 16); min-width: calc(var(--px) * 46);
+  border-style: solid; border-width: 0 calc(var(--px) * 10); border-image: var(--dl-ribbon) 0 10 fill / 0 calc(var(--px) * 10) repeat; display: flex; justify-content: center;
+  transform: translateX(-50%); transform-origin: 50% 0; filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 6, .5)); animation: skRibbon .7s var(--pop) .15s both; }
+.sk-toast-ribbon span { font-family: var(--font-head); font-size: var(--fs-h); line-height: calc(var(--px) * 12); color: #ffe6a8; white-space: nowrap; text-shadow: 0 var(--px) 0 #3a0f0a; }
+.sk-toast.big .sk-toast-ribbon { border-image-source: var(--dl-ribbonGreen); }
+.sk-toast-medal { position: relative; flex: none; width: calc(var(--px) * 31); height: calc(var(--px) * 31); margin: calc(var(--px) * -4) 0 calc(var(--px) * -2) calc(var(--px) * -2); background: var(--dl-medalBig) 0 0 / 100% 100%; }
+.sk-toast-medal .sk-chip-burst { left: 50%; }
 .sk-toast .toast-text small { display: block; font-size: var(--fs); color: #6a5a3a; margin-top: var(--px); }
 .sk-toast .toast-text b:first-child { color: var(--lc); }
-.sk-toast-seal { flex: none; width: calc(var(--px) * 13); height: calc(var(--px) * 13); animation: skStampMini .55s cubic-bezier(.3, 1.5, .5, 1) .15s both; }
-.sk-toast.big .sk-toast-seal { width: calc(var(--px) * 26); height: calc(var(--px) * 26); }
+.sk-toast-seal { position: absolute; left: calc(var(--px) * 3.5); top: calc(var(--px) * 3.5); width: calc(var(--px) * 24); height: calc(var(--px) * 24); animation: skStampMini .55s cubic-bezier(.3, 1.5, .5, 1) .15s both; }
+.sk-toast.big .sk-toast-seal { animation-duration: .7s; }
 @keyframes skStampMini { 0% { transform: scale(2.2) rotate(-18deg); opacity: 0; } 45% { transform: scale(.85) rotate(4deg); opacity: 1; } 70% { transform: scale(1.08); } 100% { transform: none; } }
 .sk-toast kbd { font-size: 8px; }
 .sk-badge { position: absolute; right: calc(var(--px) * -5); bottom: calc(var(--px) * -3); width: calc(var(--px) * 9); height: calc(var(--px) * 9); pointer-events: none; animation: newBob 1.4s ease-in-out infinite; z-index: 2; }

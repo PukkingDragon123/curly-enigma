@@ -11,7 +11,7 @@ export const CELL = { unknown: 0, open: 1, water: 2, lava: 3, rock: 4 };
 const TAU = Math.PI * 2;
 
 export const MARK_COLOR = {
-  home: 0xffa04a, town: 0xffd76a, station: 0xf2c23a, stake: 0x9dff9a, enemy: 0xff4a3a, danger: 0xff3a2a, ore: 0xffd76a,
+  home: 0xffa04a, town: 0xffd76a, station: 0xf2c23a, stake: 0x9dff9a, enemy: 0xff4a3a, danger: 0xff3a2a, ore: 0xffd76a, quest: 0xffe24a,
 };
 export const LEVEL_GAP = 3; // meters above/below before a marker shows ▲ / ▼
 
@@ -86,6 +86,9 @@ export class Radar {
     if (this.pollT >= 0.1 || !this.data) {
       this.pollT = 0;
       const d = this.poll();
+      // the tracked objective (quests part: src/ui/QuestMarks.js)
+      const q = d && this.ui.questMarks?.radarMark?.();
+      if (q) d.markers = [...(d.markers || []), q];
       if (d) { this.data = d; this.updateTag(); }
     }
     if (!this.data) return;
@@ -195,7 +198,7 @@ export class Radar {
       const dist = Math.hypot(u, v);
       const color = m.color ?? MARK_COLOR[m.kind] ?? 0xffffff;
       if (dist > R - 2.5) {
-        if (m.kind === 'town' || m.kind === 'home') this.rimArrow(u / dist, v / dist, color);
+        if (m.kind === 'town' || m.kind === 'home' || (m.kind === 'quest' && Math.sin(this.time * 5) > -0.4)) this.rimArrow(u / dist, v / dist, color);
         continue;
       }
       const b = bright(u, v);
@@ -203,7 +206,8 @@ export class Radar {
       const cx = R + u, cy = R + v;
       const dy = (m.y ?? d.y) - d.y;
       if (m.kind === 'enemy' && Math.sin(this.time * 14) < -0.2) continue;
-      if (Math.abs(dy) > LEVEL_GAP && m.kind !== 'home' && m.kind !== 'town') { plotGlyph(p, dy > 0 ? 'up' : 'down', cx, cy, c, 0x020a05); continue; }
+      if (m.kind === 'quest' && Math.sin(this.time * 5) < -0.5) continue;
+      if (Math.abs(dy) > LEVEL_GAP && m.kind !== 'home' && m.kind !== 'town' && m.kind !== 'quest') { plotGlyph(p, dy > 0 ? 'up' : 'down', cx, cy, c, 0x020a05); continue; }
       const glyph = m.kind === 'ore' ? 'ore' : m.kind === 'enemy' ? 'enemy' : m.kind === 'stake' ? 'stake' : m.kind;
       plotGlyph(p, glyph, cx, cy, c, 0x020a05);
       if (Math.abs(dy) > LEVEL_GAP) plotGlyph(p, dy > 0 ? 'up' : 'down', cx + 4, cy - 2, c, 0x020a05);

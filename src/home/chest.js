@@ -1,4 +1,4 @@
-// Old Star's loot chest in his workshop: the first time you open it there's a proper start in it (a
+// Old Star's loot chest in his hall: the first time you open it there's a proper start in it (a
 // few coins, a chisel or a brush, glow stakes, snacks); after that he tucks a little something in
 // it most mornings. Opening it: the lock clicks, the lid creaks up, golden light spills out with a
 // shower of sparkles, and the things inside pop out one by one and fly into your backpack (coins

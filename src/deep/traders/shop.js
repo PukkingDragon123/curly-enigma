@@ -8,17 +8,15 @@
 // shops with panel: 'burrow' (one line in ui/ShopUI.js). Every trade emits an `act` event:
 // { type: 'buy', id, gold, from } · { type: 'sell', id, gold, to } (weapons add `weapon`) and
 // { type: 'talk', npc } when the counter opens.
-import * as THREE from 'three';
 import './shop.css';
 import { el, formatGoldFull, pick, makeRng, hashStr } from '../../core/util.js';
 import { iconURL, weaponIconURL } from '../../gfx/PixelArt.js';
 import { ITEMS, sellPrice, CAT_LABEL } from '../../data/items.js';
 import { SHOPS } from '../../data/shops.js';
 import { WEAPON_TYPES, METALS, gradeFor } from '../../data/weapons.js';
-import { makeCharacter } from '../../gfx/characters.js';
+import { portrait3d } from '../../gfx/portrait3d.js';
 import { qColor, pips } from '../../ui/common.js';
 import { SPR } from '../../ui/uiSprites.js';
-import { makeRocco } from './rocco.js';
 
 // ---------------------------------------------------------------- save data + the day's picks
 /** state.data.traders: { met, haggle, deals, tips, stash, secret } (filled in when missing). */
@@ -95,67 +93,6 @@ export function roccoDeal(st) {
 }
 const dealDone = (st) => traderData(st).deals[today(st)] === true;
 
-// ---------------------------------------------------------------- portraits
-// One posed rig per keeper, kept for the session: a new face is a re-pose and one small render.
-const portraits = new Map(), studios = new Map();
-function studio(game, shopId) {
-  let S = studios.get(shopId);
-  if (S) return S;
-  const k = SHOPS[shopId].keeper;
-  const scene = new THREE.Scene();
-  scene.add(new THREE.HemisphereLight(0xfff4e0, 0x4a3050, 1.4));
-  const dl = new THREE.DirectionalLight(0xffffff, 1.2); dl.position.set(1, 2, 3); scene.add(dl);
-  const rim = new THREE.DirectionalLight(0xffd8a0, 0.8); rim.position.set(-2, 1.5, -2); scene.add(rim);
-  const rig = k.raccoon ? makeRocco() : makeCharacter({ seed: 9, dirt: 0.2, ...k }, { kind: 'toon' });
-  rig.shifty?.(0);
-  scene.add(rig.root);
-  for (let i = 0; i < 4; i++) rig.update(0.05);
-  rig.root.updateMatrixWorld(true);
-  const a = rig.anchors;
-  const head = rig.neck.localToWorld(new THREE.Vector3(0, a.headH * 0.42, 0));
-  const cam = new THREE.PerspectiveCamera(30, 1, 0.01, 50);
-  const dist = (a.headH * 1.5 * 0.5) / Math.tan((15 * Math.PI) / 180);
-  const dir = new THREE.Vector3(0.2, 0.14, 1).normalize();
-  cam.position.copy(head).addScaledVector(dir, dist);
-  cam.lookAt(head);
-  S = { scene, rig, cam, rt: null };
-  studios.set(shopId, S);
-  return S;
-}
-/** A head-and-shoulders portrait (data URL) of a keeper wearing an expression. */
-function portraitURL(game, shopId, expr = null) {
-  const key = shopId + ':' + (expr || '');
-  if (portraits.has(key)) return portraits.get(key);
-  let url = '';
-  try {
-    const S = studio(game, shopId), rig = S.rig, size = 72, renderer = game.engine.renderer;
-    rig.setExpression(expr || SHOPS[shopId].keeper.mood || 'neutral', { body: false });
-    rig.blinkT = 99; rig.blinkK = -1; rig.talk(false);
-    for (let i = 0; i < 14; i++) rig.update(0.05);
-    S.rt ||= new THREE.WebGLRenderTarget(size, size);
-    S.rt.texture.colorSpace = THREE.SRGBColorSpace;
-    const prev = renderer.getRenderTarget();
-    renderer.setRenderTarget(S.rt);
-    renderer.setClearColor(0x221a2a, 1);
-    renderer.clear();
-    renderer.render(S.scene, S.cam);
-    const px = new Uint8Array(size * size * 4);
-    renderer.readRenderTargetPixels(S.rt, 0, 0, size, size, px);
-    renderer.setRenderTarget(prev);
-    const c = document.createElement('canvas');
-    c.width = size; c.height = size;
-    const ctx = c.getContext('2d'), img = ctx.createImageData(size, size);
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-      const si = ((size - 1 - y) * size + x) * 4, di = (y * size + x) * 4;
-      img.data[di] = px[si]; img.data[di + 1] = px[si + 1]; img.data[di + 2] = px[si + 2]; img.data[di + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    url = c.toDataURL();
-  } catch (e) { console.warn('portrait', e); }
-  portraits.set(key, url);
-  return url;
-}
-
 const price = (n, cls = '') => el('span', { class: 'price ' + cls }, [el('img', { class: 'pix', src: cls.includes('big') ? SPR.coin() : SPR.coinMini(), alt: '' }), formatGoldFull(n)]);
 const isUnique = (it) => ['tool', 'equip', 'blueprint', 'floor', 'wallpaper', 'key'].includes(it.cat);
 
@@ -176,8 +113,9 @@ export function openBurrowShop(game, shopId, o = {}) {
   // ---------------- the room
   const sayText = el('span', {}, '');
   const say = el('div', { class: 'sh-say' }, [el('b', {}, shop.keeper.name), sayText]);
-  const faceImg = el('img', { class: 'pix', src: portraitURL(game, shopId), alt: shop.keeper.name });
-  const face = el('div', { class: 'sh-portrait' }, [faceImg]);
+  // the keeper's live 3D portrait (src/gfx/portrait3d.js): the same rig, talking, pulling faces
+  const face = el('div', { class: 'sh-portrait', title: shop.keeper.name });
+  const face3d = portrait3d.mount(face, shopId, { size: 40, mood: shop.keeper.mood || 'neutral' });
   const keeper = el('div', { class: 'sh-keeper' }, [face, say]);
   const tabsEl = el('div', { class: 'sh-tabs' });
   const stock = el('div', { class: 'sh-stock' });
@@ -198,16 +136,13 @@ export function openBurrowShop(game, shopId, o = {}) {
     say.classList.add('talk');
     if (opts.sound !== false) au.play('babble', { pitch: shop.keeper.voice || 300, n: Math.min(8, Math.ceil(text.replace(/<[^>]+>/g, '').length / 8)) });
     if (folk) { folk.rig.talk(Math.min(3, 0.8 + text.length * 0.03)); if (expr) folk.rig.setExpression(expr, { hold: 2 }); }
+    // the portrait talks and pulls the face too, then relaxes
+    face3d.talk(Math.min(3.2, 0.6 + text.replace(/<[^>]+>/g, '').length * 0.035));
     if (expr) {
-      // the portrait pulls the face too, then relaxes
-      const url = portraitURL(game, shopId, expr);
-      if (url) { faceImg.src = url; face.classList.remove('bump'); void face.offsetWidth; face.classList.add('bump'); }
-      clearTimeout(exprT);
-      exprT = setTimeout(() => { faceImg.src = portraitURL(game, shopId); }, 2200);
-    }
+      face3d.set(expr, { hold: 2.2 });
+      face.classList.remove('bump'); void face.offsetWidth; face.classList.add('bump');
+    } else face3d.nudge(0.6);
   };
-  // warm the faces we'll want, a little after opening
-  setTimeout(() => { if (!root.isConnected) return; portraitURL(game, shopId, 'happy'); setTimeout(() => { if (root.isConnected && rocco) portraitURL(game, shopId, 'surprised'); }, 700); }, 500);
 
   const tabs = rocco
     ? [['weapons', 'Weapons'], ['deal', 'Deal'], ['buy', 'Oddities'], ['sell', 'Shinies'], ['jobs', 'Jobs']]
@@ -635,6 +570,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     body: root, className: 'sh-panel tr-panel', onClose: () => {
       stopHaggle();
       clearTimeout(exprT);
+      face3d.dispose();
       window.removeEventListener('resize', fit);
       ui.status?.pin?.(false);
       if (folk) { folk.busy = false; setTimeout(() => folk.react('bye', pick(shop.bye)), 120); }
@@ -642,6 +578,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     },
   });
   h.shopId = shopId;
+  h.portrait = face3d;
   h.debug = { tab: (k) => { tab = k; stopHaggle(); render(); return k; }, haggle: (i = 0) => { const w = (st.data.weapons || [])[i]; if (w) { tab = 'weapons'; startHaggle(w); } return !!w; }, push: (x) => { if (haggle) { haggle.x = x ?? haggle.zone; doPush(); } return haggle?.h; }, render };
   return h;
 }

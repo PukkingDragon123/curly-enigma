@@ -15,6 +15,7 @@ import { INKC, WASH, hand, textW, paperPatch, wline, wcircle, DOODLE, youArrow, 
 import { BART, PIN_KINDS, PIN_NAMES, pinPx } from './bookArt.js';
 import { SFX } from './bookSfx.js';
 import { ZONE_DEPTHS, ZONE_NAMES } from '../data/quests.js';
+import { stepGoal, caveIns } from '../core/questWhere.js';
 import { ZONES } from '../data/zones.js';
 import { ITEMS } from '../data/items.js';
 import './atlas.css';
@@ -345,20 +346,29 @@ export function renderMap(host, game, opts = {}) {
     const me = where();
     const W0 = plan.W ?? 10, D0 = plan.D ?? 8;
     for (const v of Q.active()) {
-      const w = v.step?.where;
-      if (!w) continue;
+      const w = stepGoal(v);
+      if (!w || (!w.scene && !w.zone)) continue;
       let p = null, known = true;
-      if (w.place === 'home') p = { x: W0 / 2, y: 0.5, z: D0 / 2 };
-      else if (w.place === 'dig' && plan.prologue) p = plan.prologue;
-      else if (w.place === 'town') { p = plan.town; known = !!st.flag('escaped'); }
-      else if (w.burrow) { p = (plan.burrows || []).find((b) => b.id === w.burrow || b.kind === w.burrow); known = !!p && near(exploredIndex(st).zones.get(zoneOfY(p.y)), p.x, p.z, 7, Infinity); }
-      else if (w.ruin || w.danger) {
-        const list = w.ruin ? plan.ruins || [] : (plan.dangers || []).filter((d) => d.kind === w.danger);
+      const nearestOf = (list, rr = 4) => {
         let best = null, bd = Infinity;
         for (const r of list) { const d = Math.hypot(r.x - me.x, (r.y - me.y) * 2, r.z - me.z); if (d < bd) { bd = d; best = r; } }
-        p = best;
-        known = !!p && near(exploredIndex(st).zones.get(zoneOfY(p.y)), p.x, p.z, (p.r || 4) + 3, Infinity);
-      } else if (w.zone) { out.push({ id: v.id, title: v.title, zone: w.zone, onlyZone: true, tracked: v.tracked }); continue; }
+        known = !!best && near(exploredIndex(st).zones.get(zoneOfY(best.y)), best.x, best.z, (best.r || rr) + 3, Infinity);
+        return best;
+      };
+      if (w.scene === 'home' || w.place === 'home') p = { x: W0 / 2, y: 0.5, z: D0 / 2 };
+      else if (w.place === 'dig' && plan.prologue) p = plan.prologue;
+      else if (w.scene === 'town' || w.place === 'town') { p = plan.town; known = !!st.flag('escaped'); }
+      else if (w.burrow) { p = (plan.burrows || []).find((b) => b.id === w.burrow || b.kind === w.burrow); known = !!p && near(exploredIndex(st).zones.get(zoneOfY(p.y)), p.x, p.z, 7, Infinity); }
+      else if (w.ruin) {
+        const save = st.data.deep?.ruins || {};
+        let list = (plan.ruins || []).filter((r) => w.ruin === 'nearest' || r.kind === w.ruin || r.id === w.ruin);
+        const open = list.filter((r) => !save[r.id]?.chest);
+        p = nearestOf(open.length ? open : list);
+      } else if (w.danger || ['lake', 'lava', 'nest'].includes(w.sight)) {
+        const kind = w.danger || { lake: 'water', lava: 'lava', nest: 'nest' }[w.sight];
+        p = nearestOf((plan.dangers || []).filter((d) => d.kind === kind));
+      } else if (w.sight === 'cavein') p = nearestOf(caveIns(plan), 2);
+      else if (w.zone) { out.push({ id: v.id, title: v.title, zone: w.zone, onlyZone: true, tracked: v.tracked }); continue; }
       if (!p) continue;
       out.push({ id: v.id, title: v.title, text: v.text, x: p.x, y: p.y, z: p.z, zone: zoneOfY(p.y), known, tracked: v.tracked });
     }

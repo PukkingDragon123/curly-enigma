@@ -1,7 +1,8 @@
 // First-person mole: an AABB walking through voxels (meters). Steps up rough floors, jumps, grips
 // and climbs walls (moles dig claws in), crouches (low tunnels, and no walking off ledges while
-// crouched), swims and dives (crouch sinks, jump rises, swimming forward follows the look), and
-// feeds the camera a little bob and landing dip.
+// crouched), swims and dives (crouch sinks, jump rises, swimming forward follows the look), wades
+// (slower in shallow water) and drifts with currents (Fluids sets .wade and .flow), and feeds the
+// camera a little bob and landing dip.
 import * as THREE from 'three';
 import { VOX, MAT, M } from './materials.js';
 import { OPAQUE } from './Mesher.js';
@@ -33,6 +34,9 @@ export class FPSPlayer {
     this.crouched = false;
     this.lastFall = 0;
     this.blocked = false;
+    // set by Fluids each frame: how deep the mole wades (0..1, slows the legs) and the current (m/s)
+    this.wade = 0;
+    this.flow = null;
   }
 
   /** Is any solid voxel inside the box [x0,x1]×[y0,y1]×[z0,z1] (meters)? */
@@ -83,10 +87,13 @@ export class FPSPlayer {
     let speed = (run && !this.crouched ? 3.9 : 2.7) * speedMul;
     if (this.crouched) speed *= 0.45;
     if (this.inWater || this.inLava) speed *= 0.6;
+    else if (this.wade) speed *= 1 - 0.45 * this.wade; // wading through shallow water
     if (frozen) mv = { x: 0, y: 0 };
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
     let tx = (fx * mv.y + rx * mv.x) * speed, tz = (fz * mv.y + rz * mv.x) * speed;
+    // a current carries you along (you can still swim against it)
+    if (this.flow && (this.inWater || this.wade)) { tx += this.flow.x; tz += this.flow.z; }
     const accel = this.grounded ? 30 : 9;
     v.x += clamp(tx - v.x, -accel * dt, accel * dt);
     v.z += clamp(tz - v.z, -accel * dt, accel * dt);

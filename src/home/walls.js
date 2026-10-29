@@ -1,11 +1,13 @@
-// The burrow's walls and ceiling as 1/64 m voxel reliefs, seen from inside in first person.
+// Your bedroom's walls and ceiling as 1/64 m voxel reliefs, seen from inside in first person.
 // Every wall gets the same heavy timber frame (posts on stone footings, iron straps, knee braces,
-// a crown plate with beam ends) around an infill in the chosen wall style; the ceiling is a deck of
-// boards on joists with the ragged hole the mole fell through and the lift's pulley opening.
+// a crown plate with beam ends) around an infill in the chosen wall style (the first one, still
+// called wall_dirt in the save, is lime plaster over the earth above a painted wainscot, like the
+// rest of Old Star's house); the ceiling is a deck of boards on joists.
 import { WALLS } from '../data/furniture.js';
 import { hash2 } from '../iso/surface.js';
 import { mulc, mixc, sp3 } from '../iso/kit.js';
 import { WALL_V } from './units.js';
+import { n2 } from './surfaces.js';
 
 const WOOD0 = 0x5a3a22;
 export const PLATE = 12; // crown plate height (voxels)
@@ -52,13 +54,15 @@ export function wallVoxel(style, u, v, seed, n, post) {
   const H = WALL_V;
   const fr = frameVoxel(u, v, seed, post);
   if (fr) return fr;
-  if (style !== 'wall_dirt' && v < 6) return [mulc(v === 5 ? mulc(WOOD0, 1.15) : mulc(WOOD0, 0.92), sp3(u, v, 1, seed, 0.06, 0.1)), v === 5 ? 3 : 2];
-  const wains = style === 'wall_brick' || style === 'wall_paper';
+  if (v < 6) return [mulc(v === 5 ? mulc(WOOD0, 1.15) : mulc(WOOD0, 0.92), sp3(u, v, 1, seed, 0.06, 0.1)), v === 5 ? 3 : 2];
+  const wains = style === 'wall_brick' || style === 'wall_paper' || style === 'wall_dirt' || !WALLS[style];
   if (wains && v < 42) {
     if (v >= 38) return [mulc(WOOD0, v === 41 ? 1.25 : 1.05), v === 41 ? 4 : 3]; // chair rail
+    const paint = style === 'wall_dirt' || !WALLS[style] ? 0x5a6a78 : WOOD0; // the bedroom's panels are painted a faded blue
     const panel = Math.floor((u + 4) / 26), pl = (u + 4) % 26;
-    if (pl < 2 || v < 9 || v > 34) return [mulc(WOOD0, 1.08), 2]; // frame
-    return [mulc(WOOD0, 0.96 + hash2(panel, 1, seed) * 0.08), pl === 2 || v === 34 ? 0 : 1]; // recessed panel
+    if (pl < 2 || v < 9 || v > 34) return [mulc(paint, 1.08), 2]; // frame
+    if (paint !== WOOD0 && hash2(u >> 1, v >> 1, seed + 6) < 0.02) return [0x8a6a48, 1]; // chipped paint
+    return [mulc(paint, 0.96 + hash2(panel, 1, seed) * 0.08), pl === 2 || v === 34 ? 0 : 1]; // recessed panel
   }
   switch (style) {
     case 'wall_plank': {
@@ -113,45 +117,20 @@ export function wallVoxel(style, u, v, seed, n, post) {
       return [col, 0];
     }
     default: {
-      // packed earth over a fieldstone footing: wavy strata, embedded stones, roots, flecks, a damp band
-      if (v < 15) {
-        const row = v < 7 ? 0 : 1, off = row * 9;
-        const bx = Math.floor((u + off) / 19), lx = (u + off) % 19, ly = row ? v - 7 : v;
-        if (lx === 0 || ly === 0) return [0x3a2c22, 0];
-        const sc = [0x7a7068, 0x6a625a, 0x8a8076, 0x5e564e][Math.floor(hash2(bx, row, seed) * 4)];
-        const top = row ? ly >= 7 : ly >= 6;
-        return [top ? mulc(sc, 1.1) : lx === 18 ? mulc(sc, 0.85) : mulc(sc, sp3(u, v, 4, seed, 0.1, 0.1)), top ? 2 : 3];
+      // lime plaster over the earth: warm cream, trowelled, a little smoky up toward the plate
+      let col = mulc(0xdcc6a0, 0.97 + n2(u / 40, v / 40, seed + 7) * 0.05 + n2(u / 12, v / 12, seed + 8) * 0.025);
+      const up = (v - 42) / (H - PLATE - 42);
+      if (up > 0.7) col = mixc(col, 0x6a5440, (up - 0.7) * 0.3);
+      // here and there it has come away, showing the stones behind
+      const sx = Math.floor(u / 90), sy = Math.floor(v / 60);
+      if (hash2(sx, sy, seed + 5) < 0.12) {
+        const cx = sx * 90 + 20 + hash2(sx, sy, seed + 6) * 50, cy = sy * 60 + 15 + hash2(sx, sy, seed + 7) * 30;
+        const d = Math.hypot((u + 0.5 - cx) / 9, (v + 0.5 - cy) / 6) + (hash2(u >> 1, v >> 1, seed) - 0.5) * 0.3;
+        if (d < 1) return [mixc(0x8a7a66, 0x6a5a4c, hash2(u >> 2, v >> 2, seed)), 0];
+        if (d < 1.15) return [mulc(col, 0.82), 2];
       }
-      const strata = Math.floor((v + Math.sin(u * 0.08 + seed) * 5 + n(u * 0.5, v) * 7) / 12);
-      let col = mulc(c, 0.86 + (strata % 3) * 0.075);
-      if (hash2(u >> 1, v >> 1, seed + 3) < 0.04) col = mulc(col, 0.84);
-      // fieldstones bedded in the earth: flat-faced, a dark crevice round each one
-      const sx = Math.floor(u / 30), sy = Math.floor(v / 26);
-      const sh = hash2(sx, sy, seed + 5);
-      if (sh < 0.26) {
-        const cx = sx * 30 + 7 + hash2(sx, sy, seed + 6) * 16, cy = sy * 26 + 6 + hash2(sx, sy, seed + 7) * 14;
-        const r = 2.5 + hash2(sx, sy, seed + 8) * 3.5;
-        const d = Math.hypot(u + 0.5 - cx, (v + 0.5 - cy) * 1.3);
-        if (d < r) {
-          const sc = [0x8a8078, 0x6e665e, 0x9a8c7c, 0x7a6e64][Math.floor(sh * 12) % 4];
-          const lit = (cx - u) * 0.4 + (v - cy) * 0.6;
-          return [mulc(sc, 0.9 + Math.max(-0.12, Math.min(0.18, lit * 0.07))), d < r * 0.55 ? 2 : 1];
-        }
-        if (d < r + 1.2) return [mixc(c, 0x1e1610, 0.55), 0];
-      }
-      // roots snaking down from under the crown plate
-      const ru = Math.floor(u / 44);
-      if (hash2(ru, 0, seed + 9) < 0.5) {
-        const rx = ru * 44 + 9 + hash2(ru, 1, seed + 9) * 26 + Math.sin(v * 0.1 + ru) * 3.5 + Math.sin(v * 0.29 + ru * 2) * 1.3;
-        const end = (H - PLATE) * (0.25 + hash2(ru, 2, seed + 9) * 0.4);
-        const wdt = 1.2 + (v / H) * 1.5;
-        if (v > H - PLATE - end && Math.abs(u + 0.5 - rx) < wdt) return [mixc(0x6a4a2e, 0x3e2818, (u + 0.5 - rx + wdt) / (2 * wdt) * 0.6), 3];
-      }
-      // mineral flecks catching the light
-      const fl = hash2(u, v, seed + 11);
-      if (fl > 0.9997) return [0xb89a5a, 1];
-      if (v < 26) col = mixc(col, 0x2e241c, (26 - v) / 26 * 0.3);
-      return [col, n(u, v) > 0.62 ? 1 : 0];
+      void n;
+      return [col, 1];
     }
   }
 }
@@ -178,29 +157,8 @@ export function wallDetail(style, u, v, c, seed, rel, kind) {
   if (style === 'wall_dirt' || !WALLS[style]) {
     // trowel smears: short horizontal dabs a shade lighter or darker
     const sm = hash2(Math.floor((u + v * 5) / 13), v >> 1, seed + 30);
-    if (sm < 0.14) k *= 0.93; else if (sm > 0.9) k *= 1.06;
-    // little pebbles on a jittered grid: round, lit from above
-    const px = Math.floor(u / 15), py = Math.floor(v / 13);
-    if (hash2(px, py, seed + 31) < 0.3) {
-      const cx = px * 15 + 3 + hash2(px, py, seed + 32) * 9, cy = py * 13 + 3 + hash2(px, py, seed + 33) * 7;
-      const r = 1.1 + hash2(px, py, seed + 34) * 1.3;
-      const dx = u + 0.5 - cx, dy = v + 0.5 - cy, d = Math.hypot(dx, dy * 1.2);
-      if (d < r) {
-        const base = [0x8a8078, 0x9a8c7c, 0x6e665e, 0x7a5a42][Math.floor(hash2(px, py, seed + 35) * 4)];
-        return mulc(base, dy > r * 0.3 ? 1.12 : dy < -r * 0.3 ? 0.78 : 0.95);
-      }
-      if (d < r + 0.9 && dy < 0) return mulc(c, 0.8); // the pebble's shadow below it
-    }
-    // root hairs: thin wavy dark lines running down
-    const wu = u + Math.sin(v * 0.21 + u * 0.05) * 3;
-    const rh = Math.floor(wu / 23);
-    if (hash2(rh, Math.floor(v / 40), seed + 25) < 0.2 && Math.abs((wu % 23) - 11) < 0.55) return mulc(c, 0.76);
-    // claw scrapes: little groups of three diagonal strokes
-    const cx = Math.floor(u / 52), cy = Math.floor(v / 46);
-    if (hash2(cx, cy, seed + 26) < 0.3) {
-      const lu = u - cx * 52 - 14 - hash2(cx, cy, seed + 27) * 20, lv = v - cy * 46 - 10 - hash2(cx, cy, seed + 28) * 20;
-      if (lv >= 0 && lv < 14) { const off = lu - lv * 0.35; if (off >= 0 && off < 9 && Math.round(off) % 3 === 0) return mulc(c, off % 3 < 0.5 ? 0.72 : 0.8); }
-    }
+    if (sm < 0.14) k *= 0.96; else if (sm > 0.9) k *= 1.03;
+    return mulc(c, k);
   } else if (style === 'wall_plank' || style === 'wall_red') {
     if (hash2(Math.floor(u / 9), v, seed + 29) < 0.14) k *= 0.92;
   } else if (style === 'wall_stone' || style === 'wall_brick') {

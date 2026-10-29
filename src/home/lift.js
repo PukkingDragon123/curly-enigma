@@ -1,4 +1,4 @@
-// The tavern's old cage lift down to the mine, in its own shaft behind the hall's east wall. On the
+// Old Star's cage lift down to the mine, in its own shaft behind the hall's east wall. On the
 // hall side a heavy timber portal with iron straps carries a small brass plaque (a pick and Old
 // Star's star), a call lever on a brass quadrant with a bell above it and a lantern on a hook. The
 // shaft is lined with timber cribbing, with oak guide rails on both sides; a spoked sheave turns

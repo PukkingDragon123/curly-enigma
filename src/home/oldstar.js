@@ -1,8 +1,8 @@
-// Old Star, the old star-nosed mole blacksmith whose cave this is. He goes about his day between
-// his places (STAR_SPOTS in cave.js): hammering at the anvil (clang, sparks off the face), pumping
-// the bellows (the coals flare), stirring the pot at the hearth, a sit in his mossy armchair,
-// rereading his notes, a look at the lift or at the sealed doorway in the ruins, and at night he
-// sleeps on his cot by the forge (snoring). He turns his head to follow you when you're near, his
+// Old Star, the old star-nosed mole blacksmith whose house this is. He goes about his day between
+// his places (STAR_SPOTS in house.js): hammering at the anvil (clang, sparks off the face), pumping
+// the bellows (the coals flare), stirring the pot on the range, a sit in his mossy armchair by the
+// fire, rereading his notes or a book, a look at the lift or at his dream wall in the hall, and at
+// night he sleeps in his box bed in the smithy (snoring). He turns his head to follow you when you're near, his
 // star nose wiggles when he sniffs you out. E has him talk (the lessons, or a tip for where you
 // are). His model is src/gfx/char/starmole.js (makeStarMole); expressions come from the rig when
 // it has them (setExpression), and he talks through the tutor card (game.ui.tutor).
@@ -11,10 +11,12 @@ import { makeCharacter } from '../gfx/characters.js';
 import { VoxelGrid, M32, ring, line, wood } from '../iso/kit.js';
 import { clamp, rand, pick } from '../core/util.js';
 import { HALL } from './units.js';
-import { STAR_SPOTS, SPOTS } from './cave.js';
+import { STAR_SPOTS, SPOTS } from './house.js';
 
 const starMods = import.meta.glob('../gfx/char/starmole.js');
 const _v = new THREE.Vector3();
+const _w2 = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
 const HEIGHT = 0.76; // meters to the top of his head: a little shorter than you, stooped with age
 const SPEED = 0.85;
 const NAME = 'Old Star';
@@ -46,6 +48,12 @@ function heldThing(kind) {
     const g = new VoxelGrid(10, 12, 2);
     g.box(1, 0, 0, 8, 10, 1, (x, y) => (y % 2 === 0 && x > 1 && x < 7 && y > 1 ? 0x6a5a4a : 0xeadcbe));
     return M32(g, [5, 0, 1]);
+  }
+  if (kind === 'poker') {
+    const g = new VoxelGrid(8, 40, 8);
+    line(g, [[4, 0, 4], [4, 34, 4]], 0.6, 0x2e2e36);
+    g.box(3, 34, 3, 3, 5, 3, 0x8a6a3a); g.box(3, 0, 3, 1, 3, 1, 0x2e2e36); g.box(2, 2, 3, 2, 1, 1, 0x2e2e36);
+    return M32(g, [4, 30, 4]);
   }
   if (kind === 'pipe') {
     const g = new VoxelGrid(10, 12, 10);
@@ -94,7 +102,7 @@ export class OldStar {
     this.pos = this.obj.position;
     // things for his paws are built at 1/64 m: shrink them into the rig's units
     this.items = {};
-    for (const k of ['hammer', 'ladle', 'note', 'pipe']) { const m = heldThing(k); m.scale.setScalar(1 / this.k); this.items[k] = m; }
+    for (const k of ['hammer', 'ladle', 'note', 'pipe', 'poker']) { const m = heldThing(k); m.scale.setScalar(1 / this.k); this.items[k] = m; }
     return this;
   }
 
@@ -137,8 +145,8 @@ export class OldStar {
       const c = this.s.cave.dyn.cot;
       c.obj.updateMatrixWorld(true);
       const head = new THREE.Vector3(c.lie.x, c.lie.y, c.lie.z).applyMatrix4(c.obj.matrixWorld);
-      const foot = new THREE.Vector3(-c.lie.x, c.lie.y, c.lie.z).applyMatrix4(c.obj.matrixWorld);
-      const side = new THREE.Vector3(0, 0, 0.8).applyMatrix4(c.obj.matrixWorld);
+      const foot = (c.foot ? new THREE.Vector3(c.foot.x, c.lie.y, c.foot.z) : new THREE.Vector3(-c.lie.x, c.lie.y, c.lie.z)).applyMatrix4(c.obj.matrixWorld);
+      const side = new THREE.Vector3(0, 0, c.foot ? 2.3 : 0.8).applyMatrix4(c.obj.matrixWorld);
       return { lie: true, head, foot, x: (head.x + foot.x) / 2, z: (head.z + foot.z) / 2, y: head.y, pose: 'sleep', approach: { x: side.x, z: side.z } };
     }
     return STAR_SPOTS[name];
@@ -170,6 +178,7 @@ export class OldStar {
     r.holdItem?.(null, 'R'); r.holdItem?.(null, 'L');
     if (pose === 'hammer') { r.setPick?.(false); r.holdItem?.(this.items.hammer, 'R'); }
     else if (pose === 'stir') { r.setPick?.(false); r.holdItem?.(this.items.ladle, 'R'); }
+    else if (pose === 'poke') { r.setPick?.(false); r.holdItem?.(this.items.poker, 'R'); }
     else if (pose === 'read') r.holdItem?.(this.items.note, 'L');
     else if (pose === 'sit') r.holdItem?.(this.items.pipe, 'L');
     else r.setPick?.(null);
@@ -189,16 +198,25 @@ export class OldStar {
 
   lieDown() {
     const sp = this.spotOf('cot');
-    this.pos.set(sp.x, this.ground(sp.x, sp.z), sp.z);
-    // lie along the cot: rotate the body back so his head rests on the pillow
-    this.faceTo(sp.foot.x, sp.foot.z, true);
-    this.body.position.y = sp.y - this.pos.y - 0.02;
-    this.body.rotation.x = -Math.PI / 2 + 0.12;
+    // lie along the bed on his back, his head on the pillow: the body's up axis turned to point at
+    // the head end (tipped up a little by the pillow), his face (looking toward the foot) to the roof
+    const d = _v.set(sp.head.x - sp.foot.x, 0, sp.head.z - sp.foot.z).normalize();
+    const hx = sp.head.x - d.x * (HEIGHT - 0.06), hz = sp.head.z - d.z * (HEIGHT - 0.06);
+    this.pos.set(hx, this.ground(hx, hz), hz);
+    this.faceTo(hx - d.x, hz - d.z, true);
+    this.body.quaternion.setFromUnitVectors(UP, _w2.set(d.x, 0.13, d.z).normalize());
+    this.body.position.y = sp.y - this.pos.y - 0.04;
     this.body.position.z = 0;
     this.spot = 'cot';
     this.mode = 'sleep';
     this.setPose('sleep');
     this.rig.setPick?.(false);
+  }
+
+  /** Lean forward (toward where he faces) by `a` radians (0: upright). */
+  lean(a) {
+    const f = this.rig.facing ?? 0;
+    this.body.quaternion.setFromAxisAngle(_w2.set(Math.cos(f), 0, -Math.sin(f)), a);
   }
 
   stand() {
@@ -249,7 +267,7 @@ export class OldStar {
   pickHaunt() {
     const hrs = this.s.clockHours();
     if (hrs >= 21.5) return 'cot';
-    const opts = [['anvil', 4], ['bellows', 1.6], ['fire', 2.4], ['armchair', 2], ['board', 1.2], ['lift', 0.6], ['ruins', 0.8], ['pool', 0.5]].filter(([n]) => n !== this.spot);
+    const opts = [['anvil', 4], ['bellows', 1.6], ['fire', 2.4], ['armchair', 2], ['board', 1.2], ['books', 1.0], ['hearth', 0.8], ['lift', 0.6], ['ruins', 0.8], ['pool', 0.5]].filter(([n]) => n !== this.spot);
     let t = Math.random() * opts.reduce((a, o) => a + o[1], 0);
     for (const [n, w] of opts) { t -= w; if (t <= 0) return n; }
     return 'anvil';
@@ -430,6 +448,22 @@ export class OldStar {
         if (near && Math.floor(t / 2.6) !== this.stirB) { this.stirB = Math.floor(t / 2.6); this.g.audio.play('stir', { vol: clamp(0.8 - dist / 6, 0.05, 0.4) }); }
         break;
       }
+      case 'poke': {
+        // crouched at the bedroom fire: a slow prod of the logs now and then, the embers jump
+        const k = Math.max(0, Math.sin(t * 1.3)) ** 3;
+        r.armR.rotation.set(-1.1 - k * 0.5, 0.1, -0.15);
+        if (r.elbowR) r.elbowR.rotation.x = -0.5 + k * 0.4;
+        r.armL.rotation.set(-0.4, 0, 0.35);
+        if (r.neck) r.neck.rotation.x += 0.2;
+        const h = s.shell?.hearth?.fire;
+        if (h && k > 0.95 && !this.pokeB) {
+          this.pokeB = true;
+          for (let i = 0; i < 8; i++) s.fx.ember(h.x + rand(-0.12, 0.12), h.y, h.z + rand(-0.06, 0.06));
+          if (near) this.g.audio.play('crack', { vol: 0.12 });
+        }
+        if (k < 0.5) this.pokeB = false;
+        break;
+      }
       case 'read':
         r.armL.rotation.set(-1.5, 0.25, 0.35);
         if (r.neck) { r.neck.rotation.x += 0.16; r.neck.rotation.z += Math.sin(t * 0.7) * 0.06; }
@@ -462,7 +496,7 @@ export class OldStar {
     }
   }
 
-  // ------------------------------------------------------------ the bucket
+  // ------------------------------------------------------------ carrying things
   /** Take something (a mesh in meters) in both paws, carried in front of him. */
   carry(obj) {
     this.carrying = obj;

@@ -10,6 +10,7 @@ import { stampPrologue, PROLOGUE_BB, prologueLayout, prologueInside } from './ge
 import { stampTrail, trailBB, trailLanterns, TRAIL_W, TRAIL_H } from './gen/trails.js';
 import { stampBurrow, burrowBB, burrowDoor } from './gen/burrows.js';
 import { stampRuin, ruinBB, ruinDoor } from './gen/ruins.js';
+import { settleLakes } from './fluids/lakes.js';
 
 export const CS = 32; // chunk size (voxels)
 export const BOUNDS = { x0: -96, x1: 96, z0: -96, z1: 96, y0: -216, y1: 8 }; // meters
@@ -185,6 +186,8 @@ export function makePlan(seed, opts = {}) {
   // burrows stamp last, so the trails ending in them don't cut through their furniture
   plan.features.sort((a, b) => (a.kind === 'burrow') - (b.kind === 'burrow'));
   for (const f of plan.features) aabbOf(f);
+  // lakes get a watertight shell and hold water only below rooms carved into them (fluids/lakes.js)
+  settleLakes(plan, zoneAt);
   return plan;
 }
 
@@ -617,8 +620,9 @@ export class ChunkGen {
       } else if (f.kind === 'lake') {
         const dx = (xm - f.x) / f.r, dy = (ym - f.y) / (f.r * 0.55), dz = (zm - f.z) / f.r;
         const d2 = dx * dx + dy * dy + dz * dz + (h3(vx, vy, vz, 4) - 0.5) * 0.1;
-        if (d2 < 1 && cur !== M.BURROW) vox[vi] = ym < f.y - f.r * 0.12 ? f.fluid : 0;
+        if (d2 < 1 && cur !== M.BURROW) vox[vi] = ym < (f.wl ?? f.y - f.r * 0.12) ? f.fluid : 0;
         else if (d2 < 1.25 && f.fluid === M.LAVA && cur && cur < 40) vox[vi] = h3(vx, vy, vz, 5) < 0.5 ? M.MAGMAROCK : M.OBSIDIAN;
+        else if (d2 < 1.32 && f.shell && cur === 0 && ym < (f.wl ?? f.y - f.r * 0.12) + 0.2) vox[vi] = f.shell; // seal caves below the waterline
       } else if (f.kind === 'box' || f.kind === 'mouth') {
         if (xm < f.x0 || xm > f.x1 || ym < f.y0 || ym > f.y1 || zm < f.z0 || zm > f.z1) {
           // the back of the burrow wall at the end of a mouth: a planked door in a timber frame
@@ -714,28 +718,26 @@ export class ChunkGen {
         else if (bio === 3) { if (pt > -0.25) vox[vi] = M.MYCEL; }
         else if (bio === 4) { if (pt > 0.05 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS; }
         else if (zone <= 3 && pt > 0.22 && h < 0.85 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS;
-        // mushrooms: a few giants per meter-cell anchor, glowcap buttons everywhere
+        // mushrooms: a few giants per meter-cell anchor (the small stuff, the ferns, grass and
+        // glowcap buttons, are drawn as painted cards by Vegetation.js now: no blocky voxel plants)
         if (bio === 3) {
           const cx = Math.floor(vx / VOX), cz = Math.floor(vz / VOX);
           if (h3(cx, cz, 2, seed + 63) < 0.5 && (vx - cx * VOX) === Math.floor(h3(cx, cz, 0, seed + 61) * VOX) && (vz - cz * VOX) === Math.floor(h3(cx, cz, 1, seed + 61) * VOX)) this.mushroom(vox, x, y + 1, z, h3(cx, cz, 3, seed + 67));
-          else if (h < 0.01 && vox[vi + CS] === 0) this.button(vox, x, y + 1, z, h < 0.004 ? 2 : 1);
         } else if (bio === 4) {
-          // dinosaur country: ferns everywhere, and now and then the bones of something huge
+          // dinosaur country: now and then the bones of something huge
           const cx = Math.floor(vx / VOX), cz = Math.floor(vz / VOX);
           if (h3(cx, cz, 5, seed + 71) < 0.07 && (vx - cx * VOX) === Math.floor(h3(cx, cz, 0, seed + 73) * VOX) && (vz - cz * VOX) === Math.floor(h3(cx, cz, 1, seed + 73) * VOX)) this.ribs(vox, x, y + 1, z, h3(cx, cz, 3, seed + 75));
-          else if (h < 0.035 && vox[vi + CS] === 0) this.fern(vox, x, y + 1, z, h);
-        } else if (zone === 2 && h < 0.0012 && vox[vi + CS] === 0) this.button(vox, x, y + 1, z, 1);
+        }
         // crystal spikes on cave floors (grotto, frost, core); stalagmites in the upper zones
         if ((zone === 3 || zone === 5 || zone === 6) && h3(vx >> SH, vy, vz >> SH, seed + 43) < 0.012) this.spike(vox, x, y + 1, z, 1, M.CRYSTAL, (4 + (h * 60 | 0) % 6) * VK);
         else if (zone <= 2 && bio !== 3 && h3(vx >> SH, vy, vz >> SH, seed + 45) < 0.006) this.spike(vox, x, y + 1, z, 1, bio === 2 ? M.SANDSTONE : zone === 1 ? M.STONE : M.LIMESTONE, (3 + (h * 70 | 0) % 5) * VK);
       } else if (airDown) {
-        // ceilings: stalactites, crystals, hanging vines and roots
+        // ceilings: stalactites and crystals (hanging vines and roots are Vegetation.js cards)
         const h2 = h3(vx, vy, vz, seed + 47);
         if (bio === 1 && pt > -0.3) vox[vi] = M.MOSS;
+        else if ((bio === 4 || (zone === 1 && depth < 12 && bio !== 2)) && pt > 0.1 && (m === M.DIRT || m === M.LOAM || m === M.CLAY)) vox[vi] = M.ROOTS; // rooty roofs the roots hang from
         if (zone >= 2 && h3(vx >> SH, vy, vz >> SH, seed + 49) < 0.01) this.spike(vox, x, y - 1, z, -1, zone >= 5 ? M.ICE : m, (3 + (h2 * 50 | 0) % 6) * VK);
         else if (zone === 3 && h2 < 0.004 / (VK * VK)) this.spike(vox, x, y - 1, z, -1, M.CRYSTAL, 3 * VK);
-        else if (bio === 1 && h2 < 0.03) this.strand(vox, x, y - 1, z, M.VINES, 3 + (h2 * 9000 | 0) % 12);
-        else if (zone === 1 && depth < 9 && bio !== 2 && h2 < 0.008) this.strand(vox, x, y - 1, z, M.ROOTS, 2 + (h2 * 9000 | 0) % 9);
       } else if (bio === 1 && pt > 0.05) vox[vi] = M.MOSS; // mossy walls in the grotto
     }
   }
@@ -749,28 +751,6 @@ export class ChunkGen {
       if (vox[vi - 1] || vox[vi + 1] || vox[vi - CS] || vox[vi + CS] || vox[vi - C2] || vox[vi + C2]) continue;
       vox[vi] = 0;
     }
-  }
-
-  /** A glowcap button: a stem voxel or two and a little domed cap (needs a voxel of room around). */
-  button(vox, x, y, z, tall) {
-    const C2 = CS * CS;
-    if (x < 1 || x >= CS - 1 || z < 1 || z >= CS - 1 || y + tall + 2 >= CS) return;
-    for (let i = 0; i < tall; i++) if (vox[x + CS * (y + i) + C2 * z] === 0) vox[x + CS * (y + i) + C2 * z] = M.STEM; else return;
-    const t = y + tall;
-    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
-      if (dx && dz) continue;
-      const vi = x + dx + CS * t + C2 * (z + dz);
-      if (vox[vi] === 0) vox[vi] = M.GLOWCAP;
-    }
-    if (vox[x + CS * (t + 1) + C2 * z] === 0) vox[x + CS * (t + 1) + C2 * z] = M.GLOWCAP;
-  }
-
-  /** A cave fern: a little rosette of fronds arching out of the floor. */
-  fern(vox, x, y, z, h) {
-    const C2 = CS * CS, tall = 2 + ((h * 997) | 0) % 3;
-    const put = (xx, yy, zz) => { if (xx < 0 || xx >= CS || zz < 0 || zz >= CS || yy < 0 || yy >= CS) return; const vi = xx + CS * yy + C2 * zz; if (vox[vi] === 0) vox[vi] = M.FERN; };
-    for (let i = 0; i < tall; i++) put(x, y + i, z);
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { put(x + dx, y + tall - 1, z + dz); put(x + dx * 2, y + tall - 2, z + dz * 2); }
   }
 
   /** Ribs of something enormous: bone arches sticking out of the floor (only where they fit). */
@@ -787,15 +767,6 @@ export class ChunkGen {
         const xx = along ? ox : ox + Math.round(c), zz = along ? oz + Math.round(c) : oz, yy = y + Math.round(h);
         for (const dt of [0, 1]) { const vi = xx + CS * (yy + dt) + C2 * zz; if (xx >= 0 && xx < CS && zz >= 0 && zz < CS && yy + dt < CS && vox[vi] === 0) vox[vi] = M.BONE; }
       }
-    }
-  }
-
-  /** A hanging strand (vines, roots): straight down through air, one voxel thick. */
-  strand(vox, x, y, z, m, len) {
-    for (let i = 0; i < len && y - i >= 0; i++) {
-      const vi = x + CS * (y - i + CS * z);
-      if (vox[vi] !== 0) return;
-      vox[vi] = m;
     }
   }
 

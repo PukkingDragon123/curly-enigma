@@ -96,3 +96,48 @@ html.is-touch .tk-num { display: none; }
 }
 @media (max-width: 640px) { .tk-sign h2 { font-family: var(--font-head); font-size: var(--fs-h); } }
 @media (max-height: 520px) { .tk-head { margin-bottom: calc(var(--px) * 3); } .tk-notes { gap: calc(var(--px) * 3); } .tk-sign h2 { font-family: var(--font-head); font-size: var(--fs-h); } }
+
+/* ---------- the talk board (openTalkMenu): the dialogue board, a live 3D portrait, a ribbon ---------- */
+.tk-talk { --pp: 48; padding-top: calc(var(--px) * 8); }
+.modal-back > .panel.tk-panel:has(.tk-talk) { width: min(calc(100vw - 16px - var(--sal) - var(--sar)), calc(var(--px) * 176)); }
+.modal-back > .panel.tk-panel:has(.tk-talk) > .close { top: calc(var(--px) * 3); right: calc(var(--px) * -4); }
+.tk-talk .tk-board {
+  overflow: visible; border-width: calc(var(--px) * 9); border-image: var(--dl-board) 9 / calc(var(--px) * 9) repeat;
+  background: var(--a-woodDkT) 0 0 / calc(var(--px) * 32) calc(var(--px) * 20) repeat padding-box, #4a2c16 padding-box;
+  padding: calc(var(--px) * 7) calc(var(--px) * 3) calc(var(--px) * 3); display: flex; flex-direction: column; min-height: 0;
+  filter: drop-shadow(0 calc(var(--px) * 4) 0 rgba(8, 4, 6, .5));
+}
+.tk-plate {
+  position: absolute; z-index: 3; top: calc(var(--px) * -14); left: 50%; transform: translateX(-50%);
+  box-sizing: border-box; height: calc(var(--px) * 16); min-width: calc(var(--px) * 48); max-width: calc(100% - var(--px) * 16);
+  border-style: solid; border-width: 0 calc(var(--px) * 10); border-image: var(--dl-ribbon) 0 10 fill / 0 calc(var(--px) * 10) repeat;
+  padding: 0 calc(var(--px) * 2); display: flex; justify-content: center; filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 6, .5));
+  animation: tkPlate .6s var(--pop) .1s both;
+}
+@keyframes tkPlate { from { transform: translateX(-50%) translateY(calc(var(--px) * -8)) rotate(-6deg); opacity: 0; } 60% { transform: translateX(-50%) rotate(2deg); } }
+.tk-plate span { font-family: var(--font-head); font-size: var(--fs-h); line-height: calc(var(--px) * 12); color: #ffe6a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 var(--px) 0 #3a0f0a, var(--px) 0 0 #5a1a10; }
+.tk-talk[data-who=hero] .tk-plate { border-image-source: var(--dl-ribbonBlue); }
+.tk-talk[data-who=nugget] .tk-plate, .tk-talk[data-who=shop] .tk-plate { border-image-source: var(--dl-ribbonGreen); }
+.tk-talk .tk-head { align-items: stretch; gap: calc(var(--px) * 3); margin-bottom: calc(var(--px) * 4); flex: none; }
+.tk-talk .tk-portrait {
+  position: relative; flex: none; box-sizing: border-box; display: block; align-self: flex-start;
+  width: calc(var(--px) * (var(--pp) + 12)); height: calc(var(--px) * (var(--pp) + 12));
+  border-width: calc(var(--px) * 6); border-image: var(--dl-pframe) 6 / calc(var(--px) * 6) repeat; background: #0c0608 padding-box;
+  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 6, .55)); animation: ttFaceIn .5s var(--pop) .05s both;
+}
+.tk-frame { width: 100%; height: 100%; overflow: hidden; }
+.tk-frame canvas { display: block; width: calc(var(--px) * var(--pp)); height: calc(var(--px) * var(--pp)); }
+.tk-talk .tk-say {
+  margin-top: 0; padding: calc(var(--px) * 1) calc(var(--px) * 2) calc(var(--px) * 2); background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box;
+  border-style: solid; border-width: calc(var(--px) * 6); border-image: var(--dl-parch) 6 / calc(var(--px) * 6) repeat; box-shadow: inset 0 calc(var(--px) * 2) 0 rgba(90, 56, 26, .14);
+  animation: ttUnroll .32s ease-out .06s both; cursor: pointer; min-height: calc(var(--px) * 30);
+}
+.tk-talk .tk-say::before { display: none; }
+.tk-talk .tk-say small { color: #8a5a32; margin-bottom: var(--px); }
+.tk-talk .tk-say p b { color: #8a2e14; font-weight: 400; }
+.tk-talk .tk-say p .gold-txt { color: #9a6408; font-weight: 400; }
+.tk-talk .tk-notes { overflow-y: auto; min-height: 0; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #a06c3c transparent; padding-top: calc(var(--px) * 7); }
+.tk-talk .tk-note { animation-delay: var(--d, 0s); }
+@media (max-width: 560px), (max-height: 520px) { .tk-talk { --pp: 40; } }
+@media (max-height: 520px) { .tk-talk .tk-head { margin-bottom: calc(var(--px) * 2); } .tk-talk .tk-say { min-height: 0; } .tk-talk { padding-top: calc(var(--px) * 7); } }

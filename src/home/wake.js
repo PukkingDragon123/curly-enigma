@@ -1,105 +1,117 @@
-// Waking up in Old Star's cave (home { from: 'fall' }), mixed into HomeScene. Darkness, a heartbeat;
-// heavy eyelids open a crack on a blurred roof (the hole you came through, roots, dust) and close;
-// a muffled voice; a star-nosed face leans in over you, blurred; footsteps away, water scooped,
-// footsteps back... then a bucket of cold quench water in the face: a white splash across the
-// screen, a gasp, a shiver, and the view snaps sharp as you sit up. Old Star laughs, tells you who
-// he is, why he needs a million gold, and offers to teach you. Sets flags fallen + nugget, starts
-// the `lessons` quest and emits lesson { step: 'wake' }. The overlays (eyelids, water on the
-// screen, the blur) are WakeFx; splashFace() at the trough reuses the water.
-import * as THREE from 'three';
-import { el, rand, clamp } from '../core/util.js';
-import { HALL, HOLE, T } from './units.js';
-import { MOUND } from './caveRock.js';
-import { SPOTS } from './cave.js';
+// Waking up in your bed at Old Star's (home { from: 'fall' }), mixed into HomeScene. No splash,
+// no fuss: you just wake. Dark; a slow heartbeat; the world comes back muffled, as if through
+// water (a low-pass on the whole mix that opens as you come round). Heavy eyelids crack open on the
+// beams over the bed, blurred, and sink shut again; a second, longer look, the head rolling a
+// little on the pillow; a third, and the room comes into focus: the fire in the bedroom hearth,
+// and Old Star crouched at it with a poker, his back to you. He hears you stir, straightens up,
+// turns round and talks (the tutor card): who he is, how you came down through his ceiling, the
+// million gold for the way up, and his offer to teach you. Then you sit up and get out of bed.
+// The overlay (WakeFx) draws the lids as a dark mask with soft edges and lashes, warm where the
+// light comes through them; the blur is a CSS filter on the canvas. Sets flags fallen + nugget,
+// starts the `lessons` quest and emits lesson { step: 'wake' }.
+import { el, clamp } from '../core/util.js';
 import { starData } from './starData.js';
 
 const ease = (k) => k * k * (3 - 2 * k);
-const _v = new THREE.Vector3();
 
-// ---------------------------------------------------------------- overlays
-/** Eyelids and water on the lens, drawn in big pixels over the view; the blur is a CSS filter on the canvas. */
+// ---------------------------------------------------------------- the eyelids
+/**
+ * Eyelids over the view: open 0 (shut) … 1 (wide open, gone). The lids are dark curves meeting in
+ * a soft almond, the upper one moving most, with a band of warm flesh-light along each edge and a
+ * fringe of lashes; shut, the light glows dull red through them. Drawn on a small canvas and
+ * softened with a CSS blur (they're far too close to focus on). blur: the view's own blur (px).
+ */
 export class WakeFx {
   constructor(game) {
     this.game = game;
     this.open = 1;
     this.blur = 0;
-    this.drops = [];
-    this.sheet = 0;
-    this.c = el('canvas', { class: 'pix', style: { position: 'absolute', inset: '0', width: '100%', height: '100%', pointerEvents: 'none', zIndex: 3, imageRendering: 'pixelated' } });
+    this.glow = 0.5; // how much light comes through the shut lids (red)
+    this.c = el('canvas', { class: 'wake-lids', style: { position: 'absolute', inset: '-24px', width: 'calc(100% + 48px)', height: 'calc(100% + 48px)', pointerEvents: 'none', zIndex: 3, filter: 'blur(13px)' } });
     this.ctx = this.c.getContext('2d');
     game.ui.root.insertBefore(this.c, game.ui.root.querySelector('.tutor'));
     this.resize();
+    this.last = '';
   }
 
   resize() {
-    const W = 200, a = window.innerHeight / Math.max(1, window.innerWidth);
-    this.W = W; this.H = Math.max(80, Math.round(W * a));
+    const W = 320, a = window.innerHeight / Math.max(1, window.innerWidth);
+    this.W = W; this.H = Math.max(120, Math.round(W * a));
     this.c.width = this.W; this.c.height = this.H;
+    this.last = '';
   }
 
-  /** A bucketful (k = 1) or a splash from the trough (k ≈ 0.4). */
-  splash(k = 1) {
-    this.sheet = Math.max(this.sheet, k);
-    const n = Math.round(70 * k);
-    for (let i = 0; i < n; i++) {
-      this.drops.push({ x: rand(0, this.W), y: rand(-10, this.H), r: rand(1.5, 5.5) * (0.6 + k * 0.5), vy: rand(2, 9), life: rand(1.5, 4.5), t: 0, wob: rand(0, 6) });
-    }
-  }
-
-  update(dt) {
+  update() {
     const g = this.ctx, W = this.W, H = this.H;
-    g.clearRect(0, 0, W, H);
-    // water: a white-blue sheet that drains away, beads that slide down leaving trails
-    if (this.sheet > 0.01) {
-      g.fillStyle = `rgba(200,230,255,${Math.min(0.85, this.sheet * 0.8)})`;
-      g.fillRect(0, 0, W, H);
-      this.sheet = Math.max(0, this.sheet - dt * 1.8);
-    }
-    this.drops = this.drops.filter((d) => (d.t += dt) < d.life);
-    for (const d of this.drops) {
-      d.vy = Math.max(1, d.vy - dt * 1.5);
-      d.y += d.vy * dt * (d.r > 3 ? 3 : 1.5);
-      d.x += Math.sin(d.t * 3 + d.wob) * dt * 2;
-      const a = 1 - d.t / d.life;
-      // the trail
-      g.fillStyle = `rgba(170,210,240,${0.22 * a})`;
-      g.fillRect(Math.round(d.x - d.r * 0.3), Math.round(d.y - d.r * 4), Math.max(1, Math.round(d.r * 0.6)), Math.round(d.r * 4));
-      // the bead: a rim, a body, a glint
-      const r = Math.round(d.r);
-      g.fillStyle = `rgba(60,90,120,${0.5 * a})`;
-      g.fillRect(Math.round(d.x - r), Math.round(d.y - r), r * 2, r * 2);
-      g.fillStyle = `rgba(190,225,250,${0.55 * a})`;
-      g.fillRect(Math.round(d.x - r + 1), Math.round(d.y - r + 1), Math.max(1, r * 2 - 2), Math.max(1, r * 2 - 2));
-      g.fillStyle = `rgba(255,255,255,${0.9 * a})`;
-      g.fillRect(Math.round(d.x - r + 1), Math.round(d.y - r + 1), 1, 1);
-    }
-    // eyelids: dark, warm where the light comes through, ragged with lashes
     const k = clamp(this.open, 0, 1);
-    if (k < 0.999) {
-      const mid = H / 2, reach = mid * (1 - k) + 1;
-      for (let x = 0; x < W; x++) {
-        const u = (x - W / 2) / (W / 2);
-        const curve = (1 - u * u) * H * 0.12 * k;
-        const top = Math.round(reach + curve), bot = Math.round(H - reach - curve);
-        for (const [y0, y1, dir] of [[0, top, 1], [bot, H, -1]]) {
-          g.fillStyle = '#0c0406';
-          g.fillRect(x, y0, 1, Math.max(0, y1 - y0));
-          // the rosy rim where light seeps through, dithered
-          const rim = dir > 0 ? y1 : y0;
-          for (let j = 0; j < 6; j++) {
-            const yy = rim - dir * (j + 1);
-            if ((x + j) % 2 === 0 || j < 2) { g.fillStyle = `rgba(${90 - j * 10},${24 - j * 3},${20 - j * 2},${0.9 - j * 0.12})`; g.fillRect(x, yy, 1, 1); }
-          }
-          if (dir > 0 && x % 5 === 0 && k > 0.05) { g.fillStyle = '#0c0406'; g.fillRect(x, rim, 1, 2 + (x % 3)); } // lashes
-        }
-      }
-      if (k < 0.03) { g.fillStyle = '#0c0406'; g.fillRect(0, 0, W, H); }
+    const key = `${k.toFixed(3)}|${this.glow.toFixed(2)}`;
+    if (key !== this.last) {
+      this.last = key;
+      g.clearRect(0, 0, W, H);
+      if (k < 0.995) this.drawLids(g, W, H, k);
     }
     // the blur and the dim on the canvas itself
     const canvas = this.game.canvas;
     const b = this.blur;
-    canvas.style.filter = b > 0.05 ? `blur(${b.toFixed(2)}px) brightness(${(1 - Math.min(0.35, b * 0.03)).toFixed(3)})` : '';
-    return this.drops.length > 0 || this.sheet > 0 || k < 0.999 || b > 0.05;
+    canvas.style.filter = b > 0.05 ? `blur(${b.toFixed(2)}px) brightness(${(1 - Math.min(0.3, b * 0.03)).toFixed(3)}) saturate(${(1 - Math.min(0.4, b * 0.04)).toFixed(3)})` : '';
+    return k < 0.999 || b > 0.05;
+  }
+
+  drawLids(g, W, H, k) {
+    const mid = H * 0.5;
+    // the aperture: an almond, sized by the width (a slit stays a slit on a tall phone screen), that
+    // grows past the screen's edges as the eye opens
+    const S = Math.min(H, W * 0.56), far = k * k * k * H * 0.45;
+    const reachUp = k * S * 0.78, reachDn = k * S * 0.62;
+    const top = (x) => { const u = (x - W / 2) / (W * 0.62); return mid - reachUp * Math.max(0, 1 - u * u) - far; };
+    const bot = (x) => { const u = (x - W / 2) / (W * 0.66); return mid + reachDn * Math.max(0, 1 - u * u * 1.1) + far; };
+    const shut = 1 - Math.min(1, k * 4);
+    // the lids: deep red-brown where the light glows through, near black at the rims of the view
+    const lid = (t) => `rgb(${Math.round(18 + 34 * this.glow * t)},${Math.round(6 + 6 * this.glow * t)},${Math.round(6 + 4 * this.glow * t)})`;
+    const N = 40;
+    const path = (edge, upper) => {
+      g.beginPath();
+      g.moveTo(0, upper ? 0 : H);
+      for (let i = 0; i <= N; i++) { const x = (i / N) * W; g.lineTo(x, edge(x)); }
+      g.lineTo(W, upper ? 0 : H);
+      g.closePath();
+    };
+    for (const upper of [true, false]) {
+      const edge = upper ? top : bot;
+      path(edge, upper);
+      const gr = upper ? g.createLinearGradient(0, 0, 0, Math.max(1, mid)) : g.createLinearGradient(0, H, 0, Math.min(H - 1, mid));
+      gr.addColorStop(0, lid(0.4 + shut * 0.6));
+      gr.addColorStop(1, lid(1));
+      g.fillStyle = gr;
+      g.fill();
+      // the warm, lit band along the rim of each lid
+      g.save();
+      path(edge, upper);
+      g.clip();
+      g.lineWidth = S * 0.09;
+      g.strokeStyle = `rgba(86,30,22,${0.35 + shut * 0.3})`;
+      g.beginPath();
+      for (let i = 0; i <= N; i++) { const x = (i / N) * W; if (i) g.lineTo(x, edge(x)); else g.moveTo(x, edge(x)); }
+      g.stroke();
+      g.restore();
+      // lashes: dark curved strokes off the rim, longer on the upper lid
+      if (k > 0.02 && k < 0.98) {
+        g.strokeStyle = 'rgba(8,3,3,0.9)';
+        g.lineWidth = 1.4;
+        const n = upper ? 34 : 22, L = (upper ? 0.07 : 0.035) * S;
+        for (let i = 1; i < n; i++) {
+          const x = (i / n) * W + Math.sin(i * 7.3) * 2;
+          const y = edge(x);
+          const lean = (x - W / 2) / W;
+          g.beginPath();
+          g.moveTo(x, y);
+          g.quadraticCurveTo(x + lean * L * 0.8, y + (upper ? 1 : -1) * L * 0.7, x + lean * L * 1.6, y + (upper ? 1 : -1) * L * (0.9 + Math.sin(i * 3.1) * 0.15));
+          g.stroke();
+        }
+      }
+    }
+    // shut tight: the light still glows dully through
+    if (k < 0.02) { g.fillStyle = lid(1); g.fillRect(0, 0, W, H); }
   }
 
   dispose() {
@@ -109,31 +121,46 @@ export class WakeFx {
 }
 
 // ---------------------------------------------------------------- sounds
-function gasp(a) {
-  a.noise({ color: 'pink', filter: 'bandpass', f: 700, f2: 2600, q: 1.1, dur: 0.38, a: 0.02, vol: 0.32 });
-  a.tone({ f: 260, f2: 640, type: 'triangle', dur: 0.28, vol: 0.06 });
-}
-function shiver(a, secs = 1.4) {
-  for (let t = 0; t < secs; t += 0.065) a.noise({ filter: 'bandpass', f: 2800 + Math.random() * 900, q: 4, dur: 0.018, vol: 0.06 * (1 - t / secs), delay: t });
-  a.tone({ f: 170, f2: 150, type: 'sawtooth', dur: secs * 0.8, vol: 0.025, filter: 'lowpass', ff: 600, vib: 22, vibRate: 26, delay: 0.1 });
-}
-function heartbeat(a, n = 2) {
+function heartbeat(a, n = 2, vol = 0.16) {
   for (let i = 0; i < n; i++) {
-    a.tone({ f: 58, f2: 42, type: 'sine', dur: 0.16, vol: 0.18, delay: i * 0.9 });
-    a.tone({ f: 52, f2: 40, type: 'sine', dur: 0.14, vol: 0.12, delay: i * 0.9 + 0.22 });
+    a.tone({ f: 58, f2: 42, type: 'sine', dur: 0.16, vol, delay: i * 1.05 });
+    a.tone({ f: 52, f2: 40, type: 'sine', dur: 0.14, vol: vol * 0.66, delay: i * 1.05 + 0.24 });
   }
+}
+function breath(a, vol = 0.05) {
+  a.noise({ color: 'pink', filter: 'bandpass', f: 500, f2: 900, q: 0.8, dur: 1.1, a: 0.4, vol });
+}
+
+/**
+ * Everything sounds as if under a blanket: a low-pass between the master gain and the compressor.
+ * Returns { set(k: 0 muffled … 1 clear), dispose() } (or a no-op when there's no audio).
+ */
+function muffler(a) {
+  const ctx = a.ctx;
+  if (!ctx || !a.master || !a.comp) return { set() {}, dispose() {} };
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 260;
+  lp.Q.value = 0.6;
+  try { a.master.disconnect(a.comp); } catch (e) { return { set() {}, dispose() {} }; }
+  a.master.connect(lp).connect(a.comp);
+  let gone = false;
+  return {
+    set(k) { if (!gone) lp.frequency.setTargetAtTime(260 * Math.pow(80, clamp(k, 0, 1)), ctx.currentTime, 0.05); },
+    dispose() {
+      if (gone) return;
+      gone = true;
+      try { a.master.disconnect(lp); lp.disconnect(); } catch (e) { /* already apart */ }
+      try { a.master.connect(a.comp); } catch (e) { /* (nothing to do) */ }
+    },
+  };
 }
 
 // ---------------------------------------------------------------- the scene
 export class HomeWake {
-  /** Water on your face (the splash overlay), k 0..1. */
-  wetFace(k = 0.5) {
-    if (!this.wakeFx) { this.wakeFx = new WakeFx(this.game); this.own(() => { this.wakeFx?.dispose(); this.wakeFx = null; }); }
-    this.wakeFx.splash(k);
-  }
-
   tickWakeFx(dt) {
     if (this.wakeFx) this.wakeFx.update(dt);
+    if (this.waking && this.wakeSway) this.wakeSway(dt);
   }
 
   sniffSound() {
@@ -141,7 +168,13 @@ export class HomeWake {
     for (let i = 0; i < 3; i++) a.noise({ color: 'pink', filter: 'bandpass', f: 1800, q: 2, dur: 0.06, vol: 0.12, delay: i * 0.11 });
   }
 
-  /** The whole waking-up scene. Resolves when you're standing and the first lesson is set. */
+  /** Where Old Star tends the bedroom fire (meters): { x, z, face: { x, z } }. */
+  hearthSpot() {
+    const h = this.shell.hearth;
+    return { x: h.x + 0.12, z: h.z - 0.92, face: { x: h.x, z: h.z } };
+  }
+
+  /** The whole waking-up scene. Resolves when you're up and the first lesson is set. */
   async wakeFromFall() {
     const g = this.game, st = g.state, a = g.audio, ui = g.ui, star = this.star;
     st.flag('fallen', true);
@@ -150,6 +183,8 @@ export class HomeWake {
     sd.woke = false;
     if (!this.wakeFx) { this.wakeFx = new WakeFx(g); this.own(() => { this.wakeFx?.dispose(); this.wakeFx = null; }); }
     const fx = this.wakeFx;
+    const muff = (this.wakeMuff = muffler(a));
+    this.own(() => muff.dispose());
     ui.setTouchControls?.(false);
     this.hammer && (this.hammer.style.visibility = 'hidden');
     // no "click to look around" card over your eyelids: it's a cutscene till you're on your feet
@@ -158,144 +193,118 @@ export class HomeWake {
     this.beginScript(false);
     this.waking = true;
     const c = this.cam;
-    // lying on the rubble, looking up at the hole you came through
-    const gx = MOUND.x - 0.05, gz = MOUND.z + 0.62;
-    const gy = this.cave.ground(gx, gz);
-    c.x = gx; c.z = gz; c.y = gy + 0.16; c.yaw = 0.15; c.pitch = 1.18; c.roll = 0.2;
-    fx.open = 0; fx.blur = 9;
-    this.post.fade = 1;
-    // Old Star crouched by you, leaning in (not seen yet)
-    let bucketObj = null;
+    const bed = this.findKind('bed');
+    // lying in bed, looking up at the beams
+    if (bed) await this.lieDown(bed, true);
+    const base = { yaw: c.yaw, pitch: 1.12, roll: 0.18 };
+    c.pitch = base.pitch; c.roll = base.roll;
+    fx.open = 0; fx.blur = 10; fx.glow = 0.35;
+    const post0 = (this.wakeVignette = this.post.vignette);
+    this.post.vignette = 0.95;
+    this.post.fade = 0;
+    // the head drifts on the pillow: a slow sway that settles as you come round
+    const sway = { amp: 1, yaw: 0, pitch: 0, t: 0 };
+    this.wakeSway = (dt) => {
+      sway.t += dt;
+      const s = sway.amp;
+      c.yaw = base.yaw + sway.yaw + Math.sin(sway.t * 0.55) * 0.05 * s;
+      c.pitch = base.pitch + sway.pitch + Math.sin(sway.t * 0.37 + 1) * 0.035 * s;
+      c.roll = base.roll * (0.35 + 0.65 * s) + Math.sin(sway.t * 0.43 + 2) * 0.04 * s;
+    };
+    // Old Star crouched at the bedroom fire with the poker, his back to you
     if (star?.rig) {
       star.scripted = true;
       star.stand();
-      star.pos.set(gx + 0.42, this.cave.ground(gx + 0.42, gz - 0.38), gz - 0.38);
-      star.faceTo(gx, gz, true);
-      star.setPose('idle');
-      star.body.rotation.x = 0.55;
-      star.body.position.z = 0;
+      const H = this.hearthSpot();
+      star.pos.set(H.x, this.floorY(H.x, H.z), H.z);
+      star.faceTo(H.face.x, H.face.z, true);
+      star.setPose('poke');
+      star.lean(0.32);
+      star.spot = 'bedroom';
     }
-    const leanBack = () => { if (star?.rig) this.tween(0.6, (k) => { star.body.rotation.x = 0.55 * (1 - ease(k)); }); };
     const lids = (to, secs) => { const from = fx.open; return this.tween(secs, (k) => { fx.open = from + (to - from) * ease(k); }); };
     const blurTo = (to, secs) => { const from = fx.blur; return this.tween(secs, (k) => { fx.blur = from + (to - from) * ease(k); }); };
-    const mumble = (html, secs) => { ui.tutor?.say(html, { muffled: true, mood: 'worried', dur: secs + 0.6, place: 'top' }); return this.sleepFor(secs); };
+    const glowTo = (to, secs) => { const from = fx.glow; return this.tween(secs, (k) => { fx.glow = from + (to - from) * ease(k); }); };
+    const clear = (to, secs) => { const from = this.muffK ?? 0; return this.tween(secs, (k) => { this.muffK = from + (to - from) * ease(k); muff.set(this.muffK); }); };
+    const look = (dyaw, dpitch, secs) => { const y0 = sway.yaw, p0 = sway.pitch; return this.tween(secs, (k) => { sway.yaw = y0 + (dyaw - y0) * ease(k); sway.pitch = p0 + (dpitch - p0) * ease(k); }); };
+    this.muffK = 0;
+    muff.set(0);
 
-    await this.sleepFor(0.8);
+    // ---- dark, light glowing red through the lids, a heartbeat; then a crack of warm light on the
+    // beams, blurred, slowly widening... and shut again
+    glowTo(0.7, 1.4);
+    await this.sleepFor(0.3);
     heartbeat(a, 2);
-    this.tween(1.2, (k) => { this.post.fade = 1 - k; });
-    await this.sleepFor(1.6);
-    // a crack of light: the roof, the hole, roots, blurred
-    await lids(0.22, 0.9);
-    this.fx.dust(HOLE.x, this.holeTop - 0.2, HOLE.z, 6, [0.4, 0.3, 0.22], 0.2);
-    await this.sleepFor(1.0);
-    await lids(0, 0.45);
-    await mumble('…hey. <i>Hey.</i> Can you hear me?', 2.4);
-    // eyes open a little more: a face over yours, a pink star of a nose, spectacles
-    heartbeat(a, 1);
-    c.yaw += 0.35; c.pitch = 0.95;
-    await lids(0.42, 0.8);
-    star?.sniff();
-    this.sniffSound();
-    await mumble('Out cold. Sixty years nobody drops in, and then a whole hen house comes through my roof.', 3.2);
-    await lids(0.05, 0.7);
-    // footsteps going off, water scooped, footsteps coming back
-    if (star?.rig) {
-      leanBack();
-      const T0 = SPOTS.trough;
-      star.walkTo(T0.x - 0.55, T0.z + 0.9, 1.4).then(() => {});
-      for (let i = 0; i < 6; i++) this.later(i * 0.35, () => a.play('step', { vol: 0.25 - i * 0.03, mat: 'stone' }));
-      await lids(0.18, 0.5);
-      await this.sleepFor(0.6);
-      await lids(0.02, 0.4);
-      await mumble('Right. This\'ll do it.', 1.6);
-      // (he's far off: put him at the trough and bring him back with the bucket)
-      star.path = null; star.mode = 'idle';
-      star.pos.set(T0.x - 0.5, this.cave.ground(T0.x - 0.5, T0.z + 0.8), T0.z + 0.8);
-      a.play('splash', { vol: 0.35 });
-      this.cave.ripple('trough', T0.x, T0.z, 1.5);
-      const b = this.cave.dyn.bucket;
-      bucketObj = new THREE.Group();
-      bucketObj.scale.setScalar(T);
-      if (b?.obj) { b.obj.parent?.remove(b.obj); b.obj.position.set(0, 0, 0); b.obj.rotation.set(0, 0, 0); bucketObj.add(b.obj); }
-      star.carry(bucketObj);
-      star.pos.set(gx + 0.55, this.cave.ground(gx + 0.55, gz - 0.55), gz - 0.55);
-      star.faceTo(gx, gz, true);
-      for (let i = 0; i < 4; i++) this.later(i * 0.32, () => a.play('step', { vol: 0.12 + i * 0.05, mat: 'stone' }));
-      await this.sleepFor(1.3);
-    } else await this.sleepFor(2);
-    // eyes open: there he is with the bucket raised
-    c.yaw = Math.atan2(-((star?.pos.x ?? gx + 0.5) - c.x), -((star?.pos.z ?? gz - 0.5) - c.z)); c.pitch = 0.6;
-    await lids(0.5, 0.5);
-    await blurTo(5, 0.4);
-    // the throw: the bucket swings up and over, the water comes at you
-    if (star?.rig) {
-      const r = star.rig;
-      star.carrying = null; // (stop the carry pose; keep the bucket in his paws for the swing)
-      await this.tween(0.45, (k) => { const e = ease(k); r.armL && r.armL.rotation.set(-1.0 - e * 1.6, 0, 0.25); r.armR && r.armR.rotation.set(-1.0 - e * 1.6, 0, -0.25); bucketObj.position.set(0, 0.3 + e * 0.32, 0.2 - e * 0.1); bucketObj.rotation.x = -e * 0.5; });
-      a.play('whoosh', { vol: 0.8 });
-      const from = star.pos.clone().add(_v.set(0, 0.75, 0));
-      const to = new THREE.Vector3(c.x, c.y, c.z);
-      for (let i = 0; i < 40; i++) {
-        const t = rand(0.15, 0.35);
-        const vx = (to.x - from.x) / t + rand(-0.6, 0.6), vz = (to.z - from.z) / t + rand(-0.6, 0.6), vy = (to.y - from.y) / t + 4.9 * t + rand(-0.4, 0.6);
-        this.fx.droplet(from.x + rand(-0.06, 0.06), from.y + rand(-0.04, 0.06), from.z + rand(-0.06, 0.06), vx, vy, vz, t + 0.3, [0.72, 0.9, 1], rand(0.012, 0.022));
-      }
-      this.tween(0.25, (k) => { const e = ease(k); bucketObj.rotation.x = -0.5 - e * 1.9; bucketObj.position.z = 0.1 + e * 0.15; });
-      await this.sleepFor(0.24);
-    }
-    // SPLASH
-    fx.splash(1);
-    this.post.flashColor = 0xd8f0ff;
-    this.post.flash = 0.85;
-    this.tween(0.9, (k) => { this.post.flash = 0.85 * (1 - k) * (1 - k); }).then(() => { this.post.flash = 0; });
-    a.play('splash', { vol: 1 });
-    a.noise({ color: 'white', filter: 'lowpass', f: 2200, f2: 600, dur: 0.6, vol: 0.3 });
-    gasp(a);
-    this.rig.shake(0.6);
-    this.rig.vm?.impact('none', 0.6);
-    fx.open = 1;
-    blurTo(0, 0.55);
-    // sit bolt upright
-    const p0 = c.pitch, y0 = c.y, r0 = c.roll;
-    await this.tween(0.32, (k) => { const e = 1 - (1 - k) ** 3; c.pitch = p0 + (-0.12 - p0) * e; c.y = y0 + 0.24 * e; c.roll = r0 * (1 - e); });
-    shiver(a, 1.5);
-    const shiverT = { t: 1.5 };
-    const shiverTick = (dt) => { shiverT.t -= dt; c.roll = Math.sin(this.time * 47) * 0.012 * Math.max(0, shiverT.t); c.yaw += Math.sin(this.time * 61) * 0.0015 * Math.max(0, shiverT.t); if (shiverT.t <= 0) { this.tickers.splice(this.tickers.indexOf(shiverTick), 1); c.roll = 0; } };
-    this.tickers.push(shiverTick);
-    // face him
-    if (star?.rig) {
-      const yaw = Math.atan2(-(star.pos.x - c.x), -(star.pos.z - c.z));
-      const yw0 = c.yaw, dy = Math.atan2(Math.sin(yaw - yw0), Math.cos(yaw - yw0));
-      this.tween(0.6, (k) => { c.yaw = yw0 + dy * ease(k); c.pitch += (0.05 - c.pitch) * 0.12; });
-      // the bucket comes down, upside down, and he laughs
-      this.tween(0.4, (k) => { bucketObj.rotation.x = -2.4 + ease(k) * 0.4; bucketObj.position.y = 0.62 - ease(k) * 0.4; });
-      star.rig.play?.('laugh');
-      star.gestureT = 1.6;
-      a.play('laugh', { pitch: 260 });
-    }
+    await lids(0.05, 0.9);
     await this.sleepFor(0.5);
+    breath(a, 0.04);
+    clear(0.2, 2);
+    await lids(0.2, 1.1);
+    await this.sleepFor(0.7);
+    await lids(0.02, 0.6);
+    await this.sleepFor(0.9);
+    // ---- the second, longer: the head rolls toward the fire, Old Star hums to himself
+    heartbeat(a, 1, 0.1);
+    clear(0.45, 2.2);
+    blurTo(6, 1.6);
+    look(0.25, -0.18, 2.6);
+    await lids(0.42, 1.0);
+    if (star?.rig) a.play('babble', { pitch: 150, n: 3, vol: 0.35 });
+    await this.sleepFor(0.9);
+    await lids(0.12, 0.45);
+    await lids(0.36, 0.5);
+    await this.sleepFor(0.5);
+    await lids(0.0, 0.55);
+    await this.sleepFor(0.6);
+    // ---- the third: eyes open, the room comes into focus, the sound comes back
+    clear(1, 2.6);
+    blurTo(0, 2.4);
+    glowTo(0, 1);
+    this.tween(2.6, (k) => { this.post.vignette = 0.95 + (post0 - 0.95) * ease(k); });
+    const fire = this.shell.hearth;
+    const towards = Math.atan2(-(fire.x - c.x), -(fire.z - c.z));
+    const dYaw = Math.atan2(Math.sin(towards - base.yaw), Math.cos(towards - base.yaw));
+    look(dYaw * 0.85, -0.95, 2.4);
+    await lids(0.7, 1.0);
+    await lids(0.5, 0.18); // a flutter
+    await lids(1, 0.5);
+    this.tween(1.6, (k) => { sway.amp = 1 - ease(k) * 0.7; });
+    a.play('creak', { vol: 0.25 }); // the bed creaks as you stir
+    await this.sleepFor(0.9);
+    // ---- he hears you: straightens up, turns round
+    if (star?.rig) {
+      const r = star;
+      this.tween(0.6, (k) => { r.lean(0.32 * (1 - ease(k))); });
+      r.setPose('idle');
+      await this.sleepFor(0.3);
+      r.faceTo(c.x, c.z);
+      r.sniff();
+      this.sniffSound();
+      await this.sleepFor(0.5);
+      r.gesture('wave', 1.4);
+    } else await this.sleepFor(0.6);
     const say = (text, mood) => (star?.rig ? star.say(text, { mood, wait: true }) : ui.tutor?.say(text, { mood, wait: true }));
-    await say('Ha! <b>That</b> got you. Quench water, straight off my forge: cold as the deep. Needed it for the forge anyway.', 'laugh');
-    // he sets the bucket down by his feet
-    if (star?.rig && bucketObj) {
-      const b = star.drop();
-      if (b) { b.position.set(star.pos.x + 0.25, star.pos.y, star.pos.z + 0.2); b.rotation.set(0, 0.6, 0); b.scale.setScalar(T); this.scene.add(b); this.wakeBucket = b; }
-      a.play('clunk', { vol: 0.4 });
-      star.setPose('idle');
-    }
-    await say('Easy, easy. You came down through my roof, you and that walking hen house of yours. Landed right there, on the rubble.', 'calm');
-    star?.gesture('point', 2);
+    await say('Ah! You\'re awake. Easy, easy. Don\'t sit up too fast: the room likes to spin the first time.', 'happy');
+    star?.rig && star.gesture('point', 1.6);
+    await say('You came down through my ceiling last night, you and a hen in a walking house. Out cold, you were. I put you to bed. This room\'s yours now.', 'calm');
     await say('I\'m <b>Old Star</b>. Blacksmith, once, up top. Been stuck down here sixty years, give or take a winter.', 'calm');
     await say('I was <b>this</b> close to getting out. The way up is the Surface Express, from Deep Town. A ticket costs a <span class="gold-txt">million gold</span>. I had near half of it once. Long story. Don\'t ask.', 'worried');
     await say('So here\'s my offer. I\'m too old to swing a pick all day, but you\'re young. I\'ll teach you to <b>dig</b>, to <b>forge</b> and to <b>cook</b>. We earn that million together, and we <b>both</b> ride out of here.', 'proud');
-    await say('Your hen\'s fine, by the way. She\'s already found the side chamber up the steps. That\'s yours now: your bed\'s in there.', 'happy');
-    // stand up
-    a.play('land', { vol: 0.4 });
-    const ty = this.cave.ground(c.x, c.z) + this.rig.player.eyeY, ya = c.y;
-    await this.tween(0.7, (k) => { c.y = ya + (ty - ya) * ease(k); c.pitch += (-0.05 - c.pitch) * 0.1; });
+    if (this.nug) { a.play('cluck', { n: 2 }); this.nugEmote?.('♥'); }
+    await say('Your hen\'s fine, by the way. She\'s made herself at home in the corner. Up you get, then: the kettle\'s on downstairs.', 'happy');
+    // ---- sit up and get out of bed
+    this.wakeSway = null;
+    sway.amp = 0;
+    a.play('step', { mat: 'wood' });
+    if (bed) await this.getUp(bed);
+    else await this.tween(0.7, (k) => { c.pitch = c.pitch * (1 - k); c.roll = c.roll * (1 - k); });
+    c.roll = 0;
     this.endScript();
     this.unstick();
     this.waking = false;
+    fx.open = 1; fx.blur = 0;
+    muff.dispose();
+    this.post.vignette = post0;
     ui.setTouchControls?.(true);
     if (this.hammer) this.hammer.style.visibility = '';
     if (lc) lc.style.visibility = '';
@@ -308,21 +317,12 @@ export class HomeWake {
     st.save();
     if (star?.rig) {
       star.scripted = false;
+      star.faceTo(this.rig.player.pos.x, this.rig.player.pos.z);
       star.gesture('point', 2.5);
-      star.say('First lesson: mining. The cage lift, over there by the cart. It goes straight down to my practice dig. Bring me back some <b>copper ore</b>: the orange specks in the rock.', { mood: 'calm' });
-      this.later(1.2, () => this.placeStarForLesson());
+      star.say('First lesson: mining. The cage lift is in the hall, through the living room downstairs. It goes straight down to my practice dig. Bring me back some <b>copper ore</b>: the orange specks in the rock.', { mood: 'calm' });
+      this.later(1.6, () => this.placeStarForLesson());
     }
-    // put his bucket back by the trough when you're not looking
-    this.later(20, () => this.returnBucket());
-  }
-
-  returnBucket() {
-    const b = this.wakeBucket, d = this.cave.dyn.bucket;
-    if (!b || !d) return;
-    this.scene.remove(b);
-    const inner = b.children[0];
-    if (inner) { b.remove(inner); inner.position.set(d.home.x / T, this.cave.ground(d.home.x, d.home.z) / T, d.home.z / T); inner.rotation.set(0, 0.4, 0); this.room.add(inner); }
-    this.wakeBucket = null;
+    if (this.nug) { this.nug.ai.wake?.(); }
   }
 
   /** Test hook: jump to the end of the waking-up scene (flags, the quest, the first lesson). */
@@ -335,10 +335,14 @@ export class HomeWake {
     st.emit('act', { type: 'lesson', step: 'wake' });
     if (this.lessonStage() === 'wake') this.setLesson('mine');
     if (this.wakeFx) { this.wakeFx.open = 1; this.wakeFx.blur = 0; }
+    this.wakeMuff?.dispose();
+    if (this.wakeVignette !== undefined) this.post.vignette = this.wakeVignette;
     this.post.fade = 0;
     this.waking = false;
+    this.wakeSway = null;
     if (this.scripted) this.endScript();
     this.game.ui.setTouchControls?.(true);
     this.placeStarForLesson(true);
   }
 }
+

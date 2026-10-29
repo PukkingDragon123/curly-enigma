@@ -1,21 +1,54 @@
 // Pixel-square particles for the underground (dust, chips, sparks, embers, glints, drips, spores).
 // One Points cloud per blend mode; each particle has its own physics (gravity, drag, bounce on
-// rock, buoyancy), size growth and fade.
+// rock, buoyancy, a little swirl), size growth, fade and twinkle. Points of 3 px and more are round
+// pixel discs; big soft puffs thin out toward the rim in dithered steps (no flat squares). Motes
+// spawned with `lit` take their light from the helmet lamp and the lanterns (bright in the beam,
+// nearly gone outside it). Given a deep world, it also runs the cave's air (src/deep/Atmosphere.js:
+// mood uniforms, the far sky, ambient motes, light shafts), as `fx.atmos`.
 import * as THREE from 'three';
 import { VOX } from './materials.js';
+import { MAX_LIGHTS } from './TerrainMaterial.js';
+import { Atmosphere } from './Atmosphere.js';
 
 const vert = /* glsl */`
   attribute vec4 pcol;
   attribute float psize;
+  attribute float plit;
   uniform float pxScale;
+  uniform float hasLamp;
+  uniform vec3 lampPos;
+  uniform vec3 lampDir;
+  uniform vec3 lampCol;
+  uniform float lampRange;
+  uniform vec3 ambient;
+  uniform vec4 lPos[${MAX_LIGHTS}];
+  uniform vec3 lCol[${MAX_LIGHTS}];
   varying vec4 vCol;
   varying float vDist;
+  varying float vSize;
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vDist = -mv.z;
     // pixel squares; capped so dust right in front of the eyes doesn't become a wall of fog
-    gl_PointSize = clamp(floor(psize * pxScale / max(0.05, -mv.z) + 0.5), 1.0, 22.0);
+    // (lit motes stay specks: dust a hand's width from the eye is a dot, not a blob)
+    gl_PointSize = clamp(floor(psize * pxScale / max(0.05, -mv.z) + 0.5), 1.0, plit > 0.9 ? 3.0 : 22.0);
+    vSize = gl_PointSize;
     vCol = pcol;
+    if (plit > 0.0 && hasLamp > 0.5) {
+      // dust in the air: lit by the helmet lamp's cone and the lanterns, a little by the ambient
+      vec3 d = position - lampPos;
+      float dist = length(d);
+      float c = dot(d / max(dist, 1e-4), lampDir);
+      float x = min(dist / lampRange, 1.0);
+      float w = 1.0 - x * x;
+      vec3 L = ambient * 1.6 + lampCol * w * w * (0.05 + 1.2 * smoothstep(0.62, 0.94, c)) / (1.0 + dist * dist * 0.06);
+      for (int i = 0; i < ${MAX_LIGHTS}; i++) {
+        float dd = length(lPos[i].xyz - position);
+        float a = clamp(1.0 - dd / lPos[i].w, 0.0, 1.0);
+        L += lCol[i] * a * a * 0.8;
+      }
+      vCol.rgb = mix(vCol.rgb, vCol.rgb * L, plit);
+    }
     vCol.a *= smoothstep(0.1, 0.4, -mv.z);
     gl_Position = projectionMatrix * mv;
   }`;
@@ -25,11 +58,32 @@ const frag = /* glsl */`
   uniform float additive;
   varying vec4 vCol;
   varying float vDist;
+  varying float vSize;
+  float bayer2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
+  float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
   void main() {
-    float f = 1.0 - exp(-pow(vDist / fogDist, 2.0) * 2.2);
+    float a = vCol.a;
+    if (vSize >= 3.0) {
+      // a round pixel disc; big soft puffs fade toward the rim in dithered steps
+      vec2 c = (floor(gl_PointCoord * vSize) + 0.5) / vSize - 0.5;
+      float r2 = dot(c, c) * 4.0;
+      if (r2 > 1.0) discard;
+      if (vSize >= 6.0 && additive < 0.5) a *= clamp(1.3 - r2 * 1.1, 0.0, 1.0);
+    }
+    if (additive < 0.5 && a < 0.9) a = floor(a * 5.0 + bayer4(gl_FragCoord.xy) * 0.999) / 5.0;
+    if (a <= 0.0) discard;
+    float f = 1.0 - exp(-pow(vDist / fogDist, 2.6) * 3.2);
     vec3 c = additive > 0.5 ? vCol.rgb * (1.0 - f) : mix(vCol.rgb, fogCol, f);
-    gl_FragColor = vec4(c, vCol.a);
+    gl_FragColor = vec4(c, a);
   }`;
+
+// stand-ins when the scene's uniforms have no lamp (the burrow's particles are self-lit)
+function lampUniforms(U) {
+  if (U.lampPos && U.lPos) return { hasLamp: { value: 1 }, lampPos: U.lampPos, lampDir: U.lampDir, lampCol: U.lampCol, lampRange: U.lampRange, ambient: U.ambient, lPos: U.lPos, lCol: U.lCol };
+  const lPos = [], lCol = [];
+  for (let i = 0; i < MAX_LIGHTS; i++) { lPos.push(new THREE.Vector4(0, -9999, 0, 1)); lCol.push(new THREE.Vector3()); }
+  return { hasLamp: { value: 0 }, lampPos: { value: new THREE.Vector3() }, lampDir: { value: new THREE.Vector3(0, 0, -1) }, lampCol: { value: new THREE.Color() }, lampRange: { value: 10 }, ambient: { value: new THREE.Color() }, lPos: { value: lPos }, lCol: { value: lCol } };
+}
 
 class Cloud {
   constructor(scene3, U, cap, additive) {
@@ -38,14 +92,16 @@ class Cloud {
     this.pos = new Float32Array(cap * 3);
     this.col = new Float32Array(cap * 4);
     this.size = new Float32Array(cap);
+    this.lit = new Float32Array(cap);
     this.p = []; // particle state
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('pcol', new THREE.BufferAttribute(this.col, 4).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('psize', new THREE.BufferAttribute(this.size, 1).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('plit', new THREE.BufferAttribute(this.lit, 1).setUsage(THREE.DynamicDrawUsage));
     this.geo = g;
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { fogCol: U.fogCol, fogDist: U.fogDist, pxScale: { value: 400 }, additive: { value: additive ? 1 : 0 } },
+      uniforms: { fogCol: U.fogCol, fogDist: U.fogDist, pxScale: { value: 400 }, additive: { value: additive ? 1 : 0 }, ...lampUniforms(U) },
       vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     });
@@ -61,6 +117,11 @@ export class Particles {
     this.w = world;
     this.soft = new Cloud(scene3, U, 4000, false);
     this.bright = new Cloud(scene3, U, 2600, true);
+    // the mine's air (a deep world with a plan, and the terrain's uniforms)
+    this.atmos = null;
+    if (world && world.plan && U.lampPos && U.haze) {
+      try { this.atmos = new Atmosphere(scene3, world, U, this); } catch (e) { console.warn('atmosphere failed', e); }
+    }
   }
 
   setPixelScale(h, fovDeg) {
@@ -70,18 +131,21 @@ export class Particles {
   }
 
   /**
-   * o: { x, y, z, vx, vy, vz, life, size (m), grow, color [r,g,b], alpha, drag, grav, bounce, glow, fade }
+   * o: { x, y, z, vx, vy, vz, life, size (m), grow, color [r,g,b], alpha, drag, grav, bounce, glow, fade,
+   *      lit (0..1: lit by the lamp and lights instead of self-lit), swirl (m/s² of lazy wander),
+   *      twinkle (Hz: flickers on and off) }
    */
   spawn(o) {
     const c = o.glow ? this.bright : this.soft;
     if (c.p.length >= c.cap) c.p.shift();
     c.p.push({ x: o.x, y: o.y, z: o.z, vx: o.vx || 0, vy: o.vy || 0, vz: o.vz || 0, t: 0, life: o.life || 1, size: o.size || 0.03,
       grow: o.grow || 0, r: o.color[0], g: o.color[1], b: o.color[2], a: o.alpha ?? 1, drag: o.drag ?? 1, grav: o.grav ?? 0,
-      bounce: o.bounce ?? 0, fade: o.fade !== false });
+      bounce: o.bounce ?? 0, fade: o.fade !== false, lit: o.lit || 0, sw: o.swirl || 0, tw: o.twinkle || 0, ph: Math.random() * 6.283 });
   }
 
   update(dt) {
     const w = this.w;
+    if (this.atmos) this.atmos.update(dt);
     for (const c of [this.soft, this.bright]) {
       let n = 0;
       const keep = [];
@@ -95,12 +159,19 @@ export class Particles {
         if (q.bounce && w.solidAt(q.x, ny, q.z)) { q.vy = -q.vy * q.bounce; q.vx *= 0.6; q.vz *= 0.6; }
         else q.y = ny;
         q.x += q.vx * dt; q.z += q.vz * dt;
+        if (q.sw) {
+          const a = q.t * 0.9 + q.ph;
+          q.vx += Math.sin(a) * q.sw * dt; q.vz += Math.cos(a * 1.3) * q.sw * dt; q.vy += Math.sin(a * 0.7 + 1) * q.sw * 0.4 * dt;
+        }
         keep.push(q);
-        const k = q.fade ? 1 - q.t / q.life : 1;
+        // fade in over the first half second (ambient motes), out over the life
+        let k = q.fade ? Math.min(1, 1 - q.t / q.life, q.sw ? q.t * 2 : 1) : 1;
+        if (q.tw) k *= Math.sin(q.t * q.tw + q.ph) > 0.35 ? 1 : 0.15;
         const i = n++;
         c.pos[i * 3] = q.x; c.pos[i * 3 + 1] = q.y; c.pos[i * 3 + 2] = q.z;
         c.col[i * 4] = q.r; c.col[i * 4 + 1] = q.g; c.col[i * 4 + 2] = q.b; c.col[i * 4 + 3] = q.a * k;
         c.size[i] = q.size + q.grow * q.t;
+        c.lit[i] = q.lit;
       }
       c.p = keep;
       c.n = n;
@@ -108,6 +179,7 @@ export class Particles {
       c.geo.attributes.position.needsUpdate = true;
       c.geo.attributes.pcol.needsUpdate = true;
       c.geo.attributes.psize.needsUpdate = true;
+      c.geo.attributes.plit.needsUpdate = true;
     }
   }
 
@@ -117,7 +189,7 @@ export class Particles {
       const ox = (Math.random() - 0.5) * spread * 2, oy = (Math.random() - 0.5) * spread * 2, oz = (Math.random() - 0.5) * spread * 2;
       this.spawn({ x: x + ox, y: y + oy, z: z + oz,
         vx: (out ? out[0] * 0.8 : 0) + ox * 2, vy: Math.random() * 0.5 + (out ? out[1] * 0.8 : 0), vz: (out ? out[2] * 0.8 : 0) + oz * 2,
-        life: 0.8 + Math.random() * 1.2, size: 0.03 + Math.random() * 0.05, grow: 0.06, color, alpha: 0.5 + Math.random() * 0.3, drag: 2.2, grav: -0.15 });
+        life: 0.8 + Math.random() * 1.2, size: 0.03 + Math.random() * 0.05, grow: 0.06, color, alpha: 0.5 + Math.random() * 0.3, drag: 2.2, grav: -0.15, lit: 0.7 });
     }
   }
   chips(x, y, z, n, color, out) {
@@ -144,7 +216,7 @@ export class Particles {
   }
   mote(x, y, z, color = [1, 0.92, 0.75]) {
     this.spawn({ x, y, z, vx: (Math.random() - 0.5) * 0.06, vy: (Math.random() - 0.5) * 0.04, vz: (Math.random() - 0.5) * 0.06,
-      life: 3 + Math.random() * 4, size: 0.008 + Math.random() * 0.008, color, alpha: 0.7, drag: 0.1 });
+      life: 3 + Math.random() * 4, size: 0.006 + Math.random() * 0.007, color, alpha: 0.85, drag: 0.1, lit: 1, swirl: 0.05 });
   }
   firefly(x, y, z, color) {
     this.spawn({ x, y, z, vx: (Math.random() - 0.5) * 0.3, vy: Math.random() * 0.15, vz: (Math.random() - 0.5) * 0.3, life: 2 + Math.random() * 2, size: 0.016, color, glow: true, drag: 0.3, grav: -0.03 });
@@ -157,6 +229,7 @@ export class Particles {
   }
 
   dispose() {
+    this.atmos?.dispose();
     for (const c of [this.soft, this.bright]) { c.geo.dispose(); c.mat.dispose(); }
   }
 

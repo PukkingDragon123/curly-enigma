@@ -19,6 +19,10 @@ import { Site, NAMES } from './ruins/site.js';
 import { TrailDress } from './ruins/trailDress.js';
 import { sfx } from './ruins/sfx.js';
 import { toWorld } from './ruins/common.js';
+import { RM } from './ruins/mats.js';
+
+/** Carved stone you can read with a paw (quests part: lore, src/core/lore.js). */
+const CARVED = new Set([RM.FRIEZE, RM.RUNEOFF, RM.RUNE, RM.RUNE_R, RM.GILT]);
 
 const _v = new THREE.Vector3();
 
@@ -104,7 +108,33 @@ export class Ruins {
         return { label: 'Sealed door', use: () => [{ say: this.doorHint(s), key: 'door' + s.id, cd: 4 }] };
       }
     }
+    // the carvings: run a paw along the raised runes and read what the Old Ones wrote (quests part)
+    const lore = this.owner?.game?.lore;
+    if (hit && lore && CARVED.has(hit.m)) {
+      const s = this.siteAt(hit);
+      if (s) return { label: 'Read the carvings', use: () => this.readCarving(s, hit, lore) };
+    }
     return null;
+  }
+  /** The ruin a voxel hit belongs to (the nearest built one, close enough). */
+  siteAt(hit) {
+    let best = null, bd = 30;
+    const x = hit.vx / VOX, z = hit.vz / VOX, y = hit.vy / VOX;
+    for (const s of this.sites) {
+      if (!s.built) continue;
+      const d = Math.hypot(s.center.x - x, (s.center.y - y) * 0.5, s.center.z - z);
+      if (d < bd) { bd = d; best = s; }
+    }
+    return best;
+  }
+  /** Read a ruin's carving: two carved walls per ruin, each with its own text (src/data/lore.js). */
+  readCarving(s, hit, lore) {
+    const wall = (Math.floor(hit.vx / (VOX * 3)) + Math.floor(hit.vz / (VOX * 3))) & 1;
+    const e = lore.readCarving({ id: s.id, kind: s.kind, wall });
+    this.sfx.grind?.(0.12, 0.08);
+    s.save.read = (s.save.read || 0) + 1;
+    lore.show(e, { kind: 'carving' });
+    return [{ handled: true }];
   }
   doorHint(s) {
     const n = (s.save.knock = (s.save.knock || 0) + 1);

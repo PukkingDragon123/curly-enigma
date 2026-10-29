@@ -74,6 +74,7 @@ export const GLYPH = {
   down: ['ooooo', '.ooo.', '..o..'],
   you: ['..o..', '.ooo.', 'oo.oo', 'o...o'],
   ruin: ['ooooo', '.o.o.', '.o.o.', 'ooooo'], // ruins part: two pillars under a lintel (Ruins.radarMarkers)
+  quest: ['..o..', '.ooo.', 'oo.oo', '.ooo.', '..o..'], // quests part: the tracked objective (a hollow diamond)
   // rim arrows, pointing outward in 8 directions (N, NE, E, SE, S, SW, W, NW)
   a0: ['..o..', '.ooo.', 'ooooo'],
   a1: ['oooo', '.ooo', '..oo', '...o'],

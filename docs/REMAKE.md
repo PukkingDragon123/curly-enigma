@@ -17,13 +17,15 @@ your section of it true when you finish (add an "As built" note under your part)
    its window. In a clearing they find a **strange chest spilling gold and gems**. The mole steps
    closer, the ground sags, cracks, and gives way; he falls into the dark and **blacks out**.
    Ends with `goto('home', { from: 'fall' })`.
-3. **Waking up** (`home`, now **Old Star's cave workshop**). Darkness, blurry eyes, then a bucket of
-   **cold quench water** in the face: Old Star, an old star-nosed mole blacksmith, needed the water
-   for his forge anyway. His home is a living cave: rough rock, drips, glow-worms, roots, the ruins
-   of something older (carved arches, broken pillars), old mining gear (carts, rails, a winch), his
-   forge and quench trough, a cooking hearth, his notes, his chest, a bed (yours now), and the cage
-   lift down to the mine. He was this close to getting out: **he needed a million gold** for the
-   way up, and he'll teach you so you can both make it.
+3. **Waking up** (`home`, **Old Star's house**). You just wake up, in a bed: heavy eyelids opening
+   and closing, the room blurred and muffled, then in focus: a cosy bedroom with a fire in its
+   hearth, and Old Star, an old star-nosed mole blacksmith, crouched at it with a poker. You came
+   down through his ceiling, out cold, and he put you to bed. His house is dug
+   into the rock beside a great glowing cavern (round windows on it): a living room with his
+   fireplace, armchair and books, a kitchen with the range, a smithy with his forge, a hall with the
+   cage lift down to the mine and the front door to Deep Town (caved in). He was this close to
+   getting out: **he needed a million gold** for the way up, and he'll teach you so you can both
+   make it.
 4. **The lessons** (an interactive tutorial, quest chain `lessons`): **mining** (ride the lift down
    to his practice dig, `deep`), **forging** (his forge, `forge { tutorial: true }`), **cooking**
    (his hearth, `cooking { tutorial: true }`). Each scene shows Old Star's tips through the tutor
@@ -52,7 +54,10 @@ your section of it true when you finish (add an "As built" note under your part)
   `sell {id, gold, to}` · `buy {id, gold, from}` · `feed {who}` · `puzzle {id}` · `sleep` ·
   `blast` · `lesson {step}` · `relic {id, ruin}` (a relic from a ruin's chest; `puzzle` also carries
   `kind, ruin, zone`) · `part {part, track, level, grade, score}` (a coop part forged at home) ·
-  `install {part, track, level, q}` (a part built onto the coop). Add a type if you need one; write it here.
+  `install {part, track, level, q}` (a part built onto the coop) · `look {at}` (took a good look at something:
+  `sunbeam well tunnel fountain notices` in town, `signpost cavein` on the trails, or a gaze at a quest's
+  `lake lava nest ...`) · `lore {id, src, shelf, ruin?, isNew}` (a lore entry read or heard: src `carving
+  journal tale book relic quest`). Add a type if you need one; write it here.
 - **Old Star talks through the tutor** (`ui.tutor`, owned by the home part):
   `ui.tutor.say(html, { mood, key, wait })` (a speech card with his portrait; mood: `calm`,
   `happy`, `stern`, `proud`, `worried`, `laugh`), `ui.tutor.hide()`. Always call it as
@@ -82,7 +87,7 @@ your section of it true when you finish (add an "As built" note under your part)
 |---|---|
 | **Journey intro, surface, post shaders, lift menu, hero mole** | `src/scenes/FallScene.js`, `src/bookends/*` (not title files), `src/core/Engine.js` post, `src/fps/lifts.js`, `src/fps/liftPanel.*`, `src/gfx/char/hero.js` (the player mole: `makeHeroMole(opts)`) |
 | **Title, save stones, hanging signs, menus** | `src/scenes/TitleScene.js`, `src/bookends/title*.js` (forge diorama, smith, props, save stones), `src/ui/signs.js`, the pause menu (`ui.openMenu` → `src/ui/PauseMenu.js`, also the shared Settings board), `src/core/saves.js` (3 slots, `state.completion()`) |
-| **Home: Old Star's cave workshop, waking up, tutor, forge lessons** | `src/scenes/HomeScene.js`, `src/home/*`, `src/iso/homeLayout.js`, `src/ui/Tutor.js`, the forge tutorial (`src/scenes/ForgeScene.js`, `src/forge/*`) |
+| **Home: Old Star's house, waking up, tutor, forge lessons** | `src/scenes/HomeScene.js`, `src/home/*`, `src/iso/homeLayout.js`, `src/ui/Tutor.js`, the forge tutorial (`src/scenes/ForgeScene.js`, `src/forge/*`) |
 | **Mining lessons in Old Star's dig** | `src/deep/Prologue.js`, `src/deep/prologue/*`, `src/deep/gen/prologue.js` |
 | **Quests, the book, the hand-drawn map** | `src/core/quests.js`, `src/data/quests.js`, `src/ui/Journal.js` (the book shell with tabs), `src/ui/Survey.js` (the map), the objective tracker |
 | **Skill tree** | `src/core/skills.js`, `src/data/skills.js`, `src/ui/SkillTree.js` (a tab in the book) |
@@ -404,8 +409,8 @@ of `src/ui/Backpack.js`, the HUD gauge (`ui.setLoad(load)` in `src/ui/Hud.js`), 
 ## Old Star's tutor (home part): `game.ui.tutor`
 
 `src/ui/Tutor.js`, created by `UI` (one hook in `UI.js`: built in the constructor, ticked from
-`ui.update`). A parchment card with Old Star's pixel-art portrait (his face changes with the mood,
-blinks, his star nose wiggles, his mouth moves while the words type out in his mumbly voice).
+`ui.update`). Wave 3: the carved dialogue board with the speaker's live 3D portrait (see "As built:
+dialogue & 3D portraits" at the end; the calls below are unchanged, plus `who`).
 
 ```js
 await game.ui.tutor?.say(html, { mood, key, wait, dur, name, sound })  // resolves when the line is gone
@@ -425,49 +430,83 @@ game.ui.tutor?.active            // { key, mood, html, wait } or null
 - A new line replaces the one showing (whose promise then resolves). `name` defaults to
   `'Old Star'`; `sound: false` mutes his voice. HTML: `<b>` (rust red), `<i>` (soft), `.gold-txt`.
 - Placement: bottom-centre on desktop, top-centre on touch screens (clear of the thumbs).
-- `import { starPortrait, starPortraitURL, MOODS } from '../ui/Tutor.js'` gives the portrait as a
-  40×40 canvas / data URL per mood (for the book, notes or a quest card).
+- `import { starPortrait, starPortraitURL, MOODS } from '../ui/Tutor.js'` gives a 40×40 still of the
+  3D Old Star per mood (canvas / data URL; the URL is '' until made: `portrait3d.still()` awaits it).
 
-## Old Star's cave workshop, waking up, lessons (home part): as built
+## Old Star's house, waking up, lessons (home part): as built
 
-**The home** (`home`): your old room (build mode, the bed, Nugget, the Miners' Board all still
-there) opens through a carved arch and worn steps (`ARCH`, `STAIRS` in `src/home/units.js`) into
-Old Star's cave (`HALL`: x −5.4…11.6, z −11.6…−0.31 m). The cave is real voxel rock built with the
-mine's mesher and terrain shader (`src/home/caveRock.js`, 1/16 m voxels, ~105 chunks; the plan of
-the lobes, floor and ceiling heights, dripstones, the pool and the fall mound is pure maths in
-`src/home/caveShape.js`), so it shares the mine's materials and lamp. No digging at home: the rock
-is collision only (`CaveWorld`). Props are code-made voxels (`src/home/caveProps.js`,
-`src/home/ruinProps.js`), placed and batched by `CaveHall` (`src/home/cave.js`, `SPOTS` and
-`STAR_SPOTS` are the named places):
-- **forge corner** (NW): brick forge with a flue up a crack in the roof, glowing coals, embers and
-  flames, bellows on a pole (pump them), anvil, a cold-water quench trough (splash your face),
-  his bucket, a tool rack, a coal heap, his cot (where he sleeps) with a crate and candle;
-- **hearth** (W): cooking fire with a pot and kettle, armchair, table and stools, a herb line, shelf,
-  log stack; his **notes board** and **chest** on the west wall (his gift in it most mornings;
-  otherwise it's your **trunk**: `openBackpack(game, { side: 'trunk' })`);
-- **ruins** (NE): a sealed carved doorway with a faint teal glow, broken pillars, a fallen drum, a
-  cracked mosaic, a dais;
-- **lift bay** (E): the cage lift in its shaft (`useLift` / `openLiftPanel` / `rideTo` as before),
-  rails and an ore cart (coal, 3 a day), a winch, the Miners' Board;
-- **the passage** (N, `FRONT`): the way out to the town; **the hole** (`HOLE`): where you fell in,
-  roots and loam round its throat, a trickle of earth; the rubble mound under it;
-- life: drips from dripstones with ripples and splash sounds, a still pool (drink: +energy, once a
-  day), glow-worm threads that flicker, moss, roots, dust motes, creaks, the forge's smoke, glints in
-  the rock (a few coins or quartz).
+(Wave 3 replaced the cave workshop with a full house and the cold-water wake-up with eyelids.)
 
-**Old Star** (`src/home/oldstar.js`, the `StarMoleRig` with `setExpression` moods): walks the cave on
-an A* grid, works the anvil (clangs, sparks, the anvil flashes), pumps the bellows (the forge flares),
-stirs the pot, reads his board, ponders the ruins, sits in his armchair with his pipe in the evening,
-sleeps on his cot at night (snoring), and turns to you when you come near. Talk to him (E) for the
-lesson, a tip, or skipping. His save corner: `state.data.oldstar` (`src/home/starData.js`):
-`lesson: 'wake' | 'mine' | 'forge' | 'cook' | 'done'` (+ `skipped`, `talkI`, daily counters).
+**The home** (`home`): your bedroom (the save's tile grid: build mode, the bed, Nugget's coop, your
+trunk) opens through a round-topped doorway and three worn steps (`ARCH`, `STAIRS` in
+`src/home/units.js`) into Old Star's house (`HALL`: its bounds, floor at y −0.5 m). The house is a
+plan of rooms (`src/home/plan.js`: `ROOMS`, `DOORS`, `WINDOWS`, `FRONT_DOOR`, `roomAt`, `doorAt`)
+whose walls, ceilings and floors are built by `src/home/surfaces.js` as 1/64 m textured reliefs with
+the fixed lights of each room baked into the texels (a light only lights its own room): lime plaster
+between oak posts, knee braces, a wall plate and lintels over a wainscot (sage panels in the living
+room, oak in the hall, glazed tiles in the kitchen), the smithy in sooty brick over a stone plinth;
+joisted board ceilings; oak and pine boards, terracotta tiles, flagstones, worn pale along the ways
+people walk. Collision is boxes only (`BoxWorld`: walls with the doorways left open, the floor,
+ceilings, every piece of furniture). Outside the round windows: the glowing cavern
+(`src/home/vista.js`: two painted panoramas round the house: cliffs veined with crystal, mushroom
+forests, waterfalls into the mist, a far-off burrow village, stalactites and glow-worms; a nearer
+arc of rock spires). The furnishings are code-made voxels (`src/home/houseProps.js`, plus
+`tavernProps.js`, `caveProps.js`, `ruinProps.js` and the 1/32 furniture builders), placed and
+batched (per-room baked light) by `StarHouse` (`src/home/house.js`; `SPOTS` and `STAR_SPOTS` are
+the named places; the scene still calls it `scene.cave`):
+- **the living room** (straight down the steps): his fireplace between two round windows (mantel
+  with the first nugget, photos, candles), his mossy armchair and a footstool, the old settee, a
+  lamp table, the big woven rug, two bookcases full of books ("Browse the books" reads a title),
+  the grandfather clock (its pendulum swings, it ticks; E tells the time), his notes board, his
+  keepsakes on the south wall (the torn Surface Express ticket, the jar of coins, the tin train,
+  the seashell, a medal) under Marigold's portrait, paintings (the sea, hills, mountains), potted
+  cave plants, a sconce, the wagon-wheel chandelier; the boarded-over hole you fell through in the
+  ceiling, roots poking through, dirt trickling now and then, what came down swept into the corner
+  (a few coins and a quartz to pick up);
+- **the kitchen** (west): the cooking range in its brick inglenook (**the cooking station**: "Cook at
+  the range", the stew pot and kettle steam, copper pans on a rail, spice jars on the mantel), the
+  sink and iron pump under the window ("Drink from the pump": +energy once a day; it drips), the
+  pantry shelves crowded with jars, crocks, bottles, cheese, loaves and sacks, the plate dresser, the
+  dining table with four rush chairs (sit), herbs drying from the beams, a hanging oil lamp;
+- **the smithy** (north-west): the forge and its hood (**the forge station**: "Work the forge" on it or
+  the anvil), the bellows (pump them), the anvil, the quench trough and his bucket, the tool rack,
+  coal, a water barrel, sconces, and his box bed against the wall (curtains, quilt, nightcap);
+- **the hall** (east): the cage lift in the east wall (`useLift` / `openLiftPanel` / `rideTo` as
+  before), the front door to Deep Town in the north wall (`FRONT`; "Through to Deep Town" once
+  `flag('escaped')`, rubble behind it until then), coats on hooks, boots and a stick by the door,
+  his packed suitcase (the almost-escape), the Miners' Board, his chest, the coal cart (3 a day),
+  the old map, crates, and his **dream wall**: a slate chalked "THE WAY UP" with a thermometer to a
+  million that reached 480,000 once and was rubbed out ("LONG STORY");
+- **your bedroom** (`src/home/shell.js`, `src/home/walls.js`: the same plaster over a faded blue
+  wainscot; floorboards laid once on an unpainted floor, `flag('boards')`): its own hearth in the
+  south wall (`HEARTH_SLOTS` / `HEARTH_X` in `src/iso/homeLayout.js` keep it clear; socks drying,
+  candles, a little clock, fire irons), the round crystal window, the poster, the ledge of jars,
+  lanterns, and fixed pieces that hide when furniture covers their tiles: the bedside table with a
+  candle, the wardrobe, your trunk at the foot of the bed, firewood, a fern, Nugget's corner (straw,
+  feed sack, water dish), the rag rug;
+- life: fires breathing, embers, steam, the clock, the pump's drip, dust motes in the lamplight and
+  the windows' teal glow, timbers creaking, soft contact shadows under the furniture.
 
-**Waking up** (`home { from: 'fall' }`, `src/home/wake.js`): black, then eyelids crack open on the
-cave roof (blurred, the canvas is CSS-blurred; heartbeat), muffled lines on the tutor card, Old Star
-leans over you, fetches his bucket from the trough and throws it: a water sheet down the screen,
-drops, splash, gasp, a flash; the view sharpens, you sit up shivering. Then his lines (each waits for
-E / tap): who he is, an old smith stuck down here, a **million gold** for the way up, he'll teach
-you, and your hen. Sets `flag('fallen')`, `flag('nugget')`, starts the chain
+**Old Star** (`src/home/oldstar.js`, the `StarMoleRig` with `setExpression` moods): walks the whole
+home (house, steps and your bedroom) on an A* grid rebuilt with the collision, works the anvil
+(clangs, sparks, the anvil flashes), pumps the bellows (the forge flares), stirs the pot on the
+range, reads his board or a book, looks at the lift or his dream wall, sits in his armchair with
+his pipe, sleeps in his box bed at night (snoring), and turns to you when you come near. Talk to
+him (E) for the lesson, a tip, or skipping; he has an aside for most things you look at. His save
+corner: `state.data.oldstar` (`src/home/starData.js`): `lesson: 'wake' | 'mine' | 'forge' | 'cook' |
+'done'` (+ `skipped`, `talkI`, daily counters).
+
+**Waking up** (`home { from: 'fall' }`, `src/home/wake.js`): no splash. You lie in your bed looking
+up at the beams. Dark, a slow heartbeat, light glowing red through the lids; the whole mix is
+muffled (a low-pass between the master gain and the compressor, opening as you come round).
+Heavy eyelids (`WakeFx`: a soft dark mask, the upper lid moving most, a warm rim, lashes, CSS-blurred)
+crack open on the blurred ceiling and sink shut; a second, longer look, the head rolling on the
+pillow toward the fire, Old Star humming; a third, a flutter, and the room comes into focus: the
+bedroom hearth, and Old Star crouched at it with a poker (pose `poke`). The bed creaks, he
+straightens, turns round, waves, and talks (tutor card, each line waits): you came down through his
+ceiling and he put you to bed, who he is, the **million gold** for the way up, his offer, your hen.
+Then you sit up and get out of bed (on its side), he points you to the lift and walks off
+downstairs to it. Sets `flag('fallen')`, `flag('nugget')`, starts the chain
 (`game.quests?.start('lessons')`), emits `lesson wake` + `talk oldstar`, stage → `mine`.
 
 **The lessons** (`src/home/lessons.js`; the objective line follows `NEXT[stage]`):
@@ -478,7 +517,7 @@ you, and your hen. Sets `flag('fallen')`, `flag('nugget')`, starts the chain
   → `forge` (talking to him with copper does the same); without it he sends you back down.
 - `forge`: the forge / anvil says "Forge with Old Star" → `forge { from: 'home', tutorial: true }`
   (below). The forge sets the stage to `cook`; back home he admires the blade (grade line).
-- `cook`: the hearth says "Cook with Old Star" → `cooking { from: 'home', tutorial: true }` (eggs
+- `cook`: the kitchen range says "Cook with Old Star" → `cooking { from: 'home', tutorial: true }` (eggs
   and mushrooms topped up). Back with `home { from: 'cooking', lesson: 'cook_done' }` he tastes it,
   `lesson cook_done`, stage → `done`, his graduation lines (the million, Deep Town). Without a dish he
   sends you back to the pot.
@@ -496,22 +535,39 @@ home. The forge's activities call `scene.lesson?.event('step' | 'strike' | 'melt
 grade, score }`. Skills: timing windows widen by `state.skill?.('forge')` (work and quench bands,
 the pour band, balance tolerance), and a blow's energy is divided by `state.skill?.('stamina')`.
 
-**Load and cost**: the cave is built in steps that yield to the browser between them, and the scene
-renders nothing until `enter()` is done (the transition's black covers it), so a headless load is
-~5 s and the page stays responsive. In view: ~0.3 M triangles of props plus the rock chunks
-(frustum-culled), one 10-slot light pool, glows as sprites.
+**Load and cost**: the house is built in steps that yield to the browser between them (props per
+room, the surfaces, the cavern, the merge), and the scene renders nothing until `enter()` is done
+(the transition's black covers it). ~1.2 M triangles in all, merged into ~100 meshes by room
+(frustum-culled: you see a room or two at a time; ~90 draw calls and ~1.6 M triangles drawn from
+the bedroom door with the outline pass); windows and door frames are built once and cloned; one
+10-slot light pool; glows and contact shadows are two quad batches. Build time headless is ~12–20 s
+on the shared, heavily loaded test box (props ~6 s, walls/ceilings/floors ~2–4 s, merge ~2 s);
+`scene.buildMarks`, `scene.cave.steps` and `scene.cave.surfaces.steps` give the split.
+`scene.questSpot(name)` (`lift`, `passage`, `hole`, `hearth`, `forge`) places the quest markers.
+
+**Screenshots** (`shots/home/`): the wake-up `wake-1…9`, `phone-wake-*` (390×844), `phoneL-wake-*`
+(844×390); the rooms `bedroom-*`, `living-*`, `kitchen-*`, `smithy-*`, `hall-*`, `window*`, and the
+same on phones (`phone-*`, `phoneL-*`); the old cave for comparison in `shots/home/before/`.
+
+**Left for other parts** (text that still mentions the old cave or the bucket): the quest hint for
+`lessons.wake` ("He's the one holding the empty bucket.", `src/data/quests.js`), the forge
+tutorial's "back to the cave" (`src/forge/tutorial.js`), the lift map's cave pocket under the
+clearing (`src/fps/liftPanel.js`), and the e2e step label "waking up: cold water and Old Star".
 
 **Nugget at home**: her walking coop (`src/home/nugget.js`, inventory part) keeps to your room's tile
-grid; while you're out in the cave she waits just inside, by the steps. "Pet" aims at `nug.head()`.
+grid; while you're out in the house she waits just inside, by the steps. "Pet" aims at `nug.head()`.
 
 **Test hooks**: `__game.scene.debug` at home: `useLift(id)`, `toggleBuild(on)`, `placeAt(id, x, z, r)`,
 `interact(label)`, `labels()`, `talk()`, `openNotes(i)`, `minersBoard(tab)`, `openChest()`,
-`clock(h)`, `star(spot?)` (his state; a spot name from `STAR_SPOTS` puts him there), `lesson(stage?)`,
+`clock(h)`, `star(spot?)` (his state; a spot name from `STAR_SPOTS` puts him there: `anvil`, `bellows`,
+`fire` (the range), `board`, `books`, `hearth`, `lift`, `ruins` (his dream wall), `pool` (the sink),
+`armchair`, `cot` (his box bed)), `lesson(stage?)`,
 `skipLessons()`, `await finishWake(maxFrames)` (plays the wake-up through, carrying on every card),
-`wakeFx()`, `arrive(from)` (as if back from `'lift' | 'forge' | 'cooking'`), `aim(x, y, z)`,
+`wakeFx()` (`{ open, blur }` of the eyelids), `arrive(from)` (as if back from `'lift' | 'forge' |
+'cooking'`), `aim(x, y, z)`,
 `stand(x, z, yaw, pitch)`, `step(n, dt)` (synchronous), `await run(n, dt, until?)` (frames with the
 scripted scenes' awaits let through: use it for the wake-up and Old Star's lines; `step` alone
-can't move an awaited sequence on), `stats()` (draw calls, triangles), `spots`. Forge:
+can't move an awaited sequence on), `stats()` (draw calls, triangles), `spots` (with `rooms`). Forge:
 `scene.lesson.debug.stage()` plus the forge's own `scene.debug` (smelt, forge, pump, strike...).
 Tutor: `ui.tutor.next()` (the first press finishes the typing, the second carries on), `ui.tutor.active`.
 Query strings: `?scene=home&fresh=1&from=fall` (wake-up), `?scene=forge&fresh=1&tutorial=1&from=home`.
@@ -791,6 +847,160 @@ these and the quests move on their own (nothing else to call). Fields not listed
   `game.ui.book.map.debug.{ state(), ready(), finish(), zoom(k), center(x, z), zone(n),
   pin(x, z, kind), pinMode(kind), reveal(fromOrd), draw() }`.
 
+### As built: wave 3 — side quests, lore, clarity (quests part)
+
+The user: "add a lot more side quests from the village and lore … game quests and missions need to be
+clear." 86 quests now (49 new): 37 village favours, 9 lore quests, 3 more burrow requests.
+
+**Deep Town's people** (`src/data/villagers.js`): every townsperson built from a seed in
+`src/town/folk.js` gets a name and a character by that seed (`VILLAGERS[npc] = { name, seed | keeper,
+look, title, where, ink, about, wait, thanks, tales }`; `SEED_NPC[seed]`); keepers are listed by
+their shop id, which stays their npc id (`tools grocer furniture blueprints outfitter assay ticket
+lift`). The cast: Grandpa Tuck (retired Company miner), Granny Mabel (runs the Sunbeam Festival), Old
+Burdock (the old lift-crank), Snorri (night watchman, asleep), Old Hollis (by the Shaft Seven
+tunnel), Morel / Finnick / Garnet (market stalls), Lark (busker), Puddle (fishes in the fountain),
+Bristle (sweeper), Digby and Nubs (ore haulers; Nubs is a young star-nose), Mrs. Primrose (twins),
+Tilly / Hops / Twitch (kids), Bess Prickle, Nana Loam and Clover (back lanes), six gossips and two
+window shoppers. `NPCS` (data/quests.js) gets an entry per villager (`town: true`); `NPC_ALIAS`
+takes keeper names too (`grubb → tools`, `hazel → grocer`...).
+
+**The quests** (`src/data/sideQuests.js`, merged into `QUESTS`; `QUEST_ORDER` is main, story,
+request, village, lore; `QUEST_GROUPS` / `groupOf(kind)` for the book):
+- Hazel: Fresh From the Deep → The Truffle Hunt (dig truffles with Nugget beside you; her risotto
+  recipe). Grubb: Grubb's Grindstone (iron ingots → the fine chisel) → For the Window (forge a bronze
+  axe B+ and hand it over → mace plans); Long Fuse, Short Temper (after Stand Well Back). Old Vex: An
+  Assayer's Eye (3 pristine ores → badger brush) → Weights and Measures (kobolds stole her weights).
+  Pip: A Chair for Granny (hides + iron, then tell Mabel → an armchair) → Light for the Lanes (crystal
+  lamp). Dilly: The Lost Mitten (look at a lava pool in the Magma Deep; reward: a pie), Silk Scarves.
+  Mr. Fennimore: Postcard From Up There (stand in the sunbeam, tell 3 old-timers) → The Fennimore Line
+  (lore: 3 pages of Hobb's journal). Bramble: A Squeaky Cage → All Stations (walk 3 layers → a roof
+  lantern for the coop).
+- Grandpa Tuck: The Company Signposts (read 3) → Tuck's Old Pick (search a dropped pick at a cave-in).
+  Granny Mabel's chain, the Sunbeam Festival: Pies (cook a root pie) → Lanterns → The Sun Hymn (read
+  a ruin carving: you get a rubbing, take it to Lark, then stand in the sunbeam with the town).
+  Lark: New Strings. Puddle: Fat Bait → The One That Got Away (take a good look at an underground
+  lake). Bristle: Dust Bunnies. Digby: Shift Swap → The Old Workings (clear a lair). Nubs: A Nose Like
+  Mine (find a Star-Nose Idol, show him). Mrs. Primrose: Breakfast for Twins (Nugget's eggs → a nest
+  box for the coop). Tilly: The Dare (peer into the tunnel and the well). Hops: Beetle Jar. Twitch:
+  Show and Tell (walk Nugget over). Snorri: A Strong Cup. Old Burdock: Burdock's Bells (5 lifts).
+  Clover: **The Begonia Feud** (ask Hazel, then choose: "Yours" / "Hazel's" / "Hazel says you paint
+  them"). Garnet: A Necklace of Colours. Morel: One of Everything (6 kinds of plant). Finnick: Frost
+  Shrimp on Ice. Nana Loam: A Letter for Up Top (she hands you the letter for Fennimore's mailbag).
+  Bess Prickle: Soup for Albert (a glowcap soup, score 70+).
+- Lore: Professor Talpa: Rubbings of the Old Ones (carvings in 2 ruins) → A Relic for the Archive
+  (any relic) → The Star Shrine (wake an idol) → **The Key With No Lock** (find the Star Key in the
+  Frost Vault, then choose: archive it for 15,000 g / keep it); Survey of the Deep Garden (dino
+  caverns → spear plans). Old Hollis: Shaft Seven (ask Old Star, read 2 journal pages) → **The Million
+  Cart** (talk to Rocco, open his secret door: a star-stamped coin; choose: tell Old Star / let
+  sleeping gold lie) → Rocco Makes Amends (only if you told: Rocco's purse to Old Star, a music box).
+- Burrows: A Gem Case for the Post (trader), Garlic for the Pot (herbalist).
+- Pacing: about fifteen folk have work on your first visit; the rest ask from day 2 or 3 (`onDay`),
+  after an earlier favour (`requires`), or once you've reached a layer (`reached(n)`).
+
+**Engine** (`src/core/quests.js`), new: steps `talk: npc`, `look: 'lake'`, `grant: { id: n }` (items
+on the step), `say: { by, text, mood }` (a line when the step is done), `choose: { to, prompt, options:
+[{ id, label, sub, say, reward, flag, take }] }`, `heard: [lines]` (said when a "tell N people" step
+counts them), `deliver: { to, items, weapon: { type, metal, grade }, any: { cat, n } }` (weapons and
+"any relic"; quest items are key items: given and taken back, no pockets), `need(state, game)`. Quest
+fields `ask` (default for Deep Town givers: offered in their dialog, not on talk), `gives` (items on
+accept), `when(state)` (offered only while it holds, e.g. `reached(3)`), `urgent` (a story beat a
+burrow keeper offers first, even while their other work is under way). Rewards add `lore`,
+`recipe`, `rep` (friendship; village quests give ♥1 to the giver), `flag`; a choice's reward adds to
+the quest's. API: `offers(npc)`, `accept(id, npc)`, `choose(id, opt)`, `stepsFor(npc)`,
+`markerFor(npc)` → `'!'` (work to offer) / `'?'` (hand in, tell, decide) / `'…'` (theirs, under way) /
+null, `rep(npc)`, `choice(id)`; events `say`, `choice`, `handed`, `short` besides the old ones; the
+view has `ready`, `ask`, `from`, `choice`. Save adds `rep` and `choices`. Quest items:
+`src/data/questItems.js` (Dilly's mitten, Vex's weights, Tuck's pick, the Sun Hymn rubbing, the
+star-stamped coin, Rocco's purse, Nana Loam's letter; `cat: 'key', quest: true`, icons in
+`src/gfx/questIcons.js`, hooked into `PixelArt.drawIconArt` and merged in `data/items.js`).
+
+**Where things are** (`src/core/questWhere.js`): `stepGoal(view)` (what a step is about: npc, place,
+burrow, ruin, danger, zone, sight, biome, or the hearth/forge for cooking and smithing) and
+`resolveTarget(game, view)` → `{ label, sub, pos (meters, this scene), via, depth, r }`, `bearing(game,
+t)` → `{ dist, dy, rel, d3 }`. In the mine: burrows, the nearest unopened ruin (by kind), dangers,
+cave-ins (`caveIns(plan)`), trail mouths, the town gate, home. In town: people's heads
+(`scene.questNpcPos`), the sunbeam, well, tunnel, fountain, falls, notice board. At home: Old Star,
+the hearth, the forge, the hole (read from the home scene's `debug.spots`: lift, passage/front,
+hole, fire, anvil; `scene.questSpot(name)` → `{x,y,z}` overrides any of `lift passage hole hearth forge`). A goal in another scene points at the way there
+(the town lift, your burrow door, the cage lift, the passage, the town gate).
+
+**Clarity**:
+- **The objective strip** (`src/ui/Tracker.js`, `quests.css`): the giver's face, the title and "step
+  2 of 3"; the step in a grid (tick box | text | count) so text never runs under the box; a progress
+  bar; and a where line: an arrow that turns as you turn (8 crisp pixel arrows), the distance, ▲▼ and
+  metres when it's above or below you in the mine ("▼ 23 m deeper" for a layer), and the place ("Nibble
+  & Root, west wall (Deep Town)", "The mine: take the town lift down"). It measures the backpack, its
+  weight tag and pocket count every half second and hangs just under them (the old overlap is gone).
+- **Markers** (`src/ui/QuestMarks.js`, ticked by the strip): parchment speech bubbles over people's
+  heads, a gold "!" (work), gold "?" (ready), grey "?" (under way); they bob and sway, grow a little
+  with distance, and a faint ghost shows through walls. Anchors: `scene.questAnchors()` (the town),
+  Old Star at home (`scene.star.head()`), the burrow keepers in the mine (`scene.traders`). The
+  **waypoint**: a brass diamond with the distance on the tracked goal, clamped to the screen edge with
+  an arrow when it's off screen (hidden when a marked person is close). The **radar** gets a blinking
+  hollow diamond (`GLYPH.quest`, rim arrow when far; one hook in `Radar.update`). The map's quest
+  marks use the same goals (`Survey.questTargets`).
+- **"Take a good look"** steps (`look`): stand near the thing and keep it in the middle of the screen;
+  an eye fills up (1.3 s) and `act look {at}` fires ("You take a good look: An underground lake").
+  Town things also count by their own E (bask, peer into the well/tunnel, a coin in the fountain, the
+  notice board); the trails' signposts and cave-in tools count when read.
+- **Toasts**: a new quest (who asked, its first step), progress on quests not on the strip, the next
+  step, people's lines (`say`; Old Star's through the tutor when he's home), done + rewards (gold,
+  items, recipes, ♥ friendship, lore).
+- **Talking** (`src/ui/questTalk.js`, `questTalk(game, npc, { say, shop, tales })`): emits `talk`,
+  then shows on the talk board (`openTalkMenu`, with `who` for the live 3D portrait): what just
+  happened (a hand-in, thanks, the reward, "Next: …"), a choice, an offer (their words, the reward,
+  "I'll do it" with the first step / "Not right now"), or a tale they haven't told you; while their
+  request is under way they remind you in a bubble ("Still need 2 more Glowcaps"). Keepers: E on the
+  window shows their news first (with "Let's trade"), an offer once a visit, else the shop opens as
+  before. Crosshair labels say it too ("Talk to Hazel · has work for you", "· hand it over").
+- **The notice board** on the plaza (E): open requests pinned up as WANTED notes (who asked, where),
+  the ones you've taken, and a few town notices.
+- **The book** (`src/ui/Journal.js`): Quests: "On your strip", then The Way Up (main + Old Star's) /
+  Deep Town & Neighbours / Lore, "Ask around" (folk with a "!", with how to start it), Done. The right
+  page: the giver's 3D face, their words, a **Now** box (step n of m, the step, count and bar, the
+  hint, where), steps done, quest items you carry, the reward, pin / show on map. **Lore** replaces
+  Notes (`openBook('notes')` still works and opens Old Star's notes).
+- Faces (`src/ui/npcFace.js`): `npcFace(game, npc, { size, expression })` renders the character's
+  real 3D rig with `renderPortrait` (folk from seed + look, keepers with their town looks), cached;
+  Old Star and Rocco use `portrait3d.stillURL` when it's there, else the ink sketch. `npcWho(npc)` is
+  the `who` for live portraits.
+
+**Lore** (`src/data/lore.js`, `src/core/lore.js` = `game.lore`, made by the quests engine; save
+`state.data.lore = { found, read, spots }`): 68 entries on 7 shelves plus Old Star's 19 notes:
+the Old Ones (10 carvings, 11 relic labels), the old miners (Hobb's journal, 10 pages, and the Lantern &
+Pick Company), Old Star (Astor the smith's boy, the Night of Shaft Seven, his red stamp, what became
+of the million, Rocco's purse, his ledger: forty years of sums, then "Shaft Seven."), Deep Town (the sunbeam, the festival, the council, the lift, the honest
+scale, the wishing crystal, letters up, the Fennimore Line, the ghost of Shaft Seven), star-noses
+(twenty-two fingers, reading by nose, the Starfolk's children, until the stone grows warm),
+creatures (11) and up top (the chest in the clearing, houses on chicken legs, what the sun is). The
+canon: the ruins' builders were star-nosed moles, the Starfolk, who came down from a Long Cold, read
+by touch, shut the Sky Door behind them and left gold on the surface "so that those who find them
+find us" (the chest you fell for); Grubb, Nubs, Twitch and Old Star are their grandchildren. The
+Lantern & Pick Company mined here until the Long Rumble; Augustus Fennimore hung the Express in the
+Starfolk's Sky Stair. Old Star (Astor) saved his million in forty years and lost it when Shaft Seven
+fell under his cart; he dug Hollis out; Rocco's grandfather found the cart.
+- Found by: **carvings** (E on a carved frieze or rune wall in a ruin: "Read the carvings", two walls
+  a ruin; one hook in `Ruins.pick`), **Hobb's journal** (E on the pick or shovel left at every trail
+  cave-in: "Search the dropped pick"; `trailDress.js`), **tales** (Deep Town folk tell one when they
+  have no quest business), **relics** (their label when the chest gives one), **quests**, and
+  **shelves** (`game.lore.readShelf('oldstar' | 'talpa')`: Old Star's ledger and the Company smith's
+  companion; Talpa's own book, the newcomers' guide, the stone guardians. Talpa lends his from his
+  counter: "May I read your books?"; Old Star's shelf needs a hook at home, see the report). Every read emits `act lore`; a new find
+  toasts. The reader (`src/ui/loreReader.js`, `lore.css`): a charcoal rubbing with raised runes, a torn
+  journal page, a book page, a tale on parchment; "Written in your book" on new ones.
+- Old Star's notes (`src/data/notes.js`) are updated for the cave workshop (no tavern) and got four
+  more (the carvings, his stamp, Shaft Seven, hens).
+
+**Test hooks**: `game.quests.debug.{ list, step, complete, start, act, reset, data, give(id) }` (give:
+hands you what the current delivery asks for); `game.quests.offers(npc) / accept(id) / choose(id,
+opt) / markerFor(npc)`; `game.lore.{ add(id), readCarving({ id, kind }), readJournal(key), tale(npc),
+readShelf(id), show(entry) }`; `ui.questMarks.{ bearing(), radarMark(), target, marks }`; town:
+`scene.townQuests.debug.{ talk(npc), notices(), who(), pos(npc) }`, `scene.debug.openShop(id)` goes
+straight to the shop. Screenshots: `shots/quests/` (t1–t8 town: markers, an offer, the strip and the
+waypoint, a hand-in, a choice, a tale, the gaze eye; d1–d2 the mine's strip and waypoint; b1–b7 the
+book (quests, an "ask around" page, lore), the carving and journal readers, the notice board; p1–p3
+phone portrait).
+
 ## Skill tree (skills part): as built
 
 Files: `src/core/skills.js` (XP, levels, points, effects, perks), `src/data/skills.js` (lines, keys,
@@ -932,6 +1142,9 @@ swings slower and scratches worse as those skills grow; those two must divide (s
 
 
 ## Cooking and foraging (cooking part): as built
+
+(Wave 3: the 2D foraging overlay described below is replaced by in-world 3D close-ups; the rules,
+specs and results are the same. See "As built: 3D gathering".)
 
 Files: `src/ui/Forage.js` (the pull minigame overlay + sims), `src/cooking/forage.js` (how each plant
 comes out), `src/cooking/forageArt.js` (its 112×84 pixel scene), `src/cooking/plantModels.js` (mine
@@ -1215,3 +1428,255 @@ measure); screenshot before/after into `shots/<part>/` and look at them; write a
 here when done. Headless testing: `node scripts/shot.mjs` (see its header), drive scenes with
 `scene.update(1/30)` loops. Don't edit another part's files: if you need a hook there, say so in your
 report.
+
+### Cave look part: coordination (in progress)
+
+- `src/deep/TerrainMaterial.js` is shared: the cave-look part edits `makeTerrainUniforms`,
+  `makeTerrainMaterial`, the `LIGHT` chunk (`lightAt(p, n)` keeps its signature) and
+  `makeObjectMaterial`; `makeFluidMaterial` / `FLUID_SURF` / `fluidUniforms` belong to the water
+  part. Both parts edit this file with small in-place edits (never rewrite the whole file).
+- New uniforms are only ever added to `makeTerrainUniforms()` (every material that spreads `U`
+  gets them); 0 is always a safe value for them.
+
+### As built: 3D gathering (wave 3)
+
+E on a plant in the mine no longer opens a 2D sheet: the camera eases (0.6 s) into a close-up of
+the plant **where it grows**, the mole's paws reach in (`vm.drive`) and the minigame plays on the
+spot, then the plant pops, is held up in the paw with its quality tag, and the view eases back.
+
+**Files** (all new, `src/deep/gather/`): `index.js` (the session: `openGather`, camera, paws, phases,
+test hooks), `sims.js` (the rules, headless; moved from the old overlay and extended), `models.js`
+(close-up voxel plants at ~1.4 cm, in parts), `stage.js` (shared: soil clods, the hole, particles,
+floating words), `stagePull.js` · `stagePick.js` · `stagePeel.js` · `stageDig.js` · `stageLift.js`,
+`gfx.js` (the close-up material: the mine's `LIGHT` + a soft key, rim and exposure; voxel → geometry),
+`hud.js` (the decorated HUD), `input.js`, `sfx.js`. Specs stay in `src/cooking/forage.js` (new
+fields: `roots`, `delicate`; `drake_egg`). `src/ui/Forage.js` is now a small compatibility shim
+(`openForage` → the 3D gather, `simulate` re-exported); `src/cooking/forageArt.js` is gone.
+Touched elsewhere: `Props.js` harvest section only (`use()` → `gather(p)`, `hidePlant(p, on)`,
+`debugGather`, `target()` warms the model, `harvest()` skips its own burst when `res.fx`), and
+`fps/ViewModel.js` (`vm.drive.shoulder = { R, L }`: where a steered forearm comes from).
+
+**How it hooks into the mine** (no DigScene change needed): a see-through `ui.openPanel` makes the
+scene `busy` (no walking/looking/digging; Esc reaches the session first: in play it lets go of the
+plant, after the pop it carries on); the session runs once per scene frame right after DigScene
+placed its camera by wrapping `vm.update` for the close-up (it sets `owner.gather` while active).
+It overrides camera position/rotation/fov (and the particles' pixel scale, the vignette), sets
+`vm.drive`, hides the HUD chrome (`#ui.gathering`), hides the plant's prop (`props.hidePlant`) and
+moves its light with the plant's head, and leans the vegetation aside round the plant and in front
+of the camera (`vegetation.U.uPush[1..2]`, after `vegetation.update`).
+
+**Techniques, in 3D** (5–15 s each; all from the cooking part's tuned sims, so scores are fair):
+- **pull** (mushrooms, roots, herbs, flowers, bulbs; ceiling plants upside down): the fist closes
+  round the stem (the other paw steadies the soil). Drag up = tension (W/S on keys): the stem
+  **stretches thin and bends with the paw**, the soil **heaves** round it; sideways swings (A/D)
+  **wiggle** (mushrooms and garlic **twist**): soil cracks open along the roots (dark cracks grow
+  out from the stem, clods shift), dirt flicks. As it rises, **roots tear out one by one** (a zip of
+  dirt along each, clods hop, a fibrous rip sound; if the soil isn't loose yet they rip shorter) and
+  lie on the soil. Over the band the stem **flushes red**, shivers, creaks; past `snap` it **snaps**
+  (the top hangs from the paw, a stub stays). Delicate plants (caps, glass lily, lotus) also strain
+  on **jerky** pulls: a slow steady hand. At the end it **pops** out (flash, POP!, sparkles, clods
+  burst, the hole, roots dangling) and is held up turning slowly beside its result tag.
+- **pick** (cave berries): a **timing** game: a gold ring closes on one berry at a time; tap as it
+  touches a **red** one (perfect / good; early or late squishes it); **green** ones get a green ring:
+  leave them. The paw reaches and pinches; streaks raise the pitch; the handful is held up after.
+- **peel** (glow moss, sparkmoss): the mat (tufts of moss on the rock) peels back over itself in a
+  curl as you drag left, the other paw braced on the wall; too fast rips a strip off (it falls);
+  sparkmoss crackles blue before it zaps.
+- **dig** (truffle, grub): scrub the heap (clods fly off, the top first) until the find shows, then
+  ease it out like a pull (the grub wriggles, its band sways).
+- **lift** (dino egg, drake egg): both paws cup the egg; lift slowly, lean against the wobble;
+  tipped too far it clunks back with a crack in its shell.
+
+**HUD** (house style, drawn in code at `--px`): a hanging name sign with the item icon and the verb
+(it turns into the verdict: GOT IT! / PERFECT! / SNAPPED), a gauge on an oak plate (pull: a brass
+tension tube with the green band, the strain zone, the snap line, a needle, the progress slot and
+the root-loosening pips with the target flag; peel: a speed tube; pick: a wicker basket with a
+streak; lift: a height tube and a spirit level; dig: the soil left, then the tube), words popping
+where things happen (Loose!, Rip!, POP!, Perfect ×3, Too soon!, Crack!), a paper hint (dims once you
+have it), a Leave plaque, and the result tag (icon, %, stars, word, ×2, PRISTINE seal / TORN stamp).
+Phones: gauge bottom-right, tag at the top, wider framing. Touch: hold and drag anywhere.
+
+**Results** are unchanged: `{ id, q, p, n, burns, zaps, spores, ... }` → `props.harvest` → loot
+events → DigScene `collect` → `act forage {id, q, pristine}`. Quality maths as before (sims.js).
+
+**Test hooks**: `window.__gather` = `{ open(id, { standIn }), run(id, { score, script, real }),
+sim(id, script), active, still, specs, last }`; on a session: `drive(script, secs, { pause, until,
+stopAtShow })`, `step(dt, input)`, `state()`, `go(phase)`, `holdShow`, `paused`. `__gather.run('glowcap',
+{ score: 80 })` plays a stand-in to the end headless; `{ real: true }` uses the nearest real plant
+(harvests it). `window.__forage.sim` still works. `props.debugGather(p)`. Screenshots: `shots/gather/`.
+
+**Hooks wanted from the lead** (optional, it works without): in `DigScene.update`, after
+`this.camera.updateMatrixWorld()`: `this.gather?.frame?.(dt)` (then the vm wrapper stands down) and
+`busy ||= !!this.gather`; `this.debug.gather = (id, o) => window.__gather.run(id, o)`.
+For nests in `Enemies.catch` (monsters part): open the lift close-up instead of taking the egg at
+once: `openGather({ ctx: { owner } }, { item: egg.nest.item, x, y, z, mount: 'floor' }).then(r => …)`
+(hide `egg.mesh` meanwhile; `takeEgg` + loot `{ q: r.q, p: r.p }` when not `r.cancel`).
+
+### As built: dialogue & 3D portraits (wave 3)
+
+No 2D character art is left in the interface: every face is the real 3D rig, live.
+
+**Live portraits** (`src/gfx/portrait3d.js`). The game's own rigs (Old Star's `makeStarMole`, the
+hero `makeHeroMole`, Rocco `makeRocco`, the keepers from `SHOPS[id].keeper` (town keepers with
+TownScene's `KEEPER_LOOKS`), Deep Town's villagers from `src/data/villagers.js` by id or name, any
+spec, Nugget `makeChicken`) are rendered head-and-shoulders on `game.engine.renderer` (no extra GL
+context) into a small render target at 2× the UI's art grid (shaders precompiled with `compileAsync`
+for a target like it), read back through a pixel buffer and a fence (never a GPU stall; a remount
+shows the last picture of that face at once), folded down to
+the art grid with a mode filter (crisp, no voxel-dirt noise) and composed on a 2D canvas: a painted
+pixel backdrop per place (`forge` for Old Star: bricks and a forge glow with rising embers; `cave`,
+`town`, `shop`, `assay`, `ticket`, `trader`, `herb`, `storage` (Rocco's crates and lantern), `outpost`
+(bricks, banner, brazier), `coop` (Nugget's log wall and round window)), a lift of the darks, a warm
+2D rim of light on the far edge, a dark outline. Key, cool fill and coloured rim lights per backdrop.
+The rig breathes and blinks by itself; per line it gets the expression (`setExpression`, tutor moods
+map straight on), a head tilt and pitch, a bob; the mouth flaps while words type (`rig.talk`); the eyes
+look a little toward the words (3/4 faces), glance at you when a line starts. The hen bobs her head to
+"talk", flaps when glad, droops when hungry. Rigs are cached per character (≤ 10 studios, LRU),
+only visible portraits render (`checkVisibility`), 24 fps while talking, 12 while idle, at most two
+a frame; a portrait whose element left the page disposes itself after 4 s. The dialogue box hands its
+rig back when it hides, and stills borrow a live rig, so one Old Star serves the box, the talk board,
+the tracker's face and the toasts.
+```js
+import { portrait3d } from '../gfx/portrait3d.js';
+const h = portrait3d.mount(el, who, { mood, size | w, h, backdrop, fps, side }); // el: a canvas or a box
+h.set(mood, { hold, tilt }); h.talk(true | false | secs); h.nudge(k); h.dispose(); // h.ready, h.canvas, h.studio
+portrait3d.cast(who)          // { key, name, voice: { f, type, q, vib, cluck, mumble }, backdrop, mood } | null
+portrait3d.warm(who)          // build a rig ahead of time (the Tutor warms Old Star at idle)
+portrait3d.still(who, { mood, size }) → Promise<canvas>; portrait3d.stillURL(who, mood, size) // cached
+portrait3d.stats(), .flush() (render every visible one now, sync: tests), .handles()
+```
+`who`: `'oldstar' | 'hero' | 'nugget' | 'rocco'`, a shop id (`tools grocer furniture blueprints
+outfitter assay ticket lift trader herbalist outpost`), a villager id or a keeper's/villager's/Deep
+Town folk's name, `{ spec, name, backdrop, voice }` or a spec. Cost (measured headless, under heavy
+load): ~0.3 ms CPU per render plus ~0.4 ms to fold and compose a 48 px portrait, one ~15–25k-triangle
+draw into a 96×96 target; the frame rate with a portrait up was the same as without.
+
+**The dialogue box** (`src/ui/Tutor.js`, `tutor.css`, art in `src/ui/dialogArt.js` as `--dl-*`): a
+carved oak board with a carved groove and brass corner brackets, the live portrait in an ornate brass
+frame hanging over its left edge (a glass glint sweeps it), a red ribbon name plate (blue for you,
+green for Nugget and the town folk), the words on a sunk parchment. Typewriter with a breath at the
+end of sentences and clauses, the mouth shut in the pauses, voice blips per speaker (Old Star's
+mumble, Rocco's drawl, Nugget's clucks, the keepers' pitches) and per mood; `<b>`, `<i>`,
+`.gold-txt` kept. A quill scratches while it writes; a waiting line shows the key cap / "tap" and a
+bouncing brass arrow; a line that goes by itself shows its reading time as a brass wick burning down.
+Lines that wait for you get the grand box (48 px portrait, 200 art px wide); passing tips (no `wait`)
+get a compact board that fits its words (34 px portrait), so the mine's step tips stay out of the way.
+Opening: the board springs up, the frame pops, the ribbon swings down, the parchment unrolls; a
+following line turns the page; closing drops it away. A pixel emote bubble (♪ ! ? sweat, anger mark,
+star, sparkles) pops by the frame when the face changes. Same API: `say(html, { mood, key, wait, dur,
+name, place, sound, muffled })`, `hide(key?)`, `next()`, `active` (+ `who`), plus **`who`** (the
+speaker's portrait; default from `name`, else Old Star; an unknown name gets a townsfolk of its own)
+and `tutor.portrait` (the handle). Moods also take any rig expression (`surprised sad angry smug
+thinking sleepy`). Keys E / Space / Enter, click, tap; bottom-centre on desktop, top on touch and
+`place: 'top'`; phones get a 40 px portrait. `starPortrait(mood)` / `starPortraitURL(mood)` still
+exist but return stills of the 3D Old Star. `src/ui/talkType.js`: `typeText(el, html, { voice, mood,
+audio, face })`, `voiceBlip(audio, voice, mood)` (shared by the boards).
+
+**The talk board** (`openTalkMenu` in `src/ui/choices.js` + `.tk-talk` in `choices.css`): the same
+carved board, ribbon, brass-framed live portrait and parchment; the line types out in the speaker's
+voice (a click finishes it); the choices stay pinned paper notes (number keys, ↑ ↓, Enter, tap).
+New options `who`, `mood`; `face` is ignored (no 2D pictures). The handle has `.portrait` and `.typer`.
+
+**Everywhere else**: town shops and the assay/ticket windows (`ShopUI.js`: a 32 px portrait in the
+brass frame; talks and pulls a face from the line via `town/moods.js moodOf`), the burrow counters
+and Rocco (`deep/traders/shop.js`: 40 px, `speak(text, expr)` sets the face for 2.2 s and talks; the
+old offscreen studio/readPixels stills are gone), Nugget in her round window on the coop side of the
+backpack (`Backpack.js`: a live hen, 30 px, her mood from `henMood`; the 2D `INV_ART.hen` sprite is
+removed from `invArt.js`). The quest tracker's giver faces (`ui/npcFace.js`, quests part) already use
+`portrait3d.stillURL` for Old Star and Rocco.
+
+**The level plaque** (`SkillTree.js installSkillFeedback`, `skilltree.css`): the XP ribbon is now a
+carved oak plaque with brass studs: the line's seal in a milled brass ring, the line's name and a
+brass "Lv" badge, a brass-rimmed glass tube the XP fills like liquid in the line's own colours (rows
+of highlight and shade, a flowing ripple, a shine rolling over it, a bright meniscus, the new part
+glowing where it came in), and +N on a hanging paper tag. Levelling up: a "Level up!" ribbon swings
+down over it, the seal stamps, sparks burst from the medal, the tube floods and flashes, then starts
+over at the new level; a sparkle follows the jingle. The level-up card pinned to the toasts is a
+plaque too: a ribbon ("Level up!", green "Level 5!" on every fifth), the big seal stamping into a
+brass medallion with a burst of sparks, the text on parchment. Same events (`state.on('skill')`).
+
+**Test hooks**: `ui.tutor.portrait` / `h.portrait` (talk board, shops, burrows) → the handle
+(`.studio.rig`, `.canvas`), `portrait3d.stats()` / `.flush()` / `.handles()`, `ui.tutor.active.who`,
+`ui.levelPlaque.show(line, n, levelUp)` / `.keep(true)` (hold the plaque up for a screenshot).
+Also: the old `src/ui/Tutor.js` header in "Old Star's tutor" above still holds (same calls).
+Screenshots: `shots/dialogue/` (`before-*` the old look, `after-*` desktop 1280×720,
+`phone-*` 390×844 and `land-*` 844×390 touch).
+
+### As built: vegetation & props (wave 3)
+
+**Vegetation** (`src/deep/Vegetation.js` + `src/deep/veg/`, loaded by DigScene as an optional module):
+painted 2D plants on alpha-tested cards, all of them in ONE instanced mesh (one draw call).
+
+- **Sprites** (`veg/sprites.js`, painter in `veg/paint.js`): ~80 hand-painted pixel sprites made in
+  code at 128 texels/m (the terrain's density), no anti-aliasing, hue-shifted 7-tone ramps, light from
+  the upper left, a sel-out rim; glow is coded in the alpha (255 opaque, 255 − 48·level glowing).
+  Grass tufts (meadow, mossy with glowing tips, pale clay, dry with oat heads, frost, glassy crystal,
+  ash with embers, void, mycelium), fern fronds (alternate pinnae, fiddleheads), dino giant fronds
+  (lobed pinnae, 1.7 m), horsetails, clover (chevrons, pompoms), lichen rosettes (frost, rust,
+  crystal), leaf litter, star moss, glowing fungus clusters (6 cap colours, gills, spots, rings),
+  puffballs, bioluminescent flowers (bell, orb, star, spike; cyan, violet, pink, ember, frost),
+  thorn scrub, stone roses, ash weeds with ember pods, void tendrils, hanging roots (clods, hairs,
+  forks), vines (alternate leaves, tendrils, glowing berries), moss and root drapes, mycelium threads,
+  rime fringes. One 1024² atlas, painted once per session (~90 ms). `vegetation.debug.atlas()` shows it.
+- **Layouts** (`veg/flora.js` `layPlant`): crosses of 2–3 cards, rosettes of fronds on cards bent in
+  2–3 segments (they arch and droop), flat ground cover, hanging crosses, wall fans and tufts, wall
+  decals. **What grows where** (`floraOf(zone, biome, depth)`): per biome (mossy grotto, sandstone,
+  mushroom hollow, dino caverns) and per zone (rootsoil, clayworks, crystal grotto, magma, frost,
+  core) weighted floor / ceiling / wall lists and densities; fertility by the material underfoot
+  (`FERT`; moss creeps over bare rock in lush places, `ROCK` + `flora.rock`); meadows and bare
+  patches from two noise octaves; kinds clump per 0.75 m cell; thin on trodden trail floors; never in
+  the burrow, tunnel mouths, the shaft, stations, the town gate, lift rooms, NPC burrows or Old Star's
+  dig, never on the player's own diggings (`world.edits`); hanging plants stop about eye height in
+  low passages. Deterministic from the world seed (3-voxel floor grid, 4-voxel wall grid).
+- **Shader** (`veg/material.js`): sway in the cave's breath (a slow wandering draught, gusts rolling
+  through, per-plant flutter; bend weights per card so bent fronds stay joined), pushed aside and
+  pressed down by the mole (and the trail of where it just was, so they spring back) and Nugget,
+  small plants thin out with distance (per-plant rank, shrinking away, 9.5–17 m on Fancy, closer on
+  Simple/Off shaders), AO at the root, glow that reaches a little further through the fog, a dithered
+  fade for leaves within half a metre of the eye (no screen-filling texels). Light and
+  air: TerrainMaterial's exported `LIGHT` (`lightAt`) + `AIR` (`caveAir`, `fogAmount`) chunks when
+  present (same lamp, point lights, sky/bounce, fog, mist, dust as the rock), else a built-in copy of
+  the same model; uniforms are the terrain's own objects (`{ ...U }`).
+- **Streaming**: chunks within 15 m (nearest first, a ring walked over frames) are planted within a
+  1.3 ms/frame budget (4 ms in the first 2.5 s; ~70 ms at scene load round the spawn), dropped past
+  19 m; each chunk rents a range of the instance buffer (first fit, coalescing; ranges compact down).
+  Planting costs ~0.1–0.25 ms per 2 m chunk (Node bench, warm). Typical counts: 500–1500 plants /
+  2–5k cards in view in lush caves, a few hundred elsewhere.
+- **Digging**: Vegetation chains itself into `world.onChange` (after DigScene's props/fluids handler);
+  a plant goes (with a puff of leaves) when the voxel under it is dug or the space it grows in is
+  filled. If the lead adds `this.vegetation?.onVoxel?.(...)` to DigScene's onChange lambda, the chain
+  notices and stops calling it itself.
+- `lights(eye)` → ≤ 2 faint glows from the nearest luminous patches (fungus, flowers, glowing vines).
+  A soft rustle plays when walking through tall plants. `update()` returns `[]`.
+- Debug: `scene.vegetation.debug.{ info(), kinds(), near(x, y, z, r), atlas(on), rebuild(), bench(n), budget(ms) }`.
+
+**Generator `decorate()`**: the blocky voxel plants are gone (voxel vine strands in the grotto, root
+strands in the topsoil, voxel ferns in the dino caverns, glowcap buttons in the mushroom hollow; the
+cards replace them); dirt roofs in the topsoil and the dino caverns turn to `M.ROOTS` in patches where
+the roots hang from. Giant mushrooms, dino ribs, spikes and moss floors are unchanged. No new
+material ids (the `M.FERN` / `M.VINES` ids stay defined for old edits).
+
+**Props at 1/32 m** (`src/deep/props/hires.js`, `props/hiresPlants.js`, registered over the old
+builders in `props/models.js`; builders may now return `ao: false`):
+- Lanterns with real supports and lit glass (the flame is painted on every pane, one pane catches
+  a streak of reflection, candle inside, stepped roof with vents, bail ring): `lantern` on the wall
+  (oak mounting block, riveted iron backplate, square arm ending in a scroll, knee brace with a
+  curl, hook, chain), `lanternC` from the roof (riveted iron plate with an eye bolt, or an oak beam
+  stub in an iron strap; chain length still `param` = L/16 m, the lantern's middle (L + 5.5)/16 m
+  down), and the new `lanternP` lantern post (timber post on a stone cairn, crossbeam, knee brace,
+  iron straps, hook and chain): in camps beside the track, as a fixture where a plan lantern has no
+  roof or wall to hang from, and a little in the zone floor tables. All flicker (`lantern: true`).
+- Glowing `mush` clusters (S-curved stems, skirts, domed caps with gills, rims and spots, mossy
+  feet), `crate` (planks with gaps, frame, braces, nails, a painted mark; smashed open with ore),
+  `barrel` (staves, riveted hoops, planked head or water), `coil` (braided hemp), `cart` (flared
+  riveted tub, spoked wheels on the rails, ore load; tipped and spilt).
+- Forage plants: `glowcap`, `cave_carrot`, `blindfern` / `ashfern`, `gloomshroom`, `pepperroot`,
+  `emberbloom`, `frostbloom`, `crystal_lily`, `bubblebulb` (same sizes, lights and particles; the
+  plant-record fields the 3D gathering part reads are unchanged).
+- `props.showcase(list, x, y, z, ...)` / `props.clearShowcase()` (debug: models in a row).
+- Vertex counts: lanterns 2.7–5.3k, mush 6.7–8k, crate 3–5k, barrel 6.5k, cart 6.2–6.5k, forage
+  plants 1.4–8k (fern); the zone-1 mushroom weight went down (6 → 3.5) as the cards add fungus.
+
+Screenshots: `shots/vegetation/` (`before-*` the old look at random spots; `after-<biome>.png` /
+`after-<biome>-noveg.png` the same camera with and without the cards in all six zones and four
+biomes; `close-*` close-ups; `room-*` the new props in a carved showroom; `atlas.png` the sprites).

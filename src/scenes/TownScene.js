@@ -26,6 +26,7 @@ import * as ST from '../town/statics.js';
 import { buildLift, PIT_DEPTH } from '../town/lift.js';
 import { Particles, GlowBatch, Lights, ShadowBatch, fxUniforms, glowWorms } from '../town/fx.js';
 import { Townsfolk } from '../town/folk.js';
+import { TownQuests } from '../town/quests.js';
 import { townLife } from '../town/life.js';
 import { sunbeam } from '../town/sunbeam.js';
 import { EscapeArrival } from '../town/arrival.js';
@@ -153,6 +154,9 @@ export default class TownScene extends Scene {
     this.folk.spawnAll();
     this.tickers.push((dt) => this.folk.update(dt));
     this.tickers.push((dt) => this.updateKeepers(dt));
+    // quests part: who's who, quest talk, markers' anchors, the notice board (src/town/quests.js)
+    this.townQuests = new TownQuests(this);
+    this.tickers.push((dt) => this.townQuests.update(dt));
     if (st.flag('nugget')) this.spawnNugget();
     townLife(this);
     this.buildInteractions();
@@ -441,8 +445,9 @@ export default class TownScene extends Scene {
     this.bramble.a.indoors = false;
   }
 
-  useKeeper(k) {
+  useKeeper(k, direct = false) {
     if (this.locked) return null;
+    if (!direct && this.townQuests?.keeper(k)) return null; // news about work first (quests part)
     const p = this.player;
     k.a.faceToward(p.x, p.z);
     k.a.rig.doEmote('wave', 0.9);
@@ -545,7 +550,7 @@ export default class TownScene extends Scene {
     for (const k of this.keepers) {
       if (k.id === 'lift') continue;
       const info = this.shopInfo[k.id];
-      rig.add({ box: boxM(info.win), label: k.label, reach: 2.4, enabled: () => !this.locked, action: () => this.useKeeper(k) });
+      k.item = rig.add({ box: boxM(info.win), label: k.label, reach: 2.4, enabled: () => !this.locked, action: () => this.useKeeper(k) });
     }
     // the lift: the cage, and Bramble at the crank
     const c = TOWN.lift.cage;
@@ -698,7 +703,7 @@ export default class TownScene extends Scene {
           q.done = true;
           this.game.audio.play('bloop');
           this.particles.burst(8, { x: q.x, y: yT + 0.02, z: q.z, vy: 1.1, life: 0.45, size: 1.4, color: 0xd8f6ff, alpha: 0.9, alpha2: 0, grav: 5 }, { x: 0.05, z: 0.05, v: 0.5 });
-          this.later(0.25, () => { this.game.audio.play('sparkle'); this.game.ui.toast('You make a wish. ✦', { dur: 1600 }); });
+          this.later(0.25, () => { this.game.audio.play('sparkle'); this.game.ui.toast('You make a wish. ✦', { dur: 1600 }); this.game.state.emit('act', { type: 'look', at: 'fountain' }); });
         }
       },
     });
@@ -718,6 +723,7 @@ export default class TownScene extends Scene {
     await this.tween(1.8, (k) => { this.post.flash = Math.sin(k * Math.PI) * 0.16; this.post.flashColor = 0xfff0c8; });
     this.post.flash = 0;
     this.game.ui.toast('Warm sunlight on your nose. Someday…', { dur: 2200 });
+    this.game.state.emit('act', { type: 'look', at: 'sunbeam' });
     await this.tween(0.8, (k) => { this.cut.pitch = 1.2 * (1 - k) + 0.05 * k; });
     if (this.nugget && this.nuggetAI) this.nuggetAI.petted();
     this.place(S.x, S.z, this.cut.yaw, this.cut.pitch);
@@ -741,9 +747,11 @@ export default class TownScene extends Scene {
     this.later(0.5, () => this.game.audio.play('drip', { vol: 0.5 }));
     this.later(0.9, () => this.game.audio.play('bloop', { vol: 0.3 }));
     this.game.ui.toast('…drip. …drip. Deep down, something glints.', { dur: 2200 });
+    this.game.state.emit('act', { type: 'look', at: 'well' });
   }
   readNotice() {
     this.game.audio.play('page');
+    if (this.townQuests?.notices()) return; // the board of open requests (quests part)
     this.game.ui.toast(`<b>Notice board:</b> ${pick(NOTICES)}`, { dur: 3600 });
   }
   knock(d) {
@@ -760,6 +768,7 @@ export default class TownScene extends Scene {
     const Tu = TOWN.tunnel;
     this.particles.burst(5, { x: Tu.cx, y: 1.7, z: TOWN.northFace + 0.1, vy: -0.6, life: 0.9, size: 1.6, color: 0x8a7a6a, alpha: 0.8, alpha2: 0, grav: 3 }, { x: 0.5, v: 0.1 });
     this.game.ui.toast('Rubble all the way back. No way through any more.', { dur: 2000 });
+    this.game.state.emit('act', { type: 'look', at: 'tunnel' });
   }
 
   // ------------------------------------------------------------ frame
@@ -927,7 +936,7 @@ export default class TownScene extends Scene {
     const S = this;
     return {
       /** Open a shop panel the way E on its counter does. */
-      openShop(id) { S.locked = false; const k = S.keepers.find((q) => q.id === id); return k ? S.useKeeper(k) : S.game.ui.openShop(id); },
+      openShop(id) { S.locked = false; const k = S.keepers.find((q) => q.id === id); return k ? S.useKeeper(k, true) : S.game.ui.openShop(id); },
       /** Chat with a townsperson (or a keeper) by name; returns the line said. */
       talkTo(name) {
         const n = S.folk.list.find((f) => f.name === name);

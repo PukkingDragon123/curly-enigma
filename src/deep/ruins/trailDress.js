@@ -97,8 +97,9 @@ export class TrailDress {
           if (clear(s)) this.items.push({ kind: 'gear', seg: f, s, side: h3(f.seed, 16, 2, 95) < 0.5 ? -1 : 1, g: GEAR[(h3(f.seed, 17, 2, 96) * GEAR.length) | 0] });
         }
         if (col) {
-          // whoever was digging this cave-in out gave up and left their tools
-          this.items.push({ kind: 'gear', seg: f, s: Math.max(0.3, col.s - col.hl - 0.55), side: 1, g: h3(f.seed, 18, 2, 97) < 0.5 ? 'pick' : 'shovel' });
+          // whoever was digging this cave-in out gave up and left their tools (a journal page is
+          // tucked into the handle: quests part, lore)
+          this.items.push({ kind: 'gear', seg: f, s: Math.max(0.3, col.s - col.hl - 0.55), side: 1, g: h3(f.seed, 18, 2, 97) < 0.5 ? 'pick' : 'shovel', note: true, key: `${T.id}:${segs.indexOf(f)}` });
           if (h3(f.seed, 19, 2, 98) < 0.6) this.items.push({ kind: 'gear', seg: f, s: Math.min(L - 0.3, col.s + col.hl + 0.6), side: -1, g: 'bucket' });
         }
         if (!door && L > 1) this.bridges.push({ seg: f, scanned: false, ropes: null });
@@ -114,6 +115,7 @@ export class TrailDress {
       this.signs.push({ kind: 'sign', seg, s: -0.7, side: 1, boards });
     }
     this.items.push(...this.signs);
+    this.notes = this.items.filter((it) => it.note);
   }
 
   // ------------------------------------------------------------ world queries
@@ -175,6 +177,7 @@ export class TrailDress {
     } else if (it.kind === 'gear') {
       add(MD.gear(it.g, it.seg.seed | 0));
       g.rotation.y = yawAlong + (h3(it.seg.seed, it.s * 10 | 0, 1, 7) - 0.5) * 1.2;
+      if (it.note) { it.pos = new THREE.Vector3(p.x, fy + 0.35, p.z); it.label = it.g === 'pick' ? 'Search the dropped pick' : 'Search the dropped shovel'; }
     } else if (it.kind === 'rails') {
       // from end to end of the segment, tilted to its slope, resting on the sleepers
       const f = it.seg, L = Math.hypot(f.b.x - f.a.x, f.b.z - f.a.z);
@@ -280,8 +283,27 @@ export class TrailDress {
       const ex = ox - dir.x * t, ey = oy - dir.y * t, ez = oz - dir.z * t;
       if (ex * ex + ey * ey * 0.4 + ez * ez < 0.3 * 0.3) { bt = t; best = it; }
     }
+    // the tools at a cave-in: a page of the foreman's journal tucked in the handle (quests part)
+    const lore = this.R.owner?.game?.lore;
+    for (const it of lore ? this.notes || [] : []) {
+      if (!it.obj || !it.pos) continue;
+      const ox = it.pos.x - eye.x, oy = it.pos.y - eye.y, oz = it.pos.z - eye.z;
+      const t = ox * dir.x + oy * dir.y + oz * dir.z;
+      if (t < 0 || t > bt + 0.3) continue;
+      const ex = ox - dir.x * t, ey = oy - dir.y * t, ez = oz - dir.z * t;
+      if (ex * ex + ey * ey + ez * ez < 0.36 * 0.36) { bt = t; best = it; }
+    }
     if (!best) return null;
-    return { t: bt, label: best.label, use: () => [{ say: `The old sign reads: ${best.boards.map((b) => `<b>${b.text}</b>`).join(' · ')}`, key: 'sign', tone: 'good', cd: 0.5 }] };
+    if (best.note) {
+      const it = best;
+      return { t: bt, label: it.label, use: () => {
+        const e = lore.readJournal(it.key);
+        this.R.st?.emit?.('act', { type: 'look', at: 'cavein' });
+        lore.show(e, { kind: 'journal' });
+        return [{ handled: true }];
+      } };
+    }
+    return { t: bt, label: best.label, use: () => { this.R.st?.emit?.('act', { type: 'look', at: 'signpost' }); return [{ say: `The old sign reads: ${best.boards.map((b) => `<b>${b.text}</b>`).join(' · ')}`, key: 'sign', tone: 'good', cd: 0.5 }]; } };
   }
 
   dispose() {

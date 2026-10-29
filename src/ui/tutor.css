@@ -1,85 +1,161 @@
-/* Old Star's speech card (src/ui/Tutor.js): a parchment card, his portrait in a riveted brass frame
-   on the left, the words typing themselves out. Bottom-centre on desktop, at the top on touch
-   screens (the thumbs own the bottom). */
+/* The dialogue box (src/ui/Tutor.js): a carved oak board with brass corner brackets, the speaker's
+   live 3D portrait in an ornate brass frame hanging over its left edge, a red name ribbon pinned
+   across the top, and a parchment where the words type out. Bottom-centre on desktop, at the top on
+   touch screens (the thumbs own the bottom). Art: src/ui/dialogArt.js (--dl-*), all at --px. */
 .tutor {
-  position: absolute; left: 0; right: 0; bottom: calc(var(--sab) + var(--px) * 50); z-index: 4;
+  position: absolute; left: 0; right: 0; bottom: calc(var(--sab) + var(--px) * 48); z-index: 4;
   display: flex; justify-content: center; pointer-events: none;
   padding: 0 calc(var(--sar) + 16px) 0 calc(var(--sal) + 16px);
 }
-html.is-touch .tutor, .tutor.top { bottom: auto; top: calc(var(--sat) + var(--px) * 8); }
+html.is-touch .tutor, .tutor.top { bottom: auto; top: calc(var(--sat) + var(--px) * 12); }
 @media (max-height: 520px) { .tutor { bottom: calc(var(--sab) + var(--px) * 30); } }
 /* phones held upright: below the HUD's top-right column (book, backpack, the build button at home) */
-@media (orientation: portrait) and (max-width: 640px) { html.is-touch .tutor { top: calc(var(--sat) + var(--px) * 52 + var(--icon-s, 32px)); } }
-#ui[data-hud=none] .tutor, #ui[data-hud=mini] .tutor { bottom: calc(var(--sab) + var(--px) * 12); }
+@media (orientation: portrait) and (max-width: 640px) { html.is-touch .tutor { top: calc(var(--sat) + var(--px) * 56 + var(--icon-s, 32px)); } }
+#ui[data-hud=none] .tutor, #ui[data-hud=mini] .tutor { bottom: calc(var(--sab) + var(--px) * 14); }
 html.is-touch #ui[data-hud=none] .tutor, html.is-touch #ui[data-hud=mini] .tutor, #ui .tutor.top { bottom: auto; }
 /* a window (a dialog, the book, the backpack) has the floor: the card steps aside till it closes */
 #ui.panel-open .tutor { opacity: 0; visibility: hidden; transition: opacity .15s, visibility 0s .15s; }
 
+/* ---- the board */
 .tt-card {
-  position: relative; display: flex; align-items: flex-start; gap: calc(var(--px) * 4);
-  width: min(calc(var(--px) * 196), 100%); box-sizing: border-box;
+  --pp: 48; /* the portrait's size in art pixels (Tutor.js sets it) */
+  position: relative; display: flex; align-items: stretch; box-sizing: border-box;
+  width: min(calc(var(--px) * 200), 100%); min-height: calc(var(--px) * (var(--pp) - 4));
   pointer-events: auto; cursor: pointer; color: var(--ink);
-  border-style: solid; border-width: calc(var(--px) * 8);
-  border-image: var(--a-parch) 8 / calc(var(--px) * 8) repeat;
-  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box;
-  padding: calc(var(--px) * 1) calc(var(--px) * 2) calc(var(--px) * 1) 0;
-  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(12, 6, 8, .55));
+  border-style: solid; border-width: calc(var(--px) * 9);
+  border-image: var(--dl-board) 9 / calc(var(--px) * 9) repeat;
+  background: var(--a-woodDkT) 0 0 / calc(var(--px) * 32) calc(var(--px) * 20) repeat padding-box, #4a2c16 padding-box;
+  padding: var(--px);
+  filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(10, 4, 6, .55));
+  transform-origin: 50% 100%;
 }
-.tutor.out .tt-card { animation: ttOut .2s ease-in forwards; }
-.tt-card.pop { animation: ttIn .32s var(--pop); }
-@keyframes ttIn { from { transform: translateY(calc(var(--px) * 10)) scale(.94); opacity: 0; } }
-@keyframes ttOut { to { transform: translateY(calc(var(--px) * 6)); opacity: 0; } }
-html.is-touch .tt-card.pop, .tutor.top .tt-card.pop { animation-name: ttInTop; }
-html.is-touch .tutor.out .tt-card, .tutor.top.out .tt-card { animation-name: ttOutTop; }
-@keyframes ttInTop { from { transform: translateY(calc(var(--px) * -10)) scale(.94); opacity: 0; } }
-@keyframes ttOutTop { to { transform: translateY(calc(var(--px) * -6)); opacity: 0; } }
+.tutor.top .tt-card, html.is-touch .tt-card { transform-origin: 50% 0; }
 
-/* the portrait: 40×40 art in a riveted brass frame (46×46 in all), hanging off the card's left edge */
+/* ---- the portrait: live 3D in an ornate brass frame, hanging over the board's left edge */
 .tt-face {
-  flex: none; position: relative; margin: calc(var(--px) * -9) 0 calc(var(--px) * -5) calc(var(--px) * -9);
-  width: calc(var(--px) * 46); height: calc(var(--px) * 46);
-  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(12, 6, 8, .5));
+  flex: none; position: relative; z-index: 2; box-sizing: border-box;
+  width: calc(var(--px) * (var(--pp) + 12)); height: calc(var(--px) * (var(--pp) + 12));
+  margin: calc(var(--px) * -8) 0 calc(var(--px) * -8) calc(var(--px) * -8);
+  align-self: center;
+  border-style: solid; border-width: calc(var(--px) * 6);
+  border-image: var(--dl-pframe) 6 / calc(var(--px) * 6) repeat;
+  background: #0c0608 padding-box;
+  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 6, .55));
 }
-.tt-face-c { display: block; width: 100%; height: 100%; transform-origin: 50% 90%; }
-.tt-face-c.bump { animation: ttBump .34s var(--pop); }
-@keyframes ttBump { 0% { transform: scale(1, 1); } 35% { transform: scale(1.06, .94) translateY(var(--px)); } 70% { transform: scale(.97, 1.04); } 100% { transform: none; } }
-.tt-card[data-mood=laugh] .tt-face-c { animation: ttLaugh .28s steps(2) infinite; }
-@keyframes ttLaugh { 50% { transform: translateY(calc(var(--px) * -1)); } }
-.tt-card[data-mood=worried] .tt-face-c { animation: ttShiver .5s steps(2) infinite; }
-@keyframes ttShiver { 25% { transform: translateX(calc(var(--px) * -0.5)); } 75% { transform: translateX(calc(var(--px) * 0.5)); } }
+.tt-frame { width: 100%; height: 100%; overflow: hidden; transform-origin: 50% 90%; }
+.tt-frame .p3d, .tt-frame canvas { display: block; width: calc(var(--px) * var(--pp)); height: calc(var(--px) * var(--pp)); }
+.tt-glass { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.tt-glass::before { content: ''; position: absolute; left: -60%; top: 0; width: 30%; height: 100%; background: rgba(255, 244, 220, .07); transform: skewX(-20deg); animation: ttGlint 7s steps(28) infinite; }
+@keyframes ttGlint { 0%, 80% { left: -60%; } 100% { left: 130%; } }
+.tt-frame.bump { animation: ttBump .34s var(--pop); }
+@keyframes ttBump { 0% { transform: none; } 35% { transform: scale(1.04, .96) translateY(var(--px)); } 70% { transform: scale(.98, 1.03); } 100% { transform: none; } }
 
-.tt-body { flex: 1; min-width: 0; padding-top: calc(var(--px) * 1); }
-.tt-name {
-  font-family: var(--font-head); font-size: var(--fs-h); line-height: .8; color: var(--wood-2);
-  margin-bottom: calc(var(--px) * 2); letter-spacing: .02em;
+/* a little emote bubble popping by the frame's corner when the face changes */
+.tt-emote { position: absolute; z-index: 4; right: calc(var(--px) * -10); top: calc(var(--px) * -12); width: calc(var(--px) * 13); height: calc(var(--px) * 13);
+  background: 0 0 / 100% 100% no-repeat; opacity: 0; pointer-events: none; transform-origin: 0 100%; filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 6, .45)); }
+.tt-emote.on { animation: ttEmote 1.9s var(--pop) .15s both; }
+@keyframes ttEmote { 0% { opacity: 0; transform: scale(.2) rotate(-20deg); } 14% { opacity: 1; transform: scale(1.15) rotate(4deg); } 24% { transform: scale(1) rotate(0); } 80% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(calc(var(--px) * -4)); } }
+
+/* ---- the name ribbon, pinned across the board's top edge */
+.tt-plate {
+  position: absolute; z-index: 3; top: calc(var(--px) * -14); left: calc(var(--px) * (var(--pp) + 14));
+  box-sizing: border-box; height: calc(var(--px) * 16); min-width: calc(var(--px) * 40); max-width: calc(100% - var(--px) * (var(--pp) + 18));
+  border-style: solid; border-width: 0 calc(var(--px) * 10);
+  border-image: var(--dl-ribbon) 0 10 fill / 0 calc(var(--px) * 10) repeat;
+  padding: 0 calc(var(--px) * 1);
+  display: flex; align-items: flex-start; justify-content: center;
+  transform-origin: 50% 0;
+  filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 6, .5));
 }
-.tt-card[data-mood=stern] .tt-name { color: #8a2e1a; }
-.tt-card[data-mood=worried] .tt-name { color: #3a5a7a; }
-.tt-card[data-mood=proud] .tt-name, .tt-card[data-mood=happy] .tt-name, .tt-card[data-mood=laugh] .tt-name { color: #9a6a12; }
-.tt-text { font-size: var(--fs); line-height: 1.38; text-wrap: pretty; min-height: calc(var(--px) * 12); }
-.tt-text b { color: #7a2e14; font-weight: 400; }
+.tt-name {
+  display: block; font-family: var(--font-head); font-size: var(--fs-h); line-height: calc(var(--px) * 12);
+  color: #ffe6a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .03em;
+  text-shadow: 0 var(--px) 0 #3a0f0a, var(--px) 0 0 #5a1a10;
+}
+.tt-card[data-who=hero] .tt-plate { border-image-source: var(--dl-ribbonBlue); }
+.tt-card[data-who=nugget] .tt-plate, .tt-card[data-who=shop] .tt-plate { border-image-source: var(--dl-ribbonGreen); }
+
+/* ---- the parchment */
+.tt-body {
+  position: relative; flex: 1; min-width: 0; box-sizing: border-box; margin-left: calc(var(--px) * 3);
+  border-style: solid; border-width: calc(var(--px) * 6);
+  border-image: var(--dl-parch) 6 / calc(var(--px) * 6) repeat;
+  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box;
+  padding: calc(var(--px) * 1) calc(var(--px) * 2) calc(var(--px) * 2) calc(var(--px) * 1);
+  box-shadow: inset 0 calc(var(--px) * 2) 0 rgba(90, 56, 26, .14);
+}
+.tt-text { font-size: var(--fs); line-height: 1.4; text-wrap: pretty; min-height: calc(var(--px) * 22); color: var(--ink); }
+.tt-text b { color: #8a2e14; font-weight: 400; }
 .tt-text i { color: var(--ink-soft); font-style: normal; }
-.tt-text .gold-txt { color: var(--gold-dk); }
+.tt-text .gold-txt { color: #9a6408; font-weight: 400; text-shadow: 0 0 calc(var(--px) * 2) rgba(255, 210, 90, .55); }
 .tt-ghost { visibility: hidden; }
+
+/* still writing: a quill scratching in the corner; done and waiting: a brass arrow bobbing */
+.tt-quill { position: absolute; right: calc(var(--px) * -1); bottom: calc(var(--px) * -3); width: calc(var(--px) * 13); height: calc(var(--px) * 13); background: var(--dl-quill) 0 0 / 100% 100%; pointer-events: none; animation: ttQuill .32s steps(2) infinite; }
+@keyframes ttQuill { 50% { transform: translate(calc(var(--px) * -1), calc(var(--px) * -1)) rotate(-6deg); } }
+.tutor.typed .tt-quill { display: none; }
 .tt-next {
-  display: none; position: absolute; right: calc(var(--px) * 1); bottom: calc(var(--px) * -2);
+  display: none; position: absolute; right: calc(var(--px) * -2); bottom: calc(var(--px) * -4);
   align-items: center; gap: calc(var(--px) * 1); font-size: var(--fs); color: var(--wood-2);
 }
-.tutor.waits .tt-next { display: flex; animation: ttNudge 1s steps(2) infinite; }
-.tt-next i { font-style: normal; }
+.tutor.waits.typed .tt-next { display: flex; }
+.tt-arrow { display: block; width: calc(var(--px) * 11); height: calc(var(--px) * 9); background: var(--dl-arrow) 0 0 / 100% 100%; animation: ttBounce .9s cubic-bezier(.4, 0, .6, 1) infinite; }
+@keyframes ttBounce { 0%, 100% { transform: translateY(calc(var(--px) * -1)); } 50% { transform: translateY(calc(var(--px) * 2)); } }
 .tt-next kbd { margin: 0; }
-.tt-tap { display: none; }
+.tt-tap { display: none; color: #7a4a22; }
 html.is-touch .tt-next kbd { display: none; }
 html.is-touch .tt-tap { display: inline; }
-@keyframes ttNudge { 50% { transform: translateX(calc(var(--px) * 1)); } }
+/* the reading time of a line that goes by itself, as a brass wick burning down */
+.tt-wick { display: none; position: absolute; left: 0; right: 0; bottom: calc(var(--px) * -4); height: var(--px); background: #c89a3a; box-shadow: 0 var(--px) 0 #6e4a1a; transform-origin: 0 50%; pointer-events: none; }
+.tutor.timed.typed .tt-wick { display: block; }
 
-@media (max-width: 560px) {
-  .tt-card { gap: calc(var(--px) * 3); }
-}
+/* ---- opening, turning the page, closing */
+.tt-card.pop { animation: ttIn .36s var(--pop); }
+.tt-card.pop .tt-face { animation: ttFaceIn .5s var(--pop) .05s both; }
+.tt-card.pop .tt-plate { animation: ttPlateIn .6s var(--pop) .12s both; }
+.tt-card.pop .tt-body { animation: ttUnroll .32s ease-out .04s both; }
+@keyframes ttIn { from { transform: translateY(calc(var(--px) * 12)) scale(.92, .7); opacity: 0; } 60% { opacity: 1; } }
+@keyframes ttFaceIn { from { transform: scale(.4) rotate(-10deg); opacity: 0; } }
+@keyframes ttPlateIn { from { transform: translateY(calc(var(--px) * -8)) rotate(-7deg); opacity: 0; } 55% { transform: rotate(3deg); } 80% { transform: rotate(-1.5deg); } }
+@keyframes ttUnroll { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+.tt-card.swap .tt-body { animation: ttSwap .26s ease-out; }
+.tt-card.swap .tt-plate { animation: ttPlateNod .4s var(--pop); }
+@keyframes ttSwap { 0% { filter: brightness(1.12); transform: translateY(calc(var(--px) * -1)); } 100% { filter: none; transform: none; } }
+@keyframes ttPlateNod { 40% { transform: rotate(2deg); } }
+.tutor.out .tt-card { animation: ttOut .22s ease-in forwards; }
+@keyframes ttOut { to { transform: translateY(calc(var(--px) * 8)) scale(.96); opacity: 0; } }
+html.is-touch .tt-card.pop, .tutor.top .tt-card.pop { animation-name: ttInTop; }
+html.is-touch .tutor.out .tt-card, .tutor.top.out .tt-card { animation-name: ttOutTop; }
+@keyframes ttInTop { from { transform: translateY(calc(var(--px) * -12)) scale(.92, .7); opacity: 0; } 60% { opacity: 1; } }
+@keyframes ttOutTop { to { transform: translateY(calc(var(--px) * -8)) scale(.96); opacity: 0; } }
+
+/* passing tips (not waiting for you): a compact board that fits its words */
+.tutor.compact .tt-card { width: auto; min-width: min(calc(var(--px) * 140), 100%); max-width: min(calc(var(--px) * 200), 100%); }
+.tutor.compact .tt-text { min-height: 0; }
+.tutor.compact .tt-body { padding-bottom: calc(var(--px) * 3); }
+.tutor.compact .tt-face { margin-top: calc(var(--px) * -7); margin-bottom: calc(var(--px) * -7); }
+.tutor.compact .tt-emote { right: calc(var(--px) * -9); top: calc(var(--px) * -11); }
+
+/* moods the frame shows too */
+.tt-card[data-mood=laugh] .tt-frame { animation: ttLaugh .3s steps(2) infinite; }
+@keyframes ttLaugh { 50% { transform: translateY(calc(var(--px) * -1)); } }
 
 /* heard through a daze: the face a dark smear, the words swimming */
-.tt-card.muffled .tt-face-c { filter: blur(calc(var(--px) * 1.5)) brightness(.35) saturate(.4); }
+.tt-card.muffled .tt-frame canvas { filter: blur(calc(var(--px) * 1.5)) brightness(.35) saturate(.4); }
 .tt-card.muffled .tt-text { filter: blur(calc(var(--px) * .6)); animation: ttSwim 2.4s ease-in-out infinite; color: #5a4636; }
-.tt-card.muffled .tt-name { color: #8a7a6a; }
-.tt-card.muffled { filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(12, 6, 8, .55)) brightness(.82) sepia(.25); }
+.tt-card.muffled .tt-name { color: #a89a8a; }
+.tt-card.muffled { filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(10, 4, 6, .55)) brightness(.8) sepia(.25); }
 @keyframes ttSwim { 0%, 100% { transform: translateX(0) skewX(0); } 50% { transform: translateX(calc(var(--px) * 1.5)) skewX(-3deg); } }
+
+/* small screens: a narrower board, the ribbon's name in the plain heading face */
+@media (max-width: 560px) {
+  .tt-card { width: 100%; }
+  .tt-body { margin-left: calc(var(--px) * 2); padding-right: calc(var(--px) * 1); }
+  .tt-plate { left: calc(var(--px) * (var(--pp) + 12)); }
+}
+@media (max-height: 520px) {
+  .tt-text { min-height: calc(var(--px) * 16); line-height: 1.32; }
+}
+@media (min-width: 1700px) and (min-height: 1000px) {
+  .tt-text, .tt-next { font-size: 24px; }
+}

@@ -189,49 +189,6 @@ function bowl(fill = 0) {
   return p;
 }
 
-/**
- * Nugget peeking out of her round window (the coop panel's portrait). mood: 'happy' | 'ok' |
- * 'hungry' | 'away' (empty window).
- */
-function henWindow(mood = 'ok') {
-  const p = new Px(30, 30);
-  const F = [0xfffaf0, 0xf2e8d6, 0xd8ccb4, 0xb8a890];
-  // the log wall behind
-  for (let y = 0; y < 30; y++) for (let x = 0; x < 30; x++) {
-    const o = y % 6;
-    p.set(x, y, [0x6a4022, 0x86562e, 0x86562e, 0xa06c3c, 0xb8834c, 0x3a2010][o]);
-  }
-  // the dark round hole and the carved frame
-  p.disk(15, 15, 12.5, 0x7a4a26);
-  for (let a = 0; a < 24; a++) { const t = a / 24 * Math.PI * 2; p.set(Math.round(15 + Math.cos(t) * 11.5 - 0.5), Math.round(15 + Math.sin(t) * 11.5 - 0.5), a % 2 ? 0x9a6234 : 0x5a3418); }
-  p.disk(15, 15, 10.2, 0x1e140c);
-  if (mood !== 'away') {
-    const sad = mood === 'hungry';
-    const hy = sad ? 18 : 15;
-    // head
-    p.disk(15, hy + 2, 7.5, F[1]);
-    p.disk(14, hy + 1, 6, F[0]);
-    p.ellipse(15, hy + 8.5, 8, 3, F[2]);
-    // comb
-    for (const [x, y, r] of [[12, hy - 5, 1.8], [15, hy - 6, 2.2], [18, hy - 5, 1.8]]) p.disk(x, y, r, 0xe0302a);
-    p.set(14, hy - 7, 0xff6a5a);
-    // beak and wattle
-    p.rect(13, hy + 2, 5, 2, 0xf0b030); p.rect(14, hy + 4, 3, 1, 0xc88a20); p.set(17, hy + 2, 0xffd060);
-    p.ellipse(15.5, hy + 6.5, 1.2, 1.6, 0xd02a2a);
-    // eyes: round and bright, or half-shut and sulky
-    for (const ex of [11, 19]) {
-      if (sad) { p.hl(ex - 1, ex + 1, hy, 0x1a1020); p.set(ex - 1, hy - 1, 0x5a4a3a); }
-      else { p.rect(ex - 1, hy - 1, 2, 3, 0x1a1020); p.set(ex - 1, hy - 1, 0xffffff); }
-    }
-    if (mood === 'happy') { p.set(9, hy + 2, 0xf08a8a); p.set(21, hy + 2, 0xf08a8a); p.set(10, hy + 3, 0xf08a8a); p.set(20, hy + 3, 0xf08a8a); }
-    if (sad) { p.set(23, hy - 4, 0x7fc0f0); p.set(23, hy - 3, 0x3f7ec8); }
-  }
-  // clip to a soft round badge
-  for (let y = 0; y < 30; y++) for (let x = 0; x < 30; x++) if (Math.hypot(x + 0.5 - 15, y + 0.5 - 15) > 14.5) p.clear(x, y);
-  p.outline(0x24150d);
-  return p;
-}
-
 /** Tidy brush icon for the sort buttons. */
 function brushIcon() {
   const p = new Px(12, 12);
@@ -262,7 +219,6 @@ export const INV_ART = {
   trunk: (on = false) => sprite('trunk' + (on ? 1 : 0), () => trunkSlot(on)),
   toss: (open = false) => sprite('toss' + (open ? 1 : 0), () => tossPit(open)),
   bowl: (f = 0) => sprite('bowl' + f, () => bowl(Math.max(0, Math.min(4, f | 0)))),
-  hen: (mood = 'ok') => sprite('hen:' + mood, () => henWindow(mood)),
   brush: () => sprite('brush', brushIcon),
   weight: () => sprite('weight', weightIcon),
 };

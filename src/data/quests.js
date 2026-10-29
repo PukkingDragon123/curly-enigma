@@ -13,10 +13,18 @@
 //     deliver: { to: npc, items: { id: n } }   hand the items over by talking to them
 //     lesson: 'name' | [names]   (lessons) a { type: 'lesson', step } act; later steps skip ahead
 //     where: { place | burrow | ruin | zone }   a mark for the map }],
-//   reward: { gold, items: { id: n }, sp }, next: [ids], requires: [ids],
-//   auto: true (starts once `requires` are done) · from: npc (offered when you talk to them) }
+//   reward: { gold, items: { id: n }, sp, lore: [ids], recipe: [dish ids], rep: n | { npc: n } },
+//   next: [ids], requires: [ids], when: (state) => bool (offered/started only while it holds),
+//   auto: true (starts once `requires` are done) · from: npc (offered when you talk to them)
+//   ask: true (Deep Town folk: offered in their dialog, Accept / Not now) · gives: { id: n } on start
+//   urgent: true (a story beat: offered first, even while the giver has other work under way) }
+// Kinds: 'main' (the million), 'story' (Old Star's follow-ups), 'request' (the burrow folk),
+// 'village' (Deep Town's folk and keepers), 'lore' (the Old Ones, Old Star's past).
+// Side quests (village, lore, more requests) live in ./sideQuests.js; the folk in ./villagers.js.
 // Text may use {trader} {herbalist} {rocco} {outpost} for the folk's names (see npcName).
 import { SHOPS } from './shops.js';
+import { VILLAGERS } from './villagers.js';
+import { SIDE_QUESTS, BURROW_QUESTS } from './sideQuests.js';
 
 export const ZONE_DEPTHS = [0, 25, 55, 90, 130, 170, 210]; // zone n spans [n-1]..[n] (Generator.js)
 export const ZONE_NAMES = [null, 'Rootsoil', 'Clayworks', 'Crystal Grotto', 'Magma Deep', 'Frost Vault', 'The Core'];
@@ -29,8 +37,11 @@ export const NPCS = {
   rocco: { name: 'Rocco', short: 'Rocco', where: "Rocco's Storage", burrow: 'raccoon', ink: '#4a4a6a' },
   outpost: { name: 'the outpost warden', short: 'Warden', where: 'The Deep Outpost', burrow: 'outpost', ink: '#8a4a2a' },
 };
+// Deep Town's folk and keepers (src/data/villagers.js): npc id = villager id (keepers: their shop id)
+for (const [id, v] of Object.entries(VILLAGERS)) NPCS[id] ||= { name: v.name, short: v.name.replace(/^(Old|Granny|Grandpa|Great-Aunt|Nana|Mrs\.|Mr\.|Professor) /, ''), where: v.where, ink: v.ink, town: true, keeper: v.keeper || null, title: v.title };
 /** Ids the other parts may use for the same folk. */
-export const NPC_ALIAS = { raccoon: 'rocco', star: 'oldstar', old_star: 'oldstar', starmole: 'oldstar', post: 'trader', herbs: 'herbalist', warden: 'outpost' };
+export const NPC_ALIAS = { raccoon: 'rocco', star: 'oldstar', old_star: 'oldstar', starmole: 'oldstar', post: 'trader', herbs: 'herbalist', warden: 'outpost',
+  grubb: 'tools', hazel: 'grocer', pip: 'furniture', talpa: 'blueprints', dilly: 'outfitter', vex: 'assay', fennimore: 'ticket', bramble: 'lift' };
 
 /** The display name of an npc, from the shop data when the characters part has named them. */
 export function npcName(id) {
@@ -342,5 +353,16 @@ export const QUESTS = {
   },
 };
 
-/** Order on the quest page (main first). */
-export const QUEST_ORDER = Object.keys(QUESTS);
+Object.assign(QUESTS, BURROW_QUESTS, SIDE_QUESTS);
+
+/** Order on the quest page and for offers: main, Old Star's, the burrow folk, the village, lore. */
+const KIND_RANK = { main: 0, story: 1, request: 2, village: 3, lore: 4 };
+export const QUEST_ORDER = Object.keys(QUESTS).map((id, i) => [id, i]).sort((a, b) => (KIND_RANK[QUESTS[a[0]].kind] ?? 5) - (KIND_RANK[QUESTS[b[0]].kind] ?? 5) || a[1] - b[1]).map((e) => e[0]);
+
+/** The book's groups: the main story, the village (and the burrow folk), lore. */
+export const QUEST_GROUPS = [
+  { id: 'main', label: 'The Way Up', sub: 'Old Star and the million', kinds: ['main', 'story'] },
+  { id: 'village', label: 'Deep Town & Neighbours', sub: 'Favours for the folk', kinds: ['village', 'request'] },
+  { id: 'lore', label: 'Lore', sub: 'Old stories, older stones', kinds: ['lore'] },
+];
+export const groupOf = (kind) => (QUEST_GROUPS.find((g) => g.kinds.includes(kind)) || QUEST_GROUPS[1]).id;

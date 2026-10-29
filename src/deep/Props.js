@@ -15,9 +15,11 @@
 //
 // API (DigScene): new Props(ctx) · update(dt, {player, eye, time}) · onVoxel(vx, vy, vz, old, m) ·
 // lights(eye) → ≤ 3 point lights · target(eye, dir, reach) → {label, kind: 'use'} | null ·
-// use(eye, dir, reach) → { forage } (opens the foraging minigame, src/ui/Forage.js; the loot then
+// use(eye, dir, reach) → { forage } (opens the gathering close-up, src/deep/gather; the loot then
 // reaches the mine through owner.events) | null · dispose() · info() (debug stats).
-// Models live in ./props/models.js (builders) and ./props/grid.js (voxel grid + mesher).
+// Models live in ./props/models.js (builders; the 1/32 m lanterns on their supports, gear and forage
+// plants in ./props/hires.js and ./props/hiresPlants.js) and ./props/grid.js (voxel grid + mesher).
+// Painted grass, ferns, vines and the like are Vegetation.js's (cards, not voxels).
 import * as THREE from 'three';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { ITEMS } from '../data/items.js';
@@ -30,8 +32,8 @@ import { getModel, modelCached, modelStats, modelSteps, defineModel, forgetModel
 import { key3, CB } from './World.js';
 import { rng32 } from './props/grid.js';
 import { liftSnapshotSteps, liftLayoutSteps } from './props/lifts.js';
-// cooking part: the foraging minigame and the new forage plants' models (registered into BUILD)
-import { openForage } from '../ui/Forage.js';
+// cooking part: the new forage plants' models (registered into BUILD); 3D gathering: the minigame
+import { openGather, warmGather } from './gather/index.js';
 import '../cooking/plantModels.js';
 
 const CM = CS / VOX; // chunk size in metres
@@ -87,6 +89,7 @@ const TYPES = {
   coil: { mount: 'floor', vars: 1, r: 0.38, h: 0.3, snd: 'wood' },
   lantern: { mount: 'wall', vars: 2, r: 0.3, flat: 1, minUp: 13, maxUp: 19, sway: 0.025, snd: 'metal' },
   lanternC: { mount: 'ceil', vars: 2, r: 0.2, sway: 0.02, snd: 'metal' },
+  lanternP: { mount: 'floor', vars: 2, r: 0.42, h: 1.5, sway: 0.02, snd: 'wood' }, // a lantern post (timber, crossbeam, brace)
   sign: { mount: 'floor', vars: 2, r: 0.45, h: 1.4, town: true, snd: 'wood' },
   crate: { mount: 'floor', vars: 2, r: 0.36, h: 0.65, hug: true, back: 0.36, snd: 'wood' },
   barrel: { mount: 'floor', vars: 2, r: 0.32, h: 0.75, hug: true, back: 0.33, snd: 'wood' },
@@ -127,15 +130,15 @@ const PARAM_TYPES = new Set(['crystal', 'crystalC', 'roots', 'vine', 'glowthread
 
 // decoration per zone: [type, weight] lists + chances per 1 m cell (floor / ceiling / wall)
 const DECOR = {
-  1: { floor: [['mush', 6], ['post', 0.9], ['bones', 0.3], ['crate', 0.35], ['barrel', 0.25], ['pick', 0.3], ['coil', 0.25], ['ladder', 0.35], ['sign', 0.3], ['urn', 0.1]],
+  1: { floor: [['mush', 3.5], ['post', 0.9], ['bones', 0.3], ['crate', 0.35], ['barrel', 0.25], ['pick', 0.3], ['coil', 0.25], ['ladder', 0.35], ['sign', 0.3], ['urn', 0.1], ['lanternP', 0.3]],
     ceil: [['roots', 5], ['vine', 2.5], ['rope', 0.35]], wall: [['shelf', 3], ['lantern', 1]], f: 0.13, c: 0.14, w: 0.06 },
-  2: { floor: [['bones', 3], ['urn', 1], ['mush', 1.5], ['post', 1], ['crate', 0.4], ['barrel', 0.3], ['pick', 0.3], ['ladder', 0.35], ['sign', 0.3], ['coil', 0.2]],
+  2: { floor: [['bones', 3], ['urn', 1], ['mush', 1.5], ['post', 1], ['crate', 0.4], ['barrel', 0.3], ['pick', 0.3], ['ladder', 0.35], ['sign', 0.3], ['coil', 0.2], ['lanternP', 0.3]],
     ceil: [['roots', 2.5], ['vine', 2], ['rope', 0.5]], wall: [['fossil', 4], ['shelf', 0.8], ['lantern', 1]], f: 0.12, c: 0.1, w: 0.12 },
-  3: { floor: [['crystal', 5], ['mush', 1.2], ['post', 0.3], ['crate', 0.15], ['sign', 0.15], ['bones', 0.2]],
+  3: { floor: [['crystal', 5], ['mush', 1.2], ['post', 0.3], ['crate', 0.15], ['sign', 0.15], ['bones', 0.2], ['lanternP', 0.12]],
     ceil: [['glowthread', 3], ['crystalC', 2]], wall: [['shelf', 1], ['lantern', 0.5]], f: 0.11, c: 0.12, w: 0.035 },
-  4: { floor: [['obsidian', 3], ['vent', 1.6], ['charred', 2.2], ['bones', 0.4], ['sign', 0.12]],
+  4: { floor: [['obsidian', 3], ['vent', 1.6], ['charred', 2.2], ['bones', 0.4], ['sign', 0.12], ['lanternP', 0.1]],
     ceil: [['rope', 0.3]], wall: [['lantern', 0.5]], f: 0.12, c: 0.015, w: 0.02 },
-  5: { floor: [['frozen', 3], ['bones', 0.4], ['crate', 0.15], ['sign', 0.1], ['post', 0.2]],
+  5: { floor: [['frozen', 3], ['bones', 0.4], ['crate', 0.15], ['sign', 0.1], ['post', 0.2], ['lanternP', 0.1]],
     ceil: [['icicle', 6]], wall: [['lantern', 0.3]], f: 0.1, c: 0.16, w: 0.02 },
   6: { floor: [['shard', 4], ['obsidian', 1.2], ['crystal', 0.6]],
     ceil: [['crystalC', 1]], wall: [], f: 0.1, c: 0.04, w: 0 },
@@ -866,6 +869,12 @@ export class Props {
         break;
       }
     }
+    // nothing overhead or beside it: a lantern post on the floor under the light
+    const fy = this.floorNear(l.x, l.y - 0.8, l.z);
+    if (fy === fy && l.y - fy < 1.6) {
+      const vx = Math.floor(l.x * VOX), vz = Math.floor(l.z * VOX);
+      this.tryFloor(c, 'lanternP', { lx: vx - c.X0, ly: Math.floor(fy * VOX) - c.Y0, lz: vz - c.Z0 }, vx, Math.floor(fy * VOX), vz, 1, { x: l.x, y: fy, z: l.z, v: hv, fixture: true, noLight: true, loose: true });
+    }
   }
 
   /**
@@ -952,6 +961,13 @@ export class Props {
         for (let y = Math.min(hi - 1, ly + v8(6)); y >= Math.max(lo, ly - v8(6)); y--) if (c.at(qx, y, qz) === 0 && ground(c.at(qx, y - 1, qz)) && c.at(qx, y + 1, qz) === 0) { qy = y; break; }
         if (qy < 0 || !c.fresh(qx, qy, qz)) continue;
         this.tryFloor(c, gear[Math.floor(r() * gear.length)], { lx: qx, ly: qy, lz: qz }, hx + k, hy + 7, hz - k, zone);
+      }
+      // a lantern post beside the track
+      {
+        const end0 = segs[0], side = r() < 0.5 ? 1 : -1;
+        const px = end0.x + az * 0.75 * side, pz = end0.z + ax * 0.75 * side;
+        const py = this.floorNear(px, end0.y, pz);
+        if (py === py) this.tryFloor(c, 'lanternP', { lx: end0.sx, ly: end0.fy, lz: end0.sz }, hx + 3, hy + 11, hz, zone, { x: px, y: py, z: pz, yaw: yaw + (side > 0 ? 0 : Math.PI) });
       }
       // and a lantern on a wall
       for (let k = 0; k < 4; k++) {
@@ -1511,7 +1527,7 @@ export class Props {
   }
 
   // ------------------------------------------------------------ plants: aim + harvest (cooking part)
-  // E on a plant opens the foraging minigame (src/ui/Forage.js): use() returns { forage } at once
+  // E on a plant opens the gathering close-up (src/deep/gather): use() returns { forage } at once
   // (DigScene stops there), and when the plant is out its loot reaches the mine through
   // owner.events([{ loot: { id, q, p } }, ...]) like any other find. Esc leaves the plant be.
   /** The zone's plant table, leaned by the biome at this 1 m cell. */
@@ -1541,6 +1557,12 @@ export class Props {
     if (this.foraging) return null;
     const p = this.pick(eye, dir, reach);
     if (!p) return null;
+    // 3D gathering: build its close-up model while it's being looked at, so E opens at once
+    if (this.warmed !== p) {
+      this.warmed = p;
+      const w = () => { if (this.warmed === p && !this.foraging && !p.gone) warmGather(p); };
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(w, { timeout: 500 }); else setTimeout(w, 60);
+    }
     const verb = { cave_berry: 'Pick', glow_moss: 'Peel', sparkmoss: 'Peel', truffle: 'Dig up', grub: 'Dig up', dino_egg: 'Lift' }[p.item] || 'Pull';
     return { label: `${verb} ${ITEMS[p.item]?.name || p.item}`, kind: 'use' };
   }
@@ -1556,21 +1578,34 @@ export class Props {
       return { say: `Your backpack is full: no room for <b>${ITEMS[p.item]?.name || p.item}</b>.`, key: 'forage-full', tone: 'warn', cd: 2 };
     }
     if (!game?.ui?.openPanel || this.ctx.params?.forage === 'instant') return this.harvest(p, { q: 100 })[0] || null;
+    this.gather(p);
+    return { forage: p.item };
+  }
+  /** Gather a plant in a 3D close-up (src/deep/gather): its loot reaches the mine once it's out. */
+  gather(p, o = {}) {
+    const st = this.state;
     const protects = { heat: !!st?.protects?.('heat'), cold: !!st?.protects?.('cold'), zap: !!st?.protects?.('zap') };
     this.foraging = p;
     this.audio?.play('brush', { vol: 0.4 });
-    openForage(game, p.item, { protects }).then((res) => {
+    openGather(this, p, { protects, ...o }).then((res) => {
       this.foraging = null;
-      if (!res || res.cancel || p.gone || this.disposed) return;
+      if (!res || res.cancel || p.gone || this.disposed) { if (p.hidM) this.hidePlant(p, false); return; }
+      this.hidePlant(p, false);
       this.deliver(this.harvest(p, res));
-    }).catch((e) => { console.warn('forage failed', e); this.foraging = null; });
-    return { forage: p.item };
+    }).catch((e) => { console.warn('gather failed', e); this.foraging = null; if (p.hidM) this.hidePlant(p, false); });
   }
+  /** 3D gathering: hide a plant's prop while its close-up model stands in for it (on = false: back). */
+  hidePlant(p, on = true) {
+    if (on) { if (p.m) { p.hidM = p.m; p.m = null; } } else if (p.hidM) { p.m = p.hidM; p.hidM = null; }
+    if (this.built.get(p.rec.key) === p.rec) this.urgent.add(p.rec);
+  }
+  /** Test hook: gather this plant now (window.__gather.open uses it). */
+  debugGather(p, o = {}) { this.gather(p, o); return (typeof window !== 'undefined' && window.__gather?.active?.state?.()) || null; }
   /** Take the plant and make the events for it (loot, a toast, hurts from the minigame). */
   harvest(p, res = {}) {
     const st = this.state, it = ITEMS[p.item];
     if (st?.data) { this.picked[p.key] = st.data.day ?? 0; st.dirty = true; }
-    this.pop(p);
+    if (!res.fx) this.pop(p); // the 3D close-up made its own burst
     this.remove(p);
     const evs = [];
     let n = res.n ?? 1;
@@ -1765,7 +1800,39 @@ export class Props {
   info() {
     return { ...this.stats, fallers: this.fallers.length, lights: this.lit.size, plants: this.plants.size, cap: this.pool.capV, models: modelStats() };
   }
+  /**
+   * Debug: stand models in a row (loose meshes, no light records) for a look at them.
+   * list: [[type, v, p], ...]; from (x, y, z) along (dx, dz) every `gap` m, all facing yaw. Returns the vertex counts.
+   */
+  showcase(list, x, y, z, dx = 1, dz = 0, gap = 0.9, yaw = 0) {
+    this.clearShowcase();
+    this.shown = [];
+    const out = [];
+    list.forEach(([type, v = 0, p = 0], i) => {
+      const m = getModel(type, v, p);
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(m.pos, 3));
+      g.setAttribute('aNrm', new THREE.BufferAttribute(m.nrm4, 4, true));
+      g.setAttribute('aCol', new THREE.BufferAttribute(m.col4, 4, true));
+      g.setAttribute('aAnim', new THREE.BufferAttribute(new Float32Array(m.nv * 3), 3));
+      g.setIndex(new THREE.BufferAttribute(m.idx, 1));
+      g.computeBoundingSphere();
+      const mesh = new THREE.Mesh(g, this.mat);
+      mesh.position.set(x + dx * gap * i, y, z + dz * gap * i);
+      mesh.rotation.y = yaw;
+      mesh.layers.enable(LAYER_OUTLINE);
+      this.scene3.add(mesh);
+      this.shown.push(mesh);
+      out.push({ type, v, p, verts: m.nv, ms: Math.round(m.ms) });
+    });
+    return out;
+  }
+  clearShowcase() {
+    for (const m of this.shown || []) { this.scene3.remove(m); m.geometry.dispose(); }
+    this.shown = null;
+  }
   dispose() {
+    this.clearShowcase();
     this.disposed = true;
     for (const f of this.fallers) { this.scene3?.remove(f.mesh); f.mesh.geometry.dispose(); }
     this.fallers = [];

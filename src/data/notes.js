@@ -1,4 +1,5 @@
-// Old Star's notes: forty years of scribbles from his dig, pinned up on the tavern's board.
+// Old Star's notes: forty years of scribbles from his dig, pinned up on the board in his workshop.
+// They're also the first shelf of the book's Lore chapter (src/core/lore.js).
 // Handwritten tips and a little lore, in his voice. Short: each fits a small paper card.
 // NOTES = [{ id, title, text }]; text may use \n for line breaks. Signed "O.S." where he'd sign.
 
@@ -65,13 +66,33 @@ export const NOTES = [
   },
   {
     id: 'tavern',
-    title: 'This old tavern',
-    text: 'This was the miners\' tavern, once. Songs, stew, mud on every chair.\nThen the lift jammed, the miners left, and I went down for one last look. Forty years, that look took.',
+    title: 'This old workshop',
+    text: 'This was the Company smithy, once. Songs, sparks, mud on every chair.\nThen the Rumble came, the lift jammed, the miners left, and I went down for one last look. Forty years, that look took.',
   },
   {
     id: 'town',
     title: 'Deep Town',
-    text: 'There\'s a town down there with an assay office that pays fair, and a ticket office for the Surface Express.\nA million gold for a seat. I never had a million. You might.',
+    text: 'There\'s a town down there with an assay office that pays fair, and a ticket office for the Surface Express.\nA million gold for a seat. I had one, once. Near enough. You\'ll do better.',
+  },
+  {
+    id: 'carvings',
+    title: 'The carvings',
+    text: 'The carvings in the old halls aren\'t decoration. They\'re letters, raised so a paw can read them.\nRun yours along one. I can read about half. The other half reads me.',
+  },
+  {
+    id: 'stamp',
+    title: 'My stamp',
+    text: 'Everything I own gets my red star. Bags, crates, this board.\nSo I know it\'s mine. So I know I did it. Old habit. Expensive habit, once.',
+  },
+  {
+    id: 'shaft7',
+    title: 'Shaft Seven',
+    text: 'Don\'t take the Shaft Seven rail to town. It isn\'t there any more.\nNot much of anything is.',
+  },
+  {
+    id: 'hens',
+    title: 'On hens',
+    text: 'Feed her and she lays. Starve her and she sulks.\nSame as me, near enough. Keep her close in the deep: she sees glints you won\'t.',
   },
   {
     id: 'forty',

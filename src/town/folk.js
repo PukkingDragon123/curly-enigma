@@ -13,6 +13,7 @@ import { makeRng, rand, pick, chance, clamp } from '../core/util.js';
 import { midiToFreq } from '../core/Audio.js';
 import { ROLE_MOODS, moodOf } from './moods.js';
 import { broom as makeBroom, lute, fishingRod, oreCrate } from './props.js';
+import { VILLAGERS, SEED_NPC } from '../data/villagers.js'; // quests part: Deep Town's folk by name
 
 const NAMES = ['Pebble', 'Rooty', 'Moss', 'Tuck', 'Clover', 'Burr', 'Dusty', 'Fern', 'Nib', 'Mabel', 'Toby', 'Bea', 'Pip', 'Tansy', 'Wort', 'Clem',
   'Dot', 'Ivo', 'Juniper', 'Nettle', 'Ollie', 'Rue', 'Sorrel', 'Thistle', 'Umber', 'Wren', 'Ginny', 'Barley', 'Cob', 'Loam', 'Marl'];
@@ -59,7 +60,8 @@ export class Townsfolk {
     const rng = makeRng(seed * 7 + 3);
     const spec = randomSpec(seed, overrides);
     const rig = makeCharacter(spec, { lod: o.full ? undefined : 'crowd' });
-    const name = o.name || NAMES[this.nameI++ % NAMES.length];
+    const npcId = SEED_NPC[seed] || null; // a named villager (quests, tales, the book)
+    const name = o.name || VILLAGERS[npcId]?.name || NAMES[this.nameI++ % NAMES.length];
     const a = new Actor(rig, { x: o.x, z: o.z, yaw: o.yaw ?? rng.range(0, 6.28), name, voice: voiceFor(spec, rng), radius: spec.age === 'baby' ? 0.17 : spec.age === 'kid' ? 0.21 : 0.25, shadow: spec.age === 'baby' ? 0.42 : spec.age === 'kid' ? 0.5 : 0.6 });
     a.skipFar = true;
     this.s.addActor(a);
@@ -67,9 +69,10 @@ export class Townsfolk {
     // a resting face for the role (some folk are cheerful, some grumpy, some half asleep)
     npc.mood = o.mood || rng.pick(ROLE_MOODS[role] || ROLE_MOODS.wander);
     rig.setMood(npc.mood);
+    npc.npcId = npcId;
     a.npc = npc;
     this.list.push(npc);
-    this.s.addTalk(a, () => `Chat with ${name}`, () => this.talkTo(npc));
+    npc.talk = this.s.addTalk(a, () => `Chat with ${name}`, () => this.talkTo(npc));
     return npc;
   }
 
@@ -199,6 +202,9 @@ export class Townsfolk {
 
   // ------------------------------------------------------------ talking
   talkTo(npc) {
+    // a named villager with quest business or a story to tell (src/town/quests.js)
+    const q = npc.npcId ? this.s.townQuests?.talk(npc) : null;
+    if (q) return q;
     const s = this.s, a = npc.a, p = s.player;
     if (!npc.seated) a.faceToward(p.x, p.z);
     npc.pause = 3.6;

@@ -127,6 +127,14 @@ lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, t
 - `update(dt, { player, eye, time })`, `onVoxel(vx, vy, vz, old, m)` (optional: a prop whose
   support was dug away should fall or go), `lights(eye)` (as above), `dispose()`.
 
+**Vegetation** (`new Vegetation(ctx)`, `src/deep/Vegetation.js` + `veg/`): painted 2D plants on
+alpha-tested cards in one instanced mesh (grass, ferns, fungus, flowers, roots, vines, … by zone,
+biome and material), swaying, pushed aside by the mole and Nugget, lit like the rock.
+- `update(dt, { player, eye, time, busy })` → `[]`, `lights(eye)` → ≤ 2 faint glows, `dispose()`.
+- `onVoxel(vx, vy, vz, old, m)`: a plant goes when its ground is dug or its space filled. It chains
+  itself into `world.onChange`; calling it from DigScene's handler as well is harmless (it notices).
+- `debug.{ info(), kinds(), near(x, y, z, r), atlas(on), rebuild(), bench(n), budget(ms) }`.
+
 Harvesting and catching (all optional, called by DigScene when present):
 - `props.target(eye, dir, reach)` → `null | { label, kind: 'use' }`; `props.use(eye, dir, reach)` →
   `null | { loot: { id }, say? }` (E / the use button). Picked spots regrow the next day
@@ -181,3 +189,46 @@ uniforms.
   water it dives, and swimming forward under water follows the look.
 - Test hooks: `scene.debug.{ biomeAt(x,y,z), density(x,y,z), find(test(biome, depth, x, y, z),
   { r, d0, d1 }) → {x,y,z} | null, teleport(x, y, z, yaw, pitch) }`.
+
+## Cave look: shaders, light and air (wave 3)
+
+- **Terrain shader** (`TerrainMaterial.js`): on top of the palette texels and rock plates: rounded
+  plates (each stone has a lit and a shaded side), strata (wobbly horizontal layers, tone + tint per
+  layer, a thin line between; strength per material), big tint patches and mineral streaks from a
+  32³ tiling 3D noise texture (`U.noise3`, two scales per pixel), convex-edge chamfers (see Mesher),
+  damp sheen, moss on upward faces, rime, glowing cracks in volcanic rock, crystal / ice facets with
+  an inner parallax layer, light soaking through and texel sparkles, Blinn-Phong glints quantized
+  into pixel steps, a warm rim where the lamp grazes. Per-material extras live in palette column 7
+  (spec, gloss, translucency, strata) and the alpha of columns 6 (hot) and 5 (moss / damp / rime may
+  grow), filled in `surfacePalette()` (no change to `materials.js` needed for new materials: they
+  get their style's defaults).
+- **Uniforms** (`makeTerrainUniforms()`; all 0 = off, so other scenes look plain until they set
+  them): `noise3`, `skyCol` (cool light from above), `bounce` (warm light from below), `haze` (lamp
+  flood scattering in the dust), `mist` (x density, y metres below the eye where it thickens, z
+  falloff) + `mistCol` (ground mist pooling in pits), `mood` (x moss on tops, y damp, z rime, w hot
+  cracks). In the mine `src/deep/Atmosphere.js` sets them per frame from the zone and biome.
+- **GLSL chunks** for any lit material of the mine (uniforms `{ ...U }`): `LIGHT` → `lightAt(p, n)`
+  (unchanged meaning), `lightFull(p, n, V, wrap, ao, shin, out spec)`, `ambientAt(n)` (cool
+  hemisphere + sky + bounce), `lampAtt(d)`, `lampCone(dl)`, `pointAtt(d, r)` (soft-windowed
+  inverse-square-ish lights). `AIR` (after `LIGHT`, with `fogCol` / `fogDist` declared) →
+  `caveAir(col, p, dist)`: mist, fog (reaching the dark at the edge of the streamed world), the
+  darker void overhead and the lamp glow in the dust. **Props, creatures, vegetation, traders:**
+  replace `mix(col, fogCol, 1.0 - exp(...))` with `col = caveAir(col, vWorld, dist)` so far objects
+  melt into the same dark as the rock.
+- **Mesher**: solid `vdata.w` = bit 0 the flipped diagonal, bits 1–4 the voxel's convex edges along
+  the shader's face axes (−t1, +t1, −t2, +t2): the neighbour in the face's own layer is open. Part of
+  the greedy key (+4.5% quads). `setEdgeFlags(false)` turns it off (test hook).
+- **Atmosphere** (`src/deep/Atmosphere.js`, made by `Particles` when given a deep world: `fx.atmos`):
+  zone / biome mood tables (`ZONE`, `BIOME`) blended as you walk; the far sky (a screen triangle
+  drawn first: `voidCol + airGlow`, so far rock has no silhouette against it); one halo billboard
+  per light slot (reads `lPos` / `lCol`, so every light from `DigScene.lights()` glows in the dusty
+  air); ambient motes round the eye (dust, sand, glitter, spores, glowing spores, pollen, embers,
+  snow, void sparks); light shafts toward the brightest lantern ahead when standing in a tall hall,
+  and a little extra bloom where things glow, through the Engine post hook.
+- **Particles**: `spawn({ ..., lit, swirl, twinkle })`: `lit` (0..1) takes light from the lamp's
+  cone and the lights instead of being self-lit (lit motes stay 1–3 px specks), `swirl` a lazy
+  wander, `twinkle` (Hz) flickers. Points of 3 px and more are round pixel discs; big soft puffs
+  thin out to the rim in dithered steps.
+- **Engine**: `scene.userData.postHook(p, camera, engine)` adjusts a scene's post settings every
+  frame (after the scene's own keys). Grades `rootsoil`, `clay`, `grotto` (split-toned: warm
+  lamplight, cool shade); `ZONE_GRADES = [null, 'rootsoil', 'clay', 'grotto', 'magma', 'frost', 'core']`.

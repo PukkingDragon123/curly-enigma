@@ -7,24 +7,12 @@ import { ITEMS, sellPrice, CAT_LABEL } from '../data/items.js';
 import { SHOPS } from '../data/shops.js';
 import { FURNITURE, FLOORS, WALLS } from '../data/furniture.js';
 import { WEAPON_TYPES, METALS, GRADES, gradeFor } from '../data/weapons.js';
-import { renderPortrait } from '../gfx/characters.js';
+import { portrait3d } from '../gfx/portrait3d.js';
+import { moodOf, KEEPER_MOODS } from '../town/moods.js';
 import { COIN } from './UI.js';
 import { qColor, pips } from './common.js';
 import { SPR } from './uiSprites.js';
 import { GOAL_GOLD } from '../core/State.js';
-
-const portraitCache = new Map();
-function portrait(game, shopId) {
-  if (portraitCache.has(shopId)) return portraitCache.get(shopId);
-  const k = SHOPS[shopId].keeper;
-  let url = '';
-  try {
-    const c = renderPortrait(game.engine.renderer, { seed: 9, eyes: 'bead', dirt: 0.2, blush: true, ...k, hat: k.hat || 'none', glasses: k.glasses || false }, 72, { expression: 'happy' });
-    url = c.toDataURL();
-  } catch (e) { /* noop */ }
-  portraitCache.set(shopId, url);
-  return url;
-}
 
 const price = (n, cls = '') => el('span', { class: 'price ' + cls }, [el('img', { class: 'pix', src: cls.includes('big') ? SPR.coin() : SPR.coinMini(), alt: '' }), formatGoldFull(n)]);
 
@@ -61,7 +49,11 @@ export function openShop(game, shopId) {
   // ---------------- the room
   const sayText = el('span', {}, pick(shop.lines));
   const say = el('div', { class: 'sh-say' }, [el('b', {}, shop.keeper.name), sayText]);
-  const face = el('div', { class: 'sh-portrait' }, [el('img', { class: 'pix', src: portrait(game, shopId), alt: shop.keeper.name })]);
+  // the keeper's live 3D portrait (src/gfx/portrait3d.js): talks and pulls a face as they speak
+  const face = el('div', { class: 'sh-portrait', title: shop.keeper.name });
+  const faces = KEEPER_MOODS[shopId] || {};
+  const face3d = portrait3d.mount(face, shopId, { size: 32, mood: faces.greet || faces.mood || 'happy' });
+  face3d.talk(1.8);
   const keeper = el('div', { class: 'sh-keeper' }, [face, say]);
   const tabsEl = el('div', { class: 'sh-tabs' });
   const stock = el('div', { class: 'sh-stock' });
@@ -78,6 +70,8 @@ export function openShop(game, shopId) {
 
   const speak = (text) => {
     sayText.textContent = text;
+    face3d.set(moodOf(text) || faces.mood || 'happy', { hold: 2.4 });
+    face3d.talk(Math.min(3.2, 0.5 + text.length * 0.04));
     say.classList.remove('talk');
     void say.offsetWidth;
     say.classList.add('talk');
@@ -333,6 +327,7 @@ export function openShop(game, shopId) {
   fit();
   window.addEventListener('resize', fit);
   ui.status.pin(true);
-  const h = ui.openPanel({ body: root, className: 'sh-panel', onClose: () => { window.removeEventListener('resize', fit); ui.status.pin(false); } });
+  const h = ui.openPanel({ body: root, className: 'sh-panel', onClose: () => { window.removeEventListener('resize', fit); ui.status.pin(false); face3d.dispose(); } });
+  h.portrait = face3d;
   return h;
 }

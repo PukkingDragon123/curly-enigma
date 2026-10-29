@@ -1,7 +1,7 @@
 // Old Star's lessons at home (mixed into HomeScene). The chain (quest `lessons`, src/data/quests.js)
 // moves on `act` events; this keeps its own stage in state.data.oldstar.lesson so the home knows
 // what Old Star wants next:
-//   wake   → the waking-up scene (wake.js): he throws the quench water, tells you his plan
+//   wake   → the waking-up scene (wake.js): you wake in your bed, he tells you his plan
 //   mine   → "ride the lift down to my practice dig, bring me copper" (the lift goes straight to
 //            the dig: deep { from: 'lift', lift: 'L0', lesson: 'mine' }; the mine part teaches)
 //   forge  → back with copper: he sniffs it, gives you coal, and you smelt and forge with him
@@ -20,9 +20,9 @@ import { openTalkMenu } from '../ui/choices.js';
 
 /** What he says the next step is, per stage. */
 const NEXT = {
-  mine: { text: 'First lesson: mining. The cage lift is over there by the cart. It goes straight down to my practice dig. Bring me back some <b>copper ore</b>: the orange specks in the rock.', mood: 'calm', where: 'lift' },
-  forge: { text: 'Copper\'s no good as rock. Come to my <b>forge</b>: we\'ll melt it into an ingot and hammer you out a blade. E on the anvil.', mood: 'happy', where: 'anvil' },
-  cook: { text: 'A smith who doesn\'t eat is a skeleton with a hammer. To the <b>hearth</b> with you: let\'s cook something. E on the fire.', mood: 'happy', where: 'fire' },
+  mine: { text: 'First lesson: mining. The cage lift is in the hall, by the coal cart. It goes straight down to my practice dig. Bring me back some <b>copper ore</b>: the orange specks in the rock.', mood: 'calm', where: 'lift' },
+  forge: { text: 'Copper\'s no good as rock. Come through to my <b>smithy</b>: we\'ll melt it into an ingot and hammer you out a blade. E on the anvil.', mood: 'happy', where: 'anvil' },
+  cook: { text: 'A smith who doesn\'t eat is a skeleton with a hammer. Into the <b>kitchen</b> with you: let\'s cook something. E on the range.', mood: 'happy', where: 'fire' },
 };
 
 export class HomeLessons {
@@ -124,7 +124,7 @@ export class HomeLessons {
         star.say(NEXT.forge.text, { mood: NEXT.forge.mood });
         this.placeStarForLesson();
       } else {
-        star.say('Back already? No copper? It\'s in my practice dig, the orange specks in the rock. Back down you go. The lift will take you.', { mood: 'stern' });
+        star.say('Back already? No copper? It\'s in my practice dig, the orange specks in the rock. Back down you go: the lift in the hall will take you.', { mood: 'stern' });
       }
       return;
     }
@@ -144,7 +144,7 @@ export class HomeLessons {
     }
     if (stage === 'cook' && (from === 'cooking' || from === 'stove')) {
       const cooked = this.arrivalLesson === 'cook_done' || (this.arrivalLesson !== 'cook' && ((st.data.stats?.dishes || 0) > (starData(st).dishesAtLesson ?? 0) || Object.keys(st.data.recipes || {}).length > 0));
-      if (!cooked) { star.say('Nothing in the pot? Come on. Even I can boil an egg, and I\'m a hundred and four.', { mood: 'stern' }); return; }
+      if (!cooked) { star.say('Nothing in the pan? Come on. Even I can boil an egg, and I\'m a hundred and four.', { mood: 'stern' }); return; }
       this.lessonAct('cook_done');
       this.setLesson('done');
       star.lessonSpot = null;

@@ -350,6 +350,10 @@ export const GRADES = {
   core: { lift: [0.03, 0.0, 0.05], gamma: [1.0, 0.98, 1.04], gain: [1.04, 0.95, 1.08] },
   dusk: { lift: [0.035, 0.0, 0.045], gamma: [1.04, 0.99, 0.98], gain: [1.06, 0.96, 0.92] }, // sunset pinks
   night: { lift: [0.0, 0.01, 0.05], gamma: [0.95, 0.98, 1.05], gain: [0.85, 0.93, 1.1] },
+  // the mine's strata: split-toned, warm lamplight over cool shade
+  rootsoil: { lift: [0.004, 0.01, 0.026], gamma: [1.03, 1.0, 0.97], gain: [1.07, 1.0, 0.88] },
+  clay: { lift: [0.012, 0.008, 0.022], gamma: [1.04, 0.99, 0.96], gain: [1.08, 0.97, 0.86] },
+  grotto: { lift: [0.01, 0.012, 0.045], gamma: [0.98, 1.0, 1.04], gain: [1.02, 0.98, 1.06] },
 };
 
 /** Blend two grades (names or objects) by t: handy for a descent from 'sunny' to 'deep'. */
@@ -450,7 +454,7 @@ export const SCENE_POST = {
 };
 
 /** The mine's strata, each with its own light (zone 1..6 → a GRADES name): post.grade = ZONE_GRADES[zone]. */
-export const ZONE_GRADES = [null, 'warm', 'warm', 'cool', 'magma', 'frost', 'core'];
+export const ZONE_GRADES = [null, 'rootsoil', 'clay', 'grotto', 'magma', 'frost', 'core'];
 
 /** Effect quality levels: 'high' (default), 'low' (cheaper glow, for phones), 'off' (no glow passes). */
 export const FX_LEVELS = ['high', 'low', 'off'];
@@ -668,6 +672,9 @@ export class Engine {
    */
   render(scene, camera, post = {}) {
     const p = { ...DEFAULT_POST, ...(SCENE_POST[this.sceneName] || null), ...post };
+    // a scene's own per-frame adjustments (e.g. the mine's air: shafts toward a lantern in a hall)
+    const hook = scene.userData && scene.userData.postHook;
+    if (hook) hook(p, camera, this);
     const r = this.renderer;
     const u = this.postUniforms;
 

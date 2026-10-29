@@ -36,13 +36,15 @@
 
 /* keeper */
 .sh-keeper { grid-area: keeper; display: flex; align-items: flex-start; gap: calc(var(--px) * 3); min-width: 0; }
+/* the keeper: a live 3D portrait (src/gfx/portrait3d.js, 32 art px; 40 in the burrows) in the dialogue's brass frame */
 .sh-portrait {
-  flex: none; box-sizing: border-box; display: grid; place-items: center;
-  width: calc(72px + var(--px) * 14); height: calc(72px + var(--px) * 14);
-  border-style: solid; border-width: calc(var(--px) * 7); border-image: var(--a-wood) 7 / calc(var(--px) * 7) repeat;
-  background: radial-gradient(circle at 50% 35%, #4a3a46, #221a24) padding-box;
+  --pp: 32; flex: none; box-sizing: border-box; display: block; overflow: hidden;
+  width: calc(var(--px) * (var(--pp) + 12)); height: calc(var(--px) * (var(--pp) + 12));
+  border-style: solid; border-width: calc(var(--px) * 6); border-image: var(--dl-pframe) 6 / calc(var(--px) * 6) repeat;
+  background: #0c0608 padding-box; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 6, .5));
 }
-.sh-portrait img { width: 72px; height: 72px; display: block; }
+.sh-portrait canvas { width: calc(var(--px) * var(--pp)); height: calc(var(--px) * var(--pp)); display: block; }
+.shop-burrow .sh-portrait { --pp: 40; }
 .sh-say {
   position: relative; flex: 1; min-width: 0; margin-top: calc(var(--px) * 2); padding: calc(var(--px) * 2) calc(var(--px) * 3);
   background: #fffaf0; color: var(--ink); font-size: 16px; line-height: 1.3;
@@ -243,8 +245,6 @@
 
 /* phones & small windows */
 @media (min-width: 1700px) and (min-height: 1000px) {
-  .sh-portrait { width: calc(144px + var(--px) * 14); height: calc(144px + var(--px) * 14); }
-  .sh-portrait img { width: 144px; height: 144px; }
   .sh-say, .sh-tab, .sh-tag, .sh-card-name small, .sh-card-txt p, .sh-note, .price, .sh-line-txt, .sh-poster p, .sh-gticket-in small, .sh-gticket-in > span, .sh-savings-row, .sh-owned { font-size: 24px; }
 }
 @media (max-height: 520px) {

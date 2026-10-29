@@ -1,4 +1,5 @@
-// Pixel-art voxel models for the cave props (1/16 m voxels). Each builder returns a PGrid plus
+// Pixel-art voxel models for the cave props (1/16 m voxels; the lanterns, glowing mushrooms, crates,
+// barrels, rope coils and ore carts are the 1/32 m builders of ./hires.js). Each builder returns a PGrid plus
 // how it hangs together: pivot (the anchor on the rock), sway mode, an optional light and particle
 // emitter (local metres), and the colour it crumbles into.
 //
@@ -6,20 +7,15 @@
 // is the rock face, the model sticks out along +z).
 import { PGrid, PU, meshPropSteps, rng32, hv, shade, mixc } from './grid.js';
 import { LIFT_BUILD } from './lifts.js';
+import { HIRES } from './hires.js';
+import { HIRES_PLANTS } from './hiresPlants.js';
 
 // ---------------------------------------------------------------- palettes
 const WOOD = 0x8a5a32, WOOD_D = 0x5e3a1e, WOOD_L = 0xb07a44, WOOD_G = 0x7a6650;
 const IRON = 0x5f646c, IRON_D = 0x3a3d42, IRON_L = 0x8e939a, RUST = 0x8a4a2a, RUST_L = 0xb0603a;
 const ROPE = 0xc4a46a, ROPE_D = 0x96784a;
 const BONE = 0xe6d8b4, BONE_S = 0xc8b48a, BONE_D = 0x8c7a58;
-const ORE_COL = [0xf0c040, 0xd8743a, 0xb8c4d0];
 
-const MUSH_CAPS = [
-  { c: 0x3ee8d8, hi: 0xb8fff4, gill: 0x1a7a74, light: [0.25, 0.85, 0.8] },
-  { c: 0x5aa4ff, hi: 0xcce6ff, gill: 0x2a4c9a, light: [0.3, 0.55, 1.0] },
-  { c: 0x8cff6a, hi: 0xe4ffd4, gill: 0x3a8a2a, light: [0.45, 0.95, 0.35] },
-  { c: 0xc88aff, hi: 0xf2dcff, gill: 0x6a3aa0, light: [0.7, 0.4, 1.0] },
-];
 export const CRYSTAL_PAL = {
   violet: { c: 0xa86cff, hi: 0xe2c4ff, lo: 0x6438b8, tip: 0xffffff, g: 2, light: [0.6, 0.35, 1.0], base: 0x3a2e48 },
   cyan: { c: 0x48d4ff, hi: 0xc0f6ff, lo: 0x2480c0, tip: 0xffffff, g: 2, light: [0.3, 0.75, 1.0], base: 0x2e3a48 },
@@ -64,39 +60,7 @@ function rubble(g, cx, cy, cz, rx, ry, c0, c1, seed) {
 // ---------------------------------------------------------------- builders
 // each: (r, v, p) → { grid, pivot, sway?, light?: {c, r, at}, emit?: {k, at, c?}, main }
 export const BUILD = {
-  // ---------- Rootsoil
-  mush(r, v) {
-    const cap = MUSH_CAPS[v % MUSH_CAPS.length];
-    const g = new PGrid(24, 20, 24);
-    const n = r.int(4, 7);
-    const stem = 0xe6dcc8, stemD = 0xb4a68e;
-    for (let i = 0; i < n; i++) {
-      const big = i === 0, mid = i === 1;
-      const a = r() * Math.PI * 2, d = big ? r.range(0, 1.2) : r.range(3.5, 8);
-      const x = 12 + Math.cos(a) * d, z = 12 + Math.sin(a) * d;
-      const sh = big ? r.int(10, 13) : mid ? r.int(6, 8) : r.int(2, 5);
-      const cr = big ? r.range(4.4, 5.4) : mid ? r.range(2.8, 3.4) : r.range(1.4, 2.4);
-      const lx = (r() - 0.5) * 0.25, lz = (r() - 0.5) * 0.25;
-      for (let y = 0; y < sh; y++) {
-        const sx = x + lx * y, sz = z + lz * y, col = y < 2 ? stemD : stem;
-        g.set(sx, y, sz, col, y > sh - 2 ? 1 : 0);
-        if (big) { g.set(sx + 1, y, sz, col); g.set(sx, y, sz + 1, col); g.set(sx + 1, y, sz + 1, col); }
-      }
-      const tx = x + lx * sh + (big ? 0.5 : 0), tz = z + lz * sh + (big ? 0.5 : 0), ry = cr * 0.62;
-      for (let y = sh; y <= sh + Math.ceil(ry); y++) for (let zz = Math.floor(tz - cr); zz <= Math.ceil(tz + cr); zz++) for (let xx = Math.floor(tx - cr); xx <= Math.ceil(tx + cr); xx++) {
-        const dx = (xx - tx) / cr, dy = (y - sh) / ry, dz = (zz - tz) / cr;
-        if (dx * dx + dy * dy + dz * dz > 1) continue;
-        let c = cap.c, gl = 2;
-        if (y === sh) { c = cap.gill; gl = 1; }
-        else if (hv(xx, y, zz, 3 + i) < 0.14 && dy > 0.3) { c = cap.hi; gl = 3; }
-        else if (dy > 0.75) c = mixc(cap.c, cap.hi, 0.35);
-        g.set(xx, y, zz, c, gl);
-      }
-    }
-    // moss and loam where it sprouts
-    for (let k = 0; k < 18; k++) { const a = r() * 6.28, d = r.range(1, 8); g.add(12 + Math.cos(a) * d, 0, 12 + Math.sin(a) * d, hv(k, 0, v) < 0.5 ? 0x4a6a2e : 0x3a5424); }
-    return { grid: g, pivot: [12, 0.5, 12], light: { c: cap.light, r: 3.4, at: [0, 0.6, 0] }, emit: { k: 'spore', c: lin(cap.hi), at: [0, 0.7, 0], spread: 0.3 }, main: srgbArr(cap.c) };
-  },
+  // ---------- Rootsoil (the glowing mushroom clusters, 'mush', are in ./hires.js)
   shelf(r, v) {
     const pal = v === 2 ? { c: 0x4ad8c0, hi: 0xb8fff0, lo: 0x1e7a6a } : v === 1 ? { c: 0xffa040, hi: 0xffdc90, lo: 0xa85420 } : { c: 0xe8c070, hi: 0xfff0c0, lo: 0x9a7438 };
     const g = new PGrid(16, 16, 7);
@@ -441,50 +405,6 @@ export const BUILD = {
     for (let x = 1; x < 16; x += 4) for (const z of [2, 4, 7, 9]) g.set(x, 4, z, IRON_D);
     return { grid: g, pivot: [8, 2, 6], main: [0.3, 0.22, 0.15] };
   },
-  cart(r, v) {
-    // upright on the rails (v 0) or tipped over with its load spilt (v 1)
-    const tipped = v % 2 === 1;
-    const W = 16, H = 13, D = 12;
-    const g = tipped ? new PGrid(W, D, H + 9) : new PGrid(W, H, D);
-    const put = (x, y, z, c, gl = 0) => { if (tipped) g.set(x, D - 1 - z, y, c, gl); else g.set(x, y, z, c, gl); };
-    const body = (x, y, z) => {
-      const rim = y >= H - 2;
-      if (rim) return IRON_D;
-      if ((x === 1 || x === W - 2) && (z === 1 || z === D - 2)) return IRON_D;
-      if (y === 7) return IRON_D;
-      return hv(x >> 1, y >> 1, z >> 1, 51) < 0.22 ? RUST : hv(x, y, z, 52) < 0.06 ? RUST_L : 0x6a5a52;
-    };
-    for (let y = 4; y < H; y++) for (let z = 1; z < D - 1; z++) for (let x = 1; x < W - 1; x++) {
-      const flare = y >= H - 2 ? 0 : 0;
-      const wall = x === 1 || x === W - 2 || z === 1 || z === D - 2 || y === 4;
-      if (!wall && !(y < 6)) continue;
-      put(x + flare, y, z, body(x, y, z));
-    }
-    // rivets
-    for (let x = 3; x < W - 2; x += 3) { put(x, 9, 0, IRON_L); put(x, 9, D - 1, IRON_L); }
-    // the load
-    for (let z = 2; z < D - 2; z++) for (let x = 2; x < W - 2; x++) {
-      const hgt = tipped ? 5 : 9 + (hv(x >> 1, 0, z >> 1, 53) < 0.5 ? 1 : 0) + (Math.abs(x - 8) + Math.abs(z - 6) < 4 ? 1 : 0);
-      for (let y = 5; y <= hgt; y++) {
-        const ore = hv(x, y, z, 54) < 0.08;
-        put(x, y, z, ore ? ORE_COL[(hv(x, y, z, 55) * 3) | 0] : hv(x, y, z, 56) < 0.5 ? 0x6a6260 : 0x84807a, ore ? 1 : 0);
-      }
-    }
-    // wheels + axles
-    for (const wx of [3.5, 11.5]) {
-      for (const wz of [3, 8]) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-        if (dx * dx + dy * dy > 5) continue;
-        put(wx + dx, 3 + dy, wz, dx === 0 && dy === 0 ? IRON_L : IRON_D);
-      }
-      for (let z = 3; z <= 8; z++) put(wx, 3, z, IRON_D);
-    }
-    if (tipped) {
-      // spilt ore in front of the mouth
-      g.ell(8, 0.5, H + 4, 6, 2.2, 4.4, (x, y, z) => (g.has(x, y, z) ? -1 : hv(x, y, z, 57) < 0.07 ? ORE_COL[(hv(x, y, z, 58) * 3) | 0] : hv(x >> 1, y, z >> 1, 59) < 0.5 ? 0x6a6260 : 0x84807a), 0);
-      return { grid: g, pivot: [8, 1, 9], main: [0.35, 0.3, 0.28] };
-    }
-    return { grid: g, pivot: [8, -2, 6], main: [0.35, 0.3, 0.28] };
-  },
   ladder(r, v, Hh) {
     const g = new PGrid(9, Hh, 5);
     const zAt = (y) => Math.round(3.4 - 3.4 * (y / (Hh - 1)));
@@ -514,52 +434,6 @@ export const BUILD = {
     for (const [x, y] of [[3, 4], [2, 3], [2, 2], [2, 1], [3, 0], [4, 1], [4, 2], [4, 3]]) g.set(x, y, 3, (x + y) & 1 ? ROPE : ROPE_D);
     return { grid: g, pivot: [3.5, top + 1, 3.5], sway: 'down', main: [0.6, 0.5, 0.32] };
   },
-  coil(r, v) {
-    const g = new PGrid(14, 6, 14);
-    const ring = (R, y0) => {
-      for (let y = y0; y < y0 + 3; y++) for (let z = 0; z < 14; z++) for (let x = 0; x < 14; x++) {
-        const d = Math.hypot(x - 6.5, z - 6.5) - R, dy = y - y0 - 1;
-        if (d * d + dy * dy > 1.6) continue;
-        const ang = Math.atan2(z - 6.5, x - 6.5);
-        g.set(x, y, z, Math.floor((ang + Math.PI) * 4) & 1 ? ROPE : ROPE_D);
-      }
-    };
-    ring(4.6, 0); ring(3.4, 2);
-    g.line(11, 0, 7, 13, 0, 12, ROPE);
-    return { grid: g, pivot: [6.5, 0.5, 6.5], main: [0.6, 0.5, 0.32] };
-  },
-  lantern(r, v) {
-    const g = new PGrid(11, 16, 11);
-    const glass = v ? 0xffb050 : 0xffd070;
-    g.box(4, 10, 1, 3, 4, 1, IRON_D); // wall plate
-    g.box(5, 13, 1, 1, 1, 7, IRON); // arm
-    g.set(5, 14, 2, IRON); g.set(5, 12, 7, IRON_D); // brace + hook
-    g.set(5, 11, 7, IRON_D);
-    // the lantern under the hook: cap, glass between corner posts, base
-    g.box(3, 9, 5, 5, 1, 5, IRON_D); g.set(5, 10, 7, IRON);
-    g.box(4, 4, 6, 3, 5, 3, glass, 3);
-    for (const [x, z] of [[3, 5], [7, 5], [3, 9], [7, 9]]) g.box(x, 4, z, 1, 5, 1, 0x2a2c30);
-    g.box(3, 3, 5, 5, 1, 5, IRON_D);
-    g.set(5, 2, 7, IRON_D);
-    const hookY = (12 - 12) * PU;
-    return {
-      grid: g, pivot: [5, 12, 1], sway: (x, y, z) => (z > 3.5 * PU ? (hookY - y) / 0.5 : 0),
-      light: { c: [1.05, 0.72, 0.38], r: 4.6, at: [0, -6 * PU, 6 * PU], lantern: true }, main: [0.3, 0.3, 0.32],
-    };
-  },
-  /** A lantern hanging on a chain of L voxels from the ceiling (the old passage's lights). */
-  lanternC(r, v, L) {
-    const g = new PGrid(7, L + 10, 7);
-    const top = L + 9;
-    g.box(2, top, 2, 3, 1, 3, IRON_D);
-    for (let y = 9; y < top; y++) g.set(3, y, 3, (y & 1) ? IRON : IRON_D);
-    g.box(1, 7, 1, 5, 1, 5, IRON_D); g.set(3, 8, 3, IRON);
-    g.box(2, 2, 2, 3, 5, 3, v ? 0xffb050 : 0xffd070, 3);
-    for (const [x, z] of [[1, 1], [5, 1], [1, 5], [5, 5]]) g.box(x, 2, z, 1, 5, 1, 0x2a2c30);
-    g.box(1, 1, 1, 5, 1, 5, IRON_D);
-    g.set(3, 0, 3, IRON_D);
-    return { grid: g, pivot: [3.5, top + 1, 3.5], sway: 'down', light: { c: [1.05, 0.72, 0.38], r: 4.6, at: [0, -(L + 5.5) * PU, 0], lantern: true }, main: [0.3, 0.3, 0.32] };
-  },
   sign(r, v) {
     const g = new PGrid(17, 22, 6);
     g.box(2, 0, 2, 2, 20, 2, (x, y) => (y < 2 ? 0x4a3018 : (x + y) & 3 ? 0x6a4a2e : 0x5a3c22));
@@ -571,35 +445,6 @@ export const BUILD = {
     g.set(1, 16, 5, IRON_L); g.set(12, 16, 5, IRON_L);
     if (v % 2) for (let x = 0; x <= 13; x++) if (hv(x, 1, 75) < 0.3) g.set(x, 18, 4, -1); // weathered top edge
     return { grid: g, pivot: [3, 0.5, 3], main: [0.45, 0.32, 0.2] };
-  },
-  crate(r, v) {
-    const g = new PGrid(11, 11, 11);
-    const broken = v % 2 === 1;
-    g.box(1, 0, 1, 9, broken ? 6 : 9, 9, (x, y, z) => {
-      const ex = x === 1 || x === 9, ey = y === 0 || y === 8, ez = z === 1 || z === 9;
-      if ((ex && ey) || (ey && ez) || (ex && ez)) return WOOD_D;
-      if (!ex && !ez && !ey && broken) return -1;
-      return ((y / 3) | 0) % 2 ? WOOD : 0x9a6e40;
-    });
-    if (broken) {
-      for (let z = 2; z < 9; z++) for (let x = 2; x < 9; x++) for (let y = 1; y < 5; y++) g.set(x, y, z, hv(x, y, z, 81) < 0.1 ? ORE_COL[(hv(x, y, z, 82) * 3) | 0] : 0x6a6260, hv(x, y, z, 81) < 0.1 ? 1 : 0);
-      for (let x = 3; x < 9; x++) if (hv(x, 6, 83) < 0.6) g.set(x, 6, 1, WOOD);
-    } else for (let k = 1; k < 9; k++) { g.set(k + 1, k, 0, WOOD_D); g.set(k + 1, k, 10, WOOD_D); }
-    return { grid: g, pivot: [5.5, 0.5, 5.5], main: [0.42, 0.3, 0.18] };
-  },
-  barrel(r, v) {
-    const g = new PGrid(10, 12, 10);
-    for (let y = 0; y < 11; y++) {
-      const R = 3.4 + Math.sin((y / 10) * Math.PI) * 0.9;
-      g.cylY(5, 5, R, y, y + 1, (x, yy, z) => {
-        if (y === 1 || y === 5 || y === 9) return IRON_D;
-        const a = Math.atan2(z - 5, x - 5);
-        return Math.floor((a + Math.PI) * 2.2) & 1 ? 0x8a5a32 : 0x7a4e2a;
-      });
-    }
-    g.cylY(5, 5, 3.2, 10, 11, 0x6a4426);
-    if (v % 2) for (let k = 0; k < 6; k++) g.set(5 + Math.cos(k) * 2, 11, 5 + Math.sin(k) * 2, 0x6a6260);
-    return { grid: g, pivot: [5, 0.5, 5], main: [0.42, 0.28, 0.16] };
   },
   pick(r, v) {
     const g = new PGrid(16, 16, 5);
@@ -798,6 +643,9 @@ export const BUILD = {
 BUILD.ashfern = (r, v) => BUILD.blindfern(r, v, 'ash');
 // the old miners' lifts (cage parts, bell, plaque, counterweight, room furniture, landings)
 Object.assign(BUILD, LIFT_BUILD);
+// the 1/32 m set: lanterns on supports, glowing mushrooms, crates, barrels, rope coils, ore carts,
+// and the commonest forage plants (glowcaps, carrots, ferns, gloomshrooms, peppers, blooms, lilies)
+Object.assign(BUILD, HIRES, HIRES_PLANTS);
 // one-off models built from world data (a lift's skinned cage, its lamp): defineModel(key, fn)
 const CUSTOM = new Map();
 BUILD.custom = (r, v, p) => (CUSTOM.get(p)?.() || { grid: new PGrid(1, 1, 1), pivot: [0, 0, 0] });
@@ -808,7 +656,7 @@ export function forgetModel(key) { CUSTOM.delete(key); cache.delete('custom:0:' 
 // glassy, faceted or stringy things: AO adds little there and costs a lot of vertices
 const NO_AO = new Set(['crystal', 'crystalC', 'frozen', 'icicle', 'obsidian', 'glowthread', 'roots', 'vine', 'blindfern', 'ashfern', 'whisperweed', 'rope', 'ladder', 'lantern', 'lanternC', 'shard', 'cave_carrot',
   'urn', 'coil', 'fossil', 'charred', 'vent', 'core_lotus', 'gloomshroom', 'pepperroot', 'rubber_sap', 'rail',
-  'plaque', 'bell', 'bellpost', 'railing', 'deck', 'gatepost']);
+  'plaque', 'bell', 'bellpost', 'railing', 'deck', 'gatepost', 'lanternP']);
 const cache = new Map();
 /** Meshed model for (type, variant, param), cached. */
 export function getModel(type, v = 0, p = 0) {
@@ -827,7 +675,7 @@ export function* modelSteps(type, v = 0, p = 0) {
   const b = BUILD[type](r, v, p);
   ms += performance.now() - t0;
   yield 'grid';
-  const it = meshPropSteps(b.grid, { pivot: b.pivot, sway: b.sway, ao: !NO_AO.has(type), scale: b.scale });
+  const it = meshPropSteps(b.grid, { pivot: b.pivot, sway: b.sway, ao: b.ao ?? !NO_AO.has(type), scale: b.scale });
   let res;
   for (;;) {
     t0 = performance.now();

@@ -28,6 +28,7 @@ import { SPR } from './uiSprites.js';
 import { qColor, pips, stagger, put } from './common.js';
 import { SlotDnD, slotEl, stackIcon, stackName, bounce } from './invGrid.js';
 import { INV_ART, installInvArt } from './invArt.js';
+import { portrait3d } from '../gfx/portrait3d.js';
 
 const TOOL_SLOTS = [['pick', 'Pickaxe', 'pick_rusty'], ['chisel', 'Chisel', 'chisel_basic'], ['brush', 'Brush', 'brush_basic'], ['drill', 'Drill', 'drill_steam'], ['xray', 'X-Ray Lamp', 'xray_lamp']];
 const GEAR_SLOTS = [['helmet', 'Helmet', 'helmet_basic'], ['gloves', 'Gloves', 'rubber_gloves'], ['suit', 'Suit', 'heat_suit'], ['boots', 'Boots', 'grip_boots'], ['bag', 'Bag', 'bag_small']];
@@ -241,13 +242,26 @@ export function openBackpack(game, opts = {}) {
   };
 
   const coopMood = () => Inv.henMood(st);
+  // Nugget in her round window: the live 3D hen (src/gfx/portrait3d.js), kept across re-renders
+  const henBox = el('div', { class: 'bp-hen', title: st.data.chicken?.name || 'Nugget' });
+  let hen3d = null, henMoodNow = null;
+  const henFace = (mood) => {
+    if (!hen3d || hen3d.disposed) {
+      const small = window.matchMedia?.('(max-height: 500px)').matches;
+      henBox.textContent = '';
+      hen3d = portrait3d.mount(henBox, 'nugget', { size: small ? 20 : 30, backdrop: 'coop' });
+      henMoodNow = null;
+    }
+    if (mood !== henMoodNow) { henMoodNow = mood; hen3d.set({ happy: 'happy', ok: 'calm', peckish: 'worried', hungry: 'sad' }[mood] || 'calm'); }
+    return henBox;
+  };
   const renderCoop = () => {
     const d = st.data.coop;
     const mood = coopMood();
     const food = clamp(d.food ?? 0, 0, 1);
     const name = st.data.chicken?.name || 'Nugget';
     const moodTxt = { happy: 'Happy and well fed', ok: 'Content', peckish: 'Peckish. Clucking at you.', hungry: 'Hungry! Sulking, won\'t budge.' }[mood];
-    const portrait = el('img', { class: 'pix bp-hen', src: INV_ART.hen(mood === 'hungry' ? 'hungry' : mood === 'happy' ? 'happy' : 'ok'), alt: '' });
+    const portrait = henFace(mood);
     const meter = el('div', { class: 'bp-food', title: `${Math.round(food * 100)}% fed` }, [el('i', { style: { width: (food * 100).toFixed(1) + '%' } })]);
     const bowl = el('button', { class: 'bp-bowl', 'data-drop': 'feed', title: `Feed ${name} (drop feed, worms, grubs or seeds here)`, 'aria-label': `Feed ${name}`, onclick: () => feedBest() }, [
       el('img', { class: 'pix', src: INV_ART.bowl(Math.round(food * 4)), alt: '' }), el('span', {}, 'Feed'),
@@ -706,6 +720,7 @@ export function openBackpack(game, opts = {}) {
       clearInterval(moodTick);
       clearTimeout(tipT);
       dnd.destroy();
+      hen3d?.dispose();
       nug?.coopClosed?.();
     },
   });
