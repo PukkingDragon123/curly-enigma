@@ -1482,7 +1482,12 @@ crystal, dino, magma, frost, core, lantern, lava, hall.
 - **Lead hooks** (optional, not applied): the deep `FOG` table could be a little darker now that
   the far fog is the scene's "sky"; DigScene's own beam motes (`ambient()`, `fx.mote`) can stay
   (they are lit now) or go (Atmosphere spawns motes).
-- **Perf**: PERF_NOTE
+- **Perf** (headless SwiftShader, 1280×720, the same view, new vs the original terrain shader
+  alternated 3× each, measured as the GPU process's CPU time per frame because wall time was
+  swamped by the other parts' tests): rootsoil +18%, magma deep +16%, crystal grotto +20–23%.
+  What it costs and was cut: the lights' in-scatter per pixel (−33%, replaced by halo sprites),
+  glints only on shiny stuff, crystal inner layer only within 9 m, texel relief only within 12 m.
+  On a GPU the 3D noise fetches and the sky pass are cheap; no new render targets or contexts.
 
 ### As built: 3D gathering (wave 3)
 
@@ -1498,6 +1503,7 @@ floating words), `stagePull.js` · `stagePick.js` · `stagePeel.js` · `stageDig
 `hud.js` (the decorated HUD), `input.js`, `sfx.js`. Specs stay in `src/cooking/forage.js` (new
 fields: `roots`, `delicate`; `drake_egg`). `src/ui/Forage.js` is now a small compatibility shim
 (`openForage` → the 3D gather, `simulate` re-exported); `src/cooking/forageArt.js` is gone.
+The soil clods take the colours of the earth under the plant (under a moss or fern cover, the loam).
 Touched elsewhere: `Props.js` harvest section only (`use()` → `gather(p)`, `hidePlant(p, on)`,
 `debugGather`, `target()` warms the model, `harvest()` skips its own burst when `res.fx`), and
 `fps/ViewModel.js` (`vm.drive.shoulder = { R, L }`: where a steered forearm comes from; a steered
@@ -1532,7 +1538,8 @@ of the camera (`vegetation.U.uPush[1..2]`, after `vegetation.update`).
 - **peel** (glow moss, sparkmoss): the mat (tufts of moss on the rock) peels back over itself in a
   curl as you drag left, the other paw braced on the wall; too fast rips a strip off (it falls);
   sparkmoss crackles blue before it zaps.
-- **dig** (truffle, grub): scrub the heap (clods fly off, the top first) until the find shows, then
+- **dig** (truffle, grub): scrub the heap (the open paw rakes in from the side so the heap stays in
+  view; clods fly off, the top first) until the find shows, then
   ease it out like a pull (the grub wriggles, its band sways).
 - **lift** (dino egg, drake egg): both paws cup the egg; lift slowly, lean against the wobble;
   tipped too far it clunks back with a crack in its shell.

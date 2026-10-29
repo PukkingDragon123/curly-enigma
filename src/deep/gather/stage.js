@@ -5,7 +5,10 @@
 import * as THREE from 'three';
 import { gatherMaterial, voxGeo, mesh, clodGeo, lin, PGrid } from './gfx.js';
 import { LAYER_OUTLINE } from '../../core/Engine.js';
-import { MAT, VOX } from '../materials.js';
+import { MAT, VOX, M } from '../materials.js';
+
+// surface growth (moss, fern, vines, caps...): the clods take the earth under it instead
+const COVER = new Set([M.MOSS, M.FERN, M.VINES, M.GLOWCAP, M.STEM, M.MYCEL, M.CRYSTAL, M.LANTERN, M.WATER, M.LAVA, M.SNOW].filter((m) => m !== undefined));
 import { hv, shade, mixc } from '../props/grid.js';
 import { rng } from './sims.js';
 
@@ -40,12 +43,15 @@ export class Stage {
   /** The floor's material under the plant (clods take its colours). */
   floorMaterial() {
     const w = this.ctx.world, p = this.at.pos, u = this.at.mount === 'wall' ? this.at.toward : this.at.up;
-    for (let k = 1; k <= 4; k++) {
+    let cover = 0;
+    for (let k = 1; k <= 6; k++) {
       const x = p.x - u.x * k / VOX, y = p.y - u.y * k / VOX, z = p.z - u.z * k / VOX;
       const m = w.voxelAt(Math.floor(x * VOX), Math.floor(y * VOX), Math.floor(z * VOX));
-      if (m && MAT[m] && MAT[m].tones) return m;
+      if (!m || !MAT[m] || !MAT[m].tones) continue;
+      if (COVER.has(m)) { cover = cover || m; continue; }
+      return m;
     }
-    return 1;
+    return cover && cover !== M.MOSS && cover !== M.FERN ? cover : M.LOAM ?? 1;
   }
   tones() {
     const d = MAT[this.floor];

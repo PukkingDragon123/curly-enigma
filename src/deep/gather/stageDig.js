@@ -114,7 +114,7 @@ export class DigStage extends Stage {
 
   onEvent(e) {
     switch (e.type) {
-      case 'wiggle': if (e.dig) { this.dirt(this.scrub * 0.06, this.base0 + 0.04, 0.02, 5, 0.6); this.dust(0, this.base0 + 0.03, 0, 1, 0.06); } break;
+      case 'wiggle': if (e.dig) { this.dirt(0.025 + this.scrub * 0.04, this.base0 + 0.04, 0.02, 5, 0.6); this.dust(0, this.base0 + 0.03, 0, 1, 0.06); } break;
       case 'exposed': this.word(this.id === 'grub' ? 'There it is!' : 'Uncovered!', '#ffe066', 0, this.base0 + 0.1, 0); this.sparkle(0, this.base0 + 0.03, 0, 8, [1, 0.9, 0.5], 0.4); break;
       case 'pop':
         this.popT = 0; this.lift0 = this.lift; this.flashT = 0.6;
@@ -129,8 +129,15 @@ export class DigStage extends Stage {
     const sim = this.sim, up = this.dirWorld(new THREE.Vector3(0, 1, 0));
     if (sim.phase === 'dig' && !sim.done) {
       // the open paw scrubbing over the heap, claws first
-      const pos = this.toWorld(new THREE.Vector3(this.scrub * 0.06, this.base0 + 0.05 + (1 - (1 - (sim.cover ?? 1))) * 0.02, 0.05));
-      const fwd = this.dirWorld(new THREE.Vector3(-this.scrub * 0.3, -0.35, -1).normalize());
+      // (from the right as we see it, claws raking in toward the middle: the heap's top and the
+      // find stay in view)
+      const c = this.toWorld(new THREE.Vector3(0, this.base0 + 0.04 + (sim.cover ?? 1) * 0.02, 0));
+      const r = new THREE.Vector3(1, 0, 0);
+      if (o.cam) r.applyQuaternion(o.cam.quaternion); else this.dirWorld(r);
+      r.addScaledVector(up, -r.dot(up)).normalize();
+      const away = new THREE.Vector3().crossVectors(up, r);
+      const pos = c.addScaledVector(r, 0.065 + this.scrub * 0.035).addScaledVector(away, -0.03);
+      const fwd = new THREE.Vector3().addScaledVector(r, -0.6 - this.scrub * 0.25).addScaledVector(away, 0.75).addScaledVector(up, -0.35).normalize();
       return { R: { pos, up, fwd, fist: false }, L: null };
     }
     if (o.held) {

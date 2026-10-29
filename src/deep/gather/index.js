@@ -347,14 +347,15 @@ class Session {
     const veg = this.owner.vegetation?.U;
     if (veg?.uPush?.value?.[2] && veg.uPushK?.value && this.reach > 0.01) {
       const P = this.at.pos;
-      veg.uPush.value[1].set(P.x, P.y - (this.down ? 0.2 : 0), P.z, 0.3);
-      veg.uPushK.value[1] = this.reach;
+      // (pressed well aside: big fronds would otherwise splay across the close-up)
+      veg.uPush.value[1].set(P.x, P.y - (this.down ? 0.2 : 0), P.z, 0.36);
+      veg.uPushK.value[1] = this.reach * 1.7;
       // and the stuff between us and it, so nothing stands in front of the close-up
-      _v.copy(this.camPos).lerp(P, 0.3);
+      _v.copy(this.camPos).lerp(P, 0.4);
       // and once it's held up, the stuff round where it's held
       if (this.showGoal && this.showK > 0 && !this.cancelled) _v.lerp(this.showGoal, this.showK);
-      veg.uPush.value[2].set(_v.x, P.y, _v.z, 0.45);
-      veg.uPushK.value[2] = this.reach;
+      veg.uPush.value[2].set(_v.x, P.y, _v.z, 0.5);
+      veg.uPushK.value[2] = this.reach * 1.3;
     }
     this.hudFrame(dt);
     lap('hud');
@@ -496,7 +497,7 @@ class Session {
     const holding = this.phase === 'end' || this.phase === 'show' || this.phase === 'out';
     const gripping = holding ? !this.cancelled && !this.sim.done?.empty : !!this.sim.wasGrip;
     this.stage.root.updateMatrixWorld(true);
-    const T = this.stage.pawTargets({ gripping, held: holding && !this.cancelled, brace: kL > 0.01, phase: this.phase });
+    const T = this.stage.pawTargets({ gripping, held: holding && !this.cancelled, brace: kL > 0.01, phase: this.phase, cam });
     const drive = { k: 1 };
     for (const side of ['R', 'L']) {
       const t = T[side];
