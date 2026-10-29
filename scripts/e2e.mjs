@@ -25,7 +25,12 @@ const go = async (name, params = {}) => {
   for (let i = 0; i < 60; i++) { await wait(250); if ((await scene()) === name && !(await page.evaluate(() => window.__game.transitioning))) break; }
 };
 const shot = (n) => page.screenshot({ path: `${outDir}/${n}.png` });
+// E2E_UNTIL="part of a step label": stop after that step (a quicker run while fixing one step)
+const UNTIL = process.env.E2E_UNTIL || '';
+let done = false;
 const step = async (label, fn) => {
+  if (done) return;
+  if (UNTIL && label.includes(UNTIL)) done = true;
   const before = errors.length;
   try { await fn(); } catch (e) { errors.push(`[step:${label}] ${e.message}`); }
   console.log(`${errors.length > before ? '✗' : '✓'} ${label}${errors.length > before ? '\n   ' + errors.slice(before).join('\n   ') : ''}`);
@@ -291,9 +296,13 @@ await step('deep: block a kobold, then fight it', async () => {
     if (!staged?.spawned) return { err: 'no cave for a fight' };
     const e = d.get('kobold');
     st.data.energy = 100;
+    // a card or panel left open pauses the mine (and the creatures): note it, close it
+    const ui = window.__game.ui, open0 = ui.panelStack.map((p) => p.node?.className || p.kind || '?');
+    ui.closeAllPanels();
     d.block(true);
-    const c = en.combat, b0 = c.stats.blocked + c.stats.parried;
-    for (let k = 0; k < 360 && c.stats.blocked + c.stats.parried === b0; k++) { d.look(e); s.update(1 / 30); }
+    const c = en.combat, b0 = c.stats.blocked + c.stats.parried, t0 = en.time;
+    for (let k = 0; k < 360 && c.stats.blocked + c.stats.parried === b0; k++) { if (ui.isPanelOpen()) ui.closeAllPanels(); d.look(e); s.update(1 / 30); }
+    const dtBlock = +(en.time - t0).toFixed(2);
     const guarded = c.stats.blocked + c.stats.parried - b0;
     d.unblock();
     const kills0 = st.data.stats?.kills ?? 0;
@@ -303,10 +312,10 @@ await step('deep: block a kobold, then fight it', async () => {
     for (let k = 0; k < 40 && e.alive; k++) { st.data.energy = 100; d.look(e); d.hit(e, 4); for (let j = 0; j < 6; j++) s.update(1 / 30); }
     st.off?.('act', onAct);
     for (let k = 0; k < 30; k++) s.update(1 / 30);
-    return { guarded, log: c.log.slice(-3), dead: !e.alive, acts, kills: (st.data.stats?.kills ?? 0) - kills0 };
+    return { guarded, log: c.log.slice(-3), dead: !e.alive, acts, kills: (st.data.stats?.kills ?? 0) - kills0, open0, dtBlock, leaving: !!s.leaving, kobold: d.list().find((x) => x.kind === 'kobold') || null };
   });
   if (r.err) throw new Error(r.err);
-  if (!(r.guarded > 0)) throw new Error('no blow was blocked: ' + JSON.stringify(r.log));
+  if (!(r.guarded > 0)) throw new Error('no blow was blocked: ' + JSON.stringify({ log: r.log, open0: r.open0, dtBlock: r.dtBlock, leaving: r.leaving, kobold: r.kobold }));
   if (!r.dead) throw new Error('the kobold would not go down: ' + JSON.stringify(r));
   await shot('04f-fight');
 });
