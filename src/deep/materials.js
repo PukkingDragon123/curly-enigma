@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { ORES } from '../data/ores.js';
 import { ITEMS } from '../data/items.js';
 import { RM, RUIN_MATS } from './ruins/mats.js';
+import { BM, BUILD_MATS } from './build/mats.js'; // building part: placed blocks (ids 80..95)
 
 export const VOX = 16; // voxels per meter (6.25 cm voxels)
 /** Plate and style scales in the tables below are authored for 1/8 m voxels. */
@@ -88,6 +89,9 @@ for (const [id, d] of Object.entries(DEF)) MAT[id] = { id: +id, hp: 1, glow: 0, 
 // the ruins' carved stone, mosaics, runes and seals (ids 96+, src/deep/ruins/mats.js)
 Object.assign(M, RM);
 for (const [id, d] of Object.entries(RUIN_MATS)) MAT[id] = { id: +id, hp: 1, glow: 0, gran: false, fluid: 0, ...d, style: [STYLE[d.style[0]], d.style[1], d.style[2]] };
+// what the mole builds: blocks, logs, glass, torches, doors, chests (ids 80-95, src/deep/build/mats.js)
+Object.assign(M, BM);
+for (const [id, d] of Object.entries(BUILD_MATS)) MAT[id] = { id: +id, hp: 1, glow: 0, gran: false, fluid: 0, ...d, style: [STYLE[d.style[0]], d.style[1], d.style[2]] };
 
 // The folk's burrows (gen/burrows.js, NPC burrows part): fittings a pick doesn't dig (unbreakable),
 // ids 120-127 (the ruins have 96-119) so ore deposits (< 40 only) and trail floors leave them alone.

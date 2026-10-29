@@ -246,6 +246,7 @@ import { DISHES, INGREDIENTS } from './recipes.js';
 import { RELIC_ITEMS } from '../deep/ruins/relics.js'; // ruins part: relics found in the ruins' treasure rooms
 import { partItems } from './coopParts.js'; // parts for Nugget's coop, forged at home and installed on the coop
 import { QUEST_ITEMS } from './questItems.js'; // quests part: things carried for somebody (key items)
+import { BUILD_ITEMS } from './buildItems.js'; // building part: blocks, crafting stuff, axes, spades, shears
 
 for (const [id, f] of Object.entries(FURNITURE)) ITEMS[id] = { cat: 'furniture', ...f };
 for (const [id, f] of Object.entries(FLOORS)) ITEMS[id] = { cat: 'floor', ...f };
@@ -257,6 +258,7 @@ for (const [id, d] of Object.entries(INGREDIENTS)) ITEMS[id] = { ...d };
 for (const [id, d] of Object.entries(RELIC_ITEMS)) ITEMS[id] = { ...d };
 for (const [id, d] of Object.entries(partItems())) ITEMS[id] = d;
 for (const [id, d] of Object.entries(QUEST_ITEMS)) ITEMS[id] = { ...d };
+for (const [id, d] of Object.entries(BUILD_ITEMS)) ITEMS[id] = { ...d };
 for (const it of Object.values(ITEMS)) if (it.cat === 'plant') it.q = true;
 
 for (const [id, it] of Object.entries(ITEMS)) it.id = id;
@@ -292,5 +294,5 @@ export function pickForTier(t) {
 export const CAT_LABEL = {
   mineral: 'Mineral', gem: 'Gem', ingot: 'Ingot', plant: 'Plant', critter: 'Critter', drop: 'Creature Drop',
   ingredient: 'Ingredient', food: 'Food', tool: 'Tool', equip: 'Equipment', furniture: 'Furniture',
-  floor: 'Flooring', wallpaper: 'Wall Style', blueprint: 'Blueprint', consumable: 'Supply', key: 'Key Item', feed: 'Hen Feed', relic: 'Relic', part: 'Coop Part',
+  floor: 'Flooring', wallpaper: 'Wall Style', blueprint: 'Blueprint', consumable: 'Supply', key: 'Key Item', feed: 'Hen Feed', relic: 'Relic', part: 'Coop Part', block: 'Building Block', craft: 'Crafting Stuff',
 };

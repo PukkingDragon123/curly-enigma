@@ -2,6 +2,9 @@
 // simple dish (LESSON in data/recipes.js: Glowcap Soup) at his hearth, one step at a time, through
 // the tutor card (game.ui.tutor, owned by the home part; the lesson runs silently without it), and
 // reacts to how each step went. When the dish is done: act { type: 'lesson', step: 'cook_done' }.
+// The cinematic tutorial (src/ui/Onboard.js): it opens as a cutscene (letterbox, his first line
+// through the cutscene talk when there is one, a hold skips it; cooking starting ends it), and each
+// step's control gets a prompt card drawn for the device (click / tap, hold, drag, circles).
 import { LESSON, DISHES } from '../data/recipes.js';
 import { ITEMS } from '../data/items.js';
 import { pick } from '../core/util.js';
@@ -30,6 +33,24 @@ function tipFor(kind) {
   }[kind] || 'Easy does it.';
 }
 
+/** The control each kind of step wants, its card's title, and the words for a PC and a touch screen. */
+const STEP_CONTROL = {
+  chop: ['click', 'Chop', 'Move the knife over a <b>dotted line</b>, <b>click</b>', 'Slide the knife to a <b>dotted line</b>, <b>tap</b>'],
+  simmer: ['hold', 'Simmer', '<b>Hold</b> the button (or <kbd>Space</kbd>) for flame', '<b>Hold</b> for flame, let go to ease off'],
+  season: ['click', 'Season', 'Shake it in, <kbd>Space</kbd> when it\'s in the band', '<b>Tap</b> to shake, then <b>Done</b>'],
+  stir: ['circle', 'Stir', 'Move the mouse in <b>circles</b>', 'Draw <b>circles</b> with your finger'],
+  crack: ['click', 'Crack the egg', '<b>Click</b> when the swing is in the gold', '<b>Tap</b> when the swing is in the gold'],
+  fry: ['click', 'Fry', '<b>Click</b> to flip it when it\'s golden', '<b>Tap</b> to flip it when it\'s golden'],
+  flip: ['click', 'Toss', '<b>Click</b> to toss, then catch it', '<b>Tap</b> to toss, then catch it'],
+  pour: ['hold', 'Pour', '<b>Hold</b> to pour, let go before the line', '<b>Hold</b> to pour, let go before the line'],
+  knead: ['click', 'Knead', '<kbd>A</kbd> <kbd>D</kbd> on the beat', 'Left, right, <b>on the beat</b>'],
+  roll: ['drag', 'Roll it out', '<b>Drag</b> the pin, lean on the thick side', '<b>Drag</b> the pin, lean on the thick side'],
+  grate: ['drag', 'Grate', 'Long <b>strokes</b> down the teeth', 'Long <b>strokes</b> down the teeth'],
+  bake: ['hold', 'Bake', 'Feed the fire, pull it out at golden', 'Feed the fire, pull it out at golden'],
+  mash: ['click', 'Mash', 'Aim at a lump and <b>press</b>', 'Aim at a lump and <b>tap</b>'],
+  plate: ['click', 'Plate up', '<b>Click</b> to drop it in the middle', '<b>Tap</b> to drop it in the middle'],
+};
+
 const REACT = [
   [90, 'proud', ['Ha! Clean as a fresh-cut gem.', 'Now that\'s a cook\'s paw!', 'Perfect! You\'ve done this before, haven\'t you?']],
   [75, 'happy', ['Good, good.', 'Nicely done.', 'That\'ll do nicely.']],
@@ -49,8 +70,26 @@ export class CookLesson {
 
   say(html, o = {}) {
     const t = this.game.ui.tutor;
-    if (!t?.say) return Promise.resolve();
-    try { return Promise.resolve(t.say(html, { key: 'cook-lesson', ...o })); } catch (e) { return Promise.resolve(); }
+    const card = () => { if (!t?.say) return Promise.resolve(); try { return Promise.resolve(t.say(html, { key: 'cook-lesson', ...o })); } catch (e) { return Promise.resolve(); } };
+    // a line he waits on is a little cutscene (game.convo) when there is one
+    if (o.wait && this.game.ui.onboard) return this.game.ui.onboard.talk(html, { mood: o.mood, wait: true }, card);
+    return card();
+  }
+
+  /** A prompt card for a control (the one before goes): top left, clear of the pantry and the pot. */
+  teach(id, o = {}) {
+    this.obH?.close?.();
+    this.obH = this.game.ui.onboard?.teach(id, { place: 'left', ...o }) || null;
+    return this.obH;
+  }
+
+  /** The opening cutscene is over the moment cooking starts (nothing waits behind it). */
+  endCine() {
+    if (!this.cine) return;
+    this.cine = false;
+    this.game.convo?.end?.();
+    this.game.ui.tutor?.hide?.('cook-lesson');
+    this.game.ui.onboard?.cinema(false);
   }
 
   /** At the hearth: hand over what's missing, explain, then point at the pantry. */
@@ -61,7 +100,11 @@ export class CookLesson {
       for (let k = pantryCount(st, id); k < n; k++) { pantryGive(st, id, ITEMS[id]?.q ? { q: 82 } : {}); gave = true; }
     }
     const names = this.ids.map((id) => `<b>${ITEMS[id]?.name || id}</b>`).join(' and ');
+    // a cutscene: the bars and his welcome (a hold skips it; so does starting to cook)
+    this.cine = true;
+    this.game.ui.onboard?.cinema(true, { skip: () => this.endCine() });
     await this.say(`Right, apprentice. A miner who can't cook is a miner who faints halfway down a shaft. We'll make my <b>${DISHES[this.dish].name}</b>${gave ? `. Here, take a ${names} off my shelf` : ''}.`, { mood: 'happy', wait: true });
+    this.endCine();
     if (this.sc.phase === 'pantry' && !this.done) this.pantryTip();
   }
 
@@ -69,6 +112,7 @@ export class CookLesson {
     this.stage = 'pantry';
     const names = this.ids.map((id) => `<b>${ITEMS[id]?.name || id}</b>`).join(' and the ');
     this.say(`Pick the ${names} from the pantry, then <b>Cook!</b>`, { mood: 'calm', dur: Infinity });
+    this.teach('click', { title: 'Into the pot', subPc: `<b>Click</b> the ${names}, then <b>Cook!</b>`, subT: `<b>Tap</b> the ${names}, then <b>Cook!</b>`, done: () => this.stage !== 'pantry' });
   }
 
   /** Only the lesson's dish while he's teaching. */
@@ -83,6 +127,7 @@ export class CookLesson {
   }
 
   onStart() {
+    this.endCine();
     if (this.done) return;
     this.stage = 'cooking';
     this.say('Good. Every dish is a few jobs, one after another. Watch the paws.', { mood: 'happy', dur: 2.6 });
@@ -93,10 +138,16 @@ export class CookLesson {
     this.stage = 'step:' + kind;
     // a beat after the big title, the tip stays up while the step runs
     setTimeout(() => { if (this.sc.step && this.sc.steps?.[this.sc.stepI] === kind && !this.done) this.say(tipFor(kind), { mood: 'calm', dur: Infinity }); }, 650);
+    const c = STEP_CONTROL[kind];
+    if (c) {
+      const i = this.sc.stepI;
+      this.teach(c[0], { title: c[1], subPc: c[2], subT: c[3], done: () => this.done || this.sc.stepI !== i || !this.sc.step });
+    }
   }
 
   onStepDone(kind, score) {
     if (this.done) return;
+    if (this.obH && !this.obH.done) this.obH.complete();
     const [, mood, lines] = REACT.find(([min]) => score >= min);
     this.say(pick(lines), { mood, dur: 2.4 });
   }
@@ -104,6 +155,7 @@ export class CookLesson {
   async onResult(res) {
     if (this.done) return;
     this.done = true;
+    this.obH?.close?.();
     this.stage = 'result';
     // the lesson's done the moment the dish is (quests listen for this)
     this.game.state.emit('act', { type: 'lesson', step: 'cook_done' });
@@ -119,5 +171,5 @@ export class CookLesson {
     this.stage = 'free';
   }
 
-  leave() { this.game.ui.tutor?.hide?.('cook-lesson'); }
+  leave() { this.endCine(); this.obH?.close?.(); this.game.ui.tutor?.hide?.('cook-lesson'); }
 }

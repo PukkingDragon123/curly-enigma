@@ -51,11 +51,11 @@ export function yawOf(L, da, db) {
 /** Zone from a ruin id ('R31' → 3). */
 export const zoneOf = (f) => (f.id && /^R(\d)/.test(f.id) ? +f.id[1] : 1);
 
-/** Which puzzle guards a ruin of this kind in this zone (every kind of puzzle turns up somewhere). */
+/** Which puzzle guards a dungeon of this kind in this zone (the generator names one; this is the fallback). */
 export function puzzleFor(kind, zone) {
-  if (kind === 'hall') return zone % 2 ? 'switch' : 'levers';
-  if (kind === 'shrine') return zone % 2 ? 'dials' : 'beams';
-  if (kind === 'vault') return zone % 2 ? 'levers' : 'plates';
+  if (kind === 'cell') return zone % 2 ? 'switch' : 'levers';
+  if (kind === 'vault') return zone % 2 ? 'dials' : 'plates';
+  if (kind === 'fortress') return zone % 2 ? 'levers' : 'beams';
   return 'valve';
 }
 

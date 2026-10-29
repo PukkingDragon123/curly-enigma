@@ -80,7 +80,7 @@ function candle(g, gl, x, y, z, h = 6, col = P.wax) {
 }
 
 /** Pixel painting fill for a picture (x, y inside the canvas, w × h), by kind. */
-function picture(kind, x, y, w, h) {
+export function picture(kind, x, y, w, h) {
   const u = x / w, v = y / h; // v = 0 at the bottom
   if (kind === 'sea') { // the sun over the sea, as somebody told him it looks
     const sun = Math.hypot(u - 0.62, (v - 0.62) * h / w);
@@ -164,7 +164,7 @@ function windowParts(r) {
     const a = Math.atan2(y + 0.5 - cy, x + 0.5 - c);
     if (d > R) { // the frame ring, proud of the wall; segmented like a cartwheel rim
       const seam = Math.abs(((a / Math.PI) * 4 + 8) % 1) < 0.08;
-      const col = seam ? H.oakD : d > RO - 1 ? mulc(H.oakM, 0.8) : d < R + 1.2 ? mulc(H.oakM, 1.15) : ok(x, y, 0);
+      const col = seam ? H.oakD : d > RO - 1 ? mulc(H.oakM, 0.8) : d < R + 1.2 ? mulc(H.oakM, 1.15) : Math.floor(d - R) % 3 === 0 ? mulc(H.oakM, 0.94) : H.oakM; // (banded, not grained: it merges)
       for (let z = zf - 2; z < zf + 4; z++) g.set(x, y, z, z === zf + 3 && !seam ? mulc(col, 1.06) : col);
       continue;
     }
@@ -192,7 +192,7 @@ function windowParts(r) {
   g.box(c + R - 7, cy - 1, zl + 1, 4, 3, 2, P.iron); g.box(c + R - 6, cy - 4, zl + 2, 2, 4, 1, P.iron);
   // the sill: a thick board on two brackets
   const sy = cy - RO - 1;
-  g.box(c - RO, sy - 2, zf - 2, RO * 2, 3, 14, (x, y, z) => (y === sy ? mulc(H.oakL, sp3(x, y, z, seed, 0.1, 0.1)) : z === zf + 11 ? mulc(H.oakM, 0.85) : H.oakM));
+  g.box(c - RO, sy - 2, zf - 2, RO * 2, 3, 14, (x, y, z) => (y === sy ? H.oakL : z === zf + 11 ? mulc(H.oakM, 0.85) : H.oakM));
   for (const bx of [c - RO + 4, c + RO - 6]) for (let y = sy - 9; y < sy - 2; y++) g.box(bx, y, zf, 2, 1, Math.max(1, Math.round((y - sy + 10) * 1.3)), H.oakD);
   // outside: a lip of dark rock under the window and a tuft of glowing moss (coarse: only ever seen through the glass)
   const ledge = new VoxelGrid(S + 30, 20, 30), lgl = new VoxelGrid(S + 30, 20, 30);

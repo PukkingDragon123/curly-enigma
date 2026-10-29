@@ -21,6 +21,8 @@ import { Crosshair } from './Crosshair.js';
 import { Tracker } from './Tracker.js';
 import { DSPR } from './deepArt.js';
 import { Tutor } from './Tutor.js';
+import { Convo } from './Convo.js'; // cutscene talk (game.convo)
+import { Onboard } from './Onboard.js'; // the cinematic tutorial's layer (prompts, letterbox, tutorial UI level)
 import { installSkillFeedback, openSkills } from './SkillTree.js';
 import { BuffStrip } from '../cooking/buffs.js';
 import './hud.css';
@@ -103,7 +105,11 @@ export class UI {
     });
     this.root.insertBefore(this.lookCatch, this.hud);
     // Old Star's speech card (src/ui/Tutor.js): ui.tutor.say(html, { mood, key, wait }), ui.tutor.hide()
+    // the tutorial's layer (src/ui/Onboard.js): made before the tutor so its hold-to-skip keys come first
+    this.onboard = new Onboard(this);
     this.tutor = new Tutor(this);
+    // cutscene talk: NPC lines zoom in on the speaker, words float by their head (src/ui/Convo.js)
+    this.convo = new Convo(this);
     // food buffs: a strip of dish icons with timers in the top-left cluster (cooking part, src/cooking/buffs.js)
     try { this.buffs = new BuffStrip(this); } catch (e) { console.warn('buff strip failed', e); }
     this._lockLostAt = -1e9;
@@ -177,6 +183,8 @@ export class UI {
 
   /** Touch screens: hide (false) or restore (true) the joystick and buttons, e.g. during a cutscene. */
   setTouchControls(on) { this.root.classList.toggle('no-touch', on === false); }
+  /** The tutorial UI level (src/ui/Onboard.js TUT): which HUD pieces have been introduced. opts: { force, reveal }. */
+  setTutorialLevel(n, opts) { return this.onboard?.setLevel(n, opts); }
   /** The big first-person touch button: an icon URL, null (the pickaxe) or false (hidden). Reset on every scene change. */
   setActionIcon(src) { this.actionIcon = src; this._applyActionIcon?.(src); }
 
@@ -230,6 +238,8 @@ export class UI {
     this.radar.update(rdt);
     this.tracker.update(rdt);
     this.tutor?.update(rdt);
+    this.convo?.update(rdt);
+    this.onboard?.update(rdt);
     this.buffs?.update(rdt);
     this._buffTimer = (this._buffTimer || 0) + dt;
     if (this._buffTimer > 5) { this._buffTimer = 0; this.game.state.tickBuffs(); }
@@ -378,6 +388,7 @@ export class UI {
     this.setTouchControls(true);
     this.status.setBag(null);
     this.status.setLoad?.(null);
+    this.onboard?.clear(); // the tutorial's prompts and bars belong to the scene that showed them
   }
 
   // ------------------------------------------------------------ panels
@@ -406,7 +417,16 @@ export class UI {
 
   closePanel(handle) {
     const h = handle || this.panelStack[this.panelStack.length - 1];
-    if (!h || h.closed) return;
+    if (!h) return;
+    if (h.closed) {
+      // (a handle marked closed by its owner but still on the stack: take it off, or closeAllPanels
+      // would loop forever and isPanelOpen() would stay true: cinematic tutorial part, wave 4)
+      if (this.panelStack.includes(h)) {
+        this.panelStack = this.panelStack.filter((p) => p !== h);
+        if (!this.panelStack.length) { this.root.classList.remove('panel-open'); this.game.input.enabled = true; this.game.input.clearAll(); }
+      }
+      return;
+    }
     h.closed = true;
     h.back.classList.add('closing');
     setTimeout(() => h.back.remove(), 170);

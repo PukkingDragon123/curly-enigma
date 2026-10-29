@@ -223,6 +223,10 @@ export function setupTouch(game) {
     const root = el('div', { class: 'tc' }, [stick, pad, deepPad]);
     ui.root.append(root);
     game.touch = root;
+    // the tutorial (src/ui/Onboard.js) lights the real controls it teaches: name → element, and a highlight
+    const named = { stick, look, dig, jump: dJump, use: dUse, snack: dSnack, tool: dTool, crouch: dCrouch, block: dBlock, padUse: use, padJump: jump, build: buildB };
+    ui.touchEl = (name) => named[name] || null;
+    ui.touchHi = (elm, on) => elm?.classList?.toggle('tc-hi', !!on);
 
     // never leave keys stuck when the controls vanish (panels, scene changes, app switch)
     const releaseAll = () => { stopStick(); digEnd(); lookId = null; for (const c of [...held]) release(c); dCrouch.classList.remove('lit'); };

@@ -78,6 +78,7 @@ export class WorkshopLife {
     for (const [i, g] of (c.glints || []).entries()) this.addIt({ x: g.x, y: g.y, z: g.z, r: 0.14, label: g.gem ? 'Pick up the gem' : 'Pick up the coins', enabled: () => !this.glintTaken(i), action: () => this.takeGlint(i) });
     // things to look at
     for (const o of c.looks) {
+      if (o.special) continue; // (the gramophone, the bath, the telescope...: houseLife.js)
       const it = { label: o.label, reach: 2.6 };
       if (o.box) it.box = o.box; else Object.assign(it, { x: o.x, y: o.y, z: o.z, r: o.r });
       it.action = () => {
@@ -166,7 +167,7 @@ export class WorkshopLife {
     if (this.lessonStage?.() === 'mine' && this.game.state.count('copper_ore') > 0 && !star.scripted) { this.onLessonArrival('lift'); return 'copper'; }
     if (this.lessonTalk?.()) return 'lesson';
     const line = this.nextTip();
-    star.say(line.text, { mood: line.mood });
+    star.say(line.text, { mood: line.mood, convo: true }); // a cutscene: he turns to you, the words float by him
     return line.text;
   }
 
@@ -188,7 +189,7 @@ export class WorkshopLife {
       bellows: [['Easy on my bellows! Long, steady pulls. You\'ll learn.', 'stern'], ['Hear that roar? That\'s the forge saying thank you.', 'happy']],
       coins: [['Fell in with you, those. Keep \'em. First coins toward the million.', 'happy']],
       pool: [['Best water in the deep, that pump. Sixty years and it\'s never once run dry.', 'proud']],
-    }[what];
+    }[what] || this.houseAsides?.(what);
     if (!lines) return;
     const [text, mood] = pick(lines);
     star.say(text, { mood, key: 'aside' });

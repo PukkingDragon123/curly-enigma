@@ -218,13 +218,18 @@ export class ViewModel {
     });
   }
 
-  /** Equip a tool. item: the item id that tints it (e.g. 'pick_steel'). Animates a swap when visible. */
+  /**
+   * Equip a tool. item: the item id that tints it (e.g. 'pick_steel'). Animates a swap when visible.
+   * opts.geo = { geo, tip, glow?, glowColor? } holds custom geometry (view-model voxels, grip at the
+   * origin) in that kind's poses instead of its own tool: the building part's axes, spades, shears
+   * and blocks (src/deep/build/models.js heldGeo).
+   */
   setTool(kind, opts = {}) {
     if (!TOOL_KINDS.includes(kind)) kind = 'none';
-    const item = opts.item ?? null;
-    if (kind === this.kind && item === this.item && !this.pending) return;
-    if (this.kind === null) { this.kind = kind; this.item = item; this.rebuild(); return; }
-    this.pending = { kind, item };
+    const item = opts.item ?? null, geo = opts.geo ?? null;
+    if (kind === this.kind && item === this.item && geo === (this.geo ?? null) && !this.pending) return;
+    if (this.kind === null) { this.kind = kind; this.item = item; this.geo = geo; this.rebuild(); return; }
+    this.pending = { kind, item, geo };
   }
 
   /** Wind up a strike that lands `dur` seconds from now. */
@@ -329,7 +334,12 @@ export class ViewModel {
     const T = (this.tool = { kind: this.kind, glow: null, tip: null, socket: null, spin: null, light: null, food: null });
     const kind = this.kind, item = this.item;
     const sub = (parent, pos) => { const o = new THREE.Group(); o.position.set(pos[0] * V, pos[1] * V, pos[2] * V); parent.add(o); return o; };
-    if (kind === 'pick') {
+    if (this.geo?.geo) {
+      // something held in this kind's pose (an axe, a spade, a block…)
+      A.part(this.toolR, this.geo.geo, { scale: S });
+      if (this.geo.glow) { A.part(this.toolR, this.geo.glow, { scale: S, layer: 'detail' }); T.glow = { color: this.geo.glowColor ?? 0xffb040, k: 0.6 }; }
+      T.tip = this.geo.tip || [0, 60, 0];
+    } else if (kind === 'pick') {
       const p = pickGeo(item || 'pick_rusty');
       A.part(this.toolR, p.geo, { scale: S });
       if (p.glow) { A.part(this.toolR, p.glow, { scale: S, layer: 'detail' }); T.glow = { color: p.runeColor, k: 0.6 }; }
@@ -432,7 +442,7 @@ export class ViewModel {
       if (this.stow >= 1) {
         this.mode = want;
         if (this.pending) {
-          this.kind = this.pending.kind; this.item = this.pending.item; this.pending = null;
+          this.kind = this.pending.kind; this.item = this.pending.item; this.geo = this.pending.geo ?? null; this.pending = null;
           this.action = null; this.placed = 0;
           this.rebuild();
         }

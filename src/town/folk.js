@@ -222,7 +222,10 @@ export class Townsfolk {
     // the face: woken sleepers grumble, the rest say it with the line's mood
     let mood = npc.sleeping ? 'sleepy' : npc.role === 'baby' ? pick(['laugh', 'happy', 'surprised']) : npc.role === 'busker' ? 'happy' : moodOf(line);
     if (npc.sleeping && chance(0.3)) mood = 'angry';
-    s.say(a, line, { name: npc.name, voice: a.voice, mood, life: 3.6 });
+    // a cutscene talk (src/ui/Convo.js): the camera on them, the words by their head; a bubble if not
+    const cv = s.game.convo;
+    if (cv?.speaker(npc)) cv.say(npc, line, { name: npc.name, mood, wait: false, dur: Math.min(6, 2.6 + line.length * 0.045), gesture: npc.sleeping || npc.seated ? 'none' : undefined });
+    else s.say(a, line, { name: npc.name, voice: a.voice, mood, life: 3.6 });
     if (!npc.sleeping) a.rig.lookAt(s.eyeTarget);
     npc.lookHold = 4;
     return line;

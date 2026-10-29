@@ -1,6 +1,8 @@
 // Small diegetic pickers shared by the scenes:
-//   openTalkMenu(game, { name, who, mood, line, sub, options: [{ label, sub, primary, onClick }], onClose })
-//     the talk board: the carved dialogue board with the speaker's live 3D portrait (portrait3d) in a
+//   openTalkMenu(game, { name, who, npc, mood, line, sub, options: [{ label, sub, primary, onClick }], onClose, convo })
+//     when the speaker (npc / who / name) has a 3D model in this scene, this is a cutscene talk
+//     (src/ui/Convo.js: the camera on them, the line floating by their head, the options floating in;
+//     the handle has close(), closed, typer); `convo: false` keeps the board. Otherwise the talk board: the carved dialogue board with the speaker's live 3D portrait (portrait3d) in a
 //     brass frame, a name ribbon, what they say typing out on parchment in their voice, and the
 //     choices as paper notes pinned below (click, tap, the number keys or ↑ ↓ + Enter). onClick runs
 //     with the menu still open (callers close it as they like). who: the portrait (default from
@@ -16,6 +18,7 @@ import { portrait3d } from '../gfx/portrait3d.js';
 import { speakerOf } from './Tutor.js';
 import { installDialogArt } from './dialogArt.js';
 import { typeText } from './talkType.js';
+import { convoTalkMenu } from './Convo.js';
 import './choices.css';
 
 const P = PAL.paper;
@@ -70,11 +73,14 @@ function installArt() {
 }
 
 // ------------------------------------------------------------------ talk menu
-export function openTalkMenu(game, { name, who, mood = 'calm', face, line = '', sub = '', options = [], onClose, className = '' } = {}) {
+export function openTalkMenu(game, { name, who, mood = 'calm', face, line = '', sub = '', options = [], onClose, className = '', npc, convo, camera } = {}) {
+  const real = game.engine ? game : game.ui?.game || game;
+  // the speaker is here in 3D: it's a cutscene (src/ui/Convo.js), the words floating by their head
+  const cv = convoTalkMenu(real, { name, who, npc, mood, line, sub, options, onClose, className, convo, camera });
+  if (cv) return cv;
   installArt();
   installDialogArt();
   void face; // characters are never 2D pictures any more: the portrait is the live 3D model
-  const real = game.engine ? game : game.ui?.game || game;
   portrait3d.init(real);
   const audio = game.audio;
   const cast = speakerOf(who, name);

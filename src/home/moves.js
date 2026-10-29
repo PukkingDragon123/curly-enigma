@@ -129,14 +129,25 @@ export class HomeMoves {
     this.lift.setCage(-dy0 / T);
     const loop = a.loop?.('elevator', { vol: 0.35 });
     this.lift.sway = 1;
+    // (cut short when the script is ended from outside, e.g. a test standing you somewhere: the lift just arrives)
+    const cut = () => {
+      if (this.cam) return false;
+      loop?.stop?.(0.1);
+      this.lift.sway = 0; this.lift.spin = 0; this.lift.setCage(0); this.lift.setLever(0); this.lift.setGate(0);
+      this.gateShut = false;
+      this.moveLiftLight();
+      this.rebuildCollision();
+      return true;
+    };
     await this.tween(1.4, (k) => {
       const e = 1 - (1 - k) ** 2;
       const dy = dy0 * (1 - e);
       this.lift.setCage(-dy / T);
       this.lift.spin = dy * 9;
-      this.cam.y = y0 - dy;
+      if (this.cam) this.cam.y = y0 - dy;
       this.moveLiftLight();
     });
+    if (cut()) return;
     loop?.stop?.(0.3);
     this.lift.sway = 0;
     this.lift.setCage(0);
@@ -146,11 +157,14 @@ export class HomeMoves {
     a.play('bell', { vol: 0.5 });
     this.rig.shake(0.25);
     await this.tween(0.3, (k) => this.lift.setLever(1 - ease(k)));
+    if (cut()) return;
     a.play('gate', { vol: 0.7 });
     await this.tween(0.5, (k) => this.lift.setGate(1 - ease(k)));
+    if (cut()) return;
     this.gateShut = false;
     this.rebuildCollision();
     await this.walkCam(LIFT.outX - 0.15, LIFT.cz, 1.5, Math.PI / 2);
+    if (cut()) return;
     this.endScript();
     if (this.lessonStage?.() === 'done') this.later(0.4, () => this.greet?.());
     else this.onLessonArrival?.('lift');

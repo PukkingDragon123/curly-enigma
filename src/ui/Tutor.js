@@ -6,6 +6,9 @@
 //   game.ui.tutor?.hide(key?)        (hide the line; with a key, only that line)
 //   game.ui.tutor?.next()            (carry on, as the player would: first finishes the typing)
 //   game.ui.tutor?.active            ({ key, mood, html, wait, who } or null)
+// (next() and active also carry on / report a cutscene talk's line, src/ui/Convo.js, when one is up.)
+// The card is for hints and tips; NPCs talk through game.convo (cutscene talk). `muffled` (heard
+// through a daze) dims the face and swims the words, without blurring anything.
 // mood: 'calm' | 'happy' | 'stern' | 'proud' | 'worried' | 'laugh' (and any rig expression:
 //   surprised sad angry smug thinking sleepy). key: the line's id: saying the same key again while it
 //   is up only updates it (no retyping), and hide(key) leaves anyone else's line alone.
@@ -100,7 +103,14 @@ export class Tutor {
   }
 
   /** What's showing: { key, mood, html, wait, who } or null. */
-  get active() { const c = this.cur; return c ? { key: c.key, mood: c.mood, html: c.html, wait: c.wait, who: c.cast?.key || null } : null; }
+  get active() {
+    const c = this.cur;
+    if (c) return { key: c.key, mood: c.mood, html: c.html, wait: c.wait, who: c.cast?.key || null };
+    // a cutscene talk (src/ui/Convo.js) is up: report its line, so scripts that carry the talk on
+    // through the tutor (tests, lessons) keep working
+    const a = this.game.convo?.active;
+    return a ? { key: 'convo', mood: a.mood, html: a.html, wait: true, who: a.who, convo: true } : null;
+  }
 
   /** The portrait handle (tests): .studio, .canvas ... */
   get portrait() { return this.face; }
@@ -171,7 +181,7 @@ export class Tutor {
   }
 
   /** Carry on, as if the player pressed E: finish the typing first, then close the line. */
-  next() { this.advance(true); }
+  next() { if (!this.cur && this.game.convo?.active) { this.game.convo.next(); return; } this.advance(true); }
 
   durFor(html, opts) {
     if (opts.wait) return Infinity;

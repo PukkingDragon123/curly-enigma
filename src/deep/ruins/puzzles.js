@@ -106,15 +106,15 @@ class Switch extends Puzzle {
     this.windT = 1;
   }
   intact() {
-    const sw = this.P.switch, LB = this.P.LB;
+    const sw = this.P.switch;
     let n = 0;
-    for (const y of [10, 16, 22]) for (const da of [-3, 0, 3]) if (this.s.vox(Math.floor(sw.a + da), y, sw.side > 0 ? LB : -LB - 1) === M.CRACKED) n++;
+    for (const [a, y, b] of sw.probe) if (this.s.vox(a, y, b) === M.CRACKED) n++;
     return n >= 3;
   }
   update(dt, eye, out) {
     if (this.save.open) return;
-    const sw = this.P.switch, LB = this.P.LB, s = this.s;
-    const face = s.wp(sw.a, 16, sw.side * LB);
+    const sw = this.P.switch, s = this.s;
+    const face = s.wp(sw.a, sw.y, sw.wallB);
     const d = Math.hypot(face.x - eye.x, face.y - eye.y, face.z - eye.z);
     if (d > 7) return;
     this.chk = (this.chk || 0) - dt;
@@ -124,7 +124,7 @@ class Switch extends Puzzle {
     this.dustT -= dt;
     if (this.dustT <= 0) {
       this.dustT = 0.25 + Math.random() * 0.5;
-      const p = s.wp(sw.a + (Math.random() - 0.5) * 14, 5 + Math.random() * 24, sw.side * (LB - 0.3));
+      const p = s.wp(sw.a + (Math.random() - 0.5) * 20, sw.y - 12 + Math.random() * 24, sw.wallB - sw.side * 0.3);
       this.R.fx.spawn({ x: p.x, y: p.y, z: p.z, vx: (Math.random() - 0.5) * 0.05, vy: -0.25, vz: (Math.random() - 0.5) * 0.05, life: 1.6, size: 0.012 + Math.random() * 0.012, color: [0.62, 0.56, 0.48], alpha: 0.7, drag: 0.5 });
     }
     this.windT -= dt;
@@ -434,10 +434,6 @@ class Valve extends Puzzle {
     this.inPivot(this.pv, MD.valveWheel());
     const pos = s.wp(V.a + V.face[0] * 3, V.y, V.b + V.face[1] * 3);
     s.el(pos, 0.34, () => (this.save.drained ? 'Drain wheel (open)' : 'Turn the wheel'), () => this.turn());
-    // the winch rope and its bucket, down the shaft
-    const W = this.P.winch;
-    s.put(MD.rope(W.len / VOX), 0.5, W.y, 0.5, [1, 0]);
-    s.put(MD.bucket(), 0.5, W.y - W.len - 5, 0.5, [1, 0]);
     this.cols = null;
   }
   progress() { return this.save.drained ? 2 : 0; }
@@ -452,47 +448,65 @@ class Valve extends Puzzle {
     this.R.later(2.0, (out) => this.startDrain(out));
     return [];
   }
+  /** The columns that hold the water (P.drain.boxes: the crypt's stair and lower crypt). */
   columns() {
     if (this.cols) return this.cols;
-    const P = this.P, cols = [];
-    for (let a = -P.RS - 1; a <= P.RS; a++) for (let b = -P.RS - 1; b <= P.RS; b++) if (Math.hypot(a + 0.5, b + 0.5) < P.RS) cols.push([a, b]);
-    for (let a = P.RS - 3; a < P.gal.a1; a++) for (let b = -P.GW; b < P.GW; b++) if (Math.hypot(a + 0.5, b + 0.5) >= P.RS) cols.push([a, b]);
+    const cols = [];
+    for (const B of this.P.drain.boxes) for (let a = B.a0; a < B.a1; a++) for (let b = B.b0; b < B.b1; b++) cols.push([a, b]);
     return (this.cols = cols);
   }
   startDrain(out) {
     this.draining = true;
-    this.level = -this.P.DD + this.P.GH + 1;
+    this.level = this.P.drain.top;
     this.layerT = 0;
     this.loop = this.R.sfx.water();
     out.push({ say: 'Somewhere below, the old drain opens. The water begins to sink.', key: 'drain', tone: 'good', cd: 5 });
   }
+  /** Are the chunks under the drained water all generated (the corners and middles of its boxes, at level y)? */
+  ready(y) {
+    for (const B of this.P.drain.boxes) for (const [a, b] of [[B.a0, B.b0], [B.a1 - 1, B.b0], [B.a0, B.b1 - 1], [B.a1 - 1, B.b1 - 1], [(B.a0 + B.a1) >> 1, (B.b0 + B.b1) >> 1]]) if (!this.s.loaded(a, y, b)) return false;
+    return true;
+  }
+  /** Water that came back with chunks generated afresh after the drain: take it away (once all loaded). */
+  keepDry(dt) {
+    this.dryT = (this.dryT || 0) - dt;
+    if (this.dryT > 0) return;
+    this.dryT = 1;
+    const D = this.P.drain;
+    if (!this.ready(D.bottom) || !this.ready(D.top)) return;
+    for (let y = D.bottom; y <= D.top + 1; y++) for (const [a, b] of this.columns()) if (this.s.vox(a, y, b) === M.WATER) this.s.setVox(a, y, b, 0);
+    this.dry = true;
+  }
   update(dt, eye, out) {
     this.busy -= dt;
+    if (this.save.drained && !this.dry && !this.draining) this.keepDry(dt);
     if (!this.draining) return;
     this.layerT -= dt;
-    const P = this.P;
-    const near = this.s.wp(0.5, -P.DD + P.WL, 0.5).distanceTo(eye) < 16;
+    const D = this.P.drain, c = D.c;
+    const near = this.s.wp(c[0], c[1], c[2]).distanceTo(eye) < 16;
     this.loop?.set({ vol: near ? 0.35 : 0.1 });
     if (Math.random() < dt * 20) {
-      const p = this.s.wp((Math.random() - 0.5) * 6, Math.max(this.level, -P.DD) + 0.5, (Math.random() - 0.5) * 6);
+      const p = this.s.wp(c[0] + (Math.random() - 0.5) * 30, Math.max(this.level, D.bottom) + 0.5, c[2] + (Math.random() - 0.5) * 20);
       this.R.fx.bubble?.(p.x, p.y, p.z, 0.8);
       if (Math.random() < 0.15) this.R.sfx.gurgle();
     }
     if (this.layerT > 0) return;
     this.layerT = 0.14;
+    if (!this.ready(this.level)) { this.layerT = 0.3; return; } // the water down there isn't streamed in yet
     const w = this.R.w;
     for (const [a, b] of this.columns()) if (this.s.vox(a, this.level, b) === M.WATER) this.s.setVox(a, this.level, b, 0);
-    const swirl = this.s.wp(0.5, this.level, 0.5);
+    const swirl = this.s.wp(c[0], this.level, c[2]);
     this.R.fx.splash?.(swirl.x, swirl.y, swirl.z, 0.4);
     void w;
     this.level--;
-    if (this.level < -P.DD) {
+    if (this.level < D.bottom) {
       // a last sweep for anything that flowed back
-      for (let y = -P.DD; y < -P.DD + P.GH + 1; y++) for (const [a, b] of this.columns()) if (this.s.vox(a, y, b) === M.WATER) this.s.setVox(a, y, b, 0);
+      for (let y = D.bottom; y <= D.top + 1; y++) for (const [a, b] of this.columns()) if (this.s.vox(a, y, b) === M.WATER) this.s.setVox(a, y, b, 0);
       this.draining = false;
       this.loop?.stop?.(1.5);
       this.loop = null;
       this.save.drained = 1;
+      this.dry = true;
       this.s.setRunes(2);
       this.R.later(0.6, (o) => this.s.solve(o));
     }

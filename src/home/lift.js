@@ -318,6 +318,15 @@ export class HomeLift {
   }
 }
 
+/**
+ * The lift's two lanterns in meters, without building anything (for baking the hall's light in a
+ * build worker): the one on the portal's post, and the one in the cage while it stands at the landing.
+ */
+export const LIFT_LIGHTS = {
+  portal: { x: SHAFT.x0 - (7 + 9.5) / 64, y: HALL.y + (PORTAL_H - 5) / 64, z: SHAFT.z0 + (WELL + 12 / 2) / 64 },
+  cage: { x: SHAFT.x0 + (CAGE.x1 - 12) / 64, y: HALL.y + (CAGE.top - 19 - 4) / 64, z: SHAFT.z0 + (CAGE.z1 - 12) / 64 },
+};
+
 /** Where to stand in the cage (meters): its centre, and the spot on the landing in front of the gate. */
 export const LIFT = {
   cx: SHAFT.x0 + ((CAGE.x0 + CAGE.x1) / 2) / 64,

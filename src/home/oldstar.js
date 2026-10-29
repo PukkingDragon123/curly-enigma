@@ -267,7 +267,7 @@ export class OldStar {
   pickHaunt() {
     const hrs = this.s.clockHours();
     if (hrs >= 21.5) return 'cot';
-    const opts = [['anvil', 4], ['bellows', 1.6], ['fire', 2.4], ['armchair', 2], ['board', 1.2], ['books', 1.0], ['hearth', 0.8], ['lift', 0.6], ['ruins', 0.8], ['pool', 0.5]].filter(([n]) => n !== this.spot);
+    const opts = [['anvil', 4], ['bellows', 1.6], ['fire', 2.4], ['armchair', 2], ['board', 1.2], ['books', 1.0], ['hearth', 0.8], ['lift', 0.6], ['ruins', 0.8], ['pool', 0.5], ['garden', 1.4], ['terrace', 0.9], ['drawings', 1.0], ['workbench', 0.8], ['larder', 0.5]] /* (house part: the rooms out back) */.filter(([n]) => n !== this.spot);
     let t = Math.random() * opts.reduce((a, o) => a + o[1], 0);
     for (const [n, w] of opts) { t -= w; if (t <= 0) return n; }
     return 'anvil';
@@ -277,10 +277,19 @@ export class OldStar {
   /**
    * Say something: through the tutor card (his portrait, a mood) when you're near or it matters,
    * with his mouth moving and a sniff. o: { mood, wait, key, dur, card: false (a bubble over him) }.
+   * Cutscene talk (game.convo) instead when o.convo, or o.wait and he isn't scripted, or a talk with
+   * him is up (o.convo: false keeps the card); o.camera / o.gesture go to the cutscene.
    */
   say(html, o = {}) {
     const ui = this.g.ui;
     const mood = o.mood || 'calm';
+    // cutscene talk (src/ui/Convo.js): when you talked to him (o.convo), a line you carry on yourself
+    // while he isn't in a scripted scene, or while a talk with him is still up
+    const cv = this.g.convo;
+    if (o.card !== false && cv && o.convo !== false && (o.convo || (o.wait && !this.scripted && !this.s.scripted) || cv.talkingTo('oldstar')) && cv.speaker('oldstar')) {
+      this.sniff();
+      return cv.say('oldstar', html, { mood, wait: o.wait ?? !!o.convo, dur: o.dur, camera: o.camera, gesture: o.gesture });
+    }
     this.rig.talk?.(Math.min(3.2, 0.8 + html.replace(/<[^>]*>/g, '').length / 26));
     this.feel(mood, 3);
     this.sniff();

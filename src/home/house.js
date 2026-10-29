@@ -1,18 +1,23 @@
 // Old Star's house, three worn steps down from your bedroom: the living room with his fireplace
-// between two round windows on the glowing cavern, his armchair and the old settee on the big rug,
-// bookcases, the grandfather clock, his notes board, his trinket shelf; the kitchen with the
-// range in its brick inglenook (the cooking station), the sink and pump under the window, the
-// pantry shelves, the plate dresser and the dining table; the smithy with his forge and its hood,
-// the bellows, the anvil, the quench trough, the tool rack and his box bed, warm from the forge; the
-// hall with the cage lift down to the mine, the front door (the way to Deep Town, caved in until
-// you find it from below), coats and boots, the Miners' Board, his chest, the coal cart and his
-// dream wall: the million-gold tally and the suitcase that was packed once. The hole you fell
-// through is boarded over in the living room ceiling, with what came down swept into the corner.
-// Static props are merged into a few draw calls with the fixed lights baked in (per room: a light
-// lights its own room); fires, the clock's pendulum, water and moving parts stay live. Also the
+// between two round windows, his armchair and the old settee on the big rug, bookcases, the
+// grandfather clock, his notes board, his trinket shelf; the kitchen with the range in its brick
+// inglenook (the cooking station), the sink and pump under the window, the pantry shelves, the
+// plate dresser and the dining table; the smithy with his forge and its hood, the bellows, the
+// anvil, the quench trough, the tool rack and his box bed, warm from the forge; the hall with the
+// cage lift down to the mine, the front door (the way to Deep Town, caved in until you find it
+// from below), coats and boots, the Miners' Board, his chest, the coal cart and his dream wall: the
+// million-gold tally and the suitcase that was packed once. The hole you fell through is boarded
+// over in the living room ceiling, with what came down swept into the corner.
+//
+// Built in jobs (JOBS: one per room, then 'ways', the doors and steps between them), each of which
+// can run in a build worker (houseWorker.js, driven by houseLoad.js) or on the main thread: a job
+// builds its room's furnishings and its walls, ceiling and floor, merges the static voxels by
+// material, bakes the room's fixed lights into them (a light only lights its own room) and packs
+// it all (pack.js); the scene puts the packed jobs back together (StarHouse.assemble), builds the
+// cage lift itself, and keeps fires, the clock's pendulum, water and moving parts live. Also the
 // lights (for the scene's light pool), the collision boxes, the seats and Old Star's places.
 import * as THREE from 'three';
-import { Batch, keepUnbatched } from '../iso/vox.js';
+import { keepUnbatched } from '../iso/vox.js';
 import { lowRes, group } from '../iso/kit.js';
 import { barrel, crate, sack, hangingRoot } from '../iso/props.js';
 import { buildFurniture } from '../iso/furniture.js';
@@ -21,12 +26,17 @@ import * as TP from './tavernProps.js';
 import * as CP from './caveProps.js';
 import * as RP from './ruinProps.js';
 import * as HP from './houseProps.js';
-import { HouseSurfaces } from './surfaces.js';
+import * as GP from './gardenProps.js';
+import * as WP from './workshopProps.js';
+import * as KP from './clutterProps.js';
+import { HouseSurfaces, unpackSurfaces, surfaceBoxes } from './surfaces.js';
 import { buildVista } from './vista.js';
-import { ROOM, DOORS, WINDOWS, FY, WALL, sideInfo, roomAt } from './plan.js';
+import { ROOM, ROOMS, DOORS, WINDOWS, FY, WALL, sideInfo, roomAt } from './plan.js';
 import { T, HALL, ARCH, STAIRS, SHAFT, FRONT, HOLE, STEP_H, STEP_D, floorAt } from './units.js';
-import { HomeLift, LIFT } from './lift.js';
+import { HomeLift, LIFT, LIFT_LIGHTS } from './lift.js';
 import { makeRng } from '../core/util.js';
+import { Merger, worldGeo, mergeQuads, matDesc, matFrom, quantize, qTransfer, unquantize, packNode, unpackNode, packRef, unpackRef, CSCALE } from './pack.js';
+import { LAYER_OUTLINE } from '../core/Engine.js';
 
 const tl = (m) => m / T;
 const Y = FY;
@@ -44,8 +54,8 @@ export const SPOTS = {
   // the kitchen
   fire: { x: -3.95, z: -2.75 },
   sink: { x: -5.0, z: -1.85 },
-  table: { x: -2.35, z: -1.45, yaw: 0 },
-  chairs: [{ x: -2.65, z: -2.02, yaw: 0 }, { x: -2.05, z: -2.02, yaw: 0 }, { x: -2.65, z: -0.88, yaw: Math.PI }, { x: -2.05, z: -0.88, yaw: Math.PI }],
+  table: { x: -2.6, z: -1.62, yaw: 0 }, // (clear of the way to the larder door)
+  chairs: [{ x: -2.9, z: -2.19, yaw: 0 }, { x: -2.3, z: -2.19, yaw: 0 }, { x: -2.9, z: -1.05, yaw: Math.PI }, { x: -2.3, z: -1.05, yaw: Math.PI }],
   // the living room
   hearth: { x: 2.1, z: -5.8 },
   armchair: { x: 1.12, z: -4.3 },
@@ -81,12 +91,25 @@ export const STAR_SPOTS = {
   pool: { x: -4.38, z: -1.75, face: { x: -5.0, z: -1.85 }, pose: 'idle' }, // (the sink)
   books: { x: 0.0, z: -3.2, face: { x: -0.7, z: -3.2 }, pose: 'read' },
   hearth: { x: 2.4, z: -4.75, face: { x: 2.1, z: -5.6 }, pose: 'idle' },
+  // the rooms out back: tending Marigold's glowcaps, at the edge of the terrace, over his drawings, at the bench, in the larder
+  garden: { x: 1.02, z: -8.38, face: { x: 2.0, z: -8.2 }, pose: 'idle' },
+  terrace: { x: 2.55, z: -11.3, face: { x: 2.55, z: -12.4 }, pose: 'ponder' },
+  drawings: { x: -2.9, z: -9.18, face: { x: -2.9, z: -9.85 }, pose: 'read' },
+  workbench: { x: -4.2, z: -9.38, face: { x: -4.2, z: -10.1 }, pose: 'idle' },
+  larder: { x: -3.25, z: 1.55, face: { x: -3.25, z: 2.6 }, pose: 'idle' },
   armchair: { sit: true, pose: 'sit' },
   cot: { lie: true, pose: 'sleep' },
 };
 
+/** What a job hands the scene besides its meshes, lights, boxes and looks (dyn and furn too). */
+const KEEP = ['boardObj', 'doorFrame', 'doorLeaf', 'passage', 'boardAt', 'minersAt', 'notePins', 'glints', 'giants', 'skylight', 'telescopeAt', 'gramophone'];
+
+/** The build jobs: every room, then the doors and steps between them (which need every room's lights). */
+export const JOBS = [...ROOMS.map((r) => r.id), 'ways'];
+const BUILDERS = { living: 'buildLiving', kitchen: 'buildKitchen', smithy: 'buildSmithy', hall: 'buildHall', garden: 'buildGarden', terrace: 'buildTerrace', workshop: 'buildWorkshop', larder: 'buildLarder', ways: 'buildWays' };
+
 export class StarHouse {
-  /** room: the tile-unit group (scaled by T); world: the meters scene. */
+  /** room: the tile-unit group (scaled by T); world: the meters scene (or a stand-in group in a worker). */
   constructor(room, world) {
     this.room = room;
     this.world = world;
@@ -96,33 +119,163 @@ export class StarHouse {
     this.boxes = [];
     this.furn = [];
     this.waters = [];
+    this.waterSpecs = [];
     this.worms = [];
     this.drips = [];
     this.looks = [];
     this.shadowSpots = [];
+    this.parts = []; // live pieces moved out of the merge into the room (their hinges keep working)
+    this.liveBake = []; // live pieces that get the room's baked light once
+    this.steps = {};
+    this.roomMeshes = {};
+  }
+
+  // ------------------------------------------------------------ a build job
+  /** Build one job: a room's furnishings ('living', 'kitchen'...) or 'ways'. opts: { doorOpen, notes }. */
+  buildJob(id, opts = {}) {
+    const t0 = performance.now();
+    this.opts = opts;
+    this.decor = new THREE.Group();
+    this.room.add(this.decor);
+    // (a room whose furnishings fail still gets its walls: better a bare room than no house)
+    try { this[BUILDERS[id]](); } catch (e) { console.error(`[home] building ${id} failed`, e); this.failed = String(e?.message || e); }
+    this.steps[id] = Math.round(performance.now() - t0);
+    return this;
   }
 
   /**
-   * opts: { doorOpen, notes (count) }. pause: optional async () => void awaited between the steps
-   * (the scene yields to the browser there, so a long build doesn't freeze the page).
+   * Merge, bake and pack what buildJob made: { msg, transfer }. lights: every light in the house
+   * (the 'ways' job lights each side of a door by its own room); a room bakes with its own.
    */
-  async build(opts = {}, pause = null) {
+  packJob(id, lights = null) {
     const t0 = performance.now();
-    this.opts = opts;
-    const st = {};
-    const step = async (k, fn) => { const a = performance.now(); fn(); st[k] = Math.round(performance.now() - a); if (pause) await pause(); };
-    this.decor = new THREE.Group();
-    this.room.add(this.decor);
-    await step('living', () => this.buildLiving());
-    await step('kitchen', () => this.buildKitchen());
-    await step('smithy', () => this.buildSmithy());
-    await step('hall', () => this.buildHall());
-    await step('ways', () => this.buildWays());
-    await step('surfaces', () => { this.surfaces = new HouseSurfaces(this.world, this.bakeLights(), { soot: (x, y, z) => this.soot(x, y, z), wear: (x, z) => this.wear(x, z) }).build(); this.boxes.push(...this.surfaces.boxes); });
-    await step('vista', () => { this.vista = buildVista(this.world); });
-    await step('merge', () => this.merge());
-    this.steps = st;
-    this.ms = performance.now() - t0;
+    const transfer = [];
+    const L = (lights || this.lights).map(bakeLight);
+    const amb = this.ambient();
+    this.room.updateMatrixWorld(true);
+    for (const o of this.parts) this.room.attach(o);
+    const meshes = mergeStatic(this.decor, id === 'ways' ? null : id, L, amb, transfer);
+    keepUnbatched(this.decor, this.world);
+    this.room.remove(this.decor);
+    // the live pieces get the same baked light once
+    for (const o of [...this.parts, ...this.liveBake]) dynBake(o, L, amb);
+    const merge = Math.round(performance.now() - t0);
+    // the room's walls, ceiling and floor
+    let surf = [];
+    if (ROOM[id]) {
+      const a = performance.now();
+      const s = new HouseSurfaces(new THREE.Group(), L, { soot: (x, y, z) => this.soot(x, y, z), wear: (x, z) => this.wear(x, z) }).buildRoom(ROOM[id]);
+      surf = s.pack(id, transfer);
+      this.steps.surfaces = Math.round(performance.now() - a);
+    }
+    // the live trees, and every reference into them
+    this.room.updateMatrixWorld(true);
+    const ctx = { ids: new Map(), next: 0, transfer, roomInv: new THREE.Matrix4().copy(this.room.matrixWorld).invert() };
+    const nodes = [];
+    for (const o of [...this.room.children]) nodes.push({ parent: 'room', node: packNode(o, ctx) });
+    for (const o of [...this.world.children]) nodes.push({ parent: 'world', node: packNode(o, ctx) });
+    const meta = packRef({ dyn: this.dyn, furn: this.furn, ...Object.fromEntries(KEEP.map((k) => [k, this[k]])) }, ctx);
+    this.steps.merge = merge;
+    const msg = {
+      id, meshes, surf, nodes, meta,
+      lights: this.lights, boxes: this.boxes, shadowSpots: this.shadowSpots, looks: this.looks, waters: this.waterSpecs, drips: this.drips,
+      steps: this.steps, ms: Math.round(performance.now() - t0) + (this.steps[id] || 0),
+    };
+    return { msg, transfer };
+  }
+
+  // ------------------------------------------------------------ in the scene: the jobs put together
+  /**
+   * The house from its packed jobs (and the cavern's painted panoramas, `vista`), in the scene:
+   * room (the tile group), world (the scene). Builds the cage lift here (it's all moving parts).
+   */
+  static assemble(room, world, jobs, vista = null) {
+    const t0 = performance.now();
+    const h = new StarHouse(room, world);
+    h.surfMeshes = [];
+    for (const p of jobs) h.addPayload(p);
+    h.surfaces = { meshes: h.surfMeshes, boxes: surfaceBoxes(), steps: jobs.reduce((o, p) => { o[p.id] = p.steps?.surfaces ?? 0; return o; }, {}), dispose() {} };
+    h.boxes.push(...h.surfaces.boxes);
+    let a = performance.now();
+    h.buildLift();
+    h.steps.lift = Math.round(performance.now() - a);
+    h.buildUnder();
+    a = performance.now();
+    h.vista = buildVista(world, vista);
+    h.vista.group.userData.room = 'outside';
+    h.steps.vista = Math.round(performance.now() - a);
+    // the few live behaviours that don't travel: the fire's flicker, the bellows' squeeze, the pins
+    const fp = h.dyn.fireplace;
+    if (fp) fp.update = (t) => flicker(fp.flames, t);
+    const b = h.dyn.bellows;
+    if (b?.parts && b.compress) b.setCompress = CP.bellowsCompress(b.parts, b.compress);
+    const bd = h.dyn.board;
+    if (bd?.pinData) bd.pins = (read) => TP.notesPins(bd.pinData, read);
+    h.liftLantern = h.lights.find((l) => l.kind === 'lift') || null;
+    h.steps.assemble = Math.round(performance.now() - t0);
+    h.ms = jobs.reduce((s, p) => s + (p.ms || 0), 0) + h.steps.assemble;
+    return h;
+  }
+
+  /** One packed job into the scene. */
+  addPayload(p) {
+    const room = this.room, world = this.world;
+    const tag = (m, id) => { m.userData.room = id; (this.roomMeshes[id] ||= []).push(m); };
+    for (const s of p.meshes) {
+      const m = unquantize(s.q, matFrom(s.mt, CSCALE));
+      if (s.outline) m.layers.enable(LAYER_OUTLINE);
+      world.add(m);
+      tag(m, s.room);
+    }
+    for (const m of unpackSurfaces(p.surf, world)) { tag(m, m.userData.room); this.surfMeshes.push(m); }
+    const ids = new Map();
+    for (const n of p.nodes) (n.parent === 'room' ? room : world).add(unpackNode(n.node, ids));
+    const meta = unpackRef(p.meta, ids, room);
+    Object.assign(this.dyn, meta.dyn);
+    this.furn.push(...(meta.furn || []));
+    for (const k of KEEP) if (meta[k] !== undefined && meta[k] !== null) this[k] = meta[k];
+    this.lights.push(...p.lights);
+    this.boxes.push(...p.boxes);
+    this.shadowSpots.push(...p.shadowSpots);
+    this.looks.push(...p.looks);
+    this.drips.push(...p.drips);
+    for (const w of p.waters) this.addWaterMesh(w);
+    Object.assign(this.steps, { [p.id]: p.ms });
+  }
+
+  /** The cage lift (built here: it's mostly moving parts), its static frame merged and lit with the hall. */
+  buildLift() {
+    const decor = new THREE.Group();
+    this.room.add(decor);
+    this.lift = new HomeLift(this.room, decor);
+    this.lift.cage.traverse((m) => { m.userData.noBatch = true; });
+    this.lift.root.traverse((m) => { m.userData.noBatch = true; });
+    this.room.updateMatrixWorld(true);
+    const L = this.lights.map(bakeLight), amb = this.ambient();
+    for (const s of mergeStatic(decor, 'hall', L, amb, null)) {
+      const m = unquantize(s.q, matFrom(s.mt, CSCALE));
+      if (s.outline) m.layers.enable(LAYER_OUTLINE);
+      m.userData.room = 'hall';
+      this.world.add(m);
+      (this.roomMeshes.hall ||= []).push(m);
+    }
+    this.room.remove(decor);
+    dynBake(this.lift.cage, L, amb);
+  }
+
+  /**
+   * The earth under the house: from inside the lift shaft (riding up or down) you see its face,
+   * timbered at the landing, not the cavern painted round the house.
+   */
+  buildUnder() {
+    const under = new THREE.Mesh(new THREE.BoxGeometry(SHAFT.x0 - HALL.x0, 3.6, -HALL.z0 + 0.5), new THREE.MeshLambertMaterial({ color: 0x2a1c12 }));
+    under.position.set((HALL.x0 + SHAFT.x0) / 2, Y - 1.8 - 0.004, (HALL.z0 - 0.5) / 2);
+    this.world.add(under);
+    this.meshes.push(under);
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, SHAFT.z1 - SHAFT.z0), new THREE.MeshLambertMaterial({ color: 0x4a2e1c }));
+    lip.position.set(SHAFT.x0 - 0.02, Y - 0.09, (SHAFT.z0 + SHAFT.z1) / 2); // the landing's oak sill
+    this.world.add(lip);
+    this.meshes.push(lip);
   }
 
   // ------------------------------------------------------------ placing
@@ -188,6 +341,13 @@ export class StarHouse {
   /** Something to look at (the scene turns these into interactables): { x, y, z, r | box, label, lines, aside }. */
   look(o) { this.looks.push(o); return o; }
 
+  /** A floor piece at (x, z) turned by yaw, solid as a box hw × hd × h m when given (and its contact shadow). */
+  prop(obj, x, z, yaw = 0, hw = 0, hd = 0, h = 0, y = null) {
+    this.place(obj, x, z, yaw, y);
+    if (hw && h) this.boxAt(x, z, hw, hd, h, yaw);
+    return obj;
+  }
+
   // ------------------------------------------------------------ the living room
   buildLiving() {
     const S = SPOTS, R = ROOM.living, hh = Math.round(R.h * 64);
@@ -202,7 +362,9 @@ export class StarHouse {
     this.wallBox(hp, 1.4, 0.88, 0.06);
     this.look({ x: S.hearth.x, y: Y + 1.35, z: S.hearth.z + 0.45, r: 0.25, label: 'Look at the mantel', lines: ['A gold nugget in a little glass box. "My first," says the label, in a very young hand.', 'A photo on the mantel: a big mole and a little one, both in helmets, squinting at the camera.', 'A pipe on a stand, a tin of tobacco, two candlesticks dripping wax onto everything.'] });
     // windows either side, and the cavern's teal light through them
-    for (const w of WINDOWS) this.addWindow(w);
+    this.roomWindows('living');
+    // firelight from the house coming up the steps into your doorway
+    this.light({ kind: 'arch', x: ARCH.x, y: 0.7, z: HALL.z1 - 0.2, color: 0xffb070, intensity: 0, real: false, power: 0.3, radius: 1.2, room: 'living' });
     // his armchair turned to the fire, a footstool, the settee, a lamp table, the big rug
     const ac = buildFurniture('armchair', {});
     const ay = Math.atan2(S.hearth.x - S.armchair.x, (S.hearth.z + 0.9) - S.armchair.z);
@@ -217,10 +379,22 @@ export class StarHouse {
     this.furn.push({ id: 'sofa', obj: so.obj, seats: so.seats, box: null });
     this.boxAt(S.sofa.x, S.sofa.z, 0.52, 0.24, 0.45, 0);
     const lt = HP.lampTable();
-    this.place(lt.obj, S.armchair.x - 0.55, S.armchair.z - 0.25, 0.3);
+    const ltx = S.armchair.x - 0.58, ltz = S.armchair.z + 0.42; // (beside the chair, clear of the way in from the garden)
+    this.place(lt.obj, ltx, ltz, 0.3);
     const lp = this.toM(lt.obj, lt.lamp);
     this.light({ kind: 'lamp', x: lp.x, y: lp.y, z: lp.z, color: 0xffc070, intensity: 1.3, distance: 3.2, flicker: 0.05, halo: 0.2, haloOpacity: 0.55, pool: 0.7, poolOpacity: 0.16, priority: 6, power: 0.7, radius: 2.4 });
-    this.boxAt(S.armchair.x - 0.55, S.armchair.z - 0.25, 0.2, 0.2, 0.55);
+    this.boxAt(ltx, ltz, 0.2, 0.2, 0.55);
+    // his knitting by the chair, slippers by the fire, logs, books piled up, the globe of the surface
+    this.prop(KP.knittingBasket(), S.armchair.x + 0.42, S.armchair.z + 0.32, 0.6, 0.16, 0.16, 0.25);
+    this.prop(KP.slippers(), 3.25, -5.0, -0.3);
+    this.prop(KP.logBasket(), 0.98, -5.5, 0.15, 0.27, 0.2, 0.3);
+    this.prop(KP.bookStack(6, 205), 0.12, -2.42, 0.4, 0.22, 0.2, 0.36);
+    this.prop(KP.bookStack(4, 206), 4.48, -4.0, 1.2, 0.2, 0.18, 0.28);
+    this.prop(KP.standingGlobe(), 4.35, -5.38, 0.5, 0.26, 0.26, 0.95);
+    const gr = KP.gramophone();
+    this.prop(gr.obj, 1.62, -0.66, Math.PI, 0.35, 0.32, 0.6);
+    this.gramophone = this.toM(gr.obj, gr.horn);
+    this.look({ x: 1.62, y: Y + 0.75, z: -0.66, r: 0.3, label: 'Wind the gramophone', gramophone: true, special: true });
     this.place(lowRes(() => HP.bigRug(2.7, 2.0, 93)), 2.05, -4.1, 0, Y + 0.002);
     // bookcases on the west wall, between the doors, and a small one by the steps
     const bc = HP.bookcase(1.35, 1.7, 71);
@@ -233,6 +407,7 @@ export class StarHouse {
     const ck = HP.grandfatherClock();
     this.place(ck.obj, S.clock.x, S.clock.z, -Math.PI / 2);
     this.dyn.pendulum = ck.pendulum;
+    this.parts.push(ck.pendulum);
     this.boxAt(S.clock.x, S.clock.z, 0.26, 0.17, 1.75, -Math.PI / 2);
     this.look({ x: S.clock.x - 0.1, y: Y + 1.4, z: S.clock.z, r: 0.22, label: 'The grandfather clock', clock: true });
     this.buildBoard();
@@ -252,9 +427,9 @@ export class StarHouse {
     const bc2 = HP.bookcase(0.72, 1.45, 79);
     const bp2 = this.onWall(bc2.obj, 'living', 'w', -0.8);
     this.wallBox(bp2, 0.78, 0.34, 1.6);
-    for (const [x, z, k] of [[-0.3, -5.45, 'fern'], [1.65, -0.6, 'spike'], [4.5, -2.0, 'glowcap']]) this.plant(x, z, k);
+    for (const [x, z, k] of [[-0.32, -5.5, 'fern'], [4.5, -2.0, 'glowcap'], [-0.32, -4.05, 'spike']]) this.plant(x, z, k);
     const sc = HP.brassSconce();
-    this.onWall(sc.obj, 'living', 'n', -0.28, 1.42);
+    this.onWall(sc.obj, 'living', 'e', -5.45, 1.42);
     this.sconceLight(sc, 'living');
     const ch = TP.wagonChandelier(22, 37);
     this.place(ch.obj, 2.1, -3.7, 0.3, Y + R.h - 0.02);
@@ -289,6 +464,7 @@ export class StarHouse {
   // ------------------------------------------------------------ the kitchen
   buildKitchen() {
     const S = SPOTS, R = ROOM.kitchen, hh = Math.round(R.h * 64);
+    this.roomWindows('kitchen');
     const rg = HP.kitchenRange(hh, 61);
     const rp = this.onWall(rg.obj, 'kitchen', 'n', S.fire.x);
     const fire = this.toM(rg.obj, rg.fire);
@@ -310,9 +486,9 @@ export class StarHouse {
     this.wallBox(sp, 1.0, 0.5, 0.75);
     this.drips.push({ x: this.dyn.pump.x, z: this.dyn.pump.z, y: this.dyn.pump.y - 0.01, t: 2, every: 3.4, pool: true });
     // the pantry along the south wall
-    const pa = HP.pantryShelf(2.15, 1.45);
-    const pap = this.onWall(pa.obj, 'kitchen', 's', -3.55);
-    this.wallBox(pap, 2.2, 0.28, 1.5);
+    const pa = HP.pantryShelf(1.85, 1.45);
+    const pap = this.onWall(pa.obj, 'kitchen', 's', -3.58);
+    this.wallBox(pap, 1.9, 0.28, 1.5);
     this.look({ x: pap.x, y: Y + 0.8, z: pap.z - 0.2, r: 0.6, label: 'The pantry shelves', lines: ['Pickled glowcaps, honey, three kinds of jam and a jar labelled "DO NOT".', 'Enough flour for a winter, if winters happened down here.', 'A cheese wheel with one neat slice gone. Old Star swears it was Nugget.'] });
     // the dining table and its chairs
     const dt = HP.diningTable();
@@ -329,7 +505,7 @@ export class StarHouse {
       this.boxAt(c.x, c.z, 0.2, 0.19, 0.3, c.yaw);
     }
     // herbs from the beams, a lamp over the table, sacks and a barrel by the pantry
-    this.place(CP.herbLine(1.1, 31), -2.9, -2.65, 0.05, Y + R.h - 0.18);
+    this.place(CP.herbLine(1.1, 31), -3.0, -2.75, 0.05, Y + R.h - 0.18);
     this.place(CP.herbLine(0.9, 37), -4.3, -1.0, Math.PI / 2, Y + R.h - 0.18);
     const hl = HP.hangingOilLamp(0.55);
     this.place(hl.obj, S.table.x, S.table.z, 0, Y + R.h);
@@ -341,11 +517,19 @@ export class StarHouse {
     const sk2 = sack({});
     this.place(sk2.obj, -4.8, -0.88, 0.4);
     this.plant(-1.1, -3.1, 'glowcap');
+    // the churn and the eggs by the larder door, plaits of garlic and onions, the spice rack, the mop
+    this.prop(KP.butterChurn(), -1.12, -1.18, 0.4, 0.13, 0.13, 0.55);
+    this.prop(KP.eggBasket(), -2.92, -0.64, 0.3);
+    for (const [x, z, on, len] of [[-1.35, -2.95, false, 0.45], [-4.55, -2.1, true, 0.55], [-3.1, -1.0, false, 0.4]]) this.place(KP.garlicString(len, on, 227 + x * 3), x, z, x, Y + R.h - 0.02);
+    this.onWall(KP.spiceRack(), 'kitchen', 'w', -2.92, 1.08);
+    this.prop(KP.mopBucket(), -4.74, -2.57, 0.3, 0.14, 0.14, 0.3);
+    this.look({ x: -2.92 + 0, y: Y + 0.12, z: -0.64, r: 0.2, label: 'The egg basket', lines: ['Eggs from Nugget, already. Old Star has written the date on each one in pencil.'] });
   }
 
   // ------------------------------------------------------------ the smithy
   buildSmithy() {
     const S = SPOTS, R = ROOM.smithy;
+    this.roomWindows('smithy');
     const f = CP.forge(tl(R.h + 0.05), 5);
     this.place(f.obj, S.forge.x, S.forge.z, S.forge.yaw);
     const fire = this.toM(f.obj, f.fire);
@@ -356,6 +540,7 @@ export class StarHouse {
     const b = CP.bellows(7);
     this.place(b.obj, S.bellows.x, S.bellows.z, S.bellows.yaw);
     this.dyn.bellows = b;
+    this.parts.push(b.obj);
     this.boxAt(S.bellows.x, S.bellows.z, 0.45, 0.24, 0.62, S.bellows.yaw);
     const a = CP.anvil(9);
     this.place(a.obj, S.anvil.x, S.anvil.z, S.anvil.yaw);
@@ -370,6 +555,7 @@ export class StarHouse {
     const bk = CP.quenchBucket(15);
     this.place(bk.obj, S.trough.x - 0.12, S.trough.z + 0.68, 0.4);
     this.dyn.bucket = { obj: bk.obj, water: bk.water, home: { x: S.trough.x - 0.12, z: S.trough.z + 0.68 } };
+    this.parts.push(bk.obj);
     const rack = CP.toolRack(17);
     const rp = this.onWall(rack.obj, 'smithy', 'w', S.rack.z);
     this.wallBox(rp, 1.05, 0.2, 1.5);
@@ -385,13 +571,20 @@ export class StarHouse {
     this.look({ x: bp.x + 0.45, y: Y + 0.5, z: bp.z, r: 0.4, label: 'Old Star\'s box bed', lines: ['A bed built into the wall like a cupboard, curtains and all. It smells of soot and peppermint.', 'A red nightcap on the pillow. Warm from the forge: no wonder he sleeps in here.'] });
     // a water barrel, a lantern over the anvil, sacks of charcoal
     const br = barrel(3, { fill: 'water' });
-    this.place(br.obj, -1.15, -4.0, 0.3);
-    this.boxAt(-1.15, -4.0, 0.22, 0.22, 0.5);
+    this.place(br.obj, -3.92, -3.98, 0.3);
+    this.boxAt(-3.92, -3.98, 0.22, 0.22, 0.5);
+    // the grindstone, a rack of finished blades over the trough, scrap, his apron, horseshoes for luck
+    this.prop(KP.grindstone(), -1.42, -4.02, Math.PI, 0.4, 0.27, 0.7);
+    this.onWall(KP.bladeRack(0.95), 'smithy', 'e', -6.0, 0.82);
+    this.look({ x: -0.9, y: Y + 1.3, z: -6.0, r: 0.4, label: 'The rack of blades', lines: ['Daggers, a short sword, an axe, a spear head, each with a paper tag: who it\'s for, and what they still owe.', 'Most of the tags say PAID. One says "PAID IN TURNIPS".'] });
+    this.prop(KP.scrapPile(), -3.28, -4.05, 0.3, 0.33, 0.25, 0.25);
+    this.onWall(KP.apronHook(), 'smithy', 's', -3.3, 0.72);
+    this.onWall(KP.horseshoes(), 'smithy', 'n', -1.42, 1.55);
     const lan = HP.hangingOilLamp(0.6);
     this.place(lan.obj, -2.2, -5.2, 0, Y + R.h);
     const lp = this.toM(lan.obj, lan.light);
     this.light({ kind: 'lantern', x: lp.x, y: lp.y, z: lp.z, color: 0xffb060, intensity: 0.9, distance: 3.2, flicker: 0.1, halo: 0.18, haloOpacity: 0.5, pool: 0.6, poolOpacity: 0.12, priority: 4, power: 0.5, radius: 2.2 });
-    for (const [x, z, s] of [[-4.65, -6.85, 1], [-4.3, -6.95, 2]]) { const o = sack({ seed: s, color: 0x4a4440 }); this.place(o.obj, x, z, s); }
+    for (const [x, z, s] of [[-4.62, -5.62, 1], [-1.02, -6.98, 2]]) { const o = sack({ seed: s, color: 0x4a4440 }); this.place(o.obj, x, z, s); }
     const sc = HP.brassSconce(5);
     this.onWall(sc.obj, 'smithy', 's', -4.25, 1.35);
     this.sconceLight(sc, 'smithy');
@@ -403,7 +596,8 @@ export class StarHouse {
   // ------------------------------------------------------------ the hall
   buildHall() {
     const S = SPOTS, R = ROOM.hall;
-    this.lift = new HomeLift(this.room, this.decor);
+    this.roomWindows('hall');
+    void R;
     // coats and boots by the front door, the suitcase that was packed once
     const cr = TP.coatRack(27);
     this.onWall(cr, 'hall', 'w', -5.3, 0.1);
@@ -425,6 +619,7 @@ export class StarHouse {
     this.place(cg, S.chest.x, S.chest.z, S.chest.yaw, null, this.room);
     this.dyn.chest = { ...ch, group: cg };
     cg.traverse((m) => { m.userData.noBatch = true; });
+    this.liveBake.push(cg);
     this.boxAt(S.chest.x, S.chest.z, 0.32, 0.2, 0.36, S.chest.yaw);
     // the coal cart by the lift
     const c = lowRes(() => RP.mineCart(57));
@@ -450,10 +645,235 @@ export class StarHouse {
     this.onWall(s2.obj, 'hall', 'n', 5.45, 1.35);
     this.sconceLight(s2, 'hall');
     this.plant(5.32, -3.25, 'fern');
-    // the lift's lanterns
-    this.liftLantern = this.light({ kind: 'lift', ...this.lift.lanternPos(new THREE.Vector3()).multiplyScalar(T), color: 0xffb860, intensity: 0.4, distance: 2.0, flicker: 0.1, halo: 0.16, haloOpacity: 0.55, priority: 2, power: 0.16, radius: 1.3, room: 'hall' });
-    const lp = this.lift.lanternM;
-    if (lp) this.light({ kind: 'portal', x: lp.x, y: lp.y, z: lp.z, color: 0xffb050, intensity: 0.25, distance: 2.2, flicker: 0.12, halo: 0.18, haloOpacity: 0.55, pool: 0.6, poolOpacity: 0.15, priority: 4, power: 0.22, radius: 1.6, room: 'hall' });
+    this.place(KP.doormat(), FRONT.x, -5.22, 0, Y + 0.002);
+    this.prop(KP.caneStand(), 7.55, -5.55, 0.4, 0.13, 0.13, 1.1);
+    this.onWall(KP.keyBoard(), 'hall', 'w', -3.3, 1.02);
+    this.onWall(KP.helmetPegs().obj, 'hall', 'e', -5.0, 0.86);
+    this.onWall(KP.wallMirror(), 'hall', 's', 7.0, 0.95);
+    this.look({ x: 7.0, y: Y + 1.3, z: -0.4, r: 0.25, label: 'The mirror', lines: ['A mole in a dusty apron looks back at you. There\'s dirt on its nose. There\'s dirt on yours.'] });
+    // the lift's lanterns (the lift itself is built in the scene: it's all moving parts)
+    const cl = LIFT_LIGHTS.cage, lp = LIFT_LIGHTS.portal;
+    this.light({ kind: 'lift', x: cl.x, y: cl.y, z: cl.z, color: 0xffb860, intensity: 0.4, distance: 2.0, flicker: 0.1, halo: 0.16, haloOpacity: 0.55, priority: 2, power: 0.16, radius: 1.3, room: 'hall' });
+    this.light({ kind: 'portal', x: lp.x, y: lp.y, z: lp.z, color: 0xffb050, intensity: 0.25, distance: 2.2, flicker: 0.12, halo: 0.18, haloOpacity: 0.55, pool: 0.6, poolOpacity: 0.15, priority: 4, power: 0.22, radius: 1.6, room: 'hall' });
+    // the front door's lamp, once the way to Deep Town is open
+    if (this.opts.doorOpen) this.light({ kind: 'door', x: FRONT.x, y: Y + 0.95, z: FRONT.z + 0.15, color: 0xffd090, intensity: 0.8, distance: 2.8, flicker: 0.08, halo: 0.25, haloOpacity: 0.4, priority: 3, power: 0.4, radius: 1.6, room: 'hall' });
+  }
+
+  // ------------------------------------------------------------ the glow garden
+  buildGarden() {
+    const R = ROOM.garden, S = SPOTS;
+    this.roomWindows('garden');
+    // the light well over the skylight, and the cavern's teal light falling down it
+    const sk = R.skylight;
+    const lw = GP.lightWell(sk.r, 2.2, 33);
+    this.place(lw.obj, sk.x, sk.z, 0, Y + R.h);
+    this.light({ kind: 'sky', x: sk.x, y: Y + R.h - 0.25, z: sk.z, color: 0x8ae8e0, intensity: 1.5, distance: 5.6, flicker: 0.04, speed: 0.2, pool: 1.25, poolX: sk.x, poolZ: sk.z, poolOpacity: 0.2, halo: 0.9, haloOpacity: 0.16, priority: 7, power: 1.05, radius: 4.4, room: 'garden' });
+    this.skylight = { x: sk.x, y: Y + R.h, z: sk.z, r: sk.r };
+    this.look({ x: sk.x, y: Y + R.h - 0.05, z: sk.z, r: sk.r, label: 'Look up the light well', lines: ['A shaft up through the rock to a glass dome, and above it the cavern\'s roof, crawling with glow-worms.', 'Old Star dug the well himself, so Marigold\'s mushrooms would have a sky. It took him two years.'], aside: 'skylight' });
+    // the beds: round the pool of light, under the west window, along the west wall
+    const beds = [
+      { x: 2.12, z: -8.15, w: 1.5, d: 1.05, seed: 3, hues: ['teal', 'violet'] },
+      { x: 0.32, z: -9.72, w: 1.55, d: 0.72, seed: 5, hues: ['amber', 'pink'] },
+      { x: -0.2, z: -7.55, w: 0.68, d: 1.2, seed: 8, hues: ['green', 'teal'] },
+    ];
+    for (const b of beds) {
+      const mb = GP.mushroomBed(b.w, b.d, b.seed, b.hues);
+      this.place(mb.obj, b.x, b.z, 0);
+      this.boxAt(b.x, b.z, b.w / 2, b.d / 2, 0.3, 0);
+      for (const gl of mb.glows) { const p = this.toM(mb.obj, gl); this.light({ kind: 'shroom', x: p.x, y: p.y, z: p.z, color: gl.color, intensity: 0, real: false, halo: 0.14, haloOpacity: 0.35, flicker: 0.06, speed: 0.3, power: 0.2, radius: 0.85 }); }
+    }
+    this.look({ x: 2.12, y: Y + 0.5, z: -8.15, r: 0.7, label: 'Marigold\'s glowcaps', lines: ['Teal ones, violet ones, a few the size of an umbrella. They hum, very faintly, if you listen.', 'The soil is warm. Old Star says they like it when you talk to them. He talks to them a lot.'], aside: 'garden' });
+    // giant glowcaps: three in the middle bed, one by the pool
+    this.giants = [];
+    for (const [x, z, h, r, hue, seed] of [[1.72, -8.32, 1.3, 0.34, 'teal', 3], [2.52, -7.92, 0.95, 0.27, 'violet', 5], [2.3, -8.55, 0.68, 0.21, 'amber', 7], [4.38, -8.12, 1.4, 0.36, 'pink', 9]]) {
+      const gc = GP.giantGlowcap(h, r, hue, seed);
+      this.place(gc.obj, x, z, seed * 0.7);
+      const p = this.toM(gc.obj, gc.glow);
+      this.light({ kind: 'shroom', x: p.x, y: p.y - 0.12, z: p.z, color: gc.color, intensity: h > 1 ? 0.55 : 0, real: h > 1.2, distance: 2.4, halo: 0.42 + r, haloOpacity: 0.28, flicker: 0.05, speed: 0.25, power: 0.42, radius: 1.7, priority: 3 });
+      this.giants.push({ x: p.x, y: p.y, z: p.z, color: gc.color });
+      this.boxAt(x, z, 0.07, 0.07, h);
+    }
+    // the stone face on the east wall spouting into its pool
+    const sf = GP.spoutFace(5);
+    const sp = this.onWall(sf.obj, 'garden', 'e', -7.0, 0.32);
+    this.dyn.spout = this.toM(sf.obj, sf.mouth);
+    const pb = GP.pondBasin(0.36, 7);
+    this.place(pb.obj, 4.3, -7.0, 0);
+    const pw = this.toM(pb.obj, { x: 0, y: pb.water.y, z: 0 });
+    this.addWater('pond', pw.x, pw.y, pw.z, pb.water.r * 2, pb.water.r * 2, 0, 0x1e5a5a, true);
+    this.boxAt(4.3, -7.0, 0.45, 0.45, 0.16);
+    void sp;
+    this.look({ x: 4.3, y: Y + 0.2, z: -7.0, r: 0.42, label: 'The pool', lines: ['Lily pads, a glowing bud, pebbles that shine like coins. They aren\'t. You checked.', 'The water comes down from somewhere above, through the old stone mole\'s mouth.'] });
+    // Marigold's bench facing the beds and the terrace, a trellis, the potting table, a can
+    const bn = GP.gardenBench(9);
+    this.place(bn.obj, 2.45, -6.38, Math.PI);
+    this.furn.push({ id: 'bench', obj: bn.obj, seats: bn.seats, box: null });
+    this.boxAt(2.45, -6.38, 0.47, 0.2, 0.32, Math.PI);
+    this.look({ x: 2.45, y: Y + 0.5, z: -6.2, r: 0.2, label: 'The brass plaque', lines: ['"FOR MARIGOLD, WHO MADE THINGS GROW". The brass is polished bright. Somebody does it every week.'], aside: 'plaque' });
+    this.onWall(GP.trellis(0.85, 1.75, 19).obj, 'garden', 's', 1.4);
+    const pt = GP.pottingTable(1.15, 11);
+    const ptp = this.onWall(pt.obj, 'garden', 's', 3.95);
+    this.wallBox(ptp, 1.2, 0.48, 0.65);
+    this.prop(GP.wateringCan(13), 1.18, -7.55, 0.8);
+    const scc = GP.scarecrow(21).obj;
+    scc.scale.setScalar(0.7);
+    this.prop(scc, -0.22, -7.25, 0.3);
+    for (const [x, z, d, s] of [[0.55, -8.05, 0.7, 17], [3.35, -9.25, 0.85, 18], [3.2, -7.1, 0.6, 19]]) {
+      const hb = GP.hangingBasket(d, s);
+      this.place(hb.obj, x, z, s, Y + R.h);
+      const p = this.toM(hb.obj, hb.glow);
+      this.light({ kind: 'shroom', x: p.x, y: p.y, z: p.z, color: 0x8af0d0, intensity: 0, real: false, halo: 0.18, haloOpacity: 0.3, flicker: 0.05, speed: 0.3, power: 0.18, radius: 0.8 });
+    }
+    // a lantern on a post by the bench, for reading
+    const lpost = GP.lanternPost(1.0, 41);
+    this.place(lpost.obj, 1.55, -6.35, 0);
+    const ll = this.toM(lpost.obj, lpost.light);
+    this.light({ kind: 'lantern', x: ll.x, y: ll.y, z: ll.z, color: 0xffc070, intensity: 0.9, distance: 3.0, flicker: 0.08, halo: 0.2, haloOpacity: 0.5, pool: 0.6, poolOpacity: 0.15, priority: 5, power: 0.55, radius: 2.2 });
+    this.boxAt(1.55, -6.35, 0.08, 0.08, 1.3);
+    // the bath in the corner: the copper tub under the window, the hot spring's pipe, a screen, towels
+    const bt = GP.bathTub(23);
+    this.place(bt.obj, 4.42, -9.45, Math.PI / 2);
+    const bw = this.toM(bt.obj, { x: 0, y: bt.water.y, z: 0 });
+    this.addWater('bath', bw.x, bw.y, bw.z, bt.water.w, bt.water.d, Math.PI / 2, 0x2a6a6a);
+    this.dyn.bathSteam = this.toM(bt.obj, bt.steam);
+    this.boxAt(4.42, -9.45, 0.6, 0.33, 0.55, Math.PI / 2);
+    const spp = GP.springPipe(31);
+    this.onWall(spp.obj, 'garden', 'n', 4.55);
+    this.dyn.bathSpout = this.toM(spp.obj, spp.spout);
+    const bs = GP.bathShelf(29);
+    this.onWall(bs.obj, 'garden', 'e', -9.62, 1.02);
+    const bc = this.toM(bs.obj, bs.candle);
+    this.light({ kind: 'candle', x: bc.x, y: bc.y, z: bc.z, color: 0xffc070, intensity: 0.45, real: true, distance: 1.6, halo: 0.08, haloOpacity: 0.6, flicker: 0.2, power: 0.28, radius: 1.0, priority: 2 });
+    this.prop(GP.foldingScreen(25), 3.55, -9.2, Math.PI / 2 + 0.1, 0.06, 0.72, 1.3);
+    this.prop(GP.towelRail(27), 3.86, -8.42, 0.2, 0.3, 0.08, 0.8);
+    this.look({ x: 4.42, y: Y + 0.5, z: -9.45, r: 0.45, label: 'Take a soak', bath: true, special: true });
+  }
+
+  // ------------------------------------------------------------ the terrace
+  buildTerrace() {
+    const R = ROOM.terrace;
+    const cx = (R.x0 + R.x1) / 2;
+    // the balustrade along the edge (and an unseen rail above it: it's a long way down)
+    const bl = GP.balustrade(R.x1 - R.x0 + 0.06, 35);
+    this.place(bl.obj, cx, R.z0 + 0.13, Math.PI);
+    this.boxes.push([R.x0 - 0.2, Y, R.z0 - 0.3, R.x1 + 0.2, Y + 2.6, R.z0 + 0.24]);
+    this.shadowSpots.push({ x: cx, z: R.z0 + 0.3, w: R.x1 - R.x0, h: 0.25 });
+    for (const [x, s] of [[R.x0 + 0.25, 41], [R.x1 - 0.25, 42]]) {
+      const lp = GP.lanternPost(1.2, s);
+      this.place(lp.obj, x, R.z0 + 0.42, 0);
+      const l = this.toM(lp.obj, lp.light);
+      this.light({ kind: 'lantern', x: l.x, y: l.y, z: l.z, color: 0xffc070, intensity: 0.9, distance: 3.2, flicker: 0.1, halo: 0.22, haloOpacity: 0.5, pool: 0.7, poolOpacity: 0.16, priority: 5, power: 0.6, radius: 2.4, room: 'terrace' });
+      this.boxAt(x, R.z0 + 0.42, 0.1, 0.1, 1.4);
+    }
+    // pots along the coping
+    for (const [x, k] of [[0.55, 'fern'], [1.6, 'glowcap'], [3.0, 'trail'], [3.95, 'glowcap']]) {
+      const p = HP.pottedPlant(k === 'trail' ? 'spike' : k, Math.round(x * 17));
+      p.obj.scale.setScalar(0.5);
+      this.place(p.obj, x, R.z0 + 0.12, x, Y + bl.h * T);
+    }
+    // the telescope, aimed at the far village; a little table for tea
+    const ts = GP.telescope(37);
+    const ty = Math.atan2(0.42, -0.9);
+    this.place(ts.obj, 3.72, -11.25, ty);
+    this.boxAt(3.72, -11.25, 0.24, 0.24, 1.0, ty);
+    this.telescopeAt = { x: 3.72, z: -11.25, yaw: ty };
+    this.look({ x: 3.72, y: Y + 0.68, z: -11.3, r: 0.25, label: 'Look through the telescope', telescope: true, special: true });
+    const tt = GP.teaTable(39);
+    this.place(tt.obj, 0.98, -11.02, 0);
+    this.furn.push({ id: 'teaChair', obj: tt.obj, seats: tt.seats, box: null });
+    this.boxAt(0.98, -11.02, 0.2, 0.2, 0.45);
+    for (const sx of [-0.52, 0.52]) this.boxAt(0.98 + sx, -11.02, 0.14, 0.14, 0.3);
+    // the wind chime on the house wall, the cliff falling away under the edge
+    const wc = GP.windChime(43);
+    this.onWall(wc.obj, 'terrace', 's', 3.55, 1.45);
+    this.dyn.chime = this.toM(wc.obj, wc.glow);
+    const cf = GP.cliffFace(R.x1 - R.x0 + 2.4, 6, 45);
+    this.place(cf, cx, R.z0, Math.PI, Y);
+    this.look({ x: cx, y: Y + 0.7, z: R.z0 + 0.05, r: 1.2, label: 'Look out over the cavern', window: true, aside: 'terrace' });
+  }
+
+  // ------------------------------------------------------------ the workshop
+  buildWorkshop() {
+    const R = ROOM.workshop;
+    this.roomWindows('workshop');
+    // the workbench and its pegboard on the north wall, the drafting table under the big window
+    const wb = WP.workbench(1.25, 55);
+    const wbp = this.onWall(wb.obj, 'workshop', 'n', -4.22);
+    this.wallBox(wbp, 1.3, 0.46, 0.62);
+    const wl = this.toM(wb.obj, wb.lamp);
+    this.light({ kind: 'lamp', x: wl.x, y: wl.y, z: wl.z, color: 0xffe0a8, intensity: 0.9, distance: 2.4, flicker: 0.03, halo: 0.14, haloOpacity: 0.5, pool: 0.5, poolOpacity: 0.14, priority: 4, power: 0.5, radius: 1.8 });
+    this.look({ x: -4.22, y: Y + 0.95, z: -9.95, r: 0.45, label: 'The workbench', lines: ['A clock in pieces, every spring laid out in order. A vise with a tiny brass lever in it.', 'Tools on the pegboard, each drawn round in chalk so you know where it goes back. Two of the shapes are empty.'] });
+    const dt = WP.draftingTable(53);
+    this.place(dt.obj, -2.9, -9.78, 0);
+    this.boxAt(-2.9, -9.78, 0.5, 0.39, 0.75);
+    const dl = this.toM(dt.obj, dt.lamp);
+    this.light({ kind: 'lamp', x: dl.x, y: dl.y, z: dl.z, color: 0xfff0c0, intensity: 0.8, distance: 2.2, flicker: 0.02, halo: 0.12, haloOpacity: 0.5, priority: 3, power: 0.45, radius: 1.6 });
+    this.look({ x: -2.9, y: Y + 0.72, z: -9.7, r: 0.4, label: 'Old Star\'s drawings', lines: ['THE SURFACE EXPRESS, drawn in white on blue: every wheel, every rivet, a little window with a mole in it.', 'A lift cage, measured to the inch. "IF THE CABLE HOLDS" is written along the side, and underlined.', 'Sums in the margin. They all come to a million, however he adds them.'], aside: 'drawings' });
+    this.prop(WP.toolChest(61), -1.22, -9.86, 0, 0.28, 0.19, 0.62);
+    // the little railway in the middle of the room
+    const rw = WP.modelRailway(1.5, 0.85, 51);
+    const rx = -2.55, rz = -8.35;
+    this.place(rw.obj, rx, rz, 0);
+    this.boxAt(rx, rz, 0.75, 0.43, 0.5);
+    const cars = rw.train.map((c, i) => { this.place(c, rx, rz, 0, Y + rw.track.y * T); this.parts.push(c); c.traverse((m) => { m.userData.noBatch = true; }); return c; });
+    this.dyn.railway = { cars, x: rx, z: rz, y: Y + rw.track.y * T, rx: rw.track.rx * T, rz: rw.track.rz * T };
+    this.look({ x: rx, y: Y + 0.55, z: rz, r: 0.55, label: 'Wind the little train', railway: true, special: true });
+    // the loft over the workbench in the north-west corner (you can stand under it), the clockwork hen by the west wall
+    const lf = WP.loftGallery(1.6, 0.74, 1.95, 59);
+    const lfp = this.onWall(lf.obj, 'workshop', 'n', -4.2);
+    for (const p of lf.posts) { const w = this.toM(lf.obj, { x: p.x, y: 0, z: p.z }); this.boxes.push([w.x - 0.05, Y, w.z - 0.05, w.x + 0.05, Y + 2.4, w.z + 0.05]); }
+    this.boxes.push([R.x0, Y + 1.88, R.z0, R.x0 + 1.62, Y + 1.95, R.z0 + 0.74]); // the deck
+    const ld = this.toM(lf.obj, { x: lf.lamp.x, y: lf.lamp.y, z: lf.lamp.z });
+    this.light({ kind: 'candle', x: ld.x, y: ld.y, z: ld.z, color: 0xffc070, intensity: 0, real: false, halo: 0.08, haloOpacity: 0.6, flicker: 0.2, power: 0.3, radius: 1.1 });
+    this.look({ x: lfp.x, y: Y + 2.1, z: lfp.z + 0.4, r: 0.6, label: 'The loft', lines: ['Crates up in the loft, stencilled SURFACE GOODS, and a hammock slung under the eaves.', 'A ladder up to it, rungs worn pale. He naps up there in the afternoons, when the forge is too hot.'] });
+    this.prop(WP.clockworkHen(57).obj, -4.6, -8.2, Math.PI / 2, 0.18, 0.15, 0.25);
+    this.look({ x: -4.6, y: Y + 0.45, z: -8.2, r: 0.22, label: 'The clockwork hen', lines: ['A brass hen with glass eyes and a key in her side. Her wing gears are showing. She looks a lot like Nugget.', 'A label round her neck: "FOR WHEN THE REAL ONE IS CROSS WITH ME".'], aside: 'hen' });
+    for (const [x, z, s] of [[-4.62, -9.0, 4], [-1.15, -7.75, 6]]) { const c = crate(s, { open: s === 6 }); this.place(c.obj, x, z, s * 0.4); this.boxAt(x, z, 0.24, 0.24, 0.4, s * 0.4); }
+    const bk = HP.bookcase(0.82, 1.45, 83);
+    const bkp = this.onWall(bk.obj, 'workshop', 's', -1.85);
+    this.wallBox(bkp, 0.86, 0.34, 1.55);
+    // lamps hung over the railway and the bench
+    for (const [x, z, d] of [[-2.55, -8.35, 0.75], [-4.2, -9.4, 0.9]]) {
+      const hl = HP.hangingOilLamp(d);
+      this.place(hl.obj, x, z, 0, Y + R.h);
+      const p = this.toM(hl.obj, hl.light);
+      this.light({ kind: 'lantern', x: p.x, y: p.y, z: p.z, color: 0xffc070, intensity: 1.0, distance: 3.0, flicker: 0.06, halo: 0.18, haloOpacity: 0.55, pool: 0.7, poolOpacity: 0.16, priority: 5, power: 0.6, radius: 2.4 });
+    }
+    const sc = HP.brassSconce(8);
+    this.onWall(sc.obj, 'workshop', 'e', -9.6, 1.4);
+    this.sconceLight(sc, 'workshop');
+  }
+
+  // ------------------------------------------------------------ the larder
+  buildLarder() {
+    const R = ROOM.larder;
+    this.roomWindows('larder');
+    const pa = HP.pantryShelf(1.75, 1.45, 66);
+    const pap = this.onWall(pa.obj, 'larder', 's', -4.0);
+    this.wallBox(pap, 1.8, 0.28, 1.5);
+    const ch = WP.cheeseRack(0.85, 1.45, 71);
+    const chp = this.onWall(ch, 'larder', 's', -2.62);
+    this.wallBox(chp, 0.9, 0.36, 1.5);
+    this.look({ x: -2.62, y: Y + 0.7, z: 2.45, r: 0.45, label: 'The cheese rack', lines: ['Wheels of cheese, yellow, orange and one with blue in it that smells like a cave. A wedge is gone from the big one.', 'A note pinned to the rack: "NUGGET. NO."'], aside: 'cheese' });
+    const rb = WP.rootBins(1.1, 77);
+    const rbp = this.onWall(rb.obj, 'larder', 'w', 1.35);
+    this.wallBox(rbp, 1.15, 0.42, 0.45);
+    const bc = WP.barrelCradle(3, 73);
+    this.place(bc, R.x1 - 0.34, 1.68, -Math.PI / 2);
+    this.boxAt(R.x1 - 0.34, 1.68, 0.76, 0.33, 0.55, -Math.PI / 2);
+    this.look({ x: R.x1 - 0.4, y: Y + 0.45, z: 1.68, r: 0.5, label: 'The barrels', lines: ['CIDER, says the chalk on one. ALSO CIDER on the next. The third one just says NO.', 'They\'re cool to the touch. The whole larder is: it\'s cut deep into the rock.'] });
+    this.prop(WP.iceChest(79).obj, -4.42, 0.2, 0, 0.38, 0.22, 0.4);
+    this.prop(WP.mushroomLogs(81).obj, -3.28, 0.18, 0, 0.55, 0.22, 0.5);
+    this.onWall(WP.mouseHole(83), 'larder', 'w', 2.32);
+    this.prop(sack({ seed: 4, color: 0xd8c8a0 }).obj, -2.1, 1.25, 0.5);
+    this.prop(sack({ seed: 5, color: 0xc8b890 }).obj, -2.35, 1.55, 1.9);
+    const hr = WP.hangingRack(1.5, 75);
+    this.place(hr, -3.45, 1.15, 0, Y + R.h - 0.02);
+    const hl = HP.hangingOilLamp(0.5);
+    this.place(hl.obj, -2.6, 0.75, 0, Y + R.h);
+    const p = this.toM(hl.obj, hl.light);
+    this.light({ kind: 'lantern', x: p.x, y: p.y, z: p.z, color: 0xffc888, intensity: 0.8, distance: 2.8, flicker: 0.07, halo: 0.16, haloOpacity: 0.5, pool: 0.6, poolOpacity: 0.14, priority: 4, power: 0.55, radius: 2.3 });
+    this.look({ x: -3.4, y: Y + 1.2, z: 0.4, r: 0.6, label: 'Take a snack from the larder', larder: true, special: true });
   }
 
   // ------------------------------------------------------------ doors, steps, windows
@@ -463,7 +883,6 @@ export class StarHouse {
     this.place(steps.obj, ARCH.x, HALL.z1 - 2 * STEP_D, Math.PI, Y);
     const df = HP.doorFrame(ARCH.hw * 2, ARCH.h - Y, -HALL.z1, 7, { roundTop: true, step: -Y });
     this.place(df, ARCH.x, HALL.z1 / 2, 0, Y);
-    this.light({ kind: 'arch', x: ARCH.x, y: 0.7, z: HALL.z1 - 0.2, color: 0xffb070, intensity: 0, real: false, power: 0.3, radius: 1.2, room: 'living' });
     // the doors between the rooms
     for (const d of DOORS) {
       const fr = HP.doorFrame(d.w, d.h, WALL, 11 + d.id.length);
@@ -475,6 +894,7 @@ export class StarHouse {
     const door = townDoor(!!this.opts.doorOpen, 4);
     const frame = group(door.frame, door.hinge);
     this.place(frame, P.x, P.z, 0, Y);
+    this.parts.push(frame);
     this.doorFrame = frame;
     this.doorLeaf = door.hinge;
     this.passage = { x: P.x, z: P.z };
@@ -482,23 +902,14 @@ export class StarHouse {
       const rb = doorRubble(4);
       this.place(rb, P.x, P.z + 0.05, 0, Y);
       this.boxes.push([P.x - 0.55, Y, P.z, P.x + 0.55, Y + 0.5, P.z + 0.4]);
-    } else {
-      this.light({ kind: 'door', x: P.x, y: Y + 0.95, z: P.z + 0.15, color: 0xffd090, intensity: 0.8, distance: 2.8, flicker: 0.08, halo: 0.25, haloOpacity: 0.4, priority: 3, power: 0.4, radius: 1.6, room: 'hall' });
     }
     this.boxes.push([P.x - 0.6, Y, P.z - 0.6, P.x + 0.6, Y + 1.6, P.z - 0.02]); // the door itself and the tunnel behind
-    // the earth under the house: from inside the lift shaft (riding up or down) you see its face,
-    // timbered at the landing, not the cavern painted round the house
-    const under = new THREE.Mesh(new THREE.BoxGeometry(SHAFT.x0 - HALL.x0, 3.6, -HALL.z0 + 0.5), new THREE.MeshLambertMaterial({ color: 0x2a1c12 }));
-    under.position.set((HALL.x0 + SHAFT.x0) / 2, Y - 1.8 - 0.004, (HALL.z0 - 0.5) / 2);
-    this.world.add(under);
-    this.meshes.push(under);
-    const lip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, SHAFT.z1 - SHAFT.z0), new THREE.MeshLambertMaterial({ color: 0x4a2e1c }));
-    lip.position.set(SHAFT.x0 - 0.02, Y - 0.09, (SHAFT.z0 + SHAFT.z1) / 2); // the landing's oak sill
-    this.world.add(lip);
-    this.meshes.push(lip);
     // the steps' collision
     for (let i = 1; i <= 2; i++) this.boxes.push([STAIRS.x0, Y, HALL.z1 - i * STEP_D, STAIRS.x1, -i * STEP_H, HALL.z1 - (i - 1) * STEP_D]);
   }
+
+  /** The round windows of one room. */
+  roomWindows(id) { for (const w of WINDOWS) if (w.room === id) this.addWindow(w); }
 
   /** A round window on the cavern with its frame, glass glints, outside ledge and teal light. */
   addWindow(w) {
@@ -553,14 +964,19 @@ export class StarHouse {
   }
 
   // ------------------------------------------------------------ water
-  /** A still water surface (meters), w × d, turned by yaw; rippled by the scene (ripple()). */
+  /** A still water surface (meters), w × d, turned by yaw; rippled by the scene (ripple()). Made in the scene. */
   addWater(name, x, y, z, w, d, yaw, color, round = false) {
+    this.waterSpecs.push({ name, x, y, z, w, d, yaw, color, round });
+  }
+
+  addWaterMesh({ name, x, y, z, w, d, yaw, color, round }) {
     const mat = waterMaterial(color, round);
     const geo = new THREE.PlaneGeometry(w, d, 1, 1).rotateX(-Math.PI / 2);
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);
     m.rotation.y = yaw;
     m.renderOrder = 2;
+    m.userData.room = roomAt(x, z)?.id ?? null;
     this.world.add(m);
     this.meshes.push(m);
     const wtr = { name, mesh: m, mat, x, y, z, w, d, yaw, rips: [] };
@@ -578,43 +994,6 @@ export class StarHouse {
     const c = Math.cos(-w.yaw), s = Math.sin(-w.yaw), dx = x - w.x, dz = z - w.z;
     U.uRip.value[i].set(dx * c + dz * s, -dx * s + dz * c, U.uTime.value, k);
   }
-
-  // ------------------------------------------------------------ merge
-  merge() {
-    const live = [...this.dyn.forge.flames, ...this.dyn.fireplace.flames, this.dyn.hearth.embers, this.dyn.forge.embers];
-    for (const m of live) m.userData.noBatch = true;
-    this.room.updateMatrixWorld(true);
-    const batch = new Batch(5);
-    this.decor.updateMatrixWorld(true);
-    // keep the moving parts out: whole groups go to the room (their hinges keep working)
-    const parts = [this.dyn.bucket.obj, this.doorFrame, this.dyn.bellows.obj, this.dyn.pendulum].filter(Boolean);
-    for (const o of parts) this.room.attach(o);
-    this.lift.cage.traverse((m) => { m.userData.noBatch = true; });
-    this.lift.root.traverse((m) => { m.userData.noBatch = true; });
-    batch.add(this.decor);
-    const lights = this.bakeLights();
-    const bake = (g) => bakeRooms(g, lights, this.ambient());
-    this.decorMeshes = batch.build(this.world, null, { bake });
-    keepUnbatched(this.decor, this.world);
-    this.room.remove(this.decor);
-    // the live pieces get the same baked light once
-    const dynBake = (obj) => {
-      if (!obj) return;
-      obj.updateMatrixWorld(true);
-      obj.traverse((m) => {
-        if (!m.isMesh || !m.geometry.getAttribute('color') || m.material.isMeshBasicMaterial) return;
-        const g = m.geometry.clone().applyMatrix4(m.matrixWorld);
-        bakeRooms(g, lights, this.ambient());
-        m.geometry.setAttribute('color', g.getAttribute('color'));
-        g.dispose();
-      });
-    };
-    for (const o of parts) dynBake(o);
-    dynBake(this.lift.cage);
-    dynBake(this.dyn.chest.group);
-  }
-
-  bakeLights() { return this.lights.map((l) => ({ x: l.x, y: l.y, z: l.z, color: l.color, power: (l.power ?? 0.4) * 1.3, radius: (l.radius ?? 1.2) * 1.15, room: l.room, spill: l.spill })); }
 
   /** Ambient for baking props: dimmer up high and in corners, a warm floor bounce. */
   ambient() {
@@ -649,7 +1028,87 @@ export class StarHouse {
     this.surfaces?.dispose();
     this.vista?.dispose();
     for (const m of this.meshes) { m.geometry.dispose(); m.material.dispose(); }
+    for (const list of Object.values(this.roomMeshes)) for (const m of list) m.geometry.dispose();
   }
+}
+
+// ---------------------------------------------------------------- merging and baking
+/** A light as the bake wants it (a little stronger and wider than the live one, which flickers on top). */
+function bakeLight(l) { return { x: l.x, y: l.y, z: l.z, color: l.color, power: (l.power ?? 0.4) * 1.3, radius: (l.radius ?? 1.2) * 1.15, room: l.room, spill: l.spill }; }
+
+/**
+ * Merge the static voxel meshes under `decor` by material (into < 64 k vertex chunks), bake the
+ * lights into them and pack them: [{ room, q, mt, outline }]. room: the job's room, or null to
+ * file each piece under the room it stands in (the doors between rooms). Marks what it took.
+ */
+function mergeStatic(decor, room, L, amb, transfer) {
+  decor.updateMatrixWorld(true);
+  const groups = new Map();
+  decor.traverse((m) => {
+    if (!m.isMesh || !m.geometry || m.userData.noBatch) return;
+    const g = m.geometry;
+    if (!g.getAttribute('color') || g.getAttribute('uv') || !g.index) return;
+    if (!m.visible || !g.index.count) { m.userData.batched = true; return; }
+    const mt = matDesc(m.material);
+    if (!mt) return;
+    const wg = worldGeo(m, mergeQuads(g));
+    let rid = room;
+    if (!rid) {
+      wg.computeBoundingSphere();
+      const c = wg.boundingSphere.center;
+      rid = (roomAt(c.x, c.z) || nearestRoom(c.x, c.z)).id;
+    }
+    const outline = m.layers.isEnabled(LAYER_OUTLINE);
+    const key = rid + '|' + JSON.stringify(mt) + '|' + (outline ? 1 : 0);
+    let e = groups.get(key);
+    if (!e) groups.set(key, (e = { room: rid, mt, outline, merger: new Merger() }));
+    e.merger.add(wg);
+    m.userData.batched = true;
+  });
+  decor.traverse((m) => { if (m.isMesh && m.userData.batched) m.geometry.dispose(); });
+  const out = [];
+  for (const e of groups.values()) {
+    for (const geo of e.merger.build()) {
+      if (e.mt.k !== 'basic') bakeRooms(geo, L, amb);
+      const q = quantize(geo);
+      if (transfer) qTransfer(q, transfer);
+      out.push({ room: e.room, q, mt: e.mt, outline: e.outline });
+      geo.dispose();
+    }
+    for (const c of e.merger.chunks) for (const g of c.geos) g.dispose();
+  }
+  return out;
+}
+
+/** The room nearest (x, z) (for things in a doorway or a wall). */
+function nearestRoom(x, z) {
+  let best = ROOMS[0], bd = Infinity;
+  for (const r of ROOMS) {
+    const dx = Math.max(r.x0 - x, 0, x - r.x1), dz = Math.max(r.z0 - z, 0, z - r.z1), d = dx * dx + dz * dz;
+    if (d < bd) { bd = d; best = r; }
+  }
+  return best;
+}
+
+/** Bake the lights into a live piece's vertex colors (once, in its place). */
+function dynBake(obj, L, amb) {
+  if (!obj) return;
+  obj.updateMatrixWorld(true);
+  obj.traverse((m) => {
+    if (!m.isMesh || !m.geometry.getAttribute('color') || m.material.isMeshBasicMaterial) return;
+    const g = m.geometry.clone().applyMatrix4(m.matrixWorld);
+    bakeRooms(g, L, amb);
+    m.geometry.setAttribute('color', g.getAttribute('color'));
+    g.dispose();
+  });
+}
+
+/** The flames' flicker (as the fireplace's own update did). */
+function flicker(flames, t) {
+  (flames || []).forEach((m, i) => {
+    const s0 = (m.userData.s0 ||= m.scale.clone());
+    m.scale.set(s0.x * (0.8 + 0.25 * Math.sin(t * 6 + i * 2)), s0.y * (0.5 + 0.55 * Math.abs(Math.sin(t * (4.1 + i * 1.3) + i * 1.7)) + 0.1 * Math.sin(t * 11 + i)), s0.z);
+  });
 }
 
 // ---------------------------------------------------------------- baking by room

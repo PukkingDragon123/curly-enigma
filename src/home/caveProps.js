@@ -226,16 +226,21 @@ export function bellows(seed = 7) {
   const hinge = new THREE.Group();
   hinge.add(tm);
   body.add(hinge);
-  const open = T(18), shut = T(5);
-  const setCompress = (k) => {
-    const h = open + (shut - open) * k;
-    // the top board hinges at x = 0: lift it by angle so its wide end sits h above the bottom
-    hinge.rotation.z = Math.atan2(h, T(L)) * 1.0;
-    lpivot.scale.y = Math.max(0.15, (h / open) * 1.05);
-  };
+  const compress = { open: T(18), shut: T(5), len: T(L) };
+  const setCompress = bellowsCompress([hinge, lpivot], compress);
   setCompress(0);
   obj.userData.noBatchParts = [hinge, lpivot];
-  return { obj, setCompress, handle: { x: T(L + 6), y: T(25 + 14), z: 0 }, parts: [hinge, lpivot] };
+  return { obj, setCompress, handle: { x: T(L + 6), y: T(25 + 14), z: 0 }, parts: [hinge, lpivot], compress };
+}
+
+/** The bellows' squeeze for its parts [hinge, leather pivot]: setCompress(k) 0 open … 1 squeezed. */
+export function bellowsCompress([hinge, lpivot], { open, shut, len }) {
+  return (k) => {
+    const h = open + (shut - open) * k;
+    // the top board hinges at x = 0: lift it by angle so its wide end sits h above the bottom
+    hinge.rotation.z = Math.atan2(h, len) * 1.0;
+    lpivot.scale.y = Math.max(0.15, (h / open) * 1.05);
+  };
 }
 
 // ---------------------------------------------------------------- anvil

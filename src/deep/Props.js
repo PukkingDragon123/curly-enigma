@@ -1,13 +1,12 @@
 // Cave props for the first-person underground: decoration grown procedurally on cave floors,
 // walls and ceilings (deterministic from the world seed + position, so the same props come back),
-// per zone (glowing mushrooms and roots up top, fossils and bones in the clay, crystal clusters
-// and glow-worm threads in the grotto, obsidian, ember vents and charred timbers in the magma,
-// icicles and frozen crystals in the frost, floating void shards at the core), old-miner remnants
-// everywhere (rails, carts, ladders, timber props, rope, lanterns, signposts to Deep Town) and the
-// harvestable cave plants cooking needs. The old miners' lifts (plan.lifts) are always dressed
-// (./props/lifts.js: a dark iron cage skinned over the generator's timber cage, with its grille
-// door, plank floor, lamp and name plaque; plank landings at the shaft stops), and nothing else
-// grows in a lift room or in front of its cage.
+// per zone (glowing mushrooms, shelf fungus and roots up top, fossils and bones in the clay,
+// crystal clusters and glow-worm threads in the grotto, obsidian and ember vents in the magma,
+// icicles and frozen crystals in the frost, floating void shards at the core) and the harvestable
+// cave plants cooking needs. Nothing anybody made: no rails, carts, crates, lanterns or signposts
+// in the caves any more (wave 4; the dungeons and lift stations dress themselves: Ruins.js), and
+// nothing grows in a lift room or in front of its car. (./props/lifts.js, the old iron cage
+// dressing, is no longer used: the stations are stone, planks and rails in the voxels.)
 //
 // Built and dropped per 32³ chunk near the player within a small per-frame budget. Every prop lives
 // in ONE merged, dynamically allocated vertex buffer (one draw call + its outline): each chunk owns
@@ -129,17 +128,20 @@ const TYPES = {
 const PARAM_TYPES = new Set(['crystal', 'crystalC', 'roots', 'vine', 'glowthread', 'icicle', 'shard', 'post', 'ladder', 'rope', 'lanternC']);
 
 // decoration per zone: [type, weight] lists + chances per 1 m cell (floor / ceiling / wall)
+// (wave 4: only what grows or lies there naturally — the glowing mushroom clusters, shelf fungus,
+// roots and vines, bones and fossils, crystals, obsidian, vents, ice; the old miners' crates,
+// barrels, carts, posts, ropes, ladders, lanterns and signs are gone with the miners)
 const DECOR = {
-  1: { floor: [['mush', 3.5], ['post', 0.9], ['bones', 0.3], ['crate', 0.35], ['barrel', 0.25], ['pick', 0.3], ['coil', 0.25], ['ladder', 0.35], ['sign', 0.3], ['urn', 0.1], ['lanternP', 0.3]],
-    ceil: [['roots', 5], ['vine', 2.5], ['rope', 0.35]], wall: [['shelf', 3], ['lantern', 1]], f: 0.13, c: 0.14, w: 0.06 },
-  2: { floor: [['bones', 3], ['urn', 1], ['mush', 1.5], ['post', 1], ['crate', 0.4], ['barrel', 0.3], ['pick', 0.3], ['ladder', 0.35], ['sign', 0.3], ['coil', 0.2], ['lanternP', 0.3]],
-    ceil: [['roots', 2.5], ['vine', 2], ['rope', 0.5]], wall: [['fossil', 4], ['shelf', 0.8], ['lantern', 1]], f: 0.12, c: 0.1, w: 0.12 },
-  3: { floor: [['crystal', 5], ['mush', 1.2], ['post', 0.3], ['crate', 0.15], ['sign', 0.15], ['bones', 0.2], ['lanternP', 0.12]],
-    ceil: [['glowthread', 3], ['crystalC', 2]], wall: [['shelf', 1], ['lantern', 0.5]], f: 0.11, c: 0.12, w: 0.035 },
-  4: { floor: [['obsidian', 3], ['vent', 1.6], ['charred', 2.2], ['bones', 0.4], ['sign', 0.12], ['lanternP', 0.1]],
-    ceil: [['rope', 0.3]], wall: [['lantern', 0.5]], f: 0.12, c: 0.015, w: 0.02 },
-  5: { floor: [['frozen', 3], ['bones', 0.4], ['crate', 0.15], ['sign', 0.1], ['post', 0.2], ['lanternP', 0.1]],
-    ceil: [['icicle', 6]], wall: [['lantern', 0.3]], f: 0.1, c: 0.16, w: 0.02 },
+  1: { floor: [['mush', 6], ['bones', 0.35]],
+    ceil: [['roots', 5], ['vine', 3.5]], wall: [['shelf', 4]], f: 0.12, c: 0.16, w: 0.08 },
+  2: { floor: [['bones', 2.5], ['mush', 3.5]],
+    ceil: [['roots', 2.5], ['vine', 2.5]], wall: [['fossil', 4], ['shelf', 2]], f: 0.12, c: 0.11, w: 0.13 },
+  3: { floor: [['crystal', 5], ['mush', 2.2], ['bones', 0.2]],
+    ceil: [['glowthread', 3], ['crystalC', 2], ['vine', 0.8]], wall: [['shelf', 1.5]], f: 0.11, c: 0.13, w: 0.045 },
+  4: { floor: [['obsidian', 3], ['vent', 2.2], ['bones', 0.4], ['mush', 0.4]],
+    ceil: [], wall: [], f: 0.11, c: 0, w: 0 },
+  5: { floor: [['frozen', 3], ['bones', 0.4], ['mush', 0.4]],
+    ceil: [['icicle', 6]], wall: [['shelf', 0.4]], f: 0.1, c: 0.16, w: 0.012 },
   6: { floor: [['shard', 4], ['obsidian', 1.2], ['crystal', 0.6]],
     ceil: [['crystalC', 1]], wall: [], f: 0.1, c: 0.04, w: 0 },
 };
@@ -160,7 +162,6 @@ const BIO_PLANTS = {
   3: { floor: [['glowcap', 5], ['gloomshroom', 3], ['truffle', 1.2], ['bubblebulb', 2], ['grub', 1.5]], f: 1.6 },
   4: { floor: [['dino_egg', 1.4], ['blindfern', 4], ['ashfern', 2], ['cave_berry', 2], ['grub', 2]], f: 1.3 },
 };
-const CAMP = [0, 0.32, 0.26, 0.16, 0.1, 0.1, 0.05]; // chance per chunk (with room for one) of an old miners' camp
 const CRYSTAL_PALS = { 3: ['violet', 'cyan', 'pink'], 6: ['violet', 'pink', 'cyan'] };
 
 // particle emitters: spawns per second per prop
@@ -386,8 +387,10 @@ export class Props {
     this.chimeT = 0;
     this.murmurT = 0;
     this.stats = { chunks: 0, props: 0, verts: 0, ms: 0, worst: 0, buildMs: 0 };
-    this.lifts = this.plan.lifts || [];
-    this.liftRooms = this.lifts.filter((L) => L.id[0] === 'L');
+    // the lift stations dress themselves now (stone and planks in the voxels, Ruins.js' lift kit):
+    // no cages to skin here, but nothing grows in their rooms (blocked)
+    this.lifts = [];
+    this.liftRooms = (this.plan.lifts || []).filter((L) => L.id[0] === 'L');
     // plan lanterns with nothing to show for them (the old passage); not the stations, lifts or the gate
     this.fixtures = this.plan.lights.filter((l) => l.lantern && !l.mouth && !this.blocked(l.x, l.y, l.z, 0));
     this.bio = this.plan.areas.filter((a) => a.item === 'bioxide');
@@ -551,13 +554,6 @@ export class Props {
     if (!open && !this.fixturesIn(c).length) return;
 
     for (const l of this.fixturesIn(c)) this.placeFixture(c, l);
-    // camps are decided per 4 m block (the chunk at its low corner owns it), as with 4 m chunks
-    const B = Math.max(1, Math.round(4 / CM)), md = (a) => ((a % B) + B) % B;
-    if (!md(ch.cx) && !md(ch.cy) && !md(ch.cz)) {
-      const bx = Math.floor(ch.cx / B), by = Math.floor(ch.cy / B), bz = Math.floor(ch.cz / B);
-      const czone = zoneAt(-((by + 0.5) * 4));
-      if (h3(bx, by, bz, S + 501) < CAMP[czone]) this.placeCamp(c, czone, bx, by, bz, B * CS);
-    }
 
     for (let cz = 0; cz < CPC; cz++) for (let cy = 0; cy < CPC; cy++) for (let cx = 0; cx < CPC; cx++) {
       const gx = ch.cx * CPC + cx, gy = ch.cy * CPC + cy, gz = ch.cz * CPC + cz;
@@ -874,119 +870,6 @@ export class Props {
     if (fy === fy && l.y - fy < 1.6) {
       const vx = Math.floor(l.x * VOX), vz = Math.floor(l.z * VOX);
       this.tryFloor(c, 'lanternP', { lx: vx - c.X0, ly: Math.floor(fy * VOX) - c.Y0, lz: vz - c.Z0 }, vx, Math.floor(fy * VOX), vz, 1, { x: l.x, y: fy, z: l.z, v: hv, fixture: true, noLight: true, loose: true });
-    }
-  }
-
-  /**
-   * An old miners' camp: a run of rails, a cart, bits of gear by the walls, a sign to Deep Town.
-   * Laid out over a 4 m block (BS voxels a side) from the owning chunk's corner.
-   */
-  placeCamp(c, zone, bx, by, bz, BS) {
-    const S = this.seed;
-    const r = rng32(h3i(bx, by, bz, S + 601));
-    const hx = bx * 4, hy = by * 4, hz = bz * 4; // hash seeds for the camp's pieces
-    // stay where the world is surely loaded (this chunk and its neighbours), with room for the checks round each piece
-    const lo = Math.max(1, -CS + v8(6)), hi = Math.min(BS - 2, 2 * CS - v8(7));
-    this.no('campTry');
-    for (let tries = 0; tries < 20; tries++) {
-      const lx = v8(4) + Math.floor(r() * v8(24)), lz = v8(4) + Math.floor(r() * v8(24));
-      let ly = -1;
-      for (let y = hi; y >= lo; y--) {
-        if (c.at(lx, y, lz) === 0 && ground(c.at(lx, y - 1, lz)) && c.fresh(lx, y, lz)) {
-          let open = true;
-          for (let k = 1; k <= VOX; k++) if (c.at(lx, y + k, lz) !== 0) { open = false; break; }
-          if (open) { ly = y; break; }
-        }
-      }
-      if (ly < 0) { this.no('campNoFloor'); continue; }
-      const alongX = r() < 0.5;
-      const ax = alongX ? 1 : 0, az = alongX ? 0 : 1;
-      const yaw = alongX ? 0 : -Math.PI / 2;
-      // rail segments 1 m apart while the floor stays level (±1/8 m)
-      const segs = [];
-      for (const dir of [1, -1]) {
-        let fby = ly;
-        for (let k = dir === 1 ? 0 : 1; k < 4; k++) {
-          const sx = lx + ax * VOX * k * dir, sz = lz + az * VOX * k * dir;
-          if (sx < lo || sz < lo || sx > hi || sz > hi) break;
-          let fy = -1;
-          for (const dy of DY3) if (c.at(sx, fby + dy, sz) === 0 && ground(c.at(sx, fby + dy - 1, sz)) && this.clear(c, sx, fby + dy, sz, 1)) { fy = fby + dy; break; }
-          if (fy < 0 || !c.fresh(sx, fy, sz)) break;
-          const x = (c.X0 + sx + 0.5) / VOX, y = (c.Y0 + fy) / VOX, z = (c.Z0 + sz + 0.5) / VOX;
-          if (this.blocked(x, y, z, 0.8)) break;
-          const end = (sg) => this.solid(x + ax * 0.45 * sg, y - 0.5 / VOX, z + az * 0.45 * sg) || this.solid(x + ax * 0.45 * sg, y - 0.19, z + az * 0.45 * sg);
-          if (!end(1) || !end(-1)) break;
-          // the sleepers rest on the highest bumps under them (never buried in the floor)
-          let top = y;
-          for (const t of [-0.4, -0.2, 0.2, 0.4]) {
-            for (let q = v8(1); q >= 1; q--) {
-              if (this.solid(x + ax * t, y + (q - 0.5) / VOX, z + az * t) && !this.solid(x + ax * t, y + 0.19, z + az * t)) { top = Math.max(top, y + q / VOX); break; }
-            }
-          }
-          segs.push({ x, y: top, z, sx, sz, fy });
-          fby = fy;
-        }
-      }
-      if (segs.length < 2) { this.no('campShort'); continue; }
-      this.no('campOk');
-      for (const sg of segs) {
-        const v = r() < 0.2 ? 1 : 0;
-        this.make(c, 'rail', v, 0, sg.x, sg.y, sg.z, yaw, 'floor', Math.floor(sg.x * VOX), Math.floor(sg.y * VOX) - 1, Math.floor(sg.z * VOX), r());
-      }
-      const mid = segs[Math.floor(r() * segs.length)];
-      if (r() < 0.55 && this.headM(mid.x, mid.y + 0.5 / VOX, mid.z, 1.25) >= 1.12) {
-        this.make(c, 'cart', 0, 0, mid.x, mid.y, mid.z, yaw + (r() < 0.5 ? Math.PI : 0), 'floor', Math.floor(mid.x * VOX), Math.floor(mid.y * VOX) - 1, Math.floor(mid.z * VOX), r());
-        c.occ.push([mid.x, mid.z, 0.6]);
-      } else {
-        // tipped over beside the track, its load spilt
-        const side = r() < 0.5 ? 1 : -1;
-        const x = mid.x + az * 1.0 * side, z = mid.z + ax * 1.0 * side;
-        const fy = this.floorNear(x, mid.y, z);
-        if (fy === fy && this.fitFloor(x, fy, z, 0.45, 0.8) && !this.blocked(x, fy, z, 0.7)) {
-          this.make(c, 'cart', 1, 0, x, fy, z, Math.atan2(az * side, ax * side) + (r() - 0.5) * 0.6, 'floor', Math.floor(x * VOX), Math.floor(fy * VOX) - 1, Math.floor(z * VOX), r());
-          c.occ.push([x, z, 0.65]);
-        }
-      }
-      for (const sg of segs) c.occ.push([sg.x, sg.z, 0.35]);
-      // a sign at the end of the track
-      const end = segs[segs.length - 1];
-      const sx = end.x - az * 0.7, sz = end.z + ax * 0.7;
-      const sy = this.floorNear(sx, end.y, sz);
-      if (sy === sy) this.tryFloor(c, 'sign', { lx: end.sx, ly: end.fy, lz: end.sz }, hx, hy + 1, hz, zone, { x: sx, y: sy, z: sz });
-      // gear by the walls round about
-      const gear = ['crate', 'barrel', 'post', 'pick', 'coil', 'ladder', 'crate', 'post'];
-      for (let k = 0; k < 6; k++) {
-        const qx = Math.max(lo, Math.min(hi, lx + Math.round((r() - 0.5) * v8(22)))), qz = Math.max(lo, Math.min(hi, lz + Math.round((r() - 0.5) * v8(22))));
-        let qy = -1;
-        for (let y = Math.min(hi - 1, ly + v8(6)); y >= Math.max(lo, ly - v8(6)); y--) if (c.at(qx, y, qz) === 0 && ground(c.at(qx, y - 1, qz)) && c.at(qx, y + 1, qz) === 0) { qy = y; break; }
-        if (qy < 0 || !c.fresh(qx, qy, qz)) continue;
-        this.tryFloor(c, gear[Math.floor(r() * gear.length)], { lx: qx, ly: qy, lz: qz }, hx + k, hy + 7, hz - k, zone);
-      }
-      // a lantern post beside the track
-      {
-        const end0 = segs[0], side = r() < 0.5 ? 1 : -1;
-        const px = end0.x + az * 0.75 * side, pz = end0.z + ax * 0.75 * side;
-        const py = this.floorNear(px, end0.y, pz);
-        if (py === py) this.tryFloor(c, 'lanternP', { lx: end0.sx, ly: end0.fy, lz: end0.sz }, hx + 3, hy + 11, hz, zone, { x: px, y: py, z: pz, yaw: yaw + (side > 0 ? 0 : Math.PI) });
-      }
-      // and a lantern on a wall
-      for (let k = 0; k < 4; k++) {
-        const d = (k + Math.floor(r() * 4)) & 3;
-        const dx = d === 0 ? 1 : d === 1 ? -1 : 0, dz = d === 2 ? 1 : d === 3 ? -1 : 0;
-        const wy = ly + v8(13) + Math.floor(r() * v8(3));
-        if (wy > hi + CS - 2) continue;
-        let found = null;
-        for (let j = 1; j <= v8(24); j++) {
-          const qx = lx + dx * j, qz = lz + dz * j;
-          if (!c.reach(qx + dx * v8(4), wy, qz + dz * v8(4))) break;
-          const m = c.at(qx, wy, qz);
-          if (m === 0) continue;
-          if (ground(m)) found = { lx: qx - dx, ly: wy, lz: qz - dz, dx, dz };
-          break;
-        }
-        if (found && this.tryWall(c, 'lantern', found, hx + k, hy + 9, hz, zone)) break;
-      }
-      return;
     }
   }
 

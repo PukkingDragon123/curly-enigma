@@ -1,6 +1,6 @@
 // Helpers for the journey intro: Nugget's walking coop (the real model from src/gfx/char/coop.js
-// when it exists, a simple stand-in otherwise), synthesized forest sounds (birdsong, a heartbeat)
-// and the muffled hearing of someone who has just been knocked out.
+// when it exists, a simple stand-in otherwise), a heartbeat, and the muffled hearing of someone who
+// has just been knocked out. (The forest's own sounds are in forest/sound.js.)
 import * as THREE from 'three';
 import { VoxelGrid, voxMesh } from './vox.js';
 
@@ -84,19 +84,6 @@ function makeStandInCoop({ height = 1.1 } = {}) {
 }
 
 // ------------------------------------------------------------------ sounds
-/** A little songbird phrase (a few rising and falling whistles), panned. */
-export function birdsong(audio, { pan = 0, pitch = 1, vol = 0.03 } = {}) {
-  const n = 3 + ((Math.random() * 4) | 0);
-  let at = 0;
-  const base = (2600 + Math.random() * 1400) * pitch;
-  for (let i = 0; i < n; i++) {
-    const f = base * (1 + (Math.random() - 0.4) * 0.35);
-    const up = Math.random() < 0.5;
-    audio.tone({ f, f2: f * (up ? 1.35 : 0.72), type: 'sine', dur: 0.07 + Math.random() * 0.06, vol, a: 0.005, release: 0.04, delay: at, pan, reverb: 0.35 });
-    at += 0.09 + Math.random() * 0.08;
-  }
-}
-
 /** One heartbeat (lub-dub), low enough to come through the muffle. */
 export function heartbeat(audio, vol = 0.45) {
   audio.tone({ f: 62, f2: 40, type: 'sine', dur: 0.13, vol, a: 0.004, release: 0.12 });

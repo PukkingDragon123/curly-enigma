@@ -8,6 +8,7 @@ import { voxelMaterial } from '../gfx/Voxel.js';
 import { clamp } from '../core/util.js';
 import { GLSL_BAYER } from './fx.js';
 import { MF } from './meadowfx.js';
+import { FA, GLSL_FA } from './forest/atmos.js';
 
 /** Canopy openness over the forest box (0 = deep shade, 1 = open sky), sampled by the shaders. */
 export const FF = {
@@ -68,12 +69,18 @@ float ffSun(vec3 w) {
 
 const cache = new Map();
 /**
- * The forest's toon material: the sun is dappled by the canopy (dapple: true), optional wind sway
- * (amplitude grows above swayBase metres) and leaf shimmer (cell = voxels per metre).
+ * The forest's toon material: the sun is dappled by the canopy (dapple: true), the sky light
+ * dims under the canopy (always), the forest's fog (faApply), optional wind sway of tree crowns
+ * (amplitude grows above swayBase metres of world height) or of plants (swayLocal: amplitude grows
+ * over that many metres of the plant's own height, swayAmp metres at the top), leaf shimmer
+ * (cell = voxels per metre) and backlit translucency (leaves glow when the low sun is behind them).
  */
-export function forestToon({ dapple = true, sway = 0, swayBase = 1.2, shimmer = 0, cell = 10, tint = null } = {}) {
-  const key = `${dapple}|${sway}|${swayBase}|${shimmer}|${cell}|${tint}`;
+export function forestToon({ dapple = true, sway = 0, swayBase = 1.2, swayLocal = 0, swayAmp = 0.08, shimmer = 0, cell = 10, backlit = 0, tint = null, emissive = 0 } = {}) {
+  const key = `${dapple}|${sway}|${swayBase}|${swayLocal}|${swayAmp}|${shimmer}|${cell}|${backlit}|${tint}|${emissive}`;
   if (cache.has(key)) return cache.get(key);
+  // (the shimmer's cell size is a uniform, so leaves at every level of detail share one program)
+  const progKey = `${dapple}|${sway}|${swayBase}|${swayLocal}|${swayAmp}|${shimmer}|${backlit}|${tint}|${emissive}`;
+  const uCell = { value: cell };
   const m = voxelMaterial('toon').clone();
   m.userData = {};
   if (tint) m.color.set(tint);
@@ -81,42 +88,64 @@ export function forestToon({ dapple = true, sway = 0, swayBase = 1.2, shimmer = 
     sh.uniforms.uTime = MF.uTime;
     sh.uniforms.uWind = MF.uWind;
     sh.uniforms.uCloud = MF.uCloud;
+    sh.uniforms.uKey = MF.uKey;
+    sh.uniforms.uCell = uCell;
     sh.uniforms.uOpen = FF.uOpen;
     sh.uniforms.uOpenBox = FF.uOpenBox;
     sh.uniforms.uDapple = FF.uDapple;
     sh.uniforms.uShade = FF.uShade;
+    Object.assign(sh.uniforms, FA);
     sh.vertexShader = 'uniform float uTime;\nuniform vec2 uWind;\nvarying vec3 vFfW;\n' + sh.vertexShader.replace('#include <project_vertex>', /* glsl */`
       #ifdef USE_INSTANCING
       vec4 ffW = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
+      vec3 ffO = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
       #else
       vec4 ffW = modelMatrix * vec4(transformed, 1.0);
+      vec3 ffO = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
       #endif
       ${sway ? /* glsl */`
       float ffH = smoothstep(${swayBase.toFixed(2)}, ${(swayBase + 4.0).toFixed(2)}, ffW.y);
       float ffP = dot(ffW.xz, uWind) * 0.21 - uTime * 0.9;
       float ffG = 0.6 + 0.4 * sin(dot(ffW.xz, vec2(0.04, 0.07)) - uTime * 0.35);
       ffW.xz += uWind * (sin(ffP) * 0.07 + sin(ffP * 2.3 + ffW.y * 1.1) * 0.03) * ffH * ffG * ${sway.toFixed(2)};` : ''}
+      ${swayLocal ? /* glsl */`
+      float ffLh = clamp((ffW.y - ffO.y) / ${swayLocal.toFixed(2)}, 0.0, 1.5);
+      float ffLp = dot(ffO.xz, uWind) * 0.45 - uTime * 1.6;
+      float ffLg = 0.55 + 0.45 * sin(dot(ffO.xz, vec2(0.07, 0.11)) - uTime * 0.6);
+      vec2 ffLs = uWind * (sin(ffLp) * 0.7 + sin(ffLp * 2.3 + ffO.x * 3.0) * 0.3 + 0.3) * ffLg * ${swayAmp.toFixed(3)} * ffLh * ffLh;
+      ffW.xz += ffLs;
+      ffW.y -= dot(ffLs, ffLs) * 2.0;` : ''}
       vFfW = ffW.xyz;
       vec4 mvPosition = viewMatrix * ffW;
       gl_Position = projectionMatrix * mvPosition;`);
     let fs = sh.fragmentShader;
-    fs = fs.replace('#include <common>', '#include <common>\nvarying vec3 vFfW;\n' + GLSL_BAYER + (dapple ? GLSL_DAPPLE : 'uniform float uTime;\nuniform vec2 uWind;\n') + '\n');
-    if (dapple) {
-      fs = fs.replace('#include <lights_fragment_begin>', THREE.ShaderChunk.lights_fragment_begin.replace(
-        'getDirectionalLightInfo( directionalLight, directLight );',
-        'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= ffSun(vFfW);',
-      ));
-    }
+    fs = fs.replace('#include <common>', '#include <common>\nvarying vec3 vFfW;\nuniform vec3 uKey;\nuniform float uCell;\n' + GLSL_BAYER + GLSL_DAPPLE + GLSL_FA + '\n');
+    fs = fs.replace('#include <lights_fragment_begin>', THREE.ShaderChunk.lights_fragment_begin.replace(
+      'getDirectionalLightInfo( directionalLight, directLight );',
+      dapple ? 'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= ffSun(vFfW);' : 'getDirectionalLightInfo( directionalLight, directLight );',
+    ));
+    // under the canopy the sky light is dimmer (and a touch greener); out in the open it is full
+    fs = fs.replace('#include <lights_fragment_end>', /* glsl */`#include <lights_fragment_end>
+      float ffOp = ffOpen(vFfW);
+      reflectedLight.indirectDiffuse *= mix(uFaShadeAmb, 1.0, ffOp) * mix(vec3(0.94, 1.0, 0.92), vec3(1.0), ffOp);
+      ${backlit ? /* glsl */`
+      {
+        vec3 ffV = normalize(vFfW - cameraPosition);
+        float ffB = pow(max(dot(ffV, uFaSun), 0.0), 5.0);
+        reflectedLight.directDiffuse += diffuseColor.rgb * uKey * ffB * ${backlit.toFixed(2)} * (0.35 + 0.65 * ffSun(vFfW));
+      }` : ''}
+      ${emissive ? `reflectedLight.directDiffuse += diffuseColor.rgb * ${emissive.toFixed(2)};` : ''}`);
     if (shimmer) {
       fs = fs.replace('#include <color_fragment>', /* glsl */`#include <color_fragment>
-        vec3 ffC = floor(vFfW * ${cell.toFixed(1)} + 0.002);
+        vec3 ffC = floor(vFfW * uCell + 0.002);
         float ffR = fract(sin(dot(ffC, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
         float ffF = sin(uTime * (1.2 + ffR * 2.0) + ffR * 40.0 + dot(ffC.xz, uWind) * 0.1);
         diffuseColor.rgb *= 1.0 + ${shimmer.toFixed(2)} * (step(0.94, ffF) * 0.3 - step(ffF, -0.95) * 0.15);`);
     }
+    fs = fs.replace('#include <fog_fragment>', '#ifdef USE_FOG\n gl_FragColor.rgb = faApply(gl_FragColor.rgb, vFfW);\n#endif');
     sh.fragmentShader = fs;
   };
-  m.customProgramCacheKey = () => 'forest-toon-' + key;
+  m.customProgramCacheKey = () => 'forest-toon3-' + progKey;
   cache.set(key, m);
   return m;
 }
@@ -143,6 +172,7 @@ varying vec3 vW;
 varying vec2 vF;
 ${GLSL_BAYER}
 ${GLSL_DAPPLE}
+${GLSL_FA}
 float h1(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
 void main() {
   // a 1/16 m grid so every ripple is a crisp pixel on the voxel scale
@@ -178,8 +208,7 @@ void main() {
   col = mix(col, uFoam, foam * 0.85);
   float a = mix(0.7, 0.95, depth);
   if (bk_bayer4(gl_FragCoord.xy) > a + 0.08) discard;
-  float d = length(vW - uCam);
-  col = mix(col, uFogColor, smoothstep(uFogNear, uFogFar, d));
+  col = faApply(col, vW);
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
 }`;
@@ -227,9 +256,11 @@ export function makeStream(pts, w, rocks = []) {
       uCloud: MF.uCloud, uWind: MF.uWind, uOpen: FF.uOpen, uOpenBox: FF.uOpenBox, uDapple: FF.uDapple, uShade: FF.uShade,
       uDeep: { value: new THREE.Color(0x1e4a46) }, uShallow: { value: new THREE.Color(0x4a8a6e) }, uFoam: { value: new THREE.Color(0xe8f4ec) },
       uSpeed: { value: 0.55 }, uRocks: { value: rk },
+      ...FA,
     },
     vertexShader: STREAM_VERT,
     fragmentShader: STREAM_FRAG,
+    side: THREE.DoubleSide, // (the ribbon's winding faces down; it was culled from above)
   });
   const m = new THREE.Mesh(g, mat);
   m.renderOrder = 2;

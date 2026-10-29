@@ -22,12 +22,14 @@ import { broom, firewood, letterCrate, ragRug } from '../iso/homeDecor.js';
 import { bedsideTable, wardrobe, pottedPlant, nestCorner } from '../home/houseProps.js';
 import { FURNITURE } from '../data/furniture.js';
 import { ITEMS } from '../data/items.js';
-import { iconURL } from '../gfx/PixelArt.js';
+import { iconURL, iconCanvas } from '../gfx/PixelArt.js';
 import { el, rand, pick, clamp } from '../core/util.js';
 import { T, CEIL, HALL, ARCH, SHAFT, FRONT, HOLE, STAIRS, floorAt } from '../home/units.js';
 import { HomeShell } from '../home/shell.js';
 import { StarHouse, SPOTS } from '../home/house.js';
-import { ROOM, roomAt, doorAt } from '../home/plan.js';
+import { loadHouse, dropHouseCache } from '../home/houseLoad.js';
+import { houseLoading } from '../home/loading.js';
+import { ROOM, roomAt, doorAt, onTerrace } from '../home/plan.js';
 import { BoxWorld } from '../fps/FPSKit.js';
 import { liftBoxes, LIFT } from '../home/lift.js';
 import { FPGlow } from '../home/glow.js';
@@ -37,6 +39,8 @@ import { relocateBlocked, besideItem } from '../home/layoutfix.js';
 import { HomeMoves } from '../home/moves.js';
 import { HomeLiving } from '../home/living.js';
 import { WorkshopLife } from '../home/workshop.js';
+import { HouseLife } from '../home/houseLife.js';
+import { RoomCull } from '../home/rooms.js';
 import { HomeLessons } from '../home/lessons.js';
 import { HomeWake } from '../home/wake.js';
 import { OldStar } from '../home/oldstar.js';
@@ -75,10 +79,14 @@ export default class HomeScene extends Scene {
     const marks = {};
     let tm = t0;
     const mark = (k) => { const n = performance.now(); marks[k] = Math.round(n - tm); tm = n; };
-    // UI icons are canvases read back as data URLs: make the build button's now, while the GPU is idle
-    // (later, a readback waits for the cave's first heavy frames: seconds on software GL)
-    this.buildIconURL = iconURL('chair_wood');
+    // UI icons are canvases read back as data URLs: the build button's is read back without waiting
+    // (a data URL would stall until the GPU has drawn everything queued: seconds on software GL)
+    this.buildIconURL = null;
+    try { iconCanvas('chair_wood').toBlob((b) => { if (!b) return; this.buildIconURL = URL.createObjectURL(b); if (this.hammerImg) this.hammerImg.src = this.buildIconURL; }); } catch (e) { this.buildIconURL = iconURL('chair_wood'); }
     const from = params.from || 'continue';
+    // the wait while the house is built (or put back together): src/home/loading.js
+    const loading = this.loading = houseLoading(g, { dark: from === 'fall' || from === 'newgame' });
+    this.own(() => loading.done());
     this.arrivalLesson = params.lesson || null; // cooking { tutorial } comes back with lesson: 'cook_done' | 'cook'
     this.from = from;
     st.flag('lastScene', 'home');
@@ -90,6 +98,22 @@ export default class HomeScene extends Scene {
     if (!st.flag('boards')) {
       st.flag('boards', true);
       if (!Object.keys(d.home.floor).length) { const [w0, d0] = roomSize(d.home.level); for (let y = 0; y < d0; y++) for (let x = 0; x < w0; x++) d.home.floor[x + ',' + y] = 'floor_plank'; }
+    }
+    // [house4] saves from before the house was a house kept bare earth wherever nobody had painted
+    // (a tile or two painted was enough to skip the boards above), and a room grown since has bare
+    // earth in its new tiles: boards over all the earth once, then over each new strip when it grows
+    {
+      const [w0, d0] = roomSize(d.home.level);
+      const was = st.flag('house4') ? String(d.home.boarded || '0x0').split('x').map(Number) : [0, 0];
+      if (was[0] < w0 || was[1] < d0) {
+        for (let y = 0; y < d0; y++) for (let x = 0; x < w0; x++) {
+          if (x < was[0] && y < was[1]) continue;
+          const k = x + ',' + y;
+          if (!d.home.floor[k] || d.home.floor[k] === 'floor_dirt') d.home.floor[k] = 'floor_plank';
+        }
+        d.home.boarded = w0 + 'x' + d0;
+        st.flag('house4', true);
+      }
     }
     starData(st);
     // Old Star's forge and hearth are in the cave now: the room's own come out of the save
@@ -114,19 +138,21 @@ export default class HomeScene extends Scene {
     this.notes = loadNotes();
     mark('prep');
 
-    // ---- your room (tile units, scaled to meters) and Old Star's house
+    // ---- your room (tile units, scaled to meters) and Old Star's house: the house and your room's
+    // walls are built in workers and kept between visits (src/home/houseLoad.js), the rest of your
+    // room here meanwhile; nothing renders until it's all in (see render())
+    const built = loadHouse({ doorOpen: this.doorOpen, notes: this.notes.length, W, D, wallId: d.home.wall }, (p) => loading.set(p));
     this.room = new THREE.Group();
     this.room.scale.setScalar(T);
     this.scene.add(this.room);
     this.shell = new HomeShell(this.room, this.scene);
-    this.shell.build(W, D, d.home.wall, d.home.floor, { tunnels: [] });
+    await this.shell.build(W, D, d.home.wall, d.home.floor, { tunnels: [], surf: built.then((b) => b.shell) });
     this.own(() => this.shell.dispose());
-    // the build is long on slow machines: breathe between its steps (nothing renders yet: no rig)
-    const pause = () => new Promise((r) => setTimeout(r, 0));
-    await pause();
+    const house = await built;
     // (it keeps its old name: `cave` is the house)
-    this.cave = this.house = new StarHouse(this.room, this.scene);
-    await this.cave.build({ doorOpen: this.doorOpen, notes: this.notes.length }, pause);
+    this.cave = this.house = StarHouse.assemble(this.room, this.scene, house.jobs, house.vista);
+    this.cave.buildMs = house.ms;
+    this.cave.workers = house.workers;
     this.own(() => this.cave.dispose());
     this.lift = this.cave.lift;
     this.holeTop = HALL.y + ROOM.living.h;
@@ -175,10 +201,12 @@ export default class HomeScene extends Scene {
     this.own(() => this.chest.dispose());
     this.shaftBox = [SHAFT.x0 - 0.14, HALL.y, SHAFT.z0, SHAFT.x1, HALL.y + 1.4, SHAFT.z1];
     this.addCaveInteractions();
+    this.addHouseInteractions();
     this.addIt({ box: [SHAFT.x0 - 0.24, HALL.y + 0.5, SHAFT.z0 - 0.22, SHAFT.x0, HALL.y + 1.05, SHAFT.z0], label: () => (this.lessonStage() === 'mine' ? 'Ride down to the dig' : 'Ride the lift'), action: () => this.useLift() });
     mark('furniture');
     this.rebuildCollision();
     mark('collision');
+    this.cull = new RoomCull(this);
     this.buildStarGrid();
     mark('starGrid');
     this.refreshPins();
@@ -220,7 +248,7 @@ export default class HomeScene extends Scene {
     this.ambientLoop('forge_fire', () => this.nearPointVol(F, 4.0, 0.36 + (this.forgeAir || 0) * 0.3) * this.sameRoomK(F));
     this.ambientLoop('fire', () => this.nearPointVol(H, 3.6, 0.3) * this.sameRoomK(H) + this.nearPointVol(FP, 4.6, 0.42) * this.sameRoomK(FP) + this.nearKindVol('fireplace', 3, 0.4));
     this.ambientLoop('water', () => this.nearPointVol(P, 1.2, 0.05) + this.nearKindVol('fountain', 2.5, 0.22) + this.nearKindVol('fish_tank', 1.5, 0.08));
-    this.ambientLoop('wind', () => (this.rig.player.pos.z < HALL.z1 ? 0.02 : 0.012));
+    this.ambientLoop('wind', () => { const p = this.rig.player.pos; return onTerrace(p.x, p.z) ? 0.14 : this.inBedroom(p.x, p.z) ? 0.012 : 0.02; });
     mark('loops');
     this.own(() => { for (const l of this.loops) if (l.h) l.h.stop(0.1); });
     this.own(() => { for (const k of this.anchors.keys()) g.ui.hideBubble(k); g.ui.setHints(null); g.ui.tutor?.hide(); });
@@ -252,6 +280,7 @@ export default class HomeScene extends Scene {
     const r = g.engine?.renderer;
     if (r && r.compileAsync) { try { await r.compileAsync(this.scene, this.camera); } catch (e) { console.warn(e); } }
     this.entered = true;
+    loading.done();
   }
 
   /** A hello from Old Star when you come home after the lessons (not every time). */
@@ -376,16 +405,19 @@ export default class HomeScene extends Scene {
     return !!this.blockedTiles?.has(tx + ',' + ty);
   }
 
+  /** Is (x, z) (m) in your room (or its doorway down to the house)? The larder lies beside it, west. */
+  inBedroom(x, z) { return z >= HALL.z1 - 1e-4 && x > -0.3 && x < (this.W || 10) * T + 0.3; }
+
   /** Floor height under (x, z) meters: your room, the steps, the house's floors, the lift cage. */
   floorY(x, z) {
     if (this.inCage({ x, z })) return HALL.y + (this.lift?.cageY || 0) * T;
-    if (z >= HALL.z1 - 1e-4 || (x >= STAIRS.x0 && x <= STAIRS.x1 && z >= STAIRS.z0)) return floorAt(x, z);
+    if (this.inBedroom(x, z) || (x >= STAIRS.x0 && x <= STAIRS.x1 && z >= STAIRS.z0)) return floorAt(x, z);
     return this.cave ? this.cave.ground(x, z) : HALL.y;
   }
 
   /** Is (x, z) (m) on a floor you can stand on: your room, the house's rooms and doorways, the steps? */
   onFloor(x, z) {
-    if (z >= HALL.z1 - 1e-4) return x > 0.25 && z > 0.25 && x < this.W * T - 0.25 && z < this.D * T - 0.25 || (Math.abs(x - ARCH.x) < ARCH.hw && z < 0.3);
+    if (this.inBedroom(x, z)) return x > 0.25 && z > 0.25 && x < this.W * T - 0.25 && z < this.D * T - 0.25 || (Math.abs(x - ARCH.x) < ARCH.hw && z < 0.3);
     if (x >= STAIRS.x0 && x <= STAIRS.x1 && z >= STAIRS.z0) return true;
     return !!(roomAt(x, z) || doorAt(x, z));
   }
@@ -395,14 +427,15 @@ export default class HomeScene extends Scene {
     const Wm = W * T, Dm = D * T, z1 = HALL.z1;
     w.clear();
     // your room: floor (and the arch's threshold), ceiling, walls
-    w.add(-2, -1, z1, Wm + 2, 0, Dm + 2, 'shell');
-    w.add(-2, CEIL, -0.01, Wm + 2, CEIL + 1, Dm + 2, 'shell');
+    // (west of your room is rock, then the larder from x = -1.4: these stop short of it)
+    w.add(-0.9, -1, z1, Wm + 2, 0, Dm + 2, 'shell');
+    w.add(-0.9, CEIL, -0.01, Wm + 2, CEIL + 1, Dm + 2, 'shell');
     const ax0 = ARCH.x - ARCH.hw, ax1 = ARCH.x + ARCH.hw;
-    w.add(-2, -1, z1, ax0, CEIL + 1, 0, 'shell');
+    w.add(-0.3, -1, z1, ax0, CEIL + 1, 0, 'shell');
     w.add(ax1, -1, z1, Wm + 2, CEIL + 1, 0, 'shell');
     w.add(ax0, ARCH.h, z1, ax1, CEIL + 1, 0, 'shell');
-    w.add(-2, -1, Dm, Wm + 2, CEIL + 1, Dm + 2, 'shell');
-    w.add(-2, -1, 0, 0, CEIL + 1, Dm + 2, 'shell');
+    w.add(-0.9, -1, Dm, Wm + 2, CEIL + 1, Dm + 2, 'shell');
+    w.add(-0.9, -1, 0, 0, CEIL + 1, Dm + 2, 'shell');
     w.add(Wm, -1, 0, Wm + 2, CEIL + 1, Dm + 2, 'shell');
     // corner posts, the build bench
     for (const [x0, z0] of [[0, 0], [Wm - 0.1875, 0], [0, Dm - 0.1875], [Wm - 0.1875, Dm - 0.1875]]) w.add(x0, 0, z0, x0 + 0.1875, CEIL, z0 + 0.1875, 'shell');
@@ -467,7 +500,7 @@ export default class HomeScene extends Scene {
   }
 
   stepMatAt(x, z) {
-    if (z < 0) {
+    if (!this.inBedroom(x, z) || z < 0) {
       if (z > STAIRS.z0 - 0.05 && x >= STAIRS.x0 && x <= STAIRS.x1) return 'stone';
       if (this.inCage({ x, z })) return 'wood';
       const r = roomAt(x, z);
@@ -648,7 +681,7 @@ export default class HomeScene extends Scene {
     this.ray.set(eye, f);
     this.ray.far = reach;
     let best = null, bt = reach;
-    if (eye.z > -0.4) for (const rec of this.items.values()) {
+    if (eye.z > -0.4 && eye.x > -0.4) for (const rec of this.items.values()) {
       const b = rec.bbox;
       const t = rayBox3(eye, f, b.min.x - 0.03, -0.01, b.min.z - 0.03, b.max.x + 0.03, b.max.y + 0.03, b.max.z + 0.03);
       if (t === null || t >= bt) continue;
@@ -739,7 +772,7 @@ export default class HomeScene extends Scene {
   /** A small hammer button (desktop: shows the X key; touch: tap to decorate). */
   hammerBtn() {
     const b = el('button', { class: 'btn interactive', title: 'Build mode (X)', 'aria-label': 'Decorate', style: { position: 'absolute', right: 'calc(var(--sar, 0px) + var(--px) * 4)', top: 'calc(var(--sat, 0px) + var(--px) * 44)', display: 'flex', alignItems: 'center', gap: 'calc(var(--px) * 2)', fontSize: '1em', pointerEvents: 'auto', zIndex: 4 }, onclick: (e) => { e.stopPropagation(); this.toggleBuildHere(); } }, [
-      el('img', { class: 'pix', src: this.buildIconURL || iconURL('chair_wood'), alt: '', style: { width: 'var(--icon-s, 32px)', height: 'var(--icon-s, 32px)' } }), el('kbd', { style: { margin: 0 } }, 'X'),
+      (this.hammerImg = el('img', { class: 'pix', src: this.buildIconURL || 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', alt: '', style: { width: 'var(--icon-s, 32px)', height: 'var(--icon-s, 32px)' } })), el('kbd', { style: { margin: 0 } }, 'X'),
     ]);
     // in the HUD layer: above the "click to look around" catcher, so it works with a free mouse
     this.game.ui.hud.append(b);
@@ -748,7 +781,7 @@ export default class HomeScene extends Scene {
 
   /** Build mode from the hammer / X: it's your room you decorate, up the steps. */
   toggleBuildHere() {
-    if (!this.build.active && this.rig.player.pos.z < HALL.z1 - 0.05) {
+    if (!this.build.active && !this.inBedroom(this.rig.player.pos.x, this.rig.player.pos.z + 0.05)) {
       this.game.audio.play('ui_error', { vol: 0.5 });
       this.think('This is Old Star\'s house. I\'ll do my decorating up the steps, in my own room.', 3);
       return;
@@ -776,9 +809,11 @@ export default class HomeScene extends Scene {
         if (!this.build.active && inp.pressed('KeyQ')) this.snack();
       }
     }
+    this.game.convo?.director?.apply(this.camera, dt); // cutscene talk camera (src/fx/director.js) [convo hook]
     this.build.update(dt);
     this.shell.hearth?.update?.(this.time);
     this.tickCave(dt);
+    this.tickHouseLife(dt);
     this.tickAmbience(dt);
     this.tickWakeFx(dt);
     // furniture life
@@ -798,7 +833,7 @@ export default class HomeScene extends Scene {
       // just inside, by the steps up to the arch
       const P = this.rig.player;
       let who = P;
-      if (P.pos.z < 0.35) {
+      if (P.pos.z < 0.35 || !this.inBedroom(P.pos.x, P.pos.z)) {
         const st0 = (this.nugStandIn ||= { pos: new THREE.Vector3(), yaw: 0 });
         st0.pos.set(THREE.MathUtils.clamp(P.pos.x, 0.7, this.W * T - 0.7), P.pos.y, 1.05);
         st0.yaw = P.yaw;
@@ -864,6 +899,7 @@ export default class HomeScene extends Scene {
     // (nothing to see until enter() is done: the transition's black covers it, and a frame of the
     // half-built cave is pure cost while it loads)
     if (!this.rig || !this.entered) return;
+    this.cull?.update(this.camera); // only the rooms in view (src/home/rooms.js)
     if (this.hidePaws) this.game.engine.render(this.scene, this.camera, this.post);
     else this.rig.render(this.post);
   }
@@ -954,12 +990,15 @@ export default class HomeScene extends Scene {
     this.hammer?.remove();
     for (const n of document.querySelectorAll('.loot-fly')) n.remove();
     if (this.chest?.busy) this.game.ui.status?.pin?.(false);
+    // the built house is kept for coming back (~80 MB of buffers): not on a phone or a small device,
+    // where the mine needs the memory more than the house needs the seconds
+    try { if ((navigator.deviceMemory || 8) <= 4 || matchMedia('(pointer: coarse)').matches) dropHouseCache(); } catch (e) { /* keep it */ }
     super.exit();
   }
 }
 
 // the lift and the passage (src/home/moves.js); living in your room (living.js); the workshop
 // (workshop.js); the lessons (lessons.js); waking up (wake.js)
-for (const M of [HomeMoves, HomeLiving, WorkshopLife, HomeLessons, HomeWake]) {
+for (const M of [HomeMoves, HomeLiving, WorkshopLife, HouseLife, HomeLessons, HomeWake]) {
   for (const k of Object.getOwnPropertyNames(M.prototype)) if (k !== 'constructor') Object.defineProperty(HomeScene.prototype, k, Object.getOwnPropertyDescriptor(M.prototype, k));
 }

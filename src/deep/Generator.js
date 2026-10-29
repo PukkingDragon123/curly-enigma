@@ -7,10 +7,12 @@ import { M, VOX, VK, ORE_BASE } from './materials.js';
 import { ORE_ID, ORE_SPAWN } from '../data/ores.js';
 import { makeRng, clamp } from '../core/util.js';
 import { stampPrologue, PROLOGUE_BB, prologueLayout, prologueInside } from './gen/prologue.js';
-import { stampTrail, trailBB, trailLanterns, TRAIL_W, TRAIL_H } from './gen/trails.js';
 import { stampBurrow, burrowBB, burrowDoor } from './gen/burrows.js';
-import { stampRuin, ruinBB, ruinDoor } from './gen/ruins.js';
+import { stampRuin, ruinBB, dungeonFootprint, ruinLayout, toWorld } from './gen/ruins.js';
+import { stampLift, stampShaft, liftBB } from './gen/lifts.js';
+import { stampPassage, passageBB, planPassage } from './gen/passages.js';
 import { settleLakes } from './fluids/lakes.js';
+import { RELIC_IDS } from './ruins/relics.js';
 
 export const CS = 32; // chunk size (voxels)
 export const BOUNDS = { x0: -96, x1: 96, z0: -96, z1: 96, y0: -216, y1: 8 }; // meters
@@ -50,7 +52,8 @@ export function makePlan(seed, opts = {}) {
     features: [], // carve/fill shapes in meters: {kind, ...aabb}
     mouths: [],
     burrows: [], // NPC homes and shops you walk to (gen/burrows.js, Traders.js)
-    ruins: [], // old ruins with puzzles (gen/ruins.js, Ruins.js)
+    ruins: [], // dungeons with a sealed strongroom and its puzzle (gen/ruins.js, ruins/dungeon.js, Ruins.js)
+    rooms: [], // plain monster rooms: a spawner and chests, no puzzle (same features, kind 'ruin')
     trails: [], // old dug tunnels joining lifts, burrows and the town (gen/trails.js)
     geodes: [], // hidden gem pockets
   };
@@ -84,7 +87,7 @@ export function makePlan(seed, opts = {}) {
       const r = rng.range(1.0, 1.5);
       plan.features.push({ kind: 'sphere', x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t + r * 0.35, z: a.z + (b.z - a.z) * t, r, ry: r * 0.8, m: 0 });
     }
-    if (i % 4 === 0) plan.lights.push({ x: b.x, y: b.y + 1.0, z: b.z, c: [1.0, 0.72, 0.38], r: 5, lantern: true });
+    // (no lanterns any more: nobody lit this way, it's a string of natural pockets)
   }
   plan.path = pts;
   plan.plugs = plug;
@@ -95,11 +98,12 @@ export function makePlan(seed, opts = {}) {
   plan.features.push({ kind: 'gate', x: T.x + 1.6, y: T.y, z: T.z - 1.2 });
   plan.lights.push({ x: T.x + 1.2, y: T.y + 1.4, z: T.z - 1.0, c: [1.4, 0.95, 0.5], r: 9 });
   plan.lights.push({ x: T.x - 5, y: T.y + 2.2, z: T.z + 3, c: [1.0, 0.7, 0.35], r: 6, lantern: true });
-  // lift shaft + stations
+  // lift shaft + stations: plain stone rooms off a stone-lined shaft, nothing in them breaks
+  // (gen/lifts.js; the lever, the sign and the torches are ruins/liftKit.js models)
   plan.features.push({ kind: 'shaft', x: plan.shaft.x, z: plan.shaft.z, y0: -208, y1: T.y + 2 });
   for (const s of plan.stations) {
-    plan.features.push({ kind: 'box', x0: s.x - 1.8, x1: s.x + 1.8, y0: s.y, y1: s.y + 2.2, z0: s.z - 1.6, z1: s.z + 1.6, m: 0, timber: true });
-    plan.lights.push({ x: s.x, y: s.y + 1.7, z: s.z, c: [1.0, 0.7, 0.36], r: 5, lantern: true });
+    plan.features.push({ kind: 'stop', id: 's' + s.n, x: s.x, y: s.y, z: s.z, sx: plan.shaft.x, sz: plan.shaft.z });
+    plan.lights.push({ x: s.x + 1.2, y: s.y + 1.45, z: s.z, c: [1.05, 0.66, 0.32], r: 5, lantern: true, lift: 's' + s.n });
   }
 
   // lifts: the mine entrance under the burrow, three buried in every zone, the town shaft stops
@@ -109,9 +113,8 @@ export function makePlan(seed, opts = {}) {
     const L = { id, name, x, y, z, zone, depth: Math.round(-y) };
     plan.lifts.push(L);
     if (room) {
-      plan.features.push({ kind: 'box', x0: x - 1.5, x1: x + 1.5, y0: y, y1: y + 2.3, z0: z - 1.5, z1: z + 1.5, m: 0, timber: true });
-      plan.features.push({ kind: 'cage', x, y, z });
-      plan.lights.push({ x: x + 0.9, y: y + 1.7, z: z + 0.9, c: [1.0, 0.72, 0.38], r: 5.5, lantern: true, lift: id });
+      plan.features.push({ kind: 'lift', id, x, y, z });
+      plan.lights.push({ x, y: y + 1.45, z: z - 1.0, c: [1.05, 0.68, 0.34], r: 5.5, lantern: true, lift: id });
     }
     return L;
   };
@@ -183,20 +186,86 @@ export function makePlan(seed, opts = {}) {
     }
   }
   addPlaces(plan, rng, L0);
-  // burrows stamp last, so the trails ending in them don't cut through their furniture
-  plan.features.sort((a, b) => (a.kind === 'burrow') - (b.kind === 'burrow'));
+  // stamp in order: the caves first, then what is cut into them; the lift stations last (nothing
+  // cuts into those). A stable sort: features of one kind keep their order.
+  plan.features.sort((a, b) => orderOf(a) - orderOf(b));
   for (const f of plan.features) aabbOf(f);
   // lakes get a watertight shell and hold water only below rooms carved into them (fluids/lakes.js)
   settleLakes(plan, zoneAt, caveDensity);
   return plan;
 }
 
-// ---------------------------------------------------------------- burrows, ruins, geodes, trails
-const far = (plan, x, y, z, d) => plan.lifts.every((L) => Math.hypot(L.x - x, L.y - y, L.z - z) > d) && plan.burrows.every((b) => Math.hypot(b.x - x, b.y - y, b.z - z) > d) && plan.ruins.every((r) => Math.hypot(r.x - x, r.y - y, r.z - z) > d);
+// ---------------------------------------------------------------- burrows, dungeons, geodes, passages
+const far = (plan, x, y, z, d) => plan.lifts.every((L) => Math.hypot(L.x - x, L.y - y, L.z - z) > d) && plan.burrows.every((b) => Math.hypot(b.x - x, b.y - y, b.z - z) > d) && plan.ruins.concat(plan.rooms || []).every((r) => Math.hypot(r.x - x, r.y - y, r.z - z) > d + (r.r || 4));
+
+// The dungeons with a sealed strongroom, in plan.ruins order (each holds the relic of its index,
+// ruins/relics.js): [zone, kind, puzzle]. Every puzzle kind turns up somewhere.
+const DUNGEONS = [
+  [1, 'cell', 'switch'],
+  [2, 'cell', 'levers'], [2, 'crypt', 'valve'],
+  [3, 'crypt', 'valve'], [3, 'vault', 'dials'],
+  [4, 'fortress', 'beams'], [4, 'fortress', 'levers'],
+  [5, 'cell', 'switch'], [5, 'vault', 'dials'],
+  [6, 'vault', 'plates'], [6, 'fortress', 'beams'],
+];
+const QDIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]]; // a dungeon's forward (its a axis) for yaw q·π/2
+
+/**
+ * Find a home for a dungeon: hidden in solid rock (nothing of the caves inside its rooms), far from
+ * the places, the lakes and the lairs, its front a short crawl from an open cave (the crawl is part
+ * of the dungeon). Returns the plan entry or null.
+ */
+function placeDungeon(plan, rng, id, zone, kind, puzzle, plain, relic = null) {
+  const open = (x, y, z) => caveDensity(plan, x, y, z) > 0.02;
+  const Fp = dungeonFootprint(kind, puzzle, plain);
+  const V = 1 / VOX, T = plan.town, pro = plan.prologue;
+  const ext = Math.max(-Fp.a0, Fp.a1, -Fp.b0, Fp.b1) * V; // the reach round the centre, any way it turns
+  const d0 = ZONE_DEPTHS[zone - 1] + 5 - Fp.y0 * V, d1 = ZONE_DEPTHS[zone] - 4 - Fp.y1 * V;
+  for (let tries = 0; tries < 80; tries++) {
+    const x = rng.range(-74 + ext, 74 - ext), z = rng.range(-74 + ext, 74 - ext), y = -rng.range(d0, Math.max(d0 + 1, d1));
+    if (open(x, y + 1, z)) continue;
+    if (!far(plan, x, y, z, ext + 8) || Math.hypot(x - T.x, z - T.z) < ext + 14 || Math.hypot(x - pro.x, y - pro.y, z - pro.z) < ext + 14) continue;
+    if (Math.hypot(x - plan.shaft.x, z - plan.shaft.z) < ext + 4) continue;
+    if (plan.dangers.some((d) => d.kind !== 'gas' && Math.hypot(d.x - x, (d.y - y) * 1.3, d.z - z) < d.r + ext + 3)) continue;
+    if (plan.burrows.some((b) => Math.hypot(b.x - x, b.z - z) < ext + 10 && Math.abs(b.y - y) < 8)) continue;
+    // solid rock all through the rooms (a few cave cracks are fine: they break into the walls)
+    let n = 0, hit = 0;
+    const r = Math.max(-Fp.b0, Fp.b1) * V;
+    for (let a = -ext; a <= ext && hit < 9; a += 1.6) for (let b = -ext; b <= ext && hit < 9; b += 1.6) {
+      if (Math.hypot(a, b) > ext + 0.5) continue;
+      for (let yy = Fp.y0 * V + 0.4; yy < Fp.y1 * V; yy += 1.4) { n++; if (open(x + a, y + yy, z + b)) hit++; }
+    }
+    void r;
+    if (hit > Math.max(2, n * 0.06)) continue;
+    // the way in: the turn whose front is closest to a cave you can stand in
+    let best = null;
+    const q0 = rng.int(0, 3);
+    for (let k = 0; k < 4; k++) {
+      const q = (q0 + k) % 4, F = QDIRS[q];
+      for (let t = 0.3; t < 7.5; t += 0.25) {
+        const px = x + F[0] * (Fp.a0 * V - t), pz = z + F[1] * (Fp.a0 * V - t);
+        if (!open(px, y + 0.45, pz) || !open(px, y + 0.9, pz)) continue;
+        if (!best || t < best.t) best = { q, t };
+        break;
+      }
+    }
+    if (!best) continue;
+    const seed = rng.int(1, 1e6);
+    const rr = Math.max(-Fp.b0, Fp.a1 * 0.5) * V;
+    const ruin = { id, kind, x, y, z, yaw: best.q * Math.PI / 2, r: rr, zone, seed, plain: !!plain, puzzle, relic };
+    // the dungeons with a strongroom are plan.ruins (quests, the map, the wraiths know them); the
+    // plain monster rooms are plan.rooms, found only by exploring
+    (plain ? (plan.rooms ||= []) : plan.ruins).push(ruin);
+    plan.features.push({ kind: 'ruin', id, ruin: kind, x, y, z, yaw: ruin.yaw, r: rr, h: 3, seed, puzzle, plain: !!plain, entry: Math.round((best.t + 0.7) * VOX) });
+    return ruin;
+  }
+  return null;
+}
 
 function addPlaces(plan, rng, L0) {
-  const T = plan.town, pro = plan.prologue;
-  // NPC burrows (the folk who live down here): near the trails, at a few depths
+  const T = plan.town;
+  // NPC burrows (the folk who live down here): animal homes at a few depths, each reached by a
+  // natural passage from the caves (no dug trails any more)
   const burrow = (id, kind, name, x, y, z, yaw, zone, size = 1) => {
     const b = { id, kind, name, x, y, z, yaw, zone };
     plan.burrows.push(b);
@@ -208,23 +277,24 @@ function addPlaces(plan, rng, L0) {
   const herb = burrow('herbalist', 'herbalist', "Herbalist's Hollow", L0.x + 25 + jit(), -21, L0.z + 18 + jit(), -Math.PI * 0.6, 1);
   const rocco = burrow('raccoon', 'raccoon', "Rocco's Storage", -26 + jit(), -38, -28 + jit(), Math.PI * 0.8, 2, 1.15);
   const outpost = burrow('outpost', 'outpost', 'Deep Outpost', -18 + jit(), -98, 38 + jit(), Math.PI, 4, 1.1);
-  // ruins: one near the top, two in each zone below
-  const KINDS = ['hall', 'shrine', 'vault', 'well'];
-  for (let zone = 1; zone <= 6; zone++) {
-    const n = zone === 1 ? 1 : 2;
-    for (let k = 0; k < n; k++) {
-      let x = 0, y = 0, z = 0;
-      for (let tries = 0; tries < 30; tries++) {
-        x = rng.range(-70, 70); z = rng.range(-70, 70);
-        y = -rng.range(ZONE_DEPTHS[zone - 1] + 6, ZONE_DEPTHS[zone] - 6);
-        if (far(plan, x, y, z, 16) && Math.hypot(x - T.x, z - T.z) > 16 && Math.hypot(x - pro.x, y - pro.y, z - pro.z) > 18) break;
-      }
-      const r = rng.range(4, 6.2);
-      const ruin = { id: `R${zone}${k}`, kind: KINDS[(zone + k) % KINDS.length], x, y, z, yaw: rng.range(0, Math.PI * 2), r, zone, seed: rng.int(1, 1e6) };
-      plan.ruins.push(ruin);
-      plan.features.push({ kind: 'ruin', id: ruin.id, ruin: ruin.kind, x, y, z, yaw: ruin.yaw, r, h: rng.range(3.4, 4.6), seed: ruin.seed });
-    }
+  // dungeons: the ones with a strongroom (their own rng stream, so the rest of the world doesn't
+  // shift when they move), then a couple of plain monster rooms in every zone
+  const dr = makeRng(plan.seed + 6161);
+  const count = {};
+  DUNGEONS.forEach(([zone, kind, puzzle], i) => {
+    const k = (count[zone] = (count[zone] ?? -1) + 1);
+    placeDungeon(plan, dr, `R${zone}${k}`, zone, kind, puzzle, false, RELIC_IDS[i % RELIC_IDS.length]);
+  });
+  for (let zone = 1; zone <= 6; zone++) for (let k = 0; k < 2; k++) placeDungeon(plan, dr, `R${zone}${k + 2}`, zone, 'cell', null, true);
+  // where the quests can point: the lost miners' remains in the dungeons (Hobb's journal pages; they
+  // were at the trails' cave-ins) and the lift stations' name signs (they were the trail signposts)
+  plan.remains = [];
+  for (const f of plan.features) {
+    if (f.kind !== 'ruin') continue;
+    const L = ruinLayout(f);
+    for (const rm of L.P.remains) { const p = toWorld(L, rm.a, rm.y, rm.b); plan.remains.push({ x: p.x, y: p.y + 0.3, z: p.z, ruin: f.id }); }
   }
+  plan.signs = plan.lifts.map((L) => ({ x: L.x + (L.id[0] === 's' ? 0.15 : 0), y: L.y + 1.5, z: L.z - 1.4, lift: L.id }));
   // geodes: hidden hollow gem pockets in solid rock (ore glints show through)
   const GEMS = [null, ['quartz', 'amber'], ['amber', 'amethyst', 'quartz'], ['amethyst', 'echo_crystal'], ['ruby', 'emerald'], ['sapphire', 'emerald', 'diamond'], ['diamond', 'sunstone', 'voidstone']];
   for (let zone = 1; zone <= 6; zone++) {
@@ -245,65 +315,27 @@ function addPlaces(plan, rng, L0) {
       plan.features.push({ kind: 'geode', x, y, z, r });
     }
   }
-  // trails: old dug tunnels you can walk between places
-  const liftOut = (L) => ({ p: { x: L.x, y: L.y, z: L.z + 1.0 }, d: [0, 1] }); // the cages open to +z
-  const burrowOut = (b) => { const f = plan.features.find((q) => q.kind === 'burrow' && q.id === b.id); const dd = burrowDoor(f); const l = Math.hypot(dd.x - b.x, dd.z - b.z) || 1; return { p: { x: b.x, y: b.y, z: b.z }, d: [(dd.x - b.x) / l, (dd.z - b.z) / l], skip: Math.max(f.rx, f.rz) }; };
-  const nearestLift = (b, zone) => plan.lifts.filter((L) => L.id[0] === 'L' && L.id !== 'L0' && (zone ? L.zone === zone : true)).sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) - Math.hypot(c.x - b.x, c.y - b.y, c.z - b.z))[0];
-  const townIn = { p: { x: T.x - 4.2, y: T.y - 0.4, z: T.z + 4.5 }, d: [-0.7, 0.7] };
-  addTrail(plan, rng, 'home-trader', liftOut(L0), burrowOut(trader), { rails: true });
-  addTrail(plan, rng, 'trader-town', burrowOut(trader), townIn, { rails: true });
-  addTrail(plan, rng, 'home-herbalist', liftOut(L0), burrowOut(herb), {});
-  addTrail(plan, rng, 'herbalist-rocco', burrowOut(herb), burrowOut(rocco), { rails: true });
-  const l2 = nearestLift(rocco, 2); if (l2) addTrail(plan, rng, 'rocco-' + l2.id, burrowOut(rocco), liftOut(l2), {});
-  const l4 = nearestLift(outpost, 4); if (l4) addTrail(plan, rng, 'outpost-' + l4.id, burrowOut(outpost), liftOut(l4), { rails: true });
-  const s3 = plan.lifts.find((L) => L.id === 's3'); if (s3) addTrail(plan, rng, 'outpost-s3', burrowOut(outpost), { p: { x: s3.x, y: s3.y, z: s3.z }, d: [1, 0] }, {});
-  // most ruins have an old trail out to the nearest lift of their zone (its own rng, so the rest
-  // of the world stays as it was)
-  const rr = makeRng(plan.seed + 7777);
-  for (const r of plan.ruins) {
-    if (rr() > 0.65) continue;
-    const f = plan.features.find((q) => q.kind === 'ruin' && q.id === r.id);
-    const L = nearestLift(r, r.zone);
-    if (!f || !L || Math.hypot(L.x - r.x, L.z - r.z) > 70) continue;
-    const door = ruinDoor(aabbOf(f));
-    const l = Math.hypot(door.dx, door.dz) || 1;
-    addTrail(plan, rr, 'ruin-' + r.id, { p: { x: door.x, y: door.y, z: door.z }, d: [door.dx / l, door.dz / l] }, liftOut(L), { rails: rr() < 0.3 });
-  }
+  // natural passages: every burrow's door opens onto a winding cave that runs to the nearest open
+  // cave, and one more joins the mine entrance to the trading post (gen/passages.js)
+  const open = (x, y, z) => caveDensity(plan, x, y, z) > 0.02;
+  const pr = makeRng(plan.seed + 7373);
+  const door = (b) => { const f = plan.features.find((q) => q.kind === 'burrow' && q.id === b.id); const dd = burrowDoor(f); const l = Math.hypot(dd.x - b.x, dd.z - b.z) || 1; return { A: { x: dd.x, y: b.y, z: dd.z }, d: [(dd.x - b.x) / l, (dd.z - b.z) / l] }; };
+  const passage = (id, A, d, o = {}) => {
+    const pts = planPassage(A, d, open, { rng: pr, ...o });
+    if (pts) plan.features.push({ kind: 'passage', id, pts, seed: pr.int(1, 1e6) });
+    return pts;
+  };
+  for (const b of [trader, herb, rocco, outpost]) { const D = door(b); passage('burrow-' + b.id, D.A, D.d); }
+  // from the mine entrance's doorway (the nook outside it, past Old Star's loam plug: narrow
+  // there, so the plug stays whole for his lesson) over to the trading post
+  const TD = door(trader);
+  passage('home-trader', { x: L0.x - 0.05, y: L0.y, z: L0.z + 3.0 }, [0, 1], { to: { x: TD.A.x, y: TD.A.y, z: TD.A.z }, r0: 0.55 });
+  void T;
 }
 
-/** An old trail from place A to place B: out of A's door, gentle slopes, a ladder shaft where it drops. */
-function addTrail(plan, rng, id, A, B, opts) {
-  const seed = rng.int(1, 1e6);
-  const out = (P, k) => ({ x: P.p.x + P.d[0] * k, y: P.p.y, z: P.p.z + P.d[1] * k });
-  const a1 = out(A, (A.skip || 0) + 2.6), b1 = out(B, (B.skip || 0) + 2.6);
-  const segs = [{ a: { ...A.p }, b: a1 }];
-  let from = a1, to = b1, endShaft = 0;
-  const H = Math.hypot(to.x - from.x, to.z - from.z), dy = to.y - from.y, maxDrop = H * 0.32;
-  if (Math.abs(dy) > maxDrop + 0.4) {
-    const need = Math.abs(dy) - maxDrop;
-    if (dy < 0) { const s = { x: from.x, y: from.y - need, z: from.z }; segs.push({ a: from, b: s, ladder: true }); from = s; }
-    else { endShaft = need; to = { x: to.x, y: to.y - need, z: to.z }; }
-  }
-  const len = Math.hypot(to.x - from.x, to.z - from.z), n = Math.max(1, Math.round(len / 5.5));
-  const nx = -(to.z - from.z) / (len || 1), nz = (to.x - from.x) / (len || 1);
-  let prev = from;
-  for (let i = 1; i <= n; i++) {
-    const t = i / n, side = i < n ? Math.sin(t * Math.PI) * rng.range(-2.6, 2.6) : 0;
-    const p = { x: from.x + (to.x - from.x) * t + nx * side, y: from.y + (to.y - from.y) * t, z: from.z + (to.z - from.z) * t + nz * side };
-    segs.push({ a: prev, b: p });
-    prev = p;
-  }
-  if (endShaft) segs.push({ a: b1, b: to, ladder: true });
-  segs.push({ a: b1, b: { ...B.p } });
-  const pts = [A.p];
-  for (const sg of segs) {
-    const f = { kind: 'trail', a: sg.a, b: sg.b, ladder: !!sg.ladder, rails: !!opts.rails, w: TRAIL_W, h: TRAIL_H, seed: seed + pts.length, trail: id };
-    plan.features.push(f);
-    pts.push(sg.b);
-    for (const L of trailLanterns(f)) plan.lights.push({ x: L.x, y: L.y, z: L.z, c: [1.0, 0.7, 0.36], r: 4.5, lantern: true, trail: id });
-  }
-  plan.trails.push({ id, pts });
-}
+/** Stamping order: the caves, then the prologue, the passages, the dungeons, the burrows, the lift stations. */
+const ORDER = { passage: 2, ruin: 3, burrow: 4, shaft: 5, stop: 6, lift: 6, gate: 7 };
+const orderOf = (f) => ORDER[f.kind] ?? (f.kind === 'prologue' ? 1 : 0);
 
 function aabbOf(f) {
   const pad = 0.5;
@@ -311,11 +343,11 @@ function aabbOf(f) {
   else if (f.kind === 'lake') { f.bb = [f.x - f.r - 1, f.y - f.r * 0.6 - 1, f.z - f.r - 1, f.x + f.r + 1, f.y + f.r * 0.5 + 1, f.z + f.r + 1]; }
   else if (f.kind === 'box') { f.bb = [f.x0 - pad, f.y0 - pad, f.z0 - pad, f.x1 + pad, f.y1 + pad, f.z1 + pad]; }
   else if (f.kind === 'gate') { f.bb = [f.x - 3, f.y - 1, f.z - 3, f.x + 3, f.y + 4, f.z + 3]; }
-  else if (f.kind === 'shaft') { f.bb = [f.x - 1.4, f.y0, f.z - 1.4, f.x + 1.4, f.y1, f.z + 1.4]; }
+  else if (f.kind === 'shaft') { f.bb = [f.x - 1.7, f.y0, f.z - 1.7, f.x + 1.7, f.y1, f.z + 1.7]; }
   else if (f.kind === 'mouth') { f.bb = [f.x0 - pad, f.y0 - pad, f.z0 - pad, f.x1 + pad, f.y1 + pad, f.z1 + pad]; }
   else if (f.kind === 'prologue') { f.bb = [f.x - PROLOGUE_BB, f.y - 2, f.z - PROLOGUE_BB, f.x + PROLOGUE_BB, f.y + 4, f.z + PROLOGUE_BB]; }
-  else if (f.kind === 'cage') { f.bb = [f.x - 1.6, f.y - 0.3, f.z - 1.6, f.x + 1.6, f.y + 7, f.z + 1.6]; }
-  else if (f.kind === 'trail') { f.bb = trailBB(f); }
+  else if (f.kind === 'passage') { f.bb = passageBB(f); }
+  else if (f.kind === 'lift' || f.kind === 'stop') { f.bb = liftBB(f); }
   else if (f.kind === 'burrow') { f.bb = burrowBB(f); }
   else if (f.kind === 'ruin') { f.bb = ruinBB(f); }
   else if (f.kind === 'geode') { f.bb = [f.x - f.r - 0.2, f.y - f.r - 0.2, f.z - f.r - 0.2, f.x + f.r + 0.2, f.y + f.r + 0.2, f.z + f.r + 0.2]; }
@@ -601,7 +633,9 @@ export class ChunkGen {
 
   stamp(f, vox, X0, Y0, Z0) {
     if (f.kind === 'prologue') { stampPrologue(f, vox, X0, Y0, Z0, CS); return; }
-    if (f.kind === 'trail') { stampTrail(f, vox, X0, Y0, Z0, CS); return; }
+    if (f.kind === 'passage') { stampPassage(f, vox, X0, Y0, Z0, CS); return; }
+    if (f.kind === 'lift' || f.kind === 'stop') { stampLift(f, vox, X0, Y0, Z0, CS); return; }
+    if (f.kind === 'shaft') { stampShaft(f, vox, X0, Y0, Z0, CS); return; }
     if (f.kind === 'burrow') { stampBurrow(f, vox, X0, Y0, Z0, CS); return; }
     if (f.kind === 'ruin') { stampRuin(f, vox, X0, Y0, Z0, CS); return; }
     const p = this.plan, bb = f.bb;
@@ -636,37 +670,12 @@ export class ChunkGen {
             }
             continue;
           }
-          // timber frames around station rooms
-          if (f.timber && cur && cur !== M.BURROW) {
-            const onEdgeX = xm < f.x0 + 0.01 || xm > f.x1 - 0.01;
-            const post = (Math.abs(xm - f.x0) < 0.25 || Math.abs(xm - f.x1) < 0.25) && (Math.abs(zm - f.z0) < 0.25 || Math.abs(zm - f.z1) < 0.25);
-            const beam = ym > f.y1 && ym < f.y1 + 0.25;
-            if (post || (beam && !onEdgeX)) vox[vi] = M.TIMBER;
-          }
           continue;
         }
         if (f.kind === 'mouth') {
           // frame the mouth with warm planks on the burrow side
           vox[vi] = 0;
         } else vox[vi] = f.m;
-      } else if (f.kind === 'shaft') {
-        const d = Math.hypot(xm - f.x, zm - f.z);
-        if (d < 1.1) vox[vi] = 0;
-        else if (d < 1.35 && (Math.abs(ym * 2 % 3) < 0.25 || Math.abs(xm - f.x) < 0.15 || Math.abs(zm - f.z) < 0.15)) vox[vi] = M.TIMBER;
-      } else if (f.kind === 'cage') {
-        // an old lift: plank floor, a timber cage with a roof, the shaft going up through the rock
-        const dx = xm - f.x, dz = zm - f.z, dy = ym - f.y;
-        const ax = Math.abs(dx), az = Math.abs(dz);
-        if (dy < 0 && dy > -0.13 && ax < 1.5 && az < 1.5) vox[vi] = M.BOARDS;
-        else if (dy >= 0 && dy < 2.05 && ax < 0.7 && az < 0.7) {
-          const post = ax > 0.56 && az > 0.56;
-          const rail = (ax > 0.58 || az > 0.58) && (Math.abs(dy - 0.55) < 0.07 || dy > 1.9) && !(dz > 0.58 && dy < 1.9);
-          const roof = dy > 1.92;
-          vox[vi] = post || rail || roof ? (roof && ax < 0.5 && az < 0.5 ? M.BOARDS : M.TIMBER) : 0;
-        } else if (dy >= 2.05 && dy < 6.5 && ax < 0.62 && az < 0.62) {
-          // the shaft: open, with timber rings every so often and the cable
-          vox[vi] = (ax > 0.5 || az > 0.5) && Math.abs((dy * 2) % 2 - 1) < 0.1 ? M.TIMBER : ax < 0.07 && az < 0.07 ? M.TIMBER : 0;
-        } else if (dy >= 0.9 && dy < 1.15 && Math.abs(dx - 0.95) < 0.09 && Math.abs(dz - 0.95) < 0.09) vox[vi] = M.LANTERN;
       } else if (f.kind === 'geode') {
         // a hollow stone egg: a hard shell, a lining of crystal spikes, air inside
         const d = Math.hypot(xm - f.x, ym - f.y, zm - f.z) / f.r + (h3(vx, vy, vz, 29) - 0.5) * 0.08;
@@ -712,12 +721,17 @@ export class ChunkGen {
       const pt = tri(P, o, (x & 3) / 4, (y & 3) / 4, (z & 3) / 4);
       const h = h3(vx, vy, vz, seed + 41);
       if (airUp) {
-        // floors: moss patches, sand, mycelium
-        if (bio === 1) { if (pt > -0.45 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS; }
+        // floors: bare earth and gravel in the plain caves (a moss patch only where it's damp and
+        // near the top), moss in the lush grotto and the dino halls, sand, mycelium
+        if (bio === 1) { if (pt > -0.2 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS; else if (pt < -0.55) vox[vi] = M.GRAVEL; }
         else if (bio === 2) { if (pt > -0.35) { vox[vi] = M.SAND; if (NATURAL[vox[vi - CS]]) vox[vi - CS] = M.SAND; } }
         else if (bio === 3) { if (pt > -0.25) vox[vi] = M.MYCEL; }
         else if (bio === 4) { if (pt > 0.05 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS; }
-        else if (zone <= 3 && pt > 0.22 && h < 0.85 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS;
+        else if (zone <= 3 && m !== M.CRYSTALROCK && m !== M.ROOTS) {
+          if (zone === 1 && depth < 9 && pt > 0.5 && h < 0.8) vox[vi] = M.MOSS;
+          else if (pt < -0.3 && NATURAL[vox[vi - CS]]) vox[vi] = M.GRAVEL;
+          else if (zone <= 2 && pt > -0.05) vox[vi] = M.DIRT;
+        }
         // mushrooms: a few giants per meter-cell anchor (the small stuff, the ferns, grass and
         // glowcap buttons, are drawn as painted cards by Vegetation.js now: no blocky voxel plants)
         if (bio === 3) {

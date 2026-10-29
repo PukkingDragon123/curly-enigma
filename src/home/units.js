@@ -31,7 +31,7 @@ export const DOOR_H = 1.18;
 /** One relief voxel (m) for props built at 1/64 m. */
 export const VX = 1 / 64;
 /** The house: floor height, the box it fits in, and the top of its highest ceiling (m). */
-export const HALL = { x0: -5.4, x1: 9.6, z0: -7.6, z1: -0.31, y: -0.5, ceil: 2.0 };
+export const HALL = { x0: -5.4, x1: 9.6, z0: -12.2, z1: -0.31, y: -0.5, ceil: 2.0 };
 /** Height of one step down into the house (m) and the depth of a tread. */
 export const STEP_H = 0.5 / 3;
 export const STEP_D = 0.3;

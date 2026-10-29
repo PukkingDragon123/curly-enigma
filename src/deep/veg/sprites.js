@@ -32,6 +32,9 @@ export const RAMP = {
   amber: [0x381c06, 0x582e0a, 0x82460e, 0xae6418, 0xda8c28, 0xf2b64e, 0xffe29e],
   blue: [0x0a1c3e, 0x102e5c, 0x1a4682, 0x2864ae, 0x408cd6, 0x74b6f2, 0xc6e4ff],
   brownCap: [0x24140c, 0x3a2214, 0x56341e, 0x74482a, 0x94603a, 0xb67e52, 0xd8a476],
+  red: [0x3a0a0a, 0x5c1010, 0x841a16, 0xae2a20, 0xd04030, 0xe8705a, 0xfff0e0],
+  ink: [0x1c1a1e, 0x2e2a30, 0x48444a, 0x6a666c, 0x908c90, 0xbab6b4, 0xe4e0da],
+  pebble: [0x26221e, 0x3a3530, 0x504a44, 0x68625a, 0x827b72, 0x9e968c, 0xbcb4a8],
   succ: [0x15241f, 0x213a32, 0x2e5246, 0x426c5e, 0x60907c, 0x8ab4a0, 0xc0d8c8],
 };
 const R = RAMP;
@@ -250,6 +253,19 @@ export function litter(r) {
   return s.rim(0.75, 'br');
 }
 
+/** Pebbles and grit on a bare cave floor (flat): a scatter of small round stones, lit from the upper left. */
+export function pebbles(r, RR = R.pebble) {
+  const W = 40, H = 40, s = new Spr(W, H);
+  const n = r.int(10, 16);
+  for (let i = 0; i < n; i++) {
+    const a = r() * 6.283, d = Math.sqrt(r()) * 15, rr = i < 3 ? r.range(2.6, 4) : r.range(1.2, 2.6);
+    const base = r.range(2, 4.2);
+    s.ell(20 + Math.cos(a) * d, 20 + Math.sin(a) * d, rr, rr * r.range(0.7, 1), (dx, dy) => tone(RR, base - dx * 1.2 - dy * 1.4));
+  }
+  for (let i = 0; i < 26; i++) { const x = r.int(4, 36), y = r.int(4, 36); s.set(x, y, tone(RR, r.int(1, 3))); } // grit
+  return s.rim(0.7, 'br');
+}
+
 /** Star moss of the Core: a dark velvet mat with glowing star-specks. */
 export function starMoss(r) {
   const W = 40, H = 40, s = new Spr(W, H);
@@ -270,7 +286,9 @@ export function starMoss(r) {
 // ---------------------------------------------------------------- fungus
 /**
  * A cluster of mushrooms seen from the side: stems with rings and bulbs, domed, conical or flat
- * caps with dark gills, pale spots. Caps glow (spots most). o: { w, h, n, shape, glow, big }.
+ * caps with dark gills, pale spots. Caps glow (spots most). o: { w, h, n, shape, glow, big,
+ * spots (chance per texel), spotCol (hex; default the cap's lightest tone), spotGlow (level),
+ * tall (the big one's stem as a share of the height) }.
  */
 export function fungus(r, CAP, STEM = R.stem, o = {}) {
   const W = o.w ?? 40, H = o.h ?? 40, s = new Spr(W, H);
@@ -279,7 +297,7 @@ export function fungus(r, CAP, STEM = R.stem, o = {}) {
   for (let i = 0; i < n; i++) {
     const big = i === 0;
     ms.push({
-      x: W / 2 + (big ? (r() - 0.5) * 4 : (r() - 0.5) * W * 0.62), sh: big ? H * r.range(0.42, 0.56) : H * r.range(0.12, 0.36),
+      x: W / 2 + (big ? (r() - 0.5) * 4 : (r() - 0.5) * W * 0.62), sh: big ? H * (o.tall ? r.range(o.tall[0], o.tall[1]) : r.range(0.42, 0.56)) : H * r.range(0.12, 0.36),
       cr: big ? r.range(6, 8.5) * (o.big ?? 1) : r.range(2.4, 5), lean: (r() - 0.5) * 0.5, shape: o.shape || r.pick(['dome', 'dome', 'cone', 'flat']), d: big ? 0.45 : r(),
     });
   }
@@ -302,7 +320,10 @@ export function fungus(r, CAP, STEM = R.stem, o = {}) {
         const dx = (xx - tx) / Math.max(1, hw), y = ty - yy;
         let t = 2.6 + h * 1.8 - dx * 1.0 + m.d * 0.5, g = gl;
         if (yy === 0) { t = 3.6 - dx * 0.5; g = Math.min(4, gl + 1); } // the bright rim
-        if (h > 0.2 && ph(xx, y, m.x * 13 | 0) < 0.1) { t = 6; g = 4; } // spots
+        if (h > 0.2 && ph(xx, y, m.x * 13 | 0) < (o.spots ?? 0.1)) { // spots
+          s.set(xx, y, o.spotCol ?? tone(CAP, 6), o.spotGlow ?? 4);
+          continue;
+        }
         s.set(xx, y, tone(CAP, t), g);
       }
     }
@@ -612,6 +633,18 @@ export function vegetationAtlas() {
   put('fungusAmber', (r) => fungus(r, R.amber, R.stem, { shape: 'flat', glow: 1 }), 1);
   put('fungusBrown', (r) => fungus(r, R.brownCap, R.stem, { glow: 0, w: 36, h: 32 }), 2);
   put('puffballs', (r) => puffballs(r), 2);
+  // wave 4: the caves grow mushrooms, not grass: brown caps, red toadstools, ink caps, tall
+  // glowing stalks, buttons, ember and frost caps
+  put('brownCap', (r) => fungus(r, R.brownCap, R.stem, { shape: 'flat', glow: 0, n: r.int(1, 3), w: 36, h: 30, big: 1.25, spots: 0.03, spotCol: 0xd8b48a, spotGlow: 0 }), 3);
+  put('toadstool', (r) => fungus(r, R.red, R.stem, { shape: 'dome', glow: 0, n: r.int(1, 3), w: 34, h: 34, big: 1.05, spots: 0.16, spotCol: 0xf4ece0, spotGlow: 0 }), 3);
+  put('inkcap', (r) => fungus(r, R.ink, R.stem, { shape: 'cone', glow: 0, n: r.int(2, 4), w: 30, h: 48, tall: [0.48, 0.62], spots: 0.04, spotCol: 0x14121a, spotGlow: 0 }), 2);
+  put('glowShroom', (r) => fungus(r, r() < 0.5 ? R.cyan : R.blue, R.stem, { shape: r() < 0.5 ? 'dome' : 'cone', n: r.int(2, 3), w: 32, h: 64, big: 0.8, tall: [0.62, 0.78] }), 2);
+  put('glowShroom', (r) => fungus(r, R.violet, R.stem, { shape: 'dome', n: r.int(2, 3), w: 32, h: 60, big: 0.8, tall: [0.6, 0.75] }), 1);
+  put('mushTiny', (r) => fungus(r, r() < 0.5 ? R.amber : R.cyan, R.stem, { n: r.int(5, 8), w: 30, h: 16, big: 0.55, shape: 'dome' }), 2);
+  put('mushTiny', (r) => fungus(r, R.brownCap, R.stem, { n: r.int(5, 8), w: 30, h: 16, big: 0.55, shape: 'dome', glow: 0, spots: 0.02, spotGlow: 0 }), 1);
+  put('emberCap', (r) => fungus(r, R.ember, R.ash, { shape: r() < 0.5 ? 'flat' : 'dome', n: r.int(2, 4), w: 34, h: 30, glow: 2 }), 2);
+  put('frostCap', (r) => fungus(r, R.frost, R.frost, { shape: 'cone', n: r.int(2, 4), w: 32, h: 36, glow: 1 }), 2);
+  put('pebbles', (r) => pebbles(r), 3);
   // flowers
   put('flowerCyan', (r) => flower(r, R.cyan, 'bell'), 1);
   put('flowerCyan', (r) => flower(r, R.cyan, 'orb'), 1);
@@ -635,6 +668,7 @@ export function vegetationAtlas() {
   put('vineBerry', (r) => vine(r, { berry: R.cyan, n: 2 }), 1);
   put('vineBerry', (r) => vine(r, { berry: R.pink, n: 2 }), 1);
   put('vineDino', (r) => vine(r, { leaf: R.dino, n: 2 }), 2);
+  put('glowVine', (r) => vine(r, { berry: R.amber, n: 3 }), 2); // cave vines hung with glow berries
   put('mossDrape', (r) => mossDrape(r, { glowTip: 1 }), 2);
   put('rootDrape', (r) => mossDrape(r, { ramp: R.root, h: 40 }), 1);
   put('mycel', (r) => mycelThreads(r), 2);

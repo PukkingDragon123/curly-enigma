@@ -1,0 +1,150 @@
+/* Cutscene talk (src/ui/Convo.js): letterbox bars, the words floating beside the speaker's head on a
+   scrap of parchment with a tail, and the answers floating in on your side of the frame. Art: the
+   dialogue's (--dl-*, src/ui/dialogArt.js) and a few of its own (--cv-*, Convo.js), all at --px. */
+.cv { position: absolute; inset: 0; z-index: 5; pointer-events: none; --cv-bar: 72px; }
+.cv.held { pointer-events: auto; cursor: pointer; }
+.cv .cv-say { pointer-events: auto; cursor: pointer; }
+.cv[hidden] { display: none !important; }
+
+/* ---- the letterbox */
+.cv-bar { position: absolute; left: 0; right: 0; background: #060308; pointer-events: none; transition: transform .6s cubic-bezier(.3, .8, .25, 1); }
+.cv-bar.top { top: 0; height: calc(var(--cv-bar) + var(--sat)); transform: translateY(-101%); box-shadow: 0 var(--px) 0 rgba(255, 214, 150, .05); }
+.cv-bar.bot { bottom: 0; height: calc(var(--cv-bar) + var(--sab)); transform: translateY(101%); box-shadow: 0 calc(var(--px) * -1) 0 rgba(255, 214, 150, .05); }
+.cv.bars .cv-bar { transform: none; }
+.cv.out .cv-bar { transition-duration: .5s; transition-timing-function: ease-in; }
+.cv-hint {
+  position: absolute; right: calc(var(--sar) + 18px); top: 50%; transform: translateY(-50%); margin-top: calc(var(--sab) * -.5);
+  font-size: var(--fs); line-height: 1; color: #b8a488; white-space: nowrap; opacity: 0; transition: opacity .4s .5s;
+}
+.cv.held .cv-hint { opacity: .85; }
+.cv-hint kbd { --kp: 2px; }
+html.is-touch .cv-hint { right: 50%; transform: translate(50%, -50%); }
+
+/* the rest of the interface steps out of the shot (the toasts stay) */
+#ui.cv-on > .world-layer, #ui.cv-on > .hud > :not(.toasts), #ui.cv-on > .look-catch { opacity: 0 !important; visibility: hidden; transition: opacity .3s, visibility 0s .3s; }
+
+/* ---- the words: a scrap of parchment beside the head */
+.cv-say {
+  position: absolute; left: 0; top: 0; box-sizing: border-box; display: flex; align-items: stretch;
+  width: max-content; max-width: min(calc(var(--px) * 118), calc(100vw - 24px - var(--sal) - var(--sar)));
+  border-style: solid; border-width: calc(var(--px) * 6);
+  border-image: var(--dl-parch) 6 / calc(var(--px) * 6) repeat;
+  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box;
+  color: var(--ink);
+  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(6, 3, 6, .6));
+  transform-origin: 0 50%; will-change: transform;
+}
+.cv-say.gone { opacity: 0; transition: opacity .18s; }
+.cv.out .cv-say { opacity: 0; scale: .92; transition: opacity .25s, scale .25s; }
+.cv-say.pop { animation: cvPop .42s var(--pop) both; }
+.cv-say.swap .cv-body { animation: cvSwap .26s ease-out; }
+@keyframes cvPop { 0% { opacity: 0; scale: .55; } 45% { opacity: 1; } 100% { scale: 1; } }
+@keyframes cvSwap { 0% { opacity: .2; translate: 0 calc(var(--px) * 2); } 100% { opacity: 1; translate: 0 0; } }
+
+.cv-body { position: relative; min-width: calc(var(--px) * 46); padding: calc(var(--px) * 1) calc(var(--px) * 2) calc(var(--px) * 2); }
+.cv-text { font-size: var(--fs); line-height: 1.4; text-wrap: pretty; }
+.cv-text b { color: #8a2e14; font-weight: 400; }
+.cv-text i { color: var(--ink-soft); font-style: normal; }
+.cv-text small { font-size: var(--fs); color: var(--ink-soft); }
+.cv-text .gold-txt { color: #9a6408; font-weight: 400; }
+.cv-text em { font-style: normal; color: #8a2e14; display: inline-block; animation: cvShake .22s steps(2) infinite; }
+.cv-text big { font-size: calc(var(--fs) * 1.5); line-height: 1; color: #6a1e0e; }
+.cv-text .cv-wv { display: inline-block; animation: cvWave 1.1s ease-in-out infinite; animation-delay: calc(var(--i) * -0.08s); }
+.cv-text .tt-ghost { visibility: hidden; }
+.cv-text .qtk-reward { display: block; margin-top: calc(var(--px) * 2); }
+.cv-text .qtk-next { display: block; margin-top: var(--px); }
+@keyframes cvShake { 50% { transform: translate(calc(var(--px) * .5), calc(var(--px) * -.5)); } }
+@keyframes cvWave { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(var(--px) * -1.5)); } }
+.cv-sub { font-size: var(--fs); line-height: 1.2; color: #8a5a22; margin-bottom: var(--px); padding-bottom: var(--px); background: linear-gradient(var(--parch-3), var(--parch-3)) 0 100% / calc(var(--px) * 26) var(--px) no-repeat; }
+
+/* the name, on a ribbon pinned over the top edge */
+.cv-plate {
+  position: absolute; z-index: 2; top: calc(var(--px) * -15); left: calc(var(--px) * 2);
+  box-sizing: border-box; height: calc(var(--px) * 16); max-width: calc(100vw - 40px); white-space: nowrap;
+  border-style: solid; border-width: 0 calc(var(--px) * 10);
+  border-image: var(--dl-ribbon) 0 10 fill / 0 calc(var(--px) * 10) repeat;
+  display: flex; align-items: flex-start; filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 6, .5));
+}
+.cv-say.pop .cv-plate { animation: cvPlate .55s var(--pop) .1s both; }
+@keyframes cvPlate { from { transform: translateY(calc(var(--px) * -6)) rotate(-6deg); opacity: 0; } 60% { transform: rotate(2deg); } }
+.cv-name { font-family: var(--font-head); font-size: var(--fs-h); line-height: calc(var(--px) * 12); color: #ffe6a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 var(--px) 0 #3a0f0a; }
+.cv-say[data-kind=folk] .cv-plate { border-image-source: var(--dl-ribbonGreen); }
+.cv-say[data-kind=hero] .cv-plate { border-image-source: var(--dl-ribbonBlue); }
+.cv-say[data-kind=hero] { transform-origin: 100% 50%; }
+
+/* the tail, on the edge facing the speaker */
+.cv-tail { position: absolute; z-index: 1; width: calc(var(--px) * 10); height: calc(var(--px) * 13); background: var(--cv-tail) 0 0 / 100% 100% no-repeat; pointer-events: none; }
+.cv-tail[data-side=right] { left: calc(var(--px) * -13); }
+.cv-tail[data-side=left] { right: calc(var(--px) * -13); transform: scaleX(-1); }
+.cv-tail[data-side=below] { top: calc(var(--px) * -15) !important; transform: rotate(90deg); }
+.cv-tail[data-side=above] { bottom: calc(var(--px) * -15); top: auto !important; transform: rotate(-90deg); }
+.cv-tail[data-side=none] { display: none; }
+
+/* carry on: a key cap and a bobbing brass arrow; going by itself: a wick burning down */
+.cv-next { display: none; position: absolute; right: calc(var(--px) * -3); bottom: calc(var(--px) * -5); align-items: center; gap: var(--px); font-size: var(--fs); color: #7a4a22; }
+.cv.typed:not(.choosing):not(.timed) .cv-next { display: flex; }
+.cv-arrow { display: block; width: calc(var(--px) * 11); height: calc(var(--px) * 9); background: var(--dl-arrow) 0 0 / 100% 100%; animation: cvBounce .9s cubic-bezier(.4, 0, .6, 1) infinite; }
+@keyframes cvBounce { 0%, 100% { transform: translateY(calc(var(--px) * -1)); } 50% { transform: translateY(calc(var(--px) * 2)); } }
+.cv-next kbd { margin: 0; }
+.cv-tap { display: none; }
+html.is-touch .cv-next kbd { display: none; }
+html.is-touch .cv-tap { display: inline; }
+.cv-wick { display: none; position: absolute; left: 0; right: 0; bottom: calc(var(--px) * -4); height: var(--px); background: #c89a3a; box-shadow: 0 var(--px) 0 #6e4a1a; transform-origin: 0 50%; }
+.cv.typed.timed .cv-wick { display: block; }
+
+/* no 3D model of them here: their live portrait in a brass frame inside the label */
+.cv-face { display: none; }
+.cv-say.portrait .cv-face {
+  display: block; flex: none; align-self: center; box-sizing: border-box; margin: calc(var(--px) * -2) calc(var(--px) * 2) calc(var(--px) * -2) calc(var(--px) * -2);
+  border-style: solid; border-width: calc(var(--px) * 4); border-image: var(--dl-pframe) 6 / calc(var(--px) * 4) repeat; background: #0c0608 padding-box;
+}
+.cv-say.portrait .cv-face canvas { display: block; width: calc(var(--px) * 40); height: calc(var(--px) * 40); }
+@media (max-width: 560px), (max-height: 520px) { .cv-say.portrait .cv-face canvas { width: calc(var(--px) * 32); height: calc(var(--px) * 32); } }
+
+/* ---- the answers: paper notes floating in on your side */
+.cv-choices { position: absolute; left: 0; top: 0; display: none; flex-direction: column; gap: calc(var(--px) * 3); width: max-content; max-width: min(calc(var(--px) * 120), calc(100vw - 32px - var(--sal) - var(--sar))); }
+.cv.choosing .cv-choices { display: flex; }
+.cv-choices.nudge { animation: cvNudge .3s ease-out; }
+@keyframes cvNudge { 30% { translate: calc(var(--px) * 3) 0; } 60% { translate: calc(var(--px) * -2) 0; } }
+.cv-opt {
+  position: relative; display: flex; align-items: center; gap: calc(var(--px) * 3); text-align: left; cursor: pointer; pointer-events: auto;
+  font: inherit; font-size: var(--fs); color: var(--ink); outline: none; margin: 0;
+  border-style: solid; border-width: calc(var(--px) * 5); border-image: var(--a-note) 5 / calc(var(--px) * 5) repeat;
+  background: #f8ecd2 padding-box; padding: 0 calc(var(--px) * 3) 0 0;
+  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(6, 3, 6, .55));
+  animation: cvOptIn .42s var(--pop) var(--d, 0s) both, cvFloat 3.2s ease-in-out calc(var(--d, 0s) + .5s) infinite;
+  transition: translate .14s var(--pop), filter .14s;
+}
+.cv-opt:nth-child(2) { animation-duration: .42s, 3.6s; }
+.cv-opt:nth-child(3) { animation-duration: .42s, 2.9s; }
+@keyframes cvOptIn { from { opacity: 0; translate: 0 calc(var(--px) * 8); scale: .9; } }
+@keyframes cvFloat { 0%, 100% { rotate: -.35deg; } 50% { rotate: .35deg; } }
+.cv-opt.on { translate: calc(var(--px) * 4) 0; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(6, 3, 6, .55)) brightness(1.06); }
+.cv-opt.on::before { content: ''; position: absolute; left: calc(var(--px) * -17); top: 50%; width: calc(var(--px) * 9); height: calc(var(--px) * 11); margin-top: calc(var(--px) * -5.5); background: var(--dl-arrow) 0 0 / 100% 100%; transform: rotate(-90deg); animation: cvPoint .8s ease-in-out infinite; }
+@keyframes cvPoint { 50% { translate: var(--px) 0; } }
+.cv-opt.picked { animation: cvPicked .3s ease-out both; }
+@keyframes cvPicked { 40% { scale: 1.06; filter: brightness(1.2); } 100% { scale: 1; } }
+.cv-num {
+  flex: none; display: grid; place-items: center; width: calc(var(--px) * 10); height: calc(var(--px) * 10); margin-left: calc(var(--px) * -2);
+  background: var(--cv-num) 0 0 / 100% 100%; color: #3a2008; font-size: var(--fs); line-height: 1; text-shadow: 0 calc(var(--px) * .5) 0 rgba(255, 240, 190, .7);
+}
+.cv-opt-t { display: flex; flex-direction: column; padding: var(--px) 0 calc(var(--px) * 1.5); }
+.cv-opt-t b { font-weight: 400; }
+.cv-opt-t small { font-size: var(--fs); color: var(--ink-soft); line-height: 1.25; }
+.cv-opt.primary .cv-opt-t b { color: #6a2a10; }
+html.is-touch .cv-opt { padding-top: var(--px); padding-bottom: var(--px); }
+
+@media (orientation: portrait) and (max-width: 640px) {
+  .cv-choices { width: calc(100vw - 32px - var(--sal) - var(--sar)); }
+  .cv-say { max-width: calc(100vw - 20px - var(--sal) - var(--sar)); }
+}
+@media (min-width: 1700px) and (min-height: 1000px) {
+  .cv-text, .cv-opt, .cv-sub, .cv-hint { font-size: 24px; }
+}
+
+/* (guard: a layer that marks "a window is open" with a class named `panel` must not pick up the
+   generic parchment .panel look from styles.css while a talk is up) */
+#ui.cv-on .ob-layer.panel { background: none; border: 0; box-shadow: none; padding: 0; max-width: none; max-height: none; animation: none; }
+
+/* (tests and screenshots: game.convo.debug.settle() skips the entrances) */
+.cv.settled .cv-opt, .cv.settled .cv-say, .cv.settled .cv-plate, .cv.settled .cv-body { animation: none !important; }

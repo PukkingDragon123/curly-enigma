@@ -1,6 +1,6 @@
 // Deep Town's side of the quests: who is who (the townsfolk get their names from
 // src/data/villagers.js by seed), talking to them about work (src/ui/questTalk.js), the keepers'
-// news before their shop opens, the notice board of open requests, where people are (for the
+// news before their shop opens (or a word at the window: greet(), a cutscene talk), the notice board of open requests, where people are (for the
 // objective strip, the waypoint and the "!" / "?" over their heads: src/ui/QuestMarks.js), and the
 // crosshair labels ("Talk to Hazel · has work for you").
 // Made by TownScene after the folk and keepers: scene.townQuests = new TownQuests(scene), ticked.
@@ -12,6 +12,8 @@ import { QUESTS, QUEST_ORDER, npcName, NPCS } from '../data/quests.js';
 import { questTalk } from '../ui/questTalk.js';
 import { openTalkMenu } from '../ui/choices.js';
 import { el, pick } from '../core/util.js';
+import { SHOPS } from '../data/shops.js';
+import { moodOf } from './moods.js';
 
 const _h = new THREE.Vector3();
 const NOTICES = [
@@ -86,13 +88,37 @@ export class TownQuests {
       ] });
       return true;
     }
-    if (!mark) return false;
+    if (!mark) return this.greet(k);
     if (mark === '!' && this.s.time - (this.declined[k.id] ?? -1e9) < 240) return false;
     const say = (html, o = {}) => this.s.say(k.a, html, { name: k.spec.name, voice: k.spec.voice, life: 4, mood: o.mood });
     const r = questTalk(this.game, k.id, { say, shop: () => this.s.useKeeper(k, true), tales: false, extra });
     if (r.handled && mark === '!') this.declined[k.id] = this.s.time; // asked once: next time, the shop
     if (r.handled) { k.a.rig.lookAt(this.s.eyeTarget); k.a.rig.talk?.(1.4); }
     return r.handled;
+  }
+
+  /**
+   * No news: a word at the window first, as a little cutscene (src/ui/Convo.js), then the shop (not
+   * again for a minute and a half: you're in and out of shops). Returns false for the shop at once.
+   */
+  greet(k) {
+    const cv = this.game.convo;
+    if (!cv || k.id === 'lift' || !SHOPS[k.id] || !cv.speaker(k.id)) return false;
+    this.greeted ||= {};
+    if (this.s.time - (this.greeted[k.id] ?? -1e9) < 90) return false;
+    this.greeted[k.id] = this.s.time;
+    const sh = SHOPS[k.id], line = pick(sh.lines || [`Welcome to ${sh.name}!`]);
+    cv.play({
+      who: k.id, lines: [{ text: line, mood: k.faces?.greet || moodOf(line) }],
+      choices: [
+        { label: k.id === 'assay' ? 'I\'ve got things to sell' : k.id === 'ticket' ? 'About that ticket...' : 'Let\'s trade', sub: 'Open the counter', primary: true, value: 'shop' },
+        { label: pick(['Just looking', 'Another time', 'Just saying hello']), value: 'bye' },
+      ],
+    }).then((r) => {
+      if (r.choice === 'shop') this.s.useKeeper(k, true);
+      else { k.a.rig.doEmote?.('wave', 1); k.a.rig.setExpression?.('happy', { hold: 1.5 }); }
+    });
+    return true;
   }
 
   // ------------------------------------------------------------ the notice board

@@ -140,11 +140,11 @@ html.is-touch .tutor.out .tt-card, .tutor.top.out .tt-card { animation-name: ttO
 .tt-card[data-mood=laugh] .tt-frame { animation: ttLaugh .3s steps(2) infinite; }
 @keyframes ttLaugh { 50% { transform: translateY(calc(var(--px) * -1)); } }
 
-/* heard through a daze: the face a dark smear, the words swimming */
-.tt-card.muffled .tt-frame canvas { filter: blur(calc(var(--px) * 1.5)) brightness(.35) saturate(.4); }
-.tt-card.muffled .tt-text { filter: blur(calc(var(--px) * .6)); animation: ttSwim 2.4s ease-in-out infinite; color: #5a4636; }
-.tt-card.muffled .tt-name { color: #a89a8a; }
-.tt-card.muffled { filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(10, 4, 6, .55)) brightness(.8) sepia(.25); }
+/* heard through a daze: the face in shadow, the words swimming (no blur: blurred pixel art just
+   reads as a broken, smeared screen, and a filtered layer over the game cost a lot on phones) */
+.tt-card.muffled .tt-frame canvas { opacity: .35; }
+.tt-card.muffled .tt-text { animation: ttSwim 2.4s steps(6) infinite; color: #6a5646; }
+.tt-card.muffled .tt-name { color: #c8b8a2; }
 @keyframes ttSwim { 0%, 100% { transform: translateX(0) skewX(0); } 50% { transform: translateX(calc(var(--px) * 1.5)) skewX(-3deg); } }
 
 /* small screens: a narrower board, the ribbon's name in the plain heading face */

@@ -105,8 +105,9 @@ export function openBurrowShop(game, shopId, o = {}) {
   const T = traderData(st);
   const firstVisit = !T.met[npc];
   T.met[npc] = today(st) + 1;
-  // talking to them hands over deliveries and offers their next request (the quests listen)
-  st.emit('act', { type: 'talk', npc });
+  // talking to them hands over deliveries and offers their next request (the quests listen; after a
+  // cutscene talk at the counter, src/deep/traders/talk.js, that's been said: o.talked)
+  if (!o.talked) st.emit('act', { type: 'talk', npc });
   const news = game.quests?.forNpc?.(npc) || { lines: [] };
   if (folk) { folk.busy = true; folk.rig.setExpression(npc === 'herbalist' ? 'stern' : rocco ? 'smug' : 'happy', { hold: 1.5 }); }
 

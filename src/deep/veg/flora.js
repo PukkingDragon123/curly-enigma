@@ -47,6 +47,15 @@ export const KINDS = {
   fungusAmber: { spr: 'fungusAmber', lay: 'cross', n: 2, sc: [0.7, 1.15], sway: 0.006, rank: 1, glow: 1, light: [1.0, 0.65, 0.25] },
   fungusBrown: { spr: 'fungusBrown', lay: 'cross', n: 2, sc: [0.7, 1.15], sway: 0.006, rank: 0.85 },
   puffballs: { spr: 'puffballs', lay: 'cross', n: 2, sc: [0.75, 1.2], sway: 0, rank: 0.8, glow: 0.4 },
+  // wave 4: mushrooms everywhere (brown caps, red toadstools, ink caps, glowing stalks, buttons)
+  brownCap: { spr: 'brownCap', lay: 'cross', n: 2, sc: [0.75, 1.3], sway: 0.004, rank: 0.9 },
+  toadstool: { spr: 'toadstool', lay: 'cross', n: 2, sc: [0.7, 1.25], sway: 0.004, rank: 0.95 },
+  inkcap: { spr: 'inkcap', lay: 'cross', n: 2, sc: [0.75, 1.2], sway: 0.008, rank: 0.9 },
+  glowShroom: { spr: 'glowShroom', lay: 'cross', n: 2, sc: [0.8, 1.35], sway: 0.01, rank: 1, glow: 1, light: [0.3, 0.6, 1.0], h: 0.45 },
+  mushTiny: { spr: 'mushTiny', lay: 'cross', n: 2, sc: [0.7, 1.1], sway: 0, rank: 'r', glow: 0.8, light: [0.9, 0.62, 0.3] },
+  emberCap: { spr: 'emberCap', lay: 'cross', n: 2, sc: [0.75, 1.2], sway: 0.004, rank: 1, glow: 1, light: [1.0, 0.45, 0.12] },
+  frostCap: { spr: 'frostCap', lay: 'cross', n: 2, sc: [0.75, 1.2], sway: 0.002, rank: 1, glow: 0.8, light: [0.45, 0.75, 1.0] },
+  pebbles: { spr: 'pebbles', lay: 'flat', sc: [0.7, 1.15], rank: 'r' },
   flowerCyan: { spr: 'flowerCyan', lay: 'cross', n: 2, sc: [0.8, 1.25], sway: 0.06, rank: 1, glow: 1, light: [0.25, 0.8, 0.85] },
   flowerViolet: { spr: 'flowerViolet', lay: 'cross', n: 2, sc: [0.8, 1.25], sway: 0.06, rank: 1, glow: 1, light: [0.65, 0.35, 1.0] },
   flowerPink: { spr: 'flowerPink', lay: 'cross', n: 2, sc: [0.8, 1.2], sway: 0.06, rank: 1, glow: 1, light: [1.0, 0.4, 0.7] },
@@ -63,6 +72,7 @@ export const KINDS = {
   vine: { spr: 'vine', lay: 'hang', n: 2, len: [0.6, 1.35], sway: 0.08, rank: 1, hang: true },
   vineBerry: { spr: 'vineBerry', lay: 'hang', n: 2, len: [0.6, 1.3], sway: 0.08, rank: 1, hang: true, glow: 1, light: [0.4, 0.8, 0.9] },
   vineDino: { spr: 'vineDino', lay: 'hang', n: 2, len: [0.8, 1.6], sway: 0.09, rank: 1, hang: true },
+  glowVine: { spr: 'glowVine', lay: 'hang', n: 2, len: [0.7, 1.45], sway: 0.08, rank: 1, hang: true, glow: 1, light: [1.0, 0.66, 0.28] },
   mossDrape: { spr: 'mossDrape', lay: 'hang', n: 2, len: [0.3, 0.5], sway: 0.03, rank: 1, hang: true, glow: 0.6 },
   rootDrape: { spr: 'rootDrape', lay: 'hang', n: 2, len: [0.22, 0.36], sway: 0.025, rank: 1, hang: true },
   mycel: { spr: 'mycel', lay: 'hang', n: 2, len: [0.4, 0.85], sway: 0.05, rank: 1, hang: true, glow: 1, light: [0.6, 0.35, 1.0] },
@@ -76,6 +86,8 @@ export const KINDS = {
   wallMoss: { spr: 'mossGrass', lay: 'tuft', n: 2, sc: [0.45, 0.75], sway: 0.04, rank: 'r', glow: 0.7 },
   wallPale: { spr: 'paleGrass', lay: 'tuft', n: 2, sc: [0.45, 0.7], sway: 0.03, rank: 'r' },
   wallFungus: { spr: 'fungusAmber', lay: 'tuft', n: 2, sc: [0.55, 0.85], sway: 0, rank: 1, glow: 1, light: [1.0, 0.65, 0.25] },
+  wallMush: { spr: 'mushTiny', lay: 'tuft', n: 2, sc: [0.6, 0.9], sway: 0, rank: 1, glow: 0.8, light: [0.9, 0.62, 0.3] },
+  wallBrown: { spr: 'brownCap', lay: 'tuft', n: 2, sc: [0.5, 0.75], sway: 0, rank: 0.9 },
   wallLichenRust: { spr: 'lichenRust', lay: 'decal', sc: [0.45, 0.7], rank: 'r' },
   wallLichenFrost: { spr: 'lichenFrost', lay: 'decal', sc: [0.45, 0.7], rank: 'r', glow: 0.7 },
   wallLichenCrystal: { spr: 'lichenCrystal', lay: 'decal', sc: [0.45, 0.7], rank: 'r', glow: 0.9 },
@@ -89,69 +101,74 @@ export const KINDS = {
  */
 const FLORA = new Map();
 export function floraOf(zone, bio, depth) {
-  const key = zone * 100 + bio * 10 + (depth < 12 ? 1 : 0) + (depth < 20 ? 2 : 0);
+  const key = zone * 100 + bio * 10 + (depth < 12 ? 1 : 0) + (depth < 20 ? 2 : 0) + (depth < 6 ? 4 : 0);
   let F = FLORA.get(key);
   if (!F) { F = floraTable(zone, bio, depth); F.bio = bio; FLORA.set(key, F); }
   return F;
 }
+// Wave 4: caves grow mushrooms, not grass. Floors are bare dirt, gravel and pebbles with clumps of
+// mushrooms of many kinds (brown caps, red toadstools, ink caps, glowing stalks, buttons); vines
+// and roots hang from the roofs (cave vines with glow berries further down); grass only near the
+// surface (the first few metres) and, thin, in the lush biomes (the mossy grotto, the dino caverns).
 function floraTable(zone, bio, depth) {
+  const near = depth < 6; // close to the surface, a little light gets in: a few grass tufts
   if (bio === 1) return {
-    floor: [['mossGrass', 10], ['grass', 4], ['grassTall', 3], ['clover', 4], ['cloverGlow', 1.4], ['fern', 2.6], ['flowerCyan', 1.2], ['flowerViolet', 0.9], ['flowerPink', 0.4], ['fungusCyan', 0.4], ['litter', 0.4]],
-    ceil: [['vine', 4], ['vineBerry', 1.6], ['mossDrape', 3], ['roots', depth < 20 ? 1 : 0.2]],
-    wall: [['wallMoss', 4], ['wallFern', 2.4], ['wallGrass', 1]],
-    f: 0.9, c: 0.2, w: 0.12, rock: 0.8,
+    floor: [['mossGrass', 2.4], ['clover', 1.2], ['cloverGlow', 1.4], ['fern', 2.2], ['flowerCyan', 1.1], ['flowerViolet', 0.8], ['flowerPink', 0.3], ['fungusCyan', 1.6], ['mushTiny', 2], ['glowShroom', 1.2], ['toadstool', 0.8], ['brownCap', 0.8], ['litter', 0.3]],
+    ceil: [['vine', 5], ['vineBerry', 2], ['glowVine', 2], ['mossDrape', 3], ['roots', depth < 20 ? 1 : 0.2]],
+    wall: [['wallMoss', 3], ['wallFern', 2.2], ['wallMush', 1.2]],
+    f: 0.75, c: 0.26, w: 0.12, rock: 0.75,
   };
   if (bio === 2) return {
-    floor: [['dryGrass', 6], ['thorn', 1.3], ['stoneRose', 1.6], ['paleGrass', 1.4]],
+    floor: [['pebbles', 3.5], ['dryGrass', 1], ['thorn', 1.3], ['stoneRose', 1.6], ['brownCap', 1], ['inkcap', 0.6]],
     ceil: [['rootsShort', 1], ['rootDrape', 0.6]],
-    wall: [['wallLichenRust', 2], ['wallPale', 0.6]],
+    wall: [['wallLichenRust', 2], ['wallBrown', 0.4]],
     f: 0.2, c: 0.025, w: 0.035,
   };
   if (bio === 3) return {
-    floor: [['fungusGrass', 6], ['fungusViolet', 3], ['fungusCyan', 2.4], ['fungusBlue', 2], ['fungusPink', 1], ['puffballs', 2], ['flowerViolet', 0.6], ['fungusAmber', 0.7]],
-    ceil: [['mycel', 3], ['mycelCyan', 1.5]],
-    wall: [['wallFungus', 2], ['wallMoss', 0.6]],
-    f: 0.7, c: 0.1, w: 0.05, rock: 0.5,
+    floor: [['fungusGrass', 2.5], ['fungusViolet', 3], ['fungusCyan', 2.4], ['fungusBlue', 2], ['fungusPink', 1], ['puffballs', 2], ['glowShroom', 3], ['inkcap', 1.4], ['mushTiny', 2.4], ['toadstool', 1], ['flowerViolet', 0.5], ['fungusAmber', 0.7]],
+    ceil: [['mycel', 3], ['mycelCyan', 1.5], ['glowVine', 0.8]],
+    wall: [['wallFungus', 2], ['wallMush', 2], ['wallMoss', 0.4]],
+    f: 0.8, c: 0.12, w: 0.07, rock: 0.5,
   };
   if (bio === 4) return {
-    floor: [['giantFern', 1.5], ['fern', 3], ['horsetail', 2.4], ['grassTall', 5], ['grass', 4], ['clover', 1.4], ['litter', 1.6], ['flowerPink', 0.45], ['fungusBrown', 0.6]],
-    ceil: [['vineDino', 4], ['roots', 1.4]],
-    wall: [['wallFernDino', 2], ['wallFern', 2], ['wallGrass', 1.2]],
-    f: 0.8, c: 0.12, w: 0.08, rock: 0.7,
+    floor: [['giantFern', 1.6], ['fern', 3], ['horsetail', 2.4], ['grassTall', 1.2], ['grass', 0.8], ['clover', 1.2], ['litter', 1.6], ['flowerPink', 0.45], ['fungusBrown', 1], ['brownCap', 1], ['toadstool', 0.6], ['pebbles', 1]],
+    ceil: [['vineDino', 4], ['roots', 1.4], ['vine', 1.2], ['glowVine', 0.6]],
+    wall: [['wallFernDino', 2], ['wallFern', 2], ['wallBrown', 0.6]],
+    f: 0.75, c: 0.13, w: 0.08, rock: 0.65,
   };
   switch (zone) {
     case 1: return {
-      floor: [['grass', 6], ['grassTall', 1.2], ['clover', 2], ['fern', 1.3], ['fungusBrown', 0.8], ['fungusBlue', 0.35], ['flowerCyan', 0.25], ['litter', 0.6], ['puffballs', 0.3]],
-      ceil: depth < 12 ? [['roots', 6], ['rootsShort', 3], ['rootDrape', 1.2], ['vine', 0.5]] : [['roots', 2.5], ['rootsShort', 3], ['rootDrape', 1], ['vine', 0.7]],
-      wall: [['wallGrass', 1.6], ['wallFern', 0.9], ['wallLichenRust', 0.4]],
-      f: 0.5, c: depth < 12 ? 0.18 : 0.09, w: 0.04, rock: 0.42,
+      floor: [['brownCap', 3], ['toadstool', 1.5], ['fungusBrown', 2], ['mushTiny', 2.4], ['inkcap', 1], ['fungusBlue', 0.7], ['glowShroom', 0.5], ['puffballs', 1], ['pebbles', 3.2], ['litter', 0.4], ['fern', near ? 1 : 0.35], ['grass', near ? 2.5 : 0.15], ['clover', near ? 0.8 : 0]],
+      ceil: depth < 12 ? [['roots', 6], ['rootsShort', 3], ['rootDrape', 1.2], ['vine', 2.6], ['glowVine', 0.5]] : [['roots', 2.5], ['rootsShort', 2.5], ['rootDrape', 1], ['vine', 2.6], ['vineBerry', 0.8], ['glowVine', 0.9]],
+      wall: [['wallMush', 1.2], ['wallBrown', 1], ['wallFern', 0.5], ['wallLichenRust', 0.4], ['wallGrass', near ? 1 : 0]],
+      f: 0.42, c: depth < 12 ? 0.2 : 0.14, w: 0.05, rock: 0.42,
     };
     case 2: return {
-      floor: [['paleGrass', 5], ['fungusBrown', 1.5], ['fungusAmber', 0.8], ['fernPale', 1.2], ['clover', 0.4], ['puffballs', 0.5], ['litter', 0.3]],
-      ceil: [['rootsShort', 2], ['roots', 0.8], ['rootDrape', 1]],
-      wall: [['wallLichenRust', 2], ['wallPale', 0.6]],
-      f: 0.22, c: 0.04, w: 0.045,
+      floor: [['fungusBrown', 2], ['fungusAmber', 1.2], ['brownCap', 2.2], ['mushTiny', 2], ['inkcap', 1.4], ['toadstool', 0.6], ['puffballs', 0.8], ['fernPale', 0.5], ['pebbles', 3.4], ['paleGrass', 0.25]],
+      ceil: [['rootsShort', 2], ['roots', 0.8], ['rootDrape', 1], ['vine', 1.4], ['glowVine', 0.7]],
+      wall: [['wallLichenRust', 2], ['wallMush', 1.2], ['wallBrown', 0.6], ['wallPale', 0.2]],
+      f: 0.3, c: 0.09, w: 0.055,
     };
     case 3: return {
-      floor: [['crystalGrass', 5], ['fungusCyan', 1.5], ['fungusBlue', 1.2], ['flowerCyan', 1], ['flowerViolet', 0.8], ['cloverGlow', 0.6], ['lichenCrystal', 1]],
-      ceil: [['mycelCyan', 1.5], ['mycel', 0.5]],
-      wall: [['wallLichenCrystal', 2]],
-      f: 0.22, c: 0.03, w: 0.04,
+      floor: [['crystalGrass', 1.6], ['fungusCyan', 2], ['fungusBlue', 1.6], ['glowShroom', 1.8], ['mushTiny', 1.2], ['flowerCyan', 0.8], ['flowerViolet', 0.6], ['cloverGlow', 0.4], ['lichenCrystal', 1], ['pebbles', 1.6]],
+      ceil: [['mycelCyan', 1.5], ['mycel', 0.5], ['glowVine', 0.8]],
+      wall: [['wallLichenCrystal', 2], ['wallMush', 0.5]],
+      f: 0.26, c: 0.05, w: 0.04,
     };
     case 4: return {
-      floor: [['ashGrass', 3], ['ashWeed', 3], ['flowerEmber', 0.8]],
+      floor: [['ashWeed', 3], ['emberCap', 2.2], ['ashGrass', 1], ['flowerEmber', 0.8], ['pebbles', 1]],
       ceil: [],
       wall: [],
       f: 0.18, c: 0, w: 0,
     };
     case 5: return {
-      floor: [['frostGrass', 4], ['lichenFrost', 3], ['flowerFrost', 0.7]],
+      floor: [['lichenFrost', 3], ['frostCap', 2], ['frostGrass', 1.2], ['flowerFrost', 0.7], ['pebbles', 1]],
       ceil: [['rime', 3]],
       wall: [['wallLichenFrost', 2]],
-      f: 0.26, c: 0.08, w: 0.05,
+      f: 0.24, c: 0.08, w: 0.05,
     };
     default: return {
-      floor: [['voidGrass', 3], ['voidTendril', 2.5], ['starMoss', 2.5]],
+      floor: [['voidGrass', 2], ['voidTendril', 2.5], ['starMoss', 2.5]],
       ceil: [['voidHang', 2]],
       wall: [['wallStar', 1]],
       f: 0.2, c: 0.04, w: 0.03,
@@ -170,6 +187,8 @@ for (const [m, k] of [
   [M.MYCEL, 1], [M.STONE, 0.28], [M.LIMESTONE, 0.28], [M.GRANITE, 0.22], [M.SANDSTONE, 0.4], [M.CRYSTALROCK, 0.7], [M.BASALT, 0.45],
   [M.MAGMAROCK, 0.4], [M.ASH, 0.85], [M.OBSIDIAN, 0.15], [M.PERMAFROST, 0.65], [M.SNOW, 0.85], [M.ICE, 0.3], [M.CORE, 0.55],
   [M.STARROCK, 0.65], [M.VOIDROCK, 0.55], [M.GEODE, 0.1], [M.RUBBLE, 0.2],
+  // the dungeons' mossy blocks: a little grows on them (moss and vines hang from the roofs)
+  [M.DMOSSCOB, 0.3], [M.DMOSSBRICK, 0.25],
 ]) if (m !== undefined) FERT[m] = k;
 
 const lerp = (a, b, t) => a + (b - a) * t;

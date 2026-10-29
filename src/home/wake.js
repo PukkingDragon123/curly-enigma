@@ -1,16 +1,22 @@
-// Waking up in your bed at Old Star's (home { from: 'fall' }), mixed into HomeScene. No splash,
-// no fuss: you just wake. Dark; a slow heartbeat; the world comes back muffled, as if through
-// water (a low-pass on the whole mix that opens as you come round). Heavy eyelids crack open on the
-// beams over the bed, blurred, and sink shut again; a second, longer look, the head rolling a
-// little on the pillow; a third, and the room comes into focus: the fire in the bedroom hearth,
-// and Old Star crouched at it with a poker, his back to you. He hears you stir, straightens up,
-// turns round and talks (the tutor card): who he is, how you came down through his ceiling, the
-// million gold for the way up, and his offer to teach you. Then you sit up and get out of bed.
-// The overlay (WakeFx) draws the lids as a dark mask with soft edges and lashes, warm where the
-// light comes through them; the blur is a CSS filter on the canvas. Sets flags fallen + nugget,
-// starts the `lessons` quest and emits lesson { step: 'wake' }.
+// Waking up in your bed at Old Star's (home { from: 'fall' }), mixed into HomeScene: the first
+// cutscene of the forced tutorial (letterbox bars, nothing else on screen; a hold of Space / Enter /
+// E, or of the ring on a touch screen, skips it: never a tap). Dark; a slow heartbeat; the world
+// comes back muffled, as if through water (a low-pass on the whole mix that opens as you come round).
+// Heavy eyelids crack open on the beams over the bed and sink shut again; a second, longer look, the
+// head rolling on the pillow; a third, and the room comes into focus: the fire in the bedroom hearth,
+// and Old Star crouched at it with a poker, his back to you. He hears you stir, straightens up, turns
+// round, and the view eases in on him while he talks (each line waits for you): who he is, how you
+// came down through his ceiling, the million gold for the way up, his offer to teach you. Then you
+// sit up and get out of bed, and the tutorial at home takes over (lessons.js: look, walk, talk,
+// follow him to the lift). The overlay (WakeFx) draws the lids as a dark mask with soft edges and
+// lashes, warm where the light comes through them; only the world (the canvas) is ever blurred, never
+// the interface. Sets flags fallen + nugget, starts the `lessons` quest and emits lesson { step: 'wake' }
+// (and talk oldstar), as before.
+import * as THREE from 'three';
 import { el, clamp } from '../core/util.js';
 import { starData } from './starData.js';
+import { besideItem } from './layoutfix.js';
+import { T } from './units.js';
 
 const ease = (k) => k * k * (3 - 2 * k);
 
@@ -157,10 +163,15 @@ function muffler(a) {
 }
 
 // ---------------------------------------------------------------- the scene
+/** Thrown through the cutscene's awaits when the player holds to skip. */
+const CUT = { cut: true };
+
 export class HomeWake {
+  /** Per frame (HomeScene.update): the eyelids, the head's sway, and the tutorial at home (lessons.js). */
   tickWakeFx(dt) {
     if (this.wakeFx) this.wakeFx.update(dt);
     if (this.waking && this.wakeSway) this.wakeSway(dt);
+    this.tickHomeTutor?.(dt);
   }
 
   sniffSound() {
@@ -174,13 +185,64 @@ export class HomeWake {
     return { x: h.x + 0.12, z: h.z - 0.92, face: { x: h.x, z: h.z } };
   }
 
-  /** The whole waking-up scene. Resolves when you're up and the first lesson is set. */
+  /**
+   * Tweens and waits for a cutscene that a hold-to-skip can cut short: tween() and sleep() stop at
+   * once when cut.on (resolving), go(p) awaits p and then throws CUT if the scene was cut meanwhile.
+   */
+  cineTools(cut) {
+    const tween = (secs, fn) => new Promise((res) => {
+      let t = 0;
+      fn(0);
+      const drop = () => { const i = this.tickers.indexOf(tick); if (i >= 0) this.tickers.splice(i, 1); };
+      const tick = (dt) => {
+        if (cut.on) { drop(); res(); return; }
+        t += dt;
+        const k = Math.min(1, t / secs);
+        fn(k);
+        if (k >= 1) { drop(); res(); }
+      };
+      this.tickers.push(tick);
+    });
+    const sleep = (secs) => tween(secs, () => {});
+    // a skip lets go of whatever the scene was waiting on (a walk, a line) at once
+    const cutP = new Promise((r) => { cut.fire = r; if (cut.on) r(); });
+    const go = async (p) => { await Promise.race([p, cutP]); if (cut.on) throw CUT; };
+    return { tween, sleep, go };
+  }
+
+  /**
+   * Old Star says a line (through the cutscene talk when there is one, else his tutor card).
+   * o: { mood, wait, key, dur }.
+   */
+  starLine(html, o = {}) {
+    const star = this.star, ui = this.game.ui;
+    if (!star?.rig) return Promise.resolve(ui.tutor?.say(html, o));
+    const ob = ui.onboard;
+    // a line he waits on is a little cutscene (game.convo: the camera on him, the words by his head);
+    // a passing tip is his card, which never holds you up
+    if (ob && o.wait && this.game.convo?.say) {
+      star.sniff?.();
+      return ob.talk(html, { mood: o.mood, wait: true, camera: o.camera, gesture: o.gesture }, () => star.say(html, o));
+    }
+    // (a passing tip stays on his card even while a talk with him is still winding down)
+    return Promise.resolve(star.say(html, o.wait ? o : { ...o, convo: false }));
+  }
+
+  /** The camera's field of view, eased (a slow push in on whoever's talking). */
+  zoomTo(fov, secs, tween = (s, f) => this.tween(s, f)) {
+    if (this.game.convo?.say) return Promise.resolve(); // the cutscene talk frames its own shots
+    const cam = this.camera, f0 = cam.fov;
+    return tween(secs, (k) => { cam.fov = f0 + (fov - f0) * ease(k); cam.updateProjectionMatrix(); });
+  }
+
+  /** The whole waking-up scene: a cutscene (letterbox, hold to skip), then the tutorial takes over. */
   async wakeFromFall() {
-    const g = this.game, st = g.state, a = g.audio, ui = g.ui, star = this.star;
+    const g = this.game, st = g.state, a = g.audio, ui = g.ui, star = this.star, ob = ui.onboard;
     st.flag('fallen', true);
     st.flag('nugget', true);
     const sd = starData(st);
     sd.woke = false;
+    ob?.begin(); // a new game: nothing on screen yet, the HUD comes in piece by piece
     if (!this.wakeFx) { this.wakeFx = new WakeFx(g); this.own(() => { this.wakeFx?.dispose(); this.wakeFx = null; }); }
     const fx = this.wakeFx;
     const muff = (this.wakeMuff = muffler(a));
@@ -194,16 +256,18 @@ export class HomeWake {
     this.waking = true;
     const c = this.cam;
     const bed = this.findKind('bed');
+    this.wakeBed = bed;
     // lying in bed, looking up at the beams
     if (bed) await this.lieDown(bed, true);
     const base = { yaw: c.yaw, pitch: 1.12, roll: 0.18 };
     c.pitch = base.pitch; c.roll = base.roll;
     fx.open = 0; fx.blur = 10; fx.glow = 0.35;
     const post0 = (this.wakeVignette = this.post.vignette);
+    this.fov0 = this.camera.fov;
     this.post.vignette = 0.95;
     this.post.fade = 0;
     // the head drifts on the pillow: a slow sway that settles as you come round
-    const sway = { amp: 1, yaw: 0, pitch: 0, t: 0 };
+    const sway = (this.wakeSwayS = { amp: 1, yaw: 0, pitch: 0, t: 0 });
     this.wakeSway = (dt) => {
       sway.t += dt;
       const s = sway.amp;
@@ -222,93 +286,167 @@ export class HomeWake {
       star.lean(0.32);
       star.spot = 'bedroom';
     }
-    const lids = (to, secs) => { const from = fx.open; return this.tween(secs, (k) => { fx.open = from + (to - from) * ease(k); }); };
-    const blurTo = (to, secs) => { const from = fx.blur; return this.tween(secs, (k) => { fx.blur = from + (to - from) * ease(k); }); };
-    const glowTo = (to, secs) => { const from = fx.glow; return this.tween(secs, (k) => { fx.glow = from + (to - from) * ease(k); }); };
-    const clear = (to, secs) => { const from = this.muffK ?? 0; return this.tween(secs, (k) => { this.muffK = from + (to - from) * ease(k); muff.set(this.muffK); }); };
-    const look = (dyaw, dpitch, secs) => { const y0 = sway.yaw, p0 = sway.pitch; return this.tween(secs, (k) => { sway.yaw = y0 + (dyaw - y0) * ease(k); sway.pitch = p0 + (dpitch - p0) * ease(k); }); };
+    // the cutscene: letterbox bars, and a hold (never a tap) skips it
+    const cut = (this.wakeCut = { on: false });
+    ob?.cinema(true, { skip: () => this.skipWakeCinema() });
+    const { tween, sleep, go } = this.cineTools(cut);
+    const lids = (to, secs) => { const from = fx.open; return tween(secs, (k) => { fx.open = from + (to - from) * ease(k); }); };
+    const blurTo = (to, secs) => { const from = fx.blur; return tween(secs, (k) => { fx.blur = from + (to - from) * ease(k); }); };
+    const glowTo = (to, secs) => { const from = fx.glow; return tween(secs, (k) => { fx.glow = from + (to - from) * ease(k); }); };
+    const clear = (to, secs) => { const from = this.muffK ?? 0; return tween(secs, (k) => { this.muffK = from + (to - from) * ease(k); muff.set(this.muffK); }); };
+    const look = (dyaw, dpitch, secs) => { const y0 = sway.yaw, p0 = sway.pitch; return tween(secs, (k) => { sway.yaw = y0 + (dyaw - y0) * ease(k); sway.pitch = p0 + (dpitch - p0) * ease(k); }); };
+    const line = (html, mood) => go(this.starLine(html, { mood, wait: true, camera: 'close' }));
     this.muffK = 0;
     muff.set(0);
+    try {
+      // ---- dark, light glowing red through the lids, a heartbeat; then a crack of warm light on the
+      // beams, blurred, slowly widening... and shut again
+      glowTo(0.7, 1.4);
+      await go(sleep(0.3));
+      heartbeat(a, 2);
+      await go(lids(0.05, 0.9));
+      await go(sleep(0.5));
+      breath(a, 0.04);
+      clear(0.2, 2);
+      await go(lids(0.2, 1.1));
+      await go(sleep(0.7));
+      await go(lids(0.02, 0.6));
+      await go(sleep(0.9));
+      // ---- the second, longer: the head rolls toward the fire, Old Star hums to himself
+      heartbeat(a, 1, 0.1);
+      clear(0.45, 2.2);
+      blurTo(6, 1.6);
+      look(0.25, -0.18, 2.6);
+      await go(lids(0.42, 1.0));
+      if (star?.rig) a.play('babble', { pitch: 150, n: 3, vol: 0.35 });
+      await go(sleep(0.9));
+      await go(lids(0.12, 0.45));
+      await go(lids(0.36, 0.5));
+      await go(sleep(0.5));
+      await go(lids(0.0, 0.55));
+      await go(sleep(0.6));
+      // ---- the third: eyes open, the room comes into focus, the sound comes back
+      clear(1, 2.6);
+      blurTo(0, 2.4);
+      glowTo(0, 1);
+      tween(2.6, (k) => { this.post.vignette = 0.95 + (post0 - 0.95) * ease(k); });
+      const fire = this.shell.hearth;
+      const towards = Math.atan2(-(fire.x - c.x), -(fire.z - c.z));
+      const dYaw = Math.atan2(Math.sin(towards - base.yaw), Math.cos(towards - base.yaw));
+      look(dYaw * 0.85, -0.95, 2.4);
+      await go(lids(0.7, 1.0));
+      await go(lids(0.5, 0.18)); // a flutter
+      await go(lids(1, 0.5));
+      tween(1.6, (k) => { sway.amp = 1 - ease(k) * 0.7; });
+      a.play('creak', { vol: 0.25 }); // the bed creaks as you stir
+      await go(sleep(0.9));
+      // ---- he hears you: straightens up, turns round, and the view settles on him
+      if (star?.rig) {
+        const r = star;
+        tween(0.6, (k) => { r.lean(0.32 * (1 - ease(k))); });
+        r.setPose('idle');
+        await go(sleep(0.3));
+        r.faceTo(c.x, c.z);
+        r.sniff();
+        this.sniffSound();
+        await go(sleep(0.5));
+        r.gesture('wave', 1.4);
+        this.zoomTo(this.fov0 - 12, 2.2, tween);
+      } else await go(sleep(0.6));
+      await line('Ah! You\'re awake. Easy now: the room likes to spin the first time.', 'happy');
+      star?.rig && star.gesture('point', 1.6);
+      await line('You came down through my ceiling last night, you and a hen in a walking house. I\'m <b>Old Star</b>. This room\'s yours now.', 'calm');
+      await line('Sixty years I\'ve been stuck down here. The way up is the Surface Express, and a ticket costs a <span class="gold-txt">million gold</span>.', 'worried');
+      await line('So here\'s my offer. I\'ll teach you to <b>dig</b>, to <b>forge</b> and to <b>cook</b>. We earn that million together, and we <b>both</b> ride out of here.', 'proud');
+      if (this.nug) { a.play('cluck', { n: 2 }); this.nugEmote?.('♥'); }
+      await line('Your hen\'s fine, by the way. Made herself at home in the corner. Up you get, then!', 'happy');
+      // ---- sit up and get out of bed (on its side)
+      this.wakeSway = null;
+      sway.amp = 0;
+      this.zoomTo(this.fov0, 1.2, tween);
+      a.play('step', { mat: 'wood' });
+      await go(this.wakeGetUp(bed, tween));
+    } catch (e) {
+      if (e !== CUT) throw e;
+    }
+    if (cut.on) await this.wakeCutToEnd();
+    this.afterWake();
+  }
 
-    // ---- dark, light glowing red through the lids, a heartbeat; then a crack of warm light on the
-    // beams, blurred, slowly widening... and shut again
-    glowTo(0.7, 1.4);
-    await this.sleepFor(0.3);
-    heartbeat(a, 2);
-    await lids(0.05, 0.9);
-    await this.sleepFor(0.5);
-    breath(a, 0.04);
-    clear(0.2, 2);
-    await lids(0.2, 1.1);
-    await this.sleepFor(0.7);
-    await lids(0.02, 0.6);
-    await this.sleepFor(0.9);
-    // ---- the second, longer: the head rolls toward the fire, Old Star hums to himself
-    heartbeat(a, 1, 0.1);
-    clear(0.45, 2.2);
-    blurTo(6, 1.6);
-    look(0.25, -0.18, 2.6);
-    await lids(0.42, 1.0);
-    if (star?.rig) a.play('babble', { pitch: 150, n: 3, vol: 0.35 });
-    await this.sleepFor(0.9);
-    await lids(0.12, 0.45);
-    await lids(0.36, 0.5);
-    await this.sleepFor(0.5);
-    await lids(0.0, 0.55);
-    await this.sleepFor(0.6);
-    // ---- the third: eyes open, the room comes into focus, the sound comes back
-    clear(1, 2.6);
-    blurTo(0, 2.4);
-    glowTo(0, 1);
-    this.tween(2.6, (k) => { this.post.vignette = 0.95 + (post0 - 0.95) * ease(k); });
-    const fire = this.shell.hearth;
-    const towards = Math.atan2(-(fire.x - c.x), -(fire.z - c.z));
-    const dYaw = Math.atan2(Math.sin(towards - base.yaw), Math.cos(towards - base.yaw));
-    look(dYaw * 0.85, -0.95, 2.4);
-    await lids(0.7, 1.0);
-    await lids(0.5, 0.18); // a flutter
-    await lids(1, 0.5);
-    this.tween(1.6, (k) => { sway.amp = 1 - ease(k) * 0.7; });
-    a.play('creak', { vol: 0.25 }); // the bed creaks as you stir
-    await this.sleepFor(0.9);
-    // ---- he hears you: straightens up, turns round
-    if (star?.rig) {
-      const r = star;
-      this.tween(0.6, (k) => { r.lean(0.32 * (1 - ease(k))); });
-      r.setPose('idle');
-      await this.sleepFor(0.3);
-      r.faceTo(c.x, c.z);
-      r.sniff();
-      this.sniffSound();
-      await this.sleepFor(0.5);
-      r.gesture('wave', 1.4);
-    } else await this.sleepFor(0.6);
-    const say = (text, mood) => (star?.rig ? star.say(text, { mood, wait: true }) : ui.tutor?.say(text, { mood, wait: true }));
-    await say('Ah! You\'re awake. Easy, easy. Don\'t sit up too fast: the room likes to spin the first time.', 'happy');
-    star?.rig && star.gesture('point', 1.6);
-    await say('You came down through my ceiling last night, you and a hen in a walking house. Out cold, you were. I put you to bed. This room\'s yours now.', 'calm');
-    await say('I\'m <b>Old Star</b>. Blacksmith, once, up top. Been stuck down here sixty years, give or take a winter.', 'calm');
-    await say('I was <b>this</b> close to getting out. The way up is the Surface Express, from Deep Town. A ticket costs a <span class="gold-txt">million gold</span>. I had near half of it once. Long story. Don\'t ask.', 'worried');
-    await say('So here\'s my offer. I\'m too old to swing a pick all day, but you\'re young. I\'ll teach you to <b>dig</b>, to <b>forge</b> and to <b>cook</b>. We earn that million together, and we <b>both</b> ride out of here.', 'proud');
-    if (this.nug) { a.play('cluck', { n: 2 }); this.nugEmote?.('♥'); }
-    await say('Your hen\'s fine, by the way. She\'s made herself at home in the corner. Up you get, then: the kettle\'s on downstairs.', 'happy');
-    // ---- sit up and get out of bed
+  /** Sit up, swing the legs out of bed and stand beside it (the cutscene's own tweens: a skip stops it). */
+  async wakeGetUp(bed, tween) {
+    const c = this.cam;
+    const end = this.besideBed(bed);
+    if (!end) { await tween(0.7, (k) => { c.pitch *= 1 - k; c.roll *= 1 - k; }); return; }
+    const x0 = c.x, y0 = c.y, z0 = c.z, yw0 = c.yaw, p0 = c.pitch, r0 = c.roll;
+    const dyaw = Math.atan2(Math.sin(end.yaw - yw0), Math.cos(end.yaw - yw0));
+    await tween(0.6, (k) => { const e = ease(k); c.pitch = p0 + (-0.15 - p0) * e; c.roll = r0 * (1 - e); c.y = y0 + 0.12 * e; });
+    if (this.wakeCut?.on) return;
+    this.game.audio.play('step', { mat: 'wood' });
+    const y1 = c.y;
+    await tween(0.7, (k) => { const e = ease(k); c.x = x0 + (end.x - x0) * e; c.z = z0 + (end.z - z0) * e; c.y = y1 + (end.y - y1) * e; c.yaw = yw0 + dyaw * e; c.pitch = -0.15 + 0.1 * e; });
+  }
+
+  /** Standing beside the bed, facing the room (where getting up ends): { x, y (eye), z, yaw } or null. */
+  besideBed(bed) {
+    if (!bed) return null;
+    const s = besideItem(this, bed) || { x: bed.cx + 1, z: bed.cz };
+    const x = s.x * T, z = s.z * T;
+    return { x, z, y: this.floorY(x, z) + this.rig.player.eyeY, yaw: Math.atan2(-((this.W / 2) * T - x), -((this.D / 2) * T - z)) };
+  }
+
+  /** Hold to skip: the cutscene stops where it is (its tweens and line) and cuts to its end. */
+  skipWakeCinema() {
+    if (!this.waking || !this.wakeCut || this.wakeCut.on) return;
+    this.wakeCut.on = true;
+    this.wakeCut.fire?.();
+    this.game.ui.tutor?.hide();
+    this.game.convo?.end?.();
+  }
+
+  /** A quick dip to black, everything set as the scene would have left it, and back. */
+  async wakeCutToEnd() {
+    const fx = this.wakeFx, c = this.cam, star = this.star;
+    await this.tween(0.22, (k) => { this.post.fade = Math.max(this.post.fade || 0, k); });
+    if (fx) { fx.open = 1; fx.blur = 0; fx.glow = 0; }
+    this.wakeMuff?.dispose();
     this.wakeSway = null;
-    sway.amp = 0;
-    a.play('step', { mat: 'wood' });
-    if (bed) await this.getUp(bed);
-    else await this.tween(0.7, (k) => { c.pitch = c.pitch * (1 - k); c.roll = c.roll * (1 - k); });
-    c.roll = 0;
-    this.endScript();
+    if (this.wakeVignette !== undefined) this.post.vignette = this.wakeVignette;
+    if (this.fov0) { this.camera.fov = this.fov0; this.camera.updateProjectionMatrix(); }
+    const end = this.besideBed(this.wakeBed);
+    if (end && c) { c.x = end.x; c.y = end.y; c.z = end.z; c.yaw = end.yaw; c.pitch = -0.05; c.roll = 0; }
+    if (star?.rig) {
+      star.stand();
+      star.lean(0);
+      star.setPose('idle');
+      const H = this.hearthSpot();
+      star.pos.set(H.x, this.floorY(H.x, H.z), H.z);
+      if (c) star.faceTo(c.x, c.z, true);
+    }
+    await this.sleepFor(0.15);
+    await this.tween(0.45, (k) => { this.post.fade = 1 - k; });
+    this.post.fade = 0;
+  }
+
+  /** The end of the waking-up (played through or skipped): control back, the lessons begin. */
+  afterWake() {
+    const g = this.game, st = g.state, ui = g.ui, star = this.star;
+    const sd = starData(st);
+    this.wakeSway = null;
+    if (this.cam) this.cam.roll = 0;
+    if (this.fov0) { this.camera.fov = this.fov0; this.camera.updateProjectionMatrix(); }
+    if (this.scripted) this.endScript();
     this.unstick();
     this.waking = false;
-    fx.open = 1; fx.blur = 0;
-    muff.dispose();
-    this.post.vignette = post0;
+    if (this.wakeFx) { this.wakeFx.open = 1; this.wakeFx.blur = 0; }
+    this.wakeMuff?.dispose();
+    if (this.wakeVignette !== undefined) this.post.vignette = this.wakeVignette;
+    this.post.fade = 0;
     ui.setTouchControls?.(true);
     if (this.hammer) this.hammer.style.visibility = '';
-    if (lc) lc.style.visibility = '';
-    // the lessons begin
+    if (ui.lookCatch) ui.lookCatch.style.visibility = '';
+    ui.onboard?.cinema(false);
+    // the lessons begin (the same flags, quest and acts as ever)
     sd.woke = true;
     g.quests?.start?.('lessons');
     st.emit('act', { type: 'lesson', step: 'wake' });
@@ -317,12 +455,13 @@ export class HomeWake {
     st.save();
     if (star?.rig) {
       star.scripted = false;
+      star.nextT = 999;
       star.faceTo(this.rig.player.pos.x, this.rig.player.pos.z);
-      star.gesture('point', 2.5);
-      star.say('First lesson: mining. The cage lift is in the hall, through the living room downstairs. It goes straight down to my practice dig. Bring me back some <b>copper ore</b>: the orange specks in the rock.', { mood: 'calm' });
-      this.later(1.6, () => this.placeStarForLesson());
     }
     if (this.nug) { this.nug.ai.wake?.(); }
+    // and now the tutorial: look, walk, talk, follow him to the lift (lessons.js)
+    if (this.startHomeTutor) this.startHomeTutor('look');
+    else if (star?.rig) this.later(1.6, () => this.placeStarForLesson());
   }
 
   /** Test hook: jump to the end of the waking-up scene (flags, the quest, the first lesson). */
@@ -334,15 +473,17 @@ export class HomeWake {
     this.game.quests?.start?.('lessons');
     st.emit('act', { type: 'lesson', step: 'wake' });
     if (this.lessonStage() === 'wake') this.setLesson('mine');
+    if (this.wakeCut) { this.wakeCut.on = true; this.wakeCut.fire?.(); }
     if (this.wakeFx) { this.wakeFx.open = 1; this.wakeFx.blur = 0; }
     this.wakeMuff?.dispose();
     if (this.wakeVignette !== undefined) this.post.vignette = this.wakeVignette;
+    if (this.fov0) { this.camera.fov = this.fov0; this.camera.updateProjectionMatrix(); }
     this.post.fade = 0;
     this.waking = false;
     this.wakeSway = null;
     if (this.scripted) this.endScript();
+    this.game.ui.onboard?.cinema(false);
     this.game.ui.setTouchControls?.(true);
     this.placeStarForLesson(true);
   }
 }
-

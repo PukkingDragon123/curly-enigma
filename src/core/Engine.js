@@ -133,6 +133,7 @@ uniform vec2 uRes;
 uniform float uOutline;
 uniform vec3 uOutlineColor;
 uniform float uOutlineAlpha;
+uniform float uOutlineFar;
 uniform float uNear;
 uniform float uFar;
 uniform float uPersp;
@@ -227,6 +228,7 @@ void main() {
     bool selfVis = m > 0.5 && md <= sd + 0.00002;
     float myDepth = selfVis ? linDepth(md) : linDepth(sd);
     float edge = 0.0;
+    float edgeD = 1e9;
     for (int i = 0; i < 4; i++) {
       vec2 o = i == 0 ? vec2(1.0, 0.0) : i == 1 ? vec2(-1.0, 0.0) : i == 2 ? vec2(0.0, 1.0) : vec2(0.0, -1.0);
       vec2 uv2 = uv + o * px;
@@ -236,10 +238,12 @@ void main() {
       bool vis2 = m2 > 0.5 && md2 <= sd2 + 0.00002;
       if (vis2) {
         float d2 = linDepth(md2);
-        if (!selfVis) { if (d2 < myDepth - 0.001) edge = 1.0; }
-        else if (d2 < myDepth - uInnerThresh) edge = 1.0;
+        if (!selfVis) { if (d2 < myDepth - 0.001) { edge = 1.0; edgeD = min(edgeD, d2); } }
+        else if (d2 < myDepth - uInnerThresh) { edge = 1.0; edgeD = min(edgeD, d2); }
       }
     }
+    // far outlines fade out (in hazy scenes they would draw pencil lines over the fog)
+    if (uOutlineFar > 0.0) edge *= 1.0 - smoothstep(uOutlineFar * 0.4, uOutlineFar, edgeD);
     col = mix(col, uOutlineColor * (uWater > 0.0 ? uWaterColor * 2.0 : vec3(1.0)), edge * uOutlineAlpha);
   }
 
@@ -392,11 +396,14 @@ function resolveGrade(g) {
  * Grade: grade ('sunny' | 'tavern' | 'deep' | … see GRADES, or {lift,gamma,gain}), gradeMix (0..1)
  * Lens: fringe (chromatic fringe at the edges, ~0.5–1.5; 0 = off), grain (film grain, ~0.02–0.05)
  * Underwater: underwater (0..1: wobble, blue-green murk with depth, softer outlines), underwaterColor
+ * Outlines: outline, outlineColor, outlineAlpha, innerThresh (depth step for inner edges), outlineFar
+ *   (metres: outlines fade out toward this distance, for hazy outdoor scenes; 0 = never fade)
  */
 export const DEFAULT_POST = {
   outline: true,
   outlineColor: 0x1a0f0b,
   outlineAlpha: 1,
+  outlineFar: 0,
   innerThresh: 0.35,
   vignette: 0.35,
   saturation: 1.08,
@@ -513,6 +520,7 @@ export class Engine {
       uOutline: { value: 1 },
       uOutlineColor: { value: new THREE.Color() },
       uOutlineAlpha: { value: 1 },
+      uOutlineFar: { value: 0 },
       uNear: { value: 0.1 },
       uFar: { value: 100 },
       uPersp: { value: 1 },
@@ -757,6 +765,7 @@ export class Engine {
     u.uOutline.value = p.outline ? 1 : 0;
     u.uOutlineColor.value.set(p.outlineColor);
     u.uOutlineAlpha.value = p.outlineAlpha;
+    u.uOutlineFar.value = p.outlineFar || 0;
     u.uInnerThresh.value = p.innerThresh;
     u.uNear.value = camera.near;
     u.uFar.value = camera.far;

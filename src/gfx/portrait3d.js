@@ -38,6 +38,7 @@ const handles = new Set();
 const studios = new Map(); // key → [Studio]
 const MAX_STUDIOS = 10;
 const SS = 2; // supersampling of the 3D render (folded down to the art grid by fold())
+const DENSITY = 2; // live portraits: canvas pixels per art pixel (the face drawn finer than the frame)
 let raf = 0, lastT = 0, rr = 0;
 const perf = { rendered: 0, ms: 0, frames: 0, composeMs: 0, composed: 0 };
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _c = new THREE.Color();
@@ -561,15 +562,21 @@ class Handle {
       this.own = true;
       el?.append(this.canvas);
     }
-    this.canvas.width = this.W;
-    this.canvas.height = this.H;
+    // live portraits draw at twice the art grid (D): the face keeps its features (a 40-pixel face
+    // smeared them into blobs); the box on the page stays W × H art pixels, the backdrop keeps the
+    // art grid. Stills (toasts, the strip) stay at 1.
+    this.D = Math.max(1, Math.round(o.density ?? (el ? DENSITY : 1)));
+    this.CW = this.W * this.D;
+    this.CH = this.H * this.D;
+    this.canvas.width = this.CW;
+    this.canvas.height = this.CH;
     this.canvas.setAttribute('aria-hidden', 'true');
     this.ctx = this.canvas.getContext('2d');
-    this.img = this.ctx.createImageData(this.W, this.H);
-    this.ss = o.ss ?? SS; // supersampling: rendered at ss× and folded down to the art grid
-    this.px = new Uint8Array(this.W * this.H * this.ss * this.ss * 4);
-    this.small = new Uint8Array(this.W * this.H * 4);
-    this.bg = backdrop(this.kind, this.W, this.H);
+    this.img = this.ctx.createImageData(this.CW, this.CH);
+    this.ss = o.ss ?? (this.D > 1 ? 1 : SS); // supersampling: rendered at ss× and folded down to the grid
+    this.px = new Uint8Array(this.CW * this.CH * this.ss * this.ss * 4);
+    this.small = new Uint8Array(this.CW * this.CH * 4);
+    this.bg = upscale(backdrop(this.kind, this.W, this.H), this.W, this.H, this.D);
     this.mood = o.mood || cast?.mood || 'calm';
     this.acc = 1;
     this.t = Math.random() * 10;
@@ -585,7 +592,7 @@ class Handle {
     // the backdrop right away (with the last picture of them, if there is one: a line after a
     // pause shows the face at once), the live character as soon as the rig is ready
     this.compose(null);
-    const last = cast && lastPics.get(`${cast.key}|${this.W}x${this.H}|${this.kind}`);
+    const last = cast && lastPics.get(`${cast.key}|${this.CW}x${this.CH}|${this.kind}`);
     if (last) { this.img.data.set(last); this.ctx.putImageData(this.img, 0, 0); }
     // a face never seen at this size yet: its first picture is read back at once (a one-off wait for
     // the GPU, ~a frame), so it's never just a backdrop; later pictures go through the async path
@@ -598,7 +605,7 @@ class Handle {
       const R = getRenderer();
       if (R?.compileAsync && !s.compiled) {
         s.compiled = true;
-        this.rt ||= makeRT(this.W * this.ss, this.H * this.ss);
+        this.rt ||= makeRT(this.CW * this.ss, this.CH * this.ss);
         const prev = R.getRenderTarget();
         let p = null;
         try { R.setRenderTarget(this.rt); p = R.compileAsync(s.scene, s.cam); } catch (e) { p = null; } finally { R.setRenderTarget(prev); }
@@ -741,7 +748,7 @@ class Handle {
 
     // render into our target, then read it back without stalling the GPU
     const t0 = performance.now();
-    const RW = this.W * this.ss, RH = this.H * this.ss;
+    const RW = this.CW * this.ss, RH = this.CH * this.ss;
     this.rt ||= makeRT(RW, RH);
     const info = R.info.render, saved = { calls: info.calls, triangles: info.triangles, points: info.points, lines: info.lines };
     const prev = R.getRenderTarget();
@@ -805,12 +812,12 @@ class Handle {
     this.composeInner(px);
     if (px) {
       perf.composeMs += performance.now() - tc; perf.composed++;
-      if (this.cast && !this.keptPic) { this.keptPic = true; lastPics.set(`${this.cast.key}|${this.W}x${this.H}|${this.kind}`, this.img.data); }
+      if (this.cast && !this.keptPic) { this.keptPic = true; lastPics.set(`${this.cast.key}|${this.CW}x${this.CH}|${this.kind}`, this.img.data); }
     }
   }
 
   composeInner(px) {
-    const W = this.W, H = this.H, out = this.img.data;
+    const W = this.W, H = this.H, D = this.D, CW = this.CW, CH = this.CH, out = this.img.data;
     out.set(this.bg);
     // motes
     const M = MOTES[this.kind];
@@ -829,18 +836,21 @@ class Handle {
         }
         const xi = x | 0, yi = y | 0;
         if (xi < 0 || yi < 0 || xi >= W || yi >= H || a <= 0.05) continue;
-        const i = (yi * W + xi) * 4, c = m.c;
-        out[i] += (((c >> 16) & 255) - out[i]) * a; out[i + 1] += (((c >> 8) & 255) - out[i + 1]) * a; out[i + 2] += ((c & 255) - out[i + 2]) * a;
+        const c = m.c;
+        for (let dy = 0; dy < D; dy++) for (let dx = 0; dx < D; dx++) {
+          const i = ((yi * D + dy) * CW + xi * D + dx) * 4;
+          out[i] += (((c >> 16) & 255) - out[i]) * a; out[i + 1] += (((c >> 8) & 255) - out[i + 1]) * a; out[i + 2] += ((c & 255) - out[i + 2]) * a;
+        }
       }
     }
     if (px) {
-      const sm = fold(px, this.small, W, H, this.ss);
+      const sm = fold(px, this.small, CW, CH, this.ss);
       const ink = this.studio?.ink ?? 0x100808, ir = (ink >> 16) & 255, ig = (ink >> 8) & 255, ib = ink & 255;
-      const A = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : sm[(y * W + x) * 4 + 3]);
+      const A = (x, y) => (x < 0 || y < 0 || x >= CW || y >= CH ? 0 : sm[(y * CW + x) * 4 + 3]);
       // a warm rim of light where the silhouette meets the backdrop on the far side from the key light
       const rim = (LIGHTS[this.kind] || LIGHTS.cave).rim, rr = (rim >> 16) & 255, rg = (rim >> 8) & 255, rb = rim & 255;
-      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        const di = (y * W + x) * 4;
+      for (let y = 0; y < CH; y++) for (let x = 0; x < CW; x++) {
+        const di = (y * CW + x) * 4;
         if (sm[di + 3]) {
           let r = LIFT[sm[di]], g = LIFT[sm[di + 1]], b = LIFT[sm[di + 2]];
           const edge = !A(x + 1, y) ? 0.5 : !A(x + 1, y - 1) || !A(x, y - 1) ? 0.3 : 0;
@@ -897,6 +907,17 @@ function fold(px, out, W, H, ss) {
       if (c > bestN || (c === bestN && r[a] + g[a] + b[a] < r[best] + g[best] + b[best])) { bestN = c; best = a; }
     }
     out[di] = r[best]; out[di + 1] = g[best]; out[di + 2] = b[best]; out[di + 3] = 255;
+  }
+  return out;
+}
+
+/** A backdrop painted at the art grid, blown up D× (each art pixel a D×D block). */
+function upscale(src, W, H, D) {
+  if (D === 1) return src;
+  const out = new Uint8ClampedArray(W * D * H * D * 4);
+  for (let y = 0; y < H * D; y++) for (let x = 0; x < W * D; x++) {
+    const si = (((y / D) | 0) * W + ((x / D) | 0)) * 4, di = (y * W * D + x) * 4;
+    out[di] = src[si]; out[di + 1] = src[si + 1]; out[di + 2] = src[si + 2]; out[di + 3] = src[si + 3];
   }
   return out;
 }

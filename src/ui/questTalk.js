@@ -1,5 +1,6 @@
 // Talking to somebody about work: the quest side of a conversation, on the talk board
-// (src/ui/choices.js openTalkMenu: name sign, their face, a speech bubble, pinned notes).
+// (src/ui/choices.js openTalkMenu: name sign, their face, a speech bubble, pinned notes), which is a
+// cutscene talk when they're here in 3D (src/ui/Convo.js: their reminders and asides too).
 //   questTalk(game, npc, { say, shop, tales, extra }) → { handled, line }  (extra: more notes, e.g. a bookshelf)
 // It tells the quests you talked to them (act talk: deliveries are handed over, "talk to X" steps
 // tick), then shows, in order: what just happened (a hand-in, their thanks, the reward), a choice
@@ -30,6 +31,9 @@ export function questTalk(game, npc, opts = {}) {
   const Q = game.quests;
   if (!Q) return { handled: false };
   const st = game.state, name = npcName(npc), V = VILLAGERS[npc] || {};
+  // the speaker is here in 3D: their asides are cutscene lines too (src/ui/Convo.js), not bubbles
+  const cv = game.convo?.speaker(npc) ? game.convo : null;
+  const say = cv ? (html, o = {}) => cv.say(npc, html, { mood: o.mood || 'calm', wait: o.wait ?? true, dur: o.dur }) : opts.say;
   const evs = talkAct(game, npc);
   const done = evs.filter((e) => e.evt === 'done');
   const handed = evs.filter((e) => e.evt === 'handed' && e.npc === npc);
@@ -79,7 +83,7 @@ export function questTalk(game, npc, opts = {}) {
   const heard = evs.find((e) => e.evt === 'progress' && QUESTS[e.id]?.steps[e.quest?.i]?.heard);
   if (heard) {
     const line = `${pick(QUESTS[heard.id].steps[heard.quest.i].heard)} <small>(${heard.quest.title}: ${heard.n}/${heard.max})</small>`;
-    if (opts.say) opts.say(line, { mood: 'surprised' });
+    if (say) say(line, { mood: 'surprised' });
     else board({ line, sub: heard.quest.title, mood: 'surprised', options: [bye()] });
     return { handled: true, line: stripTags(line) };
   }
@@ -117,7 +121,12 @@ export function questTalk(game, npc, opts = {}) {
     const m = mine[0], v = m.quest;
     const miss = short.find((e) => e.id === m.id)?.short;
     const line = miss?.length ? `Still need ${miss.join(' and ')}.` : `${pick(V.wait || ['How\'s it going?'])} <small>(${v.text}${v.max > 1 ? ' ' + countText(v) : ''})</small>`;
-    if (opts.say) { opts.say(line, { mood: 'thinking' }); if (opts.shop) opts.shop(); return { handled: true, line: stripTags(line) }; }
+    if (say) {
+      // (in a cutscene the shop opens once they've said it)
+      const p = say(line, { mood: 'thinking' });
+      if (opts.shop) { if (cv) Promise.resolve(p).then((r) => { if (!r?.skipped) opts.shop(); }); else opts.shop(); }
+      return { handled: true, line: stripTags(line) };
+    }
     board({ line, sub: v.title, mood: 'thinking', options: [...shopNote, bye('On it')] });
     return { handled: true, line: stripTags(line) };
   }
@@ -147,7 +156,7 @@ export function questTalk(game, npc, opts = {}) {
       line: fillNames(def.intro), sub: `${v.title} · ${def.kind === 'lore' ? 'a story to uncover' : 'a request'}`, mood: 'happy', className: 'qtk-offer', reward: rw ? 'Reward: ' + rw : '',
       options: [
         { label: 'I\'ll do it', sub: first ? `First: ${first}` : null, primary: true, onClick: () => accept(id) },
-        { label: 'Not right now', sub: 'Ask me again later', onClick: () => { close(); opts.say?.(pick(['Suit yourself.', 'Another time, then.', 'Mind how you go.']), { mood: 'neutral' }); } },
+        { label: 'Not right now', sub: 'Ask me again later', onClick: () => { close(); say?.(pick(['Suit yourself.', 'Another time, then.', 'Mind how you go.']), { mood: 'neutral', wait: false, dur: 2.2 }); } },
         ...shopNote,
       ],
     });
@@ -156,7 +165,7 @@ export function questTalk(game, npc, opts = {}) {
     close();
     if (!Q.accept(id, npc)) return;
     game.audio.play('success', { vol: 0.5 });
-    opts.say?.(pick(['Wonderful!', 'Oh, thank you!', 'Splendid.', 'Off you go, then!']), { mood: 'happy' });
+    say?.(pick(['Wonderful!', 'Oh, thank you!', 'Splendid.', 'Off you go, then!']), { mood: 'happy', wait: false, dur: 2.2 });
     const gives = QUESTS[id].gives;
     if (gives) for (const it of Object.keys(gives)) game.ui.toast(`${name} hands you <b>${ITEMS[it]?.name || it}</b>.`, { dur: 2600 });
   }

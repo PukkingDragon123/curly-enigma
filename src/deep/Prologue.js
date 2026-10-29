@@ -34,6 +34,7 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { el, clamp, rand, pick } from '../core/util.js';
 import { openTalkMenu } from '../ui/choices.js';
 import { starPortraitURL } from '../ui/Tutor.js';
+import { TUT } from '../ui/Onboard.js';
 
 const GIFT_CHISEL = true; // Old Star hands over his spare chisel for the clump
 export const STEPS = ['arrive', 'plug', 'walk', 'ore', 'loose', 'held', 'gem', 'gemfound', 'ledge', 'climb', 'map', 'critter', 'back', 'cage', 'ride'];
@@ -47,6 +48,9 @@ const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
 const col01 = (hex) => [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
 const after = (a, b) => STEPS.indexOf(a) > STEPS.indexOf(b);
+/** The tutorial UI level a step needs (src/ui/Onboard.js): a lesson picked up half way has its HUD. */
+const LEVEL_AT = { arrive: TUT.QUEST, plug: TUT.QUEST, walk: TUT.DIG, ore: TUT.DIG, loose: TUT.DIG, held: TUT.TOOLS, gem: TUT.PACK, gemfound: TUT.PACK, ledge: TUT.PACK, climb: TUT.PACK, map: TUT.PACK, critter: TUT.GUARD, back: TUT.GUARD, cage: TUT.GUARD, ride: TUT.GUARD };
+const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 export class Prologue {
   constructor(ctx) {
@@ -128,6 +132,8 @@ export class Prologue {
     const pl = o.player, eye = o.eye;
     if (!this.started) this.start(pl);
     if (this.hold) { pl.pos.x = this.hold.x; pl.pos.z = this.hold.z; pl.vel.x = 0; pl.vel.z = 0; }
+    this.tickBeat(dt, pl);
+    this.tickLater(dt);
     this.scrub();
     this.watch(dt, pl);
     if (!o.busy || this.leaving) {
@@ -163,7 +169,7 @@ export class Prologue {
     if (!this.on || this.step === 'ride' || this.leaving) return null;
     if (this.owner.clumps?.capture?.()) return null;
     const t = this.pickAt(eye, dir, reach);
-    if (!t) return null;
+    if (!t) return this.liftLocked() ? { label: 'The cage: after the lesson', kind: 'use' } : null;
     if (t === 'star') return { label: this.step === 'cage' && this.inCage() ? 'Ride up with Old Star' : 'Talk to Old Star', kind: 'use' };
     if (t === 'map') return { label: 'Take Old Star\'s map', kind: 'use' };
     if (t === 'gem') return { label: 'Take the amethyst', kind: 'use' };
@@ -176,7 +182,8 @@ export class Prologue {
     const cl = this.owner.clumps;
     if (cl?.capture?.() || cl?.held) return null; // E bags the clump in paw
     const t = this.pickAt(eye, dir, reach);
-    if (!t) return null;
+    // the cage waits for the end of the lesson (he rides up with you)
+    if (!t) { if (this.liftLocked()) { this.sayCd('notWithout', 5); this.audio.play('ui_error', { vol: 0.3 }); return []; } return null; }
     if (t === 'map') { this.takeMap(); return []; }
     if (t === 'gem') return this.takeGem();
     if (t === 'cage' || (t === 'star' && this.step === 'cage' && this.inCage())) { this.ride(); return []; }
@@ -206,6 +213,8 @@ export class Prologue {
     this.talk?.dispose();
     this.nibbler?.dispose();
     this.guardButton(false);
+    this.untaught();
+    this.endBeat(this.curBeat);
     this.tutor?.hide?.('os-tip');
     if (this.lantern) { this.c.scene3.remove(this.lantern); this.lantern.dispose?.(); }
   }
@@ -231,18 +240,19 @@ export class Prologue {
     this.lookPoint = null;
     this.co = null;
     this.setTip(null);
+    this.untaught();
     switch (step) {
       case 'arrive': this.run(this.arriveScript()); break;
       case 'plug': this.run(this.plugScript()); break;
       case 'walk': this.run(this.walkScript(quiet)); break;
       case 'ore': this.run(this.oreScript()); break;
-      case 'loose': this.run(this.looseScript()); break;
+      case 'loose': this.run(this.looseScript(quiet)); break;
       case 'held': this.run(this.heldScript()); break;
       case 'gem': this.run(this.gemScript()); break;
       case 'gemfound': this.run(this.gemFoundScript()); break;
       case 'ledge': this.run(this.ledgeScript()); break;
       case 'climb': this.setTip(null); this.say('ladderUp'); break;
-      case 'map': this.setTip('mapTip'); break;
+      case 'map': this.teach('pickup', { title: 'Take Old Star\'s map', done: () => !this.dress.map, min: 0.4 }); break;
       case 'critter': this.run(this.critterScript()); break;
       case 'back': this.run(this.backScript()); break;
       case 'cage': this.run(this.cageScript()); break;
@@ -258,6 +268,7 @@ export class Prologue {
   /** First frame: lights, the radar (his map shows it), the opening lesson act. */
   start(pl) {
     this.started = true;
+    this.level(LEVEL_AT[RESUME[this.save.step] || this.save.step] ?? TUT.QUEST);
     this.star.light(!!this.owner.nugget);
     this.radarFn = (o) => {
       const r = this.owner.radar(o);
@@ -272,6 +283,131 @@ export class Prologue {
   showRadar() {
     this.radarShown = true;
     this.ui.setRadar?.(this.radarFn, { heading: () => this.owner.player.yaw });
+  }
+
+  // ------------------------------------------------------------------ the tutorial's layer (src/ui/Onboard.js)
+  get ob() { return this.ui?.onboard || null; }
+
+  /** Raise the tutorial UI level (the HUD pieces this lesson has brought in). True if it went up. */
+  level(n) {
+    const ob = this.ob;
+    if (!ob) return false;
+    const was = ob.level;
+    this.ui.setTutorialLevel?.(n);
+    return ob.level > was;
+  }
+
+  /** A control prompt for this step (the one before closes). Returns its handle (or null). */
+  teach(id, o = {}) {
+    this.obH?.close?.();
+    this.obH = this.ob?.teach(id, o) || null;
+    return this.obH;
+  }
+  /** Close the step's prompt (only if it is `id`, when given). */
+  untaught(id) {
+    const h = this.obH;
+    if (!h || (id && h.id !== id)) return;
+    if (!h.done) h.close();
+    this.obH = null;
+  }
+
+  /** Run fn after sec seconds of the lesson's time. */
+  later(sec, fn) { (this.laters ||= []).push({ t: this.time + sec, fn }); }
+  tickLater() {
+    if (!this.laters?.length) return;
+    const due = this.laters.filter((x) => x.t <= this.time);
+    if (!due.length) return;
+    this.laters = this.laters.filter((x) => x.t > this.time);
+    for (const x of due) { try { x.fn(); } catch (e) { console.warn('[prologue]', e); } }
+  }
+
+  /** A belt slot's key (desktop) and its loop (touch), found by its label. */
+  slotEl(re) { return [...(this.ui.hotbarEl?.querySelectorAll?.('.loop') || [])].find((l) => re.test(l.title || l.getAttribute('aria-label') || '')) || null; }
+  slotKey(re, def) { return this.slotEl(re)?.querySelector('.k')?.textContent || def; }
+
+  /** The bars come in and you're held where you stand (the opening of the lesson, before a beat). */
+  cineHold() {
+    const pl = this.owner.player;
+    if (!pl || this.curBeat) return;
+    this.curBeat = { keys: [], i: 0, look: null, done: false, cut: false, pre: true };
+    this.ob?.cinema(true, { skip: () => this.cutBeat() });
+  }
+
+  /**
+   * A short cutscene: the bars, you held where you stand with your view eased to look (a point or a
+   * function), his lines one after another (each waits for you to carry on: the cutscene talk when
+   * there is one, his card otherwise). A hold skips the rest. Returns a predicate: it's over.
+   */
+  beat(keys, o = {}) {
+    const prev = this.curBeat;
+    // (the opening skipped while he stepped out takes the lines that were coming with it)
+    if (this.skipNext) { this.skipNext = false; if (prev?.pre) this.endBeat(prev); return () => true; }
+    const b = { keys: keys.filter(Boolean), i: -1, look: o.look || null, done: false, cut: false };
+    if (prev && !prev.pre) this.endBeat(prev);
+    this.curBeat = b;
+    this.setTip(null);
+    this.untaught();
+    this.ob?.cinema(true, { skip: () => this.cutBeat() });
+    this.beatNext(b);
+    return () => b.done;
+  }
+  cutBeat() {
+    const b = this.curBeat;
+    if (!b) return;
+    b.cut = true;
+    this.tutor?.hide?.('os-beat');
+    this.owner.game.convo?.end?.();
+    if (b.pre) { this.skipNext = true; this.endBeat(b); return; }
+    this.beatNext(b);
+  }
+  beatNext(b) {
+    if (b.done) return;
+    if (b.cut || ++b.i >= b.keys.length) { this.endBeat(b); return; }
+    const key = b.keys[b.i], i = b.i;
+    const k = LINES[key] !== undefined ? key : null;
+    let text = k ? LINES[k] : key;
+    if (Array.isArray(text)) text = pick(text);
+    text = pickLine(text, this.owner.isTouch?.());
+    const mood = (k && MOOD[k]) || 'calm';
+    const plain = String(text).replace(/<[^>]+>/g, '');
+    this.star.rig.talk(Math.min(4, 0.6 + plain.length / 26));
+    this.star.mood(mood, 4);
+    this.talk.hide();
+    const id = ++this.lineId;
+    this.lineDone = false;
+    this.lineUntil = Infinity;
+    const tutor = this.tutor;
+    const p = this.ob ? this.ob.talk(text, { wait: true, mood }, () => tutor?.say(text, { mood, key: 'os-beat', wait: true })) : Promise.resolve(tutor?.say(text, { mood, key: 'os-beat', wait: true }));
+    Promise.resolve(p).then(() => {
+      if (this.lineId === id) { this.lineDone = true; this.lineEnd = this.time; this.lineUntil = this.time; }
+      if (this.curBeat === b && b.i === i && !b.done) this.beatNext(b);
+    });
+  }
+  endBeat(b) {
+    if (!b || b.done) return;
+    b.done = true;
+    if (this.curBeat === b) this.curBeat = null;
+    if (!this.curBeat) {
+      this.ob?.cinema(false);
+      const g = this.owner.game;
+      if (!this.leaving) g.input.enabled = !this.ui.isPanelOpen?.();
+    }
+  }
+  /** While a beat is on: held in place, the keys and mouse wait, the view eases to what he shows you. */
+  tickBeat(dt, pl) {
+    const b = this.curBeat;
+    if (!b) return;
+    const g = this.owner.game;
+    g.input.enabled = false;
+    pl.vel.x = 0; pl.vel.z = 0;
+    const lp = typeof b.look === 'function' ? b.look() : b.look;
+    if (!lp) return;
+    const e = pl.eye(_w);
+    const yaw = Math.atan2(-(lp.x - e.x), -(lp.z - e.z));
+    const pitch = clamp(Math.atan2(lp.y - e.y, Math.hypot(lp.x - e.x, lp.z - e.z)), -1.2, 1.2);
+    const k = Math.min(1, dt * 2.6);
+    pl.yaw += wrapA(yaw - pl.yaw) * k;
+    pl.pitch += (pitch - pl.pitch) * k;
   }
 
   // ------------------------------------------------------------------ talking
@@ -358,6 +494,8 @@ export class Prologue {
   *arriveScript() {
     const star = this.star, L = this.L, S = L.spots;
     star.play('idle');
+    // a cutscene from the first frame: the bars, you held in the cage while he steps out
+    if (!this.after) this.cineHold();
     yield 0.4;
     // out of the cage (its open side is +z), a word over his shoulder once there's room to see him,
     // then on to the plug
@@ -366,10 +504,8 @@ export class Prologue {
     star.squeeze = 2.2; // it's a small cage: he edges past you rather than waiting for you to move
     yield () => !star.path || this.stepT > 4;
     if (pl) star.faceTo(pl.pos);
-    const said = this.say(this.after ? 'again' : 'arrive');
-    yield 1.6;
+    yield this.beat([this.after ? 'again' : 'arrive'], { look: () => star.headWorld(_v).clone() });
     star.walk([{ x: L.lift.x + 0.15, y: L.lift.y, z: L.lift.z + 1.9 }, S.plug], () => { star.faceTo(this.plugFace()); }, 0.9);
-    yield said;
     yield () => !star.path;
     if (this.after) {
       if (this.after === 'back') { this.after = null; this.enter('cage'); return; }
@@ -381,14 +517,16 @@ export class Prologue {
   }
 
   *plugScript() {
-    const star = this.star, L = this.L, pc = this.plugFace();
+    const star = this.star, pc = this.plugFace();
     star.faceTo(pc);
     star.play('point');
     this.lookPoint = new THREE.Vector3(pc.x, pc.y, pc.z);
-    yield this.say('plug');
+    yield this.beat(['plug'], { look: () => this.lookPoint });
     this.lookPoint = null;
     star.play('idle');
-    this.setTip('plugTip');
+    // the pick: your belt and the dig button come in, and the first control of the mine
+    this.level(TUT.DIG);
+    this.teach('dig', { title: 'Dig', subPc: 'Aim at the loam, hold the <b>left button</b>', subT: 'Aim at the loam, hold the pick button', progress: () => (this.plug.open ? 1 : Math.min(0.9, this.plug.hits / 3)) });
   }
 
   *walkScript(quiet) {
@@ -402,9 +540,12 @@ export class Prologue {
     if (!quiet) yield this.say('follow');
     star.play('idle');
     star.walk(path, null, 1.0);
+    // his crawl is low: a tip for ducking (it's done when you duck, or once you're through)
+    if (!quiet && !this.ob?.seen?.('crouch')) this.later(1.2, () => { if (this.step === 'walk') this.teach('crouch', { optional: true, done: () => this.owner.game.input.isDown('KeyC') || !!this.owner.player?.crouched, min: 0.6 }); });
     yield () => !star.path;
     this.walking = false;
-    yield this.say('welcome');
+    this.untaught('crouch');
+    yield this.beat(['welcome'], { look: () => star.headWorld(_v).clone() });
     this.enter(this.after || 'ore', true);
     this.after = null;
   }
@@ -416,21 +557,22 @@ export class Prologue {
     this.lookPoint = new THREE.Vector3(L.ore.x, L.ore.y, L.ore.z);
     star.faceTo(L.ore);
     star.play('point');
-    yield this.say('oreSee');
+    yield this.beat(['oreSee', 'oreTip'], { look: () => this.lookPoint });
     this.lookPoint = null;
     star.play('idle');
     this.setTip('oreTip');
   }
 
-  *looseScript() {
+  *looseScript(quiet = false) {
     this.star.play('cheer');
-    yield this.say('oreLoose');
+    if (!quiet) yield this.say('oreLoose');
     this.star.play('idle');
-    this.setTip('looseTip');
+    this.teach('pickup', { title: 'Pick it up', done: () => !!this.owner.clumps?.held || this.step !== 'loose', min: 0.4 });
   }
 
   *heldScript() {
     const st = this.st;
+    this.untaught('pickup');
     if (GIFT_CHISEL && !st.equipped('chisel') && ITEMS.chisel_basic) {
       st.addItem('chisel_basic');
       st.equip('chisel_basic');
@@ -439,18 +581,38 @@ export class Prologue {
       this.audio.play('pickup', { pitch: 0.9 });
       yield this.say('oreChisel');
     }
-    this.setTip('heldTip');
+    // switching tools: the tool button (touch) comes in; then chip it clean, then bag it
+    this.level(TUT.TOOLS);
+    if (this.owner.slotName !== 'chisel') {
+      const k = this.slotKey(/chisel/i, '2');
+      const h = this.teach('tool', { title: 'Take the chisel', subPc: `Press <kbd>${k}</kbd> (or roll the wheel)`, subT: 'Tap the chisel on your belt', spot: this.slotEl(/chisel/i) || 'tool', done: () => this.owner.slotName === 'chisel' || this.step !== 'held' });
+      yield () => !h || h.settled || this.step !== 'held';
+    }
+    if (this.step !== 'held') return;
+    const clean = () => this.owner.clumps?.held?.g?.clean ?? 0;
+    const h2 = this.teach('dig', { title: 'Chip it clean', subPc: 'Hold the <b>left button</b> on the rock · <b>right-drag</b> turns it', subT: 'Hold the big button on the rock · drag to turn it', progress: () => clean() / 0.9, done: () => this.step !== 'held' });
+    yield () => !h2 || h2.settled || this.step !== 'held';
+    if (this.step !== 'held') return;
+    this.teach('use', { title: 'Bag it', subPc: 'Press <kbd>E</kbd>', subT: 'Tap the hand button', done: () => this.step !== 'held' });
   }
 
   *gemScript() {
     const star = this.star, L = this.L, sp = L.spots.gem;
+    // the copper's in the bag: the backpack comes in, and a look inside
+    if (this.level(TUT.PACK) && !this.ob?.seen?.('pack')) {
+      yield 0.6;
+      const h = this.teach('pack', { title: 'Your backpack', done: () => this.ui.panelStack?.some?.((p) => p.kind === 'inv') });
+      yield () => !h || h.settled;
+      yield () => !this.ui.isPanelOpen?.();
+      yield 0.3;
+    }
     star.walk([sp]);
     yield () => !star.path;
     if (this.geode.open) { this.enter('gemfound', true); return; }
     this.lookPoint = new THREE.Vector3(L.geode.x, L.geode.y, L.geode.wallZ);
     star.faceTo({ x: L.geode.x, z: L.geode.wallZ });
     star.play('point');
-    yield this.say('gemSee');
+    yield this.beat(['gemSee'], { look: () => this.lookPoint });
     star.play('idle');
     this.setTip('gemTip');
   }
@@ -460,7 +622,7 @@ export class Prologue {
     this.audio.play('sparkle');
     yield this.say('gemOpen');
     this.star.play('idle');
-    this.setTip('gemTake');
+    this.teach('pickup', { title: 'Take the amethyst', done: () => !this.dress.gem, min: 0.4 });
   }
 
   *ledgeScript() {
@@ -470,15 +632,23 @@ export class Prologue {
     star.faceTo(L.map);
     star.play('point');
     this.lookPoint = this.dress.mapPoint(new THREE.Vector3());
-    yield this.say('ledge');
+    yield this.beat(['ledge'], { look: () => this.lookPoint });
     this.lookPoint = null;
     star.play('idle');
-    this.setTip('ladderTip');
+    // the build tool, then a ladder up the wall under the ledge
+    if (this.owner.slotName !== 'build') {
+      const k = this.slotKey(/^build/i, '7');
+      const h = this.teach('tool', { title: 'The build tool', subPc: `Press <kbd>${k}</kbd>: the beam`, subT: 'Tap the beam on your belt', spot: this.slotEl(/^build/i) || 'tool', done: () => this.owner.slotName === 'build' || this.step !== 'ledge' });
+      yield () => !h || h.settled || this.step !== 'ledge';
+    }
+    if (this.step !== 'ledge') return;
+    this.teach('place', { title: 'Build a ladder', subPc: 'Aim at the wall under the ledge, <b>click</b>', subT: 'Aim at the wall under the ledge, press the big button', progress: () => this.ladderCount() / 6, done: () => this.step !== 'ledge' });
   }
 
   *critterScript() {
     const star = this.star, L = this.L, pl = this.owner.player;
-    // down off the ledge first, and a moment's peace
+    // down off the ledge first (a hop), and a moment's peace
+    if (pl.pos.y > L.ledge.y - 0.6 && !this.ob?.seen?.('jump')) this.teach('jump', { title: 'Hop down', optional: true, done: () => pl.pos.y < L.ledge.y - 0.6 });
     yield () => pl.pos.y < L.ledge.y - 0.6 && pl.grounded;
     yield 1.2;
     star.walk([L.spots.critter]);
@@ -488,11 +658,13 @@ export class Prologue {
     this.lookPoint = new THREE.Vector3(L.burrow.x, L.burrow.y, L.burrow.z);
     star.faceTo(L.burrow);
     star.play('point');
-    yield this.say('scratch');
+    yield this.beat(['scratch'], { look: () => this.lookPoint });
+    // your guard: the block button comes in
+    this.level(TUT.GUARD);
     this.nibbler.emerge();
     star.play('idle');
     this.lookPoint = null;
-    this.setTip('blockTip');
+    this.teach('guard', { title: 'Guard up!', progress: () => Math.min(1, (this.nibbler.blocks || 0) / 2), done: () => this.nibbler.state === 'dizzy' || !this.nibbler.active });
   }
 
   *backScript() {
@@ -537,7 +709,7 @@ export class Prologue {
     yield () => this.near(3.2);
     yield this.say('cage');
     star.play('idle');
-    this.setTip('bell');
+    this.teach('use', { title: 'Ring the bell', subPc: 'Step into the cage, look at him, press <kbd>E</kbd>', subT: 'Step into the cage, tap the hand button', done: () => !!this.leaving });
   }
 
   // ------------------------------------------------------------------ per-step checks
@@ -577,7 +749,7 @@ export class Prologue {
     } else if (step === 'held') {
       const cl = this.owner.clumps, c = this.clump;
       if (this.st.data.stats.ores > this.ores0) this.bagged();
-      else if (cl && c && c.state === 'world' && cl.held !== c) { this.say('oreDropped'); this.enter('loose', true); this.setTip('looseTip'); }
+      else if (cl && c && c.state === 'world' && cl.held !== c) { this.say('oreDropped'); this.enter('loose', true); }
       else if (!c && this.stepT > 1) this.bagged();
       else if (cl?.held === c && this.owner.slotName === 'pick' && this.stepT > 6) this.sayCd('heldPick', 30);
     } else if (step === 'gem') {
@@ -597,7 +769,12 @@ export class Prologue {
     } else if (step === 'critter') {
       const nb = this.nibbler;
       if (nb.active) this.lookPoint = _v.copy(nb.pos).setY(nb.pos.y + 0.1).clone();
-      if (nb.state === 'dizzy' && !this.dizzyAt) { this.dizzyAt = this.time; this.setTip('bonkTip'); this.say('bonkTip'); }
+      if (nb.state === 'dizzy' && !this.dizzyAt) {
+        this.dizzyAt = this.time;
+        this.say('bonkTip');
+        const k = this.slotKey(/pick/i, '1');
+        this.teach('dig', { title: 'Bonk it!', subPc: this.owner.slotName === 'pick' ? '<b>Click</b> while it\'s dizzy' : `<kbd>${k}</kbd> for the pick, then <b>click</b>`, subT: 'The pick, then the big button', done: () => !nb.active || nb.state === 'flee' || nb.state === 'gone' });
+      }
       // a hand from Old Star if it drags on: he shoos it with his pick
       const stuck = nb.active && nb.state !== 'flee' && (nb.hits >= 4 || this.stepT > 70 || (this.dizzyAt && this.time - this.dizzyAt > 9));
       if (stuck && !this.shooing) this.shoo();
@@ -645,6 +822,8 @@ export class Prologue {
   }
 
   near(r) { const p = this.owner.player.pos; return this.star.pos.distanceTo(p) < r; }
+  /** The L0 cage is locked until the lesson's last step (its lever would ride you off mid-lesson). */
+  liftLocked() { return this.step !== 'cage' && this.step !== 'ride' && !this.leaving && !!this.owner.liftNear?.(); }
   inCage() { const s = this.star.pos, c = this.L.cage; return Math.hypot(s.x - c.x, s.z - c.z) < 0.4 && !this.star.path; }
   onLedge(pl) { const G = this.L.ledge; return pl.pos.x > G.x0 - 0.12 && pl.pos.y > G.y - 0.15 && pl.pos.y < G.y + 0.6 && pl.pos.z > G.z0 - 0.1 && pl.pos.z < G.z1 + 0.1 && pl.grounded; }
   /** Is the mole looking roughly at p (cos of the angle > c)? */
@@ -972,7 +1151,14 @@ export class Prologue {
   }
   *mapScript() {
     yield this.say('mapGot');
-    if (typeof this.ui.openBook === 'function') { yield 0.3; try { this.ui.openBook('map'); } catch (e) { /* the book isn't ready */ } }
+    // the radar and your book come in; open the map yourself (M, or a tap on the radar)
+    this.level(TUT.MAP);
+    if (typeof this.ui.openBook === 'function') {
+      yield 0.5;
+      const h = this.teach('map', { title: 'Open your map', done: () => !!this.ui.book });
+      yield () => !h || h.settled;
+      yield () => !this.ui.isPanelOpen?.();
+    }
     this.enter('critter');
   }
 
@@ -1017,6 +1203,7 @@ export class Prologue {
       this.say('skipCopper', { dur: 3 });
     } else this.say('skip', { dur: 3 });
     if (all) this.lesson('skip');
+    this.level(TUT.GUARD);
     this.ride(true);
   }
 
@@ -1056,6 +1243,8 @@ export class Prologue {
     if (!this.ore.free) for (const [x, y, z] of this.oreVox) if (this.w.voxelAt(x, y, z) === this.L.ore.m && this.loaded(x, y, z)) this.w.setVoxel(x, y, z, M.LOAM);
     this.tutor?.hide?.('os-tip');
     this.tipKey = null;
+    this.untaught();
+    this.endBeat(this.curBeat);
   }
 
   // ------------------------------------------------------------------ touch: a guard button while the critter is about
@@ -1146,12 +1335,24 @@ export class Prologue {
     D.skip = (all = false) => this.skip(all);
     D.talk = () => this.openTalk();
     D.say = (k) => this.say(k);
+    /** The tutorial bits: the cutscene beat ({ keys, i } or null) and the step's prompt id. */
+    D.tut = () => ({ beat: this.curBeat ? { keys: this.curBeat.keys, i: this.curBeat.i } : null, prompt: this.obH?.id ?? null, promptDone: !!this.obH?.done, level: this.ob?.level ?? null });
+    /** Cut the cutscene beat short (as the hold to skip does). */
+    D.cut = () => { const had = !!this.curBeat; this.cutBeat(); return had; };
     /** Put the mole somewhere (world meters), facing yaw/pitch. */
     D.stand = (x, y, z, yaw = pl().yaw, pitch = 0) => { const p = pl(); p.pos.set(x, y, z); p.vel.set(0, 0, 0); p.yaw = yaw; p.pitch = pitch; this.hold = null; this.owner.terrain?.warm?.(x, y + 0.5, z, 2); };
     /** Turn the mole's view to a world point. */
     D.look = (x, y, z) => { const p = pl(); const e = p.eye(); p.yaw = Math.atan2(-(x - e.x), -(z - e.z)); p.pitch = Math.atan2(y - e.y, Math.hypot(x - e.x, z - e.z)); };
     D.lookStar = () => { const h = this.star.headWorld(new THREE.Vector3()); D.look(h.x, h.y - 0.25, h.z); };
     /** Advance the scene n seconds in 1/30 s steps (headless runs are slow). */
-    D.run = (sec = 1) => { const s = this.owner; for (let k = 0; k < Math.round(sec * 30); k++) s.update(1 / 30); return this.step; };
+    D.run = (sec = 1, carry = true) => {
+      const s = this.owner, t = this.tutor;
+      for (let k = 0; k < Math.round(sec * 30); k++) {
+        s.update(1 / 30);
+        // (lines he waits on are carried on, as a player would)
+        if (carry && t?.active?.wait) { t.next(); t.next(); }
+      }
+      return this.step;
+    };
   }
 }

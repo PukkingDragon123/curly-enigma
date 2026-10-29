@@ -538,15 +538,19 @@ export function notesBoard(n = 8, seed = 13) {
   }
   const obj = group(M32(g, [BW / 2 + 1, 0, 0]), M32(papers, [BW / 2 + 1, 0, 0], { outline: false }));
   const notes = spots.map((s) => ({ x: (s.gx - BW / 2 - 1 + 0.5) * S32, y: (s.gy + 0.5) * S32 }));
-  const pins = (read) => {
-    const pg = new VoxelGrid(BW + 2, BH + 14, 8);
-    spots.forEach((s, i) => {
-      const c = read[i] ? P.brass : P.red;
-      pg.box(s.gx, s.gy, 3, 2, 2, 2, (x, y, z) => (y === s.gy + 1 && z === 4 ? (read[i] ? P.brassL : 0xff7a6a) : c));
-    });
-    return M32(pg, [BW / 2 + 1, 0, 0]);
-  };
-  return { obj, notes, pins, w: BW * S32, h: (BH + 11) * S32 };
+  const pinData = { BW, BH, spots: spots.map((s) => ({ gx: s.gx, gy: s.gy })) };
+  const pins = (read) => notesPins(pinData, read);
+  return { obj, notes, pins, pinData, w: BW * S32, h: (BH + 11) * S32 };
+}
+
+/** The pin heads of a notes board (pinData from notesBoard): red = unread, brass = read. */
+export function notesPins({ BW, BH, spots }, read) {
+  const pg = new VoxelGrid(BW + 2, BH + 14, 8);
+  spots.forEach((s, i) => {
+    const c = read[i] ? P.brass : P.red;
+    pg.box(s.gx, s.gy, 3, 2, 2, 2, (x, y, z) => (y === s.gy + 1 && z === 4 ? (read[i] ? P.brassL : 0xff7a6a) : c));
+  });
+  return M32(pg, [BW / 2 + 1, 0, 0]);
 }
 
 // ---------------------------------------------------------------- the loot chest

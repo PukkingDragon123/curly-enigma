@@ -273,11 +273,21 @@ function mulHex(c, k) { return (clamp255(((c >> 16) & 255) * k) << 16) | (clamp2
 /** The painted panoramas (for a look at them outside the game): { far, near } Paint buffers. */
 export function paintVista() { return { far: paintFar(2048, 720), near: paintNear(1024, 360) }; }
 
-export function buildVista(scene) {
+/** The two panoramas painted (plain RGBA, for a build worker): { far: { d, W, H }, near } and the transfer list. */
+export function paintVistaData(transfer = []) {
+  const f = paintFar(2048, 720), n = paintNear(1024, 360);
+  transfer.push(f.d.buffer, n.d.buffer);
+  return { far: { d: f.d, W: f.W, H: f.H }, near: { d: n.d, W: n.W, H: n.H } };
+}
+
+/** Panorama data (from paintVistaData) as a texture. */
+function vistaTexture(p) { const q = new Paint(1, 1, true); q.W = p.W; q.H = p.H; q.d = p.d; return q.texture(); }
+
+export function buildVista(scene, painted = null) {
   const group = new THREE.Group();
   group.name = 'vista';
-  const far = paintFar(2048, 720).texture();
-  const near = paintNear(1024, 360).texture();
+  const far = painted ? vistaTexture(painted.far) : paintFar(2048, 720).texture();
+  const near = painted ? vistaTexture(painted.near) : paintNear(1024, 360).texture();
   const R = 24, H = R * 1.05;
   const farMat = new THREE.MeshBasicMaterial({ map: far, side: THREE.BackSide, fog: false, depthWrite: false });
   const farMesh = new THREE.Mesh(new THREE.CylinderGeometry(R, R, H, 64, 1, true), farMat);
@@ -293,6 +303,17 @@ export function buildVista(scene) {
   nearMesh.renderOrder = -9;
   near.repeat.set(1.25 * 1.2, 1);
   group.add(nearMesh);
+  // a middle arc out past the terrace (north): the same spires and glowcaps farther off, rising from
+  // below the terrace's edge so they stand over the balustrade between you and the far cliffs
+  const RM = 14;
+  const midGeo = new THREE.CylinderGeometry(RM, RM, RM * 0.9, 40, 1, true, Math.PI * 0.72, Math.PI * 0.56);
+  const uv = midGeo.getAttribute('uv');
+  for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * 0.7 + 0.37);
+  const midMesh = new THREE.Mesh(midGeo, nearMat);
+  midMesh.position.set(MID.x, FY + 0.3, MID.z);
+  midMesh.scale.set(1, 1, 1);
+  midMesh.renderOrder = -9.5;
+  group.add(midMesh);
   // a black floor and roof far out, so no gap ever shows past the painted edges
   const capMat = new THREE.MeshBasicMaterial({ color: 0x05060a, side: THREE.DoubleSide, fog: false, depthWrite: false });
   for (const y of [FY + 2.0 - H / 2 + 0.05, FY + 2.0 + H / 2 - 0.05]) {

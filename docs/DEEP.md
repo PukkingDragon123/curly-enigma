@@ -130,7 +130,7 @@ lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, t
 - Test hooks: `fluids.debug.{ pour(x, y, z, r, m), spring(x, y, z, rate, m), look(k), stats(), sim }`.
 
 **Props** (`new Props(ctx)`, `src/deep/Props.js`): decoration placed in the caves near the player
-(mushrooms, crystal clusters, roots, old mining gear, signposts).
+(glowing mushrooms, shelf fungus, crystal clusters, roots, vines, bones, fossils; nothing man-made).
 - `update(dt, { player, eye, time })`, `onVoxel(vx, vy, vz, old, m)` (optional: a prop whose
   support was dug away should fall or go), `lights(eye)` (as above), `dispose()`.
 
@@ -192,9 +192,18 @@ Fluids internals (`src/deep/fluids/`):
 ## Lifts, building, granular digging (current)
 
 - `plan.lifts`: `{ id, name, x, y, z, zone, depth }` — `L0` "Mine entrance" under the burrow, three
-  `L{zone}{k}` per zone (timber room, plank floor, cage, shaft: feature kinds `box` + `cage`), and the
-  town shaft stops `s0..s5`. Walking into a lift room calls `discoverLift`; E at the cage opens
-  `openLiftPanel` (src/fps/lifts.js). `goto('deep', { from: 'lift', lift: id })` spawns in the cage.
+  `L{zone}{k}` per zone (feature kind `lift`: a cobblestone room, 3 × 3 m, a plank car framed in iron
+  in the middle, iron guide posts and rails up the 1.5 m shaft over it, the doorway in the +z wall),
+  and the town shaft stops `s0..s5` (kind `stop`: a stone room opening west onto the stone-lined
+  `shaft`, a doorway east). All of it is unbreakable (`MAT.unbreakable`: `M.LIFTBRICK LIFTPLANK
+  LIFTRAIL LIFTCOB`, ids 76–79; no moss grows on them: `MAT.clean`); stamped last
+  (`src/deep/gen/lifts.js`). The lever, the name sign and two torches are models
+  (`src/deep/ruins/liftKit.js`, run by Ruins.js). Walking into a lift room calls `discoverLift`; E on
+  the lever (or anywhere in the room) opens `openLiftPanel` (src/fps/lifts.js); reading the sign is
+  `act look { at: 'signpost' }`. `goto('deep', { from: 'lift', lift: id })` spawns on the car.
+- No human works in the caves (wave 4): no trails, timber, lanterns, carts, crates or signposts.
+  Burrows are reached by natural `passage` features (`src/deep/gen/passages.js`); `plan.ruins` are
+  dungeons (`src/deep/ruins/dungeon.js`, see REMAKE.md › Natural caves & dungeons).
 - Build tool (slot 7, `R` / tapping the slot again switches): `M.LADDER` strips (climbable for free:
   `FPSPlayer.onLadder`), plank platforms (`M.BOARDS` 3×3), brick blocks (`M.BRICK` 2³).
 - Digging: plates are ~2–3 voxels (`STYLE_OF` scale), each blow adds 30% damage to the neighbouring

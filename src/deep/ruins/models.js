@@ -1,10 +1,10 @@
-// Voxel models (1/32 m; sign boards 1/64 m) for the ruins and the old trails: levers with their
-// symbol plaques, symbol drums, crystal mirrors, the light socket, pressure plates, the drain
-// wheel, the treasure chest and its lid, braziers, goblets; signposts with hand-painted names,
-// ore carts, broken tools, a winch rope and bucket. Each builder returns a BufferGeometry in
-// metres (origin as documented), coloured per voxel, lit by makeObjectMaterial.
-import * as THREE from 'three';
-import { Vox, mix, dk, lt, h3 } from '../../gfx/char/vox.js';
+// Voxel models (1/32 m; the lift signs 1/64 m) for the dungeons and the lift stations: levers with
+// their symbol plaques, symbol drums, crystal mirrors, the light socket, pressure plates, the drain
+// wheel, the strongroom's chest and its lid, braziers, goblets; plain wooden chests, cobwebs, darts,
+// a trap's plate, a lost miner's remains, skulls, wall torches, the lift lever and plank sign. Each
+// builder returns a BufferGeometry in metres (origin as documented), coloured per voxel, lit by
+// makeObjectMaterial.
+import { Vox, dk, lt, h3 } from '../../gfx/char/vox.js';
 import { glyphAt, G } from './glyphs.js';
 import { textWidth, textPixel } from './font.js';
 
@@ -12,10 +12,10 @@ export const S = 1 / 32;
 const STONE = 0x8a8070, STONE_D = 0x625a4c, BASALT = 0x3a3842, BASALT_L = 0x56545e;
 const GOLD = 0xe2ae3a, GOLD_L = 0xffe08a, GOLD_D = 0x9a6a18;
 const BRONZE = 0x3e7a5e, BRONZE_L = 0x6eaa80, BRONZE_D = 0x2a5444, COPPER = 0xc08a4a;
-const WOOD = 0x7a5232, WOOD_D = 0x553820, WOOD_L = 0x9a6c42, WOOD_G = 0x6a5a48;
-const IRON = 0x4a4c52, IRON_L = 0x7a7e86, IRON_D = 0x2e3036, RUST = 0x8a4a2a, RUST_L = 0xb0603a;
-const ROPE = 0xc4a46a, ROPE_D = 0x96784a;
-const PAINT = 0xeee0bc, PAINT_R = 0xc8483a;
+const WOOD = 0x7a5232, WOOD_D = 0x553820;
+const IRON = 0x4a4c52, IRON_L = 0x7a7e86, IRON_D = 0x2e3036, RUST = 0x8a4a2a;
+const ROPE = 0xc4a46a;
+const PAINT = 0xeee0bc;
 export const COL = { STONE, BASALT, GOLD, BRONZE, WOOD, IRON, ROPE };
 
 /** Mesh a Vox: scale s, origin at model point pivot (voxel units). */
@@ -244,156 +244,152 @@ export function flameGeo() {
   return geo(v, [0, 0, 0]);
 }
 
-// ------------------------------------------------------------------ the trails
-/** A signpost's post (origin: floor). Boards: signBoard(), each turned its own way. */
-export function signPost() {
-  const v = new Vox(-3, 3, 0, 44, -3, 3);
-  v.box(-2, 0, -2, 2, 42, 2, (x, y, z) => ((x + z + (y >> 2)) % 5 === 0 ? WOOD_D : grain(WOOD_G, x, y >> 1, z, 0.1)));
-  v.box(-3, 42, -3, 3, 44, 3, WOOD_D); // cap
-  v.box(-3, 0, -3, 3, 2, 3, (x, y, z) => grain(0x5a4a3a, x, y, z)); // a stone wedged at its foot
+// ------------------------------------------------------------------ the dungeons (wave 4)
+const OAK = 0x8a6236, OAK_D = 0x5a3c1e, OAK_L = 0xa47a46, LATCH = 0x9aa0aa, COBW = 0x6e6e70;
+
+/** A plain wooden chest, Minecraft-like (origin: floor, centre; front toward +z): 0.44 m a side. */
+export function woodChest() {
+  const v = new Vox(-7, 7, 0, 10, -7, 7);
+  v.box(-7, 0, -7, 7, 10, 7, (x, y, z) => {
+    const ex = x === -7 || x === 6, ez = z === -7 || z === 6, ey = y === 0 || y === 9;
+    if ((ex && ez) || (ex && ey) || (ez && ey)) return OAK_D;
+    return y % 4 === 1 ? dk(OAK, 0.12) : grain(OAK, x, y, z, 0.07);
+  });
+  v.box(-6, 1, -6, 6, 10, 6, -1);
+  v.box(-6, 1, -6, 6, 3, 6, (x, y, z) => (h3(x, y, z, 5) < 0.3 ? 0xd8a83a : 0x4a3a2a)); // what's at the bottom
+  v.box(-1, 6, 7, 1, 10, 8, LATCH); // the latch (the lid's half is on the lid)
   return geo(v, [0, 0, 0]);
 }
-/**
- * An arrow board (1/64 m voxels) pointing +x from the post axis, its middle at y = 0. The text
- * (\n for two lines) is painted on both faces, mirrored on the back so it reads from either side.
- */
-export function signBoard(text, color) {
-  const lines = String(text).toUpperCase().split('\n');
-  const W = Math.max(...lines.map(textWidth)) + 8, H = lines.length * 7 + 4;
-  const s = 1 / 64, tip = 6;
-  const v = new Vox(-1, W + tip + 2, 0, H + 1, -1, 4);
-  for (let yy = 0; yy < H; yy++) for (let x = 0; x < W + tip; x++) {
-    if (x >= W) { const k = x - W; if (Math.abs(yy - (H - 1) / 2) > (H / 2) * (1 - k / tip)) continue; } // the point
-    if (x < 2 && (yy === 0 || yy === H - 1)) continue; // a chipped corner
-    const wc = yy % 5 === 0 ? WOOD_D : grain(color || WOOD_L, x >> 2, yy, 0, 0.12, 31);
-    for (let z = 0; z < 3; z++) v.set(x, yy, z, wc);
-  }
-  v.set(2, H - 3, 3, IRON_L); v.set(2, 2, 3, IRON_L); v.set(2, H - 3, -1, IRON_L); v.set(2, 2, -1, IRON_L); // nails
-  lines.forEach((ln, i) => {
-    const w = textWidth(ln), x0 = 4 + Math.floor((W - 8 - w) / 2), y0 = H - 3 - (i + 1) * 7 + 1;
-    for (let py = 0; py < 5; py++) for (let px = 0; px < w; px++) {
-      if (!textPixel(ln, px, 4 - py)) continue;
-      v.set(x0 + px, y0 + py, 2, PAINT);
-      v.set(x0 + w - 1 - px, y0 + py, 0, PAINT); // the back reads the right way round too
-      if (py === 0 && h3(px, py, i, 41) < 0.06) v.set(x0 + px, y0 - 1, 2, PAINT); // a drip
-    }
+/** Its lid (origin: the back hinge line at the top of the body; opens rotating about x). */
+export function woodChestLid() {
+  const v = new Vox(-7, 7, 0, 5, 0, 15);
+  v.box(-7, 0, 0, 7, 4, 14, (x, y, z) => {
+    const ex = x === -7 || x === 6, ez = z === 0 || z === 13, ey = y === 3;
+    if ((ex && ez) || (ex && ey) || (ez && ey)) return OAK_D;
+    return grain(OAK_L, x, y, z, 0.07);
   });
-  const mid = Math.floor((H - 1) / 2);
-  for (let x = W - 3; x < W + tip - 2; x++) { v.set(x, mid, 2, PAINT_R); v.set(x, mid, 0, PAINT_R); }
-  const g = v.geometry(false, [-4.5, H / 2, 1.5]); // the board starts just clear of the post
+  v.box(-1, 0, 14, 1, 3, 15, LATCH);
+  return geo(v, [0, 0, 0]);
+}
+
+/**
+ * A cobweb (1/32 m): spokes and a sagging spiral in the x-y plane, r voxels across, lopsided like
+ * one strung into a corner (origin: its middle).
+ */
+export function cobweb(r = 14, seed = 1) {
+  const v = new Vox(-r - 2, r + 2, -r - 2, r + 2, -1, 1);
+  const n = 9;
+  const line = (ax, ay, bx, by, c) => { const L = Math.ceil(Math.hypot(bx - ax, by - ay)); for (let i = 0; i <= L; i++) v.set(Math.round(ax + (bx - ax) * i / L), Math.round(ay + (by - ay) * i / L), 0, c); };
+  const ends = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + (h3(i, 1, 0, seed) - 0.5) * 0.4;
+    const rr = r * (0.75 + h3(i, 2, 0, seed) * 0.25);
+    ends.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+    line(0, 0, Math.cos(a) * rr, Math.sin(a) * rr, 0xe8ecf2);
+  }
+  for (let k = 1; k < 6; k++) for (let i = 0; i < n; i++) {
+    if (h3(i, k, 3, seed) < 0.12) continue; // torn
+    const f0 = (k + h3(i, k, 4, seed) * 0.3) / 6, f1 = (k + h3(i + 1, k, 4, seed) * 0.3) / 6;
+    const a = ends[i], b = ends[(i + 1) % n];
+    line(a[0] * f0, a[1] * f0 - 0.6, b[0] * f1, b[1] * f1 - 0.6, k & 1 ? 0xd4dae4 : 0xf2f4f8);
+  }
+  return geo(v, [0, 0, 0]);
+}
+
+/** A dart (origin: its tip; flying toward +z). */
+export function dart() {
+  const v = new Vox(-2, 2, -2, 2, -12, 1);
+  v.box(0, 0, -11, 1, 1, 0, 0x6a5038);
+  v.set(0, 0, 0, IRON_L);
+  for (const [x, y] of [[-1, 0], [1, 0], [0, 1], [0, -1]]) { v.set(x, y, -10, 0xc8483a); v.set(x, y, -11, 0xe8e0d0); }
+  return geo(v, [0.5, 0.5, 0]);
+}
+/** A trap's pressure plate: a thin stone slab (origin: top centre), 0.375 m square. */
+export function trapPlate(c = COBW) {
+  const v = new Vox(-6, 6, -2, 0, -6, 6);
+  v.box(-6, -2, -6, 6, 0, 6, (x, y, z) => (x === -6 || x === 5 || z === -6 || z === 5 ? dk(c, 0.2) : grain(c, x >> 1, y, z >> 1, 0.08)));
+  return geo(v, [0, 0, 0]);
+}
+
+/** What's left of a miner who came looking: bones, a skull, a pick, a satchel with papers (origin: floor). */
+export function remains(seed = 1) {
+  const BONE = 0xd8ceb4, BONE_D = 0xa89e86;
+  const v = new Vox(-16, 16, 0, 10, -16, 16);
+  // skull
+  v.ell(-8, 3, -4, 3, 3, 3.2, (x, y, z) => (y < 2 ? BONE_D : BONE));
+  v.set(-6, 4, -2, 0x1a1414); v.set(-9, 4, -2, 0x1a1414); v.set(-7, 2, -1, 0x2a2420);
+  // ribs and a spine
+  v.line(-4, 1, -2, 8, 1, 1, BONE_D, 0.7);
+  for (let k = 0; k < 5; k++) { const x = -2 + k * 2.4; v.line(x, 1, 1.5, x + 1, 2.5, -3.5, BONE, 0.6); v.line(x, 1, 1.5, x + 1, 2.5, 6, BONE, 0.6); }
+  // a leg bone, an arm bone
+  v.line(9, 1, 0, 15, 1, -5, BONE, 0.8); v.line(-3, 1, 7, 3, 1, 12, BONE, 0.7);
+  // the pick
+  v.line(-14, 1, 8, 0, 1, 14, (x, y, z) => grain(WOOD, x, y, z), 0.9);
+  v.line(-15, 1, 4, -13, 2, 13, (x, y, z) => (h3(x, y, z, seed) < 0.35 ? RUST : IRON), 0.9);
+  // the satchel, a page sticking out
+  v.box(4, 0, -12, 12, 5, -6, (x, y, z) => (y === 4 || x === 4 ? 0x5a3a20 : 0x7a5230));
+  v.box(6, 5, -10, 11, 6, -7, PAINT);
+  return geo(v, [0, 0, 0]);
+}
+
+/** A wall torch (origin: where it meets the wall; leaning out toward +z). The flame is apart. */
+export function torch() {
+  const v = new Vox(-2, 2, -2, 14, -1, 8);
+  v.line(0, 0, 0, 0, 10, 5, (x, y, z) => (y > 8 ? 0x2a1e18 : grain(0x7a5232, x, y, z)), 0.8);
+  v.box(-1, -1, -1, 1, 2, 1, IRON_D); // the bracket
+  return geo(v, [0.5, 0, 0.5]);
+}
+export function torchFlame() {
+  const v = new Vox(-2, 2, 0, 6, -2, 2);
+  for (let y = 0; y < 5; y++) v.cylY(0, 0, y < 2 ? 1.6 : 1.1 - (y - 2) * 0.3, y, y + 1, y < 2 ? 0xffd070 : 0xff9a3a);
+  return geo(v, [0, 0, 0]);
+}
+
+/** A lever on a cobble block (origin: floor, centre; the handle pivot is returned apart). */
+export function liftLeverBase() {
+  const v = new Vox(-6, 6, 0, 26, -6, 6);
+  v.box(-5, 0, -5, 5, 18, 5, (x, y, z) => grain(h3(x >> 2, y >> 2, z >> 2, 7) < 0.5 ? 0x6a6a6c : 0x7c7c7e, x, y, z, 0.1)); // a post of stone
+  v.box(-3, 18, -3, 3, 20, 3, IRON_D); // the plate
+  return geo(v, [0, 0, 0]);
+}
+export function liftLeverHandle() {
+  const v = new Vox(-2, 2, -1, 16, -2, 2);
+  v.box(-1, 0, -1, 1, 13, 1, (x, y) => (y > 10 ? 0x3a3a3c : 0x8a6236));
+  v.box(-2, 12, -2, 2, 16, 2, 0x2c2c30);
+  return geo(v, [0, 0, 0]);
+}
+
+/**
+ * A plank sign for a lift station (1/64 m voxels): the name in dark letters (two lines when long),
+ * the depth under it (origin: the back of the board, its middle; the face toward +z).
+ */
+export function plankSign(lines) {
+  const s = 1 / 64;
+  const L = lines.map((t) => String(t).toUpperCase());
+  const W = Math.max(40, ...L.map(textWidth)) + 10, H = L.length * 7 + 7;
+  const v = new Vox(-1, W + 1, -1, H + 1, 0, 4);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const plank = Math.floor(y / 6);
+    const c = y % 6 === 0 ? OAK_D : grain(plank & 1 ? OAK : OAK_L, x >> 2, y, plank, 0.08, 17);
+    for (let z = 0; z < 3; z++) v.set(x, y, z, c);
+  }
+  L.forEach((ln, i) => {
+    const w = textWidth(ln), x0 = Math.floor((W - w) / 2), y0 = H - 4 - (i + 1) * 7 + 2;
+    for (let py = 0; py < 5; py++) for (let px = 0; px < w; px++) if (textPixel(ln, px, 4 - py)) v.set(x0 + px, y0 + py, 3, 0x1e140c);
+  });
+  const g = v.geometry(false, [W / 2, H / 2, 0]);
   g.scale(s, s, s);
   return g;
 }
 
-/** An old ore cart (origin: rail top, centre; along x). tipped: on its side, the load spilt. */
-export function cart(tipped = false, seed = 1) {
-  const W = 26, H = 20, D = 18;
-  const v = new Vox(-W / 2 - 1, W / 2 + 1, 0, H + 2, -D / 2 - 1, D / 2 + 1);
-  const body = (x, y, z) => {
-    if (y >= H - 1 || ((x === -W / 2 + 1 || x === W / 2 - 2) && (z === -D / 2 + 1 || z === D / 2 - 2))) return IRON_D;
-    if (y === 10) return IRON_D;
-    return h3(x >> 1, y >> 1, z >> 1, seed) < 0.25 ? RUST : h3(x, y, z, seed + 1) < 0.07 ? RUST_L : 0x6a5a52;
-  };
-  for (let y = 6; y < H; y++) for (let z = -D / 2 + 1; z < D / 2 - 1; z++) for (let x = -W / 2 + 1; x < W / 2 - 1; x++) {
-    const wall = x === -W / 2 + 1 || x === W / 2 - 2 || z === -D / 2 + 1 || z === D / 2 - 2 || y === 6;
-    if (wall) v.set(x, y, z, body(x, y, z));
-  }
-  // the load (rock with glints of ore)
-  if (!tipped) for (let z = -D / 2 + 2; z < D / 2 - 2; z++) for (let x = -W / 2 + 2; x < W / 2 - 2; x++) {
-    const top = 15 + Math.round(3 * (1 - Math.hypot(x / (W / 2), z / (D / 2))) + h3(x >> 1, 0, z >> 1, seed + 2) * 2);
-    for (let y = 7; y < Math.min(H + 1, top); y++) v.set(x, y, z, h3(x, y, z, seed + 3) < 0.06 ? [0xf0c040, 0xd8743a, 0xb8c4d0][(h3(x, y, z, seed + 4) * 3) | 0] : h3(x >> 1, y >> 1, z >> 1, seed + 5) < 0.5 ? 0x6a6260 : 0x84807a);
-  }
-  // wheels and axles
-  for (const wx of [-W / 2 + 6, W / 2 - 7]) {
-    for (const wz of [-D / 2 + 1, D / 2 - 2]) for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
-      const r = Math.hypot(dx, dy);
-      if (r > 4.4) continue;
-      v.set(wx + dx, 4 + dy, wz, r < 1.5 ? IRON_L : r > 3.2 ? IRON_D : (dx === 0 || dy === 0) ? IRON : -1);
-    }
-    for (let z = -D / 2 + 1; z < D / 2 - 1; z++) v.set(wx, 4, z, IRON_D);
-  }
-  const g = geo(v, [0, 0, 0]);
-  if (tipped) { g.rotateX(Math.PI / 2 * 0.98); g.translate(0, D / 2 * S, 0); }
-  return g;
-}
-
-/** Iron rails along a straight run (origin: start; along +x for len metres), on their sleepers. */
-export function rails(len) {
-  const n = Math.max(1, Math.round(len * 32));
-  const v = new Vox(0, n, 0, 3, -9, 9);
-  for (let x = 0; x < n; x++) for (const z of [-8, 7]) {
-    v.set(x, 0, z, IRON_D); v.set(x, 1, z, x % 11 === 0 ? RUST : IRON); v.set(x, 2, z, h3(x, 0, z, 61) < 0.15 ? RUST_L : IRON_L);
-    v.set(x, 0, z + (z < 0 ? 1 : -1), IRON_D);
-  }
+/** A skull and a couple of bones in a tomb niche (origin: floor; looking toward +z). */
+export function skull(seed = 1) {
+  const BONE = 0xd8ceb4, BONE_D = 0xa89e86, HOLE = 0x1a1414;
+  const v = new Vox(-7, 7, 0, 8, -6, 6);
+  v.ell(0, 3.2, 0, 2.6, 2.6, 2.8, (x, y) => (y < 2 ? BONE_D : BONE));
+  v.box(-2, 0, 1, 2, 2, 3, BONE_D); // the jaw
+  v.set(-1, 3, 3, HOLE); v.set(1, 3, 3, HOLE); v.set(0, 2, 3, HOLE);
+  v.line(-6, 0, -4, 5, 0, -2, BONE, 0.6);
+  if (h3(seed, 1, 2, 3) < 0.6) v.line(-5, 0, 4, 6, 0, -4, BONE_D, 0.6);
   return geo(v, [0, 0, 0]);
 }
-
-/** A broken tool or bit of gear lying on the floor (origin: floor). */
-export function gear(kind, seed = 1) {
-  const v = new Vox(-14, 14, 0, 30, -14, 14);
-  if (kind === 'pick') {
-    // a pick with a snapped handle, leaning
-    v.line(-10, 0, 0, 6, 1, 3, (x, y, z) => grain(WOOD, x, y, z), 0.9);
-    v.line(4, 1, -6, 8, 2, 9, (x, y, z) => (Math.abs(z) < 2 ? IRON_D : h3(x, y, z, seed) < 0.3 ? RUST : IRON), 0.9);
-    v.line(-12, 0, 6, -7, 0, 8, (x, y, z) => grain(WOOD_L, x, y, z), 0.7); // the broken-off end
-  } else if (kind === 'shovel') {
-    v.line(-12, 1, -2, 6, 1, 2, (x, y, z) => grain(WOOD, x, y, z), 0.8);
-    v.box(-15, 0, -3, -12, 1, 3, IRON_D);
-    v.box(6, 0, -4, 14, 1, 5, (x, y, z) => (h3(x, y, z, seed) < 0.35 ? RUST : IRON));
-  } else if (kind === 'bucket') {
-    for (let y = 0; y < 10; y++) v.cylY(0, 0, 4.2 + y * 0.12, y, y + 1, (x, yy) => (yy === 2 || yy === 8 ? IRON_D : (x + yy) % 6 === 0 ? WOOD_D : WOOD));
-    v.cylY(0, 0, 3.7, 1, 10, -1);
-    for (let k = 0; k < 9; k++) { const a = Math.PI * k / 8; v.set(Math.round(Math.cos(a) * 5), 10 + Math.round(Math.sin(a) * 4), 0, IRON_L); }
-  } else if (kind === 'crate') {
-    v.box(-9, 0, -8, 9, 14, 8, (x, y, z) => {
-      const ex = x === -9 || x === 8, ey = y === 0 || y === 13, ez = z === -8 || z === 7;
-      if ((ex && ey) || (ey && ez) || (ex && ez)) return WOOD_D;
-      return (y >> 2) % 2 ? WOOD : WOOD_L;
-    });
-    v.box(-8, 9, -7, 8, 14, 7, -1); // the lid's gone
-    v.box(-7, 1, -6, 7, 8, 6, (x, y, z) => (h3(x, y, z, seed) < 0.1 ? 0xf0c040 : 0x6a6260));
-    v.line(-14, 0, 10, 2, 0, 13, WOOD, 0.7); // the lid, lying beside it
-  } else if (kind === 'lamp') {
-    // an old miner's lamp on its side
-    v.box(-3, 0, -3, 3, 2, 3, IRON_D); v.box(-2, 2, -2, 2, 7, 2, 0xc8a050); v.box(-3, 7, -3, 3, 8, 3, IRON_D);
-    v.set(0, 9, 0, IRON); v.set(1, 10, 0, IRON); v.set(-1, 10, 0, IRON);
-  } else {
-    // barrel
-    for (let y = 0; y < 18; y++) v.cylY(0, 0, 6 + Math.sin((y / 17) * Math.PI) * 1.4, y, y + 1, (x, yy, z) => (yy === 2 || yy === 9 || yy === 15 ? IRON_D : Math.floor((Math.atan2(z, x) + Math.PI) * 2.6) & 1 ? WOOD : WOOD_D));
-    v.cylY(0, 0, 5.4, 17, 18, WOOD_D);
-  }
-  return geo(v, [0, 0, 0]);
-}
-
-/** A rope hanging straight down (origin: top), length metres. */
-export function rope(len) {
-  const n = Math.max(2, Math.round(len * 32));
-  const v = new Vox(-1, 1, -n, 0, -1, 1);
-  for (let y = -n; y < 0; y++) for (let x = -1; x < 1; x++) for (let z = -1; z < 1; z++) v.set(x, y, z, (y + x * 2 + z) & 2 ? ROPE : ROPE_D);
-  return geo(v, [0, 0, 0]);
-}
-/** A rope sagging from a to b (metres, relative to a): a chain of short voxel bits. */
-export function sagRope(dx, dy, dz, sag, n = 12) {
-  const parts = [];
-  for (let i = 0; i < n; i++) {
-    const t0 = i / n, t1 = (i + 1) / n;
-    const p0 = [dx * t0, dy * t0 - sag * 4 * t0 * (1 - t0), dz * t0], p1 = [dx * t1, dy * t1 - sag * 4 * t1 * (1 - t1), dz * t1];
-    const L = Math.hypot(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
-    const g = new THREE.BoxGeometry(0.035, 0.035, L + 0.01);
-    g.lookAt(new THREE.Vector3(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]));
-    g.translate((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, (p0[2] + p1[2]) / 2);
-    colorize(g, i & 1 ? ROPE : ROPE_D);
-    parts.push(g);
-  }
-  return parts;
-}
-/** Vertex colours (linear) for a plain geometry. */
-export function colorize(g, hex) {
-  const c = new THREE.Color().setHex(hex);
-  const n = g.attributes.position.count, a = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
-  g.setAttribute('color', new THREE.BufferAttribute(a, 3));
-  if (g.attributes.uv) g.deleteAttribute('uv');
-  return g;
-}
-export function bucket() { return gear('bucket'); }

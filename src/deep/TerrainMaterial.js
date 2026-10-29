@@ -46,7 +46,7 @@ function surfacePalette(tex) {
     for (let k = 0; k < 4; k++) data[o7 + k] = Math.round(s[k] * 255);
     data[(m * W + 6) * 4 + 3] = HOT.includes(m) ? 255 : 0;
     // natural rock and soil only (ruins, burrow fittings and ores stay clean)
-    const natural = m < 96 && !d.fluid && m !== M.BONE && m !== M.STEM && m !== M.BURROW;
+    const natural = m < 96 && !d.fluid && !d.clean && m !== M.BONE && m !== M.STEM && m !== M.BURROW; // clean: the lift stations (ruins/mats.js)
     data[(m * W + 5) * 4 + 3] = natural ? Math.round((GROW_BY_STYLE[style] || 0) * 255) : 0;
   }
   tex.needsUpdate = true;

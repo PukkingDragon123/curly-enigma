@@ -9,6 +9,7 @@
 // Also the collision boxes for every wall (with the doorways left open), the floor and ceilings.
 import * as THREE from 'three';
 import { meshReliefTex, reliefTexture } from './relief.js';
+import { quantize, qTransfer, unquantize, CSCALE } from './pack.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { hash2 } from '../iso/surface.js';
@@ -200,6 +201,56 @@ function brickTexel(room, s, u, v, V, posts, ops, cracks, soot) {
   return tx(mulc(bc, sp3(u, v, 6, seed, 0.06, 0.1)), h > 0.93 ? 2 : 1);
 }
 
+/** Dressed stone walls (the glow garden, the larder): coursed blocks, deep mortar, moss low down, a damp sheen; lintels over the doors. */
+function stoneTexel(room, s, u, v, V, ops) {
+  const seed = s.seed;
+  for (const o of ops) { // stone lintels and jambs round the openings
+    if (o.kind === 'window') {
+      const d = Math.hypot(u + 0.5 - o.c, v + 0.5 - o.cyv);
+      if (d < o.rr + 9) { const a = Math.atan2(v + 0.5 - o.cyv, u + 0.5 - o.c), seg = Math.floor((a + Math.PI) / (Math.PI / 8)); return tx(mulc(seg % 2 ? 0x9a9080 : 0x8a8274, d < o.rr + 2 ? 0.8 : 1), 4); }
+      continue;
+    }
+    if (o.kind === 'lift') continue;
+    const du = Math.abs(u + 0.5 - o.c);
+    if (du <= o.hw + 9 && v < o.top + 12) {
+      if (o.kind === 'arch') { const base = o.top - o.hw, dv = v - base, d = Math.hypot(du, Math.max(0, dv)); if (d > o.hw && d < o.hw + 11) { const a = Math.atan2(Math.max(0, dv), u + 0.5 - o.c), seg = Math.floor(a / (Math.PI / 9)); return tx(mulc(seg % 2 ? 0xa09684 : 0x8e8676, d > o.hw + 9 ? 0.82 : 1), 5); } if (dv <= 0 && du > o.hw && du <= o.hw + 9) return tx(mulc(0x948a7c, (Math.floor(v / 14) % 2 ? 0.92 : 1)), 5); }
+      else if (v >= o.top && v < o.top + 12) return tx(mulc(0x8a8070, v === o.top || v === o.top + 11 ? 0.78 : 1), 5);
+      else if (du > o.hw && du <= o.hw + 9) return tx(mulc(0x948a7c, Math.floor(v / 14) % 2 ? 0.92 : 1), 5);
+    }
+  }
+  if (v < 5) return tx(mulc(0x5a524a, 0.9), 3); // the plinth course
+  const rh = 15, row = Math.floor((v - 5) / rh), lv = (v - 5) % rh;
+  const off = (row * 19) % 40, bw = 28 + Math.floor(hash2(row, 3, seed) * 14);
+  const bx = Math.floor((u + off) / bw), lu = (u + off) % bw;
+  if (lv === 0 || lu === 0) {
+    const moss = v < 50 && hash2(u >> 1, v >> 1, seed + 2) < 0.45 - v / 140;
+    return tx(moss ? (hash2(u, v, seed) < 0.5 ? 0x4f7a34 : 0x3e6a2a) : room.cool ? 0x8a8478 : 0x3e3830, 0);
+  }
+  const base = room.cool ? [0xb8b0a2, 0xa8a092, 0xc0b8aa, 0xb0a898] : [0x8a7e6e, 0x7a7062, 0x948878, 0x82786a, 0x9a8e7c];
+  let c = base[Math.floor(hash2(bx, row, seed) * base.length)];
+  const bev = Math.min(lu, bw - 1 - lu, lv, rh - 1 - lv);
+  if (bev === 1) c = mulc(c, lv === rh - 2 || lu === 1 ? 1.1 : 0.86);
+  c = mulc(c, sp3(u, v, 2, seed, 0.1, 0.1) * (0.97 + n2(u / 14, v / 14, seed) * 0.05));
+  if (!room.cool && v < 70 && hash2(u >> 2, v >> 2, seed + 4) < (70 - v) / 260) c = mixc(c, 0x5a8a3a, 0.5); // moss creeping up from the beds
+  if (room.cool && hash2(u >> 3, v >> 3, seed + 5) < 0.04) c = mixc(c, 0x6a6a62, 0.4); // a damp patch
+  return tx(c, 1 + (hash2(bx, row, seed + 1) < 0.35 ? 1 : 0) + (bev > 2 && n2(u / 6, v / 6, seed) > 0.4 ? 1 : 0));
+}
+
+/** Raw cave rock (the cliff either side of the terrace): bulging, cracked, glowing moss in the seams. */
+function rockTexel(room, s, u, v, V) {
+  const seed = s.seed;
+  const h = n2(u / 34, v / 30, seed) * 0.6 + n2(u / 11, v / 13, seed + 1) * 0.3 + n2(u / 4, v / 4, seed + 2) * 0.1;
+  const hs = n2(u / 34, v / 30, seed) * 0.7 + n2(u / 13, v / 15, seed + 1) * 0.3; // (the relief follows only the big bulges, in steps: far fewer faces)
+  const rel = Math.max(0, 10 + Math.round(hs * 4) * 3);
+  let c = mixc(0x3a3448, 0x5a5268, Math.max(0, Math.min(1, 0.5 + h * 0.8)));
+  const crack = Math.abs(n2(u / 22, v / 40, seed + 5)) < 0.04;
+  if (crack) { c = 0x1a1622; return tx(c, Math.max(0, rel - 6)); }
+  if (Math.abs(n2(u / 22, v / 40, seed + 5)) < 0.08 && hash2(u, v, seed) < 0.5) c = hash2(u >> 1, v >> 1, seed + 6) < 0.5 ? 0x3ad0b0 : 0x2a8a8a; // glowing moss along the cracks
+  else if (h > 0.25 && hash2(u >> 2, v >> 2, seed + 7) < 0.25) c = mixc(c, 0x6a5a82, 0.4);
+  if (v < 40 && hash2(u >> 1, v >> 1, seed + 8) < (40 - v) / 90) c = mixc(c, 0x3a6a2a, 0.6);
+  return tx(mulc(c, sp3(u, v, 3, seed, 0.12, 0.1)), rel);
+}
+
 /** Hairline cracks (1), patches where the plaster has fallen off (2) for one wall face. */
 function crackMap(U, V, seed, n = 2) {
   const m = new Uint8Array(U * V);
@@ -242,19 +293,40 @@ export class HouseSurfaces {
     this.textures = [];
   }
 
-  build() {
+  build(rooms = ROOMS) {
     const t0 = performance.now();
-    const st = (this.steps = { walls: 0, ceilings: 0, floors: 0 });
-    const time = (k, fn) => { const a = performance.now(); fn(); st[k] += Math.round(performance.now() - a); };
-    for (const r of ROOMS) {
-      const lit = roomLighter(r, this.lights);
-      time('walls', () => this.buildWalls(r, lit));
-      time('ceilings', () => this.buildCeiling(r, lit));
-      time('floors', () => this.buildFloor(r, lit));
-    }
-    this.collide();
+    for (const r of rooms) this.buildRoom(r);
+    if (rooms === ROOMS) this.collide();
     this.ms = performance.now() - t0;
     return this;
+  }
+
+  /** One room's walls, ceiling and floor, lit by its own lights. */
+  buildRoom(r) {
+    const st = (this.steps ||= { walls: 0, ceilings: 0, floors: 0 });
+    const time = (k, fn) => { const a = performance.now(); fn(); st[k] += Math.round(performance.now() - a); };
+    const lit = roomLighter(r, this.lights);
+    time('walls', () => this.buildWalls(r, lit));
+    if (!r.open) time('ceilings', () => this.buildCeiling(r, lit));
+    time('floors', () => this.buildFloor(r, lit));
+    return this;
+  }
+
+  /**
+   * The meshes packed for the scene: [{ name, room, q (quantized geometry with uv), tex: { data, w, h },
+   * glow, outline, order }] and the transfer list.
+   */
+  pack(room, transfer) {
+    const out = [];
+    for (const m of this.meshes) {
+      const q = quantize(m.geometry);
+      qTransfer(q, transfer);
+      const t = m.material.map;
+      const data = t.image.data;
+      transfer.push(data.buffer);
+      out.push({ name: m.name, room, q, tex: { data, w: t.image.width, h: t.image.height }, glow: m.material.emissiveIntensity, outline: m.layers.isEnabled(LAYER_OUTLINE), order: m.renderOrder || 0 });
+    }
+    return out;
   }
 
   /**
@@ -281,7 +353,8 @@ export class HouseSurfaces {
 
   // ------------------------------------------------------------ walls
   buildWalls(r, lit) {
-    const sides = ['n', 'e', 's', 'w'];
+    const sides = r.open ? (r.walls || []) : ['n', 'e', 's', 'w'];
+    if (!sides.length) return;
     const V = Math.round(r.h * VPM);
     const info = sides.map((side) => {
       const S = sideInfo(r, side);
@@ -319,7 +392,8 @@ export class HouseSurfaces {
           if (v < base || (roundTop && du * du + (v - base) ** 2 <= o.hw * o.hw)) { hole = true; break; }
         }
         if (hole) { depth[q] = 0; continue; }
-        const t = r.wall === 'brick' ? brickTexel(r, s, u, v, V, posts, ops, cracks, soot) : plasterTexel(r, s, u, v, V, posts, ops, cracks);
+        const style = (r.sideWall && r.sideWall[side]) || r.wall;
+        const t = style === 'brick' ? brickTexel(r, s, u, v, V, posts, ops, cracks, soot) : style === 'stone' ? stoneTexel(r, s, u, v, V, ops) : style === 'rock' ? rockTexel(r, s, u, v, V) : plasterTexel(r, s, u, v, V, posts, ops, cracks);
         const c = t.c, rel = t.r;
         depth[q] = FACE + rel;
         // light the texel where it sits in the room
@@ -360,8 +434,10 @@ export class HouseSurfaces {
     const joists = [];
     for (let i = 1; i < n; i++) joists.push(Math.round((i * L) / n));
     const seed = r.id.charCodeAt(0) * 13;
-    const board = { oak: 0x6a4a30, pine: 0x8a6a44, sooty: 0x4a3828 }[r.ceil] ?? 0x6a4a30;
+    const board = { oak: 0x6a4a30, pine: 0x8a6a44, sooty: 0x4a3828, slab: 0x6e665c }[r.ceil] ?? 0x6a4a30;
     const hole = r.id === 'living' ? { u: (HOLE.x - r.x0) * VPM, v: (HOLE.z - r.z0) * VPM, rr: HOLE.r * VPM } : null;
+    const sky = r.skylight ? { u: (r.skylight.x - r.x0) * VPM, v: (r.skylight.z - r.z0) * VPM, rr: r.skylight.r * VPM } : null;
+    const slab = r.ceil === 'slab';
     for (let v = 0; v < V; v++) for (let u = 0; u < U; u++) {
       const q = u + v * U;
       const along = alongX ? v : u, acr = alongX ? u : v;
@@ -393,6 +469,16 @@ export class HouseSurfaces {
             else { c = mulc(0x9a7a50, 0.9 + hash2(pb, 1, 9) * 0.15); rel = 3; if (Math.abs(Math.abs(dv) - hole.rr + 2) < 1 && Math.abs(lp - 6) < 1) c = 0x9a9aa2; }
           }
         }
+      }
+      if (slab && jd > 8) { // stone slabs laid over the beams, a cold cellar's roof
+        const sw = 44, sb = Math.floor(acr / sw), sl = acr % sw, ss = Math.floor((along + sb * 23) / 52), sa = (along + sb * 23) % 52;
+        c = sl === 0 || sa === 0 ? 0x3a342e : mulc([0x6e665c, 0x625a52, 0x7a7266, 0x6a6258][Math.floor(hash2(sb, ss, seed) * 4)], sp3(u, v, 11, seed, 0.12, 0.1));
+        if (hash2(u >> 3, v >> 3, seed + 9) < 0.05) c = mixc(c, 0xe8e4dc, 0.35); // a lick of whitewash
+      }
+      if (sky) { // the skylight: a round hole up the light well, its rim dressed in stone
+        const d = Math.hypot(u + 0.5 - sky.u, v + 0.5 - sky.v);
+        if (d < sky.rr) { depth[q] = 0; const o0 = q * 4; tex[o0] = tex[o0 + 1] = tex[o0 + 2] = 0; tex[o0 + 3] = 255; continue; }
+        if (d < sky.rr + 10) { const a = Math.atan2(v + 0.5 - sky.v, u + 0.5 - sky.u), seg = Math.floor((a + Math.PI) / (Math.PI / 9)); c = mulc([0x8a8278, 0x7a7268, 0x948a7e][seg % 3], (d < sky.rr + 2 ? 0.85 : 1) * sp3(u, v, 13, seed, 0.1, 0.1)); rel = Math.max(rel, d < sky.rr + 3 ? 14 : 12); }
       }
       if (r.ceil === 'sooty') c = mixc(c, 0x1a1410, 0.25 + 0.2 * Math.max(0, 1 - Math.hypot(u / VPM - 2.4, v / VPM - 0.5) / 2.5));
       depth[q] = 4 + rel;
@@ -434,20 +520,55 @@ export class HouseSurfaces {
   }
 
   // ------------------------------------------------------------ collision (meters)
-  collide() {
-    const B = (...b) => this.boxes.push(b);
-    const xs = ROOMS.flatMap((r) => [r.x0, r.x1]), zs = ROOMS.flatMap((r) => [r.z0, r.z1]);
+  collide() { this.boxes.push(...surfaceBoxes()); }
+
+  dispose() {
+    for (const m of this.meshes) { this.world.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    for (const t of this.textures) t.dispose();
+  }
+}
+
+/** Packed surface meshes back into the scene (see HouseSurfaces.pack): returns the meshes. */
+export function unpackSurfaces(list, world) {
+  const out = [];
+  for (const s of list) {
+    const tex = reliefTexture(s.tex.data, s.tex.w, s.tex.h);
+    const mat = voxelMaterial('toon', { unique: true });
+    mat.map = tex;
+    mat.emissive.setHex(0xffffff);
+    mat.emissiveMap = tex;
+    mat.emissiveIntensity = s.glow;
+    mat.color.setScalar(CSCALE);
+    mat.needsUpdate = true;
+    const m = unquantize(s.q, mat);
+    m.name = s.name;
+    m.userData.room = s.room;
+    if (s.outline) m.layers.enable(LAYER_OUTLINE);
+    if (s.order) m.renderOrder = s.order;
+    world.add(m);
+    out.push(m);
+  }
+  return out;
+}
+
+/** Collision for every room's walls (with the doorways left open), the floor and the ceilings (meters). */
+export function surfaceBoxes() {
+  const boxes = [];
+  {
+    const B = (...b) => boxes.push(b);
+    const xs = ROOMS.flatMap((r) => [r.x0, r.x1]), zs = ROOMS.filter((r) => r.z1 <= ROOMS[0].z1 + 0.01).flatMap((r) => [r.z0, r.z1]);
     const X0 = Math.min(...xs) - 1, X1 = Math.max(...xs) + 1, Z0 = Math.min(...zs) - 1;
-    B(X0, FY - 1, Z0, X1, FY, ROOMS[0].z1 + 0.001); // the floor under the whole house
+    B(X0, FY - 1, Z0, X1, FY, ROOMS[0].z1 + 0.001); // the floor under the house
+    for (const r of ROOMS) if (r.z1 > ROOMS[0].z1 + 0.01) B(r.x0 - 0.4, FY - 1, r.z0 - 0.4, r.x1 + 0.4, FY, r.z1 + 0.4); // and under rooms south of it
     for (const r of ROOMS) {
       const top = FY + r.h;
-      B(r.x0 - 0.3, top, r.z0 - 0.3, r.x1 + 0.3, top + 1, r.z1 + 0.3);
-      for (const side of ['n', 'e', 's', 'w']) {
+      if (!r.open) B(r.x0 - 0.3, top, r.z0 - 0.3, r.x1 + 0.3, top + 1, r.z1 + 0.3);
+      for (const side of (r.open ? (r.walls || []) : ['n', 'e', 's', 'w'])) {
         const S = sideInfo(r, side);
         const ops = openingsOf(r, side).filter((o) => o.kind !== 'window').sort((a, b) => a.c - b.c);
         const shared = ROOMS.some((q) => q !== r && touches(q, S));
         // (outer walls are 0.4 m of rock; the south ones stop at your room's wall, z = 0)
-        const t = shared ? WALL / 2 : side === 's' ? Math.min(0.4, -S.at) : 0.4;
+        const t = shared ? WALL / 2 : side === 's' && S.at < 0 ? Math.min(0.4, -S.at) : 0.4;
         let a = S.a0 - (shared ? 0 : 0.4);
         const end = S.a1 + (shared ? 0 : 0.4);
         const box = (p, q, y0, y1) => {
@@ -464,11 +585,7 @@ export class HouseSurfaces {
       }
     }
   }
-
-  dispose() {
-    for (const m of this.meshes) { this.world.remove(m); m.geometry.dispose(); m.material.dispose(); }
-    for (const t of this.textures) t.dispose();
-  }
+  return boxes;
 }
 
 /** Does room q have a wall right behind side S (a shared wall)? */
@@ -507,6 +624,22 @@ function floorTexel(kind, u, v, seed) {
     if (lu === 1 || lv === 1) c = mulc(c, 1.08);
     else if (lu === S - 1 || lv === S - 1) c = mulc(c, 0.9);
     return mulc(c, sp3(u, v, 8, seed, 0.08, 0.1));
+  }
+  if (kind === 'mossflag' || kind === 'terrace') {
+    // old flags with moss and tiny glowcaps in the joints (the garden), or weathered slabs out on the cliff
+    const rh = kind === 'terrace' ? 40 : 30, row = Math.floor(v / rh), off = Math.floor(hash2(row, 1, seed) * 40);
+    const w = 26 + Math.floor(hash2(row, 2, seed) * 18);
+    const bx = Math.floor((u + off) / w), lu = (u + off) % w, lv = v % rh;
+    const joint = lu < 2 || lv < 2;
+    if (joint) {
+      const g = hash2(u, v, seed + 3);
+      if (kind === 'mossflag') return g < 0.06 ? 0x8af0d0 : g < 0.5 ? 0x3e6a2a : 0x4f7a34;
+      return g < 0.4 ? 0x2a2630 : 0x3a5a3a;
+    }
+    let c = kind === 'terrace' ? [0x6a6474, 0x5e5a68, 0x76707e, 0x645e6c][Math.floor(hash2(bx, row, seed) * 4)] : [0x7a7466, 0x6e685c, 0x847c6e, 0x726c60][Math.floor(hash2(bx, row, seed) * 4)];
+    if (lu === 2 || lv === 2) c = mulc(c, 1.08);
+    if (kind === 'mossflag' && hash2(u >> 2, v >> 2, seed + 4) < 0.12) c = mixc(c, 0x4f7a34, 0.45);
+    return mulc(c, sp3(u, v, 9, seed, 0.12, 0.1) * (0.96 + n2(u / 9, v / 9, seed) * 0.05));
   }
   // flagstones: big irregular stones in staggered rows
   const rh = 34, row = Math.floor(v / rh), off = Math.floor(hash2(row, 1, seed) * 40);

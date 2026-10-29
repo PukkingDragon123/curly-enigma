@@ -793,6 +793,7 @@ export default class TownScene extends Scene {
     }
     this.syncPlayerProxy();
     this.eyeTarget.copy(rig.camera.position);
+    g.convo?.director?.apply(rig.camera, dt); // cutscene talk camera (src/fx/director.js) [convo hook]
     if (this.nuggetAI && this.nugget && !this.nugget.scripted) this.nuggetAI.update(dt, this.player);
     // actors: far, hidden or behind-the-camera ones animate every few frames (time accumulates,
     // so held expressions and blinks keep their pace)

@@ -26,14 +26,10 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { clamp, rand, chance, hexToRgb, formatGoldFull } from '../core/util.js';
 import * as W from '../core/weight.js';
+import { Build } from './Build.js'; // building part: blocks, ladders, torches, doors, chests; tools that break them
 
 const SLOTS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'build', 'dynamite', 'food'];
-// what the build tool puts up: ladders to climb out of holes for free, platforms, blocks
-const BUILD = [
-  { id: 'ladder', name: 'Ladder', hint: 'Aim at a wall' },
-  { id: 'planks', name: 'Plank platform', hint: 'Bridges gaps and makes floors' },
-  { id: 'block', name: 'Brick block', hint: 'Stairs, walls, plugging water' },
-];
+// the build slot (slot 7) puts up what Build.js says: blocks on a 0.5 m grid, ladders, torches, doors…
 const REACH = 2.3;
 const vmModules = import.meta.glob('../fps/ViewModel.js');
 // optional systems, built separately (see docs/DEEP.md): fantasy enemies, flowing fluids
@@ -208,7 +204,7 @@ export default class DigScene extends Scene {
     if (slot === 'pick') return st.equipped('pick');
     if (slot === 'stake') return st.count('glow_stake') ? ITEMS.glow_stake : null;
     if (slot === 'food') return this.bestFood();
-    if (slot === 'build') return ITEMS.support_beam;
+    if (slot === 'build') return this.builder?.item?.() || ITEMS.blk_ladder; // the selected block (Build.js)
     if (slot === 'dynamite') return this.bestBlast();
     return st.equipped(slot);
   }
@@ -231,13 +227,16 @@ export default class DigScene extends Scene {
     const icons = { dynamite: ITEMS.dynamite ? 'dynamite' : 'glow_stake', pick: 'pick_rusty', chisel: 'chisel_basic', brush: 'brush_basic', drill: 'drill_steam', xray: 'xray_lamp', stake: 'glow_stake', food: 'grub_bar' };
     const slots = SLOTS.map((s, i) => {
       const it = this.toolItem(s);
-      const n = s === 'stake' ? st.count('glow_stake') : (s === 'food' || s === 'dynamite') && it ? st.count(it.id) : undefined;
-      const label = s === 'build' ? `Build: ${BUILD[this.buildMode || 0].name}` : it ? it.name : '—';
+      const n = s === 'stake' ? st.count('glow_stake') : (s === 'food' || s === 'dynamite') && it ? st.count(it.id) : s === 'build' && it && this.builder && !this.builder.freeBuild() ? st.count(it.id) : undefined;
+      const label = s === 'build' ? (this.builder?.label?.() || 'Build') : it ? it.name : '—';
       return { icon: iconURL(it ? it.id : icons[s]), key: String(i + 1), label, off: !it, n, meter: s === 'drill' && it ? this.drillHeat : undefined };
     });
     this.game.ui.setHotbar(slots, this.slot, (i) => this.selectSlot(i));
     const it = this.toolItem(this.slotName);
-    if (this.vm) this.vm.setTool(this.slotName === 'build' ? 'beam' : it ? this.slotName : 'none', { item: it?.id });
+    if (this.vm) {
+      const hand = this.builder?.handTool?.(this.slotName); // the block in the paw, or the axe / spade the dig slot picked
+      this.vm.setTool(hand ? hand.kind : this.slotName === 'build' ? 'beam' : it ? this.slotName : 'none', hand ? hand.opts : { item: it?.id });
+    }
   }
   selectSlot(i) {
     const n = (i + SLOTS.length) % SLOTS.length;
@@ -337,6 +336,7 @@ export default class DigScene extends Scene {
     this.camera.rotation.set(pl.pitch + this.kick.x, pl.yaw + this.kick.y, this.kick.z, 'YXZ');
     this.camera.updateMatrixWorld();
     this.gather?.frame?.(dt); // the gathering close-up (deep/gather) steers the camera and paws
+    this.game.convo?.director?.apply(this.camera, dt); // cutscene talk camera (src/fx/director.js) [convo hook]
     // terrain + lights
     this.terrain.update(pl.pos.x, pl.pos.y + 0.5, pl.pos.z, 7);
     this.terrain.cull(eye.x, eye.y, eye.z, this.U.fogDist.value + 2);
@@ -448,7 +448,9 @@ export default class DigScene extends Scene {
         if (evs !== null && evs !== false) { st.removeItem(it.id, 1); this.events(evs); this.updateHotbar(); if (this.vm) this.vm.swing('dynamite', 0.12); }
       }
     } else if (tool === 'build') {
-      if (this.useT <= 0 && inp.mousePressed(0)) { this.useT = 0.25; this.build(); }
+      // a click puts one down; holding the button keeps placing (Minecraft-like)
+      this.buildHold = inp.mousePressed(0) ? 0 : (this.buildHold || 0) + dt;
+      if (this.useT <= 0 && (inp.mousePressed(0) || this.buildHold > 0.32)) { this.useT = 0.26; this.build(); }
     } else if (tool === 'food') {
       if (this.useT <= 0 && inp.mousePressed(0)) { this.useT = 0.6; this.eatBest(); }
     }
@@ -809,84 +811,33 @@ export default class DigScene extends Scene {
     return broken.length;
   }
 
-  // ------------------------------------------------------------------ building
+  // ------------------------------------------------------------------ building (Build.js, building part)
+  /** R, or tapping the build slot again: the block picker (blocks, shapes, crafting). */
   cycleBuild() {
-    this.buildMode = ((this.buildMode || 0) + 1) % BUILD.length;
-    const b = BUILD[this.buildMode];
     this.audio.play('ui_click', { pitch: 0.9 });
-    this.say('buildmode', `Build: <b>${b.name}</b> · ${b.hint}${this.isTouch() ? '' : ' · R to switch'}`, 'good', 0.3);
-    this.updateHotbar();
+    this.builder?.openPicker('blocks');
   }
 
-  /** The voxels the build tool would fill for the current target, or null. */
-  buildCells() {
-    const hit = this.target;
-    if (!hit) return null;
-    const w = this.world, mode = BUILD[this.buildMode || 0].id;
-    const bx = hit.vx + hit.nx, by = hit.vy + hit.ny, bz = hit.vz + hit.nz;
-    const cells = [];
-    const add = (x, y, z) => { if (!w.voxelAt(x, y, z)) cells.push([x, y, z]); };
-    if (mode === 'ladder') {
-      if (hit.ny) return null; // ladders go on walls
-      const lx = hit.nx ? 0 : 1, lz = hit.nx ? 1 : 0;
-      // rails and rungs, 3 wide, from the floor below the aim up to the top of the wall (3 m each way)
-      let y0 = by, y1 = by;
-      const reach = 3 * VOX;
-      while (y0 > by - reach && !w.voxelAt(bx, y0 - 1, bz)) y0--;
-      while (y1 < by + reach && !w.voxelAt(bx, y1 + 1, bz) && w.voxelAt(bx - hit.nx, y1 + 1, bz - hit.nz)) y1++;
-      const half = Math.max(1, Math.round(VOX / 8)); // rails a third of a meter apart
-      for (let y = y0; y <= y1; y++) for (let k = -half; k <= half; k++) {
-        const x = bx + lx * k, z = bz + lz * k;
-        if (Math.abs(k) < half && (Math.floor(y * 8 / VOX) & 1)) continue; // gaps between rungs
-        if (!w.voxelAt(x - hit.nx, y, z - hit.nz)) continue; // only against rock
-        add(x, y, z);
-      }
-    } else if (mode === 'planks') {
-      // a 3/8 m square plank, one voxel thick
-      const n = Math.round(VOX * 3 / 8), o = n >> 1;
-      for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) add(bx + x - o, by, bz + z - o);
-    } else {
-      // a quarter-meter brick on a quarter-meter grid
-      const n = Math.max(2, VOX >> 2), mk = ~(n - 1);
-      const x0 = bx & mk, y0 = by & mk, z0 = bz & mk;
-      for (let z = 0; z < n; z++) for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) add(x0 + x, y0 + y, z0 + z);
-    }
-    if (!cells.length) return null;
-    // never inside the mole
-    const p = this.player.pos;
-    const ok = !cells.some(([x, y, z]) => (x + 1) / VOX > p.x - 0.22 && x / VOX < p.x + 0.22 && (y + 1) / VOX > p.y && y / VOX < p.y + 0.86 && (z + 1) / VOX > p.z - 0.22 && z / VOX < p.z + 0.22);
-    return { cells, ok, m: mode === 'ladder' ? M.LADDER : mode === 'planks' ? M.BOARDS : M.BRICK };
-  }
-
-  /** A see-through preview of what the build tool would put up. */
+  /**
+   * Every frame (from update): the build module (made on the first frame) plans the ghost, picks
+   * the dig slot's tool, cracks placed blocks, lights torches, gathers blocks from digging.
+   */
   updateGhost(hide) {
-    const on = !hide && this.slotName === 'build';
-    const b = on ? this.buildCells() : null;
-    if (!this.ghost) {
-      this.ghost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x8aff8a, transparent: true, opacity: 0.28, depthWrite: false }));
-      this.ghost.renderOrder = 15;
-      this.scene.add(this.ghost);
+    if (!this.builder) {
+      try {
+        this.builder = new Build({ scene: this.scene, scene3: this.scene, world: this.world, U: this.U, fx: this.fx, bodies: this.bodies, audio: this.audio, state: this.state, ui: this.game.ui, player: this.player, plan: this.world.plan, owner: this });
+        this.updateHotbar();
+      } catch (e) { console.warn('build failed', e); this.builder = false; }
     }
-    this.ghost.visible = !!b;
-    if (!b) return;
-    let x0 = 1e9, y0 = 1e9, z0 = 1e9, x1 = -1e9, y1 = -1e9, z1 = -1e9;
-    for (const [x, y, z] of b.cells) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); z0 = Math.min(z0, z); x1 = Math.max(x1, x + 1); y1 = Math.max(y1, y + 1); z1 = Math.max(z1, z + 1); }
-    this.ghost.position.set((x0 + x1) / 2 / VOX, (y0 + y1) / 2 / VOX, (z0 + z1) / 2 / VOX);
-    this.ghost.scale.set((x1 - x0) / VOX + 0.01, (y1 - y0) / VOX + 0.01, (z1 - z0) / VOX + 0.01);
-    this.ghost.material.color.setHex(b.ok ? 0x8aff8a : 0xff6a5a);
-    this.ghost.material.opacity = 0.22 + Math.sin(this.time * 6) * 0.06;
+    if (!this.builder) return;
+    const dt = Math.min(0.1, this.time - (this.buildT ?? this.time));
+    this.buildT = this.time;
+    this.events(this.builder.update(dt, { hide }));
   }
 
+  /** The build slot's click: a door, chest or workbench under the crosshair gets used, else the block goes down. */
   build() {
-    const b = this.buildCells();
-    if (!b || !b.ok) { this.audio.play('ui_error', { vol: 0.5 }); return; }
-    for (const [x, y, z] of b.cells) this.world.setVoxel(x, y, z, b.m);
-    const [x, y, z] = b.cells[b.cells.length >> 1];
-    this.fx.dust((x + 0.5) / VOX, (y + 0.5) / VOX, (z + 0.5) / VOX, 6, [0.6, 0.5, 0.4], 0.15);
-    this.audio.play('place');
-    this.audio.play('hit', { snd: 'wood', vol: 0.4 });
-    if (this.vm) this.vm.swing('beam', 0.12);
-    this.energy(0.3);
+    if (this.builder) this.builder.place();
   }
 
   placeStake() {

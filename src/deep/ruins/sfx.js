@@ -54,6 +54,23 @@ export function sfx(audio) {
     coins(n = 6) { play('coins', { n }); },
     fanfare() { play('fanfare', { vol: 0.6 }); },
     ignite() { play('ignite', { vol: 0.6 }); },
+    /** A spawner breeding: a hiss and a soft roar of flame from the cage. */
+    spawn(vol = 0.6) {
+      play('hiss', { vol: 0.35 * vol, pitch: 0.7 });
+      noise({ color: 'brown', filter: 'bandpass', f: 380, f2: 120, q: 1.1, dur: 0.7, a: 0.08, vol: 0.22 * vol });
+      tone({ f: 150, f2: 90, type: 'sawtooth', dur: 0.5, vol: 0.03 * vol, filter: 'lowpass', ff: 600 });
+    },
+    /** A spawner's cage giving way. */
+    smash() {
+      play('clang', { vol: 0.8, pitch: 0.7 });
+      play('break', { snd: 'metal', vol: 0.8 });
+      play('glow', { vol: 0.4 });
+      noise({ color: 'pink', filter: 'highpass', f: 2400, dur: 0.6, a: 0.005, vol: 0.12 });
+    },
+    /** A dart trap: the plate's click, then the darts. */
+    trap() { play('click', { vol: 0.6, pitch: 0.7 }); play('clunk', { vol: 0.5, pitch: 1.3 }); },
+    darts() { play('whoosh', { vol: 0.5, pitch: 1.6 }); tone({ f: 900, f2: 300, type: 'triangle', dur: 0.12, vol: 0.04 }); },
+    lever() { play('clunk', { vol: 0.7, pitch: 0.9 }); play('click', { vol: 0.5 }); },
     hum() { return a?.loop?.('hum', { vol: 0.0001 }) || { set() {}, stop() {} }; },
     water() { return a?.loop?.('water', { vol: 0.0001 }) || { set() {}, stop() {} }; },
   };

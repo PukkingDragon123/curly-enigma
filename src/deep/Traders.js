@@ -22,6 +22,7 @@ import './traders/models.js';
 import './traders/models2.js';
 import { Folk } from './traders/folk.js';
 import { openBurrowShop, traderData } from './traders/shop.js';
+import { burrowTalk } from './traders/talk.js'; // cutscene talk at the counter (src/ui/Convo.js)
 import { SHOPS } from '../data/shops.js';
 import { ITEMS } from '../data/items.js';
 import { iconURL } from '../gfx/PixelArt.js';
@@ -435,18 +436,18 @@ export class Traders {
   use(eye, dir, reach) {
     const p = this.pickAt(eye, dir, reach);
     if (!p) return null;
-    if (p.what === 'folk') { this.openShop(p.b); return []; }
+    if (p.what === 'folk') { if (!burrowTalk(this, p.b)) this.openShop(p.b); return []; } // a cutscene talk, then the counter
     if (p.what === 'stash') { this.lootStash(p.b); return []; }
     if (p.what === 'door') { this.openSecret(p.b); return []; }
     return null;
   }
 
-  openShop(b, tab) {
+  openShop(b, tab, extra = {}) {
     if (this.panel && !this.panel.closed) return this.panel;
     const B = this.ensureBuilt(b, true);
     this.audio?.play('ui_open');
     const game = this.owner?.game || globalThis.__game;
-    this.panel = openBurrowShop(game, b.shopId, { folk: B?.folk, ctx: this.c, tab, onClose: () => { this.panel = null; } });
+    this.panel = openBurrowShop(game, b.shopId, { folk: B?.folk, ctx: this.c, tab, ...extra, onClose: () => { this.panel = null; } });
     return this.panel;
   }
 
