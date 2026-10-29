@@ -587,6 +587,9 @@ class Handle {
     this.compose(null);
     const last = cast && lastPics.get(`${cast.key}|${this.W}x${this.H}|${this.kind}`);
     if (last) { this.img.data.set(last); this.ctx.putImageData(this.img, 0, 0); }
+    // a face never seen at this size yet: its first picture is read back at once (a one-off wait for
+    // the GPU, ~a frame), so it's never just a backdrop; later pictures go through the async path
+    this.firstPic = !last;
     this.ready = cast ? acquire(cast).then(async (s) => {
       if (this.disposed) { release(s); return null; }
       s.setLights(this.kind);
@@ -612,6 +615,8 @@ class Handle {
       this.applyMood(true);
       if (!s.hen && (this.talkOn || this.talkT > 0)) s.rig.talk?.(this.talkOn ? true : this.talkT);
       this.acc = 1;
+      // the first picture now, not on some later frame (frames can be slow or throttled)
+      if (this.canvas.isConnected && !this.pending) { try { this.render(); } catch (e) { console.warn('[portrait3d] render', e); this.pending = false; } }
       return this;
     }).catch((e) => { console.warn('[portrait3d]', e); return null; }) : Promise.resolve(null);
   }
@@ -749,12 +754,13 @@ class Handle {
     // read it back while our target is still bound: through a pixel buffer and a fence (no GPU
     // stall), unbinding the buffer at once so nobody else's readPixels trips over it
     const gl = R.getContext();
-    let async = !syncRead && typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
+    let async = !syncRead && !this.firstPic && typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
     if (async) {
       try { this.readAsync(gl, RW, RH); } catch (e) { syncRead = true; async = false; this.pending = false; console.warn('[portrait3d] async read failed, going sync', e); }
     }
     if (!async) {
       R.readRenderTargetPixels(this.rt, 0, 0, RW, RH, this.px);
+      this.firstPic = false;
       this.compose(this.px);
     }
     R.setRenderTarget(prev);
@@ -905,6 +911,19 @@ function loop(now) {
   raf = 0;
   if (!handles.size) return;
   raf = requestAnimationFrame(loop);
+  frame(now);
+}
+/** A timer keeps portraits alive when animation frames are throttled or starved (headless, busy tabs). */
+let clock = 0;
+function startClock() {
+  if (clock) return;
+  clock = setInterval(() => {
+    if (!handles.size) { clearInterval(clock); clock = 0; return; }
+    const now = performance.now();
+    if (now - lastT > 200) frame(now);
+  }, 100);
+}
+function frame(now) {
   const dt = Math.min(0.25, Math.max(0, (now - (lastT || now)) / 1000));
   lastT = now;
   perf.frames++;
@@ -927,6 +946,7 @@ export const portrait3d = {
     const h = new Handle(el, cast, o);
     handles.add(h);
     if (!raf) { lastT = performance.now(); raf = requestAnimationFrame(loop); }
+    startClock();
     return h;
   },
   /** Build a character's rig ahead of time (no render). */

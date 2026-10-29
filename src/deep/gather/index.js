@@ -335,8 +335,9 @@ class Session {
     lap('sim');
     this.applyCamera(dt);
     lap('camera');
-    if ((this.phase === 'show' || this.phase === 'out') && this.showFrom && !this.cancelled && !this.sim.done?.snapped) this.present(dt);
     this.stage.update(dt, v, cam);
+    // held up after the pop: this has the last word on where the plant is (stages pose it too)
+    if ((this.phase === 'show' || this.phase === 'out') && this.showFrom && !this.cancelled && !this.sim.done?.snapped) this.present(dt);
     lap('stage');
     this.paws(dt);
     lap('paws');
@@ -350,6 +351,8 @@ class Session {
       veg.uPushK.value[1] = this.reach;
       // and the stuff between us and it, so nothing stands in front of the close-up
       _v.copy(this.camPos).lerp(P, 0.3);
+      // and once it's held up, the stuff round where it's held
+      if (this.showGoal && this.showK > 0 && !this.cancelled) _v.lerp(this.showGoal, this.showK);
       veg.uPush.value[2].set(_v.x, P.y, _v.z, 0.45);
       veg.uPushK.value[2] = this.reach;
     }
@@ -388,7 +391,9 @@ class Session {
     // a held, breathing close-up: a little drift, a shiver as the stem strains, a nod after the pop
     const sh = (this.sim.strain ?? 0) > 0.4 ? (this.sim.strain - 0.4) * 0.006 : 0;
     this.kick = damp(this.kick || 0, 0, 6, dt);
+    const sk = this.showCamQ && !this.cancelled ? this.showK || 0 : 0;
     _v.copy(this.camPos);
+    if (sk > 0) _v.lerp(this.showCamPos, sk);
     _v.x += Math.sin(this.t * 0.9) * 0.003 + (Math.random() - 0.5) * sh;
     _v.y += Math.sin(this.t * 1.3) * 0.002 + (Math.random() - 0.5) * sh - this.kick * 0.01;
     cam.position.lerpVectors(this.fpsPos, _v, k);
@@ -396,7 +401,6 @@ class Session {
     if (k > 0 && k < 1) cam.position.y += Math.sin(Math.PI * k) * 0.035 * (this.down ? -1 : 1);
     _q.copy(this.camQ);
     if (this.vis.pv > 0 && this.phase === 'play') _q.multiply(new THREE.Quaternion().setFromAxisAngle(_v2.set(1, 0, 0), this.vis.pv * 0.02 * (this.down ? -1 : 1)));
-    const sk = this.showCamQ && !this.cancelled ? this.showK || 0 : 0;
     if (sk > 0) _q.slerp(this.showCamQ, sk);
     cam.quaternion.slerpQuaternions(this.fpsQ, _q, k);
     const fov0 = this.owner.fov || 74;
@@ -409,7 +413,6 @@ class Session {
     this.owner.fx?.setPixelScale?.(this.game.engine.height, cam.fov);
   }
 
-  /** After the pop: the plant is held up in front of the camera, turning slowly, then put away. */
   /** Where it's held up for its result (worked out once, at the start of the show). */
   planShow() {
     const st = this.stage;
@@ -426,9 +429,17 @@ class Session {
     const dist = clamp(fit, 0.3, this.camDist * 0.82);
     const side = portrait ? 0 : dist * 0.26;
     const goal = this.camPos.clone().addScaledVector(fwd, dist).addScaledVector(right, side);
+    // the mole leans back a little to admire it, if there's room behind
+    const w = this.owner.world;
+    let back = 0;
+    for (let b = 0.06; b <= 0.3; b += 0.04) {
+      _v.copy(this.camPos).addScaledVector(fwd, -b);
+      if (w.solidAt(_v.x, _v.y, _v.z) || w.solidAt(_v.x, _v.y + 0.1, _v.z) || w.solidAt(_v.x, _v.y - 0.1, _v.z) || w.solidAt(_v.x + right.x * 0.1, _v.y, _v.z + right.z * 0.1) || w.solidAt(_v.x - right.x * 0.1, _v.y, _v.z - right.z * 0.1)) break;
+      back = b - 0.04;
+    }
+    this.showCamPos = this.camPos.clone().addScaledVector(fwd, -Math.max(0, back));
     if (!this.down && this.at.mount === 'floor') {
       // clear of the ground under it (a long root hangs a way below the paw)
-      const w = this.owner.world;
       let top = this.at.pos.y;
       for (const [ox, oz] of [[0, 0], [0.12, 0], [-0.12, 0], [0, 0.12], [0, -0.12]]) {
         for (let y = goal.y + 0.3; y > goal.y - 1.5; y -= 1 / 16) if (w.solidAt(goal.x + ox, y, goal.z + oz)) { top = Math.max(top, y + 1 / 16); break; }
@@ -439,11 +450,12 @@ class Session {
     this.showGoal = goal;
     // the camera turns to it (keeping it off to the side for the tag) and widens if it must
     const look = goal.clone().addScaledVector(right, -side);
-    if (portrait) look.y += dist * 0.18;
-    _m.lookAt(this.camPos, look, WORLD_UP);
+    // a touch low in the frame, clear of the name sign at the top
+    look.y += portrait ? dist * 0.18 : span * 0.07;
+    _m.lookAt(this.showCamPos, look, WORLD_UP);
     this.showCamQ = new THREE.Quaternion().setFromRotationMatrix(_m);
-    const d = this.camPos.distanceTo(goal);
-    const need = THREE.MathUtils.radToDeg(2 * Math.atan(Math.max(span * 0.66, wide * 0.66 / Math.max(0.5, aspect * (portrait ? 0.7 : 0.45))) / d));
+    const d = this.showCamPos.distanceTo(goal);
+    const need = THREE.MathUtils.radToDeg(2 * Math.atan(Math.max(span * 0.78, wide * 0.66 / Math.max(0.5, aspect * (portrait ? 0.7 : 0.45))) / d));
     this.showFov = clamp(need, this.fov, portrait ? 84 : 76);
   }
 
@@ -454,70 +466,11 @@ class Session {
     if (!this.showGoal) this.planShow();
     const right = _v2.set(1, 0, 0).applyQuaternion(this.camQ);
     const mid = st.middle(new THREE.Vector3());
+    mid.y -= st.showSize?.()?.drop ?? 0; // long roots hang below it
     const goalLocal = st.root.worldToLocal(this.showGoal.clone()).sub(mid);
     if (this.sim.done?.snapped && st.model) goalLocal.y -= st.model.stemLen * 0.2;
     const k = ease(this.phase === 'show' ? this.pt / 0.45 : 1);
     this.showK = k;
-    st.plant.position.lerpVectors(this.showFrom, goalLocal, k);
-    // a slow turn to show it off
-    this.spin = (this.spin || 0) + dt * (this.phase === 'show' ? 0.9 : 0);
-    st.plant.quaternion.copy(this.showQ).multiply(_q.setFromAxisAngle(WORLD_UP, Math.sin(this.spin) * 0.5));
-    if (this.phase === 'out' && !this.cancelled) {
-      // into the bag: down and to the side, shrinking
-      const o = easeOut(this.pt / 0.4);
-      const down = st.root.worldToLocal(cam.position.clone().addScaledVector(_v3.set(0, -1, 0), 0.4).addScaledVector(right, 0.25)).sub(mid);
-      st.plant.position.lerpVectors(goalLocal, down, o);
-      st.plant.scale.setScalar(Math.max(0.001, 1 - o));
-    }
-  }
-
-  applyCamera(dt) {
-    const cam = this.owner.camera, k = this.camK;
-    // a held, breathing close-up: a little drift, a shiver as the stem strains, a nod after the pop
-    const sh = (this.sim.strain ?? 0) > 0.4 ? (this.sim.strain - 0.4) * 0.006 : 0;
-    this.kick = damp(this.kick || 0, 0, 6, dt);
-    _v.copy(this.camPos);
-    _v.x += Math.sin(this.t * 0.9) * 0.003 + (Math.random() - 0.5) * sh;
-    _v.y += Math.sin(this.t * 1.3) * 0.002 + (Math.random() - 0.5) * sh - this.kick * 0.01;
-    cam.position.lerpVectors(this.fpsPos, _v, k);
-    // a little arc on the way in and out: the mole leans down to it
-    if (k > 0 && k < 1) cam.position.y += Math.sin(Math.PI * k) * 0.035 * (this.down ? -1 : 1);
-    _q.copy(this.camQ);
-    if (this.vis.pv > 0 && this.phase === 'play') _q.multiply(new THREE.Quaternion().setFromAxisAngle(_v2.set(1, 0, 0), this.vis.pv * 0.02 * (this.down ? -1 : 1)));
-    const sk = this.showCamQ && !this.cancelled ? this.showK || 0 : 0;
-    if (sk > 0) _q.slerp(this.showCamQ, sk);
-    cam.quaternion.slerpQuaternions(this.fpsQ, _q, k);
-    const fov0 = this.owner.fov || 74;
-    const fovC = this.fov + ((this.showFov || this.fov) - this.fov) * sk;
-    cam.fov = fov0 + (fovC - fov0) * k;
-    const post = this.owner.post;
-    if (post) { if (this.vig0 === undefined) this.vig0 = post.vignette ?? 0.5; post.vignette = this.vig0 + (0.95 - this.vig0) * k; }
-    cam.updateProjectionMatrix();
-    cam.updateMatrixWorld(true);
-    this.owner.fx?.setPixelScale?.(this.game.engine.height, cam.fov);
-  }
-
-  /** After the pop: the plant is held up in front of the camera, turning slowly, then put away. */
-  present(dt) {
-    const st = this.stage, cam = this.owner.camera;
-    if (!st.middle) return;
-    const portrait = this.game.engine.width / this.game.engine.height < 0.85;
-    // where the plant's middle should be: in front of the close-up camera
-    const fwd = _v.set(0, 0, -1).applyQuaternion(this.camQ);
-    const right = _v2.set(1, 0, 0).applyQuaternion(this.camQ);
-    const upv = _v3.set(0, 1, 0).applyQuaternion(this.camQ);
-    const sz = st.showSize?.();
-    const span = sz ? sz.span : st.model ? st.model.stemLen + st.model.headH + (st.model.body?.depth ?? 0.03) + 0.05 : st.focus().h;
-    const vf = THREE.MathUtils.degToRad(this.fov), aspect = this.game.engine.width / this.game.engine.height;
-    const hf = 2 * Math.atan(Math.tan(vf / 2) * aspect);
-    const wide = sz ? sz.w : st.focus().w;
-    const dist = clamp(Math.max(span * 1.6 / (2 * Math.tan(vf / 2)), wide / (portrait ? 0.7 : 0.4) / (2 * Math.tan(hf / 2))), 0.3, 1.4);
-    const goal = new THREE.Vector3().copy(this.camPos).addScaledVector(fwd, dist).addScaledVector(right, portrait ? 0 : dist * 0.24).addScaledVector(upv, portrait ? -dist * 0.16 : -dist * 0.05);
-    // the plant group's position so its middle lands on the goal (stage-local)
-    const mid = st.middle(new THREE.Vector3());
-    const goalLocal = st.root.worldToLocal(goal.clone()).sub(mid);
-    if (this.sim.done?.snapped && st.model) goalLocal.y -= st.model.stemLen * 0.2;
-    let k = ease(this.phase === 'show' ? this.pt / 0.45 : 1);
     st.plant.position.lerpVectors(this.showFrom, goalLocal, k);
     // a slow turn to show it off
     this.spin = (this.spin || 0) + dt * (this.phase === 'show' ? 0.9 : 0);
@@ -542,6 +495,7 @@ class Session {
     const kL = this.reach * (live ? 1 : this.phase === 'end' ? 1 - ease(this.pt / 0.3) : 0);
     const holding = this.phase === 'end' || this.phase === 'show' || this.phase === 'out';
     const gripping = holding ? !this.cancelled && !this.sim.done?.empty : !!this.sim.wasGrip;
+    this.stage.root.updateMatrixWorld(true);
     const T = this.stage.pawTargets({ gripping, held: holding && !this.cancelled, brace: kL > 0.01, phase: this.phase });
     const drive = { k: 1 };
     for (const side of ['R', 'L']) {
@@ -552,7 +506,13 @@ class Session {
         if (kR > 0.002) drive[side] = { p: LOW[side].p, q: LOW[side].q, at: [0, 0, 0], grip: false, tool: false, k: kR };
         continue;
       }
-      const P = vm.toView(t.pos, cam, new THREE.Vector3());
+      let tp = t.pos;
+      if (t.cradle && this.showK > 0 && (this.phase === 'show' || this.phase === 'out')) {
+        // held up on the open paw: the palm goes under it, the wrist toward us (not in front of it)
+        const sk = this.showK * t.cradle;
+        tp = _v3.copy(t.pos).addScaledVector(_v.set(0, 1, 0).applyQuaternion(cam.quaternion), -0.022 * sk).addScaledVector(_v2.set(0, 0, -1).applyQuaternion(cam.quaternion), -0.04 * sk);
+      }
+      const P = vm.toView(tp, cam, new THREE.Vector3());
       const up = vm.toView(t.up, cam, new THREE.Vector3(), true);
       let q;
       if (t.fist || !t.hover) {

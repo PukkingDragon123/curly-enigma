@@ -161,7 +161,7 @@ export class PickStage extends Stage {
       // the handful rests in a cupped paw
       const down = this.dirWorld(new THREE.Vector3(0, -1, 0));
       const pos = this.gripWorld(new THREE.Vector3());
-      return { R: { pos, up: down, fwd: this.dirWorld(new THREE.Vector3(-0.3, 0.25, -1).normalize()), fist: false }, L: null };
+      return { R: { pos, up: down, fwd: this.dirWorld(new THREE.Vector3(-0.3, 0.25, -1).normalize()), fist: false, cradle: 0.7 }, L: null };
     }
     const R = { pos: this.gripWorld(new THREE.Vector3()), up: this.dirWorld(new THREE.Vector3(0, 1, 0)), fwdView: [-1, -0.08, -0.55], fist: this.pinch > 0.3, hover: true };
     return { R, L: null };
@@ -172,6 +172,6 @@ export class PickStage extends Stage {
   }
   headWorld(out = new THREE.Vector3()) { return this.toWorld(out.set(0, this.base0 + this.bushH * 0.6, 0)); }
   middle(out = new THREE.Vector3()) { return this.bushPlant ? out.set(0, 0, 0) : out.set(0, this.bushH * 0.5, 0); }
-  showSize() { return this.bushPlant ? { span: 0.3, w: 0.28 } : { span: this.bushH, w: 0.3 }; }
+  showSize() { return this.bushPlant ? { span: 0.16, w: 0.14 } : { span: this.bushH, w: 0.3 }; }
   focus() { return { at: new THREE.Vector3(0, this.base0 + this.bushH * 0.5, 0), h: this.bushH + 0.06, w: 0.3 }; }
 }

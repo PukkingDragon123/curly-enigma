@@ -484,6 +484,11 @@ export class PullStage extends Stage {
     const bot = -(M.body?.depth ?? 0.03), top = M.stemLen + M.headH;
     return out.set(0, (bot + top) / 2 + this.lift, 0);
   }
+  /** How much to fit when it's held up: head to root tips (the roots hang below the body). */
+  showSize() {
+    const M = this.model, r = M.roots?.n ? M.roots.len[1] * 0.8 : 0;
+    return { span: M.stemLen + M.headH + (M.body?.depth ?? 0.03) + r + 0.04, w: Math.max(M.headW * 2, 0.22), drop: r / 2 };
+  }
   /** Where the camera should look and how much must fit (m). */
   focus() {
     const M = this.model;

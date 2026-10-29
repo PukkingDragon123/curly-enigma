@@ -104,7 +104,7 @@ export class Tracker {
     ui.hud.append(this.el);
     this.marks = ui.questMarks = new QuestMarks(ui);
     // draw the book's little pictures while nothing's happening, so the first opening is instant
-    const warm = () => { try { for (const k of ['quests', 'map', 'skills', 'index', 'lore']) BART.tab(k); for (const k of PIN_KINDS) BART.pin(k); for (const k of ['oldstar', 'rocco', 'trader', 'herbalist', 'outpost']) BART.giver(k); BART.box(true); for (let k = 0; k < 8; k++) ARROW(k); } catch (e) { /* noop */ } };
+    const warm = () => { try { for (const k of ['quests', 'map', 'skills', 'index', 'lore']) BART.tab(k); for (const k of PIN_KINDS) BART.pin(k); BART.box(true); for (let k = 0; k < 8; k++) ARROW(k); } catch (e) { /* noop */ } };
     if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 8000 }); else setTimeout(warm, 4000);
   }
 

@@ -337,7 +337,7 @@ export function makeWaterMaterial(U, grab) {
           refr = texture2D(tGrab, suv + off).rgb;
         }
         // the water's own colour: deep blue-green, lit by the lamp and lights at the surface
-        vec3 scat = mix(deep, mid, 0.6) * (L * 0.9 + 0.03) + deep * 0.06;
+        vec3 scat = mix(deep, mid, 0.6) * (L * 1.0 + 0.06) + deep * 0.12;
         // foam in crisp pixel clumps: lapping at the shores and wherever the water gets thin, the
         // ragged edge of a spreading front, churning where water lands
         float lap = 0.5 + 0.5 * sin(time * 2.2 + (uv.x - uv.y) * 2.5);
@@ -398,7 +398,8 @@ export function makeWaterMaterial(U, grab) {
           fm = max(fm, step(1.8, hn) * step(0.35, grain));
           // reflection: the cave's glow toward grazing angles, plus what a short march finds above
           float F = 0.02 + 0.98 * pow(1.0 - nv, 5.0);
-          vec3 refl = fogCol * 1.4 + scat * 0.3;
+          // (what isn't found: the cave's own glow, a soft blue sheen so far water still reads as water)
+          vec3 refl = fogCol * 1.4 + scat * 0.3 + hi * (0.07 + 0.35 * min(dot(L, vec3(0.33)), 1.0));
           if (grab && wLook.z > 0.5 && F > 0.1) {
             vec3 R = reflect(rd, n);
             float t = 0.15;

@@ -136,7 +136,7 @@ export class DigStage extends Stage {
     if (o.held) {
       // out: it rests in the open paw, held up
       const pos = this.plant.localToWorld(new THREE.Vector3(0, -0.012, 0));
-      return { R: { pos, up: this.dirWorld(new THREE.Vector3(0, -1, 0)), fwd: this.dirWorld(new THREE.Vector3(-0.3, 0.25, -1).normalize()), fist: false }, L: null };
+      return { R: { pos, up: this.dirWorld(new THREE.Vector3(0, -1, 0)), fwd: this.dirWorld(new THREE.Vector3(-0.3, 0.25, -1).normalize()), fist: false, cradle: 1 }, L: null };
     }
     return { R: { pos: this.gripWorld(new THREE.Vector3()), up, fwdView: [-1, -0.08, -0.55], fist: o.gripping, hover: true }, L: null };
   }

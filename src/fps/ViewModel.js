@@ -83,6 +83,7 @@ const EAT_Q = aim([-0.1, 1, 0.25], [-0.45, 0.05, -1]);
 const MOUTH = new THREE.Vector3(0.03, -0.052, -0.225); // where the snack is held for munching (just above the mouth, in view)
 const SHOULDER = new THREE.Vector3(0.4, -0.6, 0.06);
 const WRIST_Z = 12; // voxels behind the grip/palm centre
+const ARM_LEN = 170; // forearm length (voxels, see forearmGeo)
 
 const TWO_HANDED = new Set(['drill', 'beam']);
 const SWING_TOOLS = new Set(['pick', 'chisel', 'stake', 'beam', 'none', 'drill', 'brush', 'xray', 'food', 'hammer', 'tongs', 'smith', 'dynamite']);
@@ -789,9 +790,11 @@ export class ViewModel {
       _v2.lerp(_up, this.driveK);
     }
     const thin = 1 - 0.22 * this.driveK;
-    arm.scale.set(thin, thin, 1);
     arm.position.copy(_v);
     _v2.sub(_v);
+    // a steered paw far from its shoulder: the forearm reaches all the way (its end never shows)
+    const reach = this.driveK > 0 ? 1 + (Math.min(1.7, Math.max(1, _v2.length() / (ARM_LEN * VMV))) - 1) * this.driveK : 1;
+    arm.scale.set(thin, thin, reach);
     _up.set(0, 1, 0).applyQuaternion(hand.quaternion);
     aimZ(_v2, _up, arm.quaternion);
   }

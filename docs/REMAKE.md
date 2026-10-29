@@ -1572,8 +1572,9 @@ hero `makeHeroMole`, Rocco `makeRocco`, the keepers from `SHOPS[id].keeper` (tow
 TownScene's `KEEPER_LOOKS`), Deep Town's villagers from `src/data/villagers.js` by id or name, any
 spec, Nugget `makeChicken`) are rendered head-and-shoulders on `game.engine.renderer` (no extra GL
 context) into a small render target at 2× the UI's art grid (shaders precompiled with `compileAsync`
-for a target like it), read back through a pixel buffer and a fence (never a GPU stall; a remount
-shows the last picture of that face at once), folded down to
+for a target like it), read back through a pixel buffer and a fence (no GPU stall; the very first
+picture of a face at a size is read back at once, a one-off wait of about a frame, and a remount
+shows the last picture of that face at once, so a portrait is never just a backdrop), folded down to
 the art grid with a mode filter (crisp, no voxel-dirt noise) and composed on a 2D canvas: a painted
 pixel backdrop per place (`forge` for Old Star: bricks and a forge glow with rising embers; `cave`,
 `town`, `shop`, `assay`, `ticket`, `trader`, `herb`, `storage` (Rocco's crates and lantern), `outpost`
@@ -1584,7 +1585,7 @@ map straight on), a head tilt and pitch, a bob; the mouth flaps while words type
 look a little toward the words (3/4 faces), glance at you when a line starts. The hen bobs her head to
 "talk", flaps when glad, droops when hungry. Rigs are cached per character (≤ 10 studios, LRU),
 only visible portraits render (`checkVisibility`), 24 fps while talking, 12 while idle, at most two
-a frame; a portrait whose element left the page disposes itself after 4 s. The dialogue box hands its
+a frame, driven by animation frames and by a timer when frames are throttled or starved (headless); a portrait whose element left the page disposes itself after 4 s. The dialogue box hands its
 rig back when it hides, and stills borrow a live rig, so one Old Star serves the box, the talk board,
 the tracker's face and the toasts.
 ```js
@@ -1608,7 +1609,9 @@ frame hanging over its left edge (a glass glint sweeps it), a red ribbon name pl
 green for Nugget and the town folk), the words on a sunk parchment. Typewriter with a breath at the
 end of sentences and clauses, the mouth shut in the pauses, voice blips per speaker (Old Star's
 mumble, Rocco's drawl, Nugget's clucks, the keepers' pitches) and per mood; `<b>`, `<i>`,
-`.gold-txt` kept. A quill scratches while it writes; a waiting line shows the key cap / "tap" and a
+`.gold-txt` kept. Typing (here and on the talk boards) follows the wall clock and is driven by frames
+and a timer, so slow or throttled frames type more letters at once instead of stalling, and a line's
+reading time runs out on time. A quill scratches while it writes; a waiting line shows the key cap / "tap" and a
 bouncing brass arrow; a line that goes by itself shows its reading time as a brass wick burning down.
 Lines that wait for you get the grand box (48 px portrait, 200 art px wide); passing tips (no `wait`)
 get a compact board that fits its words (34 px portrait), so the mine's step tips stay out of the way.
@@ -1650,8 +1653,11 @@ brass medallion with a burst of sparks, the text on parchment. Same events (`sta
 (`.studio.rig`, `.canvas`), `portrait3d.stats()` / `.flush()` / `.handles()`, `ui.tutor.active.who`,
 `ui.levelPlaque.show(line, n, levelUp)` / `.keep(true)` (hold the plaque up for a screenshot).
 Also: the old `src/ui/Tutor.js` header in "Old Star's tutor" above still holds (same calls).
-Screenshots: `shots/dialogue/` (`before-*` the old look, `after-*` desktop 1280×720,
-`phone-*` 390×844 and `land-*` 844×390 touch).
+Screenshots: `shots/dialogue/` (`before-*` the old look, `after-*` desktop 1280×720 in Old Star's
+place: `tutor talkboard xp levelup shop trader rocco coop nugget-line tip`, `after-mabel-board` a
+villager's spec-based portrait, `after-portraits` the cast, `compare-tutor` old vs new; `phone-*`
+390×844 and `land-*` 844×390 touch). For headless screenshots call `portrait3d.flush()` (and
+`h.typer.finish()` / `ui.tutor.next()` to show all the words) so nothing waits on a starved frame.
 
 ### As built: vegetation & props (wave 3)
 
@@ -1844,3 +1850,25 @@ now (the live copy of `fsurf` is in `fluids/water.js`, mirrored by `Fluids.waveA
 
 Test hooks: `scene.fluids.debug.{ pour(x, y, z, r, m), spring(x, y, z, rate, m), look('old' |
 'new'), stats(), sim }`.
+
+**Performance** (headless, SwiftShader, while the machine ran at load 15–36 from other parts' tests,
+so frame times are noisy; best-of-n):
+- The flow, CPU (node, the same 2.7 m³ pour onto a ramp): old 1.0–1.2 ms a frame, new 0.8–1.6 ms;
+  the new one is still after 25–29 s, the old one was still busy after 60 s. A lake breach (6 000
+  cells moving for 90 s): 1.5–2.7 ms a frame, held by the budget.
+- In game, a pool under a constant waterfall: `Fluids.update` 3.4–6 ms (flow + remesh ≈ 3.4,
+  effects 0.1–0.2, water map 0.1–0.3) at load 25.
+- Rendering: at a lake shore old 2.07–2.30 s vs new 2.16–2.23 s a frame (960×540); looking down
+  into the shallows with water filling the screen old 0.81–1.02 s vs new 0.82–1.45 s (640×360:
+  up to ~25 % more, the reflections and caustics; 'low' fx drops the reflections); with no water in
+  sight there's nothing to pay (mine entrance A/B, same either way).
+- e2e up to the town gate: every step's checks pass; three deep steps hit the 30 s screenshot
+  timeout (frames over 30 s at load 30, other parts' e2e runs alongside; no water in those views,
+  and the A/B above shows no cost there).
+
+Screenshots (`shots/water/`): `before-*` / `after-*` pairs at the same seed and camera (the old
+surface material vs this part's, terrain caustics off vs on): `lake-shore`, `lake-shallows`,
+`lake-under`, `lake-up` (Snell's window); `before-oldsim-*` the old flow and look (a pour on a ramp
+that never settled, the old lake); `after-pool*` / `after-waterfall` (a pool room with a spring
+pouring off a shelf and a lantern), `after-breach-0..3` (dig through to a full reservoir: the gush,
+the waterfall from the hole, the flood); `dev/` the iterations.

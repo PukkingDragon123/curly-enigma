@@ -2,7 +2,7 @@
 // the same rig the town builds), cached per npc and expression. Deep Town's folk are rebuilt from
 // their seed and look (src/data/villagers.js), keepers and burrow folk from SHOPS[id].keeper.
 // Old Star and Rocco have their own rigs: until a live 3D portrait renderer exists for them they
-// fall back to the book's ink sketch (BART.giver).
+// show an empty frame until the 3D still is ready (never a 2D sketch).
 //   npcFace(game, npc, { size, expression }) → data URL
 //   npcSpec(npc) → character spec | null
 //   npcWho(npc) → who for the live 3D portraits (src/gfx/portrait3d.js): a shop id, 'oldstar',
@@ -11,7 +11,8 @@ import { renderPortrait, randomSpec } from '../gfx/characters.js';
 import { VILLAGERS } from '../data/villagers.js';
 import { SHOPS } from '../data/shops.js';
 import { NPC_ALIAS } from '../data/quests.js';
-import { BART } from './bookArt.js';
+// characters are only ever shown as their 3D models: while a face renders, an empty frame
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 const P3D = Object.values(import.meta.glob('../gfx/portrait3d.js', { eager: true }))[0]?.portrait3d || null;
 const cache = new Map();
@@ -60,7 +61,7 @@ export function npcFace(game, npc, { size = 72, expression = 'happy' } = {}) {
     let url = '';
     try { url = P3D?.stillURL?.(npcWho(npc), mood, size) || ''; } catch (e) { url = ''; }
     if (url) cache.set(key, url);
-    return url || BART.giver(npc);
+    return url || BLANK; // no 2D stand-in: an empty frame until the 3D still is ready
   }
   let url = null;
   if (r) {
@@ -72,7 +73,7 @@ export function npcFace(game, npc, { size = 72, expression = 'happy' } = {}) {
     try { url = renderPortrait(r, spec, size, { expression }).toDataURL(); } catch (e) { console.warn('portrait', npc, e); }
     finally { if (prev) gl.bindBuffer(PACK, prev); }
   }
-  url ||= BART.giver(npc);
+  if (!url) return BLANK; // try again next time rather than show a sketch
   cache.set(key, url);
   return url;
 }

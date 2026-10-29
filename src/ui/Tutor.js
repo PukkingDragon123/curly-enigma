@@ -158,7 +158,8 @@ export class Tutor {
     this.typeIn(html);
     this.game.audio?.play?.('page', { vol: 0.25 });
     if (mood === 'laugh' && line.voice) this.game.audio?.play?.('laugh', { pitch: 300 });
-    if (!this.raf) { this.lastT = performance.now(); this.raf = requestAnimationFrame((t) => this.tick(t)); }
+    this.stepAt = performance.now();
+    this.ensureClock();
     return promise;
   }
 
@@ -298,24 +299,32 @@ export class Tutor {
   }
 
   // ------------------------------------------------------------ frame
-  tick(now) {
-    const dt = Math.min(0.1, Math.max(0, (now - this.lastT) / 1000));
-    this.lastT = now;
+  tick() {
     const c = this.cur;
     if (!c) { this.raf = 0; return; }
-    this.raf = requestAnimationFrame((t) => this.tick(t));
+    this.raf = requestAnimationFrame(() => this.tick());
     // (the game loop drives it through UI.update; this only keeps it going if nothing does)
-    if (now - (this.drivenAt || 0) > 250) this.step(dt);
+    if (performance.now() - (this.drivenAt || 0) > 250) this.step();
   }
 
   /** Per frame, from UI.update. */
-  update(dt) {
+  update() {
     this.drivenAt = performance.now();
-    this.step(dt);
+    this.step();
+  }
+
+  /** A timer as well as the frames: lines type and time out by the clock even when frames starve. */
+  ensureClock() {
+    if (!this.raf) this.raf = requestAnimationFrame(() => this.tick());
+    if (!this.clock) this.clock = setInterval(() => { if (!this.cur) { clearInterval(this.clock); this.clock = 0; return; } if (performance.now() - (this.stepAt || 0) > 120) this.step(); }, 100);
   }
 
   /** Typing (with breaths at the punctuation), the voice, the mouth, the reading timer, E from touch. */
-  step(dt) {
+  step() {
+    // the wall clock, whoever calls (the game loop, a frame, the timer): slow frames type more at once
+    const t = performance.now();
+    const dt = Math.min(2.5, Math.max(0, (t - (this.stepAt || t)) / 1000));
+    this.stepAt = t;
     const c = this.cur;
     if (!c) return;
     if (!c.typed) {

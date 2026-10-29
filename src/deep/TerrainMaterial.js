@@ -469,7 +469,7 @@ export function makeTerrainMaterial(U) {
         float ao = vAo * vAo * (3.0 - 2.0 * vAo);
         float aoL = mix(0.3, 1.0, ao);
         float shin = spec > 0.2 ? mix(6.0, 80.0, gloss) : 0.0;
-        spec *= 0.35 + 0.65 * near; // small far facets would only flicker
+        spec *= 0.12 + 0.88 * near; // small far facets would only flicker
         vec3 sp;
         vec3 L = lightFull(vWorld, shin > 0.0 && ex.r < 0.3 ? normalize(mix(n, nn, 0.4)) : nn, V, wrap, aoL, shin, sp);
         // translucent stone reflects less and glows from inside more (see below): deeper colour

@@ -6,7 +6,7 @@
 //  - the far darkness behind everything: a screen-filling sky drawn first, the same dark and lamp
 //    glow the rock fades to (voidCol + airGlow), so far rock melts into it without a silhouette
 //  - halos: each nearby light glows in the dusty air round it (one billboard per light, read
-//    straight from the lPos / lCol uniforms, dithered into pixel steps)
+//    straight from the lPos / lCol uniforms; the post pass dithers it like the bloom)
 //  - motes that drift around the eye and catch the helmet lamp: dust, sand, glitter, spores,
 //    pollen, embers, snow, void sparks (by zone and biome)
 //  - light shafts toward a bright lantern in a tall hall, and a little more bloom where things
@@ -128,22 +128,18 @@ export class Atmosphere {
           vec3 p = c + (right * corner.x + up * corner.y) * size;
           float f = 1.0 - exp(-pow(d / fogDist, 2.6) * 3.2);
           // fades as the eye walks into it (no screen-filling glow)
-          vCol = lCol[i] * haze * (1.0 - f) * smoothstep(size * 0.5, size * 1.6, d) * 0.06;
+          vCol = lCol[i] * haze * (1.0 - f) * smoothstep(size * 0.9, size * 2.4, d) * 0.06;
           gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
         }`,
       fragmentShader: /* glsl */`
         varying vec2 vC;
         varying vec3 vCol;
-        float bayer2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
-        float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
         void main() {
           float r = length(vC);
           if (r >= 1.0) discard;
-          float k = (1.0 - r) * (1.0 - r);
-          k = k * 0.75 + pow(1.0 - r, 6.0) * 0.6;
-          // pixel-art halo: the glow falls off in dithered steps
-          float q = floor(k * 7.0 + bayer4(gl_FragCoord.xy) * 0.999) / 7.0;
-          gl_FragColor = vec4(vCol * q, 1.0);
+          // a soft core and a wide falloff (the post pass dithers it into pixel steps)
+          float k = (1.0 - r) * (1.0 - r) * 0.75 + pow(1.0 - r, 6.0) * 0.6;
+          gl_FragColor = vec4(vCol * k, 1.0);
         }`,
     });
     this.halos = new THREE.Mesh(hg, this.haloMat);

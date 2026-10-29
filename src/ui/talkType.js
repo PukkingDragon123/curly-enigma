@@ -48,7 +48,7 @@ export function typeText(host, html, o = {}) {
   const total = flat.length;
   const speed = o.speed || 46;
   const face = o.face || null;
-  let n = 0, pause = 0, delay = o.delay ?? 0.1, blip = 0, raf = 0, last = performance.now(), talking = false;
+  let n = 0, pause = 0, delay = o.delay ?? 0.1, blip = 0, raf = 0, timer = 0, last = performance.now(), born = last, talking = false;
   const ctl = { done: total === 0, stop, finish };
   const show = (k) => {
     let left = k;
@@ -60,7 +60,7 @@ export function typeText(host, html, o = {}) {
     }
   };
   function finish() {
-    if (ctl.done && !raf) return;
+    if (ctl.done && !raf && !timer) return;
     show(total);
     ctl.done = true;
     if (talking) face?.talk(false);
@@ -68,22 +68,28 @@ export function typeText(host, html, o = {}) {
     stop();
     o.onDone?.();
   }
-  function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
-  const step = (now) => {
-    raf = 0;
-    if (!host.isConnected && performance.now() - last > 2000) { stop(); return; }
-    const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
+  function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; if (timer) clearInterval(timer); timer = 0; }
+  // Typing follows the wall clock (slow frames type more letters at once, never fewer), driven by
+  // animation frames and by a timer as well, so it carries on when frames are throttled or starved.
+  const step = () => {
+    const now = performance.now();
+    if (!host.isConnected && now - born > 2000) { stop(); return; }
+    const dt = Math.min(2.5, Math.max(0, (now - last) / 1000));
     last = now;
-    if (delay > 0) delay -= dt;
-    else if (pause > 0) { pause -= dt; if (pause <= 0) { face?.talk(true); talking = true; } }
-    else {
+    let left = dt;
+    for (let guard = 0; left > 0 && !ctl.done && guard < 64; guard++) {
+      if (delay > 0) { const u = Math.min(delay, left); delay -= u; left -= u; continue; }
+      if (pause > 0) { const u = Math.min(pause, left); pause -= u; left -= u; if (pause <= 0) { face?.talk(true); talking = true; } continue; }
       const before = Math.floor(n);
-      n = Math.min(total, n + dt * speed);
-      let k = Math.floor(n);
+      const want = Math.min(total, n + left * speed);
+      let k = Math.floor(want);
+      left = 0;
+      n = want;
       if (k !== before) {
         for (let i = before; i < k; i++) {
           const p = breathAfter(flat[i], flat[i + 1]);
-          if (p && i + 1 < total) { k = i + 1; n = k; pause = p; face?.talk(false); talking = false; break; }
+          // stop for a breath; the time not spent typing carries on into the pause
+          if (p && i + 1 < total) { left = (want - (i + 1)) / speed; k = i + 1; n = k; pause = p; face?.talk(false); talking = false; break; }
         }
         show(k);
         if (!talking && pause <= 0) { face?.talk(true); talking = true; }
@@ -92,8 +98,12 @@ export function typeText(host, html, o = {}) {
       }
       if (n >= total) { finish(); return; }
     }
-    raf = requestAnimationFrame(step);
   };
-  if (total) { show(0); raf = requestAnimationFrame(step); } else o.onDone?.();
+  const onFrame = () => { raf = 0; step(); if (!ctl.done && (raf || timer)) raf = requestAnimationFrame(onFrame); };
+  if (total) {
+    show(0);
+    raf = requestAnimationFrame(onFrame);
+    timer = setInterval(() => { if (!ctl.done) step(); }, 60);
+  } else o.onDone?.();
   return ctl;
 }
