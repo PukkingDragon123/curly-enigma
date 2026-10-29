@@ -637,10 +637,11 @@ export class Convo {
     } else {
       const pref = shot?.label || (portrait ? 'below' : head.x < W / 2 ? 'right' : 'left');
       const order = { right: ['right', 'above', 'left', 'below'], left: ['left', 'above', 'right', 'below'], below: ['below', 'above', 'right', 'left'], above: ['above', 'right', 'left', 'below'] }[pref] || ['right', 'left', 'below', 'above'];
-      const gap = head.r * 0.9 + 16;
+      // beside the head: as far off as there's room for, but never over the face itself
+      const gap = head.r * 0.9 + 16, near = head.r * 0.45 + 8;
       const at = (s) => {
-        if (s === 'right') return { x: head.x + gap, y: head.y - lh * 0.55 };
-        if (s === 'left') return { x: head.x - gap - lw, y: head.y - lh * 0.55 };
+        if (s === 'right') return { x: Math.max(head.x + near, Math.min(head.x + gap, W - m - lw)), y: head.y - lh * 0.55 };
+        if (s === 'left') return { x: Math.min(head.x - near - lw, Math.max(head.x - gap - lw, m)), y: head.y - lh * 0.55 };
         if (s === 'below') return { x: head.x - lw / 2, y: head.y + head.r * 0.8 + 18 };
         return { x: head.x - lw / 2, y: head.y - head.r * 1.15 - 18 - lh };
       };

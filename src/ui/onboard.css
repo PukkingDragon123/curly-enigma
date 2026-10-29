@@ -219,7 +219,8 @@ kbd.ob-key.on { transform: translateY(var(--px)); filter: brightness(1.1) sepia(
   .ob-txt { min-width: 0; }
 }
 @media (max-height: 520px) {
-  html.is-touch .ob-prompt { top: 46%; }
+  /* a phone on its side: his card takes the top, so the prompt sits low, between the stick and the buttons */
+  html.is-touch .ob-prompt:not(.at-low):not(.at-left) { top: auto; bottom: calc(var(--sab) + var(--px) * 6); --y0: 0%; }
   .ob-glyph { min-height: calc(var(--px) * 20); }
   .ob-bar { height: max(30px, 10vh); }
 }

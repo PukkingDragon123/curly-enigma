@@ -24,7 +24,7 @@ const go = async (name, params = {}) => {
   await page.evaluate(([n, p]) => window.__game.goto(n, p, { transition: 'none' }), [name, params]);
   for (let i = 0; i < 60; i++) { await wait(250); if ((await scene()) === name && !(await page.evaluate(() => window.__game.transitioning))) break; }
 };
-const shot = (n) => page.screenshot({ path: `${outDir}/${n}.png` });
+const shot = (n) => page.screenshot({ path: `${outDir}/${n}.png`, timeout: 120000 }); // slow software GL on a busy box
 // E2E_UNTIL="part of a step label": stop after that step (a quicker run while fixing one step)
 const UNTIL = process.env.E2E_UNTIL || '';
 let done = false;

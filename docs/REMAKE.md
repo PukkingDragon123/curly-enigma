@@ -2180,6 +2180,8 @@ to the lesson, and the HUD coming in piece by piece. Quest / act / flag outcomes
   the real control a pulsing ring and a pointing mole paw (`spot`), a ghost paw dragging across the right
   half for "look". Options: `title`, `subPc` / `subT`, `spot`, `min`, `optional`, `place: 'low' | 'left'`.
   A desktop prompt that needs the mouse says "Click the view first" while the pointer isn't caught.
+  Where: top centre on a PC, the middle of a phone held upright, low between the stick and the buttons
+  on a phone held sideways (his card has the top there).
 - `spot(target, { label })`: ring + paw on a DOM element, a touch control name (`stick use dig jump crouch
   block snack tool`), a HUD piece (`pack book radar belt quest menu`) or a selector. `mark(pos, { label })`:
   a bobbing gold chevron (and a label) over a world point, an arrow at the screen edge when it's off screen.
@@ -2265,7 +2267,8 @@ of the e2e fails with "d.interact is not a function" (seen 11:30 while the camp 
 `tickHomeTutor`); `wakeFromFall()` on `from === 'fall' | 'newgame'`; `questSpot('lift' | 'forge' |
 'hearth')`, `shell.hearth` (optional), `findKind('bed')`, `lieDown`, `floorY`, `unstick`; the script camera
 (`beginScript` / `endScript` / `cam` / `tween` / `later` / `sleepFor` / `tickers` / `scripted`); `rig.items`
-(each `{ label, enabled, action }`: the tutorial wraps `enabled`); `riding` (the cage ride); `star` (`say`,
+(each `{ label, enabled, action }`, `label` a string or a function: the tutorial wraps `enabled` and reads the
+label as it is at the moment); `riding` (the cage ride); `star` (`say`,
 `goTo`, `walkTo`, `placeAt`, `faceTo`, `gesture`, `sniff`, `pos`); and the calls into lessons.js from the
 scene: `talkStar` → `lessonTalk()`, `onLessonRide()`, `onLessonArrival(from)`, `placeStarForLesson()`,
 `prepForgeLesson()`, `prepCookLesson()`.
@@ -2345,7 +2348,10 @@ you. No 3D model of the speaker in this scene: the label carries their live port
 **The director** (`src/fx/director.js`): every shot is planned once against the scene's ray test
 (the mine's voxels, the home's and town's boxes, skipping Old Star's own box and boxes the ray starts
 inside): the camera keeps 12 cm off walls along the line and 24 cm all round (`roomy`), must see the
-face, and a two-shot must fit both heads in the frame (the lens widens 44–62°) or it isn't taken. Then
+face (over the shoulder: the line to their eyes must clear your body, a capsule from knee to crown;
+the camera comes down for a short speaker), a two-shot must fit both heads in the frame (the lens
+widens 44–62°), and nothing is shot from behind them (the shot goes round to the side their face
+is turning to). All the shots of one talk stay on one side of the line between you. Then
 the pose is recomputed each frame (they breathe and turn): fixed camera, the look smoothed, a slow
 push in, the head on a third with room toward where they look. Shot to shot eases 0.75 s; in 0.85 s,
 out 0.7 s (cubic). The paws are hidden while the camera is away; your mole (`makeHeroMole`, built at
