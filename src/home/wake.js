@@ -60,7 +60,10 @@ export class WakeFx {
     const canvas = this.game.canvas;
     const b = this.blur;
     canvas.style.filter = b > 0.05 ? `blur(${b.toFixed(2)}px) brightness(${(1 - Math.min(0.3, b * 0.03)).toFixed(3)}) saturate(${(1 - Math.min(0.4, b * 0.04)).toFixed(3)})` : '';
-    return k < 0.999 || b > 0.05;
+    // eyes open: the (blurred) lid layer leaves the page, so nothing soft lingers over the view
+    const awake = k >= 0.999 && b <= 0.05;
+    this.c.style.display = awake ? 'none' : '';
+    return !awake;
   }
 
   drawLids(g, W, H, k) {
