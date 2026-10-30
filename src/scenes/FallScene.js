@@ -6,7 +6,7 @@
 // and gold light spills out over his face... the ground sags, cracks race over the clearing, roots
 // snap, the birds burst from the trees, and the crust gives way: he tumbles down a dark shaft.
 // Darkness, a heartbeat, muffled ringing: he blacks out. Ends with goto('home', { from: 'fall' }).
-// ~42 s, skippable (Skip, Esc, a tap).
+// ~42 s, not skippable.
 // Dev: ?scene=fall&at=secs to start later, &freeze=1 to stop time, &lite=1 for the phone forest (&lite=0: the full
 // forest even on a software renderer, which otherwise gets the light one).
 // Test hooks: scene.debug.{ at(secs), time(), shot(), state(), skip(), perf(), cam(pos, look, fov), hold(on) }.
@@ -18,7 +18,6 @@ import { disposeTextures, setPixelScale, Particles, SHAPE, fitFov, makeBlobShado
 import { buildForest, FOREST, SUN_DIR, groundH, HOLE_R } from '../bookends/forest.js';
 import { MF, swallowSheet } from '../bookends/meadowfx.js';
 import { FA, setAir } from '../bookends/forest/atmos.js';
-import { makeCritters } from '../bookends/forest/critters.js';
 import { forestSounds } from '../bookends/forest/sound.js';
 import { buildFallShaft } from '../bookends/fallshaft.js';
 import { makeHeroMole } from '../gfx/char/hero.js';
@@ -68,8 +67,7 @@ export default class FallScene extends Scene {
     setAir(0);
 
     // ---- while the forest grows (a few seconds on a phone): a quiet card and a way past it
-    const loadSkip = el('button', { class: 'btn alt bk-skip', type: 'button', onclick: (e) => { e.stopPropagation(); this.pendingSkip = true; } }, 'Skip ›');
-    this.loadCard = el('div', { class: 'bk-root bk-loading' }, [el('div', { class: 'bk-load' }, [el('i', { class: 'bk-load-leaf' }), el('span', {}, 'The forest stirs…')]), loadSkip]);
+    this.loadCard = el('div', { class: 'bk-root bk-loading' }, [el('div', { class: 'bk-load' }, [el('i', { class: 'bk-load-leaf' }), el('span', {}, 'The forest stirs…')])]);
     this.game.ui.world.append(this.loadCard);
     this.own(() => this.loadCard?.remove());
     // ---- the forest (phones, 'Simple' shaders and software GL get a lighter one; ?lite=0 / 1 forces it)
@@ -114,9 +112,8 @@ export default class FallScene extends Scene {
     if (!this.coop.isPlaceholder) console.log('[fall] using the coop model');
 
     // ---- the forest's animals
-    this.critters = makeCritters(this.F, { lite });
-    sc.add(this.critters.group);
-    this.own(() => this.critters.dispose());
+    // (no wildlife: the forest's animals are left out)
+    this.critters = { group: null, update() {}, dispose() {} };
 
     // ---- the chest's light: shafts of gold rising out of it (faded in at the chest moment)
     this.chestBeams = [
@@ -159,15 +156,10 @@ export default class FallScene extends Scene {
     // ---- DOM: caption, letterbox bars, skip
     this.caption = el('div', { class: 'bk-caption bk-outline' }, ['Far above the Deep', el('small', {}, 'an old forest trail, late in the day')]);
     this.bars = el('div', { class: 'bk-bars' }, [el('i'), el('i')]);
-    this.skipBtn = el('button', { class: 'btn alt bk-skip', type: 'button', onclick: (e) => { e.stopPropagation(); this.skip(); } }, 'Skip ›');
-    this.root = el('div', { class: 'bk-root bk-fall' }, [this.bars, this.caption, this.skipBtn]);
+    // the intro can't be skipped (only the test hook debug.skip() ends it early)
+    this.root = el('div', { class: 'bk-root bk-fall' }, [this.bars, this.caption]);
     this.game.ui.world.append(this.root);
     this.own(() => this.root.remove());
-    const onKey = (e) => { if (e.code === 'Escape') this.skip(); };
-    const onTap = (e) => { if (this.t > 0.8 && !(e.target && e.target.closest && e.target.closest('button'))) this.skip(); };
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('pointerdown', onTap);
-    this.own(() => { window.removeEventListener('keydown', onKey); window.removeEventListener('pointerdown', onTap); });
     requestAnimationFrame(() => this.bars.classList.add('on'));
 
     Object.assign(this.post, {
@@ -417,7 +409,7 @@ export default class FallScene extends Scene {
     this.once('capoff', CAP[1], () => this.caption.classList.remove('on'));
     // birdsong: a busy evening chorus while they walk, thinning out in the clearing
     this.birdT = (this.birdT ?? 0.5) - dt;
-    if (t < T.I && this.birdT <= 0) {
+    if (false && t < T.I && this.birdT <= 0) { // (no wildlife: no birdsong)
       this.birdT = (t < T.F ? 0.9 : 2.2) + Math.random() * 2.2;
       const kinds = ['trill', 'robin', 'trill', 'wren', 'robin', 'cuckoo', 'dove'];
       this.sfx('forest_song', { kind: kinds[(Math.random() * kinds.length) | 0], pan: Math.random() * 1.6 - 0.8, pitch: 0.85 + Math.random() * 0.35, vol: 0.022 + Math.random() * 0.02 });
@@ -425,7 +417,7 @@ export default class FallScene extends Scene {
     this.once('cluck1', 2.4, () => this.sfx('cluck', { n: 2 }));
     this.once('nod', 8.4, () => this.hero.doEmote('nod', 1));
     // Nugget's close-up: she spots a butterfly, follows it, clucks
-    this.once('henfly', T.C + 0.3, () => { this.henFly = { t0: t }; });
+
     this.once('cluck2', T.C + 1.4, () => { this.sfx('cluck', { n: 3, pitch: 1.15 }); });
     this.once('peck', T.C + 2.5, () => this.coop.peck?.());
     // the bridge: planks thud under him, the coop splashes through
@@ -444,7 +436,7 @@ export default class FallScene extends Scene {
     // the ground goes
     this.once('creak', T.I, () => { this.sfx('creak'); this.sfx('forest_groan', { vol: 0.06 }); this.loop('rumble', 0.5); au.stopMusic(1.4); this.shake = 0.015; this.hero.play('idle'); this.hero.look(0, 0.35); });
     this.once('crack1', T.I + 0.6, () => { this.sfx('crack'); this.sfx('rumble_hit'); this.hero.doEmote('surprise', 2); this.hero.play('brace'); this.F.cracks.mesh.visible = true; this.crack = true; this.gust = 1; });
-    this.once('flock', T.I + 0.55, () => { this.burstFlock(); this.sfx('forest_flock'); });
+
     this.once('bawk2', T.I + 0.9, () => { this.sfx('bawk', { pitch: 1.1 }); this.coop.hop?.(); this.coop.shake?.(1.5); this.coop.hen?.flap?.(1.2); });
     this.once('bawk2b', T.I + 0.25, () => { this.coop.hen?.flap?.(0.6); this.coop.shake?.(0.8); });
     [1.3, 1.95, 2.5, 3.05].forEach((d, i) => this.once('snap' + i, T.I + d, () => this.snapRoot(i)));
@@ -922,7 +914,7 @@ export default class FallScene extends Scene {
         if (p0.distanceTo(cam.position) < 26) this.motes.spawn({ pos: [p0.x + (Math.random() - 0.5) * b.w * 0.6, p0.y, p0.z + (Math.random() - 0.5) * b.w * 0.6], vel: [0.05, -0.02, -0.02], life: 5, color: 0xfff0b8, size: 0.02, wobble: 0.25, flicker: 0.6, fadeIn: 0.8 });
       }
       if (Math.random() < dt * 10) this.motes.spawn({ pos: [H.x + (Math.random() - 0.5) * 8, 0.3 + Math.random() * 2.4, H.z + (Math.random() - 0.5) * 8], vel: [0.06, 0.03, -0.02], life: 4, color: 0xfff2b0, size: 0.018, wobble: 0.3, flicker: 0.5, fadeIn: 0.5 });
-      if (Math.random() < dt * 5) this.flies.spawn({ pos: [H.x + (Math.random() - 0.5) * 12, 0.2 + Math.random() * 1.4, H.z + (Math.random() - 0.5) * 12], vel: [(Math.random() - 0.5) * 0.3, 0.05, (Math.random() - 0.5) * 0.3], life: 4, color: 0xe0ff70, color2: 0x9aff40, size: 0.04, wobble: 1, flicker: 0.95, fadeIn: 0.6, shape: SHAPE.plus });
+      if (false && Math.random() < dt * 5) this.flies.spawn({ pos: [H.x + (Math.random() - 0.5) * 12, 0.2 + Math.random() * 1.4, H.z + (Math.random() - 0.5) * 12], vel: [(Math.random() - 0.5) * 0.3, 0.05, (Math.random() - 0.5) * 0.3], life: 4, color: 0xe0ff70, color2: 0x9aff40, size: 0.04, wobble: 1, flicker: 0.95, fadeIn: 0.6, shape: SHAPE.plus });
       if (Math.random() < dt * 2.2) this.leaves.spawn({ pos: [H.x + (Math.random() - 0.5) * 7, 4 + Math.random() * 3, H.z + (Math.random() - 0.5) * 7], vel: [0.45, -0.35, 0.25], life: 8, color: [0x8ab448, 0xd8a040, 0xb8c058, 0xc87838][(Math.random() * 4) | 0], size: 0.045, gravity: 0.18, drag: 0.8, wobble: 0.9, spin: 5, shape: SHAPE.confetti });
     }
     // the stream: louder near the bridge

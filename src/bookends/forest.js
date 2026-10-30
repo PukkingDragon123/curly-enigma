@@ -809,20 +809,20 @@ export async function buildForest(opts = {}) {
   for (const s of soft ? [7.5, 16.5, 31, 40] : [3, 7.5, 12, 16.5, 21, 25.5, 31, 35.5, 40, 44]) { const [x, z] = beside(s, (s * 7) % 3 - 1.2); beamAt(x + 0.8, z - 0.6, 13, 0.6 + ((s * 13) % 5) * 0.12, 0.18 + ((s * 3) % 4) * 0.02); }
   if (!soft) for (const [x, z] of [[-5, 14], [6, 27], [-3, 36], [9, 12], [-9, 20]]) beamAt(x, z, 14, 0.8, 0.16);
 
-  // ---- birds overhead, butterflies, dragonflies over the stream
+  // ---- no wildlife in the forest (birds, butterflies and dragonflies are left out; the lists stay empty)
   const sw = swallowSheet();
   const bf = butterflySheet();
   const df = dragonflySheet();
   textures.push(sw.texture, bf.texture, df.texture);
   const birds = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 0; i++) {
     const m = makeSheetSprite(sw.texture, { cols: sw.cols, size: [0.42, 0.42 / sw.aspect], anchor: [0.5, 0.5], renderOrder: 6 });
     m.userData.bird = { ph: i * 1.7, r: 6 + i * 1.6, h: 6 + (i % 3) * 1.4, sp: 0.45 + (i % 2) * 0.15, cx: (i - 2) * 1.5, cz: i < 3 ? 0 : 20 };
     birds.push(m);
     group.add(m);
   }
   const flies = [];
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 0; i++) {
     const m = makeSheetSprite(bf.texture, { cols: bf.cols, size: [0.13, 0.115], anchor: [0.5, 0.5], renderOrder: 6 });
     const home = i < 5 ? [Math.cos(i * 1.3) * 3.8, Math.sin(i * 1.3) * 3.8] : beside(6 + i * 4, i % 2 ? 1.4 : -1.6);
     m.userData.fly = { sp: (i % 4) * 4, ph: i * 2.1, home, y: 0.45 + (i % 3) * 0.22 };
@@ -830,7 +830,7 @@ export async function buildForest(opts = {}) {
     group.add(m);
   }
   const dflies = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 0; i++) {
     const m = makeSheetSprite(df.texture, { cols: df.cols, size: [0.16, 0.09], anchor: [0.5, 0.5], renderOrder: 6 });
     const q = STREAM.curve.getPointAt(clamp((CROSS.ss + (i - 1.5) * 3) / STREAM.L, 0, 1));
     m.userData.df = { x: q.x, z: q.z, ph: i * 2.7, y: waterY(CROSS.ss) + 0.35 + i * 0.08 };
