@@ -21,7 +21,7 @@
 import * as THREE from 'three';
 import { keepUnbatched } from '../iso/vox.js';
 import { lowRes, group } from '../iso/kit.js';
-import { barrel, crate, sack, glowShrooms, crystals } from '../iso/props.js';
+import { barrel, crate, sack, glowShrooms, crystals, rubble } from '../iso/props.js';
 import { buildFurniture } from '../iso/furniture.js';
 import { townDoor, doorRubble, lanternOnHook } from './props.js';
 import * as TP from './tavernProps.js';
@@ -402,6 +402,7 @@ export class StarHouse {
     this.look({ x: -4.3, y: Y + 0.2, z: -1.45, r: 0.3, label: 'Glowing mushrooms', pick: true, special: true });
     const cr = lowRes(() => crystals(17, 0.8, 2));
     this.place(cr.obj, -4.75, -2.75, 0.6);
+    this.boxAt(-4.75, -2.75, 0.2, 0.2, 0.32);
     this.look({ x: HOLE.x, y: Y + 1.9, z: HOLE.z, r: 0.5, label: 'Look up at the hole', lines: ['A ragged hole in the roof, roots all round it, and far up a grey speck of daylight. That\'s where I came in.', 'Dirt still trickles down now and then. A long way down. Lucky the floor was soft.'], aside: 'hole' });
   }
 
@@ -437,11 +438,12 @@ export class StarHouse {
     this.parts.push(bk.obj);
     const coal = lowRes(() => CP.coalHeap(33));
     this.place(coal.obj, S.coal.x, S.coal.z, S.coal.yaw);
+    this.boxAt(S.coal.x, S.coal.z, 0.3, 0.24, 0.22, S.coal.yaw);
     this.onRock(CMP.toolsLeaning(77), S.rack.x + 0.4, S.rack.z, 1, 0, 0, 0.9);
     this.boxAt(S.rack.x + 0.05, S.rack.z, 0.12, 0.55, 1.1);
     this.prop(KP.scrapPile(), -3.15, -3.3, 0.8, 0.3, 0.24, 0.25);
     this.prop(KP.grindstone(), -0.05, -3.55, -Math.PI / 2, 0.38, 0.26, 0.7);
-    for (const [x, z, s] of [[-0.45, -5.48, 1], [-3.55, -4.42, 2]]) { const o = sack({ seed: s, color: 0x4a4440 }); this.place(o.obj, x, z, s); }
+    for (const [x, z, s] of [[-0.45, -5.48, 1], [-3.55, -4.42, 2]]) { const o = sack({ seed: s, color: 0x4a4440 }); this.place(o.obj, x, z, s); this.boxAt(x, z, 0.17, 0.17, 0.4, s); }
     this.onRock(KP.horseshoes(), -2.0, -5.3, 0, 1, 1.35, 1.4);
     const lan = HP.hangingOilLamp(0.45, 98);
     this.place(lan.obj, -1.5, -4.35, 0, ceilAt(-1.5, -4.35) - 0.02);
@@ -479,7 +481,7 @@ export class StarHouse {
     for (const [x, z, k, s] of [[-3.55, -0.82, 'crate', 1], [-3.0, -0.7, 'barrel', 3], [-1.62, -0.66, 'crate', 2], [-1.18, -0.62, 'sack', 5]]) {
       const o = k === 'crate' ? crate(s, { open: s === 2 }) : k === 'barrel' ? barrel(s, { fill: 'water' }) : sack({ seed: s });
       this.place(o.obj, x, z, s * 0.7);
-      if (k !== 'sack') this.boxAt(x, z, 0.22, 0.22, k === 'crate' ? 0.4 : 0.5, s * 0.7);
+      this.boxAt(x, z, k === 'sack' ? 0.17 : 0.22, k === 'sack' ? 0.17 : 0.22, k === 'crate' ? 0.4 : 0.5, s * 0.7);
     }
     this.look({ x: -1.62, y: Y + 0.45, z: -0.66, r: 0.28, label: 'The food crate', larder: true, special: true });
     const sh = CP.shelf(0.9, 29);
@@ -498,6 +500,32 @@ export class StarHouse {
     const sl = HP.hangingOilLamp(0.35, 95);
     this.place(sl.obj, -4.25, -1.75, 0, ceilAt(-4.25, -1.75) - 0.02);
     this.look({ x: bw.x, y: Y + 0.3, z: bw.z, r: 0.3, label: 'The spring', lines: ['Water seeping out of the rock, cold enough to hurt your teeth. Old Star\'s drunk from it for forty years.', 'A tin cup on a string, hung on a nail in the rock. Rust on the nail, none on the cup.'] });
+  }
+
+  // ------------------------------------------------------------ the camp gone to ruin
+  /** Fallen planks, a collapsed lean-to against the rock, rocks down from the roof (all solid). */
+  buildRuin() {
+    const inside = (x, z, m = 0.45) => hollowSD(x, z) < -m;
+    for (const [x, z, yaw, w, d, seed] of [[0.62, -5.0, 0.4, 0.9, 0.55, 93], [8.75, -5.35, 1.2, 1.0, 0.6, 94], [-4.95, -0.95, 2.4, 0.8, 0.5, 97]]) {
+      if (!inside(x, z)) continue;
+      const p = lowRes(() => CMP.brokenPlanks(w, d, seed));
+      this.place(p.obj, x, z, yaw);
+      this.boxAt(x, z, p.hw * 0.8, p.hd * 0.8, p.h, yaw);
+    }
+    for (const [x, z, nx, nz, seed] of [[-5.1, -4.55, 1, 0, 95], [9.0, -1.2, -1, 0, 96]]) {
+      if (!inside(x, z, 0.2)) continue;
+      const r = lowRes(() => CMP.leanToRuin(1.3, 1.25, seed));
+      const at = this.onRock(r.obj, x, z, nx, nz, 0, 0.6);
+      // (its posts and beam: a box along the rock)
+      this.boxAt(at.x + nx * 0.35, at.z + nz * 0.35, r.hw, 0.35, 1.0, at.yaw);
+      this.look({ x: at.x + nx * 0.4, y: Y + 0.6, z: at.z + nz * 0.4, r: 0.45, label: 'A fallen lean-to', lines: ['A lean-to that leaned too far. The beam came down one winter and nobody put it back.', 'A rag of canvas still snagged on a nail. Old Star says he\'ll get round to it.'] });
+    }
+    for (const [x, z, sz, seed] of [[1.05, -0.78, 11, 31], [8.6, -0.62, 9, 32], [-1.95, -5.5, 8, 33], [4.75, -2.55, 7, 34], [-5.25, -3.4, 10, 35]]) {
+      if (!inside(x, z, 0.25)) continue;
+      const st = lowRes(() => rubble(seed, sz / 8, sz / 11));
+      this.place(st.obj, x, z, seed);
+      this.boxAt(x, z, sz / 32 * 0.8, sz / 44 * 0.8, 0.14, seed);
+    }
   }
 
   // ------------------------------------------------------------ the east: his shack, the hole, the lift, the way out
@@ -533,7 +561,7 @@ export class StarHouse {
     this.gramophone = this.toM(gr.obj, gr.horn);
     this.look({ x: K.x + 0.95, y: Y + 0.65, z: K.z - 1.05, r: 0.25, label: 'Wind the gramophone', gramophone: true, special: true });
     this.prop(KP.bookStack(6, 205), S.books.x, S.books.z, 0.4, 0.2, 0.18, 0.3);
-    this.prop(KP.bookStack(4, 206), S.books.x + 0.05, S.books.z - 0.38, 1.2);
+    this.prop(KP.bookStack(4, 206), S.books.x + 0.05, S.books.z - 0.38, 1.2, 0.16, 0.14, 0.2);
     this.look({ x: S.books.x, y: Y + 0.3, z: S.books.z, r: 0.3, label: 'Browse the books', books: true, aside: 'books' });
     this.stubs(S.cot.x - 0.62, S.cot.z + 0.05, Y, 3, 74);
     this.web(K.x - K.W / 2 + 0.05, K.Hb - 0.35, K.z - K.D + 0.05, Math.PI / 4, 0.26, 3);
@@ -547,6 +575,7 @@ export class StarHouse {
     this.place(CMP.alarmClock(87), S.clock.x - 0.08, S.clock.z + 0.06, -0.5, Y + 0.35);
     this.look({ x: S.clock.x, y: Y + 0.45, z: S.clock.z, r: 0.22, label: 'The alarm clock', clock: true });
     this.place(CMP.strawPile(0.8, 0.5, 79), K.x - 1.05, K.z + 0.45, 0.3);
+    this.boxAt(K.x - 1.05, K.z + 0.45, 0.38, 0.24, 0.16, 0.3);
     const dl = CMP.dryingLine(1.5, 83);
     this.place(dl, K.x - K.W / 2 - 0.62, K.z + 0.25, 0.35, Y + 1.32);
     this.prop(KP.logBasket(), K.x + K.W / 2 + 0.45, K.z - 1.4, 0.3, 0.27, 0.2, 0.3);
@@ -588,10 +617,12 @@ export class StarHouse {
     this.onRock(dl2.obj, FRONT.x - 0.62, FRONT.z + 0.25, 0, 1, 0.62, 1.1);
     const bs = HP.bootsAndStick();
     this.place(bs.obj, FRONT.x + 0.72, FRONT.z + 0.32, 0.2);
+    this.boxAt(FRONT.x + 0.72, FRONT.z + 0.32, 0.16, 0.12, 0.35, 0.2);
+    this.buildRuin();
     for (const [x, z, k, s] of [[5.35, -1.25, 'barrel', 6], [7.15, -0.88, 'crate', 8], [7.28, -1.32, 'crate', 9], [5.1, -2.3, 'sack', 6]]) {
       const o = k === 'crate' ? crate(s, {}) : k === 'barrel' ? barrel(s, { fill: null }) : sack({ seed: s });
       this.place(o.obj, x, z, s * 0.7);
-      if (k !== 'sack') this.boxAt(x, z, 0.22, 0.22, k === 'crate' ? 0.4 : 0.5, s * 0.7);
+      this.boxAt(x, z, k === 'sack' ? 0.17 : 0.22, k === 'sack' ? 0.17 : 0.22, k === 'crate' ? 0.4 : 0.5, s * 0.7);
     }
     const ll = HP.hangingOilLamp(0.5, 96);
     this.place(ll.obj, 6.55, -2.25, 0, ceilAt(6.55, -2.25) - 0.02);

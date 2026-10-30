@@ -1,6 +1,6 @@
 // Old Star's camp, the pieces that aren't in caveProps.js: his shack of warped grey planks and a
 // patched tarp, nailed together against the rock decades ago and mended ever since; a sacking
-// curtain for a door, a shutter hanging off its hinge; candle stubs in puddles of old wax, cobwebs,
+// curtain for a door (real cloth: campCloth.js), a shutter hanging off its hinge; candle stubs in puddles of old wax, cobwebs,
 // tools leaning on the rock, a heap of straw, the spring dripping out of a crack into a stone basin,
 // a drying line of socks, a log to sit on by the fire, a battered alarm clock, mushrooms gone glowing
 // in a damp corner. Mostly at 1/32 m (old wood doesn't need finer), the small things at 1/64 m.
@@ -40,7 +40,7 @@ export function shack({ W = 2.6, D = 1.6, Hf = 1.5, Hb = 1.95, dc = -0.25, dw = 
     while (i < n) {
       const bw = 3 + (rng() < 0.4 ? 1 : 0);
       const col = rng() < 0.08 ? NEWER[Math.floor(rng() * 2)] : GREY[Math.floor(rng() * GREY.length)];
-      const short = rng() < 0.12 ? 2 + Math.floor(rng() * 5) : 0; // a broken top
+      const short = rng() < 0.24 ? 2 + Math.floor(rng() * 9) : 0; // a broken top (lots, these days)
       const lean = rng() < 0.3 ? (rng() < 0.5 ? -1 : 1) : 0; // warped: bowed out a voxel in the middle
       for (let k = 0; k < bw && i < n; k++, i++) {
         if (skip(i)) continue;
@@ -55,7 +55,7 @@ export function shack({ W = 2.6, D = 1.6, Hf = 1.5, Hb = 1.95, dc = -0.25, dw = 
           g.set(X(x + nx * bow), y, Z(z + nz * bow), c);
         }
       }
-      if (rng() < 0.22) i++; // a gap between boards
+      if (rng() < 0.3) i += rng() < 0.25 ? 2 : 1; // a gap between boards (a wide one where a board fell off)
     }
   };
   // front wall (z = VD), the doorway and the window cut out
@@ -77,13 +77,7 @@ export function shack({ W = 2.6, D = 1.6, Hf = 1.5, Hb = 1.95, dc = -0.25, dw = 
     if (ay < 1) continue;
     g.set(X(ax + Math.round(k * 0.38)), ay, Z(VD) + 2, (j + (k >> 3)) % 4 === 0 ? 0x5a544a : GREY[(j >> 2) % 3 + 1]);
   }
-  // the sacking curtain over the left half of the doorway, from a rod, a gap at the foot
-  const cw = Math.round((d1 - d0) * 0.45);
-  for (let x = d0; x < d0 + cw; x++) for (let y = 7; y < DH; y++) {
-    const fold = Math.round(Math.sin(x * 0.9) * 0.8 + (x - d0 > cw - 3 ? 1 : 0));
-    const c = (y + x * 3) % 11 === 0 ? 0x7a6448 : (x * 5 + y) % 17 === 0 ? 0x6a5438 : 0x9a8058;
-    g.set(X(x), y, Z(VD) + 1 + Math.max(0, fold), y < 9 ? mulc(c, 0.75) : c);
-  }
+  // (the sacking over the doorway is real cloth, hung from this rod by the scene: src/home/campCloth.js)
   for (let x = d0 - 2; x <= d1 + 1; x++) g.set(X(x), DH - 1, Z(VD) + 2, 0x3a3630); // the rod
   // side walls: boards along z, up to the sloping roof; the back wall
   boards(VD, (i) => [0, i, -1, 0], (i) => roofY(i));
@@ -107,7 +101,7 @@ export function shack({ W = 2.6, D = 1.6, Hf = 1.5, Hb = 1.95, dc = -0.25, dw = 
   }
   // the roof: planks front to back on the slope, gaps between them, sagging under the tarp
   for (let x = -2; x < VW + 2; x++) {
-    if ((x + 2) % 5 === 4) continue; // gaps
+    if ((x + 2) % 5 === 4 || hash2(x >> 2, 77, seed) < 0.16) continue; // gaps, and planks gone altogether
     const col = GREY[Math.floor(hash2(x >> 2, 9, seed) * GREY.length)];
     for (let z = -1; z < VD + OH; z++) {
       const y = roofY(Math.min(z, VD)) + 1 - (z > VD ? Math.round((z - VD) * 0.5) : 0);
@@ -122,6 +116,7 @@ export function shack({ W = 2.6, D = 1.6, Hf = 1.5, Hb = 1.95, dc = -0.25, dw = 
     const pi = Math.floor(hash2(Math.floor(x / 9), Math.floor(z / 8), seed + 4) * 9);
     let c = pi < PATCH.length && hash2(Math.floor(x / 9), Math.floor(z / 8), seed + 5) < 0.35 ? PATCH[pi] : CANVAS[(x >> 3) % 3];
     if ((x % 9 === 0 || z % 8 === 0) && c !== CANVAS[(x >> 3) % 3]) c = 0x3a3630; // stitches round a patch
+    if (Math.hypot(x - t1 * 0.62, z - VD * 0.35) < 2.6 || Math.hypot(x - t1 * 0.2, z - VD * 0.8) < 1.8) continue; // torn through
     g.set(X(x), y, Z(z), c);
   }
   for (let x = t0; x < t1; x++) { // the edge hanging down over the front, ragged
@@ -317,4 +312,73 @@ export function boardPosts(w = 1.05, h = 1.4, seed = 91) {
   }
   for (const y of [Math.round(H * 0.3), H - 4]) for (let x = 0; x < W + 6; x++) g.set(x, y, 0, x % 7 === 0 ? 0x2a2a2e : GREY[(x >> 3) % GREY.length]);
   return M32(g, [W / 2 + 3, 0, 2], { scale: S16 });
+}
+
+/**
+ * A heap of fallen planks (1/32 m): grey boards gone over, split, some snapped in two with their
+ * splinters showing, rusty nails sticking up, dust and grit in the cracks. Floor piece, ~w × d m.
+ */
+export function brokenPlanks(w = 1.1, d = 0.7, seed = 93) {
+  const VW = Math.round(w * 32), VD = Math.round(d * 32);
+  const g = new VoxelGrid(VW + 8, 14, VD + 8);
+  const rng = makeRng(seed);
+  const n = 6 + Math.floor(rng() * 4);
+  const hgt = new Int8Array((VW + 8) * (VD + 8));
+  for (let k = 0; k < n; k++) {
+    const len = Math.round((0.45 + rng() * 0.55) * Math.max(VW, VD)), bw = 3 + (rng() < 0.4 ? 1 : 0);
+    const a = rng() * Math.PI, ca = Math.cos(a), sa = Math.sin(a);
+    const cx = 4 + rng() * VW, cz = 4 + rng() * VD;
+    const col = GREY[Math.floor(rng() * GREY.length)];
+    const snap = rng() < 0.45 ? Math.floor(len * (0.3 + rng() * 0.4)) : -1; // snapped: a gap and a kink
+    for (let t = -len / 2; t < len / 2; t++) {
+      const ti = Math.round(t + len / 2);
+      if (snap >= 0 && Math.abs(ti - snap) < 1) continue;
+      for (let b = 0; b < bw; b++) {
+        const x = Math.round(cx + ca * t - sa * (b - bw / 2)), z = Math.round(cz + sa * t + ca * (b - bw / 2));
+        if (x < 0 || z < 0 || x >= VW + 8 || z >= VD + 8) continue;
+        const i = z * (VW + 8) + x;
+        const y = Math.min(12, hgt[i] + (snap >= 0 && ti > snap ? 1 : 0));
+        let c = b === 0 ? mulc(col, 0.8) : col;
+        if ((ti + b * 5) % 23 === 0) c = mulc(col, 0.6); // knots, rot
+        const end = ti === 0 || ti === len - 1 || (snap >= 0 && Math.abs(ti - snap) === 1);
+        if (end && rng() < 0.5) c = 0xb8a888; // the raw wood of a split end
+        g.set(x, y, z, c);
+        hgt[i] = Math.max(hgt[i], y + 1);
+        if (ti % 9 === 4 && b === 1 && rng() < 0.5) { g.set(x, y + 1, z, 0x5a3a2a); if (rng() < 0.5) g.set(x, y + 2, z, 0x6a4a3a); } // a rusty nail
+      }
+    }
+  }
+  // grit and dust round it
+  for (let i = 0; i < 40; i++) { const x = Math.floor(rng() * (VW + 8)), z = Math.floor(rng() * (VD + 8)); if (!hgt[z * (VW + 8) + x]) g.set(x, 0, z, rng() < 0.5 ? 0x5a5048 : 0x6a6056); }
+  return { obj: M32(g, [(VW + 8) / 2, 0, (VD + 8) / 2], { scale: S16 }), hw: w / 2, hd: d / 2, h: 0.18 };
+}
+
+/**
+ * What's left of a lean-to against the rock (1/32 m): two posts, one fallen, the cross-beam down at
+ * one end, a few roof boards still hanging off it at angles, the rest in a heap; a rag of old canvas
+ * snagged on a nail. Floor piece, x along the rock, its back at z 0, ~w m wide, h m high.
+ */
+export function leanToRuin(w = 1.4, h = 1.3, seed = 95) {
+  const VW = Math.round(w * 32), VH = Math.round(h * 32), VD = 26;
+  const g = new VoxelGrid(VW + 10, VH + 6, VD + 10);
+  const rng = makeRng(seed);
+  const post = (x, z, top, lean) => { for (let y = 0; y < top; y++) for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) g.set(x + a + Math.round(lean * y), y, z + b, hash2(y >> 2, a + b, seed) < 0.35 ? 0x4a3a2a : 0x5e5244); };
+  // the standing post (leaning out) and the fallen one along the floor
+  post(4, VD, VH, 0.06);
+  for (let t = 0; t < VH - 4; t++) for (let a = 0; a < 2; a++) g.set(VW + 2 - Math.round(t * 0.35), a, VD - 2 + Math.round(t * 0.55) % 3 + a, 0x5e5244);
+  // the cross-beam: from the standing post's top down to the floor at the far end
+  line(g, [[5 + Math.round(VH * 0.06), VH - 1, VD], [VW + 3, 1, VD - 4]], 1.2, 0x6a5a48);
+  // roof boards: a few still on the beam, hanging at angles back to the rock; the rest slid off
+  for (let k = 0; k < 6; k++) {
+    const x = 6 + Math.floor((k / 6) * (VW - 6)) + Math.floor(rng() * 3);
+    const yb = Math.round(VH - 1 - ((x - 5) / (VW - 2)) * (VH - 2));
+    const col = GREY[Math.floor(rng() * GREY.length)];
+    if (rng() < 0.6) line(g, [[x, yb + 1, VD], [x + Math.round(rng() * 4 - 2), Math.max(1, yb - 6 - Math.floor(rng() * 10)), 2]], 1.0, col);
+    else line(g, [[x, 1, VD + 2], [x + 6, 1, VD - 8 - Math.floor(rng() * 8)]], 1.0, col);
+  }
+  // the rag of canvas, snagged
+  for (let y = VH - 10; y < VH - 2; y++) for (let x = 5; x < 5 + Math.max(2, 7 - (VH - y) % 5); x++) g.set(x + 1, y, VD + 2, CANVAS[(x + y) % 3]);
+  // splinters and grit
+  for (let i = 0; i < 30; i++) g.set(Math.floor(rng() * (VW + 8)), 0, VD - 6 + Math.floor(rng() * 14), rng() < 0.5 ? 0x5a5048 : GREY[Math.floor(rng() * 3)]);
+  return { obj: M32(g, [(VW + 10) / 2, 0, 0], { scale: S16 }), hw: w / 2, hd: 0.45, h: h };
 }

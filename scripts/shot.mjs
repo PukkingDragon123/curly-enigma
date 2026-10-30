@@ -40,7 +40,7 @@ page.on('console', (m) => {
   if (m.type() === 'error' || m.type() === 'warning') { console.log(`[${m.type()}]`, t); if (m.type() === 'error') errors.push(t); }
   else if (process.env.VERBOSE) console.log('[log]', t);
 });
-page.on('pageerror', (e) => { console.log('[pageerror]', e.message); errors.push(e.message); });
+page.on('pageerror', (e) => { console.log('[pageerror]', e.message, (e.stack || '').split('\n').slice(1, 4).join(' | ')); errors.push(e.message); });
 await page.goto(`http://127.0.0.1:${port}/?${query}`);
 await page.waitForTimeout(wait);
 for (const s of steps) {

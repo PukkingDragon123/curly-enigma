@@ -49,6 +49,7 @@ import { starData } from '../home/starData.js';
 import { lootChest } from '../home/tavernProps.js';
 import { group } from '../iso/kit.js';
 import { loadNotes } from '../home/notes.js';
+import { campCloths } from '../home/campCloth.js';
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -151,6 +152,8 @@ export default class HomeScene extends Scene {
     this.own(() => this.cave.dispose());
     this.lift = this.cave.lift;
     this.holeTop = this.cave.holeTop?.y ?? HALL.y + 2.4; // (up the hole you fell through)
+    // real cloth over the shack's doorway and window (you push through it)
+    try { this.cloths = campCloths(this.scene); this.own(() => this.cloths.dispose()); } catch (e) { console.warn('[home] cloth', e); }
     mark('build');
 
     // ---- light: a dim cave, a pool of point lights shared by the fires, lanterns and candles, glows and contact shadows
@@ -845,6 +848,12 @@ export default class HomeScene extends Scene {
       }
     }
     if (this.star?.rig) this.star.update(dt);
+    if (this.cloths) {
+      const P = this.rig.player.pos, Y0 = HALL.y - 0.1, cols = [{ x: P.x, z: P.z, r: 0.26, y0: Y0, y1: Y0 + 1.2 }];
+      if (this.star?.rig) cols.push({ x: this.star.pos.x, z: this.star.pos.z, r: 0.24, y0: Y0, y1: Y0 + 1.0 });
+      if (this.nug?.actor) cols.push({ x: this.nug.actor.pos.x * T, z: this.nug.actor.pos.z * T, r: 0.2, y0: Y0, y1: Y0 + 0.5 });
+      this.cloths.update(dt, cols, this.time);
+    }
     this.lift.update(dt, this.time);
     this.lights.update(dt, pl.x, pl.z);
     this.glow.update(this.camera);
