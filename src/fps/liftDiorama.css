@@ -1,0 +1,58 @@
+/* The lift diorama (src/fps/liftDiorama.js): a 3D model of the mine you've walked in a brass frame,
+   parchment tags over the lifts, the stops listed on a strip of paper beside it. */
+.ld-panel { width: min(1080px, calc(100vw - 16px)); }
+.ld-panel .ld-body { display: flex; gap: calc(var(--px) * 3); min-height: 0; align-items: stretch; }
+.ld-view {
+  position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; touch-action: none; cursor: grab;
+  height: min(62vh, calc(100vh - 16px - var(--sat) - var(--sab) - var(--px) * 64)); min-height: calc(var(--px) * 70);
+  border: var(--px) solid var(--wood-dk); background: #0e0a0c;
+  box-shadow: inset 0 0 0 var(--px) var(--brass-dk), 0 0 0 var(--px) var(--brass), 0 calc(var(--px) * 2) 0 var(--px) rgba(20, 10, 6, .45);
+}
+.ld-view:active { cursor: grabbing; }
+.ld-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+/* a vignette and the brass corner screws */
+.ld-view::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 calc(var(--px) * 22) rgba(0, 0, 0, .75); }
+.ld-labels { position: absolute; inset: 0; pointer-events: none; }
+.ld-tag {
+  position: absolute; left: 0; top: 0; pointer-events: auto; white-space: nowrap; display: flex; align-items: center; gap: var(--px);
+  font: 16px/1 var(--font); color: #2a1a10; padding: var(--px) calc(var(--px) * 2);
+  background: #f3e2bf; box-shadow: 0 0 0 var(--px) #5a3a20, 0 var(--px) 0 var(--px) rgba(0, 0, 0, .35); border: 0; cursor: pointer;
+  transition: filter .12s;
+}
+.ld-tag::after { content: ''; position: absolute; left: 50%; bottom: calc(var(--px) * -3); width: var(--px); height: calc(var(--px) * 3); background: #5a3a20; }
+button.ld-tag:hover { filter: brightness(1.12); }
+.ld-tag.locked { background: #8a8490; color: #1e1a22; cursor: default; }
+.ld-tag.here { background: #c8ffe0; }
+.ld-tag em { font-style: normal; font-size: 8px; color: #2a6a4a; text-transform: uppercase; }
+.ld-lock { width: calc(var(--px) * 3); height: calc(var(--px) * 3); background: #2a2430; box-shadow: 0 calc(var(--px) * -1.5) 0 calc(var(--px) * -.5) #2a2430; }
+.ld-hint { position: absolute; left: calc(var(--px) * 2); bottom: calc(var(--px) * 2); font: 8px/1.4 var(--font); color: #f3e2bf; opacity: .7; text-transform: uppercase; pointer-events: none; }
+.ld-side {
+  flex: 0 0 calc(var(--px) * 74); display: flex; flex-direction: column; gap: calc(var(--px) * 2); min-height: 0;
+  background: #f3e2bf; color: #2a1a10; padding: calc(var(--px) * 2); box-shadow: inset 0 0 0 var(--px) #b89a68, 0 var(--px) 0 var(--px) rgba(0, 0, 0, .3);
+}
+.ld-title { font: 16px/1 var(--font-head, var(--font)); text-transform: uppercase; color: #6a4224; }
+.ld-list { display: flex; flex-direction: column; gap: var(--px); overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+.ld-stop {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: calc(var(--px) * 1.5); text-align: left;
+  font: 16px/1.1 var(--font); color: inherit; background: none; border: 0; padding: var(--px) calc(var(--px) * 1.5); cursor: pointer;
+  box-shadow: inset 0 calc(var(--px) * -.5) 0 rgba(90, 58, 32, .25);
+}
+.ld-stop em { grid-column: 2 / 4; font-style: normal; font-size: 8px; text-transform: uppercase; color: #8a6a44; }
+.ld-stop.here em { color: #2a6a4a; }
+button.ld-stop:hover { background: rgba(200, 150, 70, .2); }
+.ld-stop.locked { opacity: .6; cursor: default; }
+.ld-dot { width: calc(var(--px) * 3); height: calc(var(--px) * 3); background: var(--zc); box-shadow: 0 0 0 calc(var(--px) * .5) #2a1a10; }
+.ld-stop.locked .ld-dot { background: #6a6470; }
+.ld-depth { font-size: 8px; color: #6a4a2a; }
+.ld-legend { display: flex; flex-direction: column; gap: var(--px); font: 8px/1.4 var(--font); text-transform: uppercase; color: #6a4a2a; }
+.ld-legend span { display: flex; align-items: center; gap: var(--px); }
+.ld-k { width: calc(var(--px) * 3); height: calc(var(--px) * 3); display: inline-block; }
+.ld-k.lit { background: #ffc85a; box-shadow: 0 0 calc(var(--px) * 2) #ffc85a; }
+.ld-k.lock { background: #6a6470; }
+.ld-k.fog { background: #8a8296; opacity: .7; border-radius: 50%; }
+@media (max-width: 700px), (max-height: 430px) {
+  .ld-panel .ld-body { flex-direction: column; }
+  .ld-side { flex: 0 0 auto; max-height: 34vh; }
+  .ld-view { height: 44vh; }
+  .ld-legend { display: none; }
+}

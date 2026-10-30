@@ -12,7 +12,7 @@ import { Bodies } from './Bodies.js';
 import { Particles } from './Particles.js';
 import { Ores } from './Ores.js';
 import { Nugget } from './Nugget.js';
-import { openLiftPanel, discoverLift, liftState, rideTo } from '../fps/lifts.js';
+import { openLiftPanel, discoverLift, liftState, rideTo, unlockLift, liftUnlocked, placeLift } from '../fps/lifts.js';
 import { makeTerrainUniforms, MAX_LIGHTS } from './TerrainMaterial.js';
 import { mouthBox, zoneAt, ZONE_DEPTHS, biomeAt, BIOMES, caveDensity } from './Generator.js';
 import { VOX, M, MAT, ORE_BASE, voxelColor } from './materials.js';
@@ -99,7 +99,8 @@ export default class DigScene extends Scene {
       pl.pos.set(lift.x, lift.y + 0.02, lift.z + (liftId[0] === 'L' ? 0 : 0));
       pl.yaw = Math.PI;
       this.lastLift = lift;
-      discoverLift(st, lift);
+      discoverLift(st, { ...lift, unlocked: true });
+      unlockLift(st, lift.id);
     } else {
       const b = mouthBox(this.world.plan, wall, t);
       pl.pos.set((b.x0 + b.x1) / 2 + b.dir[0] * 0.15, 0.01, (b.z0 + b.z1) / 2 + b.dir[2] * 0.15);
@@ -907,6 +908,8 @@ export default class DigScene extends Scene {
     const L = this.liftNear();
     if (L) {
       if (discoverLift(this.state, L)) this.liftFound(L);
+      // a checkpoint: the first ring of its bell unlocks it (and only then does the map open)
+      if (!liftUnlocked(this.state, L.id)) { this.unlockCheckpoint(L); return; }
       openLiftPanel(this.game, L.id, { title: L.name, sub: `${L.depth} m · an old miners' lift. Where to?`, onRide: (id) => this.rideLift(id) });
     }
   }
@@ -920,7 +923,23 @@ export default class DigScene extends Scene {
   liftFound(L) {
     this.audio.play('ding');
     this.audio.play('bell', { vol: 0.4 });
-    this.say('lift' + L.id, `<b>Lift found: ${L.name}!</b> Ring its bell (E) to ride up home whenever you're tired, and come back down here later.`, 'good', 99);
+    if (!liftUnlocked(this.state, L.id)) this.say('lift' + L.id, `<b>Lift found: ${L.name}!</b> Its gate is chained. Ring its bell (<b>E</b>) to unlock it as a <b>checkpoint</b>: then you can ride here from any lift you know.`, 'good', 99);
+    else this.say('lift' + L.id, `<b>Lift found: ${L.name}!</b> Ring its bell (E) to ride up home whenever you're tired, and come back down here later.`, 'good', 99);
+  }
+  /** Ring a locked lift's bell: the chain drops, the lamp lights, it's a checkpoint now. */
+  unlockCheckpoint(L) {
+    if (!unlockLift(this.state, L.id)) return;
+    this.audio.play('bell', { vol: 0.8 });
+    this.audio.play('clunk', { vol: 0.7 });
+    this.audio.play('success', { vol: 0.6 });
+    this.shake?.(0.2);
+    const p = this.player.pos;
+    for (let i = 0; i < 18; i++) this.fx?.spawn?.({ x: L.x + (Math.random() - 0.5) * 0.8, y: L.y + 1 + Math.random() * 1.2, z: L.z + (Math.random() - 0.5) * 0.8, vx: (Math.random() - 0.5) * 1.5, vy: 1 + Math.random() * 1.5, vz: (Math.random() - 0.5) * 1.5, life: 0.9, size: 0.03, color: [1, 0.85, 0.4], glow: true, drag: 2 });
+    void p;
+    this.act('lift_unlock', { id: L.id, zone: L.zone });
+    this.game.ui.toast(`<b>Checkpoint unlocked: ${L.name}</b> · ${L.depth} m. Ride here from any lift you know.`, { kind: 'good', dur: 3600 });
+    this.state.save?.();
+    setTimeout(() => { if (!this.leaving && this.game.scene === this) openLiftPanel(this.game, L.id, { title: L.name, sub: `${L.depth} m · checkpoint unlocked. Where to?`, onRide: (id) => this.rideLift(id) }); }, 900);
   }
   rideLift(id) {
     if (this.leaving) return;
@@ -957,6 +976,7 @@ export default class DigScene extends Scene {
     // lifts: walking into one's room remembers it
     for (const L of plan.lifts) {
       if (Math.abs(L.y - pl.pos.y) > 2.5 || Math.hypot(L.x - pl.pos.x, L.z - pl.pos.z) > 2.6) continue;
+      placeLift(st, L);
       if (discoverLift(st, L)) {
         this.liftFound(L);
         if (L.id[0] === 's' && !this.deep.stations.includes(+L.id.slice(1))) this.deep.stations.push(+L.id.slice(1));
