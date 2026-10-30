@@ -2579,3 +2579,30 @@ arrive / woke / behind), `paths-single/` (the single-file build from file://); `
 the discarded wave-4 house in `discarded-house/`.
 
 **Also seen** (not mine): the lift panel's map (`src/fps/liftPanel.js`) still draws the old house's rooms.
+
+## Wave 5: grid inventory, voxel scale, lift diorama (the user's ask, and who owns what)
+
+The user's words: "Make the chicken hut more open, have no head, and look old and small. The inventory system:
+make it a realistic grid space you need to put and rotate ores in. Remake the house, make it even better, more
+ruined and old; add real cloth physics at the door (there is something I think is supposed to be a cloth). Make
+the tutorial better, cooler. Make the voxels based on size: I hate that big monsters have a low voxel count and
+small things are detailed. All props have collision. Enemies harder to fight, really dangerous. Show an
+inventory bar like Minecraft, 5 slots. Make you forge your pickaxe first in the tutorial. The elevator: when
+clicked, show a full 3D mini cave scene with fog in locked areas; you need to unlock a checkpoint for the
+elevator first; make the mini cave super good, polished and detailed like the minimap. Make the cave more
+realistic and cool too."
+
+| Part | Owns |
+|---|---|
+| **Grid inventory + hotbar** | `src/core/inventory.js` (+ weight.js as needed), `src/ui/Backpack.js`, `invGrid.js`, `invArt.js`, backpack css, the hotbar (`src/ui/Belt.js`, the hotbar in `DigScene.js`: `SLOTS`, `selectSlot`, `updateHotbar` only), coop shelves and the home trunk as grids too |
+| **Coop model** | `src/gfx/char/coop.js`, `coopGear.js` (+ the journey's use of it) |
+| **Camp + cloth** | `src/home/*` (camp content), `src/scenes/HomeScene.js` structure, a reusable cloth sim `src/gfx/cloth.js`, collision for every camp prop |
+| **Tutorial** | `src/home/lessons.js`, `wake.js`, `src/deep/Prologue.js`, `src/forge/tutorial.js`, `src/cooking/lesson.js`, `src/ui/Onboard.js`; forging your first pickaxe (a pickaxe run in `src/forge/*`) |
+| **Creatures: voxel scale + danger** | `src/deep/Enemies.js`, `src/deep/enemies/*` (models at one voxel size for all creatures, bigger = more voxels), combat difficulty |
+| **Lift diorama + checkpoints** | `src/fps/lifts.js`, `src/fps/liftPanel.js` (replaced by a 3D mini-cave diorama), lift unlocking (checkpoints) in `src/deep/gen/lifts.js` + `ruins/liftKit.js` |
+| **Realistic caves + prop collision** | `src/deep/Generator.js` cave shapes/decorate, `TerrainMaterial.js` tweaks, `src/deep/Props.js` + `props/*` (collision for every prop), town props' collision (`src/town/*`) |
+| **Lead** | `DigScene.js` (except the hotbar bits), `World.js`, `Terrain.js`, `scripts/e2e.mjs`, integration |
+
+Rules as in wave 4 (no git; build passes; keep debug hooks and the e2e flow working, `E2E_UNTIL`; phones;
+performance; screenshots in `shots/<part>/`; an "As built" section here; unique scratchpad file names; don't
+edit another part's files except small marked hooks).
