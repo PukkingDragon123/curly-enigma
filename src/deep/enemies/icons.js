@@ -17,11 +17,11 @@ import { buildWraith } from './wraith.js';
 import { buildDrake } from './drake.js';
 import { buildRaptor, buildTyrant, buildShellback, buildPtero } from './dinos.js';
 
-const vox = (geo, ox = 0, oy = 0, oz = 0, mirror = false) => ({ v: geo?.userData?.vox || [], o: [ox, oy, oz], mirror });
+const vox = (geo, ox = 0, oy = 0, oz = 0, mirror = false) => ({ v: geo?.userData?.cvox || geo?.userData?.vox || [], o: [ox, oy, oz], mirror });
 /** A part turned about its own origin (rz around z, then rx around x, ry around y) before it's placed. */
 const rvox = (geo, ox, oy, oz, rz = 0, rx = 0, ry = 0, mirror = false) => {
   const cz = Math.cos(rz), sz = Math.sin(rz), cx = Math.cos(rx), sx = Math.sin(rx), cy = Math.cos(ry), sy = Math.sin(ry);
-  const v = (geo?.userData?.vox || []).map(({ x, y, z, c }) => {
+  const v = (geo?.userData?.cvox || geo?.userData?.vox || []).map(({ x, y, z, c }) => {
     let X = x * cz - y * sz, Y = x * sz + y * cz, Z = z;
     const Y2 = Y * cx - Z * sx; Z = Y * sx + Z * cx; Y = Y2;
     const X2 = X * cy + Z * sy; Z = -X * sy + Z * cy; X = X2;

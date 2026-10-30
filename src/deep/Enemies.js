@@ -45,6 +45,12 @@ import { critterIconURL } from '../gfx/critters32.js';
 // creature toughness tracks the pick you'd expect at that depth; damage scales with depth
 const ZONE_POWER = [1, 1, 1.4, 2.1, 2.8, 3.6, 4.8];
 const DMG = [1, 1, 1.25, 1.55, 1.9, 2.3, 2.7];
+/**
+ * How dangerous the underground is: the creatures hit this much harder, take this much more to put
+ * down, and once they're onto you (awake and hunting) they move, wind up and strike this much
+ * faster. A frontal brawl with anything big costs real energy; read the tells, block, parry.
+ */
+export const DANGER = { dmg: 1.7, hp: 1.4, haste: 1.18, invuln: 0.35 };
 const MAX_ALIVE = 13;
 const INTRO = {
   pebble_mimic: 'That rock just blinked! A <b>Pebble Mimic</b>. Give it a whack with your pick.',
@@ -166,7 +172,7 @@ export class Enemies {
   hpScale(zone) {
     const pick = this.state.equipped?.('pick');
     const p = pick?.power || 1;
-    return clamp(ZONE_POWER[zone] || 1, p * 0.8, p * 1.3);
+    return clamp(ZONE_POWER[zone] || 1, p * 0.8, p * 1.3) * DANGER.hp;
   }
   near(e, r) { return (e.dist ?? 99) < r; }
 
@@ -213,7 +219,8 @@ export class Enemies {
       if (e.dist > 18 && !e.awake && (e.skipT = (e.skipT || 0) + dt) < 0.12) continue;
       const edt = e.skipT > 0 && e.dist > 18 && !e.awake ? Math.min(0.12, e.skipT) : dt;
       e.skipT = 0;
-      e.update(edt);
+      // (hunting: everything it does comes faster)
+      e.update(e.awake && !e.passive && e.stunT <= 0 && e.dist < 14 ? edt * DANGER.haste : edt);
       // creatures never wander into the burrow, the town, a lift station or a trader's burrow
       if (this.excluded(e.pos.x, e.pos.y, e.pos.z, 0.5) && !this.excluded(px, py, pz, 0.5)) { e.pos.set(px, py, pz); e.vel.x *= -0.5; e.vel.z *= -0.5; }
       // lava burns all but the fire folk
@@ -439,10 +446,10 @@ export class Enemies {
    */
   hurtPlayer(src, base, push, kind, o = {}) {
     if (this.safe || this.invuln > 0) return false;
-    let n = base * this.dmgScale(src.zone || this.zone, src.pos?.y);
+    let n = base * this.dmgScale(src.zone || this.zone, src.pos?.y) * DANGER.dmg;
     if ((kind === 'fire' || src.info?.fire) && this.state.protects?.('heat')) n *= 0.5;
     n = Math.max(1, Math.round(n));
-    this.invuln = 0.5;
+    this.invuln = DANGER.invuln;
     const ev = this.combat.incoming(src, n, push || [0, 0, 0], kind || 'enemy', o);
     if (ev.parried) this.invuln = 0.3;
     return !ev.blocked;
@@ -660,10 +667,11 @@ export class Enemies {
   }
 
   /** World positions (and colors) of a mesh's voxels: [x, y, z, c, …]. */
-  voxPoints(o, vox, pts = []) {
+  voxPoints(o, vox, pts = [], coarse = false) {
     const ud = o.geometry.userData;
-    const [px, py, pz] = ud.pivot || [0, 0, 0];
-    const vs = ud.vs || VS;
+    // (coarse: the voxels are in the model's own coordinates, before it was refined: vox.js)
+    const [px, py, pz] = (coarse && ud.cpivot) || ud.pivot || [0, 0, 0];
+    const vs = (ud.vs || VS) * (coarse && ud.ck ? ud.ck : 1);
     const me = o.matrixWorld.elements;
     for (const v of vox) {
       const lx = (v.x + 0.5 - px) * vs, ly = (v.y + 0.5 - py) * vs, lz = (v.z + 0.5 - pz) * vs;
@@ -690,8 +698,8 @@ export class Enemies {
     const n = pts.length / 4;
     if (!n) return;
     const big = e.kind === 'crystal_golem' || e.size > 1.6;
-    // big creatures crumble into coarser blocks (2×2×2 model voxels): cheaper and chunkier
-    const step = (n > 700 ? 2 : 1) * vs * Math.max(1, e.size || 1);
+    // big creatures crumble into coarser blocks (a few voxels a side): cheaper and chunkier
+    const step = vs * Math.max(1, Math.sqrt(n / 700)) * Math.max(1, e.size || 1);
     const glow = !!e.info.glowBits || e.kind === 'crystal_wyrm' || e.kind === 'ember_imp' || e.kind === 'gloom_wisp';
     this.burst(pts, step, big ? 16 : e.kind === 'rubble_golem' ? 10 : 6, {
       center: e.center, dir, glow,
@@ -713,11 +721,13 @@ export class Enemies {
   chunk(mesh, vox, o = {}) {
     if (!vox.length) return;
     mesh.updateMatrixWorld(true);
-    const pts = this.voxPoints(mesh, vox);
+    // (callers pick these by model coordinates: the coarse voxels)
+    const ud = mesh.geometry.userData;
+    const pts = this.voxPoints(mesh, vox, [], !!ud.ck);
     let mx = 0, my = 0, mz = 0;
     for (let i = 0; i < pts.length; i += 4) { mx += pts[i]; my += pts[i + 1]; mz += pts[i + 2]; }
     const n = pts.length / 4;
-    const step = o.step || (mesh.geometry.userData.vs || VS) * mesh.matrixWorld.getMaxScaleOnAxis(); // voxel spacing in the world
+    const step = o.step || (ud.vs || VS) * (ud.ck || 1) * mesh.matrixWorld.getMaxScaleOnAxis(); // voxel spacing in the world
     this.burst(pts, step, o.K || 1, { center: { x: mx / n, y: my / n, z: mz / n }, dir: { x: 0, y: 0, z: 0 }, ...o });
   }
 

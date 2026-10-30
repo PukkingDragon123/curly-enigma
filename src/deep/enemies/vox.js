@@ -6,7 +6,14 @@ import * as THREE from 'three';
 import { h3 } from '../noise.js';
 import { clamp } from '../../core/util.js';
 
-export const VS = 1 / 24; // meters per creature voxel (terrain voxels are 1/8 m)
+export const VS = 1 / 24; // meters per creature voxel as modelled (terrain voxels are 1/8 m)
+/**
+ * Every creature is meshed at about this voxel size, whatever it was modelled at: a model drawn in
+ * coarse voxels (a troll at 1/20 m, a tyrant at 1/16) is refined k× when it's meshed (refine()),
+ * its silhouette smoothed from the coarse shape, so a big monster has far more voxels than a small
+ * one and none of them look blockier than a kobold.
+ */
+export const FINE = 1 / 40;
 
 const key = (x, y, z) => (x + 128) | ((y + 128) << 8) | ((z + 128) << 16);
 
@@ -133,6 +140,22 @@ export class VB {
    * voxels) that becomes the mesh origin. Returns the geometry with userData { vox, pivot, vs } for debris.
    */
   geo(px = 0, py = 0, pz = 0, vs = VS) {
+    // refined to the shared voxel size (FINE): k × finer, the pivot and voxel size with it
+    let k = Math.max(1, Math.round(vs / FINE));
+    if (k > 1 && this.v.size) {
+      let lo = 0, hi = 0;
+      for (const kk of this.v.keys()) { const a = Math.min(kk & 255, (kk >> 8) & 255, (kk >> 16) & 255) - 128, b = Math.max(kk & 255, (kk >> 8) & 255, (kk >> 16) & 255) - 128; if (a < lo) lo = a; if (b > hi) hi = b; }
+      while (k > 1 && Math.max(-lo, hi + 1) * k > 124) k--;
+      // (at most 2×: a refined part's surface grows k², and every voxel face is triangles on screen)
+      k = Math.min(k, 2);
+    }
+    if (k > 1) {
+      // (the coarse voxels stay on it too: code that picks voxels by model coordinates uses them)
+      const cl = this.list();
+      const g = refine(this, k).geo(px * k, py * k, pz * k, vs / k);
+      g.userData.cvox = cl; g.userData.cpivot = [px, py, pz]; g.userData.ck = k;
+      return g;
+    }
     let x0 = 1e9, y0 = 1e9, z0 = 1e9, x1 = -1e9, y1 = -1e9, z1 = -1e9;
     const L = this.list();
     for (const v of L) {
@@ -147,6 +170,59 @@ export class VB {
     geo.userData.vs = vs;
     return geo;
   }
+}
+
+/**
+ * A model k× finer (k ≥ 2): each voxel becomes k³, and the silhouette is smoothed from the coarse
+ * occupancy (trilinear, so flat faces stay where they were and edges and corners round off). Thin
+ * bits (teeth, claws, horns, a single voxel's eye) are chamfered, never lost; colors come from the
+ * coarse voxel (flat, so the greedy mesher still merges faces). The result is hollowed.
+ */
+export function refine(src, k) {
+  let x0 = 255, y0 = 255, z0 = 255, x1 = 0, y1 = 0, z1 = 0;
+  for (const kk of src.v.keys()) {
+    const x = kk & 255, y = (kk >> 8) & 255, z = (kk >> 16) & 255;
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z;
+  }
+  const out = new VB(src.seed);
+  if (x1 < x0) return out;
+  // the coarse model in a typed grid padded by 1 (colors + 1, 0 = empty)
+  const SX = x1 - x0 + 3, SY = y1 - y0 + 3, SZ = z1 - z0 + 3, SXY = SX * SY;
+  const g = new Int32Array(SXY * SZ);
+  for (const [kk, c] of src.v) g[((kk & 255) - x0 + 1) + SX * (((kk >> 8) & 255) - y0 + 1) + SXY * (((kk >> 16) & 255) - z0 + 1)] = (c & 0xffffff) + 1;
+  const at = (x, y, z) => (x < 0 || y < 0 || z < 0 || x >= SX || y >= SY || z >= SZ ? 0 : g[x + SX * y + SXY * z]);
+  const nb = new Uint8Array(g.length); // occupied face neighbours per coarse cell
+  for (let z = 1; z < SZ - 1; z++) for (let y = 1; y < SY - 1; y++) for (let x = 1; x < SX - 1; x++) {
+    const i = x + SX * y + SXY * z;
+    if (!g[i]) continue;
+    nb[i] = (g[i + 1] ? 1 : 0) + (g[i - 1] ? 1 : 0) + (g[i + SX] ? 1 : 0) + (g[i - SX] ? 1 : 0) + (g[i + SXY] ? 1 : 0) + (g[i - SXY] ? 1 : 0);
+  }
+  const ox = (x0 - 128 - 1) * k, oy = (y0 - 128 - 1) * k, oz = (z0 - 128 - 1) * k;
+  for (let fz = 0; fz < SZ * k; fz++) for (let fy = 0; fy < SY * k; fy++) for (let fx = 0; fx < SX * k; fx++) {
+    // the fine voxel's centre in coarse cell-centre coordinates
+    const cx = (fx + 0.5) / k - 0.5, cy = (fy + 0.5) / k - 0.5, cz = (fz + 0.5) / k - 0.5;
+    const ix = Math.floor(cx), iy = Math.floor(cy), iz = Math.floor(cz);
+    const tx = cx - ix, ty = cy - iy, tz = cz - iz;
+    const cell = Math.floor(fx / k) + SX * Math.floor(fy / k) + SXY * Math.floor(fz / k);
+    const own = g[cell];
+    // trilinear occupancy round it (and the strongest neighbour's colour)
+    let occ = 0, best = 0, bw = -1;
+    for (let c = 0; c < 8; c++) {
+      const dx = c & 1, dy = (c >> 1) & 1, dz = c >> 2;
+      const v = at(ix + dx, iy + dy, iz + dz);
+      if (!v) continue;
+      const w = (dx ? tx : 1 - tx) * (dy ? ty : 1 - ty) * (dz ? tz : 1 - tz);
+      occ += w;
+      if (w > bw) { bw = w; best = v; }
+    }
+    let fill;
+    if (own) fill = occ >= (nb[cell] <= 3 ? 0.4 : 0.3) || nb[cell] === 0; // (thin bits: chamfered, not lost)
+    else fill = occ >= 0.62;
+    if (!fill) continue;
+    const col = (own || best) - 1;
+    out.set(fx + ox, fy + oy, fz + oz, col);
+  }
+  return out.hollow();
 }
 
 // ------------------------------------------------------------------ colors
