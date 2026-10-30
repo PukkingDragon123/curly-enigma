@@ -66,6 +66,31 @@ await step("waking up in Old Star's house", async () => {
   if (!q.includes('lessons')) throw new Error('the lessons quest did not start: ' + JSON.stringify(q));
   await shot('02c-old-star');
 });
+await step("Old Star's pickaxe lesson (forge your own pick first)", async () => {
+  const st0 = await page.evaluate(() => ({ stage: window.__game.scene.lessonStage(), pick: window.__game.state.equipped('pick')?.id || null }));
+  if (st0.stage !== 'pick') throw new Error('the pickaxe lesson is not first: ' + JSON.stringify(st0));
+  if (st0.pick) throw new Error('a new game starts with a pick already: ' + st0.pick);
+  await go('forge', { from: 'home', tutorial: true, pick: true });
+  await wait(3000);
+  await shot('02d-pick-lesson');
+  const r = await page.evaluate(() => {
+    const sc = window.__game.scene;
+    sc.lesson?.endCine?.();
+    if (sc.activity) sc.endActivity?.();
+    const res = sc.debug.part('pick_first', { give: true });
+    return { res, stage: sc.lesson?.debug?.stage?.(), lesson: window.__game.state.data.oldstar?.lesson, pick: window.__game.state.equipped('pick')?.id || null };
+  });
+  if (r.pick !== 'pick_first' || r.lesson !== 'mine') throw new Error('the pickaxe lesson did not give a pick: ' + JSON.stringify(r));
+  await shot('02e-pick-made');
+  await go('home', { from: 'forge' });
+  await wait(1500);
+  const ok = await page.evaluate(() => window.__game.scene.debug.run(900, 1 / 30, () => {
+    const t = window.__game.ui.tutor;
+    if (t?.active?.wait) { t.next(); t.next(); }
+    return window.__game.scene.homeTutor?.()?.step === 'follow' || window.__game.scene.homeTutor?.()?.step === 'lift';
+  }).then(() => window.__game.scene.homeTutor?.()));
+  if (!ok) console.log('   (no follow step after the pick: ' + JSON.stringify(ok) + ')');
+});
 await step("Old Star's mining lesson (down the lift and back)", async () => {
   // the cage ride is a scripted animation on scene time: drive it (headless frames are slow)
   await page.evaluate(async () => {

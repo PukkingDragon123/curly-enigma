@@ -8,6 +8,7 @@ import { el, formatGoldFull } from '../core/util.js';
 import { ITEMS } from '../data/items.js';
 import { SMELTING, METALS, WEAPON_TYPES, INFUSIONS, SOCKET_GEMS, FORGE_MAX_TEMP, weaponValue, GRADES } from '../data/weapons.js';
 import { COOP_PARTS } from '../data/coopParts.js';
+import { pieceOf } from '../data/coopParts.js';
 import { COOP_UP, COOP_TRACKS, coopLevels } from '../core/weight.js';
 import { iconURL, weaponIconURL } from '../gfx/PixelArt.js';
 import { qColor } from '../ui/UI.js';
@@ -430,7 +431,7 @@ export class Menus {
 
   /** Start forging a part (false when it can't be made right now). */
   startPart(id) {
-    const s = COOP_PARTS[id] ? partStatus(this.state, id) : null;
+    const s = pieceOf(id) ? partStatus(this.state, id) : null;
     if (!s || !s.ok) { this.game.audio.play('ui_error'); return false; }
     this.game.audio.play('place');
     const run = new PartRun(this.scene, id);

@@ -472,7 +472,8 @@ export default class DigScene extends Scene {
   strike() {
     const st = this.state, hit = this.target;
     const it = st.equipped('pick');
-    const power = (it?.power || 1) * (st.hasBuff('strong') ? 1.3 : 1) * this.bonus('power');
+    const tq = it && st.data.toolQ?.[it.id]; // a tool you forged yourself: how well you made it
+    const power = (it?.power || 1) * (typeof tq === 'number' ? 0.85 + 0.3 * tq / 100 : 1) * (st.hasBuff('strong') ? 1.3 : 1) * this.bonus('power');
     if (this.enemies && it) {
       const eye = this.player.eye(), f = this.player.forward();
       const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;

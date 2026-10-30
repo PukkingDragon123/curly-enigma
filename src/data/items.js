@@ -167,6 +167,7 @@ export const ITEMS = {
   hearty_pie: { name: 'Hearty Pie', cat: 'food', value: 40, price: 95, energy: 60, icon: { k: 'food', t: 'pie' }, desc: 'Hazel\'s famous pie. Worth every coin.' },
 
   // ───────────── Tools ─────────────
+  pick_first: { name: 'Your First Pickaxe', cat: 'tool', slot: 'pick', tier: 1, power: 1.1, rate: 0.34, value: 20, icon: { k: 'tool', t: 'pick', c: 0xc87840 }, desc: 'A copper pick head on an ash haft: you forged it yourself at Old Star\'s forge. How well you made it shows in every swing.' },
   pick_rusty: { name: 'Rusty Pickaxe', cat: 'tool', slot: 'pick', tier: 1, power: 1.0, rate: 0.36, value: 5, icon: { k: 'tool', t: 'pick', c: 0x8a6a52 },
     desc: 'Your old pick. Bites dirt and soft stone.' },
   pick_copper: { name: 'Copper Pickaxe', cat: 'tool', slot: 'pick', tier: 2, power: 1.5, rate: 0.33, price: 260, value: 80, icon: { k: 'tool', t: 'pick', c: 0xd9773f },

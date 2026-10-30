@@ -123,7 +123,7 @@ export default class ForgeScene extends Scene {
     this.installDebug();
     // Old Star's forging lesson (from home, during his lessons): he talks you through it
     if (params.tutorial === true || params.tutorial === 'true' || params.tutorial === '1' || params.tutorial === 1) {
-      this.lesson = new ForgeLesson(this);
+      this.lesson = new ForgeLesson(this, { pick: params.pick === true || params.pick === 'true' || params.pick === '1' || params.pick === 1 });
       this.own(() => this.lesson?.dispose());
       this.lesson.start();
     }

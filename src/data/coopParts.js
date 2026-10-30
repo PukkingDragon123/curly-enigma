@@ -45,3 +45,14 @@ export function partItems() {
   }
   return out;
 }
+
+/**
+ * Forge pieces that aren't coop parts: they share the parts' forging run (heat, hammer, quench) but
+ * become something else when done. Your first pickaxe (Old Star's first lesson) is one.
+ *   FORGE_PIECES[id] = { ...like a coop part, gives: item id handed over and equipped }
+ */
+export const FORGE_PIECES = {
+  pick_first: { name: 'Your First Pickaxe', track: 'tool', level: 1, metal: 'copper', ingots: { copper_ingot: 2 }, strikes: 6, kg: 1.4, value: 20, gives: 'pick_first', desc: 'A copper pick head on an ash haft, hammered out at Old Star\'s forge.' },
+};
+/** A coop part or a forge piece. */
+export const pieceOf = (id) => COOP_PARTS[id] || FORGE_PIECES[id];

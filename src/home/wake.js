@@ -468,7 +468,8 @@ export class HomeWake {
     g.quests?.start?.('lessons');
     st.emit('act', { type: 'lesson', step: 'wake' });
     st.emit('act', { type: 'talk', npc: 'oldstar' });
-    this.setLesson('mine');
+    this.setLesson('pick');
+    this.takeStartPick?.();
     st.save();
     if (star?.rig) {
       star.scripted = false;
@@ -489,7 +490,7 @@ export class HomeWake {
     starData(st).woke = true;
     this.game.quests?.start?.('lessons');
     st.emit('act', { type: 'lesson', step: 'wake' });
-    if (this.lessonStage() === 'wake') this.setLesson('mine');
+    if (this.lessonStage() === 'wake') { this.setLesson('pick'); this.takeStartPick?.(); }
     if (this.wakeCut) { this.wakeCut.on = true; this.wakeCut.fire?.(); }
     if (this.wakeFx) { this.wakeFx.open = 1; this.wakeFx.blur = 0; }
     this.wakeMuff?.dispose();

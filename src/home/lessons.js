@@ -7,6 +7,10 @@
 //            on a PC) → ride down (E). You're held to the way there by a soft funnel (wander more than
 //            a few steps off it and you're put back, he calls you back), the camera eases round to
 //            what matters when you've lost it, and only what the lesson needs can be used.
+//   pick   → you fell down here with nothing: no pick, no digging. After his talk you follow him
+//            to his forge and make your own (forge { from: 'home', tutorial: true, pick: true }:
+//            the forge piece pick_first, src/forge/tutorial.js); you come back with it on your belt
+//            and he walks you to the cage lift
 //   mine   → the cage goes straight to his practice dig (deep { from: 'lift', lift: 'L0', lesson:
 //            'mine' }; deep/Prologue.js teaches there)
 //   forge  → back with copper: a cutscene (he sniffs it, gives you coal), then to his forge
@@ -38,6 +42,7 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /** What he says the next step is, per stage. */
 const NEXT = {
+  pick: { text: 'No pick, no digging, and you\'re not borrowing mine: it knows my paws. Over to my <b>forge</b>: we\'ll make you your own. E on the forge.', mood: 'stern', where: 'anvil' },
   mine: { text: 'First lesson: mining. That rusty old cage in the rock shaft goes straight down to my practice dig. Bring me back some <b>copper ore</b>: the orange specks in the rock.', mood: 'calm', where: 'lift' },
   forge: { text: 'Copper\'s no good as rock. Over to my <b>forge</b>: we\'ll melt it into an ingot and hammer you out a blade. E on the forge.', mood: 'happy', where: 'anvil' },
   cook: { text: 'A smith who doesn\'t eat is a skeleton with a hammer. To the <b>fire pit</b> with you: the kettle\'s on, let\'s cook something. E at the fire.', mood: 'happy', where: 'fire' },
@@ -114,7 +119,8 @@ export class HomeLessons {
     const stage = sd.lesson;
     sd.skipped = true;
     const gifts = [];
-    if (stage === 'mine' || stage === 'wake') { st.addItem('copper_ingot', { spill: true, q: 70, n: 1 }); gifts.push('copper_ingot'); }
+    if ((stage === 'pick' || stage === 'wake') && !st.equipped('pick')) this.givePick(60);
+    if (stage === 'mine' || stage === 'wake' || stage === 'pick') { st.addItem('copper_ingot', { spill: true, q: 70, n: 1 }); gifts.push('copper_ingot'); }
     if (st.count('coal') < 3) { st.addItem('coal', { spill: true, n: 3 }); gifts.push('coal'); }
     if (stage !== 'done') { st.addItem('mushroom', { spill: true, n: 2 }); }
     this.setLesson('done');
@@ -131,6 +137,24 @@ export class HomeLessons {
       this.starLine('A know-it-all, eh? Fine by me. Off you go and earn that million: the lift goes down, the coins come up. And come home to sleep.', { mood: 'laugh' });
     }
     st.save();
+  }
+
+  /** A new game: you fell down here with nothing. Your first pick is the one you forge (stage 'pick'). */
+  takeStartPick() {
+    const st = this.game.state, d = st.data;
+    if (d.equip?.pick !== 'pick_rusty' || d.owned?.pick_first) return;
+    delete d.owned.pick_rusty;
+    d.equip.pick = null;
+    st.dirty = true;
+  }
+
+  /** Your first pick in your paw (the forge lesson makes it; a skip hands one over). */
+  givePick(q = 60) {
+    const st = this.game.state, d = st.data;
+    d.owned.pick_first = 1;
+    d.toolQ = { ...(d.toolQ || {}), pick_first: d.toolQ?.pick_first ?? q };
+    st.equip?.('pick_first');
+    st.dirty = true;
   }
 
   /** Riding the lift down during the mining lesson. */
@@ -217,6 +241,24 @@ export class HomeLessons {
         this.starLine('Back already? No copper? It\'s in my practice dig, the orange specks in the rock. Back down you go: the cage will take you.', { mood: 'stern' });
         this.startHomeTutor('lift');
       }
+      return;
+    }
+    if (stage === 'pick' && from === 'forge') {
+      this.starLine('No pick yet? You can\'t dig with your nose. Well, I can. Back to the forge with you.', { mood: 'stern' });
+      this.placeStarForLesson();
+      this.startHomeTutor('forgeGo');
+      return;
+    }
+    if (stage === 'mine' && from === 'forge') {
+      // back with the pick you forged: he admires it, then walks you to the cage
+      const q = st.data.toolQ?.pick_first ?? 60;
+      this.endHomeTutor();
+      await this.cutscene(async ({ line }) => {
+        star.gesture(q >= 70 ? 'cheer' : 'point', 1.6);
+        await line(q >= 80 ? 'Look at that edge! First pick you ever made, and it\'d shame half of Deep Town\'s.' : q >= 55 ? 'A proper pick. Bit lumpy on the cheek, but it\'ll bite rock. That\'s what counts.' : 'Well, it\'s more or less pick-shaped. It\'ll dig. Make a better one when you\'re rich.', q >= 70 ? 'proud' : 'laugh');
+        await line('Now, the lesson I meant to start with: <b>mining</b>. That rusty old cage goes straight down to my practice dig. Bring me some <b>copper ore</b>. Follow me!', 'happy');
+      });
+      if (this.lessonStage() === 'mine') this.startHomeTutor('follow');
       return;
     }
     if (stage === 'forge' && from === 'forge') {
@@ -570,6 +612,19 @@ export class HomeLessons {
     if (this.tut !== t) return;
     t.mark?.remove?.();
     t.mark = null;
+    if (this.lessonStage() === 'pick') {
+      await this.cutscene(async ({ line }) => {
+        star?.gesture?.('point', 2);
+        await line('A miner, you say? Then where\'s your <b>pick</b>? Lost in the fall, I\'d guess. No pick, no digging.', 'stern');
+        await line('And you\'re not having mine: it knows my paws. So your first lesson is the <b>forge</b>. We\'ll make you your own. Come on!', 'happy');
+      });
+      if (this.tut !== t) return;
+      t.busy = false;
+      ob?.setLevel(TUT.QUEST); // your first task: the quest strip comes in
+      this.placeStarForLesson();
+      this.startHomeTutor('forgeGo');
+      return;
+    }
     await this.cutscene(async ({ line }) => {
       star?.gesture?.('point', 2);
       await line('First lesson: <b>mining</b>. See that rusty old cage in the rock shaft? It goes straight down to my practice dig.', 'calm');
@@ -589,7 +644,12 @@ export class HomeLessons {
     const from = this.from, stage = this.lessonStage();
     if (from === 'fall' || from === 'newgame' || from === 'lift' || from === 'forge' || from === 'cooking' || from === 'stove') return; // the arrival has its own
     const ob = this.game.ui.onboard;
-    if (stage === 'mine' && !this.game.state.flag('prologue')) {
+    if (stage === 'pick') {
+      const h = ob?.data?.home;
+      if (h === 'look' || h === 'walk') this.startHomeTutor('look');
+      else if (h === 'talk') this.startHomeTutor('walk');
+      else { this.placeStarForLesson(); this.startHomeTutor('forgeGo'); }
+    } else if (stage === 'mine' && !this.game.state.flag('prologue')) {
       const h = ob?.data?.home;
       if (h === 'look' || h === 'walk') this.startHomeTutor('look');
       else if (h === 'talk') this.startHomeTutor('walk');

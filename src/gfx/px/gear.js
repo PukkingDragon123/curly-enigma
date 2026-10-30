@@ -67,6 +67,7 @@ function sweep(spine, wid, n = 60) {
 // ---------------------------------------------------------------- pickaxes
 const PICK_TIER = {
   pick_rusty: { head: 0x7a6c62, cont: 0.95, rust: true, handle: 'old', wrap: 0xb89a6a },
+  pick_first: { head: 0xc87840, cont: 1.05, handle: 'old', wrap: 0x8a5a34 },
   pick_copper: { head: 0xd4703a, cont: 1.15, handle: 'plain' },
   pick_iron: { head: 0x868c96, cont: 1.1, handle: 'plain', wrap: 0x6a4428 },
   pick_steel: { head: 0xa8b8c8, cont: 1.35, handle: 'dark', wrap: 0x5a3420, collar: 0xc8a050 },

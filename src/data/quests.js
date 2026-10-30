@@ -90,6 +90,7 @@ export const QUESTS = {
     outro: 'That\'s all I know, more or less. The rest is a million gold and a great deal of digging. Off you go.',
     steps: [
       { id: 'wake', text: 'Get up and meet Old Star', hint: 'The old star-nosed mole poking at the bedroom fire. He\'s been waiting for you to wake up.', lesson: 'wake', on: { type: 'talk', npc: 'oldstar' } },
+      { id: 'pick', text: 'Forge your own pickaxe at his forge', hint: 'No pick, no digging. Heat the copper, hammer the head to shape, quench it. Old Star talks you through it.', lesson: 'pick_done', on: { type: 'lesson', step: 'pick_done' }, where: { place: 'home' } },
       { id: 'lift', text: 'Ride the cage lift down to his dig', hint: 'The cage lift in his hall. "Mind the gate," he says. He always says.', lesson: ['lift', 'dig'], on: [{ type: 'reach', place: 'dig' }, { type: 'reach', place: 'lift:L0' }], where: { place: 'dig' } },
       { id: 'rock', text: 'Dig through the rock', hint: 'Swing at the wall. Rock is patient. Be less patient.', lesson: 'mine_rock', where: { place: 'dig' } },
       { id: 'ore', text: 'Dig round the copper till it breaks free', hint: 'Never hit the ore. Dig the earth round it and it comes away on its own, wrapped in its rock.', lesson: 'mine_ore', on: { type: 'ore', id: 'copper_ore' }, where: { place: 'dig' } },

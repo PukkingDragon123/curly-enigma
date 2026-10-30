@@ -185,6 +185,15 @@ function bracket(S, z, o = {}) {
 }
 
 const SHAPES = {
+  // your first pickaxe: a curved head (a point one end, a chisel the other) round an eye, an ash haft set in at the end
+  pick_first(S) {
+    const head = [];
+    for (let i = 0; i <= 24; i++) { const t = i / 24, x = -14 + t * 28, y = 10 - 0.03 * x * x; head.push([x, y, 0]); }
+    sweep(S, head, C3x2, { taper: (t) => 0.45 + 0.55 * Math.sin(Math.PI * Math.min(1, t * 1.1)) ** 0.5, tone: (t) => (t < 0.08 || t > 0.94 ? 1 : 0) });
+    sweep(S, [[-2, 8, 0], [2, 8, 0]], C2x2, { tone: 2 }); // the eye's cheeks
+    for (let y = -16; y <= 7; y++) for (const [x, z] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) late(S, x, y, z, (y + x) % 5 === 0 ? 0x7a5432 : y < -12 ? 0x5a3a22 : 0x9a6a42);
+    for (let y = -14; y <= -10; y++) for (const [x, z] of [[1, 0], [-2, 0], [0, 1], [0, -2], [1, -1], [-2, -1], [-1, 1], [-1, -2]]) late(S, x, y, z, 0x4a2a18); // the leather grip
+  },
   shelf_copper(S) { bracket(S, 0, { lip: true }); },
   shelf_bronze(S) { bracket(S, 0, { scroll: true, w: 17 }); },
   shelf_iron(S) {

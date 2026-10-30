@@ -7,6 +7,10 @@
 // moves state.data.oldstar.lesson on to 'cook' and sends you home to his hearth.
 // The scene calls event(name, data) from the activities ('step', 'strike', 'melt', 'ingot',
 // 'result') and update(dt) every frame; its debug: scene.lesson.debug.
+// The pickaxe lesson (forge { ..., pick: true }, stage 'pick'): before any mining, you forge your own
+// pick (the forge piece pick_first: heat, hammer, quench; src/forge/parts.js). He gives the copper;
+// the piece's 'piece' event emits lesson { step: 'pick_done' }, moves the lesson on to 'mine' and
+// sends you home (where he walks you to the lift).
 // The cinematic tutorial (src/ui/Onboard.js): it opens as a cutscene (letterbox, his first line
 // through the cutscene talk when there is one, a hold skips it), and each new control gets a prompt
 // card drawn for the device (the mouse and Space on a PC, the big button on a touch screen): pick
@@ -18,8 +22,9 @@ const starMods = import.meta.glob('../gfx/char/starmole.js');
 const _v = new THREE.Vector3();
 
 export class ForgeLesson {
-  constructor(scene) {
+  constructor(scene, o = {}) {
     this.sc = scene;
+    this.pick = !!o.pick;
     this.g = scene.game;
     this.st = scene.game.state;
     this.stage = 'intro';
@@ -77,6 +82,7 @@ export class ForgeLesson {
 
   async start() {
     const st = this.st;
+    if (this.pick) return this.startPick();
     // enough to learn with
     if (st.count('copper_ingot') < 1 && st.count('copper_ore') < 2) st.addItem('copper_ore', { spill: true, q: 70, n: 2 - st.count('copper_ore') });
     if (st.count('coal') < 1) st.addItem('coal', { spill: true, n: 3 });
@@ -98,6 +104,27 @@ export class ForgeLesson {
     this.sc.menus.smeltList();
     this.say('Pick <b>Copper Ingot</b> in the list and press <b>Smelt</b>.', 'calm', { key: 'step', dur: Infinity });
     this.teach('click', { title: 'Smelt your copper', subPc: '<b>Click</b> Copper Ingot, then <b>Smelt</b>', subT: '<b>Tap</b> Copper Ingot, then <b>Smelt</b>', done: () => this.stage !== 'smeltMenu' });
+  }
+
+  /** The pickaxe lesson: his copper, a short cutscene, then the pick head on the forge. */
+  async startPick() {
+    const st = this.st;
+    if (st.count('copper_ingot') < 2) st.addItem('copper_ingot', { spill: true, q: 80, n: 2 - st.count('copper_ingot') });
+    st.data.energy = Math.max(st.data.energy || 0, 60);
+    await this.loadStar();
+    this.sc.dock?.('here');
+    const ob = this.ui.onboard;
+    this.cine = { cut: false };
+    ob?.cinema(true, { skip: () => this.endCine() });
+    await this.say('My forge! Mind the sparks, they bite. Here: <b>two copper ingots</b> I put by. A pick head wants both.', 'proud', { wait: true });
+    if (this.cine && !this.cine.cut && this.sc.game.scene === this.sc && !this.sc.activity) await this.say('Heat it, hammer it into a curve, cool it off. Your own pick, made by your own paws. Nothing digs better.', 'happy', { wait: true });
+    this.endCine();
+    if (this.sc.game.scene !== this.sc || this.stage !== 'intro') return;
+    this.stage = 'pick';
+    if (!this.sc.activity && !this.sc.menus.startPart('pick_first')) {
+      // (can't be made: say why, and let you try again from the menu)
+      this.say('Hm. Something\'s not right with the fire. Try the <b>Coop parts</b> page of the forge book.', 'worried', { dur: 5 });
+    }
   }
 
   /** Old Star himself, standing by the hearth, watching you work. */
@@ -123,6 +150,25 @@ export class ForgeLesson {
   // ------------------------------------------------------------ events from the activities
   event(name, d) {
     const sc = this.sc;
+    if (name === 'pstep') { this.pickStep(d.step, d.run); return; }
+    if (name === 'piece') {
+      this.stage = 'done';
+      const sd = this.st.data.oldstar ||= {};
+      if (!sd.lesson || sd.lesson === 'pick' || sd.lesson === 'wake') sd.lesson = 'mine';
+      this.act('pick_done');
+      this.st.dirty = true;
+      this.st.save?.();
+      this.ui.tutor?.hide('step');
+      this.untaught();
+      const g = d.grade?.g || 'C';
+      this.later(1.6, () => {
+        this.say(g === 'S' || g === 'A' ? 'Now <b>that</b> is a pick. I\'d trade you mine for it, if mine didn\'t know my paws.' : g === 'B' || g === 'C' ? 'A good honest pick. It\'ll bite rock. Your granny would hang it over the fire.' : 'It\'s... pick-ish. It\'ll dig. You\'ll make a better one when you\'re rich.', g === 'F' || g === 'D' ? 'laugh' : 'proud', { dur: 6 });
+        this.star?.rig?.play?.(g === 'F' || g === 'D' ? 'laugh' : 'cheer');
+      });
+      this.later(7.4, () => this.say('Hang it on your belt. Now come on: the cage lift. Time you dug something.', 'happy', { key: 'step', dur: Infinity }));
+      this.stage = 'leave';
+      return;
+    }
     if (name === 'melt') {
       const a = d.acc;
       if (a >= 0.9) this.say('Ha! A <b>perfect</b> melt. Are you sure you\'ve never done this before?', 'laugh', { dur: 4 });
@@ -200,6 +246,28 @@ export class ForgeLesson {
     else if (step === 'grind') this.teach('hold', { title: 'Grind the edge', subPc: '<b>Hold</b> it to the wheel, steady', subT: '<b>Hold</b> it to the wheel, steady', done: () => !live() });
     else if (step === 'balance') this.teach('drag', { title: 'Balance it', subPc: '<b>Drag</b> the slider till the blade sits level', subT: '<b>Drag</b> the slider till the blade sits level', done: () => !live() });
     else if (step === 'quench') this.teach('hold', { title: 'Quench it', subPc: 'Plunge it in the barrel: <kbd>Q</kbd>', subT: 'Tap <b>Plunge</b> in the blue band', done: () => !live() });
+  }
+
+  /** The pick lesson's prompts, one per forging step (heat, hammer, quench). */
+  pickStep(step, run) {
+    const seen = (this.taught ||= new Set());
+    const live = () => this.sc.activity === run && run.step === step;
+    if (step === 'heat') {
+      if (seen.has('p-heat')) { this.remark('reheat', 'Back in the coals. Pump till it glows orange again.', 'calm', 10); return; }
+      seen.add('p-heat');
+      const w = run.sim?.workRange || [550, 880];
+      this.say(`The bar's in the coals. <b>Pump the bellows</b> till it glows: copper works between <b>${Math.round(w[0])}°</b> and <b>${Math.round(w[1])}°</b>.`, 'calm', { key: 'step', dur: Infinity });
+      this.teach('hold', { title: 'Heat the bar', subPc: '<b>Hold</b> the left button (or <kbd>Space</kbd>) to pump', subT: '<b>Hold</b> the big button to pump', spot: this.touchSpot(), progress: () => { const s = run.sim; if (!s?.workRange) return 0; return clamp((s.T - 300) / Math.max(1, s.workRange[0] - 300), 0, 1); }, done: () => !live() });
+    } else if (step === 'hammer') {
+      if (seen.has('p-hammer')) return;
+      seen.add('p-hammer');
+      this.say('Now <b>hammer</b> it into a curve! Hold to raise the hammer, and let go when the swing\'s in the <b>green</b>. The gold strip is a perfect blow.', 'happy', { key: 'step', dur: Infinity });
+      this.teach('hold', { title: 'Hammer the head', subPc: '<b>Hold</b> to raise · <b>let go</b> in the green', subT: '<b>Hold</b> the button · <b>let go</b> in the green', spot: this.touchSpot(), done: () => !live() });
+    } else if (step === 'quench') {
+      if (seen.has('p-quench')) return;
+      seen.add('p-quench');
+      this.say('Into the water barrel while it\'s hot: that sets the edge hard. Mind the steam.', 'stern', { key: 'step', dur: Infinity });
+    }
   }
 
   /** The forge's big touch button (it pumps and strikes), for the paw to point at. */

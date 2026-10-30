@@ -43,7 +43,7 @@ export class WorkshopLife {
       });
     }
     // his forge: the anvil and the forge itself both take you to work
-    const forgeLabel = () => (this.lessonStage?.() === 'forge' ? 'Forge with Old Star' : 'Work the forge');
+    const forgeLabel = () => (this.lessonStage?.() === 'forge' || this.lessonStage?.() === 'pick' ? 'Forge with Old Star' : 'Work the forge');
     this.addIt({ box: [S.forge.x - 0.6, Y, S.forge.z - 0.42, S.forge.x + 0.6, Y + 0.62, S.forge.z + 0.45], label: forgeLabel, action: () => this.useForge() });
     this.addIt({ box: [S.anvil.x - 0.32, Y, S.anvil.z - 0.3, S.anvil.x + 0.32, Y + 0.75, S.anvil.z + 0.3], label: forgeLabel, action: () => this.useForge() });
     this.addIt({ box: [S.bellows.x - 0.48, Y + 0.2, S.bellows.z - 0.26, S.bellows.x + 0.48, Y + 0.75, S.bellows.z + 0.26], label: 'Pump the bellows', action: () => this.pumpBellows() });
@@ -122,11 +122,12 @@ export class WorkshopLife {
   useForge() {
     if (this.scripted) return;
     this.rig.vm?.impact('none', 0.25);
-    const tut = this.lessonStage?.() === 'forge';
-    if (tut) this.prepForgeLesson?.();
+    const stage = this.lessonStage?.();
+    const tut = stage === 'forge' || stage === 'pick';
+    if (stage === 'forge') this.prepForgeLesson?.();
     this.beginScript();
     this.game.audio.play('clunk', { vol: 0.5 });
-    this.game.goto('forge', { from: 'home', ...(tut ? { tutorial: true } : {}) }, { transition: 'iris', dur: 0.5 });
+    this.game.goto('forge', { from: 'home', ...(tut ? { tutorial: true } : {}), ...(stage === 'pick' ? { pick: true } : {}) }, { transition: 'iris', dur: 0.5 });
   }
 
   useHearth() {

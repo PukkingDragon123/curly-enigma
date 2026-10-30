@@ -2,7 +2,7 @@
 // chestDay, wake, wakeDay, cartDay, poolDay, glints, woke }. Filled in on first use (older saves:
 // carried over from the tavern's state.data.tavern; a game already well under way has had its
 // lessons). lesson: 'wake' → 'mine' → 'forge' → 'cook' → 'done'.
-export const LESSONS = ['wake', 'mine', 'forge', 'cook', 'done'];
+export const LESSONS = ['wake', 'pick', 'mine', 'forge', 'cook', 'done'];
 
 export function starData(st) {
   const d = st.data;

@@ -208,7 +208,7 @@ export default class HomeScene extends Scene {
     this.placeGlints();
     if (this.star?.rig) {
       const stage = this.lessonStage();
-      if (stage === 'mine' || stage === 'forge' || stage === 'cook') this.placeStarForLesson(true);
+      if (stage === 'pick' || stage === 'mine' || stage === 'forge' || stage === 'cook') this.placeStarForLesson(true);
       else this.star.placeAt(this.clockHours() >= 21.5 ? 'cot' : pick(['anvil', 'anvil', 'fire', 'armchair', 'bellows', 'board']));
       this.moveStarBox();
     }
@@ -285,7 +285,7 @@ export default class HomeScene extends Scene {
     if (!star?.rig || this.scripted || star.scripted || star.mode === 'sleep') return;
     const stage = this.lessonStage();
     if (stage !== 'done') {
-      const lines = { mine: 'The lift\'s waiting. Down to my dig, and bring me that copper.', forge: 'The forge is hot and the copper\'s cold. Come on, E on the anvil.', cook: 'My stomach\'s rumbling. To the hearth!' };
+      const lines = { pick: 'No pick, no digging. To my forge with you: we\'ll make yours.', mine: 'The lift\'s waiting. Down to my dig, and bring me that copper.', forge: 'The forge is hot and the copper\'s cold. Come on, E on the anvil.', cook: 'My stomach\'s rumbling. To the hearth!' };
       if (lines[stage]) star.say(lines[stage], { mood: 'calm' });
       return;
     }
