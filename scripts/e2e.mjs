@@ -86,7 +86,7 @@ await step("Old Star's pickaxe lesson (forge your own pick first)", async () => 
   await wait(1500);
   const ok = await page.evaluate(() => window.__game.scene.debug.run(900, 1 / 30, () => {
     const t = window.__game.ui.tutor;
-    if (t?.active?.wait) { t.next(); t.next(); }
+    if (t?.active?.wait) { t.next(); t.next(); } if (window.__game.ui.isPanelOpen?.()) window.__game.convo?.next?.(); // (the line may be cutscene talk)
     return window.__game.scene.homeTutor?.()?.step === 'follow' || window.__game.scene.homeTutor?.()?.step === 'lift';
   }).then(() => window.__game.scene.homeTutor?.()));
   if (!ok) console.log('   (no follow step after the pick: ' + JSON.stringify(ok) + ')');
@@ -112,10 +112,13 @@ await step("Old Star's mining lesson (down the lift and back)", async () => {
   // Old Star sniffs the copper and sends you to his forge
   const stage = await page.evaluate(() => window.__game.scene.debug.run(600, 1 / 30, () => {
     const t = window.__game.ui.tutor;
-    if (t?.active?.wait) { t.next(); t.next(); }
+    if (t?.active?.wait) { t.next(); t.next(); } if (window.__game.ui.isPanelOpen?.()) window.__game.convo?.next?.(); // (the line may be cutscene talk)
     return window.__game.scene.lessonStage() === 'forge';
   }).then(() => window.__game.scene.lessonStage()));
-  if (stage !== 'forge') throw new Error('the forge lesson did not come next: ' + stage);
+  if (stage !== 'forge') {
+    const why = await page.evaluate(() => { const s = window.__game.scene, st = window.__game.state; return { copper: st.count('copper_ore'), tut: s.homeTutor?.(), cine: !!s.cine, scripted: !!s.scripted, riding: !!s.riding, star: s.debug.star?.(), line: window.__game.ui.tutor?.active?.html?.slice(0, 80) ?? null, panels: window.__game.ui.isPanelOpen?.(), stack: (window.__game.ui.panelStack || []).map((h) => h.el?.className + '|' + (h.el?.textContent || '').slice(0, 60)) }; });
+    throw new Error('the forge lesson did not come next: ' + stage + ' ' + JSON.stringify(why));
+  }
 });
 await step("Old Star's forge lesson", async () => {
   await go('forge', { from: 'home', tutorial: true });
