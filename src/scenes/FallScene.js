@@ -105,7 +105,7 @@ export default class FallScene extends Scene {
     this.own(() => this.hero.dispose());
     this.heroShadow = makeBlobShadow(0.32, 0.26, 0.5);
     sc.add(this.heroShadow);
-    this.coop = await loadCoop({ height: 1.15 });
+    this.coop = await loadCoop({ height: 0.9 });
     sc.add(this.coop.root);
     this.own(() => this.coop.dispose?.());
     this.coop.onStep = (side, k) => this.coopStep(side, k);

@@ -24,11 +24,11 @@ import { ITEMS } from '../data/items.js';
 import * as Inv from '../core/inventory.js';
 
 const R = 0.2; // collision half-width (the legs and sill; the roof overhang may brush walls)
-const HB = 0.74; // collision height
+const HB = 0.6; // collision height (the small coop)
 const GRAV = 12;
 const HOP = 0.46; // highest ledge she hops up
 const FOLLOW = 1.5; // how far behind she keeps
-const COOP_H = 0.8; // ridge height (m)
+const COOP_H = 0.62; // ridge height (m): a small old coop
 const REACH_NEAR = 2.3; // backpack + coop side by side within this
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();

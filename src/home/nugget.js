@@ -18,7 +18,7 @@ import * as Inv from '../core/inventory.js';
 import { T } from './units.js';
 
 const _v = new THREE.Vector3();
-const COOP_H = 0.8 / T; // tiles
+const COOP_H = 0.62 / T; // tiles (a small old coop)
 const NEAR = 2.3; // meters: the backpack shows the coop's shelves within this
 
 /** The coop dressed as the hen rig the Actor and NuggetAI drive (play / face / peck / flap / update). */

@@ -1,6 +1,7 @@
-// Nugget's walking coop: a little Baba Yaga hut on two big scaly chicken legs. A log cabin on a
-// timber sill (round log ends crossing at the corners), board-clad gables, a mossy shingle roof
-// with a carved rooster on the ridge, a crooked brick chimney that puffs smoke, a round gable
+// Nugget's walking coop: a little old Baba Yaga hut on two big scaly chicken legs, grey and
+// weathered, half open (the front bay fell away, logs are missing, the roof has holes; Nugget's
+// straw shelf shows inside). A log cabin on a timber sill, board-clad gables, a mossy shingle roof
+// with a bare ridge log, a crooked brick chimney that puffs smoke, a round gable
 // window Nugget the hen peeks out of, an arched plank door that swings open, a glowing side
 // window and a hanging lantern, patches (planks, tin, sackcloth) and charms swinging under the
 // eaves (a horseshoe, a bell, dried herbs, beads and a feather). Hi-res voxels (about 1 cm), one
@@ -46,17 +47,18 @@ const H0 = 35.5; // standing hip height
 const FOOT_X = 13.5, FOOT_Z = 2.5;
 
 // ---------------------------------------------------------------- palette
-const LOG_HI = 0xb8834c, LOG_L = 0xa06c3c, LOG_B = 0x86562e, LOG_D = 0x6a4022, LOG_SEAM = 0x3a2010;
-const BOARD = 0x9c7048, BOARD_D = 0x7a5232;
-const SHING = [0x7d6a52, 0x8b765a, 0x6f5d48, 0x86705a, 0x75624e];
+// old, sun-bleached and rain-greyed wood (the coop is decades old)
+const LOG_HI = 0x9c9282, LOG_L = 0x857b6b, LOG_B = 0x6e6556, LOG_D = 0x554c40, LOG_SEAM = 0x2a221a;
+const BOARD = 0x8a8170, BOARD_D = 0x655c4e;
+const SHING = [0x5e564a, 0x6a6052, 0x4f483e, 0x645a4c, 0x574f44];
 const MOSS = [0x36561f, 0x4f7a2c, 0x5f8a34, 0x7aa442, 0x9acb5a];
 const PLAT = 0x5e3e24;
-const TRIM = 0xc8945a, TRIM_D = 0x8a5a30;
-const PAINT_W = 0xf2e8d2, PAINT_R = 0xc23c2c, PAINT_Y = 0xf0b030, PAINT_B = 0x3f7ec8, PAINT_G = 0x5a9a3a;
+const TRIM = 0x8e8068, TRIM_D = 0x625642;
+const PAINT_W = 0xc8c0ac, PAINT_R = 0x8a5a4a, PAINT_Y = 0xa89060, PAINT_B = 0x6a7a88, PAINT_G = 0x6a7a52; // faded, flaking paint
 const INT = 0x1e140c;
 const STRAW = [0xe8c860, 0xd0a840, 0xb88a30, 0xf6dc80];
 const IRON = 0x3a3634, IRON_L = 0x6a625c;
-const TIN = 0x8a9096;
+const TIN = 0x8a6a52; // rusted
 const LEG_B = 0xe39a2c, LEG_L = 0xf6c25a, LEG_D = 0xb06a1c, LEG_DD = 0x8a5418;
 const CLAW = 0x3a2a20, CLAW_L = 0x6a5a4a;
 const FEATH = 0xf2e8d6, FEATH_T = 0xd8c0a0;
@@ -121,6 +123,19 @@ export function hutVox() {
     v.box(-HX - 1, WALL_Y1, HZ - 1, HX + 1, WALL_Y1 + 2, HZ, 0, M.TRIM);
     v.box(-HX - 1, WALL_Y1, -HZ, HX + 1, WALL_Y1 + 2, -HZ + 1, 0, M.TRIM);
 
+    // ---- old and open: the inside is hollow, the front half gone, logs missing here and there
+    v.carve(-HX + 1, HX, WALL_Y0 + 1, RIDGE - 2, -HZ + 1, HZ - 1, (x, y) => y < WALL_Y1 || Math.abs(x + 0.5) <= (RIDGE - 3 - y) / SLOPE);
+    // the front wall's right half fell away: a wide open bay over a straw shelf (Nugget's nest)
+    v.carve(-3, HX + 2, WALL_Y0 + 9, WALL_Y1 + 2, HZ - 2, HZ + 3, (x, y) => y < WALL_Y1 - 1 || x < HX - 4 - (y - WALL_Y1));
+    // missing logs: gaps in the side and back walls you can see through
+    for (const [x0, x1, c, z0, z1] of [[HX - 1, HX + 3, 2, -12, 8], [HX - 1, HX + 3, 4, -16, -2], [-HX - 3, -HX + 1, 3, -6, 14], [-HX - 3, -HX + 1, 5, -18, -4], [-14, 6, 2, -HZ - 3, -HZ + 1], [2, 20, 4, -HZ - 3, -HZ + 1]]) {
+      const y0 = WALL_Y0 + c * LOGH;
+      v.carve(x0, x1, y0, y0 + LOGH, z0, z1, () => true);
+    }
+    // the floor inside: grey planks, a few gone; the nest shelf by the bay
+    v.fill(-HX + 1, HX, WALL_Y0, WALL_Y0 + 1, -HZ + 1, HZ - 1, (x, y, z) => h3(x >> 2, 0, z, 41) > 0.12, 0, M.BOARD);
+    v.box(-3, WALL_Y0 + 20, 2, HX, WALL_Y0 + 22, HZ - 1, 0, M.BOARD);
+    for (let x = -3; x < HX; x++) for (let z = 2; z < HZ - 1; z++) { const r = h3(x, 9, z, 13); if (r < 0.8) v.set(x, WALL_Y0 + 22, z, STRAW[(r * 17 | 0) % 4]); if (r < 0.25) v.set(x, WALL_Y0 + 23, z, STRAW[(r * 31 | 0) % 4]); }
     // ---- the front: an arched door in a carved frame, the porch step
     v.fill(DOOR.x0 - 1, DOOR.x1 + 1, WALL_Y0, DOOR.top + DOOR.r + 2, 13, HZ - 1, () => true, 0, M.INT);
     const inDoor = (x, y) => x >= DOOR.x0 && x < DOOR.x1 && y >= WALL_Y0 && (y < DOOR.top || (x - DOOR.cx) ** 2 + (y - DOOR.top) ** 2 <= DOOR.r * DOOR.r);
@@ -139,12 +154,6 @@ export function hutVox() {
       const d = Math.hypot(x - DOOR.cx, y - DOOR.top);
       return d >= DOOR.r && d < DOOR.r + 2.2;
     }, 0, M.TRIM);
-    // a painted sun over the door
-    v.ell(DOOR.cx, DOOR.top + DOOR.r + 5, HZ + 1, 2.2, 2.2, 0.9, PAINT_Y);
-    for (let k = 0; k < 8; k++) {
-      const a = k / 8 * Math.PI * 2;
-      v.set(Math.round(DOOR.cx + Math.cos(a) * 3.6 - 0.5), Math.round(DOOR.top + DOOR.r + 5 + Math.sin(a) * 3.6 - 0.5), HZ + 1, k % 2 ? PAINT_R : PAINT_Y);
-    }
     // porch step: a split log under the door
     v.fill(DOOR.x0 - 3, DOOR.x1 + 3, 0, 4, HZ + 2, HZ + 8, (x, y, z) => (y - 1.5) ** 2 + (z - (HZ + 4.5)) ** 2 <= 2.9 * 2.9 && y >= 0, 0, M.STEP);
 
@@ -168,6 +177,10 @@ export function hutVox() {
       v.box(xa, WIN.y - 9, HZ, xb, WIN.y - 1, HZ + 1, 0, M.SHUT);
     }
 
+    // the round window is boarded up now (no face peering out of the gable): two crooked planks
+    v.fill(-8, 8, WIN.y - 8, WIN.y + 8, HZ - 1, HZ + 1, (x, y) => (x - WIN.x) ** 2 + (y - WIN.y) ** 2 <= WIN.r * WIN.r, 0, M.BOARD);
+    v.line(-8, WIN.y - 4, HZ + 1, 8, WIN.y + 2, HZ + 1, BOARD_D, 1.2);
+    v.line(-7, WIN.y + 4, HZ + 1, 7, WIN.y + 6, HZ + 1, BOARD, 1.0);
     // ---- the side window (+x), warm light inside (the glass is a separate glowing mesh)
     v.box(HX - 6, SIDEWIN.y0 - 1, SIDEWIN.z0 - 1, HX, SIDEWIN.y1 + 1, SIDEWIN.z1 + 1, 0, M.INT);
     v.carve(HX - 3, HX + 2, SIDEWIN.y0, SIDEWIN.y1 - 1, SIDEWIN.z0, SIDEWIN.z1 - 1, () => true);
@@ -216,11 +229,14 @@ export function hutVox() {
         for (let k = 1; k <= len; k++) v.setM(x, yb - k, z, M.MOSS);
       }
     }
-    // the ridge log with a carved rooster at the front and a tail fan at the back
+    // the ridge log (bare: the carved rooster and its tail rotted off years ago)
     const ry = RIDGE + 4.6;
     v.fill(-4, 4, ry - 4, ry + 4, -RZ - 2, RZ + 1, (x, y) => x * x + (y - ry) ** 2 <= 3.2 * 3.2, (x, y) => (y > ry + 1.5 ? LOG_HI : y > ry - 0.5 ? LOG_L : LOG_B));
-    rooster(v, ry);
-    for (let k = -1; k <= 1; k++) v.line(0, ry, -RZ - 2, k * 3.2, ry + 5.5 - Math.abs(k) * 1.2, -RZ - 5.5, k ? PAINT_R : PAINT_Y, 1.0);
+    // holes in the roof where shingles slid off (rafters left showing)
+    for (const [cx, cz, r] of [[-18, 6, 6], [-8, -14, 4.5], [22, 12, 4]]) {
+      v.carve(cx - r - 1, cx + r + 1, 0, RIDGE + 8, cz - r - 1, cz + r + 1, (x, y, z) => Math.hypot(x - cx, z - cz) < r * (0.75 + 0.5 * h3(x, 3, z, 51)) && y > under(Math.abs(x + 0.5)) - 1);
+      for (let x = Math.floor(cx - r); x < cx + r; x += 4) { const yb = Math.floor(under(Math.abs(x + 0.5))); for (let z = Math.floor(cz - r); z < cz + r; z++) v.setM(x, yb, z, M.BOARD); }
+    }
     // bargeboards: carved boards with scalloped edges along both gable ends
     for (const sz of [-1, 1]) {
       const za = sz > 0 ? RZ - 2 : -RZ, zb = sz > 0 ? RZ : -RZ + 2;
@@ -374,26 +390,6 @@ function endGrain(v, ex, cy, cc, axis) {
     const col = d > 2.4 ? 0x5a3a20 : d < 0.8 ? 0xe8c890 : Math.floor(d * 1.6) % 2 ? 0xb88a54 : 0xd8b07a;
     if (axis === 'x') v.set(ex, y, c, col); else v.set(c, y, ex, col);
   }
-}
-
-/** A folk-art rooster carved on the front end of the ridge log. */
-function rooster(v, ry) {
-  const z0 = RZ + 1;
-  // the neck curls up out of the ridge log
-  for (let k = 0; k <= 8; k++) {
-    const t = k / 8;
-    v.ell(0, ry + 0.5 + t * 4.5, z0 + t * 3.2, 2.4 - t * 0.5, 2.4, 2.2, k < 5 ? LOG_L : PAINT_W);
-  }
-  const hy = ry + 6, hz = z0 + 4;
-  v.ell(0, hy, hz, 2.2, 2.6, 2.5, PAINT_W);
-  // comb, beak, wattle, eyes
-  for (const [dz, h] of [[1.2, 1.8], [-0.2, 2.3], [-1.6, 1.8]]) v.ell(0, hy + 2.4 + h / 2, hz + dz, 0.9, h / 2 + 0.4, 0.8, PAINT_R);
-  v.line(0, hy, hz + 2, 0, hy - 0.6, hz + 4.3, PAINT_Y, 0.9);
-  v.ell(0, hy - 2, hz + 1.6, 0.8, 1.3, 0.8, PAINT_R);
-  v.set(-2, Math.floor(hy + 0.6), Math.floor(hz + 1), 0x1a1020);
-  v.set(1, Math.floor(hy + 0.6), Math.floor(hz + 1), 0x1a1020);
-  // painted blue dots down the neck
-  v.set(-2, Math.floor(ry + 2), z0 + 1, PAINT_B); v.set(1, Math.floor(ry + 2), z0 + 1, PAINT_B);
 }
 
 // ---------------------------------------------------------------- moving parts
@@ -706,7 +702,7 @@ class CoopRig {
     for (const c of this.charms) { c.vx += (Math.random() - 0.3) * 6 * k; c.vz += (Math.random() - 0.5) * 7 * k; }
   }
 
-  windowWorld(out = new THREE.Vector3()) { this.root.updateMatrixWorld(true); return this.hut.localToWorld(out.set(0, WIN.y * this.vs, (HZ + 2) * this.vs)); }
+  windowWorld(out = new THREE.Vector3()) { this.root.updateMatrixWorld(true); return this.hut.localToWorld(out.set(12 * this.vs, (WALL_Y0 + 34) * this.vs, (HZ + 1) * this.vs)) } // where Nugget sits, in the open bay
   doorWorld(out = new THREE.Vector3()) { this.root.updateMatrixWorld(true); return this.hut.localToWorld(out.set(DOOR.cx * this.vs, (WALL_Y0 + 3) * this.vs, (HZ + 6) * this.vs)); }
   chimneyWorld(out = new THREE.Vector3()) { this.root.updateMatrixWorld(true); return this.chimney.localToWorld(out.set(0, (CHIM_H + 2) * this.vs, 0)); }
 
@@ -955,7 +951,7 @@ class CoopRig {
       const h = this.hen;
       const peekT = !this.henOn ? 0 : st === 'sit' ? -1 : st === 'stuck' ? 1.5 : st === 'carried' ? 2.5 : a > 0.6 ? -1.2 : 2.2;
       this.peek += (peekT - this.peek) * Math.min(1, dt * 4);
-      h.root.position.set(0, this.henY * vs, (this.henZ + this.peek) * vs);
+      h.root.position.set(h.root.position.x, this.henY * vs, (this.henZ + this.peek) * vs);
       h.play(st === 'sit' ? 'sit' : 'idle');
       if (st === 'idle' && a < 0.2 && Math.random() < dt * 0.15) h.peck();
       h.update(dt);
@@ -1049,10 +1045,10 @@ export function makeCoop(opts = {}) {
   lg.add(flame);
   // Nugget in the round window
   let hen = null;
-  const henY = WIN.y - 25.4, henZ = HZ - 9.5;
+  const henY = WALL_Y0 + 22.5, henZ = HZ - 7, henX = 12; // Nugget sits on her straw shelf in the open bay
   if (opts.hen !== false) {
     hen = makeChicken({ scale: vs * 32, kind });
-    hen.root.position.set(0, henY * vs, henZ * vs);
+    hen.root.position.set(henX * vs, henY * vs, henZ * vs);
     hut.add(hen.root);
   }
   // a soft blob shadow
