@@ -2606,3 +2606,43 @@ realistic and cool too."
 Rules as in wave 4 (no git; build passes; keep debug hooks and the e2e flow working, `E2E_UNTIL`; phones;
 performance; screenshots in `shots/<part>/`; an "As built" section here; unique scratchpad file names; don't
 edit another part's files except small marked hooks).
+
+### As built (wave 5)
+
+Done by the lead alone, one item at a time (the user asked for no helpers).
+
+- **Intro + coop.** The fall intro can't be skipped and the forest has no wildlife (no birds, butterflies,
+  dragonflies, birdsong, hen flights, fireflies). Nugget's coop (`src/gfx/char/coop.js`) is small, grey and
+  weathered, open at the front, logs missing, holes in the roof, no rooster head; `COOP_H` 0.62.
+- **Hotbar.** Five Minecraft slots (`src/core/hotbar.js`: `HOTBAR_N`, `hotbarOf`, `hotbarSet`), keys 1–5, always
+  shown; the backpack has a hotbar row to choose what goes in each slot.
+- **Forge your pickaxe first.** A new game starts with no pick (`takeStartPick`). Lesson stage `'pick'` (between
+  `'wake'` and `'mine'`, `starData.LESSONS`): after his first talk Old Star takes you to his forge
+  (`forge { tutorial, pick }`); `ForgeLesson` in pick mode gives two copper ingots and runs the forge piece
+  `pick_first` (`FORGE_PIECES` in `src/data/coopParts.js`, `SHAPES.pick_first` in `partModel.js`; heat, hammer,
+  quench with his prompts on each step). The piece goes on your belt and its quality (`data.toolQ`) scales its
+  digging power (`DigScene.strike`). Then lesson `'mine'`, act `lesson { step: 'pick_done' }` (new quest step
+  "Forge your own pickaxe"), and at home he admires it and walks you to the lift. Skipping hands you one.
+- **Grid inventory** (`src/core/inventory.js`). The backpack and the coop are grids (`slots.grid = { cols, rows }`,
+  two cells per bag pocket, 6 wide up to 24 cells, then 9). Every stack has a footprint (`footprint()`: heavy ore
+  2×2, ore and ingots 2×1, swords 1×3, gems 1×1, beams 3×1; items may set `fp`) at `stack.g = { x, y, r }`.
+  Capacity is "does its footprint fit anywhere, either way round" (`roomFor`, `putIn`); `transferAt` /
+  `previewAt` / `rotateStack` / `pack` (tidy). Moves that can't be laid out are undone. The UI (`gridBox` in
+  `invGrid.js`) draws tiles over cells with a drop shadow (green fits, gold merges, blue swaps, red blocked); R,
+  the wheel or the Turn button turns what you hold. The trunk and chests stay slot lists. Stacks: ore 8, ingots 4.
+- **Camp.** Real cloth (`src/gfx/cloth.js`: Verlet sheet, pinned top row, draught, cylinder colliders) over the
+  shack's doorway and window (`src/home/campCloth.js`); you, Old Star and Nugget push it aside. The shack is more
+  broken (gaps, snapped boards, missing roof planks, a torn tarp), and there are heaps of fallen planks, a
+  collapsed lean-to and rock fall round the camp (`brokenPlanks`, `leanToRuin`). Every camp prop has a box.
+- **Creatures.** Every model is refined at mesh time to about one voxel size (`FINE` in `enemies/vox.js`, at most
+  2×): a coarse model's silhouette is resampled and smoothed, thin bits chamfered; `userData.cvox/cpivot/ck` keep
+  the coarse voxels for code that picks them by model coordinates (golem shard chips, bestiary icons).
+  `DANGER` in `Enemies.js`: 1.7× damage, 1.4× toughness, 1.18× speed while hunting, 0.35 s grace after a hit.
+- **Lifts.** The lift panel is a 3D diorama (`src/fps/liftDiorama.js`): explored cells as blocks tinted by
+  stratum, glass strata slabs, lifts as cages on light beams, a stop list, orbit/zoom, its own small WebGL
+  renderer at half resolution. Mine lifts are checkpoints (`on: false` when found; ring the bell to
+  `unlockLift`); only unlocked ones are stops; strata with no unlocked lift are under fog. Old saves' lifts count
+  as unlocked.
+- **Caves.** Stalactites and stalagmites (`stalactite` / `stalagmite` in `Props.js` + `props/models.js`: banded
+  limestone, clay, grey and dark stone, wet tips, drips, rimstone pools) in the upper four zones, a little denser
+  decoration; every cave prop is solid (`Props.collide`, called after the player moves).

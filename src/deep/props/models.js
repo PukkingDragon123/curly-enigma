@@ -24,6 +24,9 @@ export const CRYSTAL_PAL = {
   amber: { c: 0xffb040, hi: 0xffe4a0, lo: 0xc06a1a, tip: 0xfff4d0, g: 2, light: [1.0, 0.6, 0.2], base: 0x3a2a24 },
 };
 
+// limestone, clay-stained, grey and dark: [body, band, wet tip, wet tip highlight]
+const STONE_PAL = [[0xb8a688, 0xa08a6c, 0xd8ccb4, 0xf0e8d8], [0xa47a5a, 0x8a6248, 0xc8a084, 0xe4c8b0], [0x8a8478, 0x726c62, 0xb0aca2, 0xd8d6d0], [0x6e6458, 0x5a5248, 0x9a9488, 0xc4c0b8]];
+const lin3 = (hex) => [((hex >> 16) & 255) / 255 * 0.5, ((hex >> 8) & 255) / 255 * 0.5, (hex & 255) / 255 * 0.5];
 const lin = (hex) => { const f = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return [f((hex >> 16) & 255), f((hex >> 8) & 255), f(hex & 255)]; };
 const srgbArr = (hex) => [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
 
@@ -336,6 +339,51 @@ export const BUILD = {
     if (v % 2 === 0) { log(6, 1.5, 11.5, 18, 5.5, 2.5); for (let k = 0; k < 4; k++) { const t = r(); g.set(6 + 12 * t, 2.8 + 4 * t, 11.5 - 9 * t, ember, 2); } }
     for (let k = 0; k < 4; k++) g.set(23 + (k & 1), 1 + (k >> 1), 7 + (k & 1), -1);
     return { grid: g, pivot: [13, 0.5, 7], emit: { k: 'smolder', at: [0, 0.18, 0], spread: 0.6 }, main: [0.12, 0.1, 0.09] };
+  },
+
+  // ---------- speleothems: what dripping water builds over ten thousand years
+  stalactite(r, v, L) {
+    // a cluster of rock "straws" and cones hanging from a flowstone boss, banded, wet at the tips
+    const pal = STONE_PAL[v % STONE_PAL.length];
+    const g = new PGrid(16, L + 3, 16);
+    const top = L + 2;
+    g.ell(8, top, 8, 5, 1.6, 5, (x, y, z) => (hv(x, y, z, 51) < 0.45 ? pal[0] : pal[1]));
+    const n = r.int(2, 5);
+    let tip = [8, top - L, 8];
+    for (let i = 0; i < n; i++) {
+      const a = r() * 6.28, d = i ? r.range(1.5, 4.5) : 0;
+      const x = 8 + Math.cos(a) * d, z = 8 + Math.sin(a) * d;
+      const len = i ? r.int(Math.max(3, L * 0.25 | 0), Math.max(4, L * 0.7 | 0)) : L, w = i ? r.range(0.9, 1.7) : r.range(1.8, 2.8);
+      for (let k = 0; k < len; k++) {
+        const y = top - 1 - k, f = k / len;
+        // a cone that pinches into a straw near its end, with growth rings
+        const R = Math.max(0.5, w * (1 - f) ** 0.8 + (k % 5 === 0 ? 0.35 : 0));
+        const wet = f > 0.75;
+        g.cylY(x, z, R, y, y + 1, (xx, yy, zz) => (wet ? (hv(xx, yy, zz, 53) < 0.5 ? pal[3] : pal[2]) : ((yy + (hv(xx >> 1, yy >> 2, zz >> 1, 52) * 3 | 0)) % 4 === 0 ? pal[1] : pal[0])));
+      }
+      if (!i) tip = [x, top - len, z];
+    }
+    return { grid: g, pivot: [8, top, 8], emit: { k: 'drip', at: [(tip[0] - 8) * PU, (tip[1] - top) * PU, (tip[2] - 8) * PU], spread: 0.05 }, main: lin3(pal[0]) };
+  },
+  stalagmite(r, v) {
+    // a lumpy banded cone grown up from the floor (sometimes twins), a wet cap where the drip lands,
+    // and a little rimstone pool round its foot
+    const pal = STONE_PAL[v % STONE_PAL.length];
+    const H = r.int(12, 26);
+    const g = new PGrid(18, H + 2, 18);
+    const cone = (cx, cz, h, w) => {
+      for (let y = 0; y < h; y++) {
+        const f = y / h;
+        const R = Math.max(0.6, w * (1 - f) ** 0.9 + Math.sin(y * 0.9 + cx) * 0.35);
+        g.cylY(cx, cz, R, y, y + 1, (xx, yy, zz) => (f > 0.86 ? pal[3] : ((yy + (hv(xx >> 1, yy >> 2, zz >> 1, 54) * 3 | 0)) % 4 === 0 ? pal[1] : pal[0])));
+      }
+    };
+    cone(9, 9, H, r.range(3.2, 4.6));
+    if (v % 2 === 1) cone(9 + r.range(2.5, 4), 9 + r.range(-2, 2), Math.round(H * r.range(0.35, 0.6)), r.range(1.6, 2.4));
+    if (r() < 0.6) cone(9 - r.range(2, 3.5), 9 + r.range(-3, 3), Math.round(H * r.range(0.2, 0.35)), r.range(1.2, 1.8));
+    // the rimstone rim and its puddle
+    g.ell(9, 0, 9, 7.5, 1.2, 7.5, (x, y, z) => (g.has(x, y, z) ? -1 : Math.hypot(x - 9, z - 9) > 6 ? pal[1] : 0x2a3640), 0);
+    return { grid: g, pivot: [9, 0.5, 9], main: lin3(pal[0]) };
   },
 
   // ---------- Frost Vault

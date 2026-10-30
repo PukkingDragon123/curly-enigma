@@ -285,6 +285,8 @@ export default class DigScene extends Scene {
     const exhausted = st.energy < 8;
     const load = this.weigh(dt);
     const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted && load.run, crouch: inp.isDown('KeyC'), jumpMul: (st.hasBuff('bouncy') ? 1.35 : 1) * load.jump, frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (st.skill?.('speed') || 1) * (this.blocking ? 0.55 : 1) * (this.nugget?.carrying ? 0.7 : 1) * load.speed });
+    // props are solid (crystal clusters, mushrooms, fossils, stalagmites): walk round them
+    if (this.props?.collide(pl.pos, 0.26, 0.85) && this.world.voxelAt(Math.floor(pl.pos.x * VOX), Math.floor((pl.pos.y + 0.3) * VOX), Math.floor(pl.pos.z * VOX))) { pl.pos.x -= pl.vel.x * dt; pl.pos.z -= pl.vel.z * dt; }
     // hauling a heavy pack is hard work
     if (load.r > 1 && !busy && (mv.x || mv.y) && pl.grounded) this.energy(dt * 0.3 * Math.min(2, load.r - 1));
     if (ev.landed > 8) this.enemies?.noise?.(pl.pos.x, pl.pos.y, pl.pos.z, 3, 'land');

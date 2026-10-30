@@ -78,6 +78,8 @@ const TYPES = {
   vent: { mount: 'floor', vars: 2, r: 0.5, h: 0.6, snd: 'stone' },
   charred: { mount: 'floor', vars: 2, r: 0.75, h: 0.45, snd: 'wood' },
   icicle: { mount: 'ceil', vars: 3, len: [4, 20], r: 0.4, snd: 'ice', brittle: true },
+  stalactite: { mount: 'ceil', vars: 4, len: [6, 24], r: 0.38, snd: 'stone', brittle: true },
+  stalagmite: { mount: 'floor', vars: 4, r: 0.42, h: 1.25, snd: 'stone' },
   frozen: { mount: 'floor', vars: 4, r: 0.55, h: 1.8, react: 'chime', snd: 'ice', brittle: true },
   shard: { mount: 'floor', vars: 4, r: 0.25, h: 1.6, bob: 0.06, snd: 'crystal', brittle: true },
   rail: { mount: 'floor', vars: 2, r: 0.5, h: 0.2, snd: 'metal' },
@@ -125,21 +127,21 @@ const TYPES = {
 };
 
 // models sized (or coloured) to where they are put
-const PARAM_TYPES = new Set(['crystal', 'crystalC', 'roots', 'vine', 'glowthread', 'icicle', 'shard', 'post', 'ladder', 'rope', 'lanternC']);
+const PARAM_TYPES = new Set(['crystal', 'crystalC', 'roots', 'vine', 'glowthread', 'icicle', 'stalactite', 'shard', 'post', 'ladder', 'rope', 'lanternC']);
 
 // decoration per zone: [type, weight] lists + chances per 1 m cell (floor / ceiling / wall)
 // (wave 4: only what grows or lies there naturally — the glowing mushroom clusters, shelf fungus,
 // roots and vines, bones and fossils, crystals, obsidian, vents, ice; the old miners' crates,
 // barrels, carts, posts, ropes, ladders, lanterns and signs are gone with the miners)
 const DECOR = {
-  1: { floor: [['mush', 6], ['bones', 0.35]],
-    ceil: [['roots', 5], ['vine', 3.5]], wall: [['shelf', 4]], f: 0.12, c: 0.16, w: 0.08 },
-  2: { floor: [['bones', 2.5], ['mush', 3.5]],
-    ceil: [['roots', 2.5], ['vine', 2.5]], wall: [['fossil', 4], ['shelf', 2]], f: 0.12, c: 0.11, w: 0.13 },
-  3: { floor: [['crystal', 5], ['mush', 2.2], ['bones', 0.2]],
-    ceil: [['glowthread', 3], ['crystalC', 2], ['vine', 0.8]], wall: [['shelf', 1.5]], f: 0.11, c: 0.13, w: 0.045 },
-  4: { floor: [['obsidian', 3], ['vent', 2.2], ['bones', 0.4], ['mush', 0.4]],
-    ceil: [], wall: [], f: 0.11, c: 0, w: 0 },
+  1: { floor: [['mush', 6], ['stalagmite', 3], ['bones', 0.35]],
+    ceil: [['roots', 5], ['vine', 3.5], ['stalactite', 4]], wall: [['shelf', 4]], f: 0.15, c: 0.2, w: 0.08 },
+  2: { floor: [['bones', 2.5], ['mush', 3.5], ['stalagmite', 4]],
+    ceil: [['roots', 2.5], ['vine', 2.5], ['stalactite', 5]], wall: [['fossil', 4], ['shelf', 2]], f: 0.15, c: 0.17, w: 0.13 },
+  3: { floor: [['crystal', 5], ['mush', 2.2], ['stalagmite', 2], ['bones', 0.2]],
+    ceil: [['glowthread', 3], ['crystalC', 2], ['stalactite', 2.5], ['vine', 0.8]], wall: [['shelf', 1.5]], f: 0.13, c: 0.16, w: 0.045 },
+  4: { floor: [['obsidian', 3], ['vent', 2.2], ['stalagmite', 1.2], ['bones', 0.4], ['mush', 0.4]],
+    ceil: [['stalactite', 1]], wall: [], f: 0.12, c: 0.05, w: 0 },
   5: { floor: [['frozen', 3], ['bones', 0.4], ['mush', 0.4]],
     ceil: [['icicle', 6]], wall: [['shelf', 0.4]], f: 0.1, c: 0.16, w: 0.012 },
   6: { floor: [['shard', 4], ['obsidian', 1.2], ['crystal', 0.6]],
@@ -1289,6 +1291,30 @@ export class Props {
     for (const rec of this.built.values()) n += rec.props.length;
     st.props = n;
     st.verts = this.pool.high ? this.pool.capV - this.pool.vFree.reduce((s, f) => s + f[1], 0) : 0;
+  }
+
+  /**
+   * Props are solid: push an upright cylinder (feet at pos, radius r, height h: the mole) out of
+   * every prop round it that it would walk into (crystal clusters, mushrooms, fossils, stalagmites,
+   * hanging things at head height). Low mats and moss are stepped over. Returns true if it moved.
+   */
+  collide(pos, r = 0.26, h = 0.85) {
+    let moved = false;
+    for (const rec of this.built.values()) {
+      if (Math.abs(rec.x - pos.x) > CM || Math.abs(rec.z - pos.z) > CM || Math.abs(rec.y - pos.y) > CM) continue;
+      for (const p of rec.props) {
+        if (p.gone || !p.m || p.rad < 0.14 || (p.item && p.rad < 0.3)) continue;
+        if (p.top < pos.y + 0.14 || p.bot > pos.y + h) continue; // over it, or under it
+        const dx = pos.x - p.cx, dz = pos.z - p.cz, rr = p.rad * 0.72 + r;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= rr * rr) continue;
+        const d = Math.sqrt(d2) || 1e-4;
+        pos.x = p.cx + (dx / d) * rr;
+        pos.z = p.cz + (dz / d) * rr;
+        moved = true;
+      }
+    }
+    return moved;
   }
 
   collectNear(eye) {
