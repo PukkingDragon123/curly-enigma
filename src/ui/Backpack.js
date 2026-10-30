@@ -27,7 +27,7 @@ import { TOOL_KINDS, HOTBAR_N, hotbarOf, hotbarSet, KIND_LABEL, KIND_ICON } from
 import { COOP_PARTS } from '../data/coopParts.js';
 import { SPR } from './uiSprites.js';
 import { qColor, pips, stagger, put } from './common.js';
-import { SlotDnD, slotEl, stackIcon, stackName, bounce } from './invGrid.js';
+import { SlotDnD, slotEl, gridBox, stackIcon, stackName, bounce } from './invGrid.js';
 import { INV_ART, installInvArt } from './invArt.js';
 import { portrait3d } from '../gfx/portrait3d.js';
 
@@ -83,7 +83,9 @@ export function openBackpack(game, opts = {}) {
   const scale = el('span', { class: 'bp-scale', title: 'How heavy your pack is' });
   const tidyB = el('button', { class: 'bp-tool', title: 'Tidy up (sort and stack)', 'aria-label': 'Tidy up', onclick: () => tidy('bag') }, [el('img', { class: 'pix', src: INV_ART.brush(), alt: '' }), el('span', {}, 'Tidy')]);
   const toss = el('div', { class: 'bp-toss', 'data-drop': 'toss', title: 'Drop a stack here to throw it away' }, [el('img', { class: 'pix', src: INV_ART.toss(false), alt: '' }), el('span', {}, 'Toss')]);
-  const bar = el('div', { class: 'bp-bar' }, [count, scale, el('i', { class: 'spacer' }), tidyB, toss]);
+  // turning what you hold (R, the wheel; on a touch screen this button)
+  const turnB = el('button', { class: 'bp-tool inv-turn', hidden: true, title: 'Turn it (R)', 'aria-label': 'Turn it', onclick: () => dnd?.turn() }, [el('span', { class: 'inv-turn-ico' }, '⟳'), el('span', {}, 'Turn')]);
+  const bar = el('div', { class: 'bp-bar' }, [count, scale, el('i', { class: 'spacer' }), turnB, tidyB, toss]);
   const tag = el('div', { class: 'bp-tag', hidden: true });
   const twine = el('i', { class: 'bp-twine', hidden: true });
   const tip = el('div', { class: 'inv-tip', hidden: true, role: 'tooltip' });
@@ -116,29 +118,24 @@ export function openBackpack(game, opts = {}) {
 
   // ---------------------------------------------------------------- the pockets
   const nextBag = () => {
-    const cur = Inv.bagSlots(st);
+    const cur = Inv.bagPockets(st);
     for (const id of BAGS) if ((ITEMS[id]?.slots || 0) > cur - Math.floor((st.upEffect?.('bag') || 0) / 4) && (ITEMS[id]?.slots || 0) > (st.equipped('bag')?.slots || 9)) return ITEMS[id];
     return null;
   };
   const renderGrid = (animate) => {
-    const slots = Inv.bag(st), cap = Inv.bagSlots(st);
+    const slots = Inv.bag(st);
     grid.innerHTML = '';
     grid.classList.toggle('bp-settle', !!animate);
-    const nodes = [];
-    const n = Math.max(slots.length, cap);
-    for (let i = 0; i < n; i++) {
-      const node = slotEl(slots[i], { c: 'bag', i, frame: 'pocket', hide: dnd?.heldFrom('bag', i) || 0, sel: selKey === `slot:bag:${i}` });
-      if (i >= cap) node.classList.add('over-cap');
-      nodes.push(node);
-    }
-    // sewn-shut pockets: the rest of this row, and the next bag's rows
+    // the pack's lining: a grid of cells; what you carry lies on it as tiles (turn them to fit).
+    // A sewn-shut row below shows the next bag.
     const nb = nextBag();
-    const lockedTo = Math.max(Math.ceil(n / COLS) * COLS, nb ? Math.min(Inv.MAX_SLOTS, Math.ceil(n / COLS) * COLS + COLS) : 0);
-    for (let i = n; i < lockedTo; i++) nodes.push(slotEl(null, { c: 'bag', i, frame: 'pocket', locked: true, lockLabel: i === n && nb ? nb.name : null }));
-    grid.append(...nodes);
+    const box = gridBox(slots, { c: 'bag', frame: 'pocket', cls: 'bag' + (slots.grid.cols > 6 ? ' big' : ''), hide: (i) => dnd?.heldFrom('bag', i) || 0, sel: (i) => selKey === `slot:bag:${i}`, sewnRows: nb ? 1 : 0 });
+    grid.append(box);
+    if (nb) grid.append(el('div', { class: 'bp-nextbag' }, [el('span', { class: 'inv-lock' }, nb.name), el('small', {}, ` sews on more rows`)]));
+    const nodes = [...box.querySelectorAll('.inv-slot')];
     if (animate) stagger(nodes, firstRender ? 16 : 8);
     const f = Inv.bagFill(st);
-    count.innerHTML = `<b>${f.used}</b>/${f.slots} pockets`;
+    count.innerHTML = `<b>${f.used}</b>/${f.slots} cells`;
     count.classList.toggle('full', f.full);
     renderScale();
   };
@@ -221,7 +218,7 @@ export function openBackpack(game, opts = {}) {
       ]),
       el('div', { class: 'bp-day' }, [
         el('div', { class: 'bp-cal' }, [el('img', { class: 'pix', src: SPR.calendar(false), alt: '' }), el('b', {}, String(st.data.day))]),
-        el('div', {}, [el('small', {}, bagIt ? bagIt.name : 'Bag'), el('span', {}, `${Inv.bagSlots(st)} pockets`)]),
+        el('div', {}, [el('small', {}, bagIt ? bagIt.name : 'Bag'), el('span', {}, `${Inv.bag(st).grid.cols}×${Inv.bag(st).grid.rows} pack`)]),
       ]),
     );
     // snack pouch: quick access to food in the pockets
@@ -270,8 +267,7 @@ export function openBackpack(game, opts = {}) {
       el('img', { class: 'pix', src: INV_ART.bowl(Math.round(food * 4)), alt: '' }), el('span', {}, 'Feed'),
     ]);
     const slots = Inv.coopSlots(st);
-    const cg = el('div', { class: 'bp-cgrid' });
-    slots.forEach((s, i) => cg.append(slotEl(s, { c: 'coop', i, frame: 'cubby', hide: dnd?.heldFrom('coop', i) || 0, sel: selKey === `slot:coop:${i}` })));
+    const cg = gridBox(slots, { c: 'coop', frame: 'cubby', cls: 'coop', hide: (i) => dnd?.heldFrom('coop', i) || 0, sel: (i) => selKey === `slot:coop:${i}` });
     const CL = Inv.coopLoad(st);
     const load = el('div', { class: 'bp-coop-load ' + CL.tier, title: `Her legs carry ${CL.carry.toFixed(0)} kg comfortably; a heavy coop walks slower and hops lower.` }, [
       el('span', { html: `Load <b>${CL.kg.toFixed(1)}</b>/${CL.carry.toFixed(0)} kg` }),
@@ -281,7 +277,7 @@ export function openBackpack(game, opts = {}) {
     const coop = el('div', { class: 'bp-coop' }, [
       el('div', { class: 'bp-coop-head' }, [portrait, el('div', {}, [el('b', {}, `${name}'s Coop`), el('small', {}, moodTxt), meter])]),
       el('div', { class: 'bp-coop-feed' }, [bowl, el('small', {}, henFoodLine())]),
-      el('div', { class: 'bp-coop-shelf' }, [el('div', { class: 'bp-coop-sign' }, [el('span', {}, `Shelves ${Inv.usedSlots(slots)}/${slots.length}`), el('button', { class: 'bp-tool sm', title: 'Tidy the shelves', 'aria-label': 'Tidy the shelves', onclick: () => tidy('coop') }, [el('img', { class: 'pix', src: INV_ART.brush(), alt: '' })])]), cg]),
+      el('div', { class: 'bp-coop-shelf' }, [el('div', { class: 'bp-coop-sign' }, [el('span', {}, `Shelves ${slots.length - Inv.freeCells(slots)}/${slots.length}`), el('button', { class: 'bp-tool sm', title: 'Tidy the shelves', 'aria-label': 'Tidy the shelves', onclick: () => tidy('coop') }, [el('img', { class: 'pix', src: INV_ART.brush(), alt: '' })])]), cg]),
       load,
       renderUpgrades(),
     ]);
@@ -350,6 +346,21 @@ export function openBackpack(game, opts = {}) {
     if (d === 'trunk' || c === 'trunk') { while (to.length && !to[to.length - 1]) to.pop(); while (from.length && !from[from.length - 1] && c === 'trunk') from.pop(); }
     if (moved > 0 && (c === 'coop' || d === 'coop')) nug?.coopTouched?.(d === 'coop' ? 'in' : 'out');
     return moved;
+  };
+  /** Drop on a grid cell (the backpack, the coop): the same rules as move(). */
+  const moveAt = (c, i, d, x, y, r, k) => {
+    const from = slotsOf(c), to = slotsOf(d);
+    if (!from || !to || !from[i]) return null;
+    if ((c === 'trunk' || d === 'trunk') && !atHome && opts.side !== 'trunk') return null;
+    if (d === 'coop' && c !== 'coop') {
+      const room = Inv.coopRoomKg(st, from[i].id);
+      if (room <= 0) { heavyToast(); return null; }
+      k = Math.min(k, room);
+    }
+    const res = Inv.transferAt(st, from, i, to, x, y, r, k);
+    if (c === 'trunk') while (from.length && !from[from.length - 1]) from.pop();
+    if (res?.moved > 0 && c !== d && (c === 'coop' || d === 'coop')) nug?.coopTouched?.(d === 'coop' ? 'in' : 'out');
+    return res;
   };
   const other = (c) => (c === 'bag' ? (side === 'coop' ? 'coop' : side === 'trunk' ? 'trunk' : null) : 'bag');
 
@@ -547,7 +558,7 @@ export function openBackpack(game, opts = {}) {
     if (it.value) info.push(`Worth about <span class="gold-txt">${formatGoldFull(sellPrice(s.id, q ?? 100))}g</span> each`);
     if (it.energy || it.food) info.push(`Restores <b>${it.energy ?? it.food}</b> energy` + (it.buff ? ` · ${BUFFS[it.buff]?.name || it.buff}` : '') + (it.maxEnergy ? ` · +${it.maxEnergy} max energy` : ''));
     if (it.hen) info.push(`Nugget eats it: fills her <b>${Math.round(it.hen * 100)}%</b>`);
-    info.push(`${n} in this ${c === 'bag' ? 'pocket' : c === 'coop' ? 'cubby' : 'slot'} · stacks to ${Inv.stackMax(s.id)}`);
+    info.push(`${n} here · stacks to ${Inv.stackMax(s.id)}${slotsOf(c)?.grid ? ` · takes <b>${Inv.footprint(s).join('×')}</b> cells` : ''}`);
     info.push(`Weighs <b>${W.kgOf(s.id) < 0.1 ? W.kgOf(s.id).toFixed(2) : W.kgOf(s.id).toFixed(1)} kg</b>${n > 1 ? ` each (${W.stackKg(s).toFixed(1)} kg here)` : ''}`);
     const part = COOP_PARTS[s.id];
     if (part) {
@@ -563,6 +574,8 @@ export function openBackpack(game, opts = {}) {
     const to = other(c);
     if (to) actions.append(el('button', { class: 'btn alt', onclick: () => { const m = move(c, i, to, -1, Infinity); sfx(m > 0 ? 'drop' : 'nope'); closeTag(); render(); } }, to === 'bag' ? 'Take' : to === 'coop' ? 'To the coop' : 'To the trunk'));
     if (n > 1) actions.append(el('button', { class: 'btn alt', title: 'Take half into your paw (right-click or long-press)', onclick: () => { closeTag(); dnd.hand = { c, i, k: Math.ceil(n / 2) }; dnd.ghostFor(s, Math.ceil(n / 2)); const r = grid.getBoundingClientRect(); dnd.showGhost(r.left + r.width / 2, r.top + 30); sfx('split'); render(); } }, 'Split'));
+    const fpS = Inv.footprint(s);
+    if (slotsOf(c)?.grid && fpS[0] !== fpS[1]) actions.append(el('button', { class: 'btn alt', title: 'Turn it a quarter where it lies (R while holding it)', onclick: () => { if (Inv.rotateStack(st, slotsOf(c), i)) { sfx('one'); render(); reanchor(); placeTag(); } else { sfx('nope'); ui.toast('No room to turn it there.', { kind: 'warn', dur: 1400 }); } } }, 'Turn'));
     actions.append(el('button', { class: 'btn alt danger', onclick: () => tossStack(c, i, n) }, 'Toss'));
     put(tag,
       tagClose(),
@@ -716,6 +729,9 @@ export function openBackpack(game, opts = {}) {
     cap: capOf,
     other,
     move,
+    moveAt,
+    canAt: (c, i, d, x, y, r) => { const from = slotsOf(c), to = slotsOf(d); return from && to ? Inv.previewAt(from, i, to, x, y, r) : null; },
+    held: (on) => { turnB.hidden = !on; },
     toss: (c, i, k) => tossStack(c, i, k),
     feed: (c, i) => feed(c, i),
     select: (c, i, node) => selectSlot(c, i, node),

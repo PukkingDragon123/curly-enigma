@@ -299,7 +299,7 @@ export class State {
     const it = ITEMS[id];
     if (!it || !it.slot || !this.owns(id)) return false;
     // a smaller bag can't hold what's in the pockets it doesn't have
-    if (it.slot === 'bag' && (it.slots ?? 6) < Inv.bagFill(this).used) return false;
+    if (it.slot === 'bag' && Inv.gridCells((it.slots ?? 6) * Inv.CELLS_PER_POCKET) < Inv.bagFill(this).used) return false;
     this.data.equip[it.slot] = id;
     this.emit('equip', { slot: it.slot, id });
     return true;

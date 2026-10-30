@@ -7,6 +7,10 @@
 //   click / tap             pick it (the paper tag with details and actions)
 //   double-click / double-tap / shift-click   send the stack to the other open container
 //   drop on the toss pit    throw it away; drop on Nugget's bowl to feed her
+// The backpack and the coop are grids (core/inventory.js): their stacks are tiles spanning their
+// footprint on a .inv-gridbox[data-gridc]; a drag drops where the tile's shadow shows (green: it
+// fits, merges or swaps; red: it doesn't), and R / the mouse wheel / the Turn button turns what
+// you hold a quarter.
 // Slots are <button class="inv-slot" data-c="bag" data-i="3">. Nothing changes until a drop
 // lands (Inv.transfer moves the units in one go), so nothing can be lost mid-drag.
 import { el } from '../core/util.js';
@@ -65,6 +69,36 @@ export function bounce(node, cls = 'pop') {
   node.classList.add(cls);
 }
 
+/**
+ * A grid container: cells under the tiles, tiles spanning their footprints, the drop shadow.
+ * o: { c, frame, hide(i) → units held from slot i, sel(i), sewnRows, sewnLabel, cls }.
+ */
+export function gridBox(slots, o) {
+  const G = slots.grid;
+  const rows = G.rows + (o.sewnRows || 0);
+  const box = el('div', { class: 'inv-gridbox ' + (o.cls || ''), 'data-gridc': o.c, 'data-cols': String(G.cols), 'data-rows': String(G.rows) });
+  box.style.setProperty('--cols', String(G.cols));
+  box.style.setProperty('--rows', String(rows));
+  for (let y = 0; y < rows; y++) for (let x = 0; x < G.cols; x++) box.append(el('i', { class: 'inv-cell' + (y >= G.rows ? ' sewn' : ''), style: { gridColumn: String(x + 1), gridRow: String(y + 1) } }));
+  if (o.sewnRows && o.sewnLabel) box.append(el('span', { class: 'inv-lock', style: { gridColumn: `1 / span ${G.cols}`, gridRow: String(G.rows + 1) } }, o.sewnLabel));
+  slots.forEach((s, i) => {
+    if (!s || !s.g) return;
+    const [w, h] = Inv.dimsOf(s);
+    const b = slotEl(s, { c: o.c, i, frame: o.frame, hide: o.hide?.(i) || 0, sel: o.sel?.(i) });
+    b.classList.add('tile');
+    if (s.g.r) b.classList.add('rot');
+    if (w !== h) b.classList.add(w > h ? 'wide' : 'tall');
+    if (s.w) b.classList.add('blade');
+    b.style.gridColumn = `${s.g.x + 1} / span ${w}`;
+    b.style.gridRow = `${s.g.y + 1} / span ${h}`;
+    b.style.setProperty('--w', w);
+    b.style.setProperty('--h', h);
+    box.append(b);
+  });
+  box.append(el('i', { class: 'inv-shadow', hidden: true }));
+  return box;
+}
+
 const LONG_MS = 430;
 
 /**
@@ -99,7 +133,65 @@ export class SlotDnD {
     add(this.root, 'pointerover', (e) => this.over(e));
     add(this.root, 'pointerleave', () => ctx.hover?.(null));
     add(this.root, 'keydown', (e) => this.key(e));
+    add(window, 'keydown', (e) => { if (this.hand && (e.code === 'KeyR' || e.key === 'r' || e.key === 'R')) { e.preventDefault(); e.stopPropagation(); this.turn(); } }, true);
+    add(this.root, 'wheel', (e) => { if (this.hand) { e.preventDefault(); this.turn(); } }, { passive: false });
   }
+
+  /** The grid cell under a point: { c, x, y, box } (or null off the grids). */
+  cellAt(px, py) {
+    for (const box of this.root.querySelectorAll('.inv-gridbox[data-gridc]')) {
+      const r = box.getBoundingClientRect();
+      if (px < r.left || py < r.top || px >= r.right || py >= r.bottom) continue;
+      const cols = +box.dataset.cols, rows = +box.dataset.rows;
+      const cs = getComputedStyle(box);
+      const pl = parseFloat(cs.paddingLeft) || 0, pt = parseFloat(cs.paddingTop) || 0;
+      const cw = (r.width - pl * 2) / cols, ch = cw;
+      const x = Math.floor((px - r.left - pl) / cw), y = Math.floor((py - r.top - pt) / ch);
+      if (x < 0 || y < 0 || x >= cols || y >= rows) return null;
+      return { c: box.dataset.gridc, x, y, box, cw };
+    }
+    return null;
+  }
+  /** Where the held tile's top-left cell would land for the pointer at (px, py). */
+  anchorAt(px, py) {
+    const cell = this.cellAt(px, py);
+    const h = this.hand;
+    if (!cell || !h) return null;
+    const s = this.stack(h.c, h.i);
+    if (!s) return null;
+    const [w, hh] = Inv.turned(Inv.footprint(s), h.r || 0);
+    const ox = Math.min(w - 1, h.ox || 0), oy = Math.min(hh - 1, h.oy || 0);
+    return { ...cell, x: cell.x - ox, y: cell.y - oy, w, h: hh };
+  }
+  /** Turn what's in the paw a quarter (R, the wheel, the Turn button). */
+  turn() {
+    const h = this.hand;
+    if (!h) return;
+    const s = this.stack(h.c, h.i);
+    if (!s) return;
+    const fp = Inv.footprint(s);
+    if (fp[0] === fp[1]) { this.ctx.sfx?.('nope'); return; }
+    h.r = h.r ? 0 : 1;
+    const t = h.ox; h.ox = h.oy; h.oy = t;
+    this.ctx.sfx?.('one');
+    this.ghostFor(s, h.k, true);
+    if (this.lastPt) { this.showGhost(this.lastPt.x, this.lastPt.y); this.highlight(this.lastPt.x, this.lastPt.y); }
+    this.ctx.turned?.(!!h.r);
+  }
+  /** Put what's in the paw down on a grid where the pointer is. True if it was a grid drop. */
+  placeGrid(px, py, k) {
+    const a = this.anchorAt(px, py), h = this.hand;
+    if (!a || !h) return false;
+    const r = this.ctx.moveAt?.(h.c, h.i, a.c, a.x, a.y, h.r || 0, k);
+    if (!r || r.moved <= 0) { this.ctx.sfx?.('nope'); this.shakeShadow(); return true; }
+    this.ctx.sfx?.(k === 1 && h.k > 1 ? 'one' : r.kind);
+    h.k -= r.moved;
+    if (h.k <= 0 || r.kind === 'swap' || !this.stack(h.c, h.i)) { this.hand = null; this.hideGhost(); this.clearHighlight(); }
+    else this.ghostFor(this.stack(h.c, h.i), h.k);
+    this.ctx.changed();
+    return true;
+  }
+  shakeShadow() { const sh = this.root.querySelector('.inv-shadow:not([hidden])'); if (sh) bounce(sh, 'shake'); }
 
   slotOf(node) {
     const b = node?.closest?.('.inv-slot');
@@ -118,6 +210,9 @@ export class SlotDnD {
     // with something in the paw, a click or tap puts it down
     if (this.hand) {
       e.preventDefault();
+      if (e.target.closest?.('.inv-turn')) return;
+      if (e.button !== 2 && this.cellAt(e.clientX, e.clientY)) { this.placeGrid(e.clientX, e.clientY, this.hand.k); return; }
+      if (e.button === 2 && this.cellAt(e.clientX, e.clientY)) { this.turn(); return; }
       if (s) {
         const k = e.button === 2 ? 1 : this.hand.k;
         this.place(s.c, s.i, k, s.node);
@@ -153,7 +248,7 @@ export class SlotDnD {
     if (!d.started && dist > (d.touch ? 9 : 5)) {
       clearTimeout(d.longT);
       d.started = true;
-      this.hand = { c: d.c, i: d.i, k: d.k, dragging: true };
+      this.hand = { c: d.c, i: d.i, k: d.k, dragging: true, ...this.grabOf(d) };
       this.ctx.hover?.(null);
       this.ctx.sfx?.('lift');
       this.ctx.changed();
@@ -167,13 +262,31 @@ export class SlotDnD {
     }
   }
 
+  /** Which cell of its tile a stack was picked up by (so it lands under the paw the same way). */
+  grabOf(d) {
+    const s = this.stack(d.c, d.i);
+    const r = s?.g?.r || 0;
+    if (!s?.g || !d.node?.classList.contains('tile')) return { r, ox: 0, oy: 0 };
+    const b = d.node.getBoundingClientRect();
+    const [w, h] = Inv.dimsOf(s);
+    return { r, ox: Math.max(0, Math.min(w - 1, Math.floor(((d.x0 - b.left) / b.width) * w))), oy: Math.max(0, Math.min(h - 1, Math.floor(((d.y0 - b.top) / b.height) * h))) };
+  }
+
   up(e) {
     const d = this.drag;
     if (!d || e.pointerId !== d.pid) return;
     clearTimeout(d.longT);
     this.drag = null;
     if (d.started) {
-      // a drag ends where the pointer is
+      // a drag ends where the pointer is: on a grid, where the shadow shows
+      if (this.hand && this.cellAt(e.clientX, e.clientY)) {
+        this.placeGrid(e.clientX, e.clientY, this.hand.k);
+        if (this.hand) { const h = this.hand; this.hand = null; this.flyBack(h); }
+        this.hideGhost();
+        this.clearHighlight();
+        this.ctx.changed();
+        return;
+      }
       const tgt = document.elementFromPoint(e.clientX, e.clientY);
       const s = this.slotOf(tgt);
       const dropT = tgt?.closest?.('[data-drop]');
@@ -190,7 +303,7 @@ export class SlotDnD {
     // no drag: a click / tap / long-press / right-click
     if (d.long || d.right) {
       // half the stack into the paw
-      this.hand = { c: d.c, i: d.i, k: d.k };
+      this.hand = { c: d.c, i: d.i, k: d.k, ...this.grabOf(d) };
       this.ghostFor(this.stack(d.c, d.i), d.k);
       this.showGhost(e.clientX, e.clientY);
       if (d.right) this.ctx.sfx?.('split');
@@ -295,27 +408,58 @@ export class SlotDnD {
   }
 
   // ---- the floating stack in the paw
-  ghostFor(s, k) {
+  ghostFor(s, k, quiet = false) {
     if (!s) return;
     const [img, n] = this.ghost.children;
     img.src = stackIcon(s);
     n.textContent = k > 1 ? String(k) : '';
     this.ghost.hidden = false;
     this.ghost.classList.toggle('touch', !!this.drag?.touch);
-    bounce(this.ghost, 'grab');
+    // on a grid the paw holds the tile's shape (turned as you've turned it)
+    const h = this.hand, box = this.root.querySelector('.inv-gridbox[data-gridc]');
+    const cell = box ? this.cellAt(box.getBoundingClientRect().left + 4, box.getBoundingClientRect().top + 4)?.cw : 0;
+    if (h && cell) {
+      const [w, hh] = Inv.turned(Inv.footprint(s), h.r || 0);
+      this.ghost.classList.add('tiled');
+      this.ghost.classList.toggle('rot', !!h.r);
+      this.ghost.classList.toggle('blade', !!s.w);
+      this.ghost.style.setProperty('--gw', (w * cell).toFixed(1) + 'px');
+      this.ghost.style.setProperty('--gh', (hh * cell).toFixed(1) + 'px');
+      this.ghost.style.setProperty('--gox', (((h.ox || 0) + 0.5) * cell).toFixed(1) + 'px');
+      this.ghost.style.setProperty('--goy', (((h.oy || 0) + 0.5) * cell).toFixed(1) + 'px');
+      this.ghost.style.setProperty('--gi', (Math.min(w, hh) * cell * 0.86).toFixed(1) + 'px');
+    } else this.ghost.classList.remove('tiled', 'rot', 'blade');
+    this.ctx.held?.(true);
+    if (!quiet) bounce(this.ghost, 'grab');
   }
   showGhost(x, y, vx = 0) {
+    this.lastPt = { x, y };
     if (this.ghost.hidden) return;
     const tilt = Math.max(-14, Math.min(14, vx * 0.8));
     this.ghost.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) rotate(${tilt.toFixed(1)}deg)`;
   }
-  hideGhost() { this.ghost.hidden = true; }
+  hideGhost() { this.ghost.hidden = true; this.ctx.held?.(false); }
   flyBack(h) {
     if (!h) return;
     const node = this.root.querySelector(`.inv-slot[data-c="${h.c}"][data-i="${h.i}"]`);
     bounce(node);
   }
   highlight(x, y) {
+    this.lastPt = { x, y };
+    // on a grid: the shadow where the tile would land (green / gold / red)
+    const a = this.anchorAt(x, y);
+    for (const sh of this.root.querySelectorAll('.inv-shadow')) {
+      const mine = a && sh.parentElement === a.box;
+      if (!mine) { sh.hidden = true; continue; }
+      const kind = this.ctx.canAt?.(this.hand.c, this.hand.i, a.c, a.x, a.y, this.hand.r || 0);
+      const G = { cols: +a.box.dataset.cols, rows: +a.box.dataset.rows };
+      const x0 = Math.max(0, a.x), y0 = Math.max(0, a.y), x1 = Math.min(G.cols, a.x + a.w), y1 = Math.min(G.rows, a.y + a.h);
+      sh.hidden = x1 <= x0 || y1 <= y0;
+      sh.style.gridColumn = `${x0 + 1} / ${x1 + 1}`;
+      sh.style.gridRow = `${y0 + 1} / ${y1 + 1}`;
+      sh.className = 'inv-shadow ' + (kind || 'bad');
+    }
+    if (a) { this.hot?.classList.remove('over'); this.hot = null; return; }
     this.ghost.hidden = this.ghost.hidden || false;
     const prevVis = this.ghost.style.visibility;
     this.ghost.style.visibility = 'hidden';
@@ -327,7 +471,11 @@ export class SlotDnD {
     this.hot = node && this.root.contains(node) ? node : null;
     this.hot?.classList.add('over');
   }
-  clearHighlight() { this.hot?.classList.remove('over'); this.hot = null; }
+  clearHighlight() {
+    this.hot?.classList.remove('over');
+    this.hot = null;
+    for (const sh of this.root.querySelectorAll('.inv-shadow')) sh.hidden = true;
+  }
 
   destroy() {
     clearTimeout(this.drag?.longT);

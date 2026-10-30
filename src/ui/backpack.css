@@ -484,3 +484,66 @@
 .bp-hot-slot .k { position: absolute; left: var(--px); top: 0; font-style: normal; font-size: 16px; line-height: 1; color: #f6e6c8; text-shadow: var(--px) var(--px) 0 #1a0c06; }
 .bp-hot-slot.empty { outline: var(--px) dashed rgba(240, 220, 180, .5); outline-offset: calc(var(--px) * -3); }
 .bp-hot-slot.on, .bp-hot-slot:hover { box-shadow: inset 0 0 0 var(--px) #ffd76a, inset 0 calc(var(--px) * 2) 0 rgba(255, 220, 160, .2); }
+
+/* ---------- the grid pack (core/inventory.js): cells of canvas lining, tiles for what you carry ---------- */
+.bp-grid { display: block; }
+.inv-gridbox {
+  --cell: calc(var(--slot-w) * .8);
+  position: relative; display: grid; width: max-content; margin: 0 auto; box-sizing: content-box;
+  grid-template-columns: repeat(var(--cols), var(--cell)); grid-template-rows: repeat(var(--rows), var(--cell));
+  padding: calc(var(--px) * 2); border-radius: calc(var(--px) * 2);
+  background:
+    radial-gradient(rgba(120, 86, 50, .14) 1px, transparent 1.5px) 0 0 / calc(var(--px) * 3) calc(var(--px) * 3),
+    linear-gradient(#d8c39a, #ccb588);
+  box-shadow: inset 0 0 0 var(--px) #7a5a34, inset 0 calc(var(--px) * 3) calc(var(--px) * 2) rgba(60, 36, 14, .3), 0 var(--px) 0 rgba(255, 240, 210, .25);
+}
+.inv-gridbox.coop {
+  --cell: calc(var(--slot-w) * .52);
+  background:
+    repeating-linear-gradient(100deg, rgba(160, 120, 40, .18) 0 2px, transparent 2px 6px),
+    linear-gradient(#b48a52, #9c7442);
+  box-shadow: inset 0 0 0 var(--px) #4a2e14, inset 0 calc(var(--px) * 3) calc(var(--px) * 2) rgba(30, 16, 6, .4);
+}
+.inv-cell { box-sizing: border-box; pointer-events: none; border-right: 1px dashed rgba(100, 70, 36, .32); border-bottom: 1px dashed rgba(100, 70, 36, .32); }
+.inv-gridbox.coop .inv-cell { border-color: rgba(50, 28, 10, .3); }
+.inv-cell.sewn { background: repeating-linear-gradient(45deg, rgba(90, 60, 30, .2) 0 3px, transparent 3px 7px); border-color: rgba(90, 60, 30, .15); }
+.inv-gridbox > .inv-lock { position: relative; top: auto; left: auto; align-self: center; justify-self: center; transform: rotate(-2deg); }
+.inv-slot.tile {
+  width: auto; height: auto; margin: 1px; z-index: 1; border: none; border-image: none; border-radius: calc(var(--px) * 1.5);
+  background: linear-gradient(170deg, #f6e9c8, #e2cc9c);
+  box-shadow: inset 0 0 0 1px #7a5a34, inset 0 calc(var(--px) * -1) 0 rgba(90, 60, 30, .25), 0 var(--px) 0 rgba(40, 20, 8, .35);
+  overflow: visible;
+}
+.inv-gridbox.coop .inv-slot.tile { background: linear-gradient(170deg, #ead6a8, #cfb07a); }
+.inv-slot.tile.q { box-shadow: inset 0 0 0 1px #7a5a34, inset 0 0 0 calc(var(--px) * .75 + 1px) color-mix(in srgb, var(--qc) 55%, transparent), 0 var(--px) 0 rgba(40, 20, 8, .35); }
+.inv-slot.tile.q::before { display: none; }
+.inv-slot.tile.on { background: linear-gradient(170deg, #fff4d4, #f0d896); box-shadow: inset 0 0 0 calc(var(--px) * .75) #c89a3a, 0 var(--px) 0 rgba(40, 20, 8, .35); }
+.inv-slot.tile img { width: calc(min(var(--w), var(--h)) * var(--cell) * .86); max-width: none; }
+.inv-slot.tile.rot img { transform: rotate(90deg); }
+.inv-slot.tile.blade img { width: calc(var(--cell) * 1.5); transform: rotate(-45deg); }
+.inv-slot.tile.blade.rot img { transform: rotate(45deg); }
+.inv-slot.tile:not(.empty):hover img { transform: scale(1.06); }
+.inv-slot.tile.rot:not(.empty):hover img { transform: rotate(90deg) scale(1.06); }
+.inv-slot.tile.blade:not(.empty):hover img { transform: rotate(-45deg) scale(1.06); }
+.inv-slot.tile.blade.rot:not(.empty):hover img { transform: rotate(45deg) scale(1.06); }
+.inv-gridbox.coop .inv-slot .n { font-size: 8px; }
+.inv-shadow { z-index: 3; pointer-events: none; border-radius: calc(var(--px) * 1.5); border: calc(var(--px) * .75) dashed #3a8a3a; background: rgba(110, 220, 110, .28); }
+.inv-shadow.merge { border-color: #b88a1a; background: rgba(255, 210, 90, .32); }
+.inv-shadow.swap { border-color: #2a6aa8; background: rgba(110, 170, 255, .26); }
+.inv-shadow.bad { border-color: #a82a1a; background: rgba(230, 80, 60, .3); }
+.inv-shadow.shake { animation: nope .32s linear; }
+/* the tile in your paw: its shape, turned as you've turned it */
+.inv-ghost.tiled::before {
+  content: ''; position: absolute; left: calc(var(--gox) * -1); top: calc(var(--goy) * -1); width: var(--gw); height: var(--gh);
+  border-radius: calc(var(--px) * 1.5); background: rgba(246, 233, 200, .55); box-shadow: inset 0 0 0 1px #7a5a34, 0 calc(var(--px) * 3) 0 rgba(20, 10, 4, .3);
+}
+.inv-ghost.tiled img { left: calc(var(--gw) / 2 - var(--gox) - var(--gi) / 2); top: calc(var(--gh) / 2 - var(--goy) - var(--gi) / 2); width: var(--gi); height: var(--gi); transform: none; transition: transform .12s var(--pop); }
+.inv-ghost.tiled.rot img { transform: rotate(90deg); }
+.inv-ghost.tiled.blade img { transform: rotate(-45deg) scale(1.5); }
+.inv-ghost.tiled.blade.rot img { transform: rotate(45deg) scale(1.5); }
+.inv-ghost.tiled .n { left: calc(var(--gw) - var(--gox) - 14px); top: calc(var(--gh) - var(--goy) - 16px); }
+.inv-turn .inv-turn-ico { font-size: 18px; line-height: 1; }
+.inv-gridbox.bag { --cell: calc(var(--slot-w) * 1.18); }
+.inv-gridbox.bag.big { --cell: calc(var(--slot-w) * .86); }
+.bp-nextbag { display: flex; justify-content: center; align-items: center; gap: calc(var(--px) * 2); margin-top: calc(var(--px) * 3); font-size: 8px; color: #6a4a2a; text-transform: uppercase; letter-spacing: .06em; }
+.bp-nextbag .inv-lock { position: static; transform: rotate(-2deg); }
