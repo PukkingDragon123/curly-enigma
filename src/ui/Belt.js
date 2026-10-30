@@ -1,9 +1,8 @@
-// The tool belt (ui.setHotbar): a leather strap with tool loops at the bottom of the screen.
-// After a moment of inactivity it tucks away to just the tool in your paw; scrolling, number
-// keys, hovering or tapping pulls the whole belt back out.
+// The hotbar (ui.setHotbar): five leather loops on a strap at the bottom of the screen, always
+// shown (like Minecraft's). Number keys 1–5, the wheel or a tap pick a slot; empty loops show a
+// dashed outline (tools go there from the backpack).
 import { el, clamp } from '../core/util.js';
 
-const IDLE = 2.4;
 
 export class Belt {
   constructor(ui) {
@@ -20,7 +19,7 @@ export class Belt {
     this.el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') { this.hover = true; this.expand(); } });
     this.el.addEventListener('pointerleave', () => { this.hover = false; });
     window.addEventListener('wheel', () => this.poke(), { passive: true });
-    window.addEventListener('keydown', (e) => { if (/^Digit[1-9]$/.test(e.code)) this.poke(); });
+    window.addEventListener('keydown', (e) => { if (/^Digit[1-5]$/.test(e.code)) this.poke(); });
   }
 
   poke() { if (!this.el.hidden && !this.ui.isPanelOpen()) this.expand(); }
@@ -46,7 +45,7 @@ export class Belt {
       this.nodes = slots.map((s, i) => {
         const gauge = el('i', { class: 'gauge', hidden: s.meter === undefined }, [el('b')]);
         const node = el('button', {
-          class: 'loop' + (s.off ? ' off' : ''), title: s.label || '', 'aria-label': s.label || `Slot ${i + 1}`,
+          class: 'loop' + (s.off ? ' off' : '') + (s.empty ? ' empty' : ''), title: s.label || '', 'aria-label': s.label || `Slot ${i + 1}`,
           onclick: (e) => {
             e.stopPropagation();
             if (!this.expanded) { this.expand(); return; }
@@ -54,7 +53,7 @@ export class Belt {
             if (this.onPick) this.onPick(i);
           },
         }, [
-          el('span', { class: 'loop-face' }, [el('img', { class: 'pix', src: s.icon, alt: '' })]),
+          el('span', { class: 'loop-face' }, [s.empty ? null : el('img', { class: 'pix', src: s.icon, alt: '' })]),
           s.key ? el('span', { class: 'k' }, s.key) : null,
           s.n !== undefined ? el('span', { class: 'n' }, String(s.n)) : null,
           gauge,
@@ -93,11 +92,5 @@ export class Belt {
     if (s) this.setGauge(s.gauge, v);
   }
 
-  update(dt) {
-    if (this.el.hidden) return;
-    if (this.expanded && !this.hover) {
-      this.idle += dt;
-      if (this.idle > (this.ui.focus ? 0.6 : IDLE)) this.collapse();
-    }
-  }
+  update() { /* always shown in full: no tucking away */ }
 }

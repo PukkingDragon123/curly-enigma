@@ -474,3 +474,13 @@
   .bp-bar { flex-wrap: wrap; row-gap: calc(var(--px) * 2); }
   .bp-bar .spacer { flex-basis: 0; }
 }
+
+/* the hotbar row under the pockets: five loops, tap to choose a tool for each */
+.bp-hot { display: flex; align-items: center; justify-content: center; gap: calc(var(--px) * 2); flex: none; padding: calc(var(--px) * 2) 0 0; }
+.bp-hot-t { font-size: 16px; color: #5a4030; margin-right: calc(var(--px) * 2); }
+.bp-hot-slot { position: relative; width: calc(var(--icon) * .75 + var(--px) * 6); height: calc(var(--icon) * .75 + var(--px) * 6); display: grid; place-items: center; cursor: pointer; border: 0; padding: 0;
+  background: #6a4428; box-shadow: inset 0 0 0 var(--px) #2a160a, inset 0 calc(var(--px) * 2) 0 rgba(255, 220, 160, .15); }
+.bp-hot-slot img { width: calc(var(--icon) * .75); height: calc(var(--icon) * .75); }
+.bp-hot-slot .k { position: absolute; left: var(--px); top: 0; font-style: normal; font-size: 16px; line-height: 1; color: #f6e6c8; text-shadow: var(--px) var(--px) 0 #1a0c06; }
+.bp-hot-slot.empty { outline: var(--px) dashed rgba(240, 220, 180, .5); outline-offset: calc(var(--px) * -3); }
+.bp-hot-slot.on, .bp-hot-slot:hover { box-shadow: inset 0 0 0 var(--px) #ffd76a, inset 0 calc(var(--px) * 2) 0 rgba(255, 220, 160, .2); }

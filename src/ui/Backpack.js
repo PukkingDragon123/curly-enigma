@@ -23,6 +23,7 @@ import { GOAL_GOLD } from '../core/State.js';
 import { gradeFor } from '../data/weapons.js';
 import * as Inv from '../core/inventory.js';
 import * as W from '../core/weight.js';
+import { TOOL_KINDS, HOTBAR_N, hotbarOf, hotbarSet, KIND_LABEL, KIND_ICON } from '../core/hotbar.js';
 import { COOP_PARTS } from '../data/coopParts.js';
 import { SPR } from './uiSprites.js';
 import { qColor, pips, stagger, put } from './common.js';
@@ -86,7 +87,9 @@ export function openBackpack(game, opts = {}) {
   const tag = el('div', { class: 'bp-tag', hidden: true });
   const twine = el('i', { class: 'bp-twine', hidden: true });
   const tip = el('div', { class: 'inv-tip', hidden: true, role: 'tooltip' });
-  const main = el('section', { class: 'bp-main' }, [bar, scroll, twine, tag]);
+  // the hotbar row: the five loops you see in the mine; tap one to choose what goes in it
+  const hotRow = el('div', { class: 'bp-hot', role: 'group', 'aria-label': 'Hotbar' });
+  const main = el('section', { class: 'bp-main' }, [bar, scroll, hotRow, twine, tag]);
   const equip = el('aside', { class: 'bp-equip' });
   const sideTabs = el('div', { class: 'bp-sidetabs', role: 'tablist' });
   const sideBody = el('div', { class: 'bp-sidebody' });
@@ -665,9 +668,41 @@ export function openBackpack(game, opts = {}) {
     }, 260);
   };
 
+  // ---------------------------------------------------------------- the hotbar row
+  const renderHot = () => {
+    const bar = hotbarOf(st);
+    hotRow.innerHTML = '';
+    hotRow.append(el('span', { class: 'bp-hot-t' }, 'Hotbar'));
+    bar.forEach((k, i) => {
+      const b = el('button', { class: 'bp-hot-slot' + (k ? '' : ' empty') + (selKey === 'hot:' + i ? ' on' : ''), 'data-key': 'hot:' + i, title: k ? `${i + 1}: ${KIND_LABEL[k]}` : `${i + 1}: empty`, 'aria-label': k ? `Hotbar ${i + 1}: ${KIND_LABEL[k]}` : `Hotbar ${i + 1}: empty` }, [
+        k ? el('img', { class: 'pix', src: iconURL(KIND_ICON[k]), alt: '' }) : null, el('i', { class: 'k' }, String(i + 1)),
+      ]);
+      b.onclick = () => selectHot(i, b);
+      hotRow.append(b);
+    });
+  };
+  const selectHot = (i, node) => {
+    const key = 'hot:' + i;
+    if (selKey === key && !tag.hidden) { closeTag(); return; }
+    selKey = key; markSel(node); anchor = node; audio.play('ui_click');
+    const bar = hotbarOf(st);
+    tag.innerHTML = '';
+    const list = el('div', { class: 'bp-swap' });
+    for (const k of TOOL_KINDS) {
+      list.append(el('div', { class: 'bp-swap-row' }, [
+        el('img', { class: 'pix', src: iconURL(KIND_ICON[k]), alt: '' }), el('span', {}, KIND_LABEL[k] + (bar.includes(k) && bar[i] !== k ? ` (slot ${bar.indexOf(k) + 1})` : '')),
+        el('button', { class: 'btn' + (bar[i] === k ? ' alt' : ''), disabled: bar[i] === k, onclick: () => { hotbarSet(st, i, k); sfx('drop'); game.scene?.updateHotbar?.(); closeTag(); renderHot(); } }, bar[i] === k ? 'In it' : 'Put here'),
+      ]));
+    }
+    put(tag, tagClose(), tagHead(iconURL(bar[i] ? KIND_ICON[bar[i]] : 'pick_rusty'), `Hotbar slot ${i + 1}`, bar[i] ? KIND_LABEL[bar[i]] : 'Empty', null),
+      el('p', { class: 'bp-desc' }, `What sits in loop ${i + 1} at the bottom of the screen in the mine (key ${i + 1}).`), list);
+    placeTag();
+  };
+
   // ---------------------------------------------------------------- render
   const render = (animate = false) => {
     renderGrid(animate || firstRender);
+    renderHot();
     renderEquip();
     renderSide(false);
     firstRender = false;

@@ -300,3 +300,7 @@ html.is-touch .loop .k { display: none; }
   background: #b8602a; padding: var(--px) calc(var(--px) * 2); box-shadow: 0 0 0 var(--px) #5a240c, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35);
 }
 .pack-load.over .pack-load-t, .pack-load.max .pack-load-t { background: #b8322a; }
+
+/* the 5-slot hotbar: an empty loop is a dashed outline waiting for a tool */
+.belt .loop.empty .loop-face { outline: var(--px) dashed rgba(240, 220, 180, .45); outline-offset: calc(var(--px) * -3); }
+.belt .loop.empty { opacity: .8; }

@@ -28,7 +28,7 @@ import { clamp, rand, chance, hexToRgb, formatGoldFull } from '../core/util.js';
 import * as W from '../core/weight.js';
 import { Build } from './Build.js'; // building part: blocks, ladders, torches, doors, chests; tools that break them
 
-const SLOTS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'build', 'dynamite', 'food'];
+import { TOOL_KINDS, HOTBAR_N, hotbarOf } from '../core/hotbar.js';
 // the build slot (slot 7) puts up what Build.js says: blocks on a 0.5 m grid, ladders, torches, doors…
 const REACH = 2.3;
 const vmModules = import.meta.glob('../fps/ViewModel.js');
@@ -198,7 +198,7 @@ export default class DigScene extends Scene {
     this.game.ui.toast(html, { kind });
   }
   isTouch() { return document.documentElement.classList.contains('is-touch'); }
-  get slotName() { return SLOTS[this.slot]; }
+  get slotName() { return hotbarOf(this.state)[this.slot] || 'none'; }
   toolItem(slot) {
     const st = this.state;
     if (slot === 'pick') return st.equipped('pick');
@@ -225,7 +225,10 @@ export default class DigScene extends Scene {
   updateHotbar() {
     const st = this.state;
     const icons = { dynamite: ITEMS.dynamite ? 'dynamite' : 'glow_stake', pick: 'pick_rusty', chisel: 'chisel_basic', brush: 'brush_basic', drill: 'drill_steam', xray: 'xray_lamp', stake: 'glow_stake', food: 'grub_bar' };
-    const slots = SLOTS.map((s, i) => {
+    const bar = hotbarOf(st);
+    if (this.slot >= HOTBAR_N) this.slot = 0;
+    const slots = bar.map((s, i) => {
+      if (!s) return { icon: iconURL('pick_rusty'), key: String(i + 1), label: 'Empty: put a tool here from the backpack', off: true, empty: true };
       const it = this.toolItem(s);
       const n = s === 'stake' ? st.count('glow_stake') : (s === 'food' || s === 'dynamite') && it ? st.count(it.id) : s === 'build' && it && this.builder && !this.builder.freeBuild() ? st.count(it.id) : undefined;
       const label = s === 'build' ? (this.builder?.label?.() || 'Build') : it ? it.name : '—';
@@ -239,8 +242,8 @@ export default class DigScene extends Scene {
     }
   }
   selectSlot(i) {
-    const n = (i + SLOTS.length) % SLOTS.length;
-    if (this.slot === n) { if (SLOTS[n] === 'build') this.cycleBuild(); return; }
+    const n = (i + HOTBAR_N) % HOTBAR_N;
+    if (this.slot === n) { if (hotbarOf(this.state)[n] === 'build') this.cycleBuild(); return; }
     this.slot = n;
     this.audio.play('ui_click', { pitch: 1.3 });
     this.updateHotbar();
@@ -261,7 +264,7 @@ export default class DigScene extends Scene {
     if (!busy && inp.mousePressed(0) && !inp.pointerLocked && !this.isTouch()) { inp.lockPointer(); inp.mouse.pressed[0] = false; }
     // tools
     if (!busy) {
-      for (let k = 0; k < SLOTS.length; k++) if (inp.pressed('Digit' + (k + 1))) this.selectSlot(k);
+      for (let k = 0; k < HOTBAR_N; k++) if (inp.pressed('Digit' + (k + 1))) this.selectSlot(k);
       if (inp.mouse.wheel) this.selectSlot(this.slot + Math.sign(inp.mouse.wheel));
       if (inp.pressed('KeyQ')) this.eatBest();
       if (inp.pressed('KeyR') && this.slotName === 'build') this.cycleBuild();
@@ -1215,7 +1218,7 @@ export default class DigScene extends Scene {
     const bio = this.biome ? ' · ' + BIOMES[this.biome].name : '';
     const f = st.bagFill?.();
     this.game.ui.setDepth(`<b>${Math.floor(depth)} m</b><br>${ZONES[zoneAt(depth)].name}${bio}<br>Bag ${f ? `${f.used}/${f.slots}` : `${this.trip}/${st.bagCapacity()}`}`);
-    if (this.slotName === 'drill') this.game.ui.setHotbarMeter?.(SLOTS.indexOf('drill'), this.drillHeat);
+    if (this.slotName === 'drill') this.game.ui.setHotbarMeter?.(hotbarOf(this.state).indexOf('drill'), this.drillHeat);
   }
 
   screenXY(x, y, z) {
