@@ -185,7 +185,7 @@ export class WorkshopLife {
       portrait: [['Marigold. Best cook in Deep Town, worst singer. She\'d have liked you.', 'calm']],
       sea: [['That\'s the sea. Blue all the way to the edge. One day I\'ll tell you if the painting\'s any good.', 'happy']],
       books: [['Borrow anything you like. Bring it back with fewer jam stains than I would.', 'laugh'], ['I\'ve read every one twice. The soup book three times.', 'happy']],
-      hole: [['Came down through my roof like a sack of turnips, you did. Hen and all. Landed on my good dirt.', 'laugh'], ['That\'s sixty feet of loose rock up there. We go out the proper way: the Surface Express.', 'calm']],
+      hole: [['Came down through my roof like a sack of turnips, you did. Landed on my good dirt.', 'laugh'], ['That\'s sixty feet of loose rock up there. We go out the proper way: the Surface Express.', 'calm']],
       bellows: [['Easy on my bellows! Long, steady pulls. You\'ll learn.', 'stern'], ['Hear that roar? That\'s the forge saying thank you.', 'happy']],
       coins: [['Fell in with you, those. Keep \'em. First coins toward the million.', 'happy']],
       pool: [['Best water in the deep, that spring. Sixty years and it\'s never once run dry.', 'proud']],
@@ -206,7 +206,7 @@ export class WorkshopLife {
     out.push({ text: `A million gold for the Surface Express. You've ${st.gold >= 1000 ? 'a start' : 'a long way to go'}: <span class="gold-txt">${st.gold.toLocaleString()}</span>. Every blade counts.`, mood: st.gold > 100000 ? 'proud' : 'calm' });
     out.push({ text: 'Iron wants a quench. Copper doesn\'t care. Heat it to cherry, hammer it, and into my trough while it still glows.', mood: 'calm' });
     out.push({ text: 'There are old lifts all over the mine. Dig one out and ring its bell, and it\'ll bring you home any time.', mood: 'happy' });
-    out.push({ text: 'Low on energy? Eat. The pot\'s always on, and your hen lays more when you pet her.', mood: 'happy' });
+    out.push({ text: 'Low on energy? Eat. The pot\'s always on.', mood: 'happy' });
     out.push({ text: 'Better picks dig faster. The Miners\' Board in the hall: that\'s where the money goes. Better tools, bigger bags.', mood: 'calm' });
     out.push({ text: 'The coal cart by the lift fills up again overnight. Don\'t ask me how. Don\'t ask anyone how.', mood: 'laugh' });
     out.push({ text: 'Mind the deep water and the hot rock lower down. The mine gets meaner the deeper you go.', mood: 'worried' });

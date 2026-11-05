@@ -198,6 +198,12 @@ export class Prologue {
     out[1].x = L.candle.x; out[1].y = L.ledge.y + 0.3; out[1].z = L.candle.z;
     const lp = this.star.rig.lampWorld(_v);
     out[2].x = lp.x; out[2].y = lp.y; out[2].z = lp.z;
+    // the arrival: the lamps gutter after the cage's jolt, sputter, and catch (lampFx)
+    const k = this.lampK();
+    const U = this.owner?.U;
+    if (k < 1 && U?.lampRange) U.lampRange.value *= k;
+    out[2].c[0] = 0.42 * k; out[2].c[1] = 0.36 * k; out[2].c[2] = 0.26 * k;
+    this.star.dim(k);
     if (this.geode.open && this.dress.gem) {
       out[3] ||= { x: 0, y: 0, z: 0, c: [0.55, 0.3, 0.8], r: 1.4 };
       out[3].x = L.gem.x; out[3].y = L.gem.y + 0.1; out[3].z = L.gem.z - 0.1;
@@ -205,8 +211,20 @@ export class Prologue {
     return out;
   }
 
+  /** The lamps right now (0 dark … 1 lit): dark after the cage's jolt, a sputter, then lit. */
+  lampK() {
+    const f = this.lampFx;
+    if (!f) return 1;
+    const t = this.time - f.t0;
+    if (t > 2.3) { this.lampFx = null; return 1; }
+    if (t < 0.75) return 0.1;
+    if (t < 1.75) { const u = (t - 0.75) * 9; return (Math.sin(u * 2.3) + Math.sin(u * 5.1 + 1)) > 0.5 ? 0.85 : 0.14; }
+    return 0.5 + 0.5 * Math.min(1, (t - 1.75) / 0.4);
+  }
+
   dispose() {
     if (!this.on) return;
+    this.unwrapSurvey?.();
     this.unpatch?.();
     this.star?.dispose();
     this.dress?.dispose();
@@ -269,7 +287,7 @@ export class Prologue {
   start(pl) {
     this.started = true;
     this.level(LEVEL_AT[RESUME[this.save.step] || this.save.step] ?? TUT.QUEST);
-    this.star.light(!!this.owner.nugget);
+    this.star.light();
     this.radarFn = (o) => {
       const r = this.owner.radar(o);
       if (!this.leaving) r.markers.push({ kind: 'home', x: this.star.pos.x, y: this.star.pos.y + 0.5, z: this.star.pos.z, label: NAME, color: 0xff8ab0 });
@@ -357,13 +375,26 @@ export class Prologue {
     b.cut = true;
     this.tutor?.hide?.('os-beat');
     this.owner.game.convo?.end?.();
-    if (b.pre) { this.skipNext = true; this.endBeat(b); return; }
+    if (b.pre) {
+      this.skipNext = true;
+      // (the arrival's guttering lamps catch at once)
+      if (this.lampFx) { this.lampFx = null; this.star.rig.setLamp?.(0.85); }
+      this.endBeat(b);
+      return;
+    }
     this.beatNext(b);
   }
   beatNext(b) {
     if (b.done) return;
     if (b.cut || ++b.i >= b.keys.length) { this.endBeat(b); return; }
     const key = b.keys[b.i], i = b.i;
+    // a step that isn't a line: something he does (it says how long it takes), then the next line
+    if (typeof key === 'function') {
+      let secs = 0;
+      try { secs = +key() || 0; } catch (e) { console.warn('[prologue] beat step', e); }
+      this.later(secs, () => { if (this.curBeat === b && b.i === i && !b.done) this.beatNext(b); });
+      return;
+    }
     const k = LINES[key] !== undefined ? key : null;
     let text = k ? LINES[k] : key;
     if (Array.isArray(text)) text = pick(text);
@@ -495,7 +526,27 @@ export class Prologue {
     const star = this.star, L = this.L, S = L.spots;
     star.play('idle');
     // a cutscene from the first frame: the bars, you held in the cage while he steps out
-    if (!this.after) this.cineHold();
+    if (!this.after) {
+      this.cineHold();
+      // the cage bangs down onto its stops: the lamps gutter, grit sifts from the shaft, then they
+      // sputter and catch, and his helmet lamp comes on
+      const c = L.cage;
+      this.lampFx = { t0: this.time };
+      star.rig.setLamp?.(0);
+      this.audio.play('clunk', { vol: 0.9 });
+      this.audio.play('rumble_hit', { vol: 0.5 });
+      this.audio.play('creak', { vol: 0.6, pitch: 0.8 });
+      this.owner.shake?.(0.5);
+      for (let i = 0; i < 3; i++) this.fx?.dust(c.x + rand(-0.3, 0.3), c.y + 1.3, c.z + rand(-0.3, 0.3), 6, [0.45, 0.36, 0.28], 0.2, [0, -1, 0]);
+      yield 0.8;
+      for (let i = 0; i < 3; i++) { this.audio.play('click', { vol: 0.5, pitch: 0.7 + i * 0.15 }); yield 0.28; }
+      star.rig.setLamp?.(0.85);
+      star.rig.sniff?.(0.8);
+      this.audio.play('ignite', { vol: 0.3 });
+      yield 0.5;
+      this.ob?.caption?.('Old Star\'s practice dig', 'Forty years of holes', 4.2);
+      yield 0.3;
+    }
     yield 0.4;
     // out of the cage (its open side is +z), a word over his shoulder once there's room to see him,
     // then on to the plug
@@ -521,7 +572,8 @@ export class Prologue {
     star.faceTo(pc);
     star.play('point');
     this.lookPoint = new THREE.Vector3(pc.x, pc.y, pc.z);
-    yield this.beat(['plug'], { look: () => this.lookPoint });
+    // he says what the wall is, shows you how (two swings at it, the view on his paws), then your turn
+    yield this.beat(['plug', () => this.demoSwing(), 'plugShow'], { look: () => this.lookPoint });
     this.lookPoint = null;
     star.play('idle');
     // the pick: your belt and the dig button come in, and the first control of the mine
@@ -545,7 +597,15 @@ export class Prologue {
     yield () => !star.path;
     this.walking = false;
     this.untaught('crouch');
-    yield this.beat(['welcome'], { look: () => star.headWorld(_v).clone() });
+    // the dig revealed: a slow look round it (the copper wall, the south wall, the ledge), then him
+    const L2 = this.L, head = () => star.headWorld(_v).clone();
+    let look = head;
+    const reveal = () => {
+      this.audio.play('discover', { vol: 0.5 });
+      look = this.panLook([head(), new THREE.Vector3(L2.ore.x, L2.ore.y, L2.ore.z), new THREE.Vector3(L2.geode.x, L2.geode.y + 0.3, L2.geode.wallZ), this.dress.mapPoint(new THREE.Vector3()), head], 3.4);
+      return 3.6;
+    };
+    yield this.beat(this.after ? ['welcome'] : [reveal, 'welcome'], { look: () => look() });
     this.enter(this.after || 'ore', true);
     this.after = null;
   }
@@ -577,9 +637,14 @@ export class Prologue {
       st.addItem('chisel_basic');
       st.equip('chisel_basic');
       this.owner.updateHotbar?.();
-      this.ui.toast(`+ <b>${ITEMS.chisel_basic.name}</b> from Old Star`, { icon: iconURL('chisel_basic'), kind: 'good' });
+      // he tosses you his spare chisel: it spins through the air onto your belt
+      const star = this.star;
+      star.play('point');
+      if (this.ob?.toss) this.ob.toss(() => star.headWorld(new THREE.Vector3()).add(_w.set(Math.sin(star.yaw) * 0.2, -0.3, Math.cos(star.yaw) * 0.2)), iconURL('chisel_basic'), this.slotEl(/chisel/i) || 'belt', { label: `+ <b>${ITEMS.chisel_basic.name}</b>` });
+      else this.ui.toast(`+ <b>${ITEMS.chisel_basic.name}</b> from Old Star`, { icon: iconURL('chisel_basic'), kind: 'good' });
       this.audio.play('pickup', { pitch: 0.9 });
       yield this.say('oreChisel');
+      star.play('idle');
     }
     // switching tools: the tool button (touch) comes in; then chip it clean, then bag it
     this.level(TUT.TOOLS);
@@ -678,6 +743,48 @@ export class Prologue {
     yield () => !star.path;
     this.walking = false;
     this.enter('cage');
+  }
+
+  /**
+   * Old Star shows you a swing (a beat step): he squares up to the plug and swings twice, chips and
+   * dust flying, while the view sits on his paws and the pick. Returns its length (seconds).
+   */
+  demoSwing() {
+    const star = this.star, pc = this.plugFace();
+    star.faceTo(pc);
+    star.play('idle');
+    // between his paws and the loam, at the height the pick bites
+    this.lookPoint = new THREE.Vector3(star.pos.x + (pc.x - star.pos.x) * 0.6, star.pos.y + 0.42, star.pos.z + (pc.z - star.pos.z) * 0.6);
+    const hit = (n) => {
+      if (this.step !== 'plug' || !this.curBeat) return;
+      star.swing();
+      this.audio.play('whoosh', { vol: 0.3, pitch: 0.8 });
+      this.later(0.3, () => {
+        const x = pc.x - 0.04, y = pc.y - 0.05 + n * 0.08, z = pc.z + rand(-0.08, 0.08);
+        this.audio.play('hit', { snd: 'dirt', vol: 0.7 });
+        this.audio.play('debris', { vol: 0.3 });
+        this.fx?.dust(x, y, z, 12, [0.5, 0.4, 0.3], 0.22, [-1, 0.3, 0]);
+        this.fx?.chips(x, y, z, 12, [0.48, 0.36, 0.26], [-1, 0.5, 0]);
+        this.owner.shake?.(0.14);
+      });
+    };
+    this.later(0.85, () => hit(0));
+    this.later(1.75, () => hit(1));
+    return 2.6;
+  }
+
+  /**
+   * A slow pan over points (a beat step's look): the view drifts from one to the next over secs,
+   * then settles on the last. pts: vectors or functions giving one.
+   */
+  panLook(pts, secs) {
+    const t0 = this.time, at = (p) => (typeof p === 'function' ? p() : p);
+    const out = new THREE.Vector3();
+    return () => {
+      const k = clamp((this.time - t0) / secs, 0, 1) * (pts.length - 1);
+      const i = Math.min(pts.length - 2, Math.floor(k)), u = k - i, e = u * u * (3 - 2 * u);
+      return out.copy(at(pts[i])).lerp(at(pts[i + 1]), e);
+    };
   }
 
   /**
@@ -1142,7 +1249,7 @@ export class Prologue {
     this.dress.takeMap();
     this.audio.play('pickup_gem', { pitch: 0.9 });
     this.audio.play('discover');
-    this.ui.toast('<b>Old Star\'s map</b> · every lift and every place you find, in your book', { kind: 'good', dur: 4200 });
+    this.ui.toast('<b>Old Star\'s map</b> · the layers of the underground, and every lift you unlock', { kind: 'good', dur: 4200 });
     this.showRadar();
     this.lesson('mine_ladder');
     this.lesson('mine_map');
@@ -1151,15 +1258,32 @@ export class Prologue {
   }
   *mapScript() {
     yield this.say('mapGot');
-    // the radar and your book come in; open the map yourself (M, or a tap on the radar)
+    // the radar comes in; M (or a tap on the radar) shows the layers below (ui.openSurvey: the lift
+    // layers, src/fps/liftLayers.js). Done when you ask for them; it never waits for long (the
+    // layers may not be there to open), and an open panel is waited out.
     this.level(TUT.MAP);
-    if (typeof this.ui.openBook === 'function') {
-      yield 0.5;
-      const h = this.teach('map', { title: 'Open your map', done: () => !!this.ui.book });
-      yield () => !h || h.settled;
-      yield () => !this.ui.isPanelOpen?.();
-    }
-    this.enter('critter');
+    yield 0.5;
+    const asked = this.watchSurvey();
+    const t0 = this.time;
+    const h = this.teach('map', { title: 'See the layers', done: () => asked() });
+    yield () => !h || h.settled || this.step !== 'map' || this.time - t0 > 18;
+    if (h && !h.settled) h.close();
+    this.unwrapSurvey?.();
+    yield 0.3;
+    yield () => !this.ui.isPanelOpen?.() || this.step !== 'map';
+    if (this.step === 'map') this.enter('critter');
+  }
+
+  /** Notice the layers being asked for (M, or a tap on the radar: ui.openSurvey). Returns a predicate. */
+  watchSurvey() {
+    const ui = this.ui;
+    let asked = false;
+    this.unwrapSurvey?.();
+    if (typeof ui?.openSurvey !== 'function') return () => true;
+    const own = Object.prototype.hasOwnProperty.call(ui, 'openSurvey'), orig = ui.openSurvey;
+    ui.openSurvey = function (...args) { asked = true; return orig.apply(this, args); };
+    this.unwrapSurvey = () => { if (own) ui.openSurvey = orig; else delete ui.openSurvey; this.unwrapSurvey = null; };
+    return () => asked;
   }
 
   // ------------------------------------------------------------------ talking to him, skipping, the ride
@@ -1170,7 +1294,7 @@ export class Prologue {
     const what = GOALS[this.step] || 'Follow Old Star';
     const hint = {
       arrive: LINES.plug, plug: LINES.plugTip, walk: LINES.follow, ore: LINES.oreTip, loose: LINES.looseTip, held: LINES.heldTip, gem: LINES.gemTip,
-      gemfound: LINES.gemTake, ledge: LINES.ladderTip, climb: LINES.ladderUp, map: LINES.mapTip, critter: LINES.blockTip, back: LINES.done, cage: LINES.bell,
+      gemfound: LINES.gemTake, ledge: LINES.ladderTip, climb: LINES.ladderUp, map: this.dress.map ? LINES.mapTip : LINES.layersTip, critter: LINES.blockTip, back: LINES.done, cage: LINES.bell,
     }[this.step];
     this.say(hint || LINES.walk, { mood: 'calm' });
     // his talk board (ui/choices.js): portrait, what to do now, and the choices as pinned notes

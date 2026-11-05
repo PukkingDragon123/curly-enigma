@@ -4,11 +4,13 @@
 // reacts to how each step went. When the dish is done: act { type: 'lesson', step: 'cook_done' }.
 // The cinematic tutorial (src/ui/Onboard.js): it opens as a cutscene (letterbox, his first line
 // through the cutscene talk when there is one, a hold skips it; cooking starting ends it), and each
-// step's control gets a prompt card drawn for the device (click / tap, hold, drag, circles).
+// step's control gets a prompt card drawn for the device (click / tap, hold, drag, circles). What he
+// hands you off his shelf flies into your paws (ui.onboard.toss); the lesson's stamp waits for home.
 import { LESSON, DISHES } from '../data/recipes.js';
 import { ITEMS } from '../data/items.js';
 import { pick } from '../core/util.js';
 import { pantryCount, pantryGive } from './quality.js';
+import { iconURL } from '../gfx/PixelArt.js';
 
 const touch = () => document.documentElement.classList.contains('is-touch');
 
@@ -102,9 +104,13 @@ export class CookLesson {
       for (let k = pantryCount(st, id); k < n; k++) { pantryGive(st, id, ITEMS[id]?.q ? { q: 82 } : {}); gave = true; }
     }
     const names = this.ids.map((id) => `<b>${ITEMS[id]?.name || id}</b>`).join(' and ');
-    // a cutscene: the bars and his welcome (a hold skips it; so does starting to cook)
+    // a cutscene: the bars and his welcome (a hold skips it; so does starting to cook); what he
+    // hands you off his shelf flies into your paws
     this.cine = true;
-    this.game.ui.onboard?.cinema(true, { skip: () => this.endCine() });
+    const ob = this.game.ui.onboard;
+    ob?.cinema(true, { skip: () => this.endCine() });
+    ob?.caption?.('The fire pit', 'Supper\'s on', 3.4);
+    if (gave && ob?.toss) this.ids.forEach((id, i) => setTimeout(() => { if (this.cine && this.game.scene === this.sc) ob.toss({ x: innerWidth * (0.7 - i * 0.08), y: innerHeight * 0.3 }, iconURL(id), 'pack', { label: i === 0 ? '+ ' + names : null }); }, 900 + i * 380));
     await this.say(`Right, apprentice. A miner who can't cook is a miner who faints halfway down a shaft. We'll make my <b>${DISHES[this.dish].name}</b>${gave ? `. Here, take a ${names} off my shelf` : ''}.`, { mood: 'happy', wait: true });
     this.endCine();
     if (this.game.scene === this.sc && this.sc.phase === 'pantry' && !this.done) this.pantryTip();

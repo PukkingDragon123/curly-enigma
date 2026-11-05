@@ -1,5 +1,5 @@
 // Real cloth: a Verlet mass-spring sheet (structural, shear and bend links), pinned along its top,
-// pushed by gravity and a draught, and shoved aside by upright cylinders (the mole, Old Star, Nugget)
+// pushed by gravity and a draught, and shoved aside by upright cylinders (the mole, Old Star)
 // walking through it. Used for the sacking over Old Star's shack door and his tarp's ragged flap.
 //
 //   const c = new Cloth({ w: 0.8, h: 1.1, nx: 12, ny: 16, tex, pins: 'top' });
@@ -41,6 +41,57 @@ export function sackingTexture({ w = 48, h = 64, base = [154, 128, 88], seed = 7
   t.minFilter = THREE.NearestFilter;
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+/**
+ * Washing on the line (pixel art with cut-outs, nearest filtered): 'shirt' (hung by the shoulders,
+ * sleeves down, a patched elbow), 'johns' (long johns by the waistband, two legs, patched knee),
+ * 'towel' (striped ends, a frayed hem). Returns { tex, w, h } (w × h: the texture's pixels).
+ */
+export function laundryTexture(kind = 'shirt', seed = 3) {
+  const S = { shirt: [32, 40, [104, 124, 146]], johns: [28, 48, [196, 182, 156]], towel: [24, 30, [206, 196, 172]] }[kind] || [24, 30, [200, 190, 170]];
+  const [w, h, base] = S;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const x = cv.getContext('2d');
+  const img = x.createImageData(w, h);
+  let sd = seed >>> 0;
+  const rnd = () => ((sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    let on = true, k = ((i + j) % 2 ? 1.04 : 0.96) * (0.92 + rnd() * 0.12);
+    let [r, g, b] = base;
+    if (kind === 'shirt') {
+      const sleeve = i < 6 || i >= w - 6;
+      if (sleeve && j > 24) on = false; // the sleeves end
+      if (!sleeve && j > h - 3 && (i % 3 === 0)) on = false; // a ragged hem
+      if (j < 3 && i > 12 && i < 20) on = false; // the collar's neck
+      if (j >= 3 && j < 5 && i > 11 && i < 21) k *= 0.8; // the collar
+      if (i === 16 && j > 4 && j % 6 === 0) { r = 230; g = 226; b = 214; k = 1; } // buttons
+      if (Math.abs(i - 15) < 1 && j > 4) k *= 0.86; // the placket
+      if (sleeve) k *= 0.9;
+      if (i >= w - 6 && j > 12 && j < 20) { r = 140; g = 112; b = 84; } // a patched elbow
+    } else if (kind === 'johns') {
+      if (j > 18 && i > 12 && i < 16) on = false; // between the legs
+      if (j > 18 && (i === 12 || i === 16)) k *= 0.85;
+      if (j < 4) k *= 0.82; // the waistband
+      if (j > h - 4) k *= (i % 2 ? 0.8 : 0.95); // ribbed cuffs
+      if (j > 30 && j < 37 && i > 2 && i < 9) { r = 120; g = 140; b = 110; } // a patched knee
+      if (i === 14 && j > 5 && j < 16 && j % 4 === 0) { r = 90; g = 70; b = 50; k = 1; } // flap buttons
+      k *= 1 - Math.max(0, j - 30) * 0.008; // grubby toward the feet
+    } else {
+      if (j < 5 || (j > h - 8 && j < h - 3)) { const st = (j % 3 === 0); r = st ? 150 : 170; g = st ? 58 : 70; b = st ? 48 : 60; }
+      if (j >= h - 2 && i % 2) on = false; // the fringe
+    }
+    const p = (j * w + i) * 4;
+    img.data[p] = r * k; img.data[p + 1] = g * k; img.data[p + 2] = b * k;
+    img.data[p + 3] = on ? 255 : 0;
+  }
+  x.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(cv);
+  t.magFilter = THREE.NearestFilter;
+  t.minFilter = THREE.NearestFilter;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return { tex: t, w, h };
 }
 
 export class Cloth {

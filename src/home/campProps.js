@@ -6,7 +6,7 @@
 // in a damp corner. Mostly at 1/32 m (old wood doesn't need finer), the small things at 1/64 m.
 // Conventions as caveProps.js: tile units; floor pieces centred at their foot, front toward +z;
 // wall pieces have x along the wall, origin on the wall at the floor, +z out of it.
-import { VoxelGrid, C, line, ring, sag, M32, G32, group, mulc, mixc, h3, S32, S16 } from '../iso/kit.js';
+import { VoxelGrid, C, line, ring, sag, wood, M32, G32, group, mulc, mixc, h3, S32, S16 } from '../iso/kit.js';
 import { hash2 } from '../iso/surface.js';
 import { P } from './tavernProps.js';
 import { makeRng } from '../core/util.js';
@@ -233,7 +233,12 @@ export function springBasin(seed = 81) {
   return { obj: M32(g, [bx, 0, 0]), water: { r: (R - 3) / 32, y: T(4) }, basin: { x: 0, y: T(4), z: T(bz) }, spout: { x: 0, y: T(47), z: T(7) } };
 }
 
-/** A drying line (1/64 m): a rope sagging len m along x with socks, a rag and long johns pegged on. Origin at its middle, at the rope's ends' height. */
+/**
+ * A drying line (1/64 m): a rope sagging len m along x with socks pegged on, and pegs ready for the
+ * washing that hangs as real cloth (a shirt, long johns, a towel: campCloth.js). Origin at its middle,
+ * at the rope's ends' height. Returns { obj, hang: [{ x0, x1, y, kind }] (local tiles: where each
+ * piece of washing is pegged) }.
+ */
 export function dryingLine(len = 1.6, seed = 83) {
   const L = Math.round(len * 64);
   const g = new VoxelGrid(L + 4, 50, 6);
@@ -241,18 +246,31 @@ export function dryingLine(len = 1.6, seed = 83) {
   line(g, pts, 0.5, C.rope);
   const ropeY = (x) => 46 - Math.sin(((x - 2) / (L - 1)) * Math.PI) * 5;
   const rng = makeRng(seed);
-  let x = 10;
-  const things = [['sock', 0x8a3a3a], ['sock', 0x5a6a8a], ['rag', 0xa89878], ['johns', 0xc8b8a0], ['sock', 0x6a7a4a], ['rag', 0x7a5a6a]];
-  for (const [k, col] of things) {
-    if (x > L - 14) break;
+  let x = 8;
+  const hang = [];
+  const things = [['sock', 0x8a3a3a], ['shirt', 22], ['sock', 0x5a6a8a], ['johns', 18], ['sock', 0x6a7a4a], ['towel', 16]];
+  const peg = (px) => { const y = Math.round(ropeY(px)); g.box(px - 1, y - 1, 2, 2, 4, 3, 0x9a7a52); g.set(px - 1, y + 3, 3, 0x6a5038); };
+  for (const [k, v] of things) {
+    if (x > L - 12) break;
     const y = Math.round(ropeY(x));
-    if (k === 'sock') { g.box(x, y - 14, 2, 4, 14, 2, (xx, yy) => ((yy - y) % 4 === 0 ? mulc(col, 0.8) : col)); g.box(x, y - 16, 2, 8, 3, 2, col); g.box(x + 6, y - 16, 2, 2, 2, 2, mulc(col, 0.7)); x += 14; }
-    else if (k === 'rag') { g.box(x, y - 18, 2, 12, 18, 1, (xx, yy) => (hash2(xx >> 1, yy >> 1, seed) < 0.1 ? mulc(col, 0.7) : col)); x += 16; }
-    else { g.box(x, y - 30, 2, 16, 12, 2, col); g.box(x, y - 34, 2, 6, 6, 2, col); g.box(x + 10, y - 34, 2, 6, 6, 2, col); g.box(x + 6, y - 30, 2, 2, 2, 2, mulc(col, 0.8)); x += 22; }
-    g.box(x - 3, y, 2, 2, 3, 3, 0x9a7a52); // a peg
-    x += Math.floor(rng() * 4);
+    if (k === 'sock') {
+      const col = v;
+      // a darned sock: leg, heel, foot, a toe gone through
+      g.box(x, y - 13, 2, 4, 13, 2, (xx, yy) => ((yy - y) % 4 === 0 ? mulc(col, 0.8) : col));
+      g.box(x, y - 16, 2, 8, 3, 2, col); g.box(x - 1, y - 15, 2, 1, 2, 2, mulc(col, 0.85)); g.box(x + 7, y - 16, 2, 1, 2, 2, 0xd8c8a8);
+      g.box(x + 1, y - 7, 2, 2, 2, 1, 0xc8b890); // the darn
+      peg(x + 2);
+      x += 12;
+    } else {
+      const w = v;
+      peg(x); peg(x + w - 1);
+      const T0 = (vx) => T(vx - (L / 2 + 2));
+      hang.push({ x0: T0(x), x1: T0(x + w), y: T((ropeY(x) + ropeY(x + w)) / 2 - 46 - 0.5), kind: k });
+      x += w + 6;
+    }
+    x += Math.floor(rng() * 3);
   }
-  return M32(g, [L / 2 + 2, 46, 3], { outline: false });
+  return { obj: M32(g, [L / 2 + 2, 46, 3], { outline: false }), hang };
 }
 
 /** A log to sit on (floor piece, 1/64 m), len m long along x. Returns { obj, seat (local tiles), r }. */
@@ -381,4 +399,178 @@ export function leanToRuin(w = 1.4, h = 1.3, seed = 95) {
   // splinters and grit
   for (let i = 0; i < 30; i++) g.set(Math.floor(rng() * (VW + 8)), 0, VD - 6 + Math.floor(rng() * 14), rng() < 0.5 ? 0x5a5048 : GREY[Math.floor(rng() * 3)]);
   return { obj: M32(g, [(VW + 10) / 2, 0, 0], { scale: S16 }), hw: w / 2, hd: 0.45, h: h };
+}
+
+// ---------------------------------------------------------------- polish: the camp's small things, closer up
+const SHROOM_HUES = [[0x3ec8b8, 0xb8fff0, 0x1a5a54], [0x4aa8e8, 0xd0f0ff, 0x1a3e6a], [0x9a6ae8, 0xe8d0ff, 0x3e2478]];
+
+/**
+ * Glowing cave mushrooms (floor piece, 1/64 m): a clutch of thin pale stems on a hump of dark wet
+ * earth and moss, small caps dark on top and lit from beneath by their glowing gills, freckled with
+ * glowing spots; a few buttons just coming up. hue 0 teal, 1 blue, 2 violet. Returns { obj }.
+ */
+export function glowCaps(seed = 3, hue = 0, size = 1) {
+  const [c, hi, lo] = SHROOM_HUES[hue % SHROOM_HUES.length];
+  const rng = makeRng(seed);
+  const R = Math.round(13 * size), N = R * 2 + 12, Hh = Math.round(26 * size) + 8;
+  const g = new VoxelGrid(N, Hh, N), gl = new VoxelGrid(N, Hh, N);
+  const cx = N / 2, cz = N / 2;
+  // the hump of earth and moss they grow from
+  g.ellipsoid(cx, 0, cz, R + 2, 3, R, (x, y, z) => (y < 1 ? 0x2a2420 : h3(x, y, z, seed) < 0.45 ? (h3(x, 1, z, seed) < 0.5 ? 0x3e5228 : 0x34461f) : 0x3a302a));
+  const n = 4 + Math.floor(rng() * 4);
+  for (let k = 0; k < n; k++) {
+    const a = rng() * Math.PI * 2, d = k ? (0.3 + rng() * 0.7) * R * 0.8 : rng() * 2;
+    const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+    const h = Math.round((k ? 5 + rng() * 11 : 15 + rng() * 6) * size);
+    const r = Math.max(2.2, (k ? 2 + rng() * 2.4 : 4.4) * size);
+    const lx = Math.cos(a) * (k ? 0.16 : 0.05), lz = Math.sin(a) * (k ? 0.16 : 0.05); // leaning out of the clutch
+    line(g, [[x, 2, z], [x + lx * h * 0.5, h * 0.6, z + lz * h * 0.5], [x + lx * h, h, z + lz * h]], Math.max(0.7, r * 0.26), (xx, y) => (y < 4 ? 0xa89c88 : y > h - 2 ? 0xe8e0d0 : 0xd8d0c0));
+    const tx = x + lx * h, tz = z + lz * h;
+    // the cap: dark on top, its rim catching the gills' glow; glowing freckles; the gills under it glow
+    g.ellipsoid(tx, h + 0.5, tz, r, r * 0.55, r, (xx, y, zz, dx, dy) => {
+      if (dy < 0) return -1;
+      const rim = Math.hypot(dx, (zz + 0.5 - tz) / r) > 0.72;
+      return rim ? mixc(c, 0x101418, 0.45) : mixc(c, 0x101418, 0.68);
+    });
+    for (let j = 0; j < 3 + r; j++) { const sa = rng() * Math.PI * 2, sr = rng() * r * 0.7; gl.set(Math.round(tx + Math.cos(sa) * sr), Math.round(h + 0.5 + r * 0.5 * (1 - sr / r)), Math.round(tz + Math.sin(sa) * sr), hi); }
+    ring(gl, tx, tz, 0, r - 0.4, Math.round(h), Math.round(h) + 1, (xx, y, zz) => (Math.hypot(xx + 0.5 - tx, zz + 0.5 - tz) > r * 0.45 ? c : lo));
+  }
+  for (let k = 0; k < 4; k++) { const a = rng() * Math.PI * 2, d = R * (0.5 + rng() * 0.5); gl.ellipsoid(cx + Math.cos(a) * d, 2.5, cz + Math.sin(a) * d, 1.4, 1.2, 1.4, k % 2 ? c : hi); }
+  return { obj: group(M32(g, [cx, 0, cz]), G32(gl, [cx, 0, cz])), color: c };
+}
+
+/**
+ * A crystal cluster growing out of a lump of rock (floor piece, 1/64 m): slender six-sided prisms
+ * leaning out at angles, cold facets lit and shaded, their tips glowing. hue 0 green, 1 blue, 2 violet.
+ */
+export function crystalCluster(seed = 17, hue = 1, size = 1) {
+  const PAL = [[0x5ac88a, 0xb8f8c8, 0x2a6a4a], [0x5aa8d8, 0xc8ecff, 0x24507a], [0x9a7ad8, 0xe0d0ff, 0x4a3478]];
+  const [c, hi, lo] = PAL[hue % PAL.length];
+  const rng = makeRng(seed);
+  const N = Math.round(44 * size), H = Math.round(52 * size);
+  const g = new VoxelGrid(N, H, N), gl = new VoxelGrid(N, H, N);
+  const cx = N / 2, cz = N / 2;
+  g.ellipsoid(cx, 1, cz, N * 0.34, 6 * size, N * 0.3, (x, y, z) => (h3(x >> 1, y >> 1, z >> 1, seed) < 0.3 ? 0x3e4044 : y < 2 ? 0x2a2a2e : 0x4c4e52));
+  const n = 5 + Math.floor(rng() * 4);
+  for (let s = 0; s < n; s++) {
+    const a = rng() * Math.PI * 2, tilt = s ? 0.25 + rng() * 0.55 : rng() * 0.15;
+    const dir = [Math.cos(a) * Math.sin(tilt), Math.cos(tilt), Math.sin(a) * Math.sin(tilt)];
+    const len = (s ? 12 + rng() * 22 : 34 + rng() * 10) * size, r = (s ? 1.6 + rng() * 1.8 : 3.4) * size;
+    const bx = cx + Math.cos(a) * rng() * N * 0.12, bz = cz + Math.sin(a) * rng() * N * 0.12, by = 3 * size;
+    const tipL = r * 1.9;
+    for (let t = 0; t < len; t += 0.5) {
+      const rr = t > len - tipL ? r * (len - t) / tipL : r;
+      const px = bx + dir[0] * t, py = by + dir[1] * t, pz = bz + dir[2] * t;
+      for (let z = Math.floor(pz - rr - 1); z <= pz + rr + 1; z++) for (let y = Math.floor(py - rr - 1); y <= py + rr + 1; y++) for (let x = Math.floor(px - rr - 1); x <= px + rr + 1; x++) {
+        const vx = x + 0.5 - px, vy = y + 0.5 - py, vz = z + 0.5 - pz;
+        const along = vx * dir[0] + vy * dir[1] + vz * dir[2];
+        if (Math.abs(along) > 0.5) continue;
+        const ox = vx - dir[0] * along, oy = vy - dir[1] * along, oz = vz - dir[2] * along;
+        if (Math.hypot(ox, oy, oz) > rr) continue;
+        const tip = t > len - tipL * 1.3;
+        // a facet facing the light up-left, one in shade, the rest the crystal's own colour
+        const f = (ox * -0.7 + oy * 0.6 + oz * 0.4) / (rr || 1);
+        const col = f > 0.35 ? hi : f < -0.3 ? lo : (Math.floor(t / 4) % 3 === 0 ? mixc(c, hi, 0.2) : c);
+        if (tip) gl.set(x, y, z, t > len - 2 ? 0xffffff : mixc(hi, c, f > 0 ? 0 : 0.4));
+        else g.set(x, y, z, col);
+      }
+    }
+  }
+  return { obj: group(M32(g, [cx, 0, cz]), G32(gl, [cx, 0, cz])), color: c };
+}
+
+/**
+ * Pans and things hung on pegs along a rail screwed to the rock (wall piece, 1/64 m), len m long:
+ * a black frying pan, a ladle, a tin mug, a sieve, a pot lid, a bunch of wooden spoons.
+ */
+export function potHooks(len = 0.8, seed = 101) {
+  const L = Math.round(len * 64);
+  const g = new VoxelGrid(L + 4, 56, 16);
+  const rail = wood(0x5a4030, { axis: 'x', across: 'y', pw: 99, seed });
+  g.box(0, 46, 0, L, 5, 3, (x, y, z) => (x === 3 || x === L - 4 ? 0x2a2a2e : rail(x, y, z)));
+  const iron = (x, y, z) => (h3(x, y, z, seed) < 0.06 ? 0x6a4a3a : 0x26262c);
+  const kinds = ['pan', 'ladle', 'mug', 'sieve', 'lid', 'spoons'];
+  let x = 7;
+  for (const k of kinds) {
+    if (x > L - 6) break;
+    g.box(x, 46, 3, 2, 2, 4, 0x3a2a1e); // the peg
+    if (k === 'pan') { line(g, [[x, 46, 6], [x, 30, 6]], 0.8, 0x2a2a30); for (let y = 6; y < 30; y++) for (let xx = x - 11; xx <= x + 11; xx++) { const d = Math.hypot(xx + 0.5 - x, y + 0.5 - 18); if (d < 11) { g.set(xx, y, 5, d > 9.6 ? 0x3a3a42 : iron(xx, y, 5)); if (d > 9.6) g.set(xx, y, 6, 0x3a3a42); } } x += 24; }
+    else if (k === 'ladle') { line(g, [[x, 46, 6], [x, 18, 6]], 0.6, 0x8a8a92); g.ellipsoid(x, 15, 7, 3.5, 3.2, 3, (xx, y, z, dx, dy, dz) => (dz > 0.2 && dy > -0.2 ? -1 : 0x7a7a84)); x += 9; }
+    else if (k === 'mug') { line(g, [[x, 46, 6], [x, 40, 6]], 0.4, 0x3a3a42); ring(g, x, 8, 0, 3.2, 31, 39, (xx, y) => (y === 38 ? 0xa8aab0 : 0x8a8e94)); g.box(x + 3, 33, 7, 2, 4, 2, 0x8a8e94); x += 10; }
+    else if (k === 'sieve') { for (let y = 22; y < 42; y++) for (let xx = x - 9; xx <= x + 9; xx++) { const d = Math.hypot(xx + 0.5 - x, y + 0.5 - 32); if (d < 9) g.set(xx, y, 6, d > 7.8 ? 0x9a9aa2 : (xx + y) % 2 ? 0x6a6a72 : -1); } line(g, [[x, 46, 6], [x, 41, 6]], 0.5, 0x6a6a72); x += 20; }
+    else if (k === 'lid') { for (let y = 24; y < 44; y++) for (let xx = x - 9; xx <= x + 9; xx++) { const d = Math.hypot(xx + 0.5 - x, y + 0.5 - 34); if (d < 9) g.set(xx, y, 5, d < 1.5 ? 0x4a3a2a : d > 8 ? 0x4a4a52 : iron(xx, y, 5)); } x += 20; }
+    else { for (let j = 0; j < 4; j++) line(g, [[x + j - 1, 45, 6], [x - 3 + j * 2, 22, 6 + (j % 2)]], 0.5, j % 2 ? 0xb88a5a : 0xa07a4a); g.ellipsoid(x - 3, 21, 7, 2, 3, 1.5, 0xb88a5a); g.box(x - 2, 40, 5, 4, 2, 3, C.ropeD); x += 10; }
+  }
+  return M32(g, [L / 2, 0, 0]);
+}
+
+/** A little photo in a wooden frame, on a string from a nail, hung askew (wall piece, 1/64 m): two moles, faded to brown. */
+export function framedPhoto(seed = 103) {
+  const W = 20, H = 16;
+  const g = new VoxelGrid(W + 6, H + 14, 5);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const sx = x + 3 + Math.round((y - H / 2) * 0.12), sy = y + 2; // askew
+    const edge = x < 2 || y < 2 || x >= W - 2 || y >= H - 2;
+    let c;
+    if (edge) c = (x + y) % 7 === 0 ? 0x4a3020 : 0x6a4428;
+    else {
+      // sepia: a dark ground, two round figures, one taller with a hat, a crack across the glass
+      c = y < 6 ? 0x6e5a42 : 0x8a7454;
+      const f1 = Math.hypot((x - 7) / 2.6, (y - 7) / 3.6) < 1 || Math.hypot(x - 7, y - 11.5) < 2.2;
+      const f2 = Math.hypot((x - 13) / 2.4, (y - 6.5) / 3.2) < 1 || Math.hypot(x - 13, y - 10.5) < 2;
+      if (f1 || f2) c = 0x4a3a2a;
+      if (x >= 5 && x <= 9 && y === 14) c = 0x2a2018; // his hat
+      if (Math.abs(x - 4 - (y - 2) * 0.9) < 0.6) c = 0xc8bca0; // the crack
+      if (hash2(x, y, seed) < 0.06) c = mulc(c, 1.18);
+    }
+    g.set(sx, sy, 1, c);
+  }
+  line(g, [[5, H + 1, 2], [W / 2 + 3, H + 10, 2], [W - 1, H + 2, 2]], 0.4, 0x8a7a5a);
+  g.box(W / 2 + 2, H + 10, 0, 2, 2, 4, 0x3a3a42); // the nail
+  return M32(g, [W / 2 + 3, 0, 0]);
+}
+
+/** A bench of one old plank on two sawn stumps (floor piece, 1/64 m), len m along x. Returns { obj, seat (local tiles) }. */
+export function plankBench(len = 0.85, seed = 105) {
+  const L = Math.round(len * 64), H = 24;
+  const g = new VoxelGrid(L + 4, H + 4, 24);
+  for (const x of [10, L - 10]) for (let y = 0; y < H - 3; y++) ring(g, x + 2, 12, 0, 7 - (y < 2 ? -1 : 0), y, y + 1, (xx, yy, zz, a) => (Math.round(a * 4) % 3 === 0 ? 0x4a3a2a : yy === H - 4 ? 0xa8885e : 0x5e4a36));
+  const top = (x, y, z) => (x < 3 || x > L ? 0xb8a888 : (z === 4 || z === 19) ? mulc(GREY[1], 0.8) : GREY[(x >> 4) % GREY.length]);
+  g.box(1, H - 3, 4, L + 2, 3, 16, (x, y, z) => (y === H - 1 && h3(x, y, z, seed) < 0.05 ? 0x4a4038 : top(x, y, z)));
+  g.box(Math.round(L * 0.45), H - 4, 2, 2, 4, 20, 0x5a3a2a); // a batten under it, the plank was splitting
+  return { obj: M32(g, [L / 2 + 2, 0, 12]), seat: { x: 0, y: T(H), z: 0 } };
+}
+
+/** A dented zinc wash tub with a washboard leaning in it and a cake of soap on the rim (floor piece, 1/64 m). */
+export function washTub(seed = 107) {
+  const g = new VoxelGrid(44, 50, 44);
+  const zinc = (x, y, z) => (h3(x, y, z, seed) < 0.08 ? 0x6a7076 : y % 6 === 0 ? 0x8a9096 : 0x9aa0a4);
+  for (let y = 0; y < 16; y++) ring(g, 22, 22, y < 1 ? 0 : 14 + y * 0.18, 15.4 + y * 0.18, y, y + 1, (x, yy, z, a) => (Math.abs(a - 1.1) < 0.2 && yy > 6 && yy < 12 ? 0x7a8086 : zinc(x, yy, z)));
+  ring(g, 22, 22, 0, 14.5, 9, 10, (x, y, z) => (h3(x, y, z, 2) < 0.3 ? 0x8a9488 : 0x6a7a78)); // grey water
+  g.box(5, 15, 21, 4, 2, 4, 0x2a2a30); g.box(35, 15, 21, 4, 2, 4, 0x2a2a30); // handles
+  // the washboard: a wooden frame round a ribbed zinc panel, leaning on the rim
+  for (let t = 0; t < 44; t++) for (let x = 12; x < 32; x++) {
+    const y = 4 + t, z = 26 - Math.round(t * 0.38);
+    const frame = x < 14 || x > 29 || t < 4 || t > 38;
+    g.set(x, y, z, frame ? (x + t) % 9 === 0 ? 0x5a3a22 : 0x8a6040 : t % 3 ? 0xa8aeb2 : 0x7a8086);
+  }
+  g.box(30, 16, 8, 6, 3, 4, 0xe8dcb0); // soap
+  return M32(g, [22, 0, 22]);
+}
+
+/** A worn flagstone half sunk in the floor (floor piece, 1/32 m), ~w × d m. */
+export function flagstone(w = 0.4, d = 0.32, seed = 109) {
+  const W = Math.round(w * 32), D = Math.round(d * 32);
+  const g = new VoxelGrid(W + 2, 2, D + 2);
+  const base = [0x6a6660, 0x5e5a55, 0x726c62][Math.floor(hash2(seed, 1, 3) * 3)];
+  for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+    const ex = (x + 0.5 - W / 2) / (W / 2), ez = (z + 0.5 - D / 2) / (D / 2);
+    const e = Math.max(Math.abs(ex), Math.abs(ez)) * 0.6 + Math.hypot(ex, ez) * 0.4 + (hash2(x >> 1, z >> 1, seed) - 0.5) * 0.18;
+    if (e > 1) continue;
+    let c = e > 0.82 ? mulc(base, 0.8) : hash2(x, z, seed + 1) < 0.1 ? mulc(base, 1.1) : base;
+    if (e < 0.5 && hash2(x >> 1, z, seed + 2) < 0.25) c = mixc(c, 0x8a8478, 0.4); // worn pale in the middle
+    if (e > 0.75 && hash2(x, z, seed + 3) < 0.3) c = 0x3e4a28; // moss in the cracks round it
+    g.set(x + 1, 0, z + 1, c);
+  }
+  return M32(g, [W / 2 + 1, 0, D / 2 + 1], { scale: S16, outline: false });
 }

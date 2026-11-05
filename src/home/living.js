@@ -1,4 +1,4 @@
-// Living in your room (mixed into HomeScene): the window and the poster, Nugget's eggs and petting,
+// Living in your room (mixed into HomeScene): the window and the poster,
 // the planters, sitting down (in your room or by Old Star's hearth), lamps, the music box, snacks, and the
 // bed: lying down, sleeping through to the next day and getting up again, all in first person.
 import * as THREE from 'three';
@@ -12,7 +12,6 @@ import { besideItem } from './layoutfix.js';
 import { openSeedTray } from '../ui/choices.js';
 
 const _v = new THREE.Vector3();
-const _w = new THREE.Vector3();
 const TUNE = [72, 76, 79, 76, 74, 77, 81, 77, 72, 76, 79, 84, 83, 79, 76, 74];
 
 export class HomeLiving {
@@ -46,32 +45,6 @@ export class HomeLiving {
   floatAt(x, y, z, text, color = '#fff') {
     const s = this.toScreen(_v.set(x, y, z));
     if (s.visible) this.game.ui.floatText(text, s.x, s.y, color);
-  }
-
-  eggCount() {
-    const st = this.game.state;
-    return st.flag('nugget') ? st.data.chicken.eggs || 0 : 0;
-  }
-
-  collectEggs(rec) {
-    const st = this.game.state, d = st.data;
-    const n = this.eggCount();
-    const y = rec.bbox.max.y + 0.05;
-    if (n <= 0) {
-      if (this.nug) this.game.audio.play('cluck', { n: 1 });
-      this.floatAt(rec.cx * T, y, rec.cz * T, 'Just straw', '#e6dcc8');
-      return;
-    }
-    st.addItem('egg', { spill: true, n });
-    d.chicken.eggs = 0;
-    d.stats.eggs = (d.stats.eggs || 0) + n;
-    st.learn('eggs');
-    this.game.audio.play('cluck', { n: 2, gap: 0 });
-    this.game.audio.play('pickup', { pitch: 1.2 });
-    rec.res.setEggs?.(0);
-    this.floatAt(rec.cx * T, y, rec.cz * T, `+${n} egg${n > 1 ? 's' : ''}`, '#fff4d0');
-    if (this.nug) this.nugEmote('♥');
-    st.save();
   }
 
   planterLabel(rec) {
@@ -202,31 +175,6 @@ export class HomeLiving {
     this.later(0.55, () => this.game.eat(id));
   }
 
-  // ------------------------------------------------------------ Nugget
-  petNugget() {
-    const st = this.game.state, d = st.data;
-    d.chicken.pets = (d.chicken.pets || 0) + 1;
-    d.chicken.lastPetDay = d.day;
-    st.dirty = true;
-    const n = this.nug;
-    this.game.audio.play('cluck', { n: 2, pitch: 1.15, gap: 0 });
-    this.game.audio.play('emote', { kind: 'love' });
-    n.ai.petted();
-    const pl = this.rig.player.pos;
-    n.actor.faceToward(pl.x / T, pl.z / T);
-    this.rig.vm?.impact('none', 0.3);
-    this.nugEmote('♥');
-    const h = n.head(_v);
-    for (let i = 0; i < 6; i++) this.fx.spawn({ x: h.x + rand(-0.05, 0.05), y: h.y, z: h.z + rand(-0.05, 0.05), vx: rand(-0.1, 0.1), vy: rand(0.25, 0.45), vz: rand(-0.1, 0.1), life: 1.1, size: 0.016, color: [1, 0.35, 0.42], glow: true, drag: 1.2, grav: -0.1 });
-  }
-
-  nugEmote(sym, life = 1.5) {
-    if (!this.nug) return;
-    const col = { '♥': '#e0404a', '!': '#c0402a', '?': '#3a6ac9' }[sym] || '#2a1a12';
-    this.game.ui.bubble('nug', `<span style="color:${col}">${sym}</span>`, 0, 0, { emote: true, life });
-    this.anchors.set('nug', () => this.nug.head(_v).add(_w.set(0, 0.08, 0)));
-  }
-
   updateAnchors() {
     const ui = this.game.ui;
     for (const [k, fn] of this.anchors) {
@@ -237,14 +185,6 @@ export class HomeLiving {
       const vis = s.visible && s.x > -40 && s.x < e.width * e.scale + 40 && s.y > 0 && !this.hideFrom?.get(k)?.();
       ui.moveBubble(k, s.x, s.y, vis);
     }
-  }
-
-  sendNuggetToNap(coop, secs) {
-    if (!this.nug) return;
-    const n = coop.res.nap;
-    coop.obj.updateMatrix();
-    const w = _v.set(n.x, 0, n.z).applyMatrix4(coop.obj.matrix);
-    this.nug.ai.nap({ x: w.x, z: w.z, y: n.y, yaw: (coop.p.r || 0) * Math.PI / 2 }, secs);
   }
 
   // ------------------------------------------------------------ bed
@@ -294,7 +234,6 @@ export class HomeLiving {
     await this.sleepFor(0.8);
     await this.getUp(rec);
     this.game.audio.play('land', { vol: 0.5 });
-    if (this.nug) { this.nug.ai.wake(); this.game.audio.play('cluck', { n: 2 }); }
     this.endScript();
     this.unstick();
     if (first) this.game.ui.toast(`Day ${this.game.state.data.day}`);
@@ -303,13 +242,10 @@ export class HomeLiving {
   async trySleep(rec) {
     const ok = await this.game.ui.confirm('Sleep until morning?', 'Sleep', 'Not yet');
     if (!ok || this.scripted) return;
-    const st = this.game.state, d = st.data;
+    const d = this.game.state.data;
     this.beginScript(false);
     this.game.audio.play('yawn');
     await this.lieDown(rec);
-    const coop = this.findKind('coop');
-    if (coop && coop.res.nap) this.sendNuggetToNap(coop, 999);
-    const eggsBefore = d.chicken.eggs || 0;
     await this.tween(1.4, (k) => { this.post.fade = k; });
     this.game.audio.play('snore');
     await this.sleepFor(1.3);
@@ -319,13 +255,10 @@ export class HomeLiving {
     await this.sleepFor(0.8);
     await this.tween(1.2, (k) => { this.post.fade = 1 - k; });
     this.post.fade = 0;
-    const laid = (d.chicken.eggs || 0) - eggsBefore;
-    const name = d.chicken.name || 'Nugget';
-    this.game.ui.toast(`<b>Day ${d.day}</b>` + (laid > 0 ? ` · ${name} laid ${laid === 1 ? 'an egg' : laid + ' eggs'}!` : ''), { kind: 'good', dur: 3400 });
+    this.game.ui.toast(`<b>Day ${d.day}</b>`, { kind: 'good', dur: 3400 });
     this.game.audio.play('yawn');
     await this.sleepFor(0.6);
     await this.getUp(rec);
-    if (this.nug) { this.nug.ai.wake(); this.game.audio.play('cluck', { n: 2 }); }
     this.endScript();
     this.unstick();
   }
@@ -333,7 +266,6 @@ export class HomeLiving {
   refreshDayVisuals() {
     for (const rec of [...this.items.values()]) {
       const k = FURNITURE[rec.p.id]?.kind;
-      if (k === 'coop' && rec.res.setEggs) rec.res.setEggs(this.eggCount());
       if (k === 'planter' && rec.res.setPlant) rec.res.setPlant(this.ctxFor(rec.p).planter, ITEMS);
     }
   }

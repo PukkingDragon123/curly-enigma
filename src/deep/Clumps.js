@@ -957,10 +957,10 @@ export class Clumps {
     this.save(c);
   }
 
-  /** No pocket for this clump's ore (and Nugget isn't close enough to take it)? */
+  /** No pocket for this clump's ore (or too heavy to lift)? */
   noRoom(c, counts) {
     const st = this.st;
-    if (st.canAdd) { const id = this.lootOf(c)?.id; return !!id && (!st.canAdd(id, 1) || !(st.canLift?.(id, 1) ?? true)) && !this.owner.nugget?.canTake?.(id); }
+    if (st.canAdd) { const id = this.lootOf(c)?.id; return !!id && (!st.canAdd(id, 1) || !(st.canLift?.(id, 1) ?? true)); }
     return counts && (this.owner.trip ?? 0) >= st.bagCapacity();
   }
 
@@ -969,7 +969,7 @@ export class Clumps {
     const it = c.it, st = this.st, owner = this.owner;
     const counts = it.cat === 'mineral' || it.cat === 'gem';
     if (st && this.noRoom(c, counts)) {
-      this.say('bagfull', st.canAdd?.(this.lootOf(c)?.id, 1) ? `Too heavy! Your pack can't take more. Drop it (<b>G</b>), or unload ore onto Nugget's coop.` : `No room in your backpack! Drop it (<b>G</b>), let Nugget carry it, or head home to unload.`, 'warn', 4);
+      this.say('bagfull', st.canAdd?.(this.lootOf(c)?.id, 1) ? `Too heavy! Your pack can't take more. Drop it (<b>G</b>), or head home to unload.` : `No room in your backpack! Drop it (<b>G</b>), or head home to unload.`, 'warn', 4);
       this.audio?.play('ui_error');
       return false;
     }

@@ -116,8 +116,8 @@ export const ITEMS = {
     desc: 'Blooms only near the planet\'s heart. Legendary in mole cooking.' },
 
   // ───────────── Critters (caught alive) & drops ─────────────
-  worm: { name: 'Earthworm', cat: 'critter', value: 6, price: 10, hen: 0.3, stack: 16, icon: { k: 'critter', t: 'worm' },
-    desc: 'Wriggly, protein-rich, a mole classic. Chickens love them too.' },
+  worm: { name: 'Earthworm', cat: 'critter', value: 6, price: 10, stack: 16, icon: { k: 'critter', t: 'worm' },
+    desc: 'Wriggly, protein-rich, a mole classic.' },
   glow_beetle: { name: 'Glow Beetle', cat: 'critter', value: 35, icon: { k: 'critter', t: 'beetle' },
     desc: 'A beetle with a lantern for a bottom. Lovely in a jar.' },
   blind_fish: { name: 'Blind Cave Fish', cat: 'critter', value: 45, icon: { k: 'critter', t: 'fish' },
@@ -147,21 +147,13 @@ export const ITEMS = {
   dino_meat: { name: 'Dino Steak', cat: 'ingredient', value: 45, icon: { k: 'loot', t: 'meat' }, tags: ['meat', 'cook'], lootCol: 0xc8463a, desc: 'A thick, marbled cut. Sears beautifully over a hot hearth.' },
   drake_egg: { name: 'Drake Egg', cat: 'ingredient', value: 1500, icon: { k: 'loot', t: 'egg', c: 0x8a2e1a }, tags: ['egg', 'cook', 'heat'], lootCol: 0xe0703a, desc: 'Hot to the touch, and heavy. Cook it, sell it, or think very hard about it.' },
 
-  // ───────────── Nugget's food (hen: how much it fills her, 0..1; inventory part) ─────────────
-  chicken_feed: { name: 'Chicken Feed', cat: 'feed', value: 3, price: 6, hen: 0.5, stack: 24, icon: { k: 'hen', t: 'feed' },
-    desc: 'Cracked corn and grit in a little sack. Nugget\'s favourite, and she will tell you so.' },
-  cave_seeds: { name: 'Cave Seeds', cat: 'feed', value: 4, price: 8, hen: 0.3, stack: 24, icon: { k: 'hen', t: 'seeds' },
-    desc: 'A twist of paper full of seeds shaken from cave grasses. A hen can live on these. Just about.' },
-  fat_grub: { name: 'Fat Grub', cat: 'critter', value: 9, hen: 0.45, stack: 16, icon: { k: 'hen', t: 'grub' },
-    desc: 'A plump grub dug out of rotten roots. Moles shudder. Hens swoon.' },
-
   // ───────────── Basic ingredients (shop) ─────────────
   flour: { name: 'Root Flour', cat: 'ingredient', value: 4, price: 8, icon: { k: 'ingr', t: 'flour' }, desc: 'Ground from dried roots.' },
   butter: { name: 'Butter', cat: 'ingredient', value: 6, price: 12, icon: { k: 'ingr', t: 'butter' }, desc: 'Imported from the surface at great expense. Allegedly.' },
   mushroom: { name: 'Button Mushroom', cat: 'ingredient', value: 4, price: 7, icon: { k: 'ingr', t: 'mushroom' }, desc: 'Plain and dependable.' },
   rootbeer: { name: 'Root Beer', cat: 'ingredient', value: 6, price: 11, icon: { k: 'ingr', t: 'rootbeer' }, desc: 'Fizzy. Brewed from actual roots.' },
   honey: { name: 'Deep Honey', cat: 'ingredient', value: 12, price: 22, icon: { k: 'ingr', t: 'honey' }, desc: 'From blind cave bees.' },
-  egg: { name: 'Fresh Egg', cat: 'ingredient', value: 10, icon: { k: 'egg' }, desc: 'Laid by your chicken. Still warm.' },
+  egg: { name: 'Fresh Egg', cat: 'ingredient', value: 10, price: 16, icon: { k: 'egg' }, desc: 'Speckled, from the cave-fowl farms past the east wall. Still warm.' },
   grub_bar: { name: 'Grub Bar', cat: 'food', value: 8, price: 18, energy: 15, icon: { k: 'food', t: 'bar' }, desc: 'Pressed grubs and oats. Tastes like effort.' },
   tea_flask: { name: 'Mushroom Tea', cat: 'food', value: 12, price: 30, energy: 25, icon: { k: 'food', t: 'flask' }, desc: 'Earthy and warming.' },
   hearty_pie: { name: 'Hearty Pie', cat: 'food', value: 40, price: 95, energy: 60, icon: { k: 'food', t: 'pie' }, desc: 'Hazel\'s famous pie. Worth every coin.' },
@@ -237,7 +229,7 @@ export const ITEMS = {
 
   // ───────────── Key items ─────────────
   exit_ticket: { name: 'Surface Ticket', cat: 'key', value: 0, price: 1000000, icon: { k: 'ticket' },
-    desc: 'ONE WAY · DEEP TOWN → THE SURFACE. Admit one mole (and one chicken).' },
+    desc: 'ONE WAY · DEEP TOWN → THE SURFACE. Admit one mole.' },
 };
 
 // Floors & wallpapers & furniture are defined in furniture.js and merged in.
@@ -245,7 +237,6 @@ import { FURNITURE, FLOORS, WALLS } from './furniture.js';
 import { BLUEPRINTS } from './weapons.js';
 import { DISHES, INGREDIENTS } from './recipes.js';
 import { RELIC_ITEMS } from '../deep/ruins/relics.js'; // ruins part: relics found in the ruins' treasure rooms
-import { partItems } from './coopParts.js'; // parts for Nugget's coop, forged at home and installed on the coop
 import { QUEST_ITEMS } from './questItems.js'; // quests part: things carried for somebody (key items)
 import { BUILD_ITEMS } from './buildItems.js'; // building part: blocks, crafting stuff, axes, spades, shears
 
@@ -257,7 +248,6 @@ for (const [id, d] of Object.entries(DISHES)) ITEMS[id] = { cat: 'food', ...d };
 // cooking part: the new cave ingredients; foraged plants carry a quality (how well they were pulled)
 for (const [id, d] of Object.entries(INGREDIENTS)) ITEMS[id] = { ...d };
 for (const [id, d] of Object.entries(RELIC_ITEMS)) ITEMS[id] = { ...d };
-for (const [id, d] of Object.entries(partItems())) ITEMS[id] = d;
 for (const [id, d] of Object.entries(QUEST_ITEMS)) ITEMS[id] = { ...d };
 for (const [id, d] of Object.entries(BUILD_ITEMS)) ITEMS[id] = { ...d };
 for (const it of Object.values(ITEMS)) if (it.cat === 'plant') it.q = true;
@@ -295,5 +285,5 @@ export function pickForTier(t) {
 export const CAT_LABEL = {
   mineral: 'Mineral', gem: 'Gem', ingot: 'Ingot', plant: 'Plant', critter: 'Critter', drop: 'Creature Drop',
   ingredient: 'Ingredient', food: 'Food', tool: 'Tool', equip: 'Equipment', furniture: 'Furniture',
-  floor: 'Flooring', wallpaper: 'Wall Style', blueprint: 'Blueprint', consumable: 'Supply', key: 'Key Item', feed: 'Hen Feed', relic: 'Relic', part: 'Coop Part', block: 'Building Block', craft: 'Crafting Stuff',
+  floor: 'Flooring', wallpaper: 'Wall Style', blueprint: 'Blueprint', consumable: 'Supply', key: 'Key Item', relic: 'Relic', block: 'Building Block', craft: 'Crafting Stuff',
 };

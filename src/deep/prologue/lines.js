@@ -12,6 +12,7 @@ export const LINES = {
   plug: 'My dig\'s behind this wall. I keep it plugged with loam: keeps the nibblers off the lift.',
   plugTip: { d: 'Pick\'s in your paw. Hold the <b>left mouse button</b> and swing at the loam.', t: 'Pick\'s in your paw. Hold the <b>big pick button</b> and swing at the loam.' },
   plugMore: ['That\'s it. Put your back into it.', 'Lovely. Again.', 'Loam\'s soft. So is my back, these days.'],
+  plugShow: 'See? Feet apart, and let the pick <b>fall</b>. Don\'t shove it. Your turn.',
   plugDone: 'There. Your first hole. I\'m told they get easier.',
   again: 'Back for more? Come on, then. The dig\'s this way.',
   // the crawl
@@ -46,7 +47,8 @@ export const LINES = {
   ladderUp: 'Lovely joinery! Up you go: just walk into it.',
   claws: 'Claws! Fine. But a ladder costs you no puff.',
   mapTip: { d: 'The brass tube, that\'s my map. Take it: <kbd>E</kbd>.', t: 'The brass tube, that\'s my map. Tap the <b>hand button</b>.' },
-  mapGot: { d: 'Keep it. Every lift, every burrow, every place I\'ve been lost. <kbd>M</kbd> opens it in your book.', t: 'Keep it. Every lift, every burrow, every place I\'ve been lost. Tap the dial to open it.' },
+  layersTip: { d: 'Press <kbd>M</kbd>: the layers of the underground, and the lifts you\'ve unlocked.', t: 'Tap the dial: the layers of the underground, and the lifts you\'ve unlocked.' },
+  mapGot: { d: 'Keep it. It shows the <b>layers</b> under us: every stratum you\'ve walked, every lift you\'ve woken. <kbd>M</kbd> to look.', t: 'Keep it. It shows the <b>layers</b> under us: every stratum you\'ve walked, every lift you\'ve woken. Tap the dial to look.' },
   // the critter
   scratch: 'Hear that? Scratching. A rock-nibbler. They\'re after the copper.',
   blockTip: { d: 'Guard up! <b>Hold the right mouse button</b> (or <kbd>F</kbd>) as it jumps.', t: 'Guard up! <b>Hold the shield button</b> as it jumps.' },
@@ -72,7 +74,7 @@ export const LINES = {
 };
 
 export const MOOD = {
-  arrive: 'laugh', plugMore: 'happy', plugDone: 'proud', again: 'happy', walk: 'calm', wait: 'stern', welcome: 'proud',
+  arrive: 'laugh', plugShow: 'happy', plugMore: 'happy', plugDone: 'proud', again: 'happy', walk: 'calm', wait: 'stern', welcome: 'proud',
   oreHit: 'stern', oreClose: 'happy', oreLoose: 'happy', oreChisel: 'happy', oreBagged: 'proud', oreDropped: 'laugh',
   gemSee: 'calm', gemOpen: 'laugh', gemGot: 'proud', ledge: 'calm', ladderMode: 'stern', ladderUp: 'happy', claws: 'laugh',
   mapGot: 'proud', scratch: 'worried', blockTip: 'worried', blockLate: 'stern', blocked: 'happy', parried: 'laugh',

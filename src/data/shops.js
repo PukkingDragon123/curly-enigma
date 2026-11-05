@@ -34,12 +34,12 @@ export const SHOPS = {
     sign: 'food',
     stock: [
       { id: 'grub_bar' }, { id: 'tea_flask' }, { id: 'hearty_pie' }, { id: 'flour' }, { id: 'butter' },
-      { id: 'mushroom' }, { id: 'rootbeer' }, { id: 'honey' }, { id: 'cave_carrot' }, { id: 'worm' },
+      { id: 'mushroom' }, { id: 'rootbeer' }, { id: 'honey' }, { id: 'egg' }, { id: 'cave_carrot' }, { id: 'worm' },
     ],
     lines: [
       'You look peckish, dear. Peckish moles dig crooked tunnels.',
       'Glowcaps and a pinch of salt make a lovely soup. Just saying.',
-      'Fresh eggs? You\'ve got a hen, haven\'t you!',
+      'Fresh eggs in today, from the cave-fowl farms. Still warm!',
       'Some folk cook pepperroot before going somewhere hot. Clever folk.',
     ],
   },
@@ -135,7 +135,7 @@ Object.assign(SHOPS, {
     stock: [
       { id: 'support_beam' }, { id: 'glow_stake' }, { id: 'dynamite' }, { id: 'grub_bar' }, { id: 'tea_flask' },
       { id: 'hearty_pie' }, { id: 'worm' }, { id: 'cave_carrot' }, { id: 'chisel_basic' }, { id: 'brush_basic' },
-      { id: 'chicken_feed' }, { id: 'cave_seeds' }, { id: 'bag_medium' }, { id: 'bag_large', minZone: 2 }, { id: 'bag_huge', minZone: 4 },
+      { id: 'bag_medium' }, { id: 'bag_large', minZone: 2 }, { id: 'bag_huge', minZone: 4 },
       { id: 'lamp_glowcap' }, { id: 'crate' }, { id: 'barrel' }, { id: 'rug_round' }, { id: 'dynamite_bundle', minZone: 3 }, { id: 'drake_meat', minZone: 2 },
       // building part: blocks and tools for building down here
       { id: 'blk_torch' }, { id: 'blk_ladder' }, { id: 'blk_planks' }, { id: 'blk_log' }, { id: 'blk_lantern' }, { id: 'axe_copper' }, { id: 'spade_copper' },
@@ -150,7 +150,6 @@ Object.assign(SHOPS, {
       'I buy ore and gems. Clean lumps fetch more. Pristine ones, more still.',
       'Beams! Stakes! Snacks! The three pillars of not dying down here.',
       'Bigger pack, bigger haul. A satchel has twice the pockets of that sack of yours.',
-      'Feed for your hen, seeds for your hen. I don\'t judge.',
       'The rails go on to Deep Town. I used to ride them. Before the cart lost a wheel.',
       'Rocco? Down past the herbalist? Don\'t buy anything that ticks.',
     ],
@@ -169,7 +168,7 @@ Object.assign(SHOPS, {
       { id: 'whisperweed', price: 95 }, { id: 'sparkmoss', price: 85, minZone: 2 }, { id: 'rubber_sap', price: 55, minZone: 2 },
       { id: 'crystal_lily', price: 220, minZone: 3 }, { id: 'gloomshroom', price: 110, minZone: 3 }, { id: 'frostbloom', price: 360, minZone: 5 },
       { id: 'stone_thyme', price: 40 }, { id: 'cave_garlic', price: 36 }, { id: 'tunnel_tuber', price: 26 },
-      { id: 'cave_seeds' }, { id: 'honey' }, { id: 'mushroom' }, { id: 'flour' }, { id: 'butter' },
+      { id: 'honey' }, { id: 'mushroom' }, { id: 'flour' }, { id: 'butter' },
       { id: 'tea_flask' }, { id: 'bubble_tea', price: 180 }, { id: 'glowcap_soup', price: 95 }, { id: 'crystal_tea', price: 560, minZone: 3 },
     ],
     buys: { cats: ['plant', 'critter', 'drop'], mult: 1.0, catMult: { plant: 1.2 }, label: 'Herbs & critters' },
@@ -267,7 +266,6 @@ export const TOWN_CHATTER = [
   'The deeper you go, the stranger it gets.',
   'X-ray lamps go right through rock. Just not through voidstone.',
   'Smelting with extra coal? Makes steel. Fancy!',
-  'Nugget looks extra fluffy today.',
   'I heard you can see the whole sky at once up there. All of it!',
   'Mum says if I dig hard enough I can reach the surface. I\'m on day 4.',
 ];

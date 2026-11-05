@@ -3,6 +3,7 @@
 // you've found and charcoal smudges for what you haven't. Pages turn when you change category.
 import { el, formatGoldFull } from '../core/util.js';
 import { iconURL, weaponIconURL, specURL } from '../gfx/PixelArt.js';
+import { itemVox } from './itemVox.js'; // the entries' items as 3D voxel art (hover one to turn it)
 import { ITEMS, sellPrice } from '../data/items.js';
 import { CREATURES } from '../data/creatures.js';
 import { MECHANICS } from '../data/mechanics.js';
@@ -67,11 +68,12 @@ export function openIndexBook(game, startCat, startId) {
     if (c === 'weapon') {
       const e = st.data.index['weapon:' + id];
       const metal = e && e.metals ? Object.entries(e.metals).sort((a, b) => b[1] - a[1])[0][0] : 'iron';
-      return weaponIconURL(id, metal);
+      return itemVox.weapon(id, metal);
     }
     if (c === 'mechanic') return bookIcon();
-    return iconURL(id);
+    return itemVox.src(id);
   };
+  const voxFor = (c, id) => (c === 'critter' || c === 'mechanic' ? null : itemVox.keyOf(iconFor(c, id)));
   const nameFor = (c, id) => {
     if (c === 'critter') return CREATURES[id].name;
     if (c === 'weapon') return WEAPON_TYPES[id].name;
@@ -111,7 +113,7 @@ export function openIndexBook(game, startCat, startId) {
         class: 'ib-entry' + (k ? ' known' : '') + (sel === id ? ' on' : '') + (isNew ? ' new' : ''),
         title: k ? nameFor(cat, id) : '???', 'aria-label': k ? nameFor(cat, id) : 'Undiscovered',
         onclick: () => pick(id),
-      }, [el('img', { class: 'pix', src: iconFor(cat, id), alt: '' }), k ? null : el('span', { class: 'unk' }, '?')]);
+      }, [el('img', { class: 'pix', src: iconFor(cat, id), alt: '', 'data-vox': k ? voxFor(cat, id) : null }), k ? null : el('span', { class: 'unk' }, '?')]);
       grid.append(cell);
     }
     put(left,
@@ -201,7 +203,7 @@ export function openIndexBook(game, startCat, startId) {
     put(right,
       back,
       el('div', { class: 'ib-entryhead' }, [
-        el('div', { class: 'ib-sketch' }, [el('img', { class: 'pix', src: iconFor(cat, sel), alt: '' }), el('i', { class: 'tape a' }), el('i', { class: 'tape b' })]),
+        el('div', { class: 'ib-sketch' }, [el('img', { class: 'pix', src: iconFor(cat, sel), alt: '', 'data-vox': voxFor(cat, sel) }), el('i', { class: 'tape a' }), el('i', { class: 'tape b' })]),
         el('div', {}, [el('h2', { class: 'ib-title' }, nameFor(cat, sel)), el('span', { class: 'ib-stamp' }, `Day ${entry.day}`)]),
       ]),
       first ? el('p', { class: 'ib-note lead', html: first }) : null,

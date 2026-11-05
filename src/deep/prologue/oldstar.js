@@ -1,6 +1,6 @@
-// Old Star in the mine: his rig (src/gfx/char/starmole.js) standing in the voxel world, lit like
-// Nugget (three.js lights: his own warm glow, plus an ambient + helmet-lamp pair when Nugget isn't
-// around to bring hers), walking a path of waypoints on the voxel floor at an old mole's pace,
+// Old Star in the mine: his rig (src/gfx/char/starmole.js) standing in the voxel world, lit by
+// three.js lights of his own (a warm glow, plus an ambient + helmet-lamp pair for the toon
+// materials), walking a path of waypoints on the voxel floor at an old mole's pace,
 // turning his head to whatever he is talking about, pulling faces (rig.setExpression when the rig
 // has it, else the classic emotes), swinging his walking pick, and a hit test for the crosshair.
 import * as THREE from 'three';
@@ -49,17 +49,21 @@ export class OldStarActor {
     this.syncRoot();
   }
 
-  /** Lights for the toon materials: added once we know whether Nugget brought hers. */
-  light(nugget) {
+  /** Lights for the toon materials: his warm glow, an ambient and a lamp at your eye. */
+  light() {
     if (this.lamp) return;
     const s = this.c.scene3;
     this.lamp = new THREE.PointLight(0xffc888, 2.2, 7, 1.3);
-    s.add(this.lamp);
-    if (!nugget) {
-      this.amb = new THREE.AmbientLight(0xffffff, 0.6);
-      this.eye = new THREE.PointLight(0xffd8a8, 3, 9, 1.4);
-      s.add(this.amb, this.eye);
-    }
+    this.amb = new THREE.AmbientLight(0xffffff, 0.6);
+    this.eye = new THREE.PointLight(0xffd8a8, 3, 9, 1.4);
+    s.add(this.lamp, this.amb, this.eye);
+  }
+
+  /** Dim his lights with the lamps (0 dark … 1 as normal): the arrival's sputtering lantern. */
+  dim(k) {
+    if (this.lamp) this.lamp.intensity = 2.2 * k;
+    if (this.eye) this.eye.intensity = 3 * k;
+    if (this.amb) this.amb.intensity = 0.6 * (0.35 + 0.65 * k);
   }
 
   play(state, speed = 1) {

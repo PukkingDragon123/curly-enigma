@@ -353,29 +353,36 @@ export class HomeWake {
       await go(lids(0.7, 1.0));
       await go(lids(0.5, 0.18)); // a flutter
       await go(lids(1, 0.5));
+      // where you are: a film caption while the room swims into focus
+      ob?.caption?.('Old Star\'s camp', 'Far under the mountain', 4.4);
       tween(1.6, (k) => { sway.amp = 1 - ease(k) * 0.7; });
-      a.play('creak', { vol: 0.25 }); // the bed creaks as you stir
-      await go(sleep(0.9));
+      // he gives the logs one last prod (the embers jump), and the bed creaks as you stir
+      if (star?.rig) { star.poseT = Math.PI / 2 / 1.3 - 0.35; }
+      await go(sleep(0.5));
+      a.play('creak', { vol: 0.25 });
+      await go(sleep(0.5));
       // ---- he hears you: straightens up, turns round, and the view settles on him
       if (star?.rig) {
         const r = star;
+        r.sniff();
+        this.sniffSound();
+        await go(sleep(0.45));
         tween(0.6, (k) => { r.lean(0.32 * (1 - ease(k))); });
         r.setPose('idle');
         await go(sleep(0.3));
         r.faceTo(c.x, c.z);
-        r.sniff();
-        this.sniffSound();
-        await go(sleep(0.5));
+        await go(sleep(0.4));
         r.gesture('wave', 1.4);
         this.zoomTo(this.fov0 - 12, 2.2, tween);
       } else await go(sleep(0.6));
       await line('Ah! You\'re awake. Easy now: the cave likes to spin the first time.', 'happy');
       star?.rig && star.gesture('point', 1.6);
-      await line('You came tumbling down out of the rock last night, you and a hen in a walking hut. Out cold. I\'m <b>Old Star</b>. That cot\'s yours now.', 'calm');
+      await line('You came tumbling down out of the rock last night, straight through my roof. Out cold. I\'m <b>Old Star</b>. That cot\'s yours now.', 'calm');
       await line('Sixty years I\'ve been stuck down here. The way up is the Surface Express, and a ticket costs a <span class="gold-txt">million gold</span>.', 'worried');
+      star?.rig && star.gesture('cheer', 1.4);
       await line('So here\'s my offer. I\'ll teach you to <b>dig</b>, to <b>forge</b> and to <b>cook</b>. We earn that million together, and we <b>both</b> ride out of here.', 'proud');
-      if (this.nug) { a.play('cluck', { n: 2 }); this.nugEmote?.('♥'); }
-      await line('Your hen\'s fine, by the way. Made herself at home by the crates. Up you get, then!', 'happy');
+      star?.rig && star.gesture('beckon', 1.6);
+      await line('Up you get, then! Slowly. The floor\'s not going anywhere.', 'happy');
       // ---- sit up and get out of bed (on its side)
       this.wakeSway = null;
       sway.amp = 0;

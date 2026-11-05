@@ -1,0 +1,3 @@
+/* Items as 3D voxel art (itemVox.js): stills and turning frames are plain <img>s and keep their
+   places' own styling; only the turning canvas on the backpack's tag is placed here. */
+canvas.vox-spin { image-rendering: pixelated; image-rendering: crisp-edges; image-rendering: pixelated; }

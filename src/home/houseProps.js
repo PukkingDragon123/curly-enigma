@@ -1151,22 +1151,3 @@ export function bedroomHearth(hh = 144, seed = 107) {
     },
   };
 }
-
-/** Nugget's corner: a nest of loose straw, a feed sack slumped open with grain spilling, a water dish. */
-export function nestCorner(seed = 109) {
-  const g = new VoxelGrid(56, 26, 56);
-  for (let x = 0; x < 56; x++) for (let z = 0; z < 56; z++) {
-    const r = Math.hypot((x - 26) / 27, (z - 26) / 26);
-    if (r > 1 || hash2(x, z, seed) > 1.1 - r) continue;
-    const h = 1 + Math.round((1 - r) * 2 * hash2(x >> 1, z >> 1, seed + 1));
-    for (let y = 0; y < h; y++) g.set(x, y, z, [0xb8913a, 0xd9b45a, 0xe8c870, 0xc8a04a][Math.floor(hash2(x, y * 31 + z, seed + 2) * 4)]);
-  }
-  // the feed sack
-  g.ellipsoid(42, 9, 40, 8, 9, 7, (x, y, z) => (y > 15 ? 0xb89a6a : h3(x, y, z, seed) < 0.1 ? 0xa88a5a : 0xc8aa78));
-  g.ellipsoid(42, 16, 40, 5, 2, 4.4, 0xe0c060);
-  for (let k = 0; k < 30; k++) g.set(34 + Math.floor(hash2(k, 1, seed) * 10), 0, 30 + Math.floor(hash2(k, 2, seed) * 12), 0xe8c860);
-  g.box(38, 8, 47, 7, 3, 1, 0xd8c8a0); // a label: CHICKEN FEED
-  // the water dish
-  ring(g, 14, 42, 4, 6.5, 0, 3, 0x8a8a92); ring(g, 14, 42, 0, 4, 0, 1, 0x8a8a92); ring(g, 14, 42, 0, 4, 2, 3, 0x5a8aa8);
-  return { obj: M32(g, [28, 0, 28], { outline: true }) };
-}

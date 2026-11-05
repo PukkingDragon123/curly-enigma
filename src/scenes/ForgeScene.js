@@ -1,12 +1,11 @@
 // The forge in first person: you stand in the smithy (walk it with FPSRig + BoxWorld), and the
 // work itself happens with your own paws: the left paw holds the tongs, the right pumps the
 // bellows pull or swings the hammer onto the spot you aim at. Activities live in src/forge/
-// (smelt.js, forging.js, parts.js: coop parts); this scene owns the room, the first-person view (walking, or "docked"
+// (smelt.js, forging.js, parts.js: forge pieces such as your first pick); this scene owns the room, the first-person view (walking, or "docked"
 // at a station with a gentle look-around), the fire/bellows simulation, particles, the paws,
 // input routing and menus. Entered with goto('forge', { from: 'home' | 'town' }); leaves to `from`.
 import * as THREE from 'three';
 import { Scene } from '../core/Scene.js';
-import { makeChicken } from '../gfx/characters.js';
 import { clamp, lerp, el } from '../core/util.js';
 import { FPSRig, BoxWorld } from '../fps/FPSKit.js';
 import { buildWorld } from '../forge/world.js';
@@ -73,14 +72,6 @@ export default class ForgeScene extends Scene {
     this.workSrc = null; // { pos, T } hot metal lighting the paws and the room
     this.paws = new Paws(this);
 
-    // Nugget keeps warm on the crate by the coal bin
-    this.hen = makeChicken({ scale: 0.46 });
-    this.hen.root.position.copy(this.W.perch);
-    this.hen.face(0.9, true);
-    this.hen.play('sit');
-    this.scene.add(this.hen.root);
-    this.henT = 3;
-
     // hearth & bellows
     this.fire = { air: 0, pumping: false, cycle: 0, compress: 0, glow: 0.45, flick: 0, spawn: { ember: 0, flame: 0, smoke: 0 }, nudge: 0 };
     this.pumpAllowed = false;
@@ -117,7 +108,6 @@ export default class ForgeScene extends Scene {
     this.own(() => this.menus.dispose());
     if (params.open === 'smelt') this.menus.smeltList();
     else if (params.open === 'plan') this.menus.plan();
-    else if (params.open === 'parts') this.menus.partsList();
     else if (params.open === 'main') this.menus.main();
     this.syncHud(true);
     this.installDebug();
@@ -166,7 +156,6 @@ export default class ForgeScene extends Scene {
     this.rig.setTool('none');
     if (next === 'smelt') this.menus.smeltList();
     else if (next === 'plan') this.menus.plan();
-    else if (next === 'parts') this.menus.partsList();
     else if (next === 'main') this.menus.main();
     else this.undock();
   }
@@ -176,7 +165,7 @@ export default class ForgeScene extends Scene {
     if (this.activity) return;
     // the menu panel sits on the left: turn a little so the station shows to its right
     if (mode === 'smelt') this.dock('hearth', { dur: 0.7, side: 0.34 });
-    else if (mode === 'plan' || mode === 'parts') this.dock('anvil', { dur: 0.7, side: 0.42 });
+    else if (mode === 'plan') this.dock('anvil', { dur: 0.7, side: 0.42 });
     else if (mode === 'main') { if (this.view.mode === 'walk') this.dock('here'); }
     else if (mode === 'hidden' && this.view.mode === 'dock') this.undock();
   }
@@ -187,7 +176,7 @@ export default class ForgeScene extends Scene {
       this.hud = want;
       if (this.game.scene === this || force) this.game.ui.setHudMode(want);
       if (want === 'deep') this.game.ui.setHints(this.game.ui.root && document.documentElement.classList.contains('is-touch') ? null
-        : '<span class="fg-nolig"><kbd>E</kbd> use · <kbd>1</kbd> smelt · <kbd>2</kbd> forge · <kbd>3</kbd> coop parts · <kbd>Esc</kbd> menu</span>');
+        : '<span class="fg-nolig"><kbd>E</kbd> use · <kbd>1</kbd> smelt · <kbd>2</kbd> forge · <kbd>Esc</kbd> menu</span>');
       else if (!this.activity) this.game.ui.setHints(null);
     }
   }
@@ -211,13 +200,11 @@ export default class ForgeScene extends Scene {
     rig.add({ x: 0, y: 0, z: 0, r: 0.13, label: 'Pump the bellows', enabled: free, action: () => { this.fire.nudge = 0.9; this.game.audio.play('bellows', { vol: 0.7 }); this.puff(); } });
     const pullIt = rig.items[rig.items.length - 1];
     this.pullItem = pullIt;
-    rig.add({ x: W.perch.x, y: W.perch.y + 0.12, z: W.perch.z, r: 0.2, label: 'Pet Nugget', enabled: free, action: () => this.henReact('startle') });
     const bb = W.bladeBarrel;
     rig.add({ x: bb.x, y: bb.y, z: bb.z, r: 0.3, label: 'Finished work', enabled: free, action: () => {
       const n = this.game.state.data.weapons.length;
       this.game.ui.toast(n ? `${n} forged weapon${n === 1 ? '' : 's'} waiting for the assay office.` : 'Nothing forged yet. The anvil is waiting.');
     } });
-    rig.add({ box: [3.86, 0.3, 0.02, 5.04, 0.7, 0.5], label: 'Coop parts', enabled: free, action: () => { this.game.audio.play('ui_click'); this.menus.partsList(); } });
     rig.add({ x: 0.4, y: 0.3, z: 0.58, r: 0.3, label: 'Coal bin', enabled: free, action: () => this.game.ui.toast(`Coal in the bin: ${this.game.state.count('coal')}`) });
   }
 
@@ -526,27 +513,6 @@ export default class ForgeScene extends Scene {
     this.waterT -= dt;
     if (this.waterT <= 0) { this.waterT = 0.11; W.water.draw(t, this.waterEnergy || 0); }
     this.waterEnergy = Math.max(0, (this.waterEnergy || 0) - dt * 0.6);
-    // Nugget: dozes, looks around, pecks now and then
-    const hen = this.hen;
-    this.henT -= dt;
-    if (this.henT <= 0) {
-      this.henT = 2.5 + Math.random() * 5;
-      const r = Math.random();
-      if (r < 0.35) { hen.play('idle'); hen.peck(); }
-      else if (r < 0.7) hen.play('sit');
-      else { hen.play('idle'); hen.face(0.3 + Math.random() * 1.4); if (Math.random() < 0.4) this.game.audio.play('cluck', { vol: 0.5 }); }
-    }
-    hen.update(dt);
-  }
-
-  /** Nugget reacts to results: 'great' | 'bad' | 'startle'. */
-  henReact(kind) {
-    const hen = this.hen;
-    hen.play('idle');
-    if (kind === 'great') { hen.flap(1.4); this.game.audio.play('bawk', { pitch: 1.1 }); setTimeout(() => this.game.audio.play('cluck', { n: 3 }), 500); }
-    else if (kind === 'startle') { hen.flap(0.5); this.game.audio.play('cluck', { pitch: 1.3, n: 2 }); }
-    else { hen.peck(); this.game.audio.play('cluck', { pitch: 0.8, n: 1 }); }
-    this.henT = 3;
   }
 
   // ---------------------------------------------------------------- frame
@@ -574,7 +540,6 @@ export default class ForgeScene extends Scene {
         const inp = this.game.input;
         if (inp.pressed('Digit1')) this.menus.smeltList();
         else if (inp.pressed('Digit2')) this.menus.plan();
-        else if (inp.pressed('Digit3')) this.menus.partsList();
       }
     }
     this.extraLight = Math.max(0, this.extraLight - dt * 14);
@@ -630,21 +595,21 @@ export default class ForgeScene extends Scene {
       /** Start forging: sel = { type, metal, infusion, gem } (defaults: first plan, best metal). */
       forge(sel = {}) { return sc.menus.debugForge(sel); },
       /**
-       * Coop parts: forge a part to the result, headless. o: { give (add missing inputs),
+       * Forge pieces (your first pick): forge one to the result, headless. o: { give (add missing inputs),
        * score (force the final quality), q (quality of given ingots), run: false (only start it),
        * blow: 'perfect' | 'good' | 'soft' | 'hard' | 0..1 (how every blow lands) }.
        */
       part(id, o = {}) {
         const st = sc.game.state, menus = sc.menus;
-        id = id || menus.partRows().find((r) => r.status === 'ready')?.id || menus.partRows().find((r) => r.status === 'locked' && !r.why?.startsWith('Install'))?.id;
-        if (!id) return 'no part to forge';
+        id = id || menus.pieceRows().find((r) => r.status === 'ready')?.id || menus.pieceRows().find((r) => r.status === 'locked')?.id;
+        if (!id) return 'no piece to forge';
         if (o.give) {
-          const row = menus.partRows().find((r) => r.id === id);
+          const row = menus.pieceRows().find((r) => r.id === id);
           for (const [iid, n] of Object.entries(row?.need || {})) { const miss = n - st.count(iid); if (miss > 0) st.addItem(iid, { n: miss, q: o.q ?? 80, spill: true }); }
           st.data.energy = Math.max(st.data.energy || 0, 60);
         }
         if (sc.activity) return 'busy: ' + (sc.activity.step || sc.activity.phase);
-        if (!menus.startPart(id)) return 'cannot forge ' + id + ': ' + menus.partRows().find((r) => r.id === id)?.why;
+        if (!menus.startPart(id)) return 'cannot forge ' + id + ': ' + menus.pieceRows().find((r) => r.id === id)?.why;
         const a = sc.activity;
         if (typeof o.score === 'number') a.forceScore = o.score;
         if (o.run === false) return 'forging ' + id;
@@ -665,17 +630,17 @@ export default class ForgeScene extends Scene {
           sc.update(1 / 30); sc.game.input.endFrame();
         }
         for (let n = 0; n < 40; n++) { sc.update(1 / 30); sc.game.input.endFrame(); }
-        return { id, step: a.step, score: a.score, grade: a.grade?.g, blows: a.sim.blows.length, cracks: a.sim.cracks, carrying: st.count(id), toStash: !!a.toStash };
+        return { id, step: a.step, score: a.score, grade: a.grade?.g, blows: a.sim.blows.length, cracks: a.sim.cracks };
       },
-      /** Coop parts: strike now ('perfect' | 'good' | 'soft' | 'hard' | ring value 0..1). */
+      /** Forge pieces: strike now ('perfect' | 'good' | 'soft' | 'hard' | ring value 0..1). */
       partStrike(kind = 'perfect') {
         const a = sc.activity;
         if (!a || !a.perfR) return false;
         const v = typeof kind === 'number' ? kind : kind === 'perfect' ? (a.perfR[0] + a.perfR[1]) / 2 : kind === 'good' ? a.zoneR[0] + 0.01 : kind === 'soft' ? Math.max(0.05, a.zoneR[0] - 0.12) : Math.min(0.99, a.zoneR[1] + 0.04);
         return a.debugStrike(null, v);
       },
-      /** Coop parts: open the list and return its rows ({ id, name, track, level, status, why, need, have, carrying }). */
-      partsList() { if (!sc.activity) sc.menus.partsList(); return sc.menus.partRows(); },
+      /** Forge pieces: their rows ({ id, name, status, why, need, have }). */
+      pieces() { return sc.menus.pieceRows(); },
       /** Set the work's temperature (crucible, billet columns or finished blade). */
       heatTo(T) { const a = sc.activity; if (!a) return false; if (a.sim && a.sim.T !== undefined && !Array.isArray(a.sim.T)) a.sim.T = T; else if (a.sim) a.sim.T = a.sim.T.map(() => T); if (a.weaponT !== undefined) a.weaponT = T; return true; },
       /** Forging: carry the billet to the anvil / back to the fire. */

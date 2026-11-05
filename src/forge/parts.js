@@ -1,19 +1,18 @@
-// Coop parts at the home forge (data/coopParts.js): take the ingots, heat the bar in the coals
-// into its working band, hammer it on the anvil with timed blows (the rune ring: let go in the
-// green, the gold for a perfect blow) until it has taken `strikes` good blows, reheating when
-// it cools (blows on cold metal crack it), quench the hard metals in the barrel, and you get
-// the part (quality = how well it was made, a little of the ingots' quality) to carry to
-// Nugget's coop and install there. The voxel model (partModel.js) morphs from the hot bar into
-// the part with every blow.
+// Forge pieces at the home forge (data/forgePieces.js, e.g. your first pickaxe): take the ingots,
+// heat the bar in the coals into its working band, hammer it on the anvil with timed blows (the
+// rune ring: let go in the green, the gold for a perfect blow) until it has taken `strikes` good
+// blows, reheating when it cools (blows on cold metal crack it), quench the hard metals in the
+// barrel, and the piece becomes what it `gives` (quality = how well it was made, a little of the
+// ingots' quality). The voxel model (partModel.js) morphs from the hot bar into the piece with
+// every blow.
 //
-//   partStatus(state, id) → { ok, why, done, next, installed, ins: [{id, n, have}], hot, carrying }
+//   partStatus(state, id) → { ok, why, done, ins: [{id, n, have}], hot }
 //   new PartRun(scene, id) → an activity (start, update, onEscape, dispose, touchAction, framePoints)
 import * as THREE from 'three';
 import { el, clamp, lerp } from '../core/util.js';
 import { ITEMS } from '../data/items.js';
 import { METALS, FORGE_MAX_TEMP, gradeFor } from '../data/weapons.js';
-import { COOP_PARTS, partFor, pieceOf } from '../data/coopParts.js';
-import { COOP_UP, coopLevels } from '../core/weight.js';
+import { pieceOf } from '../data/forgePieces.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { qColor } from '../ui/UI.js';
 import { fireIdleFor, widen, quenchResult, AMBIENT } from './bladeSim.js';
@@ -31,29 +30,23 @@ const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _white = new THREE.Color(0xfff6ee);
 
-/** Everything the parts list shows about one part, for the current save. */
+/** Whether a forge piece can be made now, for the current save (each one is made once). */
 export function partStatus(st, id) {
   const p = pieceOf(id);
   const m = METALS[p.metal];
   const lvl = st.data.forgeLevel || 0, maxT = FORGE_MAX_TEMP[lvl] ?? FORGE_MAX_TEMP[0];
-  const installed = p.gives ? (st.owns(p.gives) ? 1 : 0) : coopLevels(st)[p.track] || 0; // a forge piece (your first pick): made once
   const ins = [...Object.entries(p.ingots || {}), ...Object.entries(p.extra || {})].map(([iid, n]) => ({ id: iid, n, have: st.count(iid) }));
   const hot = m.work[0] > maxT;
-  const done = p.level <= installed;
-  const next = p.level === installed + 1;
+  const done = st.owns(p.gives);
   let why = null;
   if (!done) {
-    if (!next) {
-      const want = partFor(p.track, installed + 1);
-      why = `Install the ${COOP_PARTS[want]?.name || 'part before it'} first.`;
-    } else if (hot) why = `Works at ${m.work[0]}°C+. Your hearth tops out at ${maxT}°C: it needs an upgrade from Inkwell Plans.`;
+    if (hot) why = `Works at ${m.work[0]}°C+. Your hearth tops out at ${maxT}°C: it needs an upgrade from Inkwell Plans.`;
     else {
       const miss = ins.find((x) => x.have < x.n);
       if (miss) why = `Need ${miss.n} ${ITEMS[miss.id]?.name || miss.id} (you have ${miss.have}).`;
     }
   }
-  const maxLevel = (COOP_UP[p.track]?.levels.length || 1) - 1;
-  return { id, p, m, ins, installed, maxLevel, done, next, hot, why, ok: !done && next && !why, carrying: st.count(id), maxT };
+  return { id, p, m, ins, done, hot, why, ok: !done && !why, maxT };
 }
 
 /** The bar's heat and how the work went (kept free of three.js). */
@@ -161,14 +154,14 @@ export class PartRun {
   }
 
   onEscape() {
-    if (this.step === 'result') { if (!this.busy) this.scene.endActivity('parts'); return true; }
+    if (this.step === 'result') { if (!this.busy) this.scene.endActivity(); return true; }
     if (this.busy || this.asking) return true;
     this.asking = true;
-    this.game.ui.confirm(confirmText('Leave this part?', 'The metal goes back into your bag as ingots.'), 'Leave it', 'Keep working').then((yes) => {
+    this.game.ui.confirm(confirmText('Leave this piece?', 'The metal goes back into your bag as ingots.'), 'Leave it', 'Keep working').then((yes) => {
       this.asking = false;
       if (!yes || this.finished) return;
       this.refund();
-      this.scene.endActivity('parts');
+      this.scene.endActivity();
     });
     return true;
   }
@@ -202,7 +195,7 @@ export class PartRun {
     this.stats = el('div', { class: 'fg-col', style: { gap: 'calc(var(--px) * 1.5)' } });
     this.status = el('div', { class: 'fg-note' });
     this.panel = el('div', { class: 'fg-side act fg-col' }, [
-      el('div', { class: 'fg-kicker' }, `Coop part · ${COOP_UP[p.track]?.name || p.track} ${p.level}`),
+      el('div', { class: 'fg-kicker' }, 'At the anvil · a forge piece'),
       this.title,
     ]);
     this.steps = new Steps(this.panel, steps);
@@ -711,19 +704,14 @@ export class PartRun {
     this.score = score;
     const grade = gradeFor(score);
     this.grade = grade;
-    const before = st.count(this.id);
-    if (p.gives) {
-      // a forge piece (your first pickaxe): it's a tool now, in your paw; how well you made it stays with it
-      st.data.owned[p.gives] = 1;
-      st.data.toolQ = { ...(st.data.toolQ || {}), [p.gives]: score };
-      st.equip?.(p.gives);
-      st.emit?.('items', { id: p.gives, n: 1 });
-    } else st.addItem(this.id, { q: score, spill: true });
+    // it's a tool now, in your paw; how well you made it stays with it
+    st.data.owned[p.gives] = 1;
+    st.data.toolQ = { ...(st.data.toolQ || {}), [p.gives]: score };
+    st.equip?.(p.gives);
+    st.emit?.('items', { id: p.gives, n: 1 });
     this.finished = true;
-    const carrying = st.count(this.id);
-    this.toStash = !p.gives && carrying <= before;
     st.emit?.('act', { type: 'part', part: this.id, track: p.track, level: p.level, grade: grade.g, score }); // its own act: weapon quests count 'forge'
-    this.game.ui.toast(`${p.gives ? '' : '+1 '}${p.name} <b style="color:${qColor(score)}">${score}%</b>${this.toStash ? ' · to the trunk at home' : p.gives ? ' · on your belt' : ''}`, { icon: iconURL(p.gives || this.id), kind: 'good' });
+    this.game.ui.toast(`${p.name} <b style="color:${qColor(score)}">${score}%</b> · on your belt`, { icon: iconURL(p.gives), kind: 'good' });
     this.scene.lesson?.event?.('piece', { id: this.id, score, grade, run: this });
     // the reveal: you hold it up in the tongs, turning it in the firelight
     sc.dock('reveal', { dur: 0.9 });
@@ -749,37 +737,28 @@ export class PartRun {
     const later = (ms, fn) => setTimeout(() => { if (sc.game.scene === sc && sc.activity === this) fn(); }, ms);
     later(350, () => this.game.audio.play('fanfare'));
     later(1450, () => this.game.audio.play('success'));
-    if (grade.g === 'S' || grade.g === 'A') later(900, () => sc.henReact('great'));
-    else if (grade.g === 'F') later(900, () => sc.henReact('bad'));
     this.buildCard(grade, { shape, heat, quench });
   }
 
   buildCard(grade, s) {
     const sc = this.scene, p = this.part;
-    const n = this.st.count(this.id);
     const rows = [{ label: 'Shape', v: s.shape }, { label: 'Heat', v: s.heat }];
     if (s.quench !== null) rows.push({ label: 'Quench', v: s.quench });
-    const where = p.gives ? 'It\'s on your belt (slot 1). Swing it in the mine: how well you made it shows in every blow.'
-      : this.toStash
-        ? 'Your pack was full: it went to the <b>trunk at home</b>.'
-        : `In your pack${n > 1 ? ` (${n})` : ''}. Install it on Nugget's coop: the coop side of your backpack (<kbd>I</kbd>), or <kbd>E</kbd> at the coop.`;
+    const where = 'It\'s on your belt (slot 1). Swing it in the mine: how well you made it shows in every blow.';
     const card = certificate({
-      kicker: p.gives ? `Forged by your own paws · quality ${this.score}%` : `Forged for Nugget's coop · quality ${this.score}%`,
+      kicker: `Forged by your own paws · quality ${this.score}%`,
       title: p.name,
       grade,
-      value: `<img class="pix" src="${iconURL(p.gives || this.id)}" alt=""><span style="font-size:.6em;color:var(--sepia)">${p.gives ? 'Pick power ' + (1.1 * (0.85 + 0.3 * this.score / 100)).toFixed(2) : `${COOP_UP[p.track]?.name || p.track} · level ${p.level}`}</span>`,
+      value: `<img class="pix" src="${iconURL(p.gives)}" alt=""><span style="font-size:.6em;color:var(--sepia)">Pick power ${(1.1 * (0.85 + 0.3 * this.score / 100)).toFixed(2)}</span>`,
       note: `Ingots <b style="color:${qColor(this.matQ)}">${this.matQ}%</b> · ${where}`,
       rows,
-      buttons: p.gives ? [{ label: 'To the mine!', key: 'Enter', fn: () => { this.game.audio.play('ui_click'); sc.leave(); } }] : [
-        { label: 'More parts', key: 'Enter', fn: () => { this.game.audio.play('ui_click'); sc.endActivity('parts'); } },
-        { label: 'Leave', alt: true, fn: () => sc.leave() },
-      ],
+      buttons: [{ label: 'To the mine!', key: 'Enter', fn: () => { this.game.audio.play('ui_click'); sc.leave(); } }],
     });
     sc.layer.append(card);
     this.nodes.push(card);
     this.card = card;
     this.seq.wait(0.8).call(() => { card.hidden = false; this.busy = false; this.game.audio.play('ui_open'); });
-    const next = p.gives ? () => sc.leave() : () => sc.endActivity('parts');
+    const next = () => sc.leave();
     this.actionKeys = { Enter: next, NumpadEnter: next };
   }
 

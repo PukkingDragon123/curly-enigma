@@ -1,7 +1,9 @@
 // The mole's scripted moves at home (mixed into HomeScene): the old cage lift in the hall (up to
 // the portal, into the cage, the gate rattles shut, the bell, the lever, down into the dark; rising
 // back up into the hall), and the front door to Deep Town (through it once the way is found, caved
-// in until then). There is no digging out of the home: the lift is the way down.
+// in until then). There is no digging out of the home: the lift is the way down. The first ride
+// down (the mining lesson) is a cutscene of its own (lessonDrop: the lurch, the guttering lantern,
+// the long drop into the dark; a hold skips it).
 import * as THREE from 'three';
 import { openLiftPanel, rideTo } from '../fps/lifts.js';
 import { T, HALL, SHAFT } from './units.js';
@@ -72,6 +74,7 @@ export class HomeMoves {
     const yw0 = this.cam.yaw, dyw = Math.atan2(Math.sin(Math.PI / 2 - yw0), Math.cos(Math.PI / 2 - yw0));
     await this.tween(0.45, (k) => { this.cam.yaw = yw0 + dyw * ease(k); this.cam.pitch += (-0.05 - this.cam.pitch) * 0.2; });
     a.play('gate', { vol: 0.7 });
+    if (lesson) this.game.ui.onboard?.cinema(true); // the first ride down is a cutscene (lessonDrop)
     await this.tween(0.55, (k) => this.lift.setGate(ease(k)));
     this.gateShut = true;
     a.play('clunk', { vol: 0.6 });
@@ -81,6 +84,7 @@ export class HomeMoves {
     this.rig.vm?.impact('none', 0.6);
     await this.tween(0.3, (k) => this.lift.setLever(ease(k)));
     await this.sleepFor(0.15);
+    if (lesson) { await this.lessonDrop(); return; }
     // down: a jolt, a rattle, the sheave turning
     const loop = a.loop?.('elevator', { vol: 0.4 });
     a.play('creak', { vol: 0.6 });
@@ -96,11 +100,71 @@ export class HomeMoves {
       this.moveLiftLight();
     });
     loop?.stop?.(0.4);
-    if (lesson) {
-      a.play('creak', { vol: 0.6 });
+    rideTo(this.game, id);
+  }
+
+  /**
+   * The first ride down (the mining lesson), as a cutscene: the bars, a lurch as the old brake lets
+   * go (the cage drops a hand's width and catches, the lantern gutters, grit sifts down from the
+   * shaft), a moment hanging there creaking, then down into the dark faster and faster, the lantern
+   * flickering, and black. A hold skips straight to the dig.
+   */
+  async lessonDrop() {
+    const a = this.game.audio, ob = this.game.ui.onboard, L = this.liftLight, c = this.cam;
+    const I0 = L ? L.intensity : 0;
+    const flick = (k) => { if (L) L.intensity = I0 * k; };
+    const y0 = c.y;
+    const loop = a.loop?.('elevator', { vol: 0.25 });
+    let cut = false, gone = false;
+    const go = () => {
+      if (gone) return;
+      gone = true;
+      loop?.stop?.(0.3);
+      if (L) L.intensity = I0;
       a.play('rumble_hit', { vol: 0.35 });
       this.game.goto('deep', { from: 'lift', lift: 'L0', lesson: 'mine' }, { transition: 'fade', dur: 0.8, color: 0x0a0605 });
-    } else rideTo(this.game, id);
+    };
+    ob?.cinema(true, { skip: () => { cut = true; go(); } });
+    const grit = (n) => { for (let i = 0; i < n; i++) this.fx.dust?.(c.x + (Math.random() - 0.5) * 0.5, c.y + 0.7, c.z + (Math.random() - 0.5) * 0.5, 2, [0.42, 0.33, 0.25], 0.12); this.fx.grain?.(c.x, c.y + 0.8, c.z, [0.4, 0.3, 0.2]); };
+    // the brake lets go: a lurch, the chain bangs taut
+    a.play('creak', { vol: 0.8 });
+    this.lift.sway = 1;
+    await this.tween(0.16, (k) => { const dy = 0.16 * k * k; this.lift.setCage(-dy / T); c.y = y0 - dy; this.moveLiftLight(); });
+    if (cut) return;
+    a.play('clunk', { vol: 0.9 });
+    a.play('rumble_hit', { vol: 0.5 });
+    a.play('debris', { vol: 0.45 });
+    this.rig.shake(0.6);
+    this.rig.vm?.impact?.('none', 0.8);
+    c.pitch -= 0.06;
+    grit(5);
+    // the lantern gutters... and catches
+    await this.tween(0.75, (k) => { flick(k < 0.12 ? 0.15 : k < 0.22 ? 0.9 : k < 0.3 ? 0.05 : k < 0.62 ? 0.25 + Math.random() * 0.2 : 0.4 + 0.6 * ((k - 0.62) / 0.38)); c.pitch += (-0.02 - c.pitch) * 0.06; });
+    if (cut) return;
+    // hanging there, creaking, looking up the shaft at the chain
+    a.play('creak', { vol: 0.5, pitch: 0.8 });
+    const p0 = c.pitch;
+    await this.tween(0.9, (k) => { c.pitch = p0 + (0.32 - p0) * ease(k); flick(0.85 + Math.sin(k * 40) * 0.1); });
+    if (cut) return;
+    // and down, faster and faster, into the dark
+    a.play('creak', { vol: 0.7 });
+    a.play('whoosh', { vol: 0.4, pitch: 0.6 });
+    loop?.set?.({ vol: 0.5 });
+    const y1 = c.y, p1 = c.pitch;
+    await this.tween(2.2, (k) => {
+      const dy = 2.6 * k * k;
+      this.lift.setCage(-(dy + 0.16) / T);
+      this.lift.spin = dy * 9;
+      c.y = y1 - dy;
+      c.pitch = p1 + (-0.12 - p1) * ease(Math.min(1, k * 1.6));
+      this.rig.shake(0.08 + k * 0.22);
+      flick(Math.random() < 0.12 * k ? 0.1 : 1 - k * 0.5);
+      if (Math.random() < 0.08) grit(1);
+      this.post.fade = Math.max(0, (k - 0.55) / 0.45) * 0.85;
+      this.moveLiftLight();
+    });
+    if (cut) return;
+    go();
   }
 
   moveLiftLight() {

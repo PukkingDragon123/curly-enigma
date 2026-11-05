@@ -1,5 +1,5 @@
-// The slot inventory: what the mole carries is a grid of stacks (Minecraft-like), and so are
-// the coop's shelves and the stash at home. State keeps its public item API (addItem, count,
+// The slot inventory: what the mole carries is a grid of stacks (Minecraft-like), and so is the
+// stash at home. State keeps its public item API (addItem, count,
 // removeItem, removeLot, lotsOf, inventory, addWeapon, removeWeapon, buy, sell*) and delegates
 // the carried items to this module.
 //
@@ -11,8 +11,8 @@
 // Tools, equipment, blueprints, floors, wall styles and key items don't take slots
 // (state.data.owned), nor does unplaced furniture (state.data.furniture, it waits at home).
 //
-// The grid (a realistic pack, not a list): the backpack and the coop's shelves are grids of cells
-// (`slots.grid = { cols, rows }`, set by bag() / coopSlots()). Every stack takes a footprint of
+// The grid (a realistic pack, not a list): the backpack is a grid of cells
+// (`slots.grid = { cols, rows }`, set by bag()). Every stack takes a footprint of
 // cells (footprint(): a heavy ore lump 2×2, an ingot 2×1, a sword 1×3, a gem 1×1...) at
 // `stack.g = { x, y, r }` (r = 1: turned a quarter, so w and h swap). A container is full when
 // the next thing's footprint can't be fitted anywhere, in either orientation: turn things round
@@ -22,13 +22,11 @@
 //
 // Save data:
 //   data.inv   = { v: 1, slots: [...] }                 the backpack (length = bagSlots())
-//   data.coop  = { level, slots: [...], food, ... }     Nugget's coop (src/deep/Nugget.js)
 //   data.stash = { slots: [...] }                       overflow kept at home (grows as needed)
 // data.lots / data.counts / data.weapons stay as read-only mirrors of the backpack (rebuilt after
 // every change), so code that reads them keeps working; never write to them directly.
 import { ITEMS } from '../data/items.js';
 import { uid as mkUid } from './util.js';
-import { COOP_PARTS } from '../data/coopParts.js';
 import * as W from './weight.js';
 
 export const COLS = 9; // pockets per row (the trunk and the chests: Minecraft-like rows of nine)
@@ -37,13 +35,11 @@ export const MAX_SLOTS = 108; // cells
 export const CELLS_PER_POCKET = 2;
 /** Grid columns for a number of cells (a small pack is 6 wide, a big one 9). */
 export const gridCols = (cells) => (cells <= 24 ? 6 : 9);
-/** The coop's shelves by Shelves level (the levels come from parts installed on it: installPart). */
-export const COOP_SLOTS = W.COOP_UP.shelves.levels.map((l) => l.slots);
 
 const OWNED = new Set(['tool', 'equip', 'blueprint', 'floor', 'wallpaper', 'key']);
-const STACK_BY_CAT = { mineral: 8, gem: 8, ingot: 4, plant: 16, critter: 8, drop: 16, ingredient: 16, food: 8, consumable: 10, feed: 24, part: 4 };
+const STACK_BY_CAT = { mineral: 8, gem: 8, ingot: 4, plant: 16, critter: 8, drop: 16, ingredient: 16, food: 8, consumable: 10 };
 /** Sort order of categories in a tidied container. */
-const CAT_ORDER = ['weapon', 'part', 'gem', 'mineral', 'ingot', 'consumable', 'food', 'feed', 'ingredient', 'plant', 'critter', 'drop'];
+const CAT_ORDER = ['weapon', 'gem', 'mineral', 'ingot', 'consumable', 'food', 'ingredient', 'plant', 'critter', 'drop'];
 
 /** Does this item live in slots? (false for tools, gear, blueprints, floors, keys, furniture) */
 export function slotted(id) {
@@ -60,9 +56,9 @@ export function stackMax(id) {
 export const isQ = (id) => !!ITEMS[id]?.q;
 
 // ---------------------------------------------------------------- the grid (footprints)
-const FP_BY_CAT = { gem: [1, 1], ingot: [2, 1], plant: [1, 1], critter: [1, 1], drop: [1, 1], ingredient: [1, 1], food: [1, 1], consumable: [1, 1], feed: [2, 1], part: [2, 2] };
+const FP_BY_CAT = { gem: [1, 1], ingot: [2, 1], plant: [1, 1], critter: [1, 1], drop: [1, 1], ingredient: [1, 1], food: [1, 1], consumable: [1, 1] };
 const FP = {
-  support_beam: [3, 1], dynamite: [1, 2], chicken_feed: [2, 1], fossil: [2, 2], dino_egg: [2, 2], drake_egg: [2, 2], armor_plate: [2, 2],
+  support_beam: [3, 1], dynamite: [1, 2], fossil: [2, 2], dino_egg: [2, 2], drake_egg: [2, 2], armor_plate: [2, 2],
   troll_tusk: [1, 3], tyrant_tooth: [1, 2], dino_meat: [2, 1], drake_meat: [2, 1], coal: [1, 1],
 };
 const WEAPON_FP = { dagger: [1, 2], axe: [2, 3], hammer: [2, 3], mace: [2, 3], greataxe: [2, 3] };
@@ -426,24 +422,6 @@ export function stash(state) {
   if (!d.stash || !Array.isArray(d.stash.slots)) d.stash = { slots: [] };
   return d.stash.slots;
 }
-/** The coop's shelves (sized by its level). */
-export function coopSlots(state) {
-  const d = state.data;
-  if (!d.coop || typeof d.coop !== 'object') d.coop = defaultCoop();
-  if (!Array.isArray(d.coop.slots)) d.coop.slots = [];
-  const cap = gridCells(COOP_SLOTS[Math.min(COOP_SLOTS.length - 1, d.coop.level || 0)] * CELLS_PER_POCKET);
-  const s = d.coop.slots;
-  while (s.length < cap) s.push(null);
-  while (s.length > cap && !s[s.length - 1]) s.pop();
-  const cols = gridCols(cap);
-  if (!s.grid || s.grid.cols !== cols || s.grid.rows !== cap / cols) Object.defineProperty(s, 'grid', { value: { cols, rows: cap / cols }, configurable: true, writable: true, enumerable: false });
-  if (!laidOut(s)) spill(state, s);
-  return s;
-}
-export function defaultCoop() {
-  // food: 0..1 how full Nugget is; laid: eggs laid so far; layT: seconds until the next egg
-  return { level: 0, slots: [], food: 0.8, laid: 0, layT: 240, lastFed: 0 };
-}
 
 /** Rebuild the read-only mirrors (data.lots, data.counts, data.weapons) from the backpack. */
 export function sync(state) {
@@ -480,14 +458,6 @@ export function canAdd(state, id, n = 1) {
 export function bagLoad(state) { return W.moleLoad(state, bag(state).slice(0, bagSlots(state))); }
 /** Can the mole lift n more of this item (by weight: up to twice what it carries comfortably)? */
 export function canLift(state, id, n = 1) { return !slotted(id) || W.canLift(state, bag(state), id, n); }
-/** The coop's load over its shelves (core/weight.js coopLoad). */
-export function coopLoad(state) { return W.coopLoad(state, coopSlots(state)); }
-/** Units of `id` the coop can still take by weight. */
-export function coopRoomKg(state, id) {
-  const kg = W.kgOf(id);
-  if (kg <= 0) return Infinity;
-  return Math.max(0, Math.floor((W.coopCarry(state) * 1.5 - W.loadOf(coopSlots(state))) / kg + 1e-6));
-}
 /** { used, slots, free, full } of the backpack in cells (full = not one free cell left). */
 export function bagFill(state) {
   const s = bag(state), cap = bagSlots(state);
@@ -755,7 +725,7 @@ export function migrate(state, old) {
   // what you'd want at hand first: food, supplies, then the valuable finds
   const counts = { ...(old.counts || {}) };
   const ids = Object.keys(counts).filter((id) => counts[id] > 0 && ITEMS[id]);
-  const pri = (id) => ({ food: 0, consumable: 1, feed: 2 }[ITEMS[id].cat] ?? 5);
+  const pri = (id) => ({ food: 0, consumable: 1 }[ITEMS[id].cat] ?? 5);
   ids.sort((a, b) => pri(a) - pri(b));
   for (const id of ids) {
     if (!slotted(id)) { if (ITEMS[id].cat === 'furniture') d.furniture[id] = (d.furniture[id] || 0) + counts[id]; else d.owned[id] = 1; continue; }
@@ -774,16 +744,21 @@ export function migrate(state, old) {
 export function loadInventory(state, raw) {
   const d = state.data;
   let stashed = 0;
+  // stacks of items that no longer exist go
+  const real = (s) => (s && (s.w || ITEMS[s.id]) && stackN(s) > 0 ? s : null);
   if (!raw || !raw.inv || !Array.isArray(raw.inv.slots)) stashed = migrate(state, raw || {});
   else {
     d.inv = raw.inv;
-    // drop stacks of items that no longer exist
-    d.inv.slots = d.inv.slots.map((s) => (s && (s.w || ITEMS[s.id]) && stackN(s) > 0 ? s : null));
+    d.inv.slots = d.inv.slots.map(real);
   }
-  if (!d.coop || typeof d.coop !== 'object' || Array.isArray(d.coop)) d.coop = defaultCoop();
-  else d.coop = { ...defaultCoop(), ...d.coop };
-  coopSlots(state);
-  stash(state);
+  const st = stash(state);
+  for (let i = 0; i < st.length; i++) st[i] = real(st[i]);
+  // older saves kept a second container (a walking hut's shelves, `data.coop`): whatever was on
+  // it waits in the trunk at home now
+  const old = raw?.coop?.slots;
+  if (Array.isArray(old)) for (const s of old.map(real)) if (s) { stashPut(state, s.id, s.w || s.lots || s.n); stashed++; }
+  delete d.coop;
+  while (st.length && !st[st.length - 1]) st.pop();
   sync(state);
   return stashed;
 }
@@ -792,133 +767,7 @@ export function loadInventory(state, raw) {
 export function defaultInv() {
   return { v: 1, slots: [] };
 }
-/** What a new game keeps in the trunk at home: a few grub bars, support beams and a sack of feed. */
+/** What a new game keeps in the trunk at home: a few grub bars and support beams. */
 export function defaultStash() {
-  return { slots: [{ id: 'grub_bar', n: 2 }, { id: 'support_beam', n: 3 }, ITEMS.chicken_feed ? { id: 'chicken_feed', n: 6 } : null].filter(Boolean) };
-}
-
-// ---------------------------------------------------------------- Nugget's care (data.coop)
-/** Below this Nugget is hungry: she sits down and sulks and won't follow. */
-export const HUNGRY = 0.15;
-/** Nugget's mood from how fed she is: 'happy' | 'ok' | 'peckish' | 'hungry'. */
-export function henMood(state) {
-  const f = state.data.coop?.food ?? 0.8;
-  return f < HUNGRY ? 'hungry' : f < 0.35 ? 'peckish' : f > 0.65 ? 'happy' : 'ok';
-}
-const henName = (state) => state.data.chicken?.name || 'Nugget';
-
-/**
- * Feed Nugget one helping: item `id` (or the most filling hen food you carry) taken from the
- * backpack (from = 'bag') or the coop's shelves ('coop'), whichever has it first. Emits
- * 'act' { type: 'feed', who: 'nugget', id }. Returns { ok, id, food, mood } or { ok: false, reason }.
- */
-export function feedHen(state, id = null, from = 'bag') {
-  const d = state.data;
-  if (!d.coop || typeof d.coop !== 'object') d.coop = defaultCoop();
-  const c = d.coop;
-  if ((c.food ?? 0) >= 0.96) return { ok: false, reason: `${henName(state)} is full. She fluffs up and looks away.` };
-  const pools = from === 'coop' ? [coopSlots(state), bag(state)] : [bag(state), coopSlots(state)];
-  if (!id) {
-    let best = null;
-    for (const p of pools) {
-      for (const s of p) if (s && !s.w && ITEMS[s.id]?.hen > 0 && (!best || ITEMS[s.id].hen > ITEMS[best].hen)) best = s.id;
-      if (best) break;
-    }
-    id = best;
-  }
-  const it = ITEMS[id];
-  if (!it || !(it.hen > 0)) return { ok: false, reason: `No hen food packed. Worms, grubs, seeds or chicken feed.` };
-  let took = 0;
-  for (const p of pools) {
-    const got = takeFrom(p, id, 1);
-    took = Array.isArray(got) ? got.length : got;
-    if (took) break;
-  }
-  if (!took) return { ok: false, reason: `You have no ${it.name} left.` };
-  c.food = Math.min(1, (c.food ?? 0) + it.hen);
-  c.lastFed = d.playTime || 0;
-  c.fed = (c.fed || 0) + 1;
-  sync(state);
-  state.emit('items', { id, n: -1 });
-  state.emit('act', { type: 'feed', who: 'nugget', id });
-  return { ok: true, id, food: c.food, mood: henMood(state) };
-}
-
-/**
- * Build a forged part onto the coop (data/coopParts.js): it must be the next level of its track.
- * `from`: 'bag' | 'coop' (where the part is), lotUid: which one (default: the best). Returns
- * { ok, id, track, level, q, name } or { ok: false, reason }. Emits 'items' and act 'install'.
- */
-export function installPart(state, id, { from = 'bag', lotUid = null } = {}) {
-  const P = COOP_PARTS[id];
-  if (!P) return { ok: false, reason: 'That isn\'t a coop part.' };
-  const lv = W.coopLevels(state)[P.track];
-  if (P.level <= lv) return { ok: false, reason: `The coop already has that (${W.COOP_UP[P.track].name} ${lv}).` };
-  if (P.level > lv + 1) {
-    const need = Object.entries(COOP_PARTS).find(([, q]) => q.track === P.track && q.level === lv + 1);
-    return { ok: false, reason: `Install the ${need ? need[1].name : 'earlier part'} first.` };
-  }
-  const slots = from === 'coop' ? coopSlots(state) : bag(state);
-  let lot = null;
-  if (lotUid) {
-    for (let i = 0; i < slots.length && !lot; i++) {
-      const s = slots[i];
-      if (!s?.lots || s.id !== id) continue;
-      const k = s.lots.findIndex((l) => l.uid === lotUid);
-      if (k >= 0) { lot = s.lots.splice(k, 1)[0]; if (!s.lots.length) slots[i] = null; }
-    }
-  } else lot = takeFrom(slots, id, 1)[0] || null;
-  if (!lot) return { ok: false, reason: `You don't have a ${P.name}.` };
-  const c = state.data.coop || (state.data.coop = defaultCoop());
-  if (P.track === 'shelves') c.level = P.level;
-  else (c.up ||= {})[P.track] = P.level;
-  (c.upQ ||= {})[P.track] = lot.q ?? 70;
-  coopSlots(state);
-  sync(state);
-  state.emit('items', { id, n: -1, coop: true, install: P.track });
-  state.emit('act', { type: 'install', part: id, track: P.track, level: P.level, q: lot.q });
-  return { ok: true, id, track: P.track, level: P.level, q: lot.q, name: P.name };
-}
-/** The next part a track needs: { id, part, have (in the bag or on the coop) } or null when maxed. */
-export function nextPart(state, track) {
-  const lv = W.coopLevels(state)[track];
-  const e = Object.entries(COOP_PARTS).find(([, p]) => p.track === track && p.level === lv + 1);
-  if (!e) return null;
-  return { id: e[0], part: e[1], have: countIn(bag(state), e[0]) + countIn(coopSlots(state), e[0]) };
-}
-
-/**
- * Nugget's hunger and laying, per frame. o.rate: food lost per second (default: a full hen gets
- * hungry after ~12 minutes along on a dig); o.lay: false stops laying; o.layK speeds laying up.
- * Returns 'egg' when she lays.
- */
-export function tickHen(state, dt, o = {}) {
-  const c = state.data.coop || (state.data.coop = defaultCoop());
-  c.food = Math.max(0, (c.food ?? 0.8) - dt * (o.rate ?? 1 / 720));
-  if (o.lay === false || c.food < 0.45) return null;
-  const nest = W.coopUp(state, 'nest').lay * W.partMult(state, 'nest');
-  c.layT = (c.layT ?? 240) - dt * (c.food > 0.75 ? 1.3 : 1) * (o.layK ?? 1) * nest;
-  if (c.layT > 0) return null;
-  c.layT = 200 + Math.random() * 160;
-  c.laid = (c.laid || 0) + 1;
-  return 'egg';
-}
-
-/** Something Nugget scratched up onto the coop's shelves (id, n, q): true, or false when full. */
-export function findToCoop(state, id, n = 1, q = 100) {
-  if (coopRoomKg(state, id) < n) return false; // her legs can't take more
-  const units = isQ(id) ? Array.from({ length: n }, () => lotOf(id, q, false)) : n;
-  const left = putIn(coopSlots(state), id, units);
-  if (Array.isArray(left) ? left.length : left > 0) return false;
-  state.emit('items', { id, n: 0, coop: true });
-  return true;
-}
-
-/** A fresh egg onto the coop's shelves: true, or false when the shelves are full. */
-export function eggToCoop(state) {
-  const left = putIn(coopSlots(state), 'egg', 1);
-  if (left > 0) return false;
-  if (state.data.stats) state.data.stats.eggs = (state.data.stats.eggs || 0) + 1;
-  state.emit('items', { id: 'egg', n: 0, coop: true });
-  return true;
+  return { slots: [{ id: 'grub_bar', n: 2 }, { id: 'support_beam', n: 3 }] };
 }

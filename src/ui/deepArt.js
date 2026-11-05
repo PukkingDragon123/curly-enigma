@@ -1,6 +1,7 @@
 // Pixel art for the first-person HUD: the brass radar, crosshair reticles, the big dig button,
 // tiny map glyphs (shared by the radar screen and the survey map) and the look card.
 import { Px, PAL, INK, art, mixHex } from './uiArt.js';
+import { RAMP, tone, h2, vnoise, pebble, lambert, dome, screw, shadeC, THREAD } from './hudArt.js';
 
 const B = PAL.brass, W = PAL.wood, P = PAL.paper;
 const IRON = { hi: 0x8a8890, lt: 0x6a6870, base: 0x46444c, dk: 0x2e2c32, dd: 0x1c1b20 };
@@ -9,56 +10,138 @@ const IRON = { hi: 0x8a8890, lt: 0x6a6870, base: 0x46444c, dk: 0x2e2c32, dd: 0x1
 export const RADAR = { size: 54, screen: 36, off: 9, r: 18 };
 
 // ---------------------------------------------------------------- radar device
+/**
+ * The scope's bezel (54×54, the 36 px screen shows through the middle): a turned brass ring, a
+ * chamfered lip down to the glass, a satin dial band engraved every 10° (longer every 30°), a red
+ * enamel lubber mark, four slotted screws, a convex rim and a knurled edge; a stitched leather
+ * strap looped through two lugs at the top left, a knurled tuning knob on the right, and the
+ * glass itself: an inner shadow under the rim, a crescent of glare and two glints.
+ */
 function radarRing() {
-  const S = RADAR.size, c = S / 2, rIn = RADAR.r + 0.6, rOut = RADAR.r + 6.4;
+  const S = RADAR.size, c = S / 2, R = RADAR.r;
+  const BR = RAMP.brass, LE = RAMP.leather;
   const p = new Px(S, S);
-  // carrying strap loop (top-left, behind the ring)
-  for (let a = 0; a < 40; a++) {
-    const t = Math.PI * 1.05 + (a / 40) * Math.PI * 0.55;
-    const x = Math.round(c + Math.cos(t) * 26.5), y = Math.round(c + Math.sin(t) * 26.5);
-    p.set(x, y, PAL.leather.base); p.set(x + 1, y, PAL.leather.dk); p.set(x, y + 1, PAL.leather.lt);
+  const rIn = R + 0.5, rChamf = R + 1.5, rBand = R + 4.6, rRim = R + 6.6, rOut = R + 7.6;
+  const polar = (x, y) => { const dx = x + 0.5 - c, dy = y + 0.5 - c; return [Math.hypot(dx, dy), Math.atan2(dy, dx), dx, dy]; };
+  // ---- the strap: a stitched leather loop bulging into the top-left corner, behind the ring
+  const a0 = -Math.PI * 0.89, a1 = -Math.PI * 0.61;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const [d, a] = polar(x, y);
+    if (a < a0 || a > a1) continue;
+    const t = (a - a0) / (a1 - a0);
+    const mid = rOut - 1.5 + Math.sin(Math.PI * t) * 6.2;
+    const o = d - mid;
+    if (Math.abs(o) > 2.4) continue;
+    let k = 0.5 + pebble(x, y, 41, 1.2) * 0.18 + (vnoise(x / 4, y / 4, 42) - 0.5) * 0.2;
+    if (o > 1.5) k = 0.82; // the outer edge faces the light
+    else if (o > 0.8) k += 0.12;
+    else if (o < -1.5) k = 0.12;
+    p.set(x, y, tone(LE, k));
+    // a row of stitches down the middle
+    const s = Math.round(a * mid);
+    if (Math.abs(o) < 0.5 && ((s % 3) + 3) % 3 !== 2) p.set(x, y, ((s % 3) + 3) % 3 === 0 ? 0xf4e2b4 : THREAD);
   }
-  // tuning knob (right side)
-  p.disk(c + 23.5, c + 9.5, 3.4, IRON.base);
-  for (let k = 0; k < 6; k++) p.set(Math.round(c + 23.5 + Math.cos(k) * 3), Math.round(c + 9.5 + Math.sin(k) * 3), IRON.dk);
-  p.set(Math.round(c + 22.5), Math.round(c + 8.5), IRON.hi);
-  // brass ring with a bevel lit from the top-left
-  for (let y = 0; y < S; y++)
-    for (let x = 0; x < S; x++) {
-      const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy);
-      if (d < rIn || d > rOut) continue;
-      const lit = -(dx + dy) / (d || 1); // 1 = top-left
-      const t = (d - rIn) / (rOut - rIn); // 0 inner .. 1 outer
-      let col;
-      if (t > 0.86) col = lit > 0.2 ? B.hi : lit > -0.35 ? B.lt : B.dk;
-      else if (t < 0.18) col = lit > 0 ? B.dd : B.lt; // inner lip: shadowed at the top-left
-      else col = lit > 0.55 ? B.lt : lit > -0.45 ? B.base : B.dk;
-      p.set(x, y, col);
+  // the two lugs the strap runs through
+  for (const t of [0.09, 0.91]) {
+    const a = a0 + (a1 - a0) * t;
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const [d, aa] = polar(x, y);
+      const along = (aa - a) * d;
+      if (Math.abs(along) > 1.8 || d < rOut - 1 || d > rOut + 2.6) continue;
+      const k = 0.45 + (along < -0.6 ? 0.3 : along > 0.6 ? -0.25 : 0.1) + (d > rOut + 1.8 ? -0.15 : 0);
+      p.set(x, y, tone(BR, k));
     }
-  // engraved ticks every 30°, a red forward notch at the top
-  for (let k = 1; k < 12; k++) {
-    const a = (k / 12) * Math.PI * 2 - Math.PI / 2;
-    for (const rr of [RADAR.r + 3, RADAR.r + 4]) p.set(Math.round(c - 0.5 + Math.cos(a) * rr), Math.round(c - 0.5 + Math.sin(a) * rr), B.dd);
   }
-  const top = Math.round(c - RADAR.r - 5);
-  p.poly([[c - 3, top], [c + 3, top], [c, top + 4]], PAL.red.base);
-  p.set(c - 2, top, PAL.red.hi); p.set(c - 1, top, PAL.red.lt);
-  // four screws
-  for (const a of [0.785, 2.356, 3.927, 5.498]) {
-    const x = Math.round(c - 1 + Math.cos(a) * (RADAR.r + 3.6)), y = Math.round(c - 1 + Math.sin(a) * (RADAR.r + 3.6));
-    p.rect(x, y, 2, 2, B.dk); p.set(x, y, B.hi); p.set(x + 1, y + 1, B.dd); p.set(x + 1, y, B.dd);
+  // ---- the ring
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const [d, a, dx, dy] = polar(x, y);
+    if (d < rIn || d > rOut) continue;
+    const lit = -(dx + dy) / (d * Math.SQRT2 || 1); // 1 top-left .. −1 bottom-right
+    let k;
+    if (d < rChamf) {
+      k = 0.3 - lit * 0.26; // the chamfer faces the centre: lit at the bottom right
+    } else if (d < rBand - 0.6) {
+      k = 0.47 + lit * 0.08 + (h2(x, y, 44) - 0.5) * 0.04; // the satin dial band
+      if (d < rChamf + 0.7) k -= 0.08;
+    } else if (d < rBand + 0.4) {
+      k = lit > 0.15 ? 0.3 : lit > -0.15 ? 0.45 : 0.66; // the step up to the rim
+    } else if (d < rRim) {
+      // the polished convex rim, a highlight running round its crown
+      const inner = d < (rBand + rRim) / 2 + 0.2;
+      k = inner ? 0.64 + lit * 0.3 : 0.52 + lit * 0.36;
+      if (inner && lit > 0.8) k = 1;
+    } else {
+      // knurled edge: alternate ridges, brighter facing the light
+      const n = Math.floor(((a + Math.PI) * d) / 2) % 2;
+      k = 0.4 + lit * 0.22 + (n ? 0.1 : -0.12);
+    }
+    p.set(x, y, tone(BR, k));
   }
+  // ---- engraved ticks every 10°, longer every 30°; screws on the diagonals; the red lubber mark
+  const screws = [45, 135, 225, 315];
+  const ticks = new Map();
+  for (let deg = 10; deg < 360; deg += 10) {
+    if (screws.some((s) => Math.abs(s - deg) < 8)) continue;
+    const ang = ((deg - 90) * Math.PI) / 180;
+    const major = deg % 30 === 0, card = deg % 90 === 0;
+    const r0 = card ? rChamf + 0.3 : major ? rChamf + 1.1 : rBand - 1.3;
+    for (let r = r0; r <= rBand - 0.8; r += 0.4) {
+      const x = Math.round(c - 0.5 + Math.cos(ang) * r), y = Math.round(c - 0.5 + Math.sin(ang) * r);
+      ticks.set(x + ',' + y, major);
+    }
+  }
+  for (const [key, major] of ticks) {
+    const [x, y] = key.split(',').map(Number);
+    p.set(x, y, major ? BR[1] : BR[2]);
+  }
+  for (const [key, major] of ticks) {
+    if (!major) continue;
+    const [x, y] = key.split(',').map(Number);
+    if (!ticks.has(x + 1 + ',' + (y + 1)) && !ticks.has(x + 1 + ',' + y)) p.set(x + 1, y + 1, BR[6]);
+  }
+  screws.forEach((deg, i) => {
+    const ang = ((deg - 90) * Math.PI) / 180, r = (rChamf + rBand) / 2;
+    screw(p, Math.round(c - 1.5 + Math.cos(ang) * r), Math.round(c - 1.5 + Math.sin(ang) * r), [2, 0, 3, 1][i], BR);
+  });
+  // the lubber mark: a red enamel triangle inlaid in the band at the top, pointing in
+  const ty = Math.round(c - rBand + 0.2);
+  const red = PAL.red;
+  for (let j = 0; j < 4; j++) for (let i = -3 + j; i <= 3 - j; i++) {
+    const x = Math.round(c - 0.5) + i, y = ty + j;
+    p.set(x, y, j === 0 ? (i < 0 ? red.hi : red.lt) : i === 3 - j ? red.dk : red.base);
+  }
+  p.hl(Math.round(c - 0.5) - 4, Math.round(c - 0.5) + 4, ty - 1, BR[1]);
+  p.set(Math.round(c - 0.5) - 2, ty, 0xffd0c0);
+  // ---- the tuning knob (right), with its shadow on the ring
+  const kx = c + 23.2, ky = c + 9.6, kr = 3.4;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const du = (x + 0.5 - kx - 0.8) / kr, dv = (y + 0.5 - ky - 0.9) / kr;
+    if (du * du + dv * dv <= 1 && p.a(x, y)) p.set(x, y, shadeC(p.get(x, y), 0.55));
+  }
+  const IR = RAMP.iron;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const du = (x + 0.5 - kx) / kr, dv = (y + 0.5 - ky) / kr, r = Math.hypot(du, dv);
+    if (r > 1) continue;
+    let k;
+    if (r > 0.66) { const n = Math.floor((Math.atan2(dv, du) + Math.PI) * 3.2) % 2; k = 0.18 + dome(du, dv, 0.6) * 0.6 + (n ? 0.14 : -0.1); }
+    else k = 0.2 + dome(du / 0.66, dv / 0.66, 0.9) * 0.8;
+    p.set(x, y, tone(IR, k));
+  }
+  p.set(Math.round(kx - 1.2), Math.round(ky - 1.3), IR[7]);
   p.outline(INK);
-  // glass: soft inner shadow at the rim, a crescent of glare at the top-left
-  for (let y = 0; y < S; y++)
-    for (let x = 0; x < S; x++) {
-      const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy);
-      if (d >= rIn) continue;
-      if (d > RADAR.r - 1.2) p.set(x, y, 0x020806, 150);
-      const a = Math.atan2(dy, dx);
-      if (d > RADAR.r - 4.2 && d < RADAR.r - 2.6 && a > -2.6 && a < -1.75) p.set(x, y, 0xe8fff0, 70);
-    }
-  p.set(c - 9, c - 11, 0xffffff, 120); p.set(c - 10, c - 9, 0xffffff, 90);
+  // ---- the glass over the screen
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const [d, a, dx, dy] = polar(x, y);
+    if (d >= rIn) continue;
+    const lit = -(dx + dy) / (d * Math.SQRT2 || 1);
+    if (d > R - 1.4) p.set(x, y, 0x020806, Math.round(120 + 70 * Math.max(0, lit)));
+    else if (d > R - 2.4 && lit > 0.3) p.set(x, y, 0x020806, 70);
+    const ga = Math.abs(a + 2.2);
+    if (d > R - 4.6 && d < R - 2.6 && ga < 0.42) p.set(x, y, 0xe8fff0, ga < 0.2 && d > R - 4.1 && d < R - 3.1 ? 110 : 55);
+    if (d > R - 3.2 && d < R - 2.2 && a > 0.35 && a < 1.15) p.set(x, y, 0xd8ffe8, 38);
+  }
+  p.set(c - 8, c - 12, 0xffffff, 170); p.set(c - 7, c - 12, 0xffffff, 110); p.set(c - 8, c - 11, 0xffffff, 110);
+  p.set(c - 11, c - 8, 0xffffff, 90);
   return p;
 }
 

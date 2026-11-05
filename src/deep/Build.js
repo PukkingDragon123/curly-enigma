@@ -228,14 +228,11 @@ export class Build {
   }
 
   // ------------------------------------------------------------------ planning a placement
-  /** Does a voxel box overlap the mole (or Nugget)? (voxel coords, inclusive min, exclusive max) */
+  /** Does a voxel box overlap the mole? 'you' or null (voxel coords, inclusive min, exclusive max) */
   hitsBodies(x0, y0, z0, x1, y1, z1) {
     const p = this.player.pos, h = this.player.h || 0.86;
     const ov = (ax0, ay0, az0, ax1, ay1, az1) => x1 / VOX > ax0 && x0 / VOX < ax1 && y1 / VOX > ay0 && y0 / VOX < ay1 && z1 / VOX > az0 && z0 / VOX < az1;
-    if (ov(p.x - 0.23, p.y, p.z - 0.23, p.x + 0.23, p.y + h, p.z + 0.23)) return 'you';
-    const n = this.owner?.nugget;
-    if (n?.pos && !n.carrying && ov(n.pos.x - 0.25, n.pos.y, n.pos.z - 0.25, n.pos.x + 0.25, n.pos.y + 0.9, n.pos.z + 0.25)) return 'Nugget';
-    return null;
+    return ov(p.x - 0.23, p.y, p.z - 0.23, p.x + 0.23, p.y + h, p.z + 0.23) ? 'you' : null;
   }
 
   /** Is any voxel of a cell a placed thing? */
@@ -320,7 +317,7 @@ export class Build {
     if (this.cellBuilt(cx, cy, cz)) { p.ok = false; p.why = 'Something is built there'; }
     else if (got < want * (whole ? 0.999 : 0.5)) { p.ok = false; p.why = whole ? 'Needs a clear spot' : 'Too much rock in the way'; }
     if (p.ok && whole && !OPAQUE[w.voxelAt(cx * BS + 4, cy * BS - 1, cz * BS + 4)]) { p.ok = false; p.why = 'Needs solid ground under it'; }
-    if (p.ok) { const who = this.hitsBodies(cx * BS, cy * BS, cz * BS, cx * BS + BS, cy * BS + BS, cz * BS + BS); if (who && voxels.length) { p.ok = false; p.why = who === 'you' ? 'You\'re standing there' : `${this.st.data.chicken?.name || 'Nugget'} is in the way`; } }
+    if (p.ok) { const who = this.hitsBodies(cx * BS, cy * BS, cz * BS, cx * BS + BS, cy * BS + BS, cz * BS + BS); if (who && voxels.length) { p.ok = false; p.why = 'You\'re standing there'; } }
     return p;
   }
 
@@ -373,8 +370,7 @@ export class Build {
     const lo = use[0][0], hi = use[use.length - 1][0];
     const who = this.hitsBodies(lo[0] * BS, lo[1] * BS, lo[2] * BS, lo[0] * BS + BS, hi[1] * BS + BS, lo[2] * BS + BS);
     // a ladder is thin: only refuse when the mole stands right where its rungs go
-    if (who === 'Nugget') { p.ok = false; p.why = 'Nugget is in the way'; }
-    else if (who === 'you') {
+    if (who === 'you') {
       const pl = this.player.pos, hits = voxels.some((v) => (v.x + 1) / VOX > pl.x - 0.22 && v.x / VOX < pl.x + 0.22 && (v.z + 1) / VOX > pl.z - 0.22 && v.z / VOX < pl.z + 0.22 && (v.y + 1) / VOX > pl.y && v.y / VOX < pl.y + 0.86);
       if (hits) { p.ok = false; p.why = 'Step back from the wall'; }
     }

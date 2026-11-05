@@ -1,21 +1,19 @@
 // Forge menus (DOM in the scene's layer), each one a thing in the smithy:
-//   main()       the order board: a chalkboard on chains with pinned cards (1 smelt, 2 forge, 3 parts)
+//   main()       the order board: a chalkboard on chains with pinned cards (1 smelt, 2 forge)
 //   smeltList()  the smith's ledger: a leather notebook, one inked entry per recipe, rubber stamps
 //   plan()       the weapon blueprint: chalk boxes for the plan, metal tokens, the drawing in the middle
-//   partsList()  Nugget's coop schematic: the coop in blue ink with numbered spots, part cards taped on
 // Styles: forge.css, art: forgeArt.js.
 import { el, formatGoldFull } from '../core/util.js';
 import { ITEMS } from '../data/items.js';
 import { SMELTING, METALS, WEAPON_TYPES, INFUSIONS, SOCKET_GEMS, FORGE_MAX_TEMP, weaponValue, GRADES } from '../data/weapons.js';
-import { COOP_PARTS } from '../data/coopParts.js';
-import { pieceOf } from '../data/coopParts.js';
-import { COOP_UP, COOP_TRACKS, coopLevels } from '../core/weight.js';
+import { FORGE_PIECES, pieceOf } from '../data/forgePieces.js';
 import { iconURL, weaponIconURL } from '../gfx/PixelArt.js';
+import { itemVox } from '../ui/itemVox.js'; // recipes and plans as 3D voxel art
 import { qColor } from '../ui/UI.js';
 import { smeltStatus, quickSmelt, SmeltGame } from './smelt.js';
 import { ForgeRun } from './forging.js';
 import { PartRun, partStatus } from './parts.js';
-import { fart, token, callout, blueprintURL } from './forgeArt.js';
+import { fart, token, blueprintURL } from './forgeArt.js';
 
 const HEARTH_NAMES = ['Coal hearth', 'Coal hearth, double bellows', 'Magma hearth'];
 const NEED_WORDS = {
@@ -24,8 +22,6 @@ const NEED_WORDS = {
   cold: 'Too cold to handle without frost gauntlets',
 };
 const GEM_HEX = { quartz: 0xf2f2f8, amber: 0xf2a32c, amber_bug: 0xf2a32c, amethyst: 0xa05ad9, ruby: 0xe02a3a, emerald: 0x2ad96a, sapphire: 0x2a5ae0, diamond: 0xd8f6ff };
-/** Where each track's numbered callout sits on the coop sketch (art px, 60×76). */
-const CALLOUT = { shelves: [9, 34], legs: [12, 60], nest: [41, 41], chute: [47, 4], lamp: [21, 0] };
 
 export function avgQ(lots) {
   return lots.length ? Math.round(lots.reduce((s, l) => s + l.q, 0) / lots.length) : 0;
@@ -53,7 +49,6 @@ export class Menus {
     this.unsub = this.state.on('items', () => {
       if (this.mode === 'smelt') this.smeltList(true);
       else if (this.mode === 'main') this.main(true);
-      else if (this.mode === 'parts') this.partsList(true);
     });
   }
 
@@ -85,7 +80,7 @@ export class Menus {
 
   onEscape() {
     if (this.mode === 'main') { this.scene.leave(); return true; }
-    if (this.mode === 'smelt' || this.mode === 'plan' || this.mode === 'parts') { this.back(); return true; }
+    if (this.mode === 'smelt' || this.mode === 'plan') { this.back(); return true; }
     return false;
   }
 
@@ -110,18 +105,18 @@ export class Menus {
     return 'forging ' + this.sel.metal + ' ' + this.sel.type;
   }
 
-  /** Rows of the parts list (scene.debug.partsList). */
-  partRows() {
-    return Object.keys(COOP_PARTS).map((id) => {
+  /** Rows of the forge pieces (scene.debug.part / pieces). */
+  pieceRows() {
+    return Object.keys(FORGE_PIECES).map((id) => {
       const s = partStatus(this.state, id);
-      return { id, name: s.p.name, track: s.p.track, level: s.p.level, status: s.done ? 'installed' : s.ok ? 'ready' : 'locked', why: s.why, need: Object.fromEntries(s.ins.map((x) => [x.id, x.n])), have: Object.fromEntries(s.ins.map((x) => [x.id, x.have])), carrying: s.carrying, works: s.m.work, hot: s.hot };
+      return { id, name: s.p.name, status: s.done ? 'made' : s.ok ? 'ready' : 'locked', why: s.why, need: Object.fromEntries(s.ins.map((x) => [x.id, x.n])), have: Object.fromEntries(s.ins.map((x) => [x.id, x.have])), works: s.m.work, hot: s.hot };
     });
   }
 
   update() {
     const inp = this.game.input;
     if (!this.keyHandler || this.game.ui.isPanelOpen()) return;
-    for (const code of ['Digit1', 'Digit2', 'Digit3', 'Enter']) if (inp.pressed(code)) { inp.consume(code); this.keyHandler(code); break; }
+    for (const code of ['Digit1', 'Digit2', 'Enter']) if (inp.pressed(code)) { inp.consume(code); this.keyHandler(code); break; }
   }
 
   // ---------------------------------------------------------------- the order board (hub)
@@ -134,9 +129,6 @@ export class Menus {
     const ores = oreIds.reduce((s, id) => s + st.count(id), 0);
     const plans = Object.keys(WEAPON_TYPES).filter((t) => st.owns('bp_' + t)).length;
     const forged = d.weapons.length;
-    const parts = Object.keys(COOP_PARTS).map((id) => partStatus(st, id));
-    const ready = parts.filter((s) => s.ok).length;
-    const carrying = parts.reduce((n, s) => n + s.carrying, 0);
     const card = (icon, title, sub, key, on, r, tack, delay) => el('button', {
       class: 'sm-card', style: `--r:${r}deg;--tack:var(--fa-${tack});--d:${delay}s`,
       onclick: () => { this.game.audio.play('ui_click'); on(); },
@@ -145,13 +137,11 @@ export class Menus {
       el('i', { class: 'sm-cord l' }), el('i', { class: 'sm-cord r' }),
       img(fart('dAnvil'), 'pix sm-doodle', { right: 'calc(var(--px) * 3)', top: 'calc(var(--px) * 2)', width: 'calc(var(--px) * 30)', height: 'calc(var(--px) * 22)' }),
       img(fart('dSpark'), 'pix sm-doodle', { right: 'calc(var(--px) * 34)', top: 'calc(var(--px) * 4)', width: 'calc(var(--px) * 9)', height: 'calc(var(--px) * 9)' }),
-      img(fart('dHen'), 'pix sm-doodle', { left: 'calc(var(--px) * 40)', bottom: 'calc(var(--px) * 1)', width: 'calc(var(--px) * 18)', height: 'calc(var(--px) * 16)' }),
       el('div', { class: 'fg-kicker' }, 'Home forge · today\'s work'),
       el('h2', { class: 'sm-chalk-h' }, 'The Forge'),
       el('div', { class: 'sm-cards' }, [
-        card(iconURL('copper_ingot'), 'Smelt ore', `${ores} ore · ${st.count('coal')} coal`, '1', () => this.smeltList(), -1.2, 'tackRed', 0.08),
-        card(weaponIconURL('shortsword', 'iron'), 'Forge a weapon', `${ingots} ingot${ingots === 1 ? '' : 's'} · ${plans} plan${plans === 1 ? '' : 's'}`, '2', () => this.plan(), 1, 'tackBlue', 0.16),
-        card(iconURL('legs_copper'), 'Coop parts', `For Nugget's coop · ${ready ? `<em>${ready} ready to forge</em>` : 'see what she needs'}${carrying ? ` · ${carrying} in your pack` : ''}`, '3', () => this.partsList(), -0.6, 'tackGold', 0.24),
+        card(itemVox.src('copper_ingot'), 'Smelt ore', `${ores} ore · ${st.count('coal')} coal`, '1', () => this.smeltList(), -1.2, 'tackRed', 0.08),
+        card(itemVox.weapon('shortsword', 'iron'), 'Forge a weapon', `${ingots} ingot${ingots === 1 ? '' : 's'} · ${plans} plan${plans === 1 ? '' : 's'}`, '2', () => this.plan(), 1, 'tackBlue', 0.16),
       ]),
       forged ? el('div', { class: 'sm-chalknote', html: `In the barrel by the door: <b>${forged}</b> forged weapon${forged === 1 ? '' : 's'} for the assay office.` }) : null,
       el('div', { class: 'sm-foot' }, [
@@ -163,7 +153,7 @@ export class Menus {
     ]);
     if (!refresh) this.game.audio.play('page');
     this.show(node, 'main');
-    this.keyHandler = (code) => { if (code === 'Digit1') this.smeltList(); if (code === 'Digit2') this.plan(); if (code === 'Digit3') this.partsList(); };
+    this.keyHandler = (code) => { if (code === 'Digit1') this.smeltList(); if (code === 'Digit2') this.plan(); };
   }
 
   // ---------------------------------------------------------------- the ledger (smelting)
@@ -181,11 +171,11 @@ export class Menus {
       for (const [id, n] of Object.entries(r.inputs)) {
         const have = st.count(id);
         const known = st.known('mineral', id) || have > 0;
-        f.append(el('span', { class: 'n' }, n + '×'), img(iconURL(id), 'pix', known ? null : { filter: 'brightness(0) opacity(.35)' }));
+        f.append(el('span', { class: 'n' }, n + '×'), img(itemVox.src(id), 'pix', known ? null : { filter: 'brightness(0) opacity(.35)' }));
         ins.append(el('span', { class: have < n ? 'miss' : '' }, `${known ? ITEMS[id].name : 'unknown ore'} ${have}/${n}`));
       }
-      f.append(el('span', { class: 'n' }, '+' + r.coal + '×'), img(iconURL('coal')));
-      f.append(img(fart('dArrow'), 'pix sm-arrow'), img(iconURL(r.out), 'pix out', s.known ? null : { filter: 'brightness(0) opacity(.35)' }));
+      f.append(el('span', { class: 'n' }, '+' + r.coal + '×'), img(itemVox.src('coal')));
+      f.append(img(fart('dArrow'), 'pix sm-arrow'), img(itemVox.src(r.out), 'pix out', s.known ? null : { filter: 'brightness(0) opacity(.35)' }));
       ins.append(el('span', { class: st.count('coal') < r.coal ? 'miss' : '' }, `coal ${st.count('coal')}/${r.coal}`));
       ins.append(el('span', { class: 'sm-heat' }, [el('i', { class: 'sm-flame' }), ` ${r.temp[0]}–${r.temp[1]}°C`]));
       const stamps = el('div', { class: 'sm-stamps' });
@@ -203,7 +193,7 @@ export class Menus {
     const left = el('div', { class: 'sm-page l' }, [
       el('div', { class: 'fg-kicker' }, 'The smith\'s ledger · smelting'),
       el('h2', {}, 'Ore into ingots'),
-      el('div', { class: 'sm-hand', html: `<img class="pix" src="${iconURL('coal')}" alt=""> Coal in the bin: <b>${st.count('coal')}</b>` }),
+      el('div', { class: 'sm-hand', html: `<img class="pix" src="${itemVox.src('coal')}" alt=""> Coal in the bin: <b>${st.count('coal')}</b>` }),
       el('div', { class: 'sm-hand' }, [el('i', { class: 'sm-flame' }), ` ${HEARTH_NAMES[lvl] || HEARTH_NAMES[0]}: tops out at `, el('b', {}, FORGE_MAX_TEMP[lvl] + '°C')]),
       last ? el('div', { class: 'sm-margin', html: last }) : null,
       el('div', { class: 'sm-hand sm-hide-s', style: { marginTop: 'calc(var(--px) * 3)', fontSize: '.66em', color: '#8a6a4a' } }, 'Keep the crucible in its band with the bellows, then pour. A steady hand makes a good ingot.'),
@@ -284,24 +274,24 @@ export class Menus {
     const typeGrid = el('div', { class: 'sm-chips' });
     for (const t of opt.types) {
       const wt = WEAPON_TYPES[t];
-      typeGrid.append(chip(sel.type === t, img(weaponIconURL(t, sel.metal || 'iron')), wt.name, `${wt.ingots} ingot${wt.ingots > 1 ? 's' : ''}`, () => { sel.type = t; this.plan(true); }));
+      typeGrid.append(chip(sel.type === t, img(itemVox.weapon(t, sel.metal || 'iron')), wt.name, `${wt.ingots} ingot${wt.ingots > 1 ? 's' : ''}`, () => { sel.type = t; this.plan(true); }));
     }
     if (!opt.types.length) typeGrid.append(el('div', { class: 'sm-anno' }, 'No weapon plans. Inkwell Plans in town sells them.'));
     const metalGrid = el('div', { class: 'sm-chips' });
     for (const mm of opt.metals) {
-      metalGrid.append(chip(sel.metal === mm.id, tok(mm.m.color, iconURL(mm.m.ingot)), mm.m.name, `${mm.have} ingot${mm.have > 1 ? 's' : ''} · <b style="color:${qColor(mm.q)}">${mm.q}%</b> · ${mm.m.work[0]}–${mm.m.work[1]}°C`, () => { sel.metal = mm.id; this.plan(true); }, mm.why));
+      metalGrid.append(chip(sel.metal === mm.id, tok(mm.m.color, itemVox.src(mm.m.ingot)), mm.m.name, `${mm.have} ingot${mm.have > 1 ? 's' : ''} · <b style="color:${qColor(mm.q)}">${mm.q}%</b> · ${mm.m.work[0]}–${mm.m.work[1]}°C`, () => { sel.metal = mm.id; this.plan(true); }, mm.why));
     }
     if (!opt.metals.length) metalGrid.append(el('div', { class: 'sm-anno' }, [el('span', {}, 'No ingots yet. '), link('Smelt some ore', null, () => this.smeltList())]));
     // right: infusion and gem
     const infGrid = el('div', { class: 'sm-chips' });
     infGrid.append(chip(!sel.infusion, tok(0x6a8ab0, null), 'None', 'Plain metal', () => { sel.infusion = null; this.plan(true); }));
     for (const inf of opt.infusions) {
-      infGrid.append(chip(sel.infusion === inf.id, tok(inf.inf.color ?? 0xffffff, iconURL(inf.id)), inf.inf.name, `${ITEMS[inf.id].name} · +${Math.round(inf.inf.bonus * 100)}% value`, () => { sel.infusion = inf.id; this.plan(true); }, inf.why));
+      infGrid.append(chip(sel.infusion === inf.id, tok(inf.inf.color ?? 0xffffff, itemVox.src(inf.id)), inf.inf.name, `${ITEMS[inf.id].name} · +${Math.round(inf.inf.bonus * 100)}% value`, () => { sel.infusion = inf.id; this.plan(true); }, inf.why));
     }
     if (!opt.infusions.length) infGrid.append(el('div', { class: 'sm-anno' }, 'Strange minerals from the deep can be worked into a blade.'));
     const gemGrid = el('div', { class: 'sm-chips' });
     gemGrid.append(chip(!sel.gem, tok(0x6a8ab0, null), 'None', 'Bare pommel', () => { sel.gem = null; this.plan(true); }));
-    for (const g of opt.gems) gemGrid.append(chip(sel.gem === g.id, tok(GEM_HEX[g.id] ?? 0xffffff, iconURL(g.id)), ITEMS[g.id].name, `<b style="color:${qColor(g.q)}">${g.q}%</b> quality`, () => { sel.gem = g.id; this.plan(true); }));
+    for (const g of opt.gems) gemGrid.append(chip(sel.gem === g.id, tok(GEM_HEX[g.id] ?? 0xffffff, itemVox.src(g.id)), ITEMS[g.id].name, `<b style="color:${qColor(g.q)}">${g.q}%</b> quality`, () => { sel.gem = g.id; this.plan(true); }));
     // the drawing
     const ok = sel.type && sel.metal;
     const draw = el('div', { class: 'sm-draw' });
@@ -350,86 +340,8 @@ export class Menus {
     run.start();
   }
 
-  // ---------------------------------------------------------------- the coop schematic (parts)
-  partsList(refresh = false) {
-    if (!refresh) this.from = this.mode === 'main' ? 'main' : this.mode === 'parts' ? this.from : null;
-    const st = this.state;
-    const lvl = st.data.forgeLevel || 0;
-    const levels = coopLevels(st);
-    const byTrack = {};
-    for (const id of Object.keys(COOP_PARTS)) (byTrack[COOP_PARTS[id].track] ||= []).push(id);
-    const tracks = COOP_TRACKS.filter((t) => byTrack[t]);
-    const tracksEl = el('div', { class: 'sm-tracks sm-scroll' });
-    const sections = {};
-    let i = 0;
-    const pips = (max, have, at) => el('span', { class: 'sm-pips' }, Array.from({ length: max }, (_, k) => el('i', { class: (k + 1 <= have ? 'on' : '') + (k + 1 === at ? ' this' : '') })));
-    tracks.forEach((t, ti) => {
-      const up = COOP_UP[t];
-      const max = up.levels.length - 1;
-      const cards = el('div', { class: 'sm-pcards' });
-      for (const id of byTrack[t].sort((a, b) => COOP_PARTS[a].level - COOP_PARTS[b].level)) {
-        const s = partStatus(st, id), p = s.p;
-        const ins = el('div', { class: 'sm-ins' });
-        for (const x of s.ins) ins.append(el('span', { class: x.have < x.n && !s.done ? 'miss' : '' }, [img(iconURL(x.id)), ` ${x.n}× ${ITEMS[x.id]?.name || x.id} (${x.have})`]));
-        ins.append(el('span', { class: 'sm-heat' + (s.hot ? ' hot' : '') }, [el('i', { class: 'sm-flame' }), ` ${s.m.work[0]}–${s.m.work[1]}°C${p.quench ? ' · quench' : ''}`]));
-        let state;
-        if (s.done) state = el('div', { class: 'pstate' }, `On the coop${levels[t] > p.level ? ' (and better)' : ''}.`);
-        else if (s.why) state = el('div', { class: 'pstate why' }, s.why);
-        else state = el('div', { class: 'pstate' }, `${p.strikes} blows${p.quench ? ', then quench' : ''}.`);
-        const carry = s.carrying ? el('div', { class: 'pstate carry' }, `You're carrying ${s.carrying}: install it at the coop.`) : null;
-        const go = s.done ? null : el('button', { class: 'fg-stampbtn' + (s.ok ? '' : ' ink'), disabled: !s.ok, onclick: (e) => { e.currentTarget.classList.add('thud'); this.startPart(id); } }, 'Forge');
-        cards.append(el('div', { class: 'sm-pcard' + (s.done ? ' done' : s.next ? ' next' : '') + (!s.done && !s.ok ? ' locked' : ''), style: `--r:${((i * 37) % 5 - 2) * 0.6}deg;--d:${Math.min(0.6, i * 0.05)}s`, 'data-part': id }, [
-          img(iconURL(id)),
-          el('div', {}, [el('div', { class: 'pn' }, p.name), el('div', { class: 'pl' }, [pips(max, levels[t], p.level), `level ${p.level}`])]),
-          ins,
-          el('div', { class: 'pdesc' }, p.desc),
-          el('div', { class: 'pfoot' }, [el('div', {}, [state, carry]), go]),
-          s.done ? el('div', { class: 'sm-done-stamp' }, 'Installed') : null,
-        ]));
-        i++;
-      }
-      const sec = el('div', { class: 'sm-track' }, [
-        el('div', { class: 'sm-th' }, [img(callout(ti + 1)), el('b', {}, up.name), pips(max, levels[t], 0), el('small', {}, up.desc)]),
-        cards,
-      ]);
-      sections[t] = sec;
-      tracksEl.append(sec);
-    });
-    // the coop sketch with numbered spots (click one to jump to its parts)
-    const coop = el('div', { class: 'sm-coop' }, [img(fart('coop'), 'pix sk')]);
-    const legend = el('div', { class: 'sm-legend' });
-    tracks.forEach((t, ti) => {
-      const [x, y] = CALLOUT[t] || [0, 0];
-      coop.append(el('img', {
-        class: 'pix co', src: callout(ti + 1), alt: COOP_UP[t].name, title: COOP_UP[t].name,
-        style: { left: `calc(${x / 60 * 100}%)`, top: `calc(${y / 76 * 100}%)` },
-        onclick: () => { this.game.audio.play('page'); sections[t]?.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
-      }));
-      const max = COOP_UP[t].levels.length - 1;
-      legend.append(el('div', {}, [el('span', {}, [img(callout(ti + 1)), ' ' + COOP_UP[t].name]), el('b', {}, `${levels[t]}/${max}`)]));
-    });
-    const tack = (side) => img(fart(side === 'l' ? 'tackRed' : 'tackBlue'), 'pix sm-tack', side === 'l' ? { left: 'calc(var(--px) * 10)' } : { right: 'calc(var(--px) * 10)' });
-    const node = el('div', { class: 'sm-schem interactive' + (refresh ? ' again' : '') }, [
-      tack('l'), tack('r'),
-      el('div', { class: 'fg-kicker' }, 'Nugget\'s walking coop · schematic'),
-      el('h2', {}, 'Coop parts'),
-      el('div', { class: 'sm-sub' }, `Forge a part here, carry it to her coop and install it from the coop side of your backpack. Hearth: up to ${FORGE_MAX_TEMP[lvl]}°C.`),
-      el('div', { class: 'sm-sch-body' }, [el('div', { class: 'sm-coopcol' }, [coop, legend]), tracksEl]),
-      el('div', { class: 'sm-sch-foot' }, [link('Back', 'Esc', () => this.back())]),
-    ]);
-    if (!refresh) this.game.audio.play('page');
-    const top = this.mode === 'parts' && this.panel ? this.panel.querySelector('.sm-tracks')?.scrollTop : 0;
-    this.show(node, 'parts');
-    if (top) tracksEl.scrollTop = top;
-    this.keyHandler = null;
-    // the first time: Old Star explains where parts go
-    if (!refresh && !this.scene.lesson && !st.flag('forge.partsTip')) {
-      st.flag('forge.partsTip', true);
-      this.game.ui.tutor?.say('Parts for your hen\'s coop! Forge one here: heat the bar, hammer it to shape, quench the hard metals. Then carry it to <b>Nugget\'s coop</b> and fit it from the coop side of your backpack (<b>I</b>, or <b>E</b> at the coop).', { mood: 'happy', key: 'forge-parts', dur: 11 });
-    }
-  }
-
-  /** Start forging a part (false when it can't be made right now). */
+  // ---------------------------------------------------------------- forge pieces (your first pick)
+  /** Start forging a piece (false when it can't be made right now). */
   startPart(id) {
     const s = pieceOf(id) ? partStatus(this.state, id) : null;
     if (!s || !s.ok) { this.game.audio.play('ui_error'); return false; }

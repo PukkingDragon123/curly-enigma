@@ -193,14 +193,13 @@ export function buildWorld(scene) {
   put(shelf.group, R.w - 0.01, 1.2, 1.55, -Math.PI / 2);
   W.shelfGlow = shelf.glowMat;
 
-  // ---------------------------------------------------------------- the west side: coal, Nugget, firewood
+  // ---------------------------------------------------------------- the west side: coal, a crate, firewood
   const coal = makeCoalBin();
   put(coal, 0.4, 0, 0.58, 0.1);
   W.coalBin = coal;
   solid(0.1, 0, 0.3, 0.7, 0.3, 0.86, 'coal');
   const crate = makeCrate();
   put(crate, 0.42, 0, 1.38, 0.2);
-  W.perch = new THREE.Vector3(0.42, 16 * P * S, 1.38);
   solid(0.18, 0, 1.14, 0.66, 0.36, 1.62, 'crate');
   const logs = makeLogs();
   put(logs, 0.26, 0, 2.35, Math.PI / 2);

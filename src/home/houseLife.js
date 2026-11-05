@@ -86,7 +86,7 @@ export class HouseLife {
     return {
       gramophone: [['"Sunshine on the Platform"! Marigold and I danced to that by this very fire. Badly.', 'laugh'], ['Mind the needle. It\'s the only one left in Deep Town.', 'stern']],
       glowcap: [['Pick from the edges, never the middle. Marigold\'s rule.', 'calm'], ['They\'ll be back by morning. They always are, in the damp.', 'happy']],
-      cheese: [['That wedge? Nugget. I\'ll stand by that in a court of law.', 'stern']],
+      cheese: [['That wedge? Mice. I\'ll stand by that in a court of law.', 'stern']],
     }[what];
   }
 

@@ -1,6 +1,6 @@
 // Pixel art for the forge's decorated interface (drawn in code, 1 art pixel = 1 canvas pixel,
 // shown at the UI's --px scale): the chalkboard over the bench, the smith's ledger, the weapon
-// blueprint, the coop schematic, the brass thermometer, rune medallions, gauges, rubber stamps,
+// blueprint, the brass thermometer, rune medallions, gauges, rubber stamps,
 // the guild certificate and its wax seal. Everything is cached through uiArt's art(); the frames
 // and tiles are published on the forge layer as CSS custom properties (--fa-<key>).
 import { Px, PAL, INK, art, mixHex, shade } from '../ui/uiArt.js';
@@ -262,7 +262,7 @@ function chalkSticks() {
   return p;
 }
 
-/** Chalk doodles: 'anvil' (an anvil and a hammer), 'spark', 'hen', 'flame', 'arrow'. */
+/** Chalk doodles: 'anvil' (an anvil and a hammer), 'spark', 'flame', 'arrow'. */
 function doodle(kind) {
   const c = CHALK, d = 0xb8c4bc;
   if (kind === 'anvil') {
@@ -274,16 +274,6 @@ function doodle(kind) {
     p.rect(15, 0, 7, 3, c, 200); p.line(20, 3, 26, 6, d);
     // spark ticks
     for (const [x, y] of [[13, 4], [11, 5], [26, 1], [27, 3]]) p.set(x, y, c);
-    return p;
-  }
-  if (kind === 'hen') {
-    const p = new Px(18, 16);
-    p.ellipse(9, 9, 6, 4.5, c);
-    for (let y = 0; y < 16; y++) for (let x = 0; x < 18; x++) if (((x + 0.5 - 9) / 5) ** 2 + ((y + 0.5 - 9) / 3.5) ** 2 <= 1) p.clear(x, y);
-    p.disk(4, 4.5, 2.2, c); p.clear(4, 4); p.clear(3, 4); p.clear(4, 5); p.clear(3, 5);
-    p.set(3, 4, c); p.set(1, 5, 0xf0b040); p.set(0, 5, 0xf0b040); p.set(4, 1, 0xe05a4a); p.set(5, 2, 0xe05a4a);
-    p.line(13, 6, 16, 3, c); p.line(14, 8, 17, 5, c);
-    p.vl(8, 13, 15, d); p.vl(10, 13, 15, d); p.hl(7, 9, 15, d); p.hl(10, 12, 15, d);
     return p;
   }
   if (kind === 'spark') {
@@ -399,51 +389,6 @@ function nailSprite() {
   return p;
 }
 
-/** The coop on its chicken legs, drawn as a blueprint-ink schematic (60×74) with numbered spots. */
-function coopSketch() {
-  const p = new Px(60, 76);
-  const ink = 0x2e4f86, wash = 0x7f9fcf, red = 0xc23c2c;
-  // roof (shingles) with a ridge lantern
-  p.line(9, 30, 30, 12, ink); p.line(30, 12, 51, 30, ink); p.hl(7, 53, 31, ink);
-  for (let y = 16; y < 31; y += 4) { const half = (y - 12) * 21 / 18; p.hl(Math.round(30 - half) + 2, Math.round(30 + half) - 2, y, wash); }
-  p.vl(30, 6, 11, ink); p.box(28, 2, 5, 5, ink); p.set(30, 4, 0xf2c23a); p.set(29, 1, ink); p.set(31, 1, ink); p.hl(29, 31, 0, ink);
-  // chimney with the chute funnel
-  p.box(41, 14, 5, 9, ink); p.line(38, 8, 41, 14, ink); p.line(49, 8, 46, 14, ink); p.hl(38, 49, 8, ink);
-  // log walls
-  p.box(12, 31, 37, 23, ink);
-  for (let y = 36; y < 54; y += 5) for (let x = 13; x <= 47; x++) if ((x + y) % 3) p.set(x, y, wash, 150);
-  for (const x of [10, 49]) for (let y = 33; y < 54; y += 4) { p.set(x, y, ink); p.set(x + 1, y, ink); p.set(x, y + 1, ink); }
-  // shelves on the side wall
-  p.hl(14, 22, 40, ink); p.hl(14, 22, 46, ink); p.line(14, 41, 16, 43, ink); p.line(22, 41, 20, 43, ink);
-  for (const x of [15, 18, 21]) p.rect(x, 37, 2, 3, wash);
-  // round window with the hen, the nest box under it
-  p.disk(35, 39, 4.6, 0xf5ead0);
-  for (let a = 0; a < 32; a++) p.set(Math.round(35 + Math.cos(a / 32 * 6.283) * 4.6 - 0.5), Math.round(39 + Math.sin(a / 32 * 6.283) * 4.6 - 0.5), ink);
-  p.disk(35, 40.5, 2.2, 0xffffff); p.set(34, 37, red); p.set(35, 37, red); p.set(32, 40, 0xf0b040); p.set(34, 39, INK);
-  p.box(30, 45, 11, 4, ink); for (let x = 31; x < 40; x += 2) p.set(x, 46, 0xd8b050);
-  // door
-  p.box(24, 44, 5, 10, ink); p.set(27, 49, ink);
-  // the legs: thighs, knees bending back, three toes forward and a spur
-  for (const hx of [22, 38]) {
-    p.line(hx, 54, hx - 4, 62, ink); p.line(hx + 2, 54, hx - 2, 62, ink);
-    p.line(hx - 4, 62, hx + 1, 70, ink); p.line(hx - 2, 62, hx + 3, 70, ink);
-    for (const ang of [-0.9, -0.2, 0.5]) p.line(hx + 2, 70, Math.round(hx + 2 + Math.cos(ang) * 6), Math.round(70 + Math.sin(ang) * 3 + 3), ink);
-    p.line(hx + 2, 70, hx - 3, 72, ink);
-    for (let y = 63; y < 70; y += 2) p.set(hx, y, wash);
-  }
-  return p;
-}
-
-/** Numbered callout disc (9×9) for the coop schematic. */
-function calloutSprite(n) {
-  const p = new Px(9, 9);
-  p.disk(4.5, 4.5, 4, 0xc23c2c);
-  const G = { 1: ['.a.', 'aa.', '.a.', '.a.', 'aaa'], 2: ['aa.', '..a', '.a.', 'a..', 'aaa'], 3: ['aa.', '..a', '.a.', '..a', 'aa.'], 4: ['a.a', 'a.a', 'aaa', '..a', '..a'], 5: ['aaa', 'a..', 'aa.', '..a', 'aa.'] }[n] || ['aaa', 'a.a', 'a.a', 'a.a', 'aaa'];
-  for (let y = 0; y < 5; y++) for (let x = 0; x < 3; x++) if (G[y][x] === 'a') p.set(3 + x, 2 + y, 0xfff4e0);
-  p.outline(0x5a140c);
-  return p;
-}
-
 /** Big blueprint drawing of a weapon: the icon traced in white chalk with a pale wash. */
 function blueprintWeapon(type, metal) {
   const src = new PixelCanvas(32);
@@ -469,8 +414,8 @@ const SPRITES = {
   gauge: gaugeFrame, tube: tubeFrame, clip: clipFrame, cert: certFrame,
   stampRed: () => stampFrame(0xb8301e), stampBlue: () => stampFrame(0x2a5aa8), stampGreen: () => stampFrame(0x3a7a2a), stampInk: () => stampFrame(0x3a2414),
   flame: flameStrip, bulb: bulbSprite, cap: capSprite, sticks: chalkSticks, tape: tapeSprite, nail: nailSprite,
-  dAnvil: () => doodle('anvil'), dHen: () => doodle('hen'), dSpark: () => doodle('spark'), dArrow: () => doodle('arrow'), dFlame: () => doodle('flame'),
-  coop: coopSketch, ribbon: () => ribbonSprite(),
+  dAnvil: () => doodle('anvil'), dSpark: () => doodle('spark'), dArrow: () => doodle('arrow'), dFlame: () => doodle('flame'),
+  ribbon: () => ribbonSprite(),
   tackRed: () => null, tackBlue: () => null, tackGold: () => null, tackGreen: () => null,
 };
 const TACKS = { tackRed: 0xc23c2c, tackBlue: 0x3f7ec8, tackGold: 0xe8b83a, tackGreen: 0x5a9a3a };
@@ -484,7 +429,6 @@ export const medal = (glyph, state = 'off') => art(`fa:medal:${glyph}:${state}`,
 export const seal = (hex) => art(`fa:seal:${hex}`, () => bigSeal(hex));
 export const ribbon = (hex) => art(`fa:ribbon:${hex}`, () => ribbonSprite(hex));
 export const token = (hex) => art(`fa:token:${hex}`, () => tokenSprite(hex));
-export const callout = (n) => art(`fa:callout:${n}`, () => calloutSprite(n));
 export const blueprintURL = (type, metal) => art(`fa:bp:${type}:${metal}`, () => blueprintWeapon(type, metal));
 export const metalHex = (metal) => METALS[metal]?.color ?? 0xa0a0a0;
 export const infusionHex = (id) => INFUSIONS[id]?.color ?? 0xffffff;

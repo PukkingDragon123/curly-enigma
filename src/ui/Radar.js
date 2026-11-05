@@ -2,7 +2,7 @@
 // Forward is always up. It draws the explored map around you, sweeps, and lights up markers:
 // home, the town (an arrow on the rim when it is out of range), ore, danger zones, creatures,
 // lift stations and glow stakes. Markers well above or below you show as ▲ / ▼.
-// Click / tap it (or press M) for the survey map.
+// Click / tap it (or press M) for the layers below (the underground's layer scene).
 import { el } from '../core/util.js';
 import { Px, mixHex } from './uiArt.js';
 import { DSPR, RADAR, plotGlyph } from './deepArt.js';
@@ -50,10 +50,18 @@ export class Radar {
     this.time = 0;
     this.errLogged = false;
     this.screen = new Px(RADAR.screen, RADAR.screen);
+    // the phosphor tube: dimmer toward the rim, faint scanlines (a per-pixel factor, made once)
+    const N = RADAR.screen, R = RADAR.r;
+    this.tube = new Float32Array(N * N);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const r = Math.hypot(i + 0.5 - R, j + 0.5 - R);
+      const rim = Math.max(0, Math.min(1, (r - (R - 5)) / 5));
+      this.tube[j * N + i] = (1 - rim * rim * 0.42) * (j & 1 ? 0.9 : 1);
+    }
     this.screen.c.className = 'pix radar-screen';
     this.tag = el('span', { class: 'radar-tag', hidden: true });
     this.el = el('button', {
-      class: 'radar', hidden: true, title: 'Radar · M opens the survey map', 'aria-label': 'Radar: open the survey map',
+      class: 'radar', hidden: true, title: 'Radar · M or tap: the layers below', 'aria-label': 'Radar: open the layers below',
       onclick: () => ui.openSurvey(),
     }, [this.screen.c, el('img', { class: 'pix radar-ring', src: DSPR.radarRing(), alt: '' }), this.tag]);
     ui.hud.append(this.el);
@@ -163,7 +171,8 @@ export class Radar {
           const g = (1 - ad / 1.4) ** 2;
           if (g > BAYER[(j & 3) * 4 + (i & 3)] * 0.9) c = mixHex(c, 0x5cff8f, 0.18 + g * 0.35);
         }
-        p.set(i, j, c);
+        const t = this.tube[j * N + i];
+        p.set(i, j, ((((c >> 16) & 255) * t) << 16) | ((((c >> 8) & 255) * t) << 8) | ((c & 255) * t));
       }
 
     // markers

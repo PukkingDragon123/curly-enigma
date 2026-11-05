@@ -225,7 +225,7 @@ kbd.ob-key.on { transform: translateY(var(--px)); filter: brightness(1.1) sepia(
   .ob-bar { height: max(30px, 10vh); }
 }
 
-/* a lesson's chapter card (Onboard.chapter): big carved letters in the middle of the screen */
+/* a lesson's chapter card (Onboard.chapter): big carved letters dropping in, in the middle of the screen */
 .ob-chapter {
   position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%) scale(.92); z-index: 40; pointer-events: none;
   display: flex; flex-direction: column; align-items: center; gap: calc(var(--px) * 2); text-align: center;
@@ -233,11 +233,102 @@ kbd.ob-key.on { transform: translateY(var(--px)); filter: brightness(1.1) sepia(
 }
 .ob-chapter.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 .ob-chapter.off { opacity: 0; transform: translate(-50%, -60%) scale(1.03); }
+/* a soft dark pool behind the letters, so they read over a bright forge as well as a dark cave */
+.ob-chapter-glow {
+  position: absolute; left: 50%; top: 50%; width: calc(100% + var(--px) * 90); height: calc(100% + var(--px) * 50); transform: translate(-50%, -50%);
+  background: radial-gradient(closest-side, rgba(8, 4, 2, .62), rgba(8, 4, 2, .34) 55%, transparent); z-index: -1;
+}
 .ob-chapter small { font: 16px/1 var(--font); letter-spacing: .3em; text-transform: uppercase; color: #ffd27a; text-shadow: 0 var(--px) 0 #1a0c06, 0 0 calc(var(--px) * 4) rgba(0, 0, 0, .8); }
 .ob-chapter b {
   font: 400 calc(var(--fs-h, 24px) * 2) / 1 var(--font-head, var(--font)); color: #fff4dc; white-space: nowrap;
   text-shadow: calc(var(--px) * .7) calc(var(--px) * .7) 0 #6a3a18, calc(var(--px) * 1.4) calc(var(--px) * 1.4) 0 #1a0c06, 0 0 calc(var(--px) * 8) rgba(0, 0, 0, .7);
 }
-.ob-chapter-rule { display: block; height: var(--px); width: 0; background: linear-gradient(90deg, transparent, #ffd27a, transparent); transition: width 1.1s .25s ease-out; }
+.ob-chapter-t span { display: inline-block; opacity: 0; transform: translateY(-.5em) scale(1.25); }
+.ob-chapter.on .ob-chapter-t span { animation: obLetter .55s calc(.12s + var(--i) * .045s) var(--pop, cubic-bezier(.3, 1.6, .5, 1)) forwards; }
+@keyframes obLetter {
+  0% { opacity: 0; transform: translateY(-.5em) scale(1.25); color: #ffe9a0; }
+  60% { opacity: 1; color: #ffe9a0; text-shadow: 0 0 calc(var(--px) * 6) #ffb84a, calc(var(--px) * 1.4) calc(var(--px) * 1.4) 0 #1a0c06; }
+  100% { opacity: 1; transform: none; }
+}
+.ob-chapter-rule { display: block; height: var(--px); width: 0; background: linear-gradient(90deg, transparent, #ffd27a, transparent); transition: width 1.1s .35s ease-out; }
 .ob-chapter.on .ob-chapter-rule { width: calc(var(--px) * 90); }
-.ob-chapter span { font: 16px/1.3 var(--font); color: #f3e2bf; text-shadow: 0 var(--px) 0 #1a0c06, 0 0 calc(var(--px) * 3) rgba(0, 0, 0, .8); max-width: 80vw; }
+.ob-chapter span.ob-chapter-sub { font: 16px/1.3 var(--font); color: #f3e2bf; text-shadow: 0 var(--px) 0 #1a0c06, 0 0 calc(var(--px) * 3) rgba(0, 0, 0, .8); max-width: 80vw; white-space: normal; }
+
+/* ---- a lesson done: the card comes back, the medal drops in beside the title, a stamp slams on */
+.ob-chapter-medal { position: absolute; left: calc(var(--px) * -26); top: 50%; width: calc(var(--px) * 18); height: auto; transform: translate(-50%, -160%) rotate(-12deg); opacity: 0; }
+.ob-chapter.done.on .ob-chapter-medal { animation: obMedalIn .7s .25s var(--pop, cubic-bezier(.3, 1.6, .5, 1)) forwards; }
+@keyframes obMedalIn { 0% { opacity: 0; transform: translate(-50%, -160%) rotate(-40deg) scale(.4); } 100% { opacity: 1; transform: translate(-50%, -55%) rotate(-8deg) scale(1); } }
+.ob-chapter.done.stamped { animation: obJolt .32s ease-out; }
+@keyframes obJolt { 0% { translate: 0 0; } 25% { translate: 0 calc(var(--px) * 2.5); } 55% { translate: calc(var(--px) * -1) calc(var(--px) * -1); } 100% { translate: 0 0; } }
+.ob-stamp {
+  position: absolute; right: calc(var(--px) * -22); top: 50%; z-index: 2; opacity: 0; transform: translate(0, -50%) rotate(-14deg) scale(2.8);
+  padding: calc(var(--px) * 1.5); border: calc(var(--px) * 1) solid #d8432e; border-radius: calc(var(--px) * 2);
+  box-shadow: inset 0 0 0 calc(var(--px) * .7) rgba(216, 67, 46, .55);
+  -webkit-mask: repeating-linear-gradient(58deg, #000 0 3px, rgba(0, 0, 0, .78) 3px 4px, #000 4px 9px); mask: repeating-linear-gradient(58deg, #000 0 3px, rgba(0, 0, 0, .78) 3px 4px, #000 4px 9px);
+}
+.ob-stamp span {
+  display: block; padding: var(--px) calc(var(--px) * 4); border: calc(var(--px) * .7) solid #d8432e;
+  font: 400 calc(var(--fs-h, 24px) * 1.05) / 1 var(--font-head, var(--font)); letter-spacing: .12em; text-transform: uppercase; color: #ff5a3e;
+  text-shadow: 0 0 calc(var(--px) * 2) rgba(255, 90, 62, .35);
+}
+.ob-stamp.gold { border-color: #f2c23a; box-shadow: inset 0 0 0 calc(var(--px) * .7) rgba(242, 194, 58, .55); right: 50%; top: auto; bottom: calc(var(--px) * -30); transform: translate(50%, 0) rotate(-6deg) scale(2.8); }
+.ob-stamp.gold span { border-color: #f2c23a; color: #ffd56a; text-shadow: 0 0 calc(var(--px) * 3) rgba(255, 200, 80, .5); }
+.ob-chapter.stamped .ob-stamp { animation: obStampIn .3s cubic-bezier(.5, 0, .8, .4) forwards; }
+.ob-chapter.stamped .ob-stamp.gold { animation-name: obStampGold; }
+@keyframes obStampIn { 0% { opacity: 0; transform: translate(0, -50%) rotate(-24deg) scale(2.8); } 70% { opacity: 1; transform: translate(0, -50%) rotate(-12deg) scale(.92); } 100% { opacity: .95; transform: translate(0, -50%) rotate(-14deg) scale(1); } }
+@keyframes obStampGold { 0% { opacity: 0; transform: translate(50%, 0) rotate(-16deg) scale(2.8); } 70% { opacity: 1; transform: translate(50%, 0) rotate(-5deg) scale(.92); } 100% { opacity: .95; transform: translate(50%, 0) rotate(-6deg) scale(1); } }
+
+/* ---- the graduation: four medals in a row under the title */
+.ob-chapter.grad { top: 32%; }
+.ob-medals { display: flex; gap: calc(var(--px) * 7); margin-top: calc(var(--px) * 3); }
+.ob-medal { margin: 0; display: flex; flex-direction: column; align-items: center; gap: var(--px); opacity: 0; transform: translateY(calc(var(--px) * -10)) scale(.5); }
+.ob-chapter.grad.on .ob-medal { animation: obMedalPop .5s calc(.7s + var(--i) * .33s) var(--pop, cubic-bezier(.3, 1.6, .5, 1)) forwards; }
+@keyframes obMedalPop { to { opacity: 1; transform: none; } }
+.ob-medal-img { width: calc(var(--px) * 18); height: auto; filter: drop-shadow(0 calc(var(--px) * 1.5) 0 rgba(0, 0, 0, .5)); }
+.ob-medal.none .ob-medal-img { opacity: .6; }
+.ob-medal figcaption { font: 13px/1 var(--font); color: #f3e2bf; text-shadow: 0 var(--px) 0 #1a0c06; white-space: nowrap; }
+.ob-medal.none figcaption { color: #9a8a70; }
+
+/* ---- a film caption for a place: top left, under the bar */
+.ob-caption {
+  position: absolute; left: calc(var(--sal) + max(24px, 5vw)); top: calc(var(--sat) + var(--ob-bar, 72px) + 18px); z-index: 39; pointer-events: none;
+  display: flex; flex-direction: column; gap: calc(var(--px) * 1.5); opacity: 0; transform: translateX(calc(var(--px) * -6)); transition: opacity 1s, transform 1.4s var(--soft, ease-out);
+}
+.ob-caption.on { opacity: 1; transform: none; }
+.ob-caption.off { opacity: 0; transition-duration: .9s; }
+.ob-caption b { font: 400 var(--fs-h, 24px) / 1 var(--font-head, var(--font)); color: #fff0d0; letter-spacing: .08em; text-shadow: calc(var(--px) * .7) calc(var(--px) * .7) 0 #1a0c06, 0 0 calc(var(--px) * 6) rgba(0, 0, 0, .8); }
+.ob-caption span { font: 14px/1.2 var(--font); color: #e8c890; letter-spacing: .22em; text-transform: uppercase; text-shadow: 0 var(--px) 0 #1a0c06, 0 0 calc(var(--px) * 4) rgba(0, 0, 0, .8); }
+.ob-caption-rule { order: 1; display: block; height: var(--px); width: 0; background: linear-gradient(90deg, #ffd27a, transparent); transition: width 1.6s .3s ease-out; }
+.ob-caption.on .ob-caption-rule { width: calc(var(--px) * 70); }
+html.is-touch .ob-caption { left: 50%; transform: translateX(-50%); align-items: center; text-align: center; }
+html.is-touch .ob-caption.on { transform: translateX(-50%); }
+
+/* ---- confetti: pixel bits and sparks that burst up and tumble down */
+.ob-confetti { position: absolute; width: 0; height: 0; z-index: 41; pointer-events: none; }
+.ob-cf {
+  position: absolute; left: 0; top: 0; width: calc(var(--px) * 2.5); height: calc(var(--px) * 2.5); margin: calc(var(--px) * -1.25) 0 0 calc(var(--px) * -1.25);
+  box-shadow: 0 var(--px) 0 rgba(0, 0, 0, .35); opacity: 0; animation: obCf var(--t, 1.6s) linear forwards;
+}
+.ob-cf.long { height: calc(var(--px) * 4.5); }
+.ob-cf.spark { width: calc(var(--px) * 9); height: calc(var(--px) * 9); margin: calc(var(--px) * -4.5) 0 0 calc(var(--px) * -4.5); background: none; box-shadow: none; }
+@keyframes obCf {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(.6); animation-timing-function: cubic-bezier(.15, .7, .4, 1); }
+  28% { opacity: 1; transform: translate(calc(var(--dx) * .7), var(--dy)) rotate(calc(var(--r) * .35)) scale(1); animation-timing-function: cubic-bezier(.5, 0, .9, .6); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + var(--fall))) rotate(var(--r)) scale(.9); }
+}
+
+/* ---- something tossed to you: an icon arcing to the HUD, its shadow, the bump where it lands */
+.ob-toss { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 42; pointer-events: none; will-change: transform; }
+.ob-toss-ic { position: absolute; left: 0; top: 0; width: calc(var(--px) * 16); height: calc(var(--px) * 16); image-rendering: pixelated; filter: drop-shadow(0 0 calc(var(--px) * 2) rgba(255, 220, 140, .9)) drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .45)); }
+.ob-bump { animation: obBump .5s var(--pop, cubic-bezier(.3, 1.6, .5, 1)); }
+@keyframes obBump { 0% { scale: 1; } 30% { scale: 1.22; filter: brightness(1.5) drop-shadow(0 0 calc(var(--px) * 3) #ffd56a); } 100% { scale: 1; } }
+
+@media (max-width: 560px) {
+  .ob-chapter b { font-size: calc(var(--fs-h, 24px) * 1.6); }
+  .ob-chapter-medal { left: 50%; top: calc(var(--px) * -16); transform: translate(-50%, -100%); }
+  @keyframes obMedalIn { 0% { opacity: 0; transform: translate(-50%, -140%) rotate(-30deg) scale(.4); } 100% { opacity: 1; transform: translate(-50%, -70%) rotate(-8deg) scale(1); } }
+  .ob-stamp { right: 50%; top: auto; bottom: calc(var(--px) * -26); transform: translate(50%, 0) rotate(-10deg) scale(2.8); }
+  .ob-chapter.stamped .ob-stamp { animation-name: obStampGold; }
+  .ob-medals { gap: calc(var(--px) * 3); }
+}

@@ -35,9 +35,14 @@ const DRIPSTONES = [
 const PATHS = [[2.5, -1.0, 2.6, -3.6], [2.6, -2.6, 6.9, -3.35], [2.4, -2.2, -1.2, -2.3], [-1.2, -2.3, -1.6, -4.3], [6.2, -2.8, 6.2, -5.4], [-1.2, -2.2, -4.2, -2.1]];
 /** Soot: the forge's pipe goes up a crack in the north rock here (m). */
 export const FLUE = { x: -2.0, z: -5.75 };
+/** The fire pit (m: as house.js SPOTS.fire): forty years of its smoke black the roof over it. */
+const PIT = { x: -0.9, z: -2.05 };
 
-const ROCK = [0x5a5550, 0x4c4844, 0x635e57, 0x433f3c, 0x58524a, 0x4e4a45];
-const DIRT = [0x564634, 0x4b3d2e, 0x5e4e3a];
+// cold grey-blue stone with a few warmer bands (the firelight warms what it reaches)
+const ROCK = [0x55585c, 0x484b50, 0x5f5e5a, 0x3e4145, 0x5d574f, 0x4b4e53, 0x67635b];
+const DIRT = [0x4e4234, 0x45392d, 0x56493a];
+/** Pale flowstone where water has run down the rock for centuries. */
+const CALCITE = 0xa8a294;
 
 function pathK(x, z) {
   let best = 0;
@@ -146,7 +151,7 @@ export function buildCaveRock() {
   for (let dz = -6; dz <= 6; dz++) for (let dx = -6; dx <= 6; dx++) {
     const d = Math.hypot(dx, dz);
     if (d > 6.5) continue;
-    gl.set(hx + dx, ny - 1, hz + dz, d < 3 ? 0xc8c0a8 : d < 5 ? 0x8a8474 : 0x5a564c); // a grey speck of daylight, far up
+    gl.set(hx + dx, ny - 1, hz + dz, d < 2.5 ? 0xf0f4f4 : d < 4 ? 0xc0ccd0 : d < 5.5 ? 0x8a969c : 0x56606a); // a cold speck of daylight, far up
   }
   const pv = [0, 0, 0], o = { scale: 1 / (CV * T) };
   const rock = M32(g, pv, o), glow = G32(gl, pv, o);
@@ -162,12 +167,22 @@ function rockColour(x, y, z, ix, iy, iz, floorTop, d0) {
   if (floorTop && h < 0.02) {
     // the floor: packed dirt, paler where it's walked, straw by the shack, wet under the drips, stones
     let c = DIRT[Math.floor(hash3(ix >> 1, 0, iz >> 1, 62) * 3)];
+    // big soft patches: damp and dark, or dry and dusty (so the floor isn't one even field)
+    const patch = n2(x * 0.9 + 7, z * 0.9 - 3, 69);
+    if (patch > 0.3 || patch < -0.3) c = mulc(c, patch > 0 ? 1.07 : 0.88); // (in steps: plain runs still merge)
     const pk = pathK(x, z);
-    if (pk > 0.2 && blk < 0.85) c = mixc(c, 0x7a6448, Math.min(0.6, pk * 0.7));
-    if (hash3(ix, 0, iz, 63) < 0.04) c = 0x6e665c; // a pebble
+    if (pk > 0.2 && blk < 0.85) c = mixc(c, 0x76654c, Math.min(0.6, pk * 0.7));
+    const pb = hash3(ix, 0, iz, 63);
+    if (pb < 0.04) c = pb < 0.012 ? 0x77746c : 0x5e5b55; // a pebble
     if (x > 0.9 && x < 3.9 && z > -4.5 && z < -3.6 && hash3(ix, 1, iz, 64) < 0.45) c = hash3(ix, 2, iz, 64) < 0.5 ? 0xb8984e : 0x9a7e40; // straw by the shack's door
+    // ash trodden out round the fire pit, coal dust and scale round the forge and the anvil
+    const fp = Math.hypot(x - PIT.x, z - PIT.z);
+    if (fp < 1.1 && hash3(ix, 3, iz, 64) < 0.5 * (1.1 - fp)) c = hash3(ix, 4, iz, 64) < 0.5 ? 0x6a6662 : 0x4e4a47;
+    const fg = Math.hypot((x + 1.6) / 1.5, (z + 4.6) / 0.9);
+    if (fg < 1 && hash3(ix, 5, iz, 64) < 0.65 * (1 - fg)) c = mixc(c, 0x1e1c1e, 0.6);
     for (const dp of DRIPS) { const dd = Math.hypot(x - dp.x, z - dp.z); if (dd < 0.32) c = mulc(c, 0.62 + dd * 0.6); }
     if (d0 > -0.3) c = mixc(c, ROCK[1], 0.4);
+    if (d0 > -0.5 && damp(x, z) > 0.2 && hash3(ix, 6, iz, 64) < 0.35) c = hash3(ix, 7, iz, 64) < 0.5 ? 0x3e4e2a : 0x34421f; // moss creeping off the wet rock
     return c;
   }
   // rock: strata that wander, blocky shading, darker up high, soot over the forge, damp moss low down
@@ -177,12 +192,30 @@ function rockColour(x, y, z, ix, iy, iz, floorTop, d0) {
   if (h > 1.4) c = mulc(c, Math.max(0.72, 1 - (h - 1.4) * 0.22));
   const fs = Math.hypot((x - FLUE.x) / 1.1, (z - FLUE.z) / 0.9);
   if (fs < 1 && h > 0.45) c = mulc(c, 0.35 + fs * 0.6);
-  let wet = 0;
-  for (const dp of DRIPS) { const dd = Math.hypot(x - dp.x, z - dp.z); if (dd < 0.7) wet = Math.max(wet, 1 - dd / 0.7); }
+  // the roof over the fire pit, black with forty years of smoke, thinning out round it
+  const ps = Math.hypot(x - PIT.x, z - PIT.z) / (0.6 + Math.max(0, h - 1.1) * 0.9);
+  if (ps < 1 && h > 1.05) c = mixc(c, 0x16120f, Math.round((1 - ps) * 4) / 5);
+  const col = hash3(ix, 0, iz, 70); // one per column of voxels: streaks that run down the rock
+  const wet = damp(x, z);
   const spring = Math.hypot(x + 4.75, z + 2.2) < 1.2;
+  // flowstone: pale calcite streaks under the drips and down from the spring's crack
+  if ((wet > 0.25 || spring) && h > 0.3 && col < 0.3 + wet * 0.3 && hash3(ix, iy >> 2, iz, 71) < 0.7) return mixc(c, CALCITE, 0.35 + (col < 0.12 ? 0.3 : 0));
+  // dark damp streaks where seepage runs down the walls
+  if (col < 0.045 && h > 0.2) c = mulc(c, 0.74);
   if ((wet > 0.3 || spring) && h < 0.8 && hash3(ix >> 1, iy >> 1, iz >> 1, 66) < 0.55) c = hash3(ix, iy, iz, 67) < 0.5 ? 0x4a5e30 : 0x3e5028; // moss
+  else if (h < 0.4 && wet > 0.05 && hash3(ix >> 1, iy >> 1, iz >> 1, 72) < 0.3) c = mixc(c, 0x3e5028, 0.55); // damp green at the foot
   else if (h < 0.25 && hash3(ix >> 1, iy, iz >> 1, 68) < 0.18) c = mixc(c, DIRT[0], 0.5); // dirt against the foot of the wall
+  else if (hash3(ix, iy, iz, 73) < 0.012) c = hash3(ix, iy, iz, 74) < 0.5 ? 0x7c8670 : 0x8e8a76; // a fleck of lichen
   return c;
+}
+
+/** How damp the rock is at (x, z) (m): 1 under a drip, 0 a drip's reach away; the spring's nook too. */
+function damp(x, z) {
+  let wet = 0;
+  for (const dp of DRIPS) { const dd = Math.hypot(x - dp.x, z - dp.z); if (dd < 0.9) wet = Math.max(wet, 1 - dd / 0.9); }
+  const sp = Math.hypot(x + 4.75, z + 2.2);
+  if (sp < 1.4) wet = Math.max(wet, 1 - sp / 1.4);
+  return wet;
 }
 
 /**

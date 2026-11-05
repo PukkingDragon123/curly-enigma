@@ -336,7 +336,6 @@ export class SmeltGame {
     this.game.ui.toast(msg, { icon: iconURL(r.out), kind: 'good' });
     sc.pop(`+${r.n} ${out.name}`, this.ingot.position.clone().add(new THREE.Vector3(0, 0.12, 0)), '#ffd34a', 0.8);
     sc.menus.lastSmelt = `Last pour: <b>${r.n}× ${out.name}</b> at <b style="color:${qColor(this.q)}">${this.q}%</b> (heat control ${Math.round(this.acc * 100)}%).` + (first ? ' Quick smelting unlocked for this recipe.' : '');
-    if (this.acc >= 0.9) sc.henReact('great');
   }
 
   dispose() {

@@ -12,6 +12,7 @@ import { stampRuin, ruinBB, dungeonFootprint, ruinLayout, toWorld } from './gen/
 import { stampLift, stampShaft, liftBB } from './gen/lifts.js';
 import { stampPassage, passageBB, planPassage } from './gen/passages.js';
 import { settleLakes } from './fluids/lakes.js';
+import { buildNetwork, netDensity, GROTTO, CAVERN } from './gen/network.js';
 import { RELIC_IDS } from './ruins/relics.js';
 
 export const CS = 32; // chunk size (voxels)
@@ -122,6 +123,15 @@ export function makePlan(seed, opts = {}) {
   // Old Star's dig: where the mole lands after the fall, a crawl away from the mine entrance
   plan.prologue = { x: L0.x + 6, y: L0.y - 1.5, z: L0.z - 6 };
   plan.features.push({ kind: 'prologue', ...plan.prologue, to: { x: L0.x + 1.4, y: L0.y, z: L0.z - 1.4 }, lift: { x: L0.x, y: L0.y, z: L0.z } });
+  // the cave network (gen/network.js): chambers joined by passages, like a dungeon nature dug.
+  // It keeps clear of the burrow, Old Star's dig, the mine entrance and the town shaft's stops.
+  const P0 = plan.prologue;
+  plan.net = buildNetwork(seed, {
+    avoid: [{ x: W / 2, y: 0, z: D / 2, r: 10 }, { x: P0.x, y: P0.y, z: P0.z, r: 8 }, { x: L0.x, y: L0.y, z: L0.z, r: 5 },
+      ...plan.stations.map((s) => ({ x: s.x + 1, y: s.y + 1, z: s.z, r: 4.5 }))],
+    avoidCol: [{ x: plan.shaft.x, z: plan.shaft.z, r: 2.4, y0: -210, y1: T.y + 4 }],
+    dino: (x, y, z) => dinoAt(plan, x, y, z),
+  });
   for (let zone = 1; zone <= 6; zone++) {
     for (let k = 0; k < 3; k++) {
       let x = 0, z = 0, y = 0;
@@ -130,6 +140,9 @@ export function makePlan(seed, opts = {}) {
         y = -rng.range(ZONE_DEPTHS[zone - 1] + 4, ZONE_DEPTHS[zone] - 4);
         if (Math.hypot(x - plan.town.x, z - plan.town.z) > 12 && Math.hypot(x - W / 2, z - D / 2) > 10) break;
       }
+      // the lift hangs in an alcove off the nearest chamber of the network (its open side faces in)
+      const n = liftNode(plan, x, y, z, zone);
+      if (n) { n.lift = `L${zone}${k}`; n.tx = n.tz = 0; n.pileH = 0; x = n.x; z = n.z - Math.max(1.2, n.Rz - 1.1); y = n.yF; }
       addLift(`L${zone}${k}`, LIFT_NAMES[zone][k], x, y, z, zone);
     }
   }
@@ -193,6 +206,21 @@ export function makePlan(seed, opts = {}) {
   // lakes get a watertight shell and hold water only below rooms carved into them (fluids/lakes.js)
   settleLakes(plan, zoneAt, caveDensity);
   return plan;
+}
+
+/** The chamber of the network a zone's lift goes in: a grotto or cavern near (x, y, z), well inside the zone. */
+function liftNode(plan, x, y, z, zone) {
+  let best = null, bd = Infinity;
+  const d0 = ZONE_DEPTHS[zone - 1] + 4, d1 = ZONE_DEPTHS[zone] - 4, T = plan.town;
+  for (const n of plan.net.nodes) {
+    if (n.off || n.deg === 0 || n.lift || (n.kind !== GROTTO && n.kind !== CAVERN) || n.dino > 0.3) continue;
+    if (-n.yF < d0 || -n.yF > d1 || Math.abs(n.x) > 66 || Math.abs(n.z) > 66) continue;
+    if (Math.hypot(n.x - T.x, n.z - T.z) < 14 || Math.hypot(n.x - plan.W / 2, n.z - plan.D / 2) < 12) continue;
+    if (plan.lifts.some((L) => Math.hypot(L.x - n.x, L.y - n.yF, L.z - n.z) < 14)) continue;
+    const d = Math.hypot(n.x - x, (n.yF - y) * 2, n.z - z);
+    if (d < bd) { bd = d; best = n; }
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------- burrows, dungeons, geodes, passages
@@ -382,33 +410,20 @@ const SH = Math.round(Math.log2(VOX / 4)); // voxel → quarter-meter cell shift
 const NS = CS / S + 1; // 9 samples per axis
 
 /**
- * Open space where the result is > 0 (meters): spaghetti tunnels where two noise fields are both
- * near zero, and caverns (rare near the top, bigger deeper). The ground near the surface stays solid.
+ * Open space where the result is > 0 (meters, about 0.1 per metre in from a wall): the cave
+ * network's chambers and passages (gen/network.js), twisty crawlways and ravines from noise, and
+ * the rock's grain at the walls. The ground near the surface stays solid.
  */
 export function caveDensity(p, x, y, z) {
   const depth = -y;
   if (depth < 2.5) return -1;
   const [n0, n1, n2, n3] = p.noise;
-  // cave ways: long winding tunnels where two noises are both near zero, 1–2 m across
-  const a = n0.n(x * 0.085, y * 0.11, z * 0.085), b = n1.n(x * 0.085 + 31.7, y * 0.11, z * 0.085 - 12.3);
-  let d = (0.0036 - (a * a + b * b)) * 40;
-  // crawlways: tighter and twistier, often low enough that you crouch through
+  // the network: chambers (grottos, caverns, halls) and the passages joining them (gen/network.js)
+  let d = p.net ? netDensity(p.net, p.noise, x, y, z) : -1;
+  // crawlways: tight, twisty side tunnels here and there (often low enough that you crouch through)
   if (depth > 4) {
     const c = n2.n(x * 0.13 + 7.1, y * 0.17, z * 0.13 + 3.3), e = n3.n(x * 0.13 - 5.2, y * 0.17 + 9.9, z * 0.13);
-    d = Math.max(d, (0.0028 * Math.min(1, (depth - 4) / 2) - (c * c + e * e)) * 40);
-  }
-  // caverns: big chambers, larger and more common with depth, held up by stone pillars
-  let cav = n2.fbm(x / 24, y / 15, z / 24, 3) - (depth < 8 ? 0.7 : depth < 25 ? 0.44 : 0.36);
-  if (cav > -0.1) cav -= Math.max(0, n3.n(x / 2.4 + 17.5, y / 12, z / 2.4 - 23.5) - 0.38) * 2.4;
-  d = Math.max(d, cav);
-  // halls: huge open caverns below 18 m, tens of meters across, stood on pillars; dinosaur
-  // country (a few wide regions between 26 and 135 m) is almost all hall
-  if (depth > 18) {
-    let hall = n3.fbm(x / 52 + 3.1, y / 26, z / 52 - 7.7, 2) - 0.4 + Math.min(0.06, (depth - 18) * 0.004);
-    const dino = dinoAt(p, x, y, z);
-    if (dino > 0) hall += dino * 0.34;
-    if (hall > -0.15) hall -= Math.max(0, n3.n(x / 3.2 + 41.5, y / 16, z / 3.2 - 5.5) - 0.42) * 2.4;
-    d = Math.max(d, hall);
+    d = Math.max(d, (0.0017 * Math.min(1, (depth - 4) / 2) - (c * c + e * e)) * 40);
   }
   // ravines: tall narrow cracks running for tens of meters
   if (depth > 6) {

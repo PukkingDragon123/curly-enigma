@@ -11,7 +11,6 @@ import { Digger, breakable } from './Dig.js';
 import { Bodies } from './Bodies.js';
 import { Particles } from './Particles.js';
 import { Ores } from './Ores.js';
-import { Nugget } from './Nugget.js';
 import { openLiftPanel, discoverLift, liftState, rideTo, unlockLift, liftUnlocked, placeLift } from '../fps/lifts.js';
 import { makeTerrainUniforms, MAX_LIGHTS } from './TerrainMaterial.js';
 import { mouthBox, zoneAt, ZONE_DEPTHS, biomeAt, BIOMES, caveDensity } from './Generator.js';
@@ -27,7 +26,6 @@ import { iconURL as flatIcon } from '../gfx/PixelArt.js';
 import { itemVox } from '../ui/itemVox.js';
 import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { clamp, rand, chance, hexToRgb, formatGoldFull } from '../core/util.js';
-import * as W from '../core/weight.js';
 import { Build } from './Build.js'; // building part: blocks, ladders, torches, doors, chests; tools that break them
 
 import { TOOL_KINDS, HOTBAR_N, hotbarOf } from '../core/hotbar.js';
@@ -161,11 +159,6 @@ export default class DigScene extends Scene {
       if (!load) continue;
       try { const mod = await load(); this[key] = new mod[Name](ctx); } catch (e) { console.warn(Name + ' failed', e); }
     }
-    // Nugget tags along once she's fallen down here with the mole
-    this.nugget = null;
-    if (st.flag('nugget')) {
-      try { this.nugget = new Nugget({ scene3: this.scene, world: this.world, player: pl, audio: this.audio, fx: this.fx, owner: this }); } catch (e) { console.warn('nugget failed', e); }
-    }
     // the opening: the fall drops the mole into Old Star's dig
     if (from === 'fall') {
       const sp = this.prologue?.spawn?.();
@@ -176,7 +169,7 @@ export default class DigScene extends Scene {
       tick: (b, sp) => { if (chance(0.6)) this.audio.play('debris', { vol: clamp(sp / 8, 0.2, 0.7) }); if (sp > 3) this.fx.dust(b.pos.x, b.pos.y - b.r, b.pos.z, 2, [0.5, 0.42, 0.34], 0.05); },
       gone: (b) => this.fx.dust(b.pos.x, b.pos.y, b.pos.z, 3, [0.5, 0.42, 0.34], 0.06),
       collect: (b) => this.collect(b.pickup),
-      // a find that won't fit waits on the floor (unless Nugget is close enough to take it)
+      // a find that won't fit waits on the floor
       canTake: (b) => {
         const id = b.pickup?.id;
         if (!id || !st.canAdd || this.whereTo(id)) return true;
@@ -232,7 +225,7 @@ export default class DigScene extends Scene {
     if (this.slot >= HOTBAR_N) this.slot = 0;
     // the tools in the loops are 3D voxel stills (src/ui/itemVox.js), the flat icon until they're made
     itemVox.init(this.game);
-    const iconURL = (id) => itemVox.url(id) || flatIcon(id);
+    const iconURL = (id) => itemVox.src(id);
     const slots = bar.map((s, i) => {
       if (!s) return { icon: flatIcon('pick_rusty'), key: String(i + 1), label: 'Empty: put a tool here from the backpack', off: true, empty: true };
       const it = this.toolItem(s);
@@ -289,7 +282,7 @@ export default class DigScene extends Scene {
     this.wish = busy ? { x: 0, z: 0 } : { x: -sy * mv.y + cy * mv.x, z: -cy * mv.y - sy * mv.x };
     const exhausted = st.energy < 8;
     const load = this.weigh(dt);
-    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted && load.run, crouch: inp.isDown('KeyC'), jumpMul: (st.hasBuff('bouncy') ? 1.35 : 1) * load.jump, frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (st.skill?.('speed') || 1) * (this.blocking ? 0.55 : 1) * (this.nugget?.carrying ? 0.7 : 1) * load.speed });
+    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted && load.run, crouch: inp.isDown('KeyC'), jumpMul: (st.hasBuff('bouncy') ? 1.35 : 1) * load.jump, frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (st.skill?.('speed') || 1) * (this.blocking ? 0.55 : 1) * load.speed });
     // props are solid (crystal clusters, mushrooms, fossils, stalagmites): walk round them
     if (this.props?.collide(pl.pos, 0.26, 0.85) && this.world.voxelAt(Math.floor(pl.pos.x * VOX), Math.floor((pl.pos.y + 0.3) * VOX), Math.floor(pl.pos.z * VOX))) { pl.pos.x -= pl.vel.x * dt; pl.pos.z -= pl.vel.z * dt; }
     // hauling a heavy pack is hard work
@@ -323,7 +316,6 @@ export default class DigScene extends Scene {
     this.hitStop = Math.max(0, (this.hitStop || 0) - dt);
     this.bodies.update(sdt, pl.eye(), pl.pos);
     if (this.fluids) this.fluids.update(dt, { player: pl, eye: pl.eye(), time: this.time });
-    if (this.nugget) this.nugget.update(dt);
     if (this.prologue) this.events(this.prologue.update(dt, { player: pl, eye: pl.eye(), time: this.time, busy }));
     if (this.explosives) this.events(this.explosives.update(dt, { player: pl, eye: pl.eye(), time: this.time }));
     if (this.props) this.props.update(dt, { player: pl, eye: pl.eye(), time: this.time });
@@ -400,7 +392,7 @@ export default class DigScene extends Scene {
     if (!ui.setCrosshair) return;
     const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
     // something to pick or catch (props' plants, critters) comes first
-    const use = this.prologue?.target?.(eye, f, reach) || this.clumps?.target(eye, f, reach) || this.nugget?.target?.(eye, f, reach) || this.traders?.target?.(eye, f, reach) || this.ruins?.target?.(eye, f, reach) || this.builder?.target?.(eye, f, reach) || this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
+    const use = this.prologue?.target?.(eye, f, reach) || this.clumps?.target(eye, f, reach) || this.traders?.target?.(eye, f, reach) || this.ruins?.target?.(eye, f, reach) || this.builder?.target?.(eye, f, reach) || this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
     if (use) { ui.setCrosshair({ visible: true, kind: 'use', label: use.label }); return; }
     const foe = this.enemies?.hitTest(eye, f, reach);
     if (foe) { ui.setCrosshair(foe.passive ? { visible: true, kind: 'rock', label: foe.constructor.info?.name || '' } : { visible: true, kind: 'enemy' }); return; }
@@ -414,7 +406,6 @@ export default class DigScene extends Scene {
 
   useTools(dt, busy) {
     const inp = this.game.input, st = this.state;
-    if (this.nugget?.carrying) return; // paws full: carrying her coop
     this.useT -= dt;
     this.drillHeat = Math.max(0, this.drillHeat - dt * (this.slotName === 'drill' && inp.mouseDown(0) ? 0 : 0.35));
     const want = !busy && inp.mouseDown(0) && (inp.pointerLocked || this.isTouch()) && !this.leaving && !this.blocking;
@@ -644,13 +635,6 @@ export default class DigScene extends Scene {
     const counts = it.cat === 'mineral' || it.cat === 'gem';
     const to = st.canAdd ? this.whereTo(p.id) : 'bag';
     const fits = to === 'bag' || (!st.canAdd && !(counts && this.trip >= st.bagCapacity()));
-    if (to === 'coop' && this.nugget?.takeFind?.(p, this.chuteRange())) {
-      const name = st.data.chicken?.name || 'Nugget';
-      this.game.ui.toast(W.coopUp(st, 'chute').on && !this.nugget.near(4.5) ? `The <b>${it.name}</b> rolls down the chute onto ${name}'s shelves.` : `${name} tucks the <b>${it.name}</b> into her coop.`, { icon: iconURL(p.id) });
-      if (counts) { st.data.stats.ores++; if (p.p) st.data.stats.pristine++; }
-      this.act(it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'ore' : 'loot', { id: p.id, q: p.q, pristine: !!p.p });
-      return;
-    }
     // no room: it goes to the trunk at home rather than being lost
     st.addItem(p.id, { ...(it.q ? { q: p.q, p: p.p } : {}), spill: true });
     if (!fits) this.game.ui.toast(`No room in your backpack: the <b>${it.name}</b> waits in the trunk at home.`, { icon: iconURL(p.id), kind: 'warn' });
@@ -665,19 +649,10 @@ export default class DigScene extends Scene {
     this.updateHotbar();
   }
 
-  /** Ore chute range (m): how close Nugget must be to take a find (7 m with the chute fitted). */
-  chuteRange() { return W.coopUp(this.state, 'chute').on ? 7 : 4.5; }
-
-  /**
-   * Where a find goes: 'bag', 'coop' (the pack is full or too heavy and Nugget can take it; with
-   * the ore chute, heavy finds roll onto her shelves as soon as you're loaded), or null (nowhere).
-   */
+  /** Where a find goes: 'bag', or null when the pack has no room or can't lift it. */
   whereTo(id) {
-    const st = this.state, nug = this.nugget;
-    const bagOk = st.canAdd(id, 1) && (st.canLift?.(id, 1) ?? true);
-    const coopOk = !!nug?.canTake?.(id, this.chuteRange());
-    if (coopOk && W.coopUp(st, 'chute').on && ITEMS[id]?.cat !== 'gem' && W.kgOf(id) >= 0.4 && (this.load?.r ?? 0) >= 1) return 'coop';
-    return bagOk ? 'bag' : coopOk ? 'coop' : null;
+    const st = this.state;
+    return st.canAdd(id, 1) && (st.canLift?.(id, 1) ?? true) ? 'bag' : null;
   }
 
   /**
@@ -691,11 +666,11 @@ export default class DigScene extends Scene {
       const st = this.state;
       this.load = st.bagLoad ? st.bagLoad() : { kg: 0, carry: 15, r: 0, speed: 1, jump: 1, run: true, tier: 'light' };
       this.game.ui.setLoad?.(this.load);
-      const t = this.load.tier, name = st.data.chicken?.name || 'Nugget';
+      const t = this.load.tier;
       if ((t === 'heavy' || t === 'over' || t === 'max') && !st.flag('tipHeavy')) {
         st.flag('tipHeavy', true);
-        this.say('heavy', `Oof, your pack is <b>heavy</b>: you can't run and every step costs energy. Ore weighs a lot. ${st.flag('nugget') ? `Put it on <b>${name}'s coop</b> (<b>E</b> on the coop, or <b>Unload ore</b> in the backpack).` : 'Take it home and lighten the load.'}`, 'warn', 9999);
-      } else if (t === 'max' && this.lastTier !== 'max') this.say('heavymax', `You can't lift any more! Unload onto ${name}'s coop or head home.`, 'warn', 12);
+        this.say('heavy', 'Oof, your pack is <b>heavy</b>: you can\'t run and every step costs energy. Ore weighs a lot. Take it home and lighten the load.', 'warn', 9999);
+      } else if (t === 'max' && this.lastTier !== 'max') this.say('heavymax', 'You can\'t lift any more! Drop something or head home.', 'warn', 12);
       this.lastTier = t;
     }
     return this.load;
@@ -706,8 +681,8 @@ export default class DigScene extends Scene {
     if ((this.heavyT || 0) > this.time) return;
     this.heavyT = this.time + 4;
     this.audio.play('ui_error');
-    const it = ITEMS[id], name = this.state.data.chicken?.name || 'Nugget';
-    this.game.ui.toast(`<b>Too heavy!</b> You can't lift the ${it ? it.name : 'find'} as well.${this.state.flag('nugget') ? ` Unload ore onto ${name}'s coop.` : ''}`, { kind: 'warn', icon: it ? iconURL(id) : undefined, dur: 2600 });
+    const it = ITEMS[id];
+    this.game.ui.toast(`<b>Too heavy!</b> You can't lift the ${it ? it.name : 'find'} as well.`, { kind: 'warn', icon: it ? iconURL(id) : undefined, dur: 2600 });
   }
 
   /** The bag strip: pockets used / pockets (or finds this trip / capacity on old inventories). */
@@ -895,7 +870,7 @@ export default class DigScene extends Scene {
       if (pr) { this.events(pr); return; }
       const cl = this.clumps?.use(eye, f, reach);
       if (cl) { this.events(cl); return; }
-      for (const mod of [this.nugget, this.traders, this.ruins, this.builder]) { // builder: doors, chests, the workbench
+      for (const mod of [this.traders, this.ruins, this.builder]) { // builder: doors, chests, the workbench
         const r = mod?.use?.(eye, f, reach);
         if (r) { this.events(Array.isArray(r) ? r : [r]); if (this.vm) this.vm.impact('none', 0.3); return; }
       }
@@ -1123,7 +1098,6 @@ export default class DigScene extends Scene {
     }
     for (const s of this.stakes) markers.push({ kind: 'stake', x: s.x, y: s.y, z: s.z });
     if (this.enemies?.radarMarkers) markers.push(...this.enemies.radarMarkers(pl.pos));
-    markers.push(...(this.nugget?.radarMarkers?.() || []));
     if (this.ruins?.radarMarkers) markers.push(...this.ruins.radarMarkers(pl.pos, !!o.survey));
     if (this.traders?.radarMarkers) markers.push(...this.traders.radarMarkers(pl.pos, !!o.survey));
     return { x: pl.pos.x, y: pl.pos.y, z: pl.pos.z, heading: pl.yaw, range: o.survey ? half * cell : 22, explored: { size, cell, data, ox: px - half, oz: pz - half }, markers };
@@ -1176,7 +1150,7 @@ export default class DigScene extends Scene {
       if (d < l.r + 14) near.push([d - l.r * 0.3, l]);
     }
     // glowing enemies and hot fluids light the rock too
-    for (const src of [this.enemies, this.fluids, this.props, this.clumps, this.prologue, this.explosives, this.nugget, this.traders, this.ruins, this.vegetation]) {
+    for (const src of [this.enemies, this.fluids, this.props, this.clumps, this.prologue, this.explosives, this.traders, this.ruins, this.vegetation]) {
       for (const l of src?.lights?.(eye) || []) near.push([Math.hypot(l.x - eye.x, l.y - eye.y, l.z - eye.z) - l.r * 0.3, l]);
     }
     near.sort((a, b) => a[0] - b[0]);
@@ -1277,7 +1251,6 @@ export default class DigScene extends Scene {
     this.bodies.dispose();
     this.fx.dispose();
     this.enemies?.dispose();
-    this.nugget?.dispose();
     this.props?.dispose();
     this.prologue?.dispose?.();
     this.explosives?.dispose?.();

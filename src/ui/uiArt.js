@@ -4,150 +4,11 @@
 //  - Tiles are seamless textures used as backgrounds (paper, leather grain, canvas, wood).
 //  - Light always comes from the top-left.
 import { makeRng, mixHex, shade } from '../core/util.js';
+import { Px } from './px.js';
+import * as CA from './craftArt.js';
 
-// ---------------------------------------------------------------- raster
-export class Px {
-  constructor(w, h = w) {
-    this.w = w;
-    this.h = h;
-    this.c = document.createElement('canvas');
-    this.c.width = w;
-    this.c.height = h;
-    this.ctx = this.c.getContext('2d');
-    this.img = this.ctx.createImageData(w, h);
-    this.d = this.img.data;
-  }
-  in(x, y) { return x >= 0 && y >= 0 && x < this.w && y < this.h; }
-  set(x, y, c, a = 255) {
-    x |= 0; y |= 0;
-    if (!this.in(x, y) || c === null || c === undefined) return;
-    const i = (y * this.w + x) * 4;
-    if (a < 255 && this.d[i + 3] > 0) {
-      const t = a / 255;
-      this.d[i] = this.d[i] * (1 - t) + ((c >> 16) & 255) * t;
-      this.d[i + 1] = this.d[i + 1] * (1 - t) + ((c >> 8) & 255) * t;
-      this.d[i + 2] = this.d[i + 2] * (1 - t) + (c & 255) * t;
-      this.d[i + 3] = Math.max(this.d[i + 3], a);
-      return;
-    }
-    this.d[i] = (c >> 16) & 255;
-    this.d[i + 1] = (c >> 8) & 255;
-    this.d[i + 2] = c & 255;
-    this.d[i + 3] = a;
-  }
-  a(x, y) { return this.in(x, y) ? this.d[(y * this.w + x) * 4 + 3] : 0; }
-  get(x, y) { const i = (y * this.w + x) * 4; return (this.d[i] << 16) | (this.d[i + 1] << 8) | this.d[i + 2]; }
-  clear(x, y) { if (this.in(x, y)) this.d[(y * this.w + x) * 4 + 3] = 0; }
-  rect(x, y, w, h, c, a) { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) this.set(i, j, c, a); }
-  hl(x0, x1, y, c, a) { for (let x = x0; x <= x1; x++) this.set(x, y, c, a); }
-  vl(x, y0, y1, c, a) { for (let y = y0; y <= y1; y++) this.set(x, y, c, a); }
-  box(x, y, w, h, c) { this.hl(x, x + w - 1, y, c); this.hl(x, x + w - 1, y + h - 1, c); this.vl(x, y, y + h - 1, c); this.vl(x + w - 1, y, y + h - 1, c); }
-  line(x0, y0, x1, y1, c, a) {
-    x0 |= 0; y0 |= 0; x1 |= 0; y1 |= 0;
-    const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1, dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-    let err = dx + dy;
-    for (;;) {
-      this.set(x0, y0, c, a);
-      if (x0 === x1 && y0 === y1) break;
-      const e2 = 2 * err;
-      if (e2 >= dy) { err += dy; x0 += sx; }
-      if (e2 <= dx) { err += dx; y0 += sy; }
-    }
-  }
-  disk(cx, cy, r, c, a) {
-    for (let y = Math.floor(cy - r - 1); y <= Math.ceil(cy + r); y++)
-      for (let x = Math.floor(cx - r - 1); x <= Math.ceil(cx + r); x++)
-        if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r * r) this.set(x, y, c, a);
-  }
-  ellipse(cx, cy, rx, ry, c, a) {
-    for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry); y++)
-      for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx); x++)
-        if (((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 <= 1) this.set(x, y, c, a);
-  }
-  /** Filled rounded rectangle (pixel corners). */
-  rr(x, y, w, h, r, c, a) {
-    for (let j = 0; j < h; j++)
-      for (let i = 0; i < w; i++) {
-        const dx = i < r ? r - i - 0.5 : i >= w - r ? i - (w - r) + 0.5 : 0;
-        const dy = j < r ? r - j - 0.5 : j >= h - r ? j - (h - r) + 0.5 : 0;
-        if (dx * dx + dy * dy <= r * r + 0.3) this.set(x + i, y + j, c, a);
-      }
-  }
-  poly(pts, c, a) {
-    let minY = Infinity, maxY = -Infinity;
-    for (const [, y] of pts) { minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
-    for (let y = Math.floor(minY); y <= Math.ceil(maxY); y++) {
-      const yc = y + 0.5, xs = [];
-      for (let i = 0; i < pts.length; i++) {
-        const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length];
-        if ((y1 <= yc && y2 > yc) || (y2 <= yc && y1 > yc)) xs.push(x1 + ((yc - y1) / (y2 - y1)) * (x2 - x1));
-      }
-      xs.sort((p, q) => p - q);
-      for (let k = 0; k + 1 < xs.length; k += 2) for (let x = Math.round(xs[k]); x < Math.round(xs[k + 1]); x++) this.set(x, y, c, a);
-    }
-  }
-  /** Recolor every opaque pixel: fn(x, y, color, alpha) → new color | undefined. */
-  each(fn) {
-    for (let y = 0; y < this.h; y++)
-      for (let x = 0; x < this.w; x++) {
-        const al = this.a(x, y);
-        if (!al) continue;
-        const n = fn(x, y, this.get(x, y), al);
-        if (n !== undefined && n !== null) this.set(x, y, n, al);
-      }
-  }
-  /** Distance (4-neighbour steps, capped) from each opaque pixel to the nearest transparent one. */
-  dist(max = 4) {
-    const D = new Uint8Array(this.w * this.h);
-    for (let y = 0; y < this.h; y++)
-      for (let x = 0; x < this.w; x++) D[y * this.w + x] = this.a(x, y) > 40 ? max : 0;
-    for (let pass = 0; pass < max; pass++)
-      for (let y = 0; y < this.h; y++)
-        for (let x = 0; x < this.w; x++) {
-          const i = y * this.w + x;
-          if (!D[i]) continue;
-          const n = Math.min(x > 0 ? D[i - 1] : 0, x < this.w - 1 ? D[i + 1] : 0, y > 0 ? D[i - this.w] : 0, y < this.h - 1 ? D[i + this.w] : 0);
-          if (n + 1 < D[i]) D[i] = n + 1;
-        }
-    return (x, y) => (this.in(x, y) ? D[y * this.w + x] : 0);
-  }
-  /** 1px outline around opaque pixels. */
-  outline(c, diag = false) {
-    const add = [];
-    for (let y = 0; y < this.h; y++)
-      for (let x = 0; x < this.w; x++) {
-        if (this.a(x, y) > 40) continue;
-        const n = this.a(x - 1, y) > 40 || this.a(x + 1, y) > 40 || this.a(x, y - 1) > 40 || this.a(x, y + 1) > 40 ||
-          (diag && (this.a(x - 1, y - 1) > 40 || this.a(x + 1, y + 1) > 40 || this.a(x + 1, y - 1) > 40 || this.a(x - 1, y + 1) > 40));
-        if (n) add.push([x, y]);
-      }
-    for (const [x, y] of add) this.set(x, y, c);
-  }
-  /** ASCII template: rows of chars, pal maps char → color ('.' and ' ' = empty). */
-  tpl(rows, pal, ox = 0, oy = 0, flip = false) {
-    for (let y = 0; y < rows.length; y++) {
-      const row = rows[y];
-      for (let x = 0; x < row.length; x++) {
-        const ch = row[x];
-        if (ch === '.' || ch === ' ') continue;
-        const c = pal[ch];
-        if (c === undefined) continue;
-        this.set(ox + (flip ? row.length - 1 - x : x), oy + y, c);
-      }
-    }
-  }
-  blit(src, dx = 0, dy = 0) {
-    for (let y = 0; y < src.h; y++)
-      for (let x = 0; x < src.w; x++) {
-        const al = src.a(x, y);
-        if (al) this.set(x + dx, y + dy, src.get(x, y), al);
-      }
-  }
-  url() {
-    this.ctx.putImageData(this.img, 0, 0);
-    return this.c.toDataURL();
-  }
-}
+// ---------------------------------------------------------------- raster (src/ui/px.js)
+export { Px };
 
 // ---------------------------------------------------------------- palettes
 export const INK = 0x24150d;
@@ -169,34 +30,6 @@ export const PAL = {
 };
 
 // ---------------------------------------------------------------- frames (9-slice)
-/** Parchment sheet with a burnt rim; optional dog-eared bottom-right corner. slice 8. */
-function parchFrame(dog = false) {
-  const P = PAL.paper;
-  const p = new Px(24, 24);
-  p.rect(1, 1, 22, 22, P.base);
-  for (const [x, y] of [[1, 1], [2, 1], [1, 2], [22, 1], [21, 1], [22, 2], [1, 22], [1, 21], [2, 22], [22, 22], [21, 22], [22, 21], [22, 20]]) p.clear(x, y);
-  if (dog) for (let y = 16; y <= 22; y++) for (let x = 16; x <= 22; x++) if (x + y >= 40) p.clear(x, y);
-  const D = p.dist(3);
-  p.each((x, y) => {
-    const d = D(x, y);
-    if (d === 1) return P.dk;
-    if (d === 2) return (x + y) % 2 ? P.mid : P.base;
-    return undefined;
-  });
-  // a few burnt nicks at the corners
-  for (const [x, y] of [[3, 1], [1, 4], [20, 1], [22, 4], [1, 19], [4, 22]]) p.set(x, y, P.burn);
-  if (dog) {
-    // folded flap (back of the paper is lighter), shadow under it
-    p.poly([[16, 16], [22, 16], [16, 22]], P.hi);
-    for (let i = 0; i < 6; i++) { p.set(16 + i, 21 - i, P.dk); p.set(17 + i, 21 - i, P.mid); }
-    p.hl(16, 21, 16, P.mid);
-    p.vl(16, 16, 21, P.mid);
-    for (let i = 0; i < 5; i++) p.set(18 + i, 22 - i - 0, P.burn);
-  }
-  p.outline(P.edge);
-  return p;
-}
-
 /** Leather with a stitched seam and brass corner rivets. slice 10. */
 function leatherFrame(R = PAL.leather, stitch = R.stitch, rivets = true) {
   const p = new Px(32, 32);
@@ -236,56 +69,6 @@ function leatherFrame(R = PAL.leather, stitch = R.stitch, rivets = true) {
   return p;
 }
 
-/** Wooden frame (portraits, signs). slice 7. */
-function woodFrame(R = PAL.wood, nails = true) {
-  const p = new Px(22, 22);
-  p.rect(1, 1, 20, 20, R.base);
-  for (let y = 1; y <= 20; y++)
-    for (let x = 1; x <= 20; x++) {
-      const d = Math.min(x - 1, y - 1, 20 - x, 20 - y);
-      if (d >= 5) { p.clear(x, y); continue; }
-      let c = R.base;
-      if (d === 0) c = x + y < 21 ? R.hi : R.dk;
-      else if (d === 4) c = x + y < 21 ? R.dd : R.lt;
-      else if (d === 2 && (x * 7 + y * 3) % 5 === 0) c = R.lt;
-      else if ((x + y * 3) % 7 === 0) c = R.dk;
-      p.set(x, y, c);
-    }
-  // mitre joints
-  for (let i = 1; i <= 5; i++) { p.set(i, i, R.dd); p.set(21 - i, i, R.dd); p.set(i, 21 - i, R.dd); p.set(21 - i, 21 - i, R.dd); }
-  if (nails) {
-    const B = PAL.brass;
-    for (const [x, y] of [[3, 3], [18, 3], [3, 18], [18, 18]]) { p.set(x, y, B.lt); p.set(x + 1, y, B.dk); p.set(x, y + 1, B.dk); p.set(x + 1, y + 1, B.dd); }
-  }
-  p.outline(R.ol);
-  // inner lip outline
-  for (let i = 6; i <= 15; i++) { p.set(i, 6, R.ol); p.set(i, 15, R.ol); p.set(6, i, R.ol); p.set(15, i, R.ol); }
-  return p;
-}
-
-/** Ornate brass frame (ticket window). slice 8. */
-function brassFrame() {
-  const B = PAL.brass;
-  const p = new Px(24, 24);
-  p.rr(1, 1, 22, 22, 3, B.base);
-  const D = p.dist(6);
-  p.each((x, y) => {
-    const d = D(x, y);
-    if (d >= 6) return null;
-    if (d === 1) return x + y < 23 ? B.hi : B.dk;
-    if (d === 2) return x + y < 23 ? B.lt : B.base;
-    if (d === 4) return x + y < 23 ? B.dk : B.lt;
-    if (d === 5) return B.dd;
-    return B.base;
-  });
-  for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) if (D(x, y) >= 6) p.clear(x, y);
-  // rivets
-  for (const [x, y] of [[3, 3], [19, 3], [3, 19], [19, 19]]) { p.set(x, y, B.hi); p.set(x + 1, y, B.lt); p.set(x, y + 1, B.lt); p.set(x + 1, y + 1, B.dd); }
-  p.outline(B.ol);
-  for (let i = 6; i <= 17; i++) { p.set(i, 6, B.ol); p.set(i, 17, B.ol); p.set(6, i, B.ol); p.set(17, i, B.ol); }
-  return p;
-}
-
 /** Slate board in a thin wooden frame (prompts). slice 5. */
 function slateFrame() {
   const S = PAL.slate, W = PAL.wood;
@@ -297,19 +80,6 @@ function slateFrame() {
   p.hl(3, 12, 3, S.dk); p.vl(3, 3, 12, S.dk);
   p.set(4, 4, S.hi); p.set(11, 11, S.hi);
   p.outline(INK);
-  return p;
-}
-
-/** Small pinned paper note (toasts). slice 5. */
-function noteFrame() {
-  const P = PAL.paper;
-  const p = new Px(16, 16);
-  p.rect(1, 1, 14, 14, 0xf8ecd2);
-  for (let x = 1; x <= 14; x++) if (x % 3 === 1) p.clear(x, 14);
-  p.clear(1, 1); p.clear(14, 1);
-  const D = p.dist(2);
-  p.each((x, y) => (D(x, y) === 1 ? (y >= 13 ? P.dk : P.mid) : undefined));
-  p.outline(P.edge);
   return p;
 }
 
@@ -377,59 +147,6 @@ function loopFrame(on = false) {
   return p;
 }
 
-/** Hand-drawn ink frame for field-notebook sketches. slice 4. */
-function sketchFrame() {
-  const ink = 0x5a3a20, wash = 0x6e4a2a;
-  const p = new Px(16, 16);
-  // double line (uniform in the middle so it repeats)
-  for (let i = 1; i <= 14; i++) {
-    p.set(i, 1, ink); p.set(1, i, ink); p.set(i, 14, ink); p.set(14, i, ink);
-  }
-  for (let i = 3; i <= 12; i++) { p.set(i, 3, wash, 90); p.set(3, i, wash, 90); p.set(i, 12, wash, 90); p.set(12, i, wash, 90); }
-  // overshoots at the corners, like a quick pen stroke
-  p.set(0, 1, ink); p.set(1, 0, ink); p.set(15, 14, ink); p.set(14, 15, ink); p.set(15, 1, ink); p.set(0, 14, ink);
-  p.set(2, 2, wash, 120); p.set(13, 13, wash, 120);
-  return p;
-}
-
-/** Book cover: oxblood leather with an embossed border and brass corner guards. slice 12. */
-function coverFrame(R = PAL.oxblood) {
-  const B = PAL.brass;
-  const p = new Px(36, 36);
-  p.rr(1, 1, 34, 34, 2, R.base);
-  const D = p.dist(3);
-  p.each((x, y) => {
-    const d = D(x, y);
-    if (d === 1) return x + y < 35 ? R.lt : R.dk;
-    if (d === 2) return x + y < 35 ? mixHex(R.base, R.lt, 0.4) : mixHex(R.base, R.dk, 0.4);
-    return undefined;
-  });
-  // embossed groove
-  for (let i = 6; i <= 29; i++) { p.set(i, 6, R.dd); p.set(i, 7, R.lt); p.set(6, i, R.dd); p.set(7, i, R.lt); p.set(i, 29, R.lt); p.set(29, i, R.lt); p.set(i, 28, R.dd); p.set(28, i, R.dd); }
-  // brass corner guards
-  const corner = (fx, fy) => {
-    const X = (x) => (fx ? 35 - x : x), Y = (y) => (fy ? 35 - y : y);
-    for (let y = 1; y <= 10; y++) for (let x = 1; x <= 10; x++) {
-      if (x + y > 12) continue;
-      const edge = x + y === 12 || x === 1 || y === 1;
-      let c = B.base;
-      if (edge) c = x + y === 12 ? B.dd : B.lt;
-      else if (x + y < 6) c = B.lt;
-      else if (x + y > 9) c = B.dk;
-      p.set(X(x), Y(y), c);
-    }
-    p.set(X(4), Y(4), B.hi); p.set(X(5), Y(4), B.dd); p.set(X(4), Y(5), B.dd);
-  };
-  corner(false, false); corner(true, false); corner(false, true); corner(true, true);
-  p.outline(R.ol);
-  return p;
-}
-
-/** Pause-journal cover (moss-green leather). */
-function journalFrame() {
-  return coverFrame({ hi: 0x7aa060, lt: 0x56804a, base: 0x3c6236, dk: 0x2a4626, dd: 0x1a2e18, ol: 0x0e1a0c });
-}
-
 /** Hanging wooden sign (two planks, nails). slice 6. */
 function signFrame() {
   const W = PAL.wood, B = PAL.brass;
@@ -441,19 +158,6 @@ function signFrame() {
   p.vl(18, 2, 15, W.dk);
   for (const [x, y] of [[3, 4], [16, 4], [3, 12], [16, 12]]) { p.set(x, y, B.lt); p.set(x, y + 1, B.dd); }
   p.outline(W.ol);
-  return p;
-}
-
-/** Golden ticket with notched (perforated) sides. slice 6. */
-function ticketFrame() {
-  const B = PAL.brass;
-  const p = new Px(20, 16);
-  p.rect(1, 1, 18, 14, B.lt);
-  for (let y = 2; y <= 13; y += 3) { p.clear(1, y); p.clear(18, y); }
-  p.hl(1, 18, 1, B.hi); p.hl(1, 18, 14, B.dk);
-  for (let x = 3; x <= 16; x++) { p.set(x, 3, x % 2 ? B.dk : B.base); p.set(x, 12, x % 2 ? B.dk : B.base); }
-  for (let y = 3; y <= 12; y++) { p.set(3, y, y % 2 ? B.dk : B.base); p.set(16, y, y % 2 ? B.dk : B.base); }
-  p.outline(B.dd);
   return p;
 }
 
@@ -504,41 +208,6 @@ function beltTile() {
 }
 
 // ---------------------------------------------------------------- tiles
-function paperTile(lines = false) {
-  const P = PAL.paper;
-  const p = new Px(32, 32);
-  p.rect(0, 0, 32, 32, P.base);
-  const r = makeRng(77);
-  for (let i = 0; i < 46; i++) {
-    const x = r.int(0, 31), y = r.int(0, 31);
-    p.set(x, y, r.chance(0.6) ? P.mid : P.hi);
-  }
-  for (let i = 0; i < 7; i++) {
-    const x = r.int(0, 31), y = r.int(0, 31), len = r.int(2, 3);
-    for (let k = 0; k < len; k++) p.set((x + k) % 32, (y + (r.chance(0.3) ? 1 : 0)) % 32, P.mid);
-  }
-  if (lines) for (let x = 0; x < 32; x += 1) if (x % 2 === 0) { p.set(x, 15, 0xe2c99a); p.set(x, 31, 0xe2c99a); }
-  return p;
-}
-
-function leatherTile(R = PAL.leather) {
-  const p = new Px(24, 24);
-  p.rect(0, 0, 24, 24, R.base);
-  const r = makeRng(31);
-  for (let i = 0; i < 60; i++) {
-    const x = r.int(0, 23), y = r.int(0, 23);
-    p.set(x, y, mixHex(R.base, R.dk, 0.6));
-    if (r.chance(0.5)) p.set((x + 1) % 24, y, mixHex(R.base, R.dk, 0.35));
-  }
-  for (let i = 0; i < 18; i++) p.set(r.int(0, 23), r.int(0, 23), mixHex(R.base, R.lt, 0.55));
-  // a couple of soft scratches
-  for (let i = 0; i < 3; i++) {
-    const x = r.int(0, 23), y = r.int(0, 23);
-    for (let k = 0; k < 4; k++) p.set((x + k) % 24, (y + (k >> 1)) % 24, mixHex(R.base, R.lt, 0.3));
-  }
-  return p;
-}
-
 function canvasTile() {
   const C = PAL.canvas;
   const p = new Px(8, 8);
@@ -550,40 +219,6 @@ function canvasTile() {
       p.set(x, y, c);
     }
   p.set(5, 2, C.dk); p.set(6, 2, C.dk); p.set(1, 6, mixHex(C.base, C.dk, 0.8));
-  return p;
-}
-
-function woodTile(R = PAL.wood, plank = 8) {
-  const p = new Px(32, plank * 2);
-  const r = makeRng(9);
-  for (let y = 0; y < plank * 2; y++)
-    for (let x = 0; x < 32; x++) {
-      const row = y % plank;
-      let c = R.base;
-      if (row === 0) c = R.lt;
-      else if (row === plank - 1) c = R.dd;
-      else if (Math.sin((x + y * 13 + (y >= plank ? 11 : 0)) * 0.45) > 0.85) c = R.dk;
-      p.set(x, y, c);
-    }
-  for (let i = 0; i < 26; i++) {
-    const x = r.int(0, 31), y = r.int(1, plank * 2 - 2);
-    if (y % plank === 0 || y % plank === plank - 1) continue;
-    const len = r.int(2, 6);
-    for (let k = 0; k < len; k++) p.set((x + k) % 32, y, r.chance(0.5) ? R.dk : mixHex(R.base, R.lt, 0.5));
-  }
-  // plank seams
-  p.vl(9, 1, plank - 2, R.dd); p.vl(25, plank + 1, plank * 2 - 2, R.dd);
-  // knot
-  p.set(18, 3, R.dd); p.set(19, 3, R.dk); p.set(18, 4, R.dk);
-  return p;
-}
-
-function slateTile() {
-  const S = PAL.slate;
-  const p = new Px(24, 24);
-  p.rect(0, 0, 24, 24, S.base);
-  const r = makeRng(5);
-  for (let i = 0; i < 26; i++) p.set(r.int(0, 23), r.int(0, 23), r.chance(0.5) ? S.hi : S.dk);
   return p;
 }
 
@@ -622,38 +257,66 @@ export function art(key, fn) {
   return cache.get(key);
 }
 
+const OAK = CA.TONES.wood, GREEN = CA.TONES.moss;
+const LEATHER = [0x22130a, 0x2e1a0c, 0x3f2412, 0x4c2c16, 0x56341b, 0x623c20, 0x704628, 0x7e5030, 0x8c5a32, 0x9a6638, 0xa87444];
 const ASSETS = {
-  parch: () => parchFrame(false),
-  parchDog: () => parchFrame(true),
-  leather: () => leatherFrame(),
-  wood: () => woodFrame(),
-  brass: () => brassFrame(),
-  slate: () => slateFrame(),
-  note: () => noteFrame(),
-  key: () => keyFrame(false),
-  cut: () => cutEdge(),
+  // frames (9-slices; the slice each CSS rule uses is noted)
+  parch: () => CA.parchFrame(false), // 8
+  parchDog: () => CA.parchFrame(true), // 8
+  leather: () => leatherFrame(), // 10
+  wood: () => CA.woodFrame(OAK), // 7
+  brass: () => CA.brassFrame(), // 8
+  slate: () => slateFrame(), // 5 (stretched)
+  note: () => CA.noteFrame(), // 5
+  key: () => keyFrame(false), // 2 2 3 2 (stretched)
+  cut: () => cutEdge(), // 1
   pocket: () => pocketFrame(false),
   pocketOn: () => pocketFrame(true),
   loop: () => loopFrame(false),
   loopOn: () => loopFrame(true),
-  sketch: () => sketchFrame(),
-  cover: () => coverFrame(),
-  journal: () => journalFrame(),
-  sign: () => signFrame(),
-  ticket: () => ticketFrame(),
+  sketch: () => CA.sketchFrame(), // 4
+  cover: () => CA.coverFrame(CA.TONES.oxblood), // 12
+  journal: () => CA.coverFrame(GREEN, { seed: 29 }), // 12
+  sign: () => signFrame(), // 6 (stretched)
+  signT: () => CA.signBoard(OAK), // 6, tiles (repeat)
+  ticket: () => CA.ticketFrame(), // 6
   track: () => trackFrame(),
   goldTag: () => goldTagFrame(),
   beltT: () => beltTile(),
   cloth: () => clothFrame(),
-  paperT: () => paperTile(false),
-  pageT: () => paperTile(true),
-  leatherT: () => leatherTile(),
-  coverT: () => leatherTile(PAL.oxblood),
-  journalT: () => leatherTile({ hi: 0x7aa060, lt: 0x56804a, base: 0x3c6236, dk: 0x2a4626, dd: 0x1a2e18 }),
+  // buttons (top 2, sides 3, bottom 3; repeat across, stretch down)
+  btnGold: () => CA.buttonFrame('gold'),
+  btnGoldDn: () => CA.buttonFrame('gold', true),
+  btnAlt: () => CA.buttonFrame('alt'),
+  btnAltDn: () => CA.buttonFrame('alt', true),
+  btnDanger: () => CA.buttonFrame('danger'),
+  btnDangerDn: () => CA.buttonFrame('danger', true),
+  btnWood: () => CA.buttonFrame('wood'),
+  btnWoodDn: () => CA.buttonFrame('wood', true),
+  // small pieces
+  waxSeal: () => CA.waxSeal(), // 26×30
+  eyelet: () => CA.eyelet(), // 7×7
+  grainA: () => CA.grainOverlay(16, 16), // translucent grain over a flat colour
+  rubber: () => CA.rubberOverlay(16, 16),
+  ribbonV: () => CA.silkRibbon(), // 6×12, repeats down
+  // tiles at their historical sizes (other stylesheets size them so)
+  paperT: () => CA.paperTile(32, 32, { seed: 3, fibres: 0.9 }),
+  pageT: () => CA.paperTile(32, 32, { seed: 4, rule: 16, fibres: 0.8 }),
+  leatherT: () => CA.leatherTile(24, 24, LEATHER, { seed: 31 }),
+  coverT: () => CA.leatherTile(24, 24, CA.TONES.oxblood, { seed: 33 }),
+  journalT: () => CA.leatherTile(24, 24, GREEN, { seed: 35 }),
   canvasT: () => canvasTile(),
-  woodT: () => woodTile(),
-  woodDkT: () => woodTile({ hi: 0x8a5a32, lt: 0x6a4224, base: 0x52321a, dk: 0x3e2412, dd: 0x2a180c }, 10),
-  slateT: () => slateTile(),
+  woodT: () => CA.woodTile(32, 16, { plank: 8, seed: 3 }),
+  woodDkT: () => CA.woodTile(32, 20, { plank: 10, seed: 6, pal: CA.TONES.woodDk }),
+  slateT: () => CA.slateTile(24, 24),
+  // big tiles (less repetition) for the panels: paper 96, page 96 (ruled every 16), leather 64, planks 96 wide
+  paperL: () => CA.paperTile(96, 96, { seed: 5, stains: 1 }),
+  pageL: () => CA.paperTile(96, 96, { seed: 8, rule: 16, fibres: 0.9, stains: 1 }),
+  noteT: () => CA.noteTile(32, 32),
+  coverL: () => CA.leatherTile(64, 64, CA.TONES.oxblood, { seed: 37, cell: 3.4 }),
+  journalL: () => CA.leatherTile(64, 64, GREEN, { seed: 39, cell: 3.4 }),
+  woodL: () => CA.woodTile(96, 32, { plank: 8, seed: 11 }),
+  woodDkL: () => CA.woodTile(96, 40, { plank: 10, seed: 12, pal: CA.TONES.woodDk }),
   gutterL: () => gutterTile(false),
   gutterR: () => gutterTile(true),
   smudge: () => smudgeTile(),

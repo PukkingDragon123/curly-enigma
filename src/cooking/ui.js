@@ -12,6 +12,7 @@
 //    paper tags for what it does, and wooden plank buttons.
 import { el, clamp } from '../core/util.js';
 import { iconURL } from '../gfx/PixelArt.js';
+import { itemVox } from '../ui/itemVox.js'; // ingredients and dishes as 3D voxel art
 import { ITEMS } from '../data/items.js';
 import { DISHES, BUFFS, RECIPES, MAX_INGS } from '../data/recipes.js';
 import { BOLT } from '../ui/UI.js';
@@ -172,7 +173,7 @@ export class CookUI {
             onfocus: () => showInfo(`<b>${it.name}</b> · ${it.desc || ''}`),
             onblur: () => showInfo(opts.matchInfo(sel)),
           }, [
-            el('span', { class: 'ck-cont' }, [img(KART[sh.kind]('back'), 'ck-c-back'), img(iconURL(id), 'ck-c-item', it.name), img(KART[sh.kind]('front'), 'ck-c-front'), qPip(st, id)]),
+            el('span', { class: 'ck-cont' }, [img(KART[sh.kind]('back'), 'ck-c-back'), img(itemVox.src(id), 'ck-c-item', it.name), img(KART[sh.kind]('front'), 'ck-c-front'), qPip(st, id)]),
             el('span', { class: 'ck-tag' }, [on ? img(KART.stamp('check'), 'ck-tag-ok') : null, '×' + pantryCount(st, id)]),
           ]);
           b.style.setProperty('--d', Math.min(360, n * 30) + 'ms');
@@ -217,7 +218,7 @@ export class CookUI {
           rtabs.append(el('button', {
             class: 'ck-rtab' + (i === this.cardI ? ' on' : ''), role: 'tab', 'aria-selected': i === this.cardI ? 'true' : 'false', title: DISHES[dish].name,
             onclick: () => { if (i === this.cardI) return; flipDir = i > this.cardI ? 1 : -1; this.cardI = i; audio.play('page'); render(); },
-          }, [img(iconURL(dish), '', DISHES[dish].name)]));
+          }, [img(itemVox.src(dish), '', DISHES[dish].name)]));
         });
         // keep the current card's divider in view (the strip scrolls sideways)
         requestAnimationFrame(() => {
@@ -233,13 +234,13 @@ export class CookUI {
         const D = DISHES[dish];
         const card = el('div', { class: 'ck-rcard' + (flipDir ? (flipDir > 0 ? ' fwd' : ' back') : '') }, [
           el('div', { class: 'ck-rc-head' }, [
-            el('span', { class: 'ck-rc-pic' }, [img(iconURL(dish), '', D.name)]),
+            el('span', { class: 'ck-rc-pic', 'data-vox': dish }, [img(itemVox.src(dish), '', D.name)]),
             el('div', { class: 'ck-rc-name' }, [el('b', {}, D.name), D.buff ? el('span', { class: 'ck-buffchip', style: { background: BUFFS[D.buff].color } }, BUFFS[D.buff].name) : null]),
             el('div', { class: 'ck-rc-best', title: `Best: ${gr.g} (${Math.round(best)})` }, [img(KART.rosette(gr.g, true), 'ck-ros-s'), el('span', { style: { color: gr.color } }, gr.g)]),
           ]),
           el('div', { class: 'ck-rc-row' }, [el('small', {}, 'Steps'), el('span', { class: 'ck-rc-steps' }, r.steps.map((k, i) => el('i', { class: 'ck-tok' }, `${i + 1}. ${STEP_LABEL[k] || k}`)))]),
           el('div', { class: 'ck-rc-row' }, [
-            el('small', {}, 'Needs'), el('span', { class: 'ck-rc-ings' }, ings.map((id) => el('span', { class: 'ck-rc-ing' + (pantryCount(st, id) < r.ing[id] ? ' no' : ''), title: ITEMS[id]?.name }, [img(iconURL(id), '', ITEMS[id]?.name || id)]))),
+            el('small', {}, 'Needs'), el('span', { class: 'ck-rc-ings' }, ings.map((id) => el('span', { class: 'ck-rc-ing' + (pantryCount(st, id) < r.ing[id] ? ' no' : ''), title: ITEMS[id]?.name }, [img(itemVox.src(id), '', ITEMS[id]?.name || id)]))),
             el('button', { class: 'btn ck-rc-use', disabled: missing.length ? true : null, onclick: () => useCard(r) }, missing.length ? `Missing ${missing.length}` : 'Into the pot'),
           ]),
         ]);
@@ -268,7 +269,7 @@ export class CookUI {
           pot.append(el('button', {
             class: 'ck-pitem interactive' + (id === added ? ' drop' : ''), title: `Take out ${ITEMS[id].name}`, 'aria-label': `Take ${ITEMS[id].name} out of the pot`,
             style: { left: `calc(var(--px) * ${x})`, '--i': i }, onclick: () => toggle(id),
-          }, [img(iconURL(id), '', ITEMS[id].name)]));
+          }, [img(itemVox.src(id), '', ITEMS[id].name)]));
         } else {
           pot.append(el('i', { class: 'ck-pring', style: { left: `calc(var(--px) * ${x})` } }));
         }
@@ -540,7 +541,7 @@ export class CookUI {
       r.isNew ? el('div', { class: 'ck-new' }, 'New recipe!') : null,
       el('h3', { class: 'ck-dname' }, d.name),
       el('div', { class: 'ck-r-mid' }, [
-        el('div', { class: 'ck-reveal' }, [el('div', { class: 'ck-rays' }), el('div', { class: 'ck-frame' }, [img(iconURL(r.dish), 'ck-dish-img', d.name)])]),
+        el('div', { class: 'ck-reveal' }, [el('div', { class: 'ck-rays' }), el('div', { class: 'ck-frame' }, [itemVox.img(r.dish, 'pix ck-dish-img', { turn: true, alt: d.name })])]),
         el('div', { class: 'ck-grade' }, [img(KART.rosette(gr.g), 'ck-ros'), el('b', { style: { color: gr.color } }, gr.g + (gr.g === 'Perfect' ? '!' : '')), el('small', {}, `score ${Math.round(r.score)} / 100`)]),
       ]),
       steps,

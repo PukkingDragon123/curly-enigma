@@ -7,7 +7,7 @@
 // the Miners' Board, his chest and the coal cart. Old Star lives here (src/home/oldstar.js): he
 // works at his forge, cooks, reads, sits by the fire, sleeps in his box bed at night and talks you
 // through his lessons (lessons.js) after you wake up in your bed (wake.js). Your room is the save's
-// tile grid (it grows with room upgrades): sleep in the bed, collect Nugget's eggs, sow the
+// tile grid (it grows with room upgrades): sleep in the bed, sow the
 // planters, sit down, light the lamps; X (or E at the build bench) is build mode. There is no
 // digging out of the home: the lift is the way down.
 import * as THREE from 'three';
@@ -19,7 +19,7 @@ import { LightPool } from '../iso/LightPool.js';
 import { buildFurniture } from '../iso/furniture.js';
 import { footprint, roomSize, TUNNEL_SLOTS, WINDOW_SLOTS, occupancy, benchTiles } from '../iso/homeLayout.js';
 import { broom, firewood, letterCrate, ragRug } from '../iso/homeDecor.js';
-import { bedsideTable, wardrobe, pottedPlant, nestCorner } from '../home/houseProps.js';
+import { bedsideTable, wardrobe, pottedPlant } from '../home/houseProps.js';
 import { FURNITURE } from '../data/furniture.js';
 import { ITEMS } from '../data/items.js';
 import { iconURL, iconCanvas } from '../gfx/PixelArt.js';
@@ -33,7 +33,6 @@ import { ROOM, roomAt, doorAt, onTerrace } from '../home/plan.js';
 import { BoxWorld } from '../fps/FPSKit.js';
 import { liftBoxes, LIFT } from '../home/lift.js';
 import { FPGlow } from '../home/glow.js';
-import { HomeNugget } from '../home/nugget.js';
 import { FPBuild } from '../home/build.js';
 import { relocateBlocked, besideItem } from '../home/layoutfix.js';
 import { HomeMoves } from '../home/moves.js';
@@ -50,6 +49,7 @@ import { lootChest } from '../home/tavernProps.js';
 import { group } from '../iso/kit.js';
 import { loadNotes } from '../home/notes.js';
 import { campCloths } from '../home/campCloth.js';
+import { CampAir } from '../home/campAir.js';
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -94,7 +94,7 @@ export default class HomeScene extends Scene {
     this.from = from;
     st.flag('lastScene', 'home');
     st.flag('homeVisited', true);
-    if (from === 'fall') { st.flag('fallen', true); st.flag('nugget', true); }
+    if (from === 'fall') st.flag('fallen', true);
     mark('flags');
     if (!d.home.planters) d.home.planters = {};
     if (!d.home.floor) d.home.floor = {};
@@ -123,8 +123,11 @@ export default class HomeScene extends Scene {
     this.anchors = new Map();
     this.hideFrom = new Map(); // bubble key → () => true while it's out of sight
     this.scripted = false;
-    this.post = { vignette: 0.46, outlineAlpha: 0.7, innerThresh: 0.22, saturation: 0.98, contrast: 1.08, brightness: 1.06 };
+    // split-toned: the rock's shade goes cold blue, the fire- and lamplight stays amber
+    this.post = { vignette: 0.5, outlineAlpha: 0.7, innerThresh: 0.22, saturation: 1.02, contrast: 1.1, brightness: 1.06, grade: { lift: [0.0, 0.01, 0.034], gamma: [1.02, 1.0, 0.98], gain: [1.08, 0.99, 0.86] }, gradeMix: 1, bloom: 0.7, bloomThreshold: 0.72 };
     this.scene.background = new THREE.Color(0x05060a);
+    // a thin cold haze: the far end of the hollow goes blue-black (depth in a small cave)
+    this.scene.fog = new THREE.FogExp2(0x090c12, 0.05);
     // no digging out of the home: no tunnel mouths in your walls any more
     this.tunnels = [];
     for (const w of ['n', 's', 'e', 'w']) TUNNEL_SLOTS[w] = new Set();
@@ -153,22 +156,24 @@ export default class HomeScene extends Scene {
     this.lift = this.cave.lift;
     this.holeTop = this.cave.holeTop?.y ?? HALL.y + 2.4; // (up the hole you fell through)
     // real cloth over the shack's doorway and window (you push through it)
-    try { this.cloths = campCloths(this.scene); this.own(() => this.cloths.dispose()); } catch (e) { console.warn('[home] cloth', e); }
+    try { this.cloths = campCloths(this.scene, this.cave.laundry); this.own(() => this.cloths.dispose()); (this.cave.roomMeshes.camp ||= []).push(...this.cloths.list.map((c) => c.mesh)); } catch (e) { console.warn('[home] cloth', e); }
     mark('build');
 
     // ---- light: a dim cave, a pool of point lights shared by the fires, lanterns and candles, glows and contact shadows
     // (the ground colour is the warm bounce off the earth: undersides of things aren't black)
-    this.scene.add(new THREE.HemisphereLight(0xb8c2d4, 0x4e4034, 0.5));
+    this.scene.add(new THREE.HemisphereLight(0x8a9cbc, 0x3e3228, 0.5));
     const fill = new THREE.DirectionalLight(0xffd0a0, 0.06);
     fill.position.set(2, 6, 2);
     this.scene.add(fill);
     this.lights = new LightPool(this.scene, 10, { range: 40 });
     this.glow = new FPGlow(this.scene, 420);
     this.shadows = new FPGlow(this.scene, 180, { shadow: true });
-    this.fxU = { fogCol: { value: new THREE.Color(0x070405) }, fogDist: { value: 80 } };
+    this.fxU = { fogCol: { value: new THREE.Color(0x090c12) }, fogDist: { value: 22 } };
     this.world = new BoxWorld();
     this.fx = new Particles(this.scene, this.world, this.fxU);
     this.own(() => this.fx.dispose());
+    // the camp's air: the beam of daylight down the hole, smoke, sparks, moths at the lanterns
+    try { this.air = new CampAir(this); this.own(() => this.air.dispose()); } catch (e) { console.warn('[home] air', e); }
     this.addShellLights();
     this.addCaveLights();
     // soft contact shadows under the house's furniture
@@ -217,26 +222,10 @@ export default class HomeScene extends Scene {
     }
 
     mark('starPlace');
-    // ---- the mole and Nugget
+    // ---- the mole
     this.spawnByFrom(from, params);
     mark('spawn');
-    if (st.flag('nugget')) {
-      const coop = this.findKind('coop');
-      const cands = coop ? [[0.5, 1.35], [1.4, 0.5], [-0.4, 0.5], [0.5, -0.4]].map(([dx, dz]) => [coop.p.x + dx, coop.p.y + dz]) : [];
-      cands.push([W / 2, D / 2]);
-      const ok = cands.find(([x, z]) => x > 0.3 && z > 0.3 && x < W - 0.3 && z < D - 0.3 && !this.tileBlocked(Math.floor(x), Math.floor(z)));
-      const [nx, nz] = ok || cands[cands.length - 1];
-      this.nug = new HomeNugget(this, W, D, nx, nz);
-      this.fillNuggetMap();
-      const nA = this.nug.actor;
-      this.addIt({
-        r: 0.22, label: () => `Pet ${nA.name}`, sphereFn: (v) => (this.nug.head ? this.nug.head(v) : v.set(nA.pos.x * T, (nA.pos.y + nA.body.position.y) * T + 0.15, nA.pos.z * T)),
-        action: () => this.petNugget(),
-      });
-    }
-    this.napT = rand(25, 45);
     this.musicBox = { on: false, t: 0, i: 0 };
-    mark('nugget');
 
     // ---- build mode, sounds
     this.build = new FPBuild(this);
@@ -460,17 +449,10 @@ export default class HomeScene extends Scene {
     this.refreshLoose();
     for (const r of this.loose) if (r.box && r.obj.visible) { w.add(...r.box, 'loose'); for (const t of r.tiles) this.blockedTiles.add(t.x + ',' + t.y); }
     this.refreshStepMap();
-    if (this.nug) this.fillNuggetMap();
     // Old Star finds his way round the new furniture too
     if (this.starGrid) this.buildStarGrid();
     // never leave the mole stuck inside something new
     if (this.rig && !this.scripted && !this.seat) this.unstick();
-  }
-
-  fillNuggetMap() {
-    this.nug.setBlocked((map) => {
-      for (const k of this.blockedTiles) { const [x, y] = k.split(',').map(Number); map.setSolid(x, y, 1); }
-    });
   }
 
   /** Push the mole out of anything solid (after furniture moved under it). */
@@ -539,8 +521,6 @@ export default class HomeScene extends Scene {
     add([{ x: 0, y: WINDOW_SLOTS[0] }], () => pottedPlant('fern', 7).obj, 0.42, WINDOW_SLOTS[0] + 0.5, 0.4);
     add([{ x: W - 1, y: 0 }], () => broom(2), W - 0.36, 0.12, -0.15);
     add([{ x: W - 1, y: 0 }], () => letterCrate(5), W - 0.7, 0.55, -0.1);
-    // Nugget's corner: straw, her feed, her water
-    add([{ x: 9, y: 6 }], () => nestCorner().obj, 9.15, 6.2, 0.2);
     // your own old trunk at the foot of the bed (your backpack's things, as far as E is concerned)
     this.trunk = add([{ x: 1, y: 3 }], () => { const c = lootChest(61); return group(c.obj, c.lid); }, 1.5, 3.45, 0, { box: [0.44, 0, 1.54, 1.06, 0.44, 1.92] });
   }
@@ -587,7 +567,7 @@ export default class HomeScene extends Scene {
   ctxFor(p) {
     const d = this.game.state.data;
     const pl = d.home.planters[p.uid];
-    return { eggs: this.eggCount(), planter: pl ? { ...pl, ready: pl.ready || pl.day < d.day } : null, items: ITEMS, weapons: d.weapons, state: this.game.state };
+    return { planter: pl ? { ...pl, ready: pl.ready || pl.day < d.day } : null, items: ITEMS, weapons: d.weapons, state: this.game.state };
   }
 
   addPlaced(p) {
@@ -623,7 +603,6 @@ export default class HomeScene extends Scene {
   removePlaced(uid) {
     const rec = this.items.get(uid);
     if (!rec) return;
-    if (FURNITURE[rec.p.id]?.kind === 'coop' && this.nug) this.nug.ai.wake();
     this.room.remove(rec.obj);
     rec.obj.traverse((o) => {
       if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose();
@@ -661,7 +640,6 @@ export default class HomeScene extends Scene {
     const add = (o) => rec.its.push(this.addIt({ box, enabled: () => this.aimRec === rec, ...o }));
     switch (f.kind) {
       case 'bed': add({ label: 'Sleep', action: () => this.trySleep(rec) }); break;
-      case 'coop': add({ label: () => (this.eggCount() > 0 ? `Collect eggs (${st.data.chicken.eggs})` : 'Check the coop'), action: () => this.collectEggs(rec) }); break;
       case 'planter': add({ label: () => this.planterLabel(rec), action: () => this.usePlanter(rec) }); break;
       case 'desk': add({ label: 'Write in the Index Book', action: () => { this.game.audio.play('page'); this.game.ui.openIndex(); } }); break;
       case 'seat': add({ label: 'Sit', action: () => this.sitAt(rec) }); break;
@@ -825,36 +803,14 @@ export default class HomeScene extends Scene {
       rec.res.update(dt, this.time, env);
     }
     this.tickMusicBox(dt);
-    // Nugget naps in her coop now and then
-    if (this.nug) {
-      // her walking coop keeps to your room (its tile grid): while you're out in the cave she waits
-      // just inside, by the steps up to the arch
-      const P = this.rig.player;
-      let who = P;
-      if (P.pos.z < 0.35 || !this.inBedroom(P.pos.x, P.pos.z)) {
-        const st0 = (this.nugStandIn ||= { pos: new THREE.Vector3(), yaw: 0 });
-        st0.pos.set(THREE.MathUtils.clamp(P.pos.x, 0.7, this.W * T - 0.7), P.pos.y, 1.05);
-        st0.yaw = P.yaw;
-        who = st0;
-      }
-      this.nug.update(dt, who);
-      if (!this.scripted) {
-        this.napT -= dt;
-        if (this.napT <= 0) {
-          this.napT = rand(40, 70);
-          const coop = this.findKind('coop');
-          if (coop && coop.res.nap && this.nug.ai.mode === 'follow' && this.nug.ai.idleFor > 3) this.sendNuggetToNap(coop, rand(14, 24));
-        }
-      }
-    }
     if (this.star?.rig) this.star.update(dt);
     if (this.cloths) {
       const P = this.rig.player.pos, Y0 = HALL.y - 0.1, cols = [{ x: P.x, z: P.z, r: 0.26, y0: Y0, y1: Y0 + 1.2 }];
       if (this.star?.rig) cols.push({ x: this.star.pos.x, z: this.star.pos.z, r: 0.24, y0: Y0, y1: Y0 + 1.0 });
-      if (this.nug?.actor) cols.push({ x: this.nug.actor.pos.x * T, z: this.nug.actor.pos.z * T, r: 0.2, y0: Y0, y1: Y0 + 0.5 });
       this.cloths.update(dt, cols, this.time);
     }
     this.lift.update(dt, this.time);
+    this.air?.update(dt, this.time);
     this.lights.update(dt, pl.x, pl.z);
     this.glow.update(this.camera);
     this.shadows.update(this.camera);

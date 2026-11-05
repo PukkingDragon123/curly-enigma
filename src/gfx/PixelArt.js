@@ -18,11 +18,9 @@ import { drawFauna } from './px/fauna.js';
 import { drawFood } from './px/food.js';
 import { drawHome } from './px/home.js';
 import { drawCookIcon } from '../cooking/icons.js'; // cooking part: new ingredients + dishes ({ k: 'cook' })
-import { drawHenIcon } from '../ui/invArt.js'; // inventory part: Nugget's food ({ k: 'hen' })
 import { drawRelic } from '../deep/ruins/relicArt.js'; // ruins part: relics ({ k: 'relic' })
 import { drawQuestIcon } from './questIcons.js'; // quests part: quest items ({ k: 'quest' })
 import { drawLootIcon } from '../deep/enemies/lootArt.js'; // creatures part: hides, fangs, eggs ({ k: 'loot' })
-import { drawPartIcon } from '../forge/partArt.js'; // coop parts forged at home ({ k: 'cooppart' })
 import { drawBuildIcon } from '../deep/build/art.js'; // building part: blocks, crafting stuff, axes/spades/shears ({ k: 'block' | 'btool' })
 
 export { PixelCanvas };
@@ -85,7 +83,7 @@ export function drawIconArt(spec, seed = 1, id = null) {
   const pc = new PixelCanvas(ICON);
   id = id || idOfSpec(spec);
   const ok = drawMineral(pc, spec, id, seed) || drawGear(pc, spec, id, seed) || drawFlora(pc, spec, id, seed) ||
-    drawFauna(pc, spec, id, seed) || drawFood(pc, spec, id, seed) || drawHome(pc, spec, id, seed) || drawCookIcon(pc, spec, id, seed) || drawHenIcon(pc, spec) || drawRelic(pc, spec) || drawLootIcon(pc, spec) || drawPartIcon(pc, spec) || drawQuestIcon(pc, spec) || drawBuildIcon(pc, spec);
+    drawFauna(pc, spec, id, seed) || drawFood(pc, spec, id, seed) || drawHome(pc, spec, id, seed) || drawCookIcon(pc, spec, id, seed) || drawRelic(pc, spec) || drawLootIcon(pc, spec) || drawQuestIcon(pc, spec) || drawBuildIcon(pc, spec);
   if (!ok) unknown(pc);
   return pc;
 }
@@ -166,6 +164,9 @@ export function drawWeapon(pc, type, metalColor, infusionColor) {
 
 // ---------------------------------------------------------------- caches / public API
 const urlCache = new Map();
+const urlKeys = new Map(); // icon URL → item id / weapon key (so a toast's icon can be shown in 3D: ui/itemVox.js)
+/** The item id (or 'w:type:metal:infusion') an iconURL/weaponIconURL string was made for, or null. */
+export function iconKeyOf(url) { return urlKeys.get(url) || null; }
 
 /** Committed 32×32 canvas for an item icon. */
 export function iconCanvas(id) {
@@ -179,6 +180,7 @@ export function iconURL(id) {
   if (urlCache.has(id)) return urlCache.get(id);
   const url = iconCanvas(id).toDataURL();
   urlCache.set(id, url);
+  urlKeys.set(url, id);
   return url;
 }
 
@@ -198,6 +200,7 @@ export function weaponIconURL(type, metal, infusion) {
   drawWeapon(pc, type, METALS[metal]?.color ?? 0xa0a0a0, infusion ? INFUSIONS[infusion]?.color : null);
   const url = pc.commit().toDataURL();
   urlCache.set(key, url);
+  urlKeys.set(url, key);
   return url;
 }
 

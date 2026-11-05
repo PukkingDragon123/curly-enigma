@@ -10,6 +10,7 @@
 //   openChest(build, chest, key) → panel handle
 import { el } from '../../core/util.js';
 import { iconURL } from '../../gfx/PixelArt.js';
+import { itemVox } from '../../ui/itemVox.js'; // blocks and craft cards as 3D voxel art
 import { ITEMS } from '../../data/items.js';
 import * as Inv from '../../core/inventory.js';
 import { slotEl, SlotDnD, bounce } from '../../ui/invGrid.js';
@@ -102,7 +103,7 @@ export function openPicker(build, o = {}) {
           render();
         },
       }, [
-        el('span', { class: 'bd-crate' }, [el('img', { class: 'pix', src: iconURL(b.item), alt: '', draggable: 'false' })]),
+        el('span', { class: 'bd-crate', 'data-vox': b.item }, [el('img', { class: 'pix', src: itemVox.src(b.item), alt: '', draggable: 'false' })]),
         el('span', { class: 'bd-name' }, it?.name || b.id),
         el('span', { class: 'bd-n' + (n ? '' : ' zero') }, freeB ? '∞' : String(n)),
       ]);
@@ -130,16 +131,16 @@ export function openPicker(build, o = {}) {
       const it = ITEMS[r.out];
       const c = canCraft(st, r, { bench });
       const needs = Object.entries(r.needs).map(([id, n]) => el('span', { class: 'bd-need' + (st.count(id) >= n ? '' : ' miss'), title: `${ITEMS[id]?.name || id}: have ${st.count(id)}` }, [
-        el('img', { class: 'pix', src: iconURL(id), alt: '' }), el('b', {}, `${n}`), el('small', {}, ITEMS[id]?.name || id),
+        el('img', { class: 'pix', src: itemVox.src(id), alt: '' }), el('b', {}, `${n}`), el('small', {}, ITEMS[id]?.name || id),
       ]));
       const card = el('div', { class: 'bd-card' + (c.ok ? ' ok' : '') + (r.bench && !bench ? ' far' : ''), style: { '--d': i * 22 + 'ms' } }, [
-        el('div', { class: 'bd-out' }, [el('img', { class: 'pix', src: iconURL(r.out), alt: '' }), r.n > 1 ? el('b', {}, '×' + r.n) : null]),
+        el('div', { class: 'bd-out', 'data-vox': r.out }, [el('img', { class: 'pix', src: itemVox.src(r.out), alt: '' }), r.n > 1 ? el('b', {}, '×' + r.n) : null]),
         el('div', { class: 'bd-txt' }, [
           el('strong', {}, it?.name || r.out),
           el('small', {}, c.owned ? 'You have one' : r.hint),
           el('div', { class: 'bd-needs' }, needs),
         ]),
-        r.bench ? el('i', { class: 'bd-bench', title: 'At a workbench' }, [el('img', { class: 'pix', src: iconURL('blk_workbench'), alt: '' })]) : null,
+        r.bench ? el('i', { class: 'bd-bench', title: 'At a workbench' }, [el('img', { class: 'pix', src: itemVox.src('blk_workbench'), alt: '' })]) : null,
         el('button', {
           class: 'bd-make', type: 'button', disabled: !c.ok,
           onclick: (e) => {

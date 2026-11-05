@@ -15,8 +15,12 @@
 // through the cutscene talk when there is one, a hold skips it), and each new control gets a prompt
 // card drawn for the device (the mouse and Space on a PC, the big button on a touch screen): pick
 // the recipe, pump the bellows, start forging, carry it to the anvil, hammer, grind, balance.
+// The pick lesson opens on the smithy dark, the coals banked low: the view glides in to the hearth,
+// he works the bellows and the fire roars up (sparks, a flash, the room lit), then he tosses you
+// his two ingots. When the pick is done the reveal pushes in slowly on it while he admires it.
 import * as THREE from 'three';
 import { pick, clamp } from '../core/util.js';
+import { iconURL } from '../gfx/PixelArt.js';
 
 const starMods = import.meta.glob('../gfx/char/starmole.js');
 const _v = new THREE.Vector3();
@@ -57,10 +61,12 @@ export class ForgeLesson {
 
   /** The opening cutscene ends (a hold, or work starting: nothing may wait behind it). */
   endCine() {
+    this.banked = false;
     const c = this.cine;
     if (!c) return;
     c.cut = true;
     this.cine = null;
+    for (const r of c.waiters || []) r();
     this.g.convo?.end?.();
     this.ui.tutor?.hide?.();
     this.ui.onboard?.cinema(false);
@@ -80,6 +86,58 @@ export class ForgeLesson {
   /** Run fn after `sec` seconds of the scene's time (stops with the scene, waits while paused). */
   later(sec, fn) { (this.timers ||= []).push({ t: this.t + sec, fn }); }
 
+  /** A pause in the opening cutscene (scene time; over at once when it's cut short). */
+  wait(sec) {
+    const c = this.cine;
+    if (!c || c.cut) return Promise.resolve();
+    return new Promise((res) => { (c.waiters ||= []).push(res); this.later(sec, res); });
+  }
+  get cut() { return !this.cine || this.cine.cut || this.sc.game.scene !== this.sc || !!this.sc.activity; }
+
+  /** His paw (world): for what he tosses you. */
+  paw() {
+    const r = this.star?.rig;
+    if (!r?.headWorld) return null;
+    return r.headWorld(new THREE.Vector3()).add(_v.set(0, -0.3, 0));
+  }
+
+  /** He tosses you something: its icon arcs from his paw into your paws (or the HUD piece `to`). */
+  toss(id, label, to = 'pack') {
+    const ob = this.ui.onboard;
+    if (!ob?.toss) return Promise.resolve();
+    this.star?.rig?.play?.('point');
+    return ob.toss(() => this.paw(), iconURL(id), to, { label });
+  }
+
+  /**
+   * The bellows: a few long pulls and the banked coals roar up (sparks, a warm flash, a shiver of
+   * the room). The scene's own bellows and fire do the rest.
+   */
+  async wakeFire() {
+    const sc = this.sc, f = sc.fire, a = this.g.audio;
+    this.star?.rig?.play?.('cheer');
+    for (let i = 0; i < 3 && !this.cut; i++) {
+      a.play('bellows', { vol: 0.8 });
+      f.nudge = 0.8;
+      sc.puff?.();
+      if (i === 2) {
+        this.banked = false;
+        f.air = 1;
+        f.nudge = 1.6;
+        a.play('ignite', { vol: 0.8 });
+        a.play('whoosh', { vol: 0.5, pitch: 0.7 });
+        const fp = sc.W?.firePos;
+        if (fp) { sc.particles?.sparks?.(fp.clone().setY(fp.y + 0.05), 46, 1.4); sc.particles?.sparkle?.(fp.clone().setY(fp.y + 0.2), 0xffd27a, 16, 0.5, 0.6); }
+        sc.post.flash = Math.max(sc.post.flash || 0, 0.22);
+        sc.post.flashColor = 0xffb060;
+        sc.addShake?.(0.02);
+      }
+      await this.wait(i === 2 ? 0.9 : 0.55);
+    }
+    this.banked = false;
+    this.star?.rig?.play?.('idle');
+  }
+
   async start() {
     const st = this.st;
     if (this.pick) return this.startPick();
@@ -89,11 +147,14 @@ export class ForgeLesson {
     if (!st.owns('bp_dagger')) st.addItem('bp_dagger', { spill: true, n: 1 });
     await this.loadStar();
     this.sc.dock?.('here');
-    // a cutscene: the bars, his welcome (a hold skips it)
+    // a cutscene: the bars, his welcome (a hold skips it), the fire woken with the bellows
     const ob = this.ui.onboard;
     this.cine = { cut: false };
     ob?.cinema(true, { skip: () => this.endCine() });
-    await this.say('My forge! Mind the sparks, they bite. First we melt your copper into an <b>ingot</b>.', 'proud', { wait: true });
+    this.banked = true;
+    await this.wait(0.6);
+    if (!this.cut) await this.wakeFire();
+    if (!this.cut) await this.say('Back at the anvil! Mind the sparks, they bite. First we melt your copper into an <b>ingot</b>.', 'proud', { wait: true });
     if (this.cine && !this.cine.cut && this.sc.game.scene === this.sc && !this.sc.activity) await this.say('Watch the paws, not the fire. I\'ll tell you when.', 'happy', { wait: true });
     this.endCine();
     if (this.sc.game.scene !== this.sc || this.stage !== 'intro') return;
@@ -106,24 +167,33 @@ export class ForgeLesson {
     this.teach('click', { title: 'Smelt your copper', subPc: '<b>Click</b> Copper Ingot, then <b>Smelt</b>', subT: '<b>Tap</b> Copper Ingot, then <b>Smelt</b>', done: () => this.stage !== 'smeltMenu' });
   }
 
-  /** The pickaxe lesson: his copper, a short cutscene, then the pick head on the forge. */
+  /** The pickaxe lesson: the forge woken, his copper tossed to you, then the pick head on the forge. */
   async startPick() {
     const st = this.st;
     if (st.count('copper_ingot') < 2) st.addItem('copper_ingot', { spill: true, q: 80, n: 2 - st.count('copper_ingot') });
     st.data.energy = Math.max(st.data.energy || 0, 60);
+    // the coals are banked low: the smithy is dark when you come in
+    this.banked = true;
     await this.loadStar();
-    this.sc.dock?.('here');
     const ob = this.ui.onboard;
     this.cine = { cut: false };
     ob?.cinema(true, { skip: () => this.endCine() });
-    await this.say('My forge! Mind the sparks, they bite. Here: <b>two copper ingots</b> I put by. A pick head wants both.', 'proud', { wait: true });
-    if (this.cine && !this.cine.cut && this.sc.game.scene === this.sc && !this.sc.activity) await this.say('Heat it, hammer it into a curve, cool it off. Your own pick, made by your own paws. Nothing digs better.', 'happy', { wait: true });
+    // a slow glide in from the door to the hearth
+    if (this.sc.view?.mode === 'walk' && !this.sc.activity) this.sc.dock?.('hearth', { dur: 3.2 });
+    ob?.caption?.('Old Star\'s smithy', 'Sixty years of sparks', 3.6);
+    await this.wait(1.2);
+    if (!this.cut) await this.say('My forge! She\'s been asleep since breakfast. Watch this.', 'proud', { wait: true });
+    if (!this.cut) await this.wakeFire();
+    if (!this.cut) await this.say('There she is. Mind the sparks, they bite. Here: <b>two copper ingots</b> I put by. A pick head wants both.', 'happy', { wait: true });
+    if (!this.cut) { this.toss('copper_ingot', '+2 <b>copper ingots</b>'); await this.wait(0.35); this.toss('copper_ingot'); await this.wait(0.9); }
+    if (!this.cut) await this.say('Heat it, hammer it into a curve, cool it off. Your own pick, made by your own paws. Nothing digs better.', 'happy', { wait: true });
     this.endCine();
     if (this.sc.game.scene !== this.sc || this.stage !== 'intro') return;
     this.stage = 'pick';
     if (!this.sc.activity && !this.sc.menus.startPart('pick_first')) {
       // (can't be made: say why, and let you try again from the menu)
-      this.say('Hm. Something\'s not right with the fire. Try the <b>Coop parts</b> page of the forge book.', 'worried', { dur: 5 });
+      if (this.sc.view?.mode === 'dock' && !this.sc.activity && this.sc.menus.mode === 'hidden') this.sc.undock?.();
+      this.say('Hm. Something\'s not right with the fire. Try the <b>parts</b> page of the forge book.', 'worried', { dur: 5 });
     }
   }
 
@@ -161,11 +231,12 @@ export class ForgeLesson {
       this.ui.tutor?.hide('step');
       this.untaught();
       const g = d.grade?.g || 'C';
-      this.later(1.6, () => {
+      this.pushIn = true; // the reveal pushes in slowly on your pick
+      this.later(1.2, () => {
         this.say(g === 'S' || g === 'A' ? 'Now <b>that</b> is a pick. I\'d trade you mine for it, if mine didn\'t know my paws.' : g === 'B' || g === 'C' ? 'A good honest pick. It\'ll bite rock. Your granny would hang it over the fire.' : 'It\'s... pick-ish. It\'ll dig. You\'ll make a better one when you\'re rich.', g === 'F' || g === 'D' ? 'laugh' : 'proud', { dur: 6 });
         this.star?.rig?.play?.(g === 'F' || g === 'D' ? 'laugh' : 'cheer');
       });
-      this.later(7.4, () => this.say('Hang it on your belt. Now come on: the cage lift. Time you dug something.', 'happy', { key: 'step', dur: Infinity }));
+      this.later(6.0, () => this.say('Hang it on your belt. Now come on: the cage lift. Time you dug something.', 'happy', { key: 'step', dur: Infinity }));
       this.stage = 'leave';
       return;
     }
@@ -224,11 +295,12 @@ export class ForgeLesson {
               : ['Well... it\'s pointy at one end. We all start somewhere. Mine looked like a spoon.', 'laugh'];
       this.ui.tutor?.hide('step');
       this.untaught();
-      this.later(1.8, () => {
+      this.pushIn = true;
+      this.later(1.4, () => {
         this.say(line[0], line[1], { dur: 6 });
         this.star?.rig?.play?.(g === 'F' || g === 'D' ? 'laugh' : 'cheer');
       });
-      this.later(8.2, () => {
+      this.later(6.6, () => {
         this.say('That\'s yours: sell it in town, or keep it for luck. Now come on, over to the fire pit: all this hammering, I\'m starving. We\'ll <b>cook</b>.', 'happy', { key: 'step', dur: Infinity });
         this.stage = 'leave';
       });
@@ -293,6 +365,14 @@ export class ForgeLesson {
     this.t += dt;
     const sc = this.sc, a = sc.activity;
     if (this.cine && a) this.endCine();
+    // banked coals: a dull glow till he works the bellows
+    if (this.banked && sc.fire) { sc.fire.glow = Math.min(sc.fire.glow, 0.12); sc.fire.air = 0; }
+    // the reveal of what you made: the view creeps in on it
+    const v = sc.view;
+    if (this.pushIn && v?.mode === 'dock' && v.name === 'reveal' && v.t >= 1 && v.to) {
+      v.to.fov0 ??= v.to.fov;
+      v.to.fov = Math.max(v.to.fov0 * 0.8, v.to.fov - dt * 1.6);
+    }
     if (this.timers?.length) {
       const due = this.timers.filter((x) => x.t <= this.t);
       if (due.length) { this.timers = this.timers.filter((x) => x.t > this.t); for (const x of due) { try { x.fn(); } catch (e) { console.warn(e); } } }

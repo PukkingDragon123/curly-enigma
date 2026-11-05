@@ -13,7 +13,17 @@
 //   - spot(target): a ring pulse and a pointing paw on a real control or HUD piece.
 //   - mark(pos): a bobbing marker over a place in the world (clamped to the screen edge).
 //   - talk(html, opts, fallback): Old Star's lines go through game.convo when it exists, else fallback().
-// Test hooks: ui.onboard.debug.{ state(), level(n), complete(), skip(), hidden(), history(), cinema(on) }.
+//   - chapter(n, title, sub): a lesson's title card (big carved letters dropping in, a rule, a chime).
+//   - lessonDone(n, title, sub): the same card comes back and a red LEARNED stamp slams onto it, a
+//     fanfare, confetti sparks; the lesson's medal is kept (state.data.onboard.medals).
+//   - graduate(title, sub): the end of the lessons: the four medals pop in one by one, a stamp,
+//     confetti and a fanfare.
+//   - caption(title, sub): a film caption for a place (top left, under the bar), fades by itself.
+//   - toss(from, icon, to): something thrown to you (Old Star's coal, the copper, his chisel): a
+//     pixel icon arcs from a screen point (or a world point) to a HUD piece and lands with a pop.
+//   - confetti(x, y, n): a burst of pixel confetti and sparks at a screen point.
+// None of these block input; each resolves when it's gone.
+// Test hooks: ui.onboard.debug.{ state(), level(n), complete(), skip(), hidden(), history(), cinema(on), medals() }.
 import { el, clamp } from '../core/util.js';
 import { Px, art } from './uiArt.js';
 import { SPR } from './uiSprites.js';
@@ -43,6 +53,8 @@ const PIECES = [
 ];
 
 const isTouch = () => document.documentElement.classList.contains('is-touch');
+/** Set a CSS custom property on an element (el()'s style object can't), and return it. */
+const cssVar = (e, k, v) => { e.style.setProperty(k, String(v)); return e; };
 const KEY_NAME = { Space: 'Space', ShiftLeft: 'Shift', Enter: 'Enter', Escape: 'Esc', Tab: 'Tab' };
 const keyLabel = (code) => KEY_NAME[code] || code.replace(/^Key|^Digit/, '');
 
@@ -105,7 +117,38 @@ function sparkSprite(color = 0xfff0b0) {
   return p;
 }
 
+/** A lesson medal on its ribbon (18×26): gold with Old Star's star, or a dim empty socket (lit false). */
+function medalSprite(lit = true, ribbon = 0xc23c2c) {
+  const p = new Px(18, 26);
+  if (lit) {
+    // the ribbon: two tails in a V, a fold where it meets the ring
+    const dk = 0x5a140c, lt = 0xff9a7a;
+    p.poly([[3, 0], [8, 0], [10, 11], [6, 13]], ribbon);
+    p.poly([[10, 0], [15, 0], [12, 13], [8, 11]], ribbon);
+    for (let y = 0; y < 11; y++) { p.set(3 + Math.floor(y * 0.33), y, lt); p.set(14 - Math.floor(y * 0.2), y, dk); }
+    p.rect(7, 10, 4, 3, 0xa8772c);
+  }
+  // the disc
+  const gold = lit ? { hi: 0xfff3c0, lt: 0xf7d97c, base: 0xdcae4e, dk: 0xa8772c, dd: 0x6e4a1a } : { hi: 0x6a5a48, lt: 0x5a4a3a, base: 0x46382c, dk: 0x34281e, dd: 0x241a12 };
+  p.disk(9, 17.5, 7.6, gold.dk);
+  p.disk(9, 17.5, 6.4, gold.base);
+  p.each((x, y, c) => {
+    const t = (x - 9) / 6 + (y - 17.5) / 6;
+    if (c === gold.base && t < -0.75) return gold.lt;
+    if (c === gold.base && t > 0.8) return gold.dk;
+    return undefined;
+  });
+  // Old Star's star (raised, lit from the top left)
+  const star = [[9, 13], [9, 14], [8, 15], [9, 15], [10, 15], [5, 16], [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [12, 16], [13, 16], [7, 17], [8, 17], [9, 17], [10, 17], [11, 17], [7, 18], [8, 18], [9, 18], [10, 18], [11, 18], [6, 19], [7, 19], [11, 19], [12, 19], [6, 20], [12, 20], [5, 21], [13, 21]];
+  for (const [x, y] of star) p.set(x, y, lit ? gold.hi : gold.dk);
+  for (const [x, y] of star) if (lit && !star.some(([a, b]) => a === x && b === y + 1)) p.set(x, y + 1, gold.dk);
+  if (lit) { p.set(5, 13, 0xffffff); p.set(4, 14, gold.hi); }
+  p.outline(INK);
+  return p;
+}
+
 const ART = {
+  medal: (lit, rib) => art('ob:medal:' + (lit ? 1 : 0) + ':' + (rib || ''), () => medalSprite(lit, rib)),
   mouse: (lit) => art('ob:mouse:' + lit, () => mouseSprite(lit)),
   paw: () => art('ob:paw', pawSprite),
   ring: (c) => art('ob:ring:' + (c || ''), () => ringSprite(c)),
@@ -148,7 +191,7 @@ export const CONTROLS = {
   tool: { title: 'Change tool', pc: { sub: 'A number key, or the wheel', glyph: () => GLYPH.keys(['Digit1', 'Digit2', 'Digit3']), keys: ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8'] }, t: { sub: 'Tap a tool on your belt', glyph: () => GLYPH.btn('tool'), spot: 'belt' } },
   pack: { title: 'Your backpack', pc: { sub: 'Press <kbd>I</kbd> to look inside', glyph: () => GLYPH.keys(['KeyI']), keys: ['KeyI'] }, t: { sub: 'Tap the backpack', glyph: () => GLYPH.icon(SPR.pack(1)), spot: 'pack' } },
   book: { title: 'Your book', pc: { sub: 'Press <kbd>B</kbd>', glyph: () => GLYPH.keys(['KeyB']), keys: ['KeyB'] }, t: { sub: 'Tap the book', glyph: () => GLYPH.icon(SPR.bookPeek()), spot: 'book' } },
-  map: { title: 'The map', pc: { sub: 'Press <kbd>M</kbd>', glyph: () => GLYPH.keys(['KeyM']), keys: ['KeyM'] }, t: { sub: 'Tap the radar', glyph: () => GLYPH.icon(DSPR.radarRing()), spot: 'radar' } },
+  map: { title: 'The layers', pc: { sub: 'Press <kbd>M</kbd> to see the layers below', glyph: () => GLYPH.keys(['KeyM']), keys: ['KeyM'] }, t: { sub: 'Tap the radar to see the layers below', glyph: () => GLYPH.icon(DSPR.radarRing()), spot: 'radar' } },
   guard: { title: 'Guard', pc: { sub: 'Hold the <b>right button</b> or <kbd>F</kbd>', glyph: () => GLYPH.mouseKey('right', 'KeyF'), keys: ['KeyF'], mouse: 2 }, t: { sub: 'Hold the shield button', glyph: () => GLYPH.btn(document.querySelector('.d-block .tc-ic')?.src || 'use'), spot: 'block' } },
   snack: { title: 'Snack', pc: { sub: 'Press <kbd>Q</kbd> to eat', glyph: () => GLYPH.keys(['KeyQ']), keys: ['KeyQ'] }, t: { sub: 'Tap the snack button', glyph: () => GLYPH.btn('snack'), spot: 'snack' } },
   place: { title: 'Build', pc: { sub: 'Aim at the wall, <b>click</b> to place', glyph: () => GLYPH.mouse('left'), mouse: 0 }, t: { sub: 'Aim, then press the big button', glyph: () => GLYPH.big(), spot: 'dig' } },
@@ -363,28 +406,197 @@ export class Onboard {
   }
 
   /**
-   * A chapter card for a lesson: "Lesson 2" over its name in big carved letters, a rule drawn out under
-   * it, a line beneath, a chime; it holds a moment and fades. Never blocks input. Returns a promise
-   * that resolves when it's gone.
+   * A chapter card for a lesson: "Lesson 2" over its name in big carved letters (dropping in one by
+   * one), a rule drawn out under it, a line beneath, a chime; it holds a moment and fades. Never
+   * blocks input. Returns a promise that resolves when it's gone.
    */
   chapter(n, title, sub = '', dur = 3.2) {
+    const card = this.lessonCard(n, title, sub);
+    this.game.audio.play('ding', { vol: 0.8 });
+    this.game.audio.play('page', { vol: 0.4 });
+    return this.holdCard(card, dur);
+  }
+
+  /** The carved title card (chapter, lesson done): small kicker, big letters, a rule, a line. */
+  lessonCard(n, title, sub = '', cls = '') {
     this.chapterEl?.remove();
-    const card = el('div', { class: 'ob-chapter', 'aria-live': 'polite' }, [
+    const letters = el('b', { class: 'ob-chapter-t', 'aria-label': title }, [...String(title)].map((c, i) => cssVar(el('span', { 'aria-hidden': 'true' }, c === ' ' ? '\u00a0' : c), '--i', i)));
+    const card = el('div', { class: 'ob-chapter ' + cls, 'aria-live': 'polite' }, [
+      el('i', { class: 'ob-chapter-glow' }),
       el('small', {}, typeof n === 'number' ? `Lesson ${n}` : String(n)),
-      el('b', {}, title),
+      letters,
       el('i', { class: 'ob-chapter-rule' }),
-      sub ? el('span', {}, sub) : null,
+      sub ? el('span', { class: 'ob-chapter-sub' }, sub) : null,
     ]);
     this.layer.append(card);
     this.chapterEl = card;
-    this.game.audio.play('ding', { vol: 0.8 });
-    this.game.audio.play('page', { vol: 0.4 });
     void card.offsetWidth;
     card.classList.add('on');
+    return card;
+  }
+
+  holdCard(card, dur) {
     return new Promise((res) => {
       setTimeout(() => card.classList.add('off'), dur * 1000);
       setTimeout(() => { card.remove(); if (this.chapterEl === card) this.chapterEl = null; res(); }, dur * 1000 + 700);
     });
+  }
+
+  /**
+   * A lesson is over: its card comes back, a red LEARNED stamp slams onto it (a thud, the card
+   * jolts), a fanfare and a burst of confetti sparks. The medal is kept for the graduation.
+   */
+  lessonDone(n, title, sub = '', dur = 3.0) {
+    const d = this.data;
+    if (d && typeof n === 'number') { d.medals ||= []; if (!d.medals.includes(n)) { d.medals.push(n); this.game.state.dirty = true; } }
+    const card = this.lessonCard(n, title, sub, 'done');
+    const stamp = el('i', { class: 'ob-stamp' }, [el('span', {}, 'Learned')]);
+    const medal = img(ART.medal(true), 'ob-chapter-medal');
+    card.append(stamp, medal);
+    const a = this.game.audio;
+    a.play('fanfare', { vol: 0.8 });
+    setTimeout(() => {
+      if (!card.isConnected) return;
+      card.classList.add('stamped');
+      a.play('thud', { vol: 0.9 });
+      a.play('clunk', { vol: 0.5 });
+      a.play('sparkle', { vol: 0.5 });
+      const r = stamp.getBoundingClientRect();
+      this.confetti(r.left + r.width / 2, r.top + r.height / 2, 46);
+    }, 620);
+    return this.holdCard(card, dur);
+  }
+
+  /**
+   * The lessons are all done: "Apprentice" over the four medals (each pops in with a rising chime;
+   * one not earned stays a dim socket), a gold stamp, confetti and a fanfare.
+   */
+  graduate(title = 'Apprentice', sub = '', dur = 4.8) {
+    const got = new Set(this.data?.medals || [1, 2, 3, 4]);
+    const card = this.lessonCard('Old Star\'s lessons', title, sub, 'grad');
+    const names = ['The Pick', 'The Dig', 'The Forge', 'The Hearth'];
+    const row = el('div', { class: 'ob-medals' }, names.map((nm, i) => cssVar(el('figure', { class: 'ob-medal' + (got.has(i + 1) ? '' : ' none') }, [img(ART.medal(got.has(i + 1), [0xc23c2c, 0x3f7ec8, 0x5a9a3a, 0xd9901e][i]), 'ob-medal-img'), el('figcaption', {}, nm)]), '--i', i)));
+    const stamp = el('i', { class: 'ob-stamp gold' }, [el('span', {}, 'Graduated')]);
+    card.append(row, stamp);
+    const a = this.game.audio;
+    a.play('fanfare', { vol: 0.9 });
+    names.forEach((_, i) => setTimeout(() => {
+      if (!card.isConnected) return;
+      a.tone?.({ f: 660 * Math.pow(2, (i * 3) / 12), type: 'square', dur: 0.14, vol: 0.05, filter: 'lowpass', ff: 3000 });
+      a.play('ding', { vol: 0.35 });
+      const m = row.children[i]?.getBoundingClientRect();
+      if (m && got.has(i + 1)) this.confetti(m.left + m.width / 2, m.top + m.height * 0.4, 10, { up: 0.6 });
+    }, 700 + i * 330));
+    setTimeout(() => {
+      if (!card.isConnected) return;
+      card.classList.add('stamped');
+      a.play('thud', { vol: 0.9 });
+      a.play('firework', { vol: 0.6 });
+      a.play('success', { vol: 0.6 });
+      const r = card.getBoundingClientRect();
+      this.confetti(r.left + r.width / 2, r.top + r.height * 0.45, 70, { spread: 1.6 });
+    }, 700 + names.length * 330 + 250);
+    return this.holdCard(card, dur);
+  }
+
+  /** A film caption for a place: top left under the bar, a gold rule, letter-spaced. Fades by itself. */
+  caption(title, sub = '', dur = 4) {
+    this.captionEl?.remove();
+    const c = el('div', { class: 'ob-caption' }, [el('i', { class: 'ob-caption-rule' }), el('b', {}, title), sub ? el('span', {}, sub) : null]);
+    this.layer.append(c);
+    this.captionEl = c;
+    void c.offsetWidth;
+    c.classList.add('on');
+    return new Promise((res) => {
+      setTimeout(() => c.classList.add('off'), dur * 1000);
+      setTimeout(() => { c.remove(); if (this.captionEl === c) this.captionEl = null; res(); }, dur * 1000 + 900);
+    });
+  }
+
+  /** Pixel confetti and sparks bursting from a screen point and falling. o: { up (0..1), spread }. */
+  confetti(x, y, n = 30, o = {}) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const wrap = el('div', { class: 'ob-confetti', style: { left: x + 'px', top: y + 'px' } });
+    const cols = ['#ffd56a', '#fff3c0', '#f6be4a', '#e8604a', '#ff9ab8', '#8ac85a', '#7fc0f0', '#fff'];
+    const up = o.up ?? 1, spread = o.spread ?? 1;
+    for (let i = 0; i < n; i++) {
+      const spark = i % 4 === 0;
+      const b = spark ? img(ART.spark(), 'ob-cf spark') : el('i', { class: 'ob-cf' });
+      const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.25 * spread;
+      const v = (60 + Math.random() * 110) * (0.6 + 0.4 * up);
+      b.style.setProperty('--dx', (Math.cos(ang) * v * 1.3).toFixed(0) + 'px');
+      b.style.setProperty('--dy', (Math.sin(ang) * v).toFixed(0) + 'px');
+      b.style.setProperty('--fall', (90 + Math.random() * 140).toFixed(0) + 'px');
+      b.style.setProperty('--r', ((Math.random() - 0.5) * 900).toFixed(0) + 'deg');
+      b.style.setProperty('--t', (1.1 + Math.random() * 0.9).toFixed(2) + 's');
+      if (!spark) { b.style.background = cols[i % cols.length]; if (i % 3 === 0) b.classList.add('long'); }
+      b.style.animationDelay = (Math.random() * 0.08).toFixed(2) + 's';
+      wrap.append(b);
+    }
+    this.layer.append(wrap);
+    setTimeout(() => wrap.remove(), 2400);
+  }
+
+  /**
+   * Something thrown to you: a pixel icon arcs from `from` (screen { x, y }, or a function giving a
+   * world point, put on screen through the scene's camera) to `to` (a HUD piece: 'pack' 'belt' 'book'
+   * …, an element, or a screen point), spinning, and lands with a pop, a sparkle and a little bump of
+   * the piece it lands on. Resolves when it lands.
+   */
+  toss(from, src, to = 'pack', o = {}) {
+    let p0 = from;
+    if (typeof from === 'function') {
+      try { const w = from(); const s = w && this.game.scene?.toScreen?.(w); p0 = s && s.visible !== false && Number.isFinite(s.x) ? { x: s.x, y: s.y } : null; } catch (e) { p0 = null; }
+    }
+    const W = window.innerWidth, H = window.innerHeight;
+    if (!p0 || !Number.isFinite(p0.x)) p0 = { x: W * 0.62, y: H * 0.55 };
+    const node = el('div', { class: 'ob-toss' }, [img(src, 'ob-toss-ic'), el('i', { class: 'ob-toss-sh' })]);
+    this.layer.append(node);
+    this.game.audio.play('whoosh', { vol: 0.35, pitch: 1.3 });
+    return new Promise((res) => {
+      const t = { node, p0, to, t: 0, dur: o.dur ?? 0.85, spin: (Math.random() < 0.5 ? -1 : 1) * (1.5 + Math.random()), res, o };
+      (this.tosses ||= []).push(t);
+      this.placeToss(t);
+    });
+  }
+
+  tossTarget(t) {
+    const to = t.to;
+    if (to && typeof to === 'object' && !(to instanceof Element) && Number.isFinite(to.x)) return { x: to.x, y: to.y, el: null };
+    const e = to instanceof Element ? to : this.resolveTarget(to);
+    const r = e?.getBoundingClientRect?.();
+    if (r && r.width > 2) return { x: r.left + r.width / 2, y: r.top + r.height / 2, el: e };
+    // (that piece isn't on screen: into your paws, low in the middle)
+    return { x: window.innerWidth / 2, y: window.innerHeight * 0.86, el: null };
+  }
+
+  placeToss(t) {
+    const k = clamp(t.t / t.dur, 0, 1);
+    const q = this.tossTarget(t);
+    const x = t.p0.x + (q.x - t.p0.x) * k;
+    const lift = Math.min(window.innerHeight * 0.32, 80 + Math.abs(q.x - t.p0.x) * 0.25);
+    const y = t.p0.y + (q.y - t.p0.y) * k - Math.sin(k * Math.PI) * lift;
+    const sc = 1.5 - 0.7 * k + Math.sin(k * Math.PI) * 0.35;
+    t.node.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+    t.node.firstChild.style.transform = `translate(-50%, -50%) scale(${sc.toFixed(3)}) rotate(${(t.spin * k * 360).toFixed(0)}deg)`;
+    return q;
+  }
+
+  tickTosses(dt) {
+    if (!this.tosses?.length) return;
+    for (const t of [...this.tosses]) {
+      t.t += dt;
+      const q = this.placeToss(t);
+      if (t.t < t.dur) continue;
+      this.tosses.splice(this.tosses.indexOf(t), 1);
+      t.node.remove();
+      const a = this.game.audio;
+      a.play('pickup', { vol: 0.6 });
+      a.play('sparkle', { vol: 0.35 });
+      this.burst({ left: q.x - 10, top: q.y - 10, width: 20, height: 20, bottom: q.y + 10 }, t.o.label || null);
+      if (q.el) { q.el.classList.remove('ob-bump'); void q.el.offsetWidth; q.el.classList.add('ob-bump'); setTimeout(() => q.el.classList.remove('ob-bump'), 600); }
+      t.res();
+    }
   }
 
   /** The bars are as tall as the cutscene talk's (src/ui/Convo.js), so one hands over to the other unseen. */
@@ -617,6 +829,7 @@ export class Onboard {
   // ------------------------------------------------------------ per frame (from ui.update)
   update(dt) {
     this.tickSkip(dt);
+    this.tickTosses(dt);
     const h = this.prompt;
     if (h && !h.done) {
       h.t += dt;
@@ -650,6 +863,8 @@ export class Onboard {
   /** Everything the layer shows goes (scene change, skip). The level stays. */
   clear() {
     this.closePrompt(true);
+    for (const t of this.tosses || []) { t.node.remove(); t.res(); }
+    this.tosses = [];
     for (const s of [...this.spots]) s.remove();
     for (const m of [...this.marks]) m.remove();
     this.cinema(false);
@@ -668,6 +883,10 @@ export class Onboard {
       teach: (id) => this.teach(id, {}).id,
       spot: (t) => !!this.spot(t),
       clear: () => this.clear(),
+      medals: () => (this.data?.medals || []).slice(),
+      lessonDone: (n = 1, t = 'The Pick') => (this.lessonDone(n, t, 'Forged your own pickaxe'), true),
+      graduate: () => (this.graduate('Apprentice', 'Dig, forge, cook and sell.'), true),
+      toss: (to = 'pack') => (this.toss({ x: innerWidth * 0.6, y: innerHeight * 0.5 }, SPR.pack(1), to), true),
     };
   }
 }

@@ -4,6 +4,7 @@
 // leather backpack, the Index Book, shop counters and the pause journal.
 import { el } from '../core/util.js';
 import { iconURL, specURL, weaponIconURL } from '../gfx/PixelArt.js';
+import { itemVox } from './itemVox.js'; // items as 3D voxel art in toasts and discovery cards
 import { critterIconURL } from '../gfx/critters32.js';
 import { ITEMS } from '../data/items.js';
 import { milestoneText } from '../data/upgrades.js';
@@ -262,7 +263,7 @@ export class UI {
     const color = SEAL_FOR[kind] || 'brown';
     const t = el('div', { class: 'toast ' + kind, role: 'status' }, [
       el('img', { class: 'pix toast-tack', src: SPR.tack(TACK_FOR[kind] || 0xc23c2c), alt: '' }),
-      icon ? el('img', { class: 'pix toast-icon', src: icon, alt: '' }) : null,
+      icon ? itemVox.img(icon, 'pix toast-icon', { pop: true, game: this.game }) : null, // (an item's icon comes in 3D, with a little turn)
       el('span', { class: 'toast-text', html: text }),
       el('img', { class: 'pix toast-seal', src: SPR.seal(color, kind === 'good' ? 'check' : kind === 'bad' ? 'x' : 'ring'), alt: '' }),
     ]);
@@ -309,9 +310,9 @@ export class UI {
   indexIcon(cat, id) {
     if (cat === 'mechanic') return BOOK();
     if (cat === 'critter') return creatureIconURL(id);
-    if (cat === 'weapon') return weaponIconURL(id, 'iron');
-    if (cat === 'recipe') return iconURL(id);
-    return ITEMS[id] ? iconURL(id) : BOOK();
+    if (cat === 'weapon') return itemVox.weapon(id, 'iron');
+    if (cat === 'recipe') return itemVox.src(id);
+    return ITEMS[id] ? itemVox.src(id) : BOOK();
   }
 
   setPrompt(html) {

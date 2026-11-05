@@ -353,7 +353,7 @@ export class Traders {
   }
 
   /** three.js lights for the toon-shaded keepers (the rock lights itself). Others in the scene
-   * (Nugget's lamp, Old Star's) light them too, so ours only make up the difference. */
+   * (Old Star's lamp) light them too, so ours only make up the difference. */
   lightKeepers(b, eye) {
     if (!b || b.dist > 14) { this.amb.intensity = 0; this.key.intensity = 0; this.fill.intensity = 0; return; }
     if ((this.otherT = (this.otherT || 0) - 1) <= 0) {

@@ -3,6 +3,7 @@
 // ledger and a brass balance; the Surface Express is a brass ticket window with the golden ticket.
 import { el, formatGoldFull, pick, makeRng } from '../core/util.js';
 import { iconURL, weaponIconURL } from '../gfx/PixelArt.js';
+import { itemVox } from './itemVox.js'; // the goods as 3D voxel art (turning when picked or hovered)
 import { ITEMS, sellPrice, CAT_LABEL } from '../data/items.js';
 import { SHOPS } from '../data/shops.js';
 import { FURNITURE, FLOORS, WALLS } from '../data/furniture.js';
@@ -122,7 +123,7 @@ export function openShop(game, shopId) {
       class: 'sh-good' + (picked === id ? ' on' : '') + (owned ? ' owned' : '') + (!owned && !can ? ' dear' : ''), title: it.name, 'aria-label': `${it.name}, ${tagTxt}`,
       onclick: () => { picked = id; game.audio.play('ui_click'); for (const n of stock.children) n.classList.toggle('on', n === b); renderCounter(true); },
     }, [
-      el('span', { class: 'sh-item' }, [el('img', { class: 'pix', src: iconURL(id), alt: '' })]),
+      el('span', { class: 'sh-item', 'data-vox': id }, [el('img', { class: 'pix', src: itemVox.src(id), alt: '' })]),
       el('span', { class: 'sh-tag' }, [owned ? null : el('img', { class: 'pix', src: SPR.coinMini(), alt: '' }), tagTxt]),
     ]);
     return b;
@@ -172,7 +173,7 @@ export function openShop(game, shopId) {
     }
     const have = !unique && st.count(id) ? `You have ${st.count(id)}` : '';
     const card = el('div', { class: 'sh-card' + (pop ? ' pop' : '') }, [
-      el('div', { class: 'sh-card-icon' }, [el('img', { class: 'pix', src: iconURL(id), alt: '' })]),
+      el('div', { class: 'sh-card-icon' }, [itemVox.img(id, 'pix', { turn: true })]),
       el('div', { class: 'sh-card-txt' }, [
         el('div', { class: 'sh-card-name' }, [el('b', {}, it.name), el('small', {}, CAT_LABEL[it.cat] || '')]),
         el('p', {}, it.desc || ''),
@@ -212,7 +213,7 @@ export function openShop(game, shopId) {
     for (const w of st.data.weapons) {
       total += w.value;
       ledger.append(el('div', { class: 'sh-line' }, [
-        el('img', { class: 'pix', src: weaponIconURL(w.type, w.metal, w.infusion), alt: '' }),
+        el('img', { class: 'pix', src: itemVox.weapon(w.type, w.metal, w.infusion), alt: '' }),
         el('div', { class: 'sh-line-txt' }, [el('b', {}, w.name), el('span', { html: `Grade <b style="color:${gradeFor(w.score).color}" class="sh-grade">${w.grade}</b> · metal ${w.matQ}%` })]),
         price(w.value),
         el('div', { class: 'sh-line-btns' }, [el('button', { class: 'btn', onclick: () => { const g = st.sellWeapon(w.uid); afterSell(g); } }, 'Sell')]),
@@ -226,7 +227,7 @@ export function openShop(game, shopId) {
         ? [pips(g.avgQ, g.lots.some((l) => l.p)), el('span', { html: `${g.n} pcs · <b style="color:${qColor(g.avgQ)}">${g.avgQ}%</b>${g.lots.some((l) => l.p) ? ` · ${g.lots.filter((l) => l.p).length} pristine` : ''}` })]
         : [el('span', {}, `${g.n} pcs · ${CAT_LABEL[it.cat] || ''}`)];
       ledger.append(el('div', { class: 'sh-line' }, [
-        el('img', { class: 'pix', src: iconURL(g.id), alt: '' }),
+        el('img', { class: 'pix', src: itemVox.src(g.id), alt: '' }),
         el('div', { class: 'sh-line-txt' }, [el('b', {}, it.name), el('span', { class: 'sh-meta' }, meta)]),
         price(each),
         el('div', { class: 'sh-line-btns' }, [
@@ -262,7 +263,7 @@ export function openShop(game, shopId) {
     const metal = METALS[c.metal].name, type = WEAPON_TYPES[c.type].name;
     const poster = el('div', { class: 'sh-poster' + (c.done ? ' done' : '') }, [
       el('small', {}, c.done ? 'Filled' : 'Wanted'),
-      el('div', { class: 'sh-poster-icon' }, [el('img', { class: 'pix', src: weaponIconURL(c.type, c.metal), alt: '' })]),
+      el('div', { class: 'sh-poster-icon' }, [itemVox.img(itemVox.wkey(c.type, c.metal), 'pix', { turn: !c.done })]),
       el('b', {}, c.done ? 'Commission filled. Thank you!' : `${metal} ${type}`),
       el('p', {}, c.done ? 'A new request goes up tomorrow.' : `Grade ${c.minGrade} or better. Pays ${c.bonus}× its value. A new request goes up every day.`),
     ]);
@@ -273,7 +274,7 @@ export function openShop(game, shopId) {
       if (!matches.length) ledger.append(el('p', { class: 'sh-note sh-empty' }, st.owns('bp_' + c.type) ? 'You don\'t have a matching weapon yet.' : `You'll need the ${type} plans from Inkwell Plans.`));
       for (const w of matches) {
         ledger.append(el('div', { class: 'sh-line' }, [
-          el('img', { class: 'pix', src: weaponIconURL(w.type, w.metal, w.infusion), alt: '' }),
+          el('img', { class: 'pix', src: itemVox.weapon(w.type, w.metal, w.infusion), alt: '' }),
           el('div', { class: 'sh-line-txt' }, [el('b', {}, w.name), el('span', {}, `Grade ${w.grade}`)]),
           price(Math.round(w.value * c.bonus)),
           el('div', { class: 'sh-line-btns' }, [el('button', { class: 'btn', onclick: () => { const g = st.sellWeapon(w.uid, c.bonus); c.done = true; afterSell(g); speak('Splendid! Exactly what my client wanted.'); } }, 'Deliver')]),
@@ -295,7 +296,7 @@ export function openShop(game, shopId) {
         el('span', {}, ITEMS.exit_ticket.desc.split('·').pop().trim()),
         el('div', { class: 'sh-gticket-price' }, [price(GOAL_GOLD, 'big')]),
       ]),
-      el('img', { class: 'pix sh-gticket-icon', src: iconURL('exit_ticket'), alt: '' }),
+      el('img', { class: 'pix sh-gticket-icon', src: itemVox.src('exit_ticket'), alt: '' }),
     ]);
     const gauge = el('div', { class: 'sh-savings' }, [
       el('div', { class: 'sh-savings-row' }, [el('img', { class: 'pix', src: SPR.jar(g / GOAL_GOLD), alt: '' }), el('div', {}, [

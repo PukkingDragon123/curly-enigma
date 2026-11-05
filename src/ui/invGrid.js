@@ -1,4 +1,4 @@
-// Slot grids and the drag & drop engine for the backpack, the coop and the trunk.
+// Slot grids and the drag & drop engine for the backpack and the trunk.
 //
 // Pointer events cover mouse, pen and touch alike:
 //   drag a stack            move it (merge into the same item, swap with another, fill a gap)
@@ -6,8 +6,8 @@
 //                           it down; right-click a slot puts down one; dragging on carries it)
 //   click / tap             pick it (the paper tag with details and actions)
 //   double-click / double-tap / shift-click   send the stack to the other open container
-//   drop on the toss pit    throw it away; drop on Nugget's bowl to feed her
-// The backpack and the coop are grids (core/inventory.js): their stacks are tiles spanning their
+//   drop on the toss pit    throw it away
+// The backpack is a grid (core/inventory.js): its stacks are tiles spanning their
 // footprint on a .inv-gridbox[data-gridc]; a drag drops where the tile's shadow shows (green: it
 // fits, merges or swaps; red: it doesn't), and R / the mouse wheel / the Turn button turns what
 // you hold a quarter.
@@ -24,8 +24,7 @@ import { qColor, pips } from './common.js';
 /** Icon URL for a stack. */
 export function stackIcon(s) {
   if (!s) return '';
-  if (s.w) return weaponIconURL(s.w.type, s.w.metal, s.w.infusion);
-  return itemVox.url(s.id) || iconURL(s.id); // (in 3D, as voxels, once the renderer's lent: itemVox.js)
+  return itemVox.stack(s); // in 3D, as voxels (itemVox.js): the flat icon until its still is made
 }
 /** Display name for a stack. */
 export function stackName(s) { return !s ? '' : s.w ? s.w.name : ITEMS[s.id]?.name || s.id; }
@@ -105,11 +104,11 @@ const LONG_MS = 430;
 /**
  * The drag & drop engine. ctx:
  *   root                the element slots live in (events are delegated)
- *   slots(c)            → the slot array of container c ('bag' | 'coop' | 'trunk')
+ *   slots(c)            → the slot array of container c ('bag' | 'trunk')
  *   cap(c)              → how many slots of c can be used (Infinity = grows)
  *   other(c)            → the container a quick-move sends to (or null)
  *   move(c, i, d, j, k) → do the transfer (returns units moved)
- *   toss(c, i, k), feed(c, i)      drop targets ([data-drop="toss" | "feed"])
+ *   toss(c, i, k)       the drop target [data-drop="toss"]
  *   select(c, i, node)  a click / tap
  *   hover(c, i, node, e) | hover(null)   mouse hover (tooltips)
  *   changed()           re-render
@@ -356,7 +355,6 @@ export class SlotDnD {
     this.hand = null;
     this.hideGhost();
     if (what === 'toss') this.ctx.toss?.(c, i, k, t);
-    else if (what === 'feed') this.ctx.feed?.(c, i, t);
     else if (what === 'side') {
       const d = t.dataset.c;
       const moved = this.ctx.move(c, i, d, -1, k);

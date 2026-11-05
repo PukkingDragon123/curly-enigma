@@ -218,15 +218,17 @@ await step('deep: dig out an ore', async () => {
   const got = await page.evaluate(() => { const s = window.__game.scene; for (let k = 0; k < 90; k++) s.update(1 / 30); return window.__game.state.data.stats.ores; });
   if (!(got > r.ores0)) throw new Error('the ore never reached the backpack');
 });
-await step('deep: radar + the hand-drawn map in the book', async () => {
+await step('deep: the radar finds things; no map in the book', async () => {
   const n = await page.evaluate(() => window.__game.scene.radar().markers.length);
   if (!(n >= 2)) throw new Error('radar has no markers');
+  // the book has no map chapter any more: asking for it opens the quests
   await page.evaluate(() => window.__game.ui.openBook('map'));
   await wait(2500);
-  await page.evaluate(() => window.__game.ui.book?.map?.debug?.finish?.());
-  await wait(800);
-  await shot('04b-map');
+  const b = await page.evaluate(() => ({ chapter: window.__game.ui.book?.chapter ?? null, mapTab: !!document.querySelector('.ib-tab[aria-label=Map]') }));
+  await shot('04b-book');
   await page.evaluate(() => window.__game.ui.closeAllPanels());
+  if (b.chapter !== 'quests') throw new Error('openBook("map") did not open the quests: ' + JSON.stringify(b));
+  if (b.mapTab) throw new Error('the book still has a Map tab');
 });
 await step('deep: a ruin puzzle opens to treasure', async () => {
   const r = await page.evaluate(async () => {

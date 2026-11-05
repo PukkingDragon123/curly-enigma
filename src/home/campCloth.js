@@ -1,11 +1,11 @@
-// The cloth in Old Star's camp (src/gfx/cloth.js): the sacking over his shack's doorway (you, he and
-// Nugget push it aside walking through; the draught from the hole stirs it) and a rag of blanket
+// The cloth in Old Star's camp (src/gfx/cloth.js): the sacking over his shack's doorway (you and he
+// push it aside walking through; the draught from the hole stirs it) and a rag of blanket
 // tacked over the shack's window hole. Meters, in the scene (not the tile-scaled room).
 import { Cloth, sackingTexture } from '../gfx/cloth.js';
 import { SHACK } from './house.js';
 import { HALL } from './units.js';
 
-export function campCloths(scene) {
+export function campCloths(scene, laundry = []) {
   const K = SHACK, Y = HALL.y;
   const dh = 1.22, dw = K.dw;
   const list = [];
@@ -20,6 +20,17 @@ export function campCloths(scene) {
   win.placeCorner(K.x + wc - ww / 2 - 0.03, Y + 1.1, K.z + 0.08, 0);
   scene.add(win.mesh);
   list.push(win);
+  // the washing on the line, pegged along its top
+  const HANG = { shirt: [0.36, 6, 8], johns: [0.5, 6, 10], towel: [0.3, 5, 7] };
+  for (const [i, q] of (laundry || []).entries()) {
+    const [h, nx, ny] = HANG[q.kind] || HANG.towel;
+    const w = Math.hypot(q.b.x - q.a.x, q.b.z - q.a.z);
+    const lt = laundryTexture(q.kind, 7 + i * 5);
+    const c = new Cloth({ w, h, nx, ny, tex: lt.tex, iters: 4, damping: 2.0 });
+    c.placeCorner(q.a.x, q.a.y, q.a.z, q.yaw ?? 0);
+    scene.add(c.mesh);
+    list.push(c);
+  }
   // a draught down from the hole: mostly out of the shack (+z), wandering
   const wind = (t) => [0.35 * Math.sin(t * 0.53) + 0.2 * Math.sin(t * 1.7), 0.55 + 0.45 * Math.sin(t * 0.81) * Math.sin(t * 0.37 + 1)];
   // let it settle before anyone sees it

@@ -36,7 +36,7 @@ import { starPortraitURL } from '../ui/Tutor.js';
 import { openTalkMenu } from '../ui/choices.js';
 import { TUT } from '../ui/Onboard.js';
 
-const _v = new THREE.Vector3();
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3();
 const ease = (k) => k * k * (3 - 2 * k);
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
@@ -162,7 +162,8 @@ export class HomeLessons {
     this.lessonAct('lift');
     this.endHomeTutor();
     this.game.ui.setTutorialLevel?.(TUT.QUEST);
-    this.game.ui.tutor?.say('Down you go. Mind the gate, and mind the copper: dig <b>round</b> it, not into it.', { mood: 'calm', dur: 4 });
+    // (a word over his shoulder as the gate shuts: it floats by him, the cutscene's bars stay clear)
+    if (this.star?.rig) this.starLine('In we go! Hold on to something: she drops a bit at the start.', { mood: 'happy', dur: 3.2 });
   }
 
   // ------------------------------------------------------------ cutscenes at home
@@ -208,6 +209,23 @@ export class HomeLessons {
     return tween(secs, (k) => { const e = ease(k); c.yaw = y0 + dy * e; c.pitch = p0 + (pitch1 - p0) * e; });
   }
 
+  /** Where his paw is (meters, a little in front of him at chest height): for things he tosses you. */
+  starPaw(out = new THREE.Vector3()) {
+    const star = this.star;
+    if (!star?.rig) return null;
+    const f = star.facing ?? 0;
+    return star.head(out).add(_v2.set(Math.sin(f) * 0.22, -0.32, Math.cos(f) * 0.22));
+  }
+
+  /** He tosses you something: an item's icon arcs from his paw to your pack (or `to`). */
+  starToss(id, label, to = 'pack') {
+    const ob = this.game.ui.onboard;
+    if (!ob?.toss || !this.star?.rig) return Promise.resolve(false);
+    this.star.gesture('point', 0.8);
+    this.game.audio.play('whoosh', { vol: 0.3 });
+    return ob.toss(() => this.starPaw(), iconURL(id), to, { label }).then(() => true);
+  }
+
   /** Back home in the middle of the lessons (from: 'lift' | 'forge' | 'cooking'). */
   async onLessonArrival(from) {
     const st = this.game.state, stage = this.lessonStage(), star = this.star;
@@ -220,24 +238,32 @@ export class HomeLessons {
         await this.cutscene(async ({ line, go, sleep }) => {
           star.scripted = true;
           const p = this.cam || this.rig.player.pos;
-          await go(star.walkTo(p.x - 0.75, p.z));
+          // the lesson card comes back with its stamp while he hurries over
+          ob?.lessonDone?.(2, 'The Dig', 'Copper out of the rock, clean as a whistle');
+          const walk = star.walkTo(p.x - 0.75, p.z, 1.15);
+          await go(Promise.all([walk, sleep(2.9)]));
           star.faceTo(p.x, p.z);
           await go(this.faceStar((s, f) => this.tween(s, f), 0.5));
           star.scripted = false;
+          // a good long sniff at the copper
+          star.sniff();
+          this.sniffSound?.();
+          await go(sleep(0.35));
           star.sniff();
           this.sniffSound?.();
           await go(sleep(0.3));
           await line('Ooh. Let me sniff it. <i>*snff*</i> Copper! Good clean copper. You didn\'t smash it. I knew you had paws on you.', 'proud');
-          this.copperHome();
+          const coal = this.copperHome(true);
           done = true;
+          if (coal) await go(Promise.race([this.starToss('coal', '+3 coal'), sleep(1.2)]));
           star.gesture('point', 2);
-          await line(NEXT.forge.text, NEXT.forge.mood);
+          await line(coal ? 'Here, coal for the fire. ' + NEXT.forge.text : NEXT.forge.text, NEXT.forge.mood);
         }, { face: false });
         star.scripted = false;
         if (!done) this.copperHome();
         ob?.chapter?.(3, 'The Forge', 'Melt the copper into an ingot, then hammer out a blade.');
         this.placeStarForLesson();
-        this.startHomeTutor('forgeGo');
+        this.startHomeTutor('forgeGo', { delay: 3.4 });
       } else {
         this.starLine('Back already? No copper? It\'s in my practice dig, the orange specks in the rock. Back down you go: the cage will take you.', { mood: 'stern' });
         this.startHomeTutor('lift');
@@ -251,12 +277,19 @@ export class HomeLessons {
       return;
     }
     if (stage === 'mine' && from === 'forge') {
-      // back with the pick you forged: he admires it, then walks you to the cage
+      // back with the pick you forged: the lesson's stamp, he admires it, then walks you to the cage
       const q = st.data.toolQ?.pick_first ?? 60;
       this.endHomeTutor();
-      await this.cutscene(async ({ line }) => {
+      await this.cutscene(async ({ line, go, sleep }) => {
+        ob?.lessonDone?.(1, 'The Pick', 'Forged with your own paws');
+        await go(sleep(2.9));
+        // he leans in for a sniff of the new iron
+        star.sniff();
+        this.sniffSound?.();
+        await go(sleep(0.4));
         star.gesture(q >= 70 ? 'cheer' : 'point', 1.6);
         await line(q >= 80 ? 'Look at that edge! First pick you ever made, and it\'d shame half of Deep Town\'s.' : q >= 55 ? 'A proper pick. Bit lumpy on the cheek, but it\'ll bite rock. That\'s what counts.' : 'Well, it\'s more or less pick-shaped. It\'ll dig. Make a better one when you\'re rich.', q >= 70 ? 'proud' : 'laugh');
+        star.gesture('beckon', 1.6);
         await line('Now, the lesson I meant to start with: <b>mining</b>. That rusty old cage goes straight down to my practice dig. Bring me some <b>copper ore</b>. Follow me!', 'happy');
       });
       if (this.lessonStage() === 'mine') { ob?.chapter?.(2, 'The Dig', 'Down the old cage to his practice dig. Bring back copper.'); this.startHomeTutor('follow'); }
@@ -272,14 +305,16 @@ export class HomeLessons {
       const w = (st.data.weapons || []).slice(-1)[0];
       const g = w ? (w.grade || 'C') : 'C';
       const good = 'SAB'.includes(g);
-      await this.cutscene(async ({ line }) => {
+      await this.cutscene(async ({ line, go, sleep }) => {
+        ob?.lessonDone?.(3, 'The Forge', `Your first blade${w?.name ? ': a ' + w.name : ''}`);
+        await go(sleep(2.9));
         star.gesture(good ? 'cheer' : 'point', 1.6);
         await line(good ? `Look at that. A ${w?.name || 'blade'}! First go, and it doesn't bend. Your granny would cry.` : `A ${w?.name || 'blade'}. Lumpy, but it's yours, and it'll sell. The second one's always better.`, good ? 'proud' : 'laugh');
         await line(NEXT.cook.text, NEXT.cook.mood);
       });
       ob?.chapter?.(4, 'The Hearth', 'A smith who doesn\'t eat is a skeleton with a hammer.');
       this.placeStarForLesson();
-      this.startHomeTutor('cookGo');
+      this.startHomeTutor('cookGo', { delay: 3.4 });
       return;
     }
     if (stage === 'cook' && (from === 'cooking' || from === 'stove')) {
@@ -289,14 +324,20 @@ export class HomeLessons {
       this.setLesson('done');
       this.endHomeTutor();
       star.lessonSpot = null;
-      await this.cutscene(async ({ line, go }) => {
+      await this.cutscene(async ({ line, go, sleep }) => {
         star.scripted = true;
         const p = this.cam || this.rig.player.pos;
-        await go(star.walkTo(p.x + 0.6, p.z - 0.6));
+        ob?.lessonDone?.(4, 'The Hearth', 'A proper meal in you');
+        const walk = star.walkTo(p.x + 0.6, p.z - 0.6);
+        await go(Promise.all([walk, sleep(2.9)]));
         star.faceTo(p.x, p.z);
         star.scripted = false;
         await go(this.faceStar((s, f) => this.tween(s, f), 0.5));
         await line('Mm! That\'s proper food. Now you can dig, forge and cook. That\'s all I know, more or less.', 'happy');
+        star.gesture('cheer', 1.8);
+        // the four lessons, the four medals
+        ob?.graduate?.('Apprentice', 'Dig, forge, cook and sell. The Surface Express waits in Deep Town.');
+        await go(sleep(5.2));
         await line('The rest is a <span class="gold-txt">million gold</span> and a great deal of digging. Ore, gems, blades, dinners: sell the lot in Deep Town. Every coin brings us closer to the way up.', 'proud');
       }, { face: false });
       star.scripted = false;
@@ -304,7 +345,6 @@ export class HomeLessons {
       this.game.audio.play('success');
       // the whole HUD: your gold, your lantern, everything (a flourish as each piece comes in)
       ob?.setLevel(TUT.FULL, { force: true });
-      ob?.chapter?.('Lessons done', 'The Million', 'Dig, forge, cook and sell. The Surface Express waits in Deep Town.', 4);
       this.starLine('Off you go, then. I\'ll keep the fire in. Mind your lantern: when it runs low, <b>eat</b> something.', { mood: 'laugh' });
       // the last control: a snack (a tip that goes by itself if you don't need it yet)
       this.later(2.5, () => {
@@ -317,13 +357,18 @@ export class HomeLessons {
     }
   }
 
-  /** The copper's handed over: the act, his coal, and the forge lesson is next (same outcome as ever). */
-  copperHome() {
+  /**
+   * The copper's handed over: the act, his coal, and the forge lesson is next (same outcome as ever).
+   * quiet: no toast for the coal (he tosses it to you in the cutscene). Returns true if he gave coal.
+   */
+  copperHome(quiet = false) {
     const st = this.game.state;
-    if (this.lessonStage() !== 'mine') return;
+    if (this.lessonStage() !== 'mine') return false;
     this.lessonAct('copper_home');
-    if (st.count('coal') < 2) { st.addItem('coal', { spill: true, n: 3 }); this.game.ui.toast('Old Star gives you <b>3 coal</b>', { icon: iconURL('coal'), kind: 'good' }); }
+    let gave = false;
+    if (st.count('coal') < 2) { st.addItem('coal', { spill: true, n: 3 }); gave = true; if (!quiet) this.game.ui.toast('Old Star gives you <b>3 coal</b>', { icon: iconURL('coal'), kind: 'good' }); }
     this.setLesson('forge');
+    return gave;
   }
 
   /** Before the forge lesson: make sure there's enough to learn with (two copper ore and coal). */
@@ -358,8 +403,8 @@ export class HomeLessons {
     return !!ob?.data && ob.level < TUT.FULL;
   }
 
-  /** Start (or move on to) a step of the tutorial at home. */
-  startHomeTutor(step) {
+  /** Start (or move on to) a step of the tutorial at home. o.delay: hold its prompt card back (a chapter card is up). */
+  startHomeTutor(step, o = {}) {
     if (!this.tutorialOn()) { if (step === 'look' || step === 'walk' || step === 'talk') this.placeStarForLesson(); return; }
     const ui = this.game.ui, ob = ui.onboard, star = this.star;
     if (!this.tut) this.own(() => this.endHomeTutor());
@@ -436,6 +481,14 @@ export class HomeLessons {
         t.mark = ob?.mark(() => pos, { label: forge ? 'The forge' : 'The fire pit' });
         t.near = 0;
         t.h = null;
+        // the goal on screen at once (both devices): walk over there, the card fills as you get close
+        const d0 = Math.max(2.6, Math.hypot(pl.pos.x - pos.x, pl.pos.z - pos.z));
+        const walkCard = () => {
+          if (this.tut !== t || t.used || t.h) return;
+          if (Math.hypot(pl.pos.x - pos.x, pl.pos.z - pos.z) < 2.6) return;
+          t.h = ob?.teach('walk', { title: forge ? 'Go to the forge' : 'Go to the fire pit', subPc: `Hold <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> · follow the marker`, subT: 'Push the stick · follow the marker', progress: () => clamp(1 - (Math.hypot(pl.pos.x - pos.x, pl.pos.z - pos.z) - 2.4) / (d0 - 2.4), 0, 0.97), done: () => t.used, min: 0.4 }) || null;
+        };
+        if (o.delay) this.later(o.delay, walkCard); else walkCard();
         break;
       }
     }
@@ -586,9 +639,16 @@ export class HomeLessons {
       case 'forgeGo': case 'cookGo': {
         const p = t.target();
         const near = Math.hypot(pl.pos.x - p.x, pl.pos.z - p.z) < 2.4;
-        if (near && !t.h) {
+        if (near && !t.used) {
+          // there: the walking card gets its stamp, and the next one says what to press
+          t.used = true;
           const forge = t.step === 'forgeGo';
-          t.h = this.game.ui.onboard?.teach('use', { title: forge ? 'Forge with Old Star' : 'Cook with Old Star', subPc: `Look at the ${forge ? 'forge' : 'fire'} and press <kbd>E</kbd>`, subT: `Look at the ${forge ? 'forge' : 'fire'}, tap the hand button` });
+          const had = t.h && !t.h.done;
+          if (had) t.h.complete();
+          this.later(had ? 0.95 : 0, () => {
+            if (this.tut !== t) return;
+            t.h = this.game.ui.onboard?.teach('use', { title: forge ? 'Forge with Old Star' : 'Cook with Old Star', subPc: `Look at the ${forge ? 'forge' : 'fire'} and press <kbd>E</kbd>`, subT: `Look at the ${forge ? 'forge' : 'fire'}, tap the hand button` }) || null;
+          });
         }
         break;
       }
@@ -616,9 +676,12 @@ export class HomeLessons {
     t.mark?.remove?.();
     t.mark = null;
     if (this.lessonStage() === 'pick') {
-      await this.cutscene(async ({ line }) => {
+      await this.cutscene(async ({ line, go, sleep }) => {
         star?.gesture?.('point', 2);
         await line('A miner, you say? Then where\'s your <b>pick</b>? Lost in the fall, I\'d guess. No pick, no digging.', 'stern');
+        // he leans on his own old pick, both paws on the haft
+        if (star?.rig) { star.gesture('lean', 2.2); star.sniff(); }
+        await go(sleep(0.5));
         await line('And you\'re not having mine: it knows my paws. So your first lesson is the <b>forge</b>. We\'ll make you your own. Come on!', 'happy');
       });
       if (this.tut !== t) return;
@@ -626,7 +689,7 @@ export class HomeLessons {
       ob?.setLevel(TUT.QUEST); // your first task: the quest strip comes in
       ob?.chapter?.(1, 'The Pick', 'No pick, no digging. Forge your own at Old Star\'s fire.');
       this.placeStarForLesson();
-      this.startHomeTutor('forgeGo');
+      this.startHomeTutor('forgeGo', { delay: 3.4 });
       return;
     }
     await this.cutscene(async ({ line }) => {

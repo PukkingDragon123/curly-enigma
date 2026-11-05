@@ -545,7 +545,6 @@ export class ForgeRun {
         P.burnSpray(pos, 26);
         this.game.audio.play('sizzle');
         this.popOnce('burn', 'Burning!', pos.clone().add(_v2.set(0, 0.09, 0)), '#ffffff', 0.9, 1.4);
-        if (Math.random() < 0.3) sc.henReact('startle');
       }
     }
     const gain = ev.after - ev.before;
@@ -872,7 +871,6 @@ export class ForgeRun {
         const words = res.kind === 'good' ? (res.score > 0.95 ? ['Perfect temper!', '#ffd34a'] : ['Hardened!', '#8af07a']) : res.kind === 'hot' ? (res.crack ? ['Cracked!', '#ff7a5a'] : ['Too hot, brittle', '#ffb07a']) : ['Too cold, soft', '#9ad0ff'];
         sc.pop(words[0], top.clone().add(_v2.set(0, 0.3, 0)), words[1], 1);
         this.game.audio.play(res.kind === 'good' ? 'good' : 'oops');
-        if (res.kind === 'good' && res.score > 0.95) sc.henReact('startle');
       })
       .wait(0.8)
       .call(() => { this.busy = false; this.go(this.inf ? 'infuse' : 'result'); });
@@ -1039,8 +1037,6 @@ export class ForgeRun {
     const later = (ms, fn) => setTimeout(() => { if (sc.game.scene === sc && sc.activity === this) fn(); }, ms);
     later(350, () => this.game.audio.play('fanfare'));
     later(1450, () => this.game.audio.play('success'));
-    if (grade.g === 'S' || grade.g === 'A') later(900, () => sc.henReact('great'));
-    else if (grade.g === 'F') later(900, () => sc.henReact('bad'));
     this.buildCard(w, grade, { shape, temper, balance, quench: hasQ ? quench : null, bonus });
   }
 
