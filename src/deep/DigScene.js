@@ -23,6 +23,8 @@ import * as EngineFx from '../core/Engine.js';
 import { ZONES } from '../data/zones.js';
 import { ORES } from '../data/ores.js';
 import { iconURL } from '../gfx/PixelArt.js';
+import { iconURL as flatIcon } from '../gfx/PixelArt.js';
+import { itemVox } from '../ui/itemVox.js';
 import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { clamp, rand, chance, hexToRgb, formatGoldFull } from '../core/util.js';
 import * as W from '../core/weight.js';
@@ -228,8 +230,11 @@ export default class DigScene extends Scene {
     const icons = { dynamite: ITEMS.dynamite ? 'dynamite' : 'glow_stake', pick: 'pick_rusty', chisel: 'chisel_basic', brush: 'brush_basic', drill: 'drill_steam', xray: 'xray_lamp', stake: 'glow_stake', food: 'grub_bar' };
     const bar = hotbarOf(st);
     if (this.slot >= HOTBAR_N) this.slot = 0;
+    // the tools in the loops are 3D voxel stills (src/ui/itemVox.js), the flat icon until they're made
+    itemVox.init(this.game);
+    const iconURL = (id) => itemVox.url(id) || flatIcon(id);
     const slots = bar.map((s, i) => {
-      if (!s) return { icon: iconURL('pick_rusty'), key: String(i + 1), label: 'Empty: put a tool here from the backpack', off: true, empty: true };
+      if (!s) return { icon: flatIcon('pick_rusty'), key: String(i + 1), label: 'Empty: put a tool here from the backpack', off: true, empty: true };
       const it = this.toolItem(s);
       const n = s === 'stake' ? st.count('glow_stake') : (s === 'food' || s === 'dynamite') && it ? st.count(it.id) : s === 'build' && it && this.builder && !this.builder.freeBuild() ? st.count(it.id) : undefined;
       const label = s === 'build' ? (this.builder?.label?.() || 'Build') : it ? it.name : '—';

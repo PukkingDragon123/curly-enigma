@@ -29,6 +29,8 @@ import { SPR } from './uiSprites.js';
 import { qColor, pips, stagger, put } from './common.js';
 import { SlotDnD, slotEl, gridBox, stackIcon, stackName, bounce } from './invGrid.js';
 import { INV_ART, installInvArt } from './invArt.js';
+import { installPackArt } from './packArt.js';
+import { itemVox } from './itemVox.js';
 import { portrait3d } from '../gfx/portrait3d.js';
 
 const TOOL_SLOTS = [['pick', 'Pickaxe', 'pick_rusty'], ['chisel', 'Chisel', 'chisel_basic'], ['brush', 'Brush', 'brush_basic'], ['drill', 'Drill', 'drill_steam'], ['xray', 'X-Ray Lamp', 'xray_lamp']];
@@ -55,6 +57,7 @@ export function bagFullToast(game, id) {
 }
 
 export function openBackpack(game, opts = {}) {
+  itemVox.init(game); // (items in the pack are drawn as 3D voxel stills; the picked one turns on its tag)
   const st = game.state;
   const ui = game.ui;
   const audio = game.audio;
@@ -103,6 +106,7 @@ export function openBackpack(game, opts = {}) {
   ]);
   const root = el('div', { class: 'bp' }, [flap, body, tip]);
   installInvArt(root);
+  installPackArt(root);
 
   // ---------------------------------------------------------------- sounds
   const sfx = (k) => {
@@ -538,10 +542,15 @@ export function openBackpack(game, opts = {}) {
     });
   };
 
-  const tagHead = (icon, name, kind, extra) => el('div', { class: 'bp-tag-head' }, [
-    el('div', { class: 'bp-tag-icon' }, [el('img', { class: 'pix', src: icon, alt: '' })]),
-    el('div', {}, [el('small', {}, kind), el('b', {}, name), extra || null]),
-  ]);
+  let tagSpin = null;
+  const tagHead = (icon, name, kind, extra, voxId = null) => {
+    const box = el('div', { class: 'bp-tag-icon' }, [el('img', { class: 'pix', src: icon, alt: '' })]);
+    // the picked item turns slowly on its tag, in 3D voxels
+    tagSpin?.dispose();
+    tagSpin = voxId ? itemVox.spin(box, voxId) : null;
+    if (tagSpin) box.classList.add('vox');
+    return el('div', { class: 'bp-tag-head' }, [box, el('div', {}, [el('small', {}, kind), el('b', {}, name), extra || null])]);
+  };
   const tagClose = () => el('button', { class: 'bp-tag-x', 'aria-label': 'Put it back', title: 'Put it back', onclick: () => { audio.play('ui_click'); closeTag(); } });
   const facts = (lines) => (lines.length ? el('ul', { class: 'bp-facts' }, lines.map((l) => el('li', { html: l }))) : null);
 
@@ -579,7 +588,7 @@ export function openBackpack(game, opts = {}) {
     actions.append(el('button', { class: 'btn alt danger', onclick: () => tossStack(c, i, n) }, 'Toss'));
     put(tag,
       tagClose(),
-      tagHead(stackIcon(s), it.name, CAT_LABEL[it.cat] || it.cat, q !== null ? pips(q, Inv.stackPristine(s)) : null),
+      tagHead(stackIcon(s), it.name, CAT_LABEL[it.cat] || it.cat, q !== null ? pips(q, Inv.stackPristine(s)) : null, s.id),
       el('p', { class: 'bp-desc' }, it.desc || ''),
       facts(info),
       actions,

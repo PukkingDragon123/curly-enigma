@@ -305,26 +305,16 @@ html.is-touch .loop .k { display: none; }
 .belt .loop.empty .loop-face { outline: var(--px) dashed rgba(240, 220, 180, .45); outline-offset: calc(var(--px) * -3); }
 .belt .loop.empty { opacity: .8; }
 
-/* ---------- the hotbar as a Minecraft slot bar: grey bevelled squares on a dark bar, the chosen one
-   framed in white; an empty slot is just the empty square ---------- */
-.belt-strap {
-  height: auto; padding: calc(var(--px) * 1); background: rgba(16, 14, 14, .72);
-  box-shadow: 0 0 0 var(--px) #000, inset 0 0 0 var(--px) #5a5a5a; filter: none;
-}
-.belt-buckle, .belt-tip { display: none; }
-.belt-loops { padding: 0; gap: 0; }
-.loop { margin: 0; max-width: none; }
-.loop:hover, .loop.sel { transform: none; }
+/* ---------- the hotbar: five riveted leather loops on a stitched strap (src/ui/packArt.js art) ---------- */
+.belt-strap { height: calc(var(--px) * 22); background: var(--pk-leather) 0 0 / calc(var(--px) * 96) repeat; image-rendering: pixelated;
+  box-shadow: 0 0 0 var(--px) #1a0c06, inset 0 var(--px) 0 rgba(255, 210, 160, .35), inset 0 calc(var(--px) * -2) 0 rgba(10, 4, 2, .35); filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .45)); }
+.belt-loops { padding: 0 calc(var(--px) * 3); gap: calc(var(--px) * 1); }
 .loop-face {
-  width: calc(var(--icon-s) + var(--px) * 7); height: calc(var(--icon-s) + var(--px) * 7);
-  border: 0; border-image: none; background: #8b8b8b;
-  box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff;
-  margin: calc(var(--px) * .5);
+  width: calc(var(--icon-s) + var(--px) * 12); height: calc(var(--icon-s) + var(--px) * 12);
+  border-width: calc(var(--px) * 6); border-image: var(--pk-loop) 6 fill / calc(var(--px) * 6) stretch; image-rendering: pixelated;
 }
-.loop-face img { margin: 0; }
-.loop.sel .loop-face { border-image: none; filter: none; outline: calc(var(--px) * 1.5) solid #fff; outline-offset: calc(var(--px) * .5); box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff, 0 0 0 calc(var(--px) * 2.5) #000; position: relative; z-index: 1; }
+.loop-face img { margin-top: 0; }
+.loop.sel .loop-face { border-image-source: var(--pk-loopOn); filter: drop-shadow(0 0 calc(var(--px) * 1.5) rgba(255, 210, 110, .85)); }
 .belt .loop.empty .loop-face { outline: none; }
-.belt .loop.sel.empty .loop-face { outline: calc(var(--px) * 1.5) solid #fff; }
 .belt .loop.empty { opacity: 1; }
-.loop .k { left: calc(var(--px) * 1.5); top: calc(var(--px) * 1); color: #fff; z-index: 2; }
-.loop .n { right: calc(var(--px) * 1.5); bottom: calc(var(--px) * 1); z-index: 2; color: #fff; text-shadow: var(--px) var(--px) 0 #3f3f3f; }
+.loop-face img { width: calc(var(--icon-s) * 1.3); height: calc(var(--icon-s) * 1.3); margin: calc(var(--icon-s) * -.15); image-rendering: pixelated; }

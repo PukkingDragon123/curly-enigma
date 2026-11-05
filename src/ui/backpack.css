@@ -548,34 +548,79 @@
 .bp-nextbag { display: flex; justify-content: center; align-items: center; gap: calc(var(--px) * 2); margin-top: calc(var(--px) * 3); font-size: 8px; color: #6a4a2a; text-transform: uppercase; letter-spacing: .06em; }
 .bp-nextbag .inv-lock { position: static; transform: rotate(-2deg); }
 
-/* ---------- Minecraft look: every cell of the pack is an empty grey slot (bevelled dark top-left,
-   light bottom-right) on the light grey panel; what you carry lies on top; the hotbar is its own
-   slot bar under the pack ---------- */
-.inv-gridbox, .inv-gridbox.coop {
-  background: #c6c6c6; border-radius: 0; padding: calc(var(--px) * 2);
-  box-shadow: inset var(--px) var(--px) 0 #ffffff, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #555555, 0 0 0 var(--px) #000;
+/* ---------- a real backpack, opened (src/ui/packArt.js: --pk-*): pebbled leather, a rolled and
+   double-stitched edge with brass rivets, the flap thrown back with its buckles, the canvas lining,
+   the grid as compartments sewn into it, tool sleeves on the side ---------- */
+.bp-body, .bp-flap { image-rendering: pixelated; }
+.bp-body {
+  border-image: var(--pk-edge) 16 / calc(var(--px) * 16) repeat;
+  background: var(--pk-leather) 0 0 / calc(var(--px) * 96) repeat padding-box, #643c20 padding-box;
 }
+.bp-flap {
+  border-image: var(--pk-edge) 16 16 0 / calc(var(--px) * 16) calc(var(--px) * 16) 0 repeat;
+  border-width: calc(var(--px) * 16) calc(var(--px) * 16) 0;
+  background: var(--pk-flap) 0 0 / calc(var(--px) * 96) repeat padding-box, #4c2c18 padding-box;
+  height: calc(var(--px) * 26); margin-bottom: calc(var(--px) * -12);
+  animation: flapOpen .7s cubic-bezier(.25, 1.3, .45, 1) both;
+}
+@keyframes flapOpen { from { transform: rotateX(-172deg); filter: brightness(.6); } 50% { transform: rotateX(14deg); } 75% { transform: rotateX(-4deg); } }
+.bp-strap { width: calc(var(--px) * 22); height: calc(var(--px) * 30); bottom: calc(var(--px) * -24); background: var(--pk-buckle) 0 0 / 100% 100%; image-rendering: pixelated; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 2, .5)); animation: strapSwing 1.2s .35s ease-out both; transform-origin: 50% 0; }
+.bp-strap::after { display: none; }
+@keyframes strapSwing { 0% { transform: rotate(0); } 25% { transform: rotate(9deg); } 50% { transform: rotate(-6deg); } 75% { transform: rotate(3deg); } }
+/* the lining, with the bag's mouth: a rolled leather lip along the top and its shadow inside */
+.bp-main {
+  background: var(--pk-canvas) 0 0 / calc(var(--px) * 64) repeat, #c2ac80; image-rendering: pixelated;
+  box-shadow: inset 0 0 0 var(--px) #2a1608, inset 0 calc(var(--px) * 10) calc(var(--px) * 6) rgba(30, 14, 4, .45), inset calc(var(--px) * 4) 0 calc(var(--px) * 4) rgba(30, 14, 4, .2), inset calc(var(--px) * -4) 0 calc(var(--px) * 4) rgba(30, 14, 4, .2);
+  padding-top: calc(var(--px) * 7);
+}
+.bp-main::before {
+  content: ''; position: absolute; left: calc(var(--px) * -2); right: calc(var(--px) * -2); top: calc(var(--px) * -3); height: calc(var(--px) * 6); pointer-events: none; z-index: 3;
+  background: var(--pk-leather) 0 0 / calc(var(--px) * 96) repeat; border-radius: calc(var(--px) * 3);
+  box-shadow: inset 0 var(--px) 0 rgba(255, 210, 160, .35), inset 0 calc(var(--px) * -1) 0 #1a0c06, 0 calc(var(--px) * 2) calc(var(--px) * 2) rgba(10, 4, 2, .55);
+}
+.inv-gridbox, .inv-gridbox.coop { background: none; box-shadow: none; padding: calc(var(--px) * 1); border-radius: 0; }
 .inv-cell, .inv-gridbox.coop .inv-cell {
-  border: 0; margin: 1px; background: #8b8b8b;
-  box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff;
+  border: calc(var(--px) * 6) solid transparent; border-image: var(--pk-pocket) 6 fill / min(calc(var(--px) * 6), 30%) stretch;
+  image-rendering: pixelated; margin: 0;
 }
-.inv-cell.sewn { background: repeating-linear-gradient(45deg, #7a7a7a 0 3px, #6e6e6e 3px 6px); box-shadow: inset var(--px) var(--px) 0 #4a4a4a, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #9a9a9a; opacity: .7; }
+.inv-cell.sewn { border-image: var(--pk-pocket) 6 fill / min(calc(var(--px) * 6), 30%) stretch; filter: brightness(.55) saturate(.6); opacity: .9; }
+.inv-cell.sewn::after { content: ''; position: absolute; }
 .inv-slot.tile, .inv-gridbox.coop .inv-slot.tile {
-  margin: 1px; border-radius: 0; background: rgba(139, 139, 139, .55);
-  box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff;
+  margin: 0; border-radius: 0; background: none; box-shadow: none;
+  border: calc(var(--px) * 6) solid transparent; border-image: var(--pk-pocket) 6 fill / min(calc(var(--px) * 6), 30%) stretch; image-rendering: pixelated;
 }
-.inv-slot.tile.q { box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff, inset 0 calc(var(--px) * -2.5) 0 color-mix(in srgb, var(--qc) 70%, transparent); }
-.inv-slot.tile:not(.empty):hover, .inv-slot.tile.on { background: #c5c5c5; transform: none; }
-.inv-slot.tile .n { color: #fff; text-shadow: var(--px) var(--px) 0 #3f3f3f; right: calc(var(--px) * 1); bottom: 0; }
-.inv-shadow { border-radius: 0; }
-.bp-count { color: #3f3f3f; }
-/* the hotbar row in the pack: the same slots, on a bar of its own */
-.bp-hot { gap: 0; padding: calc(var(--px) * 1); margin-top: calc(var(--px) * 3); align-self: center; background: #c6c6c6;
-  box-shadow: inset var(--px) var(--px) 0 #ffffff, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #555555, 0 0 0 var(--px) #000; }
-.bp-hot-t { color: #3f3f3f; margin: 0 calc(var(--px) * 2); }
+.inv-slot.tile img { filter: drop-shadow(0 calc(var(--px) * 1.5) 0 rgba(40, 20, 6, .45)); }
+.inv-slot.tile.q { box-shadow: none; }
+.inv-slot.tile.q::after { content: ''; position: absolute; left: 12%; right: 12%; bottom: calc(var(--px) * -3); height: var(--px); background: var(--qc); opacity: .8; pointer-events: none; }
+.inv-slot.tile:not(.empty):hover { filter: brightness(1.08); transform: none; }
+.inv-slot.tile.on { border-image-source: var(--pk-pocketOn); }
+.inv-slot.tile .n { color: #fff6e0; right: calc(var(--px) * -4); bottom: calc(var(--px) * -5); text-shadow: var(--px) 0 0 #2a160a, calc(var(--px) * -1) 0 0 #2a160a, 0 var(--px) 0 #2a160a, 0 calc(var(--px) * -1) 0 #2a160a; }
+.inv-shadow { border-radius: calc(var(--px) * 1); }
+/* tool and gear sleeves on the leather */
+.bp-equip .bp-col { background: none; box-shadow: none; padding: 0; }
+.bp-loop, .bp-loop.empty {
+  margin: 0; background: none; box-shadow: none;
+  border-style: solid; border-width: calc(var(--px) * 6);
+  border-image: var(--pk-sleeve) 6 fill / calc(var(--px) * 6) stretch; image-rendering: pixelated;
+  width: calc(var(--icon) + var(--px) * 10); height: calc(var(--icon) + var(--px) * 12);
+}
+.bp-loop img { margin-top: calc(var(--px) * 2); }
+.bp-loop.on, .bp-loop:hover { border-image-source: var(--pk-sleeveOn); transform: translateY(calc(var(--px) * -1)); }
+.bp-loop.empty img { filter: brightness(0); opacity: .3; }
+/* the hotbar row: five riveted strap loops on a leather band along the bag's foot */
+.bp-hot { gap: calc(var(--px) * 1); padding: calc(var(--px) * 2) calc(var(--px) * 4); margin-top: calc(var(--px) * 3); align-self: center; background: var(--pk-leather) 0 0 / calc(var(--px) * 96) repeat; image-rendering: pixelated;
+  box-shadow: 0 0 0 var(--px) #1a0c06, inset 0 var(--px) 0 rgba(255, 210, 160, .3), 0 calc(var(--px) * 2) 0 rgba(10, 4, 2, .4); }
+.bp-hot-t { color: #f0d6a8; text-shadow: 0 var(--px) 0 #2a1408; }
 .bp-hot-slot, .bp-hot-slot.empty {
-  margin: 1px; border-image: none; border: 0; outline: none; background: #8b8b8b;
-  box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff;
+  background: none; box-shadow: none; outline: none; border-style: solid; border-width: calc(var(--px) * 6);
+  border-image: var(--pk-loop) 6 fill / calc(var(--px) * 6) stretch; image-rendering: pixelated;
 }
-.bp-hot-slot.on, .bp-hot-slot:hover { background: #c5c5c5; box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff, 0 0 0 calc(var(--px) * 1.5) #fff; }
-.bp-hot-slot .k { color: #fff; text-shadow: var(--px) var(--px) 0 #3f3f3f; }
+.bp-hot-slot.on, .bp-hot-slot:hover { border-image-source: var(--pk-loopOn); box-shadow: none; }
+.bp-hot-slot .k { color: #fff4dc; text-shadow: var(--px) var(--px) 0 #1a0c06; left: calc(var(--px) * -4); top: calc(var(--px) * -5); }
+.bp-count { color: #5a4030; }
+.bp-main { padding-top: calc(var(--px) * 17); }
+.bp-loop.empty img { filter: brightness(0) invert(.9) sepia(.5); opacity: .16; }
+/* the picked item turning in 3D on its tag (itemVox.js) */
+.bp-tag-icon.vox { position: relative; }
+.bp-tag-icon.vox > img { visibility: hidden; }
+.bp-tag-icon .vox-spin { position: absolute; left: 50%; top: 50%; width: 160%; height: 160%; transform: translate(-50%, -50%); image-rendering: pixelated; pointer-events: none; }

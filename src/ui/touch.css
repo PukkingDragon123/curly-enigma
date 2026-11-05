@@ -69,3 +69,9 @@ html.is-touch .prompt { bottom: calc(var(--sab) + var(--px) * 40); }
   .loop { margin: 0 calc(var(--px) * -1); }
   .belt.tucked .loop.sel { margin: 0; }
 }
+/* (narrow touch screens: the riveted loops come smaller, so the strap stays clear of the stick) */
+@media (max-width: 560px) {
+  html.is-touch .belt-strap { height: auto; padding: calc(var(--px) * 1) 0; }
+  html.is-touch .loop-face { width: calc(var(--icon-s) + var(--px) * 6); height: calc(var(--icon-s) + var(--px) * 6); border-width: calc(var(--px) * 3); border-image-width: calc(var(--px) * 3); }
+  html.is-touch .loop-face img { width: var(--icon-s); height: var(--icon-s); margin: 0; }
+}

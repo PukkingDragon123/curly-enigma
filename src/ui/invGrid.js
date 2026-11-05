@@ -18,13 +18,14 @@ import { iconURL, weaponIconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
 import { gradeFor } from '../data/weapons.js';
 import * as Inv from '../core/inventory.js';
+import { itemVox } from './itemVox.js';
 import { qColor, pips } from './common.js';
 
 /** Icon URL for a stack. */
 export function stackIcon(s) {
   if (!s) return '';
   if (s.w) return weaponIconURL(s.w.type, s.w.metal, s.w.infusion);
-  return iconURL(s.id);
+  return itemVox.url(s.id) || iconURL(s.id); // (in 3D, as voxels, once the renderer's lent: itemVox.js)
 }
 /** Display name for a stack. */
 export function stackName(s) { return !s ? '' : s.w ? s.w.name : ITEMS[s.id]?.name || s.id; }
