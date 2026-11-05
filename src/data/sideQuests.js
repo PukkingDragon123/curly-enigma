@@ -229,7 +229,7 @@ export const SIDE_QUESTS = {
     intro: 'Last thing: the music. Lark wants to sing the old Sun Hymn, but nobody remembers it. It\'s carved in the ruins, they say, in bumpy letters. Take a rubbing of any old carving to Lark, and then come and stand in the sun with us.',
     outro: 'Look at them all, eyes shut, faces up. Best festival in forty years. Thank you, dear. Here, from all of us.',
     steps: [
-      { id: 'rub', text: 'Read a carving in an old ruin', hint: 'The old dungeons are rooms of fitted stone hidden in the rock. E on a carved frieze or rune wall reads it.', on: { type: 'lore', src: 'carving' }, grant: { sun_hymn: 1 }, where: { ruin: 'nearest' }, say: { text: 'You rub charcoal over the raised runes: <b>a rubbing of the Sun Hymn</b>.' } },
+      { id: 'rub', text: 'Read a carving in an old ruin', hint: 'The old dens and grottos hide deep in the rock. E on a carved frieze or rune wall reads it.', on: { type: 'lore', src: 'carving' }, grant: { sun_hymn: 1 }, where: { ruin: 'nearest' }, say: { text: 'You rub charcoal over the raised runes: <b>a rubbing of the Sun Hymn</b>.' } },
       { id: 'lark', text: 'Bring the rubbing to Lark', hint: 'Lark busks by the fountain.', deliver: { to: 'lark', items: { sun_hymn: 1 } }, say: { by: 'lark', text: '♪ It goes up at the end! Like a question! ♪ Oh, it\'s PERFECT.' } },
       { id: 'sun', text: 'Join the festival: stand in the sunbeam', hint: 'The sunlit patch in front of the ticket booth. E to stand in it.', look: 'sunbeam' },
     ],
@@ -402,7 +402,7 @@ export const SIDE_QUESTS = {
     intro: 'The ruins are carved with raised runes nobody can read. I have a theory. Read the carvings in two different ruins, with your paws, mind, not your eyes, and tell me what they say.',
     outro: '"We came down from the cold with our noses to the stone"? Fas-cin-a-ting. They wrote for TOUCH. They wrote for noses! Here: my notes, and a fee.',
     steps: [
-      { id: 'read', text: 'Read the carvings in 2 different ruins', hint: 'The old dungeons are rooms of fitted stone hidden in the rock. E on a carved frieze or a rune wall. The walls by the sealed door are carved.', on: { type: 'lore', src: 'carving' }, unique: 'ruin', n: 2, where: { ruin: 'nearest' } },
+      { id: 'read', text: 'Read the carvings in 2 different ruins', hint: 'The old dens and grottos hide deep in the rock. E on a carved frieze or a rune wall. The walls by the sealed door are carved.', on: { type: 'lore', src: 'carving' }, unique: 'ruin', n: 2, where: { ruin: 'nearest' } },
       { id: 'tell', text: 'Tell Professor Talpa what they say', hint: 'Inkwell Plans, on the west wall of Deep Town.', talk: 'blueprints' },
     ],
     reward: { gold: 700, sp: 1, lore: ['s_read'] },
@@ -421,7 +421,7 @@ export const SIDE_QUESTS = {
     intro: 'The shrines have idols, and the idols have eyes that are said to light up. Wake one. Solve a Starfolk vault\'s puzzle, see its eyes open, and come and tell me what its face looked like. I need to be sure.',
     outro: 'A star nose. Of course. OF COURSE. The Old Ones never left. Look at Grubb! Look at young Nubs! They had GRANDCHILDREN.',
     steps: [
-      { id: 'wake', text: 'Wake the eyes of a Starfolk vault', hint: 'Starfolk vaults are tall halls on marble pillars (Crystal Grotto and deeper). Their puzzles are symbol drums; the deep fortresses\' are light beams.', on: { type: 'puzzle', kind: ['dials', 'beams'] }, where: { ruin: 'vault' } },
+      { id: 'wake', text: 'Wake the eyes of a Starfolk vault', hint: 'Crystal vaults are tall geode halls (Crystal Grotto and deeper). Their puzzles are symbol drums; the deep fortresses\' are light beams.', on: { type: 'puzzle', kind: ['dials', 'beams'] }, where: { ruin: 'vault' } },
       { id: 'tell', text: 'Tell Professor Talpa about the idol\'s face', hint: 'Inkwell Plans in Deep Town.', talk: 'blueprints' },
     ],
     reward: { gold: 3000, sp: 2, lore: ['s_kin'] },

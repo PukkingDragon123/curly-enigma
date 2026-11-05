@@ -97,7 +97,7 @@ export const QUESTS = {
       { id: 'clean', text: 'Chip the clump clean and bag it', hint: 'Turn it in your paws. Chisel along the ore, brush the dust off.', lesson: 'mine_clean', where: { place: 'dig' } },
       { id: 'gem', text: 'Dig into the little geode for its gem', hint: 'The wall that winks at you. Gently: gems crack if you shout.', lesson: 'mine_gem', where: { place: 'dig' } },
       { id: 'ladder', text: 'Put up a ladder and climb out', hint: 'Claws cost puff. Ladders cost nothing.', lesson: 'mine_ladder', where: { place: 'dig' } },
-      { id: 'map', text: "Fetch Old Star's map off the ledge", hint: 'Forty years of scribbles. Don\'t drop it.', lesson: 'mine_map', where: { place: 'dig' } },
+      { id: 'map', text: 'See the layers below (M or tap the radar)', hint: 'Every layer of the underground, how much of it you\'ve walked, and the lifts you\'ve unlocked.', lesson: 'mine_map', where: { place: 'dig' } },
       { id: 'block', text: 'Block the rock-nibbler, then see it off', hint: 'Hold block as it lunges, then hit back while it\'s dazed.', lesson: 'mine_block', where: { place: 'dig' } },
       { id: 'up', text: 'Ride back up with Old Star', hint: 'The lift at the end of his crawl goes home.', lesson: 'mine_done', where: { place: 'home' } },
       { id: 'copper', text: 'Bring the copper home to Old Star', hint: 'He\'ll want to see it before it goes in the fire. He likes to sniff it.', lesson: 'copper_home', on: [{ type: 'reach', place: 'home' }, { type: 'talk', npc: 'oldstar' }], need: (st) => has(st, 'copper_ore'), where: { place: 'home' } },
@@ -196,11 +196,11 @@ export const QUESTS = {
   },
   os_ruin: {
     title: 'Older Than Me', giver: 'oldstar', kind: 'story', auto: true, requires: ['os_deeper2'],
-    intro: 'Down there are halls of fitted stone, older than the mine and older than me, which is saying something. Find one. Mind the floor. Mind the walls. Mind everything.',
+    intro: 'Down there are hidden grottos, older than the mine and older than me, which is saying something. Find one. Mind the floor. Mind the walls. Mind everything.',
     outro: 'Whoever built those knew rock better than I do. I\'ll never admit that again.',
     steps: [
       { id: 'find', text: 'Find an old ruin', hint: 'Carved stone, broken pillars. They show up as you dig.', on: { type: 'reach', place: startsWith('ruin:') }, where: { ruin: 'nearest' } },
-      { id: 'solve', text: "Solve the ruin's puzzle", hint: 'Levers, plates, dials. Poke everything. Gently.', on: { type: 'puzzle' }, where: { ruin: 'nearest' } },
+      { id: 'solve', text: "Solve the ruin's puzzle", hint: 'Crystal knobs, pressure stones, glow crystals. Poke everything. Gently.', on: { type: 'puzzle' }, where: { ruin: 'nearest' } },
     ],
     reward: { gold: 250, sp: 2 },
   },
@@ -312,7 +312,7 @@ export const QUESTS = {
     title: 'A Little Errand', giver: 'rocco', kind: 'request', from: 'rocco', requires: ['rc_dagger'],
     intro: 'There\'s an old vault down there with a door that won\'t open for me. Doors don\'t like me. I can\'t think why. You, they might like.',
     outro: 'Open? Wonderful! I\'ll just... have a look round. Alone. You go on home.',
-    steps: [{ id: 'solve', text: 'Solve a puzzle in an old ruin', hint: 'Old halls of fitted stone. Levers, plates, dials.', on: { type: 'puzzle' }, where: { ruin: 'nearest' } }],
+    steps: [{ id: 'solve', text: 'Solve a puzzle in an old ruin', hint: 'Hidden grottos in the rock. Crystal knobs, pressure stones, glow crystals.', on: { type: 'puzzle' }, where: { ruin: 'nearest' } }],
     reward: { gold: 640, sp: 2 },
   },
   rc_golem: {

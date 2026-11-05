@@ -19,7 +19,7 @@ const TOWN_SIGHTS = {
 };
 const DEEP_SIGHTS = { lake: 'water', lava: 'lava', nest: 'nest' };
 const SIGHT_NAMES = { lake: 'An underground lake', lava: 'A lava pool', nest: 'A creature lair', signpost: 'A lift station sign', cavein: 'A lost miner\'s remains', ruin: 'An old dungeon' };
-const RUIN_NAMES = { cell: 'A monster room', crypt: 'A flooded crypt', vault: 'A Starfolk vault', fortress: 'A deep fortress' }; // ruins/dungeon.js DUNGEON_NAMES
+const RUIN_NAMES = { cell: 'A creature den', crypt: 'A collapsed grotto', vault: 'A crystal vault', fortress: 'A magma hall' }; // ruins/dungeon.js DUNGEON_NAMES
 const BURROW_NPC = { trader: 'trader', herbalist: 'herbalist', rocco: 'raccoon', outpost: 'outpost' };
 const HOME_LIFT = { x: 7.3, y: 0.5, z: -3.4 }, HOME_PASSAGE = { x: 6.2, y: 0.4, z: -5.6 }, HOME_HOLE = { x: 3.7, y: 2.0, z: -1.45 }; // defaults; the home scene's questSpot() wins
 /** A named spot at home: the home scene may say where (scene.questSpot(name) → {x,y,z} m), else the cave's defaults. */
