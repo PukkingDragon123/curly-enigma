@@ -362,6 +362,31 @@ export class Onboard {
     return null;
   }
 
+  /**
+   * A chapter card for a lesson: "Lesson 2" over its name in big carved letters, a rule drawn out under
+   * it, a line beneath, a chime; it holds a moment and fades. Never blocks input. Returns a promise
+   * that resolves when it's gone.
+   */
+  chapter(n, title, sub = '', dur = 3.2) {
+    this.chapterEl?.remove();
+    const card = el('div', { class: 'ob-chapter', 'aria-live': 'polite' }, [
+      el('small', {}, typeof n === 'number' ? `Lesson ${n}` : String(n)),
+      el('b', {}, title),
+      el('i', { class: 'ob-chapter-rule' }),
+      sub ? el('span', {}, sub) : null,
+    ]);
+    this.layer.append(card);
+    this.chapterEl = card;
+    this.game.audio.play('ding', { vol: 0.8 });
+    this.game.audio.play('page', { vol: 0.4 });
+    void card.offsetWidth;
+    card.classList.add('on');
+    return new Promise((res) => {
+      setTimeout(() => card.classList.add('off'), dur * 1000);
+      setTimeout(() => { card.remove(); if (this.chapterEl === card) this.chapterEl = null; res(); }, dur * 1000 + 700);
+    });
+  }
+
   /** The bars are as tall as the cutscene talk's (src/ui/Convo.js), so one hands over to the other unseen. */
   fitBars() {
     const W = this.ui.root.clientWidth || innerWidth, H = this.ui.root.clientHeight || innerHeight;

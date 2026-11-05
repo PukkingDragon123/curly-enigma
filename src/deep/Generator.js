@@ -421,6 +421,14 @@ export function caveDensity(p, x, y, z) {
       }
     }
   }
+  // the rock's grain, only near a wall (where it shows): bedding planes weathered into ledges every
+  // metre and a bit, and scalloped, uneven walls where water once ran
+  if (d > -0.1 && d < 0.1 && depth > 3.5) {
+    const ph = ((y / 1.35 + n1.n(x * 0.03, 5.5, z * 0.03) * 0.6) % 1 + 1) % 1;
+    const bed = Math.abs(ph - 0.5) * 2 - 0.5; // ±0.5, a ledge at each bedding plane
+    const sc = n0.n(x * 0.85 + 13.1, y * 1.25, z * 0.85 - 7.7);
+    d += bed * 0.022 + sc * 0.03;
+  }
   return d;
 }
 

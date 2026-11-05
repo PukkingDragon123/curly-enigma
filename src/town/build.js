@@ -11,6 +11,7 @@ import { bakeLighting, caveAmbient } from '../iso/bake.js';
 import { M } from './units.js';
 
 const _v = new THREE.Vector3();
+const _bb = new THREE.Box3();
 const _n = new THREE.Vector3();
 const _m = new THREE.Matrix4();
 const _r = new THREE.Matrix3();
@@ -92,6 +93,14 @@ export class TownBuilder {
     obj.position.set(x, o.y ?? 0, z);
     obj.rotation.y = yaw;
     if (o.scale) obj.scale.setScalar(o.scale);
+    // (a prop with no radius of its own is solid by its model's footprint, unless it's huge or flat)
+    let fb = null;
+    if (o.solid !== false && !(res.r || o.box || o.r) && !obj.parent) {
+      obj.updateMatrixWorld(true);
+      const bb = _bb.setFromObject(obj);
+      const w = bb.max.x - bb.min.x, d = bb.max.z - bb.min.z, h = bb.max.y - (o.y ?? 0);
+      if (isFinite(w) && w > 0.15 && d > 0.15 && w < 3.2 && d < 3.2 && h > 0.25) fb = { x0: x - w * 0.4, x1: x + w * 0.4, z0: z - d * 0.4, z1: z + d * 0.4, h: Math.min(h, 2.2) };
+    }
     this.addStatic(obj, { outline: o.outline, nolod: o.nolod, cls: o.cls, label: this.stats ? (o.label || make.name || null) : null });
     const sc = o.scale ?? 1;
     if (res.shadow && o.shadow !== false) this.shadows.push({ x, z, rx: res.shadow.rx * sc, rz: (res.shadow.rz ?? res.shadow.rx) * sc, k: res.shadow.k });
@@ -99,7 +108,7 @@ export class TownBuilder {
       const h = o.h ?? 1.2;
       if (o.box) this.solidRot(x, z, o.box[0], o.box[1], yaw, (o.y ?? 0), (o.y ?? 0) + h);
       else this.solidCircle(x, z, (o.r ?? res.r) * sc, h, o.y ?? 0);
-    }
+    } else if (fb) this.solid(fb.x0, o.y ?? 0, fb.z0, fb.x1, (o.y ?? 0) + fb.h, fb.z1);
     if (res.lights && o.lights !== false) {
       obj.updateMatrixWorld(true);
       for (const l of res.lights) {

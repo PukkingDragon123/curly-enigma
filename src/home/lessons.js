@@ -235,6 +235,7 @@ export class HomeLessons {
         }, { face: false });
         star.scripted = false;
         if (!done) this.copperHome();
+        ob?.chapter?.(3, 'The Forge', 'Melt the copper into an ingot, then hammer out a blade.');
         this.placeStarForLesson();
         this.startHomeTutor('forgeGo');
       } else {
@@ -258,7 +259,7 @@ export class HomeLessons {
         await line(q >= 80 ? 'Look at that edge! First pick you ever made, and it\'d shame half of Deep Town\'s.' : q >= 55 ? 'A proper pick. Bit lumpy on the cheek, but it\'ll bite rock. That\'s what counts.' : 'Well, it\'s more or less pick-shaped. It\'ll dig. Make a better one when you\'re rich.', q >= 70 ? 'proud' : 'laugh');
         await line('Now, the lesson I meant to start with: <b>mining</b>. That rusty old cage goes straight down to my practice dig. Bring me some <b>copper ore</b>. Follow me!', 'happy');
       });
-      if (this.lessonStage() === 'mine') this.startHomeTutor('follow');
+      if (this.lessonStage() === 'mine') { ob?.chapter?.(2, 'The Dig', 'Down the old cage to his practice dig. Bring back copper.'); this.startHomeTutor('follow'); }
       return;
     }
     if (stage === 'forge' && from === 'forge') {
@@ -276,6 +277,7 @@ export class HomeLessons {
         await line(good ? `Look at that. A ${w?.name || 'blade'}! First go, and it doesn't bend. Your granny would cry.` : `A ${w?.name || 'blade'}. Lumpy, but it's yours, and it'll sell. The second one's always better.`, good ? 'proud' : 'laugh');
         await line(NEXT.cook.text, NEXT.cook.mood);
       });
+      ob?.chapter?.(4, 'The Hearth', 'A smith who doesn\'t eat is a skeleton with a hammer.');
       this.placeStarForLesson();
       this.startHomeTutor('cookGo');
       return;
@@ -302,6 +304,7 @@ export class HomeLessons {
       this.game.audio.play('success');
       // the whole HUD: your gold, your lantern, everything (a flourish as each piece comes in)
       ob?.setLevel(TUT.FULL, { force: true });
+      ob?.chapter?.('Lessons done', 'The Million', 'Dig, forge, cook and sell. The Surface Express waits in Deep Town.', 4);
       this.starLine('Off you go, then. I\'ll keep the fire in. Mind your lantern: when it runs low, <b>eat</b> something.', { mood: 'laugh' });
       // the last control: a snack (a tip that goes by itself if you don't need it yet)
       this.later(2.5, () => {
@@ -621,6 +624,7 @@ export class HomeLessons {
       if (this.tut !== t) return;
       t.busy = false;
       ob?.setLevel(TUT.QUEST); // your first task: the quest strip comes in
+      ob?.chapter?.(1, 'The Pick', 'No pick, no digging. Forge your own at Old Star\'s fire.');
       this.placeStarForLesson();
       this.startHomeTutor('forgeGo');
       return;

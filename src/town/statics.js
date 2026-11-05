@@ -626,7 +626,7 @@ export function buildLiftYard(S) {
   B.solidCircle(TOWN.orePile.x, TOWN.orePile.z, 0.62, 0.8);
   B.place(() => P.crate(8), 33.4, 7.85, 0.2);
   B.place(() => P.barrel(9, { fill: 'coal' }), 33.5, 8.65);
-  B.place(() => P.ropeCoil(2), 28.4, 8.2, 0, { solid: false });
+  B.place(() => P.ropeCoil(2), 28.4, 8.2, 0, { r: 0.3, h: 0.35 });
   B.place(() => P.bucket(true), 33.3, 9.4, 0.4);
 }
 
@@ -657,7 +657,7 @@ export function buildDecor(S) {
     [5.6, 34.6, 1], [13.8, 35.0, 2], [24.0, 35.2, 0], [34.6, 34.8, 3], [40.6, 28.2, 2], [40.8, 17.4, 0], [40.4, 6.6, 1], [37.4, 4.6, 2], [30.0, 34.6, 1], [19.8, 34.9, 3]];
   clumps.forEach(([x, z, hue], i) => {
     let c = null;
-    B.place(() => (c = P.glowShrooms(i * 5 + 2, hue, 0.85 + (i % 3) * 0.2)), x, z, rng() * 6, { solid: false, low: true });
+    B.place(() => (c = P.glowShrooms(i * 5 + 2, hue, 0.85 + (i % 3) * 0.2)), x, z, rng() * 6, { r: 0.45, h: 0.8, low: true });
     S.addLight({ x, y: 0.4, z, color: c.color, intensity: 0, real: false, pool: 0.9, poolOpacity: 0.24, halo: 0.6, haloOpacity: 0.28, flicker: 0.04, speed: 0.3, bakePower: 0.55, bakeRadius: 1.8 });
   });
   // stalagmites, crystals and rubble round the edges
@@ -667,7 +667,7 @@ export function buildDecor(S) {
     B.place(() => (c = P.crystals(Math.round(x * 13 + z), s, hue)), x, z, rng() * 6, { low: true, r: 0.4, h: 1.2 });
     S.addLight({ x, y: 0.8, z, color: c.color, intensity: 3.5, distance: 4.5, flicker: 0.05, speed: 0.3, pool: 1.5, poolOpacity: 0.26, halo: 1.2, hy: 0.7, haloOpacity: 0.3 });
   }
-  for (const [x, z, w, d] of [[30.6, 35.0, 1.3, 0.8], [9.6, 35.2, 1.0, 0.7], [40.6, 22.3, 0.8, 1.2]]) B.place(() => P.rubble(Math.round(x + z), w, d), x, z, 0, { solid: false, low: true });
+  for (const [x, z, w, d] of [[30.6, 35.0, 1.3, 0.8], [9.6, 35.2, 1.0, 0.7], [40.6, 22.3, 0.8, 1.2]]) B.place(() => P.rubble(Math.round(x + z), w, d), x, z, 0, { box: [w * 0.85, d * 0.85], h: 0.35, low: true });
   // barrels, crates & sacks
   const clutter = [[22.2, 4.6, 'b', 0], [21.7, 5.15, 'c', 0.3], [33.4, 10.3, 'c', 0.1], [33.3, 11.1, 'b', 0], [9.0, 4.4, 's', 0], [8.95, 5.0, 'b', 0], [3.75, 10.25, 'c', 0.2], [3.7, 15.9, 's', 0], [3.75, 21.25, 'b', 0], [15.6, 4.1, 'c', 0.15], [11.9, 4.15, 's', 0.4],
     [6.6, 32.4, 'b', 0], [11.0, 32.6, 'c', 0.3], [24.0, 32.8, 's', 0], [28.9, 32.7, 'b', 0.2], [37.9, 21.0, 'c', 0.1], [37.6, 15.0, 'b', 0], [37.8, 26.2, 's', 0.3]];
