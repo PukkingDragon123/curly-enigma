@@ -55,9 +55,9 @@
 .tk-note:nth-child(3) { animation-delay: .12s; }
 .tk-note:nth-child(4) { animation-delay: .18s; }
 @keyframes tkNoteIn { from { transform: translateY(calc(var(--px) * -8)) rotate(-6deg); opacity: 0; } }
-.tk-note.primary { background: var(--a-grainA) 0 0 / calc(var(--px) * 16) repeat, #ffe8a0; box-shadow: 0 0 0 var(--px) #8a5a10, inset 0 calc(var(--px) * -1) 0 #e8c060, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35); }
+.tk-note.primary { background: #ffe8a0; box-shadow: 0 0 0 var(--px) #8a5a10, inset 0 calc(var(--px) * -1) 0 #e8c060, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35); }
 .tk-note:hover, .tk-note:focus-visible { transform: rotate(0) translateY(calc(var(--px) * -1)); background: var(--a-noteT) 0 0 / calc(var(--px) * 32) repeat, #fffaf0; }
-.tk-note.primary:hover, .tk-note.primary:focus-visible { background: var(--a-grainA) 0 0 / calc(var(--px) * 16) repeat, #fff3c0; }
+.tk-note.primary:hover, .tk-note.primary:focus-visible { background: #fff3c0; }
 .tk-note::after { content: ''; position: absolute; left: calc(var(--px) * -15); top: 50%; width: calc(var(--px) * 13); height: calc(var(--px) * 10); margin-top: calc(var(--px) * -5);
   background: var(--a-pawPoint) 0 0 / 100% 100%; opacity: 0; transform: translateX(calc(var(--px) * -3)); transition: opacity .12s, transform .12s; pointer-events: none; }
 .tk-note:hover::after, .tk-note:focus-visible::after { opacity: 1; transform: none; animation: tkPoint .8s ease-in-out infinite; }

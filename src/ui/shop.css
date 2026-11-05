@@ -106,7 +106,7 @@
 .sh-tag img { width: calc(var(--px) * 6); height: calc(var(--px) * 6); }
 .sh-good:hover .sh-tag { animation: tagWiggle .6s ease-in-out; }
 @keyframes tagWiggle { 25% { transform: rotate(6deg); } 60% { transform: rotate(-4deg); } }
-.sh-good.on .sh-tag { background: var(--a-grainA) 0 0 / calc(var(--px) * 16) repeat, #ffe8a0; box-shadow: 0 0 0 var(--px) #8a5a10, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35); }
+.sh-good.on .sh-tag { background: #ffe8a0; box-shadow: 0 0 0 var(--px) #8a5a10, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35); }
 .sh-good.dear .sh-tag { color: #a8321e; }
 .sh-good.owned .sh-tag { color: #3d6a30; }
 
