@@ -1,10 +1,11 @@
-// The book: one leather-bound book with chapter tabs on the page edge (B opens it, M opens it at
-// the map). Quests (grouped: the way up, Deep Town & neighbours, lore; who else has work; done),
-// the hand-drawn Map (Survey.js), Skills (src/ui/SkillTree.js when it exists), the Index (a summary
-// that opens the Index Book), and Lore (Old Star's notes, tales, Hobb's journal, carvings, relics:
-// src/core/lore.js; 'notes' still opens it). Two pages side by side, one at a time on phones.
+// The book: one leather-bound book with chapter tabs on the page edge (B opens it). Quests
+// (grouped: the way up, Deep Town & neighbours, lore; who else has work; done), Skills
+// (src/ui/SkillTree.js when it exists), the Index (a summary that opens the Index Book), and Lore
+// (Old Star's notes, tales, Hobb's journal, carvings, relics: src/core/lore.js; 'notes' still opens
+// it). Two pages side by side, one at a time on phones. (There is no hand-drawn map any more: an
+// old 'map' tab opens the quests.)
 // The pause menu (the little green journal) lives at the bottom of this file.
-//   openBook(game, tab?, opts?) → panel handle with .tab(name), .chapter, .map (the map controller)
+//   openBook(game, tab?, opts?) → panel handle with .tab(name), .chapter
 import { el } from '../core/util.js';
 import { iconURL, weaponIconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
@@ -23,7 +24,6 @@ import { indexName } from '../core/State.js';
 import { BART } from './bookArt.js';
 import { SFX } from './bookSfx.js';
 import { countText, rewardText } from './Tracker.js';
-import { renderMap } from './Survey.js';
 import { onSwipe, put } from './common.js';
 import './journal.css';
 
@@ -31,12 +31,11 @@ const skillMods = import.meta.glob('./SkillTree.js');
 
 export const CHAPTERS = [
   { id: 'quests', label: 'Quests', color: '#8a3a1a' },
-  { id: 'map', label: 'Map', color: '#3d6a5a' },
   { id: 'skills', label: 'Skills', color: '#6a4a8a' },
   { id: 'index', label: 'Index', color: '#74291c' },
   { id: 'lore', label: 'Lore', color: '#3a5a6a' },
 ];
-const TAB_ALIAS = { notes: 'lore' };
+const TAB_ALIAS = { notes: 'lore', map: 'quests' };
 const INDEX_CATS = [
   { id: 'mineral', label: 'Minerals', icon: () => iconURL('copper_ore'), list: () => Object.keys(ITEMS).filter((k) => ITEMS[k].cat === 'mineral') },
   { id: 'gem', label: 'Gems', icon: () => iconURL('ruby'), list: () => Object.keys(ITEMS).filter((k) => ITEMS[k].cat === 'gem') },
@@ -66,7 +65,7 @@ export function whereText(v) {
   if (g.place === 'town') return 'Deep Town';
   if (g.place === 'dig') return "Old Star's dig, by the first lift";
   if (g.zone) return `The ${ZONE_NAMES[g.zone]}, ${ZONE_DEPTHS[g.zone - 1]} m down`;
-  if (g.ruin) return g.ruin === 'nearest' ? 'An old ruin (your map marks the nearest)' : `A ${{ shrine: 'star shrine', vault: 'sealed vault', hall: 'pillared hall', well: 'drowned well' }[g.ruin] || 'ruin'} (your map marks the nearest)`;
+  if (g.ruin) return g.ruin === 'nearest' ? 'An old ruin, somewhere in the mine' : `A ${{ shrine: 'star shrine', vault: 'sealed vault', hall: 'pillared hall', well: 'drowned well' }[g.ruin] || 'ruin'}, somewhere in the mine`;
   if (g.danger === 'nest') return 'A creature lair (red rings on your radar)';
   if (g.sight) return { lake: 'An underground lake (blue on your radar)', lava: 'A lava pool in the Magma Deep', cavein: 'A lost miner\'s remains, in an old dungeon', signpost: 'The lift stations\' name signs', sunbeam: 'The sunbeam, Deep Town', well: 'The old well, Deep Town', tunnel: 'The boarded tunnel, Deep Town', fountain: 'The fountain, Deep Town' }[g.sight] || '';
   if (g.biome) return { dino: 'The dino caverns (huge caves, ferns, bones)', fungus: 'The Mushroom Hollow', dry: 'The Sandstone Hollows', moss: 'Mossy caves' }[g.biome] || 'Somewhere in the mine';
@@ -92,7 +91,7 @@ export function openBook(game, tab, opts = {}) {
   const ribbon = el('i', { class: 'ib-ribbon' });
   const cover = el('div', { class: 'ib-cover' }, [pages]);
   const book = el('div', { class: 'ib bk' }, [ribbon, cover, tabs]);
-  let chapter = tab, side = 'left', h = null, map = null, cleanup = [];
+  let chapter = tab, side = 'left', h = null, cleanup = [];
 
   // ---------------- tabs
   const tabEls = {};
@@ -198,7 +197,6 @@ export function openBook(game, tab, opts = {}) {
       // quest items you carry for it
       const carry = v.status === 'active' ? questItems(v) : [];
       const rw = v.reward ? rewardText(v.reward, { rep: giver, village: v.kind === 'village' }) : '';
-      const where = cur && stepGoal(v);
       const trackBtn = v.status === 'active' ? el('button', {
         class: 'bk-track' + (v.tracked ? ' on' : ''), onclick: () => {
           if (v.tracked) return;
@@ -207,7 +205,6 @@ export function openBook(game, tab, opts = {}) {
           render();
         },
       }, [el('img', { class: 'pix', src: BART.pin('pin'), alt: '' }), v.tracked ? 'On your strip' : 'Pin to your strip']) : null;
-      const mapBtn = v.status === 'active' && where && (where.scene === 'deep' || where.place) ? el('button', { class: 'bk-maplink', onclick: () => go('map', { focus: { quest: v.id } }) }, [el('img', { class: 'pix', src: BART.tab('map'), alt: '' }), 'Show on map']) : null;
       put(right,
         back(),
         el('div', { class: 'bk-giver' }, [
@@ -224,7 +221,7 @@ export function openBook(game, tab, opts = {}) {
         carry.length ? el('div', { class: 'bk-carry' }, [el('span', {}, 'You carry'), ...carry.map((it) => el('span', { class: 'bk-item', title: ITEMS[it]?.desc || '' }, [el('img', { class: 'pix', src: iconURL(it), alt: '' }), ITEMS[it]?.name || it]))]) : null,
         v.status === 'done' && v.outro ? el('blockquote', { class: 'bk-said after', style: { '--ink': ink } }, v.outro) : null,
         rw ? el('div', { class: 'bk-reward' }, [el('span', {}, v.status === 'done' ? 'Got' : 'Reward'), el('b', { class: 'gold-txt' }, rw)]) : null,
-        el('div', { class: 'bk-actions' }, [trackBtn, mapBtn]),
+        el('div', { class: 'bk-actions' }, [trackBtn]),
         v.status === 'done' ? el('div', { class: 'bk-donestamp' }, [el('img', { class: 'pix', src: BART.stamp(), alt: '' }), el('span', {}, `Done · day ${v.doneDay}`)]) : null,
       );
     },
@@ -412,18 +409,8 @@ export function openBook(game, tab, opts = {}) {
     },
   };
 
-  // ===== Map (a spread)
-  const mapChapter = {
-    spread(o = {}) {
-      spread.innerHTML = '';
-      map?.dispose();
-      map = renderMap(spread, game, { focus: o.focus, book: true, onClose: () => h?.close() });
-      h && (h.map = map);
-    },
-  };
-
-  const CH = { quests, notes, lore, index, skills, map: mapChapter };
-  const isSpread = (c) => c === 'map' || c === 'skills';
+  const CH = { quests, notes, lore, index, skills };
+  const isSpread = (c) => c === 'skills';
 
   const render = (o = {}) => {
     markTabs();
@@ -433,7 +420,6 @@ export function openBook(game, tab, opts = {}) {
     left.hidden = right.hidden = sp;
     spread.hidden = !sp;
     pages.classList.toggle('spread', sp);
-    if (!sp && map) { map.dispose(); map = null; if (h) h.map = null; }
     for (const f of cleanup.splice(0)) { try { f(); } catch (e) { /* noop */ } }
     const C = CH[chapter];
     if (sp) C.spread(o);
@@ -459,7 +445,6 @@ export function openBook(game, tab, opts = {}) {
     if (!CHAPTERS.some((c) => c.id === id)) return;
     if (id === chapter) {
       if (side === 'right') { side = 'left'; flip(-1, () => {}); }
-      else if (o.focus && map) map.focus(o.focus);
       return;
     }
     const dir = CHAPTERS.findIndex((c) => c.id === id) > CHAPTERS.findIndex((c) => c.id === chapter) ? 1 : -1;
@@ -467,7 +452,6 @@ export function openBook(game, tab, opts = {}) {
     flip(dir, () => { chapter = id; lastTab = id; side = 'left'; }, o);
   };
   onSwipe(pages, (dir) => {
-    if (chapter === 'map') return; // the map pans with drags
     if (book.classList.contains('single') && side === 'right') { if (dir > 0) { side = 'left'; flip(-1, () => {}); } return; }
     const i = CHAPTERS.findIndex((c) => c.id === chapter), j = i - dir;
     if (j >= 0 && j < CHAPTERS.length) go(CHAPTERS[j].id);
@@ -477,7 +461,6 @@ export function openBook(game, tab, opts = {}) {
     // one page at a time on narrow screens; a landscape phone gets the full spread
     const single = window.innerWidth < 700;
     book.classList.toggle('single', single);
-    map?.resize();
   };
   fit();
   window.addEventListener('resize', fit);
@@ -488,10 +471,8 @@ export function openBook(game, tab, opts = {}) {
     const typing = /INPUT|TEXTAREA/.test(document.activeElement?.tagName || '');
     if (typing) return;
     if (e.code === 'KeyB') { e.preventDefault(); h.close(); return; }
-    if (e.code === 'KeyM') { e.preventDefault(); if (chapter === 'map') h.close(); else go('map'); return; }
     const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].indexOf(e.code);
-    if (n >= 0) { go(CHAPTERS[n].id); return; }
-    if (chapter === 'map') return; // arrows pan the map
+    if (n >= 0) { if (CHAPTERS[n]) go(CHAPTERS[n].id); return; }
     const i = CHAPTERS.findIndex((c) => c.id === chapter);
     if (e.code === 'ArrowRight' || e.code === 'PageDown') { if (i < CHAPTERS.length - 1) go(CHAPTERS[i + 1].id); }
     else if (e.code === 'ArrowLeft' || e.code === 'PageUp') { if (i > 0) go(CHAPTERS[i - 1].id); }
@@ -499,24 +480,21 @@ export function openBook(game, tab, opts = {}) {
   window.addEventListener('keydown', onKey);
 
   lastTab = chapter;
-  render({ focus: opts.focus });
+  render();
   game.audio.play('page');
   h = ui.openPanel({
     body: book, className: 'ib-panel bk-panel',
     onClose: () => {
       window.removeEventListener('resize', fit);
       window.removeEventListener('keydown', onKey);
-      map?.dispose();
       for (const f of cleanup.splice(0)) { try { f(); } catch (e) { /* noop */ } }
       if (ui.book === h) ui.book = null;
     },
   });
   h.kind = 'tome';
-  h.map = map;
   h.tab = (id, o) => go(id, o || {});
   Object.defineProperty(h, 'chapter', { get: () => chapter });
   h.onEscape = () => {
-    if (map?.onEscape?.()) return true;
     if (book.classList.contains('single') && side === 'right') { side = 'left'; flip(-1, () => {}); return true; }
     return false;
   };

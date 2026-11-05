@@ -39,6 +39,8 @@ export const HEART = () => specURL('ui:heart', { k: 'heart' });
 
 export { qColor };
 
+// the lift layers (another part builds it): M and the radar open it once it exists
+const LAYER_MODS = import.meta.glob('../fps/liftLayers.js');
 const SEAL_FOR = { good: 'green', warn: 'amber', bad: 'red' };
 const TACK_FOR = { good: 0x5a9a3a, warn: 0xd9901e, bad: 0xc23c2c };
 
@@ -132,11 +134,11 @@ export class UI {
         this.game.input.look.dy += e.movementY || 0;
       }
     });
-    // M: the book at the map (the book itself handles B / M while it's open)
+    // M: the lift layers (see openSurvey; the hand-drawn map is gone)
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'KeyM' || e.repeat || this.hudMode === 'none') return;
       if (this.panelStack.length || game.transitioning || game.scene?.allowMenus === false) return;
-      this.openBook('map');
+      this.openSurvey();
     });
 
     const st = game.state;
@@ -199,10 +201,20 @@ export class UI {
   /** First-person crosshair: { visible, kind: 'none'|'rock'|'ore'|'enemy'|'use', label, progress } or null. */
   setCrosshair(o) { this.crosshair.set(o); }
 
-  /** The map (also opened by tapping the radar or pressing M): the book at its Map chapter. */
-  openSurvey() { return this.openBook('map'); }
+  /**
+   * M, or a tap on the radar: the lift layers (src/fps/liftLayers.js, openLayers(game)) once that
+   * module exists; until then nothing. (The hand-drawn map chapter of the book was removed.)
+   */
+  openSurvey() {
+    const load = LAYER_MODS['../fps/liftLayers.js'];
+    if (!load) return null;
+    return load().then((m) => {
+      const open = m.openLayers || m.openLiftLayers || m.default;
+      return typeof open === 'function' ? open(this.game) : null;
+    }).catch((e) => { console.warn('lift layers failed', e); return null; });
+  }
 
-  /** The book (src/ui/Journal.js): tab 'quests' | 'map' | 'skills' | 'index' | 'notes'; opts.focus for the map. */
+  /** The book (src/ui/Journal.js): tab 'quests' | 'skills' | 'index' | 'lore' ('notes' = lore; an old 'map' opens the quests). */
   openBook(tab, opts) { return openBook(this.game, tab, opts); }
 
   /** Give the mouse back (panels, scene changes) without counting it as the player's Esc. */

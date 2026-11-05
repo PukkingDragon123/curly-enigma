@@ -1,4 +1,4 @@
-/* ---------- the book: quests, map, skills, index, notes (shares the Index Book's binding in book.css) ---------- */
+/* ---------- the book: quests, skills, index, lore (shares the Index Book's binding in book.css) ---------- */
 .ib.bk {
   width: min(calc(100vw - 16px - var(--sal) - var(--sar) - var(--px) * 16), calc(var(--px) * 344));
   height: min(calc(100vh - 16px - var(--sat) - var(--sab)), calc(var(--px) * 224));
@@ -14,7 +14,7 @@
 .bk-sub { font-size: var(--fs); color: #8a6a48; }
 .bk-foot { margin-top: auto; padding-top: calc(var(--px) * 2); font-size: var(--fs); color: #9a7a52; }
 
-/* the map and the skill tree use both pages as one sheet */
+/* the skill tree uses both pages as one sheet */
 .ib-pages.spread { grid-template-columns: 1fr; }
 .bk-spread {
   position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column;
@@ -25,8 +25,8 @@
 }
 .bk-spread[hidden] { display: none; }
 
-/* on the map and the skill tree the ribbon just peeks out of the bottom edge */
-.ib.bk[data-chapter=map] .ib-ribbon, .ib.bk[data-chapter=skills] .ib-ribbon { left: auto; right: calc(var(--px) * 30); top: auto; bottom: calc(var(--px) * -12); height: calc(var(--px) * 16); }
+/* on the skill tree the ribbon just peeks out of the bottom edge */
+.ib.bk[data-chapter=skills] .ib-ribbon { left: auto; right: calc(var(--px) * 30); top: auto; bottom: calc(var(--px) * -12); height: calc(var(--px) * 16); }
 
 /* ---------- quests: the list ---------- */
 .bk-list { display: flex; flex-direction: column; gap: 0; padding-top: 0; }
@@ -79,15 +79,14 @@
 .bk-reward span { color: #8a6a48; }
 .bk-reward b { font-weight: 400; }
 .bk-actions { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 3); margin-top: calc(var(--px) * 3); }
-.bk-track, .bk-maplink {
+.bk-track {
   display: inline-flex; align-items: center; gap: calc(var(--px) * 2); font: inherit; color: #4a2c16; cursor: pointer;
   padding: calc(var(--px) * 1) calc(var(--px) * 4) calc(var(--px) * 1) calc(var(--px) * 2);
   background: var(--parch-2); box-shadow: 0 0 0 var(--px) #8a6a48, 0 var(--px) 0 var(--px) rgba(60, 30, 10, .35); border: 0;
   transition: transform .12s var(--pop);
 }
 .bk-track img { width: calc(var(--px) * 12); height: calc(var(--px) * 14); }
-.bk-maplink img { width: calc(var(--px) * 16); height: calc(var(--px) * 16); }
-.bk-track:hover, .bk-maplink:hover { transform: translateY(calc(var(--px) * -1)) rotate(-1deg); }
+.bk-track:hover { transform: translateY(calc(var(--px) * -1)) rotate(-1deg); }
 .bk-track.on { color: #3d6a2a; background: #e8efcf; box-shadow: 0 0 0 var(--px) #5a8a3a; cursor: default; transform: none; }
 .bk-donestamp { position: absolute; right: calc(var(--px) * 8); bottom: calc(var(--px) * 8); display: flex; flex-direction: column; align-items: center; gap: var(--px); color: #b8402c; transform: rotate(-10deg); opacity: .85; pointer-events: none; animation: bkStamp .4s cubic-bezier(.6, 0, .9, .5) both; }
 .bk-donestamp img { width: calc(var(--px) * 30); height: calc(var(--px) * 30); mix-blend-mode: multiply; }

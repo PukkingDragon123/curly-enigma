@@ -10,7 +10,7 @@
 // million gold for the way up, his offer to teach you. Then you sit up and get out of your cot, and
 // the tutorial at home takes over (lessons.js: look, walk, talk, follow him to the cage lift). The overlay (WakeFx) draws the lids as a dark mask with soft edges and
 // lashes, warm where the light comes through them; only the world (the canvas) is ever blurred, never
-// the interface. Sets flags fallen + nugget, starts the `lessons` quest and emits lesson { step: 'wake' }
+// the interface. Sets the flag fallen, starts the `lessons` quest and emits lesson { step: 'wake' }
 // (and talk oldstar), as before.
 import * as THREE from 'three';
 import { el, clamp } from '../core/util.js';
@@ -256,7 +256,6 @@ export class HomeWake {
   async wakeFromFall() {
     const g = this.game, st = g.state, a = g.audio, ui = g.ui, star = this.star, ob = ui.onboard;
     st.flag('fallen', true);
-    st.flag('nugget', true);
     const sd = starData(st);
     sd.woke = false;
     ob?.begin(); // a new game: nothing on screen yet, the HUD comes in piece by piece
@@ -476,7 +475,6 @@ export class HomeWake {
       star.nextT = 999;
       star.faceTo(this.rig.player.pos.x, this.rig.player.pos.z);
     }
-    if (this.nug) { this.nug.ai.wake?.(); }
     // and now the tutorial: look, walk, talk, follow him to the lift (lessons.js)
     if (this.startHomeTutor) this.startHomeTutor('look');
     else if (star?.rig) this.later(1.6, () => this.placeStarForLesson());
@@ -486,7 +484,6 @@ export class HomeWake {
   skipWake() {
     const st = this.game.state;
     st.flag('fallen', true);
-    st.flag('nugget', true);
     starData(st).woke = true;
     this.game.quests?.start?.('lessons');
     st.emit('act', { type: 'lesson', step: 'wake' });
