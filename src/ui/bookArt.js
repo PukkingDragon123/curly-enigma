@@ -3,48 +3,39 @@
 // Drawn once at 1 art px = 1 canvas px (shown at --px), cached as data URLs.
 import { Px, PAL, INK, art } from './uiArt.js';
 import { makeRng } from '../core/util.js';
+import * as CA from './craftArt.js';
+const mix = CA.mix;
 
 const P = PAL.paper;
 const SEPIA = 0x4a2c16, SEPIA_LT = 0x7a5a3a, RED = 0xb8402c, RED_DK = 0x7a2414;
 
-// ---------------------------------------------------------------- the objective strip (9-slice, 8 px)
+// ---------------------------------------------------------------- the objective strip (9-slice, 8 px, on 48×24)
+// Paper between two rolled ends. The middle (32×8) tiles (quests.css uses `repeat`), so the paper's
+// texture, its deckled, scorched top and bottom edges run on a 32-px period; the rolls are constant
+// down their length, with curled caps and twine in the corner slices.
 function strip() {
-  const W = 32, H = 24, p = new Px(W, H);
-  const rng = makeRng(7);
-  // paper
-  for (let y = 3; y < H - 3; y++)
-    for (let x = 5; x < W - 5; x++) {
-      const n = rng();
-      p.set(x, y, n < 0.06 ? P.mid : n > 0.97 ? P.hi : P.base);
-    }
-  // deckled, scorched top and bottom edges (pattern repeats every 16 px across the middle)
-  const edgeT = [0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0];
-  const edgeB = [1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0];
-  for (let x = 5; x < W - 5; x++) {
-    const t = edgeT[x % 16], b = edgeB[x % 16];
-    p.set(x, 2 + t, P.burn); p.set(x, 3 + t, P.dk);
-    if (t) p.clear(x, 2);
-    p.set(x, H - 3 - b, P.burn); p.set(x, H - 4 - b, P.dk);
-    if (b) p.clear(x, H - 3);
-    if ((x * 7) % 5 === 0) p.set(x, 4 + t, P.mid);
+  const W = 48, H = 24, S = 8, M = 32, p = new Px(W, H);
+  const F = CA.paperField(M, 8, { seed: 7, fibres: 1.2, fox: 0.6 });
+  const tear = (e, x) => 2 + Math.round(CA.pnoise(((x - S) * 6) / M, e * 3, 6, 8, 19) * 1.6);
+  CA.paintPaper(p, F, CA.TONES.paper, S, S, (x, y) => x >= 6 && x < W - 6 && y >= tear(0, x) && y <= H - 1 - tear(1, x));
+  for (let x = 6; x < W - 6; x++) {
+    const t = tear(0, x), b = H - 1 - tear(1, x);
+    p.set(x, t, 0x6a4424); p.set(x, t + 1, mix(p.get(x, t + 1), 0xb48c56, 0.6)); p.set(x, t + 2, mix(p.get(x, t + 2), 0xd4b47e, 0.35));
+    p.set(x, b, 0x6a4424); p.set(x, b - 1, mix(p.get(x, b - 1), 0xb48c56, 0.6)); p.set(x, b - 2, mix(p.get(x, b - 2), 0xd4b47e, 0.35));
   }
-  // rolled ends: a cylinder each side, lit from the top-left, with a curl at the caps
-  const roll = [PAL.paper.edge, P.burn, P.dk, P.mid, P.hi, P.base, P.dk, PAL.paper.edge];
+  // rolled ends: a cylinder lit from the top-left (constant down its length), a curl at each cap
+  const roll = [0x5a3a1e, 0x9a7448, 0xd4b47e, 0xead5a8, 0xfbf1d8, 0xf2e1b9, 0xd8bc88, 0xb48c56, 0x8a6038, 0x5a3a1e];
   for (const side of [0, 1]) {
-    const x0 = side ? W - 8 : 0;
-    for (let y = 1; y < H - 1; y++)
-      for (let i = 0; i < 8; i++) p.set(x0 + i, y, roll[i]);
-    // caps: an ellipse with the spiral of the rolled sheet
+    const x0 = side ? W - 9 : 0;
+    for (let y = 1; y < H - 1; y++) for (let i = 0; i < 9; i++) p.set(x0 + i, y, roll[i]);
     for (const [cy, dir] of [[1, 1], [H - 2, -1]]) {
-      for (let i = 1; i < 7; i++) { p.set(x0 + i, cy, P.base); p.set(x0 + i, cy - dir, PAL.paper.edge); }
-      p.set(x0 + 3, cy, P.burn); p.set(x0 + 4, cy, P.burn); p.set(x0 + 2, cy + dir, P.dk); p.set(x0 + 5, cy + dir, P.mid);
-      p.clear(x0, cy - dir); p.clear(x0 + 7, cy - dir);
+      for (let i = 1; i < 8; i++) { p.set(x0 + i, cy, i < 4 ? 0xead5a8 : 0xd4b47e); p.set(x0 + i, cy - dir, 0x5a3a1e); }
+      p.set(x0 + 3, cy, 0x9a7448); p.set(x0 + 4, cy, 0x8a6038); p.set(x0 + 5, cy, 0x9a7448); p.set(x0 + 4, cy + dir, 0xb48c56);
+      p.clear(x0, cy - dir); p.clear(x0 + 8, cy - dir);
     }
-    // a twine binding round the roll
-    for (const yy of [6, H - 7]) for (let i = 0; i < 8; i++) p.set(x0 + i, yy, i % 2 ? 0x8a5a32 : 0xb8864a);
+    for (const yy of [5, H - 6]) for (let i = 0; i < 9; i++) { p.set(x0 + i, yy, i % 2 ? 0x8a5a32 : 0xc8965a); p.set(x0 + i, yy + 1, i % 2 ? 0x5a3a1e : 0x8a5a32); }
   }
-  // soft shadow where the paper meets the rolls
-  for (let y = 4; y < H - 4; y++) { p.set(8, y, P.mid); p.set(W - 9, y, P.mid); }
+  p.outline(0x3a2210);
   return p;
 }
 

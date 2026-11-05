@@ -58,7 +58,7 @@ export function lockedLifts(st) { return liftState(st).filter((l) => l.on === fa
 
 /** Every place the mole can ride to: home, Deep Town (once reached), mine lifts found. */
 export function liftDestinations(st) {
-  const out = [{ id: 'home', name: 'Home', desc: "Old Star's cave workshop: his forge, the hearth, your bed and Nugget.", depth: 0, zone: 0 }];
+  const out = [{ id: 'home', name: 'Home', desc: "Old Star's cave workshop: his forge, the hearth, and your bed.", depth: 0, zone: 0 }];
   if (st.flag('escaped')) out.push({ id: 'town', name: 'Deep Town', desc: 'Shops, the assay office and the Surface Express.', depth: 15, zone: 1 });
   for (const l of liftState(st).slice().sort((a, b) => a.depth - b.depth)) if (l.on !== false) out.push({ ...l, desc: ZONES[l.zone]?.desc || 'A lift you found down in the rock.' });
   return out;

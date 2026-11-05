@@ -2646,3 +2646,11 @@ Done by the lead alone, one item at a time (the user asked for no helpers).
 - **Caves.** Stalactites and stalagmites (`stalactite` / `stalagmite` in `Props.js` + `props/models.js`: banded
   limestone, clay, grey and dark stone, wet tips, drips, rimstone pools) in the upper four zones, a little denser
   decoration; every cave prop is solid (`Props.collide`, called after the player moves).
+
+### As built: camp polish (wave 6, house part)
+
+- **Light**: split-toned grade and a cooler hemisphere/bake ambient (cold blue rock, amber pools that end: fire/forge bake radius 2.5/2.2 m), a thin cold `FogExp2` haze; the hole's daylight speck brighter and unfogged, a bake-only cold light up its shaft.
+- **Air** (`src/home/campAir.js`, made by the scene): a soft volumetric beam of daylight down the hole with dust turning in it, smoke curling up off the fire pit to a soot patch on the roof, wisps from the forge hood (more with the bellows), sparks when a log settles, moths circling the shack lantern and the lift lamp.
+- **Weathering** (`caveShell.js`): grey-blue strata, calcite flowstone and damp streaks under the drips, moss creeping onto the floor, lichen, ash round the fire pit, coal dust round the forge, soot over the pit.
+- **Props** (`campProps.js`): glowing mushrooms with lit gills, a crystal cluster, pans on pegs, a framed photo over the cot, slippers, a plank bench by the shack door (sit), a wash tub, worn flagstones from the steps to his door, old slumped sacks, a rope coil and oil can by the lift, the log stack, finer cobwebs, the kitchen shelf bowed with a tea towel; the shack has rust runs, moss at its foot; washing on the drying line is real cloth (`laundryTexture` in `cloth.js`, `laundry` handed over by the east job).
+- **Fixed**: `StarHouse.toM` ignored the room's tile scale, so every point it made landed twice as far out (forge embers, kettle/pot steam, the spring's spout and pool, trough water, candle glows, the shack lantern floating mid-camp, note pins, coins). VERSION 7.
