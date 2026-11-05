@@ -788,9 +788,13 @@ export function loadInventory(state, raw) {
   return stashed;
 }
 
-/** The starting backpack for a new game. */
+/** The starting backpack for a new game: empty, like Minecraft (you fell down here with nothing). */
 export function defaultInv() {
-  return { v: 1, slots: [{ id: 'grub_bar', n: 2 }, { id: 'support_beam', n: 3 }, ITEMS.chicken_feed ? { id: 'chicken_feed', n: 6 } : null, null, null, null] };
+  return { v: 1, slots: [] };
+}
+/** What a new game keeps in the trunk at home: a few grub bars, support beams and a sack of feed. */
+export function defaultStash() {
+  return { slots: [{ id: 'grub_bar', n: 2 }, { id: 'support_beam', n: 3 }, ITEMS.chicken_feed ? { id: 'chicken_feed', n: 6 } : null].filter(Boolean) };
 }
 
 // ---------------------------------------------------------------- Nugget's care (data.coop)

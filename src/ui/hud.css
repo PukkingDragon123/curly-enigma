@@ -304,3 +304,27 @@ html.is-touch .loop .k { display: none; }
 /* the 5-slot hotbar: an empty loop is a dashed outline waiting for a tool */
 .belt .loop.empty .loop-face { outline: var(--px) dashed rgba(240, 220, 180, .45); outline-offset: calc(var(--px) * -3); }
 .belt .loop.empty { opacity: .8; }
+
+/* ---------- the hotbar as a Minecraft slot bar: grey bevelled squares on a dark bar, the chosen one
+   framed in white; an empty slot is just the empty square ---------- */
+.belt-strap {
+  height: auto; padding: calc(var(--px) * 1); background: rgba(16, 14, 14, .72);
+  box-shadow: 0 0 0 var(--px) #000, inset 0 0 0 var(--px) #5a5a5a; filter: none;
+}
+.belt-buckle, .belt-tip { display: none; }
+.belt-loops { padding: 0; gap: 0; }
+.loop { margin: 0; max-width: none; }
+.loop:hover, .loop.sel { transform: none; }
+.loop-face {
+  width: calc(var(--icon-s) + var(--px) * 7); height: calc(var(--icon-s) + var(--px) * 7);
+  border: 0; border-image: none; background: #8b8b8b;
+  box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff;
+  margin: calc(var(--px) * .5);
+}
+.loop-face img { margin: 0; }
+.loop.sel .loop-face { border-image: none; filter: none; outline: calc(var(--px) * 1.5) solid #fff; outline-offset: calc(var(--px) * .5); box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff, 0 0 0 calc(var(--px) * 2.5) #000; position: relative; z-index: 1; }
+.belt .loop.empty .loop-face { outline: none; }
+.belt .loop.sel.empty .loop-face { outline: calc(var(--px) * 1.5) solid #fff; }
+.belt .loop.empty { opacity: 1; }
+.loop .k { left: calc(var(--px) * 1.5); top: calc(var(--px) * 1); color: #fff; z-index: 2; }
+.loop .n { right: calc(var(--px) * 1.5); bottom: calc(var(--px) * 1); z-index: 2; color: #fff; text-shadow: var(--px) var(--px) 0 #3f3f3f; }

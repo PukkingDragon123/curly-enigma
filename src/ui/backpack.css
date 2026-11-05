@@ -547,3 +547,35 @@
 .inv-gridbox.bag.big { --cell: calc(var(--slot-w) * .86); }
 .bp-nextbag { display: flex; justify-content: center; align-items: center; gap: calc(var(--px) * 2); margin-top: calc(var(--px) * 3); font-size: 8px; color: #6a4a2a; text-transform: uppercase; letter-spacing: .06em; }
 .bp-nextbag .inv-lock { position: static; transform: rotate(-2deg); }
+
+/* ---------- Minecraft look: every cell of the pack is an empty grey slot (bevelled dark top-left,
+   light bottom-right) on the light grey panel; what you carry lies on top; the hotbar is its own
+   slot bar under the pack ---------- */
+.inv-gridbox, .inv-gridbox.coop {
+  background: #c6c6c6; border-radius: 0; padding: calc(var(--px) * 2);
+  box-shadow: inset var(--px) var(--px) 0 #ffffff, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #555555, 0 0 0 var(--px) #000;
+}
+.inv-cell, .inv-gridbox.coop .inv-cell {
+  border: 0; margin: 1px; background: #8b8b8b;
+  box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff;
+}
+.inv-cell.sewn { background: repeating-linear-gradient(45deg, #7a7a7a 0 3px, #6e6e6e 3px 6px); box-shadow: inset var(--px) var(--px) 0 #4a4a4a, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #9a9a9a; opacity: .7; }
+.inv-slot.tile, .inv-gridbox.coop .inv-slot.tile {
+  margin: 1px; border-radius: 0; background: rgba(139, 139, 139, .55);
+  box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff;
+}
+.inv-slot.tile.q { box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff, inset 0 calc(var(--px) * -2.5) 0 color-mix(in srgb, var(--qc) 70%, transparent); }
+.inv-slot.tile:not(.empty):hover, .inv-slot.tile.on { background: #c5c5c5; transform: none; }
+.inv-slot.tile .n { color: #fff; text-shadow: var(--px) var(--px) 0 #3f3f3f; right: calc(var(--px) * 1); bottom: 0; }
+.inv-shadow { border-radius: 0; }
+.bp-count { color: #3f3f3f; }
+/* the hotbar row in the pack: the same slots, on a bar of its own */
+.bp-hot { gap: 0; padding: calc(var(--px) * 1); margin-top: calc(var(--px) * 3); align-self: center; background: #c6c6c6;
+  box-shadow: inset var(--px) var(--px) 0 #ffffff, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #555555, 0 0 0 var(--px) #000; }
+.bp-hot-t { color: #3f3f3f; margin: 0 calc(var(--px) * 2); }
+.bp-hot-slot, .bp-hot-slot.empty {
+  margin: 1px; border-image: none; border: 0; outline: none; background: #8b8b8b;
+  box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff;
+}
+.bp-hot-slot.on, .bp-hot-slot:hover { background: #c5c5c5; box-shadow: inset var(--px) var(--px) 0 #373737, inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #ffffff, 0 0 0 calc(var(--px) * 1.5) #fff; }
+.bp-hot-slot .k { color: #fff; text-shadow: var(--px) var(--px) 0 #3f3f3f; }

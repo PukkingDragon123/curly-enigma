@@ -39,7 +39,7 @@ export function defaultData() {
     weapons: [], // read-only mirror of the forged weapons in the backpack
     inv: Inv.defaultInv(), // the backpack: slots of stacks (core/inventory.js)
     coop: Inv.defaultCoop(), // Nugget's walking coop: its shelves, how fed she is (deep/Nugget.js)
-    stash: { slots: [] }, // what didn't fit, kept at home
+    stash: Inv.defaultStash(), // the trunk at home: what didn't fit (and a new game's starter things)
     owned: { pick_rusty: 1, helmet_basic: 1, bag_small: 1, bp_dagger: 1, floor_dirt: 1, wall_dirt: 1 },
     equip: { pick: 'pick_rusty', chisel: null, brush: null, drill: null, xray: null, helmet: 'helmet_basic', gloves: null, suit: null, boots: null, bag: 'bag_small' },
     furniture: {}, // unplaced furniture: id → count
