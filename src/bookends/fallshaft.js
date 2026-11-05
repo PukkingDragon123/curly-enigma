@@ -1,5 +1,5 @@
 // The opening fall's shaft: a ~50 m natural sinkhole below the meadow, seen from inside while
-// the mole and Nugget tumble down it. Eight 1/16 relief faces (an octagon) per depth band: an
+// the mole tumbles down it. Eight 1/16 relief faces (an octagon) per depth band: an
 // undercut funnel under the hole, then Rootsoil (roots, worm holes, pebbles), Clayworks (banded
 // terracotta, fossils), a wet stone stretch with an underground waterfall, the Crystal Grotto
 // (glowing crystal seams and glow worms), and old packed earth down to a plug of roots and rock

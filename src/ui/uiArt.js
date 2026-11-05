@@ -30,45 +30,6 @@ export const PAL = {
 };
 
 // ---------------------------------------------------------------- frames (9-slice)
-/** Leather with a stitched seam and brass corner rivets. slice 10. */
-function leatherFrame(R = PAL.leather, stitch = R.stitch, rivets = true) {
-  const p = new Px(32, 32);
-  p.rr(1, 1, 30, 30, 4, R.base);
-  const D = p.dist(3);
-  p.each((x, y) => {
-    const d = D(x, y);
-    if (d === 1) return x + y < 31 ? R.lt : R.dk;
-    if (d === 2) return x + y < 31 ? mixHex(R.base, R.lt, 0.5) : mixHex(R.base, R.dk, 0.35);
-    return undefined;
-  });
-  // groove + stitches at inset 5
-  const s = 5, e = 26;
-  for (let i = s; i <= e; i++) {
-    const on = (i % 4) < 2;
-    // top & bottom rows
-    p.set(i, s - 1, R.dk);
-    p.set(i, e + 1, R.dk);
-    p.set(s - 1, i, R.dk);
-    p.set(e + 1, i, R.dk);
-    if (on) {
-      p.set(i, s, stitch); p.set(i, s + 1, R.stitchDk ?? R.dd);
-      p.set(i, e, stitch); p.set(i, e + 1, R.stitchDk ?? R.dd);
-      p.set(s, i, stitch); p.set(s + 1, i, R.stitchDk ?? R.dd);
-      p.set(e, i, stitch); p.set(e + 1, i, R.stitchDk ?? R.dd);
-    }
-  }
-  if (rivets) {
-    const B = PAL.brass;
-    for (const [cx, cy] of [[4, 4], [27, 4], [4, 27], [27, 27]]) {
-      p.rect(cx - 1, cy - 1, 3, 3, B.dk);
-      p.set(cx - 1, cy - 1, B.hi); p.set(cx, cy - 1, B.lt); p.set(cx - 1, cy, B.lt); p.set(cx, cy, B.base);
-      p.set(cx + 1, cy + 1, B.dd);
-    }
-  }
-  p.outline(R.ol);
-  return p;
-}
-
 /** Slate board in a thin wooden frame (prompts). slice 5. */
 function slateFrame() {
   const S = PAL.slate, W = PAL.wood;
@@ -144,20 +105,6 @@ function loopFrame(on = false) {
   const st = on ? B.lt : L.stitch;
   for (let i = 3; i <= 14; i += 2) { p.set(2, i, st); p.set(13, i, st); }
   p.outline(on ? B.dd : L.ol);
-  return p;
-}
-
-/** Hanging wooden sign (two planks, nails). slice 6. */
-function signFrame() {
-  const W = PAL.wood, B = PAL.brass;
-  const p = new Px(20, 18);
-  p.rr(1, 1, 18, 16, 2, W.base);
-  p.hl(2, 17, 1, W.hi); p.hl(2, 17, 2, W.lt);
-  p.hl(1, 18, 8, W.dd); p.hl(1, 18, 9, W.lt);
-  p.hl(2, 17, 15, W.dk); p.hl(2, 17, 16, W.dd);
-  p.vl(18, 2, 15, W.dk);
-  for (const [x, y] of [[3, 4], [16, 4], [3, 12], [16, 12]]) { p.set(x, y, B.lt); p.set(x, y + 1, B.dd); }
-  p.outline(W.ol);
   return p;
 }
 
@@ -263,7 +210,7 @@ const ASSETS = {
   // frames (9-slices; the slice each CSS rule uses is noted)
   parch: () => CA.parchFrame(false), // 8
   parchDog: () => CA.parchFrame(true), // 8
-  leather: () => leatherFrame(), // 10
+  leather: () => CA.leatherFrame(LEATHER, PAL.leather.stitch), // 10
   wood: () => CA.woodFrame(OAK), // 7
   brass: () => CA.brassFrame(), // 8
   slate: () => slateFrame(), // 5 (stretched)
@@ -277,7 +224,7 @@ const ASSETS = {
   sketch: () => CA.sketchFrame(), // 4
   cover: () => CA.coverFrame(CA.TONES.oxblood), // 12
   journal: () => CA.coverFrame(GREEN, { seed: 29 }), // 12
-  sign: () => signFrame(), // 6 (stretched)
+  sign: () => CA.stretchSign(OAK), // 6 (stretched)
   signT: () => CA.signBoard(OAK), // 6, tiles (repeat)
   ticket: () => CA.ticketFrame(), // 6
   track: () => trackFrame(),
@@ -310,8 +257,8 @@ const ASSETS = {
   woodDkT: () => CA.woodTile(32, 20, { plank: 10, seed: 6, pal: CA.TONES.woodDk }),
   slateT: () => CA.slateTile(24, 24),
   // big tiles (less repetition) for the panels: paper 96, page 96 (ruled every 16), leather 64, planks 96 wide
-  paperL: () => CA.paperTile(96, 96, { seed: 5, stains: 1 }),
-  pageL: () => CA.paperTile(96, 96, { seed: 8, rule: 16, fibres: 0.9, stains: 1 }),
+  paperL: () => CA.paperTile(96, 96, { seed: 5, stains: 1, fox: 0.6 }),
+  pageL: () => CA.paperTile(96, 96, { seed: 8, rule: 16, fibres: 0.9, stains: 1, fox: 0.45 }),
   noteT: () => CA.noteTile(32, 32),
   coverL: () => CA.leatherTile(64, 64, CA.TONES.oxblood, { seed: 37, cell: 3.4 }),
   journalL: () => CA.leatherTile(64, 64, GREEN, { seed: 39, cell: 3.4 }),

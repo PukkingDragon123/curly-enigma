@@ -9,7 +9,7 @@ import { FURNITURE } from '../data/furniture.js';
 import { ROOM_SIZES } from '../data/weapons.js';
 
 /** Kinds the player always keeps (movable, never storable). */
-export const FUNCTIONAL = new Set(['bed', 'forge', 'stove', 'coop']);
+export const FUNCTIONAL = new Set(['bed', 'forge', 'stove']);
 /** Floor items tall enough to cover the wall behind them. */
 export const TALL_WALL = new Set(['bookshelf', 'clock', 'fireplace']);
 /** North-wall slots covered by the Surface Express poster. */

@@ -94,6 +94,17 @@ export function shack({ W = 2.6, D = 1.6, Hf = 1.5, Hb = 1.95, dc = -0.25, dw = 
     for (let x = -1; x <= VW; x++) if (x < d0 - 1 || x > d1) g.set(X(x), by, Z(VD) + 1, (x % 9 === 0) ? 0x2a2a2e : 0x5e564a);
     for (let z = 0; z < VD; z++) { g.set(X(-2), by, Z(z), z % 9 === 0 ? 0x2a2a2e : 0x5e564a); g.set(X(VW + 1), by, Z(z), z % 9 === 0 ? 0x2a2a2e : 0x5e564a); }
   }
+  // rust run down from the nails, the damp line along the foot, his star on a tin plate over the door
+  for (const by of [v(0.3), HF - 5]) for (let x = 0; x < VW; x += 9) for (let k = 1; k < 4; k++) if (g.filled(X(x), by - k, Z(VD)) && hash2(x, k, seed) < 0.8) g.set(X(x), by - k, Z(VD), k === 1 ? 0x5a3a28 : 0x6a5040);
+  for (let x = 0; x < VW; x++) for (let y = 0; y < 3; y++) if (g.filled(X(x), y, Z(VD)) && hash2(x, y, seed + 9) < 0.35) g.set(X(x), y, Z(VD), hash2(x, y, seed + 8) < 0.5 ? 0x3e4a28 : 0x34401f); // moss
+  const pc = Math.round((d0 + d1) / 2);
+  for (let y = DH + 3; y < Math.min(HF, DH + 10); y++) for (let x = pc - 4; x < pc + 4; x++) {
+    const sx = x - pc + 0.5, sy = y - (DH + 6.5);
+    const a = Math.atan2(sy, sx), r = Math.hypot(sx, sy);
+    const star = r < 2.4 * (0.62 + 0.38 * Math.cos(a * 5 - Math.PI / 2));
+    const edge = x === pc - 4 || x === pc + 3 || y === DH + 3 || y === Math.min(HF, DH + 10) - 1;
+    g.set(X(x), y, Z(VD) + 1, star ? 0xc8a850 : edge ? 0x6a4030 : hash2(x, y, seed + 7) < 0.25 ? 0x6a5244 : 0x7a7268);
+  }
   // corner posts: rough logs, bark in patches
   for (const [x, z] of [[-1, -1], [VW, -1], [-1, VD], [VW, VD]]) for (let y = 0; y < (z < 0 ? HB : HF) + 3; y++) for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
     if (a && b && (y + x) % 3) continue;
@@ -138,22 +149,55 @@ export function shack({ W = 2.6, D = 1.6, Hf = 1.5, Hb = 1.95, dc = -0.25, dw = 
   return { obj, walls, hook: { x: T2(d1 - VW / 2 + 3), y: T2(DH + 4), z: T2(5) }, door: { x0: wm(d0) - W / 2, x1: wm(d1) - W / 2 } };
 }
 
-/** A cobweb across a corner (wall piece, 1/64 m): spokes from the corner, rings of thread. s: size (m). */
+/** A cobweb across a corner (wall piece, 1/64 m): spokes from the corner, a few sagging rings of dusty thread, broken in places. s: size (m). */
 export function cobweb(s = 0.3, seed = 73) {
   const R = Math.round(s * 64);
   const g = new VoxelGrid(R + 2, R + 2, 3);
-  const col = 0xc8c4b8;
-  for (let k = 0; k <= 5; k++) {
-    const a = (k / 5) * Math.PI / 2;
-    line(g, [[0.5, R + 0.5, 1], [0.5 + Math.cos(a) * R, R + 0.5 - Math.sin(a) * R, 1]], 0.35, col);
+  const col = 0x8e8b84, dusty = 0x6e6b66;
+  for (let k = 0; k <= 4; k++) {
+    const a = (k / 4) * Math.PI / 2 + (k % 2 ? 0.08 : 0);
+    line(g, [[0.5, R + 0.5, 1], [0.5 + Math.cos(a) * R, R + 0.5 - Math.sin(a) * R, 1]], 0.3, (x, y) => (hash2(x, y, seed) < 0.12 ? -1 : col));
   }
-  for (let r = 5; r < R; r += 4 + (r >> 3)) {
-    for (let k = 0; k < 24; k++) {
-      const a = (k / 24) * Math.PI / 2, rr = r - Math.sin(k * 0.7 + seed) * 0.8;
-      g.set(Math.round(0.5 + Math.cos(a) * rr), Math.round(R + 0.5 - Math.sin(a) * rr - Math.sin(a * 2) * 1.2), 1, col);
+  for (let r = 6; r < R; r += 6 + (r >> 2)) {
+    for (let k = 0; k < 20; k++) {
+      if (hash2(k, r, seed) < 0.18) continue; // broken
+      const a = (k / 20) * Math.PI / 2, rr = r - Math.sin(k * 0.7 + seed) * 0.8;
+      g.set(Math.round(0.5 + Math.cos(a) * rr), Math.round(R + 0.5 - Math.sin(a) * rr - Math.sin(a * 2) * 1.6), 1, k % 5 ? col : dusty);
     }
   }
   return M32(g, [0, 0, 1], { outline: false });
+}
+
+/**
+ * An old sack slumped on the floor (1/64 m): burlap gone soft, folds down its sides, the neck tied
+ * with twine and its ears flopped over, a patch sewn on. Floor piece; col: the cloth.
+ */
+export function oldSack(seed = 1, col = 0x8a7a58) {
+  const g = new VoxelGrid(30, 32, 28);
+  const rng = makeRng(seed);
+  const lean = rng() * 2 - 1, H = 20 + Math.floor(rng() * 4);
+  for (let y = 0; y < H; y++) {
+    const t = y / H;
+    const r = 11.5 * (y < 3 ? 0.92 + y * 0.03 : 1 - t * t * 0.55) - (y > H - 4 ? (y - (H - 4)) * 1.2 : 0);
+    const cx = 15 + lean * t * 2, cz = 14;
+    for (let z = Math.floor(cz - r); z <= cz + r; z++) for (let x = Math.floor(cx - r); x <= cx + r; x++) {
+      const dx = (x + 0.5 - cx) / r, dz = (z + 0.5 - cz) / (r * 0.82);
+      if (dx * dx + dz * dz > 1) continue;
+      const a = Math.atan2(dz, dx);
+      const fold = Math.sin(a * 5 + y * 0.18 + seed) > 0.7;
+      let c = fold ? mulc(col, 0.78) : (y % 5 === 0 ? mulc(col, 0.93) : col);
+      if (y < 2) c = mulc(col, 0.7);
+      if (Math.abs(a - 1.4) < 0.35 && y > 5 && y < 12) c = (x + y) % 3 ? 0x5a5e66 : 0x4a4e56; // the patch
+      g.set(x, y, z, c);
+    }
+  }
+  // the neck tied with twine, its ears flopped over
+  const nx = 15 + lean * 2;
+  ring(g, nx, 14, 0, 3.2, H, H + 4, col);
+  ring(g, nx, 14, 0, 3.6, H + 1, H + 2, C.ropeD);
+  g.ellipsoid(nx + 2, H + 5, 14, 4, 1.6, 3, mulc(col, 0.9));
+  g.ellipsoid(nx - 3, H + 4.5, 15, 2.5, 1.4, 2.5, mulc(col, 0.82));
+  return M32(g, [15, 0, 14]);
 }
 
 /** Candle stubs in a puddle of old wax (floor piece, 1/64 m). Returns { obj, flames: [local tiles] }. */
@@ -486,18 +530,18 @@ export function crystalCluster(seed = 17, hue = 1, size = 1) {
 export function potHooks(len = 0.8, seed = 101) {
   const L = Math.round(len * 64);
   const g = new VoxelGrid(L + 4, 56, 16);
-  const rail = wood(0x5a4030, { axis: 'x', across: 'y', pw: 99, seed });
+  const rail = wood(0x7a5a3e, { axis: 'x', across: 'y', pw: 99, seed });
   g.box(0, 46, 0, L, 5, 3, (x, y, z) => (x === 3 || x === L - 4 ? 0x2a2a2e : rail(x, y, z)));
-  const iron = (x, y, z) => (h3(x, y, z, seed) < 0.06 ? 0x6a4a3a : 0x26262c);
+  const iron = (x, y, z) => (h3(x, y, z, seed) < 0.03 ? 0x4a3a32 : (x + y) % 5 === 0 ? 0x34343a : 0x2a2a30);
   const kinds = ['pan', 'ladle', 'mug', 'sieve', 'lid', 'spoons'];
   let x = 7;
   for (const k of kinds) {
     if (x > L - 6) break;
     g.box(x, 46, 3, 2, 2, 4, 0x3a2a1e); // the peg
     if (k === 'pan') { line(g, [[x, 46, 6], [x, 30, 6]], 0.8, 0x2a2a30); for (let y = 6; y < 30; y++) for (let xx = x - 11; xx <= x + 11; xx++) { const d = Math.hypot(xx + 0.5 - x, y + 0.5 - 18); if (d < 11) { g.set(xx, y, 5, d > 9.6 ? 0x3a3a42 : iron(xx, y, 5)); if (d > 9.6) g.set(xx, y, 6, 0x3a3a42); } } x += 24; }
-    else if (k === 'ladle') { line(g, [[x, 46, 6], [x, 18, 6]], 0.6, 0x8a8a92); g.ellipsoid(x, 15, 7, 3.5, 3.2, 3, (xx, y, z, dx, dy, dz) => (dz > 0.2 && dy > -0.2 ? -1 : 0x7a7a84)); x += 9; }
-    else if (k === 'mug') { line(g, [[x, 46, 6], [x, 40, 6]], 0.4, 0x3a3a42); ring(g, x, 8, 0, 3.2, 31, 39, (xx, y) => (y === 38 ? 0xa8aab0 : 0x8a8e94)); g.box(x + 3, 33, 7, 2, 4, 2, 0x8a8e94); x += 10; }
-    else if (k === 'sieve') { for (let y = 22; y < 42; y++) for (let xx = x - 9; xx <= x + 9; xx++) { const d = Math.hypot(xx + 0.5 - x, y + 0.5 - 32); if (d < 9) g.set(xx, y, 6, d > 7.8 ? 0x9a9aa2 : (xx + y) % 2 ? 0x6a6a72 : -1); } line(g, [[x, 46, 6], [x, 41, 6]], 0.5, 0x6a6a72); x += 20; }
+    else if (k === 'ladle') { line(g, [[x, 46, 6], [x, 18, 6]], 0.6, 0x5a5a62); g.ellipsoid(x, 15, 7, 3.5, 3.2, 3, (xx, y, z, dx, dy, dz) => (dz > 0.2 && dy > -0.2 ? -1 : 0x4e4e56)); x += 9; }
+    else if (k === 'mug') { line(g, [[x, 46, 6], [x, 40, 6]], 0.4, 0x3a3a42); ring(g, x, 8, 0, 3.2, 31, 39, (xx, y) => (y === 38 ? 0x3a4a5a : (xx + y) % 7 === 0 ? 0x2a2a30 : 0x5a6e80)); g.box(x + 3, 33, 7, 2, 4, 2, 0x5a6e80); x += 10; }
+    else if (k === 'sieve') { for (let y = 22; y < 42; y++) for (let xx = x - 9; xx <= x + 9; xx++) { const d = Math.hypot(xx + 0.5 - x, y + 0.5 - 32); if (d < 9) g.set(xx, y, 6, d > 7.8 ? 0x6a6a70 : (xx + y) % 2 ? 0x4a4a52 : -1); } line(g, [[x, 46, 6], [x, 41, 6]], 0.5, 0x4a4a52); x += 20; }
     else if (k === 'lid') { for (let y = 24; y < 44; y++) for (let xx = x - 9; xx <= x + 9; xx++) { const d = Math.hypot(xx + 0.5 - x, y + 0.5 - 34); if (d < 9) g.set(xx, y, 5, d < 1.5 ? 0x4a3a2a : d > 8 ? 0x4a4a52 : iron(xx, y, 5)); } x += 20; }
     else { for (let j = 0; j < 4; j++) line(g, [[x + j - 1, 45, 6], [x - 3 + j * 2, 22, 6 + (j % 2)]], 0.5, j % 2 ? 0xb88a5a : 0xa07a4a); g.ellipsoid(x - 3, 21, 7, 2, 3, 1.5, 0xb88a5a); g.box(x - 2, 40, 5, 4, 2, 3, C.ropeD); x += 10; }
   }
@@ -544,33 +588,50 @@ export function plankBench(len = 0.85, seed = 105) {
 /** A dented zinc wash tub with a washboard leaning in it and a cake of soap on the rim (floor piece, 1/64 m). */
 export function washTub(seed = 107) {
   const g = new VoxelGrid(44, 50, 44);
-  const zinc = (x, y, z) => (h3(x, y, z, seed) < 0.08 ? 0x6a7076 : y % 6 === 0 ? 0x8a9096 : 0x9aa0a4);
+  const zinc = (x, y, z) => (h3(x, y, z, seed) < 0.1 ? 0x5a4a3e : y % 6 === 0 ? 0x4e5458 : 0x5e6468); // dull, rust spots
   for (let y = 0; y < 16; y++) ring(g, 22, 22, y < 1 ? 0 : 14 + y * 0.18, 15.4 + y * 0.18, y, y + 1, (x, yy, z, a) => (Math.abs(a - 1.1) < 0.2 && yy > 6 && yy < 12 ? 0x7a8086 : zinc(x, yy, z)));
-  ring(g, 22, 22, 0, 14.5, 9, 10, (x, y, z) => (h3(x, y, z, 2) < 0.3 ? 0x8a9488 : 0x6a7a78)); // grey water
+  ring(g, 22, 22, 0, 14.5, 9, 10, (x, y, z) => (h3(x, y, z, 2) < 0.3 ? 0x4a5650 : 0x3a4642)); // grey water
   g.box(5, 15, 21, 4, 2, 4, 0x2a2a30); g.box(35, 15, 21, 4, 2, 4, 0x2a2a30); // handles
   // the washboard: a wooden frame round a ribbed zinc panel, leaning on the rim
-  for (let t = 0; t < 44; t++) for (let x = 12; x < 32; x++) {
+  for (let t = 0; t < 32; t++) for (let x = 14; x < 30; x++) {
     const y = 4 + t, z = 26 - Math.round(t * 0.38);
-    const frame = x < 14 || x > 29 || t < 4 || t > 38;
-    g.set(x, y, z, frame ? (x + t) % 9 === 0 ? 0x5a3a22 : 0x8a6040 : t % 3 ? 0xa8aeb2 : 0x7a8086);
+    const frame = x < 16 || x > 27 || t < 3 || t > 27;
+    g.set(x, y, z, frame ? (x + t) % 9 === 0 ? 0x4a3020 : 0x6a4a30 : t % 3 ? 0x6e7276 : 0x4e5256);
   }
   g.box(30, 16, 8, 6, 3, 4, 0xe8dcb0); // soap
   return M32(g, [22, 0, 22]);
 }
 
-/** A worn flagstone half sunk in the floor (floor piece, 1/32 m), ~w × d m. */
+/** A worn flagstone half sunk in the floor (floor piece, 1/32 m), ~w × d m: bevelled, grimy, moss in the cracks round it. */
 export function flagstone(w = 0.4, d = 0.32, seed = 109) {
   const W = Math.round(w * 32), D = Math.round(d * 32);
-  const g = new VoxelGrid(W + 2, 2, D + 2);
-  const base = [0x6a6660, 0x5e5a55, 0x726c62][Math.floor(hash2(seed, 1, 3) * 3)];
+  const g = new VoxelGrid(W + 2, 3, D + 2);
+  const base = [0x56524c, 0x4e4a45, 0x5c574f][Math.floor(hash2(seed, 1, 3) * 3)];
   for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
     const ex = (x + 0.5 - W / 2) / (W / 2), ez = (z + 0.5 - D / 2) / (D / 2);
     const e = Math.max(Math.abs(ex), Math.abs(ez)) * 0.6 + Math.hypot(ex, ez) * 0.4 + (hash2(x >> 1, z >> 1, seed) - 0.5) * 0.18;
     if (e > 1) continue;
-    let c = e > 0.82 ? mulc(base, 0.8) : hash2(x, z, seed + 1) < 0.1 ? mulc(base, 1.1) : base;
-    if (e < 0.5 && hash2(x >> 1, z, seed + 2) < 0.25) c = mixc(c, 0x8a8478, 0.4); // worn pale in the middle
-    if (e > 0.75 && hash2(x, z, seed + 3) < 0.3) c = 0x3e4a28; // moss in the cracks round it
-    g.set(x + 1, 0, z + 1, c);
+    let c = hash2(x, z, seed + 1) < 0.1 ? mulc(base, 1.08) : base;
+    if (e < 0.55 && hash2(x >> 1, z, seed + 2) < 0.22) c = mixc(c, 0x6a645a, 0.5); // worn in the middle
+    g.set(x + 1, 0, z + 1, e > 0.8 && hash2(x, z, seed + 3) < 0.35 ? 0x34401f : mulc(base, 0.8));
+    if (e < 0.82) g.set(x + 1, 1, z + 1, c); // the top, bevelled in from the edge
   }
   return M32(g, [W / 2 + 1, 0, D / 2 + 1], { scale: S16, outline: false });
+}
+
+/** A coil of old lift cable-rope on the floor, its end trailing off, an oil can by it (floor piece, 1/64 m). */
+export function ropeCoil(seed = 111) {
+  const g = new VoxelGrid(44, 16, 40);
+  const rope = (x, y, z, t) => (Math.floor(t * 60) % 3 === 0 ? C.ropeD : hash2(x, z, seed) < 0.1 ? 0x7a6a4a : C.rope);
+  for (let k = 0; k < 5; k++) {
+    const r = 11 - k * 0.7, y = 1.2 + k * 2.1;
+    const pts = [];
+    for (let i = 0; i <= 24; i++) { const a = (i / 24) * Math.PI * 2 + k * 0.4; pts.push([20 + Math.cos(a) * r, y + Math.sin(a * 2) * 0.3, 18 + Math.sin(a) * r * 0.9]); }
+    line(g, pts, 1.3, rope);
+  }
+  line(g, [[29, 3, 22], [34, 1.2, 30], [38, 1.2, 36], [41, 1.2, 37]], 1.2, rope);
+  // the oil can: a squat tin with a long spout
+  ring(g, 38, 8, 0, 3.6, 0, 7, (x, y) => (y === 6 ? 0x6a6a72 : y % 3 === 0 ? 0x5a3a2a : 0x8a5a3a));
+  line(g, [[38, 7, 8], [38, 10, 7], [42, 13, 6]], 0.5, 0x6a6a72);
+  return M32(g, [20, 0, 18]);
 }

@@ -17,6 +17,9 @@ const IRON = 0x4a4c52, IRON_L = 0x7a7e86, IRON_D = 0x2e3036, RUST = 0x8a4a2a;
 const ROPE = 0xc4a46a;
 const PAINT = 0xeee0bc;
 export const COL = { STONE, BASALT, GOLD, BRONZE, WOOD, IRON, ROPE };
+const RK = 0x5e574e, RK_D = 0x433d36, RK_L = 0x7a7266, CRY = 0x8ad0f4, CRY_L = 0xd8f6ff, CRY_D = 0x3a7aa8;
+const rockc = (x, y, z) => grain(h3(x >> 1, y >> 1, z >> 1, 41) < 0.5 ? RK : RK_L, x, y, z, 0.1, 43);
+
 
 /** Mesh a Vox: scale s, origin at model point pivot (voxel units). */
 export function geo(v, pivot = [0, 0, 0], s = S) {
@@ -34,29 +37,30 @@ function glyphPixels(g, k, put) {
 }
 
 // ------------------------------------------------------------------ levers
-/** The wall plate of a lever (origin: wall surface, plate centre bottom; +z out of the wall). */
+/** A crystal knob's setting in the wall (origin: wall surface, bottom middle; +z out of the wall): a
+ * boss of rock, the slot the crystal rocks in, and the sign scratched pale into the rock over it. */
 export function leverBase(glyph) {
-  const v = new Vox(-8, 8, 0, 26, 0, 4);
-  v.box(-7, 0, 0, 7, 25, 2, (x, y, z) => (x === -7 || x === 6 || y === 0 || y === 24 ? verd(x, y, z) : grain(BASALT, x, y, z)));
-  // the slot the handle runs in
-  v.box(-1, 3, 1, 1, 12, 2, -1);
+  const v = new Vox(-9, 9, -1, 27, 0, 5);
+  v.ell(0, 12, 0, 8.5, 13, 3.4, rockc);
+  v.box(-1, 3, 1, 1, 12, 4, -1); // the slot
   v.box(-1, 3, 0, 1, 12, 1, 0x141216);
-  // pivot boss
-  v.box(-3, 8, 2, 3, 13, 4, (x, y) => (x === -3 || x === 2 || y === 8 || y === 12 ? BRONZE_D : BRONZE));
-  // the symbol plaque
-  v.box(-5, 14, 2, 5, 24, 3, BASALT_L);
-  glyphPixels(glyph, 1, (px, py) => v.set(-4 + px, 16 + py, 3, GOLD));
+  glyphPixels(glyph, 1, (px, py) => { for (let z = 0; z < 4; z++) if (v.get(-4 + px, 16 + py, z) >= 0 && v.get(-4 + px, 16 + py, z + 1) < 0) v.set(-4 + px, 16 + py, z, 0xe2dccc); });
   return geo(v, [0, 0, 0]);
-}
-/** The handle: pivot at the origin, pointing up (+y) with a knob; rotate about x to pull. */
+}/** The crystal knob: pivot at the origin, pointing up (+y); rotate about x to rock it over. */
 export function leverHandle(kind = 'lever') {
   const v = new Vox(-3, 3, -2, 20, -3, 3);
-  v.box(-1, -2, -1, 1, 15, 1, (x, y) => (y % 5 === 0 ? BRONZE_D : BRONZE_L));
-  if (kind === 'switch') v.box(-3, 14, -1, 3, 17, 1, (x, y) => (y === 14 ? IRON_D : IRON_L));
-  else v.ell(0, 16.5, 0, 2.6, 2.6, 2.6, (x, y) => (y > 16 ? GOLD_L : GOLD));
+  if (kind === 'switch') {
+    // behind the loose panel: a stalk of rock with a crystal head
+    v.box(-1, -2, -1, 1, 13, 1, (x, y, z) => rockc(x, y, z));
+    v.ell(0, 15.5, 0, 2.4, 2.8, 2.4, (x, y) => (y > 15 ? CRY_L : CRY));
+  } else {
+    for (let y = -2; y < 18; y++) {
+      const r = y < 10 ? 1.4 : 1.4 + (y - 10) * 0.18 - Math.max(0, y - 14) * 0.6;
+      v.cylY(0, 0, Math.max(0.5, r), y, y + 1, (x, yy, z) => (yy > 14 ? CRY_L : x + z > 0 ? CRY : CRY_D));
+    }
+  }
   return geo(v, [0, 0, 0]);
 }
-
 // ------------------------------------------------------------------ symbol drums
 /**
  * A hexagonal drum on an axle along x, face k's normal at angle k·60° from +z toward +y; the
@@ -101,38 +105,31 @@ export function drumStand() {
 }
 
 // ------------------------------------------------------------------ mirrors and the light
-/** Mirror pedestal (origin: top of the stone foot, centre): a bronze column up to the yoke. */
+/** A crystal mirror's stalagmite (origin: floor, centre): a stump of rock up to a fork that holds it. */
 export function mirrorPost() {
-  const v = new Vox(-7, 7, 0, 18, -7, 7);
-  v.cylY(0, 0, 2.2, 0, 14, (x, y, z) => (y % 4 === 0 ? BRONZE_D : verd(x, y, z)));
-  v.cylY(0, 0, 4.5, 0, 2, BASALT_L);
-  // the yoke: a U holding the pane's pivots
-  v.box(-7, 13, -1, 7, 15, 1, BRONZE_D);
-  for (const x of [-7, 6]) v.box(x, 13, -1, x + 1, 17, 1, BRONZE);
+  const v = new Vox(-8, 8, 0, 18, -8, 8);
+  for (let y = 0; y < 13; y++) v.cylY(0, 0, 5 - y * 0.24 + Math.sin(y * 1.3) * 0.4, y, y + 1, rockc);
+  v.line(0, 12, 0, -6, 16, 0, rockc, 1.1); v.line(0, 12, 0, 6, 16, 0, rockc, 1.1);
   return geo(v, [0, 0, 0]);
-}
-/** The pane (origin: its centre; the bright face toward +z, a dark back). */
+}/** The mirror (origin: its centre): a flat plate of clear crystal, the bright face toward +z. */
 export function mirrorHead() {
   const v = new Vox(-7, 7, -7, 7, -2, 2);
   for (let x = -6; x < 6; x++) for (let y = -6; y < 6; y++) {
-    const rim = x === -6 || x === 5 || y === -6 || y === 5;
-    v.set(x, y, -1, rim ? BRONZE_D : grain(BASALT, x, y, 0, 0.1));
-    v.set(x, y, 0, rim ? verd(x, y, 0) : (x + y) % 5 === 0 ? 0xe8f8ff : y > 1 - x * 0.3 ? 0xbfe4f4 : 0x9cc8e0);
-    if (rim) v.set(x, y, 1, BRONZE);
+    const e = Math.abs(x + 0.5) + Math.abs(y + 0.5);
+    if (e > 9.5) continue; // a crystal's cut corners
+    const rim = e > 8;
+    v.set(x, y, -1, rim ? CRY_D : 0x2a4a62);
+    v.set(x, y, 0, rim ? CRY : (x + y) % 5 === 0 ? 0xf0fcff : y > 1 - x * 0.3 ? 0xc8ecfa : 0xa0d4ee);
   }
   return geo(v, [0, 0, 0]);
-}
-/** The light socket: a gilt cup on a short stem holding a crystal (crystal returned apart, to glow). */
+}/** The light socket: a crystal growing out of a rock (the crystal returned apart, to glow). */
 export function socket() {
   const v = new Vox(-6, 6, 0, 14, -6, 6);
-  v.cylY(0, 0, 2, 0, 6, verd);
-  v.cylY(0, 0, 4.6, 6, 9, (x, y) => (y === 8 ? GOLD_L : GOLD));
-  v.cylY(0, 0, 3.2, 8, 9, -1);
+  v.ell(0, 3, 0, 5.2, 4.4, 5.2, rockc);
   const c = new Vox(-3, 3, 0, 12, -3, 3);
   for (let y = 0; y < 11; y++) { const r = y < 4 ? 1.2 + y * 0.5 : 2.8 - (y - 4) * 0.38; c.cylY(0, 0, r, y, y + 1, y > 7 ? 0xf4fcff : (y & 1) ? 0xbfeaff : 0x8ad0f4); }
   return { base: geo(v), crystal: geo(c, [0, -7, 0]) };
-}
-/** The sun crystal's bright core (glows), set in its wall socket. */
+}/** The sun crystal's bright core (glows), set in its wall socket. */
 export function sunCore() {
   const v = new Vox(-4, 4, -4, 4, -4, 4);
   v.ell(0, 0, 0, 3.6, 3.6, 3.6, (x, y, z) => (y > 0 ? 0xfffbe0 : 0xffe8a0));
@@ -140,18 +137,18 @@ export function sunCore() {
 }
 
 // ------------------------------------------------------------------ plates, valve
-/** A pressure plate slab (origin: top centre; 0.75 m square, 3 voxels thick), the weight glyph inlaid. */
+/** A pressure stone (origin: top centre; 0.75 m across, 3 voxels thick): a flat slab of rock that
+ * rocks in its bed, a pale weight sign worn into it. */
 export function plateSlab() {
   const v = new Vox(-12, 12, -3, 0, -12, 12);
   v.box(-12, -3, -12, 12, 0, 12, (x, y, z) => {
-    const e = Math.max(Math.abs(x + 0.5), Math.abs(z + 0.5));
-    if (e > 10.5) return y === -1 ? verd(x, y, z) : BRONZE_D;
-    return grain(e > 9 ? STONE_D : STONE, x >> 1, y, z >> 1, 0.07);
+    const e = Math.abs(x + 0.5) ** 3 + Math.abs(z + 0.5) ** 3;
+    if (e > 12 ** 3 * (0.92 + h3(x, 0, z, 47) * 0.1)) return -1; // a rounded slab
+    return grain(e > 10 ** 3 ? RK_D : RK, x >> 1, y, z >> 1, 0.08);
   });
-  glyphPixels(G.weight, 2, (px, py) => v.set(-7 + px, -1, 7 - py, GOLD));
+  glyphPixels(G.weight, 2, (px, py) => v.set(-7 + px, -1, 7 - py, 0xcfc8b8));
   return geo(v, [0, 0, 0]);
-}
-/** The drain wheel's wall mount (origin: wall face centre; +z out of the wall). */
+}/** The drain wheel's wall mount (origin: wall face centre; +z out of the wall). */
 export function valveMount() {
   const v = new Vox(-8, 8, -8, 8, 0, 6);
   v.box(-7, -7, 0, 7, 7, 2, (x, y, z) => grain(BASALT, x, y, z));
@@ -222,19 +219,19 @@ export function trinket(kind) {
   }
   return geo(v, [0, 0, 0]);
 }
-/** A brazier: bronze tripod and bowl (origin: floor). Its fire is particles + a glow mesh. */
+/** Glow crystals: a cluster on a rock by the seal (origin: floor). Lit when the seal opens (`flameGeo` is
+ * the glowing part). */
 export function brazier() {
   const v = new Vox(-8, 8, 0, 22, -8, 8);
-  for (let k = 0; k < 3; k++) {
-    const a = k * Math.PI * 2 / 3;
-    v.line(Math.cos(a) * 6, 0, Math.sin(a) * 6, Math.cos(a) * 2.5, 15, Math.sin(a) * 2.5, (x, y, z) => verd(x, y, z), 0.7);
-    v.set(Math.round(Math.cos(a) * 6), 0, Math.round(Math.sin(a) * 6), BRONZE_D);
+  v.ell(0, 2, 0, 6.5, 3.2, 6.5, rockc);
+  for (const [x, z, h, lx, lz] of [[0, 0, 15, 0, 0], [-3, 2, 10, -0.25, 0.15], [3, -2, 11, 0.25, -0.15], [2, 3, 7, 0.2, 0.25]]) {
+    for (let y = 3; y < 3 + h; y++) {
+      const t = (y - 3) / h, r = 1.8 * (1 - t * 0.6);
+      v.cylY(x + lx * (y - 3), z + lz * (y - 3), r, y, y + 1, CRY_D);
+    }
   }
-  for (let y = 15; y < 21; y++) v.cylY(0, 0, 3 + (y - 15) * 0.75, y, y + 1, (x, yy, z) => (yy === 20 ? GOLD : verd(x, yy, z)));
-  v.cylY(0, 0, 5.4, 18, 21, -1);
-  v.cylY(0, 0, 5.4, 18, 19, (x, y, z) => (h3(x, y, z, 5) < 0.5 ? 0x2a1e1a : 0x3a2a20)); // ash and coals
   return geo(v, [0, 0, 0]);
-}
+}/** The glow of lit crystals (or a nest's ember): a soft core, brightest low down (origin: its foot). */
 export function flameGeo() {
   const v = new Vox(-5, 5, 0, 12, -5, 5);
   for (let y = 0; y < 11; y++) {
@@ -243,7 +240,6 @@ export function flameGeo() {
   }
   return geo(v, [0, 0, 0]);
 }
-
 // ------------------------------------------------------------------ the dungeons (wave 4)
 const OAK = 0x8a6236, OAK_D = 0x5a3c1e, OAK_L = 0xa47a46, LATCH = 0x9aa0aa, COBW = 0x6e6e70;
 
@@ -391,5 +387,97 @@ export function skull(seed = 1) {
   v.set(-1, 3, 3, HOLE); v.set(1, 3, 3, HOLE); v.set(0, 2, 3, HOLE);
   v.line(-6, 0, -4, 5, 0, -2, BONE, 0.6);
   if (h3(seed, 1, 2, 3) < 0.6) v.line(-5, 0, 4, 6, 0, -4, BONE_D, 0.6);
+  return geo(v, [0, 0, 0]);
+}
+
+// ------------------------------------------------------------------ the lifts: rope and cage
+const TIMBER = 0x6a4626, TIMBER_D = 0x4a2e18, TIMBER_L = 0x8a5e34, BAR = 0x3e4046, BAR_L = 0x62666e;
+const BRASS = 0xc8963a, BRASS_L = 0xf0c870, BRASS_D = 0x7a5420;
+
+/**
+ * The lift cage (1/16 m voxels; origin: the middle of its floor, the open side toward +z): four
+ * timber corner posts, a frame at the top and the bottom, iron bars on the back and sides, a rail
+ * at hand height, crossed beams on the roof and the iron ring the rope is tied to. 1.5 m square.
+ */
+export function liftCage() {
+  const v = new Vox(-12, 12, 0, 37, -12, 12);
+  const wood = (x, y, z) => grain(h3(x >> 1, y >> 3, z >> 1, 31) < 0.5 ? TIMBER : TIMBER_L, x, y, z, 0.08, 5);
+  for (const px of [-12, 10]) for (const pz of [-12, 10]) v.box(px, 0, pz, px + 2, 34, pz + 2, (x, y, z) => (y % 9 === 0 ? TIMBER_D : wood(x, y, z)));
+  // the frames: round the floor, the top, and a rail at hand height (not across the open front)
+  const ring = (y0, y1, front) => {
+    v.box(-12, y0, -12, 12, y1, -10, wood); v.box(-12, y0, -12, -10, y1, 12, wood); v.box(10, y0, -12, 12, y1, 12, wood);
+    if (front) v.box(-12, y0, 10, 12, y1, 12, wood);
+  };
+  ring(0, 2, true); ring(32, 34, true); ring(15, 17, false);
+  // iron bars on the back and the sides
+  for (let t = -8; t <= 8; t += 4) {
+    v.box(t, 2, -12, t + 1, 32, -11, (x, y) => (y % 7 === 3 ? BAR_L : BAR));
+    v.box(-12, 2, t, -11, 32, t + 1, (x, y) => (y % 7 === 3 ? BAR_L : BAR));
+    v.box(11, 2, t, 12, 32, t + 1, (x, y) => (y % 7 === 3 ? BAR_L : BAR));
+  }
+  // the roof: crossed beams, the ring for the rope
+  v.line(-11, 34.5, -11, 11, 34.5, 11, wood, 0.9); v.line(-11, 34.5, 11, 11, 34.5, -11, wood, 0.9);
+  v.box(-1, 35, -1, 1, 37, 1, BAR_L);
+  return geo(v, [0, 0, 0], 1 / 16);
+}
+
+/** The rope (1/16 m; origin: its bottom end, running up +y for len metres). */
+export function liftRope(len) {
+  const n = Math.max(2, Math.round(len * 16));
+  const v = new Vox(-1, 1, 0, n, -1, 1);
+  for (let y = 0; y < n; y++) v.set(0, y, 0, (y + (y >> 2)) % 3 === 0 ? 0x8a6a3a : y % 2 ? ROPE : 0xa88850);
+  return geo(v, [0.5, 0, 0.5], 1 / 16);
+}
+
+/** A brass bell on its bracket (1/32 m; origin: the bracket's pivot; the bell hangs under it). */
+export function liftBell() {
+  const v = new Vox(-6, 6, -16, 2, -6, 6);
+  v.box(-1, -2, -1, 1, 1, 1, BAR); // the yoke
+  for (let y = -12; y < -2; y++) {
+    const t = (-2 - y) / 10, r = 1.6 + t * t * 3.6 + (y === -12 ? 0.6 : 0);
+    v.cylY(0, 0, r, y, y + 1, (x, yy, z) => (yy === -12 ? BRASS_D : x + z > 1 ? BRASS_L : BRASS));
+  }
+  for (let y = -11; y < -3; y++) v.cylY(0, 0, Math.max(0, 1 + ((-2 - y) / 10) ** 2 * 3.6 - 0.5), y, y + 1, -1);
+  v.line(0, -4, 0, 0, -12, 0, BAR, 0.5); v.ell(0, -13, 0, 1.2, 1.2, 1.2, BAR_L); // the clapper
+  return geo(v, [0, 0, 0]);
+}
+
+/** A lantern hanging from a hook (1/32 m; origin: the hook; the glass, `liftLanternGlow`, apart). */
+export function liftLantern() {
+  const v = new Vox(-5, 5, -16, 1, -5, 5);
+  v.box(0, -3, 0, 1, 1, 1, BAR); // the hook
+  v.box(-3, -5, -3, 4, -3, 4, BAR); v.box(-1, -6, -1, 2, -5, 2, BAR_L); // the cap
+  for (const [x, z] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) v.box(x, -13, z, x + 1, -5, z + 1, BAR);
+  v.box(-3, -15, -3, 4, -13, 4, BAR); // the base
+  return geo(v, [0, 0, 0]);
+}
+export function liftLanternGlow() {
+  const v = new Vox(-3, 3, -13, -5, -3, 3);
+  v.box(-2, -13, -2, 3, -5, 3, (x, y) => (y < -10 ? 0xffd070 : 0xffb050));
+  return geo(v, [0, 0, 0]);
+}
+
+/**
+ * A landing gantry at a stop on the town shaft (1/16 m; origin: floor, between its posts; the beam
+ * runs along z; the shaft is toward -x): two timber posts and a crossbeam with a brace each side.
+ */
+export function liftGantry() {
+  const v = new Vox(-3, 3, 0, 38, -16, 16);
+  const wood = (x, y, z) => grain(h3(x >> 1, y >> 3, z >> 1, 33) < 0.5 ? TIMBER : TIMBER_L, x, y, z, 0.08, 7);
+  v.box(-1, 0, -15, 1, 36, -13, wood); v.box(-1, 0, 13, 1, 36, 15, wood);
+  v.box(-2, 34, -16, 2, 37, 16, wood);
+  v.line(0, 28, -13, 0, 34, -7, wood, 0.8); v.line(0, 28, 13, 0, 34, 7, wood, 0.8);
+  return geo(v, [0, 0, 0], 1 / 16);
+}
+
+/** The glow crystals lit: the cluster's crystals, bright (drawn over `brazier()` with an emissive material). */
+export function glowCrystals() {
+  const v = new Vox(-8, 8, 0, 22, -8, 8);
+  for (const [x, z, h, lx, lz] of [[0, 0, 15, 0, 0], [-3, 2, 10, -0.25, 0.15], [3, -2, 11, 0.25, -0.15], [2, 3, 7, 0.2, 0.25]]) {
+    for (let y = 3; y < 3 + h; y++) {
+      const t = (y - 3) / h, r = 1.8 * (1 - t * 0.6) + 0.15;
+      v.cylY(x + lx * (y - 3), z + lz * (y - 3), r, y, y + 1, t > 0.75 ? 0xf0fcff : (y & 1) ? 0x9ae0ff : 0x6ac4f0);
+    }
+  }
   return geo(v, [0, 0, 0]);
 }

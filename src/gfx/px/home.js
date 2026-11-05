@@ -120,26 +120,6 @@ const F = {
     for (const [x, y] of [[11, 3], [13, 1], [15, 2]]) pc.set(x, y, 0xffffff, 180);
     outlineAll(pc);
   },
-  coop(pc) {
-    const cam = CAM({ cy: 25, scale: 1 });
-    const W = WOOD();
-    box(pc, cam, -8, 0, -6, 8, 11, 6, W, { paintAll: woodPaint(W, 4, true) });
-    // red roof (two slopes)
-    const RF = mat(0xc84a3a, { cont: 1.1 });
-    const shingle = (p, m, tone) => { const b = m.bounds(); m.each((x, y) => p.set(x, y, RF[(y - b.y0) % 3 === 2 ? Math.min(5, tone + 1) : ((x + Math.floor((y - b.y0) / 3) * 2) % 4 === 0 ? Math.min(5, tone + 1) : tone)])); };
-    drawSolid(pc, cam, [
-      { pts: [[-9.5, 10, 7], [9.5, 10, 7], [9.5, 17, 0], [-9.5, 17, 0]], R: RF, paint: shingle, bias: -0.15 },
-      { pts: [[9.5, 10, -7], [-9.5, 10, -7], [-9.5, 17, 0], [9.5, 17, 0]], R: RF, paint: shingle },
-      { pts: [[9.5, 10, 7], [9.5, 10, -7], [9.5, 17, 0]], R: WOOD() },
-    ]);
-    // door + ramp + egg
-    const d = cam.p(-2, 0, 6);
-    const door = M().rect(Math.round(d[0]) - 1, Math.round(d[1]) - 7, 5, 7);
-    fill(pc, door, 0x2a1a10);
-    pc.set(Math.round(d[0]), Math.round(d[1]) - 8, 0x2a1a10);
-    const e = M().ellipse(d[0] + 1.5, d[1] - 2, 1.5, 2); fill(pc, e, 0xf6ecd8); pc.set(d[0] + 1, d[1] - 3, 0xffffff);
-    outlineAll(pc);
-  },
   planter(pc) {
     const cam = CAM({ cy: 25, scale: 1 });
     const W = WOOD();
@@ -631,7 +611,6 @@ function furniture(pc, t, c) {
     case 'bed': return F.bed(pc, c);
     case 'forge': return F.forge(pc);
     case 'stove': return F.stove(pc);
-    case 'coop': return F.coop(pc);
     case 'planter': return F.planter(pc);
     case 'desk': return F.desk(pc);
     case 'rack': return F.rack(pc);

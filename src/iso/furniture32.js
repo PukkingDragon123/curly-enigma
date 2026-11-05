@@ -1,7 +1,7 @@
 // Home furniture rebuilt at 1/32 voxels (32 per tile): beds with patchwork quilts, the brick
-// forge with its anvil and bellows, the iron stove, Nugget's coop, seats, tables, lamps,
+// forge with its anvil and bellows, the iron stove, seats, tables, lamps,
 // woven rugs, plants, shelves and more. Same contract as furniture.js: centered on the
-// footprint, front facing +z, returns { obj, lights, update, seats, lie, nap, ... }.
+// footprint, front facing +z, returns { obj, lights, update, seats, lie, ... }.
 import * as THREE from 'three';
 import { FURNITURE } from '../data/furniture.js';
 import { VoxelGrid, C, wood, beam, iron, stone, cloth, straw, line, ring, sag, M32, G32, group, mulc, mixc, h3, sp3, S32 } from './kit.js';
@@ -191,63 +191,6 @@ function stove(id) {
     steam: { x: -0.12, y: 1.35, z: 0 },
     update(dt, t) { fm.scale.y = 0.85 + 0.15 * Math.sin(t * 9) * Math.sin(t * 3.3); },
   };
-}
-
-// ---------------------------------------------------------------- Nugget's coop
-function coop(id, ctx) {
-  const grp = new THREE.Group();
-  const g = fg(id, 52);
-  const wf = wood(0x9a6a3a, { axis: 'y', across: 'x', pw: 5, seed: 3 });
-  const wz = wood(0x9a6a3a, { axis: 'y', across: 'z', pw: 5, seed: 4 });
-  g.box(0, 0, 0, 32, 4, 32, wood(C.woodD, { axis: 'x', across: 'z', pw: 6, seed: 2 })); // floor
-  g.box(2, 4, 2, 28, 24, 3, wf); // back
-  g.box(2, 4, 2, 3, 24, 28, wz); g.box(27, 4, 2, 3, 24, 28, wz); // sides
-  for (const [x, z] of [[1, 1], [27, 1], [1, 27], [27, 27]]) g.box(x, 0, z, 4, 28, 4, beam(C.woodD, 'y', x + z));
-  // a little round window in the side
-  for (let y = 0; y < 8; y++) for (let z = 0; z < 8; z++) if (Math.hypot(y - 3.5, z - 3.5) < 3.2) g.clear(29, 14 + y, 12 + z);
-  for (let a = 0; a < 16; a++) g.set(30, Math.round(17.5 + Math.sin(a / 16 * 6.28) * 4), Math.round(15.5 + Math.cos(a / 16 * 6.28) * 4), 0xe8dcc0);
-  // gable roof with red shingles and a ridge cap
-  for (let k = 0; k < 17; k++) {
-    const y = 28 + k;
-    g.box(k - 1, y, -1, 34 - k * 2, 1, 34, (x, yy, z) => ((z + (x > 15 ? 2 : 0) + k) % 5 === 0 ? 0x8a2a24 : mulc(0xc0443a, 0.92 + (Math.floor((z + k * 3) / 5) % 2) * 0.08)));
-    if (k < 16) for (let x = k + 1; x < 31 - k; x++) for (let z = 1; z < 31; z++) g.clear(x, y, z);
-  }
-  g.box(14, 44, -1, 4, 2, 34, 0x5a3a22);
-  for (let k = 0; k < 15; k++) g.box(k + 1, 28 + k, 4, 30 - k * 2, 1, 2, C.wood); // inner rafters seen through the front
-  // straw nest
-  g.box(5, 4, 5, 22, 4, 22, straw(5));
-  for (let i = 0; i < 18; i++) g.set(5 + (i * 7) % 22, 8, 5 + (i * 11) % 22, 0xe8c870);
-  // the front: low lip, a ramp and a nameplate
-  g.box(5, 4, 27, 22, 4, 3, wood(0xb07a4a, { axis: 'x', across: 'y', pw: 99, seed: 7 }));
-  for (let k = 0; k < 8; k++) g.box(10, 4 - Math.floor(k / 2), 30 + k, 12, 1, 1, k % 2 ? C.woodL : C.wood); // ramp with cleats
-  g.box(8, 22, 30, 16, 5, 1, 0xe8dcc0);
-  const name = (ctx?.state?.data?.chicken?.name || 'NUGGET').toUpperCase().slice(0, 6);
-  // tiny painted letters (2 px dashes per letter, a hint of a name)
-  for (let i = 0; i < name.length; i++) { g.set(10 + i * 2, 24, 31, 0x8a3a2a); g.set(10 + i * 2, 25, 31, 0x8a3a2a); }
-  g.box(15, 27, 31, 2, 2, 1, 0xf2c23a); // a little gold star
-  // a feeder dish and a water cup outside
-  ring(g, 4, 30, 0, 2.6, 0, 2, 0xb8603a); for (let k = 0; k < 4; k++) g.set(3 + (k % 2), 2, 29 + (k >> 1), 0xe0c070);
-  // Nugget's corner: a water cup, loose straw and a few dropped feathers on the boards
-  ring(g, 27.5, 29.5, 0, 2.4, 4, 6, 0x8a8a94); ring(g, 27.5, 29.5, 0, 1.6, 5, 6, 0x4aa8e0);
-  for (let k = 0; k < 14; k++) {
-    const x = 1 + Math.floor(hash2(k, 1, 31) * 30), z = 26 + Math.floor(hash2(k, 2, 31) * 6);
-    if (g.get(x, 4, z) < 0) g.set(x, 4, z, k % 3 ? 0xe8c870 : 0xd9b45a);
-  }
-  for (const [x, z] of [[7, 28], [23, 31], [13, 29]]) { g.set(x, 4, z, 0xfff6ea); g.set(x + 1, 4, z, 0xe8dcc8); }
-  grp.add(M(g));
-  const eggs = new THREE.Group();
-  grp.add(eggs);
-  const setEggs = (n) => {
-    while (eggs.children.length) { const c = eggs.children.pop(); c.geometry.dispose(); }
-    const pos = [[10, 18], [18, 20], [14, 12], [21, 14], [8, 12], [16, 24]];
-    for (let i = 0; i < Math.min(6, n); i++) {
-      const e = new VoxelGrid(6, 8, 6);
-      e.ellipsoid(3, 3.2, 3, 2.6, 3.6, 2.6, (x, y, z) => (y > 4 && x < 3 ? 0xfffbf0 : (x + y) % 5 === 0 ? 0xe8d8b8 : 0xf6ecd8));
-      eggs.add(at(M(e, [3, 0, 3]), 32, 32, pos[i][0], 8, pos[i][1]));
-    }
-  };
-  setEggs(ctx.eggs || 0);
-  return { obj: grp, nap: { x: 0, z: 0.05, y: 0.24, yaw: 0 }, setEggs };
 }
 
 // ---------------------------------------------------------------- seats
@@ -594,7 +537,7 @@ function planter(id, ctx, plantModel) {
 
 /** Builders that replace the 1/16 versions in furniture.js. */
 export const BUILDERS32 = {
-  bed_straw: bedStraw, bed_cozy: bedCozy, forge, stove, coop,
+  bed_straw: bedStraw, bed_cozy: bedCozy, forge, stove,
   stool, chair_wood: chair, armchair, sofa, table_small: tableSmall, table_long: tableLong,
   lantern_post: lanternPost, lamp_glowcap: lampGlowcap, fireplace,
   rug_round: rug, rug_long: rug, rug_fancy: rug,

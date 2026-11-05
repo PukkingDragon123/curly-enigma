@@ -21,7 +21,6 @@ function defaultHome() {
       { uid: uid(), id: 'bed_straw', x: 1, y: 1, r: 0 },
       { uid: uid(), id: 'forge', x: 6, y: 1, r: 0 },
       { uid: uid(), id: 'stove', x: 4, y: 1, r: 0 },
-      { uid: uid(), id: 'coop', x: 8, y: 5, r: 0 },
     ],
     planters: {}, // placed uid → { id, day }
   };
@@ -35,10 +34,9 @@ export function defaultData() {
     energy: 100,
     maxEnergy: 100,
     lots: [], // read-only mirror of the backpack's quality lots [{uid, id, q, p}] (core/inventory.js)
-    counts: { grub_bar: 2, support_beam: 3, chicken_feed: 6 }, // read-only mirror of the backpack's stackables
+    counts: {}, // read-only mirror of the backpack's stackables
     weapons: [], // read-only mirror of the forged weapons in the backpack
     inv: Inv.defaultInv(), // the backpack: slots of stacks (core/inventory.js)
-    coop: Inv.defaultCoop(), // Nugget's walking coop: its shelves, how fed she is (deep/Nugget.js)
     stash: Inv.defaultStash(), // the trunk at home: what didn't fit (and a new game's starter things)
     owned: { pick_rusty: 1, helmet_basic: 1, bag_small: 1, bp_dagger: 1, floor_dirt: 1, wall_dirt: 1 },
     equip: { pick: 'pick_rusty', chisel: null, brush: null, drill: null, xray: null, helmet: 'helmet_basic', gloves: null, suit: null, boots: null, bag: 'bag_small' },
@@ -49,18 +47,31 @@ export function defaultData() {
     index: {}, // "cat:id" → { day, n, best? }
     zoneMax: 1,
     deepest: 0,
-    stats: { blocks: 0, ores: 0, pristine: 0, weapons: 0, dishes: 0, earned: 0, faints: 0, caveins: 0, explosions: 0, trips: 0, bestWeapon: 0, eggs: 0, blasts: 0, kills: 0, golems: 0 },
+    stats: { blocks: 0, ores: 0, pristine: 0, weapons: 0, dishes: 0, earned: 0, faints: 0, caveins: 0, explosions: 0, trips: 0, bestWeapon: 0, blasts: 0, kills: 0, golems: 0 },
     upgrades: {}, // upgrade board: id → level (data/upgrades.js)
     progress: { ms: {}, tavern: null }, // milestones reached (id → day), the tavern's last takings
     buffs: [], // [{id, until}] until = playTime seconds
     flags: {},
-    chicken: { name: 'Nugget', eggs: 0, pets: 0, lastPetDay: 0 },
     commission: null,
     settings: { music: 0.55, sfx: 0.85, pixel: 0, shake: 1 },
     playTime: 0,
     created: Date.now(),
     skills: defaultSkills(), // the skill tree: XP, levels, points, stamped nodes (core/skills.js)
   };
+}
+
+/**
+ * Old saves can carry data the game no longer uses (retired records, flags and stats) and placed or
+ * stored furniture that's gone: drop it. (Items in a retired container go to the trunk:
+ * inventory.loadInventory.)
+ */
+function dropRetired(d) {
+  delete d.chicken;
+  if (d.flags) delete d.flags.nugget;
+  if (d.stats) delete d.stats.eggs;
+  if (d.home?.placed) d.home.placed = d.home.placed.filter((p) => ITEMS[p.id]);
+  if (d.furniture) for (const id of Object.keys(d.furniture)) if (!ITEMS[id]) delete d.furniture[id];
+  if (d.index) for (const k of Object.keys(d.index)) if (k.startsWith('mechanic:') && !MECHANICS[k.slice(9)]) delete d.index[k];
 }
 
 export class State {
@@ -107,11 +118,13 @@ export class State {
       if (!json) return false;
       const d = typeof json === 'string' ? JSON.parse(json) : json;
       const base = defaultData();
-      this.data = { ...base, ...d, stats: { ...base.stats, ...d.stats }, settings: { ...base.settings, ...d.settings }, equip: { ...base.equip, ...d.equip }, chicken: { ...base.chicken, ...d.chicken } };
+      this.data = { ...base, ...d, stats: { ...base.stats, ...d.stats }, settings: { ...base.settings, ...d.settings }, equip: { ...base.equip, ...d.equip } };
       if (!this.data.home || !this.data.home.placed) this.data.home = defaultHome();
       // v1 saves began at home: they have already escaped the collapsed tunnels
-      if (!(d.v >= 2)) { this.data.v = 2; this.data.flags = { ...this.data.flags, escaped: true, nugget: true }; }
+      if (!(d.v >= 2)) { this.data.v = 2; this.data.flags = { ...this.data.flags, escaped: true }; }
+      dropRetired(this.data);
       this.data.upgrades = { ...(d.upgrades || {}) };
+      for (const id of Object.keys(this.data.upgrades)) if (!UPGRADES[id]) delete this.data.upgrades[id];
       this.data.progress = { ...base.progress, ...(d.progress || {}) };
       this.data.progress.ms = { ...(this.data.progress.ms || {}) };
       this.data.skills = fillSkills(d.skills, this.data);
@@ -446,7 +459,7 @@ export class State {
    * power: × pick power · rate: × pick swing interval (lower = faster) · glint: × range of the
    * hidden-ore glint · clean: × ore quality lost to scratches · blast: × blast radius · toss: ×
    * throw speed · sticky: charges stick where they hit · spare: chance a thrown charge isn't used
-   * up · rest: energy/s regained standing still · nugget: Nugget's finds level · value: + fraction
+   * up · rest: energy/s regained standing still · value: + fraction
    * on ore/gem prices (already inside sellPrice).
    */
   mineBonus() {
@@ -460,7 +473,6 @@ export class State {
       sticky: this.upEffect('sticky') > 0,
       spare: this.upEffect('spare'),
       rest: this.upEffect('rest'),
-      nugget: this.upEffect('nugget'),
       value: this.upEffect('appraise'),
     };
   }
@@ -498,7 +510,7 @@ export class State {
   }
   /**
    * Story flags: 'escaped' = dug out of the collapsed tunnels and reached Deep Town
-   * (town, home and the lift are locked until then); 'nugget' = found Nugget the hen.
+   * (town, home and the lift are locked until then); 'fallen' = the journey's fall is behind you.
    */
   get escaped() { return !!this.data.flags.escaped; }
   flag(k, v) {

@@ -293,6 +293,7 @@
   box-shadow: inset 0 0 0 var(--px) #26160c, inset 0 calc(var(--px) * 3) 0 rgba(0, 0, 0, .25), 0 var(--px) 0 rgba(255, 220, 160, .12);
 }
 .bp-trunk { background: var(--a-woodDkT) 0 0 / calc(var(--px) * 16) repeat, #52321a; }
+.bp-trunk-head b { font-family: var(--font-head); font-weight: 400; font-size: var(--fs-h); line-height: 1; color: #ffe8b0; text-shadow: 0 var(--px) 0 #2a1408; }
 .bp-tgrid { display: grid; grid-template-columns: repeat(3, var(--slot-w)); gap: var(--gap); justify-content: center; align-content: start; }
 .bp-tgrid { grid-template-columns: repeat(3, var(--slot-w)); }
 .bp-shelf { flex: none; align-self: center; font-size: 16px; }

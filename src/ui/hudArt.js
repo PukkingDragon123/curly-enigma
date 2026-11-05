@@ -408,30 +408,29 @@ function strip() {
     // where the sheet leaves the roll: a crease and its shadow
     const xs = side ? x0 : x0 + 7;
     for (let y = 3; y < H - 3; y++) p.set(xs, y, mixC(p.get(xs, y), P[1], 0.55));
-    // the curl at the top: an ellipse with a spiral of paper; the bottom: the roll's rounded end
-    const cx = x0 + 4, ct = 2.6, cb = H - 3;
-    for (let y = 0; y < 6; y++) for (let x = x0; x < x0 + 8; x++) {
-      const du = (x + 0.5 - cx) / 4, dv = (y + 0.5 - ct) / 2.4;
-      const r = Math.hypot(du, dv);
-      if (r > 1) continue;
-      // the spiral: alternate paper and the shadow between turns
-      const a = Math.atan2(dv, du);
-      const turn = (r * 3.2 + a / (Math.PI * 2)) % 1;
-      let c = turn < 0.4 ? P[2] : turn < 0.55 ? P[0] : r > 0.82 ? P[5] : P[4];
-      if (r < 0.22) c = 0x3a2412;
-      p.set(x, y, c);
+    // the curl at the top: the rolled sheet seen end-on, a hollow core and the inner turn;
+    // the bottom: the roll's rounded underside
+    const cx = x0 + 4, cb = H - 3;
+    const CAP = ['.oooooo.', 'ohhhhhlo', 'ohdkkkdo', 'ohldkdmo', 'omllllmo', '.oooooo.'];
+    const cp = { o: P[0], h: P[7], l: P[5], m: P[3], d: P[1], k: 0x3a2412 };
+    for (let j = 0; j < CAP.length; j++) for (let i = 0; i < 8; i++) {
+      const ch = CAP[j][side ? 7 - i : i];
+      if (ch === '.') { if (j === 0) p.clear(x0 + i, j); continue; }
+      let c = cp[ch];
+      if (side && ch === 'h') c = P[6];
+      p.set(x0 + i, j, c);
     }
     for (let y = cb - 1; y < H; y++) for (let x = x0; x < x0 + 8; x++) {
       const du = (x + 0.5 - cx) / 4, dv = (y + 0.5 - cb) / 2.2;
       if (du * du + dv * dv > 1) { if (y > cb) p.clear(x, y); continue; }
-      if (y >= cb) p.set(x, y, dv > 0.5 ? P[1] : du < 0 ? P[4] : P[2]);
+      if (y >= cb) p.set(x, y, dv > 0.5 ? P[1] : du < -0.2 ? P[4] : P[2]);
     }
   }
   p.outline(P[0]);
   return p;
 }
 
-/** The scroll's wax seal: a red blob pressed with a mole's paw, two silk ribbon tails. 15×20. */
+/** The scroll's wax seal: a red blob pressed with Old Star's star, two silk ribbon tails. 15×20. */
 function waxSeal() {
   const W = 15, H = 20, Wx = RAMP.wax;
   const p = new Px(W, H);
@@ -446,50 +445,49 @@ function waxSeal() {
       }
     }
   };
-  ribbon(3, -1, [0x7a1a10, 0xc23c2c, 0xe8704a]);
+  ribbon(3, -1, [0x1a3a5a, 0x2a5a8a, 0x5a8ac0]);
   ribbon(8, 1, [0x8a6a16, 0xd8a83a, 0xf8dc86]);
-  // the blob: a squashed dome with a wobbly edge and a drip
-  const cx = 7.5, cy = 6.8;
-  for (let y = 0; y < 15; y++) for (let x = 0; x < W; x++) {
-    const a = Math.atan2(y + 0.5 - cy, x + 0.5 - cx);
-    const rr = 6.3 + Math.sin(a * 5 + 1) * 0.45 + Math.sin(a * 3) * 0.3;
-    const du = (x + 0.5 - cx) / rr, dv = (y + 0.5 - cy) / (rr * 0.95);
-    const r = Math.hypot(du, dv);
-    if (r > 1) continue;
-    // a raised rim round the pressed face
-    let k;
-    if (r > 0.68) k = 0.25 + dome(du, dv, 0.6) * 0.75;
-    else k = 0.32 + lambert(-du * 0.35, -dv * 0.35, 1) * 0.35; // the face is sunk: lit from the bottom-right lip
-    if (r > 0.6 && r <= 0.68) k = du + dv < 0 ? 0.2 : 0.62;
-    p.set(x, y, tone(Wx, k));
-  }
-  // a drip
+  sealBlob(p, 7.5, 6.8, 6.4, 3.6, 5);
   p.set(10, 13, Wx[3]); p.set(10, 14, Wx[2]); p.set(11, 13, Wx[2]);
-  // the press: a mole's paw (pad and four toes), carved in: dark walls on top-left, lit on bottom-right
-  const paw = [[6, 7], [7, 7], [8, 7], [6, 8], [7, 8], [8, 8], [7, 9], [5, 5], [7, 4], [9, 5], [10, 7]];
-  for (const [x, y] of paw) { p.set(x, y, Wx[2]); }
-  for (const [x, y] of paw) { if (!paw.some(([a, b]) => a === x + 1 && b === y + 1)) p.set(x + 1, y + 1, Wx[6]); }
-  p.set(4, 2, 0xffd0b8); p.set(5, 2, Wx[7]); p.set(3, 3, Wx[7]);
   p.outline(0x2a0604);
   return p;
 }
 
+/**
+ * A wax blob centred at (cx, cy): a wobbly rim lit at the top left, a face pressed in by a
+ * seal (a dark crescent where its wall shades, a lit one opposite) with a raised star in it.
+ */
+function sealBlob(p, cx, cy, R, rf, starW) {
+  const Wx = RAMP.wax;
+  for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) {
+    const dx = x + 0.5 - cx, dy = y + 0.5 - cy, a = Math.atan2(dy, dx);
+    const rr = R + Math.sin(a * 5 + 1) * 0.42 + Math.sin(a * 3) * 0.28;
+    const d = Math.hypot(dx, dy);
+    if (d > rr) continue;
+    const lit = -(dx + dy) / (d * Math.SQRT2 || 1);
+    let c;
+    if (d > rf + 1) c = d > rr - 1 ? (lit > 0.3 ? Wx[6] : lit > -0.4 ? Wx[4] : Wx[2]) : lit > 0.5 ? Wx[5] : Wx[4];
+    else if (d > rf) c = lit > 0 ? Wx[1] : Wx[6];
+    else c = Wx[3];
+    p.set(x, y, c);
+  }
+  const S5 = ['..x..', '.xxx.', 'xxxxx', '.xxx.', '.x.x.'], S3 = ['.x.', 'xxx', 'x.x'];
+  const st = starW >= 5 ? S5 : S3, n = st.length;
+  const ox = Math.round(cx - n / 2), oy = Math.round(cy - n / 2);
+  const on = (i, j) => st[j]?.[i] === 'x';
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    if (!on(i, j)) continue;
+    if (!on(i + 1, j + 1)) p.set(ox + i + 1, oy + j + 1, Wx[1]);
+  }
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) if (on(i, j)) p.set(ox + i, oy + j, !on(i - 1, j) || !on(i, j - 1) ? Wx[7] : Wx[5]);
+  const gx = Math.round(cx - R * 0.55), gy = Math.round(cy - R * 0.62);
+  p.set(gx, gy, 0xffd8c0);
+}
+
 /** A small wax seal (10×10): the stand-in portrait for quests without a giver. */
 function waxSmall() {
-  const Wx = RAMP.wax, p = new Px(10, 10);
-  for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) {
-    const a = Math.atan2(y + 0.5 - 5, x + 0.5 - 5);
-    const rr = 4.6 + Math.sin(a * 5) * 0.35;
-    const du = (x + 0.5 - 5) / rr, dv = (y + 0.5 - 5) / rr, r = Math.hypot(du, dv);
-    if (r > 1) continue;
-    let k = r > 0.62 ? 0.25 + dome(du, dv, 0.6) * 0.75 : 0.45;
-    if (r > 0.5 && r <= 0.62) k = du + dv < 0 ? 0.2 : 0.65;
-    p.set(x, y, tone(Wx, k));
-  }
-  // a star pressed in the middle
-  for (const [x, y] of [[5, 3], [4, 4], [5, 4], [6, 4], [3, 5], [4, 5], [5, 5], [6, 5], [7, 5], [4, 6], [6, 6]]) p.set(x - 0.5 | 0, y, Wx[2]);
-  p.set(5, 6, Wx[6]); p.set(7, 6, Wx[6]);
-  p.set(2, 2, Wx[7]); p.set(3, 1, 0xffd0b8);
+  const p = new Px(10, 10);
+  sealBlob(p, 5, 5, 4.4, 2.3, 3);
   p.outline(0x2a0604);
   return p;
 }

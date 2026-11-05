@@ -3,131 +3,138 @@
 //   installDialogArt()      once: sets every --dl-* on :root
 //   DL.spark(i)             a 7×7 sparkle frame (0..2) for bursts
 import { Px, PAL, INK, art, mixHex } from './uiArt.js';
+import * as CA from './craftArt.js';
 
-const W = PAL.wood, B = PAL.brass;
-const WD = { hi: 0xb07a46, lt: 0x8e5c32, base: 0x744826, dk: 0x56341a, dd: 0x3c2210, ol: 0x1e0f06 };
+const B = PAL.brass;
 
 /**
- * The carved board round the dialogue (slice 9): a moulded oak frame, a carved groove, a brass
- * corner bracket with a rivet at each corner. The middle is left clear (CSS fills it).
+ * The carved board round the dialogue (slice 9 on 50): an oak frame with a rounded lip, a carved
+ * groove and a bevel down into the panel, grain running along each rail (on the middle's period, so
+ * the rails tile), mitred corners, and an engraved brass bracket over each corner: an L with a boss
+ * in the bend and a rivet at the end of each arm.
  */
 function boardFrame() {
-  const n = 26, S = 9;
+  const s = 9, M = 32, n = s * 2 + M, T = CA.TONES.oak, BR = CA.TONES.brass;
   const p = new Px(n, n);
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-    const d = Math.min(x, y, n - 1 - x, n - 1 - y);
-    if (d >= S) continue;
-    const tl = x + y < n - 1;
-    const horiz = Math.min(y, n - 1 - y) <= Math.min(x, n - 1 - x); // on a top/bottom rail: grain runs along x
-    const g = horiz ? x : y;
-    let c = WD.base;
-    if (d === 0) c = WD.ol;
-    else if (d === 1) c = tl ? WD.hi : WD.dk;
-    else if (d === 2) c = tl ? WD.lt : WD.base;
-    else if (d === 4) c = tl ? WD.dd : WD.lt; // the carved groove
-    else if (d === 5) c = tl ? WD.lt : WD.dd;
-    else if (d === 7) c = tl ? WD.dk : WD.lt;
-    else if (d === 8) c = WD.ol; // lip into the panel
-    else if ((g * 5 + d * 3) % 9 === 0) c = WD.dk;
-    else if ((g * 3 + d * 7) % 11 === 0) c = WD.lt;
-    p.set(x, y, c);
+    const { u, d, tl } = CA.edgeOf(x, y, n, n);
+    if (d >= s) continue;
+    const uu = ((u - s) % M + M) % M, lit = tl ? 1 : -1;
+    const wave = (CA.pnoise((uu * 4) / M, d * 0.5 + (tl ? 0 : 7), 4, 32, 61) - 0.5) * 3.4;
+    const ring = (((d + wave) / 2.4) % 1 + 1) % 1;
+    let k = 0.52 + (CA.pnoise((uu * 8) / M, d * 0.3, 8, 16, 62) - 0.5) * 0.22;
+    if (ring < 0.26) k -= 0.18; else if (ring > 0.82) k += 0.05;
+    if (CA.hash(uu >> 1, d * 5 + (tl ? 0 : 2), 63) < 0.06) k -= 0.12;
+    if (d === 0) { p.set(x, y, T[0]); continue; }
+    if (d === 1) k += 0.3 * lit;
+    else if (d === 2) k += 0.14 * lit;
+    else if (d === 4) k -= 0.26 * lit; // the carved groove
+    else if (d === 5) k += 0.16 * lit;
+    else if (d === 7) k -= 0.14 * lit; // the bevel down into the panel
+    else if (d === 8) { p.set(x, y, T[0]); continue; }
+    p.set(x, y, CA.quant(T, k, x, y, 0.3));
   }
-  // mitre lines in the corners
-  for (let i = 1; i < S; i++) for (const [x, y] of [[i, i], [n - 1 - i, i], [i, n - 1 - i], [n - 1 - i, n - 1 - i]]) if (i !== 4 && i !== 5) p.set(x, y, WD.dd);
-  // brass corner brackets (an L of brass over the corner, a boss in the bend)
+  // mitres
+  for (let i = 1; i < s - 1; i++) for (const [x, y] of [[i, i], [n - 1 - i, i], [i, n - 1 - i], [n - 1 - i, n - 1 - i]]) p.set(x, y, T[1]);
+  // brass corner brackets: a flat L, bevelled, an engraved line following it, a boss and two rivets
   const bracket = (fx, fy) => {
     const at = (x, y) => [fx ? n - 1 - x : x, fy ? n - 1 - y : y];
-    for (let y = 1; y <= 8; y++) for (let x = 1; x <= 8; x++) {
-      const inL = x <= 4 || y <= 4;
-      if (!inL) continue;
+    const corner = !fx && !fy ? 1 : fx && fy ? -1 : 0;
+    // (it must stay inside the 9-px corner slice, outline included, or bits of it repeat along the rails)
+    const L = (x, y) => (x >= 1 && x <= 4 && y >= 1 && y <= 7) || (y >= 1 && y <= 4 && x >= 1 && x <= 7);
+    for (let y = 0; y <= 8; y++) for (let x = 0; x <= 8; x++) {
+      if (!L(x, y)) continue;
       const [px, py] = at(x, y);
-      const edge = x === 1 || y === 1 || (x === 8 && y <= 4) || (y === 8 && x <= 4) || (x === 4 && y > 4) || (y === 4 && x > 4);
-      let c = B.base;
-      if (edge) c = B.dd;
-      else if ((fx ? 0 : 1) + (fy ? 0 : 1) >= 1 && (x === 2 || y === 2)) c = !fx && !fy ? B.hi : B.lt;
-      else if (x === 3 && y === 3) c = B.lt;
+      // which way this pixel's nearest outside faces decides its bevel: up/left lit, down/right dark
+      const up = !L(x, y - 1) || !L(x - 1, y), dn = !L(x, y + 1) || !L(x + 1, y);
+      const fUp = fy ? dn : up, fDn = fy ? up : dn; // flipped brackets keep the light from the top-left
+      const lUp = fx ? (!L(x + 1, y) && !fy ? false : fUp) : fUp;
+      let c = BR[5];
+      if (lUp && !fDn) c = BR[corner > 0 ? 8 : 7];
+      else if (fDn) c = BR[2];
+      else if ((x === 2 && y >= 2 && y <= 6) || (y === 2 && x >= 2 && x <= 6)) c = BR[3]; // engraved line
+      else if ((x === 3 && y >= 3 && y <= 6) || (y === 3 && x >= 3 && x <= 6)) c = BR[6];
       p.set(px, py, c);
     }
-    const [bx, by] = at(2.5, 2.5);
-    p.set(bx, by, B.hi);
-    const [rx, ry] = at(6, 2), [qx, qy] = at(2, 6);
-    p.set(rx, ry, B.hi); p.set(qx, qy, B.hi);
+    const dot = (x, y) => { const [a, b] = at(x, y), [c2, d2] = at(x + 1, y + 1); p.set(a, b, BR[9]); p.set(c2, d2, BR[1]); const [e, f] = at(x + 1, y), [g, h] = at(x, y + 1); p.set(e, f, BR[5]); p.set(g, h, BR[5]); };
+    dot(2, 2); dot(5, 2); dot(2, 5);
+    // outline round the bracket
+    for (let y = 0; y <= 8; y++) for (let x = 0; x <= 8; x++) if (!L(x, y) && (L(x + 1, y) || L(x - 1, y) || L(x, y + 1) || L(x, y - 1))) { const [px, py] = at(x, y); if (px > 0 && py > 0 && px < n - 1 && py < n - 1) p.set(px, py, BR[0]); }
   };
   bracket(false, false); bracket(true, false); bracket(false, true); bracket(true, true);
   p.outline(INK);
   return p;
 }
 
-/** The parchment sunk into the board (slice 6): a burnt rim, shadow under the frame's lip. */
+/** The parchment sunk into the board (slice 6 on 36): a gently deckled, scorched rim, fibres, foxing. */
 function parchFrame() {
-  const P = PAL.paper;
-  const n = 18, S = 6;
-  const p = new Px(n, n);
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-    const d = Math.min(x, y, n - 1 - x, n - 1 - y);
-    let c = P.base;
-    if (d === 0) c = P.edge;
-    else if (d === 1) c = y < 2 || x < 2 ? 0x8a6038 : P.burn;
-    else if (d === 2) c = y < 3 ? P.dk : (x + y) % 3 ? P.mid : P.dk;
-    else if (d === 3) c = y < 4 ? P.mid : P.base;
-    else if (d < S) c = (x * 7 + y * 5) % 13 === 0 ? P.mid : P.base;
-    else c = P.base;
-    p.set(x, y, c);
-  }
-  for (const [x, y] of [[0, 0], [n - 1, 0], [0, n - 1], [n - 1, n - 1]]) p.clear(x, y);
-  return p;
+  return CA.parchFrame(false, { slice: 6, mid: 24, seed: 71, tear: 0.45, bites: false, burn: 1.6 });
 }
 
-/** The portrait's ornate frame (slice 6): brass bevels round a dark walnut moulding, bosses at the corners. */
+/**
+ * The portrait's ornate frame (slice 6 on 28): a brass bevel with a beaded row, a dark walnut
+ * moulding, an inner brass slip, domed bosses at the corners.
+ */
 function portraitFrame() {
-  const n = 18, S = 6;
+  const n = 28, S = 6, BR = CA.TONES.brass;
   const p = new Px(n, n);
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-    const d = Math.min(x, y, n - 1 - x, n - 1 - y);
+    const { u, d, tl } = CA.edgeOf(x, y, n, n);
     if (d >= S) continue;
-    const tl = x + y < n - 1;
+    const lit = tl ? 1 : -1, uu = ((u - S) % 16 + 16) % 16;
     let c;
-    if (d === 0) c = B.ol;
-    else if (d === 1) c = tl ? B.hi : B.dk;
-    else if (d === 2) c = tl ? B.lt : B.base;
-    else if (d === 3) c = tl ? 0x2a160c : 0x4a2a14;
-    else if (d === 4) c = tl ? B.dk : B.hi;
+    if (d === 0) c = BR[0];
+    else if (d === 1) c = CA.quant(BR, 0.66 + 0.26 * lit + (CA.hash(uu, 1, 66) - 0.5) * 0.08, x, y, 0.3);
+    else if (d === 2) c = uu % 2 === 0 ? BR[tl ? 8 : 5] : BR[tl ? 4 : 2]; // the beading
+    else if (d === 3) c = CA.quant(CA.TONES.woodDk, 0.4 - 0.18 * lit + (CA.pnoise(uu / 4, 0, 4, 2, 67) - 0.5) * 0.2, x, y, 0.3);
+    else if (d === 4) c = BR[tl ? 3 : 7];
     else c = 0x0c0608;
-    // a beaded line on the brass
-    if (d === 2 && (x + y) % 3 === 0) c = tl ? B.hi : B.lt;
     p.set(x, y, c);
   }
-  const boss = (cx, cy) => { p.disk(cx, cy, 2.9, B.ol); p.disk(cx, cy, 2.3, B.dk); p.disk(cx - 0.4, cy - 0.4, 1.6, B.base); p.set(Math.floor(cx - 1), Math.floor(cy - 1), B.hi); p.set(Math.floor(cx), Math.floor(cy - 1), B.lt); };
+  const boss = (cx, cy) => { CA.rivet(p, cx, cy, BR, 2.1); };
   boss(3, 3); boss(n - 3, 3); boss(3, n - 3); boss(n - 3, n - 3);
   return p;
 }
 
 /**
- * The name plate: a red ribbon with gold trim whose ends fold back into swallowtails (3-slice:
- * 10 | 4 | 10, 16 rows).
+ * The name plate: a satin ribbon with stitched gold trim whose ends fold back into swallowtails
+ * (3-slice: 10 | 16 | 10, 16 rows; the middle tiles).
  */
-function ribbon(R = PAL.oxblood, trim = B) {
-  const w = 24, h = 16;
+function ribbon(R = PAL.oxblood) {
+  const w = 36, h = 16, M = 16;
   const p = new Px(w, h);
-  // folded-back tails (behind, lower, darker)
+  const TR = CA.TONES.brass;
+  const band = [R.dd, R.dk, R.base, R.lt, R.hi];
+  // the folded-back tails (behind, lower, darker), with a swallowtail notch
   for (const side of [0, 1]) {
-    for (let y = 4; y < 15; y++) for (let x = 0; x < 7; x++) {
-      const notch = Math.abs(y - 9.5) < (6 - x) * 0.7 && x < 4; // the swallowtail cut
-      if (notch) continue;
+    for (let y = 4; y < 15; y++) for (let x = 0; x < 8; x++) {
+      if (Math.abs(y - 9.5) < (5 - x) * 0.9 && x < 5) continue;
       const xx = side ? w - 1 - x : x;
-      p.set(xx, y, y === 4 || y === 14 ? R.dd : x === 6 ? R.dd : R.dk);
+      let c = y === 4 || y === 14 ? R.dd : x >= 6 ? R.dd : (x + y) % 3 === 0 ? mixHex(R.dk, R.dd, 0.5) : R.dk;
+      if (y === 5 && x < 6) c = mixHex(R.dk, R.base, 0.5);
+      p.set(xx, y, c);
     }
   }
-  // the band
+  // the band: satin sheen across its width, a twill weave on the middle's period, stitched trim
   for (let y = 1; y < 13; y++) for (let x = 3; x < w - 3; x++) {
-    let c = R.base;
-    if (y === 1) c = R.hi; else if (y === 2) c = trim.lt; else if (y === 3) c = R.lt;
-    else if (y === 10) c = R.dk; else if (y === 11) c = trim.dk; else if (y === 12) c = R.dd;
-    else if ((x * 3 + y) % 7 === 0) c = mixHex(R.base, R.lt, 0.5);
+    const ux = ((x - 10) % M + M) % M;
+    let c;
+    if (y === 1) c = R.hi;
+    else if (y === 2) c = ux % 3 === 1 ? TR[9] : TR[7]; // gold trim, stitched
+    else if (y === 3) c = TR[4];
+    else if (y === 10) c = TR[3];
+    else if (y === 11) c = ux % 3 === 1 ? TR[6] : TR[2];
+    else if (y === 12) c = R.dd;
+    else {
+      const sheen = [0, 0, 0, 0, 3, 4, 3, 2, 2, 1][y]; // the satin catches the light high up
+      let k = sheen;
+      if (y > 6 && (ux + y) % 4 === 0) k = Math.max(0, k - 1); // the twill
+      c = band[Math.min(band.length - 1, k)];
+    }
     p.set(x, y, c);
   }
-  // the fold where the band meets the tail
-  for (let y = 4; y < 13; y++) { p.set(3, y, R.dd); p.set(w - 4, y, R.dd); }
+  // the fold where the band turns under into the tail
+  for (let y = 4; y < 13; y++) { p.set(3, y, R.dd); p.set(w - 4, y, R.dd); p.set(4, y, mixHex(p.get(4, y), R.dd, 0.4)); p.set(w - 5, y, mixHex(p.get(w - 5, y), R.dd, 0.4)); }
   p.outline(INK);
   return p;
 }
@@ -154,23 +161,27 @@ function quill() {
 }
 
 // ------------------------------------------------------------------ the level plaque
-/** Carved wooden plaque (slice 7): bevelled oak, a groove, brass studs at the corners. */
+/**
+ * Carved wooden plaque (slice 7 on 30; the middle tiles, for `fill`): bevelled oak with its grain, a
+ * routed groove, a brass stud in each corner.
+ */
 function plaqueFrame() {
-  const n = 20, S = 7;
+  const n = 30, S = 7, M = 16, T = CA.TONES.oak;
   const p = new Px(n, n);
-  p.rr(0, 0, n, n, 2, WD.base);
+  const F = CA.woodField(M, M, { seed: 68, base: 0.5, knots: 0, wave: 3, spacing: 3.2, pores: 0, noise: 0.02 });
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-    if (!p.a(x, y)) continue;
-    const d = Math.min(x, y, n - 1 - x, n - 1 - y);
-    const tl = x + y < n - 1;
-    let c = (x * 5 + y * 3) % 7 === 0 ? WD.dk : WD.base;
-    if (d === 1) c = tl ? WD.hi : WD.dk;
-    else if (d === 3) c = tl ? WD.dd : WD.lt;
-    else if (d === 4) c = tl ? WD.lt : WD.dd;
-    else if (d >= S) c = (x + y * 2) % 5 === 0 ? 0x5e3a1e : 0x6a4222;
-    p.set(x, y, c);
+    const cx = Math.min(x, n - 1 - x), cy = Math.min(y, n - 1 - y);
+    if (cx + cy < 2) continue;
+    const d = Math.min(cx, cy), tl = (cx === x && cx <= cy) || (cy === y && cy <= cx);
+    let k = F.K[(((y - S) % M + M) % M) * M + (((x - S) % M + M) % M)];
+    if (d === 0) { p.set(x, y, T[0]); continue; }
+    if (d === 1) k += tl ? 0.28 : -0.22;
+    else if (d === 2) k += tl ? 0.12 : -0.1;
+    else if (d === 3) k += tl ? -0.26 : 0.16;
+    else if (d === 4) k += tl ? 0.12 : -0.08;
+    p.set(x, y, CA.quant(T, k, x, y, 0.3));
   }
-  for (const [x, y] of [[2, 2], [n - 4, 2], [2, n - 4], [n - 4, n - 4]]) { p.set(x, y, B.hi); p.set(x + 1, y, B.base); p.set(x, y + 1, B.base); p.set(x + 1, y + 1, B.dd); }
+  for (const [x, y] of [[3, 3], [n - 3, 3], [3, n - 3], [n - 3, n - 3]]) CA.rivet(p, x, y, CA.TONES.brass, 1.2);
   p.outline(INK);
   return p;
 }

@@ -65,7 +65,7 @@
 
 /* tales, quest notes and archive labels: plain parchment, the teller's ink */
 .lr-parch, .lr-note {
-  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat, var(--parch);
+  background: var(--a-paperL) 0 0 / calc(var(--px) * 96) repeat, var(--parch);
   box-shadow: inset 0 0 0 var(--px) rgba(110, 74, 42, .35);
 }
 .lr-parch .lr-title { color: var(--ink); }

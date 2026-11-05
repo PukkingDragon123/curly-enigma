@@ -153,7 +153,7 @@ export function openBackpack(game, opts = {}) {
         const extras = [];
         if (owned.length > 1) extras.push(el('span', { class: 'n' }, '+' + (owned.length - 1)));
         const b = el('button', { class: 'bp-loop' + (cur ? '' : ' empty') + (selKey === key ? ' on' : ''), title: cur ? `${label}: ${cur.name}` : `${label}: empty`, 'aria-label': cur ? `${label}: ${cur.name}` : `${label}: empty`, 'data-key': key }, [
-          el('img', { class: 'pix', src: iconURL(cur ? cur.id : sample), alt: '' }), ...extras,
+          el('img', { class: 'pix', src: itemVox.src(cur ? cur.id : sample), alt: '' }), ...extras,
         ]);
         b.onclick = () => selectGear(slot, label, sample, b);
         c.append(b);
@@ -216,7 +216,7 @@ export function openBackpack(game, opts = {}) {
       const slots = Inv.bag(st);
       const i = slots.findIndex((s) => s && s.id === f.id);
       const b = el('button', { class: 'bp-snack', title: `${it.name} (+${it.energy ?? it.food})` }, [
-        el('img', { class: 'pix', src: iconURL(f.id), alt: '' }), el('span', { class: 'n' }, String(f.n)),
+        el('img', { class: 'pix', src: itemVox.src(f.id), alt: '' }), el('span', { class: 'n' }, String(f.n)),
       ]);
       b.onclick = () => { if (i >= 0) selectSlot('bag', i, grid.querySelector(`.inv-slot[data-c="bag"][data-i="${i}"]`)); };
       row.append(b);
@@ -471,7 +471,7 @@ export function openBackpack(game, opts = {}) {
     const list = el('div', { class: 'bp-swap' });
     for (const id of others) {
       list.append(el('div', { class: 'bp-swap-row' }, [
-        el('img', { class: 'pix', src: iconURL(id), alt: '' }), el('span', {}, ITEMS[id].name),
+        el('img', { class: 'pix', src: itemVox.src(id), alt: '' }), el('span', {}, ITEMS[id].name),
         el('button', { class: 'btn', onclick: () => {
           if (!st.equip(id)) { sfx('nope'); ui.toast('Empty some pockets first: that bag is smaller.', { kind: 'warn', dur: 2000 }); return; }
           audio.play('ui_click'); render(); reanchor(); showSlot(slot, label, sample);
@@ -480,7 +480,7 @@ export function openBackpack(game, opts = {}) {
     }
     put(tag,
       tagClose(),
-      tagHead(iconURL(cur ? cur.id : sample), cur ? cur.name : `No ${label.toLowerCase()}`, cur ? `${label} · in use` : label, null),
+      tagHead(itemVox.src(cur ? cur.id : sample), cur ? cur.name : `No ${label.toLowerCase()}`, cur ? `${label} · in use` : label, null, cur ? cur.id : null),
       el('p', { class: 'bp-desc' }, cur ? cur.desc || '' : 'This loop is empty. The shops in Deep Town might have something for it.'),
       facts(info),
       others.length ? el('small', { class: 'bp-swap-t' }, 'Also packed') : null,
@@ -533,7 +533,7 @@ export function openBackpack(game, opts = {}) {
     hotRow.append(el('span', { class: 'bp-hot-t' }, 'Hotbar'));
     bar.forEach((k, i) => {
       const b = el('button', { class: 'bp-hot-slot' + (k ? '' : ' empty') + (selKey === 'hot:' + i ? ' on' : ''), 'data-key': 'hot:' + i, title: k ? `${i + 1}: ${KIND_LABEL[k]}` : `${i + 1}: empty`, 'aria-label': k ? `Hotbar ${i + 1}: ${KIND_LABEL[k]}` : `Hotbar ${i + 1}: empty` }, [
-        k ? el('img', { class: 'pix', src: iconURL(KIND_ICON[k]), alt: '' }) : null, el('i', { class: 'k' }, String(i + 1)),
+        k ? el('img', { class: 'pix', src: itemVox.src(KIND_ICON[k]), alt: '' }) : null, el('i', { class: 'k' }, String(i + 1)),
       ]);
       b.onclick = () => selectHot(i, b);
       hotRow.append(b);
@@ -548,11 +548,11 @@ export function openBackpack(game, opts = {}) {
     const list = el('div', { class: 'bp-swap' });
     for (const k of TOOL_KINDS) {
       list.append(el('div', { class: 'bp-swap-row' }, [
-        el('img', { class: 'pix', src: iconURL(KIND_ICON[k]), alt: '' }), el('span', {}, KIND_LABEL[k] + (bar.includes(k) && bar[i] !== k ? ` (slot ${bar.indexOf(k) + 1})` : '')),
+        el('img', { class: 'pix', src: itemVox.src(KIND_ICON[k]), alt: '' }), el('span', {}, KIND_LABEL[k] + (bar.includes(k) && bar[i] !== k ? ` (slot ${bar.indexOf(k) + 1})` : '')),
         el('button', { class: 'btn' + (bar[i] === k ? ' alt' : ''), disabled: bar[i] === k, onclick: () => { hotbarSet(st, i, k); sfx('drop'); game.scene?.updateHotbar?.(); closeTag(); renderHot(); } }, bar[i] === k ? 'In it' : 'Put here'),
       ]));
     }
-    put(tag, tagClose(), tagHead(iconURL(bar[i] ? KIND_ICON[bar[i]] : 'pick_rusty'), `Hotbar slot ${i + 1}`, bar[i] ? KIND_LABEL[bar[i]] : 'Empty', null),
+    put(tag, tagClose(), tagHead(itemVox.src(bar[i] ? KIND_ICON[bar[i]] : 'pick_rusty'), `Hotbar slot ${i + 1}`, bar[i] ? KIND_LABEL[bar[i]] : 'Empty', null),
       el('p', { class: 'bp-desc' }, `What sits in loop ${i + 1} at the bottom of the screen in the mine (key ${i + 1}).`), list);
     placeTag();
   };

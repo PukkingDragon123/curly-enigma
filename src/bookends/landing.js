@@ -190,7 +190,7 @@ function signMesh(lines, style, width) {
 }
 
 /**
- * Build the landing scene. ctx: {mole, hen, cage, textures, game}
+ * Build the landing scene. ctx: {mole, cage, textures, game}
  */
 export function buildLanding(ctx) {
   const scene = new THREE.Scene();
@@ -314,22 +314,21 @@ export function buildLanding(ctx) {
   crowdShadow.rotation.x = 0;
   scene.add(crowdShadow);
 
-  // the travellers
-  const { mole, hen, cage } = ctx;
+  // the traveller
+  const { mole, cage } = ctx;
   const confetti = new Particles({ max: 420, additive: false });
   scene.add(confetti.points);
   const sparks = new Particles({ max: 80, additive: true });
   scene.add(sparks.points);
 
   const moleShadow = makeBlobShadow(0.5, 0.36, 0.45);
-  const henShadow = makeBlobShadow(0.28, 0.22, 0.45);
-  scene.add(moleShadow, henShadow);
+  scene.add(moleShadow);
 
   const state = { t: 0, cageY: 0 };
   const events = new Set();
 
   const enter = () => {
-    scene.add(cage.root, mole.root, hen.root);
+    scene.add(cage.root, mole.root);
     events.clear();
     cage.root.visible = true;
     cage.lampGlow.visible = true;
@@ -340,9 +339,6 @@ export function buildLanding(ctx) {
     mole.root.position.set(1.45, 0, 2.75);
     mole.face(-0.5, true);
     mole.play('wave');
-    hen.root.position.set(2.2, 0, 3.25);
-    hen.face(-0.6, true);
-    hen.play('idle');
     state.t = 0;
     state.cageY = 0;
     camera.position.copy(camBase);
@@ -363,9 +359,8 @@ export function buildLanding(ctx) {
     const l = pts[pts.length - 1];
     return { x: l[1], z: l[2], moving: false, dir: null };
   };
-  const seatX = { mole: -0.34, hen: 0.46 };
+  const seatX = { mole: -0.34 };
   const molePath = [[1.75, 1.45, 2.75], [3.3, LIFT_X + 0.15, 1.8], [4.05, LIFT_X + seatX.mole, 0.05]];
-  const henPath = [[2.1, 2.2, 3.25], [3.75, LIFT_X + 0.7, 2.05], [4.5, LIFT_X + seatX.hen, 0.2]];
 
   const tmp = new THREE.Vector3();
   const tmp2 = new THREE.Vector3();
@@ -391,14 +386,13 @@ export function buildLanding(ctx) {
     once('bell', 0.25, () => { audio.play('bell'); api.say(crowd[0], 'All aboard the<br>Surface Express!', 2.4); });
     once('kid', 1.0, () => api.say(crowd[8], 'Bye, mole!!', 1.8));
     once('hazel', 1.9, () => api.say(crowd[1], 'Send us a seashell!', 2.0));
-    once('cluck', 0.7, () => { audio.play('cluck', { n: 3 }); hen.flap(0.6); });
     once('burst0', 0.15, () => { burst(-1.5, 0.4, 2.8, 50); burst(-6.5, 0.4, 2.2, 40); audio.play('firework'); });
     once('gate', 4.75, () => audio.play('gate'));
     once('clunk', 5.45, () => audio.play('clunk', { vol: 0.8 }));
     once('bell2', 5.6, () => { audio.play('bell'); setTimeout(() => api.alive() && audio.play('bell'), 420); api.startLoop('elevator', 0.6); });
     once('cheer', 5.6, () => { for (const c of crowd) c.rig.play('cheer'); burst(2.6, 0.5, 2.0, 70, 5.5); burst(-3.0, 0.5, 2.6, 60, 5); audio.play('firework'); });
     once('grubb', 6.0, () => api.say(crowd[2], 'Don\'t forget us<br>down here!', 1.8));
-    once('wave2', 6.05, () => { mole.doEmote('wave', 1.6); hen.flap(1.0); audio.play('bawk'); });
+    once('wave2', 6.05, () => mole.doEmote('wave', 1.6));
 
     // --- mole: wave, walk into the cage, hop onto the velvet seat
     if (t < 1.75) {
@@ -418,23 +412,6 @@ export function buildLanding(ctx) {
       mole.root.position.y += Math.sin(k * Math.PI) * 0.22;
       mole.play(k < 1 ? 'jump' : 'sit');
     }
-    // --- hen: trot after him and flap up beside him
-    if (t < 2.1) {
-      hen.face(-0.6);
-    } else if (t < 4.5) {
-      const p = lerpPath(henPath, t);
-      hen.root.position.set(p.x, 0, p.z);
-      if (p.moving) { hen.play('walk'); hen.face(p.dir); }
-    } else {
-      if (hen.root.parent !== cage.root) { cage.root.attach(hen.root); state.henFrom = hen.root.position.clone(); hen.flap(0.5); audio.play('bawk', { pitch: 1.1 }); }
-      const k = clamp((t - 4.5) / 0.4, 0, 1);
-      hen.face(0);
-      const to = new THREE.Vector3(seatX.hen, cage.seatY, cage.seatZ + 0.06);
-      hen.root.position.lerpVectors(state.henFrom, to, k);
-      hen.root.position.y += Math.sin(k * Math.PI) * 0.3;
-      hen.play(k < 1 ? 'idle' : 'sit');
-    }
-
     // --- gate & rise
     cage.setGate(clamp((t - 4.75) / 0.7, 0, 1));
     if (t > 5.8) {
@@ -452,7 +429,7 @@ export function buildLanding(ctx) {
     mole.root.getWorldPosition(tmp2);
     for (const c of crowd) {
       tmp.copy(tmp2).sub(c.rig.root.position);
-      // turn toward the travellers, but never so far that we lose their faces
+      // turn toward the traveller, but never so far that we lose their faces
       c.rig.face(clamp(Math.atan2(tmp.x, tmp.z), -0.95, 0.95));
       c.rig.update(dt);
     }
@@ -477,20 +454,17 @@ export function buildLanding(ctx) {
     warm.intensity = 6 + Math.sin(t * 9) * 0.25;
 
     mole.update(dt);
-    hen.update(dt);
     if (t > 4.4) {
       // seated: paws on knees, peeking at the crowd
       mole.armL.rotation.x = -0.5; mole.armR.rotation.x = mole.emoteT > 0 ? mole.armR.rotation.x : -0.5;
     }
     moleShadow.position.set(mole.root.position.x, 0.012, mole.root.position.z);
     moleShadow.visible = t < 4.05;
-    henShadow.position.set(hen.root.position.x, 0.012, hen.root.position.z);
-    henShadow.visible = t < 4.5;
     cage.lampGlow.userData.glow.uIntensity.value = 0.5 + Math.sin(t * 7) * 0.04;
   };
 
   const onResize = () => {
-    // narrow screens: frame the travellers and the lift rather than the whole crowd
+    // narrow screens: frame the traveller and the lift rather than the whole crowd
     const narrow = camera.aspect < 1.2;
     camBase.x = narrow ? 2.3 : -0.35;
     camLook.x = camBase.x;

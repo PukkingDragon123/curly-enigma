@@ -124,7 +124,7 @@ export default class HomeScene extends Scene {
     this.hideFrom = new Map(); // bubble key → () => true while it's out of sight
     this.scripted = false;
     // split-toned: the rock's shade goes cold blue, the fire- and lamplight stays amber
-    this.post = { vignette: 0.5, outlineAlpha: 0.7, innerThresh: 0.22, saturation: 1.02, contrast: 1.1, brightness: 1.06, grade: { lift: [0.0, 0.01, 0.034], gamma: [1.02, 1.0, 0.98], gain: [1.08, 0.99, 0.86] }, gradeMix: 1, bloom: 0.7, bloomThreshold: 0.72 };
+    this.post = { vignette: 0.5, outlineAlpha: 0.7, innerThresh: 0.22, saturation: 1.02, contrast: 1.1, brightness: 1.06, grade: { lift: [0.0, 0.012, 0.042], gamma: [1.02, 1.0, 0.97], gain: [1.06, 0.99, 0.88] }, gradeMix: 1, bloom: 0.7, bloomThreshold: 0.72 };
     this.scene.background = new THREE.Color(0x05060a);
     // a thin cold haze: the far end of the hollow goes blue-black (depth in a small cave)
     this.scene.fog = new THREE.FogExp2(0x090c12, 0.05);
@@ -161,7 +161,7 @@ export default class HomeScene extends Scene {
 
     // ---- light: a dim cave, a pool of point lights shared by the fires, lanterns and candles, glows and contact shadows
     // (the ground colour is the warm bounce off the earth: undersides of things aren't black)
-    this.scene.add(new THREE.HemisphereLight(0x8a9cbc, 0x3e3228, 0.5));
+    this.scene.add(new THREE.HemisphereLight(0x7a92c4, 0x3a3029, 0.62));
     const fill = new THREE.DirectionalLight(0xffd0a0, 0.06);
     fill.position.set(2, 6, 2);
     this.scene.add(fill);

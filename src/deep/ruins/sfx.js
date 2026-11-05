@@ -71,6 +71,14 @@ export function sfx(audio) {
     trap() { play('click', { vol: 0.6, pitch: 0.7 }); play('clunk', { vol: 0.5, pitch: 1.3 }); },
     darts() { play('whoosh', { vol: 0.5, pitch: 1.6 }); tone({ f: 900, f2: 300, type: 'triangle', dur: 0.12, vol: 0.04 }); },
     lever() { play('clunk', { vol: 0.7, pitch: 0.9 }); play('click', { vol: 0.5 }); },
+    /** A lift's brass bell: two strokes, ringing on. */
+    bell() {
+      [0, 0.42].forEach((d, i) => {
+        tone({ f: 880 * (i ? 0.98 : 1), type: 'sine', dur: 1.8, vol: 0.08, a: 0.003, release: 1.6, reverb: 0.7, delay: d });
+        tone({ f: 880 * 2.76, type: 'sine', dur: 0.7, vol: 0.025, a: 0.003, reverb: 0.6, delay: d });
+        tone({ f: 880 * 5.4, type: 'triangle', dur: 0.15, vol: 0.01, delay: d });
+      });
+    },
     hum() { return a?.loop?.('hum', { vol: 0.0001 }) || { set() {}, stop() {} }; },
     water() { return a?.loop?.('water', { vol: 0.0001 }) || { set() {}, stop() {} }; },
   };

@@ -102,27 +102,33 @@ kbd {
 }
 @media (min-width: 1700px) and (min-height: 1000px) { kbd { --kp: 3px; font: 24px/18px var(--font); } }
 
-/* ---------- buttons (shared with every scene) ---------- */
+/* ---------- buttons (shared with every scene) ----------
+   A stamped brass plate: the 9-slice (uiArt btn*, top 2 · sides 3 · bottom 3) is drawn wider than the
+   1-px border (border-image-width > border-width), over the padding, so the box keeps its old size.
+   It has an ink outline with cut corners, a lit bevel, a brushed face and a dark front lip; pressed,
+   the plate sinks: the lip goes and the top falls into shadow (btn*Dn). */
 .btn {
   font: inherit; font-weight: 400; color: var(--ink); cursor: pointer; position: relative;
   padding: calc(var(--px) * 1.5) calc(var(--px) * 4) calc(var(--px) * 2.5);
   border: var(--px) solid transparent;
-  border-image: var(--a-cut) 1 / var(--px) stretch;
-  background: linear-gradient(to bottom, #fff3c0 0 var(--px), #f7d97c var(--px) calc(var(--px) * 2), #e8be5a calc(var(--px) * 2) calc(100% - var(--px) * 3), #c08a32 calc(100% - var(--px) * 3) calc(100% - var(--px) * 1), #8a5a1a calc(100% - var(--px) * 1)) padding-box;
+  border-image: var(--a-btnGold) 2 3 3 fill / calc(var(--px) * 2) calc(var(--px) * 3) calc(var(--px) * 3) repeat stretch;
+  background: #e8be5a padding-box;
   filter: drop-shadow(0 var(--px) 0 rgba(20, 10, 6, .55));
   text-shadow: 0 calc(var(--px) * .5) 0 rgba(255, 244, 200, .6);
   transition: transform .08s, filter .12s;
 }
 .btn:hover { filter: drop-shadow(0 var(--px) 0 rgba(20, 10, 6, .55)) brightness(1.08); transform: translateY(calc(var(--px) * -1)); }
-.btn:active { transform: translateY(var(--px)); filter: none; }
-.btn[disabled] { filter: grayscale(.85) brightness(.92); cursor: not-allowed; transform: none; opacity: .75; }
-.btn.alt {
-  background: linear-gradient(to bottom, #fffaf0 0 var(--px), #f8ecd2 var(--px) calc(var(--px) * 2), #ecd9b0 calc(var(--px) * 2) calc(100% - var(--px) * 3), #c8ab7a calc(100% - var(--px) * 3) calc(100% - var(--px) * 1), #8a6e48 calc(100% - var(--px) * 1)) padding-box;
-}
+.btn:active { transform: translateY(var(--px)); filter: none; border-image-source: var(--a-btnGoldDn); }
+.btn[disabled] { filter: grayscale(.85) brightness(.92); cursor: not-allowed; transform: none; opacity: .75; border-image-source: var(--a-btnGold); }
+.btn.alt { background: #ecd9b0 padding-box; border-image-source: var(--a-btnAlt); }
+.btn.alt:active { border-image-source: var(--a-btnAltDn); }
+.btn.alt[disabled] { border-image-source: var(--a-btnAlt); }
 .btn.danger {
   color: #fff4e8; text-shadow: 0 var(--px) 0 rgba(60, 10, 4, .6);
-  background: linear-gradient(to bottom, #ff9a7a 0 var(--px), #e8604a var(--px) calc(var(--px) * 2), #c23c2c calc(var(--px) * 2) calc(100% - var(--px) * 3), #8a2418 calc(100% - var(--px) * 3) calc(100% - var(--px) * 1), #5a140c calc(100% - var(--px) * 1)) padding-box;
+  background: #c23c2c padding-box; border-image-source: var(--a-btnDanger);
 }
+.btn.danger:active { border-image-source: var(--a-btnDangerDn); }
+.btn.danger[disabled] { border-image-source: var(--a-btnDanger); }
 .btn.big { font-size: 1.2em; padding: calc(var(--px) * 3) calc(var(--px) * 8) calc(var(--px) * 4); }
 .btn:focus-visible, .icon-btn:focus-visible, #ui button:focus-visible { outline: var(--px) solid var(--gold); outline-offset: var(--px); }
 .bp-label:focus-visible { outline-style: solid; outline-color: var(--gold); }
@@ -134,7 +140,7 @@ kbd {
 /* ---------- generic parchment panel (also used by forge, cooking and build mode) ---------- */
 .panel {
   position: relative; color: var(--ink);
-  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat, var(--parch);
+  background: var(--a-paperL) 0 0 / calc(var(--px) * 96) repeat, var(--parch);
   border: var(--px) solid var(--paper-edge);
   box-shadow: inset 0 0 0 var(--px) #d4b47e, inset 0 0 0 calc(var(--px) * 2) #ead3a4,
     0 0 0 var(--px) #3a2212, 0 calc(var(--px) * 3) 0 var(--px) rgba(10, 4, 8, .45);
@@ -144,6 +150,10 @@ kbd {
   animation: pop .22s var(--pop);
 }
 @keyframes pop { from { transform: translateY(calc(var(--px) * 4)) scale(.94); opacity: .2; } }
+/* (guard: the tutorial layer (Onboard.js) marks "a window is open" with a class named `panel`; it
+   must not pick up the parchment look above, or a big sheet of paper covers the screen behind
+   every window) */
+.ob-layer.panel { background: none; border: 0; box-shadow: none; padding: 0; max-width: none; max-height: none; animation: none; display: block; }
 :where(.panel) h2 { margin: 0 0 calc(var(--px) * 3); font-family: var(--font-display); font-weight: 400; font-size: 2em; line-height: 1; color: var(--wood-dk); letter-spacing: .02em; text-wrap: balance; }
 :where(.panel) h3 { margin: calc(var(--px) * 2) 0; font-size: 1em; color: var(--wood); }
 :where(.panel) .sub { margin: calc(var(--px) * -2) 0 calc(var(--px) * 4); color: var(--ink-soft); font-size: .85em; max-width: 60ch; }
@@ -174,7 +184,7 @@ kbd {
   font-size: var(--fs);
   border-style: solid; border-width: calc(var(--px) * 8);
   border-image: var(--a-parchDog) 8 / calc(var(--px) * 8) repeat;
-  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box;
+  background: var(--a-paperL) 0 0 / calc(var(--px) * 96) repeat padding-box, var(--parch) padding-box;
   box-shadow: none; filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(10, 4, 8, .5));
   padding: calc(var(--px) * 1) calc(var(--px) * 2) calc(var(--px) * 1);
   max-width: min(calc(100vw - 16px - var(--sal) - var(--sar)), calc(var(--px) * 300));
@@ -194,11 +204,13 @@ kbd {
 
 .tabs { display: flex; gap: var(--px); flex-wrap: wrap; margin-bottom: calc(var(--px) * 3); }
 .tab {
-  font: inherit; font-size: .8em; cursor: pointer; padding: var(--px) calc(var(--px) * 3) calc(var(--px) * 1.5);
-  background: var(--parch-2); color: var(--ink-soft);
-  border: var(--px) solid var(--wood-dk); border-bottom-width: calc(var(--px) * 2);
+  font: inherit; font-size: .8em; cursor: pointer; padding: var(--px) calc(var(--px) * 3) calc(var(--px) * 2.5);
+  background: var(--parch-2) padding-box; color: var(--ink-soft);
+  border: var(--px) solid transparent;
+  border-image: var(--a-btnAlt) 2 3 3 fill / calc(var(--px) * 2) calc(var(--px) * 3) calc(var(--px) * 3) repeat stretch;
 }
-.tab.on { background: var(--wood); color: var(--text-light); }
+.tab:active { border-image-source: var(--a-btnAltDn); }
+.tab.on { background: var(--wood) padding-box; color: var(--text-light); text-shadow: 0 var(--px) 0 #2a160a; border-image-source: var(--a-btnWoodDn); }
 
 /* item grid & list (shared) */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--px) * 26), 1fr)); gap: calc(var(--px) * 2); }
@@ -254,7 +266,7 @@ kbd {
   font-size: var(--fs); line-height: 1.25; max-width: min(calc(100vw - 120px), calc(var(--px) * 160));
   border-style: solid; border-width: calc(var(--px) * 5);
   border-image: var(--a-note) 5 / calc(var(--px) * 5) repeat;
-  background: #f8ecd2 padding-box;
+  background: var(--a-noteT) 0 0 / calc(var(--px) * 32) repeat padding-box, #f8ecd2 padding-box;
   padding: calc(var(--px) * 1) calc(var(--px) * 2) 0;
   filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .45));
   transform-origin: 50% 0;
@@ -340,6 +352,11 @@ html.is-touch .hint-keys { display: none !important; }
 
 /* ---------- confirm: a parchment card with two rubber stamps ---------- */
 .modal-back > .panel.confirm-card { width: min(calc(var(--px) * 130), calc(100vw - 32px)); padding-top: calc(var(--px) * 3); }
+/* Old Star's wax seal (with its ribbon) pressed on the card's bottom-left corner */
+.modal-back > .panel.confirm-card::after {
+  content: ''; position: absolute; z-index: 2; left: calc(var(--px) * -12); bottom: calc(var(--px) * -18); width: calc(var(--px) * 26); height: calc(var(--px) * 30);
+  background: var(--a-waxSeal) 0 0 / 100% 100% no-repeat; pointer-events: none; filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 8, .5));
+}
 .cf-text { margin: 0 0 calc(var(--px) * 6); line-height: 1.4; color: var(--ink); text-wrap: pretty; }
 .cf-text b { color: #7a2e14; }
 .cf-row { display: flex; justify-content: center; gap: calc(var(--px) * 10); }
@@ -351,7 +368,7 @@ html.is-touch .hint-keys { display: none !important; }
 .stamp-btn span {
   display: block; font-family: var(--font-head); font-size: var(--fs-h); line-height: 1; text-transform: uppercase; letter-spacing: .04em;
   padding: calc(var(--px) * 2) calc(var(--px) * 5) calc(var(--px) * 1.5); color: #fff3e0;
-  background: var(--c, #a8321e); box-shadow: inset 0 calc(var(--px) * -2) 0 rgba(0, 0, 0, .28), inset 0 var(--px) 0 rgba(255, 255, 255, .28), 0 0 0 var(--px) var(--ink);
+  background: var(--a-rubber) 0 0 / calc(var(--px) * 16) repeat, var(--c, #a8321e); box-shadow: inset 0 calc(var(--px) * -2) 0 rgba(0, 0, 0, .28), inset 0 var(--px) 0 rgba(255, 255, 255, .28), 0 0 0 var(--px) var(--ink);
   min-width: calc(var(--px) * 28); text-align: center;
 }
 .stamp-btn.yes { --c: #3d7a2e; }

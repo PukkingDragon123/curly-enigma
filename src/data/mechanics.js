@@ -41,7 +41,6 @@ export const MECHANICS = {
   quenching: { name: 'Quenching', desc: 'Plunging hot steel into water hardens it, but only from the right temperature.' },
   infusion: { name: 'Infusion', desc: 'Special minerals worked into a blade give it strange properties and a fat price tag.' },
   recipes: { name: 'Recipes', desc: 'Toss ingredients in the pot and see what happens. Good combinations are remembered.' },
-  eggs: { name: 'Fresh Eggs', desc: 'Nugget lays an egg most mornings. Pet her and she lays more often.' },
   building: { name: 'Home Building', desc: 'Furniture from Burrow & Board can be placed, turned and moved around your burrow.' },
   planting: { name: 'Planting', desc: 'Plant a cave plant in a planter and it multiplies overnight.' },
   commissions: { name: 'Commissions', desc: 'Old Vex posts a daily request. Bring a matching weapon for a bonus.' },

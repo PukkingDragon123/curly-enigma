@@ -21,7 +21,7 @@
 import * as THREE from 'three';
 import { keepUnbatched } from '../iso/vox.js';
 import { lowRes, group } from '../iso/kit.js';
-import { barrel, crate, sack, rubble } from '../iso/props.js';
+import { barrel, crate, rubble } from '../iso/props.js';
 import { buildFurniture } from '../iso/furniture.js';
 import { townDoor, doorRubble, lanternOnHook } from './props.js';
 import * as TP from './tavernProps.js';
@@ -112,9 +112,10 @@ const BUILDERS = { rock: 'buildRock', west: 'buildWest', east: 'buildEast', ways
 export function campLights() {
   const S = SPOTS;
   const L = [
-    { kind: 'fire', x: S.fire.x, y: Y + 0.22, z: S.fire.z, color: 0xff8a3a, intensity: 2.0, distance: 4.6, flicker: 0.32, speed: 1.3, pool: 1.0, poolOpacity: 0.3, halo: 0.42, haloOpacity: 0.3, priority: 9, power: 1.25, radius: 3.9 },
-    { kind: 'forge', x: S.forge.x, y: Y + 0.62, z: S.forge.z + 0.05, color: 0xff7a2a, intensity: 1.9, distance: 4.4, flicker: 0.28, speed: 1.4, pool: 0.8, poolZ: S.forge.z + 0.6, poolOpacity: 0.24, halo: 0.36, haloOpacity: 0.3, priority: 9, power: 1.15, radius: 3.4 },
-    { kind: 'lantern', x: SHACK.x + SHACK.dc + SHACK.dw / 2 + 0.16, y: Y + 1.18, z: SHACK.z + 0.2, color: 0xffb860, intensity: 0.9, distance: 3.2, flicker: 0.12, halo: 0.2, haloOpacity: 0.55, pool: 0.65, poolOpacity: 0.14, priority: 6, power: 0.62, radius: 2.5 },
+    // (warm pools that end: past them the rock is cold and blue)
+    { kind: 'fire', x: S.fire.x, y: Y + 0.22, z: S.fire.z, color: 0xff9244, intensity: 2.1, distance: 3.3, flicker: 0.32, speed: 1.3, pool: 1.0, poolOpacity: 0.3, halo: 0.42, haloOpacity: 0.3, priority: 9, power: 1.35, radius: 2.5 },
+    { kind: 'forge', x: S.forge.x, y: Y + 0.62, z: S.forge.z + 0.05, color: 0xff8638, intensity: 2.0, distance: 3.0, flicker: 0.28, speed: 1.4, pool: 0.8, poolZ: S.forge.z + 0.6, poolOpacity: 0.24, halo: 0.36, haloOpacity: 0.3, priority: 9, power: 1.2, radius: 2.2 },
+    { kind: 'lantern', x: SHACK.x + SHACK.dc + SHACK.dw / 2 + 0.16, y: Y + 1.18, z: SHACK.z + 0.2, color: 0xffb860, intensity: 0.9, distance: 2.8, flicker: 0.12, halo: 0.2, haloOpacity: 0.55, pool: 0.65, poolOpacity: 0.14, priority: 6, power: 0.66, radius: 2.1 },
     { kind: 'candle', x: SHACK.x + 0.95, y: Y + 0.62, z: SHACK.z - 1.05, color: 0xffc070, intensity: 0.55, distance: 2.0, flicker: 0.2, halo: 0.09, haloOpacity: 0.6, priority: 4, power: 0.4, radius: 1.5, real: true },
     { kind: 'candle', x: S.table.x + 0.3, y: Y + 0.62, z: S.table.z - 0.12, color: 0xffc070, intensity: 0.5, distance: 1.8, flicker: 0.2, halo: 0.09, haloOpacity: 0.6, priority: 3, power: 0.32, radius: 1.3, real: true },
     { kind: 'lantern', x: 6.55, y: Y + 1.3, z: -2.25, color: 0xffb050, intensity: 0.75, distance: 3.0, flicker: 0.12, halo: 0.18, haloOpacity: 0.5, pool: 0.55, poolOpacity: 0.12, priority: 5, power: 0.5, radius: 2.3 },
@@ -334,7 +335,10 @@ export class StarHouse {
 
   /** Local point (tiles) of an object → world meters. */
   toM(obj, p) {
-    obj.updateMatrixWorld(true);
+    // (from the root down: the room's tile scale must be in it, or the point comes out in tiles,
+    // twice as far out: the forge's embers, the kettle's steam, the spring, the candles' glows and
+    // the shack's lantern all used to land a long way off)
+    obj.updateWorldMatrix(true, false);
     return new THREE.Vector3(p.x, p.y, p.z).applyMatrix4(obj.matrixWorld);
   }
 
@@ -398,7 +402,7 @@ export class StarHouse {
     });
     // glowing mushrooms in the damp corners, a crystal cluster in the spring's nook
     for (const [x, z, hue, size, seed] of [[-4.3, -1.45, 0, 1.15, 3], [7.15, -5.05, 2, 1.0, 5], [0.72, -5.42, 1, 0.85, 7], [-3.7, -4.3, 0, 0.75, 9], [4.6, -5.4, 2, 0.8, 11]]) {
-      const s = CMP.glowCaps(seed, hue, size);
+      const s = size < 0.9 ? lowRes(() => CMP.glowCaps(seed, hue, size)) : CMP.glowCaps(seed, hue, size); // (the small ones, off the paths, coarser)
       this.place(s.obj, x, z, seed);
       this.boxAt(x, z, 0.16 * size, 0.16 * size, 0.2 * size); // (knee-high: you walk round them)
     }
@@ -446,7 +450,7 @@ export class StarHouse {
     this.boxAt(S.rack.x + 0.05, S.rack.z, 0.12, 0.55, 1.1);
     this.prop(KP.scrapPile(), -3.15, -3.3, 0.8, 0.3, 0.24, 0.25);
     this.prop(KP.grindstone(), -0.05, -3.55, -Math.PI / 2, 0.38, 0.26, 0.7);
-    for (const [x, z, s] of [[-0.45, -5.48, 1], [-3.55, -4.42, 2]]) { const o = sack({ seed: s, color: 0x4a4440 }); this.place(o.obj, x, z, s); this.boxAt(x, z, 0.17, 0.17, 0.4, s); }
+    for (const [x, z, s] of [[-0.45, -5.48, 1], [-3.55, -4.42, 2]]) { this.place(CMP.oldSack(s, 0x4e4842), x, z, s); this.boxAt(x, z, 0.18, 0.16, 0.4, s); }
     this.onRock(KP.horseshoes(), -2.0, -5.3, 0, 1, 1.35, 1.4);
     this.onRock(KP.apronHook(), -1.25, -5.4, 0, 1, 0.42, 0.9); // his leather apron, scorched
     this.web(-0.35, 1.25, -5.55, -Math.PI / 4, 0.3, 7);
@@ -485,7 +489,7 @@ export class StarHouse {
     this.place(CP.herbLine(1.0, 31), S.table.x, S.table.z - 0.1, 0.1, ceilAt(S.table.x, S.table.z) - 0.12);
     // stores along the south rock: crates, a barrel of water, sacks, the food crate
     for (const [x, z, k, s] of [[-3.55, -0.82, 'crate', 1], [-3.0, -0.7, 'barrel', 3], [-1.62, -0.66, 'crate', 2], [-1.18, -0.62, 'sack', 5]]) {
-      const o = k === 'crate' ? crate(s, { open: s === 2 }) : k === 'barrel' ? barrel(s, { fill: 'water' }) : sack({ seed: s });
+      const o = k === 'crate' ? crate(s, { open: s === 2 }) : k === 'barrel' ? barrel(s, { fill: 'water' }) : { obj: CMP.oldSack(s, 0x8a7a58) };
       this.place(o.obj, x, z, s * 0.7);
       this.boxAt(x, z, k === 'sack' ? 0.17 : 0.22, k === 'sack' ? 0.17 : 0.22, k === 'crate' ? 0.4 : 0.5, s * 0.7);
     }
@@ -493,8 +497,8 @@ export class StarHouse {
     // his pans on pegs over the stores, firewood stacked by the fire
     this.onRock(CMP.potHooks(0.8, 101), -1.4, -0.75, 0, -1, 0.62, 1.1);
     const ls = CP.logStack(35);
-    this.place(ls.obj, -0.12, -0.8, Math.PI + 0.06);
-    this.boxAt(-0.12, -0.8, 0.37, 0.18, 0.47, Math.PI + 0.06);
+    this.place(ls.obj, 0.36, -0.74, Math.PI + 0.06);
+    this.boxAt(0.36, -0.74, 0.37, 0.18, 0.47, Math.PI + 0.06);
     const sh = CP.shelf(0.9, 29);
     this.onRock(sh.obj ?? sh, -2.55, -0.6, 0, -1, 0.82, 1.2);
     this.stubs(-3.0, -0.7, Y + 0.5, 2, 76);
@@ -601,10 +605,10 @@ export class StarHouse {
     this.place(bn.obj, bx, bz, 0);
     this.furn.push({ id: 'chair', obj: bn.obj, seats: [{ x: 0, z: 0, y: bn.seat.y, yaw: 0 }], box: [bx - 0.43, Y, bz - 0.17, bx + 0.43, Y + 0.38, bz + 0.17] });
     this.boxAt(bx, bz, 0.43, 0.17, 0.36);
-    this.prop(CMP.washTub(107), 0.62, -3.35, 0.5, 0.3, 0.3, 0.3);
+    this.prop(lowRes(() => CMP.washTub(107)), 0.64, -4.42, 0.5, 0.3, 0.3, 0.3);
     // worn flagstones from the steps to his door
     for (const [x, z, w, d, yaw, seed] of [[2.5, -1.28, 0.42, 0.34, 0.2, 1], [2.36, -1.8, 0.38, 0.32, -0.3, 2], [2.22, -2.32, 0.44, 0.3, 0.5, 3], [2.08, -2.84, 0.36, 0.34, 0.1, 4], [2.0, -3.36, 0.42, 0.32, -0.2, 5], [1.36, -2.3, 0.34, 0.3, 0.7, 6], [0.78, -2.12, 0.38, 0.3, 0.3, 7]]) {
-      this.place(CMP.flagstone(w, d, 109 + seed), x, z, yaw, Y - 0.025);
+      this.place(CMP.flagstone(w, d, 109 + seed), x, z, yaw, Y - 0.018);
     }
     // what came down with you, under the hole
     const db = lowRes(() => RP.fallDebris(65));
@@ -647,10 +651,11 @@ export class StarHouse {
     this.boxAt(FRONT.x + 0.72, FRONT.z + 0.32, 0.16, 0.12, 0.35, 0.2);
     this.buildRuin();
     for (const [x, z, k, s] of [[5.35, -1.25, 'barrel', 6], [7.15, -0.88, 'crate', 8], [7.28, -1.32, 'crate', 9], [5.1, -2.3, 'sack', 6]]) {
-      const o = k === 'crate' ? crate(s, {}) : k === 'barrel' ? barrel(s, { fill: null }) : sack({ seed: s });
+      const o = k === 'crate' ? crate(s, {}) : k === 'barrel' ? barrel(s, { fill: null }) : { obj: CMP.oldSack(s + 3, 0x7a6e56) };
       this.place(o.obj, x, z, s * 0.7);
       this.boxAt(x, z, k === 'sack' ? 0.17 : 0.22, k === 'sack' ? 0.17 : 0.22, k === 'crate' ? 0.4 : 0.5, s * 0.7);
     }
+    this.prop(lowRes(() => CMP.ropeCoil(111)), 7.32, -4.52, -0.4, 0.33, 0.3, 0.18);
     const ll = HP.hangingOilLamp(0.5, 96);
     this.place(ll.obj, 6.55, -2.25, 0, ceilAt(6.55, -2.25) - 0.02);
     this.web(SHAFT.x0 - 0.05, 1.45, SHAFT.z0 - 0.32, -Math.PI / 2, 0.3, 5);
@@ -734,14 +739,14 @@ export class StarHouse {
   ambient() {
     // a dim cave: little light but the fires', deep shadow up under the rock and in the corners
     return (x, y, z, nx, ny, nz, out) => {
-      let k = 0.5;
+      let k = 0.6;
       const h = y - Y;
       if (h > 1.2) k *= Math.max(0.45, 1 - (h - 1.2) * 0.45);
       if (h < 0.15) k *= Math.max(0.6, 0.82 + h * 1.4);
       if (ny < -0.5) k *= 0.7;
       const edge = hollowSD(x, z);
       if (edge > -0.5) k *= 0.82 + Math.max(0, -edge) * 0.36; // the rock's own shade near the walls
-      out[0] = k * 0.66; out[1] = k * 0.78; out[2] = k * 1.02; // (cold blue rock: the firelight is the warm)
+      out[0] = k * 0.62; out[1] = k * 0.8; out[2] = k * 1.18; // (cold blue rock: the firelight is the warm)
     };
   }
 

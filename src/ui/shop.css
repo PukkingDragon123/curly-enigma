@@ -10,7 +10,7 @@
 .sh-sign {
   position: relative; z-index: 2; align-self: center; margin-bottom: calc(var(--px) * -7); max-width: calc(100% - var(--px) * 30);
   border-style: solid; border-width: calc(var(--px) * 6);
-  border-image: var(--a-sign) 6 fill / calc(var(--px) * 6) stretch;
+  border-image: var(--a-signT) 6 fill / calc(var(--px) * 6) repeat;
   padding: 0 calc(var(--px) * 4); filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .5));
   transform-origin: 50% -100px; animation: signSwing 4.5s ease-in-out infinite;
 }
@@ -29,7 +29,7 @@
   grid-template-areas: 'keeper wall' 'counter wall' 'foot wall'; gap: calc(var(--px) * 3) calc(var(--px) * 4);
   border-style: solid; border-width: calc(var(--px) * 7);
   border-image: var(--a-wood) 7 / calc(var(--px) * 7) repeat;
-  background: var(--a-woodDkT) 0 0 / calc(var(--px) * 32) calc(var(--px) * 20) repeat padding-box, #52321a padding-box;
+  background: var(--a-woodDkL) 0 0 / calc(var(--px) * 96) calc(var(--px) * 40) repeat padding-box, #52321a padding-box;
   padding: calc(var(--px) * 7) calc(var(--px) * 3) calc(var(--px) * 3);
   filter: drop-shadow(0 calc(var(--px) * 4) 0 rgba(8, 4, 6, .5));
 }
@@ -61,12 +61,13 @@
 .sh-tabs { display: flex; gap: calc(var(--px) * 2); flex: none; padding: 0 0 calc(var(--px) * 3); flex-wrap: wrap; }
 .sh-tab {
   font: inherit; font-size: 16px; line-height: 1; cursor: pointer; color: #f6e2c0; padding: calc(var(--px) * 2) calc(var(--px) * 4) calc(var(--px) * 3);
-  border: var(--px) solid transparent; border-image: var(--a-cut) 1 / var(--px) stretch;
-  background: linear-gradient(to bottom, #b07a46 0 var(--px), #8a5a32 var(--px) calc(100% - var(--px) * 2), #5e3a1f calc(100% - var(--px) * 2)) padding-box;
+  border: var(--px) solid transparent; border-image: var(--a-btnWood) 2 3 3 fill / calc(var(--px) * 2) calc(var(--px) * 3) calc(var(--px) * 3) repeat stretch;
+  background: #8a5a32 padding-box;
   text-shadow: 0 var(--px) 0 #2a160a; transition: transform .12s var(--pop);
 }
 .sh-tab:hover { transform: translateY(calc(var(--px) * -1)); }
-.sh-tab.on { color: var(--ink); text-shadow: none; background: linear-gradient(to bottom, #fff3c0 0 var(--px), #e8be5a var(--px) calc(100% - var(--px) * 2), #a8772c calc(100% - var(--px) * 2)) padding-box; }
+.sh-tab:active { border-image-source: var(--a-btnWoodDn); }
+.sh-tab.on { color: var(--ink); text-shadow: 0 calc(var(--px) * .5) 0 rgba(255, 244, 200, .6); background: #e8be5a padding-box; border-image-source: var(--a-btnGoldDn); }
 .sh-scroll {
   flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: #a06c3c transparent; overscroll-behavior: contain; touch-action: pan-y;
   background: rgba(20, 10, 4, .3); box-shadow: inset 0 0 0 var(--px) #26160c, inset 0 calc(var(--px) * 4) 0 rgba(0, 0, 0, .3);
@@ -93,29 +94,33 @@
 .sh-good.owned .sh-item img { filter: grayscale(.6) brightness(.8) drop-shadow(0 var(--px) 0 rgba(0, 0, 0, .45)); }
 .sh-tag {
   position: absolute; left: 50%; top: calc(var(--top) + var(--px) * 9); display: flex; align-items: center; gap: var(--px); white-space: nowrap;
-  font-size: 16px; line-height: 1; color: var(--ink); background: #f8ecd2; padding: var(--px) calc(var(--px) * 2);
+  font-size: 16px; line-height: 1; color: var(--ink); background: var(--a-noteT) 0 0 / calc(var(--px) * 32) repeat, #f8ecd2; padding: calc(var(--px) * 2) calc(var(--px) * 2) var(--px);
   box-shadow: 0 0 0 var(--px) var(--paper-edge), 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35);
   translate: -50% 0; transform-origin: 50% calc(var(--px) * -4); transition: transform .2s;
 }
-.sh-tag::before { content: ''; position: absolute; left: 50%; top: calc(var(--px) * -4); width: var(--px); height: calc(var(--px) * 3); background: #c8a878; }
+.sh-tag::before { content: ''; position: absolute; left: 50%; top: calc(var(--px) * -4); width: var(--px); height: calc(var(--px) * 3); background: repeating-linear-gradient(to bottom, #e8d0a0 0 var(--px), #8a6a42 var(--px) calc(var(--px) * 2)); }
+.sh-tag::after {
+  content: ''; position: absolute; left: 50%; top: calc(var(--px) * -3); width: calc(var(--px) * 5); height: calc(var(--px) * 5); margin-left: calc(var(--px) * -2);
+  background: var(--a-eyelet) 0 0 / 100% 100% no-repeat; pointer-events: none;
+}
 .sh-tag img { width: calc(var(--px) * 6); height: calc(var(--px) * 6); }
 .sh-good:hover .sh-tag { animation: tagWiggle .6s ease-in-out; }
 @keyframes tagWiggle { 25% { transform: rotate(6deg); } 60% { transform: rotate(-4deg); } }
-.sh-good.on .sh-tag { background: #ffe8a0; box-shadow: 0 0 0 var(--px) #8a5a10, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35); }
+.sh-good.on .sh-tag { background: var(--a-grainA) 0 0 / calc(var(--px) * 16) repeat, #ffe8a0; box-shadow: 0 0 0 var(--px) #8a5a10, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35); }
 .sh-good.dear .sh-tag { color: #a8321e; }
 .sh-good.owned .sh-tag { color: #3d6a30; }
 
 /* counter: the picked good on a card */
 .sh-counter {
   grid-area: counter; position: relative; min-height: 0; overflow: hidden auto; scrollbar-width: none;
-  background: var(--a-woodT) 0 0 / calc(var(--px) * 32) calc(var(--px) * 16) repeat;
+  background: var(--a-woodL) 0 0 / calc(var(--px) * 96) calc(var(--px) * 32) repeat;
   box-shadow: inset 0 var(--px) 0 #d8a06a, inset 0 calc(var(--px) * 2) 0 #8a5a32, 0 0 0 var(--px) #26160c, 0 calc(var(--px) * 3) 0 rgba(0, 0, 0, .35);
   padding: calc(var(--px) * 5) calc(var(--px) * 3) calc(var(--px) * 3);
 }
 .sh-card {
   position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: calc(var(--px) * 2) calc(var(--px) * 3); align-items: start;
   border-style: solid; border-width: calc(var(--px) * 5);
-  border-image: var(--a-note) 5 / calc(var(--px) * 5) repeat; background: #f8ecd2 padding-box;
+  border-image: var(--a-note) 5 / calc(var(--px) * 5) repeat; background: var(--a-noteT) 0 0 / calc(var(--px) * 32) repeat padding-box, #f8ecd2 padding-box;
   padding: 0 calc(var(--px) * 1); filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(20, 8, 4, .45));
 }
 .sh-card.pop { animation: cardSlide .3s var(--pop); }
@@ -154,7 +159,7 @@
 
 .sh-back {
   position: absolute; right: calc(var(--px) * 4); bottom: calc(var(--px) * 4); z-index: 2; max-width: calc(var(--px) * 64); padding: calc(var(--px) * 2) calc(var(--px) * 3);
-  font-size: 16px; line-height: 1.25; color: #5a4030; background: #f3e2bf; transform: rotate(-2deg);
+  font-size: 16px; line-height: 1.25; color: #5a4030; background: var(--a-paperL) 0 0 / calc(var(--px) * 96) repeat, #f3e2bf; transform: rotate(-2deg);
   box-shadow: 0 0 0 var(--px) var(--paper-edge), 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35);
 }
 .sh-back::before { content: ''; position: absolute; left: 50%; top: calc(var(--px) * -6); width: calc(var(--px) * 8); height: calc(var(--px) * 9); margin-left: calc(var(--px) * -4); background: var(--a-tackRed) center / 100% 100%; }
@@ -172,7 +177,7 @@
 .shop-assay .sh-keeper { flex-wrap: wrap; }
 .sh-ledger {
   margin: calc(var(--px) * 2); padding: calc(var(--px) * 2) calc(var(--px) * 3);
-  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat, #f3e2bf;
+  background: var(--a-paperL) 0 0 / calc(var(--px) * 96) repeat, #f3e2bf;
   box-shadow: 0 0 0 var(--px) var(--paper-edge), 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35);
 }
 .sh-line {
@@ -192,7 +197,7 @@
 .sh-poster {
   position: relative; margin: calc(var(--px) * 6) auto calc(var(--px) * 3); width: min(calc(100% - var(--px) * 8), calc(var(--px) * 110)); text-align: center;
   border-style: solid; border-width: calc(var(--px) * 8); border-image: var(--a-parch) 8 / calc(var(--px) * 8) repeat;
-  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box; filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(0, 0, 0, .45));
+  background: var(--a-paperL) 0 0 / calc(var(--px) * 96) repeat padding-box, var(--parch) padding-box; filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(0, 0, 0, .45));
 }
 .sh-poster::before, .sh-poster::after { content: ''; position: absolute; top: calc(var(--px) * -10); width: calc(var(--px) * 8); height: calc(var(--px) * 9); background: var(--a-tackRed) center / 100% 100%; }
 .sh-poster::before { left: calc(var(--px) * -4); }

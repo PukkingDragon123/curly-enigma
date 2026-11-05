@@ -31,6 +31,7 @@ const SURF = {
   [M.ASH]: [0.02, 0.1, 0, 0], [M.PERMAFROST]: [0.4, 0.6, 0.2, 0.55], [M.MAGMAROCK]: [0.14, 0.4, 0, 0.3],
   [M.BEDROCK]: [0.08, 0.3, 0, 0.2], [M.BONE]: [0.1, 0.3, 0.1, 0], [M.STEM]: [0.05, 0.2, 0.35, 0],
   [M.GLOWCAP]: [0.2, 0.5, 0.75, 0], [M.CORE]: [0.6, 0.7, 0.5, 0.2], [M.MYCEL]: [0.06, 0.2, 0.3, 0],
+  [M.FLOWSTONE]: [0.34, 0.72, 0.18, 0.9], // wet calcite: glossy, a little translucent, growth bands
 };
 const HOT = [M.MAGMAROCK, M.BASALT, M.OBSIDIAN];
 const GROW_BY_STYLE = { [STYLE.ROCK]: 1, [STYLE.SOIL]: 0.9, [STYLE.GRAIN]: 0.5 };
@@ -448,13 +449,22 @@ export function makeTerrainMaterial(U) {
           base *= 1.0 + ((N1.b - 0.5) * vec3(0.26, 0.22, 0.18) + (N1.g - 0.5) * vec3(0.3, 0.06, -0.24)) * grow;
           float side = 1.0 - abs(n.y);
           vec4 SK = texture(noise3, vec3(qw.x * 0.42, qw.y * 0.045, qw.z * 0.42) + 0.63); // streaks running down
-          float stain = smoothstep(0.68, 0.8, SK.g) * side * grow;
-          base = mix(base, base * (N1.r > 0.5 ? vec3(1.3, 0.82, 0.52) : vec3(1.18, 1.14, 1.05)), stain * 0.55);
+          float stain = smoothstep(0.64, 0.78, SK.g) * side * grow;
+          base = mix(base, base * (N1.r > 0.5 ? vec3(1.32, 0.8, 0.5) : vec3(1.22, 1.18, 1.08)), stain * 0.6);
           float wet = clamp(mood.y * (smoothstep(0.42, 0.72, N1.b * 0.7 + SK.g * 0.5) * (0.6 + 0.4 * side) + smoothstep(0.62, 0.75, SK.r) * side * 0.3), 0.0, 1.0) * grow;
           base *= 1.0 - wet * 0.32;
           spec = max(spec, wet * 0.45);
           gloss = max(gloss, wet * 0.5);
           if (n.y > 0.5) {
+            // floors: damp and dark where they tuck in against the walls and in the hollows (low
+            // AO), dry and dusty out in the open; silt laid in faint ripples by old floods
+            float dampF = clamp((0.8 - vAo) * 1.7, 0.0, 1.0) * (0.45 + 0.55 * mood.y) * smoothstep(0.3, 0.6, N1.b + 0.12);
+            base *= 1.0 - dampF * 0.3;
+            spec = max(spec, dampF * 0.32);
+            gloss = max(gloss, dampF * 0.55);
+            float dry = smoothstep(0.9, 1.0, vAo) * (1.0 - mood.y * 0.6) * smoothstep(0.45, 0.7, N2.g);
+            base = mix(base, base * vec3(1.14, 1.11, 1.06), dry * 0.55);
+            if (style == 1.0 || style == 10.0) base *= 1.0 + sin(qw.x * 13.0 + qw.z * 7.0 + N1.r * 14.0) * 0.045 * near;
             float ms = mood.x * smoothstep(0.42, 0.6, N2.r * 0.55 + N1.g * 0.45 + mood.x * 0.25 - 0.1 + (clump - 0.5) * 0.25);
             if (ms > 0.5) {
               base = pal(${M.MOSS}.0, clamp(floor(1.0 + clump * 1.8 + (N2.b - 0.5) + 0.5), 0.0, 3.0)) * 0.8;

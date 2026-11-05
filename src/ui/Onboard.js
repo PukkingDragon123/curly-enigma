@@ -865,6 +865,8 @@ export class Onboard {
     this.closePrompt(true);
     for (const t of this.tosses || []) { t.node.remove(); t.res(); }
     this.tosses = [];
+    this.captionEl?.remove(); // (a place's caption belongs to its scene)
+    this.captionEl = null;
     for (const s of [...this.spots]) s.remove();
     for (const m of [...this.marks]) m.remove();
     this.cinema(false);

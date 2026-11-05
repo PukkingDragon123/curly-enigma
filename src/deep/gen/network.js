@@ -56,10 +56,11 @@ export function buildNetwork(seed, o = {}) {
     if (dino > 0.3) { R *= 1 + dino * 0.25; H *= 1 + dino * 0.15; }
     const asp = rng.range(0.72, 1.3);
     const n = {
-      id: nodes.length, i, j, k, x, y, z, kind, dino,
+      edge: false, id: nodes.length, i, j, kk: k, x, y, z, kind, dino,
       Rx: R * Math.sqrt(asp), Rz: R / Math.sqrt(asp), H,
       yF: y - Math.min(H * 0.35, 2.2), tx: 0, tz: 0, pileH: 0, px: 0, pz: 0, pr: 0,
-      seed: (rng() * 1e9) | 0, deg: 0, off: false,
+      seed: (rng() * 1e9) | 0, deg: 0, off: false, nb: [], cols: 0, frac: 0, lift: null,
+      iRx: 0, iRz: 0, iH: 0, k: 0, pr2: 0, x0: 0, x1: 0, y0: 0, y1: 0, z0: 0, z1: 0,
     };
     // sloping floors in some caverns (rimstone forms on those), a breakdown pile under big roofs
     if (kind >= CAVERN && rng() < 0.45) { const a = rng() * 6.283, s = rng.range(0.03, 0.08); n.tx = Math.cos(a) * s; n.tz = Math.sin(a) * s; }
@@ -86,6 +87,7 @@ export function buildNetwork(seed, o = {}) {
     linked.add(key(a.id, b.id));
     edges.push(e);
     a.deg++; b.deg++;
+    a.nb.push(b.id); b.nb.push(a.id);
     return e;
   };
   const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -135,17 +137,20 @@ export function buildNetwork(seed, o = {}) {
   for (const e of edges) prims.push(e);
   const NB = NBX * NBY * NBZ;
   const count = new Int32Array(NB + 1);
-  const range = (p, f) => {
-    const bx0 = Math.max(0, Math.floor((p.x0 - BX0) / B)), bx1 = Math.min(NBX - 1, Math.floor((p.x1 - BX0) / B));
-    const by0 = Math.max(0, Math.floor((p.y0 - BY0) / B)), by1 = Math.min(NBY - 1, Math.floor((p.y1 - BY0) / B));
-    const bz0 = Math.max(0, Math.floor((p.z0 - BZ0) / B)), bz1 = Math.min(NBZ - 1, Math.floor((p.z1 - BZ0) / B));
-    for (let bz = bz0; bz <= bz1; bz++) for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) f(bx + NBX * (by + NBY * bz));
-  };
-  prims.forEach((p) => range(p, (b) => count[b + 1]++));
-  for (let b = 0; b < NB; b++) count[b + 1] += count[b];
-  const list = new Array(count[NB]);
-  const fill = count.slice();
-  prims.forEach((p) => range(p, (b) => { list[fill[b]++] = p; }));
+  let fill = null, list = null;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < prims.length; i++) {
+      const p = prims[i];
+      const bx0 = Math.max(0, Math.floor((p.x0 - BX0) / B)), bx1 = Math.min(NBX - 1, Math.floor((p.x1 - BX0) / B));
+      const by0 = Math.max(0, Math.floor((p.y0 - BY0) / B)), by1 = Math.min(NBY - 1, Math.floor((p.y1 - BY0) / B));
+      const bz0 = Math.max(0, Math.floor((p.z0 - BZ0) / B)), bz1 = Math.min(NBZ - 1, Math.floor((p.z1 - BZ0) / B));
+      for (let bz = bz0; bz <= bz1; bz++) for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) {
+        const b = bx + NBX * (by + NBY * bz);
+        if (pass === 0) count[b + 1]++; else list[fill[b]++] = p;
+      }
+    }
+    if (pass === 0) { for (let b = 0; b < NB; b++) count[b + 1] += count[b]; list = new Array(count[NB]); fill = count.slice(); }
+  }
   return { nodes, edges, start: count, list, deadEnds: nodes.filter((n) => !n.off && n.deg === 1) };
 }
 
@@ -158,25 +163,21 @@ function makeEdge(a, b, rng, ramp) {
   const my = (ay + by) / 2 + (ramp ? 0 : rng.range(-0.8, 0.6));
   const deep = -Math.min(a.y, b.y);
   const canyon = !ramp && deep > 8 && rng() < 0.32;
-  const e = {
-    edge: true, a: a.id, b: b.id, ramp,
-    kind: canyon ? 1 : 0,
-    r: canyon ? rng.range(0.55, 0.85) : rng.range(0.9, 1.35) * (a.dino > 0.3 || b.dino > 0.3 ? 1.6 : 1),
-    H: canyon ? rng.range(2.8, 4.6) : 0,
-    sq: !ramp && rng() < 0.25 ? rng.range(0.25, 0.42) : 0, st: rng.range(0.3, 0.7),
-    ph: rng() * 6.283, mw: canyon ? rng.range(0.15, 0.35) : 0,
+  const r = canyon ? rng.range(0.55, 0.85) : rng.range(0.9, 1.35) * (a.dino > 0.3 || b.dino > 0.3 ? 1.6 : 1);
+  const H = canyon ? rng.range(2.8, 4.6) : 0;
+  const sq = !ramp && rng() < 0.25 ? rng.range(0.25, 0.42) : 0, st = rng.range(0.3, 0.7);
+  const ph = rng() * 6.283, mw = canyon ? rng.range(0.15, 0.35) : 0;
+  const v0x = mx - ax, v0z = mz - az, v1x = bx - mx, v1z = bz - mz;
+  const l0 = Math.max(1e-6, v0x * v0x + v0z * v0z), l1 = Math.max(1e-6, v1x * v1x + v1z * v1z);
+  const rt = canyon ? r * 1.75 : 0, pad = (canyon ? rt : r) + 2.2;
+  return {
+    edge: true, a: a.id, b: b.id, ramp, kind: canyon ? 1 : 0, r, H, sq, st, ph, mw, rt,
     p: [ax, ay, az, mx, my, mz, bx, by, bz],
+    v0x, v0z, v1x, v1z, il0: 1 / l0, il1: 1 / l1, len0: Math.sqrt(l0), len1: Math.sqrt(l1),
+    x0: Math.min(ax, mx, bx) - pad, x1: Math.max(ax, mx, bx) + pad,
+    z0: Math.min(az, mz, bz) - pad, z1: Math.max(az, mz, bz) + pad,
+    y0: Math.min(ay, my, by) - 0.8, y1: Math.max(ay, my, by) + (canyon ? H : r * 2) + 1.2,
   };
-  e.rt = canyon ? e.r * 1.75 : 0;
-  // segment helpers
-  e.v0 = [mx - ax, mz - az]; e.v1 = [bx - mx, bz - mz];
-  e.il0 = 1 / Math.max(1e-6, e.v0[0] ** 2 + e.v0[1] ** 2); e.il1 = 1 / Math.max(1e-6, e.v1[0] ** 2 + e.v1[1] ** 2);
-  e.len0 = Math.sqrt(1 / e.il0); e.len1 = Math.sqrt(1 / e.il1);
-  const pad = (canyon ? e.rt : e.r) + 2.2;
-  e.x0 = Math.min(ax, mx, bx) - pad; e.x1 = Math.max(ax, mx, bx) + pad;
-  e.z0 = Math.min(az, mz, bz) - pad; e.z1 = Math.max(az, mz, bz) + pad;
-  e.y0 = Math.min(ay, my, by) - 0.8; e.y1 = Math.max(ay, my, by) + (canyon ? e.H : e.r * 2) + 1.2;
-  return e;
 }
 
 /** Does a passage run through a protected place? */
@@ -262,17 +263,17 @@ function passage(e, x, y, z) {
   const p = e.p;
   // nearest of the two segments, in plan (x, z): t along it, the floor height there
   let ax = p[0], az = p[2];
-  let t = ((x - ax) * e.v0[0] + (z - az) * e.v0[1]) * e.il0;
+  let t = ((x - ax) * e.v0x + (z - az) * e.v0z) * e.il0;
   t = t < 0 ? 0 : t > 1 ? 1 : t;
-  let cx = ax + e.v0[0] * t, cz = az + e.v0[1] * t;
+  let cx = ax + e.v0x * t, cz = az + e.v0z * t;
   let u2 = (x - cx) * (x - cx) + (z - cz) * (z - cz);
-  let fy = p[1] + (p[4] - p[1]) * t, tt = t * 0.5, side = ((x - ax) * e.v0[1] - (z - az) * e.v0[0]) / e.len0;
+  let fy = p[1] + (p[4] - p[1]) * t, tt = t * 0.5, side = ((x - ax) * e.v0z - (z - az) * e.v0x) / e.len0;
   ax = p[3]; az = p[5];
-  let t2 = ((x - ax) * e.v1[0] + (z - az) * e.v1[1]) * e.il1;
+  let t2 = ((x - ax) * e.v1x + (z - az) * e.v1z) * e.il1;
   t2 = t2 < 0 ? 0 : t2 > 1 ? 1 : t2;
-  cx = ax + e.v1[0] * t2; cz = az + e.v1[1] * t2;
+  cx = ax + e.v1x * t2; cz = az + e.v1z * t2;
   const u22 = (x - cx) * (x - cx) + (z - cz) * (z - cz);
-  if (u22 < u2) { u2 = u22; fy = p[4] + (p[7] - p[4]) * t2; tt = 0.5 + t2 * 0.5; side = ((x - ax) * e.v1[1] - (z - az) * e.v1[0]) / e.len1; }
+  if (u22 < u2) { u2 = u22; fy = p[4] + (p[7] - p[4]) * t2; tt = 0.5 + t2 * 0.5; side = ((x - ax) * e.v1z - (z - az) * e.v1x) / e.len1; }
   const v = y - fy;
   if (v < -0.5) return -1;
   // a squeeze somewhere along it

@@ -114,7 +114,6 @@ export const LORE = [
 
   // ============================================================ up top
   L('u_chest', 'surface', 'tale', 'You\'re Not the First', '"A box of gold in a clearing, and the ground gives way? You\'re not the first, youngster.\nEvery few years somebody falls through with a box of gold. The box never comes down with them. Funny, that."', { by: 'hollis' }),
-  L('u_coop', 'surface', 'tale', 'Houses on Chicken Legs', '"My granny told of huts that walked about on chicken legs, up in the forests, carrying witches and their hens.\nI said she was making it up. Then your hen walked into town in one. I owe Granny an apology."', { by: 'mabel' }),
   L('u_sun', 'surface', 'quest', 'What the Sun Is', 'Mr. Fennimore says the sun is a lamp that never needs oil, so big that it lights the whole sky at once.\nThe town doesn\'t believe him. Lark wrote a song about it anyway. It\'s the most popular song in Deep Town.'),
 ];
 

@@ -1,7 +1,7 @@
 // Voxel furniture models for the home burrow (part 1: beds, workstations, lights,
 // seats, tables, rugs). Every model is built at 1/16 scale (16 voxels per tile),
 // centered on its footprint with its front facing +z. buildFurniture() returns
-//   { obj, lights:[local light specs], update(dt,t), seats:[{x,z,y,yaw}], lie, nap }
+//   { obj, lights:[local light specs], update(dt,t), seats:[{x,z,y,yaw}], lie }
 import * as THREE from 'three';
 import { FURNITURE } from '../data/furniture.js';
 import { VoxelGrid, vmesh, gmesh, jit, hash3, V16, shade, mixHex, carve } from './vox.js';
@@ -200,44 +200,6 @@ function stove(id) {
     steam: { x: -0.1, y: 1.35, z: 0 },
     update(dt, t) { fm.scale.y = 0.85 + 0.15 * Math.sin(t * 9) * Math.sin(t * 3.3); },
   };
-}
-
-function coop(id, ctx) {
-  const grp = new THREE.Group();
-  const g = fg(id, 24);
-  g.box(0, 0, 0, 16, 2, 16, wd(WOOD_D, 2));
-  g.box(1, 2, 1, 14, 12, 2, wd(WOOD, 3, 0.1));
-  g.box(1, 2, 1, 2, 12, 14, wd(WOOD, 4, 0.1));
-  g.box(13, 2, 1, 2, 12, 14, wd(WOOD, 5, 0.1));
-  for (const x of [1, 13]) for (let y = 2; y < 14; y += 4) g.box(x, y, 3, 2, 1, 12, shade(WOOD, 0.8));
-  g.box(3, 2, 13, 10, 2, 2, wd(WOOD_L)); // lip
-  // gable roof
-  for (let k = 0; k < 9; k++) {
-    const y = 14 + k;
-    g.box(k, y, 0, 16 - k * 2, 1, 17, (x, yy, z) => ((z + (x > 7 ? 1 : 0)) % 3 === 0 ? 0x9a2a24 : jit(0xc0443a, x, yy, z, 3, 0.08)));
-    if (k < 8) carve(g, k + 1, y, 1, 14 - k * 2, 1, 14);
-  }
-  for (let k = 0; k < 8; k++) { g.box(k + 1, 14 + k, 2, 14 - k * 2, 1, 1, WOOD); }
-  // straw bedding
-  g.box(3, 2, 3, 10, 2, 11, (x, y, z) => (hash3(x, y, z, 5) < 0.3 ? 0xb8913a : jit(STRAW, x, y, z, 6, 0.12)));
-  for (let i = 0; i < 6; i++) g.set(3 + i * 2, 4, 4 + (i % 3) * 3, 0xe8c870);
-  // name plank
-  g.box(5, 11, 15, 6, 2, 1, WOOD_L);
-  g.set(6, 12, 16, 0x3a2a1a); g.set(8, 12, 16, 0x3a2a1a); g.set(10, 12, 16, 0x3a2a1a);
-  grp.add(M(g));
-  const eggs = new THREE.Group();
-  grp.add(eggs);
-  const setEggs = (n) => {
-    while (eggs.children.length) { const c = eggs.children.pop(); c.geometry.dispose(); }
-    const pos = [[5, 9], [9, 10], [7, 6], [10, 7], [4, 6], [8, 12]];
-    for (let i = 0; i < Math.min(6, n); i++) {
-      const e = new VoxelGrid(3, 4, 3);
-      e.box(0, 0, 0, 3, 3, 3, 0xf6ecd8); e.set(1, 3, 1, 0xfaf4e8); e.set(0, 2, 0, -1); e.set(2, 2, 2, -1); e.set(1, 1, 2, 0xe8d8b8);
-      eggs.add(at(M(e, [1.5, 0, 1.5]), 16, 16, pos[i][0], 4, pos[i][1]));
-    }
-  };
-  setEggs(ctx.eggs || 0);
-  return { obj: grp, nap: { x: 0, z: 0.05, y: 0.16, yaw: 0 }, setEggs };
 }
 
 // ---------------------------------------------------------------- planter
@@ -618,15 +580,15 @@ function rug(id) {
 // ---------------------------------------------------------------- registry
 const BUILDERS = {
   bed_straw: bedStraw, bed_cozy: bedCozy, bed_royal: bedRoyal,
-  forge, stove, coop, planter, index_desk: desk,
+  forge, stove, planter, index_desk: desk,
   lamp_glowcap: lampGlowcap, lantern_post: lanternPost, beetle_jar: beetleJar, crystal_lamp: crystalLamp, fireplace,
   stool, chair_wood: chair, armchair, sofa, table_small: tableSmall, table_long: tableLong,
   rug_round: rug, rug_long: rug, rug_fancy: rug,
 };
 
 /**
- * Build a furniture model. ctx: {eggs, planter, items, weapons, gem}
- * Returns { obj, lights, update, seats, lie, nap, setEggs, setPlant, ... }
+ * Build a furniture model. ctx: {planter, items, weapons, gem}
+ * Returns { obj, lights, update, seats, lie, setPlant, ... }
  */
 export function buildFurniture(id, ctx = {}) {
   // the 1/32 builders take priority; the 1/16 ones remain for everything not yet redone

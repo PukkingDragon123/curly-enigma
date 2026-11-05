@@ -13,6 +13,8 @@ import * as THREE from 'three';
 import { el } from '../core/util.js';
 import { resolveTarget, bearing } from '../core/questWhere.js';
 import { BART } from './bookArt.js';
+import { Px } from './uiArt.js';
+import { RAMP, tone, paperK } from './hudArt.js';
 
 const _v = new THREE.Vector3(), _f = new THREE.Vector3(), _w = new THREE.Vector3();
 const GAZE_T = 1.3;
@@ -24,49 +26,67 @@ const GLYPHS = {
   '?': ['.XXXXX.', 'XXX.XXX', 'XX...XX', '.....XX', '....XXX', '...XXX.', '..XXX..', '.......', '..XXX..', '..XXX..'],
 };
 const COLORS = {
-  gold: { fill: '#f2b81a', hi: '#ffe880', lo: '#c2701a', ol: '#5a2a0c' },
-  grey: { fill: '#8a847c', hi: '#b8b2a8', lo: '#5a544e', ol: '#2a2420' },
+  gold: { ramp: RAMP.gold, ol: 0x5a2a0c, ink: 0x3a1e0c },
+  grey: { ramp: [0x2a2420, 0x3e3832, 0x5a544e, 0x726c64, 0x8a847c, 0xa29c94, 0xb8b2a8, 0xd8d2c8], ol: 0x2a2420, ink: 0x3a342e },
 };
-function markerCanvas(sym, tone) {
-  const g = GLYPHS[sym], C = COLORS[tone];
-  // a parchment speech bubble (dark outline, a little tail) with a chunky glyph inside
+/**
+ * A parchment speech bubble (fibrous paper lit from the top, a darker turned-under bottom, an
+ * inked rim and tail, a soft shadow) with a bevelled metal glyph: highlight up-left, shade
+ * down-right, a glint.
+ */
+export function markerCanvas(sym, tone_) {
+  const g = GLYPHS[sym], C = COLORS[tone_];
   const gw = g[0].length, gh = g.length;
-  const W = gw + 8, H = gh + 9;
-  const c = document.createElement('canvas');
-  c.width = W; c.height = H;
-  const x = c.getContext('2d');
-  const bx0 = 1, by0 = 1, bx1 = W - 2, by1 = H - 4; // bubble box (inclusive)
+  const W = gw + 9, H = gh + 10;
+  const p = new Px(W, H);
+  const bx0 = 1, by0 = 1, bx1 = W - 3, by1 = H - 6; // bubble box (inclusive)
+  const tx = (bx0 + bx1) >> 1;
   const inBubble = (i, j) => i >= bx0 && i <= bx1 && j >= by0 && j <= by1 && !((i === bx0 || i === bx1) && (j === by0 || j === by1));
-  const inTail = (i, j) => j > by1 && j <= by1 + 2 && Math.abs(i - (W >> 1)) <= by1 + 2 - j;
-  const ink = tone === 'grey' ? '#3a342e' : '#3a1e0c';
+  const inTail = (i, j) => j > by1 && j <= by1 + 3 && i >= tx - (by1 + 3 - j) && i <= tx + (by1 + 3 - j) - (j > by1 + 1 ? 1 : 0);
+  const inside = (i, j) => inBubble(i, j) || inTail(i, j);
+  const PP = RAMP.paper;
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
-    const inside = inBubble(i, j) || inTail(i, j);
-    if (inside) { x.fillStyle = j <= by0 + 1 ? '#fff8e4' : j >= by1 - 1 ? '#d8c08e' : '#f3e2bf'; x.fillRect(i, j, 1, 1); continue; }
-    const near = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => inBubble(i + a, j + b) || inTail(i + a, j + b));
-    if (near) { x.fillStyle = ink; x.fillRect(i, j, 1, 1); }
+    if (!inside(i, j)) continue;
+    let k = paperK(i, j, 71) + 0.08 - (j - by0) / (by1 - by0) * 0.12;
+    if (j <= by0) k = 0.98;
+    else if (j === by0 + 1 || i === bx0) k += 0.1;
+    else if (j >= by1 - 1 && inBubble(i, j)) k -= 0.18;
+    else if (i === bx1) k -= 0.12;
+    p.set(i, j, tone(PP, k));
   }
+  const ink = tone_ === 'grey' ? 0x3a342e : 0x3a1e0c;
+  p.outline(ink);
+  // a soft shadow down and right of the inked rim
+  for (let j = H - 1; j > 0; j--) for (let i = W - 1; i > 0; i--) if (!p.a(i, j) && p.a(i - 1, j - 1) === 255) p.set(i, j, 0x140a04, 80);
+  // the glyph: a dark rim round it on the paper, then bevelled metal
   const ox = 4, oy = 3;
   const on = (i, j) => g[j]?.[i] === 'X';
+  for (let j = -1; j <= gh; j++) for (let i = -1; i <= gw; i++) {
+    if (on(i, j)) continue;
+    if (on(i + 1, j) || on(i - 1, j) || on(i, j + 1) || on(i, j - 1)) p.set(ox + i, oy + j, C.ol);
+  }
+  const R = C.ramp;
   for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
     if (!on(i, j)) continue;
-    x.fillStyle = C.fill;
-    if (!on(i, j - 1) || !on(i - 1, j)) x.fillStyle = C.hi;
-    else if (!on(i, j + 1) || !on(i + 1, j)) x.fillStyle = C.lo;
-    x.fillRect(ox + i, oy + j, 1, 1);
-    // a dark rim round the glyph so it reads on the paper
-    for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!on(i + a, j + b)) { x.fillStyle = C.ol; x.fillRect(ox + i + a, oy + j + b, 1, 1); }
+    let k = 0.55 - j / gh * 0.15;
+    if (!on(i, j - 1) || !on(i - 1, j)) k = 0.88;
+    else if (!on(i, j + 1) || !on(i + 1, j)) k = 0.3;
+    p.set(ox + i, oy + j, tone(R, k));
   }
-  // redraw the glyph over its rim
-  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) if (on(i, j)) { x.fillStyle = (!on(i, j - 1) || !on(i - 1, j)) ? C.hi : (!on(i, j + 1) || !on(i + 1, j)) ? C.lo : C.fill; x.fillRect(ox + i, oy + j, 1, 1); }
-  return c;
+  // a glint on the first lit pixel
+  for (let j = 0; j < gh; j++) { const i = g[j].indexOf('X'); if (i >= 0) { p.set(ox + i, oy + j, 0xffffff); break; } }
+  p.ctx.putImageData(p.img, 0, 0);
+  return p.c;
 }
 const TEX = {};
 function texFor(kind) {
   if (TEX[kind]) return TEX[kind];
-  const [sym, tone] = kind === '!' ? ['!', 'gold'] : kind === '?' ? ['?', 'gold'] : ['?', 'grey'];
-  const t = new THREE.CanvasTexture(markerCanvas(sym, tone));
+  const [sym, tone_] = kind === '!' ? ['!', 'gold'] : kind === '?' ? ['?', 'gold'] : ['?', 'grey'];
+  const c = markerCanvas(sym, tone_);
+  const t = new THREE.CanvasTexture(c);
   t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
   t.colorSpace = THREE.SRGBColorSpace;
+  t.userData.aspect = c.width / c.height;
   return (TEX[kind] = t);
 }
 
@@ -106,7 +126,8 @@ class HeadMark {
     // a slow wobble rather than a spin: the bubble stays readable
     const sway = 1 - 0.12 * Math.abs(Math.sin(this.t * 1.3));
     this.group.position.set(p.x, p.y + 0.05 + Math.sin(this.t * 3) * 0.03 + d * 0.004, p.z);
-    for (const s of [this.main, this.ghost]) { s.scale.set(k * 0.79 * sway, k, 1); s.material.rotation = Math.sin(this.t * 1.7) * 0.08; }
+    const asp = this.main.material.map?.userData?.aspect || 0.79;
+    for (const s of [this.main, this.ghost]) { s.scale.set(k * asp * sway, k, 1); s.material.rotation = Math.sin(this.t * 1.7) * 0.08; }
   }
   dispose() { this.group.removeFromParent(); this.main.material.dispose(); this.ghost.material.dispose(); }
 }

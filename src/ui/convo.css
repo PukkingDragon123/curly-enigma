@@ -29,7 +29,7 @@ html.is-touch .cv-hint { right: 50%; transform: translate(50%, -50%); }
   width: max-content; max-width: min(calc(var(--px) * 118), calc(100vw - 24px - var(--sal) - var(--sar)));
   border-style: solid; border-width: calc(var(--px) * 6);
   border-image: var(--dl-parch) 6 / calc(var(--px) * 6) repeat;
-  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box;
+  background: var(--a-paperL) 0 0 / calc(var(--px) * 96) repeat padding-box, var(--parch) padding-box;
   color: var(--ink);
   filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(6, 3, 6, .6));
   transform-origin: 0 50%; will-change: transform;
@@ -111,7 +111,7 @@ html.is-touch .cv-tap { display: inline; }
   position: relative; display: flex; align-items: center; gap: calc(var(--px) * 3); text-align: left; cursor: pointer; pointer-events: auto;
   font: inherit; font-size: var(--fs); color: var(--ink); outline: none; margin: 0;
   border-style: solid; border-width: calc(var(--px) * 5); border-image: var(--a-note) 5 / calc(var(--px) * 5) repeat;
-  background: #f8ecd2 padding-box; padding: 0 calc(var(--px) * 3) 0 0;
+  background: var(--a-noteT) 0 0 / calc(var(--px) * 32) repeat padding-box, #f8ecd2 padding-box; padding: 0 calc(var(--px) * 3) 0 0;
   filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(6, 3, 6, .55));
   animation: cvOptIn .42s var(--pop) var(--d, 0s) both, cvFloat 3.2s ease-in-out calc(var(--d, 0s) + .5s) infinite;
   transition: translate .14s var(--pop), filter .14s;

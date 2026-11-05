@@ -222,12 +222,12 @@
 .sk-page {
   position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
   background: linear-gradient(to right, transparent calc(50% - var(--px) * 5), rgba(110, 74, 42, .16) calc(50% - var(--px) * 1), rgba(70, 40, 16, .3) 50%, rgba(110, 74, 42, .16) calc(50% + var(--px) * 1), transparent calc(50% + var(--px) * 5)),
-    var(--a-pageT) 0 0 / calc(var(--px) * 32) repeat, var(--parch);
+    var(--a-pageL) 0 0 / calc(var(--px) * 96) repeat, var(--parch);
   box-shadow: calc(var(--px) * -1) var(--px) 0 #e2cfa2, calc(var(--px) * -2) calc(var(--px) * 2) 0 #b49a6a, var(--px) var(--px) 0 #e2cfa2, calc(var(--px) * 2) calc(var(--px) * 2) 0 #8a6e48;
 }
 @media (max-width: 760px) {
   .ib.sk-book { height: min(calc(100vh - 16px - var(--sat) - var(--sab)), calc(var(--px) * 340)); }
-  .sk-page { background: var(--a-pageT) 0 0 / calc(var(--px) * 32) repeat, var(--parch); }
+  .sk-page { background: var(--a-pageL) 0 0 / calc(var(--px) * 96) repeat, var(--parch); }
 }
 
 /* ---------- feedback anywhere ---------- */
@@ -267,7 +267,7 @@
 @keyframes skFlood { 0% { filter: brightness(2) saturate(1.4); } 100% { filter: none; } }
 /* the +N on a paper tag hanging off the plaque */
 .sk-chip-n { position: relative; flex: none; font-weight: 400; color: var(--ink); white-space: nowrap; min-width: calc(var(--px) * 9); text-align: center;
-  border-style: solid; border-width: calc(var(--px) * 5); border-image: var(--a-note) 5 / calc(var(--px) * 5) repeat; background: #f8ecd2 padding-box;
+  border-style: solid; border-width: calc(var(--px) * 5); border-image: var(--a-note) 5 / calc(var(--px) * 5) repeat; background: var(--a-noteT) 0 0 / calc(var(--px) * 32) repeat padding-box, #f8ecd2 padding-box;
   margin: calc(var(--px) * -5) calc(var(--px) * -4) calc(var(--px) * -5) 0; padding: 0 var(--px); transform: rotate(4deg); }
 .sk-chip.tick .sk-chip-n { animation: skTag .45s var(--pop); }
 @keyframes skTag { 30% { transform: rotate(-6deg) translateY(calc(var(--px) * -2)); } }
@@ -293,7 +293,7 @@
 /* the level-up card pinned to the toasts: a carved plaque, a ribbon, the big seal in brass, sparks */
 .toast.sk-toast, .toast.sk-nudge { pointer-events: auto; cursor: pointer; }
 .toast.sk-toast { border-width: calc(var(--px) * 7); border-image: var(--dl-plaque) 7 / calc(var(--px) * 7) repeat;
-  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box; padding: calc(var(--px) * 4) calc(var(--px) * 3) calc(var(--px) * 1) calc(var(--px) * 1); margin-top: calc(var(--px) * 10); overflow: visible; }
+  background: var(--a-paperL) 0 0 / calc(var(--px) * 96) repeat padding-box, var(--parch) padding-box; padding: calc(var(--px) * 4) calc(var(--px) * 3) calc(var(--px) * 1) calc(var(--px) * 1); margin-top: calc(var(--px) * 10); overflow: visible; }
 .sk-toast-ribbon { position: absolute; left: 50%; top: calc(var(--px) * -18); z-index: 2; box-sizing: border-box; height: calc(var(--px) * 16); min-width: calc(var(--px) * 46);
   border-style: solid; border-width: 0 calc(var(--px) * 10); border-image: var(--dl-ribbon) 0 10 fill / 0 calc(var(--px) * 10) repeat; display: flex; justify-content: center;
   transform: translateX(-50%); transform-origin: 50% 0; filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 6, .5)); animation: skRibbon .7s var(--pop) .15s both; }

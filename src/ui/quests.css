@@ -160,7 +160,7 @@
 .nb-note {
   position: relative; display: flex; flex-direction: column; gap: var(--px); padding: calc(var(--px) * 4) calc(var(--px) * 3) calc(var(--px) * 3); text-align: left;
   font: inherit; font-size: var(--fs); line-height: 1.2; color: var(--ink); cursor: pointer; border: 0;
-  background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat, #f3e6c4; transform: rotate(var(--r, 0deg));
+  background: var(--a-paperL) 0 0 / calc(var(--px) * 96) repeat, #f3e6c4; transform: rotate(var(--r, 0deg));
   box-shadow: 0 calc(var(--px) * 2) 0 rgba(30, 14, 6, .45); transition: transform .15s var(--pop);
 }
 .nb-note:hover, .nb-note:focus-visible { transform: rotate(0) translateY(calc(var(--px) * -1)) scale(1.03); z-index: 1; }

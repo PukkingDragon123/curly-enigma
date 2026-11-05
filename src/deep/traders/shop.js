@@ -11,6 +11,7 @@
 import './shop.css';
 import { el, formatGoldFull, pick, makeRng, hashStr } from '../../core/util.js';
 import { iconURL, weaponIconURL } from '../../gfx/PixelArt.js';
+import { itemVox } from '../../ui/itemVox.js'; // the goods as 3D voxel art (turning when picked or hovered)
 import { ITEMS, sellPrice, CAT_LABEL } from '../../data/items.js';
 import { SHOPS } from '../../data/shops.js';
 import { WEAPON_TYPES, METALS, gradeFor } from '../../data/weapons.js';
@@ -199,7 +200,7 @@ export function openBurrowShop(game, shopId, o = {}) {
       class: 'sh-good' + (picked === e.id ? ' on' : '') + (owned ? ' owned' : '') + (!owned && !can ? ' dear' : ''), title: it.name, 'aria-label': `${it.name}, ${tagTxt}`,
       onclick: () => { picked = e.id; au.play('ui_click'); for (const n of stock.children) n.classList.toggle('on', n === b); renderCounter(true); },
     }, [
-      el('span', { class: 'sh-item' }, [el('img', { class: 'pix', src: iconURL(e.id), alt: '' })]),
+      el('span', { class: 'sh-item', 'data-vox': e.id }, [el('img', { class: 'pix', src: itemVox.src(e.id), alt: '' })]),
       el('span', { class: 'sh-tag' }, [owned ? null : el('img', { class: 'pix', src: SPR.coinMini(), alt: '' }), tagTxt]),
     ]);
     return b;
@@ -241,7 +242,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     const have = !unique && st.count(e.id) ? `You have ${st.count(e.id)}` : '';
     const discount = p < base ? `Haggled down from ${formatGoldFull(base)}` : '';
     counter.append(el('div', { class: 'sh-card' + (pop ? ' pop' : '') }, [
-      el('div', { class: 'sh-card-icon' }, [el('img', { class: 'pix', src: iconURL(e.id), alt: '' })]),
+      el('div', { class: 'sh-card-icon' }, [itemVox.img(e.id, 'pix', { turn: true })]),
       el('div', { class: 'sh-card-txt' }, [
         el('div', { class: 'sh-card-name' }, [el('b', {}, it.name), el('small', {}, CAT_LABEL[it.cat] || '')]),
         el('p', {}, it.desc || ''),
@@ -280,7 +281,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     if (want && ITEMS[want]) {
       stock.append(el('div', { class: 'sh-poster tr-wanted' }, [
         el('small', {}, 'Wanted today'),
-        el('div', { class: 'tr-wanted-row' }, [el('img', { class: 'pix', src: iconURL(want), alt: '' }), el('div', {}, [el('b', {}, ITEMS[want].name), el('p', {}, `Pays ${Math.round((shop.wantedMult || 1.3) * 100)}% today.`)])]),
+        el('div', { class: 'tr-wanted-row' }, [el('img', { class: 'pix', src: itemVox.src(want), alt: '' }), el('div', {}, [el('b', {}, ITEMS[want].name), el('p', {}, `Pays ${Math.round((shop.wantedMult || 1.3) * 100)}% today.`)])]),
       ]));
     }
     const groups = st.inventory(() => true).filter((g) => buysIt(shop, ITEMS[g.id], g.id));
@@ -295,7 +296,7 @@ export function openBurrowShop(game, shopId, o = {}) {
         ? [pips(g.avgQ, g.lots.some((l) => l.p)), el('span', { html: `${g.n} pcs · <em class="tr-inl" style="color:${qColor(g.avgQ)}">${g.avgQ}%</em>${g.id === want ? ' · <em class="tr-want">wanted!</em>' : ''}` })]
         : [el('span', { html: `${g.n} pcs · ${CAT_LABEL[it.cat] || ''}${g.id === want ? ' · <em class="tr-want">wanted!</em>' : ''}` })];
       ledger.append(el('div', { class: 'sh-line' + (g.id === want ? ' tr-wanted-line' : '') }, [
-        el('img', { class: 'pix', src: iconURL(g.id), alt: '' }),
+        el('img', { class: 'pix', src: itemVox.src(g.id), alt: '' }),
         el('div', { class: 'sh-line-txt' }, [el('b', {}, it.name), el('span', { class: 'sh-meta' }, meta)]),
         price(each),
         el('div', { class: 'sh-line-btns' }, [
@@ -323,7 +324,7 @@ export function openBurrowShop(game, shopId, o = {}) {
       box.append(el('div', { class: 'tr-job' }, [
         el('b', {}, v.title || v.id),
         el('p', {}, v.text || ''),
-        need.length ? el('div', { class: 'tr-need' }, need.map(([id, n]) => el('span', { class: 'tr-need-it' + (st.count(id) >= n ? ' ok' : '') }, [el('img', { class: 'pix', src: iconURL(id), alt: '' }), `${Math.min(st.count(id), n)}/${n}`]))) : null,
+        need.length ? el('div', { class: 'tr-need' }, need.map(([id, n]) => el('span', { class: 'tr-need-it' + (st.count(id) >= n ? ' ok' : '') }, [el('img', { class: 'pix', src: itemVox.src(id), alt: '' }), `${Math.min(st.count(id), n)}/${n}`]))) : null,
         v.max > 1 ? el('div', { class: 'sh-gauge tr-prog' }, [el('i', { style: { width: Math.round((100 * (v.n || 0)) / v.max) + '%' } })]) : null,
       ]));
     }
@@ -351,7 +352,7 @@ export function openBurrowShop(game, shopId, o = {}) {
   // ---------------- Rocco: weapons and haggling
   const renderWeapons = () => {
     const craving = roccoCraving(st);
-    stock.append(el('div', { class: 'tr-banner' }, [el('img', { class: 'pix', src: weaponIconURL(craving, 'iron'), alt: '' }), el('span', { html: `Today Rocco's itching for a <b>${WEAPON_TYPES[craving]?.name || craving}</b>: +${Math.round((SHOPS.rocco.craving - 1) * 100)}%` })]));
+    stock.append(el('div', { class: 'tr-banner' }, [el('img', { class: 'pix', src: itemVox.weapon(craving, 'iron'), alt: '' }), el('span', { html: `Today Rocco's itching for a <b>${WEAPON_TYPES[craving]?.name || craving}</b>: +${Math.round((SHOPS.rocco.craving - 1) * 100)}%` })]));
     const ws = (st.data.weapons || []).slice().sort((a, b) => weaponOffer(st, b).gold - weaponOffer(st, a).gold);
     const ledger = el('div', { class: 'sh-ledger' });
     for (const w of ws) {
@@ -359,7 +360,7 @@ export function openBurrowShop(game, shopId, o = {}) {
       const h = T.haggle[w.uid];
       const tag = h && h.day === today(st) ? (h.patience <= 0 ? ' · final offer' : h.k > 0 ? ` · haggled +${Math.round(h.k * 100)}%` : '') : '';
       ledger.append(el('div', { class: 'sh-line' + (haggle?.w.uid === w.uid ? ' tr-on' : '') }, [
-        el('img', { class: 'pix', src: weaponIconURL(w.type, w.metal, w.infusion), alt: '' }),
+        el('img', { class: 'pix', src: itemVox.weapon(w.type, w.metal, w.infusion), alt: '' }),
         el('div', { class: 'sh-line-txt' }, [el('b', {}, w.name), el('span', { html: `Grade <em style="color:${gr.color}" class="tr-g">${w.grade || gr.g}</em> · worth ${formatGoldFull(w.value)}${w.type === craving ? ' · <em class="tr-want">he wants it!</em>' : ''}${tag}` })]),
         price(off.gold),
         el('div', { class: 'sh-line-btns' }, [
@@ -413,7 +414,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     const dots = (n, max, cls) => el('span', { class: 'tr-dots ' + cls }, Array.from({ length: max }, (_, i) => el('i', { class: i < n ? 'on' : '' })));
     const push = el('button', { class: 'btn big tr-push', disabled: h.tries <= 0 || h.patience <= 0, onclick: () => doPush() }, h.tries <= 0 || h.patience <= 0 ? 'No more haggling' : 'Push!');
     const card = el('div', { class: 'sh-card tr-haggle' }, [
-      el('div', { class: 'sh-card-icon' }, [el('img', { class: 'pix', src: weaponIconURL(w.type, w.metal, w.infusion), alt: '' })]),
+      el('div', { class: 'sh-card-icon' }, [itemVox.img(itemVox.wkey(w.type, w.metal, w.infusion), 'pix', { turn: true })]),
       el('div', { class: 'sh-card-txt' }, [
         el('div', { class: 'sh-card-name' }, [el('b', {}, w.name), el('small', {}, 'Haggling')]),
         el('div', { class: 'tr-hrow' }, [el('span', {}, 'Pushes'), dots(h.tries, SHOPS.rocco.haggle.tries, 'tries'), el('span', {}, 'Patience'), dots(h.patience, SHOPS.rocco.haggle.patience, 'pat')]),

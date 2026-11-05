@@ -148,13 +148,16 @@ export function buildCaveRock() {
     gl.set(ix, iy, iz, k % 5 === 0 ? 0xb090ff : k % 3 === 0 ? 0x8af0c8 : 0x5ad0b8);
   }
   const hx = Math.round((HOLE_SHAFT.x - x0) * CV), hz = Math.round((HOLE_SHAFT.z - z0) * CV);
-  for (let dz = -6; dz <= 6; dz++) for (let dx = -6; dx <= 6; dx++) {
-    const d = Math.hypot(dx, dz);
-    if (d > 6.5) continue;
+  for (let dz = -7; dz <= 7; dz++) for (let dx = -7; dx <= 7; dx++) {
+    const d = Math.hypot(dx, dz) + 0.9 * Math.sin(Math.atan2(dz, dx) * 3 + 1);
+    if (d > 7) continue;
     gl.set(hx + dx, ny - 1, hz + dz, d < 2.5 ? 0xf0f4f4 : d < 4 ? 0xc0ccd0 : d < 5.5 ? 0x8a969c : 0x56606a); // a cold speck of daylight, far up
   }
   const pv = [0, 0, 0], o = { scale: 1 / (CV * T) };
   const rock = M32(g, pv, o), glow = G32(gl, pv, o);
+  // (the daylight up the hole and the glow-moss shine through the cave's haze)
+  glow.material = glow.material.clone();
+  glow.material.fog = false;
   const obj = group(rock, glow);
   obj.position.set(x0 / T, y0 / T, z0 / T);
   return { obj, top: { x: HOLE_SHAFT.x, y: y0 + ny / CV, z: HOLE_SHAFT.z } };
@@ -205,7 +208,7 @@ function rockColour(x, y, z, ix, iy, iz, floorTop, d0) {
   if ((wet > 0.3 || spring) && h < 0.8 && hash3(ix >> 1, iy >> 1, iz >> 1, 66) < 0.55) c = hash3(ix, iy, iz, 67) < 0.5 ? 0x4a5e30 : 0x3e5028; // moss
   else if (h < 0.4 && wet > 0.05 && hash3(ix >> 1, iy >> 1, iz >> 1, 72) < 0.3) c = mixc(c, 0x3e5028, 0.55); // damp green at the foot
   else if (h < 0.25 && hash3(ix >> 1, iy, iz >> 1, 68) < 0.18) c = mixc(c, DIRT[0], 0.5); // dirt against the foot of the wall
-  else if (hash3(ix, iy, iz, 73) < 0.012) c = hash3(ix, iy, iz, 74) < 0.5 ? 0x7c8670 : 0x8e8a76; // a fleck of lichen
+  else if (hash3(ix, iy, iz, 73) < 0.007) c = hash3(ix, iy, iz, 74) < 0.5 ? 0x7c8670 : 0x8e8a76; // a fleck of lichen
   return c;
 }
 

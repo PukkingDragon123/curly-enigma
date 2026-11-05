@@ -6,12 +6,19 @@
 //   ore      dig the loam round the copper in the west wall, not the ore itself       → mine_ore
 //   held     pick the clump up, chip it clean with his spare chisel, bag it           → mine_clean
 //   gem      the south wall winks: dig in, a geode, take the amethyst                 → mine_gem
-//   ledge    a ladder (build tool) up to the ledge, take his map (the book's map;
-//            the radar comes on)                                                     → mine_ladder, mine_map
+//   ledge    a ladder (build tool) up to the ledge, take his map (the radar comes on,
+//            M / the radar shows the layers below)                                   → mine_ladder, mine_map
 //   critter  a rock-nibbler comes out of its hole: hold your guard as it jumps
 //            (mouse 2 / F; the scene's own block), then a tap of the pick            → mine_block
 //   back     back through the crawl to the cage with the copper, ring the bell:
 //            home { from: 'lift', lesson: 'mine' }; flag 'prologue' = lesson done    → mine_done
+// The cinematic beats: the cage bangs down onto its stops in the dark (the lamps gutter, grit
+// sifts down, they sputter and catch, a caption names the place); at the plug he shows you a swing
+// first (two blows, the view on his paws); through the crawl the view pans slowly round the dig
+// before he welcomes you; his spare chisel is tossed onto your belt (ui.onboard.toss). A beat's
+// steps are his lines (LINES keys or text) or functions (something he does; they return seconds).
+// His map shows the layers of the underground: M / a tap on the radar (ui.openSurvey, the lift
+// layers), watched for a while and never waited on for long.
 // He talks through the tutor (game.ui.tutor.say(html, { mood, key })), falling back on a speech
 // bubble over his head; the step's instruction stays up between his other lines. Talking to him (E)
 // shows what to do and offers to skip this lesson (or all of them: lesson 'skip').
@@ -200,8 +207,10 @@ export class Prologue {
     out[2].x = lp.x; out[2].y = lp.y; out[2].z = lp.z;
     // the arrival: the lamps gutter after the cage's jolt, sputter, and catch (lampFx)
     const k = this.lampK();
-    const U = this.owner?.U;
+    const U = this.owner?.U, post = this.owner?.post;
     if (k < 1 && U?.lampRange) U.lampRange.value *= k;
+    // (the dark is darker than the lamp alone makes it: the whole view dims with it)
+    if (post && (k < 1 || this.lampFade)) { post.fade = (1 - k) * 0.72; this.lampFade = k < 1; }
     out[2].c[0] = 0.42 * k; out[2].c[1] = 0.36 * k; out[2].c[2] = 0.26 * k;
     this.star.dim(k);
     if (this.geode.open && this.dress.gem) {
@@ -215,6 +224,7 @@ export class Prologue {
   lampK() {
     const f = this.lampFx;
     if (!f) return 1;
+    if (f.hold) return 0.1;
     const t = this.time - f.t0;
     if (t > 2.3) { this.lampFx = null; return 1; }
     if (t < 0.75) return 0.1;
@@ -531,8 +541,12 @@ export class Prologue {
       // the cage bangs down onto its stops: the lamps gutter, grit sifts from the shaft, then they
       // sputter and catch, and his helmet lamp comes on
       const c = L.cage;
-      this.lampFx = { t0: this.time };
+      // (dark till the fade from the ride has gone, so the jolt is seen)
+      this.lampFx = { t0: this.time, hold: true };
       star.rig.setLamp?.(0);
+      const t0 = this.time;
+      yield () => !this.owner.game.transitioning || this.time - t0 > 3;
+      this.lampFx = { t0: this.time };
       this.audio.play('clunk', { vol: 0.9 });
       this.audio.play('rumble_hit', { vol: 0.5 });
       this.audio.play('creak', { vol: 0.6, pitch: 0.8 });

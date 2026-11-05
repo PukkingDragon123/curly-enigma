@@ -19,14 +19,6 @@ const reached = (n) => (st) => deepest(st) >= ZONE_DEPTHS[n - 1] + 1;
 const onDay = (n) => (st) => (st.data.day || 1) >= n;
 const liftsFound = (st) => (st.data.deep?.lifts || []).filter((l) => /^L\d\d$/.test(l.id)).length;
 const gradeAtLeast = (g) => (v) => !!v && 'SABCDF'.indexOf(v) >= 0 && 'SABCDF'.indexOf(v) <= 'SABCDF'.indexOf(g);
-/** Nugget walks with you: her coop is close (the mine) or she's at your heels (town). */
-export function nuggetNear(game, d = 6) {
-  const sc = game?.scene;
-  if (!sc) return false;
-  if (sc.nugget?.near) return sc.nugget.near(d);
-  if (sc.nugget?.pos && sc.player) return Math.hypot(sc.nugget.pos.x - sc.player.x, sc.nugget.pos.z - sc.player.z) < d * 1.6;
-  return false;
-}
 
 const V = (o) => ({ kind: 'village', ask: true, ...o, giver: o.giver || o.from });
 
@@ -43,10 +35,10 @@ export const SIDE_QUESTS = {
   }),
   v_hazel_truffle: V({
     title: 'The Truffle Hunt', from: 'grocer', requires: ['v_hazel_shrooms'], when: reached(2),
-    intro: 'Truffles! They grow under truffle mounds where the old roots go deep. Take your hen: hens have noses for it, my granny swore. Two truffles, and I\'ll teach you my risotto.',
+    intro: 'Truffles! They grow under truffle mounds where the old roots go deep. Follow your nose: a mole can smell one through a yard of loam, my granny swore. Two truffles, and I\'ll teach you my risotto.',
     outro: 'Smell that. SMELL it. That\'s the smell of a very good week. Here\'s the recipe, written small so nobody else can read it.',
     steps: [
-      { id: 'hunt', text: 'Dig up 2 truffles with Nugget beside you', hint: 'Truffle mounds are humps of dark earth. Keep Nugget close (within a few steps) while you dig.', on: { type: 'forage', id: 'truffle' }, need: (st, g) => nuggetNear(g, 7), n: 2, where: { biome: 'any' } },
+      { id: 'hunt', text: 'Dig up 2 truffles', hint: 'Truffle mounds are humps of dark earth, deeper down where the old roots grow.', on: { type: 'forage', id: 'truffle' }, n: 2, where: { biome: 'any' } },
       { id: 'bring', text: 'Bring Hazel 2 truffles', hint: 'Nibble & Root, on the west wall of Deep Town.', deliver: { to: 'grocer', items: { truffle: 2 } } },
     ],
     reward: { gold: 600, recipe: ['truffle_risotto'], lore: ['cr_hollow'] },
@@ -183,12 +175,12 @@ export const SIDE_QUESTS = {
   v_bramble_layers: V({
     title: 'All Stations', from: 'lift', requires: ['v_bramble_grease'],
     intro: 'The town shaft runs down through every layer, with a station at the top of each. Ride her down and have a proper walk in three different layers. Then come back and tell me she didn\'t squeak once.',
-    outro: 'Three layers and not a squeak! Burdock will be furious. Here, an old cage lamp: hang it on your hen\'s roof.',
+    outro: 'Three layers and not a squeak! Burdock will be furious. Here, an old lantern off the cage: hang it in your room.',
     steps: [
       { id: 'walk', text: 'Walk in 3 different layers of the mine', hint: 'Ride the town lift to its stations, or dig down. Rootsoil counts.', on: { type: 'explore' }, unique: 'zone', n: 3 },
       { id: 'tell', text: 'Tell Bramble how the ride went', hint: 'At the crank of the town lift.', talk: 'lift' },
     ],
-    reward: { gold: 800, sp: 1, items: { lamp_tin: 1 }, lore: ['t_lift'] },
+    reward: { gold: 800, sp: 1, items: { lantern_post: 1 }, lore: ['t_lift'] },
   }),
 
   // ================================================================== Grandpa Tuck
@@ -248,7 +240,7 @@ export const SIDE_QUESTS = {
   v_lark_strings: V({
     title: 'New Strings', from: 'lark', requires: ['v_mabel_pie'],
     intro: '♪ Twang. ♪ That was my last string, and Mabel wants music for the festival. Spider silk makes the sweetest strings, if you can get it off the spider. Four bundles, and I\'ll write you into a song.',
-    outro: '♪ ...and the mole with the hen went down, down, down... ♪ It needs work. You\'re in it, though!',
+    outro: '♪ ...and the mole with the dirty nose went down, down, down... ♪ It needs work. You\'re in it, though!',
     steps: [{ id: 'bring', text: 'Bring Lark 4 spider silk', hint: 'Cave spiders spin it. Their webs are on the floors of their caves.', deliver: { to: 'lark', items: { spider_silk: 4 } } }],
     reward: { gold: 350, lore: ['cr_wraiths'] },
   }),
@@ -256,7 +248,7 @@ export const SIDE_QUESTS = {
     title: 'Fat Bait', from: 'puddle',
     intro: 'There are no fish in this fountain. I know. But if there were, they\'d want fat grubs. Four of them. A mole has to be ready.',
     outro: 'Lovely and wriggly. Now I\'m ready. For nothing! Here, a little something.',
-    steps: [{ id: 'bring', text: 'Bring Puddle 4 fat grubs', hint: 'Dig them out of grub loam (soft dark soil) in the upper layers.', deliver: { to: 'puddle', items: { fat_grub: 4 } } }],
+    steps: [{ id: 'bring', text: 'Bring Puddle 4 fat grubs', hint: 'They wriggle on the cave floors of the upper layers. Pull them gently.', deliver: { to: 'puddle', items: { grub: 4 } } }],
     reward: { gold: 300 },
   }),
   v_puddle_lake: V({
@@ -306,10 +298,10 @@ export const SIDE_QUESTS = {
   // ================================================================== families and neighbours
   v_primrose_eggs: V({
     title: 'Breakfast for Twins', from: 'primrose', when: onDay(2),
-    intro: 'The twins will only eat eggs from a hen they\'ve SEEN. Yours, they\'ve seen. Four eggs, please, fresh from Nugget\'s nest box.',
-    outro: 'Bean, Sprout: eggs! From the hen! ...They\'ve gone very quiet. That\'s a good sign. Here, Bean made you this, and Sprout found a nest box for Nugget.',
-    steps: [{ id: 'bring', text: 'Bring Mrs. Primrose 4 eggs', hint: 'Keep Nugget fed and she lays eggs onto her shelf in the coop.', deliver: { to: 'primrose', items: { egg: 4 } } }],
-    reward: { gold: 300, items: { plushie: 1, nest_tin: 1 } },
+    intro: 'The twins will only eat deviled eggs. Not boiled, not fried: DEVILED. Two, please. I haven\'t had a moment to cook since they hatched. Since they were BORN. You know what I mean.',
+    outro: 'Bean, Sprout: deviled eggs! ...They\'ve gone very quiet. That\'s a good sign. Here, Bean made you this.',
+    steps: [{ id: 'bring', text: 'Bring Mrs. Primrose 2 deviled eggs', hint: 'Cook them at a hearth: an egg and a pinch of salt. Hazel sells fresh eggs.', deliver: { to: 'primrose', items: { deviled_egg: 2 } } }],
+    reward: { gold: 300, items: { plushie: 1 } },
   }),
   v_kids_dare: V({
     title: 'The Dare', from: 'tilly',
@@ -327,13 +319,6 @@ export const SIDE_QUESTS = {
     outro: 'This one\'s you, this one\'s you, and this one\'s also you. Here, I made you a jar too!',
     steps: [{ id: 'bring', text: 'Bring Hops 3 glow beetles', hint: 'Glow beetles crawl on cave walls and floors. Catch them gently (E).', deliver: { to: 'hops', items: { glow_beetle: 3 } } }],
     reward: { gold: 120, items: { beetle_jar: 1 } },
-  }),
-  v_kids_hen: V({
-    title: 'Show and Tell', from: 'twitch',
-    intro: 'Is it true you have a HEN? A real one? With FEATHERS? Bring her here. Please. I\'ve never seen a hen. Please please please.',
-    outro: 'SHE CLUCKED AT ME. Best day. Best day ever.',
-    steps: [{ id: 'show', text: 'Walk Nugget over to Twitch', hint: 'Nugget follows you in town if she\'s fed. Bring her close and talk to Twitch.', talk: 'twitch', need: (st, g) => nuggetNear(g, 3) }],
-    reward: { gold: 100, items: { chicken_feed: 3 } },
   }),
   v_snorri_tea: V({
     title: 'A Strong Cup', from: 'snorri', when: onDay(2),

@@ -8,10 +8,10 @@
   display: grid; grid-template-columns: auto auto; grid-template-areas: 'menu pack'; align-items: start; gap: 0 calc(var(--px) * 3);
 }
 .hang-string, .hang-chain {
-  position: absolute; left: 50%; bottom: 100%; width: var(--px); height: calc(var(--sat) + var(--px) * 40); margin-left: calc(var(--px) * -.5);
-  background: #c8a878; box-shadow: var(--px) 0 0 rgba(40, 20, 10, .55);
+  position: absolute; left: 50%; bottom: 100%; width: calc(var(--px) * 2); height: calc(var(--sat) + var(--px) * 40); margin-left: calc(var(--px) * -1);
+  background: var(--h-twineV) 0 100% / calc(var(--px) * 2) calc(var(--px) * 4) repeat-y; filter: drop-shadow(var(--px) 0 0 rgba(40, 20, 10, .5));
 }
-.hang-chain { background: repeating-linear-gradient(to bottom, #8a8a90 0 calc(var(--px) * 2), #4a4a52 calc(var(--px) * 2) calc(var(--px) * 3)); }
+.hang-chain { width: calc(var(--px) * 3); margin-left: calc(var(--px) * -1.5); background: var(--h-chainV) 0 100% / calc(var(--px) * 3) calc(var(--px) * 8) repeat-y; }
 
 /* coin pouch */
 .pouch {
@@ -22,21 +22,21 @@
 }
 .pouch.show { transform: none; transition: transform .55s var(--pop); }
 .pouch.pinned { position: relative; z-index: 7; }
-.pouch .hang-string { left: calc(var(--px) * 11); }
-.pouch-img { width: calc(var(--px) * 22); height: calc(var(--px) * 22); flex: none; position: relative; z-index: 1; }
+.pouch .hang-string { left: calc(var(--px) * 13); bottom: calc(100% - var(--px) * 6); }
+.pouch-img { width: calc(var(--px) * 26); height: calc(var(--px) * 26); flex: none; position: relative; z-index: 1; }
 .pouch.jingle .pouch-img { animation: jingle .5s ease-out; }
 @keyframes jingle { 20% { transform: rotate(-7deg) translateY(calc(var(--px) * -1)); } 45% { transform: rotate(5deg); } 70% { transform: rotate(-2deg); } }
 .pouch-tag {
   position: relative; margin-left: calc(var(--px) * -3); box-sizing: border-box; height: calc(var(--px) * 13);
   border-style: solid; border-width: calc(var(--px) * 3) calc(var(--px) * 3) calc(var(--px) * 3) calc(var(--px) * 8);
-  border-image: var(--a-goldTag) 3 3 3 8 fill / calc(var(--px) * 3) calc(var(--px) * 3) calc(var(--px) * 3) calc(var(--px) * 8) stretch;
+  border-image: var(--h-goldTag) 3 3 3 8 fill / calc(var(--px) * 3) calc(var(--px) * 3) calc(var(--px) * 3) calc(var(--px) * 8) repeat;
   padding: 0 calc(var(--px) * 1) 0 0; filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 6, .5));
   font-family: var(--font-head); font-size: 27px; line-height: calc(var(--px) * 7); color: var(--sepia); white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 .pouch-tag::after { content: ' g'; font-size: 16px; font-family: var(--font); color: var(--brass-dk); }
 @media (max-width: 900px), (max-height: 600px) { .pouch-tag { font-family: var(--font); font-size: 16px; } }
-.pouch-coins { position: absolute; left: calc(var(--px) * 11); top: calc(var(--px) * 4); width: 0; height: 0; z-index: 2; }
+.pouch-coins { position: absolute; left: calc(var(--px) * 13); top: calc(var(--px) * 5); width: 0; height: 0; z-index: 2; }
 .pouch-coins .coin {
   position: absolute; left: calc(var(--px) * -4); top: 0; width: calc(var(--px) * 8); height: calc(var(--px) * 8);
   background: var(--a-coins) 0 0 / calc(var(--px) * 32) calc(var(--px) * 8);
@@ -52,7 +52,7 @@
   100% { transform: translate(calc(var(--dx) * var(--px) * 4), calc(var(--px) * 4)); opacity: 0; }
 }
 .pouch-delta {
-  position: absolute; left: calc(var(--px) * 26); top: calc(100% + var(--px) * 1); white-space: nowrap; opacity: 0;
+  position: absolute; left: calc(var(--px) * 29); top: calc(100% + var(--px) * 1); white-space: nowrap; opacity: 0;
   font-family: var(--font); font-size: 16px; text-shadow: 0 var(--px) 0 #1a0e08, var(--px) 0 0 #1a0e08, calc(var(--px) * -1) 0 0 #1a0e08, 0 calc(var(--px) * -1) 0 #1a0e08;
 }
 .pouch-delta.up { color: #ffe27a; }
@@ -62,7 +62,7 @@
 
 /* lantern */
 .lamp {
-  position: relative; margin-top: calc(var(--sat) + var(--px) * 4); width: calc(var(--px) * 14); height: calc(var(--px) * 24);
+  position: relative; margin-top: calc(var(--sat) + var(--px) * 4); width: calc(var(--px) * 16); height: calc(var(--px) * 28);
   transform: translateY(calc(-100% - var(--sat) - var(--px) * 10)); transform-origin: 50% calc(var(--px) * -30);
   transition: transform .45s cubic-bezier(.5, -0.4, .6, 1); pointer-events: none;
 }
@@ -79,8 +79,11 @@
 .lamp.low.show { animation: lampSway 3.2s ease-in-out .5s infinite, lampShiver .9s steps(2) infinite; }
 @keyframes lampShiver { 50% { filter: brightness(.82); } }
 .lamp-tag {
-  position: absolute; left: 50%; top: calc(100% + var(--px) * 2); transform: translateX(-50%); white-space: nowrap;
-  font-size: 16px; color: #ffe8c0; text-shadow: 0 var(--px) 0 #1a0e08, var(--px) 0 0 #1a0e08, calc(var(--px) * -1) 0 0 #1a0e08, 0 calc(var(--px) * -1) 0 #1a0e08;
+  position: absolute; left: 50%; top: calc(100% + var(--px) * 1); transform: translateX(-50%); white-space: nowrap;
+  font-size: 16px; line-height: 1; color: #ffe8c0; text-shadow: 0 var(--px) 0 #08070a;
+  border-style: solid; border-width: calc(var(--px) * 2) calc(var(--px) * 4); padding: 0 var(--px);
+  border-image: var(--h-ironTag) 2 4 fill / calc(var(--px) * 2) calc(var(--px) * 4) repeat;
+  filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .45));
   opacity: 0; transition: opacity .3s;
 }
 .lamp.show .lamp-tag { opacity: 1; }
@@ -131,6 +134,10 @@
   background: var(--a-sealCheck) center / 100% 100%; transform: scale(0); animation: sealPop .3s var(--pop) 1.25s forwards;
 }
 @keyframes sealPop { to { transform: scale(1) rotate(-10deg); } }
+/* first person: the radar has the corner, so the calendar drops in under the depth plaque */
+#ui[data-hud=deep] .cal { left: calc(var(--sal) + var(--px) * 10); top: calc(var(--sat) + var(--px) * 100); }
+/* narrow portrait phones: the pouch, lantern and charms close up so they clear the journal */
+@media (max-width: 480px) { .hud-tl { gap: var(--px); } }
 
 /* backpack (+ the book peeking out) */
 .pack { grid-area: pack; position: relative; width: calc(var(--px) * 30); height: calc(var(--px) * 32); opacity: .74; transition: opacity .25s; }
@@ -157,13 +164,19 @@ html.is-touch .pack { opacity: .82; }
   background: var(--a-sealStar) center / calc(var(--px) * 13) calc(var(--px) * 13) no-repeat; transform: scale(.85);
 }
 .pack-tag {
-  position: absolute; left: 50%; top: calc(100% + var(--px) * 1); transform: translateX(-50%); white-space: nowrap;
-  font-size: 16px; line-height: 1; color: var(--ink); background: #f8ecd2; padding: var(--px) calc(var(--px) * 2);
-  box-shadow: 0 0 0 var(--px) var(--paper-edge), 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35);
+  position: absolute; left: 50%; top: calc(100% + var(--px) * 3); transform: translateX(-50%); white-space: nowrap;
+  font-size: 16px; line-height: 1; color: var(--ink); padding: 0 var(--px);
+  border-style: solid; border-width: calc(var(--px) * 3); border-image: var(--h-paperTag) 3 fill / calc(var(--px) * 3) repeat;
+  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .35));
   animation: tagIn .3s var(--pop);
 }
+/* tied on with a bit of twine */
+.pack-tag::before {
+  content: ''; position: absolute; left: 50%; bottom: calc(100% + var(--px) * 3); width: calc(var(--px) * 2); height: calc(var(--px) * 5); margin-left: calc(var(--px) * -1);
+  background: var(--h-twineV) 0 100% / calc(var(--px) * 2) calc(var(--px) * 4) repeat-y;
+}
 @keyframes tagIn { from { transform: translateX(-50%) translateY(calc(var(--px) * -4)); opacity: 0; } }
-.pack.full .pack-tag { color: #fff4e8; background: #b8322a; box-shadow: 0 0 0 var(--px) #5a140c, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35); animation: fullPulse 1.2s ease-in-out infinite; }
+.pack.full .pack-tag { color: #fff4e8; text-shadow: 0 var(--px) 0 #4a0c08; border-image-source: var(--h-paperTagRed); animation: fullPulse 1.2s ease-in-out infinite; }
 .pack.full .pack-bag img { animation: fullWiggle 2.4s ease-in-out infinite; }
 @keyframes fullPulse { 50% { filter: brightness(1.25); } }
 @keyframes fullWiggle { 0%, 80%, 100% { transform: none; } 85% { transform: rotate(-4deg); } 90% { transform: rotate(4deg); } 95% { transform: rotate(-2deg); } }
@@ -185,9 +198,14 @@ html.is-touch .journal-btn { opacity: .7; }
 }
 #ui:not([data-hud=mine]):not([data-hud=deep]) .depth { display: none; }
 .depth.show { opacity: 1; transform: none; transition: opacity .2s, transform .3s var(--pop); }
-.depth img { width: calc(var(--px) * 8); height: calc(var(--px) * 13); order: 2; animation: plumbSwing 2.4s ease-in-out infinite; transform-origin: 50% 0; }
+.depth img { width: calc(var(--px) * 11); height: calc(var(--px) * 19); order: 2; animation: plumbSwing 2.4s ease-in-out infinite; transform-origin: 50% 0; margin-top: calc(var(--px) * 2); }
 @keyframes plumbSwing { 50% { transform: rotate(8deg); } }
-.depth-txt { font-size: 16px; line-height: 1.2; }
+/* the depth & zone: carved into a little walnut plaque with brass pins */
+.depth-txt {
+  font-size: 16px; line-height: 1.2; padding: 0 var(--px);
+  border-style: solid; border-width: calc(var(--px) * 5); border-image: var(--h-plaque) 5 fill / calc(var(--px) * 5) repeat;
+  filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .5));
+}
 .depth-txt b { display: block; font-family: var(--font-head); font-weight: 400; font-size: var(--fs-h); line-height: 1; color: var(--gold); text-shadow: 0 var(--px) 0 #3a2212, 0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .4); }
 
 /* ---------- tool belt ---------- */
@@ -287,19 +305,40 @@ html.is-touch .loop .k { display: none; }
 @media (min-width: 901px) and (min-height: 601px) { .disc small { font-size: 16px; letter-spacing: .06em; } }
 
 /* the load gauge: a thin brass scale beside the bag (fills green → amber → red past the bag's carry) */
-.pack-load { position: absolute; right: calc(var(--px) * -6); top: calc(var(--px) * 4); width: calc(var(--px) * 4); height: calc(var(--px) * 24); z-index: 2; pointer-events: auto; }
-.pack-load > b { position: absolute; inset: 0; display: block; background: #2a160a; box-shadow: 0 0 0 var(--px) #120804, inset 0 calc(var(--px) * 12) 0 -1px rgba(255, 255, 255, .04); overflow: hidden; }
-.pack-load > b > i { position: absolute; left: 0; right: 0; bottom: 0; display: block; background: #8fd06a; transition: height .35s var(--pop), background .3s; }
+/* a brass tube with a glass window (hudArt gauge: the window is 4×22 at 2,5) */
+.pack-load { position: absolute; right: calc(var(--px) * -4); top: 0; width: calc(var(--px) * 8); height: calc(var(--px) * 30); z-index: 2; pointer-events: auto; background: var(--h-gauge) 0 0 / 100% 100%; }
+.pack-load > b { position: absolute; left: calc(var(--px) * 2); top: calc(var(--px) * 5); width: calc(var(--px) * 4); height: calc(var(--px) * 22); display: block; background: #1c120a; box-shadow: inset var(--px) 0 0 rgba(255, 240, 200, .1); overflow: hidden; }
+.pack-load > b > i { position: absolute; left: 0; right: 0; bottom: 0; display: block; background: linear-gradient(to right, #d8f4b0 0 var(--px), #8fd06a var(--px) calc(var(--px) * 3), #5a9a3a calc(var(--px) * 3)); transition: height .35s var(--pop), background .3s; }
 .pack-load > b::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: var(--px); background: rgba(255, 243, 208, .7); }
-.pack-load.good > b > i { background: #d8c05a; }
-.pack-load.heavy > b > i { background: #ff9a3a; }
-.pack-load.over > b > i, .pack-load.max > b > i { background: #ff4a3a; }
+.pack-load > b::before { content: ''; position: absolute; z-index: 1; left: var(--px); top: var(--px); width: var(--px); height: calc(var(--px) * 7); background: rgba(255, 255, 255, .35); }
+.pack-load.good > b > i { background: linear-gradient(to right, #fff0a8 0 var(--px), #d8c05a var(--px) calc(var(--px) * 3), #a88a2a calc(var(--px) * 3)); }
+.pack-load.heavy > b > i { background: linear-gradient(to right, #ffd0a0 0 var(--px), #ff9a3a var(--px) calc(var(--px) * 3), #c8641a calc(var(--px) * 3)); }
+.pack-load.over > b > i, .pack-load.max > b > i { background: linear-gradient(to right, #ffb0a0 0 var(--px), #ff4a3a var(--px) calc(var(--px) * 3), #b8221a calc(var(--px) * 3)); }
 .pack-load.max { animation: fullWiggle 1.6s ease-in-out infinite; }
 .pack-load-t {
-  position: absolute; right: calc(100% + var(--px) * 3); top: calc(var(--px) * 26); white-space: nowrap; font-size: 16px; line-height: 1; color: #fff4e8;
-  background: #b8602a; padding: var(--px) calc(var(--px) * 2); box-shadow: 0 0 0 var(--px) #5a240c, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35);
+  position: absolute; right: calc(100% + var(--px) * 1); top: calc(var(--px) * 28); white-space: nowrap; font-size: 16px; line-height: 1; color: #fff4e8; text-shadow: 0 var(--px) 0 #4a0c08;
+  padding: 0 var(--px); border-style: solid; border-width: calc(var(--px) * 3); border-image: var(--h-paperTagRed) 3 fill / calc(var(--px) * 3) repeat;
+  filter: hue-rotate(18deg) brightness(1.08) drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .35));
 }
-.pack-load.over .pack-load-t, .pack-load.max .pack-load-t { background: #b8322a; }
+.pack-load.over .pack-load-t, .pack-load.max .pack-load-t { filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .35)); }
+/* the weight tag and the bag's count tag both hang under the bag: stack them */
+.pack:has(.pack-load:not([hidden]) .pack-load-t:not([hidden])) .pack-tag { top: calc(100% + var(--px) * 10); }
+
+/* the radar's tag ("Town 230 m"): a brushed brass plate (hudArt brassPlate) instead of the flat bar */
+.radar .radar-tag {
+  background: none; box-shadow: none; padding: 0 var(--px); color: #2a1806; text-shadow: 0 var(--px) 0 rgba(255, 240, 190, .45);
+  border-style: solid; border-width: calc(var(--px) * 2) calc(var(--px) * 4); border-image: var(--h-brassPlate) 2 4 fill / calc(var(--px) * 2) calc(var(--px) * 4) repeat;
+  filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .5));
+}
+
+/* the objective scroll's wax seal (Tracker.js), hanging off the right roll on two silk tails */
+.qt-wax {
+  position: absolute; z-index: 1; right: calc(var(--px) * -4); bottom: calc(var(--px) * -17); width: calc(var(--px) * 15); height: calc(var(--px) * 20);
+  background: var(--h-wax) 0 0 / 100% 100%; pointer-events: none; transform: rotate(6deg); transform-origin: 50% 20%;
+  filter: drop-shadow(0 var(--px) 0 rgba(20, 6, 4, .45));
+}
+.qt.idle .qt-wax { transform: rotate(6deg) scale(.8); }
+@media (max-height: 460px) { .qt-wax { display: none; } }
 
 /* the 5-slot hotbar: an empty loop is a dashed outline waiting for a tool */
 .belt .loop.empty .loop-face { outline: var(--px) dashed rgba(240, 220, 180, .45); outline-offset: calc(var(--px) * -3); }

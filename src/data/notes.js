@@ -37,7 +37,7 @@ export const NOTES = [
   {
     id: 'glints',
     title: 'Glints',
-    text: 'Ore close under the surface glints in your lamp. Stand still and watch the wall a moment.\nThe hen sees them before you do. Watch where she pecks.',
+    text: 'Ore close under the surface glints in your lamp. Stand still and watch the wall a moment.\nThe rock tells you before the pick does. Listen for where it rings.',
   },
   {
     id: 'layers',
@@ -90,13 +90,8 @@ export const NOTES = [
     text: 'Don\'t take the Shaft Seven rail to town. It isn\'t there any more.\nNot much of anything is.',
   },
   {
-    id: 'hens',
-    title: 'On hens',
-    text: 'Feed her and she lays. Starve her and she sulks.\nSame as me, near enough. Keep her close in the deep: she sees glints you won\'t.',
-  },
-  {
     id: 'forty',
     title: 'Tally',
-    text: 'Day 14,602. Heard a thump in the roof. Something fell in. Something with a hen.\nGood day.',
+    text: 'Day 14,602. Heard a thump in the roof. Something fell in. Something with whiskers.\nGood day.',
   },
 ];

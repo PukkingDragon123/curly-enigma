@@ -4,7 +4,7 @@
 // sentence or a clause. A live portrait handle (portrait3d) moves its mouth while the words come.
 //   const t = typeText(el, html, { voice, mood, audio, face, speed, onDone })
 //   t.finish()   show everything now      t.done   true once it's all there      t.stop()
-//   voiceBlip(audio, voice, mood, { muffled })  one syllable in a voice ({ f, type, q, vib, cluck, mumble })
+//   voiceBlip(audio, voice, mood, { muffled })  one syllable in a voice ({ f, type, q, vib, mumble })
 export const MOOD_PITCH = { calm: 1, neutral: 1, happy: 1.1, laugh: 1.22, worried: 1.16, stern: 0.86, proud: 1.04, sad: 0.9, angry: 0.92, surprised: 1.28, smug: 0.96, thinking: 0.94, sleepy: 0.8 };
 export const STAR_VOICE = { f: 205, type: 'square', q: 1.6, mumble: true };
 
@@ -13,7 +13,6 @@ export function voiceBlip(a, v = STAR_VOICE, mood = 'calm', o = {}) {
   const base = (v.f || 205) * (MOOD_PITCH[mood] || 1);
   const f = base * (0.82 + Math.random() * 0.4);
   if (o.muffled) { a.tone({ f: f * 0.6, f2: f * 0.5, type: 'triangle', dur: 0.09, vol: 0.03, filter: 'lowpass', ff: 380, q: 0.8, reverb: 0.5 }); return; }
-  if (v.cluck) { a.tone({ f: f * 1.3, f2: f * 0.7, type: 'triangle', dur: 0.055, vol: 0.035, filter: 'bandpass', ff: base * 2, q: v.q || 2 }); return; }
   a.tone({ f, f2: f * (0.85 + Math.random() * 0.3), type: v.type || 'square', dur: v.mumble ? 0.05 : 0.045, vol: o.vol ?? 0.026, filter: 'bandpass', ff: base * 3, q: v.q || 1.6, ...(v.vib ? { vib: v.vib, vibRate: 14 } : {}) });
   if (mood === 'worried') a.tone({ f: f * 1.02, type: 'sine', dur: 0.06, vol: 0.01, vib: 14, vibRate: 18 });
 }
@@ -94,7 +93,7 @@ export function typeText(host, html, o = {}) {
         show(k);
         if (!talking && pause <= 0) { face?.talk(true); talking = true; }
         blip -= k - before;
-        if (blip <= 0 && o.audio && flat[k - 1] !== ' ' && o.sound !== false) { blip = o.voice?.cluck ? 4 : 3; voiceBlip(o.audio, o.voice, o.mood); }
+        if (blip <= 0 && o.audio && flat[k - 1] !== ' ' && o.sound !== false) { blip = 3; voiceBlip(o.audio, o.voice, o.mood); }
       }
       if (n >= total) { finish(); return; }
     }

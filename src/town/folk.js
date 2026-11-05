@@ -211,7 +211,7 @@ export class Townsfolk {
     let line;
     if (npc.sleeping) line = pick(['Zzz... five more minutes...', 'Mmh? Wha... oh, hello. Zzz.', 'Zzz... shiny... so shiny...']);
     else if (npc.role === 'busker') line = pick(['A coin for the song? Only joking. Mostly.', 'This one is about the sun. I have never seen it.', '♪ Dig, dig, dig, little paws... ♪']);
-    else if (npc.role === 'baby') line = pick(['Bah!', 'Mama! Chicken!', 'Hee hee!', 'Dirt!']);
+    else if (npc.role === 'baby') line = pick(['Bah!', 'Mama! Mole!', 'Hee hee!', 'Dirt!']);
     else if (npc.role === 'elder') line = pick(s.game.state.escaped ? ELDER_LINES : ['Mind the old shaft, youngster. Nothing comes out of there.', 'Shaft Seven caved in before you were born.']);
     else if (npc.role === 'vendor') line = pick(VENDOR_LINES[npc.kind] || VENDOR_LINES.shrooms);
     else if (npc.role === 'tag' && npc.it) line = pick(['You\'re it! No wait, I\'m it!', 'Can\'t talk, I\'m IT!']);

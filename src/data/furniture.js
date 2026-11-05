@@ -1,6 +1,6 @@
 // Home furniture, floors and wall styles.
 // size: footprint [w, d] in tiles. kind drives behavior in the home scene:
-//   bed | forge | stove | coop | planter | desk | display | light | seat | table | rug | decor | wall
+//   bed | forge | stove | planter | desk | display | light | seat | table | rug | decor | wall
 // light: color of the light the item emits (hex) | undefined
 // onWall: hangs on the back wall (placed on wall tiles)
 
@@ -11,7 +11,6 @@ export const FURNITURE = {
   bed_royal: { name: 'Four-Poster Bed', kind: 'bed', size: [2, 2], price: 26000, value: 6000, rest: 2, icon: { k: 'furn', t: 'bed', c: 0x6a5ad9 }, desc: 'Velvet curtains. Wake up Sturdy and Lucky.' },
   forge: { name: 'Home Forge', kind: 'forge', size: [2, 2], price: 0, value: 0, light: 0xff7a2a, icon: { k: 'furn', t: 'forge' }, desc: 'Coal hearth, anvil and quench barrel. Smelt ore and forge weapons here.' },
   stove: { name: 'Iron Stove', kind: 'stove', size: [1, 1], price: 0, value: 0, light: 0xff9a4a, icon: { k: 'furn', t: 'stove' }, desc: 'Cook strange plants into stranger meals.' },
-  coop: { name: 'Chicken Coop', kind: 'coop', size: [1, 1], price: 0, value: 0, icon: { k: 'furn', t: 'coop' }, desc: 'Nugget\'s nest. Fresh eggs most mornings.' },
   planter: { name: 'Mushroom Planter', kind: 'planter', size: [1, 1], price: 800, value: 200, icon: { k: 'furn', t: 'planter' }, desc: 'Plant something you found below; it grows more by morning.' },
   index_desk: { name: 'Writing Desk', kind: 'desk', size: [1, 1], price: 600, value: 150, icon: { k: 'furn', t: 'desk' }, desc: 'Where you write up your Index Book.' },
   weapon_rack: { name: 'Weapon Rack', kind: 'display', size: [2, 1], price: 1500, value: 400, icon: { k: 'furn', t: 'rack' }, desc: 'Shows off your three finest weapons.' },
@@ -47,7 +46,7 @@ export const FURNITURE = {
   fake_window: { name: 'Painted Window', kind: 'wall', size: [2, 1], price: 8000, value: 2000, onWall: true, light: 0xbfe6ff, icon: { k: 'furn', t: 'window' }, desc: 'A sky, painted so well it almost glows.' },
   banner: { name: 'Mole Banner', kind: 'wall', size: [1, 1], price: 400, value: 100, onWall: true, icon: { k: 'furn', t: 'banner' }, desc: 'The crossed-claws crest of Deep Town.' },
   music_box: { name: 'Music Box', kind: 'decor', size: [1, 1], price: 3000, value: 800, icon: { k: 'furn', t: 'musicbox' }, desc: 'Plays a tune nobody remembers learning.' },
-  plushie: { name: 'Worm Plushie', kind: 'decor', size: [1, 1], price: 250, value: 60, icon: { k: 'furn', t: 'plushie' }, desc: 'Squishy. Nugget keeps pecking it.' },
+  plushie: { name: 'Worm Plushie', kind: 'decor', size: [1, 1], price: 250, value: 60, icon: { k: 'furn', t: 'plushie' }, desc: 'Squishy. Somebody has chewed one ear.' },
   fish_tank: { name: 'Fish Tank', kind: 'decor', size: [2, 1], price: 6000, needs: { blind_fish: 2 }, value: 1500, light: 0x7ad0ff, icon: { k: 'furn', t: 'tank' }, desc: 'Two blind fish, very content.' },
   fountain: { name: 'Little Fountain', kind: 'decor', size: [2, 2], price: 15000, value: 4000, icon: { k: 'furn', t: 'fountain' }, desc: 'Trickles soothingly.' },
   trophy_pick: { name: 'Golden Pick Trophy', kind: 'decor', size: [1, 1], price: 50000, value: 12000, light: 0xffd34a, icon: { k: 'furn', t: 'trophy' }, desc: 'Awarded to yourself, by yourself.' },

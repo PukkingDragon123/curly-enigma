@@ -1,7 +1,8 @@
 // The cloth in Old Star's camp (src/gfx/cloth.js): the sacking over his shack's doorway (you and he
-// push it aside walking through; the draught from the hole stirs it) and a rag of blanket
-// tacked over the shack's window hole. Meters, in the scene (not the tile-scaled room).
-import { Cloth, sackingTexture } from '../gfx/cloth.js';
+// push it aside walking through; the draught from the hole stirs it), a rag of blanket tacked over
+// the shack's window hole, and the washing pegged on the drying line (a shirt, long johns, a towel:
+// house.js hands their pegs over as `laundry`). Meters, in the scene (not the tile-scaled room).
+import { Cloth, sackingTexture, laundryTexture } from '../gfx/cloth.js';
 import { SHACK } from './house.js';
 import { HALL } from './units.js';
 

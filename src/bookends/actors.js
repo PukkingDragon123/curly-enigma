@@ -1,5 +1,5 @@
 // Character helpers for the bookend scenes (thin wrappers over gfx/characters.js).
-import { makeCharacter, makeChicken } from '../gfx/characters.js';
+import { makeCharacter } from '../gfx/characters.js';
 import { makeHeroMole } from '../gfx/char/hero.js';
 
 /** Faces used to need a nudge under brimmed hats; characters.js now seats hats higher. */
@@ -20,4 +20,3 @@ export function makeFolk(spec, opts = {}) {
   return fixEyes(makeCharacter(spec, opts));
 }
 
-export { makeChicken };

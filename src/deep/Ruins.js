@@ -29,7 +29,7 @@ import { toWorld } from './ruins/common.js';
 import { RM } from './ruins/mats.js';
 
 /** Carved stone you can read with a paw (quests part: lore, src/core/lore.js). */
-const CARVED = new Set([RM.FRIEZE, RM.RUNEOFF, RM.RUNE, RM.RUNE_R, RM.GILT]);
+const CARVED = new Set([RM.FRIEZE, RM.RUNEOFF, RM.RUNE, RM.RUNE_R, RM.GILT, RM.SCRATCH]);
 
 export class Ruins {
   constructor(ctx) {

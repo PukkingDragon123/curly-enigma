@@ -11,7 +11,7 @@
   position: relative; z-index: 1; flex: 1; min-width: 0; display: flex;
   border-style: solid; border-width: calc(var(--px) * 12);
   border-image: var(--a-cover) 12 / calc(var(--px) * 12) repeat;
-  background: var(--a-coverT) 0 0 / calc(var(--px) * 24) repeat padding-box, #74291c padding-box;
+  background: var(--a-coverL) 0 0 / calc(var(--px) * 64) repeat padding-box, #74291c padding-box;
   padding: calc(var(--px) * 1) calc(var(--px) * 3) calc(var(--px) * 4) calc(var(--px) * 3);
   filter: drop-shadow(0 calc(var(--px) * 4) 0 rgba(8, 4, 6, .55));
 }
@@ -22,13 +22,14 @@
   font-size: var(--fs); line-height: 1.3; color: var(--sepia);
 }
 .ib-left {
-  background: var(--a-gutterL) 100% 0 / calc(var(--px) * 10) calc(var(--px) * 4) repeat-y, var(--a-pageT) 0 0 / calc(var(--px) * 32) repeat, var(--parch);
-  box-shadow: calc(var(--px) * -1) var(--px) 0 #e2cfa2, calc(var(--px) * -2) calc(var(--px) * 2) 0 #b49a6a, calc(var(--px) * -3) calc(var(--px) * 3) 0 #e2cfa2, calc(var(--px) * -4) calc(var(--px) * 4) 0 #8a6e48;
+  background: var(--a-gutterL) 100% 0 / calc(var(--px) * 10) calc(var(--px) * 4) repeat-y, var(--a-pageL) 0 0 / calc(var(--px) * 96) repeat, var(--parch);
+  /* the page block's gilt edge: leaves of gold, darker between them */
+  box-shadow: calc(var(--px) * -1) var(--px) 0 #f7d97c, calc(var(--px) * -2) calc(var(--px) * 2) 0 #a8772c, calc(var(--px) * -3) calc(var(--px) * 3) 0 #e6b44a, calc(var(--px) * -4) calc(var(--px) * 4) 0 #6e4a1a;
   padding-right: calc(var(--px) * 13);
 }
 .ib-right {
-  background: var(--a-gutterR) 0 0 / calc(var(--px) * 10) calc(var(--px) * 4) repeat-y, var(--a-pageT) 0 0 / calc(var(--px) * 32) repeat, var(--parch);
-  box-shadow: var(--px) var(--px) 0 #e2cfa2, calc(var(--px) * 2) calc(var(--px) * 2) 0 #b49a6a, calc(var(--px) * 3) calc(var(--px) * 3) 0 #e2cfa2, calc(var(--px) * 4) calc(var(--px) * 4) 0 #8a6e48;
+  background: var(--a-gutterR) 0 0 / calc(var(--px) * 10) calc(var(--px) * 4) repeat-y, var(--a-pageL) 0 0 / calc(var(--px) * 96) repeat, var(--parch);
+  box-shadow: var(--px) var(--px) 0 #f7d97c, calc(var(--px) * 2) calc(var(--px) * 2) 0 #a8772c, calc(var(--px) * 3) calc(var(--px) * 3) 0 #e6b44a, calc(var(--px) * 4) calc(var(--px) * 4) 0 #6e4a1a;
   padding-left: calc(var(--px) * 13);
 }
 .ib-right.ink > * { animation: inkUp .35s ease-out both; }
@@ -39,7 +40,7 @@
 /* ribbon bookmark hanging over the bottom edge */
 .ib-ribbon {
   position: absolute; z-index: 2; left: calc(50% - var(--px) * 3); top: calc(var(--px) * 6); width: calc(var(--px) * 6); height: calc(100% + var(--px) * 4);
-  background: linear-gradient(to right, #5a140c 0 var(--px), #c23c2c var(--px) calc(var(--px) * 3), #a8321e calc(var(--px) * 3) calc(100% - var(--px)), #5a140c calc(100% - var(--px)));
+  background: var(--a-ribbonV) 0 0 / calc(var(--px) * 6) calc(var(--px) * 12) repeat-y, #a8321e;
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - var(--px) * 4), 0 100%);
   pointer-events: none; transform-origin: 50% 0; animation: ribbonSway 3.6s ease-in-out infinite;
 }
@@ -50,12 +51,17 @@
 .ib-tab {
   position: relative; display: flex; align-items: center; justify-content: flex-end; box-sizing: border-box; cursor: pointer; font: inherit;
   width: calc(var(--px) * 24); height: calc(var(--icon-s) + var(--px) * 4); padding: 0 calc(var(--px) * 2) 0 0; border: 0;
-  background: var(--tc); color: #fff;
+  background: var(--a-grainA) 0 0 / calc(var(--px) * 16) repeat, var(--tc); color: #fff;
   box-shadow: inset 0 var(--px) 0 rgba(255, 255, 255, .35), inset calc(var(--px) * -1) 0 0 rgba(0, 0, 0, .22), inset 0 calc(var(--px) * -1) 0 rgba(0, 0, 0, .3), 0 0 0 var(--px) #2a1208;
   transform: translateX(calc(var(--px) * -4)); transition: transform .18s var(--pop), filter .15s;
   clip-path: polygon(0 0, calc(100% - var(--px) * 2) 0, 100% calc(var(--px) * 2), 100% calc(100% - var(--px) * 2), calc(100% - var(--px) * 2) 100%, 0 100%);
 }
 .ib-tab img { width: var(--icon-s); height: var(--icon-s); display: block; filter: drop-shadow(0 var(--px) 0 rgba(0, 0, 0, .35)); }
+/* a stitched seam just inside the tab's outer end (along the top edge when the tabs sit on top) */
+.ib-tab::after {
+  content: ''; position: absolute; right: calc(var(--px) * 2); top: calc(var(--px) * 3); bottom: calc(var(--px) * 3); width: var(--px); pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(255, 236, 196, .7) 0 calc(var(--px) * 2), rgba(30, 10, 4, .45) calc(var(--px) * 2) calc(var(--px) * 3), transparent calc(var(--px) * 3) calc(var(--px) * 4));
+}
 .ib-tab span { display: none; }
 .ib-tab:hover { transform: translateX(calc(var(--px) * -1)); filter: brightness(1.1); }
 .ib-tab.on { transform: translateX(calc(var(--px) * 2)); filter: brightness(1.12); }
@@ -126,7 +132,7 @@
 /* the turning page */
 .ib-turn {
   position: absolute; z-index: 5; top: 0; bottom: 0; left: 50%; width: 50%; transform-origin: 0 50%; pointer-events: none;
-  background: var(--a-pageT) 0 0 / calc(var(--px) * 32) repeat, var(--parch);
+  background: var(--a-pageL) 0 0 / calc(var(--px) * 96) repeat, var(--parch);
   box-shadow: 0 0 0 var(--px) rgba(110, 74, 42, .5);
 }
 .ib-turn i { position: absolute; inset: 0; background: linear-gradient(to right, rgba(60, 30, 10, .35), transparent 40%); opacity: 0; }
@@ -143,8 +149,8 @@
 @media (max-width: 640px) { .ib.single { height: min(calc(100vh - 16px - var(--sat) - var(--sab)), calc(var(--px) * 330)); } }
 .ib.single .ib-pages { grid-template-columns: 1fr; }
 .ib.single[data-side=left] .ib-right, .ib.single[data-side=right] .ib-left { display: none; }
-.ib.single .ib-left { box-shadow: calc(var(--px) * 1) var(--px) 0 #e2cfa2, calc(var(--px) * 2) calc(var(--px) * 2) 0 #b49a6a, calc(var(--px) * -1) var(--px) 0 #e2cfa2, calc(var(--px) * -2) calc(var(--px) * 2) 0 #8a6e48; padding-right: calc(var(--px) * 8); background: var(--a-pageT) 0 0 / calc(var(--px) * 32) repeat, var(--parch); }
-.ib.single .ib-right { padding-left: calc(var(--px) * 8); background: var(--a-pageT) 0 0 / calc(var(--px) * 32) repeat, var(--parch); }
+.ib.single .ib-left { box-shadow: calc(var(--px) * 1) var(--px) 0 #f7d97c, calc(var(--px) * 2) calc(var(--px) * 2) 0 #a8772c, calc(var(--px) * -1) var(--px) 0 #f7d97c, calc(var(--px) * -2) calc(var(--px) * 2) 0 #6e4a1a; padding-right: calc(var(--px) * 8); background: var(--a-pageL) 0 0 / calc(var(--px) * 96) repeat, var(--parch); }
+.ib.single .ib-right { padding-left: calc(var(--px) * 8); background: var(--a-pageL) 0 0 / calc(var(--px) * 96) repeat, var(--parch); }
 .ib.single .ib-turn, .ib.single .ib-turn.back { left: 0; width: 100%; transform-origin: 0 50%; }
 .ib.single .ib-turn.back.go { animation-name: turnFwd; animation-direction: reverse; }
 .ib.single .ib-tabs {
@@ -157,6 +163,8 @@
   clip-path: polygon(0 calc(var(--px) * 2), calc(var(--px) * 2) 0, calc(100% - var(--px) * 2) 0, 100% calc(var(--px) * 2), 100% 100%, 0 100%);
 }
 .ib.single .ib-tab:hover { transform: translateY(var(--px)); }
+.ib.single .ib-tab::after { right: calc(var(--px) * 3); left: calc(var(--px) * 3); top: calc(var(--px) * 1); bottom: auto; width: auto; height: var(--px);
+  background: repeating-linear-gradient(to right, rgba(255, 236, 196, .7) 0 calc(var(--px) * 2), rgba(30, 10, 4, .45) calc(var(--px) * 2) calc(var(--px) * 3), transparent calc(var(--px) * 3) calc(var(--px) * 4)); }
 .ib.single .ib-tab.on { transform: none; }
 .ib.single .ib-ribbon { left: auto; right: calc(var(--px) * 24); top: auto; bottom: calc(var(--px) * -12); height: calc(var(--px) * 16); }
 .ib.single .ib-back { display: block; }
@@ -174,7 +182,7 @@
 
 /* ---------- pause journal (green leather, same binding) ---------- */
 .ib.jr { width: min(calc(100vw - 16px - var(--sal) - var(--sar)), calc(var(--px) * 330)); height: min(calc(100vh - 16px - var(--sat) - var(--sab)), calc(var(--px) * 176)); }
-.ib.jr .ib-cover { border-image-source: var(--a-journal); background: var(--a-journalT) 0 0 / calc(var(--px) * 24) repeat padding-box, #3c6236 padding-box; }
+.ib.jr .ib-cover { border-image-source: var(--a-journal); background: var(--a-journalL) 0 0 / calc(var(--px) * 64) repeat padding-box, #3c6236 padding-box; }
 .jr-band { position: absolute; z-index: 3; right: calc(var(--px) * 5); top: calc(var(--px) * -2); bottom: calc(var(--px) * -2); width: calc(var(--px) * 4); background: linear-gradient(to right, #1a1410 0 var(--px), #3a2e26 var(--px) calc(100% - var(--px)), #1a1410 calc(100% - var(--px))); pointer-events: none; }
 .jr-title { margin: 0 0 calc(var(--px) * 1); font-family: var(--font-script); font-weight: 400; font-size: var(--fs-s); line-height: 1; color: var(--sepia); }
 .jr-sub { font-size: 16px; color: #8a6a48; margin-bottom: calc(var(--px) * 4); }
@@ -226,5 +234,5 @@
 @media (max-width: 640px) {
   .ib.jr .ib-pages { grid-template-columns: 1fr; grid-template-rows: auto auto; overflow-y: auto; }
   .ib.jr { height: min(calc(100vh - 16px), calc(var(--px) * 300)); }
-  .ib.jr .ib-left, .ib.jr .ib-right { padding-left: calc(var(--px) * 8); padding-right: calc(var(--px) * 8); background: var(--a-pageT) 0 0 / calc(var(--px) * 32) repeat, var(--parch); }
+  .ib.jr .ib-left, .ib.jr .ib-right { padding-left: calc(var(--px) * 8); padding-right: calc(var(--px) * 8); background: var(--a-pageL) 0 0 / calc(var(--px) * 96) repeat, var(--parch); }
 }

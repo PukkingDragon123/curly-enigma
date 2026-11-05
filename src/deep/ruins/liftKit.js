@@ -1,7 +1,9 @@
-// The lift stations' fittings (the stone, planks and rails are voxels: gen/lifts.js): a lever on a
-// stone post beside the car (E: pull it, the lift map opens), a plank sign with the station's name
-// and depth on the back wall (E: read it), and two wall torches. Built when the mole comes near,
-// dropped when far, like the dungeons (Ruins.js runs both).
+// The lifts' fittings (the alcove, the shaft and the cage's plank floor are voxels: gen/lifts.js):
+// the cage hanging on its rope in the rough shaft, a brass bell on the cage's post (E: ring it, the
+// lift map opens), a name board on the cage's back (E: read it) and a lantern hung inside. A stop
+// on the town shaft has a timber gantry at the shaft's edge instead, the rope running down the
+// middle of the shaft. Built when the mole comes near, dropped when far, like the dungeons
+// (Ruins.js runs both).
 import * as THREE from 'three';
 import { LAYER_OUTLINE } from '../../core/Engine.js';
 import { openLiftPanel, discoverLift } from '../../fps/lifts.js';
@@ -13,19 +15,24 @@ const ease = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 /** Where the fittings go round a lift (world metres, yaw of the model's +z). */
 function fittings(L, plan) {
   const { x, y, z } = L;
+  void plan;
   if (L.id[0] === 's') {
-    // a stop on the town shaft: the shaft is west (-x), the way out east (+x)
+    // a stop on the town shaft: the shaft is west (-x), the way out east (+x); a gantry at its edge
     return {
-      lever: { x: x - 0.25, y, z: z + 1.2, yaw: Math.PI },
-      sign: { x: x + 0.15, y: y + 1.5, z: z - 1.5, yaw: 0 },
-      torches: [{ x: x + 0.55, y: y + 1.2, z: z - 1.5, yaw: 0 }, { x: x + 0.55, y: y + 1.2, z: z + 1.5, yaw: Math.PI }],
+      stop: true,
+      gantry: { x: x - 1.25, y, z },
+      lever: { x: x - 1.15, y: y + 1.05, z: z + 0.55, yaw: Math.PI / 2 }, // the bell, under the beam
+      sign: { x: x - 1.05, y: y + 1.7, z: z - 0.2, yaw: Math.PI / 2 },
+      lantern: { x: x - 1.25, y: y + 2.15, z: z - 0.62 },
+      rope: { x: x - 2.6, y: y - 0.4, z, len: 9 },
     };
   }
-  void plan;
   return {
-    lever: { x: x + 1.12, y, z: z + 0.35, yaw: -Math.PI / 2 },
-    sign: { x, y: y + 1.55, z: z - 1.5, yaw: 0 },
-    torches: [{ x: x - 1.5, y: y + 1.25, z: z - 0.55, yaw: Math.PI / 2 }, { x: x + 1.5, y: y + 1.25, z: z - 0.55, yaw: -Math.PI / 2 }],
+    cage: { x, y, z },
+    lever: { x: x + 0.56, y: y + 1.12, z: z + 0.6, yaw: -Math.PI / 2 }, // the bell, on the front post
+    sign: { x, y: y + 1.5, z: z - 0.64, yaw: 0 },
+    lantern: { x: x - 0.42, y: y + 1.98, z: z - 0.45 },
+    rope: { x, y: y + 37 / 16, z, len: 3.8 },
   };
 }
 
@@ -40,47 +47,45 @@ export class LiftKit {
     const g = new THREE.Group();
     g.name = 'lift-' + L.id;
     const add = (geo, mat = R.mat, parent = g) => { const m = new THREE.Mesh(geo, mat); m.layers.enable(LAYER_OUTLINE); parent.add(m); it.geos.push(geo); return m; };
-    // the lever: a stone post, the handle on a pivot
-    const lv = new THREE.Group();
-    lv.position.set(F.lever.x, F.lever.y, F.lever.z);
-    lv.rotation.y = F.lever.yaw;
-    g.add(lv);
-    add(MD.liftLeverBase(), R.mat, lv);
+    // the cage on its rope (or, at a stop on the town shaft, the gantry at the shaft's edge)
+    if (F.cage) { const c = add(MD.liftCage()); c.position.set(F.cage.x, F.cage.y, F.cage.z); }
+    if (F.gantry) { const c = add(MD.liftGantry()); c.position.set(F.gantry.x, F.gantry.y, F.gantry.z); }
+    const rp = add(MD.liftRope(F.rope.len));
+    rp.position.set(F.rope.x, F.rope.y, F.rope.z);
+    rp.layers.disable(LAYER_OUTLINE);
+    // the bell: it swings on its yoke when rung
+    const bl = new THREE.Group();
+    bl.position.set(F.lever.x, F.lever.y, F.lever.z);
+    bl.rotation.y = F.lever.yaw;
+    g.add(bl);
     const pv = new THREE.Group();
-    pv.position.set(0, 20 / 32, 0);
-    pv.rotation.x = -0.6;
-    lv.add(pv);
-    add(MD.liftLeverHandle(), R.mat, pv);
+    bl.add(pv);
+    add(MD.liftBell(), R.mat, pv);
     it.handle = pv;
-    // the sign
+    // the name board
     const lines = (L.name.length > 13 ? splitName(L.name) : [L.name]).concat([`${L.depth} M`]);
     const sg = add(MD.plankSign(lines));
     sg.position.set(F.sign.x, F.sign.y, F.sign.z);
     sg.rotation.y = F.sign.yaw;
-    // the torches
-    it.flames = F.torches.map((t) => {
-      const tg = new THREE.Group();
-      tg.position.set(t.x, t.y, t.z);
-      tg.rotation.y = t.yaw;
-      g.add(tg);
-      add(MD.torch(), R.mat, tg);
-      const fl = add(MD.torchFlame(), R.flameMat, tg);
-      fl.position.set(0, 10 / 32, 5 / 32);
-      fl.layers.disable(LAYER_OUTLINE);
-      const w = new THREE.Vector3();
-      fl.updateWorldMatrix(true, false);
-      return { fl, t: Math.random() * 7, w };
-    });
+    // the lantern
+    const ln = new THREE.Group();
+    ln.position.set(F.lantern.x, F.lantern.y, F.lantern.z);
+    g.add(ln);
+    add(MD.liftLantern(), R.mat, ln);
+    const fl = add(MD.liftLanternGlow(), R.flameMat, ln);
+    fl.layers.disable(LAYER_OUTLINE);
+    it.lantern = ln;
+    it.flames = [{ fl, t: Math.random() * 7, w: new THREE.Vector3(), ember: false }];
     R.root.add(g);
     it.group = g;
     it.built = true;
     g.updateMatrixWorld(true);
     for (const f of it.flames) f.fl.getWorldPosition(f.w);
-    const lp = new THREE.Vector3(F.lever.x, F.lever.y + 0.72, F.lever.z);
-    const sp = new THREE.Vector3(F.sign.x, F.sign.y, F.sign.z + (L.id[0] === 's' ? 0.05 : 0.05));
+    const lp = new THREE.Vector3(F.lever.x, F.lever.y - 0.25, F.lever.z);
+    const sp = new THREE.Vector3(F.sign.x, F.sign.y, F.sign.z);
     it.els = [
-      { pos: lp, r: 0.32, label: 'Pull the lever: ride the lift', use: () => this.pull(it) },
-      { pos: sp, r: 0.4, label: 'Read the sign', use: () => this.read(it) },
+      { pos: lp, r: 0.3, label: 'Ring the bell: ride the lift', use: () => this.pull(it) },
+      { pos: sp, r: 0.4, label: 'Read the board', use: () => this.read(it) },
     ];
   }
 
@@ -94,11 +99,11 @@ export class LiftKit {
     it.built = false;
   }
 
-  /** Pull the lever: it clunks down, the lift map opens (ride from there). */
+  /** Ring the bell: it swings and clangs, the lift map opens (ride from there). */
   pull(it) {
     const R = this.R, D = R.owner, L = it.L, pv = it.handle;
-    R.sfx.lever();
-    if (pv) this.anim = { t: 0, dur: 1.4, fn: (k) => { const t = Math.min(1, k) * 1.4; pv.rotation.x = t < 0.25 ? -0.6 + 1.2 * ease(t / 0.25) : t < 1.1 ? 0.6 : 0.6 - 1.2 * ease((t - 1.1) / 0.3); } };
+    R.sfx.bell();
+    if (pv) this.anim = { t: 0, dur: 1.6, fn: (k) => { const t = Math.min(1, k); pv.rotation.z = Math.sin(t * 19) * 0.55 * (1 - ease(t)); } };
     if (!D?.game) return [{ handled: true }];
     if (discoverLift(R.st, L)) D.liftFound?.(L);
     setTimeout(() => {
@@ -110,7 +115,7 @@ export class LiftKit {
   read(it) {
     const L = it.L;
     this.R.st?.emit?.('act', { type: 'look', at: 'signpost' });
-    return [{ say: `The sign reads: <b>${L.name}</b> · ${L.depth} m down. Pull the lever to ride.`, key: 'liftsign', tone: 'good', cd: 0.5 }];
+    return [{ say: `The board reads: <b>${L.name}</b> · ${L.depth} m down. Ring the bell to ride.`, key: 'liftsign', tone: 'good', cd: 0.5 }];
   }
 
   update(dt, eye) {
@@ -121,9 +126,10 @@ export class LiftKit {
       if (!it.built) continue;
       for (const f of it.flames) {
         f.t += dt;
-        f.fl.scale.set(1 + Math.sin(f.t * 9) * 0.1, 1 + Math.sin(f.t * 13) * 0.15, 1);
-        if (d < 12 && Math.random() < dt * 4) this.R.fx.ember(f.w.x + (Math.random() - 0.5) * 0.04, f.w.y + 0.1, f.w.z + (Math.random() - 0.5) * 0.04);
+        const k = 1 + Math.sin(f.t * 9) * 0.05 + Math.sin(f.t * 23) * 0.03;
+        f.fl.scale.set(k, k, k);
       }
+      if (it.lantern) it.lantern.rotation.z = Math.sin(this.R.time * 0.9 + L.x) * 0.04;
     }
     if (this.anim) { const a = this.anim; a.t += dt; a.fn(a.t / a.dur); if (a.t >= a.dur) this.anim = null; }
   }

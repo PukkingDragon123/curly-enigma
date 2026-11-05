@@ -279,12 +279,12 @@ function beachScene(pc, x0, y0, w, h, opts = {}) {
     for (let k = -5; k <= 5; k++) for (let j = 0; j <= 3 - Math.floor(Math.abs(k) / 2); j++) pc.set(ux + k, uy - j, (Math.floor((k + 5) / 2) % 2) ? 0xe0402a : 0xfff4e0);
   }
   if (opts.critters) {
-    // a little mole on a towel and a chicken: the dream
+    // a little mole on a towel and a crab scuttling by: the dream
     const mx = x0 + Math.round(w * 0.42), my = y0 + h - 5;
     pc.rect(mx - 4, my + 2, 10, 2, 0xe0402a); pc.rect(mx - 4, my + 2, 10, 1, 0xf8a090);
     pc.ellipse(mx, my, 2.6, 2, 0x3a2e2a); pc.set(mx + 2, my, 0xf0a0a8); pc.set(mx - 1, my - 1, 0x120c10);
-    const cx = mx + 8, cy = my;
-    pc.ellipse(cx, cy, 2, 1.8, 0xf6f0e4); pc.set(cx + 1, cy - 2, 0xe0302a); pc.set(cx + 2, cy - 1, 0xf0b030);
+    const cx = mx + 8, cy = my + 1;
+    pc.ellipse(cx, cy, 1.6, 1, 0xe0503a); pc.set(cx - 2, cy - 1, 0xe0503a); pc.set(cx + 2, cy - 1, 0xe0503a);
   }
 }
 

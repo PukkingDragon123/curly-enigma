@@ -15,7 +15,7 @@
 // wait: true keeps the card up until the player carries on (E, Space, Enter, a click or tap on the
 //   card); otherwise it goes after a reading time (dur seconds overrides it; dur: Infinity keeps it
 //   up until hide() or the next line). A new line replaces the one showing (its promise resolves).
-// who: the speaker's portrait (default Old Star; also read from `name`): 'oldstar' | 'hero' | 'nugget'
+// who: the speaker's portrait (default Old Star; also read from `name`): 'oldstar' | 'hero'
 //   | 'rocco' | a shop id | a keeper's or a Deep Town folk's name | a spec (see portrait3d.js).
 // place: 'top' puts the card at the top of the screen (it is there anyway on touch screens).
 // HTML: <b> (rust red), <i> (soft), .gold-txt (gold). Old exports kept: MOODS, starPortrait(mood)
@@ -356,7 +356,7 @@ export class Tutor {
           if (!this.talking && this.pauseT <= 0) { this.talking = true; this.face?.talk(true); }
           // a blip every few letters (not on spaces)
           this.blipT -= now - before;
-          if (this.blipT <= 0 && c.voice && this.flat[now - 1] !== ' ') { this.blipT = c.vo.cluck ? 4 : 3; this.blip(c.mood); }
+          if (this.blipT <= 0 && c.voice && this.flat[now - 1] !== ' ') { this.blipT = 3; this.blip(c.mood); }
         }
         if (this.typedN >= this.total) { c.typed = true; this.revealAll(); this.talking = false; }
       }
@@ -371,6 +371,6 @@ export class Tutor {
     if (c.wait && inp && inp.justDown && inp.justDown.has('KeyE') && !this.ui.isPanelOpen?.()) { inp.consume('KeyE'); this.advance(); }
   }
 
-  /** One syllable in the speaker's voice: Old Star mumbles, Rocco drawls, Nugget clucks. */
+  /** One syllable in the speaker's voice: Old Star mumbles, Rocco drawls. */
   blip(mood) { voiceBlip(this.game.audio, this.cur?.vo || STAR_VOICE, mood, { muffled: this.cur?.muffled }); }
 }

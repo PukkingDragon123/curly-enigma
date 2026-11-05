@@ -64,11 +64,12 @@ const CSS = /* css */`
 .pm-board .pm-slider::-moz-range-track { background: #26160c; box-shadow: 0 0 0 var(--px) #c08a52, inset 0 var(--px) 0 #000; }
 .pm-board .pm-opts { gap: calc(var(--px) * 2); }
 .pm-board .pm-opts button { font-size: 16px; line-height: 1; color: #f6e2c0; padding: calc(var(--px) * 1.5) calc(var(--px) * 3) calc(var(--px) * 2.5); text-shadow: 0 var(--px) 0 #2a160a;
-  border: var(--px) solid transparent; border-image: var(--a-cut) 1 / var(--px) stretch; box-shadow: none;
-  background: linear-gradient(to bottom, #b07a46 0 var(--px), #8a5a32 var(--px) calc(100% - var(--px) * 2), #5e3a1f calc(100% - var(--px) * 2)) padding-box; transition: transform .12s var(--pop); }
+  border: var(--px) solid transparent; border-image: var(--a-btnWood) 2 3 3 fill / calc(var(--px) * 2) calc(var(--px) * 3) calc(var(--px) * 3) repeat stretch; box-shadow: none;
+  background: #8a5a32 padding-box; transition: transform .12s var(--pop); }
 .pm-board .pm-opts button:hover { transform: translateY(calc(var(--px) * -1)); }
-.pm-board .pm-opts button.on { color: var(--ink); text-shadow: none; box-shadow: none;
-  background: linear-gradient(to bottom, #fff3c0 0 var(--px), #e8be5a var(--px) calc(100% - var(--px) * 2), #a8772c calc(100% - var(--px) * 2)) padding-box; }
+.pm-board .pm-opts button:active { border-image-source: var(--a-btnWoodDn); }
+.pm-board .pm-opts button.on { color: var(--ink); text-shadow: 0 calc(var(--px) * .5) 0 rgba(255, 244, 200, .6); box-shadow: none;
+  background: #e8be5a padding-box; border-image-source: var(--a-btnGoldDn); }
 .pm-board .pm-lever { box-shadow: 0 0 0 var(--px) #c08a52, inset 0 var(--px) 0 #000; background: #26160c; }
 .pm-board .pm-lever.on { background: #3d6a30; box-shadow: 0 0 0 var(--px) #c08a52, inset 0 var(--px) 0 #1a3014; }
 .pm-board .pm-note { text-align: center; font-size: 16px; color: #e8cfa0; text-shadow: 0 var(--px) 0 #1a0c04; }

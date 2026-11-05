@@ -64,7 +64,7 @@ const INK = 0x24150d;
 
 // ---------------------------------------------------------------- texture fields
 /** A paper brightness field (periodic W×H): mottling, cloudy pulp, fibres, foxing haloes, stains, rules. */
-function paperField(W, H, o = {}) {
+export function paperField(W, H, o = {}) {
   const s = o.seed ?? 1, K = new Float32Array(W * H), fox = [];
   const base = o.base ?? 0.7, at = (x, y) => wrap(y, H) * W + wrap(x, W);
   for (let y = 0; y < H; y++)
@@ -105,16 +105,16 @@ function paperField(W, H, o = {}) {
   }
   // ruled lines (notebook pages): a faint, slightly broken line every `rule` rows
   if (o.rule) for (let y = o.rule - 1; y < H; y += o.rule)
-    for (let x = 0; x < W; x++) if (hash(x >> 2, y, s + 21) > 0.1) K[y * W + x] -= hash(x, y, s + 22) < 0.8 ? 0.11 : 0.06;
+    for (let x = 0; x < W; x++) if (hash(x >> 2, y, s + 21) > 0.1) K[y * W + x] -= hash(x, y, s + 22) < 0.85 ? 0.17 : 0.08;
   return { K, fox, W, H };
 }
 /** Paint a paper field into a Px (with an offset), foxing cores on top. */
-function paintPaper(p, F, pal, ox = 0, oy = 0, mask = null) {
+export function paintPaper(p, F, pal, ox = 0, oy = 0, mask = null) {
   for (let y = 0; y < p.h; y++)
     for (let x = 0; x < p.w; x++) {
       if (mask && !mask(x, y)) continue;
       const fx = wrap(x - ox, F.W), fy = wrap(y - oy, F.H);
-      p.set(x, y, quant(pal, F.K[fy * F.W + fx], fx, fy, 0.9));
+      p.set(x, y, quant(pal, F.K[fy * F.W + fx], fx, fy, 0.6));
     }
   for (const [cx, cy, r] of F.fox)
     for (let dy = -2; dy <= 2; dy++)
@@ -125,13 +125,13 @@ function paintPaper(p, F, pal, ox = 0, oy = 0, mask = null) {
         for (let Y = wrap(fy + oy, F.H); Y < p.h; Y += F.H)
           for (let X = wrap(fx + ox, F.W); X < p.w; X += F.W) {
             if (!p.a(X, Y) || (mask && !mask(X, Y))) continue;
-            p.set(X, Y, mix(p.get(X, Y), d < r * 0.5 ? 0xa86e3a : 0xc4925a, d < r * 0.5 ? 0.7 : 0.45));
+            p.set(X, Y, mix(p.get(X, Y), d < r * 0.5 ? 0xb07a46 : 0xc89a64, d < r * 0.5 ? 0.55 : 0.35));
           }
       }
 }
 
 /** A plank-wood brightness field (periodic): flowing grain, rings, pores, knots, butt joints, nails. */
-function woodField(W, H, o = {}) {
+export function woodField(W, H, o = {}) {
   const s = o.seed ?? 3, ph = o.plank ?? H, K = new Float32Array(W * H), C = new Int32Array(W * H).fill(-1);
   const planks = Math.round(H / ph);
   const knots = [];
@@ -150,8 +150,8 @@ function woodField(W, H, o = {}) {
       let k = (o.base ?? 0.55) + (hash(j, 36, s) - 0.5) * 0.14;
       k += (fbm(x, y, W, H, Math.max(4, W / 4), 2, s + 5) - 0.5) * 0.22;
       if (ring < 0.2) k -= 0.17; else if (ring < 0.36) k -= 0.07; else if (ring > 0.82) k += 0.05;
-      if (hash(x, y, s + 9) < 0.035) k -= 0.12; // pores
-      k += (hash(x, y, s + 10) - 0.5) * 0.05;
+      if (hash(x, y, s + 9) < (o.pores ?? 0.035)) k -= 0.12; // pores
+      k += (hash(x, y, s + 10) - 0.5) * (o.noise ?? 0.05);
       // plank edges: a lit arris on top, a dark gap below
       if (planks > 1 || o.edges) { if (v === 0) k += 0.16; else if (v === 1) k += 0.05; else if (v === ph - 1) { C[y * W + x] = 0; } else if (v === ph - 2) k -= 0.14; }
       K[y * W + x] = k;
@@ -176,7 +176,7 @@ function woodField(W, H, o = {}) {
     }
   return { K, C, W, H };
 }
-function paintWood(p, F, pal, ox = 0, oy = 0, mask = null, nail = [0x3a2a1e, 0x9a8a76]) {
+export function paintWood(p, F, pal, ox = 0, oy = 0, mask = null, nail = [0x3a2a1e, 0x9a8a76]) {
   for (let y = 0; y < p.h; y++)
     for (let x = 0; x < p.w; x++) {
       if (mask && !mask(x, y)) continue;
@@ -186,7 +186,7 @@ function paintWood(p, F, pal, ox = 0, oy = 0, mask = null, nail = [0x3a2a1e, 0x9
 }
 
 /** Pebbled leather (periodic W×H): a dome per grain cell lit from the top-left, valleys, wear, creases. */
-function leatherField(W, H, o = {}) {
+export function leatherField(W, H, o = {}) {
   const s = o.seed ?? 5, cell = o.cell ?? 3.6, nx = Math.max(2, Math.round(W / cell)), ny = Math.max(2, Math.round(H / cell));
   const cw = W / nx, ch = H / ny, K = new Float32Array(W * H);
   const pts = [];
@@ -202,23 +202,23 @@ function leatherField(W, H, o = {}) {
           const d = (x + 0.5 - qx) ** 2 + (y + 0.5 - qy) ** 2;
           if (d < d1) { d2 = d1; d1 = d; bx = qx; by = qy; } else if (d < d2) d2 = d;
         }
-      let k = 0.55 - ((x + 0.5 - bx) + (y + 0.5 - by)) * 0.075;
-      if (Math.sqrt(d2) - Math.sqrt(d1) < 0.8) k -= 0.2;
-      k += (fbm(x, y, W, H, Math.max(8, W / 3), 2, s + 4) - 0.5) * (o.wear ?? 0.45);
+      let k = (o.base ?? 0.52) - ((x + 0.5 - bx) + (y + 0.5 - by)) * (o.dome ?? 0.045);
+      if (Math.sqrt(d2) - Math.sqrt(d1) < 0.8) k -= o.valley ?? 0.11;
+      k += (fbm(x, y, W, H, Math.max(8, W / 3), 2, s + 4) - 0.5) * (o.wear ?? 0.3);
       const cr = Math.abs(fbm(x + y * 0.4, y, W, H, Math.max(6, W / 4), 1, s + 7) - 0.5);
-      if (cr < 0.02) k -= 0.16;
-      k += (hash(x, y, s + 9) - 0.5) * 0.06;
+      if (cr < 0.018) k -= 0.12;
+      k += (hash(x, y, s + 9) - 0.5) * 0.03;
       K[y * W + x] = k;
     }
   // a few scratches: pale lines with a dark lip
   for (let i = 0; i < Math.round((W * H) / 900); i++) {
     let x = hash(i, 1, s + 11) * W, y = hash(i, 2, s + 11) * H;
     const a = hash(i, 3, s + 11) * Math.PI, L = 3 + hash(i, 4, s + 11) * 8;
-    for (let t = 0; t < L; t++) { K[wrap(Math.round(y), H) * W + wrap(Math.round(x), W)] += 0.22; K[wrap(Math.round(y) + 1, H) * W + wrap(Math.round(x), W)] -= 0.1; x += Math.cos(a); y += Math.sin(a) * 0.6; }
+    for (let t = 0; t < L; t++) { K[wrap(Math.round(y), H) * W + wrap(Math.round(x), W)] += 0.16; K[wrap(Math.round(y) + 1, H) * W + wrap(Math.round(x), W)] -= 0.07; x += Math.cos(a); y += Math.sin(a) * 0.6; }
   }
   return { K, W, H };
 }
-const paintField = (p, F, pal, ox = 0, oy = 0, dither = 0.5, mask = null) => {
+export const paintField = (p, F, pal, ox = 0, oy = 0, dither = 0.5, mask = null) => {
   for (let y = 0; y < p.h; y++)
     for (let x = 0; x < p.w; x++) {
       if (mask && !mask(x, y)) continue;
@@ -228,7 +228,7 @@ const paintField = (p, F, pal, ox = 0, oy = 0, dither = 0.5, mask = null) => {
 };
 
 /** Brushed brass (periodic): horizontal streaks, tarnish clouds, a glint or two. */
-function brassField(W, H, o = {}) {
+export function brassField(W, H, o = {}) {
   const s = o.seed ?? 9, K = new Float32Array(W * H), V = new Float32Array(W * H);
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
@@ -262,7 +262,7 @@ export function woodTile(W = 32, H = 16, o = {}) {
 }
 export function leatherTile(W = 24, H = W, pal = TONES.oxblood, o = {}) {
   const p = new Px(W, H);
-  paintField(p, leatherField(W, H, o), pal, 0, 0, 0.4);
+  paintField(p, leatherField(W, H, o), pal, 0, 0, 0.25);
   return p;
 }
 export function slateTile(W = 24, H = W) {
@@ -297,9 +297,9 @@ export function rubberOverlay(W = 16, H = W) {
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const n = hash(x, y, 81), w = fbm(x, y, W, H, 8, 2, 82);
-      if (w > 0.66 && n < 0.6) p.set(x, y, 0xfff4e0, 60);
-      else if (n < 0.08) p.set(x, y, 0x000000, 60);
-      else if (n > 0.95) p.set(x, y, 0xfff4e0, 40);
+      if (w > 0.7 && n < 0.35) p.set(x, y, 0xfff4e0, 34);
+      else if (n < 0.07) p.set(x, y, 0x000000, 50);
+      else if (n > 0.96) p.set(x, y, 0xfff4e0, 36);
     }
   return p;
 }
@@ -320,23 +320,23 @@ export function silkRibbon(R = [0x3a0c08, 0x5a140c, 0x7a1e14, 0x9a2a1c, 0xb23626
 /** Depth of (x, y) into a W×H rectangle (0 on the outer ring). */
 const depth = (x, y, W, H) => Math.min(x, y, W - 1 - x, H - 1 - y);
 /** For a 9-slice: which edge is nearest, and the coordinate along it. */
-function edgeOf(x, y, W, H) {
+export function edgeOf(x, y, W, H) {
   const dl = x, dr = W - 1 - x, dt = y, db = H - 1 - y, m = Math.min(dl, dr, dt, db);
   if (m === dt) return { e: 0, u: x, d: dt, tl: true };
   if (m === dl) return { e: 3, u: y, d: dl, tl: true };
   if (m === db) return { e: 2, u: x, d: db, tl: false };
   return { e: 1, u: y, d: dr, tl: false };
 }
-function rivet(p, x, y, pal = TONES.brass, r = 1.6) {
+export function rivet(p, x, y, pal = TONES.brass, r = 1.6) {
   p.disk(x, y, r + 0.7, pal[0]);
   p.disk(x, y, r, pal[4]);
   p.disk(x - 0.4, y - 0.4, r * 0.65, pal[6]);
   p.set(Math.floor(x - 0.6), Math.floor(y - 0.6), pal[9]);
   p.set(Math.floor(x + 0.6), Math.floor(y + 0.6), pal[2]);
 }
-function nailHead(p, x, y) { // a hand-forged iron nail: square-ish dome
-  p.set(x, y, 0x8a8278); p.set(x + 1, y, 0x5a524c); p.set(x, y + 1, 0x5a524c); p.set(x + 1, y + 1, 0x2a2420);
-  p.set(x - 1, y, 0x2a2420, 120); p.set(x, y - 1, 0xbab2a6, 90); p.set(x + 2, y + 1, 0x140c08, 110); p.set(x + 1, y + 2, 0x140c08, 110);
+export function nailHead(p, x, y) { // a hand-forged iron nail: a squarish dome, a rust stain under it
+  p.set(x, y, 0x8a7a68); p.set(x + 1, y, 0x4a4038); p.set(x, y + 1, 0x4a4038); p.set(x + 1, y + 1, 0x241c16);
+  p.set(x - 1, y, 0x1a120c, 140); p.set(x, y - 1, 0x1a120c, 140); p.set(x + 2, y + 1, 0x140c08, 150); p.set(x + 1, y + 2, 0x5a2e14, 150);
 }
 
 // ---------------------------------------------------------------- frames
@@ -348,7 +348,9 @@ function nailHead(p, x, y) { // a hand-forged iron nail: square-ish dome
 export function parchFrame(dog = false, o = {}) {
   const s = o.slice ?? 8, M = o.mid ?? 40, W = s * 2 + M, sd = o.seed ?? 17;
   const p = new Px(W, W);
-  const tear = (e, u) => 0.6 + (pnoise(((u - s) * 5) / M, e * 3.1, 5, 64, sd) - 0.25) * 2.2 + (hash(wrap(u - s, M), e, sd) < 0.12 ? 1 : 0);
+  const bite = (e, u) => { const uu = wrap(u - s, M), b = Math.floor(hash(e, 9, sd) * (M - 6)); return uu >= b && uu < b + 4 ? [1, 2, 2, 1][uu - b] : 0; };
+  const ta = o.tear ?? 1;
+  const tear = (e, u) => 0.7 + (pnoise(((u - s) * 5) / M, e * 3.1, 5, 64, sd) - 0.3) * 2.6 * ta + (hash(wrap(u - s, M), e, sd) < 0.14 * ta ? 1 : 0) + (o.bites === false ? 0 : bite(e, u));
   const burn = (e, u) => 1.4 + pnoise(((u - s) * 4) / M, e * 2.3 + 9, 4, 64, sd + 1) * (o.burn ?? 2.6);
   const inside = (x, y) => {
     if (x < tear(3, y) || W - 1 - x < tear(1, y) || y < tear(0, x) || W - 1 - y < tear(2, x)) return false;
@@ -370,13 +372,6 @@ export function parchFrame(dog = false, o = {}) {
     if (d - 1 < b + 1.5 && hash(x, y, sd + 6) < 0.35) return mix(c, 0xd4b47e, 0.5);
     return undefined;
   });
-  // loose fibres sticking out of the tear
-  for (let i = 0; i < 14; i++) {
-    const e = i % 4, u = s + Math.floor(hash(i, 1, sd + 7) * M), t = Math.floor(tear(e, u)) - 1;
-    if (t < 0) continue;
-    const [x, y] = e === 0 ? [u, t] : e === 2 ? [u, W - 1 - t] : e === 3 ? [t, u] : [W - 1 - t, u];
-    if (!p.a(x, y)) p.set(x, y, 0xa07a4c);
-  }
   if (dog) {
     // the folded flap (the mirror of the torn-off triangle): the paper's paler back, lit near the
     // crease and shaded toward its free edges, the crease itself
@@ -428,9 +423,9 @@ export function woodFrame(pal = TONES.wood, o = {}) {
       // grain along the rail: streaks of constant depth that wave a little
       const wave = (pnoise((uu * 4) / M, d * 0.6 + (tl ? 0 : 5), 4, 32, sd) - 0.5) * 3.2;
       const ring = wrap((d + wave + (tl ? 0 : 1.3)) / 2.2, 1);
-      let k = 0.55 + (pnoise((uu * 8) / M, d * 0.3, 8, 16, sd + 1) - 0.5) * 0.2;
-      if (ring < 0.22) k -= 0.15;
-      if (hash(uu, d * 7 + (tl ? 0 : 3), sd + 2) < 0.05) k -= 0.12;
+      let k = 0.55 + (pnoise((uu * 8) / M, d * 0.3, 8, 16, sd + 1) - 0.5) * 0.24;
+      if (ring < 0.26) k -= 0.2; else if (ring > 0.8) k += 0.06;
+      if (hash(uu >> 1, d * 7 + (tl ? 0 : 3), sd + 2) < 0.07) k -= 0.14; // long pores
       // the moulding profile
       const lit = tl ? 1 : -1;
       if (d === 0) { p.set(x, y, pal[0]); continue; }
@@ -474,16 +469,15 @@ export function brassFrame(o = {}) {
       else if (d === 2) k += 0.12 * lit;
       else if (d === 6) k -= 0.2 * lit;
       else if (d === 7) { p.set(x, y, B[1]); continue; }
-      // the engraved vine on the flat band (d 3..5)
+      // a rope moulding on the band (d 3..5): twisted strands, each lit on its upper side
       if (d >= 3 && d <= 5) {
-        const vine = 4 + Math.sin((uu / M) * Math.PI * 4) * 1.1;
-        if (Math.abs(d - vine) < 0.55) { k = 0.22; if (F.V[fy * M + fx] > 0.55) { p.set(x, y, 0x4e6a50); continue; } }
-        else if (Math.abs(d - 1 - vine) < 0.55) k += 0.18; // the cut catches light on its lower lip
-        const leaf = wrap(uu, 8);
-        if ((leaf === 3 || leaf === 4) && d === (Math.sin((uu / M) * Math.PI * 4) > 0 ? 3 : 5)) k = 0.3;
+        const t = wrap(uu + (tl ? d : -d), 4);
+        k = t === 0 ? 0.2 : t === 1 ? 0.86 : t === 2 ? 0.66 : 0.48;
+        if (d === 3) k += 0.06 * lit; else if (d === 5) k -= 0.06 * lit;
+        if (F.V[fy * M + fx] > 0.64 && t === 0) { p.set(x, y, 0x3a3a1e); continue; } // grime in the twist
       }
       // tarnish on the lower/right rails
-      if (!tl && F.V[fy * M + fx] > 0.6) k -= 0.12;
+      if (!tl && F.V[fy * M + fx] > 0.6) k -= 0.1;
       p.set(x, y, quant(B, k, x, y, 0.35));
     }
   // glints on the lit bevel
@@ -520,7 +514,7 @@ export function sketchFrame() {
 export function coverFrame(pal = TONES.oxblood, o = {}) {
   const s = 12, M = 48, W = s * 2 + M, B = TONES.brass, sd = o.seed ?? 23;
   const p = new Px(W, W);
-  const F = leatherField(M, M, { seed: sd, cell: 3.4 });
+  const F = leatherField(M, M, { seed: sd, cell: 3.4, dome: 0.04, valley: 0.1, wear: 0.28 });
   for (let y = 0; y < W; y++)
     for (let x = 0; x < W; x++) {
       const { u, d, tl } = edgeOf(x, y, W, W);
@@ -541,34 +535,34 @@ export function coverFrame(pal = TONES.oxblood, o = {}) {
       }
       if (d === 10 && wrap(uu, 3) === 1) { p.set(x, y, B[6]); continue; } // dotted roll
       if (d === 10) k -= 0.12;
-      p.set(x, y, quant(pal, k, x, y, 0.4));
+      p.set(x, y, quant(pal, k, x, y, 0.25));
     }
   // a gilt fleuron where the fillet turns
   for (const [fx, fy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-    const cx = fx > 0 ? 9 : W - 10, cy = fy > 0 ? 9 : W - 10;
+    const cx = fx > 0 ? 8 : W - 9, cy = fy > 0 ? 8 : W - 9;
     for (const [dx, dy, c] of [[1, 1, 7], [2, 2, 6], [1, 2, 5], [2, 1, 5], [3, 3, 8]]) p.set(cx + dx * fx, cy + dy * fy, B[c]);
   }
   // brass corner guards
   const guard = (fx, fy) => {
     const X = (x) => (fx ? W - 1 - x : x), Y = (y) => (fy ? W - 1 - y : y);
-    for (let y = 1; y <= 12; y++)
-      for (let x = 1; x <= 12; x++) {
-        if (x + y > 14 || x + y < 3) continue;
-        let k = 0.62 + (hash(x, y, 27) - 0.5) * 0.08 - (x + y) * 0.012;
-        if (x === 1 || y === 1) k += 0.25;
-        if (x + y === 14) k = 0.08;
-        else if (x + y === 13) k = 0.3;
-        if (x + y === 10) k -= 0.28; // engraved line parallel to the edge
-        if (x + y === 11) k += 0.12;
-        if ((x === 2 || y === 2) && x + y > 4 && x + y < 13) k += 0.1;
+    const L = 13; // the guard's diagonal edge: x + y = L (it must stay inside the 12-px corner slice)
+    for (let y = 1; y <= 11; y++)
+      for (let x = 1; x <= 11; x++) {
+        if (x + y > L || x + y < 3) continue;
+        let k = 0.64 + (hash(x, y, 27) - 0.5) * 0.06 - (x + y) * 0.01;
+        if (x === 1 || y === 1) k = 0.92; // the folded lip over the board's edge
+        else if (x === 2 || y === 2) k = 0.5;
+        if (x + y === L) k = 0.06;
+        else if (x + y === L - 1) k = 0.28;
+        else if (x + y === L - 4) k = 0.3; // engraved line parallel to the edge
+        else if (x + y === L - 3) k = 0.82;
         if (!fx && !fy) k += 0.04; else if (fx && fy) k -= 0.08;
-        p.set(X(x), Y(y), quant(B, k, x, y, 0.3));
+        p.set(X(x), Y(y), quant(B, k, x, y, 0.25));
       }
-    // engraved leaf
-    for (const [x, y] of [[5, 4], [4, 5], [6, 4], [4, 6], [5, 5]]) p.set(X(x), Y(y), B[2]);
-    p.set(X(4), Y(4), B[8]);
-    rivet(p, X(8) + 0.5, Y(3) + 0.5, B, 1.1);
-    rivet(p, X(3) + 0.5, Y(8) + 0.5, B, 1.1);
+    // an engraved trefoil in the corner
+    for (const [x, y, c] of [[4, 3, 2], [3, 4, 2], [4, 4, 8], [5, 4, 3], [4, 5, 3]]) p.set(X(x), Y(y), B[c]);
+    rivet(p, X(7) + 0.5, Y(2) + 0.5, B, 0.9);
+    rivet(p, X(2) + 0.5, Y(7) + 0.5, B, 0.9);
   };
   guard(false, false); guard(true, false); guard(false, true); guard(true, true);
   p.outline(pal[0]);
@@ -669,19 +663,18 @@ export function buttonFrame(kind = 'gold', down = false) {
  */
 export function waxSeal(R = [0x2a0604, 0x4a0c08, 0x6a140c, 0x8a1e12, 0xa62a1a, 0xc23c2c, 0xd85a44, 0xf08a6a, 0xffc0a0]) {
   const W = 26, H = 30, p = new Px(W, H), cx = 13, cy = 12;
-  // the ribbon tails (behind)
+  // the ribbon tails (behind): two flat bands splaying out, a V cut in each end, a fold shade
+  const RB = [0x1a2638, 0x2a3c56, 0x3a5272, 0x5a76a0, 0x8eaad2];
   for (const side of [-1, 1]) {
-    for (let t = 0; t < 15; t++) {
-      const x0 = cx + side * (2 + t * 0.45), y0 = cy + 6 + t;
-      for (let w = -2; w <= 2; w++) {
-        const x = Math.round(x0 + w), y = Math.round(y0 + w * 0.3 * side);
-        const k = w === -2 || w === 2 ? 0x2a3a5a : w === -1 ? 0x5a76a0 : 0x3a5272;
-        p.set(x, y, k);
+    const ang = side * 0.62, dx = Math.sin(ang), dy = Math.cos(ang);
+    for (let t = 0; t <= 16; t++)
+      for (let w = -2.5; w <= 2.5; w += 0.5) {
+        const x = Math.round(cx + dx * t + dy * w), y = Math.round(cy + 4 + dy * t - dx * w);
+        const cut = t > 13 && Math.abs(w) < (t - 13) * 0.9; // the swallowtail notch
+        if (cut) continue;
+        const edge = Math.abs(w) > 2;
+        p.set(x, y, edge ? RB[0] : RB[(w * side < -0.5 ? 3 : w * side > 1 ? 1 : 2) + (t < 3 ? -1 : 0)]);
       }
-    }
-    // a swallowtail cut at the end
-    const ex = Math.round(cx + side * (2 + 14 * 0.45)), ey = cy + 20;
-    p.clear(ex, ey + 1); p.clear(ex, ey); p.clear(ex + side, ey + 1);
   }
   // the blob: a wobbly disk
   for (let y = 0; y < H; y++)
@@ -694,21 +687,22 @@ export function waxSeal(R = [0x2a0604, 0x4a0c08, 0x6a140c, 0x8a1e12, 0xa62a1a, 0
       if (d > r - 1.2) k = 0.32 + lit * 0.25; // the edge of the blob rolls over
       else if (d > r - 3.2) k = 0.62 + lit * 0.22; // the pressed rim stands proud
       else if (d > r - 4.2) k = 0.4 - lit * 0.18; // the die's edge cut in
-      else k = 0.5 + (fbm(x, y, 32, 32, 6, 2, 95) - 0.5) * 0.12;
+      else k = 0.4 + (fbm(x, y, 32, 32, 6, 2, 95) - 0.5) * 0.1;
       p.set(x, y, quant(R, k, x, y, 0.3));
     }
-  // the sigil: an eight-point star, sunk in (lit from the top-left, so its upper edges are dark)
+  // the sigil: Old Star's eight-point star, raised off a sunken field (lit from the top-left)
   const S = [];
-  for (let k = 0; k < 16; k++) { const a = (k / 16) * Math.PI * 2 - Math.PI / 2, r = k % 2 ? 2.2 : 5.2; S.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); }
+  for (let k = 0; k < 16; k++) { const a = (k / 16) * Math.PI * 2 - Math.PI / 2, r = k % 2 ? 2.4 : 5.6; S.push([cx + 0.5 + Math.cos(a) * r, cy + 0.5 + Math.sin(a) * r]); }
   const star = new Px(W, H);
   star.poly(S, 0xffffff);
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       if (!star.a(x, y)) continue;
       const up = !star.a(x, y - 1) || !star.a(x - 1, y), dn = !star.a(x, y + 1) || !star.a(x + 1, y);
-      p.set(x, y, up ? R[2] : dn ? R[7] : R[4]);
+      p.set(x, y, up ? R[7] : dn ? R[2] : R[6]);
+      if (!star.a(x + 1, y + 1) && p.a(x + 1, y + 1) && !star.a(x + 1, y + 1)) p.set(x + 1, y + 1, R[1]); // its shadow on the field
     }
-  p.set(cx, cy, R[3]); p.set(cx - 1, cy - 1, R[6]);
+  p.set(cx, cy, R[8]);
   // drips and a highlight
   p.set(cx + 8, cy + 8, R[4]); p.set(cx + 8, cy + 9, R[3]); p.set(cx - 9, cy + 6, R[4]);
   p.set(cx - 6, cy - 7, R[8]); p.set(cx - 5, cy - 8, R[7]); p.set(cx - 7, cy - 5, R[7]);
@@ -716,12 +710,68 @@ export function waxSeal(R = [0x2a0604, 0x4a0c08, 0x6a140c, 0x8a1e12, 0xa62a1a, 0
   return p;
 }
 
-/** A brass eyelet (7×7) for price tags. */
+/** A brass eyelet (5×5) punched through a price tag. */
 export function eyelet() {
-  const p = new Px(7, 7), B = TONES.brass;
-  p.disk(3.5, 3.5, 3.4, B[1]);
-  p.disk(3.5, 3.5, 2.7, B[5]);
-  p.disk(3.5, 3.5, 1.2, 0x2a1408);
-  p.set(1, 2, B[8]); p.set(2, 1, B[8]); p.set(5, 4, B[3]); p.set(4, 5, B[3]);
+  const p = new Px(5, 5), B = TONES.brass;
+  p.disk(2.5, 2.5, 2.5, B[2]);
+  p.set(1, 0, B[7]); p.set(0, 1, B[7]); p.set(1, 1, B[8]); p.set(2, 0, B[6]); p.set(0, 2, B[6]);
+  p.set(3, 4, B[1]); p.set(4, 3, B[1]); p.set(3, 3, B[3]);
+  p.set(2, 2, 0x1a0c06); p.set(2, 1, B[3]); p.set(1, 2, B[3]);
+  return p;
+}
+
+/**
+ * Stitched leather (slice 10 on 52): pebbled hide with a rolled, rubbed edge, a pressed groove and a
+ * saddle stitch in pale waxed thread (on the middle's period), a brass rivet in each corner.
+ */
+export function leatherFrame(pal = TONES.oxblood, thread = 0xe6c690) {
+  const s = 10, M = 32, W = s * 2 + M, B = TONES.brass;
+  const p = new Px(W, W);
+  const F = leatherField(M, M, { seed: 43, cell: 3.4, dome: 0.04, valley: 0.1, wear: 0.3 });
+  for (let y = 0; y < W; y++)
+    for (let x = 0; x < W; x++) {
+      const { u, d, tl } = edgeOf(x, y, W, W);
+      const cx = Math.min(x, W - 1 - x), cy = Math.min(y, W - 1 - y);
+      if (cx + cy < 4 || d >= s) continue; // rounded corners
+      let k = F.K[wrap(y - s, M) * M + wrap(x - s, M)];
+      const uu = wrap(u - s, M), lit = tl ? 1 : -1;
+      if (d === 0) { p.set(x, y, pal[0]); continue; }
+      if (d === 1) k += 0.2 * lit + 0.08;
+      else if (d === 2) k += 0.08 * lit;
+      else if (d === 4) k -= 0.2; // the pressed groove the stitches sit in
+      if (d === 5) {
+        const st = wrap(uu, 4);
+        if (st < 2) { p.set(x, y, st === 0 ? mix(thread, 0xffffff, tl ? 0.3 : 0.1) : thread); continue; }
+        if (st === 2) k -= 0.22; // the stitch hole
+      } else if (d === 6 && wrap(uu, 4) < 2) k -= 0.16; // the thread's shadow
+      if (d === 7) k += 0.05 * lit;
+      p.set(x, y, quant(pal, k, x, y, 0.25));
+    }
+  for (const [x, y] of [[4.5, 4.5], [W - 4.5, 4.5], [4.5, W - 4.5], [W - 4.5, W - 4.5]]) rivet(p, x, y, B, 1.6);
+  p.outline(pal[0]);
+  return p;
+}
+
+/**
+ * The small hanging sign used with `stretch` (slice 6 on 20×18): everything along an edge is constant
+ * along it (so stretching does not smear it): a rounded lit lip, a chamfer, grain rows top and
+ * bottom, a dark underside, an iron nail in each corner; the middle is plain board.
+ */
+export function stretchSign(pal = TONES.wood) {
+  const W = 20, H = 18, p = new Px(W, H);
+  const rowK = [0, 0.92, 0.74, 0.56, 0.44, 0.56, /* middle */ 0.56, 0.56, 0.56, 0.56, 0.56, 0.56, /* bottom */ 0.5, 0.4, 0.5, 0.34, 0.2, 0];
+  const colK = [0, 0.8, 0.66, 0.56, 0.5, 0.56];
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const cx = Math.min(x, W - 1 - x), cy = Math.min(y, H - 1 - y);
+      if (cx + cy < 2) continue;
+      let k;
+      const inX = x >= 6 && x < W - 6, inY = y >= 6 && y < H - 6;
+      if (inX || (!inY && cy < cx)) k = rowK[y]; // top / bottom bands (and their corners, outer part)
+      else if (inY || cx <= cy) k = x < 6 ? colK[x] : colK[W - 1 - x] - (W - 1 - x > 0 && W - 1 - x < 3 ? 0.3 : 0.06);
+      if (x === 0 || x === W - 1 || y === 0 || y === H - 1) { p.set(x, y, pal[0]); continue; }
+      p.set(x, y, quant(pal, k, x, y, 0));
+    }
+  for (const [x, y] of [[2, 2], [W - 4, 2], [2, H - 5], [W - 4, H - 5]]) nailHead(p, x, y);
   return p;
 }

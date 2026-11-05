@@ -177,7 +177,9 @@ export class Atmosphere {
     for (const key of ['mistCol', 'sky', 'bounce', 'mood']) for (let i = 0; i < T[key].length; i++) C[key][i] = lerp(C[key][i], T[key][i]);
     C.motes = T.motes; C.motes2 = T.motes2;
     U.haze.value = C.haze;
-    U.mist.value.set(C.mist * 0.6, 1.4, 0.55, 0);
+    // big halls: the mist pools thicker over their floors
+    this.hallK = (this.hallK || 0) + (this.hall - (this.hallK || 0)) * k;
+    U.mist.value.set(C.mist * 0.6 * (1 + this.hallK * 1.4), 1.4 - this.hallK * 0.5, 0.55 + this.hallK * 0.25, 0);
     U.mistCol.value.setRGB(C.mistCol[0], C.mistCol[1], C.mistCol[2]);
     U.skyCol.value.setRGB(C.sky[0], C.sky[1], C.sky[2]);
     U.bounce.value.setRGB(C.bounce[0], C.bounce[1], C.bounce[2]);

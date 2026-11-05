@@ -6,10 +6,10 @@
 //             glints, bolts into the trees when the ground starts to crack.
 //   birds     robins on the signpost, a stump and the bridge rail (hop, peck, fly off as he nears);
 //             a woodpecker drumming on a giant's trunk.
-//   frog      on a stone in the stream; puffs its throat, leaps in when the coop comes splashing.
+//   frog      on a stone in the stream; puffs its throat, leaps in when the traveller comes near.
 //
 //   const C = makeCritters(F, { lite }); scene.add(C.group);
-//   C.update(dt, { t, hero: Vector3, coop: Vector3, glint, crack, sfx(name, opts) }); C.dispose();
+//   C.update(dt, { t, hero: Vector3, glint, crack, sfx(name, opts) }); C.dispose();
 import * as THREE from 'three';
 import { VoxelGrid, meshVoxGreedy, fshade, fmix } from '../vox.js';
 import { LAYER_OUTLINE } from '../../core/Engine.js';
@@ -437,7 +437,7 @@ export function makeCritters(F, { lite = false } = {}) {
             const puff = Math.max(0, Math.sin(st * 3.2)) ** 3;
             fr.throat.scale.setScalar(1 + puff * 0.9);
             if (puff > 0.95 && !this.croaked) { this.croaked = true; c.sfx?.('frog'); } else if (puff < 0.5) this.croaked = false;
-            if (c.coop && c.coop.distanceTo(start) < 2.6) { state = 'leap'; st = 0; }
+            if (c.hero && c.hero.distanceTo(start) < 2.2) { state = 'leap'; st = 0; }
           } else {
             const u = clamp(st / 0.5, 0, 1);
             fr.root.position.set(start.x + u * 0.9, start.y + Math.sin(u * Math.PI) * 0.35 - u * 0.25, start.z + u * 0.4);

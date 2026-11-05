@@ -684,7 +684,7 @@ export function buildShaft(ctx) {
   };
   for (const l of lines) resetLine(l, true);
 
-  const { mole, hen, cage } = ctx;
+  const { mole, cage } = ctx;
   const S = { t: 0, y: 0, zone: 0 };
   const dur = 14;
   const accel = 0.12;
@@ -696,16 +696,12 @@ export function buildShaft(ctx) {
   const tmpC = new THREE.Color();
   const tmpC2 = new THREE.Color();
 
-  const seatRiders = () => {
+  const seatRider = () => {
     if (mole.root.parent !== cage.root) cage.root.add(mole.root);
-    if (hen.root.parent !== cage.root) cage.root.add(hen.root);
     mole.root.position.set(-0.34, cage.seatY - 2 * mole.s, cage.seatZ + 0.02);
     mole.root.rotation.set(0, 0, 0);
     mole.face(0, true);
     mole.play('sit');
-    hen.root.position.set(0.46, cage.seatY, cage.seatZ + 0.06);
-    hen.face(0, true);
-    hen.play('sit');
   };
 
   // make sure every zone up to height y exists before it can be seen
@@ -718,7 +714,7 @@ export function buildShaft(ctx) {
     scene.add(cage.root);
     if (cage.cable) cage.cable.visible = true;
     cage.lampGlow.visible = true;
-    seatRiders();
+    seatRider();
     cage.setGate(1);
     cage.root.position.set(0, 0, 0);
     cage.root.rotation.set(0, 0, 0);
@@ -734,7 +730,6 @@ export function buildShaft(ctx) {
     return z.bottom + (z.top - z.bottom) * f;
   };
 
-  let flapT = 0.6;
   const update = (dt, api) => {
     S.t += dt;
     const y = heightAt(S.t / dur);
@@ -807,18 +802,14 @@ export function buildShaft(ctx) {
     spGeo.attributes.position.needsUpdate = true;
     spGeo.attributes.color.needsUpdate = true;
 
-    // riders: the mole looks up, the hen flaps
+    // the rider: the mole looks up
     mole.update(dt);
-    hen.update(dt);
     const look = clamp(S.t / 2, 0, 1);
     mole.neck.rotation.x = -0.12 - 0.42 * look + Math.sin(S.t * 1.7) * 0.04;
     mole.neck.rotation.y = Math.sin(S.t * 0.6) * 0.15;
     mole.armL.rotation.x = -0.55; mole.armR.rotation.x = -0.55;
     mole.legL.rotation.x = -1.45 + Math.sin(S.t * 5) * 0.18;
     mole.legR.rotation.x = -1.45 - Math.sin(S.t * 5) * 0.18;
-    flapT -= dt;
-    if (flapT < 0) { flapT = 0.9 + Math.random() * 1.2; hen.flap(0.5 + Math.random() * 0.4); if (Math.random() < 0.4) api.audio.play('cluck', { n: 2 }); }
-    hen.head.rotation.x = -0.35;
     cage.lampGlow.userData.glow.uIntensity.value = 0.55 + Math.sin(S.t * 9) * 0.05;
   };
 

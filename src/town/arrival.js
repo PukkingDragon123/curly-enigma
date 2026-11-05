@@ -2,15 +2,15 @@
 // between the boards; two thumps rattle them and sift dust from the lintel; then the boards burst
 // outward in splinters and dust, light floods in, and the mole tumbles head over heels onto the
 // cobbles. The tunnel slumps shut behind; the mole gets up, sneezes off the dirt and looks out
-// over the town while the townsfolk gasp, gather round and chatter. Nugget (once found) tumbles
-// out too and trots off toward the new burrow. Input is back in under three seconds.
+// over the town while the townsfolk gasp, gather round and chatter. Input is back in under three
+// seconds.
 import * as THREE from 'three';
 import { TOWN } from '../iso/townLayout.js';
 import { rand, pick } from '../core/util.js';
 import { M } from './units.js';
 
 export const ELDER_LINE = 'Another one from the deep tunnels? ...There\'s an empty burrow down the lane. It\'s yours now.';
-const GASPS = ['Did that wall just... sneeze out a mole?', 'Look at all that dirt!', 'Shaft Seven was sealed for years!', 'Somebody fetch a broom.', 'Is that a chicken?!'];
+const GASPS = ['Did that wall just... sneeze out a mole?', 'Look at all that dirt!', 'Shaft Seven was sealed for years!', 'Somebody fetch a broom.'];
 
 export class EscapeArrival {
   constructor(S) {
@@ -20,20 +20,13 @@ export class EscapeArrival {
     this.skip = false;
   }
 
-  /** Put the mole (and Nugget) in the dark behind the boards before the first frame. */
+  /** Put the mole in the dark behind the boards before the first frame. */
   setup() {
     const S = this.S, T = TOWN.tunnel;
     S.locked = true;
     this.z0 = TOWN.northFace - 1.0;
     S.cut = { pos: new THREE.Vector3(T.cx - 0.05, 0, this.z0), yaw: Math.PI, pitch: -0.06, dip: 0.04 };
     S.place(T.cx, this.z0, Math.PI);
-    const n = S.nugget;
-    if (n) {
-      n.collide = false;
-      n.scripted = true;
-      n.pos.set(T.cx + 0.45, 0, this.z0 + 0.15);
-      n.rig.face(0, true);
-    }
     // dark in here: the boards and frame tinted down, the paws barely lit
     for (const m of S.tunnel.tint || []) m.color.setRGB(0.26, 0.22, 0.2);
     this.lamp = [S.rig.lampK, S.rig.ambient.clone()];
@@ -85,7 +78,6 @@ export class EscapeArrival {
     au.play('debris', { vol: 0.4 });
     S.rig.shake(0.7);
     S.particles.dustPuff(c.pos.x, 0.08, c.pos.z + 0.4, 14, 0x8a6a4a);
-    this.nuggetTumble();
     // the old shaft slumps shut behind
     S.later(0.25, () => this.seal());
     // sprawled on the cobbles, looking down at them; then up
@@ -175,55 +167,6 @@ export class EscapeArrival {
     });
   }
 
-  nuggetTumble() {
-    const S = this.S, T = TOWN.tunnel, au = S.game.audio, n = S.nugget;
-    if (!n) return;
-    S.later(0.3, async () => {
-      n.rig.flap(1.2);
-      au.play('bawk', { vol: 0.8 });
-      const z0 = n.z, z1 = T.out.z + 0.2, x0 = n.x, x1 = T.cx + 0.8;
-      await S.tween(0.45, (k) => {
-        n.pos.z = z0 + (z1 - z0) * k;
-        n.pos.x = x0 + (x1 - x0) * k;
-        n.body.position.y = Math.sin(k * Math.PI) * 0.6;
-        n.body.rotation.x = k * Math.PI * 2;
-      });
-      n.body.rotation.x = 0;
-      n.body.position.y = 0;
-      S.particles.dustPuff(n.x, 0.05, n.z, 6, 0x8a6a4a);
-      S.particles.burst(6, { x: n.x, y: 0.5, z: n.z, vy: 0.6, life: 1.4, size: 2.2, color: 0xf6f0e4, alpha: 1, alpha2: 0, grav: 0.6, wob: 0.8 }, { x: 0.15, y: 0.1, z: 0.15, v: 0.4 });
-      au.play('cluck', { n: 3, pitch: 1.2 });
-      await S.sleepFor(0.5);
-      S.emote(n, '!', { sound: 'alert' });
-      // trot off toward the new home and wait there for the mole
-      const H = TOWN.home;
-      n.collide = true;
-      n.setPath(S.map.findPath(n.x, n.z, H.door.x + 0.6, H.spawn.z + 0.1, 0.17));
-      S.nuggetAI.mode = 'petted';
-      S.nuggetAI.pettedT = 999;
-      let t = 0, waited = 0;
-      const tick = (dt) => {
-        t += dt;
-        const st = n.path ? n.followPath(dt, S.map, 1.9, { runAt: 2.5 }) : 'done';
-        if (st !== 'moving') {
-          waited += dt;
-          n.drive(dt, 0, 0, S.map);
-          if (waited > 0.4 && waited < 0.5) { n.faceToward(H.door.x, H.door.z - 1); n.rig.peck(); }
-          if (Math.random() < dt * 0.5) n.rig.peck();
-        }
-        const near = n.dist(S.player.x, S.player.z) < 2.2;
-        if (t > 20 || (waited > 1 && near)) {
-          S.tickers.splice(S.tickers.indexOf(tick), 1);
-          n.scripted = false;
-          S.nuggetAI.mode = 'follow';
-          S.nuggetAI.pettedT = 0;
-          if (near) S.emote(n, '♥');
-        }
-      };
-      S.tickers.push(tick);
-    });
-  }
-
   /** Townsfolk turn, gasp, gather round and chatter (bubbles only, never blocking). */
   react() {
     const S = this.S, T = TOWN.tunnel;
@@ -248,7 +191,6 @@ export class EscapeArrival {
     }
     const talkers = folk.filter((f) => f !== elder && f.role !== 'baby' && f.spec.age !== 'baby').slice(0, 2);
     const lines = [...GASPS];
-    if (!S.nugget) lines.splice(lines.indexOf('Is that a chicken?!'), 1);
-    talkers.forEach((f, i) => S.later(3.0 + i * 1.7, () => { f.pause = 3.5; S.say(f.a, pick(lines.splice(i === 0 && S.nugget ? lines.length - 1 : Math.floor(Math.random() * lines.length), 1)), { name: f.name, life: 3.6 }); }));
+    talkers.forEach((f, i) => S.later(3.0 + i * 1.7, () => { f.pause = 3.5; S.say(f.a, pick(lines.splice(Math.floor(Math.random() * lines.length), 1)), { name: f.name, life: 3.6 }); }));
   }
 }

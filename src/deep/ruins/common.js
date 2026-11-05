@@ -54,7 +54,7 @@ export const zoneOf = (f) => (f.id && /^R(\d)/.test(f.id) ? +f.id[1] : 1);
 /** Which puzzle guards a dungeon of this kind in this zone (the generator names one; this is the fallback). */
 export function puzzleFor(kind, zone) {
   if (kind === 'cell') return zone % 2 ? 'switch' : 'levers';
-  if (kind === 'vault') return zone % 2 ? 'dials' : 'plates';
+  if (kind === 'vault') return 'plates';
   if (kind === 'fortress') return zone % 2 ? 'levers' : 'beams';
   return 'valve';
 }

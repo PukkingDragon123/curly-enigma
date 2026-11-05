@@ -2,7 +2,7 @@
 // cast-iron stove with burners and flames, and all the props the minigames use.
 import * as THREE from 'three';
 import * as M from './models.js';
-import { wallPlanksTex, caveWallTex, counterTex, beamTex, caveViewTex, nuggetPortraitTex, chalkboardTex, tilesTex } from './tex.js';
+import { wallPlanksTex, caveWallTex, counterTex, beamTex, caveViewTex, sunPaintingTex, chalkboardTex, tilesTex } from './tex.js';
 import { setOutline } from '../gfx/Voxel.js';
 import { makeRng } from '../core/util.js';
 import { flameSheet, makeSheetSprite } from '../bookends/fx.js';
@@ -227,8 +227,8 @@ export class Kitchen {
       this.add(h, hx, 1.98, z + 0.32);
       this.sway.push({ obj: h, amp: 0.06, sp: 0.8 + i * 0.07, ph: i, axis: 'z' });
     }
-    // Nugget's portrait & chalkboard
-    const port = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.42), new THREE.MeshLambertMaterial({ map: nuggetPortraitTex() }));
+    // a little painting of the sun & the chalkboard
+    const port = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.42), new THREE.MeshLambertMaterial({ map: sunPaintingTex() }));
     port.position.set(-0.75, 0.62, z + 0.015);
     port.rotation.z = 0.04;
     setOutline(port, true);

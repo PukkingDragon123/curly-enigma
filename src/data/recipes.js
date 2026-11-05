@@ -79,7 +79,7 @@ export const DISHES = {
   whisper_wrap: D({ name: 'Whisper Wrap', energy: 50, buff: 'sense', secs: 360, value: 140, icon: { k: 'food', t: 'wrap', c: 0xa0c080 }, desc: 'It whispers where the good rocks are.' }),
   lotus_feast: D({ name: 'Core Lotus Feast', energy: 200, maxEnergy: 10, buff: 'strong', buff2: 'glow', secs: 600, value: 5000, icon: { k: 'food', t: 'feast', c: 0xff9ad0 }, desc: 'Permanently raises your maximum energy.' }),
   grub_pancakes: D({ name: 'Honey Pancakes', energy: 45, buff: 'hearty', secs: 240, value: 60, icon: { k: 'food', t: 'pancakes', c: 0xe0b070 }, desc: 'A fluffy stack, tossed high, drowned in deep honey.' }),
-  deviled_egg: D({ name: 'Deviled Egg', energy: 22, value: 30, icon: { k: 'food', t: 'egg', c: 0xffe08a }, desc: 'A simple snack from your hen.' }),
+  deviled_egg: D({ name: 'Deviled Egg', energy: 22, value: 30, icon: { k: 'food', t: 'egg', c: 0xffe08a }, desc: 'A simple snack: a boiled egg, a pinch of salt, a little fire.' }),
   // ---------------------------------------------------------------- Old Star's cave cookery
   mushroom_stew: D({ name: 'Mushroom Stew', energy: 70, buff: 'hearty', secs: 420, value: 120, icon: I('mushstew', 0x9a6a3a), desc: 'Buttery mushrooms, cave garlic and thyme, simmered slow. Old Star\'s favourite.' }),
   truffle_omelette: D({ name: 'Cave-Truffle Omelette', energy: 80, buff: 'lucky', secs: 600, value: 700, icon: I('trufomelette', 0xffd860), desc: 'Folded soft, with truffle shaved over the top. Your nose will find gems.' }),

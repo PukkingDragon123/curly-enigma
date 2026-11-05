@@ -20,6 +20,12 @@
 // The beats are written against the home's stations (questSpot('lift' | 'forge' | 'hearth'), his
 // spots, the lift / forge / cooking functions), not against rooms: the home is his old cave camp.
 //   done   → back with a meal in you: the graduation cutscene, the whole HUD, free play.
+// Each lesson ends at home: its card comes back with a LEARNED stamp (ui.onboard.lessonDone: a
+// fanfare, confetti, the medal kept) while he comes over, then his verdict, then the next lesson's
+// chapter card; the last one ends on the graduation (ui.onboard.graduate: the four medals). Things
+// he gives you are tossed (ui.onboard.toss: his coal arcs into your pack). Walking to his forge or
+// fire pit shows its goal at once (a "Go to the forge" card that fills as you get there, a marker),
+// then what to press when you're there.
 // While a lesson is on (the tutorial UI level below full: src/ui/Onboard.js) the lift and the front
 // door wait (the lift opens for the mining lesson only). Talking to him offers "What now?" and
 // "Skip the lessons" (lesson { step: 'skip' }: everything back as it was before the tutorial).
@@ -163,7 +169,7 @@ export class HomeLessons {
     this.endHomeTutor();
     this.game.ui.setTutorialLevel?.(TUT.QUEST);
     // (a word over his shoulder as the gate shuts: it floats by him, the cutscene's bars stay clear)
-    if (this.star?.rig) this.starLine('In we go! Hold on to something: she drops a bit at the start.', { mood: 'happy', dur: 3.2 });
+    if (this.star?.rig) this.starLine('In we go! Hold on to something: she drops a bit at the start.', { mood: 'happy', dur: 2.6 });
   }
 
   // ------------------------------------------------------------ cutscenes at home
@@ -217,6 +223,19 @@ export class HomeLessons {
     return star.head(out).add(_v2.set(Math.sin(f) * 0.22, -0.32, Math.cos(f) * 0.22));
   }
 
+  /**
+   * Where he comes to stand to talk to you (meters): `d` from you, on the side he's coming from (so
+   * he never walks into your face or round you), then nudged to open floor.
+   */
+  approachSpot(d = 0.95) {
+    const p = this.cam || this.rig.player.pos, star = this.star;
+    let dx = star.pos.x - p.x, dz = star.pos.z - p.z;
+    const l = Math.hypot(dx, dz);
+    if (l < 0.05) { dx = 1; dz = 0; } else { dx /= l; dz /= l; }
+    if (l < d) return { x: star.pos.x, z: star.pos.z };
+    return { x: p.x + dx * d, z: p.z + dz * d };
+  }
+
   /** He tosses you something: an item's icon arcs from his paw to your pack (or `to`). */
   starToss(id, label, to = 'pack') {
     const ob = this.game.ui.onboard;
@@ -240,7 +259,8 @@ export class HomeLessons {
           const p = this.cam || this.rig.player.pos;
           // the lesson card comes back with its stamp while he hurries over
           ob?.lessonDone?.(2, 'The Dig', 'Copper out of the rock, clean as a whistle');
-          const walk = star.walkTo(p.x - 0.75, p.z, 1.15);
+          const at = this.approachSpot(0.95);
+          const walk = star.walkTo(at.x, at.z, 1.15);
           await go(Promise.all([walk, sleep(2.9)]));
           star.faceTo(p.x, p.z);
           await go(this.faceStar((s, f) => this.tween(s, f), 0.5));
@@ -328,7 +348,8 @@ export class HomeLessons {
         star.scripted = true;
         const p = this.cam || this.rig.player.pos;
         ob?.lessonDone?.(4, 'The Hearth', 'A proper meal in you');
-        const walk = star.walkTo(p.x + 0.6, p.z - 0.6);
+        const at = this.approachSpot(1.0);
+        const walk = star.walkTo(at.x, at.z);
         await go(Promise.all([walk, sleep(2.9)]));
         star.faceTo(p.x, p.z);
         star.scripted = false;

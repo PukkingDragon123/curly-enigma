@@ -542,9 +542,14 @@ export function shelf(len = 0.9, seed = 29) {
   const g = new VoxelGrid(L, 60, 16);
   const pl = wood(0x7a5232, { axis: 'x', across: 'z', pw: 99, seed });
   for (const y of [8, 34]) {
-    g.box(0, y, 0, L, 2, 14, pl);
+    // the planks bow a voxel in the middle under forty years of jars
+    for (let x = 0; x < L; x++) { const bow = x > L * 0.3 && x < L * 0.7 ? 1 : 0; g.box(x, y - bow, 0, 1, 2, 14, (xx, yy, z) => (yy === y - bow + 1 && h3(xx, yy, z, seed) < 0.05 ? 0x8a7a68 : pl(xx, yy, z))); }
     for (const x of [6, L - 8]) { g.box(x, y - 5, 0, 2, 5, 3, 0x3a2414); g.box(x, y - 3, 3, 2, 2, 8, 0x4a2e1a); }
   }
+  // a tea towel hung over the lower plank's edge, a cobweb under the top one
+  for (let y = 0; y < 9; y++) for (let x = L - 22; x < L - 12; x++) g.set(x, 8 - y, 14 + (y > 1 ? 1 : 0), y < 2 ? 0xa83a2a : (x + (y >> 1)) % 4 === 0 ? 0xa83a2a : 0xd8ccb0);
+  for (let k = 0; k < 9; k++) g.set(2 + k, 33 - Math.round(k * 0.7), 2 + (k % 3), 0x8e8b84);
+  for (let k = 0; k < 6; k++) g.set(2, 33 - k, 2 + k, 0x8e8b84);
   const jar = (x, y, z, h, r, c, lid) => {
     ring(g, x, z, 0, r, y, y + h, (xx, yy, zz) => (h3(xx, yy, zz, 5) < 0.12 ? mulc(c, 1.3) : c));
     ring(g, x, z, 0, r - 0.6, y + h, y + h + 2, lid);

@@ -30,13 +30,15 @@ const BEAM_F = /* glsl */`
     vec3 N = normalize(vec3(vN.x, 0.0, vN.z));
     vec3 Vh = normalize(vec3(V.x, 0.0, V.z) + 1e-5);
     float face = abs(dot(N, Vh));               // 1 through the beam's middle, 0 at its edges
-    float core = face * face * (3.0 - 2.0 * face);
+    float core = pow(face, 2.2);
     float a = atan(vW.z - uC.y, vW.x - uC.x);
     // slow streaks of brighter air drifting round the beam, and down it
-    float streak = 0.72 + 0.28 * sin(a * 5.0 + uTime * 0.13) * sin(a * 3.0 - uTime * 0.09 + vH * 2.6);
-    streak *= 0.85 + 0.15 * sin(vW.y * 7.0 - uTime * 0.4 + a * 2.0);
+    float streak = 0.62 + 0.38 * sin(a * 5.0 + uTime * 0.13) * sin(a * 3.0 - uTime * 0.09 + vH * 2.6);
+    streak *= 0.8 + 0.2 * sin(vW.y * 6.0 - uTime * 0.35 + a * 2.0);
     float fall = smoothstep(0.0, 0.18, vH) * (0.45 + 0.55 * vH) * (1.0 - smoothstep(0.93, 1.0, vH) * 0.6);
-    float k = core * streak * fall * uK;
+    // (from inside the beam, looking up it, it mustn't wash the view out)
+    float inside = smoothstep(0.15, 0.85, length(cameraPosition.xz - uC));
+    float k = core * streak * fall * uK * (0.25 + 0.75 * inside);
     // in steps, dithered (the game's pixel look)
     k = floor(k * 10.0 + bayer4(gl_FragCoord.xy) * 0.999) / 10.0;
     if (k <= 0.0) discard;
@@ -45,7 +47,7 @@ const BEAM_F = /* glsl */`
 
 function makeBeam() {
   const y0 = Y + 0.01, y1 = HOLE_SHAFT.top + 0.2;
-  const geo = new THREE.CylinderGeometry(HOLE_SHAFT.r * 0.82, HOLE_SHAFT.r * 1.25, y1 - y0, 18, 1, true);
+  const geo = new THREE.CylinderGeometry(HOLE_SHAFT.r * 0.78, HOLE_SHAFT.r * 1.12, y1 - y0, 18, 1, true);
   const mat = new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uK: { value: 0.16 }, uCol: { value: new THREE.Color(0x9ab8d8) }, uC: { value: new THREE.Vector2(HOLE.x, HOLE.z) }, uY0: { value: y0 }, uY1: { value: y1 } },
     vertexShader: BEAM_V, fragmentShader: BEAM_F,
@@ -138,7 +140,7 @@ export class CampAir {
     this.beam.material.uniforms.uTime.value = time;
     // (a little brighter when you're under it, so the cold light reads against the dark roof)
     const dh = Math.hypot(p.x - HOLE.x, p.z - HOLE.z);
-    this.beam.material.uniforms.uK.value = 0.13 + 0.05 * Math.max(0, 1 - dh / 5);
+    this.beam.material.uniforms.uK.value = 0.1 + 0.04 * Math.max(0, 1 - dh / 5);
     const near = (q, r) => q && Math.hypot(q.x - p.x, q.z - p.z) < r;
     for (const m of this.moths) if (near(m.c, 9)) m.update(dt);
     // smoke off the fire pit, curling up toward the black patch on the roof
@@ -164,7 +166,7 @@ export class CampAir {
       if (T.forge <= 0) {
         const air = s.forgeAir || 0;
         T.forge = 0.9 - air * 0.6;
-        fx.spawn({ x: f.x + rand(-0.25, 0.25), y: f.y + 0.32, z: f.z + 0.3 + rand(0, 0.1), vx: rand(-0.03, 0.03), vy: rand(0.12, 0.2), vz: rand(0.02, 0.06), life: rand(2.5, 3.5), size: 0.04, grow: 0.07, color: [0.22, 0.2, 0.2], alpha: 0.16, drag: 0.4, grav: -0.01, swirl: 0.04 });
+        fx.spawn({ x: f.x + rand(-0.25, 0.25), y: f.y + 0.32, z: f.z + 0.3 + rand(0, 0.1), vx: rand(-0.03, 0.03), vy: rand(0.12, 0.2), vz: rand(0.02, 0.06), life: rand(2.5, 3.5), size: 0.04, grow: 0.07, color: [0.17, 0.16, 0.16], alpha: 0.12, drag: 0.4, grav: -0.01, swirl: 0.04 });
       }
     }
     // dust turning in the beam of daylight

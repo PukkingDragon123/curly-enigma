@@ -99,12 +99,12 @@ export function makePlan(seed, opts = {}) {
   plan.features.push({ kind: 'gate', x: T.x + 1.6, y: T.y, z: T.z - 1.2 });
   plan.lights.push({ x: T.x + 1.2, y: T.y + 1.4, z: T.z - 1.0, c: [1.4, 0.95, 0.5], r: 9 });
   plan.lights.push({ x: T.x - 5, y: T.y + 2.2, z: T.z + 3, c: [1.0, 0.7, 0.35], r: 6, lantern: true });
-  // lift shaft + stations: plain stone rooms off a stone-lined shaft, nothing in them breaks
-  // (gen/lifts.js; the lever, the sign and the torches are ruins/liftKit.js models)
+  // the town shaft (a natural chimney skinned in hard rock) and its stops, alcoves off it
+  // (gen/lifts.js; the gantry, the bell, the board and the lantern are ruins/liftKit.js models)
   plan.features.push({ kind: 'shaft', x: plan.shaft.x, z: plan.shaft.z, y0: -208, y1: T.y + 2 });
   for (const s of plan.stations) {
     plan.features.push({ kind: 'stop', id: 's' + s.n, x: s.x, y: s.y, z: s.z, sx: plan.shaft.x, sz: plan.shaft.z });
-    plan.lights.push({ x: s.x + 1.2, y: s.y + 1.45, z: s.z, c: [1.05, 0.66, 0.32], r: 5, lantern: true, lift: 's' + s.n });
+    plan.lights.push({ x: s.x - 1.25, y: s.y + 1.95, z: s.z - 0.62, c: [1.05, 0.66, 0.32], r: 5, lantern: true, lift: 's' + s.n }); // the gantry's lantern
   }
 
   // lifts: the mine entrance under the burrow, three buried in every zone, the town shaft stops
@@ -115,7 +115,7 @@ export function makePlan(seed, opts = {}) {
     plan.lifts.push(L);
     if (room) {
       plan.features.push({ kind: 'lift', id, x, y, z });
-      plan.lights.push({ x, y: y + 1.45, z: z - 1.0, c: [1.05, 0.68, 0.34], r: 5.5, lantern: true, lift: id });
+      plan.lights.push({ x: x - 0.42, y: y + 1.78, z: z - 0.45, c: [1.05, 0.68, 0.34], r: 5.5, lantern: true, lift: id }); // the cage's lantern
     }
     return L;
   };
@@ -228,12 +228,14 @@ const far = (plan, x, y, z, d) => plan.lifts.every((L) => Math.hypot(L.x - x, L.
 
 // The dungeons with a sealed strongroom, in plan.ruins order (each holds the relic of its index,
 // ruins/relics.js): [zone, kind, puzzle]. Every puzzle kind turns up somewhere.
+// (wave 5: all natural: dens, collapsed grottos and magma halls; the puzzles are a loose rock
+// panel, crystal knobs, pressure stones and crystal mirrors: no carved drums or drain wheels)
 const DUNGEONS = [
   [1, 'cell', 'switch'],
-  [2, 'cell', 'levers'], [2, 'crypt', 'valve'],
-  [3, 'crypt', 'valve'], [3, 'vault', 'dials'],
+  [2, 'cell', 'levers'], [2, 'vault', 'plates'],
+  [3, 'cell', 'levers'], [3, 'vault', 'plates'],
   [4, 'fortress', 'beams'], [4, 'fortress', 'levers'],
-  [5, 'cell', 'switch'], [5, 'vault', 'dials'],
+  [5, 'cell', 'switch'], [5, 'vault', 'plates'],
   [6, 'vault', 'plates'], [6, 'fortress', 'beams'],
 ];
 const QDIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]]; // a dungeon's forward (its a axis) for yaw q·π/2
@@ -343,6 +345,48 @@ function addPlaces(plan, rng, L0) {
       plan.features.push({ kind: 'geode', x, y, z, r });
     }
   }
+  // the network's dead ends: something waits at the end of one now and then (an ore seam in its end
+  // wall, or a geode cracked open into it). Own rng stream; appended, so other areas keep their ids.
+  const er = makeRng(plan.seed + 8181);
+  for (const n of plan.net.deadEnds) {
+    const h = er(), h2 = er(), h3r = er();
+    if (n.lift || -n.yF < 6 || !n.nb.length) continue;
+    const zone = zoneAt(-n.yF), o = plan.net.nodes[n.nb[0]];
+    let dx = n.x - o.x, dz = n.z - o.z;
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    const R = Math.min(n.Rx, n.Rz);
+    if (h < 0.18) {
+      // a seam of the zone's ore showing in the end wall
+      const spawn = ORE_SPAWN[zone] || [];
+      if (!spawn.length) continue;
+      const total = spawn.reduce((s, e) => s + e[1], 0);
+      let r = h2 * total, item = spawn[0][0];
+      for (const [id, w] of spawn) { r -= w; if (r <= 0) { item = id; break; } }
+      if (ORE_ID[item] === undefined) continue;
+      const x = n.x + dx * (R - 0.1), z = n.z + dz * (R - 0.1), y = n.yF + 0.9;
+      const area = { id: plan.areas.length, item, oreId: ORE_ID[item], x, y, z, r: 1.4, zone, deposits: [], seam: true };
+      const k = 3 + Math.floor(h3r * 3);
+      for (let i = 0; i < k; i++) {
+        const t = (i / (k - 1 || 1) - 0.5) * 1.8;
+        area.deposits.push({ x: x - dz * t + dx * 0.25, y: y + Math.sin(i * 2.3 + h2 * 6) * 0.45, z: z + dx * t + dz * 0.25, r: 0.16 + ((i * 7 + 3) % 5) * 0.03, q: clamp(86 + (er() - 0.5) * 24, 55, 100), seed: er.int(1, 1e6) });
+      }
+      plan.areas.push(area);
+    } else if (h < 0.28) {
+      // a geode cracked open into the end of it
+      const item = GEMS[zone][Math.floor(h2 * GEMS[zone].length)];
+      if (ORE_ID[item] === undefined) continue;
+      const gr = 0.7 + h3r * 0.45;
+      const x = n.x + dx * (R + gr * 0.45), z = n.z + dz * (R + gr * 0.45), y = n.yF + gr * 0.85;
+      const area = { id: plan.areas.length, item, oreId: ORE_ID[item], x, y, z, r: gr + 0.4, zone, deposits: [], geode: true };
+      for (let i = 0; i < 4; i++) {
+        const a = er() * Math.PI * 2, b = (er() - 0.6) * Math.PI * 0.8;
+        area.deposits.push({ x: x + Math.cos(a) * Math.cos(b) * gr * 0.72, y: y + Math.sin(b) * gr * 0.72, z: z + Math.sin(a) * Math.cos(b) * gr * 0.72, r: 0.1 + er() * 0.07, q: clamp(88 + (er() + er() - 1) * 12, 60, 100), seed: er.int(1, 1e6) });
+      }
+      plan.areas.push(area);
+      plan.geodes.push({ x, y, z, r: gr, item, zone, open: true });
+      plan.features.push({ kind: 'geode', x, y, z, r: gr, open: true });
+    }
+  }
   // natural passages: every burrow's door opens onto a winding cave that runs to the nearest open
   // cave, and one more joins the mine entrance to the trading post (gen/passages.js)
   const open = (x, y, z) => caveDensity(plan, x, y, z) > 0.02;
@@ -405,7 +449,7 @@ export function addMouth(plan, wall, t) {
 const S = 4; // coarse sample stride (voxels)
 // materials the dressing may cover or grow from (not timber, bricks, lanterns or ores)
 const NATURAL = new Uint8Array(256);
-for (const m of [M.DIRT, M.LOAM, M.CLAY, M.STONE, M.MUDSTONE, M.LIMESTONE, M.GRANITE, M.CRYSTALROCK, M.BASALT, M.OBSIDIAN, M.MAGMAROCK, M.PERMAFROST, M.ICE, M.CORE, M.STARROCK, M.VOIDROCK, M.ROOTS, M.GRAVEL, M.SAND, M.SNOW, M.ASH, M.SANDSTONE, M.MYCEL, M.MOSS]) NATURAL[m] = 1;
+for (const m of [M.DIRT, M.LOAM, M.CLAY, M.STONE, M.MUDSTONE, M.LIMESTONE, M.GRANITE, M.CRYSTALROCK, M.BASALT, M.OBSIDIAN, M.MAGMAROCK, M.PERMAFROST, M.ICE, M.CORE, M.STARROCK, M.VOIDROCK, M.ROOTS, M.GRAVEL, M.SAND, M.SNOW, M.ASH, M.SANDSTONE, M.MYCEL, M.MOSS, M.FLOWSTONE]) NATURAL[m] = 1;
 const SH = Math.round(Math.log2(VOX / 4)); // voxel → quarter-meter cell shift (spike spacing)
 const NS = CS / S + 1; // 9 samples per axis
 
@@ -704,7 +748,7 @@ export class ChunkGen {
         const d = Math.hypot(xm - f.x, ym - f.y, zm - f.z) / f.r + (h3(vx, vy, vz, 29) - 0.5) * 0.08;
         if (d < 0.6) vox[vi] = h3(vx, vy, vz, 31) < 0.06 && d > 0.48 ? M.CRYSTAL : 0;
         else if (d < 0.8) vox[vi] = h3(vx >> 1, vy >> 1, vz >> 1, 33) < 0.3 + (d - 0.6) * 2 ? M.CRYSTAL : 0;
-        else if (d < 1) vox[vi] = M.GEODE;
+        else if (d < 1 && !(f.open && !cur)) vox[vi] = M.GEODE; // a cracked-open one leaves the cave it opens into
       } else if (f.kind === 'gate') {
         // brick arch with a boarded gate in it; lanterns either side
         const dx = xm - f.x, dz = zm - f.z, dy = ym - f.y;
@@ -765,17 +809,20 @@ export class ChunkGen {
           const cx = Math.floor(vx / VOX), cz = Math.floor(vz / VOX);
           if (h3(cx, cz, 5, seed + 71) < 0.07 && (vx - cx * VOX) === Math.floor(h3(cx, cz, 0, seed + 73) * VOX) && (vz - cz * VOX) === Math.floor(h3(cx, cz, 1, seed + 73) * VOX)) this.ribs(vox, x, y + 1, z, h3(cx, cz, 3, seed + 75));
         }
+        // calcite: pale flowstone aprons where the floor stays wet (the limestone layers)
+        if (zone >= 2 && zone <= 3 && bio !== 2 && bio !== 3 && vox[vi] === m && pt > 0.5 && h3(vx >> 3, vy >> 2, vz >> 3, seed + 55) < 0.35) vox[vi] = M.FLOWSTONE;
         // crystal spikes on cave floors (grotto, frost, core); stalagmites in the upper zones
         if ((zone === 3 || zone === 5 || zone === 6) && h3(vx >> SH, vy, vz >> SH, seed + 43) < 0.012) this.spike(vox, x, y + 1, z, 1, M.CRYSTAL, (4 + (h * 60 | 0) % 6) * VK);
-        else if (zone <= 2 && bio !== 3 && h3(vx >> SH, vy, vz >> SH, seed + 45) < 0.006) this.spike(vox, x, y + 1, z, 1, bio === 2 ? M.SANDSTONE : zone === 1 ? M.STONE : M.LIMESTONE, (3 + (h * 70 | 0) % 5) * VK);
+        else if (zone <= 2 && bio !== 3 && h3(vx >> SH, vy, vz >> SH, seed + 45) < 0.006) this.spike(vox, x, y + 1, z, 1, bio === 2 ? M.SANDSTONE : zone === 1 ? M.STONE : M.FLOWSTONE, (3 + (h * 70 | 0) % 5) * VK);
       } else if (airDown) {
         // ceilings: stalactites and crystals (hanging vines and roots are Vegetation.js cards)
         const h2 = h3(vx, vy, vz, seed + 47);
         if (bio === 1 && pt > -0.3) vox[vi] = M.MOSS;
         else if ((bio === 4 || (zone === 1 && depth < 12 && bio !== 2)) && pt > 0.1 && (m === M.DIRT || m === M.LOAM || m === M.CLAY)) vox[vi] = M.ROOTS; // rooty roofs the roots hang from
-        if (zone >= 2 && h3(vx >> SH, vy, vz >> SH, seed + 49) < 0.01) this.spike(vox, x, y - 1, z, -1, zone >= 5 ? M.ICE : m, (3 + (h2 * 50 | 0) % 6) * VK);
+        if (zone >= 2 && h3(vx >> SH, vy, vz >> SH, seed + 49) < 0.01) this.spike(vox, x, y - 1, z, -1, zone >= 5 ? M.ICE : zone <= 3 && bio !== 2 ? M.FLOWSTONE : m, (3 + (h2 * 50 | 0) % 6) * VK);
         else if (zone === 3 && h2 < 0.004 / (VK * VK)) this.spike(vox, x, y - 1, z, -1, M.CRYSTAL, 3 * VK);
       } else if (bio === 1 && pt > 0.05) vox[vi] = M.MOSS; // mossy walls in the grotto
+      else if (zone >= 1 && zone <= 3 && bio !== 2 && depth > 5 && pt > -0.25 && m !== M.CRYSTALROCK && h3(vx >> 3, vy >> 5, vz >> 3, seed + 53) < 0.16) vox[vi] = M.FLOWSTONE; // flowstone poured down the walls in sheets
     }
   }
 

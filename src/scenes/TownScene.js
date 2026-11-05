@@ -10,8 +10,8 @@ import * as THREE from 'three';
 import { Scene } from '../core/Scene.js';
 import { FPSRig, BoxWorld } from '../fps/FPSKit.js';
 import { openLiftPanel, rideTo, liftState } from '../fps/lifts.js';
-import { Actor, NuggetAI } from '../iso/Actor.js';
-import { makeCharacter, makeChicken } from '../gfx/characters.js';
+import { Actor } from '../iso/Actor.js';
+import { makeCharacter } from '../gfx/characters.js';
 import { TOWN } from '../iso/townLayout.js';
 import { paintTownFloor, floorMaterialAt } from '../iso/townFloor.js';
 import { WATER_TIME } from '../iso/water.js';
@@ -46,7 +46,7 @@ const BRAMBLE_LINES = [
   'She creaks, but she has never dropped anyone. Twice.',
   'The deeper stops open once you have dug to the bottom of one.',
   'Bring me back something shiny, eh?',
-  'Hold on to your helmet. And your chicken.',
+  'Hold on to your helmet. And your lunch.',
 ];
 const WELCOME_BACK = ['Welcome back up! Still got all your claws?', 'Back in one piece! Mostly dirt, though.', 'Up you come. Old Vex will want a look at that haul.'];
 const NOTICES = ['LOST: one left mitten, ember-proof. Reward: a pie. — Dilly', 'BAND PRACTICE Thursdays at the fountain. Bring a spoon.', 'Please do NOT feed the glow-worms. — The Council', 'WANTED: brave digger for deep commissions. Ask Old Vex.', 'Mushroom swap, Sunday, back lane. No blue ones please.', 'Surface Express: ONE WAY ONLY. No refunds. No returns. No exceptions.'];
@@ -157,7 +157,6 @@ export default class TownScene extends Scene {
     // quests part: who's who, quest talk, markers' anchors, the notice board (src/town/quests.js)
     this.townQuests = new TownQuests(this);
     this.tickers.push((dt) => this.townQuests.update(dt));
-    if (st.flag('nugget')) this.spawnNugget();
     townLife(this);
     this.buildInteractions();
     if (!st.flag('homeVisited')) this.homeMarker = ST.makeHomeMarker(this);
@@ -175,7 +174,6 @@ export default class TownScene extends Scene {
     } else {
       // out of the burrow door, looking down the street toward the plaza and the sunbeam
       this.place(H.spawn.x, H.spawn.z + 0.3, Math.PI + 0.62);
-      if (this.nugget) this.nugget.pos.set(H.spawn.x + 0.7, 0, H.spawn.z + 0.7);
       if (from === 'home') g.audio.play('door');
     }
     // ---- sound
@@ -522,26 +520,6 @@ export default class TownScene extends Scene {
     }
   }
 
-  // ------------------------------------------------------------ Nugget
-  spawnNugget() {
-    const st = this.game.state;
-    const a = new Actor(makeChicken(), { x: TOWN.home.spawn.x + 0.6, z: TOWN.home.spawn.z + 0.6, name: st.data.chicken?.name || 'Nugget', voice: 620, radius: 0.17, headY: 0.68, shadow: 0.4 });
-    this.nugget = this.addActor(a);
-    this.nuggetAI = new NuggetAI(a, this);
-    this.addTalk(a, `Pet ${a.name}`, () => this.petNugget(), { r: 0.34 });
-  }
-
-  petNugget() {
-    const st = this.game.state, d = st.data, n = this.nugget;
-    if (d.chicken) { d.chicken.pets = (d.chicken.pets || 0) + 1; d.chicken.lastPetDay = d.day; }
-    st.dirty = true;
-    this.game.audio.play('cluck', { n: 2, pitch: 1.15, gap: 0 });
-    this.emote(n, '♥', { sound: 'love' });
-    this.nuggetAI.petted();
-    n.faceToward(this.player.x, this.player.z);
-    this.particles.hearts(n.x, 0.7, n.z);
-  }
-
   // ------------------------------------------------------------ interactions (crosshair + E)
   buildInteractions() {
     const rig = this.rig;
@@ -614,15 +592,11 @@ export default class TownScene extends Scene {
     const x0 = pl.pos.x * IM, z0 = pl.pos.z * IM, yaw0 = pl.yaw, p0 = pl.pitch;
     const tx = c.x, tz = c.z - 0.05;
     this.cut = { pos: new THREE.Vector3(x0, 0, z0), yaw: yaw0, pitch: p0 };
-    const n = this.nugget;
-    if (n) { this.nuggetAI.mode = 'petted'; this.nuggetAI.pettedT = 99; n.collide = false; n.scripted = true; }
-    const nx0 = n?.x, nz0 = n?.z;
     await this.tween(1.0, (k) => {
       const e = k * k * (3 - 2 * k);
       this.cut.pos.set(x0 + (tx - x0) * e, 0, z0 + (tz - z0) * e);
       this.cut.yaw = lerpAngle(yaw0, Math.PI, e);
       this.cut.pitch = p0 * (1 - e) - 0.08 * e;
-      if (n) n.pos.set(nx0 + (tx + 0.5 - nx0) * e, 0, nz0 + (tz - 0.35 - nz0) * e);
     });
     await this.tween(0.45, (k) => this.lift.gateOpen(1 - k));
     au.play('gate');
@@ -634,7 +608,6 @@ export default class TownScene extends Scene {
       const y = -k * k * 7;
       this.lift.setY(y);
       this.cut.pos.y = y;
-      if (n) n.pos.y = y;
       this.lift.crank.wheel.children[0].rotation.z = k * 12;
       this.rig.shake(0.06);
       if (!gone && k > 0.6) { gone = true; this.leaving = true; rideTo(this.game, id); }
@@ -648,9 +621,7 @@ export default class TownScene extends Scene {
     this.locked = true;
     this.place(c.x, c.z - 0.05, Math.PI);
     this.cut = { pos: new THREE.Vector3(c.x, -5, c.z - 0.05), yaw: Math.PI, pitch: 0.05 };
-    const n = this.nugget;
-    if (n) { this.nuggetAI.mode = 'petted'; this.nuggetAI.pettedT = 99; n.collide = false; n.scripted = true; }
-    const set = (y) => { this.lift.setY(y); this.cut.pos.y = y; if (n) n.pos.set(c.x + 0.5, y, c.z - 0.35); };
+    const set = (y) => { this.lift.setY(y); this.cut.pos.y = y; };
     set(-5);
     this.lift.gateOpen(0);
     this.bramble.a.rig.play('dig');
@@ -669,10 +640,9 @@ export default class TownScene extends Scene {
     this.say(this.bramble.a, pick(WELCOME_BACK), { name: 'Bramble', voice: BRAMBLE.voice });
     // step out onto the deck
     const z0 = this.cut.pos.z, z1 = L.front.z + 0.25;
-    await this.tween(0.8, (k) => { const e = k * k * (3 - 2 * k); this.cut.pos.z = z0 + (z1 - z0) * e; if (n) n.pos.set(c.x + 0.5 + e * 0.4, 0, c.z - 0.35 + (z1 + 0.6 - c.z) * e); });
+    await this.tween(0.8, (k) => { const e = k * k * (3 - 2 * k); this.cut.pos.z = z0 + (z1 - z0) * e; });
     this.place(c.x, z1, this.cut.yaw, this.cut.pitch);
     this.cut = null;
-    if (n) { n.collide = true; n.scripted = false; this.nuggetAI.mode = 'follow'; }
     this.locked = false;
     this.tween(0.45, (k) => this.lift.gateOpen(1 - k)).then(() => au.play('gate'));
   }
@@ -725,7 +695,6 @@ export default class TownScene extends Scene {
     this.game.ui.toast('Warm sunlight on your nose. Someday…', { dur: 2200 });
     this.game.state.emit('act', { type: 'look', at: 'sunbeam' });
     await this.tween(0.8, (k) => { this.cut.pitch = 1.2 * (1 - k) + 0.05 * k; });
-    if (this.nugget && this.nuggetAI) this.nuggetAI.petted();
     this.place(S.x, S.z, this.cut.yaw, this.cut.pitch);
     this.cut = null;
     this.locked = false;
@@ -794,7 +763,6 @@ export default class TownScene extends Scene {
     this.syncPlayerProxy();
     this.eyeTarget.copy(rig.camera.position);
     g.convo?.director?.apply(rig.camera, dt); // cutscene talk camera (src/fx/director.js) [convo hook]
-    if (this.nuggetAI && this.nugget && !this.nugget.scripted) this.nuggetAI.update(dt, this.player);
     // actors: far, hidden or behind-the-camera ones animate every few frames (time accumulates,
     // so held expressions and blinks keep their pace)
     const p = this.player;
@@ -888,7 +856,7 @@ export default class TownScene extends Scene {
     const px = pl.pos.x * IM, pz = pl.pos.z * IM, r = 0.22 * IM;
     let ox = 0, oz = 0;
     for (const a of this.actors) {
-      if (a === this.nugget || !a.collide) continue;
+      if (!a.collide) continue;
       const min = r + a.radius * 0.85;
       const dx = px - a.x, dz = pz - a.z, d2 = dx * dx + dz * dz;
       if (d2 >= min * min || d2 < 1e-6) continue;

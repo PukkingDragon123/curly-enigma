@@ -1,5 +1,5 @@
 // Live 3D portraits: the game's real character rigs (Old Star, the hero mole, Deep Town folk and
-// keepers, the burrow traders, Rocco, Nugget the hen) rendered head-and-shoulders into tiny offscreen
+// keepers, the burrow traders, Rocco) rendered head-and-shoulders into tiny offscreen
 // render targets on the game's own WebGLRenderer (no extra GL contexts), read back asynchronously
 // and composed over a painted pixel backdrop with a dark outline, at the UI's pixel grid (one canvas
 // pixel = one --px art pixel). Three-point light per backdrop (key, cool fill, a warm rim), idle
@@ -19,12 +19,12 @@
 //   portrait3d.still(who, { mood, w, h }) → Promise<canvas>, portrait3d.stillURL(who, mood) (cached)
 //   portrait3d.cast(who)         // { key, name, voice, backdrop, mood } or null: who that is
 //   portrait3d.stats()           // { live, rendered, studios, ms } for perf checks
-// who: 'oldstar' | 'hero' | 'nugget' | 'rocco' | a shop id (tools grocer furniture blueprints outfitter
+// who: 'oldstar' | 'hero' | 'rocco' | a shop id (tools grocer furniture blueprints outfitter
 //   assay ticket trader herbalist outpost) | a name ('Old Star', 'Granny Thistle', 'Grubb', a Deep
 //   Town folk's name while you're in town) | { spec, backdrop, voice } | a character spec object.
 // el: a <canvas> to draw into, or any element (a canvas is made inside it, class "p3d").
 import * as THREE from 'three';
-import { makeCharacter, makeChicken } from './characters.js';
+import { makeCharacter } from './characters.js';
 import { SHOPS } from '../data/shops.js';
 import { KEEPER_MOODS } from '../town/moods.js';
 import { randomSpec } from './char/spec.js';
@@ -91,10 +91,6 @@ const CAST = {
       return r;
     },
   },
-  nugget: {
-    key: 'nugget', name: 'Nugget', backdrop: 'coop', mood: 'neutral', hen: true, voice: { f: 620, type: 'triangle', q: 2.2, cluck: true },
-    build: () => makeChicken({ kind: 'toon' }),
-  },
   rocco: {
     key: 'rocco', name: 'Rocco', backdrop: 'storage', mood: 'smug', voice: { f: 190, type: 'sawtooth', q: 2.4, vib: 9 },
     build: async () => {
@@ -106,7 +102,6 @@ const CAST = {
 const ALIAS = {
   oldstar: 'oldstar', 'old star': 'oldstar', star: 'oldstar', 'old_star': 'oldstar',
   hero: 'hero', player: 'hero', you: 'hero', me: 'hero', mole: 'hero',
-  nugget: 'nugget', hen: 'nugget', chicken: 'nugget', coop: 'nugget',
   rocco: 'rocco', raccoon: 'rocco',
 };
 
@@ -369,18 +364,7 @@ const PAINT = {
     R.glow(W * 0.08, H * 1.0, W * 0.8, 0xff7a30, 0.5, 4);
     R.vignette(0.45);
   },
-  coop(R, r) {
-    const W = R.w, H = R.h;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) R.set(x, y, [0x6a4022, 0x86562e, 0x86562e, 0xa06c3c, 0xb8834c, 0x3a2010][y % 6]);
-    R.speckle(0.05, 0x4a2a14, 0.5, r);
-    const cx = W / 2, cy = H * 0.56, rad = Math.min(W, H) * 0.46;
-    R.disk(cx, cy, rad + 1.5, 0x5a3418);
-    for (let a = 0; a < 40; a++) { const t = a / 40 * Math.PI * 2; R.set(cx + Math.cos(t) * (rad + 0.5) - 0.5, cy + Math.sin(t) * (rad + 0.5) - 0.5, a % 2 ? 0x9a6234 : 0x7a4a26); }
-    R.disk(cx, cy, rad - 0.5, 0x1e140c);
-    R.glow(cx, cy + rad * 0.6, rad * 1.2, 0x5a3a1a, 0.5, 3);
-    for (let i = 0; i < 18; i++) { const x = cx + (r() - 0.5) * rad * 1.6, y = cy + rad * (0.55 + r() * 0.35); if (Math.hypot(x - cx, y - cy) < rad - 1) R.line(x, y, x + (r() - 0.5) * 4, y - 1 - r() * 2, r() < 0.5 ? 0xd8b058 : 0xb8903a); }
-    R.glow(W * 0.15, 0, W * 0.6, 0xffd080, 0.25, 3);
-  },
+
 };
 
 /** Motes drawn over the backdrop each frame: [color, count, kind]. */
@@ -395,7 +379,6 @@ const MOTES = {
   herb: { c: [0xb0f080, 0x80e0c0], n: 6, kind: 'rise', from: [0.2, 1] },
   storage: { c: [0xc8b8a8, 0xa89888], n: 5, kind: 'drift' },
   outpost: { c: [0xffb040, 0xff7a2a], n: 6, kind: 'rise', from: [0.1, 1] },
-  coop: { c: [0xf0d890, 0xd8b058], n: 3, kind: 'drift' },
 };
 
 /** Lights per backdrop: hemisphere sky/ground, key, cool fill, warm rim, outline ink. */
@@ -410,7 +393,6 @@ const LIGHTS = {
   herb: { sky: 0xf0ffe0, ground: 0x203018, hemi: 1.05, key: 0xfff4dc, keyI: 1.6, fill: 0x70c0a0, fillI: 0.4, rim: 0xd8f080, rimI: 2.4, ink: 0x080e06 },
   storage: { sky: 0xf6eee8, ground: 0x281a24, hemi: 1.0, key: 0xfff0dc, keyI: 1.6, fill: 0xb8a0d0, fillI: 0.32, rim: 0xffa040, rimI: 2.6, ink: 0x0e080e },
   outpost: { sky: 0xffe8d8, ground: 0x30140c, hemi: 1.0, key: 0xfff0dc, keyI: 1.6, fill: 0xb4a8c8, fillI: 0.28, rim: 0xff7a40, rimI: 2.8, ink: 0x120604 },
-  coop: { sky: 0xfff4e0, ground: 0x3a2412, hemi: 1.15, key: 0xfff4e4, keyI: 1.5, fill: 0xb8acc8, fillI: 0.25, rim: 0xffd080, rimI: 2.2, ink: 0x1a0c06 },
 };
 LIGHTS.assay = { ...LIGHTS.shop, rim: 0xffe0a0 };
 LIGHTS.ticket = { ...LIGHTS.shop, rim: 0xffe6b0 };
@@ -432,7 +414,7 @@ class Studio {
   constructor(cast, rig) {
     this.cast = cast;
     this.rig = rig;
-    this.hen = !!cast.hen || !rig.anchors;
+    this.plain = !rig.anchors; // a rig without a character's anchors (no neck, no talking mouth)
     this.scene = new THREE.Scene();
     this.cam = new THREE.PerspectiveCamera(20, 1, 0.01, 60);
     this.scene.add(this.cam);
@@ -478,7 +460,7 @@ class Studio {
   /** Head-and-shoulders: from just over the head (or hat) down to the chest. */
   frameIt() {
     const r = this.rig;
-    if (this.hen) {
+    if (this.plain) {
       const box = new THREE.Box3().setFromObject(r.root);
       const top = box.max.y, h = box.max.y - box.min.y;
       r.head?.getWorldPosition(_v);
@@ -630,7 +612,7 @@ class Handle {
       s.settle();
       if (s.rig.shifty) s.rig.shifty(1);
       this.applyMood(true);
-      if (!s.hen && (this.talkOn || this.talkT > 0)) s.rig.talk?.(this.talkOn ? true : this.talkT);
+      if (!s.plain && (this.talkOn || this.talkT > 0)) s.rig.talk?.(this.talkOn ? true : this.talkT);
       this.acc = 1;
       // the first picture now, not on some later frame (frames can be slow or throttled)
       if (this.canvas.isConnected && !this.pending) { try { this.render(); } catch (e) { console.warn('[portrait3d] render', e); this.pending = false; } }
@@ -658,7 +640,7 @@ class Handle {
     const s = this.studio;
     if (!s) return;
     const r = s.rig;
-    if (s.hen) {
+    if (s.plain) {
       const m = HEN_MOOD[this.mood] || 'ok';
       this.henMood = m;
       if (!first && (m === 'happy' || m === 'surprised')) r.flap?.(m === 'surprised' ? 0.5 : 0.35);
@@ -677,7 +659,7 @@ class Handle {
   talk(on = 1.5) {
     if (on === true) { this.talkOn = true; this.talkT = 0; } else if (on === false || on == null) { this.talkOn = false; this.talkT = 0; } else { this.talkT = +on || 0; }
     const r = this.studio?.rig;
-    if (r && !this.studio.hen) r.talk?.(on === true ? true : on === false || on == null ? false : +on);
+    if (r && !this.studio.plain) r.talk?.(on === true ? true : on === false || on == null ? false : +on);
     return this;
   }
 
@@ -734,7 +716,7 @@ class Handle {
     this.bob = Math.max(0, this.bob - dt * 2.2);
     const bobK = Math.sin(this.bob * Math.PI) * this.bob;
     const nod = talking ? Math.sin(this.t * 9.5) * 0.035 + Math.sin(this.t * 3.7) * 0.025 : 0;
-    if (s.hen) {
+    if (s.plain) {
       const h = r.head;
       if (h) {
         h.rotation.y = h.rotation.y * 0.35 + 0.28;
@@ -750,7 +732,7 @@ class Handle {
     }
     // the camera follows the head a little (jumps and laughs stay in the frame)
     r.root.updateMatrixWorld(true);
-    const head = s.hen ? (r.head ? r.head.getWorldPosition(_v2) : _v2.copy(s.headRest)) : r.neck.getWorldPosition(_v2);
+    const head = s.plain ? (r.head ? r.head.getWorldPosition(_v2) : _v2.copy(s.headRest)) : r.neck.getWorldPosition(_v2);
     head.sub(s.headRest).multiplyScalar(0.55);
     head.x = 0;
     this.follow.lerp(head, 1 - Math.exp(-dt * 6));

@@ -122,7 +122,7 @@ export class Site {
     this.braziers = (P.door ? P.braziers || [] : []).map((b) => {
       const y = b.y ?? 0;
       const m = this.put(MD.brazier(), b.a, y, b.b);
-      const fl = this.put(MD.flameGeo(), b.a, y + 10.6, b.b, [1, 0], this.R.flameMat);
+      const fl = this.put(MD.glowCrystals(), b.a, y, b.b, [1, 0], this.R.glowMat);
       fl.layers.disable(LAYER_OUTLINE);
       fl.visible = !!this.save.open;
       return { m, fl, pos: this.wp(b.a, y + 12, b.b), t: Math.random() * 6 };
@@ -287,9 +287,7 @@ export class Site {
     for (const b of this.braziers) {
       if (!b.fl.visible) continue;
       b.t += dt;
-      const f = 1 + Math.sin(b.t * 13) * 0.12 + Math.sin(b.t * 5.3) * 0.08;
-      b.fl.scale.set(1 + Math.sin(b.t * 7) * 0.06, f, 1 + Math.cos(b.t * 6) * 0.06);
-      if (Math.random() < dt * 9) this.R.fx.ember(b.pos.x + (Math.random() - 0.5) * 0.12, b.pos.y + 0.05, b.pos.z + (Math.random() - 0.5) * 0.12);
+      if (Math.random() < dt * 3) this.R.fx.spawn({ x: b.pos.x + (Math.random() - 0.5) * 0.3, y: b.pos.y - 0.3 + Math.random() * 0.4, z: b.pos.z + (Math.random() - 0.5) * 0.3, vx: 0, vy: 0.05, vz: 0, life: 1.2, size: 0.008, color: [0.6, 0.9, 1], glow: true, drag: 1, twinkle: 4 });
     }
     for (const s of this.spawners) this.updateSpawner(s, dt, eye, out);
     for (const t of this.traps) this.updateTrap(t, dt, out);
@@ -302,7 +300,7 @@ export class Site {
   /** Lights near the eye: lit braziers, the open strongroom's glow, spawner flames, lava, the puzzle's own. */
   lights(eye, list) {
     if (!this.built) return;
-    for (const b of this.braziers) if (b.fl.visible) list.push({ x: b.pos.x, y: b.pos.y + 0.15, z: b.pos.z, c: [1.25, 0.72, 0.32], r: 5.5, lantern: true });
+    for (const b of this.braziers) if (b.fl.visible) list.push({ x: b.pos.x, y: b.pos.y + 0.15, z: b.pos.z, c: [0.55, 0.85, 1.3], r: 5.5, lantern: true });
     if (this.save.open && this.P.room) {
       const c = this.wp((this.P.room.a0 + this.P.room.a1) / 2, (this.P.room.y0 + this.P.room.y1) / 2, 0);
       list.push({ x: c.x, y: c.y, z: c.z, c: [0.9, 0.62, 0.22], r: 5 });
@@ -367,7 +365,7 @@ export class Site {
     if (!got.length) s.t = 1 + Math.random(); // no room to stand just now (the mole too close): soon again
     if (got.length) {
       R.sfx.spawn(Math.max(0.2, 1 - d / SPAWN_R));
-      if (!this.R.hintSpawner) { this.R.hintSpawner = true; out.push({ say: 'The <b>spawner</b> breeds monsters while you\'re near. Break its cage with your pick!', key: 'spawner', cd: 60 }); }
+      if (!this.R.hintSpawner) { this.R.hintSpawner = true; out.push({ say: 'Things crawl out of that <b>brood nest</b> while you\'re near. Break it apart with your pick!', key: 'spawner', cd: 60 }); }
     }
   }
   breakSpawner(s, out) {
@@ -382,7 +380,7 @@ export class Site {
     const p = s.pos;
     R.fx.sparks(p.x, p.y, p.z, 24, this.P.theme === 'deep' ? [1, 0.5, 0.2] : [0.7, 0.5, 1], [0, 1, 0], 3);
     R.fx.dust(p.x, p.y, p.z, 14, [0.3, 0.28, 0.32], 0.4);
-    out.push({ say: '<b>Spawner smashed!</b> Nothing more will crawl out of that one.', key: 'smash' + this.id, tone: 'good', cd: 1 });
+    out.push({ say: '<b>Nest smashed!</b> Nothing more will crawl out of that one.', key: 'smash' + this.id, tone: 'good', cd: 1 });
     out.push({ act: { type: 'spawner', id: this.id, kind: this.kind, zone: this.zone } });
   }
 
@@ -565,7 +563,7 @@ export class Site {
     this.setRunes(99);
     this.lightEyes();
     this.removeDoor(!!this.group);
-    for (const b of this.braziers || []) { b.fl.visible = true; this.R.fx.sparks(b.pos.x, b.pos.y, b.pos.z, 14, [1, 0.7, 0.3], [0, 1, 0], 2.5); }
+    for (const b of this.braziers || []) { b.fl.visible = true; this.R.fx.sparks(b.pos.x, b.pos.y, b.pos.z, 14, [0.6, 0.9, 1], [0, 1, 0], 2.5); }
     this.R.sfx.ignite();
     // dust shaken down from the ceiling all over the room
     const c = this.center;

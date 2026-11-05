@@ -17,7 +17,7 @@ const SUN_DIR = new THREE.Vector3(-0.22, 0.058, -1).normalize();
 /** Toward the setting sun (god rays in the ending's beach). */
 export const BEACH_SUN = SUN_DIR;
 const GB = { x0: -11.5, x1: 11.5, z0: -9.5, z1: 9.5, y0: -0.75 };
-const CAGE_YAW = Math.PI; // the riders face the sunset when they arrive
+const CAGE_YAW = Math.PI; // the rider faces the sunset on arrival
 
 export const SPOTS = {
   chair: new THREE.Vector3(0.3, 0, -3.0),
@@ -39,7 +39,7 @@ export function sandHeight(x, z) {
 // ------------------------------------------------------------------ island
 // The sand is a 1/16 heightfield relief: wind ripples (lit crests, shaded troughs), a dark wet band
 // with foam lace at the waterline, shell grit and seaweed, and footprints: the mole's paws from the
-// lift ring to the lounger, Nugget's little forks from the towel down to the water.
+// lift ring to the lounger.
 const VI = 1 / 16;
 function footprintMap(nx, nz) {
   const marks = new Map();
@@ -67,20 +67,6 @@ function footprintMap(nx, nz) {
     const side = s % 2 ? 1 : -1;
     const px = x - dz * side * 0.07, pz = z + dx * side * 0.07;
     stamp(px, pz, dx, dz, [[0, 0], [0.0625, 0], [-0.0625, 0], [0, 0.0625], [0.0625, 0.0625], [0.125, -0.06], [0.14, 0], [0.125, 0.06]]);
-  }
-  // Nugget: three-toed forks from the towel to the shallows
-  const H0 = new THREE.Vector3(SPOTS.towel.x - 0.25, 0, SPOTS.towel.z + 0.1);
-  const a = -Math.PI / 2 + 0.35;
-  const H1 = new THREE.Vector3(Math.cos(a) * RX * 0.86, 0, Math.sin(a) * RZ * 0.86);
-  const m = 30;
-  for (let s = 2; s < m; s++) {
-    const t = s / m;
-    const x = H0.x + (H1.x - H0.x) * t + Math.sin(t * 9) * 0.06, z = H0.z + (H1.z - H0.z) * t;
-    let dx = H1.x - H0.x, dz = H1.z - H0.z;
-    const l = Math.hypot(dx, dz);
-    dx /= l; dz /= l;
-    const side = s % 2 ? 1 : -1;
-    stamp(x - dz * side * 0.04, z + dx * side * 0.04, dx, dz, [[0, 0], [0.0625, 0], [0.11, -0.06], [0.11, 0.06], [-0.06, 0]]);
   }
   return marks;
 }
@@ -377,7 +363,7 @@ void main() {
 
 // ------------------------------------------------------------------ build
 export function buildBeach(ctx) {
-  const { mole, hen, cage, textures } = ctx;
+  const { mole, cage, textures } = ctx;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xd8587c);
   scene.fog = new THREE.Fog(0x8a5a80, 45, 160);
@@ -518,8 +504,6 @@ export function buildBeach(ctx) {
   scene.add(sparkles.points);
   const fx = new Particles({ max: 160, additive: true });
   scene.add(fx.points);
-  const splash = new Particles({ max: 120, additive: false });
-  scene.add(splash.points);
 
   // crabs
   const crabs = [0, 1, 2].map((i) => {
@@ -541,7 +525,7 @@ export function buildBeach(ctx) {
   scene.add(lounge);
 
   // ---------------------------------------------------------------- state
-  const S = { t: 0, sipT: 4, sip: 0, gullT: 6, henMode: 'sit', henT: 7, henTarget: new THREE.Vector3() };
+  const S = { t: 0, sipT: 4, sip: 0, gullT: 6 };
   const orbitTarget = new THREE.Vector3(0.35, 1.25, -3.0);
   const A0 = 0.3;
 
@@ -560,20 +544,15 @@ export function buildBeach(ctx) {
   const enterSurface = () => {
     parkCage();
     if (mole.root.parent !== cage.root) cage.root.add(mole.root);
-    if (hen.root.parent !== cage.root) cage.root.add(hen.root);
     mole.root.position.set(-0.34, cage.seatY - 2 * mole.s, cage.seatZ + 0.02);
     mole.root.rotation.set(0, 0, 0);
     mole.face(0, true);
     mole.play('sit');
-    hen.root.position.set(0.46, cage.seatY, cage.seatZ + 0.06);
-    hen.face(0, true);
-    hen.play('sit');
     cage.setGate(1);
     ctx.shades.visible = false;
     S.sparkled = false;
     S.whooshed = false;
     S.gated = false;
-    S.cluck = false;
     placeSurfaceCam(0);
   };
   const headPos = new THREE.Vector3();
@@ -591,7 +570,6 @@ export function buildBeach(ctx) {
     placeSurfaceCam(t);
     common(dt, api, surfaceCamera);
     mole.update(dt);
-    hen.update(dt);
     // squint against the light, paw up to shield the eyes
     const squint = t < 1.55;
     if (squint) {
@@ -626,7 +604,6 @@ export function buildBeach(ctx) {
       mole.neck.rotation.x = -0.12 + Math.sin(t * 9) * 0.03;
       if (t > 2.15 && t < 3.2) mole.armL.rotation.set(-2.6, 0, 0.5 + Math.sin(t * 14) * 0.25); // a happy wave
     }
-    if (t > 2.0 && !S.cluck) { S.cluck = true; hen.flap(1.0); api.audio.play('bawk'); }
     if (t > 0.15 && !S.gated) { S.gated = true; api.audio.play('gate'); }
     cage.setGate(1 - clamp((t - 0.15) / 0.5, 0, 1));
     placeSurfaceCam(t);
@@ -650,14 +627,6 @@ export function buildBeach(ctx) {
     mole.play('sit');
     mole.holdItem(coconut, 'R');
     ctx.shades.visible = true;
-    // hen sits on the towel
-    scene.add(hen.root);
-    const tx = SPOTS.towel.x - 0.25, tz = SPOTS.towel.z + 0.1;
-    hen.root.position.set(tx, gy(tx, tz) + 0.01, tz);
-    hen.face(Math.PI + 0.4, true);
-    hen.play('sit');
-    S.henMode = 'sit';
-    S.henT = 6;
     S.t = 0;
     placeOrbit(0);
   };
@@ -684,7 +653,6 @@ export function buildBeach(ctx) {
     sky.position.copy(cam.position);
     sparkles.update(dt);
     fx.update(dt);
-    splash.update(dt);
     for (const c of clouds) {
       c.az += c.speed * dt * 0.1;
       c.s.position.set(Math.sin(c.az) * c.dist, Math.tan(c.el) * c.dist, -Math.cos(c.az) * c.dist);
@@ -775,49 +743,6 @@ export function buildBeach(ctx) {
     }
     mole.armR.rotation.set(lerp(-0.75, -1.95, k), lerp(0, -0.25, k), lerp(-0.15, 0.55, k));
     if (k > 0.9) mole.neck.rotation.x = -0.12;
-    // Nugget: naps on the towel, wanders to the water's edge, clucks, comes back
-    hen.update(dt);
-    S.henT -= dt;
-    const hp = hen.root.position;
-    if (S.henMode === 'sit') {
-      hen.play('sit');
-      if (S.henT < 0) {
-        S.henMode = 'go';
-        const a = -Math.PI / 2 + 0.35 + (Math.random() - 0.5) * 0.5;
-        S.henTarget.copy(shorePoint(a, 0.86));
-        api.audio.play('cluck', { n: 2 });
-      }
-    } else if (S.henMode === 'go' || S.henMode === 'back') {
-      tmp.subVectors(S.henTarget, hp);
-      tmp.y = 0;
-      const dist = tmp.length();
-      if (dist < 0.06) {
-        if (S.henMode === 'go') { S.henMode = 'peck'; S.henT = 3 + Math.random() * 2; hen.play('idle'); }
-        else { S.henMode = 'sit'; S.henT = 7 + Math.random() * 7; hen.face(Math.PI + 0.4); }
-      } else {
-        tmp.normalize();
-        hen.play('walk');
-        hen.face(Math.atan2(tmp.x, tmp.z));
-        hp.x += tmp.x * Math.min(dist, 0.62 * dt);
-        hp.z += tmp.z * Math.min(dist, 0.62 * dt);
-      }
-      hp.y = gy(hp.x, hp.z) + 0.01;
-    } else if (S.henMode === 'peck') {
-      hen.play('idle');
-      if (Math.random() < dt * 1.2) hen.peck();
-      if (Math.random() < dt * 0.5) api.audio.play('cluck', { n: 1 + (Math.random() * 3 | 0) });
-      const surge = Math.sin(water.material.uniforms.uTime.value * 0.85);
-      if (surge > 0.97 && !S.splashed) {
-        S.splashed = true;
-        hen.flap(0.8);
-        for (let i = 0; i < 14; i++) splash.spawn({ pos: [hp.x, hp.y + 0.05, hp.z - 0.15], vel: [(Math.random() - 0.5) * 1.2, 1.2 + Math.random(), -Math.random() * 0.8], life: 0.7, color: 0xffffff, color2: 0xbfe8ff, size: 1, gravity: 5 });
-      }
-      if (surge < 0.5) S.splashed = false;
-      if (S.henT < 0) {
-        S.henMode = 'back';
-        S.henTarget.set(SPOTS.towel.x - 0.25, 0, SPOTS.towel.z + 0.1);
-      }
-    }
   };
 
   // everything that never moves (sand, props, shells, rocks, grass) collapses into a few draws

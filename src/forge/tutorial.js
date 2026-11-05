@@ -94,6 +94,21 @@ export class ForgeLesson {
   }
   get cut() { return !this.cine || this.cine.cut || this.sc.game.scene !== this.sc || !!this.sc.activity; }
 
+  /**
+   * The opening shot's end: a little way in from the door toward the hearth, looking between the
+   * fire and him (a dock of the scene's, added for the lesson). Returns its name ('hearth' without).
+   */
+  introDock() {
+    const W = this.sc.W, sp = W?.docks?.spawn, h = W?.docks?.hearth, fp = W?.firePos;
+    if (!sp || !h || !fp) return 'hearth';
+    const eye = sp.eye.clone().lerp(h.eye, 0.3);
+    eye.y += 0.06;
+    const look = fp.clone();
+    if (this.star?.pos) look.lerp(_v.copy(this.star.pos).setY(0.42), 0.55);
+    W.docks.tutIntro = { name: 'tutIntro', stand: sp.stand.clone().lerp(h.stand, 0.3), eye, look, fov: 70, pts: [] };
+    return 'tutIntro';
+  }
+
   /** His paw (world): for what he tosses you. */
   paw() {
     const r = this.star?.rig;
@@ -178,8 +193,8 @@ export class ForgeLesson {
     const ob = this.ui.onboard;
     this.cine = { cut: false };
     ob?.cinema(true, { skip: () => this.endCine() });
-    // a slow glide in from the door to the hearth
-    if (this.sc.view?.mode === 'walk' && !this.sc.activity) this.sc.dock?.('hearth', { dur: 3.2 });
+    // a slow glide in from the door toward the hearth, him and his fire in the frame
+    if (this.sc.view?.mode === 'walk' && !this.sc.activity) this.sc.dock?.(this.introDock(), { dur: 3.4 });
     ob?.caption?.('Old Star\'s smithy', 'Sixty years of sparks', 3.6);
     await this.wait(1.2);
     if (!this.cut) await this.say('My forge! She\'s been asleep since breakfast. Watch this.', 'proud', { wait: true });

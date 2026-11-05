@@ -2,7 +2,7 @@
 // fur, dirty outfits, hats and a procedural animation rig.
 //
 // Models are built at 1/32-unit voxels (twice the classic 1/16 detail) by the part builders
-// in ./char/ (head, face, body, limbs, hats, chicken, paw), greedy-meshed by ./char/mesher.js
+// in ./char/ (head, face, body, limbs, hats, paw), greedy-meshed by ./char/mesher.js
 // and cached by their inputs (LRU). Each character is then assembled into ONE skinned mesh
 // (./char/skin.js): every part rides on its own bone under the classic rig groups, so a
 // character costs ~3 draw calls (outlined body: colour + mask pass; whiskers) instead of ~30,
@@ -29,10 +29,9 @@ import { buildArmParts, buildLegParts } from './char/jointed.js';
 import { EXPRESSIONS } from './char/expr.js';
 import { buildHat, buildGlasses, buildCane } from './char/hats.js';
 import { CharacterRig } from './char/rig.js';
-import { makeChicken, ChickenRig } from './char/chicken.js';
 import { makePaw } from './char/paw.js';
 
-export { FUR, SPECIES, randomSpec, playerSpec, CharacterRig, makeChicken, ChickenRig, makePaw, EXPRESSIONS };
+export { FUR, SPECIES, randomSpec, playerSpec, CharacterRig, makePaw, EXPRESSIONS };
 
 const V16 = 1 / 16; // classic world units per voxel at scale 1
 

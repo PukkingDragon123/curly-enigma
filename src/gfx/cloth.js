@@ -49,7 +49,7 @@ export function sackingTexture({ w = 48, h = 64, base = [154, 128, 88], seed = 7
  * 'towel' (striped ends, a frayed hem). Returns { tex, w, h } (w × h: the texture's pixels).
  */
 export function laundryTexture(kind = 'shirt', seed = 3) {
-  const S = { shirt: [32, 40, [104, 124, 146]], johns: [28, 48, [196, 182, 156]], towel: [24, 30, [206, 196, 172]] }[kind] || [24, 30, [200, 190, 170]];
+  const S = { shirt: [32, 40, [84, 100, 118]], johns: [28, 48, [150, 138, 116]], towel: [24, 30, [160, 150, 128]] }[kind] || [24, 30, [150, 140, 120]];
   const [w, h, base] = S;
   const cv = document.createElement('canvas');
   cv.width = w; cv.height = h;

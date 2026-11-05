@@ -52,7 +52,6 @@ const withI = (i, e) => { e.style.setProperty('--i', String(i)); return e; }; //
 
 export function buildCredits(game, handlers) {
   const st = game.state;
-  const hen = (st.data.chicken && st.data.chicken.name) || 'Nugget';
   const stats = el('dl', { class: 'bk-stats' });
   for (const [label, value, cls] of journeyStats(st)) stats.append(el('dt', {}, label), el('dd', { class: cls || '' }, value));
 
@@ -73,7 +72,7 @@ export function buildCredits(game, handlers) {
     el('div', { class: 'tag' }, 'A game about digging your way out'),
     el('h3', {}, 'Starring'),
     el('p', {}, 'One very dirty mole'),
-    el('p', {}, `${hen}, a very good chicken`),
+    el('p', {}, 'Old Star, the best smith in the deep'),
     el('p', { class: 'soft' }, 'and everyone in Deep Town'),
     el('h3', {}, 'Your journey'),
     stats,

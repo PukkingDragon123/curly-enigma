@@ -1,12 +1,12 @@
 // The ending: farewell at Deep Town's lift → the long ride up through every stratum →
-// a blinding first glimpse of the sun (sunglasses on) → a sunset beach with Nugget, where
-// the camera finally turns. Works with ?scene=ending&fresh=1; dev: &phase=farewell|ascent|surface|beach|credits&at=secs
+// a blinding first glimpse of the sun (sunglasses on) → a sunset beach, where the camera
+// finally turns. Works with ?scene=ending&fresh=1; dev: &phase=farewell|ascent|surface|beach|credits&at=secs
 import * as THREE from 'three';
 import { Scene, disposeObject } from '../core/Scene.js';
 import { el, clamp } from '../core/util.js';
 import { useBookendStyles } from '../bookends/css.js';
 import { disposeTextures, setPixelScale } from '../bookends/fx.js';
-import { makeMole, makeChicken } from '../bookends/actors.js';
+import { makeMole } from '../bookends/actors.js';
 import { makeCage } from '../bookends/cage.js';
 import { makeSunglasses } from '../bookends/props.js';
 import { buildLanding } from '../bookends/landing.js';
@@ -53,9 +53,8 @@ export default class EndingScene extends Scene {
     st.flag('endingSeen', true);
     st.save();
 
-    // the travellers and their ride, shared across every phase
+    // the traveller and his ride, shared across every phase
     this.mole = makeMole();
-    this.hen = makeChicken({ hat: 'straw' });
     this.cage = makeCage();
     this.shades = makeSunglasses(this.mole.anchors?.headW ?? 0.75);
     this.shades.visible = false;
@@ -63,7 +62,7 @@ export default class EndingScene extends Scene {
     this.shadesRest = new THREE.Vector3(0, 6 * this.mole.s + (this.mole.eyeDrop ? 0 : this.mole.s), 6.6 * this.mole.s);
     this.shades.position.copy(this.shadesRest);
 
-    const ctx = { mole: this.mole, hen: this.hen, cage: this.cage, shades: this.shades, textures: this.textures, game: this.game };
+    const ctx = { mole: this.mole, cage: this.cage, shades: this.shades, textures: this.textures, game: this.game };
     const tb = performance.now();
     const farewell = buildLanding(ctx);
     const tl = performance.now();

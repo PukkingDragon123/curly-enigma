@@ -1,10 +1,9 @@
 // The journey: up on the surface, at golden hour, the young blacksmith mole walks an old forest
-// trail with Nugget's walking coop stomping along beside him, Nugget peeking out of its window.
-// Ancient trees, ferns and bluebells, shafts of low sun, a squirrel, a rabbit, robins, a woodpecker,
-// a frog at the stream (he takes the log bridge, the coop wades), and in a sunny clearing a roe doe
-// grazing and a strange old chest glinting in a beam of light. He walks up to it; the lid creaks
-// and gold light spills out over his face... the ground sags, cracks race over the clearing, roots
-// snap, the birds burst from the trees, and the crust gives way: he tumbles down a dark shaft.
+// trail alone. Ancient trees, ferns and bluebells, shafts of low sun through the leaves, the log
+// bridge over the stream, and in a sunny clearing a strange old chest glinting in a beam of light.
+// He walks up to it; the lid creaks and gold light spills out over his face... the ground groans
+// under his boots, cracks race over the clearing, roots snap, the birds burst from the trees, and
+// the crust gives way: he tumbles down a dark shaft.
 // Darkness, a heartbeat, muffled ringing: he blacks out. Ends with goto('home', { from: 'fall' }).
 // ~42 s, not skippable.
 // Dev: ?scene=fall&at=secs to start later, &freeze=1 to stop time, &lite=1 for the phone forest (&lite=0: the full
@@ -21,7 +20,7 @@ import { FA, setAir } from '../bookends/forest/atmos.js';
 import { forestSounds } from '../bookends/forest/sound.js';
 import { buildFallShaft } from '../bookends/fallshaft.js';
 import { makeHeroMole } from '../gfx/char/hero.js';
-import { loadCoop, heartbeat, muffle } from '../bookends/journey.js';
+import { heartbeat, muffle } from '../bookends/journey.js';
 
 // the timeline (seconds): shots A..L
 const T = { A: 0, B: 6.2, C: 10.4, D: 13.6, E: 15.6, F: 20.4, G: 24.8, H: 27.4, I: 29.6, I2: 31.3, J: 33.2, K: 34.8, L: 37.8, END: 42.4 };
@@ -30,7 +29,7 @@ const CAP = [0.9, 5.0];
 const WALK = 1.05; // m/s
 const smooth = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
 const ease = (a, b, x) => smooth((x - a) / (b - a));
-const _v = new THREE.Vector3(), _w = new THREE.Vector3();
+const _v = new THREE.Vector3();
 /** Golden hour: warm highlights, cool blue-green shade. */
 const GRADE = { lift: [0.0, 0.006, 0.022], gamma: [1.02, 1.0, 0.98], gain: [1.1, 1.01, 0.86] };
 const DEEP = { lift: [0.005, 0.015, 0.04], gamma: [0.97, 1.0, 1.05], gain: [0.96, 1.0, 1.06] };
@@ -54,7 +53,7 @@ export default class FallScene extends Scene {
     this.shake = 0;
     this.leaving = false;
     this.sag = 0;
-    this.cur = { s: 0, cs: 0 };
+    this.cur = { s: 0 };
     this.perfAcc = { n: 0, upd: 0, ren: 0, nu: 0 };
     forestSounds(this.game.audio);
 
@@ -96,7 +95,7 @@ export default class FallScene extends Scene {
     this.fallLight = new THREE.PointLight(0xffd8a8, 0, 7, 1.4);
     sc.add(this.hemi, this.sun, this.fill, this.chestLight, this.fallLight);
 
-    // ---- the travellers
+    // ---- the traveller
     this.hero = makeHeroMole({ height: 0.86 });
     this.heroPivot = new THREE.Group(); // tumbling happens round his middle
     this.heroPivot.add(this.hero.root);
@@ -105,11 +104,6 @@ export default class FallScene extends Scene {
     this.own(() => this.hero.dispose());
     this.heroShadow = makeBlobShadow(0.32, 0.26, 0.5);
     sc.add(this.heroShadow);
-    this.coop = await loadCoop({ height: 0.9 });
-    sc.add(this.coop.root);
-    this.own(() => this.coop.dispose?.());
-    this.coop.onStep = (side, k) => this.coopStep(side, k);
-    if (!this.coop.isPlaceholder) console.log('[fall] using the coop model');
 
     // ---- the forest's animals
     // (no wildlife: the forest's animals are left out)
@@ -145,7 +139,7 @@ export default class FallScene extends Scene {
     this.flockBirds = [];
     for (let i = 0; i < 16; i++) {
       const m = makeSheetSprite(sw.texture, { cols: sw.cols, size: [0.5, 0.5 / sw.aspect], anchor: [0.5, 0.5], renderOrder: 6, tint: i % 3 ? 0x8a8070 : 0xffffff });
-      const a = 0.6 + (i / 16) * 1.9 + Math.random() * 0.2; // out of the trees behind the coop, across the open sky
+      const a = 0.6 + (i / 16) * 1.9 + Math.random() * 0.2; // out of the trees behind the clearing, across the open sky
       m.userData = { ...m.userData, a, r: 7.5 + Math.random() * 4, h: 4.5 + Math.random() * 4, sp: 2.2 + Math.random() * 1.6, up: 1.4 + Math.random() * 1.2, ph: Math.random() * 4 };
       m.visible = false;
       this.flockBirds.push(m);
@@ -185,7 +179,7 @@ export default class FallScene extends Scene {
       time: () => this.t,
       shot: () => this.shotIndex,
       skip: () => this.skip(),
-      state: () => ({ t: this.t, shot: this.shotIndex, hero: this.hero.state, sag: this.sag, s: this.cur.s, coop: !this.coop.isPlaceholder }),
+      state: () => ({ t: this.t, shot: this.shotIndex, hero: this.hero.state, sag: this.sag, s: this.cur.s }),
       perf: () => this.perf(),
       hold: (on = true) => { this.hold = on ? 1 : 0; return on; },
       /** Visible triangles by part (in the view, after the distance cull; colour pass only). */
@@ -318,26 +312,18 @@ export default class FallScene extends Scene {
     // ...a long look, then slowly up to the chest: he stops right at the spill
     return lerp(L - 3.6, L - 0.05, ease(T.F + 4.0, T.G + 2.4, t));
   }
-  /** The coop's s: a step behind; it hangs back at the clearing's edge. */
-  coopS(t) {
-    const L = FOREST.trail.length;
-    if (t < T.F) return this.heroS(t) - 0.85;
-    return Math.min(this.heroS(t) - 0.85, L - 5.0 + (t > T.I + 1.2 ? -0.7 * ease(T.I + 1.2, T.I + 2.2, t) : 0));
-  }
-
-  /** Put the hero and the coop where they belong at time t (dt drives their animation). */
+  /** Put the hero where he belongs at time t (dt drives his animation). */
   place(t, dt) {
-    const hero = this.hero, coop = this.coop, tr = FOREST.trail;
-    const s = this.heroS(t), cs = this.coopS(t);
-    const vH = dt > 0 ? (s - this.cur.s) / dt : 0, vC = dt > 0 ? (cs - this.cur.cs) / dt : 0;
+    const hero = this.hero, tr = FOREST.trail;
+    const s = this.heroS(t);
+    const vH = dt > 0 ? (s - this.cur.s) / dt : 0;
     const jump = Math.abs(s - this.cur.s) > 1; // a cut
-    this.cur.s = s; this.cur.cs = cs;
-    const P = tr.at(s), Q = tr.at(cs);
+    this.cur.s = s;
+    const P = tr.at(s);
     const fallen = t >= T.J;
-    // the hero: a little left of the middle of the trail
+    // the hero: down the middle of the trail
     if (!fallen) {
-      const off = t < T.F ? -0.22 : -0.22 * (1 - ease(T.F, T.F + 2.5, t));
-      const x = P.x - P.tz * off, z = P.z + P.tx * off;
+      const x = P.x, z = P.z;
       let y = groundH(x, z);
       const B = FOREST.bridge;
       if (B && Math.abs(s - B.s) < B.half + 0.2) y = Math.max(y, B.y - Math.sin(clamp(1 - Math.abs(s - B.s) / B.half, 0, 1) * Math.PI / 2) * 0.05);
@@ -363,18 +349,6 @@ export default class FallScene extends Scene {
       this.heroShadow.position.set(H.x, by + 0.02, H.z);
       this.heroShadow.scale.setScalar(1 - up * 0.6);
       this.heroShadow.visible = !fallen;
-    }
-    // the coop: on the right, a step behind, wading beside the bridge
-    {
-      const off = t < T.F ? 0.75 : lerp(0.75, 1.35, ease(T.F, T.F + 3, t));
-      const x = Q.x - Q.tz * off, z = Q.z + Q.tx * off;
-      coop.root.position.set(x, groundH(x, z), z);
-      const sp = jump ? WALK : Math.abs(vC);
-      if (!this.coopFace) coop.face(Q.yaw, jump);
-      coop.update(dt, { speed: sp, moving: sp > 0.05 });
-      // Nugget watches a butterfly by her window
-      const hen = coop.hen;
-      if (hen && hen.head && this.henLook) { hen.head.rotation.y = this.henLook.y; hen.head.rotation.x = this.henLook.x; }
     }
     return P;
   }
@@ -414,20 +388,15 @@ export default class FallScene extends Scene {
       const kinds = ['trill', 'robin', 'trill', 'wren', 'robin', 'cuckoo', 'dove'];
       this.sfx('forest_song', { kind: kinds[(Math.random() * kinds.length) | 0], pan: Math.random() * 1.6 - 0.8, pitch: 0.85 + Math.random() * 0.35, vol: 0.022 + Math.random() * 0.02 });
     }
-    this.once('cluck1', 2.4, () => this.sfx('cluck', { n: 2 }));
     this.once('nod', 8.4, () => this.hero.doEmote('nod', 1));
-    // Nugget's close-up: she spots a butterfly, follows it, clucks
-
-    this.once('cluck2', T.C + 1.4, () => { this.sfx('cluck', { n: 3, pitch: 1.15 }); });
-    this.once('peck', T.C + 2.5, () => this.coop.peck?.());
-    // the bridge: planks thud under him, the coop splashes through
-    this.once('bridge', T.E + 1.2, () => { this.sfx('cluck', { n: 1 }); });
+    // his close-up: he tips his face up into the sun through the leaves, and smiles
+    this.once('sunup', T.C + 0.5, () => this.hero.look(0.25, 0.5));
+    this.once('smile', T.C + 1.2, () => this.hero.setExpression?.('happy', { hold: 1.8, body: false }));
+    this.once('sundown', T.C + 2.6, () => this.hero.look(0, 0));
     // the clearing: something glitters
     this.once('glint', T.F + 1.2, () => { this.sfx('sparkle', { vol: 0.6 }); this.hero.doEmote('surprise', 1.3); this.glint = true; });
     this.once('stop', T.F + 3.2, () => { this.hero.play('peer'); this.hero.look(0, 0.1); });
-    this.once('bawk', T.F + 3.5, () => { this.sfx('bawk'); this.coop.shake?.(1); });
     this.once('walk2', T.F + 4.0, () => this.hero.look(0, 0));
-    this.once('cluckno', T.G + 0.4, () => { this.sfx('cluck', { n: 4, pitch: 1.25 }); this.coop.hop?.(); });
     // the chest: the lid creaks wider and gold light pours out
     this.once('lid', T.G + 0.8, () => { this.sfx('forest_chest'); this.lidOpen = t; });
     this.once('chord', T.G + 1.1, () => { this.sfx('forest_chord', { vol: 0.05 }); this.sfx('coins', { n: 5 }); });
@@ -436,22 +405,12 @@ export default class FallScene extends Scene {
     // the ground goes
     this.once('creak', T.I, () => { this.sfx('creak'); this.sfx('forest_groan', { vol: 0.06 }); this.loop('rumble', 0.5); au.stopMusic(1.4); this.shake = 0.015; this.hero.play('idle'); this.hero.look(0, 0.35); });
     this.once('crack1', T.I + 0.6, () => { this.sfx('crack'); this.sfx('rumble_hit'); this.hero.doEmote('surprise', 2); this.hero.play('brace'); this.F.cracks.mesh.visible = true; this.crack = true; this.gust = 1; });
-
-    this.once('bawk2', T.I + 0.9, () => { this.sfx('bawk', { pitch: 1.1 }); this.coop.hop?.(); this.coop.shake?.(1.5); this.coop.hen?.flap?.(1.2); });
-    this.once('bawk2b', T.I + 0.25, () => { this.coop.hen?.flap?.(0.6); this.coop.shake?.(0.8); });
+    this.once('feet', T.I + 1.0, () => this.hero.look(0.15, -0.5)); // he looks down at his boots
     [1.3, 1.95, 2.5, 3.05].forEach((d, i) => this.once('snap' + i, T.I + d, () => this.snapRoot(i)));
     this.once('crack2', T.I + 1.7, () => { this.sfx('crack'); this.sfx('trickle'); this.shake = 0.05; });
     this.once('look', T.I + 2.2, () => { this.hero.look(-0.4, 0.3); this.sfx('squeak'); });
     this.once('crack3', T.I + 2.9, () => { this.sfx('crack'); this.sfx('debris'); this.sfx('forest_groan', { vol: 0.07, pitch: 0.8 }); this.shake = 0.08; });
     this.once('break', T.J, () => this.breakGround());
-    this.once('bawk3', T.J + 0.5, () => this.sfx('bawk', { pitch: 1.2 }));
-    this.once('coopturn', T.J + 0.3, () => { // the coop wheels round to stare down the hole
-      this.coopFace = true;
-      const c = this.coop.root.position;
-      this.coop.face(Math.atan2(-c.x, -c.z));
-      this.coop.hop?.();
-      this.coop.hen?.flap?.(1.2);
-    });
     this.once('whoosh', T.J + 0.4, () => { this.sfx('whoosh'); this.loop('wind', 0.6); this.loop('forest_leaves', 0); });
     this.once('deb', T.K + 0.6, () => this.sfx('debris'));
     this.once('dark', T.K + 1.2, () => { this.unmuffle = muffle(au, 360); this.loop('rumble', 0); });
@@ -465,23 +424,6 @@ export default class FallScene extends Scene {
       this.sag = k * k;
       this.F.cracks.uniforms.uReveal.value = ease(T.I + 0.55, T.J - 0.3, t);
       if (Math.random() < dt * 30) this.crackDust();
-    }
-  }
-
-  coopStep(side, k = 1) {
-    const c = this.coop.root.position;
-    const wet = groundH(c.x, c.z) < -0.45;
-    if (this.t > T.I + 3) return;
-    const ry = this.coop.root.rotation.y, o = side ? 0.16 : -0.16;
-    const fx = Math.cos(ry) * o, fz = -Math.sin(ry) * o;
-    if (wet) {
-      this.sfx('splash', { vol: 0.6 });
-      for (let i = 0; i < 18; i++) this.splash.spawn({ pos: [c.x + fx + (Math.random() - 0.5) * 0.3, -0.47, c.z + fz + (Math.random() - 0.5) * 0.3], vel: [(Math.random() - 0.5) * 1.4, 1.2 + Math.random() * 1.6, (Math.random() - 0.5) * 1.4], life: 0.9, color: 0xf0f8ff, color2: 0x8ac0e0, size: 0.035, size2: 0.02, gravity: 9, shape: SHAPE.square });
-    } else {
-      this.sfx('step', { mat: 'dirt', vol: 0.8 * k });
-      const gy = groundH(c.x + fx, c.z + fz);
-      for (let i = 0; i < 8; i++) this.dust.spawn({ pos: [c.x + fx + (Math.random() - 0.5) * 0.3, gy + 0.03, c.z + fz + (Math.random() - 0.5) * 0.3], vel: [(Math.random() - 0.5) * 0.6, 0.12 + Math.random() * 0.28, (Math.random() - 0.5) * 0.6], life: 1.1, color: 0xb89a74, color2: 0x8a7458, size: 0.035, size2: 0.09, alpha: 0.45, drag: 2, shape: i % 2 ? SHAPE.square : SHAPE.round });
-      if (k > 0.5) for (let i = 0; i < 3; i++) this.leaves.spawn({ pos: [c.x + fx, gy + 0.04, c.z + fz], vel: [(Math.random() - 0.5) * 0.8, 0.7 + Math.random() * 0.5, (Math.random() - 0.5) * 0.8], life: 1.2, color: [0xa86a32, 0x8a7a3a, 0x6a8a3a][i], size: 0.03, gravity: 3, drag: 1, spin: 8, shape: SHAPE.confetti });
     }
   }
 
@@ -625,51 +567,49 @@ export default class FallScene extends Scene {
   // ------------------------------------------------------------------ camera
   /** Shot i at time t into o = { pos, look, fov, roll, minH } (minH: the narrowest horizontal fov on tall screens). */
   shot(i, t, o) {
-    const H = this.heroPivot.position, C = this.coop.root.position;
+    const H = this.heroPivot.position;
     const tr = FOREST.trail;
     const portrait = this.camera.aspect < 0.9;
     o.roll = 0; o.fov = 46; o.minH = portrait ? 34 : 46;
     switch (i) {
-      case 0: { // up in the canopy, the low sun pouring through the leaves; craning down to the pair walking away up the trail into the light
+      case 0: { // up in the canopy, the low sun pouring through the leaves; craning down to him walking away up the trail into the light
         const u = ease(T.A + 0.2, T.B - 0.2, t);
         const P = tr.at(this.cur.s);
         const back = lerp(5.4, 3.3, u);
         o.pos.set(H.x - P.tx * back + P.tz * 0.2, lerp(3.4, H.y + 0.62, Math.pow(u, 0.9)), H.z - P.tz * back - P.tx * 0.2);
-        // up the trail into the golden haze where the light pours through, then down to them
+        // up the trail into the golden haze where the light pours through, then down to him
         const far = tr.at(this.cur.s + 16), ahead = tr.at(this.cur.s + 7);
         o.look.set(lerp(far.x, ahead.x * 0.6 + H.x * 0.4, u), lerp(far.y + 3.6, H.y + 0.32, Math.pow(u, 0.8)), lerp(far.z, ahead.z * 0.6 + H.z * 0.4, u));
         o.fov = lerp(50, 44, u);
         o.minH = portrait ? 40 : 46;
         break;
       }
-      case 1: { // tracking with them from his left, low, ferns sliding past in front
+      case 1: { // tracking with him from his left, low, ferns sliding past in front
         const P = tr.at(this.cur.s + 1.2);
         const u = (t - T.B) / (T.C - T.B);
         const side = lerp(2.1, 1.7, u);
         o.pos.set(P.x + P.tz * side, P.y + 0.62, P.z - P.tx * side);
-        o.look.set((H.x * 2 + C.x) / 3, H.y + 0.15, (H.z * 2 + C.z) / 3);
+        o.look.set(H.x, H.y + 0.15, H.z);
         o.fov = 42;
         o.minH = portrait ? 30 : 42;
         break;
       }
-      case 2: { // Nugget: close on the coop's window from its right, tracking; she watches a butterfly
-        const w = this.coop.windowWorld ? this.coop.windowWorld(_w) : _w.copy(C).setY(C.y + 1);
-        const P = tr.at(this.cur.cs);
+      case 2: { // close on his face from his right, tracking: he tips it up into the sun through the leaves, and smiles
+        const P = tr.at(this.cur.s);
         const u = (t - T.C) / (T.D - T.C);
-        const d = lerp(1.2, 0.95, u);
-        // ahead of the hut and a little to its right, looking back at the round gable window
-        o.pos.set(w.x + P.tx * d - P.tz * 0.38, w.y - 0.06, w.z + P.tz * d + P.tx * 0.38);
-        o.look.set(w.x + P.tx * 0.1, w.y - 0.02, w.z + P.tz * 0.1);
+        const d = lerp(1.6, 1.4, u);
+        // ahead of him and a little to his right, looking back at his face
+        o.pos.set(H.x + P.tx * d - P.tz * 0.5, H.y + 0.32, H.z + P.tz * d + P.tx * 0.5);
+        o.look.set(H.x + P.tx * 0.1, H.y + 0.2, H.z + P.tz * 0.1);
         o.fov = 38;
         o.minH = portrait ? 26 : 38;
         break;
       }
-      case 3: { // low on the trail ahead, backing away as they come on: boots and great chicken feet thumping down, dust puffing
+      case 3: { // low on the trail ahead, backing away as he comes on: his boots thumping down, dust puffing
         const u = (t - T.D) / (T.E - T.D);
         const P = tr.at(this.cur.s + lerp(2.3, 2.0, u));
         o.pos.set(P.x - P.tz * 0.25, P.y + 0.3, P.z + P.tx * 0.25);
-        const wH = portrait ? 0.8 : 0.58;
-        o.look.set(H.x * wH + C.x * (1 - wH), H.y - 0.12, H.z * wH + C.z * (1 - wH));
+        o.look.set(H.x, H.y - 0.12, H.z);
         o.fov = 40;
         o.minH = portrait ? 30 : 40;
         break;
@@ -680,7 +620,7 @@ export default class FallScene extends Scene {
         const st = FOREST.stream, ss = FOREST.trail.cross.ss;
         const q = st.curve.getPointAt(clamp((ss + lerp(6.4, 5.6, u)) / st.L, 0, 1));
         o.pos.set(q.x, B.y + lerp(0.75, 0.6, u), q.z);
-        o.look.set(lerp(B.x, (H.x + C.x) / 2, 0.5), B.y + 0.2, lerp(B.z, (H.z + C.z) / 2, 0.5));
+        o.look.set(lerp(B.x, H.x, 0.5), B.y + 0.2, lerp(B.z, H.z, 0.5));
         o.fov = 46;
         o.minH = portrait ? 34 : 46;
         break;
@@ -711,13 +651,12 @@ export default class FallScene extends Scene {
         o.minH = portrait ? 26 : 36;
         break;
       }
-      case 8: { // the ground groans: Nugget in her window, feathers up, the trees shaking and the birds bursting into the sky behind her
-        const w = this.coop.windowWorld ? this.coop.windowWorld(_w) : _w.copy(C).setY(C.y + 1);
+      case 8: { // the ground groans: low by his boots, looking up at him as he glances up at the creaking trees, then down at the turf
         const u = ease(T.I, T.I2, t);
-        const dx = -C.x, dz = -C.z, dl = Math.hypot(dx, dz) || 1; // toward the clearing (the way she faces)
-        const d = lerp(1.15, 0.95, u);
-        o.pos.set(w.x + (dx / dl) * d + (dz / dl) * 0.3, w.y - 0.42, w.z + (dz / dl) * d - (dx / dl) * 0.3);
-        o.look.set(w.x, w.y + 0.12 + u * 0.1, w.z);
+        const P = tr.at(this.cur.s), f = lerp(1.0, 0.85, u), l = lerp(1.45, 1.3, u); // ahead of him and to his left
+        const x = H.x + P.tx * f + P.tz * l, z = H.z + P.tz * f - P.tx * l;
+        o.pos.set(x, groundH(x, z) + 0.2, z);
+        o.look.set(H.x, H.y + lerp(-0.1, 0.1, u), H.z);
         o.fov = 44;
         o.minH = portrait ? 30 : 44;
         break;
@@ -876,21 +815,10 @@ export default class FallScene extends Scene {
     this.shaft.update?.(dt);
     // the forest's animals
     this.critters.update(dt, {
-      t, hero: this.heroPivot.position, coop: this.coop.root.position, glint: !!this.glint, crack: !!this.crack,
+      t, hero: this.heroPivot.position, glint: !!this.glint, crack: !!this.crack,
       sfx: (name, o) => this.sfx('forest_' + name, o),
       splash: (pos) => { for (let i = 0; i < 12; i++) this.splash.spawn({ pos: [pos.x, -0.47, pos.z], vel: [(Math.random() - 0.5) * 1, 1 + Math.random() * 1.2, (Math.random() - 0.5) * 1], life: 0.8, color: 0xf0f8ff, color2: 0x8ac0e0, size: 0.03, gravity: 9, shape: SHAPE.square }); this.sfx('splash', { vol: 0.3 }); },
     });
-    // Nugget: in her close-up she follows a butterfly past the window
-    if (this.henFly && t < T.D + 0.5) {
-      const u = (t - this.henFly.t0) / 3;
-      this.henLook = { y: Math.sin(u * 3.2) * 0.7, x: -0.25 + Math.sin(u * 5) * 0.1 };
-      const w = this.coop.windowWorld ? this.coop.windowWorld(_w) : _w.copy(this.coop.root.position);
-      if (!this.henBf) this.henBf = F.flies[0];
-      const P = FOREST.trail.at(this.cur.cs);
-      this.henBf.userData.pinned = true;
-      const sw = 0.45 + Math.sin(u * 3.2) * 0.1, along = 0.25 - u * 0.4;
-      this.henBf.position.set(w.x - P.tz * sw + P.tx * along, w.y + 0.12 + Math.sin(u * 9) * 0.06, w.z + P.tx * sw + P.tz * along);
-    } else if (this.henBf) { this.henBf.userData.pinned = false; this.henLook = null; this.henBf = null; }
     // the flock wheeling away from the clearing
     for (const b of this.flockBirds) {
       if (!b.visible) continue;

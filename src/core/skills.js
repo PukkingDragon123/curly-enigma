@@ -61,9 +61,16 @@ export function fillSkills(saved, data) {
     s.lvl[id] = Number.isFinite(L) && L >= 1 ? Math.min(MAX_LEVEL, Math.floor(L)) : 1;
   }
   s.nodes = {};
-  for (const [id, day] of Object.entries(saved.nodes || {})) if (NODE[id]) s.nodes[id] = day || 1;
+  let gone = 0;
+  for (const [id, day] of Object.entries(saved.nodes || {})) if (NODE[id]) s.nodes[id] = day || 1; else gone++;
   s.seen = { ...(saved.seen || {}) };
   for (const k of ['points', 'earned', 'granted', 'respecs', 'nudge']) s[k] = Number.isFinite(+saved[k]) ? Math.max(0, +saved[k]) : 0;
+  // nodes that no longer exist give their points back
+  if (gone) {
+    const spent = Object.keys(s.nodes).reduce((t, id) => t + NODE[id].cost, 0);
+    const owed = Math.min(gone * Math.max(...Object.values(NODE).map((n) => n.cost)), s.earned + s.granted - spent - s.points);
+    if (owed > 0) s.points += owed;
+  }
   return syncLevels(s);
 }
 

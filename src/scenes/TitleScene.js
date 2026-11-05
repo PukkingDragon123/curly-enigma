@@ -181,7 +181,7 @@ export default class TitleScene extends Scene {
       if (!st.flag('fallen')) g.goto('fall');
       else g.goto(this.continueTarget(), { from: 'continue' });
     } else {
-      // every new game opens with the fall: the ground gives way under the mole and Nugget
+      // every new game opens with the fall: the ground gives way under the mole
       st.useSlot(i, { fresh: true });
       g.goto('fall');
     }
@@ -199,7 +199,7 @@ export default class TitleScene extends Scene {
 
   openCredits() {
     const body = el('div', { class: 'bk-credits-body' }, [
-      el('p', {}, 'A tough little mole, a very good chicken, an old star-nosed smith, and one million gold between them and the sun.'),
+      el('p', {}, 'A tough little mole, an old star-nosed smith, and one million gold between them and the sun.'),
       el('ul', {}, [
         el('li', {}, 'Made with Three.js'),
         el('li', {}, 'Every sound synthesized in the browser'),

@@ -73,7 +73,7 @@ html.is-touch #ui[data-hud=none] .tutor, html.is-touch #ui[data-hud=mini] .tutor
   text-shadow: 0 var(--px) 0 #3a0f0a, var(--px) 0 0 #5a1a10;
 }
 .tt-card[data-who=hero] .tt-plate { border-image-source: var(--dl-ribbonBlue); }
-.tt-card[data-who=nugget] .tt-plate, .tt-card[data-who=shop] .tt-plate { border-image-source: var(--dl-ribbonGreen); }
+.tt-card[data-who=shop] .tt-plate { border-image-source: var(--dl-ribbonGreen); }
 
 /* ---- the parchment */
 .tt-body {

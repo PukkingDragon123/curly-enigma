@@ -119,19 +119,12 @@ export const UPGRADES = {
     req: { up: ['blast', 2] },
   },
 
-  // ───────────── the tavern & Nugget ─────────────
+  // ───────────── the tavern ─────────────
   tavern: {
     tab: 'home', name: 'Tavern Taps', icon: 'rootbeer', badge: 'coin', max: 9,
     desc: 'New taps, a warmer hearth, a few more stools. The tavern earns a little more every day.',
     effect: (l) => TAVERN_BASE + TAVERN[l], fmt: (v) => `${v} gold a day`,
     cost: { gold: [500, 2.05], items: { 0: { rootbeer: 4 }, 2: { honey: 4 }, 4: { copper_ingot: 4 }, 6: { silver_ingot: 2 }, 8: { gold_ingot: 2 } } },
-  },
-  nugget: {
-    tab: 'home', name: 'Nugget\'s Nose', icon: 'egg', badge: 'eye', max: 5,
-    desc: 'Treats and training. Now and then Nugget scratches up an ore nugget for your bag.',
-    effect: (l) => l, fmt: (v) => (v ? `finds ore about every ${Math.round(150 / (0.5 + v * 0.5))} s` : 'Nugget only clucks at ore'),
-    cost: { gold: [400, 2.2], items: { 0: { worm: 5 }, 2: { worm: 10 }, 4: { glow_beetle: 2 } } },
-    req: { flag: 'nugget' },
   },
 };
 
@@ -154,7 +147,7 @@ export function upgradeLock(id, st, zoneNames = []) {
   const r = UPGRADES[id]?.req;
   if (!r) return null;
   if (r.zone && (st.data.zoneMax || 1) < r.zone) return `Reach ${zoneNames[r.zone] || 'zone ' + r.zone}`;
-  if (r.flag && !st.flag(r.flag)) return r.flag === 'nugget' ? 'Find Nugget first' : 'Not yet';
+  if (r.flag && !st.flag(r.flag)) return 'Not yet';
   if (r.up && (st.data.upgrades?.[r.up[0]] || 0) < r.up[1]) return `${UPGRADES[r.up[0]].name} level ${r.up[1]}`;
   return null;
 }

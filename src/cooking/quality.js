@@ -24,7 +24,7 @@ export function fixQualityStacks(state) {
   const d = state?.data;
   if (!d) return 0;
   let changed = 0;
-  for (const slots of [d.inv?.slots, d.stash?.slots, d.coop?.slots]) {
+  for (const slots of [d.inv?.slots, d.stash?.slots]) {
     if (!Array.isArray(slots)) continue;
     for (let i = 0; i < slots.length; i++) {
       const s = slots[i];

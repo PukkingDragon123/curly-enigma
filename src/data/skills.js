@@ -46,7 +46,7 @@ export const SKILL_LINES = [
   { id: 'exploring', name: 'Exploring', glyph: 'compass', ink: '#56347e', pal: [0xe8c8ff, 0xb58ae0, 0x8256b8, 0x56347e, 0x30184a],
     how: 'Ink new tunnels on your map, find places, solve old puzzles.', star: 'Every tunnel goes somewhere. Most of them down.' },
   { id: 'foraging', name: 'Foraging', glyph: 'mushroom', ink: '#3a6a24', pal: [0xc8f08a, 0x8ac85a, 0x5a9a3a, 0x3a6a24, 0x1e3a12],
-    how: 'Pull mushrooms and roots, feed Nugget.', star: 'Gentle paws, full pockets. Nugget agrees.' },
+    how: 'Pull mushrooms and roots, catch critters.', star: 'Gentle paws, full pockets.' },
   { id: 'trading', name: 'Trading', glyph: 'coin', ink: '#8a6010', pal: [0xfff0a8, 0xf6d462, 0xd8a832, 0x9a6e14, 0x56380a],
     how: 'Sell your finds and buy what you need. Big deals teach more.', star: 'A million gold is just a lot of small sales.' },
 ];
@@ -67,7 +67,7 @@ export const SKILL_KEYS = {
   clean: { kind: 'mult', label: 'Steady paws', fmt: (v) => `${less(v)} scratches`, by: 'mine', how: 'ore quality lost to scratches ÷ skill' },
   blast: { kind: 'mult', label: 'Blast radius', fmt: pct, by: 'mine', how: 'explosive blast radius × skill' },
   stamina: { kind: 'mult', label: 'Stamina', fmt: (v) => `${less(v)} energy`, by: 'mine', how: 'energy spent on work (pick blows, hammer strikes, swimming) ÷ skill; not damage' },
-  carry: { kind: 'mult', label: 'Bag space', fmt: pct, by: 'skills', how: 'state.bagCapacity() × skill (rounded); the coop may use it too' },
+  carry: { kind: 'mult', label: 'Bag space', fmt: pct, by: 'skills', how: 'state.bagCapacity() × skill (rounded)' },
   lamp: { kind: 'mult', label: 'Lamp reach', fmt: pct, by: 'skills', how: 'state.lightRadius() × skill' },
   hide: { kind: 'mult', label: 'Thick hide', fmt: (v) => `${less(v)} damage`, by: 'combat', how: 'damage taken (creatures, blasts) ÷ skill' },
   damage: { kind: 'mult', label: 'Damage', fmt: pct, by: 'combat', how: 'damage dealt to creatures × skill' },
@@ -91,7 +91,6 @@ export const SKILL_KEYS = {
   forage: { kind: 'mult', label: 'Foraging ease', fmt: pct, by: 'forage', how: 'the forage pull window × skill; quality of what you pull × skill (cap 100)' },
   double: { kind: 'chance', label: 'Double pull', fmt: (v) => `${Math.round(v * 100)}% chance`, by: 'skills', how: 'chance a forage gives a second one (on act forage)' },
   sense: { kind: 'perk', label: 'Mushroom sense', fmt: () => 'plants twinkle', by: 'forage', how: '1: forageable plants twinkle from further away (radar/glint)' },
-  nugget: { kind: 'mult', label: 'Nugget\'s bond', fmt: pct, by: 'nugget', how: 'Nugget\'s hunger drains ÷ skill; her finds and patience × skill' },
   sell: { kind: 'mult', label: 'Ore & gem prices', fmt: pct, by: 'skills', how: 'ore and gem sale prices × skill (inside sellPrice, so every shown price matches)' },
   haggle: { kind: 'mult', label: 'Shop discount', fmt: (v) => `${less(v)} prices`, by: 'skills', how: 'shop prices ÷ skill (state.buy; show state.buyPrice(p))' },
   tips: { kind: 'chance', label: 'Tips', fmt: (v) => `${Math.round(v * 100)}% chance`, by: 'skills', how: 'chance a sale over 100g earns a 10% tip (on act sell)' },
@@ -176,13 +175,13 @@ export const SKILL_NODES = [
   N('foraging', 'g_gentle', 1, 1, 'leaf', 'Gentle Pull', { forage: 0.15 }, 'Roots come up whole.', { req: ['g_eye'] }),
   N('foraging', 'g_double', 1, 3, 'sprout', 'Green Paws', { double: 0.2 }, 'Sometimes there\'s a second one underneath.', { req: ['g_eye'] }),
   N('foraging', 'g_pouch', 2, 0, 'bag', 'Herb Pouch', { carry: 0.08 }, 'A little pouch for the little things.', { req: ['g_gentle'] }),
-  N('foraging', 'g_nugget', 2, 2, 'hen', 'Nugget Whisperer', { nugget: 0.25 }, 'Nugget gets hungry slower and finds more.', { req: ['g_gentle', 'g_double'] }),
+  N('foraging', 'g_snout', 2, 2, 'nose', 'Truffle Snout', { forage: 0.1, double: 0.1 }, 'You smell the good ones before you see them.', { req: ['g_gentle', 'g_double'] }),
   N('foraging', 'g_sense', 2, 4, 'eye', 'Mushroom Sense', { sense: 1 }, 'Things worth pulling twinkle from afar.', { req: ['g_double'] }),
-  N('foraging', 'g_hen', 3, 0, 'hen', 'Hen\'s Best Friend', { nugget: 0.25 }, 'Nugget would follow you into lava. Please don\'t.', { req: ['g_pouch', 'g_nugget'] }),
-  N('foraging', 'g_bounty', 3, 1, 'sprout', 'Bountiful', { double: 0.15 }, 'The cave is generous to you.', { req: ['g_pouch', 'g_nugget'], excl: 'g_way' }),
-  N('foraging', 'g_care', 3, 3, 'leaf', 'Careful Picker', { forage: 0.25 }, 'Not a bruise on them.', { req: ['g_nugget', 'g_sense'], excl: 'g_way' }),
+  N('foraging', 'g_larder', 3, 0, 'bowl', 'Full Larder', { hearty: 0.15 }, 'Wild greens in every pot: food fills you up more.', { req: ['g_pouch', 'g_snout'] }),
+  N('foraging', 'g_bounty', 3, 1, 'sprout', 'Bountiful', { double: 0.15 }, 'The cave is generous to you.', { req: ['g_pouch', 'g_snout'], excl: 'g_way' }),
+  N('foraging', 'g_care', 3, 3, 'leaf', 'Careful Picker', { forage: 0.25 }, 'Not a bruise on them.', { req: ['g_snout', 'g_sense'], excl: 'g_way' }),
   N('foraging', 'g_lore', 3, 4, 'potion', 'Herb Lore', { buff: 0.15, hearty: 0.1 }, 'You know which root does what.', { req: ['g_sense'] }),
-  N('foraging', 'g_root', 4, 2, 'crown', 'Root Mother', { forage: 0.15, double: 0.1, nugget: 0.2 }, 'Mushrooms lean toward you as you pass.', { req: ['g_bounty', 'g_care', 'g_hen', 'g_lore'] }),
+  N('foraging', 'g_root', 4, 2, 'crown', 'Root Mother', { forage: 0.15, double: 0.1, hearty: 0.1 }, 'Mushrooms lean toward you as you pass.', { req: ['g_bounty', 'g_care', 'g_larder', 'g_lore'] }),
 
   // ---- Trading
   N('trading', 't_tongue', 0, 2, 'coin', 'Silver Tongue', { sell: 0.05 }, 'Ore and gems sell for more.'),
@@ -217,15 +216,13 @@ export const XP_RULES = {
     if (typeof g === 'number') g = g >= 92 ? 'S' : g >= 80 ? 'A' : g >= 66 ? 'B' : g >= 50 ? 'C' : g >= 34 ? 'D' : 'F';
     return { smithing: 30 + (GRADE_XP[g] ?? 12) };
   },
-  part: (e) => ({ smithing: 20 + (GRADE_XP[e.grade] ?? 10) * 0.7 }), // a coop part forged at home
-  install: (e, k) => { if (k.first('install:' + e.part)) k.bonus('smithing', 10); return null; },
+  part: (e) => ({ smithing: 20 + (GRADE_XP[e.grade] ?? 10) * 0.7 }), // a forge piece made at home (your first pick)
   cook: (e, k) => { if (e.dish != null && k.first('dish:' + e.dish)) k.bonus('cooking', 20); return { cooking: 18 + 0.32 * Math.max(0, Math.min(100, e.score ?? 60)) }; },
   kill: (e, k) => ({ combat: k.killXp(e.kind) }),
   block: (e) => ({ combat: e.perfect ? 4 : 1.5 }),
   nest: (e, k) => { k.bonus('combat', 35); return null; },
   hurt: (e) => ({ combat: Math.min(4, 0.5 + (e.n || 0) * 0.12) }),
   forage: (e, k) => ({ foraging: 8 + 0.06 * (e.q ?? 70) + Math.min(8, k.value(e.id) / 8) }),
-  feed: () => ({ foraging: 4 }),
   explore: (e, k) => {
     if (e.zone != null && k.first('zone:' + e.zone)) k.bonus('exploring', 40);
     if (e.biome != null && k.first('biome:' + e.biome)) k.bonus('exploring', 30);
@@ -242,12 +239,12 @@ export const XP_RULES = {
     if (!s || s === 'skip') return null;
     const line = /mine|dig|ore|pick|gem|chisel|copper/.test(s) ? 'mining' : /forge|smelt|anvil|quench|hammer|blade/.test(s) ? 'smithing'
       : /cook|hearth|dish|stir|chop/.test(s) ? 'cooking' : /fight|block|parry|combat/.test(s) ? 'combat'
-        : /forage|mushroom|pull|nugget|feed/.test(s) ? 'foraging' : /sell|buy|trade|shop/.test(s) ? 'trading' : 'exploring';
+        : /forage|mushroom|pull/.test(s) ? 'foraging' : /sell|buy|trade|shop/.test(s) ? 'trading' : 'exploring';
     return { [line]: 15 };
   },
 };
 /** Per-type XP caps for bursty events: up to `cap` banked, refilled at `rate` XP per second. */
 export const XP_RATE = {
   dig: { cap: 4, rate: 1.0 }, explore: { cap: 8, rate: 2.5 }, block: { cap: 10, rate: 2 }, hurt: { cap: 6, rate: 1 },
-  talk: { cap: 14, rate: 0.3 }, feed: { cap: 8, rate: 0.15 }, sleep: { cap: 3, rate: 0.01 }, blast: { cap: 9, rate: 0.5 },
+  talk: { cap: 14, rate: 0.3 }, sleep: { cap: 3, rate: 0.01 }, blast: { cap: 9, rate: 0.5 },
 };

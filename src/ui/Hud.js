@@ -1,9 +1,11 @@
 // The corner HUD: things that hang into view only when they matter, then tuck away again.
 //  top-left : coin pouch (gold) · lantern (energy) · charms (buffs) · tear-off calendar (new day)
 //  top-right: the backpack (inventory) with the Index Book peeking out · pause journal · depth plumb
+// The art: src/ui/uiSprites.js (sprites) and src/ui/hudArt.js (the pouch, tags, plates, strings: --h-*).
 import { el, formatGoldFull, clamp } from '../core/util.js';
 import { BUFFS } from '../data/recipes.js';
 import { SPR } from './uiSprites.js';
+import { HART, installHudArt } from './hudArt.js';
 
 const LOW = 0.3;
 
@@ -12,6 +14,7 @@ export class Hud {
     this.ui = ui;
     this.game = ui.game;
     const st = this.game.state;
+    installHudArt();
     this.goldShown = st.gold;
     this.pouchT = 0;
     this.pinned = 0;
@@ -28,7 +31,7 @@ export class Hud {
 
     // ---- coin pouch (hangs from the top-left on its drawstring)
     this.goldNum = el('span', { class: 'pouch-num' }, formatGoldFull(st.gold));
-    this.pouchImg = el('img', { class: 'pix pouch-img', src: SPR.pouch(false), alt: '' });
+    this.pouchImg = el('img', { class: 'pix pouch-img', src: HART.pouch(false), alt: '' });
     this.coinFx = el('div', { class: 'pouch-coins' });
     this.pouchDelta = el('div', { class: 'pouch-delta' });
     this.pouch = el('div', { class: 'pouch', title: 'Gold' }, [
@@ -121,9 +124,9 @@ export class Hud {
     this.pouch.classList.remove('jingle');
     void this.pouch.offsetWidth;
     this.pouch.classList.add('jingle');
-    this.pouchImg.src = SPR.pouch(true);
+    this.pouchImg.src = HART.pouch(true);
     clearTimeout(this._pouchShut);
-    this._pouchShut = setTimeout(() => { this.pouchImg.src = SPR.pouch(false); }, 1400);
+    this._pouchShut = setTimeout(() => { this.pouchImg.src = HART.pouch(false); }, 1400);
     if (d > 0) this.spawnCoins(clamp(Math.round(Math.log10(d + 1) * 2), 2, 9));
   }
   spawnCoins(n) {

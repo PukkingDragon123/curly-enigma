@@ -20,7 +20,6 @@ import { buffSecs } from '../cooking/buffs.js';
 import { kitchenData, ingredientQ, pantryCount, pantryTake, pantryGive } from '../cooking/quality.js';
 import { CookLesson } from '../cooking/lesson.js';
 import { ITEMS } from '../data/items.js';
-import { makeChicken } from '../gfx/characters.js';
 import { pick, clamp } from '../core/util.js';
 
 // camera per station: offset from the station point, and look-at offset
@@ -37,12 +36,12 @@ const CAM = {
 };
 
 const LINES = {
-  Perfect: ['Grandma Mole would be proud!', 'Chef\'s kiss! Mwah!', 'The surface folks would line up for this.', 'Nugget is doing a little happy dance.'],
-  Great: ['Smells just like home.', 'Your whiskers are tingling. Good sign!', 'Nugget approves wholeheartedly.', 'That one goes in the family cookbook.'],
+  Perfect: ['Grandma Mole would be proud!', 'Chef\'s kiss! Mwah!', 'The surface folks would line up for this.', 'You do a little happy dance.'],
+  Great: ['Smells just like home.', 'Your whiskers are tingling. Good sign!', 'Old Star would ask for seconds.', 'That one goes in the family cookbook.'],
   Good: ['Tasty! A little rustic.', 'Solid cooking, little digger.', 'Not bad for a mole with spade paws.'],
   Okay: ['Edible. Mostly.', 'Well... it\'s food.', 'It has a certain underground charm.'],
-  Burnt: ['Crispy. Very crispy.', 'Smoke means flavor, right?', 'Nugget slowly backs away.'],
-  mush: ['What... is it?', 'It wobbled. Was it supposed to wobble?', 'Technically food.', 'Nugget refuses to make eye contact with it.'],
+  Burnt: ['Crispy. Very crispy.', 'Smoke means flavor, right?', 'Even the smoke looks embarrassed.'],
+  mush: ['What... is it?', 'It wobbled. Was it supposed to wobble?', 'Technically food.', 'It refuses to make eye contact with you.'],
 };
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -332,7 +331,6 @@ export default class CookingScene extends Scene {
     this.clearPreviews();
     this.clearLeftovers();
     this.clearDishModel();
-    this.hideNugget();
     this.ui.closeSide();
     const known = st.data.recipes[this.dish] !== undefined;
     this.ui.stepHud(known ? DISHES[this.dish].name : '???', this.steps, { onStop: () => { if (!this.game.ui.isPanelOpen() && this.phase !== 'finale') this.askStop(); } });
@@ -499,90 +497,20 @@ export default class CookingScene extends Scene {
       dish: this.dish, score: res.score, isNew: res.isNew, made: res.made, line,
       buffSecs: it?.buff ? buffSecs(this.game.state, it, res.score) * (this.game.state.skill?.('buff') || 1) : 0, ingQ: this.ingQ,
       steps: this.results,
-      onEat: () => { if (this.game.eat(this.dish)) this.nuggetSay('Cluck!', 1.5); },
+      onEat: () => { this.game.eat(this.dish); },
       onAgain: () => { this.game.audio.play('ui_click'); this.resetKitchen(); this.openPantry(); },
       onDone: () => this.leave(),
     });
-    this.showNugget(res.grade);
     this.cheer = { t0: this.time, amp: { Perfect: 1, Great: 0.7, Good: 0.35, Okay: 0, Burnt: -1 }[res.grade] ?? 0 };
     this.lesson?.onResult(this.lastResult);
   }
 
   resetKitchen() {
     this.cheer = null;
-    this.hideNugget();
     this.clearDishModel();
     this.clearLeftovers();
     this.contents.clear();
     for (const name of Object.keys(this.kitchen.props)) this.kitchen.restore(name);
-  }
-
-  // ------------------------------------------------------------------ Nugget
-  showNugget(grade) {
-    if (!this.nugget) {
-      this.nugget = makeChicken({ hat: 'straw', scale: 0.62 });
-      this.scene.add(this.nugget.root);
-    }
-    const n = this.nugget;
-    n.root.visible = true;
-    n.grade = this.dish === 'mystery_mush' ? 'mush' : grade;
-    n.home = new THREE.Vector3(SPOTS.plate.x - 0.32, 0, SPOTS.plate.z - 0.45);
-    n.root.position.copy(n.home).setY(1.5);
-    n.vy = 0;
-    n.landed = false;
-    n.landT = 0;
-    n.face(0.35, true);
-    n.flap(2);
-  }
-
-  hideNugget() {
-    if (this.nugget) this.nugget.root.visible = false;
-    this.game.ui.hideBubble('nugget');
-  }
-
-  nuggetSay(text, life = 2.2) {
-    const n = this.nugget;
-    if (!n || !n.root.visible) return;
-    const p = this.toScreen(n.root.position.clone().add(new THREE.Vector3(0, 0.56, 0)));
-    this.game.ui.bubble('nugget', text, p.x, p.y, { life });
-  }
-
-  updateNugget(dt) {
-    const n = this.nugget;
-    if (!n || !n.root.visible) return;
-    const audio = this.game.audio;
-    if (!n.landed) {
-      n.vy -= 3.2 * dt;
-      n.root.position.y += n.vy * dt;
-      if (n.root.position.y <= 0) {
-        n.root.position.y = 0;
-        n.landed = true;
-        n.landT = 0;
-        audio.play('land', { vol: 0.5 });
-        puff(this.fx, n.root.position.clone().setY(0.03), 0xf6f0e4, 6, 0.15);
-        const g = n.grade;
-        if (g === 'Perfect' || g === 'Great') { audio.play('bawk'); n.flap(1.2); this.nuggetSay(g === 'Perfect' ? 'BAWK!! ♥' : 'Bawk bawk!'); }
-        else if (g === 'Good') { audio.play('cluck', { n: 2 }); this.nuggetSay('Cluck!'); }
-        else if (g === 'Okay') { audio.play('cluck', { n: 1, pitch: 0.9 }); n.peck(); this.nuggetSay('...cluck?'); }
-        else if (g === 'mush') { audio.play('cluck', { n: 1, pitch: 1.2 }); this.nuggetSay('?'); }
-        else { audio.play('bawk', { pitch: 0.8 }); this.nuggetSay('Bwaaak...'); }
-      }
-    } else {
-      n.landT += dt;
-      const g = n.grade;
-      if (g === 'Perfect' || g === 'Great') {
-        const h = Math.max(0, Math.sin(n.landT * (g === 'Perfect' ? 9 : 6)));
-        n.root.position.y = h * (g === 'Perfect' ? 0.07 : 0.04) * (n.landT < 4 ? 1 : 0.3);
-        if (g === 'Perfect' && Math.random() < dt * 0.8) n.flap(0.5);
-      }
-      if (n.landT > 2.5 && Math.random() < dt * 0.12) { n.peck(); if (Math.random() < 0.5) audio.play('cluck', { n: 1 + ((Math.random() * 2) | 0) }); }
-      else if (n.landT > 1.5 && Math.random() < dt * 0.2) audio.play('cluck', { n: 1, pitch: 1.1 });
-      n.face(0.35 + Math.sin(n.landT * 0.7) * 0.4);
-    }
-    n.update(dt);
-    if (n.landed && (n.grade === 'Burnt' || n.grade === 'mush') && n.landT < 2.5) n.head.rotation.y = Math.sin(n.landT * (n.grade === 'Burnt' ? 10 : 2)) * (n.grade === 'Burnt' ? 0.4 : 0.6);
-    const p = this.toScreen(n.root.position.clone().add(new THREE.Vector3(0, 0.56, 0)));
-    this.game.ui.moveBubble('nugget', p.x, p.y, true);
   }
 
   // ------------------------------------------------------------------ frame
@@ -612,7 +540,6 @@ export default class CookingScene extends Scene {
       p.mesh.rotation.y = Math.sin(this.time * 1.5 + p.x * 5) * 0.06;
     }
     if (this.dishModel && (this.phase === 'result' || this.phase === 'finale')) this.dishModel.rotation.y = Math.sin(this.time * 1.2) * 0.5;
-    this.updateNugget(dt);
     this.fx.update(dt, this.camera, this.game.engine.height);
   }
 
@@ -697,7 +624,6 @@ export default class CookingScene extends Scene {
 
   exit() {
     this.stopHeat();
-    this.game.ui.hideBubble('nugget');
     super.exit();
   }
 }

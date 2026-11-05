@@ -256,11 +256,6 @@ export class Game {
     const rest = Math.max(0, ...beds.map((b) => b.rest || 0));
     if (rest >= 1) st.addBuff('sturdy', 600);
     if (rest >= 2) st.addBuff('lucky', 600);
-    // eggs
-    const petBonus = d.chicken.lastPetDay >= d.day - 1 ? 0.35 : 0;
-    if (st.flag('nugget') && d.home.placed.some((p) => p.id === 'coop') && Math.random() < 0.65 + petBonus) {
-      d.chicken.eggs = Math.min(6, (d.chicken.eggs || 0) + 1 + (Math.random() < petBonus ? 1 : 0));
-    }
     // planters
     for (const [puid, pl] of Object.entries(d.home.planters || {})) {
       if (pl && pl.id && pl.day < d.day) pl.ready = true;

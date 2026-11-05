@@ -9,6 +9,7 @@ export const RM = {
   MOS_W: 100, MOS_R: 101, MOS_B: 102, MOS_G: 103, MOS_K: 104, MOS_T: 105,
   RUNE: 106, RUNEOFF: 107, WARD: 108, CRACKED: 109, GILT: 110, HOARD: 111, MARBLE: 112, BRONZE: 113,
   RUNE_R: 114, // a warm red rune (fire, ember shrines)
+  SCRATCH: 115, // wave 5: marks scratched in the rock over a crystal seal (the puzzle's hint)
   // wave 4, the dungeons (Minecraft-like, built on a 0.5 m block grid: ./dungeon.js) — ids 64–75
   DCOB: 64, DMOSSCOB: 65, DBRICKA: 66, DBRICKB: 67, DMOSSBRICK: 68, DCRACKBRICK: 69, DMORTAR: 70,
   XBRICKA: 71, XBRICKB: 72, XMORTAR: 73, SPAWNER: 74, BARS: 75,
@@ -28,14 +29,15 @@ export const RUIN_MATS = {
   [RM.MOS_G]: { name: 'Gold Mosaic', tones: [0xa87a22, 0xbc8a2a, 0xcc9a32, 0xdaaa3c], accent: 0xffe08a, hp: 2.6, snd: 'stone', style: ['ROCK', 0.55, 0.8], glow: 0.1, made: true },
   [RM.MOS_K]: { name: 'Mosaic', tones: [0x1a1618, 0x221e20, 0x2a2628, 0x322e30], accent: 0x4a4448, hp: 2.6, snd: 'stone', style: ['ROCK', 0.55, 0.85], made: true },
   [RM.MOS_T]: { name: 'Jade Mosaic', tones: [0x1e5a4c, 0x246a58, 0x2a7a64, 0x32886e], accent: 0x6ac0a0, hp: 2.6, snd: 'stone', style: ['ROCK', 0.55, 0.85], made: true },
-  [RM.RUNE]: { name: 'Glowing Rune', tones: [0x1ea8bc, 0x3cc8d8, 0x6ae4ec, 0xa8fcff], accent: 0xffffff, hp: 3, snd: 'crystal', style: ['GLOW', 1, 0.2], glow: 1, made: true },
-  [RM.RUNE_R]: { name: 'Ember Rune', tones: [0xc04018, 0xe06020, 0xf88a30, 0xffc070], accent: 0xfff0c0, hp: 3, snd: 'crystal', style: ['GLOW', 1, 0.2], glow: 1, made: true },
-  [RM.RUNEOFF]: { name: 'Carved Rune', tones: [0x1e2a30, 0x24343a, 0x2c3e44, 0x34484e], accent: 0x4a8a94, hp: 3, snd: 'stone', style: ['ROCK', 1, 0.3], glow: 0.06, made: true },
-  [RM.WARD]: { name: 'Warded Seal', tones: [0x221830, 0x2c2040, 0x36284c, 0x42305a], accent: 0xb48aff, hp: 9999, snd: 'crystal', style: ['CRYSTAL', 2.4, 0.9], glow: 0.22, made: true, ward: true },
-  [RM.CRACKED]: { name: 'Cracked Stone', tones: [0x5e5548, 0x726858, 0x867c6a, 0x9a907c], accent: 0x3a3228, hp: 0.9, snd: 'stone', style: ['ROCK', 1.3, 1.0], made: true },
+  [RM.RUNE]: { name: 'Glowing Crystal', tones: [0x1ea8bc, 0x3cc8d8, 0x6ae4ec, 0xa8fcff], accent: 0xffffff, hp: 3, snd: 'crystal', style: ['GLOW', 1, 0.2], glow: 1, made: true },
+  [RM.RUNE_R]: { name: 'Ember Crystal', tones: [0xc04018, 0xe06020, 0xf88a30, 0xffc070], accent: 0xfff0c0, hp: 3, snd: 'crystal', style: ['GLOW', 1, 0.2], glow: 1, made: true },
+  [RM.RUNEOFF]: { name: 'Dim Crystal', tones: [0x1a2a34, 0x22384a, 0x2a465a, 0x34546a], accent: 0x5a9ab0, hp: 3, snd: 'crystal', style: ['CRYSTAL', 1, 0.6], glow: 0.06, made: true },
+  [RM.WARD]: { name: 'Crystal Seal', tones: [0x221830, 0x2c2040, 0x36284c, 0x42305a], accent: 0xb48aff, hp: 9999, snd: 'crystal', style: ['CRYSTAL', 2.4, 0.9], glow: 0.22, made: true, ward: true },
+  [RM.CRACKED]: { name: 'Loose Rock', tones: [0x4e4740, 0x5e564e, 0x6e665c, 0x7e756a], accent: 0x2e2822, hp: 0.9, snd: 'stone', style: ['ROCK', 1.3, 1.0], made: true },
   [RM.GILT]: { name: 'Gilded Stone', tones: [0x8a5e18, 0xae7c24, 0xd09c34, 0xeec060], accent: 0xfff2b8, hp: 3, snd: 'crystal', style: ['ROCK', 1.6, 0.5], glow: 0.14, made: true },
   [RM.HOARD]: { name: 'Gold Hoard', tones: [0x9a6a14, 0xc08a20, 0xe2ae36, 0xfad260], accent: 0xfffbe0, hp: 0.35, snd: 'gravel', style: ['GRAIN', 1, 0.2], glow: 0.3, made: true, hoard: true },
   [RM.MARBLE]: { name: 'Weathered Marble', tones: [0x8a867e, 0xa09c92, 0xb6b2a6, 0xcac6ba], accent: 0xe4e0d4, hp: 2.8, snd: 'stone', style: ['ROCK', 4.6, 0.25], made: true },
+  [RM.SCRATCH]: { name: 'Old Marks', tones: [0x9a9284, 0xaca496, 0xbeb6a8, 0xd0c8ba], accent: 0xeae4d6, hp: 2.6, snd: 'stone', style: ['ROCK', 1, 0.25], made: true },
   [RM.BRONZE]: { name: 'Verdigris Bronze', tones: [0x2a5444, 0x367058, 0x4a8c68, 0x6eaa80], accent: 0xc8944a, hp: 3, snd: 'crystal', style: ['ROCK', 0.9, 0.35], made: true },
 
   // ---- dungeons: cobble (small round stones, each its own tone), stone and deep bricks (big smooth
@@ -50,12 +52,13 @@ export const RUIN_MATS = {
   [RM.XBRICKA]: { name: 'Deep Bricks', tones: [0x2c1214, 0x3a181b, 0x461e21, 0x542628], accent: 0x8a3c3a, hp: 3.6, snd: 'stone', style: ['ROCK', 6, 0.22], made: true, dungeon: true },
   [RM.XBRICKB]: { name: 'Deep Bricks', tones: [0x24100f, 0x321515, 0x3d1a1a, 0x4a2222], accent: 0x7a3434, hp: 3.6, snd: 'stone', style: ['ROCK', 6, 0.22], made: true, dungeon: true },
   [RM.XMORTAR]: { name: 'Deep Bricks', tones: [0x120909, 0x180c0c, 0x1e1010, 0x261414], accent: 0x3a1a1a, hp: 3.6, snd: 'stone', style: ['SOIL', 1, 0.2], made: true, dungeon: true },
-  [RM.SPAWNER]: { name: 'Monster Spawner', tones: [0x16181e, 0x23262e, 0x30343e, 0x40465a], accent: 0x8a7aff, hp: 3.2, snd: 'metal', style: ['ROCK', 6, 0.9], glow: 0.12, made: true, dungeon: true, spawner: true },
+  [RM.SPAWNER]: { name: 'Brood Nest', tones: [0x2a1e24, 0x3a2a30, 0x4a363a, 0x5c4448], accent: 0xc89aff, hp: 2.2, snd: 'dirt', style: ['SOIL', 1.4, 0.55], glow: 0.14, made: true, dungeon: true, spawner: true },
   [RM.BARS]: { name: 'Iron Bars', tones: [0x26282e, 0x34373e, 0x42464e, 0x52565e], accent: 0x8e949e, hp: 4, snd: 'metal', style: ['ROCK', 6, 0.9], made: true, dungeon: true },
 
-  // ---- the lift stations (stone, planks, iron rails): unbreakable, like the folk's burrows
-  [RM.LIFTBRICK]: { name: 'Lift Stone', tones: [0x56524c, 0x625e57, 0x6e6962, 0x7a756d], accent: 0x948e84, hp: 9999, snd: 'stone', style: ['ROCK', 6, 0.25], made: true, unbreakable: true, lift: true, clean: true },
-  [RM.LIFTPLANK]: { name: 'Lift Planks', tones: [0x6a4a26, 0x80592e, 0x966a38, 0xaa7c44], accent: 0x4a3018, hp: 9999, snd: 'wood', style: ['WOOD', 8, 0.7], made: true, unbreakable: true, lift: true, clean: true },
+  // ---- the lifts: the cage's planks, and hard rock under them and round the town shaft (plain
+  // stone to look at, but no pick bites it); the old lift stone and rails are no longer laid
+  [RM.LIFTBRICK]: { name: 'Hard Rock', tones: [0x3c3835, 0x4a4541, 0x58524d, 0x665f59], accent: 0x7e766e, hp: 9999, snd: 'stone', style: ['ROCK', 2.6, 0.85], made: true, unbreakable: true, lift: true },
+  [RM.LIFTPLANK]: { name: 'Cage Floor', tones: [0x5a3c1e, 0x6e4a26, 0x82582e, 0x966838], accent: 0x3a2412, hp: 9999, snd: 'wood', style: ['WOOD', 8, 0.7], made: true, unbreakable: true, lift: true, clean: true },
   [RM.LIFTRAIL]: { name: 'Lift Rail', tones: [0x34373e, 0x464a52, 0x585c64, 0x6c7078], accent: 0xa6acb6, hp: 9999, snd: 'metal', style: ['ROCK', 6, 0.9], made: true, unbreakable: true, lift: true, clean: true },
-  [RM.LIFTCOB]: { name: 'Lift Stone', tones: [0x464442, 0x5a5856, 0x6c6a66, 0x82807c], accent: 0xa09e9a, hp: 9999, snd: 'stone', style: ['ROCK', 1.35, 1.0], made: true, unbreakable: true, lift: true, clean: true },
+  [RM.LIFTCOB]: { name: 'Hard Rock', tones: [0x3e3a37, 0x4e4945, 0x5e5853, 0x6e6761], accent: 0x8a827a, hp: 9999, snd: 'stone', style: ['ROCK', 2.4, 0.85], made: true, unbreakable: true, lift: true },
 };

@@ -9,7 +9,7 @@
 @keyframes tkIn { from { transform: translateY(calc(var(--px) * -10)) scale(.96); opacity: 0; } }
 .tk-sign {
   position: relative; z-index: 2; align-self: center; flex: none; margin-bottom: calc(var(--px) * -7); max-width: calc(100% - var(--px) * 30);
-  border-style: solid; border-width: calc(var(--px) * 6); border-image: var(--a-sign) 6 fill / calc(var(--px) * 6) stretch;
+  border-style: solid; border-width: calc(var(--px) * 6); border-image: var(--a-signT) 6 fill / calc(var(--px) * 6) repeat;
   padding: 0 calc(var(--px) * 5); filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .5));
   transform-origin: 50% -60px; animation: tkSwing 4.5s ease-in-out infinite;
 }
@@ -22,7 +22,7 @@
 .tk-board {
   position: relative; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #a06c3c transparent;
   border-style: solid; border-width: calc(var(--px) * 7); border-image: var(--a-wood) 7 / calc(var(--px) * 7) repeat;
-  background: var(--a-woodDkT) 0 0 / calc(var(--px) * 32) calc(var(--px) * 20) repeat padding-box, #52321a padding-box;
+  background: var(--a-woodDkL) 0 0 / calc(var(--px) * 96) calc(var(--px) * 40) repeat padding-box, #52321a padding-box;
   padding: calc(var(--px) * 9) calc(var(--px) * 4) calc(var(--px) * 4); filter: drop-shadow(0 calc(var(--px) * 4) 0 rgba(8, 4, 6, .5));
 }
 .tk-head { display: flex; align-items: flex-start; gap: calc(var(--px) * 5); margin-bottom: calc(var(--px) * 5); }
@@ -45,7 +45,7 @@
 .tk-notes { display: flex; flex-direction: column; gap: calc(var(--px) * 4); padding: calc(var(--px) * 2) calc(var(--px) * 4) calc(var(--px) * 2) calc(var(--px) * 12); }
 .tk-note {
   position: relative; display: flex; align-items: center; gap: calc(var(--px) * 3); width: 100%; text-align: left; cursor: pointer; outline: none;
-  font: inherit; font-size: 16px; line-height: 1.25; color: var(--ink); background: #f8ecd2; border: 0;
+  font: inherit; font-size: 16px; line-height: 1.25; color: var(--ink); background: var(--a-noteT) 0 0 / calc(var(--px) * 32) repeat, #f8ecd2; border: 0;
   padding: calc(var(--px) * 2) calc(var(--px) * 4) calc(var(--px) * 2) calc(var(--px) * 3);
   box-shadow: 0 0 0 var(--px) var(--paper-edge), inset 0 calc(var(--px) * -1) 0 #e2cc9c, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35);
   transform: rotate(var(--tilt, 0deg)); transform-origin: 50% 0; transition: transform .15s var(--pop), background .15s;
@@ -55,9 +55,9 @@
 .tk-note:nth-child(3) { animation-delay: .12s; }
 .tk-note:nth-child(4) { animation-delay: .18s; }
 @keyframes tkNoteIn { from { transform: translateY(calc(var(--px) * -8)) rotate(-6deg); opacity: 0; } }
-.tk-note.primary { background: #ffe8a0; box-shadow: 0 0 0 var(--px) #8a5a10, inset 0 calc(var(--px) * -1) 0 #e8c060, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35); }
-.tk-note:hover, .tk-note:focus-visible { transform: rotate(0) translateY(calc(var(--px) * -1)); background: #fffaf0; }
-.tk-note.primary:hover, .tk-note.primary:focus-visible { background: #fff3c0; }
+.tk-note.primary { background: var(--a-grainA) 0 0 / calc(var(--px) * 16) repeat, #ffe8a0; box-shadow: 0 0 0 var(--px) #8a5a10, inset 0 calc(var(--px) * -1) 0 #e8c060, 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35); }
+.tk-note:hover, .tk-note:focus-visible { transform: rotate(0) translateY(calc(var(--px) * -1)); background: var(--a-noteT) 0 0 / calc(var(--px) * 32) repeat, #fffaf0; }
+.tk-note.primary:hover, .tk-note.primary:focus-visible { background: var(--a-grainA) 0 0 / calc(var(--px) * 16) repeat, #fff3c0; }
 .tk-note::after { content: ''; position: absolute; left: calc(var(--px) * -15); top: 50%; width: calc(var(--px) * 13); height: calc(var(--px) * 10); margin-top: calc(var(--px) * -5);
   background: var(--a-pawPoint) 0 0 / 100% 100%; opacity: 0; transform: translateX(calc(var(--px) * -3)); transition: opacity .12s, transform .12s; pointer-events: none; }
 .tk-note:hover::after, .tk-note:focus-visible::after { opacity: 1; transform: none; animation: tkPoint .8s ease-in-out infinite; }
@@ -103,7 +103,7 @@ html.is-touch .tk-num { display: none; }
 .modal-back > .panel.tk-panel:has(.tk-talk) > .close { top: calc(var(--px) * 3); right: calc(var(--px) * -4); }
 .tk-talk .tk-board {
   overflow: visible; border-width: calc(var(--px) * 9); border-image: var(--dl-board) 9 / calc(var(--px) * 9) repeat;
-  background: var(--a-woodDkT) 0 0 / calc(var(--px) * 32) calc(var(--px) * 20) repeat padding-box, #4a2c16 padding-box;
+  background: var(--a-woodDkL) 0 0 / calc(var(--px) * 96) calc(var(--px) * 40) repeat padding-box, #4a2c16 padding-box;
   padding: calc(var(--px) * 7) calc(var(--px) * 3) calc(var(--px) * 3); display: flex; flex-direction: column; min-height: 0;
   filter: drop-shadow(0 calc(var(--px) * 4) 0 rgba(8, 4, 6, .5));
 }
@@ -118,7 +118,7 @@ html.is-touch .tk-num { display: none; }
 .tk-plate span { font-family: var(--font-head); font-size: var(--fs-h); line-height: calc(var(--px) * 12); color: #ffe6a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   text-shadow: 0 var(--px) 0 #3a0f0a, var(--px) 0 0 #5a1a10; }
 .tk-talk[data-who=hero] .tk-plate { border-image-source: var(--dl-ribbonBlue); }
-.tk-talk[data-who=nugget] .tk-plate, .tk-talk[data-who=shop] .tk-plate { border-image-source: var(--dl-ribbonGreen); }
+.tk-talk[data-who=shop] .tk-plate { border-image-source: var(--dl-ribbonGreen); }
 .tk-talk .tk-head { align-items: stretch; gap: calc(var(--px) * 3); margin-bottom: calc(var(--px) * 4); flex: none; }
 .tk-talk .tk-portrait {
   position: relative; flex: none; box-sizing: border-box; display: block; align-self: flex-start;
@@ -129,7 +129,7 @@ html.is-touch .tk-num { display: none; }
 .tk-frame { width: 100%; height: 100%; overflow: hidden; }
 .tk-frame canvas { display: block; width: calc(var(--px) * var(--pp)); height: calc(var(--px) * var(--pp)); }
 .tk-talk .tk-say {
-  margin-top: 0; padding: calc(var(--px) * 1) calc(var(--px) * 2) calc(var(--px) * 2); background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box;
+  margin-top: 0; padding: calc(var(--px) * 1) calc(var(--px) * 2) calc(var(--px) * 2); background: var(--a-paperL) 0 0 / calc(var(--px) * 96) repeat padding-box, var(--parch) padding-box;
   border-style: solid; border-width: calc(var(--px) * 6); border-image: var(--dl-parch) 6 / calc(var(--px) * 6) repeat; box-shadow: inset 0 calc(var(--px) * 2) 0 rgba(90, 56, 26, .14);
   animation: ttUnroll .32s ease-out .06s both; cursor: pointer; min-height: calc(var(--px) * 30);
 }

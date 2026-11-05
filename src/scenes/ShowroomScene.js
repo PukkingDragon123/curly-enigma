@@ -1,9 +1,9 @@
 // Dev-only scene (?scene=showroom): character art review. Modes (&mode=):
-//   lineup (default)  player + random townsfolk, the hen and a paw (+ item icons unless &icons=0)
+//   lineup (default)  player + random townsfolk and a paw (+ item icons unless &icons=0)
 //   species | ages | bodies | hats | outfits | eyes | kids   labelled grids (rows stack upward)
 //   faces | states    every expression / rig state on one spec (&species=, &eyes=, &brows=, &player=1)
 //   hero              the player close up (&shades=1 adds the ending's sunglasses)
-//   hen | paw | portraits (shop keeper portraits through renderPortrait)
+//   paw | portraits (shop keeper portraits through renderPortrait)
 //   fps               first-person paws and tools over a cave wall (keys and params: src/fps/viewmodel/demo.js)
 // Params: zoom (ortho half-height), cx/cy/cz (look-at offset), yaw/pitch (camera, radians),
 //   rot (character facing), anim (force a rig state), seed, cols, gap, rowh, kind (toon|basic|lambert),
@@ -13,7 +13,7 @@
 //   and the frame's draw calls (colour + outline mask + post).
 import * as THREE from 'three';
 import { Scene } from '../core/Scene.js';
-import { makeCharacter, randomSpec, playerSpec, makeChicken, SPECIES, makePaw, buildStats } from '../gfx/characters.js';
+import { makeCharacter, randomSpec, playerSpec, SPECIES, makePaw, buildStats } from '../gfx/characters.js';
 import { el } from '../core/util.js';
 
 const STATES = ['idle', 'walk', 'run', 'jump', 'fall', 'climb', 'swim', 'swing', 'hammer', 'dig', 'chisel', 'brush', 'drill', 'wave', 'talk', 'cheer', 'sit', 'sleep', 'laugh', 'sad', 'carry', 'peck', 'hurt', 'sneeze'];
@@ -118,10 +118,6 @@ export default class ShowroomScene extends Scene {
         add(rig.root);
         this.rigs.push(rig);
       });
-      const hen = makeChicken({ hat: 'straw', kind });
-      hen.root.position.set(6.8, 0, 3);
-      add(hen.root);
-      this.rigs.push(hen);
       const paw = makePaw(1, { scale: 1, kind });
       paw.position.set(-7, 0.8, 3);
       paw.rotation.y = 0.8;
@@ -184,18 +180,6 @@ export default class ShowroomScene extends Scene {
       }
       center.set(0, 0.72, 0);
       zoom = 0.95;
-    } else if (mode === 'hen') {
-      ['idle', 'walk', 'sit', 'peck', 'flap'].forEach((st, i) => {
-        const hen = makeChicken({ hat: i % 2 ? 'straw' : undefined, kind });
-        hen.root.position.set((i - 2) * 1.2, 0, 0);
-        hen.face(rot, true);
-        hen.play(st === 'peck' || st === 'flap' ? 'idle' : st);
-        hen.persist = st;
-        add(hen.root);
-        this.rigs.push(hen);
-      });
-      center.set(0, 0.45, 0);
-      zoom = 1.3;
     } else if (mode === 'paw') {
       for (const side of [-1, 1]) {
         const paw = makePaw(side, { scale: 1, kind });
@@ -307,8 +291,6 @@ export default class ShowroomScene extends Scene {
     super.update(dt);
     if (this.fps) { this.fps.update(dt); return; }
     for (const r of this.rigs) {
-      if (r.persist === 'peck' && r.peckT <= 0) r.peck();
-      if (r.persist === 'flap' && r.flapT <= 0) r.flap(1);
       if (r.persistBlink) { r.blinkK = 0.06; r.blinkT = 1; }
       if (r.talkT > 1e8) r.talkT = 1e9;
       r.update(dt);

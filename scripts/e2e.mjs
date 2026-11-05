@@ -59,9 +59,9 @@ await step("waking up in Old Star's house", async () => {
   await shot('02b-waking');
   const r = await page.evaluate(() => window.__game.scene.debug.finishWake());
   if (!r || r.waking) throw new Error('still waking: ' + JSON.stringify(r));
-  const f = await page.evaluate(() => ['fallen', 'nugget', 'escaped'].map((k) => window.__game.state.flag(k)));
-  if (!f[0] || !f[1]) throw new Error('waking flags missing: ' + f);
-  if (f[2]) throw new Error('escaped flag set on a new game');
+  const f = await page.evaluate(() => ['fallen', 'escaped'].map((k) => window.__game.state.flag(k)));
+  if (!f[0]) throw new Error('waking flags missing: ' + f);
+  if (f[1]) throw new Error('escaped flag set on a new game');
   const q = await page.evaluate(() => window.__game.quests?.active?.().map((x) => x.id || x) || []);
   if (!q.includes('lessons')) throw new Error('the lessons quest did not start: ' + JSON.stringify(q));
   await shot('02c-old-star');
@@ -277,46 +277,25 @@ await step('deep: NPC burrows — the trading post and Rocco', async () => {
   await shot('04f-rocco');
   await page.evaluate(() => window.__game.ui.closeAllPanels());
 });
-await step('deep: Nugget eats, follows, gets carried', async () => {
+await step('deep: a heavy pack slows you', async () => {
   const r = await page.evaluate(() => {
-    const s = window.__game.scene, n = s.nugget?.debug;
-    if (!n) return { err: 'no Nugget in the mine' };
-    n.here?.();
-    n.feed?.();
-    for (let k = 0; k < 60; k++) s.update(1 / 30);
-    const fed = n.state?.();
-    n.carry?.();
-    for (let k = 0; k < 20; k++) s.update(1 / 30);
-    const carrying = !!s.nugget.carrying;
-    n.put?.();
-    for (let k = 0; k < 20; k++) s.update(1 / 30);
-    return { fed, carrying, after: !!s.nugget.carrying };
-  });
-  if (r.err) throw new Error(r.err);
-  if (!r.carrying || r.after) throw new Error('carry/put: ' + JSON.stringify(r));
-});
-await step('deep: a heavy pack slows you; unload onto the coop; fit a coop part', async () => {
-  const r = await page.evaluate(() => {
-    const g = window.__game, s = g.scene, st = g.state, n = s.nugget?.debug;
-    if (!n) return { err: 'no Nugget' };
-    n.here?.();
+    const g = window.__game, s = g.scene, st = g.state;
     for (let i = 0; i < 16; i++) st.addItem('iron_ore', { q: 70 });
     for (let k = 0; k < 12; k++) s.update(1 / 30);
     const heavy = { kg: st.bagLoad().kg, speed: s.load?.speed, run: s.load?.run };
+    // the backpack opens with the pockets (no other side away from home) and shows the load
     g.ui.openInventory();
-    const btn = document.querySelector('.bp-coop-load button');
-    btn?.click();
-    const after = st.bagLoad().kg, coop = n.load();
+    const pack = { scale: !!document.querySelector('.bp-scale'), tabs: [...document.querySelectorAll('.bp-sidetabs .bp-label')].map((b) => b.textContent) };
     g.ui.closeAllPanels();
-    const fit = n.install('legs_copper', 80);
-    for (let k = 0; k < 15; k++) s.update(1 / 30);
-    return { heavy, btn: !!btn, after, coop, fit: fit.ok, legs: n.load().levels.legs, gear: n.load().gear };
+    // lighten the load again for the steps after this one
+    st.removeItem('iron_ore', 16);
+    for (let k = 0; k < 12; k++) s.update(1 / 30);
+    return { heavy, pack, after: { kg: st.bagLoad().kg, speed: s.load?.speed } };
   });
-  if (r.err) throw new Error(r.err);
   if (!(r.heavy.speed < 1) || r.heavy.run) throw new Error('a heavy pack did not slow the mole: ' + JSON.stringify(r.heavy));
-  if (!r.btn || !(r.after < r.heavy.kg) || !(r.coop.kg > 0)) throw new Error('unload onto the coop: ' + JSON.stringify(r));
-  if (!r.fit || r.legs !== 1 || !(r.gear > 0)) throw new Error('coop part: ' + JSON.stringify(r));
-  await shot('04e-coop-loaded');
+  if (!r.pack.scale) throw new Error('the backpack shows no load: ' + JSON.stringify(r.pack));
+  if (!(r.after.kg < r.heavy.kg)) throw new Error('the ore did not come out of the pack: ' + JSON.stringify(r));
+  await shot('04e-heavy-pack');
 });
 await step('deep: block a kobold, then fight it', async () => {
   const r = await page.evaluate(() => {
@@ -469,18 +448,6 @@ await step('forge', async () => {
   if (forged.made !== 1) throw new Error('forging made no weapon: ' + JSON.stringify(forged));
   await wait(1500);
   await shot('10b-forge-result');
-  // ... and a part for Nugget's coop (the shelf brackets: the next Shelves level)
-  const part = await page.evaluate(() => {
-    const sc = window.__game.scene, d = sc.debug, st = window.__game.state;
-    sc.activity?.onEscape?.();
-    d.until?.('idle', 300);
-    st.data.energy = 100;
-    const before = st.count('shelf_copper');
-    const r = d.part('shelf_copper', { give: true });
-    return { r, made: st.count('shelf_copper') - before };
-  });
-  if (!(part.made >= 1)) throw new Error('forging a coop part: ' + JSON.stringify(part));
-  await shot('10c-forge-part');
 });
 await step('cooking', async () => {
   await page.evaluate(() => { const st = window.__game.state; ['glowcap', 'salt_crystal', 'egg', 'pepperroot'].forEach((i) => st.addItem(i, { n: 3 })); });

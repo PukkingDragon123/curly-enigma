@@ -3,9 +3,10 @@
 // ride to any other the mole knows. Mine lifts are remembered in state.data.deep.lifts.
 // A mine lift found down in the rock is a checkpoint you have to unlock first (on: false until you
 // ring its bell there: unlockLift); only unlocked ones are stops. Lifts found before checkpoints
-// existed (no `on`) count as unlocked. The panel is a 3D diorama of the mine (liftDiorama.js).
+// existed (no `on`) count as unlocked. The panel is the layers: a side-on pixel-art cross-section of
+// the underground, layer by layer (liftLayers.js), each with a Dive button to its nearest stop.
 import { ZONES } from '../data/zones.js';
-import { openLiftDiorama } from './liftDiorama.js';
+import { openLiftLayers } from './liftLayers.js';
 
 /** A mine lift that has to be unlocked down there before it's a stop (not the entrance, not the town shaft's stations). */
 const needsUnlock = (id) => /^L\d/.test(id) && id !== 'L0';
@@ -36,7 +37,7 @@ export function discoverLift(st, lift) {
   return true;
 }
 
-/** Remember where a known lift is (for the diorama), from the world plan. */
+/** Remember where a known lift is (for the layers), from the world plan. */
 export function placeLift(st, lift) {
   const l = liftState(st).find((x) => x.id === lift.id);
   if (!l || typeof l.x === 'number' || typeof lift.x !== 'number') return;
@@ -74,10 +75,12 @@ export function rideTo(game, id) {
 }
 
 /**
- * The lift's panel: a pixel-art cross-section of the earth (src/fps/liftPanel.js) with every known
- * stop at its depth; tap a stop to ride. here: the id of this lift ("you are here").
- * opts: { title, sub, onRide(id) } (default ride: rideTo). Returns the panel handle.
+ * The lift's panel: the layers of the underground side-on (src/fps/liftLayers.js), every known stop
+ * standing in its layer; Dive (or tap a layer / a stop's tag) to ride. here: the id of this lift
+ * ("you are here"). opts: { title, sub, onRide(id) } (default ride: rideTo). Returns the panel handle.
  */
 export function openLiftPanel(game, here, opts = {}) {
-  return openLiftDiorama(game, here, opts, liftDestinations(game.state), opts.onRide || ((id) => rideTo(game, id)), lockedLifts(game.state));
+  return openLiftLayers(game, here, opts, liftDestinations(game.state), opts.onRide || ((id) => rideTo(game, id)), lockedLifts(game.state));
 }
+
+export { openLayers } from './liftLayers.js';

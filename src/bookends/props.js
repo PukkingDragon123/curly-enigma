@@ -87,88 +87,7 @@ export function bar(g, a, b, hw, hh, colorFn) {
       }
 }
 
-// ------------------------------------------------------------------ campfire
-const ASH = [0x5a5250, 0x4e4846, 0x625a56];
-const CAMP_STONES = [0x8a8278, 0x7a7068, 0x948a80, 0x6e6660, 0x847a6e];
-
-/**
- * Stone ring + charred log teepee + ash bed + glowing coals. Origin at ground centre, ~1.6 units across.
- * Returns a group; group.userData.coals is the unlit coal mesh (its material can be tinted to flicker).
- */
-export function makeCampfire(seed = 5) {
-  const rng = makeRng(seed);
-  const N = 54, c = N / 2;
-  const g = new VoxelGrid(N, 26, N);
-  const k = new VoxelGrid(N, 26, N); // glowing bits
-  // ash bed: grey, darker charcoal toward the middle, a few pale flecks
-  g.ellipsoid(c, 0.4, c, 16, 2.2, 16, (x, y, z) => {
-    const d = Math.hypot(x + 0.5 - c, z + 0.5 - c) / 16;
-    if (hash3(x, y, z, 3) < 0.05) return 0x9a9490;
-    if (d < 0.45) return pp([0x2a2422, 0x342c28, 0x241e1c], x, y, z, 4);
-    return pp(ASH, x, y, z, 5);
-  });
-  // stone ring: 11 rounded stones, soot-blackened on the side facing the fire
-  const n = 11;
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + rng.range(-0.12, 0.12);
-    const r = 19 + rng.range(-0.8, 0.8);
-    const sx = c + Math.cos(a) * r, sz = c + Math.sin(a) * r;
-    const base = rng.pick(CAMP_STONES);
-    const rx = rng.range(3.8, 5.0), ry = rng.range(3.2, 4.4), rz = rng.range(3.6, 4.8);
-    const crack = rng.range(0, Math.PI * 2);
-    g.ellipsoid(sx, 2.2, sz, rx, ry, rz, (x, y, z, dx, dy, dz) => {
-      const toC = -(dx * Math.cos(a) + dz * Math.sin(a)); // >0 on the fire side
-      let col = pj(base, x, y, z, i + 7, 0.05);
-      if (dy > 0.55) col = shade(col, 1.14);
-      else if (dy < -0.2) col = shade(col, 0.82);
-      if (toC > 0.35) col = mixHex(col, 0x241c1a, Math.min(0.8, (toC - 0.35) * 1.6));
-      if (Math.abs(Math.sin(Math.atan2(dz, dx) * 2 + crack)) < 0.08 && dy > -0.3) col = shade(col, 0.62);
-      if (toC < -0.4 && dy > 0.35 && hash3(x, y, z, 9) < 0.35) col = pp([0x5a7a34, 0x4a6a2e], x, y, z, 11, 1);
-      return col;
-    });
-  }
-  // logs: a teepee of three and one lying across; charred and glowing toward the middle
-  const logs = [
-    [[9, 2.5, 18], [c + 1, 13, c - 1], 2.6],
-    [[44, 2.5, 20], [c + 0.5, 13.5, c + 0.5], 2.5],
-    [[24, 2.5, 45], [c - 0.5, 12.5, c + 1], 2.4],
-    [[12, 3, 36], [42, 3.5, 30], 2.5],
-  ];
-  logs.forEach(([a, b, r], li) => {
-    const furrow = rng.range(0, 6);
-    cyl(g, a, b, r, (t, ang, d, x, y, z) => {
-      const mid = Math.hypot(x + 0.5 - c, z + 0.5 - c);
-      const burnt = mid < 9 + Math.sin(ang * 3 + li) * 1.5;
-      if (t < 0.03 || t > 0.97) return d < 0.45 ? 0xc8986a : d < 0.8 ? (Math.round(d * 6) % 2 ? 0xd8b080 : 0xb8885a) : 0x4a2e1a; // end grain
-      if (burnt) {
-        if (d > 0.7 && hash3(x, y, z, 21 + li) < 0.22) { k.set(x, y, z, rng.pick([0xff8a2a, 0xffb040, 0xe0501a])); return -1; }
-        return pp([0x1e1614, 0x2a201c, 0x161010], x, y, z, 23 + li, 1);
-      }
-      const fur = Math.sin(ang * 7 + furrow + t * 3) > 0.55;
-      return fur ? 0x3a2414 : pj(t * 40 % 7 < 1 ? 0x5a3a20 : 0x6a4426, x, y, z, 25 + li, 0.06, 2);
-    });
-  });
-  const mesh = voxMesh(g, { pivot: [c, 0, c], scale: S32 });
-  // glowing coal heap in the middle
-  k.ellipsoid(c, 1.2, c, 7, 3, 7, (x, y, z, dx, dy, dz) => {
-    const h = hash3(x, y, z, 31);
-    if (dy > 0.2 && h < 0.35) return -1;
-    const r = Math.sqrt(dx * dx + dz * dz);
-    if (h < 0.18) return 0x3a1a10;
-    return r < 0.5 ? (h < 0.6 ? 0xffe080 : 0xffb040) : h < 0.6 ? 0xff7a1a : 0xd9401a;
-  });
-  for (let i = 0; i < 40; i++) {
-    const a = rng.range(0, Math.PI * 2), r = rng.range(0, 9);
-    k.set(c + Math.cos(a) * r, rng.int(1, 3), c + Math.sin(a) * r, rng.pick([0xffb040, 0xff7a1a, 0xffe080, 0xd9401a, 0x8a2a10]));
-  }
-  const coals = voxMesh(k, { pivot: [c, 0, c], scale: S32, kind: 'basic', outline: false, material: voxelMaterial('basic', { unique: true }) });
-  coals.userData.dynamic = true;
-  const grp = group(mesh, coals);
-  grp.userData.coals = coals;
-  return grp;
-}
-
-// ------------------------------------------------------------------ rocks & logs
+// ------------------------------------------------------------------ rocks
 const ROCK_TONES = (c) => [c, shade(c, 0.92), shade(c, 1.07), mixHex(c, 0x6a5a48, 0.25)];
 
 /** A mossy boulder. w/h/d in 1/16 units (built at 1/32). */
@@ -193,30 +112,6 @@ export function makeRock(seed = 1, { w = 14, h = 10, d = 12, color = 0x7a7068, m
   }
   g.paint((x, y) => (y < 2 ? -1 : undefined));
   return voxMesh(g, { pivot: [cx, 2, cz], scale: S32 });
-}
-
-/** A short log lying along x (seat). length/radius in 1/16 units. */
-export function makeLog(len = 22, r = 3.2) {
-  const L = len * 2, R = r * 2;
-  const g = new VoxelGrid(L + 4, Math.ceil(R * 2) + 6, Math.ceil(R * 2) + 4);
-  const cy = R + 0.5, cz = R + 2;
-  cyl(g, [2, cy, cz], [L + 2, cy, cz], R, (t, ang, d, x, y, z) => {
-    const end = t < 0.02 || t > 0.98;
-    if (end) {
-      if (d < 0.12) return 0x8a6040;
-      if (d > 0.86) return 0x4a2e1a;
-      return Math.round(d * 9) % 2 ? 0xd8b080 : 0xc09060;
-    }
-    const fur = Math.sin(ang * 9 + Math.sin(t * 7) * 0.8) > 0.5;
-    let c = fur ? 0x3e2616 : pj(0x6e4628, x, y, z, 7, 0.07, 2);
-    if (Math.sin(t * 31) > 0.95 && !fur) c = 0x5a3a20;
-    if (ang > 1.2 && ang < 1.95 && hash3(x, y >> 1, z, 9) < 0.55) c = pp([0x6a8a3a, 0x5a7a34, 0x7a9a44], x, y, z, 10, 1); // moss on top
-    return c;
-  });
-  // knot + a tiny shelf fungus
-  g.ellipsoid(L * 0.62 + 2, cy, cz + R - 0.5, 1.6, 1.6, 1.2, 0x3a2414);
-  g.ellipsoid(L * 0.3 + 2, cy + 1, cz + R + 0.8, 2.4, 0.9, 1.6, (x, y) => (y > cy + 1 ? 0xe8c890 : 0xb8945a));
-  return voxMesh(g, { pivot: [(L + 4) / 2, 0, cz], scale: S32 });
 }
 
 // ------------------------------------------------------------------ mushrooms
@@ -265,28 +160,6 @@ export function makeMushrooms(seed = 1, { n = 4, spread = 7, cap = [0x4ac8ff, 0x
   const sm = voxMesh(stems, { pivot: [c, 0, c], scale: S32 * scale });
   const cm = voxMesh(caps, { pivot: [c, 0, c], scale: S32 * scale, kind: glow ? 'basic' : 'toon' });
   return { group: group(sm, cm), glows };
-}
-
-/** A tiny sprout with a yellow flower (grows in the sunbeam). */
-export function makeFlower() {
-  const g = new VoxelGrid(20, 26, 20);
-  cyl(g, [10, 0, 10], [9.5, 16, 10.5], 0.8, () => 0x4a9a34);
-  // leaves
-  for (const [s, y] of [[-1, 5], [1, 9], [-1, 12]]) {
-    for (let i = 0; i < 6; i++) {
-      const lx = 10 + s * (i + 1), ly = y + Math.round(i * 0.5 - (i > 3 ? (i - 3) * 0.8 : 0));
-      g.set(lx, ly, 10, i > 3 ? 0x8ad060 : 0x6ac04a);
-      if (i > 0 && i < 5) g.set(lx, ly + 1, 10, 0x5aa83a);
-    }
-  }
-  // flower: five petals, orange heart
-  for (let a = 0; a < 5; a++) {
-    const t = (a / 5) * Math.PI * 2;
-    g.ellipsoid(10 + Math.cos(t) * 2.6, 17.5, 10 + Math.sin(t) * 2.6, 1.9, 0.9, 1.9, a % 2 ? 0xffe066 : 0xfff08a);
-  }
-  g.ellipsoid(10, 18.2, 10, 1.5, 1, 1.5, 0xe08a1a);
-  g.set(10, 19, 10, 0xfff2a0);
-  return voxMesh(g, { pivot: [10, 0, 10], scale: S32 });
 }
 
 // ------------------------------------------------------------------ tools
@@ -460,36 +333,6 @@ export function makeSack(seed = 2, color = 0xc8a070) {
   }
   g.paint((x, y) => (y < 2 ? -1 : undefined));
   return voxMesh(g, { pivot: [12, 2, 12], scale: S32 });
-}
-
-/** A rolled straw bed / nest. */
-export function makeNest(seed = 3) {
-  const rng = makeRng(seed);
-  const g = new VoxelGrid(60, 14, 44);
-  const STRAW = [0xe0c060, 0xd8b050, 0xc89a40, 0xe8d080, 0xb8903a];
-  g.ellipsoid(30, 2, 22, 28, 8, 20, (x, y, z, dx, dy, dz) => {
-    const rim = dx * dx + dz * dz > 0.55;
-    if (!rim && y > 4) return -1;
-    // straws run around the ring: pick by angle stripes
-    const a = Math.atan2(dz, dx);
-    const stripe = Math.floor(a * 10 + y * 0.7 + hash3(x >> 2, y, z >> 2, seed) * 2);
-    return STRAW[((stripe % 5) + 5) % 5];
-  });
-  // loose straws poking out
-  for (let i = 0; i < 26; i++) {
-    const a = rng.range(0, Math.PI * 2), r = rng.range(0.85, 1.05);
-    const x = 30 + Math.cos(a) * 28 * r, z = 22 + Math.sin(a) * 20 * r;
-    const len = rng.int(3, 7), up = rng.range(0, 0.6);
-    for (let k = 0; k < len; k++) g.set(x + Math.cos(a) * k, 5 + up * k + rng.range(0, 1), z + Math.sin(a) * k, rng.pick(STRAW));
-  }
-  // a little patchwork blanket
-  g.box(18, 4, 12, 24, 1, 20, (x, y, z) => {
-    const cell = ((x - 18) >> 3) + ((z - 12) >> 3);
-    if ((x - 18) % 8 === 0 || (z - 12) % 8 === 0) return 0xf0e0c0;
-    return [0xb84a3a, 0xe8d2a2, 0x5a7ab0, 0xd8a040][cell % 4];
-  });
-  g.paint((x, y) => (y < 2 ? -1 : undefined));
-  return voxMesh(g, { pivot: [30, 2, 22], scale: S32 });
 }
 
 export { group, S16, S32 };

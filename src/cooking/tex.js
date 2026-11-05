@@ -144,24 +144,22 @@ export function caveViewTex() {
   return tex(pc);
 }
 
-/** A tiny framed portrait of Nugget the chicken in her straw hat. */
-export function nuggetPortraitTex() {
+/** A tiny framed painting of the surface: the sun over green hills (the dream, over the stove). */
+export function sunPaintingTex() {
   const W = 24, H = 28;
   const pc = new PixelCanvas(W, H);
   pc.rect(0, 0, W, H, 0x6a4228);
   pc.rect(1, 1, W - 2, H - 2, 0xc8a050);
   pc.rect(3, 3, W - 6, H - 6, 0x7ab0c8);
-  pc.rect(3, 17, W - 6, H - 20, 0x6aa04a);
-  // chicken
-  pc.ellipse(12, 16, 5, 4.2, 0xf6f0e4);
-  pc.ellipse(12, 10.5, 3, 3, 0xf6f0e4);
-  pc.set(10, 10, 0x1a1418); pc.set(14, 10, 0x1a1418);
-  pc.rect(11, 12, 3, 1, 0xf0b030); pc.set(12, 13, 0xe0302a);
-  // straw hat
-  pc.rect(7, 7, 11, 1, 0xe8c870); pc.rect(9, 5, 7, 2, 0xe0c060); pc.rect(9, 6, 7, 1, 0xc94a3a);
-  pc.rect(10, 20, 1, 2, 0xf0a030); pc.rect(14, 20, 1, 2, 0xf0a030);
-  // heart
-  pc.set(18, 5, 0xe0404a); pc.set(20, 5, 0xe0404a); pc.rect(18, 6, 3, 1, 0xe0404a); pc.set(19, 7, 0xe0404a);
+  pc.rect(3, 12, W - 6, 4, 0x9ac4d8);
+  // the sun with a few rays
+  pc.ellipse(12, 10, 3.2, 3.2, 0xffd860);
+  pc.set(12, 5, 0xffe890); pc.set(7, 10, 0xffe890); pc.set(17, 10, 0xffe890); pc.set(8, 6, 0xffe890); pc.set(16, 6, 0xffe890);
+  // rolling hills
+  pc.ellipse(8, 21, 8, 4, 0x6aa04a);
+  pc.ellipse(17, 22, 7, 3.5, 0x5a9040);
+  pc.rect(3, 22, W - 6, H - 25, 0x6aa04a);
+  pc.set(6, 19, 0x8ac060); pc.set(15, 20, 0x8ac060); pc.set(19, 21, 0x8ac060);
   return tex(pc);
 }
 
@@ -225,7 +223,7 @@ export function dashTex() {
 
 /**
  * Hand-made ceramic tiles for the backsplash (32 px per unit): cream and terracotta in a
- * checker, the odd painted tile (a mushroom, a little flower, a hen), grout lines, a few
+ * checker, the odd painted tile (a mushroom, a heart, a little flower, a bird), grout lines, a few
  * chipped corners and soot behind the stove. sootX = [x0, x1] in texels to blacken.
  */
 export function tilesTex(wU, hU, sootX = null) {

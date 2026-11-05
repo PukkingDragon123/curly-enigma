@@ -187,13 +187,6 @@ export const QUESTS = {
     steps: [{ id: 'dishes', text: 'Cook 3 different dishes', hint: 'Try what\'s in the larder. Mushrooms go with nearly everything.', on: { type: 'cook' }, unique: 'dish', n: 3, where: { place: 'home' } }],
     reward: { gold: 90, sp: 1 },
   },
-  os_nugget: {
-    title: 'Mind the Hen', giver: 'oldstar', kind: 'story', auto: true, requires: ['lessons'],
-    intro: 'Your hen follows whoever feeds her. Feed her and she\'ll find you things. Starve her and she\'ll find someone else.',
-    outro: 'She likes you. Hens are a good judge. Except of worms.',
-    steps: [{ id: 'feed', text: 'Feed Nugget', hint: 'Seeds, grubs, the odd worm. She isn\'t picky.', on: { type: 'feed' } }],
-    reward: { gold: 40, sp: 1 },
-  },
   os_dynamite: {
     title: 'Stand Well Back', giver: 'oldstar', kind: 'story', auto: true, requires: ['os_town'],
     intro: 'Grubb in town sells dynamite. It opens rock in a hurry and ore in a mess. Throw it, then step away. Further than that.',

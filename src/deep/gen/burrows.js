@@ -443,14 +443,17 @@ export function stampBurrow(f, vox, X0, Y0, Z0, CS) {
       else if (inWall && (au >= doorW || ym >= doorH)) m = D.iron ? (au >= doorW + 0.06 || ym >= doorH + 0.06 ? M.IRONPLATE : M.TIMBER) : M.TIMBER;
       if (au < doorW && ym >= -V && ym < 0 && v < rz + 0.4) m = M.STAINED; // a worn sill
     }
-    // a porch outside the door: room for the sign hanging over it and a lamp
-    if (v > rz + 0.12 && v < rz + 1.7 && Math.abs(u) < 1.05 && ym >= 0 && ym < 2.15 && !(Math.abs(u) < doorW && ym < doorH)) {
-      const au = Math.abs(u), top = 2.15 - Math.max(0, au - 0.6) * 0.9 - Math.max(0, v - rz - 0.9) * 0.6;
-      const beam = Math.abs(v - rz - 0.55) < 0.07 || Math.abs(v - rz - 1.45) < 0.07;
+    // a hollow in the rock outside the door (room for the sign hanging over it and a lamp): rough
+    // rock round it, one beam over the door for the sign, the floor left as the cave's own
+    if (v > rz + 0.12 && v < rz + 1.7 && Math.abs(u) < 1.05 && ym >= 0 && ym < 2.3 && !(Math.abs(u) < doorW && ym < doorH)) {
+      const au = Math.abs(u), rag = (h3(vx >> 1, vy >> 1, vz >> 1, 63) - 0.5) * 0.18;
+      const top = 2.15 - Math.max(0, au - 0.5) * 1.1 - Math.max(0, v - rz - 0.8) * 0.7 + rag;
+      const beam = Math.abs(v - rz - 0.55) < 0.07;
       if (ym < top) m = (au > 0.92 && ym < top - 0.2 && beam) ? M.TIMBER : 0;
-      else if (ym < top + 0.07 && beam) m = M.TIMBER;
+      else if (ym < top + 0.07 && beam && au < 0.98) m = M.TIMBER;
     }
-    if (v > rz + 0.12 && v < rz + 1.7 && Math.abs(u) < 1.05 && ym >= -V && ym < 0) m = m === -1 ? (D.floor === M.FLAGSTONE ? M.FLAGSTONE : M.STAINED) : m;
+    if (v > rz + 0.12 && v < rz + 0.7 && Math.abs(u) < 1.05 && ym >= -V && ym < 0) m = m === -1 ? (D.floor === M.FLAGSTONE ? M.FLAGSTONE : M.STAINED) : m;
+    else if (v >= rz + 0.7 && v < rz + 1.7 && Math.abs(u) < 1.05 && ym >= -V && ym < 0 && !cur) m = M.DIRT; // no hole by the door
     // Rocco's passage: a crate-stack door in the back wall, a short tunnel, the stash nook
     if (sec) {
       const along = u * sec.du + v * sec.dv, side = u * -sec.dv + v * sec.du;

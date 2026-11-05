@@ -1,23 +1,23 @@
 // Items as 3D voxel art for the UI. An item's 32×32 pixel icon (or a forged weapon's) is extruded into
 // a voxel model, shaped by what it is (paper stays a sheet, a blade stays thin, an ore lump is a lump),
-// meshed with the creatures' mesher (baked face shading and corner AO) and rendered with the game's own
-// renderer into a small target (no extra GL context; one art pixel ≈ a 2×2 block of the 64 px still).
+// meshed with the creatures' mesher (baked face shading and corner AO), and drawn into a 64 px still by
+// a tiny software rasterizer (an orthographic view of a few thousand triangles is ~1 ms on the CPU: no
+// GPU round trip, no stall, nothing borrowed from the renderer, and it works before the game has one).
 //
 //   itemVox.src(id) → string             what an <img> should show: the 3D still once it's made, until
 //                                         then the flat icon, tagged so the still replaces it by itself
 //   itemVox.weapon(type, metal, inf)      the same for a forged weapon
-//   itemVox.fromIcon(url)                 the same for a flat iconURL()/weaponIconURL() string (toasts)
-//   itemVox.img(key, cls, { turn, pop })  an <img> of it; turn: keeps turning while on the page;
-//                                         pop: one quick "picked up" turn when it appears
+//   itemVox.stack(s)                      the same for an inventory stack ({ id } or { w })
+//   itemVox.fromIcon(url)                 the same for a flat iconURL()/weaponIconURL() string
+//   itemVox.img(what, cls, { turn, pop })  an <img> of it (what: id, wkey or flat icon URL); turn: keeps
+//                                         turning while on the page; pop: one quick "picked up" turn
 //   itemVox.spin(el, key) → { dispose }   a canvas in el turning the model (the backpack's item tag)
 //   itemVox.url(id) → data URL | null     the still right now (built on the spot if need be)
-//   data-vox="key" on an icon's box: hovering it (or the button it sits in) turns it (mouse only)
+//   data-vox="key" on an icon (or its box): hovering it, or the button it sits in, turns it (mouse)
 //
-// Stills are built lazily: requests queue up, are meshed in idle time a few at a time, rendered as
-// one atlas and read back asynchronously (no GPU stall), then every tagged <img> on the page is
-// swapped to its still. Anything that can't be done (no renderer, no icon, a lost context) leaves
-// the flat icon in place.
-import * as THREE from 'three';
+// Stills are made lazily: requests queue up and are built in idle time a few at a time (never more
+// than a few ms in one go), then every tagged <img> on the page is swapped to its still. Anything that
+// fails leaves the flat icon in place.
 import { VB, FINE } from '../deep/enemies/vox.js';
 import { drawIconArt, iconURL, weaponIconURL, iconKeyOf, drawWeapon, PixelCanvas } from '../gfx/PixelArt.js';
 import { hashStr } from '../core/util.js';
@@ -25,36 +25,30 @@ import { ITEMS } from '../data/items.js';
 import { METALS, INFUSIONS } from '../data/weapons.js';
 import './itemVox.css';
 
-const RES = 64; // still size (each voxel face ≈ 2×2 px: crisp at --icon, and halves cleanly to --icon-s)
-const COLS = 8, ROWS = 4, BATCH = COLS * ROWS; // the atlas a batch of stills is drawn into
-const HALF = 16; // camera half-height in voxels (a whole 32-px icon fits; larger shapes are fitted)
+const RES = 64; // still size (each voxel face ≈ 2×2 px: crisp at --icon, halves cleanly to --icon-s)
+const HALF = 16; // the frame's half-height in voxels (a whole 32-px icon fits; larger shapes are fitted)
 const POSE = { yaw: -0.55, pitch: 0.38 }; // a still: turned a little toward you, seen a little from above
 const OUTLINE = [26, 14, 8]; // the game's pixel-art outline brown
-const TURN_N = 48, TURN_FPS = 14; // a turn: 48 frames (cached after the first lap) ≈ 3.4 s
+const TURN_N = 48, TURN_FPS = 14; // a turn: 48 frames (each drawn once, then replayed) ≈ 3.4 s a lap
 const TAG = 'data:image/png;vox='; // a tagged flat icon: data:image/png;vox=<key>;base64,…
-const DEBUG = { built: 0, failed: 0, buildMs: 0, mainMs: 0, batches: 0, jobs: 0, readMs: 0, swaps: 0, err: '' };
+const DEBUG = { built: 0, failed: 0, buildMs: 0, drawMs: 0, encMs: 0, mainMs: 0, maxSliceMs: 0, slices: 0, swaps: 0, frames: 0, err: '' };
 
-let R = null;
 const stills = new Map(); // key → data URL | null (null: can't be made, keep the flat icon)
 const queue = [], queued = new Set();
-let scene = null, cam = null, mat = null, rtAtlas = null, rtLive = null, holder = null, mesh = null, EMPTY = null;
-let pumping = false, scheduled = false, dead = false;
+let scheduled = false;
 
-const renderer = () => {
-  if (!R && !dead) R = window.__game?.engine?.renderer || null; // (whoever asks first, the game's lent it by then)
-  return dead ? null : R;
-};
-const idle = (fn, timeout = 200) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout }) : setTimeout(() => fn({ timeRemaining: () => 8, didTimeout: true }), 16));
+const idle = (fn, timeout = 120) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout }) : setTimeout(() => fn({ timeRemaining: () => 8, didTimeout: true }), 16));
 const reduced = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 // ------------------------------------------------------------------ keys and sources
 /** Key of a forged weapon's model (dots: the key rides in a data URL's MIME parameter). */
 const wkey = (type, metal, inf) => `w.${type}.${metal}.${inf || ''}`;
+const fromPixelArtKey = (k) => (k.startsWith('w:') ? 'w.' + k.slice(2).split(':').join('.') : k);
 const flatOf = (key) => {
   if (key.startsWith('w.')) { const [, t, m, i] = key.split('.'); return weaponIconURL(t, m, i || undefined); }
   return iconURL(key);
 };
-/** The icon's pixels: RGBA, W×H. */
+/** The icon's pixels: RGBA, W×H (the raw art, as iconCanvas() draws it before its UI glow). */
 function pixelsOf(key) {
   if (key.startsWith('w.')) {
     const [, type, metal, inf] = key.split('.');
@@ -63,7 +57,6 @@ function pixelsOf(key) {
     return { d: pc.d, W: pc.w, H: pc.h };
   }
   if (!ITEMS[key]) return null;
-  // the raw art, as iconCanvas() draws it before its UI glow (reading a canvas back would cost more)
   const pc = drawIconArt(ITEMS[key].icon || { k: '?' }, hashStr(key), key);
   return { d: pc.d, W: pc.w, H: pc.h };
 }
@@ -73,15 +66,14 @@ function pixelsOf(key) {
 const SHAPES = {
   paper: { t: () => 0, yaw: -0.42, pitch: 0.3 }, // a sheet: plans, letters, tickets, swatches
   coin: { t: (d) => (d >= 2 ? 1 : 0) }, // a disc with a rim
-  slab: { t: (d) => (d < 1.5 ? 1 : 2) }, // ingots, bricks of stuff: flat faces, square edges
+  slab: { t: (d) => (d < 1.5 ? 1 : 2) }, // ingots: flat faces, square edges
   blade: { t: (d) => (d < 1.5 ? 0 : 1) }, // edges stay one voxel: blades, picks, chisels, sticks
   round: { t: (d) => Math.min(5, Math.round(Math.sqrt(d * 2.2)) - 1) }, // the default: a soft rounded body
   chunky: { t: (d) => Math.min(7, Math.round(Math.sqrt(d * 3.6)) - 1) }, // ore, gems, minerals: lumps
 };
 function shapeOf(key) {
   if (key.startsWith('w.')) return 'blade';
-  const it = ITEMS[key] || {};
-  const c = it.cat;
+  const c = ITEMS[key]?.cat;
   if (c === 'blueprint' || c === 'floor' || c === 'wallpaper' || /ticket|note|map|letter|paper|card|hymn|page|scroll|feather|leaf|recipe/.test(key)) return 'paper';
   if (/coin|disc|medal|token|badge/.test(key)) return 'coin';
   if (c === 'ingot') return 'slab';
@@ -91,17 +83,36 @@ function shapeOf(key) {
 }
 const shade = (c, k) => ((Math.round(((c >> 16) & 255) * k) << 16) | (Math.round(((c >> 8) & 255) * k) << 8) | Math.round((c & 255) * k));
 
-/** The voxel model of an icon: { geo, fit, pose }, or null. */
+/** The view: turned by yaw about the upright, then tipped by pitch toward you (x right, y up, z out). */
+const view = (yaw, pitch) => ({ cy: Math.cos(yaw), sy: Math.sin(yaw), cp: Math.cos(pitch), sp: Math.sin(pitch) });
+/** How far (in voxels) the model's corners reach from the frame's middle at each of these poses. */
+function reachAt(cols, n, poses) {
+  let r = 1;
+  for (const p of poses) {
+    const { cy, sy, cp, sp } = view(p.yaw, p.pitch);
+    for (let i = 0; i < n; i++) {
+      const o = i * 3, t = cols[o + 2] + 0.5;
+      for (let c = 0; c < 8; c++) {
+        const x = cols[o] + (c & 1), y = cols[o + 1] + ((c >> 1) & 1), z = c & 4 ? t : -t;
+        const x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y2 = y * cp - z1 * sp;
+        const a = Math.max(Math.abs(x1), Math.abs(y2));
+        if (a > r) r = a;
+      }
+    }
+  }
+  return r;
+}
+
+/** The voxel model of an icon: { pos, col, idx, fit (its still's), fitTurn (any turned angle), pose }, or null. */
 function buildModel(key) {
   const t0 = performance.now();
   try {
     const px = pixelsOf(key);
     if (!px) return null;
     const { d, W, H } = px;
-    const solid = (x, y) => d[(y * W + x) * 4 + 3] > 100;
     // chamfer distance in from the silhouette (two passes)
     const dist = new Float32Array(W * H);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) dist[y * W + x] = solid(x, y) ? 99 : 0;
+    for (let i = 0; i < W * H; i++) dist[i] = d[i * 4 + 3] > 100 ? 99 : 0;
     const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : dist[y * W + x]);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x; if (!dist[i]) continue;
@@ -114,8 +125,8 @@ function buildModel(key) {
     const shape = SHAPES[shapeOf(key)];
     const vb = new VB(7);
     const hx = W / 2, hy = H / 2;
-    let reach = 0, n = 0;
-    const p = 0.44, cp = Math.cos(p), sp = Math.sin(p); // the steepest pitch a turn reaches
+    const cols = new Float32Array(W * H * 3); // each pixel's column: left, bottom, half-thickness
+    let n = 0;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x;
       if (!dist[i]) continue;
@@ -124,17 +135,26 @@ function buildModel(key) {
       const t = Math.max(0, shape.t(dist[i]));
       // the faces keep the art's colour; the walls between layers are a shade darker (reads as depth)
       for (let z = -t; z <= t; z++) vb.set(x - hx, hy - 1 - y, z, z === t || z === -t || dist[i] < 1.5 ? c : shade(c, 0.8));
+      cols[n * 3] = x - hx; cols[n * 3 + 1] = hy - 1 - y; cols[n * 3 + 2] = t;
       n++;
-      // how far it can reach from the middle at any yaw (and at the turn's pitch): fitted to the frame
-      const ax = Math.max(Math.abs(x - hx), Math.abs(x + 1 - hx)), ay = Math.max(Math.abs(hy - y), Math.abs(hy - 1 - y));
-      const rxz = Math.hypot(ax, t + 0.5);
-      reach = Math.max(reach, rxz, ay * cp + rxz * sp);
     }
     if (!n) return null;
     const geo = vb.geo(0, 0, 0, FINE);
-    geo.deleteAttribute('normal'); // (unlit: the shading's baked into the colours)
-    geo.computeBoundingSphere();
-    return { geo, fit: Math.min(1, (HALF - 1) / Math.max(1, reach)), pose: { yaw: shape.yaw ?? POSE.yaw, pitch: shape.pitch ?? POSE.pitch } };
+    // keep the arrays (in voxels, the layers centred on z = 0), not the geometry
+    const P = geo.attributes.position.array, C = geo.attributes.color.array, I = geo.index.array;
+    const pos = new Float32Array(P.length);
+    for (let i = 0; i < P.length; i += 3) { pos[i] = P[i] / FINE; pos[i + 1] = P[i + 1] / FINE; pos[i + 2] = P[i + 2] / FINE - 0.5; }
+    const model = { pos, col: Float32Array.from(C), idx: Uint32Array.from(I) };
+    geo.dispose();
+    // fitted to the frame (a voxel to spare for the outline): the still as posed, a turn at any angle
+    const pose = { yaw: shape.yaw ?? POSE.yaw, pitch: shape.pitch ?? POSE.pitch };
+    const room = HALF - 0.75;
+    model.pose = pose;
+    model.fit = Math.min(1, room / reachAt(cols, n, [pose]));
+    const turn = [];
+    for (let i = 0; i < TURN_N; i += 3) turn.push(spinPose(i, pose));
+    model.fitTurn = Math.min(model.fit, room / reachAt(cols, n, turn));
+    return model;
   } catch (e) {
     DEBUG.err = String(e?.message || e);
     return null;
@@ -142,221 +162,193 @@ function buildModel(key) {
     DEBUG.buildMs += performance.now() - t0;
   }
 }
-// ------------------------------------------------------------------ drawing
-function setup() {
-  if (scene) return;
-  scene = new THREE.Scene();
-  cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 10);
-  cam.position.set(0, 0, 4);
-  mat = new THREE.MeshBasicMaterial({ vertexColors: true });
-  EMPTY = new THREE.BufferGeometry();
-  mesh = new THREE.Mesh(EMPTY, mat);
-  mesh.frustumCulled = false;
-  holder = new THREE.Group();
-  holder.add(mesh);
-  scene.add(holder);
-  const opt = { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, generateMipmaps: false };
-  rtAtlas = new THREE.WebGLRenderTarget(RES * COLS, RES * ROWS, opt);
-  rtLive = new THREE.WebGLRenderTarget(RES, RES, opt);
-  rtAtlas.texture.colorSpace = rtLive.texture.colorSpace = THREE.SRGBColorSpace;
-}
+
+// ------------------------------------------------------------------ drawing (a small z-buffered rasterizer)
+// The mesh's colours are linear with the face shading and AO baked in (as the GPU would get them); the
+// pixels are interpolated in linear light and written as sRGB, like an unlit material would show them.
+const SRGB = new Uint8Array(4096);
+for (let i = 0; i < 4096; i++) { const c = i / 4095; SRGB[i] = Math.round(255 * (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055)); }
+const zbuf = new Float32Array(RES * RES);
+let SX = new Float32Array(4096), SY = new Float32Array(4096), SZ = new Float32Array(4096);
 
 /**
- * Draw models into tiles of a target: jobs [{ m, yaw, pitch, s, dy }] go left to right, bottom to top.
- * The renderer's state (target, clear colour, auto-clear, stats) is put back as it was.
+ * Draw a model as job poses it ({ yaw, pitch, fit, s (scale), dy (lift, in half-frames) }) into a new
+ * RES×RES ImageData, with a dark outline round its silhouette.
  */
-function drawTiles(rt, jobs) {
-  setup();
-  const prev = R.getRenderTarget(), auto = R.autoClear;
-  const cc = R.getClearColor(new THREE.Color()), ca = R.getClearAlpha();
-  const info = R.info.render, saved = { calls: info.calls, triangles: info.triangles, points: info.points, lines: info.lines };
-  try {
-    R.autoClear = false;
-    rt.viewport.set(0, 0, rt.width, rt.height);
-    R.setRenderTarget(rt);
-    R.setClearColor(0x000000, 0);
-    R.clear(true, true, false);
-    jobs.forEach((j, i) => {
-      rt.viewport.set((i % COLS) * RES, Math.floor(i / COLS) * RES, RES, RES);
-      R.setRenderTarget(rt);
-      const k = (j.m.fit * (j.s ?? 1)) / (FINE * HALF); // voxels → camera units
-      mesh.geometry = j.m.geo;
-      mesh.scale.setScalar(k);
-      mesh.position.set(0, 0, -0.5 * FINE * k); // (the voxel layers sit at z ∈ [-t, t+1])
-      holder.rotation.set(j.pitch, j.yaw, 0, 'YXZ');
-      holder.position.set(0, j.dy || 0, 0);
-      R.render(scene, cam);
-    });
-  } finally {
-    mesh.geometry = EMPTY;
-    R.setRenderTarget(prev);
-    R.autoClear = auto;
-    R.setClearColor(cc, ca);
-    Object.assign(info, saved);
+function draw(m, job) {
+  const t0 = performance.now();
+  const { pos, col, idx } = m;
+  const nv = pos.length / 3;
+  if (SX.length < nv) { SX = new Float32Array(nv * 2); SY = new Float32Array(nv * 2); SZ = new Float32Array(nv * 2); }
+  const { cy, sy, cp, sp } = view(job.yaw, job.pitch);
+  const k = ((job.fit ?? m.fit) * (job.s ?? 1)) / HALF; // voxels → half-frames
+  const half = RES / 2, lift = (job.dy || 0) * half;
+  for (let i = 0, o = 0; i < nv; i++, o += 3) {
+    const x = pos[o] * k, y = pos[o + 1] * k, z = pos[o + 2] * k;
+    const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+    SX[i] = half + x1 * half;
+    SY[i] = half - (y * cp - z1 * sp) * half - lift;
+    SZ[i] = y * sp + z1 * cp; // toward the viewer
   }
-}
-/** Read a target's lower-left w×h back; async (a fence, no stall) where the renderer can. */
-function readBack(rt, w, h) {
-  const buf = new Uint8Array(w * h * 4);
-  if (R.readRenderTargetPixelsAsync) return R.readRenderTargetPixelsAsync(rt, 0, 0, w, h, buf).then(() => buf);
-  R.readRenderTargetPixels(rt, 0, 0, w, h, buf);
-  return Promise.resolve(buf);
-}
-/** Tile i of a read-back atlas (w px wide) as ImageData, flipped upright, with a dark outline round it. */
-function tileImage(buf, w, i, img = new ImageData(RES, RES)) {
-  const tx = (i % COLS) * RES, ty = Math.floor(i / COLS) * RES;
-  const o = img.data;
-  for (let y = 0; y < RES; y++) {
-    const src = ((ty + RES - 1 - y) * w + tx) * 4;
-    o.set(buf.subarray(src, src + RES * 4), y * RES * 4);
+  const img = new ImageData(RES, RES), o8 = img.data;
+  zbuf.fill(-1e9);
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t], b = idx[t + 1], c = idx[t + 2];
+    const ax = SX[a], ay = SY[a], bx = SX[b], by = SY[b], cx = SX[c], cy2 = SY[c];
+    const area = (bx - ax) * (cy2 - ay) - (by - ay) * (cx - ax);
+    if (area >= -1e-9) continue; // a back face (counter-clockwise faces the viewer; y runs down here)
+    const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx))), x1 = Math.min(RES - 1, Math.ceil(Math.max(ax, bx, cx)));
+    const y0 = Math.max(0, Math.floor(Math.min(ay, by, cy2))), y1 = Math.min(RES - 1, Math.ceil(Math.max(ay, by, cy2)));
+    if (x0 > x1 || y0 > y1) continue;
+    const inv = 1 / area;
+    const za = SZ[a], zb = SZ[b], zc = SZ[c];
+    const ra = col[a * 3], ga = col[a * 3 + 1], ba = col[a * 3 + 2];
+    const rb = col[b * 3], gb = col[b * 3 + 1], bb = col[b * 3 + 2];
+    const rc = col[c * 3], gc = col[c * 3 + 1], bc = col[c * 3 + 2];
+    for (let py = y0; py <= y1; py++) {
+      const qy = py + 0.5;
+      for (let px = x0; px <= x1; px++) {
+        const qx = px + 0.5;
+        const wa = ((cx - bx) * (qy - by) - (cy2 - by) * (qx - bx)) * inv;
+        if (wa < 0) continue;
+        const wb = ((ax - cx) * (qy - cy2) - (ay - cy2) * (qx - cx)) * inv;
+        if (wb < 0) continue;
+        const wc = 1 - wa - wb;
+        if (wc < 0) continue;
+        const z = wa * za + wb * zb + wc * zc, p = py * RES + px;
+        if (z <= zbuf[p]) continue;
+        zbuf[p] = z;
+        const q = p * 4;
+        o8[q] = SRGB[Math.min(4095, ((wa * ra + wb * rb + wc * rc) * 4095) | 0)];
+        o8[q + 1] = SRGB[Math.min(4095, ((wa * ga + wb * gb + wc * gc) * 4095) | 0)];
+        o8[q + 2] = SRGB[Math.min(4095, ((wa * ba + wb * bb + wc * bc) * 4095) | 0)];
+        o8[q + 3] = 255;
+      }
+    }
   }
   // the outline: one pixel of brown round the silhouette (like the rest of the game's pixel art)
-  const a = new Uint8Array(RES * RES);
-  for (let p = 0; p < RES * RES; p++) a[p] = o[p * 4 + 3] > 40 ? 1 : 0;
   for (let y = 0; y < RES; y++) for (let x = 0; x < RES; x++) {
     const p = y * RES + x;
-    if (a[p]) { o[p * 4 + 3] = 255; continue; }
-    if ((x > 0 && a[p - 1]) || (x < RES - 1 && a[p + 1]) || (y > 0 && a[p - RES]) || (y < RES - 1 && a[p + RES])) {
-      o[p * 4] = OUTLINE[0]; o[p * 4 + 1] = OUTLINE[1]; o[p * 4 + 2] = OUTLINE[2]; o[p * 4 + 3] = 255;
-    } else o[p * 4 + 3] = 0;
+    if (o8[p * 4 + 3]) continue;
+    if ((x > 0 && zbuf[p - 1] > -1e9) || (x < RES - 1 && zbuf[p + 1] > -1e9) || (y > 0 && zbuf[p - RES] > -1e9) || (y < RES - 1 && zbuf[p + RES] > -1e9)) {
+      o8[p * 4] = OUTLINE[0]; o8[p * 4 + 1] = OUTLINE[1]; o8[p * 4 + 2] = OUTLINE[2]; o8[p * 4 + 3] = 255;
+    }
   }
+  DEBUG.drawMs += performance.now() - t0;
   return img;
 }
 let scratch = null;
 const urlOfImage = (img) => {
+  const t0 = performance.now();
+  // (a CPU-side canvas: encoding never waits on the GPU, which may be busy drawing the world)
   if (!scratch) { scratch = document.createElement('canvas'); scratch.width = scratch.height = RES; }
-  scratch.getContext('2d').putImageData(img, 0, 0);
-  return scratch.toDataURL();
+  scratch.getContext('2d', { willReadFrequently: true }).putImageData(img, 0, 0);
+  const u = scratch.toDataURL();
+  DEBUG.encMs += performance.now() - t0;
+  return u;
 };
-const fail = () => { dead = true; R = null; };
+/** The still of a key, made now (data URL, or null if it can't be). */
+function makeStill(key) {
+  try {
+    const m = buildModel(key);
+    const u = m ? urlOfImage(draw(m, m.pose)) : null;
+    if (u) DEBUG.built++; else DEBUG.failed++;
+    return u;
+  } catch (e) {
+    DEBUG.err = String(e?.message || e);
+    DEBUG.failed++;
+    return null;
+  }
+}
 
 // ------------------------------------------------------------------ the still queue
 function want(key) {
-  if (stills.has(key) || queued.has(key) || dead) return;
+  if (stills.has(key) || queued.has(key)) return;
   queued.add(key);
   queue.push(key);
   schedule();
 }
 function schedule() {
-  if (scheduled || pumping || !queue.length) return;
+  if (scheduled || !queue.length) return;
   scheduled = true;
   idle(pump);
 }
-/** One batch: mesh what the idle time allows, draw them as one atlas, read it back, swap the <img>s. */
+/** Make stills for as long as the idle time allows (at least one), then swap the waiting <img>s. */
 function pump(deadline) {
   scheduled = false;
-  if (pumping || !queue.length) return;
-  if (!renderer()) { if (!dead) setTimeout(schedule, 500); return; }
-  pumping = true;
   const t0 = performance.now();
-  const budget = deadline?.didTimeout ? 4 : Math.max(4, Math.min(12, deadline?.timeRemaining?.() ?? 8));
-  const jobs = [];
-  while (queue.length && jobs.length < BATCH && (performance.now() - t0 < budget || !jobs.length)) {
+  const budget = deadline?.didTimeout ? 4 : Math.max(4, Math.min(10, deadline?.timeRemaining?.() ?? 6));
+  let made = 0;
+  while (queue.length && (!made || performance.now() - t0 < budget)) {
     const key = queue.shift();
     queued.delete(key);
     if (stills.has(key)) continue;
-    const m = buildModel(key);
-    if (!m) { stills.set(key, null); DEBUG.failed++; continue; }
-    jobs.push({ key, m, ...m.pose });
+    stills.set(key, makeStill(key));
+    made++;
   }
-  if (!jobs.length) { pumping = false; schedule(); return; }
-  const w = Math.min(jobs.length, COLS) * RES, h = Math.ceil(jobs.length / COLS) * RES;
-  let read;
-  try {
-    setup();
-    drawTiles(rtAtlas, jobs);
-    read = readBack(rtAtlas, w, h);
-  } catch (e) { read = Promise.reject(e); }
-  const tr = performance.now();
-  DEBUG.mainMs += tr - t0;
-  DEBUG.batches++;
-  DEBUG.jobs += jobs.length;
-  read.then((buf) => {
-    DEBUG.readMs += performance.now() - tr;
-    // turn the tiles into stills a few at a time (encoding a PNG isn't free), swapping as they're ready
-    let i = 0;
-    const step = () => {
-      const s0 = performance.now();
-      while (i < jobs.length && performance.now() - s0 < 5) {
-        const j = jobs[i];
-        try { stills.set(j.key, urlOfImage(tileImage(buf, w, i))); DEBUG.built++; } catch (e) { stills.set(j.key, null); DEBUG.failed++; }
-        i++;
-      }
-      swapTagged();
-      DEBUG.mainMs += performance.now() - s0;
-      if (i < jobs.length) { idle(step, 100); return; }
-      done();
-    };
-    step();
-  }).catch((e) => { DEBUG.err = String(e?.message || e); for (const j of jobs) stills.set(j.key, null); fail(); done(); });
-  function done() {
-    for (const j of jobs) j.m.geo.dispose();
-    pumping = false;
-    schedule();
-  }
+  if (made) swapTagged();
+  const ms = performance.now() - t0;
+  DEBUG.mainMs += ms; DEBUG.slices++;
+  if (ms > DEBUG.maxSliceMs) DEBUG.maxSliceMs = ms;
+  schedule();
 }
 /** Every tagged flat icon on the page whose still is ready shows the still now. */
 function swapTagged() {
   for (const img of document.querySelectorAll(`img[src^="${TAG}"]`)) {
     const s = img.getAttribute('src');
-    const key = s.slice(TAG.length, s.indexOf(';', TAG.length));
-    const u = stills.get(key);
+    const u = stills.get(s.slice(TAG.length, s.indexOf(';', TAG.length)));
     if (u) { img.src = u; DEBUG.swaps++; }
   }
 }
 
 /** What an <img> should show for a key: the still, or the flat icon tagged so the still replaces it. */
+let hoverOn = false;
 function srcOf(key) {
+  if (!hoverOn) { hoverOn = true; document.addEventListener('pointerover', onHover, { passive: true }); }
   const u = stills.get(key);
   if (u) return u;
   const flat = flatOf(key);
-  if (u === null || dead || !flat.startsWith('data:image/png;base64,')) return flat;
+  if (u === null || !flat.startsWith('data:image/png;base64,')) return flat;
   want(key);
   return TAG + key + ';' + flat.slice(15);
 }
 
 // ------------------------------------------------------------------ turning
-// A turn renders each of its frames once (async), then plays them from the cache.
+// A turn draws each of its frames the first time it's shown, then replays them.
 class Turn {
-  constructor(key, frames, poseAt) {
-    this.key = key; this.n = frames; this.poseAt = poseAt;
+  constructor(key, frames, jobAt) {
+    this.n = frames; this.jobAt = jobAt;
     this.frames = new Array(frames);
-    this.busy = false;
+    this.urls = new Array(frames);
     this.m = buildModel(key);
   }
-  drop() { this.m?.geo.dispose(); this.m = null; }
-  /** Frame i now, or null (asked for: cb(img) when it comes). */
-  get(i, cb) {
-    if (this.frames[i]) return this.frames[i];
-    if (this.busy || !this.m || !renderer()) return null;
-    this.busy = true;
-    let read;
-    try {
-      setup();
-      drawTiles(rtLive, [{ m: this.m, ...this.poseAt(i, this.m.pose) }]);
-      read = readBack(rtLive, RES, RES);
-    } catch (e) { read = Promise.reject(e); }
-    read.then((buf) => { this.busy = false; this.frames[i] = tileImage(buf, RES, 0); cb?.(this.frames[i]); }).catch(() => { this.busy = false; this.m = null; });
-    return null;
+  /** Frame i (ImageData), drawn now if it hasn't been. */
+  get(i) {
+    if (!this.frames[i] && this.m) { this.frames[i] = draw(this.m, this.jobAt(i, this.m)); DEBUG.frames++; }
+    return this.frames[i] || null;
+  }
+  url(i) {
+    if (!this.urls[i]) { const f = this.get(i); if (f) this.urls[i] = urlOfImage(f); }
+    return this.urls[i] || null;
   }
 }
 const spinPose = (i, p) => {
   const a = (i / TURN_N) * Math.PI * 2;
-  return { yaw: p.yaw + a, pitch: p.pitch - 0.08 + Math.sin(a) * 0.1 };
+  return { yaw: p.yaw + a, pitch: p.pitch - 0.06 + Math.sin(a) * 0.06 };
 };
-const turns = new Map(); // key → Turn (the last few spins share their frames)
+const turns = new Map(); // key → Turn (the last few share their frames between spins)
 function turnOf(key) {
   let t = turns.get(key);
-  if (!t || !t.m) {
-    t = new Turn(key, TURN_N, spinPose);
+  if (!t) {
+    t = new Turn(key, TURN_N, (i, m) => ({ ...spinPose(i, m.pose), fit: m.fitTurn }));
     if (!t.m) return null;
     turns.set(key, t);
-    while (turns.size > 6) { const k0 = turns.keys().next().value; turns.get(k0).drop(); turns.delete(k0); }
+    while (turns.size > 8) turns.delete(turns.keys().next().value);
   }
   return t;
 }
-/** Run a turn: draw(imageData, i) at TURN_FPS while alive() holds; returns { dispose }. */
-function runTurn(turn, draw, alive) {
+/** Run a turn: show(i) at TURN_FPS while alive(ms) holds; returns { dispose }. */
+function runTurn(show, alive) {
   let raf = 0, last = -1, on = true;
   const t0 = performance.now();
   const tick = (now) => {
@@ -364,58 +356,50 @@ function runTurn(turn, draw, alive) {
     if (!alive(now - t0)) { on = false; return; }
     raf = requestAnimationFrame(tick);
     const i = Math.floor(((now - t0) / 1000) * TURN_FPS) % TURN_N;
-    if (i === last) return;
-    const f = turn.get(i, (img) => { if (on && i === Math.floor(((performance.now() - t0) / 1000) * TURN_FPS) % TURN_N) { last = i; draw(img, i); } });
-    if (f) { last = i; draw(f, i); }
+    if (i !== last) { last = i; show(i); }
   };
   raf = requestAnimationFrame(tick);
   return { dispose() { on = false; cancelAnimationFrame(raf); } };
 }
 
-/** An <img> turning in place (its src cycles through the turn's frames); stops when it leaves the page. */
-function turnImg(img, key, { hover = false } = {}) {
-  if (reduced() || !renderer()) return null;
+/** An <img> turning in place (its src steps through the turn's frames); stops when it leaves the page. */
+function turnImg(img, key) {
+  if (reduced()) return null;
   const turn = turnOf(key);
   if (!turn) return null;
-  const urls = turn.urls || (turn.urls = new Array(TURN_N));
-  const rest = () => srcOf(key);
-  let born = false;
-  const h = runTurn(turn, (f, i) => { img.src = urls[i] || (urls[i] = urlOfImage(f)); born = true; }, (ms) => img.isConnected || ms < 600);
-  return { dispose() { h.dispose(); if (born) img.src = rest(); } };
+  let moved = false;
+  const h = runTurn((i) => { const u = turn.url(i); if (u) { img.src = u; moved = true; } }, (ms) => img.isConnected || ms < 600);
+  return { dispose() { h.dispose(); if (moved) img.src = srcOf(key); } };
 }
 
 // the pick-up flourish: one quick turn that lands on the still's pose, with a little hop
 const POP_N = 14, POP_MS = 620;
 const pops = new Map();
-const popPose = (i, p) => {
+const popJob = (i, m) => {
   const t = i / (POP_N - 1), e = 1 - (1 - t) ** 3;
-  return { yaw: p.yaw - (1 - e) * Math.PI * 2, pitch: p.pitch, s: 0.72 + 0.28 * e + Math.sin(t * Math.PI) * 0.12, dy: Math.sin(t * Math.PI) * 0.16 };
+  return { yaw: m.pose.yaw - (1 - e) * Math.PI * 2, pitch: m.pose.pitch, fit: m.fitTurn + (m.fit - m.fitTurn) * e, s: 0.75 + 0.25 * e + Math.sin(t * Math.PI) * 0.08, dy: Math.sin(t * Math.PI) * 0.12 };
 };
 function popImg(img, key) {
-  if (reduced() || !renderer()) return;
+  if (reduced() || !key) return;
   idle(() => {
     if (!img.isConnected) return;
     let turn = pops.get(key);
-    if (!turn || !turn.m) { turn = new Turn(key, POP_N, popPose); if (!turn.m) return; pops.set(key, turn); while (pops.size > 10) { const k0 = pops.keys().next().value; pops.get(k0).drop(); pops.delete(k0); } }
-    const urls = turn.urls || (turn.urls = new Array(POP_N));
+    if (!turn) { turn = new Turn(key, POP_N, popJob); if (!turn.m) return; pops.set(key, turn); while (pops.size > 12) pops.delete(pops.keys().next().value); }
     const t0 = performance.now();
     let last = -1;
     const tick = () => {
       if (!img.isConnected) return;
-      const i = Math.min(POP_N - 1, Math.floor(((performance.now() - t0) / POP_MS) * POP_N));
-      if (i !== last) {
-        const f = turn.get(i, (fr) => { if (i === last && img.isConnected && i < POP_N - 1) img.src = urls[i] || (urls[i] = urlOfImage(fr)); });
-        if (f) img.src = urls[i] || (urls[i] = urlOfImage(f));
-        last = i;
-      }
-      if (performance.now() - t0 < POP_MS + 60) requestAnimationFrame(tick);
-      else img.src = srcOf(key); // lands on the still (or the flat icon if it isn't made yet)
+      const ms = performance.now() - t0;
+      if (ms >= POP_MS) { img.src = srcOf(key); return; } // lands on the still
+      const i = Math.min(POP_N - 1, Math.floor((ms / POP_MS) * POP_N));
+      if (i !== last) { last = i; const u = turn.url(i); if (u) img.src = u; }
+      requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
-  }, 300);
+  }, 250);
 }
 
-// hovering an icon box with data-vox (or a button holding one) turns its item
+// hovering an icon with data-vox (or its box, or a button holding one) turns its item
 let hovered = null;
 function onHover(e) {
   if (e.pointerType && e.pointerType !== 'mouse') return;
@@ -431,13 +415,10 @@ function onHover(e) {
 
 // ------------------------------------------------------------------ the API
 export const itemVox = {
-  init(game) {
-    if (!R && !dead) R = game?.engine?.renderer || null;
-    if (!this._hover) { this._hover = true; document.addEventListener('pointerover', onHover, { passive: true }); }
-    schedule();
-  },
-  ready() { return !!renderer(); },
-  /** Key of a forged weapon's model (for spin/img). */
+  /** (Kept for callers that lend the renderer: the stills are drawn on the CPU and need none.) */
+  init() { schedule(); },
+  ready() { return true; },
+  /** Key of a forged weapon's model (for spin/img/data-vox). */
   wkey,
   /** What an <img> should show for an item: its 3D still, or (until that's made) its flat icon. */
   src(id) { return srcOf(id); },
@@ -446,30 +427,24 @@ export const itemVox = {
   /** The same for a stack ({ id } or { w: weapon }). */
   stack(s) { return !s ? '' : s.w ? srcOf(wkey(s.w.type, s.w.metal, s.w.infusion)) : srcOf(s.id); },
   /** A flat iconURL()/weaponIconURL() string → the 3D version; anything else comes back as it was. */
-  fromIcon(url, game) {
-    if (game) this.init(game);
-    const k = typeof url === 'string' ? iconKeyOf(url) : null;
-    if (!k) return url;
-    return srcOf(k.startsWith('w:') ? 'w.' + k.slice(2).split(':').join('.') : k);
-  },
+  fromIcon(url) { const k = this.keyOf(url); return k ? srcOf(k) : url; },
   /** The key an icon string stands for (item id / weapon key), or null. */
   keyOf(url) {
     if (typeof url !== 'string') return null;
     if (url.startsWith(TAG)) return url.slice(TAG.length, url.indexOf(';', TAG.length));
     const k = iconKeyOf(url);
-    if (k) return k.startsWith('w:') ? 'w.' + k.slice(2).split(':').join('.') : k;
+    if (k) return fromPixelArtKey(k);
     if (url.startsWith('data:image/png;base64,')) for (const [kk, u] of stills) if (u === url) return kk;
     return null;
   },
-  /** Queue stills ahead of time (a shop's stock as it opens…). */
+  /** Make stills ahead of time (a shop's stock as it opens…). */
   warm(keys) { for (const k of keys) if (k) want(k); },
   /**
    * An <img> of an item: what is an item id, a weapon key (wkey) or a flat icon URL (anything else
    * gets a plain <img> of it). opts.turn: it keeps turning while it's on the page; opts.pop: one
-   * quick "picked up" turn as it appears; opts.game: lends the renderer if nobody has yet.
+   * quick "picked up" turn as it appears.
    */
-  img(what, cls = 'pix', { turn = false, pop = false, alt = '', game = null } = {}) {
-    if (game) this.init(game);
+  img(what, cls = 'pix', { turn = false, pop = false, alt = '' } = {}) {
     const key = typeof what === 'string' && (ITEMS[what] || what.startsWith('w.')) ? what : this.keyOf(what);
     const img = document.createElement('img');
     img.className = cls;
@@ -485,28 +460,14 @@ export const itemVox = {
   turn(img, key) { return turnImg(img, key); },
   /** One quick "picked up" turn on an <img> (it lands on the still). */
   pop(img, key) { popImg(img, key || this.keyOf(img?.getAttribute?.('src'))); },
-  /** A still right now: built on the spot if it isn't yet (data URL), or null. */
+  /** A still right now: made on the spot if it isn't yet (data URL), or null. */
   url(id) {
-    if (stills.has(id)) return stills.get(id);
-    if (!renderer()) return null;
-    const m = buildModel(id);
-    let u = null;
-    if (m) {
-      try {
-        setup();
-        drawTiles(rtLive, [{ m, ...m.pose }]);
-        const buf = new Uint8Array(RES * RES * 4);
-        R.readRenderTargetPixels(rtLive, 0, 0, RES, RES, buf);
-        u = urlOfImage(tileImage(buf, RES, 0));
-      } catch (e) { u = null; }
-      m.geo.dispose();
-    }
-    stills.set(id, u);
-    return u;
+    if (!stills.has(id)) { queued.delete(id); stills.set(id, makeStill(id)); }
+    return stills.get(id);
   },
   /** A canvas in el with the model turning (key: id or wkey); { canvas, dispose } or null. */
   spin(el, key) {
-    if (reduced() || !renderer()) return null;
+    if (reduced()) return null;
     const turn = turnOf(key);
     if (!turn) return null;
     const cv = document.createElement('canvas');
@@ -514,10 +475,15 @@ export const itemVox = {
     cv.className = 'vox-spin pix';
     el.append(cv);
     const ctx = cv.getContext('2d');
-    const h = runTurn(turn, (f) => ctx.putImageData(f, 0, 0), (ms) => cv.isConnected || ms < 600);
+    ctx.putImageData(turn.get(0), 0, 0); // (frame 0 is the still's angle: no blank moment)
+    const h = runTurn((i) => { const f = turn.get(i); if (f) ctx.putImageData(f, 0, 0); }, (ms) => cv.isConnected || ms < 600);
     return { canvas: cv, dispose() { h.dispose(); cv.remove(); } };
   },
-  /** Numbers for the curious (and the perf check). */
-  _build: buildModel, _pixels: pixelsOf,
-  stats() { return { ...DEBUG, stills: stills.size, queued: queue.length, turns: turns.size, pops: pops.size }; },
+  /** Numbers for the curious (and the perf check); reset: start counting again. */
+  stats(reset = false) {
+    const out = { ...DEBUG, stills: stills.size, queued: queue.length, turns: turns.size, pops: pops.size };
+    if (reset) for (const k in DEBUG) DEBUG[k] = typeof DEBUG[k] === 'number' ? 0 : '';
+    return out;
+  },
+  _build: buildModel,
 };

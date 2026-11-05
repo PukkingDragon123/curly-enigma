@@ -16,6 +16,7 @@ import { SFX } from './bookSfx.js';
 import { QuestMarks } from './QuestMarks.js';
 import { npcFace, faceReady } from './npcFace.js';
 import { Px, art } from './uiArt.js';
+import { HART, installHudArt } from './hudArt.js';
 import './quests.css';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -44,25 +45,38 @@ export function rewardText(r, o = {}) {
 }
 
 // ------------------------------------------------------------ the direction arrow (8 crisp pixel arrows)
+/** An inked arrow: a dark sepia outline, a red-brown fill lit along one flank, a soft shadow on the paper. 13×13. */
 function arrowPx(k) {
   const p = new Px(13, 13);
   const a = (k / 8) * Math.PI * 2, c = 6;
   const fx = Math.sin(a), fy = -Math.cos(a);
   const tip = [c + fx * 5, c + fy * 5], tail = [c - fx * 4, c - fy * 4];
-  const col = 0x8a3a1a, hi = 0xc8642a;
-  p.line(Math.round(tail[0]), Math.round(tail[1]), Math.round(tip[0]), Math.round(tip[1]), col);
-  p.line(Math.round(tail[0] + fy * 0.9), Math.round(tail[1] - fx * 0.9), Math.round(tip[0] + fy * 0.9 - fx), Math.round(tip[1] - fx * 0.9 - fy), col);
+  const ink = 0x4a1608, fill = 0xa8461e, hi = 0xe0783a;
+  const m = new Px(13, 13);
+  m.line(Math.round(tail[0]), Math.round(tail[1]), Math.round(tip[0]), Math.round(tip[1]), 1);
+  m.line(Math.round(tail[0] + fy * 0.9), Math.round(tail[1] - fx * 0.9), Math.round(tip[0] + fy * 0.9 - fx), Math.round(tip[1] - fx * 0.9 - fy), 1);
   for (const s of [-1, 1]) {
     const bx = tip[0] - fx * 3.4 + fy * s * 3.2, by = tip[1] - fy * 3.4 - fx * s * 3.2;
-    p.line(Math.round(tip[0]), Math.round(tip[1]), Math.round(bx), Math.round(by), col);
-    p.line(Math.round(tip[0] - fx), Math.round(tip[1] - fy), Math.round(bx - fx * 0.8), Math.round(by - fy * 0.8), hi);
+    m.line(Math.round(tip[0]), Math.round(tip[1]), Math.round(bx), Math.round(by), 1);
+    m.line(Math.round(tip[0] - fx), Math.round(tip[1] - fy), Math.round(bx - fx * 0.8), Math.round(by - fy * 0.8), 1);
   }
-  p.set(Math.round(tip[0]), Math.round(tip[1]), 0x5a1e0a);
+  // a faint shadow on the paper, down and right
+  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) if (m.a(x, y) && !m.a(x + 1, y + 1)) p.set(x + 1, y + 1, 0x6e4a2a, 70);
+  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) {
+    if (!m.a(x, y)) continue;
+    const lit = !m.a(x - 1, y) || !m.a(x, y - 1);
+    p.set(x, y, lit ? hi : fill);
+  }
+  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) {
+    if (!m.a(x, y)) continue;
+    const edge = !m.a(x + 1, y) && !m.a(x, y + 1);
+    if (edge) p.set(x, y, ink);
+  }
+  p.set(Math.round(tip[0]), Math.round(tip[1]), ink);
   return p;
 }
-const ARROW = (k) => art('qt:arrow' + k, () => arrowPx(k));
-const sealPx = () => { const p = new Px(9, 9); p.disk(4.5, 4.5, 4.2, 0xb8402c); p.disk(4.5, 4.5, 2.6, 0xd8583a); p.set(3, 3, 0xff9a7a); p.outline(0x5a140c); return p; };
-const SEAL = () => art('qt:seal', sealPx);
+const ARROW = (k) => art('qt:arrow2:' + k, () => arrowPx(k));
+const SEAL = () => HART.waxSmall();
 
 export class Tracker {
   constructor(ui) {
@@ -76,7 +90,9 @@ export class Tracker {
     this.muted = false;
     this.starts = [];
     this.toastT = {};
-    document.documentElement.style.setProperty('--a-qstrip', `url("${BART.strip()}")`);
+    // the scroll: fibrous paper, curled ends (src/ui/hudArt.js; same 8 px 9-slice as quests.css expects)
+    document.documentElement.style.setProperty('--a-qstrip', `url("${HART.strip()}")`);
+    installHudArt(); // the wax seal (--h-wax)
 
     this.face = el('img', { class: 'pix qt-face', src: SEAL(), alt: '' });
     this.title = el('span', { class: 'qt-title' });
@@ -98,7 +114,7 @@ export class Tracker {
     this.roll = el('button', {
       class: 'qt-roll', title: 'Your quests (B)', 'aria-label': 'Current objective: open the book',
       onclick: (e) => { e.stopPropagation(); this.game.audio.init?.(); ui.openBook?.('quests'); },
-    }, [this.paper, this.tag, this.stamp]);
+    }, [this.paper, el('i', { class: 'qt-wax', 'aria-hidden': 'true' }), this.tag, this.stamp]);
     this.el = el('div', { class: 'qt', hidden: true, role: 'status', 'aria-live': 'polite' }, [this.roll, this.quill]);
     this.roll.addEventListener('pointerenter', () => this.wake());
     ui.hud.append(this.el);
