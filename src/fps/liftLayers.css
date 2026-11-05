@@ -183,6 +183,7 @@ button.ll-stop:active { filter: brightness(.95); }
 
 /* phones and short screens */
 @media (max-width: 560px) {
+  .ll-view { height: calc(100vh - 16px - var(--sat) - var(--sab) - var(--px) * 16 - 120px); }
   .ll-plaque { gap: var(--px); padding: calc(var(--px) * 2) calc(var(--px) * 3) calc(var(--px) * 2.5); }
   .ll-pct { min-width: 0; }
 }

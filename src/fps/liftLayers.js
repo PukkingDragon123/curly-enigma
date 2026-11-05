@@ -279,16 +279,16 @@ function layerCells(G, rng, extras) {
     }
     k++;
   }
-  // pools: a dip in the floor full of water (or lava)
+  // pools: a dip in the floor full of water (or lava), with a level surface
   for (const pl of extras.pools) {
-    for (let i = Math.floor(pl.x0 / B); i <= Math.ceil(pl.x1 / B); i++) {
-      if (i < 0 || i >= cols) continue;
+    const i0 = Math.max(0, Math.floor(pl.x0 / B)), i1 = Math.min(cols - 1, Math.ceil(pl.x1 / B));
+    const j0 = fl[Math.round((i0 + i1) / 2)];
+    for (let i = i0; i <= i1; i++) {
       const x = clamp(i * B + 3, 0, W - 1);
-      let fj = Math.floor(G.floor[x] / B); // the first rock row under the hollow here
-      while (fj > 0 && at(i, fj - 1) !== 0) fj--;
-      const depth = pl.deep * Math.sin(Math.PI * clamp((x - pl.x0) / (pl.x1 - pl.x0), 0, 1));
+      const depth = pl.deep * Math.pow(Math.sin(Math.PI * clamp((x - pl.x0) / (pl.x1 - pl.x0), 0, 1)), 0.6);
       const dj = Math.max(1, Math.round(depth / B));
-      for (let j = fj; j < Math.min(rows - 1, fj + dj); j++) cell[j * cols + i] = pl.kind;
+      for (let j = cl[i] + 1; j < j0; j++) if (j > 0) cell[j * cols + i] = 0;
+      for (let j = j0; j < Math.min(rows - 1, j0 + dj); j++) cell[j * cols + i] = pl.kind;
     }
   }
   return { cols, rows, cell, at };
@@ -524,6 +524,24 @@ function paintLayer(L) {
 
   // ---- zone features painted into the slab
   zoneFeatures(L, mid, G, C, { floorTop, ceilBot, rng, anim, cx });
+  // contact shadows: the air right under a ceiling and beside a wall is darker
+  {
+    const ao = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (mid.a(x, y)) continue;
+      let k = 0;
+      for (let d = 1; d <= 4; d++) if (mid.a(x, y - d) > 200) { k = Math.max(k, [0, 0.62, 0.44, 0.28, 0.14][d]); break; }
+      for (let d = 1; d <= 3; d++) if (mid.a(x - d, y) > 200 || mid.a(x + d, y) > 200) { k = Math.max(k, [0, 0.5, 0.3, 0.14][d]); break; }
+      ao[y * W + x] = Math.round(k * 255);
+    }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const a = ao[y * W + x];
+      if (!a || (a < 60 && dith(x, y) > a / 60)) continue;
+      mid.put(x, y, P.deep, Math.max(a, 60));
+    }
+  }
+  // known ores glint now and then
+  for (const [k, o] of oreAt) if (o.known && rng() < 0.5) anim.sparkles.push({ x: (k % cols) * B + 2, y: Math.floor(k / cols) * B + 2, c: o.col[1], ph: rng(), small: true });
 
   // ---- the town shaft runs down through every layer
   const shx = ax(W, 38.5);
@@ -735,21 +753,12 @@ function paintFront(L, G, M, floorTop) {
       pc.p(x, y, c);
     }
   }
-  // tips of near rock poking down from the top edge
-  for (let k = 0; k < Math.max(2, W / 50); k++) {
-    const x0 = rng.int(0, W - 4), w = rng.int(2, 5), hh = rng.int(3, 9);
-    if (x0 < L.plaque.right + 4) continue;
-    for (let i = 0; i < w; i++) {
-      const len = Math.max(1, Math.round(hh * (1 - Math.abs(i - (w - 1) / 2) / w) + hash(x0 + i, 2, z) * 2));
-      for (let y = 0; y < M + len; y++) pc.p(x0 + i, y, y === M + len - 1 ? rim : y === M + len - 2 ? rim2 : sil);
-    }
-  }
   // foreground things: dangling roots, crystal shards, icicles, a void shard
   for (let k = 0; k < Math.max(2, W / 60); k++) {
     const x = rng.int(4, W - 5);
-    if (z === 1) { let xx = x; const len = M + 6 + rng.int(0, 26); for (let y = 0; y < len; y++) { xx += rng() < 0.25 ? rng.int(-1, 1) : 0; pc.p(xx, y, y === len - 1 ? rim2 : sil); if (y < len / 3) pc.p(xx + 1, y, sil); } }
+    if (z === 1 || z === 2) { const y = bank(x); for (const [i, j] of [[0, 1], [0, 2], [1, 3], [-1, 3], [0, 4], [2, 5], [-2, 4]]) pc.p(x + i, y - j, j > 3 ? rim2 : sil); }
     if (z === 3 || z === 6) { const y = bank(x), n = rng.int(6, 13); for (let j = 0; j < n; j++) { const ww = j > n - 3 ? 0 : 1; for (let i = -ww; i <= ww; i++) pc.p(x + i, y - j, i < 0 ? rim : sil); } pc.p(x, y - n, mix(P.rim, 0xffffff, 0.3)); }
-    if (z === 5) { const len = M + 4 + rng.int(0, 12); for (let j = 0; j < len; j++) { pc.p(x, j, j > len - 3 ? rim : sil); if (j < len * 0.6) pc.p(x + 1, j, sil); } }
+    if (z === 5) { const y = bank(x), n = rng.int(3, 8); for (let j = 0; j < n; j++) { pc.p(x, y - j, j === n - 1 ? 0xffffff : rim2); if (j < n - 2) pc.p(x + 1, y - j, sil); } }
     if (z === 4 && k % 2 === 0) { const y = bank(x); pc.p(x, y - 1, 0xff7a2a); pc.p(x + 1, y - 1, 0xc84a1a); }
   }
   void floorTop; void G;
@@ -815,20 +824,18 @@ function paintVeil(L, G) {
 /** Two sagging chains crossing the layer and a padlock where they meet. */
 function paintChains(W, H, plq) {
   const pc = art(W, H);
-  const link = (x, y, horiz, c) => {
-    const pts = horiz ? [[0, 0], [1, -1], [2, -1], [3, -1], [4, 0], [3, 1], [2, 1], [1, 1]] : [[0, 0], [-1, 1], [-1, 2], [-1, 3], [0, 4], [1, 3], [1, 2], [1, 1]];
-    for (const [i, j] of pts) pc.p(x + i, y + j, c);
-  };
+  // a chain: rings seen flat and links seen edge-on, alternating
   const chain = (xa, ya, xb, yb, sag) => {
-    const len = Math.hypot(xb - xa, yb - ya), n = Math.floor(len / 4);
+    const n = Math.floor(Math.hypot(xb - xa, yb - ya) / 4);
     for (let k = 0; k <= n; k++) {
       const t = k / n;
-      const x = xa + (xb - xa) * t, y = ya + (yb - ya) * t + Math.sin(t * Math.PI) * sag;
-      const c = k % 2 ? 0x8a8e98 : 0xb8bcc8;
-      // shadow then link
-      link(Math.round(x) + 1, Math.round(y) + 2, k % 2 === 0, 0x101014);
-      link(Math.round(x), Math.round(y), k % 2 === 0, c);
-      if (k % 2 === 0) pc.p(Math.round(x) + 2, Math.round(y) - 1, 0xf0f4ff);
+      const x = Math.round(xa + (xb - xa) * t), y = Math.round(ya + (yb - ya) * t + Math.sin(t * Math.PI) * sag);
+      if (k % 2 === 0) {
+        for (const [i, j] of [[-1, 1], [0, 2], [1, 2], [2, 2], [3, 1]]) pc.p(x + i, y + j, 0x1a1a20);
+        for (const [i, j, c] of [[-1, 0, 0x8a8e98], [0, -1, 0xe0e4ee], [1, -1, 0xf4f6ff], [2, -1, 0xe0e4ee], [3, 0, 0x8a8e98], [0, 1, 0x6a6e78], [1, 1, 0x5a5e68], [2, 1, 0x6a6e78]]) pc.p(x + i, y + j, c);
+      } else {
+        for (let i = -1; i <= 1; i++) { pc.p(x + i, y + 1, 0x1a1a20); pc.p(x + i, y, i ? 0x9a9ea8 : 0xc8ccd8); }
+      }
     }
   };
   const x0 = 2, x1 = W - 3;
@@ -1311,8 +1318,6 @@ function paintTop(T) {
     const k = Math.min(SKY.length - 1, Math.floor(t + dith(x, y) * 0.95));
     back.p(x, y, SKY[k]);
   }
-  // stars still showing high up
-  for (let k = 0; k < W / 6; k++) { const x = hash(k, 1, seed) * W | 0, y = hash(k, 2, seed) * (M + 12) | 0; back.p(x, y, 0xe8f0ff); }
   // the sun low on the right
   const sx = Math.round(W * 0.8), sy = M + 20;
   for (let y = -9; y <= 9; y++) for (let x = -9; x <= 9; x++) {
@@ -1500,7 +1505,7 @@ function paintCore(C) {
     const crust = y < 22 + ed;
     if (crust) {
       const bx = Math.floor(x / B), by = Math.floor(y / B);
-      let c = P.rock[(bx + by) % 4];
+      let c = mul(P.rock[(hash(bx, by, 61) * 4) | 0], 0.92 + hash(bx, by, 62) * 0.14);
       if (x % B === 0 || y % B === 0) c = mul(c, 1.12); else if (x % B === B - 1 || y % B === B - 1) c = mul(c, 0.8);
       const glow = clamp((y - 6) / 18, 0, 1);
       c = mix(c, 0xc890ff, Math.floor(glow * 4 + dith(x, y)) / 4 * 0.45);
@@ -1516,6 +1521,32 @@ function paintCore(C) {
 }
 
 // ------------------------------------------------------------------ animation drawing (viewport ctx)
+const glowCache = new Map();
+/** A round, dithered glow (pixel-art light) of colour c and radius r. */
+function glowSprite(c, r) {
+  const key = c + ':' + r;
+  if (glowCache.has(key)) return glowCache.get(key);
+  const n = r * 2 + 1;
+  const pc = new PixelCanvas(n, n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const d = Math.hypot(x - r, y - r) / (r + 0.5);
+    if (d >= 1) continue;
+    const band = Math.floor((1 - d) * 4 + dith(x, y) * 0.9) / 4;
+    if (band > 0) pc.put(x, y, c, Math.round(band * band * 200 + 20));
+  }
+  const cv = pc.commit();
+  glowCache.set(key, cv);
+  return cv;
+}
+function drawGlow(ctx, x, y, c, r, a) {
+  r = Math.max(1, Math.round(r));
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = clamp(a, 0, 1);
+  ctx.drawImage(glowSprite(c, r), Math.round(x - r), Math.round(y - r));
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
 function drawLayerAnim(ctx, S, t, oy, view) {
   const A = S.art.anim, W = S.W, z = S.z;
   const fs = (c) => { ctx.fillStyle = c; };
@@ -1544,25 +1575,13 @@ function drawLayerAnim(ctx, S, t, oy, view) {
     }
     for (let k = 0; k < 4; k++) { const a = t * 3 + k * 1.7; pxl(f.x + Math.sin(a) * 4, f.y1 - 2 - Math.abs(Math.cos(a)) * 3, '#ffd070'); }
   }
-  // glows: soft dithered halos that breathe
-  ctx.globalCompositeOperation = 'lighter';
-  for (const g of A.glows) {
-    const pulse = 0.65 + 0.35 * Math.sin(t * 2 + (g.pulse || 0) * 6.28);
-    ctx.globalAlpha = 0.22 * g.f * pulse;
-    fs(css(g.c));
-    const r = g.r;
-    ctx.fillRect(g.x - r, g.y + oy - r + 1, r * 2 + 1, r * 2 - 1);
-    ctx.fillRect(g.x - r + 1, g.y + oy - r, r * 2 - 1, r * 2 + 1);
-    ctx.globalAlpha = 0.25 * g.f * pulse;
-    ctx.fillRect(g.x - (r >> 1), g.y + oy - (r >> 1), r + 1, r + 1);
-  }
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = 'source-over';
+  // glows: round dithered halos that breathe
+  for (const g of A.glows) drawGlow(ctx, g.x, g.y + oy, g.c, g.r * 2.2, 0.55 * g.f * (0.7 + 0.3 * Math.sin(t * 2 + (g.pulse || 0) * 6.28)));
   // twinkles on crystals, ice and star ore
   for (const s of A.sparkles) {
     const k = (t * 0.7 + s.ph * 3) % 3;
     if (k > 0.5) continue;
-    const r = k < 0.15 || k > 0.35 ? 1 : 2;
+    const r = s.small ? (k < 0.25 ? 1 : 0) : k < 0.15 || k > 0.35 ? 1 : 2;
     const c = css(s.c);
     pxl(s.x, s.y, '#ffffff');
     for (let i = 1; i <= r; i++) { pxl(s.x - i, s.y, c); pxl(s.x + i, s.y, c); pxl(s.x, s.y - i, c); pxl(s.x, s.y + i, c); }
@@ -1612,14 +1631,8 @@ function drawLayerAnim(ctx, S, t, oy, view) {
   for (const s of A.cages) {
     if (!s.open) continue;
     const fl = 0.75 + 0.25 * Math.sin(t * 11 + s.x) * Math.sin(t * 7.3 + s.x * 2);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.18 * fl;
-    fs('#ffb050');
-    ctx.fillRect(s.x + 2, s.fy + oy - 15, 7, 7);
-    ctx.globalAlpha = 0.28 * fl;
-    ctx.fillRect(s.x + 4, s.fy + oy - 13, 3, 3);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
+    drawGlow(ctx, s.x + 5, s.fy + oy - 12, 0xffb050, 12, 0.5 * fl);
+    drawGlow(ctx, s.x + 5, s.fy + oy - 12, 0xffe0a0, 4, 0.6 * fl);
     pxl(s.x + 5, s.fy - 13, '#3a2a22'); pxl(s.x + 5, s.fy - 12, fl > 0.8 ? '#fff4c0' : '#ffe080'); pxl(s.x + 5, s.fy - 11, '#ffb040');
   }
   // plants
@@ -1639,7 +1652,7 @@ function drawPlant(ctx, p, fy, cy, t) {
     for (const [i, j] of [[0, 0], [1, 0], [2, 0], [2, 1], [1, 2], [1, 4]]) P(x - 1 + i, qy + j, '#c8b890');
     return;
   }
-  const glow = (gx, gy, c, a) => { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a; ctx.fillStyle = c; ctx.fillRect(gx - 2, gy - 2, 5, 5); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; };
+  const glow = (gx, gy, c, a) => drawGlow(ctx, gx, gy, parseInt(c.slice(1), 16), 6, a * 1.6);
   const pulse = 0.5 + 0.5 * Math.sin(t * 2.2 + p.ph * 6.28);
   switch (p.id) {
     case 'cave_carrot': P(x, fy - 1, '#e8803a'); for (let i = -1; i <= 1; i++) P(x + i + sw, fy - 3 - Math.abs(i), '#5aa83c'); P(x + sw, fy - 2, '#4a9030'); P(x + sw, fy - 4, '#7ac458'); break;
