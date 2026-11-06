@@ -588,7 +588,7 @@ export const DEFAULT_POST = {
   bloomRadius: 1,
   bloomTint: 0xffffff,
   glowSteps: 0,
-  wideGlow: 0.7, // the 1/8-res halo (high effects only)
+  wideGlow: 0.45, // the 1/8-res halo (high effects only)
   // god rays
   rays: 0,
   raysDir: null,
@@ -616,7 +616,7 @@ export const DEFAULT_POST = {
 export const SCENE_POST = {
   title: { grade: 'tavern', gradeMix: 0.8, bloom: 0.7, bloomThreshold: 0.74 },
   home: { grade: 'tavern', gradeMix: 0.7, bloom: 0.6, bloomThreshold: 0.76, aoRadius: 0.35, aoFar: 18 }, // Old Star's lamplit cave
-  deep: { grade: 'deep', gradeMix: 0.85, bloom: 0.55, bloomThreshold: 0.72, saturation: 1.16, contrast: 1.06, aoFar: 18 }, // cool rock, warm lamps, glowing ore
+  deep: { grade: 'deep', gradeMix: 0.85, bloom: 0.55, bloomThreshold: 0.76, saturation: 1.16, contrast: 1.06, aoFar: 18 }, // cool rock, warm lamps, glowing ore
   town: { grade: 'town', gradeMix: 0.85, bloom: 0.65, bloomThreshold: 0.74, aoRadius: 0.5 },
   forge: { grade: 'forge', gradeMix: 0.85, bloom: 0.75, bloomThreshold: 0.7, aoRadius: 0.35, aoFar: 14 }, // hot metal glows
   cooking: { grade: 'warm', gradeMix: 0.7, bloom: 0.5, bloomThreshold: 0.8 },

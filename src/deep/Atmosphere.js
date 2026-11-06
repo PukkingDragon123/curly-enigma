@@ -6,7 +6,7 @@
 //  - the far darkness behind everything: a screen-filling sky drawn first, the same dark and lamp
 //    glow the rock fades to (voidCol + airGlow), so far rock melts into it without a silhouette
 //  - halos: each nearby light glows in the dusty air round it (one billboard per light, read
-//    straight from the lPos / lCol uniforms; the post pass dithers it like the bloom)
+//    straight from the lPos / lCol uniforms; the post pass adds it to the HDR image like the bloom)
 //  - motes that drift around the eye and catch the helmet lamp: dust, sand, glitter, spores,
 //    pollen, embers, snow, void sparks (by zone and biome)
 //  - light shafts toward a bright lantern in a tall hall, and a little more bloom where things
@@ -137,7 +137,7 @@ export class Atmosphere {
         void main() {
           float r = length(vC);
           if (r >= 1.0) discard;
-          // a soft core and a wide falloff (the post pass dithers it into pixel steps)
+          // a soft core and a wide falloff
           float k = (1.0 - r) * (1.0 - r) * 0.75 + pow(1.0 - r, 6.0) * 0.6;
           gl_FragColor = vec4(vCol * k, 1.0);
         }`,
