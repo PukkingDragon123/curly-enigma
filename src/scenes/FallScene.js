@@ -8,10 +8,10 @@
 // ~42 s, not skippable.
 // Wave 8: the wood is dressed for the camera (forest/dress.js: thick ground cover, flowers and stones in fine
 // voxels, saplings, boughs hanging into the opening shot), leaves and pollen drift on the GPU (forest/drift.js),
-// the animals are back with butterflies, dragonflies and swallows (forest/critters.js), and the air is full of
-// recorded wind, birdsong and insects (forest/sound.js).
+// small birds perch, flit and sing about the trail (forest/critters.js: birds only, no other animals), and
+// the air is full of recorded wind in the crowns and a placed evening chorus (forest/sound.js).
 // Dev: ?scene=fall&at=secs to start later, &freeze=1 to stop time, &lite=1 for the phone forest (&lite=0: the full
-// forest even on a software renderer, which otherwise gets the light one), &wildlife=0 for a forest with no animals.
+// forest even on a software renderer, which otherwise gets the light one), &wildlife=0 for a forest with no birds.
 // Test hooks: scene.debug.{ at(secs), time(), shot(), state(), skip(), perf(), cam(pos, look, fov), hold(on) }.
 import * as THREE from 'three';
 import { Scene } from '../core/Scene.js';
@@ -119,7 +119,7 @@ export default class FallScene extends Scene {
     this.heroShadow = makeBlobShadow(0.32, 0.26, 0.5);
     sc.add(this.heroShadow);
 
-    // ---- the forest's animals (?wildlife=0 leaves them, and the birdsong, out)
+    // ---- the forest's small birds (?wildlife=0 leaves them, and the birdsong, out)
     this.wildlife = params.wildlife !== '0';
     this.critters = this.wildlife ? makeCritters(this.F, { lite }) : { group: null, update() {}, dispose() {} };
     if (this.critters.group) { sc.add(this.critters.group); this.own(() => this.critters.dispose()); }
@@ -183,9 +183,8 @@ export default class FallScene extends Scene {
       const o = this.shot(0, 0.3, { pos: new THREE.Vector3(), look: new THREE.Vector3() });
       this.updateCamera(0.3, 0);
       const fr = { fov: this.camera.fov, aspect: this.camera.aspect };
-      this.dress.frame(o.pos, o.look, { ...fr, side: -1, dist: 2.4, up: 1.0, len: 3.2, seed: 9601 });
-      this.dress.frame(o.pos, o.look, { ...fr, side: 1, dist: 3.6, up: 1.1, len: 2.6, seed: 9613, yaw: 0.2 });
-      this.dress.frame(o.pos, o.look, { ...fr, side: -0.45, dist: 4.6, up: 1.12, len: 3.4, seed: 9629, yaw: -0.25 });
+      this.dress.frame(o.pos, o.look, { ...fr, side: -1, dist: 2.6, up: 0.98, len: 3.2, reach: 0.34, seed: 9601 });
+      this.dress.frame(o.pos, o.look, { ...fr, side: 1, dist: 3.8, up: 1.02, len: 2.8, reach: 0.26, seed: 9613, yaw: 0.15 });
     }
     // frame the opening shot now: the fade-in draws a few frames before the first update
     this.updateCamera(0, 0);
@@ -403,15 +402,14 @@ export default class FallScene extends Scene {
   story(t, dt) {
     const au = this.game.audio;
     // the wood's sound: leaves and wind in the crowns, the evening chorus all round (placed and
-    // answered across the trail, thinning out in the clearing), insects humming over the meadow
+    // answered across the trail, thinning out in the clearing); the birds in view sing for themselves
     this.once('amb', 0, () => { this.loop('forest_leaves', 0.42); this.loop('forest_air', 0.5); if (this.wildlife) this.loop('forest_chorus', 0.75); });
     if (t < T.I) {
       const inClear = t >= T.F;
       this.loops.forest_chorus?.set?.({ density: inClear ? 0.45 : 1 });
-      this.loop('forest_insects', this.wildlife && t > T.F - 0.5 ? 0.5 : 0);
-      // now and then something moves in the undergrowth, a twig cracks deep in the wood
+      // now and then the undergrowth stirs in a gust, a twig cracks deep in the wood
       this.rustleT = (this.rustleT ?? 3) - dt;
-      if (this.wildlife && this.rustleT <= 0) { this.rustleT = 3 + Math.random() * 5; this.sfx(Math.random() < 0.7 ? 'forest_rustle' : 'forest_twig', { pan: Math.random() * 1.6 - 0.8, vol: 0.6 + Math.random() * 0.4, far: true }); }
+      if (this.rustleT <= 0) { this.rustleT = 3 + Math.random() * 5; this.sfx(Math.random() < 0.7 ? 'forest_rustle' : 'forest_twig', { pan: Math.random() * 1.6 - 0.8, vol: 0.6 + Math.random() * 0.4, far: true }); }
     }
     this.once('cap', CAP[0], () => this.caption.classList.add('on'));
     this.once('capoff', CAP[1], () => this.caption.classList.remove('on'));
@@ -430,7 +428,7 @@ export default class FallScene extends Scene {
     this.once('reach', T.H + 1.3, () => this.hero.play('reach'));
     this.once('chime', T.H + 1.6, () => this.sfx('sparkle', { vol: 0.8 }));
     // the ground goes
-    this.once('hush', T.I - 0.6, () => { this.loops.forest_chorus?.set?.({ density: 0 }); this.loop('forest_insects', 0); });
+    this.once('hush', T.I - 0.6, () => { this.loops.forest_chorus?.set?.({ density: 0 }); });
     this.once('creak', T.I, () => { this.sfx('creak'); this.sfx('forest_groan', { vol: 0.06 }); this.loop('rumble', 0.5); au.stopMusic(1.4); this.shake = 0.015; this.hero.play('idle'); this.hero.look(0, 0.35); });
     this.once('crack1', T.I + 0.6, () => { this.sfx('crack'); this.sfx('rumble_hit'); this.hero.doEmote('surprise', 2); this.hero.play('brace'); this.F.cracks.mesh.visible = true; this.crack = true; this.gust = 1; if (this.wildlife) { this.burstFlock(); this.sfx('forest_flock'); this.loop('forest_chorus', 0); } });
     this.once('feet', T.I + 1.0, () => this.hero.look(0.15, -0.5)); // he looks down at his boots
@@ -851,7 +849,6 @@ export default class FallScene extends Scene {
     this.critters.update(dt, {
       t, hero: this.heroPivot.position, cam, glint: !!this.glint, crack: !!this.crack,
       sfx: (name, o) => this.sfx('forest_' + name, o),
-      splash: (pos) => { for (let i = 0; i < 12; i++) this.splash.spawn({ pos: [pos.x, -0.47, pos.z], vel: [(Math.random() - 0.5) * 1, 1 + Math.random() * 1.2, (Math.random() - 0.5) * 1], life: 0.8, color: 0xf0f8ff, color2: 0x8ac0e0, size: 0.03, gravity: 9, shape: SHAPE.square }); this.sfx('splash', { vol: 0.3 }); },
     });
     // the flock wheeling away from the clearing
     for (const b of this.flockBirds) {

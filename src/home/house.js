@@ -20,7 +20,7 @@
 // Star's places. (The scene still calls it `scene.cave` / `scene.house`.)
 import * as THREE from 'three';
 import { keepUnbatched } from '../iso/vox.js';
-import { lowRes, group } from '../iso/kit.js';
+import { lowRes, group, VoxelGrid, M32, line } from '../iso/kit.js';
 import { barrel, crate, rubble } from '../iso/props.js';
 import { buildFurniture } from '../iso/furniture.js';
 import { townDoor, doorRubble, lanternOnHook } from './props.js';
@@ -166,6 +166,7 @@ export class StarHouse {
     this.liveBake = []; // live pieces that get the camp's baked light once
     this.steps = {};
     this.roomMeshes = {};
+    this.drapes = []; // cloth the scene hangs (campCloth.js): { cloth, x, y, z, yaw, w, h, ... } (m)
   }
 
   // ------------------------------------------------------------ a build job
@@ -206,7 +207,7 @@ export class StarHouse {
     const nodes = [];
     for (const o of [...this.room.children]) nodes.push({ parent: 'room', node: packNode(o, ctx) });
     for (const o of [...this.world.children]) nodes.push({ parent: 'world', node: packNode(o, ctx) });
-    const meta = packRef({ dyn: this.dyn, furn: this.furn, ...Object.fromEntries(KEEP.map((k) => [k, this[k]])) }, ctx);
+    const meta = packRef({ dyn: this.dyn, furn: this.furn, drapes: this.drapes, ...Object.fromEntries(KEEP.map((k) => [k, this[k]])) }, ctx);
     this.steps.merge = merge;
     const msg = {
       id, meshes, surf, nodes, meta,
@@ -226,6 +227,8 @@ export class StarHouse {
     const h = new StarHouse(room, world);
     h.surfMeshes = [];
     for (const p of jobs) h.addPayload(p);
+    // (the scene hangs the washing and every other drape as cloth: campCloth.js)
+    h.laundry = [...(h.laundry || []), ...h.drapes];
     h.surfaces = { meshes: h.surfMeshes, boxes: [], steps: {}, dispose() {} };
     let a = performance.now();
     h.buildLift();
@@ -260,6 +263,7 @@ export class StarHouse {
     const meta = unpackRef(p.meta, ids, room);
     Object.assign(this.dyn, meta.dyn);
     this.furn.push(...(meta.furn || []));
+    if (meta.drapes?.length) this.drapes.push(...meta.drapes);
     for (const k of KEEP) if (meta[k] !== undefined && meta[k] !== null) this[k] = meta[k];
     this.lights.push(...p.lights);
     this.boxes.push(...p.boxes);
@@ -398,6 +402,49 @@ export class StarHouse {
     this.decor.add(w);
   }
 
+  /**
+   * Cloth for the scene to hang (campCloth.js): a sheet w × h m whose middle top (its pins) is at
+   * (x, y, z) m, turned yaw; o: the rest of the drape spec (nx, ny, pins, layout, boxes, floor, tex, color...).
+   * For layout 'flat' (x, z) is the sheet's middle and y its height.
+   */
+  drape(kind, x, y, z, yaw, w, h, o = {}) {
+    const c = Math.cos(yaw), sn = Math.sin(yaw);
+    const flat = o.layout === 'flat';
+    // the frame is the sheet's first corner: back from the middle along its x (and z when flat)
+    const ox = -w / 2, oz = flat ? -h / 2 : 0;
+    this.drapes.push({ cloth: kind, x: x + ox * c + oz * sn, y, z: z - ox * sn + oz * c, yaw, w, h, ...o });
+  }
+
+  /** Where the rock is from (x, z) going -(nx, nz), h m over the floor (as onRock, without a piece). */
+  rockAt(x, z, nx, nz, h = 0.6, gap = 0.01) {
+    let px = x, pz = z;
+    for (let i = 0; i < 80 && hollowSD(px, pz) + lean(h) < -gap; i++) { px -= nx * 0.02; pz -= nz * 0.02; }
+    return { x: px, z: pz, yaw: Math.atan2(nx, nz) };
+  }
+
+  /**
+   * A tarp w × d m thrown over the things under it, centred on (x, z) turned yaw: boxes [bx, bz,
+   * hw, hd, h] in that turned frame (m). pin: [i, j] of its 9 × 9 particles that stays put (on the top).
+   */
+  tarpOver(x, z, yaw, boxes, w = 0.78, d = 0.72, pin = [4, 4], seed = 1) {
+    const top = Math.max(...boxes.map((b) => b[4]));
+    const lift = top + 0.02;
+    // the boxes in the sheet's frame (its first corner, lift over the floor)
+    const bb = boxes.map(([bx, bz, bhw, bhd, bh]) => [w / 2 + bx - bhw, -lift - 0.05, d / 2 + bz - bhd, w / 2 + bx + bhw, -lift + bh, d / 2 + bz + bhd]);
+    this.drape('tarp', x, Y + lift, z, yaw, w, d, { layout: 'flat', nx: 9, ny: 9, pins: [pin], boxes: bb, floor: -lift + 0.012, tex: { kind: 'tarp', seed }, iters: 4, damping: 2.6, gust: 0.2 });
+  }
+
+  /** A curtain rod (m): from x0 to x1 at height y, z; brass knobs on the ends. Into the static decor. */
+  rod(x0, x1, y, z, parent = this.decor) {
+    const L = Math.round((x1 - x0) * 64);
+    const g = new VoxelGrid(L + 6, 6, 6);
+    line(g, [[3, 3, 3], [L + 3, 3, 3]], 1.1, (x) => (x % 7 === 0 ? 0x4a2c16 : 0x5e3a1e));
+    for (const ex of [1, L + 4]) g.box(ex - 1, 1, 1, 3, 4, 4, 0xc8a050);
+    const m = M32(g, [3, 3, 3]);
+    this.place(m, x0, z, 0, y, parent);
+    return m;
+  }
+
   // ------------------------------------------------------------ the rock
   /** The hollow's rock, its floor and roof, the hole, roots, drips, the glow in the damp corners. */
   buildRock() {
@@ -461,7 +508,12 @@ export class StarHouse {
     this.prop(KP.grindstone(), -0.05, -3.55, -Math.PI / 2, 0.38, 0.26, 0.7);
     for (const [x, z, s] of [[-0.45, -5.48, 1], [-3.55, -4.42, 2]]) { this.place(CMP.oldSack(s, 0x4e4842), x, z, s); this.boxAt(x, z, 0.18, 0.16, 0.4, s); }
     this.onRock(KP.horseshoes(), -2.0, -5.3, 0, 1, 1.35, 1.4);
-    this.onRock(KP.apronHook(), -1.25, -5.4, 0, 1, 0.42, 0.9); // his leather apron, scorched
+    // his leather apron, scorched, hung on its hook (cloth: it swings when you brush past)
+    const ah = this.onRock(KP.apronHook(247, { apron: false }), -1.25, -5.4, 0, 1, 0.42, 0.9);
+    this.drape('apron', ah.x + ah.nx * 0.07, Y + 0.42 + 55 / 64, ah.z + ah.nz * 0.07, ah.yaw, 0.36, 0.74, { nx: 6, ny: 9, pins: [[2, 0], [3, 0]], tex: { kind: 'apron', seed: 4 }, boxes: [[-1, -2, -1, 2, 1, -0.06]], floor: -(0.42 + 55 / 64) + 0.01, iters: 4, damping: 2.2, gust: 0.6 });
+    // an empty sack on a nail in the rock by the tools
+    const sk = this.rockAt(-3.3, -3.02, 1, 0, 1.0);
+    this.drape('sack', sk.x + 0.04, Y + 1.02, sk.z, sk.yaw, 0.34, 0.5, { nx: 6, ny: 7, pins: 'corners', slack: 1.04, tex: { kind: 'sacking', w: 28, h: 36, base: [138, 116, 80], seed: 9 }, boxes: [[-1, -2, -1, 2, 1, -0.03]], iters: 3, damping: 2.4, gust: 0.5 });
     this.web(-0.35, 1.25, -5.55, -Math.PI / 4, 0.3, 7);
     this.web(-4.15, 0.95, -1.15, Math.PI * 0.75, 0.26, 8);
     const lan = HP.hangingOilLamp(0.45, 98);
@@ -501,6 +553,11 @@ export class StarHouse {
       const o = k === 'crate' ? crate(s, { open: s === 2 }) : k === 'barrel' ? barrel(s, { fill: 'water' }) : { obj: CMP.oldSack(s, 0x8a7a58) };
       this.place(o.obj, x, z, s * 0.7);
       this.boxAt(x, z, k === 'sack' ? 0.17 : 0.22, k === 'sack' ? 0.17 : 0.22, k === 'crate' ? 0.4 : 0.5, s * 0.7);
+    }
+    // an old tarp thrown over the crate and the water barrel beside it (cloth: it lifts in the draught)
+    {
+      const yw = 0.7, c = Math.cos(yw), sn = Math.sin(yw), dx = -3.0 + 3.55, dz = -0.7 + 0.82;
+      this.tarpOver(-3.55, -0.82, yw, [[0, 0, 0.22, 0.22, 0.4], [dx * c - dz * sn, dx * sn + dz * c, 0.22, 0.22, 0.5]], 0.72, 0.66, [4, 4], 3);
     }
     this.look({ x: -1.62, y: Y + 0.45, z: -0.66, r: 0.28, label: 'The food crate', larder: true, special: true });
     // his pans on pegs over the stores, firewood stacked by the fire
@@ -542,6 +599,8 @@ export class StarHouse {
       const at = this.onRock(r.obj, x, z, nx, nz, 0, 0.6);
       // (its posts and beam: a box along the rock)
       this.boxAt(at.x + nx * 0.35, at.z + nz * 0.35, r.hw, 0.35, 1.0, at.yaw);
+      // the rag of canvas still snagged on a nail (cloth, hung by one corner)
+      this.drape('rag', at.x + nx * 0.42 + nz * 0.2, Y + 0.98, at.z + nz * 0.42 - nx * 0.2, at.yaw + 0.25, 0.34, 0.46, { nx: 5, ny: 6, pins: [[0, 0], [1, 0]], tex: { kind: 'rag', seed }, floor: -0.97, iters: 3, damping: 1.9, gust: 1.2 });
       this.look({ x: at.x + nx * 0.4, y: Y + 0.6, z: at.z + nz * 0.4, r: 0.45, label: 'A fallen lean-to', lines: ['A lean-to that leaned too far. The beam came down one winter and nobody put it back.', 'A rag of canvas still snagged on a nail. Old Star says he\'ll get round to it.'] });
     }
     for (const [x, z, sz, seed] of [[1.05, -0.78, 11, 31], [8.6, -0.62, 9, 32], [-1.95, -5.5, 8, 33], [4.75, -2.55, 7, 34], [-5.25, -3.4, 10, 35]]) {
@@ -570,6 +629,8 @@ export class StarHouse {
     this.place(cot.obj, S.cot.x, S.cot.z, 0);
     this.dyn.cot = { obj: cot.obj, lie: cot.lie };
     this.boxAt(S.cot.x, S.cot.z, 0.56, 0.28, 0.32);
+    // the quilt's end, hanging off the cot's side to the floor (cloth)
+    this.drape('quilt', S.cot.x, Y + 0.33, S.cot.z + 0.29, 0, 0.92, 0.3, { nx: 9, ny: 4, tex: { kind: 'quilt', seed: 19 }, boxes: [[-0.2, -1, -0.7, 1.2, 0.02, -0.01]], floor: -0.33 + 0.012, slack: 1.03, iters: 3, damping: 2.4, gust: 0.4 });
     this.look({ x: S.cot.x, y: Y + 0.35, z: S.cot.z, r: 0.35, label: 'Old Star\'s cot', lines: ['A cot that sags in the middle like a hammock. The quilt is more darns than quilt.', 'A red nightcap on the pillow, and a moth hole in the nightcap.'] });
     const ac = buildFurniture('armchair', {});
     const ay = Math.atan2(K.x + K.dc - S.armchair.x, K.z + 0.4 - S.armchair.z);
@@ -670,6 +731,8 @@ export class StarHouse {
       this.place(o.obj, x, z, s * 0.7);
       this.boxAt(x, z, k === 'sack' ? 0.17 : 0.22, k === 'sack' ? 0.17 : 0.22, k === 'crate' ? 0.4 : 0.5, s * 0.7);
     }
+    // a tarp over the two crates by the way out
+    this.tarpOver(7.215, -1.1, 5.6, [[0.0885, 0.2117, 0.22, 0.22, 0.4], [-0.0885, -0.2117, 0.22, 0.22, 0.4]], 0.78, 1.04, [5, 6], 7);
     this.prop(lowRes(() => CMP.ropeCoil(111)), 7.32, -4.52, -0.4, 0.33, 0.3, 0.18);
     const ll = HP.hangingOilLamp(0.5, 96);
     this.place(ll.obj, 6.55, -2.25, 0, ceilAt(6.55, -2.25) - 0.02);
@@ -696,6 +759,8 @@ export class StarHouse {
     this.place(steps.obj, ARCH.x, HALL.z1 - 2 * STEP_D, Math.PI, Y);
     const df = HP.doorFrame(ARCH.hw * 2, ARCH.h - Y, -HALL.z1, 7, { roundTop: true, step: -Y });
     this.place(df, ARCH.x, HALL.z1 / 2, 0, Y);
+    // the rod the doorway's curtain hangs from (the curtain is cloth: campCloth.js)
+    this.rod(ARCH.x - ARCH.hw + 0.005, ARCH.x + ARCH.hw - 0.005, ARCH.h - ARCH.hw - 0.01, -0.035);
     // a lantern on a hook over the steps (its light: campLights)
     const pl = lanternOnHook(9);
     this.place(pl.obj, PASS_LAMP.x, PASS_LAMP.z, Math.PI, Y + PASS_LAMP.y);

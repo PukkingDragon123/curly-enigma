@@ -84,7 +84,7 @@ function fiddle(pc, cx, cy, r, R, dir = 1) {
 }
 
 /** One mushroom: stem from (cx + lean, cy + h) up to the gill line at cy, cap radius r. */
-function mushroom(pc, cx, cy, r, h, CAP, STM, o = {}) {
+export function mushroom(pc, cx, cy, r, h, CAP, STM, o = {}) {
   const lean = o.lean ?? 0;
   // stem with fibrous streaks
   const st = tube(pc, [[cx + lean, cy + h], [cx + lean * 0.4, cy + h * 0.5], [cx, cy + 0.5]], (s) => r * (0.27 + (1 - s) * 0.06), STM, { bias: 0.1 });

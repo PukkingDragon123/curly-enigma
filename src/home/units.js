@@ -52,3 +52,10 @@ export function floorAt(x, z) {
   if (x >= STAIRS.x0 && x <= STAIRS.x1 && z >= STAIRS.z0) return -Math.ceil((HALL.z1 - z) / STEP_D - 1e-6) * STEP_H;
   return HALL.y;
 }
+
+/** Your nook's curtains (m; they're cloth: campCloth.js): the doorway's (a rod across the arch at its
+ * spring line) and the crystal window's (west wall, tile slot 2: WINDOW_SLOTS in iso/homeLayout.js). */
+export const ROOM_CURTAINS = {
+  arch: { x: ARCH.x, z: -0.035, y: ARCH.h - ARCH.hw + 0.01, hw: ARCH.hw - 0.02 },
+  window: { x: 0.12, z: (2 + 0.5) * T, y: 1.42, half: 0.44 },
+};

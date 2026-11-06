@@ -7,7 +7,8 @@
 //   FA: shared uniforms (fog colours, density, height falloff, the sun).
 //   GLSL_FA: `float faFog(vec3 w)`, `vec3 faFogCol(vec3 w)`, `vec3 faApply(vec3 col, vec3 w)`
 //            (needs GLSL_BAYER first). Every forest material calls faApply.
-//   makePaintedSky(): the sky dome (follow the camera with it).
+//   makePaintedSky(): the sky, painted behind everything (no dome mesh: one triangle that covers
+//                     the screen at the far plane, each pixel's view direction rebuilt from the camera).
 //   setAir(k): 0 = the forest at golden hour, 1 = the dark of the shaft.
 import * as THREE from 'three';
 import { GLSL_BAYER } from '../fx.js';
@@ -82,7 +83,12 @@ export const faUniforms = () => ({ ...FA });
 // ------------------------------------------------------------------ the sky
 const SKY_VERT = /* glsl */`
 varying vec3 vDir;
-void main() { vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`;
+void main() {
+  // a screen-covering triangle at the far plane; the view ray through this corner, in the world
+  vec4 v = inverse(projectionMatrix) * vec4(position.xy, 1.0, 1.0);
+  vDir = transpose(mat3(viewMatrix)) * (v.xyz / v.w);
+  gl_Position = vec4(position.xy, 1.0, 1.0);
+}`;
 const SKY_FRAG = /* glsl */`
 uniform vec3 uZenith; uniform vec3 uMid; uniform vec3 uLow;
 uniform vec3 uCloudLit; uniform vec3 uCloudMid; uniform vec3 uCloudDark; uniform vec3 uRim;
@@ -130,9 +136,12 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
 }`;
 
-/** The painted golden-hour sky dome (radius 150; keep it centred on the camera). */
+/** The painted golden-hour sky (drawn behind everything; following the camera with it is harmless). */
 export function makePaintedSky() {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(150, 32, 16), new THREE.ShaderMaterial({
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
+  const m = new THREE.Mesh(g, new THREE.ShaderMaterial({
     uniforms: {
       ...FA,
       uZenith: { value: C(0x3c68b8) }, uMid: { value: C(0x8cb4dc) }, uLow: { value: C(0xe8dcc0) },
@@ -140,7 +149,7 @@ export function makePaintedSky() {
       uDisc: { value: C(0xfffef0) }, uHalo: { value: C(0xfff0c0) },
       uCloud: MF.uCloud, uTime: MF.uTime, uDark: { value: 0 },
     },
-    vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false, fog: false,
+    vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.DoubleSide, depthWrite: false, depthTest: false, fog: false,
   }));
   m.renderOrder = -100;
   m.frustumCulled = false;

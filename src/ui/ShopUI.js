@@ -1,6 +1,7 @@
-// Shops of Deep Town as places, not lists: a hanging sign, the keeper in a wooden frame, goods
-// standing on shelves with paper price tags, and a counter where you pay. The assay office is a
-// ledger and a brass balance; the Surface Express is a brass ticket window with the golden ticket.
+// Shops of Deep Town: one quiet dark sheet over the 3D shop (styles in shop.css). The shop's name
+// and your gold along the top, the keeper's face and line like a film subtitle, the goods on a plain
+// grid with their prices, and the picked one spelled out with a Buy button. The assay office is a
+// plain list with Sell buttons; the Surface Express shows the ticket, your savings and the way up.
 import { el, formatGoldFull, pick, makeRng } from '../core/util.js';
 import { iconURL, weaponIconURL } from '../gfx/PixelArt.js';
 import { itemVox } from './itemVox.js'; // the goods as 3D voxel art (turning when picked or hovered)
@@ -61,13 +62,12 @@ export function openShop(game, shopId) {
   const scroll = el('div', { class: 'sh-scroll' }, [stock]);
   const counter = el('div', { class: 'sh-counter' });
   const foot = el('div', { class: 'sh-foot' });
-  const scaleImg = el('img', { class: 'pix sh-scale', src: SPR.scale(0), alt: '' });
   const backNote = el('div', { class: 'sh-back', hidden: true });
   const wall = el('div', { class: 'sh-wall' }, [tabsEl, scroll, backNote]);
   const room = el('div', { class: 'sh-room' }, [keeper, counter, foot, wall]);
-  const sign = el('div', { class: 'sh-sign' }, [el('i', { class: 'sh-chain l' }), el('i', { class: 'sh-chain r' }), el('h2', {}, shop.name)]);
+  const purse = el('span', { class: 'sh-purse', title: 'Your gold' });
+  const sign = el('div', { class: 'sh-sign' }, [el('i', { class: 'sh-chain l' }), el('i', { class: 'sh-chain r' }), el('h2', {}, shop.name), purse]);
   const root = el('div', { class: `sh shop-${shopId}` }, [sign, room]);
-  if (shopId === 'assay') keeper.append(scaleImg);
 
   const speak = (text) => {
     sayText.textContent = text;
@@ -84,6 +84,7 @@ export function openShop(game, shopId) {
   let picked = null; // item id on the counter
 
   const render = () => {
+    purse.replaceChildren(el('img', { class: 'pix', src: SPR.coinMini(), alt: '' }), formatGoldFull(st.gold));
     tabsEl.innerHTML = '';
     if (tabs.length > 1) for (const [k, label] of tabs) tabsEl.append(el('button', { class: 'sh-tab' + (tab === k ? ' on' : ''), onclick: () => { if (tab === k) return; tab = k; picked = null; game.audio.play('ui_click'); render(); scroll.scrollTop = 0; } }, label));
     tabsEl.hidden = tabs.length < 2;
@@ -200,11 +201,6 @@ export function openShop(game, shopId) {
   };
 
   // ---------------- assay: selling
-  const tilt = () => {
-    scaleImg.src = SPR.scale(1);
-    setTimeout(() => { scaleImg.src = SPR.scale(-1); }, 260);
-    setTimeout(() => { scaleImg.src = SPR.scale(0); }, 560);
-  };
   const renderSell = () => {
     const groups = st.inventory((it) => it && it.value > 0 && !['tool', 'equip', 'blueprint', 'key', 'furniture', 'floor', 'wallpaper', 'consumable'].includes(it.cat));
     groups.sort((a, b) => (ITEMS[b.id].value || 0) - (ITEMS[a.id].value || 0));
@@ -247,7 +243,6 @@ export function openShop(game, shopId) {
       game.audio.play('coins', { n: Math.min(8, 2 + Math.floor(Math.log10(g + 1) * 1.5)) });
       ui.toast(`Sold for <b>${formatGoldFull(g)}</b> gold`, { icon: COIN(), kind: 'good' });
       st.learn('assay');
-      tilt();
       if (g > 5000) speak(pick(['Now THAT is quality.', 'Oh my. Oh my my.', 'You\'re going to make me retire early.']));
       else speak(pick(['Fair price, fair price.', 'Mm. Decent.', 'I\'ll take it.', 'Pristine pieces pay more, remember.']));
     }
@@ -327,8 +322,8 @@ export function openShop(game, shopId) {
   const fit = () => root.classList.toggle('narrow', window.innerWidth < 700 || window.innerHeight < 470);
   fit();
   window.addEventListener('resize', fit);
-  ui.status.pin(true);
-  const h = ui.openPanel({ body: root, className: 'sh-panel', onClose: () => { window.removeEventListener('resize', fit); ui.status.pin(false); face3d.dispose(); } });
+  // (your gold is in the sheet's top line: the HUD's pouch stays where it is)
+  const h = ui.openPanel({ body: root, className: 'sh-panel', onClose: () => { window.removeEventListener('resize', fit); face3d.dispose(); } });
   h.portrait = face3d;
   return h;
 }

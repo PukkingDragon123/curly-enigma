@@ -514,20 +514,31 @@ export function makeBoughGeo(seed, { len = 3.2, kw = 14, kl = 9, leaf = [0xd0d87
       W.g.ellipsoid(p[0], p[1], p[2], rr, rr, rr, (x, y, z) => (y > p[1] + rr * 0.4 && hash3(x, y, z, seed) < 0.4 ? MOSS[(hash3(x, 0, z, seed) * 3) | 0] : y > p[1] ? bark[0] : hash3(x, y, z, seed + 1) < 0.3 ? bark[2] : bark[1]));
     }
   }
-  // leaf sprays: flattened clusters hanging from every twig tip and along the outer twigs
+  // leaf sprays: flat, layered plates of single leaves (a beech spray seen from below), drooping
+  // at their rims, two or three tiers on every twig tip and along the outer twigs, with sky
+  // showing between the leaves
   const sprays = [...tips];
   for (const s of segs) if (s.r < 0.03 && rng() < 0.6) sprays.push(s.b);
   for (const p of sprays) {
     const [cx, cy, cz] = Lf.V(p);
-    const R = rng.range(0.28, 0.42) * kl;
-    for (let z = -R - 1; z <= R + 1; z++) for (let y = -R * 0.6; y <= R * 0.5; y++) for (let x = -R - 1; x <= R + 1; x++) {
-      const e = (x * x + z * z) / (R * R) + (y / (R * 0.55)) ** 2;
-      if (e > 1) continue;
-      const X = Math.round(cx + x), Y = Math.round(cy + y - (x * x + z * z) / (R * R) * R * 0.3), Z = Math.round(cz + z);
-      if (e > 0.6 && hash3(X >> 1, Y, Z >> 1, seed + 2) < 0.35) continue;
-      if (hash3(X, Y, Z, seed + 5) < 0.12) continue; // gaps between the leaves: the light comes through
-      const lit = y / (R * 0.55) * 0.6 + (-x * 0.36 - z * 0.82) / R * 0.3 + (hash3(X >> 1, Y >> 1, Z >> 1, seed + 3) - 0.5) * 0.5;
-      Lf.g.set(X, Y, Z, leaf[lit > 0.55 ? 0 : lit > 0.15 ? 1 : lit > -0.2 ? 2 : lit > -0.5 ? 3 : 4]);
+    const tiers = 1 + rng.int(1, 2);
+    for (let t = 0; t < tiers; t++) {
+      const R = rng.range(0.22, 0.36) * kl * (1 - t * 0.2);
+      const ox = rng.range(-0.12, 0.12) * kl, oz = rng.range(-0.12, 0.12) * kl, oy = -t * 0.09 * kl;
+      const ph = rng.range(0, 6.28), tilt = rng.range(-0.25, 0.25);
+      for (let z = -R - 1; z <= R + 1; z++) for (let x = -R - 1; x <= R + 1; x++) {
+        const d = Math.hypot(x, z), a = Math.atan2(z, x);
+        const rim = R * (0.78 + 0.22 * Math.sin(a * 5 + ph) + 0.1 * Math.sin(a * 11 + ph * 2));
+        if (d > rim) continue;
+        // single leaves: 3 x 2 voxel cells in staggered rows, some missing
+        const lx = Math.floor((x + R + ((Math.floor((z + R) / 2) % 2) ? 1.5 : 0)) / 3), lz = Math.floor((z + R) / 2);
+        const hl = hash3(lx, t, lz, seed + 7 + Math.round(cx));
+        if (hl < 0.18) continue;
+        const X = Math.round(cx + ox + x), Z = Math.round(cz + oz + z);
+        const Y = Math.round(cy + oy - (d / R) ** 2 * R * 0.35 + x * tilt * 0.3 + (hl > 0.85 ? 1 : 0));
+        const lit = (1 - d / R) * 0.3 + (hl - 0.5) * 0.9 + (-x * 0.36 - z * 0.82) / R * 0.25 - t * 0.2;
+        Lf.g.set(X, Y, Z, leaf[lit > 0.45 ? 0 : lit > 0.1 ? 1 : lit > -0.2 ? 2 : lit > -0.45 ? 3 : 4]);
+      }
     }
   }
   return {

@@ -350,40 +350,42 @@ html.is-touch .hint-keys { display: none !important; }
 @media (min-width: 1700px) and (min-height: 1000px) { .bubble { font-size: 24px; } .bubble b { font-size: 16px; } .float-text { font-size: 24px; } }
 .nametag { position: absolute; transform: translate(-50%, -100%); font-size: .7em; color: var(--text-light); text-shadow: 0 var(--px) 0 #000; white-space: nowrap; }
 
-/* ---------- confirm: a parchment card with two rubber stamps ---------- */
-.modal-back > .panel.confirm-card { width: min(calc(var(--px) * 130), calc(100vw - 32px)); padding-top: calc(var(--px) * 3); }
-/* Old Star's wax seal (with its ribbon) pressed on the card's bottom-left corner */
-.modal-back > .panel.confirm-card::after {
-  content: ''; position: absolute; z-index: 2; left: calc(var(--px) * -12); bottom: calc(var(--px) * -18); width: calc(var(--px) * 26); height: calc(var(--px) * 30);
-  background: var(--a-waxSeal) 0 0 / 100% 100% no-repeat; pointer-events: none; filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 8, .5));
+/* ---------- confirm (UI.confirm): a small dark card, the question, two plain buttons ---------- */
+.modal-back > .panel.confirm-card {
+  width: min(420px, calc(100vw - 32px)); box-sizing: border-box; padding: 22px 24px 20px;
+  border: 0; border-image: none; border-radius: 12px; filter: none;
+  background: var(--gl-bg, rgba(13, 11, 15, .82)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 18px 60px rgba(0, 0, 0, .45);
+  font: 400 15px/1.45 var(--font-sub, system-ui, sans-serif); color: #f1ebe0; -webkit-font-smoothing: antialiased;
+  animation: cfIn .25s ease-out both;
 }
-.cf-text { margin: 0 0 calc(var(--px) * 6); line-height: 1.4; color: var(--ink); text-wrap: pretty; }
-.cf-text b { color: #7a2e14; }
-.cf-row { display: flex; justify-content: center; gap: calc(var(--px) * 10); }
+@keyframes cfIn { from { translate: 0 6px; } }
+.modal-back > .panel.confirm-card::before, .modal-back > .panel.confirm-card::after { display: none; }
+.modal-back > .panel.confirm-card > .close { right: 8px; top: 8px; width: 28px; height: 28px; border-radius: 50%; background: none; filter: none; transform: none; }
+.modal-back > .panel.confirm-card > .close::before {
+  content: ''; position: absolute; inset: 0; margin: auto; width: 12px; height: 12px;
+  background: linear-gradient(45deg, transparent 45%, rgba(236, 226, 210, .55) 45% 55%, transparent 55%), linear-gradient(-45deg, transparent 45%, rgba(236, 226, 210, .55) 45% 55%, transparent 55%);
+}
+.modal-back > .panel.confirm-card > .close:hover { background: rgba(255, 255, 255, .07); transform: none; }
+.cf-text { margin: 0 12px 20px 0; line-height: 1.5; color: #f1ebe0; text-wrap: pretty; }
+.cf-text b { color: #ffd59a; font-weight: 600; }
+.cf-row { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .stamp-btn {
-  position: relative; display: flex; flex-direction: column; align-items: center; gap: 0; padding: 0; border: 0; background: none; cursor: pointer;
-  font: inherit; color: inherit; outline: none; transition: transform .12s var(--pop);
+  position: relative; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; color: inherit; outline: none;
 }
-.stamp-btn img { width: calc(var(--px) * 16); height: calc(var(--px) * 14); margin-bottom: calc(var(--px) * -1); }
 .stamp-btn span {
-  display: block; font-family: var(--font-head); font-size: var(--fs-h); line-height: 1; text-transform: uppercase; letter-spacing: .04em;
-  padding: calc(var(--px) * 2) calc(var(--px) * 5) calc(var(--px) * 1.5); color: #fff3e0;
-  background: var(--a-rubber) 0 0 / calc(var(--px) * 16) repeat, var(--c, #a8321e); box-shadow: inset 0 calc(var(--px) * -2) 0 rgba(0, 0, 0, .28), inset 0 var(--px) 0 rgba(255, 255, 255, .28), 0 0 0 var(--px) var(--ink);
-  min-width: calc(var(--px) * 28); text-align: center;
+  display: block; min-width: 72px; padding: 9px 18px; border-radius: 7px; text-align: center;
+  font: 600 14px/1 var(--font-sub, system-ui, sans-serif); letter-spacing: .01em; text-transform: none;
+  color: #17120d; background: #ece0c8; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); transition: background .12s;
 }
-.stamp-btn.yes { --c: #3d7a2e; }
-.stamp-btn.no { --c: #9a3a26; }
-.stamp-btn:hover { transform: translateY(calc(var(--px) * -2)); }
-.stamp-btn:focus-visible span { box-shadow: inset 0 calc(var(--px) * -2) 0 rgba(0, 0, 0, .28), 0 0 0 var(--px) var(--ink), 0 0 0 calc(var(--px) * 2) var(--gold); }
-.stamp-btn.press { animation: stampPress .26s ease-in; }
-@keyframes stampPress { 40% { transform: translateY(calc(var(--px) * 6)) scale(.96); } 100% { transform: translateY(0); } }
-.ink-mark {
-  position: absolute; pointer-events: none; font-family: var(--font-head); font-size: var(--fs-h); text-transform: uppercase; letter-spacing: .06em;
-  color: var(--c); border: calc(var(--px) * 1) solid var(--c); box-shadow: inset 0 0 0 var(--px) transparent, 0 0 0 var(--px) var(--c) inset;
-  padding: 0 calc(var(--px) * 3); opacity: 0; transform: rotate(-8deg) scale(1.4);
-  animation: inkIn .22s ease-out .08s forwards;
-}
-@keyframes inkIn { to { opacity: .85; transform: rotate(-8deg) scale(1); } }
+.stamp-btn.no { order: -1; }
+.stamp-btn.no span { color: #f1ebe0; background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2); }
+.stamp-btn.yes:hover span { background: #fff3dc; }
+.stamp-btn.no:hover span { background: rgba(255, 255, 255, .12); }
+.stamp-btn:focus-visible span { box-shadow: 0 0 0 2px rgba(230, 192, 122, .75); }
+.stamp-btn.press span { filter: brightness(.9); }
+@media (min-width: 1700px) and (min-height: 1000px) { .modal-back > .panel.confirm-card { width: min(560px, calc(100vw - 32px)); font-size: 20px; } .stamp-btn span { font-size: 18px; } }
 
 /* ---------- full-screen overlays ---------- */
 .center-msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; pointer-events: none; }

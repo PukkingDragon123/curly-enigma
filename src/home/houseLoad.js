@@ -17,7 +17,7 @@ import { loadNotes } from './notes.js';
 import { roomSize } from '../iso/homeLayout.js';
 
 /** Bump when the house's build changes shape (keys only: nothing is stored across page loads). */
-const VERSION = 8;
+const VERSION = 9;
 /** Rough relative cost of each job (for the progress bar and to start the big ones first). */
 const COST = { rock: 2.6, west: 2.2, east: 1.8, ways: 0.6, shell: 1.6 };
 /** What each job depends on (besides the code): the keys of `want` that change it. */

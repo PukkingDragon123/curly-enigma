@@ -489,25 +489,18 @@ export class UI {
     while (this.panelStack.length) this.closePanel();
   }
 
-  /** Parchment card with two rubber stamps. Resolves true/false. */
+  /** A small dark card with the question and two plain buttons (yes first). Resolves true/false. */
   confirm(text, yes = 'Yes', no = 'No') {
     return new Promise((resolve) => {
       let done = false;
       const card = el('div', { class: 'cf-body' });
-      const stamp = (label, ok) => el('button', { class: 'stamp-btn ' + (ok ? 'yes' : 'no'), onclick: (e) => press(ok, e.currentTarget) }, [
-        el('img', { class: 'pix', src: SPR.stampHandle(), alt: '' }), el('span', {}, label),
-      ]);
+      const stamp = (label, ok) => el('button', { class: 'stamp-btn ' + (ok ? 'yes' : 'no'), onclick: (e) => press(ok, e.currentTarget) }, [el('span', {}, label)]);
       const press = (ok, btn) => {
         if (done) return;
         done = true;
         this.game.audio.play(ok ? 'thud' : 'ui_click', { vol: 0.6 });
         btn.classList.add('press');
-        const r = btn.getBoundingClientRect(), cr = card.getBoundingClientRect();
-        const mark = el('div', { class: 'ink-mark', style: { left: (r.left - cr.left + r.width / 2) + 'px', top: (r.top - cr.top) + 'px' } }, ok ? yes : no);
-        mark.style.setProperty('--c', ok ? '#3d7a2e' : '#9a3a26');
-        mark.style.translate = '-50% -110%';
-        card.append(mark);
-        setTimeout(() => { h.close(); resolve(ok); }, 300);
+        setTimeout(() => { h.close(); resolve(ok); }, 200);
       };
       const yesB = stamp(yes, true), noB = stamp(no, false);
       card.append(el('p', { class: 'cf-text', html: text }), el('div', { class: 'cf-row' }, [yesB, noB]));

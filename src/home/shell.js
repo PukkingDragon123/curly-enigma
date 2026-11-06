@@ -24,12 +24,27 @@ import { meshReliefTex, reliefTexture } from './relief.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { isRockWall } from './walls.js';
-import { T, VPT, CEIL, WALL_V, FACE, MOUTH_HW, ARCH } from './units.js';
+import { T, VPT, CEIL, WALL_V, FACE, MOUTH_HW, ARCH, ROOM_CURTAINS } from './units.js';
 import { inMouth, WINDOW, MOUTH_LANTERN, crystalWindow, tunnelMouth, cornerPost, buildBench, hangingRoot, wallFungi } from './props.js';
 import { cobweb, flagstone, fallenStones } from './campProps.js';
 import { ShellBase, CT, texturedToon, mergeIndexed, packShellSurfaces } from './shellSurf.js';
 import { unquantize, CSCALE } from './pack.js';
 
+
+/**
+ * The rod over the crystal window that its curtains hang from (they're cloth: campCloth.js
+ * ROOM_CURTAINS.window): wall-local (x along the wall, z out of it), in tiles.
+ */
+function curtainRod() {
+  const L = 62, out = Math.round(ROOM_CURTAINS.window.x * 64), y = ROOM_CURTAINS.window.y;
+  const g = new VoxelGrid(L + 8, 8, out + 4);
+  line(g, [[4, 4, out], [L + 4, 4, out]], 1.1, (x) => (x % 7 === 0 ? 0x4a2c16 : 0x6a4222));
+  for (const ex of [3, L + 5]) g.box(ex - 1, 2, out - 1, 3, 5, 3, 0xc8a050);
+  for (const bx of [7, L + 1]) { g.box(bx, 3, 0, 2, 2, out, 0x3a3a44); g.box(bx - 1, 1, 0, 4, 6, 2, 0x2e2e36); }
+  const m = M32(g, [L / 2 + 4, 4, 0]);
+  m.position.y = y / T;
+  return m;
+}
 
 export class HomeShell extends ShellBase {
 
@@ -123,7 +138,7 @@ export class HomeShell extends ShellBase {
   // ------------------------------------------------------------ window, poster
   buildWindow() {
     const cw = crystalWindow(3);
-    const grp = group(cw.obj, cw.pocket);
+    const grp = group(cw.obj, cw.pocket, curtainRod());
     this.onWall(grp, 'w', WINDOW_SLOTS[0] + 0.5);
     this.decor.add(grp);
   }

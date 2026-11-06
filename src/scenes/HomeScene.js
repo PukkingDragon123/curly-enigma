@@ -747,10 +747,10 @@ export default class HomeScene extends Scene {
   }
 
   // ------------------------------------------------------------ HUD bits
-  /** A small hammer button (desktop: shows the X key; touch: tap to decorate). */
+  /** The decorate button: a small, quiet round chip with a chair (desktop: the X key beside it). */
   hammerBtn() {
-    const b = el('button', { class: 'btn interactive', title: 'Build mode (X)', 'aria-label': 'Decorate', style: { position: 'absolute', right: 'calc(var(--sar, 0px) + var(--px) * 4)', top: 'calc(var(--sat, 0px) + var(--px) * 44)', display: 'flex', alignItems: 'center', gap: 'calc(var(--px) * 2)', fontSize: '1em', pointerEvents: 'auto', zIndex: 4 }, onclick: (e) => { e.stopPropagation(); this.toggleBuildHere(); } }, [
-      (this.hammerImg = el('img', { class: 'pix', src: this.buildIconURL || 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', alt: '', style: { width: 'var(--icon-s, 32px)', height: 'var(--icon-s, 32px)' } })), el('kbd', { style: { margin: 0 } }, 'X'),
+    const b = el('button', { class: 'decorate-btn interactive', title: 'Build mode (X)', 'aria-label': 'Decorate', onclick: (e) => { e.stopPropagation(); this.toggleBuildHere(); } }, [
+      (this.hammerImg = el('img', { class: 'pix', src: this.buildIconURL || 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', alt: '' })), el('span', { class: 'decorate-k' }, 'X'),
     ]);
     // in the HUD layer: above the "click to look around" catcher, so it works with a free mouse
     this.game.ui.hud.append(b);

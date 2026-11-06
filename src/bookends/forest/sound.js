@@ -11,8 +11,7 @@
 //                            ones dull and echoing; calls answered from the other side of the trail,
 //                            a dove somewhere deep in the wood, a woodpecker drumming far off.
 //                            set({ density: 0..1 }) thins it (the clearing; the ground groaning)
-//             forest_insects a summer hum over the clearing: bees and flies drifting past
-//   one-shots forest_rustle  something small moving in the undergrowth ({ pan, vol })
+//   one-shots forest_rustle  the undergrowth stirring in a gust ({ pan, vol })
 //             forest_twig    a twig snapping under foot or in the wood ({ pan, vol, far })
 //             forest_crunch  dry leaves under his boot ({ vol })
 //   forestSounds(audio): define them (idempotent).
@@ -82,17 +81,6 @@ export function forestSounds(au) {
       for (let i = 0; i < n; i++) a.sample('knock', { bus: out, vol: 0.13 * (1 - (i / n) * 0.6), pitch: 1.5, jit: 0.02, delay: i * 0.055, pan, reverb: 0.75, filter: 'lowpass', ff: 2200 });
     });
     return { set(p) { if (p.density != null) density = Math.max(0, Math.min(1, p.density)); }, stop() { alive = false; } };
-  });
-
-  au.defineLoop('forest_insects', (a, out) => {
-    let alive = true;
-    const live = () => alive && !!a.ctx;
-    // a bee or a fly drifting past: the buzz swells and fades as it crosses
-    every(live, 1.2, 3.8, () => {
-      const pan = R(-0.9, 0.9);
-      a.sample('buzz', { bus: out, vol: R(0.08, 0.18), pitch: R(0.8, 1.5), pan, a: R(0.15, 0.35), dur: R(0.3, 0.55), release: 0.25, filter: 'bandpass', ff: R(500, 1100), q: 0.8 });
-    }, 0.1);
-    return { stop() { alive = false; } };
   });
 
   au.define('forest_rustle', (a, o = {}) => a.sample(['rustle1', 'rustle2', 'rustle3', 'brush1', 'brush2'], { vol: (o.vol ?? 1) * 0.22, pitch: R(1.05, 1.5), pan: o.pan || 0, filter: 'highpass', ff: 700, dur: R(0.25, 0.45), release: 0.12 }), 0.15);

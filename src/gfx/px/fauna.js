@@ -1,10 +1,12 @@
-// 32×32 icons: caught critters (reusing the creature sprites) and creature drops.
-import { mat, mix } from './color.js';
-import { vol, fill, sparkle, hash2 } from './shade.js';
-import { M, ring, lineIn } from './parts.js';
+// 32×32 icons: caught critters (worm, glow beetle, blind fish, frost shrimp) and creature drops.
+// Hand-pixel style on top of lifeKit / gearKit: organic silhouettes in a few flat planes, seams
+// between body parts, segment rings, scales, fur fringes, wet sheens and glints; thin parts
+// (legs, antennae, threads) are 1px strokes laid over the ink so they stay delicate.
+import {
+  M, mat, mix, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, isTop, isBot, blob, fringe, form, sheen, marks, bumps, speckle,
+  blade, tube, spline, twinkle, sparkle, shadowOf, liftOf, bead, sweep,
+} from './lifeKit.js';
 import { CRITTER_DRAW } from '../critters32.js';
-
-const gl = (pc, x, y, c, g = 1) => { pc.set(x, y, c); pc.emit(x, y, g); };
 
 /** Center the opaque content of pc in the 32×32 frame. */
 function center(pc, dy = 0) {
@@ -15,25 +17,166 @@ function center(pc, dy = 0) {
   if (dx || ddy) pc.shift(dx, ddy);
 }
 
+/** A rotated local frame: u along angle a, v across (+ = right of the heading). */
+function frameAt(cx, cy, a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  const f = {
+    p: (u, v) => [cx + u * c - v * s, cy + u * s + v * c],
+    uv: (x, y) => { const dx = x + 0.5 - cx, dy = y + 0.5 - cy; return [dx * c + dy * s, -dx * s + dy * c]; },
+    ell: (u0, v0, ru, rv) => M().fn((x, y) => { const [u, v] = f.uv(x, y); return ((u - u0) / ru) ** 2 + ((v - v0) / rv) ** 2 <= 1; }),
+    fn: (g) => M().fn((x, y) => { const [u, v] = f.uv(x, y); return g(u, v); }),
+  };
+  return f;
+}
+
+/** Rings across a tube (segments): a dark groove with a lit lip just behind it. */
+function rings(pc, sw, R, list, o = {}) {
+  for (const s of list) {
+    const [x, y] = sw.at(s), [x2, y2] = sw.at(Math.min(1, s + 0.01));
+    const tx = x2 - x, ty = y2 - y, tl = Math.hypot(tx, ty) || 1;
+    const nx = ty / tl, ny = -tx / tl, w = (o.r ? o.r(s) : 3) + 0.5;
+    const ux = tx / tl, uy = ty / tl;
+    line(pc, x - nx * w, y - ny * w, x + nx * w, y + ny * w, (i, X, Y) => (sw.mask.get(X, Y) ? (step(pc, R, X, Y, o.dk ?? 1, 1, 5), null) : null));
+    if (o.lip !== false) line(pc, x - nx * w + ux, y - ny * w + uy, x + nx * w + ux, y + ny * w + uy, (i, X, Y) => (sw.mask.get(X, Y) && hash2(X, Y, 3) < 0.8 ? (step(pc, R, X, Y, -1, 1, 5), null) : null));
+  }
+}
+
 // ---------------------------------------------------------------- caught critters
 function wormItem(pc) {
-  // a happy worm curled into an S
-  const R = mat(0xe89a9a, { cont: 1.05 });
-  const pts = [];
-  for (let i = 0; i <= 40; i++) {
-    const t = i / 40;
-    const a = t * Math.PI * 2.1;
-    pts.push([16 + Math.sin(a) * 8 * (1 - t * 0.2), 5 + t * 22]);
+  const R = mat(0xe8908e, { cont: 1.12 });
+  // a plump earthworm looped into an S, head up
+  const pts = [[4.5, 25.5], [9.5, 28.4], [16, 27.2], [18, 22], [13.6, 18.4], [9.6, 14], [11.4, 8.6], [17, 6.2], [22.6, 8], [25.6, 12.4], [26.2, 17]];
+  const r = (s) => 2.35 + Math.sin(s * Math.PI) * 0.35 - (s > 0.94 ? (s - 0.94) * 10 : 0) - (s < 0.05 ? (0.05 - s) * 14 : 0);
+  const sw = tube(pc, pts, r, R, { bias: 0.12, capStart: 0.6, capEnd: 0.9 });
+  // segment rings, and the smooth saddle (clitellum) a third of the way from the head
+  const segs = [];
+  for (let s = 0.06; s < 0.95; s += 0.045) if (s < 0.62 || s > 0.74) segs.push(s);
+  rings(pc, sw, R, segs, { r });
+  const SD = mat(0xd86a72, { cont: 1.1 });
+  sw.mask.each((x, y) => { const i = y * 32 + x, s = sw.S[i]; if (s > 0.62 && s < 0.74) pc.set(x, y, SD[clamp(sw.K[i], 1, 5)]); });
+  // wet sheen on the lit side of each loop
+  sw.mask.each((x, y) => {
+    const i = y * 32 + x, s = sw.S[i], v = sw.V[i] / Math.max(0.6, sw.Wd[i]);
+    if (sw.K[i] <= 2 && Math.abs(v) > 0.2 && Math.abs(v) < 0.6 && hash2(x, y, 4) < 0.45 && s > 0.08) pc.set(x, y, R[0]);
+  });
+  ink(pc);
+  // a happy face: two eye dots and a little smile
+  pc.set(25, 16, 0x2a1220); pc.set(27, 16, 0x2a1220); pc.set(25, 15, 0xffffff);
+  pc.set(26, 18, mix(R[4], 0x8a2a3a, 0.5));
+  // crumbs of soil clinging on
+  for (const [x, y] of [[3, 29], [20, 29], [8, 19]]) { pc.set(x, y, 0x6a4a32); }
+}
+
+function beetleItem(pc) {
+  const SH = mat(0x34408c, { cont: 1.15, warm: 290 });
+  const GL = mat(0xc4f070, { cont: 1.05 });
+  const f = frameAt(16, 17, -1.2);
+  // glowing abdomen tip peeking out behind the wing cases
+  const tip = f.ell(-10.6, 0.2, 3.2, 3.8);
+  form(pc, tip, GL, { emit: 1, bias: 0.15 });
+  // elytra: two glossy halves with a dark seam and dotted striae
+  const E = f.ell(-2.4, 0, 9, 6.8);
+  const L = E.clone().and(f.fn((u, v) => v < -0.3)), Rt = E.clone().and(f.fn((u, v) => v >= -0.3));
+  const [ex, ey] = f.p(-2.4, 0);
+  seam(pc, E, 'shadow');
+  const KL = form(pc, L, SH, { cx: ex - 2, cy: ey - 1, rx: 8, ry: 8, bias: 0.06 });
+  const KR = form(pc, Rt, SH, { cx: ex - 2, cy: ey - 1, rx: 8, ry: 8, bias: 0.02 });
+  void KL; void KR;
+  E.each((x, y) => {
+    const [u, v] = f.uv(x, y);
+    if (Math.abs(v + 0.3) < 0.55) pc.set(x, y, SH[6]);
+    else if ((Math.abs(Math.abs(v) - 3.4) < 0.45) && Math.round(u) % 2 === 0 && u < 4) step(pc, SH, x, y, 1, 1, 5);
+  });
+  // iridescent sheen: a violet-teal band near the top-left of each wing case
+  for (const half of [L, Rt]) sheen(pc, half, (x, y) => ((x + y) % 3 ? 0x8a9aff : 0x7adcd8), { inset: 1, a0: -2.9, a1: -1.3, gap: 4 });
+  // pronotum + head
+  const pro = f.ell(6.2, 0, 3.3, 5.2);
+  seam(pc, pro, 'shadow');
+  form(pc, pro, SH, { bias: 0.04 });
+  const head = f.ell(9.8, 0, 2.3, 3.1);
+  seam(pc, head, 'shadow');
+  form(pc, head, mat(0x262c5a, { cont: 1.15 }), { bias: 0.04 });
+  ink(pc);
+  // legs (three pairs, knee-jointed) and clubbed antennae as fine strokes
+  const D = 0x1c1630, DL = 0x4a4a7a;
+  for (const [u, du1, du2] of [[4.5, 2.5, 4.5], [0.5, 0, -0.5], [-4, -2.5, -4.5]]) for (const sd of [-1, 1]) {
+    const [ax, ay] = f.p(u, sd * 6.6), [bx, by] = f.p(u + du1, sd * 9.6), [cx2, cy2] = f.p(u + du2, sd * 11.4);
+    line(pc, ax, ay, bx, by, (i) => (i ? DL : null));
+    line(pc, bx, by, cx2, cy2, D);
   }
-  const m = M();
-  pts.forEach(([x, y], i) => m.disk(x, y, i > 36 ? 2.9 : 2.5 - (i < 4 ? (4 - i) * 0.3 : 0)));
-  ring(pc, m, R);
-  vol(pc, m, R, { round: 2.4, spec: 0.86 });
-  for (let i = 3; i < 36; i += 3) { const [x, y] = pts[i]; pc.set(x + 1, y, R[4]); }
-  for (let i = 24; i <= 28; i++) { const [x, y] = pts[i]; pc.set(x, y, mix(R[3], 0xc8606a, 0.5)); pc.set(x - 1, y, mix(R[2], 0xc8606a, 0.4)); }
-  const [hx, hy] = pts[40];
-  pc.set(hx + 1, hy - 1, 0x1a1220); pc.set(hx - 1, hy - 1, 0x1a1220);
-  pc.set(hx, hy + 1, 0xb85a64);
+  for (const sd of [-1, 1]) {
+    const [ax, ay] = f.p(11.6, sd * 1.4), [bx, by] = f.p(14.2, sd * 3.2), [cx2, cy2] = f.p(15.4, sd * 5.2);
+    line(pc, ax, ay, bx, by, D); line(pc, bx, by, cx2, cy2, D);
+    pc.set(cx2, cy2, DL);
+  }
+  const [hx, hy] = f.p(10.4, -1.6); pc.set(hx, hy, 0xd8e0ff);
+  glint(pc, ...f.p(-4, -3.4).map(Math.round), 0);
+  for (const [x, y] of [[4, 29], [2, 25], [8, 30]]) gl(pc, x, y, 0xd8ff9a, 0.8);
+}
+
+function fishItem(pc) {
+  const R = mat(0xf2bcb2, { cont: 1.12 });
+  const FN = mat(0xe896ae, { cont: 1.12 });
+  const f = frameAt(16.2, 16.6, -0.3);
+  const arch = (u) => -0.035 * (u + 2) * (u + 2) + 1.2;
+  const hh = (u) => (u >= 0 ? 6.2 * Math.sqrt(Math.max(0, 1 - (u / 10.6) ** 2)) : Math.max(1.4, 6.2 * (1 - Math.pow(-u / 10, 1.7))));
+  // forked tail, dorsal and anal fins behind the body, with rays
+  const tail = f.fn((u, v) => u < -8.4 && u > -15 && Math.abs(v - arch(u)) < (-8.4 - u) * 0.95 + 1.3 && !(u < -12 && Math.abs(v - arch(u)) < (-12 - u) * 1.5));
+  const dorsal = f.fn((u, v) => u > -5 && u < 3.5 && v - arch(u) < -hh(u) + 0.8 && v - arch(u) > -hh(u) - 3.6 + Math.abs(u + 2.6) * 0.5 - (u > 0 ? u * 0.5 : 0));
+  const anal = f.fn((u, v) => u > -7.5 && u < -1.5 && v - arch(u) > hh(u) - 0.8 && v - arch(u) < hh(u) + 2.6 - Math.abs(u + 4.5) * 0.7);
+  for (const fin of [dorsal, anal, tail]) {
+    fin.each((x, y) => { const [u, v] = f.uv(x, y); const ray = Math.round(fin === tail ? v * 0.8 : u * 0.9) % 2 === 0; pc.set(x, y, FN[clamp((ray ? 3 : 2) + (v - arch(u) > 0 ? 1 : 0), 1, 5)]); });
+  }
+  // the body: plump, slightly arched, blunt head
+  const body = f.fn((u, v) => u > -10 && u < 10.6 && Math.abs(v - arch(u)) < hh(u));
+  seam(pc, body, 'shadow');
+  const [bx, by] = f.p(0, 0);
+  form(pc, body, R, { cx: bx - 1, cy: by - 1, rx: 11, ry: 8, bias: 0.06, tex: (x, y) => (f.uv(x, y)[1] - 1) * 0.015 });
+  // scales: offset rows of little arcs on the flank
+  body.clone().erode(1).each((x, y) => {
+    const [u] = f.uv(x, y);
+    if (u > 5 || u < -7) return;
+    if ((x + (Math.floor(y / 2) % 2) * 2) % 4 === 0 && y % 2 === 0) { step(pc, R, x, y, 1, 1, 5); step(pc, R, x + 1, y + 1, -1, 1, 5); }
+  });
+  // gill arc, milky blind eye
+  for (let v = -4; v <= 4; v++) { const [x, y] = f.p(5.4 - v * v * 0.1, v + arch(5)); if (body.get(x, y) && !isBot(body, x, y)) step(pc, R, x, y, 2, 1, 5); }
+  const [ex, ey] = f.p(7.8, arch(8) - 2.2).map(Math.floor);
+  pc.set(ex, ey, 0xeef2fa); pc.set(ex + 1, ey, 0xcad4e8); pc.set(ex, ey + 1, 0xb4c0d8); pc.set(ex + 1, ey + 1, 0x8a98b8);
+  // pectoral fin over the flank
+  blade(pc, ...f.p(3.6, arch(3) + 2), ...f.p(-1.8, arch(-2) + 5), 1.8, FN, { veins: 1, rib: false, fold: 0.6 });
+  ink(pc);
+  const [mx, my] = f.p(10.4, arch(10) + 0.6).map(Math.floor); pc.set(mx, my, inkOf(R[4]));
+  glint(pc, ...f.p(2, arch(2) - 3.6).map(Math.floor), 0);
+  for (const [x, y, a] of [[28, 7, 200], [30, 4, 150], [27, 3, 110]]) pc.set(x, y, 0xe8f6ff, a);
+}
+
+function shrimpItem(pc) {
+  const R = mat(0xf2846e, { cont: 1.15, warm: 30 });
+  const ICE = 0xa8ecff;
+  // long whiskers sweeping back over the body
+  const pts = [[22, 9.5], [25.8, 14], [25, 20.4], [20, 24.6], [13.2, 25.6], [8.6, 23]];
+  const r = (s) => (s < 0.22 ? 4.1 : 4.1 - (s - 0.22) * 3.4);
+  // tail fan (behind the last segment)
+  for (const [x1, y1] of [[2.6, 20], [3, 25.6], [5.6, 28.6]]) blade(pc, 9.4, 23.4, x1, y1, 2, R, { veins: 0, rib: R[1], fold: 0.8, pow: 1.1 });
+  // walking legs and swimmerets on the inner curve
+  const LG = mat(0xe86a5a, { cont: 1.1 });
+  for (const [x0, y0, x1, y1] of [[21, 14, 17, 16.5], [22, 17, 18, 19.6], [20.5, 20.4, 17.5, 22], [17, 22, 14.6, 21.6]]) tube(pc, [[x0, y0], [x1, y1]], 0.7, LG, { seam: false });
+  const sw = tube(pc, pts, r, R, { bias: 0.1, capStart: 0.8, capEnd: 0.3 });
+  rings(pc, sw, R, [0.3, 0.42, 0.53, 0.64, 0.75, 0.86], { r });
+  // carapace: smooth shell with a ridge, rostrum spike and a stalked eye
+  const ros = M().poly([[22, 6.4], [28.6, 2.6], [23.8, 8.6]]);
+  seam(pc, ros, 'shadow');
+  ros.each((x, y) => pc.set(x, y, R[(x + y) % 2 ? 2 : 3]));
+  sw.mask.each((x, y) => { const i = y * 32 + x; if (sw.S[i] < 0.2 && Math.abs(sw.V[i]) < 0.6) pc.set(x, y, R[1]); });
+  // frosty tips: the shell edges glaze pale blue
+  sw.mask.each((x, y) => { if (isTop(sw.mask, x, y) && hash2(x, y, 5) < 0.35) pc.set(x, y, mix(ICE, R[1], 0.3)); });
+  ink(pc);
+  pc.set(20, 8, 0x1a1020); pc.set(21, 8, 0x1a1020); pc.set(20, 7, 0x3a2a3a); pc.set(20, 8, 0xffffff);
+  line(pc, 23, 7, 14, 2, (i) => (i % 5 === 4 ? null : 0xb8443a));
+  line(pc, 22, 8, 8, 6, (i) => (i % 6 === 5 ? null : 0xa83a34));
+  pc.set(14, 2, ICE); pc.set(8, 6, ICE);
+  glint(pc, 19, 11, 0);
+  for (const [x, y] of [[29, 9], [4, 15], [27, 27]]) twinkle(pc, x, y, 0xffffff, ICE, 1, 0.7);
 }
 
 function critterItem(pc, id, frame) {
@@ -43,143 +186,217 @@ function critterItem(pc, id, frame) {
 
 // ---------------------------------------------------------------- drops
 function dustFluff(pc) {
-  const R = mat(0xd6cbbc, { cont: 1 });
-  // a puffball made of overlapping round tufts
-  const m = M();
-  const tufts = [[16, 17, 8], [9, 19, 5], [23, 19, 5], [12, 12, 5], [20, 11.5, 5.2], [16, 23, 5.5], [8, 14, 3.4], [25, 14, 3.4]];
-  for (const [x, y, r] of tufts) m.disk(x, y, r);
-  ring(pc, m, R, { lit: R[4], dark: R[5] });
-  vol(pc, m, R, { round: 7 });
-  // each tuft gets its own soft rim so the fluff reads as clumps
-  for (const [x, y, r] of tufts) M().disk(x, y, r).and(m).edge().each((X, Y) => { if (m.get(X + 1, Y + 1) && (X - x) + (Y - y) > r * 0.6) pc.set(X, Y, R[4]); });
-  m.each((x, y) => { if (hash2(x, y, 4) < 0.1) { const k = R.indexOf(pc.getHex(x, y)); if (k > 1) pc.set(x, y, R[k - 1]); } });
-  for (const pts of [[[4, 12], [2, 9], [3, 6]], [[28, 12], [30, 9]], [[22, 28], [25, 30]]]) for (let i = 0; i + 1 < pts.length; i++) lineIn(pc, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], R[3]);
-  sparkle(pc, 13, 10, 1, 0xffffff, R[1]);
+  const R = mat(0xcfc2b0, { cont: 1.05 });
+  // a dust bunny: a lumpy ball fringed all round with combed tufts
+  const core = blob(16, 17.5, 10.5, 9.4, { seed: 6, lump: 0.12 }).union(blob(10, 12.5, 4.5, 4, { seed: 2 })).union(blob(22.5, 12, 4.4, 4, { seed: 3 }));
+  const m = fringe(core, 16, 17, { dens: 0.55, seed: 2, len: 1.6, lean: 0.45 });
+  const K = form(pc, m, R, { cx: 15, cy: 16.5, rx: 13, ry: 12, bias: 0.06 });
+  // fur strokes combed outward, darker in the creases, a few lit tips
+  marks(pc, m, R, { dens: 0.2, seed: 4, len: 3, dir: (x, y) => { const dx = x + 0.5 - 16, dy = y + 0.5 - 17, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; }, lit: false });
+  speckle(pc, m, [R[1]], 0.06, 3, (x, y) => K[y * 32 + x] <= 3);
+  // lint caught in it: a thread, a crumb and a bit of grit
+  ink(pc);
+  line(pc, 4, 25, 9, 22, 0x7a6ab0); line(pc, 3, 26, 4, 25, 0x7a6ab0); pc.set(9, 21, 0x9a8ad0);
+  pc.set(23, 22, 0x8a6a4a); pc.set(24, 22, 0x6a4a32); pc.set(12, 20, 0x6a6460);
+  for (const [x, y, a] of [[27, 27, 170], [29, 25, 120], [4, 7, 140]]) pc.set(x, y, 0xe8e0d0, a);
+  glint(pc, 11, 10, 0);
 }
 
 function batGuano(pc) {
-  const R = mat(0x6a5236, { cont: 1.05 });
-  // a little heap of pellets
-  const pel = [[9, 24, 4], [16, 25, 4.4], [23, 24, 4], [12, 19, 3.8], [20, 19, 3.8], [16, 14, 3.4]];
-  for (const [x, y, r] of pel) {
-    const m = M().ellipse(x, y, r, r * 0.8);
-    ring(pc, m, R); vol(pc, m, R, { round: 2, spec: 0.9 });
-  }
-  // chalky white specks
-  for (const [x, y] of [[8, 23], [15, 24], [22, 22], [12, 18], [19, 18], [16, 13], [25, 25]]) pc.set(x, y, 0xf0eadc);
-  // tiny fly buzzing about
-  pc.set(26, 8, 0x2a2a30); pc.set(25, 7, 0xc8d8f0, 200); pc.set(27, 7, 0xc8d8f0, 200);
-  for (let i = 0; i < 4; i++) pc.set(22 - i * 1.5, 10 + (i % 2), 0x8a7a5a, 140);
+  const R = mat(0x5e4630, { cont: 1.1 });
+  // a heap of little rice-shaped pellets, back to front, each with a chalky white cap
+  const P = [[11, 18, 0.6, 3.4], [19, 17.5, -0.5, 3.4], [15.5, 14, 0.15, 3], [7, 23.6, 0.25, 3.6], [14, 23, -0.3, 3.8], [21.6, 23.2, 0.4, 3.6], [26, 25.6, -0.2, 2.8], [10.5, 27, -0.1, 3.4], [18.5, 27.4, 0.15, 3.6]];
+  P.forEach(([x, y, a, l], i) => {
+    const dx = Math.cos(a) * l, dy = Math.sin(a) * l;
+    const sw = tube(pc, [[x - dx, y - dy], [x + dx, y + dy]], (s) => 1.9 - Math.abs(s - 0.5) * 0.9, R, { bias: 0.06 });
+    marks(pc, sw.mask, R, { dens: 0.2, seed: i + 2, len: 1, lit: false, edge: true });
+    // uric cap on one end
+    const [cx, cy] = [Math.round(x + dx * 0.9 - 0.5), Math.round(y + dy * 0.9 - 1)];
+    if (sw.mask.get(cx, cy)) pc.set(cx, cy, 0xf2ece0);
+    if (sw.mask.get(cx + 1, cy) && i % 2) pc.set(cx + 1, cy, 0xd8d0c4);
+  });
+  ink(pc);
+  // a fly buzzing about
+  pc.set(26, 9, 0x1e1a22); pc.set(27, 9, 0x2e2a36); pc.set(26, 8, 0xd8e8ff, 210); pc.set(27, 7, 0xc0d4f0, 170);
+  for (let i = 0; i < 5; i++) pc.set(24 - i * 1.4, 11 + Math.sin(i * 1.3) * 1.2, 0x8a7a5a, 120);
+  glint(pc, 14, 12, 0);
 }
 
 function crabShell(pc) {
-  const R = mat(0xc06a3c, { cont: 1.15 });
-  // carapace from above: wide front with spiky rim, rounded back
-  const m = M().fn((x, y) => {
-    const dx = (x + 0.5 - 16) / 13, dy = (y + 0.5 - 17) / 10;
-    return dy > -0.55 ? dx * dx + dy * dy <= 1 : Math.abs(dx) < 0.85 - (-0.55 - dy) * 1.2;
-  });
-  for (let i = 0; i < 5; i++) { const x = 7 + i * 4.5; m.poly([[x - 1.5, 9], [x, 5.5], [x + 1.5, 9]]); }
-  ring(pc, m, R);
-  vol(pc, m, R, { round: 5, spec: 0.85, tex: (x, y) => (hash2(Math.floor(x / 2), Math.floor(y / 2), 3) - 0.5) * 0.25 });
-  // eye notches, groove lines, rocky lichen patches
-  for (const x of [12, 20]) { pc.set(x, 9, R[6]); pc.set(x + 1, 9, R[5]); }
-  lineIn(pc, 16, 11, 16, 25, R[4], m);
-  for (const [x0, y0, x1, y1] of [[8, 14, 13, 17], [24, 14, 19, 17], [9, 21, 13, 19], [23, 21, 19, 19]]) lineIn(pc, x0, y0, x1, y1, R[4], m);
-  for (const [x, y] of [[11, 22], [21, 12], [22, 23]]) { pc.set(x, y, 0x8a8478); pc.set(x + 1, y, 0x6a645c); }
-  pc.set(10, 13, 0x6a9a4a); pc.set(11, 13, 0x8ac06a);
+  const R = mat(0xd0623a, { cont: 1.2, warm: 30 });
+  const L = mat(0xd87448, { cont: 1.15 });
+  // a whole moulted crab shell: jointed legs, two claws, the broad carapace on top
+  const legs = [
+    [[8, 17], [4, 16.4], [1.8, 20.4]], [[8.4, 19.6], [4.6, 20.6], [3.4, 25]], [[9.6, 21.6], [7, 24.4], [6.6, 28.6]],
+    [[24, 16.6], [28, 15.6], [30.2, 19.6]], [[23.6, 19.4], [27.4, 20.4], [28.8, 24.6]], [[22.4, 21.6], [25, 24.6], [25.6, 28.4]],
+  ];
+  for (const pts of legs) {
+    const sw = tube(pc, pts, (s) => 1.25 - s * 0.45, L, { bias: 0.06, capEnd: 0.2 });
+    const [kx, ky] = pts[1];
+    if (sw.mask.get(kx, ky)) pc.set(kx, ky, L[4]);
+  }
+  // arms and claws reaching forward
+  for (const sd of [-1, 1]) {
+    const x0 = 16 + sd * 6.4, xc = 16 + sd * 10.6;
+    tube(pc, [[x0, 13.4], [16 + sd * 9.4, 11], [xc, 8.6]], 1.6, R, { bias: 0.06 });
+    const palm = blob(xc, 7.2, 3.4, 2.7, { seed: 3 + sd, rot: sd * 0.5 });
+    seam(pc, palm, 'shadow');
+    form(pc, palm, R, { bias: 0.08 });
+    blade(pc, xc - sd * 1.6, 5.6, xc - sd * 3.4, 1.4, 1.3, R, { bend: sd * 0.6, rib: false, veins: 0 });
+    blade(pc, xc + sd * 1, 5.4, xc + sd * 0.6, 0.8, 1.2, R, { bend: -sd * 0.6, rib: false, veins: 0 });
+  }
+  // carapace: broad oval, teeth along the front edges, the H of the back plates
+  const cx = 16, cy = 17.4, rx = 9.6, ry = 6.8;
+  const body = blob(cx, cy, rx, ry, { seed: 5, lump: 0.03, rot: -0.05 });
+  for (const a of [3.5, 3.85, 4.2, 5.22, 5.57, 5.92]) {
+    const bx = cx + Math.cos(a) * rx * 0.85, by = cy + Math.sin(a) * ry * 0.85;
+    const tx = cx + Math.cos(a) * (rx + 2), ty = cy + Math.sin(a) * (ry + 1.8);
+    const nx = -Math.sin(a), ny = Math.cos(a);
+    body.poly([[bx - nx * 1.4, by - ny * 1.4], [tx, ty], [bx + nx * 1.4, by + ny * 1.4]]);
+  }
+  seam(pc, body, 'shadow');
+  form(pc, body, R, { cx: cx - 1.5, cy: cy - 1, rx: rx + 1, ry: ry + 2, bias: 0.06 });
+  bumps(pc, body, R, { dens: 0.08, seed: 3 });
+  const g = (pts) => { for (let i = 0; i + 1 < pts.length; i++) line(pc, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], (n, X, Y) => (body.get(X, Y) && body.get(X + 1, Y + 1) ? (step(pc, R, X, Y, 2, 1, 5), step(pc, R, X + 1, Y + 1, -1, 1, 5), null) : null)); };
+  g([[13, 13], [14, 17], [13, 21]]); g([[19, 13], [18, 17], [19.4, 21]]); g([[14, 17], [18, 17]]);
+  // eye stalks in the front notch
+  for (const x of [14, 18]) { pc.set(x, 11, R[2]); pc.set(x, 10, 0x1a1018); }
+  ink(pc);
+  pc.set(14, 10, 0x2a1a20); pc.set(18, 10, 0x2a1a20);
+  glint(pc, 11, 14, 0); pc.set(5, 6, R[0]); pc.set(25, 6, R[0]);
 }
 
 function slugSlime(pc) {
-  const R = mat(0x7ad890, { cont: 1.1 });
-  // glossy droplet puddle
-  const m = M().ellipse(16, 23, 12, 5.5).union(M().ellipse(16, 15, 6.5, 8)).union(M().poly([[12, 10], [16, 2], [20, 10]]));
-  ring(pc, m, R);
-  vol(pc, m, R, { spec: 0.72, shine: 8, round: 4 });
-  // metal flecks
-  for (const [x, y, c] of [[14, 15, 0xf2c23a], [18, 19, 0xd8dde6], [11, 23, 0xd9773f], [21, 24, 0xf2c23a], [16, 25, 0xd8dde6]]) { pc.set(x, y, c); pc.set(x + 1, y, mix(c, 0x2a6a3a, 0.4)); }
-  sparkle(pc, 13, 9, 1, 0xffffff, R[0]);
-  pc.set(9, 21, R[0]); pc.set(10, 21, R[1]);
+  const R = mat(0x5ccc80, { cont: 1.2 });
+  // a goopy dollop: a puddle, a plump body and a drooping curl on top, drips running down
+  const m = blob(15.5, 25.6, 13.4, 4.2, { seed: 5, lump: 0.12, flat: 0.8 })
+    .union(blob(15, 19.4, 8.6, 7, { seed: 3, lump: 0.1 }))
+    .union(blob(17.4, 12.4, 4.6, 3.8, { seed: 8, lump: 0.08, rot: 0.4 }))
+    .union(blob(20.6, 9.4, 2, 2.4, { seed: 2, lump: 0.1, rot: 0.6 }))
+    .union(blob(22, 12.2, 1.4, 1.6, { seed: 9 }));
+  for (const [x, y0, y1, r] of [[7.6, 19, 24.6, 1.2], [23.6, 17.6, 22.6, 1.1], [12, 22, 27, 0.9]]) m.union(M().capsule(x, y0, x - 0.3, y1, [r * 0.8, r * 1.25]));
+  seam(pc, m, 'shadow');
+  form(pc, m, R, { cx: 14, cy: 19, rx: 12, ry: 11, bias: 0.12 });
+  sheen(pc, m, R[0], { inset: 1, a0: -2.95, a1: -1.5, gap: 4 });
+  // the curl folds over itself: a dark crease under it
+  for (const [x, y] of [[14, 15], [15, 16], [16, 16], [17, 16], [18, 16], [19, 15]]) if (m.get(x, y)) step(pc, R, x, y, 2, 1, 5);
+  // bubbles and swallowed metal flecks
+  for (const [x, y, r] of [[12.5, 20, 1.6], [19, 22.5, 1.2], [6.5, 26, 1.1], [24.5, 26.4, 0.9]]) {
+    M().disk(x, y, r).edge().each((X, Y) => { if (m.get(X, Y)) pc.set(X, Y, (X + 0.5 - x) + (Y + 0.5 - y) < 0 ? R[1] : R[4]); });
+  }
+  for (const [x, y, c] of [[17, 19, 0xf2c23a], [15, 25, 0xd8dde6], [21, 26, 0xd9773f], [9, 22, 0xf2c23a]]) { pc.set(x, y, c); pc.set(x + 1, y + 1, mix(c, 0x1a4a2a, 0.55)); }
+  ink(pc);
+  glint(pc, 11, 15, 0); pc.set(12, 16, R[0]); pc.set(15, 10, R[0]);
+  glint(pc, 4, 24, 0);
 }
 
 function spiderSilk(pc) {
-  // wooden spool wound with glittering silk + a loose strand
-  const WD = mat(0xa87444, { cont: 1.05 });
-  const SK = mat(0xf2f6fa, { cont: 0.85, hs: 0.4, sat: 0.6 });
-  const top = M().ellipse(16, 7, 9, 3), bot = M().ellipse(16, 26, 9, 3);
-  const core = M().rect(9, 8, 14, 17);
-  ring(pc, bot, WD); vol(pc, bot, WD, { round: 1.5 });
-  ring(pc, core, SK);
-  vol(pc, core, SK, { mode: 'cyl', axis: Math.PI / 2, spec: 0.8 });
-  core.each((x, y) => { if ((y + (x % 3 === 0 ? 1 : 0)) % 2 === 0) { const k = SK.indexOf(pc.getHex(x, y)); if (k >= 0 && k < 5) pc.set(x, y, SK[k + 1]); } });
-  ring(pc, top, WD); vol(pc, top, WD, { round: 1.5 });
-  const hole = M().ellipse(16, 7, 2, 0.8); fill(pc, hole, WD[6]);
-  // loose strand
-  for (let i = 0; i < 14; i++) pc.set(23 + i * 0.4, 14 + i + Math.sin(i * 0.8) * 1.2, i % 3 === 0 ? 0xffffff : SK[2]);
-  for (const [x, y] of [[12, 12], [19, 18], [14, 21]]) gl(pc, x, y, 0xffffff, 0.5);
-  sparkle(pc, 6, 15, 1, 0xffffff, 0xd8ecff);
+  const SK = mat(0xdce2ea, { cont: 1.15, hs: 0.5, sat: 0.5, cool: 235 });
+  // a wound skein of silk: a ball wrapped in bands of silvery thread, a loose end trailing off
+  const cx = 14.5, cy = 15, r = 10.6;
+  const ball = blob(cx, cy, r, r * 0.96, { seed: 4, lump: 0.04 });
+  const K = form(pc, ball, SK, { bias: 0.02, lo: 2 });
+  // bands of windings: rotated ellipses through the ball, each thread a groove with a lit edge
+  const bands = [[0.55, [0.3, 0.5, 0.7, 0.88]], [-0.95, [0.38, 0.62, 0.84]], [2.2, [0.45, 0.72]]];
+  for (const [a, ks] of bands) for (const k of ks) {
+    const e = M().oval(cx, cy, r * 1.02, r * k, a);
+    const ed = e.edge();
+    ed.each((x, y) => {
+      if (!ball.get(x, y) || isTop(ball, x, y) || isBot(ball, x, y)) return;
+      const kk = K[y * 32 + x];
+      pc.set(x, y, SK[clamp(kk + 2, 3, 5)]);
+      if (ball.get(x - 1, y - 1) && !ed.get(x - 1, y - 1)) pc.set(x - 1, y - 1, SK[clamp(K[(y - 1) * 32 + x - 1] - 1, 1, 4)]);
+    });
+  }
+  ink(pc);
+  // the loose end with a dew bead, and glints on the sheen
+  const th = spline([[23.4, 21.4], [26.6, 24.4], [25.4, 28], [29, 30]]);
+  let last = '';
+  for (let i = 0; i <= 40; i++) { const [x, y] = th(i / 40); const k = Math.floor(x) + ',' + Math.floor(y); if (k === last) continue; last = k; pc.set(x, y, i % 9 === 4 ? 0xffffff : 0xa8b4c8); }
+  pc.set(26, 25, 0xe0f4ff); pc.set(27, 25, 0x8ab0d8); pc.set(26, 26, 0x6a8ab8);
+  glint(pc, 9, 9, 1, 0xe8f4ff);
+  for (const [x, y] of [[22, 6], [3, 23]]) twinkle(pc, x, y, 0xffffff, 0xd8ecff, 1, 0.5);
 }
 
 function sparkDust(pc) {
-  // a little heap of glowing static dust with arcs jumping off it
-  const R = mat(0x5ab8f0, { cont: 1.05 });
-  // a little cone of grains with a ragged skyline
-  const m = M().fn((x, y) => { const top = 28 - (11 - Math.abs(x + 0.5 - 16)) * 0.95 + (hash2(x, 0, 3) - 0.5) * 2.2; return y < 29 && y >= top && Math.abs(x + 0.5 - 16) < 12.5; });
-  ring(pc, m, R);
-  vol(pc, m, R, { round: 4, emit: 0.6 });
-  m.each((x, y) => { const h = hash2(x, y, 5); if (h < 0.15) gl(pc, x, y, 0xe8faff, 1); else if (h < 0.25) gl(pc, x, y, 0xfff6a0, 0.9); });
-  const arc = (pts) => { for (let i = 0; i + 1 < pts.length; i++) lineIn(pc, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 0xfff6a0, null, 1); };
-  arc([[10, 16], [8, 12], [10, 9], [8, 5]]);
-  arc([[21, 15], [24, 11], [22, 8], [25, 4]]);
-  for (const [x, y] of [[16, 8], [5, 10], [27, 12]]) gl(pc, x, y, 0xffffff, 1);
+  const R = mat(0x4aa8e8, { cont: 1.1 });
+  // a little heap of static dust: lumpy, settled, with spilled grains around it
+  const heap = blob(15.5, 26.5, 12.6, 6.6, { seed: 3, lump: 0.1, flat: 0.45 })
+    .union(blob(11, 22.6, 5, 4, { seed: 5, lump: 0.12 })).union(blob(18.6, 21.4, 5.4, 4.6, { seed: 6, lump: 0.12 })).union(blob(15, 18.6, 3.4, 3.2, { seed: 7 }));
+  form(pc, heap, R, { cx: 14, cy: 23, rx: 12, ry: 9, bias: 0.06, emit: 0.55 });
+  heap.each((x, y) => { const h = hash2(x, y, 5); if (h < 0.1) gl(pc, x, y, 0xe8faff, 1); else if (h < 0.17) gl(pc, x, y, 0xfff6a0, 0.9); else if (h > 0.88) step(pc, R, x, y, 1, 1, 5); });
+  for (const [x, y] of [[2, 28], [29, 28], [27, 26], [4, 26]]) { pc.set(x, y, R[2]); pc.emit(x, y, 0.5); }
+  ink(pc);
+  const arc = (pts, c = 0xfff6a0) => { for (let i = 0; i + 1 < pts.length; i++) line(pc, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], (n, X, Y) => (gl(pc, X, Y, n === 0 ? 0xffffff : c, 1), null)); };
+  arc([[10, 17], [8, 13], [10, 10], [8, 6]]);
+  arc([[21, 16], [24, 12], [22, 9], [25, 5]]);
+  arc([[15, 15], [16, 11], [14.6, 9]], 0xbff0ff);
+  for (const [x, y] of [[5, 10], [28, 14], [17, 4]]) twinkle(pc, x, y, 0xffffff, 0xfff6a0, 1, 1);
 }
 
 function emberScale(pc) {
-  const R = mat(0xf0642a, { cont: 1.15, warm: 40 });
-  // shield-shaped scale, ridged, still warm
-  const m = M().poly([[16, 3], [27, 9], [26, 20], [16, 30], [6, 20], [5, 9]]);
-  ring(pc, m, R);
-  vol(pc, m, R, { round: 6, spec: 0.8, emit: 0.35 });
-  for (let i = 0; i < 4; i++) {
-    const y = 9 + i * 5;
-    for (let x = 7; x < 26; x++) { const yy = y + Math.abs(x - 16) * 0.35; if (m.get(x, yy)) pc.set(x, yy, i % 2 ? R[4] : R[1]); }
+  const R = mat(0x9a2a24, { cont: 1.15, warm: 20 });
+  // a teardrop dragon scale, tipped and curved, with concentric growth ridges and glowing cracks
+  const inside = (x, y, k) => {
+    const dx = x + 0.5 - 15.5, dy = y + 0.5 - 16 - (1 - k) * 4;
+    const u = dx * 0.94 + dy * 0.34, v = -dx * 0.34 + dy * 0.94;
+    const t = (v + 13 * k) / (26 * k);
+    if (t < 0 || t > 1) return false;
+    return Math.abs(u + Math.sin(t * 3) * 0.8) < 11 * k * Math.sin(Math.pow(t, 0.62) * Math.PI) * (1 - t * 0.1);
+  };
+  const m = M().fn((x, y) => inside(x, y, 1));
+  form(pc, m, R, { cx: 13, cy: 14, rx: 12, ry: 13, bias: 0.06, emit: 0.2 });
+  for (const k of [0.78, 0.56, 0.34]) {
+    const inner = M().fn((x, y) => inside(x, y, k));
+    // a raised growth ridge: dark groove just outside each inner contour, lit crest on it
+    inner.clone().dilate(1).sub(inner).each((x, y) => { if (m.get(x, y) && !isBot(m, x, y) && !isTop(m, x, y)) step(pc, R, x, y, 2, 1, 5); });
+    inner.edge().each((x, y) => { if (!inner.get(x, y - 1) || !inner.get(x - 1, y)) step(pc, R, x, y, -1, 1, 5); });
   }
-  // glowing core line
-  for (let y = 6; y < 27; y++) gl(pc, 16, y, y < 14 ? 0xffe08a : 0xffb04a, 1);
-  for (const [x, y] of [[4, 4], [28, 6], [27, 26]]) gl(pc, x, y, 0xffb04a, 0.9);
+  ink(pc);
+  // molten cracks along the keel
+  const crack = [[15, 5], [15, 8], [16, 10], [15, 13], [16, 15], [17, 18], [16, 21], [17, 24]];
+  for (let i = 0; i + 1 < crack.length; i++) line(pc, crack[i][0], crack[i][1], crack[i + 1][0], crack[i + 1][1], (n, X, Y) => (gl(pc, X, Y, Y < 12 ? 0xffe08a : 0xffa040, 1), null));
+  for (const [x, y] of [[14, 11], [18, 16], [17, 19], [13, 14]]) gl(pc, x, y, 0xff7a2a, 1);
+  glint(pc, 10, 10, 0);
+  for (const [x, y, c] of [[5, 4, 0xffb04a], [27, 6, 0xffd070], [26, 27, 0xff8a3a]]) gl(pc, x, y, c, 0.9);
 }
 
 function wispEssence(pc) {
-  // corked glass vial with a swirling violet wisp
-  const GLR = mat(0xd8e4ec, { cont: 0.9 });
-  const vial = M().ellipse(16, 21, 9, 9).rect(12, 6, 8, 10);
-  ring(pc, vial, GLR);
-  vial.each((x, y) => pc.set(x, y, GLR[2], 170));
-  // swirl inside, glowing
-  const sw = M().ellipse(16, 21, 7, 7);
+  const GLR = mat(0xd8e4f0, { cont: 1.05 });
+  // round-bellied vial: glass body, swirl of violet wisp inside, cork tied with twine
+  const vial = blob(16, 21, 9.4, 8.8, { seed: 2, lump: 0.02 }).union(M().rect(12, 7, 8, 8));
+  const lip = M().rect(11, 6, 10, 2);
+  vial.union(lip);
+  vial.each((x, y) => pc.set(x, y, GLR[(x < 13 ? 2 : x > 21 ? 4 : 3)], 185));
+  const sw = blob(16, 21.5, 7.6, 7, { seed: 3 });
   sw.each((x, y) => {
-    const dx = x + 0.5 - 16, dy = y + 0.5 - 21;
-    const a = Math.atan2(dy, dx), r = Math.hypot(dx, dy);
-    const v = Math.sin(a * 2 + r * 0.9);
-    gl(pc, x, y, v > 0.4 ? 0xe8d0ff : v > -0.2 ? 0x9a6ad9 : 0x5a2a9a, 0.85);
+    const dx = x + 0.5 - 16, dy = y + 0.5 - 21.5, a = Math.atan2(dy, dx), r = Math.hypot(dx, dy);
+    const v = Math.sin(a * 2 + r * 0.95);
+    gl(pc, x, y, v > 0.55 ? 0xead6ff : v > 0 ? 0xa676e2 : v > -0.5 ? 0x7444b8 : 0x4a2484, 0.85);
   });
-  gl(pc, 15, 20, 0xffffff, 1);
-  // highlight on the glass + cork
-  for (let y = 15; y < 26; y++) pc.set(9 + (y - 15) * 0.1, y, 0xffffff, 200);
-  const CK = mat(0xb08050);
-  const ck = M().rect(12, 2, 8, 5);
-  ring(pc, ck, CK); vol(pc, ck, CK, { mode: 'cyl', axis: Math.PI / 2 });
-  for (let x = 12; x < 20; x++) pc.set(x, 7, 0x8a4ab8);
-  for (const [x, y] of [[5, 9], [27, 12], [25, 5]]) sparkle(pc, x, y, 1, 0xf0e0ff, 0x9a6ad9, 0.8);
+  // glass: crisp rim lights, a reflected window, shadowed base
+  for (let y = 15; y < 27; y++) { const x = Math.round(16 - Math.sqrt(Math.max(0, 1 - ((y - 21) / 8.8) ** 2)) * 9.4 + 1.2); if (vial.get(x, y) && y % 5) pc.set(x, y, 0xffffff); }
+  for (const [x, y] of [[19, 15], [20, 16], [21, 17]]) pc.set(x, y, 0xf4f8ff, 230);
+  lip.each((x, y) => pc.set(x, y, GLR[y === 6 ? 1 : 3]));
+  const CK = mat(0xb08050, { cont: 1.1 });
+  const ck = M().rect(12, 1, 8, 6).union(M().rect(13, 0, 6, 1));
+  seam(pc, ck, 'shadow');
+  ck.each((x, y) => pc.set(x, y, CK[x === 12 ? 2 : x === 19 ? 4 : hash2(x, y, 3) < 0.25 ? 4 : 3]));
+  for (let x = 11; x < 21; x++) pc.set(x, 8, (x % 2) ? 0xc8a46a : 0x8a6a40);
+  ink(pc, { minA: 150 });
+  gl(pc, 14, 19, 0xffffff, 1);
+  pc.set(22, 9, 0x8a6a40); pc.set(23, 10, 0xc8a46a); pc.set(23, 11, 0x8a6a40);
+  for (const [x, y] of [[5, 9], [27, 12], [26, 4]]) twinkle(pc, x, y, 0xf0e0ff, 0x9a6ad9, 1, 0.8);
 }
 
 // ---------------------------------------------------------------- dispatcher
 export function drawFauna(pc, spec) {
   if (spec.k === 'critter') {
     if (spec.t === 'worm') wormItem(pc);
-    else if (spec.t === 'beetle') critterItem(pc, 'glow_beetle', 0);
-    else if (spec.t === 'fish') critterItem(pc, 'blind_fish', 1);
-    else if (spec.t === 'shrimp') critterItem(pc, 'frost_shrimp', 0);
+    else if (spec.t === 'beetle') beetleItem(pc);
+    else if (spec.t === 'fish') fishItem(pc);
+    else if (spec.t === 'shrimp') shrimpItem(pc);
+    else if (CRITTER_DRAW[spec.t]) critterItem(pc, spec.t, 0);
     else return false;
     return true;
   }

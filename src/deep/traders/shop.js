@@ -1,6 +1,6 @@
-// The burrow folk's counter: the same room as the Deep Town shops (a hanging sign, the keeper's
-// portrait and speech, shelves with price tags, a counter card, a ledger for selling; the sh-*
-// styles in ui/shop.css) with the tabs the burrows need:
+// The burrow folk's counter: the same quiet dark sheet as the Deep Town shops (the shop's name and
+// your gold on top, the keeper's face and line, the goods with their prices, the picked one with
+// Buy, a plain list for selling; the sh-* styles in ui/shop.css) with the tabs the burrows need:
 //   Buy · Sell (what this keeper buys, with today's wanted item) · Jobs (their requests, via
 //   game.quests) and, for Rocco: Weapons (offers on your forged blades, a haggling mini-game),
 //   Deal (today's shady deal) and Oddities (today's rare things).
@@ -127,7 +127,8 @@ export function openBurrowShop(game, shopId, o = {}) {
   const backNote = el('div', { class: 'sh-back', hidden: true });
   const wall = el('div', { class: 'sh-wall' }, [tabsEl, scroll, backNote]);
   const room = el('div', { class: 'sh-room' }, [keeper, counter, foot, wall]);
-  const sign = el('div', { class: 'sh-sign' }, [el('i', { class: 'sh-chain l' }), el('i', { class: 'sh-chain r' }), el('h2', {}, shop.name)]);
+  const purse = el('span', { class: 'sh-purse', title: 'Your gold' });
+  const sign = el('div', { class: 'sh-sign' }, [el('i', { class: 'sh-chain l' }), el('i', { class: 'sh-chain r' }), el('h2', {}, shop.name), purse]);
   const root = el('div', { class: `sh shop-burrow shop-${shopId}` }, [sign, room]);
 
   let exprT = null;
@@ -155,6 +156,7 @@ export function openBurrowShop(game, shopId, o = {}) {
   const jobsBadge = () => (game.quests?.active?.() || []).filter((v) => v.def?.from === npc || v.step?.deliver?.to === npc).length + (news.lines?.length ? 1 : 0);
 
   const render = () => {
+    purse.replaceChildren(el('img', { class: 'pix', src: SPR.coinMini(), alt: '' }), formatGoldFull(st.gold));
     tabsEl.innerHTML = '';
     for (const [k, label] of tabs) {
       const b = el('button', { class: 'sh-tab' + (tab === k ? ' on' : ''), onclick: () => { if (tab === k) return; tab = k; picked = null; stopHaggle(); au.play('ui_click'); render(); scroll.scrollTop = 0; } }, label);
@@ -567,14 +569,13 @@ export function openBurrowShop(game, shopId, o = {}) {
   const fit = () => root.classList.toggle('narrow', window.innerWidth < 700 || window.innerHeight < 470);
   fit();
   window.addEventListener('resize', fit);
-  ui.status?.pin?.(true);
+  // (your gold is in the sheet's top line: the HUD's pouch stays where it is)
   const h = ui.openPanel({
     body: root, className: 'sh-panel tr-panel', onClose: () => {
       stopHaggle();
       clearTimeout(exprT);
       face3d.dispose();
       window.removeEventListener('resize', fit);
-      ui.status?.pin?.(false);
       if (folk) { folk.busy = false; setTimeout(() => folk.react('bye', pick(shop.bye)), 120); }
       o.onClose?.();
     },

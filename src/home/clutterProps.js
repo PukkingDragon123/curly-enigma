@@ -207,9 +207,11 @@ export function scrapPile(seed = 245) {
 }
 
 /** His leather apron on a hook, a pair of goggles over it. */
-export function apronHook(seed = 247) {
+export function apronHook(seed = 247, { apron = true } = {}) {
   const g = new VoxelGrid(30, 60, 8);
   g.box(13, 54, 0, 4, 3, 5, 0x3a3a44);
+  g.box(14, 55, 5, 2, 3, 1, 0x4a4a54); // (the hook's lip)
+  if (!apron) return M32(g, [15, 0, 0]); // (the apron itself is cloth: house.js drapes it)
   for (let y = 6; y < 54; y++) { const w = y > 44 ? 6 : 11; for (let x = 15 - w; x < 15 + w; x++) g.set(x, y, 3, (x + y) % 9 === 0 ? 0x4a2a14 : y < 10 ? 0x5a3418 : 0x6a3e1e); }
   line(g, [[9, 54, 3], [15, 56, 4], [21, 54, 3]], 0.5, 0x4a2a14);
   for (const x of [11, 19]) { ring(g, x, 4, 0, 3, 46, 47, 0x3a3a44); g.set(x, 46, 5, 0x8ad0e0); }
