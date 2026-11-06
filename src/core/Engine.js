@@ -173,6 +173,8 @@ uniform sampler2D tDepth;
 uniform vec2 uRes;        // full-res size
 uniform vec2 uAoRes;
 uniform mat4 uProjInv;
+uniform vec4 uPInv;       // perspective: 1/P00, 1/P11, P20, P21 (a cheap unprojection)
+uniform vec2 uNF;         // near, far
 uniform float uProjScale; // AO pixels per metre at 1 m (perspective) or per metre (ortho)
 uniform float uPersp;
 uniform float uRadius;    // metres
@@ -180,7 +182,12 @@ varying vec2 vUv;
 ${GLSL_BAYER}
 vec3 viewPos(vec2 uv) {
   float d = texture2D(tDepth, uv).r;
-  vec4 p = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+  vec2 ndc = uv * 2.0 - 1.0;
+  if (uPersp > 0.5) {
+    float z = 2.0 * uNF.x * uNF.y / (uNF.y + uNF.x - (d * 2.0 - 1.0) * (uNF.y - uNF.x));
+    return vec3((ndc + uPInv.zw) * uPInv.xy * z, -z);
+  }
+  vec4 p = uProjInv * vec4(ndc, d * 2.0 - 1.0, 1.0);
   return p.xyz / p.w;
 }
 void main() {
@@ -212,18 +219,20 @@ void main() {
 }
 `;
 
-// a 4x4 depth-aware box over the AO (the size of the rotation pattern, so its noise averages out)
+// a 4-wide depth-aware box over the AO, run across then down (4x4: the size of the rotation
+// pattern, so its noise averages out)
 const AOBLUR_FRAG = /* glsl */`
 precision highp float;
 uniform sampler2D tAo;
 uniform vec2 uAoRes;
+uniform vec2 uDir;
 varying vec2 vUv;
 void main() {
-  vec2 px = 1.0 / uAoRes;
+  vec2 st = uDir / uAoRes;
   vec2 c = texture2D(tAo, vUv).rg;
   float sum = 0.0, wsum = 0.0;
-  for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) {
-    vec2 s = texture2D(tAo, vUv + (vec2(float(i), float(j)) - 2.0) * px).rg;
+  for (int i = 0; i < 4; i++) {
+    vec2 s = texture2D(tAo, vUv + (float(i) - 2.0) * st).rg;
     float w = max(0.0, 1.0 - abs(s.g - c.g) / (c.g * 0.06 + 0.02));
     sum += s.r * w; wsum += w;
   }
@@ -719,7 +728,7 @@ export class Engine {
       tGlow: { value: this.rtGlow.texture },
       tWide: { value: this.rtWide.texture },
       uWide: { value: 0 },
-      tAo: { value: this.rtAo2 ? this.rtAo2.texture : null },
+      tAo: { value: this.rtAo ? this.rtAo.texture : null },
       uAoRes: { value: new THREE.Vector2(320, 180) },
       uAo: { value: 0 },
       uAoFar: { value: 30 },
@@ -806,15 +815,15 @@ export class Engine {
       uRes: this.postUniforms.uRes,
       uAoRes: this.postUniforms.uAoRes,
       uProjInv: { value: new THREE.Matrix4() },
+      uPInv: { value: new THREE.Vector4(1, 1, 0, 0) },
+      uNF: { value: new THREE.Vector2(0.1, 100) },
       uProjScale: { value: 100 },
       uPersp: this.postUniforms.uPersp,
       uRadius: { value: 0.45 },
     };
     this.aoMaterial = new THREE.ShaderMaterial({ uniforms: this.aoUniforms, vertexShader: POST_VERT, fragmentShader: AO_FRAG, depthTest: false, depthWrite: false, defines: { AO_N: 10 } });
-    this.aoBlurMaterial = new THREE.ShaderMaterial({
-      uniforms: { tAo: { value: this.rtAo ? this.rtAo.texture : null }, uAoRes: this.postUniforms.uAoRes },
-      vertexShader: POST_VERT, fragmentShader: AOBLUR_FRAG, depthTest: false, depthWrite: false,
-    });
+    this.aoBlurUniforms = { tAo: { value: null }, uAoRes: this.postUniforms.uAoRes, uDir: { value: new THREE.Vector2(1, 0) } };
+    this.aoBlurMaterial = new THREE.ShaderMaterial({ uniforms: this.aoBlurUniforms, vertexShader: POST_VERT, fragmentShader: AOBLUR_FRAG, depthTest: false, depthWrite: false });
 
     this.postScene = new THREE.Scene();
     this.postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -1046,16 +1055,25 @@ export class Engine {
       const n = this.aoLevel >= 2 ? 10 : 6;
       if (this.aoMaterial.defines.AO_N !== n) { this.aoMaterial.defines.AO_N = n; this.aoMaterial.needsUpdate = true; }
       camera.updateMatrixWorld();
+      const pe = camera.projectionMatrix.elements;
       au.uProjInv.value.copy(camera.projectionMatrixInverse);
-      au.uProjScale.value = camera.projectionMatrix.elements[5] * u.uAoRes.value.y * 0.5;
+      au.uPInv.value.set(1 / pe[0], 1 / pe[5], pe[8], pe[9]);
+      au.uNF.value.set(camera.near, camera.far);
+      au.uProjScale.value = pe[5] * u.uAoRes.value.y * 0.5;
       au.uRadius.value = p.aoRadius;
       u.uPersp.value = camera.isPerspectiveCamera ? 1 : 0;
       u.uAoFar.value = p.aoFar;
       this.quad.material = this.aoMaterial;
       r.setRenderTarget(this.rtAo);
       r.render(this.postScene, this.postCamera);
+      // blur across (rtAo → rtAo2), then down (rtAo2 → rtAo); the composite reads rtAo
+      const bu = this.aoBlurUniforms;
       this.quad.material = this.aoBlurMaterial;
+      bu.tAo.value = this.rtAo.texture; bu.uDir.value.set(1, 0);
       r.setRenderTarget(this.rtAo2);
+      r.render(this.postScene, this.postCamera);
+      bu.tAo.value = this.rtAo2.texture; bu.uDir.value.set(0, 1);
+      r.setRenderTarget(this.rtAo);
       r.render(this.postScene, this.postCamera);
       this.quad.material = this.postMaterial;
     }
