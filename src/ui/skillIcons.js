@@ -857,12 +857,14 @@ const R = {
   // ---------------- Combat
   f_guard: (D) => { P.shield(D, M.wood, M.iron); D.arc(16, 16, 15, -2.5, -0.65, 0xfff4c0, 200); },
   f_claws: (D) => {
-    // three red slashes, and the claws that made them
-    for (let i = 0; i < 3; i++) D.shape((X, Y) => { const u = X - 4 - i * 6, v = Y - 3; const t = (u + v * 0.15) / 22; if (t < 0 || t > 1) return false; return Math.abs(v - t * 22 - Math.sin(t * 3) * 1.5) <= Math.sin(t * Math.PI) * 1.4; }, M.cloth, { k: 0.75, bevel: false, glow: true });
-    D.ell(9, 26, 8, 5.5, M.fur, { spec: 0.15 });
+    // three red slashes, and the three hooked claws that made them
+    for (let i = 0; i < 3; i++) D.shape((X, Y) => { const u = X - 9 - i * 6, v = Y - 2; const t = (u + v * 0.2) / 21; if (t < 0 || t > 1) return false; return Math.abs(v - t * 20 - Math.sin(t * 3) * 1.5) <= Math.sin(t * Math.PI) * 1.5; }, M.cloth, { k: 0.8, bevel: false, glow: true });
+    D.ell(7, 27, 6.5, 4.5, M.fur, { spec: 0.15, kadd: 0.12 });
     for (let i = 0; i < 3; i++) {
-      const bx = 6 + i * 4.5, by = 23 - i * 1.2;
-      D.shape((X, Y) => { const u = (X - bx), v = (by - Y); if (u < -1 || v < 0 || v > 11) return false; const cx = bx + v * 0.9 - v * v * 0.04; return Math.abs(X - cx) <= 1.7 * (1 - v / 11.5) + 0.25; }, M.bone, { k: 0.66, rim: 0.3 });
+      const p0 = [4 + i * 4, 25 - i * 0.5], p1 = [5 + i * 5, 12 - i], p2 = [13 + i * 5, 6 + i * 2.5];
+      const pt = (t) => [(1 - t) * (1 - t) * p0[0] + 2 * (1 - t) * t * p1[0] + t * t * p2[0], (1 - t) * (1 - t) * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1]];
+      const S = Array.from({ length: 24 }, (_, k) => { const t = k / 23; return [...pt(t), 2.4 * (1 - t) + 0.35]; });
+      D.shape((X, Y) => S.some(([x, y, r]) => (X - x) ** 2 + (Y - y) ** 2 <= r * r), M.bone, { normal: (X, Y) => { let best = S[0], bd = 1e9; for (const q of S) { const d = (X - q[0]) ** 2 + (Y - q[1]) ** 2; if (d < bd) { bd = d; best = q; } } const nx = (X - best[0]) / best[2], ny = (Y - best[1]) / best[2]; return [nx, ny, Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny))]; }, spec: 0.7, shine: 10 });
     }
   },
   f_hide: (D) => {

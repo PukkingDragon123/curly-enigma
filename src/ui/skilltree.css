@@ -302,8 +302,9 @@
 
 /* ---------- in the book: the board fills the spread (the book's cover is its frame) ---------- */
 .skt.in-book { margin: 0; }
-.skt.in-book .skt-emblem { left: calc(var(--px) * -2); top: calc(var(--px) * -3); transform: scale(.7); transform-origin: 0 0; }
-.skt.in-book .skt-head { padding-left: calc(var(--px) * 34); }
+.skt.in-book .skt-emblem { left: calc(var(--px) * -1); top: calc(var(--px) * -1); transform: scale(.58); transform-origin: 0 0; }
+.skt.in-book .skt-board { padding-top: calc(var(--px) * 2); }
+.skt.in-book .skt-head { padding-left: calc(var(--px) * 30); }
 
 /* ---------- feedback anywhere ---------- */
 /* the level plaque: carved oak, the line's seal in a milled brass ring, a brass-rimmed XP tube */
