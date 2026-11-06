@@ -208,7 +208,10 @@ export const modelsOf = (K) => protos(K.m, K.v || 2);
 export function layPlant(w, P, out) {
   const { K, r } = P;
   const list = modelsOf(K);
-  const pr = list[Math.floor(r() * list.length)];
+  const pf = list[Math.floor(r() * list.length)];
+  // far chunks (w.lod) take the half-resolution copy: the same plant, the same size, coarser voxels
+  const far = !!(w.lod && pf.lod);
+  const pr = far ? pf.lod : pf;
   const sc = K.sc ? lerp(K.sc[0], K.sc[1], r()) : 1;
   const base = K.div || 56;
   // the voxel follows the plant's size: fine plants stay within 1/48–1/64 m
@@ -222,10 +225,11 @@ export function layPlant(w, P, out) {
   if (pr.mode === 'down') {
     // hanging: the voxel picked so the model fits the room under it (cut short where it can't)
     const L = Math.min(P.room ?? 9, lerp(K.len[0], K.len[1], r()));
-    div = clamp(Math.round(pr.H / L), 48, 64);
+    div = clamp(Math.round(pf.H / L), 48, 64);
+    if (far) div = Math.round(div / 2);
     cut = -Math.round(L * div);
     H = Math.min(pr.H, -cut);
-  }
+  } else if (far) div = Math.round(div / 2);
   let y = P.y;
   if (K.lay === 'flat') y += 0.002;
   w.begin(P.x + (P.nx || 0) * (K.lay === 'decal' ? 0.002 : 0), y, P.z + (P.nz || 0) * (K.lay === 'decal' ? 0.002 : 0), yaw, rank, r(), P.gust ?? 0, K.sway || 0, K.push ?? 1, div, !!K.hang,

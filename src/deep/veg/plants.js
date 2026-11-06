@@ -10,7 +10,7 @@
 // hue-shifted ramps (dark → light), banded so neighbouring voxels share a colour and pack into few
 // boxes; the vegetation shader lights each face by its normal, so the ramps only paint material:
 // darker at the root, paler at the tips, spots, rims, glowing bits (glow 1..3).
-import { VG, tone, dir8, DIR8, boxify } from './vox.js';
+import { VG, tone, dir8, DIR8, boxify, down2 } from './vox.js';
 import { rng, ph } from './paint.js';
 
 // ---------------------------------------------------------------- ramps (dark → light)
@@ -747,8 +747,11 @@ function buildOne(name, i) {
   const m = MODELS[name](rng(hsh));
   const p = boxify(m.g, m.pivot, m.mode);
   p.name = name;
+  // the far copy: the same plant at half the resolution (Vegetation uses it past ~10 m)
+  p.lod = boxify(down2(m.g), m.pivot.map((q) => Math.round(q / 2)), m.mode);
   protoStats.built++;
   protoStats.boxes += p.n;
+  protoStats.lodBoxes = (protoStats.lodBoxes || 0) + p.lod.n;
   protoStats.ms += performance.now() - t0;
   return p;
 }

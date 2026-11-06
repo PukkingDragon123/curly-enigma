@@ -436,16 +436,19 @@ export async function buildForest(opts = {}) {
     if (!lodGeo) { add(geo.wood, woodMat, items, kind + '-wood', true, 28); add(geo.leaves, leafMat(K.l), items, kind + '-leaves', false, 28); return; }
     const bins = new Map();
     for (const it of items) { const k = Math.floor(it.x / 28) + ',' + Math.floor(it.z / 28); if (!bins.has(k)) bins.set(k, []); bins.get(k).push(it); }
-    const lmat = leafMat(K.l), lmat2 = leafMat(2);
+    const lmat = geo.leaves ? leafMat(K.l) : null, lmat2 = lodGeo.leaves ? leafMat(2) : null;
+    const make = (g, mat, list, outline, name) => (g ? instance(g, mat, list, { outline, name }) : null);
     for (const list of bins.values()) {
-      const full = [instance(geo.wood, woodMat, list, { outline: true, name: kind + '-wood' }), instance(geo.leaves, lmat, list, { outline: false, name: kind + '-leaves' })];
-      const far = [instance(lodGeo.wood, woodMat, list, { outline: false, name: kind + '-wood-far' }), instance(lodGeo.leaves, lmat2, list, { outline: false, name: kind + '-leaves-far' })];
+      const full = [make(geo.wood, woodMat, list, true, kind + '-wood'), make(geo.leaves, lmat, list, false, kind + '-leaves')].filter(Boolean);
+      const far = [make(lodGeo.wood, woodMat, list, false, kind + '-wood-far'), make(lodGeo.leaves, lmat2, list, false, kind + '-leaves-far')].filter(Boolean);
+      if (!full.length) continue;
       for (const m of [...full, ...far]) { m.userData.lodPair = true; group.add(m); }
-      const sp = full[1].boundingSphere.clone().union(full[0].boundingSphere);
+      const sp = full[0].boundingSphere.clone();
+      for (const m of full) sp.union(m.boundingSphere);
       lodCells.push({ full, far, c: sp.center, r: sp.radius });
     }
-    stats.tris[kind + '-wood'] = (stats.tris[kind + '-wood'] || 0) + triCount(geo.wood) * items.length;
-    stats.tris[kind + '-leaves'] = (stats.tris[kind + '-leaves'] || 0) + triCount(geo.leaves) * items.length;
+    if (geo.wood) stats.tris[kind + '-wood'] = (stats.tris[kind + '-wood'] || 0) + triCount(geo.wood) * items.length;
+    if (geo.leaves) stats.tris[kind + '-leaves'] = (stats.tris[kind + '-leaves'] || 0) + triCount(geo.leaves) * items.length;
   };
   for (const [kind, list] of Object.entries(near)) {
     const pick = (t) => t.v % list.length;
@@ -878,9 +881,9 @@ export async function buildForest(opts = {}) {
     const cp = camera.position;
     for (const c of cullable) c.m.visible = c.c.distanceTo(cp) - c.r < cullDist;
     for (const c of lodCells) {
-      const d = c.c.distanceTo(cp) - c.r, inRange = d < cullDist, far = d > LOD_D;
-      c.full[0].visible = c.full[1].visible = inRange && !far;
-      c.far[0].visible = c.far[1].visible = inRange && far;
+      const d = c.c.distanceTo(cp) - c.r, inRange = d < cullDist, far = d > LOD_D && c.far.length > 0;
+      for (const m of c.full) m.visible = inRange && !far;
+      for (const m of c.far) m.visible = inRange && far;
     }
     const of = F.outlineFar || 0;
     for (const c of outlined) { if (!of || c.c.distanceTo(cp) - c.r < of) c.m.layers.enable(LAYER_OUTLINE); else c.m.layers.disable(LAYER_OUTLINE); }

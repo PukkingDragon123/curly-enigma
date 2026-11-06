@@ -34,6 +34,10 @@ import { rng } from './veg/paint.js';
 const CM = CS / VOX; // chunk size in metres
 const R_BUILD = 15; // plant chunks whose centre is this close to the eye (m)
 const R_DROP = 19;
+// far chunks are planted from the half-resolution copies of the models (./veg/plants.js); a chunk
+// switches as the mole comes within LOD[0] m of its centre (fine) or goes past LOD[1] (coarse).
+// By tier: there a fine voxel (1/48–1/64 m) is a pixel or less.
+const LOD_BY_FX = { high: [10.5, 12.5], low: [8, 10], off: [6.5, 8.5] };
 const STEP = 3; // floor / ceiling placement grid (voxels)
 const WSTEP = 4; // wall placement grid (voxels)
 const M1 = CS - 1;
@@ -216,6 +220,8 @@ export class Vegetation {
     this.time = 0;
     this.age = 0;
     this.budget = 1.3; // ms of planting per frame in play
+    this.lodR = LOD_BY_FX.high;
+    this.eyeAt = null; // where the eye was this frame (a new chunk is planted fine or coarse by it)
     this.trail = [];
     this.trailT = 0;
     this.rustleT = 0;
@@ -497,11 +503,14 @@ export class Vegetation {
   gustOf(x, z) { const v = (x * 0.8 + z * 0.6) * 0.21; return v - Math.floor(v); }
 
   // ------------------------------------------------------------ chunks → buffer
-  build(ch) {
+  build(ch, lod) {
     const t0 = performance.now();
     const rec = { key: ch.key, ch, x: (ch.cx + 0.5) * CM, y: (ch.cy + 0.5) * CM, z: (ch.cz + 0.5) * CM, slot: null, d: null, plants: [], at: new Map(), glow: null };
+    const E = this.eyeAt;
+    rec.lod = lod ?? (!!E && Math.hypot(rec.x - E.x, rec.y - E.y, rec.z - E.z) > this.lodR[1]);
     this.built.set(ch.key, rec);
     this.stage.reset();
+    this.stage.lod = rec.lod;
     try { this.place(rec); } catch (e) {
       if (!this.warned) { this.warned = true; console.warn('vegetation: planting failed', e); }
       rec.plants.length = 0; rec.at.clear(); this.stage.reset();
@@ -522,6 +531,14 @@ export class Vegetation {
     if (rec.slot) this.pool.release(rec.slot);
     rec.slot = null;
     this.built.delete(rec.key);
+  }
+  /** Plant a chunk again at the other resolution, in place (the new boxes are in before the old go). */
+  relod(rec) {
+    if (this.built.get(rec.key) !== rec || this.w.chunks.get(rec.key) !== rec.ch || !rec.ch.vox) return;
+    const old = rec.slot;
+    rec.slot = null;
+    this.build(rec.ch, !rec.lod);
+    if (old) this.pool.release(old);
   }
   /** Move a chunk's boxes down into a hole (keeps the drawn range dense). */
   move(rec) {
@@ -550,10 +567,11 @@ export class Vegetation {
   }
   ring() {
     if (this._ring) return this._ring;
-    const R = Math.ceil(R_BUILD / CM) + 1, out = [];
+    const RB = this.rBuild ?? R_BUILD;
+    const R = Math.ceil(RB / CM) + 1, out = [];
     for (let dz = -R; dz <= R; dz++) for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
       const d = Math.hypot(dx, dy * 1.3, dz) * CM; // a little flatter: floors and roofs near the mole first
-      if (d < R_BUILD + CM) out.push([d, dx, dy, dz]);
+      if (d < RB + CM) out.push([d, dx, dy, dz]);
     }
     out.sort((a, b) => a[0] - b[0]);
     return (this._ring = out);
@@ -564,10 +582,15 @@ export class Vegetation {
     const ecx = Math.floor(ex / CM), ecy = Math.floor(ey / CM), ecz = Math.floor(ez / CM);
     const w = this.w;
     let n = 0;
+    const relod = [];
     for (const rec of [...this.built.values()]) {
-      if (Math.hypot(rec.x - ex, rec.y - ey, rec.z - ez) > R_DROP || w.chunks.get(rec.key) !== rec.ch) this.drop(rec);
+      const d = Math.hypot(rec.x - ex, rec.y - ey, rec.z - ez);
+      if (d > (this.rDrop ?? R_DROP) || w.chunks.get(rec.key) !== rec.ch) this.drop(rec);
+      else if (rec.lod ? d < this.lodR[0] : d > this.lodR[1]) relod.push([rec.lod ? d : d + 100, rec]); // fine ones first
       if ((++n & 63) === 0) yield;
     }
+    relod.sort((a, b) => a[0] - b[0]);
+    this.relodQ = relod.map((e) => e[1]);
     const q = [];
     for (const [, dx, dy, dz] of this.ring()) {
       const ch = w.chunk(ecx + dx, ecy + dy, ecz + dz);
@@ -591,7 +614,11 @@ export class Vegetation {
       do r = this.scanJob.next(); while (!r.done && performance.now() - t0 < budget * 0.4);
       if (r.done) this.scanJob = null;
     }
+    // chunks coming close get their fine plants back first, then new chunks, then the far swaps
+    const RQ = this.relodQ;
+    while (RQ?.length && RQ[0].lod && performance.now() - t0 < budget) this.relod(RQ.shift());
     while (this.qi < this.queue.length && performance.now() - t0 < budget) this.buildNext();
+    while (RQ?.length && performance.now() - t0 < budget) this.relod(RQ.shift());
     if (performance.now() - t0 < budget) {
       const top = this.pool.topIfSparse();
       if (top) for (const rec of this.built.values()) if (rec.slot === top) { this.move(rec); break; }
@@ -658,6 +685,7 @@ export class Vegetation {
     const pl = o.player || this.ctx.player;
     const eye = o.eye || pl?.eye?.();
     if (!eye) return EMPTY;
+    this.eyeAt = eye;
     const t = this.time, U = this.U;
     // the cave's breath: a slow draught that wanders and swells
     const wa = t * 0.045 + Math.sin(t * 0.11) * 0.9;
@@ -684,7 +712,18 @@ export class Vegetation {
     if (ng?.pos && PUSHERS > 3) { P[3].set(ng.pos.x, ng.pos.y, ng.pos.z, 0.24); K[3] = 1; } else K[3] = 0;
     // small plants thin out sooner on the simpler shader settings (phones)
     const fx = this.owner?.game?.engine?.fx || 'high';
-    if (fx !== this.fxLevel) { this.fxLevel = fx; U.uLod.value.set(...(fx === 'high' ? [9.5, 17, R_DROP] : fx === 'low' ? [6.5, 12, 14] : [4.5, 8.5, 11])); }
+    if (fx !== this.fxLevel) {
+      this.fxLevel = fx;
+      const lod = fx === 'high' ? [9.5, 17, R_DROP] : fx === 'low' ? [6.5, 12, 14] : [4.5, 8.5, 11];
+      U.uLod.value.set(...lod);
+      // plant (and keep) only as far as the shader shows anything: past its cut-off a chunk's boxes
+      // are only vertex work (a chunk's plants are up to 1.75 m from its centre)
+      this.lodR = LOD_BY_FX[fx] || LOD_BY_FX.off;
+      this.rBuild = fx === 'high' ? R_BUILD : lod[2] + 0.5;
+      this.rDrop = fx === 'high' ? R_DROP : lod[2] + 2.5;
+      this._ring = null;
+      this.scanT = 0;
+    }
     // planting
     this.scanT -= dt;
     this.stream(eye, this.age < 2.5 ? 4 : this.budget);
@@ -749,9 +788,10 @@ export class Vegetation {
   }
   info() {
     let plants = 0, boxes = 0;
-    for (const rec of this.built.values()) { for (const p of rec.plants) if (!p.gone) { plants++; boxes += p.nq; } }
+    let far = 0;
+    for (const rec of this.built.values()) { if (rec.lod) far++; for (const p of rec.plants) if (!p.gone) { plants++; boxes += p.nq; } }
     const s = this.stats;
-    return { chunks: this.built.size, plants, boxes, drawn: this.pool.high, cap: this.pool.cap, msAvg: +s.ms.toFixed(3), msWorst: +s.worst.toFixed(2), built: s.built, buildMsAvg: s.built ? +(s.buildMs / s.built).toFixed(3) : 0, buildMsMax: +s.maxBuild.toFixed(2), modelsMs: +protoStats.ms.toFixed(1), models: protoStats.built, queue: this.queue.length - this.qi };
+    return { chunks: this.built.size, farChunks: far, plants, boxes, drawn: this.pool.high, cap: this.pool.cap, msAvg: +s.ms.toFixed(3), msWorst: +s.worst.toFixed(2), built: s.built, buildMsAvg: s.built ? +(s.buildMs / s.built).toFixed(3) : 0, buildMsMax: +s.maxBuild.toFixed(2), modelsMs: +protoStats.ms.toFixed(1), models: protoStats.built, queue: this.queue.length - this.qi };
   }
   dispose() {
     if (this.w.onChange === this.hookFn) this.w.onChange = this.prevHook || null;

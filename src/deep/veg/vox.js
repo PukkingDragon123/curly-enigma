@@ -167,6 +167,35 @@ export const dir8 = (a) => DIR8[((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8];
  * (standing: bend grows with height), 'down' (hanging), 'out' (from a wall: grows with distance
  * from the root), 'flat' (ground cover: a little), 'none' (wall patches).
  */
+/**
+ * The same model at half the resolution (a 2×2×2 block of fine voxels → one coarse voxel, coloured
+ * by the commonest of them; any filled voxel keeps the block, so thin strands stay strands). The
+ * vegetation's far plants are drawn from it (a fine voxel is a pixel or less out there).
+ */
+export function down2(g) {
+  const W = Math.ceil(g.w / 2), H = Math.ceil(g.h / 2), D = Math.ceil(g.d / 2);
+  const o = new VG(W, H, D), src = g.data, sw = g.w, swh = g.w * g.h;
+  const vals = new Uint32Array(8), cnt = new Uint8Array(8);
+  for (let z = 0; z < D; z++) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let n = 0;
+    for (let k = 0; k < 8; k++) {
+      const fx = 2 * x + (k & 1), fy = 2 * y + ((k >> 1) & 1), fz = 2 * z + (k >> 2);
+      if (fx >= g.w || fy >= g.h || fz >= g.d) continue;
+      const v = src[fx + sw * fy + swh * fz];
+      if (!v) continue;
+      let j = 0;
+      while (j < n && vals[j] !== v) j++;
+      if (j === n) { vals[n] = v; cnt[n] = 0; n++; }
+      cnt[j]++;
+    }
+    if (!n) continue;
+    let best = 0;
+    for (let j = 1; j < n; j++) if (cnt[j] > cnt[best]) best = j;
+    o.data[x + W * (y + H * z)] = vals[best];
+  }
+  return o;
+}
+
 export function boxify(g, pivot, mode = 'up') {
   const { w, h, d, data } = g, wh = w * h;
   const at = (x, y, z) => data[x + w * (y + h * z)];

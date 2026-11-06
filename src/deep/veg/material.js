@@ -103,6 +103,11 @@ export function makeVegMaterial(U) {
         float a = iMisc.x * 6.2831853, ca = cos(a), sa = sin(a);
         // which corner of the box faces the eye (in the plant's frame, voxels)
         vec3 lc = iOff.xyz + iShape.xyz * 0.5;
+        // off screen (the box with room for the most any sway or push moves it): nothing to do.
+        // (the whole pool is one draw, so this is the frustum cull)
+        vec3 vr = (viewMatrix * vec4(iRoot + vec3(ca * lc.x + sa * lc.z, lc.y, -sa * lc.x + ca * lc.z) * vox, 1.0)).xyz;
+        float br = 0.5 * length(iShape.xyz) * vox + 0.6, p0 = projectionMatrix[0][0], p1 = projectionMatrix[1][1];
+        if (vr.z > br || abs(vr.x) * p0 + vr.z > br * sqrt(1.0 + p0 * p0) || abs(vr.y) * p1 + vr.z > br * sqrt(1.0 + p1 * p1)) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
         vec3 e = (cameraPosition - iRoot) / vox;
         vec3 le = vec3(ca * e.x - sa * e.z, e.y, sa * e.x + ca * e.z) - lc;
         vec3 sg = step(0.0, le);
