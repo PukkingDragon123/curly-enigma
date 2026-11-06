@@ -308,3 +308,224 @@ export function makeLeavesGeo(seed, { k = 40, n = 7 } = {}) {
   }
   return meshVoxGreedy(g, { scale: 1 / k, pivot: [14, 0, 14] });
 }
+
+// ------------------------------------------------------------------ fine things (wave 8)
+// Small things are built from small voxels: a flower clump at 1/40 m, cones and acorns at 1/48 m,
+// a fallen branch at 1/24 m, a sapling at 1/16 m; the bough that hangs into the opening shot at
+// 1/14 m wood and 1/9 m leaves (it is seen up close).
+
+const FLOWER = {
+  bluebell: { petal: [0x6a6ae8, 0x4a4ac0, 0x8a8af0], leaf: [0x2e5a2a, 0x3e7230, 0x4e8a3a], nod: true, h: 0.22 },
+  anemone: { petal: [0xfaf6ff, 0xe8e0f0, 0xf0d0e8], heart: 0xf0d050, leaf: [0x3e6a2e, 0x4e8236, 0x62983e], h: 0.12 },
+  primrose: { petal: [0xfff2a0, 0xf8e080, 0xfff8c8], heart: 0xf0a030, leaf: [0x3e7232, 0x5a9440, 0x6aa448], h: 0.08, rosette: true },
+  violet: { petal: [0x7a4ac8, 0x6a3ab0, 0x9a6ae0], heart: 0xf8f0e0, leaf: [0x2e6a2e, 0x3e7a34, 0x4e8a3a], h: 0.09 },
+  campion: { petal: [0xf070a0, 0xe05888, 0xff98c0], heart: 0xa03060, leaf: [0x3a6a2e, 0x4a7e36, 0x5a8e3e], h: 0.3 },
+  wood_sorrel: { petal: [0xfff4f8, 0xf0d8e4, 0xfffaff], heart: 0xd8a0c0, leaf: [0x5aa044, 0x6ab04c, 0x7ac058], h: 0.06, trefoil: true },
+};
+/** A little clump of woodland flowers (1/k m voxels): kind 'bluebell' | 'anemone' | 'primrose' | 'violet' | 'campion' | 'wood_sorrel'. */
+export function makeFlowerClumpGeo(seed, { kind = 'bluebell', n = 5, k = 40 } = {}) {
+  const F = FLOWER[kind] || FLOWER.bluebell;
+  const rng = makeRng(seed);
+  const H = Math.ceil(F.h * k) + 6, W = Math.ceil(0.34 * k);
+  const g = new VoxelGrid(W, H, W);
+  const c = W / 2;
+  // leaves round the foot: strap leaves (bluebell), rosettes (primrose), trefoils (sorrel), hearts
+  const nl = F.rosette ? 9 : 7;
+  for (let i = 0; i < nl; i++) {
+    const a = (i / nl) * Math.PI * 2 + rng.range(-0.3, 0.3), len = (F.rosette ? 0.07 : F.trefoil ? 0.04 : 0.09) * k * rng.range(0.8, 1.2);
+    for (let s = 0; s < len; s++) {
+      const t = s / len, y = F.rosette || F.trefoil ? 1 + Math.sin(t * Math.PI) * 1.2 : 1 + t * len * 0.5 - t * t * len * 0.35;
+      const x = c + Math.cos(a) * s, z = c + Math.sin(a) * s;
+      const w = F.rosette ? Math.sin(t * Math.PI) * 1.6 : F.trefoil ? (t > 0.5 ? 1.2 : 0) : 0.6;
+      for (let q = -Math.round(w); q <= Math.round(w); q++) g.set(x - Math.sin(a) * q, y, z + Math.cos(a) * q, F.leaf[q === 0 ? 0 : t > 0.6 ? 2 : 1]);
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const a = rng.range(0, 6.28), d = rng.range(0, 0.07) * k;
+    const x0 = c + Math.cos(a) * d, z0 = c + Math.sin(a) * d;
+    const h = F.h * k * rng.range(0.75, 1.1);
+    const lx = rng.range(-0.15, 0.15), lz = rng.range(-0.15, 0.15);
+    for (let y = 0; y < h; y++) g.set(x0 + lx * y, y, z0 + lz * y, y > h - 3 ? F.leaf[2] : F.leaf[1]);
+    const tx = x0 + lx * h, tz = z0 + lz * h;
+    if (F.nod) {
+      // bluebells: the stem arches over and the bells hang down one side
+      for (let b = 0; b < 5; b++) {
+        const bx = tx + 1 + b * 0.35, by = h - b * 1.6, bz = tz + (b % 2 ? 0.6 : -0.4);
+        g.set(bx, by, bz, F.leaf[1]);
+        g.set(bx + 1, by - 1, bz, F.petal[0]); g.set(bx + 1, by - 2, bz, F.petal[1]); g.set(bx + 2, by - 2, bz, F.petal[2]); g.set(bx + 1, by - 2, bz + 1, F.petal[1]);
+      }
+    } else {
+      // an open flower: petals round a heart, facing up and a little out (toward the low sun)
+      const r = kind === 'campion' ? 2.2 : 2;
+      for (let p = 0; p < 5; p++) {
+        const pa = p * 1.2566 + a;
+        for (let s = 1; s <= r; s++) g.set(tx + Math.cos(pa) * s, h + (s > 1 ? 0.4 : 0), tz + Math.sin(pa) * s, F.petal[s > 1 ? (p % 2 ? 2 : 0) : 1]);
+      }
+      g.set(tx, h, tz, F.heart);
+    }
+  }
+  return meshVoxGreedy(g, { scale: 1 / k, pivot: [c, 0, c] });
+}
+
+/** A fallen branch along +x (len m) with side twigs, moss and a few dead leaves (1/k m). */
+export function makeBranchGeo(seed, { len = 1.4, r = 0.045, k = 24 } = {}) {
+  const rng = makeRng(seed);
+  const L = Math.ceil(len * k), R = Math.max(1, r * k);
+  const W = L + 8, D = Math.ceil(len * 0.6 * k) + 8, Hh = Math.ceil(R * 2) + 8;
+  const g = new VoxelGrid(W, Hh, D);
+  const cz = D / 2;
+  const BK = [0x6a5440, 0x584432, 0x7a6248, 0x463626];
+  const wob = rng.range(0, 6);
+  for (let x = 4; x < L + 4; x++) {
+    const t = (x - 4) / L, rr = R * (1 - t * 0.5);
+    const z = cz + Math.sin(t * 3 + wob) * 2;
+    g.ellipsoid(x, rr, z, 0.7, rr, rr, (xx, yy, zz) => (yy > rr * 1.4 && hash3(xx, yy, zz, seed) < 0.45 ? MOSS[(hash3(xx, 1, zz, seed) * 3) | 0] : BK[yy > rr ? 0 : hash3(xx, yy, zz, seed + 1) < 0.2 ? 3 : 1]));
+  }
+  for (let i = 0; i < 4; i++) {
+    const x0 = 4 + rng.range(0.15, 0.85) * L, a = (i % 2 ? 1 : -1) * rng.range(0.5, 1.0), l = rng.range(0.12, 0.3) * k;
+    const z0 = cz + Math.sin(((x0 - 4) / L) * 3 + wob) * 2;
+    for (let s = 0; s < l; s++) g.set(x0 + Math.cos(a) * s, R + (s > l * 0.6 ? 1 : 0), z0 + Math.sin(a) * s, BK[2]);
+  }
+  const LV = [0xa86a30, 0xc88a3a, 0x8a5a2a, 0xb89a48];
+  for (let i = 0; i < 5; i++) { const x = 4 + rng.range(0, L), z = cz + rng.range(-6, 6); g.set(x, 0, z, LV[i % 4]); g.set(x + 1, 0, z, LV[(i + 1) % 4]); g.set(x, 0, z + 1, LV[i % 4]); }
+  return meshVoxGreedy(g, { scale: 1 / k, pivot: [4 + L / 2, 0, cz] });
+}
+
+/** A scatter of cones and acorns on the ground (1/k m). */
+export function makeConesGeo(seed, { k = 48, n = 7, pine = true } = {}) {
+  const rng = makeRng(seed);
+  const g = new VoxelGrid(30, 8, 30);
+  for (let i = 0; i < n; i++) {
+    const x = rng.range(5, 25), z = rng.range(5, 25), a = rng.range(0, 3.14);
+    if (pine && i % 3 !== 2) {
+      // a cone lying on its side: scales in rings
+      for (let s = 0; s < 6; s++) {
+        const rr = 1.6 * Math.sin(((s + 0.5) / 6) * Math.PI) + 0.4;
+        g.ellipsoid(x + Math.cos(a) * s * 0.9, rr, z + Math.sin(a) * s * 0.9, 0.6, rr, rr, s % 2 ? 0x8a5a32 : 0x6a4226);
+      }
+    } else {
+      // an acorn in its cup
+      g.ellipsoid(x, 1.2, z, 1.1, 1.3, 1.1, 0xa87a3a); g.set(x, 2.6, z, 0x7a6a3a); g.ellipsoid(x + 0.8, 1.2, z, 0.8, 1.0, 1.1, 0x6a5a34);
+    }
+  }
+  return meshVoxGreedy(g, { scale: 1 / k, pivot: [15, 0, 15] });
+}
+
+/** A flat path stone, mossy round its edges (w × d m, 1/k m). */
+export function makeSlabGeo(seed, { w = 0.42, d = 0.32, k = 24, tone = 0x9a9284 } = {}) {
+  const nz = makeNoise2D(seed + 7);
+  const W = Math.ceil(w * k) + 4, D = Math.ceil(d * k) + 4;
+  const g = new VoxelGrid(W, 4, D);
+  const T = [fshade(tone, 1.1), tone, fshade(tone, 0.88), fshade(tone, 0.76)];
+  for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+    const dx = (x + 0.5 - W / 2) / (w * k / 2), dz = (z + 0.5 - D / 2) / (d * k / 2);
+    const e = dx * dx + dz * dz + nz(x * 0.4, z * 0.4) * 0.35;
+    if (e > 1) continue;
+    const top = e < 0.55 ? 2 : 1;
+    for (let y = 0; y < top; y++) {
+      let col = y === top - 1 ? T[(hash3(x >> 1, 0, z >> 1, seed) * 2) | 0] : T[2];
+      if (e > 0.72 && y === top - 1 && hash3(x, y, z, seed + 1) < 0.6) col = MOSS[(hash3(x, 2, z, seed) * 3) | 0];
+      if (hash3(x, y, z, seed + 3) < 0.04) col = fmix(col, 0xd8d0a0, 0.5); // lichen
+      g.set(x, y, z, col);
+    }
+  }
+  return meshVoxGreedy(g, { scale: 1 / k, pivot: [W / 2, 0.6, D / 2] });
+}
+
+/**
+ * A young tree of the understory (h m): a slender stem and a few tiers of leaf sprays (1/k m).
+ * Returns { wood, leaves } geometries.
+ */
+export function makeSaplingGeo(seed, { h = 1.3, k = 16, leaf = [0xb8cc6a, 0x90b450, 0x6a9840, 0x4a7834, 0x30562a], bark = 0x8a8478 } = {}) {
+  const rng = makeRng(seed);
+  const H = Math.ceil(h * k) + 4, R = Math.ceil(0.5 * h * k) + 3, W = 2 * R + 2;
+  const wood = new VoxelGrid(W, H, W), leaves = new VoxelGrid(W, H, W);
+  const c = W / 2;
+  const lx = rng.range(-0.08, 0.08), lz = rng.range(-0.08, 0.08);
+  for (let y = 0; y < h * k * 0.92; y++) wood.set(c + lx * y, y, c + lz * y, y < 3 ? fshade(bark, 0.8) : bark);
+  const nT = 3 + rng.int(0, 1);
+  for (let t = 0; t < nT; t++) {
+    const y0 = h * k * (0.38 + (t / nT) * 0.58);
+    const nb = 3 + rng.int(0, 2);
+    for (let b = 0; b < nb; b++) {
+      const a = (b / nb) * 6.28 + t * 1.1 + rng.range(-0.3, 0.3);
+      const len = (1 - t / nT * 0.55) * 0.42 * h * k * rng.range(0.8, 1.1);
+      const sx = c + lx * y0, sz = c + lz * y0;
+      for (let s = 0; s < len; s++) {
+        const x = sx + Math.cos(a) * s, z = sz + Math.sin(a) * s, y = y0 + s * 0.35 - (s / len) ** 2 * len * 0.3;
+        if (s < len * 0.5) wood.set(x, y, z, fshade(bark, 0.9));
+        // leaf sprays along the outer half: flat, lit on top
+        if (s > len * 0.25) for (let q = -2; q <= 2; q++) for (let p = -1; p <= 1; p++) {
+          if (Math.abs(q) + Math.abs(p) > 2 || hash3(Math.round(x + q), Math.round(y), Math.round(z + p), seed) < 0.22) continue;
+          const X = x - Math.sin(a) * q + Math.cos(a) * p * 0.5, Z = z + Math.cos(a) * q + Math.sin(a) * p * 0.5;
+          const lit = (Math.cos(a) * -0.36 + Math.sin(a) * -0.82) * 0.5 + (s / len) * 0.5 + (t / nT) * 0.4;
+          leaves.set(X, y + (Math.abs(q) === 2 ? -0.4 : 0), Z, leaf[lit > 0.75 ? 0 : lit > 0.45 ? 1 : lit > 0.15 ? 2 : 3]);
+          if (Math.abs(q) < 2 && p === 0) leaves.set(X, y - 1, Z, leaf[4]);
+        }
+      }
+    }
+  }
+  const o = { scale: 1 / k, pivot: [c, 0, c] };
+  return { wood: meshVoxGreedy(wood, o), leaves: meshVoxGreedy(leaves, o) };
+}
+
+/**
+ * A leafy bough hanging into a shot (along +x, drooping): a limb that forks into twigs, each
+ * ending in sprays of leaves. Wood at 1/kw m, leaves at 1/kl m. Returns { wood, leaves }.
+ */
+export function makeBoughGeo(seed, { len = 3.2, kw = 14, kl = 9, leaf = [0xd0d878, 0xa8c45a, 0x7ea446, 0x5a8238, 0x3a5e2c], bark = [0x7a6650, 0x5e4e3c, 0x46382a] } = {}) {
+  const rng = makeRng(seed);
+  // the skeleton in metres: a limb from the origin out along +x, sagging, forking into twigs
+  const segs = [];
+  const tips = [];
+  const grow = (p, dir, l, r, depth) => {
+    const n = 4;
+    let q = p.slice(), d = dir.slice();
+    for (let i = 0; i < n; i++) {
+      d[0] += rng.range(-0.15, 0.15); d[1] += rng.range(-0.18, 0.06) - 0.06; d[2] += rng.range(-0.18, 0.18);
+      const m = Math.hypot(d[0], d[1], d[2]); d = d.map((v) => v / m);
+      const nq = [q[0] + d[0] * l / n, q[1] + d[1] * l / n, q[2] + d[2] * l / n];
+      segs.push({ a: q, b: nq, r: r * (1 - (i / n) * 0.5) });
+      if (depth < 2 && i > 0 && rng() < 0.75) {
+        const side = rng() < 0.5 ? 1 : -1;
+        grow(nq, [d[0] * 0.6 - d[2] * side * 0.8, d[1] - 0.15, d[2] * 0.6 + d[0] * side * 0.8], l * 0.45, r * 0.5, depth + 1);
+      }
+      q = nq;
+    }
+    tips.push(q);
+  };
+  grow([0, 0, 0], [1, -0.05, 0], len, 0.07, 0);
+  let x0 = 0, x1 = 0, y0 = 0, y1 = 0, z0 = 0, z1 = 0;
+  for (const s of segs) for (const p of [s.a, s.b]) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); z0 = Math.min(z0, p[2]); z1 = Math.max(z1, p[2]); }
+  const pad = 0.55;
+  const mk = (k) => { const g = new VoxelGrid(Math.ceil((x1 - x0 + pad * 2) * k), Math.ceil((y1 - y0 + pad * 2) * k), Math.ceil((z1 - z0 + pad * 2) * k)); return { g, k, V: (p) => [(p[0] - x0 + pad) * k, (p[1] - y0 + pad) * k, (p[2] - z0 + pad) * k] }; };
+  const W = mk(kw), Lf = mk(kl);
+  for (const s of segs) {
+    const a = W.V(s.a), b = W.V(s.b), L = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    for (let t = 0; t <= L; t += 0.5) {
+      const u = t / Math.max(1, L), p = [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
+      const rr = Math.max(0.6, s.r * kw);
+      W.g.ellipsoid(p[0], p[1], p[2], rr, rr, rr, (x, y, z) => (y > p[1] + rr * 0.4 && hash3(x, y, z, seed) < 0.4 ? MOSS[(hash3(x, 0, z, seed) * 3) | 0] : y > p[1] ? bark[0] : hash3(x, y, z, seed + 1) < 0.3 ? bark[2] : bark[1]));
+    }
+  }
+  // leaf sprays: flattened clusters hanging from every twig tip and along the outer twigs
+  const sprays = [...tips];
+  for (const s of segs) if (s.r < 0.03 && rng() < 0.6) sprays.push(s.b);
+  for (const p of sprays) {
+    const [cx, cy, cz] = Lf.V(p);
+    const R = rng.range(0.28, 0.42) * kl;
+    for (let z = -R - 1; z <= R + 1; z++) for (let y = -R * 0.6; y <= R * 0.5; y++) for (let x = -R - 1; x <= R + 1; x++) {
+      const e = (x * x + z * z) / (R * R) + (y / (R * 0.55)) ** 2;
+      if (e > 1) continue;
+      const X = Math.round(cx + x), Y = Math.round(cy + y - (x * x + z * z) / (R * R) * R * 0.3), Z = Math.round(cz + z);
+      if (e > 0.6 && hash3(X >> 1, Y, Z >> 1, seed + 2) < 0.35) continue;
+      if (hash3(X, Y, Z, seed + 5) < 0.12) continue; // gaps between the leaves: the light comes through
+      const lit = y / (R * 0.55) * 0.6 + (-x * 0.36 - z * 0.82) / R * 0.3 + (hash3(X >> 1, Y >> 1, Z >> 1, seed + 3) - 0.5) * 0.5;
+      Lf.g.set(X, Y, Z, leaf[lit > 0.55 ? 0 : lit > 0.15 ? 1 : lit > -0.2 ? 2 : lit > -0.5 ? 3 : 4]);
+    }
+  }
+  return {
+    wood: meshVoxGreedy(W.g, { scale: 1 / kw, pivot: [(-x0 + pad) * kw, (-y0 + pad) * kw, (-z0 + pad) * kw] }),
+    leaves: meshVoxGreedy(Lf.g, { scale: 1 / kl, pivot: [(-x0 + pad) * kl, (-y0 + pad) * kl, (-z0 + pad) * kl] }),
+  };
+}

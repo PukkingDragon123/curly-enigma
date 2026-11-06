@@ -4,6 +4,7 @@ import { mat, mat3, mix } from './color.js';
 import { Mask, vol, fill, sparkle, hash2, vnoise, bayer } from './shade.js';
 import { M, ring, facetRock, prism, pores, lineIn } from './parts.js';
 import { camera, drawSolid, boxFaces, frustumFaces } from './solid.js';
+import * as NEW from './oreIcons.js';
 
 // ---------------------------------------------------------------- small helpers
 /** Lumpy metal nugget: union of blobs, dome-lit with a hot specular. */
@@ -726,8 +727,8 @@ function ingotIcon(pc, id, spec) {
 
 // ---------------------------------------------------------------- dispatcher
 const ORE_DRAW = {
-  copper_ore: copperOre, tin_ore: tinOre, iron_ore: ironOre, silver_ore: silverOre, gold_ore: goldOre,
-  mithril_ore: mithrilOre, moonsilver_ore: moonsilverOre, adamant_ore: adamantOre, starmetal_ore: meteorite,
+  copper_ore: NEW.copperOre, tin_ore: NEW.tinOre, iron_ore: NEW.ironOre, silver_ore: NEW.silverOre, gold_ore: NEW.goldOre,
+  mithril_ore: NEW.mithrilOre, moonsilver_ore: NEW.moonsilverOre, adamant_ore: NEW.adamantOre, starmetal_ore: NEW.starmetalOre,
 };
 
 export function drawMineral(pc, spec, id, seed) {

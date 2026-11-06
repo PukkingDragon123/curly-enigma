@@ -968,15 +968,19 @@ export class Engine {
     if (!this.rtScene) return;
     const ww = Math.max(1, window.innerWidth);
     const wh = Math.max(1, window.innerHeight);
-    // in device pixels: the largest integer fraction of the screen that fits the tier's pixel
-    // budget (so every internal pixel is a crisp s×s block of real ones at any DPR), then the
-    // player's 'Pixels' setting a step finer or coarser
+    // the finest pixel size that fits the tier's pixel budget, out of whole device pixels (every
+    // internal pixel a crisp s×s block of real ones at any DPR) and whole CSS pixels (as before,
+    // for fractional DPRs); then the player's 'Pixels' setting a step finer or coarser
     const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
     const dw = ww * dpr, dh = wh * dpr;
     const budget = TIERS[this.tier].px;
-    let s = 1;
-    while ((dw / s) * (dh / s) > budget && s < 16) s++;
-    s = Math.max(1, s + this.pixelOffset);
+    const cand = [];
+    for (let k = 1; k <= 16; k++) { cand.push(k); if (k <= 8) cand.push(k * dpr); }
+    cand.sort((a, b) => a - b);
+    const sizes = cand.filter((v, i) => i === 0 || v - cand[i - 1] > 0.01);
+    let si = 0;
+    while (si < sizes.length - 1 && (dw / sizes[si]) * (dh / sizes[si]) > budget) si++;
+    const s = sizes[Math.max(0, Math.min(sizes.length - 1, si + this.pixelOffset))];
     const w = Math.ceil(dw / s), h = Math.ceil(dh / s);
     const sc = s / dpr;
     if (w === this.width && h === this.height && sc === this.scale && this._sized) return;

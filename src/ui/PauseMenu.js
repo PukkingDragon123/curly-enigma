@@ -119,7 +119,7 @@ export function openSettings(game, { onClose } = {}) {
     slider('Music', 'music', (v) => audio.setVolumes({ music: v })),
     slider('Sound', 'sfx', (v) => audio.setVolumes({ sfx: v })),
     opts('Pixels', [[-1, 'Fine'], [0, 'Normal'], [1, 'Chunky']], () => s.pixel || 0, (v) => { s.pixel = v; game.engine.setPixelOffset(v); }),
-    opts('Shaders', [['high', 'Fancy'], ['low', 'Simple'], ['off', 'Off']], () => game.engine.fx, (v) => game.engine.setFx(v)),
+    opts('Shaders', [['auto', 'Auto'], ['high', 'Fancy'], ['low', 'Simple'], ['off', 'Off']], () => (game.engine.fxAuto ? 'auto' : game.engine.fx), (v) => game.engine.setFx(v)),
     el('div', { class: 'pm-row' }, [el('span', {}, 'Screen shake'), lever]),
     el('p', { class: 'pm-note' }, 'Settings are kept with your save.'),
   ]);
