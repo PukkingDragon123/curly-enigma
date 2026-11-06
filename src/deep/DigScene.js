@@ -33,7 +33,7 @@ import { TOOL_KINDS, HOTBAR_N, hotbarOf } from '../core/hotbar.js';
 const REACH = 2.3;
 const vmModules = import.meta.glob('../fps/ViewModel.js');
 // optional systems, built separately (see docs/DEEP.md): fantasy enemies, flowing fluids
-const extModules = import.meta.glob(['./Enemies.js', './Fluids.js', './Props.js', './Clumps.js', './Prologue.js', './Explosives.js', './Ruins.js', './Traders.js', './Vegetation.js']);
+const extModules = import.meta.glob(['./Enemies.js', './Fluids.js', './Props.js', './Clumps.js', './FirstDig.js', './Explosives.js', './Ruins.js', './Traders.js', './Vegetation.js']);
 const col01 = (hex) => { const c = hexToRgb(hex); return [c.r / 255, c.g / 255, c.b / 255]; };
 
 export default class DigScene extends Scene {
@@ -148,21 +148,16 @@ export default class DigScene extends Scene {
     this.fluids = null;
     this.props = null;
     this.clumps = null;
-    this.prologue = null;
+    this.firstDig = null; // the mining lesson (FirstDig.js)
     this.explosives = null;
     this.ruins = null;
     this.traders = null;
     this.vegetation = null; // grass, ferns, roots, vines: textured cards that sway (Vegetation.js, optional)
     const ctx = { scene: this.scene, world: this.world, U: this.U, fx: this.fx, bodies: this.bodies, audio: this.audio, state: st, ui: g.ui, player: pl, plan: this.world.plan, scene3: this.scene, owner: this, params };
-    for (const [path, Name, key] of [['./Enemies.js', 'Enemies', 'enemies'], ['./Fluids.js', 'Fluids', 'fluids'], ['./Props.js', 'Props', 'props'], ['./Clumps.js', 'Clumps', 'clumps'], ['./Prologue.js', 'Prologue', 'prologue'], ['./Explosives.js', 'Explosives', 'explosives'], ['./Ruins.js', 'Ruins', 'ruins'], ['./Traders.js', 'Traders', 'traders'], ['./Vegetation.js', 'Vegetation', 'vegetation']]) {
+    for (const [path, Name, key] of [['./Enemies.js', 'Enemies', 'enemies'], ['./Fluids.js', 'Fluids', 'fluids'], ['./Props.js', 'Props', 'props'], ['./Clumps.js', 'Clumps', 'clumps'], ['./FirstDig.js', 'FirstDig', 'firstDig'], ['./Explosives.js', 'Explosives', 'explosives'], ['./Ruins.js', 'Ruins', 'ruins'], ['./Traders.js', 'Traders', 'traders'], ['./Vegetation.js', 'Vegetation', 'vegetation']]) {
       const load = extModules[path];
       if (!load) continue;
       try { const mod = await load(); this[key] = new mod[Name](ctx); } catch (e) { console.warn(Name + ' failed', e); }
-    }
-    // the opening: the fall drops the mole into Old Star's dig
-    if (from === 'fall') {
-      const sp = this.prologue?.spawn?.();
-      if (sp) { pl.pos.set(sp.x, sp.y, sp.z); pl.yaw = sp.yaw ?? pl.yaw; this.terrain.warm(sp.x, sp.y + 0.5, sp.z, 2); }
     }
     if (this.fluids || this.props) this.world.onChange = (vx, vy, vz, old, m) => { this.fluids?.onVoxel(vx, vy, vz, old, m); this.props?.onVoxel?.(vx, vy, vz, old, m); };
     this.bodies.hooks = {
@@ -316,7 +311,7 @@ export default class DigScene extends Scene {
     this.hitStop = Math.max(0, (this.hitStop || 0) - dt);
     this.bodies.update(sdt, pl.eye(), pl.pos);
     if (this.fluids) this.fluids.update(dt, { player: pl, eye: pl.eye(), time: this.time });
-    if (this.prologue) this.events(this.prologue.update(dt, { player: pl, eye: pl.eye(), time: this.time, busy }));
+    if (this.firstDig) this.events(this.firstDig.update(dt, { player: pl, eye: pl.eye(), time: this.time, busy }));
     if (this.explosives) this.events(this.explosives.update(dt, { player: pl, eye: pl.eye(), time: this.time }));
     if (this.props) this.props.update(dt, { player: pl, eye: pl.eye(), time: this.time });
     if (this.ruins) this.events(this.ruins.update(dt, { player: pl, eye: pl.eye(), time: this.time }));
@@ -392,7 +387,7 @@ export default class DigScene extends Scene {
     if (!ui.setCrosshair) return;
     const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
     // something to pick or catch (props' plants, critters) comes first
-    const use = this.prologue?.target?.(eye, f, reach) || this.clumps?.target(eye, f, reach) || this.traders?.target?.(eye, f, reach) || this.ruins?.target?.(eye, f, reach) || this.builder?.target?.(eye, f, reach) || this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
+    const use = this.clumps?.target(eye, f, reach) || this.traders?.target?.(eye, f, reach) || this.ruins?.target?.(eye, f, reach) || this.builder?.target?.(eye, f, reach) || this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
     if (use) { ui.setCrosshair({ visible: true, kind: 'use', label: use.label }); return; }
     const foe = this.enemies?.hitTest(eye, f, reach);
     if (foe) { ui.setCrosshair(foe.passive ? { visible: true, kind: 'rock', label: foe.constructor.info?.name || '' } : { visible: true, kind: 'enemy' }); return; }
@@ -866,7 +861,7 @@ export default class DigScene extends Scene {
     // pick a plant, catch a critter
     {
       const eye = pl.eye(), f = pl.forward(), reach = this.reach();
-      const pr = this.prologue?.use?.(eye, f, reach);
+      const pr = this.firstDig?.use?.(eye, f, reach);
       if (pr) { this.events(pr); return; }
       const cl = this.clumps?.use(eye, f, reach);
       if (cl) { this.events(cl); return; }
@@ -1150,7 +1145,7 @@ export default class DigScene extends Scene {
       if (d < l.r + 14) near.push([d - l.r * 0.3, l]);
     }
     // glowing enemies and hot fluids light the rock too
-    for (const src of [this.enemies, this.fluids, this.props, this.clumps, this.prologue, this.explosives, this.traders, this.ruins, this.vegetation]) {
+    for (const src of [this.enemies, this.fluids, this.props, this.clumps, this.explosives, this.traders, this.ruins, this.vegetation]) {
       for (const l of src?.lights?.(eye) || []) near.push([Math.hypot(l.x - eye.x, l.y - eye.y, l.z - eye.z) - l.r * 0.3, l]);
     }
     near.sort((a, b) => a[0] - b[0]);
@@ -1252,7 +1247,7 @@ export default class DigScene extends Scene {
     this.fx.dispose();
     this.enemies?.dispose();
     this.props?.dispose();
-    this.prologue?.dispose?.();
+    this.firstDig?.dispose?.();
     this.explosives?.dispose?.();
     this.ruins?.dispose?.();
     this.traders?.dispose?.();

@@ -471,7 +471,7 @@ export class WorkshopLife {
     this.forgeAir = Math.max(0, (this.forgeAir || 0) - dt * 0.9);
     c.update(dt, this.time, this.forgeAir);
     if (this.bellowsT > 0) { this.bellowsT -= dt; c.dyn.bellows.setCompress(Math.sin(Math.max(0, 1 - this.bellowsT / 0.9) * Math.PI)); }
-    if (this.forgeLight) this.forgeLight.intensity = 2.2 + this.forgeAir * 2.4;
+    if (this.forgeLight) this.forgeLight.intensity = 1.85 + this.forgeAir * 2.2;
     if (this.anvilFlash) this.anvilFlash.intensity = Math.max(0, this.anvilFlash.intensity - dt * 9);
     // embers off the forge and the fireplace, a pop of sparks now and then
     this.emberT = (this.emberT || 0) - dt;
@@ -529,7 +529,7 @@ export class WorkshopLife {
     this.moteT = (this.moteT || 0) - dt;
     if (this.moteT <= 0) {
       this.moteT = 0.08;
-      const l = pick(this.moteLights);
+      const l = pick(this.inBedroom(p.x, p.z) && this.roomMotes?.length ? this.roomMotes : this.moteLights);
       if (l && Math.hypot(l.x - p.x, l.z - p.z) < 7) {
         const cool = l.kind === 'window';
         this.fx.spawn({ x: l.x + rand(-0.7, 0.7), y: l.y + rand(-0.8, 0.3), z: l.z + rand(-0.7, 0.7), vx: rand(-0.015, 0.015), vy: rand(-0.01, 0.015), vz: rand(-0.015, 0.015), life: rand(3.5, 6), size: rand(0.004, 0.008), color: cool ? [0.7, 1, 0.95] : [1, 0.92, 0.72], alpha: 0.7, glow: true, drag: 0.05, grav: -0.002 });

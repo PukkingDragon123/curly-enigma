@@ -13,6 +13,7 @@ import { hashStr } from '../core/util.js';
 import { posterCanvas } from '../iso/pixel.js';
 import { VoxelGrid, C, wood, iron, line, ring, M32, G32, group, mulc, h3 } from '../iso/kit.js';
 import { hash2, noiseSampler, disposeTextures } from '../iso/surface.js';
+import { n2 } from './surfaces.js';
 import { paintHomeFloor, repaintHomeTile } from '../iso/homeFloor.js';
 import { bakeLighting } from '../iso/bake.js';
 import { Batch, keepUnbatched } from '../iso/vox.js';
@@ -22,10 +23,10 @@ import { hangingLantern } from '../iso/props.js';
 import { meshReliefTex, reliefTexture } from './relief.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
-import { wallVoxel, wallDetail, nearestPost, ceilVoxel } from './walls.js';
+import { isRockWall } from './walls.js';
 import { T, VPT, CEIL, WALL_V, FACE, MOUTH_HW, ARCH } from './units.js';
 import { inMouth, WINDOW, MOUTH_LANTERN, crystalWindow, tunnelMouth, cornerPost, buildBench, hangingRoot, wallFungi } from './props.js';
-import { cobweb } from './campProps.js';
+import { cobweb, flagstone, fallenStones } from './campProps.js';
 import { ShellBase, CT, texturedToon, mergeIndexed, packShellSurfaces } from './shellSurf.js';
 import { unquantize, CSCALE } from './pack.js';
 
@@ -42,7 +43,7 @@ export class HomeShell extends ShellBase {
     let busy = 0;
     const step = (name, fn) => { const a = performance.now(); fn(); steps[name] = Math.round(performance.now() - a); busy += steps[name]; };
     this.plan(W, D, opts);
-    step('floor', () => this.buildFloor(floorMap));
+    step('floor', () => { this.buildFloor(floorMap); this.buildGrime(); });
     this.decor = new THREE.Group();
     this.room.add(this.decor);
     step('window', () => this.buildWindow());
@@ -51,6 +52,7 @@ export class HomeShell extends ShellBase {
     step('hearth', () => this.buildHearth());
     step('tunnels', () => this.buildTunnels());
     step('merge', () => this.mergeDecor());
+    step('posts', () => this.buildPosts());
     // the walls and ceiling: packed from a build worker (opts.surf, a promise), or made here
     const surf = opts.surf ? await opts.surf.catch((e) => { console.warn('[home] your room\'s walls failed to build away, building them here', e); return null; }) : null;
     if (surf) step('walls', () => this.useSurfaces(wallId, surf));
@@ -58,6 +60,7 @@ export class HomeShell extends ShellBase {
       step('walls', () => this.setWall(wallId));
       step('ceiling', () => this.buildCeiling());
     }
+    this.showPosts(wallId);
     this.steps = steps;
     this.ms = busy;
     void t0;
@@ -131,7 +134,7 @@ export class HomeShell extends ShellBase {
     const pw = pc.w / 34, ph = pc.h / 34;
     const cx = (POSTER_SLOTS[0] + POSTER_SLOTS[POSTER_SLOTS.length - 1] + 1) / 2, cy = 2.75;
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), new THREE.MeshLambertMaterial({ map: tex }));
-    plane.position.set(cx, cy, 0.075);
+    plane.position.set(cx, cy, 0.175); // (proud of the rock's lumps)
     this.room.add(plane);
     // chunky wooden frame with brass corners
     const fw = Math.round(pw * 32) + 8, fh = Math.round(ph * 32) + 8;
@@ -143,7 +146,7 @@ export class HomeShell extends ShellBase {
     }
     for (const [x, y] of [[1, 1], [fw - 3, 1], [1, fh - 3], [fw - 3, fh - 3]]) g.box(x, y, 1, 2, 2, 2, 0xd9a84a);
     const fm = M32(g, [fw / 2, fh / 2, 0]);
-    fm.position.set(cx, cy, 0.0);
+    fm.position.set(cx, cy, 0.1);
     this.decor.add(fm);
     this.poster = { cx, cy, w: pw, h: ph };
   }
@@ -152,12 +155,6 @@ export class HomeShell extends ShellBase {
   buildDressing() {
     const { W, D } = this;
     const add = (m) => { this.decor.add(m); return m; };
-    // corner posts
-    for (const [x, z] of [[0, 0], [W, 0], [0, D], [W, D]]) {
-      const p = cornerPost(WALL_V, x * 3 + z);
-      p.position.set(x + (x ? -0.12 : 0.12), 0, z + (z ? -0.12 : 0.12));
-      add(p);
-    }
     // the high ledge along the north wall: jars, pots, books, candles, a bowl of mushrooms
     this.buildLedge(3.75, Math.max(5.2, W - 1.1), 3.65);
     // dried herbs on a string along the west wall
@@ -171,14 +168,19 @@ export class HomeShell extends ShellBase {
       add(hl.obj);
     }
     // roots through the roof, cobwebs in the top corners, fungi glowing on the damp walls (it's a cave)
-    for (let k = 0; k < 6; k++) {
-      const r = hangingRoot(0.35 + hash2(k, 1, 77) * 0.55, 60 + k);
-      r.position.set(0.8 + hash2(k, 2, 77) * (W - 1.6), CT - 0.05, 0.7 + hash2(k, 3, 77) * (D - 1.4));
+    for (let k = 0; k < 9; k++) {
+      // (from up in the vault of the roof: they start in the rock)
+      const x = 0.8 + hash2(k, 2, 77) * (W - 1.6), z = 0.7 + hash2(k, 3, 77) * (D - 1.4);
+      if (this.joists.some((j) => Math.abs(j - x) < 0.25)) continue;
+      const up = -this.roofDome(x * 32, z * 32) / 32 + 0.06;
+      const r = hangingRoot(0.3 + hash2(k, 1, 77) * 0.5 + up, 60 + k);
+      r.position.set(x, CT + up, z);
       add(r);
     }
-    for (const [x, z, yaw, sz] of [[0.14, 0.14, Math.PI / 4, 0.3], [W - 0.14, D - 0.14, -Math.PI * 0.75, 0.28], [W - 0.14, 0.14, -Math.PI / 4, 0.24]]) {
+    // (in the rounded corners, under the overhang)
+    for (const [x, z, yaw, sz] of [[0.42, 0.42, Math.PI / 4, 0.3], [W - 0.42, D - 0.42, -Math.PI * 0.75, 0.28], [W - 0.42, 0.42, -Math.PI / 4, 0.24]]) {
       const w = cobweb(sz, Math.round(x * 7 + z));
-      w.position.set(x, CT - 0.95, z);
+      w.position.set(x, CT - 1.45, z);
       w.rotation.y = yaw;
       add(w);
     }
@@ -191,12 +193,102 @@ export class HomeShell extends ShellBase {
       this.fungi.push({ x: P.x + Math.sin(P.yaw) * 0.4, y: y + 0.7, z: P.z + Math.cos(P.yaw) * 0.4, color: f.color }); // (tiles)
     }
     void D;
+    // worn flagstones from the doorway into the room (the way down is kept clear), loose stones in the corners
+    for (const [dx, z, w, d, sd] of [[0.05, 0.42, 0.42, 0.34, 1], [-0.18, 1.12, 0.36, 0.3, 2], [0.22, 1.2, 0.3, 0.26, 3], [0.0, 1.85, 0.4, 0.32, 4]]) {
+      const f = flagstone(w, d, 140 + sd);
+      f.position.set(this.arch.x + dx, -0.06, z);
+      f.rotation.y = (sd - 2.5) * 0.12;
+      add(f);
+    }
+    for (const [x, z, sd] of [[0.38, 0.4, 1], [W - 0.4, D - 0.42, 2], [0.4, D - 0.4, 3], [W - 0.42, 0.45, 4]]) {
+      const st = fallenStones(3, 0.22, 0.2, 150 + sd);
+      st.position.set(x, 0, z);
+      st.rotation.y = sd;
+      add(st);
+    }
     // the build bench against the east wall
     const B = this.bench;
     const bb = buildBench(8);
     bb.rotation.y = -Math.PI / 2;
     bb.position.set(B.x + 0.5, 0, B.y + 1);
     add(bb);
+  }
+
+  /** Corner posts: the bought wall styles' timber frame (the cave's rock has rounded corners instead). */
+  buildPosts() {
+    const { W, D } = this;
+    const g = new THREE.Group();
+    for (const [x, z] of [[0, 0], [W, 0], [0, D], [W, D]]) {
+      const p = cornerPost(WALL_V, x * 3 + z);
+      p.position.set(x + (x ? -0.12 : 0.12), 0, z + (z ? -0.12 : 0.12));
+      g.add(p);
+    }
+    this.room.add(g);
+    this.room.updateMatrixWorld(true);
+    const batch = new Batch(64);
+    batch.add(g);
+    const amb = this.ambientM(), lights = this.bakeLightsM();
+    this.postMeshes = batch.build(this.world, null, { bake: (geo) => bakeLighting(geo, lights, { ambient: amb, max: 2.2 }) });
+    this.room.remove(g);
+    this.decorMeshes.push(...this.postMeshes);
+    for (const m of this.postMeshes) this.toDispose.push(m.geometry);
+  }
+
+  showPosts(wallId) {
+    for (const m of this.postMeshes || []) { if (isRockWall(wallId)) this.world.remove(m); else this.world.add(m); }
+  }
+
+  setWall(wallId) {
+    super.setWall(wallId);
+    this.showPosts(wallId);
+  }
+
+  /**
+   * Grime over whatever floor is laid (one multiplied layer, so the tiles you lay keep it): the
+   * floor darkens and goes cold toward the rock, worst in the corners; grit, damp blotches, moss in
+   * the weeping corner, ash trodden out in front of the hearth.
+   */
+  buildGrime() {
+    const { W, D } = this;
+    const P = 16; // pixels per tile
+    const w = W * P, h = D * P, data = new Uint8Array(w * h * 4);
+    const Wm = W * T, Dm = D * T, hx = HEARTH_X * T;
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const x = ((i + 0.5) / P) * T, z = ((j + 0.5) / P) * T;
+      const e = Math.min(x, z, Wm - x, Dm - z) + 0.05 * hash2(i >> 1, j >> 1, 5);
+      const ec = Math.min(Math.hypot(x, z), Math.hypot(Wm - x, z), Math.hypot(x, Dm - z), Math.hypot(Wm - x, Dm - z));
+      let k = 1;
+      if (e < 0.5) k *= 1 - 0.42 * ((0.5 - e) / 0.5) ** 1.6;
+      if (ec < 0.9) k *= 1 - 0.25 * ((0.9 - ec) / 0.9) ** 1.5;
+      let r = k * 0.9, g = k * 0.95, b = k;
+      const bl = n2(x * 1.3 + 4, z * 1.3, 23);
+      if (bl > 0.35) { r *= 0.88; g *= 0.9; b *= 0.92; } // damp blotches
+      const gh = hash2(i, j, 24);
+      if (gh < 0.035) { r *= 0.72; g *= 0.72; b *= 0.74; } else if (gh < 0.05) { r *= 0.86; g *= 0.86; b *= 0.88; } // grit
+      const dm = Math.hypot(x, z - Dm);
+      if (dm < 1.2 && hash2(i >> 1, j >> 1, 25) < (1.2 - dm) * 0.6) { r *= 0.62; g *= 0.8; b *= 0.55; } // moss off the weeping rock
+      const ah = Math.hypot((x - hx) / 0.9, (z - (Dm - 0.35)) / 0.55);
+      if (ah < 1 && hash2(i, j, 26) < (1 - ah) * 0.8) { r *= 0.7; g *= 0.7; b *= 0.7; } // ash
+      const o = (j * w + i) * 4;
+      data[o] = Math.round(Math.min(1, r) * 255); data[o + 1] = Math.round(Math.min(1, g) * 255); data[o + 2] = Math.round(Math.min(1, b) * 255); data[o + 3] = 255;
+    }
+    const tex = new THREE.DataTexture(data, w, h);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.flipY = false;
+    tex.needsUpdate = true;
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, premultipliedAlpha: true, blending: THREE.MultiplyBlending, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+    const geo = new THREE.PlaneGeometry(Wm, Dm).rotateX(-Math.PI / 2);
+    // (plane uv: v = 0 at +z after the turn; the texture's row 0 is z = 0)
+    const uv = geo.getAttribute('uv');
+    for (let k = 0; k < uv.count; k++) uv.setY(k, 1 - uv.getY(k));
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(Wm / 2, 0.002, Dm / 2);
+    m.renderOrder = 1;
+    m.name = 'floorGrime';
+    this.world.add(m);
+    this.grimeMesh = m;
+    this.toDispose.push(tex, geo, mat);
   }
 
   /** The bedroom's hearth on the south wall: live flames, its light, where Old Star tends it. */
@@ -279,7 +371,7 @@ export class HomeShell extends ShellBase {
       bm.position.set(0, 0.08 - Math.sin(t * Math.PI) * 0.08, t * (z1 - z0));
       hg.add(bm);
     }
-    hg.position.set(0.3, CT - 0.75, z0);
+    hg.position.set(0.48, CT - 0.75, z0); // (clear of the rock leaning in overhead)
     this.decor.add(hg);
   }
 
@@ -349,6 +441,7 @@ export class HomeShell extends ShellBase {
 
   dispose() {
     disposeTextures(this.floor?.tex);
+    for (const d of this.toDispose) d.dispose?.();
   }
 }
 

@@ -7,11 +7,12 @@ import * as THREE from 'three';
 import { hashStr } from '../core/util.js';
 import { mulc } from '../iso/kit.js';
 import { hash2, noiseSampler } from '../iso/surface.js';
-import { WINDOW_SLOTS, HEARTH_X, benchTiles } from '../iso/homeLayout.js';
+import { WINDOW_SLOTS, POSTER_SLOTS, HEARTH_X, benchTiles } from '../iso/homeLayout.js';
 import { meshReliefTex, reliefTexture } from './relief.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
-import { wallVoxel, wallDetail, nearestPost, ceilVoxel } from './walls.js';
+import { wallVoxel, wallDetail, nearestPost, ceilVoxel, isRockWall } from './walls.js';
+import { n2 } from './surfaces.js';
 import { T, VPT, CEIL, WALL_V, FACE, MOUTH_HW, ARCH } from './units.js';
 import { inMouth, WINDOW, MOUTH_LANTERN } from './props.js';
 import { quantize, qTransfer, unquantize, CSCALE } from './pack.js';
@@ -36,6 +37,7 @@ export class ShellBase {
     this.tunnels = opts.tunnels || [];
     this.arch = { x: ARCH.x / T }; // the archway's centre on the north wall (tiles)
     this.bench = benchTiles(W, D);
+    this.ledgeA = [3.6 * VPT, Math.max(5.2, W - 1.1) * VPT + 5]; // the high ledge on the north wall (voxels along)
     this.planJoists();
     this.planLights();
   }
@@ -70,7 +72,9 @@ export class ShellBase {
     if (W >= 12 || D >= 10) { const j3 = near(W * 0.55); if (j3 !== undefined) this.hanging.push({ x: j3, z: D * 0.86, len: 0.6 }); }
     if (W >= 14) { const j4 = near(W * 0.88); if (j4 !== undefined && j4 !== j1) this.hanging.push({ x: j4, z: D * 0.62, len: 0.65 }); }
     // an oil lamp on a chain from the patch in the roof, over the middle of the room
-    this.hanging.push({ x: Math.min(W - 2, 3.3), z: Math.min(D - 2, 3.4), len: 0.7, top: CT - 0.1, big: true });
+    // (the roof vaults up over the room: the chain is longer by that)
+    const lx = Math.min(W - 2, 3.3), lz = Math.min(D - 2, 3.4), up = -this.roofDome(lx * VPT, lz * VPT) / VPT;
+    this.hanging.push({ x: lx, z: lz, len: 0.7 + up, top: CT - 0.1 + up, big: true });
     this.windowLight = { x: 0.45, y: WINDOW.cy / 32, z: WINDOW_SLOTS[0] + 0.5 };
     this.lanterns = [];
     this.tunnelInfo = this.tunnels.map((tn) => {
@@ -151,9 +155,12 @@ export class ShellBase {
       if (wall === 'n' || wall === 's') posts = this.joists.map((x) => x * VPT);
       else { const k = Math.max(1, Math.round(U / 80)); posts = Array.from({ length: k - 1 }, (_, i) => ((i + 1) * U) / k); }
       posts = posts.filter((p) => p > 16 && p < U - 16 && !ops.some((o) => Math.abs(p - o.c) < o.hw + 6));
+      // (none in front of the Surface Express poster)
+      if (wall === 'n') posts = posts.filter((p) => p < POSTER_SLOTS[0] * VPT - 8 || p > (POSTER_SLOTS[POSTER_SLOTS.length - 1] + 1) * VPT + 8);
       const depth = new Int16Array(U * H);
       const ws = seed + wall.charCodeAt(0) * 3;
       const nrm = { n: [0, 0, 1], s: [0, 0, -1], w: [1, 0, 0], e: [-1, 0, 0] }[wall];
+      const ctx = isRockWall(wallId) ? { shape: 0, soot: 0, damp: 0 } : null;
       for (let v = 0; v < H; v++) for (let u = 0; u < U; u++) {
         const q = u + v * U;
         const along = wall === 'n' || wall === 'e' ? u : U - 1 - u;
@@ -166,7 +173,8 @@ export class ShellBase {
         }
         if (hole) { depth[q] = 0; continue; }
         const post = posts.length ? nearestPost(posts, along) : null;
-        const [c, rel, kind] = wallVoxel(wallId, along, v, ws, n, post);
+        if (ctx) this.rockCtx(ctx, wall, along, v, U);
+        const [c, rel, kind] = wallVoxel(wallId, along, v, ws, n, post, ctx);
         let cc = wallDetail(wallId, along, v, c, ws, rel, kind);
         if (v < 7) cc = mulc(cc, 0.72 + v * 0.04); // contact shadow where the wall meets the floor
         if (nearHole < 5 && v < 72 && hash2(along >> 1, v >> 1, ws + 3) < 0.35) cc = mulc(cc, 0.78);
@@ -198,6 +206,47 @@ export class ShellBase {
 
 
   /**
+   * The cave's rock round your nook isn't a box (into ctx, for walls.js): the roof leans in over head
+   * height (carved back over the ledge on the north wall) and the corners are rounded (voxels out into
+   * the room); soot over the hearth and above the sconces; the damp south-west corner, where the rock
+   * weeps (0..1). a: voxels along the wall (x or z), v: up, U: the wall's length.
+   */
+  rockCtx(ctx, wall, a, v, U) {
+    const H = WALL_V, ws = wall.charCodeAt(0);
+    let s = 0;
+    const c0 = H - 46 + 9 * n2(a / 46, 0.5, ws);
+    if (v > c0) {
+      const k = wall === 'n' && a > this.ledgeA[0] && a < this.ledgeA[1] ? 0.15 : 1;
+      const t = (v - c0) / (H - c0);
+      s += 32 * t ** 1.7 * k;
+    }
+    const e = Math.min(a, U - a);
+    if (e < 34) s += 13 * (1 - e / 34) ** 2 * (0.75 + 0.25 * Math.min(1, v / 40));
+    ctx.shape = s;
+    // (meters)
+    const am = a / 64, h = v / 64, D = this.D * T;
+    const x = wall === 'n' || wall === 's' ? am : wall === 'w' ? 0 : this.W * T, z = wall === 'w' || wall === 'e' ? am : wall === 'n' ? 0 : D;
+    let soot = 0;
+    if (wall === 's' && h > 0.85) soot = Math.max(0, 1 - Math.abs(x - HEARTH_X * T) / (0.75 + (h - 0.85) * 0.5)) * Math.min(1, (h - 0.85) / 0.7) * 0.85;
+    for (const sc of this.sconceSpots) {
+      if (sc.wall !== wall || h < 1.42) continue;
+      const d = Math.abs(am - sc.a * T), w = 0.06 + (h - 1.42) * 0.12;
+      if (d < w) soot = Math.max(soot, (1 - d / w) * Math.max(0, 1 - (h - 1.42) / 0.75) * 0.7);
+    }
+    ctx.soot = soot;
+    ctx.damp = Math.max(0, 1 - Math.hypot(x, z - D) / 1.5);
+    return ctx;
+  }
+
+  /** How far the rock roof vaults up over the plane of the joists at (u, v) (1/64 m voxels, ≤ 0). */
+  roofDome(u, v) {
+    const U = this.W * VPT, V = this.D * VPT;
+    const e = Math.min(u, v, U - u, V - v);
+    const t = Math.max(0, Math.min(1, (e - 8) / 70));
+    return -16 * t * t * (3 - 2 * t) * (0.8 + 0.2 * n2(u / 60, v / 60, 19));
+  }
+
+  /**
    * Light for a texel of a wall or the ceiling (meters, face normal): the baked ambient times the
    * fixed lamps' soft glow, as an [r, g, b] multiplier.
    */
@@ -227,22 +276,28 @@ export class ShellBase {
   // ------------------------------------------------------------ ceiling
   buildCeiling() {
     const { W, D } = this;
-    const U = W * VPT, V = D * VPT, F = 8;
+    const U = W * VPT, V = D * VPT, F = 26;
     const seed = 31;
     const depth = new Int16Array(U * V);
     const tex = new Uint8Array(U * V * 4);
     const bake = this.texelBaker();
     const jo = this.joists.map((x) => x * VPT);
-    // where the roof was patched long ago: a square of newer boards, nailed over
-    const px = Math.min(U - 60, 3.3 * VPT), pz = Math.min(V - 50, 3.4 * VPT);
+    // where the roof was patched long ago: a square of newer boards, nailed over (up in the vault)
+    const px = Math.min(U - 60, 3.3 * VPT), pz = Math.min(V - 50, 3.4 * VPT), pr = Math.round(this.roofDome(px, pz)) + 3;
+    const hx = HEARTH_X * VPT;
     for (let v = 0; v < V; v++) for (let u = 0; u < U; u++) {
       const q = u + v * U;
-      let [c, rel] = ceilVoxel(u, v, seed, jo);
+      const dome = this.roofDome(u, v);
+      let [c, rel] = ceilVoxel(u, v, seed, jo, true, dome);
       const gr = hash2(Math.floor(u / 9), v, 41);
       if (gr < 0.16) c = mulc(c, 0.92); else if (gr > 0.92) c = mulc(c, 1.06);
       const ax = Math.abs(u + 0.5 - px), az = Math.abs(v + 0.5 - pz);
-      if (rel < 3 && ax < 30 && az < 26) { c = (az > 24 || ax > 28) ? 0x3e2616 : mulc(0x8a6440, 0.92 + ((v >> 3) % 2) * 0.06 + (hash2(u >> 3, v, 5) < 0.1 ? -0.08 : 0)); rel = 3; if ((ax > 25 || az > 21) && (u + v) % 7 === 0) c = 0x8a8a92; }
-      depth[q] = F + rel;
+      if (rel < 10 && ax < 30 && az < 26) { c = (az > 24 || ax > 28) ? 0x3e2616 : mulc(0x8a6440, 0.92 + ((v >> 3) % 2) * 0.06 + (hash2(u >> 3, v, 5) < 0.1 ? -0.08 : 0)); rel = pr; if ((ax > 25 || az > 21) && (u + v) % 7 === 0) c = 0x8a8a92; }
+      // soot: up over the hearth, and over the oil lamp
+      const sh = Math.hypot((u - hx) / 46, (V - v) / 40), sl = Math.hypot(u - px, v - pz) / 22;
+      if (sh < 1 && rel < 10) c = mulc(c, 0.3 + sh * 0.7);
+      else if (sl < 1 && rel < 10) c = mulc(c, 0.6 + sl * 0.4);
+      depth[q] = Math.max(1, F + rel);
       const k = bake(u / 64, CEIL - rel / 64 - 0.01, v / 64, 0, -1, 0);
       const o = q * 4;
       tex[o] = Math.min(255, ((c >> 16) & 255) * k[0]); tex[o + 1] = Math.min(255, ((c >> 8) & 255) * k[1]); tex[o + 2] = Math.min(255, (c & 255) * k[2]); tex[o + 3] = 255;
@@ -264,7 +319,7 @@ export class ShellBase {
     const out = [];
     for (const l of this.lightsT) {
       const power = { sconce: 0.3, hanging: 0.3, lamp: 0.45, window: 0.8, arch: 0.45, lantern: 0.45, hearth: 0.6 }[l.kind] ?? 0.4;
-      const radius = { sconce: 1.5, hanging: 1.6, lamp: 2.4, window: 1.5, arch: 1.4, lantern: 1.2, hearth: 2.6 }[l.kind] ?? 1.1;
+      const radius = { sconce: 1.25, hanging: 1.4, lamp: 2.1, window: 1.5, arch: 1.4, lantern: 1.2, hearth: 2.6 }[l.kind] ?? 1.1;
       out.push({ x: l.x * T, y: l.y * T, z: l.z * T, color: l.color, power, radius });
     }
     for (const l of this.extraBake || []) out.push(l);
@@ -275,13 +330,13 @@ export class ShellBase {
   ambientM() {
     const W = this.W * T, D = this.D * T;
     return (x, y, z, nx, ny, nz, out) => {
-      let k = 0.7; // (a nook in a cave: dimmer than the old bedroom)
+      let k = 0.64; // (a nook in a cave: dimmer than the old bedroom)
       if (y > 1.3) k *= Math.max(0.42, 1 - (y - 1.3) * 0.62);
       if (y < 0.3) k *= 0.8 + y * 0.66;
       const de = Math.min(x, z, W - x, D - z), dc = Math.min(Math.hypot(x, z), Math.hypot(W - x, z), Math.hypot(x, D - z), Math.hypot(W - x, D - z));
       if (dc < 0.9) k *= 0.7 + dc * 0.33;
       if (de < 0.4 && y > 1.4) k *= 0.85 + de * 0.37;
-      out[0] = k * 0.9; out[1] = k * 0.92; out[2] = k; // (cool shade: the hearth and lanterns are the warm)
+      out[0] = k * 0.74; out[1] = k * 0.84; out[2] = k; // (cold blue shade, as in the camp: the hearth and lanterns are the warm)
     };
   }
 }

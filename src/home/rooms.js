@@ -21,7 +21,7 @@ export class RoomCull {
     }
     this.groups = new Map([['camp', Object.values(s.cave.roomMeshes || {}).flat()]]);
     const sh = s.shell;
-    this.groups.set('bedroom', [sh.wallMesh, sh.ceilMesh, sh.floorMesh, ...(sh.decorMeshes || [])].filter(Boolean));
+    this.groups.set('bedroom', [sh.wallMesh, sh.ceilMesh, sh.floorMesh, sh.grimeMesh, ...(sh.decorMeshes || [])].filter(Boolean));
     for (const list of this.groups.values()) for (const m of list) m.userData.ink = m.layers.isEnabled(LAYER_OUTLINE);
     this.ink = new Set();
     this.frustum = new THREE.Frustum();

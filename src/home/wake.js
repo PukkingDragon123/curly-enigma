@@ -6,9 +6,9 @@
 // head rolling on the pillow; a third, and his camp comes into focus: the fire (the room's own hearth
 // when there is one, else the home's cooking fire: questSpot('hearth')), and Old Star crouched at it
 // with a poker, his back to you. He hears you stir, straightens up, turns round, and the view eases
-// in on him while he talks (each line waits for you): who he is, how you came tumbling down, the
-// million gold for the way up, his offer to teach you. Then you sit up and get out of your cot, and
-// the tutorial at home takes over (lessons.js: look, walk, talk, follow him to the cage lift). The overlay (WakeFx) draws the lids as a dark mask with soft edges and
+// in on him while he talks (three short lines, each waits for you): who he is and how you came
+// tumbling down, the million gold for the way up, his offer to teach you. Then you sit up and get out
+// of your cot, and the tutorial at home takes over (lessons.js: look, walk over, talk to him). The overlay (WakeFx) draws the lids as a dark mask with soft edges and
 // lashes, warm where the light comes through them; only the world (the canvas) is ever blurred, never
 // the interface. Sets the flag fallen, starts the `lessons` quest and emits lesson { step: 'wake' }
 // (and talk oldstar), as before.
@@ -318,16 +318,16 @@ export class HomeWake {
       // ---- dark, light glowing red through the lids, a heartbeat; then a crack of warm light on the
       // beams, blurred, slowly widening... and shut again
       glowTo(0.7, 1.4);
-      await go(sleep(0.3));
+      await go(sleep(0.2));
       heartbeat(a, 2);
       await go(lids(0.05, 0.9));
-      await go(sleep(0.5));
+      await go(sleep(0.33));
       breath(a, 0.04);
       clear(0.2, 2);
       await go(lids(0.2, 1.1));
-      await go(sleep(0.7));
+      await go(sleep(0.45));
       await go(lids(0.02, 0.6));
-      await go(sleep(0.9));
+      await go(sleep(0.59));
       // ---- the second, longer: the head rolls toward the fire, Old Star hums to himself
       heartbeat(a, 1, 0.1);
       clear(0.45, 2.2);
@@ -335,12 +335,12 @@ export class HomeWake {
       look(0.25, -0.18, 2.6);
       await go(lids(0.42, 1.0));
       if (star?.rig) a.play('babble', { pitch: 150, n: 3, vol: 0.35 });
-      await go(sleep(0.9));
+      await go(sleep(0.59));
       await go(lids(0.12, 0.45));
       await go(lids(0.36, 0.5));
-      await go(sleep(0.5));
+      await go(sleep(0.33));
       await go(lids(0.0, 0.55));
-      await go(sleep(0.6));
+      await go(sleep(0.39));
       // ---- the third: eyes open, the room comes into focus, the sound comes back
       clear(1, 2.6);
       blurTo(0, 2.4);
@@ -377,12 +377,9 @@ export class HomeWake {
       } else await go(sleep(0.6));
       await line('Ah! You\'re awake. Easy now: the cave likes to spin the first time.', 'happy');
       star?.rig && star.gesture('point', 1.6);
-      await line('You came tumbling down out of the rock last night, straight through my roof. Out cold. I\'m <b>Old Star</b>. That cot\'s yours now.', 'calm');
-      await line('Sixty years I\'ve been stuck down here. The way up is the Surface Express, and a ticket costs a <span class="gold-txt">million gold</span>.', 'worried');
-      star?.rig && star.gesture('cheer', 1.4);
-      await line('So here\'s my offer. I\'ll teach you to <b>dig</b>, to <b>forge</b> and to <b>cook</b>. We earn that million together, and we <b>both</b> ride out of here.', 'proud');
+      await line('You came through my roof last night. I\'m <b>Old Star</b>. Sixty years stuck down here: a ticket up costs a <span class="gold-txt">million gold</span>.', 'worried');
       star?.rig && star.gesture('beckon', 1.6);
-      await line('Up you get, then! Slowly. The floor\'s not going anywhere.', 'happy');
+      await line('So: I teach you to <b>dig</b>, <b>forge</b> and <b>cook</b>, we earn it together, and we <b>both</b> ride out. Up you get!', 'proud');
       // ---- sit up and get out of bed (on its side)
       this.wakeSway = null;
       sway.amp = 0;
@@ -482,7 +479,7 @@ export class HomeWake {
       star.nextT = 999;
       star.faceTo(this.rig.player.pos.x, this.rig.player.pos.z);
     }
-    // and now the tutorial: look, walk, talk, follow him to the lift (lessons.js)
+    // and now the tutorial: look, walk over, talk to him (lessons.js)
     if (this.startHomeTutor) this.startHomeTutor('look');
     else if (star?.rig) this.later(1.6, () => this.placeStarForLesson());
   }

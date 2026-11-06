@@ -1,29 +1,28 @@
-// The onboarding layer (game.ui.onboard): everything the forced, cinematic tutorial draws on top of
-// the game, per device. Scenes (home/wake.js, home/lessons.js, deep/Prologue.js, forge/tutorial.js,
-// cooking/lesson.js) drive it; it never decides what the lesson is.
-//   - The tutorial UI level: which HUD pieces have been introduced (TUT below). Pieces not introduced
-//     yet are hidden (#ui.obh-<piece>); each one that comes in pops in with a reveal and a name tag.
-//     ui.setTutorialLevel(n) (UI.js) → onboard.setLevel(n). Saved in state.data.onboard.level; a save
-//     without that key is at the full level (everything shows, as before the tutorial existed).
+// The onboarding layer (game.ui.onboard): the little the tutorial draws on top of the game, per
+// device. Scenes (home/wake.js, home/lessons.js, deep/FirstDig.js, forge/tutorial.js,
+// cooking/lesson.js) drive it; it never decides what the lesson is. It stays out of the way: the big
+// moments are marked in the 3D world (camera moves, Old Star's gestures, sparks, light, sound), never
+// with cards, stamps or confetti.
+//   - The tutorial UI level: which HUD pieces have come in yet (TUT below). Pieces not in yet are
+//     hidden (#ui.obh-<piece>); one that comes in fades up quietly. ui.setTutorialLevel(n) (UI.js) →
+//     onboard.setLevel(n). Saved in state.data.onboard.level; a save without that key is at the full
+//     level (everything shows, as before the tutorial existed). The quest strip waits for FULL: during
+//     the lessons the objective is goal()'s one line.
+//   - goal(html): one short objective line at the top of the screen ("Talk to Old Star"); goal(null)
+//     hides it, goalDone() ticks it off (a soft chime, a green tick, it fades).
 //   - cinema(on, { skip }): letterbox bars over a cutscene, the HUD tucked away, and a "hold to skip"
 //     ring (hold Space / Enter / E, or hold the ring on a touch screen; a tap never skips).
-//   - teach(id, opts): a prompt card for one control, drawn per device (key caps and a mouse on a
-//     PC, the real touch control lit with a ring and a pointing paw on a phone), with a meter that
-//     fills from opts.progress() and a stamp when it's done. Resolves when done (or closed).
-//   - spot(target): a ring pulse and a pointing paw on a real control or HUD piece.
-//   - mark(pos): a bobbing marker over a place in the world (clamped to the screen edge).
+//   - teach(id, opts): a small prompt for one control, drawn per device (key caps / the mouse on a PC,
+//     the touch control's own art on a phone, whose real control gets a soft pulsing ring), with a
+//     thin meter fed by opts.progress(). When it's done it ticks green and fades. Resolves when done
+//     (or closed).
+//   - spot(target): a pulsing ring on a real control or HUD piece.
+//   - mark(pos): a small bobbing marker over a world point (an arrow at the edge when off screen).
+//     The lessons mostly use a 3D glint in the world instead (lessons.js / FirstDig.js).
 //   - talk(html, opts, fallback): Old Star's lines go through game.convo when it exists, else fallback().
-//   - chapter(n, title, sub): a lesson's title card (big carved letters dropping in, a rule, a chime).
-//   - lessonDone(n, title, sub): the same card comes back and a red LEARNED stamp slams onto it, a
-//     fanfare, confetti sparks; the lesson's medal is kept (state.data.onboard.medals).
-//   - graduate(title, sub): the end of the lessons: the four medals pop in one by one, a stamp,
-//     confetti and a fanfare.
-//   - caption(title, sub): a film caption for a place (top left, under the bar), fades by itself.
-//   - toss(from, icon, to): something thrown to you (Old Star's coal, the copper, his chisel): a
-//     pixel icon arcs from a screen point (or a world point) to a HUD piece and lands with a pop.
-//   - confetti(x, y, n): a burst of pixel confetti and sparks at a screen point.
-// None of these block input; each resolves when it's gone.
-// Test hooks: ui.onboard.debug.{ state(), level(n), complete(), skip(), hidden(), history(), cinema(on), medals() }.
+//   - caption(title, sub): a film caption for a place (under the top bar), fades by itself.
+// None of these block input.
+// Test hooks: ui.onboard.debug.{ state(), level(n), complete(), skip(), hidden(), history(), cinema(on), goal() }.
 import { el, clamp } from '../core/util.js';
 import { Px, art } from './uiArt.js';
 import { SPR } from './uiSprites.js';
@@ -38,7 +37,7 @@ const PIECES = [
   ['xh', TUT.LOOK, '.xh', null],
   ['stick', TUT.WALK, '.tc-stick', null],
   ['use', TUT.USE, '.tc .d-use, .tc .b-use', null],
-  ['quest', TUT.QUEST, '.qt, .qm-way, .qm-eye, .qm-pin, .qm-bang', { pc: 'Your task · <kbd>B</kbd>', t: 'Your task' }],
+  ['quest', TUT.FULL, '.qt, .qm-way, .qm-eye, .qm-pin, .qm-bang', { pc: 'Your task · <kbd>B</kbd>', t: 'Your task' }],
   ['belt', TUT.DIG, '.belt', { pc: 'Your tools · <kbd>1</kbd>–<kbd>8</kbd>', t: 'Your tools' }],
   ['dig', TUT.DIG, '.tc-dig', null],
   ['move', TUT.DIG, '.tc .d-jump, .tc .d-crouch, .tc .b-jump', null],
@@ -53,8 +52,6 @@ const PIECES = [
 ];
 
 const isTouch = () => document.documentElement.classList.contains('is-touch');
-/** Set a CSS custom property on an element (el()'s style object can't), and return it. */
-const cssVar = (e, k, v) => { e.style.setProperty(k, String(v)); return e; };
 const KEY_NAME = { Space: 'Space', ShiftLeft: 'Shift', Enter: 'Enter', Escape: 'Esc', Tab: 'Tab' };
 const keyLabel = (code) => KEY_NAME[code] || code.replace(/^Key|^Digit/, '');
 
@@ -109,50 +106,11 @@ function ringSprite(color = 0xffe08a) {
   return p;
 }
 
-/** A four-point sparkle, 9×9. */
-function sparkSprite(color = 0xfff0b0) {
-  const p = new Px(9, 9);
-  p.vl(4, 0, 8, color); p.hl(0, 8, 4, color);
-  p.set(4, 4, 0xffffff); p.set(3, 3, color); p.set(5, 5, color); p.set(3, 5, color); p.set(5, 3, color);
-  return p;
-}
-
-/** A lesson medal on its ribbon (18×26): gold with Old Star's star, or a dim empty socket (lit false). */
-function medalSprite(lit = true, ribbon = 0xc23c2c) {
-  const p = new Px(18, 26);
-  if (lit) {
-    // the ribbon: two tails in a V, a fold where it meets the ring
-    const dk = 0x5a140c, lt = 0xff9a7a;
-    p.poly([[3, 0], [8, 0], [10, 11], [6, 13]], ribbon);
-    p.poly([[10, 0], [15, 0], [12, 13], [8, 11]], ribbon);
-    for (let y = 0; y < 11; y++) { p.set(3 + Math.floor(y * 0.33), y, lt); p.set(14 - Math.floor(y * 0.2), y, dk); }
-    p.rect(7, 10, 4, 3, 0xa8772c);
-  }
-  // the disc
-  const gold = lit ? { hi: 0xfff3c0, lt: 0xf7d97c, base: 0xdcae4e, dk: 0xa8772c, dd: 0x6e4a1a } : { hi: 0x6a5a48, lt: 0x5a4a3a, base: 0x46382c, dk: 0x34281e, dd: 0x241a12 };
-  p.disk(9, 17.5, 7.6, gold.dk);
-  p.disk(9, 17.5, 6.4, gold.base);
-  p.each((x, y, c) => {
-    const t = (x - 9) / 6 + (y - 17.5) / 6;
-    if (c === gold.base && t < -0.75) return gold.lt;
-    if (c === gold.base && t > 0.8) return gold.dk;
-    return undefined;
-  });
-  // Old Star's star (raised, lit from the top left)
-  const star = [[9, 13], [9, 14], [8, 15], [9, 15], [10, 15], [5, 16], [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [12, 16], [13, 16], [7, 17], [8, 17], [9, 17], [10, 17], [11, 17], [7, 18], [8, 18], [9, 18], [10, 18], [11, 18], [6, 19], [7, 19], [11, 19], [12, 19], [6, 20], [12, 20], [5, 21], [13, 21]];
-  for (const [x, y] of star) p.set(x, y, lit ? gold.hi : gold.dk);
-  for (const [x, y] of star) if (lit && !star.some(([a, b]) => a === x && b === y + 1)) p.set(x, y + 1, gold.dk);
-  if (lit) { p.set(5, 13, 0xffffff); p.set(4, 14, gold.hi); }
-  p.outline(INK);
-  return p;
-}
 
 const ART = {
-  medal: (lit, rib) => art('ob:medal:' + (lit ? 1 : 0) + ':' + (rib || ''), () => medalSprite(lit, rib)),
   mouse: (lit) => art('ob:mouse:' + lit, () => mouseSprite(lit)),
   paw: () => art('ob:paw', pawSprite),
   ring: (c) => art('ob:ring:' + (c || ''), () => ringSprite(c)),
-  spark: (c) => art('ob:spark:' + (c || ''), () => sparkSprite(c)),
 };
 
 // ---------------------------------------------------------------- glyphs (the picture on a prompt card)
@@ -202,6 +160,7 @@ export const CONTROLS = {
   circle: { title: 'Stir', pc: { sub: 'Move the mouse in <b>circles</b>', glyph: () => GLYPH.circle() }, t: { sub: 'Draw circles with your finger', glyph: () => GLYPH.circle() } },
 };
 
+
 // ---------------------------------------------------------------- the layer
 export class Onboard {
   constructor(ui) {
@@ -212,7 +171,6 @@ export class Onboard {
     this.prompt = null;
     this.spots = new Set();
     this.marks = new Set();
-    this.queue = [];
     this.hist = [];
     this.pendingReveal = new Set();
     this.layer = el('div', { class: 'ob-layer' });
@@ -228,10 +186,10 @@ export class Onboard {
     window.addEventListener('blur', () => this.held.clear());
     const st = this.game.state;
     st.on('load', () => this.sync());
-    // the lessons end (the last one done, or all skipped): the whole HUD
+    // the lessons end (the last one done, or all skipped): the whole HUD, no objective line
     st.on('act', (a) => {
       if (a?.type !== 'lesson' || !st.data.onboard) return;
-      if (a.step === 'cook_done' || a.step === 'skip') this.setLevel(TUT.FULL);
+      if (a.step === 'cook_done' || a.step === 'skip') { this.setLevel(TUT.FULL); this.goal(null); }
     });
     this.sync(false);
     this.setupDebug();
@@ -255,7 +213,7 @@ export class Onboard {
     this.apply(d ? clamp(d.level | 0, 0, TUT.FULL) : TUT.FULL, reveal);
   }
 
-  /** Raise (or with force, set) the level. New pieces pop in with a reveal and a name tag. */
+  /** Raise (or with force, set) the level. New pieces fade up. */
   setLevel(n, { force = false, reveal = true } = {}) {
     n = clamp(n | 0, 0, TUT.FULL);
     const d = this.data;
@@ -292,62 +250,58 @@ export class Onboard {
     document.head.append(el('style', { 'data-ob': 'levels' }, css));
   }
 
-  /** Play the reveals for pieces that came in (when they can be seen: in first person, no panel). */
+  /** Pieces that came in fade up (when they can be seen: in first person, no panel, no cutscene). */
   revealSoon() {
     clearTimeout(this._revT);
     this._revT = setTimeout(() => {
       if (this.ui.hudMode !== 'deep' || this.panelUp() || this.cine) { this.revealSoon(); return; }
       const names = [...this.pendingReveal];
       this.pendingReveal.clear();
-      let k = 0;
       for (const name of names) {
         const p = PIECES.find((q) => q[0] === name);
         if (!p) continue;
-        const els = [...this.ui.root.querySelectorAll(p[2])].filter((e) => e.getClientRects().length && !e.closest('[hidden]'));
-        if (!els.length) continue;
-        setTimeout(() => this.revealEls(els, p[3]), k++ * 380);
+        for (const e of this.ui.root.querySelectorAll(p[2])) {
+          e.classList.remove('ob-new');
+          void e.offsetWidth;
+          e.classList.add('ob-new');
+          setTimeout(() => e.classList.remove('ob-new'), 1300);
+        }
       }
     }, 260);
   }
 
-  revealEls(els, tag) {
-    const a = this.game.audio;
-    a.play('sparkle', { vol: 0.5 });
-    a.play('ding', { vol: 0.35 });
-    els.forEach((e, i) => {
-      e.classList.remove('ob-new');
-      void e.offsetWidth;
-      e.classList.add('ob-new');
-      setTimeout(() => e.classList.remove('ob-new'), 1400);
-      if (i === 0) this.burst(e.getBoundingClientRect(), tag ? (isTouch() ? tag.t : tag.pc) : null);
-    });
+  // ------------------------------------------------------------ the objective: one short line
+  /**
+   * The one thing to do now, in a few words, at the top of the screen. goal(null) hides it. Changing
+   * it slides the old line out and the new one in. Returns the text.
+   */
+  goal(html, o = {}) {
+    const g = this.goalEl;
+    if (!html) {
+      if (g) { this.goalEl = null; g.classList.add('out'); setTimeout(() => g.remove(), 500); }
+      this.goalHtml = null;
+      return null;
+    }
+    if (g && this.goalHtml === html && !g.classList.contains('done')) return html;
+    if (g) { g.classList.add('out'); setTimeout(() => g.remove(), 500); }
+    const n = el('div', { class: 'ob-goal' + (o.sub ? ' has-sub' : '') }, [el('i', { class: 'ob-goal-dot' }), el('span', { class: 'ob-goal-t', html }), o.sub ? el('small', { html: o.sub }) : null]);
+    this.layer.append(n);
+    void n.offsetWidth;
+    n.classList.add('in');
+    this.goalEl = n;
+    this.goalHtml = html;
+    return html;
   }
 
-  /** A ring and sparkles at a screen rect, and a name tag under it for a moment. */
-  burst(r, tag = null) {
-    if (!r || !r.width) return;
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    const b = el('div', { class: 'ob-burst', style: { left: cx + 'px', top: cy + 'px' } }, [img(ART.ring(), 'ob-burst-ring')]);
-    for (let i = 0; i < 8; i++) {
-      const s = img(ART.spark(), 'ob-burst-spark');
-      const ang = (i / 8) * Math.PI * 2 + Math.random() * 0.4;
-      s.style.setProperty('--dx', Math.cos(ang).toFixed(2));
-      s.style.setProperty('--dy', Math.sin(ang).toFixed(2));
-      s.style.animationDelay = (Math.random() * 0.12).toFixed(2) + 's';
-      b.append(s);
-    }
-    this.layer.append(b);
-    setTimeout(() => b.remove(), 1300);
-    if (tag) {
-      const below = cy < window.innerHeight * 0.6;
-      const t = el('div', { class: 'ob-tag' + (below ? '' : ' up'), html: tag });
-      const x = clamp(cx, 70, window.innerWidth - 70);
-      t.style.left = x + 'px';
-      t.style.top = (below ? r.bottom + 6 : r.top - 6) + 'px';
-      this.layer.append(t);
-      setTimeout(() => t.classList.add('out'), 2600);
-      setTimeout(() => t.remove(), 3100);
-    }
+  /** The objective is met: a soft chime, its dot turns into a green tick, and it fades. */
+  goalDone() {
+    const g = this.goalEl;
+    if (!g || g.classList.contains('done')) return;
+    g.classList.add('done');
+    this.game.audio.play('ding', { vol: 0.35 });
+    this.goalEl = null;
+    this.goalHtml = null;
+    setTimeout(() => { g.classList.add('out'); setTimeout(() => g.remove(), 500); }, 1100);
   }
 
   // ------------------------------------------------------------ cinema: letterbox + hold to skip
@@ -372,9 +326,7 @@ export class Onboard {
         if (!this.skipWrap.isConnected) root.append(this.skipWrap);
         this.skipWrap.append(skipEl);
         this.fitBars();
-        // (the cutscene talk's own bars slide in over these when he talks: the same height and colour, so
-        // they read as one letterbox; its bars(true) isn't asked for, since with no line up it also shows
-        // its empty name label at the top left)
+        // (the cutscene talk's own bars slide in over these when he talks: the same height and colour)
         void c.offsetWidth;
         c.classList.add('on');
         this.cine = { el: c, skipEl, fill, t: 0, skip: null, fired: false, ptr: false };
@@ -385,7 +337,7 @@ export class Onboard {
         root.classList.add('ob-cinema');
       }
       this.cine.skip = opts.skip || null;
-      this.cine.hold = opts.hold ?? 1.1;
+      this.cine.hold = opts.hold ?? 0.9;
       this.cine.fired = false;
       this.cine.t = 0;
       this.cine.skipEl.hidden = !this.cine.skip;
@@ -405,101 +357,7 @@ export class Onboard {
     return null;
   }
 
-  /**
-   * A chapter card for a lesson: "Lesson 2" over its name in big carved letters (dropping in one by
-   * one), a rule drawn out under it, a line beneath, a chime; it holds a moment and fades. Never
-   * blocks input. Returns a promise that resolves when it's gone.
-   */
-  chapter(n, title, sub = '', dur = 3.2) {
-    const card = this.lessonCard(n, title, sub);
-    this.game.audio.play('ding', { vol: 0.8 });
-    this.game.audio.play('page', { vol: 0.4 });
-    return this.holdCard(card, dur);
-  }
-
-  /** The carved title card (chapter, lesson done): small kicker, big letters, a rule, a line. */
-  lessonCard(n, title, sub = '', cls = '') {
-    this.chapterEl?.remove();
-    const letters = el('b', { class: 'ob-chapter-t', 'aria-label': title }, [...String(title)].map((c, i) => cssVar(el('span', { 'aria-hidden': 'true' }, c === ' ' ? '\u00a0' : c), '--i', i)));
-    const card = el('div', { class: 'ob-chapter ' + cls, 'aria-live': 'polite' }, [
-      el('i', { class: 'ob-chapter-glow' }),
-      el('small', {}, typeof n === 'number' ? `Lesson ${n}` : String(n)),
-      letters,
-      el('i', { class: 'ob-chapter-rule' }),
-      sub ? el('span', { class: 'ob-chapter-sub' }, sub) : null,
-    ]);
-    this.layer.append(card);
-    this.chapterEl = card;
-    void card.offsetWidth;
-    card.classList.add('on');
-    return card;
-  }
-
-  holdCard(card, dur) {
-    return new Promise((res) => {
-      setTimeout(() => card.classList.add('off'), dur * 1000);
-      setTimeout(() => { card.remove(); if (this.chapterEl === card) this.chapterEl = null; res(); }, dur * 1000 + 700);
-    });
-  }
-
-  /**
-   * A lesson is over: its card comes back, a red LEARNED stamp slams onto it (a thud, the card
-   * jolts), a fanfare and a burst of confetti sparks. The medal is kept for the graduation.
-   */
-  lessonDone(n, title, sub = '', dur = 3.0) {
-    const d = this.data;
-    if (d && typeof n === 'number') { d.medals ||= []; if (!d.medals.includes(n)) { d.medals.push(n); this.game.state.dirty = true; } }
-    const card = this.lessonCard(n, title, sub, 'done');
-    const stamp = el('i', { class: 'ob-stamp' }, [el('span', {}, 'Learned')]);
-    const medal = img(ART.medal(true), 'ob-chapter-medal');
-    card.append(stamp, medal);
-    const a = this.game.audio;
-    a.play('fanfare', { vol: 0.8 });
-    setTimeout(() => {
-      if (!card.isConnected) return;
-      card.classList.add('stamped');
-      a.play('thud', { vol: 0.9 });
-      a.play('clunk', { vol: 0.5 });
-      a.play('sparkle', { vol: 0.5 });
-      const r = stamp.getBoundingClientRect();
-      this.confetti(r.left + r.width / 2, r.top + r.height / 2, 46);
-    }, 620);
-    return this.holdCard(card, dur);
-  }
-
-  /**
-   * The lessons are all done: "Apprentice" over the four medals (each pops in with a rising chime;
-   * one not earned stays a dim socket), a gold stamp, confetti and a fanfare.
-   */
-  graduate(title = 'Apprentice', sub = '', dur = 4.8) {
-    const got = new Set(this.data?.medals || [1, 2, 3, 4]);
-    const card = this.lessonCard('Old Star\'s lessons', title, sub, 'grad');
-    const names = ['The Pick', 'The Dig', 'The Forge', 'The Hearth'];
-    const row = el('div', { class: 'ob-medals' }, names.map((nm, i) => cssVar(el('figure', { class: 'ob-medal' + (got.has(i + 1) ? '' : ' none') }, [img(ART.medal(got.has(i + 1), [0xc23c2c, 0x3f7ec8, 0x5a9a3a, 0xd9901e][i]), 'ob-medal-img'), el('figcaption', {}, nm)]), '--i', i)));
-    const stamp = el('i', { class: 'ob-stamp gold' }, [el('span', {}, 'Graduated')]);
-    card.append(row, stamp);
-    const a = this.game.audio;
-    a.play('fanfare', { vol: 0.9 });
-    names.forEach((_, i) => setTimeout(() => {
-      if (!card.isConnected) return;
-      a.tone?.({ f: 660 * Math.pow(2, (i * 3) / 12), type: 'square', dur: 0.14, vol: 0.05, filter: 'lowpass', ff: 3000 });
-      a.play('ding', { vol: 0.35 });
-      const m = row.children[i]?.getBoundingClientRect();
-      if (m && got.has(i + 1)) this.confetti(m.left + m.width / 2, m.top + m.height * 0.4, 10, { up: 0.6 });
-    }, 700 + i * 330));
-    setTimeout(() => {
-      if (!card.isConnected) return;
-      card.classList.add('stamped');
-      a.play('thud', { vol: 0.9 });
-      a.play('firework', { vol: 0.6 });
-      a.play('success', { vol: 0.6 });
-      const r = card.getBoundingClientRect();
-      this.confetti(r.left + r.width / 2, r.top + r.height * 0.45, 70, { spread: 1.6 });
-    }, 700 + names.length * 330 + 250);
-    return this.holdCard(card, dur);
-  }
-
-  /** A film caption for a place: top left under the bar, a gold rule, letter-spaced. Fades by itself. */
+  /** A film caption for a place: under the top bar, a gold rule, letter-spaced. Fades by itself. */
   caption(title, sub = '', dur = 4) {
     this.captionEl?.remove();
     const c = el('div', { class: 'ob-caption' }, [el('i', { class: 'ob-caption-rule' }), el('b', {}, title), sub ? el('span', {}, sub) : null]);
@@ -511,92 +369,6 @@ export class Onboard {
       setTimeout(() => c.classList.add('off'), dur * 1000);
       setTimeout(() => { c.remove(); if (this.captionEl === c) this.captionEl = null; res(); }, dur * 1000 + 900);
     });
-  }
-
-  /** Pixel confetti and sparks bursting from a screen point and falling. o: { up (0..1), spread }. */
-  confetti(x, y, n = 30, o = {}) {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    const wrap = el('div', { class: 'ob-confetti', style: { left: x + 'px', top: y + 'px' } });
-    const cols = ['#ffd56a', '#fff3c0', '#f6be4a', '#e8604a', '#ff9ab8', '#8ac85a', '#7fc0f0', '#fff'];
-    const up = o.up ?? 1, spread = o.spread ?? 1;
-    for (let i = 0; i < n; i++) {
-      const spark = i % 4 === 0;
-      const b = spark ? img(ART.spark(), 'ob-cf spark') : el('i', { class: 'ob-cf' });
-      const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.25 * spread;
-      const v = (60 + Math.random() * 110) * (0.6 + 0.4 * up);
-      b.style.setProperty('--dx', (Math.cos(ang) * v * 1.3).toFixed(0) + 'px');
-      b.style.setProperty('--dy', (Math.sin(ang) * v).toFixed(0) + 'px');
-      b.style.setProperty('--fall', (90 + Math.random() * 140).toFixed(0) + 'px');
-      b.style.setProperty('--r', ((Math.random() - 0.5) * 900).toFixed(0) + 'deg');
-      b.style.setProperty('--t', (1.1 + Math.random() * 0.9).toFixed(2) + 's');
-      if (!spark) { b.style.background = cols[i % cols.length]; if (i % 3 === 0) b.classList.add('long'); }
-      b.style.animationDelay = (Math.random() * 0.08).toFixed(2) + 's';
-      wrap.append(b);
-    }
-    this.layer.append(wrap);
-    setTimeout(() => wrap.remove(), 2400);
-  }
-
-  /**
-   * Something thrown to you: a pixel icon arcs from `from` (screen { x, y }, or a function giving a
-   * world point, put on screen through the scene's camera) to `to` (a HUD piece: 'pack' 'belt' 'book'
-   * …, an element, or a screen point), spinning, and lands with a pop, a sparkle and a little bump of
-   * the piece it lands on. Resolves when it lands.
-   */
-  toss(from, src, to = 'pack', o = {}) {
-    let p0 = from;
-    if (typeof from === 'function') {
-      try { const w = from(); const s = w && this.game.scene?.toScreen?.(w); p0 = s && s.visible !== false && Number.isFinite(s.x) ? { x: s.x, y: s.y } : null; } catch (e) { p0 = null; }
-    }
-    const W = window.innerWidth, H = window.innerHeight;
-    if (!p0 || !Number.isFinite(p0.x)) p0 = { x: W * 0.62, y: H * 0.55 };
-    const node = el('div', { class: 'ob-toss' }, [img(src, 'ob-toss-ic'), el('i', { class: 'ob-toss-sh' })]);
-    this.layer.append(node);
-    this.game.audio.play('whoosh', { vol: 0.35, pitch: 1.3 });
-    return new Promise((res) => {
-      const t = { node, p0, to, t: 0, dur: o.dur ?? 0.85, spin: (Math.random() < 0.5 ? -1 : 1) * (1.5 + Math.random()), res, o };
-      (this.tosses ||= []).push(t);
-      this.placeToss(t);
-    });
-  }
-
-  tossTarget(t) {
-    const to = t.to;
-    if (to && typeof to === 'object' && !(to instanceof Element) && Number.isFinite(to.x)) return { x: to.x, y: to.y, el: null };
-    const e = to instanceof Element ? to : this.resolveTarget(to);
-    const r = e?.getBoundingClientRect?.();
-    if (r && r.width > 2) return { x: r.left + r.width / 2, y: r.top + r.height / 2, el: e };
-    // (that piece isn't on screen: into your paws, low in the middle)
-    return { x: window.innerWidth / 2, y: window.innerHeight * 0.86, el: null };
-  }
-
-  placeToss(t) {
-    const k = clamp(t.t / t.dur, 0, 1);
-    const q = this.tossTarget(t);
-    const x = t.p0.x + (q.x - t.p0.x) * k;
-    const lift = Math.min(window.innerHeight * 0.32, 80 + Math.abs(q.x - t.p0.x) * 0.25);
-    const y = t.p0.y + (q.y - t.p0.y) * k - Math.sin(k * Math.PI) * lift;
-    const sc = 1.5 - 0.7 * k + Math.sin(k * Math.PI) * 0.35;
-    t.node.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
-    t.node.firstChild.style.transform = `translate(-50%, -50%) scale(${sc.toFixed(3)}) rotate(${(t.spin * k * 360).toFixed(0)}deg)`;
-    return q;
-  }
-
-  tickTosses(dt) {
-    if (!this.tosses?.length) return;
-    for (const t of [...this.tosses]) {
-      t.t += dt;
-      const q = this.placeToss(t);
-      if (t.t < t.dur) continue;
-      this.tosses.splice(this.tosses.indexOf(t), 1);
-      t.node.remove();
-      const a = this.game.audio;
-      a.play('pickup', { vol: 0.6 });
-      a.play('sparkle', { vol: 0.35 });
-      this.burst({ left: q.x - 10, top: q.y - 10, width: 20, height: 20, bottom: q.y + 10 }, t.o.label || null);
-      if (q.el) { q.el.classList.remove('ob-bump'); void q.el.offsetWidth; q.el.classList.add('ob-bump'); setTimeout(() => q.el.classList.remove('ob-bump'), 600); }
-      t.res();
-    }
   }
 
   /** The bars are as tall as the cutscene talk's (src/ui/Convo.js), so one hands over to the other unseen. */
@@ -612,7 +384,7 @@ export class Onboard {
     if (!c || !c.skip || c.fired) return;
     // (keys count while the cutscene talk holds the player, not under a menu or a panel)
     const top = this.ui.panelStack[this.ui.panelStack.length - 1];
-    const holding = c.ptr || (this.held.size > 0 && (!top || top.kind === 'convo'));
+    const holding = c.ptr || (this.held.size > 0 && (!top || top.kind === 'convo' || top.closed));
     c.t = holding ? c.t + dt : Math.max(0, c.t - dt * 2.5);
     const k = clamp(c.t / c.hold, 0, 1);
     c.fill.style.setProperty('--k', k.toFixed(3));
@@ -630,12 +402,12 @@ export class Onboard {
 
   // ------------------------------------------------------------ teaching a control
   /**
-   * Show the prompt card for a control (an id from CONTROLS, or a spec). opts:
-   *   progress() → 0..1 (the meter; 1 = done) · done() → bool · title, sub (override) ·
-   *   min (seconds shown before it can be done, default 0.7) · optional (a small card) ·
-   *   spot (override the touch control lit) · onDone().
-   * Returns a handle: { promise, complete(), close(), set(k), el, id }. The promise resolves with
-   * true when done, false when closed.
+   * Show the prompt for a control (an id from CONTROLS, or a spec). opts:
+   *   progress() → 0..1 (the thin meter; 1 = done) · done() → bool · title, sub, subPc, subT (override) ·
+   *   min (seconds shown before it can be done, default 0.5) · optional (a tip) · spot (override the
+   *   touch control lit) · place ('low' | 'left') · onDone().
+   * Returns a handle: { promise, complete(), close(), set(k), el, id, done, settled }. The promise
+   * resolves with true when done, false when closed.
    */
   teach(id, opts = {}) {
     const base = CONTROLS[id] || { title: opts.title || id, pc: {}, t: {} };
@@ -650,14 +422,13 @@ export class Onboard {
     const sub = el('span', { class: 'ob-sub', html: spec.sub });
     const fill = el('i', { class: 'ob-fill' });
     const meter = el('div', { class: 'ob-meter', hidden: !opts.progress }, [fill]);
-    const seal = img(SPR.seal('green', 'check'), 'ob-seal');
     const lock = el('span', { class: 'ob-lockhint', hidden: true, html: 'Click the view first' });
-    const card = el('div', { class: 'ob-card' }, [glyph, el('div', { class: 'ob-txt' }, [title, sub, lock, meter]), seal]);
+    const card = el('div', { class: 'ob-card' }, [glyph, el('div', { class: 'ob-txt' }, [title, spec.sub ? sub : null, lock]), meter]);
     const wrap = el('div', { class: 'ob-prompt' + (opts.optional ? ' optional' : '') + (touch ? ' touch' : '') + (opts.place ? ' at-' + opts.place : ''), 'data-id': id }, [card]);
     this.layer.append(wrap);
     void wrap.offsetWidth;
     wrap.classList.add('in');
-    this.game.audio.play('page', { vol: 0.3 });
+    this.game.audio.play('ui_hover', { vol: 0.25 });
     const h = {
       id, el: wrap, promise, k: 0, t: 0, done: false, opts, spec, fill, lock,
       set: (k) => { h.k = clamp(k, 0, 1); },
@@ -668,7 +439,7 @@ export class Onboard {
     h.resolve = (v) => { h.settled = true; resolve(v); };
     this.prompt = h;
     this.ui.root.classList.toggle('ob-teach-look', id === 'look');
-    // the real control on a touch screen: ring + paw
+    // the real control on a touch screen: a soft pulsing ring
     if (touch && spec.spot) h.spotH = this.spot(spec.spot, { prompt: true });
     return h;
   }
@@ -679,21 +450,18 @@ export class Onboard {
     h.k = 1;
     h.fill.style.setProperty('--k', '1');
     h.el.classList.add('done');
-    const a = this.game.audio;
-    a.play('success', { vol: 0.45 });
-    a.play('sparkle', { vol: 0.4 });
-    this.burst(h.el.querySelector('.ob-card').getBoundingClientRect());
+    this.game.audio.play('good', { vol: 0.22 });
     h.spotH?.remove();
     const d = this.data;
     if (d && !d.seen.includes(h.id)) { d.seen.push(h.id); this.game.state.dirty = true; }
     this.hist.push(h.id);
-    h.opts.onDone?.();
+    try { h.opts.onDone?.(); } catch (e) { console.warn('[onboard] onDone', e); }
     setTimeout(() => {
       h.el.classList.add('out');
-      setTimeout(() => h.el.remove(), 420);
+      setTimeout(() => h.el.remove(), 380);
       if (this.prompt === h) { this.prompt = null; this.ui.root.classList.remove('ob-teach-look'); }
       h.resolve(true);
-    }, 900);
+    }, 520);
   }
 
   closePrompt(resolveFalse = true) {
@@ -703,9 +471,9 @@ export class Onboard {
     this.ui.root.classList.remove('ob-teach-look');
     h.spotH?.remove();
     h.el.classList.add('out');
-    setTimeout(() => h.el.remove(), 420);
-    if (!h.done && resolveFalse) h.resolve(false);
-    else if (!h.done) h.resolve(false);
+    setTimeout(() => h.el.remove(), 380);
+    if (!h.done) h.resolve(false);
+    void resolveFalse;
   }
 
   /** Has the player been taught this control (this game)? */
@@ -713,18 +481,17 @@ export class Onboard {
 
   // ------------------------------------------------------------ highlights
   /**
-   * A ring pulse and a pointing paw on a real control: a DOM element, a touch control name
-   * ('stick' 'use' 'dig' 'jump' 'crouch' 'block' 'snack' 'tool' 'lookpad'), or a HUD piece
-   * ('pack' 'book' 'radar' 'belt' 'quest' 'menu'), or a selector. Returns { remove() }.
+   * A soft pulsing ring on a real control: a DOM element, a touch control name ('stick' 'use' 'dig'
+   * 'jump' 'crouch' 'block' 'snack' 'tool' 'lookpad'), or a HUD piece ('pack' 'book' 'radar' 'belt'
+   * 'quest' 'menu'), or a selector. 'lookpad': a ghost finger drags across the right half. Returns { remove() }.
    */
   spot(target, o = {}) {
     const ring = img(ART.ring(), 'ob-spot-ring');
-    const ring2 = img(ART.ring(), 'ob-spot-ring r2');
-    const paw = img(ART.paw(), 'ob-spot-paw');
-    const lab = o.label ? el('span', { class: 'ob-spot-label', html: o.label }) : null;
-    const node = el('div', { class: 'ob-spot' + (target === 'lookpad' ? ' lookpad' : '') }, [ring, ring2, paw, lab]);
+    const look = target === 'lookpad';
+    const paw = look ? img(ART.paw(), 'ob-spot-paw') : null;
+    const node = el('div', { class: 'ob-spot' + (look ? ' lookpad' : '') }, [ring, paw]);
     this.layer.append(node);
-    const s = { target, node, paw, o, lit: null, remove: () => { this.spots.delete(s); node.remove(); if (s.lit) { s.lit.classList.remove('ob-lit'); this.ui.touchHi?.(s.lit, false); } } };
+    const s = { target, node, o, lit: null, remove: () => { this.spots.delete(s); node.remove(); if (s.lit) { s.lit.classList.remove('ob-lit'); this.ui.touchHi?.(s.lit, false); } } };
     this.spots.add(s);
     this.placeSpot(s);
     return s;
@@ -742,11 +509,10 @@ export class Onboard {
 
   placeSpot(s) {
     if (s.target === 'lookpad') {
-      // the right half of the screen: a ghost paw drags across it
-      // (below the middle, where the prompt card sits, and clear of the thumbs' buttons)
+      // the right half of the screen, below the middle and clear of the thumbs' buttons
       const tall = window.innerHeight > window.innerWidth;
       s.node.style.left = Math.round(window.innerWidth * (tall ? 0.66 : 0.7)) + 'px';
-      s.node.style.top = Math.round(window.innerHeight * (tall ? 0.7 : 0.72)) + 'px';
+      s.node.style.top = Math.round(window.innerHeight * (tall ? 0.72 : 0.72)) + 'px';
       return;
     }
     const e = this.resolveTarget(s.target);
@@ -758,29 +524,22 @@ export class Onboard {
     const r = e?.getBoundingClientRect?.();
     if (!r || !r.width) { s.node.style.display = 'none'; return; }
     s.node.style.display = '';
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    s.node.style.left = cx + 'px';
-    s.node.style.top = cy + 'px';
-    s.node.style.setProperty('--rs', (Math.max(r.width, r.height) / 26 * 1.25).toFixed(2));
-    // the paw sits on the side toward the middle of the screen, pointing at the control
-    const sx = cx < window.innerWidth / 2 ? 1 : -1, sy = cy < window.innerHeight / 2 ? 1 : -1;
-    const off = Math.max(r.width, r.height) * 0.55 + 14;
-    s.paw.style.setProperty('--px0', (sx * off).toFixed(0) + 'px');
-    s.paw.style.setProperty('--py0', (sy * off).toFixed(0) + 'px');
-    // base sprite points up-left (−1, −1): turn it to point back at the control
-    const rot = sx > 0 && sy > 0 ? 0 : sx < 0 && sy > 0 ? 90 : sx < 0 && sy < 0 ? 180 : 270;
-    s.paw.style.setProperty('--rot', rot + 'deg');
-    s.paw.style.setProperty('--bx', (-sx * 5) + 'px');
-    s.paw.style.setProperty('--by', (-sy * 5) + 'px');
+    s.node.style.left = (r.left + r.width / 2) + 'px';
+    s.node.style.top = (r.top + r.height / 2) + 'px';
+    s.node.style.setProperty('--rs', (Math.max(r.width, r.height) / 26 * 1.2).toFixed(2));
   }
 
   // ------------------------------------------------------------ world markers
-  /** A bobbing marker over a world point (pos() → THREE.Vector3, or null to hide). Returns { remove(), label(html) }. */
+  /**
+   * A small bobbing marker over a world point (pos() → THREE.Vector3, or null to hide). o: { label,
+   * edgeOnly (only an arrow at the screen edge while it's off screen), near (with edgeOnly: the chevron
+   * too while it's further than this, m) }. Returns { remove(), label(html) }.
+   */
   mark(pos, o = {}) {
     const lab = el('span', { class: 'ob-mark-l', html: o.label || '' });
     const node = el('div', { class: 'ob-mark' }, [el('i', { class: 'ob-mark-chev' }), lab, el('i', { class: 'ob-mark-arrow' })]);
     this.layer.append(node);
-    const m = { pos, node, lab, remove: () => { this.marks.delete(m); node.remove(); }, label: (h) => { lab.innerHTML = h || ''; } };
+    const m = { pos, node, lab, edgeOnly: !!o.edgeOnly, near: o.near ?? null, remove: () => { this.marks.delete(m); node.remove(); }, label: (h) => { lab.innerHTML = h || ''; } };
     this.marks.add(m);
     return m;
   }
@@ -797,13 +556,15 @@ export class Onboard {
     let x = s.x, y = s.y, edge = false;
     if (behind) { x = W - s.x; y = H * 0.55; edge = true; if (Math.abs(x - W / 2) < 10) x = W / 2 + (v.x >= 0 ? 1 : -1) * W; }
     if (x < pad || x > W - pad || y < pad + 30 || y > H - pad) edge = true;
+    // (edgeOnly: the thing itself glints in the world; this only points the way when it's off screen,
+    // or, with near, also when it's further off than that (it may be round a corner))
+    if (m.edgeOnly && !edge && (m.near == null || cam.position.distanceTo(p) < m.near)) { m.node.style.display = 'none'; return; }
     const cx = clamp(x, pad, W - pad), cy = clamp(y, pad + 30, H - pad);
     m.node.style.display = '';
     m.node.style.left = cx + 'px';
     m.node.style.top = cy + 'px';
     m.node.classList.toggle('edge', edge);
     if (edge) m.node.style.setProperty('--ang', Math.atan2(y - cy, x - cx).toFixed(3) + 'rad');
-    // its name stays on screen (a marker near an edge slides its label inward)
     const hw = m.lab.offsetWidth / 2;
     const dx = hw ? clamp(cx, hw + 6, W - hw - 6) - cx : 0;
     if (dx !== m.dx) { m.dx = dx; m.lab.style.translate = dx ? `${dx.toFixed(0)}px 0` : ''; }
@@ -829,7 +590,6 @@ export class Onboard {
   // ------------------------------------------------------------ per frame (from ui.update)
   update(dt) {
     this.tickSkip(dt);
-    this.tickTosses(dt);
     const h = this.prompt;
     if (h && !h.done) {
       h.t += dt;
@@ -846,12 +606,14 @@ export class Onboard {
       if (h.lock) h.lock.hidden = !(this.ui.hudMode === 'deep' && !isTouch() && !inp.pointerLocked && !this.ui.isPanelOpen() && (h.id === 'look' || h.spec.mouse !== undefined || h.id === 'walk'));
       let done = h.k >= 1;
       try { if (o.done && o.done()) done = true; } catch (e) { /* noop */ }
-      if (done && h.t >= (o.min ?? 0.7)) this.donePrompt(h);
+      if (done && h.t >= (o.min ?? 0.5)) this.donePrompt(h);
     }
     for (const s of this.spots) this.placeSpot(s);
     for (const m of this.marks) this.placeMark(m);
-    // (prompts step aside under a menu or a talk)
-    this.layer.classList.toggle('panel', this.panelUp());
+    // (prompts step aside under a menu, a talk or a cutscene)
+    const up = this.panelUp();
+    this.layer.classList.toggle('panel', up);
+    this.layer.classList.toggle('cine', !!this.cine);
   }
 
   /** A menu, a panel or a talk is up (a handle already closed doesn't count). */
@@ -863,10 +625,11 @@ export class Onboard {
   /** Everything the layer shows goes (scene change, skip). The level stays. */
   clear() {
     this.closePrompt(true);
-    for (const t of this.tosses || []) { t.node.remove(); t.res(); }
-    this.tosses = [];
     this.captionEl?.remove(); // (a place's caption belongs to its scene)
     this.captionEl = null;
+    this.goalEl?.remove();
+    this.goalEl = null;
+    this.goalHtml = null;
     for (const s of [...this.spots]) s.remove();
     for (const m of [...this.marks]) m.remove();
     this.cinema(false);
@@ -875,7 +638,7 @@ export class Onboard {
   // ------------------------------------------------------------ tests
   setupDebug() {
     this.debug = {
-      state: () => ({ level: this.lvl, saved: this.data?.level ?? null, cinema: !!this.cine, skippable: !!this.cine?.skip, prompt: this.prompt ? { id: this.prompt.id, k: +this.prompt.k.toFixed(2), done: this.prompt.done } : null, spots: this.spots.size, marks: this.marks.size, hidden: this.hidden() }),
+      state: () => ({ level: this.lvl, saved: this.data?.level ?? null, cinema: !!this.cine, skippable: !!this.cine?.skip, prompt: this.prompt ? { id: this.prompt.id, k: +this.prompt.k.toFixed(2), done: this.prompt.done } : null, goal: this.goalHtml || null, spots: this.spots.size, marks: this.marks.size, hidden: this.hidden() }),
       level: (n) => (n === undefined ? this.lvl : this.setLevel(n, { force: true })),
       complete: () => { const h = this.prompt; if (!h) return null; this.donePrompt(h); return h.id; },
       skip: () => { const c = this.cine; if (!c?.skip) return false; const f = c.skip; c.skip = null; c.fired = true; f(); return true; },
@@ -884,11 +647,8 @@ export class Onboard {
       history: () => this.hist.slice(),
       teach: (id) => this.teach(id, {}).id,
       spot: (t) => !!this.spot(t),
+      goal: (h) => (h === undefined ? this.goalHtml || null : this.goal(h)),
       clear: () => this.clear(),
-      medals: () => (this.data?.medals || []).slice(),
-      lessonDone: (n = 1, t = 'The Pick') => (this.lessonDone(n, t, 'Forged your own pickaxe'), true),
-      graduate: () => (this.graduate('Apprentice', 'Dig, forge, cook and sell.'), true),
-      toss: (to = 'pack') => (this.toss({ x: innerWidth * 0.6, y: innerHeight * 0.5 }, SPR.pack(1), to), true),
     };
   }
 }

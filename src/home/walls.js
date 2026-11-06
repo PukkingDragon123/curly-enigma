@@ -11,6 +11,9 @@ import { WALL_V } from './units.js';
 import { n2 } from './surfaces.js';
 
 const WOOD0 = 0x5a3a22;
+
+/** Is this wall style the cave's own rock (the first style, still called wall_dirt in the save)? */
+export const isRockWall = (style) => style === 'wall_dirt' || !WALLS[style];
 export const PLATE = 12; // crown plate height (voxels)
 export const POST_W = 9; // post width (voxels)
 
@@ -48,37 +51,62 @@ function frameVoxel(u, v, seed, post) {
   return null;
 }
 
-const ROCK = [0x5a5550, 0x4c4844, 0x635e57, 0x433f3c, 0x58524a, 0x4e4a45];
+// the camp's own rock (caveShell.js ROCK): grey-blue strata, a brown band or two
+const ROCK = [0x55585c, 0x484b50, 0x5f5e5a, 0x3e4145, 0x5d574f, 0x4b4e53, 0x67635b];
 const GREYW = 0x5e574e; // old timber gone grey
+const CALCITE = 0xa8a294;
+const DIRT0 = 0x4e4234;
 
-/** The cave's rock round your nook, propped by old grey timbers: [color, relief, kind]. */
-function rockWallVoxel(u, v, seed, post) {
-  const H = WALL_V;
-  if (post && post.d <= 4) { // a pit prop: a grey post on a flat stone
+/**
+ * The cave's rock round your nook, cut in the camp's 1/16 m blocks (4 × 4 wall voxels), propped by
+ * old grey timbers: [color, relief, kind]. ctx: { shape (extra relief here: the roof leaning in,
+ * the rounded corners, voxels), soot (0..1), damp (0..1) }.
+ */
+function rockWallVoxel(u, v, seed, post, ctx) {
+  const cu = u >> 2, cv = v >> 2;
+  const h = v / 64; // m over the floor
+  const shape = ctx?.shape || 0;
+  const blk = hash2(cu, cv, seed + 6);
+  // the rock: lumps in whole blocks, like the camp's; the roof leaning in over head height
+  const lump = n2(cu / 5.5, cv / 5.5, seed + 3) * 0.65 + n2(cu / 1.9, cv / 1.9, seed + 4) * 0.35;
+  // (and broad hollows where the rock was dug back further: it only ever goes back from the face, so what hangs on it still hangs)
+  const hollow = Math.min(0, n2(cu / 13, cv / 9, seed + 2) * 2.6 + 0.4) * Math.min(1, v / 30);
+  // (its lumps stand at most a block proud of the face, so pictures and shelves hung on it still sit flat)
+  let rel = 4 * Math.round(0.4 + lump * 1.2 + hollow + shape / 4);
+  if (post && post.d <= 4 && rel < 12) { // a pit prop: a grey post on a flat stone, wedged under the overhang
     const pu = Math.round(post.d * post.side + 4);
-    if (v < 8) return [mulc(0x6a6258, v === 7 ? 1.1 : 0.95), 9, 'stone'];
+    if (v < 8) return [mulc(0x6a6258, v === 7 ? 1.1 : 0.95), 13, 'stone'];
     const edge = pu === 0 || pu === 8;
-    return [edge ? mulc(GREYW, 0.7) : mulc(GREYW, Math.floor(v / 11 + pu) % 3 === 0 ? 0.92 : 1.02), edge ? 7 : 8, 'woody'];
+    let c = edge ? mulc(GREYW, 0.7) : mulc(GREYW, Math.floor(v / 11 + pu) % 3 === 0 ? 0.92 : 1.02);
+    if (v < 20) c = mixc(c, 0x3e4a2a, (20 - v) / 40); // damp creeping up from the floor
+    if (h > 1.5) c = mulc(c, Math.max(0.7, 1 - (h - 1.5) * 0.4));
+    return [c, edge ? 11 : 12, 'woody'];
   }
-  if (v >= H - 9) return [v === H - 9 ? mulc(GREYW, 0.72) : mulc(GREYW, 0.94 + ((v + (u >> 5)) % 3) * 0.04), v === H - 9 ? 6 : 7, 'woodx']; // the crown beam
-  // the rock: lumps, layers, cracks; roots near the top, moss and earth at the foot
-  const lump = n2(u / 21, v / 21, seed + 3) * 0.7 + n2(u / 7, v / 7, seed + 4) * 0.3;
-  let rel = Math.max(0, Math.round(4 + lump * 5));
-  const band = Math.floor((v + 7 * n2(u / 45, 1.5, seed + 5)) / 13);
+  // strata that wander, blocky shading, darker up high
+  const band = Math.floor((h + 0.14 * n2(cu / 10, 1.5, seed + 5)) / 0.2);
   let c = ROCK[((band % ROCK.length) + ROCK.length) % ROCK.length];
-  const b = hash2(u >> 2, v >> 2, seed + 6);
-  c = mulc(c, b < 0.2 ? 0.88 : b > 0.85 ? 1.1 : 1);
-  const crack = Math.abs(n2(u / 11, v / 11, seed + 7));
-  if (crack < 0.05) { c = 0x2a2420; rel = Math.max(0, rel - 3); }
-  if (v < 18 && hash2(u >> 2, v >> 2, seed + 8) < 0.3) c = v < 9 ? 0x4a3a2a : 0x4a5a30; // earth, moss
-  if (v > H - 34 && (u * 7 + seed) % 41 < 2 && hash2(u, v >> 3, seed + 9) < 0.7) { c = 0x3e2c1e; rel += 1; } // root hairs
-  if (v > 60 && v < H - 30 && hash2(u >> 3, v >> 3, seed + 10) < 0.02) c = 0x7ae0c8; // a speck of glow-moss
+  c = mulc(c, blk < 0.15 ? 0.91 : blk > 0.88 ? 1.07 : 1);
+  if (h > 1.4) c = mulc(c, Math.max(0.7, 1 - (h - 1.4) * 0.3));
+  // long cracks, set back
+  const crack = Math.abs(n2(cu / 7, cv / 3.5, seed + 7) + 0.3 * n2(cu / 2, cv / 2, seed + 8));
+  if (crack < 0.02) { c = mulc(c, 0.5); rel -= 4; } else if (crack < 0.045) c = mulc(c, 0.78);
+  const col = hash2(cu, 0, seed + 70); // one per column of blocks: streaks that run down the rock
+  const damp = ctx?.damp || 0;
+  if (damp > 0.2 && h > 0.25 && col < 0.25 + damp * 0.35 && hash2(cu, v >> 4, seed + 71) < 0.7) c = mixc(c, CALCITE, 0.3 + (col < 0.1 ? 0.25 : 0)); // flowstone
+  else if (col < 0.05 && h > 0.2) c = mulc(c, 0.74); // a dark seep
+  if (h < 0.7 && damp > 0.3 && hash2(cu >> 1, cv >> 1, seed + 66) < damp * 0.8) c = hash2(cu, cv, seed + 67) < 0.5 ? 0x4a5e30 : 0x3e5028; // moss
+  else if (h < 0.3 && hash2(cu, cv, seed + 72) < 0.35) c = mixc(c, hash2(cu, cv, seed + 73) < 0.4 ? 0x3e5028 : DIRT0, 0.55); // dirt and damp green at the foot
+  else if (hash2(cu, cv, seed + 74) < 0.012) c = hash2(cu, cv, seed + 75) < 0.5 ? 0x7c8670 : 0x8e8a76; // lichen
+  if (v > WALL_V - 40 && (u * 7 + seed) % 43 < 2 && hash2(u, v >> 3, seed + 9) < 0.6) { c = 0x3e2c1e; rel += 1; } // root hairs
+  if (ctx?.soot) c = mixc(c, 0x16120f, Math.min(0.85, Math.round(ctx.soot * 5) / 5));
+  // rubble humps along the foot
+  if (v < 8 && n2(cu / 2.2, 3.3, seed + 31) > 0.2) { rel = Math.max(rel, 8); c = mulc(ROCK[(cu * 3) % ROCK.length], 0.9); }
   return [c, rel, 'rock'];
 }
 
 /** [color, relief] for wall voxel (u along, v up) in style id. relief in voxels (+ = sticks out). */
-export function wallVoxel(style, u, v, seed, n, post) {
-  if (style === 'wall_dirt' || !WALLS[style]) return rockWallVoxel(u, v, seed, post);
+export function wallVoxel(style, u, v, seed, n, post, ctx) {
+  if (isRockWall(style)) return rockWallVoxel(u, v, seed, post, ctx);
   const w = WALLS[style] || WALLS.wall_dirt;
   const c = w.color;
   const H = WALL_V;
@@ -215,7 +243,7 @@ export function nearestPost(posts, u) {
  * The ceiling deck seen from below: [color, relief] at (u along x, v along z) in voxels.
  * joists: joist centre u positions. Boards run along x, 10 voxels wide; joists run along z.
  */
-export function ceilVoxel(u, v, seed, joists, rock = true) {
+export function ceilVoxel(u, v, seed, joists, rock = true, dome = 0) {
   // joists: 10 voxels wide, standing 11 voxels below the boards (old grey timbers under the rock)
   for (let i = 0; i < joists.length; i++) {
     const d = u + 0.5 - joists[i];
@@ -223,17 +251,19 @@ export function ceilVoxel(u, v, seed, joists, rock = true) {
       const edge = Math.abs(d) > 4;
       const g = Math.floor(v / 13 + i * 3) % 4 === 0 ? 0.93 : 1;
       if (v % 61 === 30 && Math.abs(d) < 1) return [0x3a3a44, 12]; // an iron dog spike
-      if (rock) return [edge ? 0x34302a : mulc(GREYW, g), edge ? 10 : 11];
+      if (rock) return [edge ? 0x34302a : mulc(GREYW, g * (hash2(i, v >> 5, seed + 3) < 0.2 ? 0.86 : 1)), edge ? 10 : 11];
       return [edge ? mulc(0x3e2616, 1) : mulc(0x5e3c22, g * sp3(u, v, 7, seed, 0.06, 0.08)), edge ? 10 : 11];
     }
   }
   if (rock) {
-    // the cave's roof: lumpy dark rock, cracks, roots poking through
-    const lump = n2(u / 19, v / 19, seed + 13) * 0.7 + n2(u / 6, v / 6, seed + 14) * 0.3;
-    let c = mulc(ROCK[Math.floor(hash2(u >> 3, v >> 3, seed + 15) * ROCK.length)], 0.82);
-    if (Math.abs(n2(u / 10, v / 10, seed + 16)) < 0.05) c = 0x241e1a;
+    // the cave's roof in the camp's blocks: lumpy dark rock vaulting up between the joists, cracks, roots
+    const cu = u >> 2, cv = v >> 2;
+    const lump = n2(cu / 4.8, cv / 4.8, seed + 13) * 0.7 + n2(cu / 1.7, cv / 1.7, seed + 14) * 0.3;
+    let c = mulc(ROCK[Math.floor(hash2(cu >> 1, cv >> 1, seed + 15) * ROCK.length)], 0.74 * (hash2(cu, cv, seed + 18) < 0.2 ? 0.88 : 1));
+    let rel = 4 * Math.round((3 + lump * 5 + dome) / 4);
+    if (Math.abs(n2(cu / 2.6, cv / 2.6, seed + 16)) < 0.06) { c = 0x241e1a; rel -= 4; }
     if ((u * 5 + v * 3) % 53 < 2 && hash2(u >> 2, v >> 2, seed + 17) < 0.5) c = 0x3e2c1e;
-    return [c, Math.max(0, Math.round(3 + lump * 4))];
+    return [c, rel];
   }
   const row = Math.floor(v / 10), lv = v % 10;
   const off = (row * 53) % 140;

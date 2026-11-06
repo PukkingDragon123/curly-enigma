@@ -97,6 +97,11 @@ export function wornSteps(w = 64, n = 3, rh = 11, td = 19, seed = 43) {
         let c = st(x, y, z);
         if (y === t - 1) c = mixc(c, 0xb8ae9c, mid * 0.6); // polished pale in the middle
         if (z === z0 + td - 1 && y === t - 1) c = mulc(c, 1.1); // the nosing
+        // moss and grit in the corners nobody treads, the damp line at the foot of each riser
+        const edge = Math.min(x - 1, w + 2 - x);
+        if (y === t - 1 && edge < 6 && hash2(x, z, seed + 9) < (6 - edge) / 9) c = hash2(x, z, seed + 10) < 0.5 ? 0x4a5a30 : 0x3e4a28;
+        else if (y === t - 1 && hash2(x, z, seed + 11) < 0.04) c = mulc(c, 0.72);
+        if (y < 2 && z === z0 + td - 1) c = mulc(c, 0.7);
         g.set(x, y, z, c);
       }
     }

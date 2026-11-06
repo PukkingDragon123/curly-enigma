@@ -120,7 +120,8 @@ export function makePlan(seed, opts = {}) {
     return L;
   };
   const L0 = addLift('L0', 'Mine entrance', W / 2, -7, D / 2 - 4, 1);
-  // Old Star's dig: where the mole lands after the fall, a crawl away from the mine entrance
+  // Old Star's old copper dig: a grotto a short crawl from the mine entrance, where a new miner
+  // finds their first copper (gen/prologue.js; its seams are a real ore area, added at the end)
   plan.prologue = { x: L0.x + 6, y: L0.y - 1.5, z: L0.z - 6 };
   plan.features.push({ kind: 'prologue', ...plan.prologue, to: { x: L0.x + 1.4, y: L0.y, z: L0.z - 1.4 }, lift: { x: L0.x, y: L0.y, z: L0.z } });
   // the cave network (gen/network.js): chambers joined by passages, like a dungeon nature dug.
@@ -205,6 +206,14 @@ export function makePlan(seed, opts = {}) {
   for (const f of plan.features) aabbOf(f);
   // lakes get a watertight shell and hold water only below rooms carved into them (fluids/lakes.js)
   settleLakes(plan, zoneAt, caveDensity);
+  // the copper in Old Star's old dig: real deposits (the mining lesson's first copper). Added last,
+  // so every other area keeps its id (deposit ids are saved).
+  const PF = plan.features.find((f) => f.kind === 'prologue');
+  if (PF && ORE_ID.copper_ore !== undefined) {
+    const PL = prologueLayout(PF);
+    plan.areas.push({ id: 'cu0', item: 'copper_ore', oreId: ORE_ID.copper_ore, x: PL.o.x - 2, y: PL.o.y + 1, z: PL.o.z + 3, r: 7, zone: 1, seam: true, tutor: true,
+      deposits: PL.seams.map((d, i) => ({ x: d.x, y: d.y, z: d.z, r: d.r, q: d.q, seed: 7001 + i * 131 })) });
+  }
   return plan;
 }
 
@@ -767,7 +776,7 @@ export class ChunkGen {
     const p = this.plan, seed = p.seed;
     const P = this.patch;
     const C2 = CS * CS;
-    // Old Star's dig is dressed by the story (src/deep/Prologue.js): no moss, vines or spikes there
+    // nothing grows in the crawl to Old Star's old dig (gen/prologue.js): the way through stays clear
     if (this.pro === undefined) this.pro = p.features.find((f) => f.kind === 'prologue') || null;
     const pf = this.pro, pbb = pf && pf.bb;
     const PL = pbb && !(pbb[3] < X0 / VOX || pbb[0] > (X0 + CS) / VOX || pbb[4] < Y0 / VOX || pbb[1] > (Y0 + CS) / VOX || pbb[5] < Z0 / VOX || pbb[2] > (Z0 + CS) / VOX) ? prologueLayout(pf) : null;

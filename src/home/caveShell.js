@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { VoxelGrid, M32, G32, group, mulc, mixc } from '../iso/kit.js';
 import { hollowSD, lean, ceilAt, walkable, n2, n3, hash3, HOLE_SHAFT, FY } from './plan.js';
-import { T, SHAFT, ARCH, HALL, STAIRS } from './units.js';
+import { T, SHAFT, ARCH, HALL, STAIRS, floorAt } from './units.js';
 
 /** Voxels per meter (1/16 m: the mine's blocks). */
 export const CV = 16;
@@ -95,16 +95,19 @@ export function buildCaveRock() {
     // rubble humps along the foot of the walls (a voxel or two over the floor)
     const rub = d0 > -0.42 && d0 < 0 ? (n2(x * 4.1, z * 4.1, 31) > 0.15 ? (d0 > -0.2 ? 2 : 1) : 0) : 0;
     const sill = Math.abs(x - ARCH.x) <= 0.44 && z > HALL.z1 - 0.01; // the arch's threshold, up at your nook's floor
+    // up the passage the walls don't lean in from the camp's floor: a round-topped tunnel over the steps
+    const pt = Math.abs(x - ARCH.x) < 0.7 ? Math.max(0, Math.min(1, (z + 1.3) / 0.35)) : 0, lf = pt ? floorAt(x, z) - FY : 0;
     for (let iy = 0; iy < ny; iy++) {
       let s;
       if (iy < FLOOR) s = true; // the floor
       else if (sill && iy < FLOOR + 8) s = true;
       else {
         const h = (iy + 0.5) / CV - (FLOOR / CV);
+        const hp = h - lf, L = pt ? lean(h) * (1 - pt) + (hp < 0.8 ? 0 : ((hp - 0.8) / 0.46) ** 2 * 0.44) * pt : lean(h);
         if (iy >= top) s = true;
-        else if (d0 + lean(h) > 0.55) s = true;
-        else if (d0 + lean(h) < -0.35) s = iy < FLOOR + rub;
-        else s = d0 + lean(h) + 0.1 * n3(x * 2.6, h * 2.6, z * 2.6, 32) > 0 || iy < FLOOR + rub;
+        else if (d0 + L > 0.55) s = true;
+        else if (d0 + L < -0.35) s = iy < FLOOR + rub;
+        else s = d0 + L + 0.1 * (1 - pt * 0.6) * n3(x * 2.6, h * 2.6, z * 2.6, 32) > 0 || iy < FLOOR + rub;
       }
       if (s) solid[idx(ix, iy, iz)] = 1;
     }

@@ -109,12 +109,19 @@ const BUILDERS = { rock: 'buildRock', west: 'buildWest', east: 'buildEast', ways
  * The camp's fixed lights (m): the fire pit, the forge, the lanterns, candles, the hole's grey light,
  * the glow in the damp corners. Every job bakes with them (the 'rock' job hands them to the scene).
  */
+/** The lantern at the foot of the steps up the passage (m): on a hook in the rock beside its mouth, facing the camp (its foot y over the floor). */
+const PASS_LAMP = (() => {
+  let x = ARCH.x - 0.78, z = -0.95;
+  for (let i = 0; i < 80 && hollowSD(x, z) + lean(1.1) < -0.01; i++) z += 0.02;
+  return { x, z, y: 0.6 };
+})();
+
 export function campLights() {
   const S = SPOTS;
   const L = [
     // (warm pools that end: past them the rock is cold and blue)
     { kind: 'fire', x: S.fire.x, y: Y + 0.22, z: S.fire.z, color: 0xff9244, intensity: 2.1, distance: 3.3, flicker: 0.32, speed: 1.3, pool: 1.0, poolOpacity: 0.3, halo: 0.42, haloOpacity: 0.3, priority: 9, power: 1.35, radius: 2.5 },
-    { kind: 'forge', x: S.forge.x, y: Y + 0.62, z: S.forge.z + 0.05, color: 0xff8638, intensity: 2.0, distance: 3.0, flicker: 0.28, speed: 1.4, pool: 0.8, poolZ: S.forge.z + 0.6, poolOpacity: 0.24, halo: 0.36, haloOpacity: 0.3, priority: 9, power: 1.2, radius: 2.2 },
+    { kind: 'forge', x: S.forge.x, y: Y + 0.62, z: S.forge.z + 0.05, color: 0xffb466, intensity: 1.7, distance: 3.0, flicker: 0.28, speed: 1.4, pool: 0.8, poolZ: S.forge.z + 0.6, poolOpacity: 0.22, halo: 0.36, haloOpacity: 0.3, priority: 9, power: 0.85, radius: 2.1 },
     { kind: 'lantern', x: SHACK.x + SHACK.dc + SHACK.dw / 2 + 0.16, y: Y + 1.18, z: SHACK.z + 0.2, color: 0xffb860, intensity: 0.9, distance: 2.8, flicker: 0.12, halo: 0.2, haloOpacity: 0.55, pool: 0.65, poolOpacity: 0.14, priority: 6, power: 0.66, radius: 2.1 },
     { kind: 'candle', x: SHACK.x + 0.95, y: Y + 0.62, z: SHACK.z - 1.05, color: 0xffc070, intensity: 0.55, distance: 2.0, flicker: 0.2, halo: 0.09, haloOpacity: 0.6, priority: 4, power: 0.4, radius: 1.5, real: true },
     { kind: 'candle', x: S.table.x + 0.3, y: Y + 0.62, z: S.table.z - 0.12, color: 0xffc070, intensity: 0.5, distance: 1.8, flicker: 0.2, halo: 0.09, haloOpacity: 0.6, priority: 3, power: 0.32, radius: 1.3, real: true },
@@ -128,6 +135,8 @@ export function campLights() {
     { kind: 'shroom', x: 0.72, y: Y + 0.25, z: -5.42, color: 0x5ad0d8, intensity: 0, real: false, halo: 0.2, haloOpacity: 0.28, pool: 0.35, poolOpacity: 0.1, flicker: 0.06, speed: 0.3, power: 0.24, radius: 1.0 },
     { kind: 'shroom', x: -4.75, y: Y + 0.5, z: -2.7, color: 0x6ae0c0, intensity: 0.35, real: true, distance: 1.8, halo: 0.2, haloOpacity: 0.32, flicker: 0.05, speed: 0.3, power: 0.36, radius: 1.4, priority: 2 },
     { kind: 'lantern', x: -4.25, y: Y + 1.15, z: -1.75, color: 0xffb060, intensity: 0.55, distance: 2.4, flicker: 0.12, halo: 0.14, haloOpacity: 0.5, pool: 0.45, poolOpacity: 0.12, priority: 4, power: 0.42, radius: 1.9 },
+    // the passage up to your nook: a lantern on a hook over the worn steps
+    { kind: 'lantern', x: PASS_LAMP.x, y: Y + PASS_LAMP.y + 0.27, z: PASS_LAMP.z - 0.19, color: 0xffb460, intensity: 0.5, distance: 2.2, flicker: 0.12, halo: 0.14, haloOpacity: 0.5, pool: 0.4, poolX: PASS_LAMP.x + 0.3, poolZ: PASS_LAMP.z - 0.35, poolOpacity: 0.12, priority: 3, power: 0.42, radius: 1.6 },
     { kind: 'lantern', x: FRONT.x - 0.62, y: Y + 1.05, z: FRONT.z + 0.22, color: 0xffb050, intensity: 0.6, distance: 2.6, flicker: 0.12, halo: 0.16, haloOpacity: 0.5, pool: 0.5, poolOpacity: 0.12, priority: 4, power: 0.45, radius: 2.0 },
   ];
   const cl = LIFT_LIGHTS.cage, lp = LIFT_LIGHTS.portal;
@@ -649,6 +658,12 @@ export class StarHouse {
     const bs = HP.bootsAndStick();
     this.place(bs.obj, FRONT.x + 0.72, FRONT.z + 0.32, 0.2);
     this.boxAt(FRONT.x + 0.72, FRONT.z + 0.32, 0.16, 0.12, 0.35, 0.2);
+    // the way to Deep Town, painted on a board by someone long ago; cobwebs across the old arch, stones down from the cave-in
+    this.onRock(CMP.townSign(113).obj, FRONT.x + 0.84, FRONT.z + 0.3, 0, 1, 1.1, 1.25);
+    this.web(FRONT.x - 0.5, 0.92, FRONT.z + 0.1, 0, 0.26, 7);
+    this.web(FRONT.x + 0.5, 0.98, FRONT.z + 0.1, Math.PI, 0.2, 8);
+    this.place(CMP.fallenStones(6, 0.7, 0.32, 115), FRONT.x - 0.05, FRONT.z + 0.68, 0.1);
+    this.place(CMP.fallenStones(3, 0.3, 0.25, 117), FRONT.x - 0.85, FRONT.z + 0.55, 0.6);
     this.buildRuin();
     for (const [x, z, k, s] of [[5.35, -1.25, 'barrel', 6], [7.15, -0.88, 'crate', 8], [7.28, -1.32, 'crate', 9], [5.1, -2.3, 'sack', 6]]) {
       const o = k === 'crate' ? crate(s, {}) : k === 'barrel' ? barrel(s, { fill: null }) : { obj: CMP.oldSack(s + 3, 0x7a6e56) };
@@ -681,6 +696,10 @@ export class StarHouse {
     this.place(steps.obj, ARCH.x, HALL.z1 - 2 * STEP_D, Math.PI, Y);
     const df = HP.doorFrame(ARCH.hw * 2, ARCH.h - Y, -HALL.z1, 7, { roundTop: true, step: -Y });
     this.place(df, ARCH.x, HALL.z1 / 2, 0, Y);
+    // a lantern on a hook over the steps (its light: campLights)
+    const pl = lanternOnHook(9);
+    this.place(pl.obj, PASS_LAMP.x, PASS_LAMP.z, Math.PI, Y + PASS_LAMP.y);
+    this.boxAt(PASS_LAMP.x, PASS_LAMP.z - 0.15, 0.08, 0.15, 0.56, 0, Y + PASS_LAMP.y);
     // the old door to Deep Town in its tunnel mouth: choked with rubble until it's dug
     const P = FRONT;
     const door = townDoor(!!this.opts.doorOpen, 4);

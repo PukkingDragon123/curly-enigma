@@ -212,6 +212,7 @@ export class HomeLiving {
 
   async getUp(rec) {
     const c = this.cam;
+    if (!c) return; // (the script was cut short: a test hook stood you up)
     const spot = besideItem(this, rec) || { x: rec.cx + 1, z: rec.cz };
     const tx = spot.x * T, tz = spot.z * T, ty = this.rig.player.eyeY;
     const yaw1 = Math.atan2(-((this.W / 2) * T - tx), -((this.D / 2) * T - tz));
@@ -232,8 +233,10 @@ export class HomeLiving {
     await this.sleepFor(first ? 1.0 : 0.4);
     this.game.audio.play('yawn');
     await this.sleepFor(0.8);
+    const cam = this.cam;
     await this.getUp(rec);
     this.game.audio.play('land', { vol: 0.5 });
+    if (!cam || this.cam !== cam) return; // (cut short: someone else has the camera now)
     this.endScript();
     this.unstick();
     if (first) this.game.ui.toast(`Day ${this.game.state.data.day}`);

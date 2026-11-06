@@ -4,7 +4,7 @@
 // wisps leaking from under the forge's hood (more when the bellows blow), the kettle's steam,
 // sparks popping off the logs, and moths round the lanterns, bumping the glass. Meters.
 import * as THREE from 'three';
-import { HALL, HOLE } from './units.js';
+import { HALL, HOLE, FRONT } from './units.js';
 import { HOLE_SHAFT } from './plan.js';
 import { rand } from '../core/util.js';
 
@@ -131,7 +131,7 @@ export class CampAir {
     for (const m of this.moths) s.scene.add(m.mesh);
     // (drawn only while the camp is: rooms.js culls them with its meshes)
     (c.roomMeshes.camp ||= []).push(this.beam, ...this.moths.map((m) => m.mesh));
-    this.t = { smoke: 0, forge: 0.5, dust: 0, spark: 2, steam: 0 };
+    this.t = { smoke: 0, forge: 0.5, dust: 0, spark: 2, steam: 0, grit: 3, draught: 0 };
   }
 
   update(dt, time) {
@@ -167,6 +167,20 @@ export class CampAir {
         const air = s.forgeAir || 0;
         T.forge = 0.9 - air * 0.6;
         fx.spawn({ x: f.x + rand(-0.25, 0.25), y: f.y + 0.32, z: f.z + 0.3 + rand(0, 0.1), vx: rand(-0.03, 0.03), vy: rand(0.12, 0.2), vz: rand(0.02, 0.06), life: rand(2.5, 3.5), size: 0.04, grow: 0.07, color: [0.17, 0.16, 0.16], alpha: 0.12, drag: 0.4, grav: -0.01, swirl: 0.04 });
+      }
+    }
+    // the caved-in door to Deep Town: grit trickling from its cracked arch now and then, a cold draught through the rubble
+    if (!s.doorOpen && Math.hypot(p.x - FRONT.x, p.z - FRONT.z) < 6) {
+      T.grit -= dt;
+      if (T.grit <= 0) {
+        T.grit = rand(3, 8);
+        const gx = FRONT.x + rand(-0.3, 0.3), n = 2 + Math.floor(Math.random() * 5);
+        for (let i = 0; i < n; i++) fx.spawn({ x: gx + rand(-0.03, 0.03), y: Y + 1.12, z: FRONT.z + 0.08, vx: rand(-0.02, 0.02), vy: rand(-0.2, 0), vz: rand(0, 0.03), life: 1.4, size: rand(0.005, 0.01), color: [0.32, 0.3, 0.28], alpha: 0.9, drag: 0.05, grav: 6, bounce: 0.1 });
+      }
+      T.draught -= dt;
+      if (T.draught <= 0) {
+        T.draught = 0.35;
+        fx.spawn({ x: FRONT.x + rand(-0.35, 0.35), y: Y + rand(0.15, 0.9), z: FRONT.z + 0.15, vx: rand(-0.03, 0.03), vy: rand(-0.005, 0.01), vz: rand(0.04, 0.09), life: rand(4, 6), size: rand(0.003, 0.006), color: [0.7, 0.8, 0.95], alpha: 0.4, drag: 0.08, grav: -0.002 });
       }
     }
     // dust turning in the beam of daylight

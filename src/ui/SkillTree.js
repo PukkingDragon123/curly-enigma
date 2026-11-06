@@ -1,37 +1,28 @@
-// The skill tree: a page of the book (renderSkills, called by the book's Skills tab) and the same
-// page in its own little book (ui.openSkills()). Seven lines along the top; each line's tree is
-// hand-inked on parchment: stamped skills are wax seals in the line's colour, the ones you can
-// reach are inked medallions, the rest faint pencil. Stamping one inks the path into it, presses
-// the seal (thunk), and sprays a little wax. Also the feedback that works anywhere
-// (installSkillFeedback): XP ribbons, level-up toasts, perk notes and a gentle nudge to spend points.
-//   renderSkills(host, game, { line, standalone }) → { el, dispose(), select(id), stamp(id), line(id), layout() }
-//   openSkills(game, line?) → panel handle (.debug = the page's controller)
-import { el, makeRng, hashStr } from '../core/util.js';
+// The skill tree: a brass-framed board (ui.openSkills(), and the same board as the book's Skills tab
+// via renderSkills). An ornate gold header with the line's round emblem and seven line tabs; the
+// line's skills as framed tiles on dark leather, left → right by the level they need, joined by
+// brass pipes with elbows (lit gold where learned). Skills you can't reach yet hang in chains with a
+// padlock (the level they need engraved on it). Picking is pencilled in first: Undo / Confirm in
+// the bottom bar ("N points left"); confirming lights the pipes, throws sparks, drops the chains.
+// Hover (or tap) a skill for a parchment card: rank, effect now → next, cost, what it needs.
+// Also the feedback that works anywhere (installSkillFeedback): XP ribbons, level-up toasts, perk
+// notes and a gentle nudge to spend points.
+//   renderSkills(host, game, { line, standalone }) → { el, dispose(), select(id), pick(id), unpick(id),
+//     undo(), confirm(), stamp(id) (pick + confirm), line(id), layout(), escape(), pending, selected, current }
+//   openSkills(game, line?) → panel handle (.debug = the board's controller)
+import { el, makeRng } from '../core/util.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
-import { SKILL_LINES, LINE, NODE, SKILL_KEYS, TIER_LV, MAX_LEVEL, nodesOf, levelInfo, pointsForLevel } from '../data/skills.js';
-import { canUnlock, nodeState, unlock, respec, respecCost, spentIn, fxOf, lineInfo } from '../core/skills.js';
-import { nodeURL, lineSealURL, lineBigURL, tokenURL, selRingURL, pipURL, NODE_PX } from './skillArt.js';
-import { SPR } from './uiSprites.js';
-import { mixHex } from './uiArt.js';
+import { SKILL_LINES, LINE, NODE, SKILL_KEYS, TIER_LV, nodesOf, pointsForLevel } from '../data/skills.js';
+import { canUnlock, unlock, respec, respecCost, spentIn, fxOf, lineInfo } from '../core/skills.js';
+import { lineSealURL, lineBigURL, tokenURL } from './skillArt.js';
+import { skillIconURL, lineIconURL } from './skillIcons.js';
+import { SKC, installSkillChrome, paintPipes, FRAME_Y } from './skillChrome.js';
 import { DL, installDialogArt } from './dialogArt.js';
 import { put } from './common.js';
 import './skilltree.css';
 
-const TIERS = TIER_LV.length;
-const SLOTS = 5;
-const INK = [0x2e, 0x1a, 0x0e];
-const INK2 = [0x5a, 0x3a, 0x20];
-const PENCIL = [0x8a, 0x74, 0x58];
-const rgb = (c) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
 const isTouch = () => document.documentElement.classList.contains('is-touch');
-const pxVar = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 3;
-const fmtMult = (k, v) => {
-  const d = SKILL_KEYS[k];
-  if (!d) return '';
-  if (d.kind === 'mult') return d.fmt(v - 1);
-  return d.fmt(v);
-};
 
 // ------------------------------------------------------------------ sounds
 export function defineSkillSounds(au) {
@@ -65,560 +56,672 @@ export function defineSkillSounds(au) {
   }, 0.3);
 }
 
-// ------------------------------------------------------------------ the page
+// ------------------------------------------------------------------ the board
+// One line at a time (its tab in the header): the line's skills laid out left → right by tier (the
+// level each needs, on the ruler along the top), five tracks deep, joined by brass pipes with
+// elbows. Spending is two steps: click (or tap twice) to pencil a skill in, Undo / Confirm below.
+const COLW = 64, ROWH = 48, NW = 40, NH = 46, CY = FRAME_Y + 20, PAD_T = 16, PAD_B = 4, PAD_R = 6;
+const TIER_NAME = ['Novice', 'Apprentice', 'Journeyman', 'Expert', 'Master'];
+const pxVar = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 3;
+const hex6 = (c) => '#' + (c >>> 0).toString(16).padStart(6, '0');
+function* perms(a) {
+  if (a.length <= 1) { yield a.slice(); return; }
+  for (let i = 0; i < a.length; i++) for (const r of perms([...a.slice(0, i), ...a.slice(i + 1)])) yield [a[i], ...r];
+}
+
+/** Pipe routes for a line: edges with polylines (art px), joints at the elbows. */
+function routeLine(line, padL) {
+  const ns = nodesOf(line);
+  const colX = (t) => padL + t * COLW, rowY = (s) => PAD_T + s * ROWH;
+  const edges = [];
+  const gaps = new Map();
+  for (const c of ns) for (const pid of c.req) {
+    const p = NODE[pid];
+    if (!p || p.line !== line) continue;
+    const e = { p: p.id, c: c.id, straight: p.s === c.s };
+    edges.push(e);
+    if (!e.straight) { if (!gaps.has(c.t)) gaps.set(c.t, []); gaps.get(c.t).push(e); }
+  }
+  const lane = {};
+  for (const [t, es] of gaps) {
+    const parents = [...new Set(es.map((e) => e.p))];
+    const span = {};
+    for (const pid of parents) { const ys = [NODE[pid].s, ...es.filter((e) => e.p === pid).map((e) => NODE[e.c].s)]; span[pid] = [Math.min(...ys), Math.max(...ys)]; }
+    const score = (perm) => {
+      let sc = 0;
+      perm.forEach((pid, i) => {
+        const yp = NODE[pid].s;
+        for (let j = 0; j < i; j++) { const [lo, hi] = span[perm[j]]; if (yp >= lo && yp <= hi) sc += yp > lo && yp < hi ? 1 : 2; }
+        for (const e of es) {
+          if (e.p !== pid) continue;
+          const yc = NODE[e.c].s;
+          for (let j = i + 1; j < perm.length; j++) {
+            const q = perm[j], [lo, hi] = span[q];
+            if (yc < lo || yc > hi || es.some((f) => f.p === q && f.c === e.c)) continue;
+            sc += yc > lo && yc < hi ? 1 : 2;
+          }
+        }
+      });
+      return sc;
+    };
+    let best = parents.slice().sort((a, b) => NODE[a].s - NODE[b].s), bs = score(best);
+    if (parents.length <= 5) for (const pm of perms(parents)) { const v = score(pm); if (v < bs) { bs = v; best = pm; } }
+    const k = best.length;
+    best.forEach((pid, i) => { lane[t + ':' + pid] = Math.round((i - (k - 1) / 2) * (k > 3 ? 5.5 : 6)); });
+  }
+  const joints = new Map();
+  for (const e of edges) {
+    const p = NODE[e.p], c = NODE[e.c];
+    const x0 = colX(p.t) + NW, y0 = rowY(p.s) + CY, x3 = colX(c.t), y3 = rowY(c.s) + CY;
+    if (e.straight) e.pts = [[x0, y0], [x3, y3]];
+    else {
+      const gx = colX(c.t) - (COLW - NW) / 2 + (lane[c.t + ':' + e.p] || 0);
+      e.pts = [[x0, y0], [gx, y0], [gx, y3], [x3, y3]];
+      for (const [x, y] of [[gx, y0], [gx, y3]]) { const key = x + ',' + y; if (!joints.has(key)) joints.set(key, { x, y, edges: [] }); joints.get(key).edges.push(e); }
+    }
+    e.len = e.pts.slice(1).reduce((t, q, i) => t + Math.abs(q[0] - e.pts[i][0]) + Math.abs(q[1] - e.pts[i][1]), 0);
+  }
+  return { edges, joints: [...joints.values()] };
+}
+
 export function renderSkills(host, game, opts = {}) {
   const st = game.state, ui = game.ui, au = game.audio;
   defineSkillSounds(au);
+  installSkillChrome();
   const S = () => st.data.skills;
-  const lineReady = (id) => nodesOf(id).some((n) => nodeState(st, n.id) === 'ready');
+  const inBook = !opts.standalone;
+
+  // ---------------- pending picks (pencilled in, not yet confirmed)
+  let pend = [];
+  let V = null; // the state as it would be with the picks confirmed (for canUnlock)
+  const pendCost = () => pend.reduce((t, id) => t + (NODE[id]?.cost || 0), 0);
+  const recalc = () => {
+    const s = S(), nodes = { ...s.nodes };
+    for (const id of pend) nodes[id] = 'pending';
+    V = { data: { skills: { ...s, nodes, points: s.points - pendCost() } } };
+  };
+  recalc();
+  /** How a node looks: done | pend | ready | open (needs points) | gated (needs level) | locked (path) | barred */
+  const look = (id) => {
+    if (S().nodes[id]) return { k: 'done' };
+    if (pend.includes(id)) return { k: 'pend' };
+    const c = canUnlock(V, id);
+    if (c.ok) return { k: 'ready', c };
+    if (c.code === 'barred') return { k: 'barred', c };
+    if (c.code === 'path' || c.code === 'none') return { k: 'locked', c };
+    if (c.code === 'level') return { k: 'gated', c };
+    return { k: 'open', c };
+  };
+  const owned = (id) => (S().nodes[id] ? 'done' : pend.includes(id) ? 'pend' : null);
+  const lineReady = (id) => nodesOf(id).some((n) => look(n.id).k === 'ready');
   let line = LINE[opts.line] ? opts.line : LINE[S().view] ? S().view : (SKILL_LINES.find((l) => lineReady(l.id)) || SKILL_LINES[0]).id;
-  let sel = null, hover = null;
-  let geo = null; // tree geometry
-  let anim = null; // { links: Map(key → {t0, dur}), until }
-  let raf = 0, disposed = false;
 
   // ---------------- skeleton
-  const ptsNum = el('b', {}, '0');
-  const ptsLbl = el('span', {}, 'skill points');
-  const ptsImg = el('img', { class: 'pix', src: tokenURL(), alt: '' });
-  const pts = el('div', { class: 'sk-pts', title: 'Skill points to spend' }, [ptsImg, ptsNum, ptsLbl]);
-  const head = el('header', { class: 'sk-head' }, [el('h2', { class: 'sk-title' }, 'Skills'), pts]);
-  const nav = el('nav', { class: 'sk-lines', role: 'tablist', 'aria-label': 'Skill lines' });
-  const cv = el('canvas', { class: 'sk-ink' });
-  const tiersEl = el('div', { class: 'sk-tiers' });
-  const nodesEl = el('div', { class: 'sk-nodes' });
-  const selRing = el('img', { class: 'pix sk-sel', src: selRingURL(), alt: '', hidden: true });
-  const fxEl = el('div', { class: 'sk-fxl' });
-  const tree = el('div', { class: 'sk-tree' }, [cv, tiersEl, selRing, nodesEl, fxEl]);
-  const card = el('div', { class: 'sk-lc' });
-  const detail = el('div', { class: 'sk-dt' });
-  const learn = el('div', { class: 'sk-learn' });
-  const side = el('div', { class: 'sk-side' }, [card, detail, learn]);
-  const body = el('div', { class: 'sk-body' }, [tree, side]);
-  const hint = el('span', { class: 'sk-hint' });
-  const scrape = el('button', { class: 'sk-scrape', onclick: () => doRespec() });
-  const foot = el('footer', { class: 'sk-foot' }, [hint, scrape]);
-  const root = el('div', { class: 'sk' }, [head, nav, body, foot]);
+  const emblemImg = el('img', { class: 'pix', alt: '' });
+  const emblem = el('div', { class: 'skt-emblem' }, [emblemImg]);
+  const titleSub = el('small');
+  const title = el('div', { class: 'skt-title' }, [el('h2', {}, 'Skills'), titleSub]);
+  const tabs = el('nav', { class: 'skt-tabs', role: 'tablist', 'aria-label': 'Skill lines' });
+  const head = el('header', { class: 'skt-head' }, [emblem, title]);
+  const cv = el('canvas', { class: 'skt-pipes' });
+  const wm = el('i', { class: 'skt-wm' });
+  const cols = el('div', { class: 'skt-cols' });
+  const label = el('div', { class: 'skt-label' });
+  const nodesEl = el('div', { class: 'skt-nodes' });
+  const fxEl = el('div', { class: 'skt-fx' });
+  const sheet = el('div', { class: 'skt-sheet' }, [wm, cv, cols, label, nodesEl, fxEl]);
+  const board = el('div', { class: 'skt-board' }, [sheet]);
+  const card = el('div', { class: 'skt-card' });
+  const know = el('div', { class: 'skt-know' });
+  const learn = el('div', { class: 'skt-learn' });
+  const side = el('aside', { class: 'skt-side' }, [card, know, learn]);
+  const main = el('div', { class: 'skt-main' }, [board, side]);
+  const ptsN = el('b', {}, '0');
+  const ptsL = el('span', {}, 'points left');
+  const ptsImg = el('img', { class: 'pix', alt: '' });
+  const pts = el('div', { class: 'skt-pts', title: 'Skill points to spend' }, [ptsImg, ptsN, ptsL]);
+  const hint = el('span', { class: 'skt-hint' });
+  const undoBtn = el('button', { class: 'skt-btn undo', type: 'button', title: 'Take back the last pick (Z)', onclick: () => undo() }, [el('i', { class: 'skt-ico' }), el('span', {}, 'Undo')]);
+  const goBtn = el('button', { class: 'skt-btn go', type: 'button', title: 'Keep the picked skills (Enter)', onclick: () => confirm() }, [el('i', { class: 'skt-ico' }), el('span', {}, 'Confirm')]);
+  const foot = el('footer', { class: 'skt-foot' }, [pts, hint, el('div', { class: 'skt-acts' }, [undoBtn, goBtn])]);
+  const tip = el('div', { class: 'skt-tip', role: 'tooltip', hidden: true });
+  const root = el('div', { class: 'skt' + (inBook ? ' in-book' : '') }, [head, tabs, main, foot, tip]);
   host.append(root);
 
   // ---------------- tabs
   const tabEls = {};
   for (const l of SKILL_LINES) {
-    const b = el('button', { class: 'sk-line', role: 'tab', 'data-line': l.id, title: l.name, onclick: () => setLine(l.id) }, [
-      el('img', { class: 'pix', src: lineSealURL(l), alt: '' }), el('span', {}, l.name), el('i', { class: 'sk-lv' }), el('img', { class: 'pix sk-dot', src: pipURL(true), alt: '', hidden: true }),
+    const b = el('button', { class: 'skt-tab', type: 'button', role: 'tab', 'data-line': l.id, title: l.name, 'aria-label': l.name, onclick: () => setLine(l.id) }, [
+      el('img', { class: 'pix', src: lineIconURL(l.id), alt: '' }), el('b', { class: 'skt-tab-lv' }), el('i', { class: 'skt-tab-dot', hidden: true }),
     ]);
     b.style.setProperty('--lc', l.ink);
     tabEls[l.id] = b;
-    nav.append(b);
+    tabs.append(b);
   }
   const renderTabs = () => {
     for (const l of SKILL_LINES) {
-      const b = tabEls[l.id];
-      b.classList.toggle('on', l.id === line);
-      b.setAttribute('aria-selected', l.id === line ? 'true' : 'false');
-      b.querySelector('.sk-lv').textContent = String(st.skillLevel(l.id));
-      b.querySelector('.sk-dot').hidden = !lineReady(l.id);
+      const b = tabEls[l.id], on = l.id === line;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.querySelector('.skt-tab-lv').textContent = String(st.skillLevel(l.id));
+      b.querySelector('.skt-tab-dot').hidden = !lineReady(l.id);
+      b.classList.toggle('pend', pend.some((id) => NODE[id].line === l.id));
     }
+  };
+  const renderHead = () => {
+    const L = LINE[line];
+    emblemImg.src = lineIconURL(line);
+    titleSub.textContent = `${L.name} · Lv ${st.skillLevel(line)}`;
+    root.style.setProperty('--lc', L.ink);
+    root.style.setProperty('--lt', hex6(L.pal[1]));
   };
   const renderPoints = (bump = false) => {
-    const n = S().points;
-    ptsNum.textContent = String(n);
-    ptsLbl.textContent = n === 1 ? 'skill point' : 'skill points';
-    ptsImg.src = tokenURL(n === 0);
+    const n = S().points - pendCost();
+    ptsN.textContent = String(n);
+    ptsL.textContent = n === 1 ? 'point left' : 'points left';
+    ptsImg.src = SKC.token(n === 0);
     pts.classList.toggle('none', n === 0);
     if (bump) { pts.classList.remove('bump'); void pts.offsetWidth; pts.classList.add('bump'); }
+    undoBtn.disabled = !pend.length;
+    goBtn.disabled = !pend.length;
+    foot.classList.toggle('pending', pend.length > 0);
+    goBtn.querySelector('span').textContent = pend.length > 1 ? `Confirm ${pend.length}` : 'Confirm';
   };
 
-  // ---------------- line card (level, XP)
-  const renderCard = () => {
-    const L = LINE[line];
-    const info = lineInfo(st, line);
+  // ---------------- side: the line's card, what you know (and what the picks add), how to learn
+  const fmtFx = (k, v) => { const d = SKILL_KEYS[k]; return d ? d.fmt(v) : '+' + v; };
+  const renderSide = () => {
+    const L = LINE[line], info = lineInfo(st, line);
     card.innerHTML = '';
-    card.style.setProperty('--lc', L.ink);
     const next = info.max ? 'Mastered' : `${Math.floor(info.into)} / ${info.need} XP`;
     put(card,
-      el('img', { class: 'pix sk-lc-seal', src: lineBigURL(L), alt: '' }),
-      el('div', { class: 'sk-lc-txt' }, [
-        el('div', { class: 'sk-lc-row' }, [el('b', { class: 'sk-lc-name' }, L.name), el('span', { class: 'sk-lc-lv' }, `Lv ${info.level}`)]),
-        el('div', { class: 'sk-xp', title: next }, [el('i', { style: { width: (info.frac * 100).toFixed(1) + '%' } })]),
-        el('small', { class: 'sk-lc-next' }, [
-          el('span', {}, info.max ? 'Every point this line can give, given.' : `Lv ${info.level + 1}: +${pointsForLevel(info.level + 1)} skill point${pointsForLevel(info.level + 1) > 1 ? 's' : ''}`),
-          el('em', {}, next),
-        ]),
-      ]));
-  };
-
-  // ---------------- detail / summary
-  const showId = () => hover || sel;
-  const renderDetail = () => {
-    const id = showId();
-    detail.innerHTML = '';
-    const L = LINE[line];
-    detail.style.setProperty('--lc', L.ink);
-    if (!id || NODE[id]?.line !== line) {
-      const done = nodesOf(line).filter((n) => S().nodes[n.id]);
-      const tot = fxOf(done.map((n) => n.id));
-      const list = el('ul', { class: 'sk-fx' });
-      for (const [k, v] of Object.entries(tot)) {
-        const d = SKILL_KEYS[k];
-        list.append(el('li', {}, [el('span', {}, d?.label || k), el('b', {}, d ? d.fmt(v) : '+' + v)]));
-      }
-      put(detail,
-        el('h4', { class: 'sk-h' }, done.length ? `What you know (${done.length}/${nodesOf(line).length})` : 'Nothing stamped yet'),
-        done.length ? list : el('p', { class: 'sk-p' }, isTouch() ? 'Tap a seal on the tree to read it.' : 'Click a seal on the tree to read it.'));
-      // what can be stamped now, and what the next level opens up
-      const ready = nodesOf(line).filter((n) => nodeState(st, n.id) === 'ready');
-      if (ready.length) {
-        const ul = el('ul', { class: 'sk-next' });
-        for (const n of ready) {
-          const pips = el('span', { class: 'sk-pips' });
-          for (let i = 0; i < n.cost; i++) pips.append(el('img', { class: 'pix', src: pipURL(true), alt: '' }));
-          const fx0 = Object.entries(n.fx)[0];
-          ul.append(el('li', {}, [el('button', { onclick: () => select(n.id) }, [
-            el('img', { class: 'pix seal', src: imgFor(n, 'ready'), alt: '' }),
-            el('span', {}, [n.name, ' ', el('small', {}, fx0 && SKILL_KEYS[fx0[0]] ? fmtMult(fx0[0], SKILL_KEYS[fx0[0]].kind === 'mult' ? 1 + fx0[1] : fx0[1]) : '')]),
-            pips,
-          ])]));
-        }
-        put(detail, el('h4', { class: 'sk-h' }, 'Ready to stamp'), ul);
-      }
-      const lv = st.skillLevel(line);
-      const nextT = TIER_LV.findIndex((v) => v > lv);
-      if (nextT >= 0) {
-        const n = nodesOf(line).filter((m) => m.t === nextT).length;
-        put(detail, el('p', { class: 'sk-soon' }, `${L.name} Lv ${TIER_LV[nextT]} opens ${n} more seal${n === 1 ? '' : 's'}.`));
-      }
-      return;
+      el('div', { class: 'skt-card-top' }, [el('b', {}, L.name), el('span', { class: 'skt-lv' }, `Lv ${info.level}`)]),
+      el('div', { class: 'skt-xp', title: next }, [el('i', { style: { width: (info.frac * 100).toFixed(1) + '%' } })]),
+      el('small', { class: 'skt-card-next' }, [el('span', {}, info.max ? 'Every point this line can give, given.' : `Lv ${info.level + 1}: +${pointsForLevel(info.level + 1)} point${pointsForLevel(info.level + 1) > 1 ? 's' : ''}`), el('em', {}, next)]));
+    know.innerHTML = '';
+    const ids = nodesOf(line).map((n) => n.id);
+    const now = fxOf(ids.filter((id) => S().nodes[id]));
+    const after = fxOf(ids.filter((id) => S().nodes[id] || pend.includes(id)));
+    const keys = Object.keys(after);
+    const done = ids.filter((id) => S().nodes[id]).length;
+    const list = el('ul', { class: 'skt-fxl' });
+    for (const k of keys) {
+      const a = now[k], b = after[k];
+      const li = el('li', {}, [el('span', {}, SKILL_KEYS[k]?.label || k)]);
+      if (a !== undefined && a === b) li.append(el('b', {}, fmtFx(k, a)));
+      else li.append(el('b', { class: 'new' }, [a !== undefined ? el('s', {}, fmtFx(k, a)) : null, fmtFx(k, b)]));
+      list.append(li);
     }
-    const n = NODE[id];
-    const ns = nodeState(st, id);
-    const chk = canUnlock(st, id);
-    const allOwn = Object.keys(S().nodes);
-    const fxList = el('ul', { class: 'sk-fx' });
-    for (const [k, v] of Object.entries(n.fx)) {
-      const d = SKILL_KEYS[k];
-      if (!d) continue;
-      const before = 1 + (fxOf(allOwn.filter((x) => x !== id))[k] || 0);
-      const after = before + v;
-      const row = el('li', {}, [el('span', {}, d.label), el('b', {}, d.fmt(v))]);
-      if (d.kind === 'mult' && ns !== 'done') row.append(el('em', {}, `×${before.toFixed(2)} → ×${after.toFixed(2)}`));
-      fxList.append(row);
-    }
-    const req = el('ul', { class: 'sk-req' });
-    const need = TIER_LV[n.t];
-    const lvOk = st.skillLevel(line) >= need;
-    req.append(el('li', { class: lvOk ? 'ok' : 'no' }, `${L.name} level ${need}`));
-    if (n.t > 0 && n.req.length) {
-      const ok = n.req.some((r) => S().nodes[r]);
-      req.append(el('li', { class: ok ? 'ok' : 'no' }, 'After ' + n.req.map((r) => NODE[r].name).join(' or ')));
-    }
-    if (n.excl) {
-      const others = nodesOf(line).filter((m) => m.excl === n.excl && m.id !== id);
-      req.append(el('li', { class: ns === 'barred' ? 'no' : 'pick' }, `A choice: this or ${others.map((m) => m.name).join(' or ')}`));
-    }
-    const act = el('div', { class: 'sk-act' });
-    if (ns === 'done') act.append(el('span', { class: 'sk-stamped' }, `Stamped · day ${S().nodes[id]}`));
-    else if (ns === 'barred') act.append(el('span', { class: 'sk-barred' }, chk.reason));
-    else {
-      const pips = el('span', { class: 'sk-pips' });
-      for (let i = 0; i < n.cost; i++) pips.append(el('img', { class: 'pix', src: pipURL(i < S().points || ns === 'ready'), alt: '' }));
-      const btn = el('button', { class: 'sk-stamp', disabled: ns !== 'ready', title: chk.ok ? 'Press the seal' : chk.reason, onclick: () => stamp(id) }, [
-        el('img', { class: 'pix', src: SPR.stampHandle(), alt: '' }), el('span', {}, ['Stamp ', pips]),
-      ]);
-      act.append(btn);
-      if (!chk.ok) act.append(el('small', { class: 'sk-why' }, chk.reason));
-    }
-    put(detail,
-      el('div', { class: 'sk-dt-top' }, [
-        el('img', { class: 'pix sk-dt-seal', src: imgFor(n, ns), alt: '' }),
-        el('div', {}, [el('small', {}, `${L.name} · ${['Root', 'Second', 'Third', 'Fourth', 'Crown'][n.t]} tier`), el('b', { class: 'sk-dt-name' }, n.name)]),
-      ]),
-      el('p', { class: 'sk-desc' }, n.desc),
-      fxList, req, act);
-  };
-  const renderLearn = () => {
-    const L = LINE[line];
+    put(know, el('h4', {}, done ? `What you know · ${done}/${ids.length}` : 'Nothing learned yet'),
+      keys.length ? list : el('p', { class: 'skt-muted' }, isTouch() ? 'Tap a lit skill to read it, tap again to pick it.' : 'Hover a skill to read it, click a lit one to pick it.'));
+    const lv = st.skillLevel(line), nextT = TIER_LV.findIndex((v) => v > lv);
+    if (nextT >= 0) { const n = nodesOf(line).filter((m) => m.t === nextT).length; know.append(el('p', { class: 'skt-soon' }, `${L.name} Lv ${TIER_LV[nextT]} unchains ${n} more.`)); }
     learn.innerHTML = '';
-    learn.style.setProperty('--lc', L.ink);
+    const spent = spentIn(st, line);
     put(learn,
-      el('p', { class: 'sk-how' }, [el('b', {}, 'Learn by doing: '), L.how]),
-      el('p', { class: 'sk-star' }, [`"${L.star}"`, el('small', {}, ' Old Star')]));
+      el('p', { class: 'skt-how' }, [el('b', {}, 'Learn by doing: '), L.how]),
+      el('p', { class: 'skt-star' }, [`"${L.star}"`, el('small', {}, ' Old Star')]),
+      spent ? el('button', { class: 'skt-respec', type: 'button', onclick: () => doRespec(), title: `Unlearn every ${L.name} skill and get ${spent} point${spent === 1 ? '' : 's'} back` }, `Reforge ${L.name} · ${respecCost(st, line)}g`) : null);
   };
-  const imgFor = (n, ns) => nodeURL(n, LINE[n.line], ns === 'done' ? 'done' : ns === 'ready' ? 'ink' : ns === 'open' ? 'faint' : ns === 'barred' ? 'barred' : 'pencil');
+  const renderHint = () => {
+    const ready = nodesOf(line).some((n) => look(n.id).k === 'ready');
+    hint.textContent = pend.length ? (isTouch() ? 'Confirm to keep them, Undo to take one back.' : 'Confirm to keep your picks · Undo (Z) takes one back.')
+      : ready ? (isTouch() ? 'Tap a glowing skill, tap again to pick it.' : 'Click a glowing skill to pick it.')
+        : S().points - pendCost() > 0 ? 'Level up a line to unchain more.' : 'Level up a line to earn points.';
+  };
 
-  // ---------------- the tree: nodes
+  // ---------------- geometry
+  let geo = null; // { s, padL, aw, ah, edges, joints }
+  const colX = (t) => geo.padL + t * COLW, rowY = (s) => PAD_T + s * ROWH;
   const nodeEls = {};
   const buildNodes = () => {
     nodesEl.innerHTML = '';
-    tiersEl.innerHTML = '';
+    cols.innerHTML = '';
     for (const k of Object.keys(nodeEls)) delete nodeEls[k];
     for (const n of nodesOf(line)) {
-      const b = el('button', { class: 'sk-node', 'data-id': n.id, 'aria-label': n.name, title: n.name }, [el('img', { class: 'pix', alt: '' }), el('i', { class: 'sk-tag' })]);
-      b.addEventListener('click', () => select(n.id));
-      b.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse' && hover !== n.id) { hover = n.id; renderDetail(); } });
-      b.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && hover === n.id) { hover = null; renderDetail(); } });
-      b.addEventListener('dblclick', () => { if (nodeState(st, n.id) === 'ready') stamp(n.id); });
-      b.addEventListener('animationend', (e) => { if (e.target === b) b.classList.remove('nope'); else { b.classList.remove('stamp'); b.classList.remove('reveal'); } });
+      const b = el('button', { class: 'skt-node', type: 'button', 'data-id': n.id, 'aria-label': n.name }, [
+        el('img', { class: 'pix fr', alt: '' }), el('img', { class: 'pix ic', alt: '' }), el('img', { class: 'pix gem', alt: '' }), el('img', { class: 'pix pl', alt: '' }),
+      ]);
+      b.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') showTip(n.id, false); });
+      b.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && tipId === n.id && !tipPinned) hideTip(); });
+      b.addEventListener('focus', () => { if (!tipPinned && b.matches(':focus-visible')) showTip(n.id, false); });
+      b.addEventListener('blur', () => { if (tipId === n.id && !tipPinned) hideTip(); });
+      b.addEventListener('click', (e) => onNode(n.id, e));
+      b.addEventListener('contextmenu', (e) => { e.preventDefault(); if (pend.includes(n.id)) unpick(n.id); });
+      b.addEventListener('animationend', (e) => { if (e.target === b) b.classList.remove('nope', 'pop', 'lit'); });
       nodeEls[n.id] = b;
       nodesEl.append(b);
     }
-    for (let t = 0; t < TIERS; t++) tiersEl.append(el('span', { class: 'sk-tier', 'data-t': t }, `Lv ${TIER_LV[t]}`));
-    // "or" between the two halves of a choice
+    for (let t = 0; t < TIER_LV.length; t++) cols.append(el('span', { class: 'skt-col', 'data-t': t }, [el('i'), el('b', {}, `Lv ${TIER_LV[t]}`), el('i')]));
     const groups = {};
     for (const n of nodesOf(line)) if (n.excl) (groups[n.excl] ||= []).push(n);
-    for (const g of Object.values(groups)) if (g.length > 1) tiersEl.append(el('span', { class: 'sk-or', 'data-a': g[0].id, 'data-b': g[1].id }, 'or'));
+    for (const g of Object.values(groups)) if (g.length > 1) nodesEl.append(el('img', { class: 'pix skt-or', src: SKC.orTag(), alt: 'or', 'data-a': g[0].id, 'data-b': g[1].id }));
+    label.textContent = LINE[line].name;
+  };
+  const chainsOn = (b, lk) => {
+    let ch = b.querySelector('.skt-chain');
+    const want = lk.k === 'locked' || lk.k === 'gated';
+    if (!want) { if (ch && !ch.classList.contains('fall')) ch.remove(); return; }
+    const lv = lk.k === 'gated' ? lk.c.need : 0;
+    if (ch && +ch.dataset.lv === lv) return;
+    ch?.remove();
+    ch = el('span', { class: 'skt-chain', 'data-lv': lv }, [
+      el('img', { class: 'pix a', src: SKC.chainA(), alt: '' }), el('img', { class: 'pix b', src: SKC.chainB(), alt: '' }), el('img', { class: 'pix lock', src: SKC.lock(lv), alt: '' }),
+    ]);
+    b.append(ch);
   };
   const refreshNodes = () => {
+    const tint = LINE[line].pal[1];
     for (const n of nodesOf(line)) {
       const b = nodeEls[n.id];
       if (!b) continue;
-      const ns = nodeState(st, n.id);
-      b.dataset.state = ns;
-      b.querySelector('img').src = imgFor(n, ns);
-      const tag = b.querySelector('.sk-tag');
-      const chk = canUnlock(st, n.id);
-      tag.textContent = ns === 'open' && chk.code === 'level' ? `Lv ${chk.need}` : ns === 'ready' || ns === 'open' ? '●'.repeat(n.cost) : '';
-      tag.hidden = !tag.textContent;
-      b.classList.toggle('on', sel === n.id);
-      b.title = `${n.name}${ns === 'done' ? ' (stamped)' : ns === 'ready' ? ' (ready to stamp)' : ''}`;
+      const lk = look(n.id), k = lk.k;
+      b.dataset.state = k;
+      const frame = k === 'done' || k === 'pend' ? 'owned' : k === 'ready' ? 'ready' : k === 'open' ? 'bronze' : k === 'barred' ? 'barred' : 'iron';
+      b.querySelector('.fr').src = SKC.frame(frame, frame === 'owned' || frame === 'ready' ? tint : undefined);
+      b.querySelector('.ic').src = skillIconURL(n.id, k === 'locked' || k === 'gated' ? 'dim' : k === 'barred' ? 'gray' : 'lit');
+      b.querySelector('.gem').src = SKC.gem(k === 'done' ? 'owned' : k === 'pend' ? 'pending' : k === 'ready' ? 'ready' : k === 'barred' ? 'barred' : k === 'open' ? 'open' : 'off');
+      b.querySelector('.pl').src = SKC.plate(n.cost, k === 'done' || k === 'pend' ? n.cost : 0, k === 'done' ? 'gold' : k === 'locked' || k === 'gated' || k === 'barred' ? 'iron' : 'brass');
+      chainsOn(b, lk);
+      b.title = '';
+      b.setAttribute('aria-label', `${n.name}: ${k === 'done' ? 'learned' : k === 'pend' ? 'picked, not confirmed' : k === 'ready' ? `ready, ${n.cost} point${n.cost > 1 ? 's' : ''}` : lk.c?.reason || ''}`);
     }
     const lv = st.skillLevel(line);
-    for (const t of tiersEl.querySelectorAll('.sk-tier')) t.classList.toggle('met', lv >= TIER_LV[+t.dataset.t]);
-    placeSel();
+    for (const c of cols.querySelectorAll('.skt-col')) c.classList.toggle('met', lv >= TIER_LV[+c.dataset.t]);
+    for (const o of nodesEl.querySelectorAll('.skt-or')) o.classList.toggle('done', !!(owned(o.dataset.a) || owned(o.dataset.b)));
   };
 
-  // ---------------- the tree: geometry
   const layout = () => {
     if (disposed || !root.isConnected) return;
-    const r = { width: root.clientWidth, height: root.clientHeight }; // (not the bounding box: the book opens with a scale animation)
-    if (r.width < 10) return;
-    const mode = r.width >= 560 ? 'wide' : 'narrow';
-    root.dataset.mode = mode;
-    root.classList.toggle('short', r.height < 360);
-    if (mode === 'narrow') {
-      // a phone held upright: the tree takes the page's width, the notes scroll below it
-      const want = Math.round(Math.min(tree.clientWidth * 1.04, Math.max(220, window.innerHeight * 0.6)));
-      if (Math.abs(tree.clientHeight - want) > 1) tree.style.height = want + 'px';
-    } else if (tree.style.height) tree.style.height = '';
-    const tw = tree.clientWidth, th = tree.clientHeight;
-    if (tw < 40 || th < 40) return;
-    const horiz = tw / th > 1.35;
-    const along = horiz ? tw : th, cross = horiz ? th : tw;
+    const rw = root.clientWidth, rh = root.clientHeight;
+    if (rw < 50) return;
+    const wide = rw >= 640;
+    root.dataset.mode = wide ? 'wide' : 'narrow';
+    if (wide && tabs.parentNode !== head) head.append(tabs);
+    else if (!wide && tabs.parentNode !== root) root.insertBefore(tabs, main);
+    root.classList.toggle('short', rh < 420);
+    const padL = wide ? 44 : 6;
+    const aw = padL + 4 * COLW + NW + PAD_R, ah = PAD_T + 4 * ROWH + NH + PAD_B;
+    const bw = board.clientWidth, bh = wide ? board.clientHeight : Infinity;
     const dpr = window.devicePixelRatio || 1;
-    const steps = dpr >= 2 ? [4, 3.5, 3, 2.5, 2, 1.5, 1] : [4, 3, 2, 1];
     const cap = Math.max(2, pxVar());
-    let s = 1;
-    for (const k of steps) {
-      if (k > cap) continue;
-      const lab = horiz ? 9 * k : 12 * k;
-      if (NODE_PX * k * 1.16 <= (along - 4 * k) / TIERS && NODE_PX * k * 1.08 <= (cross - lab) / SLOTS) { s = k; break; }
-    }
-    const aw = Math.floor(tw / s), ah = Math.floor(th / s);
-    const padL = horiz ? 2 : 12, padT = horiz ? 9 : 2, padR = 2, padB = 2;
-    const pos = {};
-    for (const n of nodesOf(line)) {
-      let x, y;
-      if (horiz) {
-        x = padL + (n.t + 0.5) * (aw - padL - padR) / TIERS;
-        y = padT + (n.s + 0.5) * (ah - padT - padB) / SLOTS;
-      } else {
-        x = padL + (n.s + 0.5) * (aw - padL - padR) / SLOTS;
-        y = ah - padB - (n.t + 0.5) * (ah - padT - padB) / TIERS;
-      }
-      pos[n.id] = { x: Math.round(x), y: Math.round(y) };
-    }
-    geo = { s, aw, ah, horiz, pos, padL, padT };
-    tree.style.setProperty('--s', s + 'px');
-    tree.classList.toggle('big', s >= 3);
-    tree.dataset.horiz = horiz ? '1' : '0';
+    const steps = (dpr >= 2 ? [4, 3.5, 3, 2.5, 2, 1.5, 1] : [4, 3, 2, 1]).filter((k) => k <= cap);
+    let s = steps[steps.length - 1];
+    for (const k of steps) if (aw * k <= bw && ah * k <= bh * 1.12) { s = k; break; }
+    root.style.setProperty('--s', s + 'px');
+    root.style.setProperty('--ts', Math.min(s, 2) + 'px');
+    const r = routeLine(line, padL);
+    geo = { s, padL, aw, ah, ...r };
+    sheet.style.width = aw * s + 'px';
+    sheet.style.height = ah * s + 'px';
+    board.classList.toggle('fits', aw * s <= bw && ah * s <= board.clientHeight + 1);
     cv.width = aw; cv.height = ah;
     cv.style.width = aw * s + 'px'; cv.style.height = ah * s + 'px';
-    const half = NODE_PX / 2;
     for (const n of nodesOf(line)) {
-      const b = nodeEls[n.id], p = pos[n.id];
+      const b = nodeEls[n.id];
       if (!b) continue;
-      b.style.left = (p.x - half) * s + 'px';
-      b.style.top = (p.y - half) * s + 'px';
-      b.style.width = b.style.height = NODE_PX * s + 'px';
+      b.style.left = colX(n.t) * s + 'px';
+      b.style.top = rowY(n.s) * s + 'px';
     }
-    for (const t of tiersEl.querySelectorAll('.sk-tier')) {
-      const i = +t.dataset.t;
-      if (horiz) { t.style.left = (padL + (i + 0.5) * (aw - padL - padR) / TIERS) * s + 'px'; t.style.top = '0px'; }
-      else { t.style.top = (ah - padB - (i + 0.5) * (ah - padT - padB) / TIERS) * s + 'px'; t.style.left = '0px'; }
+    for (const c of cols.querySelectorAll('.skt-col')) {
+      const t = +c.dataset.t;
+      c.style.left = (colX(t) + NW / 2) * s + 'px';
     }
-    for (const o of tiersEl.querySelectorAll('.sk-or')) {
-      const a = pos[o.dataset.a], b = pos[o.dataset.b];
-      if (!a || !b) continue;
-      o.style.left = ((a.x + b.x) / 2) * s + 'px';
-      o.style.top = ((a.y + b.y) / 2) * s + 'px';
+    for (const o of nodesEl.querySelectorAll('.skt-or')) {
+      const a = NODE[o.dataset.a], b = NODE[o.dataset.b];
+      o.style.left = (colX(a.t) + NW / 2 - 6.5) * s + 'px';
+      o.style.top = (rowY((a.s + b.s) / 2) + CY - 3.5) * s + 'px';
     }
-    placeSel();
+    const root0 = nodesOf(line).find((n) => !n.req.length) || nodesOf(line)[0];
+    label.hidden = !wide;
+    label.style.top = (rowY(root0.s) + CY) * s + 'px';
+    label.style.width = (colX(root0.t) - 3) * s + 'px';
     draw();
-  };
-  const placeSel = () => {
-    const id = sel && NODE[sel]?.line === line ? sel : null;
-    selRing.hidden = !id || !geo;
-    if (!id || !geo) return;
-    const p = geo.pos[id];
-    selRing.style.left = (p.x - 17) * geo.s + 'px';
-    selRing.style.top = (p.y - 17) * geo.s + 'px';
-    selRing.style.width = selRing.style.height = 34 * geo.s + 'px';
+    if (tipId) placeTip();
   };
 
-  // ---------------- the tree: ink (pixel lines on a canvas at art resolution)
-  const linkStyle = (a, b) => {
-    const da = !!S().nodes[a], db = !!S().nodes[b];
-    if (da && db) return 'ink';
-    if (da && nodeState(st, b) !== 'barred') return 'path';
-    return 'pencil';
+  // ---------------- pipes
+  let anim = null; // Map edgeKey → { t0, dur }
+  let raf = 0;
+  const edgeKind = (e) => {
+    const a = owned(e.p), b = owned(e.c);
+    if (a === 'done' && b === 'done') return 'lit';
+    if (a && b) return 'pend';
+    return 'dim';
   };
   const draw = () => {
     if (!geo) return;
-    const { aw, ah, pos, horiz } = geo;
     const ctx = cv.getContext('2d');
-    const img = ctx.createImageData(aw, ah);
-    const d = img.data;
-    const plot = (x, y, c, a = 255) => {
-      if (x < 0 || y < 0 || x >= aw || y >= ah) return;
-      const i = (y * aw + x) * 4, t = a / 255, u = d[i + 3] / 255;
-      const na = t + u * (1 - t);
-      if (na <= 0) return;
-      for (let k = 0; k < 3; k++) d[i + k] = (c[k] * t + d[i + k] * u * (1 - t)) / na;
-      d[i + 3] = na * 255;
-    };
-    const now = performance.now();
-    const pal = LINE[line].pal;
-    const wash = rgb(mixHex(pal[1], 0xf2e1b9, 0.25));
-    const links = [];
-    for (const n of nodesOf(line)) for (const r of n.req) if (NODE[r]?.line === line) links.push([r, n.id, linkStyle(r, n.id)]);
-    const order = { pencil: 0, path: 1, ink: 2 };
-    links.sort((a, b) => order[a[2]] - order[b[2]]);
-    const clip = NODE_PX / 2 - 1;
-    // the pencil rule under each tier the line hasn't reached yet
-    const lv = st.skillLevel(line);
-    for (let t = 1; t < TIERS; t++) {
-      if (lv >= TIER_LV[t] || lv < TIER_LV[t - 1]) continue;
-      const m = horiz ? Math.round(geo.padL + t * (aw - geo.padL - 2) / TIERS) : Math.round(ah - 2 - t * (ah - geo.padT - 2) / TIERS);
-      for (let k = 0; k < (horiz ? ah : aw); k++) if (k % 4 < 2) horiz ? plot(m, k, PENCIL, 90) : plot(k, m, PENCIL, 90);
+    const img = ctx.createImageData(geo.aw, geo.ah);
+    const segs = [], now = performance.now();
+    let busy = false;
+    for (const e of geo.edges) {
+      const kind = edgeKind(e);
+      const a = anim?.get(e.p + '>' + e.c);
+      let T = 1;
+      if (a) { T = Math.max(0, Math.min(1, (now - a.t0) / a.dur)); if (T < 1) busy = true; }
+      if (T < 1) pushSegs(segs, e, 'dim', 1);
+      pushSegs(segs, e, kind, T);
     }
-    for (const [a, b, style] of links) {
-      const p0 = pos[a], p3 = pos[b];
-      if (!p0 || !p3) continue;
-      const key = a + '>' + b;
-      const an = anim?.links.get(key);
-      let tEnd = 1;
-      let st2 = style;
-      if (an) {
-        tEnd = Math.max(0, Math.min(1, (now - an.t0) / an.dur));
-        if (an.kind === 'ink' && tEnd < 1) {
-          // the old dashed path underneath, the new ink racing along it
-          drawCurve(p0, p3, 'path', 1, plot, horiz, clip, wash, key);
-        }
-        st2 = an.kind;
-      }
-      drawCurve(p0, p3, st2, tEnd, plot, horiz, clip, wash, key);
-    }
+    const jk = { dim: 0, pend: 1, lit: 2 };
+    const joints = geo.joints.map((j) => {
+      let best = 'dim';
+      for (const e of j.edges) { const k = edgeKind(e), a = anim?.get(e.p + '>' + e.c); if (a && now - a.t0 < a.dur) continue; if (jk[k] > jk[best]) best = k; }
+      return { x: j.x, y: j.y, kind: best };
+    });
+    paintPipes(img, segs, joints);
     ctx.putImageData(img, 0, 0);
+    return busy;
   };
-  const drawCurve = (p0, p3, style, tEnd, plot, horiz, clip, wash, key) => {
-    const dx = p3.x - p0.x, dy = p3.y - p0.y;
-    const k = (horiz ? Math.abs(dx) : Math.abs(dy)) * 0.55;
-    const p1 = horiz ? { x: p0.x + k, y: p0.y } : { x: p0.x, y: p0.y - k };
-    const p2 = horiz ? { x: p3.x - k, y: p3.y } : { x: p3.x, y: p3.y + k };
-    const len = Math.hypot(dx, dy) + 1;
-    const n = Math.ceil(len * 3);
-    const seed = hashStr(key) % 1000;
-    let lx = -9, ly = -9, count = 0;
-    for (let i = 0; i <= n; i++) {
-      const t = i / n;
-      if (t > tEnd) break;
-      const u = 1 - t;
-      let x = u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x;
-      let y = u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y;
-      const w = Math.sin(t * Math.PI) * Math.sin(t * 9 + seed) * 0.55;
-      if (horiz) y += w; else x += w;
-      const ix = Math.round(x), iy = Math.round(y);
-      if (ix === lx && iy === ly) continue;
-      const steep = Math.abs(ix - lx) < Math.abs(iy - ly);
-      lx = ix; ly = iy;
-      if (Math.hypot(ix - p0.x, iy - p0.y) < clip || Math.hypot(ix - p3.x, iy - p3.y) < clip) continue;
-      count++;
-      if (style === 'ink') {
-        plot(ix, iy, INK, 255);
-        if (steep) { plot(ix + 1, iy, INK, 150); plot(ix - 1, iy, wash, 90); }
-        else { plot(ix, iy + 1, INK, 150); plot(ix, iy - 1, wash, 90); }
-      } else if (style === 'path') {
-        if (count % 6 < 4) plot(ix, iy, INK2, 235);
-      } else if (count % 2 === 0) plot(ix, iy, PENCIL, 120);
+  const pushSegs = (out, e, kind, T) => {
+    let left = e.len * T;
+    for (let i = 1; i < e.pts.length && left > 0; i++) {
+      const [x0, y0] = e.pts[i - 1], [x1, y1] = e.pts[i];
+      const L = Math.abs(x1 - x0) + Math.abs(y1 - y0);
+      if (!L) continue;
+      const f = Math.min(1, left / L);
+      out.push({ x0, y0, x1, y1, kind, t: f });
+      left -= L;
     }
   };
-  const animate = () => {
+  const animate = (keys, delay = 0, dur = 320) => {
+    const now = performance.now() + delay;
+    anim ||= new Map();
+    for (const k of keys) anim.set(k, { t0: now, dur });
     cancelAnimationFrame(raf);
     const tick = () => {
       if (disposed) return;
-      draw();
-      if (anim && performance.now() < anim.until) raf = requestAnimationFrame(tick);
+      const busy = draw();
+      const pending = [...anim.values()].some((a) => performance.now() < a.t0 + a.dur);
+      if (busy || pending) raf = requestAnimationFrame(tick);
       else { anim = null; draw(); }
     };
     raf = requestAnimationFrame(tick);
   };
 
-  // ---------------- actions
-  const select = (id) => {
-    if (!NODE[id]) return;
-    if (NODE[id].line !== line) setLine(NODE[id].line, true);
-    sel = sel === id && !isTouch() ? sel : id;
-    hover = null;
-    au.play('sk_pick');
-    refreshNodes();
-    renderDetail();
-    // just enough scroll to show the Stamp button (under the tree on phones, down the right page on short screens)
-    const box = root.dataset.mode === 'narrow' ? body : side;
-    const a = detail.querySelector('.sk-act') || detail;
-    const r = a.getBoundingClientRect(), b = box.getBoundingClientRect();
-    if (r.bottom > b.bottom) box.scrollBy({ top: r.bottom - b.bottom + 8, behavior: 'smooth' });
-    else if (box === side && r.top < b.top) side.scrollTo({ top: 0, behavior: 'smooth' });
+  // ---------------- the tooltip (parchment)
+  let tipId = null, tipPinned = false;
+  const showTip = (id, pinned) => {
+    const n = NODE[id];
+    if (!n || n.line !== line) return;
+    tipId = id; tipPinned = pinned;
+    const lk = look(id), k = lk.k, L = LINE[n.line];
+    tip.innerHTML = '';
+    const all = Object.keys(S().nodes).concat(pend);
+    const fxList = el('ul', { class: 'skt-tip-fx' });
+    for (const [key, v] of Object.entries(n.fx)) {
+      const d = SKILL_KEYS[key];
+      if (!d) continue;
+      const others = fxOf(all.filter((x) => x !== id))[key] || 0;
+      const has = k === 'done' || k === 'pend';
+      const nowV = has ? others + v : others, nextV = others + v;
+      const zero = d.kind === 'perk' ? !nowV : nowV === 0;
+      fxList.append(el('li', {}, [el('span', {}, d.label), has
+        ? el('b', {}, fmtFx(key, nowV))
+        : el('b', {}, [el('s', {}, zero ? '—' : fmtFx(key, nowV)), ' → ', el('em', {}, fmtFx(key, nextV))])]));
+    }
+    const req = el('ul', { class: 'skt-tip-req' });
+    const need = TIER_LV[n.t];
+    req.append(el('li', { class: st.skillLevel(n.line) >= need ? 'ok' : 'no' }, `${L.name} level ${need}`));
+    if (n.req.length) req.append(el('li', { class: n.req.some((r) => owned(r)) ? 'ok' : 'no' }, 'After ' + n.req.map((r) => NODE[r].name).join(' or ')));
+    if (n.excl) {
+      const others = nodesOf(n.line).filter((m) => m.excl === n.excl && m.id !== id);
+      req.append(el('li', { class: k === 'barred' ? 'no' : 'pick' }, `A choice: this or ${others.map((m) => m.name).join(' or ')}`));
+    }
+    const pips = el('span', { class: 'skt-tip-pips' });
+    for (let i = 0; i < n.cost; i++) pips.append(el('img', { class: 'pix', src: SKC.token(!(k === 'done' || k === 'pend')), alt: '' }));
+    const status = {
+      done: `Learned · day ${S().nodes[id]}`,
+      pend: isTouch() ? 'Picked · Confirm to keep it' : 'Picked · Confirm to keep it, click to take back',
+      ready: isTouch() ? 'Tap again to pick it' : 'Click to pick it',
+    }[k] || lk.c?.reason || '';
+    const act = el('div', { class: 'skt-tip-act ' + k }, [el('span', {}, status)]);
+    if (pinned && (k === 'ready' || k === 'pend')) act.append(el('button', { class: 'skt-btn sm', type: 'button', onclick: (e) => { e.stopPropagation(); onNode(id, null, true); } }, k === 'ready' ? `Pick · ${n.cost} pt${n.cost > 1 ? 's' : ''}` : 'Take back'));
+    put(tip,
+      el('div', { class: 'skt-tip-h' }, [el('img', { class: 'pix', src: skillIconURL(id, k === 'locked' || k === 'gated' ? 'dim' : k === 'barred' ? 'gray' : 'lit'), alt: '' }), el('div', {}, [el('b', {}, n.name), el('small', {}, `${L.name} · ${TIER_NAME[n.t]} · Rank ${k === 'done' ? 1 : 0}/1`)])]),
+      el('p', { class: 'skt-tip-d' }, n.desc),
+      fxList,
+      el('div', { class: 'skt-tip-cost' }, [el('span', {}, 'Cost'), pips, el('b', {}, `${n.cost} point${n.cost > 1 ? 's' : ''}`)]),
+      req, act);
+    tip.hidden = false;
+    tip.classList.toggle('pinned', pinned);
+    for (const [nid, b] of Object.entries(nodeEls)) b.classList.toggle('sel', pinned && nid === id);
+    placeTip();
   };
+  const hideTip = () => {
+    tipId = null; tipPinned = false; tip.hidden = true;
+    for (const b of Object.values(nodeEls)) b.classList.remove('sel');
+  };
+  const placeTip = () => {
+    const b = nodeEls[tipId];
+    if (!b || tip.hidden) return;
+    const R = root.getBoundingClientRect(), nb = b.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight, gap = 6;
+    const sx = R.width / (root.offsetWidth || R.width) || 1; // (the book opens with a scale animation)
+    const nL = (nb.left - R.left) / sx, nT = (nb.top - R.top) / sx, nW = nb.width / sx, nH = nb.height / sx;
+    let x = nL + nW + gap;
+    if (x + tw > root.clientWidth - 4) x = nL - tw - gap;
+    if (x < 4) { x = Math.max(4, Math.min(root.clientWidth - tw - 4, nL + nW / 2 - tw / 2)); }
+    let y = nT - 4;
+    if (x === Math.max(4, Math.min(root.clientWidth - tw - 4, nL + nW / 2 - tw / 2))) y = nT + nH + gap > root.clientHeight - th - 4 ? nT - th - gap : nT + nH + gap;
+    y = Math.max(4, Math.min(root.clientHeight - th - 4, y));
+    tip.style.left = Math.round(x) + 'px';
+    tip.style.top = Math.round(y) + 'px';
+  };
+
+  // ---------------- picking
+  const pop = (b, cls) => { if (!b) return; b.classList.remove(cls); void b.offsetWidth; b.classList.add(cls); };
+  const onNode = (id, e, fromTip = false) => {
+    const touchy = isTouch() || e?.pointerType === 'touch';
+    if (!fromTip && touchy && !(tipId === id && tipPinned)) { au.play('sk_pick'); showTip(id, true); return; }
+    const k = look(id).k;
+    if (k === 'ready') pick(id);
+    else if (k === 'pend') unpick(id);
+    else {
+      au.play('ui_error');
+      pop(nodeEls[id], 'nope');
+      showTip(id, touchy || tipPinned);
+    }
+  };
+  const pick = (id) => {
+    if (look(id).k !== 'ready') return false;
+    const n = NODE[id];
+    if (n.line !== line) setLine(n.line, true);
+    pend.push(id);
+    recalc();
+    au.play('sk_pick');
+    au.play('click', { vol: 0.5 });
+    pop(nodeEls[id], 'pop');
+    const keys = geo ? geo.edges.filter((e) => e.c === id && owned(e.p)).map((e) => e.p + '>' + e.c) : [];
+    renderAll(true);
+    if (keys.length) animate(keys, 0, 260);
+    if (tipId) showTip(tipId, tipPinned);
+    return true;
+  };
+  /** Take a pick back (and any pick that only stood on it). */
+  const unpick = (id) => {
+    if (!pend.includes(id)) return false;
+    pend = pend.filter((x) => x !== id);
+    // drop picks that are no longer reachable without it, in order
+    for (let changed = true; changed;) {
+      changed = false;
+      for (let i = 0; i < pend.length; i++) {
+        const keep = pend.slice(0, i);
+        const s = S(), nodes = { ...s.nodes };
+        for (const k of keep) nodes[k] = 'pending';
+        const c = canUnlock({ data: { skills: { ...s, nodes, points: s.points - keep.reduce((t, k) => t + NODE[k].cost, 0) } } }, pend[i]);
+        if (!c.ok) { pend.splice(i, 1); changed = true; break; }
+      }
+    }
+    recalc();
+    au.play('remove');
+    renderAll(true);
+    if (tipId) showTip(tipId, tipPinned);
+    return true;
+  };
+  const undo = () => {
+    if (!pend.length) return false;
+    const id = pend[pend.length - 1];
+    if (NODE[id].line !== line) setLine(NODE[id].line, true);
+    return unpick(id);
+  };
+  const confirm = () => {
+    if (!pend.length) return false;
+    const order = pend.slice();
+    const was = {};
+    for (const n of nodesOf(line)) was[n.id] = look(n.id).k;
+    pend = [];
+    recalc();
+    const got = [];
+    for (const id of order) if (unlock(st, id).ok) got.push(id);
+    recalc();
+    hideTip();
+    if (!got.length) { au.play('ui_error'); renderAll(); return false; }
+    au.play('clang');
+    au.play('sk_level');
+    renderAll(true);
+    const here = got.filter((id) => NODE[id].line === line);
+    here.forEach((id, i) => setTimeout(() => { if (!disposed) celebrate(id); }, 90 + i * 150));
+    const lit = geo ? geo.edges.filter((e) => here.includes(e.c) && S().nodes[e.p]).map((e) => e.p + '>' + e.c) : [];
+    if (lit.length) animate(lit, 0, 420);
+    // chains fall off whatever these opened up
+    const freed = nodesOf(line).filter((n) => (was[n.id] === 'locked' || was[n.id] === 'gated') && !['locked', 'gated'].includes(look(n.id).k));
+    freed.forEach((n, i) => setTimeout(() => { if (!disposed) dropChains(n.id); }, 380 + here.length * 150 + i * 120));
+    if (freed.length) setTimeout(() => { if (!disposed) au.play('clunk'); }, 380 + here.length * 150);
+    setTimeout(() => { if (!disposed) au.play('sparkle', { vol: 0.7 }); }, 200 + here.length * 150);
+    const others = got.length - here.length;
+    if (others > 0) ui.toast?.(`${others} more skill${others > 1 ? 's' : ''} learned in other lines`, { kind: 'good' });
+    return true;
+  };
+  const celebrate = (id) => {
+    const b = nodeEls[id];
+    if (!b || !geo) return;
+    pop(b, 'lit');
+    const s = geo.s, n = NODE[id];
+    const cx = (colX(n.t) + NW / 2) * s, cy = (rowY(n.s) + CY) * s;
+    const ring = el('i', { class: 'skt-ring', style: { left: cx + 'px', top: cy + 'px' } });
+    fxEl.append(ring);
+    setTimeout(() => ring.remove(), 700);
+    const r = makeRng((performance.now() * 997) | 0);
+    const cols3 = ['#fff6c8', '#ffd860', '#ffa830', '#ff7a20', hex6(LINE[line].pal[0])];
+    for (let i = 0; i < 18; i++) {
+      const a = r() * Math.PI * 2, d = (16 + r() * 22) * s;
+      const sz = Math.max(1, Math.round((1 + r.int(0, 1)) * s));
+      const dot = el('i', { class: 'skt-spark', style: { left: cx + 'px', top: cy + 'px', width: sz + 'px', height: sz + 'px', background: cols3[r.int(0, cols3.length - 1)] } });
+      dot.style.setProperty('--dx', (Math.cos(a) * d).toFixed(1) + 'px');
+      dot.style.setProperty('--dy', (Math.sin(a) * d - 6 * s).toFixed(1) + 'px');
+      dot.style.setProperty('--fall', (10 + r() * 14) * s + 'px');
+      dot.style.animationDelay = Math.round(r() * 80) + 'ms';
+      fxEl.append(dot);
+      setTimeout(() => dot.remove(), 1100);
+    }
+    const [key, v] = Object.entries(n.fx)[0] || [];
+    const d = SKILL_KEYS[key];
+    const txt = d ? `${d.fmt(v)}${d.kind === 'mult' ? ' ' + d.label.toLowerCase() : ''}` : n.name;
+    const f = el('div', { class: 'skt-float', style: { left: Math.max(60, Math.min(geo.aw * s - 60, cx)) + 'px', top: (cy - NH * s * 0.5) + 'px' } }, txt);
+    fxEl.append(f);
+    setTimeout(() => f.remove(), 1500);
+    au.play('ding', { vol: 0.5 });
+  };
+  const dropChains = (id) => {
+    const b = nodeEls[id];
+    const ch = b?.querySelector('.skt-chain');
+    if (!ch) { pop(b, 'pop'); return; }
+    ch.classList.add('fall');
+    setTimeout(() => ch.remove(), 900);
+    pop(b, 'pop');
+  };
+
+  // ---------------- lines
   const setLine = (id, quiet = false) => {
     if (!LINE[id] || id === line) return;
     line = id;
     S().view = id;
-    sel = null; hover = null; anim = null;
-    if (!quiet) au.play('page', { vol: 0.6 });
+    hideTip();
+    anim = null;
+    if (!quiet) au.play('ui_click');
     buildNodes();
     renderAll();
-    tree.classList.remove('turn'); void tree.offsetWidth; tree.classList.add('turn');
-    requestAnimationFrame(layout);
-  };
-  const stamp = (id) => {
-    const n = NODE[id];
-    if (!n) return false;
-    if (n.line !== line) setLine(n.line, true);
-    const parents = n.req.filter((r) => S().nodes[r]);
-    const r = unlock(st, id);
-    if (!r.ok) {
-      au.play('ui_error');
-      const b = nodeEls[id];
-      b?.classList.remove('nope'); void b?.offsetWidth; b?.classList.add('nope');
-      return false;
-    }
-    sel = id;
-    const now = performance.now();
-    const links = new Map();
-    for (const p of parents) links.set(p + '>' + id, { t0: now, dur: 340, kind: 'ink' });
-    const kids = nodesOf(line).filter((m) => m.req.includes(id));
-    for (const m of kids) links.set(id + '>' + m.id, { t0: now + 520, dur: 360, kind: linkStyle(id, m.id) });
-    anim = { links, until: now + 920 };
-    if (parents.length) au.play('sk_ink');
-    // the seal: hold the old picture while the ink runs, then press it
-    const b = nodeEls[id];
-    const delay = parents.length ? 300 : 40;
-    b?.classList.add('inking');
-    renderPoints(true);
-    renderTabs();
-    renderCard();
-    animate();
-    setTimeout(() => {
-      if (disposed) return;
-      refreshNodes();
-      renderDetail();
-      b?.classList.remove('inking');
-      b?.classList.remove('stamp'); void b?.offsetWidth; b?.classList.add('stamp');
-      setTimeout(() => { if (!disposed) { au.play('sk_stamp'); burst(id); } }, 110);
-      for (const m of kids) { const k = nodeEls[m.id]; if (k && nodeState(st, m.id) !== 'locked') { k.classList.remove('reveal'); void k.offsetWidth; k.classList.add('reveal'); } }
-    }, delay);
-    return true;
-  };
-  const burst = (id) => {
-    if (!geo) return;
-    const p = geo.pos[id], s = geo.s, pal = LINE[line].pal;
-    const r = makeRng((performance.now() * 1000) | 0);
-    const cx = p.x * s, cy = p.y * s;
-    for (let i = 0; i < 16; i++) {
-      const a = r() * Math.PI * 2, d = (14 + r() * 16) * s;
-      const ink = i % 4 === 3;
-      const c = ink ? '#2e1a0e' : '#' + pal[r.int(0, 3)].toString(16).padStart(6, '0');
-      const sz = Math.max(1, Math.round((ink ? 1 : 1 + r.int(0, 1)) * s));
-      const dot = el('i', { class: 'sk-drop', style: { left: cx + 'px', top: cy + 'px', width: sz + 'px', height: sz + 'px', background: c } });
-      dot.style.setProperty('--dx', Math.cos(a) * d + 'px');
-      dot.style.setProperty('--dy', Math.sin(a) * d + 'px');
-      dot.style.animationDelay = r() * 60 + 'ms';
-      fxEl.append(dot);
-      setTimeout(() => dot.remove(), 900);
-    }
-    const n = NODE[id];
-    const [k, v] = Object.entries(n.fx)[0] || [];
-    const txt = k && SKILL_KEYS[k] ? `${SKILL_KEYS[k].fmt(v)} ${SKILL_KEYS[k].kind === 'mult' ? SKILL_KEYS[k].label.toLowerCase() : ''}`.trim() : n.name;
-    const tw = tree.clientWidth;
-    const f = el('div', { class: 'sk-float', style: { left: Math.max(tw * 0.28, Math.min(tw * 0.72, cx)) + 'px', top: (cy - NODE_PX * s * 0.55) + 'px' } }, txt);
-    f.style.setProperty('--lc', LINE[line].ink);
-    fxEl.append(f);
-    setTimeout(() => f.remove(), 1400);
-    tree.classList.remove('thump'); void tree.offsetWidth; tree.classList.add('thump');
+    layout();
+    sheet.classList.remove('turn'); void sheet.offsetWidth; sheet.classList.add('turn');
+    board.scrollTo?.({ left: 0, top: 0 });
   };
   const doRespec = async () => {
-    const cost = respecCost(st, line), ptsBack = spentIn(st, line);
-    if (!ptsBack) return;
+    const cost = respecCost(st, line), back = spentIn(st, line);
+    if (!back) return;
     const L = LINE[line];
-    const ok = await ui.confirm(`Scrape the <b>${L.name}</b> page clean?<br>You get <b>${ptsBack} skill point${ptsBack > 1 ? 's' : ''}</b> back to spend again, for <b>${cost}g</b> of fresh parchment.`, 'Scrape', 'Keep');
+    const ok = await ui.confirm(`Reforge <b>${L.name}</b>?<br>Every ${L.name} skill is unlearned and you get <b>${back} point${back > 1 ? 's' : ''}</b> back, for <b>${cost}g</b>.`, 'Reforge', 'Keep');
     if (!ok || disposed) return;
+    pend = pend.filter((x) => NODE[x].line !== line);
     const r = respec(st, line);
+    recalc();
     if (!r.ok) { au.play('ui_error'); ui.toast(r.reason, { kind: 'bad' }); return; }
     au.play('sk_scrape');
-    sel = null;
-    root.classList.remove('scraped'); void root.offsetWidth; root.classList.add('scraped');
     renderAll();
   };
 
-  // ---------------- render everything
-  const renderFoot = () => {
-    const pts = spentIn(st, line), cost = respecCost(st, line);
-    scrape.hidden = !pts;
-    scrape.textContent = `Scrape page · ${cost}g`;
-    scrape.title = `Unstamp every ${LINE[line].name} skill and get ${pts} point${pts === 1 ? '' : 's'} back`;
-    const ready = nodesOf(line).some((n) => nodeState(st, n.id) === 'ready');
-    hint.textContent = ready ? (isTouch() ? 'A seal is ready: tap it, then Stamp.' : 'A seal is ready: pick it and press Stamp.') : S().points ? 'Spend your points where the ink reaches.' : 'Level up a line to earn skill points.';
-  };
-  const renderAll = () => {
-    renderPoints();
+  const renderAll = (bump = false) => {
+    renderHead();
     renderTabs();
-    renderCard();
+    renderPoints(bump);
     refreshNodes();
-    renderDetail();
-    renderLearn();
-    renderFoot();
+    renderSide();
+    renderHint();
     draw();
   };
 
+  // ---------------- panning the board with the mouse (touch scrolls natively)
+  let drag = null;
+  board.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || e.target.closest('.skt-node')) return;
+    if (board.scrollWidth <= board.clientWidth + 1 && board.scrollHeight <= board.clientHeight + 1) { if (tipPinned) hideTip(); return; }
+    drag = { x: e.clientX, y: e.clientY, l: board.scrollLeft, t: board.scrollTop };
+    board.classList.add('drag');
+    board.setPointerCapture?.(e.pointerId);
+  });
+  board.addEventListener('pointermove', (e) => { if (drag) { board.scrollLeft = drag.l - (e.clientX - drag.x); board.scrollTop = drag.t - (e.clientY - drag.y); } });
+  const endDrag = () => { drag = null; board.classList.remove('drag'); };
+  board.addEventListener('pointerup', endDrag);
+  board.addEventListener('pointercancel', endDrag);
+  board.addEventListener('scroll', () => { if (tipId) placeTip(); }, { passive: true });
+  root.addEventListener('pointerdown', (e) => { if (tipPinned && !e.target.closest('.skt-node, .skt-tip')) hideTip(); });
+
+  let disposed = false;
   buildNodes();
   renderAll();
   const ro = new ResizeObserver(() => layout());
   ro.observe(root);
-  ro.observe(tree);
+  ro.observe(board);
   requestAnimationFrame(layout);
 
   // live updates (XP while the page is open, points from elsewhere)
   const off = st.on('skill', (e) => {
     if (disposed) return;
     if (!root.isConnected) { dispose(); return; }
-    if (e.type === 'unlock') return; // our own stamp animates itself
+    if (e.type === 'unlock') return; // our own confirm animates itself
+    if (e.type === 'respec' || e.type === 'level') { pend = pend.filter((id) => canUnlock(V, id).code !== 'none'); }
+    recalc();
     if (e.type === 'xp' && e.line !== line) { renderTabs(); return; }
     renderAll();
   });
   const keys = (e) => {
-    if (!root.isConnected) return;
-    if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && opts.standalone) { // (in the book, arrows turn chapters)
+    if (!root.isConnected || disposed) return;
+    if (ui.panelStack?.length && !ui.panelStack[ui.panelStack.length - 1].el.contains(root)) return; // a dialog over us
+    const typing = /INPUT|TEXTAREA/.test(document.activeElement?.tagName || '');
+    if (typing) return;
+    if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !inBook) { // (in the book, arrows turn chapters)
       const i = SKILL_LINES.findIndex((l) => l.id === line);
-      const j = (i + (e.code === 'ArrowRight' ? 1 : -1) + SKILL_LINES.length) % SKILL_LINES.length;
-      if (e.target?.tagName !== 'INPUT') { setLine(SKILL_LINES[j].id); e.preventDefault(); }
-    } else if ((e.code === 'Enter' || e.code === 'Space') && sel && document.activeElement?.classList?.contains('sk-node') && nodeState(st, sel) === 'ready') {
-      stamp(sel); e.preventDefault();
-    }
+      setLine(SKILL_LINES[(i + (e.code === 'ArrowRight' ? 1 : -1) + SKILL_LINES.length) % SKILL_LINES.length].id);
+      e.preventDefault();
+    } else if (e.code === 'KeyZ' && !e.repeat) { if (undo()) e.preventDefault(); }
+    else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && pend.length && !document.activeElement?.closest?.('.skt-node, button')) { confirm(); e.preventDefault(); }
   };
   window.addEventListener('keydown', keys);
   const dispose = () => {
     if (disposed) return;
     disposed = true;
+    if (pend.length) ui.toast?.(`${pend.length} picked skill${pend.length > 1 ? 's' : ''} not confirmed: the points are still yours.`, { icon: SKC.token(false) });
+    pend = [];
     cancelAnimationFrame(raf);
     ro.disconnect();
     off();
@@ -627,21 +730,34 @@ export function renderSkills(host, game, opts = {}) {
   };
   S().opened = st.data.playTime || 0;
   ui.skillNudge?.clear();
-  return { el: root, dispose, select, stamp, line: setLine, layout, get selected() { return sel; }, get current() { return line; } };
+  return {
+    el: root, dispose, layout, line: setLine, pick, unpick, undo, confirm,
+    /** Show a skill's card (pinned), switching lines if needed. */
+    select: (id) => { if (!NODE[id]) return; if (NODE[id].line !== line) setLine(NODE[id].line, true); showTip(id, true); nodeEls[id]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); },
+    /** Pick and confirm in one go (tests). */
+    stamp: (id) => (pick(id) ? confirm() : false),
+    /** Esc: close the card first; with picks waiting, the first Esc asks. */
+    escape: () => {
+      if (tipPinned) { hideTip(); return true; }
+      if (pend.length && !root.dataset.warned) { root.dataset.warned = '1'; pop(goBtn, 'nag'); hint.textContent = 'Picks not confirmed: Confirm to keep them, or Esc again to leave them.'; au.play('ui_error'); return true; }
+      return false;
+    },
+    get pending() { return pend.slice(); },
+    get selected() { return tipId; },
+    get current() { return line; },
+  };
 }
 
 // ------------------------------------------------------------------ standalone (ui.openSkills)
 export function openSkills(game, line) {
   const ui = game.ui;
-  const page = el('div', { class: 'sk-page' });
-  const cover = el('div', { class: 'ib-cover sk-cover' }, [page]);
-  const book = el('div', { class: 'ib sk-book' }, [el('i', { class: 'ib-ribbon' }), cover]);
-  game.audio.play('page');
+  const wrap = el('div', { class: 'skt-wrap' });
   let ctl = null;
-  const h = ui.openPanel({ body: book, className: 'ib-panel sk-panel', onClose: () => ctl?.dispose() });
+  const h = ui.openPanel({ body: wrap, className: 'skt-panel', onClose: () => ctl?.dispose() });
   h.kind = 'skills';
-  ctl = renderSkills(page, game, { line, standalone: true });
+  ctl = renderSkills(wrap, game, { line, standalone: true });
   h.debug = ctl;
+  h.onEscape = () => ctl.escape();
   return h;
 }
 

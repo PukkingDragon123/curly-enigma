@@ -315,7 +315,9 @@ export default class HomeScene extends Scene {
 
   addShellLights() {
     const sh = this.shell;
+    this.roomMotes = []; // (dust turning in your room's lamplight)
     for (const l of sh.lightsM()) {
+      if (['lamp', 'hanging', 'hearth', 'window', 'sconce'].includes(l.kind)) this.roomMotes.push(l);
       if (l.kind === 'sconce') this.addLight({ ...l, intensity: 0.45, distance: 2.6, flicker: 0.1, halo: 0.2, haloOpacity: 0.55, priority: 2 });
       else if (l.kind === 'hanging') this.addLight({ ...l, intensity: 0.6, distance: 3.0, flicker: 0.12, halo: 0.2, haloOpacity: 0.6, pool: 0.55, poolX: l.x, poolZ: l.z, poolOpacity: 0.14, priority: 2 });
       else if (l.kind === 'lamp') this.addLight({ ...l, intensity: 1.0, distance: 4.0, flicker: 0.08, halo: 0.26, haloOpacity: 0.6, pool: 0.95, poolX: l.x, poolZ: l.z, poolOpacity: 0.2, priority: 5 });

@@ -101,14 +101,18 @@ await step("Old Star's mining lesson (down the lift and back)", async () => {
   for (let i = 0; i < 160 && ((await scene()) !== 'deep' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
   if ((await scene()) !== 'deep') throw new Error('not down at the dig: ' + (await scene()));
   await wait(2500);
-  if (!(await page.evaluate(() => !!window.__game.scene.prologue))) throw new Error('no lesson in the dig');
+  if (!(await page.evaluate(() => !!window.__game.scene.firstDig?.debug?.on?.()))) throw new Error('no mining lesson in the mine');
   await page.evaluate(() => { const s = window.__game.scene; for (let k = 0; k < 90; k++) s.update(1 / 30); });
   await shot('03-dig-lesson');
-  // the lesson is played through by its own tests; here: skip this lesson, which rides home
-  await page.evaluate(() => window.__game.scene.prologue.debug.skip(false));
+  // his old copper dig is a short walk from the cage: real copper deposits there
+  const seams = await page.evaluate(() => { const s = window.__game.scene, L0 = s.world.plan.lifts.find((l) => l.id === 'L0'); return s.world.depositsNear(L0.x, L0.y, L0.z, 12).filter((d) => String(d.id).startsWith('acu0_')).length; });
+  if (!seams) throw new Error('no copper near the mine entrance');
+  // digging is tested by the deep steps; here the copper's handed over, and E at the cage's bell rides home
+  const cu = await page.evaluate(() => window.__game.scene.debug.giveTutorialCopper());
+  if (!(cu > 0)) throw new Error('no copper in the pack: ' + cu);
+  await page.evaluate(() => window.__game.scene.firstDig.debug.ride());
   for (let i = 0; i < 200 && ((await scene()) !== 'home' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
   if ((await scene()) !== 'home') throw new Error('did not ride home: ' + (await scene()));
-  if (!(await page.evaluate(() => window.__game.state.flag('prologue')))) throw new Error('mining lesson not marked done');
   // Old Star sniffs the copper and sends you to his forge
   const stage = await page.evaluate(() => window.__game.scene.debug.run(600, 1 / 30, () => {
     const t = window.__game.ui.tutor;
@@ -119,6 +123,7 @@ await step("Old Star's mining lesson (down the lift and back)", async () => {
     const why = await page.evaluate(() => { const s = window.__game.scene, st = window.__game.state; return { copper: st.count('copper_ore'), tut: s.homeTutor?.(), cine: !!s.cine, scripted: !!s.scripted, riding: !!s.riding, star: s.debug.star?.(), line: window.__game.ui.tutor?.active?.html?.slice(0, 80) ?? null, panels: window.__game.ui.isPanelOpen?.(), stack: (window.__game.ui.panelStack || []).map((h) => h.el?.className + '|' + (h.el?.textContent || '').slice(0, 60)) }; });
     throw new Error('the forge lesson did not come next: ' + stage + ' ' + JSON.stringify(why));
   }
+  if (!(await page.evaluate(() => window.__game.state.flag('prologue')))) throw new Error('mining lesson not marked done');
 });
 await step("Old Star's forge lesson", async () => {
   await go('forge', { from: 'home', tutorial: true });

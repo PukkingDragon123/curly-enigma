@@ -103,7 +103,7 @@ export function shack({ W = 2.6, D = 1.6, Hf = 1.5, Hb = 1.95, dc = -0.25, dw = 
     const a = Math.atan2(sy, sx), r = Math.hypot(sx, sy);
     const star = r < 2.4 * (0.62 + 0.38 * Math.cos(a * 5 - Math.PI / 2));
     const edge = x === pc - 4 || x === pc + 3 || y === DH + 3 || y === Math.min(HF, DH + 10) - 1;
-    g.set(X(x), y, Z(VD) + 1, star ? 0xc8a850 : edge ? 0x6a4030 : hash2(x, y, seed + 7) < 0.25 ? 0x6a5244 : 0x7a7268);
+    g.set(X(x), y, Z(VD) + 1, star ? 0xe8c858 : edge ? 0x5a4a3e : hash2(x, y, seed + 7) < 0.25 ? 0x7a6656 : 0x9a968c); // (bright tin, a rust spot, the star in old gold)
   }
   // corner posts: rough logs, bark in patches
   for (const [x, z] of [[-1, -1], [VW, -1], [-1, VD], [VW, VD]]) for (let y = 0; y < (z < 0 ? HB : HF) + 3; y++) for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
@@ -131,7 +131,8 @@ export function shack({ W = 2.6, D = 1.6, Hf = 1.5, Hb = 1.95, dc = -0.25, dw = 
     g.set(X(x), y, Z(z), c);
   }
   for (let x = t0; x < t1; x++) { // the edge hanging down over the front, ragged
-    const drop = 3 + Math.floor(hash2(x >> 1, 3, seed) * 5);
+    // (torn short over the door, so his star on its tin plate shows)
+    const drop = Math.abs(x - pc) < 7 ? 1 + (x & 1) : 3 + Math.floor(hash2(x >> 1, 3, seed) * 5);
     const z = VD + OH, ytop = roofY(VD) + 2 - Math.round(OH * 0.5);
     for (let j = 1; j < drop; j++) g.set(X(x), ytop - j, Z(z), CANVAS[(x >> 3) % 3]);
   }
@@ -634,4 +635,53 @@ export function ropeCoil(seed = 111) {
   ring(g, 38, 8, 0, 3.6, 0, 7, (x, y) => (y === 6 ? 0x6a6a72 : y % 3 === 0 ? 0x5a3a2a : 0x8a5a3a));
   line(g, [[38, 7, 8], [38, 10, 7], [42, 13, 6]], 0.5, 0x6a6a72);
   return M32(g, [20, 0, 18]);
+}
+
+// 3 × 5 letters for painted signs (rows top to bottom)
+const FONT = {
+  D: ['110', '101', '101', '101', '110'], E: ['111', '100', '110', '100', '111'], P: ['110', '101', '110', '100', '100'],
+  T: ['111', '010', '010', '010', '010'], O: ['010', '101', '101', '101', '010'], W: ['101', '101', '101', '111', '101'],
+  N: ['101', '111', '111', '101', '101'], ' ': ['000', '000', '000', '000', '000'],
+};
+
+/**
+ * A weathered board on one nail, its paint flaking: "DEEP TOWN" and an arrow at the door (wall
+ * piece, 1/64 m; its back at z 0, hanging askew from the nail at the top).
+ */
+export function townSign(seed = 113) {
+  const text = 'DEEP TOWN', L = text.length * 4 + 7, Hh = 13;
+  const g = new VoxelGrid(L + 2, Hh + 4, 4);
+  for (let y = 0; y < Hh; y++) for (let x = 0; x < L; x++) {
+    const plank = y === 6 ? 0.78 : 1; // two boards
+    let c = mulc(NEWER[Math.floor(y / 7) % 2], plank * (h3(x >> 1, y, 0, seed) < 0.2 ? 0.86 : 1.05));
+    if ((x === 0 || x === L - 1 || y === 0 || y === Hh - 1) && hash2(x, y, seed) < 0.5) continue; // ragged ends
+    g.set(x, y, 0, mulc(c, 0.8));
+    g.set(x, y, 1, c);
+  }
+  // the letters, in old whitewash, flaking
+  [...text].forEach((ch, i) => {
+    const f = FONT[ch];
+    for (let r = 0; r < 5; r++) for (let k = 0; k < 3; k++) if (f[r][k] === '1' && hash2(i * 3 + k, r, seed + 2) > 0.16) g.set(2 + i * 4 + k, Hh - 4 - r, 2, hash2(k, r + i, seed + 3) < 0.3 ? 0xb8b098 : 0xe0d8c0);
+  });
+  // an arrow under them, pointing down-left, at the door
+  for (let k = 0; k < 6; k++) g.set(L - 4 - k, 3 - Math.floor(k / 2), 2, 0xc8c0a8);
+  for (const [x, y] of [[L - 9, 1], [L - 10, 1], [L - 9, 2], [L - 8, 0]]) g.set(x, y, 2, 0xc8c0a8);
+  // the nail and its rust run
+  g.set(Math.round(L / 2), Hh, 2, 0x3a3a40); g.set(Math.round(L / 2), Hh + 1, 1, 0x3a3a40);
+  for (let k = 1; k < 4; k++) g.set(Math.round(L / 2), Hh - k, 2, 0x6a4030);
+  const m = M32(g, [L / 2, Hh + 1, 0]);
+  m.rotation.z = -0.1;
+  return { obj: group(m), w: L / 64 };
+}
+
+/** A few stones fallen from the roof (floor piece, 1/64 m): n rough lumps across w × d m. */
+export function fallenStones(n = 5, w = 0.6, d = 0.4, seed = 115) {
+  const W = Math.round(w * 64), D = Math.round(d * 64);
+  const g = new VoxelGrid(W + 8, 14, D + 8);
+  for (let i = 0; i < n; i++) {
+    const r = 2.5 + hash2(i, 1, seed) * 4, cx = 4 + hash2(i, 2, seed) * W, cz = 4 + hash2(i, 3, seed) * D;
+    const base = [0x55585c, 0x484b50, 0x5f5e5a, 0x5d574f][i % 4];
+    g.ellipsoid(cx, r * 0.55, cz, r, r * 0.75, r * 0.85, (x, y, z) => (y < 1 ? mulc(base, 0.7) : h3(x >> 1, y >> 1, z >> 1, seed + i) < 0.3 ? mulc(base, 0.86) : y > r * 0.9 && hash2(x, z, seed) < 0.2 ? 0x7c8670 : base));
+  }
+  return M32(g, [(W + 8) / 2, 0, (D + 8) / 2]);
 }

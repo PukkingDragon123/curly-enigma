@@ -107,7 +107,7 @@ export class HomeMoves {
    * The first ride down (the mining lesson), as a cutscene: the bars, a lurch as the old brake lets
    * go (the cage drops a hand's width and catches, the lantern gutters, grit sifts down from the
    * shaft), a moment hanging there creaking, then down into the dark faster and faster, the lantern
-   * flickering, and black. A hold skips straight to the dig.
+   * flickering, and black. A hold skips straight to the mine.
    */
   async lessonDrop() {
     const a = this.game.audio, ob = this.game.ui.onboard, L = this.liftLight, c = this.cam;

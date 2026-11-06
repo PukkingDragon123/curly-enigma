@@ -1064,7 +1064,10 @@ export function bedroomHearth(hh = 144, seed = 107) {
   const MY = 50;
   for (let y = 0; y < MY; y++) for (let x = x0; x < x0 + W; x++) for (let z = 0; z < D; z++) {
     if (inFire(x, y) && z > 3) continue;
-    const c = st(x, y, z);
+    // (old stone gone the cave's grey, a block chipped out here and there, moss at the foot of its ends)
+    if (z === D - 1 && y > 4 && hash2(Math.floor(x / 15), Math.floor(y / 10), seed + 21) < 0.1 && hash2(x >> 1, y >> 1, seed + 22) < 0.7) continue;
+    let c = mixc(st(x, y, z), 0x55585c, 0.3);
+    if (y < 7 && (x < x0 + 8 || x > x0 + W - 9) && hash2(x, y + z * 7, seed + 23) < (7 - y) / 9) c = hash2(x, z, seed + 24) < 0.5 ? 0x4a5a30 : 0x3e4a28;
     g.set(x, y, z, mixc(c, 0x1e1814, Math.min(0.7, soot(x, y) * (z > D - 3 ? 1 : 0.3))));
   }
   // the voussoirs round the arch and a keystone
@@ -1120,7 +1123,11 @@ export function bedroomHearth(hh = 144, seed = 107) {
     g.box(sx - 3, sy - 15, D + 2, 7, 3, 3, col);
   }
   // the chimney breast to the ceiling
-  for (let y = MY + 6; y < hh; y++) for (let x = x0 + 10; x < x0 + W - 10; x++) for (let z = 0; z < D - 6; z++) g.set(x, y, z, mixc(st(x, y, z), 0x2a2420, y > hh - 30 ? (y - hh + 30) / 80 : 0));
+  // (smoke has leaked from its joints for years: streaks up from the mantel, black toward the roof)
+  for (let y = MY + 6; y < hh; y++) for (let x = x0 + 10; x < x0 + W - 10; x++) for (let z = 0; z < D - 6; z++) {
+    const streak = hash2(x >> 2, 0, seed + 25) < 0.3 ? 0.18 : 0;
+    g.set(x, y, z, mixc(mixc(st(x, y, z), 0x55585c, 0.3), 0x2a2420, Math.min(0.75, 0.12 + streak + (y - MY) / (hh - MY) * 0.35 + (y > hh - 30 ? (y - hh + 30) / 80 : 0))));
+  }
   // the fire irons on a stand at the side
   const ix = x0 + W + 5, iz = D + 8;
   g.box(ix - 3, 0, iz - 3, 7, 2, 7, P.iron); g.box(ix, 2, iz, 1, 30, 1, P.iron); g.box(ix - 3, 30, iz, 7, 1, 1, P.iron);

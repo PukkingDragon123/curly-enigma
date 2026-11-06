@@ -4,34 +4,31 @@
 // reacts to how each step went. When the dish is done: act { type: 'lesson', step: 'cook_done' }.
 // The cinematic tutorial (src/ui/Onboard.js): it opens as a cutscene (letterbox, his first line
 // through the cutscene talk when there is one, a hold skips it; cooking starting ends it), and each
-// step's control gets a prompt card drawn for the device (click / tap, hold, drag, circles). What he
-// hands you off his shelf flies into your paws (ui.onboard.toss); the lesson's stamp waits for home.
+// step's control gets a small prompt drawn for the device (click / tap, hold, drag, circles). His
+// running tip is one short line; the prompt carries the control. No flying icons or title cards.
 import { LESSON, DISHES } from '../data/recipes.js';
 import { ITEMS } from '../data/items.js';
 import { pick } from '../core/util.js';
 import { pantryCount, pantryGive } from './quality.js';
-import { iconURL } from '../gfx/PixelArt.js';
 
-const touch = () => document.documentElement.classList.contains('is-touch');
 
 /** His tip for each kind of step (with the controls, since the lesson hides the usual hint). */
 function tipFor(kind) {
-  const t = touch();
   return {
-    chop: t ? 'Knife first. Slide it over a <b>dotted line</b> and <b>tap</b>. Even pieces cook even.' : 'Knife first. Move it over a <b>dotted line</b> and <b>click</b>. Even pieces cook even.',
-    simmer: t ? 'Now the pot. <b>Hold</b> your paw down to turn the flame up, let go to ease off. The pot is slow to follow, so lead it. Keep it in the <b>green</b>: a simmer, not a boil!' : 'Now the pot. <b>Hold</b> the mouse (or <kbd>Space</kbd>) to turn the flame up, let go to ease off. The pot is slow to follow, so lead it. Keep it in the <b>green</b>: a simmer, not a boil!',
-    season: t ? 'A pinch of salt. <b>Tap</b> to shake it in, then <b>Done</b> when the gauge is in the band. Bland is sad; too salty is worse.' : 'A pinch of salt. Shake it in (mouse <b>up and down</b>, or click), then <kbd>Space</kbd> when it\'s in the band. Bland is sad; too salty is worse.',
-    stir: 'Stir in <b>circles</b>, round and round. Not too fast or it slops over.',
-    crack: 'Crack it on the rim when the swing is in the <b>gold</b>. Gently does it.',
+    chop: 'Knife first. Even pieces cook even.',
+    simmer: 'A simmer, not a boil! The pot is slow to follow, so lead it.',
+    season: 'A pinch of salt. Bland is sad; too salty is worse.',
+    stir: 'Round and round. Not too fast or it slops over.',
+    crack: 'Gently does it.',
     fry: 'Flip it when it\'s <b>golden</b>, both sides.',
     flip: 'Toss it when it\'s golden, then get the pan <b>under</b> it!',
-    pour: 'Hold to pour, let go just <b>before</b> the line: the jug keeps dribbling.',
+    pour: 'Let go just <b>before</b> the line: the jug keeps dribbling.',
     knead: 'Left paw, right paw, <b>on the beat</b>.',
-    roll: 'Roll it out even: lean on the <b>thick</b> side.',
-    grate: 'Long strokes down the teeth. Stop before you grate your <b>knuckles</b>.',
-    bake: 'Keep the fire fed and pull it out at <b>golden</b>. Your nose will tell you.',
-    mash: 'Aim at a lump and press. <b>Steady</b>, not frantic.',
-    plate: 'Drop it in the <b>middle</b> of the plate. Presentation, apprentice!',
+    roll: 'Lean on the <b>thick</b> side.',
+    grate: 'Stop before you grate your <b>knuckles</b>.',
+    bake: 'Pull it out at <b>golden</b>. Your nose will tell you.',
+    mash: '<b>Steady</b>, not frantic.',
+    plate: 'Presentation, apprentice!',
   }[kind] || 'Easy does it.';
 }
 
@@ -109,9 +106,7 @@ export class CookLesson {
     this.cine = true;
     const ob = this.game.ui.onboard;
     ob?.cinema(true, { skip: () => this.endCine() });
-    ob?.caption?.('The fire pit', 'Supper\'s on', 3.4);
-    if (gave && ob?.toss) this.ids.forEach((id, i) => setTimeout(() => { if (this.cine && this.game.scene === this.sc) ob.toss({ x: innerWidth * (0.7 - i * 0.08), y: innerHeight * 0.3 }, iconURL(id), 'pack', { label: i === 0 ? '+ ' + names : null }); }, 900 + i * 380));
-    await this.say(`Right, apprentice. A miner who can't cook is a miner who faints halfway down a shaft. We'll make my <b>${DISHES[this.dish].name}</b>${gave ? `. Here, take a ${names} off my shelf` : ''}.`, { mood: 'happy', wait: true });
+    await this.say(`My <b>${DISHES[this.dish].name}</b>: easy, and it keeps a miner going.${gave ? ` Take a ${names} off my shelf.` : ''}`, { mood: 'happy', wait: true });
     this.endCine();
     if (this.game.scene === this.sc && this.sc.phase === 'pantry' && !this.done) this.pantryTip();
   }
@@ -138,7 +133,7 @@ export class CookLesson {
     this.endCine();
     if (this.done) return;
     this.stage = 'cooking';
-    this.say('Good. Every dish is a few jobs, one after another. Watch the paws.', { mood: 'happy', dur: 2.6 });
+    this.say('Good. A dish is a few jobs, one after another.', { mood: 'happy', dur: 2.4 });
   }
 
   onStep(kind) {
@@ -174,8 +169,7 @@ export class CookLesson {
           : g === 'Okay' ? ['It\'s... soup. Of a sort. We all start somewhere.', 'laugh']
             : ['Burnt. Ha! My first one was worse. Much worse.', 'laugh'];
     await this.say(first[0], { mood: first[1], wait: true });
-    await this.say('Eat it now or take it down the mine. When you eat, look up: that little card is a <b>buff</b>. Glowing Whiskers, your lamp shines wider. Better cooking, longer buffs.', { mood: 'calm', wait: true });
-    await this.say('That\'s my lesson. Cook what you find down there: mushrooms, roots, berries, the odd grub. Every new recipe goes in your <b>Index</b>. Now off you go!', { mood: 'proud', wait: true });
+    await this.say('Eat it down the mine: good food lights you up for a while (a <b>buff</b>). Cook what you find down there. Off you go!', { mood: 'proud', wait: true });
     this.stage = 'free';
   }
 
