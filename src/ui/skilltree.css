@@ -30,7 +30,7 @@
   background: var(--skc-medal) 0 0 / 100% 100%; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .5));
 }
 .skt-emblem img { position: absolute; left: calc(var(--px) * 8); top: calc(var(--px) * 8); width: calc(var(--px) * 32); height: calc(var(--px) * 32); animation: sktEmb .5s var(--pop); }
-@keyframes sktEmb { from { transform: scale(.5) rotate(-40deg); opacity: 0; } }
+@keyframes sktEmb { from { transform: scale(.6) rotate(-40deg); } }
 .skt-title { display: flex; align-items: baseline; gap: calc(var(--px) * 4); min-width: 0; white-space: nowrap; }
 .skt-title h2 {
   margin: 0; font-family: var(--font-head); font-weight: 400; font-size: calc(var(--fs-h) * 1.25); line-height: 1; letter-spacing: .06em; text-transform: uppercase;
@@ -82,19 +82,24 @@
 .skt-cols { position: absolute; inset: 0; pointer-events: none; }
 .skt-col {
   position: absolute; top: 0; transform: translateX(-50%); display: flex; align-items: center; gap: calc(var(--s) * 2);
-  height: calc(var(--s) * 12); font-size: calc(var(--fs) * .85); white-space: nowrap; color: #6e5a44; text-transform: uppercase; letter-spacing: .05em;
+  height: calc(var(--s) * 11); font-size: calc(var(--fs) * .85); white-space: nowrap; color: #6e5a44; text-transform: uppercase; letter-spacing: .05em;
 }
 .skt-col i { width: calc(var(--s) * 7); height: var(--s); background: currentColor; opacity: .55; }
 .skt-col b { font-weight: 400; }
 .skt-col.met { color: #f0c860; text-shadow: 0 var(--px) 0 #2a1404; }
 .skt-col:not(.met) b::before { content: ''; display: inline-block; width: .6em; height: .55em; margin-right: .3em; border: var(--s) solid currentColor; border-bottom-width: calc(var(--s) * 2.5); border-radius: var(--s) var(--s) 0 0; vertical-align: baseline; }
 
-/* the line's name with a thin rule into its first skill */
-.skt-label {
-  position: absolute; left: 0; transform: translateY(-100%); padding: 0 calc(var(--s) * 2) calc(var(--s) * 1) 0; box-sizing: border-box; text-align: right;
-  border-bottom: var(--s) solid rgba(240, 200, 120, .45); font-size: calc(var(--fs) * .85); line-height: 1.1; color: #e8c888; text-transform: uppercase; letter-spacing: .06em;
-  text-shadow: 0 var(--px) 0 #1a0e06; white-space: nowrap; pointer-events: none;
+/* each track's name with a thin rule into its first skill */
+.skt-label { position: absolute; inset: 0; pointer-events: none; }
+.skt-row {
+  position: absolute; left: 0; transform: translateY(-100%); padding: 0 calc(var(--s) * 2) var(--s) 0; box-sizing: border-box; text-align: right;
+  border-bottom: var(--s) solid rgba(240, 200, 120, .3); font-size: calc(var(--fs) * .8); line-height: 1.1; color: #a88a62; text-transform: uppercase; letter-spacing: .05em;
+  text-shadow: 0 var(--px) 0 #120a04; white-space: nowrap; overflow: hidden; text-overflow: clip;
+  -webkit-mask: linear-gradient(to right, transparent, #000 calc(var(--s) * 24));
+          mask: linear-gradient(to right, transparent, #000 calc(var(--s) * 24));
 }
+.skt-row.clip { color: transparent; text-shadow: none; }
+.skt-row.root { color: #f0c860; border-bottom-color: rgba(240, 200, 120, .55); font-size: calc(var(--fs) * .9); -webkit-mask: none; mask: none; }
 
 /* ---- a node: frame, icon, gem, rank plate (+ chains) */
 .skt-node {
@@ -147,9 +152,9 @@
 
 /* confirm: a ring, sparks, a floating note */
 .skt-fx { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 5; }
-.skt-ring { position: absolute; width: calc(var(--s) * 44); height: calc(var(--s) * 44); margin: calc(var(--s) * -22) 0 0 calc(var(--s) * -22); border-radius: 50%; box-shadow: 0 0 0 calc(var(--s) * 2) #fff0a0, 0 0 calc(var(--s) * 8) #ffc040, inset 0 0 calc(var(--s) * 6) #ffc040; animation: sktRing .6s ease-out forwards; }
-@keyframes sktRing { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.7); opacity: 0; } }
-.skt-spark { position: absolute; box-shadow: 0 0 calc(var(--s) * 2) #ffb030; animation: sktSpark .95s cubic-bezier(.2, .7, .4, 1) both; }
+.skt-ring { position: absolute; width: calc(var(--s) * 44); height: calc(var(--s) * 44); margin: calc(var(--s) * -22) 0 0 calc(var(--s) * -22); border-radius: 50%; box-shadow: 0 0 0 calc(var(--s) * 3) #fff0a0, 0 0 calc(var(--s) * 10) calc(var(--s) * 2) #ffc040, inset 0 0 calc(var(--s) * 8) #ffc040; animation: sktRing .7s ease-out forwards; }
+@keyframes sktRing { from { transform: scale(.9); opacity: 1; } to { transform: scale(2.1); opacity: 0; } }
+.skt-spark { position: absolute; box-shadow: 0 0 calc(var(--s) * 3) #ffb030, 0 0 0 calc(var(--s) * .5) rgba(255, 240, 200, .5); animation: sktSpark .95s cubic-bezier(.2, .7, .4, 1) both; }
 @keyframes sktSpark { 0% { transform: translate(0, 0); opacity: 1; } 60% { opacity: 1; } 100% { transform: translate(var(--dx), calc(var(--dy) + var(--fall))); opacity: 0; } }
 .skt-float {
   position: absolute; transform: translate(-50%, 0); white-space: nowrap; font-family: var(--font-head); font-size: var(--fs-h); line-height: 1; color: #fff0b0;
@@ -204,6 +209,8 @@
 .skt-pts img { width: calc(var(--px) * 11); height: calc(var(--px) * 11); margin: calc(var(--px) * -2) 0; }
 .skt-pts b { font-family: var(--font-head); font-weight: 400; font-size: calc(var(--fs-h) * 1.1); line-height: 1; color: #ffe07a; text-shadow: 0 var(--px) 0 #000; min-width: 1ch; text-align: center; }
 .skt-pts span { color: #e8d0a0; }
+.skt-pts .short, .skt[data-mode=narrow] .skt-pts span:not(.short) { display: none; }
+.skt[data-mode=narrow] .skt-pts .short { display: inline; }
 .skt-pts.none b { color: #8a7a62; }
 .skt-pts.bump b { animation: skBump .35s var(--pop); }
 .skt-hint { flex: 1; min-width: 0; color: #b89a70; font-size: calc(var(--fs) * .9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -269,15 +276,16 @@
 .skt[data-mode=narrow] .skt-emblem { transform: scale(.8); transform-origin: 0 0; left: calc(var(--px) * -10); top: calc(var(--px) * -6); }
 .skt[data-mode=narrow] .skt-hint { display: none; }
 .skt[data-mode=narrow] .skt-foot { gap: calc(var(--px) * 3); padding: calc(var(--px) * 3); }
-.skt[data-mode=narrow] .skt-btn { min-width: 0; padding: 0 calc(var(--px) * 2); }
-.skt[data-mode=narrow] .skt-tip { width: calc(100% - 8px); }
+.skt[data-mode=narrow] .skt-btn { min-width: 0; padding: 0 calc(var(--px) * 1); }
+.skt[data-mode=narrow] .skt-acts { gap: calc(var(--px) * 2); }
+.skt[data-mode=narrow] .skt-tip { left: 4px !important; right: 4px; top: auto !important; bottom: calc(var(--px) * 22); width: auto; }
 .skt.short .skt-learn { display: none; }
 
 /* ---------- standalone (ui.openSkills): the board in its own brass frame ---------- */
 .modal-back > .panel.sheet.skt-panel, .modal-back > .panel.skt-panel {
   border: 0; background: none; box-shadow: none; padding: 0; overflow: visible; max-width: none; max-height: none; color: inherit;
   width: min(calc(100vw - 16px - var(--sal) - var(--sar)), calc(var(--px) * 420));
-  height: min(calc(100vh - 16px - var(--sat) - var(--sab)), calc(var(--px) * 240));
+  height: min(calc(100vh - 16px - var(--sat) - var(--sab)), calc(var(--px) * 420));
 }
 .modal-back > .panel.sheet.skt-panel::before { display: none; }
 .skt-wrap {
@@ -294,7 +302,8 @@
 
 /* ---------- in the book: the board fills the spread (the book's cover is its frame) ---------- */
 .skt.in-book { margin: 0; }
-.skt.in-book .skt-head { border-width: 0 calc(var(--px) * 14); }
+.skt.in-book .skt-emblem { left: calc(var(--px) * -2); top: calc(var(--px) * -3); transform: scale(.7); transform-origin: 0 0; }
+.skt.in-book .skt-head { padding-left: calc(var(--px) * 34); }
 
 /* ---------- feedback anywhere ---------- */
 /* the level plaque: carved oak, the line's seal in a milled brass ring, a brass-rimmed XP tube */

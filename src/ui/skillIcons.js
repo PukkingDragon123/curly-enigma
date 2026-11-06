@@ -862,7 +862,7 @@ const R = {
     D.ell(9, 26, 8, 5.5, M.fur, { spec: 0.15 });
     for (let i = 0; i < 3; i++) {
       const bx = 6 + i * 4.5, by = 23 - i * 1.2;
-      D.shape((X, Y) => { const t = (bx - X + (Y - by) * 0) ; const u = (X - bx), v = (by - Y); if (u < -1 || v < 0 || v > 11) return false; const cx = bx + v * 0.9 - v * v * 0.04; return Math.abs(X - cx) <= 1.7 * (1 - v / 11.5) + 0.25; }, M.bone, { k: 0.66, rim: 0.3 });
+      D.shape((X, Y) => { const u = (X - bx), v = (by - Y); if (u < -1 || v < 0 || v > 11) return false; const cx = bx + v * 0.9 - v * v * 0.04; return Math.abs(X - cx) <= 1.7 * (1 - v / 11.5) + 0.25; }, M.bone, { k: 0.66, rim: 0.3 });
     }
   },
   f_hide: (D) => {

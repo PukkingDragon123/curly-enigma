@@ -60,7 +60,7 @@ export function defineSkillSounds(au) {
 // One line at a time (its tab in the header): the line's skills laid out left → right by tier (the
 // level each needs, on the ruler along the top), five tracks deep, joined by brass pipes with
 // elbows. Spending is two steps: click (or tap twice) to pencil a skill in, Undo / Confirm below.
-const COLW = 64, ROWH = 48, NW = 40, NH = 46, CY = FRAME_Y + 20, PAD_T = 16, PAD_B = 4, PAD_R = 6;
+const COLW = 64, ROWH = 46, NW = 40, NH = 46, CY = FRAME_Y + 20, PAD_T = 14, PAD_B = 2, PAD_R = 6;
 const TIER_NAME = ['Novice', 'Apprentice', 'Journeyman', 'Expert', 'Master'];
 const pxVar = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 3;
 const hex6 = (c) => '#' + (c >>> 0).toString(16).padStart(6, '0');
@@ -133,6 +133,7 @@ export function renderSkills(host, game, opts = {}) {
 
   // ---------------- pending picks (pencilled in, not yet confirmed)
   let pend = [];
+  let confirming = false;
   let V = null; // the state as it would be with the picks confirmed (for canUnlock)
   const pendCost = () => pend.reduce((t, id) => t + (NODE[id]?.cost || 0), 0);
   const recalc = () => {
@@ -141,6 +142,20 @@ export function renderSkills(host, game, opts = {}) {
     V = { data: { skills: { ...s, nodes, points: s.points - pendCost() } } };
   };
   recalc();
+  /** Drop picks that no longer stand (their way in was taken back, or the points went elsewhere). */
+  const revalidate = () => {
+    for (let changed = true; changed;) {
+      changed = false;
+      for (let i = 0; i < pend.length; i++) {
+        const keep = pend.slice(0, i);
+        const s = S(), nodes = { ...s.nodes };
+        for (const k of keep) nodes[k] = 'pending';
+        const c = canUnlock({ data: { skills: { ...s, nodes, points: s.points - keep.reduce((t, k) => t + NODE[k].cost, 0) } } }, pend[i]);
+        if (!c.ok) { pend.splice(i, 1); changed = true; break; }
+      }
+    }
+    recalc();
+  };
   /** How a node looks: done | pend | ready | open (needs points) | gated (needs level) | locked (path) | barred */
   const look = (id) => {
     if (S().nodes[id]) return { k: 'done' };
@@ -178,8 +193,9 @@ export function renderSkills(host, game, opts = {}) {
   const main = el('div', { class: 'skt-main' }, [board, side]);
   const ptsN = el('b', {}, '0');
   const ptsL = el('span', {}, 'points left');
+  const ptsS = el('span', { class: 'short' }, 'left');
   const ptsImg = el('img', { class: 'pix', alt: '' });
-  const pts = el('div', { class: 'skt-pts', title: 'Skill points to spend' }, [ptsImg, ptsN, ptsL]);
+  const pts = el('div', { class: 'skt-pts', title: 'Skill points to spend' }, [ptsImg, ptsN, ptsL, ptsS]);
   const hint = el('span', { class: 'skt-hint' });
   const undoBtn = el('button', { class: 'skt-btn undo', type: 'button', title: 'Take back the last pick (Z)', onclick: () => undo() }, [el('i', { class: 'skt-ico' }), el('span', {}, 'Undo')]);
   const goBtn = el('button', { class: 'skt-btn go', type: 'button', title: 'Keep the picked skills (Enter)', onclick: () => confirm() }, [el('i', { class: 'skt-ico' }), el('span', {}, 'Confirm')]);
@@ -225,7 +241,7 @@ export function renderSkills(host, game, opts = {}) {
     undoBtn.disabled = !pend.length;
     goBtn.disabled = !pend.length;
     foot.classList.toggle('pending', pend.length > 0);
-    goBtn.querySelector('span').textContent = pend.length > 1 ? `Confirm ${pend.length}` : 'Confirm';
+    goBtn.querySelector('span').textContent = pend.length > 1 && root.dataset.mode !== 'narrow' ? `Confirm ${pend.length}` : 'Confirm';
   };
 
   // ---------------- side: the line's card, what you know (and what the picks add), how to learn
@@ -296,7 +312,23 @@ export function renderSkills(host, game, opts = {}) {
     const groups = {};
     for (const n of nodesOf(line)) if (n.excl) (groups[n.excl] ||= []).push(n);
     for (const g of Object.values(groups)) if (g.length > 1) nodesEl.append(el('img', { class: 'pix skt-or', src: SKC.orTag(), alt: 'or', 'data-a': g[0].id, 'data-b': g[1].id }));
-    label.textContent = LINE[line].name;
+    // each track labelled on the left (reference-style): the root's with the line's name, the others
+    // with what they mostly make better
+    label.innerHTML = '';
+    const used = new Set();
+    for (let r = 0; r < 5; r++) {
+      const ns = nodesOf(line).filter((n) => n.s === r).sort((a, b) => a.t - b.t);
+      if (!ns.length) continue;
+      let txt = LINE[line].name;
+      if (ns[0].t > 0) {
+        const cnt = {};
+        ns.forEach((n, i) => Object.keys(n.fx).forEach((k, j) => { cnt[k] = (cnt[k] || 0) + (j === 0 ? 2 : 1) - i * 0.01; }));
+        const best = Object.entries(cnt).sort((a, b) => b[1] - a[1]).find(([k]) => !used.has(k)) || Object.entries(cnt)[0];
+        used.add(best[0]);
+        txt = SKILL_KEYS[best[0]]?.label || '';
+      } else used.add(Object.keys(ns[0].fx)[0]);
+      label.append(el('span', { class: 'skt-row' + (ns[0].t === 0 ? ' root' : ''), 'data-r': r, 'data-t': ns[0].t }, txt));
+    }
   };
   const chainsOn = (b, lk) => {
     let ch = b.querySelector('.skt-chain');
@@ -340,7 +372,7 @@ export function renderSkills(host, game, opts = {}) {
     if (wide && tabs.parentNode !== head) head.append(tabs);
     else if (!wide && tabs.parentNode !== root) root.insertBefore(tabs, main);
     root.classList.toggle('short', rh < 420);
-    const padL = wide ? 44 : 6;
+    const padL = wide ? 36 : 6;
     const aw = padL + 4 * COLW + NW + PAD_R, ah = PAD_T + 4 * ROWH + NH + PAD_B;
     const bw = board.clientWidth, bh = wide ? board.clientHeight : Infinity;
     const dpr = window.devicePixelRatio || 1;
@@ -354,6 +386,7 @@ export function renderSkills(host, game, opts = {}) {
     geo = { s, padL, aw, ah, ...r };
     sheet.style.width = aw * s + 'px';
     sheet.style.height = ah * s + 'px';
+    board.style.height = wide ? '' : Math.ceil(ah * s + 2 * pxVar()) + 'px';
     board.classList.toggle('fits', aw * s <= bw && ah * s <= board.clientHeight + 1);
     cv.width = aw; cv.height = ah;
     cv.style.width = aw * s + 'px'; cv.style.height = ah * s + 'px';
@@ -372,10 +405,14 @@ export function renderSkills(host, game, opts = {}) {
       o.style.left = (colX(a.t) + NW / 2 - 6.5) * s + 'px';
       o.style.top = (rowY((a.s + b.s) / 2) + CY - 3.5) * s + 'px';
     }
-    const root0 = nodesOf(line).find((n) => !n.req.length) || nodesOf(line)[0];
     label.hidden = !wide;
-    label.style.top = (rowY(root0.s) + CY) * s + 'px';
-    label.style.width = (colX(root0.t) - 3) * s + 'px';
+    for (const sp of label.children) {
+      const r = +sp.dataset.r, t = +sp.dataset.t;
+      sp.style.top = (rowY(r) + CY) * s + 'px';
+      sp.style.width = (colX(t) - (t > 0 ? (COLW - NW) + 2 : 3)) * s + 'px';
+      sp.classList.remove('clip');
+    }
+    if (wide) for (const sp of label.children) if (sp.scrollWidth > sp.clientWidth + 1) sp.classList.add('clip');
     draw();
     if (tipId) placeTip();
   };
@@ -474,7 +511,7 @@ export function renderSkills(host, game, opts = {}) {
       done: `Learned · day ${S().nodes[id]}`,
       pend: isTouch() ? 'Picked · Confirm to keep it' : 'Picked · Confirm to keep it, click to take back',
       ready: isTouch() ? 'Tap again to pick it' : 'Click to pick it',
-    }[k] || lk.c?.reason || '';
+    }[k] || (lk.c?.code === 'path' ? 'Learn ' + n.req.map((r) => NODE[r].name).join(' or ') + ' first' : lk.c?.reason || '');
     const act = el('div', { class: 'skt-tip-act ' + k }, [el('span', {}, status)]);
     if (pinned && (k === 'ready' || k === 'pend')) act.append(el('button', { class: 'skt-btn sm', type: 'button', onclick: (e) => { e.stopPropagation(); onNode(id, null, true); } }, k === 'ready' ? `Pick · ${n.cost} pt${n.cost > 1 ? 's' : ''}` : 'Take back'));
     put(tip,
@@ -528,6 +565,7 @@ export function renderSkills(host, game, opts = {}) {
     const n = NODE[id];
     if (n.line !== line) setLine(n.line, true);
     pend.push(id);
+    delete root.dataset.warned;
     recalc();
     au.play('sk_pick');
     au.play('click', { vol: 0.5 });
@@ -542,18 +580,7 @@ export function renderSkills(host, game, opts = {}) {
   const unpick = (id) => {
     if (!pend.includes(id)) return false;
     pend = pend.filter((x) => x !== id);
-    // drop picks that are no longer reachable without it, in order
-    for (let changed = true; changed;) {
-      changed = false;
-      for (let i = 0; i < pend.length; i++) {
-        const keep = pend.slice(0, i);
-        const s = S(), nodes = { ...s.nodes };
-        for (const k of keep) nodes[k] = 'pending';
-        const c = canUnlock({ data: { skills: { ...s, nodes, points: s.points - keep.reduce((t, k) => t + NODE[k].cost, 0) } } }, pend[i]);
-        if (!c.ok) { pend.splice(i, 1); changed = true; break; }
-      }
-    }
-    recalc();
+    revalidate();
     au.play('remove');
     renderAll(true);
     if (tipId) showTip(tipId, tipPinned);
@@ -573,12 +600,12 @@ export function renderSkills(host, game, opts = {}) {
     pend = [];
     recalc();
     const got = [];
-    for (const id of order) if (unlock(st, id).ok) got.push(id);
+    confirming = true;
+    try { for (const id of order) if (unlock(st, id).ok) got.push(id); } finally { confirming = false; }
     recalc();
     hideTip();
     if (!got.length) { au.play('ui_error'); renderAll(); return false; }
     au.play('clang');
-    au.play('sk_level');
     renderAll(true);
     const here = got.filter((id) => NODE[id].line === line);
     here.forEach((id, i) => setTimeout(() => { if (!disposed) celebrate(id); }, 90 + i * 150));
@@ -588,7 +615,7 @@ export function renderSkills(host, game, opts = {}) {
     const freed = nodesOf(line).filter((n) => (was[n.id] === 'locked' || was[n.id] === 'gated') && !['locked', 'gated'].includes(look(n.id).k));
     freed.forEach((n, i) => setTimeout(() => { if (!disposed) dropChains(n.id); }, 380 + here.length * 150 + i * 120));
     if (freed.length) setTimeout(() => { if (!disposed) au.play('clunk'); }, 380 + here.length * 150);
-    setTimeout(() => { if (!disposed) au.play('sparkle', { vol: 0.7 }); }, 200 + here.length * 150);
+    setTimeout(() => { if (!disposed) au.play('success', { vol: 0.8 }); }, 200 + here.length * 150);
     const others = got.length - here.length;
     if (others > 0) ui.toast?.(`${others} more skill${others > 1 ? 's' : ''} learned in other lines`, { kind: 'good' });
     return true;
@@ -604,9 +631,9 @@ export function renderSkills(host, game, opts = {}) {
     setTimeout(() => ring.remove(), 700);
     const r = makeRng((performance.now() * 997) | 0);
     const cols3 = ['#fff6c8', '#ffd860', '#ffa830', '#ff7a20', hex6(LINE[line].pal[0])];
-    for (let i = 0; i < 18; i++) {
-      const a = r() * Math.PI * 2, d = (16 + r() * 22) * s;
-      const sz = Math.max(1, Math.round((1 + r.int(0, 1)) * s));
+    for (let i = 0; i < 26; i++) {
+      const a = r() * Math.PI * 2, d = (18 + r() * 30) * s;
+      const sz = Math.max(2, Math.round((2 + r.int(0, 1)) * s));
       const dot = el('i', { class: 'skt-spark', style: { left: cx + 'px', top: cy + 'px', width: sz + 'px', height: sz + 'px', background: cols3[r.int(0, cols3.length - 1)] } });
       dot.style.setProperty('--dx', (Math.cos(a) * d).toFixed(1) + 'px');
       dot.style.setProperty('--dy', (Math.sin(a) * d - 6 * s).toFixed(1) + 'px');
@@ -698,9 +725,8 @@ export function renderSkills(host, game, opts = {}) {
   const off = st.on('skill', (e) => {
     if (disposed) return;
     if (!root.isConnected) { dispose(); return; }
-    if (e.type === 'unlock') return; // our own confirm animates itself
-    if (e.type === 'respec' || e.type === 'level') { pend = pend.filter((id) => canUnlock(V, id).code !== 'none'); }
-    recalc();
+    if (e.type === 'unlock' && confirming) return; // our own confirm animates itself
+    revalidate();
     if (e.type === 'xp' && e.line !== line) { renderTabs(); return; }
     renderAll();
   });

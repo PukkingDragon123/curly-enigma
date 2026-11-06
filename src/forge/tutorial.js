@@ -106,7 +106,10 @@ export class ForgeLesson {
     eye.y += 0.06;
     const look = fp.clone();
     if (this.star?.pos) look.lerp(_v.copy(this.star.pos).setY(0.42), 0.55);
-    W.docks.tutIntro = { name: 'tutIntro', stand: sp.stand.clone().lerp(h.stand, 0.3), eye, look, fov: 70, pts: [] };
+    // (the dock steps back until these fit: on a phone held upright he and his fire both stay in the shot)
+    const pts = [fp.clone()];
+    if (this.star?.pos) pts.push(this.star.pos.clone().setY(0.8), this.star.pos.clone().setY(0.1));
+    W.docks.tutIntro = { name: 'tutIntro', stand: sp.stand.clone().lerp(h.stand, 0.3), eye, look, fov: 70, pts };
     return 'tutIntro';
   }
 

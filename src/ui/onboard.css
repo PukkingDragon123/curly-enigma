@@ -57,7 +57,7 @@ html.is-touch .ob-skip { opacity: .8; }
 .ob-goal.done .ob-goal-dot { animation: none; width: 9px; height: 5px; background: none; border: solid #8fe07a; border-width: 0 0 2px 2px; transform: translateY(-2px) rotate(-45deg); box-shadow: none; }
 .ob-goal.done .ob-goal-t { color: #cfe8c4; }
 /* (a deep HUD: the radar's top right, the purse top left; this sits between them) */
-html.is-touch .ob-goal { font-size: 13px; top: calc(var(--sat) + 10px); padding: 5px 12px 5px 10px; }
+html.is-touch .ob-goal { font-size: 13px; top: calc(var(--sat) + 10px); padding: 5px 12px 5px 10px; max-width: 58vw; }
 
 /* ---- the prompt: one control, small, drawn for this device */
 .ob-prompt {
@@ -66,7 +66,7 @@ html.is-touch .ob-goal { font-size: 13px; top: calc(var(--sat) + 10px); padding:
 }
 .ob-prompt.in { opacity: 1; transform: translate(-50%, var(--y0)); }
 .ob-prompt.out, .ob-prompt.in.out { opacity: 0; transform: translate(-50%, calc(var(--y0) - 6px)); transition: opacity .3s, transform .35s; }
-html.is-touch .ob-prompt { bottom: auto; top: 58%; --y0: -50%; }
+html.is-touch .ob-prompt { bottom: auto; top: 31%; --y0: -50%; }
 .ob-prompt.at-low, html.is-touch .ob-prompt.at-low { top: auto; bottom: calc(var(--sab) + 92px); --y0: 0%; }
 .ob-prompt.at-left, html.is-touch .ob-prompt.at-left { left: calc(var(--sal) + 14px); top: calc(var(--sat) + 52px); bottom: auto; --y0: 0%; }
 .ob-prompt.at-left, .ob-prompt.at-left.in, .ob-prompt.at-left.out { translate: 50% 0; }

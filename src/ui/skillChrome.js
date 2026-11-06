@@ -18,7 +18,7 @@
 // installSkillChrome() publishes the fixed ones as --skc-* custom properties.
 import { Px } from './px.js';
 import { art } from './uiArt.js';
-import { TONES, brassField, pnoise, fbm, hash, quant, edgeOf, rivet, leatherTile } from './craftArt.js';
+import { TONES, brassField, pnoise, hash, quant, edgeOf, rivet, leatherTile } from './craftArt.js';
 
 const B = TONES.brass; // 10 tones
 const GOLD = [0x3a2004, 0x6a3c08, 0x9a600c, 0xc88a18, 0xe8b030, 0xf8cc4c, 0xffe07a, 0xfff0a8, 0xfff8d4, 0xfffdf0];

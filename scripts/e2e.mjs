@@ -175,7 +175,7 @@ await step("Old Star's cooking lesson", async () => {
 await step('down the lift to the mine', async () => {
   await go('deep', { from: 'lift', lift: 'L0' });
   await wait(2500);
-  if (await page.evaluate(() => !!window.__game.scene.prologue?.debug?.on?.())) throw new Error('the lesson came back after it was done');
+  if (await page.evaluate(() => !!window.__game.scene.firstDig?.debug?.on?.())) throw new Error('the lesson came back after it was done');
   await shot('03d-mine');
 });
 // headless frames are slow: the deep steps drive the simulation directly with scene.update()

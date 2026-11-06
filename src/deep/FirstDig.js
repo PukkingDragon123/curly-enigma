@@ -16,7 +16,7 @@
 // null · dispose(). Test hooks: scene.firstDig.debug.{ on(), step(), copper(), ride() } and
 // scene.debug.giveTutorialCopper().
 import * as THREE from 'three';
-import { prologueLayout } from './gen/prologue.js';
+import { prologueLayout, prologueInside } from './gen/prologue.js';
 import { ITEMS } from '../data/items.js';
 import { TUT } from '../ui/Onboard.js';
 import { Glint } from '../home/tutorFx.js';
@@ -53,6 +53,14 @@ export class FirstDig {
     this.glint = null;
     this.markH = null;
     this.started = false;
+    // nothing is put down in the crawl or in front of the seams while you're learning (props are
+    // placed per chunk, later)
+    const props = this.owner?.props;
+    if (props && typeof props.blocked === 'function' && this.L) {
+      const orig = props.blocked, L = this.L;
+      props.blocked = function (x, y, z, pad = 0.3) { return prologueInside(L, x, y, z, pad) || orig.call(this, x, y, z, pad); };
+      this.unpatch = () => { props.blocked = orig; };
+    }
     // the scene's own first-visit hints would say the same things again
     if (this.owner?.flags) { this.owner.flags.hintRadar = true; this.owner.flags.firstOre = true; }
   }
@@ -117,7 +125,7 @@ export class FirstDig {
     this.glint?.update(dt);
     const cl = owner.clumps;
     if (this.step === 'find') {
-      if (this.t > 1.4 && !ob?.goalHtml) ob?.goal('Find <b>copper ore</b>: orange specks in the rock');
+      if (this.t > 1.4 && !ob?.goalHtml) ob?.goal('Find <b>copper ore</b>');
       // what glints: a clump lying about, else the nearest seam
       const lying = this.clumpTarget();
       if (lying) this.aim('clump', () => lying.state === 'world' ? lying.pos : null, '');
@@ -140,7 +148,7 @@ export class FirstDig {
         }
       } else if (this.hFor && this.hFor !== 'dig') this.unprompt(this.hFor);
     } else if (this.step === 'home') {
-      if (this.t - (this.homeT || 0) > 1.3 && !ob?.goalHtml) ob?.goal('Ride <b>the cage</b> home to Old Star');
+      if (this.t - (this.homeT || 0) > 1.3 && !ob?.goalHtml) ob?.goal('Ride <b>the cage</b> home');
       this.aim('cage', () => this.cagePos(), 'The cage');
       const L = owner.liftNear?.();
       if (L && L.id === 'L0') this.prompt('ride', 'use', { title: 'Ride home', subPc: 'Ring the bell: <kbd>E</kbd>', subT: 'Tap the hand to ring the bell', done: () => !!this.leaving });
@@ -192,6 +200,7 @@ export class FirstDig {
   }
 
   dispose() {
+    this.unpatch?.();
     this.h?.close?.();
     this.glint?.remove();
     this.markH?.remove();

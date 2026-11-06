@@ -277,7 +277,7 @@ export default class HomeScene extends Scene {
     if (!star?.rig || this.scripted || star.scripted || star.mode === 'sleep') return;
     const stage = this.lessonStage();
     if (stage !== 'done') {
-      const lines = { pick: 'No pick, no digging. To my forge with you: we\'ll make yours.', mine: 'The lift\'s waiting. Down to my dig, and bring me that copper.', forge: 'The forge is hot and the copper\'s cold. Come on, E on the anvil.', cook: 'My stomach\'s rumbling. To the hearth!' };
+      const lines = { pick: 'No pick, no digging. To my forge with you: we\'ll make yours.', mine: 'The cage is waiting. Down you go, and bring me that copper.', forge: 'The forge is hot and the copper\'s cold. Come on, E on the anvil.', cook: 'My stomach\'s rumbling. To the hearth!' };
       if (lines[stage]) star.say(lines[stage], { mood: 'calm' });
       return;
     }

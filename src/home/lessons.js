@@ -56,10 +56,10 @@ const NEXT = {
 const GOAL = {
   walk: 'Talk to <b>Old Star</b>',
   talk: 'Talk to <b>Old Star</b>',
-  pick: 'Forge a pickaxe at <b>the forge</b>',
-  lift: 'Ride <b>the cage</b> down to the mine',
-  forge: 'Smelt your copper at <b>the forge</b>',
-  cook: 'Cook a meal at <b>the fire pit</b>',
+  pick: 'Make a pick at <b>the forge</b>',
+  lift: 'Ride <b>the cage</b> down',
+  forge: 'Smelt copper at <b>the forge</b>',
+  cook: 'Cook at <b>the fire pit</b>',
 };
 
 /** What waits while a lesson is on (by label): the cage, the way out, the build bench, bed. */
@@ -277,6 +277,9 @@ export class HomeLessons {
           await go(this.faceStar((s, f) => this.tween(s, f), 0.45));
           star.scripted = false;
           star.carry(lump);
+          // (held up to his nose for a sniff, where the close shot can see it)
+          lump.position.set(0, 0.54, 0.3);
+          lump.scale.setScalar(1.6);
           this.game.audio.play('pickup', { vol: 0.5 });
           await go(sleep(0.3));
           star.sniff();

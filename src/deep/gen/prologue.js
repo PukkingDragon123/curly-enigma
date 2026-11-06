@@ -238,10 +238,16 @@ function firmBox(L) {
 export function prologueCarved(L, x, y, z) { const o = L.o; return carved(L, x, y, z, x - o.x, y - o.y, z - o.z); }
 
 /**
- * Is a point in (or within pad of) the crawl or the nook? Props, cave spikes and plants stay out of
- * there so the way through is never blocked; the grotto itself is dressed like any other cave.
+ * Is a point in (or within pad of) the crawl, the nook, or the space in front of a copper seam?
+ * Props, cave spikes, giant mushrooms and plants stay out of there, so the way through is never
+ * blocked and the seams stay in plain sight; the rest of the grotto is dressed like any other cave.
  */
 export function prologueInside(L, x, y, z, pad = 0.3) {
+  // in front of a copper seam: nothing grows over the first ore a miner is sent to find
+  for (const s of L.seams) {
+    const dx = x - (s.x + s.nx * 0.6), dz = z - (s.z + s.nz * 0.6);
+    if (dx * dx + dz * dz < (0.95 + pad) * (0.95 + pad) && y > s.fy - 0.6 - pad && y < s.fy + 1.8 + pad) return true;
+  }
   if (z < L.o.z + 2.0 - pad) return false;
   const C = L.crawl;
   for (let i = 0; i < C.length - 1; i++) {
