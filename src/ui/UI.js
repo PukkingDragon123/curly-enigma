@@ -20,6 +20,7 @@ import { qColor } from './common.js';
 import { Radar } from './Radar.js';
 import { Crosshair } from './Crosshair.js';
 import { Tracker } from './Tracker.js';
+import { DSPR } from './deepArt.js';
 import { Tutor } from './Tutor.js';
 import { Convo } from './Convo.js'; // cutscene talk (game.convo)
 import { Onboard } from './Onboard.js'; // the cinematic tutorial's layer (prompts, letterbox, tutorial UI level)
@@ -41,6 +42,8 @@ export { qColor };
 
 // the lift layers (another part builds it): M and the radar open it once it exists
 const LAYER_MODS = import.meta.glob('../fps/liftLayers.js');
+const SEAL_FOR = { good: 'green', warn: 'amber', bad: 'red' };
+const TACK_FOR = { good: 0x5a9a3a, warn: 0xd9901e, bad: 0xc23c2c };
 
 /** '<kbd>E</kbd>' text → KeyboardEvent.code, for tapping prompts on touch screens. */
 function keyCode(label) {
@@ -90,8 +93,12 @@ export class UI {
     this.radar = new Radar(this);
     this.tracker = new Tracker(this); // the objective strip (quests part)
     this.crosshair = new Crosshair(this);
-    // (one faint line, no card: the whole view is the button)
-    this.lookCatch = el('div', { class: 'look-catch', 'aria-label': 'Click to look around' }, [el('div', { class: 'look-card' }, 'Click to look around')]);
+    this.lookCatch = el('div', { class: 'look-catch', 'aria-label': 'Click to look around' }, [
+      el('div', { class: 'look-card' }, [
+        el('img', { class: 'pix', src: DSPR.mouse(), alt: '' }),
+        el('div', {}, [el('b', {}, 'Click to look around'), el('small', {}, [el('kbd', {}, 'Esc'), ' frees the mouse'])]),
+      ]),
+    ]);
     this.lookCatch.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
@@ -257,65 +264,19 @@ export class UI {
   }
 
   // ------------------------------------------------------------ toasts / popups
-  /**
-   * One quiet line at the top of the screen: one at a time (a new one waits a moment for the one
-   * showing, then takes its place; at most a few wait), short, fading. calm: true waits for a calm
-   * moment (no window, no talk, hands off the controls for a breath), e.g. a level-up.
-   * Returns the toast's element (it may still be waiting to show).
-   */
-  toast(text, { icon, kind = '', dur = 2600, calm = false } = {}) {
+  toast(text, { icon, kind = '', dur = 2600 } = {}) {
+    const color = SEAL_FOR[kind] || 'brown';
     const t = el('div', { class: 'toast ' + kind, role: 'status' }, [
-      icon ? itemVox.img(icon, 'pix toast-icon', { pop: false, game: this.game }) : null,
+      el('img', { class: 'pix toast-tack', src: SPR.tack(TACK_FOR[kind] || 0xc23c2c), alt: '' }),
+      icon ? itemVox.img(icon, 'pix toast-icon', { pop: true, game: this.game }) : null, // (an item's icon comes in 3D, with a little turn)
       el('span', { class: 'toast-text', html: text }),
+      el('img', { class: 'pix toast-seal', src: SPR.seal(color, kind === 'good' ? 'check' : kind === 'bad' ? 'x' : 'ring'), alt: '' }),
     ]);
-    t._dur = Math.min(Math.max(1600, dur), 3600);
-    t._calm = !!calm;
-    const q = (this._toastQ ||= []);
-    q.push(t);
-    // too many waiting: the oldest ordinary ones go (the calm ones keep their turn)
-    while (q.length > 3) { const i = q.findIndex((x) => !x._calm); q.splice(i < 0 ? 0 : i, 1); }
-    this._pumpToasts();
-    return t;
-  }
-
-  _pumpToasts() {
-    clearTimeout(this._toastPumpT);
-    const q = this._toastQ || [];
-    if (!q.length) return;
-    const cur = this._toastCur, now = performance.now();
-    // the one showing gets a moment before the next takes its place
-    if (cur && now - cur._at < 1500) { this._toastPumpT = setTimeout(() => this._pumpToasts(), 1500 - (now - cur._at) + 20); return; }
-    const calm = this.isCalm();
-    const i = q.findIndex((x) => !x._calm || calm);
-    if (i < 0) { this._toastPumpT = setTimeout(() => this._pumpToasts(), 500); return; }
-    const t = q.splice(i, 1)[0];
-    if (cur) this._dropToast(cur);
-    this._toastCur = t;
-    t._at = now;
+    if (!icon) t.insertBefore(t.lastChild, t.children[1]);
     this.toasts.append(t);
-    t._outT = setTimeout(() => { this._dropToast(t); this._pumpToasts(); }, t._dur);
-    if (q.length) this._toastPumpT = setTimeout(() => this._pumpToasts(), 1520);
-  }
-
-  _dropToast(t) {
-    clearTimeout(t._outT);
-    if (this._toastCur === t) this._toastCur = null;
-    t.classList.add('out');
-    setTimeout(() => t.remove(), 320);
-  }
-
-  /** A calm moment: no window or talk up, and the controls left alone for a breath. */
-  isCalm() {
-    const g = this.game, inp = g.input, now = performance.now();
-    if (!this._calmHook) {
-      this._calmHook = true;
-      const busy = () => { this._busyAt = performance.now(); };
-      window.addEventListener('pointerdown', busy, true);
-      window.addEventListener('keydown', busy, true);
-    }
-    if (inp?.down?.size || inp?.mouse?.buttons?.some?.(Boolean)) this._busyAt = now;
-    if (this.panelStack.length || g.convo?.cur || this.tutor?.cur?.wait || g.transitioning) return false;
-    return now - (this._busyAt || 0) > 1600;
+    while (this.toasts.children.length > 4) this.toasts.firstChild.remove();
+    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 360); }, dur);
+    return t;
   }
 
   discoverCard(e) {
@@ -332,15 +293,24 @@ export class UI {
     const e = this._discQ.shift();
     this._discBusy = true;
     this._showDiscover(e);
-    setTimeout(() => this._nextDiscover(), 1700);
+    setTimeout(() => this._nextDiscover(), this._discQ.length > 3 ? 650 : 1300);
   }
 
   _showDiscover({ cat, id, name }) {
+    const icon = this.indexIcon(cat, id);
     const label = { mineral: 'New mineral', gem: 'New gem', plant: 'New plant', critter: 'New creature', weapon: 'New weapon', recipe: 'New recipe', mechanic: 'Learned' }[cat] || 'Discovered';
+    const card = el('div', { class: 'disc', role: 'status' }, [el('div', { class: 'disc-card' }, [
+      el('div', { class: 'disc-sketch' }, [el('img', { class: 'pix', src: icon, alt: '' })]),
+      el('div', {}, [el('small', {}, label), el('b', {}, name)]),
+    ])]);
+    this.hud.append(card);
     this.status.setBadge(true);
-    this.game.audio.play('discover', { vol: 0.6 });
-    const t = this.toast(`${label}: <b>${name}</b>`, { dur: 2400 });
-    t.querySelector('.toast-text')?.before(el('img', { class: 'pix toast-icon', src: this.indexIcon(cat, id), alt: '' }));
+    this.game.audio.play('discover');
+    const live = [...this.hud.querySelectorAll('.disc:not(.out)')];
+    const max = window.innerWidth < 640 || window.innerHeight < 420 ? 1 : 3;
+    while (live.length > max) { const old = live.shift(); old.classList.add('out'); setTimeout(() => old.remove(), 500); }
+    live.forEach((c, i) => { c.style.marginTop = `calc(var(--px) * ${(live.length - 1 - i) * 30})`; });
+    setTimeout(() => { card.classList.add('out'); setTimeout(() => card.remove(), 520); }, 3400);
   }
 
   indexIcon(cat, id) {
@@ -382,8 +352,12 @@ export class UI {
   setHotbarMeter(i, v) { this.belt.meter(i, v); }
 
   // ------------------------------------------------------------ world-anchored
-  /** Floating feedback words are gone (feedback is in the world: sparks, sounds, a shake); kept as a no-op for old callers. */
-  floatText() {}
+  floatText(text, sx, sy, color = '#fff', size = 1) {
+    const t = el('div', { class: 'float-text', style: { left: sx + 'px', top: sy + 'px', color } }, text);
+    if (size && size !== 1) t.style.fontSize = size >= 1.4 ? (size >= 2 ? '32px' : '24px') : '';
+    this.world.append(t);
+    setTimeout(() => t.remove(), 1150);
+  }
 
   /** Create/update a speech bubble at screen coords. */
   bubble(key, text, sx, sy, { emote = false, life = 3, name = null } = {}) {
@@ -489,18 +463,25 @@ export class UI {
     while (this.panelStack.length) this.closePanel();
   }
 
-  /** A small dark card with the question and two plain buttons (yes first). Resolves true/false. */
+  /** Parchment card with two rubber stamps. Resolves true/false. */
   confirm(text, yes = 'Yes', no = 'No') {
     return new Promise((resolve) => {
       let done = false;
       const card = el('div', { class: 'cf-body' });
-      const stamp = (label, ok) => el('button', { class: 'stamp-btn ' + (ok ? 'yes' : 'no'), onclick: (e) => press(ok, e.currentTarget) }, [el('span', {}, label)]);
+      const stamp = (label, ok) => el('button', { class: 'stamp-btn ' + (ok ? 'yes' : 'no'), onclick: (e) => press(ok, e.currentTarget) }, [
+        el('img', { class: 'pix', src: SPR.stampHandle(), alt: '' }), el('span', {}, label),
+      ]);
       const press = (ok, btn) => {
         if (done) return;
         done = true;
         this.game.audio.play(ok ? 'thud' : 'ui_click', { vol: 0.6 });
         btn.classList.add('press');
-        setTimeout(() => { h.close(); resolve(ok); }, 200);
+        const r = btn.getBoundingClientRect(), cr = card.getBoundingClientRect();
+        const mark = el('div', { class: 'ink-mark', style: { left: (r.left - cr.left + r.width / 2) + 'px', top: (r.top - cr.top) + 'px' } }, ok ? yes : no);
+        mark.style.setProperty('--c', ok ? '#3d7a2e' : '#9a3a26');
+        mark.style.translate = '-50% -110%';
+        card.append(mark);
+        setTimeout(() => { h.close(); resolve(ok); }, 300);
       };
       const yesB = stamp(yes, true), noB = stamp(no, false);
       card.append(el('p', { class: 'cf-text', html: text }), el('div', { class: 'cf-row' }, [yesB, noB]));

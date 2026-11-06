@@ -17,14 +17,15 @@ import * as THREE from 'three';
 import { Scene } from '../core/Scene.js';
 import { el, clamp, lerp } from '../core/util.js';
 import { useBookendStyles } from '../bookends/css.js';
-import { disposeTextures, setPixelScale, Particles, SHAPE, fitFov, makeBlobShadow, makeSheetSprite } from '../bookends/fx.js';
+import { disposeTextures, setPixelScale, Particles, SHAPE, fitFov } from '../bookends/fx.js';
 import { buildForest, FOREST, SUN_DIR, groundH, HOLE_R } from '../bookends/forest.js';
-import { MF, swallowSheet } from '../bookends/meadowfx.js';
+import { MF } from '../bookends/meadowfx.js';
 import { FA, setAir } from '../bookends/forest/atmos.js';
 import { forestSounds } from '../bookends/forest/sound.js';
 import { dressForest } from '../bookends/forest/dress.js';
 import { makeDrift } from '../bookends/forest/drift.js';
-import { makeCritters } from '../bookends/forest/critters.js';
+import { makeCritters, makeVoxelBird, flap } from '../bookends/forest/critters.js';
+import { makeVoxelShadow } from '../bookends/forest/shadow.js';
 import { buildFallShaft } from '../bookends/fallshaft.js';
 import { makeHeroMole } from '../gfx/char/hero.js';
 import { heartbeat, muffle } from '../bookends/journey.js';
@@ -116,7 +117,7 @@ export default class FallScene extends Scene {
     this.hero.root.position.y = -0.42;
     sc.add(this.heroPivot);
     this.own(() => this.hero.dispose());
-    this.heroShadow = makeBlobShadow(0.32, 0.26, 0.5);
+    this.heroShadow = makeVoxelShadow(0.32, 0.26, 0.5);
     sc.add(this.heroShadow);
 
     // ---- the forest's small birds (?wildlife=0 leaves them, and the birdsong, out)
@@ -148,19 +149,19 @@ export default class FallScene extends Scene {
     this.flock = new Particles({ max: 60, additive: false, atten: true });
     this.pools = [this.dust, this.debris, this.motes, this.flies, this.leaves, this.splash, this.coins, this.gold, this.flock];
     for (const p of this.pools) sc.add(p.points);
-    // the birds that burst out of the trees when the ground goes (flapping sprites)
-    const sw = swallowSheet();
-    this.textures.push(sw.texture);
+    // the small birds that burst out of the trees when the ground goes (voxel birds, wings beating)
     this.flockBirds = [];
-    for (let i = 0; i < 16; i++) {
-      const m = makeSheetSprite(sw.texture, { cols: sw.cols, size: [0.5, 0.5 / sw.aspect], anchor: [0.5, 0.5], renderOrder: 6, tint: i % 3 ? 0x8a8070 : 0xffffff });
-      const a = 0.6 + (i / 16) * 1.9 + Math.random() * 0.2; // out of the trees behind the clearing, across the open sky
-      m.userData = { ...m.userData, a, r: 7.5 + Math.random() * 4, h: 4.5 + Math.random() * 4, sp: 2.2 + Math.random() * 1.6, up: 1.4 + Math.random() * 1.2, ph: Math.random() * 4 };
-      m.visible = false;
-      this.flockBirds.push(m);
-      sc.add(m);
+    const LOOKS = [{ back: 0x5a4a3a, breast: 0xc89070, belly: 0xe8d8c4 }, { back: 0x6a8a4a, breast: 0xe8d040, belly: 0xe8d040, cap: 0x1a1a1e }, {}];
+    for (let i = 0; i < (this.wildlife ? 14 : 0); i++) {
+      const b = makeVoxelBird(LOOKS[i % 3]);
+      const a = 0.6 + (i / 14) * 1.9 + Math.random() * 0.2; // out of the trees behind the clearing, across the open sky
+      b.root.scale.setScalar(1.6);
+      b.root.userData = { a, r: 7.5 + Math.random() * 4, h: 4.5 + Math.random() * 4, sp: 2.2 + Math.random() * 1.6, up: 1.4 + Math.random() * 1.2, ph: Math.random() * 4, rig: b };
+      b.root.visible = false;
+      this.flockBirds.push(b.root);
+      sc.add(b.root);
     }
-    this.own(() => { for (const b of this.flockBirds) b.material.dispose(); });
+    this.own(() => { for (const b of this.flockBirds) b.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); });
 
     // ---- DOM: caption, letterbox bars, skip
     this.caption = el('div', { class: 'bk-caption bk-outline' }, ['Far above the Deep', el('small', {}, 'an old forest trail, late in the day')]);
@@ -463,14 +464,14 @@ export default class FallScene extends Scene {
     const P = FOREST.trail.at(this.cur.s);
     const sx = -P.tz * (side ? 0.09 : -0.09), sz = P.tx * (side ? 0.09 : -0.09);
     const gy = groundH(H.x, H.z);
-    for (let i = 0; i < 5; i++) this.dust.spawn({ pos: [H.x + sx + (Math.random() - 0.5) * 0.12, gy + 0.03, H.z + sz + (Math.random() - 0.5) * 0.12], vel: [(Math.random() - 0.5) * 0.35 - P.tx * 0.15, 0.1 + Math.random() * 0.2, (Math.random() - 0.5) * 0.35 - P.tz * 0.15], life: 0.9, color: 0xb89a74, color2: 0x8a7458, size: 0.025, size2: 0.06, alpha: 0.42, drag: 2.2, shape: i % 2 ? SHAPE.square : SHAPE.round });
+    for (let i = 0; i < 5; i++) this.dust.spawn({ pos: [H.x + sx + (Math.random() - 0.5) * 0.12, gy + 0.03, H.z + sz + (Math.random() - 0.5) * 0.12], vel: [(Math.random() - 0.5) * 0.35 - P.tx * 0.15, 0.1 + Math.random() * 0.2, (Math.random() - 0.5) * 0.35 - P.tz * 0.15], life: 0.9, color: 0xb89a74, color2: 0x8a7458, size: 0.025, size2: 0.06, alpha: 0.42, drag: 2.2, shape: SHAPE.square });
     if (Math.random() < 0.35) this.leaves.spawn({ pos: [H.x + sx, gy + 0.04, H.z + sz], vel: [(Math.random() - 0.5) * 0.5, 0.6 + Math.random() * 0.4, (Math.random() - 0.5) * 0.5], life: 1.2, color: Math.random() < 0.5 ? 0xa86a32 : 0x8a7a3a, size: 0.03, gravity: 3, drag: 1, spin: 8, shape: SHAPE.confetti });
   }
 
   crackDust() {
     const tips = this.F.cracks.tips(this.F.cracks.uniforms.uReveal.value);
     const p = tips.length ? tips[(Math.random() * tips.length) | 0] : null;
-    if (p) for (let i = 0; i < 3; i++) this.dust.spawn({ pos: [p.x, 0.04, p.z], vel: [(Math.random() - 0.5) * 0.5, 0.25 + Math.random() * 0.5, (Math.random() - 0.5) * 0.5], life: 1.3, color: 0xa88a66, color2: 0x7a6248, size: 0.04, size2: 0.13, alpha: 0.45, drag: 1.6, shape: SHAPE.round });
+    if (p) for (let i = 0; i < 3; i++) this.dust.spawn({ pos: [p.x, 0.04, p.z], vel: [(Math.random() - 0.5) * 0.5, 0.25 + Math.random() * 0.5, (Math.random() - 0.5) * 0.5], life: 1.3, color: 0xa88a66, color2: 0x7a6248, size: 0.04, size2: 0.13, alpha: 0.45, drag: 1.6, shape: SHAPE.square });
     // grit trickling into the gaps between the crust pieces
     const a = Math.random() * Math.PI * 2, r = Math.random() * HOLE_R;
     this.debris.spawn({ pos: [Math.cos(a) * r, -this.sag * 0.1, Math.sin(a) * r], vel: [0, -0.3, 0], life: 1.4, color: Math.random() < 0.5 ? 0x5a3e2a : 0x7a6a58, size: 0.025, gravity: 6, shape: SHAPE.square });
@@ -483,7 +484,7 @@ export default class FallScene extends Scene {
     this.sfx('forest_snap', { vol: 0.32 });
     this.shake = Math.max(this.shake, 0.04);
     for (let k = 0; k < 14; k++) this.debris.spawn({ pos: [x, 0.03, z], vel: [Math.cos(a) * 0.4 + (Math.random() - 0.5) * 1.2, 1 + Math.random() * 1.6, Math.sin(a) * 0.4 + (Math.random() - 0.5) * 1.2], life: 1.2, color: k % 3 ? 0x9a7650 : 0xc8a070, size: 0.03, size2: 0.02, gravity: 8, spin: 10, shape: k % 2 ? SHAPE.confetti : SHAPE.square });
-    for (let k = 0; k < 10; k++) this.dust.spawn({ pos: [x, 0.05, z], vel: [(Math.random() - 0.5) * 0.6, 0.5 + Math.random() * 0.8, (Math.random() - 0.5) * 0.6], life: 1.6, color: 0xa88a66, color2: 0x6a5440, size: 0.05, size2: 0.18, alpha: 0.4, drag: 1.5, shape: SHAPE.round });
+    for (let k = 0; k < 10; k++) this.dust.spawn({ pos: [x, 0.05, z], vel: [(Math.random() - 0.5) * 0.6, 0.5 + Math.random() * 0.8, (Math.random() - 0.5) * 0.6], life: 1.6, color: 0xa88a66, color2: 0x6a5440, size: 0.05, size2: 0.18, alpha: 0.4, drag: 1.5, shape: SHAPE.square });
   }
 
   /** The birds burst out of the trees round the clearing and wheel away; the canopy sheds leaves. */
@@ -532,7 +533,7 @@ export default class FallScene extends Scene {
     }
     for (let i = 0; i < 110; i++) {
       const a = Math.random() * Math.PI * 2, r = HOLE_R * (0.8 + Math.random() * 0.4);
-      this.dust.spawn({ pos: [Math.cos(a) * r, 0.05, Math.sin(a) * r], vel: [Math.cos(a) * 0.5, 0.4 + Math.random() * 1.4, Math.sin(a) * 0.5], life: 2.2, color: 0xa88a66, color2: 0x6a5440, size: 0.05, size2: 0.2, alpha: 0.38, drag: 1.4, shape: SHAPE.round });
+      this.dust.spawn({ pos: [Math.cos(a) * r, 0.05, Math.sin(a) * r], vel: [Math.cos(a) * 0.5, 0.4 + Math.random() * 1.4, Math.sin(a) * 0.5], life: 2.2, color: 0xa88a66, color2: 0x6a5440, size: 0.05, size2: 0.2, alpha: 0.38, drag: 1.4, shape: SHAPE.square });
     }
     for (let i = 0; i < 90; i++) {
       const a = Math.random() * Math.PI * 2, r = Math.random() * HOLE_R;
@@ -857,7 +858,8 @@ export default class FallScene extends Scene {
       U.t += dt;
       const r = U.r + U.t * U.sp, a = U.a + Math.sin(U.t * 0.8 + U.ph) * 0.25;
       b.position.set(Math.cos(a) * r, U.h + U.t * U.up + Math.sin(U.t * 5 + U.ph) * 0.15, Math.sin(a) * r);
-      U.sheet.uFrame.value = Math.floor(U.t * 14 + U.ph * 3) % 4;
+      b.rotation.set(-0.3, Math.atan2(Math.cos(a), Math.sin(a)), 0); // heading out, climbing
+      flap(U.rig, U.t * 1.2 + U.ph, 0.15);
       if (U.t > 6) b.visible = false;
     }
     // the bars come off for the fall

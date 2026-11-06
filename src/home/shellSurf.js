@@ -307,7 +307,8 @@ export class ShellBase {
     const m = new THREE.Matrix4().makeRotationX(Math.PI / 2).setPosition(0, CT + F * S32, 0);
     geo.applyMatrix4(m);
     geo.applyMatrix4(new THREE.Matrix4().makeScale(T, T, T));
-    const mesh = new THREE.Mesh(geo, texturedToon(reliefTexture(tex, U, V), 0.25));
+    // (the bake shows through a little more up here: the live lights barely reach the roof)
+    const mesh = new THREE.Mesh(geo, texturedToon(reliefTexture(tex, U, V), 0.42));
     mesh.layers.enable(LAYER_OUTLINE);
     this.world.add(mesh);
     this.ceilMesh = mesh;
@@ -332,6 +333,9 @@ export class ShellBase {
     return (x, y, z, nx, ny, nz, out) => {
       let k = 0.64; // (a nook in a cave: dimmer than the old bedroom)
       if (y > 1.3) k *= Math.max(0.42, 1 - (y - 1.3) * 0.62);
+      // what faces down (the ceiling's boards and rock, the joists' undersides) gets the lamplight
+      // thrown back up off the floor: warm, and enough to read the boards by
+      if (ny < -0.5) { k = Math.max(k, 0.46) * 1.3; out[0] = k * 0.98; out[1] = k * 0.88; out[2] = k * 0.8; return; }
       if (y < 0.3) k *= 0.8 + y * 0.66;
       const de = Math.min(x, z, W - x, D - z), dc = Math.min(Math.hypot(x, z), Math.hypot(W - x, z), Math.hypot(x, D - z), Math.hypot(W - x, D - z));
       if (dc < 0.9) k *= 0.7 + dc * 0.33;

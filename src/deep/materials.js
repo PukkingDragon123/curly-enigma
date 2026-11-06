@@ -194,3 +194,38 @@ export function voxelColor(m, x, y, z, h) {
   const k = h < 0.12 ? 4 : h < 0.35 ? 0 : h < 0.6 ? 1 : h < 0.85 ? 2 : 3;
   return k === 4 ? d.accent : d.tones[k];
 }
+
+// ---------------------------------------------------------------- caves & ores pass (appended)
+// Vein rock: the mineralised seams ore deposits sit in (Generator veins): quartz, rusty gossan,
+// copper-green malachite, coal shale, violet crystal veins, glowing lumen and ember veins, fossil
+// marl, kimberlite pipes and rime veins. Natural rock (dug with a pick, slab / shatter), drawn by the
+// terrain shader with the vein look of their style. Then the big glowing crystal clusters that
+// light the giant caverns, one per colour (ids 44..58; generator dressing, natural).
+Object.assign(M, {
+  VEIN_QUARTZ: 44, VEIN_GOSSAN: 45, VEIN_MALACHITE: 46, VEIN_COAL: 47, VEIN_AMETHYST: 48, VEIN_GLOW: 49,
+  VEIN_EMBER: 50, VEIN_MARL: 51, VEIN_KIMBER: 52, VEIN_FROST: 53,
+  CRYSTAL_GREEN: 54, CRYSTAL_AMBER: 55, CRYSTAL_FIRE: 56, CRYSTAL_ICE: 57, CRYSTAL_VOID: 58,
+});
+for (const [id, d] of Object.entries({
+  [M.VEIN_QUARTZ]: { name: 'Quartz Vein', tones: [0x9a968e, 0xbab6ac, 0xd6d2c8, 0xeeebe2], accent: 0xffffff, hp: 2.6, snd: 'crystal', style: [STYLE.CRYSTAL, 1.6, 0.55], vein: 1 },
+  [M.VEIN_GOSSAN]: { name: 'Gossan', tones: [0x5a2e16, 0x7a3e1c, 0x9a5426, 0xb86e34], accent: 0xe0a050, hp: 2, snd: 'stone', style: [STYLE.ROCK, 1.8, 0.75], vein: 2 },
+  [M.VEIN_MALACHITE]: { name: 'Malachite Seam', tones: [0x1e4a3a, 0x286a4e, 0x369066, 0x52b484], accent: 0x9ae8c0, hp: 2.2, snd: 'stone', style: [STYLE.ROCK, 1.6, 0.6], vein: 3 },
+  [M.VEIN_COAL]: { name: 'Coal Shale', tones: [0x141214, 0x1e1b1e, 0x2a2628, 0x383336], accent: 0x8a8690, hp: 1.6, snd: 'stone', style: [STYLE.ROCK, 2.2, 0.85], vein: 4 },
+  [M.VEIN_AMETHYST]: { name: 'Crystal Vein', tones: [0x3e2a5a, 0x56397a, 0x744ea0, 0x9a70c8], accent: 0xe0c8ff, hp: 2.6, snd: 'crystal', style: [STYLE.CRYSTAL, 1.4, 0.5], vein: 5, glow: 0.12 },
+  [M.VEIN_GLOW]: { name: 'Lumen Vein', tones: [0x1a3a2e, 0x245a40, 0x2e7c52, 0x44a86c], accent: 0xb8ffd0, hp: 2.2, snd: 'crystal', style: [STYLE.CRYSTAL, 1.4, 0.5], vein: 6, glow: 0.4 },
+  [M.VEIN_EMBER]: { name: 'Ember Vein', tones: [0x3a1008, 0x62180a, 0x8e260c, 0xc04014], accent: 0xffb050, hp: 2.8, snd: 'stone', style: [STYLE.ROCK, 1.6, 0.8], vein: 7, glow: 0.35 },
+  [M.VEIN_MARL]: { name: 'Fossil Marl', tones: [0x8a7c62, 0xa08e72, 0xb6a484, 0xc8b898], accent: 0xeee2c8, hp: 1.4, snd: 'stone', style: [STYLE.ROCK, 2.4, 0.4], vein: 8 },
+  [M.VEIN_KIMBER]: { name: 'Kimberlite', tones: [0x1e2a2c, 0x2a3a3c, 0x384c4c, 0x4a605e], accent: 0xc8f0ff, hp: 3.2, snd: 'hard', style: [STYLE.ROCK, 1.8, 0.85], vein: 9 },
+  [M.VEIN_FROST]: { name: 'Rime Vein', tones: [0x5a88a8, 0x76a4c4, 0x94c2de, 0xb8e0f4], accent: 0xffffff, hp: 2.4, snd: 'ice', style: [STYLE.ICE, 1.6, 0.5], vein: 10, glow: 0.1 },
+  [M.CRYSTAL_GREEN]: { name: 'Lumen Crystal', tones: [0x2a8a5a, 0x3aaa70, 0x5ccc8c, 0x9af0bc], accent: 0xeafff2, hp: 2.2, snd: 'crystal', style: [STYLE.CRYSTAL, 2, 0.6], glow: 0.6 },
+  [M.CRYSTAL_AMBER]: { name: 'Amber Crystal', tones: [0x9a5a14, 0xc07a1e, 0xe09e34, 0xf8c868], accent: 0xfff0c0, hp: 2.2, snd: 'crystal', style: [STYLE.CRYSTAL, 2, 0.6], glow: 0.55 },
+  [M.CRYSTAL_FIRE]: { name: 'Fire Crystal', tones: [0x9a1a0c, 0xc83010, 0xf05a1c, 0xffa050], accent: 0xffe8a0, hp: 2.4, snd: 'crystal', style: [STYLE.CRYSTAL, 2, 0.6], glow: 0.7 },
+  [M.CRYSTAL_ICE]: { name: 'Ice Crystal', tones: [0x5a9ac8, 0x7ab8e0, 0xa0d4f2, 0xd2f0ff], accent: 0xffffff, hp: 2.2, snd: 'ice', style: [STYLE.CRYSTAL, 2, 0.6], glow: 0.5 },
+  [M.CRYSTAL_VOID]: { name: 'Void Crystal', tones: [0x4a1a8a, 0x6a2ab0, 0x9050d8, 0xc090ff], accent: 0xf0e0ff, hp: 2.6, snd: 'crystal', style: [STYLE.CRYSTAL, 2, 0.6], glow: 0.65 },
+})) {
+  const m = MAT[id] = { id: +id, hp: 1, glow: 0, gran: false, fluid: 0, ...d };
+  m.brk = BRK_OF_STYLE[m.style[0]] || 'slab';
+  m.hs = m.snd === 'stone' && m.hp >= 3 ? 'hard' : m.snd;
+}
+/** Vein rock material (or 0) by vein code. */
+export const isVeinM = (m) => !!MAT[m]?.vein;

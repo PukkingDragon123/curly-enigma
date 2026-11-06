@@ -15,7 +15,7 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
 import { SKILL_LINES, LINE, NODE, SKILL_KEYS, TIER_LV, nodesOf, pointsForLevel } from '../data/skills.js';
 import { canUnlock, unlock, respec, respecCost, spentIn, fxOf, lineInfo } from '../core/skills.js';
-import { lineSealURL, tokenURL } from './skillArt.js';
+import { lineSealURL, lineBigURL, tokenURL } from './skillArt.js';
 import { skillIconURL, lineIconURL } from './skillIcons.js';
 import { SKC, installSkillChrome, paintPipes, FRAME_Y } from './skillChrome.js';
 import { DL, installDialogArt } from './dialogArt.js';
@@ -878,13 +878,22 @@ export function installSkillFeedback(ui) {
   let keepChip = false;
   ui.levelPlaque = { el: chip, show: (line = 'mining', n = 10, lvl = false) => showChip(line, n, lvl), keep: (on = true) => { keepChip = !!on; if (!on) chip.classList.remove('show'); } };
 
-  // ---- level-up: one small quiet line, held back for a calm moment (never a banner mid-action)
+  // ---- level-up card (a wooden plaque pinned to the toasts: a ribbon, the line's big seal stamping in, sparks)
   const levelToast = (e) => {
     const L = LINE[e.line];
-    const t = ui.toast(`<b>${L.name}</b> level ${e.level} <small>· +${e.points} skill point${e.points > 1 ? 's' : ''} · ${isTouch() ? 'tap' : 'B'}</small>`, { kind: 'good', dur: 3200, calm: true });
-    t.classList.add('sk-nudge');
-    t.title = 'Open your skills';
+    const big = e.level % 5 === 0;
+    const sparks = el('div', { class: 'sk-chip-burst' });
+    const t = el('div', { class: 'toast good sk-toast' + (big ? ' big' : ''), role: 'status', title: 'Open your skills' }, [
+      el('div', { class: 'sk-toast-ribbon' }, [el('span', {}, big ? `Level ${e.level}!` : 'Level up!')]),
+      el('div', { class: 'sk-toast-medal' }, [el('img', { class: 'pix sk-toast-seal', src: lineBigURL(L), alt: '' }), sparks]),
+      el('span', { class: 'toast-text', html: `<b>${L.name}</b> is now <b>level ${e.level}</b>!<small>+${e.points} skill point${e.points > 1 ? 's' : ''} · ${isTouch() ? 'tap to spend' : '<kbd>B</kbd> to spend'}</small>` }),
+    ]);
+    t.style.setProperty('--lc', L.ink);
     t.addEventListener('click', () => openTree(e.line));
+    ui.toasts.append(t);
+    setTimeout(() => burst(sparks, big ? 16 : 10, big ? 30 : 22), 260);
+    while (ui.toasts.children.length > 4) ui.toasts.firstChild.remove();
+    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 360); }, big ? 5200 : 4200);
   };
 
   // ---- the book button wears a little wax seal while points wait
@@ -922,12 +931,17 @@ export function installSkillFeedback(ui) {
   st.on('skill', (e) => {
     if (st.unlocked?.('skills') === false) return; // [unlock guard] (the XP still counts; no plaque, no notes)
     if (e.type === 'xp') {
-      // (no plaque or "+XP" on screen while you work: the book shows it; a soft tick for a big gain)
       acc[e.line] = (acc[e.line] || 0) + e.xp;
-      if (acc[e.line] >= 10) { game.audio.play('sk_xp', { vol: 0.5 }); acc[e.line] = 0; }
+      if (acc[e.line] >= 4 || (chip.classList.contains('show') && chipLine === e.line)) {
+        if (acc[e.line] >= 10) game.audio.play('sk_xp');
+        showChip(e.line, acc[e.line]);
+        acc[e.line] = 0;
+      }
     } else if (e.type === 'level') {
       acc[e.line] = 0;
-      game.audio.play('sk_level', { vol: 0.6 });
+      showChip(e.line, 0, true);
+      game.audio.play('sk_level');
+      setTimeout(() => game.audio.play('sparkle', { vol: 0.6 }), 320);
       levelToast(e);
       const s = st.data.skills;
       if (s) s.nudge = st.data.playTime || 0; // the toast is the nudge

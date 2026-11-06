@@ -4,7 +4,7 @@
 // flat planes per form, reflected rim light, glints, and fine 1px details (root hairs,
 // sparks, spores) laid over the ink so they stay thin.
 import {
-  M, mat, mix, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, blob, fringe, form, sheen, marks, bumps, speckle,
+  M, mat, mix, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, blob, loop, fringe, form, sheen, marks, bumps, speckle,
   blade, tube, spline, twinkle, sparkle, shadowOf, liftOf,
 } from './lifeKit.js';
 import { ring } from './parts.js';
@@ -90,7 +90,9 @@ export function mushroom(pc, cx, cy, r, h, CAP, STM, o = {}) {
   const st = tube(pc, [[cx + lean, cy + h], [cx + lean * 0.4, cy + h * 0.5], [cx, cy + 0.5]], (s) => r * (0.27 + (1 - s) * 0.06), STM, { bias: 0.1 });
   marks(pc, st.mask, STM, { dens: 0.18, seed: o.seed ?? 3, len: 3, dir: [0, 1], lit: false });
   // gills: a shadowed underside band, glowing for glowcaps
-  const gills = blob(cx, cy + 0.4, r * 0.92, Math.max(1.1, r * 0.28), { seed: (o.seed ?? 3) + 1, lump: 0.05 });
+  const sd = o.seed ?? 3, j = (k, a = 0.16) => (hash2(sd, k, 31) - 0.5) * r * a;
+  const gh = Math.max(1.1, r * 0.3);
+  const gills = loop([[cx - r * 0.92, cy + 0.2], [cx - r * 0.4 + j(20), cy - 0.3], [cx + r * 0.4 + j(21), cy - 0.3], [cx + r * 0.92, cy + 0.2], [cx + r * 0.5 + j(22), cy + gh + 0.4], [cx - r * 0.45 + j(23), cy + gh + 0.6]]);
   seam(pc, gills, 'shadow');
   gills.each((x, y) => {
     const a = Math.atan2(y + 0.5 - cy, x + 0.5 - cx);
@@ -100,8 +102,13 @@ export function mushroom(pc, cx, cy, r, h, CAP, STM, o = {}) {
     void a;
   });
   // cap: a lumpy dome, flat underneath
-  const cap = blob(cx, cy, r, r * (o.tall ?? 0.78), { seed: o.seed ?? 3, lump: o.lump ?? 0.06, flat: 0.02 });
-  cap.union(blob(cx, cy, r * 1.02, 1.3, { seed: (o.seed ?? 3) + 5, lump: 0.1 }).and(M().rect(0, 0, 32, Math.floor(cy + 0.5))));
+  // cap: a hand-built dome, each one lopsided its own way, the rim drooping a little
+  const T = o.tall ?? 0.78, dr = o.droop ?? 0.14, tl = o.tilt ?? (hash2(sd, 9, 3) - 0.5) * 0.4;
+  const cap = loop([
+    [cx - r * 1.02 + j(1), cy + r * dr + 0.4], [cx - r * 0.98 + j(2), cy - r * T * 0.32 + j(3)], [cx - r * 0.72 + j(4), cy - r * T * 0.8 + j(5)],
+    [cx - r * 0.18 + tl * r + j(6), cy - r * T + j(7, 0.1)], [cx + r * 0.42 + tl * r + j(8), cy - r * T * 0.9 + j(9)], [cx + r * 0.9 + j(10), cy - r * T * 0.42 + j(11)],
+    [cx + r * 1.02 + j(12), cy + r * dr * 0.8 + 0.4], [cx + r * 0.5, cy + 0.5 + j(13, 0.05)], [cx - r * 0.5, cy + 0.6 + j(14, 0.05)],
+  ]);
   seam(pc, cap, 'shadow');
   const K = form(pc, cap, CAP, { cx: cx - r * 0.1, cy: cy + r * 0.15, rx: r * 1.05, ry: r * 0.9, dome: 0.35, bias: o.bias ?? 0.05, emit: o.emit });
   // rim lip: the underside edge of the cap rolls under (one tone darker), lit on the left
@@ -243,14 +250,23 @@ function blindfern(pc) {
 }
 
 function ashfern(pc) {
+  // a fire-scorched fern: fronds drooping and curling under the heat, tips broken off and
+  // smouldering, rooted in a mound of grey ash with embers in it
   const R = mat(0x8a8480, { cont: 1.12 });
-  fernPlant(pc, R, { RR: mat(0x6a6460, { cont: 1.1 }), bias: -0.04 });
-  // smouldering tips: the frond ends glow ember-orange
-  const hot = [[25, 3], [24, 4], [23, 4], [4, 12], [4, 13], [3, 13], [22, 19], [21, 20]];
+  const RR = mat(0x5a5450, { cont: 1.1 });
+  fernFrond(pc, [[15, 27], [10, 21], [5, 19.4], [2.6, 23]], R, { pairs: 4, len: 5, RR });
+  fernFrond(pc, [[16, 27], [14, 18], [12.6, 10], [14.6, 4.6]], R, { pairs: 4, len: 4.6, RR });
+  fernFrond(pc, [[17, 27], [18.6, 18], [23, 11.6], [27.6, 10.6], [29.4, 14]], R, { pairs: 5, len: 6, RR });
+  const ASH = mat(0x9a948e, { cont: 1.05 });
+  const mound = loop([[6, 29.6], [8.4, 26.6], [12, 25.4], [17, 24.8], [21.4, 25.6], [25, 27.4], [26.4, 30], [16, 30.6]]);
+  seam(pc, mound, 'shadow');
+  form(pc, mound, ASH, { bias: 0.1 });
+  bumps(pc, mound, ASH, { dens: 0.3, seed: 4 });
   ink(pc);
-  for (const [x, y] of hot) if (pc.alpha(x, y) > 160) gl(pc, x, y, (x + y) % 2 ? 0xff8a2a : 0xffc060, 1);
-  for (const [x, y, c] of [[27, 1, 0xffd080], [28, 4, 0xff9a3a], [2, 9, 0xff9a3a], [6, 9, 0xffc070], [25, 17, 0xffb050]]) gl(pc, x, y, c, 0.9);
-  for (const [x, y] of [[29, 0], [1, 6]]) pc.set(x, y, 0xb0a8a0, 150);
+  for (const [x, y] of [[29, 13], [29, 14], [3, 22], [3, 23], [14, 4], [15, 5]]) if (pc.alpha(x, y) > 160) gl(pc, x, y, (x + y) % 2 ? 0xff8a2a : 0xffc060, 1);
+  for (const [x, y] of [[12, 28], [19, 27], [22, 29]]) gl(pc, x, y, (x % 2) ? 0xff6a2a : 0xffa040, 0.9);
+  for (const [x, y, c] of [[30, 9, 0xffd080], [27, 6, 0xff9a3a], [1, 18, 0xff9a3a], [16, 1, 0xffc070], [11, 2, 0xffb050]]) gl(pc, x, y, c, 0.9);
+  for (const [x, y] of [[24, 4], [6, 13]]) pc.set(x, y, 0xb0a8a0, 150);
 }
 
 function whisperweed(pc) {
@@ -286,7 +302,7 @@ function rubberSap(pc) {
   // the cut notch weeping a stretchy strand into a glossy pool
   const strand = tube(pc, [[15.5, 9], [16.4, 13], [15, 17], [15.6, 21]], (s) => 1.5 - Math.sin(s * Math.PI) * 0.8, SR, { bias: 0.1 });
   void strand;
-  const glob = blob(16, 25.2, 9.4, 4.7, { seed: 4, lump: 0.08, flat: 0.8 }).union(blob(14, 22.4, 4, 3, { seed: 6 }));
+  const glob = loop([[6.6, 26.4], [8.6, 23.4], [11, 21], [14.4, 19.6], [17, 20.6], [19.4, 22.6], [23.4, 23.2], [26, 25.2], [25.4, 28], [20, 29.4], [12, 29.6], [7.6, 28.6]]);
   seam(pc, glob, 'shadow');
   form(pc, glob, SR, { bias: 0.12, cy: 26.5, ry: 6 });
   sheen(pc, glob, SR[0], { inset: 1, a0: -2.9, a1: -1.4, gap: 5 });
@@ -335,8 +351,8 @@ function bubblebulb(pc) {
   blade(pc, 16, 28, 27.5, 22.5, 2.5, LR, { bend: -1.6, veins: 2, bias: -0.05 });
   tube(pc, [[16, 29.5], [16.4, 25], [16, 21.5]], 1.3, mat(0x4a8a3a, { cont: 1.1 }));
   // the bulb: a plump onion with a pointed tip and soft segment ribs
-  const bulb = blob(16, 14.5, 9.2, 8.6, { seed: 5, lump: 0.04, taper: 0.12 }).union(M().poly([[13.2, 7], [18.8, 7], [16.6, 1.8], [15.8, 1.8]]));
-  bulb.union(M().poly([[13, 21], [19, 21], [16.5, 24.5]]));
+  const bulb = loop([[16.4, 1.6], [17.4, 4.4], [20.6, 7], [24, 10.6], [25.4, 15], [24.4, 19.4], [21, 22.4], [17.4, 23.6], [13, 22.8], [9, 20.2], [6.8, 15.6], [7.8, 10.8], [11.4, 7.2], [14.8, 4.6]]);
+  bulb.union(loop([[13.6, 21.6], [18.6, 21.4], [16.4, 24.8]]));
   seam(pc, bulb, 'shadow');
   const K = form(pc, bulb, R, { cy: 14, ry: 10, bias: 0.08 });
   for (const s of [-1, 1]) for (let y = 4; y < 22; y++) {
@@ -385,11 +401,11 @@ function gloomshroom(pc) {
   const sk = blob(15.8, 18.6, 3.6, 1.2, { seed: 4, lump: 0.1 }).union(M().poly([[12.6, 18.6], [19, 18.6], [18.4, 21.4], [17, 20.2], [15.6, 21.8], [14.2, 20.4], [12.8, 21]]));
   seam(pc, sk, 'shadow'); form(pc, sk, ST, { bias: 0.12, cy: 18, ry: 4 });
   // underside gills in deep shadow
-  const gills = blob(15.5, 14.6, 10.5, 2, { seed: 6 });
+  const gills = loop([[5.4, 14.4], [15.4, 13.2], [26.2, 14.4], [22, 16.8], [15.6, 17.2], [9, 16.6]]);
   seam(pc, gills, 'shadow');
   gills.each((x, y) => pc.set(x, y, CP[(x % 2) ? 5 : 6]));
   // drooping bell cap with scalloped, hanging edge
-  const cap = blob(15.5, 13, 12.2, 9.6, { seed: 3, lump: 0.05, flat: 0.1 });
+  const cap = loop([[3.6, 13.4], [4.4, 9.4], [7.6, 5.4], [12, 3.2], [16.6, 2.8], [21.6, 4.2], [25.4, 7], [27.6, 10.4], [28, 13.6], [16, 14.6]]);
   for (const [x, y, r] of [[5, 13.5, 2.2], [9.5, 14.4, 2], [14.5, 14.8, 2], [19.5, 14.6, 2], [24.6, 13.6, 2.3], [27, 11.5, 1.6]]) cap.union(blob(x, y, r, r * 0.9, { seed: x | 0, lump: 0.1 }));
   seam(pc, cap, 'shadow');
   form(pc, cap, CP, { cx: 14, cy: 14, rx: 13, ry: 11, dome: 0.35, bias: 0.05 });
@@ -433,7 +449,7 @@ function truffle(pc) {
     if (body.get(x + 1, y + 1)) step(pc, R, x + 1, y + 1, 1, 1, 5);
   });
   // a cut slice leaning on it: dark skin around a chocolate heart veined with white
-  const sl = blob(24, 21.5, 5.6, 6.6, { seed: 2, lump: 0.08, rot: 0.3 });
+  const sl = loop([[20.4, 16.8], [23.4, 15], [27, 15.8], [29.2, 19.4], [29, 24.4], [26.4, 27.8], [22.6, 28], [19.4, 25.4], [18.6, 20.6]]);
   seam(pc, sl, 'shadow');
   const SL = mat(0x5c3a26, { cont: 1.1 });
   sl.each((x, y) => {
@@ -465,7 +481,7 @@ function frostbloom(pc) {
 function coreLotus(pc) {
   // lily pad with a notch, radial veins, floating on a ring of ripples
   const PD = mat(0x3a8a5a, { cont: 1.12 });
-  const pad = blob(16, 26, 14.6, 4.6, { seed: 4, lump: 0.05 }).sub(M().poly([[16, 26], [26, 31], [29.5, 27.4]]));
+  const pad = loop([[1.6, 26.4], [3.4, 23.4], [8, 21.8], [14, 21.4], [21, 21.6], [26.4, 22.6], [30, 24.8], [29.6, 27], [16.4, 26.4, 1], [24.4, 30], [17, 30.8], [9, 30.4], [3.6, 28.8]]);
   form(pc, pad, PD, { flatten: 0.6, dome: 0.3, bias: 0.06 });
   for (let i = 0; i < 6; i++) line(pc, 16, 26, 16 + Math.cos(i * 1.05 + 2.3) * 13, 26 + Math.sin(i * 1.05 + 2.3) * 4.2, (n, X, Y) => (n > 1 && pad.get(X, Y) ? PD[2] : null));
   const R = mat(0xff8ac4, { cont: 1.2 });

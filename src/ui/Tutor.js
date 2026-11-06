@@ -1,22 +1,23 @@
-// The tip line (game.ui.tutor): a plain subtitle (the speaker's name small over the words, a soft
-// shadow, no box), low on the screen on desktop and under the top corners on touch screens, typing
-// itself out with the speaker's own voice blips. Every scene calls
+// The dialogue box (game.ui.tutor): a carved oak board with brass corner brackets, the speaker's
+// live 3D portrait (src/gfx/portrait3d.js: the real rig, breathing, blinking, talking, a face per
+// line) in an ornate brass frame, a red name ribbon, and a parchment where the words type themselves
+// out with the speaker's own voice blips. Every scene calls
 //   game.ui.tutor?.say(html, { mood, key, wait, dur, name, who, place, sound, muffled })  → Promise
 //   game.ui.tutor?.hide(key?)        (hide the line; with a key, only that line)
 //   game.ui.tutor?.next()            (carry on, as the player would: first finishes the typing)
 //   game.ui.tutor?.active            ({ key, mood, html, wait, who } or null)
 // (next() and active also carry on / report a cutscene talk's line, src/ui/Convo.js, when one is up.)
-// The line is for hints and tips; NPCs talk through game.convo (cutscene talk). `muffled` (heard
-// through a daze) dims and swims the words, without blurring anything.
+// The card is for hints and tips; NPCs talk through game.convo (cutscene talk). `muffled` (heard
+// through a daze) dims the face and swims the words, without blurring anything.
 // mood: 'calm' | 'happy' | 'stern' | 'proud' | 'worried' | 'laugh' (and any rig expression:
 //   surprised sad angry smug thinking sleepy). key: the line's id: saying the same key again while it
 //   is up only updates it (no retyping), and hide(key) leaves anyone else's line alone.
 // wait: true keeps the card up until the player carries on (E, Space, Enter, a click or tap on the
 //   card); otherwise it goes after a reading time (dur seconds overrides it; dur: Infinity keeps it
 //   up until hide() or the next line). A new line replaces the one showing (its promise resolves).
-// who: the speaker (name and voice; default Old Star; also read from `name`): 'oldstar' | 'hero'
+// who: the speaker's portrait (default Old Star; also read from `name`): 'oldstar' | 'hero'
 //   | 'rocco' | a shop id | a keeper's or a Deep Town folk's name | a spec (see portrait3d.js).
-// place: 'top' puts the line at the top of the screen (it is there anyway on touch screens).
+// place: 'top' puts the card at the top of the screen (it is there anyway on touch screens).
 // HTML: <b> (rust red), <i> (soft), .gold-txt (gold). Old exports kept: MOODS, starPortrait(mood)
 // and starPortraitURL(mood) (now stills of the 3D Old Star).
 import { el, clamp } from '../core/util.js';
@@ -165,6 +166,7 @@ export class Tutor {
     this.ensureFace(cast);
     this.setMood(mood, !wasUp);
     this.typeIn(html);
+    this.game.audio?.play?.('page', { vol: 0.25 });
     if (mood === 'laugh' && line.voice) this.game.audio?.play?.('laugh', { pitch: 300 });
     this.stepAt = performance.now();
     this.ensureClock();
@@ -193,7 +195,7 @@ export class Tutor {
     const c = this.cur;
     if (!c) return;
     if (!c.typed) { this.revealAll(); return; }
-    this.game.audio?.play?.('ui_click', { pitch: 0.8, vol: 0.35 });
+    this.game.audio?.play?.('ui_click', { pitch: 0.8 });
     this.finish(c);
   }
 
@@ -230,12 +232,8 @@ export class Tutor {
     if (on) { if (!this.trMuted && !tr.muted) { tr.mute(true); this.trMuted = true; } } else if (this.trMuted) { this.trMuted = false; if (tr.muted) tr.mute(false); }
   }
 
-  /**
-   * The live portrait for this speaker: none any more (the line is a plain subtitle; the name says who
-   * it is). Kept as a hook: a scene may set `tutor.faces = true` to bring the small face back.
-   */
+  /** The live portrait for this speaker (kept between lines, rebuilt when the speaker or size changes). */
   ensureFace(cast) {
-    if (!this.faces) { if (this.face) { this.face.dispose(); this.face = null; this.faceKey = null; } return; }
     const small = window.matchMedia?.('(max-width: 560px), (max-height: 520px)').matches;
     const size = this.el.classList.contains('compact') ? (small ? 30 : 34) : small ? 40 : 48;
     const key = cast?.key || 'none';

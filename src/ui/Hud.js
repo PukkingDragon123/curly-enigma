@@ -155,8 +155,7 @@ export class Hud {
     const p = this.setLamp();
     const bucket = Math.floor(p * 20);
     if (bucket !== this.lampBucket || (e && e.delta > 0)) {
-      // (only worth a look when it's getting low, or when you get some back)
-      if ((this.lampBucket >= 0 || (e && e.delta)) && (p < 0.5 || (e && e.delta > 0))) this.lampT = 2.6;
+      if (this.lampBucket >= 0 || (e && e.delta)) this.lampT = 2.6;
       this.lampBucket = bucket;
     }
   }
@@ -297,8 +296,8 @@ export class Hud {
     if (this.peekT > 0) this.peekT -= dt;
     if (this.lampT > 0) this.lampT -= dt;
     this.lamp.classList.toggle('show', this.lampT > 0 || this.peekT > 0 || this.lamp.classList.contains('low'));
-    // the depth shows while it changes, then fades (first person too: the radar keeps the bearing)
-    if (this.depthT > 0) { this.depthT -= dt; if (this.depthT <= 0) this.depth.classList.remove('show'); }
+    // in first person the depth stays up (hanging under the radar); elsewhere it fades after a moment
+    if (this.depthT > 0 && this.ui.hudMode !== 'deep') { this.depthT -= dt; if (this.depthT <= 0) this.depth.classList.remove('show'); }
     if (this.packTagT > 0 && !(this.bag && this.bag.n >= this.bag.cap)) { this.packTagT -= dt; if (this.packTagT <= 0) this.packTag.hidden = true; }
     this.charmT += dt;
     if (this.charmT > 1 && this.charmEls.size) { this.charmT = 0; this.renderCharms(); }

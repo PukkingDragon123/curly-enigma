@@ -1,5 +1,5 @@
-// The Miners' Board: the tavern's upgrade board, one quiet dark sheet like the shops (styles in
-// upgrades.css on top of shop.css). Each card is one upgrade (data/upgrades.js): its icon, level pips, what it
+// The Miners' Board: the tavern's upgrade board, a wooden board under a hanging sign with paper
+// cards pinned to it. Each card is one upgrade (data/upgrades.js): its icon, level pips, what it
 // does now and next, and the price (gold, sometimes ingots or gems) with a button to buy the
 // next level. Tabs: Digging, Hauling, Blasting, Tavern, Tools (the tool ladder: what you own,
 // what Grubb sells, what's still deeper down) and Milestones (a ledger). On the left: the purse
@@ -176,6 +176,7 @@ export function openUpgrades(game, startTab) {
     c.classList.add('pop');
     const pip = c.querySelectorAll('.ug-pips i.on')[r.level - 1];
     pip?.classList.add('new');
+    c.append(el('div', { class: 'ug-float' }, r.level >= u.max ? 'MAX!' : `Lv ${r.level}!`));
     for (let i = 0; i < 5; i++) {
       const coin = el('i', { class: 'sh-coin ug-coin' });
       coin.style.left = (40 + Math.random() * 50) + '%';
@@ -269,8 +270,9 @@ export function openUpgrades(game, startTab) {
   const fit = () => root.classList.toggle('narrow', window.innerWidth < 760 || window.innerHeight < 470);
   fit();
   window.addEventListener('resize', fit);
+  ui.status?.pin?.(true);
   for (const id of fresh) { const m = MILESTONES.find((x) => x.id === id); if (m) ui.toast(milestoneText(m), { kind: 'good' }); }
-  const h = ui.openPanel({ body: root, className: 'sh-panel ug-panel', onClose: () => { window.removeEventListener('resize', fit); } });
+  const h = ui.openPanel({ body: root, className: 'sh-panel ug-panel', onClose: () => { window.removeEventListener('resize', fit); ui.status?.pin?.(false); } });
   h.debug = { buy, render, tab: (t) => { tab = t; enter = true; render(); } };
   return h;
 }

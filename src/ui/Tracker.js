@@ -1,9 +1,11 @@
-// The objective tracker: one subtle line under the backpack in every first-person scene (quests.css
-// hides the old scroll's pieces: title, seal, tick box, bar, quill, stamp). It says plainly what to do
-// now: the current step, the count, and an arrow that turns as you turn with the distance (▲ ▼ when
-// it's above or below you). A finished step is struck through and the next fades in. Tap it for the
-// book. It also drives the world markers (src/ui/QuestMarks.js) and the one-line toasts: a new
-// quest, progress on quests not on the line, the next step, people's lines, rewards.
+// The objective tracker: a parchment strip hung under the backpack in every first-person scene.
+// It says plainly what to do now: the quest (with its giver's seal), the current step with a
+// tick box, the count and a progress bar, and where it is: an arrow that turns as you turn, the
+// distance (▲ ▼ when it's above or below you) and the place ("Nibble & Root · Deep Town", "The town
+// lift · in the mine"). Progress is scratched in with a quill, a finished step gets ticked and struck
+// through before the strip rolls up and opens on the next one, and a finished quest gets Old Star's
+// red stamp. Tap it for the book. It also drives the world markers (src/ui/QuestMarks.js) and the
+// toasts: a new quest, progress on quests not on the strip, the next step, people's lines, rewards.
 // Reads game.quests (src/core/quests.js) once it exists; UI.update drives it.
 import { el, formatGoldFull } from '../core/util.js';
 import { ITEMS } from '../data/items.js';
@@ -310,6 +312,7 @@ export class Tracker {
   async swap(v, visible, { roll = false, fresh = false } = {}) {
     if (!visible) { this.show(v, { instant: true }); return; }
     if (roll && this.shown) {
+      SFX.unroll(this.game.audio, { up: true });
       this.roll.classList.add('rolled');
       await wait(300);
     }
@@ -319,6 +322,7 @@ export class Tracker {
     void this.roll.offsetWidth;
     this.roll.classList.remove('rolled');
     this.roll.classList.add('opening');
+    SFX.unroll(this.game.audio);
     this.tag.classList.toggle('on', fresh);
     await wait(320);
     this.roll.classList.remove('opening');
@@ -333,6 +337,7 @@ export class Tracker {
     void node.offsetWidth;
     node.classList.add('ink');
     this.quillTo(node, true);
+    SFX.scratch(this.game.audio, { n: 5 });
     await wait(ms);
     this.quill.classList.remove('on');
     node.classList.remove('ink');
@@ -355,6 +360,7 @@ export class Tracker {
     void this.num.offsetWidth;
     this.num.classList.add('scratch');
     this.quillTo(this.num);
+    SFX.scratch(this.game.audio, { n: 3 });
     await wait(180);
     this.setCount(v);
     this.shown.n = v.n;
@@ -375,6 +381,7 @@ export class Tracker {
     await wait(120);
     this.strike.classList.add('go');
     this.quillTo(this.text, true);
+    SFX.scratch(this.game.audio, { n: 4 });
     await wait(480);
     this.quill.classList.remove('on');
   }
@@ -386,6 +393,7 @@ export class Tracker {
     void this.stamp.offsetWidth;
     this.stamp.classList.add('on', 'slam');
     await wait(150);
+    SFX.stamp(this.game.audio);
     this.roll.classList.remove('shake');
     void this.roll.offsetWidth;
     this.roll.classList.add('shake');
@@ -416,10 +424,10 @@ export class Tracker {
       this.ui.status?.setBadge?.(true);
       if (list.length === 1) {
         const v = list[0].quest, who = v.giverName;
-        const head = list[0].accept || !who ? 'New quest' : `${who} asks`;
-        this.ui.toast(`${head}: <b>${v.title}</b> <small>· ${v.text}</small>`, { dur: 3400 });
+        const head = list[0].accept ? 'Quest accepted' : v.kind === 'request' ? `A request from ${who}` : v.kind === 'village' || v.kind === 'lore' ? `${who} asks a favour` : `New task from ${who}`;
+        this.ui.toast(`<small>${head}</small><br><b>${v.title}</b><br><small class="qt-first">First: ${v.text}</small>`, { icon: npcFace(this.game, v.giver, { size: 40 }), dur: 4200 });
       } else {
-        this.ui.toast(`<b>${list.length} new tasks</b> in your book`, { dur: 2400 });
+        this.ui.toast(`<b>${list.length} new tasks</b> in your book <small>(B)</small>`, { icon: BART.tab('quests') });
       }
     }, 80);
   }
@@ -432,7 +440,7 @@ export class Tracker {
     const now = performance.now();
     if (now - (this.toastT[e.id] || 0) < 2500) return;
     this.toastT[e.id] = now;
-    this.ui.toast(`${v.title} <b>${countText(v)}</b>`, { dur: 1800 });
+    this.ui.toast(`<b>${v.title}</b> · ${v.text} <b class="gold-txt">${countText(v)}</b>`, { icon: npcFace(this.game, v.giver, { size: 40 }), dur: 2200 });
   }
 
   /** A step done: what's next (when the strip isn't showing that quest, or can't be seen). */
@@ -440,7 +448,7 @@ export class Tracker {
     const v = e.quest;
     if (!v || v.id === 'lessons' || this.quests.talking) return;
     if (e.id === this.quests.data.tracked && this.visible()) return;
-    this.ui.toast(`Next: <b>${v.text}</b> <small>· ${v.title}</small>`, { dur: 2800 });
+    this.ui.toast(`<b>${v.title}</b><br><small>Next: ${v.text}</small>`, { icon: BART.box(true), dur: 3200 });
   }
 
   /** Somebody's line when a step is done (Old Star says his through the tutor when he's there). */
@@ -448,8 +456,9 @@ export class Tracker {
     if (!e?.text || (this.quests.talking && (!e.by || e.by === this.quests.talking))) return;
     if (e.by === 'oldstar' && this.game.sceneName === 'home' && this.ui.tutor?.say) { this.ui.tutor.say(e.text, { mood: e.mood || 'calm', key: 'quest-say' }); return; }
     const who = e.by ? npcName(e.by) : null;
+    const icon = e.items ? undefined : e.by ? npcFace(this.game, e.by, { size: 40 }) : undefined;
     const items = e.items ? Object.keys(e.items) : [];
-    setTimeout(() => this.ui.toast(who ? `<b>${who}</b>  ${e.text}` : e.text, { kind: items.length ? 'good' : '', dur: 3600 }), this.ui.isPanelOpen() ? 0 : 120);
+    setTimeout(() => this.ui.toast(who ? `<b>${who}:</b> “${e.text}”` : e.text, { icon: items[0] ? undefined : icon, kind: items.length ? 'good' : '', dur: 4200 }), this.ui.isPanelOpen() ? 0 : 120);
   }
 
   doneToast(e) {
@@ -457,8 +466,9 @@ export class Tracker {
     if (!v) return;
     // skill points get their own toast from the skill tree when it's there
     const rw = rewardText(this.game.state.addSkillPoints ? { ...e.reward, sp: 0 } : e.reward, { rep: QUESTS[e.id]?.giver });
+    const line = v.outro && !this.ui.isPanelOpen() && !this.quests.talking ? `<br><small class="qt-said">“${v.outro}”</small>` : '';
     setTimeout(() => {
-      this.ui.toast(`<b>${v.title}</b> done${rw ? ` <small>· ${rw}</small>` : ''}`, { kind: 'good', dur: 3400 });
+      this.ui.toast(`<b>${v.title}</b> · done!${rw ? `<br><span class="gold-txt">${rw}</span>` : ''}${line}`, { kind: 'good', icon: BART.stamp(), dur: 5200 });
       this.game.audio.play('success', { vol: 0.6 });
     }, this.ui.hudMode === 'deep' ? 650 : 0);
   }

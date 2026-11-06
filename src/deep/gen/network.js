@@ -5,6 +5,12 @@
 //   cavern    a domed chamber: flat sediment floor, a breakdown pile under the fractured roof,
 //             flowstone columns
 //   hall      a huge one (deeper down; dinosaur country is nearly all hall)
+//   vault     a giant cavern (a few in every zone, tens of metres across and up to ~18 m high):
+//             a domed roof cracked into blocks, steep walls stepped at the bedding planes and
+//             lobed into alcoves, often a still lake in a basin in its floor (lava in the magma
+//             deep), breakdown piles, a raised terrace with a rubble ramp down, columns, and a talus
+//             slope under every passage that comes in high up the wall, so every way in can be
+//             walked (see planVaults; the generator adds stalactite forests, falls and crystals)
 // joined by passages: on every layer a random spanning tree (growing tree: long winding runs and
 // side branches that end in a dead end), a few extra links that close loops, and ramps between
 // the layers. Passages are phreatic tubes (round, a flat silt floor) or vadose canyons (tall and
@@ -22,12 +28,14 @@ const B = 8; // bucket size (m)
 const BX0 = -96, BY0 = -216, BZ0 = -96, NBX = 24, NBY = 28, NBZ = 24;
 const K = 0.1; // openness per metre
 
-export const J = 0, GROTTO = 1, CAVERN = 2, HALL = 3;
-export const KIND_NAMES = ['junction', 'grotto', 'cavern', 'hall'];
+export const J = 0, GROTTO = 1, CAVERN = 2, HALL = 3, VAULT = 4;
+export const KIND_NAMES = ['junction', 'grotto', 'cavern', 'hall', 'vault'];
 
 /**
  * Build the network for a plan. o: { avoid: [{x, y, z, r}] (spheres nothing may cut into),
- * avoidCol: [{x, z, r, y0, y1}] (vertical columns: the town shaft), dino(x, y, z) → 0..1 }.
+ * avoidCol: [{x, z, r, y0, y1}] (vertical columns: the town shaft), dino(x, y, z) → 0..1,
+ * vaults: [{ d0, d1, n, zone, lake (chance), fluid, big }] (giant caverns per depth band),
+ * vaultAvoid: [{x, y, z, r}] (more places a giant cavern keeps clear of) }.
  */
 export function buildNetwork(seed, o = {}) {
   const rng = makeRng(seed + 4242);
@@ -130,11 +138,14 @@ export function buildNetwork(seed, o = {}) {
     if (n.off || n.deg === 0) continue;
     if (n.deg === 1 && n.kind === J) { n.kind = GROTTO; const R = 2.8 + (n.seed % 100) / 100 * 1.2; n.Rx = n.Rz = R; n.H = 2.9; n.yF = n.y - 1.0; }
   }
+  // ---- giant caverns: they swallow the chambers in their way; passages into them get talus slopes
+  const vaults = o.vaults ? planVaults(nodes, edges, near, seed, o) : [];
   for (const n of nodes) prepNode(n);
   // ---- the bucket grid (CSR)
   const prims = [];
   for (const n of nodes) if (!n.off && n.deg > 0) prims.push(n);
-  for (const e of edges) prims.push(e);
+  for (const e of edges) if (!e.dead) prims.push(e);
+  for (const v of vaults) prims.push(v);
   const NB = NBX * NBY * NBZ;
   const count = new Int32Array(NB + 1);
   let fill = null, list = null;
@@ -151,7 +162,7 @@ export function buildNetwork(seed, o = {}) {
     }
     if (pass === 0) { for (let b = 0; b < NB; b++) count[b + 1] += count[b]; list = new Array(count[NB]); fill = count.slice(); }
   }
-  return { nodes, edges, start: count, list, deadEnds: nodes.filter((n) => !n.off && n.deg === 1) };
+  return { nodes, edges, vaults, start: count, list, deadEnds: nodes.filter((n) => !n.off && n.deg === 1) };
 }
 
 /** A passage between two nodes: its floor line A → M → B (a bend in the middle), its kind and size. */
@@ -220,7 +231,7 @@ export function netDensity(net, nz, x, y, z) {
   for (let i = s0; i < s1; i++) {
     const p = L[i];
     if (x < p.x0 || x > p.x1 || z < p.z0 || z > p.z1 || y < p.y0 || y > p.y1) continue;
-    const o = p.edge ? passage(p, wx, y, wz) : chamber(p, nz, wx, y, wz, x, z);
+    const o = p.edge ? passage(p, wx, y, wz) : p.vault ? vault(p, nz, wx, y, wz, x, z) : chamber(p, nz, wx, y, wz, x, z);
     if (o > d) d = o;
   }
   return d;
@@ -274,6 +285,13 @@ function passage(e, x, y, z) {
   cx = ax + e.v1x * t2; cz = az + e.v1z * t2;
   const u22 = (x - cx) * (x - cx) + (z - cz) * (z - cz);
   if (u22 < u2) { u2 = u22; fy = p[4] + (p[7] - p[4]) * t2; tt = 0.5 + t2 * 0.5; side = ((x - ax) * e.v1z - (z - az) * e.v1x) / e.len1; }
+  // passages into a giant cavern with a lake run in above its water (never under it)
+  const vt = e.vlt;
+  if (vt && vt.lake) {
+    const dx = x - vt.x, dz = z - vt.z;
+    const hu = (dx * vt.c + dz * vt.s) * vt.iRx, hw = (-dx * vt.s + dz * vt.c) * vt.iRz, h = Math.sqrt(hu * hu + hw * hw);
+    if (h < 1.25) { const lim = vt.lake.wl + 0.35 - Math.max(0, h - 1) * 9; if (fy < lim) fy = lim; }
+  }
   const v = y - fy;
   if (v < -0.5) return -1;
   // a squeeze somewhere along it

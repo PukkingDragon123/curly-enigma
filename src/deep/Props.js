@@ -26,7 +26,8 @@ import { CS, zoneAt, biomeAt } from './Generator.js';
 import { VOX, M, MAT } from './materials.js';
 import { OPAQUE } from './Mesher.js';
 import { h3, h3i } from './noise.js';
-import { LIGHT } from './TerrainMaterial.js';
+import { LIGHT, makeObjectMaterial } from './TerrainMaterial.js';
+import { LiftFlags } from './props/flags.js';
 import { getModel, modelCached, modelStats, modelSteps, defineModel, forgetModel } from './props/models.js';
 import { key3, CB } from './World.js';
 import { rng32 } from './props/grid.js';
@@ -401,6 +402,8 @@ export class Props {
     this.stepMax = {}; // debug: slowest slice per kind of work
     this.outLights = [0, 1, 2].map(() => ({ x: 0, y: 0, z: 0, c: [0, 0, 0], r: 1, lantern: false, lava: false }));
     this.initPicked();
+    // flags on poles at the old lifts: real cloth in the shaft's breath (./props/flags.js)
+    try { this.flagMat = makeObjectMaterial(this.U); this.flags = new LiftFlags({ U: this.U, scene: this.scene3, plan: this.plan, objectMaterial: this.flagMat }); } catch (e) { console.warn('props: flags', e); this.flags = null; }
     // while the scene is still loading: dress the lift we arrive in (and any other close by) right away,
     // so a cage is there on the first frame and the code is warm before the first one is met on foot
     const pl = ctx.player;
@@ -1252,6 +1255,7 @@ export class Props {
     const pl = o.player || this.ctx.player;
     const eye = o.eye || pl?.eye?.();
     if (!eye) return;
+    if (this.flags) { try { this.flags.update(dt, pl, this.time); } catch (e) { console.warn('props: flags', e); this.flags = null; } }
     this.checkDay();
     this.scanT -= dt;
     const pr = this.prof || (this.prof = { last: {}, worst: {} });
@@ -1743,6 +1747,7 @@ export class Props {
   dispose() {
     this.clearShowcase();
     this.disposed = true;
+    this.flags?.dispose(); this.flagMat?.dispose();
     for (const f of this.fallers) { this.scene3?.remove(f.mesh); f.mesh.geometry.dispose(); }
     this.fallers = [];
     this.pool.dispose();

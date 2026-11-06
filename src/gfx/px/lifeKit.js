@@ -41,12 +41,40 @@ export function spline(pts) {
 
 // ---------------------------------------------------------------- silhouettes
 /**
+ * Hand-built silhouette: a closed Catmull-Rom outline through hand-placed control points.
+ * A point [x, y, 1] is a sharp corner (no rounding through it). o.seg: samples per span,
+ * o.jit: deterministic wobble (px) applied to the points, o.seed. Returns the filled mask
+ * (with .pts = the sampled outline).
+ */
+export function loop(pts, o = {}) {
+  const P = o.jit ? pts.map(([x, y, c], i) => [x + (hash2(i, 1, o.seed ?? 3) - 0.5) * o.jit * 2, y + (hash2(i, 2, o.seed ?? 3) - 0.5) * o.jit * 2, c]) : pts;
+  const n = P.length, seg = o.seg ?? 8, out = [];
+  for (let i = 0; i < n; i++) {
+    const p1 = P[i], p2 = P[(i + 1) % n];
+    const p0 = p1[2] ? p1 : P[(i - 1 + n) % n], p3 = p2[2] ? p2 : P[(i + 2) % n];
+    for (let k = 0; k < seg; k++) {
+      const t = k / seg;
+      const c = (a, b, c2, d) => 0.5 * (2 * b + (-a + c2) * t + (2 * a - 5 * b + 4 * c2 - d) * t * t + (-a + 3 * b - 3 * c2 + d) * t * t * t);
+      out.push([c(p0[0], p1[0], p2[0], p3[0]), c(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  const m = M().poly(out);
+  m.pts = out;
+  return m;
+}
+
+/** Translate / scale a list of control points: [[x, y, c]...] → moved by (dx, dy), scaled about (ox, oy). */
+export function movePts(pts, dx = 0, dy = 0, k = 1, ox = 16, oy = 16) {
+  return pts.map(([x, y, c]) => [ox + (x - ox) * k + dx, oy + (y - oy) * k + dy, c]);
+}
+
+/**
  * Lumpy organic ellipse: the radius wobbles with a few seeded harmonics so no two are alike.
  * o: seed, lump (0..0.3 wobble), rot (radians), taper (+ = wider at the bottom, pear/egg),
  * flat (cut everything below v/ry > flat: a resting bottom), freq (harmonics).
  */
 export function blob(cx, cy, rx, ry, o = {}) {
-  const sd = o.seed ?? 1, lump = o.lump ?? 0.07, rot = o.rot ?? 0, taper = o.taper ?? 0;
+  const sd = o.seed ?? 1, lump = o.lump ?? 0.1, rot = o.rot ?? 0, taper = o.taper ?? 0;
   const fr = o.freq || [2, 3, 5, 7];
   const amp = [0.55, 0.38, 0.24, 0.15, 0.1];
   const ph = fr.map((_, i) => hash2(sd, i + 1, 91) * Math.PI * 2);

@@ -1,6 +1,6 @@
 // Talking to somebody about work: the quest side of a conversation, on the talk board
-// (src/ui/choices.js openTalkMenu: a subtitle and a short list of answers), which is a cutscene
-// talk when they're here in 3D (src/ui/Convo.js: their reminders and asides too).
+// (src/ui/choices.js openTalkMenu: name sign, their face, a speech bubble, pinned notes), which is a
+// cutscene talk when they're here in 3D (src/ui/Convo.js: their reminders and asides too).
 //   questTalk(game, npc, { say, shop, tales, extra }) → { handled, line }  (extra: more notes, e.g. a bookshelf)
 // It tells the quests you talked to them (act talk: deliveries are handed over, "talk to X" steps
 // tick), then shows, in order: what just happened (a hand-in, their thanks, the reward), a choice
@@ -43,10 +43,10 @@ export function questTalk(game, npc, opts = {}) {
   let h = null;
   const close = () => h?.close();
   const shopNote = [
-    ...(opts.shop ? [{ label: 'Let\'s trade.', onClick: () => { close(); opts.shop(); } }] : []),
+    ...(opts.shop ? [{ label: 'Let\'s trade', sub: 'Open the shop', onClick: () => { close(); opts.shop(); } }] : []),
     ...(opts.extra || []).map((x) => ({ ...x, onClick: () => { close(); x.onClick?.(); } })),
   ];
-  const bye = (label = pick(['See you.', 'Bye for now.', 'Take care.'])) => ({ label, onClick: close });
+  const bye = (label = pick(['Right you are', 'See you later', 'Bye for now'])) => ({ label, onClick: close });
   const board = (o) => {
     const line = o.reward ? `${o.line}<span class="qtk-reward gold-txt">${o.reward}</span>` : o.line;
     h = openTalkMenu(game, { name, face: npcFace(game, npc, { expression: o.mood || 'happy' }), who: npcWho(npc), npc, mood: o.mood, ...o, line });
@@ -61,8 +61,8 @@ export function questTalk(game, npc, opts = {}) {
     for (const e of done) {
       const v = e.quest;
       if (v?.outro && QUESTS[e.id].giver === npc) lines.push(v.outro);
-      else { const hd = QUESTS[e.id].steps.at(-1)?.heard; lines.push(hd ? pick(hd) : `<i>That's ${v?.title || 'it'} done. ${npcName(QUESTS[e.id].giver)} will be glad.</i>`); }
-      sub = `${v?.title || ''} · done`;
+      else { const hd = QUESTS[e.id].steps.at(-1)?.heard; lines.push(hd ? pick(hd) : `<i>That's ${v?.title || 'it'} done. ${npcName(QUESTS[e.id].giver)} will be pleased.</i>`); }
+      sub = `${v?.title || ''} · done!`;
       rw = rewardText(e.reward, { rep: QUESTS[e.id].giver });
     }
     for (const e of stepped) if (e.quest?.status === 'active') lines.push(`<small class="qtk-next">Next: <b>${e.quest.text}</b></small>`);
@@ -72,8 +72,8 @@ export function questTalk(game, npc, opts = {}) {
       line: lines.join('<br>'), sub: sub || (handed[0]?.quest?.title ? `${handed[0].quest.title}` : ''), mood: done.length ? 'happy' : 'smug',
       className: 'qtk', reward: rw ? 'Reward: ' + rw : '',
       options: [
-        ...(more ? [{ label: 'Anything else?', primary: true, onClick: () => { close(); offerBoard(more); } }] : []),
-        ...shopNote, bye(done.length ? 'Glad to help.' : undefined),
+        ...(more ? [{ label: 'Anything else I can do?', sub: 'They might have more work', primary: true, onClick: () => { close(); offerBoard(more); } }] : []),
+        ...shopNote, bye(done.length ? 'Glad to help' : 'Right you are'),
       ],
     });
     return { handled: true, line: stripTags(lines[0]) };
@@ -104,7 +104,7 @@ export function questTalk(game, npc, opts = {}) {
           try { Q.choose(choice.id, o.id); } finally { off(); Q.talking = null; }
           const fin = got.find((e) => e.evt === 'done');
           const rw = fin ? rewardText(fin.reward, { rep: QUESTS[choice.id].giver }) : '';
-          board({ line: [o.say, fin?.quest?.outro].filter(Boolean).join('<br>'), sub: `${choice.quest.title} · done`, mood: 'happy', reward: rw ? 'Reward: ' + rw : '', options: [...shopNote, bye('So be it.')] });
+          board({ line: [o.say, fin?.quest?.outro].filter(Boolean).join('<br>'), sub: `${choice.quest.title} · done!`, mood: 'happy', reward: rw ? 'Reward: ' + rw : '', options: [...shopNote, bye('So be it')] });
         },
       })),
     });
@@ -127,7 +127,7 @@ export function questTalk(game, npc, opts = {}) {
       if (opts.shop) { if (cv) Promise.resolve(p).then((r) => { if (!r?.skipped) opts.shop(); }); else opts.shop(); }
       return { handled: true, line: stripTags(line) };
     }
-    board({ line, sub: v.title, mood: 'thinking', options: [...shopNote, bye('On it.')] });
+    board({ line, sub: v.title, mood: 'thinking', options: [...shopNote, bye('On it')] });
     return { handled: true, line: stripTags(line) };
   }
 
@@ -138,10 +138,10 @@ export function questTalk(game, npc, opts = {}) {
       const isNew = game.lore.add(tale.id, { quiet: true, from: 'tale' });
       game.lore.markRead(tale.id);
       board({
-        line: tale.text.split('\n').join('<br>'), sub: `${tale.title}${isNew ? ' · new tale' : ''}`, mood: 'happy', className: 'qtk-tale',
-        options: [...shopNote, bye(pick(['Thanks for that.', 'Fancy that.', 'I\'ll remember it.']))],
+        line: tale.text.split('\n').join('<br>'), sub: `${tale.title}${isNew ? ' · a new tale for your book' : ''}`, mood: 'happy', className: 'qtk-tale',
+        options: [...shopNote, bye(pick(['Thanks for the story', 'Fancy that', 'I\'ll remember that']))],
       });
-      if (isNew) game.ui.toast(`New tale: <b>${tale.title}</b>`, { dur: 2400 });
+      if (isNew) game.ui.toast(`<small>A tale for your book · Lore</small><br><b>${tale.title}</b>`, { dur: 2600 });
       return { handled: true, line: stripTags(tale.text.split('\n')[0]) };
     }
   }
@@ -153,10 +153,10 @@ export function questTalk(game, npc, opts = {}) {
     const rw = rewardText(def.reward, { rep: def.kind === 'village' ? def.giver : null, village: def.kind === 'village' });
     const first = v.steps[0]?.text;
     board({
-      line: fillNames(def.intro), sub: v.title, mood: 'happy', className: 'qtk-offer', reward: rw ? 'Reward: ' + rw : '',
+      line: fillNames(def.intro), sub: `${v.title} · ${def.kind === 'lore' ? 'a story to uncover' : 'a request'}`, mood: 'happy', className: 'qtk-offer', reward: rw ? 'Reward: ' + rw : '',
       options: [
-        { label: 'I\'ll do it.', sub: first ? `First: ${first}` : null, primary: true, onClick: () => accept(id) },
-        { label: 'Not now.', onClick: () => { close(); say?.(pick(['Suit yourself.', 'Another time, then.', 'Mind how you go.']), { mood: 'neutral', wait: false, dur: 2.2 }); } },
+        { label: 'I\'ll do it', sub: first ? `First: ${first}` : null, primary: true, onClick: () => accept(id) },
+        { label: 'Not right now', sub: 'Ask me again later', onClick: () => { close(); say?.(pick(['Suit yourself.', 'Another time, then.', 'Mind how you go.']), { mood: 'neutral', wait: false, dur: 2.2 }); } },
         ...shopNote,
       ],
     });
@@ -165,9 +165,9 @@ export function questTalk(game, npc, opts = {}) {
     close();
     if (!Q.accept(id, npc)) return;
     game.audio.play('success', { vol: 0.5 });
-    say?.(pick(['Wonderful.', 'Thank you.', 'Splendid.', 'Off you go, then.']), { mood: 'happy', wait: false, dur: 2.2 });
+    say?.(pick(['Wonderful!', 'Oh, thank you!', 'Splendid.', 'Off you go, then!']), { mood: 'happy', wait: false, dur: 2.2 });
     const gives = QUESTS[id].gives;
-    if (gives) for (const it of Object.keys(gives)) game.ui.toast(`${name} gives you <b>${ITEMS[it]?.name || it}</b>`, { dur: 2400 });
+    if (gives) for (const it of Object.keys(gives)) game.ui.toast(`${name} hands you <b>${ITEMS[it]?.name || it}</b>.`, { dur: 2600 });
   }
 }
 

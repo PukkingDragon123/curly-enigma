@@ -1,4 +1,4 @@
-// The burrow floor at 32 texels per tile, painted per tile from the FLOORS table with
+// Your nook's floor at 32 texels per tile (1/64 m, as the props), painted per tile from the FLOORS table with
 // real relief (normal map) and shine (specular): packed dirt with pebbles, roots and
 // scuffs; wide planks with grain, knots, nails and gaps; flagstones; a moss carpet with
 // tiny flowers; terracotta tiles; bevelled checker tiles; a woven velvet carpet; gold leaf.
@@ -6,6 +6,11 @@
 import { Surf, dirt, setts, cobbles, planks, pebble, worm, moss, finish, toTextures, updateTextures, hash2, mul, mix } from './surface.js';
 import { FLOORS } from '../data/furniture.js';
 import { hashStr } from '../core/util.js';
+import { HEARTH_X, WINDOW_SLOTS } from './homeLayout.js';
+import { ARCH, T as TILE_M } from '../home/units.js';
+
+/** The doorway down to the camp (the arch in the north wall), in tiles. */
+const ARCH_T = ARCH.x / TILE_M;
 
 export const HTPX = 32;
 
@@ -77,7 +82,8 @@ export function paintHomeTile(S, tx, ty, id) {
     }
   } else {
     // packed dirt: two browns, speckles, a pebble or two, a root crossing, scuffs
-    dirt(S, reg, { colors: [0x7a5538, 0x6b4a32, 0x5a3e2a], seed: 13 });
+    // (the same packed earth as the camp's floor down the steps: grey-brown, trodden hard)
+    dirt(S, reg, { colors: [0x6e5a44, 0x625040, 0x564638], seed: 13 });
     for (let k = 0; k < 3; k++) {
       if (hash2(tx, ty, 100 + k) < 0.45) continue;
       const cx = x0 + 3 + hash2(tx, ty, 110 + k) * (T - 6), cy = y0 + 3 + hash2(ty, tx, 120 + k) * (T - 6);
@@ -92,30 +98,58 @@ export function paintHomeTile(S, tx, ty, id) {
 }
 
 /**
- * Things that belong to this burrow rather than to a tile: moss creeping out from the damp back
- * walls, a path worn smooth from the old door into the room, and earth scattered around the spot
- * under the hole in the ceiling. Dirt tiles only; positions are in room tiles.
+ * Things that belong to this nook rather than to a tile (dirt tiles only; positions in room tiles):
+ * the ways worn smooth from the doorway down to Old Star's camp (the arch in the north wall) to the
+ * hearth in the south wall and to the crystal window in the west, grit and straw walked in from the
+ * camp at the threshold, ash and cinders scattered in front of the hearth, and moss creeping out
+ * from the damp under the window.
  */
+const PATHS = [
+  // [ax, az, bx, bz] (tiles; az = 0 is the north wall)
+  [ARCH_T, 0.05, ARCH_T + 0.4, 3.6], // the doorway → the middle of the room
+  [ARCH_T + 0.4, 3.6, HEARTH_X, 99], // → the hearth (south wall; clipped to the room)
+  [ARCH_T + 0.2, 2.2, 0.5, WINDOW_SLOTS[0] + 0.5], // → the window
+];
 function roomFeatures(S, tx, ty) {
   const T = HTPX, W = S.w / T, D = S.h / T;
   const x0 = tx * T, y0 = ty * T;
-  // the worn path: door (west wall, near the front) → middle of the room
-  const ax = 0.3, az = D - 1.5, bx = W * 0.42, bz = D * 0.42;
-  const vx = bx - ax, vz = bz - az, L2 = vx * vx + vz * vz;
   for (let y = y0; y < y0 + T; y++) for (let x = x0; x < x0 + T; x++) {
     const px = (x + 0.5) / T, pz = (y + 0.5) / T, i = x + y * S.w;
-    // path
-    const k = Math.max(0, Math.min(1, ((px - ax) * vx + (pz - az) * vz) / L2));
-    const dp = Math.hypot(px - (ax + vx * k), pz - (az + vz * k)) + (hash2(x >> 2, y >> 2, 171) - 0.5) * 0.18;
-    if (dp < 0.42) {
-      S.c[i] = mul(mix(S.c[i], 0x86603e, 0.35), 1.04);
-      S.ht[i] *= 0.4;
-      S.wet[i] = Math.max(S.wet[i], 40);
+    // the worn ways: paler, smoother, a little shine
+    let dp = 9;
+    for (const [ax, az, bx0, bz0] of PATHS) {
+      const bx = bx0, bz = Math.min(bz0, D - 0.5);
+      const vx = bx - ax, vz = bz - az, L2 = vx * vx + vz * vz || 1;
+      const k = Math.max(0, Math.min(1, ((px - ax) * vx + (pz - az) * vz) / L2));
+      dp = Math.min(dp, Math.hypot(px - (ax + vx * k), pz - (az + vz * k)));
     }
-    // moss near the back walls (damp), in patches
-    const dw = Math.min(px, pz);
-    if (dw < 0.55) {
-      const m = hash2(x >> 3, y >> 3, 172) + (0.55 - dw) * 1.1 - 0.95 + (hash2(x >> 1, y >> 1, 173) - 0.5) * 0.25;
+    dp += (hash2(x >> 2, y >> 2, 171) - 0.5) * 0.2;
+    if (dp < 0.46) {
+      const t = 1 - dp / 0.46;
+      S.c[i] = mul(mix(S.c[i], 0x8a6a48, 0.22 + t * 0.2), 1.02 + t * 0.04);
+      S.ht[i] *= 0.35 + (1 - t) * 0.4;
+      S.wet[i] = Math.max(S.wet[i], 30 + t * 30);
+      // the odd footprint pressed into the dirt (toes toward the room)
+      if (hash2(x >> 3, y >> 3, 176) < 0.05 && ((x & 7) - 3.5) ** 2 + ((y & 7) - 3.5) ** 2 * 0.5 < 5) { S.c[i] = mul(S.c[i], 0.84); S.ht[i] = -0.4; }
+    }
+    // grit and straw walked in from the camp, thick at the threshold and thinning into the room
+    const dt = Math.hypot((px - ARCH_T) * 0.9, pz * 1.4);
+    if (dt < 1.4 && hash2(x, y, 177) < 0.16 * (1 - dt / 1.4)) {
+      const h = hash2(x, y, 178);
+      if (h < 0.5) { S.c[i] = h < 0.25 ? 0x6e6862 : 0x8a8078; S.ht[i] = 1.4; } // grit off the rock
+      else if (x % 3) { S.c[i] = h < 0.8 ? 0xc8a050 : 0xa88838; S.ht[i] = 0.9; S.put(x + 1, y, S.c[i], 0.9); } // a stalk of straw
+    }
+    // ash and cinders in front of the hearth (its mouth on the south wall)
+    const dh = Math.hypot((px - HEARTH_X) * 0.8, (D - pz) * 1.1);
+    if (dh < 1.25) {
+      const k = 1 - dh / 1.25, h = hash2(x, y, 179);
+      if (h < k * 0.55) S.c[i] = mix(S.c[i], h < k * 0.08 ? 0x2a2420 : 0x8a847e, 0.3 + k * 0.45);
+      if (h > 0.996 - k * 0.006) { S.c[i] = 0x1a1614; S.ht[i] = 1.2; } // a cinder
+    }
+    // moss near the damp west wall under the window, in patches
+    const dw = px + Math.abs(pz - (WINDOW_SLOTS[0] + 0.5)) * 0.35;
+    if (dw < 0.7) {
+      const m = hash2(x >> 3, y >> 3, 172) + (0.7 - dw) * 1.1 - 0.95 + (hash2(x >> 1, y >> 1, 173) - 0.5) * 0.25;
       if (m > 0) {
         const h = hash2(x, y, 174);
         S.c[i] = h < 0.3 ? 0x3a6a2c : h < 0.75 ? 0x4a7a36 : h < 0.95 ? 0x5e9040 : 0x7ab84a;

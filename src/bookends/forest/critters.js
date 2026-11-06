@@ -7,7 +7,8 @@
 //             the traveller comes near they flit off ahead of him and settle again.
 //   woodpecker a small spotted woodpecker drumming on a gate giant's trunk.
 //   crossing  a finch that flits across the trail ahead of him as the opening shot cranes down.
-//   swallows  pixel-art swallows wheeling high over the clearing and the open stretch of trail.
+//   swallows  swallows wheeling high over the clearing and the open stretch of trail.
+//   makeVoxelBird(look): a lone bird rig (the flock that bursts out of the trees uses it).
 //
 //   const C = makeCritters(F, { lite }); scene.add(C.group);
 //   C.update(dt, { t, hero: Vector3, cam: Camera, glint, crack, sfx(name, opts) }); C.dispose();
@@ -18,8 +19,6 @@ import { LAYER_OUTLINE } from '../../core/Engine.js';
 import { clamp, makeRng } from '../../core/util.js';
 import { forestToon } from '../forestfx.js';
 import { groundH, FOREST, CLEAR_R, HOLE_R } from '../forest.js';
-import { swallowSheet } from '../meadowfx.js';
-import { makeSheetSprite } from '../fx.js';
 
 /** Build a part mesh from a grid painter: fn(g) fills the grid; pivot in voxels. */
 function part(w, h, d, fn, scale, pivot, mat) {
@@ -56,6 +55,17 @@ function makeBird(mat, { back = 0x7a6248, breast = 0xe8783a, belly = 0xf4ece0, c
     wings.push(w);
   }
   return { root, body, wings };
+}
+/** A small bird rig in the forest's light ({ root, body, wings }; wings shown), for flights scripted elsewhere. */
+export function makeVoxelBird(look = {}) {
+  const b = makeBird(forestToon({ dapple: true }), look);
+  b.wings.forEach((w) => { w.visible = true; });
+  return b;
+}
+/** Beat a flying bird's wings at time t (glide: 0..1, how much of the time it holds them out). */
+export function flap(b, t, glide = 0) {
+  const beat = Math.sin(t * 2.3) > glide * 2 - 1 ? Math.sin(t * 46) * 0.95 : 0.12;
+  b.wings.forEach((w, k) => { w.rotation.z = (k ? -1 : 1) * beat; });
 }
 /** The plumages of the trail's small birds, with the song each one sings (forest_song kinds). */
 const PLUMAGE = [
@@ -231,29 +241,29 @@ export function makeCritters(F, { lite = false } = {}) {
   }
 
   // ---- swallows wheeling high over the clearing and the trail's open stretch
-  const sw = swallowSheet();
   for (let i = 0; i < (lite ? 3 : 5); i++) {
-    const m = makeSheetSprite(sw.texture, { cols: sw.cols, size: [0.36, 0.36 / sw.aspect], anchor: [0.5, 0.5], renderOrder: 6, tint: 0xd8d0c8 });
-    group.add(m);
+    const b = makeBird(mat, { back: 0x1e2238, breast: 0xa84a3a, belly: 0xe8dcc8 });
+    b.root.scale.setScalar(1.6);
+    b.wings.forEach((w) => { w.visible = true; });
+    group.add(b.root);
     const cx = i < 3 ? 0 : 3, cz = i < 3 ? -1 : 26, R = 5 + i * 1.3, h = 9 + (i % 3) * 1.6, sp = (0.42 + (i % 2) * 0.15) * (i % 2 ? -1 : 1);
     let st = i * 2.3;
     list.push({
-      name: 'swallow', obj: m,
+      name: 'swallow', obj: b,
       update(dt, c) {
         st += dt;
-        m.visible = !c.crack; // (the flock that bursts out takes over the sky)
-        if (!m.visible) return;
-        const a = st * sp + i;
-        m.position.set(cx + Math.cos(a) * R + Math.sin(a * 2.7) * 1.2, h + Math.sin(a * 2.3) * 1.1, cz + Math.sin(a) * R * 0.7);
-        m.userData.sheet.uFrame.value = Math.sin(st * 3 + i) > -0.2 ? Math.floor(st * 11 + i) % 4 : 1; // flap, glide
+        b.root.visible = !c.crack; // (the flock that bursts out takes over the sky)
+        if (!b.root.visible) return;
+        const a = st * sp + i, a2 = a + 0.05 * Math.sign(sp);
+        const x = (q) => cx + Math.cos(q) * R + Math.sin(q * 2.7) * 1.2, z = (q) => cz + Math.sin(q) * R * 0.7;
+        b.root.position.set(x(a), h + Math.sin(a * 2.3) * 1.1, z(a));
+        b.root.rotation.set(0, Math.atan2(x(a2) - x(a), z(a2) - z(a)), -Math.sign(sp) * 0.35); // banking into the turn
+        flap(b, st + i, 0.55);
       },
     });
   }
 
   const update = (dt, c) => { for (const k of list) k.update(dt, c); };
-  const dispose = () => {
-    group.traverse((o) => { if (o.isMesh) { if (!o.userData.sheet) o.geometry.dispose(); else o.material.dispose(); } });
-    sw.texture.dispose();
-  };
+  const dispose = () => { group.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); };
   return { group, update, dispose, list };
 }

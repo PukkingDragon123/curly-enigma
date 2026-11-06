@@ -1,6 +1,5 @@
 // The first-person crosshair: a small pixel reticle that changes with what you're looking at
-// (rock, ore, a creature, something to use), a name under it and a ring for hold actions. Plain rock
-// (and nothing much) only names itself for a moment when it changes, then the words fade away.
+// (rock, ore, a creature, something to use), a name tag under it and a ring for hold actions.
 import { el } from '../core/util.js';
 import { Px } from './uiArt.js';
 import { DSPR, progressRing } from './deepArt.js';
@@ -33,20 +32,13 @@ export class Crosshair {
       this.el.dataset.kind = kind;
     }
     const text = o.label ? String(o.label) : '';
-    const brief = kind === 'rock' || kind === 'none';
-    if (text !== this.text || brief !== this.brief) {
-      const was = this.text;
+    if (text !== this.text) {
       this.text = text;
-      this.brief = brief;
       this.label.hidden = !text;
       this.label.innerHTML = '';
       if (text) {
         if (kind === 'use') this.label.append(el('kbd', {}, 'E'));
         this.label.append(document.createTextNode(text));
-      }
-      this.label.classList.remove('brief', 'gone');
-      if (brief && text) {
-        if (text !== was) { void this.label.offsetWidth; this.label.classList.add('brief'); } else this.label.classList.add('brief', 'gone');
       }
     }
     const pr = Number(o.progress) || 0;

@@ -20,6 +20,7 @@ import { moundHouse, mushroomTree, fountain } from './nature.js';
 import { coalCart } from './lift.js';
 import { LID, cullFaces } from './build.js';
 import { M } from './units.js';
+import { buildTownCloth } from './townCloth.js';
 
 const _v = new THREE.Vector3();
 const LEDGE_Y = 4.36;
@@ -706,6 +707,8 @@ export function buildDecor(S) {
     S.bunting.push({ a, b });
   });
   S.drips = [[12.4, 3.4], [25.2, 3.4], [3.4, 17.6], [32.8, 13.5], [17.2, 3.5], [6.0, 3.4], [20, 20], [30, 25], [10, 30]];
+  // banners off the shop fronts, the stalls' valances, the flag by the lift: real cloth (townCloth.js)
+  try { buildTownCloth(S); } catch (e) { console.warn('[town] cloth', e); }
 }
 
 /** String lights at 1/32: a sagging dark wire with small glowing bulbs (and their points for halos). */

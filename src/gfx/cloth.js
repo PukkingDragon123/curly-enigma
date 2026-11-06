@@ -119,8 +119,8 @@ export function laundryTexture(kind = 'shirt', seed = 3) {
 export function clothTexture(kind, o = {}) {
   const seed = o.seed ?? 5;
   const base = o.base ?? [150, 60, 48], trim = o.trim ?? [214, 170, 80];
-  const W = { curtain: 24, quilt: 32, tarp: 40, apron: 24, banner: 24, pennant: 24, tapestry: 40, rag: 20 }[kind] || 24;
-  const H = { curtain: 48, quilt: 24, tarp: 40, apron: 32, banner: 48, pennant: 16, tapestry: 32, rag: 24 }[kind] || 32;
+  const W = { curtain: 24, quilt: 32, tarp: 40, apron: 24, banner: 24, pennant: 24, tapestry: 40, rag: 20, valance: 48, flag: 32 }[kind] || 24;
+  const H = { curtain: 48, quilt: 24, tarp: 40, apron: 32, banner: 48, pennant: 16, tapestry: 32, rag: 24, valance: 8, flag: 20 }[kind] || 32;
   const w = o.w ?? W, h = o.h ?? H;
   return canvasTex(w, h, (D) => {
     const rnd = lcg(seed);
@@ -185,6 +185,19 @@ export function clothTexture(kind, o = {}) {
         }
         if (j >= h - 2 && i % 2) on = false; // the fringe
         if (j >= h - 2) [r, g, b] = trim;
+      } else if (kind === 'valance') {
+        // a striped awning's edge: stripes, a scalloped hem
+        if (Math.floor(i / 6) % 2) [r, g, b] = trim;
+        const sc = (i % 6) / 5;
+        if (v > 0.62 + Math.abs(sc - 0.5) * 0.7) on = false;
+        if (j === 0) k *= 0.8;
+      } else if (kind === 'flag') {
+        // a rectangular flag on a pole (its left edge): a field, a band, an emblem; frayed at the fly
+        if (j < 2 || j >= h - 2) [r, g, b] = trim;
+        const ex = (u - 0.42) * w, ey = (v - 0.5) * h;
+        if (o.emblem === 'pick' ? ((Math.abs(ey + 2 - Math.abs(ex) * 0.5) < 0.9 && Math.abs(ex) < 5) || (Math.abs(ex) < 0.7 && ey > -2 && ey < 5)) : Math.hypot(ex, ey) < 3.2) [r, g, b] = trim;
+        if (i >= w - 2 && pat[j % 16] > 0.5) on = false;
+        if (i < 2) k *= 0.8;
       } else if (kind === 'rag') {
         [r, g, b] = o.base ?? [140, 126, 96];
         const torn = v > 0.55 + Math.sin(i * 1.7) * 0.15 + pat[i % 16] * 0.2 || (u > 0.75 && v > 0.3 + pat[j % 16] * 0.4);
@@ -208,7 +221,8 @@ export class Cloth {
    * (constraint passes), slack (links longer than the layout: sags), color (tint), tex (a
    * CanvasTexture; its canvas goes into the set's atlas). Particle counts are cut on phones.
    */
-  constructor({ w = 0.8, h = 1.1, nx = 12, ny = 16, tex = null, color = 0xffffff, pins = 'top', iters = 6, damping = 1.6, slack = 1.0, layout = 'hang', boxes = null, floor = null, gust = 1, stiff = 0.25 } = {}) {
+  constructor({ w = 0.8, h = 1.1, nx = 12, ny = 16, tex = null, color = 0xffffff, pins = 'top', iters = 6, damping = 1.6, slack = 1.0, layout = 'hang', boxes = null, floor = null, gust = 1, stiff = 0.25, g = G } = {}) {
+    this.g = g; // gravity in the set's units (a set in town units falls faster per unit)
     const nx0 = nx, ny0 = ny;
     nx = clothRes(nx); ny = clothRes(ny);
     this.w = w; this.h = h; this.nx = nx; this.ny = ny; this.iters = iters; this.damping = damping;
@@ -322,7 +336,7 @@ export class Cloth {
       // the draught flutters: stronger at the free edge, a little noise per particle
       const f = free[k];
       const gust = (0.6 + 0.4 * Math.sin(time * 2.3 + k * 0.37) * Math.sin(time * 0.9 + (k % this.nx) * 0.5)) * f;
-      let ax = wx * gust, az = wz * gust, ay = G;
+      let ax = wx * gust, az = wz * gust, ay = this.g;
       // a flat sheet in a draught lifts a little at its free edge
       if (flat) ay += Math.abs(wx + wz) * 0.15 * gust;
       p[i] = x + (x - o[i]) * keep + ax * dt2;
@@ -421,14 +435,15 @@ export class ClothSet {
    * far: sheets further than this from the camera sleep (m). near: a collider this close (m) wakes
    * a sheet to full rate.
    */
-  constructor({ wind = null, material = null, far = 10, near = 1.4, name = 'cloth' } = {}) {
+  constructor({ wind = null, material = null, far = 10, near = 1.4, name = 'cloth', outline = true } = {}) {
+    this.outline = outline;
     this.list = [];
     this.wind = wind;
     this.makeMat = material;
     this.far = far; this.near = near;
     this.name = name;
     this.mesh = null;
-    this.prev = [];
+    this.prev = new Map();
     this.frame = 0;
     this.stats = { awake: 0, steps: 0, sheets: 0, verts: 0 };
   }
@@ -508,6 +523,7 @@ export class ClothSet {
     this.mesh.name = this.name;
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = false;
+    if (this.outline) this.mesh.layers.enable(1); // (the 1 px ink line round it, like the voxel art: Engine LAYER_OUTLINE)
     // (the camera it was last drawn with: for culling when the scene doesn't hand one over)
     this.mesh.onBeforeRender = (r, sc, cam) => { if (cam?.isPerspectiveCamera) this.lastCam = cam; };
     // let them settle before anyone sees them
@@ -545,13 +561,16 @@ export class ClothSet {
     camera = camera || this.lastCam || null;
     this.frame++;
     // collider speeds (the air they push)
+    // (by key when they have one: the townsfolk near you come and go; else by index)
+    const prev = this.prev, next = new Map();
     const cols = colliders.map((c, i) => {
-      const pv = this.prev[i];
+      const k = c.key ?? i, pv = prev.get?.(k);
       const vx = pv ? (c.x - pv.x) / dt : 0, vz = pv ? (c.z - pv.z) / dt : 0;
-      const ok = Math.abs(vx) < 8 && Math.abs(vz) < 8; // (a teleport isn't a gust)
-      return { ...c, vx: ok ? vx : 0, vz: ok ? vz : 0 };
+      const ok = Math.abs(vx) < 12 && Math.abs(vz) < 12; // (a teleport isn't a gust)
+      next.set(k, { x: c.x, z: c.z });
+      return { x: c.x, z: c.z, r: c.r, y0: c.y0, y1: c.y1, vx: ok ? vx : 0, vz: ok ? vz : 0 };
     });
-    this.prev = colliders.map((c) => ({ x: c.x, z: c.z }));
+    this.prev = next;
     // the camera in the set's space (the set may hang under a scaled root), its view for culling
     let cam = null;
     const parentM = this.mesh.parent ? this.mesh.parent.matrixWorld : null;

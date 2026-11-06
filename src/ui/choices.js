@@ -1,10 +1,10 @@
 // Small diegetic pickers shared by the scenes:
 //   openTalkMenu(game, { name, who, npc, mood, line, sub, options: [{ label, sub, primary, onClick }], onClose, convo })
 //     when the speaker (npc / who / name) has a 3D model in this scene, this is a cutscene talk
-//     (src/ui/Convo.js: the camera on them, the line as a subtitle, the options a short list under it;
-//     the handle has close(), closed, typer); `convo: false` keeps the board. Otherwise the talk board:
-//     the same subtitle low on the screen (their name, what they say typing out in their voice) and
-//     the choices as a short list below (click, tap, the number keys or ↑ ↓ + Enter). onClick runs
+//     (src/ui/Convo.js: the camera on them, the line floating by their head, the options floating in;
+//     the handle has close(), closed, typer); `convo: false` keeps the board. Otherwise the talk board: the carved dialogue board with the speaker's live 3D portrait (portrait3d) in a
+//     brass frame, a name ribbon, what they say typing out on parchment in their voice, and the
+//     choices as paper notes pinned below (click, tap, the number keys or ↑ ↓ + Enter). onClick runs
 //     with the menu still open (callers close it as they like). who: the portrait (default from
 //     name; see portrait3d.js); `face` (an old 2D picture) is ignored: characters are always 3D.
 //   openSeedTray(game, { title, note, items: [{ id, n }], onPick(id) })
@@ -14,6 +14,7 @@ import { el } from '../core/util.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
 import { Px, PAL, INK, art, mixHex } from './uiArt.js';
+import { portrait3d } from '../gfx/portrait3d.js';
 import { speakerOf } from './Tutor.js';
 import { installDialogArt } from './dialogArt.js';
 import { typeText } from './talkType.js';
@@ -80,21 +81,23 @@ export function openTalkMenu(game, { name, who, mood = 'calm', face, line = '', 
   installArt();
   installDialogArt();
   void face; // characters are never 2D pictures any more: the portrait is the live 3D model
+  portrait3d.init(real);
   const audio = game.audio;
   const cast = speakerOf(who, name);
   const notes = options.map((o, i) => el('button', {
-    class: 'tk-note' + (o.primary ? ' primary' : ''), style: { '--d': `${0.12 + i * 0.05}s` },
-    onclick: () => { audio.play('ui_click', { vol: 0.4 }); o.onClick?.(); },
-    onmouseenter: () => { audio.play('ui_hover', { vol: 0.12 }); },
-  }, [el('span', { class: 'tk-num' }, String(i + 1)), el('span', { class: 'tk-txt' }, [el('b', {}, o.label), o.sub ? el('small', {}, o.sub) : null])]));
+    class: 'tk-note' + (o.primary ? ' primary' : ''), style: { '--tilt': `${[-1.2, 0.9, -0.6, 1.1][i % 4]}deg`, '--d': `${0.18 + i * 0.07}s` },
+    onclick: () => { audio.play(o.primary ? 'ui_click' : 'page', { vol: 0.6 }); o.onClick?.(); },
+    onmouseenter: () => { audio.play('ui_hover', { vol: 0.25 }); },
+  }, [el('i', { class: 'tk-tack' }), el('span', { class: 'tk-num' }, String(i + 1)), el('span', { class: 'tk-txt' }, [el('b', {}, o.label), o.sub ? el('small', {}, o.sub) : null])]));
+  const frame = el('div', { class: 'tk-frame' });
   const sayP = el('p');
   const say = el('div', { class: 'tk-say' }, [sub ? el('small', {}, sub) : null, sayP]);
-  // a plain subtitle low on the screen: a small live face, the name, the words, the answers as a short list
   const root = el('div', { class: 'tk tk-talk ' + className, 'data-who': cast?.key?.split(':')[0] || '' }, [
-    el('div', { class: 'tk-head' }, [
-      el('div', { class: 'tk-who' }, [el('div', { class: 'tk-plate' }, [el('span', {}, name || cast?.name || '')]), say]),
+    el('div', { class: 'tk-board' }, [
+      el('div', { class: 'tk-plate' }, [el('span', {}, name || cast?.name || '')]),
+      el('div', { class: 'tk-head' }, [el('div', { class: 'tk-portrait' }, [frame, el('i', { class: 'tt-glass' })]), say]),
+      notes.length ? el('div', { class: 'tk-notes' }, notes) : null,
     ]),
-    notes.length ? el('div', { class: 'tk-notes' }, notes) : null,
   ]);
   let typer = null, h3d = null;
   const key = (e) => {
@@ -108,9 +111,14 @@ export function openTalkMenu(game, { name, who, mood = 'calm', face, line = '', 
     }
   };
   window.addEventListener('keydown', key);
-  const h = game.ui.openPanel({ body: root, className: 'tk-panel tk-talkpanel', onClose: () => { window.removeEventListener('keydown', key); typer?.stop(); h3d?.dispose(); onClose?.(); } });
-  // the words, once the line is on the page (no portrait: the name says who it is)
-  typer = typeText(sayP, line, { voice: cast?.voice, mood, audio, delay: 0.3 });
+  const h = game.ui.openPanel({ body: root, className: 'tk-panel', onClose: () => { window.removeEventListener('keydown', key); typer?.stop(); h3d?.dispose(); onClose?.(); } });
+  // the portrait and the words, once the board is on the page
+  const small = window.matchMedia?.('(max-width: 560px), (max-height: 520px)').matches;
+  const size = small ? 40 : 48;
+  root.style.setProperty('--pp', size);
+  h3d = portrait3d.mount(frame, cast, { size, mood });
+  h3d.set(mood);
+  typer = typeText(sayP, line, { voice: cast?.voice, mood, audio, face: h3d, delay: 0.3 });
   say.addEventListener('pointerdown', () => typer?.finish());
   h.portrait = h3d;
   h.typer = typer;

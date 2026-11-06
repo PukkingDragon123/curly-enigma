@@ -2,7 +2,7 @@
 // lumite, echo, bioxide, magmaite, frostite, voidstone), halite cubes, the floating gravium
 // bipyramid and the amethyst geode. Built on the facet renderer in facets.js.
 import { makeRng } from '../../core/util.js';
-import { hash2, bayer } from './shade.js';
+import { hash2, bayer, vnoise } from './shade.js';
 import { Scene, material, rampOf, stoneTex, glint, prismUV, xf, ypr } from './facets.js';
 import { ROCK, rockMat, hostRock, recolor, inPoly } from './oreIcons.js';
 
@@ -190,24 +190,18 @@ function gravium(pc) {
   }
   const sc = new Scene(32);
   const m = material(GR, { eq: 0.65, ridgeAll: true, grad: 0.05, glow: 0.35 });
-  // hexagonal bipyramid
-  const ring = [], n = 6;
-  for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; ring.push([Math.cos(a) * 7, 0, Math.sin(a) * 7]); }
-  const top = [0, -12.5, 0], bot = [0, 9.5, 0];
-  const polys = [];
-  for (let i = 0; i < n; i++) { polys.push([ring[i], ring[(i + 1) % n], top]); polys.push([ring[(i + 1) % n], ring[i], bot]); }
-  const rot = (P) => ypr(P, 0.5, 0.22, 0.14, [16, 14.5, 0]);
-  sc.add(m, polys.map(rot));
-  // drifting chips
-  const chip = (cx, cy, s, a) => {
-    const P = [[0, -s * 1.6, 0], [s, 0, 0], [0, s * 1.2, 0], [-s, 0, 0], [0, 0, s * 0.9], [0, 0, -s * 0.9]];
-    const F = [[0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4], [1, 0, 5], [2, 1, 5], [3, 2, 5], [0, 3, 5]];
-    const Q = xf(P, { rz: a, rx: -0.3, t: [cx, cy, 2] });
-    sc.add(m, F.map((f) => f.map((i) => Q[i])));
-  };
-  chip(5.5, 8, 1.8, -0.4);
-  chip(26.5, 6, 1.5, 0.5);
-  chip(25, 19, 1.2, 0.2);
+  // a broken double crystal: a long uneven point with a stubby twin fused to its side
+  const main = sc.prism(m, { b: [12.5, 24, 0], d: [0.32, -1, 0.2], len: 21, r: 5.2, tip: 7.5, sides: 6, twist: 0.45, jit: [1, 0.82, 1.08, 0.9, 1.04, 0.86], skew: [0.35, 0.2], under: 2.5 });
+  const twin = sc.prism(m, { b: [16.5, 22, 2], d: [0.95, -0.7, 0.35], len: 10.5, r: 3.2, tip: 4, sides: 6, twist: 0.1, jit: [1, 0.9, 1.06, 0.92, 1, 0.94] });
+  main.g = twin.g = 9;
+  // the snapped base: a jagged break across the bottom
+  sc.carve((x, y) => y + 0.5 > 22.5 + Math.sin(x * 1.7) * 1.2 + (x - 12) * 0.25);
+  sc.roughen([main, twin], { amount: 0.18, scale: 0.8, seed: 5 });
+  // drifting chips: small irregular shards
+  const chip = (cx, cy, l, r, a, seed) => sc.hull(m, ypr([[0, -l * 0.6, 0], [r, l * 0.35, 0.4], [-r * 0.9, l * 0.4, -0.3], [r * 0.2, l * 0.1, r * 1.1]], seed, 0.2, a + Math.PI / 2, [cx, cy, 2]));
+  chip(2.5, 12, 7, 2, -1.1, 0.3);
+  chip(25, 9.5, 6.5, 1.8, -2.0, 0.8);
+  chip(24.5, 21, 5, 1.5, -1.35, 0.5);
   sc.render(pc);
   // upward drift streaks
   for (const [x, y, l] of [[4, 18, 3], [28, 13, 2], [8, 25, 2], [23, 2, 2]]) for (let i = 0; i < l; i++) { pc.set(x, y + i, GR[1 + i], 220 - i * 60); pc.emit(x, y + i, 0.5); }
@@ -300,20 +294,40 @@ function amethyst(pc) {
   const shell = material(RI, { tex: stoneTex(70, { amp: 0.4 }) });
   const rng = makeRng(71);
   const pts = [];
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2, r = 1 - rng.range(0, 0.12);
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 11) * Math.PI * 2 + rng.range(-0.2, 0.2), r = 1 - rng.range(0, 0.22);
     pts.push([Math.cos(a) * 14 * r, Math.sin(a) * 12.5 * r, 0]); // cut rim
     if (i % 2 === 0) { const r2 = 1 - rng.range(0, 0.15); pts.push([Math.cos(a) * 12 * r2, Math.sin(a) * 10.5 * r2, -7.5 * r2]); }
   }
   pts.push([0, 0, -13], [5, 3, -11.5], [-5, 2, -11.5], [0, 6, -10]);
   const P = xf(pts, { rx: 0.95, t: [16, 12.5, 0] });
   const geo = sc.hull(shell, P);
+  // a lump of host rock still stuck to it, and a chipped, ragged outline
+  sc.chunk(shell, makeRng(72), { x: 25, y: 22.5, a: 4.5, c: 4, h: 5, n: [5, 5, 4], jag: 0.3, p: 0.7, z: -1, group: 7 });
+  geo.g = 7;
+  sc.roughen(sc.objs, { amount: 0.34, scale: 0.6, seed: 21, depth: 1 });
   sc.render(pc);
   // the cut face: the face whose normal is closest to the cut plane normal
   const cutN = xf([[0, 0, 1]], { rx: 0.95 })[0];
   let cut = null, best = -1;
   for (const f of geo.faces) { const d = f.n[0] * cutN[0] + f.n[1] * cutN[1] + f.n[2] * cutN[2]; if (d > best) { best = d; cut = f; } }
-  const inCut = (x, y) => sc.pidAt(x, y) === cut.pid;
+  // the break is ragged: the opened face is a jagged inset of the cut plane (polar teeth)
+  const onFace = (x, y) => sc.pidAt(x, y) === cut.pid;
+  let fx = 0, fy = 0, fn = 0;
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (onFace(x, y)) { fx += x + 0.5; fy += y + 0.5; fn++; }
+  fx /= fn; fy /= fn;
+  const ext = new Float32Array(48);
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (onFace(x, y)) {
+    const b = Math.floor(((Math.atan2(y + 0.5 - fy, x + 0.5 - fx) + Math.PI) / (Math.PI * 2)) * 48) % 48;
+    ext[b] = Math.max(ext[b], Math.hypot(x + 0.5 - fx, y + 0.5 - fy));
+  }
+  const jag = (b) => 0.86 + 0.1 * vnoise(b * 0.7, 0, 8) + (hash2(b, 9, 3) < 0.3 ? -0.1 : 0);
+  const inCut = (x, y) => {
+    if (!onFace(x, y)) return false;
+    const a = (Math.atan2(y + 0.5 - fy, x + 0.5 - fx) + Math.PI) / (Math.PI * 2) * 48, b = Math.floor(a) % 48;
+    const e = Math.min(ext[b] || 99, ext[(b + 1) % 48] || 99, ext[(b + 47) % 48] || 99);
+    return Math.hypot(x + 0.5 - fx, y + 0.5 - fy) < e * jag(b) - 0.3;
+  };
   // distance from the rim inside the cut face (chamfer)
   const D = new Float32Array(1024).fill(99);
   for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {

@@ -3,7 +3,7 @@
 // between body parts, segment rings, scales, fur fringes, wet sheens and glints; thin parts
 // (legs, antennae, threads) are 1px strokes laid over the ink so they stay delicate.
 import {
-  M, mat, mix, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, isTop, isBot, blob, fringe, form, sheen, marks, bumps, speckle,
+  M, mat, mix, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, isTop, isBot, blob, loop, fringe, form, sheen, marks, bumps, speckle,
   blade, tube, spline, twinkle, sparkle, shadowOf, liftOf, bead, sweep,
 } from './lifeKit.js';
 import { CRITTER_DRAW } from '../critters32.js';
@@ -72,10 +72,11 @@ function beetleItem(pc) {
   const GL = mat(0xc4f070, { cont: 1.05 });
   const f = frameAt(16, 17, -1.2);
   // glowing abdomen tip peeking out behind the wing cases
-  const tip = f.ell(-10.6, 0.2, 3.2, 3.8);
+  const L2 = (pts) => loop(pts.map(([u, v, c]) => [...f.p(u, v), c]));
+  const tip = L2([[-8.6, -3.2], [-12.4, -2.4], [-13.8, 0.4], [-12.2, 3.2], [-8.6, 3.4]]);
   form(pc, tip, GL, { emit: 1, bias: 0.15 });
   // elytra: two glossy halves with a dark seam and dotted striae
-  const E = f.ell(-2.4, 0, 9, 6.8);
+  const E = L2([[5.4, -5.4], [2, -6.6], [-3, -7], [-7.8, -5.8], [-10.6, -3.2], [-11.6, 0.2], [-10.2, 3.4], [-7.4, 6], [-2.6, 6.9], [2.2, 6.5], [5.2, 5.2], [5.8, 0, 1]]);
   const L = E.clone().and(f.fn((u, v) => v < -0.3)), Rt = E.clone().and(f.fn((u, v) => v >= -0.3));
   const [ex, ey] = f.p(-2.4, 0);
   seam(pc, E, 'shadow');
@@ -90,10 +91,10 @@ function beetleItem(pc) {
   // iridescent sheen: a violet-teal band near the top-left of each wing case
   for (const half of [L, Rt]) sheen(pc, half, (x, y) => ((x + y) % 3 ? 0x8a9aff : 0x7adcd8), { inset: 1, a0: -2.9, a1: -1.3, gap: 4 });
   // pronotum + head
-  const pro = f.ell(6.2, 0, 3.3, 5.2);
+  const pro = L2([[3.4, -4.8], [6, -5.6], [8.6, -4.2], [9.4, -0.4], [8.8, 4], [6.2, 5.4], [3.4, 4.6], [2.8, 0]]);
   seam(pc, pro, 'shadow');
   form(pc, pro, SH, { bias: 0.04 });
-  const head = f.ell(9.8, 0, 2.3, 3.1);
+  const head = L2([[8.4, -2.6], [10.6, -3.2], [12.2, -1.6], [12.4, 1.4], [10.8, 3.2], [8.4, 2.6]]);
   seam(pc, head, 'shadow');
   form(pc, head, mat(0x262c5a, { cont: 1.15 }), { bias: 0.04 });
   ink(pc);
@@ -294,7 +295,7 @@ function spiderSilk(pc) {
   const SK = mat(0xdce2ea, { cont: 1.15, hs: 0.5, sat: 0.5, cool: 235 });
   // a wound skein of silk: a ball wrapped in bands of silvery thread, a loose end trailing off
   const cx = 14.5, cy = 15, r = 10.6;
-  const ball = blob(cx, cy, r, r * 0.96, { seed: 4, lump: 0.04 });
+  const ball = loop([[4.6, 14], [6.6, 8.2], [10.6, 5], [15.6, 4.2], [20.6, 5.6], [24, 9.2], [25.4, 14.4], [24.8, 19.8], [21.6, 24.2], [16.4, 26.2], [10.6, 25.4], [6.6, 22.2], [4.4, 18.4]]);
   const K = form(pc, ball, SK, { bias: 0.02, lo: 2 });
   // bands of windings: rotated ellipses through the ball, each thread a groove with a lit edge
   const bands = [[0.55, [0.3, 0.5, 0.7, 0.88]], [-0.95, [0.38, 0.62, 0.84]], [2.2, [0.45, 0.72]]];
@@ -364,11 +365,11 @@ function emberScale(pc) {
 function wispEssence(pc) {
   const GLR = mat(0xd8e4f0, { cont: 1.05 });
   // round-bellied vial: glass body, swirl of violet wisp inside, cork tied with twine
-  const vial = blob(16, 21, 9.4, 8.8, { seed: 2, lump: 0.02 }).union(M().rect(12, 7, 8, 8));
-  const lip = M().rect(11, 6, 10, 2);
+  const vial = loop([[12.4, 7, 1], [19.6, 7, 1], [19.8, 11.6], [22.6, 13.6], [25.4, 17.2], [25.8, 21.8], [24.2, 26.4], [20.4, 29.4], [15.6, 30.2], [10.6, 29.2], [7.4, 26], [6.4, 21.2], [7.6, 16.4], [10.4, 13.4], [12.2, 11.6]]);
+  const lip = loop([[11, 6, 1], [21, 5.8, 1], [21.2, 7.8, 1], [10.8, 8, 1]]);
   vial.union(lip);
   vial.each((x, y) => pc.set(x, y, GLR[(x < 13 ? 2 : x > 21 ? 4 : 3)], 185));
-  const sw = blob(16, 21.5, 7.6, 7, { seed: 3 });
+  const sw = vial.clone().erode(2).and(M().rect(0, 14, 32, 18));
   sw.each((x, y) => {
     const dx = x + 0.5 - 16, dy = y + 0.5 - 21.5, a = Math.atan2(dy, dx), r = Math.hypot(dx, dy);
     const v = Math.sin(a * 2 + r * 0.95);

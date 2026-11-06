@@ -118,7 +118,7 @@ function ruby(pc) {
   const m = gemMat(R, {});
   m.toneFn = (f, n) => gemTone(n, { phase: 0.9 });
   m.tex = null;
-  const ob = sc.chunk(m, makeRng(14), { x: 16, y: 16.5, a: 12.5, c: 9.5, h: 10, n: [6, 8, 7, 5], rings: [[0, 0.45], [0.38, 1], [0.72, 0.86], [1, 0.52]], jag: 0.28, yaw: 0.5, p: 0.9, lean: [-1.2, 0.8] });
+  const ob = sc.chunk(m, makeRng(14), { x: 16, y: 16.5, a: 14.5, c: 11.5, h: 12, n: [6, 8, 7, 5], rings: [[0, 0.45], [0.38, 1], [0.72, 0.86], [1, 0.52]], jag: 0.26, yaw: 0.5, p: 0.75, lean: [-1.2, 0.8] });
   sc.roughen([ob], { amount: 0.18, scale: 0.7, seed: 4 });
   sc.render(pc);
   glint(pc, 10, 10, 2, 0xffffff, R[1]);
@@ -129,13 +129,13 @@ function sapphire(pc) {
   // water-worn sapphire: a stubby hexagonal barrel crystal, ends rounded off, lying askew
   const R = G.sapphire();
   const sc = new Scene(32);
-  const m = gemMat(R, {});
-  m.toneFn = (f, n) => gemTone(n, { phase: 1.6, waves: 2 });
-  m.tex = null;
-  const d = [0.82, -0.5, 0.3];
-  sc.prism(m, { b: [7.5, 22, 0], d, len: 21, r: 6.2, tip: 6, sides: 6, twist: 0.35, taper: 0.9, jit: [1, 0.86, 0.95, 1.04, 0.9, 0.97], skew: [0.25, -0.15], under: 1.5 });
-  // a smaller twin grown on its flank
-  sc.prism(m, { b: [13, 23, 2], d: [0.35, -0.9, 0.35], len: 9, r: 2.8, tip: 3, sides: 6, twist: 0.9, jit: [1, 0.9, 1.05, 0.92, 1, 0.95] });
+  const m = gemMat(R, { eq: 0.7, flare: 0.6, rim: true });
+  m.toneFn = null;
+  m.tex = (c) => (hash2(c.face.pid, 3, 5) - 0.5) * 0.9;
+  const d = [0.8, -0.55, 0.25];
+  sc.prism(m, { b: [6, 24, 0], d, len: 24, r: 6.6, tip: 5.5, sides: 6, twist: 0.25, taper: 0.88, jit: [1, 0.84, 0.97, 1.06, 0.88, 0.96], skew: [0.3, -0.2], under: 1 });
+  // a smaller twin grown across its front
+  sc.prism(m, { b: [10, 26, 5], d: [0.2, -0.95, 0.5], len: 10, r: 3, tip: 3.4, sides: 6, twist: 0.9, jit: [1, 0.9, 1.05, 0.92, 1, 0.95] });
   sc.roughen(sc.objs, { amount: 0.16, scale: 0.8, seed: 9 });
   sc.render(pc);
   // growth bands (colour zoning) across the barrel
@@ -177,7 +177,7 @@ function sunstone(pc) {
   m.toneFn = (f, n) => gemTone(n, { phase: 2.2, bias: 0.12 });
   m.tex = null;
   m.glow = 0.8;
-  const ob = sc.chunk(m, makeRng(31), { x: 16, y: 16.5, a: 10, b: 9, c: 8.5, n: 13, jag: 0.32, base: 0.75, yaw: 0.4, p: 0.55 });
+  const ob = sc.chunk(m, makeRng(31), { x: 16, y: 16.5, a: 12.5, b: 11, c: 10, n: 13, jag: 0.3, base: 0.75, yaw: 0.4, p: 0.55 });
   sc.roughen([ob], { amount: 0.2, scale: 0.7, seed: 6 });
   sc.render(pc);
   // aventurescence: copper and gold sparks inside
@@ -188,11 +188,11 @@ function sunstone(pc) {
     else if (h < 0.06) pc.set(x, y, 0xc84a12);
   }
   // rays: they leave the silhouette along its own outline, alternating long / short
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2 + 0.2, long = i % 2 === 0;
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 + 0.2, long = i % 2 === 0;
     let r = 4;
     while (r < 16 && sc.objAt(Math.floor(16 + Math.cos(a) * r), Math.floor(16.5 + Math.sin(a) * r)) >= 0) r += 0.5;
-    for (let k = r + 1.6, e = r + (long ? 4.4 : 2.8); k < e; k += 0.5) {
+    for (let k = r + 1.6, e = Math.min(r + (long ? 4 : 2.6), 16.5); k < e; k += 0.5) {
       const x = Math.floor(16 + Math.cos(a) * k), y = Math.floor(16.5 + Math.sin(a) * k);
       if (pc.alpha(x, y)) continue;
       pc.set(x, y, k < r + 2.6 ? 0xffd860 : long ? 0xffeeb0 : 0xffc040);
@@ -214,12 +214,12 @@ function amber(pc, bug) {
       const k = 1 - rng.range(0, jag);
       pts.push([Math.cos(t) * r * a * k, v * b * k, Math.sin(t) * r * c * k]);
     }
-    return sc.hull(m, ypr(pts, rot[0], rot[1], rot[2], [cx, cy, 0]), { smooth: { c: [cx, cy, 0], r: [a, b, c], k: 0.85 }, group: 3 });
+    return sc.hull(m, ypr(pts, rot[0], rot[1], rot[2], [cx, cy, 0]), { smooth: { c: [cx, cy, 0], r: [a, b, c], k: 0.96 }, group: 3 });
   };
-  const body = blob(81, 14, 13.5, 10, 8.5, 7, [0.3, 0.2, -0.35], 26, 0.16);
-  const drip = blob(82, 21, 22, 4.2, 7.5, 3.6, [0, 0.1, -0.55], 18, 0.08);
-  const bead = blob(83, 24.5, 28, 2.4, 2.2, 2.2, [0, 0, 0], 12, 0.05);
-  const lump = blob(84, 7, 20, 4.2, 3.6, 3.6, [0.4, 0.2, 0.3], 14, 0.12);
+  const body = blob(81, 14, 14, 11.5, 9.5, 7.5, [0.3, 0.2, -0.35], 26, 0.16);
+  const drip = blob(82, 22, 21, 4, 6, 3.4, [0, 0.1, -0.75], 18, 0.08);
+  const bead = blob(83, 26.5, 27, 2.3, 2.6, 2.2, [0, 0, -0.5], 12, 0.05);
+  const lump = blob(84, 7.5, 21, 4.5, 3.8, 3.8, [0.4, 0.2, 0.3], 14, 0.12);
   sc.roughen([body, lump], { amount: 0.12, scale: 0.8, seed: 3 });
   sc.render(pc);
   const ids = new Set([body.id, drip.id, bead.id, lump.id]);
@@ -241,13 +241,16 @@ function amber(pc, bug) {
       if (k > 0 && k < 5) pc.set(x, y, R[k + 1]);
     }
   }
-  for (let t = 0; t < 1; t += 0.06) { const x = Math.floor(18.5 + t * 4), y = Math.floor(17 + t * 10); if (inA(x, y) && !edge(x, y) && sc.k[y * 32 + x] > 0) pc.set(x, y, R[Math.min(5, sc.k[y * 32 + x] + 1)]); }
+  for (let t = 0; t < 1; t += 0.06) { const x = Math.floor(19.5 + t * 5), y = Math.floor(17 + t * 7); if (inA(x, y) && !edge(x, y) && sc.k[y * 32 + x] > 0) pc.set(x, y, R[Math.min(5, sc.k[y * 32 + x] + 1)]); }
   if (bug) {
-    const K = 0x3a1a0a, K2 = 0x6a3410, K3 = 0x9a5a22;
-    for (const [x, y] of [[13, 13], [14, 13], [15, 13], [13, 14], [14, 14], [15, 14], [13, 15], [14, 15], [15, 15], [14, 16], [13, 16], [15, 16], [14, 17]]) pc.set(x, y, K);
-    for (const [x, y] of [[13, 11], [14, 11], [15, 11], [14, 12]]) pc.set(x, y, K2);
-    for (const [x, y] of [[11, 12], [12, 13], [16, 13], [17, 12], [11, 15], [12, 15], [16, 15], [17, 15], [12, 17], [16, 17], [12, 10], [16, 10], [11, 9], [17, 9]]) pc.set(x, y, K2);
-    pc.set(13, 13, K3); pc.set(13, 14, K3); pc.set(14, 16, K2);
+    // a beetle caught in the resin: dark shell with a lit edge, head, six legs and feelers
+    const K = 0x2a1206, K2 = 0x5a2a0c, K3 = 0xb06a2a;
+    const shell = [[12, 13], [13, 13], [14, 13], [15, 13], [11, 14], [12, 14], [13, 14], [14, 14], [15, 14], [16, 14], [11, 15], [12, 15], [13, 15], [14, 15], [15, 15], [16, 15], [11, 16], [12, 16], [13, 16], [14, 16], [15, 16], [16, 16], [12, 17], [13, 17], [14, 17], [15, 17], [13, 18], [14, 18]];
+    for (const [x, y] of shell) pc.set(x, y, K);
+    for (const [x, y] of [[13, 14], [13, 15], [12, 15], [12, 16]]) pc.set(x, y, K3);
+    for (let y = 13; y <= 18; y++) pc.set(14, y, K2);
+    for (const [x, y] of [[13, 11], [14, 11], [13, 12], [14, 12]]) pc.set(x, y, K2);
+    for (const [x, y] of [[10, 13], [9, 12], [17, 13], [18, 12], [10, 15], [9, 15], [17, 15], [18, 15], [10, 17], [9, 18], [17, 17], [18, 18], [12, 10], [11, 9], [15, 10], [16, 9]]) pc.set(x, y, K2);
   } else {
     for (const [x, y, big] of [[16, 15, 1], [9, 18, 0], [19, 9, 0], [21, 21, 0], [12, 16, 0]]) {
       if (!inA(x, y)) continue;
