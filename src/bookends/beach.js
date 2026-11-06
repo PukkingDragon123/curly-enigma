@@ -1,7 +1,8 @@
 // Ending phases 3 & 4: the surface (a blinding first look at the sun, sunglasses on) and the
 // sunset beach, where the camera slowly orbits for the first time in the whole game.
 import * as THREE from 'three';
-import { meshRelief, hash3 } from './vox.js';
+import { meshRelief, hash3, voxMesh, jitf, VoxelGrid } from './vox.js';
+import { voxelPlate } from '../gfx/voxPlate.js';
 import { batchStatic } from './batch.js';
 import { makePalm, makeUmbrella, makeLounger, makeTowel, makeSandcastle, makeBucket, makeSpade, makeBeachBall, makeShell, makeStarfish, makeCrab, makeGrassTuft, makeTerminusRing } from './beachprops.js';
 import { makeCoconut, makeRock } from './props.js';
@@ -9,7 +10,7 @@ import { Particles, Twinkles, SHAPE, makeSheetSprite, makeBlobShadow, cloudCanva
 import { signTexture } from './pixfont.js';
 import { pixelTexture } from '../gfx/PixelArt.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
-import { makeNoise2D, makeRng, clamp, lerp } from '../core/util.js';
+import { makeNoise2D, makeRng, clamp, lerp, shade } from '../core/util.js';
 
 const VS = 1 / 8;
 const RX = 8.6, RZ = 6.6, P = 2.4;
@@ -178,10 +179,19 @@ void main() {
   if (e < 0.0) glow *= 0.5;
   glow = floor(glow * 9.0 + bk_bayer4(gl_FragCoord.xy)) / 9.0;
   col += uGlow * glow;
+  // the sun: a big pixel-art sprite on a 30-cell grid (stepped edge, a warm one-cell rim, a lit
+  // upper left), never a smooth disc
   float R = 0.088;
-  if (ang < R && e > -0.0015) {
-    float v = (e - uSunDir.y) / R;
+  vec3 sr = normalize(cross(uSunDir, vec3(0.0, 1.0, 0.0)));
+  vec3 su = cross(sr, uSunDir);
+  vec2 sp = vec2(dot(d, sr), dot(d, su)) / R;
+  vec2 sq = (floor(sp * 15.0) + 0.5) / 15.0;
+  float sd = length(sq);
+  if (dot(d, uSunDir) > 0.0 && sd < 1.0 && e > -0.0015) {
+    float v = sq.y;
     vec3 sc = mix(uSunLo, uSunHi, clamp(v * 0.6 + 0.55, 0.0, 1.0));
+    if (sd > 0.9) sc = mix(sc, uSunLo, 0.4);
+    else if (sq.x < -0.25 && sq.y > 0.25 && sd > 0.5) sc = mix(sc, vec3(1.0, 0.98, 0.9), 0.3);
     float gap = v < 0.05 ? clamp(0.12 + (-v) * 0.42, 0.0, 0.8) : 0.0;
     float stripe = fract(v * 4.2 + 0.35);
     if (stripe >= gap) col = sc;
@@ -209,7 +219,8 @@ function makeSky() {
     side: THREE.BackSide,
     depthWrite: false,
   });
-  const m = new THREE.Mesh(new THREE.SphereGeometry(170, 48, 24), mat);
+  // a sky box (the shader works from the view direction, so the shape never shows)
+  const m = new THREE.Mesh(new THREE.BoxGeometry(340, 340, 340), mat);
   m.renderOrder = -100;
   m.frustumCulled = false;
   return m;
@@ -458,10 +469,25 @@ export function buildBeach(ctx) {
   place(ring, SPOTS.cage.x, SPOTS.cage.z, 0.0);
   const sign = signTexture(['SURFACE EXPRESS', 'DEEP TOWN 400M'], { bg: 0x6b4226, border2: 0xd6b97f, text: 0xfff0c0 });
   textures.push(sign.texture);
-  const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5 * (sign.h / sign.w)), new THREE.MeshBasicMaterial({ map: sign.texture }));
-  const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.4, 0.08), new THREE.MeshLambertMaterial({ color: 0x7a5a3a }));
+  // the board is voxels (one per texel of the painted sign): a brass-trimmed frame standing proud,
+  // raised letters over their carved shadows, rivets; on a 1/32 voxel post
+  const signMesh = voxelPlate(sign.texture, {
+    scale: 1.5 / sign.w, kind: 'toon',
+    depth: (x, y, c) => {
+      const e = Math.min(x, y, sign.w - 1 - x, sign.h - 1 - y);
+      if (c === 0xfff0a0) return 4; // rivets
+      if (e < 2) return 3;
+      if (c === 0xfff0c0) return 3; // letters
+      if (c === 0x1a0a06) return 1; // their carved shadows
+      return 2;
+    },
+    color: (x, y, c, z, d) => (z < d - 1 ? shade(c, 0.78) : c),
+  });
+  signMesh.name = 'sign';
+  const pg = new VoxelGrid(3, 45, 3);
+  pg.box(0, 0, 0, 3, 45, 3, (x, y, z) => jitf(y < 4 ? 0x5a3e26 : (x + z) % 2 && y % 5 === 0 ? 0x6a4a2e : 0x7a5a3a, x, y, z, 5, 0.06));
+  const post = voxMesh(pg, { scale: 1 / 32, pivot: [1.5, 0, 1.5] });
   const signGroup = new THREE.Group();
-  post.position.y = 0.7;
   signMesh.position.set(0, 1.25, 0.05);
   signGroup.add(post, signMesh);
   signGroup.rotation.y = -0.5;

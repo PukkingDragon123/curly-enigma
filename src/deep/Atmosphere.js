@@ -11,8 +11,15 @@
 //    pollen, embers, snow, void sparks (by zone and biome)
 //  - light shafts toward a bright lantern in a tall hall, and a little more bloom where things
 //    glow (Engine post hook: scene.userData.postHook)
+//  - the giant caverns (gen/network.js vaults): inside one the air opens up (the fog reaches a
+//    little farther and takes the colour of its crystals' light, the shade fills a little from
+//    them), mist lies on its lake (the ground mist anchored to the water), the shafts find its
+//    glowing crystals, and the hall sounds big: drips ringing with their echo (recorded drips
+//    played again, later and softer), a low breath of moving air (audio is lent by Fluids)
 import * as THREE from 'three';
 import { zoneAt, biomeAt } from './Generator.js';
+import { vaultAt, lakeDist } from './gen/network.js';
+import { vaultDress } from './gen/vaults.js';
 import { LIGHT, AIR, MAX_LIGHTS } from './TerrainMaterial.js';
 
 // sky / bounce / mist colours are linear light, added to an ambient of ~0.1
@@ -59,6 +66,10 @@ export class Atmosphere {
     this.bioT = 0;
     this.cur = null; // the blended mood
     this.hall = 0; this.hallT = 0;
+    this.vault = null; this.vk = 0; this.lakeK = 0; this.lakeY = 0; // the giant cavern round the eye
+    this.audio = null; this.fluids = null; // lent by Fluids (sounds; it owns the underwater fog)
+    this.dripT = 1; this.windH = null;
+    this.fog0 = { dist: U.fogDist.value, col: U.fogCol.value.clone() };
     this.ray = { k: 0, pos: new THREE.Vector3(), col: new THREE.Color(1, 0.85, 0.6), target: -1 };
     this.moteAcc = 0;
     // the sky: a screen-filling triangle drawn before everything, at the far plane
@@ -168,6 +179,7 @@ export class Atmosphere {
       this.bioT = 0.3;
       this.zone = zoneAt(Math.max(0, -eye.y));
       try { this.biome = biomeAt(this.w.plan, eye.x, eye.y - 0.2, eye.z) || 0; } catch (e) { this.biome = 0; }
+      this.vault = vaultAt(this.w.plan.net, eye.x, eye.y, eye.z, 0.12);
     }
     const T = this.target();
     if (!this.cur) this.cur = JSON.parse(JSON.stringify(T));
@@ -179,17 +191,65 @@ export class Atmosphere {
     U.haze.value = C.haze;
     // big halls: the mist pools thicker over their floors
     this.hallK = (this.hallK || 0) + (this.hall - (this.hallK || 0)) * k;
-    U.mist.value.set(C.mist * 0.6 * (1 + this.hallK * 1.4), 1.4 - this.hallK * 0.5, 0.55 + this.hallK * 0.25, 0);
-    U.mistCol.value.setRGB(C.mistCol[0], C.mistCol[1], C.mistCol[2]);
-    U.skyCol.value.setRGB(C.sky[0], C.sky[1], C.sky[2]);
-    U.bounce.value.setRGB(C.bounce[0], C.bounce[1], C.bounce[2]);
+    // a giant cavern: how far in (vk), its lake's mist (lakeK, anchored at the water)
+    const V = this.vault, D = V ? vaultDress(V) : null;
+    this.vk += ((V ? 1 : 0) - this.vk) * k;
+    let lk = 0;
+    if (V && V.lake && V.lake.fluid === 'water') {
+      const dl = lakeDist(V.lake, this.w.plan.noise, eye.x, eye.z);
+      lk = Math.max(0, Math.min(1, (2.6 - dl) / 1.4)) * Math.max(0, Math.min(1, 1 - (eye.y - V.lake.wl - 1.5) / 6));
+      this.lakeY = V.lake.wl;
+    }
+    this.lakeK += (lk - this.lakeK) * k;
+    if (D) this.vcol = D.light;
+    const vc = this.vcol || [0.5, 0.6, 0.8], vk = this.vk, lkk = this.lakeK;
+    // ground mist; over a lake it lies on the water (density at the surface, thinning above it)
+    const mk = C.mist * 0.6 * (1 + this.hallK * 1.4);
+    if (lkk > 0.01) {
+      const rel = eye.y - (this.lakeY + 0.45);
+      U.mist.value.set(mk * (1 - lkk) + 0.075 * lkk, (1.4 - this.hallK * 0.5) * (1 - lkk) + rel * lkk, (0.55 + this.hallK * 0.25) * (1 - lkk) + 1.5 * lkk, 0);
+    } else U.mist.value.set(mk, 1.4 - this.hallK * 0.5, 0.55 + this.hallK * 0.25, 0);
+    U.mistCol.value.setRGB(C.mistCol[0] + (vc[0] * 0.03 + 0.02) * lkk, C.mistCol[1] + (vc[1] * 0.03 + 0.026) * lkk, C.mistCol[2] + (vc[2] * 0.03 + 0.032) * lkk);
+    // the cavern's crystals fill the shade a little with their colour
+    U.skyCol.value.setRGB(C.sky[0] + vc[0] * 0.012 * vk, C.sky[1] + vc[1] * 0.012 * vk, C.sky[2] + vc[2] * 0.012 * vk);
+    U.bounce.value.setRGB(C.bounce[0] + vc[0] * 0.006 * vk, C.bounce[1] + vc[1] * 0.006 * vk, C.bounce[2] + vc[2] * 0.006 * vk);
+    // the air opens up: the fog reaches farther, a faint glow in its colour (not under water:
+    // Fluids owns the fog there)
+    if (!(this.fluids?.uwK > 0.01)) {
+      const F = this.fog0;
+      U.fogDist.value = F.dist + 5 * vk;
+      U.fogCol.value.setRGB(F.col.r + vc[0] * 0.006 * vk, F.col.g + vc[1] * 0.006 * vk, F.col.b + vc[2] * 0.006 * vk);
+    }
+    this.sounds(dt, V);
     U.mood.value.set(C.mood[0], C.mood[1], C.mood[2], C.mood[3]);
     this.motes(dt, C);
     // tall halls: how much room is there round the eye (sampled now and then)
     if ((this.hallT -= dt) <= 0) {
       this.hallT = 0.4;
-      this.hall = this.measureHall(eye);
+      this.hall = Math.max(this.measureHall(eye), this.vk > 0.5 ? 0.8 : 0);
     }
+  }
+
+  /** A giant cavern's sound: drips ringing round it with their echo, a low breath of air. */
+  sounds(dt, V) {
+    const A = this.audio;
+    if (!A) return;
+    const vk = this.vk;
+    // the breath of air in a big hall (the recorded wind bed, low)
+    if (A.loop) {
+      const vol = 0.12 * vk;
+      if (vol > 0.02 && !this.windH) this.windH = A.loop('wind', { vol });
+      else if (this.windH && vol <= 0.02) { this.windH.stop(1.2); this.windH = null; }
+      else if (this.windH) this.windH.set?.({ vol });
+    }
+    if (!V || vk < 0.5) return;
+    if ((this.dripT -= dt) > 0) return;
+    this.dripT = rand(0.5, 2.2);
+    // a drip somewhere round the hall, and its echo off the far wall a moment later
+    const pan = rand(-0.8, 0.8), vol = rand(0.25, 0.6), pitch = rand(0.8, 1.25), d = rand(0.18, 0.42);
+    A.play('drip', { vol, pitch, pan, reverb: 0.9 });
+    A.play('drip', { vol: vol * 0.35, pitch: pitch * 0.97, pan: -pan * 0.6, delay: d, gap: 0, reverb: 1 });
+    if (Math.random() < 0.35) A.play('drip', { vol: vol * 0.15, pitch: pitch * 0.94, pan: pan * 0.3, delay: d * 2.1, gap: 0, reverb: 1 });
   }
 
   measureHall(eye) {
@@ -311,6 +371,7 @@ export class Atmosphere {
   }
 
   dispose() {
+    if (this.windH) { this.windH.stop(0.3); this.windH = null; }
     this.scene3.remove(this.sky, this.halos);
     this.sky.geometry.dispose();
     this.skyMat.dispose();

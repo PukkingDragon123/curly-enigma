@@ -3,7 +3,7 @@
 // so the forging code and the room layout stay put; P = 1/32 is the modelling grid.
 // Builders return THREE groups plus handles for the parts the scene animates.
 import * as THREE from 'three';
-import { VoxelGrid, voxelMaterial } from '../gfx/Voxel.js';
+import { VoxelGrid, voxelMaterial, meshGridGreedy } from '../gfx/Voxel.js';
 import { voxMesh, hash3 } from '../bookends/vox.js';
 import { cyl, bar, pj, pp } from '../bookends/props.js';
 import { makeRng, mixHex, shade } from '../core/util.js';
@@ -470,9 +470,18 @@ export function makeBarrel(waterTex) {
   });
   const group = new THREE.Group();
   group.add(mesh(g, [12, 0, 12]));
-  const water = new THREE.Mesh(new THREE.CircleGeometry((R - 2.1) * P, 24), new THREE.MeshLambertMaterial({ map: waterTex, emissive: 0x0a1a20 }));
-  water.rotation.x = -Math.PI / 2;
+  // the water: one layer of voxels filling the barrel's stepped hole exactly, its top face carrying
+  // the animated pixel-water texture (planar uv over the opening)
+  const wg = new VoxelGrid(24, 1, 24);
+  for (let z = 0; z < 24; z++) for (let x = 0; x < 24; x++) if (Math.hypot(x + 0.5 - 12, z + 0.5 - 12) < R - 2.1) wg.set(x, 0, z, 0xffffff);
+  const wgeo = meshGridGreedy(wg, { scale: P, pivot: [12, 1, 12], ao: false });
+  const wr = (R - 2.1) * P, wp = wgeo.attributes.position;
+  const uv = new Float32Array(wp.count * 2);
+  for (let i = 0; i < wp.count; i++) { uv[i * 2] = 0.5 + wp.getX(i) / (2 * wr); uv[i * 2 + 1] = 0.5 - wp.getZ(i) / (2 * wr); }
+  wgeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  const water = new THREE.Mesh(wgeo, new THREE.MeshLambertMaterial({ map: waterTex, emissive: 0x0a1a20 }));
   water.position.y = (Hh - 3.2) * P;
+  water.name = 'water';
   group.add(water);
   return { group, water, waterY: water.position.y, radius: (R - 2) * P };
 }
@@ -862,8 +871,21 @@ export function makeCrucible(oreColor = 0xd9773f) {
   const mat = hotMaterial();
   const body = mesh(g, [9, 0, 9], { material: mat });
   group.add(body);
-  const meltMat = new THREE.MeshBasicMaterial({ color: 0xff8a2a });
-  const melt = new THREE.Mesh(new THREE.CylinderGeometry(3.1 * V, 2.6 * V, 0.6 * V, 14), meltMat);
+  // the melt: a stepped slug of 1/64 voxels (wider at the top), lighter where it wells up, dark
+  // flecks of slag riding on it; tinted by the smelter through meltMat.color
+  const meltMat = new THREE.MeshBasicMaterial({ color: 0xff8a2a, vertexColors: true });
+  const mg = new VoxelGrid(26, 3, 26);
+  for (let y = 0; y < 3; y++) for (let z = 0; z < 26; z++) for (let x = 0; x < 26; x++) {
+    const d = Math.hypot(x + 0.5 - 13, z + 0.5 - 13), r = 10.4 + y;
+    if (d > r) continue;
+    const h = hash3(x, y, z, 17);
+    let c = y < 2 ? 0xc8c8c8 : d < 4.5 ? 0xffffff : d > r - 1.5 ? 0xd8d8d8 : 0xececec;
+    if (y === 2 && h < 0.07 && d > 3) c = 0x8a8a8a; // slag
+    else if (y === 2 && h > 0.96) c = 0xffffff;
+    mg.set(x, y, z, c);
+  }
+  const melt = new THREE.Mesh(meshGridGreedy(mg, { scale: P / 2, pivot: [13, 1.5, 13], ao: false }), meltMat);
+  melt.name = 'melt';
   melt.position.y = 2 * V;
   melt.scale.set(0.6, 1, 0.6);
   group.add(melt);

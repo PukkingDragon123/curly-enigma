@@ -10,7 +10,7 @@
 // distance fog that reaches the dark at the edge of the streamed world, ground mist that pools in
 // pits, and the lamp and lanterns scattering in the dust (closed-form in-scatter per light).
 import * as THREE from 'three';
-import { makePaletteTexture, MAT, M, STYLE, VOX } from './materials.js';
+import { makePaletteTexture, MAT, M, STYLE, VOX, ORE_BASE } from './materials.js';
 
 export const MAX_LIGHTS = 8;
 
@@ -32,7 +32,21 @@ const SURF = {
   [M.BEDROCK]: [0.08, 0.3, 0, 0.2], [M.BONE]: [0.1, 0.3, 0.1, 0], [M.STEM]: [0.05, 0.2, 0.35, 0],
   [M.GLOWCAP]: [0.2, 0.5, 0.75, 0], [M.CORE]: [0.6, 0.7, 0.5, 0.2], [M.MYCEL]: [0.06, 0.2, 0.3, 0],
   [M.FLOWSTONE]: [0.34, 0.72, 0.18, 0.9], // wet calcite: glossy, a little translucent, growth bands
+  // vein rock (Generator veins): milky quartz, rusty gossan, banded malachite, glossy coal shale…
+  [M.VEIN_QUARTZ]: [0.55, 0.8, 0.45, 0], [M.VEIN_GOSSAN]: [0.1, 0.3, 0, 0.2], [M.VEIN_MALACHITE]: [0.35, 0.65, 0.1, 0],
+  [M.VEIN_COAL]: [0.6, 0.92, 0, 0.3], [M.VEIN_AMETHYST]: [0.75, 0.85, 0.6, 0], [M.VEIN_GLOW]: [0.5, 0.8, 0.6, 0],
+  [M.VEIN_EMBER]: [0.2, 0.5, 0.15, 0], [M.VEIN_MARL]: [0.06, 0.2, 0, 0.6], [M.VEIN_KIMBER]: [0.25, 0.55, 0, 0], [M.VEIN_FROST]: [0.5, 0.8, 0.4, 0],
+  [M.GLOWWORM]: [0.2, 0.6, 0.8, 0],
 };
+// ore looks (the terrain shader's ore style, by what the ore is): 1 metal nuggets, 2 gem crystals,
+// 3 coal, 4 salt cubes, 5 amber, 6 fossil shells, 7 truffle, 8 glowing mineral. Packed into the
+// palette (column 6 alpha) with their own surface (spec, gloss, translucency).
+const ORE_LOOK = {
+  copper_ore: 1, tin_ore: 1, iron_ore: 1, silver_ore: 1, gold_ore: 1, mithril_ore: 1, moonsilver_ore: 1, adamant_ore: 1, starmetal_ore: 1, gravium: 1,
+  quartz: 2, amethyst: 2, ruby: 2, emerald: 2, sapphire: 2, diamond: 2, echo_crystal: 2, voidstone: 2, sunstone: 2, frostite: 2,
+  coal: 3, salt_crystal: 4, amber: 5, fossil: 6, truffle: 7, lumite: 8, bioxide: 8, magmaite: 8,
+};
+const ORE_SURF = [null, [0.95, 0.82, 0.04, 0], [0.85, 0.92, 0.7, 0], [0.7, 0.95, 0, 0], [0.45, 0.7, 0.55, 0], [0.8, 0.9, 0.65, 0], [0.15, 0.3, 0.05, 0], [0.06, 0.2, 0, 0], [0.6, 0.8, 0.5, 0]];
 const HOT = [M.MAGMAROCK, M.BASALT, M.OBSIDIAN];
 const GROW_BY_STYLE = { [STYLE.ROCK]: 1, [STYLE.SOIL]: 0.9, [STYLE.GRAIN]: 0.5 };
 
@@ -42,10 +56,12 @@ function surfacePalette(tex) {
     const d = MAT[m];
     if (!d) continue;
     const style = d.style ? d.style[0] : STYLE.ROCK;
-    const s = SURF[m] || SURF_BY_STYLE[style] || SURF_BY_STYLE[STYLE.ROCK];
+    const look = m >= ORE_BASE ? ORE_LOOK[d.item] || 1 : 0;
+    const s = look ? ORE_SURF[look] : SURF[m] || SURF_BY_STYLE[style] || SURF_BY_STYLE[STYLE.ROCK];
     const o7 = (m * W + 7) * 4;
     for (let k = 0; k < 4; k++) data[o7 + k] = Math.round(s[k] * 255);
-    data[(m * W + 6) * 4 + 3] = HOT.includes(m) ? 255 : 0;
+    // column 6 alpha: hot rock (cracks glow), or an ore's look (its code × 16)
+    data[(m * W + 6) * 4 + 3] = look ? look * 16 : HOT.includes(m) ? 255 : 0;
     // natural rock and soil only (ruins, burrow fittings and ores stay clean)
     const natural = m < 96 && !d.fluid && !d.clean && m !== M.BONE && m !== M.STEM && m !== M.BURROW; // clean: the lift stations (ruins/mats.js)
     data[(m * W + 5) * 4 + 3] = natural ? Math.round((GROW_BY_STYLE[style] || 0) * 255) : 0;
@@ -336,6 +352,7 @@ export function makeTerrainMaterial(U) {
         float accent = 0.0;
         float wrap = 0.3;
         float glin = 0.0; // sparkle chance (crystal, ice, sand, snow)
+        float oreFam = 0.0; // the ore's look (style 6)
         vec3 nn = n;
 
         if (style == 5.0) {
@@ -379,11 +396,70 @@ export function makeTerrainMaterial(U) {
           seam = (u < 0.06 || v < 0.12) ? 1.0 : 0.0;
           tone = hash3(vec3(floor(dot(b, t1) + off), rw, 1.0)) * 3.0 + (px - 0.5) * 0.8;
         } else if (style == 6.0) {
-          // ore: chunky crystals / nuggets with bright facets
-          tone = 1.0 + pl.x * 1.6 + (px > 0.62 ? 1.0 : 0.0);
-          seam = step(pl.y, 0.1) * 0.8;
-          nn = normalize(n + (hash33(vec3(pl.x * 9.0, 2.0, 7.0)) - 0.5) * 0.7);
-          if (px > 0.8) accent = 1.0;
+          // ore, by what it is (ORE_LOOK): every one sits in a dark gangue between its nuggets or
+          // crystals, so a deposit reads as ore embedded in rock, with its own lustre and sparkle
+          oreFam = floor(hot * 255.0 / 16.0 + 0.5);
+          hot = 0.0;
+          vec3 rt = hash33(vec3(pl.x * 9.0, 2.0, 7.0)) - 0.5;
+          float gang = step(pl.y, 0.12);
+          if (oreFam < 1.5) {
+            // metal: rounded nuggets with a bright lustre, tarnish in the hollows, bright flecks
+            tone = 1.6 + pl.x * 1.3 + (px - 0.5) * 0.5;
+            nn = normalize(n + dome * 2.2 + rt * 0.2);
+            if (N2.r < 0.38) tone -= 0.9;
+            seam = gang * 0.85;
+            if (px > 0.93 && gang < 0.5) accent = 1.0;
+            glin = 0.012;
+          } else if (oreFam < 2.5) {
+            // gem: flat facets at random tilts, bright edges, light inside the stone
+            tone = 1.0 + pl.x * 2.0;
+            nn = normalize(n + rt * 0.95);
+            if (pl.y < 0.07) { seam = 0.0; accent = 1.0; } else seam = step(pl.y, 0.11) * 0.5;
+            wrap = 0.55;
+            glin = 0.03;
+          } else if (oreFam < 3.5) {
+            // coal: black, glassy shell-shaped breaks
+            tone = 0.35 + pl.x * 1.5 + (N2.b - 0.5) * 0.5;
+            nn = normalize(n + rt * 0.7 + dome * 0.6);
+            seam = gang * 0.6;
+            glin = 0.006;
+          } else if (oreFam < 4.5) {
+            // salt: little cubes, edges square to the face
+            vec3 cq = floor(q * 0.75), cf = fract(q * 0.75);
+            float cid = hash3(cq + 4.4);
+            tone = 1.6 + cid * 1.6;
+            vec3 cd = abs(cf - 0.5);
+            seam = step(0.42, max(dot(cd, t1 * t1), dot(cd, t2 * t2))) * 0.55;
+            nn = normalize(n + (hash33(cq) - 0.5) * vec3(0.5, 0.2, 0.5));
+            glin = 0.02;
+          } else if (oreFam < 5.5) {
+            // amber: smooth resin lumps, clear and warm, a dark speck caught in it now and then
+            tone = 1.4 + (N2.b - 0.5) * 1.2 + pl.x * 0.8;
+            nn = normalize(n + dome * 1.2);
+            seam = gang * 0.5;
+            if (px > 0.992) tone = 0.0;
+            glin = 0.004;
+          } else if (oreFam < 6.5) {
+            // fossil: coiled, ribbed shells in the rock
+            vec2 sc = vec2(dot(poff, t1), dot(poff, t2)) / max(S, 1.0);
+            float ra = length(sc), an = atan(sc.y, sc.x);
+            float rib = sin(an * 2.0 + log(ra + 0.05) * 9.0 + pl.x * 6.0);
+            tone = 1.8 + rib * 1.1 + (px - 0.5) * 0.4;
+            seam = step(0.85, rib) * 0.5 + gang * 0.7;
+            nn = normalize(n + dome * 1.4);
+          } else if (oreFam < 7.5) {
+            // truffle: a dark knobbly lump, pale marbling
+            tone = 0.6 + clump * 1.4 + step(0.88, N2.a) * 1.6;
+            nn = normalize(n + dome * 1.8);
+            seam = gang * 0.5;
+          } else {
+            // glowing mineral: crystals threaded with glowing veinlets
+            tone = 0.9 + pl.x * 1.6;
+            nn = normalize(n + rt * 0.7);
+            seam = gang * 0.6;
+            if (N2.a > 0.8) accent = 1.0;
+            glin = 0.02;
+          }
         } else if (style == 10.0) {
           // loose grain: gravel/sand pebbles per texel pair
           tone = hash3(floor(q * 4.0)) * 2.6 + 0.2 + (N2.r - 0.5) * 0.8;
@@ -408,6 +484,18 @@ export function makeTerrainMaterial(U) {
             seam = max(seam, sline * 0.6);
             if (px > 0.99) accent = 1.0;
           }
+        }
+        // vein rock: each its own grain (malachite bands, coal shale laminae, gossan pores, ember
+        // cracks, fossil grit in marl, crystal glitter in quartz, kimberlite clasts)
+        if (mat > 43.5 && mat < 53.5) {
+          if (mat < 44.5) { glin = 0.014; tone += (step(0.5, fract(dot(q, t1 + t2) * 0.37 + N2.b)) - 0.5) * 0.6; }
+          else if (mat < 45.5) { tone += (N2.b - 0.5) * 1.4; if (px < 0.06) { seam = 0.7; } }
+          else if (mat < 46.5) { tone = 1.5 + sin(length(poff - n * dot(poff, n)) * 3.2 + pl.x * 9.0 + N2.r * 4.0) * 1.3; nn = normalize(n + dome * 1.3); }
+          else if (mat < 47.5) { tone = 1.0 + step(0.55, fract(qw.y * 22.0 + N2.r * 1.5)) * 1.2 + (pl.x - 0.5); glin = 0.004; }
+          else if (mat < 49.5) { glin = 0.02; }
+          else if (mat < 50.5) { if (pl.y < 0.07 || N2.a > 0.86) { accent = 1.0; seam = 0.0; } }
+          else if (mat < 51.5) { if (px > 0.965) accent = 1.0; tone += (N2.r - 0.5) * 0.6; }
+          else if (mat < 52.5) { tone = 0.4 + pl.x * 2.6; seam = step(pl.y, 0.13) * 0.8; glin = 0.005; }
         }
         // pixel-art relief: every texel tilts a little on a bumpy height field (two octaves) so the
         // helmet lamp rakes across each face and the rock reads as grainy, chiselled stuff (not
@@ -505,10 +593,11 @@ export function makeTerrainMaterial(U) {
         col += base * lampCol * pow(1.0 - max(dot(nn, V), 0.0), 4.0) * lampAtt(dist) * 0.35 * aoL;
         // glowing materials (lanterns, crystals, magma, ore) and glowing accents
         float glow = info.r;
-        if (glow > 0.0) col += base * glow * (0.6 + 0.4 * sin(time * 1.7 + vh * 6.283)) * (accent > 0.5 ? 1.6 : 0.55);
+        vec3 emit = vec3(0.0);
+        if (glow > 0.0) { emit = base * glow * (0.6 + 0.4 * sin(time * 1.7 + vh * 6.283)) * (accent > 0.5 ? 1.6 : 0.55); col += emit; }
         // crystal and ice: light inside the stone. An inner layer of facets seen through the
         // surface (shifted along the view, so it parallaxes) glows faintly, brighter at the edges
-        if (ex.b > 0.3 && dist < 9.0 && (style == 2.0 || style == 8.0 || style == 7.0)) {
+        if (ex.b > 0.3 && dist < 9.0 && (style == 2.0 || style == 8.0 || style == 7.0 || (style == 6.0 && oreFam != 1.0 && oreFam != 3.0))) {
           float vn = max(dot(V, n), 0.25);
           vec3 qi = q - (V / vn) * (2.2 + vh) + n * 0.5;
           vec3 ioff;
@@ -523,9 +612,12 @@ export function makeTerrainMaterial(U) {
         if (style == 2.0 && accent > 0.5) col += base * 0.25 * L;
         // ore reads from across a cave: a little light of its own and facets that twinkle
         if (style == 6.0) {
-          col += base * 0.16;
-          float tw = step(0.975, hash3(floor(q * TEXN) + floor(time * 2.5 + vh * 7.0) * 0.37));
-          col += pal(mat, 4.0) * tw * 1.4;
+          col += base * (oreFam == 3.0 || oreFam == 7.0 ? 0.05 : 0.16);
+          float twk = oreFam == 2.0 ? 0.955 : oreFam == 1.0 || oreFam == 8.0 ? 0.97 : oreFam == 4.0 ? 0.975 : 0.992;
+          float tw = step(twk, hash3(floor(q * TEXN) + floor(time * 2.5 + vh * 7.0) * 0.37));
+          col += pal(mat, 4.0) * tw * (oreFam == 2.0 ? 1.8 : 1.4);
+          // glowing minerals: their veinlets pulse
+          if (oreFam == 8.0 && accent > 0.5) col += base * (0.6 + 0.4 * sin(time * 2.1 + vh * 6.283)) * 0.9;
         }
         // hot zones: cracks in volcanic rock glow and breathe
         if (hot > 0.5 && mood.w > 0.0) {
@@ -543,6 +635,9 @@ export function makeTerrainMaterial(U) {
         float hd = length(vWorld - hit.xyz);
         col += vec3(1.0, 0.86, 0.6) * hit.w * clamp(1.0 - hd / 0.45, 0.0, 1.0);
         col = caveAir(col, vWorld, dist);
+        // what glows on its own carries farther through the dark than what is only lit (glowworms
+        // on a hall's roof, crystals, lanterns): a little of it back over the fog
+        if (glow > 0.45) col += emit * fogAmount(dist) * 0.55;
         gl_FragColor = vec4(col, 1.0);
       }`,
   });

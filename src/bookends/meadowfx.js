@@ -356,15 +356,19 @@ void main() {
   float s = max(dot(d, uSun), 0.0);
   float glow = floor((pow(s, 8.0) * 0.4 + pow(s, 60.0) * 0.35 + pow(s, 600.0) * 0.4) * 7.0 + b) / 7.0;
   col = mix(col, uGlow, clamp(glow, 0.0, 1.0) * 0.75);
-  if (s > 0.99955) col = uDisc;                                  // the disc, crisp
-  else if (s > 0.99935) col = mix(uDisc, uWarm, 0.35);           // a one-pixel warm rim
+  // the sun: a little pixel-art sprite on a cell grid round the sun (stepped, with a warm rim), not a disc
+  vec3 sr = normalize(cross(uSun, vec3(0.0, 1.0, 0.0)));
+  vec2 sq = (floor(vec2(dot(d, sr), dot(d, cross(sr, uSun))) / 0.036 * 7.0) + 0.5) / 7.0;
+  float sd = length(sq);
+  if (s > 0.9 && sd < 0.84) col = uDisc;
+  else if (s > 0.9 && sd < 1.0) col = mix(uDisc, uWarm, 0.35);
   if (d.y < 0.0 && uMirror < 0.5) col = hor * 0.9;
   gl_FragColor = vec4(col, 1.0);
 }`;
 /** The golden-hour sky dome (follow the camera with it). */
 export function makeSky(sunDir) {
   const C = (h) => new THREE.Color(h);
-  const m = new THREE.Mesh(new THREE.SphereGeometry(150, 32, 16), new THREE.ShaderMaterial({
+  const m = new THREE.Mesh(new THREE.BoxGeometry(300, 300, 300), new THREE.ShaderMaterial({ // a sky box: the shader works from the view direction
     uniforms: {
       uSun: { value: sunDir.clone() }, uZenith: { value: C(0x3466c8) }, uMid: { value: C(0x78a8e8) }, uHorizon: { value: C(0xd8e4ec) },
       uWarm: { value: C(0xffc890) }, uGlow: { value: C(0xffe2a8) }, uDisc: { value: C(0xffffff) }, uMirror: { value: 0 },

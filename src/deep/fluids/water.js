@@ -12,7 +12,7 @@
 // Snell's window onto the cave above with total internal reflection around it. Lava keeps its own
 // look: drifting crust plates that crack and heal, glowing seams and slow heat pulses.
 import * as THREE from 'three';
-import { LIGHT, MAX_LIGHTS, fluidUniforms } from '../TerrainMaterial.js';
+import { LIGHT, AIR, MAX_LIGHTS, fluidUniforms } from '../TerrainMaterial.js';
 import { CAUSTIC_GLSL } from './caustics.js';
 
 export const MAX_IMPACTS = 6;
@@ -193,6 +193,7 @@ export function makeWaterMaterial(U, grab) {
       varying vec2 vFlow;
       varying float vTopE;
       ${LIGHT}
+      ${AIR}
       ${FLUID_SURF}
       ${CAUSTIC_GLSL}
       vec3 pal(float m, float c) { return texture2D(palette, vec2((c + 0.5) / 8.0, (m + 0.5) / 256.0)).rgb; }
@@ -475,7 +476,8 @@ export function makeWaterMaterial(U, grab) {
           col = mix(col, acc * (Ls * 0.9 + 0.14), clamp(lip + fm * 0.4, 0.0, 1.0) * 0.4);
           alpha = 0.85;
         }
-        col = mix(col, fogCol, fogK);
+        // the same air as the rock round it: fog, the dust glow, and the mist lying on a lake
+        col = caveAir(col, vWorld, dist);
         gl_FragColor = vec4(col, alpha);
       }`,
   });

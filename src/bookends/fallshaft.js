@@ -286,7 +286,42 @@ export function buildFallShaft(opts) {
    * Old Star's dig: a dark cave under the plug, its floor 4.6 m down, lit by one lantern on a
    * crate beside a heap of loose soil (where the travellers land), rubble, a pickaxe, a bedroll.
    */
-  function buildCavern(land) {
+  /**
+   * One of the eight 1/16 relief faces of the cave wall (an octagon round the cave, leaning out a
+   * little toward the roof): dark strata that step in and out, lumps, pebbles and root threads.
+   */
+  function caveWallFace(R, y0, fi) {
+    const th = (fi * Math.PI) / 4;
+    const nO = [Math.cos(th), 0, Math.sin(th)], tg = [-Math.sin(th), 0, Math.cos(th)];
+    const hw = R * Math.tan(Math.PI / 8) + 3 * VS, back = R + 0.7;
+    const W = Math.ceil((2 * hw) / VS), rows = Math.round(5.2 / VS);
+    const h = new Uint16Array(W * rows), top = new Uint32Array(W * rows);
+    const PAL = [0x3a2a1e, 0x32241a, 0x2a1e16, 0x42301f];
+    for (let k = 0; k < rows; k++) {
+      const y = y0 - 0.2 + (k + 0.5) * VS, ky = k / rows;
+      for (let i = 0; i < W; i++) {
+        const u = -hw + (i + 0.5) * VS;
+        const sArc = (th + Math.atan2(u, R)) * 2.7;
+        const band = Math.floor((y + n1(sArc * 0.12, 7.1) * 0.8) / 0.7);
+        const rr = R - 0.4 + 0.6 * ky + (hash3(band, 3, 7, 9) - 0.5) * 0.22 + n2(sArc * 0.35, y * 0.35) * 0.28 + Math.max(0, n3(sArc * 0.6, y * 0.6)) * 0.3;
+        const q = i + W * k;
+        if (Math.abs(u) >= rr) { h[q] = 1; top[q] = PAL[2]; continue; }
+        const hh = hash3(i, k, fi, 33);
+        h[q] = Math.max(1, Math.round((back - Math.sqrt(rr * rr - u * u)) / VS));
+        let c = fshade(PAL[((band % 4) + 4) % 4], PATCH[(hash3(i >> 1, k >> 1, fi, 34) * 3) | 0]);
+        if (Math.abs(n4(sArc * 0.25, y * 0.6)) < 0.02 && ky > 0.55) c = hh < 0.5 ? 0x5a4028 : 0x4a3420; // roots from above
+        else if (hh > 0.993) c = 0x5a5248; // pebbles
+        top[q] = c;
+      }
+    }
+    return meshRelief({
+      W, D: rows, h, top, side: (q, lv, dir) => fshade(top[q], dir === 3 ? 1.1 : dir === 2 ? 0.7 : 0.86),
+      U: [tg[0] * VS, 0, tg[2] * VS], V: [0, VS, 0], N: [-nO[0] * VS, 0, -nO[2] * VS],
+      origin: [nO[0] * back - tg[0] * hw, y0 - 0.2, nO[2] * back - tg[2] * hw], wallAO: false,
+    });
+  }
+
+  function buildCavern(land, wallGeo) {
     const g = new THREE.Group();
     g.name = 'cavern';
     const R = 5.4, Wc = Math.ceil((2 * R) / VS);
@@ -312,10 +347,8 @@ export function buildFallShaft(opts) {
     const floor = new THREE.Mesh(meshRelief({ W: Wc, D: Wc, h, top, side: (q) => fshade(top[q], 0.8), U: [VS, 0, 0], V: [0, 0, VS], N: [0, VS, 0], origin: [-R, y0 - 0.25, -R] }), ROCK_MAT);
     tris += floor.geometry.index.count / 3;
     g.add(floor);
-    // the cave walls and roof: dark rock the lantern barely reaches (cheap, seen only at the edges)
-    const wall = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.2, R - 0.4, 5.2, 24, 1, true), new THREE.MeshLambertMaterial({ color: 0x2a1e16, side: THREE.BackSide }));
-    wall.position.y = y0 + 2.4;
-    g.add(wall);
+    // the cave walls: dark 1/16 voxel rock the lantern barely reaches (eight relief faces, built in slices)
+    if (wallGeo) { const wall = new THREE.Mesh(wallGeo, ROCK_MAT); wall.name = 'cave-wall'; g.add(wall); tris += wallGeo.index.count / 3; }
     const topY = (x, z) => y0 - 0.25 + h[Math.min(Wc - 1, Math.max(0, Math.floor((z + R) / VS))) * Wc + Math.min(Wc - 1, Math.max(0, Math.floor((x + R) / VS)))] * VS;
     // the camp: a crate with the lantern on it, a pickaxe against a boulder, a bedroll, a coil of rope
     const lx = land.x + Math.cos(land.a) * 1.25, lz = land.z + Math.sin(land.a) * 1.25;
@@ -395,7 +428,9 @@ export function buildFallShaft(opts) {
     floorMiddle = floor.userData.middle;
     for (const m of [...floor.children]) group.attach(m); // flat list: the scene culls meshes one by one
     yield 'plug';
-    cavern = buildCavern(land);
+    const caveWalls = [];
+    for (let fi = 0; fi < 8; fi++) { caveWalls.push(caveWallFace(5.4, floorY - 4.6, fi)); yield 'cave'; }
+    cavern = buildCavern(land, boundsMerge(caveWalls));
     group.add(cavern.group);
     builtTo = -Infinity;
   }

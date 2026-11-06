@@ -187,20 +187,34 @@ function critterItem(pc, id, frame) {
 
 // ---------------------------------------------------------------- drops
 function dustFluff(pc) {
-  const R = mat(0xcfc2b0, { cont: 1.05 });
-  // a dust bunny: a lumpy ball fringed all round with combed tufts
-  const core = blob(16, 17.5, 10.5, 9.4, { seed: 6, lump: 0.12 }).union(blob(10, 12.5, 4.5, 4, { seed: 2 })).union(blob(22.5, 12, 4.4, 4, { seed: 3 }));
-  const m = fringe(core, 16, 17, { dens: 0.55, seed: 2, len: 1.6, lean: 0.45 });
-  const K = form(pc, m, R, { cx: 15, cy: 16.5, rx: 13, ry: 12, bias: 0.06 });
-  // fur strokes combed outward, darker in the creases, a few lit tips
-  marks(pc, m, R, { dens: 0.2, seed: 4, len: 3, dir: (x, y) => { const dx = x + 0.5 - 16, dy = y + 0.5 - 17, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; }, lit: false });
-  speckle(pc, m, [R[1]], 0.06, 3, (x, y) => K[y * 32 + x] <= 3);
-  // lint caught in it: a thread, a crumb and a bit of grit
+  const R = mat(0xc8c2bc, { cont: 1.02, sat: 0.6, cool: 250 });
+  // a dust bunny: a soft, lopsided clump of three puffs in clean flat planes, fuzzy all round,
+  // a few wisps drifting off it, one thread of lint caught in it
+  const core = loop([[3.6, 21.6], [4.4, 17.6], [7.6, 15.4], [8.6, 11.6], [11.6, 8.6], [15.6, 8.2], [18.6, 10], [21.6, 8.8], [25.4, 10], [27.4, 13.4], [27, 16.6], [29.2, 19.4], [28.4, 23.6], [25, 26.2], [19.6, 26.8], [15.4, 25.8], [11.4, 27], [6.8, 26.2], [4.2, 24.4]]);
+  const m = fringe(core, 16, 17, { dens: 0.4, seed: 5, len: 1.3, lean: 0.4 });
+  form(pc, m, R, { cx: 14, cy: 15, rx: 14, ry: 11, bias: 0.1, dome: 0.55, hi: 4 });
+  // the fuzz: the outermost pixels a touch lighter on the lit side, softer on the shaded side
+  m.each((x, y) => { if (!core.get(x, y)) step(pc, R, x, y, isBot(m, x, y) ? -1 : -1, 1, 5); });
+  // the creases between the puffs: soft grooves with a lit lip above them
+  for (const P of [[[8.6, 16], [11, 17.6], [13, 20.4], [13.6, 24.4]], [[18.4, 10.6], [18.6, 14], [20.4, 17], [24.6, 18.4]]]) {
+    const at = spline(P);
+    let last = '';
+    for (let i = 0; i <= 30; i++) {
+      const [x, y] = at(i / 30), X = Math.floor(x), Y = Math.floor(y), k = X + ',' + Y;
+      if (k === last || !m.get(X, Y) || isBot(m, X, Y)) continue;
+      last = k;
+      step(pc, R, X, Y, 1, 1, 5);
+      if (m.get(X - 1, Y - 1)) step(pc, R, X - 1, Y - 1, -1, 1, 5);
+    }
+  }
   ink(pc);
-  line(pc, 4, 25, 9, 22, 0x7a6ab0); line(pc, 3, 26, 4, 25, 0x7a6ab0); pc.set(9, 21, 0x9a8ad0);
-  pc.set(23, 22, 0x8a6a4a); pc.set(24, 22, 0x6a4a32); pc.set(12, 20, 0x6a6460);
-  for (const [x, y, a] of [[27, 27, 170], [29, 25, 120], [4, 7, 140]]) pc.set(x, y, 0xe8e0d0, a);
-  glint(pc, 11, 10, 0);
+  // wisps: fine combed strands leaving the edge, fading out
+  for (const P of [[[8.6, 11.6], [6.4, 9], [5.6, 6.6]], [[12.6, 8.4], [12, 5.6], [13.4, 3.4]], [[25.6, 10.4], [27.6, 8], [29.6, 7.6]], [[28.8, 20.6], [30.6, 21.6]], [[4, 19.6], [1.6, 18.6]], [[22.6, 9], [23.6, 6.4]]]) {
+    const at = spline(P);
+    for (let i = 0; i <= 12; i++) { const [x, y] = at(i / 12); if (pc.alpha(Math.floor(x), Math.floor(y)) < 100) pc.set(x, y, 0xe8e0d4, Math.round(220 - i * 12)); }
+  }
+  line(pc, 5, 27, 10, 24, 0x7a6ab0); line(pc, 3, 28, 5, 27, 0x7a6ab0); pc.set(10, 23, 0x9a8ad0);
+  glint(pc, 11, 11, 0); pc.set(10, 12, R[0]); pc.set(23, 12, R[1]);
 }
 
 function batGuano(pc) {
@@ -292,31 +306,38 @@ function slugSlime(pc) {
 }
 
 function spiderSilk(pc) {
-  const SK = mat(0xdce2ea, { cont: 1.15, hs: 0.5, sat: 0.5, cool: 235 });
-  // a wound skein of silk: a ball wrapped in bands of silvery thread, a loose end trailing off
-  const cx = 14.5, cy = 15, r = 10.6;
-  const ball = loop([[4.6, 14], [6.6, 8.2], [10.6, 5], [15.6, 4.2], [20.6, 5.6], [24, 9.2], [25.4, 14.4], [24.8, 19.8], [21.6, 24.2], [16.4, 26.2], [10.6, 25.4], [6.6, 22.2], [4.4, 18.4]]);
-  const K = form(pc, ball, SK, { bias: 0.02, lo: 2 });
-  // bands of windings: rotated ellipses through the ball, each thread a groove with a lit edge
-  const bands = [[0.55, [0.3, 0.5, 0.7, 0.88]], [-0.95, [0.38, 0.62, 0.84]], [2.2, [0.45, 0.72]]];
-  for (const [a, ks] of bands) for (const k of ks) {
-    const e = M().oval(cx, cy, r * 1.02, r * k, a);
-    const ed = e.edge();
-    ed.each((x, y) => {
-      if (!ball.get(x, y) || isTop(ball, x, y) || isBot(ball, x, y)) return;
-      const kk = K[y * 32 + x];
-      pc.set(x, y, SK[clamp(kk + 2, 3, 5)]);
-      if (ball.get(x - 1, y - 1) && !ed.get(x - 1, y - 1)) pc.set(x - 1, y - 1, SK[clamp(K[(y - 1) * 32 + x - 1] - 1, 1, 4)]);
-    });
-  }
+  const SK = mat(0xdce4ee, { cont: 1.18, hs: 0.5, sat: 0.5, cool: 235 });
+  const W = mat(0x7a5232, { cont: 1.1 });
+  // crystal-spider silk wound onto a twig: a spindle-shaped hank of silvery thread crossed in
+  // diagonal windings, the twig's ends poking out, a loose thread trailing with a dew bead
+  tube(pc, [[4.4, 27.2], [10, 21.6], [22, 10.4], [27.6, 5]], (s) => 1.25 - Math.abs(s - 0.5) * 0.5, W, { bias: 0.06 });
+  // the hank: an elongated, lumpy spindle along the twig (local u along, v across)
+  const ax = [0.73, -0.68], nx = [0.68, 0.73], cx = 15.8, cy = 15.8;
+  const P = [];
+  const prof = [[-10.6, 0.6], [-9, 2.6], [-6.4, 4.8], [-3, 6.2], [0.4, 6.6], [3.6, 6], [6.6, 4.4], [9, 2.4], [10.4, 0.5]];
+  for (const [u, w] of prof) P.push([cx + ax[0] * u + nx[0] * w, cy + ax[1] * u + nx[1] * w]);
+  for (const [u, w] of prof.slice().reverse()) P.push([cx + ax[0] * u - nx[0] * w * 0.92, cy + ax[1] * u - nx[1] * w * 0.92]);
+  const m = loop(P.map(([x, y], i) => [x + (hash2(i, 1, 6) - 0.5) * 0.8, y + (hash2(i, 2, 6) - 0.5) * 0.8]));
+  seam(pc, m, 'shadow');
+  const K = form(pc, m, SK, { cx: 13, cy: 13, rx: 10, ry: 10, bias: 0.04, lo: 2 });
+  // windings: two families of crossing threads, each a raised strand with a shadow under it
+  m.each((x, y) => {
+    if (isTop(m, x, y) || isBot(m, x, y)) return;
+    const u = (x + 0.5 - cx) * ax[0] + (y + 0.5 - cy) * ax[1], v = (x + 0.5 - cx) * nx[0] + (y + 0.5 - cy) * nx[1];
+    const p1 = ((u * 0.7 + v * 0.9) % 3.4 + 3.4) % 3.4, p2 = ((u * 0.7 - v * 0.9) % 3.4 + 3.4) % 3.4;
+    const k = K[y * 32 + x], top = (u > -1 && u < 5) ? p2 : p1;
+    if (top < 0.8) pc.set(x, y, SK[clamp(k - 1, 1, 5)]);
+    else if (top < 1.6) pc.set(x, y, SK[clamp(k + 1, 2, 5)]);
+  });
+  // crystal glitter caught in the thread
+  m.each((x, y) => { const h = hash2(x, y, 41); if (h < 0.03 && !isBot(m, x, y)) pc.set(x, y, h < 0.015 ? 0xe8f8ff : 0xf8e8ff); });
   ink(pc);
-  // the loose end with a dew bead, and glints on the sheen
-  const th = spline([[23.4, 21.4], [26.6, 24.4], [25.4, 28], [29, 30]]);
+  const th = spline([[11.6, 23.4], [12.6, 26.6], [16, 28.2], [19.6, 27], [22.6, 29.4]]);
   let last = '';
-  for (let i = 0; i <= 40; i++) { const [x, y] = th(i / 40); const k = Math.floor(x) + ',' + Math.floor(y); if (k === last) continue; last = k; pc.set(x, y, i % 9 === 4 ? 0xffffff : 0xa8b4c8); }
-  pc.set(26, 25, 0xe0f4ff); pc.set(27, 25, 0x8ab0d8); pc.set(26, 26, 0x6a8ab8);
-  glint(pc, 9, 9, 1, 0xe8f4ff);
-  for (const [x, y] of [[22, 6], [3, 23]]) twinkle(pc, x, y, 0xffffff, 0xd8ecff, 1, 0.5);
+  for (let i = 0; i <= 40; i++) { const [x, y] = th(i / 40); const k = Math.floor(x) + ',' + Math.floor(y); if (k === last || m.get(x, y)) continue; last = k; pc.set(x, y, i % 9 === 4 ? 0xffffff : 0xa8b4c8); }
+  pc.set(23, 30, 0xe0f4ff); pc.set(24, 30, 0x8ab0d8); pc.set(23, 31, 0x6a8ab8);
+  glint(pc, 11, 10, 1, 0xffffff, 0xe8f4ff);
+  for (const [x, y] of [[24, 15], [5, 13]]) twinkle(pc, x, y, 0xffffff, 0xd8ecff, 1, 0.5);
 }
 
 function sparkDust(pc) {

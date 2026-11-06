@@ -4,7 +4,7 @@
 // flat planes per form, reflected rim light, glints, and fine 1px details (root hairs,
 // sparks, spores) laid over the ink so they stay thin.
 import {
-  M, mat, mix, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, blob, loop, fringe, form, sheen, marks, bumps, speckle,
+  M, mat, mix, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, isTop, isBot, blob, loop, fringe, form, sheen, marks, bumps, speckle,
   blade, tube, spline, twinkle, sparkle, shadowOf, liftOf,
 } from './lifeKit.js';
 import { ring } from './parts.js';
@@ -250,23 +250,47 @@ function blindfern(pc) {
 }
 
 function ashfern(pc) {
-  // a fire-scorched fern: fronds drooping and curling under the heat, tips broken off and
-  // smouldering, rooted in a mound of grey ash with embers in it
-  const R = mat(0x8a8480, { cont: 1.12 });
-  const RR = mat(0x5a5450, { cont: 1.1 });
-  fernFrond(pc, [[15, 27], [10, 21], [5, 19.4], [2.6, 23]], R, { pairs: 4, len: 5, RR });
-  fernFrond(pc, [[16, 27], [14, 18], [12.6, 10], [14.6, 4.6]], R, { pairs: 4, len: 4.6, RR });
-  fernFrond(pc, [[17, 27], [18.6, 18], [23, 11.6], [27.6, 10.6], [29.4, 14]], R, { pairs: 5, len: 6, RR });
+  // a fire-scorched fern: two pale ash fronds arching over and drooping under the heat, the
+  // outer leaflets burnt to charcoal with a glowing rim, a young curl, a mound of grey ash
+  const R = mat(0xbab6a6, { cont: 1.1, sat: 0.6 });
+  const CH = mat(0x4e4844, { cont: 1.05 });
+  const STK = 0x4a4440;
+  const burnt = [];
+  const fr = (pts, n, len, char) => {
+    const at = spline(pts);
+    for (let i = n - 1; i >= 0; i--) {
+      const s = 0.16 + (i / n) * 0.8, [x, y] = at(s), [x2, y2] = at(Math.min(1, s + 0.03));
+      const ta = Math.atan2(y2 - y, x2 - x), l = len * (1 - s * 0.55) + 1;
+      for (const side of [-1, 1]) {
+        const a = ta + side * 1.0, ex = x + Math.cos(a) * l, ey = y + Math.sin(a) * l;
+        const m = leafMask(x, y, ex, ey, Math.max(1, l * 0.3), 0.4 * side);
+        const up = Math.sin(a) < 0.15;
+        const C = s > char ? CH : R;
+        seam(pc, m, 'shadow');
+        m.each((X, Y) => { const t = isTop(m, X, Y) && !isBot(m, X, Y), b = isBot(m, X, Y) && !isTop(m, X, Y); pc.set(X, Y, C[t ? 1 : b ? 4 : up ? 2 : 3]); });
+        if (s > char) burnt.push([ex, ey]);
+      }
+    }
+    let last = '';
+    for (let i = 0; i <= 80; i++) { const [x, y] = at(i / 80 * 0.98), k = Math.floor(x) + ',' + Math.floor(y); if (k === last) continue; last = k; pc.set(x, y, STK); }
+  };
+  fr([[13, 27], [10.4, 19.6], [6, 14], [2.6, 15.6]], 4, 4.6, 0.7);
+  fr([[15, 27], [16, 18.6], [20, 10.6], [25.4, 7.4], [29.4, 10.4]], 6, 5.6, 0.74);
+  const SM = mat(0x8a847a, { cont: 1.1 });
+  tube(pc, [[16.4, 27], [20.4, 24.6], [23, 22.4]], 0.8, SM, { bias: 0.1 });
+  const cu = []; for (let i = 0; i <= 14; i++) { const a = -1.2 - i * 0.5, r = 2.8 * (1 - i / 20); cu.push([23.4 + Math.cos(a) * r, 19.6 + Math.sin(a) * r]); }
+  tube(pc, cu, (s) => Math.max(0.5, 1 - s * 0.5), SM, { bias: 0.1 });
   const ASH = mat(0x9a948e, { cont: 1.05 });
-  const mound = loop([[6, 29.6], [8.4, 26.6], [12, 25.4], [17, 24.8], [21.4, 25.6], [25, 27.4], [26.4, 30], [16, 30.6]]);
+  const mound = loop([[5.6, 29.6], [8, 26.8], [12, 25.6], [17, 25.2], [21.4, 26], [24.4, 27.8], [25.4, 30.2], [15.6, 30.8]]);
   seam(pc, mound, 'shadow');
   form(pc, mound, ASH, { bias: 0.1 });
-  bumps(pc, mound, ASH, { dens: 0.3, seed: 4 });
+  for (const [x, y] of [[10, 28], [17, 27], [21, 28]]) { pc.set(x, y, ASH[1]); pc.set(x + 1, y + 1, ASH[4]); }
   ink(pc);
-  for (const [x, y] of [[29, 13], [29, 14], [3, 22], [3, 23], [14, 4], [15, 5]]) if (pc.alpha(x, y) > 160) gl(pc, x, y, (x + y) % 2 ? 0xff8a2a : 0xffc060, 1);
-  for (const [x, y] of [[12, 28], [19, 27], [22, 29]]) gl(pc, x, y, (x % 2) ? 0xff6a2a : 0xffa040, 0.9);
-  for (const [x, y, c] of [[30, 9, 0xffd080], [27, 6, 0xff9a3a], [1, 18, 0xff9a3a], [16, 1, 0xffc070], [11, 2, 0xffb050]]) gl(pc, x, y, c, 0.9);
-  for (const [x, y] of [[24, 4], [6, 13]]) pc.set(x, y, 0xb0a8a0, 150);
+  // the burnt leaflet tips glow along their ragged ends; an ember in the ash, one drifting up
+  for (const [x, y] of burnt) { const X = Math.floor(x), Y = Math.floor(y); for (const [dx, dy] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) if (CH.indexOf(pc.get(X + dx, Y + dy)) >= 0) { gl(pc, X + dx, Y + dy, (X + Y) % 2 ? 0xff8a2a : 0xffb050, 1); break; } }
+  gl(pc, 14, 28, 0xff6a2a, 0.9); gl(pc, 15, 28, 0xffa040, 0.9);
+  gl(pc, 26, 3, 0xffb050, 0.9);
+  pc.set(6, 8, 0xb0a8a0, 150);
 }
 
 function whisperweed(pc) {

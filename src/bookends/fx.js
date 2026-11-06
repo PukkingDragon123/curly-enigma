@@ -59,15 +59,22 @@ void main() {
   } else if (vShape > 1.5 && vShape < 2.5) {     // confetti strip, flips as it spins
     float w = max(0.17, abs(cos(vSpin))) * 0.5;
     if (abs(p.x) > w) discard;
-  } else if (vShape > 2.5 && vShape < 3.5) {     // round
-    if (length(p) > 0.5) discard;
   } else if (vShape > 3.5) {                     // diamond
     if (abs(p.x) + abs(p.y) > 0.55) discard;
   }
-  gl_FragColor = vColor;
+  vec4 col = vColor;
+  if (vShape < 0.5 || (vShape > 2.5 && vShape < 3.5)) {
+    // square and "round" (smoke, steam, dust) points are tiny voxels, never discs: a lit top
+    // face and a shaded side, so even a 3px puff reads as a little cube
+    vec2 u = gl_PointCoord;
+    if (u.y < 0.34) col.rgb *= 1.22;
+    else if (u.x > 0.66) col.rgb *= 0.68;
+  }
+  gl_FragColor = col;
 }
 `;
 
+/** Point shapes. `round` is kept for old callers but draws a tiny voxel like `square` (no round dots). */
 export const SHAPE = { square: 0, plus: 1, confetti: 2, round: 3, diamond: 4 };
 
 /**
@@ -252,6 +259,10 @@ void main() {
 }
 `;
 
+// Light voxels, not a disc: the halo is a field of square cells (14 across). Their brightness falls
+// off over a chamfered square (a stepped pixel-art octagon) with a one-cell cross of rays along the
+// axes, each cell a touch brighter or dimmer than its neighbour, and the edge dissolves through
+// the ordered dither, so no round outline ever shows. Shared by makeGlow and makeLightPool.
 const GLOW_FRAG = /* glsl */`
 uniform vec3 uColor;
 uniform float uIntensity;
@@ -259,9 +270,15 @@ uniform float uFalloff;
 uniform float uLevels;
 varying vec2 vUv;
 ${GLSL_BAYER}
+float bk_cellHash(vec2 p) { return fract(sin(dot(p, vec2(41.31, 289.17))) * 45758.5453); }
 void main() {
-  float d = length(vUv - 0.5) * 2.0;
-  float i = pow(clamp(1.0 - d, 0.0, 1.0), uFalloff) * uIntensity;
+  const float CELLS = 14.0;
+  vec2 cell = floor(vUv * CELLS);
+  vec2 a = abs((cell + 0.5) / CELLS - 0.5) * 2.0;
+  float d = max(a.x, a.y) * 0.62 + (a.x + a.y) * 0.38;
+  float i = pow(clamp(1.0 - d, 0.0, 1.0), uFalloff);
+  i += 0.22 * pow(clamp(1.0 - max(a.x, a.y), 0.0, 1.0), 2.0) * step(min(a.x, a.y), 0.08);
+  i *= (0.84 + 0.32 * bk_cellHash(cell)) * uIntensity;
   float q = bk_steps(i, uLevels);
   if (q <= 0.0) discard;
   gl_FragColor = vec4(uColor * q, 1.0);
@@ -432,7 +449,9 @@ export function makeBlobShadow(rx = 0.5, rz = 0.35, strength = 0.45) {
       varying vec2 vUv;
       ${GLSL_BAYER}
       void main() {
-        float d = length(vUv - 0.5) * 2.0;
+        // a stepped, cell-built shadow (no round blob): chamfered square on a 12-cell grid
+        vec2 a = abs((floor(vUv * 12.0) + 0.5) / 12.0 - 0.5) * 2.0;
+        float d = max(a.x, a.y) * 0.62 + (a.x + a.y) * 0.38;
         float i = clamp(1.0 - d, 0.0, 1.0);
         i = pow(i, 0.6) * uStrength;
         if (bk_bayer4(gl_FragCoord.xy) > i * 1.6) discard;

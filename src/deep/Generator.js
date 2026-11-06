@@ -471,7 +471,7 @@ export function caveDensity(p, x, y, z) {
   // the network: chambers (grottos, caverns, halls) and the passages joining them (gen/network.js)
   let d = p.net ? netDensity(p.net, p.noise, x, y, z) : -1;
   // (no noise caves under a giant cavern's lake: its basin holds the water)
-  if (p.net && p.net.vaults && p.net.vaults.length && underLake(p, x, y, z, 1.2, 1.75)) return d;
+  if (p.net && p.net.vaults && p.net.vaults.length && underLake(p, x, y, z, 1.2, 1.95)) return d;
   // crawlways: tight, twisty side tunnels here and there (often low enough that you crouch through)
   if (depth > 4) {
     const c = n2.n(x * 0.13 + 7.1, y * 0.17, z * 0.13 + 3.3), e = n3.n(x * 0.13 - 5.2, y * 0.17 + 9.9, z * 0.13);
@@ -755,7 +755,7 @@ export class ChunkGen {
         // a giant cavern's lake: its basin (the cavern's own floor) fills up to the level
         if (cur === 0 && ym < f.wl) {
           const v = p.net.vaults[f.vault];
-          if (v && v.lake && lakeDist(v.lake, p.noise, xm, zm) < 1.6) vox[vi] = f.fluid;
+          if (v && v.lake && lakeDist(v.lake, p.noise, xm, zm) < 1.75) vox[vi] = f.fluid;
         }
       } else if (f.kind === 'lake') {
         const dx = (xm - f.x) / f.r, dy = (ym - f.y) / (f.r * 0.55), dz = (zm - f.z) / f.r;
@@ -810,6 +810,9 @@ export class ChunkGen {
     if (this.pro === undefined) this.pro = p.features.find((f) => f.kind === 'prologue') || null;
     const pf = this.pro, pbb = pf && pf.bb;
     const PL = pbb && !(pbb[3] < X0 / VOX || pbb[0] > (X0 + CS) / VOX || pbb[4] < Y0 / VOX || pbb[1] > (Y0 + CS) / VOX || pbb[5] < Z0 / VOX || pbb[2] > (Z0 + CS) / VOX) ? prologueLayout(pf) : null;
+    // a giant cavern here: more dripstone, rimstone round its lake, rubble on its ledges, glowworms
+    const VT = this.vaultHere;
+    const inVault = (xm, zm) => { const dx = xm - VT.x, dz = zm - VT.z; return Math.hypot((dx * VT.c + dz * VT.s) * VT.iRx, (-dx * VT.s + dz * VT.c) * VT.iRz) < 1.08; };
     for (let z = 0; z < CS; z++) for (let y = 1; y < CS - 1; y++) for (let x = 0; x < CS; x++) {
       const vi = x + CS * y + C2 * z;
       const m = vox[vi];
@@ -826,6 +829,17 @@ export class ChunkGen {
       const bio = this.bio[o];
       const pt = tri(P, o, (x & 3) / 4, (y & 3) / 4, (z & 3) / 4);
       const h = h3(vx, vy, vz, seed + 41);
+      const xm = (vx + 0.5) / VOX, ym = (vy + 0.5) / VOX, zm = (vz + 0.5) / VOX;
+      const vlt = VT && inVault(xm, zm) ? VT : null;
+      if (airUp && vlt) {
+        const L = vlt.lake;
+        // rimstone dams round the lake's shore, rubble on the ledges, talus and piles
+        if (L && L.fluid === 'water' && ym > L.wl - 0.08 && ym < L.wl + 0.35 && zone <= 5) {
+          const dL = lakeDist(L, p.noise, xm, zm);
+          if (dL > 0.8 && dL < 1.55 && pt > -0.35) { vox[vi] = zone === 5 ? M.ICE : M.FLOWSTONE; continue; }
+        }
+        if (ym > vlt.y0 + 1.1 && zone <= 3 && NATURAL[vox[vi - CS]] && pt < 0.25) { vox[vi] = pt < -0.2 ? M.GRAVEL : M.RUBBLE; continue; }
+      }
       if (airUp) {
         // floors: bare earth and gravel in the plain caves (a moss patch only where it's damp and
         // near the top), moss in the lush grotto and the dino halls, sand, mycelium
@@ -851,17 +865,18 @@ export class ChunkGen {
         // calcite: pale flowstone aprons where the floor stays wet (the limestone layers)
         if (zone >= 2 && zone <= 3 && bio !== 2 && bio !== 3 && vox[vi] === m && pt > 0.5 && h3(vx >> 3, vy >> 2, vz >> 3, seed + 55) < 0.35) vox[vi] = M.FLOWSTONE;
         // crystal spikes on cave floors (grotto, frost, core); stalagmites in the upper zones
-        if ((zone === 3 || zone === 5 || zone === 6) && h3(vx >> SH, vy, vz >> SH, seed + 43) < 0.012) this.spike(vox, x, y + 1, z, 1, M.CRYSTAL, (4 + (h * 60 | 0) % 6) * VK);
-        else if (zone <= 2 && bio !== 3 && h3(vx >> SH, vy, vz >> SH, seed + 45) < 0.006) this.spike(vox, x, y + 1, z, 1, bio === 2 ? M.SANDSTONE : zone === 1 ? M.STONE : M.FLOWSTONE, (3 + (h * 70 | 0) % 5) * VK);
+        if ((zone === 3 || zone === 5 || zone === 6) && h3(vx >> SH, vy, vz >> SH, seed + 43) < 0.012) this.crystal(vox, x, y + 1, z, 1, zone === 5 ? M.CRYSTAL_ICE : zone === 6 ? M.CRYSTAL_VOID : M.CRYSTAL, (4 + (h * 60 | 0) % 6) * VK, h3(vx, vy, vz, seed + 44));
+        else if (zone <= 2 && bio !== 3 && h3(vx >> SH, vy, vz >> SH, seed + 45) < (vlt ? 0.014 : 0.006)) this.spike(vox, x, y + 1, z, 1, bio === 2 ? M.SANDSTONE : zone === 1 ? M.STONE : M.FLOWSTONE, (3 + (h * 70 | 0) % 5) * VK, h3(vx, vy, vz, seed + 46));
       } else if (airDown) {
         // ceilings: stalactites and crystals (hanging vines and roots are Vegetation.js cards)
         const h2 = h3(vx, vy, vz, seed + 47);
         if (bio === 1 && pt > -0.3) vox[vi] = M.MOSS;
         else if ((bio === 4 || (zone === 1 && depth < 12 && bio !== 2)) && pt > 0.1 && (m === M.DIRT || m === M.LOAM || m === M.CLAY)) vox[vi] = M.ROOTS; // rooty roofs the roots hang from
-        if (zone >= 2 && h3(vx >> SH, vy, vz >> SH, seed + 49) < 0.01) this.spike(vox, x, y - 1, z, -1, zone >= 5 ? M.ICE : zone <= 3 && bio !== 2 ? M.FLOWSTONE : m, (3 + (h2 * 50 | 0) % 6) * VK);
-        else if (zone === 3 && h2 < 0.004 / (VK * VK)) this.spike(vox, x, y - 1, z, -1, M.CRYSTAL, 3 * VK);
+        if (vlt && zone !== 4 && h3(vx, vy, vz, seed + 57) < 0.0035) this.glowworm(vox, x, y - 1, z, h2);
+        else if ((zone >= 2 || vlt) && h3(vx >> SH, vy, vz >> SH, seed + 49) < (vlt ? 0.024 : 0.01)) this.spike(vox, x, y - 1, z, -1, zone >= 5 ? M.ICE : zone <= 3 && bio !== 2 ? M.FLOWSTONE : m, (3 + (h2 * 50 | 0) % 6) * VK, h3(vx, vy, vz, seed + 50));
+        else if (zone === 3 && h2 < 0.004 / (VK * VK)) this.crystal(vox, x, y - 1, z, -1, M.CRYSTAL, 3 * VK, h2 * 7 % 1);
       } else if (bio === 1 && pt > 0.05) vox[vi] = M.MOSS; // mossy walls in the grotto
-      else if (zone >= 1 && zone <= 3 && bio !== 2 && depth > 5 && pt > -0.25 && m !== M.CRYSTALROCK && h3(vx >> 3, vy >> 5, vz >> 3, seed + 53) < 0.16) vox[vi] = M.FLOWSTONE; // flowstone poured down the walls in sheets
+      else if (zone >= 1 && zone <= 3 && bio !== 2 && depth > 5 && pt > -0.25 && m !== M.CRYSTALROCK && h3(vx >> 3, vy >> 5, vz >> 3, seed + 53) < (vlt ? 0.34 : 0.16)) vox[vi] = M.FLOWSTONE; // flowstone poured down the walls in sheets
     }
   }
 
@@ -917,19 +932,92 @@ export class ChunkGen {
     }
   }
 
-  spike(vox, x, y, z, dir, m, len) {
+  /**
+   * Dripstone grown voxel by voxel (dir -1 hangs from a roof, +1 stands on a floor): thick at the
+   * root, ringed where it grew in spurts, leaning a little; a stalactite ends in a hanging drop, a
+   * stalagmite in a blunt rounded top; now and then a smaller sister beside it (a curtain).
+   */
+  spike(vox, x, y, z, dir, m, len, k = 0.5, sister = true) {
+    const C2 = CS * CS;
+    const R0 = VK * (0.9 + k * 1.1) * (dir > 0 ? 1.25 : 1);
+    const lx = (((k * 7.13) % 1) - 0.5) * len * 0.22, lz = (((k * 3.71) % 1) - 0.5) * len * 0.22;
+    const put = (xx, yy, zz) => {
+      if (xx < 0 || zz < 0 || xx >= CS || zz >= CS || yy < 0 || yy >= CS) return;
+      const vi = xx + CS * yy + C2 * zz;
+      if (vox[vi] === 0) vox[vi] = m;
+    };
+    let tipX = x, tipZ = z, tipY = y;
     for (let i = 0; i < len; i++) {
       const yy = y + dir * i;
-      if (yy < 0 || yy >= CS) return;
-      // a cone: thick at the root, a single voxel at the tip
-      const r = Math.round((1 - i / len) * VK * 1.4);
-      for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
-        const xx = x + dx, zz = z + dz;
-        if (xx < 0 || zz < 0 || xx >= CS || zz >= CS) continue;
-        if (dx * dx + dz * dz > r * r + 0.5) continue;
-        const vi = xx + CS * (yy + CS * zz);
-        if (vox[vi] === 0) vox[vi] = m;
+      if (yy < 0 || yy >= CS) break;
+      const t = i / len;
+      let r = R0 * Math.pow(1 - t, dir < 0 ? 1.5 : 0.9) * (1 + 0.18 * Math.sin(i * 1.4 + k * 11));
+      if (dir > 0 && t > 0.8) r *= Math.sqrt((1 - t) / 0.2) + 0.35; // a blunt, rounded top
+      const cx = x + Math.round(lx * t * t), cz = z + Math.round(lz * t * t);
+      const n = Math.ceil(r);
+      for (let dz = -n; dz <= n; dz++) for (let dx = -n; dx <= n; dx++) {
+        const d2 = dx * dx + dz * dz;
+        if (d2 > r * r + (h3(cx + dx, yy, cz + dz, 91) - 0.3) * 1.6) continue;
+        put(cx + dx, yy, cz + dz);
       }
+      if (r < 0.5) put(cx, yy, cz); // the thin end is one voxel wide
+      tipX = cx; tipZ = cz; tipY = yy;
+    }
+    // a drop hanging at a stalactite's tip
+    if (dir < 0 && k > 0.35) { put(tipX, tipY - 1, tipZ); if (k > 0.75) put(tipX, tipY - 2, tipZ); }
+    // a curtain: a smaller one or two in a line beside it
+    if (sister && k > 0.55 && len > 4 * VK) {
+      const sx = ((k * 13.7) % 1) < 0.5 ? 1 : 0, gap = Math.round(R0 * 1.6) + 1;
+      this.spike(vox, x + gap * sx, y, z + gap * (1 - sx), dir, m, Math.round(len * 0.6), (k * 5.3) % 1, false);
+      if (k > 0.8) this.spike(vox, x - gap * sx, y, z - gap * (1 - sx), dir, m, Math.round(len * 0.45), (k * 9.1) % 1, false);
+    }
+  }
+
+  /**
+   * A crystal grown from a floor (dir +1) or a roof (dir -1): a hexagonal prism, tilted, with a
+   * six-sided pointed tip, and a few smaller crystals round its foot. Voxel by voxel, in this chunk.
+   */
+  crystal(vox, x, y, z, dir, m, len, k = 0.5, small = false) {
+    const C2 = CS * CS;
+    const th = (k * 6.283) % 6.283, tilt = (small ? 0.5 : 0.28) * ((k * 3.3) % 1);
+    const ax = Math.sin(tilt) * Math.cos(th), ay = Math.cos(tilt) * dir, az = Math.sin(tilt) * Math.sin(th);
+    // two axes across the prism
+    let e1x = -az, e1y = 0, e1z = ax;
+    let l = Math.hypot(e1x, e1z);
+    if (l < 1e-3) { e1x = 1; e1z = 0; l = 1; }
+    e1x /= l; e1z /= l;
+    const e2x = ay * e1z - az * e1y, e2y = az * e1x - ax * e1z, e2z = ax * e1y - ay * e1x;
+    const r = (small ? 0.8 : 1.2 + k * 1.1) * VK * 0.85;
+    const R = Math.ceil(r + 1 + len * Math.sin(tilt)), L = len + 1;
+    for (let dy = -1; dy <= L; dy++) for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+      // a quick box round the axis
+      const px = dx, py = dy * dir, pz = dz;
+      const t = px * ax + py * ay + pz * az;
+      if (t < -0.5 || t > len) continue;
+      const rx = px - ax * t, ry = py - ay * t, rz = pz - az * t;
+      const a1 = rx * e1x + ry * e1y + rz * e1z, a2 = rx * e2x + ry * e2y + rz * e2z;
+      const d = Math.max(Math.abs(a1), Math.abs(0.5 * a1 + 0.866 * a2), Math.abs(0.5 * a1 - 0.866 * a2));
+      if (d > Math.min(r, (len - t) * 0.65)) continue;
+      const xx = x + px, yy = y + py, zz = z + pz;
+      if (xx < 0 || zz < 0 || yy < 0 || xx >= CS || zz >= CS || yy >= CS) continue;
+      const vi = xx + CS * yy + C2 * zz;
+      if (vox[vi] === 0) vox[vi] = m;
+    }
+    if (!small) for (let i = 0; i < 1 + ((k * 17) | 0) % 3; i++) {
+      const a = k * 40 + i * 2.1, off = Math.round(r + 1.5);
+      this.crystal(vox, x + Math.round(Math.cos(a) * off), y, z + Math.round(Math.sin(a) * off), dir, m, Math.max(2, Math.round(len * (0.35 + ((k * (i + 3) * 7.7) % 1) * 0.3))), (k * (i + 2) * 3.7) % 1, true);
+    }
+  }
+
+  /** A glowworm on a cave roof: a glowing bead on a silk thread hanging below it. */
+  glowworm(vox, x, y, z, k) {
+    const C2 = CS * CS, n = 1 + ((k * 23) | 0) % 4;
+    for (let i = 0; i < n; i++) {
+      const yy = y - i;
+      if (yy < 0) return;
+      const vi = x + CS * yy + C2 * z;
+      if (vox[vi] !== 0) return;
+      vox[vi] = M.GLOWWORM;
     }
   }
 

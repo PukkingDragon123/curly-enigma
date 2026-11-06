@@ -63,7 +63,7 @@ export function dressVaults(plan, density) {
     }
     if (v.lake) {
       const L = v.lake, fluid = L.fluid === 'lava' ? M.LAVA : M.WATER;
-      const rr = Math.max(L.rx, L.rz) * 1.7 + 0.5;
+      const rr = Math.max(L.rx, L.rz) * 1.85 + 0.5;
       plan.features.push({ kind: 'lake', basin: true, vault: v.id, x: L.x, y: L.wl, z: L.z, r: rr, wl: L.wl, fluid, shell: 0, depth: L.D + 1.6 });
       plan.dangers.push({ kind: fluid === M.LAVA ? 'lava' : 'water', x: L.x, y: L.wl, z: L.z, r: Math.max(L.rx, L.rz), zone: v.zone, vault: v.id });
       if (fluid === M.LAVA) plan.lights.push({ x: L.x, y: L.wl + 0.7, z: L.z, c: [1.6, 0.55, 0.16], r: Math.max(L.rx, L.rz) * 1.9, lava: true, vault: v.id });

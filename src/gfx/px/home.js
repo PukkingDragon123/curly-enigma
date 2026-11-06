@@ -590,31 +590,100 @@ const F = {
       m.each((x, y) => { if (isBot(m, x, y)) pc.set(x, y, R[4]); });
       ink(pc);
       for (const [x0, y0, x1, y1] of [[2.6, 21, 14, 26.6], [18, 9.4, 29.4, 14.4]]) for (let t = 0.05; t < 1; t += 0.11) { const x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t; pc.set(x - 1, y + 1, 0xf0e0c0); pc.set(x - 2, y + 2, 0xd8c8a0); }
-    } else {
-      const fancy = kind === 'fancy';
+    } else if (kind === 'fancy') {
+      // a medallion carpet with a cusped, scalloped edge: gold border with purple cartouches, a
+      // deep pile field with a faint lattice, an eight-point star medallion, gold tassels at the
+      // ends, and the front-right lobe flipped over to show its canvas backing
+      const GD = mat(0xe8b840, { cont: 1.15, warm: 52 });
       const RP = [];
-      for (let i = 0; i < (fancy ? 24 : 14); i++) {
-        const a = (i / (fancy ? 24 : 14)) * Math.PI * 2, r = fancy ? (i % 2 ? 1 : 0.93) : 1 + (hash2(i, 3, 7) - 0.5) * 0.08;
-        RP.push([16 + Math.cos(a) * 14.8 * r, 18 + Math.sin(a) * 9.4 * r + (fancy ? 0 : Math.sin(a * 3) * 0.4)]);
+      const N = 9;
+      for (let i = 0; i < N; i++) {
+        const a = (i / N) * Math.PI * 2 + 0.2, a2 = a + Math.PI / N;
+        const j = (k) => (hash2(i, k, 31) - 0.5) * 0.06;
+        RP.push([16 + Math.cos(a) * 14.6 * (1 + j(1)), 17.6 + Math.sin(a) * 9.6 * (1 + j(2))]);
+        RP.push([16 + Math.cos(a2) * 13.2 * (1 + j(3)), 17.6 + Math.sin(a2) * 8.6 * (1 + j(4)), 1]);
       }
-      const m = loop(RP, { seg: fancy ? 3 : 8 });
+      const m = loop(RP, { seg: 6 });
+      // the flap: everything past a fold line at the front-right is turned back over the rug
+      const fold = (x, y) => (x + 0.5 - 22.4) * 0.62 + (y + 0.5 - 25.4) * 0.78;
+      const flapSrc = M();
+      m.each((x, y) => { if (fold(x, y) > 0) flapSrc.set(x, y); });
+      m.sub(flapSrc);
+      const under = m.clone().shift(0, 1).sub(m);
+      under.each((x, y) => pc.set(x, y, R[5]));
+      const b1 = m.clone().erode(1), b3 = m.clone().erode(3), b4 = m.clone().erode(4);
+      const star = M().poly((() => { const P = []; for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2 - Math.PI / 2, r = i % 2 ? 2.6 : 5.6; P.push([16 + Math.cos(a) * r * 1.1, 17.4 + Math.sin(a) * r * 0.66]); } return P; })());
+      const core = M().poly([[16, 14.6], [19, 17.4], [16, 20.2], [13, 17.4]]);
       m.each((x, y) => {
-        const d = Math.hypot((x + 0.5 - 16) / 15, (y + 0.5 - 18) / 9.6);
-        const band = Math.floor(d * (fancy ? 6 : 5) + Math.sin(Math.atan2(y - 18, x - 16) * (fancy ? 8 : 0)) * 0.12);
-        let col = [R[3], fancy ? 0xe8b840 : R[1], R[3], R[4], fancy ? 0xe8b840 : R[2], R[4], R[3]][band] ?? R[3];
-        // woven: braided coil rings for the root-fiber rug, a soft pile for the carpet
-        if (!fancy && (Math.floor(d * 15) + Math.floor(Math.atan2(y - 18, x - 16) * 6)) % 2 === 0) col = mix(col, 0x000000, 0.12);
-        if (fancy && (x + y) % 2 === 0 && hash2(x, y, 3) < 0.3) col = mix(col, 0x000000, 0.14);
+        const lit = (x + 0.5 - 16) / 15 + (y + 0.5 - 17.6) / 10 < -0.5, shade = (x + 0.5 - 16) / 15 + (y + 0.5 - 17.6) / 10 > 0.6;
+        let col;
+        if (!b1.get(x, y)) col = GD[isBot(m, x, y) ? 4 : 3];
+        else if (!b3.get(x, y)) {
+          // border: gold ground, a running row of purple cartouches
+          const a = Math.atan2((y + 0.5 - 17.6) / 9.6, (x + 0.5 - 16) / 14.6);
+          col = (Math.floor(a * 30 / (Math.PI * 2) + 40) % 3 === 0) ? R[3] : GD[lit ? 1 : shade ? 3 : 2];
+        } else if (!b4.get(x, y)) col = R[5];
+        else if (core.get(x, y)) col = Math.abs(x + 0.5 - 16) + Math.abs(y + 0.5 - 17.4) * 1.3 < 1.6 ? 0xfff0b0 : 0xb02a3a;
+        else if (star.get(x, y)) col = GD[(x + y) % 5 ? 2 : 1];
+        else {
+          // field: deep pile with a faint diamond lattice and little gold flowers on its knots
+          const u = (x + 0.5 - 16) * 0.66 + (y + 0.5 - 17.6), v = (x + 0.5 - 16) * 0.66 - (y + 0.5 - 17.6);
+          const lu = ((Math.floor(u) % 4) + 4) % 4 === 0, lv = ((Math.floor(v) % 4) + 4) % 4 === 0;
+          col = lu && lv ? GD[2] : lu || lv ? R[2] : R[lit ? 2 : shade ? 4 : 3];
+        }
+        if (b1.get(x, y) && (x + y) % 2 === 0 && hash2(x, y, 3) < 0.22) col = mix(col, 0x000000, 0.14);
         pc.set(x, y, col);
       });
-      m.each((x, y) => { if (isBot(m, x, y) && y > 18) pc.set(x, y, R[5]); });
-      if (fancy) {
-        const md = M().poly([[16, 12.6], [21.4, 18], [16, 23.4], [10.6, 18]]);
-        md.each((x, y) => pc.set(x, y, Math.abs(x + 0.5 - 16) + Math.abs(y + 0.5 - 18) * 1.2 < 3 ? 0x6a2a8a : 0xe8b840));
-        pc.set(16, 18, 0xfff0b0);
-      }
+      // star outline so it reads as embroidered
+      star.edge().each((x, y) => { if (!core.get(x, y)) pc.set(x, y, GD[4]); });
+      // the flipped flap: mirror of the lost lobe across the fold, canvas backing with weave
+      const CV = mat(0xd8c8a4, { cont: 1.05 });
+      const flap = M();
+      flapSrc.each((x, y) => {
+        const d = fold(x, y), nx = 0.62, ny = 0.78;
+        const X = Math.round(x + 0.5 - 2 * d * nx - 0.5), Y = Math.round(y + 0.5 - 2 * d * ny - 0.5);
+        flap.set(X, Y);
+      });
+      flap.union(flap.clone().dilate(1).and(flap.clone().shift(1, 0).union(flap.clone().shift(0, 1))));
+      seam(pc, flap, 'shadow');
+      flap.each((x, y) => pc.set(x, y, ((x + y * 2) % 4 === 0) ? CV[3] : CV[fold(x, y) > -1.2 ? 1 : 2]));
+      flap.each((x, y) => { if (isBot(flap, x, y)) pc.set(x, y, CV[4]); });
       ink(pc);
-      if (fancy) for (const [x, y] of [[0, 18], [31, 18], [16, 7], [16, 29], [5, 11], [27, 11], [5, 25], [27, 25]]) { pc.set(x, y, 0xe8b840); if (y > 18) pc.set(x, y + 1, 0xc89020); }
+      // gold tassels at the two ends
+      for (const [x, y, dx] of [[1, 16, -1], [1, 19, -1], [30, 15, 1], [30, 18, 1]]) { pc.set(x, y, GD[2]); pc.set(x + dx, y, GD[3]); pc.set(x + dx, y + 1, GD[4]); }
+      glint(pc, 7, 12, 0);
+    } else {
+      // a braided rag rug, coiled from one long braid: a single spiral (not rings), each turn its
+      // own scrap colour, chevron plaits along the braid, a lumpy hand-sewn outline and a thick edge
+      const RP = [[1.6, 18.6], [3.4, 13.6], [8, 10], [14, 8.4], [20.4, 8.6], [25.8, 10.6], [29.6, 14.4], [30.6, 19.2], [28, 23.8], [22.6, 26.8], [15.4, 27.6], [8.4, 26.4], [3.6, 23.4]];
+      const m = loop(RP);
+      const under = m.clone().shift(0, 2).sub(m);
+      const SCRAPS = [R, mat(0xe2cca0, { cont: 1.05 }), mat(0x9a5a3a, { cont: 1.08 }), R, mat(0xc8a060, { cont: 1.06 }), mat(0xa8604a, { cont: 1.05 })];
+      const cx = 16.4, cy = 18, rx = 14.6, ry = 9.4, NT = 5.2;
+      const coil = (x, y) => {
+        const u = (x + 0.5 - cx) / rx, v = (y + 0.5 - cy) / ry, th = Math.atan2(v, u);
+        const r = Math.hypot(u, v) * (1 + 0.05 * Math.sin(th * 3 + 1.3) + (vnoise(x * 0.3, y * 0.3, 5) - 0.5) * 0.06);
+        const t = r * NT - (th + Math.PI) / (Math.PI * 2);
+        return { t, u, v, th, r };
+      };
+      under.each((x, y) => { const { t } = coil(x, Math.min(y, 27)); const S = SCRAPS[((Math.floor(t) % 6) + 6) % 6]; pc.set(x, y, S[(x % 2) ? 4 : 5]); });
+      m.each((x, y) => {
+        const { t, u, v, th, r } = coil(x, y);
+        const turn = Math.floor(t), f = t - turn;
+        const S = SCRAPS[((turn % 6) + 6) % 6];
+        // the braid's round cross-section, lit on the side facing the top-left
+        const outward = u * 0.6 + v * 0.8 < 0;
+        let k = (f > 0.5) === outward ? 2 : 3;
+        // plaits: short slanted strands alternating along the braid
+        const arc = th * r * 12;
+        if (((Math.floor(arc + (f - 0.5) * (f > 0.5 ? 3 : -3)) % 3) + 3) % 3 === 0) k += 1;
+        if (f < 0.14 || f > 0.92) k = 5; // the stitched groove between turns
+        if (r < 0.12) k = 3;
+        pc.set(x, y, S[clamp(k, 1, 5)]);
+      });
+      m.each((x, y) => { if (isTop(m, x, y) && !isBot(m, x, y) && (x + y) % 2) step(pc, R, x, y, -1, 1, 5); });
+      ink(pc);
+      glint(pc, 8, 12, 0);
     }
   },
   fern(pc) {

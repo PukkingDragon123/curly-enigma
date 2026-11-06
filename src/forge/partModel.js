@@ -7,7 +7,7 @@
 // end on). Late voxels (the haft, the grip) are set in when the work is done. PartView renders it
 // all as two instanced meshes.
 import * as THREE from 'three';
-import { voxelMaterial } from '../gfx/Voxel.js';
+import { voxelMaterial, VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { METALS } from '../data/weapons.js';
 import { applyHeat, glowAmount, glowHex } from './blackbody.js';
 import { mixHex, shade } from '../core/util.js';
@@ -18,6 +18,20 @@ export const VX = 0.0075; // meters per voxel
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const clamp01 = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
 const hash = (a, b, c = 0) => { let h = (a * 374761393 + b * 668265263 + c * 2246822519) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+
+/**
+ * Where the next blow lands: a voxel reticle (VX / 2 voxels, flat on the metal): four L brackets
+ * round a little cross, bright on their outer corners. No ring.
+ */
+function markerGeo() {
+  const g = new VoxelGrid(15, 1, 15);
+  for (const sx of [0, 1]) for (const sz of [0, 1]) {
+    const x0 = sx ? 14 : 0, z0 = sz ? 14 : 0, dx = sx ? -1 : 1, dz = sz ? -1 : 1;
+    for (let k = 0; k < 4; k++) { g.set(x0 + dx * k, 0, z0, k ? 0xe8e8e8 : 0xffffff); g.set(x0, 0, z0 + dz * k, k ? 0xe8e8e8 : 0xffffff); }
+  }
+  for (let k = -1; k <= 1; k++) { g.set(7 + k, 0, 7, 0xd0d0d0); g.set(7, 0, 7 + k, 0xd0d0d0); }
+  return meshGridGreedy(g, { scale: VX / 2, pivot: [7.5, 0, 7.5], ao: false });
+}
 
 // tones: 0 body, 1 dark (holes, rivets), 2 bright (rims, bolts); late voxels carry a color
 // ---------------------------------------------------------------- the builder
@@ -225,8 +239,7 @@ export class PartView {
     // a heat haze round the hot metal and a ring where the next blow lands
     this.halo = makeGlow({ color: 0xff8a30, size: 1, intensity: 0, falloff: 1.6, levels: 6, renderOrder: 18 });
     this.group.add(this.halo);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(VX * 2.2, VX * 3.2, 20), new THREE.MeshBasicMaterial({ color: 0xffd34a, transparent: true, opacity: 0.8, depthTest: false, side: THREE.DoubleSide }));
-    ring.rotation.x = -Math.PI / 2;
+    const ring = new THREE.Mesh(markerGeo(), new THREE.MeshBasicMaterial({ color: 0xffd34a, vertexColors: true, transparent: true, opacity: 0.8, depthTest: false, side: THREE.DoubleSide }));
     ring.renderOrder = 30;
     ring.visible = false;
     this.marker = ring;

@@ -20,7 +20,7 @@ export const VOX_RULE_ON = !(typeof location !== 'undefined' && /[?&]voxrule=0/.
 
 /** Size classes (largest extent in m → voxel edge in m). */
 export const VOX_RULE = [
-  { upTo: 0.6, vox: 1 / 64 }, // cups, tools, books, candles, mushrooms, lanterns, plants
+  { upTo: 0.8, vox: 1 / 64 }, // cups, tools, books, candles, mushrooms, lanterns, plants
   { upTo: 2.0, vox: 1 / 32 }, // furniture: crates, barrels, chairs, carts, stalagmites, crystals
   { upTo: Infinity, vox: 1 / 16 }, // walls, rock, beams, big trees: coarse
 ];
@@ -35,8 +35,10 @@ export function voxelSizeFor(L) {
 export function refineSteps(L, vox) {
   if (!VOX_RULE_ON) return 0;
   const want = voxelSizeFor(L);
+  // (two steps, 4× finer, only for the really small things: past ~0.4 m that costs too many faces)
+  const most = L <= 0.4 ? 2 : 1;
   let n = 0, v = vox;
-  while (v > want * 1.4 && n < 2) { v /= 2; n++; }
+  while (v > want * 1.4 && n < most) { v /= 2; n++; }
   return n;
 }
 

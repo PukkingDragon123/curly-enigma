@@ -8,6 +8,12 @@
 //                under water and wavering light on the walls above it
 //   fx.js        particles and sounds: falls, spray, foam, drips from wet ceilings, bubbles, steam
 //   lakes.js     lake levels and watertight shells at plan time (Generator)
+//   voxfx.js     the spray itself as little voxels (drops, drips, foam, bubbles, mist, steam, lava
+//                blobs): this.fx routes those here, everything else (embers, sparks) to Particles
+//
+// The giant caverns (gen/vaults.js): falls pour from their roofs into their lakes (static water the
+// mesher draws as falling sheets): here they throw up spray, mist and foam, ring the water and roar;
+// mist drifts low over the lakes as loose voxel wisps.
 //
 // The mole in water: buoyancy springs it up to ride the waves (with a little overshoot), currents
 // carry it along (and wading through shallow water slows it: FPSPlayer.flow / .wade), splashes and
@@ -23,6 +29,8 @@ import { FlowSim } from './fluids/sim.js';
 import { makeWaterMaterial, WaterGrab, waterUniforms } from './fluids/water.js';
 import { WaterMap, patchTerrain } from './fluids/caustics.js';
 import { fxMethods, WATER_C } from './fluids/fx.js';
+import { VoxFx } from './fluids/voxfx.js';
+import { lakeDist } from './gen/network.js';
 
 const UW_FOG = new THREE.Color(0.01, 0.05, 0.075);
 const FLOATS = new Set(['food', 'plant', 'ingredient', 'feed', 'critter', 'drop', 'consumable']);
@@ -52,6 +60,13 @@ export class Fluids {
     this.loops = {};
     this.cur = { x: 0, y: 0, z: 0 };
     this.prof = { sim: 0, fx: 0, map: 0, all: 0 };
+    // the spray as voxels; this.fx sends water's effects there, the rest on to Particles
+    const phone = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    this.vfx = new VoxFx(ctx.scene3 || ctx.scene, this.w, ctx.U, phone ? 500 : 900);
+    this.fx = routeFx(ctx.fx, this.vfx);
+    // the cave's air plays the big halls' sounds and leaves the underwater fog to us
+    if (ctx.fx?.atmos) { ctx.fx.atmos.audio = ctx.audio; ctx.fx.atmos.fluids = this; }
+    this.fallNear = 99;
     this.splashY = 0;
     this.lifeAt = (x, z, tR) => (this.fluidAt(x, this.splashY - 0.05, z) ? tR + 0.03 : tR + 0.7);
     const plan = ctx.plan || this.w.plan;
@@ -133,6 +148,8 @@ export class Fluids {
     this.impacts(dt, eye);
     this.ambient(dt, eye);
     this.crumbFx(dt);
+    this.vaultFx(dt, eye);
+    this.vfx.update(dt);
     this.spring(dt);
     this.lakeUniforms(eye);
     const t2 = performance.now();
@@ -373,6 +390,7 @@ export class Fluids {
     for (let j = 0; j < F.length; j += 4) if (F[j + 3] === M.WATER && Math.abs(F[j] - eye.x) + Math.abs(F[j + 1] - eye.y) + Math.abs(F[j + 2] - eye.z) < 10) flow++;
     const act = Math.min(1, this.sim.active / 400);
     let wv = clamp(flow / 16 + act * 0.45, 0, 1) * 0.6;
+    wv = Math.max(wv, clamp(1 - this.fallNear / 15, 0, 1) * 0.6); // a fall roaring into a lake
     if (pl?.headUnder) wv = Math.max(wv, 0.25); // under water: the murmur all round
     // lava close by (a lake's surface or a flow)
     let ld = 99;
@@ -476,7 +494,51 @@ export class Fluids {
     return out.slice(0, 3);
   }
 
+  // ------------------------------------------------------------------ the giant caverns
+  /** Falls throwing up spray, mist and foam, ringing their lake; mist drifting over the lakes. */
+  vaultFx(dt, eye) {
+    const plan = this.w.plan, V = this.vfx;
+    this.fallNear = 99;
+    for (const f of plan.falls || []) {
+      const wl = f.yb + 0.3, d = Math.hypot(f.x - eye.x, f.z - eye.z), dy = eye.y - wl;
+      if (d > 22 || dy < -4 || dy > 18) continue;
+      this.fallNear = Math.min(this.fallNear, Math.hypot(d, Math.max(0, Math.abs(dy) - 2)));
+      const k = Math.max(0.25, 1 - d / 22), lava = f.fluid === M.LAVA;
+      const ca = Math.cos(f.a), sa = Math.sin(f.a), o = () => rnd(-f.hw, f.hw);
+      if (lava) {
+        if (chance(dt * 5 * k)) { const s = o(); this.fx.ember(f.x + ca * s, wl + 0.05, f.z + sa * s); }
+        if (chance(dt * 2 * k)) this.fx.steam(f.x, wl + 0.05, f.z, 1, [0.5, 0.42, 0.4]);
+        continue;
+      }
+      // spray bouncing up off the water where it lands, mist rolling off, foam, rings spreading
+      for (let n = Math.min(6, Math.floor(dt * 36 * k + Math.random())); n > 0; n--) {
+        const s = o(), a = Math.random() * 6.283, sp = rnd(0.25, 1.1);
+        V.droplet(f.x + ca * s, wl + 0.03, f.z + sa * s, Math.cos(a) * sp, rnd(0.7, 2.2), Math.sin(a) * sp, rnd(0.35, 0.8), chance(0.4) ? [0.92, 0.98, 1] : WATER_C);
+      }
+      if (chance(dt * 7 * k)) V.mist(f.x + rnd(-0.25, 0.25), wl + 0.05, f.z + rnd(-0.25, 0.25));
+      if (chance(dt * 4 * k)) { const a = Math.random() * 6.283, sp = rnd(0.2, 0.6); V.foam(f.x, wl + 0.012, f.z, Math.cos(a) * sp, Math.sin(a) * sp); }
+      if (d < 16 && (f.rt = (f.rt || 0) - dt) <= 0) { f.rt = rnd(0.35, 0.6); this.ripple(f.x + rnd(-0.1, 0.1), wl, f.z + rnd(-0.1, 0.1), 0.32); }
+      // drops peeling off the sheet on the way down
+      if (chance(dt * 10 * k)) { const s = o(); V.droplet(f.x + ca * s, rnd(wl + 0.6, f.yt - 0.4), f.z + sa * s, rnd(-0.15, 0.15), rnd(-1.6, -0.6), rnd(-0.15, 0.15), 1.4); }
+    }
+    // mist lying on a giant cavern's lake, drifting in loose wisps near the eye
+    for (const v of plan.net?.vaults || []) {
+      const L = v.lake;
+      if (!L || L.fluid !== 'water' || Math.abs(eye.y - L.wl) > 7) continue;
+      const dl = lakeDist(L, plan.noise, eye.x, eye.z);
+      if (dl > 2.6) continue;
+      if (!chance(dt * 5 * Math.min(1, (2.6 - dl) / 1.2))) continue;
+      const f = this.ctx.player?.forward?.() || { x: 0, z: -1 };
+      const r = rnd(1.5, 9), a = Math.atan2(f.z, f.x) + rnd(-1.1, 1.1);
+      const x = eye.x + Math.cos(a) * r, z = eye.z + Math.sin(a) * r;
+      const vx = Math.floor(x * VOX), vz = Math.floor(z * VOX), vy = Math.floor((L.wl - 0.03) * VOX);
+      if (this.sim.vox(vx, vy, vz) !== M.WATER || this.sim.vox(vx, vy + 2, vz) !== 0) continue;
+      V.wisp(x, L.wl + rnd(0.02, 0.35), z);
+    }
+  }
+
   dispose() {
+    this.vfx.dispose();
     for (const h of Object.values(this.loops)) h?.stop(0.3);
     this.loops = {};
     this.restoreFog();
@@ -494,3 +556,13 @@ export class Fluids {
 }
 
 Object.assign(Fluids.prototype, fxMethods);
+
+/** Particles' effects, with water's spray (and lava's blobs) sent to the voxel spray instead. */
+function routeFx(P, V) {
+  const R = Object.create(P);
+  for (let o = P; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+    for (const k of Object.getOwnPropertyNames(o)) if (k !== 'constructor' && typeof P[k] === 'function' && !(k in R && Object.prototype.hasOwnProperty.call(R, k))) R[k] = P[k].bind(P);
+  }
+  for (const k of ['droplet', 'dripForm', 'drip', 'bubble', 'steam', 'mist', 'foam', 'crown', 'splash', 'lavaBlob']) R[k] = V[k].bind(V);
+  return R;
+}

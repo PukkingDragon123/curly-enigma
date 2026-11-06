@@ -229,3 +229,7 @@ for (const [id, d] of Object.entries({
 }
 /** Vein rock material (or 0) by vein code. */
 export const isVeinM = (m) => !!MAT[m]?.vein;
+// Glowworms: single glowing beads on the roofs of the giant caverns, each on a short silk thread
+// (generator dressing; they read as a starry sky over a big hall).
+Object.assign(M, { GLOWWORM: 59 });
+MAT[M.GLOWWORM] = { id: M.GLOWWORM, name: 'Glowworm Silk', tones: [0x3a8a8a, 0x5ab4ac, 0x8ae0d0, 0xc8fff0], accent: 0xeafffa, hp: 0.2, glow: 1, gran: false, fluid: 0, snd: 'dirt', style: [STYLE.GLOW, 1, 0.1], brk: 'crumble', hs: 'dirt' };

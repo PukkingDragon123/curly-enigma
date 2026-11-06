@@ -2,7 +2,8 @@
 // cast-iron stove with burners and flames, and all the props the minigames use.
 import * as THREE from 'three';
 import * as M from './models.js';
-import { wallPlanksTex, caveWallTex, counterTex, beamTex, caveViewTex, sunPaintingTex, chalkboardTex, tilesTex } from './tex.js';
+import { counterTex, beamTex } from './tex.js';
+import { rockWall, tileBand, windowView, sunPainting, chalkboard, stovepipe, burnerKnob } from './kitchenVox.js';
 import { setOutline } from '../gfx/Voxel.js';
 import { makeRng } from '../core/util.js';
 import { flameSheet, makeSheetSprite } from '../bookends/fx.js';
@@ -23,6 +24,8 @@ export const SPOTS = {
 export const WALL_Z = -1.3;
 export const BOARD_TOP = 0.075;
 export const STOVE = { x0: 1.55, x1: 3.45, top: 0.04 };
+/** The round window in the back wall (centre and glass radius). */
+const WINDOW = { x: 0.1, y: 1.08, r: 0.42 };
 
 export class Kitchen {
   constructor(root) {
@@ -68,16 +71,13 @@ export class Kitchen {
 
   buildRoom() {
     // back wall
+    // Old Star's cave rock: a 1/16 voxel relief (cracks sunk into the wall), holed for the round window
     const wallW = 12, wallH = 3.2;
-    const wall = new THREE.Mesh(new THREE.PlaneGeometry(wallW, wallH), new THREE.MeshLambertMaterial({ map: caveWallTex([wallW / 4, wallH / 3]) })); // Old Star's cave rock (was wallPlanksTex)
-    wall.position.set(0, wallH / 2 - 0.3, WALL_Z);
-    this.root.add(wall);
-    // a band of hand-made tiles behind the counter (sooty behind the stove)
+    this.root.add(rockWall({ x0: -wallW / 2, x1: wallW / 2, y0: -0.3, y1: wallH - 0.3, wallZ: WALL_Z, holes: [{ x: WINDOW.x, y: WINDOW.y, r: WINDOW.r - 0.05 }] }));
+    // a band of hand-made 1/32 voxel tiles behind the counter (sooty behind the stove)
     const tw = 13, th = 0.56;
     const sootX = [Math.round((STOVE.x0 + 6.5) * 32), Math.round((STOVE.x1 + 6.5) * 32)];
-    const tiles = new THREE.Mesh(new THREE.PlaneGeometry(tw, th), new THREE.MeshLambertMaterial({ map: tilesTex(tw, th, sootX) }));
-    tiles.position.set(0, th / 2, WALL_Z + 0.006);
-    this.root.add(tiles);
+    this.root.add(tileBand({ w: tw, h: th, wallZ: WALL_Z, sootX }));
     const trim = new THREE.Mesh(new THREE.BoxGeometry(13, 0.05, 0.05), new THREE.MeshLambertMaterial({ map: beamTex([13, 1]) }));
     trim.position.set(0, th + 0.02, WALL_Z + 0.025);
     this.root.add(trim);
@@ -147,21 +147,15 @@ export class Kitchen {
     back.position.set(top.group.position.x, STOVE.top, WALL_Z + 0.06);
     this.root.add(back);
     for (let i = 0; i < 2; i++) {
-      const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 8), new THREE.MeshLambertMaterial({ color: 0xd8a840 }));
-      knob.rotation.x = Math.PI / 2;
+      const knob = burnerKnob();
       knob.position.set(this.burners[i].x, STOVE.top + 0.16, WALL_Z + 0.13);
-      setOutline(knob, true);
+      knob.rotation.z = i ? -0.6 : 0.4;
       this.root.add(knob);
     }
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 2.6, 10), new THREE.MeshLambertMaterial({ color: 0x2a2628 }));
+    // the stovepipe (1/32 voxels) with its two clamp bands
+    const pipe = stovepipe(0.13, 2.6, [0.9 - 1.55, 1.7 - 1.55]);
     pipe.position.set(STOVE.x1 - 0.3, 1.55, WALL_Z + 0.2);
-    setOutline(pipe, true);
     this.root.add(pipe);
-    for (const y of [0.9, 1.7]) {
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.145, 0.145, 0.05, 10), new THREE.MeshLambertMaterial({ color: 0x4a4648 }));
-      band.position.set(STOVE.x1 - 0.3, y, WALL_Z + 0.2);
-      this.root.add(band);
-    }
     // flames licking up around each burner: layered pixel flame sprites
     const sheet = flameSheet(8, 14, 26, 5, [0xfffbe0, 0xffe066, 0xffa62a, 0xf0601a, 0xb8301a]);
     const core = flameSheet(8, 10, 18, 9, [0xffffff, 0xd8f0ff, 0x8ac0ff, 0xffd060, 0xff9a2a]);
@@ -209,10 +203,11 @@ export class Kitchen {
     }
     // round window
     const win = M.windowFrame(0.42);
-    this.add(win, 0.1, 1.08, z + 0.05);
-    const glass = new THREE.Mesh(new THREE.CircleGeometry(0.42, 24), new THREE.MeshBasicMaterial({ map: caveViewTex() }));
-    glass.position.set(0.1, 1.08, z + 0.02);
-    this.root.add(glass);
+    this.add(win, WINDOW.x, WINDOW.y, z + 0.05);
+    // the view through it: a little voxel diorama set into the rock behind the frame
+    const view = windowView(0.42);
+    view.position.set(WINDOW.x, WINDOW.y, z - 0.24);
+    this.root.add(view);
     this.add(M.potPlant(0x5aa84a, true), -0.05, 0.6, z + 0.12);
     // hanging rod with herbs and garlic
     const rod = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.04, 0.04), new THREE.MeshLambertMaterial({ color: 0x6a4228 }));
@@ -228,14 +223,12 @@ export class Kitchen {
       this.sway.push({ obj: h, amp: 0.06, sp: 0.8 + i * 0.07, ph: i, axis: 'z' });
     }
     // a little painting of the sun & the chalkboard
-    const port = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.42), new THREE.MeshLambertMaterial({ map: sunPaintingTex() }));
-    port.position.set(-0.75, 0.62, z + 0.015);
+    const port = sunPainting(0.36);
+    port.position.set(-0.75, 0.62, z + 0.002);
     port.rotation.z = 0.04;
-    setOutline(port, true);
     this.root.add(port);
-    const chalk = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.64), new THREE.MeshLambertMaterial({ map: chalkboardTex() }));
-    chalk.position.set(5.95, 1.05, z + 0.015);
-    setOutline(chalk, true);
+    const chalk = chalkboard(0.96);
+    chalk.position.set(5.95, 1.05, z + 0.002);
     this.root.add(chalk);
     // over the stove: a utensil rail with a ladle and pans
     const rail = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.03, 0.03), new THREE.MeshLambertMaterial({ color: 0xd8a840 }));

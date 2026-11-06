@@ -1,26 +1,38 @@
-// The x-ray lamp's beam: a soft additive cone of light drawn in the WORLD scene (the overlay
-// pass cannot blend translucency), lined up with the lamp lens in the view model. The game
-// adds vm.world to its scene once and passes its camera to vm.update(dt, { camera }).
+// The x-ray lamp's beam: a stream of tiny additive light voxels pouring out of the lens and
+// spreading into a cone (no cone mesh, no edges), drawn in the WORLD scene (the overlay pass
+// cannot blend translucency), lined up with the lamp lens in the view model. The motes move on
+// the GPU (one instanced draw, nothing per frame on the CPU). The game adds vm.world to its scene
+// once and passes its camera to vm.update(dt, { camera }).
 import * as THREE from 'three';
 
+const N = 240;
+
 const VERT = /* glsl */`
-varying vec2 vUv;
-varying float vEdge;
+attribute vec4 aSeed;   // phase, angle, radial fraction, speed
+attribute float aSize;
+uniform float uTime;
+uniform float uLen;
+uniform float uRad;
+varying float vK;
+varying float vShade;
 void main() {
-  vUv = uv;
-  vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  // surfaces seen edge-on read as the beam's bright sides (a cheap volume look)
-  vec3 n = normalize(normalMatrix * normal);
-  vEdge = 1.0 - abs(dot(n, normalize(-mv.xyz)));
+  float along = fract(uTime * aSeed.w + aSeed.x);
+  float a = aSeed.y + uTime * 0.6 * (aSeed.z - 0.5);
+  float rr = aSeed.z * (0.04 + along) * uRad;
+  vec3 c = vec3(cos(a) * rr, sin(a) * rr, -along * uLen);
+  // brightest a little way out of the lens, gone by the far end, pulsing down the beam
+  float pulse = 0.82 + 0.18 * sin(uTime * 9.0 - along * 14.0);
+  vK = smoothstep(0.0, 0.12, along) * pow(1.0 - along, 1.7) * pulse * (1.15 - aSeed.z * 0.55);
+  vShade = normal.y > 0.5 ? 1.2 : normal.x > 0.5 ? 0.75 : normal.y < -0.5 ? 0.6 : 0.95;
+  vec4 mv = modelViewMatrix * vec4(c + position * aSize, 1.0);
   gl_Position = projectionMatrix * mv;
 }
 `;
 const FRAG = /* glsl */`
 uniform vec3 uColor;
 uniform float uOn;
-uniform float uTime;
-varying vec2 vUv;
-varying float vEdge;
+varying float vK;
+varying float vShade;
 float bayer(vec2 p) {
   vec2 q = mod(floor(p), 4.0);
   float v = q.x < 0.5 ? (q.y < 0.5 ? 0.0 : q.y < 1.5 ? 12.0 : q.y < 2.5 ? 3.0 : 15.0)
@@ -30,14 +42,11 @@ float bayer(vec2 p) {
   return v / 16.0;
 }
 void main() {
-  // vUv.y: 1 at the lens → 0 at the far end; vUv.x around the cone
-  float along = 1.0 - vUv.y;
-  float pulse = 0.85 + 0.15 * sin(uTime * 9.0 - along * 14.0);
-  // soft start at the lens, brightest a little way out, gone by the far end
-  float k = smoothstep(0.0, 0.18, along) * pow(1.0 - along, 2.2) * (0.3 + 0.7 * vEdge * vEdge) * pulse * uOn;
+  float k = vK * uOn;
   // pixel-art banding: quantise the falloff with an ordered dither
   float q = floor(k * 5.0 + bayer(gl_FragCoord.xy)) / 5.0;
-  gl_FragColor = vec4(uColor * q * 0.85, 1.0);
+  if (q <= 0.0) discard;
+  gl_FragColor = vec4(uColor * q * vShade * 0.9, 1.0);
 }
 `;
 
@@ -45,15 +54,32 @@ export class XrayBeam {
   constructor() {
     this.group = new THREE.Group();
     this.group.name = 'vm-world';
-    const geo = new THREE.CylinderGeometry(0.06, 1, 1, 20, 1, true);
-    geo.translate(0, -0.5, 0); // tip (lens) at y = 0, mouth at y = -1
-    geo.rotateX(Math.PI / 2); // now along -Z
+    const box = new THREE.BoxGeometry(1, 1, 1);
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.index = box.index;
+    geo.setAttribute('position', box.attributes.position);
+    geo.setAttribute('normal', box.attributes.normal);
+    const seed = new Float32Array(N * 4), size = new Float32Array(N);
+    let s = 7;
+    const rnd = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+    for (let i = 0; i < N; i++) {
+      const big = i % 4 === 0; // a quarter are fat, dim light voxels that fill the cone; the rest are fine sparks
+      seed[i * 4] = rnd();
+      seed[i * 4 + 1] = rnd() * Math.PI * 2;
+      seed[i * 4 + 2] = Math.sqrt(rnd());
+      seed[i * 4 + 3] = (big ? 0.35 : 0.5) + rnd() * 0.45;
+      size[i] = big ? 0.03 + rnd() * 0.015 : 0.009 + rnd() * 0.008;
+    }
+    geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 4));
+    geo.setAttribute('aSize', new THREE.InstancedBufferAttribute(size, 1));
+    geo.instanceCount = N;
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { uColor: { value: new THREE.Color(0x7fe7ff) }, uOn: { value: 0 }, uTime: { value: 0 } },
+      uniforms: { uColor: { value: new THREE.Color(0x7fe7ff) }, uOn: { value: 0 }, uTime: { value: 0 }, uLen: { value: 1 }, uRad: { value: 0.3 } },
       vertexShader: VERT, fragmentShader: FRAG,
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
     this.cone = new THREE.Mesh(geo, this.mat);
+    this.cone.name = 'xray-motes';
     this.cone.frustumCulled = false;
     this.cone.renderOrder = 10;
     this.cone.visible = false;
@@ -67,9 +93,10 @@ export class XrayBeam {
    * range: beam length (m); on: 0..1.
    */
   update(dt, lensView, vmCam, worldCam, color, range, on, t) {
-    this.mat.uniforms.uOn.value = on;
-    this.mat.uniforms.uTime.value = t;
-    this.mat.uniforms.uColor.value.set(color);
+    const u = this.mat.uniforms;
+    u.uOn.value = on;
+    u.uTime.value = t;
+    u.uColor.value.set(color);
     this.cone.visible = on > 0.02 && !!worldCam;
     if (!this.cone.visible) return;
     // the lens's screen position, re-projected into the world camera at a short depth
@@ -84,10 +111,9 @@ export class XrayBeam {
     const g = this.cone;
     g.position.copy(start);
     g.lookAt(target);
-    g.rotateY(Math.PI); // lookAt points +Z at the target; the cone runs along -Z
-    const len = start.distanceTo(target);
-    const r = 0.2 + range * 0.025;
-    g.scale.set(r, r, len);
+    g.rotateY(Math.PI); // lookAt points +Z at the target; the beam runs along -Z
+    u.uLen.value = start.distanceTo(target);
+    u.uRad.value = 0.2 + range * 0.025;
   }
 
   dispose() { this.cone.geometry.dispose(); this.mat.dispose(); }

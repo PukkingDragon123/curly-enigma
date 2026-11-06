@@ -391,7 +391,7 @@ function makeVault(id, n, band, rng, d, nodes, edges) {
   if (rng() < (band.lake ?? 0.7)) {
     const a = rng() * 6.283, off = rng.range(0, 0.15), lr = rng() * Math.PI;
     const lx = v.x + Math.cos(a) * Rx * off, lz = v.z + Math.sin(a) * Rz * off;
-    v.lake = { x: lx, z: lz, rx: Rm * rng.range(0.32, 0.45), rz: Rm * rng.range(0.3, 0.42), c: Math.cos(lr), s: Math.sin(lr), wl: y0 - 0.45, D: band.fluid === 'lava' ? rng.range(0.9, 1.5) : rng.range(1.3, 2.6), k: 1.3, fluid: band.fluid || 'water' };
+    v.lake = { x: lx, z: lz, rx: Rm * rng.range(0.32, 0.45), rz: Rm * rng.range(0.3, 0.42), c: Math.cos(lr), s: Math.sin(lr), wl: y0 - 0.75, D: band.fluid === 'lava' ? rng.range(0.9, 1.5) : rng.range(1.3, 2.6), k: 1.3, fluid: band.fluid || 'water' };
   }
   // where a point at normalised (h, angle a) of the vault's own frame is in the world
   const at = (h, a) => { const u = Math.cos(a) * h * Rx, w = Math.sin(a) * h * Rz; return { x: v.x + u * v.c - w * v.s, z: v.z + u * v.s + w * v.c }; };
@@ -494,7 +494,7 @@ export function lakeDist(L, nz, x, z) {
 /** Is (x, y, z) in a vault lake's water (or the shore dips round it that fill too)? */
 export function inVaultLake(v, nz, x, y, z) {
   const L = v.lake;
-  return !!L && y < L.wl && y > L.wl - L.D - 1.5 && lakeDist(L, nz, x, z) < 1.6;
+  return !!L && y < L.wl && y > L.wl - L.D - 1.5 && lakeDist(L, nz, x, z) < 1.75;
 }
 
 /**
