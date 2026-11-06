@@ -347,6 +347,11 @@ function planVaults(nodes, edges, near, seed, o) {
   const out = [];
   const extra = o.vaultAvoid || [];
   const blocked = (x, y, z, pad) => near(x, y, z, pad) || extra.some((a) => Math.hypot(a.x - x, (a.y - y) * 1.3, a.z - z) < a.r + pad);
+  // everything a vault must keep clear of, as spheres / columns (a quick test before the fine one)
+  const all = [...(o.avoid || []), ...extra];
+  const cols = o.avoidCol || [];
+  const anyNear = (x, y, z, R, H) => all.some((a) => Math.hypot(a.x - x, a.z - z) < a.r + R + 4 && a.y > y - a.r - 4 && a.y < y + H + a.r + 4) ||
+    cols.some((c) => Math.hypot(c.x - x, c.z - z) < c.r + R + 4 && y < c.y1 + 4 && y + H > c.y0 - 4);
   for (const band of o.vaults) {
     const cand = nodes.filter((n) => !n.off && n.deg >= 2 && n.kind >= GROTTO && -n.yF > band.d0 && -n.yF < band.d1 && Math.abs(n.x) < 70 && Math.abs(n.z) < 70);
     for (let i = cand.length - 1; i > 0; i--) { const j = rng.int(0, i); const t = cand[i]; cand[i] = cand[j]; cand[j] = t; }
@@ -362,7 +367,7 @@ function planVaults(nodes, edges, near, seed, o) {
       if (Math.abs(n.x) + Rm > 90 || Math.abs(n.z) + Rm > 90 || -(y0 + H) < 3.5) continue;
       if (out.some((v) => Math.hypot(v.x - n.x, v.z - n.z) < v.Rm + Rm + 8 && Math.abs(v.y0 - y0) < Math.max(v.H, H) + 6)) continue;
       let bad = false;
-      for (let a = 0; a < 6.283 && !bad; a += 0.5) for (const f of [0, 0.5, 1]) {
+      if (anyNear(n.x, y0, n.z, Rm, H)) for (let a = 0; a < 6.283 && !bad; a += 0.5) for (const f of [0, 0.5, 1]) {
         for (const hy of [0.5, H * 0.5, H - 0.5]) if (blocked(n.x + Math.cos(a) * Rm * f, y0 + hy, n.z + Math.sin(a) * Rm * f, 3)) { bad = true; break; }
         if (bad) break;
       }
@@ -434,11 +439,17 @@ function makeVault(id, n, band, rng, d, nodes, edges) {
     if (ia || ib) {
       // a passage to a swallowed chamber: it bends at the cavern's wall, coming down (a ramp in
       // the rock) to a height you can walk out of the wall at, then runs level into the cavern
-      const cap = y0 + H * 0.42, oi = ia ? 6 : 0, bi = ia ? 0 : 6;
+      const cap = y0 + H * 0.42, lo = v.lake ? v.lake.wl + 0.35 : y0 - 0.3, oi = ia ? 6 : 0, bi = ia ? 0 : 6;
+      // (a chamber swallowed from just outside the wall: the passage still runs on into the cavern)
+      const hb = hOf(p[bi], p[bi + 2]);
+      if (hb > 0.8) { const k = 0.8 / hb; p[bi] = v.x + (p[bi] - v.x) * k; p[bi + 2] = v.z + (p[bi + 2] - v.z) * k; }
       const ox = p[oi], oy = p[oi + 1], oz = p[oi + 2], bx = p[bi], bz = p[bi + 2];
       let t = 0;
       for (; t < 1; t += 0.02) if (hOf(ox + (bx - ox) * t, oz + (bz - oz) * t) < 1.12) break;
-      const my = Math.min(oy, cap);
+      const my = Math.max(lo, Math.min(oy, cap));
+      const run = Math.hypot(bx - ox, bz - oz) * t;
+      // (a passage climbing up from far below, or a steep drop: it goes; the cavern has other ways)
+      if (Math.abs(my - oy) > run * 0.8 + 1.2) { e.dead = true; A.deg--; B.deg--; continue; }
       p[3] = ox + (bx - ox) * t; p[4] = my; p[5] = oz + (bz - oz) * t;
       p[bi + 1] = my;
       reshape(e);
@@ -456,7 +467,7 @@ function makeVault(id, n, band, rng, d, nodes, edges) {
     if (!ms.length && !ia && !ib) continue;
     // a passage coming in too high to reach (or under the lake): the network can do without it?
     const tooHigh = ms.some((m) => m.y > y0 + H * 0.6);
-    if (tooHigh && !ia && !ib && A.deg > 1 && B.deg > 1) { e.dead = true; A.deg--; B.deg--; continue; }
+    if (tooHigh) { e.dead = true; A.deg--; B.deg--; continue; }
     e.vlt = v;
     for (const m of ms) v.mouths.push(m);
   }
@@ -574,15 +585,19 @@ function vault(v, nz, x, y, z, rx, rz) {
   const F = frame(v, nz, x, y, z, rx, rz, FR);
   if (F.h0 > 1.5) return -1;
   const h = F.h;
-  const fy = vaultFloor(v, nz, rx, rz, h, F.u, F.w);
-  let o = (y - fy) * 0.32;
+  // deep in the rock round it or over it: no need for the floor
+  const ow = (1 - h) * v.Rm * 0.1;
+  if (ow < -0.2) return ow;
   let ry = vaultRoof(v, nz, rx, rz, h);
+  if ((ry - y) * 0.1 < -0.3) return (ry - y) * 0.1;
   // the roof cracked into blocks, some hanging lower than others
   if (y > ry - 4) ry -= Math.abs(nz[0].n(rx * 0.27 + 7.7, y * 0.27, rz * 0.27 - 1.1)) * v.frac * 9;
-  const or = (ry - y) * 0.1;
-  if (or < o) o = or;
-  if (h > 1) { const ow = (1 - h) * v.Rm * 0.1; if (ow < o) o = ow; }
-  return o;
+  let o = (ry - y) * 0.1;
+  if (ow < o) o = ow;
+  if (y - v.y0 > 9.5 || o < -0.15) return o; // (well above any floor)
+  const fy = vaultFloor(v, nz, rx, rz, h, F.u, F.w);
+  const of = (y - fy) * 0.32;
+  return of < o ? of : o;
 }
 
 /** The vault (if any) a point is in (raw metres; pad: normalised slack round the wall). */

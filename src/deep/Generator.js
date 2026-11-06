@@ -611,7 +611,7 @@ export class ChunkGen {
           const dens = tri(this.dens, o, fx, fy, fz) + tri(this.lump, o, fx, fy, fz) + (h3(vx, vy, vz, p.seed) - 0.5) * 0.012;
           if (dens > 0) {
             // a giant cavern's formations (gen/vaults.js) stand in its open air
-            const fm = VD ? vaultSolid(VD, lx + CS * lz, xm, ym, zm, h3(vx, vy, vz, p.seed + 3) - 0.5) : 0;
+            const fm = VD && VD.has[lx + CS * lz] ? vaultSolid(VD, lx + CS * lz, xm, ym, zm, h3(vx, vy, vz, p.seed + 3) - 0.5) : 0;
             vox[vi] = fm;
             continue;
           }

@@ -731,7 +731,7 @@ export function* modelSteps(type, v = 0, p = 0) {
   const fine = ext ? refineSteps(ext, scale) : 0;
   if (fine) {
     yield 'grid';
-    refineGrid(b.grid, fine);
+    for (let i = 0; i < fine; i++) { refineGrid(b.grid, 1); yield 'grid'; } // (a pass a slice: the game keeps its frame)
     const k = 1 << fine;
     scale /= k;
     if (pivot) pivot = pivot.map((q) => q * k);

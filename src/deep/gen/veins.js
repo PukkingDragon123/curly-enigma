@@ -119,7 +119,7 @@ export function planVeins(plan, rng, density, zoneDepths, near) {
       const len = (5 + size * 3.2 + rng() * 6) * (RARE.has(item) ? 0.6 : 1);
       // a few candidate places; keep the one whose vein runs nearest the caves
       let best = null, bs = -1;
-      const tries = 4;
+      const tries = 3;
       for (let c = 0; c < tries; c++) {
         let x = rng.range(-72, 72), z = rng.range(-72, 72), y = -rng.range(d0, d1);
         if (near && zone === near.zone && k < near.n) { x = near.x + rng.range(-near.r, near.r); z = near.z + rng.range(-near.r, near.r); y = -rng.range(Math.max(d0, 3.5), Math.min(d1, 16)); }
@@ -133,7 +133,7 @@ export function planVeins(plan, rng, density, zoneDepths, near) {
         const sy = kind === 'seam' ? onBand(plan, sx, sz, B, y) : y;
         const pts = trace(plan, kind, sx, sy, sz, a, len, rng, B, dv);
         let score = 0;
-        for (let i = 0; i < pts.length; i += 2) {
+        for (let i = 1; i < pts.length; i += 3) {
           const q = pts[i], dd = density(plan, q.x, q.y, q.z);
           if (dd > -0.3 && dd < 0.06) score += 1; // within a few metres of a wall, or crossing it
           else if (dd >= 0.06) score += 0.3; // through open cave (the bits in the air are lost)

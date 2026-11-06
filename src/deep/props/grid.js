@@ -187,7 +187,7 @@ export function* meshPropSteps(grid, opts = {}) {
         emit(fi, Math.floor((key - 1) / 4), lv, lv, lv, lv, sl, a, b, w, h);
         a += w;
       }
-      if ((sl & 3) === 3) yield fi; // big grids mesh in slices
+      if ((sl & 3) === 3 || U * V > 3000) yield fi; // big grids mesh in slices (fine ones a slice at a time)
     }
     yield fi;
   }

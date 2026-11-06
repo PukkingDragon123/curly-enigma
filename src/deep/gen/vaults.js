@@ -76,10 +76,10 @@ export function dressVaults(plan, density) {
         if (lakeDist(L, nz, x, z) > 0.88) continue;
         if (v.cols.some((c) => Math.hypot(c.x - x, c.z - z) < c.r * 1.9 + 0.8)) continue;
         if (plan.falls.some((f) => Math.hypot(f.x - x, f.z - z) < 4)) continue;
-        let y = L.wl + 0.4, ok = true;
-        for (; y < v.y0 + v.H + 4; y += 0.3) {
+        let y = L.wl + 0.4, ok = true, i = 0;
+        for (; y < v.y0 + v.H + 4; y += 0.3, i++) {
           if (!open(x, y, z, 0.03)) break;
-          if (!open(x + 0.35, y, z, 0) || !open(x - 0.35, y, z, 0) || !open(x, y, z + 0.35, 0) || !open(x, y, z - 0.35, 0)) { ok = false; break; }
+          if (i % 3 === 0 && (!open(x + 0.35, y, z, 0) || !open(x - 0.35, y, z, 0) || !open(x, y, z + 0.35, 0) || !open(x, y, z - 0.35, 0))) { ok = false; break; }
         }
         if (!ok || y - L.wl < 4 || open(x, y + 0.7, z, 0)) continue; // a roof right over it
         const hw = r.range(0.1, 0.26), ht = r.range(0.045, 0.08), pad = hw + 0.2;
@@ -96,14 +96,14 @@ export function dressVaults(plan, density) {
         const x = v.x + Math.cos(a) * v.Rx * d, z = v.z + Math.sin(a) * v.Rz * d;
         let y = v.y0 + 2.5;
         if (!open(x, y, z)) continue;
-        for (; y < v.y0 + v.H + 4; y += 0.25) if (!open(x, y, z, 0)) break;
+        for (; y < v.y0 + v.H + 4; y += 0.4) if (!open(x, y, z, 0)) break;
         if (open(x, y, z, 0)) continue;
         ax = x; ay = y + 0.05; az = z; nx = 0; ny = -1; nzz = 0;
       } else {
         const a = r() * 6.283, y = v.y0 + r.range(1.4, v.H * 0.55);
         const dx = Math.cos(a), dz = Math.sin(a);
         let t = 1, found = false;
-        for (; t < v.Rm * 1.6; t += 0.25) {
+        for (; t < v.Rm * 1.6; t += 0.4) {
           if (!open(v.x + dx * t, y, v.z + dz * t, 0)) { found = t > 2; break; }
         }
         if (!found) continue;
@@ -237,7 +237,8 @@ export function stampFalls(list, vox, X0, Y0, Z0, CS, VOX, host) {
  */
 export function makeColumns(CS) {
   const n = CS * CS, F = () => new Float32Array(n);
-  return { v: null, has: new Uint8Array(n), cx: F(), cz: F(), rb: F(), L: F(), root: F(), lx: F(), lz: F(), ph: F(), mrb: F(), mL: F(), mroot: F(), col: new Int16Array(n), cd: F(), ca: F(), mat: 0, mite: 0 };
+  return { v: null, has: new Uint8Array(n), cx: F(), cz: F(), rb: F(), L: F(), root: F(), lx: F(), lz: F(), ph: F(), mrb: F(), mL: F(), mroot: F(), col: new Int16Array(n), cd: F(), ca: F(),
+    t0: F(), t1: F(), m0: F(), m1: F(), mat: 0, mite: 0 };
 }
 
 export function vaultColumns(plan, X0, Y0, Z0, CS, VOX, out) {
@@ -254,6 +255,16 @@ export function vaultColumns(plan, X0, Y0, Z0, CS, VOX, out) {
   const D = vaultDress(v);
   out.v = v; out.mat = D.stal; out.mite = D.mite;
   out.has.fill(0);
+  // each column's profile (foot and head flares) by voxel height in this chunk
+  if (!out.prof || out.prof.length < v.cols.length * CS) out.prof = new Float32Array(Math.max(8, v.cols.length) * CS);
+  out.Y0 = Y0;
+  for (let k = 0; k < v.cols.length; k++) {
+    const c = v.cols[k];
+    for (let y = 0; y < CS; y++) {
+      const ym = (Y0 + y) / VOX, t = Math.max(0, Math.min(1, (ym - c.f) / (c.rf - c.f)));
+      out.prof[k * CS + y] = ym > c.f - 1 && ym < c.rf ? c.r * (0.72 + 0.55 * (Math.exp(-t * 7) + Math.exp(-(1 - t) * 6))) : -1;
+    }
+  }
   const falls = (plan.falls || []).filter((f) => f.vault === v.id);
   // cell spikes, cached per chunk (roof and floor under each looked up once)
   const cells = new Map();
@@ -297,7 +308,7 @@ export function vaultColumns(plan, X0, Y0, Z0, CS, VOX, out) {
     out.col[i] = -1;
     for (let k = 0; k < v.cols.length; k++) {
       const c = v.cols[k], d = Math.hypot(xm - c.x, zm - c.z);
-      if (d < c.r * 1.9 + 0.2) { out.col[i] = k; out.cd[i] = d; out.ca[i] = Math.atan2(zm - c.z, xm - c.x); out.has[i] = 1; break; }
+      if (d < c.r * 1.5 + 0.12) { out.col[i] = k; out.cd[i] = d; out.ca[i] = Math.atan2(zm - c.z, xm - c.x); out.has[i] = 1; break; }
     }
     // the nearest spike reaching over this column
     const ix = Math.floor(xm / G), iz = Math.floor(zm / G);
@@ -309,10 +320,16 @@ export function vaultColumns(plan, X0, Y0, Z0, CS, VOX, out) {
       const d = Math.hypot(xm - c.sx, zm - c.sz);
       if (d < reach && d / reach < bk) { bk = d / reach; best = c; }
     }
+    out.t0[i] = out.t1[i] = out.m0[i] = out.m1[i] = 0;
     if (best) {
       out.has[i] = 1;
       out.cx[i] = best.sx; out.cz[i] = best.sz; out.rb[i] = best.rb; out.L[i] = best.L; out.root[i] = best.root;
       out.lx[i] = best.lx; out.lz[i] = best.lz; out.ph[i] = best.ph; out.mrb[i] = best.mrb; out.mL[i] = best.mL; out.mroot[i] = best.mroot;
+      // the heights where each could reach over this column (most voxels skip the shapes)
+      const d0 = Math.hypot(xm - best.sx, zm - best.sz), lean = Math.abs(best.lx) + Math.abs(best.lz);
+      if (d0 - lean < best.rb * 1.25 + 0.04) { out.t0[i] = best.root - 1.4 - best.L * 1.06; out.t1[i] = best.root - 1.4 + 1.5; }
+      if (best.mL > 0 && d0 < best.mrb * 1.8 + 0.04) { out.m0[i] = best.mroot + 0.6 - best.mL; out.m1[i] = best.mroot + 0.6 + best.mL; }
+      if (out.t0[i] === out.t1[i] && out.m0[i] === out.m1[i] && out.col[i] < 0) out.has[i] = 0;
     } else out.rb[i] = 0;
   }
   return out;
@@ -323,31 +340,31 @@ export function vaultSolid(o, i, xm, ym, zm, jit) {
   if (!o.has[i]) return 0;
   const k = o.col[i];
   if (k >= 0) {
-    const c = o.v.cols[k];
-    if (ym > c.f - 1 && ym < c.rf) {
-      const t = Math.max(0, Math.min(1, (ym - c.f) / (c.rf - c.f)));
-      const th = o.ca[i];
+    const pr = o.prof[k * 32 + ((ym * 16 - o.Y0 + 0.5) | 0)];
+    if (pr > 0 && o.cd[i] < pr * 1.15 + 0.04) {
+      const c = o.v.cols[k], th = o.ca[i];
       // fluted: ribs round it, wider at the foot and the head
-      const rr = c.r * (0.72 + 0.55 * (Math.exp(-t * 7) + Math.exp(-(1 - t) * 6))) * (1 + 0.1 * Math.sin(c.k * th + c.ph + ym * 0.35) + 0.04 * Math.sin(17 * th + ym * 1.3));
+      const rr = pr * (1 + 0.1 * Math.sin(c.k * th + c.ph + ym * 0.35) + 0.04 * Math.sin(17 * th + ym * 1.3));
       if (o.cd[i] < rr + jit * 0.04) return o.mat;
     }
   }
   const rb = o.rb[i];
   if (rb > 0) {
     // stalactite: root in the roof, rings down its length, a lean, a drop swelling at the tip
-    const L = o.L[i], t = (o.root[i] - 1.4 - ym) / L;
-    if (t * L > -1.5 && t < 1.06) {
-      const tt = Math.max(0, t), lean = tt * tt;
+    if (ym > o.t0[i] && ym < o.t1[i]) {
+      const L = o.L[i], t = (o.root[i] - 1.4 - ym) / L;
+      const tt = t > 0 ? t : 0, lean = tt * tt;
       const d = Math.hypot(xm - o.cx[i] - o.lx[i] * lean, zm - o.cz[i] - o.lz[i] * lean);
-      let r = t < 0 ? rb * 1.25 : rb * Math.pow(Math.max(0, 1 - t), 1.35) * (1 + 0.14 * Math.sin(t * L * 9 + o.ph));
+      const q = 1 - tt;
+      let r = t < 0 ? rb * 1.25 : q > 0 ? rb * q * Math.sqrt(Math.sqrt(q)) * (1 + 0.14 * Math.sin(t * L * 9 + o.ph)) : 0;
       if (t > 0.9) r = Math.max(r, rb * 0.24 * Math.max(0, 1 - Math.abs(t - 0.98) * 9));
       if (d < r + jit * 0.025) return o.mat;
     }
     // stalagmite: blunt, rounded on top, a flared "fried egg" foot
     const mL = o.mL[i];
-    if (mL > 0) {
+    if (mL > 0 && ym > o.m0[i] && ym < o.m1[i]) {
       const u = (ym - o.mroot[i] - 0.6) / mL;
-      if (u > -1 && u < 1) {
+      {
         const uu = Math.max(0, u);
         const d = Math.hypot(xm - o.cx[i], zm - o.cz[i]);
         let r = o.mrb[i] * (0.3 + 0.7 * Math.pow(1 - uu, 0.7)) * (1 + 0.1 * Math.sin(uu * mL * 7 + o.ph)) + o.mrb[i] * 0.8 * Math.exp(-uu * 9);

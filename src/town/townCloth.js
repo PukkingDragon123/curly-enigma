@@ -57,11 +57,11 @@ export function buildTownCloth(S) {
   for (const s of T.shops) {
     const N = s.wall === 'N', face = (N ? T.northFace : T.westFace) + 1;
     const c = SHOP_BANNER[s.id] || SHOP_BANNER.tools;
-    const along = N ? s.a + 0.32 : s.a + s.w - 0.32, y = 2.62, L = 0.95;
+    const along = N ? s.a + 0.26 : s.a + s.w - 0.26, y = 2.72, L = 0.95;
     const br = bracket(L);
     if (N) br.position.set(along, y, face); else { br.position.set(face, y, along); br.rotation.y = Math.PI / 2; }
     B.addStatic(br);
-    const bw = 0.62, bh = 1.15;
+    const bw = 0.56, bh = 0.98;
     const cl = new Cloth({ w: bw, h: bh, nx: 6, ny: 10, tex: clothTexture('banner', { ...c, seed: s.a * 7 }), iters: 4, damping: 1.5, g, gust: 1 });
     // hung along the bracket (the sheet's plane is square to the wall: you see it down the street)
     if (N) cl.place(along, y - 0.05, face + L - 0.12, Math.PI / 2); else cl.place(face + L - 0.12 - bw, y - 0.05, along, 0);

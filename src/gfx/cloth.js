@@ -521,7 +521,8 @@ export class ClothSet {
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
     this.geo = geo;
     this.tex = tex;
-    const mat = this.makeMat ? this.makeMat(tex) : new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, side: THREE.DoubleSide, roughness: 1, metalness: 0, alphaTest: 0.5 });
+    // (a little of its own colour shows in the dark, as the baked voxel props around it do)
+    const mat = this.makeMat ? this.makeMat(tex) : new THREE.MeshLambertMaterial({ map: tex, vertexColors: true, side: THREE.DoubleSide, alphaTest: 0.5, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: this.glow ?? 0.2 });
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.name = this.name;
     this.mesh.frustumCulled = false;
