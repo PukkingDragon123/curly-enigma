@@ -153,7 +153,8 @@ export function buildNetwork(seed, o = {}) {
     for (let i = 0; i < prims.length; i++) {
       const p = prims[i];
       const bx0 = Math.max(0, Math.floor((p.x0 - BX0) / B)), bx1 = Math.min(NBX - 1, Math.floor((p.x1 - BX0) / B));
-      const by0 = Math.max(0, Math.floor((p.y0 - BY0) / B)), by1 = Math.min(NBY - 1, Math.floor((p.y1 - BY0) / B));
+      const py0 = p.vault ? p.yb0 : p.y0, py1 = p.vault ? p.yb1 : p.y1; // (a vault's y0 is its floor)
+      const by0 = Math.max(0, Math.floor((py0 - BY0) / B)), by1 = Math.min(NBY - 1, Math.floor((py1 - BY0) / B));
       const bz0 = Math.max(0, Math.floor((p.z0 - BZ0) / B)), bz1 = Math.min(NBZ - 1, Math.floor((p.z1 - BZ0) / B));
       for (let bz = bz0; bz <= bz1; bz++) for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) {
         const b = bx + NBX * (by + NBY * bz);
@@ -230,7 +231,8 @@ export function netDensity(net, nz, x, y, z) {
   const L = net.list;
   for (let i = s0; i < s1; i++) {
     const p = L[i];
-    if (x < p.x0 || x > p.x1 || z < p.z0 || z > p.z1 || y < p.y0 || y > p.y1) continue;
+    if (x < p.x0 || x > p.x1 || z < p.z0 || z > p.z1) continue;
+    if (p.vault ? (y < p.yb0 || y > p.yb1) : (y < p.y0 || y > p.y1)) continue;
     const o = p.edge ? passage(p, wx, y, wz) : p.vault ? vault(p, nz, wx, y, wz, x, z) : chamber(p, nz, wx, y, wz, x, z);
     if (o > d) d = o;
   }
@@ -314,4 +316,247 @@ function passage(e, x, y, z) {
   }
   const fl = v * 0.32;
   return fl < o ? fl : o;
+}
+
+// ---------------------------------------------------------------- giant caverns (vaults)
+const sm01 = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+const TALUS = 0.58; // rise per metre of the rubble slopes (about 30°: an easy scramble either way)
+
+/**
+ * Pick the giant caverns (a band at a time: o.vaults) and fit them into the network: the chambers
+ * inside one are swallowed, passages between swallowed chambers go (the cavern is the way now),
+ * and every passage that still comes in gets a mouth: where its floor line meets the cavern's
+ * wall. A mouth high up the wall gets a talus cone down to the floor (vaultFloor), a passage that
+ * would come in too high to reach is dropped where the network can spare it.
+ */
+function planVaults(nodes, edges, near, seed, o) {
+  const rng = makeRng(seed + 9191);
+  const out = [];
+  const extra = o.vaultAvoid || [];
+  const blocked = (x, y, z, pad) => near(x, y, z, pad) || extra.some((a) => Math.hypot(a.x - x, (a.y - y) * 1.3, a.z - z) < a.r + pad);
+  for (const band of o.vaults) {
+    const cand = nodes.filter((n) => !n.off && n.deg >= 2 && n.kind >= GROTTO && -n.yF > band.d0 && -n.yF < band.d1 && Math.abs(n.x) < 70 && Math.abs(n.z) < 70);
+    for (let i = cand.length - 1; i > 0; i--) { const j = rng.int(0, i); const t = cand[i]; cand[i] = cand[j]; cand[j] = t; }
+    let made = 0;
+    for (const n of cand) {
+      if (made >= band.n) break;
+      if (n.off) continue;
+      const big = band.big ?? 1;
+      const R = rng.range(13, 18.5) * big, asp = rng.range(0.8, 1.25);
+      const Rx = R * Math.sqrt(asp), Rz = R / Math.sqrt(asp), Rm = Math.max(Rx, Rz);
+      const H = rng.range(13.5, 18) * (0.8 + 0.2 * big);
+      const y0 = n.yF - rng.range(0.4, 1.2);
+      if (Math.abs(n.x) + Rm > 90 || Math.abs(n.z) + Rm > 90 || -(y0 + H) < 3.5) continue;
+      if (out.some((v) => Math.hypot(v.x - n.x, v.z - n.z) < v.Rm + Rm + 8 && Math.abs(v.y0 - y0) < Math.max(v.H, H) + 6)) continue;
+      let bad = false;
+      for (let a = 0; a < 6.283 && !bad; a += 0.5) for (const f of [0, 0.5, 1]) {
+        for (const hy of [0.5, H * 0.5, H - 0.5]) if (blocked(n.x + Math.cos(a) * Rm * f, y0 + hy, n.z + Math.sin(a) * Rm * f, 3)) { bad = true; break; }
+        if (bad) break;
+      }
+      if (bad) continue;
+      out.push(makeVault(out.length, n, band, rng, { Rx, Rz, Rm, H, y0 }, nodes, edges));
+      made++;
+    }
+  }
+  return out;
+}
+
+function makeVault(id, n, band, rng, d, nodes, edges) {
+  const { Rx, Rz, Rm, H, y0 } = d;
+  const rot = rng() * Math.PI;
+  const v = {
+    vault: true, kind: VAULT, id, node: n.id, x: n.x, z: n.z, y0, H, Rx, Rz, Rm, rot, c: Math.cos(rot), s: Math.sin(rot), iRx: 1 / Rx, iRz: 1 / Rz,
+    zone: band.zone, seed: rng.int(1, 1e9), ph: rng() * 100, Fr: rng.range(0.6, 1.6), frac: rng.range(0.1, 0.2),
+    stal: rng.range(0.25, 0.55) * (band.stal ?? 1), stalL: rng.range(2.5, 5), mouths: [], piles: [], cols: [], terr: null, lake: null,
+  };
+  // the lake: a basin in the floor a little off centre (lava in the magma deep)
+  if (rng() < (band.lake ?? 0.7)) {
+    const a = rng() * 6.283, off = rng.range(0, 0.15), lr = rng() * Math.PI;
+    const lx = v.x + Math.cos(a) * Rx * off, lz = v.z + Math.sin(a) * Rz * off;
+    v.lake = { x: lx, z: lz, rx: Rm * rng.range(0.32, 0.45), rz: Rm * rng.range(0.3, 0.42), c: Math.cos(lr), s: Math.sin(lr), wl: y0 - 0.45, D: band.fluid === 'lava' ? rng.range(0.9, 1.5) : rng.range(1.3, 2.6), k: 1.3, fluid: band.fluid || 'water' };
+  }
+  // where a point at normalised (h, angle a) of the vault's own frame is in the world
+  const at = (h, a) => { const u = Math.cos(a) * h * Rx, w = Math.sin(a) * h * Rz; return { x: v.x + u * v.c - w * v.s, z: v.z + u * v.s + w * v.c }; };
+  const lakeNear = (p, pad) => v.lake && Math.hypot((p.x - v.lake.x) / v.lake.rx, (p.z - v.lake.z) / v.lake.rz) < pad;
+  // breakdown piles: blocks fallen from the roof, out in the dry
+  const np = rng.int(1, 3);
+  for (let i = 0; i < np; i++) {
+    const p = at(rng.range(0.35, 0.72), rng() * 6.283);
+    if (lakeNear(p, 1.5)) continue;
+    const r = rng.range(2.6, 5.5);
+    v.piles.push({ x: p.x, z: p.z, r, i2: 1 / (r * r), h: rng.range(1.2, 3.4) });
+  }
+  // a terrace along part of the wall (a second level), a rubble ramp down at one end
+  if (rng() < 0.65) {
+    const a = rng() * 6.283, aw = rng.range(0.45, 0.85), hT = rng.range(0.66, 0.74), yT = y0 + rng.range(3.2, 5.6);
+    v.terr = { a, aw, h: hT, y: yT };
+    const e = at((hT + 0.95) / 2, a + aw * 0.8 * (rng() < 0.5 ? 1 : -1));
+    v.mouths.push({ x: e.x, z: e.z, y: yT - 0.1, ramp: true });
+  }
+  // columns where a stalactite met its stalagmite long ago
+  const nc = rng.int(2, 6);
+  for (let i = 0; i < nc; i++) {
+    const p = at(rng.range(0.12, 0.78), rng() * 6.283);
+    if (v.cols.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < c.r + 4)) continue;
+    v.cols.push({ x: p.x, z: p.z, r: rng() < 0.25 ? rng.range(1.4, 2.3) : rng.range(0.45, 1.2), ph: rng() * 6.283, k: rng.int(5, 9) });
+  }
+  // swallow the chambers inside it (and any whose room would reach well into it)
+  for (const q of nodes) {
+    if (q.yF < y0 - 3 || q.yF > y0 + H - 1.2) continue;
+    const dx = q.x - v.x, dz = q.z - v.z;
+    const h = Math.hypot((dx * v.c + dz * v.s) / Rx, (-dx * v.s + dz * v.c) / Rz);
+    const qr = Math.max(q.Rx, q.Rz) * 1.25;
+    if (h < 1.15 || Math.hypot(dx, dz) - qr < Rm * 0.8) { q.off = true; q.vault = v; }
+  }
+  // passages: inside ones go; ones coming in get a mouth (a talus cone under it when it is high)
+  const roofAt = (h) => y0 + H * Math.sqrt(Math.max(0, 1 - h ** 8));
+  const hOf = (x, z) => { const dx = x - v.x, dz = z - v.z; return Math.hypot((dx * v.c + dz * v.s) / Rx, (-dx * v.s + dz * v.c) / Rz); };
+  for (const e of edges) {
+    if (e.dead) continue;
+    const A = nodes[e.a], B = nodes[e.b];
+    const ia = A.vault === v, ib = B.vault === v;
+    if (ia && ib) { e.dead = true; A.deg--; B.deg--; continue; }
+    if (e.x1 < v.x - Rm - 2 || e.x0 > v.x + Rm + 2 || e.z1 < v.z - Rm - 2 || e.z0 > v.z + Rm + 2 || e.y1 < y0 - 4 || e.y0 > y0 + H + 2) continue;
+    const p = e.p, N = 48;
+    const pt = (t) => { const s = t < 0.5 ? t * 2 : (t - 0.5) * 2, k = t < 0.5 ? 0 : 3; return [p[k] + (p[k + 3] - p[k]) * s, p[k + 1] + (p[k + 4] - p[k + 1]) * s, p[k + 2] + (p[k + 5] - p[k + 2]) * s]; };
+    const inside = (q) => { const h = hOf(q[0], q[2]); return h < 1 && q[1] > y0 - 3.5 && q[1] < roofAt(h) + 0.5; };
+    const ms = [];
+    for (const [t0, dt] of [[0, 1 / N], [1, -1 / N]]) {
+      if ((t0 === 0 && ia) || (t0 === 1 && ib)) continue;
+      for (let i = 0, t = t0; i <= N; i++, t += dt) {
+        const q = pt(t);
+        if (inside(q)) { ms.push({ x: q[0], z: q[2], y: Math.max(q[1], v.lake ? v.lake.wl + 0.35 : -1e9) }); break; }
+      }
+    }
+    if (!ms.length && !ia && !ib) continue;
+    // a passage coming in too high to reach (or under the lake): the network can do without it?
+    const tooHigh = ms.some((m) => m.y > y0 + H * 0.7);
+    if (tooHigh && !ia && !ib && A.deg > 1 && B.deg > 1) { e.dead = true; A.deg--; B.deg--; continue; }
+    e.vlt = v;
+    for (const m of ms) v.mouths.push(m);
+  }
+  v.yb0 = y0 - (v.lake ? v.lake.D + 1.5 : 1.5);
+  v.yb1 = y0 + H + 2.5;
+  const pad = Rm * 1.2 + 4;
+  v.x0 = v.x - pad; v.x1 = v.x + pad; v.z0 = v.z - pad; v.z1 = v.z + pad; // (its box in y: yb0..yb1)
+  return v;
+}
+
+/** Distance from a vault lake's centre, normalised (1 = the waterline of a flat shore; wobbly). */
+export function lakeDist(L, nz, x, z) {
+  const dx = x - L.x, dz = z - L.z;
+  const a = (dx * L.c + dz * L.s) / L.rx, b = (-dx * L.s + dz * L.c) / L.rz;
+  return Math.sqrt(a * a + b * b) + nz[1].n(x * 0.16 + 3.1, 3.3, z * 0.16 - 2.2) * 0.16;
+}
+/** Is (x, y, z) in a vault lake's water (or the shore dips round it that fill too)? */
+export function inVaultLake(v, nz, x, y, z) {
+  const L = v.lake;
+  return !!L && y < L.wl && y > L.wl - L.D - 1.5 && lakeDist(L, nz, x, z) < 1.6;
+}
+
+/**
+ * The floor of a vault at (x, z) (raw metres; h = normalised distance from the centre on the
+ * warped wall, u / w the warped point in the vault's frame): a gentle bowl rising to the walls,
+ * silt hummocks, the lake's basin, talus cones under the mouths, breakdown piles, the terrace.
+ */
+export function vaultFloor(v, nz, x, z, h, u, w) {
+  const hum = nz[3].n(x * 0.21 + 5.5, 0.37, z * 0.21 - 3.1) * 0.21 + nz[0].n(x * 0.6, 1.7, z * 0.6) * 0.07;
+  const rk = h > 0.58 ? Math.min(1, (h - 0.58) / 0.42) : 0;
+  let f = v.y0 + v.Fr * rk * rk + hum;
+  const L = v.lake;
+  if (L) {
+    const dL = lakeDist(L, nz, x, z);
+    if (dL < 2.2) {
+      const lf = L.wl + (dL < 1 ? -L.D * (1 - dL * dL) : (dL - 1) * L.k) + hum * 0.35;
+      if (lf < f) f = lf;
+    }
+  }
+  // talus under the mouths: lumpy rubble at ~30°
+  const M = v.mouths;
+  for (let i = 0; i < M.length; i++) {
+    const m = M[i], c = m.y + 0.25 - TALUS * Math.hypot(x - m.x, z - m.z);
+    if (c > f - 0.6) { const t = c + nz[3].n(x * 0.9 + i, 2.2, z * 0.9) * 0.22; if (t > f) f = t; }
+  }
+  for (const p of v.piles) {
+    const dx = x - p.x, dz = z - p.z, pd = (dx * dx + dz * dz) * p.i2;
+    if (pd < 1) {
+      const bo = nz[3].n(x * 0.85 + 11.1, f * 0.85, z * 0.85 - 3.7);
+      const t = f + p.h * (1 - pd) * (1 - pd) * (0.55 + bo * 0.9) + Math.max(0, bo) * 0.5 * (1 - pd);
+      if (t > f) f = t;
+    }
+  }
+  const T = v.terr;
+  if (T && h > T.h - 0.25) {
+    let da = Math.abs(Math.atan2(w, u) - T.a);
+    if (da > Math.PI) da = 2 * Math.PI - da;
+    const e = Math.min((h - T.h) * v.Rm, (T.aw - da) * v.Rm * h); // metres in from the shelf's edge
+    const tf = T.y + hum * 0.6 + Math.min(0, e) * 2.6;
+    if (tf > f) f = tf;
+  }
+  return f;
+}
+
+/** The roof of a vault over (x, z) (no fractures): highest in the middle, down to the floor at the wall. */
+export function vaultRoof(v, nz, x, z, h) {
+  const h2 = h * h, h8 = h2 * h2 * h2 * h2;
+  return v.y0 + v.H * Math.sqrt(Math.max(0, 1 - h8)) + nz[0].n(x * 0.11 + v.ph, 9.1, z * 0.11) * 1.3 * Math.max(0, 1 - h2);
+}
+
+/** A vault's frame at a warped point: { h, u, w } (h: normalised distance, lobes and ledges in). */
+function frame(v, nz, x, y, z, rx, rz, o) {
+  const dx = x - v.x, dz = z - v.z;
+  const u = (dx * v.c + dz * v.s) * v.iRx, w = (-dx * v.s + dz * v.c) * v.iRz;
+  const h0 = Math.sqrt(u * u + w * w);
+  o.u = u; o.w = w; o.h0 = h0;
+  if (h0 > 1.5) { o.h = h0; return o; }
+  // lobes and alcoves: the wall's reach varies with direction (and a little with height)
+  const iu = u / (h0 + 1e-4), iw = w / (h0 + 1e-4);
+  const lob = nz[2].n(iu * 1.3 + v.ph, iw * 1.3 - v.ph, y * 0.045) * 0.22 + nz[1].n(iu * 3.1 - v.ph, y * 0.11, iw * 3.1) * 0.06;
+  // ledges: the walls step in at the bedding planes every few metres
+  const st = (y - v.y0) / 2.7 + nz[0].n(rx * 0.05, 4.4, rz * 0.05) * 0.5, fr = st - Math.floor(st);
+  o.h = h0 / (1 + lob) + (fr < 0.2 ? (0.2 - fr) * 0.18 : 0);
+  return o;
+}
+const FR = { u: 0, w: 0, h: 0, h0: 0 };
+
+function vault(v, nz, x, y, z, rx, rz) {
+  if (y < v.yb0 || y > v.yb1) return -1;
+  const F = frame(v, nz, x, y, z, rx, rz, FR);
+  if (F.h0 > 1.5) return -1;
+  const h = F.h;
+  const fy = vaultFloor(v, nz, rx, rz, h, F.u, F.w);
+  let o = (y - fy) * 0.32;
+  let ry = vaultRoof(v, nz, rx, rz, h);
+  // the roof cracked into blocks, some hanging lower than others
+  if (y > ry - 4) ry -= Math.abs(nz[0].n(rx * 0.27 + 7.7, y * 0.27, rz * 0.27 - 1.1)) * v.frac * 9;
+  const or = (ry - y) * 0.1;
+  if (or < o) o = or;
+  if (h > 1) { const ow = (1 - h) * v.Rm * 0.1; if (ow < o) o = ow; }
+  return o;
+}
+
+/** The vault (if any) a point is in (raw metres; pad: normalised slack round the wall). */
+export function vaultAt(net, x, y, z, pad = 0) {
+  const V = net && net.vaults;
+  if (!V) return null;
+  for (const v of V) {
+    if (y < v.yb0 - 1 || y > v.yb1 + 1) continue;
+    const dx = x - v.x, dz = z - v.z;
+    if (Math.hypot((dx * v.c + dz * v.s) * v.iRx, (-dx * v.s + dz * v.c) * v.iRz) < 1 + pad) return v;
+  }
+  return null;
+}
+
+/** The warp netDensity applies to (x, y, z) before the shapes: [wx, wz]. */
+export function warpXZ(nz, x, y, z) {
+  const n1 = nz[1], n2 = nz[2];
+  return [x + n1.n(x * 0.075 + 3.3, y * 0.09, z * 0.075) * 2.6 + n2.n(x * 0.21, y * 0.25 + 7.7, z * 0.21) * 0.9,
+    z + n2.n(x * 0.075 - 9.1, y * 0.09, z * 0.075 + 1.7) * 2.6 + n1.n(x * 0.21 + 4.4, y * 0.25, z * 0.21 - 2.2) * 0.9];
+}
+
+/** Floor and roof heights of a vault over raw (x, z) (as the density sees them near height y). */
+export function vaultSpan(v, nz, x, z, y = v.y0 + 1) {
+  const [wx, wz] = warpXZ(nz, x, y, z);
+  const F = frame(v, nz, wx, y, wz, x, z, { u: 0, w: 0, h: 0, h0: 0 });
+  return { floor: vaultFloor(v, nz, x, z, F.h, F.u, F.w), roof: vaultRoof(v, nz, x, z, F.h), h: F.h };
 }

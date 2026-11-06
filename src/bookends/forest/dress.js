@@ -133,7 +133,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
       const KIND = ['spruce', 'spruce', 'pine', 'pine', 'beech', 'oak', 'birch', 'snag'];
       const its = {};
       // the coarse far trees in the band give way to the forest's own detailed far models
-      const gone = far.userData.hide((it) => outside(it.x, it.z) <= 12 && !!src[(KIND[it.frame] || 'spruce') + '-wood-lod']);
+      const gone = far.userData.hide((it) => outside(it.x, it.z) <= 8 && !!src[(KIND[it.frame] || 'spruce') + '-wood-lod']);
       for (const it of gone) {
         const kind = KIND[it.frame] || 'spruce';
         (its[kind] = its[kind] || []).push({ x: it.x, y: floorY(it.x, it.z) - 0.1, z: it.z, ry: rng.range(0, 6.28), s: 0.85 + ((it.tint ?? 1) - 0.85) * 1.2 });
@@ -142,7 +142,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
       for (const [kind, l] of Object.entries(its)) {
         for (const part of ['wood', 'leaves']) {
           const m = src[`${kind}-${part}-lod`];
-          if (m) add(m.geometry, m.material, l, `${kind}-${part}-band`, { cell: 30, cull: 66 });
+          if (m) add(m.geometry, m.material, l, `${kind}-${part}-band`, { cell: 60, cull: 66 });
         }
       }
       stats.bandTrees = Object.values(its).reduce((a, l) => a + l.length, 0);
@@ -199,7 +199,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
       if (inOut(x, z)) coverAt(x, z);
     }
   }
-  const cover = makeForestGrassChunked(items, { bright: 0.95, cell: 24 });
+  const cover = makeForestGrassChunked(items, { bright: 0.95, cell: 30 });
   cover.traverse((o) => { if (o.geometry) G(o.geometry); });
   group.add(cover);
   stats.cover = items.length;
@@ -210,8 +210,8 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
     // the verge's (primroses, wood sorrel, violets, an anemone); the campion stays in the meadow's grass
     const clump = (kind, seed, n) => makeFlowerClumpGeo(seed, { kind, n });
     const geoV = [
-      G(merged([[clump('bluebell', 9001, 6), [0, 0, 0]], [clump('bluebell', 9003, 4), [0.22, 0, 0.12]], [clump('anemone', 9005, 5), [-0.18, 0, 0.16]], [clump('violet', 9007, 4), [0.05, 0, -0.22]]])),
-      G(merged([[clump('primrose', 9011, 5), [0, 0, 0]], [clump('wood_sorrel', 9013, 5), [0.2, 0, -0.1]], [clump('violet', 9015, 3), [-0.12, 0, 0.2]], [clump('anemone', 9017, 3), [0.16, 0, 0.2]]])),
+      G(merged([[clump('bluebell', 9001, 6), [0, 0, 0]], [clump('anemone', 9005, 4), [-0.18, 0, 0.16]], [clump('violet', 9007, 3), [0.12, 0, -0.18]]])),
+      G(merged([[clump('primrose', 9011, 4), [0, 0, 0]], [clump('wood_sorrel', 9013, 4), [0.2, 0, -0.1]], [clump('violet', 9015, 3), [-0.12, 0, 0.18]]])),
     ];
     const its = [[], []];
     const place = (cx, cz) => {
@@ -219,8 +219,8 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
       const v = Math.hypot(cx, cz) < CLEAR_R + 1 || FOREST.dist.trail(cx, cz) < 1.6 ? 1 : n1(cx * 0.13, cz * 0.13) > -0.1 ? 0 : rng.int(0, 1);
       its[v].push({ x: cx, y: floorY(cx, cz) - 0.015, z: cz, ry: rng.range(0, 6.28), s: rng.range(0.85, 1.25) });
     };
-    for (let i = 0; i < pick3(40, 110, 260); i++) place(...anywhere());
-    for (let i = 0; i < pick3(30, 60, 130); i++) {
+    for (let i = 0; i < pick3(30, 80, 170); i++) place(...anywhere());
+    for (let i = 0; i < pick3(25, 50, 100); i++) {
       const s = rng.range(0, L - 1), off = (rng() < 0.5 ? -1 : 1) * rng.range(1.05, 4);
       if (rng() < 0.75) { if (!inLane(s, off)) place(...tr.beside(s, off)); }
       else { const a = rng.range(0, 6.28), r = rng.range(CLEAR_R - 2.2, CLEAR_R + 1.2); place(Math.cos(a) * r, Math.sin(a) * r); }
@@ -230,14 +230,14 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
 
   // ---- the understory: brakes of fern and bilberry, and saplings, all through the wood
   {
-    const k = pick3(11, 12, 15);
+    const k = pick3(10, 11, 12);
     const pg = [
       G(merged([[makeFernGeo(9701, { r: 0.55, k })], [makeFernGeo(9703, { r: 0.4, k, dry: 0.3 }), [0.75, 0, 0.3]], [makeFernGeo(9707, { r: 0.34, k }), [-0.45, 0, 0.6]]])), // a brake of fern
       G(merged([[makeShrubGeo(9711, { berry: 0x4a5ad0, r: 0.55, h: 0.45 })], [makeFernGeo(9713, { r: 0.42, k }), [0.7, 0, -0.35]], [makeFernGeo(9717, { r: 0.32, k }), [-0.55, 0, -0.45]]])), // bilberry and fern
       G(merged([[makeShrubGeo(9721, { r: 0.65, h: 0.6, berry: 0xd82a2a, leaf: [0x5a7a3a, 0x46682e, 0x345626, 0x26421e] })], [makeFernGeo(9723, { r: 0.36, k, dry: 0.5 }), [0.65, 0, 0.4]]])), // holly and bracken
     ];
     const pi = [[], [], []];
-    const n = Math.round((OUT.x1 - OUT.x0) * (OUT.z1 - OUT.z0) / pick3(70, 42, 26));
+    const n = Math.round((OUT.x1 - OUT.x0) * (OUT.z1 - OUT.z0) / pick3(90, 64, 34));
     for (let i = 0; i < n; i++) {
       const [x, z] = anywhere();
       if (!woodFloor(x, z, 0.8) || (!inFine(x, z) && rng() > 0.7) || !free(x, z, 0.6)) continue;
@@ -245,7 +245,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
       pi[v].push({ x, y: floorY(x, z) - 0.03, z, ry: rng.range(0, 6.28), s: rng.range(0.8, 1.3) });
       addBlock(x, z, 0.5);
     }
-    pi.forEach((l, v) => add(pg[v], plantMat, l, 'brakes', { cell: 30, cull: pick3(26, 34, 50) }));
+    pi.forEach((l, v) => add(pg[v], plantMat, l, 'brakes', { cell: 40, cull: pick3(26, 34, 48) }));
 
     const one = (g) => merged([[g.wood], [g.leaves]]);
     const vars = [
@@ -262,7 +262,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
       addBlock(x, z, 0.3);
       m++;
     }
-    vars.forEach((g, v) => add(g, saplingLeafMat, its[v], 'saplings', { cell: 30, cull: pick3(26, 32, 46) }));
+    vars.forEach((g, v) => add(g, saplingLeafMat, its[v], 'saplings', { cell: 40, cull: pick3(26, 32, 44) }));
   }
 
   // ---- the floor's bigger things all through the wood: fallen logs and mossy boulders

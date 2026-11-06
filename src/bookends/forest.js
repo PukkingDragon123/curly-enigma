@@ -268,7 +268,7 @@ export async function buildForest(opts = {}) {
     const ob = Math.hypot(Math.max(0, BOX.x0 - x, x - BOX.x1), Math.max(0, BOX.z0 - z, z - BOX.z1));
     const roll = rng(), s = rng.range(0.85, 1.25);
     // deep in the fog fewer are needed (they are voxel trees now: thin them out there, more so on phones)
-    if (farThin() < (ob > (lite ? 16 : 34) ? (lite ? 0.5 : 0.35) : 0)) continue;
+    if (farThin() < (ob > (lite ? 10 : 20) ? (lite ? 0.65 : 0.55) : 0)) continue;
     far.push({ x, z, ob, roll, s });
   }
   const crownR = (t) => (t.kind === 'oak' ? 4.2 : t.kind === 'beech' ? 4.2 : t.kind === 'maple' ? 3.6 : t.kind === 'birch' ? 2.4 : t.kind === 'spruce' ? 2.2 : t.kind === 'pine' ? 2.0 : 0) * t.s;
