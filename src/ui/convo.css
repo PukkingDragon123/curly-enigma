@@ -193,3 +193,6 @@ html.is-touch .cv-opt { padding-top: var(--px); padding-bottom: var(--px); }
 @keyframes cvGlint { 0% { opacity: 1; background-position: -10% 0; } 100% { opacity: 1; background-position: 110% 0; } }
 .cv-opt:active { translate: calc(var(--px) * 4) var(--px); filter: drop-shadow(0 var(--px) 0 rgba(6, 3, 6, .55)); }
 .cv.settled .cv-say::before, .cv.settled .cv-opt::after { animation: none !important; }
+/* your notebook: pencilled lines under your words */
+.cv-say[data-mat=journal] .cv-text { --lh: calc(var(--px) * 8); line-height: var(--lh); background: var(--dl-pencil8) 0 0 / calc(var(--px) * 64) var(--lh) repeat; }
+@media (max-width: 900px), (max-height: 600px) { .cv-say[data-mat=journal] .cv-text { --lh: calc(var(--px) * 11); background-image: var(--dl-pencil11); } }

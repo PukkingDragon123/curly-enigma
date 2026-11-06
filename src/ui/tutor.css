@@ -188,3 +188,5 @@ html.is-touch .tutor.out .tt-card, .tutor.top.out .tt-card { animation-name: ttO
 .tt-glass::after { content: ''; position: absolute; left: 0; top: 0; width: calc(var(--px) * 10); height: 100%; background: var(--dl-glint) 0 0 / 100% 100% no-repeat; translate: -120% 0; pointer-events: none; }
 .tt-card:hover .tt-glass::after { animation: ttGlint2 .7s steps(7); }
 @keyframes ttGlint2 { from { translate: -120% 0; } to { translate: calc(var(--px) * 60) 0; } }
+.tt-card[data-mat=journal] .tt-text { --lh: calc(var(--px) * 8); line-height: var(--lh); background: var(--dl-pencil8) 0 0 / calc(var(--px) * 64) var(--lh) repeat; }
+@media (max-width: 900px), (max-height: 600px) { .tt-card[data-mat=journal] .tt-text { --lh: calc(var(--px) * 11); background-image: var(--dl-pencil11); } }

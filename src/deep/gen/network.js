@@ -478,6 +478,8 @@ function makeVault(id, n, band, rng, d, nodes, edges) {
     const dx = m.x - v.x, dz = m.z - v.z;
     m.ledge = true; m.th = Math.atan2((-dx * v.s + dz * v.c) / Rz, (dx * v.c + dz * v.s) / Rx); m.dir = 0;
   }
+  // the highest the floor gets anywhere (above it only the roof and walls matter)
+  v.fmax = Math.max(y0 + v.Fr + 0.6, v.terr ? v.terr.y + 0.6 : -1e9, ...v.mouths.map((m) => m.y + 0.5), ...v.piles.map((p) => y0 + v.Fr + p.h * 1.5 + 0.8));
   v.yb0 = y0 - (v.lake ? v.lake.D + 1.5 : 1.5);
   v.yb1 = y0 + H + 2.5;
   const pad = Rm * 1.2 + 4;
@@ -594,7 +596,7 @@ function vault(v, nz, x, y, z, rx, rz) {
   if (y > ry - 4) ry -= Math.abs(nz[0].n(rx * 0.27 + 7.7, y * 0.27, rz * 0.27 - 1.1)) * v.frac * 9;
   let o = (ry - y) * 0.1;
   if (ow < o) o = ow;
-  if (y - v.y0 > 9.5 || o < -0.15) return o; // (well above any floor)
+  if (y > v.fmax || o < -0.15) return o; // (above any floor)
   const fy = vaultFloor(v, nz, rx, rz, h, F.u, F.w);
   const of = (y - fy) * 0.32;
   return of < o ? of : o;

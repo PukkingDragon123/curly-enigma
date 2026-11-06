@@ -1,4 +1,6 @@
-// 32×32 icons: harvested cave plants (carrots, mushrooms, ferns, flowers, roots...).
+// Icons: harvested cave plants (carrots, mushrooms, ferns, flowers, roots...). Authored on the
+// 32-unit design grid and painted natively at S× (res.js): mask callbacks paint native (X, Y)
+// and measure in design (x, y); dot() / glD() place hand-set design pixels.
 // Hand-pixel style on top of lifeKit / gearKit: lumpy organic silhouettes, leaves split into a
 // lit and a shaded half with veins and serrations, tapered stems, crisp ink outline, a few
 // flat planes per form, reflected rim light, glints, and fine 1px details (root hairs,
@@ -6,6 +8,7 @@
 import {
   M, mat, mix, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, isTop, isBot, blob, loop, fringe, form, sheen, marks, bumps, speckle,
   blade, tube, spline, twinkle, sparkle, shadowOf, liftOf,
+  S, SZ, dc, nc, np, dot, dotE, alphaD, getD, grain, glD, isTopD, isBotD, stepD,
 } from './lifeKit.js';
 import { ring } from './parts.js';
 
@@ -94,11 +97,13 @@ export function mushroom(pc, cx, cy, r, h, CAP, STM, o = {}) {
   const gh = Math.max(1.1, r * 0.3);
   const gills = loop([[cx - r * 0.92, cy + 0.2], [cx - r * 0.4 + j(20), cy - 0.3], [cx + r * 0.4 + j(21), cy - 0.3], [cx + r * 0.92, cy + 0.2], [cx + r * 0.5 + j(22), cy + gh + 0.4], [cx - r * 0.45 + j(23), cy + gh + 0.6]]);
   seam(pc, gills, 'shadow');
-  gills.each((x, y) => {
+  gills.eachD((X, Y, x, y) => {
     const a = Math.atan2(y + 0.5 - cy, x + 0.5 - cx);
-    const stripe = Math.floor((x + 0.5 - cx) / Math.max(1, r * 0.22) + 100) % 2;
-    if (o.glow) gl(pc, x, y, stripe ? o.glow[0] : o.glow[1], 0.9);
-    else pc.set(x, y, (o.GI || CAP)[stripe ? 4 : 5]);
+    // gill lines fanning from the stem (finer and more of them at S > 1)
+    const gw = S > 1 ? Math.max(0.55, r * 0.12) : Math.max(1, r * 0.22);
+    const stripe = Math.floor(Math.atan2(y + 0.5 - cy + r * 0.4, x + 0.5 - cx) * r / gw + 100) % 2;
+    if (o.glow) gl(pc, X, Y, stripe ? o.glow[0] : o.glow[1], 0.9);
+    else pc.set(X, Y, (o.GI || CAP)[stripe ? 4 : 5]);
     void a;
   });
   // cap: a lumpy dome, flat underneath
@@ -112,12 +117,24 @@ export function mushroom(pc, cx, cy, r, h, CAP, STM, o = {}) {
   seam(pc, cap, 'shadow');
   const K = form(pc, cap, CAP, { cx: cx - r * 0.1, cy: cy + r * 0.15, rx: r * 1.05, ry: r * 0.9, dome: 0.35, bias: o.bias ?? 0.05, emit: o.emit });
   // rim lip: the underside edge of the cap rolls under (one tone darker), lit on the left
-  cap.each((x, y) => { if (!cap.get(x, y + 1) && y >= cy - 1) pc.set(x, y, CAP[clamp(K[y * 32 + x] + (x < cx - r * 0.4 ? 0 : 1), 1, 5)]); });
+  cap.eachD((X, Y, x, y) => { if (!cap.get(X, Y + 1) && y >= cy - 1) pc.set(X, Y, CAP[clamp(K[Y * SZ + X] + (x < cx - r * 0.4 ? 0 : 1), 1, 5)]); });
   // spots: little irregular flecks with a shaded lower edge
   for (const [dx, dy, w] of o.spots || []) {
     const sx = Math.round(cx + dx * r), sy = Math.round(cy + dy * r);
-    for (let i = 0; i < w; i++) if (cap.get(sx + i, sy)) { pc.set(sx + i, sy, o.spotC[0]); if (o.glow) pc.emit(sx + i, sy, 1); }
-    if (cap.get(sx, sy + 1) && w > 1) pc.set(sx + (w > 2 ? 1 : 0), sy + 1, o.spotC[1]);
+    if (S === 1) {
+      for (let i = 0; i < w; i++) if (cap.get(sx + i, sy)) { pc.set(sx + i, sy, o.spotC[0]); if (o.glow) pc.emit(sx + i, sy, 1); }
+      if (cap.get(sx, sy + 1) && w > 1) pc.set(sx + (w > 2 ? 1 : 0), sy + 1, o.spotC[1]);
+      continue;
+    }
+    // an irregular raised fleck: a lit body, ragged ends, a shaded lower lip
+    const X0 = sx * S, Y0 = sy * S, W = w * S + 1;
+    for (let i = 0; i < W; i++) for (let j = 0; j < 2; j++) {
+      const X = X0 + i - (j ? 0 : 0), Y = Y0 + j - (i === 0 || i === W - 1 ? -1 : 0) * 0;
+      if ((i === 0 || i === W - 1) && j === 0 && hash2(X, Y, sd) < 0.5) continue;
+      if (!cap.get(X, Y)) continue;
+      pc.set(X, Y, o.spotC[j === 0 && i > 0 && i < W - 1 && i < W / 2 ? 0 : 1 - (j ? 0 : 1) * 0]); if (o.glow) pc.emit(X, Y, 1);
+    }
+    for (let i = 1; i < W - 1; i++) if (cap.get(X0 + i, Y0 + 2)) pc.set(X0 + i, Y0 + 2, CAP[clamp(K[(Y0 + 2) * SZ + X0 + i] + 1, 1, 5)]);
   }
   return { cap, stem: st.mask, gills };
 }
@@ -145,10 +162,12 @@ function carrot(pc) {
     line(pc, x + nx * w * v0 + tx / tl, y + ny * w * v0 + ty / tl, x + nx * w * v1 + tx / tl, y + ny * w * v1 + ty / tl, (i, X, Y) => (m.get(X, Y) && i > 0 ? (step(pc, R, X, Y, -1, 1, 5), null) : null));
   }
   // green-tinged shoulder where the leaves sprout
-  for (const [x, y, k] of [[19, 10, 2], [20, 10, 3], [21, 10, 3], [22, 11, 4], [18, 11, 3]]) if (m.get(x, y)) pc.set(x, y, SR[k]);
+  for (const [x, y, k] of [[19, 10, 2], [20, 10, 3], [21, 10, 3], [22, 11, 4], [18, 11, 3]]) if (m.at(x, y)) dot(pc, x, y, SR[k]);
+  if (S > 1) m.eachD((X, Y, x, y) => { if (y < 13 && x > 17 && hash2(X, Y, 8) < 0.3) pc.set(X, Y, SR[3]); }); // green blush fading into the orange
   ink(pc);
-  hairs(pc, [[11, 23, 9, 22], [8, 26, 7, 28], [15, 19, 17, 20], [5, 29, 3, 30]], inkOf(R[4]));
-  pc.set(15, 14, R[0]); pc.set(16, 14, R[1]); pc.set(14, 15, R[1]);
+  hairs(pc, [[11, 23, 9, 22], [8, 26, 7, 28], [15, 19, 17, 20], [5, 29, 3, 30], ...(S > 1 ? [[13, 21.5, 11.6, 20.2], [6.4, 27.6, 5.2, 29.4], [17.6, 17.4, 19.4, 18]] : [])], inkOf(R[4]));
+  if (S === 1) { pc.set(15, 14, R[0]); pc.set(16, 14, R[1]); pc.set(14, 15, R[1]); }
+  else line(pc, 14, 15.6, 16.6, 13.6, (i) => (i < 2 ? R[0] : R[1])); // a wet sheen along the shoulder
 }
 
 function pepperroot(pc) {
@@ -160,11 +179,11 @@ function pepperroot(pc) {
   const r = (s) => Math.max(0.5, 4.7 * Math.pow(1 - s, 0.55) * (1 + 0.05 * Math.sin(s * 17 + 1)));
   const sw = tube(pc, [[20.5, 11.5], [17.6, 16], [13.5, 20.6], [9, 24.2], [5.4, 25.4], [3.6, 23.6]], r, R, { capStart: 0.7, bias: 0.12 });
   // glossy streak along the lit side, broken in two
-  sw.mask.each((x, y) => {
-    const i = y * 32 + x, s = sw.S[i], v = sw.V[i] / Math.max(0.6, sw.Wd[i]);
-    if (s > 0.06 && s < 0.66 && v < -0.25 && v > -0.62 && !(s > 0.3 && s < 0.36)) pc.set(x, y, s < 0.3 ? R[0] : R[1]);
+  sw.mask.eachD((X, Y, x, y) => {
+    const i = Y * SZ + X, s = sw.S[i], v = sw.V[i] / Math.max(0.6, sw.Wd[i]);
+    if (s > 0.06 && s < 0.66 && v < -0.25 && v > -0.62 && !(s > 0.3 && s < 0.36)) pc.set(X, Y, s < 0.3 ? R[0] : R[1]);
   });
-  marks(pc, sw.mask, R, { dens: 0.1, seed: 4, len: 2, dir: [1, 1], only: (x, y) => sw.S[y * 32 + x] > 0.45 });
+  marks(pc, sw.mask, R, { dens: 0.1, seed: 4, len: 2, dir: [1, 1], only: (x, y) => sw.S[y * SZ + x] > 0.45 });
   // calyx: star of sepals hugging the shoulder
   for (const [x1, y1, b] of [[16.5, 10.5, 0.6], [24.5, 13.5, -0.5], [19.5, 14.6, 0.3], [22.6, 9, 0]]) blade(pc, 21, 10.8, x1, y1, 1.5, G, { bend: b, veins: 0, rib: false, fold: 1 });
   const cap = blob(21.2, 10.4, 2.4, 1.8, { seed: 2 });
@@ -172,7 +191,7 @@ function pepperroot(pc) {
   form(pc, cap, G, { bias: 0.1 });
   ink(pc);
   glint(pc, 18, 14, 0);
-  for (const [x, y] of [[4, 28], [7, 29]]) gl(pc, x, y, 0xffb04a, 0.6);
+  for (const [x, y] of [[4, 28], [7, 29]]) glD(pc, x, y, 0xffb04a, 0.6);
 }
 
 function glowcap(pc) {
@@ -192,19 +211,19 @@ function glowcap(pc) {
   mushroom(pc, 27, 24, 2.9, 4, CAP, STM, { seed: 11, glow: GLOW, emit: 0.85, spots: [[-0.3, -0.5, 1]], spotC: SPOT, lump: 0.02 });
   ink(pc);
   for (const [x, y] of [[4, 5], [26, 4], [29, 15]]) twinkle(pc, x, y, 0xe8fbff, 0x7fd8ff, 1, 0.9);
-  for (const [x, y] of [[8, 5], [18, 10]]) gl(pc, x, y, 0xffffff, 1);
+  for (const [x, y] of [[8, 5], [18, 10]]) glD(pc, x, y, 0xffffff, 1);
 }
 
 /** One small fern pinna: a lens with a lit top edge, a body tone and a shaded lower edge. */
 function pinna(pc, x0, y0, x1, y1, w, R, k, emit) {
   const m = leafMask(x0, y0, x1, y1, w, 0.35);
   seam(pc, m, 'shadow');
-  m.each((x, y) => {
+  m.eachD((X, Y, x, y) => {
     let kk = k;
-    if (isTopPx(m, x, y)) kk--;
-    else if (!m.get(x + 1, y) || !m.get(x, y + 1)) kk++;
-    pc.set(x, y, R[clamp(kk, 1, 5)]);
-    if (emit) pc.emit(x, y, emit);
+    if (isTopPx(m, X, Y)) kk--;
+    else if (!m.get(X + 1, Y) || !m.get(X, Y + 1)) kk++;
+    pc.set(X, Y, R[clamp(kk, 1, 5)]);
+    if (emit) pc.emit(X, Y, emit);
   });
   return m;
 }
@@ -226,7 +245,7 @@ function fernFrond(pc, pts, R, o = {}) {
     }
   }
   let last = '';
-  for (let i = 0; i <= 90; i++) { const [x, y] = at(i / 90 * 0.97); const key = Math.floor(x) + ',' + Math.floor(y); if (key === last) continue; last = key; pc.set(x, y, (o.RR || R)[i < 40 ? 3 : 2]); }
+  for (let i = 0; i <= 90; i++) { const [x, y] = at(i / 90 * 0.97); const key = Math.floor(x) + ',' + Math.floor(y); if (key === last) continue; last = key; dot(pc, x, y, (o.RR || R)[i < 40 ? 3 : 2]); }
 }
 
 function fernPlant(pc, R, o = {}) {
@@ -264,24 +283,31 @@ function ashfern(pc) {
   fernFrond(pc, L, R, { pairs: 5, len: 4.4, RR });
   fernFrond(pc, Rt, R, { pairs: 7, len: 5.2, RR });
   const tips = [spline(L)(1), spline(Rt)(1)];
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-    const k = R.indexOf(pc.get(x, y)), kk = RR.indexOf(pc.get(x, y));
-    if ((k >= 0 || kk >= 0) && tips.some(([tx, ty]) => Math.hypot(x + 0.5 - tx, y + 0.5 - ty) < 5.2)) pc.set(x, y, CH[clamp(k >= 0 ? k : kk, 1, 5)]);
+  for (let Y = 0; Y < SZ; Y++) for (let X = 0; X < SZ; X++) {
+    const x = dc(X), y = dc(Y);
+    const k = R.indexOf(pc.get(X, Y)), kk = RR.indexOf(pc.get(X, Y));
+    // the burn creeps along the leaf irregularly (a ragged char line, not a circle)
+    const lim = 5.2 + (vnoise(x * 1.3, y * 1.3, 4) - 0.5) * 1.6;
+    if ((k >= 0 || kk >= 0) && tips.some(([tx, ty]) => Math.hypot(x + 0.5 - tx, y + 0.5 - ty) < lim)) pc.set(X, Y, CH[clamp(k >= 0 ? k : kk, 1, 5)]);
   }
   const ASH = mat(0x9a948e, { cont: 1.05 });
   const mound = loop([[5.6, 29.8], [8, 27], [12, 25.8], [16.6, 25.4], [21, 26.2], [24, 28], [25, 30.4], [15.6, 31]]);
   seam(pc, mound, 'shadow');
   form(pc, mound, ASH, { bias: 0.1 });
-  for (const [x, y] of [[10, 28], [17, 27], [21, 28]]) { pc.set(x, y, ASH[1]); pc.set(x + 1, y + 1, ASH[4]); }
+  for (const [x, y] of [[10, 28], [17, 27], [21, 28]]) { dot(pc, x, y, ASH[1]); dot(pc, x + 1, y + 1, ASH[4]); }
   ink(pc);
   // the burn line glows where charcoal meets leaf; an ember in the ash, one drifting up
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-    if (CH.indexOf(pc.get(x, y)) < 0) continue;
+  for (let Y = 0; Y < SZ; Y++) for (let X = 0; X < SZ; X++) {
+    if (CH.indexOf(pc.get(X, Y)) < 0) continue;
+    const x = dc(X), y = dc(Y);
+    // the glowing front: char pixels that border unburnt leaf
+    const front = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => { const c = pc.get(X + dx, Y + dy); return R.includes(c) || RR.includes(c); });
     const d = Math.min(...tips.map(([tx, ty]) => Math.hypot(x + 0.5 - tx, y + 0.5 - ty)));
-    if (d > 4 && hash2(x, y, 3) < 0.7) gl(pc, x, y, (x + y) % 2 ? 0xff8a2a : 0xffb050, 1);
+    if (S > 1 ? front : d > 4 && hash2(X, Y, 3) < 0.7) gl(pc, X, Y, (X + Y) % 2 ? 0xff8a2a : 0xffb050, 1);
+    else if (S > 1 && d > 3.6 && hash2(X, Y, 4) < 0.12) gl(pc, X, Y, 0xc8401a, 0.7); // embers still alive in the char
   }
-  gl(pc, 14, 28, 0xff6a2a, 0.9); gl(pc, 15, 28, 0xffa040, 0.9);
-  gl(pc, 29, 2, 0xffb050, 0.9); gl(pc, 6, 7, 0xff9a40, 0.8);
+  glD(pc, 14, 28, 0xff6a2a, 0.9); glD(pc, 15, 28, 0xffa040, 0.9);
+  glD(pc, 29, 2, 0xffb050, 0.9); glD(pc, 6, 7, 0xff9a40, 0.8);
 }
 
 function whisperweed(pc) {
@@ -300,7 +326,7 @@ function whisperweed(pc) {
   bumps(pc, soil, SO, { dens: 0.3, seed: 2 });
   ink(pc);
   // whispering, glowing tips
-  for (const [x, y] of [[9, 5], [26, 6], [3, 11], [15, 3], [29, 13]]) { gl(pc, x, y, 0xf4e8ff, 1); }
+  for (const [x, y] of [[9, 5], [26, 6], [3, 11], [15, 3], [29, 13]]) { glD(pc, x, y, 0xf4e8ff, 1); }
   for (const [x, y] of [[6, 2], [22, 1], [30, 9]]) twinkle(pc, x, y, 0xf4e8ff, 0xc8a8f0, 1, 0.8);
 }
 
@@ -313,7 +339,7 @@ function rubberSap(pc) {
   blade(pc, 5, 7, 2, 14, 2, LR, { bend: 1, veins: 1 });
   const vine = tube(pc, [[0.5, 9.4], [9, 7.8], [18, 7.4], [27, 5.6], [31.5, 5.2]], 2.2, VR, { bias: 0.08 });
   marks(pc, vine.mask, VR, { dens: 0.2, seed: 3, len: 3, dir: [1, 0] });
-  for (const x of [7, 23]) { const y = Math.round(vine.at(x / 32)[1]) + 1; pc.set(x, y - 1, VR[1]); pc.set(x, y, VR[2]); pc.set(x + 1, y + 1, VR[5]); pc.set(x, y + 1, VR[4]); }
+  for (const x of [7, 23]) { const y = Math.round(vine.at(x / 32)[1]) + 1; dot(pc, x, y - 1, VR[1]); dot(pc, x, y, VR[2]); dot(pc, x + 1, y + 1, VR[5]); dot(pc, x, y + 1, VR[4]); }
   // the cut notch weeping a stretchy strand into a glossy pool
   const strand = tube(pc, [[15.5, 9], [16.4, 13], [15, 17], [15.6, 21]], (s) => 1.5 - Math.sin(s * Math.PI) * 0.8, SR, { bias: 0.1 });
   void strand;
@@ -322,13 +348,13 @@ function rubberSap(pc) {
   form(pc, glob, SR, { bias: 0.12, cy: 26.5, ry: 6 });
   sheen(pc, glob, SR[0], { inset: 1, a0: -2.9, a1: -1.4, gap: 5 });
   // drips on the vine and a fresh bead forming
-  pc.set(14, 9, SR[1]); pc.set(15, 9, SR[2]); pc.set(16, 9, SR[1]); pc.set(17, 9, SR[3]);
+  dot(pc, 14, 9, SR[1]); dot(pc, 15, 9, SR[2]); dot(pc, 16, 9, SR[1]); dot(pc, 17, 9, SR[3]);
   const bd = blob(22.5, 11.5, 1.5, 1.8, { seed: 1, lump: 0 });
   seam(pc, bd, 'shadow');
   form(pc, bd, SR, { bias: 0.1 });
   ink(pc);
-  glint(pc, 10, 23, 0); pc.set(11, 23, SR[0]);
-  pc.set(22, 11, 0xffffff);
+  glint(pc, 10, 23, 0); dot(pc, 11, 23, SR[0]);
+  dot(pc, 22, 11, 0xffffff);
 }
 
 function sparkmoss(pc) {
@@ -345,27 +371,27 @@ function sparkmoss(pc) {
   seam(pc, m, 'shadow');
   const K = form(pc, m, R, { cx: 13, cy: 19, rx: 15, ry: 8, bias: 0.06, dome: 0.4 });
   void K;
-  m.clone().erode(1).each((x, y) => {
-    const h = hash2(x, 0, 7), col = x % 2 ? 0 : 1;
-    if ((y + Math.floor(h * 3)) % 3 === col) step(pc, R, x, y, 1, 1, 5);
+  m.clone().erode(1).eachD((X, Y, x, y) => {
+    const h = hash2(X, 0, 7), col = X % 2 ? 0 : 1;
+    if ((Y + Math.floor(h * 3)) % 3 === col) step(pc, R, X, Y, 1, 1, 5);
   });
   // hollows between the clumps
   for (const [x0, y0, x1, y1] of [[12, 17, 11, 24], [21, 17, 22, 24]]) line(pc, x0, y0, x1, y1, (i, X, Y) => (m.get(X, Y) && !isBot(m, X, Y) ? (step(pc, R, X, Y, 2, 1, 5), step(pc, R, X - 1, Y, -1, 1, 5), null) : null));
   // the bristle tips catch the light
-  m.each((x, y) => { if (!m.get(x, y - 1) && hash2(x, y, 3) < 0.6) pc.set(x, y, R[1]); });
+  m.eachD((X, Y, x, y) => { if (!m.get(X, Y - 1) && hash2(X, Y, 3) < 0.6) pc.set(X, Y, R[1]); });
   ink(pc);
   // spore stalks with glowing capsules, and static arcs crackling between the tips
   const caps = [[8, 9, 6], [14, 6, 7], [19, 7, 6], [25, 10, 5]];
   for (const [x, y, h] of caps) {
     line(pc, x, y + h, x + (x % 2 ? 1 : -1) * 0, y + 1, (n) => (n ? 0x1e4a5a : null));
-    gl(pc, x, y, 0xe8fbff, 1); gl(pc, x, y + 1, 0x7adcff, 1); gl(pc, x + 1, y + 1, 0x3aa0d0, 0.8);
+    glD(pc, x, y, 0xe8fbff, 1); glD(pc, x, y + 1, 0x7adcff, 1); glD(pc, x + 1, y + 1, 0x3aa0d0, 0.8);
   }
   const arc = (pts, c = 0xfff27a) => { for (let i = 0; i + 1 < pts.length; i++) line(pc, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], (n, X, Y) => (gl(pc, X, Y, n === 0 ? 0xffffff : c, 1), null)); };
   arc([[9, 8], [10, 6], [11, 7], [12, 5]]);
   arc([[20, 7], [21, 5], [22, 6], [23, 8]], 0xbff0ff);
   arc([[14, 5], [14, 3], [16, 2]]);
   for (const [x, y] of [[4, 13], [28, 5], [17, 1]]) twinkle(pc, x, y, 0xffffff, 0xfff27a, 1, 1);
-  pc.set(27, 14, 0xfff6a0); pc.emit(27, 14, 1); pc.set(5, 9, 0xbff0ff); pc.emit(5, 9, 1);
+  dot(pc, 27, 14, 0xfff6a0); dotE(pc, 27, 14, 1); dot(pc, 5, 9, 0xbff0ff); dotE(pc, 5, 9, 1);
 }
 
 function bubblebulb(pc) {
@@ -379,15 +405,16 @@ function bubblebulb(pc) {
   bulb.union(loop([[13.6, 21.6], [18.6, 21.4], [16.4, 24.8]]));
   seam(pc, bulb, 'shadow');
   const K = form(pc, bulb, R, { cy: 14, ry: 10, bias: 0.08 });
-  for (const s of [-1, 1]) for (let y = 4; y < 22; y++) {
-    const t = (y - 4) / 18, x = Math.round(16 + s * Math.sin(t * Math.PI) * 4.8);
-    if (bulb.get(x, y) && bulb.get(x, y + 1)) pc.set(x, y, R[clamp(K[y * 32 + x] + 1, 1, 5)]);
+  for (const s of [-1, 1]) for (let Y = 4 * S; Y < 22 * S; Y++) {
+    const t = (dc(Y) - 4) / 18, X = np(16 + s * Math.sin(t * Math.PI) * 4.8);
+    if (bulb.get(X, Y) && bulb.get(X, Y + 1)) pc.set(X, Y, R[clamp(K[Y * SZ + X] + 1, 1, 5)]);
   }
   // bubbles floating inside: lit rim on top-left, shade on bottom-right, a glint
   for (const [x, y, r] of [[12.5, 16.5, 2.2], [19.5, 12, 1.7], [18.5, 18, 1.3], [12.5, 10.5, 1.1]]) {
     const b = blob(x, y, r, r * 0.9, { seed: (x * 7) | 0, lump: 0.22 });
-    b.edge().each((X, Y) => { if (bulb.get(X, Y)) pc.set(X, Y, (X + 0.5 - x) + (Y + 0.5 - y) < 0 ? R[1] : R[4]); });
-    pc.set(Math.floor(x - r * 0.4), Math.floor(y - r * 0.4), 0xffffff);
+    b.edge().each((X, Y) => { if (bulb.get(X, Y)) pc.set(X, Y, (X + 0.5) / S - x + (Y + 0.5) / S - y < 0 ? R[1] : R[4]); });
+    if (S === 1) pc.set(Math.floor(x - r * 0.4), Math.floor(y - r * 0.4), 0xffffff);
+    else { const X = np(x - r * 0.45), Y = np(y - r * 0.45); pc.set(X, Y, 0xffffff); if (r > 1.5) { pc.set(X + 1, Y, R[0]); pc.set(X, Y + 1, R[0]); } }
   }
   sheen(pc, bulb, R[0], { inset: 1, a0: -2.6, a1: -1.9 });
   ink(pc);
@@ -404,11 +431,11 @@ function crystalLily(pc) {
   const petals = [[3.5, 6, 3, 1.4, -0.06], [27.5, 5, 3, -1.4, -0.06], [16, 1.5, 3.3, 0.3, 0], [7.5, 12.5, 2.8, 0.6, 0.04], [24, 12, 2.8, -0.7, 0.04]];
   for (const [x1, y1, w, b, bias] of petals) {
     const m = blade(pc, 15.5, 17, x1, y1, w, R, { bend: b, fold: 1.5, rib: R[0], veins: 0, bias, pow: 1.1 });
-    m.edge().each((x, y) => { if (hash2(x, y, 2) < 0.3 && !m.get(x - 1, y - 1)) pc.set(x, y, 0xffffff); });
+    m.edge().eachD((X, Y, x, y) => { if (hash2(X, Y, 2) < 0.3 && !m.get(X - 1, Y - 1)) pc.set(X, Y, 0xffffff); });
   }
   ink(pc);
   // glowing stamens and sparkle
-  for (const [x, y] of [[14, 10], [16, 9], [18, 11]]) { gl(pc, x, y, 0xfff2b0, 0.9); pc.set(x, y + 1, 0xe0c070); }
+  for (const [x, y] of [[14, 10], [16, 9], [18, 11]]) { glD(pc, x, y, 0xfff2b0, 0.9); dot(pc, x, y + 1, 0xe0c070); }
   twinkle(pc, 25, 18, 0xffffff, 0xd8f4ff, 1, 0.6);
   glint(pc, 12, 7, 0);
 }
@@ -427,7 +454,7 @@ function gloomshroom(pc) {
   // underside gills in deep shadow
   const gills = loop([[5.4, 14.4], [15.4, 13.2], [26.2, 14.4], [22, 16.8], [15.6, 17.2], [9, 16.6]]);
   seam(pc, gills, 'shadow');
-  gills.each((x, y) => pc.set(x, y, CP[(x % 2) ? 5 : 6]));
+  gills.eachD((X, Y, x, y) => pc.set(X, Y, CP[(X % 2) ? 5 : 6]));
   // drooping bell cap with scalloped, hanging edge
   const cap = loop([[3.6, 13.4], [4.4, 9.4], [7.6, 5.4], [12, 3.2], [16.6, 2.8], [21.6, 4.2], [25.4, 7], [27.6, 10.4], [28, 13.6], [16, 14.6]]);
   for (const [x, y, r] of [[5, 13.5, 2.2], [9.5, 14.4, 2], [14.5, 14.8, 2], [19.5, 14.6, 2], [24.6, 13.6, 2.3], [27, 11.5, 1.6]]) cap.union(blob(x, y, r, r * 0.9, { seed: x | 0, lump: 0.1 }));
@@ -435,13 +462,13 @@ function gloomshroom(pc) {
   form(pc, cap, CP, { cx: 14, cy: 14, rx: 13, ry: 11, dome: 0.35, bias: 0.05 });
   // pale, irregular spots with shade under each
   for (const [x, y, w] of [[9, 7, 2], [15, 4, 3], [21, 8, 2], [12, 10, 1], [24, 11, 1], [18, 11, 2], [6, 11, 1]]) {
-    for (let i = 0; i < w; i++) pc.set(x + i, y, i ? 0xc8a6e6 : 0xe6d0fa);
-    if (w > 1) pc.set(x + 1, y + 1, 0x9a72c0);
+    for (let i = 0; i < w; i++) dot(pc, x + i, y, i ? 0xc8a6e6 : 0xe6d0fa);
+    if (w > 1) dot(pc, x + 1, y + 1, 0x9a72c0);
   }
   ink(pc);
   glint(pc, 11, 5, 0);
   // drowsy spores drifting up
-  for (const [x, y, c] of [[4, 4, 0xc8a8e8], [7, 1, 0xb090d8], [26, 2, 0xc8a8e8], [29, 6, 0xa080c8], [22, 0, 0xb090d8]]) gl(pc, x, y, c, 0.5);
+  for (const [x, y, c] of [[4, 4, 0xc8a8e8], [7, 1, 0xb090d8], [26, 2, 0xc8a8e8], [29, 6, 0xa080c8], [22, 0, 0xb090d8]]) glD(pc, x, y, c, 0.5);
 }
 
 function emberbloom(pc) {
@@ -457,33 +484,33 @@ function emberbloom(pc) {
   ink(pc);
   // flames licking up from the heart (over the ink: pure light)
   const fl = M().poly([[11.5, 15], [13, 7], [14.6, 11], [16.6, 2.5], [18.4, 10], [20.5, 5.5], [21, 15], [16, 17.5]]);
-  fl.each((x, y) => { const t = (y - 2) / 15, w = vnoise(x * 0.7, y * 0.5, 3); gl(pc, x, y, t < 0.35 ? 0xfff4b0 : t < 0.65 ? (w > 0.5 ? 0xffd050 : 0xffb030) : 0xff7a20, 1); });
-  fl.edge().each((x, y) => { if (!fl.get(x, y - 1)) gl(pc, x, y, 0xffe890, 1); });
-  for (const [x, y, c] of [[8, 5, 0xffb04a], [24, 3, 0xffd070], [21, 0, 0xffa040], [10, 1, 0xff8a30]]) gl(pc, x, y, c, 0.9);
+  fl.eachD((X, Y, x, y) => { const t = (y - 2) / 15, w = vnoise(x * 0.7, y * 0.5, 3); gl(pc, X, Y, t < 0.35 ? 0xfff4b0 : t < 0.65 ? (w > 0.5 ? 0xffd050 : 0xffb030) : 0xff7a20, 1); });
+  fl.edge().eachD((X, Y, x, y) => { if (!fl.get(X, Y - 1)) gl(pc, X, Y, 0xffe890, 1); });
+  for (const [x, y, c] of [[8, 5, 0xffb04a], [24, 3, 0xffd070], [21, 0, 0xffa040], [10, 1, 0xff8a30]]) glD(pc, x, y, c, 0.9);
 }
 
 function truffle(pc) {
   const R = mat(0x3c2a22, { cont: 0.8 });
   // a knobbly black truffle: lumpy body + a smaller lobe, covered in little pyramidal warts
   const body = blob(13, 16.5, 10.6, 9.4, { seed: 7, lump: 0.17, freq: [3, 4, 7, 9] }).union(blob(8, 11.5, 5.2, 4.6, { seed: 3, lump: 0.15 }));
-  form(pc, body, R, { cx: 11, cy: 15, rx: 12, ry: 11, bias: -0.1, lo: 2, tex: (x, y) => (vnoise(x * 0.8, y * 0.8, 3) - 0.5) * 0.3 });
-  body.clone().erode(1).each((x, y) => {
-    if ((x + y * 3) % 4 !== 0 || hash2(x, y, 5) < 0.25) return;
-    step(pc, R, x, y, -1, 1, 5);
-    if (body.get(x + 1, y + 1)) step(pc, R, x + 1, y + 1, 1, 1, 5);
+  form(pc, body, R, { cx: 11, cy: 15, rx: 12, ry: 11, bias: -0.1, lo: 2, tex: (x, y) => (vnoise(dc(x) * 0.8, dc(y) * 0.8, 3) - 0.5) * 0.3 });
+  body.clone().erode(1).eachD((X, Y, x, y) => {
+    if (S === 1 ? (X + Y * 3) % 4 !== 0 || hash2(X, Y, 5) < 0.25 : (X + Y * 3) % 6 !== 0 || hash2(X, Y, 5) < 0.3) return;
+    step(pc, R, X, Y, -1, 1, 5);
+    if (body.get(X + 1, Y + 1)) step(pc, R, X + 1, Y + 1, 1, 1, 5);
   });
   // a cut slice leaning on it: dark skin around a chocolate heart veined with white
   const sl = loop([[20.4, 16.8], [23.4, 15], [27, 15.8], [29.2, 19.4], [29, 24.4], [26.4, 27.8], [22.6, 28], [19.4, 25.4], [18.6, 20.6]]);
   seam(pc, sl, 'shadow');
   const SL = mat(0x5c3a26, { cont: 1.1 });
-  sl.each((x, y) => {
+  sl.eachD((X, Y, x, y) => {
     const f = (vnoise(x * 0.42, y * 0.42, 9) * 4.2 + x * 0.05) % 1;
-    pc.set(x, y, f < 0.13 ? 0xf0e4d0 : f < 0.24 ? 0xa88a6c : SL[x + y < 44 ? 3 : 4]);
+    pc.set(X, Y, f < 0.13 ? 0xf0e4d0 : f < 0.24 ? 0xa88a6c : SL[x + y < 44 ? 3 : 4]);
   });
-  sl.edge().each((x, y) => pc.set(x, y, R[(x + y) % 3 ? 4 : 3]));
+  sl.edge().eachD((X, Y, x, y) => pc.set(X, Y, R[(X + Y) % 3 ? 4 : 3]));
   ink(pc);
-  glint(pc, 7, 10, 0); pc.set(13, 9, R[1]); pc.set(5, 17, R[1]);
-  for (const [x, y] of [[3, 28], [5, 29], [19, 30]]) pc.set(x, y, 0x5a3e2a);
+  glint(pc, 7, 10, 0); if (S === 1) { pc.set(13, 9, R[1]); pc.set(5, 17, R[1]); } else { line(pc, 12.6, 9.4, 14, 8.8, R[1]); line(pc, 5, 17.6, 5.4, 16.4, R[1]); }
+  for (const [x, y] of [[3, 28], [5, 29], [19, 30]]) dot(pc, x, y, 0x5a3e2a);
 }
 
 function frostbloom(pc) {
@@ -498,7 +525,7 @@ function frostbloom(pc) {
   seam(pc, c, 'shadow');
   form(pc, c, mat(0xe0faff, { cont: 0.9 }), { emit: 0.7 });
   ink(pc);
-  gl(pc, 15, 12, 0xffffff);
+  glD(pc, 15, 12, 0xffffff);
   for (const [x, y] of [[4, 5], [28, 27], [27, 3]]) twinkle(pc, x, y, 0xffffff, 0xbff6ff, 1, 0.7);
 }
 
@@ -518,9 +545,9 @@ function coreLotus(pc) {
   const h = blob(16, 18.4, 3.6, 2.6, { seed: 2 });
   seam(pc, h, 'shadow');
   form(pc, h, mat(0xffd03a, { cont: 1.1 }), { emit: 1, bias: 0.1 });
-  for (const [x, y] of [[14, 18], [16, 17], [18, 18], [15, 19], [17, 19]]) gl(pc, x, y, 0xb8801a, 1);
+  for (const [x, y] of [[14, 18], [16, 17], [18, 18], [15, 19], [17, 19]]) glD(pc, x, y, 0xb8801a, 1);
   ink(pc);
-  gl(pc, 14, 17, 0xfffbe0);
+  glD(pc, 14, 17, 0xfffbe0);
   for (const [x, y] of [[5, 6], [26, 5], [16, 2]]) twinkle(pc, x, y, 0xffffff, 0xffc8e8, 1, 0.8);
 }
 

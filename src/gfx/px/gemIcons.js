@@ -237,7 +237,7 @@ function amber(pc, bug) {
     else if (!e3.get(X, Y)) k = u > 0.3 ? 1 : u > -0.2 ? 2 : 3;
     else k = u > -0.35 ? 2 : 3;
     // resin is never quite clear: a faint cloud of darker swirls deep inside
-    if (S > 1 && e3.get(X, Y) && k >= 2 && Math.sin(x * 0.9 + Math.sin(y * 0.7) * 2.2 + y * 0.35) > 0.92) k = Math.min(4, k + 1);
+    if (S > 1 && e3.get(X, Y) && k >= 2 && Math.sin(x * 0.9 + Math.sin(y * 0.7) * 2.2 + y * 0.35) > 0.965) k = Math.min(4, k + 1);
     if (drip.get(X, Y)) k = !e1.get(X, Y) ? (x < 20 ? 3 : 4) : (x < 20 ? 1 : 2);
     pc.set(X, Y, R[k]);
   });

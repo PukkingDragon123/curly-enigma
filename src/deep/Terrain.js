@@ -26,6 +26,8 @@ export class TerrainView {
     this.fluidMat = makeFluidMaterial(U);
     this.radius = Math.round(16 / CM); // chunks (16 m)
     this.keepRadius = Math.round(20 / CM);
+    // how much farther up to stream in a giant cavern (less on phones)
+    this.upK = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 1.1 : 0.85;
     this.queue = [];
     this.stats = { gen: 0, mesh: 0, tris: 0 };
     this.jobs = 0;
@@ -62,7 +64,7 @@ export class TerrainView {
       this.lastKey = key;
       const R = this.radius, list = [];
       for (let dz = -R; dz <= R; dz++) for (let dy = -R + 1; dy <= R - (inV ? 0 : 1); dy++) for (let dx = -R; dx <= R; dx++) {
-        const d2 = dx * dx + dy * dy * (inV && dy > 0 ? 0.85 : 1.4) + dz * dz;
+        const d2 = dx * dx + dy * dy * (inV && dy > 0 ? this.upK : 1.4) + dz * dz;
         if (d2 > R * R) continue;
         list.push([d2, pcx + dx, pcy + dy, pcz + dz]);
       }

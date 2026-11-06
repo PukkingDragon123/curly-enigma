@@ -1,12 +1,18 @@
-// 32×32 crystal icons: clusters of faceted prisms growing from a host-rock base (quartz,
-// lumite, echo, bioxide, magmaite, frostite, voidstone), halite cubes, the floating gravium
-// bipyramid and the amethyst geode. Built on the facet renderer in facets.js.
+// Crystal icons: clusters of faceted prisms growing from a host-rock base (quartz, lumite,
+// echo, bioxide, magmaite, frostite, voidstone), halite cubes, the floating gravium bipyramid
+// and the amethyst geode. Built on the facet renderer in facets.js; authored on the 32-unit
+// design grid and rasterised natively at S× (res.js).
 import { makeRng } from '../../core/util.js';
 import { hash2, bayer, vnoise } from './shade.js';
 import { Scene, material, rampOf, stoneTex, glint, prismUV, xf, ypr } from './facets.js';
-import { ROCK, rockMat, hostRock, recolor, inPoly } from './oreIcons.js';
+import { ROCK, rockMat, hostRock, recolor, inPoly, cracks, patch } from './oreIcons.js';
+import { S, dc, nc, np, grain } from './res.js';
 
-/** Translucent crystal material: darker toward the root, lighter toward the tip, faint inner streaks. */
+/**
+ * Translucent crystal material: darker toward the root, lighter toward the tip, faint inner
+ * streaks; at S > 1 also fine horizontal growth striations across the prism faces and a
+ * ghostly phantom (an earlier tip) inside the bigger crystals.
+ */
 function crystalMat(R, o = {}) {
   return material(R, {
     eq: 0.55, grad: 0.05, gap: 1.4, ridgeAll: true,
@@ -15,7 +21,14 @@ function crystalMat(R, o = {}) {
       let t = 0;
       if (u < 0.22) t += (0.22 - u) * (o.root ?? 5);
       if (u > 0.78) t -= 0.35;
-      if (o.streak !== false && Math.abs(v + 0.15) < 0.16 && u > 0.18 && u < 0.85) t -= 0.9;
+      if (o.streak !== false && Math.abs(v + 0.15) < (S > 1 ? 0.1 : 0.16) && u > 0.18 && u < 0.85) t -= 0.9;
+      if (S > 1 && o.streak !== false && Math.abs(v + 0.4) < 0.06 && u > 0.3 && u < 0.7) t -= 0.6;
+      const fr = c.obj.o.frame;
+      if (S > 1 && fr && o.striae !== false) {
+        const a = u * fr.len, shaft = fr.len - (fr.r * 1.4);
+        if (a > 1.2 && a < shaft && ((a * 1.15 + v * 0.25) % 1.6) < 0.28) t += 0.7;
+        if (fr.len > 12 && Math.abs(a - fr.len * 0.62 + Math.abs(v) * fr.r * 0.9) < 0.22) t -= 0.7; // phantom
+      }
       return t;
     },
     ...o,
@@ -62,7 +75,7 @@ function tipGlints(pc, sc, xs, R, n = 2, emit = 0) {
   tips.slice(0, n).forEach(([x, y, ob], i) => {
     for (let k = 2; k < 6; k++) {
       const X = Math.round(x - 0.5 - ob.o.frame.d[0] * k), Y = Math.round(y - 0.5 - ob.o.frame.d[1] * k);
-      if (sc.objAt(X, Y) === ob.id) { glint(pc, X, Y, i === 0 ? 2 : 1, 0xffffff, R[1], emit); break; }
+      if (sc.objD(X + 0.25, Y + 0.25) === ob.id) { glint(pc, X, Y, i === 0 ? 2 : 1, 0xffffff, R[1], emit); break; }
     }
   });
 }
@@ -78,20 +91,25 @@ function base(sc, R, seed, o = {}) {
 /** Frost / rime: dither pale pixels over the lower parts of the given objects. */
 function rime(pc, sc, objs, y0, cols, seed = 3) {
   const ids = new Set(objs.map((q) => q.id));
-  for (let y = y0; y < sc.h; y++) for (let x = 0; x < sc.w; x++) {
-    const i = y * sc.w + x;
+  for (let Y = np(y0); Y < sc.h; Y++) for (let X = 0; X < sc.w; X++) {
+    const i = Y * sc.w + X;
     if (!ids.has(sc.ob[i]) || sc.k[i] < 0 || sc.k[i] > 6) continue;
-    if (hash2(x, y, seed) < 0.18 + (y - y0) * 0.05 && bayer(x, y) < 0.7) pc.set(x, y, cols[sc.k[i] < 3 ? 0 : 1]);
+    if (S > 1 ? grain(X, Y, seed, 0.28 + (dc(Y) - y0) * 0.09) : hash2(X, Y, seed) < 0.18 + (dc(Y) - y0) * 0.05 && bayer(X, Y) < 0.7) {
+      pc.set(X, Y, cols[sc.k[i] < 3 ? 0 : 1]);
+      // at S > 1 the frost grows in little needles: a second crystal on top of some grains
+      if (S > 1 && hash2(X, Y, seed + 1) < 0.3 && Y > 0 && ids.has(sc.ob[i - sc.w])) pc.set(X, Y - 1, cols[1]);
+    }
   }
 }
 
 /** Jagged lightning bolt: bright 1px core + coloured fringe on its right. */
 function bolt(pc, pts, core, fringe) {
   const seg = (x0, y0, x1, y1, c, dx) => {
-    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) | 0 || 1;
-    for (let i = 0; i <= n; i++) { const x = Math.round(x0 + (x1 - x0) * i / n) + dx, y = Math.round(y0 + (y1 - y0) * i / n); if (x >= 0 && y >= 0 && x < 32 && y < 32) { pc.set(x, y, c); pc.emit(x, y, 1); } }
+    const n = (Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) * S) | 0 || 1;
+    for (let i = 0; i <= n; i++) { const x = nc(x0 + (x1 - x0) * i / n) + dx, y = nc(y0 + (y1 - y0) * i / n); if (x >= 0 && y >= 0 && x < pc.w && y < pc.h) { pc.set(x, y, c); pc.emit(x, y, 1); } }
   };
   for (let i = 0; i + 1 < pts.length; i++) seg(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], fringe, 1);
+  if (S > 1) for (let i = 0; i + 1 < pts.length; i++) { seg(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 0xc8a020, 2); seg(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], fringe, -1); }
   for (let i = 0; i + 1 < pts.length; i++) seg(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], core, 0);
 }
 
@@ -129,17 +147,24 @@ function salt(pc) {
   sc.box(m, [24, 22.5, 4], 3.6, 3.6, 3.6, { ...tilt, ry: 0.15 });
   sc.box(m, [20, 26.5, 6], 2.2, 2.2, 2.2, { ...tilt, ry: 0.9 });
   sc.render(pc);
-  // hopper steps: a smaller lighter square inset on each lit face
+  // hopper steps: smaller inset squares on each face (two terraces at S > 1), each terrace's
+  // lit rim catching the light (face points are in native pixels)
   for (const ob of sc.objs) for (const f of ob.faces) {
     const cx = f.pts.reduce((s, p) => s + p[0], 0) / 4, cy = f.pts.reduce((s, p) => s + p[1], 0) / 4;
-    const inner = f.pts.map((p) => [cx + (p[0] - cx) * 0.45, cy + (p[1] - cy) * 0.45]);
     const lit = f.n[1] < -0.3;
-    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-      if (sc.fb[y * 32 + x] !== f.id) continue;
-      if (!inPoly(inner, x + 0.5, y + 0.5)) continue;
-      const k = sc.k[y * 32 + x];
-      if (k > 0 && k < 7) pc.set(x, y, SR[Math.max(1, k - (lit ? 1 : 0) + (lit ? 0 : 1))]);
-    }
+    const steps = S > 1 ? [0.7, 0.45, 0.22] : [0.45];
+    steps.forEach((t, si) => {
+      const inner = f.pts.map((p) => [cx + (p[0] - cx) * t, cy + (p[1] - cy) * t]);
+      const inn = (X, Y) => sc.fb[Y * sc.w + X] === f.id && inPoly(inner, X + 0.5, Y + 0.5);
+      sc.eachPx((X, Y, x, y, i) => {
+        if (!inn(X, Y)) return;
+        const k = sc.k[i];
+        if (k <= 0 || k >= 7) return;
+        let kk = Math.max(1, k + (lit ? -1 : 1) * (si === 0 || S === 1 ? 1 : si === 1 ? 0 : 1));
+        if (S > 1 && (!inn(X - 1, Y) || !inn(X, Y - 1))) kk = Math.max(1, kk - 1);
+        pc.set(X, Y, SR[Math.min(5, kk)]);
+      });
+    });
   }
   glint(pc, 12, 9, 2, 0xffffff, SR[1]);
   glint(pc, 6, 18, 1, 0xffffff, SR[1]);
@@ -153,7 +178,7 @@ function lumite(pc) {
   const xs = druse(sc, m, { cx: 16, cy: 24.5, rx: 7.5, rz: 3.5, n: 6, len: [6, 23], seed: 6, rk: 0.19, peak: [0, 0] });
   sc.render(pc);
   // light spill on the rock under the crystals
-  recolor(pc, sc, rock, (x, y, k) => y < 27 && k >= 2 && hash2(x, y, 5) < 0.55, rampOf([LR[2], LR[3], LR[3], LR[4], LR[5], LR[5], LR[6]]));
+  recolor(pc, sc, rock, (x, y, k) => y < 27 && k >= 2 && patch(x, y, 5, 0.55), rampOf([LR[2], LR[3], LR[3], LR[4], LR[5], LR[5], LR[6]]));
   tipGlints(pc, sc, xs, LR, 2, 1);
 }
 
@@ -169,10 +194,13 @@ function echo(pc) {
     for (let i = 0; i < 3; i++) {
       const r = 3.2 + i * 2.4;
       const c = [0xeaf6ff, 0xa8d0ff, 0x6a90d8][i];
-      for (let a = -0.8 + i * 0.08; a <= 0.8 - i * 0.08; a += 0.05) {
-        const x = Math.round(cx + side * Math.cos(a) * r - 0.5), y = Math.round(cy + Math.sin(a) * r - 0.5);
+      for (let a = -0.8 + i * 0.08; a <= 0.8 - i * 0.08; a += 0.05 / S) {
+        const x = np(cx + side * Math.cos(a) * r), y = np(cy + Math.sin(a) * r);
         if (pc.alpha(x, y)) continue;
         pc.set(x, y, c); pc.emit(x, y, 0.6 - i * 0.15);
+        // at S > 1 each ring has a dimmer outer edge (and the ends thin out)
+        const x2 = np(cx + side * Math.cos(a) * (r + 0.5)), y2 = np(cy + Math.sin(a) * (r + 0.5));
+        if (S > 1 && Math.abs(a) < 0.62 - i * 0.08 && !pc.alpha(x2, y2)) { pc.set(x2, y2, [0x9ac8ff, 0x6a90d8, 0x4a68b0][i], 210 - i * 40); pc.emit(x2, y2, 0.4 - i * 0.1); }
       }
     }
   };
@@ -184,9 +212,10 @@ function echo(pc) {
 function gravium(pc) {
   const GR = CR.gravium();
   // ground shadow (soft, dithered)
-  for (let y = 26; y < 31; y++) for (let x = 6; x < 27; x++) {
+  for (let Y = 26 * S; Y < 31 * S; Y++) for (let X = 6 * S; X < 27 * S; X++) {
+    const x = dc(X), y = dc(Y);
     const d = ((x + 0.5 - 16) / 9.5) ** 2 + ((y + 0.5 - 28.5) / 2) ** 2;
-    if (d < 1 && (d < 0.45 || bayer(x, y) < 0.5)) pc.set(x, y, 0x2a1a40, d < 0.45 ? 130 : 80);
+    if (d < 1 && (d < 0.45 || bayer(X, Y) < 0.5)) pc.set(X, Y, 0x2a1a40, d < 0.25 ? 150 : d < 0.45 ? 120 : 80);
   }
   const sc = new Scene(32);
   const m = material(GR, { eq: 0.65, ridgeAll: true, grad: 0.05, glow: 0.35 });
@@ -204,7 +233,10 @@ function gravium(pc) {
   chip(24.5, 21, 5, 1.5, -1.35, 0.5);
   sc.render(pc);
   // upward drift streaks
-  for (const [x, y, l] of [[4, 18, 3], [28, 13, 2], [8, 25, 2], [23, 2, 2]]) for (let i = 0; i < l; i++) { pc.set(x, y + i, GR[1 + i], 220 - i * 60); pc.emit(x, y + i, 0.5); }
+  for (const [x, y, l] of [[4, 18, 3], [28, 13, 2], [8, 25, 2], [23, 2, 2], ...(S > 1 ? [[5.5, 4, 2], [27, 26, 1.5]] : [])]) {
+    const X = nc(x), Y = nc(y), n = Math.round(l * S);
+    for (let i = 0; i < n; i++) { pc.set(X, Y + i, GR[1 + Math.floor(i / S)], Math.round(220 - (i / n) * 170)); pc.emit(X, Y + i, 0.5); }
+  }
   glint(pc, 13, 6, 2, 0xffffff, GR[1], 1);
 }
 
@@ -232,19 +264,26 @@ function magmaite(pc) {
   const rng = makeRng(66);
   for (const ob of xs) {
     const fr = ob.o.frame;
-    let v = rng.range(-0.3, 0.3);
-    for (let u = 0.05; u < 0.9; u += 0.035) {
-      v += rng.range(-0.18, 0.18);
-      v = Math.max(-0.6, Math.min(0.6, v));
-      const x = Math.floor(fr.b[0] + fr.d[0] * u * fr.len + fr.e1[0] * v * fr.r), y = Math.floor(fr.b[1] + fr.d[1] * u * fr.len + fr.e1[1] * v * fr.r);
+    let v = rng.range(-0.3, 0.3), vv = v;
+    for (let u = 0.05, n = 0; u < 0.9; u += 0.035 / S, n++) {
+      if (n % S === 0) { v += rng.range(-0.18, 0.18); v = Math.max(-0.6, Math.min(0.6, v)); }
+      vv += (v - vv) / S;
+      const x = np(fr.b[0] + fr.d[0] * u * fr.len + fr.e1[0] * vv * fr.r), y = np(fr.b[1] + fr.d[1] * u * fr.len + fr.e1[1] * vv * fr.r);
       if (sc.objAt(x, y) !== ob.id) continue;
       const k = Math.min(3, Math.floor(u * 4.2));
       pc.set(x, y, lava[k]); pc.emit(x, y, 1);
+      // at S > 1 the hot seam heats the glass beside it: a dim halo pixel on its shaded side
+      if (S > 1 && k < 3 && sc.objAt(x + 1, y) === ob.id && sc.k[y * sc.w + x + 1] > 2) { pc.set(x + 1, y, lava[3]); pc.emit(x + 1, y, 0.5); }
     }
   }
   // glowing seam in the rock and embers
-  recolor(pc, sc, rock, (x, y) => Math.abs(y - 26 - Math.sin(x * 0.55) * 1.3) < 0.6, rampOf([0xfff6c0, 0xffd04a, 0xff9a3a, 0xe0602a, 0xa83a1a, 0x6a2010, 0x2a0a06]));
-  for (const [x, y] of [[5, 8], [27, 10], [22, 3], [9, 4]]) { pc.set(x, y, 0xffb04a); pc.emit(x, y, 1); }
+  recolor(pc, sc, rock, (x, y) => Math.abs(y - 26 - Math.sin(x * 0.55) * 1.3) < (S > 1 ? 0.4 : 0.6), rampOf([0xfff6c0, 0xffd04a, 0xff9a3a, 0xe0602a, 0xa83a1a, 0x6a2010, 0x2a0a06]));
+  if (S > 1) recolor(pc, sc, rock, (x, y, k) => { const d = Math.abs(y - 26 - Math.sin(x * 0.55) * 1.3); return d >= 0.4 && d < 0.9 && hash2(Math.floor(x * 4), Math.floor(y * 4), 2) < 0.6; }, rampOf([0xffd04a, 0xff9a3a, 0xe0602a, 0xa83a1a, 0x6a2010, 0x4a1608, 0x2a0a06]));
+  for (const [x, y] of [[5, 8], [27, 10], [22, 3], [9, 4], ...(S > 1 ? [[25, 5], [6, 14]] : [])]) {
+    if (S === 1) { pc.set(x, y, 0xffb04a); pc.emit(x, y, 1); continue; }
+    const X = nc(x), Y = nc(y);
+    pc.set(X, Y, 0xfff0a0); pc.emit(X, Y, 1); pc.set(X, Y + 1, 0xffb04a); pc.emit(X, Y + 1, 1); pc.set(X, Y + 2, 0xd8481a, 180); pc.emit(X, Y + 2, 0.6);
+  }
 }
 
 function frostite(pc) {
@@ -256,9 +295,21 @@ function frostite(pc) {
   sc.render(pc);
   rime(pc, sc, [...rock, ...xs], 21, [0xffffff, 0xd8f4ff], 7);
   const flake = (x, y, c = 0xffffff, c2 = 0xbff0ff) => {
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { pc.set(x + dx, y + dy, c2); pc.set(x + dx * 2, y + dy * 2, c); pc.emit(x + dx, y + dy, 0.7); pc.emit(x + dx * 2, y + dy * 2, 0.7); }
-    for (const [dx, dy] of [[1, 1], [-1, -1], [1, -1], [-1, 1]]) { pc.set(x + dx * 2, y + dy * 2, c2); pc.emit(x + dx * 2, y + dy * 2, 0.7); }
-    pc.set(x, y, c); pc.emit(x, y, 0.8);
+    const put = (X, Y, col, g = 0.7) => { pc.set(X, Y, col); pc.emit(X, Y, g); };
+    if (S === 1) {
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { put(x + dx, y + dy, c2); put(x + dx * 2, y + dy * 2, c); }
+      for (const [dx, dy] of [[1, 1], [-1, -1], [1, -1], [-1, 1]]) put(x + dx * 2, y + dy * 2, c2);
+      put(x, y, c, 0.8);
+      return;
+    }
+    // a dendrite: four long arms with side branches near their tips, short diagonal spurs
+    const X = nc(x), Y = nc(y);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (let k = 1; k <= 4; k++) put(X + dx * k, Y + dy * k, k === 4 ? c : c2);
+      for (const s of [-1, 1]) put(X + dx * 3 + dy * s, Y + dy * 3 + dx * s, c2, 0.5);
+    }
+    for (const [dx, dy] of [[1, 1], [-1, -1], [1, -1], [-1, 1]]) { put(X + dx, Y + dy, c2, 0.5); put(X + dx * 2, Y + dy * 2, c, 0.6); }
+    put(X, Y, c, 0.9);
   };
   flake(4, 7);
   flake(27, 5);
@@ -275,15 +326,22 @@ function voidstone(pc) {
   // light-drinking aura: dark violet fringe round the silhouette, motes being pulled in
   const has = (x, y) => pc.alpha(x, y) > 200;
   const add = [];
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-    if (has(x, y)) continue;
+  const R2 = 2 * S;
+  for (let Y = 0; Y < pc.h; Y++) for (let X = 0; X < pc.w; X++) {
+    if (has(X, Y)) continue;
     let near = 99;
-    for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) if (has(x + i, y + j)) near = Math.min(near, Math.hypot(i, j));
-    if (near <= 1.5 && y < 25) add.push([x, y, 0x1a0a2e, 200]);
-    else if (near <= 2.3 && y < 24 && bayer(x, y) < 0.5) add.push([x, y, 0x24103c, 120]);
+    for (let j = -R2; j <= R2; j++) for (let i = -R2; i <= R2; i++) if (has(X + i, Y + j)) near = Math.min(near, Math.hypot(i, j) / S);
+    const y = dc(Y);
+    if (near <= 1.5 && y < 25) add.push([X, Y, near <= 0.8 ? 0x14061f : 0x1a0a2e, 200]);
+    else if (near <= 2.3 && y < 24 && bayer(X, Y) < 0.5) add.push([X, Y, 0x24103c, 120]);
   }
   for (const [x, y, c, a] of add) pc.set(x, y, c, a);
-  for (const [x, y, dx, dy] of [[4, 8, 1, 1], [27, 6, -1, 1], [3, 18, 1, 0], [28, 17, -1, 0]]) { pc.set(x, y, 0xc8a0ff); pc.set(x - dx, y - dy, 0x6a3ab0, 200); }
+  for (const [x, y, dx, dy] of [[4, 8, 1, 1], [27, 6, -1, 1], [3, 18, 1, 0], [28, 17, -1, 0], ...(S > 1 ? [[7, 3, 1, 1], [25, 22, -1, 0]] : [])]) {
+    if (S === 1) { pc.set(x, y, 0xc8a0ff); pc.set(x - dx, y - dy, 0x6a3ab0, 200); continue; }
+    // a mote being dragged in: bright head, a fading streak behind it
+    const X = nc(x), Y = nc(y);
+    pc.set(X, Y, 0xe8d0ff); pc.set(X - dx, Y - dy, 0xa070e0, 220); pc.set(X - 2 * dx, Y - 2 * dy, 0x6a3ab0, 170); pc.set(X - 3 * dx, Y - 3 * dy, 0x4a2480, 110);
+  }
   tipGlints(pc, sc, xs, VR, 1);
 }
 
@@ -310,69 +368,95 @@ function amethyst(pc) {
   const cutN = xf([[0, 0, 1]], { rx: 0.72 })[0];
   let cut = null, best = -1;
   for (const f of geo.faces) { const d = f.n[0] * cutN[0] + f.n[1] * cutN[1] + f.n[2] * cutN[2]; if (d > best) { best = d; cut = f; } }
-  const onFace = (x, y) => sc.pidAt(x, y) === cut.pid;
+  const onFace = (X, Y) => sc.pidAt(X, Y) === cut.pid;
+  const W = sc.w, H = sc.h, NB = 48 * S;
   let fx = 0, fy = 0, fn = 0;
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (onFace(x, y)) { fx += x + 0.5; fy += y + 0.5; fn++; }
+  sc.eachPx((X, Y, x, y) => { if (onFace(X, Y)) { fx += x + 0.5; fy += y + 0.5; fn++; } });
   fx /= fn; fy /= fn;
   // the break is ragged: the opened face is a jagged inset of the cut plane
-  const ext = new Float32Array(48);
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (onFace(x, y)) {
-    const b = Math.floor(((Math.atan2(y + 0.5 - fy, x + 0.5 - fx) + Math.PI) / (Math.PI * 2)) * 48) % 48;
-    ext[b] = Math.max(ext[b], Math.hypot(x + 0.5 - fx, y + 0.5 - fy));
-  }
-  const jag = (b) => 0.9 + 0.07 * vnoise(b * 0.7, 0, 8) + (hash2(b, 9, 3) < 0.25 ? -0.07 : 0);
-  const inCut = (x, y) => {
-    if (!onFace(x, y)) return false;
-    const a = (Math.atan2(y + 0.5 - fy, x + 0.5 - fx) + Math.PI) / (Math.PI * 2) * 48, b = Math.floor(a) % 48;
-    const e = Math.min(ext[b] || 99, ext[(b + 1) % 48] || 99, ext[(b + 47) % 48] || 99);
-    return Math.hypot(x + 0.5 - fx, y + 0.5 - fy) < e * jag(b) - 0.3;
-  };
-  const D = new Float32Array(1024).fill(99);
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-    if (!inCut(x, y)) continue;
-    let d = 99;
-    for (let j = -6; j <= 6; j++) for (let i = -6; i <= 6; i++) if (!inCut(x + i, y + j)) d = Math.min(d, Math.hypot(i, j * 1.2));
-    D[y * 32 + x] = Math.min(d, 8); // deep inside the face: still the hollow
+  const ext = new Float32Array(NB);
+  const bin = (x, y) => Math.floor(((Math.atan2(y + 0.5 - fy, x + 0.5 - fx) + Math.PI) / (Math.PI * 2)) * NB) % NB;
+  sc.eachPx((X, Y, x, y) => { if (onFace(X, Y)) { const b = bin(x, y); ext[b] = Math.max(ext[b], Math.hypot(x + 0.5 - fx, y + 0.5 - fy)); } });
+  const jag = (b) => 0.9 + 0.07 * vnoise(b * 0.7 / S, 0, 8) + (hash2(Math.floor(b / S), 9, 3) < 0.25 ? -0.07 : 0) + (S > 1 ? (hash2(b, 4, 7) - 0.5) * 0.03 : 0);
+  const inCutA = new Uint8Array(W * H);
+  sc.eachPx((X, Y, x, y, i) => {
+    if (!onFace(X, Y)) return;
+    const b = bin(x, y);
+    const e = Math.min(ext[b] || 99, ext[(b + 1) % NB] || 99, ext[(b + NB - 1) % NB] || 99);
+    if (Math.hypot(x + 0.5 - fx, y + 0.5 - fy) < e * jag(b) - 0.3) inCutA[i] = 1;
+  });
+  const inCut = (X, Y) => X >= 0 && Y >= 0 && X < W && Y < H && inCutA[Y * W + X] === 1;
+  const D = new Float32Array(W * H).fill(99); // design px in from the break
+  // the nearest outside pixel is always one bordering the cut: measure to those only
+  const rimPx = [];
+  for (let Y = -1; Y <= H; Y++) for (let X = -1; X <= W; X++) if (!inCut(X, Y) && (inCut(X - 1, Y) || inCut(X + 1, Y) || inCut(X, Y - 1) || inCut(X, Y + 1) || inCut(X - 1, Y - 1) || inCut(X + 1, Y + 1) || inCut(X + 1, Y - 1) || inCut(X - 1, Y + 1))) rimPx.push(X, Y);
+  const R6 = 6 * S;
+  for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) {
+    if (!inCut(X, Y)) continue;
+    let d2 = 1e9;
+    for (let k = 0; k < rimPx.length; k += 2) {
+      const i = rimPx[k] - X, j = (rimPx[k + 1] - Y) * 1.2;
+      if (i > R6 || i < -R6 || j > R6 * 1.2 || j < -R6 * 1.2) continue;
+      const q = i * i + j * j;
+      if (q < d2) d2 = q;
+    }
+    D[Y * W + X] = Math.min(Math.sqrt(d2) / S, 8); // deep inside the face: still the hollow
   }
   const AR = CR.amethyst();
-  // agate rind: a white chalcedony skin, a grey-blue band, then the violet root of the crystals
-  const RIND = [0xf6f2fa, 0xb8b4cc, 0xd8d4e6, 0x8a84a8];
+  // agate rind: a white chalcedony skin, a grey-blue band, then the violet root of the crystals;
+  // at S > 1 the rind shows its fine concentric banding (milky / blue-grey / milky / lavender)
+  const RIND = [0xf6f2fa, 0xb8b4cc, 0xd8d4e6, 0x8a84a8, 0xe8e4f2, 0x9c96b8, 0xb6a0d8];
   let cx = 0, cy = 0, n = 0;
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-    const d = D[y * 32 + x];
-    if (d > 90) continue;
-    if (d < 1.1) pc.set(x, y, (x + 0.5 - fx) * 0.6 + (y + 0.5 - fy) * 0.8 < 0 ? RIND[0] : RIND[3]);
-    else if (d < 1.7) pc.set(x, y, RIND[1]);
-    else if (d < 2.3) pc.set(x, y, RIND[2]);
-    else { pc.set(x, y, AR[5]); cx += x + 0.5; cy += y + 0.5; n++; }
-  }
+  sc.eachPx((X, Y, x, y, i) => {
+    const d = D[i];
+    if (d > 90) return;
+    const lit = (x + 0.5 - fx) * 0.6 + (y + 0.5 - fy) * 0.8 < 0;
+    if (S === 1) {
+      if (d < 1.1) pc.set(X, Y, lit ? RIND[0] : RIND[3]);
+      else if (d < 1.7) pc.set(X, Y, RIND[1]);
+      else if (d < 2.3) pc.set(X, Y, RIND[2]);
+      else { pc.set(X, Y, AR[5]); cx += x + 0.5; cy += y + 0.5; n++; }
+      return;
+    }
+    if (d < 0.6) pc.set(X, Y, lit ? RIND[0] : RIND[3]);
+    else if (d < 1.0) pc.set(X, Y, lit ? RIND[4] : RIND[5]);
+    else if (d < 1.3) pc.set(X, Y, RIND[1]);
+    else if (d < 1.6) pc.set(X, Y, RIND[4]);
+    else if (d < 1.95) pc.set(X, Y, RIND[2]);
+    else if (d < 2.3) pc.set(X, Y, RIND[6]);
+    else { pc.set(X, Y, AR[5]); cx += x + 0.5; cy += y + 0.5; n++; }
+  });
   cx /= n; cy /= n;
-  const hollow = (x, y) => D[y * 32 + x] >= 2.3 && D[y * 32 + x] < 90;
+  const hollow = (X, Y) => X >= 0 && Y >= 0 && X < W && Y < H && D[Y * W + X] >= 2.3 && D[Y * W + X] < 90;
   // the hollow itself: dark violet, deepest just below the middle
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (hollow(x, y)) {
+  sc.eachPx((X, Y, x, y) => {
+    if (!hollow(X, Y)) return;
     const r = Math.hypot((x + 0.5 - cx) / 1.25, y + 0.5 - cy - 0.6);
-    pc.set(x, y, r < 2.2 ? 0x16081f : r < 3.6 ? AR[6] : AR[5]);
-  }
+    pc.set(X, Y, r < 2.2 ? 0x16081f : r < 3.6 ? AR[6] : AR[5]);
+  });
   // a ring of distinct crystal points rooted in the rind, leaning in over the hollow and up at
   // the viewer: real little faceted prisms (a second scene, clipped to the hollow)
   const sc2 = new Scene(32);
-  const XM = crystalMat(AR, { root: 3, streak: false });
-  const NK = 11;
+  const XM = crystalMat(AR, { root: 3, streak: false, striae: false });
+  const NK = S > 1 ? 15 : 11;
   for (let k = 0; k < NK; k++) {
     const th = (k / NK) * Math.PI * 2 + 0.25 + (hash2(k, 1, 5) - 0.5) * 0.3;
     const ux = Math.cos(th) * 1.3, uy = Math.sin(th);
     let r = 0.5;
-    while (r < 16 && hollow(Math.floor(cx + ux * r), Math.floor(cy + uy * r))) r += 0.25;
+    while (r < 16 && hollow(np(cx + ux * r), np(cy + uy * r))) r += 0.25;
     const bx = cx + ux * (r + 0.6), by = cy + uy * (r + 0.6);
-    const len = 3.6 + hash2(k, 2, 5) * 2.2;
-    sc2.prism(XM, { b: [bx, by, -1], d: [-Math.cos(th) * 0.8, -Math.sin(th) * 0.8, 0.75], len, r: 1.35 + hash2(k, 3, 5) * 0.5, tip: 2.2, sides: 5, twist: k * 0.7 });
+    const len = (3.6 + hash2(k, 2, 5) * 2.2) * (S > 1 && k % 2 ? 0.8 : 1);
+    sc2.prism(XM, { b: [bx, by, -1], d: [-Math.cos(th) * 0.8, -Math.sin(th) * 0.8, 0.75], len, r: (1.35 + hash2(k, 3, 5) * 0.5) * (S > 1 ? 0.85 : 1), tip: 2.2, sides: 5, twist: k * 0.7 });
   }
-  for (const [x, y, l] of [[cx - 2.4, cy + 1.6, 3], [cx + 2, cy + 0.6, 2.6], [cx - 0.2, cy - 1, 2.2]]) sc2.prism(XM, { b: [x, y, -4], d: [0.1, -0.35, 1], len: l, r: 1.1, tip: 1.6, sides: 5, twist: x });
-  const tmp = new pc.constructor(32);
+  for (const [x, y, l] of [[cx - 2.4, cy + 1.6, 3], [cx + 2, cy + 0.6, 2.6], [cx - 0.2, cy - 1, 2.2], ...(S > 1 ? [[cx + 0.8, cy + 2.6, 1.8], [cx - 3.2, cy - 0.6, 1.6]] : [])]) sc2.prism(XM, { b: [x, y, -4], d: [0.1, -0.35, 1], len: l, r: 1.1, tip: 1.6, sides: 5, twist: x });
+  const tmp = new pc.constructor(pc.w);
   sc2.render(tmp);
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (hollow(x, y) && tmp.alpha(x, y) > 0) pc.set(x, y, tmp.getHex(x, y));
+  for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) if (hollow(X, Y) && tmp.alpha(X, Y) > 0) pc.set(X, Y, tmp.getHex(X, Y));
+  // the shell's outside: a few hairline cracks in the rough rind
+  cracks(pc, sc, [geo], [[[3.6, 20], [5.4, 22.6], [5.2, 25]], [[27.6, 11], [26, 13.4]]]);
   glint(pc, Math.round(cx) - 5, Math.round(cy) - 3, 1, 0xffffff, AR[1]);
   glint(pc, Math.round(cx) + 4, Math.round(cy) + 2, 0, 0xffffff, AR[1]);
+  if (S > 1) glint(pc, Math.round(cx) - 1, Math.round(cy) - 4, 0, 0xffffff, AR[1]);
 }
 
 const DRAW = { quartz, salt_crystal: salt, lumite, echo_crystal: echo, gravium, bioxide, magmaite, frostite, voidstone, amethyst };

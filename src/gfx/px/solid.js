@@ -1,7 +1,9 @@
 // A tiny flat-shaded 3D polygon renderer for icons (ingots, furniture, boxes): faces are
 // projected with a fixed 3/4 camera, depth-sorted and filled with a ramp tone picked from
 // their normal against the top-left light. Optional per-face painters add texture.
-import { Mask, LIGHT, toneOf } from './shade.js';
+// Screen coordinates are design units (res.js): face masks are DMasks rasterised natively.
+import { LIGHT, toneOf } from './shade.js';
+import { DMask } from './res.js';
 
 /**
  * Camera: yaw r (radians, around the vertical), tilt t (how much of the top we see),
@@ -52,9 +54,9 @@ export function drawSolid(pc, cam, faces, o = {}) {
     list.push({ f, P, ns, depth });
   }
   list.sort((a, b) => a.depth - b.depth);
-  const all = new Mask(pc.w, pc.h);
+  const all = new DMask(pc.w, pc.h);
   for (const { f, P, ns } of list) {
-    const m = new Mask(pc.w, pc.h).poly(P.map((q) => [q[0], q[1]]));
+    const m = new DMask(pc.w, pc.h).poly(P.map((q) => [q[0], q[1]]));
     all.union(m);
     const tone = f.tone ?? toneOfNormal(ns, f.bias ?? o.bias ?? 0);
     if (f.paint) f.paint(pc, m, tone, f, P);

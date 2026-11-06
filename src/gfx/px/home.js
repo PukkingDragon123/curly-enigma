@@ -8,6 +8,7 @@ import { Mask, maskOf } from './shade.js';
 import {
   M, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, isTop, isBot, blob, loop, fringe, form, sheen, marks, bumps, speckle,
   blade, tube, spline, steam, twinkle, sparkle, rivet, pits, RAMPS, shadowOf,
+  S, SZ, dc, nc, np, dot, dotE, alphaD, getD, grain, glD, isTopD, isBotD, stepD,
 } from './lifeKit.js';
 import { camera, drawSolid, boxFaces } from './solid.js';
 import { leaf, mushroom } from './flora.js';
@@ -42,62 +43,66 @@ const wood = (R, o = {}) => (pc, m, tone, f, P) => {
   const T = clamp(tone + (o.dk || 0), 1, 5);
   const { a, g, n } = faceAxes(P, o);
   const seed = o.seed ?? 1;
-  m.each((x, y) => {
+  m.eachD((X, Y, x, y) => {
     const u = (x + 0.5 - a[0]) * g[0] + (y + 0.5 - a[1]) * g[1], v = (x + 0.5 - a[0]) * n[0] + (y + 0.5 - a[1]) * n[1];
-    let k = edgeK(m, x, y, T);
+    let k = edgeK(m, X, Y, T);
     if (k === T) {
-      if (o.planks) { const pv = ((v % o.planks) + o.planks) % o.planks; if (pv < 0.95) k = T + 2; else if (pv < 1.95) k = T - 1; }
+      // plank joints: a dark gap and the next plank's lit edge (one real pixel each at S > 1)
+      if (o.planks) { const pv = ((v % o.planks) + o.planks) % o.planks, gw = S > 1 ? 0.5 : 0.95; if (pv < gw) k = T + 2; else if (pv < gw * 2) k = T - 1; }
       if (k === T) {
         const gn = vnoise(u * 0.16 + seed * 3.1, v * 1.25, seed);
         if (gn > 0.72) k = T + 1; else if (gn < 0.1) k = T - 1;
         if (o.knots && hash2(Math.floor(u / 6), Math.floor(v / 3), seed) < 0.06 && Math.abs((u % 6) - 3) < 0.6) k = T + 2;
       }
     }
-    pc.set(x, y, R[clamp(k, o.lo ?? 1, 5)]);
+    pc.set(X, Y, R[clamp(k, o.lo ?? 1, 5)]);
   });
   if (o.nails) {
     const b = m.bounds();
-    if (b && b.w > 4 && b.h > 3) for (const [x, y] of [[b.x0 + 1, b.y0 + 1], [b.x1 - 1, b.y0 + 1]]) if (m.get(x, y) && m.get(x + 1, y + 1)) { pc.set(x, y, 0xb8bcc4); pc.set(x + 1, y + 1, R[5]); }
+    if (b && b.w > 4 && b.h > 3) for (const [x, y] of [[b.x0 + 1, b.y0 + 1], [b.x1 - 1, b.y0 + 1]]) if (m.at(x, y) && m.at(x + 1, y + 1)) { dot(pc, x, y, 0xb8bcc4); dot(pc, x + 1, y + 1, R[5]); }
   }
 };
 
 /** Stone: staggered courses of bevelled blocks with dark mortar joints. */
 const stone = (R, o = {}) => (pc, m, tone) => {
   const h = o.h ?? 3, w = o.w ?? 5;
-  m.each((x, y) => {
+  m.eachD((X, Y, x, y) => {
     const row = Math.floor((y + (o.oy || 0)) / h), off = (row % 2) * Math.floor(w / 2) + Math.floor(hash2(row, 0, 3) * 2);
     const col = Math.floor((x + off) / w);
-    const fy = (((y + (o.oy || 0)) % h) + h) % h, fx = (((x + off) % w) + w) % w;
+    const fy = (((y + 0.5 + (o.oy || 0)) % h) + h) % h, fx = (((x + 0.5 + off) % w) + w) % w;
     let k = tone + (hash2(col, row, 5) < 0.28 ? 1 : hash2(col, row, 6) < 0.18 ? -1 : 0);
-    if (fy === h - 1 || fx === w - 1) k = tone + 2;
-    else if (fy === 0 || fx === 0) k -= 1;
-    else if (hash2(x, y, 9) < 0.06) k += 1;
-    k = edgeK(m, x, y, k);
-    pc.set(x, y, R[clamp(k, 1, 5)]);
+    // mortar: the last real pixel of each course / block; a lit arris on the first
+    const px = 1 / S;
+    if (fy > h - px || fx > w - px) k = tone + 2;
+    else if (fy < px || fx < px) k -= 1;
+    else if (S > 1 && (fy > h - 2 * px || fx > w - 2 * px)) k += 1; // the block's shaded bevel
+    else if (hash2(X, Y, 9) < 0.06) k += 1;
+    k = edgeK(m, X, Y, k);
+    pc.set(X, Y, R[clamp(k, 1, 5)]);
   });
 };
 
 /** Cloth / upholstery: bevelled, a soft weave, optional checks (patchwork) or tufted buttons. */
 const cloth = (R, o = {}) => (pc, m, tone) => {
-  m.each((x, y) => {
-    let k = edgeK(m, x, y, tone);
+  m.eachD((X, Y, x, y) => {
+    let k = edgeK(m, X, Y, tone);
     let RR = R;
     if (o.check && ((Math.floor(x / 3) + Math.floor(y / 3)) % 2)) RR = o.check;
-    if (k === tone && (x + y * 2) % 4 === 0 && hash2(x, y, 3) < 0.5) k++;
-    pc.set(x, y, RR[clamp(k, 1, 5)]);
+    if (k === tone && (X + Y * 2) % 4 === 0 && hash2(X, Y, 3) < 0.5) k++;
+    pc.set(X, Y, RR[clamp(k, 1, 5)]);
   });
-  if (o.stitch) m.edge().each((x, y) => { if ((x + y) % 2 === 0 && !isBot(m, x, y)) pc.set(x, y, o.stitch); });
+  if (o.stitch) m.edge().eachD((X, Y, x, y) => { if ((X + Y) % 2 === 0 && !isBot(m, X, Y)) pc.set(X, Y, o.stitch); });
 };
 
 /** Iron: bevelled plate with a few pits and corner rivets. */
 const iron = (R, o = {}) => (pc, m, tone) => {
-  m.each((x, y) => pc.set(x, y, R[clamp(edgeK(m, x, y, tone), 1, 5)]));
+  m.eachD((X, Y, x, y) => pc.set(X, Y, R[clamp(edgeK(m, X, Y, tone), 1, 5)]));
   pits(pc, m.clone().erode(1), R, 0.04, o.seed ?? 2, 0.02);
-  if (o.rivets !== false) { const b = m.bounds(); if (b && b.w > 5 && b.h > 4) for (const [x, y] of [[b.x0 + 1, b.y0 + 1], [b.x1 - 2, b.y0 + 1], [b.x0 + 1, b.y1 - 2], [b.x1 - 2, b.y1 - 2]]) if (m.get(x, y) && m.get(x + 1, y + 1)) rivet(pc, x, y, R); }
+  if (o.rivets !== false) { const b = m.bounds(); if (b && b.w > 5 && b.h > 4) for (const [x, y] of [[b.x0 + 1, b.y0 + 1], [b.x1 - 2, b.y0 + 1], [b.x0 + 1, b.y1 - 2], [b.x1 - 2, b.y1 - 2]]) if (m.at(x, y) && m.at(x + 1, y + 1)) rivet(pc, x, y, R); }
 };
 
 /** Plain bevelled face. */
-const plain = (R) => (pc, m, tone) => m.each((x, y) => pc.set(x, y, R[clamp(edgeK(m, x, y, tone), 1, 5)]));
+const plain = (R) => (pc, m, tone) => m.eachD((X, Y, x, y) => pc.set(X, Y, R[clamp(edgeK(m, X, Y, tone), 1, 5)]));
 
 /** Box helper: draws an axis-aligned box with the shared camera. Returns its mask. */
 function box(pc, cam, x0, y0, z0, x1, y1, z1, R, o = {}) {
@@ -123,8 +128,8 @@ function crock(pc, R, outer, mouth, o = {}) {
   form(pc, body, R, { cx: b.x0 + b.w * 0.34, cy: (tb.y0 + tb.y1) / 2, rx: b.w * 0.62, ry: (b.y1 - tb.y0) * 1.2 + 1, dome: 0.25, bias: o.bias ?? 0.04 });
   const lip = top.clone().dilate(1, true).and(all).sub(top);
   const mcy = (tb.y0 + tb.y1 + 1) / 2;
-  lip.each((x, y) => pc.set(x, y, R[y + 0.5 >= mcy ? (x < (tb.x0 + tb.x1) / 2 + 2 ? 1 : 2) : 3]));
-  if (o.top !== false) { const tk = o.topTone ?? 2; top.each((x, y) => pc.set(x, y, R[clamp(edgeK(top, x, y, tk), 0, 5)])); }
+  lip.eachD((X, Y, x, y) => pc.set(X, Y, R[y + 0.5 >= mcy ? (x < (tb.x0 + tb.x1) / 2 + 2 ? 1 : 2) : 3]));
+  if (o.top !== false) { const tk = o.topTone ?? 2; top.eachD((X, Y, x, y) => pc.set(X, Y, R[clamp(edgeK(top, X, Y, tk), 0, 5)])); }
   return { all, body, top };
 }
 
@@ -136,9 +141,10 @@ function candle(pc, x, y, h = 5) {
   const W = mat(0xf2e6c8, { cont: 1.05 });
   const m = M().rect(x - 1, y - h, 3, h);
   seam(pc, m, 'shadow');
-  m.each((X, Y) => pc.set(X, Y, W[X === x - 1 ? 1 : X === x + 1 ? 4 : 2]));
-  pc.set(x + 1, y - h, W[1]); pc.set(x - 1, y - h + 2, W[1]);
-  return () => { gl(pc, x, y - h - 1, 0xffe8a0, 1); gl(pc, x, y - h - 2, 0xffc040, 1); gl(pc, x, y - h - 3, 0xfff4c0, 0.8); };
+  m.each((X, Y) => pc.set(X, Y, W[X < x * S ? 1 : X >= (x + 1) * S ? 4 : 2]));
+  if (S === 1) { pc.set(x + 1, y - h, W[1]); pc.set(x - 1, y - h + 2, W[1]); }
+  else { line(pc, x + 1.2, y - h, x + 1.6, y - h + 1.4, W[1]); line(pc, x - 1, y - h + 2, x - 0.6, y - h + 3.6, W[1]); pc.set(nc(x), nc(y - h), W[5]); } // wax drips and the melted well
+  return () => { glD(pc, x, y - h - 1, 0xffe8a0, 1); glD(pc, x, y - h - 2, 0xffc040, 1); glD(pc, x, y - h - 3, 0xfff4c0, 0.8); };
 }
 function glowcapProp(pc, x, y, r, h, seed = 3) {
   mushroom(pc, x, y, r, h, GLOWCAP(), mat(0xe4dccb, { cont: 1.05 }), { seed, glow: [0xc6f4ff, 0x6ad6ff], emit: 0.85, spots: [[-0.4, -0.5, 2], [0.3, -0.4, 1]], spotC: [0xe6fbff, 0x8ad8f8], lump: 0.04 });
@@ -156,7 +162,7 @@ const F = {
     for (const [x0, y0, x1, y1] of [[3.4, 23.6], [6.4, 27.4]].map(([x, y]) => [x, y, x + 23, y - 7])) {
       const lg = tube(pc, [[x0, y0], [x1, y1]], 2.3, BK, { bias: 0.06, capStart: 0.1, capEnd: 0.1 });
       marks(pc, lg.mask, BK, { dens: 0.25, seed: x0 | 0, len: 3, dir: [0.96, -0.3] });
-      for (const [dx, dy, k] of [[0, 0, 2], [1, 0, 1], [0, 1, 3], [-1, 0, 3], [0, -1, 2]]) pc.set(Math.round(x0) + dx, Math.round(y0) + dy, mat(0xd8a868)[k]);
+      for (const [dx, dy, k] of [[0, 0, 2], [1, 0, 1], [0, 1, 3], [-1, 0, 3], [0, -1, 2]]) dot(pc, Math.round(x0) + dx, Math.round(y0) + dy, mat(0xd8a868)[k]);
     }
     const SR = mat(0xe0c060, { cont: 1.12 });
     const heap = loop([[3.4, 19.4], [5.4, 16], [10, 13.4], [15.6, 11.6], [21.6, 10.4], [26.6, 11.6], [29.4, 14.6], [28.4, 18.4], [22.6, 21.6], [14.6, 24.2], [7.4, 24.8], [3.8, 22.8]]);
@@ -172,8 +178,8 @@ const F = {
     seam(pc, bl, 'shadow');
     form(pc, bl, BL, { bias: 0.08 });
     const pa = loop([[22, 14], [25.6, 13.4], [25.8, 16.6], [22.4, 17]]);
-    pa.each((x, y) => pc.set(x, y, mat(0xd8a050)[(x + y) % 2 ? 2 : 3]));
-    for (const [x, y] of [[22, 13], [24, 13], [26, 15], [21, 16]]) pc.set(x, y, 0xf0e0c0);
+    pa.eachD((X, Y, x, y) => pc.set(X, Y, mat(0xd8a050)[(X + Y) % 2 ? 2 : 3]));
+    for (const [x, y] of [[22, 13], [24, 13], [26, 15], [21, 16]]) dot(pc, x, y, 0xf0e0c0);
     ink(pc);
     for (const [x0, y0, x1, y1] of [[6, 15, 4, 12], [11, 12, 10, 9], [16, 11, 18, 8], [3, 19, 1, 18], [8, 24, 6, 27]]) line(pc, x0, y0, x1, y1, (i) => (i ? 0xd8b050 : null));
   },
@@ -198,7 +204,7 @@ const F = {
       for (let i = 0; i <= 8; i++) { const t = i / 8; hem.push([h0[0] + (h1[0] - h0[0]) * t, h0[1] + (h1[1] - h0[1]) * t + 1.6 + (i % 2) * 1.2]); }
       const drape = M().poly([[h0[0], h0[1] - 1], [h1[0], h1[1] - 1], ...hem.reverse()]);
       seam(pc, drape, 'shadow');
-      drape.each((x, y) => pc.set(x, y, ((Math.floor(x / 3) + Math.floor(y / 3)) % 2 ? mat(0xf0e0c0) : Q)[isBot(drape, x, y) ? 4 : 3]));
+      drape.eachD((X, Y, x, y) => pc.set(X, Y, ((Math.floor(x / 3) + Math.floor(y / 3)) % 2 ? mat(0xf0e0c0) : Q)[isBot(drape, X, Y) ? 4 : 3]));
     }
     {
       // quilt folded back at the head: a soft roll
@@ -223,11 +229,11 @@ const F = {
         const p0 = cam.p(x0, 18, z0);
         const curtain = M().poly([[p0[0] - 2, p0[1]], [p0[0] + 3, p0[1]], [p0[0] + 2.5, p0[1] + 14], [p0[0] - 2.5, p0[1] + 14]]);
         seam(pc, curtain, 'shadow');
-        curtain.each((x, y) => pc.set(x, y, CN[(x - Math.round(p0[0])) % 2 ? 4 : 3]));
-        for (let y = 0; y < 2; y++) pc.set(p0[0], p0[1] + 9 + y, G[2]);
+        curtain.eachD((X, Y, x, y) => pc.set(X, Y, CN[Math.floor(x - Math.round(p0[0]) + 0.5) % 2 ? 4 : 3]));
+        for (let y = 0; y < 2; y++) dot(pc, p0[0], p0[1] + 9 + y, G[2]);
       }
       for (const [x, z] of [[8.5, 7], [-9.5, 7]]) box(pc, cam, x, 0, z - 1.5, x + 1.5, 20, z, W, { paintAll: wood(W, { seed: 7, vertical: true }) });
-      for (const [x, z] of [[8.5, 7], [-9.5, 7]]) { const t = cam.p(x + 0.75, 21, z - 0.75); pc.set(t[0], t[1], G[1]); pc.set(t[0], t[1] - 1, G[0]); }
+      for (const [x, z] of [[8.5, 7], [-9.5, 7]]) { const t = cam.p(x + 0.75, 21, z - 0.75); dot(pc, t[0], t[1], G[1]); dot(pc, t[0], t[1] - 1, G[0]); }
     }
     ink(pc);
   },
@@ -238,7 +244,7 @@ const F = {
     // bed of glowing coals on top
     const fire = M().poly(topPoly(cam, -7, -4, 7, 3, 10));
     seam(pc, fire, 'shadow');
-    fire.each((x, y) => { const h = hash2(x, y, 3); gl(pc, x, y, h < 0.22 ? 0xfff0a0 : h < 0.5 ? 0xff9a2a : h < 0.8 ? 0xd84a1a : 0x6a2a1a, h < 0.8 ? 1 : 0.3); });
+    fire.eachD((X, Y, x, y) => { const h = hash2(X, Y, 3); gl(pc, X, Y, h < 0.22 ? 0xfff0a0 : h < 0.5 ? 0xff9a2a : h < 0.8 ? 0xd84a1a : 0x6a2a1a, h < 0.8 ? 1 : 0.3); });
     // hood + chimney (sooty iron)
     const H = mat(0x4e4a48, { cont: 1.1 });
     box(pc, cam, -4, 16, -6, 4, 22, -1, H, { paintAll: iron(H) });
@@ -249,8 +255,8 @@ const F = {
     box(pc, cam, 1.5, 3.6, 4.5, 10.5, 5.4, 7.5, A, { tone: { top: 1 }, paintAll: iron(A, { rivets: false }) });
     ink(pc);
     // flames licking up and sparks
-    for (const [x, y, h] of [[12, 13, 5], [15, 12, 7], [18, 13, 5], [20, 14, 3]]) for (let i = 0; i < h; i++) gl(pc, x + Math.round(Math.sin(i * 1.3 + x) * 0.7), y - i, i < 2 ? 0xffd040 : i < 4 ? 0xff9a2a : 0xffe8a0, 1);
-    for (const [x, y] of [[10, 4], [21, 6], [17, 3]]) gl(pc, x, y, 0xffc060, 0.9);
+    for (const [x, y, h] of [[12, 13, 5], [15, 12, 7], [18, 13, 5], [20, 14, 3]]) for (let i = 0; i < h; i++) glD(pc, x + Math.round(Math.sin(i * 1.3 + x) * 0.7), y - i, i < 2 ? 0xffd040 : i < 4 ? 0xff9a2a : 0xffe8a0, 1);
+    for (const [x, y] of [[10, 4], [21, 6], [17, 3]]) glD(pc, x, y, 0xffc060, 0.9);
   },
   stove(pc) {
     const cam = CAM({ cy: 24, scale: 1 });
@@ -264,15 +270,15 @@ const F = {
     const d0 = cam.p(-4.5, 2.5, 6), d1 = cam.p(3.5, 9.5, 6);
     const door = M().poly([cam.p(-4.5, 2.5, 6), cam.p(3.5, 2.5, 6), cam.p(3.5, 9.5, 6), cam.p(-4.5, 9.5, 6)].map((q) => [q[0], q[1]]));
     seam(pc, door, 'shadow');
-    door.each((x, y) => pc.set(x, y, I[clamp(edgeK(door, x, y, 3), 1, 5)]));
+    door.eachD((X, Y, x, y) => pc.set(X, Y, I[clamp(edgeK(door, X, Y, 3), 1, 5)]));
     const win = door.clone().erode(1);
-    win.each((x, y) => { if (isTop(win, x, y) || isBot(win, x, y)) return; gl(pc, x, y, (x % 2 === 0) ? I[5] : (y < (d0[1] + d1[1]) / 2 ? 0xffd060 : 0xff7a2a), x % 2 === 0 ? 0 : 1); });
+    win.eachD((X, Y, x, y) => { if (isTop(win, X, Y) || isBot(win, X, Y)) return; gl(pc, X, Y, (X % 2 === 0) ? I[5] : (y < (d0[1] + d1[1]) / 2 ? 0xffd060 : 0xff7a2a), X % 2 === 0 ? 0 : 1); });
     void d0; void d1;
     // a pot on the hob
     const P = mat(0x8a5a3a, { cont: 1.12 });
     const pt = cam.p(-1.5, 13.4, -1);
     crock(pc, P, rel([[-5, 0], [-4, -1.6], [0, -2.2], [4.4, -1.4], [5.2, 0.4], [5.2, 2.6], [4.4, 4.6], [1.6, 5.8], [-2.4, 5.6], [-4.6, 4.2], [-5.4, 2]], pt[0], pt[1] - 4.6), rel([[-3.8, 0], [-1, -1.2], [3, -1], [4, 0.2], [1, 1.2], [-2.6, 1]], pt[0], pt[1] - 4.6), { topTone: 4 });
-    pc.set(pt[0] - 5, pt[1] - 3, P[3]); pc.set(pt[0] + 5, pt[1] - 3, P[4]);
+    dot(pc, pt[0] - 5, pt[1] - 3, P[3]); dot(pc, pt[0] + 5, pt[1] - 3, P[4]);
     ink(pc);
     steam(pc, pt[0] - 2, pt[1] - 7, 6); steam(pc, pt[0] + 1, pt[1] - 7, 5, { phase: 2 });
   },
@@ -282,7 +288,7 @@ const F = {
     box(pc, cam, -9, 0, -5, 9, 7, 5, W, { paintAll: wood(W, { seed: 9, planks: 2.4, nails: true }) });
     const soil = M().poly(topPoly(cam, -8, -4, 8, 4, 7));
     const SO = mat(0x4e3220, { cont: 1.05 });
-    soil.each((x, y) => pc.set(x, y, SO[hash2(x, y, 2) < 0.3 ? 4 : hash2(x, y, 3) < 0.15 ? 2 : 3]));
+    soil.eachD((X, Y, x, y) => pc.set(X, Y, SO[hash2(X, Y, 2) < 0.3 ? 4 : hash2(X, Y, 3) < 0.15 ? 2 : 3]));
     glowcapProp(pc, 11.5, 13, 3.6, 4.5, 3);
     glowcapProp(pc, 20.5, 14.6, 3, 3.6, 7);
     glowcapProp(pc, 16.5, 10, 4.4, 6.6, 5);
@@ -295,7 +301,7 @@ const F = {
     for (const [x, z] of [[-9.5, -4.5], [8, -4.5], [-9.5, 3.5], [8, 3.5]]) box(pc, cam, x, 0, z, x + 1.5, 7, z + 1, W, { paintAll: wood(W, { seed: 3, vertical: true }) });
     box(pc, cam, 1, 3.5, 3.5, 8, 7, 4.8, W, { paintAll: wood(W, { seed: 6 }) });
     box(pc, cam, -10, 7, -5, 10, 9, 5, W, { paintAll: wood(W, { seed: 2, planks: 3 }) });
-    const kn = cam.p(4.5, 5.2, 4.8); pc.set(kn[0], kn[1], 0xe8c060);
+    const kn = cam.p(4.5, 5.2, 4.8); dot(pc, kn[0], kn[1], 0xe8c060);
     // an open book, a quill in an ink pot, a candle
     const B = mat(0xf4e8cc, { cont: 1.05 });
     box(pc, cam, -7, 9, -3, 1, 10, 3, B, { tone: { top: 1 } });
@@ -326,7 +332,7 @@ const F = {
     const blade1 = M().rect(8, 5, 3, 11).union(M().poly([[8, 5], [9.5, 2], [11, 5]]));
     seam(pc, blade1, 'shadow');
     blade1.each((X, Y) => pc.set(X, Y, S[X === 8 ? 1 : X === 9 ? (Y % 4 ? 2 : 0) : 4]));
-    for (let x = 6; x <= 13; x++) { pc.set(x, 16, G[x < 9 ? 1 : 2]); pc.set(x, 17, G[4]); }
+    for (let x = 6; x <= 13; x++) { dot(pc, x, 16, G[x < 9 ? 1 : 2]); dot(pc, x, 17, G[4]); }
     handle(15.5, 8, 26);
     const hd = M().poly([[17, 6], [21.6, 4], [23, 8], [21.6, 12.4], [17, 10.6]]);
     seam(pc, hd, 'shadow'); form(pc, hd, C, { dome: 0.2, bias: 0.06 });
@@ -349,13 +355,13 @@ const F = {
     form(pc, cs, mat(0xb03a4a, { cont: 1.1 }), { bias: 0.08 });
     const gem = M().poly([[cu[0], cu[1] - 7], [cu[0] + 3.4, cu[1] - 3.6], [cu[0], cu[1] - 0.6], [cu[0] - 3.4, cu[1] - 3.6]]);
     seam(pc, gem, 'shadow');
-    gem.each((x, y) => gl(pc, x, y, x < cu[0] ? (y < cu[1] - 3.6 ? 0xff8a9a : 0xe02a3a) : (y < cu[1] - 3.6 ? 0xe02a3a : 0x9a1028), 0.6));
+    gem.eachD((X, Y, x, y) => gl(pc, X, Y, x < cu[0] ? (y < cu[1] - 3.6 ? 0xff8a9a : 0xe02a3a) : (y < cu[1] - 3.6 ? 0xe02a3a : 0x9a1028), 0.6));
     line(pc, cu[0] - 3, cu[1] - 3.6, cu[0] + 3, cu[1] - 3.6, 0xff6a7a);
     const glass = loop(rel([[-6, 0.4], [-6.4, -6], [-5.4, -10.6], [-2.6, -13.2], [1.4, -13.6], [4.8, -11.8], [6.4, -7.4], [6.2, 0.4]], cu[0], cu[1]));
-    glass.each((x, y) => { if (pc.alpha(x, y) < 10) pc.set(x, y, 0xcce8f4, 120); });
+    glass.eachD((X, Y, x, y) => { if (pc.alpha(X, Y) < 10) pc.set(X, Y, 0xcce8f4, 120); });
     ink(pc, { minA: 100 });
-    for (let y = 0; y < 8; y++) pc.set(Math.round(cu[0] - 4.6 + y * 0.15), Math.round(cu[1] - 10 + y), 0xffffff, 230);
-    pc.set(cu[0] - 1, cu[1] - 5, 0xffffff);
+    for (let y = 0; y < 8; y++) dot(pc, Math.round(cu[0] - 4.6 + y * 0.15), Math.round(cu[1] - 10 + y), 0xffffff, 230);
+    dot(pc, cu[0] - 1, cu[1] - 5, 0xffffff);
     twinkle(pc, Math.round(cu[0] + 4), Math.round(cu[1] - 13), 0xffffff, 0xffc0d0, 1, 0.6);
   },
   glowlamp(pc, pot = false) {
@@ -364,9 +370,9 @@ const F = {
       const B = mat(0xb8603a, { cont: 1.12 });
       const c = crock(pc, B, [[8.4, 20], [10, 18], [16, 17.2], [22.4, 18.2], [23.8, 20.2], [23, 22.6], [22.2, 26], [20.4, 28.8], [11.4, 28.6], [9.8, 26], [9, 22.6]],
         [[10, 20], [12.4, 18.8], [16.4, 18.4], [20.4, 18.8], [22.2, 20.2], [19.6, 21.4], [16, 21.6], [12, 21.2]], { top: false });
-      for (let x = 8; x < 25; x++) if (c.body.get(x, 23)) { pc.set(x, 23, B[x < 13 ? 1 : 2]); pc.set(x, 24, B[4]); }
+      for (let x = 8; x < 25; x++) if (c.body.at(x, 23)) { dot(pc, x, 23, B[x < 13 ? 1 : 2]); dot(pc, x, 24, B[4]); }
       const SO = mat(0x4e3220);
-      c.top.each((x, y) => pc.set(x, y, SO[hash2(x, y, 2) < 0.3 ? 4 : 3]));
+      c.top.eachD((X, Y, x, y) => pc.set(X, Y, SO[hash2(X, Y, 2) < 0.3 ? 4 : 3]));
       glowcapProp(pc, 11, 15.4, 3.6, 4.4, 3);
       glowcapProp(pc, 21.4, 16, 3.2, 4, 9);
       glowcapProp(pc, 16.6, 11, 4.8, 8.6, 5);
@@ -389,45 +395,45 @@ const F = {
     const L = mat(0x3a3a42, { cont: 1.15 });
     const lan = M().rect(16, 12, 9, 10);
     seam(pc, lan, 'shadow');
-    lan.each((x, y) => pc.set(x, y, L[clamp(edgeK(lan, x, y, 3), 1, 5)]));
+    lan.eachD((X, Y, x, y) => pc.set(X, Y, L[clamp(edgeK(lan, X, Y, 3), 1, 5)]));
     const glass = M().rect(17, 13, 7, 8);
-    glass.each((x, y) => gl(pc, x, y, x === 17 || y === 13 ? 0xfff4c8 : (x + y) % 5 === 0 ? 0xffe090 : 0xffc060, 1));
+    glass.eachD((X, Y, x, y) => gl(pc, X, Y, Math.round(x) === 17 || Math.round(y) === 13 ? 0xfff4c8 : (X + Y) % 5 === 0 ? 0xffe090 : 0xffc060, 1));
     line(pc, 20, 13, 20, 20, L[3]);
     const fl = [[20, 16], [20, 17], [21, 17], [20, 18]];
-    for (const [x, y] of fl) gl(pc, x, y, 0xfffbe0, 1);
+    for (const [x, y] of fl) glD(pc, x, y, 0xfffbe0, 1);
     const cap = M().poly([[15, 12], [20.5, 8.6], [26, 12]]);
-    seam(pc, cap, 'shadow'); cap.each((x, y) => pc.set(x, y, L[x < 20 ? 2 : 4]));
+    seam(pc, cap, 'shadow'); cap.eachD((X, Y, x, y) => pc.set(X, Y, L[x < 20 ? 2 : 4]));
     const bot = M().rect(17, 22, 7, 1.6);
-    seam(pc, bot, 'shadow'); bot.each((x, y) => pc.set(x, y, L[4]));
+    seam(pc, bot, 'shadow'); bot.eachD((X, Y, x, y) => pc.set(X, Y, L[4]));
     ink(pc);
     line(pc, 20, 7, 20, 8, 0x2a2a30);
-    for (const [x, y] of [[14, 17], [28, 16], [20, 26]]) gl(pc, x, y, 0xffd890, 0.5);
+    for (const [x, y] of [[14, 17], [28, 16], [20, 26]]) glD(pc, x, y, 0xffd890, 0.5);
   },
   jar(pc) {
     const GLR = mat(0xd8eef0, { cont: 1 });
     // a roomy jar: moss and grass inside, a happy glow beetle, cloth lid and twine
     const jar = loop([[7.4, 9.4], [24.6, 9.2], [25, 12], [24.6, 20], [25.2, 26], [22.6, 29], [16, 29.6], [9, 29.2], [6.8, 26.4], [7.4, 20], [7, 12]]);
-    jar.each((x, y) => pc.set(x, y, GLR[x < 10 ? 1 : x > 21 ? 4 : 3], 200));
+    jar.eachD((X, Y, x, y) => pc.set(X, Y, GLR[x < 10 ? 1 : x > 21 ? 4 : 3], 200));
     const MO = mat(0x4e8a3a, { cont: 1.1 });
     const moss = blob(16, 26, 8, 2.8, { seed: 3, lump: 0.12 }).and(jar);
-    moss.each((x, y) => pc.set(x, y, MO[hash2(x, y, 2) < 0.3 ? 2 : 3]));
+    moss.eachD((X, Y, x, y) => pc.set(X, Y, MO[hash2(X, Y, 2) < 0.3 ? 2 : 3]));
     for (let x = 8; x < 25; x += 2) line(pc, x, 25, x + (x % 4 ? 1 : -1), 21 + (x % 3), (i) => MO[i ? 2 : 3]);
     const ab = blob(13.6, 17.4, 3, 2.6, { seed: 4 });
-    ab.each((x, y) => gl(pc, x, y, (x + y) % 3 ? 0xc8ff7a : 0xe8ffb0, 1));
+    ab.eachD((X, Y, x, y) => gl(pc, X, Y, (X + Y) % 3 ? 0xc8ff7a : 0xe8ffb0, 1));
     const sh = blob(17.6, 16.6, 3.4, 2.6, { seed: 5 });
     seam(pc, sh, 'shadow');
     form(pc, sh, mat(0x34408c, { cont: 1.15 }), { bias: 0.06 });
     line(pc, 17, 14, 18, 19, 0x1a1630);
-    pc.set(21, 15, 0x1a1630); pc.set(22, 14, 0x1a1630); pc.set(20, 17, 0xffffff);
+    dot(pc, 21, 15, 0x1a1630); dot(pc, 22, 14, 0x1a1630); dot(pc, 20, 17, 0xffffff);
     const CL = mat(0xd8c8a0, { cont: 1.08 });
     const lid = loop([[5.6, 8.6], [8.4, 6], [13, 5.2], [17, 5.8], [21.4, 5], [25, 6.4], [26.8, 9], [26.4, 12], [24.4, 11], [22.4, 12.6], [20, 11.2], [17.6, 12.6], [15.2, 11.2], [12.6, 12.8], [10.4, 11.2], [8, 12.4], [5.8, 11.4]]);
     seam(pc, lid, 'shadow');
     form(pc, lid, CL, { bias: 0.08 });
     const TW = RAMPS.twine();
-    for (let x = 6; x < 26; x++) pc.set(x, 10, TW[(x % 2) + 2]);
+    for (let x = 6; x < 26; x++) dot(pc, x, 10, TW[(x % 2) + 2]);
     ink(pc, { minA: 150 });
-    for (let y = 12; y < 26; y++) if (y % 4) pc.set(9, y, 0xffffff, 200);
-    gl(pc, 12, 16, 0xffffff, 1);
+    for (let y = 12; y < 26; y++) if (y % 4) dot(pc, 9, y, 0xffffff, 200);
+    glD(pc, 12, 16, 0xffffff, 1);
   },
   crystallamp(pc) {
     const S = STONE();
@@ -435,7 +441,7 @@ const F = {
     marks(pc, c.body, S, { dens: 0.1, seed: 2, len: 2, dir: [1, 0] });
     // a cluster of cut amethyst points, the big one glowing
     const C = mat(0xb07af6, { cont: 1.15 });
-    const pt = (pts, n, emit) => { const m = M().poly(pts); seam(pc, m, 'shadow'); m.each((x, y) => { gl(pc, x, y, C[n(x, y)], emit); }); return m; };
+    const pt = (pts, n, emit) => { const m = M().poly(pts); seam(pc, m, 'shadow'); m.eachD((X, Y, x, y) => { gl(pc, X, Y, C[n(x, y)], emit); }); return m; };
     pt([[9.6, 22], [8, 15], [10.6, 12.4], [13, 21.6]], (x) => (x < 10 ? 2 : 4), 0.6);
     pt([[19.4, 21.6], [22, 13.6], [24.6, 16], [23, 22]], (x) => (x < 22.5 ? 2 : 4), 0.6);
     const big = pt([[12, 22], [11, 9.4], [16, 2], [21, 9.4], [20, 22]], (x, y) => (y < 9.4 ? (x < 16 ? 1 : 2) : x < 14 ? 2 : x < 18 ? 3 : 4), 0.9);
@@ -455,14 +461,14 @@ const F = {
     // the hearth opening: sooty dark, logs, a crackling fire
     const op = M().poly([cam.p(-6, 0.4, 3), cam.p(6, 0.4, 3), cam.p(6, 9, 3), cam.p(3, 11, 3), cam.p(-3, 11, 3), cam.p(-6, 9, 3)].map((q) => [q[0], q[1]]));
     seam(pc, op, 'shadow');
-    op.each((x, y) => pc.set(x, y, y < op.bounds().y0 + 3 ? 0x140c10 : 0x24161a));
+    op.eachD((X, Y, x, y) => pc.set(X, Y, y < op.bounds().y0 + 3 ? 0x140c10 : 0x24161a));
     const b = op.bounds();
     const LG = mat(0x6a4424, { cont: 1.1 });
     tube(pc, [[b.x0 + 2, b.y1 - 1.5], [b.x1 - 2, b.y1 - 2.5]], 1.2, LG, { bias: 0.06 });
     tube(pc, [[b.x0 + 3, b.y1 - 0.5], [b.x1 - 1, b.y1 - 0.5]], 1.1, LG, { bias: 0.06 });
     const mx = (b.x0 + b.x1) / 2;
     const fl = M().poly([[mx - 5, b.y1 - 2], [mx - 3, b.y1 - 7], [mx - 1.6, b.y1 - 4.6], [mx, b.y1 - 9.4], [mx + 1.6, b.y1 - 4.6], [mx + 3.4, b.y1 - 7.4], [mx + 5, b.y1 - 2]]);
-    fl.each((x, y) => { const t = (b.y1 - y) / 9; gl(pc, x, y, t > 0.6 ? 0xfff2b0 : t > 0.35 ? 0xffc040 : 0xff7a2a, 1); });
+    fl.eachD((X, Y, x, y) => { const t = (b.y1 - y) / 9; gl(pc, X, Y, t > 0.6 ? 0xfff2b0 : t > 0.35 ? 0xffc040 : 0xff7a2a, 1); });
     ink(pc);
     for (const [x, y] of [[mx - 2, b.y0 - 1], [mx + 3, b.y0 - 2]]) void x, void y;
     // a candle and a little pot on the mantel
@@ -481,15 +487,15 @@ const F = {
     for (const [x, y, r] of [[5.4, 24.6, 2.6], [26.8, 24.4, 2.4], [12, 27.4, 2.2], [21, 27.6, 2]]) body.union(blob(x, y, r, r * 0.8, { seed: x | 0 }));
     seam(pc, body, 'shadow');
     form(pc, body, B, { cx: 12, cy: 18, rx: 13, ry: 30, dome: 0.2, bias: 0.04 });
-    body.each((x, y) => { const f = Math.sin(x * 1.3 + vnoise(x * 0.3, y * 0.2, 3) * 4); if (f > 0.65 && !isTop(body, x, y)) step(pc, B, x, y, 2, 1, 5); else if (f < -0.85) step(pc, B, x, y, -1, 1, 5); });
+    body.eachD((X, Y, x, y) => { const f = Math.sin(x * 1.3 + vnoise(x * 0.3, y * 0.2, 3) * 4); if (f > 0.65 && !isTop(body, X, Y)) step(pc, B, X, Y, 2, 1, 5); else if (f < -0.85) step(pc, B, X, Y, -1, 1, 5); });
     const T = mat(0xd8a868, { cont: 1.08 });
     const top = loop([[6, 12.2], [8, 9.6], [12.4, 8.4], [17, 8.2], [22.4, 9], [26, 11.2], [25.4, 13.8], [21.6, 15.4], [16, 15.8], [10.4, 15.4], [6.8, 14.2]]);
-    top.each((x, y) => { const d = Math.hypot((x + 0.5 - 15.4) / 10, (y + 0.5 - 12) / 4) + vnoise(x * 0.4, y * 0.4, 2) * 0.12; pc.set(x, y, T[Math.floor(d * 5.5) % 2 ? 3 : 2]); });
-    top.edge().each((x, y) => pc.set(x, y, y < 12 ? B[2] : B[3]));
-    pc.set(15, 12, T[5]); line(pc, 17, 11, 22, 13, T[4]);
+    top.eachD((X, Y, x, y) => { const d = Math.hypot((x + 0.5 - 15.4) / 10, (y + 0.5 - 12) / 4) + vnoise(x * 0.4, y * 0.4, 2) * 0.12; pc.set(X, Y, T[Math.floor(d * 5.5) % 2 ? 3 : 2]); });
+    top.edge().eachD((X, Y, x, y) => pc.set(X, Y, y < 12 ? B[2] : B[3]));
+    dot(pc, 15, 12, T[5]); line(pc, 17, 11, 22, 13, T[4]);
     // a little red mushroom friend and a moss tuft
     mushroom(pc, 25.6, 24, 2.6, 4, mat(0xd04a3a, { cont: 1.1 }), mat(0xe8e0d0), { seed: 3, spots: [[-0.3, -0.5, 1]], spotC: [0xf8e8e0, 0xd8b8b0] });
-    for (const [x, y, c] of [[8, 14, 0x6aa04a], [9, 14, 0x8ac06a], [8, 15, 0x4a7a3a], [10, 15, 0x5a903a]]) pc.set(x, y, c);
+    for (const [x, y, c] of [[8, 14, 0x6aa04a], [9, 14, 0x8ac06a], [8, 15, 0x4a7a3a], [10, 15, 0x5a903a]]) dot(pc, x, y, c);
     ink(pc);
     glint(pc, 10, 10, 0);
   },
@@ -504,7 +510,7 @@ const F = {
     box(pc, cam, -6.5, 21, -5.5, 6.5, 24, -4, W, { paintAll: wood(W, { seed: 6 }) });
     box(pc, cam, -1.5, 11, -5.3, 1.5, 21, -4.2, W, { paintAll: wood(W, { seed: 8, vertical: true }) });
     box(pc, cam, -6.5, 9, -5.5, 6.5, 11, 6, W, { paintAll: wood(W, { seed: 5, planks: 2.6 }) });
-    const h = cam.p(0, 17, -4.2); pc.set(h[0], h[1], W[5]); pc.set(h[0] - 1, h[1] - 1, W[1]);
+    const h = cam.p(0, 17, -4.2); dot(pc, h[0], h[1], W[5]); dot(pc, h[0] - 1, h[1] - 1, W[1]);
     ink(pc);
   },
   armchair(pc, sofa = false) {
@@ -512,24 +518,24 @@ const F = {
     const U = sofa ? mat(0x8a5a32, { cont: 1.1 }) : mat(0x4e8a3e, { cont: 1.1 });
     const hw = sofa ? 13 : 8;
     // root sofa: woody, grained upholstery; mossy armchair: fuzzy living moss
-    const tex = sofa ? wood(U, { seed: 3, horizontal: true }) : (p, m, tone) => m.each((x, y) => { let k = edgeK(m, x, y, tone); const h = hash2(x, y, 3); if (h < 0.22) k++; else if (h > 0.9) k--; p.set(x, y, U[clamp(k, 1, 5)]); });
+    const tex = sofa ? wood(U, { seed: 3, horizontal: true }) : (p, m, tone) => m.eachD((X, Y, x, y) => { let k = edgeK(m, X, Y, tone); const h = hash2(X, Y, 3); if (h < 0.22) k++; else if (h > 0.9) k--; p.set(x, y, U[clamp(k, 1, 5)]); });
     box(pc, cam, -hw, 2, -5, hw, 8, 6, U, { paintAll: tex });
     box(pc, cam, -hw, 8, -5, hw, sofa ? 20 : 18, -1.5, U, { paintAll: tex });
     const CU = sofa ? mat(0xa86a3a, { cont: 1.08 }) : mat(0x5a9a46, { cont: 1.08 });
     if (sofa) for (const [x0, x1] of [[-hw + 0.5, -0.3], [0.3, hw - 0.5]]) box(pc, cam, x0, 8, -1.5, x1, 10, 5.5, CU, { bias: { top: -0.25 }, paintAll: cloth(CU) });
     else box(pc, cam, -hw + 0.5, 8, -1.5, hw - 0.5, 10, 5.5, CU, { bias: { top: -0.25 }, paintAll: tex });
-    if (sofa) for (const x of [-8, -3, 3, 8]) { const p = cam.p(x, 15, -1.5); pc.set(p[0], p[1], U[5]); pc.set(p[0] - 1, p[1] - 1, U[2]); }
+    if (sofa) for (const x of [-8, -3, 3, 8]) { const p = cam.p(x, 15, -1.5); dot(pc, p[0], p[1], U[5]); dot(pc, p[0] - 1, p[1] - 1, U[2]); }
     box(pc, cam, -hw - 2.5, 2, -5, -hw, 12, 6, U, { paintAll: tex });
     box(pc, cam, hw, 2, -5, hw + 2.5, 12, 6, U, { paintAll: tex });
     for (const [x, z] of [[-hw - 2, 5], [hw + 1, 5]]) box(pc, cam, x, 0, z - 1, x + 1.2, 2, z, DWOOD());
     if (!sofa) {
       // moss fuzz: tufts on the top edges and a few tiny sprouts
       const sil = maskOf(pc, 128);
-      fringe(sil, 16, 20, { dens: 0.4, seed: 3, len: 1, only: (x, y) => y < 18 }).sub(sil).each((x, y) => pc.set(x, y, U[2]));
+      fringe(sil, 16, 20, { dens: 0.4, seed: 3, len: 1, only: (x, y) => y < 18 }).sub(sil).eachD((X, Y, x, y) => pc.set(X, Y, U[2]));
     }
     ink(pc);
-    if (!sofa) { for (const [x, y] of [[9, 9], [21, 8], [14, 13]]) { pc.set(x, y, 0x9ad06a); pc.set(x + 1, y, 0x6aa84a); } pc.set(24, 6, 0xf0e070); }
-    else { line(pc, 3, 9, 7, 3, 0x5a3a20); line(pc, 27, 10, 29, 4, 0x5a3a20); pc.set(7, 2, 0x6ab84a); pc.set(8, 2, 0x4a9a3a); pc.set(29, 3, 0x6ab84a); }
+    if (!sofa) { for (const [x, y] of [[9, 9], [21, 8], [14, 13]]) { dot(pc, x, y, 0x9ad06a); dot(pc, x + 1, y, 0x6aa84a); } dot(pc, 24, 6, 0xf0e070); }
+    else { line(pc, 3, 9, 7, 3, 0x5a3a20); line(pc, 27, 10, 29, 4, 0x5a3a20); dot(pc, 7, 2, 0x6ab84a); dot(pc, 8, 2, 0x4a9a3a); dot(pc, 29, 3, 0x6ab84a); }
   },
   table(pc, long = false) {
     const W = WOOD();
@@ -542,18 +548,18 @@ const F = {
       const top = loop(TP);
       const ed = loop(TP.map(([x, y]) => [x, y + 1.8]));
       seam(pc, ed.clone().union(top), 'shadow');
-      ed.each((x, y) => pc.set(x, y, W[x < 8 ? 3 : 4]));
-      top.each((x, y) => {
+      ed.eachD((X, Y, x, y) => pc.set(X, Y, W[x < 8 ? 3 : 4]));
+      top.eachD((X, Y, x, y) => {
         const d = Math.hypot((x + 0.5 - 16) / 13, (y + 0.5 - 13) / 5.5);
         let k = (x + 0.5 - 16) / 13 + (y + 0.5 - 13) / 5.5 < -0.6 ? 1 : 2;
         if (Math.floor(d * 6 + vnoise(x * 0.3, y * 0.5, 4) * 0.8) % 2 && k === 2) k = 3;
-        pc.set(x, y, W[k]);
+        pc.set(X, Y, W[k]);
       });
       const SC = mat(0xf0e8d8, { cont: 1.05 });
       const sau = blob(20.4, 11.6, 3.4, 1.4, { seed: 3 }); seam(pc, sau, 'shadow'); form(pc, sau, SC, { flatten: 0.5 });
       const cup = loop([[18.4, 7.6, 1], [22.8, 7.4, 1], [22.6, 10], [21.4, 11.2], [19.4, 11], [18.6, 9.8]]);
-      seam(pc, cup, 'shadow'); cup.each((x, y) => pc.set(x, y, SC[x < 20 ? 1 : 3]));
-      pc.set(23, 9, SC[3]); pc.set(19, 8, 0x8a5a3a); pc.set(20, 8, 0x6a3a1a);
+      seam(pc, cup, 'shadow'); cup.eachD((X, Y, x, y) => pc.set(X, Y, SC[x < 20 ? 1 : 3]));
+      dot(pc, 23, 9, SC[3]); dot(pc, 19, 8, 0x8a5a3a); dot(pc, 20, 8, 0x6a3a1a);
       ink(pc);
       steam(pc, 20, 6, 5, { a: 160 });
     } else {
@@ -578,18 +584,18 @@ const F = {
       // a woven runner in perspective: border, diamond motif, weave, fringed ends
       const m = M().poly([[2.6, 21], [18, 9.4], [29.4, 14.4], [14, 26.6]]);
       const uv = (x, y) => { const dx = x + 0.5 - 16, dy = y + 0.5 - 18; return [dx * 0.8 - dy * 1.0, dx * 0.45 + dy * 0.85]; };
-      m.each((x, y) => {
+      m.eachD((X, Y, x, y) => {
         const [u, v] = uv(x, y);
         let col = R[3];
         if (Math.abs(v) > 3.6) col = R[2];
         else if (Math.abs(v) > 2.8) col = mix(c, 0xf0d890, 0.55);
         else if ((Math.abs(((u % 6) + 6) % 6 - 3) + Math.abs(v)) < 2.4) col = (Math.abs(((u % 6) + 6) % 6 - 3) + Math.abs(v)) < 1.2 ? R[1] : mix(c, 0xf0d890, 0.5);
-        if ((x + y) % 2 === 0 && hash2(x, y, 3) < 0.3) col = mix(col, 0x000000, 0.12);
-        pc.set(x, y, col);
+        if ((x + y) % 2 === 0 && hash2(X, Y, 3) < 0.3) col = mix(col, 0x000000, 0.12);
+        pc.set(X, Y, col);
       });
-      m.each((x, y) => { if (isBot(m, x, y)) pc.set(x, y, R[4]); });
+      m.eachD((X, Y, x, y) => { if (isBot(m, X, Y)) pc.set(X, Y, R[4]); });
       ink(pc);
-      for (const [x0, y0, x1, y1] of [[2.6, 21, 14, 26.6], [18, 9.4, 29.4, 14.4]]) for (let t = 0.05; t < 1; t += 0.11) { const x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t; pc.set(x - 1, y + 1, 0xf0e0c0); pc.set(x - 2, y + 2, 0xd8c8a0); }
+      for (const [x0, y0, x1, y1] of [[2.6, 21, 14, 26.6], [18, 9.4, 29.4, 14.4]]) for (let t = 0.05; t < 1; t += 0.11) { const x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t; dot(pc, x - 1, y + 1, 0xf0e0c0); dot(pc, x - 2, y + 2, 0xd8c8a0); }
     } else if (kind === 'fancy') {
       // a medallion carpet with a cusped, scalloped edge: gold border with purple cartouches, a
       // deep pile field with a faint lattice, an eight-point star medallion, gold tassels at the
@@ -607,50 +613,49 @@ const F = {
       // the flap: everything past a fold line at the front-right is turned back over the rug
       const fold = (x, y) => (x + 0.5 - 22.4) * 0.62 + (y + 0.5 - 25.4) * 0.78;
       const flapSrc = M();
-      m.each((x, y) => { if (fold(x, y) > 0) flapSrc.set(x, y); });
+      m.eachD((X, Y, x, y) => { if (fold(x, y) > 0) flapSrc.set(x, y); });
       m.sub(flapSrc);
       const under = m.clone().shift(0, 1).sub(m);
-      under.each((x, y) => pc.set(x, y, R[5]));
+      under.eachD((X, Y, x, y) => pc.set(X, Y, R[5]));
       const b1 = m.clone().erode(1), b3 = m.clone().erode(3), b4 = m.clone().erode(4);
       const star = M().poly((() => { const P = []; for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2 - Math.PI / 2, r = i % 2 ? 2.6 : 5.6; P.push([16 + Math.cos(a) * r * 1.1, 17.4 + Math.sin(a) * r * 0.66]); } return P; })());
       const core = M().poly([[16, 14.6], [19, 17.4], [16, 20.2], [13, 17.4]]);
-      m.each((x, y) => {
+      m.eachD((X, Y, x, y) => {
         const lit = (x + 0.5 - 16) / 15 + (y + 0.5 - 17.6) / 10 < -0.5, shade = (x + 0.5 - 16) / 15 + (y + 0.5 - 17.6) / 10 > 0.6;
         let col;
-        if (!b1.get(x, y)) col = GD[isBot(m, x, y) ? 4 : 3];
-        else if (!b3.get(x, y)) {
+        if (!b1.get(X, Y)) col = GD[isBot(m, X, Y) ? 4 : 3];
+        else if (!b3.get(X, Y)) {
           // border: gold ground, a running row of purple cartouches
           const a = Math.atan2((y + 0.5 - 17.6) / 9.6, (x + 0.5 - 16) / 14.6);
           col = (Math.floor(a * 30 / (Math.PI * 2) + 40) % 3 === 0) ? R[3] : GD[lit ? 1 : shade ? 3 : 2];
-        } else if (!b4.get(x, y)) col = R[5];
-        else if (core.get(x, y)) col = Math.abs(x + 0.5 - 16) + Math.abs(y + 0.5 - 17.4) * 1.3 < 1.6 ? 0xfff0b0 : 0xb02a3a;
-        else if (star.get(x, y)) col = GD[(x + y) % 5 ? 2 : 1];
+        } else if (!b4.get(X, Y)) col = R[5];
+        else if (core.get(X, Y)) col = Math.abs(x + 0.5 - 16) + Math.abs(y + 0.5 - 17.4) * 1.3 < 1.6 ? 0xfff0b0 : 0xb02a3a;
+        else if (star.get(X, Y)) col = GD[(x + y) % 5 ? 2 : 1];
         else {
           // field: deep pile with a faint diamond lattice and little gold flowers on its knots
           const u = (x + 0.5 - 16) * 0.66 + (y + 0.5 - 17.6), v = (x + 0.5 - 16) * 0.66 - (y + 0.5 - 17.6);
           const lu = ((Math.floor(u) % 4) + 4) % 4 === 0, lv = ((Math.floor(v) % 4) + 4) % 4 === 0;
           col = lu && lv ? GD[2] : lu || lv ? R[2] : R[lit ? 2 : shade ? 4 : 3];
         }
-        if (b1.get(x, y) && (x + y) % 2 === 0 && hash2(x, y, 3) < 0.22) col = mix(col, 0x000000, 0.14);
-        pc.set(x, y, col);
+        if (b1.get(X, Y) && (x + y) % 2 === 0 && hash2(X, Y, 3) < 0.22) col = mix(col, 0x000000, 0.14);
+        pc.set(X, Y, col);
       });
       // star outline so it reads as embroidered
-      star.edge().each((x, y) => { if (!core.get(x, y)) pc.set(x, y, GD[4]); });
+      star.edge().eachD((X, Y, x, y) => { if (!core.get(X, Y)) pc.set(X, Y, GD[4]); });
       // the flipped flap: mirror of the lost lobe across the fold, canvas backing with weave
       const CV = mat(0xd8c8a4, { cont: 1.05 });
       const flap = M();
-      flapSrc.each((x, y) => {
+      flapSrc.eachD((X0, Y0, x, y) => {
         const d = fold(x, y), nx = 0.62, ny = 0.78;
-        const X = Math.round(x + 0.5 - 2 * d * nx - 0.5), Y = Math.round(y + 0.5 - 2 * d * ny - 0.5);
-        flap.set(X, Y);
+        flap.set(np(x + 0.5 - 2 * d * nx), np(y + 0.5 - 2 * d * ny));
       });
-      flap.union(flap.clone().dilate(1).and(flap.clone().shift(1, 0).union(flap.clone().shift(0, 1))));
+      flap.union(flap.clone().dilate(1).and(flap.clone().nshift(1, 0).union(flap.clone().nshift(0, 1))));
       seam(pc, flap, 'shadow');
-      flap.each((x, y) => pc.set(x, y, ((x + y * 2) % 4 === 0) ? CV[3] : CV[fold(x, y) > -1.2 ? 1 : 2]));
-      flap.each((x, y) => { if (isBot(flap, x, y)) pc.set(x, y, CV[4]); });
+      flap.eachD((X, Y, x, y) => pc.set(X, Y, ((X + Y * 2) % 4 === 0) ? CV[3] : CV[fold(x, y) > -1.2 ? 1 : 2]));
+      flap.eachD((X, Y, x, y) => { if (isBot(flap, X, Y)) pc.set(X, Y, CV[4]); });
       ink(pc);
       // gold tassels at the two ends
-      for (const [x, y, dx] of [[1, 16, -1], [1, 19, -1], [30, 15, 1], [30, 18, 1]]) { pc.set(x, y, GD[2]); pc.set(x + dx, y, GD[3]); pc.set(x + dx, y + 1, GD[4]); }
+      for (const [x, y, dx] of [[1, 16, -1], [1, 19, -1], [30, 15, 1], [30, 18, 1]]) { dot(pc, x, y, GD[2]); dot(pc, x + dx, y, GD[3]); dot(pc, x + dx, y + 1, GD[4]); }
       glint(pc, 7, 12, 0);
     } else {
       // a braided rag rug, coiled from one long braid: a single spiral (not rings), each turn its
@@ -666,8 +671,8 @@ const F = {
         const t = r * NT - (th + Math.PI) / (Math.PI * 2);
         return { t, u, v, th, r };
       };
-      under.each((x, y) => { const { t } = coil(x, Math.min(y, 27)); const S = SCRAPS[((Math.floor(t) % 6) + 6) % 6]; pc.set(x, y, S[(x % 2) ? 4 : 5]); });
-      m.each((x, y) => {
+      under.eachD((X, Y, x, y) => { const { t } = coil(x, Math.min(y, 27)); const S = SCRAPS[((Math.floor(t) % 6) + 6) % 6]; pc.set(X, Y, S[(X % 2) ? 4 : 5]); });
+      m.eachD((X, Y, x, y) => {
         const { t, u, v, th, r } = coil(x, y);
         const turn = Math.floor(t), f = t - turn;
         const S = SCRAPS[((turn % 6) + 6) % 6];
@@ -679,9 +684,9 @@ const F = {
         if (((Math.floor(arc + (f - 0.5) * (f > 0.5 ? 3 : -3)) % 3) + 3) % 3 === 0) k += 1;
         if (f < 0.14 || f > 0.92) k = 5; // the stitched groove between turns
         if (r < 0.12) k = 3;
-        pc.set(x, y, S[clamp(k, 1, 5)]);
+        pc.set(X, Y, S[clamp(k, 1, 5)]);
       });
-      m.each((x, y) => { if (isTop(m, x, y) && !isBot(m, x, y) && (x + y) % 2) step(pc, R, x, y, -1, 1, 5); });
+      m.eachD((X, Y, x, y) => { if (isTop(m, X, Y) && !isBot(m, X, Y) && (X + Y) % 2) step(pc, R, X, Y, -1, 1, 5); });
       ink(pc);
       glint(pc, 8, 12, 0);
     }
@@ -693,8 +698,8 @@ const F = {
     for (const [x1, y1, b, R] of [[4, 7, 1.5, LD], [27, 6, -1.5, LD], [12, 2, 1, LR], [20, 2, -1, LR], [2.6, 14, 1, LR], [29.4, 13, -1, LR], [16, 0.6, 0.3, LR]]) blade(pc, 16, 18, x1, y1, 2.6, R, { bend: b, serr: 0.35, teeth: 6, veins: 3 });
     const pot = crock(pc, P, [[7.6, 18], [9, 16], [16, 15.2], [23, 16], [24.6, 18], [24, 20.6], [23, 24.2], [21.4, 27.6], [19.6, 29], [12, 28.8], [10.4, 27.4], [9, 24], [8, 20.6]],
       [[9.4, 18], [12, 16.6], [20, 16.8], [22.8, 18], [20, 19.4], [12, 19.2]], { top: false });
-    for (let x = 8; x < 25; x++) if (pot.body.get(x, 21)) { pc.set(x, 21, P[x < 12 ? 1 : 2]); pc.set(x, 22, P[4]); }
-    pot.top.each((x, y) => pc.set(x, y, hash2(x, y, 2) < 0.3 ? 0x3a2414 : 0x4e3220));
+    for (let x = 8; x < 25; x++) if (pot.body.at(x, 21)) { dot(pc, x, 21, P[x < 12 ? 1 : 2]); dot(pc, x, 22, P[4]); }
+    pot.top.eachD((X, Y, x, y) => pc.set(X, Y, hash2(X, Y, 2) < 0.3 ? 0x3a2414 : 0x4e3220));
     ink(pc);
     glint(pc, 10, 21, 0);
   },
@@ -708,7 +713,7 @@ const F = {
       const a = cam.p(-8.5, y0 + 7, 3), b = cam.p(8.5, y0, 3);
       const x0 = Math.round(Math.min(a[0], b[0])), yt = Math.round(a[1]), wv = Math.round(Math.abs(b[0] - a[0]));
       const cav = M().rect(x0, yt, wv, 7);
-      cav.each((x, y) => pc.set(x, y, y === yt ? 0x140a08 : 0x24140c));
+      cav.eachD((X, Y, x, y) => pc.set(X, Y, Math.round(y) === yt ? 0x140a08 : 0x24140c));
       let x = x0, i = s * 3;
       while (x < x0 + wv - 1) {
         const w = 2 + (i % 2), h = 5 + ((i * 7) % 3);
@@ -719,8 +724,8 @@ const F = {
           if (!cav.get(X, Y)) continue;
           pc.set(X, Y, C[xx === 0 ? 2 : xx === w - 1 ? 4 : 3]);
         }
-        pc.set(x, yt + 7 - h, C[1]);
-        if (h > 5) { pc.set(x + 1, yt + 7 - h + 2, mix(C[3], 0xf0d890, 0.6)); if (w > 2) pc.set(x + 1, yt + 7 - h + 3, mix(C[3], 0xf0d890, 0.6)); }
+        dot(pc, x, yt + 7 - h, C[1]);
+        if (h > 5) { dot(pc, x + 1, yt + 7 - h + 2, mix(C[3], 0xf0d890, 0.6)); if (w > 2) dot(pc, x + 1, yt + 7 - h + 3, mix(C[3], 0xf0d890, 0.6)); }
         x += w + (lean ? 1 : 0); i++;
       }
     }
@@ -732,22 +737,22 @@ const F = {
     const body = M().fn((x, y) => { const t = (y + 0.5 - 17) / 12; const rx = 10.4 - t * t * 2.8; return Math.abs(t) <= 1 && Math.abs(x + 0.5 - 16) <= rx; });
     body.union(loop([[8.6, 28.4], [16, 28.6], [23.4, 28.2], [22, 30.6], [16, 31], [10, 30.6]]));
     form(pc, body, W, { cx: 12, cy: 15, rx: 12, ry: 30, dome: 0.2, bias: 0.04 });
-    body.each((x, y) => {
+    body.eachD((X, Y, x, y) => {
       const t = (y + 0.5 - 17) / 12, rx = 10.4 - t * t * 2.8, u = (x + 0.5 - 16) / rx;
       const st = Math.asin(clamp(u, -1, 1)) * 3.2;
-      if (Math.abs(st - Math.round(st)) < 0.12 && !isTop(body, x, y)) step(pc, W, x, y, 2, 1, 5);
-      else if (vnoise(st * 2, y * 0.25, 3) > 0.75) step(pc, W, x, y, 1, 1, 5);
+      if (Math.abs(st - Math.round(st)) < 0.12 && !isTop(body, X, Y)) step(pc, W, X, Y, 2, 1, 5);
+      else if (vnoise(st * 2, y * 0.25, 3) > 0.75) step(pc, W, X, Y, 1, 1, 5);
     });
     const I = IRON();
-    for (const y of [8, 14, 21, 27]) for (let x = 0; x < 32; x++) if (body.get(x, y)) { pc.set(x, y, I[x < 11 ? 1 : x < 19 ? 2 : 4]); if (body.get(x, y + 1)) step(pc, W, x, y + 1, 1, 1, 5); }
-    for (const y of [14, 21]) { pc.set(7, y, I[0]); pc.set(24, y, I[5]); }
+    for (const y of [8, 14, 21, 27]) for (let x = 0; x < 32; x++) if (body.at(x, y)) { dot(pc, x, y, I[x < 11 ? 1 : x < 19 ? 2 : 4]); if (body.at(x, y + 1)) step(pc, W, x, y + 1, 1, 1, 5); }
+    for (const y of [14, 21]) { dot(pc, 7, y, I[0]); dot(pc, 24, y, I[5]); }
     const top = loop([[8.4, 5.8], [10.4, 3.6], [15, 3], [20.6, 3.4], [23.6, 5], [22.4, 7.2], [16.6, 8], [10.6, 7.6]]);
     seam(pc, top, 'shadow');
-    top.each((x, y) => pc.set(x, y, W[clamp(edgeK(top, x, y, 2), 1, 5)]));
+    top.eachD((X, Y, x, y) => pc.set(X, Y, W[clamp(edgeK(top, X, Y, 2), 1, 5)]));
     for (let x = 11; x < 22; x += 3) line(pc, x, 4, x - 1, 7, W[3]);
-    pc.set(19, 5, W[5]); pc.set(18, 5, W[4]);
+    dot(pc, 19, 5, W[5]); dot(pc, 18, 5, W[4]);
     ink(pc);
-    pc.set(12, 18, 0x6a3a1a); pc.set(12, 19, 0x8a4a20); pc.set(12, 20, 0x6a3a1a);
+    dot(pc, 12, 18, 0x6a3a1a); dot(pc, 12, 19, 0x8a4a20); dot(pc, 12, 20, 0x6a3a1a);
     glint(pc, 9, 10, 0);
   },
   crate(pc) {
@@ -758,10 +763,10 @@ const F = {
     const a = cam.p(-7.4, 0.6, 8), b = cam.p(7.4, 14.4, 8);
     const br = M().capsule(a[0], a[1], b[0], b[1], 1.2).and(maskOf(pc, 128));
     seam(pc, br, 'shadow');
-    br.each((x, y) => pc.set(x, y, W[(x + y) % 5 === 0 ? 3 : isTop(br, x, y) ? 1 : 2]));
+    br.eachD((X, Y, x, y) => pc.set(X, Y, W[(X + Y) % 5 === 0 ? 3 : isTop(br, X, Y) ? 1 : 2]));
     const f = cam.p(-2, 10, 8);
     const ST = 0xb83a30;
-    for (const [dx, dy] of [[-3, 0], [-2, 0], [-1, 0], [1, 0], [2, 0], [3, 0], [-3, 1], [1, 1], [-3, 2], [-2, 2], [1, 2], [2, 2]]) if (!br.get(f[0] + dx, f[1] + dy)) pc.set(f[0] + dx, f[1] + dy, ST);
+    for (const [dx, dy] of [[-3, 0], [-2, 0], [-1, 0], [1, 0], [2, 0], [3, 0], [-3, 1], [1, 1], [-3, 2], [-2, 2], [1, 2], [2, 2]]) if (!br.at(f[0] + dx, f[1] + dy)) dot(pc, f[0] + dx, f[1] + dy, ST);
     // a tuft of packing straw poking out of the lid
     ink(pc);
     for (const [x0, y0, x1, y1] of [[17, 5, 19, 1], [18, 5, 21, 2], [20, 6, 23, 4]]) line(pc, x0, y0, x1, y1, (i) => (i % 2 ? 0xd8b050 : 0xf0d070));
@@ -775,20 +780,20 @@ const F = {
     const G = GOLD();
     const face = loop(rel([[-4.6, -1.6], [-2.6, -4.4], [0.6, -4.8], [3.8, -3.2], [4.8, 0.2], [3.4, 3.8], [0, 4.8], [-3.4, 3.8], [-4.8, 1]], f[0], f[1]));
     seam(pc, face, 'shadow');
-    face.each((x, y) => pc.set(x, y, 0xf2ead4));
-    face.edge().each((x, y) => pc.set(x, y, G[(x + 0.5 - f[0]) + (y + 0.5 - f[1]) < 0 ? 1 : 3]));
-    for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; pc.set(f[0] + Math.cos(a) * 3.2, f[1] + Math.sin(a) * 3.2, i % 3 ? 0xb0a080 : 0x5a4a3a); }
+    face.eachD((X, Y, x, y) => pc.set(X, Y, 0xf2ead4));
+    face.edge().eachD((X, Y, x, y) => pc.set(X, Y, G[(x + 0.5 - f[0]) + (y + 0.5 - f[1]) < 0 ? 1 : 3]));
+    for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; dot(pc, f[0] + Math.cos(a) * 3.2, f[1] + Math.sin(a) * 3.2, i % 3 ? 0xb0a080 : 0x5a4a3a); }
     line(pc, f[0], f[1], f[0], f[1] - 3, 0x2a1a14); line(pc, f[0], f[1], f[0] + 2, f[1] + 1, 0x2a1a14);
     // pendulum window: glass with the brass bob mid-swing
     const w0 = cam.p(-3, 4, 3), w1 = cam.p(3, 14, 3);
     const win = M().rect(Math.round(w0[0]) + 1, Math.round(w1[1]), 5, 10);
     seam(pc, win, 'shadow');
-    win.each((x, y) => pc.set(x, y, x === win.bounds().x0 ? 0x3a2418 : 0x24160e));
+    win.eachD((X, Y, x, y) => pc.set(X, Y, Math.round(x) === win.bounds().x0 ? 0x3a2418 : 0x24160e));
     line(pc, Math.round(w0[0]) + 3, Math.round(w1[1]), Math.round(w0[0]) + 4, Math.round(w1[1]) + 6, G[2]);
     const pd = blob(Math.round(w0[0]) + 4.5, Math.round(w1[1]) + 7.5, 1.7, 1.7, { seed: 2 });
     form(pc, pd, G, { bias: 0.1 });
     ink(pc);
-    pc.set(Math.round(w0[0]) + 2, Math.round(w1[1]) + 1, 0x6a5a4a);
+    dot(pc, Math.round(w0[0]) + 2, Math.round(w1[1]) + 1, 0x6a5a4a);
     glint(pc, Math.round(f[0]) - 2, Math.round(f[1]) - 2, 0);
   },
   painting(pc, c, t) {
@@ -801,13 +806,13 @@ const F = {
     if (window) {
       // a sill below and a little sprout pot on it
       const sill = loop([[0.6, 26.4, 1], [31.4, 26.4, 1], [30.6, 29.4, 1], [1.4, 29.4, 1]]);
-      sill.each((x, y) => pc.set(x, y, FR[y === 26 ? 1 : y === 27 ? 2 : 4]));
+      sill.eachD((X, Y, x, y) => pc.set(X, Y, FR[Math.round(y) === 26 ? 1 : Math.round(y) === 27 ? 2 : 4]));
     }
     if (sunF) {
       // gilt rosettes on the corners and a shell crest on top
-      for (const [x, y] of [[2.6, 4.6], [29.4, 4.6], [2.6, 26.4], [29.4, 26.4]]) { const r = loop(rel([[-2.4, 0], [-1, -2.4], [1.2, -2.2], [2.4, 0.2], [1, 2.4], [-1.4, 2.2]], x, y)); r.each((X, Y) => pc.set(X, Y, FR[(X + 0.5 - x) + (Y + 0.5 - y) < 0 ? 1 : 3])); }
+      for (const [x, y] of [[2.6, 4.6], [29.4, 4.6], [2.6, 26.4], [29.4, 26.4]]) { const r = loop(rel([[-2.4, 0], [-1, -2.4], [1.2, -2.2], [2.4, 0.2], [1, 2.4], [-1.4, 2.2]], x, y)); r.each((X, Y) => pc.set(X, Y, FR[(X + 0.5) / S - x + (Y + 0.5) / S - y < 0 ? 1 : 3])); }
       const crest = loop([[11, 4.4], [12.6, 1.6], [16, 0.4], [19.4, 1.6], [21, 4.4]]);
-      crest.each((x, y) => pc.set(x, y, FR[(x % 2) ? 2 : 1]));
+      crest.eachD((X, Y, x, y) => pc.set(X, Y, FR[(X % 2) ? 2 : 1]));
       line(pc, 16, 1, 16, 4, FR[4]); line(pc, 13, 3, 15, 4, FR[4]); line(pc, 19, 3, 17, 4, FR[4]);
     }
     if (!window && !sunF) {
@@ -819,36 +824,36 @@ const F = {
       }
       inner.union(M().rect(5, 7, 22, 17));
     }
-    if (!window && !sunF) {} else m.clone().sub(inner).each((x, y) => {
+    if (!window && !sunF) {} else m.clone().sub(inner).eachD((X, Y, x, y) => {
       const d = Math.min(x - 2, y - 4, 29 - x, 26 - y);
       let k = d === 0 ? (x - 2 === 0 || y - 4 === 0 ? 1 : 4) : d === 1 ? 2 : (x - 5 < 0 || y - 7 < 0 ? 3 : 2);
       if (d === 2) k = (x < 5 || y < 7) ? 4 : 1;
-      pc.set(x, y, FR[k]);
+      pc.set(X, Y, FR[k]);
     });
-    if (!window && !sunF) for (const [x, y] of [[3, 5], [28, 4], [3, 25], [28, 26]]) { pc.set(x, y, 0xc8a46a); pc.set(x + 1, y, 0x8a6a40); pc.set(x, y + 1, 0x8a6a40); }
+    if (!window && !sunF) for (const [x, y] of [[3, 5], [28, 4], [3, 25], [28, 26]]) { dot(pc, x, y, 0xc8a46a); dot(pc, x + 1, y, 0x8a6a40); dot(pc, x, y + 1, 0x8a6a40); }
     if (window) {
-      inner.each((x, y) => pc.set(x, y, mix(0x6ac0f0, 0xd8f0ff, (y - 7) / 17)));
+      inner.eachD((X, Y, x, y) => pc.set(X, Y, mix(0x6ac0f0, 0xd8f0ff, (y - 7) / 17)));
       for (const [x, y, r] of [[10, 12, 2.4], [13, 11, 2.8], [16, 12.4, 2.2], [20, 18, 1.8], [22.4, 17.6, 2]]) blob(x, y, r, r * 0.8, { seed: x | 0 }).each((X, Y) => { if (inner.get(X, Y)) pc.set(X, Y, Y > y ? 0xe0f0ff : 0xffffff); });
-      blob(22, 10, 2, 2, { seed: 5, lump: 0.2 }).each((x, y) => gl(pc, x, y, 0xfff4b0, 0.6));
-      for (let y = 7; y < 24; y++) { pc.set(15, y, FR[2]); pc.set(16, y, FR[4]); }
-      for (let x = 5; x < 27; x++) { pc.set(x, 15, FR[2]); pc.set(x, 16, FR[4]); }
-      for (let x = 5; x < 27; x++) pc.set(x, 25, FR[1]);
+      blob(22, 10, 2, 2, { seed: 5, lump: 0.2 }).eachD((X, Y, x, y) => gl(pc, X, Y, 0xfff4b0, 0.6));
+      for (let y = 7; y < 24; y++) { dot(pc, 15, y, FR[2]); dot(pc, 16, y, FR[4]); }
+      for (let x = 5; x < 27; x++) { dot(pc, x, 15, FR[2]); dot(pc, x, 16, FR[4]); }
+      for (let x = 5; x < 27; x++) dot(pc, x, 25, FR[1]);
     } else if (c === 0x3ac9d9) {
       // "The Beach": sky, a rolling sea with white caps, sand and a little umbrella
-      inner.each((x, y) => pc.set(x, y, y < 13 ? mix(0x8ad0f8, 0xd8f0ff, (y - 7) / 6) : y < 18 ? ((x + y * 2) % 6 ? (y < 15 ? 0x3ab0d0 : 0x2a90c0) : 0xd8f4ff) : y === 18 ? 0xf8f0d8 : 0xf0d890));
-      for (let x = 5; x < 27; x++) if (hash2(x, 21, 3) < 0.2) pc.set(x, 21 + (x % 3), 0xd8b870);
-      blob(22, 10, 2.2, 2.2, { seed: 7, lump: 0.2 }).each((x, y) => pc.set(x, y, x + y < 31 ? 0xfff0a0 : 0xffd84a));
+      inner.eachD((X, Y, x, y) => pc.set(X, Y, y < 13 ? mix(0x8ad0f8, 0xd8f0ff, (y - 7) / 6) : y < 18 ? ((X + Y * 2) % 6 ? (y < 15 ? 0x3ab0d0 : 0x2a90c0) : 0xd8f4ff) : Math.round(y) === 18 ? 0xf8f0d8 : 0xf0d890));
+      for (let x = 5; x < 27; x++) if (hash2(x, 21, 3) < 0.2) dot(pc, x, 21 + (x % 3), 0xd8b870);
+      blob(22, 10, 2.2, 2.2, { seed: 7, lump: 0.2 }).eachD((X, Y, x, y) => pc.set(X, Y, x + y < 31 ? 0xfff0a0 : 0xffd84a));
       line(pc, 11, 13, 11, 21, 0x8a6a4a);
-      blob(11, 13, 4.2, 2, { seed: 2 }).sub(M().rect(0, 14, 32, 10)).each((x, y) => pc.set(x, y, (x - 7) % 3 === 0 ? 0xf8f0e0 : 0xe04a4a));
+      blob(11, 13, 4.2, 2, { seed: 2 }).sub(M().rect(0, 14, 32, 10)).eachD((X, Y, x, y) => pc.set(X, Y, (X - 7) % 3 === 0 ? 0xf8f0e0 : 0xe04a4a));
     } else {
       // "The Sun": a big yellow circle with brush-stroke rays, deeply moving
-      inner.each((x, y) => pc.set(x, y, mix(0x5aa0e0, 0x9ad0f8, (y - 7) / 17 + (hash2(x, y >> 1, 3) - 0.5) * 0.15)));
+      inner.eachD((X, Y, x, y) => pc.set(X, Y, mix(0x5aa0e0, 0x9ad0f8, (y - 7) / 17 + (hash2(x, y >> 1, 3) - 0.5) * 0.15)));
       for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6 + 0.2; line(pc, 16 + Math.cos(a) * 6.6, 15 + Math.sin(a) * 6.6, 16 + Math.cos(a) * 8.4, 15 + Math.sin(a) * 8.4, (n, X, Y) => (inner.get(X, Y) ? 0xffe070 : null)); }
       const sun = blob(16, 15, 5.6, 5.6, { seed: 6, lump: 0.04 });
-      sun.each((x, y) => pc.set(x, y, (x + 0.5 - 14) ** 2 + (y + 0.5 - 13) ** 2 < 9 ? 0xfff6c0 : x + y < 31 ? 0xfff0a0 : 0xffd34a));
+      sun.eachD((X, Y, x, y) => pc.set(X, Y, (x + 0.5 - 14) ** 2 + (y + 0.5 - 13) ** 2 < 9 ? 0xfff6c0 : x + y < 31 ? 0xfff0a0 : 0xffd34a));
     }
-    for (let x = 5; x < 27; x++) pc.set(x, 7, mix(pc.getHex(x, 7), 0x000000, 0.3));
-    for (let y = 7; y < 24; y++) pc.set(5, y, mix(pc.getHex(5, y), 0x000000, 0.2));
+    for (let x = 5; x < 27; x++) dot(pc, x, 7, mix(pc.getHex(x, 7), 0x000000, 0.3));
+    for (let y = 7; y < 24; y++) dot(pc, 5, y, mix(pc.getHex(5, y), 0x000000, 0.2));
     ink(pc);
     glint(pc, 3, 5, 0);
   },
@@ -858,9 +863,9 @@ const F = {
     // the cloth hangs in soft folds from a pole, swallow-tailed, with the crossed-claws crest
     const m = M().poly([[6, 5], [26, 5], [26.6, 28.4], [16, 22.4], [5.4, 28.4]]);
     seam(pc, m, 'shadow');
-    m.each((x, y) => { const f = Math.sin((x - 6) / 20 * Math.PI * 3); pc.set(x, y, R[f > 0.55 ? 2 : f < -0.55 ? 4 : 3]); });
-    m.each((x, y) => { if (isBot(m, x, y) && !isTop(m, x, y)) pc.set(x, y, R[5]); });
-    for (let x = 6; x < 26; x++) if (m.get(x, 25 - Math.abs(x - 16) * 0.55)) pc.set(x, Math.round(25 - Math.abs(x - 16) * 0.55), 0xe8b840);
+    m.eachD((X, Y, x, y) => { const f = Math.sin((x - 6) / 20 * Math.PI * 3); pc.set(X, Y, R[f > 0.55 ? 2 : f < -0.55 ? 4 : 3]); });
+    m.eachD((X, Y, x, y) => { if (isBot(m, X, Y) && !isTop(m, X, Y)) pc.set(X, Y, R[5]); });
+    for (let x = 6; x < 26; x++) if (m.at(x, 25 - Math.abs(x - 16) * 0.55)) dot(pc, x, Math.round(25 - Math.abs(x - 16) * 0.55), 0xe8b840);
     const G = GOLD();
     const claw = (x0, y0, dx) => { for (let i = 0; i < 9; i++) { pc.set(x0 + i * dx, y0 + i, G[i < 3 ? 1 : 2]); pc.set(x0 + i * dx, y0 + i + 1, G[4]); } for (const k of [-1, 1, 3]) pc.set(x0 + k * dx * -0.5, y0 - 1 + Math.abs(k), G[1]); };
     claw(11, 9, 1); claw(20, 9, -1);
@@ -879,18 +884,18 @@ const F = {
     drawSolid(pc, cam, [{ pts: [[-8, 8, -5], [8, 8, -5], [8, 17, -9], [-8, 17, -9]], R: W, twoSided: true, paint: wood(W, { seed: 7 }) }]);
     const mi = cam.p(0, 13, -7);
     const mirror = blob(mi[0], mi[1], 4, 2.6, { seed: 3 });
-    mirror.each((x, y) => pc.set(x, y, (x + y) % 5 === 0 ? 0xffffff : 0xb8d8e8));
+    mirror.eachD((X, Y, x, y) => pc.set(X, Y, (X + Y) % 5 === 0 ? 0xffffff : 0xb8d8e8));
     const G = GOLD();
     const c = cam.p(0, 8, 0);
     const well = M().poly(topPoly(cam, -6.6, -3.6, 6.6, 3.6, 8));
-    well.each((x, y) => pc.set(x, y, 0x3a2414));
+    well.eachD((X, Y, x, y) => pc.set(X, Y, 0x3a2414));
     const drum = M().rect(Math.round(c[0] - 4), Math.round(c[1] - 1), 6, 2);
-    drum.each((x, y) => pc.set(x, y, G[y === Math.round(c[1] - 1) ? 1 : 3]));
-    for (let x = -4; x <= 1; x += 2) pc.set(c[0] + x, c[1] - 1, G[0]);
+    drum.eachD((X, Y, x, y) => pc.set(X, Y, G[Math.round(y) === Math.round(c[1] - 1) ? 1 : 3]));
+    for (let x = -4; x <= 1; x += 2) dot(pc, c[0] + x, c[1] - 1, G[0]);
     const k = cam.p(8, 4, 2);
     tube(pc, [[k[0], k[1]], [k[0] + 3, k[1] - 0.4], [k[0] + 3.4, k[1] + 2]], 0.7, RAMPS.steel(), { seam: false });
     ink(pc);
-    const note = (x, y, cc) => { pc.set(x, y, cc); pc.set(x + 1, y, cc); pc.set(x + 1, y - 1, cc); pc.set(x + 1, y - 2, cc); pc.set(x + 2, y - 3, cc); pc.set(x, y + 1, mix(cc, 0x000000, 0.4)); };
+    const note = (x, y, cc) => { dot(pc, x, y, cc); dot(pc, x + 1, y, cc); dot(pc, x + 1, y - 1, cc); dot(pc, x + 1, y - 2, cc); dot(pc, x + 2, y - 3, cc); dot(pc, x, y + 1, mix(cc, 0x000000, 0.4)); };
     note(4, 9, 0xf2c23a); note(24, 4, 0xe06aa0); note(12, 3, 0x6ab8f0);
   },
   plushie(pc) {
@@ -910,38 +915,38 @@ const F = {
     for (const e of [earL, earR]) { seam(pc, e, 'shadow'); form(pc, e, R, { bias: 0.08 }); }
     seam(pc, head, 'shadow');
     form(pc, head, R, { bias: 0.08 });
-    for (const [x, y] of [[13, 5], [22, 5]]) pc.set(x, y, R[4]);
+    for (const [x, y] of [[13, 5], [22, 5]]) dot(pc, x, y, R[4]);
     ink(pc);
     // the chewed edge of the right ear: little nibbles
-    pc.set(23, 2, 0x8a4a5a); pc.set(24, 3, 0x8a4a5a);
-    for (const [x, y] of [[15, 9], [20, 9]]) { pc.set(x, y, 0x1a1220); pc.set(x + 1, y, 0x1a1220); pc.set(x, y + 1, 0x1a1220); pc.set(x + 1, y + 1, 0x3a2a3a); pc.set(x, y, 0x6a6a7a); }
-    pc.set(17, 12, 0xc05a70); pc.set(18, 12, 0xc05a70);
-    for (const [x, y] of [[13, 12], [22, 12]]) pc.set(x, y, 0xf4a0b0);
+    dot(pc, 23, 2, 0x8a4a5a); dot(pc, 24, 3, 0x8a4a5a);
+    for (const [x, y] of [[15, 9], [20, 9]]) { dot(pc, x, y, 0x1a1220); dot(pc, x + 1, y, 0x1a1220); dot(pc, x, y + 1, 0x1a1220); dot(pc, x + 1, y + 1, 0x3a2a3a); dot(pc, x, y, 0x6a6a7a); }
+    dot(pc, 17, 12, 0xc05a70); dot(pc, 18, 12, 0xc05a70);
+    for (const [x, y] of [[13, 12], [22, 12]]) dot(pc, x, y, 0xf4a0b0);
     // a blue bow on the tail and a stitched patch
     const BW = mat(0x5a8ae0, { cont: 1.1 });
-    for (const [x, y, k] of [[26, 22, 2], [27, 21, 1], [27, 22, 3], [28, 23, 3], [25, 23, 3], [24, 24, 4], [26, 23, 4]]) pc.set(x, y, BW[k]);
-    for (const [x, y] of [[11, 21], [12, 22], [11, 23], [13, 21]]) pc.set(x, y, 0xfff0f4);
+    for (const [x, y, k] of [[26, 22, 2], [27, 21, 1], [27, 22, 3], [28, 23, 3], [25, 23, 3], [24, 24, 4], [26, 23, 4]]) dot(pc, x, y, BW[k]);
+    for (const [x, y] of [[11, 21], [12, 22], [11, 23], [13, 21]]) dot(pc, x, y, 0xfff0f4);
   },
   tank(pc) {
     const cam = CAM({ cy: 24, scale: 0.9, yaw: -0.35 });
     const I = IRON();
     box(pc, cam, -13, 0, -5, 13, 2, 5, I, { paintAll: iron(I, { rivets: false }) });
     const G = mat(0x7ad0f0, { cont: 0.9 });
-    box(pc, cam, -12.5, 2, -4.5, 12.5, 16, 4.5, G, { paintAll: (p, m, tone) => m.each((x, y) => p.set(x, y, G[Math.min(4, tone)], 230)) });
+    box(pc, cam, -12.5, 2, -4.5, 12.5, 16, 4.5, G, { paintAll: (p, m, tone) => m.eachD((X, Y, x, y) => p.set(x, y, G[Math.min(4, tone)], 230)) });
     // water line, sand, swaying weed, two content blind fish, bubbles
     const f0 = cam.p(-12, 2, 4.5), f1 = cam.p(12, 13, 4.5);
     const yTop = Math.round(f1[1]);
-    for (let x = Math.round(f0[0]); x < f1[0]; x++) { pc.set(x, yTop, 0xe8f8ff); pc.set(x, yTop + 1, 0xa8e0f4); }
-    for (let x = Math.round(f0[0]); x < f1[0]; x++) { pc.set(x, Math.round(f0[1]) - 1, 0xe8d090); pc.set(x, Math.round(f0[1]) - 2, (x % 3) ? 0xe8d090 : 0xd0b878); }
-    for (const x of [f0[0] + 3, f0[0] + 18]) for (let y = 0; y < 7; y++) { pc.set(x + Math.round(Math.sin(y * 0.9) * 0.8), f0[1] - 3 - y, y % 2 ? 0x5aaa4a : 0x3a8a3a); }
+    for (let x = Math.round(f0[0]); x < f1[0]; x++) { dot(pc, x, yTop, 0xe8f8ff); dot(pc, x, yTop + 1, 0xa8e0f4); }
+    for (let x = Math.round(f0[0]); x < f1[0]; x++) { dot(pc, x, Math.round(f0[1]) - 1, 0xe8d090); dot(pc, x, Math.round(f0[1]) - 2, (x % 3) ? 0xe8d090 : 0xd0b878); }
+    for (const x of [f0[0] + 3, f0[0] + 18]) for (let y = 0; y < 7; y++) { dot(pc, x + Math.round(Math.sin(y * 0.9) * 0.8), f0[1] - 3 - y, y % 2 ? 0x5aaa4a : 0x3a8a3a); }
     for (const [x, y, d] of [[f0[0] + 8, yTop + 4, 1], [f0[0] + 14, yTop + 7, -1]]) {
       const fm = blob(x, y, 2.6, 1.4, { seed: 2 });
       seam(pc, fm, 'shadow'); form(pc, fm, mat(0xf2bcb2, { cont: 1.1 }), { bias: 0.1 });
-      pc.set(x - 3 * d, y, 0xe896ae); pc.set(x - 3 * d, y - 1, 0xe896ae); pc.set(x - 3 * d, y + 1, 0xe896ae);
-      pc.set(x + 1.6 * d, y - 0.6, 0xe0e8f8);
+      dot(pc, x - 3 * d, y, 0xe896ae); dot(pc, x - 3 * d, y - 1, 0xe896ae); dot(pc, x - 3 * d, y + 1, 0xe896ae);
+      dot(pc, x + 1.6 * d, y - 0.6, 0xe0e8f8);
     }
     ink(pc, { minA: 150 });
-    for (const [x, y] of [[f0[0] + 11, yTop + 2], [f0[0] + 12, yTop]]) pc.set(x, y, 0xffffff);
+    for (const [x, y] of [[f0[0] + 11, yTop + 2], [f0[0] + 12, yTop]]) dot(pc, x, y, 0xffffff);
     const g0 = cam.p(-12, 15, 4.5);
     line(pc, g0[0] + 1, g0[1] + 1, g0[0] + 3, g0[1] + 6, 0xffffff);
   },
@@ -954,19 +959,19 @@ const F = {
     marks(pc, basin, S, { dens: 0.07, seed: 3, len: 2, dir: [1, 0] });
     for (let x = 3; x < 30; x += 5) line(pc, x, 24, x, 28, (i, X, Y) => (basin.get(X, Y) && !isBot(basin, X, Y) ? S[4] : null));
     const water = loop([[4.4, 22.4], [7.4, 19.8], [15, 18.8], [23, 19.2], [27.6, 21.6], [25.6, 24.4], [16, 25.6], [7, 24.8]]);
-    water.each((x, y) => pc.set(x, y, (x * 2 + y * 3) % 7 === 0 ? 0x9ad8f8 : y < 21 ? 0x3a90c8 : 0x5ab8e6));
-    loop(RIM).clone().sub(water).each((x, y) => { if (y < 25) pc.set(x, y, y < 21 ? S[1] : S[2]); });
+    water.eachD((X, Y, x, y) => pc.set(X, Y, (X * 2 + Y * 3) % 7 === 0 ? 0x9ad8f8 : y < 21 ? 0x3a90c8 : 0x5ab8e6));
+    loop(RIM).clone().sub(water).eachD((X, Y, x, y) => { if (y < 25) pc.set(X, Y, y < 21 ? S[1] : S[2]); });
     const col = M().rect(14, 10, 4, 13);
     seam(pc, col, 'shadow');
-    col.each((x, y) => pc.set(x, y, S[x === 14 ? 1 : x === 17 ? 4 : 2]));
+    col.eachD((X, Y, x, y) => pc.set(X, Y, S[Math.round(x) === 14 ? 1 : Math.round(x) === 17 ? 4 : 2]));
     const tb = loop([[9.4, 10.2], [11.4, 8.2], [16, 7.6], [21, 8.2], [22.8, 10.2], [21, 12.4], [16, 13], [11, 12.4]]);
     seam(pc, tb, 'shadow');
-    tb.each((x, y) => pc.set(x, y, S[clamp(edgeK(tb, x, y, 2), 1, 5)]));
-    loop([[12, 10], [14, 9], [18.4, 9], [20.2, 10], [18, 11], [14, 11]]).each((x, y) => pc.set(x, y, 0x5ab8e6));
+    tb.eachD((X, Y, x, y) => pc.set(X, Y, S[clamp(edgeK(tb, X, Y, 2), 1, 5)]));
+    loop([[12, 10], [14, 9], [18.4, 9], [20.2, 10], [18, 11], [14, 11]]).eachD((X, Y, x, y) => pc.set(X, Y, 0x5ab8e6));
     ink(pc);
-    for (const s of [-1, 1]) for (let i = 0; i < 10; i++) { const x = 16 + s * i * 1.05, y = 8 - Math.sin(i / 10 * Math.PI) * 4 + i * 1.1; pc.set(x, y, i % 3 ? 0xbfe6ff : 0xffffff); }
-    pc.set(16, 4, 0xffffff); pc.set(16, 5, 0xbfe6ff); pc.set(16, 6, 0xffffff);
-    for (const [x, y] of [[6, 20], [26, 21], [10, 24]]) pc.set(x, y, 0xffffff);
+    for (const s of [-1, 1]) for (let i = 0; i < 10; i++) { const x = 16 + s * i * 1.05, y = 8 - Math.sin(i / 10 * Math.PI) * 4 + i * 1.1; dot(pc, x, y, i % 3 ? 0xbfe6ff : 0xffffff); }
+    dot(pc, 16, 4, 0xffffff); dot(pc, 16, 5, 0xbfe6ff); dot(pc, 16, 6, 0xffffff);
+    for (const [x, y] of [[6, 20], [26, 21], [10, 24]]) dot(pc, x, y, 0xffffff);
   },
   trophy(pc) {
     const W = DWOOD();
@@ -983,7 +988,7 @@ const F = {
     // brass plaque on the plinth
     const p = cam.p(0, 2, 4);
     const pl = M().rect(Math.round(p[0] - 3), Math.round(p[1] - 1), 7, 2);
-    pl.each((x, y) => pc.set(x, y, G[y === Math.round(p[1] - 1) ? 1 : 3]));
+    pl.eachD((X, Y, x, y) => pc.set(X, Y, G[Math.round(y) === Math.round(p[1] - 1) ? 1 : 3]));
     ink(pc);
     glint(pc, 16, 9, 1); glint(pc, 14, 4, 0);
     for (const [x, y] of [[7, 4], [27, 14], [5, 15]]) twinkle(pc, x, y, 0xffffff, 0xfff0a0, 1, 0.7);
@@ -1004,12 +1009,12 @@ const F = {
     seam(pc, pick, 'shadow'); form(pc, pick, PK, { bias: 0.08 });
     const paw = loop([[20.6, 15.4], [23, 14], [25.4, 15], [25.6, 17.6], [23.4, 18.8], [21, 18]]);
     seam(pc, paw, 'shadow'); form(pc, paw, S, { bias: 0.08 });
-    for (const x of [22, 24]) pc.set(x, 18, S[5]);
+    for (const x of [22, 24]) dot(pc, x, 18, S[5]);
     // squinting eye, nose tip, a crease of fur at the neck
-    line(pc, 17, 7, 19, 7, S[5]); pc.set(18, 6, S[4]);
-    pc.set(27, 9, S[4]); pc.set(27, 10, S[5]);
+    line(pc, 17, 7, 19, 7, S[5]); dot(pc, 18, 6, S[4]);
+    dot(pc, 27, 9, S[4]); dot(pc, 27, 10, S[5]);
     line(pc, 12, 12, 19, 13, (i) => (i % 2 ? S[4] : null));
-    for (const [x, y] of [[11, 15], [13, 20]]) pc.set(x, y, S[0]);
+    for (const [x, y] of [[11, 15], [13, 20]]) dot(pc, x, y, S[0]);
     ink(pc);
     line(pc, 9, 19, 11, 22, 0xa8a49c);
   },
@@ -1079,13 +1084,13 @@ function swatch(pc, spec, wall) {
     area = M().poly(D);
     if (pat === 'dirt') area = loop([[16, 3.6], [20, 6.4], [24.6, 9], [28, 12.6], [31, 15.6], [27.4, 18.6], [23, 22], [19.6, 25], [16, 27.4], [12, 24.6], [8.6, 22.4], [4.6, 18.8], [1, 15.6], [4.4, 12.4], [8.4, 9.6], [12, 6.8]], { jit: 0.9, seed: 5 });
     else if (pat === 'moss') area = fringe(M().poly(D), 16, 15.5, { dens: 0.55, seed: 4, len: 1.6, lean: 0.2 });
-    else if (pat === 'plank') area.each((x, y) => { const [u, v] = uv(x, y); const row = Math.floor(v / 4); if (u > 19.2 - hash2(row, 2, 3) * 2.2 || u < 0.8 + hash2(row, 4, 3) * 1.6) area.set(x, y, 0); });
-    else if (pat === 'stone') area.each((x, y) => { const [u, v] = uv(x, y); const row = Math.floor(v / 5), off = row % 2 ? 5 : 0, col = Math.floor((u + off) / 10); if ((u < 2 || u > 18 || v < 2 || v > 18) && hash2(col, row, 6) < 0.45) area.set(x, y, 0); });
-    else if (pat === 'tile' && !gold) area.each((x, y) => { const [u, v] = uv(x, y); if (u > 13 && v < 6.5) area.set(x, y, 0); });
-    else if (pat === 'checker') area.each((x, y) => { const [u, v] = uv(x, y); if (u < 5 && v > 15) area.set(x, y, 0); });
+    else if (pat === 'plank') area.eachD((X, Y, x, y) => { const [u, v] = uv(x, y); const row = Math.floor(v / 4); if (u > 19.2 - hash2(row, 2, 3) * 2.2 || u < 0.8 + hash2(row, 4, 3) * 1.6) area.set(x, y, 0); });
+    else if (pat === 'stone') area.eachD((X, Y, x, y) => { const [u, v] = uv(x, y); const row = Math.floor(v / 5), off = row % 2 ? 5 : 0, col = Math.floor((u + off) / 10); if ((u < 2 || u > 18 || v < 2 || v > 18) && hash2(col, row, 6) < 0.45) area.set(x, y, 0); });
+    else if (pat === 'tile' && !gold) area.eachD((X, Y, x, y) => { const [u, v] = uv(x, y); if (u > 13 && v < 6.5) area.set(x, y, 0); });
+    else if (pat === 'checker') area.eachD((X, Y, x, y) => { const [u, v] = uv(x, y); if (u < 5 && v > 15) area.set(x, y, 0); });
   }
   const K = new Int8Array(1024).fill(-1);
-  area.each((x, y) => {
+  area.eachD((X, Y, x, y) => {
     const [u, v] = uv(x, y);
     let k = 3, col = null;
     switch (pat) {
@@ -1106,8 +1111,8 @@ function swatch(pc, spec, wall) {
         else if (fv < 1.6 || fu < 1.6) k = 2;
         else if (fv > h - 1 || fu > h * 2 - 1) k = 4;
         else k = cell < 0.3 ? 2 : cell > 0.8 ? 4 : 3;
-        if (k === 3 && hash2(x, y, 7) < 0.07) k = 4;
-        if (pat === 'stone' && k >= 2 && k <= 4 && cell > 0.6 && hash2(x, y, 8) < 0.25) col = mix(R[k], 0x5a8a3a, 0.35);
+        if (k === 3 && hash2(X, Y, 7) < 0.07) k = 4;
+        if (pat === 'stone' && k >= 2 && k <= 4 && cell > 0.6 && hash2(X, Y, 8) < 0.25) col = mix(R[k], 0x5a8a3a, 0.35);
         break;
       }
       case 'checker': {
@@ -1115,7 +1120,7 @@ function swatch(pc, spec, wall) {
         const fu = ((u % 5) + 5) % 5, fv = ((v % 5) + 5) % 5;
         if (dark) col = fu < 1 || fv < 1 ? 0x3a3a44 : fu > 4 || fv > 4 ? 0x1e1e26 : 0x2a2a32;
         else k = fu < 1 || fv < 1 ? 2 : fu > 4 || fv > 4 ? 4 : 3;
-        if (!dark && hash2(x, y, 5) < 0.04) k = 1;
+        if (!dark && hash2(X, Y, 5) < 0.04) k = 1;
         break;
       }
       case 'tile': {
@@ -1134,30 +1139,30 @@ function swatch(pc, spec, wall) {
         const fu = ((u % 5.5) + 5.5) % 5.5;
         if (v > 12 && v < 14.5) k = v < 13 ? 1 : v > 14 ? 4 : 2;
         else if (fu < 0.8) k = 5; else if (fu < 1.6) k = 2;
-        else { k = v > 14.5 ? 4 : 3; if (hash2(x, y, 6) < 0.025) k = 1; }
+        else { k = v > 14.5 ? 4 : 3; if (hash2(X, Y, 6) < 0.025) k = 1; }
         break;
       }
-      case 'moss': { const n = vnoise(u * 0.5, v * 0.5, 2); k = n > 0.62 ? 2 : n < 0.3 ? 4 : 3; if (hash2(x, y, 3) < 0.12) k = 1; if (hash2(x, y, 4) < 0.03) col = 0xe8e070; break; }
-      case 'carpet': { const d = Math.max(Math.abs(u - 10), Math.abs(v - 10)); k = d > 8 ? 4 : d > 6.5 ? 2 : d < 2 ? 2 : 3; if (d > 6.5 && d < 8 && (Math.floor(u) + Math.floor(v)) % 3 === 0) col = 0xe8b840; if ((x + y) % 2 === 0 && hash2(x, y, 5) < 0.3) k = Math.min(5, k + 1); break; }
+      case 'moss': { const n = vnoise(u * 0.5, v * 0.5, 2); k = n > 0.62 ? 2 : n < 0.3 ? 4 : 3; if (hash2(X, Y, 3) < 0.12) k = 1; if (hash2(X, Y, 4) < 0.03) col = 0xe8e070; break; }
+      case 'carpet': { const d = Math.max(Math.abs(u - 10), Math.abs(v - 10)); k = d > 8 ? 4 : d > 6.5 ? 2 : d < 2 ? 2 : 3; if (d > 6.5 && d < 8 && (Math.floor(u) + Math.floor(v)) % 3 === 0) col = 0xe8b840; if ((x + y) % 2 === 0 && hash2(X, Y, 5) < 0.3) k = Math.min(5, k + 1); break; }
       case 'paper': { k = 3; const fu = ((u % 6) + 6) % 6, fv = ((v % 6) + 6) % 6; if (Math.hypot(fu - 3, fv - 3) < 1.3) { col = (Math.floor(u / 6) + Math.floor(v / 6)) % 2 ? 0xf0d890 : 0xe8a0b0; if (Math.hypot(fu - 2.6, fv - 2.6) < 0.6) col = 0xfff4e0; } else if (u % 3 < 0.5) k = 4; break; }
-      default: { const n = hash2(x, y, 9); k = n < 0.14 ? 4 : n > 0.9 ? 2 : 3; if (vnoise(u * 0.4, v * 0.4, 6) > 0.7) k = Math.min(5, k + 1); if (hash2(x, y, 11) < 0.04) col = 0x9a948e; }
+      default: { const n = hash2(X, Y, 9); k = n < 0.14 ? 4 : n > 0.9 ? 2 : 3; if (vnoise(u * 0.4, v * 0.4, 6) > 0.7) k = Math.min(5, k + 1); if (hash2(X, Y, 11) < 0.04) col = 0x9a948e; }
     }
-    K[y * 32 + x] = k;
-    pc.set(x, y, col ?? (k < 0 ? 0x2a2a30 : R[clamp(k, 1, 5)]));
+    K[Y * SZ + X] = k;
+    pc.set(X, Y, col ?? (k < 0 ? 0x2a2a30 : R[clamp(k, 1, 5)]));
   });
   if (!wall) {
     // a thickness edge on the near sides so the swatch reads as a slab of floor
-    area.each((x, y) => { if (!area.get(x, y + 1)) { const k = clamp(K[y * 32 + x] + 1, 1, 5); pc.set(x, y, R[k]); pc.set(x, y + 1, R[5]); } });
-    area.edge().each((x, y) => { if (y < 15.5 && x < 16) step(pc, R, x, y, -1, 1, 5); });
+    area.eachD((X, Y, x, y) => { if (!area.get(X, Y + 1)) { const k = clamp(K[Y * SZ + X] + 1, 1, 5); pc.set(X, Y, R[k]); pc.set(X, Y + 1, R[5]); } });
+    area.edge().eachD((X, Y, x, y) => { if (y < 15.5 && x < 16) step(pc, R, X, Y, -1, 1, 5); });
   } else {
-    for (let x = 0; x < 32; x++) { let y = 0; while (y < 12 && !area.get(x, y)) y++; if (y < 12) { pc.set(x, y, R[1]); if (area.get(x, y + 1)) pc.set(x, y + 1, R[2]); } }
+    for (let x = 0; x < 32; x++) { let y = 0; while (y < 12 && !area.at(x, y)) y++; if (y < 12) { dot(pc, x, y, R[1]); if (area.at(x, y + 1)) dot(pc, x, y + 1, R[2]); } }
     if (pat === 'dirt') for (const [x0, y0, x1, y1] of [[8, 4, 10, 10], [10, 10, 9, 14], [21, 4, 23, 9], [23, 9, 25, 12]]) line(pc, x0, y0, x1, y1, R[5]);
     const BB = mat(0x5a3a22, { cont: 1.1 });
-    for (let x = 5; x < 27; x++) for (let y = 25; y < 30; y++) pc.set(x, y, BB[y === 25 ? 1 : y === 26 ? 2 : y === 29 ? 5 : (x * 3 + y) % 7 === 0 ? 4 : 3]);
-    for (let y = 4; y < 25; y++) { pc.set(26, y, mix(pc.getHex(26, y), 0x000000, 0.25)); pc.set(5, y, mix(pc.getHex(5, y), 0xffffff, 0.12)); }
-    if (pat === 'paper') { const cu = loop([[22, 3.4], [27.4, 8.6], [23.6, 7.6]]); seam(pc, cu, 'shadow'); cu.each((x, y) => pc.set(x, y, mix(c, 0xf8f0e0, 0.55))); }
+    for (let x = 5; x < 27; x++) for (let y = 25; y < 30; y++) dot(pc, x, y, BB[y === 25 ? 1 : y === 26 ? 2 : y === 29 ? 5 : (x * 3 + y) % 7 === 0 ? 4 : 3]);
+    for (let y = 4; y < 25; y++) { dot(pc, 26, y, mix(pc.getHex(26, y), 0x000000, 0.25)); dot(pc, 5, y, mix(pc.getHex(5, y), 0xffffff, 0.12)); }
+    if (pat === 'paper') { const cu = loop([[22, 3.4], [27.4, 8.6], [23.6, 7.6]]); seam(pc, cu, 'shadow'); cu.eachD((X, Y, x, y) => pc.set(X, Y, mix(c, 0xf8f0e0, 0.55))); }
   }
-  if (gold) { const lf = loop([[14, 2.6], [17.6, 0.6], [19.6, 3.4], [16.6, 5.4]]); seam(pc, lf, 'shadow'); lf.each((x, y) => pc.set(x, y, R[(x + y) % 3 ? 1 : 0])); }
+  if (gold) { const lf = loop([[14, 2.6], [17.6, 0.6], [19.6, 3.4], [16.6, 5.4]]); seam(pc, lf, 'shadow'); lf.eachD((X, Y, x, y) => pc.set(X, Y, R[(X + Y) % 3 ? 1 : 0])); }
   ink(pc);
   if (wall && pat === 'dirt') for (const [x0, y0, x1, y1] of [[9, 30, 8, 31], [20, 30, 22, 31], [6, 14, 3, 16], [3, 16, 2, 19]]) line(pc, x0, y0, x1, y1, 0x8a6a4a);
   if (!wall && pat === 'carpet') for (let t = 0.08; t < 1; t += 0.12) { const x = 16 + (31 - 16) * t, y = 27 - (27 - 15.5) * t; line(pc, x + 1, y + 1, x + 2, y + 2, 0xe8b840); const x2 = 1 + 15 * t, y2 = 15.5 + 11.5 * t; line(pc, x2 - 1, y2 + 1, x2 - 2, y2 + 2, 0xe8b840); }
@@ -1180,54 +1185,54 @@ function blueprint(pc, t, level = 1) {
   const A = toward(cn, ca, 5.6), Bp = toward(cn, cb, 5.6);
   sheet.sub(M().poly([A, cn, Bp]));
   if (sd % 3 === 0) { const e = toward(C[2], C[3], 9 + (sd % 5)); sheet.sub(loop([[e[0] - 2, e[1] + 1], [e[0] - 0.6, e[1] - 1.6], [e[0] + 0.6, e[1] - 0.6], [e[0] + 1.8, e[1] - 2], [e[0] + 2.4, e[1] + 1]])); }
-  sheet.each((x, y) => { const k = edgeK(sheet, x, y, 3); pc.set(x, y, B[k + ((x * 7 + y * 3) % 11 === 0 ? 1 : 0)]); });
-  sheet.each((x, y) => { if ((x % 4 === 0 || y % 4 === 0) && hash2(x, y, 1) < 0.85 && !isTop(sheet, x, y)) pc.set(x, y, B[2]); });
+  sheet.eachD((X, Y, x, y) => { const k = edgeK(sheet, X, Y, 3); pc.set(X, Y, B[k + ((X * 7 + Y * 3) % 11 === 0 ? 1 : 0)]); });
+  sheet.eachD((X, Y, x, y) => { if ((X % 4 === 0 || Y % 4 === 0) && hash2(X, Y, 1) < 0.85 && !isTop(sheet, X, Y)) pc.set(X, Y, B[2]); });
   const flap = M().poly([A, Bp, [A[0] + Bp[0] - cn[0], A[1] + Bp[1] - cn[1]]]);
   seam(pc, flap, 'shadow');
-  flap.each((x, y) => pc.set(x, y, B[isTop(flap, x, y) ? 1 : 2]));
+  flap.eachD((X, Y, x, y) => pc.set(X, Y, B[isTop(flap, X, Y) ? 1 : 2]));
   line(pc, A[0], A[1], Bp[0], Bp[1], B[5]);
   const ink2 = 0xa8c4f0, inkW = 0xeaf2ff;
-  const tmp = new (pc.constructor)(32, 32);
+  const tmp = new (pc.constructor)(SZ, SZ);
   if (['dagger', 'shortsword', 'axe', 'mace', 'spear', 'longsword', 'warhammer', 'rapier', 'greatsword', 'moleblade'].includes(t)) {
     drawWeaponArt(tmp, t, 0xffffff);
     const sil = maskOf(tmp, 200);
-    const shrink = new Mask(32, 32);
-    sil.each((x, y) => { const X = Math.round(3.5 + x * 0.8), Y = Math.round(4.5 + y * 0.8); shrink.set(X, Y); });
+    const shrink = M();
+    sil.each((X, Y) => { for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) shrink.set(Math.round(3.5 * S + (X + i * 0.5) * 0.8), Math.round(4.5 * S + (Y + j * 0.5) * 0.8)); });
     shrink.dilate(1).erode(1);
-    shrink.each((x, y) => pc.set(x, y, ink2));
-    shrink.edge().each((x, y) => pc.set(x, y, inkW));
-    for (let i = 4; i < 28; i += 2) { const x = i, y = 31 - i; if (!shrink.get(x, y) && !shrink.get(x + 1, y)) pc.set(x, y, B[2]); }
+    shrink.eachD((X, Y, x, y) => pc.set(X, Y, ink2));
+    shrink.edge().eachD((X, Y, x, y) => pc.set(X, Y, inkW));
+    for (let i = 4; i < 28; i += 2) { const x = i, y = 31 - i; if (!shrink.at(x, y) && !shrink.at(x + 1, y)) dot(pc, x, y, B[2]); }
     // dimension ticks
-    for (let x = 6; x < 26; x += 4) pc.set(x, 27, inkW);
+    for (let x = 6; x < 26; x += 4) dot(pc, x, 27, inkW);
     line(pc, 6, 27, 26, 27, (i) => (i % 2 ? ink2 : null));
   } else if (t === 'bellows') {
     const m = M().poly([[8, 10], [22, 12], [22, 20], [8, 22]]);
-    m.edge().each((x, y) => pc.set(x, y, inkW));
+    m.edge().eachD((X, Y, x, y) => pc.set(X, Y, inkW));
     for (let x = 11; x < 21; x += 3) line(pc, x, 11, x, 21, ink2);
     line(pc, 22, 16, 27, 16, inkW); line(pc, 4, 16, 8, 16, inkW);
-    pc.set(27, 15, inkW); pc.set(27, 17, inkW);
+    dot(pc, 27, 15, inkW); dot(pc, 27, 17, inkW);
   } else if (t === 'hearth') {
     const m = M().rect(7, 9, 18, 14);
-    m.edge().each((x, y) => pc.set(x, y, inkW));
-    const o = M().rect(11, 15, 10, 8); o.edge().each((x, y) => pc.set(x, y, ink2));
-    for (const [x, y] of [[14, 19], [16, 17], [18, 19], [15, 20], [17, 20]]) gl(pc, x, y, 0xffb070, 0.6);
+    m.edge().eachD((X, Y, x, y) => pc.set(X, Y, inkW));
+    const o = M().rect(11, 15, 10, 8); o.edge().eachD((X, Y, x, y) => pc.set(X, Y, ink2));
+    for (const [x, y] of [[14, 19], [16, 17], [18, 19], [15, 20], [17, 20]]) glD(pc, x, y, 0xffb070, 0.6);
     line(pc, 12, 9, 12, 5, inkW); line(pc, 15, 9, 15, 5, inkW); line(pc, 12, 5, 15, 5, inkW);
   } else {
     // room plan grows with the extension level: walls, doors, dimension marks
     const w = 12 + level * 3, h = 10 + level * 2;
     const x0 = Math.round(16 - w / 2), y0 = Math.round(16 - h / 2);
     const m = M().rect(x0, y0, w, h);
-    m.edge().each((x, y) => pc.set(x, y, inkW));
-    for (let x = 14; x < 18; x++) pc.set(x, y0 + h - 1, B[3]);
+    m.edge().eachD((X, Y, x, y) => pc.set(X, Y, inkW));
+    for (let x = 14; x < 18; x++) dot(pc, x, y0 + h - 1, B[3]);
     line(pc, 14, y0 + h - 1, 17, y0 + h - 4, ink2);
     if (level >= 2) line(pc, x0 + Math.round(w * 0.6), y0, x0 + Math.round(w * 0.6), y0 + h - 5, inkW);
     if (level >= 3) { line(pc, x0, y0 + Math.round(h * 0.45), x0 + Math.round(w * 0.6), y0 + Math.round(h * 0.45), inkW); for (let i = 0; i < 3; i++) line(pc, x0 + 2 + i * 2, y0 + 2, x0 + 2 + i * 2, y0 + 5, ink2); }
-    for (let x = x0; x < x0 + w; x += 2) pc.set(x, y0 + h + 2, ink2);
-    for (let i = 0; i < level; i++) { pc.set(5 + i * 3, 25, inkW); pc.set(5 + i * 3, 26, inkW); }
+    for (let x = x0; x < x0 + w; x += 2) dot(pc, x, y0 + h + 2, ink2);
+    for (let i = 0; i < level; i++) { dot(pc, 5 + i * 3, 25, inkW); dot(pc, 5 + i * 3, 26, inkW); }
   }
   ink(pc);
   // brass drawing pins in the two corners that are not folded
-  for (const [x, y] of [C[(ci + 1) % 4], C[(ci + 2) % 4]].map(([x, y]) => [Math.round(x + (x < 16 ? 2 : -3)), Math.round(y + (y < 16 ? 2 : -3))])) { pc.set(x, y, 0xf0d070); pc.set(x + 1, y, 0xc89a3a); pc.set(x, y + 1, 0xb08030); pc.set(x + 1, y + 1, 0x7a5a20); }
+  for (const [x, y] of [C[(ci + 1) % 4], C[(ci + 2) % 4]].map(([x, y]) => [Math.round(x + (x < 16 ? 2 : -3)), Math.round(y + (y < 16 ? 2 : -3))])) { dot(pc, x, y, 0xf0d070); dot(pc, x + 1, y, 0xc89a3a); dot(pc, x, y + 1, 0xb08030); dot(pc, x + 1, y + 1, 0x7a5a20); }
 }
 
 function ticket(pc) {
@@ -1237,15 +1242,15 @@ function ticket(pc) {
   // a gilt ticket: embossed border, ONE WAY lettering, a stub with a mole stamp
   form(pc, m, G, { flatten: 0.4, dome: 0.6, round: 2.5, bias: 0.06 });
   const inner = m.clone().erode(2);
-  inner.edge().each((x, y) => pc.set(x, y, (x + y) % 2 ? G[4] : G[2]));
-  for (let y = 7; y < 26; y += 2) if (m.get(22, y)) pc.set(22, y, G[5]);
+  inner.edge().eachD((X, Y, x, y) => pc.set(X, Y, (X + Y) % 2 ? G[4] : G[2]));
+  for (let y = 7; y < 26; y += 2) if (m.at(22, y)) dot(pc, 22, y, G[5]);
   const RD = 0xc8383a;
-  for (let x = 5; x < 20; x++) { pc.set(x, 11, RD); pc.set(x, 21, RD); }
+  for (let x = 5; x < 20; x++) { dot(pc, x, 11, RD); dot(pc, x, 21, RD); }
   const FONT = { O: ['.#.', '#.#', '#.#', '#.#', '.#.'], N: ['##.', '#.#', '#.#', '#.#', '#.#'], E: ['###', '#..', '##.', '#..', '###'] };
-  [...'ONE'].forEach((ch, i) => FONT[ch].forEach((row, y) => [...row].forEach((v, x) => { if (v === '#') { pc.set(7 + i * 4 + x, 13 + y, 0x6a3a10); if (!FONT[ch][y + 1] || FONT[ch][y + 1][x] !== '#') pc.set(7 + i * 4 + x, 14 + y, G[1]); } })));
+  [...'ONE'].forEach((ch, i) => FONT[ch].forEach((row, y) => [...row].forEach((v, x) => { if (v === '#') { dot(pc, 7 + i * 4 + x, 13 + y, 0x6a3a10); if (!FONT[ch][y + 1] || FONT[ch][y + 1][x] !== '#') dot(pc, 7 + i * 4 + x, 14 + y, G[1]); } })));
   const st = blob(26, 15, 2.9, 2.7, { seed: 4, lump: 0.2 });
-  st.edge().each((x, y) => { if (hash2(x, y, 3) < 0.85) pc.set(x, y, RD); });
-  pc.set(26, 15, RD); pc.set(25, 14, RD); pc.set(27, 14, RD); pc.set(26, 16, RD);
+  st.edge().eachD((X, Y, x, y) => { if (hash2(X, Y, 3) < 0.85) pc.set(X, Y, RD); });
+  dot(pc, 26, 15, RD); dot(pc, 25, 14, RD); dot(pc, 27, 14, RD); dot(pc, 26, 16, RD);
   ink(pc);
   glint(pc, 6, 8, 0);
   for (const [x, y] of [[4, 3], [28, 28], [16, 2]]) twinkle(pc, x, y, 0xffffff, 0xfff0a0, 1, 0.8);

@@ -84,8 +84,8 @@ function idOfSpec(spec) {
 }
 
 // drawers authored on the design grid (native ICON px) and on the old 32-px grid (doubled)
-const NATIVE = [];
-const LEGACY = [drawMineral, drawGear, drawFlora, drawFauna, drawFood, drawHome, drawCookIcon, (pc, spec) => drawRelic(pc, spec), (pc, spec) => drawLootIcon(pc, spec), (pc, spec) => drawQuestIcon(pc, spec), (pc, spec) => drawBuildIcon(pc, spec)];
+const NATIVE = [drawMineral, drawGear, drawFlora, drawFauna, drawFood, drawHome, drawCookIcon];
+const LEGACY = [(pc, spec) => drawRelic(pc, spec), (pc, spec) => drawLootIcon(pc, spec), (pc, spec) => drawQuestIcon(pc, spec), (pc, spec) => drawBuildIcon(pc, spec)];
 
 /** Nearest-neighbour k× copy of a PixelCanvas (pixels and emissive layer). */
 function upscale(src, k) {
@@ -182,7 +182,7 @@ export function reduce(src, size) {
  * Diagonal weapon icon (handle bottom-left, tip top-right) on a canvas of any size
  * (art is drawn at ICON px; whole fractions are reduced block-wise, other sizes sampled).
  */
-const WEAPON_NATIVE = false;
+const WEAPON_NATIVE = true;
 function weaponArt(type, metalColor, infusionColor) {
   if (WEAPON_NATIVE) { const pc = new PixelCanvas(ICON); drawWeaponArt(pc, type, metalColor, infusionColor); return pc; }
   const sm = new PixelCanvas(32);

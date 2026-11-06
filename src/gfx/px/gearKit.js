@@ -9,10 +9,10 @@
 // natively at S×, so outlines, seams, rims, stitches and texture stay one real pixel wide.
 import { mat, mix, toHsl, fromHsl, towardHue, lum } from './color.js';
 import { hash2, vnoise, bayer, LIGHT, toneOf } from './shade.js';
-import { S, SZ, DM, dc, nc, np, dot } from './res.js';
+import { S, SZ, DM, dc, nc, np, dot, dotE, grain, alphaD, getD } from './res.js';
 
 export const M = DM;
-export { mat, mix, hash2, vnoise, bayer, lum, S, SZ, dc, nc, np, dot };
+export { mat, mix, hash2, vnoise, bayer, lum, S, SZ, dc, nc, np, dot, dotE, grain, alphaD, getD };
 
 const nrm = (x, y, z) => { const l = Math.hypot(x, y, z) || 1; return [x / l, y / l, z / l]; };
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);

@@ -1,11 +1,23 @@
-// 32×32 ingot icons: every metal gets its own cast, built on the facet renderer: a rough
-// sand-cast copper bar with a pour lip, a soft tin pig, a notched bronze trapezoid, a
-// hammered iron bloom, a crisp folded steel bar, a small polished silver bar, a heavy
-// stamped gold bar, a slim mithril leaf, a moonsilver crescent, an adamant wedge and a
-// fused starmetal lump.
+// Ingot icons: every metal gets its own cast, built on the facet renderer: a rough sand-cast
+// copper bar with a pour lip, a soft tin pig, a notched bronze trapezoid, a hammered iron
+// bloom, a crisp folded steel bar, a small polished silver bar, a heavy stamped gold bar, a
+// slim mithril leaf, a moonsilver crescent, an adamant wedge and a fused starmetal lump.
+// Authored on the 32-unit design grid, rasterised natively at S× (res.js): plane bounds (T)
+// and pixel loops are native, marks are drawn at real-pixel scale.
 import { makeRng } from '../../core/util.js';
 import { hash2, vnoise } from './shade.js';
 import { Scene, material, rampOf, glint, view, stonePts, stoneTex, gemTone } from './facets.js';
+import { S, dc, nc, np } from './res.js';
+
+/** glint at a native pixel (X, Y). */
+const glintN = (pc, X, Y, r, c, c2, e) => glint(pc, X / S, Y / S, r, c, c2, e);
+/** A sunk dot (punch mark) at native (X, Y) inside test: shadowed top-left, lit lip bottom-right. */
+function punch(pc, X, Y, R, inside, big = S > 1) {
+  const put = (x, y, k) => { if (inside(x, y)) pc.set(x, y, R[k]); };
+  if (!big) { put(X, Y, 4); put(X, Y + 1, 1); return; }
+  put(X, Y, 5); put(X + 1, Y, 4); put(X, Y + 1, 4); put(X + 1, Y + 1, 3);
+  put(X + 2, Y + 1, 1); put(X + 1, Y + 2, 1); put(X + 2, Y + 2, 2);
+}
 
 const RAMPS = {
   copper: [0xfff0dc, 0xffc496, 0xf08e56, 0xc8622e, 0x8e3e22, 0x5e2418, 0x2a0e0c],
@@ -40,8 +52,8 @@ function topPlane(sc, ob) {
   let top = null, best = -2;
   for (const f of ob.faces) if (-f.n[1] > best) { best = -f.n[1]; top = f; }
   const inT = (x, y) => sc.pidAt(x, y) === top.pid;
-  let x0 = 99, x1 = -1, y0 = 99, y1 = -1;
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (inT(x, y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  let x0 = 1e3, x1 = -1, y0 = 1e3, y1 = -1;
+  for (let y = 0; y < sc.h; y++) for (let x = 0; x < sc.w; x++) if (inT(x, y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
   return { inT, x0, x1, y0, y1 };
 }
 
@@ -55,6 +67,7 @@ function sheen(pc, T, R, o = {}) {
     if (d > 0.14 && d < 0.2) k = 0;
     else if (d > 0.08 && d < 0.3) k = 1;
     else if (o.second && d > 0.5 && d < 0.56) k = 1;
+    else if (S > 1 && d > 0.36 && d < 0.385) k = 1; // a hairline reflection beside the main one
     else if (d > 0.68) k = (o.base ?? 2) + 1;
     pc.set(x, y, R[k]);
   }
@@ -73,10 +86,14 @@ function copper(pc) {
   sc.roughen(sc.objs, { amount: 0.2, scale: 0.7, seed: 3 });
   sc.render(pc);
   // pits from the sand: dark pixel, lit lower-right lip
-  for (const [x, y] of [[10, 14], [14, 13], [19, 15], [8, 18], [13, 19], [21, 20], [17, 22]]) {
-    if (sc.objAt(x, y) < 0 || sc.objAt(x + 1, y + 1) < 0) continue;
-    pc.set(x, y, R[5]); pc.set(x + 1, y + 1, R[1]);
+  const on = (X, Y) => sc.objAt(X, Y) >= 0;
+  for (const [x, y] of [[10, 14], [14, 13], [19, 15], [8, 18], [13, 19], [21, 20], [17, 22], ...(S > 1 ? [[11.5, 16.5], [16.5, 17], [23, 17.5], [10.5, 21], [19.5, 19]] : [])]) {
+    if (sc.objD(x, y) < 0 || sc.objD(x + 1, y + 1) < 0) continue;
+    if (S === 1) { pc.set(x, y, R[5]); pc.set(x + 1, y + 1, R[1]); continue; }
+    punch(pc, np(x), np(y), R, on, hash2(np(x), np(y), 2) < 0.6);
   }
+  // casting flash: a thin bright burr along the bar's top edge where the mould halves met
+  if (S > 1) for (let X = 0; X < sc.w; X++) for (let Y = 0; Y < sc.h; Y++) { if (!on(X, Y)) continue; if (hash2(X, 1, 77) < 0.55 && sc.k[Y * sc.w + X] > 1) pc.set(X, Y, R[Math.max(1, sc.k[Y * sc.w + X] - 1)]); break; }
   glint(pc, 9, 12, 1, 0xffffff, R[1]);
 }
 
@@ -94,26 +111,41 @@ function tin(pc) {
   sc.render(pc);
   // the lid of the pig: the biggest plane that faces up (topPlane would pick a sliver of bevel)
   const cnt = new Map();
-  for (let i = 0; i < 1024; i++) if (sc.ob[i] === body.id) { const f = sc.faces[sc.fb[i]]; if (-f.n[1] > 0.35) cnt.set(f.pid, (cnt.get(f.pid) || 0) + 1); }
+  for (let i = 0; i < sc.w * sc.h; i++) if (sc.ob[i] === body.id) { const f = sc.faces[sc.fb[i]]; if (-f.n[1] > 0.35) cnt.set(f.pid, (cnt.get(f.pid) || 0) + 1); }
   let tp = -1, tn = 0;
   for (const [pid, n] of cnt) if (n > tn) { tn = n; tp = pid; }
-  const T = { inT: (x, y) => sc.pidAt(x, y) === tp, x0: 99, x1: -1, y0: 99, y1: -1 };
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (T.inT(x, y)) { T.x0 = Math.min(T.x0, x); T.x1 = Math.max(T.x1, x); T.y0 = Math.min(T.y0, y); T.y1 = Math.max(T.y1, y); }
+  const T = { inT: (x, y) => sc.pidAt(x, y) === tp, x0: 1e3, x1: -1, y0: 1e3, y1: -1 };
+  for (let y = 0; y < sc.h; y++) for (let x = 0; x < sc.w; x++) if (T.inT(x, y)) { T.x0 = Math.min(T.x0, x); T.x1 = Math.max(T.x1, x); T.y0 = Math.min(T.y0, y); T.y1 = Math.max(T.y1, y); }
   sheen(pc, T, R, { base: 2, off: -0.04 });
   // the shrink hollow: a soft trough along the top, shaded on its near lip, lit on its far slope
   const midY = (x) => T.y0 + (T.y1 - T.y0) * 0.5 + (x - (T.x0 + T.x1) / 2) * 0.1;
-  for (let x = T.x0 + 3; x <= T.x1 - 3; x++) {
+  for (let x = T.x0 + 3 * S; x <= T.x1 - 3 * S; x++) {
     const y = Math.round(midY(x));
+    if (S > 1 && T.inT(x, y - 1)) pc.set(x, y - 1, R[3]);
     if (T.inT(x, y)) pc.set(x, y, R[4]);
-    if (T.inT(x, y + 1)) pc.set(x, y + 1, R[2]);
-
+    if (T.inT(x, y + 1)) pc.set(x, y + 1, R[S > 1 ? 3 : 2]);
+    if (S > 1 && T.inT(x, y + 2)) pc.set(x, y + 2, R[1]);
   }
   // the stamp: a sunk oval cartouche with a little crown of three dots
-  const sx = Math.round(T.x0 + (T.x1 - T.x0) * 0.3), sy = Math.round(midY(sx)) - 1;
-  for (const [dx, dy, k] of [[0, 0, 4], [1, 0, 4], [2, 0, 4], [3, 0, 4], [-1, 1, 4], [4, 1, 2], [0, 2, 1], [1, 2, 1], [2, 2, 1], [3, 2, 1], [1, 1, 5], [2, 1, 3]]) if (T.inT(sx + dx, sy + dy)) pc.set(sx + dx, sy + dy, R[k]);
+  const sx = Math.round(T.x0 + (T.x1 - T.x0) * 0.3), sy = Math.round(midY(sx)) - S;
+  if (S === 1) {
+    for (const [dx, dy, k] of [[0, 0, 4], [1, 0, 4], [2, 0, 4], [3, 0, 4], [-1, 1, 4], [4, 1, 2], [0, 2, 1], [1, 2, 1], [2, 2, 1], [3, 2, 1], [1, 1, 5], [2, 1, 3]]) if (T.inT(sx + dx, sy + dy)) pc.set(sx + dx, sy + dy, R[k]);
+  } else {
+    const ex = sx + 4, ey = sy + 1, ax = 5, ay = 2.6;
+    for (let y = ey - 4; y <= ey + 4; y++) for (let x = ex - 6; x <= ex + 6; x++) {
+      if (!T.inT(x, y)) continue;
+      const d = ((x + 0.5 - ex) / ax) ** 2 + ((y + 0.5 - ey) / ay) ** 2, d1 = ((x + 0.5 - ex) / (ax + 1)) ** 2 + ((y + 0.5 - ey) / (ay + 1)) ** 2;
+      const tl = (x + 0.5 - ex) / ax + (y + 0.5 - ey) / ay < 0;
+      if (d <= 1) pc.set(x, y, R[d > 0.55 && tl ? 4 : 3]); // the sunk field, shadowed under its top-left wall
+      else if (d1 <= 1) pc.set(x, y, R[tl ? 4 : 1]);      // the wall: dark where it faces away, lit lip opposite
+    }
+    // in the field: the founder's mark, a tiny raised T, and a crown of three dots above
+    for (const [dx, dy, k] of [[-2, -1, 2], [-1, -1, 2], [0, -1, 2], [1, -1, 2], [2, -1, 2], [0, 0, 2], [0, 1, 2], [1, 0, 4], [1, 1, 4], [3, -1, 4]]) if (T.inT(ex + dx, ey + dy)) pc.set(ex + dx, ey + dy, R[k]);
+    for (const dx of [-3, 0, 3]) punch(pc, ex + dx, ey - 6 + (dx ? 1 : 0), R, T.inT, false);
+  }
   // a dull oxide bloom on the shoulders, and a satin glint
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (sc.objAt(x, y) >= 0 && hash2(x, y, 5) < 0.05 && sc.k[y * 32 + x] < 4 && sc.k[y * 32 + x] > 1) pc.set(x, y, R[sc.k[y * 32 + x] + 1]);
-  glint(pc, T.x0 + 2, T.y0 + 1, 1, 0xffffff, R[1]);
+  sc.eachPx((X, Y, x, y, i) => { if (sc.ob[i] >= 0 && hash2(X, Y, 5) < 0.05 && sc.k[i] < 4 && sc.k[i] > 1) pc.set(X, Y, R[sc.k[i] + 1]); });
+  glintN(pc, T.x0 + 2 * S, T.y0 + S, 1, 0xffffff, R[1]);
 }
 
 function bronze(pc) {
@@ -122,15 +154,20 @@ function bronze(pc) {
   const o = { a: 10, c: 6, h: 7.5, top: 0.66, yaw: -0.45, x: 16, y: 17.5, p: 0.72, chamfer: 0.6 };
   const ob = sc.hull(metal(R), place(bar(o), o));
   // the maker's notch: a V cut into the far top edge
-  const T0 = (() => { let ty = 99; for (let y = 0; y < 32; y++) for (let x = 14; x < 18; x++) if (sc.objAt(x, y) >= 0) ty = Math.min(ty, y); return ty; })();
+  const T0 = (() => { let ty = 1e3; for (let y = 0; y < sc.h; y++) for (let x = 14 * S; x < 18 * S; x++) if (sc.objAt(x, y) >= 0) ty = Math.min(ty, y); return ty / S; })();
   sc.carve((x, y) => y < T0 + 1.8 - Math.abs(x + 0.5 - 16.5) * 1.4);
   sc.render(pc);
   const T = topPlane(sc, ob);
   sheen(pc, T, R, { off: -0.05 });
-  // maker's mark: three dots like a mole's paw print, sunk into the top
-  const mx = Math.round((T.x0 + T.x1) / 2) + 2, my = Math.round((T.y0 + T.y1) / 2) + 1;
-  for (const [dx, dy] of [[0, 0], [2, 0], [1, 1], [-1, 1], [3, 1]]) if (T.inT(mx + dx, my + dy)) { pc.set(mx + dx, my + dy, dy ? R[4] : R[3]); if (T.inT(mx + dx, my + dy + 1)) pc.set(mx + dx, my + dy + 1, R[1]); }
-  glint(pc, T.x0 + 2, T.y0 + 1, 1, 0xffffff, R[1]);
+  // maker's mark: a mole's paw print sunk into the top (pad and four toes)
+  const mx = Math.round((T.x0 + T.x1) / 2) + 2 * S, my = Math.round((T.y0 + T.y1) / 2) + S;
+  if (S === 1) {
+    for (const [dx, dy] of [[0, 0], [2, 0], [1, 1], [-1, 1], [3, 1]]) if (T.inT(mx + dx, my + dy)) { pc.set(mx + dx, my + dy, dy ? R[4] : R[3]); if (T.inT(mx + dx, my + dy + 1)) pc.set(mx + dx, my + dy + 1, R[1]); }
+  } else {
+    for (const [dx, dy] of [[-3, -2], [-1, -3], [1, -3], [3, -2]]) punch(pc, mx + dx, my + dy, R, T.inT, false);
+    for (const [dx, dy, k] of [[-1, 0, 5], [0, 0, 4], [1, 0, 4], [-2, 1, 4], [-1, 1, 4], [0, 1, 3], [1, 1, 3], [2, 1, 2], [-1, 2, 2], [0, 2, 1], [1, 2, 1], [2, 2, 1]]) if (T.inT(mx + dx, my + dy)) pc.set(mx + dx, my + dy, R[k]);
+  }
+  glintN(pc, T.x0 + 2 * S, T.y0 + S, 1, 0xffffff, R[1]);
 }
 
 function iron(pc) {
@@ -143,11 +180,17 @@ function iron(pc) {
   sc.roughen(sc.objs, { amount: 0.26, scale: 0.65, seed: 8 });
   sc.render(pc);
   // hammer dents: a dark crescent with a lit far rim; scale flecks
-  for (const [x, y] of [[11, 14], [17, 13], [21, 16], [13, 19], [8, 17]]) {
-    if (sc.objAt(x, y) < 0 || sc.objAt(x + 2, y + 1) < 0) continue;
-    pc.set(x, y, R[5]); pc.set(x + 1, y, R[4]); pc.set(x + 1, y + 1, R[2]); pc.set(x + 2, y + 1, R[1]);
+  for (const [x, y] of [[11, 14], [17, 13], [21, 16], [13, 19], [8, 17], ...(S > 1 ? [[15, 16], [19.5, 19], [23, 13.5]] : [])]) {
+    if (sc.objD(x, y) < 0 || sc.objD(x + 2, y + 1) < 0) continue;
+    if (S === 1) { pc.set(x, y, R[5]); pc.set(x + 1, y, R[4]); pc.set(x + 1, y + 1, R[2]); pc.set(x + 2, y + 1, R[1]); continue; }
+    const X = np(x), Y = np(y);
+    for (const [dx, dy, k] of [[1, 0, 5], [2, 0, 5], [3, 0, 4], [0, 1, 5], [1, 1, 4], [2, 1, 3], [3, 1, 3], [4, 1, 2], [1, 2, 3], [2, 2, 2], [3, 2, 1], [4, 2, 1], [2, 3, 1]]) if (sc.objAt(X + dx, Y + dy) >= 0) pc.set(X + dx, Y + dy, R[k]);
   }
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (sc.objAt(x, y) >= 0 && hash2(x, y, 33) < 0.04) pc.set(x, y, 0x6a4a3a);
+  sc.eachPx((X, Y, x, y, i) => {
+    if (sc.ob[i] < 0 || hash2(X, Y, 33) >= 0.04) return;
+    pc.set(X, Y, 0x6a4a3a);
+    if (S > 1 && hash2(X, Y, 34) < 0.4 && sc.ob[i + 1] >= 0) pc.set(X + 1, Y, 0x8a5a40); // a rust-brown scale flake
+  });
   glint(pc, 10, 11, 0, 0xffffff, R[1]);
 }
 
@@ -159,16 +202,18 @@ function steel(pc) {
   const ob = sc.hull(metal(R, { eq: 0.7, q: [0.1, 0.38, 0.66, 0.88] }), place(bar(o), o));
   sc.render(pc);
   // folded layers: wavy damascus lines along the long faces
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-    const i = y * 32 + x;
-    if (sc.ob[i] !== ob.id) continue;
+  // (finer, more numerous layers at S > 1, each dark line with a bright one beside it)
+  const per = S > 1 ? 2.1 : 3.2, lw = S > 1 ? 0.42 : 0.8;
+  sc.eachPx((X, Y, x, y, i) => {
+    if (sc.ob[i] !== ob.id) return;
     const k = sc.k[i];
-    const w = (x * 0.62 + y * 0.78 + Math.sin(x * 0.9 + y * 0.3) * 1.1) % 3.2;
-    if (k >= 2 && k <= 4 && w < 0.8) pc.set(x, y, R[k + 1]);
-  }
+    const w = ((x * 0.62 + y * 0.78 + Math.sin(x * 0.9 + y * 0.3) * 1.1) % per + per) % per;
+    if (k >= 2 && k <= 4 && w < lw) pc.set(X, Y, R[k + 1]);
+    else if (S > 1 && k >= 2 && k <= 4 && w < lw + 0.4) pc.set(X, Y, R[k - 1]);
+  });
   const T = topPlane(sc, ob);
   sheen(pc, T, R, { base: 1, off: 0.05 });
-  glint(pc, T.x0 + 3, T.y0 + 1, 2, 0xffffff, R[1]);
+  glintN(pc, T.x0 + 3 * S, T.y0 + S, 2, 0xffffff, R[1]);
 }
 
 function silver(pc) {
@@ -180,8 +225,10 @@ function silver(pc) {
   sc.render(pc);
   const T = topPlane(sc, ob);
   sheen(pc, T, R, { base: 2, second: true, off: -0.02 });
-  glint(pc, T.x0 + 2, T.y0 + 1, 2, 0xffffff, R[1]);
-  glint(pc, T.x1 - 1, T.y1 + 3, 0, 0xffffff, R[1]);
+  glintN(pc, T.x0 + 2 * S, T.y0 + S, 2, 0xffffff, R[1]);
+  glintN(pc, T.x1 - S, T.y1 + 3 * S, 0, 0xffffff, R[1]);
+  // a hallmark row stamped near the end: lion, fineness, maker (three sunk punches)
+  if (S > 1) for (let i = 0; i < 3; i++) punch(pc, T.x1 - 10 + i * 3, T.y0 + 3 + i, R, T.inT, false);
 }
 
 function gold(pc) {
@@ -194,17 +241,27 @@ function gold(pc) {
   const T = topPlane(sc, ob);
   sheen(pc, T, R, { off: 0.02 });
   // the stamp: a raised border (lit top-left, dark bottom-right) round a sunk field with a sun mark
-  const sx0 = T.x0 + 3, sx1 = T.x1 - 3, sy0 = T.y0 + 1, sy1 = T.y1 - 1;
+  const sx0 = T.x0 + 3 * S, sx1 = T.x1 - 3 * S, sy0 = T.y0 + S, sy1 = T.y1 - S;
   for (let y = sy0; y <= sy1; y++) for (let x = sx0; x <= sx1; x++) {
     if (!T.inT(x, y) || !T.inT(x - 1, y - 1) || !T.inT(x + 1, y + 1)) continue;
     const edge = x === sx0 || y === sy0 || x === sx1 || y === sy1;
     if (edge) pc.set(x, y, x === sx0 || y === sy0 ? R[1] : R[4]);
     else if (x === sx0 + 1 || y === sy0 + 1) pc.set(x, y, R[4]);
+    else if (S > 1 && (x === sx1 - 1 || y === sy1 - 1)) pc.set(x, y, R[2]); // the field's far edge catches light
     else pc.set(x, y, R[3]);
   }
   const cx = Math.round((sx0 + sx1) / 2), cy = Math.round((sy0 + sy1) / 2);
-  for (const [dx, dy, k] of [[0, 0, 1], [1, 0, 2], [0, 1, 2], [1, 1, 2], [-1, 0, 4], [2, 1, 4], [0, -1, 4], [1, 2, 4]]) if (T.inT(cx + dx, cy + dy)) pc.set(cx + dx, cy + dy, R[k]);
-  glint(pc, T.x0 + 1, T.y0, 1, 0xffffff, R[1]);
+  if (S === 1) {
+    for (const [dx, dy, k] of [[0, 0, 1], [1, 0, 2], [0, 1, 2], [1, 1, 2], [-1, 0, 4], [2, 1, 4], [0, -1, 4], [1, 2, 4]]) if (T.inT(cx + dx, cy + dy)) pc.set(cx + dx, cy + dy, R[k]);
+  } else {
+    // a raised sun: a domed disc and eight short rays, each lit on its top-left and shaded below
+    const put = (dx, dy, k) => { if (T.inT(cx + dx, cy + dy)) pc.set(cx + dx, cy + dy, R[k]); };
+    for (const [dx, dy, k] of [[0, -1, 2], [1, -1, 2], [-1, 0, 1], [0, 0, 1], [1, 0, 2], [2, 0, 3], [-1, 1, 2], [0, 1, 2], [1, 1, 3], [2, 1, 4], [0, 2, 4], [1, 2, 4]]) put(dx, dy, k);
+    for (const [dx, dy] of [[0, -3], [1, -3], [-3, 0], [-3, 1], [4, 0], [4, 1], [0, 4], [1, 4], [-2, -2], [3, -2], [-2, 3], [3, 3]]) put(dx, dy, dx + dy < 1 ? 1 : 4);
+    // and a fineness mark: a row of tiny sunk numerals under it
+    for (let i = -2; i <= 3; i += 2) punch(pc, cx + i, cy + 6, R, T.inT, false);
+  }
+  glintN(pc, T.x0 + S, T.y0, 1, 0xffffff, R[1]);
   glint(pc, 25, 25, 0, 0xffffff, R[1]);
 }
 
@@ -221,13 +278,14 @@ function mithril(pc) {
   const ob = sc.hull(metal(R, { eq: 0.65, glow: 0.15 }), view(yawPts(pts.map(([x, y, z]) => [x, y - h / 2, z]), 0.62), 16, 16.5, 0.85));
   sc.render(pc);
   // iridescent sheen: a pink and a mint ripple across the planes
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-    const i = y * 32 + x;
-    if (sc.ob[i] !== ob.id) continue;
+  sc.eachPx((X, Y, x, y, i) => {
+    if (sc.ob[i] !== ob.id) return;
     const b = (x * 0.8 + y + 40) % 11, k = sc.k[i];
-    if (b < 1 && k >= 1 && k <= 3) pc.set(x, y, 0xf2d8ff);
-    else if (b > 5 && b < 6 && k >= 2 && k <= 4) pc.set(x, y, 0xc8fff0);
-  }
+    const w = S > 1 ? 0.6 : 1;
+    if (b < w && k >= 1 && k <= 3) pc.set(X, Y, 0xf2d8ff);
+    else if (b > 5 && b < 5 + w && k >= 2 && k <= 4) pc.set(X, Y, 0xc8fff0);
+    else if (S > 1 && b > 8 && b < 8.4 && k >= 2 && k <= 4) pc.set(X, Y, 0xd8e8ff);
+  });
   glint(pc, 11, 12, 2, 0xffffff, R[1], 0.6);
 }
 
@@ -280,11 +338,13 @@ function starmetal(pc) {
   sc.roughen(sc.objs, { amount: 0.25, scale: 0.7, seed: 4 });
   sc.render(pc);
   // the seam where the lumps fused glows, and star-hot specks
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-    if (sc.objAt(x, y) < 0) continue;
-    if (Math.abs(x + 0.5 - 19 - (y - 17) * 0.35 - Math.sin(y * 1.1) * 0.6) < 0.55) { pc.set(x, y, y % 3 ? 0xffd860 : 0xfffbe0); pc.emit(x, y, 1); }
-    else if (hash2(x, y, 7) < 0.02) { pc.set(x, y, 0xfffbe0); pc.emit(x, y, 1); }
-  }
+  sc.eachPx((X, Y, x, y, i) => {
+    if (sc.ob[i] < 0) return;
+    const d = Math.abs(x + 0.5 - 19 - (y - 17) * 0.35 - Math.sin(y * 1.1) * 0.6);
+    if (d < (S > 1 ? 0.4 : 0.55)) { pc.set(X, Y, Y % 3 ? 0xffd860 : 0xfffbe0); pc.emit(X, Y, 1); }
+    else if (S > 1 && d < 0.75) { pc.set(X, Y, 0xd88a2a); pc.emit(X, Y, 0.6); } // the seam's cooler skin
+    else if (hash2(X, Y, 7) < (S > 1 ? 0.012 : 0.02)) { pc.set(X, Y, 0xfffbe0); pc.emit(X, Y, 1); }
+  });
   glint(pc, 24, 7, 2, 0xffffff, 0xfff0a0, 1);
   glint(pc, 6, 24, 1, 0xffffff, 0xfff0a0, 1);
   glint(pc, 11, 12, 1, 0xffffff, R[1], 1);

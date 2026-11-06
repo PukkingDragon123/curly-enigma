@@ -354,20 +354,22 @@ export function vaultSolid(o, i, xm, ym, zm, jit) {
     if (ym > o.t0[i] && ym < o.t1[i]) {
       const L = o.L[i], t = (o.root[i] - 1.4 - ym) / L;
       const tt = t > 0 ? t : 0, lean = tt * tt;
-      const d = Math.hypot(xm - o.cx[i] - o.lx[i] * lean, zm - o.cz[i] - o.lz[i] * lean);
-      const q = 1 - tt;
-      let r = t < 0 ? rb * 1.25 : q > 0 ? rb * q * Math.sqrt(Math.sqrt(q)) * (1 + 0.14 * Math.sin(t * L * 9 + o.ph)) : 0;
-      if (t > 0.9) r = Math.max(r, rb * 0.24 * Math.max(0, 1 - Math.abs(t - 0.98) * 9));
-      if (d < r + jit * 0.025) return o.mat;
+      const ex = xm - o.cx[i] - o.lx[i] * lean, ez = zm - o.cz[i] - o.lz[i] * lean, d2 = ex * ex + ez * ez, q = 1 - tt;
+      const rm = t < 0 ? rb * 1.25 : rb * (q > 0.2 ? q * 1.15 : 0.3);
+      if (d2 < rm * rm) {
+        let r = t < 0 ? rb * 1.25 : q > 0 ? rb * q * Math.sqrt(Math.sqrt(q)) * (1 + 0.14 * Math.sin(t * L * 9 + o.ph[i])) : 0;
+        if (t > 0.9) r = Math.max(r, rb * 0.24 * Math.max(0, 1 - Math.abs(t - 0.98) * 9));
+        if (Math.sqrt(d2) < r + jit * 0.025) return o.mat;
+      }
     }
     // stalagmite: blunt, rounded on top, a flared "fried egg" foot
     const mL = o.mL[i];
     if (mL > 0 && ym > o.m0[i] && ym < o.m1[i]) {
-      const u = (ym - o.mroot[i] - 0.6) / mL;
-      {
-        const uu = Math.max(0, u);
-        const d = Math.hypot(xm - o.cx[i], zm - o.cz[i]);
-        let r = o.mrb[i] * (0.3 + 0.7 * Math.pow(1 - uu, 0.7)) * (1 + 0.1 * Math.sin(uu * mL * 7 + o.ph)) + o.mrb[i] * 0.8 * Math.exp(-uu * 9);
+      const ex = xm - o.cx[i], ez = zm - o.cz[i], d2 = ex * ex + ez * ez, mr = o.mrb[i] * 1.95;
+      if (d2 < mr * mr) {
+        const u = (ym - o.mroot[i] - 0.6) / mL, uu = u > 0 ? u : 0, d = Math.sqrt(d2);
+        const fe = uu * 9, egg = 1 / (1 + fe + fe * fe * 0.5);
+        let r = o.mrb[i] * (0.3 + 0.7 * Math.sqrt(1 - uu)) * (1 + 0.1 * Math.sin(uu * mL * 7 + o.ph[i])) + o.mrb[i] * 0.8 * egg;
         if (u > 0.8) r *= Math.sqrt(Math.max(0, (1 - u) / 0.2));
         if (d < r + jit * 0.025) return o.mite;
       }

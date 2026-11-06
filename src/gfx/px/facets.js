@@ -16,7 +16,7 @@
 // points; carve() and texture callbacks see design coordinates where noted.
 import { mat, mix, toHsl, fromHsl, towardHue } from './color.js';
 import { LIGHT, hash2, vnoise, bayer, toneOf, Mask } from './shade.js';
-import { S, nc, np, dc } from './res.js';
+import { S, nc, np, dc, grain } from './res.js';
 
 // ---------------------------------------------------------------- vectors
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -519,25 +519,30 @@ export class Scene {
       T[i] = t;
     }
     // 2. cast shadows + contact occlusion between objects
-    if (o.shadow !== false) {
+    const grp = this.objs.map((q) => q.g), casts = this.objs.map((q) => q.o.shadow !== false);
+    if (o.shadow !== false && grp.some((g, i) => g !== grp[0] && (casts[i] || casts[0]))) {
       const add = new Float32Array(N);
+      const steps = 9 * this.S, bias = 0.4 * this.S, aoB = 0.3 * this.S;
+      const DX = [], DY = [];
+      for (let s = 1; s <= steps; s++) { DX.push(LS[0] * s); DY.push(LS[1] * s); }
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const i = y * W + x, oi = this.ob[i];
         if (oi < 0) continue;
-        const m = this.objs[oi].m;
+        const m = this.objs[oi].m, g = grp[oi];
         const zp = this.z[i];
         let sh = 0;
-        for (let s = 1; s <= 9 * this.S && !sh; s++) {
-          const qx = Math.floor(x + 0.5 + LS[0] * s), qy = Math.floor(y + 0.5 + LS[1] * s);
-          if (!this.inb(qx, qy)) break;
+        for (let s = 0; s < steps; s++) {
+          const qx = Math.floor(x + 0.5 + DX[s]), qy = Math.floor(y + 0.5 + DY[s]);
+          if (qx < 0 || qy < 0 || qx >= W || qy >= H) break;
           const j = qy * W + qx, oq = this.ob[j];
-          if (oq < 0 || this.objs[oq].g === this.objs[oi].g || this.objs[oq].o.shadow === false) continue;
-          if (this.z[j] > zp + s * 0.62 + 0.4 * this.S) sh = 1;
+          if (oq < 0 || grp[oq] === g || !casts[oq]) continue;
+          if (this.z[j] > zp + (s + 1) * 0.62 + bias) { sh = 1; break; }
         }
         let ao = 0;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const oq = this.objAt(x + dx, y + dy);
-          if (oq >= 0 && this.objs[oq].g !== this.objs[oi].g && this.objs[oq].o.shadow !== false && this.zAt(x + dx, y + dy) > zp - 0.3 * this.S) ao = 1;
+        for (const j of [x + 1 < W ? i + 1 : -1, x > 0 ? i - 1 : -1, y + 1 < H ? i + W : -1, y > 0 ? i - W : -1]) {
+          if (j < 0) continue;
+          const oq = this.ob[j];
+          if (oq >= 0 && grp[oq] !== g && casts[oq] && this.z[j] > zp - aoB) ao = 1;
         }
         add[i] = sh * (m.cast ?? 1) + ao * (m.ao ?? 0.75);
       }
@@ -557,28 +562,29 @@ export class Scene {
     for (let pass = 0; pass < 2; pass++) for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
       const i = y * W + x, oi = this.ob[i];
       if (oi < 0 || !(this.objs[oi].m.clean ?? false)) continue;
-      const nb = [i - 1, i + 1, i - W, i + W];
-      if (nb.some((j) => this.ob[j] !== oi)) continue;
-      const k0 = K[nb[0]];
-      if (k0 !== K[i] && nb.every((j) => K[j] === k0) && K[i] !== 0) K[i] = k0;
-      else if (K[i] !== 0) {
+      if (this.ob[i - 1] !== oi || this.ob[i + 1] !== oi || this.ob[i - W] !== oi || this.ob[i + W] !== oi) continue;
+      const a = K[i - 1], b = K[i + 1], c = K[i - W], d = K[i + W];
+      if (K[i] === 0) continue;
+      if (a !== K[i] && a === b && a === c && a === d) K[i] = a;
+      else {
         // 3 of 4 agree and differ by more than one tone: smooth it
-        const cnt = new Map();
-        for (const j of nb) cnt.set(K[j], (cnt.get(K[j]) || 0) + 1);
-        for (const [kk, c] of cnt) if (c >= 3 && Math.abs(kk - K[i]) >= 2) K[i] = kk;
+        const kk = a === b ? (a === c || a === d ? a : -9) : a === c && a === d ? a : b === c && b === d ? b : -9;
+        if (kk !== -9 && Math.abs(kk - K[i]) >= 2) K[i] = kk;
       }
     }
     // 4. ridges, rim light, bounce light, occlusion lines (from the quantised tones)
     const K0 = K.slice();
     const at = (x, y) => (this.inb(x, y) ? y * W + x : -1);
+    for (const f of this.faces) f.lit = dot(f.n, L);
+    const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x, oi = this.ob[i];
       if (oi < 0) continue;
       const obj = this.objs[oi], m = obj.m, fi = this.fb[i];
       let k = K0[i];
       let occl = false;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const j = at(x + dx, y + dy);
+      for (let q = 0; q < 4; q++) {
+        const j = at(x + N4[q][0], y + N4[q][1]);
         if (j < 0 || this.ob[j] < 0) continue;
         if (this.ob[j] !== oi && this.objs[this.ob[j]].g !== obj.g) {
           if (this.z[j] > this.z[i] + (m.gap ?? 1.6) * this.S && this.objs[this.ob[j]].o.occlude !== false) occl = true;
@@ -588,7 +594,7 @@ export class Scene {
         // lighter plane next to a darker one: lit ridge on the lighter side
         const fj = this.faces[this.fb[j]];
         if (fj.obj !== oi && this.objs[fj.obj].m !== m) continue;
-        if (K0[j] > K0[i] && (m.ridgeAll || dot(this.faces[fi].n, L) > dot(fj.n, L))) k = Math.min(k, Math.max(m.ridgeMin ?? 1, K0[i] - 1));
+        if (K0[j] > K0[i] && (m.ridgeAll || this.faces[fi].lit > fj.lit)) k = Math.min(k, Math.max(m.ridgeMin ?? 1, K0[i] - 1));
       }
       // silhouette rim (lit side) and bounce (dark side)
       const outL = at(x - 1, y) < 0 || this.ob[at(x - 1, y)] < 0, outT = at(x, y - 1) < 0 || this.ob[at(x, y - 1)] < 0;
@@ -663,10 +669,17 @@ export function stoneTex(seed = 1, o = {}) {
     const x = c.x / k, y = c.y / k;
     let v = (vnoise(x * sx, y * sy, seed) - 0.5) * amp * 1.6;
     v += (vnoise(x * sx * 2.3, y * sy * 2.3, seed + 9) - 0.5) * amp * 0.7;
-    if (k > 1) v += (vnoise(x * sx * 5.5, y * sy * 5.5, seed + 21) - 0.5) * amp * 0.45; // fine grit
-    const h = hash2(c.x, c.y, seed + 3);
-    if (h < pit) v += 1;
-    else if (h > 1 - speck) v -= 1;
+    if (k === 1) {
+      const h = hash2(c.x, c.y, seed + 3);
+      if (h < pit) v += 1;
+      else if (h > 1 - speck) v -= 1;
+      return v;
+    }
+    // at S > 1: pits are tiny 2-px grains with a lit pixel tucked under them, specks single
+    // bright pixels, both sparser per real pixel so the planes stay clean
+    if (grain(c.x, c.y, seed + 3, pit * 0.9)) v += 1;
+    else if (grain(c.x - 1, c.y - 1, seed + 3, pit * 0.9) && hash2(c.x, c.y, seed + 4) < 0.6) v -= 0.8;
+    else if (hash2(c.x, c.y, seed + 5) > 1 - speck * 0.35) v -= 1;
     return v;
   };
 }

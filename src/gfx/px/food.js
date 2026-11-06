@@ -5,6 +5,7 @@
 import {
   M, mat, mix, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, isTop, isBot, blob, loop, fringe, form, sheen, marks, bumps,
   speckle, blade, tube, spline, steam, twinkle, sparkle, stitch, rivet, pits, RAMPS,
+  S, SZ, dc, nc, np, dot, dotE, alphaD, getD, grain, glD, isTopD, isBotD, stepD,
 } from './lifeKit.js';
 import { leaf, mushroom } from './flora.js';
 
@@ -44,17 +45,17 @@ function vessel(pc, R, outer, mouth, o = {}) {
   if (o.ribs) for (const f of o.ribs) for (let y = mb.y1; y <= b.y1; y++) { const x = Math.round(mcx + f * (b.w / 2) * Math.sqrt(Math.max(0, 1 - ((y - mb.y1) / (b.y1 - mb.y1 + 1)) ** 2)) * 0.9); if (body.get(x, y) && !isBot(body, x, y)) { step(pc, R, x, y, 1, 1, 5); step(pc, R, x - 1, y, -1, 1, 5); } }
   if (o.band) {
     const by = mb.y1 + (b.y1 - mb.y1) * 0.38;
-    body.each((x, y) => {
+    body.eachD((X, Y, x, y) => {
       if (Math.abs(y + 0.5 - by - Math.abs(x + 0.5 - mcx) * -0.06) > 1.1) return;
-      const k = R.indexOf(pc.get(x, y));
-      pc.set(x, y, mix(o.band, k <= 2 ? 0xffffff : 0x1a1030, k <= 2 ? 0.22 : k >= 4 ? 0.32 : 0));
+      const k = R.indexOf(pc.get(X, Y));
+      pc.set(X, Y, mix(o.band, k <= 2 ? 0xffffff : 0x1a1030, k <= 2 ? 0.22 : k >= 4 ? 0.32 : 0));
     });
-    if (o.dots) body.each((x, y) => { if (Math.abs(y - Math.round(by + 2.6)) < 0.5 && x % 3 === 0 && !isBot(body, x, y)) pc.set(x, y, o.dots); });
+    if (o.dots) body.eachD((X, Y, x, y) => { if (Math.abs(y - Math.round(by + 2.6)) < 0.5 && X % 3 === 0 && !isBot(body, X, Y)) pc.set(X, Y, o.dots); });
   }
   if (o.dents) for (const [x, y] of o.dents) { step(pc, R, x, y, 1, 1, 5); step(pc, R, x + 1, y, 1, 1, 5); step(pc, R, x, y - 1, -1, 1, 5); }
   // lit lip all round, brightest at the front-left; the inside wall in shadow at the back
-  lip.each((x, y) => { const front = y + 0.5 >= mcy; pc.set(x, y, R[front ? (x < mcx + mb.w * 0.3 ? 1 : 2) : (x < mcx - mb.w * 0.25 ? 2 : 3)]); });
-  mm.each((x, y) => pc.set(x, y, R[y + 0.5 < mcy ? 5 : 4]));
+  lip.eachD((X, Y, x, y) => { const front = y + 0.5 >= mcy; pc.set(X, Y, R[front ? (x < mcx + mb.w * 0.3 ? 1 : 2) : (x < mcx - mb.w * 0.25 ? 2 : 3)]); });
+  mm.eachD((X, Y, x, y) => pc.set(X, Y, R[y + 0.5 < mcy ? 5 : 4]));
   if (o.glint !== false) glint(pc, Math.round(mb.x0 + mb.w * 0.2), Math.round(mb.y1), 0);
   const surf = mm.clone().erode(1).and(mm.clone().shift(0, 2));
   surf.mouth = mm; surf.outer = om;
@@ -71,18 +72,18 @@ function platter(pc, R, top, well = null, o = {}) {
   const th = o.thick ?? 1.5;
   const under = tm.clone().shift(0, Math.round(th)).sub(tm);
   if (o.extra) tm.union(o.extra);
-  under.each((x, y) => pc.set(x, y, R[o.underK ?? 4]));
+  under.eachD((X, Y, x, y) => pc.set(X, Y, R[o.underK ?? 4]));
   const b = tm.bounds();
   const cx = (b.x0 + b.x1 + 1) / 2, cy = (b.y0 + b.y1 + 1) / 2;
-  tm.each((x, y) => { const t = (x + 0.5 - cx) / (b.w / 2) + (y + 0.5 - cy) / (b.h / 2) * 0.6; pc.set(x, y, R[t < -0.6 ? 1 : t < 0.5 ? 2 : 3]); });
+  tm.eachD((X, Y, x, y) => { const t = (x + 0.5 - cx) / (b.w / 2) + (y + 0.5 - cy) / (b.h / 2) * 0.6; pc.set(X, Y, R[t < -0.6 ? 1 : t < 0.5 ? 2 : 3]); });
   let wm = tm;
   if (well) {
     wm = loop(well);
-    wm.each((x, y) => pc.set(x, y, R[3]));
-    wm.edge().each((x, y) => pc.set(x, y, y + 0.5 < cy ? R[4] : R[1]));
+    wm.eachD((X, Y, x, y) => pc.set(X, Y, R[3]));
+    wm.edge().eachD((X, Y, x, y) => pc.set(X, Y, y + 0.5 < cy ? R[4] : R[1]));
   }
-  if (o.trim) { const t2 = tm.clone().erode(2).sub(wm.clone().dilate(1)); t2.edge().each((x, y) => { if ((x + y) % 3 !== 0) pc.set(x, y, y < cy ? mix(o.trim, 0xffffff, 0.15) : o.trim); }); }
-  tm.edge().each((x, y) => { if (y + 0.5 < cy && x < cx + 3 && !tm.get(x, y - 1)) pc.set(x, y, R[o.rimK ?? 0]); });
+  if (o.trim) { const t2 = tm.clone().erode(2).sub(wm.clone().dilate(1)); t2.edge().eachD((X, Y, x, y) => { if ((X + Y) % 3 !== 0) pc.set(X, Y, y < cy ? mix(o.trim, 0xffffff, 0.15) : o.trim); }); }
+  tm.edge().eachD((X, Y, x, y) => { if (y + 0.5 < cy && x < cx + 3 && !tm.get(X, Y - 1)) pc.set(X, Y, R[o.rimK ?? 0]); });
   tm.under = under;
   return wm;
 }
@@ -92,19 +93,19 @@ function broth(pc, m, R, o = {}) {
   const b = m.bounds();
   if (!b) return;
   const cx = (b.x0 + b.x1 + 1) / 2, cy = (b.y0 + b.y1 + 1) / 2, rw = b.w / 2, rh = b.h / 2;
-  m.each((x, y) => {
+  m.eachD((X, Y, x, y) => {
     let k = 3;
-    if (!m.get(x, y - 1) || !m.get(x, y - 2)) k = 4; // shadow under the back rim
+    if (!m.get(X, Y - 1) || !m.get(X, Y - 2)) k = 4; // shadow under the back rim
     const dx = (x + 0.5 - (cx - rw * 0.25)) / (rw * 0.42), dy = (y + 0.5 - (cy + rh * 0.05)) / (rh * 0.5);
     const d = dx * dx + dy * dy;
     if (o.gloss !== false && d < 1 && d > 0.45 && dy < 0.2) k = 1;
     else if (o.gloss !== false && d <= 0.45 && dy < 0.2) k = 2;
-    pc.set(x, y, R[k]);
-    if (o.emit) pc.emit(x, y, o.emit);
+    pc.set(X, Y, R[k]);
+    if (o.emit) pc.emit(X, Y, o.emit);
   });
   for (let i = 0; i < (o.drops ?? 3); i++) {
     const x = Math.round(b.x0 + 2 + hash2(i, 3, o.seed ?? 5) * (b.w - 4)), y = Math.round(b.y0 + 1 + hash2(i, 7, o.seed ?? 5) * (b.h - 2));
-    if (m.get(x, y) && m.get(x + 1, y + 1)) { pc.set(x, y, R[1]); pc.set(x + 1, y + 1, R[4]); }
+    if (m.at(x, y) && m.at(x + 1, y + 1)) { dot(pc, x, y, R[1]); dot(pc, x + 1, y + 1, R[4]); }
   }
 }
 
@@ -114,7 +115,7 @@ function lump(pc, x, y, r, R, seed = 1, o = {}) {
   if (o.clip) m.and(o.clip);
   seam(pc, m, 'shadow');
   form(pc, m, R, { bias: o.bias ?? 0.1, emit: o.emit, dome: 0.3 });
-  if (r >= 1.8 && o.glint !== false) { const b = m.bounds(); if (b) pc.set(b.x0 + 1, b.y0 + (b.h > 2 ? 1 : 0), R[1]); }
+  if (r >= 1.8 && o.glint !== false) { const b = m.bounds(); if (b) dot(pc, b.x0 + 1, b.y0 + (b.h > 2 ? 1 : 0), R[1]); }
   return m;
 }
 
@@ -122,7 +123,7 @@ function lump(pc, x, y, r, R, seed = 1, o = {}) {
 function coin(pc, x, y, r, seed) {
   const R = mat(0xf0943a, { cont: 1.1 });
   const m = lump(pc, x, y, r, R, seed, { lump: 0.06, sq: 0.7 });
-  pc.set(Math.round(x - 0.5), Math.round(y - 0.5), R[1]);
+  dot(pc, Math.round(x - 0.5), Math.round(y - 0.5), R[1]);
   return m;
 }
 
@@ -143,14 +144,14 @@ function flourSack(pc) {
   // a plump burlap sack, slumped, its mouth rolled down around a heap of flour
   const body = loop([[7, 12.4], [16, 11.6], [25.4, 12.6], [27.6, 17.4], [29, 22.6], [28, 27], [24, 29.6], [16, 30.2], [8.4, 29.8], [3.6, 27.4], [3, 22], [4.6, 17]]);
   form(pc, body, R, { cx: 14, cy: 19, rx: 13, ry: 11, bias: 0.06 });
-  body.each((x, y) => { if ((x + y * 2) % 4 === 0 && hash2(x, y, 2) < 0.6 && !isTop(body, x, y)) step(pc, R, x, y, 1, 1, 5); });
+  body.eachD((X, Y, x, y) => { if ((X + Y * 2) % 4 === 0 && hash2(X, Y, 2) < 0.6 && !isTop(body, X, Y)) step(pc, R, X, Y, 1, 1, 5); });
   // sag folds
   for (const [x0, y0, x1, y1] of [[10, 15, 8, 22], [21, 15, 24, 21], [15, 26, 18, 28]]) line(pc, x0, y0, x1, y1, (i, X, Y) => (i % 3 === 2 || !body.get(X, Y) ? null : (step(pc, R, X, Y, 1, 1, 5), null)));
   // rolled rim
   const rim = loop([[5.4, 12.6], [8, 9.8], [13, 9.2], [18, 9.6], [23.6, 9.4], [26.8, 11.4], [26, 14], [21, 14.8], [16, 14.2], [10, 14.8], [6.4, 14.4]]);
   seam(pc, rim, 'shadow');
   form(pc, rim, R, { bias: 0.08 });
-  for (let x = 6; x < 27; x += 3) if (rim.get(x, 13)) { pc.set(x, 13, R[4]); pc.set(x, 12, R[3]); }
+  for (let x = 6; x < 27; x += 3) if (rim.at(x, 13)) { dot(pc, x, 13, R[4]); dot(pc, x, 12, R[3]); }
   // the flour heap
   const FL = mat(0xfaf6ee, { cont: 0.8 });
   const heap = loop([[8.6, 11.4], [10.6, 8.6], [13.4, 6.4], [16.6, 5.8], [18.4, 7.4], [21.6, 8.2], [23.6, 10.6], [20, 12.2], [14, 12.6]]);
@@ -159,14 +160,14 @@ function flourSack(pc) {
   bumps(pc, heap, FL, { dens: 0.1, seed: 2 });
   // stamped wheat-root mark
   const ST = 0x9a7040;
-  for (let y = 17; y < 26; y++) pc.set(16, y, ST);
-  for (const [x, y] of [[14, 18], [18, 18], [14, 21], [18, 21], [15, 19], [17, 19], [15, 22], [17, 22], [13, 24], [19, 24]]) pc.set(x, y, ST);
+  for (let y = 17; y < 26; y++) dot(pc, 16, y, ST);
+  for (const [x, y] of [[14, 18], [18, 18], [14, 21], [18, 21], [15, 19], [17, 19], [15, 22], [17, 22], [13, 24], [19, 24]]) dot(pc, x, y, ST);
   // twine
   const TW = RAMPS.twine();
-  for (let x = 6; x <= 25; x++) if (body.get(x, 15)) pc.set(x, 15, TW[(x % 2) + 2]);
-  pc.set(26, 16, TW[3]); pc.set(27, 17, TW[4]); pc.set(27, 18, TW[3]);
+  for (let x = 6; x <= 25; x++) if (body.at(x, 15)) dot(pc, x, 15, TW[(x % 2) + 2]);
+  dot(pc, 26, 16, TW[3]); dot(pc, 27, 17, TW[4]); dot(pc, 27, 18, TW[3]);
   ink(pc);
-  for (const [x, y, a] of [[3, 27, 200], [4, 28, 150], [28, 28, 190], [29, 27, 130], [23, 4, 160], [9, 5, 120]]) pc.set(x, y, 0xffffff, a);
+  for (const [x, y, a] of [[3, 27, 200], [4, 28, 150], [28, 28, 190], [29, 27, 130], [23, 4, 160], [9, 5, 120]]) dot(pc, x, y, 0xffffff, a);
   glint(pc, 12, 8, 0);
 }
 
@@ -174,23 +175,23 @@ function butter(pc) {
   // a block of butter on a crinkled paper wrapper, one end freshly cut, a curl on top
   const PP = mat(0xf2ecdc, { cont: 1.05 });
   const paper = M().poly([[1.6, 20], [17, 12.6], [30.6, 17.6], [15, 26.6]]);
-  paper.each((x, y) => pc.set(x, y, PP[(x + y * 2) % 7 === 0 ? 3 : y > 21 ? 3 : 2]));
+  paper.eachD((X, Y, x, y) => pc.set(X, Y, PP[(X + Y * 2) % 7 === 0 ? 3 : y > 21 ? 3 : 2]));
   for (const [x0, y0, x1, y1] of [[4, 20, 9, 18], [22, 22, 27, 19], [12, 24, 14, 25]]) line(pc, x0, y0, x1, y1, PP[4]);
   const R = mat(0xffdc6c, { cont: 1.08, warm: 56 });
   const top = M().poly([[6, 14.4], [17, 9.4], [26, 13], [15, 18]]);
   const front = M().poly([[6, 14.4], [15, 18], [15, 23.6], [6, 20]]);
   const side = M().poly([[15, 18], [26, 13], [26, 18.6], [15, 23.6]]);
-  for (const [m, k] of [[side, 4], [front, 3], [top, 2]]) { seam(pc, m, 'shadow'); m.each((x, y) => pc.set(x, y, R[k])); }
+  for (const [m, k] of [[side, 4], [front, 3], [top, 2]]) { seam(pc, m, 'shadow'); m.eachD((X, Y, x, y) => pc.set(X, Y, R[k])); }
   // soft rounded edges: lit lip along the top edges, slight sag
   line(pc, 7, 14, 15, 17.6, R[1]); line(pc, 15, 17.6, 25, 13.2, R[1]);
-  for (const [x, y] of [[8, 13], [11, 12], [14, 11], [17, 10]]) pc.set(x, y, R[1]);
+  for (const [x, y] of [[8, 13], [11, 12], [14, 11], [17, 10]]) dot(pc, x, y, R[1]);
   // cut face: knife marks
   for (const y of [16, 18, 20]) line(pc, 7, y, 14, y + 3, (i) => (i % 3 ? null : R[4]));
   // a curl shaved off the top
   const curl = blob(19.6, 11.6, 3, 1.6, { seed: 3, rot: -0.3 });
   seam(pc, curl, 'shadow');
   form(pc, curl, R, { bias: 0.15 });
-  pc.set(20, 12, R[3]); pc.set(21, 12, R[4]);
+  dot(pc, 20, 12, R[3]); dot(pc, 21, 12, R[4]);
   ink(pc);
   glint(pc, 10, 13, 0);
 }
@@ -208,7 +209,7 @@ function buttonMushroom(pc) {
   // the gill face (it lies tilted toward us): radial gills around a stub of stem
   const face = loop([[9.6, 20.6], [13, 20], [15.4, 22.4], [15, 25.6], [12, 27], [9, 25.6], [8.4, 22.8]]);
   seam(pc, face, 'shadow');
-  face.each((x, y) => { const a = Math.atan2(y + 0.5 - 23.6, x + 0.5 - 11.6); pc.set(x, y, GI[(Math.floor(a * 3.2 + 10) % 2) ? 3 : 4]); });
+  face.eachD((X, Y, x, y) => { const a = Math.atan2(y + 0.5 - 23.6, x + 0.5 - 11.6); pc.set(X, Y, GI[(Math.floor(a * 3.2 + 10) % 2) ? 3 : 4]); });
   const stub = blob(13.4, 24.6, 2.2, 1.7, { seed: 2 });
   seam(pc, stub, 'shadow'); form(pc, stub, ST, { bias: 0.1 });
   // a crumb of soil at the foot
@@ -216,7 +217,7 @@ function buttonMushroom(pc) {
   const soil = blob(18, 29.2, 9, 1.8, { seed: 3, lump: 0.2 });
   seam(pc, soil, 'shadow'); form(pc, soil, SO, { bias: 0.1 }); bumps(pc, soil, SO, { dens: 0.3, seed: 1 });
   ink(pc);
-  glint(pc, 15, 7, 0); pc.set(6, 19, CP[1]);
+  glint(pc, 15, 7, 0); dot(pc, 6, 19, CP[1]);
 }
 
 function rootBeer(pc) {
@@ -226,23 +227,23 @@ function rootBeer(pc) {
   const lipm = M().rect(12, 5, 8, 2);
   bottle.union(lipm);
   form(pc, bottle, GR, { cx: 13.5, cy: 18, rx: 9, ry: 16, flatten: 0.7, dome: 0.15, bias: 0.08 });
-  lipm.each((x, y) => pc.set(x, y, GR[y === 5 ? 1 : 3]));
+  lipm.eachD((X, Y, x, y) => pc.set(X, Y, GR[Math.round(y) === 5 ? 1 : 3]));
   const CK = mat(0xc89a5a, { cont: 1.1 });
   const ck = M().rect(13, 1, 6, 4);
   seam(pc, ck, 'shadow');
-  ck.each((x, y) => pc.set(x, y, CK[x === 13 ? 2 : x === 18 ? 4 : hash2(x, y, 2) < 0.3 ? 4 : 3]));
+  ck.eachD((X, Y, x, y) => pc.set(X, Y, CK[Math.round(x) === 13 ? 2 : Math.round(x) === 18 ? 4 : hash2(X, Y, 2) < 0.3 ? 4 : 3]));
   // label
   const LB = mat(0xf0e0b8, { cont: 1.05 });
   const lb = M().rect(9, 18, 14, 8);
-  lb.each((x, y) => pc.set(x, y, LB[x < 11 ? 2 : x > 20 ? 4 : 3]));
-  for (let x = 9; x < 23; x++) { pc.set(x, 18, LB[1]); pc.set(x, 25, LB[4]); if (x % 2) pc.set(x, 19, 0xc84a3a); }
-  for (const [x, y] of [[16, 20], [16, 21], [15, 22], [17, 22], [14, 23], [18, 23], [16, 23]]) pc.set(x, y, 0x7a3a1a);
+  lb.eachD((X, Y, x, y) => pc.set(X, Y, LB[x < 11 ? 2 : x > 20 ? 4 : 3]));
+  for (let x = 9; x < 23; x++) { dot(pc, x, 18, LB[1]); dot(pc, x, 25, LB[4]); if (x % 2) dot(pc, x, 19, 0xc84a3a); }
+  for (const [x, y] of [[16, 20], [16, 21], [15, 22], [17, 22], [14, 23], [18, 23], [16, 23]]) dot(pc, x, y, 0x7a3a1a);
   // glass streaks: a long highlight left, a thin rim light right
-  for (let y = 7; y < 29; y++) if (!lb.get(11, y) && bottle.get(11, y) && y !== 15) pc.set(y < 15 ? 14 : 11, y, GR[y % 4 ? 1 : 0]);
-  for (let y = 16; y < 29; y++) if (!lb.get(21, y)) pc.set(21, y, GR[2]);
+  for (let y = 7; y < 29; y++) if (!lb.at(11, y) && bottle.at(11, y) && y !== 15) dot(pc, y < 15 ? 14 : 11, y, GR[y % 4 ? 1 : 0]);
+  for (let y = 16; y < 29; y++) if (!lb.at(21, y)) dot(pc, 21, y, GR[2]);
   ink(pc);
   glint(pc, 14, 8, 0);
-  for (const [x, y, a] of [[22, 3, 180], [24, 5, 130], [21, 1, 110]]) pc.set(x, y, 0xfff4e0, a);
+  for (const [x, y, a] of [[22, 3, 180], [24, 5, 130], [21, 1, 110]]) dot(pc, x, y, 0xfff4e0, a);
 }
 
 function honeyJar(pc) {
@@ -251,26 +252,26 @@ function honeyJar(pc) {
   const jar = loop([[8.4, 10], [23.6, 10.2], [24.4, 13.4], [26.6, 16.6], [27.4, 21.2], [26, 26], [22, 29.2], [15.6, 30], [9.6, 29.2], [5.8, 26.2], [4.8, 21.4], [5.8, 16.4], [7.8, 13.4]]);
   form(pc, jar, GL, { cx: 13.5, cy: 18, rx: 12, ry: 12, bias: 0.1 });
   // honey glows from within: a warm core, darker toward the glass edge
-  blob(18.5, 22, 5.6, 5.2, { seed: 4 }).and(jar).each((x, y) => step(pc, GL, x, y, -1, 1, 5));
+  blob(18.5, 22, 5.6, 5.2, { seed: 4 }).and(jar).eachD((X, Y, x, y) => step(pc, GL, X, Y, -1, 1, 5));
   sheen(pc, jar, 0xfff4c0, { inset: 1, a0: -2.8, a1: -1.9 });
   // drip running down from under the lid
-  for (let y = 12; y < 19; y++) pc.set(10, y, GL[y > 16 ? 1 : 2]);
-  pc.set(10, 19, GL[1]); pc.set(11, 19, GL[3]);
+  for (let y = 12; y < 19; y++) dot(pc, 10, y, GL[y > 16 ? 1 : 2]);
+  dot(pc, 10, 19, GL[1]); dot(pc, 11, 19, GL[3]);
   // cloth lid, gathered, with a scalloped hem and twine
   const CL = mat(0xd24a3a, { cont: 1.1 });
   const lid = loop([[5.4, 9.4], [8, 6.6], [12, 5.4], [16.4, 6], [20, 5.2], [24.6, 6.6], [26.8, 9.6], [26.4, 13.4], [24.4, 12.2], [22.6, 14], [20.6, 12.4], [18.2, 13.8], [16, 12.4], [13.6, 14], [11.4, 12.6], [9, 14], [7.4, 12.4], [5.6, 13.4]]);
   seam(pc, lid, 'shadow');
   form(pc, lid, CL, { bias: 0.1 });
-  for (let x = 6; x < 26; x++) if (lid.get(x, 10)) pc.set(x, 10, (x % 4) < 2 ? CL[4] : CL[3]);
-  for (let x = 6; x < 27; x += 2) if (lid.get(x, 8)) pc.set(x, 8, 0xf0e0c0);
+  for (let x = 6; x < 26; x++) if (lid.at(x, 10)) dot(pc, x, 10, (x % 4) < 2 ? CL[4] : CL[3]);
+  for (let x = 6; x < 27; x += 2) if (lid.at(x, 8)) dot(pc, x, 8, 0xf0e0c0);
   const TW = RAMPS.twine();
-  for (let x = 7; x < 26; x++) pc.set(x, 11, TW[(x % 2) + 2]);
+  for (let x = 7; x < 26; x++) dot(pc, x, 11, TW[(x % 2) + 2]);
   // label
   const LB = mat(0xf4ead0, { cont: 1 });
   const lb = M().rect(12, 18, 9, 7);
   seam(pc, lb, 'shadow');
-  lb.each((x, y) => pc.set(x, y, LB[y === 18 ? 1 : x === 20 ? 4 : 2]));
-  for (const [x, y] of [[14, 20], [15, 20], [16, 20], [17, 20], [18, 20], [15, 21], [17, 21], [16, 22], [14, 23], [18, 23]]) pc.set(x, y, 0xc88a20);
+  lb.eachD((X, Y, x, y) => pc.set(X, Y, LB[Math.round(y) === 18 ? 1 : Math.round(x) === 20 ? 4 : 2]));
+  for (const [x, y] of [[14, 20], [15, 20], [16, 20], [17, 20], [18, 20], [15, 21], [17, 21], [16, 22], [14, 23], [18, 23]]) dot(pc, x, y, 0xc88a20);
   // dipper
   const DP = mat(0xb08050, { cont: 1.1 });
   tube(pc, [[21, 7], [25.4, 1.6]], 0.8, DP, { seam: false });
@@ -306,25 +307,25 @@ function grubBar(pc) {
   const bar = M().poly([[2.6, 17.6], [21, 7.4], [29.4, 13], [11, 24.4]]);
   form(pc, bar, WR, { flatten: 0.6, dome: 0.4, round: 2.5, bias: 0.06 });
   // crimped seal at the far end
-  for (let i = 0; i < 6; i++) { const x = 22 + i * 1.3, y = 8.2 + i * 0.95; pc.set(x, y, WR[i % 2 ? 1 : 4]); pc.set(x - 1, y + 1, WR[i % 2 ? 4 : 2]); }
+  for (let i = 0; i < 6; i++) { const x = 22 + i * 1.3, y = 8.2 + i * 0.95; dot(pc, x, y, WR[i % 2 ? 1 : 4]); dot(pc, x - 1, y + 1, WR[i % 2 ? 4 : 2]); }
   // label band with a logo
   const lb = M().poly([[13.4, 12.4], [19.6, 9], [25, 14.4], [18.6, 18]]);
   seam(pc, lb, 'shadow');
-  lb.each((x, y) => pc.set(x, y, (x + y) < 30 ? 0xf8d24a : 0xe8b030));
+  lb.eachD((X, Y, x, y) => pc.set(X, Y, (x + y) < 30 ? 0xf8d24a : 0xe8b030));
   line(pc, 16, 13, 21, 11, 0xc84a3a); line(pc, 17, 15, 22, 13, 0xc84a3a);
-  pc.set(19, 14, 0xffffff);
+  dot(pc, 19, 14, 0xffffff);
   // torn-open wrapper and the bar itself: crumbly with oats and a grub
   const BR = mat(0xc89a5a, { cont: 1.1 });
   const open = M().poly([[2.6, 17.6], [8.8, 14.2], [14.4, 20.6], [10.4, 23.6]]);
   seam(pc, open, 'shadow');
   form(pc, open, BR, { bias: 0.06 });
   bumps(pc, open, BR, { dens: 0.3, seed: 4 });
-  for (const [x, y] of [[6, 18], [9, 20], [8, 17]]) { pc.set(x, y, 0xf2e0c0); pc.set(x + 1, y, 0xe0c8a0); }
-  pc.set(11, 20, 0xe8c8b0); pc.set(12, 21, 0xd8a890);
-  for (const [x, y] of [[9, 13], [10, 15], [13, 18], [14, 20]]) pc.set(x, y, WR[1]);
+  for (const [x, y] of [[6, 18], [9, 20], [8, 17]]) { dot(pc, x, y, 0xf2e0c0); dot(pc, x + 1, y, 0xe0c8a0); }
+  dot(pc, 11, 20, 0xe8c8b0); dot(pc, 12, 21, 0xd8a890);
+  for (const [x, y] of [[9, 13], [10, 15], [13, 18], [14, 20]]) dot(pc, x, y, WR[1]);
   ink(pc);
   glint(pc, 18, 9, 0);
-  for (const [x, y] of [[3, 22], [5, 24]]) pc.set(x, y, 0xb08850);
+  for (const [x, y] of [[3, 22], [5, 24]]) dot(pc, x, y, 0xb08850);
 }
 
 function teaFlask(pc) {
@@ -335,21 +336,21 @@ function teaFlask(pc) {
   form(pc, body, R, { cx: 12.5, cy: 17, rx: 10, ry: 20, flatten: 0.7, dome: 0.15, bias: 0.06 });
   pits(pc, body, R, 0.03, 4, 0.02);
   // band
-  body.each((x, y) => { if (y >= 16 && y <= 21) pc.set(x, y, y === 16 || y === 21 ? 0xd8c8a0 : mix(0xf2e6c8, 0x8a7a5a, x < 11 ? 0 : x > 21 ? 0.25 : 0.08)); });
+  body.eachD((X, Y, x, y) => { if (y >= 16 && y <= 21) pc.set(X, Y, Math.round(y) === 16 || Math.round(y) === 21 ? 0xd8c8a0 : mix(0xf2e6c8, 0x8a7a5a, x < 11 ? 0 : x > 21 ? 0.25 : 0.08)); });
   const cap = blob(16, 18, 3.4, 1.8, { seed: 2 });
-  cap.each((x, y) => pc.set(x, y, y < 18 ? 0xd8a070 : 0xb07a50));
-  pc.set(15, 17, 0xf0c8a0); pc.set(16, 19, 0xe8dcc8); pc.set(16, 20, 0xd8ccb8);
+  cap.eachD((X, Y, x, y) => pc.set(X, Y, y < 18 ? 0xd8a070 : 0xb07a50));
+  dot(pc, 15, 17, 0xf0c8a0); dot(pc, 16, 19, 0xe8dcc8); dot(pc, 16, 20, 0xd8ccb8);
   // steel cup-cap
   const cup = loop([[9.4, 2.4, 1], [22.6, 2, 1], [22.4, 7.4], [20, 9.6], [12, 9.6], [9.6, 7.6]]);
   seam(pc, cup, 'shadow');
   form(pc, cup, ST, { cx: 13, cy: 5, rx: 9, ry: 10, flatten: 0.6, dome: 0.1 });
-  for (let x = 9; x < 23; x++) { pc.set(x, 2, ST[1]); pc.set(x, 6, ST[4]); }
+  for (let x = 9; x < 23; x++) { dot(pc, x, 2, ST[1]); dot(pc, x, 6, ST[4]); }
   // lug + strap ring
   const lug = M().rect(23, 13, 3, 3);
-  seam(pc, lug, 'shadow'); lug.each((x, y) => pc.set(x, y, ST[x === 23 ? 2 : 4]));
+  seam(pc, lug, 'shadow'); lug.eachD((X, Y, x, y) => pc.set(X, Y, ST[Math.round(x) === 23 ? 2 : 4]));
   for (const y of [12, 26]) for (let x = 9; x < 23; x += 4) rivet(pc, x, y, ST);
   ink(pc);
-  glint(pc, 11, 4, 0); pc.set(11, 12, R[0]);
+  glint(pc, 11, 4, 0); dot(pc, 11, 12, R[0]);
   steam(pc, 14, 1, 6, { a: 150 }); steam(pc, 19, 1, 5, { a: 120, phase: 2 });
 }
 
@@ -358,28 +359,28 @@ function pie(pc, color = 0xc8384a) {
   const TN = mat(0x9aa0a8, { cont: 1.2 });
   // the tin, the domed crust, a lattice over glossy filling, a crimped rim, steam
   const tin = loop([[1.6, 21.6], [4, 18.4], [10, 16.8], [17, 16.6], [24, 17.4], [29.4, 19.6], [30.6, 23], [27.6, 26.6], [20, 28.8], [11, 28.6], [4.4, 26.4]]);
-  tin.each((x, y) => pc.set(x, y, TN[y > 25 ? 4 : (x % 2 ? 3 : 2)]));
+  tin.eachD((X, Y, x, y) => pc.set(X, Y, TN[y > 25 ? 4 : (X % 2 ? 3 : 2)]));
   const top = loop([[2.4, 19.4], [5, 15.2], [10, 12.6], [16.4, 12], [22, 12.6], [27.4, 15], [29.6, 18.6], [28, 22.4], [23, 25], [16, 25.8], [9, 25.2], [4, 22.8]]);
   seam(pc, top, 'shadow');
   form(pc, top, CR, { flatten: 0.6, bias: 0.06 });
   const FR = mat(color, { cont: 1.15 });
   const inner = loop([[6, 18.4], [9, 15], [16, 13.8], [23, 14.8], [26.4, 18], [24, 21.6], [16.6, 23.4], [9, 22.4]]);
-  inner.each((x, y) => {
+  inner.eachD((X, Y, x, y) => {
     const u = x - y * 0.9, v = x + y * 1.1;
     const su = ((Math.floor(u) % 5) + 5) % 5, sv = ((Math.floor(v) % 6) + 6) % 6;
-    if (su < 2) { pc.set(x, y, CR[su === 0 ? 1 : 3]); return; }
-    if (sv < 2) { pc.set(x, y, CR[sv === 0 ? 2 : 4]); return; }
-    pc.set(x, y, FR[sv === 2 ? 4 : su === 2 ? 2 : 3]);
+    if (su < 2) { pc.set(X, Y, CR[su === 0 ? 1 : 3]); return; }
+    if (sv < 2) { pc.set(X, Y, CR[sv === 0 ? 2 : 4]); return; }
+    pc.set(X, Y, FR[sv === 2 ? 4 : su === 2 ? 2 : 3]);
   });
   // crimped rim: a ring of pinched bumps
   for (let i = 0; i < 26; i++) {
     const a = i / 26 * Math.PI * 2, x = 16 + Math.cos(a) * 12.6, y = 19 + Math.sin(a) * 6.2;
-    pc.set(x, y, CR[1]); pc.set(x + 1, y + (Math.sin(a) > 0 ? 0 : 1), CR[4]);
+    dot(pc, x, y, CR[1]); dot(pc, x + 1, y + (Math.sin(a) > 0 ? 0 : 1), CR[4]);
   }
   speckle(pc, top, [CR[4]], 0.04, 6, (x, y) => !inner.get(x, y));
   ink(pc);
   glint(pc, 7, 16, 0);
-  for (const [x, y] of [[13, 17], [19, 20]]) pc.set(x, y, FR[0]);
+  for (const [x, y] of [[13, 17], [19, 20]]) dot(pc, x, y, FR[0]);
   steam(pc, 11, 12, 8); steam(pc, 17, 11, 9, { phase: 2 }); steam(pc, 22, 12, 7, { phase: 4 });
 }
 
@@ -426,15 +427,15 @@ function dish(pc, id, spec) {
       const NR = mat(0xf0a4a0, { cont: 1.1 });
       for (let k = 0; k < 5; k++) for (let x = 4; x < 28; x++) {
         const y = 13.6 + k * 1.15 + Math.sin(x * 0.85 + k * 2.1) * 0.8;
-        if (s.get(x, y)) pc.set(x, y, NR[k % 2 ? 3 : 2]);
-        if (s.get(x, y + 1) && k === 4) pc.set(x, y + 1, NR[4]);
+        if (s.at(x, y)) dot(pc, x, y, NR[k % 2 ? 3 : 2]);
+        if (s.at(x, y + 1) && k === 4) dot(pc, x, y + 1, NR[4]);
       }
       // half an egg and green onion rings
       const EW = mat(0xf8f2e4, { cont: 1 });
       const eg = blob(20.5, 14.6, 2.8, 1.8, { seed: 2 });
       seam(pc, eg, 'shadow'); form(pc, eg, EW, { bias: 0.1 });
-      pc.set(20, 14, 0xf2b030); pc.set(21, 14, 0xe09020); pc.set(20, 15, 0xd88a18);
-      for (const [x, y] of [[9, 14], [12, 16], [15, 13]]) { pc.set(x, y, 0x6ac04a); pc.set(x + 1, y, 0x3a8a3a); }
+      dot(pc, 20, 14, 0xf2b030); dot(pc, 21, 14, 0xe09020); dot(pc, 20, 15, 0xd88a18);
+      for (const [x, y] of [[9, 14], [12, 16], [15, 13]]) { dot(pc, x, y, 0x6ac04a); dot(pc, x + 1, y, 0x3a8a3a); }
       // chopsticks
       const CS = mat(0xb07a40, { cont: 1.1 });
       tube(pc, [[13, 15], [26.5, 1]], 0.75, CS, { capStart: 0.1, capEnd: 0.1 });
@@ -477,11 +478,11 @@ function dish(pc, id, spec) {
       // lemon wedge and a herb sprig
       const LM = mat(0xf6dc4a, { cont: 1.1 });
       const lm = M().poly([[3, 23], [9, 20.4], [8.6, 24.4]]);
-      seam(pc, lm, 'shadow'); lm.each((x, y) => pc.set(x, y, LM[(x + y) % 3 ? 2 : 1]));
+      seam(pc, lm, 'shadow'); lm.eachD((X, Y, x, y) => pc.set(X, Y, LM[(X + Y) % 3 ? 2 : 1]));
       line(pc, 3, 23, 9, 20, LM[4]);
       herbs(pc, [[20, 24, -0.4], [22, 23.6, 0.3]]);
       ink(pc);
-      pc.set(6, 17, 0x1a1210); pc.set(6, 16, 0xffffff);
+      dot(pc, 6, 17, 0x1a1210); dot(pc, 6, 16, 0xffffff);
       glint(pc, 9, 15, 0);
       steam(pc, 12, 12, 7); steam(pc, 18, 12, 6, { phase: 2 });
       return;
@@ -497,9 +498,9 @@ function dish(pc, id, spec) {
       const om = loop([[4.6, 20.4], [6, 16.8], [10, 14.2], [16, 13.4], [22, 14], [26.4, 16.6], [27.4, 20], [24, 21.8, 1], [16, 22.6], [8, 22.2, 1]]);
       seam(pc, om, 'shadow');
       form(pc, om, R, { cy: 20, ry: 7, bias: 0.04 });
-      om.each((x, y) => { if (vnoise(x * 0.5, y * 0.6, 4) > 0.7 && !isTop(om, x, y)) pc.set(x, y, mix(R[3], 0xb06a2a, 0.45)); });
-      for (let x = 6; x < 27; x++) { const y = Math.round(18.8 + Math.sin(x * 0.25) * 0.6); if (om.get(x, y) && om.get(x, y + 1)) { pc.set(x, y, R[4]); pc.set(x, y - 1, R[1]); } }
-      for (const [x, y] of [[10, 16], [15, 15], [20, 16], [13, 21], [22, 20], [17, 22]]) { pc.set(x, y, 0xe0302a); pc.set(x + 1, y, 0x9a1a1a); }
+      om.eachD((X, Y, x, y) => { if (vnoise(x * 0.5, y * 0.6, 4) > 0.7 && !isTop(om, X, Y)) pc.set(X, Y, mix(R[3], 0xb06a2a, 0.45)); });
+      for (let x = 6; x < 27; x++) { const y = Math.round(18.8 + Math.sin(x * 0.25) * 0.6); if (om.at(x, y) && om.at(x, y + 1)) { dot(pc, x, y, R[4]); dot(pc, x, y - 1, R[1]); } }
+      for (const [x, y] of [[10, 16], [15, 15], [20, 16], [13, 21], [22, 20], [17, 22]]) { dot(pc, x, y, 0xe0302a); dot(pc, x + 1, y, 0x9a1a1a); }
       herbs(pc, [[20, 13.6, -0.5], [22.4, 13.4, 0.2]]);
       ink(pc);
       glint(pc, 9, 15, 0);
@@ -510,19 +511,19 @@ function dish(pc, id, spec) {
       // tall glass: pearls at the bottom, milky swirl, a foam cap and a fat straw
       const GLR = mat(0xe8eef4, { cont: 1 });
       const glass = M().poly([[8, 6], [24, 6], [22.4, 29], [9.6, 29]]);
-      glass.each((x, y) => pc.set(x, y, GLR[2], 210));
+      glass.eachD((X, Y, x, y) => pc.set(X, Y, GLR[2], 210));
       const tea = M().poly([[8.5, 10], [23.5, 10], [22.3, 28.4], [9.7, 28.4]]);
       const TR = mat(c, { cont: 1.1 });
-      tea.each((x, y) => { const sw = Math.sin(y * 0.6 + x * 0.25) > 0.75; pc.set(x, y, TR[x < 11 ? 2 : x > 20 ? 4 : sw ? 2 : 3]); });
-      for (const [x, y] of [[11, 26], [14, 27], [17, 26], [20, 27], [12, 23], [16, 24], [19, 23], [13, 28], [18, 28]]) { pc.set(x, y, 0x3a2030); pc.set(x + 1, y, 0x2a1424); pc.set(x, y - 1, 0x8a6a7a); pc.set(x + 1, y - 1, 0x4a2a3a); }
+      tea.eachD((X, Y, x, y) => { const sw = Math.sin(y * 0.6 + x * 0.25) > 0.75; pc.set(X, Y, TR[x < 11 ? 2 : x > 20 ? 4 : sw ? 2 : 3]); });
+      for (const [x, y] of [[11, 26], [14, 27], [17, 26], [20, 27], [12, 23], [16, 24], [19, 23], [13, 28], [18, 28]]) { dot(pc, x, y, 0x3a2030); dot(pc, x + 1, y, 0x2a1424); dot(pc, x, y - 1, 0x8a6a7a); dot(pc, x + 1, y - 1, 0x4a2a3a); }
       const foam = blob(16, 9.6, 8, 1.8, { seed: 2, lump: 0.1 });
       foam.and(glass);
-      foam.each((x, y) => pc.set(x, y, y < 10 ? 0xfaf4fc : 0xe0d4e8));
+      foam.eachD((X, Y, x, y) => pc.set(X, Y, y < 10 ? 0xfaf4fc : 0xe0d4e8));
       const ST = mat(0xf26aa0, { cont: 1.12 });
       tube(pc, [[15, 22], [19.5, 4], [21, 0.5]], 1.4, ST, { bias: 0.08, capEnd: 0.1 });
       ink(pc, { minA: 150 });
-      for (let y = 8; y < 28; y++) if (y % 5) pc.set(Math.round(9.4 + y * 0.04), y, 0xffffff);
-      pc.set(22, 9, 0xffffff);
+      for (let y = 8; y < 28; y++) if (y % 5) dot(pc, Math.round(9.4 + y * 0.04), y, 0xffffff);
+      dot(pc, 22, 9, 0xffffff);
       for (const [x, y] of [[4, 12], [27, 15], [26, 8]]) twinkle(pc, x, y, 0xffffff, 0xe0d0ff, 1, 0.4);
       return;
     }
@@ -536,9 +537,9 @@ function dish(pc, id, spec) {
           // a curled grilled shrimp: segmented arc with a tail fan
           const R = mat(0xf88a72, { cont: 1.15, warm: 30 });
           const sw = tube(pc, [[x - 3, y - 1.6], [x - 1, y - 3.6], [x + 2.4, y - 2.6], [x + 3.2, y + 0.6], [x + 1.4, y + 3]], (s) => 2.4 - s * 1.1, R, { bias: 0.08 });
-          for (let k = 0; k < 4; k++) { const [px, py] = sw.at(0.25 + k * 0.17); if (sw.mask.get(px, py)) pc.set(px, py, R[4]); }
+          for (let k = 0; k < 4; k++) { const [px, py] = sw.at(0.25 + k * 0.17); if (sw.mask.at(px, py)) dot(pc, px, py, R[4]); }
           blade(pc, x + 1.4, y + 3, x - 1.2, y + 5, 1.2, R, { veins: 0, rib: false });
-          for (const [gx, gy] of [[x - 1, y - 3], [x + 2, y - 2]]) if (sw.mask.get(gx, gy)) pc.set(gx, gy, 0xffd0c0);
+          for (const [gx, gy] of [[x - 1, y - 3], [x + 2, y - 2]]) if (sw.mask.at(gx, gy)) dot(pc, gx, gy, 0xffd0c0);
         } else {
           // zippy chunks: glazed blue meat and pink fungus, alternating, with char marks
           const R = mat(i % 2 ? 0xe8a0a8 : 0x4a90dc, { cont: 1.15 });
@@ -574,13 +575,13 @@ function dish(pc, id, spec) {
       const heap = loop([[5.6, 19.4], [7.4, 15.4], [11, 13.4], [15, 12.2], [19.6, 12.8], [24.4, 14.6], [26.4, 18.4], [23.6, 21.6], [17, 22.8], [10, 22.4]]);
       seam(pc, heap, 'shadow');
       form(pc, heap, RR, { bias: 0.06 });
-      heap.clone().erode(1).each((x, y) => { if ((x + y * 2) % 3 === 0) { step(pc, RR, x, y, -1, 1, 5); if ((x + y) % 2) step(pc, RR, x + 1, y, 1, 1, 5); } });
+      heap.clone().erode(1).eachD((X, Y, x, y) => { if ((X + Y * 2) % 3 === 0) { step(pc, RR, X, Y, -1, 1, 5); if ((X + Y) % 2) step(pc, RR, X + 1, Y, 1, 1, 5); } });
       // truffle shavings: dark curls with pale marbling, a herb
       for (const [x, y, sd] of [[11, 15.4, 1], [16.4, 13.6, 2], [20.6, 16.6, 3], [14.6, 18.6, 4], [19.6, 19.4, 5]]) {
         const m = blob(x, y, 2, 1.1, { seed: sd, rot: sd * 0.6 });
         seam(pc, m, 'shadow');
         m.each((X, Y) => pc.set(X, Y, (X + Y) % 3 ? 0x5a3a28 : 0xc8a888));
-        pc.set(Math.round(x - 1), Math.round(y - 1), 0x8a6a4a);
+        dot(pc, Math.round(x - 1), Math.round(y - 1), 0x8a6a4a);
       }
       herbs(pc, [[21.6, 13.4, -0.8], [23.6, 13, -0.2]]);
       ink(pc);
@@ -600,8 +601,8 @@ function dish(pc, id, spec) {
       const rice = blob(20.6, 13.6, 6, 3.2, { seed: 4, lump: 0.12 });
       seam(pc, rice, 'shadow');
       form(pc, rice, RC, { bias: 0.1 });
-      rice.each((x, y) => { if ((x + y * 3) % 4 === 0) step(pc, RC, x, y, 1, 1, 5); });
-      for (const [x, y] of [[8, 16], [11, 15], [13, 17]]) { gl(pc, x, y, 0xffb040, 0.6); pc.set(x + 1, y, 0xb02a1a); }
+      rice.eachD((X, Y, x, y) => { if ((X + Y * 3) % 4 === 0) step(pc, RC, X, Y, 1, 1, 5); });
+      for (const [x, y] of [[8, 16], [11, 15], [13, 17]]) { glD(pc, x, y, 0xffb040, 0.6); dot(pc, x + 1, y, 0xb02a1a); }
       line(pc, 8, 17, 12, 17, (i) => (i % 2 ? 0xf6e8d0 : 0xe8d0b0));
       ink(pc);
       for (const x0 of [8, 13]) for (let i = 0; i < 8; i++) gl(pc, x0 + Math.round(Math.sin(i * 0.8 + x0) * 1.2), 11 - i, i < 3 ? 0xff7a2a : i < 6 ? 0xffb050 : 0xffe0a0, 0.7);
@@ -611,22 +612,22 @@ function dish(pc, id, spec) {
       const GLR = mat(0xe4f0f6, { cont: 1 });
       // a footed glass: layered cream and berry ice, a whipped crown, a frost flower on top
       const glass = M().poly([[6.6, 8], [25.4, 8], [19.4, 21], [12.6, 21]]).union(M().rect(15, 21, 2, 5)).union(loop([[9.6, 27.6], [12, 26], [16, 25.4], [20, 26], [22.6, 27.8], [20, 29.2], [12, 29.2]]));
-      glass.each((x, y) => pc.set(x, y, GLR[y > 21 ? (x < 16 ? 2 : 4) : 2], 220));
+      glass.eachD((X, Y, x, y) => pc.set(X, Y, GLR[y > 21 ? (x < 16 ? 2 : 4) : 2], 220));
       const lay = [[9, 0xffffff], [11, 0x9adcf0], [14, 0xf4f8ff], [16, 0x6ab8e0], [19, 0xd8f0ff]];
       for (let y = 9; y < 21; y++) {
         let col = lay[0][1];
         for (const [yy, cc] of lay) if (y >= yy) col = cc;
-        for (let x = 7; x < 26; x++) if (glass.get(x - 1, y) && glass.get(x + 1, y) && glass.get(x, y)) pc.set(x, y, x > 20 ? mix(col, 0x4a7aa0, 0.25) : col);
+        for (let x = 7; x < 26; x++) if (glass.at(x - 1, y) && glass.at(x + 1, y) && glass.at(x, y)) dot(pc, x, y, x > 20 ? mix(col, 0x4a7aa0, 0.25) : col);
       }
       const W = mat(0xf8fbff, { cont: 0.7 });
       const top = blob(16, 7.6, 9, 2.8, { seed: 5, lump: 0.1 }).union(blob(14.6, 5, 5, 2.6, { seed: 6 })).union(blob(16, 3, 2.4, 1.8, { seed: 7 }));
       seam(pc, top, 'shadow');
       form(pc, top, W, { bias: 0.04 });
-      for (const [x, y] of [[11, 7], [15, 5], [19, 8]]) pc.set(x, y, W[4]);
+      for (const [x, y] of [[11, 7], [15, 5], [19, 8]]) dot(pc, x, y, W[4]);
       ink(pc, { minA: 150 });
-      for (let i = 0; i < 6; i++) { const a = -Math.PI / 2 + i * Math.PI / 3; gl(pc, Math.round(21 + Math.cos(a) * 2), Math.round(3 + Math.sin(a) * 2), 0xbff6ff, 0.6); }
-      gl(pc, 21, 3, 0xffffff, 0.8);
-      for (let y = 9; y < 20; y++) if (y % 4) pc.set(Math.round(8.4 + (y - 9) * 0.4), y, 0xffffff);
+      for (let i = 0; i < 6; i++) { const a = -Math.PI / 2 + i * Math.PI / 3; glD(pc, Math.round(21 + Math.cos(a) * 2), Math.round(3 + Math.sin(a) * 2), 0xbff6ff, 0.6); }
+      glD(pc, 21, 3, 0xffffff, 0.8);
+      for (let y = 9; y < 20; y++) if (y % 4) dot(pc, Math.round(8.4 + (y - 9) * 0.4), y, 0xffffff);
       return;
     }
     case 'crystal_tea': {
@@ -634,20 +635,20 @@ function dish(pc, id, spec) {
       const SC = CERAMIC();
       const sau = loop([[2, 25.6], [5, 22.6], [11, 21.6], [18, 21.4], [25, 22.2], [29.6, 24.6], [29, 27.6], [24, 29.4], [16, 30], [8, 29.4], [3, 27.8]]);
       form(pc, sau, SC, { flatten: 0.5, dome: 0.2 });
-      loop([[8.6, 25], [12, 23.4], [20, 23.4], [23.4, 25], [20, 26.6], [12, 26.6]]).edge().each((x, y) => { if (y < 25) pc.set(x, y, SC[4]); });
+      loop([[8.6, 25], [12, 23.4], [20, 23.4], [23.4, 25], [20, 26.6], [12, 26.6]]).edge().eachD((X, Y, x, y) => { if (y < 25) pc.set(X, Y, SC[4]); });
       const handle = loop([[23, 13.6], [26.6, 13], [29.4, 15.6], [28.6, 19.6], [24.6, 21.6]]).sub(loop([[24.4, 15.4], [26.6, 15.2], [27.4, 17.4], [25.6, 19]]));
       seam(pc, handle, 'shadow'); form(pc, handle, SC, { bias: 0.04 });
       const cup = loop([[4.6, 13], [7, 10.2], [15, 9.4], [23, 10.2], [25.4, 13], [25, 16.4], [22.6, 20.4], [18.6, 23], [12, 23.2], [7.4, 20.6], [5.2, 16.6]]);
       seam(pc, cup, 'shadow');
       form(pc, cup, SC, { cx: 11.5, cy: 13, rx: 11, ry: 12, flatten: 0.8, dome: 0.2, bias: 0.06 });
-      for (let x = 6; x < 25; x++) if (cup.get(x, 19) && x % 2) pc.set(x, 19, 0x7ab8e0);
+      for (let x = 6; x < 25; x++) if (cup.at(x, 19) && x % 2) dot(pc, x, 19, 0x7ab8e0);
       const mouth = loop([[6.4, 13], [9, 11.2], [15, 10.8], [21, 11.2], [23.6, 13], [21, 15], [15, 15.6], [9, 15]]);
-      mouth.clone().dilate(1).and(cup).sub(mouth).each((x, y) => pc.set(x, y, SC[y < 13 ? 2 : 1]));
+      mouth.clone().dilate(1).and(cup).sub(mouth).eachD((X, Y, x, y) => pc.set(X, Y, SC[y < 13 ? 2 : 1]));
       const tea = mouth.clone().erode(1).and(mouth.clone().shift(0, 1));
-      tea.each((x, y) => gl(pc, x, y, y < 13 ? 0xd8f4ff : 0xa8dcf0, 0.5));
+      tea.eachD((X, Y, x, y) => gl(pc, X, Y, y < 13 ? 0xd8f4ff : 0xa8dcf0, 0.5));
       const CR = mat(0xc8ecff, { cont: 1.25 });
       for (const [x1, y1] of [[17, 6.4], [22.4, 8], [12.6, 8.6]]) blade(pc, 17.4, 12.4, x1, y1, 1.8, CR, { rib: 0xffffff, fold: 1.5, veins: 0, pow: 1.1 });
-      const ctr = blob(17.4, 12, 1.4, 1.1, { seed: 2 }); seam(pc, ctr, 'shadow'); ctr.each((x, y) => gl(pc, x, y, 0xfff2b0, 0.8));
+      const ctr = blob(17.4, 12, 1.4, 1.1, { seed: 2 }); seam(pc, ctr, 'shadow'); ctr.eachD((X, Y, x, y) => gl(pc, X, Y, 0xfff2b0, 0.8));
       ink(pc);
       glint(pc, 9, 15, 0);
       for (const [x, y] of [[6, 6], [10, 3]]) twinkle(pc, x, y, 0xffffff, 0xd8f4ff, 1, 0.6);
@@ -686,10 +687,10 @@ function dish(pc, id, spec) {
           const sp = Math.sin(a + r * 1.7);
           pc.set(X, Y, r > 3.2 ? 0xf4ead0 : sp > 0.35 ? 0xd8c0f0 : sp > -0.3 ? 0xa080c8 : 0x7a5aa6);
         });
-        pc.set(Math.round(x - 3), Math.round(y - 3), TR[1]);
+        dot(pc, Math.round(x - 3), Math.round(y - 3), TR[1]);
       }
       ink(pc);
-      for (const [x, y] of [[6, 7], [26, 6], [16, 4]]) gl(pc, x, y, 0xe8d8ff, 0.6);
+      for (const [x, y] of [[6, 7], [26, 6], [16, 4]]) glD(pc, x, y, 0xe8d8ff, 0.6);
       return;
     }
     case 'lotus_feast': {
@@ -708,7 +709,7 @@ function dish(pc, id, spec) {
         seam(pc, m, 'shadow');
         m.each((X, Y) => pc.set(X, Y, (X + Y) % 3 ? 0x5a3a28 : 0xc8a888));
       }
-      for (let x = 10; x < 23; x++) pc.set(x, Math.round(23 + Math.sin(x * 0.9) * 0.6), x % 3 ? 0xf2a020 : 0xffd060);
+      for (let x = 10; x < 23; x++) dot(pc, x, Math.round(23 + Math.sin(x * 0.9) * 0.6), x % 3 ? 0xf2a020 : 0xffd060);
       ink(pc);
       for (const [x, y] of [[5, 6], [27, 5], [16, 2]]) twinkle(pc, x, y, 0xffffff, 0xffe08a, 1, 0.9);
       return;
@@ -723,18 +724,18 @@ function dish(pc, id, spec) {
         const y = 21.4 - i * 3.1;
         const pk = blob(16 + (i % 2 ? 0.8 : -0.6), y, 11 - i * 0.4, 3.3, { seed: i * 3 + 2, lump: 0.1, rot: (i % 2 ? 0.05 : -0.04), freq: [3, 5, 7] });
         seam(pc, pk, 'shadow');
-        pk.each((x, yy) => pc.set(x, yy, yy + 0.5 < y - 0.6 ? R[2] : yy + 0.5 < y + 1 ? R[3] : R[4]));
-        pk.each((x, yy) => { if (!pk.get(x, yy + 1)) pc.set(x, yy, R[5]); else if (yy + 0.5 > y && hash2(x, yy, i) < 0.2) pc.set(x, yy, R[5]); });
+        pk.each((x, yy) => dot(pc, x, yy, yy + 0.5 < y - 0.6 ? R[2] : yy + 0.5 < y + 1 ? R[3] : R[4]));
+        pk.each((x, yy) => { if (!pk.at(x, yy + 1)) dot(pc, x, yy, R[5]); else if (yy + 0.5 > y && hash2(x, yy, i) < 0.2) dot(pc, x, yy, R[5]); });
       }
       const HN = mat(0xf2a020, { cont: 1.12 });
       const pool = blob(16.6, 10.4, 7.6, 2, { seed: 4, lump: 0.1 });
-      pool.each((x, y) => pc.set(x, y, HN[(x + y) % 3 ? 2 : 1]));
-      for (const [x, y0, y1] of [[8, 11, 17], [23, 11, 20], [12, 12, 15], [19, 12, 14]]) { for (let y = y0; y < y1; y++) pc.set(x, y, HN[y === y1 - 1 ? 3 : 2]); pc.set(x, y1, HN[1]); }
+      pool.eachD((X, Y, x, y) => pc.set(X, Y, HN[(X + Y) % 3 ? 2 : 1]));
+      for (const [x, y0, y1] of [[8, 11, 17], [23, 11, 20], [12, 12, 15], [19, 12, 14]]) { for (let y = y0; y < y1; y++) dot(pc, x, y, HN[y === y1 - 1 ? 3 : 2]); dot(pc, x, y1, HN[1]); }
       const BT = mat(0xfff0a0, { cont: 0.9 });
       const bt = M().poly([[13, 8.4], [17, 7], [20, 8.4], [16, 10]]);
       const btf = M().poly([[13, 8.4], [16, 10], [16, 11.4], [13, 9.8]]);
       seam(pc, bt.clone().union(btf), 'shadow');
-      bt.each((x, y) => pc.set(x, y, BT[1])); btf.each((x, y) => pc.set(x, y, BT[3]));
+      bt.eachD((X, Y, x, y) => pc.set(X, Y, BT[1])); btf.eachD((X, Y, x, y) => pc.set(X, Y, BT[3]));
       ink(pc);
       glint(pc, 14, 8, 0);
       steam(pc, 10, 6, 5, { a: 150 });
@@ -753,7 +754,7 @@ function dish(pc, id, spec) {
         const yolk = blob(x, y - 1.2, 3.4, 2.4, { seed: sd + 1 }).union(blob(x - 0.4, y - 2.8, 2, 1.6, { seed: sd + 2 }));
         seam(pc, yolk, 'shadow'); form(pc, yolk, YR, { bias: 0.08 });
         for (let k = -2; k <= 2; k += 2) { const X = Math.round(x + k), Y = Math.round(y - 1 - Math.abs(k) * 0.3); if (yolk.get(X, Y)) pc.set(X, Y, YR[4]); }
-        pc.set(x - 1, y - 2, 0xd83a2a); pc.set(x + 1, y - 1, 0xd83a2a); pc.set(x, y - 3, 0xb02a1a);
+        dot(pc, x - 1, y - 2, 0xd83a2a); dot(pc, x + 1, y - 1, 0xd83a2a); dot(pc, x, y - 3, 0xb02a1a);
       }
       herbs(pc, [[15, 13, -1.2], [17, 13, -0.6]]);
       ink(pc);
@@ -773,12 +774,12 @@ function dish(pc, id, spec) {
       seam(pc, sp, 'shadow'); form(pc, sp, SP, { bias: 0.1 });
       const heap = blob(15.6, 14, 10.4, 4, { seed: 5, lump: 0.14 }).union(blob(13, 11.4, 5, 3, { seed: 6, lump: 0.12 }));
       seam(pc, heap, 'shadow');
-      form(pc, heap, MR, { bias: 0.06, tex: (x, y) => (vnoise(x * 0.8, y * 0.8, 4) - 0.5) * 0.4 });
-      for (const [x, y, r] of [[10, 12, 1.2], [18.6, 13.6, 1], [14, 15, 0.8]]) blob(x, y, r + 0.5, r + 0.3, { seed: x | 0, lump: 0.25 }).edge().each((X, Y) => { if (heap.get(X, Y)) pc.set(X, Y, (X + 0.5 - x) + (Y + 0.5 - y) < 0 ? MR[1] : MR[4]); });
-      for (const [x, y] of [[8, 15], [20, 15]]) { pc.set(x, y, 0xc0a0d0); pc.set(x + 1, y, 0x6a4a7a); }
+      form(pc, heap, MR, { bias: 0.06, tex: (x, y) => (vnoise(dc(x) * 0.8, dc(y) * 0.8, 4) - 0.5) * 0.4 });
+      for (const [x, y, r] of [[10, 12, 1.2], [18.6, 13.6, 1], [14, 15, 0.8]]) blob(x, y, r + 0.5, r + 0.3, { seed: x | 0, lump: 0.25 }).edge().each((X, Y) => { if (heap.get(X, Y)) pc.set(X, Y, (X + 0.5) / S - x + (Y + 0.5) / S - y < 0 ? MR[1] : MR[4]); });
+      for (const [x, y] of [[8, 15], [20, 15]]) { dot(pc, x, y, 0xc0a0d0); dot(pc, x + 1, y, 0x6a4a7a); }
       ink(pc);
-      pc.set(5, 5, 0x1e1a22); pc.set(4, 4, 0xd8e8ff, 200); pc.set(6, 4, 0xc8d8f0, 180);
-      for (let i = 0; i < 4; i++) pc.set(7 + i, 7 + (i % 2), 0x8a9a6a, 140);
+      dot(pc, 5, 5, 0x1e1a22); dot(pc, 4, 4, 0xd8e8ff, 200); dot(pc, 6, 4, 0xc8d8f0, 180);
+      for (let i = 0; i < 4; i++) dot(pc, 7 + i, 7 + (i % 2), 0x8a9a6a, 140);
       steam(pc, 9, 8, 5, { c: 0xc8e0a0, a: 140 });
       return;
     }

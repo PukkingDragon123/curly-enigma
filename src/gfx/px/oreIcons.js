@@ -5,7 +5,10 @@
 import { makeRng } from '../../core/util.js';
 import { hash2, vnoise, bayer } from './shade.js';
 import { Scene, material, rampOf, stoneTex, glint } from './facets.js';
-import { S, dc, nc, np } from './res.js';
+import { S, dc, nc, np, grain } from './res.js';
+
+/** Patchy stain test at design (x, y): per-pixel hash at S = 1, soft clustered blotches at S > 1. */
+export const patch = (x, y, seed, dens) => (S > 1 ? vnoise(x * 1.5 + seed * 3.1, y * 1.5, seed) < 0.2 + dens * 0.62 : hash2(x, y, seed) < dens);
 
 // ---------------------------------------------------------------- shared helpers
 /** Point-in-polygon (even-odd). */
@@ -245,7 +248,7 @@ export function tinOre(pc) {
   sc.render(pc);
   // dark cassiterite grains and a tarnish halo
   const DK = rampOf([0x8a7468, 0x6a5450, 0x4e3c3c, 0x3a2a2e, 0x2a1e24, 0x1c1418, 0x0c080c]);
-  recolor(pc, sc, rock, (x, y) => hash2(x, y, 31) < 0.06 || (blot(16, 17, 6.5, 5)(x, y) && hash2(x, y, 32) < 0.25), DK);
+  recolor(pc, sc, rock, (x, y, k, X, Y) => grain(X, Y, 31, 0.06) || (blot(16, 17, 6.5, 5)(x, y) && grain(X, Y, 32, 0.25)), DK);
   glint(pc, 15, 4, 1, 0xffffff, TN[1]);
 }
 
@@ -270,7 +273,7 @@ export function ironOre(pc) {
   // metallic glints in the grey bands, rust weeping from the top
   const RU = RAMP.rust();
   specks(pc, sc, rock, 0.07, [HE[0], HE[1]], 41, (x, y, k, X, Y) => k <= 3 && HE.includes(pc.getHex(X, Y)));
-  recolor(pc, sc, rock, (x, y) => blot(20, 10, 4.5, 8)(x, y) && hash2(x, y, 9) < 0.55, RU);
+  recolor(pc, sc, rock, (x, y) => blot(20, 10, 4.5, 8)(x, y) && patch(x, y, 9, 0.55), RU);
   glint(pc, 10, 13, 1, 0xffffff, HE[1]);
   glint(pc, 23, 17, 1, 0xffffff, HE[1]);
 }
@@ -316,7 +319,7 @@ export function goldOre(pc) {
   sc.render(pc);
   // limonite (rusty) staining in the quartz and a scatter of gold flecks
   const LI = rampOf([0xfff0d8, 0xf0c890, 0xd29a5a, 0xae7240, 0x84522e, 0x5a3622, 0x2a1810]);
-  recolor(pc, sc, rock, (x, y) => (blot(10, 21, 4, 3)(x, y) || blot(24, 22, 3.4, 5)(x, y)) && hash2(x, y, 6) < 0.7, LI);
+  recolor(pc, sc, rock, (x, y) => (blot(10, 21, 4, 3)(x, y) || blot(24, 22, 3.4, 5)(x, y)) && patch(x, y, 6, 0.7), LI);
   specks(pc, sc, rock, 0.045, [AU[1], AU[2]], 19);
   glint(pc, 11, 9, 2, 0xffffff, AU[1]);
   glint(pc, 20, 15, 1, 0xffffff, AU[1]);
@@ -368,7 +371,7 @@ export function moonsilverOre(pc) {
     const d = Math.abs(Math.hypot(x + 0.5 - CX, y + 0.5 - CY) - RA);
     const a = Math.atan2(y + 0.5 - CY, x + 0.5 - CX);
     const inArc = ((a - A0 + Math.PI * 4) % (Math.PI * 2)) < SPAN;
-    return inArc && d > 2 && d < 3.4 && k > 1 && hash2(x, y, 3) < 0.45;
+    return inArc && d > 2 && d < 3.4 && k > 1 && patch(x, y, 3, 0.45);
   }, rampOf([RR[0], RR[0], RR[0], RR[1], RR[2], RR[3], RR[6]]));
   specks(pc, sc, rock, 0.025, [MR[2]], 29, null, 0.6);
   glint(pc, 13, 14, 1, 0xffffff, MR[1], 1);

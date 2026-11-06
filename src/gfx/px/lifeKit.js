@@ -10,7 +10,7 @@
 // at S× (res.js); callbacks (tex, only, keep, dir, emit) get native pixel coordinates.
 import {
   M, mat, mix, hash2, vnoise, bayer, lum, step, ink, inkOf, seam, shadowOf, liftOf, cast, toneN, T, glint, line, lightOf, sweep, facetSweep, stitch, pits, rivet, RAMPS,
-  S, SZ, dc, nc, np, dot, star,
+  S, SZ, dc, nc, np, dot, dotE, grain, alphaD, getD, star,
 } from './gearKit.js';
 import { lightField, toneOf, LIGHT } from './shade.js';
 
@@ -19,15 +19,30 @@ export const sparkle = (pc, x, y, r = 2, c = 0xffffff, mid = null, emit = 0) => 
 
 export {
   M, mat, mix, hash2, vnoise, bayer, lum, step, ink, inkOf, seam, shadowOf, liftOf, cast, toneN, T, glint, line, lightOf, sweep, facetSweep, stitch, pits, rivet, RAMPS,
-  S, SZ, dc, nc, np, dot, star,
+  S, SZ, dc, nc, np, dot, dotE, grain, alphaD, getD, star,
 };
 
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-/** Set a pixel and flag it emissive. */
+/** Set a (native) pixel and flag it emissive. */
 export const gl = (pc, x, y, c, g = 1) => { pc.set(x, y, c); pc.emit(x, y, g); };
-/** Pixel lies on the top/left (lit) or bottom/right edge of a mask. */
+/** Light a hand-placed design pixel: a glowing S×S grain (its lower-right real pixel a touch deeper). */
+export const glD = (pc, x, y, c, g = 1) => {
+  const X = Math.floor(x) * S, Y = Math.floor(y) * S;
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) { pc.set(X + i, Y + j, S > 1 && i === S - 1 && j === S - 1 ? mix(c, 0x000000, 0.18) : c); pc.emit(X + i, Y + j, g); }
+};
+/** Pixel lies on the top/left (lit) or bottom/right edge of a mask (native pixels). */
 export const isTop = (m, x, y) => !m.get(x - 1, y) || !m.get(x, y - 1);
 export const isBot = (m, x, y) => !m.get(x + 1, y) || !m.get(x, y + 1);
+/** The same tests for a hand-placed design pixel (its block's top-left / bottom-right pixel). */
+export const isTopD = (m, x, y) => isTop(m, Math.floor(x) * S, Math.floor(y) * S);
+export const isBotD = (m, x, y) => isBot(m, Math.floor(x) * S + S - 1, Math.floor(y) * S + S - 1);
+/** step() every real pixel of design pixel (x, y). */
+export function stepD(pc, R, x, y, dk, lo = 1, hi = 5) {
+  const X = Math.floor(x) * S, Y = Math.floor(y) * S;
+  let ok = false;
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) ok = step(pc, R, X + i, Y + j, dk, lo, hi) || ok;
+  return ok;
+}
 const N8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
 
 /** Small seeded RNG (0..1). */
@@ -105,7 +120,7 @@ export function fringe(mask, cx, cy, o = {}) {
   const edge = mask.edge();
   edge.each((x, y) => {
     if (hash2(x, y, seed) > dens) return;
-    if (o.only && !o.only(x, y)) return;
+    if (o.only && !o.only(dc(x), dc(y))) return; // (design coordinates)
     let dx = (x + 0.5) / S - cx, dy = (y + 0.5) / S - cy;
     const l = Math.hypot(dx, dy) || 1;
     dx /= l; dy /= l;
@@ -152,7 +167,7 @@ export function tidy(K, mask, keep = null) {
  * Returns the tone map (Int8Array 32×32, -1 outside) with .mask.
  */
 export function form(pc, mask, R, o = {}) {
-  const b = mask.bounds();
+  const b = mask.nbounds ? mask.nbounds() : mask.bounds();
   const K = new Int8Array(SZ * SZ).fill(-1);
   K.mask = mask;
   if (!b) return K;
@@ -196,7 +211,7 @@ export function paintK(pc, K, R) { K.mask.each((x, y) => pc.set(x, y, R[K[y * SZ
  * between angles a0..a1 (radians, screen space; -2.4 ≈ top-left). gap: break every n px.
  */
 export function sheen(pc, mask, c, o = {}) {
-  const b = mask.bounds();
+  const b = mask.nbounds ? mask.nbounds() : mask.bounds();
   if (!b) return;
   const cx = o.cx !== undefined ? (o.cx + 0.0) * S : (b.x0 + b.x1 + 1) / 2, cy = o.cy !== undefined ? o.cy * S : (b.y0 + b.y1 + 1) / 2;
   // inset in design px; at S > 1 the sheen is a crisp 1px line (width 1) or a little thicker

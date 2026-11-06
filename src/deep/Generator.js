@@ -1,6 +1,9 @@
 // The underground, generated chunk by chunk from a cheap plan: zone strata, spaghetti tunnels and
-// caverns, an old half-collapsed passage from the burrow toward Deep Town, the town gate, lift
-// stations, ore areas, lakes and nests (danger zones), crystals, stalactites, roots and moss.
+// caverns, an old half-collapsed passage from the burrow toward Deep Town, the town gate (a natural
+// rock arch), lift stations, ore veins, lakes and nests (danger zones), crystals, dripstone, roots
+// and moss. The giant caverns (gen/network.js vaults, dressed by gen/vaults.js: lakes, falls,
+// glowing crystal clusters, stalactite forests, columns, glowworms) and the ore veins (gen/veins.js:
+// branching seams of vein rock with nuggets strung along them) are planned here too.
 // Units: voxels (1/8 m) unless a name ends in M (meters). y is up; depth = -y.
 import { makeNoise3D, h3, h3i } from './noise.js';
 import { M, VOX, VK, ORE_BASE } from './materials.js';
@@ -13,7 +16,7 @@ import { stampLift, stampShaft, liftBB } from './gen/lifts.js';
 import { stampPassage, passageBB, planPassage } from './gen/passages.js';
 import { settleLakes } from './fluids/lakes.js';
 import { buildNetwork, netDensity, GROTTO, CAVERN, vaultAt, lakeDist } from './gen/network.js';
-import { VAULT_BANDS, dressVaults, stampFalls, stampClusters, makeColumns, vaultColumns, vaultSolid } from './gen/vaults.js';
+import { VAULT_BANDS, dressVaults, stampFalls, stampClusters, makeColumns, vaultColumns, vaultSolid, makeCluster } from './gen/vaults.js';
 import { planVeins, stampVeins } from './gen/veins.js';
 import { RELIC_IDS } from './ruins/relics.js';
 
@@ -99,6 +102,7 @@ export function makePlan(seed, opts = {}) {
   const T = plan.town;
   plan.features.push({ kind: 'sphere', x: T.x - 2.5, y: T.y + 0.8, z: T.z + 2, r: T.r, ry: T.r * 0.62, m: 0 });
   plan.features.push({ kind: 'gate', x: T.x + 1.6, y: T.y, z: T.z - 1.2 });
+  plan.lights.push({ x: T.x + 1.6 + 0.8 * 1.9, y: T.y + 1.3, z: T.z - 1.2 - 0.6 * 1.9, c: [1.2, 0.8, 0.42], r: 5 }); // Deep Town's glow, deep in the mouth
   plan.lights.push({ x: T.x + 1.2, y: T.y + 1.4, z: T.z - 1.0, c: [1.4, 0.95, 0.5], r: 9 });
   plan.lights.push({ x: T.x - 5, y: T.y + 2.2, z: T.z + 3, c: [1.0, 0.7, 0.35], r: 6, lantern: true });
   // the town shaft (a natural chimney skinned in hard rock) and its stops, alcoves off it
@@ -188,6 +192,15 @@ export function makePlan(seed, opts = {}) {
   }
   // the giant caverns' lakes, falls, crystal clusters and lights (gen/vaults.js)
   dressVaults(plan, caveDensity);
+  // amber crystals growing either side of the town's rock arch (they glow warm: the old lanterns' place)
+  {
+    const g = plan.features.find((f) => f.kind === 'gate'), cr = makeRng(seed + 5151);
+    if (g) for (const sd of [-1, 1]) {
+      const x = g.x + 0.6 * 1.85 * sd - 0.8 * 0.5, z = g.z + 0.8 * 1.85 * sd + 0.6 * 0.5, y = g.y + 1.7;
+      const cl = makeCluster(x, y, z, -0.78, 0.3, 0.55, M.CRYSTAL_AMBER, cr, 0.42);
+      plan.clusters.push(cl);
+    }
+  }
   addPlaces(plan, rng, L0);
   // stamp in order: the caves first, then what is cut into them; the lift stations last (nothing
   // cuts into those). A stable sort: features of one kind keep their order.
@@ -789,14 +802,28 @@ export class ChunkGen {
         else if (d < 0.8) vox[vi] = h3(vx >> 1, vy >> 1, vz >> 1, 33) < 0.3 + (d - 0.6) * 2 ? M.CRYSTAL : 0;
         else if (d < 1 && !(f.open && !cur)) vox[vi] = M.GEODE; // a cracked-open one leaves the cave it opens into
       } else if (f.kind === 'gate') {
-        // brick arch with a boarded gate in it; lanterns either side
+        // the way to Deep Town: a natural rock arch, a thick rough ring of limestone hung with
+        // flowstone round a rounded mouth, and the mouth running on into the rock as a short cave
+        // (warm light deep in it; amber crystals grow either side: Generator makePlan). Nobody built it.
         const dx = xm - f.x, dz = zm - f.z, dy = ym - f.y;
-        const along = dx * 0.6 + dz * 0.8, across = -dx * 0.8 + dz * 0.6; // gate faces south-west, toward the hall
-        if (Math.abs(across) < 0.4 && Math.abs(along) < 2.4 && dy > -0.2 && dy < 3.2) {
-          const inner = Math.abs(along) < 1.3 && dy < 2.4;
-          vox[vi] = inner ? (Math.abs(across) < 0.12 ? M.BOARDS : 0) : M.BRICK;
-          if (inner && Math.abs(across) < 0.12 && (Math.floor(along * 8) % 6 === 0)) vox[vi] = M.TIMBER;
-        } else if (Math.abs(across - 0.55) < 0.15 && Math.abs(Math.abs(along) - 1.9) < 0.16 && Math.abs(dy - 1.8) < 0.16) vox[vi] = M.LANTERN;
+        const along = dx * 0.6 + dz * 0.8, across = -dx * 0.8 + dz * 0.6; // it faces south-west, toward the hall (+across)
+        const lump = (h3(vx >> 2, vy >> 2, vz >> 2, 51) - 0.5) * 0.22 + (h3(vx >> 3, vy >> 3, vz >> 3, 52) - 0.5) * 0.3 + (h3(vx, vy, vz, 53) - 0.5) * 0.05;
+        // the mouth: rounded at the top, narrowing a little as it goes in
+        const deep = Math.max(0, -across);
+        const w = 1.35 - deep * 0.12, hh = 2.45 - deep * 0.18;
+        const mx = along / w, my = dy / hh;
+        const mouth = dy > -0.1 && (my < 0.25 ? Math.abs(mx) < 1 + lump * 0.4 : mx * mx + (my - 0.25) * (my - 0.25) / 0.5625 < 1 + lump * 0.6);
+        // the ring of rock round it, standing proud of the wall toward the hall
+        const rx = along / 2.55, ry = (dy + 0.25) / 3.45;
+        const ring = rx * rx + ry * ry < 1 + lump && across < 0.55 + lump * 0.8 && across > -0.9;
+        if (mouth && across < 0.75 && across > -2.6) vox[vi] = 0;
+        else if (ring) {
+          // flowstone poured down the face in sheets, limestone between, a fringe on the lip
+          const sheet = h3(vx >> 3, vy >> 4, vz >> 3, 54) < 0.45 && across > 0.15;
+          vox[vi] = sheet || (my > 0.9 && my < 1.15) ? M.FLOWSTONE : (h3(vx >> 2, vy >> 3, vz >> 2, 55) < 0.3 ? M.STONE : M.LIMESTONE);
+        }
+        // a fringe of little dripstones along the inside of the arch's lip
+        else if (mouth && across >= 0.75 && across < 1.0 && my > 0.7 && h3(vx >> 1, 0, vz >> 1, 56) < 0.35 && dy > hh * 0.85 - h3(vx >> 1, 1, vz >> 1, 57) * 0.5) vox[vi] = M.FLOWSTONE;
       }
     }
   }
@@ -840,7 +867,9 @@ export class ChunkGen {
         }
         if (ym > vlt.y0 + 1.1 && zone <= 3 && NATURAL[vox[vi - CS]] && pt < 0.25) { vox[vi] = pt < -0.2 ? M.GRAVEL : M.RUBBLE; continue; }
       }
-      if (airUp) {
+      if (airUp && m === M.FLOWSTONE && vlt) {
+        // (the giant caverns' columns and dripstone stay clean calcite: no dirt on their ledges)
+      } else if (airUp) {
         // floors: bare earth and gravel in the plain caves (a moss patch only where it's damp and
         // near the top), moss in the lush grotto and the dino halls, sand, mycelium
         if (bio === 1) { if (pt > -0.2 && m !== M.CRYSTALROCK) vox[vi] = M.MOSS; else if (pt < -0.55) vox[vi] = M.GRAVEL; }

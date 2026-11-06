@@ -509,7 +509,7 @@ const weave = (x, y, M = 20) => {
 /** The linen tag (slice 5 on 30): a turned hem with a green running stitch, a frayed foot. */
 function clothTag() {
   const s = 5, M = 20, W = 30, p = new Px(W, W);
-  const G = [0x2e5a20, 0x4f8a34, 0x8ac85a];
+  const G = [0x2e5a20, 0x44702c, 0x6a9446];
   for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
     const { u, d, tl, e } = CA.edgeOf(x, y, W, W), uu = wrap(u - s, M);
     if (Math.min(x, W - 1 - x) + Math.min(y, W - 1 - y) < 2) continue;

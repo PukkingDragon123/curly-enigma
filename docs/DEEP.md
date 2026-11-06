@@ -280,3 +280,28 @@ Fluids internals (`src/deep/fluids/`):
 - **Engine**: `scene.userData.postHook(p, camera, engine)` adjusts a scene's post settings every
   frame (after the scene's own keys). Grades `rootsoil`, `clay`, `grotto` (split-toned: warm
   lamplight, cool shade); `ZONE_GRADES = [null, 'rootsoil', 'clay', 'grotto', 'magma', 'frost', 'core']`.
+
+## Giant caverns, lakes and ore veins (caves & ores pass)
+
+- **Vaults** (`plan.net.vaults`, `src/deep/gen/network.js` `planVaults`; kind `VAULT` = 4): ~10 per
+  world (`VAULT_BANDS` in `gen/vaults.js`), 26–40 m across, 14–18 m high: `{ id, x, z, y0 (base
+  floor), H, Rx, Rz, rot, zone, lake?, mouths, piles, cols, terr }`. They swallow the chambers inside
+  them; passages into them bend at the wall to a walkable height, a high mouth gets a ledge sloping
+  down along the wall (`vaultFloor`). Helpers: `vaultAt(net, x, y, z, pad)`, `vaultSpan(v, nz, x, z)`
+  (floor / roof), `lakeDist`, `inVaultLake`. `Generator.underLake(plan, x, y, z)` for placement.
+- **Vault lakes** are `'lake'` features with `basin: true` (the cavern's basin fills to `wl`; the
+  flow sim treats them as reservoirs) plus a `water` / `lava` danger. `plan.falls` (sheets of static
+  fluid from roof cracks), `plan.clusters` (glowing hex-prism crystal clusters, `makeCluster`) with a
+  `crystal: true` light each; the generator adds stalactite forests, fluted columns and glowworms.
+- **Veins** (`plan.veins`, `gen/veins.js`): every zone ore area is now a vein system (`area.vein`,
+  `kind` 'seam' along a bedding plane or 'fault' in a steep crack) of vein rock (materials 44–53:
+  `VEIN_QUARTZ` … `VEIN_FROST`), its deposits strung along it, pockets where branches split, gem
+  veins ending in geodes. Deposits are the same `{ x, y, z, r, q, seed }` bodies as before (Dig.js,
+  Ores.js unchanged); ore may sit in vein rock. Glow crystals 54–58, `GLOWWORM` 59.
+- **Terrain shader**: ore voxels by look (palette col 6 alpha: 1 metal, 2 gem, 3 coal, 4 salt, 5 amber,
+  6 fossil, 7 truffle, 8 glowing); `airLit` uniform (a vault's air faintly lit by its crystals: the
+  fog fades into it); glowing surfaces carry a little farther through the fog.
+- **Fluids**: `fluids.vfx` (`fluids/voxfx.js`) draws water's and lava's spray as little voxels
+  (one instanced draw); `fluids.fx` routes drops, drips, foam, bubbles, mist, steam, crowns and lava
+  blobs there. Falls spray and ring their lake; mist drifts over vault lakes. Atmosphere's motes use
+  it too, and Atmosphere plays a vault's drips with their echo (it gets `audio` / `fluids` from Fluids).

@@ -312,9 +312,10 @@ function sootTile() {
     for (let y = -5; y <= 5; y++)
       for (let x = -5; x <= 5; x++) {
         const d = Math.hypot(x, y * 1.2) * (0.8 + CA.pnoise(Math.atan2(y, x) * 1.3 + 9, cx, 8, 64, 113) * 0.5) + (CA.hash(x, y, cx) - 0.5) * 0.9;
-        if (d < r * 0.45) at(cx + x, cy + y, 0x2e180c, 0.9);
-        else if (d < r + 0.6) at(cx + x, cy + y, 0x6a3418, 0.85);
-        else if (d < r + 2.2) at(cx + x, cy + y, 0xa07040, 0.45 * (1 - (d - r - 0.6) / 1.6));
+        // (scorch marks, not holes: the words over them stay easy to read)
+        if (d < r * 0.45) at(cx + x, cy + y, 0x5a2a12, 0.6);
+        else if (d < r + 0.6) at(cx + x, cy + y, 0x8a4a22, 0.5);
+        else if (d < r + 2.2) at(cx + x, cy + y, 0xa07040, 0.35 * (1 - (d - r - 0.6) / 1.6));
       }
   for (let i = 0; i < 40; i++) at(Math.floor(CA.hash(i, 1, 99) * W), Math.floor(CA.hash(i, 2, 99) * H), CA.hash(i, 3, 99) < 0.5 ? 0x6a625c : 0x8a8078, 0.55);
   return p;
@@ -382,14 +383,34 @@ function parchKraft() {
 }
 function kraftTile() {
   const W = 96, H = 96, p = new Px(W, H);
-  CA.paintPaper(p, CA.paperField(W, H, { seed: 110, base: 0.64, mottle: 0.28, fibres: 1.8, fox: 0.2 }), KRAFT);
+  CA.paintPaper(p, CA.paperField(W, H, { seed: 110, base: 0.64, mottle: 0.42, grain: 0.12, fibres: 2.4, fox: 0.2 }), KRAFT);
+  // kraft is full of crushed wood: dark flecks and pale shreds through it
+  for (let i = 0; i < 140; i++) {
+    const x = Math.floor(CA.hash(i, 1, 116) * W), y = Math.floor(CA.hash(i, 2, 116) * H), dark = CA.hash(i, 3, 116) < 0.6;
+    p.set(x, y, dark ? 0x6a4a2a : 0xe0c08a); if (CA.hash(i, 4, 116) < 0.5) p.set((x + 1) % W, y, dark ? 0x80603a : 0xd8b882);
+  }
   // a ghost of a stencilled crate mark, nearly worn away
   for (let y = 60; y < 74; y++) for (let x = 20; x < 76; x++) if ((((x - 20) % 10) < 7) && (y === 60 || y === 73 || ((x - 20) % 10) < 2 || ((x - 20) % 10) > 4) && CA.hash(x, y, 111) < 0.35) p.set(x, y, CA.mix(p.get(x, y), 0x3a2414, 0.1));
   return p;
 }
-/** Your own notebook page (slice 6 on 36): clean, a little dog-eared by use. */
+/** Your own notebook page (slice 6 on 36): torn off along its perforations at the head, thumbed. */
 function parchJournal() {
-  return CA.parchFrame(false, { slice: 6, mid: 24, seed: 112, tear: 0.5, bites: false, burn: 1.0, fox: 1.2 });
+  const s = 6, M = 24, W = 36;
+  const p = CA.parchFrame(false, { slice: s, mid: M, seed: 112, tear: 0.5, bites: false, burn: 1.0, fox: 1.2 });
+  p.each((x, y, c) => {
+    const { e, u, d } = CA.edgeOf(x, y, W, W), uu = wrapI(u - s, M);
+    if (e !== 0 || !p.a(x, y)) return undefined;
+    if (d === 2 && wrapI(uu, 4) === 1) return 0x6a4a2a; // the perforation holes the page tore along
+    if (d === 3 && wrapI(uu, 4) === 1) return CA.mix(c, 0xffffff, 0.35);
+    return undefined;
+  });
+  return p;
+}
+/** A pencilled rule for your notebook (64 × h): soft graphite, heavier where the lead pressed. */
+function pencilRule(h) {
+  const W = 64, p = new Px(W, h);
+  for (let x = 0; x < W; x++) { const n = CA.hash(x, h, 117); if (n > 0.08) p.set(x, h - 1, n > 0.9 ? 0x4a4a52 : 0x7a7a84, 70 + Math.floor(CA.pnoise(x / 6, 1, 11, 2, 118) * 80)); }
+  return p;
 }
 
 /** A glint (10×16): a diagonal sheen in three steps of white, to sweep across brass and glass. */
@@ -462,6 +483,8 @@ const ASSETS = {
   parchKraft,
   kraftT: kraftTile,
   parchJournal,
+  pencil8: () => pencilRule(8),
+  pencil11: () => pencilRule(11),
   glint,
   curl: curlSheet,
   clip: () => CA.paperClip(),
