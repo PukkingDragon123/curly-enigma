@@ -12,7 +12,7 @@
 import { Vox, cached, mix, dk, lt, h3, PX, NX, PY, NY, PZ, NZ } from '../../gfx/char/vox.js';
 import { SKIN_PINK, CLAW } from '../../gfx/char/spec.js';
 import { ITEMS } from '../../data/items.js';
-import { drawIconArt } from '../../gfx/PixelArt.js';
+import { drawIconSmall } from '../../gfx/PixelArt.js';
 import { hashStr } from '../../core/util.js';
 
 export const PLAYER_FUR = 0x3a2e2a;
@@ -585,7 +585,7 @@ export function beamGeo() {
 export function foodGeo(id, stage = 0) {
   return cached(`vm-food|${id}|${stage}`, () => {
     const it = ITEMS[id];
-    const pc = drawIconArt(it?.icon || { k: '?' }, hashStr(id || 'food'), id);
+    const pc = drawIconSmall(it?.icon || { k: '?' }, hashStr(id || 'food'), 32, id); // 64-px icon reduced to the 32-cell snack
     let x0 = 32, y0 = 32, x1 = -1, y1 = -1;
     for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (pc.alpha(x, y) >= 128) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
     const v = new Vox(-20, 21, -2, 40, -4, 5);

@@ -239,8 +239,8 @@ const F = {
   },
   forge(pc) {
     const cam = CAM({ cy: 23, scale: 0.9 });
-    const S = mat(0x7a7470, { cont: 1.1 });
-    box(pc, cam, -10, 0, -7, 10, 10, 6, S, { paintAll: stone(S, { h: 3, w: 5 }) });
+    const ST_ = mat(0x7a7470, { cont: 1.1 });
+    box(pc, cam, -10, 0, -7, 10, 10, 6, ST_, { paintAll: stone(ST_, { h: 3, w: 5 }) });
     // bed of glowing coals on top
     const fire = M().poly(topPoly(cam, -7, -4, 7, 3, 10));
     seam(pc, fire, 'shadow');
@@ -326,12 +326,12 @@ const F = {
     box(pc, cam, 10, 0, -2, 12, 20, 2, W, { paintAll: wood(W, { seed: 6, vertical: true }) });
     box(pc, cam, -12, 18, -2, 12, 20, 2, W, { paintAll: wp });
     // three weapons standing upright: a sword, an axe, a spear
-    const S = RAMPS.steel(), C = mat(0xd9773f, { cont: 1.2 }), G = GOLD(), H = RAMPS.leather();
+    const ST_ = RAMPS.steel(), C = mat(0xd9773f, { cont: 1.2 }), G = GOLD(), H = RAMPS.leather();
     const handle = (x, y0, y1) => tube(pc, [[x + 0.5, y0], [x + 0.5, y1]], 0.9, H, { capStart: 0.1, capEnd: 0.1 });
     handle(9, 17, 25.5);
     const blade1 = M().rect(8, 5, 3, 11).union(M().poly([[8, 5], [9.5, 2], [11, 5]]));
     seam(pc, blade1, 'shadow');
-    blade1.each((X, Y) => pc.set(X, Y, S[X === 8 ? 1 : X === 9 ? (Y % 4 ? 2 : 0) : 4]));
+    blade1.eachD((X, Y, x) => pc.set(X, Y, ST_[isTop(blade1, X, Y) ? 1 : x < 9 ? 1 : x < 10 ? (Y % 4 ? 2 : 0) : 4]));
     for (let x = 6; x <= 13; x++) { dot(pc, x, 16, G[x < 9 ? 1 : 2]); dot(pc, x, 17, G[4]); }
     handle(15.5, 8, 26);
     const hd = M().poly([[17, 6], [21.6, 4], [23, 8], [21.6, 12.4], [17, 10.6]]);
@@ -339,7 +339,7 @@ const F = {
     line(pc, 22.6, 5, 22.6, 11, C[1]);
     handle(23, 7, 26);
     const tip = M().poly([[21.5, 7.4], [23.5, 0.6], [25.4, 7.4]]);
-    seam(pc, tip, 'shadow'); tip.each((X, Y) => pc.set(X, Y, S[X < 23.5 ? 1 : X < 24.5 ? 3 : 4]));
+    seam(pc, tip, 'shadow'); tip.each((X, Y) => pc.set(X, Y, ST_[(X + 0.5) / S < 23.5 ? 1 : (X + 0.5) / S < 24.5 ? 3 : 4]));
     box(pc, cam, -12, 8, 0.5, 12, 9.5, 2, W, { paintAll: wp });
     ink(pc);
     glint(pc, 9, 4, 0);
@@ -436,9 +436,9 @@ const F = {
     glD(pc, 12, 16, 0xffffff, 1);
   },
   crystallamp(pc) {
-    const S = STONE();
-    const c = crock(pc, S, [[8.4, 22.8], [10, 20.8], [14, 20], [19, 20.2], [22.6, 21], [24, 23.2], [23.6, 26.2], [21.8, 28.4], [17.6, 29], [12, 28.8], [9, 27.6], [8, 25.2]], [[10, 22.6], [13, 21.2], [19, 21.4], [22.2, 22.6], [19, 23.8], [13, 23.6]], { topTone: 2 });
-    marks(pc, c.body, S, { dens: 0.1, seed: 2, len: 2, dir: [1, 0] });
+    const ST_ = STONE();
+    const c = crock(pc, ST_, [[8.4, 22.8], [10, 20.8], [14, 20], [19, 20.2], [22.6, 21], [24, 23.2], [23.6, 26.2], [21.8, 28.4], [17.6, 29], [12, 28.8], [9, 27.6], [8, 25.2]], [[10, 22.6], [13, 21.2], [19, 21.4], [22.2, 22.6], [19, 23.8], [13, 23.6]], { topTone: 2 });
+    marks(pc, c.body, ST_, { dens: 0.1, seed: 2, len: 2, dir: [1, 0] });
     // a cluster of cut amethyst points, the big one glowing
     const C = mat(0xb07af6, { cont: 1.15 });
     const pt = (pts, n, emit) => { const m = M().poly(pts); seam(pc, m, 'shadow'); m.eachD((X, Y, x, y) => { gl(pc, X, Y, C[n(x, y)], emit); }); return m; };
@@ -454,8 +454,8 @@ const F = {
   },
   fireplace(pc) {
     const cam = CAM({ cy: 27, scale: 1, yaw: -0.3 });
-    const S = mat(0x8a827a, { cont: 1.1 });
-    box(pc, cam, -12, 0, -3, 12, 20, 3, S, { paintAll: stone(S, { h: 3, w: 6 }) });
+    const ST_ = mat(0x8a827a, { cont: 1.1 });
+    box(pc, cam, -12, 0, -3, 12, 20, 3, ST_, { paintAll: stone(ST_, { h: 3, w: 6 }) });
     const W = DWOOD();
     box(pc, cam, -13, 14, -3.5, 13, 16.5, 4.5, W, { paintAll: wood(W, { seed: 3, horizontal: true }) });
     // the hearth opening: sooty dark, logs, a crackling fire
@@ -518,7 +518,7 @@ const F = {
     const U = sofa ? mat(0x8a5a32, { cont: 1.1 }) : mat(0x4e8a3e, { cont: 1.1 });
     const hw = sofa ? 13 : 8;
     // root sofa: woody, grained upholstery; mossy armchair: fuzzy living moss
-    const tex = sofa ? wood(U, { seed: 3, horizontal: true }) : (p, m, tone) => m.eachD((X, Y, x, y) => { let k = edgeK(m, X, Y, tone); const h = hash2(X, Y, 3); if (h < 0.22) k++; else if (h > 0.9) k--; p.set(x, y, U[clamp(k, 1, 5)]); });
+    const tex = sofa ? wood(U, { seed: 3, horizontal: true }) : (p, m, tone) => m.eachD((X, Y, x, y) => { let k = edgeK(m, X, Y, tone); const h = hash2(X, Y, 3); if (h < 0.22) k++; else if (h > 0.9) k--; p.set(X, Y, U[clamp(k, 1, 5)]); });
     box(pc, cam, -hw, 2, -5, hw, 8, 6, U, { paintAll: tex });
     box(pc, cam, -hw, 8, -5, hw, sofa ? 20 : 18, -1.5, U, { paintAll: tex });
     const CU = sofa ? mat(0xa86a3a, { cont: 1.08 }) : mat(0x5a9a46, { cont: 1.08 });
@@ -613,7 +613,7 @@ const F = {
       // the flap: everything past a fold line at the front-right is turned back over the rug
       const fold = (x, y) => (x + 0.5 - 22.4) * 0.62 + (y + 0.5 - 25.4) * 0.78;
       const flapSrc = M();
-      m.eachD((X, Y, x, y) => { if (fold(x, y) > 0) flapSrc.set(x, y); });
+      m.eachD((X, Y, x, y) => { if (fold(x, y) > 0) flapSrc.set(X, Y); });
       m.sub(flapSrc);
       const under = m.clone().shift(0, 1).sub(m);
       under.eachD((X, Y, x, y) => pc.set(X, Y, R[5]));
@@ -719,13 +719,19 @@ const F = {
         const w = 2 + (i % 2), h = 5 + ((i * 7) % 3);
         const C = mat(cols[i % cols.length], { cont: 1.1 });
         const lean = i % 5 === 3 && x < x0 + wv - 4;
-        for (let xx = 0; xx < w; xx++) for (let yy = 0; yy < h; yy++) {
-          const X = x + xx + (lean ? Math.floor(yy / 3) - 1 : 0), Y = yt + 7 - h + yy;
+        // a book spine in real pixels: lit left edge, shaded right edge, a cap of page-edge on
+        // top, gilt title bands; a leaning one tips against its neighbour
+        const W2 = w * S, H2 = h * S, X0 = x * S, Yb = (yt + 7) * S;
+        for (let yy = 0; yy < H2; yy++) for (let xx = 0; xx < W2; xx++) {
+          const X = X0 + xx + (lean ? Math.floor(yy / 3) - S : 0), Y = Yb - H2 + yy;
           if (!cav.get(X, Y)) continue;
-          pc.set(X, Y, C[xx === 0 ? 2 : xx === w - 1 ? 4 : 3]);
+          let c = C[xx === 0 ? 2 : xx === W2 - 1 ? 4 : 3];
+          if (yy === 0) c = C[1];
+          else if (S > 1 && (yy === 2 * S || yy === 2 * S + 2) && xx > 0 && xx < W2 - 1) c = mix(C[3], 0xf0d890, 0.6);
+          else if (S > 1 && yy === H2 - 2 && xx > 0) c = C[4];
+          pc.set(X, Y, c);
         }
-        dot(pc, x, yt + 7 - h, C[1]);
-        if (h > 5) { dot(pc, x + 1, yt + 7 - h + 2, mix(C[3], 0xf0d890, 0.6)); if (w > 2) dot(pc, x + 1, yt + 7 - h + 3, mix(C[3], 0xf0d890, 0.6)); }
+        if (S === 1 && h > 5) { pc.set(x + 1, yt + 7 - h + 2, mix(C[3], 0xf0d890, 0.6)); if (w > 2) pc.set(x + 1, yt + 7 - h + 3, mix(C[3], 0xf0d890, 0.6)); }
         x += w + (lean ? 1 : 0); i++;
       }
     }
@@ -833,7 +839,7 @@ const F = {
     if (!window && !sunF) for (const [x, y] of [[3, 5], [28, 4], [3, 25], [28, 26]]) { dot(pc, x, y, 0xc8a46a); dot(pc, x + 1, y, 0x8a6a40); dot(pc, x, y + 1, 0x8a6a40); }
     if (window) {
       inner.eachD((X, Y, x, y) => pc.set(X, Y, mix(0x6ac0f0, 0xd8f0ff, (y - 7) / 17)));
-      for (const [x, y, r] of [[10, 12, 2.4], [13, 11, 2.8], [16, 12.4, 2.2], [20, 18, 1.8], [22.4, 17.6, 2]]) blob(x, y, r, r * 0.8, { seed: x | 0 }).each((X, Y) => { if (inner.get(X, Y)) pc.set(X, Y, Y > y ? 0xe0f0ff : 0xffffff); });
+      for (const [x, y, r] of [[10, 12, 2.4], [13, 11, 2.8], [16, 12.4, 2.2], [20, 18, 1.8], [22.4, 17.6, 2]]) blob(x, y, r, r * 0.8, { seed: x | 0 }).each((X, Y) => { if (inner.get(X, Y)) pc.set(X, Y, (Y + 0.5) / S > y ? 0xe0f0ff : 0xffffff); });
       blob(22, 10, 2, 2, { seed: 5, lump: 0.2 }).eachD((X, Y, x, y) => gl(pc, X, Y, 0xfff4b0, 0.6));
       for (let y = 7; y < 24; y++) { dot(pc, 15, y, FR[2]); dot(pc, 16, y, FR[4]); }
       for (let x = 5; x < 27; x++) { dot(pc, x, 15, FR[2]); dot(pc, x, 16, FR[4]); }
@@ -932,7 +938,7 @@ const F = {
     const I = IRON();
     box(pc, cam, -13, 0, -5, 13, 2, 5, I, { paintAll: iron(I, { rivets: false }) });
     const G = mat(0x7ad0f0, { cont: 0.9 });
-    box(pc, cam, -12.5, 2, -4.5, 12.5, 16, 4.5, G, { paintAll: (p, m, tone) => m.eachD((X, Y, x, y) => p.set(x, y, G[Math.min(4, tone)], 230)) });
+    box(pc, cam, -12.5, 2, -4.5, 12.5, 16, 4.5, G, { paintAll: (p, m, tone) => m.eachD((X, Y, x, y) => p.set(X, Y, G[Math.min(4, tone)], 230)) });
     // water line, sand, swaying weed, two content blind fish, bubbles
     const f0 = cam.p(-12, 2, 4.5), f1 = cam.p(12, 13, 4.5);
     const yTop = Math.round(f1[1]);
@@ -951,22 +957,22 @@ const F = {
     line(pc, g0[0] + 1, g0[1] + 1, g0[0] + 3, g0[1] + 6, 0xffffff);
   },
   fountain(pc) {
-    const S = mat(0x9a948e, { cont: 1.1 });
+    const ST_ = mat(0x9a948e, { cont: 1.1 });
     // a carved stone basin, a pedestal with a little bowl, water arcing down
     const RIM = [[1.6, 22.6], [3.6, 19.4], [8.6, 17.4], [15.4, 16.8], [22.4, 17.2], [27.6, 18.8], [30.4, 22], [30, 25], [16, 26.4], [2, 25.2]];
     const basin = loop([[1.6, 22.6], [3.6, 19.4], [8.6, 17.4], [15.4, 16.8], [22.4, 17.2], [27.6, 18.8], [30.4, 22], [30.6, 26.6], [27.6, 29.4], [21, 30.8], [11, 30.8], [4.4, 29.2], [1.4, 26.4]]);
-    form(pc, basin, S, { cx: 12, cy: 22, rx: 16, ry: 12, dome: 0.2, bias: 0.04 });
-    marks(pc, basin, S, { dens: 0.07, seed: 3, len: 2, dir: [1, 0] });
-    for (let x = 3; x < 30; x += 5) line(pc, x, 24, x, 28, (i, X, Y) => (basin.get(X, Y) && !isBot(basin, X, Y) ? S[4] : null));
+    form(pc, basin, ST_, { cx: 12, cy: 22, rx: 16, ry: 12, dome: 0.2, bias: 0.04 });
+    marks(pc, basin, ST_, { dens: 0.07, seed: 3, len: 2, dir: [1, 0] });
+    for (let x = 3; x < 30; x += 5) line(pc, x, 24, x, 28, (i, X, Y) => (basin.get(X, Y) && !isBot(basin, X, Y) ? ST_[4] : null));
     const water = loop([[4.4, 22.4], [7.4, 19.8], [15, 18.8], [23, 19.2], [27.6, 21.6], [25.6, 24.4], [16, 25.6], [7, 24.8]]);
     water.eachD((X, Y, x, y) => pc.set(X, Y, (X * 2 + Y * 3) % 7 === 0 ? 0x9ad8f8 : y < 21 ? 0x3a90c8 : 0x5ab8e6));
-    loop(RIM).clone().sub(water).eachD((X, Y, x, y) => { if (y < 25) pc.set(X, Y, y < 21 ? S[1] : S[2]); });
+    loop(RIM).clone().sub(water).eachD((X, Y, x, y) => { if (y < 25) pc.set(X, Y, y < 21 ? ST_[1] : ST_[2]); });
     const col = M().rect(14, 10, 4, 13);
     seam(pc, col, 'shadow');
-    col.eachD((X, Y, x, y) => pc.set(X, Y, S[Math.round(x) === 14 ? 1 : Math.round(x) === 17 ? 4 : 2]));
+    col.eachD((X, Y, x, y) => pc.set(X, Y, ST_[Math.round(x) === 14 ? 1 : Math.round(x) === 17 ? 4 : 2]));
     const tb = loop([[9.4, 10.2], [11.4, 8.2], [16, 7.6], [21, 8.2], [22.8, 10.2], [21, 12.4], [16, 13], [11, 12.4]]);
     seam(pc, tb, 'shadow');
-    tb.eachD((X, Y, x, y) => pc.set(X, Y, S[clamp(edgeK(tb, X, Y, 2), 1, 5)]));
+    tb.eachD((X, Y, x, y) => pc.set(X, Y, ST_[clamp(edgeK(tb, X, Y, 2), 1, 5)]));
     loop([[12, 10], [14, 9], [18.4, 9], [20.2, 10], [18, 11], [14, 11]]).eachD((X, Y, x, y) => pc.set(X, Y, 0x5ab8e6));
     ink(pc);
     for (const s of [-1, 1]) for (let i = 0; i < 10; i++) { const x = 16 + s * i * 1.05, y = 8 - Math.sin(i / 10 * Math.PI) * 4 + i * 1.1; dot(pc, x, y, i % 3 ? 0xbfe6ff : 0xffffff); }
@@ -994,27 +1000,27 @@ const F = {
     for (const [x, y] of [[7, 4], [27, 14], [5, 15]]) twinkle(pc, x, y, 0xffffff, 0xfff0a0, 1, 0.7);
   },
   statue(pc) {
-    const S = mat(0xe4e0d8, { cont: 1.05 });
+    const ST_ = mat(0xe4e0d8, { cont: 1.05 });
     const cam = CAM({ cy: 30, scale: 1 });
     box(pc, cam, -8, 0, -6, 8, 6, 6, mat(0x9a948e, { cont: 1.08 }), { tone: { top: 2 }, paintAll: stone(mat(0x9a948e, { cont: 1.08 }), { h: 3, w: 6 }) });
     // a heroic marble mole in profile: pear body, long snout, a raised digging paw gripping a pick
     const body = loop([[8.6, 15], [11.6, 11.6], [16.6, 11], [20.6, 13], [22.4, 17.4], [22, 22.4], [19.6, 25.8], [14, 26.4], [9.4, 24.6], [7.4, 20]]);
     const head = loop([[10.4, 9], [12.6, 5.4], [16.6, 4], [20.4, 5.2], [24, 7.4], [27.4, 9], [27.6, 10.6], [24.6, 11.4], [20, 12.4], [15, 12.8], [11.4, 11.6]]);
-    for (const m of [body, head]) { seam(pc, m, 'shadow'); form(pc, m, S, { bias: 0.06 }); }
-    marks(pc, body, S, { dens: 0.05, seed: 2, len: 2, dir: [1, 1] });
+    for (const m of [body, head]) { seam(pc, m, 'shadow'); form(pc, m, ST_, { bias: 0.06 }); }
+    marks(pc, body, ST_, { dens: 0.05, seed: 2, len: 2, dir: [1, 1] });
     const PK = mat(0xc8c0b8, { cont: 1.05 });
     tube(pc, [[23.4, 19], [27.4, 6]], 0.8, PK, { capEnd: 0.1 });
     const pick = M();
     for (let t = -5; t <= 5; t += 0.25) pick.disk(27.4 + t * 0.9, 5.6 + t * 0.4 - Math.abs(t) * 0.25, Math.max(0.5, 1.2 - Math.abs(t) / 6));
     seam(pc, pick, 'shadow'); form(pc, pick, PK, { bias: 0.08 });
     const paw = loop([[20.6, 15.4], [23, 14], [25.4, 15], [25.6, 17.6], [23.4, 18.8], [21, 18]]);
-    seam(pc, paw, 'shadow'); form(pc, paw, S, { bias: 0.08 });
-    for (const x of [22, 24]) dot(pc, x, 18, S[5]);
+    seam(pc, paw, 'shadow'); form(pc, paw, ST_, { bias: 0.08 });
+    for (const x of [22, 24]) dot(pc, x, 18, ST_[5]);
     // squinting eye, nose tip, a crease of fur at the neck
-    line(pc, 17, 7, 19, 7, S[5]); dot(pc, 18, 6, S[4]);
-    dot(pc, 27, 9, S[4]); dot(pc, 27, 10, S[5]);
-    line(pc, 12, 12, 19, 13, (i) => (i % 2 ? S[4] : null));
-    for (const [x, y] of [[11, 15], [13, 20]]) dot(pc, x, y, S[0]);
+    line(pc, 17, 7, 19, 7, ST_[5]); dot(pc, 18, 6, ST_[4]);
+    dot(pc, 27, 9, ST_[4]); dot(pc, 27, 10, ST_[5]);
+    line(pc, 12, 12, 19, 13, (i) => (i % 2 ? ST_[4] : null));
+    for (const [x, y] of [[11, 15], [13, 20]]) dot(pc, x, y, ST_[0]);
     ink(pc);
     line(pc, 9, 19, 11, 22, 0xa8a49c);
   },
@@ -1084,10 +1090,10 @@ function swatch(pc, spec, wall) {
     area = M().poly(D);
     if (pat === 'dirt') area = loop([[16, 3.6], [20, 6.4], [24.6, 9], [28, 12.6], [31, 15.6], [27.4, 18.6], [23, 22], [19.6, 25], [16, 27.4], [12, 24.6], [8.6, 22.4], [4.6, 18.8], [1, 15.6], [4.4, 12.4], [8.4, 9.6], [12, 6.8]], { jit: 0.9, seed: 5 });
     else if (pat === 'moss') area = fringe(M().poly(D), 16, 15.5, { dens: 0.55, seed: 4, len: 1.6, lean: 0.2 });
-    else if (pat === 'plank') area.eachD((X, Y, x, y) => { const [u, v] = uv(x, y); const row = Math.floor(v / 4); if (u > 19.2 - hash2(row, 2, 3) * 2.2 || u < 0.8 + hash2(row, 4, 3) * 1.6) area.set(x, y, 0); });
-    else if (pat === 'stone') area.eachD((X, Y, x, y) => { const [u, v] = uv(x, y); const row = Math.floor(v / 5), off = row % 2 ? 5 : 0, col = Math.floor((u + off) / 10); if ((u < 2 || u > 18 || v < 2 || v > 18) && hash2(col, row, 6) < 0.45) area.set(x, y, 0); });
-    else if (pat === 'tile' && !gold) area.eachD((X, Y, x, y) => { const [u, v] = uv(x, y); if (u > 13 && v < 6.5) area.set(x, y, 0); });
-    else if (pat === 'checker') area.eachD((X, Y, x, y) => { const [u, v] = uv(x, y); if (u < 5 && v > 15) area.set(x, y, 0); });
+    else if (pat === 'plank') area.eachD((X, Y, x, y) => { const [u, v] = uv(x, y); const row = Math.floor(v / 4); if (u > 19.2 - hash2(row, 2, 3) * 2.2 || u < 0.8 + hash2(row, 4, 3) * 1.6) area.set(X, Y, 0); });
+    else if (pat === 'stone') area.eachD((X, Y, x, y) => { const [u, v] = uv(x, y); const row = Math.floor(v / 5), off = row % 2 ? 5 : 0, col = Math.floor((u + off) / 10); if ((u < 2 || u > 18 || v < 2 || v > 18) && hash2(col, row, 6) < 0.45) area.set(X, Y, 0); });
+    else if (pat === 'tile' && !gold) area.eachD((X, Y, x, y) => { const [u, v] = uv(x, y); if (u > 13 && v < 6.5) area.set(X, Y, 0); });
+    else if (pat === 'checker') area.eachD((X, Y, x, y) => { const [u, v] = uv(x, y); if (u < 5 && v > 15) area.set(X, Y, 0); });
   }
   const K = new Int8Array(1024).fill(-1);
   area.eachD((X, Y, x, y) => {

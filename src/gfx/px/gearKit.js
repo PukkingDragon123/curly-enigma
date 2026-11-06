@@ -443,6 +443,7 @@ export function star(pc, X, Y, r, c = 0xffffff, mid = 0xfff6dc, emit = 0) {
 /** Glint at design pixel (x, y): a white core with ramp-tinted arms (r 0 = the smallest twinkle). */
 export function glint(pc, x, y, r = 1, mid = 0xfff6dc, emit = 0) {
   const X = nc(x), Y = nc(y);
+  if (!mid) mid = 0xfff6dc; // (some callers pass 0 just to reach `emit`)
   if (r <= 0) {
     if (S === 1) { pc.set(X, Y, 0xffffff); if (emit) pc.emit(X, Y, emit); return; }
     star(pc, X, Y, 1, 0xffffff, mid, emit);

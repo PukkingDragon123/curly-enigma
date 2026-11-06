@@ -17,7 +17,7 @@ const luma = (c) => (((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 25
 /** Icon pixels as a 16×16 array of hex colors (null = transparent). */
 export function iconPixels(id) {
   if (pixCache.has(id)) return pixCache.get(id);
-  const c = iconCanvas(id);
+  const c = iconCanvas(id, 32); // reduced from the 64-px icon: the voxel meshes stay 32 cells across
   const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
   const W = c.width, H = c.height;
   const px = [];

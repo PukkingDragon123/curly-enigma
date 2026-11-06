@@ -151,8 +151,13 @@ function crown(pc) {
     const sh = x < 8 ? 0 : x < 23 ? 1 : 2;
     dot(pc, x, 19, R[1 + Math.min(1, sh)]); dot(pc, x, 20, R[3 + Math.min(1, sh)]);
     dot(pc, x, 25, R[1 + sh]); dot(pc, x, 26, R[4 + Math.min(1, sh)]);
-    const wy = 22 + Math.round(Math.sin(x * 0.9));
-    dot(pc, x, wy, R[4]);
+    if (S === 1) { pc.set(x, 22 + Math.round(Math.sin(x * 0.9)), R[4]); continue; }
+    // an engraved wave: a cut line with a bright burr above it, one real pixel each
+    for (let i = 0; i < S; i++) {
+      const xd = x + i / S, Y = np(22.5 + Math.sin(xd * 0.9) * 1.1), X = x * S + i;
+      if (!front.get(X, Y)) continue;
+      pc.set(X, Y, R[4]); if (front.get(X, Y - 1)) pc.set(X, Y - 1, R[1]);
+    }
   }
   // pearls on the tips
   for (const [x, y] of tips) {
@@ -169,7 +174,9 @@ function crown(pc) {
   for (const [x, c] of [[8, 0xe0283a], [24, 0x2a5ae0]]) {
     const m = M().ellipse(x + 0.5, 22.5, 1.6, 1.5);
     seam(pc, m, R[6]);
-    m.each((X, Y) => pc.set(X, Y, (X + Y) < x + 22 ? mix(c, 0xffffff, 0.5) : (X + Y) < x + 24 ? c : shadowOf(c, 0.55)));
+    // a faceted cabochon: lit facet, body colour, deep shadow, and a white star of light
+    m.each((X, Y) => { const t = (X + 0.5) / S + (Y + 0.5) / S - 1; pc.set(X, Y, t < x + 22 ? mix(c, 0xffffff, 0.5) : t < x + 23.2 ? c : t < x + 24 ? mix(c, 0x000000, 0.25) : shadowOf(c, 0.55)); });
+    if (S > 1) { pc.set(nc(x), nc(22), 0xffffff); pc.set(nc(x) + 1, nc(22) + 2, mix(c, 0xffffff, 0.3)); }
   }
   ink(pc);
   glint(pc, 15, 20, 0, 0, 1);
@@ -288,7 +295,7 @@ function suit(pc, id) {
     arm.eachD((X, Y, x, y) => { const t = sx < 0 ? (x - 2) / 7 : (x - 23) / 7; pc.set(X, Y, R[t < 0.3 ? 2 : t < 0.65 ? 3 : 4]); });
   }
   // gloves-cuffs on the sleeves
-  for (const [x, y] of [[3.6, 22.4], [28, 22.2]]) { const m = M().ellipse(x, y, 2.6, 1.6); seam(pc, m, 'shadow'); m.each((X, Y) => pc.set(X, Y, TR[Y < y ? 2 : 4])); }
+  for (const [x, y] of [[3.6, 22.4], [28, 22.2]]) { const m = M().ellipse(x, y, 2.6, 1.6); seam(pc, m, 'shadow'); m.each((X, Y) => pc.set(X, Y, TR[(Y + 0.5) / S < y ? 2 : 4])); }
   // torso + legs with a crotch gap
   const body = M().poly([[9, 6.5], [23, 6.5], [24.4, 19], [24.6, 30], [17.2, 30], [16.4, 21.6], [15.6, 21.6], [14.8, 30], [7.4, 30], [7.6, 19]]);
   seam(pc, body, 'shadow');
@@ -360,10 +367,26 @@ function boots(pc, id) {
     seam(pc, cuff, 'shadow');
     cuff.eachD((X, Y, x, y) => pc.set(X, Y, CF[(Math.round(y) === oy ? 1 : 2) + (x > ox + 8 ? 1 : 0) + (back ? 1 : 0)]));
     // laces: eyelets + crossing laces down the front
-    for (let y = oy + 4; y < oy + 12; y += 2) {
-      dot(pc, ox + 9, y, LC); dot(pc, ox + 8, y + 1, mix(LC, R[4], 0.4)); dot(pc, ox + 10, y + 1, 0x2a1a14);
+    if (S === 1) {
+      for (let y = oy + 4; y < oy + 12; y += 2) {
+        pc.set(ox + 9, y, LC); pc.set(ox + 8, y + 1, mix(LC, R[4], 0.4)); pc.set(ox + 10, y + 1, 0x2a1a14);
+      }
+      pc.set(ox + 11, oy + 3, LC); pc.set(ox + 12, oy + 4, mix(LC, 0x806040, 0.3)); // lace bow end
+    } else {
+      // two rows of brass eyelets, the lace crossing between them (the over-strand lit, the
+      // under-strand in shadow), a looped bow and a dangling aglet at the top
+      const EY = 0xc8a050, L2 = mix(LC, R[4], 0.45);
+      const ex0 = (ox + 7.6) * S, ex1 = (ox + 10.6) * S;
+      for (let y = oy + 4; y < oy + 12; y += 2) {
+        const Y = Math.round(y * S);
+        for (const ex of [ex0, ex1]) { pc.set(Math.round(ex), Y, 0x1a1008); pc.set(Math.round(ex) - 1, Y, EY); pc.set(Math.round(ex), Y - 1, EY); }
+        line(pc, ox + 7.9, y, ox + 10.4, y + 2, (i, X, Y2) => (m.get(X, Y2) ? L2 : null));
+        line(pc, ox + 10.4, y, ox + 7.9, y + 2, (i, X, Y2) => (m.get(X, Y2) ? LC : null));
+      }
+      line(pc, ox + 10.6, oy + 3.6, ox + 12.6, oy + 2.4, LC); line(pc, ox + 12.6, oy + 2.4, ox + 12.4, oy + 4, LC);
+      line(pc, ox + 10.6, oy + 3.6, ox + 12.8, oy + 5.2, mix(LC, 0x806040, 0.3));
+      pc.set(nc(ox + 12.8), nc(oy + 5.4), 0x8a8a90); pc.set(nc(ox + 12.8), nc(oy + 5.4) + 1, 0x5a5a60); // the aglet
     }
-    dot(pc, ox + 11, oy + 3, LC); dot(pc, ox + 12, oy + 4, mix(LC, 0x806040, 0.3)); // lace bow end
     // sole
     const sole = M().rect(ox + 1, oy + 18, 17, 3).ellipse(ox + 16.4, oy + 19.4, 1.8, 1.5);
     seam(pc, sole, 'shadow');

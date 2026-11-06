@@ -397,7 +397,7 @@ function dish(pc, id, spec) {
       for (const [x, y, r] of [[11, 15.4, 2.6], [18.5, 14.6, 2.2], [21.6, 17, 1.8]]) {
         const m = blob(x, y, r, r * 0.55, { seed: x | 0 });
         seam(pc, m, 'shadow');
-        m.each((X, Y) => gl(pc, X, Y, Y + 0.5 < y ? 0xe0f8ff : (X % 2 ? 0x8ae0ff : 0x5ac0f0), 0.9));
+        m.each((X, Y) => gl(pc, X, Y, (Y + 0.5) / S < y ? 0xe0f8ff : (X % 2 ? 0x8ae0ff : 0x5ac0f0), 0.9));
       }
       ink(pc);
       steam(pc, 12, 11, 8, { c: 0xd8f6ff, emit: 0.3 }); steam(pc, 20, 10, 7, { c: 0xd8f6ff, phase: 2, emit: 0.3 });
@@ -683,7 +683,7 @@ function dish(pc, id, spec) {
         const face = blob(x + 1.2, y + 0.6, 4.2, 3.8, { seed: sd + 1, lump: 0.12, rot: sd });
         seam(pc, face, 'shadow');
         face.each((X, Y) => {
-          const dx = X + 0.5 - x - 1.2, dy = Y + 0.5 - y - 0.6, a = Math.atan2(dy, dx), r = Math.hypot(dx, dy);
+          const dx = (X + 0.5) / S - x - 1.2, dy = (Y + 0.5) / S - y - 0.6, a = Math.atan2(dy, dx), r = Math.hypot(dx, dy);
           const sp = Math.sin(a + r * 1.7);
           pc.set(X, Y, r > 3.2 ? 0xf4ead0 : sp > 0.35 ? 0xd8c0f0 : sp > -0.3 ? 0xa080c8 : 0x7a5aa6);
         });
@@ -724,8 +724,9 @@ function dish(pc, id, spec) {
         const y = 21.4 - i * 3.1;
         const pk = blob(16 + (i % 2 ? 0.8 : -0.6), y, 11 - i * 0.4, 3.3, { seed: i * 3 + 2, lump: 0.1, rot: (i % 2 ? 0.05 : -0.04), freq: [3, 5, 7] });
         seam(pc, pk, 'shadow');
-        pk.each((x, yy) => dot(pc, x, yy, yy + 0.5 < y - 0.6 ? R[2] : yy + 0.5 < y + 1 ? R[3] : R[4]));
-        pk.each((x, yy) => { if (!pk.at(x, yy + 1)) dot(pc, x, yy, R[5]); else if (yy + 0.5 > y && hash2(x, yy, i) < 0.2) dot(pc, x, yy, R[5]); });
+        pk.eachD((X, Y, x, yy) => pc.set(X, Y, isTop(pk, X, Y) && yy + 0.5 < y - 0.6 ? R[1] : yy + 0.5 < y - 0.6 ? R[2] : yy + 0.5 < y + 1 ? R[3] : R[4]));
+        // the browned rim (with a lacy, darker edge where the batter crisped) and bubble pits
+        pk.eachD((X, Y, x, yy) => { if (!pk.get(X, Y + 1)) pc.set(X, Y, R[5]); else if (yy + 0.5 > y && grain(X, Y, i + 1, 0.2)) pc.set(X, Y, R[5]); else if (S > 1 && yy + 0.5 < y - 0.8 && grain(X, Y, i + 7, 0.06)) pc.set(X, Y, R[4]); });
       }
       const HN = mat(0xf2a020, { cont: 1.12 });
       const pool = blob(16.6, 10.4, 7.6, 2, { seed: 4, lump: 0.1 });

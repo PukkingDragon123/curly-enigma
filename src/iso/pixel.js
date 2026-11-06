@@ -1,7 +1,7 @@
 // 2D pixel-art helpers for the iso scenes: a tiny bitmap font, glow / light-pool /
 // shadow / sunbeam textures, shop sign boards and the paintings and posters.
 import * as THREE from 'three';
-import { PixelCanvas, pixelTexture, drawIcon, drawIconSmall, ramp } from '../gfx/PixelArt.js';
+import { PixelCanvas, pixelTexture, drawIcon, drawIconSmall, ramp, ICON } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
 import { makeRng, mixHex, shade } from '../core/util.js';
 
@@ -151,11 +151,11 @@ export function beamTexture(fade = 3 / 16) {
   });
 }
 
-/** An item's icon as a PixelCanvas: full size (32 px), or a clean small version when size < 32. */
+/** An item's icon as a PixelCanvas: full size (ICON px), or a clean reduced version when size < ICON. */
 export function iconCanvasFor(id, size = 0) {
   const it = ITEMS[id];
   const spec = it?.icon || { k: '?' };
-  if (size && size < 32 && drawIconSmall) return drawIconSmall(spec, 7, size);
+  if (size && size < ICON && drawIconSmall) return drawIconSmall(spec, 7, size);
   return drawIcon(spec, 7);
 }
 
@@ -203,7 +203,7 @@ export function signCanvas(opts) {
   let tx = 3 * k;
   if (opts.icon || opts.iconSpec) {
     const target = 16 * k;
-    const ic = opts.iconSpec ? (target < 32 ? drawIconSmall(opts.iconSpec, 3, target) : drawIcon(opts.iconSpec, 3)) : iconCanvasFor(opts.icon, target < 32 ? target : 0);
+    const ic = opts.iconSpec ? (target < ICON ? drawIconSmall(opts.iconSpec, 3, target) : drawIcon(opts.iconSpec, 3)) : iconCanvasFor(opts.icon, target < ICON ? target : 0);
     const sc = ic.w === target ? 1 : ic.w * 2 === target ? 2 : ic.w === target * 2 ? 0.5 : 1;
     const sz = Math.round(ic.w * sc);
     const iy = Math.round((h - sz) / 2);

@@ -824,7 +824,11 @@ export class Build {
   // ------------------------------------------------------------------ voxels changing under us
   hook() {
     const w = this.w;
-    if (w.onChange === this.hookFn) return;
+    // once per world: Vegetation chains itself in after us (so onChange stops being our function);
+    // wrapping again every frame grew the chain by a link per frame for both of us, and each voxel
+    // edit then ran every link (thousands of calls per setVoxel after a few minutes)
+    if (w.onChange === this.hookFn || this.hookedTo === w) return;
+    this.hookedTo = w;
     const prev = w.onChange;
     this.hookFn = (vx, vy, vz, old, m) => { if (prev) prev(vx, vy, vz, old, m); this.onVoxel(vx, vy, vz, old, m); };
     w.onChange = this.hookFn;

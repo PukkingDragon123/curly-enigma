@@ -215,7 +215,13 @@ function tuber(pc) {
   bumps(pc, t, R, { dens: 0.08, seed: 4 });
   t.clone().erode(1).eachD((X, Y, x, y) => { if (vnoise(x * 0.35 + 4, y * 0.35, 3) > 0.72) pc.set(X, Y, hash2(X, Y, 2) < 0.5 ? 0x5e4028 : 0x76553a); });
   // eyes: small sunken pits, a shadow pixel with a lit lower lip
-  for (const [x, y] of [[8, 20], [14, 16], [20, 21], [12, 25], [24, 15], [18, 14]]) { dot(pc, x, y, R[5]); dot(pc, x + 1, y + 1, R[1]); }
+  for (const [x, y] of [[8, 20], [14, 16], [20, 21], [12, 25], [24, 15], [18, 14]]) {
+    if (S === 1) { pc.set(x, y, R[5]); pc.set(x + 1, y + 1, R[1]); continue; }
+    // a sunken eye: a dark crescent pit, a lit lower lip, a fleck of soil in it
+    const X = nc(x), Y = nc(y);
+    for (const [dx, dy, k] of [[0, 0, 5], [1, 0, 5], [2, 0, 4], [0, 1, 4], [1, 1, 5], [2, 1, 3], [1, 2, 1], [2, 2, 1], [3, 1, 2]]) if (t.get(X + dx, Y + dy)) pc.set(X + dx, Y + dy, R[k]);
+    if (t.get(X + 1, Y)) pc.set(X + 1, Y, 0x5e4028);
+  }
   ink(pc);
   // a thin sprout from the top eye, two tiny leaves, root hairs and the stolon joining the two
   strand(pc, [[18, 13], [17.4, 9], [15.4, 6], [13, 4.6]], (s) => (s < 0.7 ? 0xe8e0d0 : 0xc8a8e0));
@@ -237,12 +243,13 @@ function garlic(pc) {
   form(pc, bulb, R, { cx: 13.5, cy: 17, rx: 11, ry: 11, bias: 0.06 });
   // clove ribs: curved grooves from the neck to the base, lit on their left
   for (const f of [-0.66, -0.24, 0.2, 0.62]) {
-    for (let y = 11; y <= 27; y++) {
-      const v = (y - 11) / 16, half = 9.6 * Math.sin(Math.min(1, v * 1.25 + 0.15) * Math.PI * 0.62);
-      const x = Math.round(15.8 + f * half);
-      if (!bulb.get(x, y) || isTop(bulb, x, y) || isBot(bulb, x, y)) continue;
-      step(pc, R, x, y, 2, 1, 5);
-      if (bulb.get(x - 1, y)) step(pc, R, x - 1, y, -1, 1, 5);
+    for (let Y = 11 * S; Y <= 27 * S + S - 1; Y++) {
+      const y = dc(Y), v = (y - 11) / 16, half = 9.6 * Math.sin(Math.min(1, v * 1.25 + 0.15) * Math.PI * 0.62);
+      const X = np(15.8 + f * half + 0.5);
+      if (!bulb.get(X, Y) || isTop(bulb, X, Y) || isBot(bulb, X, Y)) continue;
+      step(pc, R, X, Y, 2, 1, 5);
+      if (bulb.get(X - 1, Y)) step(pc, R, X - 1, Y, -1, 1, 5);
+      if (S > 1 && bulb.get(X + 1, Y) && !isBot(bulb, X + 1, Y)) step(pc, R, X + 1, Y, 1, 1, 5); // the groove's shaded far wall
     }
   }
   // violet blush toward the base
@@ -299,13 +306,15 @@ function grub(pc) {
   const P = [];
   for (let i = 0; i <= 8; i++) { const a = -0.72 - i * (4.7 / 8), r = 7.6 - Math.abs(i - 4) * 0.12; P.push([14.6 + Math.cos(a) * r * 1.02, 16.6 + Math.sin(a) * r]); }
   const sw = tube(pc, P, (s) => 2.8 + Math.sin(Math.min(1, s * 1.08) * Math.PI) * 2.6, R, { bias: 0.04 });
-  for (let i = 0; i < 1024; i++) {
+  for (let i = 0; i < SZ * SZ; i++) {
     if (!sw.mask.m[i]) continue;
-    const s = sw.S[i], f = (s * 12) % 1, x = i % 32, y = (i / 32) | 0;
-    if (s < 0.24 && !isTop(sw.mask, x, y) && !isBot(sw.mask, x, y)) dot(pc, x, y, mix(pc.getHex(x, y), 0x6a5a6e, 0.38 * (1 - s / 0.24)));
+    const s = sw.S[i], f = (s * 12) % 1, x = i % SZ, y = (i / SZ) | 0;
+    if (s < 0.24 && !isTop(sw.mask, x, y) && !isBot(sw.mask, x, y)) pc.set(x, y, mix(pc.getHex(x, y), 0x6a5a6e, 0.38 * (1 - s / 0.24)));
     if (isTop(sw.mask, x, y) || isBot(sw.mask, x, y)) continue;
-    if (f < 0.14) step(pc, R, x, y, 2, 1, 5);
-    else if (f < 0.3) step(pc, R, x, y, -1, 1, 5);
+    // segment grooves: a dark crease, the next segment's lit lip (finer at S > 1)
+    if (f < (S > 1 ? 0.08 : 0.14)) step(pc, R, x, y, 2, 1, 5);
+    else if (f < (S > 1 ? 0.18 : 0.3)) step(pc, R, x, y, -1, 1, 5);
+    else if (S > 1 && f > 0.9) step(pc, R, x, y, 1, 1, 5);
   }
   const [hx, hy] = sw.at(1);
   const head = loop([[hx - 3, hy - 1], [hx - 0.6, hy - 3.4], [hx + 2.4, hy - 2.6], [hx + 3.6, hy + 0.4], [hx + 2.4, hy + 3.2], [hx - 0.6, hy + 3], [hx - 2.6, hy + 1.4]]);
@@ -386,7 +395,7 @@ function mushStew(pc) {
   const CL = mat(0xa8603a, { cont: 1.12 });
   const s = vessel(pc, CL, [[2.6, 14.6], [4.6, 12], [9, 10.6], [16, 10.2], [23, 10.8], [27.6, 12.2], [29.6, 14.8], [28.8, 18.4], [26, 22.6], [22, 25.6], [21.4, 27.6, 1], [11, 27.8, 1], [10.6, 25.6], [6.4, 22.6], [3.4, 18.4]],
     [[4.6, 14.4], [7.6, 12.6], [13, 11.8], [19, 11.8], [24.4, 12.4], [27.6, 14.4], [26, 16.6], [21, 18], [15.6, 18.2], [10, 17.8], [5.8, 16.4]], { band: [0xe8c890, 0.4] });
-  for (let x = 5; x < 28; x += 3) { const y = x > 8 && x < 25 ? 19 : 18; if (s.body.get(x, y) && !isBot(s.body, x, y)) { step(pc, CL, x, y, 1, 1, 5); step(pc, CL, x + 1, y, -1, 1, 5); } }
+  for (let x = 5; x < 28; x += 3) { const y = x > 8 && x < 25 ? 19 : 18; if (s.body.at(x, y) && !isBotD(s.body, x, y)) { stepD(pc, CL, x, y, 1, 1, 5); stepD(pc, CL, x + 1, y, -1, 1, 5); } }
   broth(pc, s, mat(0xa06a38, { cont: 1.08 }), { seed: 4, drops: 2 });
   // mushroom slices: the cap-and-stem profile, standing up out of the stew at odd angles
   const MR = mat(0xeedcbc, { cont: 1.05 });
@@ -527,7 +536,7 @@ function friedGrubs(pc) {
   ];
   for (const P of CURLS) {
     const sw = tube(pc, P, (s) => 1.6 + Math.sin(s * Math.PI) * 0.4, G, { bias: 0.04 });
-    for (let i = 0; i < 1024; i++) if (sw.mask.m[i] && ((sw.S[i] * 5) % 1) < 0.2) step(pc, G, i % 32, (i / 32) | 0, 1, 1, 5);
+    for (let i = 0; i < SZ * SZ; i++) if (sw.mask.m[i] && ((sw.S[i] * 5) % 1) < (S > 1 ? 0.1 : 0.2)) step(pc, G, i % SZ, (i / SZ) | 0, 1, 1, 5);
     bumps(pc, sw.mask, G, { dens: 0.2, seed: P[0][0] | 0 });
   }
   // one escaped onto the table

@@ -19,7 +19,7 @@
 // than a few ms in one go), then every tagged <img> on the page is swapped to its still. Anything that
 // fails leaves the flat icon in place.
 import { VB, FINE } from '../deep/enemies/vox.js';
-import { drawIconArt, iconURL, weaponIconURL, iconKeyOf, drawWeapon, PixelCanvas } from '../gfx/PixelArt.js';
+import { drawIconSmall, iconURL, weaponIconURL, iconKeyOf, drawWeapon, PixelCanvas } from '../gfx/PixelArt.js';
 import { hashStr } from '../core/util.js';
 import { ITEMS } from '../data/items.js';
 import { METALS, INFUSIONS } from '../data/weapons.js';
@@ -57,7 +57,7 @@ function pixelsOf(key) {
     return { d: pc.d, W: pc.w, H: pc.h };
   }
   if (!ITEMS[key]) return null;
-  const pc = drawIconArt(ITEMS[key].icon || { k: '?' }, hashStr(key), key);
+  const pc = drawIconSmall(ITEMS[key].icon || { k: '?' }, hashStr(key), 32, key); // the 64-px art, reduced: the model stays 32 voxels
   return { d: pc.d, W: pc.w, H: pc.h };
 }
 
