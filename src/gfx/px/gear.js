@@ -4,6 +4,7 @@ import { mat, mix } from './color.js';
 import { vol, fill, sparkle, hash2, vnoise, glowHalo } from './shade.js';
 import { M, ring, lineIn, grain, darkOf } from './parts.js';
 import { drawExplosiveIcon } from '../../deep/explosives/icon.js';
+import * as TOOLS from './gearTools.js';
 
 const gl = (pc, x, y, c, g = 1) => { pc.set(x, y, c); pc.emit(x, y, g); };
 const WOOD = () => mat(0x9a6a3a, { cont: 1.05 });
@@ -642,7 +643,7 @@ export function drawGear(pc, spec, id, seed) {
   switch (spec.k) {
     case 'tool': {
       const t = spec.t;
-      if (t === 'pick') pickaxe(pc, id, spec);
+      if (t === 'pick') TOOLS.pickaxe(pc, id || 'pick_iron', spec);
       else if (t === 'chisel') chisel(pc, id || (spec.c === 0x9fe0e6 ? 'chisel_fine' : 'chisel_basic'));
       else if (t === 'brush') brush(pc, id);
       else if (t === 'drill') drill(pc, id || (spec.c === 0x7bf08a ? 'drill_lumite' : 'drill_steam'));

@@ -5,6 +5,7 @@ import { Mask, vol, fill, sparkle, hash2, vnoise, bayer } from './shade.js';
 import { M, ring, facetRock, prism, pores, lineIn } from './parts.js';
 import { camera, drawSolid, boxFaces, frustumFaces } from './solid.js';
 import * as NEW from './oreIcons.js';
+import { drawCrystal } from './crystalIcons.js';
 
 // ---------------------------------------------------------------- small helpers
 /** Lumpy metal nugget: union of blobs, dome-lit with a hot specular. */
@@ -739,7 +740,7 @@ export function drawMineral(pc, spec, id, seed) {
       else { const R = mat(spec.rock || 0x6a5a4a); const rock = facetRock(pc, makeRng(seed), R, { cx: 16, cy: 17.5, rx: 13.5, ry: 11.5 }); nugget(pc, [[16, 16, 4, 3.4]], mat3(spec.ore || [0xd9773f, 0xf2a35e, 0x9c4a24]), { clip: rock }); }
       break;
     }
-    case 'crystal': crystalIcon(pc, id, spec, seed); break;
+    case 'crystal': if (!drawCrystal(pc, id)) crystalIcon(pc, id, spec, seed); break;
     case 'gem': gemIcon(pc, id, spec); break;
     case 'coal': coalIcon(pc); break;
     case 'fossil': fossilIcon(pc); break;

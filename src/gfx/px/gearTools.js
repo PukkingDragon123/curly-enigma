@@ -25,7 +25,7 @@ function frame(A0, d0) {
 // ---------------------------------------------------------------- pickaxes
 const PICK_TIER = {
   pick_rusty: { head: 0x7c706a, cont: 1.0, rust: true, wood: 'old', wrap: 'twine', chip: true, crack: true },
-  pick_first: { head: 0xc87a44, cont: 1.12, wood: 'ash', wrap: 'twine', rough: true },
+  pick_first: { head: 0xc87a44, cont: 1.12, wood: 'ash', wrap: 0x5a3020, rough: true },
   pick_copper: { head: 0xd4703a, cont: 1.2, wood: 'wood', wrap: 0x7a4426 },
   pick_iron: { head: 0x7e8590, cont: 1.18, wood: 'wood', wrap: 0x5a3422, dentK: 1.4 },
   pick_steel: { head: 0xa8b8c8, cont: 1.32, wood: 'dark', wrap: 0x4a2a1c, collar: 0xcf9a3a, stitch: 0xe0c890 },
@@ -71,7 +71,7 @@ function pickaxe(pc, id, spec) {
   if (T0.wrap) {
     const twine = T0.wrap === 'twine';
     const WR = twine ? RAMPS.twine() : mat(T0.wrap, { cont: 1.05 });
-    wrapStick(pc, h.x0, h.y0, h.x1, h.y1, 1.1, 2.6, 10.5, WR, { period: twine ? 1.6 : 2.4, slant: twine ? 1.1 : 0.75, grow: twine ? 0.3 : 0.45 });
+    wrapStick(pc, h.x0, h.y0, h.x1, h.y1, 1.1, 2.6, 10.5, WR, { period: twine ? 1.5 : 2.3, slant: twine ? 1.1 : 0.75, grow: 0.6, tones: [1, 2, 3, 3, 4, 5] });
     if (twine) {
       // a loose end dangling from the top turn
       const [tx, ty] = diagAt(-13 + 10.5 / SQ, d0 + 1.8);
@@ -85,12 +85,12 @@ function pickaxe(pc, id, spec) {
   // --- head: an arc across the handle, long pick spike to the top-left, chisel adze to the bottom-right
   const wL = 12.2, wR = 9.6;
   const jit = (w) => (T0.rough ? (vnoise(w * 0.7, 3.3, 5) - 0.5) * 0.7 : 0);
-  const spine = (s) => { const w = -wL + (wL + wR) * s; return L.at(-0.052 * w * w + 0.4, w); };
+  const spine = (s) => { const w = -wL + (wL + wR) * s; return L.at(-0.04 * w * w + 0.5, w); };
   const wid = (s) => {
     const w = -wL + (wL + wR) * s;
-    if (w < 0) { const e = -w / wL; return 0.35 + 2.15 * Math.pow(1 - e, 0.75) + jit(w); }
+    if (w < 0) { const e = -w / wL; return 0.3 + 2.55 * Math.pow(1 - e, 0.85) + jit(w); }
     const e = w / wR;
-    return (e > 0.82 ? 1.85 : 2.5 - e * 0.95) + jit(w);
+    return (e > 0.84 ? 1.75 : 2.85 - e * 1.25) + jit(w);
   };
   const sw = sweep(spine, wid, { capEnd: 0.6 });
   const head = sw.mask;
@@ -161,7 +161,7 @@ function pickaxe(pc, id, spec) {
   ink(pc);
   if (!T0.rust) { const [gx, gy] = spine(0.24); glint(pc, Math.floor(gx), Math.floor(gy - 1), 1, R[0]); }
   if (T0.stars) {
-    for (const [x, y, c] of [[3, 6, 0xfff4c0], [27, 25, 0xd8ecff], [6, 11, 0xffffff]]) { pc.set(x, y, c); pc.emit(x, y, 0.9); }
+    glint(pc, 26, 24, 1, 0xfff0b0, 0.9);
     head.each((x, y) => { if (hash2(x, y, 41) < 0.06 && R.indexOf(pc.get(x, y)) >= 2) { pc.set(x, y, 0xfffbe8); pc.emit(x, y, 1); } });
   }
 }
