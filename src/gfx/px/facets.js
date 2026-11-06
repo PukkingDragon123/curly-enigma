@@ -371,6 +371,33 @@ export class Scene {
     return nrm([f.n[0] * (1 - k) + ns[0] * k, f.n[1] * (1 - k) + ns[1] * k, f.n[2] * (1 - k) + ns[2] * k]);
   }
 
+  /** Clear pixels before rendering: fn(x, y, objIndex) → true removes the pixel (notches, cracks, bites). */
+  carve(fn) {
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+      const i = y * this.w + x;
+      if (this.ob[i] >= 0 && fn(x, y, this.ob[i])) { this.ob[i] = -1; this.fb[i] = -1; this.z[i] = -1e9; }
+    }
+  }
+
+  /**
+   * Chip the silhouette of the given objects: edge pixels are bitten away where clustered noise
+   * says so, `depth` passes deep. o: amount (0..1), depth, scale (noise frequency), seed.
+   */
+  roughen(objs, o = {}) {
+    const ids = new Set(objs.map((q) => q.id));
+    const amt = o.amount ?? 0.35, sc = o.scale ?? 0.55, seed = o.seed ?? 1;
+    for (let pass = 0; pass < (o.depth ?? 1); pass++) {
+      const kill = [];
+      for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+        const i = y * this.w + x;
+        if (!ids.has(this.ob[i])) continue;
+        const edge = this.objAt(x - 1, y) < 0 || this.objAt(x + 1, y) < 0 || this.objAt(x, y - 1) < 0 || this.objAt(x, y + 1) < 0;
+        if (edge && vnoise(x * sc, y * sc, seed + pass * 7) < amt) kill.push(i);
+      }
+      for (const i of kill) { this.ob[i] = -1; this.fb[i] = -1; this.z[i] = -1e9; }
+    }
+  }
+
   /** Remove 1-pixel spurs and fill 1-pixel notches in the silhouette (cleaner hand-drawn edge). */
   tidy() {
     const W = this.w, H = this.h;

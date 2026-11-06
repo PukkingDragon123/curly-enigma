@@ -1,51 +1,140 @@
 // 32×32 icons: home furniture (3/4 view), floor & wall swatches, blueprints, the surface ticket.
+// Hand-pixel style on top of lifeKit / gearKit: every box face gets crisp bevelled edges and a
+// material painter (planks with seams, grain and knots; bevelled stone courses; woven cloth;
+// riveted iron), rounded parts are painted in flat planes, and the whole piece gets the
+// hue-tinted ink outline. Small props (books, cups, candles, mushrooms) add life.
 import { mat, mix } from './color.js';
-import { Mask, vol, fill, sparkle, hash2, vnoise, maskOf } from './shade.js';
-import { M, ring, lineIn, grain } from './parts.js';
+import { Mask, maskOf } from './shade.js';
+import {
+  M, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, isTop, isBot, blob, fringe, form, sheen, marks, bumps, speckle,
+  blade, tube, spline, steam, twinkle, sparkle, rivet, pits, RAMPS, shadowOf,
+} from './lifeKit.js';
 import { camera, drawSolid, boxFaces } from './solid.js';
-import { leaf } from './flora.js';
+import { leaf, mushroom } from './flora.js';
 import { drawWeaponArt } from './gear.js';
 
-const gl = (pc, x, y, c, g = 1) => { pc.set(x, y, c); pc.emit(x, y, g); };
-const WOOD = () => mat(0x9a6a3a, { cont: 1.05 });
-const DWOOD = () => mat(0x6e4626, { cont: 1.05 });
-const LWOOD = () => mat(0xc0884e, { cont: 1.05 });
-const STONE = () => mat(0x8a847e, { cont: 1 });
-const IRON = () => mat(0x4a4a52, { cont: 1.15 });
+const WOOD = () => mat(0x9a6a3a, { cont: 1.1 });
+const DWOOD = () => mat(0x6e4626, { cont: 1.12 });
+const LWOOD = () => mat(0xc0884e, { cont: 1.08 });
+const STONE = () => mat(0x8a847e, { cont: 1.08 });
+const IRON = () => mat(0x4a4a54, { cont: 1.2 });
+const GOLD = () => mat(0xe8b440, { cont: 1.22, warm: 54 });
+const GLOWCAP = () => mat(0x3a9cf0, { cont: 1.1 });
 
 const CAM = (o = {}) => camera({ yaw: o.yaw ?? -0.55, tilt: o.tilt ?? 0.62, cx: o.cx ?? 16, cy: o.cy ?? 21, scale: o.scale ?? 1 });
 
-/** Box helper: draws an axis-aligned box with the shared camera. Returns its mask. */
-function box(pc, cam, x0, y0, z0, x1, y1, z1, R, o = {}) {
-  const faces = boxFaces(x0, y0, z0, x1, y1, z1, R, { ...o, bias: { top: -0.12, ...(o.bias || {}) } });
-  return drawSolid(pc, cam, faces);
+// ---------------------------------------------------------------- face painters
+/** Grain axis of a projected face: unit vector along its longer (or shorter) edge. */
+function faceAxes(P, o) {
+  const [a, b, c] = P;
+  const e1 = [b[0] - a[0], b[1] - a[1]], e2 = [c[0] - b[0], c[1] - b[1]];
+  const l1 = Math.hypot(e1[0], e1[1]) || 1, l2 = Math.hypot(e2[0], e2[1]) || 1;
+  let g = (o.cross ? l1 < l2 : l1 >= l2) ? [e1[0] / l1, e1[1] / l1] : [e2[0] / l2, e2[1] / l2];
+  if (o.vertical) g = [0, 1];
+  if (o.horizontal) g = [1, 0];
+  return { a, g, n: [-g[1], g[0]] };
 }
-/** Wood grain painter for box faces. */
-const woodPaint = (R, seed = 1, vertical = false) => (p, m, tone) => {
-  m.each((x, y) => p.set(x, y, R[tone]));
+/** Bevelled edge tone: lit lip on the top-left edges of a face, darker on the bottom-right. */
+const edgeK = (m, x, y, k) => { const t = isTop(m, x, y), b = isBot(m, x, y); return t && !b ? k - 1 : b && !t ? k + 1 : k; };
+
+/** Wood: planks (seam every `planks` px across the grain), grain streaks, an odd knot, nail heads. */
+const wood = (R, o = {}) => (pc, m, tone, f, P) => {
+  const T = clamp(tone + (o.dk || 0), 1, 5);
+  const { a, g, n } = faceAxes(P, o);
+  const seed = o.seed ?? 1;
   m.each((x, y) => {
-    const n = vnoise((vertical ? x : y) * 0.9 + vnoise(x * 0.2, y * 0.2, seed) * 2, (vertical ? y : x) * 0.15, seed + 3);
-    if (n > 0.7 && tone < 5) p.set(x, y, R[tone + 1]);
+    const u = (x + 0.5 - a[0]) * g[0] + (y + 0.5 - a[1]) * g[1], v = (x + 0.5 - a[0]) * n[0] + (y + 0.5 - a[1]) * n[1];
+    let k = edgeK(m, x, y, T);
+    if (k === T) {
+      if (o.planks) { const pv = ((v % o.planks) + o.planks) % o.planks; if (pv < 0.95) k = T + 2; else if (pv < 1.95) k = T - 1; }
+      if (k === T) {
+        const gn = vnoise(u * 0.16 + seed * 3.1, v * 1.25, seed);
+        if (gn > 0.72) k = T + 1; else if (gn < 0.1) k = T - 1;
+        if (o.knots && hash2(Math.floor(u / 6), Math.floor(v / 3), seed) < 0.06 && Math.abs((u % 6) - 3) < 0.6) k = T + 2;
+      }
+    }
+    pc.set(x, y, R[clamp(k, o.lo ?? 1, 5)]);
+  });
+  if (o.nails) {
+    const b = m.bounds();
+    if (b && b.w > 4 && b.h > 3) for (const [x, y] of [[b.x0 + 1, b.y0 + 1], [b.x1 - 1, b.y0 + 1]]) if (m.get(x, y) && m.get(x + 1, y + 1)) { pc.set(x, y, 0xb8bcc4); pc.set(x + 1, y + 1, R[5]); }
+  }
+};
+
+/** Stone: staggered courses of bevelled blocks with dark mortar joints. */
+const stone = (R, o = {}) => (pc, m, tone) => {
+  const h = o.h ?? 3, w = o.w ?? 5;
+  m.each((x, y) => {
+    const row = Math.floor((y + (o.oy || 0)) / h), off = (row % 2) * Math.floor(w / 2) + Math.floor(hash2(row, 0, 3) * 2);
+    const col = Math.floor((x + off) / w);
+    const fy = (((y + (o.oy || 0)) % h) + h) % h, fx = (((x + off) % w) + w) % w;
+    let k = tone + (hash2(col, row, 5) < 0.28 ? 1 : hash2(col, row, 6) < 0.18 ? -1 : 0);
+    if (fy === h - 1 || fx === w - 1) k = tone + 2;
+    else if (fy === 0 || fx === 0) k -= 1;
+    else if (hash2(x, y, 9) < 0.06) k += 1;
+    k = edgeK(m, x, y, k);
+    pc.set(x, y, R[clamp(k, 1, 5)]);
   });
 };
-/** Upright cylinder in 2D 3/4 view: top ellipse at (cx, y), height h. */
+
+/** Cloth / upholstery: bevelled, a soft weave, optional checks (patchwork) or tufted buttons. */
+const cloth = (R, o = {}) => (pc, m, tone) => {
+  m.each((x, y) => {
+    let k = edgeK(m, x, y, tone);
+    let RR = R;
+    if (o.check && ((Math.floor(x / 3) + Math.floor(y / 3)) % 2)) RR = o.check;
+    if (k === tone && (x + y * 2) % 4 === 0 && hash2(x, y, 3) < 0.5) k++;
+    pc.set(x, y, RR[clamp(k, 1, 5)]);
+  });
+  if (o.stitch) m.edge().each((x, y) => { if ((x + y) % 2 === 0 && !isBot(m, x, y)) pc.set(x, y, o.stitch); });
+};
+
+/** Iron: bevelled plate with a few pits and corner rivets. */
+const iron = (R, o = {}) => (pc, m, tone) => {
+  m.each((x, y) => pc.set(x, y, R[clamp(edgeK(m, x, y, tone), 1, 5)]));
+  pits(pc, m.clone().erode(1), R, 0.04, o.seed ?? 2, 0.02);
+  if (o.rivets !== false) { const b = m.bounds(); if (b && b.w > 5 && b.h > 4) for (const [x, y] of [[b.x0 + 1, b.y0 + 1], [b.x1 - 2, b.y0 + 1], [b.x0 + 1, b.y1 - 2], [b.x1 - 2, b.y1 - 2]]) if (m.get(x, y) && m.get(x + 1, y + 1)) rivet(pc, x, y, R); }
+};
+
+/** Plain bevelled face. */
+const plain = (R) => (pc, m, tone) => m.each((x, y) => pc.set(x, y, R[clamp(edgeK(m, x, y, tone), 1, 5)]));
+
+/** Box helper: draws an axis-aligned box with the shared camera. Returns its mask. */
+function box(pc, cam, x0, y0, z0, x1, y1, z1, R, o = {}) {
+  const faces = boxFaces(x0, y0, z0, x1, y1, z1, R, { paintAll: plain(R), ...o, bias: { top: -0.12, ...(o.bias || {}) } });
+  return drawSolid(pc, cam, faces);
+}
+/** Screen polygon of a box face at height y (top face) for laying things on. */
+const topPoly = (cam, x0, z0, x1, z1, y) => [cam.p(x0, y, z0), cam.p(x1, y, z0), cam.p(x1, y, z1), cam.p(x0, y, z1)].map((q) => [q[0], q[1]]);
+
+/** Upright cylinder in 3/4 view: top ellipse at (cx, y), height h. Returns { all, body, top }. */
 function cylinder(pc, cx, y, rx, ry, h, R, o = {}) {
   const body = M().rect(Math.round(cx - rx), Math.round(y), Math.round(rx * 2), Math.round(h)).union(M().ellipse(cx, y + h, rx, ry));
   const top = M().ellipse(cx, y, rx, ry);
   const all = body.clone().union(top);
-  if (o.ring !== false) ring(pc, all, R);
-  vol(pc, body, R, { mode: 'cyl', axis: Math.PI / 2, flat: o.flat ?? 0.1, spec: o.spec });
-  if (o.top !== false) { fill(pc, top, R[o.topTone ?? 2]); top.edge().each((x, yy) => { if (yy > y) pc.set(x, yy, R[o.topTone ?? 2 + 1]); }); }
+  if (o.seam !== false) seam(pc, all, 'shadow');
+  form(pc, body, R, { cx: cx - rx * 0.35, cy: y + h * 0.3, rx: rx * 1.2, ry: (h + ry) * 2, dome: 0.15, bias: o.bias ?? 0.04 });
+  if (o.top !== false) {
+    const tk = o.topTone ?? 2;
+    top.each((x, yy) => pc.set(x, yy, R[clamp(edgeK(top, x, yy, tk), 0, 5)]));
+  }
   return { all, body, top };
 }
-/** Final silhouette outline using each edge pixel's own color. */
-function outlineAll(pc, k = 0.3) {
-  const sil = maskOf(pc, 128);
-  const out = sil.clone().dilate(1).sub(sil);
-  out.each((x, y) => {
-    const n = sil.get(x + 1, y) ? pc.getHex(x + 1, y) : sil.get(x - 1, y) ? pc.getHex(x - 1, y) : sil.get(x, y + 1) ? pc.getHex(x, y + 1) : pc.getHex(x, y - 1);
-    pc.set(x, y, mix(n, 0x140a10, 0.78));
-  });
+
+/** Lay a lit strip along the top-front edge of a slab (a crisp catch-light). */
+function edgeLight(pc, a, b, c, mask) { line(pc, a[0], a[1], b[0], b[1], (i, X, Y) => (!mask || mask.get(X, Y) ? c : null)); }
+
+// ---------------------------------------------------------------- small props
+function candle(pc, x, y, h = 5) {
+  const W = mat(0xf2e6c8, { cont: 1.05 });
+  const m = M().rect(x - 1, y - h, 3, h);
+  seam(pc, m, 'shadow');
+  m.each((X, Y) => pc.set(X, Y, W[X === x - 1 ? 1 : X === x + 1 ? 4 : 2]));
+  pc.set(x + 1, y - h, W[1]); pc.set(x - 1, y - h + 2, W[1]);
+  return () => { gl(pc, x, y - h - 1, 0xffe8a0, 1); gl(pc, x, y - h - 2, 0xffc040, 1); gl(pc, x, y - h - 3, 0xfff4c0, 0.8); };
+}
+function glowcapProp(pc, x, y, r, h, seed = 3) {
+  mushroom(pc, x, y, r, h, GLOWCAP(), mat(0xe4dccb, { cont: 1.05 }), { seed, glow: [0xc6f4ff, 0x6ad6ff], emit: 0.85, spots: [[-0.4, -0.5, 2], [0.3, -0.4, 1]], spotC: [0xe6fbff, 0x8ad8f8], lump: 0.04 });
 }
 
 // ---------------------------------------------------------------- furniture
@@ -54,555 +143,730 @@ const F = {
     const royal = c === 0x6a5ad9, straw = c === 0xd9b45a;
     const cam = CAM({ cy: 22, scale: 0.95 });
     const W = royal ? DWOOD() : WOOD();
-    // frame + legs
-    box(pc, cam, -9, 0, -6, 9, 4, 7, W, { paintAll: woodPaint(W, 3) });
-    if (royal) for (const [x, z] of [[-9, -6], [7.5, -6]]) box(pc, cam, x, 0, z, x + 1.5, 20, z + 1.5, W);
-    else box(pc, cam, -10, 0, -6, -8, 11, 7, W, { paintAll: woodPaint(W, 5) }); // headboard
-    const Q = mat(straw ? 0xe0c060 : c, { cont: 1.05 });
+    if (royal) for (const [x, z] of [[-9, -6], [7.5, -6]]) box(pc, cam, x, 0, z, x + 1.5, 20, z + 1.5, W, { paintAll: wood(W, { seed: 2, vertical: true }) });
+    // frame + headboard
+    box(pc, cam, -9, 0, -6, 9, 4, 7, W, { paintAll: wood(W, { seed: 3, planks: 2.5, nails: true }) });
+    if (!royal) box(pc, cam, -10, 0, -6, -8, 11, 7, W, { paintAll: wood(W, { seed: 5, planks: 3, vertical: true }) });
+    const Q = mat(straw ? 0xe0c060 : c, { cont: 1.08 });
     // mattress / quilt
     box(pc, cam, -8, 4, -5.5, 8.5, 7, 6.5, Q, {
-      paintAll: (p, m, tone) => m.each((x, y) => {
-        let k = tone;
-        if (straw) { if (hash2(x, y, 2) < 0.35) k = Math.min(5, tone + 1); else if (hash2(x, y, 7) < 0.15) k = Math.max(1, tone - 1); }
-        else if (!royal && ((Math.floor(x / 3) + Math.floor(y / 3)) % 2)) { p.set(x, y, mat(0xf0e0c0)[tone]); return; }
-        p.set(x, y, Q[k]);
-      }),
+      paintAll: straw
+        ? (p, m, tone) => m.each((x, y) => { let k = edgeK(m, x, y, tone); const h = hash2(x, y, 2); if (h < 0.3) k++; else if (h > 0.85) k--; p.set(x, y, Q[clamp(k, 1, 5)]); })
+        : cloth(Q, { check: royal ? null : mat(0xf0e0c0, { cont: 1.05 }), stitch: royal ? null : 0xfff4e0 }),
     });
-    // pillow
-    const PW = mat(0xf2ead8);
-    box(pc, cam, -7.5, 7, -4.5, -3.5, 9, 5.5, PW);
-    if (royal) {
-      // canopy + curtains with gold trim
-      const CN = mat(c, { cont: 1.1 });
-      box(pc, cam, -9.5, 18, -6.5, 9.5, 20.5, 8, CN, { tone: { top: 2 } });
-      const G = mat(0xe8b840);
-      const a = cam.p(-9.5, 18, 8), b = cam.p(9.5, 18, 8);
-      lineIn(pc, a[0], a[1], b[0], b[1], G[1]);
-      for (const [x0, z0] of [[-9, -6], [7.5, -6]]) { const p0 = cam.p(x0, 18, z0); const curtain = M().poly([[p0[0] - 2, p0[1]], [p0[0] + 3, p0[1]], [p0[0] + 2, p0[1] + 14], [p0[0] - 2.5, p0[1] + 14]]); fill(pc, curtain, CN[3]); for (let y = 0; y < 14; y += 1) pc.set(p0[0] - 1, p0[1] + y, CN[4]); }
-      for (const [x, z] of [[8.5, 7], [-9.5, 7]]) box(pc, cam, x, 0, z - 1.5, x + 1.5, 20, z, W);
+    if (straw) {
+      const top = topPoly(cam, -8, -5.5, 8.5, 6.5, 7);
+      const tm = M().poly(top);
+      for (let i = 0; i < 14; i++) { const x = 6 + hash2(i, 1, 3) * 20, y = 12 + hash2(i, 2, 3) * 8; if (tm.get(x, y)) line(pc, x, y, x + 2 + (i % 3), y - 1 + (i % 2), (n, X, Y) => (tm.get(X, Y) ? Q[i % 2 ? 1 : 4] : null)); }
+    } else {
+      // quilt folded back at the head: a soft roll
+      const fold = cam.p(-3, 7.2, 0.5);
+      const roll = blob(fold[0], fold[1], 6.6, 2.2, { seed: 3, rot: 0.42 });
+      seam(pc, roll, 'shadow');
+      form(pc, roll, Q, { bias: 0.08 });
     }
-    outlineAll(pc);
+    // a puffy pillow
+    const pp = cam.p(-5.6, 8, 0.5);
+    const pillow = blob(pp[0], pp[1], 4.2, 2.4, { seed: 5, lump: 0.08, rot: 0.42 });
+    seam(pc, pillow, 'shadow');
+    form(pc, pillow, mat(0xf2ead8, { cont: 1.05 }), { bias: 0.1 });
+    if (royal) {
+      // canopy + velvet curtains with gold trim
+      const CN = mat(c, { cont: 1.12 });
+      box(pc, cam, -9.5, 18, -6.5, 9.5, 20.5, 8, CN, { tone: { top: 2 }, paintAll: cloth(CN) });
+      const G = GOLD();
+      const a = cam.p(-9.5, 18, 8), b = cam.p(9.5, 18, 8);
+      line(pc, a[0], a[1], b[0], b[1], (i) => G[i % 2 ? 1 : 2]);
+      for (const [x0, z0] of [[-9, -6], [7.5, -6]]) {
+        const p0 = cam.p(x0, 18, z0);
+        const curtain = M().poly([[p0[0] - 2, p0[1]], [p0[0] + 3, p0[1]], [p0[0] + 2.5, p0[1] + 14], [p0[0] - 2.5, p0[1] + 14]]);
+        seam(pc, curtain, 'shadow');
+        curtain.each((x, y) => pc.set(x, y, CN[(x - Math.round(p0[0])) % 2 ? 4 : 3]));
+        for (let y = 0; y < 2; y++) pc.set(p0[0], p0[1] + 9 + y, G[2]);
+      }
+      for (const [x, z] of [[8.5, 7], [-9.5, 7]]) box(pc, cam, x, 0, z - 1.5, x + 1.5, 20, z, W, { paintAll: wood(W, { seed: 7, vertical: true }) });
+      for (const [x, z] of [[8.5, 7], [-9.5, 7]]) { const t = cam.p(x + 0.75, 21, z - 0.75); pc.set(t[0], t[1], G[1]); pc.set(t[0], t[1] - 1, G[0]); }
+    }
+    ink(pc);
   },
   forge(pc) {
     const cam = CAM({ cy: 23, scale: 0.9 });
-    const S = mat(0x7a7470, { cont: 1.05 });
-    const stonePaint = (p, m, tone) => m.each((x, y) => { const brick = ((Math.floor(y / 3) % 2) ? x + 2 : x) % 5 === 0 || y % 3 === 0; p.set(x, y, S[brick ? Math.min(5, tone + 1) : tone]); });
-    box(pc, cam, -10, 0, -7, 10, 10, 6, S, { paintAll: stonePaint });
-    // fire bed glowing on top
-    const fire = M();
-    const c0 = cam.p(-7, 10, -4), c1 = cam.p(7, 10, -4), c2 = cam.p(7, 10, 3), c3 = cam.p(-7, 10, 3);
-    fire.poly([c0, c1, c2, c3].map((q) => [q[0], q[1]]));
-    fire.each((x, y) => gl(pc, x, y, hash2(x, y, 3) < 0.3 ? 0xffe080 : hash2(x, y, 5) < 0.5 ? 0xff9a2a : 0xd84a1a, 1));
-    // flames
-    for (const [x, y, h] of [[13, 13, 5], [16, 12, 7], [19, 13, 5]]) for (let i = 0; i < h; i++) gl(pc, x + Math.sin(i) * 0.6, y - i, i < 2 ? 0xffd040 : i < 4 ? 0xff9a2a : 0xffe8a0, 1);
-    // hood + chimney
-    const H = mat(0x5a5450, { cont: 1.05 });
-    box(pc, cam, -4, 16, -6, 4, 22, -1, H);
-    // anvil in front
+    const S = mat(0x7a7470, { cont: 1.1 });
+    box(pc, cam, -10, 0, -7, 10, 10, 6, S, { paintAll: stone(S, { h: 3, w: 5 }) });
+    // bed of glowing coals on top
+    const fire = M().poly(topPoly(cam, -7, -4, 7, 3, 10));
+    seam(pc, fire, 'shadow');
+    fire.each((x, y) => { const h = hash2(x, y, 3); gl(pc, x, y, h < 0.22 ? 0xfff0a0 : h < 0.5 ? 0xff9a2a : h < 0.8 ? 0xd84a1a : 0x6a2a1a, h < 0.8 ? 1 : 0.3); });
+    // hood + chimney (sooty iron)
+    const H = mat(0x4e4a48, { cont: 1.1 });
+    box(pc, cam, -4, 16, -6, 4, 22, -1, H, { paintAll: iron(H) });
+    // anvil in front: waisted body, horn, lit face
     const A = IRON();
-    box(pc, cam, 3, 0, 4, 9, 3, 8, A);
-    box(pc, cam, 1.5, 3, 4.5, 10.5, 5, 7.5, A, { tone: { top: 2 } });
-    outlineAll(pc);
+    box(pc, cam, 3, 0, 4, 9, 2.5, 8, A, { paintAll: iron(A, { rivets: false }) });
+    box(pc, cam, 4.4, 2.5, 4.8, 7.6, 3.6, 7.2, A, { paintAll: iron(A, { rivets: false }) });
+    box(pc, cam, 1.5, 3.6, 4.5, 10.5, 5.4, 7.5, A, { tone: { top: 1 }, paintAll: iron(A, { rivets: false }) });
+    ink(pc);
+    // flames licking up and sparks
+    for (const [x, y, h] of [[12, 13, 5], [15, 12, 7], [18, 13, 5], [20, 14, 3]]) for (let i = 0; i < h; i++) gl(pc, x + Math.round(Math.sin(i * 1.3 + x) * 0.7), y - i, i < 2 ? 0xffd040 : i < 4 ? 0xff9a2a : 0xffe8a0, 1);
+    for (const [x, y] of [[10, 4], [21, 6], [17, 3]]) gl(pc, x, y, 0xffc060, 0.9);
   },
   stove(pc) {
     const cam = CAM({ cy: 24, scale: 1 });
-    const I = mat(0x3e3e46, { cont: 1.2 });
-    box(pc, cam, -7, 0, -6, 7, 13, 6, I);
-    // firebox door with glowing window
-    const d0 = cam.p(-4, 3, 6), d1 = cam.p(4, 9, 6);
-    const win = M().rect(Math.round(Math.min(d0[0], d1[0])) + 1, Math.round(d1[1]) + 1, 6, 4);
-    win.each((x, y) => gl(pc, x, y, y < d1[1] + 2.5 ? 0xffd060 : 0xff7a2a, 1));
-    // pot on top + chimney pipe
-    const P = mat(0x8a5a3a, { cont: 1.1 });
-    cylinder(pc, 13, 6, 4.6, 1.8, 4, P, { topTone: 4 });
+    const I = mat(0x3c3c46, { cont: 1.22 });
+    // chimney pipe behind
     const PI = IRON();
-    box(pc, cam, 3.5, 13, -5, 6, 26, -2.5, PI);
-    for (const [x, y] of [[11, 3], [13, 1], [15, 2]]) pc.set(x, y, 0xffffff, 180);
-    outlineAll(pc);
+    box(pc, cam, 3.5, 13, -5, 6, 26, -2.5, PI, { paintAll: iron(PI, { rivets: false }) });
+    box(pc, cam, -7, 0, -6, 7, 13, 6, I, { paintAll: iron(I) });
+    box(pc, cam, -7.6, 12, -6.6, 7.6, 13.4, 6.6, I, { tone: { top: 1 }, paintAll: iron(I, { rivets: false }) });
+    // firebox door with a glowing grate
+    const d0 = cam.p(-4.5, 2.5, 6), d1 = cam.p(3.5, 9.5, 6);
+    const door = M().poly([cam.p(-4.5, 2.5, 6), cam.p(3.5, 2.5, 6), cam.p(3.5, 9.5, 6), cam.p(-4.5, 9.5, 6)].map((q) => [q[0], q[1]]));
+    seam(pc, door, 'shadow');
+    door.each((x, y) => pc.set(x, y, I[clamp(edgeK(door, x, y, 3), 1, 5)]));
+    const win = door.clone().erode(1);
+    win.each((x, y) => { if (isTop(win, x, y) || isBot(win, x, y)) return; gl(pc, x, y, (x % 2 === 0) ? I[5] : (y < (d0[1] + d1[1]) / 2 ? 0xffd060 : 0xff7a2a), x % 2 === 0 ? 0 : 1); });
+    void d0; void d1;
+    // a pot on the hob
+    const P = mat(0x8a5a3a, { cont: 1.12 });
+    const pt = cam.p(-1.5, 13.4, -1);
+    cylinder(pc, pt[0], pt[1] - 4.6, 4.8, 1.8, 4.2, P, { topTone: 4 });
+    pc.set(pt[0] - 5, pt[1] - 3, P[3]); pc.set(pt[0] + 5, pt[1] - 3, P[4]);
+    ink(pc);
+    steam(pc, pt[0] - 2, pt[1] - 7, 6); steam(pc, pt[0] + 1, pt[1] - 7, 5, { phase: 2 });
   },
   planter(pc) {
     const cam = CAM({ cy: 25, scale: 1 });
     const W = WOOD();
-    box(pc, cam, -9, 0, -5, 9, 7, 5, W, { paintAll: woodPaint(W, 9) });
-    // soil
-    const s = [cam.p(-8, 7, -4), cam.p(8, 7, -4), cam.p(8, 7, 4), cam.p(-8, 7, 4)].map((q) => [q[0], q[1]]);
-    const soil = M().poly(s);
-    soil.each((x, y) => pc.set(x, y, hash2(x, y, 2) < 0.3 ? 0x3a2414 : 0x4e3220));
-    // glowcaps sprouting
-    for (const [x, y, r] of [[11, 14, 3.4], [17, 11, 4], [22, 14, 3]]) {
-      for (let yy = y; yy < y + 6; yy++) pc.set(x, yy, 0xe8e0d0);
-      const cap = M().ellipse(x, y, r, r * 0.65);
-      cap.each((X, Y) => gl(pc, X, Y, Y < y - 0.5 ? 0x8ad8ff : 0x4ab0ff, 0.9));
-      pc.set(x - 1, y - 1, 0xe0f8ff);
-    }
-    outlineAll(pc);
+    box(pc, cam, -9, 0, -5, 9, 7, 5, W, { paintAll: wood(W, { seed: 9, planks: 2.4, nails: true }) });
+    const soil = M().poly(topPoly(cam, -8, -4, 8, 4, 7));
+    const SO = mat(0x4e3220, { cont: 1.05 });
+    soil.each((x, y) => pc.set(x, y, SO[hash2(x, y, 2) < 0.3 ? 4 : hash2(x, y, 3) < 0.15 ? 2 : 3]));
+    glowcapProp(pc, 11.5, 13, 3.6, 4.5, 3);
+    glowcapProp(pc, 20.5, 14.6, 3, 3.6, 7);
+    glowcapProp(pc, 16.5, 10, 4.4, 6.6, 5);
+    ink(pc);
+    for (const [x, y] of [[5, 6], [27, 7]]) twinkle(pc, x, y, 0xe8fbff, 0x7fd8ff, 1, 0.8);
   },
   desk(pc) {
     const cam = CAM({ cy: 24, scale: 1 });
     const W = WOOD();
-    box(pc, cam, -10, 7, -5, 10, 9, 5, W, { paintAll: woodPaint(W, 2) });
-    for (const [x, z] of [[-9.5, -4.5], [8, -4.5], [-9.5, 3.5], [8, 3.5]]) box(pc, cam, x, 0, z, x + 1.5, 7, z + 1, W);
-    // drawer
-    box(pc, cam, 1, 3.5, 3.5, 8, 7, 4.8, W);
-    // open book, quill, candle
-    const B = mat(0xf4e8cc);
+    for (const [x, z] of [[-9.5, -4.5], [8, -4.5], [-9.5, 3.5], [8, 3.5]]) box(pc, cam, x, 0, z, x + 1.5, 7, z + 1, W, { paintAll: wood(W, { seed: 3, vertical: true }) });
+    box(pc, cam, 1, 3.5, 3.5, 8, 7, 4.8, W, { paintAll: wood(W, { seed: 6 }) });
+    box(pc, cam, -10, 7, -5, 10, 9, 5, W, { paintAll: wood(W, { seed: 2, planks: 3 }) });
+    const kn = cam.p(4.5, 5.2, 4.8); pc.set(kn[0], kn[1], 0xe8c060);
+    // an open book, a quill in an ink pot, a candle
+    const B = mat(0xf4e8cc, { cont: 1.05 });
     box(pc, cam, -7, 9, -3, 1, 10, 3, B, { tone: { top: 1 } });
     const bk = cam.p(-3, 10, 0);
-    lineIn(pc, bk[0], bk[1] - 2, bk[0] + 1, bk[1] + 2, 0x8a3a2a);
-    for (let i = 0; i < 3; i++) lineIn(pc, bk[0] - 5, bk[1] - 1 + i, bk[0] - 2, bk[1] - 2 + i, 0xb0a080);
-    const q = cam.p(2, 10, -2);
-    lineIn(pc, q[0], q[1], q[0] + 5, q[1] - 8, 0xf4f0e8); lineIn(pc, q[0] + 1, q[1], q[0] + 6, q[1] - 7, 0xd8d0c0);
+    line(pc, bk[0], bk[1] - 2, bk[0] + 1, bk[1] + 2, 0x9a7a5a);
+    for (let i = 0; i < 3; i++) { line(pc, bk[0] - 5, bk[1] - 1 + i, bk[0] - 2, bk[1] - 2 + i, 0xb0a080); line(pc, bk[0] + 2, bk[1] - 1 + i, bk[0] + 4, bk[1] - 2 + i, 0xb0a080); }
+    const ip = cam.p(3, 10, -2);
+    const pot = blob(ip[0], ip[1] - 1, 1.6, 1.4, { seed: 2 });
+    seam(pc, pot, 'shadow'); form(pc, pot, mat(0x2a2a3a, { cont: 1.2 }), { bias: 0.1 });
+    tube(pc, [[ip[0], ip[1] - 2], [ip[0] + 4, ip[1] - 9]], (s) => 0.6 + s * 0.8, mat(0xf4f0e8, { cont: 1.1 }), { capEnd: 0.6 });
     const cd = cam.p(7, 10, -3);
-    cylinder(pc, cd[0], cd[1] - 5, 1.4, 0.6, 5, mat(0xf0e4c8), { ring: false });
-    gl(pc, cd[0], cd[1] - 7, 0xffd060); gl(pc, cd[0], cd[1] - 8, 0xffe8a0);
-    outlineAll(pc);
+    const flame = candle(pc, Math.round(cd[0]), Math.round(cd[1]), 5);
+    ink(pc);
+    flame();
   },
   rack(pc) {
     const cam = CAM({ cy: 27, scale: 1, yaw: -0.3 });
     const W = DWOOD();
-    box(pc, cam, -12, 0, -2, 12, 2, 2, W);
-    box(pc, cam, -12, 0, -2, -10, 20, 2, W);
-    box(pc, cam, 10, 0, -2, 12, 20, 2, W);
-    box(pc, cam, -12, 18, -2, 12, 20, 2, W);
-    // three weapons standing upright: sword, axe, spear
-    const S = mat(0xc6cbd2, { cont: 1.3 }), C = mat(0xd9773f, { cont: 1.2 }), G = mat(0xf2c23a, { cont: 1.2 }), H = mat(0x7a4a2a);
-    const blade = (x, y0, y1, w, R) => { const m = M().rect(x - w, y0, w * 2 + 1, y1 - y0); m.poly([[x - w, y0], [x + 0.5, y0 - 3], [x + w + 1, y0]]); ring(pc, m, R); m.each((X, Y) => pc.set(X, Y, R[X < x ? 2 : X > x ? 4 : 1])); };
-    const handle = (x, y0, y1) => { for (let y = y0; y < y1; y++) { pc.set(x, y, H[y % 2 ? 2 : 3]); pc.set(x + 1, y, H[4]); } };
-    handle(9, 17, 25); blade(9.5, 5, 16, 1, S); for (let x = 6; x <= 13; x++) { pc.set(x, 16, G[2]); pc.set(x, 17, G[4]); }
-    handle(16, 9, 26); { const hd = M().poly([[17, 6], [22, 4], [23, 12], [17, 10]]); ring(pc, hd, C); hd.each((X, Y) => pc.set(X, Y, C[X > 21 ? 1 : Y < 7 ? 2 : 3])); }
-    handle(22, 8, 26); { const tip = M().poly([[20.5, 8], [22.5, 1], [24.5, 8]]); ring(pc, tip, G); tip.each((X, Y) => pc.set(X, Y, G[X < 22.5 ? 2 : 4])); }
-    box(pc, cam, -12, 8, 0.5, 12, 9.5, 2, W);
-    outlineAll(pc);
+    const wp = wood(W, { seed: 4 });
+    box(pc, cam, -12, 0, -2, 12, 2, 2, W, { paintAll: wp });
+    box(pc, cam, -12, 0, -2, -10, 20, 2, W, { paintAll: wood(W, { seed: 5, vertical: true }) });
+    box(pc, cam, 10, 0, -2, 12, 20, 2, W, { paintAll: wood(W, { seed: 6, vertical: true }) });
+    box(pc, cam, -12, 18, -2, 12, 20, 2, W, { paintAll: wp });
+    // three weapons standing upright: a sword, an axe, a spear
+    const S = RAMPS.steel(), C = mat(0xd9773f, { cont: 1.2 }), G = GOLD(), H = RAMPS.leather();
+    const handle = (x, y0, y1) => tube(pc, [[x + 0.5, y0], [x + 0.5, y1]], 0.9, H, { capStart: 0.1, capEnd: 0.1 });
+    handle(9, 17, 25.5);
+    const blade1 = M().rect(8, 5, 3, 11).union(M().poly([[8, 5], [9.5, 2], [11, 5]]));
+    seam(pc, blade1, 'shadow');
+    blade1.each((X, Y) => pc.set(X, Y, S[X === 8 ? 1 : X === 9 ? (Y % 4 ? 2 : 0) : 4]));
+    for (let x = 6; x <= 13; x++) { pc.set(x, 16, G[x < 9 ? 1 : 2]); pc.set(x, 17, G[4]); }
+    handle(15.5, 8, 26);
+    const hd = M().poly([[17, 6], [21.6, 4], [23, 8], [21.6, 12.4], [17, 10.6]]);
+    seam(pc, hd, 'shadow'); form(pc, hd, C, { dome: 0.2, bias: 0.06 });
+    line(pc, 22.6, 5, 22.6, 11, C[1]);
+    handle(23, 7, 26);
+    const tip = M().poly([[21.5, 7.4], [23.5, 0.6], [25.4, 7.4]]);
+    seam(pc, tip, 'shadow'); tip.each((X, Y) => pc.set(X, Y, S[X < 23.5 ? 1 : X < 24.5 ? 3 : 4]));
+    box(pc, cam, -12, 8, 0.5, 12, 9.5, 2, W, { paintAll: wp });
+    ink(pc);
+    glint(pc, 9, 4, 0);
   },
   gemcase(pc) {
     const cam = CAM({ cy: 26, scale: 1 });
     const W = DWOOD();
-    box(pc, cam, -6, 0, -5, 6, 8, 5, W, { paintAll: woodPaint(W, 7, true) });
-    // glass cover
-    const G = mat(0xcce8f4, { cont: 0.9 });
-    const glass = box(pc, cam, -5.5, 8, -4.5, 5.5, 18, 4.5, G, { paintAll: (p, m, tone) => m.each((x, y) => p.set(x, y, G[Math.min(3, tone)], 210)) });
-    // cushion + ruby
+    box(pc, cam, -6.6, 0, -5.6, 6.6, 2, 5.6, W, { paintAll: wood(W, { seed: 7 }) });
+    box(pc, cam, -6, 2, -5, 6, 8, 5, W, { paintAll: wood(W, { seed: 8, vertical: true }) });
+    // velvet cushion + a faceted ruby, under a glass dome
     const cu = cam.p(0, 8.5, 0);
-    const cs = M().ellipse(cu[0], cu[1], 4, 1.6); fill(pc, cs, 0xb03a4a);
-    const gem = M().poly([[cu[0], cu[1] - 6], [cu[0] + 3, cu[1] - 3], [cu[0], cu[1] - 0.5], [cu[0] - 3, cu[1] - 3]]);
-    gem.each((x, y) => gl(pc, x, y, x < cu[0] ? (y < cu[1] - 3 ? 0xff8a9a : 0xe02a3a) : (y < cu[1] - 3 ? 0xe02a3a : 0x9a1028), 0.6));
-    pc.set(cu[0] - 1, cu[1] - 4, 0xffffff);
-    // glass glints
-    const g0 = cam.p(-5, 17, 4.5);
-    lineIn(pc, g0[0] + 1, g0[1] + 1, g0[0] + 4, g0[1] + 8, 0xffffff);
-    outlineAll(pc);
+    const cs = blob(cu[0], cu[1], 4.6, 1.8, { seed: 3 });
+    form(pc, cs, mat(0xb03a4a, { cont: 1.1 }), { bias: 0.08 });
+    const gem = M().poly([[cu[0], cu[1] - 7], [cu[0] + 3.4, cu[1] - 3.6], [cu[0], cu[1] - 0.6], [cu[0] - 3.4, cu[1] - 3.6]]);
+    seam(pc, gem, 'shadow');
+    gem.each((x, y) => gl(pc, x, y, x < cu[0] ? (y < cu[1] - 3.6 ? 0xff8a9a : 0xe02a3a) : (y < cu[1] - 3.6 ? 0xe02a3a : 0x9a1028), 0.6));
+    line(pc, cu[0] - 3, cu[1] - 3.6, cu[0] + 3, cu[1] - 3.6, 0xff6a7a);
+    const glass = M().rect(Math.round(cu[0] - 6), Math.round(cu[1] - 11), 12, 11).union(M().ellipse(cu[0], cu[1] - 11, 6, 2.6));
+    glass.each((x, y) => { if (pc.alpha(x, y) < 10) pc.set(x, y, 0xcce8f4, 120); });
+    ink(pc, { minA: 100 });
+    for (let y = 0; y < 8; y++) pc.set(Math.round(cu[0] - 4.6 + y * 0.15), Math.round(cu[1] - 10 + y), 0xffffff, 230);
+    pc.set(cu[0] - 1, cu[1] - 5, 0xffffff);
+    twinkle(pc, Math.round(cu[0] + 4), Math.round(cu[1] - 13), 0xffffff, 0xffc0d0, 1, 0.6);
   },
   glowlamp(pc, pot = false) {
-    const B = pot ? mat(0xb8603a) : mat(0xe0d8c0);
-    if (pot) cylinder(pc, 16, 21, 7, 2.6, 7, B, { topTone: 5 });
-    else { cylinder(pc, 16, 25, 6, 2.2, 4, B); for (let y = 12; y < 25; y++) { pc.set(15, y, 0xe8e0d0); pc.set(16, y, 0xd0c8b0); pc.set(17, y, 0xb8b098); } }
-    const caps = pot ? [[11, 17, 3.4, 4], [17, 13, 4.4, 8], [22, 17, 3, 4]] : [[16, 9, 8, 0]];
-    for (const [x, y, r, h] of caps) {
-      for (let yy = y; yy < y + h; yy++) { pc.set(x, yy, 0xe8e0d0); pc.set(x + 1, yy, 0xc8c0b0); }
-      const cap = M().ellipse(x, y, r, r * 0.62).sub(M().rect(0, Math.round(y + 1), 32, 32));
-      ring(pc, cap, mat(0x4ab0ff));
-      cap.each((X, Y) => gl(pc, X, Y, Y < y - r * 0.3 ? 0x9ae0ff : 0x4ab0ff, 0.9));
-      for (let X = Math.round(x - r + 1); X < x + r - 1; X++) gl(pc, X, Math.round(y + 0.5), X % 2 ? 0xbff0ff : 0x7fd8ff, 1);
-      pc.set(x - r * 0.4, y - r * 0.3, 0xe8faff);
+    if (pot) {
+      // a clay pot of glowcaps
+      const B = mat(0xb8603a, { cont: 1.12 });
+      const c = cylinder(pc, 16, 20, 7.4, 2.6, 8, B, { topTone: 5 });
+      for (let x = 8; x < 25; x++) if (c.body.get(x, 23)) { pc.set(x, 23, B[2]); pc.set(x, 24, B[4]); }
+      const SO = mat(0x4e3220);
+      M().ellipse(16, 20, 6, 1.8).each((x, y) => pc.set(x, y, SO[hash2(x, y, 2) < 0.3 ? 4 : 3]));
+      glowcapProp(pc, 11, 15.4, 3.6, 4.4, 3);
+      glowcapProp(pc, 21.4, 16, 3.2, 4, 9);
+      glowcapProp(pc, 16.6, 11, 4.8, 8.6, 5);
+    } else {
+      // a turned wooden base, a tall pale stem and one big glowing cap
+      const B = mat(0xd8c8a6, { cont: 1.08 });
+      cylinder(pc, 16, 25, 6.4, 2.2, 3.6, B);
+      glowcapProp(pc, 16, 10, 9.4, 15.4, 4);
     }
-    outlineAll(pc);
+    ink(pc);
+    for (const [x, y] of [[4, 4], [28, 6]]) twinkle(pc, x, y, 0xe8fbff, 0x7fd8ff, 1, 0.8);
   },
   lantern(pc) {
     const I = IRON();
-    // post with an arm and a hanging lantern
-    for (let y = 6; y < 31; y++) { pc.set(9, y, I[2]); pc.set(10, y, I[3]); pc.set(11, y, I[5]); }
-    const base = M().ellipse(10, 30, 5, 1.6); fill(pc, base, I[4]);
-    lineIn(pc, 10, 6, 21, 6, I[2]); lineIn(pc, 10, 7, 21, 7, I[4]);
-    lineIn(pc, 12, 7, 10, 10, I[3]);
-    pc.set(20, 8, I[3]); pc.set(20, 9, I[3]);
-    const L = mat(0x3a3a40, { cont: 1.1 });
-    const lan = M().rect(16, 11, 9, 11);
-    ring(pc, lan, L); fill(pc, lan, L[3]);
-    const glass = M().rect(17, 13, 7, 7);
-    glass.each((x, y) => gl(pc, x, y, (x === 17 || y === 13) ? 0xfff0c0 : 0xffc060, 1));
-    lineIn(pc, 20, 13, 20, 19, L[3]);
-    const cap = M().poly([[15, 11], [20.5, 8], [26, 11]]); ring(pc, cap, L); fill(pc, cap, L[2]);
-    for (const [x, y] of [[14, 17], [27, 16], [20, 24]]) gl(pc, x, y, 0xffd890, 0.5);
-    outlineAll(pc);
+    // post with a scrolled arm and a hanging oil lantern
+    tube(pc, [[10, 30], [10, 5]], 1.3, I, { bias: 0.08 });
+    const base = blob(10, 30, 4.6, 1.6, { seed: 2 }); seam(pc, base, 'shadow'); form(pc, base, I, { bias: 0.08 });
+    tube(pc, [[10, 6], [16, 5.4], [21, 6.4]], 0.9, I, { seam: false });
+    tube(pc, [[11, 9.6], [13, 7.4], [15.6, 6.4]], 0.6, I, { seam: false });
+    const L = mat(0x3a3a42, { cont: 1.15 });
+    const lan = M().rect(16, 12, 9, 10);
+    seam(pc, lan, 'shadow');
+    lan.each((x, y) => pc.set(x, y, L[clamp(edgeK(lan, x, y, 3), 1, 5)]));
+    const glass = M().rect(17, 13, 7, 8);
+    glass.each((x, y) => gl(pc, x, y, x === 17 || y === 13 ? 0xfff4c8 : (x + y) % 5 === 0 ? 0xffe090 : 0xffc060, 1));
+    line(pc, 20, 13, 20, 20, L[3]);
+    const fl = [[20, 16], [20, 17], [21, 17], [20, 18]];
+    for (const [x, y] of fl) gl(pc, x, y, 0xfffbe0, 1);
+    const cap = M().poly([[15, 12], [20.5, 8.6], [26, 12]]);
+    seam(pc, cap, 'shadow'); cap.each((x, y) => pc.set(x, y, L[x < 20 ? 2 : 4]));
+    const bot = M().rect(17, 22, 7, 1.6);
+    seam(pc, bot, 'shadow'); bot.each((x, y) => pc.set(x, y, L[4]));
+    ink(pc);
+    line(pc, 20, 7, 20, 8, 0x2a2a30);
+    for (const [x, y] of [[14, 17], [28, 16], [20, 26]]) gl(pc, x, y, 0xffd890, 0.5);
   },
   jar(pc) {
-    const GLR = mat(0xd8eef0, { cont: 0.9 });
-    const jar = M().rect(8, 9, 16, 18).ellipse(16, 27, 8, 2.4);
-    ring(pc, jar, GLR);
-    jar.each((x, y) => pc.set(x, y, GLR[x < 11 ? 1 : x > 21 ? 4 : 3], 200));
-    // little beetle glowing inside + grass
-    for (let x = 9; x < 24; x += 2) lineIn(pc, x, 27, x + (x % 4 ? 1 : -1), 23, 0x5a9a4a);
-    const ab = M().ellipse(14, 18, 3, 2.6); ab.each((x, y) => gl(pc, x, y, 0xc8ff7a, 1));
-    const sh = M().ellipse(18, 17, 3.2, 2.6); fill(pc, sh, 0x34345a); pc.set(17, 16, 0x6a6a9a);
-    gl(pc, 13, 17, 0xffffff);
-    // cloth lid + twine
-    const CL = mat(0xd8c8a0);
-    const lid = M().ellipse(16, 8.5, 9.5, 2.6).rect(6.5, 8, 19, 3);
-    ring(pc, lid, CL); vol(pc, lid, CL, { round: 1.5 });
-    for (let x = 7; x < 26; x++) pc.set(x, 11, 0x8a6a40);
-    for (let y = 10; y < 25; y++) pc.set(10, y, 0xffffff, 150);
-    outlineAll(pc);
+    const GLR = mat(0xd8eef0, { cont: 1 });
+    // a roomy jar: moss and grass inside, a happy glow beetle, cloth lid and twine
+    const jar = M().rect(7, 9, 18, 18).union(M().ellipse(16, 27, 9, 2.4));
+    jar.each((x, y) => pc.set(x, y, GLR[x < 10 ? 1 : x > 21 ? 4 : 3], 200));
+    const MO = mat(0x4e8a3a, { cont: 1.1 });
+    const moss = blob(16, 26, 8, 2.8, { seed: 3, lump: 0.12 }).and(jar);
+    moss.each((x, y) => pc.set(x, y, MO[hash2(x, y, 2) < 0.3 ? 2 : 3]));
+    for (let x = 8; x < 25; x += 2) line(pc, x, 25, x + (x % 4 ? 1 : -1), 21 + (x % 3), (i) => MO[i ? 2 : 3]);
+    const ab = blob(13.6, 17.4, 3, 2.6, { seed: 4 });
+    ab.each((x, y) => gl(pc, x, y, (x + y) % 3 ? 0xc8ff7a : 0xe8ffb0, 1));
+    const sh = blob(17.6, 16.6, 3.4, 2.6, { seed: 5 });
+    seam(pc, sh, 'shadow');
+    form(pc, sh, mat(0x34408c, { cont: 1.15 }), { bias: 0.06 });
+    line(pc, 17, 14, 18, 19, 0x1a1630);
+    pc.set(21, 15, 0x1a1630); pc.set(22, 14, 0x1a1630); pc.set(20, 17, 0xffffff);
+    const CL = mat(0xd8c8a0, { cont: 1.08 });
+    const lid = blob(16, 8.4, 10, 2.6, { seed: 6, lump: 0.05 }).union(M().rect(6, 8, 20, 3));
+    for (let x = 6; x < 27; x += 3) lid.union(M().disk(x + 0.5, 11, 1.2));
+    seam(pc, lid, 'shadow');
+    form(pc, lid, CL, { bias: 0.08 });
+    const TW = RAMPS.twine();
+    for (let x = 6; x < 26; x++) pc.set(x, 10, TW[(x % 2) + 2]);
+    ink(pc, { minA: 150 });
+    for (let y = 12; y < 26; y++) if (y % 4) pc.set(9, y, 0xffffff, 200);
+    gl(pc, 12, 16, 0xffffff, 1);
   },
   crystallamp(pc) {
     const S = STONE();
-    cylinder(pc, 16, 23, 7, 2.6, 5, S);
-    const C = mat(0xc08aff, { cont: 1.1 });
-    const pts = [[16, 2], [21, 10], [19, 22], [13, 22], [11, 10]];
-    const m = M().poly(pts);
-    ring(pc, m, C);
-    m.each((x, y) => { const left = x < 16 - (y - 10) * 0.05; gl(pc, x, y, C[y < 10 ? (left ? 1 : 2) : (left ? 2 : 4)], 0.9); });
-    lineIn(pc, 16, 3, 15, 21, C[0]);
-    lineIn(pc, 11, 10, 21, 10, C[1]);
-    for (const [x, y] of [[6, 6], [26, 8], [24, 16]]) sparkle(pc, x, y, 1, 0xffffff, 0xe0a8ff, 0.8);
-    outlineAll(pc);
+    const c = cylinder(pc, 16, 22.4, 7.4, 2.6, 5.4, S);
+    marks(pc, c.body, S, { dens: 0.1, seed: 2, len: 2, dir: [1, 0] });
+    // a cluster of cut amethyst points, the big one glowing
+    const C = mat(0xb07af6, { cont: 1.15 });
+    const pt = (pts, n, emit) => { const m = M().poly(pts); seam(pc, m, 'shadow'); m.each((x, y) => { gl(pc, x, y, C[n(x, y)], emit); }); return m; };
+    pt([[9.6, 22], [8, 15], [10.6, 12.4], [13, 21.6]], (x) => (x < 10 ? 2 : 4), 0.6);
+    pt([[19.4, 21.6], [22, 13.6], [24.6, 16], [23, 22]], (x) => (x < 22.5 ? 2 : 4), 0.6);
+    const big = pt([[12, 22], [11, 9.4], [16, 2], [21, 9.4], [20, 22]], (x, y) => (y < 9.4 ? (x < 16 ? 1 : 2) : x < 14 ? 2 : x < 18 ? 3 : 4), 0.9);
+    line(pc, 16, 3, 16, 21, C[1]);
+    line(pc, 11, 9.4, 21, 9.4, C[0]);
+    void big;
+    ink(pc);
+    glint(pc, 13, 6, 0);
+    for (const [x, y] of [[5, 6], [27, 8], [25, 3]]) twinkle(pc, x, y, 0xffffff, 0xe0a8ff, 1, 0.8);
   },
   fireplace(pc) {
     const cam = CAM({ cy: 27, scale: 1, yaw: -0.3 });
-    const S = mat(0x8a827a, { cont: 1.05 });
-    const stonePaint = (p, m, tone) => m.each((x, y) => { const brick = ((Math.floor(y / 3) % 2) ? x + 2 : x) % 6 === 0 || y % 3 === 0; p.set(x, y, S[brick ? Math.min(5, tone + 1) : tone]); });
-    box(pc, cam, -12, 0, -3, 12, 20, 3, S, { paintAll: stonePaint });
-    box(pc, cam, -13, 14, -3.5, 13, 16.5, 4.5, DWOOD());
-    // hearth opening with fire
-    const o0 = cam.p(-6, 0, 3), o1 = cam.p(6, 11, 3);
-    const op = M().rect(Math.round(o0[0]), Math.round(o1[1]), Math.round(o1[0] - o0[0]), Math.round(o0[1] - o1[1]));
-    fill(pc, op, 0x1a1214);
-    const fb = M().ellipse((o0[0] + o1[0]) / 2, o0[1] - 2, 5, 3);
-    fb.each((x, y) => gl(pc, x, y, hash2(x, y, 1) < 0.4 ? 0xffd060 : 0xff7a2a, 1));
-    for (const [dx, h] of [[-2, 5], [0, 7], [2, 5]]) for (let i = 0; i < h; i++) gl(pc, (o0[0] + o1[0]) / 2 + dx + Math.sin(i) * 0.5, o0[1] - 3 - i, i < 2 ? 0xffb030 : 0xffe08a, 1);
-    // little logs
-    lineIn(pc, o0[0] + 2, o0[1] - 1, o1[0] - 2, o0[1] - 1, 0x6a4424);
-    outlineAll(pc);
+    const S = mat(0x8a827a, { cont: 1.1 });
+    box(pc, cam, -12, 0, -3, 12, 20, 3, S, { paintAll: stone(S, { h: 3, w: 6 }) });
+    const W = DWOOD();
+    box(pc, cam, -13, 14, -3.5, 13, 16.5, 4.5, W, { paintAll: wood(W, { seed: 3, horizontal: true }) });
+    // the hearth opening: sooty dark, logs, a crackling fire
+    const op = M().poly([cam.p(-6, 0.4, 3), cam.p(6, 0.4, 3), cam.p(6, 9, 3), cam.p(3, 11, 3), cam.p(-3, 11, 3), cam.p(-6, 9, 3)].map((q) => [q[0], q[1]]));
+    seam(pc, op, 'shadow');
+    op.each((x, y) => pc.set(x, y, y < op.bounds().y0 + 3 ? 0x140c10 : 0x24161a));
+    const b = op.bounds();
+    const LG = mat(0x6a4424, { cont: 1.1 });
+    tube(pc, [[b.x0 + 2, b.y1 - 1.5], [b.x1 - 2, b.y1 - 2.5]], 1.2, LG, { bias: 0.06 });
+    tube(pc, [[b.x0 + 3, b.y1 - 0.5], [b.x1 - 1, b.y1 - 0.5]], 1.1, LG, { bias: 0.06 });
+    const mx = (b.x0 + b.x1) / 2;
+    const fl = M().poly([[mx - 5, b.y1 - 2], [mx - 3, b.y1 - 7], [mx - 1.6, b.y1 - 4.6], [mx, b.y1 - 9.4], [mx + 1.6, b.y1 - 4.6], [mx + 3.4, b.y1 - 7.4], [mx + 5, b.y1 - 2]]);
+    fl.each((x, y) => { const t = (b.y1 - y) / 9; gl(pc, x, y, t > 0.6 ? 0xfff2b0 : t > 0.35 ? 0xffc040 : 0xff7a2a, 1); });
+    ink(pc);
+    for (const [x, y] of [[mx - 2, b.y0 - 1], [mx + 3, b.y0 - 2]]) void x, void y;
+    // a candle and a little pot on the mantel
+    const cd = cam.p(-8, 16.5, 0.5);
+    const flame = candle(pc, Math.round(cd[0]), Math.round(cd[1]), 4);
+    const pt = cam.p(8, 16.5, 0.5);
+    const pot = blob(pt[0], pt[1] - 2, 2.2, 2, { seed: 4 });
+    seam(pc, pot, 'shadow'); form(pc, pot, mat(0x5a8ac8, { cont: 1.1 }), { bias: 0.08 });
+    ink(pc);
+    flame();
   },
   stool(pc) {
-    const B = mat(0x7a5434, { cont: 1.05 });
-    const c = cylinder(pc, 16, 13, 10, 4, 12, B, { topTone: 1 });
-    // bark texture
-    c.body.each((x, y) => { if ((x + Math.floor(y / 2)) % 3 === 0) { const k = B.indexOf(pc.getHex(x, y)); if (k >= 0 && k < 5) pc.set(x, y, B[k + 1]); } });
-    // growth rings on top
-    const T = mat(0xd8a868);
-    c.top.each((x, y) => { const d = Math.hypot((x + 0.5 - 16) / 10, (y + 0.5 - 13) / 4); pc.set(x, y, T[Math.floor(d * 5) % 2 ? 3 : 2]); });
-    pc.set(16, 13, T[5]);
-    // mushroom friend
-    const cap = M().ellipse(25, 22, 2.6, 1.6); fill(pc, cap, 0xc84a3a); pc.set(24, 21, 0xf0e0d0);
-    pc.set(25, 23, 0xe8e0d0); pc.set(25, 24, 0xe8e0d0);
-    outlineAll(pc);
+    // a tree stump: rough bark with deep furrows, a cut top with growth rings, a root flare
+    const B = mat(0x6e4a2e, { cont: 1.1 });
+    const body = M().rect(6, 12, 20, 13).union(M().ellipse(16, 25, 10, 3.6));
+    for (const [x, y, r] of [[5.4, 24.6, 2.6], [26.8, 24.4, 2.4], [12, 27.4, 2.2], [21, 27.6, 2]]) body.union(blob(x, y, r, r * 0.8, { seed: x | 0 }));
+    seam(pc, body, 'shadow');
+    form(pc, body, B, { cx: 12, cy: 18, rx: 13, ry: 30, dome: 0.2, bias: 0.04 });
+    body.each((x, y) => { const f = Math.sin(x * 1.3 + vnoise(x * 0.3, y * 0.2, 3) * 4); if (f > 0.65 && !isTop(body, x, y)) step(pc, B, x, y, 2, 1, 5); else if (f < -0.85) step(pc, B, x, y, -1, 1, 5); });
+    const T = mat(0xd8a868, { cont: 1.08 });
+    const top = blob(16, 12, 10, 4, { seed: 2, lump: 0.03 });
+    top.each((x, y) => { const d = Math.hypot((x + 0.5 - 15.4) / 10, (y + 0.5 - 12) / 4) + vnoise(x * 0.4, y * 0.4, 2) * 0.12; pc.set(x, y, T[Math.floor(d * 5.5) % 2 ? 3 : 2]); });
+    top.edge().each((x, y) => pc.set(x, y, y < 12 ? B[2] : B[3]));
+    pc.set(15, 12, T[5]); line(pc, 17, 11, 22, 13, T[4]);
+    // a little red mushroom friend and a moss tuft
+    mushroom(pc, 25.6, 24, 2.6, 4, mat(0xd04a3a, { cont: 1.1 }), mat(0xe8e0d0), { seed: 3, spots: [[-0.3, -0.5, 1]], spotC: [0xf8e8e0, 0xd8b8b0] });
+    for (const [x, y, c] of [[8, 14, 0x6aa04a], [9, 14, 0x8ac06a], [8, 15, 0x4a7a3a], [10, 15, 0x5a903a]]) pc.set(x, y, c);
+    ink(pc);
+    glint(pc, 10, 10, 0);
   },
   chair(pc) {
     const cam = CAM({ cy: 27, scale: 1 });
     const W = WOOD();
-    for (const [x, z] of [[-6, -5], [4.5, -5], [-6, 4], [4.5, 4]]) box(pc, cam, x, 0, z, x + 1.5, 9, z + 1.5, W);
-    box(pc, cam, -6.5, 9, -5.5, 6.5, 11, 6, W, { paintAll: woodPaint(W, 4) });
-    // back rest with slats
-    box(pc, cam, -6.5, 11, -5.5, -5, 24, -4, W);
-    box(pc, cam, 5, 11, -5.5, 6.5, 24, -4, W);
-    box(pc, cam, -6.5, 21, -5.5, 6.5, 24, -4, W, { paintAll: woodPaint(W, 6) });
-    box(pc, cam, -1.5, 11, -5.3, 1.5, 21, -4.2, W);
-    outlineAll(pc);
+    const leg = wood(W, { seed: 4, vertical: true });
+    for (const [x, z] of [[-6, -5], [4.5, -5], [-6, 4], [4.5, 4]]) box(pc, cam, x, 0, z, x + 1.5, 9, z + 1.5, W, { paintAll: leg });
+    // back rest with a carved slat, then the seat
+    box(pc, cam, -6.5, 11, -5.5, -5, 24, -4, W, { paintAll: leg });
+    box(pc, cam, 5, 11, -5.5, 6.5, 24, -4, W, { paintAll: leg });
+    box(pc, cam, -6.5, 21, -5.5, 6.5, 24, -4, W, { paintAll: wood(W, { seed: 6 }) });
+    box(pc, cam, -1.5, 11, -5.3, 1.5, 21, -4.2, W, { paintAll: wood(W, { seed: 8, vertical: true }) });
+    box(pc, cam, -6.5, 9, -5.5, 6.5, 11, 6, W, { paintAll: wood(W, { seed: 5, planks: 2.6 }) });
+    const h = cam.p(0, 17, -4.2); pc.set(h[0], h[1], W[5]); pc.set(h[0] - 1, h[1] - 1, W[1]);
+    ink(pc);
   },
   armchair(pc, sofa = false) {
     const cam = CAM({ cy: 25, scale: sofa ? 0.85 : 1 });
-    const U = sofa ? mat(0x8a5a32, { cont: 1.05 }) : mat(0x4e8a3e, { cont: 1.05 });
+    const U = sofa ? mat(0x8a5a32, { cont: 1.1 }) : mat(0x4e8a3e, { cont: 1.1 });
     const hw = sofa ? 13 : 8;
-    const tex = (p, m, tone) => m.each((x, y) => p.set(x, y, U[sofa ? tone : (hash2(x, y, 3) < 0.25 ? Math.min(5, tone + 1) : tone)]));
+    // root sofa: woody, grained upholstery; mossy armchair: fuzzy living moss
+    const tex = sofa ? wood(U, { seed: 3, horizontal: true }) : (p, m, tone) => m.each((x, y) => { let k = edgeK(m, x, y, tone); const h = hash2(x, y, 3); if (h < 0.22) k++; else if (h > 0.9) k--; p.set(x, y, U[clamp(k, 1, 5)]); });
     box(pc, cam, -hw, 2, -5, hw, 8, 6, U, { paintAll: tex });
     box(pc, cam, -hw, 8, -5, hw, sofa ? 20 : 18, -1.5, U, { paintAll: tex });
-    if (sofa) {
-      // two plump seat cushions and buttoned tufts on the back
-      for (const [x0, x1] of [[-hw + 0.5, -0.3], [0.3, hw - 0.5]]) box(pc, cam, x0, 8, -1.5, x1, 10, 5.5, mat(0xa86a3a, { cont: 1.05 }), { bias: { top: -0.25 } });
-      for (const x of [-8, -3, 3, 8]) { const p = cam.p(x, 15, -1.5); pc.set(p[0], p[1], U[5]); pc.set(p[0] - 1, p[1] - 1, U[2]); }
-    }
+    const CU = sofa ? mat(0xa86a3a, { cont: 1.08 }) : mat(0x5a9a46, { cont: 1.08 });
+    if (sofa) for (const [x0, x1] of [[-hw + 0.5, -0.3], [0.3, hw - 0.5]]) box(pc, cam, x0, 8, -1.5, x1, 10, 5.5, CU, { bias: { top: -0.25 }, paintAll: cloth(CU) });
+    else box(pc, cam, -hw + 0.5, 8, -1.5, hw - 0.5, 10, 5.5, CU, { bias: { top: -0.25 }, paintAll: tex });
+    if (sofa) for (const x of [-8, -3, 3, 8]) { const p = cam.p(x, 15, -1.5); pc.set(p[0], p[1], U[5]); pc.set(p[0] - 1, p[1] - 1, U[2]); }
     box(pc, cam, -hw - 2.5, 2, -5, -hw, 12, 6, U, { paintAll: tex });
     box(pc, cam, hw, 2, -5, hw + 2.5, 12, 6, U, { paintAll: tex });
-    // cushion seam + feet
-    const s0 = cam.p(-hw + 1, 8, 5), s1 = cam.p(hw - 1, 8, 5);
-    lineIn(pc, s0[0], s0[1], s1[0], s1[1], U[4]);
-    if (sofa) { const c0 = cam.p(0, 8, 5), c1 = cam.p(0, 8, -1.5); lineIn(pc, c0[0], c0[1], c1[0], c1[1], U[4]); }
     for (const [x, z] of [[-hw - 2, 5], [hw + 1, 5]]) box(pc, cam, x, 0, z - 1, x + 1.2, 2, z, DWOOD());
-    if (!sofa) for (const [x, y] of [[9, 9], [21, 8], [14, 13]]) { pc.set(x, y, 0x8ac06a); pc.set(x + 1, y, 0x6aa84a); }
-    else { lineIn(pc, 3, 9, 7, 3, 0x6a4424); lineIn(pc, 27, 10, 29, 4, 0x6a4424); pc.set(7, 2, 0x5aa84a); pc.set(29, 3, 0x5aa84a); }
-    outlineAll(pc);
+    if (!sofa) {
+      // moss fuzz: tufts on the top edges and a few tiny sprouts
+      const sil = maskOf(pc, 128);
+      fringe(sil, 16, 20, { dens: 0.4, seed: 3, len: 1, only: (x, y) => y < 18 }).sub(sil).each((x, y) => pc.set(x, y, U[2]));
+    }
+    ink(pc);
+    if (!sofa) { for (const [x, y] of [[9, 9], [21, 8], [14, 13]]) { pc.set(x, y, 0x9ad06a); pc.set(x + 1, y, 0x6aa84a); } pc.set(24, 6, 0xf0e070); }
+    else { line(pc, 3, 9, 7, 3, 0x5a3a20); line(pc, 27, 10, 29, 4, 0x5a3a20); pc.set(7, 2, 0x6ab84a); pc.set(8, 2, 0x4a9a3a); pc.set(29, 3, 0x6ab84a); }
   },
   table(pc, long = false) {
     const W = WOOD();
     if (!long) {
+      // a round pedestal table with a tea cup and a saucer
+      const leg = tube(pc, [[16, 18], [16, 26]], 2, W, { bias: 0.06 });
+      void leg;
+      const ft = blob(16, 27.4, 6.4, 2, { seed: 2 }); seam(pc, ft, 'shadow'); form(pc, ft, W, { bias: 0.08 });
+      const ed = M().ellipse(16, 14.6, 13, 5.5);
       const top = M().ellipse(16, 13, 13, 5.5);
-      const ed = M().ellipse(16, 14.5, 13, 5.5);
-      ring(pc, ed.clone().union(top), W);
-      fill(pc, ed, W[4]);
-      top.each((x, y) => pc.set(x, y, W[(y < 12) ? 2 : 3]));
-      grain(pc, top, W, { vertical: false, seed: 4 });
-      const leg = M().rect(14, 18, 4, 9);
-      ring(pc, leg, W); vol(pc, leg, W, { mode: 'cyl', axis: Math.PI / 2 });
-      const ft = M().ellipse(16, 27.5, 6, 2); ring(pc, ft, W); vol(pc, ft, W, { round: 1.5 });
-      // teacup on the table
-      const cup = M().rect(18, 8, 4, 3); fill(pc, cup, 0xf0e8d8); pc.set(22, 9, 0xf0e8d8); pc.set(18, 8, 0xffffff);
+      seam(pc, ed.clone().union(top), 'shadow');
+      ed.each((x, y) => pc.set(x, y, W[x < 8 ? 3 : 4]));
+      top.each((x, y) => {
+        const d = Math.hypot((x + 0.5 - 16) / 13, (y + 0.5 - 13) / 5.5);
+        let k = (x + 0.5 - 16) / 13 + (y + 0.5 - 13) / 5.5 < -0.6 ? 1 : 2;
+        if (Math.floor(d * 6 + vnoise(x * 0.3, y * 0.5, 4) * 0.8) % 2 && k === 2) k = 3;
+        pc.set(x, y, W[k]);
+      });
+      const SC = mat(0xf0e8d8, { cont: 1.05 });
+      const sau = blob(20.4, 11.6, 3.4, 1.4, { seed: 3 }); seam(pc, sau, 'shadow'); form(pc, sau, SC, { flatten: 0.5 });
+      const cup = M().rect(18.6, 8, 4, 3).union(M().ellipse(20.6, 8, 2, 0.8));
+      seam(pc, cup, 'shadow'); cup.each((x, y) => pc.set(x, y, SC[x < 20 ? 1 : 3]));
+      pc.set(23, 9, SC[3]); pc.set(19, 8, 0x8a5a3a); pc.set(20, 8, 0x6a3a1a);
+      ink(pc);
+      steam(pc, 20, 6, 5, { a: 160 });
     } else {
       const cam = CAM({ cy: 25, scale: 0.9, yaw: -0.4 });
-      box(pc, cam, -14, 9, -5, 14, 11.5, 5, W, { paintAll: woodPaint(W, 6), bias: { top: -0.22 } });
-      for (const [x, z] of [[-13, -4], [11.5, -4], [-13, 3], [11.5, 3]]) box(pc, cam, x, 0, z, x + 1.6, 9, z + 1.4, W);
+      for (const [x, z] of [[-13, -4], [11.5, -4], [-13, 3], [11.5, 3]]) box(pc, cam, x, 0, z, x + 1.6, 9, z + 1.4, W, { paintAll: wood(W, { seed: 4, vertical: true }) });
+      box(pc, cam, -14, 9, -5, 14, 11.5, 5, W, { paintAll: wood(W, { seed: 6, planks: 2.6, knots: true }), bias: { top: -0.22 } });
+      // a loaf on a plate and a candlestick
       const c = cam.p(-4, 11.5, 0);
-      const pl = M().ellipse(c[0], c[1], 3, 1.2); fill(pc, pl, 0xf0e8d8);
+      const pl = blob(c[0], c[1], 4, 1.5, { seed: 2 }); seam(pc, pl, 'shadow'); form(pc, pl, mat(0xf0e8d8), { flatten: 0.5 });
+      const BR = mat(0xc8843a, { cont: 1.12 });
+      const loaf = blob(c[0], c[1] - 2, 3.4, 2.2, { seed: 5 }); seam(pc, loaf, 'shadow'); form(pc, loaf, BR, { bias: 0.08 });
+      line(pc, c[0] - 1, c[1] - 4, c[0] + 1, c[1] - 2, BR[1]);
       const c2 = cam.p(6, 11.5, 0);
-      cylinder(pc, c2[0], c2[1] - 3, 1.4, 0.6, 3, mat(0xc8a050), { ring: false });
+      const flame = candle(pc, Math.round(c2[0]), Math.round(c2[1]), 5);
+      ink(pc);
+      flame();
     }
-    outlineAll(pc);
   },
   rug(pc, c, kind) {
-    const R = mat(c, { cont: 1.05 });
+    const R = mat(c, { cont: 1.08 });
     if (kind === 'long') {
-      const m = M().poly([[2, 21], [18, 9], [30, 14], [14, 27]]);
-      ring(pc, m, R); fill(pc, m, R[3]);
-      const in1 = M().poly([[5, 21], [18, 11.5], [27, 14.5], [14, 24.5]]);
-      fill(pc, in1, R[2]);
-      const in2 = M().poly([[9, 20.5], [18, 14], [23, 16], [14, 22.5]]);
-      fill(pc, in2, mix(c, 0xf0d890, 0.5));
-      in2.each((x, y) => { if ((x + y) % 4 === 0) pc.set(x, y, R[4]); });
-      for (const [x0, y0, x1, y1] of [[2, 21, 14, 27], [18, 9, 30, 14]]) for (let t = 0; t <= 1; t += 0.08) { const x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t; pc.set(x - 1, y + 1, 0xf0e0c0); }
+      // a woven runner in perspective: border, diamond motif, weave, fringed ends
+      const m = M().poly([[2.6, 21], [18, 9.4], [29.4, 14.4], [14, 26.6]]);
+      const uv = (x, y) => { const dx = x + 0.5 - 16, dy = y + 0.5 - 18; return [dx * 0.8 - dy * 1.0, dx * 0.45 + dy * 0.85]; };
+      m.each((x, y) => {
+        const [u, v] = uv(x, y);
+        let col = R[3];
+        if (Math.abs(v) > 3.6) col = R[2];
+        else if (Math.abs(v) > 2.8) col = mix(c, 0xf0d890, 0.55);
+        else if ((Math.abs(((u % 6) + 6) % 6 - 3) + Math.abs(v)) < 2.4) col = (Math.abs(((u % 6) + 6) % 6 - 3) + Math.abs(v)) < 1.2 ? R[1] : mix(c, 0xf0d890, 0.5);
+        if ((x + y) % 2 === 0 && hash2(x, y, 3) < 0.3) col = mix(col, 0x000000, 0.12);
+        pc.set(x, y, col);
+      });
+      m.each((x, y) => { if (isBot(m, x, y)) pc.set(x, y, R[4]); });
+      ink(pc);
+      for (const [x0, y0, x1, y1] of [[2.6, 21, 14, 26.6], [18, 9.4, 29.4, 14.4]]) for (let t = 0.05; t < 1; t += 0.11) { const x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t; pc.set(x - 1, y + 1, 0xf0e0c0); pc.set(x - 2, y + 2, 0xd8c8a0); }
     } else {
       const fancy = kind === 'fancy';
-      const m = M().ellipse(16, 18, 15, 9.5);
-      ring(pc, m, R);
+      const m = blob(16, 18, 15, 9.6, { seed: 4, lump: 0.015 });
       m.each((x, y) => {
-        const d = Math.hypot((x + 0.5 - 16) / 15, (y + 0.5 - 18) / 9.5);
-        const band = Math.floor(d * (fancy ? 6 : 5));
-        pc.set(x, y, [R[3], fancy ? 0xe8b840 : R[1], R[3], R[4], fancy ? 0xe8b840 : R[2], R[4], R[3]][band] ?? R[3]);
+        const d = Math.hypot((x + 0.5 - 16) / 15, (y + 0.5 - 18) / 9.6);
+        const band = Math.floor(d * (fancy ? 6 : 5) + Math.sin(Math.atan2(y - 18, x - 16) * (fancy ? 8 : 0)) * 0.12);
+        let col = [R[3], fancy ? 0xe8b840 : R[1], R[3], R[4], fancy ? 0xe8b840 : R[2], R[4], R[3]][band] ?? R[3];
+        // woven: braided coil rings for the root-fiber rug, a soft pile for the carpet
+        if (!fancy && (Math.floor(d * 15) + Math.floor(Math.atan2(y - 18, x - 16) * 6)) % 2 === 0) col = mix(col, 0x000000, 0.12);
+        if (fancy && (x + y) % 2 === 0 && hash2(x, y, 3) < 0.3) col = mix(col, 0x000000, 0.14);
+        pc.set(x, y, col);
       });
-      // woven texture
-      m.each((x, y) => { if ((x + y) % 2 === 0 && hash2(x, y, 3) < 0.3) { const cc = pc.getHex(x, y); pc.set(x, y, mix(cc, 0x000000, 0.15)); } });
+      m.each((x, y) => { if (isBot(m, x, y) && y > 18) pc.set(x, y, R[5]); });
       if (fancy) {
-        const md = M().poly([[16, 13], [21, 18], [16, 23], [11, 18]]);
-        fill(pc, md, 0xe8b840); pc.set(16, 18, 0x6a2a8a); pc.set(15, 17, 0xfff0b0);
-        for (const [x, y] of [[1, 18], [31, 18], [16, 8], [16, 28]]) { pc.set(x, y, 0xe8b840); pc.set(x, y + 1, 0xc89020); }
+        const md = M().poly([[16, 12.6], [21.4, 18], [16, 23.4], [10.6, 18]]);
+        md.each((x, y) => pc.set(x, y, Math.abs(x + 0.5 - 16) + Math.abs(y + 0.5 - 18) * 1.2 < 3 ? 0x6a2a8a : 0xe8b840));
+        pc.set(16, 18, 0xfff0b0);
       }
+      ink(pc);
+      if (fancy) for (const [x, y] of [[0, 18], [31, 18], [16, 7], [16, 29], [5, 11], [27, 11], [5, 25], [27, 25]]) { pc.set(x, y, 0xe8b840); if (y > 18) pc.set(x, y + 1, 0xc89020); }
     }
-    outlineAll(pc);
   },
   fern(pc) {
-    const P = mat(0xb8603a, { cont: 1.05 });
-    const LR = mat(0x5aa04a, { cont: 1.1 });
-    for (const [x1, y1, b] of [[5, 6, 1.5], [12, 2, 1], [20, 2, -1], [27, 6, -1.5], [3, 13, 1], [29, 13, -1], [16, 1, 0]]) leaf(pc, 16, 18, x1, y1, 2.4, LR, { bend: b });
+    const P = mat(0xb8603a, { cont: 1.12 });
+    const LR = mat(0x5aa04a, { cont: 1.15 });
+    const LD = mat(0x3e8040, { cont: 1.12 });
+    for (const [x1, y1, b, R] of [[4, 7, 1.5, LD], [27, 6, -1.5, LD], [12, 2, 1, LR], [20, 2, -1, LR], [2.6, 14, 1, LR], [29.4, 13, -1, LR], [16, 0.6, 0.3, LR]]) blade(pc, 16, 18, x1, y1, 2.6, R, { bend: b, serr: 0.35, teeth: 6, veins: 3 });
     const pot = cylinder(pc, 16, 18, 8, 2.6, 10, P, { topTone: 5 });
-    for (let x = 8; x < 25; x++) if (pot.body.get(x, 21)) { pc.set(x, 21, P[2]); pc.set(x, 22, P[4]); }
-    outlineAll(pc);
+    for (let x = 8; x < 25; x++) if (pot.body.get(x, 21)) { pc.set(x, 21, P[x < 12 ? 1 : 2]); pc.set(x, 22, P[4]); }
+    M().ellipse(16, 18, 6.4, 1.8).each((x, y) => pc.set(x, y, hash2(x, y, 2) < 0.3 ? 0x3a2414 : 0x4e3220));
+    ink(pc);
+    glint(pc, 10, 21, 0);
   },
   bookshelf(pc) {
     const cam = CAM({ cy: 29, scale: 1, yaw: -0.3 });
     const W = DWOOD();
-    box(pc, cam, -10, 0, -3, 10, 27, 3, W, { paintAll: woodPaint(W, 2, true) });
-    const cols = [0xc94a3a, 0x3a7ac9, 0x5ab84a, 0xe0b040, 0x9a5ad9, 0xd8783a, 0x3aa8a0];
+    box(pc, cam, -10, 0, -3, 10, 27, 3, W, { paintAll: wood(W, { seed: 2, vertical: true }) });
+    const cols = [0xc94a3a, 0x3a7ac9, 0x5ab84a, 0xe0b040, 0x9a5ad9, 0xd8783a, 0x3aa8a0, 0xe8e0c8];
     for (let s = 0; s < 3; s++) {
       const y0 = 2 + s * 8.5;
       const a = cam.p(-8.5, y0 + 7, 3), b = cam.p(8.5, y0, 3);
-      const x0 = Math.round(Math.min(a[0], b[0])), yt = Math.round(a[1]);
-      // shelf cavity
-      fill(pc, M().rect(x0, yt, Math.round(Math.abs(b[0] - a[0])), 7), 0x2a1a10);
-      let x = x0;
-      let i = s * 3;
-      while (x < x0 + Math.abs(b[0] - a[0]) - 1) {
+      const x0 = Math.round(Math.min(a[0], b[0])), yt = Math.round(a[1]), wv = Math.round(Math.abs(b[0] - a[0]));
+      const cav = M().rect(x0, yt, wv, 7);
+      cav.each((x, y) => pc.set(x, y, y === yt ? 0x140a08 : 0x24140c));
+      let x = x0, i = s * 3;
+      while (x < x0 + wv - 1) {
         const w = 2 + (i % 2), h = 5 + ((i * 7) % 3);
-        const C = mat(cols[i % cols.length]);
-        for (let xx = 0; xx < w; xx++) for (let yy = 0; yy < h; yy++) pc.set(x + xx, yt + 7 - h + yy, C[xx === 0 ? 2 : xx === w - 1 ? 4 : 3]);
-        pc.set(x, yt + 7 - h + 1, C[1]);
-        x += w; i++;
+        const C = mat(cols[i % cols.length], { cont: 1.1 });
+        const lean = i % 5 === 3 && x < x0 + wv - 4;
+        for (let xx = 0; xx < w; xx++) for (let yy = 0; yy < h; yy++) {
+          const X = x + xx + (lean ? Math.floor(yy / 3) - 1 : 0), Y = yt + 7 - h + yy;
+          if (!cav.get(X, Y)) continue;
+          pc.set(X, Y, C[xx === 0 ? 2 : xx === w - 1 ? 4 : 3]);
+        }
+        pc.set(x, yt + 7 - h, C[1]);
+        if (h > 5) { pc.set(x + 1, yt + 7 - h + 2, mix(C[3], 0xf0d890, 0.6)); if (w > 2) pc.set(x + 1, yt + 7 - h + 3, mix(C[3], 0xf0d890, 0.6)); }
+        x += w + (lean ? 1 : 0); i++;
       }
     }
-    outlineAll(pc);
+    ink(pc);
   },
   barrel(pc) {
     const W = WOOD();
-    const body = M().fn((x, y) => { const t = (y + 0.5 - 17) / 12; const rx = 10 - t * t * 2.6; return Math.abs(t) <= 1 && Math.abs(x + 0.5 - 16) <= rx; });
-    body.union(M().ellipse(16, 29, 7.4, 2.2));
-    ring(pc, body, W);
-    vol(pc, body, W, { mode: 'cyl', axis: Math.PI / 2, flat: 0.15 });
-    body.each((x, y) => { if ((x - 6) % 3 === 0) { const k = W.indexOf(pc.getHex(x, y)); if (k >= 0 && k < 5) pc.set(x, y, W[k + 1]); } });
+    // bulging staves, iron hoops, a lid with a bung and a drip of root beer
+    const body = M().fn((x, y) => { const t = (y + 0.5 - 17) / 12; const rx = 10.4 - t * t * 2.8; return Math.abs(t) <= 1 && Math.abs(x + 0.5 - 16) <= rx; });
+    body.union(M().ellipse(16, 29, 7.6, 2.2));
+    form(pc, body, W, { cx: 12, cy: 15, rx: 12, ry: 30, dome: 0.2, bias: 0.04 });
+    body.each((x, y) => {
+      const t = (y + 0.5 - 17) / 12, rx = 10.4 - t * t * 2.8, u = (x + 0.5 - 16) / rx;
+      const st = Math.asin(clamp(u, -1, 1)) * 3.2;
+      if (Math.abs(st - Math.round(st)) < 0.12 && !isTop(body, x, y)) step(pc, W, x, y, 2, 1, 5);
+      else if (vnoise(st * 2, y * 0.25, 3) > 0.75) step(pc, W, x, y, 1, 1, 5);
+    });
     const I = IRON();
-    for (const y of [9, 15, 22, 27]) for (let x = 0; x < 32; x++) if (body.get(x, y)) pc.set(x, y, y === 15 || y === 22 ? I[3] : I[2]);
-    const top = M().ellipse(16, 5.5, 7.4, 2.4);
-    ring(pc, top, W); fill(pc, top, W[2]);
-    for (let x = 10; x < 23; x += 3) pc.set(x, 5, W[4]);
-    outlineAll(pc);
+    for (const y of [8, 14, 21, 27]) for (let x = 0; x < 32; x++) if (body.get(x, y)) { pc.set(x, y, I[x < 11 ? 1 : x < 19 ? 2 : 4]); if (body.get(x, y + 1)) step(pc, W, x, y + 1, 1, 1, 5); }
+    for (const y of [14, 21]) { pc.set(7, y, I[0]); pc.set(24, y, I[5]); }
+    const top = M().ellipse(16, 5.4, 7.6, 2.4);
+    seam(pc, top, 'shadow');
+    top.each((x, y) => pc.set(x, y, W[clamp(edgeK(top, x, y, 2), 1, 5)]));
+    for (let x = 11; x < 22; x += 3) line(pc, x, 4, x - 1, 7, W[3]);
+    pc.set(19, 5, W[5]); pc.set(18, 5, W[4]);
+    ink(pc);
+    pc.set(12, 18, 0x6a3a1a); pc.set(12, 19, 0x8a4a20); pc.set(12, 20, 0x6a3a1a);
+    glint(pc, 9, 10, 0);
   },
   crate(pc) {
     const cam = CAM({ cy: 24, scale: 1 });
     const W = LWOOD();
-    const plank = (p, m, tone) => {
-      m.each((x, y) => p.set(x, y, W[tone]));
-      const b = m.bounds();
-      m.each((x, y) => { if ((y - b.y0) % 4 === 3) p.set(x, y, W[Math.min(5, tone + 2)]); });
-      m.edge().each((x, y) => p.set(x, y, W[Math.min(5, tone + 1)]));
-      for (const [cx, cy] of [[b.x0 + 1, b.y0 + 1], [b.x1 - 1, b.y0 + 1], [b.x0 + 1, b.y1 - 1], [b.x1 - 1, b.y1 - 1]]) if (m.get(cx, cy) && m.get(cx + 1, cy) && m.get(cx - 1, cy)) p.set(cx, cy, 0x5a5a64);
-    };
-    box(pc, cam, -8, 0, -8, 8, 15, 8, W, { paintAll: plank });
-    // diagonal brace + stencil on the front face
-    const a = cam.p(-8, 0, 8), b = cam.p(8, 15, 8);
-    lineIn(pc, a[0] + 1, a[1] - 1, b[0] - 1, b[1] + 1, W[1]);
-    lineIn(pc, a[0] + 1, a[1] - 2, b[0] - 1, b[1], W[4]);
-    const f = cam.p(0, 9, 8);
-    for (const [dx, dy] of [[-3, 0], [-2, 0], [-1, 0], [1, 0], [2, 0], [-3, 1], [1, 1]]) pc.set(f[0] + dx, f[1] + dy, 0xc84a3a);
-    outlineAll(pc);
+    box(pc, cam, -8, 0, -8, 8, 15, 8, W, { paintAll: wood(W, { seed: 3, planks: 3.8, nails: true, horizontal: true }) });
+    // diagonal brace on the front and a red stencil
+    const a = cam.p(-7.4, 0.6, 8), b = cam.p(7.4, 14.4, 8);
+    const br = M().capsule(a[0], a[1], b[0], b[1], 1.2).and(maskOf(pc, 128));
+    seam(pc, br, 'shadow');
+    br.each((x, y) => pc.set(x, y, W[(x + y) % 5 === 0 ? 3 : isTop(br, x, y) ? 1 : 2]));
+    const f = cam.p(-2, 10, 8);
+    const ST = 0xb83a30;
+    for (const [dx, dy] of [[-3, 0], [-2, 0], [-1, 0], [1, 0], [2, 0], [3, 0], [-3, 1], [1, 1], [-3, 2], [-2, 2], [1, 2], [2, 2]]) if (!br.get(f[0] + dx, f[1] + dy)) pc.set(f[0] + dx, f[1] + dy, ST);
+    // a tuft of packing straw poking out of the lid
+    ink(pc);
+    for (const [x0, y0, x1, y1] of [[17, 5, 19, 1], [18, 5, 21, 2], [20, 6, 23, 4]]) line(pc, x0, y0, x1, y1, (i) => (i % 2 ? 0xd8b050 : 0xf0d070));
   },
   clock(pc) {
     const cam = CAM({ cy: 30, scale: 1, yaw: -0.35 });
     const W = DWOOD();
-    box(pc, cam, -6, 0, -3, 6, 27, 3, W, { paintAll: woodPaint(W, 9, true) });
+    box(pc, cam, -6, 0, -3, 6, 27, 3, W, { paintAll: wood(W, { seed: 9, vertical: true }) });
+    box(pc, cam, -6.8, 25, -3.6, 6.8, 27.6, 3.6, W, { tone: { top: 1 }, paintAll: wood(W, { seed: 10 }) });
     const f = cam.p(0, 21, 3);
-    const face = M().disk(f[0], f[1], 4.6);
-    ring(pc, face, mat(0xe0b040)); fill(pc, face, 0xf2ead4);
-    for (let i = 0; i < 12; i += 3) { const a = i / 12 * Math.PI * 2; pc.set(f[0] + Math.cos(a) * 3.4, f[1] + Math.sin(a) * 3.4, 0x6a5a4a); }
-    lineIn(pc, f[0], f[1], f[0], f[1] - 3, 0x2a1a14); lineIn(pc, f[0], f[1], f[0] + 2, f[1], 0x2a1a14);
-    // pendulum window
+    const G = GOLD();
+    const face = M().disk(f[0], f[1], 4.8);
+    seam(pc, face, 'shadow');
+    face.each((x, y) => pc.set(x, y, 0xf2ead4));
+    face.edge().each((x, y) => pc.set(x, y, G[(x + 0.5 - f[0]) + (y + 0.5 - f[1]) < 0 ? 1 : 3]));
+    for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; pc.set(f[0] + Math.cos(a) * 3.2, f[1] + Math.sin(a) * 3.2, i % 3 ? 0xb0a080 : 0x5a4a3a); }
+    line(pc, f[0], f[1], f[0], f[1] - 3, 0x2a1a14); line(pc, f[0], f[1], f[0] + 2, f[1] + 1, 0x2a1a14);
+    // pendulum window: glass with the brass bob mid-swing
     const w0 = cam.p(-3, 4, 3), w1 = cam.p(3, 14, 3);
     const win = M().rect(Math.round(w0[0]) + 1, Math.round(w1[1]), 5, 10);
-    fill(pc, win, 0x2a1810);
-    for (let y = 0; y < 7; y++) pc.set(Math.round(w0[0]) + 3, Math.round(w1[1]) + y, 0xc8a040);
-    const pd = M().disk(Math.round(w0[0]) + 3.5, Math.round(w1[1]) + 7.5, 1.6); fill(pc, pd, 0xf0c848);
-    outlineAll(pc);
+    seam(pc, win, 'shadow');
+    win.each((x, y) => pc.set(x, y, x === win.bounds().x0 ? 0x3a2418 : 0x24160e));
+    line(pc, Math.round(w0[0]) + 3, Math.round(w1[1]), Math.round(w0[0]) + 4, Math.round(w1[1]) + 6, G[2]);
+    const pd = blob(Math.round(w0[0]) + 4.5, Math.round(w1[1]) + 7.5, 1.7, 1.7, { seed: 2 });
+    form(pc, pd, G, { bias: 0.1 });
+    ink(pc);
+    pc.set(Math.round(w0[0]) + 2, Math.round(w1[1]) + 1, 0x6a5a4a);
+    glint(pc, Math.round(f[0]) - 2, Math.round(f[1]) - 2, 0);
   },
   painting(pc, c, t) {
     const window = t === 'window';
-    const FR = mat(window ? 0xa87448 : 0xd8a840, { cont: 1.1 });
+    const FR = mat(window ? 0xa87448 : 0xd8a840, { cont: 1.15, warm: window ? 40 : 52 });
+    // a carved frame: bevelled moulding with corner blocks
     const m = M().rect(2, 4, 28, 23);
-    ring(pc, m, FR); vol(pc, m, FR, { round: 2.5 });
     const inner = M().rect(5, 7, 22, 17);
+    m.clone().sub(inner).each((x, y) => {
+      const d = Math.min(x - 2, y - 4, 29 - x, 26 - y);
+      let k = d === 0 ? (x - 2 === 0 || y - 4 === 0 ? 1 : 4) : d === 1 ? 2 : (x - 5 < 0 || y - 7 < 0 ? 3 : 2);
+      if (d === 2) k = (x < 5 || y < 7) ? 4 : 1;
+      pc.set(x, y, FR[k]);
+    });
+    if (!window) for (const [x, y] of [[3, 5], [27, 5], [3, 24], [27, 24]]) { pc.set(x, y, FR[0]); pc.set(x + 1, y + 1, FR[4]); }
     if (window) {
       inner.each((x, y) => pc.set(x, y, mix(0x6ac0f0, 0xd8f0ff, (y - 7) / 17)));
-      for (const [x, y, r] of [[11, 12, 2.4], [14, 11, 2.8], [17, 12, 2.2]]) M().disk(x, y, r).each((X, Y) => pc.set(X, Y, 0xffffff));
+      for (const [x, y, r] of [[10, 12, 2.4], [13, 11, 2.8], [16, 12.4, 2.2], [20, 18, 1.8], [22.4, 17.6, 2]]) blob(x, y, r, r * 0.8, { seed: x | 0 }).each((X, Y) => { if (inner.get(X, Y)) pc.set(X, Y, Y > y ? 0xe0f0ff : 0xffffff); });
+      M().disk(22, 10, 2).each((x, y) => gl(pc, x, y, 0xfff4b0, 0.6));
       for (let y = 7; y < 24; y++) { pc.set(15, y, FR[2]); pc.set(16, y, FR[4]); }
       for (let x = 5; x < 27; x++) { pc.set(x, 15, FR[2]); pc.set(x, 16, FR[4]); }
-      M().disk(22, 10, 2).each((x, y) => gl(pc, x, y, 0xfff4b0, 0.6));
+      for (let x = 5; x < 27; x++) pc.set(x, 25, FR[1]);
     } else if (c === 0x3ac9d9) {
-      // the beach: sea, sand, a little umbrella
-      inner.each((x, y) => pc.set(x, y, y < 13 ? mix(0x8ad0f8, 0xd8f0ff, (y - 7) / 6) : y < 18 ? (((x + y) % 5) ? 0x3ab0d0 : 0x7ad8e8) : 0xf0d890));
-      M().disk(22, 10, 2.2).each((x, y) => pc.set(x, y, 0xffe060));
-      lineIn(pc, 11, 13, 11, 21, 0x8a6a4a);
-      M().ellipse(11, 13, 4, 2).sub(M().rect(0, 14, 32, 10)).each((x, y) => pc.set(x, y, x < 11 ? 0xe04a4a : 0xf8f0e0));
+      // "The Beach": sky, a rolling sea with white caps, sand and a little umbrella
+      inner.each((x, y) => pc.set(x, y, y < 13 ? mix(0x8ad0f8, 0xd8f0ff, (y - 7) / 6) : y < 18 ? ((x + y * 2) % 6 ? (y < 15 ? 0x3ab0d0 : 0x2a90c0) : 0xd8f4ff) : y === 18 ? 0xf8f0d8 : 0xf0d890));
+      for (let x = 5; x < 27; x++) if (hash2(x, 21, 3) < 0.2) pc.set(x, 21 + (x % 3), 0xd8b870);
+      M().disk(22, 10, 2.2).each((x, y) => pc.set(x, y, x + y < 31 ? 0xfff0a0 : 0xffd84a));
+      line(pc, 11, 13, 11, 21, 0x8a6a4a);
+      blob(11, 13, 4.2, 2, { seed: 2 }).sub(M().rect(0, 14, 32, 10)).each((x, y) => pc.set(x, y, (x - 7) % 3 === 0 ? 0xf8f0e0 : 0xe04a4a));
     } else {
-      // "The Sun": a big yellow circle, deeply moving
-      inner.each((x, y) => pc.set(x, y, mix(0x5aa0e0, 0x9ad0f8, (y - 7) / 17)));
-      M().disk(16, 15, 5.5).each((x, y) => pc.set(x, y, x + y < 30 ? 0xfff0a0 : 0xffd34a));
-      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; pc.set(16 + Math.cos(a) * 7.5, 15 + Math.sin(a) * 7.5, 0xffe070); }
+      // "The Sun": a big yellow circle with brush-stroke rays, deeply moving
+      inner.each((x, y) => pc.set(x, y, mix(0x5aa0e0, 0x9ad0f8, (y - 7) / 17 + (hash2(x, y >> 1, 3) - 0.5) * 0.15)));
+      for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6 + 0.2; line(pc, 16 + Math.cos(a) * 6.6, 15 + Math.sin(a) * 6.6, 16 + Math.cos(a) * 8.4, 15 + Math.sin(a) * 8.4, (n, X, Y) => (inner.get(X, Y) ? 0xffe070 : null)); }
+      const sun = blob(16, 15, 5.6, 5.6, { seed: 6, lump: 0.04 });
+      sun.each((x, y) => pc.set(x, y, (x + 0.5 - 14) ** 2 + (y + 0.5 - 13) ** 2 < 9 ? 0xfff6c0 : x + y < 31 ? 0xfff0a0 : 0xffd34a));
     }
-    for (let x = 5; x < 27; x++) pc.set(x, 7, mix(pc.getHex(x, 7), 0x000000, 0.25));
-    outlineAll(pc);
+    for (let x = 5; x < 27; x++) pc.set(x, 7, mix(pc.getHex(x, 7), 0x000000, 0.3));
+    for (let y = 7; y < 24; y++) pc.set(5, y, mix(pc.getHex(5, y), 0x000000, 0.2));
+    ink(pc);
+    glint(pc, 3, 5, 0);
   },
   banner(pc) {
-    const R = mat(0x8a2a3a, { cont: 1.1 });
+    const R = mat(0x8a2a3a, { cont: 1.12 });
     const pole = DWOOD();
-    const p = M().capsule(3, 4, 29, 4, 1.2); ring(pc, p, pole); vol(pc, p, pole, { mode: 'cyl', axis: 0 });
-    const m = M().poly([[6, 5], [26, 5], [26, 28], [16, 22], [6, 28]]);
-    ring(pc, m, R);
-    vol(pc, m, R, { mode: 'cyl', axis: 0, flat: 0.5 });
-    // folds
-    for (const x of [11, 21]) for (let y = 6; y < 25; y++) if (m.get(x, y)) pc.set(x, y, R[4]);
-    // crossed claws crest
-    const G = mat(0xf0c848, { cont: 1.1 });
-    for (let i = 0; i < 9; i++) { pc.set(11 + i, 9 + i, G[2]); pc.set(20 - i, 9 + i, G[2]); }
-    for (const [x, y] of [[10, 8], [9, 9], [21, 8], [22, 9], [11, 18], [20, 18]]) pc.set(x, y, G[1]);
-    M().disk(15.5, 13.5, 2).each((x, y) => pc.set(x, y, G[3]));
-    outlineAll(pc);
+    // the cloth hangs in soft folds from a pole, swallow-tailed, with the crossed-claws crest
+    const m = M().poly([[6, 5], [26, 5], [26.6, 28.4], [16, 22.4], [5.4, 28.4]]);
+    seam(pc, m, 'shadow');
+    m.each((x, y) => { const f = Math.sin((x - 6) / 20 * Math.PI * 3); pc.set(x, y, R[f > 0.55 ? 2 : f < -0.55 ? 4 : 3]); });
+    m.each((x, y) => { if (isBot(m, x, y) && !isTop(m, x, y)) pc.set(x, y, R[5]); });
+    for (let x = 6; x < 26; x++) if (m.get(x, 25 - Math.abs(x - 16) * 0.55)) pc.set(x, Math.round(25 - Math.abs(x - 16) * 0.55), 0xe8b840);
+    const G = GOLD();
+    const claw = (x0, y0, dx) => { for (let i = 0; i < 9; i++) { pc.set(x0 + i * dx, y0 + i, G[i < 3 ? 1 : 2]); pc.set(x0 + i * dx, y0 + i + 1, G[4]); } for (const k of [-1, 1, 3]) pc.set(x0 + k * dx * -0.5, y0 - 1 + Math.abs(k), G[1]); };
+    claw(11, 9, 1); claw(20, 9, -1);
+    const shield = blob(15.5, 13.6, 2.4, 2.6, { seed: 2 });
+    seam(pc, shield, 'shadow'); form(pc, shield, G, { bias: 0.1 });
+    tube(pc, [[2.6, 4.4], [29.4, 4.4]], 1.3, pole, { bias: 0.06 });
+    for (const x of [2, 29]) { const k = blob(x + 0.5, 4.4, 1.8, 1.8, { seed: x }); seam(pc, k, 'shadow'); form(pc, k, G, { bias: 0.1 }); }
+    ink(pc);
+    for (const [x0, y0] of [[8, 5], [24, 5]]) line(pc, x0, y0, x0 + (x0 < 16 ? -2 : 2), 2, 0x3a2a20);
   },
   musicbox(pc) {
     const cam = CAM({ cy: 25, scale: 1 });
-    const W = mat(0xa86a3a, { cont: 1.05 });
-    box(pc, cam, -8, 0, -5, 8, 8, 5, W, { paintAll: woodPaint(W, 5) });
-    // open lid tilted back
-    drawSolid(pc, cam, [{ pts: [[-8, 8, -5], [8, 8, -5], [8, 17, -9], [-8, 17, -9]], R: W, twoSided: true }]);
-    const G = mat(0xe0b040);
+    const W = mat(0xa86a3a, { cont: 1.1 });
+    box(pc, cam, -8, 0, -5, 8, 8, 5, W, { paintAll: wood(W, { seed: 5 }) });
+    // open lid tilted back with a mirror, a brass comb and drum, a dancing mole on a spring
+    drawSolid(pc, cam, [{ pts: [[-8, 8, -5], [8, 8, -5], [8, 17, -9], [-8, 17, -9]], R: W, twoSided: true, paint: wood(W, { seed: 7 }) }]);
+    const mi = cam.p(0, 13, -7);
+    const mirror = blob(mi[0], mi[1], 4, 2.6, { seed: 3 });
+    mirror.each((x, y) => pc.set(x, y, (x + y) % 5 === 0 ? 0xffffff : 0xb8d8e8));
+    const G = GOLD();
     const c = cam.p(0, 8, 0);
-    M().ellipse(c[0], c[1], 5, 2).each((x, y) => pc.set(x, y, G[3]));
-    for (let x = -3; x <= 3; x += 2) pc.set(c[0] + x, c[1] - 1, G[1]);
-    // crank + notes floating up
+    const well = M().poly(topPoly(cam, -6.6, -3.6, 6.6, 3.6, 8));
+    well.each((x, y) => pc.set(x, y, 0x3a2414));
+    const drum = M().rect(Math.round(c[0] - 4), Math.round(c[1] - 1), 6, 2);
+    drum.each((x, y) => pc.set(x, y, G[y === Math.round(c[1] - 1) ? 1 : 3]));
+    for (let x = -4; x <= 1; x += 2) pc.set(c[0] + x, c[1] - 1, G[0]);
     const k = cam.p(8, 4, 2);
-    lineIn(pc, k[0], k[1], k[0] + 3, k[1], 0x6a6a74); pc.set(k[0] + 3, k[1] + 1, 0x6a6a74);
-    const note = (x, y, cc) => { pc.set(x, y, cc); pc.set(x + 1, y, cc); pc.set(x + 1, y - 1, cc); pc.set(x + 1, y - 2, cc); pc.set(x + 2, y - 3, cc); };
-    note(5, 9, 0xf2c23a); note(24, 5, 0xe06aa0); note(13, 3, 0x6ab8f0);
-    outlineAll(pc);
+    tube(pc, [[k[0], k[1]], [k[0] + 3, k[1] - 0.4], [k[0] + 3.4, k[1] + 2]], 0.7, RAMPS.steel(), { seam: false });
+    ink(pc);
+    const note = (x, y, cc) => { pc.set(x, y, cc); pc.set(x + 1, y, cc); pc.set(x + 1, y - 1, cc); pc.set(x + 1, y - 2, cc); pc.set(x + 2, y - 3, cc); pc.set(x, y + 1, mix(cc, 0x000000, 0.4)); };
+    note(4, 9, 0xf2c23a); note(24, 4, 0xe06aa0); note(12, 3, 0x6ab8f0);
   },
   plushie(pc) {
-    const R = mat(0xe8a0b4, { cont: 1.05 });
-    const pts = [];
-    for (let i = 0; i <= 30; i++) pts.push([5 + i * 0.75, 20 + Math.sin(i * 0.3) * 4]);
-    const m = M();
-    pts.forEach(([x, y], i) => m.disk(x, y, 4.2 - Math.abs(i - 22) * 0.05));
-    ring(pc, m, R);
-    vol(pc, m, R, { round: 4 });
-    // stitches & segments
-    for (let i = 3; i < 28; i += 4) { const [x, y] = pts[i]; for (let k = -3; k <= 3; k += 2) pc.set(x, y + k, R[4]); }
-    for (let i = 0; i < 30; i += 2) { const [x, y] = pts[i]; pc.set(x, y + 3.6, R[5]); }
-    // face with button eyes and blush
-    const [hx, hy] = pts[30];
-    pc.set(hx - 2, hy - 1, 0x1a1220); pc.set(hx + 1, hy - 1, 0x1a1220);
-    pc.set(hx - 2, hy - 2, 0x6a6a7a); pc.set(hx + 1, hy - 2, 0x6a6a7a);
-    pc.set(hx - 1, hy + 1, 0xc05a70); pc.set(hx - 3, hy + 1, 0xf0b0c0); pc.set(hx + 2, hy + 1, 0xf0b0c0);
-    // little bow
-    for (const [x, y] of [[13, 13], [14, 14], [15, 13], [12, 14], [16, 14]]) pc.set(x, y, 0x5a8ae0);
-    outlineAll(pc);
+    const R = mat(0xeaa2b6, { cont: 1.1 });
+    // a squishy worm plush sitting curled up: stitched segments, button eyes, a chewed ear, a bow
+    const pts = [[25, 26], [17, 27.4], [9.6, 25.6], [7.6, 19.6], [10.6, 14], [15, 11.2]];
+    const sw = tube(pc, pts, (s) => 4.4 - s * 0.3, R, { bias: 0.1, capStart: 0.9, capEnd: 0.5 });
+    for (let s = 0.12; s < 0.9; s += 0.13) {
+      const [x, y] = sw.at(s), [x2, y2] = sw.at(s + 0.01);
+      const tx = x2 - x, ty = y2 - y, tl = Math.hypot(tx, ty) || 1, nx = ty / tl, ny = -tx / tl;
+      line(pc, x - nx * 4, y - ny * 4, x + nx * 4, y + ny * 4, (i, X, Y) => (sw.mask.get(X, Y) ? (i % 2 ? R[4] : 0xf8e4ea) : null));
+    }
+    // head with ears (one chewed)
+    const head = blob(18, 9.6, 6.6, 5.6, { seed: 3, lump: 0.04 });
+    const earL = blob(13.4, 4.6, 2, 2.6, { seed: 5, rot: -0.4 });
+    const earR = blob(22.8, 4.4, 2, 2.6, { seed: 6, rot: 0.4 }).sub(M().poly([[22, 1.6], [25.4, 2.6], [23.4, 4.2]]));
+    for (const e of [earL, earR]) { seam(pc, e, 'shadow'); form(pc, e, R, { bias: 0.08 }); }
+    seam(pc, head, 'shadow');
+    form(pc, head, R, { bias: 0.08 });
+    for (const [x, y] of [[13, 5], [22, 5]]) pc.set(x, y, R[4]);
+    ink(pc);
+    // the chewed edge of the right ear: little nibbles
+    pc.set(23, 2, 0x8a4a5a); pc.set(24, 3, 0x8a4a5a);
+    for (const [x, y] of [[15, 9], [20, 9]]) { pc.set(x, y, 0x1a1220); pc.set(x + 1, y, 0x1a1220); pc.set(x, y + 1, 0x1a1220); pc.set(x + 1, y + 1, 0x3a2a3a); pc.set(x, y, 0x6a6a7a); }
+    pc.set(17, 12, 0xc05a70); pc.set(18, 12, 0xc05a70);
+    for (const [x, y] of [[13, 12], [22, 12]]) pc.set(x, y, 0xf4a0b0);
+    // a blue bow on the tail and a stitched patch
+    const BW = mat(0x5a8ae0, { cont: 1.1 });
+    for (const [x, y, k] of [[26, 22, 2], [27, 21, 1], [27, 22, 3], [28, 23, 3], [25, 23, 3], [24, 24, 4], [26, 23, 4]]) pc.set(x, y, BW[k]);
+    for (const [x, y] of [[11, 21], [12, 22], [11, 23], [13, 21]]) pc.set(x, y, 0xfff0f4);
   },
   tank(pc) {
     const cam = CAM({ cy: 24, scale: 0.9, yaw: -0.35 });
     const I = IRON();
-    box(pc, cam, -13, 0, -5, 13, 2, 5, I);
+    box(pc, cam, -13, 0, -5, 13, 2, 5, I, { paintAll: iron(I, { rivets: false }) });
     const G = mat(0x7ad0f0, { cont: 0.9 });
     box(pc, cam, -12.5, 2, -4.5, 12.5, 16, 4.5, G, { paintAll: (p, m, tone) => m.each((x, y) => p.set(x, y, G[Math.min(4, tone)], 230)) });
-    // water line, plants, sand, fish
+    // water line, sand, swaying weed, two content blind fish, bubbles
     const f0 = cam.p(-12, 2, 4.5), f1 = cam.p(12, 13, 4.5);
     const yTop = Math.round(f1[1]);
-    for (let x = Math.round(f0[0]); x < f1[0]; x++) pc.set(x, yTop, 0xd8f4ff);
+    for (let x = Math.round(f0[0]); x < f1[0]; x++) { pc.set(x, yTop, 0xe8f8ff); pc.set(x, yTop + 1, 0xa8e0f4); }
     for (let x = Math.round(f0[0]); x < f1[0]; x++) { pc.set(x, Math.round(f0[1]) - 1, 0xe8d090); pc.set(x, Math.round(f0[1]) - 2, (x % 3) ? 0xe8d090 : 0xd0b878); }
-    for (const x of [f0[0] + 3, f0[0] + 18]) for (let y = 0; y < 6; y++) pc.set(x + Math.sin(y) * 0.6, f0[1] - 3 - y, 0x4a9a4a);
-    for (const [x, y] of [[f0[0] + 8, yTop + 4], [f0[0] + 14, yTop + 7]]) { const fm = M().ellipse(x, y, 2.4, 1.2); fill(pc, fm, 0xf0d0d0); pc.set(x - 3, y, 0xe0b0b0); pc.set(x + 1, y - 1, 0xffffff); }
-    for (const [x, y] of [[f0[0] + 11, yTop + 2], [f0[0] + 12, yTop + 0]]) pc.set(x, y, 0xffffff);
-    outlineAll(pc);
+    for (const x of [f0[0] + 3, f0[0] + 18]) for (let y = 0; y < 7; y++) { pc.set(x + Math.round(Math.sin(y * 0.9) * 0.8), f0[1] - 3 - y, y % 2 ? 0x5aaa4a : 0x3a8a3a); }
+    for (const [x, y, d] of [[f0[0] + 8, yTop + 4, 1], [f0[0] + 14, yTop + 7, -1]]) {
+      const fm = blob(x, y, 2.6, 1.4, { seed: 2 });
+      seam(pc, fm, 'shadow'); form(pc, fm, mat(0xf2bcb2, { cont: 1.1 }), { bias: 0.1 });
+      pc.set(x - 3 * d, y, 0xe896ae); pc.set(x - 3 * d, y - 1, 0xe896ae); pc.set(x - 3 * d, y + 1, 0xe896ae);
+      pc.set(x + 1.6 * d, y - 0.6, 0xe0e8f8);
+    }
+    ink(pc, { minA: 150 });
+    for (const [x, y] of [[f0[0] + 11, yTop + 2], [f0[0] + 12, yTop]]) pc.set(x, y, 0xffffff);
+    const g0 = cam.p(-12, 15, 4.5);
+    line(pc, g0[0] + 1, g0[1] + 1, g0[0] + 3, g0[1] + 6, 0xffffff);
   },
   fountain(pc) {
-    const S = mat(0x9a948e, { cont: 1.05 });
-    const basin = M().ellipse(16, 23, 14, 6).union(M().rect(2, 23, 29, 4)).union(M().ellipse(16, 27, 14, 4));
-    ring(pc, basin, S); vol(pc, basin, S, { mode: 'cyl', axis: Math.PI / 2, flat: 0.3 });
-    const water = M().ellipse(16, 23, 11.5, 4.2);
-    water.each((x, y) => pc.set(x, y, (x + y) % 5 ? 0x5ab8e6 : 0x9ad8f8));
-    // central column with a top bowl, spouting water
-    const col = M().rect(14, 10, 4, 13); ring(pc, col, S); vol(pc, col, S, { mode: 'cyl', axis: Math.PI / 2 });
-    const tb = M().ellipse(16, 10, 6, 2.2); ring(pc, tb, S); fill(pc, tb, S[2]);
-    for (const s of [-1, 1]) for (let i = 0; i < 9; i++) { const x = 16 + s * i * 0.9, y = 8 - Math.sin(i / 9 * Math.PI) * 4 + i * 0.9; pc.set(x, y, i % 2 ? 0xbfe6ff : 0xffffff); }
-    pc.set(16, 4, 0xffffff); pc.set(16, 5, 0xbfe6ff);
-    outlineAll(pc);
+    const S = mat(0x9a948e, { cont: 1.1 });
+    // a carved stone basin, a pedestal with a little bowl, water arcing down
+    const basin = M().ellipse(16, 23, 14.4, 6).union(M().rect(2, 23, 29, 4)).union(M().ellipse(16, 27, 14.4, 4));
+    form(pc, basin, S, { cx: 12, cy: 22, rx: 16, ry: 12, dome: 0.2, bias: 0.04 });
+    marks(pc, basin, S, { dens: 0.07, seed: 3, len: 2, dir: [1, 0] });
+    for (let x = 3; x < 30; x += 5) line(pc, x, 24, x, 28, (i, X, Y) => (basin.get(X, Y) && !isBot(basin, X, Y) ? S[4] : null));
+    const water = M().ellipse(16, 23, 12, 4.2);
+    water.each((x, y) => pc.set(x, y, (x * 2 + y * 3) % 7 === 0 ? 0x9ad8f8 : y < 21 ? 0x3a90c8 : 0x5ab8e6));
+    M().ellipse(16, 23, 14.4, 6).edge().each((x, y) => pc.set(x, y, y < 23 ? S[1] : S[2]));
+    const col = M().rect(14, 10, 4, 13);
+    seam(pc, col, 'shadow');
+    col.each((x, y) => pc.set(x, y, S[x === 14 ? 1 : x === 17 ? 4 : 2]));
+    const tb = blob(16, 10, 6.4, 2.4, { seed: 2 });
+    seam(pc, tb, 'shadow');
+    tb.each((x, y) => pc.set(x, y, S[clamp(edgeK(tb, x, y, 2), 1, 5)]));
+    M().ellipse(16, 10, 4.4, 1.2).each((x, y) => pc.set(x, y, 0x5ab8e6));
+    ink(pc);
+    for (const s of [-1, 1]) for (let i = 0; i < 10; i++) { const x = 16 + s * i * 1.05, y = 8 - Math.sin(i / 10 * Math.PI) * 4 + i * 1.1; pc.set(x, y, i % 3 ? 0xbfe6ff : 0xffffff); }
+    pc.set(16, 4, 0xffffff); pc.set(16, 5, 0xbfe6ff); pc.set(16, 6, 0xffffff);
+    for (const [x, y] of [[6, 20], [26, 21], [10, 24]]) pc.set(x, y, 0xffffff);
   },
   trophy(pc) {
     const W = DWOOD();
     const cam = CAM({ cy: 29, scale: 1 });
-    box(pc, cam, -7, 0, -4, 7, 4, 4, W, { paintAll: woodPaint(W, 3) });
-    const G = mat(0xf2c030, { cont: 1.25, warm: 55 });
-    // golden pickaxe on a stand
-    const stand = M().rect(15, 17, 3, 7); ring(pc, stand, G); vol(pc, stand, G, { mode: 'cyl', axis: Math.PI / 2, spec: 0.8 });
-    const h = M().capsule(10, 22, 22, 6, 1.4); ring(pc, h, G); vol(pc, h, G, { mode: 'cyl', axis: -0.93, spec: 0.8 });
+    box(pc, cam, -7, 0, -4, 7, 4, 4, W, { paintAll: wood(W, { seed: 3 }) });
+    const G = GOLD();
+    // a golden pickaxe mounted on a stand
+    tube(pc, [[16.5, 24], [16.5, 17]], 1.5, G, { bias: 0.1 });
+    tube(pc, [[10, 22], [22, 6]], 1.4, G, { bias: 0.1 });
     const head = M();
-    for (let t = -10; t <= 9; t += 0.25) head.disk(21 + t * 0.6 + t * t * 0.03, 6 + t * 0.8 - t * t * 0.0, Math.max(0.5, 2 - Math.abs(t) / 6));
-    ring(pc, head, G); vol(pc, head, G, { round: 1.5, spec: 0.75 });
-    // plaque
+    for (let t = -10; t <= 9; t += 0.25) head.disk(21 + t * 0.6 + t * t * 0.03, 6 + t * 0.8, Math.max(0.6, 2.1 - Math.abs(t) / 5.5));
+    seam(pc, head, 'shadow');
+    form(pc, head, G, { bias: 0.1 });
+    // brass plaque on the plinth
     const p = cam.p(0, 2, 4);
-    for (let x = -3; x <= 3; x++) pc.set(p[0] + x, p[1], 0xe0b040);
-    for (const [x, y] of [[8, 4], [27, 12], [6, 16]]) sparkle(pc, x, y, 1, 0xffffff, 0xfff0a0, 0.7);
-    outlineAll(pc);
+    const pl = M().rect(Math.round(p[0] - 3), Math.round(p[1] - 1), 7, 2);
+    pl.each((x, y) => pc.set(x, y, G[y === Math.round(p[1] - 1) ? 1 : 3]));
+    ink(pc);
+    glint(pc, 16, 9, 1); glint(pc, 14, 4, 0);
+    for (const [x, y] of [[7, 4], [27, 14], [5, 15]]) twinkle(pc, x, y, 0xffffff, 0xfff0a0, 1, 0.7);
   },
   statue(pc) {
-    const S = mat(0xe4e0d8, { cont: 1 });
+    const S = mat(0xe4e0d8, { cont: 1.05 });
     const cam = CAM({ cy: 30, scale: 1 });
-    box(pc, cam, -8, 0, -6, 8, 6, 6, mat(0x9a948e), { tone: { top: 2 } });
-    // a heroic marble mole: body, head, snout, paws, little pick
-    const body = M().ellipse(16, 17, 7, 7);
-    const head = M().ellipse(16, 8.5, 5.5, 4.8);
-    const snout = M().ellipse(21.5, 10, 3, 2);
-    const all = body.clone().union(head).union(snout);
-    ring(pc, all, S);
-    vol(pc, body, S, { round: 4, spec: 0.9 });
-    vol(pc, head, S, { round: 3, spec: 0.9 });
-    vol(pc, snout, S, { round: 1.5 });
-    pc.set(18, 7, S[5]); pc.set(24, 10, S[4]);
-    lineIn(pc, 17, 7, 19, 6, S[4]);
-    const paw = M().ellipse(22, 16, 2.6, 2); ring(pc, paw, S); vol(pc, paw, S, { round: 1.2 });
-    lineIn(pc, 23, 17, 27, 6, 0xc8c0b8); lineIn(pc, 24, 5, 29, 8, 0xc8c0b8); pc.set(23, 4, 0xb0a8a0);
-    for (const [x, y] of [[11, 14], [13, 20]]) pc.set(x, y, S[1]);
-    outlineAll(pc);
+    box(pc, cam, -8, 0, -6, 8, 6, 6, mat(0x9a948e, { cont: 1.08 }), { tone: { top: 2 }, paintAll: stone(mat(0x9a948e, { cont: 1.08 }), { h: 3, w: 6 }) });
+    // a heroic marble mole: body, head, snout, raised paw holding a pick; squinting
+    const body = blob(15.6, 17.4, 7.2, 7.4, { seed: 3, lump: 0.04 });
+    const head = blob(16, 8.6, 5.6, 4.8, { seed: 4 });
+    const snout = blob(21.6, 10, 3, 2, { seed: 5 });
+    for (const m of [body, head, snout]) { seam(pc, m, 'shadow'); form(pc, m, S, { bias: 0.06 }); }
+    marks(pc, body, S, { dens: 0.05, seed: 2, len: 2, dir: [1, 1] });
+    tube(pc, [[23, 18], [27.4, 6]], 0.8, mat(0xc8c0b8, { cont: 1.05 }), { capEnd: 0.1 });
+    const pick = M();
+    for (let t = -5; t <= 5; t += 0.25) pick.disk(27.4 + t * 0.9, 5.6 + t * 0.4 - Math.abs(t) * 0.25, Math.max(0.5, 1.2 - Math.abs(t) / 6));
+    seam(pc, pick, 'shadow'); form(pc, pick, mat(0xc8c0b8, { cont: 1.05 }), { bias: 0.08 });
+    const paw = blob(22.4, 16.4, 2.6, 2.2, { seed: 6 }); seam(pc, paw, 'shadow'); form(pc, paw, S, { bias: 0.08 });
+    for (const x of [21, 22, 23]) pc.set(x, 15, S[4]);
+    line(pc, 17, 7, 19, 7, S[5]); pc.set(24, 10, S[4]);
+    for (const [x, y] of [[11, 14], [13, 20]]) pc.set(x, y, S[0]);
+    ink(pc);
+    line(pc, 9, 19, 11, 22, 0xa8a49c);
   },
 };
 
@@ -642,110 +906,155 @@ function furniture(pc, t, c) {
     case 'fountain': return F.fountain(pc);
     case 'trophy': return F.trophy(pc);
     case 'statue': return F.statue(pc);
-    default: { const cam = CAM(); box(pc, cam, -8, 0, -6, 8, 12, 6, WOOD()); outlineAll(pc); }
+    default: { const cam = CAM(); const W = WOOD(); box(pc, cam, -8, 0, -6, 8, 12, 6, W, { paintAll: wood(W, { planks: 3 }) }); ink(pc); }
   }
 }
 
 // ---------------------------------------------------------------- floors & walls
 function swatch(pc, spec, wall) {
   const c = spec.c, pat = spec.pat || 'dirt';
-  const R = mat(c, { cont: 1 });
-  // floors: a diamond tile seen from above at an angle; walls: an upright panel with baseboard
+  const R = mat(c, { cont: 1.05 });
+  // floors: a diamond tile seen from above at an angle; walls: an upright panel with a baseboard
   const area = wall ? M().rect(5, 2, 22, 28) : M().poly([[16, 4], [31, 15.5], [16, 27], [1, 15.5]]);
   const uv = wall ? (x, y) => [x - 5, y - 2] : (x, y) => { const dx = x + 0.5 - 16, dy = (y + 0.5 - 15.5) * 1.33; return [(dx + dy) * 0.62 + 10, (dy - dx) * 0.62 + 10]; };
-  ring(pc, area, R);
+  const K = new Int8Array(1024).fill(-1);
   area.each((x, y) => {
     const [u, v] = uv(x, y);
-    let k = 3;
+    let k = 3, col = null;
     switch (pat) {
-      case 'plank': { const row = Math.floor(v / 4); const off = (row * 7) % 10; if (v % 4 < 0.7 || ((u + off) % 10) < 0.7) k = 5; else if (hash2(Math.floor(u), row, 3) < 0.2) k = 4; else if (v % 4 < 1.5) k = 2; break; }
-      case 'stone': case 'brick': { const h = pat === 'brick' ? 3.2 : 5; const row = Math.floor(v / h); const off = row % 2 ? h : 0; if (v % h < 0.8 || ((u + off) % (h * 2)) < 0.8) k = 5; else k = hash2(Math.floor((u + off) / (h * 2)), row, 4) < 0.3 ? 2 : 3; break; }
-      case 'checker': k = ((Math.floor(u / 5) + Math.floor(v / 5)) % 2) ? 3 : -1; break;
-      case 'tile': { if (u % 6.5 < 0.8 || v % 6.5 < 0.8) k = 5; else if ((u % 6.5) < 2 && (v % 6.5) < 2) k = 2; break; }
-      case 'moss': { const n = vnoise(u * 0.5, v * 0.5, 2); k = n > 0.62 ? 2 : n < 0.3 ? 4 : 3; if (hash2(x, y, 3) < 0.12) k = 1; break; }
-      case 'carpet': { const d = Math.max(Math.abs(u - 10), Math.abs(v - 10)); k = d > 8 ? 4 : d > 6.5 ? 2 : d < 2 ? 2 : 3; if ((x + y) % 2 === 0 && hash2(x, y, 5) < 0.3) k = Math.min(5, k + 1); break; }
-      case 'paper': { k = 3; const fu = ((u % 6) + 6) % 6, fv = ((v % 6) + 6) % 6; if (Math.hypot(fu - 3, fv - 3) < 1.2) { pc.set(x, y, (Math.floor(u / 6) + Math.floor(v / 6)) % 2 ? 0xf0d890 : 0xe8a0b0); return; } if (u % 3 < 0.5) k = 4; break; }
-      default: { const n = hash2(x, y, 9); k = n < 0.12 ? 4 : n > 0.9 ? 2 : 3; if (hash2(x, y, 11) < 0.04) { pc.set(x, y, 0x9a948e); return; } }
+      case 'plank': {
+        const row = Math.floor(v / 4), off = (row * 7) % 10, fv = ((v % 4) + 4) % 4, fu = (((u + off) % 10) + 10) % 10;
+        if (fv < 0.8 || fu < 0.7) k = 5;
+        else if (fv < 1.6) k = 2;
+        else if (fu < 1.5) k = 4;
+        else { const g = vnoise(u * 0.35 + row * 7, fv * 1.6, 3); k = g > 0.7 ? 4 : g < 0.15 ? 2 : 3; }
+        if (k === 3 && Math.abs(fu - 8.6) < 0.5 && Math.abs(fv - 2.6) < 0.6) col = R[1];
+        break;
+      }
+      case 'stone': case 'brick': {
+        const h = pat === 'brick' ? 3.2 : 5, row = Math.floor(v / h), off = row % 2 ? h : 0;
+        const fv = ((v % h) + h) % h, fu = (((u + off) % (h * 2)) + h * 2) % (h * 2);
+        const cell = hash2(Math.floor((u + off) / (h * 2)), row, 4);
+        if (fv < 0.8 || fu < 0.8) k = 5;
+        else if (fv < 1.6 || fu < 1.6) k = 2;
+        else if (fv > h - 1 || fu > h * 2 - 1) k = 4;
+        else k = cell < 0.3 ? 2 : cell > 0.8 ? 4 : 3;
+        if (k === 3 && hash2(x, y, 7) < 0.07) k = 4;
+        if (pat === 'stone' && k >= 2 && k <= 4 && cell > 0.6 && hash2(x, y, 8) < 0.25) col = mix(R[k], 0x5a8a3a, 0.35);
+        break;
+      }
+      case 'checker': {
+        const dark = (Math.floor(u / 5) + Math.floor(v / 5)) % 2;
+        const fu = ((u % 5) + 5) % 5, fv = ((v % 5) + 5) % 5;
+        if (dark) col = fu < 1 || fv < 1 ? 0x3a3a44 : fu > 4 || fv > 4 ? 0x1e1e26 : 0x2a2a32;
+        else k = fu < 1 || fv < 1 ? 2 : fu > 4 || fv > 4 ? 4 : 3;
+        if (!dark && hash2(x, y, 5) < 0.04) k = 1;
+        break;
+      }
+      case 'tile': {
+        const fu = ((u % 6.5) + 6.5) % 6.5, fv = ((v % 6.5) + 6.5) % 6.5;
+        if (fu < 0.8 || fv < 0.8) k = 5;
+        else if (fu < 1.7 || fv < 1.7) k = 2;
+        else if (fu > 5.6 || fv > 5.6) k = 4;
+        else if (fu < 2.6 && fv < 2.6) k = 1;
+        else k = hash2(Math.floor(u / 6.5), Math.floor(v / 6.5), 2) < 0.35 ? 3 : 3;
+        break;
+      }
+      case 'moss': { const n = vnoise(u * 0.5, v * 0.5, 2); k = n > 0.62 ? 2 : n < 0.3 ? 4 : 3; if (hash2(x, y, 3) < 0.12) k = 1; if (hash2(x, y, 4) < 0.03) col = 0xe8e070; break; }
+      case 'carpet': { const d = Math.max(Math.abs(u - 10), Math.abs(v - 10)); k = d > 8 ? 4 : d > 6.5 ? 2 : d < 2 ? 2 : 3; if (d > 6.5 && d < 8 && (Math.floor(u) + Math.floor(v)) % 3 === 0) col = 0xe8b840; if ((x + y) % 2 === 0 && hash2(x, y, 5) < 0.3) k = Math.min(5, k + 1); break; }
+      case 'paper': { k = 3; const fu = ((u % 6) + 6) % 6, fv = ((v % 6) + 6) % 6; if (Math.hypot(fu - 3, fv - 3) < 1.3) { col = (Math.floor(u / 6) + Math.floor(v / 6)) % 2 ? 0xf0d890 : 0xe8a0b0; if (Math.hypot(fu - 2.6, fv - 2.6) < 0.6) col = 0xfff4e0; } else if (u % 3 < 0.5) k = 4; break; }
+      default: { const n = hash2(x, y, 9); k = n < 0.14 ? 4 : n > 0.9 ? 2 : 3; if (vnoise(u * 0.4, v * 0.4, 6) > 0.7) k = Math.min(5, k + 1); if (hash2(x, y, 11) < 0.04) col = 0x9a948e; }
     }
-    pc.set(x, y, k < 0 ? 0x2a2a30 : R[k]);
+    K[y * 32 + x] = k;
+    pc.set(x, y, col ?? (k < 0 ? 0x2a2a30 : R[clamp(k, 1, 5)]));
   });
-  // light/shade by side so it reads as a surface
-  if (!wall) area.edge().each((x, y) => { if (y > 15.5) { const k = R.indexOf(pc.getHex(x, y)); pc.set(x, y, R[Math.min(5, (k < 0 ? 3 : k) + 1)]); } });
-  else {
+  if (!wall) {
+    // a thickness edge on the near sides so the swatch reads as a slab of floor
+    area.each((x, y) => { if (!area.get(x, y + 1)) { const k = clamp(K[y * 32 + x] + 1, 1, 5); pc.set(x, y, R[k]); pc.set(x, y + 1, R[5]); } });
+    area.edge().each((x, y) => { if (y < 15.5 && x < 16) step(pc, R, x, y, -1, 1, 5); });
+  } else {
     for (let x = 5; x < 27; x++) { pc.set(x, 2, R[1]); pc.set(x, 3, R[2]); }
-    const BB = mat(0x5a3a22);
-    for (let x = 5; x < 27; x++) for (let y = 26; y < 30; y++) pc.set(x, y, BB[y === 26 ? 2 : y === 29 ? 5 : 3]);
-    for (let y = 4; y < 26; y++) { pc.set(26, y, mix(pc.getHex(26, y), 0x000000, 0.25)); pc.set(5, y, mix(pc.getHex(5, y), 0xffffff, 0.12)); }
+    if (pat === 'dirt') for (const [x0, y0, x1, y1] of [[8, 4, 10, 10], [10, 10, 9, 14], [21, 4, 23, 9], [23, 9, 25, 12]]) line(pc, x0, y0, x1, y1, R[5]);
+    const BB = mat(0x5a3a22, { cont: 1.1 });
+    for (let x = 5; x < 27; x++) for (let y = 25; y < 30; y++) pc.set(x, y, BB[y === 25 ? 1 : y === 26 ? 2 : y === 29 ? 5 : (x * 3 + y) % 7 === 0 ? 4 : 3]);
+    for (let y = 4; y < 25; y++) { pc.set(26, y, mix(pc.getHex(26, y), 0x000000, 0.25)); pc.set(5, y, mix(pc.getHex(5, y), 0xffffff, 0.12)); }
   }
+  ink(pc);
 }
 
 // ---------------------------------------------------------------- blueprints & ticket
 function blueprint(pc, t, level = 1) {
-  const B = mat(0x2e5cb8, { cont: 1.05 });
-  // rolled sheet: paper with a curl at the top-right corner
-  const sheet = M().poly([[2, 4], [28, 3], [30, 28], [3, 29]]);
-  ring(pc, sheet, B);
-  vol(pc, sheet, B, { mode: 'flat', normal: [0, 0, 1] });
-  sheet.each((x, y) => { if ((x % 4 === 0 || y % 4 === 0) && hash2(x, y, 1) < 0.85) pc.set(x, y, B[2]); });
-  const curl = M().poly([[23, 3], [28, 3], [29, 8]]);
-  fill(pc, curl, B[1]); lineIn(pc, 23, 3, 29, 8, B[5]);
-  const ink = 0xeaf2ff, ink2 = 0xa8c4f0;
+  const B = mat(0x2e5cb8, { cont: 1.08 });
+  // a sheet of blueprint paper, pinned flat, its top-right corner curling; grid, then the plan
+  const sheet = M().poly([[2, 4], [28, 3], [30, 28], [3, 29.4]]);
+  sheet.each((x, y) => { const k = edgeK(sheet, x, y, 3); pc.set(x, y, B[k + ((x * 7 + y * 3) % 11 === 0 ? 1 : 0)]); });
+  sheet.each((x, y) => { if ((x % 4 === 0 || y % 4 === 0) && hash2(x, y, 1) < 0.85 && !isTop(sheet, x, y)) pc.set(x, y, B[2]); });
+  const curl = M().poly([[22.6, 3.2], [28, 3], [29, 8.6]]);
+  curl.each((x, y) => pc.set(x, y, B[(x - 22) + (8 - y) > 7 ? 1 : 2]));
+  line(pc, 22.6, 3.2, 29, 8.6, B[5]);
+  const ink2 = 0xa8c4f0, inkW = 0xeaf2ff;
   const tmp = new (pc.constructor)(32, 32);
   if (['dagger', 'shortsword', 'axe', 'mace', 'spear', 'longsword', 'warhammer', 'rapier', 'greatsword', 'moleblade'].includes(t)) {
     drawWeaponArt(tmp, t, 0xffffff);
     const sil = maskOf(tmp, 200);
-    // line drawing: outline of the weapon silhouette + center line
     const shrink = new Mask(32, 32);
     sil.each((x, y) => { const X = Math.round(3.5 + x * 0.8), Y = Math.round(4.5 + y * 0.8); shrink.set(X, Y); });
     shrink.dilate(1).erode(1);
-    // white-ink silhouette with a dashed construction line through its middle
     shrink.each((x, y) => pc.set(x, y, ink2));
-    shrink.edge().each((x, y) => pc.set(x, y, ink));
+    shrink.edge().each((x, y) => pc.set(x, y, inkW));
     for (let i = 4; i < 28; i += 2) { const x = i, y = 31 - i; if (!shrink.get(x, y) && !shrink.get(x + 1, y)) pc.set(x, y, B[2]); }
+    // dimension ticks
+    for (let x = 6; x < 26; x += 4) pc.set(x, 27, inkW);
+    line(pc, 6, 27, 26, 27, (i) => (i % 2 ? ink2 : null));
   } else if (t === 'bellows') {
     const m = M().poly([[8, 10], [22, 12], [22, 20], [8, 22]]);
-    m.edge().each((x, y) => pc.set(x, y, ink));
-    for (let x = 11; x < 21; x += 3) lineIn(pc, x, 11, x, 21, ink2);
-    lineIn(pc, 22, 16, 27, 16, ink); lineIn(pc, 4, 16, 8, 16, ink);
+    m.edge().each((x, y) => pc.set(x, y, inkW));
+    for (let x = 11; x < 21; x += 3) line(pc, x, 11, x, 21, ink2);
+    line(pc, 22, 16, 27, 16, inkW); line(pc, 4, 16, 8, 16, inkW);
+    pc.set(27, 15, inkW); pc.set(27, 17, inkW);
   } else if (t === 'hearth') {
     const m = M().rect(7, 9, 18, 14);
-    m.edge().each((x, y) => pc.set(x, y, ink));
+    m.edge().each((x, y) => pc.set(x, y, inkW));
     const o = M().rect(11, 15, 10, 8); o.edge().each((x, y) => pc.set(x, y, ink2));
-    for (const [x, y] of [[14, 19], [16, 17], [18, 19]]) pc.set(x, y, 0xffb070);
-    lineIn(pc, 12, 9, 12, 5, ink); lineIn(pc, 15, 9, 15, 5, ink); lineIn(pc, 12, 5, 15, 5, ink);
+    for (const [x, y] of [[14, 19], [16, 17], [18, 19], [15, 20], [17, 20]]) gl(pc, x, y, 0xffb070, 0.6);
+    line(pc, 12, 9, 12, 5, inkW); line(pc, 15, 9, 15, 5, inkW); line(pc, 12, 5, 15, 5, inkW);
   } else {
     // room plan grows with the extension level: walls, doors, dimension marks
     const w = 12 + level * 3, h = 10 + level * 2;
     const x0 = Math.round(16 - w / 2), y0 = Math.round(16 - h / 2);
     const m = M().rect(x0, y0, w, h);
-    m.edge().each((x, y) => pc.set(x, y, ink));
+    m.edge().each((x, y) => pc.set(x, y, inkW));
     for (let x = 14; x < 18; x++) pc.set(x, y0 + h - 1, B[3]);
-    lineIn(pc, 14, y0 + h - 1, 17, y0 + h - 4, ink2);
-    if (level >= 2) { lineIn(pc, x0 + Math.round(w * 0.6), y0, x0 + Math.round(w * 0.6), y0 + h - 5, ink); }
-    if (level >= 3) { lineIn(pc, x0, y0 + Math.round(h * 0.45), x0 + Math.round(w * 0.6), y0 + Math.round(h * 0.45), ink); for (let i = 0; i < 3; i++) lineIn(pc, x0 + 2 + i * 2, y0 + 2, x0 + 2 + i * 2, y0 + 5, ink2); }
+    line(pc, 14, y0 + h - 1, 17, y0 + h - 4, ink2);
+    if (level >= 2) line(pc, x0 + Math.round(w * 0.6), y0, x0 + Math.round(w * 0.6), y0 + h - 5, inkW);
+    if (level >= 3) { line(pc, x0, y0 + Math.round(h * 0.45), x0 + Math.round(w * 0.6), y0 + Math.round(h * 0.45), inkW); for (let i = 0; i < 3; i++) line(pc, x0 + 2 + i * 2, y0 + 2, x0 + 2 + i * 2, y0 + 5, ink2); }
     for (let x = x0; x < x0 + w; x += 2) pc.set(x, y0 + h + 2, ink2);
-    for (let i = 0; i < level; i++) { pc.set(5 + i * 3, 25, ink); pc.set(5 + i * 3, 26, ink); }
+    for (let i = 0; i < level; i++) { pc.set(5 + i * 3, 25, inkW); pc.set(5 + i * 3, 26, inkW); }
   }
+  ink(pc);
+  // brass drawing pins in two corners
+  for (const [x, y] of [[4, 5], [5, 27]]) { pc.set(x, y, 0xf0d070); pc.set(x + 1, y, 0xc89a3a); pc.set(x, y + 1, 0xb08030); pc.set(x + 1, y + 1, 0x7a5a20); }
 }
 
 function ticket(pc) {
-  const G = mat(0xf2c23a, { cont: 1.15, warm: 55 });
+  const G = mat(0xf2c23a, { cont: 1.18, warm: 55 });
   const m = M().poly([[2, 8], [30, 6], [30, 24], [2, 26]]);
-  // notched ends
   m.sub(M().disk(2, 16, 2.4)).sub(M().disk(30, 15, 2.4));
-  ring(pc, m, G);
-  vol(pc, m, G, { round: 2.5, spec: 0.85 });
-  // stub perforation
-  for (let y = 7; y < 26; y += 2) pc.set(22, y + (y > 15 ? 0 : 0), G[5]);
-  // red "ONE WAY" stripes and a mole stamp
+  // a gilt ticket: embossed border, ONE WAY lettering, a stub with a mole stamp
+  form(pc, m, G, { flatten: 0.4, dome: 0.6, round: 2.5, bias: 0.06 });
+  const inner = m.clone().erode(2);
+  inner.edge().each((x, y) => pc.set(x, y, (x + y) % 2 ? G[4] : G[2]));
+  for (let y = 7; y < 26; y += 2) if (m.get(22, y)) pc.set(22, y, G[5]);
   const RD = 0xc8383a;
   for (let x = 5; x < 20; x++) { pc.set(x, 11, RD); pc.set(x, 21, RD); }
   const FONT = { O: ['.#.', '#.#', '#.#', '#.#', '.#.'], N: ['##.', '#.#', '#.#', '#.#', '#.#'], E: ['###', '#..', '##.', '#..', '###'] };
-  [...'ONE'].forEach((ch, i) => FONT[ch].forEach((row, y) => [...row].forEach((v, x) => { if (v === '#') pc.set(7 + i * 4 + x, 13 + y, 0x6a3a10); })));
-  const st = M().disk(26, 15, 2.6);
-  st.edge().each((x, y) => pc.set(x, y, RD));
-  pc.set(26, 15, RD); pc.set(25, 14, RD); pc.set(27, 14, RD);
-  for (const [x, y] of [[4, 3], [28, 28], [16, 2]]) sparkle(pc, x, y, 1, 0xffffff, 0xfff0a0, 0.8);
+  [...'ONE'].forEach((ch, i) => FONT[ch].forEach((row, y) => [...row].forEach((v, x) => { if (v === '#') { pc.set(7 + i * 4 + x, 13 + y, 0x6a3a10); if (!FONT[ch][y + 1] || FONT[ch][y + 1][x] !== '#') pc.set(7 + i * 4 + x, 14 + y, G[1]); } })));
+  const st = M().disk(26, 15, 2.8);
+  st.edge().each((x, y) => { if (hash2(x, y, 3) < 0.85) pc.set(x, y, RD); });
+  pc.set(26, 15, RD); pc.set(25, 14, RD); pc.set(27, 14, RD); pc.set(26, 16, RD);
+  ink(pc);
+  glint(pc, 6, 8, 0);
+  for (const [x, y] of [[4, 3], [28, 28], [16, 2]]) twinkle(pc, x, y, 0xffffff, 0xfff0a0, 1, 0.8);
 }
 
 // ---------------------------------------------------------------- dispatcher
@@ -759,3 +1068,5 @@ export function drawHome(pc, spec, id) {
     default: return false;
   }
 }
+
+export { leaf, sparkle, sheen, shadowOf, inkOf, spline, speckle, bumps };

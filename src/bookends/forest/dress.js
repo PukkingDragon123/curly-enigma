@@ -8,8 +8,8 @@
 //     soft ground by the bridge (1/24 m)
 //   - the understory: brakes of fern and bilberry (1/12-1/16 m) and saplings (1/16 m) between the
 //     floor and the crowns; more fallen logs and mossy boulders all through the wood
-//   - voxel trees in the outer band where the forest had flat silhouettes (the forest's own far
-//     models, instanced), so the trunks go on in 3D into the fog (desktop)
+//   - the forest's detailed far models in the outer band where it had only its coarsest far trees,
+//     so the trunks go on in detail into the fog (desktop)
 //   - toadstools on the fallen logs, ferns in front of the low tracking shot, roots crossing the
 //     trail's edges by the gate giants, leafy boughs hanging into chosen shots (frame())
 //   - more shafts of sun down the trail
@@ -124,25 +124,21 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
     return m;
   };
 
-  // ---- voxel trees in the outer band, where the forest had flat silhouettes (desktop only)
+  // ---- detailed trees in the outer band, where the forest had only its coarsest far trees (desktop only)
   if (tier === 2) {
-    const far = F.group.children.find((o) => o.geometry?.attributes?.iPos?.itemSize === 4 && o.material?.uniforms?.uFrames);
+    const far = F.group.children.find((o) => o.name === 'far-trees');
     const src = {};
     F.group.traverse((o) => { if (o.isInstancedMesh && /-lod$/.test(o.name) && !src[o.name]) src[o.name] = o; });
-    if (far) {
-      const P = far.geometry.attributes.iPos, D = far.geometry.attributes.iData;
+    if (far?.userData.hide) {
       const KIND = ['spruce', 'spruce', 'pine', 'pine', 'beech', 'oak', 'birch', 'snag'];
       const its = {};
-      for (let i = 0; i < P.count; i++) {
-        const x = P.getX(i), z = P.getZ(i), h = P.getW(i);
-        if (h <= 0 || outside(x, z) > 12) continue;
-        const kind = KIND[Math.round(D.getX(i))] || 'spruce';
-        if (!src[kind + '-wood-lod']) continue;
-        P.setW(i, 0); // (the silhouette goes: a zero-height card draws nothing)
-        (its[kind] = its[kind] || []).push({ x, y: floorY(x, z) - 0.1, z, ry: rng.range(0, 6.28), s: 0.85 + (D.getY(i) - 0.85) * 1.2 });
-        addBlock(x, z, 0.5);
+      // the coarse far trees in the band give way to the forest's own detailed far models
+      const gone = far.userData.hide((it) => outside(it.x, it.z) <= 12 && !!src[(KIND[it.frame] || 'spruce') + '-wood-lod']);
+      for (const it of gone) {
+        const kind = KIND[it.frame] || 'spruce';
+        (its[kind] = its[kind] || []).push({ x: it.x, y: floorY(it.x, it.z) - 0.1, z: it.z, ry: rng.range(0, 6.28), s: 0.85 + ((it.tint ?? 1) - 0.85) * 1.2 });
+        addBlock(it.x, it.z, 0.5);
       }
-      P.needsUpdate = true;
       for (const [kind, l] of Object.entries(its)) {
         for (const part of ['wood', 'leaves']) {
           const m = src[`${kind}-${part}-lod`];

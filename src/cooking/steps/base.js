@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { clamp } from '../../core/util.js';
 import { disposeObject } from '../../core/Scene.js';
-import { sparkle, puff } from '../fx.js';
+import { chipBurst } from '../../fx/chips.js';
 
 /** The tone of an old feedback colour: gold → great, green → good, cool/neutral → meh, warm red → bad. */
 function toneOf(color = '#fff') {
@@ -116,18 +116,20 @@ export class Step {
   screen(v) { return this.cook.toScreen(v); }
 
   /**
-   * How a moment went, said by the kitchen instead of a floating word: a glint of sparks for a
-   * fine one, a soft wisp for a so-so one, a puff and a jolt for a bad one. `text` is only a note
-   * for whoever reads the step (it is never drawn); `color` (the old word's colour) picks the tone.
+   * How a moment went, said by the kitchen instead of a floating word: a burst of tiny gold voxel
+   * chips for a fine one, a few pale ones for a so-so one, dark crumbs and a jolt for a bad one.
+   * `text` is only a note for whoever reads the step (it is never drawn); `color` (the old word's
+   * colour) picks the tone.
    */
   float(text, at, color) {
     const tone = toneOf(color);
     const p = at.clone();
     p.y -= 0.1; // the old words floated above the food: the reaction belongs on it
-    if (tone === 'great') sparkle(this.fx, p, 10);
-    else if (tone === 'good') sparkle(this.fx, p, 5, [0xfffaf0, 0xffe8b0]);
-    else if (tone === 'meh') puff(this.fx, p, 0xece6dc, 4, 0.08);
-    else { puff(this.fx, p, 0x8a8078, 6, 0.1); this.cook.shake(0.003); }
+    const sc = this.cook.scene;
+    if (tone === 'great') chipBurst(sc, p, { n: 12, colors: [0xfff6b0, 0xffd84a, 0xffffff], size: 0.016, speed: 0.7 });
+    else if (tone === 'good') chipBurst(sc, p, { n: 6, colors: [0xfffaf0, 0xffe8b0], size: 0.014, speed: 0.55 });
+    else if (tone === 'meh') chipBurst(sc, p, { n: 4, colors: [0xd8d0c4, 0xb8b0a4], size: 0.012, speed: 0.35 });
+    else { chipBurst(sc, p, { n: 7, colors: [0x5a504a, 0x3a3430], size: 0.014, speed: 0.45, gravity: 4 }); this.cook.shake(0.003); }
   }
 
   /** Paw resting on the counter near the station (side −1 left, 1 right). */

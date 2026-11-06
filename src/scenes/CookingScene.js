@@ -21,6 +21,7 @@ import { kitchenData, ingredientQ, pantryCount, pantryTake, pantryGive } from '.
 import { CookLesson } from '../cooking/lesson.js';
 import { ITEMS } from '../data/items.js';
 import { pick, clamp } from '../core/util.js';
+import { chipBurst } from '../fx/chips.js';
 
 // camera per station: offset from the station point, and look-at offset
 const CAM = {
@@ -602,8 +603,8 @@ export default class CookingScene extends Scene {
         this.ui.timer(null);
         const kind = this.ui.feedback(s);
         this.game.audio.play(kind === 'perfect' ? 'perfect' : kind === 'oops' ? 'oops' : 'good');
-        // no grade word: a burst of sparks over the work for a fine step, a nudge of the camera for a bad one
-        if (kind === 'perfect' || kind === 'great') sparkle(this.fx, this.camLook.clone().setY(0.3), kind === 'perfect' ? 18 : 9);
+        // no grade word: a burst of gold voxel chips over the work for a fine step, a nudge of the camera for a bad one
+        if (kind === 'perfect' || kind === 'great') chipBurst(this.scene, this.camLook.clone().setY(0.3), { n: kind === 'perfect' ? 18 : 9, colors: [0xfff6b0, 0xffd84a, 0xffffff], size: 0.018, speed: 0.8 });
         else if (kind === 'oops') this.shake(0.006);
         this.phase = 'feedback';
         this.phaseT = 0;

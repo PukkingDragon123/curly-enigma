@@ -12,7 +12,7 @@
 //   FOREST.trail.at(s) → { x, y, z, yaw, tx, tz } (s: metres along the trail), FOREST.trail.length
 //   groundH(x, z), F.crust (pieces), F.cracks, F.chest, F.spill, F.glints, F.bridge, F.stream, F.spots
 import * as THREE from 'three';
-import { meshRelief, hash3, fshade } from './vox.js';
+import { meshRelief, hash3, fshade, VoxelGrid, meshVoxGreedy } from './vox.js';
 import { makeNoise2D, makeRng, clamp, lerp } from '../core/util.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { MF, initMF, updateMF, butterflySheet, swallowSheet, dragonflySheet, resetMeadowMaterials } from './meadowfx.js';
@@ -471,8 +471,8 @@ export async function buildForest(opts = {}) {
       add(m.wood, woodMat, its, kind + '-wood-far', false, 40);
       add(m.leaves, leafMat(2), its, kind + '-leaves-far', false, 40);
     }
-    const ft = makeFarTrees(bill, { key: MF.uKey.value });
-    G(ft.geometry);
+    const ft = makeFarTrees(bill);
+    ft.traverse((o) => { if (o.geometry) G(o.geometry); });
     group.add(ft);
     stats.far = bill.length;
   }
@@ -767,11 +767,23 @@ export async function buildForest(opts = {}) {
   cracks.mesh.visible = false;
   textures.push(cracks.texture);
   group.add(cracks.mesh);
-  // the underside of the crust (seen from the hollow below)
-  const ceil = new THREE.Mesh(new THREE.RingGeometry(HOLE_R - 0.15, 4.8, 40, 1), new THREE.MeshBasicMaterial({ color: 0x1a120c, side: THREE.DoubleSide }));
+  // the underside of the crust (seen from the hollow below): a ragged ring of dark earth and
+  // root ends in 1/8 m voxels
+  const ceil = (() => {
+    const k = 8, R1 = 4.8, n = Math.ceil(R1 * k) * 2 + 2;
+    const g = new VoxelGrid(n, 2, n);
+    for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) {
+      const dx = (x + 0.5 - n / 2) / k, dz = (z + 0.5 - n / 2) / k, r = Math.hypot(dx, dz);
+      const a = Math.atan2(dz, dx), rag = n1(Math.cos(a) * 2.3, Math.sin(a) * 2.3) * 0.12;
+      if (r < HOLE_R - 0.15 + rag || r > R1) continue;
+      const h = hash3(x, 0, z, 41);
+      g.set(x, 1, z, h < 0.08 ? 0x3a2a1a : h < 0.3 ? 0x22180f : 0x1a120c);
+      if (h > 0.93) g.set(x, 0, z, 0x4a3422); // a root end hanging down
+    }
+    return new THREE.Mesh(meshVoxGreedy(g, { scale: 1 / k, pivot: [n / 2, 1, n / 2] }), new THREE.MeshBasicMaterial({ vertexColors: true }));
+  })();
   G(ceil.geometry);
-  ceil.rotation.x = -Math.PI / 2;
-  ceil.position.y = -(16 / 16) + 0.01;
+  ceil.position.y = -(16 / 16) + 0.01 - 1 / 8;
   group.add(ceil);
   // glints over the treasure
   const glintPts = [];

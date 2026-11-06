@@ -353,50 +353,6 @@ export function buildBench(seed = 8) {
 }
 
 // ---------------------------------------------------------------- the hole in the roof
-/**
- * Above the hole: an earth shaft running up out of sight with roots, and at its top the bright
- * daylight far above. Local: origin on the ceiling plane at the hole's centre (tile units).
- */
-export function holeShaft(radius = 0.9, height = 6, seed = 11) {
-  // the shaft wall: an open cylinder seen from inside, painted as pixel strata (cheap, ~40 triangles)
-  const TW = 96, TH = Math.round(height * 16);
-  const data = new Uint8Array(TW * TH * 4);
-  for (let y = 0; y < TH; y++) {
-    const k = y / TH;
-    const lit = Math.round((0.2 + 1.0 * Math.pow(k, 2.4) + 0.22 * Math.max(0, 1 - y / 10)) * 6) / 6;
-    for (let x = 0; x < TW; x++) {
-      const strata = Math.floor((y + Math.sin(x * 0.26 + seed) * 2.2) / 5) % 3;
-      let c = [0x5a3e2a, 0x4e3624, 0x684a32][strata];
-      const h = hash2(x >> 1, y >> 1, seed);
-      if (h < 0.035) c = 0x8a8078; else if (h > 0.97) c = 0x3a281a;
-      if (k > 0.86 && hash2(x, y, seed + 1) < 0.35) c = 0x6aa04a; // grass roots up top
-      if (Math.abs(((x + Math.sin(y * 0.2) * 3) % 24) - 12) < 0.6 && hash2(Math.floor(x / 24), y >> 4, seed + 2) < 0.3) c = 0x6a4a2e; // root threads
-      const o = (y * TW + x) * 4, m = Math.min(1.3, lit);
-      data[o] = Math.min(255, ((c >> 16) & 255) * m); data[o + 1] = Math.min(255, ((c >> 8) & 255) * m); data[o + 2] = Math.min(255, (c & 255) * m); data[o + 3] = 255;
-    }
-  }
-  const tex = new THREE.DataTexture(data, TW, TH, THREE.RGBAFormat);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
-  tex.needsUpdate = true;
-  const wall = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.04, radius, height, 24, 1, true), new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide }));
-  wall.position.y = height / 2;
-  // roots dangling across the shaft
-  const R = Math.round(radius * 16) + 2, H = TH;
-  const g = new VoxelGrid(R * 2, H, R * 2);
-  const rng = makeRng(seed);
-  for (let k = 0; k < 7; k++) {
-    const y0 = 6 + rng() * (H - 20), a = rng() * Math.PI * 2;
-    const x0 = R + Math.cos(a) * (R - 2), z0 = R + Math.sin(a) * (R - 2);
-    line(g, [[x0, y0, z0], [R + Math.cos(a) * 2, y0 - 5 - rng() * 6, R + Math.sin(a) * 2]], 0.6, mulc(0x6a4a2e, 0.4 + 0.8 * (y0 / H)));
-  }
-  const roots = G16(g, [R, 0, R], { outline: false });
-  // the daylight disc far above
-  const disc = new THREE.Mesh(new THREE.CircleGeometry(radius * 1.05, 20).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xfff6d8 }));
-  disc.position.y = height - 0.1;
-  return group(wall, roots, disc);
-}
 
 /** Snapped board ends hanging from the rim of the hole (local to the hole centre, tile units). */
 export function brokenBoards(radius, seed = 5) {

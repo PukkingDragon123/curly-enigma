@@ -4,7 +4,9 @@
 // falling into the mist of the chasm, the warm lights of a far-off burrow village on a terrace,
 // stalactites and glow-worms like stars overhead; nearer, an arc of dark rock spires and a giant
 // crystal cluster and glowcap stalks, cut out against the far view so it shifts as you move past a
-// window. Pixel art, painted once into an RGBA buffer.
+// window. Pixel art, painted once into an RGBA buffer. (The camp is all rock round now, so nothing
+// wraps them round the house any more: the old cylinder-and-disc backdrop is gone. The paintings
+// stay for a look at them outside the game: paintVista / paintVistaData.)
 import * as THREE from 'three';
 import { makeRng } from '../core/util.js';
 import { hash2 } from '../iso/surface.js';
@@ -269,7 +271,6 @@ function mixHex(a, b, t) { return (clamp255(((a >> 16) & 255) * (1 - t) + ((b >>
 
 function mulHex(c, k) { return (clamp255(((c >> 16) & 255) * k) << 16) | (clamp255(((c >> 8) & 255) * k) << 8) | clamp255((c & 255) * k); }
 
-/** The cavern round the house. Returns { group, dispose() }; add group to the meters scene. */
 /** The painted panoramas (for a look at them outside the game): { far, near } Paint buffers. */
 export function paintVista() { return { far: paintFar(2048, 720), near: paintNear(1024, 360) }; }
 
@@ -280,56 +281,3 @@ export function paintVistaData(transfer = []) {
   return { far: { d: f.d, W: f.W, H: f.H }, near: { d: n.d, W: n.W, H: n.H } };
 }
 
-/** Panorama data (from paintVistaData) as a texture. */
-function vistaTexture(p) { const q = new Paint(1, 1, true); q.W = p.W; q.H = p.H; q.d = p.d; return q.texture(); }
-
-export function buildVista(scene, painted = null) {
-  const group = new THREE.Group();
-  group.name = 'vista';
-  const far = painted ? vistaTexture(painted.far) : paintFar(2048, 720).texture();
-  const near = painted ? vistaTexture(painted.near) : paintNear(1024, 360).texture();
-  const R = 24, H = R * 1.05;
-  const farMat = new THREE.MeshBasicMaterial({ map: far, side: THREE.BackSide, fog: false, depthWrite: false });
-  const farMesh = new THREE.Mesh(new THREE.CylinderGeometry(R, R, H, 64, 1, true), farMat);
-  // (set so that looking straight out of a window meets the crests of the far cliffs and their lights)
-  farMesh.position.set(MID.x, FY + 2.0, MID.z);
-  farMesh.renderOrder = -10;
-  group.add(farMesh);
-  // the near arc only round the north and west (where the windows are), clear of your room
-  const RN = 9.2;
-  const nearMat = new THREE.MeshBasicMaterial({ map: near, side: THREE.BackSide, fog: false, transparent: true, alphaTest: 0.5, depthWrite: false });
-  const nearMesh = new THREE.Mesh(new THREE.CylinderGeometry(RN, RN, RN * 0.9, 48, 1, true, Math.PI * 0.5, Math.PI * 1.25), nearMat);
-  nearMesh.position.set(MID.x, FY - 2.6, MID.z);
-  nearMesh.renderOrder = -9;
-  near.repeat.set(1.25 * 1.2, 1);
-  group.add(nearMesh);
-  // a middle arc out past the terrace (north): the same spires and glowcaps farther off, rising from
-  // below the terrace's edge so they stand over the balustrade between you and the far cliffs
-  const RM = 14;
-  const midGeo = new THREE.CylinderGeometry(RM, RM, RM * 0.9, 40, 1, true, Math.PI * 0.72, Math.PI * 0.56);
-  const uv = midGeo.getAttribute('uv');
-  for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * 0.7 + 0.37);
-  const midMesh = new THREE.Mesh(midGeo, nearMat);
-  midMesh.position.set(MID.x, FY + 0.3, MID.z);
-  midMesh.scale.set(1, 1, 1);
-  midMesh.renderOrder = -9.5;
-  group.add(midMesh);
-  // a black floor and roof far out, so no gap ever shows past the painted edges
-  const capMat = new THREE.MeshBasicMaterial({ color: 0x05060a, side: THREE.DoubleSide, fog: false, depthWrite: false });
-  for (const y of [FY + 2.0 - H / 2 + 0.05, FY + 2.0 + H / 2 - 0.05]) {
-    const cap = new THREE.Mesh(new THREE.CircleGeometry(R, 32).rotateX(Math.PI / 2), capMat);
-    cap.position.set(MID.x, y, MID.z);
-    cap.renderOrder = -11;
-    group.add(cap);
-  }
-  scene.add(group);
-  group.traverse((m) => { m.frustumCulled = false; });
-  return {
-    group,
-    dispose() {
-      scene.remove(group);
-      group.traverse((m) => { if (m.isMesh) { m.geometry.dispose(); } });
-      far.dispose(); near.dispose(); farMat.dispose(); nearMat.dispose(); capMat.dispose();
-    },
-  };
-}

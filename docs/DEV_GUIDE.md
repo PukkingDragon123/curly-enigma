@@ -154,4 +154,5 @@ the view model, HUD, and the optional enemies/fluids/props modules).
 - Voxel resolution is size-based: small things (cups, mushrooms, tools) get finer voxels than furniture, and furniture finer than walls or rock.
 - 2D pixel art (icons, UI art) uses organic, irregular, hand-built silhouettes: no ctx.arc/ellipse stamps, no one shape recoloured for a whole family. Tinted 1px outline, flat light/mid/dark planes lit from the top left, rim light, glints, texture.
 - Particles, sparks, motes and debris are tiny voxels, not round dots.
-- Keep 2D UI minimal and clean (film-subtitle dialogue, small dark toasts); no paper/parchment look, no floating text.
+- Everything on screen is detailed, high-resolution pixel art with pixel fonts; never a plain flat box or sans-font pill. Paper is welcome, with material variety by context (parchment, leather, wood, brass, slate, cloth).
+- Keep 2D UI to a minimum and prefer physical, in-world UI; what 2D UI remains is interactive and tactile (presses, slides, flutters, glints). No floating text, no stamp effects.

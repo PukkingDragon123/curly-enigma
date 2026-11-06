@@ -27,7 +27,8 @@ const BEAM_F = /* glsl */`
   float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
   void main() {
     vec3 V = normalize(cameraPosition - vW);
-    vec3 N = normalize(vec3(vN.x, 0.0, vN.z));
+    // (the shell is voxel-stepped: the beam's softness comes from the way out of its axis, not the faces')
+    vec3 N = normalize(vec3(vW.x - uC.x, 0.0, vW.z - uC.y) + vec3(vN.x, 0.0, vN.z) * 0.15);
     vec3 Vh = normalize(vec3(V.x, 0.0, V.z) + 1e-5);
     float face = abs(dot(N, Vh));               // 1 through the beam's middle, 0 at its edges
     float core = pow(face, 2.2);
@@ -45,9 +46,57 @@ const BEAM_F = /* glsl */`
     gl_FragColor = vec4(uCol * k, k);
   }`;
 
+/**
+ * The beam's shell, voxel-stepped like the rock it comes down through: in bands `band` m tall, the
+ * outline of the 1/16 m cells inside a circle of radius r0 (bottom) .. r1 (top), as vertical faces
+ * (bands with the same outline merge). Centred on x = z = 0, from y0 to y1 (m). Open top and bottom.
+ */
+function voxelBeamShell(r0, r1, y0, y1, cell = 1 / 16, band = 0.2) {
+  const pos = [], nor = [], idx = [];
+  const nb = Math.max(1, Math.round((y1 - y0) / band));
+  const outline = (r) => {
+    const n = Math.ceil(r / cell) + 1, inside = (i, k) => Math.hypot((i + 0.5) * cell, (k + 0.5) * cell) <= r;
+    const E = [];
+    for (let k = -n; k < n; k++) for (let i = -n; i < n; i++) {
+      if (!inside(i, k)) continue;
+      const x0 = i * cell, z0 = k * cell, x1 = x0 + cell, z1 = z0 + cell;
+      if (!inside(i + 1, k)) E.push([x1, z0, x1, z1, 1, 0]);
+      if (!inside(i - 1, k)) E.push([x0, z1, x0, z0, -1, 0]);
+      if (!inside(i, k + 1)) E.push([x1, z1, x0, z1, 0, 1]);
+      if (!inside(i, k - 1)) E.push([x0, z0, x1, z0, 0, -1]);
+    }
+    return E;
+  };
+  let run = null;
+  const flush = () => {
+    if (!run) return;
+    for (const [ax, az, bx, bz, nx, nz] of run.E) {
+      const v = pos.length / 3;
+      pos.push(ax, run.ya, az, bx, run.ya, bz, bx, run.yb, bz, ax, run.yb, az);
+      for (let q = 0; q < 4; q++) nor.push(nx, 0, nz);
+      idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
+    }
+  };
+  for (let b = 0; b < nb; b++) {
+    const ya = y0 + (y1 - y0) * (b / nb), yb = y0 + (y1 - y0) * ((b + 1) / nb);
+    const r = r0 + (r1 - r0) * ((b + 0.5) / nb);
+    const key = Math.ceil(r / cell * 4); // (outlines change in quarter-cell steps of radius)
+    if (run && run.key === key) { run.yb = yb; continue; }
+    flush();
+    run = { key, ya, yb, E: outline(r) };
+  }
+  flush();
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setIndex(idx);
+  geo.computeBoundingSphere();
+  return geo;
+}
+
 function makeBeam() {
   const y0 = Y + 0.01, y1 = HOLE_SHAFT.top + 0.2;
-  const geo = new THREE.CylinderGeometry(HOLE_SHAFT.r * 0.78, HOLE_SHAFT.r * 1.12, y1 - y0, 18, 1, true);
+  const geo = voxelBeamShell(HOLE_SHAFT.r * 0.78, HOLE_SHAFT.r * 1.12, y0, y1);
   const mat = new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uK: { value: 0.16 }, uCol: { value: new THREE.Color(0x9ab8d8) }, uC: { value: new THREE.Vector2(HOLE.x, HOLE.z) }, uY0: { value: y0 }, uY1: { value: y1 } },
     vertexShader: BEAM_V, fragmentShader: BEAM_F,
@@ -55,7 +104,7 @@ function makeBeam() {
     blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
   });
   const m = new THREE.Mesh(geo, mat);
-  m.position.set(HOLE.x, (y0 + y1) / 2, HOLE.z);
+  m.position.set(HOLE.x, 0, HOLE.z);
   m.renderOrder = 7;
   m.frustumCulled = true;
   return m;

@@ -372,8 +372,18 @@ function beetleJar(id) {
   for (let y = 7; y < 14; y++) g.set(7 + (y > 10 ? 1 : 0), y, 8, 0x6a4a2a);
   g.set(9, 12, 8, 0x6ab84a); g.set(9, 13, 8, 0x7ac85a);
   grp.add(M(g));
-  const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.6, 10), new THREE.MeshBasicMaterial({ color: 0xe0fff8, transparent: true, opacity: 0.32, depthWrite: false }));
-  jar.position.y = 6 / 16 + 0.3;
+  // the glass: a voxel shell at 1/32 (a small thing: fine voxels), pale streaks where it catches the light
+  const jg = new VoxelGrid(15, 20, 15);
+  for (let y = 0; y < 20; y++) for (let z = 0; z < 15; z++) for (let x = 0; x < 15; x++) {
+    const d = Math.hypot(x - 7, z - 7);
+    if (d > 6.6 || (d < 5.6 && y > 0)) continue;
+    const hi = (x - z > 3 && x - z < 6) || y === 19;
+    jg.set(x, y, z, hi ? 0xffffff : y < 2 ? 0xc8e8e0 : 0xe0fff8);
+  }
+  const jar = vmesh(jg, { scale: V16 / 2, pivot: [7.5, 0, 7.5] });
+  jar.material = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.32, depthWrite: false });
+  jar.layers.disable(1);
+  jar.position.y = 6 / 16;
   grp.add(jar);
   const bg = new VoxelGrid(3, 2, 4);
   bg.box(0, 0, 0, 3, 2, 3, 0xd8ff8a); bg.box(0, 0, 3, 3, 1, 1, 0x2a2a3a); bg.set(1, 1, 1, 0xf0ffc0);
