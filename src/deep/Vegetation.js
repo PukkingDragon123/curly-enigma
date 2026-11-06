@@ -37,7 +37,7 @@ const R_DROP = 19;
 // far chunks are planted from the half-resolution copies of the models (./veg/plants.js); a chunk
 // switches as the mole comes within LOD[0] m of its centre (fine) or goes past LOD[1] (coarse).
 // By tier: there a fine voxel (1/48–1/64 m) is a pixel or less.
-const LOD_BY_FX = { high: [10.5, 12.5], low: [8, 10], off: [6.5, 8.5] };
+const LOD_BY_FX = { high: [10, 12], low: [6.5, 8.5], off: [5, 7] };
 const STEP = 3; // floor / ceiling placement grid (voxels)
 const WSTEP = 4; // wall placement grid (voxels)
 const M1 = CS - 1;

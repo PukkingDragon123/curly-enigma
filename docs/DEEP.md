@@ -134,9 +134,11 @@ lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, t
 - `update(dt, { player, eye, time })`, `onVoxel(vx, vy, vz, old, m)` (optional: a prop whose
   support was dug away should fall or go), `lights(eye)` (as above), `dispose()`.
 
-**Vegetation** (`new Vegetation(ctx)`, `src/deep/Vegetation.js` + `veg/`): painted 2D plants on
-alpha-tested cards in one instanced mesh (grass, ferns, fungus, flowers, roots, vines, … by zone,
-biome and material), swaying, pushed aside by the mole and Nugget, lit like the rock.
+**Vegetation** (`new Vegetation(ctx)`, `src/deep/Vegetation.js` + `veg/`): voxel plants
+(`veg/vox.js`, `veg/plants.js`; 1/48–1/64 m, giant ferns 1/32–1/40 m by the size rule) packed as boxes in
+one instanced draw (`veg/material.js`): grass, ferns, fungus, flowers, roots, vines, … by zone, biome and
+material, swaying in the vertex shader, pushed aside by the mole, lit like the rock. Far chunks use
+half-resolution copies; lower quality tiers plant only as far as plants are shown.
 - `update(dt, { player, eye, time, busy })` → `[]`, `lights(eye)` → ≤ 2 faint glows, `dispose()`.
 - `onVoxel(vx, vy, vz, old, m)`: a plant goes when its ground is dug or its space filled. It chains
   itself into `world.onChange`; calling it from DigScene's handler as well is harmless (it notices).
@@ -224,6 +226,18 @@ Fluids internals (`src/deep/fluids/`):
   `meshSolidRaw` → `rawToGeometry`) happen off the main thread. Dug chunks (`ch.urgent`) near the
   player remesh on the main thread the same frame. Without workers everything runs in the frame
   budget as before.
+- Keeping frames smooth (perf pass): the pool starts first and its first worker hands its plan to
+  the game (`pool.plan()`, cloned without the noise fields; `Generator.revivePlan` restores them),
+  and `TerrainView.warmAsync` loads the spawn area through the workers. While there are workers
+  nothing generates chunks on the main thread in play: rock chunks within pick reach get their real
+  voxels from a worker ahead of time (`world.prefetch(ch)` → `ch.pre`, used by `materialize`), and
+  `world.matAt` / `solidAt` on a chunk nobody asked for yet requests it and reads stone until it
+  comes (like a pending chunk). A dug chunk keeps its greedy slices (`sliceCache`, the last 24 dug
+  chunks): `setVoxel` notes the touched slices per axis (`ch.touch` → `ch.dm`), anything else that
+  sets `ch.dirty` asks for a full re-mesh, and `meshSolidRaw(pad, cache, dm)` redoes only those
+  slices (same output as a full mesh). Prop models (`props/models.js`) are built and meshed in the
+  same workers (`{ t: 'model' }` jobs; one-off `custom` models still here). Modules that chain into
+  `world.onChange` must do it once (re-wrapping every frame grows the chain by a link per frame).
 - Caves (`caveDensity(plan, x, y, z)`, also used by `ChunkGen.isSolid` so virtual chunks are exact):
   winding cave ways (two noises near zero, 1–2 m), tighter crawlways below 4 m (often crouch
   height), big caverns that grow with depth and stand on stone pillars, and rare deep ravines.

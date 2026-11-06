@@ -7,7 +7,7 @@ export class Px {
     this.c = document.createElement('canvas');
     this.c.width = w;
     this.c.height = h;
-    this.ctx = this.c.getContext('2d');
+    this.ctx = this.c.getContext('2d', { willReadFrequently: true });
     this.img = this.ctx.createImageData(w, h);
     this.d = this.img.data;
   }
