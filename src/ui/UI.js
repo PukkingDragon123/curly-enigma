@@ -21,6 +21,7 @@ import { Radar } from './Radar.js';
 import { Crosshair } from './Crosshair.js';
 import { Tracker } from './Tracker.js';
 import { DSPR } from './deepArt.js';
+import { HART } from './hudArt.js';
 import { Tutor } from './Tutor.js';
 import { Convo } from './Convo.js'; // cutscene talk (game.convo)
 import { Onboard } from './Onboard.js'; // the cinematic tutorial's layer (prompts, letterbox, tutorial UI level)
@@ -44,6 +45,11 @@ export { qColor };
 const LAYER_MODS = import.meta.glob('../fps/liftLayers.js');
 const SEAL_FOR = { good: 'green', warn: 'amber', bad: 'red' };
 const TACK_FOR = { good: 0x5a9a3a, warn: 0xd9901e, bad: 0xc23c2c };
+// (ui3) what each kind of tag hangs from: a loop of green thread (linen), twine through an eyelet
+// (leather), a chain (brass); the plain paper note keeps its tack
+const HANG_FOR = { good: 'hangLoop', warn: 'hangTwine', bad: 'hangChain' };
+/** Things you can press: they press in with a soft latch click on the way down (ui3). */
+const PRESSABLE = '.btn, .sh-tab, .ug-tab, .stamp-btn, .tk-note, .cv-opt, .nb-note, .sd-pack, .sh-good, .qt-roll';
 
 /** '<kbd>E</kbd>' text → KeyboardEvent.code, for tapping prompts on touch screens. */
 function keyCode(label) {
@@ -68,11 +74,22 @@ export class UI {
     for (const [k, v] of Object.entries(css)) rs.setProperty('--a-' + k, `url("${v}")`);
 
     // touch devices: tap glyphs instead of key caps, bigger targets
+    rs.setProperty('--a-tackGreen', `url("${SPR.tack(0x5a9a3a)}")`);
+    rs.setProperty('--a-tackGold', `url("${SPR.tack(0xd9901e)}")`);
+    rs.setProperty('--a-tackBlue', `url("${SPR.tack(0x3f7ec8)}")`);
+
     const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     if (coarse) document.documentElement.classList.add('is-touch');
     window.addEventListener('touchstart', () => document.documentElement.classList.add('is-touch'), { once: true, passive: true });
 
     this.root.dataset.hud = 'none';
+    // (ui3) whatever you press presses in (CSS) with a soft latch click on the way down
+    this.root.addEventListener('pointerdown', (e) => {
+      if (e.button > 0) return;
+      const b = e.target.closest?.(PRESSABLE);
+      if (!b || b.disabled || b.getAttribute('aria-disabled') === 'true') return;
+      this.game.audio.play('click', { vol: 0.2, pitch: 1.35 });
+    }, true);
     this.world = el('div', { class: 'world-layer' });
     this.hud = el('div', { class: 'hud' });
     this.overlay = el('div', { class: 'overlay' });
@@ -267,7 +284,7 @@ export class UI {
   toast(text, { icon, kind = '', dur = 2600 } = {}) {
     const color = SEAL_FOR[kind] || 'brown';
     const t = el('div', { class: 'toast ' + kind, role: 'status' }, [
-      el('img', { class: 'pix toast-tack', src: SPR.tack(TACK_FOR[kind] || 0xc23c2c), alt: '' }),
+      el('img', { class: 'pix toast-tack', src: HANG_FOR[kind] ? HART[HANG_FOR[kind]]() : SPR.tack(TACK_FOR[kind] || 0xc23c2c), alt: '' }),
       icon ? itemVox.img(icon, 'pix toast-icon', { pop: true, game: this.game }) : null, // (an item's icon comes in 3D, with a little turn)
       el('span', { class: 'toast-text', html: text }),
       el('img', { class: 'pix toast-seal', src: SPR.seal(color, kind === 'good' ? 'check' : kind === 'bad' ? 'x' : 'ring'), alt: '' }),

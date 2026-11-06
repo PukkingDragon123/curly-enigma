@@ -264,6 +264,17 @@ const ASSETS = {
   journalL: () => CA.leatherTile(64, 64, GREEN, { seed: 39, cell: 3.4 }),
   woodL: () => CA.woodTile(96, 32, { plank: 8, seed: 11 }),
   woodDkL: () => CA.woodTile(96, 40, { plank: 10, seed: 12, pal: CA.TONES.woodDk }),
+  // ui3: torn posters for the town's notices, cork, the Miners' Board's slate in its timber frame
+  posterR: () => CA.tornPoster(0xa8321e, { seed: 131 }), // 7
+  posterG: () => CA.tornPoster(0x3d6a2a, { seed: 133 }), // 7
+  posterK: () => CA.tornPoster(0x3a2a20, { seed: 137 }), // 7
+  newsT: () => CA.newsTile(64, 64),
+  corkT: () => CA.corkTile(48, 48),
+  timber: () => CA.timberFrame(), // 8
+  chalkL: () => CA.chalkSlate(96, 64),
+  ledge: () => CA.chalkLedge(),
+  chalk: () => CA.chalkStub(),
+  eraser: () => CA.feltEraser(),
   gutterL: () => gutterTile(false),
   gutterR: () => gutterTile(true),
   smudge: () => smudgeTile(),

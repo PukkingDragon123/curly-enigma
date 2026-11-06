@@ -14,6 +14,7 @@
 // installHudArt(node) publishes them as --h-* custom properties. Helpers (noise, tone ramps,
 // rivets, screws, stitches) are shared with uiSprites.js and deepArt.js.
 import { Px, art } from './uiArt.js';
+import * as CA from './craftArt.js';
 
 // ---------------------------------------------------------------- helpers
 export const h2 = (x, y, s = 0) => {
@@ -492,6 +493,178 @@ function waxSmall() {
   return p;
 }
 
+// ---------------------------------------------------------------- ui3: toast tags by kind
+// Good news comes on a linen tag sewn with green thread, a warning on a tooled leather tag through an
+// eyelet, bad news on a riveted brass plate on a chain. (The plain paper note stays for the rest.)
+const wrap = (v, n) => ((v % n) + n) % n;
+const LINEN = CA.TONES.linen, VEG = CA.TONES.veg, BR = CA.TONES.brass;
+/** Linen weave brightness at (x, y) (periodic 20): threads over and under, slubs in a few of them. */
+const weave = (x, y, M = 20) => {
+  const fx = wrap(x, M), fy = wrap(y, M);
+  let k = ((fx + fy) & 1) ? 0.07 : -0.05;
+  if (fy & 1) k += (h2(fy, 0, 201) - 0.5) * 0.12; else k += (h2(fx, 1, 202) - 0.5) * 0.12;
+  if (h2(fy >> 1, 3, 203) < 0.15 && fy & 1) k += 0.08; // a slub in the weft
+  return k;
+};
+/** The linen tag (slice 5 on 30): a turned hem with a green running stitch, a frayed foot. */
+function clothTag() {
+  const s = 5, M = 20, W = 30, p = new Px(W, W);
+  const G = [0x2e5a20, 0x4f8a34, 0x8ac85a];
+  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+    const { u, d, tl, e } = CA.edgeOf(x, y, W, W), uu = wrap(u - s, M);
+    if (Math.min(x, W - 1 - x) + Math.min(y, W - 1 - y) < 2) continue;
+    if (e === 2 && d === 0 && h2(uu, 7, 204) < 0.5) continue; // the frayed foot
+    let k = 0.62 + weave(x - s, y - s);
+    if (d === 0) { p.set(x, y, e === 2 ? LINEN[3] : LINEN[0]); continue; }
+    if (d === 1) k += tl ? 0.22 : -0.2;
+    else if (d === 2) k += tl ? 0.06 : -0.12;
+    else if (d === 3) k -= 0.14; // the hem's edge
+    if (d === 4) { const st = wrap(uu, 4); if (st < 2) { p.set(x, y, st === 0 ? G[2] : G[1]); continue; } if (st === 2) k -= 0.2; }
+    p.set(x, y, dtone(LINEN, k, x, y));
+  }
+  // loose threads hanging off the foot
+  for (let i = 0; i < 4; i++) { const x = s + Math.floor(h2(i, 9, 205) * M); if (p.a(x, W - 1)) p.set(x, W - 1, LINEN[5]); }
+  return p;
+}
+function linenTile() { const M = 20, p = new Px(M, M); for (let y = 0; y < M; y++) for (let x = 0; x < M; x++) p.set(x, y, dtone(LINEN, 0.62 + weave(x, y), x, y)); return p; }
+
+/** The tooled leather tag (slice 6 on 32): veg-tan hide, a burnished edge, a saddle stitch in a groove. */
+function leatherTag() {
+  const s = 6, M = 20, W = 32, p = new Px(W, W);
+  const F = CA.leatherField(M, M, { seed: 211, cell: 3.2, dome: 0.035, valley: 0.08, wear: 0.26, base: 0.6 });
+  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+    const { u, d, tl } = CA.edgeOf(x, y, W, W), uu = wrap(u - s, M);
+    if (Math.min(x, W - 1 - x) + Math.min(y, W - 1 - y) < 3) continue;
+    let k = F.K[wrap(y - s, M) * M + wrap(x - s, M)];
+    if (d === 0) { p.set(x, y, 0x2a160a); continue; }
+    if (d === 1) k -= 0.3; // the dyed, burnished edge
+    else if (d === 2) k += tl ? 0.18 : -0.08;
+    else if (d === 3) k -= 0.2; // the stitching groove
+    if (d === 3) { const st = wrap(uu, 4); if (st < 2) { p.set(x, y, st === 0 ? 0xfff0cc : 0xe8d0a0); continue; } if (st === 2) k -= 0.22; }
+    else if (d === 4 && wrap(uu, 4) < 2) k -= 0.12;
+    p.set(x, y, CA.quant(VEG, k, x, y, 0.3));
+  }
+  return p;
+}
+function vegTile() { const p = new Px(20, 20); CA.paintField(p, CA.leatherField(20, 20, { seed: 211, cell: 3.2, dome: 0.035, valley: 0.08, wear: 0.26, base: 0.6 }), VEG, 0, 0, 0.3); return p; }
+
+/** The brass plate (slice 6 on 32): brushed, bevelled, an engraved line round it, a screw in each corner. */
+function brassTag() {
+  const s = 6, M = 20, W = 32, p = new Px(W, W);
+  const F = CA.brassField(M, M, { seed: 221, base: 0.6 });
+  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+    const { d, tl } = CA.edgeOf(x, y, W, W);
+    if (Math.min(x, W - 1 - x) + Math.min(y, W - 1 - y) < 2) continue;
+    let k = F.K[wrap(y - s, M) * M + wrap(x - s, M)];
+    if (d === 0) { p.set(x, y, BR[0]); continue; }
+    if (d === 1) k += tl ? 0.3 : -0.3;
+    else if (d === 2) k += tl ? 0.12 : -0.14;
+    else if (d === 4) k = tl ? 0.18 : 0.82; // the engraved line: its shaded wall...
+    else if (d === 5) k = tl ? 0.8 : 0.3; // ...and the lit one
+    if (!tl && F.V[wrap(y - s, M) * M + wrap(x - s, M)] > 0.62 && d > 1) k -= 0.1; // tarnish low down
+    p.set(x, y, CA.quant(BR, k, x, y, 0.35));
+  }
+  for (const [x, y, dir] of [[2, 2, 0], [W - 5, 2, 2], [2, W - 5, 3], [W - 5, W - 5, 1]]) screw(p, x, y, dir, RAMP.brass);
+  for (const [x, y] of [[9, 1], [1, 12]]) { p.set(x, y, BR[9]); p.set(x + 1, y, BR[8]); }
+  return p;
+}
+function brassTile() { const p = new Px(20, 20), F = CA.brassField(20, 20, { seed: 221, base: 0.6 }); for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) p.set(x, y, CA.quant(BR, F.K[y * 20 + x], x, y, 0.35)); return p; }
+
+/** A forged nail head (3×2 at x, y) the tags hang from. */
+function nail(p, x, y) {
+  const I = RAMP.iron;
+  p.set(x, y, I[6]); p.set(x + 1, y, I[7]); p.set(x + 2, y, I[4]);
+  p.set(x, y + 1, I[4]); p.set(x + 1, y + 1, I[3]); p.set(x + 2, y + 1, I[1]);
+}
+/** The linen tag's hanger (9×12): a loop of green thread from a nail. */
+function hangLoop() {
+  const p = new Px(9, 12), G = [0x2e5a20, 0x4f8a34, 0x8ac85a];
+  p.line(3, 3, 1, 11, G[1]); p.line(5, 3, 7, 11, G[0]); p.line(4, 3, 2, 10, G[2]);
+  p.set(4, 2, G[1]); p.set(3, 2, G[2]);
+  nail(p, 3, 0);
+  p.outline(INK);
+  return p;
+}
+/** The leather tag's hanger (11×14): twine from a nail, through a brass eyelet. */
+function hangTwine() {
+  const p = new Px(11, 14), C = RAMP.twine;
+  for (let y = 2; y < 10; y++) { const o = Math.round((y - 2) * 0.28); p.set(4 - o, y, C[(y & 1) ? 4 : 2]); p.set(6 + o, y, C[(y & 1) ? 1 : 3]); }
+  const B = RAMP.brass;
+  for (const [x, y, c] of [[4, 9, 7], [5, 9, 8], [6, 9, 6], [3, 10, 7], [7, 10, 4], [3, 11, 6], [7, 11, 3], [4, 12, 4], [5, 12, 3], [6, 12, 2]]) p.set(x, y, B[c]);
+  p.set(4, 10, 0x1a0e08); p.set(5, 10, C[3]); p.set(6, 10, 0x1a0e08); p.set(4, 11, 0x1a0e08); p.set(5, 11, C[2]); p.set(6, 11, 0x2a1408);
+  nail(p, 4, 0);
+  p.outline(INK);
+  return p;
+}
+/** The brass plate's hanger (7×15): a hook, two iron links, a ring. */
+function hangChain() {
+  const p = new Px(7, 15), I = RAMP.iron;
+  p.set(3, 0, I[6]); p.set(4, 0, I[4]); p.set(2, 1, I[6]); p.set(4, 1, I[2]); p.set(3, 2, I[5]);
+  for (const [y0, side] of [[3, 0], [7, 1]]) {
+    if (!side) { p.set(3, y0, I[7]); p.set(2, y0 + 1, I[6]); p.set(4, y0 + 1, I[3]); p.set(2, y0 + 2, I[5]); p.set(4, y0 + 2, I[2]); p.set(3, y0 + 3, I[3]); }
+    else { p.set(3, y0, I[6]); p.set(3, y0 + 1, I[5]); p.set(3, y0 + 2, I[4]); p.set(3, y0 + 3, I[2]); }
+  }
+  for (const [x, y, c] of [[2, 11, 7], [3, 11, 6], [4, 11, 5], [1, 12, 6], [5, 12, 3], [2, 13, 4], [3, 13, 3], [4, 13, 2]]) p.set(x, y, I[c]);
+  p.outline(INK);
+  return p;
+}
+
+// ---------------------------------------------------------------- ui3: the strip's seal cracking
+/**
+ * The scroll's seal breaking when a step is done, and a fresh one settling: 6 frames of 15×20 side by
+ * side (whole, a hairline crack, split, the halves apart with a chip gone, a new blob squashed as it
+ * lands, whole again).
+ */
+function waxCrack() {
+  const W = 15, H = 20, N = 6, base = waxSeal(), Wx = RAMP.wax, p = new Px(W * N, H);
+  const cx = 7.5, cy = 6.8;
+  const inBlob = (x, y) => Math.hypot(x + 0.5 - cx, y + 0.5 - cy) < 7.4 && y < 14;
+  const crack = [[12, 1], [10, 4], [9, 5], [8, 7], [6, 8], [5, 10], [3, 12]];
+  const side = (x, y) => { // which side of the crack (by the nearest segment)
+    let best = 1e9, sg = 0;
+    for (let i = 0; i + 1 < crack.length; i++) {
+      const [ax, ay] = crack[i], [bx, by] = crack[i + 1], dx = bx - ax, dy = by - ay;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)));
+      const d = Math.hypot(x - ax - dx * t, y - ay - dy * t);
+      if (d < best) { best = d; sg = dx * (y - ay) - dy * (x - ax); }
+    }
+    return sg > 0 ? 1 : -1;
+  };
+  const put = (f, x, y, c, a = 255) => { if (x >= 0 && y >= 0 && x < W && y < H) p.set(f * W + x, y, c, a); };
+  for (let f = 0; f < N; f++) {
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const a = base.a(x, y);
+      if (!a) continue;
+      const c = base.get(x, y);
+      if (f === 0 || f === 5 || (!inBlob(x, y) && f !== 4)) { if (!inBlob(x, y) || f === 0 || f === 5) put(f, x, y, c, a); continue; }
+      if (f === 4) { if (!inBlob(x, y)) put(f, x, y, c, a); continue; }
+      const sd = side(x, y), sh = f === 1 ? 0 : f === 2 ? 1 : 2;
+      put(f, x + (sd > 0 ? sh : -Math.floor(sh / 2)), y + (sd > 0 ? sh : 0), c, a);
+    }
+    if (f === 1) for (let i = 0; i + 1 < crack.length; i++) { // the hairline: a dark cut, its far lip lit
+      const [ax, ay] = crack[i], [bx, by] = crack[i + 1], n = Math.max(Math.abs(bx - ax), Math.abs(by - ay));
+      for (let t = 0; t <= n; t++) { const x = Math.round(ax + (bx - ax) * t / n), y = Math.round(ay + (by - ay) * t / n); if (inBlob(x, y)) { put(f, x, y, Wx[0]); if (inBlob(x + 1, y)) put(f, x + 1, y, Wx[6]); } }
+    }
+    if (f >= 2 && f <= 3) for (const [x, y] of [[12, 4], [13, 5], [13, 6]]) p.clear(f * W + x + (f - 1), y + (f - 1)); // a chip flew off
+    if (f === 4) { // the new blob lands squashed (wider, flatter), then springs back
+      const t = new Px(W, H);
+      sealBlob(t, cx, cy, 6.4, 3.6, 5);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const sx = Math.round(cx - 0.5 + (x + 0.5 - cx) / 1.14), sy = Math.round(cy + 1.4 - 0.5 + (y + 0.5 - cy - 1.4) / 0.78);
+        if (t.in(sx, sy) && t.a(sx, sy)) put(f, x, y, t.get(sx, sy));
+      }
+    }
+  }
+  // outline every frame's wax again
+  for (let f = 1; f < 5; f++) {
+    const q = new Px(W, H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (p.a(f * W + x, y)) q.set(x, y, p.get(f * W + x, y), p.a(f * W + x, y));
+    q.outline(0x2a0604);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (q.a(x, y) && !p.a(f * W + x, y)) p.set(f * W + x, y, q.get(x, y));
+  }
+  return p;
+}
+
 // ---------------------------------------------------------------- registry
 const H = (k, fn) => art('h:' + k, fn);
 export const HART = {
@@ -507,7 +680,20 @@ export const HART = {
   strip: () => H('strip', strip),
   wax: () => H('wax', waxSeal),
   waxSmall: () => H('waxSmall', waxSmall),
+  // ui3
+  clothTag: () => H('clothTag', clothTag),
+  linenT: () => H('linenT', linenTile),
+  leatherTag: () => H('leatherTag', leatherTag),
+  vegT: () => H('vegT', vegTile),
+  brassTag: () => H('brassTag', brassTag),
+  brassT: () => H('brassT', brassTile),
+  hangLoop: () => H('hangLoop', hangLoop),
+  hangTwine: () => H('hangTwine', hangTwine),
+  hangChain: () => H('hangChain', hangChain),
+  waxCrack: () => H('waxCrack', waxCrack),
 };
+/** (the ui3 pieces, for previews) */
+export const HAX = { clothTag, linenTile, leatherTag, vegTile, brassTag, brassTile, hangLoop, hangTwine, hangChain, waxCrack };
 
 /** Publish the HUD art as --h-* custom properties (once). */
 let installed = false;
@@ -518,4 +704,7 @@ export function installHudArt(node = document.documentElement) {
   u('goldTag', HART.goldTag()); u('ironTag', HART.ironTag()); u('brassPlate', HART.brassPlate()); u('plaque', HART.plaque());
   u('paperTag', HART.paperTag(false)); u('paperTagRed', HART.paperTag(true)); u('gauge', HART.gauge());
   u('twineV', HART.twineV()); u('chainV', HART.chainV()); u('wax', HART.wax());
+  // ui3: the toast tags by kind, and the strip's seal cracking
+  u('clothTag', HART.clothTag()); u('linenT', HART.linenT()); u('leatherTag', HART.leatherTag()); u('vegT', HART.vegT());
+  u('brassTag', HART.brassTag()); u('brassT', HART.brassT()); u('waxCrack', HART.waxCrack());
 }

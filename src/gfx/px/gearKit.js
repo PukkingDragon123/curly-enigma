@@ -4,12 +4,15 @@
 // selective tint, dark seams where parts overlap, faceted planes instead of smooth
 // gradients, 45° "stripe" shading for diagonal handles and blades, wood grain, leather
 // wraps, hammer marks, rivets, stitching and small glints.
+//
+// Resolution: every builder takes design coordinates (the 32-unit grid, see res.js) and paints
+// natively at S×, so outlines, seams, rims, stitches and texture stay one real pixel wide.
 import { mat, mix, toHsl, fromHsl, towardHue, lum } from './color.js';
-import { Mask, hash2, vnoise, bayer, LIGHT, toneOf, sparkle } from './shade.js';
+import { hash2, vnoise, bayer, LIGHT, toneOf } from './shade.js';
+import { S, SZ, DM, dc, nc, np, dot } from './res.js';
 
-export const SZ = 32;
-export const M = () => new Mask(SZ, SZ);
-export { mat, mix, hash2, vnoise, bayer, lum };
+export const M = DM;
+export { mat, mix, hash2, vnoise, bayer, lum, S, SZ, dc, nc, np, dot };
 
 const nrm = (x, y, z) => { const l = Math.hypot(x, y, z) || 1; return [x / l, y / l, z / l]; };
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -78,10 +81,22 @@ export function ink(pc, o = {}) {
 /**
  * A 1px seam just outside `mask` over pixels that are already painted, so a part laid over
  * another reads as separate. c: color, a function (x, y, under) → color, or 'shadow'
- * (darkens what is underneath, strongest on the part's bottom-right).
+ * (darkens what is underneath, strongest on the part's bottom-right; at S > 1 the shadow
+ * gets a second, softer pixel on the bottom-right so the part sits proud of what's behind).
  */
 export function seam(pc, mask, c = 'shadow', o = {}) {
   const out = mask.clone().dilate(1, !!o.diag).sub(mask);
+  let soft = null;
+  if (c === 'shadow' && S > 1 && o.soft !== false) {
+    soft = [];
+    mask.clone().dilate(2, true).sub(mask.clone().dilate(1, true)).each((x, y) => {
+      if (pc.alpha(x, y) < 160 || (o.only && !o.only(x, y))) return;
+      // only below-right of the part (a cast shadow, not a halo)
+      if (!(mask.get(x - 2, y) || mask.get(x, y - 2) || mask.get(x - 1, y - 1) || mask.get(x - 2, y - 1) || mask.get(x - 1, y - 2))) return;
+      if (mask.get(x + 1, y) || mask.get(x, y + 1) || mask.get(x + 2, y) || mask.get(x, y + 2)) return;
+      soft.push(x, y, shadowOf(pc.getHex(x, y), 0.8));
+    });
+  }
   out.each((x, y) => {
     if (pc.alpha(x, y) < 160) return;
     if (o.only && !o.only(x, y)) return;
@@ -91,6 +106,7 @@ export function seam(pc, mask, c = 'shadow', o = {}) {
       pc.set(x, y, shadowOf(under, br ? 0.42 : 0.6));
     } else pc.set(x, y, typeof c === 'function' ? c(x, y, under) : c);
   });
+  if (soft) for (let i = 0; i < soft.length; i += 3) pc.set(soft[i], soft[i + 1], soft[i + 2]);
 }
 
 /** A darker, cooler version of a color (cast shadow / seam). */
@@ -106,17 +122,31 @@ export function liftOf(c, t = 0.3) {
   return fromHsl(towardHue(h, 50, 10), s * 0.92, l + (0.97 - l) * t);
 }
 
-/** Cast a contact shadow of `mask` one pixel down-right onto what is painted there. */
+/**
+ * Cast a contact shadow of `mask` (dx, dy) design px down-right onto what is painted there
+ * (at S > 1 the band's outer pixel is softer).
+ */
 export function cast(pc, mask, dx = 1, dy = 1, f = 0.62) {
-  const pts = [];
-  mask.each((x, y) => { const X = x + dx, Y = y + dy; if (!mask.get(X, Y) && pc.alpha(X, Y) >= 160) pts.push(X, Y); });
-  for (let i = 0; i < pts.length; i += 2) pc.set(pts[i], pts[i + 1], shadowOf(pc.getHex(pts[i], pts[i + 1]), f));
+  const n = Math.max(1, Math.round(Math.max(Math.abs(dx), Math.abs(dy)) * S));
+  const sx = dx / Math.max(Math.abs(dx), Math.abs(dy), 1e-6), sy = dy / Math.max(Math.abs(dx), Math.abs(dy), 1e-6);
+  const done = new Uint8Array(pc.w * pc.h), pts = [];
+  for (let k = 1; k <= n; k++) {
+    const ff = k === n && n > 1 ? (1 + f) / 2 : f;
+    mask.each((x, y) => {
+      const X = x + Math.round(sx * k), Y = y + Math.round(sy * k);
+      if (!pc.inb(X, Y) || done[Y * pc.w + X] || mask.get(X, Y) || pc.alpha(X, Y) < 160) return;
+      done[Y * pc.w + X] = 1;
+      pts.push(X, Y, ff);
+    });
+  }
+  for (let i = 0; i < pts.length; i += 3) pc.set(pts[i], pts[i + 1], shadowOf(pc.getHex(pts[i], pts[i + 1]), pts[i + 2]));
 }
 
 // ---------------------------------------------------------------- shading
 /**
  * Bevel shading: a flat face with a lit rim on its top-left edges and a shaded rim on its
- * bottom-right edges (hi/lo = rim widths). o: base, hiK, loK (ramp indices), hi2 (second ring).
+ * bottom-right edges (hi/lo = rim widths in real px). o: base, hiK, loK (ramp indices),
+ * hi2 (second ring), tex(x, y, k) → tone offset (native x, y).
  */
 export function bevel(pc, mask, R, o = {}) {
   const base = o.base ?? 3, hiK = o.hiK ?? base - 1, loK = o.loK ?? base + 1;
@@ -138,28 +168,42 @@ export function bevel(pc, mask, R, o = {}) {
 }
 
 /**
- * A spine with a width profile, with per-pixel coordinates: s (0..1 along), v (signed
- * distance across; + = left of the direction of travel), w (half width), (tx, ty) tangent.
+ * A spine with a width profile (design units), rasterised natively, with per-pixel
+ * coordinates: s (0..1 along), v (signed distance across in design px; + = left of the
+ * direction of travel), w (half width), (tx, ty) tangent. Arrays are indexed y * SZ + x.
  * Returns { mask, S, V, Wd, TX, TY }.
  */
 export function sweep(spine, wid, o = {}) {
-  const n = o.n ?? 120;
+  const n = o.n ?? 160;
   const P = [];
-  for (let i = 0; i <= n; i++) { const s = i / n; const [x, y] = spine(s); P.push([x, y, s]); }
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, wm = 0;
+  for (let i = 0; i <= n; i++) {
+    const s = i / n; const [x, y] = spine(s);
+    P.push([x * S, y * S, s]);
+    const w = wid(s) * S;
+    if (w > wm) wm = w;
+    if (x * S < x0) x0 = x * S; if (x * S > x1) x1 = x * S; if (y * S < y0) y0 = y * S; if (y * S > y1) y1 = y * S;
+  }
   const tan = P.map((_, i) => {
     const a = P[Math.max(0, i - 1)], b = P[Math.min(n, i + 1)];
     const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
     return [dx / l, dy / l];
   });
-  const res = { mask: M(), S: new Float32Array(SZ * SZ).fill(NaN), V: new Float32Array(SZ * SZ), Wd: new Float32Array(SZ * SZ), TX: new Float32Array(SZ * SZ), TY: new Float32Array(SZ * SZ) };
-  for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
+  const N = SZ * SZ;
+  const res = { mask: M(), S: new Float32Array(N).fill(NaN), V: new Float32Array(N), Wd: new Float32Array(N), TX: new Float32Array(N), TY: new Float32Array(N) };
+  const pad = wm + S;
+  const ya = Math.max(0, Math.floor(y0 - pad)), yb = Math.min(SZ - 1, Math.ceil(y1 + pad));
+  const xa = Math.max(0, Math.floor(x0 - pad)), xb = Math.min(SZ - 1, Math.ceil(x1 + pad));
+  const cs = (o.capStart ?? 0.3) * S, ce = (o.capEnd ?? 0.3) * S;
+  for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) {
     const px = x + 0.5, py = y + 0.5;
     let bi = -1, bd = 1e9;
     for (let i = 0; i <= n; i++) { const d = (P[i][0] - px) ** 2 + (P[i][1] - py) ** 2; if (d < bd) { bd = d; bi = i; } }
+    if (bd > pad * pad) continue;
     const [sx, sy, s] = P[bi], [tx, ty] = tan[bi];
     const along = (px - sx) * tx + (py - sy) * ty;
-    if ((bi === 0 && along < -(o.capStart ?? 0.3)) || (bi === n && along > (o.capEnd ?? 0.3))) continue;
-    const v = (px - sx) * ty - (py - sy) * tx; // + = right-hand normal (screen coords: y down)
+    if ((bi === 0 && along < -cs) || (bi === n && along > ce)) continue;
+    const v = ((px - sx) * ty - (py - sy) * tx) / S; // + = right-hand normal (screen coords: y down), design px
     const w = wid(s);
     if (Math.abs(v) > w) continue;
     const i = y * SZ + x;
@@ -170,8 +214,9 @@ export function sweep(spine, wid, o = {}) {
 
 /**
  * Facet shading of a sweep: two planes meeting at a ridge along the spine (tilt = slope),
- * steeper bevels within `edge` px of each rim, optional rounded profile (round: true).
- * Returns per-pixel tone indices (Int8Array).
+ * steeper bevels within `edge` design px of each rim, optional rounded profile (round: true).
+ * o.tex(x, y, s, v) → light offset (native x, y; v in design px).
+ * Returns per-pixel tone indices (Int8Array, y * SZ + x).
  */
 export function facetSweep(pc, sw, R, o = {}) {
   const slope = o.slope ?? 0.75, edge = o.edge ?? 0, edgeK = o.edgeK ?? 2.2, bias = o.bias ?? 0;
@@ -200,34 +245,34 @@ export function facetSweep(pc, sw, R, o = {}) {
 
 // ---------------------------------------------------------------- sticks (handles, hafts)
 /**
- * A straight round stick from (x0, y0) to (x1, y1) with radius r (or [r0, r1]), shaded in
- * crisp stripes across its width. o.tones: ramp indices from the lit side to the shaded side
- * (default [1, 2, 3, 3, 4, 5]); o.grain: wood streaks; o.knots: [u 0..1, ...];
- * o.clip: mask to cut away. Returns the mask with .uv(x, y) → [u (px along), v (px across)].
+ * A straight round stick from (x0, y0) to (x1, y1) (design px) with radius r (or [r0, r1]),
+ * shaded in crisp stripes across its width. o.tones: ramp indices from the lit side to the
+ * shaded side (default [1, 2, 3, 3, 4, 5]); o.grain: wood streaks (long ones plus fine 1px
+ * fibres at S > 1); o.knots: [u 0..1, ...]; o.clip: mask to cut away. o.tex(x, y, u, v, k)
+ * (native x, y). Returns the mask with .uv(x, y) → [u (design px along), v (across)] for a
+ * native pixel.
  */
 export function stick(pc, x0, y0, x1, y1, r, R, o = {}) {
   const r0 = Array.isArray(r) ? r[0] : r, r1 = Array.isArray(r) ? r[1] : r;
-  const m = M().capsule(x0, y0, x1, y1, [r0, r1]);
-  if (o.flatEnds) {
-    // trim the round caps flat
-    m.fn(() => false);
-    const ax0 = x1 - x0, ay0 = y1 - y0, L0 = Math.hypot(ax0, ay0) || 1;
-    for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
-      const px = x + 0.5 - x0, py = y + 0.5 - y0;
-      const u = (px * ax0 + py * ay0) / L0, v = (-px * ay0 + py * ax0) / L0;
-      if (u < -0.2 || u > L0 + 0.2) continue;
-      const rr = r0 + (r1 - r0) * clamp(u / L0, 0, 1);
-      if (Math.abs(v) <= rr) m.set(x, y);
-    }
-  }
-  if (o.clip) m.sub(o.clip);
   const ax = x1 - x0, ay = y1 - y0, L = Math.hypot(ax, ay) || 1;
   const ux = ax / L, uy = ay / L;
   // perpendicular pointing away from the light
   let px = -uy, py = ux;
   if (px * LIGHT[0] + py * LIGHT[1] > 0) { px = -px; py = -py; }
+  const uv = (x, y) => { const qx = (x + 0.5) / S - x0, qy = (y + 0.5) / S - y0; return [qx * ux + qy * uy, qx * px + qy * py]; };
+  let m = M().capsule(x0, y0, x1, y1, [r0, r1]);
+  if (o.flatEnds) {
+    // trim the round caps flat
+    m = M();
+    for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
+      const [u, v] = uv(x, y);
+      if (u < -0.2 || u > L + 0.2) continue;
+      const rr = r0 + (r1 - r0) * clamp(u / L, 0, 1);
+      if (Math.abs(v) <= rr) m.set(x, y);
+    }
+  }
+  if (o.clip) m.sub(o.clip);
   const tones = o.tones || [1, 2, 3, 3, 4, 5];
-  const uv = (x, y) => { const qx = x + 0.5 - x0, qy = y + 0.5 - y0; return [qx * ux + qy * uy, qx * px + qy * py]; };
   m.uv = uv;
   m.each((x, y) => {
     const [u, v] = uv(x, y);
@@ -238,11 +283,17 @@ export function stick(pc, x0, y0, x1, y1, r, R, o = {}) {
       const g = vnoise(u * 0.32 + 3.1, v * 1.25 + (o.seed || 1) * 7.3, o.seed || 1);
       if (g > 0.7 && k >= 2 && k <= 4) k++;
       else if (g < 0.12 && k >= 3 && k <= 4) k--;
+      else if (S > 1 && k >= 2 && k <= 4) {
+        // fine fibres: thin broken streaks running along the grain
+        const f = vnoise(u * 0.9 + 11.3, v * S * 1.6 + (o.seed || 1) * 3.1, (o.seed || 1) + 17);
+        if (f > 0.8 && hash2(Math.round(u * S * 0.5), Math.round(v * S), (o.seed || 1) + 5) < 0.8) k++;
+      }
     }
     if (o.knots) for (const ku of o.knots) {
       const dk = Math.hypot((u - ku * L) * 0.8, v + 0.2);
       if (dk < 0.75) k = Math.min(5, k + 2);
       else if (dk < 1.5 && u > ku * L) k = Math.max(1, k - 1);
+      else if (S > 1 && dk < 2.1 && Math.abs(dk - 1.8) < 0.5 / S) k = Math.min(5, k + 1); // the knot's grain ring
     }
     if (o.tex) k += o.tex(x, y, u, v, k) || 0;
     k = clamp(k, o.min ?? 1, o.max ?? 5);
@@ -252,9 +303,10 @@ export function stick(pc, x0, y0, x1, y1, r, R, o = {}) {
 }
 
 /**
- * Leather / cord wrap around a stick between u0..u1 (px along from (x0, y0)), slightly
- * proud of it (grow), in bands of `period` px that lean by `slant`. Each band: lit lip,
- * body, dark overlap seam. Returns the mask.
+ * Leather / cord wrap around a stick between u0..u1 (design px along from (x0, y0)), slightly
+ * proud of it (grow), in bands of `period` design px that lean by `slant`. Each band: lit lip,
+ * body, dark overlap seam (1 real px each). o.rows: bands of rows design px stacked down the
+ * screen (a spiral on 45° handles). Returns the mask.
  */
 export function wrapStick(pc, x0, y0, x1, y1, r, u0, u1, R, o = {}) {
   const ax = x1 - x0, ay = y1 - y0, L = Math.hypot(ax, ay) || 1;
@@ -265,16 +317,22 @@ export function wrapStick(pc, x0, y0, x1, y1, r, u0, u1, R, o = {}) {
   let px = -uy, py = ux;
   if (px * LIGHT[0] + py * LIGHT[1] > 0) { px = -px; py = -py; }
   const tones = o.tones || [2, 2, 3, 3, 4, 5];
+  const rows = o.rows ? o.rows * S : 0, ph = (o.phase || 0) * S;
   m.each((x, y) => {
-    const qx = x + 0.5 - x0, qy = y + 0.5 - y0;
+    const qx = (x + 0.5) / S - x0, qy = (y + 0.5) / S - y0;
     const u = qx * ux + qy * uy, v = qx * px + qy * py;
     const q = clamp((v / (r + grow) + 1) / 2, 0, 0.999);
     let k = tones[Math.floor(q * tones.length)];
-    const w = u + v * slant;
-    // rows: crease on every n-th pixel row (reads as a spiral on 45° handles)
-    const f = o.rows ? (((y + (o.phase || 0)) % o.rows) + o.rows) % o.rows / o.rows : (((w - u0) % period) + period) % period / period;
-    if (f < (o.rows ? 0.01 : 0.3)) k += 2;                 // the overlap: deep crease
-    else if (f < (o.rows ? 1.01 / o.rows : 0.55)) k -= 1; // the next band's raised, lit lip
+    if (rows) {
+      const f = (((y + ph) % rows) + rows) % rows;
+      if (f === 0) k += 2;                       // the overlap: deep crease
+      else if (f === 1) k -= 1;                  // the next band's raised, lit lip
+      else if (S > 1 && f === rows - 1) k += 1;  // the band rolls under into the crease
+    } else {
+      const f = (((u + v * slant - u0) % period) + period) % period / period;
+      if (f < 0.3) k += 2;
+      else if (f < 0.55) k -= 1;
+    }
     if (o.tex) k += o.tex(x, y, u, v, k) || 0;
     pc.set(x, y, R[clamp(k, 1, 5)]);
   });
@@ -283,22 +341,24 @@ export function wrapStick(pc, x0, y0, x1, y1, r, u0, u1, R, o = {}) {
 
 // ---------------------------------------------------------------- surface detail
 /**
- * Hammer marks: small dimples (a darker pixel with a lit lower-right lip) scattered over the
- * interior of a metal part. o: dens, seed, only (x, y) → bool.
+ * Hammer marks: small dimples (a darker dent with a lit lower-right lip) scattered over the
+ * interior of a metal part. o: dens (per design px), seed, only (x, y) → bool (native).
  */
 export function dents(pc, mask, R, o = {}) {
-  const dens = o.dens ?? 0.07, seed = o.seed ?? 5;
+  const dens = (o.dens ?? 0.07) / (S * S) * (S > 1 ? 1.6 : 1), seed = o.seed ?? 5;
   const used = M();
+  const w = S > 1 ? 2 : 1;
   mask.each((x, y) => {
-    if (!(mask.get(x - 1, y) && mask.get(x + 1, y) && mask.get(x, y - 1) && mask.get(x, y + 1) && mask.get(x + 1, y + 1))) return;
+    for (let i = -1; i <= w; i++) if (!mask.get(x + i, y) || !mask.get(x + i, y + 1) || !mask.get(x + i, y - 1)) return;
     if (hash2(x, y, seed) > dens) return;
-    if (used.get(x - 1, y) || used.get(x, y - 1) || used.get(x - 1, y - 1) || used.get(x + 1, y - 1)) return;
+    for (let j = -2; j <= 1; j++) for (let i = -2; i <= w + 1; i++) if (used.get(x + i, y + j)) return;
     if (o.only && !o.only(x, y)) return;
     const k = R.indexOf(pc.get(x, y));
     if (k < 1 || k > 4) return;
-    pc.set(x, y, R[Math.min(5, k + 1)]);
-    const k2 = R.indexOf(pc.get(x + 1, y + 1));
-    if (k2 >= 2 && hash2(x, y, seed + 1) < 0.75) pc.set(x + 1, y + 1, R[k2 - 1]);
+    for (let i = 0; i < w; i++) step(pc, R, x + i, y, 1);
+    // the lit lip on the far side of the dimple
+    if (hash2(x, y, seed + 1) < 0.8) for (let i = 1; i <= w; i++) { const k2 = R.indexOf(pc.get(x + i, y + 1)); if (k2 >= 2) pc.set(x + i, y + 1, R[k2 - 1]); }
+    if (S > 1 && hash2(x, y, seed + 2) < 0.5) step(pc, R, x - 1, y, 1, 1, 4);
     used.set(x, y);
   });
 }
@@ -312,40 +372,52 @@ export function pits(pc, mask, R, dens = 0.05, seed = 3, light = 0.015) {
   });
 }
 
-/** Rivet / nail head: lit pixel with a shadow below-right (big = 2×2 dome). */
+/**
+ * Rivet / nail head at design pixel (x, y): a lit dome with a shadow below-right.
+ * At S > 1: small = a 2×2 dome with a glint, big = a 4×4 domed head with a dark rim.
+ */
 export function rivet(pc, x, y, R, big = false) {
+  if (S === 1) {
+    if (big) { pc.set(x, y, R[1]); pc.set(x + 1, y, R[2]); pc.set(x, y + 1, R[3]); pc.set(x + 1, y + 1, R[5]); pc.set(x, y, R[0]); }
+    else { pc.set(x, y, R[1]); pc.set(x + 1, y + 1, R[5]); }
+    return;
+  }
+  const X = Math.floor(x) * S, Y = Math.floor(y) * S;
+  const on = (i, j) => pc.alpha(X + i, Y + j) >= 160;
+  const put = (i, j, c) => { if (on(i, j)) pc.set(X + i, Y + j, c); };
   if (big) {
-    pc.set(x, y, R[1]); pc.set(x + 1, y, R[2]); pc.set(x, y + 1, R[3]); pc.set(x + 1, y + 1, R[5]);
-    pc.set(x, y, R[0]);
+    const D = [[-1, 1, 2, -1], [1, 0, 2, 3], [2, 2, 3, 4], [-1, 3, 4, -1]];
+    for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) if (D[j][i] >= 0) put(i, j, R[D[j][i]]);
+    put(4, 2, R[5]); put(4, 3, R[5]); put(2, 4, R[5]); put(3, 4, R[5]); put(4, 4, R[6] ?? R[5]);
   } else {
-    pc.set(x, y, R[1]); pc.set(x + 1, y + 1, R[5]);
+    put(0, 0, R[0]); put(1, 0, R[2]); put(0, 1, R[2]); put(1, 1, R[4]); put(2, 2, R[5]); put(2, 1, R[5]); put(1, 2, R[5]);
   }
 }
 
-/** Running stitch along a polyline: every `gap`-th pixel gets the thread color. */
+/** Running stitch along a polyline (design pts): dashes S px long, one every `gap` design px. */
 export function stitch(pc, pts, c, o = {}) {
-  const gap = o.gap ?? 2, mask = o.mask;
-  let n = o.phase ?? 0;
+  const gap = (o.gap ?? 2) * S, mask = o.mask, on = S > 1 ? Math.min(S, gap - 1) : 1;
+  let n = (o.phase ?? 0) * S;
   let last = null;
   for (let i = 0; i + 1 < pts.length; i++) {
-    const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
+    const ax = pts[i][0] * S, ay = pts[i][1] * S, bx = pts[i + 1][0] * S, by = pts[i + 1][1] * S;
     const L = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 2));
     for (let k = 0; k <= L; k++) {
       const x = Math.floor(ax + (bx - ax) * k / L), y = Math.floor(ay + (by - ay) * k / L);
       if (last && last[0] === x && last[1] === y) continue;
       last = [x, y];
-      if (n++ % gap === 0 && (!mask || mask.get(x, y))) pc.set(x, y, typeof c === 'function' ? c(x, y) : c);
+      if (n++ % gap < on && (!mask || mask.get(x, y))) pc.set(x, y, typeof c === 'function' ? c(x, y) : c);
     }
   }
 }
 
-/** Pixel line (Bresenham) with optional mask clip; c may be a function (i, x, y) → color. */
+/** Pixel line (Bresenham, 1 real px) between design points, optional mask clip; c may be a function (i, x, y) → color (native). */
 export function line(pc, x0, y0, x1, y1, c, mask = null, emit = 0) {
-  x0 = Math.floor(x0); y0 = Math.floor(y0); x1 = Math.floor(x1); y1 = Math.floor(y1);
+  x0 = nc(x0); y0 = nc(y0); x1 = nc(x1); y1 = nc(y1);
   const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
   const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
   let err = dx + dy;
-  for (let i = 0; i < 200; i++) {
+  for (let i = 0; i < 400; i++) {
     if (!mask || mask.get(x0, y0)) {
       const col = typeof c === 'function' ? c(i, x0, y0) : c;
       if (col !== null && col !== undefined) { pc.set(x0, y0, col); if (emit) pc.emit(x0, y0, emit); }
@@ -357,22 +429,39 @@ export function line(pc, x0, y0, x1, y1, c, mask = null, emit = 0) {
   }
 }
 
-/** Glint: a white core with ramp-tinted arms (r 0 = single pixel). */
-export function glint(pc, x, y, r = 1, mid = 0xfff6dc, emit = 0) {
-  if (r <= 0) { pc.set(x, y, 0xffffff); if (emit) pc.emit(x, y, emit); return; }
-  sparkle(pc, x, y, r, 0xffffff, mid, emit);
+/** Native 4-point star: white core, arms of length r (real px) fading to mid; r ≥ 3 adds diagonals. */
+export function star(pc, X, Y, r, c = 0xffffff, mid = 0xfff6dc, emit = 0) {
+  const put = (x, y, col) => { if (!pc.inb(x, y)) return; pc.set(x, y, col); if (emit) pc.emit(x, y, emit); };
+  put(X, Y, c);
+  for (let k = 1; k <= r; k++) {
+    const col = k <= Math.max(1, r >> 1) && r > 1 ? c : mid;
+    put(X + k, Y, col); put(X - k, Y, col); put(X, Y + k, col); put(X, Y - k, col);
+  }
+  if (r >= 3) { put(X + 1, Y + 1, mid); put(X - 1, Y - 1, mid); put(X + 1, Y - 1, mid); put(X - 1, Y + 1, mid); }
 }
 
-/** Scratch: a short light (or dark) diagonal line across a metal face. */
+/** Glint at design pixel (x, y): a white core with ramp-tinted arms (r 0 = the smallest twinkle). */
+export function glint(pc, x, y, r = 1, mid = 0xfff6dc, emit = 0) {
+  const X = nc(x), Y = nc(y);
+  if (r <= 0) {
+    if (S === 1) { pc.set(X, Y, 0xffffff); if (emit) pc.emit(X, Y, emit); return; }
+    star(pc, X, Y, 1, 0xffffff, mid, emit);
+    return;
+  }
+  star(pc, X, Y, r * S, 0xffffff, mid, emit);
+}
+
+/** Scratch: a short light (or dark) 1px line, len design px long, across a metal face. */
 export function scratch(pc, x, y, len, R, mask, dir = [1, 1], dk = -1) {
-  for (let i = 0; i < len; i++) {
-    const X = x + dir[0] * i, Y = y + dir[1] * i;
-    if (mask && !mask.get(X, Y)) continue;
-    step(pc, R, X, Y, dk);
+  const X = nc(x), Y = nc(y);
+  for (let i = 0; i < len * S; i++) {
+    const XX = X + dir[0] * i, YY = Y + dir[1] * i;
+    if (mask && !mask.get(XX, YY)) continue;
+    step(pc, R, XX, YY, dk);
   }
 }
 
-/** Pixels of mask within distance d (4-neighbourhood steps) of its edge. */
+/** Pixels of mask within distance d (4-neighbourhood steps, real px) of its edge. */
 export function rim(mask, d = 1) {
   const inner = mask.clone().erode(d);
   return mask.clone().sub(inner);

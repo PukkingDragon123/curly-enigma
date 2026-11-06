@@ -273,3 +273,21 @@
   .sh[data-mode=sell] .sh-room, .sh[data-mode=commission] .sh-room, .sh[data-mode=ticket] .sh-room { grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: 'keeper' 'wall' 'foot'; }
   .sh-counter { max-height: 40vh; }
 }
+
+/* ---- ui3: the traders keep ledgers: the counter card is a leaf from one (hand-ruled in blue, a red
+   double margin, clipped to the counter with a paper clip), the assay office's list is a ledger page */
+.sh-card { border-width: calc(var(--px) * 6); border-image: var(--dl-parchLedger) 6 / calc(var(--px) * 6) repeat; padding-left: calc(var(--px) * 7);
+  background: var(--dl-margin) var(--px) 0 / calc(var(--px) * 5) calc(var(--px) * 16) repeat-y padding-box, var(--dl-ledgerT) 0 0 / calc(var(--px) * 96) repeat padding-box, #ebe3c8 padding-box; }
+.sh-card::before { content: ''; position: absolute; z-index: 3; left: calc(var(--px) * 6); top: calc(var(--px) * -10); width: calc(var(--px) * 7); height: calc(var(--px) * 16);
+  background: var(--dl-clip) 0 0 / 100% 100% no-repeat; pointer-events: none; filter: drop-shadow(var(--px) var(--px) 0 rgba(20, 8, 4, .35)); }
+.sh-card-txt p { --lh: calc(var(--px) * 8); line-height: var(--lh); background: var(--dl-rule8) 0 0 / calc(var(--px) * 64) var(--lh) repeat; }
+.sh-card-icon { background: rgba(255, 255, 255, .25); }
+.sh-ledger { padding-left: calc(var(--px) * 9);
+  background: var(--dl-margin) calc(var(--px) * 2) 0 / calc(var(--px) * 5) calc(var(--px) * 16) repeat-y, var(--dl-ledgerT) 0 0 / calc(var(--px) * 96) repeat, #ebe3c8; }
+.sh-line { border-bottom: 0; background: var(--dl-rule8) 0 100% / calc(var(--px) * 64) calc(var(--px) * 8) repeat-x; }
+.sh-line:last-child { background: none; }
+.sh-good:active .sh-item { transform: translateY(0); transition-duration: .03s; }
+.sh-tab:active { transform: translateY(var(--px)); }
+@media (max-width: 900px), (max-height: 600px) {
+  .sh-card-txt p { --lh: calc(var(--px) * 11); background-image: var(--dl-rule11); }
+}

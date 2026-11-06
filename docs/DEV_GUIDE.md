@@ -157,3 +157,9 @@ the view model, HUD, and the optional enemies/fluids/props modules).
 - NEVER strip, flatten or "simplify" the existing UI. The hand-made pixel-art/paper UI (parchment tags, seals, tacks, wood and brass plates, the level-up plaque, discovery cards, stamp buttons) is the baseline the player loves. Changes only ever add detail, variety and interactivity; never replace art with plain boxes, pills, sans fonts or bare subtitles.
 - Everything on screen is detailed, high-resolution pixel art with pixel fonts. Paper is welcome, with material variety by context (parchment, leather, wood, brass, slate, cloth).
 - Prefer physical, in-world UI where it fits; the 2D UI that remains is interactive and tactile (presses, slides, flutters, glints).
+
+## Debug switches (URL query)
+- `?voxrule=0`: turn off the size-based voxel resolution rule (src/gfx/voxRes.js) for A/B shots.
+- `?cloth=0`: turn off all cloth simulation (src/gfx/cloth.js).
+- `?wildlife=0`: no birds in the forest.
+- `?q=<tier>`: pin a render quality tier (ultra/high/balanced/medium/low/lower/potato); `?hdr=0` turns HDR off.

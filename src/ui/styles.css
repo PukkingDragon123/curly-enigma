@@ -131,6 +131,12 @@ kbd {
 .btn.danger[disabled] { border-image-source: var(--a-btnDanger); }
 .btn.big { font-size: 1.2em; padding: calc(var(--px) * 3) calc(var(--px) * 8) calc(var(--px) * 4); }
 .btn:focus-visible, .icon-btn:focus-visible, #ui button:focus-visible { outline: var(--px) solid var(--gold); outline-offset: var(--px); }
+/* (ui3) a glint runs across the brass as you reach for it; pressed, the plate sinks a pixel further */
+.btn::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: var(--dl-glint) -30% 0 / calc(var(--px) * 10) 100% no-repeat; clip-path: inset(var(--px) var(--px) calc(var(--px) * 2)); }
+.btn:not([disabled]):hover::after { animation: btnGlint .55s steps(6); }
+@keyframes btnGlint { 0% { opacity: 1; background-position: -20% 0; } 100% { opacity: 1; background-position: 120% 0; } }
+.btn:not([disabled]):active { transition-duration: .02s; }
 .bp-label:focus-visible { outline-style: solid; outline-color: var(--gold); }
 .row { display: flex; gap: calc(var(--px) * 3); align-items: center; flex-wrap: wrap; }
 .spacer { flex: 1; }
@@ -281,6 +287,32 @@ kbd {
 @keyframes toastIn { from { transform: translateY(calc(var(--px) * -14)) rotate(-3deg); opacity: 0; } 60% { opacity: 1; } }
 @keyframes toastSway { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(.6deg); } }
 @keyframes toastOut { to { transform: translateY(calc(var(--px) * -10)) rotate(2deg); opacity: 0; } }
+/* (ui3) a tag swings on what it hangs from as it lands: a damped pendulum on `rotate` (it stacks on
+   the sway), heavier materials swinging slower and less. Each kind is its own material: */
+.toast { --sw: 2.4deg; animation: toastIn .42s var(--pop) both, toastSway 3s ease-in-out .42s infinite, toastSwing 1.5s ease-out .28s both; }
+@keyframes toastSwing { 0% { rotate: 0deg; } 12% { rotate: var(--sw); } 32% { rotate: calc(var(--sw) * -.62); } 52% { rotate: calc(var(--sw) * .36); } 74% { rotate: calc(var(--sw) * -.16); } 100% { rotate: 0deg; } }
+/* (their hangers are taller than a tack: a little more room above each) */
+.toast.good:not(.sk-toast), .toast.warn, .toast.bad { margin-top: calc(var(--px) * 7); }
+/* good news: a linen tag sewn with green thread, hanging on a loop of it */
+.toast.good:not(.sk-toast) { --sw: 4deg; transform-origin: 50% calc(var(--px) * -10);
+  border-image: var(--h-clothTag) 5 / calc(var(--px) * 5) repeat; background: var(--h-linenT) 0 0 / calc(var(--px) * 20) repeat padding-box, #d6caaa padding-box; }
+.toast.good:not(.sk-toast) .toast-tack { width: calc(var(--px) * 9); height: calc(var(--px) * 12); top: calc(var(--px) * -15); margin-left: calc(var(--px) * -4.5); }
+.toast.good:not(.sk-toast) b { color: #2e5a20; }
+/* a warning: a tooled leather tag on twine through a brass eyelet */
+.toast.warn { --sw: 5deg; transform-origin: 50% calc(var(--px) * -8); border-width: calc(var(--px) * 6); padding-top: 0;
+  border-image: var(--h-leatherTag) 6 / calc(var(--px) * 6) repeat; background: var(--h-vegT) 0 0 / calc(var(--px) * 20) repeat padding-box, #cc8c50 padding-box; color: #24140a; }
+.toast.warn .toast-tack { width: calc(var(--px) * 11); height: calc(var(--px) * 14); top: calc(var(--px) * -14); margin-left: calc(var(--px) * -5.5); }
+.toast.warn b { color: #5a1608; }
+/* bad news: a riveted brass plate on a chain (heavy: it swings slow and short) */
+.toast.bad { --sw: 2.6deg; transform-origin: 50% calc(var(--px) * -11); border-width: calc(var(--px) * 6); padding-top: 0; color: #2a1606; text-shadow: 0 calc(var(--px) * .5) 0 rgba(255, 240, 190, .45);
+  border-image: var(--h-brassTag) 6 / calc(var(--px) * 6) repeat; background: var(--h-brassT) 0 0 / calc(var(--px) * 20) repeat padding-box, #dcae4e padding-box;
+  animation: toastIn .42s var(--pop) both, toastSway 3s ease-in-out .42s infinite, toastSwing 2.1s ease-out .3s both; }
+.toast.bad .toast-tack { width: calc(var(--px) * 7); height: calc(var(--px) * 15); top: calc(var(--px) * -17); margin-left: calc(var(--px) * -3.5); }
+.toast.bad b { color: #7a1a0c; }
+.toast.bad::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--dl-glint) 0 0 / calc(var(--px) * 10) 100% no-repeat; opacity: 0;
+  clip-path: inset(0); animation: toastGlint .7s steps(7) .6s; }
+@keyframes toastGlint { 0% { opacity: 1; background-position: -10% 0; } 100% { opacity: 1; background-position: 110% 0; } }
+.toast.out { animation: toastOut .35s ease-in forwards; }
 
 /* ---------- prompt: chalk on a little slate ---------- */
 .prompt {

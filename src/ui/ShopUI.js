@@ -122,6 +122,7 @@ export function openShop(game, shopId) {
     const b = el('button', {
       class: 'sh-good' + (picked === id ? ' on' : '') + (owned ? ' owned' : '') + (!owned && !can ? ' dear' : ''), title: it.name, 'aria-label': `${it.name}, ${tagTxt}`,
       onclick: () => { picked = id; game.audio.play('ui_click'); for (const n of stock.children) n.classList.toggle('on', n === b); renderCounter(true); },
+      onmouseenter: () => game.audio.play('ui_hover', { vol: 0.14 }), // (ui3) the shelf answers your paw
     }, [
       el('span', { class: 'sh-item', 'data-vox': id }, [el('img', { class: 'pix', src: itemVox.src(id), alt: '' })]),
       el('span', { class: 'sh-tag' }, [owned ? null : el('img', { class: 'pix', src: SPR.coinMini(), alt: '' }), tagTxt]),

@@ -14,7 +14,7 @@ import { UPGRADES, UPGRADE_TABS, MILESTONES, milestoneValue, milestoneText, upgr
 import { explosiveIconURL } from '../deep/explosives/icon.js';
 import { SPR } from './uiSprites.js';
 import { Px, art } from './uiArt.js';
-import { put } from './common.js';
+import { put, swing } from './common.js';
 import './upgrades.css';
 
 const ZONE_NAMES = ZONES.map((z) => z?.name);
@@ -152,6 +152,8 @@ export function openUpgrades(game, startTab) {
     }
     put(c, ic, head, eff, foot);
     if (!maxed && !lock && lvl) c.title = u.desc;
+    // (ui3) reach for a card and it swings on its tack, a little paper rustle
+    c.addEventListener('pointerenter', () => { if (swing(c, 1.8, 650)) game.audio.play('ui_hover', { vol: 0.16 }); });
     return c;
   };
 

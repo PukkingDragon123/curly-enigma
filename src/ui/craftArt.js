@@ -59,6 +59,14 @@ export const TONES = {
   brass: [0x3a2410, 0x5a3a14, 0x7a5418, 0xa0721e, 0xc08e30, 0xdcae4e, 0xeac466, 0xf7d97c, 0xffeaa8, 0xfff6d8],
   slate: [0x161c1a, 0x1d2422, 0x242c29, 0x2a3330, 0x313b37, 0x38443f, 0x404c47, 0x48554f, 0x58665f],
   silver: [0x1e1c1c, 0x34302e, 0x4c4642, 0x645c56, 0x7e756e, 0x9a9088, 0xb6ada4, 0xd2cac0, 0xeee8e0],
+  // (ui3: material variety) a trader's ledger paper, Rocco's kraft, linen, veg-tan leather, cork, newsprint, timber
+  ledger: [0x9c9070, 0xb2a684, 0xc6bb98, 0xd6ccaa, 0xe2d9ba, 0xebe3c8, 0xf2ecd8, 0xf9f5e8],
+  kraft: [0x5e4026, 0x74522f, 0x8a6339, 0x9c7343, 0xac824e, 0xba9058, 0xc79d64, 0xd3aa72],
+  linen: [0x6e5e44, 0x86765a, 0x9c8c6e, 0xb2a282, 0xc6b896, 0xd6caaa, 0xe4dabe, 0xf0e8d2],
+  veg: [0x4a2a14, 0x683c1c, 0x865026, 0xa26432, 0xb87840, 0xcc8c50, 0xdaa064, 0xe6b47c, 0xf0c896],
+  cork: [0x4a2e14, 0x5e3c1c, 0x744c26, 0x8a5e32, 0x9e703e, 0xb0824a, 0xc29458, 0xd2a66a],
+  news: [0x8e8676, 0xa49c8a, 0xb8b09c, 0xc8c0aa, 0xd6cfb8, 0xe0dac4, 0xe9e4d0, 0xf2eedf],
+  timber: [0x1c1008, 0x2a180c, 0x3a2212, 0x4a2c18, 0x5a361e, 0x6a4024, 0x7a4c2c, 0x8a5834, 0x9a663e, 0xac7648],
 };
 const INK = 0x24150d;
 
@@ -358,8 +366,8 @@ export function parchFrame(dog = false, o = {}) {
     const cx = Math.min(x, W - 1 - x), cy = Math.min(y, W - 1 - y);
     return !(cx + cy < 3);
   };
-  const F = paperField(M, M, { seed: sd + 3, fox: 2.4, stains: 0 });
-  paintPaper(p, F, TONES.paper, s, s, inside);
+  const F = paperField(M, M, { seed: sd + 3, fox: o.fox ?? 2.4, stains: 0, fibres: o.fibres });
+  paintPaper(p, F, o.pal || TONES.paper, s, s, inside);
   // dog-ear: everything stays inside the corner slice (W - s .. W - 1) so the edges still tile
   const c0 = W - s, fold = 2 * (W - 1) - (s - 2) - 1;
   if (dog) for (let y = c0; y < W; y++) for (let x = c0; x < W; x++) if (x + y > fold) p.clear(x, y);
@@ -773,5 +781,197 @@ export function stretchSign(pal = TONES.wood) {
       p.set(x, y, quant(pal, k, x, y, 0));
     }
   for (const [x, y] of [[2, 2], [W - 4, 2], [2, H - 5], [W - 4, H - 5]]) nailHead(p, x, y);
+  return p;
+}
+
+// ---------------------------------------------------------------- ui3: more materials
+/**
+ * A torn poster pasted to a board (slice 7 on 40): newsprint torn ragged all round (deeper bites than
+ * the parchment), the top-right corner ripped away, paste stains where it was glued, a letterpress
+ * double rule in `ink` worn through in places, and a crease where it was folded in a pocket.
+ */
+export function tornPoster(ink = 0xa8321e, o = {}) {
+  const s = 7, M = 26, W = s * 2 + M, sd = o.seed ?? 131;
+  const p = new Px(W, W);
+  const rag = (e, u) => {
+    const uu = wrap(u - s, M);
+    let t = 0.6 + pnoise((uu * 6) / M, e * 2.3, 6, 16, sd) * 2.4;
+    if (hash(uu, e, sd + 1) < 0.18) t += 1; // a fibre torn short
+    if (wrap(uu - Math.floor(hash(e, 3, sd) * M), M) < 3) t += [2, 3, 1][wrap(uu - Math.floor(hash(e, 3, sd) * M), M)]; // a bite
+    return t;
+  };
+  const inside = (x, y) => {
+    if (x < rag(3, y) || W - 1 - x < rag(1, y) || y < rag(0, x) || W - 1 - y < rag(2, x)) return false;
+    if (x > W - 1 - s && y < s && (W - 1 - x) + y < s + 1 + (hash(x, y, sd + 2) < 0.4 ? 1 : 0)) return false; // the ripped corner
+    return Math.min(x, W - 1 - x) + Math.min(y, W - 1 - y) >= 3;
+  };
+  const F = paperField(M, M, { seed: sd + 3, base: 0.66, fibres: 1.3, fox: 1.2, mottle: 0.36 });
+  paintPaper(p, F, o.pal || TONES.news, s, s, inside);
+  const D = p.dist(4);
+  p.each((x, y, c) => {
+    const d = D(x, y), { e, u, d: dd } = edgeOf(x, y, W, W), uu = wrap(u - s, M);
+    // the torn rim shows the paper's grey pulp, a shade darker, one pixel in
+    if (d === 1) return mix(c, hash(x, y, sd + 4) < 0.5 ? 0x8a8070 : 0xa49a86, 0.6);
+    // the letterpress rule (d 4 and 6 from the edge), the ink worn off where the paper rubbed
+    const paste = pnoise((uu * 3) / M, e * 1.9 + 5, 3, 8, sd + 5);
+    if ((dd === 4 || dd === 6) && d >= 2 && hash(uu, dd * 4 + e, sd + 6) > 0.08) return mix(c, ink, (dd === 4 ? 0.9 : 0.75) - (paste > 0.62 ? 0.25 : 0));
+    // paste stains: yellowed, translucent blooms along the rim
+    if (dd <= s && paste > 0.62) return mix(c, 0xc8a050, (paste - 0.62) * 0.9);
+    return undefined;
+  });
+  p.outline(0x4a3a2a);
+  return p;
+}
+/** The poster's newsprint, as a tile: grey fibres, a ghost of print bleeding through from the back. */
+export function newsTile(W = 64, H = W) {
+  const p = new Px(W, H);
+  paintPaper(p, paperField(W, H, { seed: 141, base: 0.68, fibres: 1.4, fox: 0.8, mottle: 0.3 }), TONES.news);
+  // show-through: faint rows of letters printed on the other side
+  for (let y = 3; y < H; y += 6)
+    for (let x = 0; x < W; x++) if (hash(x >> 1, y, 142) < 0.55 && hash(x, y, 143) < 0.7 && wrap(x + (y >> 1), 9) < 7) p.set(x, y, mix(p.get(x, y), 0x6e6658, 0.12));
+  return p;
+}
+
+/** Cork board (periodic): pressed granules, each lit on its upper left, dark pits, old pin holes. */
+export function corkTile(W = 48, H = W) {
+  const p = new Px(W, H), pal = TONES.cork;
+  const cell = 2.6, nx = Math.round(W / cell), ny = Math.round(H / cell), cw = W / nx, ch = H / ny;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const ci = Math.floor(x / cw), cj = Math.floor(y / ch);
+      let best = 1e9, bi = 0, bj = 0;
+      for (let dj = -1; dj <= 1; dj++)
+        for (let di = -1; di <= 1; di++) {
+          const ii = ci + di, jj = cj + dj;
+          const px = (ii + 0.2 + hash(wrap(ii, nx), wrap(jj, ny), 151) * 0.6) * cw, py = (jj + 0.2 + hash(wrap(ii, nx), wrap(jj, ny), 152) * 0.6) * ch;
+          const d = (x + 0.5 - px) ** 2 + (y + 0.5 - py) ** 2;
+          if (d < best) { best = d; bi = px - x - 0.5; bj = py - y - 0.5; }
+        }
+      const g = hash(wrap(Math.floor((x + bi + 0.5) / cw), nx), wrap(Math.floor((y + bj + 0.5) / ch), ny), 153);
+      let k = 0.38 + g * 0.42 + (bi + bj) * 0.06;
+      if (Math.sqrt(best) > 1.35) k -= 0.2;
+      if (hash(x, y, 154) < 0.04) k -= 0.3;
+      p.set(x, y, quant(pal, k, x, y, 0.3));
+    }
+  for (let i = 0; i < 6; i++) { const x = Math.floor(hash(i, 1, 155) * W), y = Math.floor(hash(i, 2, 155) * H); p.set(x, y, pal[0]); p.set(wrap(x + 1, W), wrap(y + 1, H), pal[5]); }
+  return p;
+}
+
+/**
+ * A heavy timber frame (slice 8 on 48): rough-sawn beams with grain along each rail, the saw's
+ * kerf marks across it, adze facets, a dark gap where the slate sits, iron corner brackets nailed on.
+ */
+export function timberFrame(o = {}) {
+  const s = 8, M = 32, W = s * 2 + M, T = TONES.timber, I = TONES.silver, sd = o.seed ?? 161;
+  const p = new Px(W, W);
+  for (let y = 0; y < W; y++)
+    for (let x = 0; x < W; x++) {
+      const { u, d, tl } = edgeOf(x, y, W, W);
+      if (d >= s) continue;
+      const uu = wrap(u - s, M), lit = tl ? 1 : -1;
+      const wave = (pnoise((uu * 3) / M, d * 0.5 + (tl ? 0 : 9), 3, 32, sd) - 0.5) * 4;
+      const ring = wrap((d + wave) / 2.6, 1);
+      let k = 0.5 + (pnoise((uu * 6) / M, d * 0.4, 6, 16, sd + 1) - 0.5) * 0.26;
+      if (ring < 0.22) k -= 0.18; else if (ring > 0.84) k += 0.06;
+      if (wrap(uu * 2 + d, 7) === 0 && hash(uu, d, sd + 2) < 0.5) k -= 0.08; // kerf marks
+      if (hash(uu >> 2, tl ? 1 : 2, sd + 3) < 0.25 && d >= 2 && d <= 5) k += 0.07; // an adze facet
+      if (d === 0) { p.set(x, y, T[0]); continue; }
+      if (d === 1) k += 0.26 * lit;
+      else if (d === 2) k += 0.1 * lit;
+      else if (d === 5) k -= 0.06;
+      else if (d === 6) k -= 0.24; // the rebate the slate sits in
+      else if (d === 7) { p.set(x, y, T[0]); continue; }
+      p.set(x, y, quant(T, k, x, y, 0.3));
+    }
+  // mitres
+  for (let i = 1; i < s - 1; i++) for (const [x, y] of [[i, i], [W - 1 - i, i], [i, W - 1 - i], [W - 1 - i, W - 1 - i]]) p.set(x, y, T[1]);
+  // iron corner brackets: an L of strap iron, three nails each, rust in the seams
+  const strap = (fx, fy) => {
+    const X = (v) => (fx ? W - 1 - v : v), Y = (v) => (fy ? W - 1 - v : v);
+    const on = (a, b) => (a >= 1 && a <= 6 && b >= 1 && b <= 3) || (b >= 1 && b <= 6 && a >= 1 && a <= 3);
+    for (let b = 0; b <= 7; b++)
+      for (let a = 0; a <= 7; a++) {
+        if (!on(a, b)) { if (on(a - 1, b) || on(a, b - 1) || on(a + 1, b) || on(a, b + 1)) p.set(X(a), Y(b), T[0]); continue; }
+        const up = !on(a, b - 1) || !on(a - 1, b), dn = !on(a, b + 1) || !on(a + 1, b);
+        let k = 0.45 + (hash(a, b, sd + 4 + fx * 2 + fy) - 0.5) * 0.16;
+        if (up) k += fy ? -0.2 : 0.25; if (dn) k += fy ? 0.2 : -0.25;
+        const c = quant(I, k, a, b, 0.4);
+        p.set(X(a), Y(b), hash(a, b, sd + 6) < 0.18 ? mix(c, 0x8a4a22, 0.5) : c);
+      }
+    for (const [a, b] of [[2, 2], [5, 2], [2, 5]]) { p.set(X(a), Y(b), I[7]); p.set(X(a) + (fx ? -1 : 1), Y(b) + (fy ? -1 : 1), I[1]); }
+  };
+  strap(false, false); strap(true, false); strap(false, true); strap(true, true);
+  return p;
+}
+
+/**
+ * A chalk slate, as a big tile (periodic W×H): the stone's cleavage, eraser swirls of chalk dust,
+ * ghost tallies and sums that never quite rubbed off, a few bright specks of chalk.
+ */
+export function chalkSlate(W = 96, H = 64) {
+  const p = new Px(W, H), S = TONES.slate;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let k = 0.5 + (fbm(x, y, W, H, 24, 3, 171) - 0.5) * 0.3 + (hash(x, y, 172) - 0.5) * 0.1;
+      if (wrap(y + Math.floor(x / 7), 9) === 0 && hash(x >> 1, y, 173) < 0.45) k -= 0.1;
+      p.set(x, y, quant(S, k, x, y, 0.7));
+    }
+  // eraser swirls: arcs of dust, densest along their middle
+  for (let i = 0; i < 5; i++) {
+    const cx = hash(i, 1, 174) * W, cy = hash(i, 2, 174) * H, R = 9 + hash(i, 3, 174) * 14, a0 = hash(i, 4, 174) * 6.28, a1 = a0 + 1.6 + hash(i, 5, 174) * 2.2;
+    for (let a = a0; a < a1; a += 0.02)
+      for (let w = -3; w <= 3; w++) {
+        const x = Math.round(cx + Math.cos(a) * (R + w)), y = Math.round(cy + Math.sin(a) * (R + w) * 0.6);
+        const X = wrap(x, W), Y = wrap(y, H), t = (1 - Math.abs(w) / 4) * 0.22;
+        if (hash(X, Y, 175 + i) < 0.5 + t) p.set(X, Y, mix(p.get(X, Y), 0xc8d0c8, t * (hash(X, Y, 176) < 0.6 ? 1 : 0.5)));
+      }
+  }
+  // ghost tallies (four strokes and a slash) and a half-wiped sum line
+  const ghost = 0x8a968e;
+  for (let g = 0; g < 3; g++) {
+    const gx = Math.floor(hash(g, 7, 177) * W), gy = Math.floor(hash(g, 8, 177) * H);
+    for (let t = 0; t < 4; t++) for (let j = 0; j < 5; j++) if (hash(t, j + g * 9, 178) < 0.8) p.set(wrap(gx + t * 2, W), wrap(gy + j, H), mix(p.get(wrap(gx + t * 2, W), wrap(gy + j, H)), ghost, 0.45));
+    for (let t = 0; t < 8; t++) p.set(wrap(gx - 1 + t, W), wrap(gy + 4 - Math.floor(t * 0.6), H), mix(p.get(wrap(gx - 1 + t, W), wrap(gy + 4 - Math.floor(t * 0.6), H)), ghost, 0.4));
+  }
+  for (let x = 0; x < 30; x++) if (hash(x, 9, 179) < 0.7) { const X = wrap(40 + x, W), Y = wrap(44, H); p.set(X, Y, mix(p.get(X, Y), ghost, 0.3)); }
+  for (let i = 0; i < 14; i++) { const x = Math.floor(hash(i, 10, 180) * W), y = Math.floor(hash(i, 11, 180) * H); p.set(x, y, hash(i, 12, 180) < 0.5 ? 0xdfe6dc : 0xb0bab2); }
+  return p;
+}
+
+/** The chalk ledge under the slate (a strip, 32 wide, 9 tall, tiles across): a planed rail, dust on it. */
+export function chalkLedge() {
+  const W = 32, H = 9, T = TONES.timber, p = new Px(W, H);
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let k = [0.05, 0.86, 0.7, 0.62, 0.56, 0.5, 0.42, 0.28, 0.05][y] + (pnoise(x / 4, y * 0.7, 8, 16, 181) - 0.5) * 0.14;
+      if (y === 2 && hash(x, y, 182) < 0.45) { p.set(x, y, hash(x, 1, 183) < 0.5 ? 0xd8ded4 : 0xa8b0a8); continue; } // chalk dust
+      p.set(x, y, quant(T, k, x, y, 0.35));
+    }
+  return p;
+}
+/** A stub of chalk (13×5) and a felt eraser on a wooden back (22×9), lying on the ledge. */
+export function chalkStub() {
+  const p = new Px(13, 5);
+  for (let x = 1; x < 12; x++) for (let y = 1; y < 4; y++) p.set(x, y, y === 1 ? 0xffffff : y === 2 ? 0xe8ece4 : 0xb8c0b6);
+  p.set(1, 1, 0xd8ded4); p.set(11, 3, 0x9aa298); p.set(12, 2, 0xd0d6cc);
+  p.outline(0x2a3330);
+  return p;
+}
+export function feltEraser() {
+  const p = new Px(22, 9), T = TONES.timber;
+  for (let x = 1; x < 21; x++) {
+    for (let y = 1; y < 5; y++) p.set(x, y, quant(T, [0, 0.82, 0.62, 0.5, 0.36][y] + (hash(x, y, 191) - 0.5) * 0.12, x, y, 0.4));
+    for (let y = 5; y < 8; y++) p.set(x, y, y === 5 ? 0x5a5a62 : hash(x, y, 192) < 0.5 ? 0xd8dcd4 : 0xb8bcb4); // the felt, white with chalk
+  }
+  p.outline(0x1c1008);
+  return p;
+}
+/** A bent-wire paper clip (7×16): two loops of steel, lit on the left. */
+export function paperClip() {
+  const p = new Px(7, 16), I = TONES.silver;
+  const path = [[1, 13], [1, 3], [2, 1], [4, 1], [5, 3], [5, 12], [4, 14], [3, 14], [3, 5]];
+  for (let i = 0; i + 1 < path.length; i++) p.line(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1], I[7]);
+  p.each((x, y) => (x >= 4 ? I[4] : y < 3 ? I[8] : undefined));
+  p.outline(0x1e1c1c);
   return p;
 }

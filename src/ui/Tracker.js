@@ -17,6 +17,7 @@ import { QuestMarks } from './QuestMarks.js';
 import { npcFace, faceReady } from './npcFace.js';
 import { Px, art } from './uiArt.js';
 import { HART, installHudArt } from './hudArt.js';
+import { swing } from './common.js';
 import './quests.css';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -114,9 +115,10 @@ export class Tracker {
     this.roll = el('button', {
       class: 'qt-roll', title: 'Your quests (B)', 'aria-label': 'Current objective: open the book',
       onclick: (e) => { e.stopPropagation(); this.game.audio.init?.(); ui.openBook?.('quests'); },
-    }, [this.paper, el('i', { class: 'qt-wax', 'aria-hidden': 'true' }), this.tag, this.stamp]);
+    }, [this.paper, this.wax = el('i', { class: 'qt-wax', 'aria-hidden': 'true' }), this.tag, this.stamp]);
     this.el = el('div', { class: 'qt', hidden: true, role: 'status', 'aria-live': 'polite' }, [this.roll, this.quill]);
-    this.roll.addEventListener('pointerenter', () => this.wake());
+    // (ui3) reach for the strip and its seal swings on its silk tails
+    this.roll.addEventListener('pointerenter', () => { this.wake(); swing(this.wax, 7, 900); });
     ui.hud.append(this.el);
     this.marks = ui.questMarks = new QuestMarks(ui);
     // draw the book's little pictures while nothing's happening, so the first opening is instant
@@ -372,11 +374,38 @@ export class Tracker {
 
   pulse(node) { node.classList.remove('pulse'); void node.offsetWidth; node.classList.add('pulse'); }
 
+  /**
+   * (ui3) The strip's wax seal breaks as a step is done (a hairline, the halves split, a chip flies)
+   * and a fresh one drops and settles: pixel frames (hudArt waxCrack), a jolt, three wax crumbs.
+   */
+  crackSeal() {
+    const w = this.wax;
+    if (!w) return;
+    w.classList.remove('crack');
+    for (const c of w.querySelectorAll('.qt-chip')) c.remove();
+    void w.offsetWidth;
+    w.classList.add('crack');
+    const au = this.game.audio;
+    setTimeout(() => au.play('crack', { vol: 0.16, pitch: 1.8 }), 140);
+    setTimeout(() => au.play('click', { vol: 0.24, pitch: 0.75 }), 900);
+    for (let i = 0; i < 3; i++) {
+      const c = el('i', { class: 'qt-chip' });
+      c.style.setProperty('--dx', `calc(var(--px) * ${[3, 6, 1][i]})`);
+      c.style.setProperty('--dy', `calc(var(--px) * ${[14, 18, 11][i]})`);
+      c.style.setProperty('--c', ['#b42c1e', '#6e140e', '#d0442c'][i]);
+      c.style.animationDelay = `${180 + i * 50}ms`;
+      w.append(c);
+    }
+    clearTimeout(this._crackT);
+    this._crackT = setTimeout(() => { w.classList.remove('crack'); for (const c of w.querySelectorAll('.qt-chip')) c.remove(); }, 1500);
+  }
+
   /** Tick the box and strike the line through. */
   async tickOff(visible) {
     if (!visible) return;
     this.box.src = BART.box(true);
     this.pulse(this.box);
+    this.crackSeal();
     SFX.tick(this.game.audio);
     await wait(120);
     this.strike.classList.add('go');

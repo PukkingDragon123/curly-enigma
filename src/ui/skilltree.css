@@ -392,3 +392,10 @@
 .sk.short .sk-desc { order: 4; }
 .sk.short .sk-stamp img { width: calc(var(--px) * 12); height: calc(var(--px) * 10); }
 .sk-stamp .sk-pips img { filter: sepia(1) saturate(.6) brightness(1.9); }
+
+/* ---- ui3: the level plaque swings in on its ribbon (styles.css toastSwing) and the light runs over
+   the brass medal once it lands */
+.toast.sk-toast { --sw: 3deg; transform-origin: 50% calc(var(--px) * -14); }
+.sk-toast-medal::after { content: ''; position: absolute; inset: calc(var(--px) * 2); pointer-events: none; opacity: 0;
+  background: var(--dl-glint) 0 0 / calc(var(--px) * 10) 100% no-repeat; clip-path: circle(48%); animation: skMedalGlint .8s steps(8) 1s both; }
+@keyframes skMedalGlint { 0% { opacity: 1; background-position: -30% 0; } 99% { opacity: 1; background-position: 130% 0; } 100% { opacity: 0; } }

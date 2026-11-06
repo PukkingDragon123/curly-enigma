@@ -40,3 +40,15 @@ export function put(node, ...kids) {
   node.append(...kids.filter((k) => k !== null && k !== undefined && k !== false));
   return node;
 }
+
+/**
+ * A little swing on whatever it hangs from (a tack, a nail, a chain): a damped pendulum on the
+ * independent `rotate` property, so it never fights the element's own CSS transform or animations.
+ * Set transform-origin in CSS (the hanging point). deg: the first swing; ms: how long it rings.
+ */
+export function swing(node, deg = 3, ms = 700) {
+  if (!node?.animate || node._swingA?.playState === 'running') return null;
+  const k = [1, -0.62, 0.36, -0.18, 0.07, 0];
+  node._swingA = node.animate(k.map((v, i) => ({ rotate: `${(v * deg).toFixed(2)}deg`, offset: i / (k.length - 1) })), { duration: ms, easing: 'ease-out', composite: 'add' });
+  return node._swingA;
+}

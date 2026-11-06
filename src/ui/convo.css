@@ -149,3 +149,47 @@ html.is-touch .cv-opt { padding-top: var(--px); padding-bottom: var(--px); }
 
 /* (tests and screenshots: game.convo.debug.settle() skips the entrances) */
 .cv.settled .cv-opt, .cv.settled .cv-say, .cv.settled .cv-plate, .cv.settled .cv-body { animation: none !important; }
+
+/* ---- ui3: each speaker writes on their own paper (data-mat: Tutor.materialOf; art: dialogArt.js) */
+/* Old Star: forge parchment, scorched deeper, soot rubbed in, an ember still alive in the burn */
+.cv-say[data-mat=forge] { border-image-source: var(--dl-parchForge); background: var(--dl-sootT) 0 0 / calc(var(--px) * 96) repeat padding-box, var(--parch) padding-box; }
+.cv-say[data-mat=forge] .cv-tail { background-image: var(--cv-tailForge); }
+.cv-say[data-mat=forge] .cv-body::after { content: ''; position: absolute; left: calc(var(--px) * -5); bottom: calc(var(--px) * -6); width: var(--px); height: var(--px); background: #ffc060;
+  box-shadow: var(--px) 0 0 #e8702a, 0 var(--px) 0 #9a3414; animation: cvEmber 1.6s steps(1) infinite; pointer-events: none; }
+@keyframes cvEmber { 0%, 100% { background: #ffc060; } 30% { background: #e8702a; } 55% { background: #ffe0a0; } 80% { background: #c8501e; } }
+/* the traders: a ledger leaf, hand-ruled in blue, a red double margin */
+.cv-say[data-mat=ledger] { border-image-source: var(--dl-parchLedger); background: var(--dl-ledgerT) 0 0 / calc(var(--px) * 96) repeat padding-box, #ebe3c8 padding-box; }
+.cv-say[data-mat=ledger] .cv-tail { background-image: var(--cv-tailLedger); }
+.cv-say[data-mat=ledger] .cv-body { padding-left: calc(var(--px) * 7); background: var(--dl-margin) 0 0 / calc(var(--px) * 5) calc(var(--px) * 16) repeat-y; }
+.cv-say[data-mat=ledger] .cv-text { --lh: calc(var(--px) * 8); line-height: var(--lh); background: var(--dl-rule8) 0 0 / calc(var(--px) * 64) var(--lh) repeat; }
+.cv-say[data-mat=ledger] .cv-text b { color: #8a2418; }
+/* Rocco: stout kraft from the storage crates */
+.cv-say[data-mat=kraft] { border-image-source: var(--dl-parchKraft); background: var(--dl-kraftT) 0 0 / calc(var(--px) * 96) repeat padding-box, #ba9058 padding-box; color: #22140a; }
+.cv-say[data-mat=kraft] .cv-tail { background-image: var(--cv-tailKraft); }
+.cv-say[data-mat=kraft] .cv-text b { color: #5a1608; }
+.cv-say[data-mat=kraft] .cv-text i, .cv-say[data-mat=kraft] .cv-sub { color: #4a2a14; }
+/* you: a page of your own notebook */
+.cv-say[data-mat=journal] { border-image-source: var(--dl-parchJournal); background: var(--a-pageL) 0 0 / calc(var(--px) * 96) repeat padding-box, var(--parch) padding-box; }
+@media (max-width: 900px), (max-height: 600px) {
+  .cv-say[data-mat=ledger] .cv-text { --lh: calc(var(--px) * 11); background-image: var(--dl-rule11); }
+}
+
+/* ---- ui3: the paper is tactile: it flutters as it lands, its corner uncurls, a fresh line rustles it */
+.cv-say.pop { animation: cvPop .42s var(--pop) both, cvFlutter .8s steps(8) .36s both; }
+@keyframes cvFlutter { 0% { rotate: -1.6deg; } 25% { rotate: 1deg; } 50% { rotate: -.6deg; } 75% { rotate: .3deg; } 100% { rotate: 0deg; } }
+.cv-say::before { content: ''; position: absolute; z-index: 3; right: calc(var(--px) * -6); bottom: calc(var(--px) * -6); width: calc(var(--px) * 12); height: calc(var(--px) * 12);
+  background: var(--dl-curl) 100% 0 / 400% 100% no-repeat; pointer-events: none; }
+.cv-say.pop::before { animation: cvCurl .5s steps(1) .12s both; }
+@keyframes cvCurl { 0% { background-position: 0 0; } 30% { background-position: 33.333% 0; } 60% { background-position: 66.667% 0; } 85%, 100% { background-position: 100% 0; } }
+.cv-say.swap .cv-text { animation: cvRustle .3s steps(3); }
+@keyframes cvRustle { 33% { translate: calc(var(--px) * .5) 0; } 66% { translate: calc(var(--px) * -.5) 0; } }
+/* the answers: the focused note nudges over, its brass number flips like a coin */
+.cv-opt.on .cv-opt-t { animation: cvTxtNudge .32s var(--pop); }
+@keyframes cvTxtNudge { 0% { translate: calc(var(--px) * -2) 0; } 60% { translate: calc(var(--px) * 1) 0; } }
+.cv-opt.on .cv-num { animation: cvNumFlip .36s steps(4); }
+@keyframes cvNumFlip { 0% { scale: 1 1; } 25% { scale: .4 1; } 50% { scale: -.2 1; filter: brightness(.8); } 75% { scale: .6 1; } 100% { scale: 1 1; } }
+.cv-opt::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--dl-glint) -60% 0 / calc(var(--px) * 10) 100% no-repeat; opacity: 0; }
+.cv-opt.on::after { animation: cvGlint .6s steps(6) .1s; }
+@keyframes cvGlint { 0% { opacity: 1; background-position: -10% 0; } 100% { opacity: 1; background-position: 110% 0; } }
+.cv-opt:active { translate: calc(var(--px) * 4) var(--px); filter: drop-shadow(0 var(--px) 0 rgba(6, 3, 6, .55)); }
+.cv.settled .cv-say::before, .cv.settled .cv-opt::after { animation: none !important; }

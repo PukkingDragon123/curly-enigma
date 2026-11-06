@@ -1,8 +1,11 @@
-// 32×32 raw-ore icons: host-rock chunks (flat planes, mottled) with the ore embedded in
-// them (nuggets, wire veins, crystals, bands), built on the facet renderer in facets.js.
+// Raw-ore icons: host-rock chunks (flat planes, mottled) with the ore embedded in them
+// (nuggets, wire veins, crystals, bands), built on the facet renderer in facets.js. Authored
+// on the 32-unit design grid, rasterised natively at S× (res.js): tests and geometry below take
+// design coordinates, pixel loops run over the scene's native buffers.
 import { makeRng } from '../../core/util.js';
-import { hash2, vnoise } from './shade.js';
+import { hash2, vnoise, bayer } from './shade.js';
 import { Scene, material, rampOf, stoneTex, glint } from './facets.js';
+import { S, dc, nc, np } from './res.js';
 
 // ---------------------------------------------------------------- shared helpers
 /** Point-in-polygon (even-odd). */
@@ -14,7 +17,10 @@ export function inPoly(P, x, y) {
   return c;
 }
 
-/** Repaint pixels of the given objects whose test passes: test → false | true (use R2) | ramp. */
+/**
+ * Repaint pixels of the given objects whose test passes: test(x, y, k, X, Y) (design x, y;
+ * native X, Y) → false | true (use R2) | ramp.
+ */
 export function recolor(pc, sc, objs, test, R2) {
   const ids = new Set(objs.map((o) => o.id));
   for (let y = 0; y < sc.h; y++) for (let x = 0; x < sc.w; x++) {
@@ -22,7 +28,7 @@ export function recolor(pc, sc, objs, test, R2) {
     if (!ids.has(sc.ob[i])) continue;
     const k = sc.k[i];
     if (k < 0 || k > 6) continue;
-    const r = test(x, y, k);
+    const r = test(dc(x), dc(y), k, x, y);
     if (!r) continue;
     const R = r === true ? R2 : r;
     pc.set(x, y, R[Math.max(0, Math.min(6, k + (R.dk || 0)))]);
@@ -35,11 +41,11 @@ export const blot = (cx, cy, r, seed = 1, wob = 0.45) => (x, y) => {
   return d < r * (1 - wob / 2 + wob * vnoise(x * 0.45, y * 0.45, seed));
 };
 
-/** Pixels within w of a polyline (pixel centres) → Map(index → {d, side}). */
+/** Pixels within w (design px; number or fn(x, y) of design coords) of a polyline (design pts) → Map(native index → {d, side}). */
 function band(sc, pts, w) {
   const out = new Map();
   for (let y = 0; y < sc.h; y++) for (let x = 0; x < sc.w; x++) {
-    const px = x + 0.5, py = y + 0.5;
+    const px = (x + 0.5) / S, py = (y + 0.5) / S;
     let best = 1e9, side = 0;
     for (let i = 0; i + 1 < pts.length; i++) {
       const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
@@ -49,7 +55,7 @@ function band(sc, pts, w) {
       const d = Math.hypot(dx, dy);
       if (d < best) { best = d; side = dx * -vy + dy * vx; }
     }
-    const ww = typeof w === 'function' ? w(x, y) : w;
+    const ww = typeof w === 'function' ? w(dc(x), dc(y)) : w;
     if (best <= ww) out.set(y * sc.w + x, { d: best / Math.max(0.01, ww), side });
   }
   return out;
@@ -57,8 +63,8 @@ function band(sc, pts, w) {
 
 /**
  * A raised mineral vein over rock pixels: lit top-left lip, dark bottom-right lip, body tone
- * following the plane underneath. pts in screen px, w half-width (number or fn(x, y)).
- * Returns [[x, y, tone, isDarkLip], ...].
+ * following the plane underneath, and (at S > 1) a thin bright crest along its middle.
+ * pts in design px, w half-width (number or fn(x, y)). Returns [[X, Y, tone, isDarkLip], ...] (native).
  */
 export function vein(pc, sc, objs, pts, w, R, o = {}) {
   const ids = new Set(objs.map((q) => q.id));
@@ -73,6 +79,7 @@ export function vein(pc, sc, objs, pts, w, R, o = {}) {
     const tl = !inV(x - 1, y) || !inV(x, y - 1), br = !inV(x + 1, y) || !inV(x, y + 1);
     if (tl && !br) k = Math.max(o.minK ?? 1, k - 1);
     else if (br && !tl) k = Math.min(5, k + 1);
+    if (S > 1 && !tl && !br && B.get(i).d < 0.28 && k > (o.minK ?? 1)) k -= 1; // crest catching the light
     hit.push([x, y, k, br && !tl]);
   }
   for (const [x, y, k] of hit) {
@@ -100,16 +107,51 @@ export function wander(rng, x, y, a, n, l = 1.6, bend = 0.45) {
   return pts;
 }
 
-/** Scatter single-pixel specks (colours or fn(tone)) over objs where test passes. */
+/**
+ * Scatter specks (colours or fn(tone)) over objs where test(x, y, k) (design coords) passes.
+ * dens is per design pixel; at S > 1 each speck is a real pixel, and one in three is a tiny
+ * raised grain (a darker pixel tucked under its bottom-right).
+ */
 export function specks(pc, sc, objs, dens, cols, seed = 1, test = null, emit = 0) {
   const ids = new Set(objs.map((q) => q.id));
+  const d = S > 1 ? dens * 0.6 : dens;
   for (let y = 0; y < sc.h; y++) for (let x = 0; x < sc.w; x++) {
     const i = y * sc.w + x;
     if (!ids.has(sc.ob[i]) || sc.k[i] < 0 || sc.k[i] > 6) continue;
-    if (hash2(x, y, seed) >= dens || (test && !test(x, y, sc.k[i]))) continue;
+    if (hash2(x, y, seed) >= d || (test && !test(dc(x), dc(y), sc.k[i], x, y))) continue;
     const c = cols[Math.floor(hash2(x, y, seed + 5) * cols.length)];
     pc.set(x, y, typeof c === 'function' ? c(sc.k[i]) : c);
     if (emit) pc.emit(x, y, emit);
+    const j = i + sc.w + 1;
+    if (S > 1 && hash2(x, y, seed + 9) < 0.33 && x + 1 < sc.w && y + 1 < sc.h && sc.ob[j] === sc.ob[i] && sc.k[j] >= 0 && sc.k[j] < 5) {
+      const R = sc.objs[sc.ob[j]].m.R;
+      pc.set(x + 1, y + 1, R[Math.min(5, sc.k[j] + 1)]);
+    }
+  }
+}
+
+/**
+ * Hairline fractures across rock objects (S > 1 only): wandering 1px dark cracks with a lit
+ * lower lip, following design-space polylines. Each crack: [[x, y], ...].
+ */
+export function cracks(pc, sc, objs, list) {
+  if (S === 1) return;
+  const ids = new Set(objs.map((q) => q.id));
+  for (const pts of list) {
+    let last = -1;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
+      const n = Math.ceil(Math.hypot(bx - ax, by - ay) * S * 2);
+      for (let t = 0; t <= n; t++) {
+        const X = np(ax + (bx - ax) * t / n), Y = np(ay + (by - ay) * t / n), j = Y * sc.w + X;
+        if (j === last || X < 0 || Y < 0 || X >= sc.w || Y >= sc.h || !ids.has(sc.ob[j]) || sc.k[j] < 0 || sc.k[j] > 6) continue;
+        last = j;
+        const R = sc.objs[sc.ob[j]].m.R;
+        pc.set(X, Y, R[Math.min(6, sc.k[j] + 2)]);
+        const jb = j + sc.w;
+        if (Y + 1 < sc.h && ids.has(sc.ob[jb]) && sc.k[jb] > 1 && sc.k[jb] < 6 && pc.getHex(X, Y + 1) !== R[Math.min(6, sc.k[j] + 2)]) pc.set(X, Y + 1, R[sc.k[jb] - 1]);
+      }
+    }
   }
 }
 
@@ -175,7 +217,7 @@ export function copperOre(pc) {
     const inA = blot(10, 16.5, 3.4, 3)(x, y), inB = blot(19.5, 20.5, 3.4, 4)(x, y), inC = blot(13, 24, 2.2, 6)(x, y);
     if (!(inA || inB || inC)) return false;
     const cx = inA ? 10 : inB ? 19.5 : 13, cy = inA ? 16.5 : inB ? 20.5 : 24;
-    return Math.floor(Math.hypot(x + 0.5 - cx, y + 0.5 - cy) * 0.9) % 2 ? MA : MB;
+    return Math.floor(Math.hypot(x + 0.5 - cx, y + 0.5 - cy) * (S > 1 ? 1.5 : 0.9)) % 2 ? MA : MB;
   });
   specks(pc, sc, rock, 0.035, [CU[2], CU[3]], 13);
   glint(pc, 10, 8, 1, 0xffffff, CU[1]);
@@ -192,7 +234,7 @@ export function tinOre(pc) {
   const TN = RAMP.tin();
   const tin = material(TN, { grad: 0.04, gap: 1.2 });
   const xtal = (x, y, ang, len, r, tw = 0.5) => {
-    const z = sc.zAt(Math.floor(x), Math.floor(y));
+    const z = sc.zD(x, y);
     sc.prism(tin, { b: [x, y, z - 1.2], d: [Math.cos(ang) * 0.75, Math.sin(ang) * 0.75, 0.66], len, r, tip: r * 1.1, sides: 4, twist: tw });
   };
   xtal(11.5, 13.5, -2.25, 9, 2.7, 0.3);
@@ -227,7 +269,7 @@ export function ironOre(pc) {
   });
   // metallic glints in the grey bands, rust weeping from the top
   const RU = RAMP.rust();
-  specks(pc, sc, rock, 0.07, [HE[0], HE[1]], 41, (x, y, k) => k <= 3 && HE.includes(pc.getHex(x, y)));
+  specks(pc, sc, rock, 0.07, [HE[0], HE[1]], 41, (x, y, k, X, Y) => k <= 3 && HE.includes(pc.getHex(X, Y)));
   recolor(pc, sc, rock, (x, y) => blot(20, 10, 4.5, 8)(x, y) && hash2(x, y, 9) < 0.55, RU);
   glint(pc, 10, 13, 1, 0xffffff, HE[1]);
   glint(pc, 23, 17, 1, 0xffffff, HE[1]);
@@ -290,7 +332,7 @@ export function mithrilOre(pc) {
   const MR = RAMP.mithril();
   const mi = material(MR, { eq: 0.55, grad: 0.05, ridgeAll: true, gap: 1.4, glow: (c) => (c.k <= 2 ? 0.6 : 0.3) });
   for (const [x, y, dx, dy, len, r, tw] of [[18, 12, 0.35, -1, 9, 2.1, 0.4], [21, 13.5, 0.9, -0.8, 6.5, 1.7, 0.1], [15, 12.5, -0.45, -1, 6, 1.6, 0.7], [19.5, 15, 0.2, -0.6, 4, 1.3, 0.2]]) {
-    const z = sc.zAt(Math.floor(x), Math.floor(y));
+    const z = sc.zD(x, y);
     sc.prism(mi, { b: [x, y, z - 1.2], d: [dx, dy, 0.45], len, r, tip: r * 1.7, sides: 6, twist: tw });
   }
   sc.render(pc);
@@ -344,7 +386,7 @@ export function adamantOre(pc) {
   const ad = material(AR, { grad: 0.05, ridgeAll: true });
   // sharp green blades jutting from the rock at angles
   const blade = (x, y, ax, ay, az, len, r, tw) => {
-    const z = sc.zAt(Math.floor(x), Math.floor(y));
+    const z = sc.zD(x, y);
     sc.prism(ad, { b: [x, y, z - 1.5], d: [ax, ay, az], len, r, tip: len * 0.45, sides: 4, twist: tw, squash: 0.55 });
   };
   blade(13.5, 18, -0.15, -1, 0.35, 17, 2.8, 0.2);
@@ -364,33 +406,46 @@ export function starmetalOre(pc) {
   const body = sc.chunk(crust, rng, { x: 16, y: 16.5, a: 15.5, b: 13.5, c: 11, n: 11, jag: 0.1, base: 0.62, p: 0.7, yaw: 0.4 });
   sc.render(pc);
   // regmaglypts: thumbprint dimples (dark lip top-left, lit lip bottom-right)
-  for (const [x, y] of [[6, 21], [25, 8], [26, 17], [15, 25.5], [5, 13], [21, 25]].map(([x, y]) => [Math.floor(x), Math.floor(y)])) {
-    if (sc.objAt(x, y) !== body.id) continue;
-    pc.set(x, y, CR[5]); pc.set(x + 1, y, CR[4]); pc.set(x - 1, y, CR[5]); pc.set(x, y - 1, CR[5]);
-    pc.set(x, y + 1, CR[2]); pc.set(x + 1, y + 1, CR[2]);
+  for (const [x, y, r] of [[6, 21, 1.6], [25, 8, 1.4], [26, 17, 1.7], [15, 25.5, 1.5], [5, 13, 1.3], [21, 25, 1.4], [9, 6.5, 1.2]]) {
+    if (sc.objD(x, y) !== body.id) continue;
+    for (let Y = np(y - r - 1); Y <= np(y + r + 1); Y++) for (let X = np(x - r - 1); X <= np(x + r + 1); X++) {
+      if (sc.objAt(X, Y) !== body.id) continue;
+      const dx = (X + 0.5) / S - x, dy = (Y + 0.5) / S - y, d = Math.hypot(dx, dy * 1.25);
+      if (d > r) continue;
+      const side = dx * 0.6 + dy * 0.8; // + = toward the bottom-right
+      const k = sc.k[Y * sc.w + X];
+      if (d > r - 0.6) pc.set(X, Y, CR[side < 0 ? 5 : 2]);
+      else pc.set(X, Y, CR[Math.min(5, Math.max(3, k + (side < 0 ? 1 : 0)))]);
+    }
   }
   // the polished, etched window: a sawn face with a Widmanstätten lattice and bevelled lips
   const win = [[10, 11.5], [17, 9.5], [22.5, 12.5], [20.5, 19.5], [12.5, 20]];
-  const inW = (x, y) => sc.objAt(x, y) === body.id && inPoly(win, x + 0.5, y + 0.5);
+  const inW = (X, Y) => sc.objAt(X, Y) === body.id && inPoly(win, (X + 0.5) / S, (Y + 0.5) / S);
   const KA = RAMP.kamacite();
-  for (let y = 0; y < sc.h; y++) for (let x = 0; x < sc.w; x++) {
-    if (!inW(x, y)) continue;
+  const lw = S > 1 ? 0.75 : 1.1; // lamella width (design px): finer bands at higher resolution
+  for (let Y = 0; Y < sc.h; Y++) for (let X = 0; X < sc.w; X++) {
+    if (!inW(X, Y)) continue;
+    const x = dc(X), y = dc(Y);
     const a = ((x * 0.5 + y * 0.87 + 0.3) % 4.2 + 4.2) % 4.2, b = ((x * 0.5 - y * 0.87 + 60.3) % 4.2 + 4.2) % 4.2;
+    const c3 = ((x * 1.0 + 0.1) % 4.2 + 4.2) % 4.2; // third lamella set (only visible at S > 1)
     let k = (x + y) < 31 ? 3 : 4;
-    if (a < 1.1 && b < 1.1) k = 0;
-    else if (a < 1.1) k = 1;
-    else if (b < 1.1) k = 2;
-    const tl = !inW(x - 1, y) || !inW(x, y - 1), br = !inW(x + 1, y) || !inW(x, y + 1);
+    if (a < lw && b < lw) k = 0;
+    else if (a < lw) k = 1;
+    else if (b < lw) k = 2;
+    else if (S > 1 && c3 < 0.5) k = Math.max(1, k - 1);
+    else if (S > 1 && hash2(X, Y, 61) < 0.05) k = Math.min(5, k + 1); // plessite grain
+    const tl = !inW(X - 1, Y) || !inW(X, Y - 1), br = !inW(X + 1, Y) || !inW(X, Y + 1);
     if (tl && !br) k = 1;
     else if (br) k = 5;
-    pc.set(x, y, KA[k]);
+    else if (S > 1 && (!inW(X + 2, Y) || !inW(X, Y + 2))) k = 4; // a second step on the shaded bevel
+    pc.set(X, Y, KA[k]);
   }
-  // the crust's broken lip throws a shadow onto the lower-right of the window
   // star-hot specks
-  for (let i = 0; i < 40; i++) {
-    const x = rng.int(3, 28), y = rng.int(5, 28);
-    if (sc.objAt(x, y) !== body.id || inW(x, y) || hash2(x, y, 3) > 0.35) continue;
-    pc.set(x, y, hash2(x, y, 4) < 0.5 ? 0xffe08a : 0xffb040); pc.emit(x, y, 1);
+  for (let i = 0; i < 40 * S; i++) {
+    const x = rng.range(3, 29), y = rng.range(5, 29), X = np(x), Y = np(y);
+    if (sc.objAt(X, Y) !== body.id || inW(X, Y) || hash2(X, Y, 3) > 0.35) continue;
+    pc.set(X, Y, hash2(X, Y, 4) < 0.5 ? 0xffe08a : 0xffb040); pc.emit(X, Y, 1);
+    if (S > 1 && hash2(X, Y, 5) < 0.3 && sc.objAt(X + 1, Y) === body.id) { pc.set(X + 1, Y, 0xc86a20); pc.emit(X + 1, Y, 0.6); }
   }
   glint(pc, 11, 12, 2, 0xffffff, 0xffe8a0, 1);
   glint(pc, 25, 21, 1, 0xfffbe8, 0xffd060, 1);

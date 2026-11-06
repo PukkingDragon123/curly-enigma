@@ -285,7 +285,9 @@ export class Atmosphere {
   }
 
   spawnMote(kind, x, y, z) {
-    const fx = this.fx;
+    // the motes are little voxels when the voxel spray is there (Fluids'), Particles' specks if not
+    const V = this.fluids?.vfx;
+    const fx = V ? (this.voxMotes ||= { spawn: (o) => V.spawn({ ...o, grav: o.grav ?? 0, drag: o.drag ?? 1, size: o.size > 0.0085 ? 1 / 48 : 1 / 64, glow: o.glow ? 1 : 0 }) }) : this.fx;
     switch (kind) {
       case 'sand':
         fx.spawn({ x, y, z, vx: rand(-0.06, 0.06), vy: rand(-0.04, 0.01), vz: rand(-0.06, 0.06), life: rand(3, 6), size: rand(0.005, 0.01), color: [0.95, 0.78, 0.52], alpha: 0.85, drag: 0.15, lit: 1, swirl: 0.05 });

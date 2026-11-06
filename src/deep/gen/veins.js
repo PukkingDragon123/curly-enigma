@@ -157,7 +157,7 @@ function addVein(plan, rng, V, item, zone, size) {
   const oreId = ORE_ID[item];
   const m = VEIN_OF[item] || M.VEIN_QUARTZ;
   const coal = item === 'coal';
-  const t = V.kind === 'seam' ? (coal ? rng.range(0.1, 0.2) : rng.range(0.06, 0.13)) : rng.range(0.045, 0.1);
+  const t = V.kind === 'seam' ? (coal ? rng.range(0.12, 0.22) : rng.range(0.07, 0.14)) : rng.range(0.06, 0.12);
   const w = V.kind === 'seam' ? rng.range(0.45, 0.95) : rng.range(0.3, 0.75);
   const seed = rng.int(1, 1e6);
   const segs = [];

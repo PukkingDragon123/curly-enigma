@@ -263,6 +263,169 @@ function emote(kind) {
   return p;
 }
 
+// ------------------------------------------------------------------ ui3: a material per speaker
+// Old Star talks on forge parchment (scorched deeper, soot rubbed in, embers in the burn), traders on
+// ledger paper (hand-ruled in blue ink, a red double margin), Rocco on kraft, you in your notebook.
+const wrapI = (v, n) => ((v % n) + n) % n;
+
+/** Old Star's parchment (slice 6 on 36): the dialogue's, burnt deeper, soot on the rim, live embers. */
+function parchForge() {
+  const s = 6, M = 24, W = 36;
+  const p = CA.parchFrame(false, { slice: s, mid: M, seed: 91, tear: 0.9, burn: 3.6, bites: true });
+  const D = p.dist(6);
+  p.each((x, y, c) => {
+    const d = D(x, y), { e, u } = CA.edgeOf(x, y, W, W), uu = wrapI(u - s, M);
+    const em = CA.hash(uu >> 1, e, 93);
+    if (d === 1 && em < 0.045) return CA.hash(uu, e, 94) < 0.3 ? 0xf09040 : 0xc8501e; // an ember still glowing
+    if (d === 2 && em < 0.045) return 0x7a2a12;
+    const soot = CA.pnoise((uu * 4) / M, e * 1.7 + 3, 4, 16, 92);
+    if (d >= 2 && d <= 5 && soot > 0.5) return CA.mix(c, 0x3a3230, Math.min(0.75, (soot - 0.5) * 1.6 * (6 - d) / 4));
+    return undefined;
+  });
+  return p;
+}
+
+/** The forge parchment's face (96×96, tiles): soot clouds, a sooty thumbprint, ember burns, ash. */
+function sootTile() {
+  const W = 96, H = 96, p = new Px(W, H);
+  CA.paintPaper(p, CA.paperField(W, H, { seed: 95, stains: 1, fox: 0.8 }), CA.TONES.paper);
+  const B4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  p.each((x, y, c) => {
+    const n = CA.fbm(x, y, W, H, 32, 3, 96), t = (n - 0.55) / 0.2;
+    if (t <= 0) return undefined;
+    const k = Math.min(1, t) * 0.4, th = (B4[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
+    return th < Math.min(1, t) * 1.2 ? CA.mix(c, 0x52463e, k) : CA.mix(c, 0x6a5a4c, k * 0.5);
+  });
+  const at = (x, y, c, t) => { const X = wrapI(x, W), Y = wrapI(y, H); p.set(X, Y, CA.mix(p.get(X, Y), c, t)); };
+  // a thumbprint in soot: ridges round a whorl, smeared off to one side
+  const tx = 70, ty = 70;
+  for (let y = -10; y <= 10; y++)
+    for (let x = -8; x <= 8; x++) {
+      const r = Math.hypot(x / 7, y / 9.5);
+      if (r > 1) continue;
+      const ridge = wrapI(Math.hypot(x * 1.15, y) * 0.62 + CA.pnoise(x / 3 + 4, y / 3 + 4, 8, 8, 97) * 0.9, 1);
+      const fade = (1 - r) * (x > -3 ? 1 : 0.55);
+      if (ridge < 0.42 && CA.hash(x, y, 98) < 0.9) at(tx + x, ty + y, 0x3a302a, 0.42 * fade + 0.08);
+    }
+  // ember burns: a charred pit, a brown ring, a scorched halo
+  for (const [cx, cy, r] of [[18, 26, 1.6], [52, 12, 1.1], [30, 80, 2.1], [88, 44, 1.3]])
+    for (let y = -5; y <= 5; y++)
+      for (let x = -5; x <= 5; x++) {
+        const d = Math.hypot(x, y * 1.2) * (0.8 + CA.pnoise(Math.atan2(y, x) * 1.3 + 9, cx, 8, 64, 113) * 0.5) + (CA.hash(x, y, cx) - 0.5) * 0.9;
+        if (d < r * 0.45) at(cx + x, cy + y, 0x2e180c, 0.9);
+        else if (d < r + 0.6) at(cx + x, cy + y, 0x6a3418, 0.85);
+        else if (d < r + 2.2) at(cx + x, cy + y, 0xa07040, 0.45 * (1 - (d - r - 0.6) / 1.6));
+      }
+  for (let i = 0; i < 40; i++) at(Math.floor(CA.hash(i, 1, 99) * W), Math.floor(CA.hash(i, 2, 99) * H), CA.hash(i, 3, 99) < 0.5 ? 0x6a625c : 0x8a8078, 0.55);
+  return p;
+}
+
+const LEDGER = CA.TONES.ledger;
+/** A trader's ledger leaf (slice 6 on 36): clean cut, barely singed, a blue rule along the head. */
+function parchLedger() {
+  const s = 6, M = 24, W = 36;
+  const p = CA.parchFrame(false, { slice: s, mid: M, seed: 101, tear: 0.28, bites: false, burn: 0.5, pal: LEDGER, fox: 0.8 });
+  const D = p.dist(3);
+  p.each((x, y, c) => {
+    const d = D(x, y), { e, u, d: dd } = CA.edgeOf(x, y, W, W), uu = wrapI(u - s, M);
+    if (d === 1) return CA.mix(c, 0x8a8470, 0.7);
+    // torn out of a bound ledger: the sewing holes down the binding side, a tear running through them
+    if (e === 3 && dd === 2 && wrapI(uu, 6) === 2) return 0x5a4a32;
+    if (e === 3 && dd === 3 && wrapI(uu, 6) === 3) return CA.mix(c, 0xffffff, 0.4);
+    if (e === 3 && dd === 1 && wrapI(uu, 6) >= 1 && wrapI(uu, 6) <= 3) return CA.mix(c, 0x8a7a5a, 0.5);
+    // a printed rule round the leaf, a hair inside the cut (red down the margin side, blue elsewhere)
+    if (dd === 4 && d >= 2 && CA.hash(uu, e, 102) > 0.06) return CA.mix(c, e === 3 ? 0xb83a30 : 0x5a7aa8, 0.55);
+    // thumbed: the grime of a hundred counted coins along the foot
+    if (e === 2 && dd >= 2 && dd <= 3 && CA.pnoise((uu * 3) / M, 1, 3, 4, 114) > 0.55) return CA.mix(c, 0x9a8a68, 0.35);
+    return undefined;
+  });
+  return p;
+}
+/** Ledger paper (96×96, tiles): smooth rag stock, a faint cockle, sparse fibres. */
+function ledgerTile() {
+  const W = 96, H = 96, p = new Px(W, H);
+  CA.paintPaper(p, CA.paperField(W, H, { seed: 103, base: 0.72, mottle: 0.2, grain: 0.05, fibres: 0.7, fox: 0.6, foxSize: 0.9, stains: 1 }), LEDGER);
+  // a blot where the nib rested, and a figure scratched out long ago, showing through
+  for (const [x, y, c, t] of [[70, 20, 0x2a3a5a, 0.7], [71, 20, 0x3a4a6a, 0.5], [70, 21, 0x3a4a6a, 0.45], [69, 21, 0x5a6a8a, 0.25], [72, 21, 0x5a6a8a, 0.2]]) p.set(x, y, CA.mix(p.get(x, y), c, t));
+  for (let x = 12; x < 30; x++) if (CA.hash(x, 7, 115) < 0.8) p.set(x, 58 + (x % 3 === 0 ? 1 : 0), CA.mix(p.get(x, 58 + (x % 3 === 0 ? 1 : 0)), 0x6a7aa0, 0.14));
+  return p;
+}
+/** One ruled line of a ledger (64 wide × h): a hand-ruled blue ink line on the bottom row (transparent above). */
+function ruleTile(h) {
+  const W = 64, p = new Px(W, h);
+  for (let x = 0; x < W; x++) {
+    const n = CA.hash(x, h, 104);
+    if (n < 0.04) continue; // the nib skipped
+    p.set(x, h - 1, n > 0.93 ? 0x3a5a8c : 0x6f8fbc, n > 0.93 ? 200 : 130 + Math.floor(CA.pnoise(x / 8, 0, 8, 2, 105) * 70));
+  }
+  return p;
+}
+/** The red double margin (5 wide, repeats down): two inked lines, a little uneven. */
+function marginTile() {
+  const p = new Px(5, 16);
+  for (let y = 0; y < 16; y++) {
+    p.set(0, y, 0xc0463c, 150 + Math.floor(CA.hash(0, y, 106) * 80));
+    p.set(2, y, 0xc0463c, 120 + Math.floor(CA.hash(2, y, 106) * 80));
+    if (CA.hash(4, y, 106) < 0.12) p.set(1, y, 0xc0463c, 60);
+  }
+  return p;
+}
+
+const KRAFT = CA.TONES.kraft;
+/** Rocco's kraft label (slice 6 on 36): stout brown paper, torn rough, crushed fibres on the rim. */
+function parchKraft() {
+  const s = 6, M = 24, W = 36;
+  const p = CA.parchFrame(false, { slice: s, mid: M, seed: 107, tear: 1.15, bites: true, burn: 0.3, pal: KRAFT, fox: 0.4 });
+  const D = p.dist(3);
+  p.each((x, y, c) => (D(x, y) === 1 ? CA.mix(c, CA.hash(x, y, 108) < 0.5 ? 0x4a3018 : 0x6a4a2a, 0.6) : D(x, y) === 2 && CA.hash(x, y, 109) < 0.3 ? CA.mix(c, 0xe0c090, 0.3) : undefined));
+  return p;
+}
+function kraftTile() {
+  const W = 96, H = 96, p = new Px(W, H);
+  CA.paintPaper(p, CA.paperField(W, H, { seed: 110, base: 0.64, mottle: 0.28, fibres: 1.8, fox: 0.2 }), KRAFT);
+  // a ghost of a stencilled crate mark, nearly worn away
+  for (let y = 60; y < 74; y++) for (let x = 20; x < 76; x++) if ((((x - 20) % 10) < 7) && (y === 60 || y === 73 || ((x - 20) % 10) < 2 || ((x - 20) % 10) > 4) && CA.hash(x, y, 111) < 0.35) p.set(x, y, CA.mix(p.get(x, y), 0x3a2414, 0.1));
+  return p;
+}
+/** Your own notebook page (slice 6 on 36): clean, a little dog-eared by use. */
+function parchJournal() {
+  return CA.parchFrame(false, { slice: 6, mid: 24, seed: 112, tear: 0.5, bites: false, burn: 1.0, fox: 1.2 });
+}
+
+/** A glint (10×16): a diagonal sheen in three steps of white, to sweep across brass and glass. */
+function glint() {
+  const p = new Px(10, 16);
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 10; x++) {
+    const t = x + y * 0.45 - 6;
+    if (t >= 0 && t < 1.5) p.set(x, y, 0xffffff, 150);
+    else if (t >= 1.5 && t < 2.5) p.set(x, y, 0xfff6d8, 90);
+    else if (t >= -1.5 && t < 0) p.set(x, y, 0xfff6d8, 60);
+  }
+  return p;
+}
+
+/**
+ * The corner of a fresh sheet curling flat (4 frames of 12×12 side by side: a big curl, a smaller
+ * one, a lip, nothing): the paper's paler back, lit along the roll, its shadow on the sheet.
+ */
+function curlSheet() {
+  const N = 12, p = new Px(N * 4, N), P = CA.TONES.paper;
+  for (let f = 0; f < 3; f++) {
+    const r = [9, 6, 3][f], ox = f * N;
+    for (let y = 0; y < N; y++)
+      for (let x = 0; x < N; x++) {
+        const t = (N - 1 - x) + (N - 1 - y); // 0 at the corner
+        if (t > r) continue;
+        if (t === r) { p.set(ox + x, y, 0x5a3a1e, 140); continue; } // the shadow along the fold
+        if (t === r - 1) { p.set(ox + x, y, P[7]); continue; } // the lit roll
+        p.set(ox + x, y, CA.quant(P, 0.35 + (t / r) * 0.45, x, y, 0.6));
+      }
+    // the corner itself is lifted off the sheet: the sheet behind shows dark there
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if ((N - 1 - x) + (N - 1 - y) < Math.floor(r / 3)) p.set(ox + x, y, 0x2a1a10, 200);
+  }
+  return p;
+}
+
 const ASSETS = {
   board: boardFrame,
   parch: parchFrame,
@@ -288,7 +451,23 @@ const ASSETS = {
   emStern: () => emote('stern'),
   emProud: () => emote('proud'),
   emSad: () => emote('sad'),
+  // ui3
+  parchForge,
+  sootT: sootTile,
+  parchLedger,
+  ledgerT: ledgerTile,
+  rule8: () => ruleTile(8),
+  rule11: () => ruleTile(11),
+  margin: marginTile,
+  parchKraft,
+  kraftT: kraftTile,
+  parchJournal,
+  glint,
+  curl: curlSheet,
+  clip: () => CA.paperClip(),
 };
+/** (the ui3 pieces, for previews) */
+export const DLX = { parchForge, sootT: sootTile, parchLedger, ledgerT: ledgerTile, rule8: () => ruleTile(8), margin: marginTile, parchKraft, kraftT: kraftTile, parchJournal, glint, curl: curlSheet };
 
 export const DL = Object.fromEntries(Object.keys(ASSETS).map((k) => [k, () => art('dl:' + k, ASSETS[k])]));
 DL.spark = (i) => DL['spark' + (i % 3)]();

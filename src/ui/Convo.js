@@ -36,7 +36,7 @@ import { portrait3d } from '../gfx/portrait3d.js';
 import { typeText, STAR_VOICE } from './talkType.js';
 import { installDialogArt } from './dialogArt.js';
 import { Px, PAL, INK, art } from './uiArt.js';
-import { speakerOf } from './Tutor.js';
+import { speakerOf, materialOf } from './Tutor.js';
 import './convo.css';
 
 const isTouch = () => document.documentElement.classList.contains('is-touch');
@@ -51,17 +51,16 @@ const plain = (s) => String(s || '').replace(/<[^>]*>/g, '');
 
 // ------------------------------------------------------------------ art (--cv-*)
 /** The label's tail: parchment, inked edges, open on the right where it joins the label (10×13). */
-function tailSprite() {
-  const P = PAL.paper;
+function tailSprite(fill = PAL.paper.base, burn = PAL.paper.burn, edge = PAL.paper.edge) {
   const p = new Px(10, 13);
   for (let x = 1; x < 10; x++) {
     const half = (x / 9) * 5.4;
-    for (let y = Math.ceil(6 - half); y <= Math.floor(6 + half); y++) p.set(x, y, P.base);
+    for (let y = Math.ceil(6 - half); y <= Math.floor(6 + half); y++) p.set(x, y, fill);
   }
   // a burnt line inside the inked edge, and the ink
-  p.each((x, y) => (x < 9 && (!p.a(x, y - 1) || !p.a(x, y + 1)) ? P.burn : undefined));
-  p.outline(P.edge);
-  for (let y = 0; y < 13; y++) if (p.a(9, y)) p.set(9, y, y < 2 || y > 10 ? P.edge : P.base);
+  p.each((x, y) => (x < 9 && (!p.a(x, y - 1) || !p.a(x, y + 1)) ? burn : undefined));
+  p.outline(edge);
+  for (let y = 0; y < 13; y++) if (p.a(9, y)) p.set(9, y, y < 2 || y > 10 ? edge : fill);
   return p;
 }
 /** A brass disc for the answers' numbers (10×10). */
@@ -78,7 +77,11 @@ function installConvoArt() {
   if (artIn) return;
   artIn = true;
   const r = document.documentElement.style;
-  r.setProperty('--cv-tail', `url("${art('cv:tail', tailSprite)}")`);
+  r.setProperty('--cv-tail', `url("${art('cv:tail', () => tailSprite())}")`);
+  // (ui3) a tail in each speaker's paper: forge-scorched, ledger, kraft
+  r.setProperty('--cv-tailForge', `url("${art('cv:tailForge', () => tailSprite(PAL.paper.base, 0x5a4234, 0x3a2418))}")`);
+  r.setProperty('--cv-tailLedger', `url("${art('cv:tailLedger', () => tailSprite(0xebe3c8, 0xb2a684, 0x6a6450))}")`);
+  r.setProperty('--cv-tailKraft', `url("${art('cv:tailKraft', () => tailSprite(0xba9058, 0x8a6339, 0x4a3018))}")`);
   r.setProperty('--cv-num', `url("${art('cv:num', numSprite)}")`);
 }
 
@@ -517,6 +520,8 @@ export class Convo {
     this.subEl.hidden = !b.sub;
     L.className = 'cv-say' + (b.cls ? ' ' + b.cls : '');
     L.dataset.kind = b.hero ? 'hero' : b.key === 'oldstar' ? 'oldstar' : b.key === 'rocco' ? 'rocco' : 'folk';
+    // what they write on: Old Star's forge parchment, a trader's ledger, Rocco's kraft, your notebook
+    L.dataset.mat = materialOf(b.hero ? 'hero' : b.key);
     L.dataset.mood = b.mood;
     this.root.classList.remove('typed', 'choosing', 'timed');
     this.choicesEl.textContent = '';

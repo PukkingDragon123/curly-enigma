@@ -5,13 +5,21 @@
 // planes with a lit lip and reflected rim light, leaves split into a lit and a shaded half
 // with veins and serrations, tapered tubes for stems and worms, fur fringes, crumbs, warts,
 // creases, glossy glaze streaks and steam.
+//
+// Resolution: as in gearKit, builders take design coordinates (32-unit grid) and paint natively
+// at S× (res.js); callbacks (tex, only, keep, dir, emit) get native pixel coordinates.
 import {
   M, mat, mix, hash2, vnoise, bayer, lum, step, ink, inkOf, seam, shadowOf, liftOf, cast, toneN, T, glint, line, lightOf, sweep, facetSweep, stitch, pits, rivet, RAMPS,
+  S, SZ, dc, nc, np, dot, star,
 } from './gearKit.js';
-import { lightField, toneOf, sparkle, LIGHT } from './shade.js';
+import { lightField, toneOf, LIGHT } from './shade.js';
+
+/** Design-pixel sparkle (r: arm length in design px). */
+export const sparkle = (pc, x, y, r = 2, c = 0xffffff, mid = null, emit = 0) => star(pc, nc(x), nc(y), Math.max(1, Math.round(r * S)), c, mid ?? mix(c, 0xfff0b0, 0.5), emit);
 
 export {
-  M, mat, mix, hash2, vnoise, bayer, lum, step, ink, inkOf, seam, shadowOf, liftOf, cast, toneN, T, glint, line, lightOf, sweep, facetSweep, stitch, pits, rivet, RAMPS, sparkle,
+  M, mat, mix, hash2, vnoise, bayer, lum, step, ink, inkOf, seam, shadowOf, liftOf, cast, toneN, T, glint, line, lightOf, sweep, facetSweep, stitch, pits, rivet, RAMPS,
+  S, SZ, dc, nc, np, dot, star,
 };
 
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -48,7 +56,7 @@ export function spline(pts) {
  */
 export function loop(pts, o = {}) {
   const P = o.jit ? pts.map(([x, y, c], i) => [x + (hash2(i, 1, o.seed ?? 3) - 0.5) * o.jit * 2, y + (hash2(i, 2, o.seed ?? 3) - 0.5) * o.jit * 2, c]) : pts;
-  const n = P.length, seg = o.seg ?? 8, out = [];
+  const n = P.length, seg = (o.seg ?? 8) * S, out = [];
   for (let i = 0; i < n; i++) {
     const p1 = P[i], p2 = P[(i + 1) % n];
     const p0 = p1[2] ? p1 : P[(i - 1 + n) % n], p3 = p2[2] ? p2 : P[(i + 2) % n];
@@ -98,13 +106,13 @@ export function fringe(mask, cx, cy, o = {}) {
   edge.each((x, y) => {
     if (hash2(x, y, seed) > dens) return;
     if (o.only && !o.only(x, y)) return;
-    let dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+    let dx = (x + 0.5) / S - cx, dy = (y + 0.5) / S - cy;
     const l = Math.hypot(dx, dy) || 1;
     dx /= l; dy /= l;
-    // tufts lean a little (combed), like real fur
+    // tufts lean a little (combed), like real fur; at S > 1 they are finer and longer
     const lean = o.lean ?? 0.35;
     const ax = dx - dy * lean, ay = dy + dx * lean;
-    const n = 1 + Math.floor(hash2(x, y, seed + 1) * len);
+    const n = 1 + Math.floor(hash2(x, y, seed + 1) * len * S);
     for (let k = 1; k <= n; k++) out.set(Math.round(x + ax * k), Math.round(y + ay * k));
   });
   return out;
@@ -115,14 +123,14 @@ export function fringe(mask, cx, cy, o = {}) {
 export function tidy(K, mask, keep = null) {
   const src = K.slice();
   mask.each((x, y) => {
-    const i = y * 32 + x, k = src[i];
+    const i = y * SZ + x, k = src[i];
     if (keep && keep(x, y, k)) return;
     const cnt = new Map();
     let same = 0, n = 0;
     for (const [dx, dy] of N8) {
       const X = x + dx, Y = y + dy;
       if (!mask.get(X, Y)) continue;
-      const kk = src[Y * 32 + X];
+      const kk = src[Y * SZ + X];
       n++;
       if (kk === k) same++;
       cnt.set(kk, (cnt.get(kk) || 0) + 1);
@@ -145,17 +153,17 @@ export function tidy(K, mask, keep = null) {
  */
 export function form(pc, mask, R, o = {}) {
   const b = mask.bounds();
-  const K = new Int8Array(1024).fill(-1);
+  const K = new Int8Array(SZ * SZ).fill(-1);
   K.mask = mask;
   if (!b) return K;
-  const cx = o.cx ?? (b.x0 + b.x1 + 1) / 2, cy = o.cy ?? (b.y0 + b.y1 + 1) / 2;
-  const rx = o.rx ?? b.w / 2 + 0.4, ry = o.ry ?? b.h / 2 + 0.4;
+  const cx = o.cx ?? (b.x0 + b.x1 + 1) / 2 / S, cy = o.cy ?? (b.y0 + b.y1 + 1) / 2 / S;
+  const rx = o.rx ?? b.w / 2 / S + 0.4, ry = o.ry ?? b.h / 2 / S + 0.4;
   const dome = o.dome ?? 0.45;
-  const I = dome > 0 ? lightField(mask, { round: o.round ?? Math.max(1.5, Math.min(rx, ry) * 0.6) }).I : null;
+  const I = dome > 0 ? lightField(mask, { round: (o.round ?? Math.max(1.5, Math.min(rx, ry) * 0.6)) * S }).I : null;
   const lo = o.lo ?? 1, hi = o.hi ?? 5;
   mask.each((x, y) => {
-    const i = y * 32 + x;
-    let nx = (x + 0.5 - cx) / rx, ny = (y + 0.5 - cy) / ry;
+    const i = y * SZ + x;
+    let nx = ((x + 0.5) / S - cx) / rx, ny = ((y + 0.5) / S - cy) / ry;
     const q = nx * nx + ny * ny;
     if (q > 0.96) { const s = Math.sqrt(0.96 / q); nx *= s; ny *= s; }
     const nz = Math.sqrt(Math.max(0.04, 1 - nx * nx - ny * ny)) * (o.flatten ?? 1);
@@ -166,11 +174,12 @@ export function form(pc, mask, R, o = {}) {
   });
   if (o.tidy !== false) tidy(K, mask, o.keep);
   mask.each((x, y) => {
-    const i = y * 32 + x;
+    const i = y * SZ + x;
     let k = K[i];
     const top = isTop(mask, x, y), bot = isBot(mask, x, y);
-    if (o.lip !== false && top && !bot && k > lo && (x + 0.5 - cx) / rx + (y + 0.5 - cy) / ry < 0.3) k -= 1;
-    if (o.rim !== false && bot && !top && (x + 0.5 - cx) / rx + (y + 0.5 - cy) / ry > 0.55 && k >= hi) k = hi - 1;
+    const d = ((x + 0.5) / S - cx) / rx + ((y + 0.5) / S - cy) / ry;
+    if (o.lip !== false && top && !bot && k > lo && d < 0.3) k -= 1;
+    if (o.rim !== false && bot && !top && d > 0.55 && k >= hi) k = hi - 1;
     K[i] = k;
     pc.set(x, y, R[k]);
     if (o.emit) pc.emit(x, y, typeof o.emit === 'function' ? o.emit(x, y, k) : o.emit);
@@ -179,7 +188,7 @@ export function form(pc, mask, R, o = {}) {
 }
 
 /** Re-tone a tone map onto pc (after editing K). */
-export function paintK(pc, K, R) { K.mask.each((x, y) => pc.set(x, y, R[K[y * 32 + x]])); }
+export function paintK(pc, K, R) { K.mask.each((x, y) => pc.set(x, y, R[K[y * SZ + x]])); }
 
 /**
  * Highlight arc just inside the top-left contour (a wet / glazed / glassy sheen):
@@ -189,8 +198,9 @@ export function paintK(pc, K, R) { K.mask.each((x, y) => pc.set(x, y, R[K[y * 32
 export function sheen(pc, mask, c, o = {}) {
   const b = mask.bounds();
   if (!b) return;
-  const cx = o.cx ?? (b.x0 + b.x1 + 1) / 2, cy = o.cy ?? (b.y0 + b.y1 + 1) / 2;
-  const inset = o.inset ?? 1, width = o.width ?? 1, a0 = o.a0 ?? -2.7, a1 = o.a1 ?? -1.6;
+  const cx = o.cx !== undefined ? (o.cx + 0.0) * S : (b.x0 + b.x1 + 1) / 2, cy = o.cy !== undefined ? o.cy * S : (b.y0 + b.y1 + 1) / 2;
+  // inset in design px; at S > 1 the sheen is a crisp 1px line (width 1) or a little thicker
+  const inset = Math.round((o.inset ?? 1) * S), width = Math.max(1, Math.round((o.width ?? 1) * S) - (S > 1 ? 1 : 0)), a0 = o.a0 ?? -2.7, a1 = o.a1 ?? -1.6;
   const inner = mask.clone().erode(inset), core = inner.clone().erode(width);
   let n = 0;
   inner.each((x, y) => {
@@ -198,7 +208,7 @@ export function sheen(pc, mask, c, o = {}) {
     const a = Math.atan2(y + 0.5 - cy, x + 0.5 - cx);
     if (a < a0 || a > a1) return;
     n++;
-    if (o.gap && n % o.gap === 0) return;
+    if (o.gap && Math.floor(n / S) % o.gap === 0 && n % S === 0) return;
     pc.set(x, y, typeof c === 'function' ? c(x, y) : c);
   });
 }
@@ -210,7 +220,7 @@ export function sheen(pc, mask, c, o = {}) {
  * (x, y) → [dx, dy]), lit (true), dk (+1 darker), only(x, y), lo/hi.
  */
 export function marks(pc, mask, R, o = {}) {
-  const dens = o.dens ?? 0.05, seed = o.seed ?? 3, len = o.len ?? 2;
+  const dens = (o.dens ?? 0.05) / S, seed = o.seed ?? 3, len = (o.len ?? 2) * S;
   const used = M();
   const inner = o.edge ? mask : mask.clone().erode(1);
   inner.each((x, y) => {
@@ -233,7 +243,7 @@ export function marks(pc, mask, R, o = {}) {
 
 /** Raised warts / grains: a lit pixel with a shadow pixel below-right. */
 export function bumps(pc, mask, R, o = {}) {
-  const dens = o.dens ?? 0.06, seed = o.seed ?? 9;
+  const dens = (o.dens ?? 0.06) / (S > 1 ? 1.6 : 1), seed = o.seed ?? 9;
   const used = M();
   mask.clone().erode(1).each((x, y) => {
     if (hash2(x, y, seed) > dens) return;
@@ -282,7 +292,7 @@ export function blade(pc, x0, y0, x1, y1, w, R, o = {}) {
   const sw = sweep(spine, (t) => wid(t) * big, { n: Math.max(40, Math.ceil(L * 4)), capStart: o.capStart ?? 0.25, capEnd: o.capEnd ?? 0.15 });
   const m = M();
   sw.mask.each((x, y) => {
-    const i = y * 32 + x, v = sw.V[i];
+    const i = y * SZ + x, v = sw.V[i];
     if (Math.abs(v) <= wid(sw.S[i]) * (v >= 0 ? 1 + asym : 1 - asym)) m.set(x, y);
   });
   if (o.clip) m.sub(o.clip);
@@ -290,9 +300,9 @@ export function blade(pc, x0, y0, x1, y1, w, R, o = {}) {
   if (!m.count()) return m;
   if (o.seam !== false) seam(pc, m, o.seamColor ?? 'shadow');
   const fold = o.fold ?? 0.85, lo = o.lo ?? 1, hi = o.hi ?? 5;
-  const K = new Int8Array(1024).fill(-1);
+  const K = new Int8Array(SZ * SZ).fill(-1);
   m.each((x, y) => {
-    const i = y * 32 + x, v = sw.V[i], t = sw.S[i];
+    const i = y * SZ + x, v = sw.V[i], t = sw.S[i];
     const s = v >= 0 ? 1 : -1;
     const ox = sw.TY[i] * s, oy = -sw.TX[i] * s;
     const ww = wid(t) * (v >= 0 ? 1 + asym : 1 - asym);
@@ -305,11 +315,11 @@ export function blade(pc, x0, y0, x1, y1, w, R, o = {}) {
   tidy(K, m);
   // lit lip on the top-left edge, darker on the bottom-right
   m.each((x, y) => {
-    const i = y * 32 + x;
+    const i = y * SZ + x;
     if (isTop(m, x, y) && !isBot(m, x, y) && K[i] > lo) K[i]--;
     else if (isBot(m, x, y) && !isTop(m, x, y) && K[i] < hi && o.edgeDark !== false) K[i]++;
   });
-  m.each((x, y) => { pc.set(x, y, R[K[y * 32 + x]]); if (o.emit) pc.emit(x, y, o.emit); });
+  m.each((x, y) => { pc.set(x, y, R[K[y * SZ + x]]); if (o.emit) pc.emit(x, y, o.emit); });
   // side veins: short grooves angled toward the tip
   const nv = o.veins ?? Math.max(0, Math.floor(L / 4.5));
   if (nv > 0 && w >= 1.6) {
@@ -325,7 +335,7 @@ export function blade(pc, x0, y0, x1, y1, w, R, o = {}) {
         const vx = ex + ox * ww, vy = ey + oy * ww;
         line(pc, sx, sy, vx, vy, (n, X, Y) => {
           if (n === 0 || !m.get(X, Y) || isTop(m, X, Y) || isBot(m, X, Y)) return null;
-          const k = K[Y * 32 + X];
+          const k = K[Y * SZ + X];
           return R[clamp(k + 1, lo, hi)];
         });
       }
@@ -334,15 +344,29 @@ export function blade(pc, x0, y0, x1, y1, w, R, o = {}) {
   // midrib: a lighter line down the middle (stops short of the tip)
   if (o.rib !== false) {
     let last = null;
-    for (let i = 1; i < 60; i++) {
-      const t = 0.04 + (i / 60) * (o.ribEnd ?? 0.8);
+    const nr = 60 * S, rib = [];
+    for (let i = 1; i < nr; i++) {
+      const t = 0.04 + (i / nr) * (o.ribEnd ?? 0.8);
       const [x, y] = spine(t);
-      const X = Math.floor(x), Y = Math.floor(y);
+      const X = np(x), Y = np(y);
       if (last && last[0] === X && last[1] === Y) continue;
       last = [X, Y];
       if (!m.get(X, Y)) continue;
-      const k = K[Y * 32 + X];
+      const k = K[Y * SZ + X];
       pc.set(X, Y, o.rib ?? R[clamp(Math.min(k, 3) - 1, lo, hi)]);
+      rib.push(X, Y);
+    }
+    // at S > 1 the raised rib throws a 1px shadow onto the blade's shaded side
+    if (S > 1 && o.rib === undefined) {
+      const on = new Set();
+      for (let i = 0; i < rib.length; i += 2) on.add(rib[i + 1] * SZ + rib[i]);
+      for (let i = 0; i < rib.length; i += 2) {
+        for (const [dx, dy] of [[1, 0], [0, 1]]) {
+          const X = rib[i] + dx, Y = rib[i + 1] + dy;
+          if (!m.get(X, Y) || on.has(Y * SZ + X) || isBot(m, X, Y)) continue;
+          pc.set(X, Y, R[clamp(K[Y * SZ + X] + 1, lo, hi)]);
+        }
+      }
     }
   }
   m.K = K;
@@ -369,27 +393,35 @@ export function tube(pc, pts, r, R, o = {}) {
 /** Rising steam: a soft S-curve of translucent pixels from (x, y) upward, h px tall. */
 export function steam(pc, x0, y0, h, o = {}) {
   const ph = o.phase ?? x0 * 1.7, c = o.c ?? 0xffffff, a = o.a ?? 190;
-  for (let i = 0; i < h; i++) {
-    const x = x0 + Math.round(Math.sin(i * 0.7 + ph) * (o.amp ?? 1.3));
-    const al = Math.round(a * Math.pow(1 - i / h, 0.8));
+  const X0 = nc(x0), Y0 = nc(y0), H = h * S, amp = (o.amp ?? 1.3) * S;
+  for (let i = 0; i < H; i++) {
+    const t = i / S;
+    const x = X0 + Math.round(Math.sin(t * 0.7 + ph) * amp);
+    const al = Math.round(a * Math.pow(1 - i / H, 0.8));
     if (al < 18) continue;
-    pc.set(x, y0 - i, c, al);
-    if (i % 3 === 1 && i < h - 2) pc.set(x + (Math.sin(i * 0.7 + ph) > 0 ? -1 : 1), y0 - i, c, Math.round(al * 0.45));
-    if (o.emit) pc.emit(x, y0 - i, o.emit);
+    pc.set(x, Y0 - i, c, al);
+    // the wisp is fuller on its outer curve, with a few stray curls breaking off
+    if (S > 1 && i < H * 0.6) pc.set(x + (Math.cos(t * 0.7 + ph) > 0 ? 1 : -1), Y0 - i, c, Math.round(al * 0.5));
+    if (i % (3 * S) === S && i < H - 2 * S) pc.set(x + (Math.sin(t * 0.7 + ph) > 0 ? -S : S), Y0 - i, c, Math.round(al * 0.45));
+    if (o.emit) pc.emit(x, Y0 - i, o.emit);
   }
 }
 
 /** A tiny round droplet / bead (2–3 px) with a glint and a dark belly. */
 export function bead(pc, x, y, R, big = false) {
-  if (big) {
-    pc.set(x, y, R[1]); pc.set(x + 1, y, R[2]); pc.set(x, y + 1, R[3]); pc.set(x + 1, y + 1, R[4]);
-    pc.set(x, y, R[0]);
-  } else { pc.set(x, y, R[1]); pc.set(x, y + 1, R[4]); }
+  if (S === 1) {
+    if (big) { pc.set(x, y, R[1]); pc.set(x + 1, y, R[2]); pc.set(x, y + 1, R[3]); pc.set(x + 1, y + 1, R[4]); pc.set(x, y, R[0]); }
+    else { pc.set(x, y, R[1]); pc.set(x, y + 1, R[4]); }
+    return;
+  }
+  const X = Math.floor(x) * S, Y = Math.floor(y) * S;
+  const D = big ? [[-1, 1, 1, -1], [1, 0, 2, 3], [2, 2, 3, 4], [-1, 4, 4, -1]] : [[0, 2], [2, 3], [4, 4]];
+  D.forEach((row, j) => row.forEach((k, i) => { if (k >= 0) pc.set(X + i, Y + j, R[k]); }));
 }
 
 /** A tiny 4-point twinkle with a soft emissive core (magic / frost / glow). */
 export function twinkle(pc, x, y, c = 0xffffff, mid = 0xfff0b0, r = 1, emit = 0.8) {
-  sparkle(pc, x, y, r, c, mid, emit);
+  star(pc, nc(x), nc(y), Math.max(1, Math.round(r * S)), c, mid, emit);
 }
 
 /** Small hue-shift helpers re-used by the drawers. */

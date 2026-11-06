@@ -15,10 +15,11 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
 import { Px, PAL, INK, art, mixHex } from './uiArt.js';
 import { portrait3d } from '../gfx/portrait3d.js';
-import { speakerOf } from './Tutor.js';
+import { speakerOf, materialOf } from './Tutor.js';
 import { installDialogArt } from './dialogArt.js';
 import { typeText } from './talkType.js';
 import { convoTalkMenu } from './Convo.js';
+import { swing } from './common.js';
 import './choices.css';
 
 const P = PAL.paper;
@@ -85,14 +86,16 @@ export function openTalkMenu(game, { name, who, mood = 'calm', face, line = '', 
   const audio = game.audio;
   const cast = speakerOf(who, name);
   const notes = options.map((o, i) => el('button', {
-    class: 'tk-note' + (o.primary ? ' primary' : ''), style: { '--tilt': `${[-1.2, 0.9, -0.6, 1.1][i % 4]}deg`, '--d': `${0.18 + i * 0.07}s` },
+    class: 'tk-note' + (o.primary ? ' primary' : ''),
     onclick: () => { audio.play(o.primary ? 'ui_click' : 'page', { vol: 0.6 }); o.onClick?.(); },
-    onmouseenter: () => { audio.play('ui_hover', { vol: 0.25 }); },
+    onmouseenter: (e) => { audio.play('ui_hover', { vol: 0.25 }); swing(e.currentTarget, 2.2); },
   }, [el('i', { class: 'tk-tack' }), el('span', { class: 'tk-num' }, String(i + 1)), el('span', { class: 'tk-txt' }, [el('b', {}, o.label), o.sub ? el('small', {}, o.sub) : null])]));
+  // (custom properties need setProperty: el()'s style object can't set them)
+  notes.forEach((n, i) => { n.style.setProperty('--tilt', `${[-1.2, 0.9, -0.6, 1.1][i % 4]}deg`); n.style.setProperty('--d', `${0.18 + i * 0.07}s`); });
   const frame = el('div', { class: 'tk-frame' });
   const sayP = el('p');
   const say = el('div', { class: 'tk-say' }, [sub ? el('small', {}, sub) : null, sayP]);
-  const root = el('div', { class: 'tk tk-talk ' + className, 'data-who': cast?.key?.split(':')[0] || '' }, [
+  const root = el('div', { class: 'tk tk-talk ' + className, 'data-who': cast?.key?.split(':')[0] || '', 'data-mat': materialOf(cast?.key || who) }, [
     el('div', { class: 'tk-board' }, [
       el('div', { class: 'tk-plate' }, [el('span', {}, name || cast?.name || '')]),
       el('div', { class: 'tk-head' }, [el('div', { class: 'tk-portrait' }, [frame, el('i', { class: 'tt-glass' })]), say]),
@@ -132,13 +135,16 @@ export function openSeedTray(game, { title = 'Planter', note = 'Pick a seed to s
   const packs = items.map((g, i) => {
     const it = ITEMS[g.id];
     const b = el('button', {
-      class: 'sd-pack', title: it?.desc || it?.name || g.id, 'aria-label': `Plant ${it?.name || g.id} (${g.n})`, style: { '--d': Math.min(400, i * 40) + 'ms', '--tilt': `${[-2, 1.5, -1, 2.2, -1.6][i % 5]}deg` },
+      class: 'sd-pack', title: it?.desc || it?.name || g.id, 'aria-label': `Plant ${it?.name || g.id} (${g.n})`,
       onclick: () => { b.classList.add('sown'); onPick?.(g.id); },
+      onmouseenter: () => { game.audio?.play?.('ui_hover', { vol: 0.2 }); swing(b.firstChild, 3, 600); },
     }, [
       el('span', { class: 'sd-paper', style: { backgroundImage: `url("${PACKET(bandOf(g.id))}")` } }, [el('img', { class: 'pix', src: iconURL(g.id), alt: '' })]),
       el('span', { class: 'sd-name' }, it?.name || g.id),
       el('span', { class: 'sd-n' }, '×' + g.n),
     ]);
+    b.style.setProperty('--d', Math.min(400, i * 40) + 'ms');
+    b.style.setProperty('--tilt', `${[-2, 1.5, -1, 2.2, -1.6][i % 5]}deg`);
     return b;
   });
   const root = el('div', { class: 'tk sd' }, [

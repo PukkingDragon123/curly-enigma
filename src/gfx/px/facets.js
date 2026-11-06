@@ -8,8 +8,15 @@
 // edge and a selective (material-tinted) 1px outline.
 //
 // Space: x right, y down (screen pixels), z toward the viewer.
+//
+// Resolution: geometry is given in design units (the 32-unit grid, see res.js) and rasterised
+// natively at S×: planes, ridges, rims, occlusion lines and the outline are all one real pixel,
+// shadows and gradients keep their design-space size. Scene buffers (z, ob, fb, k) are native
+// (index y * sc.w + x, z in real px); objAt/pidAt/zAt take native pixels, objD/pidD/zD design
+// points; carve() and texture callbacks see design coordinates where noted.
 import { mat, mix, toHsl, fromHsl, towardHue } from './color.js';
 import { LIGHT, hash2, vnoise, bayer, toneOf, Mask } from './shade.js';
+import { S, nc, np, dc } from './res.js';
 
 // ---------------------------------------------------------------- vectors
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -203,7 +210,10 @@ export function rampOf(list) {
 
 // ---------------------------------------------------------------- scene
 export class Scene {
+  /** w, h: design size (the native buffers are S× that). */
   constructor(w = 32, h = w) {
+    this.S = S;
+    w *= S; h *= S;
     this.w = w; this.h = h;
     this.z = new Float32Array(w * h).fill(-1e9);
     this.ob = new Int16Array(w * h).fill(-1);
@@ -217,6 +227,14 @@ export class Scene {
   /** Plane id at a pixel (-1 when empty). */
   pidAt(x, y) { if (!this.inb(x, y)) return -1; const f = this.fb[y * this.w + x]; return f < 0 ? -1 : this.faces[f].pid; }
   zAt(x, y) { return this.inb(x, y) ? this.z[y * this.w + x] : -1e9; }
+  /** Object / plane id / depth (design units) at a design point. */
+  objD(x, y) { return this.objAt(np(x), np(y)); }
+  pidD(x, y) { return this.pidAt(np(x), np(y)); }
+  zD(x, y) { const z = this.zAt(np(x), np(y)); return z > -1e8 ? z / this.S : z; }
+  /** Native buffer index of a design point. */
+  iD(x, y) { return np(y) * this.w + np(x); }
+  /** Visit every native pixel: f(X, Y, x, y, i) with design coordinates x, y and buffer index i. */
+  eachPx(f) { for (let Y = 0; Y < this.h; Y++) { const y = dc(Y); for (let X = 0; X < this.w; X++) f(X, Y, dc(X), y, Y * this.w + X); } }
 
   /**
    * Add an object made of planar polygons ([[x,y,z], ...] each).
@@ -225,6 +243,14 @@ export class Scene {
    *    noFlip (trust polygon winding)
    */
   add(m, polys, o = {}) {
+    const k = this.S;
+    if (k !== 1) {
+      polys = polys.map((P) => { const Q = P.map((q) => [q[0] * k, q[1] * k, q[2] * k]); Q.tag = P.tag; return Q; });
+      o = { ...o };
+      if (o.center) o.center = o.center.map((v) => v * k);
+      if (o.smooth) o.smooth = { ...o.smooth, c: o.smooth.c.map((v) => v * k), r: o.smooth.r.map((v) => v * k) };
+      if (o.zb) o.zb *= k;
+    }
     const id = this.objs.length;
     const obj = { id, m, o, g: o.group ?? 1000 + id, faces: [], mask: new Mask(this.w, this.h) };
     this.objs.push(obj);
@@ -250,7 +276,7 @@ export class Scene {
       // coplanar polygons of one object share a plane id (hull triangles of one big facet)
       const d0 = dot(N, P[0]);
       let pid = fid;
-      for (const g of obj.faces) if (dot(g.n, N) > 0.9995 && Math.abs(dot(g.n, g.p0) - d0) < 0.05) { pid = g.pid; break; }
+      for (const g of obj.faces) if (dot(g.n, N) > 0.9995 && Math.abs(dot(g.n, g.p0) - d0) < 0.05 * k) { pid = g.pid; break; }
       const face = { id: fid, pid, obj: id, n: N, p0: P[0], pts: P, tone: null, tag: P.tag, ...(o.faceProps ? o.faceProps(P, N) : {}) };
       this.faces.push(face);
       obj.faces.push(face);
@@ -296,8 +322,9 @@ export class Scene {
     let z = o.z ?? 0;
     if (o.on) {
       let best = -1e9;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) best = Math.max(best, this.zAt(Math.floor(o.x) + dx, Math.floor(o.y) + dy));
-      z = (best > -1e8 ? best : 0) - (o.embed ?? o.b * 0.6);
+      const X = np(o.x), Y = np(o.y), r = this.S;
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) best = Math.max(best, this.zAt(X + dx, Y + dy));
+      z = (best > -1e8 ? best / this.S : 0) - (o.embed ?? o.b * 0.6);
     }
     const P = view(pts, o.x, o.y, o.p ?? 0.62).map(([x, y, zz]) => [x, y, zz + z]);
     const opts = { group: o.group, shadow: o.shadow, occlude: o.occlude, tag: o.tag };
@@ -371,11 +398,11 @@ export class Scene {
     return nrm([f.n[0] * (1 - k) + ns[0] * k, f.n[1] * (1 - k) + ns[1] * k, f.n[2] * (1 - k) + ns[2] * k]);
   }
 
-  /** Clear pixels before rendering: fn(x, y, objIndex) → true removes the pixel (notches, cracks, bites). */
+  /** Clear pixels before rendering: fn(x, y, objIndex) (design coordinates) → true removes the pixel (notches, cracks, bites). */
   carve(fn) {
     for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
       const i = y * this.w + x;
-      if (this.ob[i] >= 0 && fn(x, y, this.ob[i])) { this.ob[i] = -1; this.fb[i] = -1; this.z[i] = -1e9; }
+      if (this.ob[i] >= 0 && fn(dc(x), dc(y), this.ob[i])) { this.ob[i] = -1; this.fb[i] = -1; this.z[i] = -1e9; }
     }
   }
 
@@ -385,14 +412,16 @@ export class Scene {
    */
   roughen(objs, o = {}) {
     const ids = new Set(objs.map((q) => q.id));
-    const amt = o.amount ?? 0.35, sc = o.scale ?? 0.55, seed = o.seed ?? 1;
-    for (let pass = 0; pass < (o.depth ?? 1); pass++) {
+    const amt = o.amount ?? 0.35, sc = (o.scale ?? 0.55) / this.S, seed = o.seed ?? 1;
+    // at S > 1: as many real-pixel passes, alternating the design-size bites with finer nicks
+    for (let pass = 0; pass < (o.depth ?? 1) * this.S; pass++) {
       const kill = [];
+      const f = pass % 2 ? 2 : 1, sd = seed + Math.floor(pass / this.S) * 7 + (pass % 2) * 3;
       for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
         const i = y * this.w + x;
         if (!ids.has(this.ob[i])) continue;
         const edge = this.objAt(x - 1, y) < 0 || this.objAt(x + 1, y) < 0 || this.objAt(x, y - 1) < 0 || this.objAt(x, y + 1) < 0;
-        if (edge && vnoise(x * sc, y * sc, seed + pass * 7) < amt) kill.push(i);
+        if (edge && vnoise(x * sc * f, y * sc * f, sd) < amt * (f > 1 ? 0.8 : 1)) kill.push(i);
       }
       for (const i of kill) { this.ob[i] = -1; this.fb[i] = -1; this.z[i] = -1e9; }
     }
@@ -484,7 +513,7 @@ export class Scene {
           for (const g of obj.faces) if (g.pid === f.pid) for (const q of g.pts) { cx += q[0]; cy += q[1]; n++; }
           f.ctr = [cx / n, cy / n];
         }
-        t += ((x + 0.5 - f.ctr[0]) * -LS[0] + (y + 0.5 - f.ctr[1]) * -LS[1]) * (m.grad ?? 0.07);
+        t += ((x + 0.5 - f.ctr[0]) * -LS[0] + (y + 0.5 - f.ctr[1]) * -LS[1]) * (m.grad ?? 0.07) / this.S;
       }
       if (m.tex) t += m.tex({ x, y, z: this.z[i], n: f.n, k: t, obj, face: f, sc: this }) || 0;
       T[i] = t;
@@ -498,17 +527,17 @@ export class Scene {
         const m = this.objs[oi].m;
         const zp = this.z[i];
         let sh = 0;
-        for (let s = 1; s <= 9 && !sh; s++) {
+        for (let s = 1; s <= 9 * this.S && !sh; s++) {
           const qx = Math.floor(x + 0.5 + LS[0] * s), qy = Math.floor(y + 0.5 + LS[1] * s);
           if (!this.inb(qx, qy)) break;
           const j = qy * W + qx, oq = this.ob[j];
           if (oq < 0 || this.objs[oq].g === this.objs[oi].g || this.objs[oq].o.shadow === false) continue;
-          if (this.z[j] > zp + s * 0.62 + 0.4) sh = 1;
+          if (this.z[j] > zp + s * 0.62 + 0.4 * this.S) sh = 1;
         }
         let ao = 0;
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const oq = this.objAt(x + dx, y + dy);
-          if (oq >= 0 && this.objs[oq].g !== this.objs[oi].g && this.objs[oq].o.shadow !== false && this.zAt(x + dx, y + dy) > zp - 0.3) ao = 1;
+          if (oq >= 0 && this.objs[oq].g !== this.objs[oi].g && this.objs[oq].o.shadow !== false && this.zAt(x + dx, y + dy) > zp - 0.3 * this.S) ao = 1;
         }
         add[i] = sh * (m.cast ?? 1) + ao * (m.ao ?? 0.75);
       }
@@ -552,7 +581,7 @@ export class Scene {
         const j = at(x + dx, y + dy);
         if (j < 0 || this.ob[j] < 0) continue;
         if (this.ob[j] !== oi && this.objs[this.ob[j]].g !== obj.g) {
-          if (this.z[j] > this.z[i] + (m.gap ?? 1.6) && this.objs[this.ob[j]].o.occlude !== false) occl = true;
+          if (this.z[j] > this.z[i] + (m.gap ?? 1.6) * this.S && this.objs[this.ob[j]].o.occlude !== false) occl = true;
           continue;
         }
         if (this.faces[this.fb[j]].pid === this.faces[fi].pid || !m.ridge) continue;
@@ -630,10 +659,12 @@ export function gemTone(n, o = {}) {
 export function stoneTex(seed = 1, o = {}) {
   const amp = o.amp ?? 0.9, sx = o.sx ?? 0.42, sy = o.sy ?? 0.85, pit = o.pit ?? 0.05, speck = o.speck ?? 0.035;
   return (c) => {
-    const { x, y } = c;
+    const k = c.sc ? c.sc.S : S;
+    const x = c.x / k, y = c.y / k;
     let v = (vnoise(x * sx, y * sy, seed) - 0.5) * amp * 1.6;
     v += (vnoise(x * sx * 2.3, y * sy * 2.3, seed + 9) - 0.5) * amp * 0.7;
-    const h = hash2(x, y, seed + 3);
+    if (k > 1) v += (vnoise(x * sx * 5.5, y * sy * 5.5, seed + 21) - 0.5) * amp * 0.45; // fine grit
+    const h = hash2(c.x, c.y, seed + 3);
     if (h < pit) v += 1;
     else if (h > 1 - speck) v -= 1;
     return v;
@@ -647,19 +678,25 @@ export const texSum = (...fs) => (c) => fs.reduce((s, f) => s + (f ? f(c) || 0 :
 export function prismUV(c) {
   const fr = c.obj.o.frame;
   if (!fr) return [0.5, 0];
-  const p = [c.x + 0.5 - fr.b[0], c.y + 0.5 - fr.b[1], c.z - fr.b[2]];
+  const k = c.sc ? c.sc.S : S;
+  const p = [(c.x + 0.5) / k - fr.b[0], (c.y + 0.5) / k - fr.b[1], c.z / k - fr.b[2]];
   return [dot(p, fr.d) / fr.len, dot(p, fr.e1) / fr.r];
 }
 
-/** Draw a small glint: centre + 4 arms (len 1..3) with fading colours. */
+/**
+ * Draw a small glint at design pixel (x, y): centre + 4 arms (len design px) with fading
+ * colours; at S > 1 the arms are 1 real px thin and S× as long, the inner half white.
+ */
 export function glint(pc, x, y, len = 1, c = 0xffffff, c2 = null, emit = 0) {
   const m = c2 ?? mix(c, 0xfff0c8, 0.4);
   const put = (X, Y, col) => { if (X < 0 || Y < 0 || X >= pc.w || Y >= pc.h) return; pc.set(X, Y, col); if (emit) pc.emit(X, Y, emit); };
-  put(x, y, c);
-  for (let k = 1; k <= len; k++) {
-    const col = k === 1 && len > 1 ? c : m;
-    put(x + k, y, col); put(x - k, y, col); put(x, y + k, col); put(x, y - k, col);
+  const X = nc(x), Y = nc(y), L = len <= 0 ? (S > 1 ? 1 : 0) : len * S;
+  put(X, Y, c);
+  for (let k = 1; k <= L; k++) {
+    const col = (len > 1 ? k <= L / 2 : k === 1 && S > 1 && len > 0) ? c : m;
+    put(X + k, Y, col); put(X - k, Y, col); put(X, Y + k, col); put(X, Y - k, col);
   }
+  if (S > 1 && len >= 2) for (const [dx, dy] of [[1, 1], [-1, -1], [1, -1], [-1, 1]]) put(X + dx, Y + dy, m);
 }
 
 export { dot, cross, sub };

@@ -25,6 +25,7 @@ import { portrait3d } from '../gfx/portrait3d.js';
 import { randomSpec } from '../gfx/characters.js';
 import { installDialogArt } from './dialogArt.js';
 import { voiceBlip, breathAfter, STAR_VOICE } from './talkType.js';
+import { SHOPS } from '../data/shops.js';
 import './tutor.css';
 
 export const MOODS = ['calm', 'happy', 'stern', 'proud', 'worried', 'laugh'];
@@ -40,6 +41,19 @@ export function speakerOf(who, name) {
   if (!name && !who) return portrait3d.cast('oldstar');
   const n = String(name || who);
   return portrait3d.cast({ spec: { ...randomSpec(hashName(n)), name: n }, name: n, backdrop: 'town' });
+}
+
+/**
+ * The paper a speaker's words come on (the dialogue box, the floating label, the talk board):
+ * 'forge' (Old Star: scorched, sooty), 'ledger' (the traders: ruled ledger paper), 'kraft' (Rocco),
+ * 'journal' (you: your notebook) or 'parch' (everybody else). who: a cast key ('shop:tools') or an id.
+ */
+export function materialOf(who) {
+  const k = String(who || 'oldstar').replace(/^shop:/, '');
+  if (k === 'oldstar') return 'forge';
+  if (k === 'hero' || k === 'you') return 'journal';
+  if (k === 'rocco' || k === 'raccoon') return 'kraft';
+  return SHOPS[k] ? 'ledger' : 'parch';
 }
 
 // ---------------------------------------------------------------- old exports (3D stills now)
@@ -146,6 +160,7 @@ export class Tutor {
     this.cur = line;
     this.nameEl.textContent = line.name;
     this.card.dataset.who = cast?.key?.split(':')[0] || 'oldstar';
+    this.card.dataset.mat = muffled ? 'forge' : materialOf(cast?.key || opts.who);
     clearTimeout(this.outT);
     this.el.hidden = false;
     this.el.classList.toggle('waits', line.wait);
