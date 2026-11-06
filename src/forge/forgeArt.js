@@ -4,6 +4,7 @@
 // the guild certificate and its wax seal. Everything is cached through uiArt's art(); the frames
 // and tiles are published on the forge layer as CSS custom properties (--fa-<key>).
 import { Px, PAL, INK, art, mixHex, shade } from '../ui/uiArt.js';
+import { blob, lumpDist } from '../iso/organic.js';
 import { SPR } from '../ui/uiSprites.js';
 import { PixelCanvas } from '../gfx/PixelArt.js';
 import { drawWeapon } from '../gfx/PixelArt.js';
@@ -306,9 +307,11 @@ function medalSprite(glyph, state) {
   const p = new Px(17, 17);
   const on = state === 'on', done = state === 'done';
   const rim = on ? B : done ? { hi: 0xe8f0c0, lt: 0xb8c880, base: 0x8aa058, dk: 0x5a7034, dd: 0x34441c, ol: 0x1a2410 } : { hi: 0xb0a090, lt: 0x8a7a6a, base: 0x6a5a4c, dk: 0x4a3e34, dd: 0x2e2620, ol: 0x1a1410 };
-  p.disk(8.5, 8.5, 7.6, rim.base);
+  // a hammered medal: nearly round, a little out of true (its rims follow the same outline)
+  const LD = lumpDist(8.5, 8.5, 7.6, 7.6, { lump: 0.06, seed: 11 });
+  blob(p, 8.5, 8.5, 7.6, 7.6, rim.base, 255, { lump: 0.06, seed: 11 });
   p.each((x, y) => {
-    const d = Math.hypot(x + 0.5 - 8.5, y + 0.5 - 8.5);
+    const d = LD(x, y) * 7.6;
     if (d > 6.6) return x + y < 16 ? rim.hi : rim.dk;
     if (d > 5.6) return x + y < 16 ? rim.dk : rim.lt;
     return on ? 0x3a1a0a : done ? 0x24300f : 0x2a221c;
@@ -325,12 +328,13 @@ function medalSprite(glyph, state) {
 function bigSeal(hex) {
   const p = new Px(28, 28);
   const base = hex, lt = mixHex(hex, 0xffffff, 0.3), hi = mixHex(hex, 0xffffff, 0.6), dk = shade(hex, 0.62), dd = shade(hex, 0.4);
-  // blobby outline: a disk with drips
-  p.disk(14, 14, 11, base);
-  for (let a = 0; a < 14; a++) { const ang = (a / 14) * Math.PI * 2 + 0.3; const r = 11.5 + hash(a, 1, 2) * 1.8; p.disk(14 + Math.cos(ang) * r * 0.9, 14 + Math.sin(ang) * r * 0.9, 1.6, base); }
+  // a lumpy puddle of wax with drips round its edge, the ring pressed in following its shape
+  const LD = lumpDist(14, 14, 11, 10.6, { lump: 0.1, seed: 13 });
+  blob(p, 14, 14, 11, 10.6, base, 255, { lump: 0.1, seed: 13 });
+  for (let a = 0; a < 14; a++) { const ang = (a / 14) * Math.PI * 2 + 0.3; const r = 11.5 + hash(a, 1, 2) * 1.8; blob(p, 14 + Math.cos(ang) * r * 0.9, 14 + Math.sin(ang) * r * 0.9, 1.6, 1.4, base, 255, { lump: 0.2, seed: a }); }
   p.each((x, y) => {
     const t = (x - 14) / 11 + (y - 14) / 11;
-    const d = Math.hypot(x + 0.5 - 14, y + 0.5 - 14);
+    const d = LD(x, y) * 11;
     if (d > 7.6 && d < 8.8) return t < 0 ? dk : lt; // pressed ring
     if (t < -1.0) return hi;
     if (t < -0.45) return lt;
@@ -357,9 +361,11 @@ function ribbonSprite(hex = 0xc23c2c) {
 function tokenSprite(hex) {
   const p = new Px(16, 16);
   const hi = mixHex(hex, 0xffffff, 0.55), lt = mixHex(hex, 0xffffff, 0.25), dk = shade(hex, 0.66), dd = shade(hex, 0.45);
-  p.disk(8, 8, 7, hex);
+  // a struck token, a little out of true (its rims follow the same outline)
+  const LD = lumpDist(8, 8, 7, 7, { lump: 0.06, seed: 17 });
+  blob(p, 8, 8, 7, 7, hex, 255, { lump: 0.06, seed: 17 });
   p.each((x, y) => {
-    const d = Math.hypot(x + 0.5 - 8, y + 0.5 - 8);
+    const d = LD(x, y) * 7;
     const t = (x - 8) + (y - 8);
     if (d > 6) return t < 0 ? hi : dd;
     if (d > 5) return t < 0 ? dk : lt;
@@ -384,7 +390,9 @@ function tapeSprite() {
 /** A nail (for hanging things off the board). 5×5. */
 function nailSprite() {
   const p = new Px(5, 5);
-  p.disk(2.5, 2.5, 2, 0x8a8a90); p.set(1, 1, 0xd8d8e0); p.set(3, 3, 0x4a4a50);
+  // a hand-forged nail head: a lopsided lump, lit top-left
+  p.rect(1, 1, 3, 3, 0x8a8a90); p.hl(2, 3, 0, 0x8a8a90); p.vl(0, 2, 3, 0x8a8a90); p.set(4, 2, 0x6a6a70);
+  p.set(1, 1, 0xd8d8e0); p.set(2, 0, 0xb8b8c0); p.set(3, 3, 0x4a4a50);
   p.outline(INK);
   return p;
 }

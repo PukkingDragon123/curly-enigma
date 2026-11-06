@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { PixelCanvas, pixelTexture } from '../gfx/PixelArt.js';
 import { makeRng, shade, mixHex } from '../core/util.js';
+import { blob } from '../iso/organic.js';
 
 function tex(pc, repeat) {
   const t = pixelTexture(pc.commit());
@@ -153,11 +154,11 @@ export function sunPaintingTex() {
   pc.rect(3, 3, W - 6, H - 6, 0x7ab0c8);
   pc.rect(3, 12, W - 6, 4, 0x9ac4d8);
   // the sun with a few rays
-  pc.ellipse(12, 10, 3.2, 3.2, 0xffd860);
+  blob(pc, 12, 10, 3.2, 3.2, 0xffd860);
   pc.set(12, 5, 0xffe890); pc.set(7, 10, 0xffe890); pc.set(17, 10, 0xffe890); pc.set(8, 6, 0xffe890); pc.set(16, 6, 0xffe890);
   // rolling hills
-  pc.ellipse(8, 21, 8, 4, 0x6aa04a);
-  pc.ellipse(17, 22, 7, 3.5, 0x5a9040);
+  blob(pc, 8, 21, 8, 4, 0x6aa04a);
+  blob(pc, 17, 22, 7, 3.5, 0x5a9040);
   pc.rect(3, 22, W - 6, H - 25, 0x6aa04a);
   pc.set(6, 19, 0x8ac060); pc.set(15, 20, 0x8ac060); pc.set(19, 21, 0x8ac060);
   return tex(pc);
@@ -173,10 +174,10 @@ export function chalkboardTex() {
   for (let i = 0; i < 50; i++) pc.set(rng.int(2, W - 3), rng.int(2, H - 3), 0x325446);
   const chalk = 0xe8efe6;
   // "1,000,000" goal doodle: coin + arrow up to a sun
-  pc.disk(10, 22, 4, 0xe8d070); pc.disk(10, 22, 2.5, 0xd8b850); pc.set(10, 22, chalk);
+  blob(pc, 10, 22, 4, 4, 0xe8d070); blob(pc, 10, 22, 2.5, 2.5, 0xd8b850); pc.set(10, 22, chalk);
   for (let y = 9; y < 19; y++) pc.set(20, y, chalk);
   pc.set(19, 10, chalk); pc.set(21, 10, chalk); pc.set(18, 11, chalk); pc.set(22, 11, chalk);
-  pc.disk(33, 11, 4, 0xf0d060);
+  blob(pc, 33, 11, 4, 4, 0xf0d060);
   for (let a = 0; a < 8; a++) { const ang = a * Math.PI / 4; pc.set(Math.round(33 + Math.cos(ang) * 6.5), Math.round(11 + Math.sin(ang) * 6.5), 0xf0d060); }
   // little palm & wave line
   for (let x = 26; x < 44; x++) pc.set(x, 25 + Math.round(Math.sin(x * 0.8)), 0x9fd6ff);

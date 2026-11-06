@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { PixelCanvas, pixelTexture } from '../gfx/PixelArt.js';
 import { makeRng, mixHex, shade } from '../core/util.js';
+import { blob } from '../iso/organic.js';
 
 export const TPU = 32; // texels per world unit
 
@@ -99,7 +100,7 @@ function plankWall(pc, rng, y0, y1, plankW = 12) {
     // knots and nails
     if (rng.chance(0.55)) {
       const kx = x + 3 + rng.int(0, plankW - 7), ky = rng.int(y0 + 6, y1 - 8);
-      pc.ellipse(kx + 1, ky + 1, 2.2, 1.6, shade(base, 0.62));
+      blob(pc, kx + 1, ky + 1, 2.2, 1.6, shade(base, 0.62));
       pc.set(kx + 1, ky + 1, shade(base, 0.45));
     }
     for (const ny of [y0 + 5, joint - 4, joint + 5, y1 - 6]) { pc.set(x + 3, ny, 0x2a1a18); pc.set(x + plankW - 4, ny, 0x2a1a18); pc.set(x + 3, ny - 1, 0x6a5a58); }
@@ -118,7 +119,7 @@ function mossEdge(pc, rng, y0, dir, amount = 1) {
 function grime(pc, rng, n, color, alpha = 60, rmax = 7) {
   for (let i = 0; i < n; i++) {
     const cx = rng.int(0, pc.w), cy = rng.int(0, pc.h), r = rng.range(2, rmax);
-    pc.ellipse(cx, cy, r * 1.3, r, color, alpha);
+    blob(pc, cx, cy, r * 1.3, r, color, alpha);
   }
 }
 
@@ -193,7 +194,7 @@ function drawChalkboard(pc, rng, x0, y0, w, h) {
   for (const [x, y] of [[x0 - 2, y0 - 2], [x0 + w + 1, y0 - 2], [x0 - 2, y0 + h + 1], [x0 + w + 1, y0 + h + 1]]) pc.set(x, y, 0xc8a050);
   for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) pc.set(x, y, rng.chance(0.07) ? 0x26342c : rng.chance(0.03) ? 0x2c3c34 : 0x1e2a24);
   // old smudged erasures
-  for (let i = 0; i < 5; i++) pc.ellipse(x0 + rng.int(6, w - 6), y0 + rng.int(4, h - 4), rng.range(4, 9), rng.range(2, 4), 0x2e3c34, 90);
+  for (let i = 0; i < 5; i++) blob(pc, x0 + rng.int(6, w - 6), y0 + rng.int(4, h - 4), rng.range(4, 9), rng.range(2, 4), 0x2e3c34, 90);
   const chalk = 0xd8e0d4, faint = 0x6a7a70, red = 0xe08a7a;
   // a sword sketch with dimension marks
   const sx = x0 + 6, sy = y0 + Math.round(h * 0.55);
@@ -204,7 +205,7 @@ function drawChalkboard(pc, rng, x0, y0, w, h) {
   pc.line(sx + w - 22, sy - 3, sx + w - 14, sy, chalk);
   pc.line(sx + w - 22, sy + 2, sx + w - 14, sy, chalk);
   pc.line(sx + 13, sy, sx + w - 26, sy, faint); // fuller
-  pc.disk(sx - 2, sy - 0.5, 2, chalk); // pommel
+  blob(pc, sx - 2, sy - 0.5, 2, 2, chalk); // pommel
   for (let x = sx + 11; x < sx + w - 16; x += 4) pc.set(x, sy + 8, faint);
   pc.line(sx + 11, sy + 6, sx + 11, sy + 10, faint); pc.line(sx + w - 15, sy + 6, sx + w - 15, sy + 10, faint);
   // balance point arrow
@@ -212,7 +213,7 @@ function drawChalkboard(pc, rng, x0, y0, w, h) {
   // thermometer doodle with a heat band
   const tx = x0 + w - 10;
   pc.rect(tx, y0 + 4, 2, Math.round(h * 0.42), chalk);
-  pc.disk(tx + 1, y0 + 6 + Math.round(h * 0.42), 3, chalk);
+  blob(pc, tx + 1, y0 + 6 + Math.round(h * 0.42), 3, 3, chalk);
   pc.rect(tx + 3, y0 + 10, 3, 5, 0xe0b060);
   for (let i = 0; i < 6; i++) pc.set(tx + 4, y0 + 6 + i * 4, faint);
   // tally marks: blades forged
@@ -220,7 +221,7 @@ function drawChalkboard(pc, rng, x0, y0, w, h) {
   pc.line(x0 + 4, y0 + 10, x0 + 21, y0 + 4, chalk);
   // a tiny sun and palm: the dream
   const px = x0 + Math.round(w * 0.5), py = y0 + h - 7;
-  pc.disk(px + 13, y0 + 8, 3, 0xf0d870);
+  blob(pc, px + 13, y0 + 8, 3, 3, 0xf0d870);
   for (let a = 0; a < 8; a++) { const t = a * Math.PI / 4; pc.set(Math.round(px + 13 + Math.cos(t) * 5.5), Math.round(y0 + 8 + Math.sin(t) * 5.5), 0xf0d870); }
   pc.line(px, py, px + 2, py - 11, chalk); pc.line(px + 1, py, px + 3, py - 11, chalk);
   pc.line(px - 5, py - 13, px + 2, py - 11, 0x9ad890); pc.line(px + 2, py - 11, px + 9, py - 13, 0x9ad890); pc.line(px + 2, py - 11, px - 2, py - 7, 0x9ad890); pc.line(px + 2, py - 11, px + 7, py - 7, 0x9ad890);
@@ -280,9 +281,9 @@ export function postcardTexture() {
   pc.rect(0, 0, 28, 1, 0xfff8e8);
   pc.rect(2, 2, 24, 10, 0x6ac8f0);
   pc.rect(2, 2, 24, 2, 0x8ad8ff);
-  pc.disk(20, 5.5, 2.6, 0xffe066);
-  pc.disk(20, 5.5, 1.4, 0xfff4b0);
-  pc.ellipse(8, 4, 4, 1.2, 0xffffff); pc.ellipse(10, 3.5, 2.5, 1, 0xffffff);
+  blob(pc, 20, 5.5, 2.6, 2.6, 0xffe066);
+  blob(pc, 20, 5.5, 1.4, 1.4, 0xfff4b0);
+  blob(pc, 8, 4, 4, 1.2, 0xffffff); blob(pc, 10, 3.5, 2.5, 1, 0xffffff);
   pc.rect(2, 10, 24, 3, 0x2a8ad0);
   pc.rect(2, 10, 24, 1, 0x5ab0e8);
   for (let x = 3; x < 26; x += 4) pc.set(x, 11, 0x9ad8ff);

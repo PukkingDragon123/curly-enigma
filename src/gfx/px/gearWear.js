@@ -4,7 +4,7 @@
 // design grid and painted natively at S× (res.js): mask callbacks paint native (X, Y) and
 // measure in design (x, y); dot() places a hand-set design pixel.
 import {
-  M, mat, mix, hash2, step, ink, seam, stick, dents, pits, rivet, stitch, line, glint, toneN, RAMPS, shadowOf,
+  M, mat, mix, hash2, vnoise, step, ink, seam, stick, dents, pits, rivet, stitch, line, glint, toneN, RAMPS, shadowOf,
   S, SZ, dc, nc, np, dot, dotE, alphaD, getD, grain,
 } from './gearKit.js';
 import { vol } from './shade.js';
@@ -65,6 +65,10 @@ function helmet(pc, id) {
       stitch(pc, [[x0 + 1, y0 + 1], [x1 + 1, y1]], mix(R[1], 0xfff0c8, 0.45), { gap: 2, mask: dome });
     }
     dot(pc, 22, 15, R[5]); dot(pc, 23, 16, R[2]); dot(pc, 22, 16, R[4]);
+    // boiled-leather grain, scuffs rubbed pale on the crown and along the brim's edge
+    pits(pc, dome, R, 0.05, 7, 0.02);
+    dome.each((X, Y) => { if (dc(Y) < 13 && vnoise(dc(X) * 0.7, dc(Y) * 1.4, 5) > 0.74 && !isTop(dome, X, Y)) step(pc, R, X, Y, -1, 1, 5); });
+    brim.each((X, Y) => { if (isBot(brim, X, Y) && hash2(X, Y, 4) < 0.3) step(pc, R, X, Y, -1, 2, 5); });
     for (const x of [7, 24]) rivet(pc, x, 20, mat(0xc8ccd4, { cont: 1.2 }));
     const TN = mat(0xb0b4bc, { cont: 1.25 });
     const holder = M().rect(12, 17, 6, 2).ellipse(15, 19.4, 3.2, 1.4);
@@ -84,7 +88,7 @@ function helmet(pc, id) {
     // comb ridge front to back, rivets on the band, a lamp with a glowing reflector
     for (let y = 11; y < 19; y++) { const x = Math.round(14.6 - (y - 11) * 0.1); if (dome.at(x, y)) { dot(pc, x, y, R[1]); dot(pc, x + 1, y, R[4]); } }
     for (const x of [7, 10, 20, 23]) rivet(pc, x, 20, R);
-    dents(pc, dome, R, { dens: 0.05, seed: 13, only: (x, y) => y < 18 && y > 12 });
+    dents(pc, dome, R, { dens: 0.06, seed: 13, only: (X, Y) => dc(Y) < 18.4 && dc(Y) > 7 && !band.get(X, Y) });
     const LB = mat(0xb48434, { cont: 1.22, warm: 52 });
     const lamp = M().rect(10, 12, 9, 7).ellipse(14.5, 12, 4.5, 1.3);
     seam(pc, lamp, 'shadow');
@@ -104,6 +108,7 @@ function helmet(pc, id) {
   }
   // lumite: steel helmet with a riveted rib and a crystal in a brass bezel
   for (let y = 11; y < 19; y++) { const x = 15; if (dome.at(x, y)) { dot(pc, x - 1, y, R[2]); dot(pc, x, y, R[1]); dot(pc, x + 1, y, R[4]); } }
+  dents(pc, dome, R, { dens: 0.05, seed: 7, only: (X, Y) => dc(Y) > 8 && dc(Y) < 18.6 && !band.get(X, Y) && Math.abs(dc(X) - 15) > 1.6 });
   for (const x of [7, 11, 20, 24]) rivet(pc, x, 20, R);
   for (let y = 12; y < 19; y += 3) rivet(pc, 14, y, R);
   const bez = M().disk(15.5, 14.6, 3.9);
@@ -300,10 +305,21 @@ function suit(pc, id) {
   const body = M().poly([[9, 6.5], [23, 6.5], [24.4, 19], [24.6, 30], [17.2, 30], [16.4, 21.6], [15.6, 21.6], [14.8, 30], [7.4, 30], [7.6, 19]]);
   seam(pc, body, 'shadow');
   ball(pc, body, R, 14.6, 15, 11, 16, { bias: 0.1, rim: true });
-  // quilting: gently curved stitched seams
-  for (let y0 = 10; y0 < 19; y0 += 3) for (let x = 8; x < 25; x++) {
-    const y = y0 + Math.round(Math.sin((x - 8) / 16 * Math.PI) * 0.6);
-    if (body.get(x, y) && Math.abs(x - 16) > 0) step(pc, R, x, y, 1, 1, 5);
+  // the cloth: a fine twill running down to the right, lit where each rib turns
+  body.each((X, Y) => {
+    if (isTop(body, X, Y) || isBot(body, X, Y)) return;
+    const t = (X - Y + 256) % 4;
+    if (t === 0) step(pc, R, X, Y, 1, 1, 5);
+    else if (t === 1 && hash2(X, Y, 3) < 0.35) step(pc, R, X, Y, -1, 1, 5);
+  });
+  // quilting: gently curved seams, the padding puffed between them (a lit row above each seam,
+  // the stitches a pixel of thread every few pixels)
+  for (let y0 = 10; y0 < 19; y0 += 3) for (let X = nc(8); X < nc(25); X++) {
+    const Y = nc(y0 + Math.sin((dc(X) - 8) / 16 * Math.PI) * 0.6);
+    if (!body.get(X, Y) || Math.abs(dc(X) - 16) < 1.2 || isTop(body, X, Y)) continue;
+    step(pc, R, X, Y, 2, 1, 5);
+    if (body.get(X, Y - 1)) step(pc, R, X, Y - 1, -1, 1, 5);
+    if (X % 4 === 1) pc.set(X, Y, thermal ? TR[1] : R[1]);
   }
   // trouser seams and knee pads
   for (const [x0, x1] of [[8, 15], [17, 24]]) {
@@ -316,8 +332,13 @@ function suit(pc, id) {
   seam(pc, col, 'shadow');
   col.eachD((X, Y, x, y) => pc.set(X, Y, thermal ? (hash2(X, Y, 4) < 0.5 ? 0xf2e6d2 : 0xd4c4aa) : TR[x < 14 ? 2 : x < 19 ? 3 : 4]));
   if (thermal) for (let x = 10; x < 23; x += 2) dot(pc, x, 4 + (x % 4 ? 0 : 1), 0xfff8ec);
-  for (let y = 9; y < 20; y++) { dot(pc, 16, y, y % 2 ? DK[2] : DK[4]); for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) step(pc, R, 15 * S + i, y * S + j, 1); }
-  dot(pc, 16, 9, 0xe8e8f0); dot(pc, 16, 10, 0xb8b8c8);
+  // the zip: interlocking teeth (one pixel each, alternating sides), the tape's shadow, a pull tab
+  for (let Y = nc(9); Y < nc(19.6); Y++) {
+    const odd = Y & 1;
+    pc.set(nc(16), Y, odd ? DK[1] : DK[4]); pc.set(nc(16) + 1, Y, odd ? DK[4] : DK[2]);
+    step(pc, R, nc(16) - 1, Y, 1); step(pc, R, nc(16) + 2, Y, 2);
+  }
+  for (const [dx, dy, c] of [[0, 0, 0xf0f0f8], [1, 0, 0xc8c8d4], [0, 1, 0xd8d8e4], [1, 1, 0x8a8a98], [0, 2, 0xb8b8c8], [1, 2, 0x6a6a78], [0, 3, 0x8a8a98]]) pc.set(nc(16) + dx, nc(9.6) + dy, c);
   const belt = body.clone().and(M().rect(0, 19, 32, 2));
   belt.eachD((X, Y, x, y) => pc.set(X, Y, DK[Math.round(y) === 19 ? 2 : 4]));
   const BK = RAMPS.brass();
@@ -362,6 +383,11 @@ function boots(pc, id) {
     for (let y = oy + 12; y < oy + 18; y++) { const x = Math.round(ox + 12 - (y - oy - 12) * 0.3); if (m.at(x, y)) dot(pc, x, y, R[5]); }
     for (let y = oy + 12; y < oy + 18; y++) if (m.at(ox + 4, y)) dot(pc, ox + 4, y, R[back ? 5 : 4]);
     stitch(pc, [[ox + 3, oy + 12.5], [ox + 3, oy + 17]], mix(R[1], 0xf0e0c0, 0.4), { gap: 2 });
+    // creases where the ankle bends (a dark fold with a lit ridge beside it) and pebbled grain
+    for (const [x0, y0, x1, y1] of [[ox + 3.4, oy + 8.6, ox + 7.6, oy + 10], [ox + 4, oy + 10.6, ox + 8.6, oy + 11.6], [ox + 11.6, oy + 11.6, ox + 13.6, oy + 12.4]]) {
+      line(pc, x0, y0, x1, y1, (i, X, Y) => (m.get(X, Y) && !isTop(m, X, Y) && i % 6 !== 5 ? (step(pc, R, X, Y, 1, 1, 5), m.get(X, Y + 1) && step(pc, R, X, Y + 1, -1, 1, 5), null) : null));
+    }
+    m.each((X, Y) => { if (!isTop(m, X, Y) && hash2(X, Y, 17) < 0.05) step(pc, R, X, Y, hash2(X, Y, 18) < 0.6 ? 1 : -1, 1, 5); });
     // folded cuff
     const cuff = M().rect(ox + 2, oy, 9, 3);
     seam(pc, cuff, 'shadow');
@@ -430,8 +456,14 @@ function bag(pc, id) {
       m.ellipse(16, 22, 11.8, 8.2);
       seam(pc, m, 'shadow');
       ball(pc, m, R, 14.5, 21, 13.2, 10.4, { bias: 0.08, rim: true });
-      // weave
-      m.eachD((X, Y, x, y) => { if ((X + Y * 2) % 4 === 0 && hash2(X, Y, 2) < 0.7) step(pc, R, X, Y, 1, 1, 5); });
+      // burlap weave: coarse threads over and under, lit on top of each crossing, a slub or two
+      m.each((X, Y) => {
+        if (isTop(m, X, Y) || isBot(m, X, Y)) return;
+        const u = X & 3, v = Y & 3, over = ((X >> 2) + (Y >> 2)) & 1;
+        if (over ? v === 3 : u === 3) step(pc, R, X, Y, 1, 1, 5);
+        else if ((over ? v === 0 : u === 0) && hash2(X, Y, 2) < 0.55) step(pc, R, X, Y, -1, 1, 5);
+        else if (hash2(X >> 1, Y, 6) < 0.03) step(pc, R, X, Y, 1, 1, 5);
+      });
       // folds radiating from the neck
       for (const [x0, y0, x1, y1] of [[12, 12, 9, 19], [19, 12, 23, 18], [16, 13, 16, 17]]) line(pc, x0, y0, x1, y1, (i, X, Y) => (i % 3 === 2 ? null : R[Math.min(5, R.indexOf(pc.get(X, Y)) + 1)]), m);
       // gathered neck with a ruffled mouth
@@ -441,8 +473,13 @@ function bag(pc, id) {
       for (let x = 11; x <= 21; x++) dot(pc, x, 4 + (x % 2), R[x % 2 ? 2 : 3]);
       // twine: two turns, a knot and a dangling end
       const TW = RAMPS.twine();
-      for (let x = 12; x <= 20; x++) { dot(pc, x, 9, TW[(x % 2) + 2]); dot(pc, x, 10, TW[4]); }
-      dot(pc, 21, 10, TW[2]); dot(pc, 22, 11, TW[3]); dot(pc, 22, 12, TW[3]); dot(pc, 23, 13, TW[4]); dot(pc, 23, 14, TW[3]);
+      // (a twisted cord: each turn of the twist lit on one strand; the end frays into fibres)
+      for (let X = nc(12); X <= nc(20) + 1; X++) {
+        const t = X % 3, Y = nc(9);
+        pc.set(X, Y - 1, TW[t === 0 ? 1 : 2]); pc.set(X, Y, TW[t === 1 ? 2 : 3]); pc.set(X, Y + 1, TW[t === 2 ? 3 : 4]); pc.set(X, Y + 2, TW[5]);
+      }
+      line(pc, 21, 10, 23, 14.4, (i) => TW[i % 3 === 0 ? 2 : 3]); line(pc, 21.5, 10, 23.5, 14, (i) => TW[i % 3 === 1 ? 3 : 4]);
+      line(pc, 23, 14.4, 22.6, 15.4, TW[3]); line(pc, 23.5, 14, 24.2, 15.2, TW[4]);
       // patch with cross stitches
       const PA = mat(0x8e6c44, { cont: 1.05 });
       const p = M().poly([[17, 19], [23, 18.4], [23.6, 24], [17.6, 24.6]]);

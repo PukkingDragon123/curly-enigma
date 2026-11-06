@@ -125,7 +125,7 @@ export class VG {
           const dx = x - cx, dz = z - cz, d = Math.hypot(dx, dz), r = rr * wob(Math.atan2(dz, dx));
           if (d > r) continue;
           const rim = d > r - 1.05;
-          if (yy === 0 && gill >= 0 && !rim) { this.set(x, y, z, (x + z) & 1 ? gill : shadeHex(gill, 1.3), 1); continue; }
+          if (yy === 0 && gill >= 0 && !rim) { this.set(x, y, z, gill, 1); continue; }
           this.set(x, y + yy, z, col(h, d / Math.max(0.5, r), x, y + yy, z, rim), typeof glow === 'function' ? glow(h, d / Math.max(0.5, r)) : glow);
         }
     }

@@ -75,6 +75,10 @@ const SHOP_BACKDROP = { trader: 'trader', herbalist: 'herb', rocco: 'storage', o
 const CAST = {
   oldstar: {
     key: 'oldstar', name: 'Old Star', backdrop: 'forge', mood: 'neutral', voice: { f: 205, type: 'square', q: 1.6, mumble: true },
+    // his star is long and points wherever he looks (head-on it filled the whole frame): a 3/4
+    // view from a little above, him looking past the camera toward the words and a touch down, so
+    // the star sits off to the side under the glasses, and the eyes, lamp and beard read
+    view: [-0.2, 0.4, 1], look: [0.5, -0.3], pan: -0.04, frame: 0.62,
     build: async () => {
       const m = await import('./char/starmole.js');
       const r = m.makeStarMole({ height: 1 });
@@ -480,12 +484,14 @@ class Studio {
     this.headRest = r.neck.getWorldPosition(new THREE.Vector3());
   }
 
-  aim(W, H, follow, dir) {
+  aim(W, H, follow, dir, pan = 0) {
     const cam = this.cam;
     cam.aspect = W / H;
     const span = this.span * Math.max(1, (H / W) * 0.92);
     const dist = (span * 0.5) / Math.tan((cam.fov * Math.PI) / 360);
     const c = _v.copy(this.center).add(follow);
+    // pan: slide the frame sideways (fractions of the span, + = toward the camera's right)
+    if (pan) c.addScaledVector(_v2.set(dir.z, 0, -dir.x).normalize(), pan * span);
     cam.position.copy(c).addScaledVector(dir, dist);
     cam.lookAt(c);
     cam.near = dist * 0.3; cam.far = dist * 4;
@@ -574,7 +580,10 @@ class Handle {
     this.t = Math.random() * 10;
     this.tilt = 0; this.tiltTo = TILT[this.mood] ?? 0.04; this.pitch = 0; this.bob = 0;
     this.follow = new THREE.Vector3();
-    this.dir = new THREE.Vector3(o.side === 'left' ? -0.24 : 0.24, 0.05, 1).normalize();
+    const view = cast?.view || [0.24, 0.05, 1];
+    this.dir = new THREE.Vector3(o.side === 'left' ? -view[0] : view[0], view[1], view[2]).normalize();
+    this.look = cast?.look || [0, 0]; // where they look, past the camera (fractions of the camera distance)
+    this.pan = (cast?.pan || 0) * (o.side === 'left' ? -1 : 1);
     this.talkOn = false; this.talkT = 0;
     this.gazeSide = o.side === 'left' ? -1 : 1; this.gazeX = this.gazeSide; this.gazeT = 0;
     this.offT = 0;
@@ -605,9 +614,9 @@ class Handle {
         if (this.disposed) { release(s); return null; }
       }
       this.studio = s;
-      s.aim(this.W, this.H, this.follow, this.dir);
+      s.aim(this.W, this.H, this.follow, this.dir, this.pan);
       const dist = s.cam.position.distanceTo(s.center);
-      s.gaze.position.set(this.gazeX * dist * 0.13, 0, 0);
+      s.gaze.position.set((this.gazeX * 0.13 + this.look[0] * this.gazeSide) * dist, this.look[1] * dist, 0);
       s.rig.lookAt?.(s.gaze);
       s.settle();
       if (s.rig.shifty) s.rig.shifty(1);
@@ -707,7 +716,7 @@ class Handle {
     const gx = this.gazeT > 0 ? 0 : this.gazeSide;
     this.gazeX += (gx - this.gazeX) * (1 - Math.exp(-dt * 4));
     const dist = s.cam.position.distanceTo(s.center);
-    s.gaze.position.set(this.gazeX * dist * 0.13, -0.05 * dist * Math.max(0, this.pitch), 0);
+    s.gaze.position.set((this.gazeX * 0.13 + this.look[0] * this.gazeSide) * dist, (this.look[1] - 0.05 * Math.max(0, this.pitch)) * dist, 0);
     r.update(dt);
     // the extras: a head tilt per line, a little bob when a line starts, a nod while talking
     const k = 1 - Math.exp(-dt * 5);
@@ -736,7 +745,7 @@ class Handle {
     head.sub(s.headRest).multiplyScalar(0.55);
     head.x = 0;
     this.follow.lerp(head, 1 - Math.exp(-dt * 6));
-    s.aim(this.W, this.H, this.follow, this.dir);
+    s.aim(this.W, this.H, this.follow, this.dir, this.pan);
 
     // render into our target, then read it back without stalling the GPU
     const t0 = performance.now();

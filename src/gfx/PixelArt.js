@@ -1,12 +1,11 @@
 // Procedural pixel art: the raster canvas, color ramps, template rendering and the
 // 64×64 item icon generator used across the UI (and, glow-encoded, in the mine).
 //
-// Icons are drawn by the modules in gfx/px/ (minerals, gear, flora, fauna, food, home) and the
-// cooking / explosives icon modules. They are authored on a 32-unit design grid and rasterised
-// natively at 2× (gfx/px/res.js), so every icon is a 64×64 PixelCanvas with 1px outlines and
-// real-pixel detail; it shows crisp at 64 / 128 CSS px and at 32 CSS px on 2× screens. Drawers
-// still authored on the old 32×32 grid (relics, loot, quest items, build blocks) are drawn at
-// scale 1 and doubled. Emissive pixels are flagged on pc.glow so the mine can encode them in
+// Icons are drawn by the modules in gfx/px/ (minerals, gear, flora, fauna, food, home), the
+// cooking / explosives icon modules, and the relic, loot, quest-item and building drawers. They
+// are authored on a 32-unit design grid and rasterised natively at 2× (gfx/px/res.js), so every
+// icon is a 64×64 PixelCanvas with 1px outlines and real-pixel detail; it shows crisp at 64 / 128
+// CSS px and at 32 CSS px on 2× screens. Emissive pixels are flagged on pc.glow so the mine can encode them in
 // alpha while the UI gets a soft halo instead. drawIconSmall() reduces an icon for places that
 // need fewer pixels (signs, minimaps, the 3D voxel stills and snacks).
 import * as THREE from 'three';
@@ -27,7 +26,7 @@ import { drawRelic } from '../deep/ruins/relicArt.js'; // ruins part: relics ({ 
 import { drawQuestIcon } from './questIcons.js'; // quests part: quest items ({ k: 'quest' })
 import { drawLootIcon } from '../deep/enemies/lootArt.js'; // creatures part: hides, fangs, eggs ({ k: 'loot' })
 import { drawBuildIcon } from '../deep/build/art.js'; // building part: blocks, crafting stuff, axes/spades/shears ({ k: 'block' | 'btool' })
-import { withScale } from './px/res.js';
+import { withScale, refineDots } from './px/res.js';
 
 export { PixelCanvas };
 
@@ -83,9 +82,11 @@ function idOfSpec(spec) {
   return specIds.get(spec) || null;
 }
 
-// drawers authored on the design grid (native ICON px) and on the old 32-px grid (doubled)
-const NATIVE = [drawMineral, drawGear, drawFlora, drawFauna, drawFood, drawHome, drawCookIcon];
-const LEGACY = [(pc, spec) => drawRelic(pc, spec), (pc, spec) => drawLootIcon(pc, spec), (pc, spec) => drawQuestIcon(pc, spec), (pc, spec) => drawBuildIcon(pc, spec)];
+// every drawer is authored on the design grid and painted at ICON px
+const NATIVE = [
+  drawMineral, drawGear, drawFlora, drawFauna, drawFood, drawHome, drawCookIcon,
+  (pc, spec) => drawRelic(pc, spec), (pc, spec) => drawLootIcon(pc, spec), (pc, spec) => drawQuestIcon(pc, spec), (pc, spec) => drawBuildIcon(pc, spec),
+];
 
 /** Nearest-neighbour k× copy of a PixelCanvas (pixels and emissive layer). */
 function upscale(src, k) {
@@ -106,9 +107,7 @@ function upscale(src, k) {
 export function drawIconArt(spec, seed = 1, id = null) {
   const pc = new PixelCanvas(ICON);
   id = id || idOfSpec(spec);
-  if (NATIVE.some((f) => f(pc, spec, id, seed))) return pc;
-  const sm = new PixelCanvas(32);
-  if (withScale(1, () => LEGACY.some((f) => f(sm, spec, id, seed)))) return upscale(sm, UP);
+  if (NATIVE.some((f) => f(pc, spec, id, seed))) return refineDots(pc);
   unknown(pc);
   return pc;
 }
@@ -142,7 +141,8 @@ export function drawIcon(spec, seed = 1) {
  * smaller one (sign boards, minimaps, voxel models). Returns a PixelCanvas.
  */
 export function drawIconSmall(spec, seed = 1, size = 16, id = null) {
-  return reduce(drawIconArt(spec, seed, id), size);
+  const art = id && rawArt.has(id) && ITEMS[id]?.icon === spec && seed === hashStr(id) ? rawArt.get(id).clone() : null;
+  return reduce(art || drawIconArt(spec, seed, id), size);
 }
 
 /**
@@ -184,7 +184,7 @@ export function reduce(src, size) {
  */
 const WEAPON_NATIVE = true;
 function weaponArt(type, metalColor, infusionColor) {
-  if (WEAPON_NATIVE) { const pc = new PixelCanvas(ICON); drawWeaponArt(pc, type, metalColor, infusionColor); return pc; }
+  if (WEAPON_NATIVE) { const pc = new PixelCanvas(ICON); drawWeaponArt(pc, type, metalColor, infusionColor); return refineDots(pc); }
   const sm = new PixelCanvas(32);
   withScale(1, () => drawWeaponArt(sm, type, metalColor, infusionColor));
   return upscale(sm, UP);
@@ -207,11 +207,20 @@ const urlKeys = new Map(); // icon URL → item id / weapon key (so a toast's ic
 /** The item id (or 'w:type:metal:infusion') an iconURL/weaponIconURL string was made for, or null. */
 export function iconKeyOf(url) { return urlKeys.get(url) || null; }
 
+// the raw art of the last few item icons drawn (the 3D stills of ui/itemVox.js extrude the same art
+// right after the flat icon is made: no second draw)
+const rawArt = new Map();
 /** Committed ICON×ICON canvas for an item icon (or reduced to `size` px for voxel models etc.). */
 export function iconCanvas(id, size = ICON) {
   const it = ITEMS[id];
   const spec = it?.icon || { k: '?' };
-  const pc = finishUI(drawIconArt(spec, hashStr(id), id));
+  const art = drawIconArt(spec, hashStr(id), id);
+  if (it?.icon) {
+    rawArt.delete(id);
+    rawArt.set(id, art.clone());
+    if (rawArt.size > 48) rawArt.delete(rawArt.keys().next().value);
+  }
+  const pc = finishUI(art);
   return (size === ICON ? pc : reduce(pc, size)).commit();
 }
 

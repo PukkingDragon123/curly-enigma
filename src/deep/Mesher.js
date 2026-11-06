@@ -8,7 +8,7 @@
 //   away there and the shader can bevel that texel row.
 import * as THREE from 'three';
 import { CS } from './Generator.js';
-import { MAT } from './materials.js';
+import { MAT, M } from './materials.js';
 
 const P = CS + 2; // padded size
 const OPAQUE = new Uint8Array(256);
@@ -45,15 +45,45 @@ const mask = new Int32Array(CS * CS);
 /**
  * world.voxelAt(x, y, z) is used for the 1-voxel apron (outside chunks count as solid if not loaded).
  * Returns { solid: BufferGeometry|null, fluid: BufferGeometry|null }.
+ * cache / dirty (optional, see meshSolidRaw): re-mesh only the slices an edit touched.
  */
-export function meshChunk(world, ch) {
+export function meshChunk(world, ch, cache = null, dirty = null) {
   const X0 = ch.cx * CS, Y0 = ch.cy * CS, Z0 = ch.cz * CS;
   fillPad(world, ch, pad);
-  return { solid: rawToGeometry(meshSolidRaw(pad)), fluid: meshFluid(world, ch, X0, Y0, Z0) };
+  return { solid: rawToGeometry(meshSolidRaw(pad, cache, dirty)), fluid: meshFluid(world, ch, X0, Y0, Z0) };
 }
 
 /** The chunk plus a one-voxel apron from its neighbours, into out (Uint8Array P³). */
 export function fillPad(world, ch, out = new Uint8Array(P * P * P)) {
+  const v = ch.vox, pad = out;
+  if (typeof world.chunk !== 'function') return fillPadSlow(world, ch, out);
+  // the chunk itself (rows of CS into rows of P)
+  for (let z = 0; z < CS; z++) for (let y = 0; y < CS; y++) {
+    const src = (y + CS * z) * CS, dst = (y + 1 + P * (z + 1)) * P + 1;
+    for (let x = 0; x < CS; x++) pad[dst + x] = v[src + x];
+  }
+  // the apron, straight from the 26 neighbours (missing, virtual or pending ones are stone, as in
+  // world.voxelAt)
+  const M1 = CS - 1;
+  for (let dz = -1; dz <= 1; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dy && !dz) continue;
+    const n = world.chunk(ch.cx + dx, ch.cy + dy, ch.cz + dz);
+    const nv = n ? n.vox : null;
+    // pad range [a0, a1] on each axis and the neighbour's local coordinate of a0
+    const ax0 = dx < 0 ? 0 : dx > 0 ? P - 1 : 1, ax1 = dx < 0 ? 0 : dx > 0 ? P - 1 : CS, lx0 = dx < 0 ? M1 : 0;
+    const ay0 = dy < 0 ? 0 : dy > 0 ? P - 1 : 1, ay1 = dy < 0 ? 0 : dy > 0 ? P - 1 : CS, ly0 = dy < 0 ? M1 : 0;
+    const az0 = dz < 0 ? 0 : dz > 0 ? P - 1 : 1, az1 = dz < 0 ? 0 : dz > 0 ? P - 1 : CS, lz0 = dz < 0 ? M1 : 0;
+    for (let z = az0, lz = lz0; z <= az1; z++, lz++) for (let y = ay0, ly = ly0; y <= ay1; y++, ly++) {
+      const row = (y + P * z) * P;
+      if (!nv) { for (let x = ax0; x <= ax1; x++) pad[row + x] = M.STONE; continue; }
+      const src = CS * (ly + CS * lz) - ax0 + lx0;
+      for (let x = ax0; x <= ax1; x++) pad[row + x] = nv[src + x];
+    }
+  }
+  return out;
+}
+
+function fillPadSlow(world, ch, out) {
   const X0 = ch.cx * CS, Y0 = ch.cy * CS, Z0 = ch.cz * CS;
   const v = ch.vox, pad = out;
   for (let z = 0; z < P; z++) for (let y = 0; y < P; y++) {
@@ -71,13 +101,20 @@ export function fillPad(world, ch, out = new Uint8Array(P * P * P)) {
   return out;
 }
 
+/** A per-chunk store of each slice's quads (6 faces × CS slices), for meshSolidRaw's partial re-mesh. */
+export function sliceCache() { return { pos: new Array(6 * CS), dat: new Array(6 * CS), ok: false }; }
+
 /**
  * Greedy-mesh the solid faces of a padded chunk (pure: runs in a worker too).
  * Returns { pos: Uint8Array, dat: Uint8Array, idx: Uint16Array|Uint32Array } or null.
+ * cache (sliceCache()): keeps each slice's quads; with dirty ([x, y, z] bit masks of the slices
+ * along each axis whose voxels, or the voxels in front of them, changed since the cache was filled)
+ * only those slices are meshed again and the rest are copied: the result is the same as a full mesh.
  */
-export function meshSolidRaw(pad) {
+export function meshSolidRaw(pad, cache = null, dirty = null) {
   solidOut.reset(); fluidOut.reset();
   const stride = [1, P, P * P];
+  const reuse = !!(cache && cache.ok && dirty);
   for (let f = 0; f < 6; f++) {
     const [d, u, w] = AX[f];
     const nd = DIRS[f][d];
@@ -85,6 +122,20 @@ export function meshSolidRaw(pad) {
     // the shader's face axes (TerrainMaterial: t1 = x unless on an x face, t2 = y unless on a y face)
     const e1 = stride[d === 0 ? 2 : 0], e2 = stride[d === 1 ? 2 : 1];
     for (let s = 0; s < CS; s++) {
+      const ci = f * CS + s;
+      if (reuse && !((dirty[d] >>> s) & 1)) {
+        // unchanged: this slice's quads as they were
+        const cp = cache.pos[ci];
+        if (cp) {
+          const nq = cp.length / 12;
+          while (solidOut.n + nq > solidOut.cap) solidOut.grow();
+          solidOut.pos.set(cp, solidOut.n * 12);
+          solidOut.dat.set(cache.dat[ci], solidOut.n * 16);
+          solidOut.n += nq;
+        }
+        continue;
+      }
+      const q0 = solidOut.n;
       // build the mask for slice s
       let any = false;
       const base = (s + 1) * sd + su + sw;
@@ -105,24 +156,31 @@ export function meshSolidRaw(pad) {
         mask[i + j * CS] = key;
         if (key) any = true;
       }
-      if (!any) continue;
-      // greedy merge
-      for (let j = 0; j < CS; j++) for (let i = 0; i < CS;) {
-        const key = mask[i + j * CS];
-        if (!key) { i++; continue; }
-        let wdt = 1;
-        while (i + wdt < CS && mask[i + wdt + j * CS] === key) wdt++;
-        let hgt = 1;
-        outer: while (j + hgt < CS) {
-          for (let k = 0; k < wdt; k++) if (mask[i + k + (j + hgt) * CS] !== key) break outer;
-          hgt++;
+      if (any) {
+        // greedy merge
+        for (let j = 0; j < CS; j++) for (let i = 0; i < CS;) {
+          const key = mask[i + j * CS];
+          if (!key) { i++; continue; }
+          let wdt = 1;
+          while (i + wdt < CS && mask[i + wdt + j * CS] === key) wdt++;
+          let hgt = 1;
+          outer: while (j + hgt < CS) {
+            for (let k = 0; k < wdt; k++) if (mask[i + k + (j + hgt) * CS] !== key) break outer;
+            hgt++;
+          }
+          for (let jj = 0; jj < hgt; jj++) for (let k = 0; k < wdt; k++) mask[i + k + (j + jj) * CS] = 0;
+          emit(((key >> 16) & 3) === 2 ? fluidOut : solidOut, f, d, u, w, nd, s, i, j, wdt, hgt, key);
+          i += wdt;
         }
-        for (let jj = 0; jj < hgt; jj++) for (let k = 0; k < wdt; k++) mask[i + k + (j + jj) * CS] = 0;
-        emit(((key >> 16) & 3) === 2 ? fluidOut : solidOut, f, d, u, w, nd, s, i, j, wdt, hgt, key);
-        i += wdt;
+      }
+      if (cache) {
+        const n = solidOut.n - q0;
+        cache.pos[ci] = n ? solidOut.pos.slice(q0 * 12, solidOut.n * 12) : null;
+        cache.dat[ci] = n ? solidOut.dat.slice(q0 * 16, solidOut.n * 16) : null;
       }
     }
   }
+  if (cache) cache.ok = true;
   return toRaw(solidOut);
 }
 

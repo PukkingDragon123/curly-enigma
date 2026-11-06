@@ -716,8 +716,23 @@ export function getModel(type, v = 0, p = 0) {
   const it = modelSteps(type, v, p);
   for (;;) { const r = it.next(); if (r.done) return r.value; }
 }
+/** Build + mesh a model in one go without keeping it (a worker's job: the game caches what it gets back). */
+export function buildModel(type, v = 0, p = 0) {
+  const it = modelSteps(type, v, p, false);
+  for (;;) { const r = it.next(); if (r.done) return r.value; }
+}
+/** A model built elsewhere (a worker) into the cache; returns the cached one (first come wins). */
+export function putModel(type, v, p, m) {
+  const key = type + ':' + v + ':' + p;
+  const had = cache.get(key);
+  if (had) return had;
+  cache.set(key, m);
+  return m;
+}
+/** The typed arrays of a model (to transfer it from a worker). */
+export function modelBuffers(m) { return [m.pos, m.nor, m.col, m.glw, m.sw, m.idx, m.nrm4, m.col4].filter((a) => a && a.buffer).map((a) => a.buffer); }
 /** Build + mesh a model as a generator (yields a few times so it can be spread over frames). */
-export function* modelSteps(type, v = 0, p = 0) {
+export function* modelSteps(type, v = 0, p = 0, keep = true) {
   const key = type + ':' + v + ':' + p;
   let m = cache.get(key);
   if (m) return m;
@@ -747,7 +762,7 @@ export function* modelSteps(type, v = 0, p = 0) {
     if (res.done) break;
     yield 'mesh';
   }
-  m = cache.get(key); // someone else may have finished it meanwhile
+  m = keep ? cache.get(key) : null; // someone else may have finished it meanwhile
   if (m) return m;
   // packed for the props buffer: normal + sway weight as bytes, sRGB colour + glow as bytes
   const mv = res.value, n = mv.nv;
@@ -757,7 +772,7 @@ export function* modelSteps(type, v = 0, p = 0) {
     col4[i * 4] = mv.col[i * 3]; col4[i * 4 + 1] = mv.col[i * 3 + 1]; col4[i * 4 + 2] = mv.col[i * 3 + 2]; col4[i * 4 + 3] = Math.round(Math.min(1, mv.glw[i] / 1.2) * 255);
   }
   m = { ...mv, nrm4, col4, type, v, p, light: b.light || null, emit: b.emit || null, main: b.main || [0.5, 0.45, 0.4], bob: !!b.bob, chime: !!b.chime, ms };
-  cache.set(key, m);
+  if (keep) cache.set(key, m);
   return m;
 }
 export function modelCached(type, v = 0, p = 0) { return cache.has(type + ':' + v + ':' + p); }

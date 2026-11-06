@@ -59,11 +59,16 @@ export default class DigScene extends Scene {
     if (from === 'home' && !deep.tunnels.some((m) => m.wall === wall && Math.abs(m.t - t) < 0.9)) deep.tunnels.push({ wall, t });
     liftState(st);
     this.lastMouth = { wall, t };
-    this.world = new DeepWorld({ seed: deep.seed, W, D, tunnels: deep.tunnels });
-    // generate and mesh far chunks in workers (?workers=0 keeps it all on the main thread)
+    // generate and mesh chunks (and prop models) in workers (?workers=0 keeps it all on the main
+    // thread); they start first: one of them builds the plan and hands it over, so the main thread
+    // doesn't build it too
+    let pool = null;
     if (!/[?&]workers=0/.test(location.search)) {
-      try { this.world.pool = new ChunkPool({ seed: deep.seed, opts: { W, D }, tunnels: deep.tunnels.map((m) => ({ wall: m.wall, t: m.t })) }); } catch (err) { this.world.pool = null; }
+      try { pool = new ChunkPool({ seed: deep.seed, opts: { W, D }, tunnels: deep.tunnels.map((m) => ({ wall: m.wall, t: m.t })) }); } catch (err) { pool = null; }
     }
+    const plan0 = pool ? await pool.plan() : null;
+    this.world = new DeepWorld({ seed: deep.seed, W, D, tunnels: deep.tunnels, plan: plan0 });
+    this.world.pool = pool;
     this.scene.background = new THREE.Color(0x030203);
     this.fov = 74;
     this.camera = new THREE.PerspectiveCamera(this.fov, g.engine.width / g.engine.height, 0.03, 60);
@@ -133,7 +138,7 @@ export default class DigScene extends Scene {
       },
       teleport: (x, y, z, yaw = pl.yaw, pitch = 0) => { pl.pos.set(x, y, z); pl.vel.set(0, 0, 0); pl.yaw = yaw; pl.pitch = pitch; this.terrain.warm(x, y + 0.5, z, 2); },
     };
-    this.terrain.warm(pl.pos.x, pl.pos.y + 0.5, pl.pos.z, 2);
+    await this.terrain.warmAsync(pl.pos.x, pl.pos.y + 0.5, pl.pos.z, 2);
     // first-person hands and tools (when the view model module is present)
     this.vm = null;
     const load = vmModules['../fps/ViewModel.js'];
@@ -177,6 +182,8 @@ export default class DigScene extends Scene {
     this.updateHotbar();
     if (g.ui.setRadar) g.ui.setRadar((o) => this.radar(o), { heading: () => this.player.yaw });
     this.showBag();
+    // the build module patches the terrain shader (the block look): before the shaders compile
+    this.makeBuilder();
     await this.precompile();
     if (!st.flag('escaped') && !this.flags.hintRadar) {
       this.flags.hintRadar = true;
@@ -194,7 +201,7 @@ export default class DigScene extends Scene {
   async precompile() {
     const eng = this.game.engine, r = eng.renderer;
     if (!r?.compileAsync) return;
-    for (const k of ['none', 'rock', 'ore', 'enemy', 'use']) try { DSPR.reticle(k); } catch (e) { /* art only */ }
+    try { for (const k of ['none', 'rock', 'ore', 'enemy', 'use']) DSPR.reticle(k); DSPR.tri('up'); DSPR.tri('down'); } catch (e) { /* art only */ }
     this.cracks ||= new Cracks(this.scene, this.world);
     const warm = new THREE.Group(), box = new THREE.BoxGeometry(0.01, 0.01, 0.01);
     const mats = [this.bodies.mat, this.bodies.glowMat];
@@ -1114,13 +1121,16 @@ export default class DigScene extends Scene {
    * Every frame (from update): the build module (made on the first frame) plans the ghost, picks
    * the dig slot's tool, cracks placed blocks, lights torches, gathers blocks from digging.
    */
+  makeBuilder() {
+    if (this.builder !== undefined && this.builder !== null) return;
+    try {
+      this.builder = new Build({ scene: this.scene, scene3: this.scene, world: this.world, U: this.U, fx: this.fx, bodies: this.bodies, audio: this.audio, state: this.state, ui: this.game.ui, player: this.player, plan: this.world.plan, owner: this });
+      this.builder.prepare?.();
+      this.updateHotbar();
+    } catch (e) { console.warn('build failed', e); this.builder = false; }
+  }
   updateGhost(hide) {
-    if (!this.builder) {
-      try {
-        this.builder = new Build({ scene: this.scene, scene3: this.scene, world: this.world, U: this.U, fx: this.fx, bodies: this.bodies, audio: this.audio, state: this.state, ui: this.game.ui, player: this.player, plan: this.world.plan, owner: this });
-        this.updateHotbar();
-      } catch (e) { console.warn('build failed', e); this.builder = false; }
-    }
+    if (this.builder == null) this.makeBuilder();
     if (!this.builder) return;
     const dt = Math.min(0.1, this.time - (this.buildT ?? this.time));
     this.buildT = this.time;
@@ -1353,7 +1363,7 @@ export default class DigScene extends Scene {
       const m = w.voxelAt(Math.floor((x + 0.5) * VOX), Math.floor((y + 0.5) * VOX), Math.floor((z + 0.5) * VOX));
       const v = !m ? 1 : m === M.WATER ? 2 : m === M.LAVA ? 3 : 0;
       const k = x + ',' + y + ',' + z;
-      if (v) { if (!ex[k]) fresh++; ex[k] = v; } // only open space is remembered; rock is everything else
+      if (v) { if (!ex[k]) fresh++; if (ex[k] !== v) { ex[k] = v; this.exploreGen = (this.exploreGen || 0) + 1; } } // only open space is remembered; rock is everything else
     }
     if (fresh) this.act('explore', { zone: zoneAt(-pl.pos.y), biome: this.biome || 0, cell: cx + ',' + cy + ',' + cz, n: fresh });
     // places: walking into a burrow, a ruin, Deep Town's hall or a lift room
@@ -1372,13 +1382,19 @@ export default class DigScene extends Scene {
   radar(o = {}) {
     const pl = this.player, plan = this.world.plan, ex = this.deep.explored;
     const size = o.survey ? 160 : 48, cell = 1, half = size / 2;
-    const data = new Uint8Array(size * size);
     const px = Math.floor(pl.pos.x), pz = Math.floor(pl.pos.z), py = o.survey && o.y !== undefined ? Math.floor(o.y) : Math.floor(pl.pos.y + 0.4);
-    for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
-      const x = px - half + i, z = pz - half + j;
-      let v = 0;
-      for (let dy = -2; dy <= 2 && v !== 1; dy++) { const e = ex[x + ',' + (py + dy) + ',' + z]; if (e && (!v || e < v)) v = e; }
-      data[i + j * size] = v;
+    // the explored grid only changes when the mole moves a cell or inks new ones (the radar asks 10× a second)
+    const gk = size + ':' + px + ',' + py + ',' + pz + ':' + (this.exploreGen || 0);
+    let data = this.radarGrid?.k === gk ? this.radarGrid.data : null;
+    if (!data) {
+      data = new Uint8Array(size * size);
+      for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
+        const x = px - half + i, z = pz - half + j;
+        let v = 0;
+        for (let dy = -2; dy <= 2 && v !== 1; dy++) { const e = ex[x + ',' + (py + dy) + ',' + z]; if (e && (!v || e < v)) v = e; }
+        data[i + j * size] = v;
+      }
+      if (!o.survey) this.radarGrid = { k: gk, data };
     }
     const markers = [];
     markers.push({ kind: 'home', x: this.W / 2, y: 1, z: this.D / 2, label: 'Home' });

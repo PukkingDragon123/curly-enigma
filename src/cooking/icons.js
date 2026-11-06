@@ -803,15 +803,35 @@ function tea(pc) {
   const K = form(pc, cup, GLZ, { cx: 11, cy: 14, rx: 11, ry: 18, flatten: 0.7, dome: 0.2, bias: 0.06 });
   // bare clay foot below a wavy dip line, with glaze drips running into it
   cup.eachD((X, Y, x, y) => {
-    const lv = 23.4 + Math.sin(x * 0.9) * 0.6 + (x === 9 || x === 17 || x === 20 ? 2.4 : 0) + (x === 13 ? 1.4 : 0);
+    const xi = Math.floor(x + 0.25);
+    const lv = 23.4 + Math.sin(x * 0.9) * 0.6 + (xi === 9 || xi === 17 || xi === 20 ? 2.4 : 0) + (xi === 13 ? 1.4 : 0);
     if (y + 0.5 > lv) pc.set(X, Y, CLY[clamp(K[Y * SZ + X], 1, 5)]);
     else if (y + 0.5 > lv - 1) pc.set(X, Y, GLZ[clamp(K[Y * SZ + X] + 1, 1, 5)]);
   });
   const mouth = loop([[7, 10.6], [9.4, 9.2], [15, 8.8], [20.6, 9.2], [22.6, 10.6], [20.6, 12], [15, 12.4], [9.4, 12]]);
   mouth.eachD((X, Y, x, y) => pc.set(X, Y, y < 10 ? GLZ[4] : 0xc8a050));
   mouth.clone().erode(1).eachD((X, Y, x, y) => pc.set(X, Y, x < 12 ? 0xe8c870 : 0xc8a050));
-  // honey dribble on the rim
-  for (let y = 10; y < 15; y++) dot(pc, 20, y, y < 14 ? 0xf2a020 : 0xc87818);
+  // the glaze: iron specks, fine crazing, the drips' round ends catching the light
+  cup.each((X, Y) => {
+    if (GLZ.indexOf(pc.get(X, Y)) < 0 || isTop(cup, X, Y)) return;
+    if (hash2(X, Y, 12) < 0.022) pc.set(X, Y, CLY[4]);
+    else if (Math.abs(vnoise(dc(X) * 0.9, dc(Y) * 0.9, 21) - 0.5) < 0.018) step(pc, GLZ, X, Y, 1, 1, 5);
+  });
+  for (const xi of [9, 13, 17, 20]) {
+    const X = nc(xi), y0 = 23.4 + Math.sin(xi * 0.9) * 0.6 + (xi === 13 ? 1.4 : 2.4);
+    const Y = nc(y0) - 1;
+    if (cup.get(X, Y)) { pc.set(X, Y, GLZ[1]); if (cup.get(X + 1, Y + 1)) pc.set(X + 1, Y + 1, GLZ[4]); }
+  }
+  // thumb-dimples pressed into the bare clay foot
+  for (const [x, y] of [[11, 27.4], [18.6, 27.8]]) {
+    const X = np(x), Y = np(y);
+    for (const [dx, dy, k] of [[0, 0, 5], [1, 0, 4], [0, 1, 4], [1, 1, 3], [2, 1, 2], [1, 2, 2]]) if (cup.get(X + dx, Y + dy)) pc.set(X + dx, Y + dy, CLY[k]);
+  }
+  // honey dribbling over the rim: a thin run, a fat bead at its end, its own glint
+  const hX = nc(20);
+  for (let Y = nc(9.6); Y < nc(13.8); Y++) { pc.set(hX, Y, 0xf2a020); pc.set(hX + 1, Y, 0xc87818); }
+  for (const [dx, dy, c] of [[-1, 0, 0xf2a020], [0, 0, 0xffd060], [1, 0, 0xe08a18], [-1, 1, 0xd88a18], [0, 1, 0xe89420], [1, 1, 0xb86a10], [0, 2, 0xb86a10]]) pc.set(hX + dx, nc(13.8) + dy, c);
+  pc.set(hX, nc(10.4), 0xfff0b0);
   ink(pc);
   sprig(pc, [[14, 11], [12.6, 7], [11, 3.6], [10.6, 1.6]], { n: 4 });
   glint(pc, 8, 14, 1, 0xffffff, GLZ[0]);

@@ -20,7 +20,7 @@
 // Star's places. (The scene still calls it `scene.cave` / `scene.house`.)
 import * as THREE from 'three';
 import { keepUnbatched } from '../iso/vox.js';
-import { lowRes, group, VoxelGrid, M32, line } from '../iso/kit.js';
+import { lowRes, group, VoxelGrid, M32, M16, G16, line, h3, mulc } from '../iso/kit.js';
 import { barrel, crate, rubble } from '../iso/props.js';
 import { buildFurniture } from '../iso/furniture.js';
 import { townDoor, doorRubble, lanternOnHook } from './props.js';
@@ -295,18 +295,26 @@ export class StarHouse {
   }
 
   /**
-   * The earth under the camp: from inside the lift shaft (riding up or down) you see its face,
-   * timbered at the landing.
+   * The earth under the camp: from inside the lift shaft (riding up or down) you see its face, a
+   * voxel relief of banded earth, clay and stone with stones and roots standing out of it, timbered
+   * at the landing under the oak sill; lit and merged with the camp near the landing, falling
+   * away into the dark below (as the shaft's lining does).
    */
   buildUnder() {
-    const under = new THREE.Mesh(new THREE.BoxGeometry(SHAFT.x0 - HALL.x0, 3.6, -HALL.z0 + 0.5), new THREE.MeshLambertMaterial({ color: 0x2a1c12 }));
-    under.position.set((HALL.x0 + SHAFT.x0) / 2, Y - 1.8 - 0.26, (HALL.z0 - 0.5) / 2);
-    this.world.add(under);
-    this.meshes.push(under);
-    const lip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, SHAFT.z1 - SHAFT.z0), new THREE.MeshLambertMaterial({ color: 0x4a2e1c }));
-    lip.position.set(SHAFT.x0 - 0.02, Y - 0.09, (SHAFT.z0 + SHAFT.z1) / 2); // the landing's oak sill
-    this.world.add(lip);
-    this.meshes.push(lip);
+    const decor = new THREE.Group();
+    this.room.add(decor);
+    for (const m of underEarth()) decor.add(m);
+    decor.add(landingSill());
+    this.room.updateMatrixWorld(true);
+    const L = this.lights.map(bakeLight), amb = this.ambient();
+    for (const s of mergeStatic(decor, 'camp', L, amb, null)) {
+      const m = unquantize(s.q, matFrom(s.mt, CSCALE));
+      if (s.outline) m.layers.enable(LAYER_OUTLINE);
+      m.userData.room = 'camp';
+      this.world.add(m);
+      (this.roomMeshes.camp ||= []).push(m);
+    }
+    this.room.remove(decor);
   }
 
   // ------------------------------------------------------------ placing
@@ -861,6 +869,105 @@ export class StarHouse {
 
 // ---------------------------------------------------------------- merging and baking
 /** A light as the bake wants it (a little stronger and wider than the live one, which flickers on top). */
+// ------------------------------------------------------------ the shaft's west face (buildUnder)
+/** Voxels per metre of the earth face (1/32 m: rock and earth, coarser than the timber). */
+const UV = 32;
+const EARTH = [0x3f2e20, 0x4a3626, 0x553f2c, 0x4e3a28];
+const CLAY = [0x5c3c28, 0x6a4630, 0x62402c];
+const STONE = [0x4a4844, 0x5a5852, 0x52504a];
+const PEBBLE = [0x7a7468, 0x8a8070, 0x6c665c];
+const ROOT = [0x2c1c12, 0x3a2618];
+const PLANK = [0x4e3220, 0x563826, 0x46301e];
+/** How lit the face is at y (m): the lining's fade (lift.js), full near the landing, black far down. */
+const underFade = (y) => { const yy = (y - HALL.y) * 64; return yy >= -40 ? 1 : Math.max(0.04, 0.55 * (1 - Math.min(1, -yy / 170)) ** 1.6); };
+
+/**
+ * The earth under the camp as seen through the lift shaft's open west side: a relief of voxel
+ * columns standing out of the dark toward the shaft (x up to SHAFT.x0), banded by strata, with
+ * stones and pebbles proud of the face, roots trailing down it and plank cribbing under the sill.
+ * Two meshes: the lit part near the landing (merged and lit with the camp) and the unlit part
+ * below, its colours fading into the dark. In tile units, for the room group.
+ */
+function underEarth() {
+  const z0 = SHAFT.z0 - 0.4, z1 = SHAFT.z1 + 0.4, yTop = Y - 0.26, yBot = SHAFT.pit - 0.1, yLit = HALL.y - 40 / 64;
+  const NZ = Math.round((z1 - z0) * UV), D = 8;
+  const nLit = Math.round((yTop - yLit) * UV), nDark = Math.round((yLit - yBot) * UV);
+  // stones bedded in the face: lumps that stand out a few voxels
+  const stones = [];
+  for (let i = 0; i < 26; i++) stones.push({ z: h3(i, 1, 7, 31) * NZ, y: h3(i, 2, 7, 31) * (nLit + nDark), r: 1.6 + h3(i, 3, 7, 31) * 2.6, c: STONE[i % 3] });
+  const roots = [];
+  for (let i = 0; i < 9; i++) roots.push({ z: Math.floor(h3(i, 4, 9, 33) * NZ), y0: nLit + nDark - 6 - Math.floor(h3(i, 5, 9, 33) * 30), len: 10 + Math.floor(h3(i, 6, 9, 33) * 34) });
+  const build = (n, yOff, fade) => {
+    const g = new VoxelGrid(D, n, NZ);
+    for (let y = 0; y < n; y++) {
+      const Yv = y + yOff, wy = yBot + (Yv + 0.5) / UV;
+      const k = fade ? underFade(wy) : 1;
+      // strata: wavy bands of earth, clay and stone
+      const band = Math.floor((Yv + Math.sin(Yv * 0.07) * 3) / 11);
+      const kind = band % 5 === 2 ? CLAY : band % 7 === 4 ? STONE : EARTH;
+      for (let z = 0; z < NZ; z++) {
+        let h = 3 + Math.floor(h3(z >> 2, Yv >> 2, 3, 41) * 2.5) + (h3(z, Yv, 5, 43) < 0.08 ? 1 : 0);
+        let c = kind[Math.floor(h3(z >> 1, Yv >> 1, band, 45) * kind.length)];
+        for (const st of stones) {
+          const d = Math.hypot(z - st.z, (Yv - st.y) * 1.15);
+          if (d < st.r) { h = Math.max(h, 5 + Math.round((1 - d / st.r) * 2)); c = d < st.r * 0.45 ? mulc(st.c, 1.15) : st.c; }
+        }
+        if (h3(z, Yv, 7, 47) < 0.025) { h = Math.max(h, 5); c = PEBBLE[Math.floor(h3(z, Yv, 8, 49) * 3)]; }
+        for (let x = 0; x < Math.min(D, h); x++) g.set(x, y, z, mulc(x < h - 1 ? mulc(c, 0.8) : c, k));
+      }
+      // roots trailing down the face, one voxel proud of it
+      for (const rt of roots) {
+        if (Yv > rt.y0 || Yv < rt.y0 - rt.len) continue;
+        const z = rt.z + Math.round(Math.sin((rt.y0 - Yv) * 0.21 + rt.z) * 1.4);
+        if (z < 0 || z >= NZ) continue;
+        g.set(Math.min(D - 1, 6 + ((Yv >> 3) & 1)), y, z, mulc(ROOT[(Yv >> 2) & 1], k));
+      }
+    }
+    return g;
+  };
+  const out = [];
+  // near the landing: plank cribbing (0.4 m) under the sill, then the earth; lit with the camp
+  const gl = build(nLit, nDark, false);
+  const crib = Math.round(0.4 * UV);
+  for (let y = nLit - crib; y < nLit; y++) {
+    const row = Math.floor((nLit - y) / 4);
+    for (let z = 0; z < NZ; z++) {
+      const seam = (nLit - y) % 4 === 0;
+      const c = mulc(PLANK[Math.floor(h3(row, z >> 3, 3, 51) * 3)], seam ? 0.6 : 1 - (h3(z, y, 5, 53) < 0.1 ? 0.12 : 0));
+      for (let x = 0; x < D; x++) gl.set(x, y, z, x < D - 1 ? mulc(c, 0.7) : c);
+      if (!seam && (z === 3 || z === NZ - 4) && (nLit - y) % 4 === 2) gl.set(D - 1, y, z, 0x2a2a2e); // nail heads
+    }
+  }
+  const lit = M16(gl, [D, 0, 0]);
+  lit.position.set(SHAFT.x0 / T, yLit / T, z0 / T);
+  out.push(lit);
+  // below: unlit, fading into the dark
+  const dark = G16(build(nDark, 0, true), [D, 0, 0]);
+  dark.position.set(SHAFT.x0 / T, yBot / T, z0 / T);
+  out.push(dark);
+  return out;
+}
+
+/** The landing's oak sill across the shaft's mouth: grain, a worn top, nail heads, iron straps (1/64 m). */
+function landingSill() {
+  const L = Math.round((SHAFT.z1 - SHAFT.z0) * 64), H = 12, D = 3;
+  const g = new VoxelGrid(D, H, L);
+  const OAK = [0x5a3a22, 0x6a4628, 0x4e321c];
+  for (let z = 0; z < L; z++) for (let y = 0; y < H; y++) for (let x = 0; x < D; x++) {
+    const grain = Math.floor(h3(z >> 3, y, 1, 61) * 3);
+    let c = OAK[grain];
+    if (y === H - 1) c = h3(z >> 1, 0, 2, 63) < 0.6 ? 0x7a5634 : 0x6e4c2c; // worn pale by sixty years of paws
+    if (y === 0) c = mulc(c, 0.7);
+    if (h3(z, y, 3, 65) < 0.04) c = mulc(c, 0.75); // knots and checks
+    if ((z < 5 || z >= L - 5) && y > 1 && y < H - 2) c = (z === 2 || z === L - 3) && y === 6 ? 0x5a5a62 : 0x34343a; // iron straps, a bolt
+    if (x === D - 1 && y === H - 3 && z % 18 === 9) c = 0x2a2a2e; // nail heads
+    g.set(x, y, z, c);
+  }
+  const m = M32(g, [D, 0, 0]);
+  m.position.set(SHAFT.x0 / T, (Y - H / 64) / T, SHAFT.z0 / T);
+  return m;
+}
+
 function bakeLight(l) { return { x: l.x, y: l.y, z: l.z, color: l.color, power: (l.power ?? 0.4) * 1.3, radius: (l.radius ?? 1.2) * 1.15, room: l.room, spill: l.spill }; }
 
 /**

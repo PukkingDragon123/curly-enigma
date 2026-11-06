@@ -4,6 +4,7 @@
 // top-left. Every sprite is cached as a data URL (KART.*); installKitchenArt() publishes the ones
 // the stylesheet uses as --a-ck-* custom properties.
 import { Px, PAL, INK, art, mixHex } from '../ui/uiArt.js';
+import { blob, lumpDist } from '../iso/organic.js';
 
 const W = PAL.wood, B = PAL.brass, P = PAL.paper;
 const STRAW = { hi: 0xf6d898, lt: 0xe2b66a, base: 0xc8924a, dk: 0x9a6830, dd: 0x6a4420, ol: 0x3a2410 };
@@ -24,7 +25,7 @@ function basket(layer) {
       if (a % 5 === 0) p.set(Math.round(x), Math.round(y), STRAW.hi);
     }
     // the inside of the basket, seen over the front rim
-    p.ellipse(15, 17.5, 13, 2.6, STRAW.dd);
+    blob(p, 15, 17.5, 13, 2.6, STRAW.dd);
     p.outline(STRAW.ol);
     return p;
   }
@@ -124,10 +125,10 @@ function pot(layer, full = false) {
   const p = new Px(POT_W, POT_H);
   const cx = POT_W / 2 - 0.5, ry = 9, rx = 54, top = 12;
   if (layer === 'back') {
-    p.ellipse(cx, top, rx, ry, COPPER.dk);
-    p.ellipse(cx, top, rx - 2, ry - 1.6, COPPER.dd);
+    blob(p, cx, top, rx, ry, COPPER.dk, 255, { lump: 0.05, seed: 7 });
+    blob(p, cx, top, rx - 2, ry - 1.6, COPPER.dd, 255, { lump: 0.05, seed: 7 });
     const L = full ? { a: 0xe0a04a, b: 0xc8843a, c: 0xf2c46a, d: 0xa86a2a } : { a: 0x8ac0d0, b: 0x6aa0b8, c: 0xc8eef4, d: 0x4a7a94 };
-    p.ellipse(cx, top + 1.5, rx - 4, ry - 2.8, L.b);
+    blob(p, cx, top + 1.5, rx - 4, ry - 2.8, L.b, 255, { lump: 0.08, seed: 9 });
     p.each((x, y, c) => {
       if (c !== L.b) return undefined;
       if ((x * 5 + y * 13) % 17 === 0) return L.c;
@@ -200,9 +201,9 @@ function pot(layer, full = false) {
 /** Iron trivet the pot stands on, with a glowing burner under it (128×10). */
 function stove() {
   const p = new Px(128, 10);
-  p.ellipse(64, 5, 56, 4.4, 0x1a0e08, 200);
-  p.ellipse(64, 5, 42, 2.6, 0xff8a3a, 120);
-  p.ellipse(64, 5, 24, 1.6, 0xffd27a, 150);
+  blob(p, 64, 5, 56, 4.4, 0x1a0e08, 200);
+  blob(p, 64, 5, 42, 2.6, 0xff8a3a, 120);
+  blob(p, 64, 5, 24, 1.6, 0xffd27a, 150);
   for (let x = 12; x <= 116; x += 8) { p.vl(x, 3, 8, IRON.dk); p.set(x, 3, IRON.lt); }
   p.hl(10, 118, 8, IRON.base); p.hl(10, 118, 9, IRON.dd);
   return p;
@@ -259,10 +260,11 @@ function timer(k, low = false) {
   p.rect(4, 22, 3, 2, IRON.dk); p.rect(15, 22, 3, 2, IRON.dk);
   p.rect(9, 0, 4, 3, B.base); p.hl(9, 12, 0, B.hi); p.vl(12, 1, 2, B.dk);
   p.rect(8, 2, 6, 2, B.dk); p.hl(8, 13, 2, B.lt);
-  // tomato-red body
-  p.disk(cx, cy, R, T.base);
+  // tomato-red body: a squat, slightly lopsided tomato (its rims follow the same outline)
+  const LD = lumpDist(cx, cy, R, R * 0.96, { lump: 0.06, seed: 4 });
+  blob(p, cx, cy, R, R * 0.96, T.base, 255, { lump: 0.06, seed: 4 });
   p.each((x, y) => {
-    const dx = x + 0.5 - cx, dy = y + 0.5 - cy, r = Math.hypot(dx, dy);
+    const dx = x + 0.5 - cx, dy = y + 0.5 - cy, r = LD(x, y) * R;
     if (r > R) return undefined;
     const lit = -(dx + dy) / (r || 1);
     if (r > R - 1.2) return lit > 0.3 ? T.lt : lit < -0.3 ? T.dd : T.base;
@@ -290,7 +292,8 @@ function timer(k, low = false) {
   // the hand points at the wedge's edge
   const ha = frac * Math.PI * 2;
   for (let s = 0; s <= fr - 1.4; s += 0.5) p.set(Math.round(cx - 0.5 + Math.sin(ha) * s), Math.round(cy - 0.5 - Math.cos(ha) * s), INK);
-  p.disk(cx, cy, 1.2, B.dk); p.set(Math.floor(cx), Math.floor(cy), B.hi);
+  // the hand's pivot: a brass rivet, set by hand
+  p.rect(Math.floor(cx) - 1, Math.floor(cy), 2, 1, B.dk); p.set(Math.floor(cx), Math.floor(cy) - 1, B.dk); p.set(Math.floor(cx), Math.floor(cy), B.hi);
   p.outline(INK);
   return p;
 }
@@ -411,7 +414,7 @@ function hanger() {
 function spoon() {
   const p = new Px(9, 20);
   p.rect(3, 0, 3, 11, W.lt); p.vl(3, 0, 10, W.hi); p.vl(5, 0, 10, W.dk);
-  p.ellipse(4.5, 15, 4, 4.6, W.lt);
+  blob(p, 4.5, 15, 4, 4.6, W.lt);
   p.each((x, y, c) => (y > 10 && x > 4 ? W.base : y > 16 ? W.dk : c));
   p.set(3, 13, W.hi); p.set(2, 14, W.hi);
   p.outline(INK);
@@ -455,9 +458,10 @@ function barFrame() {
 function noteToken(side) {
   const p = new Px(16, 16);
   const C = side === 'L' ? PAL.blue : { hi: 0xffd8e4, lt: 0xffb0c8, base: 0xe07a9a, dk: 0xb04a6a, dd: 0x7a2a46 };
-  p.disk(8, 8, 7.4, C.lt);
+  const LD = lumpDist(8, 8, 7.4, 7.2, { lump: 0.07, seed: side === 'L' ? 3 : 5 });
+  blob(p, 8, 8, 7.4, 7.2, C.lt, 255, { lump: 0.07, seed: side === 'L' ? 3 : 5 });
   p.each((x, y) => {
-    const dx = x + 0.5 - 8, dy = y + 0.5 - 8, r = Math.hypot(dx, dy);
+    const dx = x + 0.5 - 8, dy = y + 0.5 - 8, r = LD(x, y) * 7.4;
     const lit = -(dx + dy) / (r || 1);
     if (r > 6.2) return lit > 0.2 ? C.hi : lit < -0.3 ? C.dk : C.base;
     if (r > 5.2) return lit > 0 ? C.base : C.hi;

@@ -5,8 +5,10 @@
 //    uniforms of the terrain materials (makeTerrainUniforms: skyCol, bounce, haze, mist, mistCol, mood)
 //  - the far darkness behind everything: a screen-filling sky drawn first, the same dark and lamp
 //    glow the rock fades to (voidCol + airGlow), so far rock melts into it without a silhouette
-//  - halos: each nearby light glows in the dusty air round it (one billboard per light, read
-//    straight from the lPos / lCol uniforms; the post pass adds it to the HDR image like the bloom)
+//  - halos: each nearby light glows in the dusty air round it as ragged cells of light (lit dust
+//    in a blocky, stepped falloff with a cross of rays, never a round disc; one billboard per
+//    light, read straight from the lPos / lCol uniforms; the post pass adds it to the HDR image
+//    like the bloom)
 //  - motes that drift around the eye and catch the helmet lamp: dust, sand, glitter, spores,
 //    pollen, embers, snow, void sparks (by zone and biome)
 //  - light shafts toward a bright lantern in a tall hall, and a little more bloom where things
@@ -124,8 +126,10 @@ export class Atmosphere {
         uniform float fogDist;
         varying vec2 vC;
         varying vec3 vCol;
+        varying float vI;
         void main() {
           int i = int(li + 0.5);
+          vI = li;
           vec4 L = lPos[i];
           vC = corner;
           if (L.y < -9000.0 || haze <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vCol = vec3(0.0); return; }
@@ -143,14 +147,30 @@ export class Atmosphere {
           gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
         }`,
       fragmentShader: /* glsl */`
+        uniform float time;
         varying vec2 vC;
         varying vec3 vCol;
+        varying float vI;
+        float hCell(vec2 p) { return fract(sin(dot(p, vec2(41.31, 289.17))) * 45758.5453); }
+        float bayer4(vec2 p) {
+          vec2 q = mod(floor(p), 4.0), q1 = mod(q, 2.0), q2 = floor(q * 0.5);
+          float b1 = q1.x * 2.0 + q1.y * 3.0 - q1.x * q1.y * 4.0, b2 = q2.x * 2.0 + q2.y * 3.0 - q2.x * q2.y * 4.0;
+          return (b1 * 4.0 + b2 + 0.5) / 16.0;
+        }
         void main() {
-          float r = length(vC);
-          if (r >= 1.0) discard;
-          // a soft core and a wide falloff
-          float k = (1.0 - r) * (1.0 - r) * 0.75 + pow(1.0 - r, 6.0) * 0.6;
-          gl_FragColor = vec4(vCol * k, 1.0);
+          // the light is cells of lit dust: a stepped, diamond-ish falloff with a ragged hand-placed
+          // edge (each light its own), a faint cross of rays, cells that shimmer slowly
+          const float CELLS = 15.0;
+          vec2 cell = floor((vC * 0.5 + 0.5) * CELLS);
+          vec2 a = abs((cell + 0.5) / CELLS - 0.5) * 2.0;
+          float d = max(a.x, a.y) * 0.58 + (a.x + a.y) * 0.42;
+          d += (hCell(cell + vI * 17.0 + 3.0) - 0.5) * 0.26;
+          float k = pow(clamp(1.0 - d, 0.0, 1.0), 1.7) * 0.85;
+          k += 0.18 * pow(clamp(1.0 - max(a.x, a.y), 0.0, 1.0), 2.0) * step(min(a.x, a.y), 0.07);
+          k *= 0.8 + 0.4 * hCell(cell + vI * 5.0 + floor(time * 1.3 + hCell(cell) * 4.0));
+          k = floor(k * 5.0 + bayer4(gl_FragCoord.xy)) / 5.0;
+          if (k <= 0.0) discard;
+          gl_FragColor = vec4(vCol * k * 1.1, 1.0);
         }`,
     });
     this.halos = new THREE.Mesh(hg, this.haloMat);

@@ -144,7 +144,14 @@ function flourSack(pc) {
   // a plump burlap sack, slumped, its mouth rolled down around a heap of flour
   const body = loop([[7, 12.4], [16, 11.6], [25.4, 12.6], [27.6, 17.4], [29, 22.6], [28, 27], [24, 29.6], [16, 30.2], [8.4, 29.8], [3.6, 27.4], [3, 22], [4.6, 17]]);
   form(pc, body, R, { cx: 14, cy: 19, rx: 13, ry: 11, bias: 0.06 });
-  body.eachD((X, Y, x, y) => { if ((X + Y * 2) % 4 === 0 && hash2(X, Y, 2) < 0.6 && !isTop(body, X, Y)) step(pc, R, X, Y, 1, 1, 5); });
+  // burlap: a basket weave of coarse threads, each crossing lit on its top-left, a slub here and there
+  body.each((X, Y) => {
+    if (isTop(body, X, Y) || isBot(body, X, Y)) return;
+    const u = X & 3, v = Y & 3, over = ((X >> 2) + (Y >> 2)) & 1;
+    if (over ? v === 3 : u === 3) step(pc, R, X, Y, 1, 1, 5);
+    else if ((over ? v === 0 : u === 0) && hash2(X, Y, 2) < 0.5) step(pc, R, X, Y, -1, 1, 5);
+    else if (hash2(X >> 1, Y, 6) < 0.025) step(pc, R, X, Y, 1, 1, 5);
+  });
   // sag folds
   for (const [x0, y0, x1, y1] of [[10, 15, 8, 22], [21, 15, 24, 21], [15, 26, 18, 28]]) line(pc, x0, y0, x1, y1, (i, X, Y) => (i % 3 === 2 || !body.get(X, Y) ? null : (step(pc, R, X, Y, 1, 1, 5), null)));
   // rolled rim
@@ -158,14 +165,30 @@ function flourSack(pc) {
   seam(pc, heap, 'shadow');
   form(pc, heap, FL, { bias: 0.14 });
   bumps(pc, heap, FL, { dens: 0.1, seed: 2 });
-  // stamped wheat-root mark
-  const ST = 0x9a7040;
-  for (let y = 17; y < 26; y++) dot(pc, 16, y, ST);
-  for (const [x, y] of [[14, 18], [18, 18], [14, 21], [18, 21], [15, 19], [17, 19], [15, 22], [17, 22], [13, 24], [19, 24]]) dot(pc, x, y, ST);
-  // twine
+  // stamped wheat-root mark: a stem, five pairs of grains, splayed roots; the ink worn where the
+  // weave stood proud of the stamp
+  const ST = 0x9a7040, SF = mix(0x9a7040, R[3], 0.45);
+  const ink1 = (X, Y) => { if (body.get(X, Y)) pc.set(X, Y, hash2(X, Y, 8) < 0.16 ? SF : ST); };
+  for (let Y = nc(16.4); Y <= nc(25.6); Y++) ink1(nc(16), Y);
+  for (let k = 0; k < 5; k++) {
+    const Y = nc(17.2 + k * 1.55), w = k === 4 ? 2 : 3;
+    for (let i = 1; i <= w; i++) { ink1(nc(16) - i, Y - i + 1); ink1(nc(16) + i, Y - i + 1); }
+    ink1(nc(16) - 1, Y + 1); ink1(nc(16) + 1, Y + 1); // each grain is two pixels plump
+  }
+  ink1(nc(16), nc(16.4) - 1); ink1(nc(16), nc(16.4) - 2); // the awn
+  for (const s of [-1, 1]) for (let i = 1; i <= 4; i++) ink1(nc(16) + s * i, nc(25.6) + (i > 2 ? 2 : 1) - (i === 4 ? 0 : 0));
+  // twine: a twisted cord (each turn of the twist lit on one strand), a knot and a frayed end
   const TW = RAMPS.twine();
-  for (let x = 6; x <= 25; x++) if (body.at(x, 15)) dot(pc, x, 15, TW[(x % 2) + 2]);
-  dot(pc, 26, 16, TW[3]); dot(pc, 27, 17, TW[4]); dot(pc, 27, 18, TW[3]);
+  for (let X = 0; X < SZ; X++) {
+    const Y = nc(15);
+    if (!body.get(X, Y)) continue;
+    const t = X % 3;
+    pc.set(X, Y - 1, TW[t === 0 ? 1 : t === 1 ? 2 : 3]);
+    pc.set(X, Y, TW[t === 1 ? 2 : t === 2 ? 3 : 4]);
+    pc.set(X, Y + 1, TW[t === 2 ? 4 : 5]);
+  }
+  line(pc, 25.6, 15.4, 27.2, 18.6, TW[2]); line(pc, 26.2, 15.4, 27.8, 18.4, TW[4]);
+  line(pc, 27.2, 18.6, 26.8, 19.6, TW[3]); line(pc, 27.8, 18.4, 28.4, 19.4, TW[3]);
   ink(pc);
   for (const [x, y, a] of [[3, 27, 200], [4, 28, 150], [28, 28, 190], [29, 27, 130], [23, 4, 160], [9, 5, 120]]) dot(pc, x, y, 0xffffff, a);
   glint(pc, 12, 8, 0);

@@ -1,21 +1,23 @@
 // Cave vegetation for the first-person underground: grass, ferns, clover, glowing fungus,
 // bioluminescent flowers, hanging roots and vines, dry tufts and thorn scrub, frost grass and
-// lichen, ash weeds, dino-cavern giant ferns and horsetails, void tendrils — hand-painted pixel
-// sprites (./veg/sprites.js, painted in code into one atlas) on alpha-tested cards.
+// lichen, ash weeds, dino-cavern giant ferns and horsetails, void tendrils — real voxel models
+// (./veg/plants.js: fine voxels, 1/48–1/64 m, a few variants per kind built on first use), each
+// packed into a handful of boxes (./veg/vox.js).
 //
 // Placement is deterministic per chunk from the world seed (./veg/flora.js: what grows by zone,
 // biome and the material underfoot, in patches from a noise field; never on the player's own
 // diggings, in the burrow, lift rooms, NPC homes or Old Star's dig, and thin on trodden trails).
 // Chunks near the mole are planted within a small per-frame budget and dropped when far. Every
-// card of every plant lives in ONE instanced mesh (one draw call): each chunk rents a range of it.
-// The shader (./veg/material.js) sways them in the cave's breath, pushes them aside where the
-// mole and Nugget walk, thins small plants out with distance and lights them like the rock.
+// box of every plant lives in ONE instanced mesh (one draw call; a box is a 7-vertex fan of the
+// three faces that can face the eye): each chunk rents a range of it. The shader
+// (./veg/material.js) sways them in the cave's breath, pushes them aside where the mole and
+// Nugget walk, thins small plants out with distance and lights each face like the rock.
 // Digging the ground under a plant (or filling the space it grows in) takes it away.
 //
 // API (DigScene): new Vegetation(ctx) · update(dt, { player, eye, time, busy }) → [] ·
 // lights(eye) → ≤ 2 faint glows of luminous patches · onVoxel(vx, vy, vz, old, m) (chained into
 // world.onChange by itself; calling it directly as well is harmless) · dispose() · info() ·
-// debug: { info(), near(x, y, z, r), atlas(on), rebuild(), budget(ms) }.
+// debug: { info(), near(x, y, z, r), models(), rebuild(), budget(ms), kinds(), bench(n) }.
 import * as THREE from 'three';
 import { CS, zoneAt, biomeAt } from './Generator.js';
 import { VOX } from './materials.js';
@@ -24,9 +26,9 @@ import { h3, h3i } from './noise.js';
 import { key3, CB } from './World.js';
 import { prologueLayout, prologueInside } from './gen/prologue.js';
 import { TRAIL_W } from './gen/trails.js';
-import { vegetationAtlas } from './veg/sprites.js';
-import { KINDS, floraOf, FERT, ROCK, layPlant } from './veg/flora.js';
-import { makeVegMaterial, PUSHERS } from './veg/material.js';
+import { KINDS, floraOf, FERT, ROCK, layPlant, modelsOf } from './veg/flora.js';
+import { makeVegMaterial, PUSHERS, boxTemplate } from './veg/material.js';
+import { protoStats, growProtos } from './veg/plants.js';
 import { rng } from './veg/paint.js';
 
 const CM = CS / VOX; // chunk size in metres
@@ -47,58 +49,59 @@ function pickW(list, h) {
   return list[list.length - 1][0];
 }
 
-// ---------------------------------------------------------------- staging (one chunk's cards)
+// ---------------------------------------------------------------- staging (one chunk's boxes)
+const b8 = (v) => (v <= 0 ? 0 : v >= 1 ? 255 : Math.round(v * 255));
 class Stage {
-  constructor() { this.n = 0; this.cap = 0; this.grow(512); }
+  constructor() { this.n = 0; this.cap = 0; this.grow(2048); }
   grow(c) {
     const o = this.cap ? this : null;
     const cp = (T, k, old) => { const a = new T(c * k); if (old) a.set(old.subarray(0, this.n * k)); return a; };
-    this.base = cp(Float32Array, 3, o?.base); this.side = cp(Float32Array, 3, o?.side); this.up = cp(Float32Array, 3, o?.up);
-    this.uv = cp(Uint16Array, 4, o?.uv); this.a = cp(Uint8Array, 4, o?.a); this.b = cp(Uint8Array, 4, o?.b); this.c = cp(Uint8Array, 4, o?.c);
+    this.root = cp(Float32Array, 3, o?.root); this.off = cp(Int8Array, 4, o?.off); this.shape = cp(Uint8Array, 4, o?.shape);
+    this.col = cp(Uint8ClampedArray, 4, o?.col); this.sway = cp(Uint8Array, 4, o?.sway); this.misc = cp(Uint8Array, 4, o?.misc);
     this.cap = c;
   }
   reset() { this.n = 0; }
-  /** The constants of the plant whose cards come next. */
-  begin(glow, sway, rank, tr, tg, tb, flutter) {
-    const b8 = (v) => Math.max(0, Math.min(255, Math.round(v * 255)));
-    this.pg = b8(glow / 2); this.ps = b8(sway / 0.25); this.pr = b8(rank);
-    this.pt0 = b8(tr / 2); this.pt1 = b8(tg / 2); this.pt2 = b8(tb / 2); this.pf = b8(flutter); this.pgu = b8(this.gust);
+  /** The constants of the plant whose boxes come next. */
+  begin(x, y, z, yaw, rank, flutter, gust, sway, push, div, hang, tr, tg, tb, glow) {
+    const a = yaw / (Math.PI * 2);
+    this.px = x; this.py = y; this.pz = z;
+    this.pyaw = b8(a - Math.floor(a)); this.prank = b8(rank); this.pfl = b8(flutter); this.pgu = b8(gust);
+    this.psw = b8(sway / 0.25); this.ppush = b8(push); this.pdiv = Math.max(1, Math.min(255, Math.round(div))); this.phang = hang ? 1 : 0;
+    this.tr = tr; this.tg = tg; this.tb = tb; this.pglow = glow;
   }
-  /** One card: base (root edge centre), side (full width), up (root → tip), uv rect, bend + ao at root / tip. */
-  quad(bx, by, bz, sx, sy, sz, ux, uy, uz, u0, vb, u1, vt, b0, b1, ao0, ao1) {
+  /** One box: offset and size (voxels, the plant's frame), sRGB colour, glow level 0..3, bend at its bottom and top (0..255). */
+  box(ox, oy, oz, sx, sy, sz, r, g, b, gl, b0, b1) {
     if (this.n >= this.cap) this.grow(this.cap * 2);
     const i = this.n++, i3 = i * 3, i4 = i * 4;
-    const B = this.base, S = this.side, U = this.up, V = this.uv, A = this.a, Bb = this.b, C = this.c;
-    B[i3] = bx; B[i3 + 1] = by; B[i3 + 2] = bz;
-    S[i3] = sx; S[i3 + 1] = sy; S[i3 + 2] = sz;
-    U[i3] = ux; U[i3 + 1] = uy; U[i3 + 2] = uz;
-    V[i4] = Math.round(u0 * 65535); V[i4 + 1] = Math.round(vb * 65535); V[i4 + 2] = Math.round(u1 * 65535); V[i4 + 3] = Math.round(vt * 65535);
-    A[i4] = Math.round(b0 * 255); A[i4 + 1] = Math.round(b1 * 255); A[i4 + 2] = this.pgu; A[i4 + 3] = this.pf;
-    Bb[i4] = this.pt0; Bb[i4 + 1] = this.pt1; Bb[i4 + 2] = this.pt2; Bb[i4 + 3] = this.pr;
-    C[i4] = Math.round(ao0 * 255); C[i4 + 1] = Math.round(ao1 * 255); C[i4 + 2] = this.pg; C[i4 + 3] = this.ps;
+    this.root[i3] = this.px; this.root[i3 + 1] = this.py; this.root[i3 + 2] = this.pz;
+    const O = this.off, S = this.shape, C = this.col, W = this.sway, M = this.misc;
+    O[i4] = ox; O[i4 + 1] = oy; O[i4 + 2] = oz; O[i4 + 3] = this.phang;
+    S[i4] = sx; S[i4 + 1] = sy; S[i4 + 2] = sz; S[i4 + 3] = this.pdiv;
+    C[i4] = r * this.tr; C[i4 + 1] = g * this.tg; C[i4 + 2] = b * this.tb; // (clamped)
+    C[i4 + 3] = gl ? gl * this.pglow * 42.5 : 0; // level / 3 × glow, × 2 in the shader
+    W[i4] = b0; W[i4 + 1] = b1; W[i4 + 2] = this.psw; W[i4 + 3] = this.ppush;
+    M[i4] = this.pyaw; M[i4 + 1] = this.prank; M[i4 + 2] = this.pfl; M[i4 + 3] = this.pgu;
   }
-  /** A compact copy of the staged cards (the chunk keeps it to move or edit its range). */
+  /** A compact copy of the staged boxes (the chunk keeps it to move or edit its range). */
   take() {
     const n = this.n;
-    return { n, base: this.base.slice(0, n * 3), side: this.side.slice(0, n * 3), up: this.up.slice(0, n * 3), uv: this.uv.slice(0, n * 4), a: this.a.slice(0, n * 4), b: this.b.slice(0, n * 4), c: this.c.slice(0, n * 4) };
+    return { n, root: this.root.slice(0, n * 3), off: this.off.slice(0, n * 4), shape: this.shape.slice(0, n * 4), col: this.col.slice(0, n * 4), sway: this.sway.slice(0, n * 4), misc: this.misc.slice(0, n * 4) };
   }
 }
 
 // ---------------------------------------------------------------- the instanced buffer
-const ATTRS = [['iBase', 3, Float32Array, false, 'base'], ['iSide', 3, Float32Array, false, 'side'], ['iUp', 3, Float32Array, false, 'up'], ['iUV', 4, Uint16Array, true, 'uv'], ['iA', 4, Uint8Array, true, 'a'], ['iB', 4, Uint8Array, true, 'b'], ['iC', 4, Uint8Array, true, 'c']];
-/** One instanced quad mesh; chunks rent contiguous instance ranges (first fit, coalescing). */
+const ATTRS = [['iRoot', 3, Float32Array, false, 'root'], ['iOff', 4, Int8Array, false, 'off'], ['iShape', 4, Uint8Array, false, 'shape'], ['iCol', 4, Uint8ClampedArray, true, 'col'], ['iSway', 4, Uint8Array, true, 'sway'], ['iMisc', 4, Uint8Array, true, 'misc']];
+/** One instanced box mesh; chunks rent contiguous instance ranges (first fit, coalescing). */
 class Pool {
   constructor(mat, parent) {
     this.mat = mat; this.parent = parent;
     this.cap = 0; this.high = 0; this.free = []; this.live = new Set(); this.liveN = 0;
     this.mesh = null; this.geo = null;
-    this.resize(1 << 14);
+    this.resize(1 << 15);
   }
   resize(cap) {
     const old = this.geo;
-    const g = new THREE.InstancedBufferGeometry();
-    g.setAttribute('corner', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
-    g.setIndex([0, 1, 2, 0, 2, 3]);
+    const g = boxTemplate(new THREE.InstancedBufferGeometry());
     for (const [name, k, T, norm] of ATTRS) {
       const a = new T(cap * k);
       const o = old?.attributes[name];
@@ -164,10 +167,10 @@ class Pool {
     const A = this.geo.attributes;
     for (const [name, k, , , key] of ATTRS) { A[name].array.set(d[key], slot.s * k); this.mark(name, slot.s, d.n); }
   }
-  /** Hide cards (zero length: the shader drops them). */
+  /** Hide boxes (no voxel size: the shader drops them). */
   hide(s, n) {
-    this.geo.attributes.iUp.array.fill(0, s * 3, (s + n) * 3);
-    this.mark('iUp', s, n);
+    this.geo.attributes.iShape.array.fill(0, s * 4, (s + n) * 4);
+    this.mark('iShape', s, n);
   }
   release(slot) {
     if (!this.live.delete(slot)) return;
@@ -201,12 +204,11 @@ export class Vegetation {
     this.audio = ctx.audio;
     this.owner = ctx.owner;
     this.seed = (this.plan.seed | 0) || 1;
-    this.atlas = vegetationAtlas();
-    this.mat = makeVegMaterial(ctx.U, this.atlas.tex);
+    this.mat = makeVegMaterial(ctx.U);
     this.U = this.mat.uniforms;
     this.pool = new Pool(this.mat, ctx.scene3 || ctx.scene);
     this.stage = new Stage();
-    this.built = new Map(); // chunk key → rec { key, ch, x, y, z, slot, d (cards), plants, at (voxel key → plants), light }
+    this.built = new Map(); // chunk key → rec { key, ch, x, y, z, slot, d (boxes), plants, at (voxel key → plants), light }
     this.queue = [];
     this.qi = 0;
     this.scanT = 0;
@@ -218,7 +220,7 @@ export class Vegetation {
     this.trailT = 0;
     this.rustleT = 0;
     this.burstT = 0;
-    this.stats = { chunks: 0, plants: 0, cards: 0, ms: 0, worst: 0, buildMs: 0, maxBuild: 0, built: 0 };
+    this.stats = { chunks: 0, plants: 0, boxes: 0, ms: 0, worst: 0, buildMs: 0, maxBuild: 0, built: 0 };
     this.outLights = [0, 1].map(() => ({ x: 0, y: 0, z: 0, c: [0, 0, 0], r: 1 }));
     this.noise = this.plan.noise;
     this.blockers = this.makeBlockers();
@@ -228,7 +230,7 @@ export class Vegetation {
     this.debug = {
       info: () => this.info(),
       near: (x, y, z, r = 3) => this.near(x, y, z, r),
-      atlas: (on = true) => this.showAtlas(on),
+      models: () => ({ ...protoStats, ms: +protoStats.ms.toFixed(1) }),
       rebuild: () => { for (const rec of [...this.built.values()]) this.drop(rec); this.scanT = 0; this.scanJob = null; },
       budget: (ms) => { this.budget = ms; },
       kinds: () => { const o = {}; for (const rec of this.built.values()) for (const p of rec.plants) if (!p.gone) o[p.kind] = (o[p.kind] || 0) + 1; return o; },
@@ -379,13 +381,13 @@ export class Vegetation {
     }
   }
 
-  /** A plant record + its cards (P: the layPlant spec); k1, k2: the voxels it needs as they are. */
+  /** A plant record + its boxes (P: the layPlant spec); k1, k2: the voxels it needs as they are. */
   plant(rec, P, k1, k2, gust) {
     const st = this.stage, q0 = st.n;
-    st.gust = gust;
-    const res = layPlant(st, P, this._out || (this._out = { rad: 0, h: 0 }));
+    P.gust = gust;
+    const res = layPlant(st, P, this._out || (this._out = { rad: 0, h: 0, col: null }));
     const K = P.K;
-    const p = { q0, nq: st.n - q0, x: P.x, y: P.y, z: P.z, kind: P.kind, col: P.spr.col, gone: false, rad: res.rad, h: res.h, hang: !!K.hang };
+    const p = { q0, nq: st.n - q0, x: P.x, y: P.y, z: P.z, kind: P.kind, col: res.col, gone: false, rad: res.rad, h: res.h, hang: !!K.hang };
     rec.plants.push(p);
     for (const k of [k1, k2]) { const a = rec.at.get(k); if (a) a.push(p); else rec.at.set(k, [p]); }
     if (K.light) {
@@ -430,11 +432,10 @@ export class Vegetation {
         c.big.push([x, z, y]);
       }
     }
-    const spr = this.atlas.get(K.spr);
-    if (!spr) return;
+    if (!modelsOf(K)) return;
     const r = rng(h3i(vx, vy, vz, S + 23));
     const jx = (r() - 0.5) * 0.9 / VOX, jz = (r() - 0.5) * 0.9 / VOX;
-    this.plant(rec, { K, kind, spr: spr[Math.floor(r() * spr.length)], r, x: x + jx, y: y - 0.008, z: z + jz, yaw: r() * Math.PI * 2 },
+    this.plant(rec, { K, kind, r, x: x + jx, y: y - 0.008, z: z + jz, yaw: r() * Math.PI * 2 },
       vkey(vx, vy - 1, vz), vkey(vx, vy, vz), this.gustOf(x, z));
   }
 
@@ -459,10 +460,9 @@ export class Vegetation {
     // in low passages they stop about eye height (the mole walks through, they part), in halls lower
     const fm = free / VOX, room = fm - Math.max(0.42, Math.min(0.8, fm * 0.45));
     if (room < K.len[0] * 0.75) return;
-    const spr = this.atlas.get(K.spr);
-    if (!spr) return;
+    if (!modelsOf(K)) return;
     const r = rng(h3i(vx, vy, vz, S + 57));
-    this.plant(rec, { K, kind, spr: spr[Math.floor(r() * spr.length)], r, x: x + (r() - 0.5) * 0.9 / VOX, y: y + 0.01, z: z + (r() - 0.5) * 0.9 / VOX, yaw: r() * Math.PI * 2, room },
+    this.plant(rec, { K, kind, r, x: x + (r() - 0.5) * 0.9 / VOX, y: y + 0.01, z: z + (r() - 0.5) * 0.9 / VOX, yaw: r() * Math.PI * 2, room },
       vkey(vx, vy + 1, vz), vkey(vx, vy, vz), this.gustOf(x, z));
   }
 
@@ -487,10 +487,9 @@ export class Vegetation {
       // growing out and up needs a little open space
       if (c.at(lx - dx, ly + 2, lz - dz) !== 0 || c.at(lx, ly + 3, lz) !== 0) return;
     }
-    const spr = this.atlas.get(K.spr);
-    if (!spr) return;
+    if (!modelsOf(K)) return;
     const r = rng(h3i(vx, vy, vz, S + 67));
-    this.plant(rec, { K, kind, spr: spr[Math.floor(r() * spr.length)], r, x, y: y + (r() - 0.5) * 0.04, z, yaw: 0, nx: -dx, nz: -dz },
+    this.plant(rec, { K, kind, r, x, y: y + (r() - 0.5) * 0.04, z, yaw: 0, nx: -dx, nz: -dz },
       vkey(vx + dx, vy, vz + dz), vkey(vx, vy, vz), this.gustOf(x, z));
   }
 
@@ -524,7 +523,7 @@ export class Vegetation {
     rec.slot = null;
     this.built.delete(rec.key);
   }
-  /** Move a chunk's cards down into a hole (keeps the drawn range dense). */
+  /** Move a chunk's boxes down into a hole (keeps the drawn range dense). */
   move(rec) {
     if (!rec.slot || !rec.d) return;
     const old = rec.slot;
@@ -622,7 +621,7 @@ export class Vegetation {
     if (p.gone) return;
     p.gone = true;
     if (rec.slot && rec.d) {
-      rec.d.up.fill(0, p.q0 * 3, (p.q0 + p.nq) * 3);
+      rec.d.shape.fill(0, p.q0 * 4, (p.q0 + p.nq) * 4);
       this.pool.hide(rec.slot.s + p.q0, p.nq);
     }
     if (!burst || !this.fx) return;
@@ -684,10 +683,12 @@ export class Vegetation {
     if (ng?.pos && PUSHERS > 3) { P[3].set(ng.pos.x, ng.pos.y, ng.pos.z, 0.24); K[3] = 1; } else K[3] = 0;
     // small plants thin out sooner on the simpler shader settings (phones)
     const fx = this.owner?.game?.engine?.fx || 'high';
-    if (fx !== this.fxLevel) { this.fxLevel = fx; U.uLod.value.set(...(fx === 'high' ? [9.5, 17] : fx === 'low' ? [6.5, 12] : [4.5, 8.5])); }
+    if (fx !== this.fxLevel) { this.fxLevel = fx; U.uLod.value.set(...(fx === 'high' ? [9.5, 17, R_DROP] : fx === 'low' ? [6.5, 12, 14] : [4.5, 8.5, 11])); }
     // planting
     this.scanT -= dt;
     this.stream(eye, this.age < 2.5 ? 4 : this.budget);
+    // spare time: another variant of a model in use (each kind starts with one)
+    if (performance.now() - t0 < this.budget * 0.5 && this.qi >= this.queue.length) growProtos();
     // a soft rustle when walking through tall stuff
     this.rustleT -= dt;
     if (this.rustleT <= 0 && pl?.pos && (pl.speed || 0) > 0.7 && pl.grounded) {
@@ -746,26 +747,15 @@ export class Vegetation {
     return out;
   }
   info() {
-    let plants = 0, cards = 0;
-    for (const rec of this.built.values()) { for (const p of rec.plants) if (!p.gone) { plants++; cards += p.nq; } }
+    let plants = 0, boxes = 0;
+    for (const rec of this.built.values()) { for (const p of rec.plants) if (!p.gone) { plants++; boxes += p.nq; } }
     const s = this.stats;
-    return { chunks: this.built.size, plants, cards, drawn: this.pool.high, cap: this.pool.cap, msAvg: +s.ms.toFixed(3), msWorst: +s.worst.toFixed(2), built: s.built, buildMsAvg: s.built ? +(s.buildMs / s.built).toFixed(3) : 0, buildMsMax: +s.maxBuild.toFixed(2), atlasMs: +(this.atlas.ms || 0).toFixed(1), queue: this.queue.length - this.qi };
-  }
-  showAtlas(on) {
-    document.getElementById('veg-atlas')?.remove();
-    if (!on) return null;
-    const img = document.createElement('img');
-    img.id = 'veg-atlas';
-    img.src = this.atlas.dataURL(1);
-    img.style.cssText = 'position:fixed;left:0;top:0;z-index:99999;image-rendering:pixelated;width:' + (typeof on === 'number' ? on : 1) * 1024 + 'px;background:#1a1418';
-    document.body.appendChild(img);
-    return img.src.length;
+    return { chunks: this.built.size, plants, boxes, drawn: this.pool.high, cap: this.pool.cap, msAvg: +s.ms.toFixed(3), msWorst: +s.worst.toFixed(2), built: s.built, buildMsAvg: s.built ? +(s.buildMs / s.built).toFixed(3) : 0, buildMsMax: +s.maxBuild.toFixed(2), modelsMs: +protoStats.ms.toFixed(1), models: protoStats.built, queue: this.queue.length - this.qi };
   }
   dispose() {
     if (this.w.onChange === this.hookFn) this.w.onChange = this.prevHook || null;
     this.pool.dispose();
     this.mat.dispose();
     this.built.clear();
-    document.getElementById('veg-atlas')?.remove();
   }
 }

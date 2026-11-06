@@ -12,12 +12,15 @@ export class ChunkPool {
     this.cb = new Map();
     this.id = 1;
     this.max = 6; // jobs in flight per worker
+    // the first worker sends back the plan it built (see plan())
+    this.planWait = null;
+    this.planGot = undefined;
     try {
       for (let i = 0; i < n; i++) {
         const w = new GenWorker();
         w.onmessage = (e) => this.onMsg(i, e.data);
         w.onerror = (e) => this.fail(e);
-        w.postMessage({ t: 'init', ...init });
+        w.postMessage({ t: 'init', ...init, sendPlan: i === 0 });
         this.workers.push(w);
         this.busy.push(0);
       }
@@ -26,6 +29,20 @@ export class ChunkPool {
       console.warn('chunk workers unavailable, generating on the main thread', err);
       this.ok = false;
     }
+  }
+
+  /**
+   * The plan the first worker built (structured-cloned, without its noise: see Generator.revivePlan),
+   * or null if it can't be had within ms (the caller then builds its own).
+   */
+  plan(ms = 8000) {
+    if (!this.ok) return Promise.resolve(null);
+    if (this.planGot !== undefined) return Promise.resolve(this.planGot);
+    return new Promise((res) => {
+      const done = (p) => { clearTimeout(t); this.planWait = null; res(p); };
+      const t = setTimeout(() => done(null), ms);
+      this.planWait = done;
+    });
   }
 
   get inflight() { let n = 0; for (const b of this.busy) n += b; return n; }
@@ -45,7 +62,10 @@ export class ChunkPool {
   }
 
   onMsg(i, m) {
-    if (m.t === 'ready') return;
+    if (m.t === 'ready') {
+      if (i === 0) { this.planGot = m.plan || null; this.planWait?.(this.planGot); }
+      return;
+    }
     this.busy[i] = Math.max(0, this.busy[i] - 1);
     const f = this.cb.get(m.id);
     this.cb.delete(m.id);
@@ -59,6 +79,7 @@ export class ChunkPool {
     // jobs that will never come back: tell their owners so they can redo the work
     for (const f of this.cb.values()) try { f(null); } catch (err) { /* noop */ }
     this.cb.clear();
+    this.planWait?.(null);
   }
 
   dispose() {

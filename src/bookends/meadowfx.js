@@ -9,6 +9,7 @@ import { voxelMaterial } from '../gfx/Voxel.js';
 import { makeRng, makeNoise2D, clamp } from '../core/util.js';
 import { GLSL_BAYER } from './fx.js';
 import { meshRelief } from './vox.js';
+import { blob } from '../iso/organic.js';
 
 /** Shared uniforms: time, wind, the cloud-shadow map, the sun, fog. */
 export const MF = {
@@ -216,7 +217,7 @@ function grassAtlas() {
       const x = Math.round(rng.range(4, CELL - 5)), h = Math.round(rng.range(10, 18));
       const tx = blade(ox, x, h, rng.range(-0.1, 0.1), [0x4a8a3a, 0x6a9a4a]);
       const ty = CELL - 1 - h;
-      if (i % 2) { pc.disk(ox + tx, ty - 1, 2.2, 0xf8f8f0); pc.set(ox + tx, ty - 1, 0xd8d8c8); }
+      if (i % 2) { blob(pc, ox + tx, ty - 1, 2.2, 2.2, 0xf8f8f0); pc.set(ox + tx, ty - 1, 0xd8d8c8); }
       else { pc.rect(ox + tx - 1, ty - 1, 3, 2, 0xffd020); pc.set(ox + tx, ty - 2, 0xffe860); }
     }
   }

@@ -40,13 +40,18 @@ const ZMAT = [
   { a: M.CORE, b: M.STARROCK, c: M.VOIDROCK, d: M.CORE, pocket: M.ASH },
 ];
 
+/** The plan's noise fields (functions: a plan sent from a worker comes without them; revivePlan puts them back). */
+export function planNoise(seed) { return [makeNoise3D(seed), makeNoise3D(seed + 11), makeNoise3D(seed + 23), makeNoise3D(seed + 37)]; }
+/** A plan that was structured-cloned without its noise (ChunkPool's worker plan): give it back its noise. */
+export function revivePlan(plan) { plan.noise = planNoise(plan.seed); return plan; }
+
 /** Build the plan (deterministic for a seed). opts: { W, D, tunnels: [{wall, t}] } */
 export function makePlan(seed, opts = {}) {
   const rng = makeRng(seed);
   const W = opts.W || 10, D = opts.D || 8;
   const plan = {
     seed, W, D,
-    noise: [makeNoise3D(seed), makeNoise3D(seed + 11), makeNoise3D(seed + 23), makeNoise3D(seed + 37)],
+    noise: planNoise(seed),
     house: { x0: 0, x1: W, z0: 0, z1: D, y0: 0, y1: 3 },
     town: { x: 30, y: -15, z: -24, r: 5.5 },
     shaft: { x: 38.5, z: -24.5 },

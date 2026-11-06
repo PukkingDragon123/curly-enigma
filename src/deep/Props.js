@@ -28,7 +28,8 @@ import { OPAQUE } from './Mesher.js';
 import { h3, h3i } from './noise.js';
 import { LIGHT, makeObjectMaterial } from './TerrainMaterial.js';
 import { LiftFlags } from './props/flags.js';
-import { getModel, modelCached, modelStats, modelSteps, defineModel, forgetModel } from './props/models.js';
+import { getModel, modelCached, modelStats, modelSteps, defineModel, forgetModel, putModel } from './props/models.js';
+import { VOX_RULE_ON } from '../gfx/voxRes.js';
 import { key3, CB } from './World.js';
 import { rng32 } from './props/grid.js';
 import { liftSnapshotSteps, liftLayoutSteps } from './props/lifts.js';
@@ -934,13 +935,48 @@ export class Props {
     if (!a) this.pending.set(k, (a = []));
     a.push(p);
   }
+  /** Can the chunk workers build this model? (not the one-offs made from the world's voxels) */
+  poolModel(p) {
+    const pool = this.w.pool;
+    return !!(pool && pool.ok && VOX_RULE_ON && p.mtype !== 'custom' && typeof p.param === 'number' && !this.modelHere?.has(p.mtype + ':' + p.v + ':' + p.param));
+  }
+  /** Hand waiting models to the chunk workers (a few at a time); they come back meshed. */
+  sendModels() {
+    const pool = this.w.pool, jobs = (this.modelJobs ||= new Set());
+    for (const [k, list] of this.pending) {
+      if (jobs.size >= 4) break;
+      if (jobs.has(k)) continue;
+      const p = list.find((q) => !q.gone && this.built.get(q.rec.key) === q.rec);
+      if (!p) { this.pending.delete(k); continue; }
+      if (!this.poolModel(p)) continue;
+      const type = p.mtype, v = p.v, param = p.param;
+      if (!pool.send({ t: 'model', type, v, p: param }, null, (m) => this.modelArrived(k, type, v, param, m))) break;
+      jobs.add(k);
+    }
+  }
+  modelArrived(k, type, v, param, m) {
+    this.modelJobs?.delete(k);
+    if (this.disposed) return;
+    if (!m || !m.model) { (this.modelHere ||= new Set()).add(k); return; } // the worker couldn't: build it here
+    const model = putModel(type, v, param, m.model);
+    const list = this.pending.get(k) || [];
+    this.pending.delete(k);
+    for (const p of list) {
+      if (this.built.get(p.rec.key) !== p.rec) continue;
+      if (!p.gone) this.finalize(p, model);
+      if (--p.rec.wait <= 0) this.dirty.add(p.rec);
+    }
+  }
   meshPending(deadline) {
+    this.sendModels();
     // one model at a time, meshed in slices until the deadline (at least one slice a frame)
     if (!this.job) {
       for (const [k, list] of this.pending) {
+        if (this.modelJobs?.has(k)) continue; // a worker is on it
         // skip models nobody waits for any more (their chunk or lift was dropped meanwhile)
         const p = list.find((q) => !q.gone && this.built.get(q.rec.key) === q.rec);
         if (!p) { this.pending.delete(k); continue; }
+        if (this.poolModel(p)) continue; // the workers will take it
         this.job = { k, gen: modelSteps(p.mtype, p.v, p.param) };
         break;
       }

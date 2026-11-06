@@ -1,98 +1,99 @@
-// What grows where in the caves, and how each plant is put together from atlas cards.
+// What grows where in the caves, and how each plant is placed from its voxel model.
 //
-// A plant is a few textured quads ("cards"): `cross` (n upright cards round the stem), `rosette`
-// (fronds on tilted cards bent in 2–3 segments, so they arch and droop), `flat` (lying on the
-// ground, seen from above), `hang` (cards hanging from a ceiling), `fan` (fronds out of a wall),
-// `tuft` (a cross of cards growing out of a wall, tilted up) and `decal` (flat on a wall).
+// Every plant is a voxel model (./plants.js, packed into boxes by ./vox.js): a few variants per
+// kind, built on first use. Layouts: `cross` (standing on the floor), `rosette` (a fern's fronds:
+// standing, needs room round it), `flat` (lying on the ground), `hang` (from a ceiling, cut to the
+// room below it), `fan` / `tuft` (out of a wall) and `decal` (a patch on a wall).
 import { M } from '../materials.js';
-import { PXM } from './paint.js';
+import { protos } from './plants.js';
 
-// spr: atlas sprite name (its variants are picked at random) · lay: layout · n: cards (cross /
-// hang / tuft) or fronds [min, max] (rosette / fan) · sc: size range (× the sprite's own size) ·
-// len / tilt / droop / segs: fronds (m, radians from the axis, extra tilt per segment, bends) or
-// the hanging length range (m) · sway: tip sway (m) · rank: distance cull (1 = always drawn, 'r' =
-// thinned out with distance, 'r2' = later) · glow: × the sprite's glowing pixels · light: [r, g, b]
-// of the faint glow a patch of these gives off (Vegetation.lights) · h: height to keep clear (m) ·
-// r: footprint radius (m) · big: one per 1.6 m · ao: darkening at the root · hang: from a ceiling
+// lay: layout · sc: size range (the voxel shrinks or grows with it, within 1/48–1/64 m) · div:
+// voxels per metre at size 1 (56; the giant ferns are coarser) · v: variants · len: rosette frond
+// length (m, for the room check) or the hanging length range (m) · sway: tip sway (m) · push: how
+// far the mole parts it (0..1) · rank: distance cull (1 = always drawn, 'r' = thinned out with
+// distance, 'r2' = later) · glow: × the model's glowing voxels · light: [r, g, b] of the faint glow
+// a patch of these gives off (Vegetation.lights) · h: height to keep clear (m) · r: footprint
+// radius (m) · big: one per 1.6 m · hang: from a ceiling
 export const KINDS = {
   // grasses (rank 'r': thinned out with distance)
-  grass: { spr: 'grass', lay: 'cross', n: 3, sc: [0.75, 1.2], sway: 0.05, rank: 'r' },
-  grassTall: { spr: 'grassTall', lay: 'cross', n: 3, sc: [0.8, 1.25], sway: 0.1, rank: 'r2', h: 0.5 },
-  mossGrass: { spr: 'mossGrass', lay: 'cross', n: 3, sc: [0.7, 1.15], sway: 0.05, rank: 'r', glow: 0.7 },
-  paleGrass: { spr: 'paleGrass', lay: 'cross', n: 3, sc: [0.7, 1.1], sway: 0.04, rank: 'r' },
-  dryGrass: { spr: 'dryGrass', lay: 'cross', n: 3, sc: [0.75, 1.2], sway: 0.035, rank: 'r' },
-  frostGrass: { spr: 'frostGrass', lay: 'cross', n: 3, sc: [0.7, 1.1], sway: 0.01, rank: 'r', glow: 0.6 },
-  crystalGrass: { spr: 'crystalGrass', lay: 'cross', n: 3, sc: [0.7, 1.15], sway: 0.012, rank: 'r', glow: 0.8, light: [0.25, 0.55, 0.9] },
-  ashGrass: { spr: 'ashGrass', lay: 'cross', n: 2, sc: [0.8, 1.2], sway: 0.025, rank: 'r', glow: 1 },
-  voidGrass: { spr: 'voidGrass', lay: 'cross', n: 3, sc: [0.75, 1.2], sway: 0.03, rank: 'r', glow: 0.9, light: [0.5, 0.25, 0.9] },
-  fungusGrass: { spr: 'fungusGrass', lay: 'cross', n: 3, sc: [0.75, 1.2], sway: 0.025, rank: 'r', glow: 0.8 },
+  grass: { lay: 'cross', sc: [0.85, 1.15], v: 3, sway: 0.05, rank: 'r' },
+  grassTall: { lay: 'cross', sc: [0.85, 1.15], sway: 0.1, rank: 'r2', h: 0.5 },
+  mossGrass: { lay: 'cross', sc: [0.85, 1.15], v: 3, sway: 0.05, rank: 'r', glow: 0.7 },
+  paleGrass: { lay: 'cross', sc: [0.85, 1.1], sway: 0.04, rank: 'r' },
+  dryGrass: { lay: 'cross', sc: [0.85, 1.15], sway: 0.035, rank: 'r' },
+  frostGrass: { lay: 'cross', sc: [0.85, 1.1], sway: 0.01, rank: 'r', glow: 0.6 },
+  crystalGrass: { lay: 'cross', sc: [0.85, 1.15], sway: 0.012, rank: 'r', glow: 0.8, light: [0.25, 0.55, 0.9] },
+  ashGrass: { lay: 'cross', sc: [0.9, 1.15], sway: 0.025, rank: 'r', glow: 1 },
+  voidGrass: { lay: 'cross', sc: [0.85, 1.15], sway: 0.03, rank: 'r', glow: 0.9, light: [0.5, 0.25, 0.9] },
+  fungusGrass: { lay: 'cross', sc: [0.85, 1.15], sway: 0.025, rank: 'r', glow: 0.8 },
   // ground cover (flat)
-  clover: { spr: 'clover', lay: 'flat', sc: [0.7, 1.05], rank: 'r' },
-  cloverGlow: { spr: 'cloverGlow', lay: 'flat', sc: [0.7, 1.0], rank: 'r', glow: 0.8 },
-  lichenFrost: { spr: 'lichenFrost', lay: 'flat', sc: [0.6, 1.0], rank: 'r', glow: 0.7 },
-  lichenRust: { spr: 'lichenRust', lay: 'flat', sc: [0.6, 1.0], rank: 'r' },
-  lichenCrystal: { spr: 'lichenCrystal', lay: 'flat', sc: [0.6, 0.95], rank: 'r', glow: 0.8 },
-  litter: { spr: 'litter', lay: 'flat', sc: [0.8, 1.15], rank: 'r' },
-  starMoss: { spr: 'starMoss', lay: 'flat', sc: [0.7, 1.1], rank: 'r', glow: 1, light: [0.45, 0.3, 0.9] },
+  clover: { lay: 'flat', sc: [0.85, 1.1], rank: 'r', push: 0.2 },
+  cloverGlow: { lay: 'flat', sc: [0.85, 1.05], rank: 'r', glow: 0.8, push: 0.2 },
+  lichenFrost: { lay: 'flat', sc: [0.8, 1.05], rank: 'r', glow: 0.7, push: 0 },
+  lichenRust: { lay: 'flat', sc: [0.8, 1.05], rank: 'r', push: 0 },
+  lichenCrystal: { lay: 'flat', sc: [0.8, 1.0], rank: 'r', glow: 0.8, push: 0 },
+  litter: { lay: 'flat', sc: [0.85, 1.15], rank: 'r', push: 0.1 },
+  starMoss: { lay: 'flat', sc: [0.85, 1.1], rank: 'r', glow: 1, light: [0.45, 0.3, 0.9], push: 0 },
   // ferns and reeds (always drawn)
-  fern: { spr: 'frond', lay: 'rosette', n: [5, 8], len: [0.3, 0.52], tilt: [0.5, 0.8], droop: 0.42, segs: 2, sway: 0.08, rank: 1, r: 0.4 },
-  fernPale: { spr: 'frondPale', lay: 'rosette', n: [4, 6], len: [0.24, 0.4], tilt: [0.55, 0.85], droop: 0.4, segs: 2, sway: 0.06, rank: 1, r: 0.3 },
-  giantFern: { spr: 'giantFrond', lay: 'rosette', n: [6, 9], len: [1.15, 1.75], tilt: [0.32, 0.58], droop: 0.32, segs: 3, sway: 0.13, rank: 1, r: 1.1, big: true },
-  horsetail: { spr: 'horsetail', lay: 'cross', n: 2, sc: [0.75, 1.25], sway: 0.07, rank: 1, big: true },
+  fern: { lay: 'rosette', len: [0.3, 0.52], sc: [0.9, 1.15], sway: 0.08, rank: 1, r: 0.4 },
+  fernPale: { lay: 'rosette', len: [0.24, 0.4], sc: [0.9, 1.1], sway: 0.06, rank: 1, r: 0.3 },
+  giantFern: { lay: 'rosette', len: [1.15, 1.75], sc: [0.9, 1.1], div: 32, sway: 0.13, rank: 1, r: 1.1, big: true },
+  horsetail: { lay: 'cross', sc: [0.8, 1.2], div: 50, sway: 0.07, rank: 1, big: true },
   // fungus and flowers (they glow; patches of them light the rock round about)
-  fungusCyan: { spr: 'fungusCyan', lay: 'cross', n: 2, sc: [0.7, 1.3], sway: 0.006, rank: 1, glow: 1, light: [0.2, 0.8, 0.75] },
-  fungusViolet: { spr: 'fungusViolet', lay: 'cross', n: 2, sc: [0.7, 1.3], sway: 0.006, rank: 1, glow: 1, light: [0.6, 0.3, 1.0] },
-  fungusPink: { spr: 'fungusPink', lay: 'cross', n: 2, sc: [0.7, 1.2], sway: 0.006, rank: 1, glow: 1, light: [1.0, 0.35, 0.7] },
-  fungusBlue: { spr: 'fungusBlue', lay: 'cross', n: 2, sc: [0.7, 1.25], sway: 0.006, rank: 1, glow: 1, light: [0.3, 0.55, 1.0] },
-  fungusAmber: { spr: 'fungusAmber', lay: 'cross', n: 2, sc: [0.7, 1.15], sway: 0.006, rank: 1, glow: 1, light: [1.0, 0.65, 0.25] },
-  fungusBrown: { spr: 'fungusBrown', lay: 'cross', n: 2, sc: [0.7, 1.15], sway: 0.006, rank: 0.85 },
-  puffballs: { spr: 'puffballs', lay: 'cross', n: 2, sc: [0.75, 1.2], sway: 0, rank: 0.8, glow: 0.4 },
+  fungusCyan: { lay: 'cross', sc: [0.85, 1.15], sway: 0.006, rank: 1, glow: 1, light: [0.2, 0.8, 0.75], push: 0.3 },
+  fungusViolet: { lay: 'cross', sc: [0.85, 1.15], sway: 0.006, rank: 1, glow: 1, light: [0.6, 0.3, 1.0], push: 0.3 },
+  fungusPink: { lay: 'cross', sc: [0.85, 1.1], sway: 0.006, rank: 1, glow: 1, light: [1.0, 0.35, 0.7], push: 0.3 },
+  fungusBlue: { lay: 'cross', sc: [0.85, 1.15], sway: 0.006, rank: 1, glow: 1, light: [0.3, 0.55, 1.0], push: 0.3 },
+  fungusAmber: { lay: 'cross', sc: [0.85, 1.1], sway: 0.006, rank: 1, glow: 1, light: [1.0, 0.65, 0.25], push: 0.3 },
+  fungusBrown: { lay: 'cross', sc: [0.85, 1.1], sway: 0.006, rank: 0.85, push: 0.3 },
+  puffballs: { lay: 'cross', sc: [0.85, 1.15], sway: 0, rank: 0.8, glow: 0.4, push: 0.15 },
   // wave 4: mushrooms everywhere (brown caps, red toadstools, ink caps, glowing stalks, buttons)
-  brownCap: { spr: 'brownCap', lay: 'cross', n: 2, sc: [0.75, 1.3], sway: 0.004, rank: 0.9 },
-  toadstool: { spr: 'toadstool', lay: 'cross', n: 2, sc: [0.7, 1.25], sway: 0.004, rank: 0.95 },
-  inkcap: { spr: 'inkcap', lay: 'cross', n: 2, sc: [0.75, 1.2], sway: 0.008, rank: 0.9 },
-  glowShroom: { spr: 'glowShroom', lay: 'cross', n: 2, sc: [0.8, 1.35], sway: 0.01, rank: 1, glow: 1, light: [0.3, 0.6, 1.0], h: 0.45 },
-  mushTiny: { spr: 'mushTiny', lay: 'cross', n: 2, sc: [0.7, 1.1], sway: 0, rank: 'r', glow: 0.8, light: [0.9, 0.62, 0.3] },
-  emberCap: { spr: 'emberCap', lay: 'cross', n: 2, sc: [0.75, 1.2], sway: 0.004, rank: 1, glow: 1, light: [1.0, 0.45, 0.12] },
-  frostCap: { spr: 'frostCap', lay: 'cross', n: 2, sc: [0.75, 1.2], sway: 0.002, rank: 1, glow: 0.8, light: [0.45, 0.75, 1.0] },
-  pebbles: { spr: 'pebbles', lay: 'flat', sc: [0.7, 1.15], rank: 'r' },
-  flowerCyan: { spr: 'flowerCyan', lay: 'cross', n: 2, sc: [0.8, 1.25], sway: 0.06, rank: 1, glow: 1, light: [0.25, 0.8, 0.85] },
-  flowerViolet: { spr: 'flowerViolet', lay: 'cross', n: 2, sc: [0.8, 1.25], sway: 0.06, rank: 1, glow: 1, light: [0.65, 0.35, 1.0] },
-  flowerPink: { spr: 'flowerPink', lay: 'cross', n: 2, sc: [0.8, 1.2], sway: 0.06, rank: 1, glow: 1, light: [1.0, 0.4, 0.7] },
-  flowerEmber: { spr: 'flowerEmber', lay: 'cross', n: 2, sc: [0.8, 1.2], sway: 0.04, rank: 1, glow: 1, light: [1.0, 0.45, 0.12] },
-  flowerFrost: { spr: 'flowerFrost', lay: 'cross', n: 2, sc: [0.8, 1.2], sway: 0.02, rank: 1, glow: 1, light: [0.45, 0.75, 1.0] },
+  brownCap: { lay: 'cross', sc: [0.85, 1.15], v: 3, sway: 0.004, rank: 0.9, push: 0.25 },
+  toadstool: { lay: 'cross', sc: [0.85, 1.15], v: 3, sway: 0.004, rank: 0.95, push: 0.25 },
+  inkcap: { lay: 'cross', sc: [0.85, 1.1], sway: 0.008, rank: 0.9, push: 0.3 },
+  glowShroom: { lay: 'cross', sc: [0.9, 1.15], v: 3, sway: 0.01, rank: 1, glow: 1, light: [0.3, 0.6, 1.0], h: 0.45, push: 0.35 },
+  mushTiny: { lay: 'cross', sc: [0.85, 1.1], v: 3, sway: 0, rank: 'r', glow: 0.8, light: [0.9, 0.62, 0.3], push: 0.15 },
+  emberCap: { lay: 'cross', sc: [0.85, 1.1], sway: 0.004, rank: 1, glow: 1, light: [1.0, 0.45, 0.12], push: 0.25 },
+  frostCap: { lay: 'cross', sc: [0.85, 1.1], sway: 0.002, rank: 1, glow: 0.8, light: [0.45, 0.75, 1.0], push: 0.25 },
+  pebbles: { lay: 'flat', sc: [0.85, 1.15], v: 3, rank: 'r', push: 0 },
+  flowerCyan: { lay: 'cross', sc: [0.9, 1.15], sway: 0.06, rank: 1, glow: 1, light: [0.25, 0.8, 0.85] },
+  flowerViolet: { lay: 'cross', sc: [0.9, 1.15], sway: 0.06, rank: 1, glow: 1, light: [0.65, 0.35, 1.0] },
+  flowerPink: { lay: 'cross', sc: [0.9, 1.1], sway: 0.06, rank: 1, glow: 1, light: [1.0, 0.4, 0.7] },
+  flowerEmber: { lay: 'cross', sc: [0.9, 1.1], sway: 0.04, rank: 1, glow: 1, light: [1.0, 0.45, 0.12] },
+  flowerFrost: { lay: 'cross', sc: [0.9, 1.1], sway: 0.02, rank: 1, glow: 1, light: [0.45, 0.75, 1.0] },
   // dry and strange
-  thorn: { spr: 'thorn', lay: 'cross', n: 2, sc: [0.8, 1.3], sway: 0.012, rank: 1 },
-  stoneRose: { spr: 'stoneRose', lay: 'cross', n: 3, sc: [0.8, 1.2], sway: 0, rank: 0.9 },
-  ashWeed: { spr: 'ashWeed', lay: 'cross', n: 2, sc: [0.8, 1.25], sway: 0.03, rank: 1, glow: 1, light: [1.0, 0.4, 0.1] },
-  voidTendril: { spr: 'voidTendril', lay: 'cross', n: 2, sc: [0.8, 1.3], sway: 0.05, rank: 1, glow: 1, light: [0.55, 0.3, 1.0] },
+  thorn: { lay: 'cross', sc: [0.9, 1.15], sway: 0.012, rank: 1, push: 0.4 },
+  stoneRose: { lay: 'cross', sc: [0.9, 1.1], sway: 0, rank: 0.9, push: 0.1 },
+  ashWeed: { lay: 'cross', sc: [0.9, 1.15], sway: 0.03, rank: 1, glow: 1, light: [1.0, 0.4, 0.1] },
+  voidTendril: { lay: 'cross', sc: [0.9, 1.15], sway: 0.05, rank: 1, glow: 1, light: [0.55, 0.3, 1.0] },
   // hanging (len: metres)
-  roots: { spr: 'roots', lay: 'hang', n: 2, len: [0.55, 1.15], sway: 0.05, rank: 1, hang: true },
-  rootsShort: { spr: 'rootsShort', lay: 'hang', n: 2, len: [0.3, 0.5], sway: 0.035, rank: 1, hang: true },
-  vine: { spr: 'vine', lay: 'hang', n: 2, len: [0.6, 1.35], sway: 0.08, rank: 1, hang: true },
-  vineBerry: { spr: 'vineBerry', lay: 'hang', n: 2, len: [0.6, 1.3], sway: 0.08, rank: 1, hang: true, glow: 1, light: [0.4, 0.8, 0.9] },
-  vineDino: { spr: 'vineDino', lay: 'hang', n: 2, len: [0.8, 1.6], sway: 0.09, rank: 1, hang: true },
-  glowVine: { spr: 'glowVine', lay: 'hang', n: 2, len: [0.7, 1.45], sway: 0.08, rank: 1, hang: true, glow: 1, light: [1.0, 0.66, 0.28] },
-  mossDrape: { spr: 'mossDrape', lay: 'hang', n: 2, len: [0.3, 0.5], sway: 0.03, rank: 1, hang: true, glow: 0.6 },
-  rootDrape: { spr: 'rootDrape', lay: 'hang', n: 2, len: [0.22, 0.36], sway: 0.025, rank: 1, hang: true },
-  mycel: { spr: 'mycel', lay: 'hang', n: 2, len: [0.4, 0.85], sway: 0.05, rank: 1, hang: true, glow: 1, light: [0.6, 0.35, 1.0] },
-  mycelCyan: { spr: 'mycelCyan', lay: 'hang', n: 2, len: [0.35, 0.65], sway: 0.05, rank: 1, hang: true, glow: 1, light: [0.25, 0.8, 0.8] },
-  rime: { spr: 'rime', lay: 'hang', n: 2, len: [0.22, 0.36], sway: 0.004, rank: 1, hang: true, glow: 0.7 },
-  voidHang: { spr: 'voidHang', lay: 'hang', n: 2, len: [0.4, 0.65], sway: 0.05, rank: 1, hang: true, glow: 1 },
+  roots: { lay: 'hang', len: [0.55, 1.15], sway: 0.05, rank: 1, hang: true },
+  rootsShort: { lay: 'hang', len: [0.3, 0.5], sway: 0.035, rank: 1, hang: true },
+  vine: { lay: 'hang', len: [0.6, 1.35], sway: 0.08, rank: 1, hang: true },
+  vineBerry: { lay: 'hang', len: [0.6, 1.3], sway: 0.08, rank: 1, hang: true, glow: 1, light: [0.4, 0.8, 0.9] },
+  vineDino: { lay: 'hang', len: [0.8, 1.6], sway: 0.09, rank: 1, hang: true },
+  glowVine: { lay: 'hang', len: [0.7, 1.45], sway: 0.08, rank: 1, hang: true, glow: 1, light: [1.0, 0.66, 0.28] },
+  mossDrape: { lay: 'hang', len: [0.3, 0.5], sway: 0.03, rank: 1, hang: true, glow: 0.6 },
+  rootDrape: { lay: 'hang', len: [0.22, 0.36], sway: 0.025, rank: 1, hang: true },
+  mycel: { lay: 'hang', len: [0.4, 0.85], sway: 0.05, rank: 1, hang: true, glow: 1, light: [0.6, 0.35, 1.0] },
+  mycelCyan: { lay: 'hang', len: [0.35, 0.65], sway: 0.05, rank: 1, hang: true, glow: 1, light: [0.25, 0.8, 0.8] },
+  rime: { lay: 'hang', len: [0.22, 0.36], sway: 0.004, rank: 1, hang: true, glow: 0.7 },
+  voidHang: { lay: 'hang', len: [0.4, 0.65], sway: 0.05, rank: 1, hang: true, glow: 1 },
   // walls
-  wallFern: { spr: 'frond', lay: 'fan', n: [3, 5], len: [0.24, 0.4], tilt: [0.5, 0.85], droop: 0.5, segs: 2, sway: 0.06, rank: 1 },
-  wallFernDino: { spr: 'giantFrond', lay: 'fan', n: [3, 4], len: [0.55, 0.85], tilt: [0.5, 0.8], droop: 0.45, segs: 3, sway: 0.09, rank: 1 },
-  wallGrass: { spr: 'grass', lay: 'tuft', n: 2, sc: [0.45, 0.75], sway: 0.04, rank: 'r' },
-  wallMoss: { spr: 'mossGrass', lay: 'tuft', n: 2, sc: [0.45, 0.75], sway: 0.04, rank: 'r', glow: 0.7 },
-  wallPale: { spr: 'paleGrass', lay: 'tuft', n: 2, sc: [0.45, 0.7], sway: 0.03, rank: 'r' },
-  wallFungus: { spr: 'fungusAmber', lay: 'tuft', n: 2, sc: [0.55, 0.85], sway: 0, rank: 1, glow: 1, light: [1.0, 0.65, 0.25] },
-  wallMush: { spr: 'mushTiny', lay: 'tuft', n: 2, sc: [0.6, 0.9], sway: 0, rank: 1, glow: 0.8, light: [0.9, 0.62, 0.3] },
-  wallBrown: { spr: 'brownCap', lay: 'tuft', n: 2, sc: [0.5, 0.75], sway: 0, rank: 0.9 },
-  wallLichenRust: { spr: 'lichenRust', lay: 'decal', sc: [0.45, 0.7], rank: 'r' },
-  wallLichenFrost: { spr: 'lichenFrost', lay: 'decal', sc: [0.45, 0.7], rank: 'r', glow: 0.7 },
-  wallLichenCrystal: { spr: 'lichenCrystal', lay: 'decal', sc: [0.45, 0.7], rank: 'r', glow: 0.9 },
-  wallStar: { spr: 'starMoss', lay: 'decal', sc: [0.45, 0.7], rank: 'r', glow: 1 },
+  wallFern: { lay: 'fan', sc: [0.9, 1.15], sway: 0.06, rank: 1 },
+  wallFernDino: { lay: 'fan', sc: [0.9, 1.1], div: 40, sway: 0.09, rank: 1 },
+  wallGrass: { lay: 'tuft', sc: [0.85, 1.15], sway: 0.04, rank: 'r' },
+  wallMoss: { lay: 'tuft', sc: [0.85, 1.15], sway: 0.04, rank: 'r', glow: 0.7 },
+  wallPale: { lay: 'tuft', sc: [0.85, 1.1], sway: 0.03, rank: 'r' },
+  wallFungus: { lay: 'tuft', sc: [0.9, 1.15], sway: 0, rank: 1, glow: 1, light: [1.0, 0.65, 0.25], push: 0 },
+  wallMush: { lay: 'tuft', sc: [0.9, 1.15], sway: 0, rank: 1, glow: 0.8, light: [0.9, 0.62, 0.3], push: 0.1 },
+  wallBrown: { lay: 'tuft', sc: [0.85, 1.1], sway: 0, rank: 0.9, push: 0 },
+  wallLichenRust: { lay: 'decal', sc: [0.75, 1.0], rank: 'r', push: 0 },
+  wallLichenFrost: { lay: 'decal', sc: [0.75, 1.0], rank: 'r', glow: 0.7, push: 0 },
+  wallLichenCrystal: { lay: 'decal', sc: [0.75, 1.0], rank: 'r', glow: 0.9, push: 0 },
+  wallStar: { lay: 'decal', sc: [0.75, 1.0], rank: 'r', glow: 1, push: 0 },
 };
+for (const [k, K] of Object.entries(KINDS)) K.m = K.m || k;
 
 /**
  * The flora of a place: { floor, ceil, wall } weighted lists and the chance per placement cell
@@ -192,109 +193,53 @@ for (const [m, k] of [
 ]) if (m !== undefined) FERT[m] = k;
 
 const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+/** The variants of a kind's model (built on first use), or null. */
+export const modelsOf = (K) => protos(K.m, K.v || 2);
+
 /**
- * Lay a plant's cards into the writer w (Vegetation's staging buffer). The plant's constants go in
- * first (w.begin(glow, sway, rank, tint r, g, b, flutter phase)), then each card:
- * w.quad(base xyz, side xyz (full width), up xyz (root → tip), u0, v at the root, u1, v at the tip,
- * bend at the root, bend at the tip, ao at the root, ao at the tip).
- * P: { x, y, z, yaw, r (rng), nx, nz (wall normal), room (hanging length available, m), K (kind),
- * spr (atlas entry) }. Returns the plant's rough radius and height (out.rad, out.h).
+ * Lay a plant's boxes into the writer w (Vegetation's staging buffer): the plant's constants first
+ * (w.begin(root x, y, z, yaw, rank, flutter, gust, sway, push, voxels per metre, hanging, tint r,
+ * g, b, glow)), then each box (w.box(offset xyz, size xyz, r, g, b, glow level, bend at the bottom,
+ * at the top)). P: { x, y, z, yaw, r (rng), nx, nz (wall normal), room (hanging length available,
+ * m), K (kind) }. Returns the plant's rough radius and height (m) and its colour (out.rad, out.h,
+ * out.col).
  */
 export function layPlant(w, P, out) {
-  const { K, spr, r } = P;
-  const sw = spr.w / PXM, sh = spr.h / PXM;
+  const { K, r } = P;
+  const list = modelsOf(K);
+  const pr = list[Math.floor(r() * list.length)];
   const sc = K.sc ? lerp(K.sc[0], K.sc[1], r()) : 1;
+  const base = K.div || 56;
+  // the voxel follows the plant's size: fine plants stay within 1/48–1/64 m
+  const lo = base >= 48 ? 48 : base * 0.85, hi = base >= 48 ? 64 : base * 1.2;
+  let div = clamp(Math.round(base / sc), lo, hi);
   const tint = 0.9 + r() * 0.2;
   const rank = K.rank === 'r' ? r() * 0.92 : K.rank === 'r2' ? 0.35 + r() * 0.6 : K.rank;
-  w.begin(K.glow || 0, K.sway || 0, rank, tint * (0.96 + r() * 0.08), tint * (0.96 + r() * 0.08), tint * (0.96 + r() * 0.08), r());
-  const u0 = spr.u0, u1 = spr.u1, vb = spr.vb, vt = spr.vt;
-  const ao = K.ao ?? 0.42;
-  const { x, y, z } = P;
-  const lay = K.lay;
-  if (lay === 'cross' || lay === 'hang') {
-    const hang = lay === 'hang';
-    let W = sw * sc, H = sh * sc;
-    if (hang) { const L = Math.min(P.room, lerp(K.len[0], K.len[1], r())); W = sw * (L / sh); H = L; }
-    const n = K.n || 2;
-    for (let i = 0; i < n; i++) {
-      const a = P.yaw + (i * Math.PI) / n + (r() - 0.5) * 0.25;
-      const tx = (r() - 0.5) * 0.12, tz = (r() - 0.5) * 0.12; // a little lean
-      const ca = Math.cos(a) * W, sa = Math.sin(a) * W;
-      // hanging sprites have their root on the top row
-      if (hang) w.quad(x, y, z, ca, 0, sa, tx * H * 0.5, -H, tz * H * 0.5, u0, vt, u1, vb, 0, 1, 0.7, 1);
-      else w.quad(x, y, z, ca, 0, sa, tx * H, H, tz * H, u0, vb, u1, vt, 0, 1, ao, 1);
+  const wall = K.lay === 'fan' || K.lay === 'tuft' || K.lay === 'decal';
+  const yaw = wall ? Math.atan2(P.nx || 0, P.nz || 1) : P.yaw;
+  let cut = -1e9, H = pr.H;
+  if (pr.mode === 'down') {
+    // hanging: the voxel picked so the model fits the room under it (cut short where it can't)
+    const L = Math.min(P.room ?? 9, lerp(K.len[0], K.len[1], r()));
+    div = clamp(Math.round(pr.H / L), 48, 64);
+    cut = -Math.round(L * div);
+    H = Math.min(pr.H, -cut);
+  }
+  let y = P.y;
+  if (K.lay === 'flat') y += 0.002;
+  w.begin(P.x + (P.nx || 0) * (K.lay === 'decal' ? 0.002 : 0), y, P.z + (P.nz || 0) * (K.lay === 'decal' ? 0.002 : 0), yaw, rank, r(), P.gust ?? 0, K.sway || 0, K.push ?? 1, div, !!K.hang,
+    tint * (0.96 + r() * 0.08), tint * (0.96 + r() * 0.08), tint * (0.96 + r() * 0.08), K.glow || 0);
+  const { off, size, rgb, glow, bend } = pr;
+  for (let i = 0, n = pr.n; i < n; i++) {
+    const i3 = i * 3;
+    let oy = off[i3 + 1], sy = size[i3 + 1];
+    if (oy < cut) {
+      if (oy + sy <= cut) continue;
+      sy = oy + sy - cut; oy = cut;
     }
-    out.rad = W * 0.5; out.h = H;
-    return out;
+    w.box(off[i3], oy, off[i3 + 2], size[i3], sy, size[i3 + 2], rgb[i3], rgb[i3 + 1], rgb[i3 + 2], glow[i], bend[i * 2], bend[i * 2 + 1]);
   }
-  if (lay === 'flat') {
-    const W = sw * sc, a = P.yaw, c = Math.cos(a) * W, s = Math.sin(a) * W;
-    // side (c, 0, s), up (-s, 0, c): centred on the spot, a hair above the ground
-    w.quad(x + s * 0.5, y + 0.004 + r() * 0.004, z - c * 0.5, c, 0, s, -s, 0, c, u0, vb, u1, vt, 0, 0, 0.85, 0.85);
-    out.rad = W * 0.5; out.h = 0.01;
-    return out;
-  }
-  const nx = P.nx || 0, nz = P.nz || 0, tx = -nz, tz = nx; // wall normal and the way along the wall
-  if (lay === 'decal') {
-    // flat on a wall face with a random spin in its plane
-    const W = sw * sc, a = r() * Math.PI * 2, c = Math.cos(a) * W, s = Math.sin(a) * W;
-    const sx = tx * c, sy = s, sz = tz * c, ux = -tx * s, uy = c, uz = -tz * s;
-    w.quad(x + nx * 0.004 - ux * 0.5, y - uy * 0.5, z + nz * 0.004 - uz * 0.5, sx, sy, sz, ux, uy, uz, u0, vb, u1, vt, 0, 0, 0.85, 0.85);
-    out.rad = W * 0.5; out.h = W;
-    return out;
-  }
-  if (lay === 'tuft') {
-    // a cross of cards growing out of a wall, tilted up and out
-    const W = sw * sc, H = sh * sc;
-    for (let i = 0; i < (K.n || 2); i++) {
-      const a = (i - 0.5) * 1.3 + (r() - 0.5) * 0.3;
-      const sx = tx * Math.cos(a) + nx * Math.sin(a) * 0.5, sz = tz * Math.cos(a) + nz * Math.sin(a) * 0.5;
-      const sl = W / (Math.hypot(sx, sz) || 1);
-      w.quad(x - nx * 0.01, y - 0.02, z - nz * 0.01, sx * sl, 0, sz * sl, nx * 0.69 * H, 0.72 * H, nz * 0.69 * H, u0, vb, u1, vt, 0, 1, ao + 0.1, 1);
-    }
-    out.rad = W * 0.5; out.h = H;
-    return out;
-  }
-  // rosette (floor) / fan (wall): fronds on cards bent in segments
-  const n = K.n[0] + Math.floor(r() * (K.n[1] - K.n[0] + 1));
-  const segs = K.segs || 2;
-  let maxR = 0, maxH = 0;
-  const wall = lay === 'fan';
-  for (let i = 0; i < n; i++) {
-    // the frond's heading round the axis (up, or leaning out of a wall)
-    let dx, dz, ax = 0, ay = 1, az = 0;
-    if (wall) {
-      const a = ((i + 0.5) / n - 0.5) * 2.2 + (r() - 0.5) * 0.3;
-      dx = nx * Math.cos(a) + tx * Math.sin(a); dz = nz * Math.cos(a) + tz * Math.sin(a);
-      ax = nx * 0.55; ay = 0.83; az = nz * 0.55;
-    } else {
-      const a = P.yaw + (i / n) * Math.PI * 2 + (r() - 0.5) * 0.5;
-      dx = Math.cos(a); dz = Math.sin(a);
-    }
-    const len = lerp(K.len[0], K.len[1], r()) * (wall ? 1 : 0.85 + r() * 0.3);
-    let tilt = lerp(K.tilt[0], K.tilt[1], r());
-    const cw = len * (sw / sh); // the card's width follows the sprite's proportions
-    let px = x, py = y, pz = z;
-    // sideways: the tangent round the axis (axis × heading)
-    let sxv = ay * dz, syv = az * dx - ax * dz, szv = -ay * dx;
-    const sl = cw / (Math.hypot(sxv, syv, szv) || 1);
-    sxv *= sl; syv *= sl; szv *= sl;
-    const L = len / segs;
-    for (let s = 0; s < segs; s++) {
-      // grow along the axis tilted out toward the heading, drooping more each segment
-      const ct = Math.cos(tilt), st = Math.sin(tilt);
-      let gx = ax * ct + dx * st, gy = ay * ct, gz = az * ct + dz * st;
-      const gl = L / (Math.hypot(gx, gy, gz) || 1);
-      gx *= gl; gy *= gl; gz *= gl;
-      const t0 = s / segs, t1 = (s + 1) / segs;
-      w.quad(px, py, pz, sxv, syv, szv, gx, gy, gz, u0, vb + (vt - vb) * t0, u1, vb + (vt - vb) * t1, t0, t1, s === 0 ? (wall ? 0.6 : ao) : 1, 1);
-      px += gx; py += gy; pz += gz;
-      tilt += K.droop * (0.8 + r() * 0.4);
-      const rr = Math.hypot(px - x, pz - z);
-      if (rr > maxR) maxR = rr;
-      if (py - y > maxH) maxH = py - y;
-    }
-  }
-  out.rad = maxR; out.h = maxH;
+  out.rad = pr.rad / div; out.h = H / div; out.col = pr.col;
   return out;
 }

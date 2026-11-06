@@ -9,6 +9,7 @@ import { ITEMS } from '../../data/items.js';
 import { iconCanvas } from '../../gfx/PixelArt.js';
 import { Px, PAL, INK } from '../../ui/uiArt.js';
 import { SPR } from '../../ui/uiSprites.js';
+import { blob } from '../../iso/organic.js';
 
 const W = PAL.wood, B = PAL.brass;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -294,10 +295,10 @@ class PickGauge {
     for (let i = 0; i < Math.max(n, pk + sq); i++) {
       const x = 14 + (i % 9) * 8, y = 21 + Math.floor(i / 9) * 8;
       if (i < pk) {
-        p.disk(x + 3, y + 3, 3, 0xd02a40); p.set(x + 2, y + 1, 0xffb0b8); p.set(x + 3, y, 0x3a7a2a);
+        blob(p, x + 3, y + 3, 3, 3, 0xd02a40); p.set(x + 2, y + 1, 0xffb0b8); p.set(x + 3, y, 0x3a7a2a);
       } else if (i < pk + sq) {
         p.rect(x + 1, y + 3, 5, 2, 0x8a1a28); p.set(x + 3, y + 2, 0xb02a3a);
-      } else p.disk(x + 3, y + 3, 2.6, 0x4a3018);
+      } else blob(p, x + 3, y + 3, 2.6, 2.6, 0x4a3018);
     }
     if (this.sim.streak > 1) {
       const k = Math.min(9, this.sim.streak);
@@ -329,12 +330,12 @@ class LiftGauge {
     for (let y = top; y <= 74; y++) for (let x = 19; x <= 24; x++) p.set(x, y, x === 19 ? 0xffffff : 0xe8d8a8);
     p.hl(17, 26, Y(0.92), 0xc8f08a);
     // the egg icon rides the column
-    p.ellipse(22, top - 3, 3, 4, 0xe8f0d0); p.set(21, top - 5, 0xffffff);
+    blob(p, 22, top - 3, 3, 4, 0xe8f0d0); p.set(21, top - 5, 0xffffff);
     // spirit level: the bubble must stay in the middle
     for (let x = 6; x <= 37; x++) for (let y = 87; y <= 94; y++) p.set(x, y, Math.abs(x - 21.5) < 5 ? 0x4a8a3a : 0x6aa8a0);
     p.vl(16, 87, 94, INK); p.vl(27, 87, 94, INK);
     const bx = Math.round(21.5 + clamp(s.tilt, -1.1, 1.1) * 14);
-    p.ellipse(bx, 90.5, 3.5, 2.6, Math.abs(s.tilt) > 0.7 ? 0xff6a4a : 0xf8fff0);
+    blob(p, bx, 90.5, 3.5, 2.6, Math.abs(s.tilt) > 0.7 ? 0xff6a4a : 0xf8fff0);
     p.set(bx - 1, 89, 0xffffff);
     cv.show();
   }

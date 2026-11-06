@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { PixelCanvas, pixelTexture } from '../gfx/PixelArt.js';
 import { makeRng, makeNoise2D, mixHex, clamp } from '../core/util.js';
+import { blob } from '../iso/organic.js';
 
 // 4x4 ordered dither in GLSL (0..1), keyed on screen pixels.
 export const GLSL_BAYER = /* glsl */`
@@ -606,9 +607,9 @@ export function gullSheet() {
       }
     }
     // body, head, beak, eyes
-    fr.ellipse(16, 9, 3.6, 2.2, WHITE);
+    blob(fr, 16, 9, 3.6, 2.2, WHITE);
     fr.rect(13, 10, 7, 1, GREY);
-    fr.disk(16, 6, 2.2, WHITE);
+    blob(fr, 16, 6, 2.2, 2.2, WHITE);
     fr.set(15, 5, LINE); fr.set(17, 5, LINE);
     fr.set(16, 7, 0xffc040); fr.set(16, 8, 0xffa020); fr.set(17, 8, 0xe04030);
     fr.set(14, 12, GREY_DK); fr.set(18, 12, GREY_DK); // tail feathers

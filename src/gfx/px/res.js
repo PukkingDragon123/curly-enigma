@@ -10,6 +10,7 @@
 //   - dc(X) turns a native pixel into its design coordinate, nc(x) a design coordinate into
 //     a native pixel, dot() paints a whole design pixel (an S×S block).
 import { Mask, hash2 } from './shade.js';
+import { mix, lum } from './color.js';
 
 /** Icon pixels per design unit. */
 export let S = 2;
@@ -77,10 +78,71 @@ Mask.prototype.at = DMask.prototype.at;
 /** A fresh icon-sized design mask. */
 export const DM = () => new DMask(SZ, SZ);
 
-/** Paint the S×S block of design pixel (x, y) (a: alpha as in pc.set). */
+/**
+ * Paint the S×S block of design pixel (x, y) (a: alpha as in pc.set). On an icon canvas at S = 2
+ * the dot is also noted, so refineDots() can redraw it at real-pixel scale once the icon is done.
+ */
 export function dot(pc, x, y, c, a = 255) {
   const X = Math.floor(x) * S, Y = Math.floor(y) * S;
   for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) pc.set(X + i, Y + j, c, a);
+  if (S === 2 && pc.w === SZ && pc.h === SZ && X >= 0 && Y >= 0 && X < SZ && Y < SZ) {
+    const D = pc._dots || (pc._dots = new Int32Array(32 * 32).fill(-1));
+    D[(Y >> 1) * 32 + (X >> 1)] = a >= 255 ? c & 0xffffff : -2; // (see-through dots stay as they are)
+  }
+}
+
+/**
+ * Redraw the hand-placed accents (dot()s) of a finished icon at real-pixel scale: a 2×2 block reads
+ * as a blob at 64 px, so each becomes what a pixel artist would put there at this size. A run of
+ * dots (a seam, a stitch line, a stroke of a letter or an emblem) keeps one crisp row (or column,
+ * or diagonal) with a half-tone beside it; a lone light accent (a glint, a speck of sugar) a bright
+ * core fading into what is around it; a lone dark one (a nail hole, a pore, a seed) a sharp pit with
+ * a lit lip below-right. Blocks of dots (filled shapes) and accents on the silhouette's edge stay
+ * whole, and so does any dot something else has since painted over.
+ */
+export function refineDots(pc) {
+  const D = pc._dots;
+  pc._dots = null;
+  if (!D || pc.w !== 64 || pc.h !== 64) return pc;
+  const at = (x, y) => (x < 0 || y < 0 || x >= 32 || y >= 32 ? -1 : D[y * 32 + x]);
+  const on = (x, y) => at(x, y) >= 0;
+  const out = [];
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+    const c = D[y * 32 + x];
+    if (c < 0) continue;
+    const X = x * 2, Y = y * 2;
+    let intact = true;
+    for (let j = 0; j < 2 && intact; j++) for (let i = 0; i < 2; i++) if (pc.alpha(X + i, Y + j) < 255 || pc.getHex(X + i, Y + j) !== c) { intact = false; break; }
+    if (!intact) continue;
+    const L = on(x - 1, y), R = on(x + 1, y), U = on(x, y - 1), B = on(x, y + 1);
+    if ((L || R) && (U || B)) continue; // inside a filled patch
+    // what the accent sits on: the ring round it, leaving out other accents
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let j = -1; j <= 2; j++) for (let i = -1; i <= 2; i++) {
+      if (i >= 0 && i <= 1 && j >= 0 && j <= 1) continue;
+      const xx = X + i, yy = Y + j;
+      if (xx < 0 || yy < 0 || xx >= 64 || yy >= 64 || pc.alpha(xx, yy) < 160 || D[(yy >> 1) * 32 + (xx >> 1)] >= 0) continue;
+      const h = pc.getHex(xx, yy);
+      r += (h >> 16) & 255; g += (h >> 8) & 255; b += h & 255; n++;
+    }
+    if (n < 5) continue; // on the edge, or on nothing: keep the block
+    const sur = (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n);
+    if (Math.abs(lum(sur) - lum(c)) < 0.035) continue; // a tint of what is there: nothing to sharpen
+    const m = (t) => mix(c, sur, t);
+    let q;
+    if (L || R) q = [c, c, m(0.5), m(0.5)]; // a horizontal run: a crisp top row
+    else if (U || B) q = [c, m(0.5), c, m(0.5)]; // a vertical run: a crisp left column
+    else if (on(x - 1, y - 1) || on(x + 1, y + 1)) q = [c, m(0.55), m(0.55), c]; // a \ diagonal
+    else if (on(x + 1, y - 1) || on(x - 1, y + 1)) q = [m(0.55), c, c, m(0.55)]; // a / diagonal
+    else if (lum(c) >= lum(sur)) q = [c, m(0.4), m(0.4), m(0.8)]; // a lone light accent
+    else q = [c, m(0.3), m(0.3), mix(sur, 0xfff4dc, 0.16)]; // a lone dark one, with its lit lip
+    out.push(X, Y, q);
+  }
+  for (let k = 0; k < out.length; k += 3) {
+    const X = out[k], Y = out[k + 1], q = out[k + 2];
+    pc.set(X, Y, q[0]); pc.set(X + 1, Y, q[1]); pc.set(X, Y + 1, q[2]); pc.set(X + 1, Y + 1, q[3]);
+  }
+  return pc;
 }
 /** Flag the S×S block of design pixel (x, y) emissive. */
 export function dotE(pc, x, y, g = 1) {

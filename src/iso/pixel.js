@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { PixelCanvas, pixelTexture, drawIcon, drawIconSmall, ramp, ICON } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
 import { makeRng, mixHex, shade } from '../core/util.js';
+import { blob } from './organic.js';
 
 // ---------------------------------------------------------------- 3x5 font
 const G = {
@@ -99,16 +100,18 @@ export function poolTexture() {
 /** Small round glow for halo sprites. */
 export function glowTexture() {
   return cached('glow', () => {
+    // ragged cells of light (a diamond-ish stepped falloff with hand-set edge cells), no round disc
     const n = 16;
     const pc = new PixelCanvas(n);
+    const rng = makeRng(17);
     for (let y = 0; y < n; y++)
       for (let x = 0; x < n; x++) {
-        const dx = (x + 0.5 - n / 2) / (n / 2), dy = (y + 0.5 - n / 2) / (n / 2);
-        const r = Math.sqrt(dx * dx + dy * dy);
-        if (r >= 1) continue;
-        const v = Math.pow(1 - r, 2);
+        const ax = Math.abs((x + 0.5) / n - 0.5) * 2, ay = Math.abs((y + 0.5) / n - 0.5) * 2;
+        const d = Math.max(ax, ay) * 0.6 + (ax + ay) * 0.4 + (rng.range(0, 1) - 0.5) * 0.22;
+        if (d >= 1) continue;
+        const v = Math.pow(1 - d, 1.8) + (Math.min(ax, ay) < 0.07 ? 0.15 * (1 - Math.max(ax, ay)) : 0);
         const lv = Math.floor(v * 3 + BAYER[(y % 4) * 4 + (x % 4)] / 16) / 3;
-        if (lv > 0) pc.set(x, y, 0xffffff, Math.round(lv * 255));
+        if (lv > 0) pc.set(x, y, 0xffffff, Math.round(Math.min(1, lv) * 255));
       }
     return pixelTexture(pc.commit());
   });
@@ -117,9 +120,10 @@ export function glowTexture() {
 /** Blob shadow under characters. */
 export function shadowTexture() {
   return cached('shadow', () => {
+    // a lumpy pool of shade, darker in its middle (no compass circle)
     const pc = new PixelCanvas(16, 16);
-    pc.ellipse(8, 8, 7.5, 7.5, 0x000000, 110);
-    pc.ellipse(8, 8, 5.5, 5.5, 0x000000, 170);
+    blob(pc, 8, 8, 7.4, 7.2, 0x000000, 110, { seed: 3, lump: 0.12, n: 9 });
+    blob(pc, 8, 8.2, 5.2, 5, 0x000000, 170, { seed: 8, lump: 0.16, n: 8 });
     return pixelTexture(pc.commit());
   });
 }
@@ -235,16 +239,27 @@ function sky(pc, x0, y0, w, h, top = 0x5ab8f0, bot = 0xbfe6ff) {
   }
 }
 
+/** A hand-pixelled sun: a chunky lumpy face lit from the top left, stubby pixel rays round it, a hot glint. */
 function sun(pc, cx, cy, r) {
-  pc.disk(cx, cy, r + 2, 0xfff2a0, 120);
-  pc.disk(cx, cy, r, 0xffd34a);
-  pc.disk(cx - r * 0.3, cy - r * 0.3, r * 0.5, 0xfff2a0);
+  const R = Math.max(1.5, r);
+  // stubby rays, every other one longer (straight pixel runs and diagonals)
+  for (let i = 0; i < 8; i++) {
+    const dx = [1, 1, 0, -1, -1, -1, 0, 1][i], dy = [0, 1, 1, 1, 0, -1, -1, -1][i];
+    const len = i % 2 ? 1 : 2;
+    for (let k = 1; k <= len; k++) pc.set(Math.round(cx + dx * (R + k)), Math.round(cy + dy * (R + k)), k === len ? 0xfff2a0 : 0xffe070, k === len ? 150 : 210);
+  }
+  blob(pc, cx, cy, R + 0.8, R + 0.8, 0xfff2a0, 110, { seed: 21, lump: 0.1, n: 8 });
+  blob(pc, cx, cy, R, R, (dx, dy) => (dx + dy < -0.55 ? 0xffe68a : dx + dy > 0.7 ? 0xf0a830 : 0xffd34a), 255, { seed: 5, lump: 0.08, n: 8 });
+  pc.set(Math.round(cx - R * 0.4), Math.round(cy - R * 0.45), 0xfffbe0);
+  if (R > 3) pc.set(Math.round(cx - R * 0.4) + 1, Math.round(cy - R * 0.45), 0xfff2a0);
 }
 
+/** A cloud: three lumpy puffs on a flat grey-blue underside. */
 function cloud(pc, x, y, w) {
-  pc.ellipse(x, y, w * 0.5, w * 0.22, 0xffffff);
-  pc.ellipse(x - w * 0.18, y - w * 0.12, w * 0.22, w * 0.18, 0xffffff);
-  pc.ellipse(x + w * 0.12, y - w * 0.16, w * 0.26, w * 0.2, 0xffffff);
+  const col = (dx, dy) => (dy > 0.45 ? 0xe4f2fa : 0xffffff);
+  blob(pc, x, y, w * 0.5, w * 0.22, col, 255, { seed: Math.round(w * 3), lump: 0.12, flat: 0.75 });
+  blob(pc, x - w * 0.18, y - w * 0.12, w * 0.22, w * 0.18, 0xffffff, 255, { seed: Math.round(w * 5) + 1, lump: 0.16 });
+  blob(pc, x + w * 0.12, y - w * 0.16, w * 0.26, w * 0.2, 0xffffff, 255, { seed: Math.round(w * 7) + 2, lump: 0.16 });
   pc.rect(Math.round(x - w * 0.45), Math.round(y + w * 0.12), Math.round(w * 0.9), 1, 0xd8ecf8);
 }
 
@@ -271,7 +286,8 @@ function beachScene(pc, x0, y0, w, h, opts = {}) {
     for (const [dx, dy] of [[-1, 0.2], [1, 0.25], [-0.6, -0.4], [0.7, -0.35], [0, -0.6]]) {
       for (let k = 0; k < 7; k++) pc.set(tx + Math.round(dx * k), ty + Math.round(dy * k + k * k * 0.06), k % 2 ? 0x3a9a3a : 0x5ab84a);
     }
-    pc.disk(tx, ty + 1, 1.2, 0x7a4a2a);
+    // coconuts: three hand-set pixels
+    pc.set(tx - 1, ty + 1, 0x7a4a2a); pc.set(tx, ty + 2, 0x5a3418); pc.set(tx + 1, ty + 1, 0x8a5a32);
   }
   if (opts.umbrella) {
     const ux = x0 + Math.round(w * 0.62), uy = y0 + sandY - 3;
@@ -282,9 +298,11 @@ function beachScene(pc, x0, y0, w, h, opts = {}) {
     // a little mole on a towel and a crab scuttling by: the dream
     const mx = x0 + Math.round(w * 0.42), my = y0 + h - 5;
     pc.rect(mx - 4, my + 2, 10, 2, 0xe0402a); pc.rect(mx - 4, my + 2, 10, 1, 0xf8a090);
-    pc.ellipse(mx, my, 2.6, 2, 0x3a2e2a); pc.set(mx + 2, my, 0xf0a0a8); pc.set(mx - 1, my - 1, 0x120c10);
+    blob(pc, mx, my, 2.6, 2, (dx, dy) => (dy < -0.4 ? 0x4a3c36 : 0x3a2e2a), 255, { seed: 11, lump: 0.15, flat: 0.8 }); pc.set(mx + 2, my, 0xf0a0a8); pc.set(mx - 1, my - 1, 0x120c10);
     const cx = mx + 8, cy = my + 1;
-    pc.ellipse(cx, cy, 1.6, 1, 0xe0503a); pc.set(cx - 2, cy - 1, 0xe0503a); pc.set(cx + 2, cy - 1, 0xe0503a);
+    // the crab: a squat shell and two claws, set pixel by pixel
+    pc.rect(cx - 1, cy, 3, 1, 0xe0503a); pc.set(cx, cy - 1, 0xf07a5a); pc.set(cx - 2, cy - 1, 0xe0503a); pc.set(cx + 2, cy - 1, 0xe0503a);
+    pc.set(cx - 1, cy + 1, 0xa0301e); pc.set(cx + 1, cy + 1, 0xa0301e);
   }
 }
 
@@ -341,7 +359,8 @@ export function paintingCanvas(kind) {
     pc.rect(1, 1, 10, 1, 0xe0b040); pc.rect(1, 1, 1, 16, 0xe0b040); pc.rect(10, 1, 1, 16, 0xe0b040);
     // crossed claws crest
     for (let k = 0; k < 6; k++) { pc.set(3 + k, 5 + k, 0xf0d890); pc.set(8 - k, 5 + k, 0xf0d890); }
-    pc.disk(6, 8, 1.6, 0xf0d890);
+    // the boss where the claws cross: a little cut gem shape, set by hand
+    pc.rect(5, 7, 2, 3, 0xf0d890); pc.set(4, 8, 0xf0d890); pc.set(7, 8, 0xc8a050); pc.set(5, 7, 0xfff0c0);
     return pc;
   }
   if (kind === 'chalk') {

@@ -13,6 +13,7 @@ import { GLSL_BAYER } from '../fx.js';
 import { MF } from '../meadowfx.js';
 import { FF, GLSL_DAPPLE } from '../forestfx.js';
 import { FA, GLSL_FA } from './atmos.js';
+import { blob } from '../../iso/organic.js';
 
 const CELL = 32;
 export const FG = {
@@ -129,7 +130,7 @@ function atlas() {
   { // dandelion clocks (seed heads)
     const c = FG.seed, ox = c * CELL;
     field(c, 8, 3, 8);
-    for (let i = 0; i < 4; i++) { const x = Math.round(rng.range(5, CELL - 6)), h = Math.round(rng.range(12, 18)); const tx = stem(c, x, h); pc.disk(ox + tx, CELL - 1 - h - 1, 2.2, 0xf8f8f0); pc.set(ox + tx, CELL - 2 - h, 0xd8d8c8); }
+    for (let i = 0; i < 4; i++) { const x = Math.round(rng.range(5, CELL - 6)), h = Math.round(rng.range(12, 18)); const tx = stem(c, x, h); blob(pc, ox + tx, CELL - 1 - h - 1, 2.2, 2.2, 0xf8f8f0); pc.set(ox + tx, CELL - 2 - h, 0xd8d8c8); }
   }
   { // wild garlic: broad glossy leaves, white starry umbels on bare stems
     const c = FG.garlic, ox = c * CELL;

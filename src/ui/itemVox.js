@@ -1,8 +1,9 @@
-// Items as 3D voxel art for the UI. An item's 32×32 pixel icon (or a forged weapon's) is extruded into
-// a voxel model, shaped by what it is (paper stays a sheet, a blade stays thin, an ore lump is a lump),
-// meshed with the creatures' mesher (baked face shading and corner AO), and drawn into a 64 px still by
-// a tiny software rasterizer (an orthographic view of a few thousand triangles is ~1 ms on the CPU: no
-// GPU round trip, no stall, nothing borrowed from the renderer, and it works before the game has one).
+// Items as 3D voxel art for the UI. An item's 64×64 pixel icon (or a forged weapon's) is extruded into
+// a voxel model (one voxel per icon pixel), shaped by what it is (paper stays a sheet, a blade stays
+// thin, an ore lump is a lump), meshed with the creatures' mesher (baked face shading and corner AO),
+// and drawn into a 128 px still by a tiny software rasterizer (an orthographic view of ~10-20k
+// triangles is a few ms on the CPU: no GPU round trip, no stall, nothing borrowed from the renderer,
+// and it works before the game has one).
 //
 //   itemVox.src(id) → string             what an <img> should show: the 3D still once it's made, until
 //                                         then the flat icon, tagged so the still replaces it by itself
@@ -19,14 +20,15 @@
 // than a few ms in one go), then every tagged <img> on the page is swapped to its still. Anything that
 // fails leaves the flat icon in place.
 import { VB, FINE } from '../deep/enemies/vox.js';
-import { drawIconSmall, iconURL, weaponIconURL, iconKeyOf, drawWeapon, PixelCanvas } from '../gfx/PixelArt.js';
+import { drawIconSmall, iconURL, weaponIconURL, iconKeyOf, drawWeapon, PixelCanvas, ICON } from '../gfx/PixelArt.js';
 import { hashStr } from '../core/util.js';
 import { ITEMS } from '../data/items.js';
 import { METALS, INFUSIONS } from '../data/weapons.js';
 import './itemVox.css';
 
-const RES = 64; // still size (each voxel face ≈ 2×2 px: crisp at --icon, halves cleanly to --icon-s)
-const HALF = 16; // the frame's half-height in voxels (a whole 32-px icon fits; larger shapes are fitted)
+const RES = 128; // still size (each voxel face ≈ 2×2 px: 1:1 at --icon on 2× screens, halves cleanly)
+const HALF = 32; // the frame's half-height in voxels (a whole 64-px icon fits; larger shapes are fitted)
+const LINE = 2; // the outline's width in still pixels (one icon pixel: it survives the halving)
 const POSE = { yaw: -0.55, pitch: 0.38 }; // a still: turned a little toward you, seen a little from above
 const OUTLINE = [26, 14, 8]; // the game's pixel-art outline brown
 const TURN_N = 48, TURN_FPS = 14; // a turn: 48 frames (each drawn once, then replayed) ≈ 3.4 s a lap
@@ -52,24 +54,25 @@ const flatOf = (key) => {
 function pixelsOf(key) {
   if (key.startsWith('w.')) {
     const [, type, metal, inf] = key.split('.');
-    const pc = new PixelCanvas(32);
+    const pc = new PixelCanvas(ICON);
     drawWeapon(pc, type, METALS[metal]?.color ?? 0xa0a0a0, inf ? INFUSIONS[inf]?.color : null);
     return { d: pc.d, W: pc.w, H: pc.h };
   }
   if (!ITEMS[key]) return null;
-  const pc = drawIconSmall(ITEMS[key].icon || { k: '?' }, hashStr(key), 32, key); // the 64-px art, reduced: the model stays 32 voxels
+  const pc = drawIconSmall(ITEMS[key].icon || { k: '?' }, hashStr(key), ICON, key); // the raw 64-px art: one voxel a pixel
   return { d: pc.d, W: pc.w, H: pc.h };
 }
 
 // ------------------------------------------------------------------ shapes
 // half-thickness (voxels either side of the middle) from a pixel's distance in from the silhouette
+// (64-px icons: the outline pixel stays one voxel, the bodies a little thicker than the 32-px models were)
 const SHAPES = {
-  paper: { t: () => 0, yaw: -0.42, pitch: 0.3 }, // a sheet: plans, letters, tickets, swatches
-  coin: { t: (d) => (d >= 2 ? 1 : 0) }, // a disc with a rim
-  slab: { t: (d) => (d < 1.5 ? 1 : 2) }, // ingots: flat faces, square edges
-  blade: { t: (d) => (d < 1.5 ? 0 : 1) }, // edges stay one voxel: blades, picks, chisels, sticks
-  round: { t: (d) => Math.min(5, Math.round(Math.sqrt(d * 2.2)) - 1) }, // the default: a soft rounded body
-  chunky: { t: (d) => Math.min(7, Math.round(Math.sqrt(d * 3.6)) - 1) }, // ore, gems, minerals: lumps
+  paper: { t: (d) => (d < 2.5 ? 0 : 1), yaw: -0.42, pitch: 0.3 }, // a sheet (a card's thickness): plans, letters, tickets, swatches
+  coin: { t: (d) => (d < 1.5 ? 0 : d < 3.5 ? 1 : d < 6 ? 2 : 3) }, // a disc with a rim
+  slab: { t: (d) => (d < 1.5 ? 1 : d < 3 ? 3 : 4) }, // ingots: flat faces, square edges
+  blade: { t: (d) => (d < 1.5 ? 0 : d < 3 ? 1 : d < 5 ? 2 : 3) }, // edges stay thin: blades, picks, chisels, sticks
+  round: { t: (d) => (d < 1.5 ? 0 : Math.min(11, Math.round(Math.sqrt(d * 4.6)) - 1)) }, // the default: a soft rounded body
+  chunky: { t: (d) => (d < 1.5 ? 0 : Math.min(15, Math.round(Math.sqrt(d * 7.4)) - 1)) }, // ore, gems, minerals: lumps
 };
 function shapeOf(key) {
   if (key.startsWith('w.')) return 'blade';
@@ -103,6 +106,25 @@ function reachAt(cols, n, poses) {
   return r;
 }
 
+/**
+ * How far the model reaches at any angle of a turn (yaw all round, pitch within p0..p1): a corner at
+ * (x, y, z) sweeps a circle of radius hypot(x, z) about the upright, so this bound needs one pass.
+ */
+function reachTurn(cols, n, p0, p1) {
+  let r = 1;
+  const c0 = Math.cos(p0), s0 = Math.abs(Math.sin(p0)), c1 = Math.cos(p1), s1 = Math.abs(Math.sin(p1));
+  for (let i = 0; i < n; i++) {
+    const o = i * 3, t = cols[o + 2] + 0.5;
+    for (let c = 0; c < 4; c++) {
+      const x = cols[o] + (c & 1), y = Math.abs(cols[o + 1] + ((c >> 1) & 1));
+      const h = Math.hypot(x, t);
+      const a = Math.max(h, y * c0 + h * s0, y * c1 + h * s1);
+      if (a > r) r = a;
+    }
+  }
+  return r;
+}
+
 /** The voxel model of an icon: { pos, col, idx, fit (its still's), fitTurn (any turned angle), pose }, or null. */
 function buildModel(key) {
   const t0 = performance.now();
@@ -123,7 +145,9 @@ function buildModel(key) {
       dist[i] = Math.min(dist[i], at(x + 1, y) + 1, at(x, y + 1) + 1, at(x + 1, y + 1) + 1.4, at(x - 1, y + 1) + 1.4);
     }
     const shape = SHAPES[shapeOf(key)];
-    const vb = new VB(7);
+    // the voxels straight into the mesher's list (a 64-px icon is ~20-40k voxels: no Map on the way)
+    const L = [];
+    const vb = { list: () => L, v: { size: 0 } };
     const hx = W / 2, hy = H / 2;
     const cols = new Float32Array(W * H * 3); // each pixel's column: left, bottom, half-thickness
     let n = 0;
@@ -134,12 +158,13 @@ function buildModel(key) {
       const c = (d[k] << 16) | (d[k + 1] << 8) | d[k + 2];
       const t = Math.max(0, shape.t(dist[i]));
       // the faces keep the art's colour; the walls between layers are a shade darker (reads as depth)
-      for (let z = -t; z <= t; z++) vb.set(x - hx, hy - 1 - y, z, z === t || z === -t || dist[i] < 1.5 ? c : shade(c, 0.8));
+      const wall = shade(c, 0.8);
+      for (let z = -t; z <= t; z++) L.push({ x: x - hx, y: hy - 1 - y, z, c: z === t || z === -t || dist[i] < 1.5 ? c : wall });
       cols[n * 3] = x - hx; cols[n * 3 + 1] = hy - 1 - y; cols[n * 3 + 2] = t;
       n++;
     }
     if (!n) return null;
-    const geo = vb.geo(0, 0, 0, FINE);
+    const geo = VB.prototype.geo.call(vb, 0, 0, 0, FINE);
     // keep the arrays (in voxels, the layers centred on z = 0), not the geometry
     const P = geo.attributes.position.array, C = geo.attributes.color.array, I = geo.index.array;
     const pos = new Float32Array(P.length);
@@ -151,9 +176,7 @@ function buildModel(key) {
     const room = HALF - 0.75;
     model.pose = pose;
     model.fit = Math.min(1, room / reachAt(cols, n, [pose]));
-    const turn = [];
-    for (let i = 0; i < TURN_N; i += 3) turn.push(spinPose(i, pose));
-    model.fitTurn = Math.min(model.fit, room / reachAt(cols, n, turn));
+    model.fitTurn = Math.min(model.fit, room / reachTurn(cols, n, pose.pitch - 0.12, pose.pitch));
     return model;
   } catch (e) {
     DEBUG.err = String(e?.message || e);
@@ -226,13 +249,16 @@ function draw(m, job) {
       }
     }
   }
-  // the outline: one pixel of brown round the silhouette (like the rest of the game's pixel art)
-  for (let y = 0; y < RES; y++) for (let x = 0; x < RES; x++) {
-    const p = y * RES + x;
-    if (o8[p * 4 + 3]) continue;
-    if ((x > 0 && zbuf[p - 1] > -1e9) || (x < RES - 1 && zbuf[p + 1] > -1e9) || (y > 0 && zbuf[p - RES] > -1e9) || (y < RES - 1 && zbuf[p + RES] > -1e9)) {
-      o8[p * 4] = OUTLINE[0]; o8[p * 4 + 1] = OUTLINE[1]; o8[p * 4 + 2] = OUTLINE[2]; o8[p * 4 + 3] = 255;
+  // the outline: an icon pixel of brown round the silhouette (like the rest of the game's pixel art)
+  for (let pass = 0; pass < LINE; pass++) {
+    const on = (p) => o8[p * 4 + 3] === 255 && (pass === 0 ? zbuf[p] > -1e9 : true);
+    const add = [];
+    for (let y = 0; y < RES; y++) for (let x = 0; x < RES; x++) {
+      const p = y * RES + x;
+      if (o8[p * 4 + 3]) continue;
+      if ((x > 0 && on(p - 1)) || (x < RES - 1 && on(p + 1)) || (y > 0 && on(p - RES)) || (y < RES - 1 && on(p + RES))) add.push(p);
     }
+    for (const p of add) { o8[p * 4] = OUTLINE[0]; o8[p * 4 + 1] = OUTLINE[1]; o8[p * 4 + 2] = OUTLINE[2]; o8[p * 4 + 3] = 255; }
   }
   DEBUG.drawMs += performance.now() - t0;
   return img;

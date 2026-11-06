@@ -835,6 +835,8 @@ export class Build {
   }
   onVoxel(vx, vy, vz, old, m) {
     if (old === m) return;
+    // (every dug voxel comes through here: nothing to do unless something was built)
+    if (!this.fixtures.size && !this.glass.size && !FIX.has(m) && !FIX.has(old) && old !== BM.B_GLASS && m !== BM.B_GLASS && old !== BM.B_CHEST) return;
     if (FIX.has(old) && !FIX.has(m)) this.removeFixture(vx, vy, vz);
     if (FIX.has(m) && !FIX.has(old)) this.addFixture(vx, vy, vz, m);
     if (old === BM.B_GLASS || m === BM.B_GLASS) {
@@ -1022,11 +1024,16 @@ export class Build {
 
   // ------------------------------------------------------------------ per frame
   /** Called by DigScene's build section every frame. o.hide: busy or holding a clump. */
+  /** Hook into voxel edits and give the terrain shader the block look (DigScene calls it while the mine loads, before its shaders compile). */
+  prepare() {
+    this.hook();
+    const own = this.owner;
+    if (!this.patched && own?.terrain?.mat) this.patched = (!/[?&]bklook=0/.test(location.search) && patchBuildLook(own.terrain.mat)) || 'no'; // ?bklook=0: plain look (A/B tests)
+  }
   update(dt, o = {}) {
     this.time += dt;
-    this.hook();
+    this.prepare();
     const own = this.owner, ui = this.ui;
-    if (!this.patched && own?.terrain?.mat) this.patched = (!/[?&]bklook=0/.test(location.search) && patchBuildLook(own.terrain.mat)) || 'no'; // ?bklook=0: plain look (A/B tests)
     const hide = !!o.hide;
     this.updateKit(dt);
     // the build slot: plan, ghost, crosshair

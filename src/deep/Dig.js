@@ -28,12 +28,6 @@ const TAN = [[[0, 1, 0], [0, 0, 1]], [[1, 0, 0], [0, 0, 1]], [[1, 0, 0], [0, 1, 
 
 // --- the shader's hash33 / hash3, in JS (float precision differs a little; only seams care)
 const fract = (x) => x - Math.floor(x);
-function hash33(x, y, z) {
-  let px = fract(x * 0.1031), py = fract(y * 0.1030), pz = fract(z * 0.0973);
-  const d = px * (py + 33.33) + py * (px + 33.33) + pz * (pz + 33.33);
-  px += d; py += d; pz += d;
-  return [fract((px + py) * pz), fract((px + px) * py), fract((py + px) * px)];
-}
 
 /** Plate id (integer cell key) of a voxel for plate scale S (voxels). */
 export function plateOf(vx, vy, vz, S) {
@@ -42,9 +36,13 @@ export function plateOf(vx, vy, vz, S) {
   let f1 = 1e9, best = 0;
   for (let k = 0; k < 8; k++) {
     const cx = gx + (k & 1), cy = gy + ((k >> 1) & 1), cz = gz + ((k >> 2) & 1);
-    const h = hash33(cx, cy, cz);
-    const fx = (cx + 0.5 + (h[0] - 0.5) * 0.85) * S, fy = (cy + 0.5 + (h[1] - 0.5) * 0.85) * S, fz = (cz + 0.5 + (h[2] - 0.5) * 0.85) * S;
-    const d = (qx - fx) ** 2 + (qy - fy) ** 2 + (qz - fz) ** 2;
+    // hash33(cx, cy, cz), inlined (no array per cell: this runs for every voxel of a plate)
+    let px = fract(cx * 0.1031), py = fract(cy * 0.1030), pz = fract(cz * 0.0973);
+    const dd = px * (py + 33.33) + py * (px + 33.33) + pz * (pz + 33.33);
+    px += dd; py += dd; pz += dd;
+    const h0 = fract((px + py) * pz), h1 = fract((px + px) * py), h2 = fract((py + px) * px);
+    const fx = (cx + 0.5 + (h0 - 0.5) * 0.85) * S, fy = (cy + 0.5 + (h1 - 0.5) * 0.85) * S, fz = (cz + 0.5 + (h2 - 0.5) * 0.85) * S;
+    const d = (qx - fx) * (qx - fx) + (qy - fy) * (qy - fy) + (qz - fz) * (qz - fz);
     if (d < f1) { f1 = d; best = ((cx + 4096) * 8192 + (cy + 4096)) * 8192 + (cz + 4096); }
   }
   return best;
