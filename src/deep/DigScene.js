@@ -27,6 +27,7 @@ import { iconURL as flatIcon } from '../gfx/PixelArt.js';
 import { itemVox } from '../ui/itemVox.js';
 import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { clamp, rand, chance, hexToRgb, formatGoldFull } from '../core/util.js';
+import { DSPR } from '../ui/deepArt.js';
 import { Build } from './Build.js'; // building part: blocks, ladders, torches, doors, chests; tools that break them
 
 import { TOOL_KINDS, HOTBAR_N, hotbarOf } from '../core/hotbar.js';
@@ -176,11 +177,44 @@ export default class DigScene extends Scene {
     this.updateHotbar();
     if (g.ui.setRadar) g.ui.setRadar((o) => this.radar(o), { heading: () => this.player.yaw });
     this.showBag();
+    await this.precompile();
     if (!st.flag('escaped') && !this.flags.hintRadar) {
       this.flags.hintRadar = true;
       setTimeout(() => { if (g.scene === this) this.say('radar', 'Your radar hums: <b>Deep Town</b> is somewhere down there. Dig toward it.', 'good', 99); }, 2500);
     }
     this.music = 'mine';
+  }
+
+  /**
+   * While the mine loads: compile the shaders of everything in it, plus the ones that only show up
+   * later (debris, cracks, ore clumps), into the engine's scene target as the frame will, and draw
+   * the crosshair's reticles (each toDataURL waits for the GPU), so the first blow, the first slab
+   * and the first ore don't stall a frame.
+   */
+  async precompile() {
+    const eng = this.game.engine, r = eng.renderer;
+    if (!r?.compileAsync) return;
+    for (const k of ['none', 'rock', 'ore', 'enemy', 'use']) try { DSPR.reticle(k); } catch (e) { /* art only */ }
+    this.cracks ||= new Cracks(this.scene, this.world);
+    const warm = new THREE.Group(), box = new THREE.BoxGeometry(0.01, 0.01, 0.01);
+    const mats = [this.bodies.mat, this.bodies.glowMat];
+    try { const lit = this.clumps && (await extModules['./Clumps.js']?.())?.litMaterial; if (lit) mats.push(lit(this.U, {}), lit(this.U, { emissive: 0.5 })); } catch (e) { /* optional */ }
+    for (const m of mats) { const me = new THREE.Mesh(box, m); me.layers.enable(EngineFx.LAYER_OUTLINE); me.frustumCulled = false; warm.add(me); }
+    warm.position.copy(this.player.pos);
+    this.scene.add(warm);
+    const prev = r.getRenderTarget();
+    try {
+      r.setRenderTarget(eng.rtScene || null);
+      const jobs = [r.compileAsync(this.scene, this.camera)];
+      if (this.vm?.scene && this.vm.camera) jobs.push(r.compileAsync(this.vm.scene, this.vm.camera));
+      r.setRenderTarget(prev);
+      await Promise.race([Promise.all(jobs), new Promise((res) => setTimeout(res, 6000))]);
+    } catch (e) { console.warn('precompile', e); }
+    r.setRenderTarget(prev);
+    this.scene.remove(warm);
+    box.dispose();
+    // (the clump look-alikes stay alive until exit: disposing them would free their programs)
+    this.warmMats = mats.slice(2);
   }
 
   // ------------------------------------------------------------------ helpers
@@ -1533,6 +1567,7 @@ export default class DigScene extends Scene {
     this.events(this.clumps?.dispose());
     this.fluids?.dispose();
     this.world.onChange = null;
+    for (const m of this.warmMats || []) m.dispose();
     for (const gh of this.ghosts?.values() || []) { gh.mesh.geometry.dispose(); gh.mesh.material.dispose(); }
     if (this.vm) this.vm.dispose();
     super.exit();

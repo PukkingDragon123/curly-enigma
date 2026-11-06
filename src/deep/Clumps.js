@@ -1142,7 +1142,7 @@ const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 
 /** The world's object material, plus `lightK`: a clump held half a metre from the helmet lamp
  *  would glare, so the lamp and lights are dimmed for it (its glow is kept). */
-function litMaterial(U, opts) {
+export function litMaterial(U, opts) {
   const m = makeObjectMaterial(U, opts);
   m.uniforms.lightK = { value: 1 };
   m.fragmentShader = m.fragmentShader.replace('uniform float flash;', 'uniform float flash;\n      uniform float lightK;').replace('vec3 col = c * L +', 'vec3 col = c * L * lightK +');
