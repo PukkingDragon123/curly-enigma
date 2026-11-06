@@ -8,6 +8,9 @@
 //   vm.setTool('pick', { item: 'pick_iron' });   // pick chisel brush drill xray stake beam food none hammer tongs smith
 //   vm.update(dt, { speed, grounded, climbing, swimming, look: {dx, dy}, lamp: {color, intensity}, ambient, heat, camera });
 //   vm.swing('pick', 0.3); vm.impact('pick', 1); vm.use('drill', true); vm.eat('grub_bar'); vm.hurt();
+//   vm.impact('pick', 1, { feel: 'bite' | 'rebound' | 'clang', stop: 0.05 }): soft soil swallows the
+//   point (it sinks in, then tugs free); hard rock throws it back with a buzz in the haft; stop is a
+//   hit-pause (the swing holds still that long).
 //   engine.render(world, cam, { overlay: { scene: vm.scene, camera: vm.camera } });
 //
 // Guard (combat): vm.block(on) every frame raises the held tool across the view (a pick or hammer
@@ -169,6 +172,10 @@ export class ViewModel {
     this.sway = { x: new Spring(90, 13), y: new Spring(90, 13) };
     this.land = new Spring(170, 15);
     this.recoil = new Spring(220, 16);
+    this.sink = new Spring(150, 13); // a pick biting into soft ground (radians, down)
+    this.jolt = new Spring(260, 18); // a pick thrown back off hard rock (radians, up)
+    this.buzz = { t: 0, a: 0, f: 70 }; // the haft ringing after hard rock
+    this.stopT = 0; // hit-pause
     this.guarding = false;
     this.guardK = 0;
     this.guardKick = new Spring(240, 15);
@@ -239,11 +246,19 @@ export class ViewModel {
   }
 
   /** Contact: recoil and shake (strength 0..1+). */
-  impact(kind = this.kind, strength = 1) {
+  impact(kind = this.kind, strength = 1, o = {}) {
     const s = clamp(strength, 0, 2);
     const k = kind === 'drill' ? 0.3 : kind === 'brush' ? 0.15 : kind === 'chisel' ? 0.6 : 1;
-    this.recoil.kick(9 * s * k);
-    this.shake = Math.max(this.shake, 0.35 * s * k);
+    const feel = o.feel;
+    if (feel === 'bite') { this.recoil.kick(2 * s * k); this.sink.kick(-3 * s * k); }
+    else if (feel === 'rebound' || feel === 'clang') {
+      const c = feel === 'clang' ? 1.5 : 1;
+      this.recoil.kick(9 * s * k);
+      this.jolt.kick(4.5 * s * k * c);
+      this.buzz.t = 0; this.buzz.a = Math.max(this.buzz.a * 0.5, 0.03 * s * k * c); this.buzz.f = feel === 'clang' ? 95 : 72;
+    } else this.recoil.kick(9 * s * k);
+    if (o.stop) this.stopT = Math.max(this.stopT, Math.min(0.12, o.stop));
+    this.shake = Math.max(this.shake, (feel === 'bite' ? 0.22 : 0.35) * s * k);
   }
 
   /** Continuous use: 'brush' scrubbing, 'drill' spinning (heats up), 'xray' beam. */
@@ -451,7 +466,9 @@ export class ViewModel {
 
     // ---- timers
     const act = this.action;
-    if (act) { act.t += dt; if (act.t > act.dur + 0.55 && !(act.kind === 'stake' || act.kind === 'beam') || act.t > act.dur + 1.1) this.action = null; }
+    const stop = (this.stopping = this.stopT > 0);
+    this.stopT = Math.max(0, this.stopT - dt);
+    if (act) { act.t += stop ? dt * 0.06 : dt; if (act.t > act.dur + 0.55 && !(act.kind === 'stake' || act.kind === 'beam') || act.t > act.dur + 1.1) this.action = null; }
     if (this.eating) { this.eating.t += dt; if (this.eating.t > 1.45) this.finishEat(); }
     if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
     this.shake = Math.max(0, this.shake - dt * 3.2);
@@ -578,6 +595,18 @@ export class ViewModel {
     // ---- recoil spring (impacts)
     const rc = this.recoil.step(dt);
     R.rot(rc * 0.02, 0, 0).move(0, 0, rc * 0.0025);
+    // the point sunk in soft ground (forward and down, then it tugs free)
+    const hdt = this.stopping ? dt * 0.06 : dt; // held still through a hit-pause
+    const sk = this.sink.step(hdt), jt = this.jolt.step(hdt);
+    R.rot(sk + jt, 0, 0).move(0, sk * 0.06 + jt * 0.02, sk * 0.1 + jt * 0.05);
+    // a hard knock rings in the haft: a quick, fading shiver
+    const bz = this.buzz;
+    if (bz.a > 0.0004) {
+      bz.t += dt;
+      const e = bz.a * Math.exp(-bz.t * 13);
+      R.rot(Math.sin(bz.t * bz.f) * e, Math.sin(bz.t * bz.f * 1.37 + 1) * e * 0.45, Math.sin(bz.t * bz.f * 0.83 + 2) * e * 0.3);
+      if (e < 0.0004) bz.a = 0;
+    }
 
     // ---- apply hands (layout fit for narrow screens)
     this.place(this.handR, R);

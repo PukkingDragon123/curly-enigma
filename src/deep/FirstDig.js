@@ -1,13 +1,15 @@
 // The mining lesson, in the real mine (lesson stage 'mine', until the copper is home: flag
-// 'prologue'). Old Star saw you off at the cage; down here nothing is scripted. The HUD for digging
-// comes in (belt, pick button, pack, radar, guard), one line says what to find, and the copper in
-// his old dig (src/deep/gen/prologue.js: a grotto a short crawl east of the cage, its seams real
-// deposits) glints with gold motes (src/home/tutorFx.js; an arrow at the screen edge while it's off
-// screen). Each control is taught the moment it's first needed, by a small prompt:
+// 'prologue'). Old Star saw you off at the cage; down here nothing is scripted and nearly nothing is
+// on screen: what you've been given so far (your pick on the belt, his satchel; no radar, no map
+// yet: those come once you've been down), one quiet line says what to find, and the copper in his
+// old dig (src/deep/gen/prologue.js: a grotto a short crawl east of the cage, its seams real
+// deposits) glints with gold motes (src/home/tutorFx.js; an arrow at the screen edge only while it's
+// off screen). A control gets a one-line hint the moment it's first needed (the crosshair names the
+// rest: "E Pick up"…):
 //   dig       facing rock within reach                 → hold the left button / the pick button
-//   pick up   a clump of ore broke out and lies nearby  → E / the hand
 //   bag it    a clump in paw                            → chip the rock off (the chisel), then E
-//   guard     something comes at you                    → the right button or F / the shield
+//   guard     something comes at you                    → the right button or F / the shield (it
+//             unlocks then: ui.unlock('guard'))
 // With copper in the pack the line says "ride home", the cage glints, and E at its bell rides
 // straight home (home { from: 'lift' }: Old Star takes the lump; lessons.js). Riding the cage with
 // no copper opens the usual lift panel.
@@ -18,7 +20,6 @@
 import * as THREE from 'three';
 import { prologueLayout, prologueInside } from './gen/prologue.js';
 import { ITEMS } from '../data/items.js';
-import { TUT } from '../ui/Onboard.js';
 import { Glint } from '../home/tutorFx.js';
 
 const _v = new THREE.Vector3();
@@ -92,13 +93,13 @@ export class FirstDig {
   cagePos() { const l = this.lift; return l ? new THREE.Vector3(l.x, l.y + 1.1, l.z) : null; }
 
   /** What glints (and what the edge arrow points at). */
-  aim(what, pos, label) {
+  aim(what, pos) {
     if (this.aimWhat === what) return;
     this.aimWhat = what;
     this.glint?.remove();
     this.markH?.remove();
     this.glint = pos ? new Glint(this.fx, pos, { r: what === 'cage' ? 0.32 : 0.16, rate: what === 'cage' ? 0.09 : 0.07 }) : null;
-    this.markH = pos ? this.ob?.mark(pos, { edgeOnly: true, near: what === 'clump' ? null : 6, label }) : null;
+    this.markH = pos ? this.ob?.mark(pos, { edgeOnly: true }) : null; // (an arrow at the edge only while it's off screen; no words)
   }
 
   /** One prompt at a time: `key` names what it's for, so it isn't shown twice in a row. */
@@ -118,8 +119,8 @@ export class FirstDig {
     const ob = this.ob, st = this.st, owner = this.owner, inp = owner.game.input;
     if (!this.started && this.t > 0.4) {
       this.started = true;
-      this.ui.setTutorialLevel?.(TUT.GUARD);
-      if (this.step === 'find') ob?.caption?.('The mine', 'Seven metres under the camp', 3.2);
+      // (you have your pick: a game picked up here from before the unlocks gets what it needs)
+      this.ui.unlock?.(['look', 'move', 'use', 'belt', 'dig'], { quiet: true });
     }
     if (!this.started) return null;
     this.glint?.update(dt);
@@ -128,18 +129,17 @@ export class FirstDig {
       if (this.t > 1.4 && !ob?.goalHtml) ob?.goal('Find <b>copper ore</b>');
       // what glints: a clump lying about, else the nearest seam
       const lying = this.clumpTarget();
-      if (lying) this.aim('clump', () => lying.state === 'world' ? lying.pos : null, '');
-      else this.aim('seam', () => this.seamTarget(owner.player.eye()), 'Copper');
+      if (lying) this.aim('clump', () => (lying.state === 'world' ? lying.pos : null));
+      else this.aim('seam', () => this.seamTarget(owner.player.eye()));
       if (st.count('copper_ore') > this.copper0) { this.toHome(); return [{ act: { type: 'lesson', step: 'mine_ore' } }]; }
       if ((busy && !cl?.held) || this.t < 2.2) return null;
       // the prompts, most urgent first
       const threat = owner.enemies?.threat?.();
       if (threat && !this.guarded && threat.dist < 6) {
+        this.ui.unlock?.('guard');
         this.prompt('guard', 'guard', { done: () => inp.isDown?.('KeyF') || !!inp.mouse?.buttons?.[2], min: 0.3, onDone: () => { this.guarded = true; } });
       } else if (cl?.held) {
-        this.prompt('bag', 'use', { title: 'Bag it', subPc: 'Dig at it to chip the rock off (<kbd>2</kbd>: the chisel), then <kbd>E</kbd>', subT: 'Dig at it to chip the rock off, then tap the hand', done: () => !cl.held });
-      } else if (lying && lying.pos && Math.hypot(lying.pos.x - player.pos.x, lying.pos.z - player.pos.z) < 2.6) {
-        this.prompt('pickup', 'pickup', { done: () => !!cl.held });
+        this.prompt('bag', 'use', { title: 'Bag it', subPc: 'chip the rock off it (<kbd>2</kbd>: the chisel), then <kbd>E</kbd>', subT: 'chip the rock off it, then tap the hand', done: () => !cl.held });
       } else if (!this.dug) {
         const tg = owner.target;
         if (this.hFor !== 'dig' && tg && tg.dist < 2.2) {
@@ -149,7 +149,7 @@ export class FirstDig {
       } else if (this.hFor && this.hFor !== 'dig') this.unprompt(this.hFor);
     } else if (this.step === 'home') {
       if (this.t - (this.homeT || 0) > 1.3 && !ob?.goalHtml) ob?.goal('Ride <b>the cage</b> home');
-      this.aim('cage', () => this.cagePos(), 'The cage');
+      this.aim('cage', () => this.cagePos());
       const L = owner.liftNear?.();
       if (L && L.id === 'L0') this.prompt('ride', 'use', { title: 'Ride home', subPc: 'Ring the bell: <kbd>E</kbd>', subT: 'Tap the hand to ring the bell', done: () => !!this.leaving });
       else this.unprompt('ride');

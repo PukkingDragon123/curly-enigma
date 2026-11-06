@@ -1,13 +1,15 @@
 // Rock chunks that leave the wall: little voxel models built from the exact voxels that broke out,
-// thrown toward the mole, tumbling and bouncing off the tunnel before crumbling to dust. The same
-// bodies carry freed ore (pickups), which hop out and then fly into the backpack.
+// thrown toward the mole, tumbling and bouncing off the tunnel, then lying where they settled for
+// a moment (`stay`) before they sink away. Soil clods (`crumble`) burst into dust where they land
+// (hooks.crumble). The same bodies carry freed ore (pickups), which hop out and then fly into the
+// backpack. At most MAX at once (fewer on phones): the oldest debris makes way.
 import * as THREE from 'three';
 import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { makeObjectMaterial } from './TerrainMaterial.js';
 import { VOX } from './materials.js';
 
-const MAX = 48;
+const MAX = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 28 : 48;
 const GRAV = 14;
 
 export class Bodies {
@@ -23,7 +25,8 @@ export class Bodies {
 
   /**
    * voxels: [{x, y, z, c}] in voxel coords. opts: vel [x,y,z] m/s, spin, life, scale (shrink factor),
-   * pickup: data for ore pickups (flies to the player when ready), glow.
+   * pickup: data for ore pickups (flies to the player when ready), glow, bounce, stay (seconds it
+   * lies still once settled), crumble (bursts on its first hard landing: hooks.crumble(b, speed)).
    */
   spawn(voxels, opts = {}) {
     const n = voxels.length;
@@ -53,6 +56,7 @@ export class Bodies {
       rot: new THREE.Euler(), spin: new THREE.Vector3(...(opts.spin || [(Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9])),
       r, n, t: 0, life: opts.life ?? 1.6 + Math.random() * 1.2, rest: 0, dying: 0, pickup: opts.pickup || null, bounce: opts.bounce ?? 0.35,
       float: !!opts.float, mat: opts.mat ?? null, // Fluids: wood floats, rock sinks
+      stay: opts.stay ?? 0.6, crumble: !!opts.crumble, color: voxels[0].c,
     };
     this.list.push(b);
     while (this.list.length > MAX) this.kill(this.list.find((q) => !q.pickup) || this.list[0], true);
@@ -75,6 +79,7 @@ export class Bodies {
       if (b.dying > 0) {
         b.dying -= dt;
         b.mesh.scale.setScalar(Math.max(0.01, b.dying / 0.3));
+        if (b.rest > 0) { b.pos.y -= dt * b.r * 1.5; b.mesh.position.copy(b.pos); } // settles into the floor
         if (b.dying <= 0) { this.kill(b); continue; }
       }
       // ore pickups fly to the mole once they've hopped out
@@ -94,6 +99,12 @@ export class Bodies {
         b.mesh.position.copy(b.pos); b.mesh.rotation.copy(b.rot);
         continue;
       }
+      // lying still on the floor: nothing to integrate until the floor goes
+      if (b.rest > 0.25 && !b.pickup && this.solid(b.pos.x, b.pos.y - b.r - 0.02, b.pos.z)) {
+        b.rest += dt;
+        if (b.dying <= 0 && (b.rest > b.stay || b.t > b.life + b.stay)) b.dying = 0.3;
+        continue;
+      }
       b.vel.y -= GRAV * dt;
       b.vel.multiplyScalar(Math.max(0, 1 - 0.3 * dt));
       // integrate per axis against the voxels
@@ -106,6 +117,7 @@ export class Bodies {
       if (this.solid(p.x, ny + Math.sign(v.y) * r, p.z)) {
         const sp = Math.abs(v.y);
         if (v.y < 0 && sp > 2 && this.hooks.tick) this.hooks.tick(b, sp);
+        if (b.crumble && v.y < 0 && sp > 1.2 && b.t > 0.08) { this.kill(b, true); this.hooks.crumble?.(b, sp); continue; }
         v.y = v.y < 0 && sp * b.bounce > 0.8 ? sp * b.bounce : 0;
         v.x *= 0.6; v.z *= 0.6;
         b.spin.multiplyScalar(0.5);
@@ -126,7 +138,7 @@ export class Bodies {
       b.rot.x += b.spin.x * dt; b.rot.y += b.spin.y * dt; b.rot.z += b.spin.z * dt;
       b.mesh.position.copy(p);
       b.mesh.rotation.copy(b.rot);
-      if (!b.pickup && b.dying <= 0 && (b.rest > 0.6 || b.t > b.life)) b.dying = 0.3;
+      if (!b.pickup && b.dying <= 0 && (b.rest > b.stay || (b.t > b.life + b.stay && b.rest <= 0) || b.t > b.life + b.stay + 3)) b.dying = 0.3;
       if (b.pickup && b.dying <= 0 && b.t > 6) b.dying = 0.3;
     }
   }

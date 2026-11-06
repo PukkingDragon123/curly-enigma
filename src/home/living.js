@@ -67,14 +67,13 @@ export class HomeLiving {
       this.game.audio.play('pickup');
       this.game.audio.play('sparkle');
       for (let i = 0; i < 10; i++) this.fx.spawn({ x: cx + rand(-0.1, 0.1), y: top, z: cz + rand(-0.1, 0.1), vx: rand(-0.3, 0.3), vy: rand(0.4, 1), vz: rand(-0.3, 0.3), life: 0.8, size: 0.012, color: [0.66, 0.94, 0.48], glow: true, grav: 1.5 });
-      this.floatAt(cx, top + 0.1, cz, `+3 ${ITEMS[pl.id]?.name || ''}`, '#d8ffb0');
       rec.res.setPlant?.(null, ITEMS);
       st.save();
       return;
     }
-    if (pl) { this.floatAt(cx, top + 0.1, cz, 'Growing', '#d8ffb0'); return; }
+    if (pl) { this.game.ui.toast('Still growing.', { dur: 1800 }); return; }
     const plants = st.inventory((it) => it && it.cat === 'plant');
-    if (!plants.length) { this.game.audio.play('ui_error'); this.floatAt(cx, top + 0.1, cz, 'No plants to sow', '#e6dcc8'); return; }
+    if (!plants.length) { this.game.audio.play('ui_error'); this.game.ui.toast('Nothing to plant.', { dur: 1800 }); return; }
     // a wooden seed box of paper seed packets (ui/choices.js)
     const h = openSeedTray(this.game, {
       title: 'Planter', note: 'Pick a seed to sow. It grows by morning.',

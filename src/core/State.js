@@ -519,6 +519,11 @@ export class State {
     this.dirty = true;
     return v;
   }
+  /**
+   * Has a new game's tutorial introduced this system yet (src/ui/Onboard.js UNLOCKS: 'pack', 'book',
+   * 'skills', 'build'...)? A save without data.unlocks (an old one, a test) has everything.
+   */
+  unlocked(id) { const u = this.data.unlocks; return !u || !!u.all || !!u[id]; }
 }
 
 export function indexName(cat, id) {

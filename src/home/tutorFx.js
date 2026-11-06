@@ -1,6 +1,7 @@
 // The tutorial's cues in the 3D world (no cards, no stamps): what to use next glints with a slow
 // stream of gold motes rising off it, a good moment flares (embers and sparks off a fire, a ring of
-// glints), and Old Star can hold a real lump of copper in his paws. Used by src/home/lessons.js and
+// glints), and Old Star can hold real things in his paws when he hands them over: a lump of copper,
+// his old leather satchel (the backpack), his notebook (the book). Used by src/home/lessons.js and
 // src/deep/FirstDig.js; both scenes have the same particle system (src/deep/Particles.js: spawn,
 // sparks, glints, ember).
 import * as THREE from 'three';
@@ -92,5 +93,87 @@ export function copperLump(scale = 1) {
     g.add(b);
   }
   g.userData.dispose = () => { geo.dispose(); for (const m of Object.values(mats)) m.dispose(); };
+  return g;
+}
+
+/** A little voxel model from a cell function f(x, y, z) → material key | null, over [x0..x1]×[y0..y1]×[z0..z1]. */
+function voxModel(s, box, mats, f) {
+  const g = new THREE.Group();
+  const geo = new THREE.BoxGeometry(s, s, s);
+  const M = {};
+  for (const [k, c] of Object.entries(mats)) M[k] = new THREE.MeshLambertMaterial(typeof c === 'number' ? { color: c } : c);
+  const [x0, x1, y0, y1, z0, z1] = box;
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) {
+    const k = f(x, y, z);
+    if (!k || !M[k]) continue;
+    const b = new THREE.Mesh(geo, M[k]);
+    b.position.set((x + 0.5) * s, (y + 0.5) * s, (z + 0.5) * s);
+    g.add(b);
+  }
+  g.userData.dispose = () => { geo.dispose(); for (const m of Object.values(M)) m.dispose(); };
+  return g;
+}
+
+/**
+ * Old Star's old leather satchel (~22 cm): a scuffed brown body, a darker flap with a brass buckle,
+ * a strap looped over the top. Handed over as your backpack.
+ */
+export function satchel(scale = 1) {
+  const s = 0.02 * scale;
+  return voxModel(s, [-5, 4, -5, 5, -2, 2], { body: 0x7a4a2a, dark: 0x5a3018, flap: 0x4a2814, brass: { color: 0xd8a84a, emissive: 0x3a2808 }, stitch: 0xc89a6a }, (x, y, z) => {
+    const inBody = y <= 2 && Math.abs(z) <= 1 && !(Math.abs(x + 0.5) > 4 && (y === -5 || y === 2));
+    // the strap: an arch over the top
+    if (y >= 3 && (z === 0) && (Math.abs(x + 0.5) === 3.5 || (y === 5 && Math.abs(x + 0.5) <= 3.5))) return 'dark';
+    if (!inBody) return null;
+    if (z === 2 - 1 && y >= -1) return x === -1 && y === -1 ? 'brass' : y === 2 && (x + 5) % 2 ? 'stitch' : 'flap';
+    return (x * 3 + y * 5 + z * 7) % 4 === 0 ? 'dark' : 'body';
+  });
+}
+
+/** His notebook (~14 cm): a worn brown leather cover, cream page edges, a red ribbon marker. */
+export function notebook(scale = 1) {
+  const s = 0.016 * scale;
+  return voxModel(s, [-4, 3, 0, 2, -5, 5], { cover: 0x6a3a1e, edge: 0xeadcbe, ribbon: 0xb8442e, worn: 0x8a5a32 }, (x, y, z) => {
+    if (z === 5) return x === 1 && y === 1 ? 'ribbon' : null;
+    if (y === 1) return x === -4 ? 'cover' : Math.abs(z) === 4 || x === 3 ? 'edge' : null;
+    return (x * 3 + z) % 7 === 0 ? 'worn' : 'cover';
+  });
+}
+
+/**
+ * A little bench anvil on a log stump (~0.5 m to the face): what Old Star hammers at by your bedside
+ * fire while you sleep (the wake-up). Its local `userData.face` is the top of the face (meters, above
+ * the stump's foot), for the sparks.
+ */
+export function benchAnvil() {
+  const g = new THREE.Group();
+  const geos = [], mats = [];
+  const box = (w, h, d, color, x, y, z, o = {}) => {
+    const geo = new THREE.BoxGeometry(w, h, d), mat = new THREE.MeshLambertMaterial({ color, ...o });
+    geos.push(geo); mats.push(mat);
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    g.add(m);
+    return m;
+  };
+  // the stump: bark round a pale, ringed top, a few chips of wood at its foot
+  const H = 0.24;
+  box(0.28, H, 0.28, 0x6a4628, 0, H / 2, 0);
+  box(0.3, 0.05, 0.3, 0x543620, 0, 0.025, 0);
+  box(0.24, 0.012, 0.24, 0xc09a68, 0, H + 0.006, 0);
+  box(0.12, 0.004, 0.12, 0x9a7450, 0, H + 0.013, 0);
+  for (const [x, z, r] of [[0.21, 0.06, 0.4], [-0.18, 0.15, 1.1], [0.06, -0.22, 2.0]]) box(0.05, 0.012, 0.025, 0xc8a070, x, 0.006, z).rotation.y = r;
+  // the anvil: a dark iron foot, a waist, a face with a bright worn top, a horn off one end
+  const iron = 0x3a3a44, y0 = H + 0.012;
+  box(0.17, 0.035, 0.11, iron, 0, y0 + 0.018, 0);
+  box(0.09, 0.05, 0.07, iron, 0, y0 + 0.06, 0);
+  box(0.22, 0.055, 0.09, 0x464652, 0, y0 + 0.112, 0);
+  box(0.21, 0.008, 0.082, 0xa0a0ae, 0, y0 + 0.143, 0, { emissive: 0x1a1a20 });
+  box(0.075, 0.04, 0.055, iron, 0.145, y0 + 0.115, 0);
+  box(0.045, 0.025, 0.032, iron, 0.2, y0 + 0.118, 0);
+  // a bar of hot metal on the face
+  box(0.09, 0.014, 0.024, 0xff9a4a, -0.02, y0 + 0.154, 0.005, { emissive: 0xd05010 });
+  g.userData.face = new THREE.Vector3(-0.02, y0 + 0.16, 0.005);
+  g.userData.dispose = () => { for (const x of geos) x.dispose(); for (const m of mats) m.dispose(); };
   return g;
 }

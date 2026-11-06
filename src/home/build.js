@@ -502,7 +502,8 @@ export class FPBuild {
   // ------------------------------------------------------------ frame
   update(dt) {
     const inp = this.game.input, s = this.s;
-    if (inp.pressed('KeyX') && !s.scripted && !this.game.ui.isPanelOpen()) (s.toggleBuildHere ? s.toggleBuildHere() : this.toggle());
+    const canBuild = this.game.state.unlocked?.('build') !== false; // [unlock guard] (src/ui/Onboard.js UNLOCKS)
+    if (inp.pressed('KeyX') && canBuild && !s.scripted && !this.game.ui.isPanelOpen()) (s.toggleBuildHere ? s.toggleBuildHere() : this.toggle());
     if (!this.active) return;
     if (s.scripted) return;
     if (!this.useHammerKind && s.rig.vm) s.rig.vm.toolR.visible = false;

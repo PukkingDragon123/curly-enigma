@@ -4,7 +4,8 @@
 // pixel discs; big soft puffs thin out toward the rim in dithered steps (no flat squares). Motes
 // spawned with `lit` take their light from the helmet lamp and the lanterns (bright in the beam,
 // nearly gone outside it). Given a deep world, it also runs the cave's air (src/deep/Atmosphere.js:
-// mood uniforms, the far sky, ambient motes, light shafts), as `fx.atmos`.
+// mood uniforms, the far sky, ambient motes, light shafts), as `fx.atmos`. Particle records are
+// pooled and updated in place (no garbage per frame); phones get smaller clouds.
 import * as THREE from 'three';
 import { VOX } from './materials.js';
 import { MAX_LIGHTS } from './TerrainMaterial.js';
@@ -93,7 +94,10 @@ class Cloud {
     this.col = new Float32Array(cap * 4);
     this.size = new Float32Array(cap);
     this.lit = new Float32Array(cap);
-    this.p = []; // particle state
+    this.p = []; // particle state (live)
+    this.free = []; // dead records, reused
+    this.ring = 0;
+    this.drawn = 0;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('pcol', new THREE.BufferAttribute(this.col, 4).setUsage(THREE.DynamicDrawUsage));
@@ -115,8 +119,10 @@ class Cloud {
 export class Particles {
   constructor(scene3, world, U) {
     this.w = world;
-    this.soft = new Cloud(scene3, U, 4000, false);
-    this.bright = new Cloud(scene3, U, 2600, true);
+    const phone = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    this.soft = new Cloud(scene3, U, phone ? 2400 : 4000, false);
+    this.bright = new Cloud(scene3, U, phone ? 1400 : 2600, true);
+    this.lod = phone ? 0.6 : 1; // presets scale their counts by this
     // the mine's air (a deep world with a plan, and the terrain's uniforms)
     this.atmos = null;
     if (world && world.plan && U.lampPos && U.haze) {
@@ -137,10 +143,12 @@ export class Particles {
    */
   spawn(o) {
     const c = o.glow ? this.bright : this.soft;
-    if (c.p.length >= c.cap) c.p.shift();
-    c.p.push({ x: o.x, y: o.y, z: o.z, vx: o.vx || 0, vy: o.vy || 0, vz: o.vz || 0, t: 0, life: o.life || 1, size: o.size || 0.03,
-      grow: o.grow || 0, r: o.color[0], g: o.color[1], b: o.color[2], a: o.alpha ?? 1, drag: o.drag ?? 1, grav: o.grav ?? 0,
-      bounce: o.bounce ?? 0, fade: o.fade !== false, lit: o.lit || 0, sw: o.swirl || 0, tw: o.twinkle || 0, ph: Math.random() * 6.283 });
+    let q;
+    if (c.p.length >= c.cap) { q = c.p[c.ring = (c.ring + 1) % c.cap]; } // full: recycle in place
+    else { q = c.free.pop() || {}; c.p.push(q); }
+    q.x = o.x; q.y = o.y; q.z = o.z; q.vx = o.vx || 0; q.vy = o.vy || 0; q.vz = o.vz || 0; q.t = 0; q.life = o.life || 1; q.size = o.size || 0.03;
+    q.grow = o.grow || 0; q.r = o.color[0]; q.g = o.color[1]; q.b = o.color[2]; q.a = o.alpha ?? 1; q.drag = o.drag ?? 1; q.grav = o.grav ?? 0;
+    q.bounce = o.bounce ?? 0; q.fade = o.fade !== false; q.lit = o.lit || 0; q.sw = o.swirl || 0; q.tw = o.twinkle || 0; q.ph = Math.random() * 6.283;
   }
 
   update(dt) {
@@ -148,10 +156,11 @@ export class Particles {
     if (this.atmos) this.atmos.update(dt);
     for (const c of [this.soft, this.bright]) {
       let n = 0;
-      const keep = [];
-      for (const q of c.p) {
+      const P = c.p, len = P.length;
+      for (let j = 0; j < len; j++) {
+        const q = P[j];
         q.t += dt;
-        if (q.t >= q.life) continue;
+        if (q.t >= q.life) { c.free.push(q); continue; }
         q.vy -= q.grav * dt;
         const d = Math.max(0, 1 - q.drag * dt);
         q.vx *= d; q.vy *= d; q.vz *= d;
@@ -163,7 +172,7 @@ export class Particles {
           const a = q.t * 0.9 + q.ph;
           q.vx += Math.sin(a) * q.sw * dt; q.vz += Math.cos(a * 1.3) * q.sw * dt; q.vy += Math.sin(a * 0.7 + 1) * q.sw * 0.4 * dt;
         }
-        keep.push(q);
+        P[n] = q; // compact in place
         // fade in over the first half second (ambient motes), out over the life
         let k = q.fade ? Math.min(1, 1 - q.t / q.life, q.sw ? q.t * 2 : 1) : 1;
         if (q.tw) k *= Math.sin(q.t * q.tw + q.ph) > 0.35 ? 1 : 0.15;
@@ -173,13 +182,17 @@ export class Particles {
         c.size[i] = q.size + q.grow * q.t;
         c.lit[i] = q.lit;
       }
-      c.p = keep;
+      P.length = n;
+      if (c.free.length > c.cap) c.free.length = c.cap;
       c.n = n;
       c.geo.setDrawRange(0, n);
-      c.geo.attributes.position.needsUpdate = true;
-      c.geo.attributes.pcol.needsUpdate = true;
-      c.geo.attributes.psize.needsUpdate = true;
-      c.geo.attributes.plit.needsUpdate = true;
+      if (n || c.drawn) {
+        c.geo.attributes.position.needsUpdate = true;
+        c.geo.attributes.pcol.needsUpdate = true;
+        c.geo.attributes.psize.needsUpdate = true;
+        c.geo.attributes.plit.needsUpdate = true;
+      }
+      c.drawn = n;
     }
   }
 
@@ -320,4 +333,28 @@ Particles.prototype.puff = function puff(x, y, z, n, color, out = [0, 0, 0], spr
 Particles.prototype.twinkle = function twinkle(x, y, z, color = [1, 1, 0.9], size = 0.012) {
   this.spawn({ x, y, z, life: 0.45, size: size * 1.6, grow: -size * 2, color, glow: true, drag: 0 });
   for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) this.spawn({ x: x + dx * size, y: y + dy * size, z, vx: dx * 0.04, vy: dy * 0.04, life: 0.3, size: size * 0.7, color, glow: true, alpha: 0.7, drag: 0 });
+};
+
+// ------------------------------------------------------------ digging presets (DigScene.strike)
+/** Fine dust that hangs in the air after rock gives, drifting in the lamp beam for a few seconds. */
+Particles.prototype.haze = function haze(x, y, z, n, color, spread = 0.12, out = [0, 0, 0]) {
+  n = Math.ceil(n * this.lod);
+  for (let i = 0; i < n; i++) {
+    const ox = (Math.random() - 0.5) * spread * 2, oy = (Math.random() - 0.5) * spread * 2, oz = (Math.random() - 0.5) * spread * 2;
+    this.spawn({ x: x + ox, y: y + oy, z: z + oz, vx: out[0] * 0.4 + ox * 1.2, vy: out[1] * 0.4 + 0.05 + Math.random() * 0.15, vz: out[2] * 0.4 + oz * 1.2,
+      life: 2.4 + Math.random() * 2.4, size: 0.06 + Math.random() * 0.06, grow: 0.06, color, alpha: 0.07 + Math.random() * 0.07, drag: 1.8, grav: 0.03, lit: 0.85, swirl: 0.06 });
+  }
+};
+/** Glinting slivers of crystal or ice: tumble out, catch the light, fall and bounce. */
+Particles.prototype.shards = function shards(x, y, z, n, color, out) {
+  n = Math.ceil(n * this.lod);
+  for (let i = 0; i < n; i++) {
+    const sp = 1 + Math.random() * 2.6;
+    this.spawn({ x, y, z, vx: out[0] * sp + (Math.random() - 0.5) * 2.6, vy: out[1] * sp + Math.random() * 2.4, vz: out[2] * sp + (Math.random() - 0.5) * 2.6,
+      life: 0.7 + Math.random() * 0.8, size: 0.01 + Math.random() * 0.012, color, alpha: 1, drag: 0.5, grav: 8, bounce: 0.5, glow: Math.random() < 0.5, twinkle: 22 + Math.random() * 18 });
+  }
+};
+/** Grit pattering down from a loose ceiling (the warning before it lets go). */
+Particles.prototype.grit = function grit(x, y, z, n, color, spread = 0.1) {
+  for (let i = 0; i < n; i++) this.grain(x + (Math.random() - 0.5) * spread * 2, y, z + (Math.random() - 0.5) * spread * 2, color);
 };

@@ -6,6 +6,10 @@
 // star nose wiggles when he sniffs you out. E has him talk (the lessons, or a tip for where you
 // are). His model is src/gfx/char/starmole.js (makeStarMole); expressions come from the rig when
 // it has them (setExpression), and he talks through the tutor card (game.ui.tutor).
+// For the wake-up (wake.js): workFace (a point, meters) has him hammer at another anvil than his
+// forge's (the little bench anvil by your fire), sparkK / clangK scale the sparks and the clang of each
+// blow, onBlow(face) is called on each blow, and setHammerDown() lays his hammer on the anvil (the
+// next 'hammer' pose takes it up again).
 import * as THREE from 'three';
 import { makeCharacter } from '../gfx/characters.js';
 import { VoxelGrid, M32, ring, line, wood } from '../iso/kit.js';
@@ -176,7 +180,7 @@ export class OldStar {
     this.work.t = 0;
     const r = this.rig;
     r.holdItem?.(null, 'R'); r.holdItem?.(null, 'L');
-    if (pose === 'hammer') { r.setPick?.(false); r.holdItem?.(this.items.hammer, 'R'); }
+    if (pose === 'hammer') { this.takeHammer(); r.setPick?.(false); r.holdItem?.(this.items.hammer, 'R'); }
     else if (pose === 'stir') { r.setPick?.(false); r.holdItem?.(this.items.ladle, 'R'); }
     else if (pose === 'poke') { r.setPick?.(false); r.holdItem?.(this.items.poker, 'R'); }
     else if (pose === 'read') r.holdItem?.(this.items.note, 'L');
@@ -431,11 +435,13 @@ export class OldStar {
         r.swingPhase = ph;
         if (n !== w.beat) {
           w.beat = n;
-          const face = s.cave?.dyn.anvilFace;
+          const face = this.workFace || s.cave?.dyn.anvilFace;
           if (face && near) {
-            this.g.audio.play('clang', { pitch: 0.95 + Math.random() * 0.1, vol: clamp(1.2 - dist / 6, 0.12, 0.8) });
-            for (let i = 0; i < 10; i++) s.fx.spawn({ x: face.x + rand(-0.04, 0.04), y: face.y + 0.02, z: face.z + rand(-0.04, 0.04), vx: rand(-1.4, 1.4), vy: rand(0.6, 1.8), vz: rand(-1.4, 1.4), life: rand(0.25, 0.6), size: rand(0.006, 0.012), color: [1, rand(0.6, 0.85), 0.3], glow: true, drag: 0.5, grav: 6, bounce: 0.3 });
-            s.flashAnvil?.();
+            this.g.audio.play('clang', { pitch: 0.95 + Math.random() * 0.1, vol: clamp(1.2 - dist / 6, 0.12, 0.8) * (this.clangK ?? 1) });
+            const K = this.sparkK ?? 1, sk = Math.sqrt(K);
+            for (let i = 0; i < 10 * K; i++) s.fx.spawn({ x: face.x + rand(-0.04, 0.04), y: face.y + 0.02, z: face.z + rand(-0.04, 0.04), vx: rand(-1.4, 1.4) * sk, vy: rand(0.6, 1.8) * sk, vz: rand(-1.4, 1.4) * sk, life: rand(0.25, 0.6) * (0.8 + K * 0.2), size: rand(0.006, 0.012) * (0.5 + K * 0.5), color: [1, rand(0.6, 0.85), 0.3], glow: true, drag: 0.5, grav: 6, bounce: 0.3 });
+            if (!this.workFace) s.flashAnvil?.();
+            this.onBlow?.(face);
           }
         }
         break;
@@ -506,6 +512,29 @@ export class OldStar {
       r.armL.rotation.set(-1.0, 0, 0.25); r.armR.rotation.set(-1.0, 0, -0.25);
       if (r.elbowL) { r.elbowL.rotation.x = -0.9; r.elbowR.rotation.x = -0.9; }
     }
+  }
+
+  /** Lay the hammer down on the anvil (it stays there till the next 'hammer' pose). */
+  setHammerDown() {
+    const h = this.items?.hammer, face = this.workFace || this.s.cave?.dyn?.anvilFace;
+    if (!h || !face || this.hammerDown) return;
+    this.rig.holdItem?.(null, 'R');
+    if (h.parent) h.parent.remove(h);
+    h.userData.held = { s: h.scale.x, p: h.position.clone(), r: h.rotation.clone() };
+    h.scale.setScalar(1);
+    h.position.set(face.x + 0.05, face.y + 0.02, face.z - 0.02);
+    h.rotation.set(0, 0.9, Math.PI / 2);
+    this.s.scene.add(h);
+    this.hammerDown = true;
+  }
+
+  /** The hammer back as it was for his paw (after setHammerDown). */
+  takeHammer() {
+    const h = this.items?.hammer, held = h?.userData.held;
+    if (!h || !this.hammerDown) return;
+    this.hammerDown = false;
+    if (h.parent) h.parent.remove(h);
+    if (held) { h.scale.setScalar(held.s); h.position.copy(held.p); h.rotation.copy(held.r); }
   }
 
   // ------------------------------------------------------------ carrying things

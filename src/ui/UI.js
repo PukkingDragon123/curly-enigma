@@ -42,8 +42,6 @@ export { qColor };
 
 // the lift layers (another part builds it): M and the radar open it once it exists
 const LAYER_MODS = import.meta.glob('../fps/liftLayers.js');
-const SEAL_FOR = { good: 'green', warn: 'amber', bad: 'red' };
-const TACK_FOR = { good: 0x5a9a3a, warn: 0xd9901e, bad: 0xc23c2c };
 
 /** '<kbd>E</kbd>' text → KeyboardEvent.code, for tapping prompts on touch screens. */
 function keyCode(label) {
@@ -188,6 +186,10 @@ export class UI {
   setTouchControls(on) { this.root.classList.toggle('no-touch', on === false); }
   /** The tutorial UI level (src/ui/Onboard.js TUT): which HUD pieces have been introduced. opts: { force, reveal }. */
   setTutorialLevel(n, opts) { return this.onboard?.setLevel(n, opts); }
+  /** Has a new game's tutorial introduced this yet (src/ui/Onboard.js UNLOCKS)? Old saves: everything. */
+  isUnlocked(id) { return this.onboard ? this.onboard.isUnlocked(id) : true; }
+  /** Let a system in (an id from UNLOCKS, or a list): its HUD pieces fade up, its keys and buttons work. */
+  unlock(id, opts) { return this.onboard?.unlock(id, opts); }
   /** The big first-person touch button: an icon URL, null (the pickaxe) or false (hidden). Reset on every scene change. */
   setActionIcon(src) { this.actionIcon = src; this._applyActionIcon?.(src); }
 
@@ -207,6 +209,7 @@ export class UI {
    * module exists; until then nothing. (The hand-drawn map chapter of the book was removed.)
    */
   openSurvey() {
+    if (!this.isUnlocked('layers')) return null; // [unlock guard]
     const load = LAYER_MODS['../fps/liftLayers.js'];
     if (!load) return null;
     return load().then((m) => {
@@ -216,7 +219,7 @@ export class UI {
   }
 
   /** The book (src/ui/Journal.js): tab 'quests' | 'skills' | 'index' | 'lore' ('notes' = lore; an old 'map' opens the quests). */
-  openBook(tab, opts) { return openBook(this.game, tab, opts); }
+  openBook(tab, opts) { return this.isUnlocked('book') ? openBook(this.game, tab, opts) : null; } // [unlock guard]
 
   /** Give the mouse back (panels, scene changes) without counting it as the player's Esc. */
   releasePointer() {
@@ -259,22 +262,69 @@ export class UI {
   }
 
   // ------------------------------------------------------------ toasts / popups
-  toast(text, { icon, kind = '', dur = 2600 } = {}) {
-    const color = SEAL_FOR[kind] || 'brown';
+  /**
+   * One quiet line at the top of the screen: one at a time (a new one waits a moment for the one
+   * showing, then takes its place; at most a few wait), short, fading. calm: true waits for a calm
+   * moment (no window, no talk, hands off the controls for a breath), e.g. a level-up.
+   * Returns the toast's element (it may still be waiting to show).
+   */
+  toast(text, { icon, kind = '', dur = 2600, calm = false } = {}) {
     const t = el('div', { class: 'toast ' + kind, role: 'status' }, [
-      el('img', { class: 'pix toast-tack', src: SPR.tack(TACK_FOR[kind] || 0xc23c2c), alt: '' }),
-      icon ? itemVox.img(icon, 'pix toast-icon', { pop: true, game: this.game }) : null, // (an item's icon comes in 3D, with a little turn)
+      icon ? itemVox.img(icon, 'pix toast-icon', { pop: false, game: this.game }) : null,
       el('span', { class: 'toast-text', html: text }),
-      el('img', { class: 'pix toast-seal', src: SPR.seal(color, kind === 'good' ? 'check' : kind === 'bad' ? 'x' : 'ring'), alt: '' }),
     ]);
-    if (!icon) t.insertBefore(t.lastChild, t.children[1]);
-    this.toasts.append(t);
-    while (this.toasts.children.length > 4) this.toasts.firstChild.remove();
-    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 360); }, dur);
+    t._dur = Math.min(Math.max(1600, dur), 3600);
+    t._calm = !!calm;
+    const q = (this._toastQ ||= []);
+    q.push(t);
+    // too many waiting: the oldest ordinary ones go (the calm ones keep their turn)
+    while (q.length > 3) { const i = q.findIndex((x) => !x._calm); q.splice(i < 0 ? 0 : i, 1); }
+    this._pumpToasts();
     return t;
   }
 
+  _pumpToasts() {
+    clearTimeout(this._toastPumpT);
+    const q = this._toastQ || [];
+    if (!q.length) return;
+    const cur = this._toastCur, now = performance.now();
+    // the one showing gets a moment before the next takes its place
+    if (cur && now - cur._at < 1500) { this._toastPumpT = setTimeout(() => this._pumpToasts(), 1500 - (now - cur._at) + 20); return; }
+    const calm = this.isCalm();
+    const i = q.findIndex((x) => !x._calm || calm);
+    if (i < 0) { this._toastPumpT = setTimeout(() => this._pumpToasts(), 500); return; }
+    const t = q.splice(i, 1)[0];
+    if (cur) this._dropToast(cur);
+    this._toastCur = t;
+    t._at = now;
+    this.toasts.append(t);
+    t._outT = setTimeout(() => { this._dropToast(t); this._pumpToasts(); }, t._dur);
+    if (q.length) this._toastPumpT = setTimeout(() => this._pumpToasts(), 1520);
+  }
+
+  _dropToast(t) {
+    clearTimeout(t._outT);
+    if (this._toastCur === t) this._toastCur = null;
+    t.classList.add('out');
+    setTimeout(() => t.remove(), 320);
+  }
+
+  /** A calm moment: no window or talk up, and the controls left alone for a breath. */
+  isCalm() {
+    const g = this.game, inp = g.input, now = performance.now();
+    if (!this._calmHook) {
+      this._calmHook = true;
+      const busy = () => { this._busyAt = performance.now(); };
+      window.addEventListener('pointerdown', busy, true);
+      window.addEventListener('keydown', busy, true);
+    }
+    if (inp?.down?.size || inp?.mouse?.buttons?.some?.(Boolean)) this._busyAt = now;
+    if (this.panelStack.length || g.convo?.cur || this.tutor?.cur?.wait || g.transitioning) return false;
+    return now - (this._busyAt || 0) > 1600;
+  }
+
   discoverCard(e) {
+    if (!this.isUnlocked('book')) return; // [unlock guard] (no Index Book yet: found quietly)
     this._discQ = this._discQ || [];
     this._discQ.push(e);
     if (!this._discBusy) this._nextDiscover();
@@ -287,24 +337,15 @@ export class UI {
     const e = this._discQ.shift();
     this._discBusy = true;
     this._showDiscover(e);
-    setTimeout(() => this._nextDiscover(), this._discQ.length > 3 ? 650 : 1300);
+    setTimeout(() => this._nextDiscover(), 1700);
   }
 
   _showDiscover({ cat, id, name }) {
-    const icon = this.indexIcon(cat, id);
     const label = { mineral: 'New mineral', gem: 'New gem', plant: 'New plant', critter: 'New creature', weapon: 'New weapon', recipe: 'New recipe', mechanic: 'Learned' }[cat] || 'Discovered';
-    const card = el('div', { class: 'disc', role: 'status' }, [el('div', { class: 'disc-card' }, [
-      el('div', { class: 'disc-sketch' }, [el('img', { class: 'pix', src: icon, alt: '' })]),
-      el('div', {}, [el('small', {}, label), el('b', {}, name)]),
-    ])]);
-    this.hud.append(card);
     this.status.setBadge(true);
-    this.game.audio.play('discover');
-    const live = [...this.hud.querySelectorAll('.disc:not(.out)')];
-    const max = window.innerWidth < 640 || window.innerHeight < 420 ? 1 : 3;
-    while (live.length > max) { const old = live.shift(); old.classList.add('out'); setTimeout(() => old.remove(), 500); }
-    live.forEach((c, i) => { c.style.marginTop = `calc(var(--px) * ${(live.length - 1 - i) * 30})`; });
-    setTimeout(() => { card.classList.add('out'); setTimeout(() => card.remove(), 520); }, 3400);
+    this.game.audio.play('discover', { vol: 0.6 });
+    const t = this.toast(`${label}: <b>${name}</b>`, { dur: 2400 });
+    t.querySelector('.toast-text')?.before(el('img', { class: 'pix toast-icon', src: this.indexIcon(cat, id), alt: '' }));
   }
 
   indexIcon(cat, id) {
@@ -346,12 +387,8 @@ export class UI {
   setHotbarMeter(i, v) { this.belt.meter(i, v); }
 
   // ------------------------------------------------------------ world-anchored
-  floatText(text, sx, sy, color = '#fff', size = 1) {
-    const t = el('div', { class: 'float-text', style: { left: sx + 'px', top: sy + 'px', color } }, text);
-    if (size && size !== 1) t.style.fontSize = size >= 1.4 ? (size >= 2 ? '32px' : '24px') : '';
-    this.world.append(t);
-    setTimeout(() => t.remove(), 1150);
-  }
+  /** Floating feedback words are gone (feedback is in the world: sparks, sounds, a shake); kept as a no-op for old callers. */
+  floatText() {}
 
   /** Create/update a speech bubble at screen coords. */
   bubble(key, text, sx, sy, { emote = false, life = 3, name = null } = {}) {
@@ -486,6 +523,7 @@ export class UI {
 
   // ------------------------------------------------------------ backpack
   openInventory() {
+    if (!this.isUnlocked('pack')) return; // [unlock guard]
     if (this.panelStack.some((p) => p.kind === 'inv')) return;
     const h = openBackpack(this.game);
     if (h) h.kind = 'inv';
@@ -493,18 +531,21 @@ export class UI {
 
   // ------------------------------------------------------------ shops
   openShop(shopId) {
+    if (!this.isUnlocked('shops')) return Promise.resolve(null); // [unlock guard]
     return import('./ShopUI.js').then((m) => m.openShop(this.game, shopId));
   }
 
   // ------------------------------------------------------------ the Miners' Board (upgrades + milestones)
   /** tab: 'dig' | 'haul' | 'blast' | 'home' | 'gear' | 'ms' (default: Digging, or Milestones when one is new). */
   openUpgrades(tab) {
+    if (!this.isUnlocked('upgrades')) return Promise.resolve(null); // [unlock guard]
     if (this.panelStack.some((p) => p.kind === 'upgrades')) return Promise.resolve(null);
     return import('./Upgrades.js').then((m) => { const h = m.openUpgrades(this.game, tab); if (h) h.kind = 'upgrades'; return h; });
   }
 
   // ------------------------------------------------------------ skill tree on its own (the book's Skills tab shows the same page)
   openSkills(line) {
+    if (!this.isUnlocked('skills')) return null; // [unlock guard]
     const open = this.panelStack.find((p) => p.kind === 'skills');
     if (open) { if (line) open.debug?.line(line); return open; }
     return openSkills(this.game, line);
@@ -512,6 +553,7 @@ export class UI {
 
   // ------------------------------------------------------------ index book (lazy import keeps UI light)
   openIndex(cat, id) {
+    if (!this.isUnlocked('book')) return; // [unlock guard]
     this.status.setBadge(false);
     if (this.panelStack.some((p) => p.kind === 'book')) return;
     import('./IndexBook.js').then((m) => { const h = m.openIndexBook(this.game, cat, id); if (h) h.kind = 'book'; });

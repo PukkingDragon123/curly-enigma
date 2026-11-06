@@ -7,7 +7,8 @@ import { DeepWorld } from './World.js';
 import { TerrainView } from './Terrain.js';
 import { ChunkPool } from './ChunkPool.js';
 import { FPSPlayer } from './Player.js';
-import { Digger, breakable } from './Dig.js';
+import { Digger, breakable, plateOf } from './Dig.js';
+import { Cracks } from './Cracks.js'; // cracks on rock that took a blow but hasn't given yet
 import { Bodies } from './Bodies.js';
 import { Particles } from './Particles.js';
 import { Ores } from './Ores.js';
@@ -235,8 +236,11 @@ export default class DigScene extends Scene {
       this.vm.setTool(hand ? hand.kind : this.slotName === 'build' ? 'beam' : it ? this.slotName : 'none', hand ? hand.opts : { item: it?.id });
     }
   }
-  selectSlot(i) {
-    const n = (i + HOTBAR_N) % HOTBAR_N;
+  selectSlot(i, dir = 0) {
+    let n = (i + HOTBAR_N) % HOTBAR_N;
+    // [unlock guard] a slot the tutorial hasn't given you yet (src/ui/Belt.js shown): a key does nothing, the wheel skips it
+    const belt = this.game.ui.belt;
+    if (belt?.shown && !belt.shown(n)) { if (!dir) return; for (let k = 0; k < HOTBAR_N && !belt.shown(n); k++) n = (n + dir + HOTBAR_N) % HOTBAR_N; if (!belt.shown(n)) return; }
     if (this.slot === n) { if (hotbarOf(this.state)[n] === 'build') this.cycleBuild(); return; }
     this.slot = n;
     this.audio.play('ui_click', { pitch: 1.3 });
@@ -259,7 +263,7 @@ export default class DigScene extends Scene {
     // tools
     if (!busy) {
       for (let k = 0; k < HOTBAR_N; k++) if (inp.pressed('Digit' + (k + 1))) this.selectSlot(k);
-      if (inp.mouse.wheel) this.selectSlot(this.slot + Math.sign(inp.mouse.wheel));
+      if (inp.mouse.wheel) this.selectSlot(this.slot + Math.sign(inp.mouse.wheel), Math.sign(inp.mouse.wheel));
       if (inp.pressed('KeyQ')) this.eatBest();
       if (inp.pressed('KeyR') && this.slotName === 'build') this.cycleBuild();
       if (inp.pressed('KeyE')) this.interact();
@@ -309,6 +313,7 @@ export default class DigScene extends Scene {
     // hit-stop: the world holds its breath for a few frames when a blow breaks rock
     const sdt = this.hitStop > 0 ? dt * 0.15 : dt;
     this.hitStop = Math.max(0, (this.hitStop || 0) - dt);
+    this.digTick(dt); // loose grains slide, loose roofs, ore glints (mining)
     this.bodies.update(sdt, pl.eye(), pl.pos);
     if (this.fluids) this.fluids.update(dt, { player: pl, eye: pl.eye(), time: this.time });
     if (this.firstDig) this.events(this.firstDig.update(dt, { player: pl, eye: pl.eye(), time: this.time, busy }));
@@ -489,8 +494,9 @@ export default class DigScene extends Scene {
     this.energy(0.45);
     this.U.hit.value.set(px, py, pz, 0.7);
     this.kick.set(-0.012 * power, (Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.012);
-    if (this.vm) this.vm.impact('pick', Math.min(1, 0.5 + power * 0.15));
     const mat = MAT[m];
+    const hard = !breakable(m) || m >= ORE_BASE;
+    if (this.vm && hard) this.vm.impact('pick', Math.min(1.2, 0.6 + power * 0.15), { feel: m >= ORE_BASE ? 'rebound' : 'clang', stop: 0.04 });
     if (!breakable(m)) {
       this.audio.play('clang', { vol: 0.6 });
       this.fx.sparks(px, py, pz, 6, [1, 0.85, 0.5], out, 3);
@@ -503,7 +509,6 @@ export default class DigScene extends Scene {
       this.audio.play('ore_damage');
       this.fx.sparks(px, py, pz, 10, col01(mat.accent), out, 3.5);
       if (r) {
-        this.game.ui.floatText?.(`-${Math.round(r.ore.frag * power * this.bonus('clean'))}%`, ...this.screenXY(px, py, pz), '#ff8a6a', 0.8);
         if (!this.flags.oreHit) { this.flags.oreHit = true; st.learn('ore_damage'); this.say('orehit', 'Careful! Hitting ore chips its quality. Clear the rock around it instead.', 'warn', 30); }
         if (r.s.q <= 0) this.shatter(r.d);
       }
@@ -515,29 +520,307 @@ export default class DigScene extends Scene {
     const needs = HARD_ROCK_TIER?.[zone] ?? (zone >= 4 ? 3 : 0);
     if (mat.hp > 3.5 && tier < needs) {
       this.audio.play('clang'); this.fx.sparks(px, py, pz, 8, [1, 0.8, 0.4], out, 3);
+      this.vm?.impact('pick', 1.2, { feel: 'clang', stop: 0.05 });
       const want = pickForTier?.(needs);
       this.say('hard', `${mat.name} is too hard for this pickaxe${want ? ` — you need at least a <b>${want.name}</b>` : ''}.`, 'warn', 5);
       return;
     }
     const res = this.digger.strike(hit.vx, hit.vy, hit.vz, power, [hit.nx, hit.ny, hit.nz]);
-    this.audio.play('hit', { snd: mat.snd || 'stone' });
     this.enemies?.noise?.(px, py, pz, 4, 'dig'); // the ring of the pick carries
+    this.ores.vibrate(px, py, pz, power * 0.4);
+    if (res.brk) {
+      this.digFx(hit, res, mat, power, px, py, pz, out);
+      this.afterBreak(res.broken, out, power, 'pick', res);
+      return;
+    }
+    // placed blocks, the wrong tool
+    this.vm?.impact('pick', Math.min(1, 0.5 + power * 0.15));
+    this.audio.play('hit', { snd: mat.snd || 'stone' });
     const c = col01(mat.tones[2]);
     this.fx.dust(px, py, pz, 5, col01(mat.tones[1]), 0.06, out);
     this.fx.chips(px, py, pz, 4 + (Math.random() * 4 | 0), c, out);
     if (mat.snd === 'stone' || mat.snd === 'crystal') this.fx.sparks(px, py, pz, 3, [1, 0.8, 0.45], out, 2.5);
-    this.ores.vibrate(px, py, pz, power * 0.4);
     this.afterBreak(res.broken, out, power, 'pick');
     if (res.broken.length > 6) { this.audio.play('break', { snd: mat.snd || 'stone' }); this.shake(0.25); this.hitStop = 0.05; }
     else if (res.broken.length) this.hitStop = Math.max(this.hitStop || 0, 0.025);
   }
 
-  /** Broken voxels fly out as a chunk; check ore around; stats. */
-  afterBreak(broken, out, power, tool) {
+  // ------------------------------------------------------------------ how digging feels (MAT.brk)
+  /** What a pick blow on rock or soil sounds, looks and feels like, by how the material breaks. */
+  digFx(hit, res, mat, power, px, py, pz, out) {
+    const brk = res.brk, hs = mat.hs || mat.snd || 'stone';
+    const rocky = brk === 'slab' || brk === 'shatter', hard = mat.hp >= 2.6;
+    const pitch = (0.92 + Math.random() * 0.16) * (hard ? 0.94 : 1);
+    const dustC = col01(mat.tones[1]), chipC = col01(mat.tones[2]);
+    this.bodies.hooks.crumble ||= (b) => this.clodBurst(b);
+    this.U.hit.value.w = rocky ? 0.55 : 0.3;
+    if (rocky) {
+      this.audio.play('hit', { snd: hs, pitch: pitch * (1 + 0.08 * (res.cracked || 0)) });
+      this.fx.sparks(px, py, pz, hard ? 4 + Math.round(mat.hp * 1.5) : 2, brk === 'shatter' ? [0.85, 0.92, 1] : [1, 0.8, 0.45], out, hard ? 3.2 : 2.4);
+      this.fx.chips(px, py, pz, 3 + (Math.random() * 3 | 0), chipC, out);
+      this.fx.dust(px, py, pz, 3, dustC, 0.04, out);
+      if (res.cracked !== undefined) {
+        // not yet: the face cracks (sharper as the plate gets close to giving), the pick jumps back
+        this.audio.play('crack', { vol: 0.1 + 0.32 * res.cracked, pitch: 1.3 - 0.35 * res.cracked, delay: 0.03 });
+        this.crackAt(hit, res, px, py, pz, mat);
+        this.vm?.impact('pick', Math.min(1.3, 0.65 + power * 0.1) * (hard ? 1.15 : 0.85), { feel: 'rebound', stop: 0.035 });
+        this.hitStop = Math.max(this.hitStop || 0, 0.03);
+        if (res.cracked > 0.45) this.fx.grit(px, py - 0.01, pz, 2, chipC, 0.05); // grit trickles out of the cracks
+      } else {
+        // it gives: the plate breaks out along its seams with a crunch and a rattle of debris
+        this.audio.play('break', { snd: hs, pitch });
+        this.audio.play('debris', { vol: 1.8, delay: 0.1 });
+        if (brk === 'shatter') this.audio.play('crystal_ring', { vol: 0.5, pitch: 0.9 + Math.random() * 0.3 });
+        for (const k of res.cleared || []) this.cracks?.clear(k);
+        this.vm?.impact('pick', Math.min(1.2, 0.5 + power * 0.1), { feel: hard ? 'rebound' : undefined, stop: 0.065 });
+        this.hitStop = Math.max(this.hitStop || 0, 0.07);
+        this.shake(0.16 + 0.04 * (res.slabs?.length || 1));
+        this.kick.x -= 0.006;
+        if (mat.id === M.GEODE) this.geodeOpen(px, py, pz, out);
+      }
+    } else {
+      // soft ground: the point sinks in with a dull thud, no sparks
+      this.audio.play('hit', { snd: hs, pitch });
+      if (res.broken.length > 6) this.audio.play('break', { snd: hs, vol: 0.6, pitch, delay: 0.06 });
+      this.fx.dust(px, py, pz, brk === 'trickle' ? 8 : 4, dustC, 0.06, out);
+      this.fx.chips(px, py, pz, 3, chipC, out);
+      this.vm?.impact('pick', Math.min(1, 0.55 + power * 0.1), { feel: brk === 'splinter' ? undefined : 'bite', stop: 0.02 });
+      this.hitStop = Math.max(this.hitStop || 0, res.broken.length ? 0.03 : 0.015);
+      this.kick.multiplyScalar(0.6);
+      if (res.broken.length > 6) this.shake(0.1);
+    }
+    this.oreHint(px, py, pz, out);
+  }
+
+  /** Breaking through a geode's shell: if the hollow behind is lined with crystal, it rings and glitters. */
+  geodeOpen(px, py, pz, out) {
+    const w = this.world;
+    const h = w.raycast(px - out[0] * 0.02, py - out[1] * 0.02, pz - out[2] * 0.02, -out[0], -out[1], -out[2], 1.4);
+    if (!h || h.m !== M.CRYSTAL || h.dist < 0.12) return;
+    const key = ((h.x * 2) | 0) + ',' + ((h.y * 2) | 0) + ',' + ((h.z * 2) | 0);
+    if ((this.geodes ||= new Set()).has(key)) return;
+    this.geodes.add(key);
+    this.audio.play('crystal_ring', { vol: 1 });
+    this.audio.play('sparkle', { vol: 0.7, delay: 0.15 });
+    const c = col01(MAT[M.CRYSTAL].accent), c2 = col01(MAT[M.CRYSTAL].tones[3]);
+    for (let i = 0; i < 16; i++) this.fx.twinkle(h.x + rand(-0.3, 0.3), h.y + rand(-0.3, 0.3), h.z + rand(-0.3, 0.3), i & 1 ? c : c2, 0.01);
+    this.fx.shards(px, py, pz, 10, c2, out);
+    this.post.flash = 0.12; this.post.flashColor = 0xc8b8ff;
+  }
+
+  /** Draw the cracks of a blow that didn't break the plate yet (Cracks.js). */
+  crackAt(hit, res, px, py, pz, mat) {
+    this.cracks ||= new Cracks(this.scene, this.world);
+    const w = this.world, S = res.S, pid = res.pid;
+    const same = (x, y, z) => { const m = w.voxelAt(x, y, z); return m < ORE_BASE && breakable(m) && plateOf(x, y, z, S) === pid; };
+    this.cracks.hit(res.plate, [px, py, pz], [hit.nx, hit.ny, hit.nz], res.cracked, same, mat.snd === 'ice' || mat.id === M.CRYSTAL);
+  }
+
+  /** Rock right over hidden ore rings hollow, and a glint of the ore shows through the cracks. */
+  oreHint(px, py, pz, out) {
+    const w = this.world;
+    for (const d of w.depositsNear(px, py, pz, 0.4)) {
+      const s = w.depState(d);
+      if (s.taken || s.seen) continue;
+      const gap = Math.hypot(d.x - px, d.y - py, d.z - pz) - d.r; // rock between the blow and the ore
+      if (gap > 0.3) continue;
+      const k = 1 - Math.max(0, gap) / 0.3;
+      this.audio.play('tell', { vol: 0.45 + 0.5 * k, pitch: 0.8 + Math.random() * 0.15, delay: 0.04 });
+      const c = col01(MAT[ORE_BASE + d.oreId].accent);
+      for (let i = 0; i < 1 + Math.round(k * 3); i++) this.fx.twinkle(px + out[0] * 0.01 + (Math.random() - 0.5) * 0.08, py + out[1] * 0.01 + (Math.random() - 0.5) * 0.08, pz + out[2] * 0.01 + (Math.random() - 0.5) * 0.08, c, 0.008);
+      return;
+    }
+  }
+
+  /** A soil clod (or a lump of fallen roof) bursts where it lands. */
+  clodBurst(b) {
+    const c = col01(b.color ?? 0x6a4a30), p = b.pos;
+    const n = Math.min(14, 3 + (b.n / 6) | 0);
+    this.fx.dust(p.x, p.y, p.z, Math.ceil(n * 0.6), c, 0.04 + b.r * 0.6, [0, 0.4, 0]);
+    this.fx.chips(p.x, p.y + 0.02, p.z, n, c, [0, 0.6, 0]);
+    this.fx.haze(p.x, p.y + 0.05, p.z, 2 + (b.n / 40 | 0), c, b.r + 0.04);
+    this.audio.play('hit', { snd: 'dirt', vol: Math.min(0.6, 0.15 + b.n / 300), pitch: 1.2 - Math.min(0.4, b.n / 600) });
+  }
+
+  /** Broken ground leaves the face the way its material breaks (MAT.brk): slabs, shards, clods, a curl, grains. */
+  debris(broken, out, res) {
+    const brk = res.brk, at = (v) => [(v.x + 0.5) / VOX, (v.y + 0.5) / VOX, (v.z + 0.5) / VOX];
+    const b0 = broken[(broken.length / 2) | 0], mat = MAT[b0.m] || MAT[res.material];
+    const dustC = col01(mat?.tones?.[1] ?? 0x806050);
+    const [x0, y0, z0] = at(b0);
+    const o3 = (k) => [out[0] * k, out[1] * k, out[2] * k];
+    if (res.slabs?.length) {
+      // whole plates: each tips out of the face and drops (crystal and ice burst into shards)
+      let inSlabs = 0;
+      for (const sl of res.slabs) {
+        inSlabs += sl.length;
+        const [sx, sy, sz] = at(sl[(sl.length / 2) | 0]);
+        if (brk === 'shatter' && sl.length > 10) {
+          const parts = new Map();
+          for (const v of sl) { const k = plateOf(v.x, v.y, v.z, Math.max(1.5, res.S * 0.45)); let a = parts.get(k); if (!a) parts.set(k, (a = [])); a.push(v); }
+          let i = 0;
+          for (const p of [...parts.values()].sort((a, b) => b.length - a.length)) {
+            if (i++ >= 5 || p.length < 3) { const v = p[0]; this.fx.shards((v.x + 0.5) / VOX, (v.y + 0.5) / VOX, (v.z + 0.5) / VOX, Math.min(5, p.length), col01(v.c), out); continue; }
+            const sp = 1 + Math.random() * 1.2;
+            this.bodies.spawn(p, { vel: [out[0] * sp + rand(-0.9, 0.9), out[1] * sp + rand(0.5, 2), out[2] * sp + rand(-0.9, 0.9)], bounce: 0.5, stay: 1.4 + Math.random(), life: 1.2, mat: p[0].m });
+          }
+          this.fx.shards(sx, sy, sz, 12, col01(mat.accent), out);
+          for (let k = 0; k < 4; k++) this.fx.glints(sx, sy, sz, col01(mat.accent));
+        } else {
+          // it tips out of the face and drops (not flung at the mole)
+          const sp = 0.15 + Math.random() * 0.3;
+          this.bodies.spawn(sl, { vel: [out[0] * sp + rand(-0.2, 0.2), out[1] * sp + rand(-0.2, 0.3), out[2] * sp + rand(-0.2, 0.2)],
+            spin: [rand(-3.5, 3.5), rand(-1.5, 1.5), rand(-3.5, 3.5)], bounce: 0.24, stay: 2.4 + Math.random() * 1.2, life: 1.6, mat: sl[0].m });
+        }
+      }
+      if (broken.length > inSlabs) this.fx.chips(x0, y0, z0, Math.min(10, broken.length - inSlabs), col01(b0.c), out);
+      this.fx.dust(x0, y0, z0, 8, dustC, 0.14, o3(0.4));
+      this.fx.haze(x0, y0, z0, 8 + res.slabs.length * 3, dustC, 0.16, o3(0.3));
+      return;
+    }
+    if (res.cracked !== undefined) { this.fx.chips(x0, y0, z0, Math.min(10, broken.length + 2), col01(b0.c), out); return; }
+    if (brk === 'peel' && broken.length >= 6) {
+      // clay: one curl, slapped off the face, lands dead
+      // (it curls over as it drops: spin about the face's horizontal axis)
+      const ax = Math.abs(out[1]) > 0.5 ? [rand(-3, 3), 0, rand(-3, 3)] : [out[2] * rand(3, 5), rand(-0.6, 0.6), -out[0] * rand(3, 5)];
+      this.bodies.spawn(broken, { vel: [out[0] * 0.35 + rand(-0.15, 0.15), out[1] * 0.35 + 0.15, out[2] * 0.35 + rand(-0.15, 0.15)], spin: ax, bounce: 0.04, stay: 2.6, life: 1.6, mat: b0.m });
+      this.fx.chips(x0, y0, z0, 4, col01(b0.c), out);
+      this.fx.dust(x0, y0, z0, 3, dustC, 0.06, o3(0.4));
+      return;
+    }
+    if (brk === 'trickle') {
+      // grains: a pour of them, and a lot of dust
+      for (let i = 0, n = Math.min(26, broken.length / 3 + 4) * this.fx.lod; i < n; i++) { const v = broken[(Math.random() * broken.length) | 0]; this.fx.grain((v.x + 0.5) / VOX, (v.y + 0.5) / VOX, (v.z + 0.5) / VOX, col01(v.c)); }
+      this.fx.dust(x0, y0, z0, 8, dustC, 0.12, o3(0.4));
+      this.fx.haze(x0, y0, z0, 6, dustC, 0.14, o3(0.3));
+      return;
+    }
+    if (brk === 'crumble' && broken.length > 6) {
+      // soil: a few clods (three-voxel cells, merged in pairs) that burst where they land
+      const cells = new Map();
+      for (const v of broken) { const k = ((v.x / 3) | 0) + ',' + ((v.y / 3) | 0) + ',' + ((v.z / 3) | 0); let c = cells.get(k); if (!c) cells.set(k, (c = [])); c.push(v); }
+      const lumps = [...cells.values()].sort((a, b) => b.length - a.length);
+      let n = 0;
+      for (let i = 0; i < lumps.length; i++) {
+        const L = lumps[i];
+        if (n < 5 && L.length >= 5) {
+          if (i + 1 < lumps.length && chance(0.5)) { L.push(...lumps[i + 1]); lumps[i + 1] = []; }
+          const sp = 0.6 + Math.random();
+          this.bodies.spawn(L, { vel: [out[0] * sp + rand(-0.5, 0.5), out[1] * sp + rand(0.3, 1.2), out[2] * sp + rand(-0.5, 0.5)], bounce: 0.15, crumble: true, stay: 1, life: 2, mat: L[0].m });
+          n++;
+        } else if (L.length) { const v = L[0]; this.fx.chips((v.x + 0.5) / VOX, (v.y + 0.5) / VOX, (v.z + 0.5) / VOX, Math.min(3, L.length), col01(v.c), out); }
+      }
+      this.fx.dust(x0, y0, z0, 8, dustC, 0.14, o3(0.5));
+      this.fx.haze(x0, y0, z0, 5, dustC, 0.12, o3(0.3));
+      return;
+    }
+    // anything else (wood, small bites): lumps and grit
+    this.lumps(broken, out);
+  }
+
+  /** Digging under a soft roof: grit trickles from it first; undermine it again and a lump drops. */
+  undermine(broken) {
+    let top = broken[0];
+    for (const v of broken) if (v.y > top.y) top = v;
+    const w = this.world, x = top.x, z = top.z, y = top.y + 1;
+    const m = w.voxelAt(x, y, z);
+    if (!m || !breakable(m) || m >= ORE_BASE || !MAT[m] || !['crumble', 'trickle', 'peel'].includes(MAT[m].brk)) return;
+    // how wide is the hole under it (air two voxels down, in a ring 0.4 m out)
+    let open = 0;
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2, xx = x + Math.round(Math.cos(a) * 6.5), zz = z + Math.round(Math.sin(a) * 6.5); if (!w.voxelAt(xx, y - 1, zz) && !w.voxelAt(xx, y - 2, zz)) open++; }
+    if (open < 5) return;
+    const L = (this.loose ||= []);
+    const near = L.find((l) => Math.hypot(l.x - x, l.y - y, l.z - z) < 9);
+    if (near) { if (!near.armed) { near.armed = true; near.t = Math.min(near.t, 0.6 + Math.random() * 0.7); this.audio.play('creak', { vol: 0.3, pitch: 1.3 }); } return; }
+    if (L.length >= 3 || !chance(0.4)) return;
+    L.push({ x, y, z, m, t: 3 + Math.random() * 2.5, armed: false });
+    this.audio.play('trickle', { vol: 0.45 });
+  }
+
+  /** A loose patch of roof lets go: a ragged lump of it drops (and knocks the mole if it's under it). */
+  dropRoof(l) {
+    const R = 3 + Math.random() * 1.6;
+    const vox = this.digger.bite(l.x + 0.5, l.y + R * 0.4, l.z + 0.5, R, null).filter((v) => !MAT[v.m]?.unbreakable);
+    if (vox.length < 4) return;
+    this.bodies.spawn(vox, { vel: [rand(-0.2, 0.2), -0.6, rand(-0.2, 0.2)], spin: [rand(-1, 1), rand(-1, 1), rand(-1, 1)], bounce: 0.1, crumble: true, life: 2, stay: 1, mat: vox[0].m });
+    const x = (l.x + 0.5) / VOX, y = l.y / VOX, z = (l.z + 0.5) / VOX, c = col01(MAT[l.m].tones[1]);
+    this.audio.play('collapse', { vol: 0.4 });
+    this.fx.dust(x, y - 0.05, z, 12, c, 0.2, [0, -0.5, 0]);
+    this.fx.haze(x, y - 0.1, z, 10, c, 0.25);
+    this.shake(0.3);
+    this.digger.loosen(vox);
+    this.cracks?.refresh();
+    const pl = this.player;
+    if (Math.hypot(pl.pos.x - x, pl.pos.z - z) < 0.42 && y > pl.pos.y && y - pl.pos.y < 2.2) this.hurt(3 + Math.round(vox.length / 60), 'rock');
+  }
+
+  /** Every frame: loose grains slide, loose roofs trickle and drop, ore glints through thin rock. */
+  digTick(dt) {
+    const pl = this.player;
+    this.pourT = (this.pourT || 0) - dt;
+    if (this.pourT <= 0 && this.digger.pour?.q.length) {
+      this.pourT = 0.08;
+      const P = pl.pos;
+      const moves = this.digger.settle(this.fx.lod < 1 ? 16 : 30, (x, y, z) => { const X = (x + 0.5) / VOX - P.x, Y = (y + 0.5) / VOX - P.y, Z = (z + 0.5) / VOX - P.z; return Math.abs(X) < 0.34 && Math.abs(Z) < 0.34 && Y > -0.06 && Y < 1; });
+      for (let i = 0; i < moves.length; i += 2) { const v = moves[i]; this.fx.grain((v.x + 0.5) / VOX, (v.y + 0.5) / VOX, (v.z + 0.5) / VOX, col01(voxelColor(v.m, v.x, v.y, v.z, Math.random()))); }
+      if (moves.length > 3 && chance(0.25)) this.audio.play('trickle', { vol: 0.3 });
+    }
+    if (this.loose?.length) {
+      for (const l of this.loose) {
+        l.t -= dt;
+        if (chance(dt * (l.armed ? 26 : 8))) this.fx.grain((l.x + 0.5) / VOX + rand(-0.09, 0.09), l.y / VOX - 0.01, (l.z + 0.5) / VOX + rand(-0.09, 0.09), col01(MAT[l.m].tones[1]));
+        if (l.t <= 0) { l.gone = true; if (l.armed || chance(0.3)) this.dropRoof(l); }
+      }
+      this.loose = this.loose.filter((l) => !l.gone && this.world.voxelAt(l.x, l.y, l.z));
+    }
+    // ore under a thin skin of rock glints in the lamp beam
+    this.glintT = (this.glintT || 0) - dt;
+    if (this.glintT <= 0) {
+      this.glintT = 0.22;
+      const e = pl.eye(), f = pl.forward(), w = this.world;
+      for (const d of w.depositsNear(e.x, e.y, e.z, 2.2)) {
+        const s = w.depState(d);
+        if (s.taken || s.seen) continue;
+        const dx = d.x - e.x, dy = d.y - e.y, dz = d.z - e.z, dl = Math.hypot(dx, dy, dz) || 1;
+        if ((dx * f.x + dy * f.y + dz * f.z) / dl < 0.82) continue;
+        const h = w.raycast(e.x, e.y, e.z, dx / dl, dy / dl, dz / dl, dl);
+        if (!h || dl - h.dist > d.r + 0.16) continue;
+        if (chance(0.5)) this.fx.twinkle(h.x - dx / dl * 0.01, h.y - dy / dl * 0.01, h.z - dz / dl * 0.01, col01(MAT[ORE_BASE + d.oreId].accent), 0.007);
+        break;
+      }
+    }
+  }
+
+  /** Broken voxels fly out as a chunk; check ore around; stats. res: a pick blow's Dig result (debris by MAT.brk). */
+  afterBreak(broken, out, power, tool, res = null) {
     if (!broken.length) return;
     const st = this.state;
+    if (res) {
+      this.act('dig', { mat: broken[0].m, n: broken.length, tool });
+      st.data.stats.blocks += broken.length > 6 ? 1 : 0;
+      this.debris(broken, out, res);
+      this.digger.loosen(broken);
+      this.cracks?.refresh();
+      if (res.cracked === undefined) this.undermine(broken);
+      const b = broken[0];
+      const freed = this.ores.checkFree((b.x + 0.5) / VOX, (b.y + 0.5) / VOX, (b.z + 0.5) / VOX, tool);
+      if (freed.seenNew) this.revealed(freed.seenNew);
+      for (const f of freed) this.popOre(f, out);
+      return;
+    }
+    if (tool !== 'pick') { this.digger.loosen(broken); this.cracks?.refresh(); }
     this.act('dig', { mat: broken[0].m, n: broken.length, tool });
     st.data.stats.blocks += broken.length > 6 ? 1 : 0;
+    this.lumps(broken, out);
+    const b = broken[0];
+    const x = (b.x + 0.5) / VOX, y = (b.y + 0.5) / VOX, z = (b.z + 0.5) / VOX;
+    const freed = this.ores.checkFree(x, y, z, tool);
+    if (freed.seenNew) this.revealed(freed.seenNew);
+    for (const f of freed) this.popOre(f, out);
+  }
+
+  /** Broken bits as grit, and (a big bite) a few tumbling lumps of quarter-meter cells. */
+  lumps(broken, out) {
     // grit: a spray of tiny chips for every broken bit
     {
       const v = broken[0];
@@ -575,19 +858,12 @@ export default class DigScene extends Scene {
       const b = broken[0];
       this.fx.chips((b.x + 0.5) / VOX, (b.y + 0.5) / VOX, (b.z + 0.5) / VOX, 5, col01(b.c), out);
     }
-    const b = broken[0];
-    const x = (b.x + 0.5) / VOX, y = (b.y + 0.5) / VOX, z = (b.z + 0.5) / VOX;
-    const freed = this.ores.checkFree(x, y, z, tool);
-    if (freed.seenNew) this.revealed(freed.seenNew);
-    for (const f of freed) this.popOre(f, out);
   }
 
   revealed(d) {
     const it = ITEMS[d.item];
     if (!it) return;
     this.audio.play('sparkle', { vol: 0.5 });
-    const p = this.screenXY(d.x, d.y, d.z);
-    this.game.ui.floatText?.(it.name, p[0], p[1], '#ffe8a0', 0.9);
   }
 
   popOre(f, out) {
@@ -1244,6 +1520,7 @@ export default class DigScene extends Scene {
     this.terrain.dispose();
     this.world.pool?.dispose();
     this.bodies.dispose();
+    this.cracks?.dispose();
     this.fx.dispose();
     this.enemies?.dispose();
     this.props?.dispose();

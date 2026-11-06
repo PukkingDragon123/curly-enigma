@@ -80,6 +80,9 @@ export function openBook(game, tab, opts = {}) {
   if (TAB_ALIAS[tab]) tab = TAB_ALIAS[tab];
   if (!tab) tab = Q && Q.unseen() ? 'quests' : lastTab;
   if (!CHAPTERS.some((c) => c.id === tab)) tab = 'quests';
+  // [unlock guard] chapters the tutorial hasn't introduced yet (src/ui/Onboard.js UNLOCKS) stay shut
+  const tabOpen = (id) => (id === 'quests' || id === 'index' ? st.unlocked?.('book') : st.unlocked?.(id)) ?? true;
+  if (!tabOpen(tab)) tab = CHAPTERS.find((c) => tabOpen(c.id))?.id || 'quests';
   ui.status?.setBadge?.(false);
 
   const left = el('div', { class: 'ib-page ib-left bk-page' });
@@ -100,6 +103,7 @@ export function openBook(game, tab, opts = {}) {
       el('img', { class: 'pix', src: BART.tab(c.id), alt: '' }), el('span', {}, c.label), el('i', { class: 'bk-dot', hidden: true }),
     ]);
     b.style.setProperty('--tc', c.color);
+    if (!tabOpen(c.id)) b.hidden = true; // [unlock guard]
     tabEls[c.id] = b;
     tabs.append(b);
   }
@@ -442,7 +446,7 @@ export function openBook(game, tab, opts = {}) {
   const go = (id, o = {}) => {
     if (id === 'notes') lastShelf = 'notes';
     if (TAB_ALIAS[id]) id = TAB_ALIAS[id];
-    if (!CHAPTERS.some((c) => c.id === id)) return;
+    if (!CHAPTERS.some((c) => c.id === id) || !tabOpen(id)) return; // [unlock guard]
     if (id === chapter) {
       if (side === 'right') { side = 'left'; flip(-1, () => {}); }
       return;

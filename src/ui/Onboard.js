@@ -3,26 +3,35 @@
 // cooking/lesson.js) drive it; it never decides what the lesson is. It stays out of the way: the big
 // moments are marked in the 3D world (camera moves, Old Star's gestures, sparks, light, sound), never
 // with cards, stamps or confetti.
-//   - The tutorial UI level: which HUD pieces have come in yet (TUT below). Pieces not in yet are
-//     hidden (#ui.obh-<piece>); one that comes in fades up quietly. ui.setTutorialLevel(n) (UI.js) →
-//     onboard.setLevel(n). Saved in state.data.onboard.level; a save without that key is at the full
-//     level (everything shows, as before the tutorial existed). The quest strip waits for FULL: during
-//     the lessons the objective is goal()'s one line.
+//   - Unlocks (state.data.unlocks = { id: true, all? }; a save without the key has everything): a new
+//     game sees and reaches nothing it hasn't been introduced to. UNLOCKS below names each one and
+//     the HUD pieces / entry points behind it; unlock(id) (ui.unlock) lets one in (the piece fades up
+//     quietly once it can be seen), isUnlocked(id) (ui.isUnlocked, state.unlocked) asks. The entry
+//     points ask too: ui.openInventory / openBook (and its tabs) / openIndex / openSurvey / openSkills /
+//     openUpgrades / openShop, the hotbar's slots (src/ui/Belt.js), the home's build mode, the
+//     skill feedback, the discovery cards. Where each is granted: the lessons (src/home/lessons.js,
+//     src/forge/tutorial.js, src/deep/FirstDig.js); the lessons' end or a skip → unlockAll().
+//     Old saves past the lessons (onboard done, lesson 'done' or skipped) have everything; one in the
+//     middle of them gets what its stage had (migrate()).
+//   - The tutorial UI level (TUT): kept for the scenes that still raise it; each level grants the
+//     unlocks listed for it (LEVEL_GRANTS), FULL grants them all. Saved in state.data.onboard.level.
 //   - goal(html): one short objective line at the top of the screen ("Talk to Old Star"); goal(null)
 //     hides it, goalDone() ticks it off (a soft chime, a green tick, it fades).
 //   - cinema(on, { skip }): letterbox bars over a cutscene, the HUD tucked away, and a "hold to skip"
 //     ring (hold Space / Enter / E, or hold the ring on a touch screen; a tap never skips).
-//   - teach(id, opts): a small prompt for one control, drawn per device (key caps / the mouse on a PC,
-//     the touch control's own art on a phone, whose real control gets a soft pulsing ring), with a
-//     thin meter fed by opts.progress(). When it's done it ticks green and fades. Resolves when done
-//     (or closed).
+//   - teach(id, opts): one quiet line for one control (no box: a small glyph, what, how), drawn per
+//     device (key caps / the mouse on a PC, the touch control's own art on a phone, whose real control
+//     gets a soft pulsing ring), with a hairline meter fed by opts.progress(). When it's done it fades.
+//     Resolves when done (or closed).
+//   - hint(id, html, { dur, until }): a tiny line low in the middle, once per game per id, that fades
+//     by itself (the first "WASD to walk" after the wake-up).
 //   - spot(target): a pulsing ring on a real control or HUD piece.
 //   - mark(pos): a small bobbing marker over a world point (an arrow at the edge when off screen).
 //     The lessons mostly use a 3D glint in the world instead (lessons.js / FirstDig.js).
 //   - talk(html, opts, fallback): Old Star's lines go through game.convo when it exists, else fallback().
 //   - caption(title, sub): a film caption for a place (under the top bar), fades by itself.
 // None of these block input.
-// Test hooks: ui.onboard.debug.{ state(), level(n), complete(), skip(), hidden(), history(), cinema(on), goal() }.
+// Test hooks: ui.onboard.debug.{ state(), unlocks(), unlock(id | 'all'), level(n), complete(), skip(), hidden(), history(), cinema(on), goal() }.
 import { el, clamp } from '../core/util.js';
 import { Px, art } from './uiArt.js';
 import { SPR } from './uiSprites.js';
@@ -32,23 +41,67 @@ import './onboard.css';
 /** Tutorial UI levels, in the order the pieces are introduced. */
 export const TUT = { CINEMA: 0, LOOK: 1, WALK: 2, USE: 3, QUEST: 4, DIG: 5, TOOLS: 6, PACK: 7, MAP: 8, GUARD: 9, FULL: 10 };
 
-/** HUD pieces: [name, level it comes in at, selectors (inside #ui), tag shown when it comes in]. */
+/**
+ * What a new game unlocks, one at a time (id → what it is, and where it's granted). The ids are what
+ * ui.unlock / ui.isUnlocked / state.unlocked take.
+ */
+export const UNLOCKS = {
+  look: 'the crosshair (after the wake-up)',
+  move: 'walking, jumping, crouching on a touch screen (after the wake-up)',
+  use: 'the touch "use" hand (after the wake-up)',
+  belt: 'the hotbar, with what you have in it (your first pick: forge/tutorial.js)',
+  dig: 'the touch dig button (your first pick)',
+  tools: 'the touch tool switch (his spare chisel: lessons.js, back with the pick)',
+  pack: 'the backpack: I / Tab, its button, the load gauge, your trunk (his old pack: lessons.js, back with the pick)',
+  guard: 'the touch shield (the first thing that comes at you: FirstDig.js; else the lessons\' end)',
+  book: 'the book: B, its button, the quests and index tabs, the Index Book, discovery cards (his notebook: lessons.js, back with the copper)',
+  radar: 'the radar and the depth plumb in the mine (back from the first ride down)',
+  layers: 'M / a tap on the radar: the lift layers (back from the first ride down)',
+  energy: 'the lantern (when it first runs low, or the lessons\' end)',
+  gold: 'the coin pouch (your first gold, or the lessons\' end)',
+  quests: 'the quest strip and its waymarks, the calendar (the lessons\' end)',
+  skills: 'the skill tree tab, the XP plaque, level-up notes (the lessons\' end)',
+  lore: 'the lore tab (the lessons\' end)',
+  snack: 'the snack button, food charms (the lessons\' end)',
+  hotbar: 'every hotbar slot, empty ones too (the lessons\' end)',
+  build: 'building: the home\'s build mode, the hotbar\'s build slot (the lessons\' end)',
+  upgrades: 'the Miners\' Board (the lessons\' end)',
+  shops: 'shop counters (the lessons\' end)',
+};
+export const UNLOCK_IDS = Object.keys(UNLOCKS);
+
+/** Old tutorial levels → what each grants (a level grants its own and every one below it). */
+const LEVEL_GRANTS = {
+  [TUT.LOOK]: ['look'], [TUT.WALK]: ['move'], [TUT.USE]: ['use'], [TUT.QUEST]: [], [TUT.DIG]: ['belt', 'dig'],
+  [TUT.TOOLS]: ['tools'], [TUT.PACK]: ['pack'], [TUT.MAP]: ['book', 'radar', 'layers'], [TUT.GUARD]: ['guard'],
+};
+/** What a game in the middle of the lessons has had by each stage (state.data.oldstar.lesson). */
+const STAGE_GRANTS = {
+  wake: [], pick: ['look', 'move', 'use'],
+  mine: ['look', 'move', 'use', 'belt', 'dig', 'tools', 'pack'],
+  forge: ['look', 'move', 'use', 'belt', 'dig', 'tools', 'pack', 'guard', 'book', 'radar', 'layers'],
+  cook: ['look', 'move', 'use', 'belt', 'dig', 'tools', 'pack', 'guard', 'book', 'radar', 'layers'],
+};
+
+/** HUD pieces: [name, the unlock it waits for, selectors (inside #ui)]. */
 const PIECES = [
-  ['xh', TUT.LOOK, '.xh', null],
-  ['stick', TUT.WALK, '.tc-stick', null],
-  ['use', TUT.USE, '.tc .d-use, .tc .b-use', null],
-  ['quest', TUT.FULL, '.qt, .qm-way, .qm-eye, .qm-pin, .qm-bang', { pc: 'Your task · <kbd>B</kbd>', t: 'Your task' }],
-  ['belt', TUT.DIG, '.belt', { pc: 'Your tools · <kbd>1</kbd>–<kbd>8</kbd>', t: 'Your tools' }],
-  ['dig', TUT.DIG, '.tc-dig', null],
-  ['move', TUT.DIG, '.tc .d-jump, .tc .d-crouch, .tc .b-jump', null],
-  ['pack', TUT.PACK, '.pack-bag, .pack-load', { pc: 'Backpack · <kbd>I</kbd>', t: 'Backpack' }],
-  ['tool', TUT.TOOLS, '.tc .d-tool, .tc .b-tool', null],
-  ['book', TUT.MAP, '.pack-book', { pc: 'Your book · <kbd>B</kbd>', t: 'Your book' }],
-  ['radar', TUT.MAP, '.radar', { pc: 'Radar · <kbd>M</kbd> map', t: 'Radar: tap for the map' }],
-  ['guard', TUT.GUARD, '.tc .d-block', null],
-  ['snack', TUT.FULL, '.tc .d-snack, .tc .b-snack', null],
-  ['purse', TUT.FULL, '.hud-tl, .fb-strip, .sk-chip, .cal', { pc: 'Gold &amp; energy', t: 'Gold &amp; energy' }],
-  ['build', TUT.FULL, '.tc .b-build, .hud > button[aria-label="Decorate"]', null],
+  ['xh', 'look', '.xh'],
+  ['stick', 'move', '.tc-stick'],
+  ['use', 'use', '.tc .d-use, .tc .b-use'],
+  ['quest', 'quests', '.qt, .qm-way, .qm-eye, .qm-pin, .qm-bang, .cal'],
+  ['belt', 'belt', '.belt'],
+  ['dig', 'dig', '.tc-dig'],
+  ['move', 'move', '.tc .d-jump, .tc .d-crouch, .tc .b-jump'],
+  ['pack', 'pack', '.pack-bag, .pack-load'],
+  ['tool', 'tools', '.tc .d-tool, .tc .b-tool'],
+  ['book', 'book', '.pack-book'],
+  ['radar', 'radar', '.radar, .depth'],
+  ['guard', 'guard', '.tc .d-block'],
+  ['snack', 'snack', '.tc .d-snack, .tc .b-snack, .charms, .fb-strip'],
+  ['gold', 'gold', '.hud-tl .pouch'],
+  ['energy', 'energy', '.hud-tl .lamp'],
+  ['skills', 'skills', '.sk-chip, .sk-badge'],
+  ['build', 'build', '.tc .b-build, .hud > button[aria-label="Decorate"]'],
 ];
 
 const isTouch = () => document.documentElement.classList.contains('is-touch');
@@ -186,34 +239,90 @@ export class Onboard {
     window.addEventListener('blur', () => this.held.clear());
     const st = this.game.state;
     st.on('load', () => this.sync());
-    // the lessons end (the last one done, or all skipped): the whole HUD, no objective line
+    // the lessons end (the last one done, or all skipped): everything, no objective line
     st.on('act', (a) => {
       if (a?.type !== 'lesson' || !st.data.onboard) return;
       if (a.step === 'cook_done' || a.step === 'skip') { this.setLevel(TUT.FULL); this.goal(null); }
     });
+    // things that unlock themselves when they first matter: the lantern when it runs low, the
+    // pouch with your first gold
+    st.on('energy', () => { if (!this.isUnlocked('energy') && st.data.energy < st.data.maxEnergy * 0.45) this.unlock('energy'); });
+    st.on('gold', (e) => { if (!this.isUnlocked('gold') && e?.delta) this.unlock('gold'); });
     this.sync(false);
     this.setupDebug();
   }
 
-  // ------------------------------------------------------------ the tutorial UI level
+  // ------------------------------------------------------------ the tutorial UI level + unlocks
   get level() { return this.lvl; }
   get data() { return this.game.state.data.onboard || null; }
+  get unlocks() { return this.game.state.data.unlocks || null; }
 
-  /** A new game: the tutorial starts with nothing on screen. */
+  /** A new game: the tutorial starts with nothing on screen and nothing unlocked. */
   begin() {
     const st = this.game.state;
     st.data.onboard = { level: TUT.CINEMA, seen: [] };
+    st.data.unlocks = {};
     st.dirty = true;
     this.apply(TUT.CINEMA, false);
   }
 
-  /** Apply the saved level (none saved: everything shows). */
+  /** Has the tutorial introduced this yet? (No unlocks saved: everything is.) */
+  isUnlocked(id) {
+    const u = this.unlocks;
+    return !u || !!u.all || !!u[id];
+  }
+
+  /**
+   * Let one in (or a list). The pieces behind it fade up once they can be seen. Returns true if
+   * anything was new. o.quiet: no fade-up.
+   */
+  unlock(ids, o = {}) {
+    const u = this.unlocks;
+    if (!u || u.all) return false;
+    let any = false;
+    for (const id of [].concat(ids)) if (id && !u[id]) { u[id] = true; any = true; this.hist.push('unlock:' + id); }
+    if (!any) return false;
+    this.game.state.dirty = true;
+    this.applyUnlocks(!o.quiet);
+    this.game.state.emit('unlock', { ids: [].concat(ids) });
+    return true;
+  }
+
+  /** Everything (the lessons are over or skipped). */
+  unlockAll(o = {}) {
+    const u = this.unlocks;
+    if (!u || u.all) { this.applyUnlocks(false); return; }
+    u.all = true;
+    this.game.state.dirty = true;
+    this.applyUnlocks(!o.quiet);
+    this.game.state.emit('unlock', { ids: ['all'] });
+  }
+
+  /**
+   * A save from before the unlocks: past the lessons, everything; in the middle of them, what its
+   * stage had by then (and its level's grants).
+   */
+  migrate() {
+    const d = this.game.state.data;
+    const od = d.onboard, sd = d.oldstar || {};
+    if (sd.lesson === 'done' || sd.skipped || od?.done || (od && (od.level | 0) >= TUT.FULL)) {
+      if (d.unlocks && !d.unlocks.all) d.unlocks.all = true;
+      return;
+    }
+    if (!od || d.unlocks) return;
+    const u = (d.unlocks = {});
+    for (const id of STAGE_GRANTS[sd.lesson] || []) u[id] = true;
+    for (const [lv, ids] of Object.entries(LEVEL_GRANTS)) if ((od.level | 0) >= +lv) for (const id of ids) u[id] = true;
+  }
+
+  /** Apply the saved level and unlocks (none saved: everything shows). */
   sync(reveal = false) {
+    this.migrate();
     const d = this.data;
     this.apply(d ? clamp(d.level | 0, 0, TUT.FULL) : TUT.FULL, reveal);
   }
 
-  /** Raise (or with force, set) the level. New pieces fade up. */
+  /** Raise (or with force, set) the level; it grants that level's unlocks. FULL: everything. */
   setLevel(n, { force = false, reveal = true } = {}) {
     n = clamp(n | 0, 0, TUT.FULL);
     const d = this.data;
@@ -224,26 +333,38 @@ export class Onboard {
       if (n >= TUT.FULL) d.done = true;
       this.game.state.dirty = true;
     }
+    if (n >= TUT.FULL) this.unlockAll({ quiet: !reveal });
+    else {
+      const ids = [];
+      for (const [lv, g] of Object.entries(LEVEL_GRANTS)) if (n >= +lv) ids.push(...g);
+      if (ids.length) this.unlock(ids, { quiet: !reveal });
+    }
     this.apply(n, reveal);
     return this.lvl;
   }
 
   apply(n, reveal) {
-    const was = this.lvl;
     this.lvl = n;
+    this.ui.root.dataset.tut = String(n);
+    this.applyUnlocks(reveal);
+  }
+
+  /** Hide what isn't unlocked yet; what just came in fades up. */
+  applyUnlocks(reveal) {
     const root = this.ui.root;
-    root.dataset.tut = String(n);
-    root.classList.toggle('ob-tut', n < TUT.FULL);
-    for (const [name, at] of PIECES) {
-      const hide = n < at;
+    const u = this.unlocks;
+    root.classList.toggle('ob-tut', !!u && !u.all);
+    for (const [name, id] of PIECES) {
+      const hide = !this.isUnlocked(id);
+      const was = root.classList.contains('obh-' + name);
       root.classList.toggle('obh-' + name, hide);
-      if (!hide && was < at && reveal) this.pendingReveal.add(name);
+      if (!hide && was && reveal) this.pendingReveal.add(name);
     }
     if (this.pendingReveal.size) this.revealSoon();
   }
 
   /** Which pieces are hidden right now. */
-  hidden() { return PIECES.filter(([, at]) => this.lvl < at).map(([n]) => n); }
+  hidden() { return PIECES.filter(([, id]) => !this.isUnlocked(id)).map(([n]) => n); }
 
   installHiding() {
     const css = PIECES.map(([name, , sel]) => sel.split(',').map((s) => `#ui.obh-${name} ${s.trim()}`).join(', ') + ' { display: none !important; }').join('\n');
@@ -254,7 +375,7 @@ export class Onboard {
   revealSoon() {
     clearTimeout(this._revT);
     this._revT = setTimeout(() => {
-      if (this.ui.hudMode !== 'deep' || this.panelUp() || this.cine) { this.revealSoon(); return; }
+      if (this.ui.hudMode === 'none' || this.panelUp() || this.cine) { this.revealSoon(); return; }
       const names = [...this.pendingReveal];
       this.pendingReveal.clear();
       for (const name of names) {
@@ -268,6 +389,25 @@ export class Onboard {
         }
       }
     }, 260);
+  }
+
+  // ------------------------------------------------------------ a control hint: once, tiny, it fades
+  /**
+   * A tiny line low in the middle of the screen, the first time only (per id, this game): which
+   * keys / thumbs do something. It fades by itself after `dur` seconds or as soon as until() is true.
+   */
+  hint(id, html, { dur = 7, until = null } = {}) {
+    const d = this.data;
+    if (d?.seen?.includes('hint:' + id)) return null;
+    if (d) { d.seen.push('hint:' + id); this.game.state.dirty = true; }
+    this.hintEl?.remove();
+    const n = el('div', { class: 'ob-hint', html });
+    this.layer.append(n);
+    void n.offsetWidth;
+    n.classList.add('in');
+    const h = { el: n, t: 0, dur, until, gone: false, remove: () => { if (h.gone) return; h.gone = true; n.classList.add('out'); setTimeout(() => n.remove(), 900); if (this.hintH === h) this.hintH = null; } };
+    this.hintH = h;
+    return h;
   }
 
   // ------------------------------------------------------------ the objective: one short line
@@ -554,7 +694,8 @@ export class Onboard {
     const s = sc.toScreen(p);
     const W = window.innerWidth, H = window.innerHeight, pad = 34;
     let x = s.x, y = s.y, edge = false;
-    if (behind) { x = W - s.x; y = H * 0.55; edge = true; if (Math.abs(x - W / 2) < 10) x = W / 2 + (v.x >= 0 ? 1 : -1) * W; }
+    // (behind you: at the side edge it's nearer to turning toward)
+    if (behind) { x = W / 2 + (v.x >= 0 ? 1 : -1) * W; y = H * 0.55; edge = true; }
     if (x < pad || x > W - pad || y < pad + 30 || y > H - pad) edge = true;
     // (edgeOnly: the thing itself glints in the world; this only points the way when it's off screen,
     // or, with near, also when it's further off than that (it may be round a corner))
@@ -590,6 +731,14 @@ export class Onboard {
   // ------------------------------------------------------------ per frame (from ui.update)
   update(dt) {
     this.tickSkip(dt);
+    const hh = this.hintH;
+    if (hh && !hh.gone) {
+      hh.t += dt;
+      let over = hh.t > hh.dur;
+      try { if (hh.t > 1.2 && hh.until?.()) over = true; } catch (e) { over = true; }
+      if (over) hh.remove();
+      hh.el.classList.toggle('hush', this.panelUp() || !!this.cine);
+    }
     const h = this.prompt;
     if (h && !h.done) {
       h.t += dt;
@@ -625,6 +774,7 @@ export class Onboard {
   /** Everything the layer shows goes (scene change, skip). The level stays. */
   clear() {
     this.closePrompt(true);
+    this.hintH?.remove();
     this.captionEl?.remove(); // (a place's caption belongs to its scene)
     this.captionEl = null;
     this.goalEl?.remove();
@@ -638,7 +788,9 @@ export class Onboard {
   // ------------------------------------------------------------ tests
   setupDebug() {
     this.debug = {
-      state: () => ({ level: this.lvl, saved: this.data?.level ?? null, cinema: !!this.cine, skippable: !!this.cine?.skip, prompt: this.prompt ? { id: this.prompt.id, k: +this.prompt.k.toFixed(2), done: this.prompt.done } : null, goal: this.goalHtml || null, spots: this.spots.size, marks: this.marks.size, hidden: this.hidden() }),
+      unlocks: () => (this.unlocks ? (this.unlocks.all ? 'all' : Object.keys(this.unlocks)) : 'all'),
+      unlock: (id) => (id === 'all' ? (this.unlockAll(), 'all') : this.unlock(id)),
+      state: () => ({ level: this.lvl, unlocks: this.unlocks ? (this.unlocks.all ? 'all' : Object.keys(this.unlocks)) : 'all', saved: this.data?.level ?? null, cinema: !!this.cine, skippable: !!this.cine?.skip, prompt: this.prompt ? { id: this.prompt.id, k: +this.prompt.k.toFixed(2), done: this.prompt.done } : null, goal: this.goalHtml || null, spots: this.spots.size, marks: this.marks.size, hidden: this.hidden() }),
       level: (n) => (n === undefined ? this.lvl : this.setLevel(n, { force: true })),
       complete: () => { const h = this.prompt; if (!h) return null; this.donePrompt(h); return h.id; },
       skip: () => { const c = this.cine; if (!c?.skip) return false; const f = c.skip; c.skip = null; c.fired = true; f(); return true; },

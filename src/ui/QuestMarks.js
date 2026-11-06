@@ -95,7 +95,7 @@ class HeadMark {
     this.group = new THREE.Group();
     this.group.name = 'quest-mark';
     const mk = (ghost) => {
-      const m = new THREE.SpriteMaterial({ map: texFor('!'), transparent: true, depthWrite: false, depthTest: !ghost, fog: false, opacity: ghost ? 0.3 : 1, toneMapped: false });
+      const m = new THREE.SpriteMaterial({ map: texFor('!'), transparent: true, depthWrite: false, depthTest: !ghost, fog: false, opacity: ghost ? 0.16 : 0.92, toneMapped: false });
       const s = new THREE.Sprite(m);
       s.renderOrder = ghost ? 998 : 999;
       s.center.set(0.5, 0);
@@ -121,13 +121,13 @@ class HeadMark {
   place(p, dt, camPos) {
     this.t += dt;
     const d = camPos ? camPos.distanceTo(p) : 5;
-    const k = 0.2 * Math.max(1, Math.pow(d / 4, 0.6)) * (1 + this.pop * 0.6 * Math.sin(this.pop * Math.PI));
+    const k = 0.15 * Math.max(1, Math.pow(d / 4, 0.6)) * (1 + this.pop * 0.4 * Math.sin(this.pop * Math.PI));
     this.pop = Math.max(0, this.pop - dt * 2.5);
     // a slow wobble rather than a spin: the bubble stays readable
-    const sway = 1 - 0.12 * Math.abs(Math.sin(this.t * 1.3));
-    this.group.position.set(p.x, p.y + 0.05 + Math.sin(this.t * 3) * 0.03 + d * 0.004, p.z);
+    const sway = 1 - 0.05 * Math.abs(Math.sin(this.t * 1.3));
+    this.group.position.set(p.x, p.y + 0.05 + Math.sin(this.t * 2) * 0.015 + d * 0.004, p.z);
     const asp = this.main.material.map?.userData?.aspect || 0.79;
-    for (const s of [this.main, this.ghost]) { s.scale.set(k * asp * sway, k, 1); s.material.rotation = Math.sin(this.t * 1.7) * 0.08; }
+    for (const s of [this.main, this.ghost]) { s.scale.set(k * asp * sway, k, 1); s.material.rotation = Math.sin(this.t * 1.7) * 0.04; }
   }
   dispose() { this.group.removeFromParent(); this.main.material.dispose(); this.ghost.material.dispose(); }
 }

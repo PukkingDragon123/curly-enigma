@@ -157,7 +157,7 @@ export function openPauseMenu(game) {
   const items = [
     !short ? { label: 'Paused', header: true } : null,
     { label: 'Resume', primary: true, onClick: () => close() },
-    { label: 'Book', onClick: () => { close(); if (ui.openBook) ui.openBook(); else ui.openIndex(); } },
+    ui.isUnlocked?.('book') === false ? null : { label: 'Book', onClick: () => { close(); if (ui.openBook) ui.openBook(); else ui.openIndex(); } },
     { label: 'Settings', onClick: () => openSettings(game, { onClose: () => setTimeout(() => menu?.focus(1), 30) }) },
     { label: 'Save & Quit', tone: 'red', onClick: () => {
       if (leaving) return;

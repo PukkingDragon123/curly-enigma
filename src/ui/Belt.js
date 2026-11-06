@@ -1,8 +1,12 @@
 // The hotbar (ui.setHotbar): five leather loops on a strap at the bottom of the screen, always
 // shown (like Minecraft's). Number keys 1–5, the wheel or a tap pick a slot; empty loops show a
 // dashed outline (tools go there from the backpack).
+// A new game (src/ui/Onboard.js UNLOCKS): until 'hotbar' is unlocked only the slots holding a tool
+// you have show (your first pick first, then the chisel...), and the build slot waits for 'build';
+// shown(i) says whether slot i is there (DigScene.selectSlot skips the others).
 import { el, clamp } from '../core/util.js';
 import { installPackArt } from './packArt.js';
+import { hotbarOf } from '../core/hotbar.js';
 
 
 export class Belt {
@@ -40,7 +44,11 @@ export class Belt {
     this.slots = slots;
     const wasHidden = this.el.hidden;
     this.el.hidden = false;
-    const sig = JSON.stringify(slots.map((s) => [s.icon, s.key, s.off, s.n, s.label]));
+    // [unlock guard] a new game sees only the loops with a tool in them
+    const st = this.ui.game.state, all = st.unlocked?.('hotbar') ?? true;
+    const kinds = all ? null : hotbarOf(st);
+    this.hide = slots.map((s, i) => !all && (s.empty || s.off || (kinds[i] === 'build' && !st.unlocked('build'))));
+    const sig = JSON.stringify(slots.map((s, i) => [s.icon, s.key, s.off, s.n, s.label, this.hide[i]]));
     if (sig !== this._sig) {
       this._sig = sig;
       this.loops.innerHTML = '';
@@ -61,6 +69,7 @@ export class Belt {
           gauge,
         ]);
         if (s.meter !== undefined) this.setGauge(gauge, s.meter);
+        if (this.hide[i]) node.hidden = true;
         this.loops.append(node);
         return { node, gauge };
       });
@@ -81,6 +90,9 @@ export class Belt {
     this.label.textContent = show ? lab : '';
     this.label.hidden = !show;
   }
+
+  /** Is slot i on the belt (not held back by the tutorial)? */
+  shown(i) { return !this.hide?.[i]; }
 
   setGauge(g, v) {
     g.hidden = v === null || v === undefined;

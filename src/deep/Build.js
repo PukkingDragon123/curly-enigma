@@ -663,11 +663,8 @@ export class Build {
     this.owner.updateHotbar?.();
     this.owner.showBag?.();
   }
-  floatNote(text, color = '#f6e6c0') {
-    const W = window.innerWidth, H = window.innerHeight;
-    this.floatK = ((this.floatK || 0) + 1) % 3;
-    this.ui.floatText?.(text, W / 2 + (this.floatK - 1) * 22, H / 2 + 46, color, 0.9);
-  }
+  /** (floating words are gone: the pickup sound and the bag's gulp say it) */
+  floatNote() {}
 
   // ------------------------------------------------------------------ gathering what you dig
   gather(a) {

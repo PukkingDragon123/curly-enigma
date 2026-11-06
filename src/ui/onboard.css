@@ -28,6 +28,8 @@ html.is-touch #ui.ob-cinema .tutor, #ui.ob-cinema .tutor.top { top: max(calc(var
 .ob-skip.gone { opacity: 0 !important; pointer-events: none; }
 .ob-skip.shown, .ob-skip:hover { opacity: 1; }
 html.is-touch .ob-skip { opacity: .8; }
+/* (a phone: the cutscene talk's words fill the bottom bar, so the ring sits in the top one) */
+html.is-touch .ob-skip { bottom: auto; top: calc(var(--sat) + var(--ob-bar, 72px) / 2); transform: translateY(-50%); }
 .ob-skip kbd { margin: 0 calc(var(--px) * 1); }
 .ob-skip-ring { position: relative; flex: none; width: calc(var(--px) * 10); height: calc(var(--px) * 10); }
 .ob-skip-fill {
@@ -44,20 +46,20 @@ html.is-touch .ob-skip { opacity: .8; }
 .ob-goal {
   position: absolute; left: 50%; top: calc(var(--sat) + 14px); transform: translate(-50%, -6px); opacity: 0;
   display: flex; align-items: center; gap: 9px; max-width: calc(100vw - 32px - var(--sal) - var(--sar)); box-sizing: border-box;
-  padding: 6px 14px 6px 11px; border-radius: 999px; background: rgba(10, 6, 4, .5); box-shadow: 0 0 0 1px rgba(255, 226, 170, .12);
-  font: 16px/1.2 var(--font); color: #f6e8cc; text-shadow: 0 1px 0 #000; letter-spacing: .02em;
+  padding: 4px 12px; border-radius: 999px; background: radial-gradient(closest-side, rgba(6, 3, 2, .38), rgba(6, 3, 2, 0));
+  font: 14px/1.2 var(--font); color: rgba(246, 232, 204, .86); text-shadow: 0 1px 0 #000, 0 0 6px rgba(0, 0, 0, .7); letter-spacing: .03em;
   transition: opacity .45s, transform .5s var(--soft, ease-out);
 }
 .ob-goal.in { opacity: 1; transform: translate(-50%, 0); }
 .ob-goal.out { opacity: 0; transform: translate(-50%, -8px); transition-duration: .4s; }
 .ob-goal b { color: #ffd98a; font-weight: 400; }
 .ob-goal small { font-size: 12px; color: #c9b48e; margin-left: 2px; }
-.ob-goal-dot { flex: none; width: 7px; height: 7px; transform: rotate(45deg); background: #ffd56a; box-shadow: 0 0 6px rgba(255, 200, 90, .8); animation: obGoalDot 1.6s ease-in-out infinite alternate; }
+.ob-goal-dot { flex: none; width: 5px; height: 5px; transform: rotate(45deg); background: #ffd56a; box-shadow: 0 0 6px rgba(255, 200, 90, .8); animation: obGoalDot 1.6s ease-in-out infinite alternate; }
 @keyframes obGoalDot { to { opacity: .45; } }
 .ob-goal.done .ob-goal-dot { animation: none; width: 9px; height: 5px; background: none; border: solid #8fe07a; border-width: 0 0 2px 2px; transform: translateY(-2px) rotate(-45deg); box-shadow: none; }
 .ob-goal.done .ob-goal-t { color: #cfe8c4; }
 /* (a deep HUD: the radar's top right, the purse top left; this sits between them) */
-html.is-touch .ob-goal { font-size: 13px; top: calc(var(--sat) + 10px); padding: 5px 12px 5px 10px; max-width: 58vw; }
+html.is-touch .ob-goal { font-size: 12px; top: calc(var(--sat) + 10px); padding: 4px 10px; max-width: 58vw; }
 
 /* ---- the prompt: one control, small, drawn for this device */
 .ob-prompt {
@@ -70,29 +72,29 @@ html.is-touch .ob-prompt { bottom: auto; top: 31%; --y0: -50%; }
 .ob-prompt.at-low, html.is-touch .ob-prompt.at-low { top: auto; bottom: calc(var(--sab) + 92px); --y0: 0%; }
 .ob-prompt.at-left, html.is-touch .ob-prompt.at-left { left: calc(var(--sal) + 14px); top: calc(var(--sat) + 52px); bottom: auto; --y0: 0%; }
 .ob-prompt.at-left, .ob-prompt.at-left.in, .ob-prompt.at-left.out { translate: 50% 0; }
+/* (one quiet line: a small glyph, what, how; no box, just a soft shadow behind the words) */
 .ob-card {
-  position: relative; display: flex; align-items: center; gap: 10px; overflow: hidden;
-  padding: 7px 14px 8px 8px; border-radius: 10px; background: rgba(10, 6, 4, .62); box-shadow: 0 0 0 1px rgba(255, 226, 170, .14), 0 4px 14px rgba(0, 0, 0, .35);
-  color: #f6e8cc;
+  position: relative; display: flex; align-items: center; gap: 8px;
+  padding: 5px 14px 7px; border-radius: 999px; background: radial-gradient(closest-side, rgba(6, 3, 2, .42), rgba(6, 3, 2, 0));
+  color: #f6e8cc; text-shadow: 0 1px 0 #000, 0 0 6px rgba(0, 0, 0, .8);
 }
-.ob-prompt.optional .ob-card { background: rgba(10, 6, 4, .45); }
-.ob-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 300px; }
-.ob-title { font: 400 18px/1.1 var(--font-head, var(--font)); color: #fff1d6; letter-spacing: .02em; }
-.ob-sub { font: 14px/1.25 var(--font); color: #d9c6a2; }
-html.is-touch .ob-title { font-size: 16px; }
-html.is-touch .ob-sub { font-size: 13px; }
+.ob-txt { display: flex; flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 0 8px; min-width: 0; max-width: 460px; }
+.ob-title { font: 400 15px/1.2 var(--font); color: #ffd98a; letter-spacing: .03em; }
+.ob-sub { font: 14px/1.25 var(--font); color: rgba(240, 226, 198, .88); }
+html.is-touch .ob-title { font-size: 13px; }
+html.is-touch .ob-sub { font-size: 12px; }
 .ob-sub b { color: #ffd98a; font-weight: 400; }
 .ob-sub kbd, .ob-goal kbd { --kp: 2px; margin: 0 2px; }
 .ob-lockhint { font: 12px/1.2 var(--font); color: #ffb08a; animation: obBlink 1.2s steps(2) infinite; }
 @keyframes obBlink { 50% { opacity: .45; } }
-.ob-meter { position: absolute; left: 10px; right: 10px; bottom: 3px; height: 2px; border-radius: 2px; background: rgba(255, 240, 210, .12); }
+.ob-meter { position: absolute; left: 30%; right: 30%; bottom: 2px; height: 1px; border-radius: 1px; background: rgba(255, 240, 210, .12); }
 .ob-fill { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--k, 0) * 100%); border-radius: 2px; background: #ffd56a; transition: width .12s linear; }
-.ob-prompt.done .ob-card { box-shadow: 0 0 0 1px rgba(143, 224, 122, .6), 0 0 18px rgba(143, 224, 122, .25); transition: box-shadow .2s; }
+
 .ob-prompt.done .ob-fill { background: #8fe07a; }
 .ob-prompt.done .ob-title { color: #cfe8c4; }
 
 /* glyphs (drawn at the HUD's pixel scale, shrunk to fit a small prompt) */
-.ob-glyph { flex: none; display: flex; align-items: center; justify-content: center; zoom: .62; min-width: calc(var(--px) * 22); min-height: calc(var(--px) * 22); }
+.ob-glyph { flex: none; display: flex; align-items: center; justify-content: center; zoom: .4; min-width: calc(var(--px) * 22); min-height: calc(var(--px) * 22); opacity: .9; }
 kbd.ob-key {
   --kp: var(--px); top: 0; min-width: calc(var(--kp) * 12); margin: calc(var(--px) * .5);
   font: calc(var(--px) * 6)/calc(var(--px) * 6) var(--font); padding: 0 calc(var(--px) * 1.5);
@@ -101,7 +103,7 @@ kbd.ob-key {
 kbd.ob-key.wide { min-width: calc(var(--kp) * 34); }
 kbd.ob-key.mid { min-width: calc(var(--kp) * 20); }
 kbd.ob-key.on { transform: translateY(var(--px)); filter: brightness(1.1) sepia(.35) drop-shadow(0 0 calc(var(--px) * 2) #ffd56a); }
-.ob-prompt:not(.done) kbd.ob-key:not(.on) { animation: obKeyNudge 1.8s ease-in-out infinite; }
+
 .ob-g-wasd kbd.ob-key:nth-of-type(2) { animation-delay: .15s; } .ob-g-wasd kbd.ob-key:nth-of-type(3) { animation-delay: .3s; } .ob-g-wasd kbd.ob-key:nth-of-type(4) { animation-delay: .45s; }
 @keyframes obKeyNudge { 0%, 60%, 100% { transform: none; } 70% { transform: translateY(var(--px)); filter: brightness(1.08); } }
 .ob-g-wasd { display: grid; grid-template-columns: repeat(3, auto); justify-items: center; align-items: center; }
@@ -205,3 +207,14 @@ kbd.ob-key.on { transform: translateY(var(--px)); filter: brightness(1.1) sepia(
 .ob-caption span { font: 14px/1.2 var(--font); color: #e8c890; letter-spacing: .22em; text-transform: uppercase; text-shadow: 0 var(--px) 0 #1a0c06, 0 0 calc(var(--px) * 4) rgba(0, 0, 0, .8); }
 .ob-caption-rule { order: 1; display: block; height: var(--px); width: 0; background: linear-gradient(90deg, transparent, #ffd27a, transparent); transition: width 1.6s .3s ease-out; }
 .ob-caption.on .ob-caption-rule { width: calc(var(--px) * 70); }
+
+/* ---- a control hint: once, tiny, low in the middle, it fades by itself */
+.ob-hint {
+  position: absolute; left: 50%; bottom: calc(var(--sab) + 22%); transform: translate(-50%, 4px); opacity: 0; white-space: nowrap;
+  font: 13px/1.3 var(--font); color: rgba(240, 226, 198, .78); letter-spacing: .04em; text-shadow: 0 1px 0 #000, 0 0 8px rgba(0, 0, 0, .9);
+  transition: opacity 1.2s, transform 1.4s var(--soft, ease-out);
+}
+.ob-hint.in { opacity: 1; transform: translate(-50%, 0); }
+.ob-hint.out, .ob-hint.hush { opacity: 0; transition-duration: .9s; }
+.ob-hint kbd { --kp: 2px; margin: 0 1px; opacity: .9; }
+html.is-touch .ob-hint { font-size: 12px; bottom: calc(var(--sab) + 40%); }

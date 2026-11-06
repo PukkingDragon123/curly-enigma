@@ -645,8 +645,6 @@ export class Site {
       const g = Math.max(1, Math.round(dug * HOARD_GOLD[Math.max(1, Math.min(6, this.zone))]));
       this.R.st.addGold(g, 'hoard');
       this.R.sfx.coins(Math.min(8, 2 + (dug >> 3)));
-      const ui = this.R.ui, w = window.innerWidth || 800, h = window.innerHeight || 600;
-      ui?.floatText?.(`+${g}g`, w / 2 + (Math.random() - 0.5) * 40, h / 2 - 30, '#ffd860', 1);
       const e = this.R.player?.eye?.();
       if (e) { const f = this.R.player.forward(); for (let i = 0; i < 4; i++) this.R.fx.glints(e.x + f.x * 1.2, e.y + f.y * 1.2 + (Math.random() - 0.5) * 0.2, e.z + f.z * 1.2, [1, 0.85, 0.4]); }
     } else if (n > this.hoardBase) this.hoardBase = n;

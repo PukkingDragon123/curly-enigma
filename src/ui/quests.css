@@ -182,3 +182,37 @@
   .qt-head { display: none; }
   .qt-bar, .qt-where { margin-left: 0; }
 }
+
+/* ---------- calm: the objective is one subtle line under the backpack (no scroll, seal or quill) ---------- */
+.qt-roll {
+  border: 0; background: none; filter: none; padding: 0; min-width: 0; text-align: right; color: rgba(244, 239, 230, .86);
+  font-family: var(--font-sub, system-ui, sans-serif); transition: opacity .3s;
+}
+.qt-roll:hover { filter: none; color: #fff; }
+.qt-roll.rolled { transform: none; opacity: 0; transition: opacity .25s; }
+.qt-roll.opening { transition: opacity .3s; }
+.qt-roll.shake { animation: none; }
+.qt-paper { margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; column-gap: 10px; row-gap: 2px; }
+.qt-head, .qt.idle .qt-head { display: none; }
+.qt-line { display: flex; align-items: baseline; gap: 6px; font-size: 14px; line-height: 1.3; color: inherit; text-shadow: 0 1px 2px rgba(0, 0, 0, .95), 0 0 8px rgba(0, 0, 0, .55); }
+.qt-box, .qt-bar, .qt-quill, .qt-stamp, .qt-tag, .qt-dot, .qt-wax, .qt-place { display: none !important; }
+.qt-tx { text-wrap: pretty; }
+.qt-strike { background: rgba(244, 239, 230, .8); box-shadow: none; transform: none; top: .7em; }
+.qt-n { color: #ffd59a; font-size: 13px; }
+.qt-n.scratch { animation: none; }
+.qt-n.pulse, .qt-box.pulse { animation: qtSoft .4s ease-out; }
+@keyframes qtSoft { from { opacity: .3; } }
+.qt-line.ink > * { animation: qtFadeIn .4s ease-out both; }
+@keyframes qtFadeIn { from { opacity: 0; } }
+.qt-where { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-size: 13px; line-height: 1.3; color: rgba(244, 239, 230, .62); text-shadow: 0 1px 2px rgba(0, 0, 0, .95); white-space: nowrap; }
+.qt-arrow { width: 11px; height: 11px; filter: brightness(1.8) saturate(.4) drop-shadow(0 1px 1px rgba(0, 0, 0, .8)); }
+.qt-dist { color: inherit; }
+.qt.idle { opacity: .72; }
+.qt.idle .qt-roll:hover { opacity: 1; }
+@media (max-width: 640px), (max-height: 460px) { .qt-line { font-size: 13px; } .qt-where { font-size: 12px; } }
+@media (min-width: 1700px) and (min-height: 1000px) { .qt-line { font-size: 19px; } .qt-where, .qt-n { font-size: 17px; } }
+
+/* the waypoint's distance and the "good look" words: plain small text */
+.qm-way-d { background: none; box-shadow: none; padding: 0; font: 400 12px/1.2 var(--font-sub, system-ui, sans-serif); color: rgba(255, 246, 230, .9); text-shadow: 0 1px 2px rgba(0, 0, 0, .95), 0 0 6px rgba(0, 0, 0, .6); }
+.qm-way-ic { width: calc(var(--px) * 8); height: calc(var(--px) * 9); opacity: .85; animation: none; }
+.qm-eye-t { font: 400 13px/1.2 var(--font-sub, system-ui, sans-serif); text-shadow: 0 1px 2px rgba(0, 0, 0, .95); }

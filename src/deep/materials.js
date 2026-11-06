@@ -124,6 +124,23 @@ for (let o = 1; o < ORES.length; o++) {
   };
 }
 
+// How each material gives under the pick (Dig.js strike, DigScene's dig effects): `brk`
+//   crumble: soil goes in one blow and falls as clods that burst into dust where they land
+//   peel:    clay comes away in one shallow, wide curl that lands with a dead thud
+//   slab:    rock cracks first (blows add up per plate, the cracks spread to the plates around);
+//            when it gives, the whole plate breaks out along the seams the shader draws
+//   shatter: crystal, ice and glassy rock: as slab, but the plate bursts into glinting shards
+//   trickle: gravel, sand, ash, snow: grains pour and slide down into the hole
+//   splinter: wood: a ragged bite
+// and `hs`, the hit / break sound set (src/core/sounds.js HIT/BRK keys).
+const BRK_OF_STYLE = { [STYLE.ROCK]: 'slab', [STYLE.BRICK]: 'slab', [STYLE.ORE]: 'slab', [STYLE.CRYSTAL]: 'shatter', [STYLE.ICE]: 'shatter', [STYLE.SOIL]: 'crumble', [STYLE.MOSS]: 'crumble', [STYLE.GLOW]: 'crumble', [STYLE.GRAIN]: 'trickle', [STYLE.WOOD]: 'splinter' };
+const BRK_SET = { [M.CLAY]: 'peel', [M.ROOTS]: 'splinter', [M.STEM]: 'splinter', [M.BONE]: 'slab', [M.GEODE]: 'shatter', [M.SANDSTONE]: 'slab' };
+for (const d of MAT) {
+  if (!d || d.fluid) continue;
+  d.brk ||= BRK_SET[d.id] || (d.gran ? 'trickle' : BRK_OF_STYLE[d.style?.[0]] || 'slab');
+  d.hs ||= d.id === M.CLAY ? 'clay' : d.snd === 'gravel' ? 'sand' : d.snd === 'stone' && d.hp >= 3 ? 'hard' : d.snd || 'stone';
+}
+
 export const isOreM = (m) => m >= ORE_BASE;
 export const solidM = (m) => m !== 0 && !(MAT[m] && MAT[m].fluid);
 export const fluidM = (m) => !!(MAT[m] && MAT[m].fluid);

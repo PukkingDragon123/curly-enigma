@@ -483,7 +483,6 @@ export class Enemies {
   pickHint(e, p) {
     const h = this.hint;
     h.tough++;
-    if (this.time - h.floatT > 0.7) { h.floatT = this.time; this.floatAt('too tough!', p, '#ffc89a', 0.9); }
     if (h.tough === 1) this.say('tough', 'Clang! Its rock hide is <b>too tough</b>. Get behind it and mine the <b>glowing crystal</b> on its back.', 'warn', 9999);
     else if (h.tough % 4 === 0 && this.time - h.toughT > 40) { h.toughT = this.time; this.say('tough2', 'Your pick just bounces off. <b>Circle around</b> (it turns slowly) and hit the <b>crystal</b>!', 'warn', 40); }
   }
@@ -513,11 +512,6 @@ export class Enemies {
   /** A creature notices the mole: a little "!" pops over its head. */
   alert(e) {
     this.sound('emote', { kind: 'alert' }, e.dist);
-    const o = this.owner;
-    if (!o?.toScreen || !this.ui?.floatText) return;
-    const p = o.toScreen(e.headPos ? e.headPos(_r).add(_p.set(0, 0.15, 0)) : _r.set(e.center.x, e.center.y + e.hitR * e.size + 0.2, e.center.z));
-    if (p.visible === false) return;
-    this.ui.floatText('!', p.x, p.y, '#ffd84a', 1.4);
   }
 
   /** First good look at a species: index entry + an intro toast the very first time. */
@@ -621,7 +615,6 @@ export class Enemies {
       const g = e.G?.core || [1, 0.9, 0.6];
       sparkle(this.fx, p.x, p.y, p.z, 12, g, 2.6, 3, 0.022, 0.6);
       this.sound('crystal_ring', { pitch: 1.4, vol: 0.7 });
-      if (this.time - this.hint.floatT > 0.7) { this.hint.floatT = this.time; this.floatAt('weak spot!', p, '#ffe08a', 0.9); }
     }
     const c = e.hitCol || this.dustCol(e.pos);
     this.fx.sparks(p.x, p.y, p.z, 7, [1, 0.92, 0.7], [-dir.x, -dir.y, -dir.z], 2.6);

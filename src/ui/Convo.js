@@ -2,9 +2,9 @@
 // camera eases from your eyes to a framing of the speaker's real 3D model in the world (a close-up,
 // over your shoulder, a two-shot: src/fx/director.js picks what fits the room), black bars slide
 // in, the world keeps living while you're held; the speaker turns to you, looks at you, pulls faces
-// and talks, and the words float beside their head (a parchment label anchored to the head on
-// screen, with a tail, typing out in their voice). Lines carry on with a click / tap / E / Space /
-// Enter; answers float in near your side of the frame (1–4, ↑ ↓, Enter, tap); then the camera eases
+// and talks. The words are plain film subtitles low on the screen (their name small above the line,
+// no box, no paper), typing out in their voice. Lines carry on with a click / tap / E / Space /
+// Enter; answers are a short list under the line (1–4, ↑ ↓, Enter, tap); then the camera eases
 // back. Esc leaves the talk.
 //
 //   const r = await game.convo.play({
@@ -26,16 +26,13 @@
 // Lines that follow each other within a moment (a play() right after another) stay one cutscene.
 // HTML in lines: <b> (rust red), <i> (soft), .gold-txt (gold), <em> (shaky), <big> (loud),
 // <small>, <w>wavy words</w>. Lines with `wait: false` go by themselves after a reading time (dur).
-// Without a 3D model of the speaker in this scene the words still float (a live portrait in the label).
+// Without a 3D model of the speaker in this scene the subtitle is all there is (their name, their voice).
 // openTalkMenu (src/ui/choices.js) and questTalk come here through convoTalkMenu(game, opts).
-import * as THREE from 'three';
 import { el, clamp, pick as pickOne } from '../core/util.js';
 import { Director } from '../fx/director.js';
 import { findSpeaker } from '../fx/speakers.js';
 import { portrait3d } from '../gfx/portrait3d.js';
 import { typeText, STAR_VOICE } from './talkType.js';
-import { installDialogArt } from './dialogArt.js';
-import { Px, PAL, INK, art } from './uiArt.js';
 import { speakerOf } from './Tutor.js';
 import './convo.css';
 
@@ -49,47 +46,12 @@ function prep(html) {
 }
 const plain = (s) => String(s || '').replace(/<[^>]*>/g, '');
 
-// ------------------------------------------------------------------ art (--cv-*)
-/** The label's tail: parchment, inked edges, open on the right where it joins the label (10×13). */
-function tailSprite() {
-  const P = PAL.paper;
-  const p = new Px(10, 13);
-  for (let x = 1; x < 10; x++) {
-    const half = (x / 9) * 5.4;
-    for (let y = Math.ceil(6 - half); y <= Math.floor(6 + half); y++) p.set(x, y, P.base);
-  }
-  // a burnt line inside the inked edge, and the ink
-  p.each((x, y) => (x < 9 && (!p.a(x, y - 1) || !p.a(x, y + 1)) ? P.burn : undefined));
-  p.outline(P.edge);
-  for (let y = 0; y < 13; y++) if (p.a(9, y)) p.set(9, y, y < 2 || y > 10 ? P.edge : P.base);
-  return p;
-}
-/** A brass disc for the answers' numbers (10×10). */
-function numSprite() {
-  const B = PAL.brass;
-  const p = new Px(10, 10);
-  p.disk(5, 5, 4.5, B.base);
-  p.each((x, y) => (Math.hypot(x - 3.5, y - 3.5) < 2.2 ? B.lt : Math.hypot(x - 5.5, y - 5.5) > 3.6 ? B.dk : undefined));
-  p.outline(INK);
-  return p;
-}
-let artIn = false;
-function installConvoArt() {
-  if (artIn) return;
-  artIn = true;
-  const r = document.documentElement.style;
-  r.setProperty('--cv-tail', `url("${art('cv:tail', tailSprite)}")`);
-  r.setProperty('--cv-num', `url("${art('cv:num', numSprite)}")`);
-}
-
 export class Convo {
   constructor(ui) {
     this.ui = ui;
     this.game = ui.game;
     this.game.convo = this;
     this.director = new Director(this.game);
-    installDialogArt();
-    installConvoArt();
     this.s = null; // the session (one cutscene)
     this.q = [];
     this.cur = null;
@@ -97,7 +59,6 @@ export class Convo {
     this.wallT = 0;
     this.focusI = 0;
     this.eyeV = null;
-    this.lab = { x: 0, y: 0, ok: false };
     this.build();
     // keys: carry on, choose (only while the talk is the top window)
     window.addEventListener('keydown', (e) => this.onKey(e), true);
@@ -111,21 +72,21 @@ export class Convo {
   }
 
   build() {
-    this.barT = el('div', { class: 'cv-bar top' });
     this.hintEl = el('div', { class: 'cv-hint' });
-    this.barB = el('div', { class: 'cv-bar bot' }, [this.hintEl]);
+    this.barT = el('div', { class: 'cv-bar top' }, [this.hintEl]);
+    this.barB = el('div', { class: 'cv-bar bot' });
     this.nameEl = el('span', { class: 'cv-name' });
     this.plate = el('div', { class: 'cv-plate' }, [this.nameEl]);
     this.subEl = el('div', { class: 'cv-sub' });
     this.textEl = el('div', { class: 'cv-text' });
-    this.nextEl = el('div', { class: 'cv-next', 'aria-hidden': 'true' }, [el('kbd', {}, 'E'), el('span', { class: 'cv-tap' }, 'tap'), el('i', { class: 'cv-arrow' })]);
-    this.wick = el('i', { class: 'cv-wick', 'aria-hidden': 'true' });
-    this.tail = el('i', { class: 'cv-tail', 'aria-hidden': 'true' });
+    this.nextEl = el('i', { class: 'cv-next', 'aria-hidden': 'true' });
     this.faceEl = el('div', { class: 'cv-face' });
-    this.body = el('div', { class: 'cv-body' }, [this.subEl, this.textEl, this.nextEl, this.wick]);
-    this.label = el('div', { class: 'cv-say gone', role: 'status', 'aria-live': 'polite' }, [this.tail, this.plate, this.faceEl, this.body]);
+    this.body = el('div', { class: 'cv-body' }, [this.plate, this.subEl, this.textEl, this.nextEl]);
+    this.label = el('div', { class: 'cv-say gone', role: 'status', 'aria-live': 'polite' }, [this.faceEl, this.body]);
     this.choicesEl = el('div', { class: 'cv-choices', role: 'menu' });
-    this.root = el('div', { class: 'cv', hidden: true }, [this.barT, this.barB, this.label, this.choicesEl]);
+    // the subtitles: the line, and the answers under it, low and centred
+    this.dock = el('div', { class: 'cv-dock' }, [this.label, this.choicesEl]);
+    this.root = el('div', { class: 'cv', hidden: true }, [this.barT, this.barB, this.dock]);
     this.ui.root.insertBefore(this.root, this.ui.overlay);
     this.root.addEventListener('pointerdown', (e) => {
       if (!this.cur || e.target.closest?.('.cv-opt')) return;
@@ -234,7 +195,7 @@ export class Convo {
     if (!b?.choices?.length || i < 0 || i >= b.choices.length || b.picked) return false;
     if (!b.typed) b.typer?.finish();
     const c = b.choices[i];
-    this.game.audio.play(c.primary ? 'ui_click' : 'page', { vol: 0.6 });
+    this.game.audio.play('ui_click', { vol: 0.4 });
     this.director.heroTalk(1.1);
     // a pick by a click or a key may take the mouse back (the pointer was freed for the answers)
     if (gesture && this.relock && !isTouch() && this.game.ui.hudMode === 'deep') { this.relock = false; try { this.game.input.lockPointer(); } catch (e) { /* no lock here */ } }
@@ -293,9 +254,7 @@ export class Convo {
     if (s.endAt != null && now >= s.endAt) { this.endSession(false); return; }
     const b = this.cur;
     if (b && b.typed && !b.wait && !b.choices) {
-      const k = clamp(1 - (now - b.typedAt) / b.dur, 0, 1);
-      this.wick.style.transform = `scaleX(${k.toFixed(3)})`;
-      if (k <= 0) this.finishBeat(b);
+      if (now - b.typedAt >= b.dur) this.finishBeat(b);
     }
   }
 
@@ -346,7 +305,6 @@ export class Convo {
     if (tr?.mute && !tr.muted) { tr.mute(true); s.mutedTracker = true; }
     void this.root.offsetWidth;
     this.root.classList.add('held', 'bars');
-    g.audio.play('page', { vol: 0.22, pitch: 0.8 });
   }
 
   hideSoon() {
@@ -505,14 +463,11 @@ export class Convo {
     if (b.mood === 'laugh') g.audio.play('laugh', { pitch: b.voice?.f || 300 });
   }
 
-  // ------------------------------------------------------------ the label
+  // ------------------------------------------------------------ the subtitle
   showLabel(b) {
     const L = this.label;
     this.nameEl.textContent = b.name;
     this.plate.hidden = !b.name;
-    // the label is never narrower than the name ribbon over it
-    L.style.minWidth = '';
-    if (b.name) L.style.minWidth = Math.ceil(this.plate.offsetWidth + 14) + 'px';
     this.subEl.innerHTML = b.sub || '';
     this.subEl.hidden = !b.sub;
     L.className = 'cv-say' + (b.cls ? ' ' + b.cls : '');
@@ -520,19 +475,15 @@ export class Convo {
     L.dataset.mood = b.mood;
     this.root.classList.remove('typed', 'choosing', 'timed');
     this.choicesEl.textContent = '';
-    // no 3D model here: their live portrait rides in the label
-    const noModel = !b.speaker && !b.hero;
-    L.classList.toggle('portrait', noModel);
-    if (noModel) this.ensureFace(b.cast, b.mood); else this.disposeFace();
-    // a fresh label pops; a following line from the same speaker just turns over
+    // (no portrait even without a 3D model here: the name says who it is)
+    this.disposeFace();
+    // a new speaker fades in; the same speaker carrying on just changes the words
     const fresh = !this.lastBeat || this.lastBeat.key !== b.key || this.lastBeat.hero !== b.hero || this.label.classList.contains('gone');
     L.classList.remove('pop', 'swap', 'gone');
     void L.offsetWidth;
     L.classList.add(fresh ? 'pop' : 'swap');
     this.lastBeat = b;
-    this.lab.ok = false;
     this.hint(b);
-    if (fresh) this.game.audio.play('page', { vol: 0.2 });
   }
 
   ensureFace(cast, mood) {
@@ -540,14 +491,14 @@ export class Convo {
     this.disposeFace();
     this.faceKey = cast?.key;
     const small = window.matchMedia?.('(max-width: 560px), (max-height: 520px)').matches;
-    this.face = portrait3d.mount(this.faceEl, cast, { size: small ? 32 : 40, mood });
+    this.face = portrait3d.mount(this.faceEl, cast, { size: small ? 28 : 34, mood });
   }
   disposeFace() { this.face?.dispose(); this.face = null; this.faceEl.textContent = ''; this.faceKey = null; }
 
   hint(b) {
     const t = isTouch();
-    const h = b?.choices?.length ? (t ? 'Tap an answer' : '<kbd>1</kbd>–<kbd>' + b.choices.length + '</kbd> or <kbd>↑</kbd><kbd>↓</kbd> <kbd>E</kbd> answer') : t ? 'Tap to carry on' : '<kbd>E</kbd> carry on';
-    this.hintEl.innerHTML = `${h}<span class="cv-esc">${t ? '' : ' · <kbd>Esc</kbd> leave'}</span>`;
+    const h = b?.choices?.length ? (t ? 'tap an answer' : '1–' + b.choices.length + ' answer') : t ? 'tap to continue' : 'E continue';
+    this.hintEl.textContent = t ? h : h + '  ·  Esc leave';
   }
 
   showChoices(b) {
@@ -559,10 +510,10 @@ export class Convo {
         el('span', { class: 'cv-num' }, String(i + 1)),
         el('span', { class: 'cv-opt-t' }, [el('b', { html: c.label }), c.sub ? el('small', { html: c.sub }) : null]),
       ]);
-      btn.style.setProperty('--d', `${0.05 + i * 0.07}s`);
+      btn.style.setProperty('--d', `${0.04 + i * 0.05}s`);
       btn.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
       btn.addEventListener('click', (e) => { e.stopPropagation(); this.pick(i, true); });
-      btn.addEventListener('pointerenter', () => { this.focus(i); this.game.audio.play('ui_hover', { vol: 0.2 }); });
+      btn.addEventListener('pointerenter', () => { if (this.focusI !== i) { this.focus(i); this.game.audio.play('ui_hover', { vol: 0.12 }); } });
       box.append(btn);
     });
     this.focus(this.focusI);
@@ -570,7 +521,6 @@ export class Convo {
     this.hint(b);
     // the mouse comes free to click an answer (and is taken back on the pick)
     if (document.pointerLockElement && !isTouch()) { this.relock = true; this.ui.releasePointer(); }
-    this.lab.ok = false;
   }
 
   focus(i) {
@@ -613,98 +563,8 @@ export class Convo {
     // the speaker keeps still and keeps looking at you
     const pl = this.director.player();
     if (pl && b?.speaker) { this.eyeV = pl.eye(this.eyeV || undefined); b.speaker.hold(true); }
-    if (b) this.place(dt, b);
-  }
-
-  /** Float the label beside the speaker's head, its tail pointing at them; answers on your side. */
-  place(dt, b) {
-    const L = this.label, d = this.director, W = this.W, H = this.H, bar = this.barPx, m = 10;
-    const lw = L.offsetWidth, lh = L.offsetHeight;
-    const shot = d.shot && d.want ? d.shot : null;
-    const portrait = W < H * 0.9;
-    // where the head is on screen
-    let head = null;
-    const who = b.hero ? d.hero : b.speaker;
-    if (who && (b.hero || d.weight > 0.02 || shot?.kind === 'face' || !shot)) {
-      const eyes = b.hero ? pl3(d) : b.speaker.eyes(this._v1 ||= newV());
-      const top = b.hero ? null : b.speaker.top(this._v2 ||= newV());
-      if (eyes) {
-        const E = d.toScreen(eyes, this._s1 ||= {});
-        const T = top ? d.toScreen(top, this._s2 ||= {}) : { x: E.x, y: E.y - 40 };
-        if (E.front && E.x > -W * 0.2 && E.x < W * 1.2 && E.y > -H * 0.2 && E.y < H * 1.2) head = { x: E.x, y: E.y, r: clamp(Math.hypot(T.x - E.x, T.y - E.y) * 1.25, 14, H * 0.3) };
-      }
-    }
-    // the answers: near your side of the frame (over your shoulder), a column at the bottom
-    const cw = this.choicesEl.offsetWidth, ch = this.choicesEl.offsetHeight;
-    let cx = 0, cy = 0;
-    const choosing = this.root.classList.contains('choosing');
-    if (choosing) {
-      const side = portrait ? 'mid' : shot?.choices || (head && head.x > W / 2 ? 'left' : 'right');
-      cx = side === 'mid' ? (W - cw) / 2 : side === 'left' ? Math.max(m + 6, W * 0.06) : W - cw - Math.max(m + 6, W * 0.06);
-      cy = H - bar - ch - (portrait ? 12 : 18);
-      this.choicesEl.style.transform = `translate(${Math.round(cx)}px, ${Math.round(cy)}px)`;
-    }
-    const held = !!this.s?.hold;
-    // a passing line (not held: no bars) from someone off screen carries their live face instead
-    if (!held && b.speaker) {
-      const off = !head;
-      if (off) this.ensureFace(b.cast, b.mood);
-      if (L.classList.contains('portrait') !== off) { L.classList.toggle('portrait', off); this.lab.ok = false; }
-    }
-    const plateH = this.plate.hidden ? 0 : this.plate.offsetHeight; // (the name ribbon rides above the label)
-    const barH = held || this.root.classList.contains('bars') ? bar : 0;
-    const lo = barH + m + plateH, hi = H - barH - m - (choosing ? ch + 22 : 0);
-    let x, y, side;
-    if (!head) {
-      // nobody to point at: low in the frame, centred (a passing line: where the tips go, clear of
-      // the thumbs on a touch screen and of the HUD's corners)
-      x = (W - lw) / 2; side = 'none';
-      if (held) y = Math.max(lo, Math.min(hi - lh, H * (portrait ? 0.56 : 0.6) - lh / 2));
-      else y = isTouch() ? Math.max(lo, H * (portrait ? 0.16 : 0.12)) : Math.max(lo, Math.min(hi - lh, H * 0.78 - lh));
-    } else {
-      const pref = shot?.label || (portrait ? 'below' : head.x < W / 2 ? 'right' : 'left');
-      const order = { right: ['right', 'above', 'left', 'below'], left: ['left', 'above', 'right', 'below'], below: ['below', 'above', 'right', 'left'], above: ['above', 'right', 'left', 'below'] }[pref] || ['right', 'left', 'below', 'above'];
-      // beside the head: as far off as there's room for, but never over the face itself
-      const gap = head.r * 0.9 + 16, near = head.r * 0.45 + 8;
-      const at = (s) => {
-        if (s === 'right') return { x: Math.max(head.x + near, Math.min(head.x + gap, W - m - lw)), y: head.y - lh * 0.55 };
-        if (s === 'left') return { x: Math.min(head.x - near - lw, Math.max(head.x - gap - lw, m)), y: head.y - lh * 0.55 };
-        if (s === 'below') return { x: head.x - lw / 2, y: head.y + head.r * 0.8 + 18 };
-        return { x: head.x - lw / 2, y: head.y - head.r * 1.15 - 18 - lh };
-      };
-      const fits = (p) => p.x >= m && p.x + lw <= W - m && p.y >= lo && p.y + lh <= hi;
-      let p = null;
-      for (const s of order) { const q = at(s); if (fits(q) || (s === 'below' || s === 'above') && q.y >= lo && q.y + lh <= hi) { p = q; side = s; break; } }
-      if (!p) { side = order[0]; p = at(side); }
-      x = clamp(p.x, m, W - m - lw);
-      y = clamp(p.y, lo, Math.max(lo, hi - lh));
-    }
-    // ease after the camera, snap on a fresh line
-    const k = this.lab.ok ? 1 - Math.exp(-dt * 12) : 1;
-    this.lab.x += (x - this.lab.x) * k;
-    this.lab.y += (y - this.lab.y) * k;
-    this.lab.ok = true;
-    L.style.transform = `translate(${Math.round(this.lab.x)}px, ${Math.round(this.lab.y)}px)`;
-    // the tail: on the edge facing the head, pointing at the mouth
-    const t = this.tail;
-    t.dataset.side = side;
-    let plateR = false;
-    if (head && side !== 'none') {
-      if (side === 'right' || side === 'left') t.style.top = `${Math.round(clamp(head.y + head.r * 0.15 - this.lab.y, 14, lh - 22))}px`, t.style.left = '';
-      else {
-        const tx = Math.round(clamp(head.x - this.lab.x, 18, lw - 26));
-        t.style.left = `${tx}px`; t.style.top = '';
-        // (a tail on the top edge under the name ribbon: the ribbon moves to the other end)
-        plateR = side === 'below' && !this.plate.hidden && tx < this.plate.offsetWidth + 16;
-      }
-    }
-    if (L.classList.contains('plate-r') !== plateR) L.classList.toggle('plate-r', plateR);
   }
 }
-
-const newV = () => new THREE.Vector3();
-/** Your eyes (for your own lines). */
-function pl3(d) { const pl = d.player(); return pl ? pl.eye() : null; }
 
 // ------------------------------------------------------------------ the talk board, as a cutscene
 /**

@@ -20,8 +20,8 @@ function atlas() {
       if (lv > 0) pc.set(ox + x, oy + y, 0xffffff, Math.round(Math.min(1, lv) * 255));
     }
   };
-  disk(0, 0, 128, 6, 1.5);
-  disk(128, 0, 64, 5, 2.2);
+  disk(0, 0, 128, 28, 1.5); // fine steps: smooth light, the dither only breaks the banding
+  disk(128, 0, 64, 24, 2.2);
   // a soft four-point star for glints
   for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
     const dx = Math.abs(x + 0.5 - 32) / 32, dy = Math.abs(y + 0.5 - 32) / 32;
@@ -30,6 +30,7 @@ function atlas() {
     if (lv > 0) pc.set(192 + x, y, 0xffffff, Math.round(Math.min(1, lv) * 255));
   }
   atlasTex = pixelTexture(pc.commit());
+  atlasTex.magFilter = atlasTex.minFilter = THREE.LinearFilter; // soft light, not texel steps
   atlasTex.userData.shared = true;
   return atlasTex;
 }

@@ -168,11 +168,15 @@ const LIGHT = /* glsl */`
   // all the light on a surface at p facing n, seen from V. wrap softens the terminator; ao darkens
   // the ambient fully and direct light a little; shin > 0 also returns Blinn-Phong glints in spec
   vec3 lightFull(vec3 p, vec3 n, vec3 V, float wrap, float ao, float shin, out vec3 spec) {
-    vec3 L = ambientAt(n) * ao;
-    float kd = mix(1.0, ao, 0.45);
-    spec = vec3(0.0);
     vec3 d = lampPos - p;
     float dist = length(d);
+    // the lamp's own light bounced off the rock round the eye: the shade nearby is a little fuller
+    // (and warmer) than far off, where only the zone's dim ambient is left (a pool of light that
+    // gives the cave depth)
+    float bk = 1.0 / (1.0 + dist * dist * 0.012);
+    vec3 L = (ambientAt(n) * (0.62 + 0.55 * bk) + lampCol * (0.016 * bk)) * ao;
+    float kd = mix(1.0, ao, 0.45);
+    spec = vec3(0.0);
     vec3 dl = d / max(dist, 1e-4);
     vec3 lamp = lampCol * lampAtt(dist) * lampCone(dl);
     L += lamp * max((dot(n, dl) + wrap) / (1.0 + wrap), 0.0) * kd;
@@ -185,7 +189,9 @@ const LIGHT = /* glsl */`
       if (dd >= r) continue;
       vec3 ql = q / max(dd, 1e-4);
       vec3 c = lCol[i] * pointAtt(dd, r);
-      L += c * (max((dot(n, ql) + wrap) / (1.0 + wrap), 0.0) * 0.82 + 0.18) * kd;
+      // (a small floor only: faces turned away from a light stay dark, so lanterns don't seem to
+      // shine through walls and round corners)
+      L += c * (max((dot(n, ql) + wrap) / (1.0 + wrap), 0.0) * 0.93 + 0.07) * kd;
       if (shin > 0.0) spec += c * pow(max(dot(n, normalize(ql + V)), 0.0), shin) * norm;
     }
     return L;

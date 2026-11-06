@@ -2654,3 +2654,62 @@ Done by the lead alone, one item at a time (the user asked for no helpers).
 - **Weathering** (`caveShell.js`): grey-blue strata, calcite flowstone and damp streaks under the drips, moss creeping onto the floor, lichen, ash round the fire pit, coal dust round the forge, soot over the pit.
 - **Props** (`campProps.js`): glowing mushrooms with lit gills, a crystal cluster, pans on pegs, a framed photo over the cot, slippers, a plank bench by the shack door (sit), a wash tub, worn flagstones from the steps to his door, old slumped sacks, a rope coil and oil can by the lift, the log stack, finer cobwebs, the kitchen shelf bowed with a tea towel; the shack has rust runs, moss at its foot; washing on the drying line is real cloth (`laundryTexture` in `cloth.js`, `laundry` handed over by the east job).
 - **Fixed**: `StarHouse.toM` ignored the room's tile scale, so every point it made landed twice as far out (forge embers, kettle/pot steam, the spring's spout and pool, trough water, candle glows, the shack lantern floating mid-camp, note pins, coins). VERSION 7.
+
+### As built: the wake-up, the tutorial flow, unlocking step by step (wave 7, tutorial part)
+
+The user's words: "when you wake up, better: you hear clanking and see the mole, and dialogue; no need
+for paper UI, use as little 2D UI as possible; better dialogue; no teaching how to walk; better
+tutorial; don't unlock anything yet like the skill tree etc — unlock things step by step".
+
+- **The wake-up** (`src/home/wake.js`). Dark; through it, muffled (the low-pass), a hammer on an anvil:
+  Old Star has sat up with you, working at a little bench anvil on a stump by your room's fire
+  (`benchAnvil()` in `src/home/tutorFx.js`, placed by `setupBenchAnvil()`; his `hammer` pose with
+  `workFace` pointed at it, `sparkK` / `clangK` turned up, a light that flashes with each blow via
+  `onBlow`). The lids crack on the beams and shut; the head rolls toward the sound (blurred glow and
+  sparks); the third look clears with a slow push-in on him hammering. The cot creaks, the hammer stops,
+  his nose goes, he lays the hammer on the anvil (`star.setHammerDown()`), walks over to your cot (the
+  view follows him, first person) and says three lines through the cutscene talk (`camera: 'face'`):
+  the roof, who he is and the million, "we'll make you a pick". You get up; he walks back to his forge.
+  No caption, no cards. A hold skips it as before (`wakeCutToEnd` leaves him by your cot); on a touch
+  screen the hold-to-skip ring now sits in the top bar (the talk's words fill the bottom one).
+- **No look / walk / talk steps.** After the wake you can move. A tiny hint fades in once
+  (`ui.onboard.hint('move', …)`: "WASD to walk · the mouse to look" / "Left thumb to walk · right thumb
+  to look"), gone after ~9 s or 2 m of walking. Old saves on the old steps resume on the new ones.
+- **The flow** (`src/home/lessons.js`): `forgeGo` (the forge glints, he hammers there and beckons when
+  you're near) → the pick (`src/forge/tutorial.js`) → back home he admires it and holds out his old
+  **satchel** with his spare chisel (`satchel()` voxel model in his paws: `holdOut()`, that line in an
+  over-the-shoulder shot so the paws are in frame) → `lift` → the
+  first dig (`src/deep/FirstDig.js`: one line, the glint, a one-line hint only for dig / bag it / guard;
+  no caption, no labels) → home with copper: he sniffs the lump, then holds out his **notebook**
+  (`notebook()`) → forge lesson → cook lesson → graduation (everything else unlocks). The only text on
+  screen while walking about is one quiet objective line (`ui.onboard.goal`); the off-screen arrow has
+  no label; `teach()` prompts are restyled as one quiet line (no box). "What now?" / "Skip the lessons"
+  on E as before.
+- **Unlocks** (`src/ui/Onboard.js` `UNLOCKS`): `state.data.unlocks = { id: true, all? }`, created empty by
+  the wake-up (`onboard.begin()`); **a save without it has everything** (old saves, `?fresh=1&scene=…`).
+  `ui.unlock(id | [ids], { quiet })`, `ui.isUnlocked(id)`, `state.unlocked(id)`, `onboard.unlockAll()`;
+  `state.emit('unlock', { ids })`. A HUD piece that unlocks fades up (`ob-new`) once it can be seen.
+  Old saves in the middle of the lessons get their stage's set (`migrate()`, `STAGE_GRANTS`); past
+  them (onboard done, lesson `done`, skipped) everything. The TUT levels still work (`setLevel(n)` grants
+  `LEVEL_GRANTS`; FULL = all).
+
+  | id | what | granted |
+  |---|---|---|
+  | look, move, use | crosshair; touch stick, jump, crouch; touch hand | end of the wake-up (`afterWake`, `skipWake`) |
+  | belt, dig | the hotbar (only slots with a tool you have, `Belt.shown`); touch dig button | the pick is made (`forge/tutorial.js` 'piece'; again on the way home) |
+  | pack, tools | backpack button, I / Tab, load gauge, "Your trunk"; touch tool switch | his satchel + chisel, back home with the pick |
+  | guard | touch shield | the first threat in the first dig (`FirstDig`), else the lessons' end |
+  | book | book button, B, Book in the pause menu, quests + index tabs, Index Book, discovery cards | his notebook, back home with the copper |
+  | radar, layers | radar + depth plumb; M / a tap on the radar | back home with the copper (after the first ride down) |
+  | energy, gold | the lantern; the coin pouch | energy below 45 %; the first gold change; else the lessons' end |
+  | quests, skills, lore, snack, hotbar, build, upgrades, shops | quest strip + waymarks + calendar; skill tab, XP plaque, level-up notes, skill nudges; lore tab; snack button + food charms; every hotbar slot; build mode (X, the hammer, the build slot); Miners' Board; shop counters | the lessons' end (`cook_done`) or "Skip the lessons" (`unlockAll`) |
+
+  Guards (marked `[unlock guard]`): `UI.js` (`openInventory`, `openBook`, `openIndex`, `openSurvey`,
+  `openSkills`, `openUpgrades`, `openShop`, `discoverCard`), `Journal.js` (locked tabs hidden, `go()`
+  refuses them), `PauseMenu.js` (Book sign), `SkillTree.js` (feedback + nudges quiet while `skills` is
+  locked; XP still counts), `Belt.js` (+ `DigScene.selectSlot`: a key on a hidden slot does nothing, the
+  wheel skips it), `home/build.js` (X), `lessons.js` `tutAllows` (your trunk, the Index Book desk, the
+  Miners' Board). HUD pieces hide with `#ui.obh-<piece>` as before.
+- **Test hooks**: `ui.onboard.debug.unlocks()`, `.unlock(id | 'all')`, `.state().unlocks`; `scene.homeTutor()`
+  (`{ step, t, walked }`). The e2e's lesson steps are unchanged; `cook_done` unlocks everything, so the
+  later steps see the whole game. Screenshots: `shots/wake/`.

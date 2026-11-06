@@ -10,7 +10,8 @@
 // The pickaxe lesson (forge { ..., pick: true }, stage 'pick'): before any mining, you forge your own
 // pick (the forge piece pick_first: heat, hammer, quench; src/forge/parts.js). He gives the copper;
 // the piece's 'piece' event emits lesson { step: 'pick_done' }, moves the lesson on to 'mine' and
-// sends you home (where he walks you to the lift).
+// sends you home (where he walks you to the lift). The pick on your belt unlocks the hotbar and the
+// touch dig button (ui.unlock: src/ui/Onboard.js UNLOCKS).
 // The cinematic tutorial (src/ui/Onboard.js): it opens as a cutscene (letterbox, his first line
 // through the cutscene talk when there is one, a hold skips it), and each new control gets a prompt
 // card drawn for the device (the mouse and Space on a PC, the big button on a touch screen): pick
@@ -184,7 +185,7 @@ export class ForgeLesson {
     if (this.sc.view?.mode === 'walk' && !this.sc.activity) this.sc.dock?.(this.introDock(), { dur: 3.4 });
     await this.wait(1.0);
     if (!this.cut) await this.wakeFire();
-    if (!this.cut) await this.say('There she is! Two <b>copper ingots</b> I put by. Heat, hammer into a curve, cool it off: your own pick.', 'happy', { wait: true });
+    if (!this.cut) await this.say('Two <b>copper ingots</b> I\'ve been saving. Heat them, beat them into a curve, cool them off: that\'s a pick.', 'happy', { wait: true });
     this.endCine();
     if (this.sc.game.scene !== this.sc || this.stage !== 'intro') return;
     this.stage = 'pick';
@@ -224,6 +225,7 @@ export class ForgeLesson {
       const sd = this.st.data.oldstar ||= {};
       if (!sd.lesson || sd.lesson === 'pick' || sd.lesson === 'wake') sd.lesson = 'mine';
       this.act('pick_done');
+      this.ui.unlock?.(['belt', 'dig']); // (your first tool: the hotbar comes in with it)
       this.st.dirty = true;
       this.st.save?.();
       this.ui.tutor?.hide('step');

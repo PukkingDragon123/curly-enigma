@@ -5,13 +5,23 @@ export const LAYER_OUTLINE = 1;
 
 // ---------------------------------------------------------------------------------------------
 // The pixel post pipeline
-//   1. scene → rtScene (colour + depth), outline layer → rtMask, first-person overlay → rtOverlay
-//   2. (only when bloom or god rays are on) two tiny passes at 1/4 resolution:
+//   1. scene → rtScene (colour + depth; half-float HDR where the GPU can render to it, so lamps,
+//      lava and sunlit stone keep their highlights), outline layer → rtMask, first-person overlay
+//      → rtOverlay
+//   2. ambient occlusion (quality tier permitting): at half resolution, from the depth buffer
+//      alone (view position + a normal rebuilt from the neighbours, a rotated disc of samples);
+//      then a depth-aware 4x4 blur. Crevices, inner corners and the ground under things darken.
+//   3. (only when bloom or god rays are on) tiny passes at 1/4 resolution (+ 1/8 on high):
 //        prefilter: a 4x4 box of the scene → bright pixels (rgb) + light-shaft sources (a)
 //        glow:      a soft ring blur of the bright pixels (rgb) + a radial blur toward the light (a)
-//   3. the final pass: outlines, overlay, glow (quantized + dithered so it stays pixel art),
-//      underwater wobble/murk, grade (lift/gamma/gain), vignette, posterize + dither, fades.
+//        wide:      a second, wider ring blur at 1/8 (a soft photographic halo round lights)
+//   4. the final pass: AO (depth-aware upsample), outlines, overlay, glow, underwater wobble/murk,
+//      exposure + a filmic shoulder (linear below the knee, highlights roll off instead of
+//      clipping), grade (lift/gamma/gain), vignette, posterize + dither (or just a 1/255 dither
+//      against banding), fades.
 // Every effect is driven by the `post` object a scene passes to render(); see DEFAULT_POST.
+// Quality tiers (resolution budget, glow level, AO) are picked per device and, on 'auto', adapted
+// to the measured frame time (see TIERS and Engine.setFx).
 // ---------------------------------------------------------------------------------------------
 
 const POST_VERT = /* glsl */`
@@ -53,6 +63,9 @@ void main() {
     vec2 uv = vUv + vec2(float(i) * 2.0 - 1.0 + (float(j) - 0.5), float(j) * 2.0 - 1.0 - (float(i) - 0.5)) * px;
 #endif
     vec3 c = texture2D(tColor, uv).rgb;
+    // HDR: above 1 the glow grows only a quarter as fast (an overlit wall doesn't flood the screen)
+    float cm = max(c.r, max(c.g, c.b));
+    if (cm > 1.0) c *= min(1.0 + (cm - 1.0) * 0.25, 2.5) / cm;
     float d = 0.0;
     if (uRaysOn > 0.5) d = texture2D(tDepth, uv).r; // only the shafts care about open sky
     if (uOverlay > 0.5) {
@@ -119,6 +132,105 @@ void main() {
 }
 `;
 
+// wide glow: a bigger ring blur of the glow at 1/8 resolution (rgb only)
+const WIDE_FRAG = /* glsl */`
+precision highp float;
+uniform sampler2D tGlow;
+uniform vec2 uLowRes;
+varying vec2 vUv;
+void main() {
+  vec2 px = 1.0 / uLowRes;
+  vec3 c = texture2D(tGlow, vUv).rgb * 0.16;
+  for (int i = 0; i < 8; i++) {
+    float a = float(i) * 0.7853982 + 0.39;
+    vec2 d = vec2(cos(a), sin(a));
+    c += texture2D(tGlow, vUv + d * px * 1.3).rgb * 0.065;
+    c += texture2D(tGlow, vUv + vec2(d.y, -d.x) * px * 2.9).rgb * 0.04;
+  }
+  gl_FragColor = vec4(c, 1.0);
+}
+`;
+
+const GLSL_BAYER = /* glsl */`
+float bayer4(vec2 p) {
+  vec2 q = mod(floor(p), 4.0);
+  float x = q.x, y = q.y;
+  float v = 0.0;
+  // 4x4 Bayer matrix, explicit to stay GLSL ES 1.0 friendly
+  if (y < 0.5) { v = x < 0.5 ? 0.0 : x < 1.5 ? 8.0 : x < 2.5 ? 2.0 : 10.0; }
+  else if (y < 1.5) { v = x < 0.5 ? 12.0 : x < 1.5 ? 4.0 : x < 2.5 ? 14.0 : 6.0; }
+  else if (y < 2.5) { v = x < 0.5 ? 3.0 : x < 1.5 ? 11.0 : x < 2.5 ? 1.0 : 9.0; }
+  else { v = x < 0.5 ? 15.0 : x < 1.5 ? 7.0 : x < 2.5 ? 13.0 : 5.0; }
+  return v / 16.0;
+}
+`;
+
+// ambient occlusion from depth alone (half resolution): r = how open the spot is (1 = open),
+// g = its view distance (for the depth-aware blur and upsample)
+const AO_FRAG = /* glsl */`
+precision highp float;
+uniform sampler2D tDepth;
+uniform vec2 uRes;        // full-res size
+uniform vec2 uAoRes;
+uniform mat4 uProjInv;
+uniform float uProjScale; // AO pixels per metre at 1 m (perspective) or per metre (ortho)
+uniform float uPersp;
+uniform float uRadius;    // metres
+varying vec2 vUv;
+${GLSL_BAYER}
+vec3 viewPos(vec2 uv) {
+  float d = texture2D(tDepth, uv).r;
+  vec4 p = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+  return p.xyz / p.w;
+}
+void main() {
+  float d0 = texture2D(tDepth, vUv).r;
+  if (d0 >= 0.99999) { gl_FragColor = vec4(1.0, 1e4, 0.0, 1.0); return; }
+  vec3 P = viewPos(vUv);
+  // the normal from the flatter side of each pair of neighbours (no smearing across silhouettes)
+  vec2 px = 1.0 / uRes;
+  vec3 pr = viewPos(vUv + vec2(px.x, 0.0)) - P, pl = P - viewPos(vUv - vec2(px.x, 0.0));
+  vec3 pu = viewPos(vUv + vec2(0.0, px.y)) - P, pd = P - viewPos(vUv - vec2(0.0, px.y));
+  vec3 N = normalize(cross(abs(pr.z) < abs(pl.z) ? pr : pl, abs(pu.z) < abs(pd.z) ? pu : pd));
+  float z = -P.z;
+  float rPix = uRadius * uProjScale / (uPersp > 0.5 ? max(z, 0.05) : 1.0);
+  if (rPix < 0.75) { gl_FragColor = vec4(1.0, z, 0.0, 1.0); return; }
+  rPix = min(rPix, 0.12 * uAoRes.y); // a cap keeps the taps near (cache) and near things sane
+  float ang = bayer4(gl_FragCoord.xy) * 6.2831853;
+  float occ = 0.0;
+  float R2 = uRadius * uRadius;
+  for (int i = 0; i < AO_N; i++) {
+    float t = (float(i) + 0.6) / float(AO_N);
+    float a = ang + float(i) * 2.3999632;
+    vec2 o = vec2(cos(a), sin(a)) * rPix * t;
+    vec3 v = viewPos(vUv + o / uAoRes) - P;
+    float vv = dot(v, v);
+    float c = dot(v, N) * inversesqrt(vv + 1e-6);
+    occ += max(0.0, c - 0.1) * max(0.0, 1.0 - vv / R2);
+  }
+  gl_FragColor = vec4(1.0 - min(1.0, occ * 2.2 / float(AO_N)), z, 0.0, 1.0);
+}
+`;
+
+// a 4x4 depth-aware box over the AO (the size of the rotation pattern, so its noise averages out)
+const AOBLUR_FRAG = /* glsl */`
+precision highp float;
+uniform sampler2D tAo;
+uniform vec2 uAoRes;
+varying vec2 vUv;
+void main() {
+  vec2 px = 1.0 / uAoRes;
+  vec2 c = texture2D(tAo, vUv).rg;
+  float sum = 0.0, wsum = 0.0;
+  for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) {
+    vec2 s = texture2D(tAo, vUv + (vec2(float(i), float(j)) - 2.0) * px).rg;
+    float w = max(0.0, 1.0 - abs(s.g - c.g) / (c.g * 0.06 + 0.02));
+    sum += s.r * w; wsum += w;
+  }
+  gl_FragColor = vec4(wsum > 0.0 ? sum / wsum : c.r, c.g, 0.0, 1.0);
+}
+`;
+
 const POST_FRAG = /* glsl */`
 precision highp float;
 uniform sampler2D tColor;
@@ -128,6 +240,8 @@ uniform sampler2D tMaskDepth;
 uniform sampler2D tOverlay;
 uniform sampler2D tOverlayDepth;
 uniform sampler2D tGlow;
+uniform sampler2D tWide;
+uniform float uWide;
 uniform float uOverlay;
 uniform vec2 uRes;
 uniform float uOutline;
@@ -165,6 +279,12 @@ uniform vec3 uGain;
 uniform float uFringe;
 uniform float uWater;
 uniform vec3 uWaterColor;
+uniform sampler2D tAo;
+uniform vec2 uAoRes;
+uniform float uAo;
+uniform float uAoFar;
+uniform float uExposure;
+uniform float uShoulder;
 varying vec2 vUv;
 ${GLSL_LUM}
 
@@ -174,17 +294,7 @@ float linDepth(float d) {
   return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear));
 }
 
-float bayer4(vec2 p) {
-  vec2 q = mod(floor(p), 4.0);
-  float x = q.x, y = q.y;
-  float v = 0.0;
-  // 4x4 Bayer matrix, explicit to stay GLSL ES 1.0 friendly
-  if (y < 0.5) { v = x < 0.5 ? 0.0 : x < 1.5 ? 8.0 : x < 2.5 ? 2.0 : 10.0; }
-  else if (y < 1.5) { v = x < 0.5 ? 12.0 : x < 1.5 ? 4.0 : x < 2.5 ? 14.0 : 6.0; }
-  else if (y < 2.5) { v = x < 0.5 ? 3.0 : x < 1.5 ? 11.0 : x < 2.5 ? 1.0 : 9.0; }
-  else { v = x < 0.5 ? 15.0 : x < 1.5 ? 7.0 : x < 2.5 ? 13.0 : 5.0; }
-  return v / 16.0;
-}
+${GLSL_BAYER}
 
 vec3 toSRGB(vec3 c) {
   c = clamp(c, 0.0, 1.0);
@@ -219,6 +329,23 @@ void main() {
     float murk = 1.0 - exp(-wd * 0.22 * uWater);
     col *= mix(vec3(1.0), uWaterColor * 1.6 + 0.25, uWater);
     col = mix(col, uWaterColor * 0.55, murk * 0.85);
+  }
+
+  // ambient occlusion: the 4 nearest AO texels, weighted by how close their depth is to this
+  // pixel's (no dark fringes round silhouettes); eased off in bright light and with distance
+  if (uAo > 0.0) {
+    float z = linDepth(texture2D(tDepth, uv).r);
+    vec2 t = uv * uAoRes - 0.5;
+    vec2 f = fract(t);
+    vec2 b = (floor(t) + 0.5) / uAoRes;
+    vec2 a00 = texture2D(tAo, b).rg, a10 = texture2D(tAo, b + vec2(1.0, 0.0) / uAoRes).rg;
+    vec2 a01 = texture2D(tAo, b + vec2(0.0, 1.0) / uAoRes).rg, a11 = texture2D(tAo, b + 1.0 / uAoRes).rg;
+    float tol = z * 0.04 + 0.01;
+    vec4 w = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y) + 1e-3;
+    w /= 1.0 + abs(vec4(a00.g, a10.g, a01.g, a11.g) - z) / tol;
+    float ao = dot(w, vec4(a00.r, a10.r, a01.r, a11.r)) / dot(w, vec4(1.0));
+    float k = uAo * (1.0 - smoothstep(uAoFar * 0.5, uAoFar, z)) * (1.0 - 0.35 * smoothstep(0.3, 1.0, lum(col)));
+    col *= mix(1.0, ao, k);
   }
 
   if (uOutline > 0.5) {
@@ -268,16 +395,28 @@ void main() {
   // glow: bloom + light shafts, quantized into dithered steps so they read as pixel-art halos
   if (uGlowOn > 0.5) {
     vec4 g = texture2D(tGlow, uv);
-    vec3 glow = g.rgb * uBloom * uBloomTint + uRaysColor * (g.a * uRays);
+    vec3 glow = (g.rgb + texture2D(tWide, uv).rgb * uWide) * uBloom * uBloomTint + uRaysColor * (g.a * uRays);
     if (uGlowSteps > 0.0) {
       float m = max(glow.r, max(glow.g, glow.b));
       float q = floor(m * uGlowSteps + bayer4(gl_FragCoord.xy) * 0.999) / uGlowSteps;
       glow *= m > 1e-4 ? q / m : 0.0;
     }
-    col += glow * (1.0 - col * 0.5);
+    col += glow * (1.0 - min(col, vec3(1.0)) * 0.5);
   }
 
-  col *= uBright * uTint;
+  col *= uBright * uTint * uExposure;
+  // filmic shoulder: linear below the knee, then highlights roll off toward white instead of
+  // clipping (hot colours drift toward yellow-white, like film)
+  if (uShoulder < 1.0) {
+    // mostly hue-preserving (on the brightest channel: an overlit red stays red), a third per
+    // channel (so the very hottest things still burn toward yellow-white)
+    float kn = uShoulder, r = 1.0 - kn;
+    float m = max(col.r, max(col.g, col.b));
+    float fm = m > kn ? kn + r * (1.0 - exp(-(m - kn) / r)) : m;
+    vec3 hp = col * (fm / max(m, 1e-5));
+    vec3 pc = min(col, kn) + r * (1.0 - exp(-max(col - kn, 0.0) / r));
+    col = mix(hp, pc, 0.35);
+  }
   float l = lum(col);
   col = mix(vec3(l), col, uSat);
   vec3 s = toSRGB(col);
@@ -295,7 +434,7 @@ void main() {
   if (uLevels > 0.0) {
     float b = bayer4(gl_FragCoord.xy) - 0.5;
     s = floor(clamp(s, 0.0, 1.0) * uLevels + 0.5 + b * uDither) / uLevels;
-  }
+  } else s += (bayer4(gl_FragCoord.xy) - 0.47) * uDither / 255.0; // just enough against banding
 
   s = mix(s, uFadeColor, uFade);
   s = mix(s, uFlashColor, uFlash);
@@ -310,14 +449,15 @@ void main() {
 }
 `;
 
-function makeRT(w, h, srgb) {
+function makeRT(w, h, srgb, hdr = false) {
   const rt = new THREE.WebGLRenderTarget(w, h, {
     minFilter: THREE.NearestFilter,
     magFilter: THREE.NearestFilter,
     depthBuffer: true,
     stencilBuffer: false,
+    type: hdr ? THREE.HalfFloatType : THREE.UnsignedByteType,
   });
-  if (srgb) rt.texture.colorSpace = THREE.SRGBColorSpace;
+  if (srgb && !hdr) rt.texture.colorSpace = THREE.SRGBColorSpace;
   rt.depthTexture = new THREE.DepthTexture(w, h);
   rt.depthTexture.type = THREE.UnsignedIntType;
   rt.depthTexture.minFilter = THREE.NearestFilter;
@@ -332,6 +472,17 @@ function makeLowRT(w, h) {
     depthBuffer: false,
     stencilBuffer: false,
     type: THREE.UnsignedByteType,
+  });
+}
+
+// AO targets: r = openness, g = view distance (half float, nearest: the blur and upsample weigh by depth)
+function makeAoRT(w, h) {
+  return new THREE.WebGLRenderTarget(w, h, {
+    minFilter: THREE.NearestFilter,
+    magFilter: THREE.NearestFilter,
+    depthBuffer: false,
+    stencilBuffer: false,
+    type: THREE.HalfFloatType,
   });
 }
 
@@ -398,6 +549,12 @@ function resolveGrade(g) {
  * Underwater: underwater (0..1: wobble, blue-green murk with depth, softer outlines), underwaterColor
  * Outlines: outline, outlineColor, outlineAlpha, innerThresh (depth step for inner edges), outlineFar
  *   (metres: outlines fade out toward this distance, for hazy outdoor scenes; 0 = never fade)
+ * Tone: exposure (linear multiplier before the curve), shoulder (the knee, 0..1: linear below it,
+ *   highlights roll off softly above it; 1 = hard clip as before)
+ * Ambient occlusion (quality tier permitting): ao (strength 0..1; 0 = off), aoRadius (metres),
+ *   aoFar (metres: fades out toward this distance)
+ * Pixel look: levels (posterize to this many steps per channel with a Bayer dither; 0 = off, just
+ *   a 1/255 dither against banding), dither, glowSteps (0 = smooth glow)
  */
 export const DEFAULT_POST = {
   outline: true,
@@ -410,9 +567,14 @@ export const DEFAULT_POST = {
   contrast: 1.04,
   brightness: 1,
   tint: 0xffffff,
-  levels: 40,
+  levels: 0,
   dither: 1,
   grain: 0,
+  exposure: 1,
+  shoulder: 0.74,
+  ao: 0.75,
+  aoRadius: 0.45,
+  aoFar: 30,
   fade: 0,
   fadeColor: 0x000000,
   flash: 0,
@@ -425,7 +587,8 @@ export const DEFAULT_POST = {
   bloomKnee: 0.18,
   bloomRadius: 1,
   bloomTint: 0xffffff,
-  glowSteps: 7,
+  glowSteps: 0,
+  wideGlow: 0.7, // the 1/8-res halo (high effects only)
   // god rays
   rays: 0,
   raysDir: null,
@@ -452,10 +615,10 @@ export const DEFAULT_POST = {
  */
 export const SCENE_POST = {
   title: { grade: 'tavern', gradeMix: 0.8, bloom: 0.7, bloomThreshold: 0.74 },
-  home: { grade: 'tavern', gradeMix: 0.7, bloom: 0.6, bloomThreshold: 0.76 }, // Old Star's lamplit cave
-  deep: { grade: 'deep', gradeMix: 0.85, bloom: 0.55, bloomThreshold: 0.72, saturation: 1.16, contrast: 1.06 }, // cool rock, warm lamps, glowing ore
-  town: { grade: 'town', gradeMix: 0.85, bloom: 0.65, bloomThreshold: 0.74 },
-  forge: { grade: 'forge', gradeMix: 0.85, bloom: 0.75, bloomThreshold: 0.7 }, // hot metal glows
+  home: { grade: 'tavern', gradeMix: 0.7, bloom: 0.6, bloomThreshold: 0.76, aoRadius: 0.35, aoFar: 18 }, // Old Star's lamplit cave
+  deep: { grade: 'deep', gradeMix: 0.85, bloom: 0.55, bloomThreshold: 0.72, saturation: 1.16, contrast: 1.06, aoFar: 18 }, // cool rock, warm lamps, glowing ore
+  town: { grade: 'town', gradeMix: 0.85, bloom: 0.65, bloomThreshold: 0.74, aoRadius: 0.5 },
+  forge: { grade: 'forge', gradeMix: 0.85, bloom: 0.75, bloomThreshold: 0.7, aoRadius: 0.35, aoFar: 14 }, // hot metal glows
   cooking: { grade: 'warm', gradeMix: 0.7, bloom: 0.5, bloomThreshold: 0.8 },
   showroom: { bloom: 0 },
 };
@@ -463,9 +626,31 @@ export const SCENE_POST = {
 /** The mine's strata, each with its own light (zone 1..6 → a GRADES name): post.grade = ZONE_GRADES[zone]. */
 export const ZONE_GRADES = [null, 'rootsoil', 'clay', 'grotto', 'magma', 'frost', 'core'];
 
-/** Effect quality levels: 'high' (default), 'low' (cheaper glow, for phones), 'off' (no glow passes). */
-export const FX_LEVELS = ['high', 'low', 'off'];
+/**
+ * Effect quality: 'auto' (default: a tier picked per device, then adapted to the frame time),
+ * 'high', 'low' (cheaper glow and AO, for phones), 'off' (no glow passes, no AO). engine.fx always
+ * holds the glow level in effect ('high' | 'low' | 'off'); engine.fxAuto says whether it adapts.
+ */
+export const FX_LEVELS = ['auto', 'high', 'low', 'off'];
 const FX_KEY = 'moleforge.fx';
+
+/**
+ * Quality tiers, best first. px: internal pixel budget (the image is rendered at an integer
+ * fraction of the device's own pixels, the largest that fits: crisp pixels at any DPR), fx: glow
+ * level, ao: 2 = half-res AO with 10 samples, 1 = quarter-res with 6, 0 = off.
+ * Desktop starts at 'high', phones at 'low'; 'auto' steps down when frames run long and back up
+ * after a while of headroom (a tier that failed is not retried for a minute).
+ */
+export const TIERS = [
+  { name: 'ultra', px: 2.3e6, fx: 'high', ao: 2 },
+  { name: 'high', px: 1.4e6, fx: 'high', ao: 2 },
+  { name: 'balanced', px: 1.4e6, fx: 'low', ao: 1 }, // cheaper effects before fewer pixels
+  { name: 'medium', px: 0.8e6, fx: 'low', ao: 1 },
+  { name: 'low', px: 0.42e6, fx: 'low', ao: 1 },
+  { name: 'lower', px: 0.27e6, fx: 'low', ao: 0 },
+  { name: 'potato', px: 0.17e6, fx: 'off', ao: 0 },
+];
+const tierIndex = (name) => TIERS.findIndex((t) => t.name === name);
 
 function initialFx() {
   try {
@@ -475,8 +660,7 @@ function initialFx() {
     const s = window.localStorage.getItem(FX_KEY);
     if (s && FX_LEVELS.includes(s)) return s;
   } catch (e) { /* storage blocked */ }
-  const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-  return coarse ? 'low' : 'high';
+  return 'auto';
 }
 
 const _v = new THREE.Vector3();
@@ -510,11 +694,20 @@ export class Engine {
     this.scale = 3;
     this.resizeListeners = new Set();
 
-    this.rtScene = makeRT(this.width, this.height, true);
+    // HDR scene colour (and the AO targets) need a GPU that can render to half floats
+    let hdr = false;
+    try { hdr = this.renderer.extensions.has('EXT_color_buffer_float') || this.renderer.extensions.has('EXT_color_buffer_half_float'); } catch (e) { /* no */ }
+    this._hdrOk = hdr;
+    try { if (new URLSearchParams(window.location.search).get('hdr') === '0') hdr = false; } catch (e) { /* no query */ }
+    this.hdr = hdr;
+    this.rtScene = makeRT(this.width, this.height, true, hdr);
     this.rtMask = makeRT(this.width, this.height, false);
     this.rtOverlay = makeRT(this.width, this.height, true);
     this.rtPre = makeLowRT(160, 90);
     this.rtGlow = makeLowRT(160, 90);
+    this.rtWide = makeLowRT(80, 45);
+    this.rtAo = this._hdrOk ? makeAoRT(320, 180) : null;
+    this.rtAo2 = this._hdrOk ? makeAoRT(320, 180) : null;
 
     this.postUniforms = {
       tColor: { value: this.rtScene.texture },
@@ -524,6 +717,14 @@ export class Engine {
       tOverlay: { value: this.rtOverlay.texture },
       tOverlayDepth: { value: this.rtOverlay.depthTexture },
       tGlow: { value: this.rtGlow.texture },
+      tWide: { value: this.rtWide.texture },
+      uWide: { value: 0 },
+      tAo: { value: this.rtAo2 ? this.rtAo2.texture : null },
+      uAoRes: { value: new THREE.Vector2(320, 180) },
+      uAo: { value: 0 },
+      uAoFar: { value: 30 },
+      uExposure: { value: 1 },
+      uShoulder: { value: 0.74 },
       uOverlay: { value: 0 },
       uRes: { value: new THREE.Vector2(this.width, this.height) },
       uOutline: { value: 1 },
@@ -597,6 +798,23 @@ export class Engine {
     };
     this.preMaterial = new THREE.ShaderMaterial({ uniforms: this.preUniforms, vertexShader: POST_VERT, fragmentShader: PRE_FRAG, depthTest: false, depthWrite: false });
     this.glowMaterial = new THREE.ShaderMaterial({ uniforms: this.glowUniforms, vertexShader: POST_VERT, fragmentShader: GLOW_FRAG, depthTest: false, depthWrite: false });
+    this.wideUniforms = { tGlow: this.postUniforms.tGlow, uLowRes: { value: new THREE.Vector2(80, 45) } };
+    this.wideMaterial = new THREE.ShaderMaterial({ uniforms: this.wideUniforms, vertexShader: POST_VERT, fragmentShader: WIDE_FRAG, depthTest: false, depthWrite: false });
+    // ambient occlusion (half res) + its depth-aware blur
+    this.aoUniforms = {
+      tDepth: this.postUniforms.tDepth,
+      uRes: this.postUniforms.uRes,
+      uAoRes: this.postUniforms.uAoRes,
+      uProjInv: { value: new THREE.Matrix4() },
+      uProjScale: { value: 100 },
+      uPersp: this.postUniforms.uPersp,
+      uRadius: { value: 0.45 },
+    };
+    this.aoMaterial = new THREE.ShaderMaterial({ uniforms: this.aoUniforms, vertexShader: POST_VERT, fragmentShader: AO_FRAG, depthTest: false, depthWrite: false, defines: { AO_N: 10 } });
+    this.aoBlurMaterial = new THREE.ShaderMaterial({
+      uniforms: { tAo: { value: this.rtAo ? this.rtAo.texture : null }, uAoRes: this.postUniforms.uAoRes },
+      vertexShader: POST_VERT, fragmentShader: AOBLUR_FRAG, depthTest: false, depthWrite: false,
+    });
 
     this.postScene = new THREE.Scene();
     this.postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -610,21 +828,126 @@ export class Engine {
     this._grade = { ref: undefined, mix: -1 };
     this.sceneName = null; // set by Game.goto: picks the SCENE_POST defaults
 
+    // quality: a tier per device class, adapted to the frame time on 'auto'
+    const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+    this.mobile = coarse;
+    this.baseTier = tierIndex(coarse ? 'low' : 'high');
+    this.tier = this.baseTier;
+    this.aoLevel = TIERS[this.tier].ao;
+    this._auto = { last: 0, dts: [], acc: 0, settle: 0, upOk: 0, raisedAt: -1, failUntil: [] };
+    this.fixedTier = -1;
+    try {
+      const q = new URLSearchParams(window.location.search).get('q'); // ?q=ultra|high|medium|low|lower|potato pins a tier
+      if (q && tierIndex(q) >= 0) this.fixedTier = tierIndex(q);
+    } catch (e) { /* no query */ }
     this.setFx(initialFx(), false);
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
 
-  /** Effect quality: 'high' | 'low' | 'off' (saved in localStorage unless save = false). */
-  setFx(level, save = true) {
-    if (!FX_LEVELS.includes(level)) level = 'high';
+  /** HDR scene colour on/off (off: 8-bit sRGB, highlights clip; for comparisons and old GPUs). */
+  setHdr(on) {
+    on = !!on && this._hdrOk;
+    if (on === this.hdr) return;
+    this.hdr = on;
+    this.rtScene.dispose();
+    this.rtScene = makeRT(this.width, this.height, true, on);
+    this.postUniforms.tColor.value = this.rtScene.texture;
+    this.postUniforms.tDepth.value = this.rtScene.depthTexture;
+  }
+
+  /** The quality in effect: { tier, name, fx, ao, auto, width, height }. */
+  get quality() {
+    const t = TIERS[this.tier];
+    return { tier: this.tier, name: t.name, fx: this.fx, ao: this.aoLevel, auto: this.fxAuto, width: this.width, height: this.height };
+  }
+
+  /** Apply tier i (resolution budget, glow level, AO); keeps the explicit fx choice if there is one. */
+  setTier(i) {
+    i = Math.max(0, Math.min(TIERS.length - 1, i));
+    const t = TIERS[i];
+    const changed = i !== this.tier || this._tierApplied !== true;
+    this.tier = i;
+    this._tierApplied = true;
+    if (this.fxAuto) this._applyFx(t.fx);
+    // (software rasterizers — headless tests — get the cheap AO unless a tier is pinned with ?q=)
+    if (this.fxAuto) this.aoLevel = this.softwareGL && this.fixedTier < 0 ? Math.min(t.ao, 1) : t.ao;
+    if (changed) this.resize();
+    this._sizeAo();
+  }
+
+  _applyFx(level) {
+    if (this.fx === level && this._fxApplied) return;
+    this._fxApplied = true;
     this.fx = level;
     const hi = level === 'high';
     this.preMaterial.defines = { TAPS: hi ? 16 : 4 };
     this.glowMaterial.defines = { RAY_N: hi ? 28 : 14 };
     this.preMaterial.needsUpdate = true;
     this.glowMaterial.needsUpdate = true;
+  }
+
+  /**
+   * Frame-time governor ('auto' only, real GPUs only): the median frame of each ~1.2 s window. Too
+   * slow → one tier down at once; comfortably fast for 5 windows in a row → one tier up (never
+   * above ultra on desktop / medium on phones). Stepping back down right after a raise marks that
+   * tier as failed for a minute, so it doesn't see-saw.
+   */
+  _govern(now) {
+    const A = this._auto;
+    const dt = A.last ? now - A.last : 0;
+    A.last = now;
+    if (!this.fxAuto || this.fixedTier >= 0 || this.softwareGL) return;
+    if (!(dt > 0) || dt > 1000) return; // loading hitches, hidden tabs (the median ignores the odd spike)
+    A.dts.push(dt);
+    A.acc += dt;
+    if (A.acc < 1200) return;
+    const d = A.dts.sort((a, b) => a - b), med = d[d.length >> 1];
+    A.dts.length = 0; A.acc = 0;
+    if (A.settle > 0) { A.settle--; return; }
+    const slow = this.mobile ? 38 : 22, fast = this.mobile ? 24 : 17.9;
+    const top = this.mobile ? tierIndex('medium') : 0;
+    if (med > slow && this.tier < TIERS.length - 1) {
+      if (A.raisedAt === this.tier) A.failUntil[this.tier] = now + 60000;
+      A.raisedAt = -1; A.upOk = 0; A.settle = 1;
+      this.setTier(this.tier + 1);
+    } else if (med < fast && this.tier > top) {
+      if (++A.upOk >= 5 && !(A.failUntil[this.tier - 1] > now)) {
+        A.upOk = 0; A.settle = 1;
+        this.setTier(this.tier - 1);
+        A.raisedAt = this.tier;
+      }
+    } else A.upOk = 0;
+  }
+
+  /**
+   * Effect quality: 'auto' | 'high' | 'low' | 'off' (saved in localStorage unless save = false).
+   * An explicit level keeps the device's own resolution budget and sets glow + AO; 'auto' starts
+   * from the device's tier and adapts.
+   */
+  setFx(level, save = true) {
+    if (!FX_LEVELS.includes(level)) level = 'auto';
+    this.fxAuto = level === 'auto';
+    if (this.fixedTier >= 0) {
+      this.fxAuto = true;
+      this.setTier(this.fixedTier);
+    } else if (this.fxAuto) {
+      this.setTier(this.tier);
+    } else {
+      this._applyFx(level);
+      this.aoLevel = level === 'high' ? 2 : level === 'low' ? 1 : 0;
+      this.setTier(this.baseTier);
+      this._sizeAo();
+    }
     if (save) { try { window.localStorage.setItem(FX_KEY, level); } catch (e) { /* storage blocked */ } }
+  }
+
+  // AO targets: half resolution on high, quarter on low
+  _sizeAo() {
+    const div = this.aoLevel >= 2 ? 2 : 4;
+    const aw = Math.max(1, Math.ceil(this.width / div)), ah = Math.max(1, Math.ceil(this.height / div));
+    if (this.rtAo && (this.rtAo.width !== aw || this.rtAo.height !== ah)) { this.rtAo.setSize(aw, ah); this.rtAo2.setSize(aw, ah); }
+    this.postUniforms.uAoRes.value.set(aw, ah);
   }
 
   setPixelOffset(o) {
@@ -633,17 +956,28 @@ export class Engine {
   }
 
   resize() {
+    if (!this.rtScene) return;
     const ww = Math.max(1, window.innerWidth);
     const wh = Math.max(1, window.innerHeight);
-    // ~540-720 internal lines: crisp pixel art that still has room for fine voxel detail
-    const base = Math.max(1, Math.floor(Math.min(wh / 500, ww / 800)));
-    const s = Math.max(1, base + this.pixelOffset);
-    this.scale = s;
-    this.width = Math.ceil(ww / s);
-    this.height = Math.ceil(wh / s);
+    // in device pixels: the largest integer fraction of the screen that fits the tier's pixel
+    // budget (so every internal pixel is a crisp s×s block of real ones at any DPR), then the
+    // player's 'Pixels' setting a step finer or coarser
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const dw = ww * dpr, dh = wh * dpr;
+    const budget = TIERS[this.tier].px;
+    let s = 1;
+    while ((dw / s) * (dh / s) > budget && s < 16) s++;
+    s = Math.max(1, s + this.pixelOffset);
+    const w = Math.ceil(dw / s), h = Math.ceil(dh / s);
+    const sc = s / dpr;
+    if (w === this.width && h === this.height && sc === this.scale && this._sized) return;
+    this._sized = true;
+    this.scale = sc; // CSS px per internal pixel
+    this.width = w;
+    this.height = h;
     this.renderer.setSize(this.width, this.height, false);
-    this.canvas.style.width = this.width * s + 'px';
-    this.canvas.style.height = this.height * s + 'px';
+    this.canvas.style.width = this.width * sc + 'px';
+    this.canvas.style.height = this.height * sc + 'px';
     this.rtScene.setSize(this.width, this.height);
     this.rtMask.setSize(this.width, this.height);
     this.rtOverlay.setSize(this.width, this.height);
@@ -651,6 +985,10 @@ export class Engine {
     this.rtPre.setSize(lw, lh);
     this.rtGlow.setSize(lw, lh);
     this.glowUniforms.uLowRes.value.set(lw, lh);
+    const ew = Math.max(1, Math.ceil(lw / 2)), eh = Math.max(1, Math.ceil(lh / 2));
+    this.rtWide.setSize(ew, eh);
+    this.wideUniforms.uLowRes.value.set(ew, eh);
+    this._sizeAo();
     this.postUniforms.uRes.value.set(this.width, this.height);
     for (const cb of this.resizeListeners) cb(this.width, this.height);
   }
@@ -694,10 +1032,33 @@ export class Engine {
     if (hook) hook(p, camera, this);
     const r = this.renderer;
     const u = this.postUniforms;
+    this._govern(performance.now());
 
     r.setRenderTarget(this.rtScene);
     r.setClearColor(scene.background && scene.background.isColor ? scene.background : 0x000000, 1);
     r.render(scene, camera);
+
+    // ambient occlusion (half res) from the scene's depth, then its depth-aware blur
+    const aoOn = this.rtAo && this.aoLevel > 0 && p.ao > 0;
+    u.uAo.value = aoOn ? p.ao : 0;
+    if (aoOn) {
+      const au = this.aoUniforms;
+      const n = this.aoLevel >= 2 ? 10 : 6;
+      if (this.aoMaterial.defines.AO_N !== n) { this.aoMaterial.defines.AO_N = n; this.aoMaterial.needsUpdate = true; }
+      camera.updateMatrixWorld();
+      au.uProjInv.value.copy(camera.projectionMatrixInverse);
+      au.uProjScale.value = camera.projectionMatrix.elements[5] * u.uAoRes.value.y * 0.5;
+      au.uRadius.value = p.aoRadius;
+      u.uPersp.value = camera.isPerspectiveCamera ? 1 : 0;
+      u.uAoFar.value = p.aoFar;
+      this.quad.material = this.aoMaterial;
+      r.setRenderTarget(this.rtAo);
+      r.render(this.postScene, this.postCamera);
+      this.quad.material = this.aoBlurMaterial;
+      r.setRenderTarget(this.rtAo2);
+      r.render(this.postScene, this.postCamera);
+      this.quad.material = this.postMaterial;
+    }
 
     if (p.outline) {
       const bg = scene.background;
@@ -732,6 +1093,7 @@ export class Engine {
     const bloomOn = fxOn && p.bloom > 0;
     const glowOn = bloomOn || raysK > 0.001;
     u.uGlowOn.value = glowOn ? 1 : 0;
+    let wide = false;
     if (glowOn) {
       const pu = this.preUniforms, gu = this.glowUniforms;
       pu.uThresh.value = bloomOn ? p.bloomThreshold : 9;
@@ -750,8 +1112,15 @@ export class Engine {
       this.quad.material = this.glowMaterial;
       r.setRenderTarget(this.rtGlow);
       r.render(this.postScene, this.postCamera);
+      wide = bloomOn && this.fx === 'high' && p.wideGlow > 0;
+      if (wide) {
+        this.quad.material = this.wideMaterial;
+        r.setRenderTarget(this.rtWide);
+        r.render(this.postScene, this.postCamera);
+      }
       this.quad.material = this.postMaterial;
     }
+    u.uWide.value = wide ? p.wideGlow : 0;
     u.uBloom.value = bloomOn ? p.bloom : 0;
     u.uBloomTint.value.set(p.bloomTint);
     u.uGlowSteps.value = p.glowSteps;
@@ -787,6 +1156,8 @@ export class Engine {
     u.uLevels.value = p.levels;
     u.uDither.value = p.dither;
     u.uGrain.value = p.grain;
+    u.uExposure.value = p.exposure;
+    u.uShoulder.value = p.shoulder;
     u.uTime.value = this.time;
 
     // combine scene fade with global transition
