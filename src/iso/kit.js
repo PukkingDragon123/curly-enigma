@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { VoxelGrid } from '../gfx/Voxel.js';
 import { fastMesh } from './mesher.js';
 import { hash2 } from './surface.js';
+import { keepFine } from '../gfx/voxRes.js';
 
 export { VoxelGrid };
 export const S32 = 1 / 32;
@@ -152,8 +153,9 @@ export function ring(g, cx, cz, r0, r1, y0, y1, col) {
 // ---------------------------------------------------------------- level of detail
 let LOW = 0;
 /**
- * Build with every 1/32 mesh (M32/G32) downsampled to 1/16: for small, repeated background
- * decor (mushroom clumps, crystals, roots...) that never gets a close look. ~4x fewer faces.
+ * Build with every 1/32 mesh (M32/G32) downsampled to 1/16: for big, repeated background decor
+ * (crystal clusters, roots, rubble banks...) that never gets a close look. ~4x fewer faces. Small
+ * things stay at 1/32 even in here (the size rule, gfx/voxRes.js: under ~0.6 m they keep fine voxels).
  */
 export function lowRes(fn) { LOW++; try { return fn(); } finally { LOW--; } }
 
@@ -198,15 +200,19 @@ export function half(g, min = 2) {
 
 // ---------------------------------------------------------------- meshes
 /** Lit mesh at 1/32 (pivot bottom-center by default). Inside lowRes() it is built at 1/16. */
+/** Meters per kit unit, roughly (home tiles are 0.5 m, town units 0.625 m): for the size rule. */
+const UNIT_M = 0.56;
+/** Inside lowRes(), is this grid big enough to be built coarse? (small things never are: gfx/voxRes.js) */
+const coarse = (g) => LOW && !keepFine(g, S32 * UNIT_M);
 export function M32(g, pivot, o = {}) {
   const pv = pivot ?? [g.w / 2, 0, g.d / 2];
-  if (LOW && !o.scale) return fastMesh(half(g), { scale: S16, pivot: pv.map((v) => v / 2), kind: 'toon', outline: o.outline !== false, view: o.view });
+  if (coarse(g) && !o.scale) return fastMesh(half(g), { scale: S16, pivot: pv.map((v) => v / 2), kind: 'toon', outline: o.outline !== false, view: o.view });
   return fastMesh(g, { scale: o.scale ?? S32, pivot: pv, kind: 'toon', outline: o.outline !== false, view: o.view });
 }
 /** Glowing (unlit) mesh at 1/32 (1/16 inside lowRes()). */
 export function G32(g, pivot, o = {}) {
   const pv = pivot ?? [g.w / 2, 0, g.d / 2];
-  if (LOW && !o.scale) return fastMesh(half(g, 1), { scale: S16, pivot: pv.map((v) => v / 2), kind: 'basic', shade: true, outline: o.outline ?? false, view: o.view });
+  if (coarse(g) && !o.scale) return fastMesh(half(g, 1), { scale: S16, pivot: pv.map((v) => v / 2), kind: 'basic', shade: true, outline: o.outline ?? false, view: o.view });
   return fastMesh(g, { scale: o.scale ?? S32, pivot: pv, kind: 'basic', shade: true, outline: o.outline ?? false, view: o.view });
 }
 /** Lit mesh at 1/16. */

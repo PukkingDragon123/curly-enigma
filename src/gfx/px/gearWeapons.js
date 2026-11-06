@@ -3,10 +3,11 @@
 // and haft is a clean hand-pixel staircase: lit bevel line on the top-left edge, two-plane
 // blade split by a fuller, leather-wrapped grips, pommels and guards with their own planes,
 // heads designed as local polygons with planes and hammer marks, then an ink outline.
-import { M, mat, mix, hash2, solid, seam, bevel, stick, wrapStick, dents, rivet, line, glint, diagMask, diagAt, RAMPS } from './gearKit.js';
+import {
+  M, mat, mix, hash2, seam, bevel, stick, wrapStick, dents, rivet, line, glint, diagMask, diagAt, RAMPS, ink,
+} from './gearKit.js';
 import { toHsl } from './color.js';
 import { glowHalo } from './shade.js';
-import { ink } from './gearKit.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const SQ = Math.SQRT2;
@@ -87,14 +88,23 @@ function blade(pc, A0, A1, l, r, R, o = {}) {
   const m = diagMask((A, d) => A >= A0 && A <= A1 && d >= -l(A) - 0.01 && d <= r(A) + 0.01);
   seam(pc, m, 'shadow');
   const ridge = o.ridge ?? 0, fuller = o.fuller;
+  const rim = o.lowRim ?? A0 + 1.6;
   stripes(pc, m, R, (A, d, x, y) => {
     const top = isTop(m, x, y), bot = isBot(m, x, y);
-    if (top) return A > A1 - 2.4 || (o.shine && hash2(x, y, 3) < 0.2) ? 0 : 1;
+    if (top) return A > A1 - 2.4 ? 0 : 1;
     let k = d <= ridge ? 2 : 4;
     if (fuller && A >= fuller[0] && A <= fuller[1] && d === ridge) k = 5;
-    if (bot && o.lowRim && A > o.lowRim) k = 3;
+    // a broken rim of reflected light along the lower cutting edge
+    if (bot && A > rim && A < A1 - 0.8 && Math.sin(A * 1.7 + 1) > -0.35) k = 3;
+    if (A < A0 + 0.9 && k === 2) k = 3; // shadow under the guard
     return k;
   });
+  // gleams: short bright ticks across the lit plane
+  for (const g of o.gleams || [A1 - 4.2, A0 + (A1 - A0) * 0.42]) {
+    const [gx, gy] = diagAt(g, -l(g));
+    const X = Math.floor(gx), Y = Math.floor(gy);
+    if (m.get(X, Y) && m.get(X, Y + 1) && !isBot(m, X, Y + 1)) { pc.set(X, Y, R[0]); pc.set(X, Y + 1, R[1]); }
+  }
   return m;
 }
 
@@ -109,7 +119,7 @@ function fittingsFor(metalColor) {
  * metalColor tints the metal parts, infusionColor (optional) adds glowing runes + halo.
  */
 export function drawWeaponArt(pc, type, metalColor, infusionColor) {
-  const R = mat(metalColor, { cont: 1.28, hs: 1.1 });
+  const R = mat(metalColor, { cont: 1.28, hs: 1.1, cool: toHsl(metalColor)[1] < 0.25 ? 222 : 255 });
   const F = fittingsFor(metalColor);
   const LE = mat(0x6a3a22, { cont: 1.1 });
   const DL = mat(0x4a2c22, { cont: 1.15 });
@@ -148,7 +158,7 @@ export function drawWeaponArt(pc, type, metalColor, infusionColor) {
     case 'greatsword': {
       knob(pc, -12.7, 0, 2.3, F);
       grip(pc, -11.5, -7.3, -1, 1, LE, { period: 3 });
-      head = blade(pc, -6, 13.6, (A) => (A < -4.2 ? 2 : A < 10 ? 3 : 3 - (A - 10) * 0.83), (A) => (A < -4.2 ? 2 : A < 10 ? 3 : 3 - (A - 10) * 0.83), R, { fuller: [-3.6, 7.6], lowRim: 4 });
+      head = blade(pc, -6, 13.6, (A) => (A < -4.2 ? 2 : A < 10 ? 3 : 3 - (A - 10) * 0.83), (A) => (A < -4.2 ? 2 : A < 10 ? 3 : 3 - (A - 10) * 0.83), R, { fuller: [-3.6, 7.6] });
       crossbar(pc, (d) => -6.6 + 0.02 * d * d, -7, 7, 1.2, F, { knobs: [[-7, 1.3], [7, 1.3]] });
       // parrying lugs at the top of the ricasso
       for (const s of [-1, 1]) { const [x, y] = diagAt(-4, s * 3.4); const m = M().disk(x, y, 0.9); seam(pc, m, 'shadow'); m.each((X, Y) => pc.set(X, Y, R[s < 0 ? 2 : 4])); }

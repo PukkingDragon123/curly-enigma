@@ -87,8 +87,12 @@ export function makeBroadleaf(seed, opts = {}) {
   const H = opts.height ?? (giant ? 17 : kind === 'birch' ? 12 : 13);
   const CR = opts.crownR ?? (giant ? 7.5 : kind === 'birch' ? 2.6 : 4.2);
   const TR = opts.trunkR ?? (giant ? 1.05 : kind === 'birch' ? 0.2 : kind === 'beech' ? 0.36 : 0.42);
-  const k = opts.k ?? 8, kl = opts.kl ?? 5;
   const lod = !!opts.lod;
+  // the bark is seen up close along the trail: near trees get finer wood voxels than they were
+  // asked for (1.6x; the wood is a small share of a tree's faces), far copies keep theirs
+  // (the giants' crowns too: they hang over the opening shot)
+  // (the light forests' coarser requests are refined less)
+  const k = (opts.k ?? 8) * (lod ? 1 : giant ? 1.3 : (opts.k ?? 8) >= 5 ? 1.6 : 1.3), kl = (opts.kl ?? 5) * (giant && !lod ? 1.35 : 1);
   const bark = opts.bark || BARK[kind] || BARK.oak;
   const leafPal = opts.leaf || LEAF[kind] || LEAF.oak;
 
@@ -142,8 +146,9 @@ export function makeBroadleaf(seed, opts = {}) {
     clumps.push({ c: pts[pts.length - 1], r: CR * (kind === 'birch' ? 0.62 : 0.55) });
     clumps.push({ c: pts[1], r: CR * 0.5 });
   }
-  // giants: buttress roots snaking out over the ground (and under it)
-  if (giant || opts.roots) {
+  // giants: buttress roots snaking out over the ground (and under it); the others a flare of
+  // shallow roots gripping the ground at the foot
+  if (giant || (opts.roots ?? (!lod && kind !== 'birch'))) {
     const nR = giant ? 7 : 4;
     for (let i = 0; i < nR; i++) {
       const az = ph + 0.4 + (i / nR) * Math.PI * 2 + rng.range(-0.25, 0.25);
@@ -186,12 +191,17 @@ export function makeBroadleaf(seed, opts = {}) {
       const shady = sx * 0.36 + sz * 0.82; // away from the sun (+x, +z)
       const upward = qy / Math.max(0.5, Math.hypot(qx, qy, qz));
       let col;
-      // fluted, grooved bark (birch: white with black marks; beech: smooth grey with lichen)
+      // fluted, grooved bark broken into plates (birch: white with black marks; beech: smooth grey
+      // with lichen and the dark "eyes" where twigs fell)
       const u = (a / (Math.PI * 2) + 0.5) * Math.max(1, grooves) + nz(wy * 0.6, a) * 0.8;
       const groove = grooves > 0 && Math.abs(u - Math.round(u)) < 0.14;
       const lit = -shady;
-      col = groove ? bark[4] : lit > 0.4 ? bark[0] : lit > -0.15 ? bark[1] : bark[2];
+      const ci = Math.floor(u), fu = u - ci, edge = Math.min(fu, 1 - fu);
+      const crack = grooves > 0 && !isRoot && ((wy * (1.4 + hash3(ci, 3, 0, seed) * 1.1) + hash3(ci, 5, 0, seed)) % 1) < (giant ? 0.06 : 0.09);
+      col = groove || crack ? bark[4] : edge < 0.26 && grooves > 0 ? (lit > 0.2 ? bark[1] : bark[2]) : lit > 0.4 ? bark[0] : lit > -0.15 ? bark[1] : bark[2];
       if (!groove && hash3(x, y >> 1, z, seed) < 0.08) col = bark[3];
+      if (!lod && grooves > 0 && !groove && edge > 0.3 && hash3(x >> 1, y >> 2, z >> 1, seed + 8) < 0.05) col = fmix(col, 0xb8c0a0, 0.45); // lichen on the plates
+      if (kind === 'beech' && !lod && hash3(x >> 1, y, z >> 1, seed + 9) < 0.02) col = bark[4]; // the beech's eyes
       if (kind === 'birch') {
         col = lit > 0.2 ? bark[0] : lit > -0.3 ? bark[1] : bark[2];
         if (hash3(x >> 1, y >> 1, z >> 1, seed + 2) < 0.1 || (y % 7 === 0 && hash3(x, y, z, seed + 3) < 0.6)) col = bark[3 + (hash3(x, y, z, 1) < 0.5 ? 0 : 1)];
@@ -268,9 +278,11 @@ export function makeBroadleaf(seed, opts = {}) {
   const leaves = new VoxelGrid(LW, LH, LW);
   const lox = LW / 2, loy = -Math.min(0, ly0) * kl, loz = LW / 2;
   const n3 = (x, y, z) => nz(x * 0.31 + z * 0.17, y * 0.29 - z * 0.23);
-  for (const cl of clumps) {
-    const cx = lox + cl.c[0] * kl, cy = loy + cl.c[1] * kl, cz = loz + cl.c[2] * kl;
-    const rx = cl.r * kl * 1.18, ry = cl.r * kl * (kind === 'birch' ? 1.05 : 0.78), rz = cl.r * kl * 1.18;
+  // each clump is a cauliflower of smaller leaf masses (wave 8): every mass lit on its own top and
+  // sun side and dark beneath, with gaps between them where the sky shows through
+  const fill = (c, r, cc, cr) => {
+    const cx = lox + c[0] * kl, cy = loy + c[1] * kl, cz = loz + c[2] * kl;
+    const rx = r * kl * 1.18, ry = r * kl * (kind === 'birch' ? 1.05 : 0.78), rz = r * kl * 1.18;
     for (let z = Math.floor(cz - rz * 1.3); z <= Math.ceil(cz + rz * 1.3); z++) for (let y = Math.floor(cy - ry * 1.3); y <= Math.ceil(cy + ry * 1.3); y++) for (let x = Math.floor(cx - rx * 1.3); x <= Math.ceil(cx + rx * 1.3); x++) {
       const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry, dz = (z + 0.5 - cz) / rz;
       const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -278,18 +290,29 @@ export function makeBroadleaf(seed, opts = {}) {
       const lump = 1 + n3(x, y, z) * 0.5 + (dy < 0 ? dy * 0.25 : 0);
       if (d > lump) continue;
       if (d > lump - 0.1 && hash3(x >> 1, y >> 1, z >> 1, seed + 21) < 0.14) continue; // ragged rim (in 2x2 bites: holes cost faces)
-      // colour: by the clump's surface normal against the sun and the sky
-      const nl = (dx * -SUN.x + dy * -SUN.y + dz * -SUN.z) / Math.max(0.2, d); // 1 = facing away from the sun?
-      const sunward = -nl;
+      // colour: by this mass's surface normal against the sun and the sky, and by where it sits in the whole clump
+      const sunward = (dx * SUN.x + dy * SUN.y + dz * SUN.z) / Math.max(0.2, d);
       const up = dy / Math.max(0.2, d);
       const outer = d / lump;
-      let li = sunward * 0.6 + up * 0.5 + (outer - 0.7) * 1.2;
+      const gx = (x + 0.5 - (lox + cc[0] * kl)) / (cr * kl), gy = (y + 0.5 - (loy + cc[1] * kl)) / (cr * kl), gz = (z + 0.5 - (loz + cc[2] * kl)) / (cr * kl);
+      const gd = Math.max(0.3, Math.hypot(gx, gy, gz));
+      let li = sunward * 0.45 + up * 0.45 + (outer - 0.72) * 1.1 + (gx * SUN.x + gy * SUN.y + gz * SUN.z) / gd * 0.25 + gy / gd * 0.2;
       li += (hash3(Math.floor(x / 3), Math.floor(y / 3), Math.floor(z / 3), seed + 22) - 0.5) * 0.4; // patches, so faces merge
       let col = li > 0.75 ? leafPal[0] : li > 0.3 ? leafPal[1] : li > -0.15 ? leafPal[2] : li > -0.6 ? leafPal[3] : leafPal[4];
       if (hash3(x >> 1, y >> 1, z >> 1, seed + 23) < 0.02 && li > 0.4) col = fmix(col, 0xfff0a0, 0.3); // sunlit flecks
       const prev = leaves.get(x, y, z);
-      if (prev >= 0 && outer < 0.6) continue; // keep the first clump's surface
+      if (prev >= 0 && outer < 0.6) continue; // keep the first mass's surface
       leaves.set(x, y, z, col);
+    }
+  };
+  const lrng = makeRng(seed * 7 + 5);
+  for (const cl of clumps) {
+    const n = lod || cl.r * kl < 4 ? 1 : Math.min(6, Math.round(2 + cl.r * 1.4));
+    if (n === 1) { fill(cl.c, cl.r, cl.c, cl.r); continue; }
+    fill(cl.c, cl.r * 0.66, cl.c, cl.r);
+    for (let i = 1; i < n; i++) {
+      const a = (i / (n - 1)) * Math.PI * 2 + lrng.range(-0.5, 0.5), el = lrng.range(-0.35, 0.8), d = cl.r * lrng.range(0.42, 0.62);
+      fill([cl.c[0] + Math.cos(a) * Math.cos(el) * d, cl.c[1] + Math.sin(el) * d * 0.7, cl.c[2] + Math.sin(a) * Math.cos(el) * d], cl.r * lrng.range(0.42, 0.56), cl.c, cl.r);
     }
   }
   const woodGeo = meshVoxGreedy(wood, { scale: 1 / k, pivot: [ox, oy, oz] });

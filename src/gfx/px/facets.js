@@ -42,6 +42,9 @@ export function xf(pts, o = {}) {
   });
 }
 
+/** Yaw (around the vertical), then pitch, then roll, then translate: the natural order for objects. */
+export const ypr = (pts, yaw = 0, pitch = 0, roll = 0, t = [0, 0, 0], s = 1) => xf(xf(pts, { ry: yaw }), { rx: pitch, rz: roll, t, s });
+
 /** Convex hull of 3D points (brute force; fine for < 30 points). Faces as outward [i, j, k]. */
 export function hull3(P) {
   const n = P.length, F = [];
@@ -211,6 +214,8 @@ export class Scene {
   }
   inb(x, y) { return x >= 0 && y >= 0 && x < this.w && y < this.h; }
   objAt(x, y) { return this.inb(x, y) ? this.ob[y * this.w + x] : -1; }
+  /** Plane id at a pixel (-1 when empty). */
+  pidAt(x, y) { if (!this.inb(x, y)) return -1; const f = this.fb[y * this.w + x]; return f < 0 ? -1 : this.faces[f].pid; }
   zAt(x, y) { return this.inb(x, y) ? this.z[y * this.w + x] : -1e9; }
 
   /**
@@ -242,7 +247,11 @@ export class Scene {
       if (!o.noFlip && dot(N, sub(fc, obj.c)) < 0) N = [-N[0], -N[1], -N[2]];
       if (N[2] <= 1e-4) continue;
       const fid = this.faces.length;
-      const face = { id: fid, obj: id, n: N, p0: P[0], pts: P, tone: null, ...(o.faceProps ? o.faceProps(P, N) : {}) };
+      // coplanar polygons of one object share a plane id (hull triangles of one big facet)
+      const d0 = dot(N, P[0]);
+      let pid = fid;
+      for (const g of obj.faces) if (dot(g.n, N) > 0.9995 && Math.abs(dot(g.n, g.p0) - d0) < 0.05) { pid = g.pid; break; }
+      const face = { id: fid, pid, obj: id, n: N, p0: P[0], pts: P, tone: null, tag: P.tag, ...(o.faceProps ? o.faceProps(P, N) : {}) };
       this.faces.push(face);
       obj.faces.push(face);
       this.raster(face, o.zb || 0);
@@ -343,7 +352,8 @@ export class Scene {
 
   /** Axis-aligned-then-rotated box (half sizes hx, hy, hz) centered at c with rotation rot {rx, ry, rz}. */
   box(m, c, hx, hy, hz, rot = {}, o = {}) {
-    const V = xf([[-hx, -hy, -hz], [hx, -hy, -hz], [hx, hy, -hz], [-hx, hy, -hz], [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz]], { ...rot, t: c });
+    const V0 = [[-hx, -hy, -hz], [hx, -hy, -hz], [hx, hy, -hz], [-hx, hy, -hz], [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz]];
+    const V = xf(xf(V0, { ry: rot.ry || 0 }), { rx: rot.rx || 0, rz: rot.rz || 0, t: c });
     const F = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [0, 3, 7, 4]];
     return this.add(m, F.map((f) => f.map((i) => V[i])), o);
   }
@@ -423,6 +433,7 @@ export class Scene {
       const obj = this.objs[oi], m = obj.m, f = this.faces[this.fb[i]];
       let t;
       if (f.tone != null) t = f.tone;
+      else if (m.toneFn) t = m.toneFn(f, this.normalAt(x, y), x, y);
       else {
         const tAbs = tone(I[i], m.bands);
         const eq = m.eq ?? 0.7;
@@ -441,7 +452,11 @@ export class Scene {
       }
       // gentle gradient across big planes: brighter toward the lit edge
       if (m.grad !== 0) {
-        if (!f.ctr) { let cx = 0, cy = 0; for (const q of f.pts) { cx += q[0]; cy += q[1]; } f.ctr = [cx / f.pts.length, cy / f.pts.length]; }
+        if (!f.ctr) {
+          let cx = 0, cy = 0, n = 0;
+          for (const g of obj.faces) if (g.pid === f.pid) for (const q of g.pts) { cx += q[0]; cy += q[1]; n++; }
+          f.ctr = [cx / n, cy / n];
+        }
         t += ((x + 0.5 - f.ctr[0]) * -LS[0] + (y + 0.5 - f.ctr[1]) * -LS[1]) * (m.grad ?? 0.07);
       }
       if (m.tex) t += m.tex({ x, y, z: this.z[i], n: f.n, k: t, obj, face: f, sc: this }) || 0;
@@ -482,6 +497,21 @@ export class Scene {
       K[i] = Math.max(m.min ?? 1, Math.min(m.max ?? 5, Math.floor(t)));
       if (specPix[i]) K[i] = 0;
     }
+    // 3b. despeckle: a lone pixel whose 4 neighbours (same object) all share another tone joins them
+    for (let pass = 0; pass < 2; pass++) for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x, oi = this.ob[i];
+      if (oi < 0 || !(this.objs[oi].m.clean ?? false)) continue;
+      const nb = [i - 1, i + 1, i - W, i + W];
+      if (nb.some((j) => this.ob[j] !== oi)) continue;
+      const k0 = K[nb[0]];
+      if (k0 !== K[i] && nb.every((j) => K[j] === k0) && K[i] !== 0) K[i] = k0;
+      else if (K[i] !== 0) {
+        // 3 of 4 agree and differ by more than one tone: smooth it
+        const cnt = new Map();
+        for (const j of nb) cnt.set(K[j], (cnt.get(K[j]) || 0) + 1);
+        for (const [kk, c] of cnt) if (c >= 3 && Math.abs(kk - K[i]) >= 2) K[i] = kk;
+      }
+    }
     // 4. ridges, rim light, bounce light, occlusion lines (from the quantised tones)
     const K0 = K.slice();
     const at = (x, y) => (this.inb(x, y) ? y * W + x : -1);
@@ -498,7 +528,7 @@ export class Scene {
           if (this.z[j] > this.z[i] + (m.gap ?? 1.6) && this.objs[this.ob[j]].o.occlude !== false) occl = true;
           continue;
         }
-        if (this.fb[j] === fi || !m.ridge) continue;
+        if (this.faces[this.fb[j]].pid === this.faces[fi].pid || !m.ridge) continue;
         // lighter plane next to a darker one: lit ridge on the lighter side
         const fj = this.faces[this.fb[j]];
         if (fj.obj !== oi && this.objs[fj.obj].m !== m) continue;
@@ -551,6 +581,21 @@ export class Scene {
     }
     for (let i = 0; i < add.length; i += 3) pc.set(add[i], add[i + 1], add[i + 2]);
   }
+}
+
+/**
+ * Tone for a polished facet: a mix of direct light and the reflection of a bright studio window
+ * (top-left) plus a dimmer floor bounce (bottom-right), so neighbouring facets jump in value
+ * the way cut stones do. Returns a continuous tone (1..5).
+ */
+export function gemTone(n, o = {}) {
+  const r = [2 * n[2] * n[0], 2 * n[2] * n[1], -1 + 2 * n[2] * n[2]]; // view ray (0,0,-1) reflected
+  const W = o.window || [-0.62, -0.68, 0.4], Fl = o.floor || [0.55, 0.75, 0.35];
+  const win = Math.max(0, dot(r, nrm(W))), flo = Math.max(0, dot(r, nrm(Fl)));
+  const d = dot(n, L);
+  let v = 0.45 * d + 1.1 * Math.pow(win, 3) + 0.55 * Math.pow(flo, 4) + (o.bias || 0);
+  v += 0.22 * Math.sin(Math.atan2(n[1], n[0]) * (o.waves ?? 3) + (o.phase ?? 0.6)) * Math.min(1, Math.hypot(n[0], n[1]) * 2);
+  return Math.max(1, Math.min(5.9, 5.3 - v * 4.4));
 }
 
 // ---------------------------------------------------------------- texture helpers

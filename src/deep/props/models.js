@@ -9,6 +9,7 @@ import { PGrid, PU, meshPropSteps, rng32, hv, shade, mixc } from './grid.js';
 import { LIFT_BUILD } from './lifts.js';
 import { HIRES } from './hires.js';
 import { HIRES_PLANTS } from './hiresPlants.js';
+import { refineSteps, refineGrid, contentExtent } from '../../gfx/voxRes.js';
 
 // ---------------------------------------------------------------- palettes
 const WOOD = 0x8a5a32, WOOD_D = 0x5e3a1e, WOOD_L = 0xb07a44, WOOD_G = 0x7a6650;
@@ -705,6 +706,8 @@ export function forgetModel(key) { CUSTOM.delete(key); cache.delete('custom:0:' 
 const NO_AO = new Set(['crystal', 'crystalC', 'frozen', 'icicle', 'obsidian', 'glowthread', 'roots', 'vine', 'blindfern', 'ashfern', 'whisperweed', 'rope', 'ladder', 'lantern', 'lanternC', 'shard', 'cave_carrot',
   'urn', 'coil', 'fossil', 'charred', 'vent', 'core_lotus', 'gloomshroom', 'pepperroot', 'rubber_sap', 'rail',
   'plaque', 'bell', 'bellpost', 'railing', 'deck', 'gatepost', 'lanternP']);
+// never refined: built from the world's own voxels, or long thin things that read as lines
+const NO_REFINE = new Set(['custom', 'rail', 'ladder', 'rope', 'glowthread', 'deck', 'railing']);
 const cache = new Map();
 /** Meshed model for (type, variant, param), cached. */
 export function getModel(type, v = 0, p = 0) {
@@ -721,9 +724,21 @@ export function* modelSteps(type, v = 0, p = 0) {
   let ms = 0, t0 = performance.now();
   const r = rng32(((v + 1) * 7919) ^ (typeof p === 'number' ? p * 104729 : 0) ^ hashStr(type));
   const b = BUILD[type](r, v, p);
+  // the size rule (gfx/voxRes.js): small props come out at 1/64 m, furniture-sized ones at 1/32 m,
+  // whatever voxel they were drawn at; big ones (long roots, the lift cage) stay as built
+  let scale = b.scale ?? PU, pivot = b.pivot;
+  const ext = NO_REFINE.has(type) || b.refine === false ? 0 : contentExtent(b.grid) * scale;
+  const fine = ext ? refineSteps(ext, scale) : 0;
+  if (fine) {
+    yield 'grid';
+    refineGrid(b.grid, fine);
+    const k = 1 << fine;
+    scale /= k;
+    if (pivot) pivot = pivot.map((q) => q * k);
+  }
   ms += performance.now() - t0;
   yield 'grid';
-  const it = meshPropSteps(b.grid, { pivot: b.pivot, sway: b.sway, ao: b.ao ?? !NO_AO.has(type), scale: b.scale });
+  const it = meshPropSteps(b.grid, { pivot, sway: b.sway, ao: b.ao ?? !NO_AO.has(type), scale });
   let res;
   for (;;) {
     t0 = performance.now();

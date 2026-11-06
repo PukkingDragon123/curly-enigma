@@ -7,15 +7,21 @@
 //   birds     robins on the signpost, a stump and the bridge rail (hop, peck, fly off as he nears);
 //             a woodpecker drumming on a giant's trunk.
 //   frog      on a stone in the stream; puffs its throat, leaps in when the traveller comes near.
+//   flyers    (wave 8) pixel-art butterflies over the verges and the clearing's flowers (they settle,
+//             fan their wings, and lift off ahead of his boots), dragonflies darting over the
+//             stream, swallows wheeling high over the clearing, and a songbird that flits across
+//             the trail ahead of him in the opening shot.
 //
 //   const C = makeCritters(F, { lite }); scene.add(C.group);
-//   C.update(dt, { t, hero: Vector3, glint, crack, sfx(name, opts) }); C.dispose();
+//   C.update(dt, { t, hero: Vector3, cam: Camera, glint, crack, sfx(name, opts) }); C.dispose();
 import * as THREE from 'three';
 import { VoxelGrid, meshVoxGreedy, fshade, fmix } from '../vox.js';
 import { LAYER_OUTLINE } from '../../core/Engine.js';
 import { clamp, lerp } from '../../core/util.js';
 import { forestToon } from '../forestfx.js';
-import { groundH, FOREST } from '../forest.js';
+import { groundH, FOREST, CLEAR_R } from '../forest.js';
+import { butterflySheet, dragonflySheet, swallowSheet } from '../meadowfx.js';
+import { makeSheetSprite } from '../fx.js';
 
 const smooth = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
 
@@ -368,6 +374,7 @@ export function makeCritters(F, { lite = false } = {}) {
   for (const s of stumps) perches.push({ x: s.x, z: s.z, y: s.top });
   const rocks = F.spots.rocks.filter((r) => !r.wet && FOREST.dist.trail(r.x, r.z) < 4).slice(0, lite ? 1 : 3);
   for (const r of rocks) perches.push({ x: r.x, z: r.z, y: r.top });
+  if (lite) perches.length = Math.min(perches.length, 2);
   perches.forEach((p, i) => {
     const b = makeBird(mat, i % 3 === 2 ? { back: 0x6a6a72, breast: 0xd8c0a8, belly: 0xf0e8e0, cap: 0x2a2a30 } : {});
     b.root.position.set(p.x, p.y, p.z);
@@ -449,7 +456,135 @@ export function makeCritters(F, { lite = false } = {}) {
     }
   }
 
+  addFlyers(group, list, { lite, makeBird: () => makeBird(mat, { back: 0x6a5a48, breast: 0xd8a070, belly: 0xf0e8dc }) });
+
   const update = (dt, c) => { for (const k of list) k.update(dt, c); };
-  const dispose = () => { group.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); };
+  const textures = [];
+  group.traverse((o) => { const u = o.userData?.sheet; if (u?.uMap?.value && !textures.includes(u.uMap.value)) textures.push(u.uMap.value); });
+  const dispose = () => {
+    group.traverse((o) => { if (o.isMesh) { if (!o.userData.sheet) o.geometry.dispose(); else o.material.dispose(); } });
+    for (const t of textures) t.dispose();
+  };
   return { group, update, dispose, list };
+}
+
+// ------------------------------------------------------------------ flyers (wave 8)
+/** Butterflies, dragonflies, swallows and a songbird crossing the trail: all cheap, all near the camera's path. */
+function addFlyers(group, list, { lite, makeBird }) {
+  const tr = FOREST.trail;
+  const bf = butterflySheet(), df = dragonflySheet(), sw = swallowSheet();
+  const near = (m, cam, d) => { m.visible = !cam || m.position.distanceToSquared(cam.position) < d * d; };
+  // ---- butterflies: each has a patch of flowers it works over; settles, fans, lifts off ahead of him
+  const homes = [
+    ...[3.5, 8.5, 12.4, 16.2, 21.6, 27, 33].map((s, i) => { const [x, z] = tr.beside(s, (i % 2 ? 1 : -1) * (1.3 + (i % 3) * 0.4)); return { x, z, s }; }),
+    ...[0.6, 2.1, 3.7, 5.2].map((a) => ({ x: Math.cos(a) * (CLEAR_R - 2.4), z: Math.sin(a) * (CLEAR_R - 2.4) - 0.5 })),
+  ].slice(0, lite ? 7 : 11);
+  homes.forEach((h, i) => {
+    const m = makeSheetSprite(bf.texture, { cols: bf.cols, size: [0.11, 0.1], anchor: [0.5, 0.5], renderOrder: 6 });
+    const sp = [0, 1, 1, 3, 2, 1, 3, 0, 1, 3, 2][i % 11] * 4;
+    group.add(m);
+    let st = i * 1.37, rest = 0, flee = 0;
+    const p = new THREE.Vector3(h.x, groundH(h.x, h.z) + 0.5, h.z), tgt = p.clone();
+    const away = new THREE.Vector3();
+    m.position.copy(p);
+    list.push({
+      name: 'butterfly', obj: m,
+      update(dt, c) {
+        st += dt;
+        near(m, c.cam, 22);
+        if (!m.visible && !flee) return;
+        if (c.hero && !flee && c.hero.distanceTo(p) < 1.4) { flee = 1; rest = 0; away.subVectors(p, c.hero).setY(0).normalize(); }
+        if (flee) {
+          // up and away, tumbling
+          flee += dt;
+          p.addScaledVector(away, dt * 1.1);
+          p.y += dt * (0.7 + Math.sin(st * 9) * 0.6);
+          if (flee > 3.2) { flee = 0; h.x = p.x; h.z = p.z; tgt.copy(p); } // settles to a new patch out of his way
+          m.userData.sheet.uFrame.value = sp + (Math.floor(st * 16) % 4);
+        } else if (rest > 0) {
+          // settled on a flower: wings slowly open and close
+          rest -= dt;
+          m.userData.sheet.uFrame.value = sp + (Math.sin(st * 2.2) > 0.3 ? 0 : Math.sin(st * 2.2) > -0.3 ? 1 : 2);
+        } else {
+          // the erratic flight: wander toward a new flower, bobbing with every wingbeat
+          if (p.distanceToSquared(tgt) < 0.02) {
+            if (Math.random() < 0.35) rest = 1 + Math.random() * 2.5;
+            const a = Math.random() * 6.28, r = Math.random() * 1.6;
+            tgt.set(h.x + Math.cos(a) * r, 0, h.z + Math.sin(a) * r);
+            tgt.y = groundH(tgt.x, tgt.z) + (rest > 0 ? 0.22 : 0.3 + Math.random() * 0.7);
+          }
+          const k = Math.min(1, dt * 1.4);
+          p.x += (tgt.x - p.x) * k + Math.sin(st * 7.3 + i) * dt * 0.5;
+          p.z += (tgt.z - p.z) * k + Math.cos(st * 6.1 + i) * dt * 0.5;
+          p.y += (tgt.y - p.y) * k + Math.sin(st * 14) * dt * 0.35;
+          m.userData.sheet.uFrame.value = sp + (Math.floor(st * 14 + i) % 4);
+        }
+        m.position.copy(p);
+      },
+    });
+  });
+  // ---- dragonflies over the stream by the bridge: dart, hover, dart
+  const st0 = FOREST.stream, B = FOREST.bridge;
+  // (between the bridge and the low camera downstream of it, never right at the lens)
+  for (let i = 0; i < (lite ? 2 : 3); i++) {
+    const q = st0.curve.getPointAt(Math.min(1, Math.max(0, (FOREST.trail.cross.ss + [1.6, 3.0, -1.8][i]) / st0.L)));
+    const m = makeSheetSprite(df.texture, { cols: df.cols, size: [0.15, 0.085], anchor: [0.5, 0.5], renderOrder: 6 });
+    group.add(m);
+    const y0 = B.y - 0.05 + i * 0.12;
+    let st = i * 2.1;
+    list.push({
+      name: 'dragonfly', obj: m,
+      update(dt, c) {
+        st += dt;
+        near(m, c.cam, 24);
+        if (!m.visible) return;
+        const a = st * 0.9 + i * 2.7, k = Math.floor(a), f = a - k, e = f < 0.22 ? f / 0.22 : 1;
+        const ox = Math.sin(k * 2.1 + i) * 0.8, oz = Math.cos(k * 1.7 + i) * 0.45, px = Math.sin((k - 1) * 2.1 + i) * 0.8, pz = Math.cos((k - 1) * 1.7 + i) * 0.45;
+        m.position.set(q.x + px + (ox - px) * e, y0 + Math.sin(a * 7) * 0.03, q.z + pz + (oz - pz) * e);
+        m.userData.sheet.uFrame.value = Math.floor(st * 30) % 2;
+      },
+    });
+  }
+  // ---- swallows wheeling high over the clearing and the trail's open stretch
+  for (let i = 0; i < (lite ? 3 : 5); i++) {
+    const m = makeSheetSprite(sw.texture, { cols: sw.cols, size: [0.36, 0.36 / sw.aspect], anchor: [0.5, 0.5], renderOrder: 6, tint: 0xd8d0c8 });
+    group.add(m);
+    const cx = i < 3 ? 0 : 3, cz = i < 3 ? -1 : 26, R = 5 + i * 1.3, h = 9 + (i % 3) * 1.6, sp = (0.42 + (i % 2) * 0.15) * (i % 2 ? -1 : 1);
+    let st = i * 2.3;
+    list.push({
+      name: 'swallow', obj: m,
+      update(dt, c) {
+        st += dt;
+        if (c.crack) return; // (the flock that bursts out takes over the sky)
+        const a = st * sp + i;
+        m.position.set(cx + Math.cos(a) * R + Math.sin(a * 2.7) * 1.2, h + Math.sin(a * 2.3) * 1.1, cz + Math.sin(a) * R * 0.7);
+        m.userData.sheet.uFrame.value = Math.sin(st * 3 + i) > -0.2 ? Math.floor(st * 11 + i) % 4 : 1; // flap, glide
+      },
+    });
+  }
+  // ---- a songbird that flits across the trail ahead of him as the opening shot cranes down
+  {
+    const b = makeBird();
+    b.root.scale.setScalar(1.3);
+    b.wings.forEach((w) => { w.visible = true; });
+    group.add(b.root);
+    const P0 = tr.at(13), P1 = tr.at(16);
+    const from = new THREE.Vector3(P0.x - P0.tz * 4.5, groundH(P0.x, P0.z) + 2.6, P0.z + P0.tx * 4.5);
+    const to = new THREE.Vector3(P1.x + P1.tz * 5, groundH(P1.x, P1.z) + 3.4, P1.z - P1.tx * 5);
+    const t0 = 2.2, dur = 2.0;
+    b.root.visible = false;
+    list.push({
+      name: 'crossing-bird', obj: b,
+      update(dt, c) {
+        const u = (c.t - t0) / dur;
+        b.root.visible = u > 0 && u < 1;
+        if (!b.root.visible) return;
+        b.root.position.lerpVectors(from, to, u);
+        b.root.position.y += Math.sin(u * Math.PI) * 0.6 - Math.abs(Math.sin(u * Math.PI * 5)) * 0.18; // the bounding flight of a finch
+        b.root.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
+        const flap = Math.sin(c.t * 46) * (Math.sin(u * Math.PI * 5) > 0 ? 1 : 0.15);
+        b.wings.forEach((w, k) => { w.rotation.z = (k ? -1 : 1) * flap * 0.9; });
+      },
+    });
+  }
 }

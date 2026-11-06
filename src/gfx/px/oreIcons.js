@@ -5,6 +5,15 @@ import { hash2, vnoise } from './shade.js';
 import { Scene, material, rampOf, stoneTex, glint } from './facets.js';
 
 // ---------------------------------------------------------------- shared helpers
+/** Point-in-polygon (even-odd). */
+export function inPoly(P, x, y) {
+  let c = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    if ((P[i][1] > y) !== (P[j][1] > y) && x < ((P[j][0] - P[i][0]) * (y - P[i][1])) / (P[j][1] - P[i][1]) + P[i][0]) c = !c;
+  }
+  return c;
+}
+
 /** Repaint pixels of the given objects whose test passes: test → false | true (use R2) | ramp. */
 export function recolor(pc, sc, objs, test, R2) {
   const ids = new Set(objs.map((o) => o.id));
@@ -112,6 +121,7 @@ export const ROCK = {
   slate: () => rampOf([0xcfd4e4, 0x949bb5, 0x6c7290, 0x51546f, 0x3c3c56, 0x2a2940, 0x131224]),
   blue: () => rampOf([0xd2e0ec, 0x93a8c0, 0x6a7f9e, 0x4e5f80, 0x3a4664, 0x2a314b, 0x131828]),
   indigo: () => rampOf([0xc9c4ea, 0x8d86bd, 0x645e96, 0x4a4576, 0x36325c, 0x262244, 0x110f24]),
+  night: () => rampOf([0x9a94c8, 0x6a6498, 0x4c4778, 0x39345e, 0x2a264a, 0x1d1a36, 0x0b0a1c]),
   char: () => rampOf([0xb8bcc4, 0x7c808c, 0x55585f, 0x3c3e46, 0x2b2c34, 0x1d1e25, 0x0c0c12]),
   quartz: () => rampOf([0xffffff, 0xf3f0ec, 0xddd6d0, 0xbdb3b0, 0x968a90, 0x6e6272, 0x332838]),
   red: () => rampOf([0xf6d0b8, 0xd88a6a, 0xb25844, 0x8a3c36, 0x63282e, 0x441c26, 0x200c14]),
@@ -146,29 +156,29 @@ export const RAMP = {
 export function copperOre(pc) {
   const sc = new Scene(32);
   const RR = ROCK.taupe();
-  const rock = hostRock(sc, rockMat(RR, 5), 101, [
+  const rock = hostRock(sc, rockMat(RR, 5, { amp: 0.4, pit: 0.035, speck: 0.02 }), 101, [
     { x: 17, y: 18, a: 12, c: 8, h: 12, yaw: 0.35 },
     { x: 7.5, y: 22.5, a: 5.5, c: 4.5, h: 6.5, z: 3, yaw: 0.9 },
   ]);
   const CU = RAMP.copper();
   const cu = material(CU, { spec: 0.93, shine: 14, grad: 0.05, tex: stoneTex(9, { amp: 0.25, pit: 0.05, speck: 0 }) });
-  const nug = (x, y, a, b, c, seed, yaw = 0, n = 9) => sc.chunk(cu, makeRng(seed), { x, y, a, b, c, n, jag: 0.32, base: 0.8, yaw, on: true, embed: c * 0.3, smooth: 0.18 });
-  nug(13.5, 11.5, 5, 3.6, 4, 7, 0.5, 11);
-  nug(21.5, 14.5, 3.2, 2.6, 2.8, 8, -0.4);
-  nug(7, 19.5, 2.6, 2.1, 2.3, 9, 0.2, 8);
-  nug(24.5, 21.5, 2.1, 1.8, 1.9, 10, 0.8, 7);
+  const nug = (x, y, a, b, c, seed, yaw = 0, n = 9) => sc.chunk(cu, makeRng(seed), { x, y, a, b, c, n, jag: 0.3, base: 0.75, yaw, on: true, embed: c * 0.12, smooth: 0.2 });
+  nug(13, 11.5, 6, 4.4, 4.6, 7, 0.5, 12);
+  nug(21.5, 14, 4, 3.2, 3.4, 8, -0.4, 10);
+  nug(7.5, 19, 3, 2.4, 2.6, 9, 0.2, 8);
+  nug(24.5, 21, 2.3, 2, 2.1, 10, 0.8, 7);
   sc.render(pc);
   // malachite crusts (banded) on the rock
   const MA = RAMP.malachite();
   const MB = rampOf([MA[1], MA[1], MA[2], MA[3], MA[4], MA[5], MA[6]]);
   recolor(pc, sc, rock, (x, y) => {
-    const inA = blot(9.5, 15.5, 3.6, 3)(x, y), inB = blot(22, 20, 3.2, 4)(x, y), inC = blot(17, 23.5, 2.2, 6)(x, y);
+    const inA = blot(10, 16.5, 3.4, 3)(x, y), inB = blot(19.5, 20.5, 3.4, 4)(x, y), inC = blot(13, 24, 2.2, 6)(x, y);
     if (!(inA || inB || inC)) return false;
-    const cx = inA ? 9.5 : inB ? 22 : 17, cy = inA ? 15.5 : inB ? 20 : 23.5;
+    const cx = inA ? 10 : inB ? 19.5 : 13, cy = inA ? 16.5 : inB ? 20.5 : 24;
     return Math.floor(Math.hypot(x + 0.5 - cx, y + 0.5 - cy) * 0.9) % 2 ? MA : MB;
   });
   specks(pc, sc, rock, 0.035, [CU[2], CU[3]], 13);
-  glint(pc, 11, 9, 1, 0xffffff, CU[1]);
+  glint(pc, 10, 8, 1, 0xffffff, CU[1]);
 }
 
 export function tinOre(pc) {
@@ -185,16 +195,16 @@ export function tinOre(pc) {
     const z = sc.zAt(Math.floor(x), Math.floor(y));
     sc.prism(tin, { b: [x, y, z - 1.2], d: [Math.cos(ang) * 0.75, Math.sin(ang) * 0.75, 0.66], len, r, tip: r * 1.1, sides: 4, twist: tw });
   };
-  xtal(12, 13, -2.2, 7, 2.3, 0.3);
-  xtal(16, 12.5, -1.4, 9, 2.7, 0.8);
-  xtal(20.5, 14.5, -0.7, 6.5, 2.1, 0.1);
-  xtal(9, 19, -2.6, 4.5, 1.6, 0.6);
-  xtal(23.5, 19.5, -0.3, 4.2, 1.5, 0.2);
+  xtal(11.5, 13.5, -2.25, 9, 2.7, 0.3);
+  xtal(16, 12.5, -1.45, 12, 3.1, 0.8);
+  xtal(21, 14, -0.75, 8.5, 2.5, 0.1);
+  xtal(8.5, 19.5, -2.7, 6, 2, 0.6);
+  xtal(24, 19.5, -0.35, 5.5, 1.8, 0.2);
   sc.render(pc);
   // dark cassiterite grains and a tarnish halo
   const DK = rampOf([0x8a7468, 0x6a5450, 0x4e3c3c, 0x3a2a2e, 0x2a1e24, 0x1c1418, 0x0c080c]);
   recolor(pc, sc, rock, (x, y) => hash2(x, y, 31) < 0.06 || (blot(16, 17, 6.5, 5)(x, y) && hash2(x, y, 32) < 0.25), DK);
-  glint(pc, 15, 7, 1, 0xffffff, TN[1]);
+  glint(pc, 15, 4, 1, 0xffffff, TN[1]);
 }
 
 export function ironOre(pc) {
@@ -232,8 +242,8 @@ export function silverOre(pc) {
   ]);
   const SR = RAMP.silver();
   const ag = material(SR, { spec: 0.9, shine: 12, grad: 0.05 });
-  sc.chunk(ag, makeRng(5), { x: 18.5, y: 12.5, a: 3.6, b: 2.6, c: 3, n: 9, jag: 0.35, base: 0.8, on: true, embed: 1.2, smooth: 0.25 });
-  sc.chunk(ag, makeRng(6), { x: 22, y: 15.5, a: 2, b: 1.6, c: 1.8, n: 7, jag: 0.3, base: 0.8, on: true, embed: 0.7, smooth: 0.2 });
+  sc.chunk(ag, makeRng(5), { x: 19, y: 12, a: 4.6, b: 3.4, c: 3.8, n: 11, jag: 0.35, base: 0.75, on: true, embed: 0.5, smooth: 0.3 });
+  sc.chunk(ag, makeRng(6), { x: 23.5, y: 15.5, a: 2.4, b: 2, c: 2.2, n: 8, jag: 0.3, base: 0.75, on: true, embed: 0.3, smooth: 0.25 });
   sc.render(pc);
   // native silver wires: forked, curling veins
   const rng = makeRng(77);
@@ -243,7 +253,7 @@ export function silverOre(pc) {
   vein(pc, sc, rock, wander(rng, 22, 18, 0.5, 4, 1.5, 0.5), 0.7, SR, { lift: -2 });
   vein(pc, sc, rock, [[16.5, 24.5], [19, 22.5], [21, 22.5]], 0.6, SR, { lift: -2 });
   specks(pc, sc, rock, 0.03, [SR[2]], 17);
-  glint(pc, 17, 10, 2, 0xffffff, SR[1]);
+  glint(pc, 17, 9, 2, 0xffffff, SR[1]);
   glint(pc, 7, 19, 1, 0xffffff, SR[1]);
 }
 
@@ -256,65 +266,72 @@ export function goldOre(pc) {
   ]);
   const AU = RAMP.gold();
   const au = material(AU, { spec: 0.88, shine: 10, grad: 0.05, tex: stoneTex(4, { amp: 0.25, pit: 0.04, speck: 0 }) });
-  const nug = (x, y, a, b, c, seed, yaw = 0, n = 9) => sc.chunk(au, makeRng(seed), { x, y, a, b, c, n, jag: 0.34, base: 0.8, yaw, on: true, embed: c * 0.32, smooth: 0.3 });
-  nug(14, 12.5, 4.8, 3.4, 3.8, 21, 0.3, 12);
-  nug(21.5, 17.5, 3.4, 2.6, 2.8, 22, -0.6, 10);
-  nug(8, 18.5, 2.4, 2, 2.2, 23, 0.4, 8);
-  nug(19.5, 10.5, 1.8, 1.5, 1.6, 24, 0.1, 7);
+  const nug = (x, y, a, b, c, seed, yaw = 0, n = 9) => sc.chunk(au, makeRng(seed), { x, y, a, b, c, n, jag: 0.34, base: 0.75, yaw, on: true, embed: c * 0.14, smooth: 0.32 });
+  nug(13.5, 12, 6, 4.4, 4.6, 21, 0.3, 13);
+  nug(22, 17, 4, 3.2, 3.4, 22, -0.6, 11);
+  nug(7.5, 18.5, 2.8, 2.3, 2.5, 23, 0.4, 8);
+  nug(20.5, 9.5, 2.2, 1.8, 2, 24, 0.1, 7);
   sc.render(pc);
   // limonite (rusty) staining in the quartz and a scatter of gold flecks
   const LI = rampOf([0xfff0d8, 0xf0c890, 0xd29a5a, 0xae7240, 0x84522e, 0x5a3622, 0x2a1810]);
   recolor(pc, sc, rock, (x, y) => (blot(10, 21, 4, 3)(x, y) || blot(24, 22, 3.4, 5)(x, y)) && hash2(x, y, 6) < 0.7, LI);
   specks(pc, sc, rock, 0.045, [AU[1], AU[2]], 19);
-  glint(pc, 12, 10, 2, 0xffffff, AU[1]);
-  glint(pc, 20, 16, 1, 0xffffff, AU[1]);
+  glint(pc, 11, 9, 2, 0xffffff, AU[1]);
+  glint(pc, 20, 15, 1, 0xffffff, AU[1]);
 }
 
 export function mithrilOre(pc) {
   const sc = new Scene(32);
   const RR = ROCK.blue();
   const rock = hostRock(sc, rockMat(RR, 10), 606, [
-    { x: 16, y: 18, a: 13, c: 8.5, h: 12.5, yaw: 0.2 },
-    { x: 7.5, y: 22.5, a: 5, c: 4.5, h: 6, z: 3, yaw: 0.9 },
+    { x: 16, y: 18.5, a: 13, c: 8.5, h: 12, yaw: 0.2 },
+    { x: 7.5, y: 23, a: 5, c: 4.5, h: 6, z: 3, yaw: 0.9 },
   ]);
   const MR = RAMP.mithril();
-  const mi = material(MR, { grad: 0.04, glow: 0.25 });
-  for (const [x, y, a, len, r] of [[19, 12.5, -1.1, 6, 1.6], [21.5, 14, -0.6, 4.5, 1.3], [16.5, 13, -1.7, 4, 1.2]]) {
+  const mi = material(MR, { eq: 0.55, grad: 0.05, ridgeAll: true, gap: 1.4, glow: (c) => (c.k <= 2 ? 0.6 : 0.3) });
+  for (const [x, y, dx, dy, len, r, tw] of [[18, 12, 0.35, -1, 9, 2.1, 0.4], [21, 13.5, 0.9, -0.8, 6.5, 1.7, 0.1], [15, 12.5, -0.45, -1, 6, 1.6, 0.7], [19.5, 15, 0.2, -0.6, 4, 1.3, 0.2]]) {
     const z = sc.zAt(Math.floor(x), Math.floor(y));
-    sc.prism(mi, { b: [x, y, z - 0.8], d: [Math.cos(a) * 0.8, Math.sin(a) * 0.8, 0.55], len, r, tip: r * 1.6, sides: 6, twist: 0.4 });
+    sc.prism(mi, { b: [x, y, z - 1.2], d: [dx, dy, 0.45], len, r, tip: r * 1.7, sides: 6, twist: tw });
   }
   sc.render(pc);
-  // glassy cyan veins with iridescent flecks
-  const iri = (x, y) => (hash2(x, y, 7) < 0.14 ? (hash2(x, y, 8) < 0.5 ? 0xffd2f4 : 0xd2fff0) : null);
-  const h1 = vein(pc, sc, rock, [[3, 17], [7, 18], [11, 16.5], [14.5, 17.5], [18, 16], [22, 17.5], [27.5, 16]], (x) => 0.7 + 0.5 * Math.sin(x * 0.4), MR, { lift: -1, emit: 0.3 });
-  const h2 = vein(pc, sc, rock, [[5, 23], [9, 24.5], [13, 22.5], [17.5, 24], [21, 22]], 0.75, MR, { lift: -1, emit: 0.3 });
+  // one glassy cyan vein winding round the rock, with iridescent flecks
+  const iri = (x, y) => (hash2(x, y, 7) < 0.16 ? (hash2(x, y, 8) < 0.5 ? 0xffd2f4 : 0xd2fff0) : null);
+  const h1 = vein(pc, sc, rock, [[3, 20], [7, 21], [10.5, 19], [13.5, 20.5], [17, 19.5], [20, 21.5], [23.5, 20], [28, 21.5]], (x) => 0.75 + 0.45 * Math.sin(x * 0.45 + 1), MR, { lift: -1, emit: 0.35 });
+  const h2 = vein(pc, sc, rock, [[10.5, 19], [9, 16], [10, 13.5]], 0.6, MR, { lift: -1, emit: 0.35 });
   for (const [x, y] of [...h1, ...h2]) { const c = iri(x, y); if (c) { pc.set(x, y, c); pc.emit(x, y, 0.5); } }
-  glint(pc, 17, 8, 1, 0xffffff, MR[1], 0.8);
-  glint(pc, 11, 17, 1, 0xffffff, MR[1], 0.8);
+  glint(pc, 19, 5, 1, 0xffffff, MR[1], 0.8);
+  glint(pc, 7, 20, 1, 0xffffff, MR[1], 0.8);
 }
 
 export function moonsilverOre(pc) {
   const sc = new Scene(32);
-  const RR = ROCK.indigo();
+  const RR = ROCK.night();
   const rock = hostRock(sc, rockMat(RR, 11), 707, [
-    { x: 16.5, y: 18.5, a: 12.5, c: 8.5, h: 12, yaw: -0.35 },
-    { x: 25, y: 23, a: 4.5, c: 4, h: 5.5, z: 3, yaw: 0.4 },
+    { x: 16, y: 18, a: 14, c: 9, h: 14, yaw: -0.35 },
+    { x: 26, y: 23.5, a: 4.5, c: 4, h: 5.5, z: 3, yaw: 0.4 },
   ]);
   const MR = RAMP.moon();
-  const mo = material(MR, { spec: 0.9, shine: 10, grad: 0.05, glow: 0.45 });
-  // a crescent of moon-metal: overlapping nodes curving round
-  const arc = [[9, 17, 2.4], [10.5, 13, 2.8], [14, 10.5, 2.9], [18, 10, 2.5], [21, 11.5, 2]];
-  arc.forEach(([x, y, r], i) => sc.chunk(mo, makeRng(40 + i), { x, y, a: r, b: r * 0.8, c: r * 0.9, n: 8, jag: 0.25, base: 0.8, on: true, embed: r * 0.4, smooth: 0.4, group: 2 }));
-  sc.chunk(mo, makeRng(49), { x: 22, y: 20.5, a: 1.8, b: 1.4, c: 1.6, n: 7, jag: 0.2, base: 0.8, on: true, embed: 0.6, smooth: 0.4 });
+  const mo = material(MR, { spec: 0.9, shine: 10, grad: 0.05, glow: 0.5 });
+  sc.chunk(mo, makeRng(48), { x: 22, y: 12.5, a: 3, b: 2.4, c: 2.6, n: 9, jag: 0.25, base: 0.75, on: true, embed: 0.4, smooth: 0.5 });
+  sc.chunk(mo, makeRng(49), { x: 8, y: 22, a: 2.1, b: 1.7, c: 1.9, n: 8, jag: 0.2, base: 0.75, on: true, embed: 0.3, smooth: 0.5 });
   sc.render(pc);
-  // moonlit halo on the rock round the crescent
+  // a crescent of moon-metal set into the rock face: thick in the middle, tapering to points
+  const arc = [];
+  const CX = 18, CY = 17.5, RA = 5.6, A0 = 1.75, SPAN = 2.9;
+  for (let i = 0; i <= 14; i++) { const a = A0 + (i / 14) * SPAN; arc.push([CX + Math.cos(a) * RA, CY + Math.sin(a) * RA * 0.92]); }
+  const wid = (x, y) => { const a = Math.atan2(y + 0.5 - CY, x + 0.5 - CX); const t = (((a - A0) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) / SPAN; return 0.35 + 1.9 * Math.sin(Math.max(0, Math.min(1, t)) * Math.PI); };
+  vein(pc, sc, rock, arc, wid, MR, { lift: -2, emit: 0.85 });
+  // moonlight spilling onto the rock beside it
   recolor(pc, sc, rock, (x, y, k) => {
-    const d = Math.min(...arc.map(([X, Y, r]) => Math.hypot(x + 0.5 - X, y + 0.5 - Y) - r));
-    return d < 2.2 && k > 1 && hash2(x, y, 3) < 0.75 - d * 0.25;
-  }, rampOf([RR[0], RR[0], RR[1], RR[1], RR[2], RR[3], RR[6]]));
-  glint(pc, 12, 10, 1, 0xffffff, MR[1], 1);
-  glint(pc, 25, 15, 1, 0xffffff, MR[2], 1);
-  glint(pc, 6, 13, 0, 0xe8e8ff, MR[2], 0.8);
+    const d = Math.abs(Math.hypot(x + 0.5 - CX, y + 0.5 - CY) - RA);
+    const a = Math.atan2(y + 0.5 - CY, x + 0.5 - CX);
+    const inArc = ((a - A0 + Math.PI * 4) % (Math.PI * 2)) < SPAN;
+    return inArc && d > 2 && d < 3.4 && k > 1 && hash2(x, y, 3) < 0.45;
+  }, rampOf([RR[0], RR[0], RR[0], RR[1], RR[2], RR[3], RR[6]]));
+  specks(pc, sc, rock, 0.025, [MR[2]], 29, null, 0.6);
+  glint(pc, 13, 14, 1, 0xffffff, MR[1], 1);
+  glint(pc, 21, 10, 1, 0xffffff, MR[1], 1);
+  glint(pc, 27, 7, 0, 0xe8e8ff, MR[2], 0.8);
 }
 
 export function adamantOre(pc) {
@@ -344,44 +361,37 @@ export function starmetalOre(pc) {
   const CR = RAMP.crust();
   const crust = material(CR, { tex: stoneTex(14, { amp: 0.45, sx: 0.6, sy: 0.6, pit: 0.08, speck: 0.04 }) });
   const rng = makeRng(909);
-  const body = sc.chunk(crust, rng, { x: 16, y: 17, a: 13, b: 10, c: 9, n: 14, jag: 0.18, base: 0.6, p: 0.7 });
+  const body = sc.chunk(crust, rng, { x: 16, y: 16.5, a: 15.5, b: 13.5, c: 11, n: 11, jag: 0.1, base: 0.62, p: 0.7, yaw: 0.4 });
   sc.render(pc);
   // regmaglypts: thumbprint dimples (dark lip top-left, lit lip bottom-right)
-  for (const [x, y] of [[8, 21], [24, 11], [24, 21], [13, 25], [6, 15], [19, 26]]) {
+  for (const [x, y] of [[6, 21], [25, 8], [26, 17], [15, 25.5], [5, 13], [21, 25]].map(([x, y]) => [Math.floor(x), Math.floor(y)])) {
     if (sc.objAt(x, y) !== body.id) continue;
     pc.set(x, y, CR[5]); pc.set(x + 1, y, CR[4]); pc.set(x - 1, y, CR[5]); pc.set(x, y - 1, CR[5]);
     pc.set(x, y + 1, CR[2]); pc.set(x + 1, y + 1, CR[2]);
   }
-  // the polished, etched window: the largest lit plane gets a Widmanstätten lattice
-  let best = null, area = 0;
-  for (const f of body.faces) {
-    let n = 0;
-    for (let i = 0; i < sc.w * sc.h; i++) if (sc.fb[i] === f.id) n++;
-    const lit = -f.n[0] - f.n[1] + f.n[2];
-    if (n > 18 && n * (0.5 + lit) > area) { area = n * (0.5 + lit); best = f; }
-  }
+  // the polished, etched window: a sawn face with a Widmanstätten lattice and bevelled lips
+  const win = [[10, 11.5], [17, 9.5], [22.5, 12.5], [20.5, 19.5], [12.5, 20]];
+  const inW = (x, y) => sc.objAt(x, y) === body.id && inPoly(win, x + 0.5, y + 0.5);
   const KA = RAMP.kamacite();
-  if (best) {
-    const inF = (x, y) => sc.inb(x, y) && sc.fb[y * sc.w + x] === best.id;
-    for (let y = 0; y < sc.h; y++) for (let x = 0; x < sc.w; x++) {
-      if (!inF(x, y)) continue;
-      const a = ((x * 0.5 + y * 0.87) % 3.3 + 3.3) % 3.3, b = ((x * 0.5 - y * 0.87 + 60) % 3.3 + 3.3) % 3.3, c = ((x + 40) % 3.3 + 3.3) % 3.3;
-      let k = 2;
-      if (a < 0.7 || b < 0.7) k = 3;
-      if (c < 0.55) k = 4;
-      if (a < 0.7 && b < 0.7) k = 4;
-      const edge = !inF(x - 1, y) || !inF(x, y - 1), edge2 = !inF(x + 1, y) || !inF(x, y + 1);
-      if (edge) k = 1;
-      else if (edge2) k = 5;
-      pc.set(x, y, KA[k]);
-    }
+  for (let y = 0; y < sc.h; y++) for (let x = 0; x < sc.w; x++) {
+    if (!inW(x, y)) continue;
+    const a = ((x * 0.5 + y * 0.87 + 0.3) % 4.2 + 4.2) % 4.2, b = ((x * 0.5 - y * 0.87 + 60.3) % 4.2 + 4.2) % 4.2;
+    let k = (x + y) < 31 ? 3 : 4;
+    if (a < 1.1 && b < 1.1) k = 0;
+    else if (a < 1.1) k = 1;
+    else if (b < 1.1) k = 2;
+    const tl = !inW(x - 1, y) || !inW(x, y - 1), br = !inW(x + 1, y) || !inW(x, y + 1);
+    if (tl && !br) k = 1;
+    else if (br) k = 5;
+    pc.set(x, y, KA[k]);
   }
+  // the crust's broken lip throws a shadow onto the lower-right of the window
   // star-hot specks
   for (let i = 0; i < 40; i++) {
     const x = rng.int(3, 28), y = rng.int(5, 28);
-    if (sc.objAt(x, y) !== body.id || (best && sc.fb[y * sc.w + x] === best.id) || hash2(x, y, 3) > 0.35) continue;
+    if (sc.objAt(x, y) !== body.id || inW(x, y) || hash2(x, y, 3) > 0.35) continue;
     pc.set(x, y, hash2(x, y, 4) < 0.5 ? 0xffe08a : 0xffb040); pc.emit(x, y, 1);
   }
-  glint(pc, 13, 9, 2, 0xfffbe8, 0xffd060, 1);
-  glint(pc, 24, 17, 1, 0xfffbe8, 0xffd060, 1);
+  glint(pc, 11, 12, 2, 0xffffff, 0xffe8a0, 1);
+  glint(pc, 25, 21, 1, 0xfffbe8, 0xffd060, 1);
 }

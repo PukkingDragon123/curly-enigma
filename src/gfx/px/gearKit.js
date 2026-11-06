@@ -271,9 +271,10 @@ export function wrapStick(pc, x0, y0, x1, y1, r, u0, u1, R, o = {}) {
     const q = clamp((v / (r + grow) + 1) / 2, 0, 0.999);
     let k = tones[Math.floor(q * tones.length)];
     const w = u + v * slant;
-    const f = (((w - u0) % period) + period) % period / period;
-    if (f < 0.3) k += 2;            // the overlap: deep crease
-    else if (f < 0.55) k -= 1;      // the next band's raised, lit lip
+    // rows: crease on every n-th pixel row (reads as a spiral on 45° handles)
+    const f = o.rows ? (((y + (o.phase || 0)) % o.rows) + o.rows) % o.rows / o.rows : (((w - u0) % period) + period) % period / period;
+    if (f < (o.rows ? 0.01 : 0.3)) k += 2;                 // the overlap: deep crease
+    else if (f < (o.rows ? 1.01 / o.rows : 0.55)) k -= 1; // the next band's raised, lit lip
     if (o.tex) k += o.tex(x, y, u, v, k) || 0;
     pc.set(x, y, R[clamp(k, 1, 5)]);
   });

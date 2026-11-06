@@ -433,36 +433,42 @@ export function makeSlabGeo(seed, { w = 0.42, d = 0.32, k = 24, tone = 0x9a9284 
 }
 
 /**
- * A young tree of the understory (h m): a slender stem and a few tiers of leaf sprays (1/k m).
- * Returns { wood, leaves } geometries.
+ * A young tree of the understory (h m): a slender, slightly crooked stem with alternate side
+ * shoots, each ending in a loose cluster of leaves (lit on top and toward the sun, dark beneath,
+ * with gaps). 1/k m voxels. Returns { wood, leaves } geometries.
  */
-export function makeSaplingGeo(seed, { h = 1.3, k = 16, leaf = [0xb8cc6a, 0x90b450, 0x6a9840, 0x4a7834, 0x30562a], bark = 0x8a8478 } = {}) {
+export function makeSaplingGeo(seed, { h = 1.3, k = 16, leaf = [0xa8c060, 0x84a84a, 0x62903c, 0x46722e, 0x2e5224], bark = 0x8a8478 } = {}) {
   const rng = makeRng(seed);
-  const H = Math.ceil(h * k) + 4, R = Math.ceil(0.5 * h * k) + 3, W = 2 * R + 2;
+  const H = Math.ceil(h * k) + 6, R = Math.ceil(0.55 * h * k) + 4, W = 2 * R + 2;
   const wood = new VoxelGrid(W, H, W), leaves = new VoxelGrid(W, H, W);
   const c = W / 2;
-  const lx = rng.range(-0.08, 0.08), lz = rng.range(-0.08, 0.08);
-  for (let y = 0; y < h * k * 0.92; y++) wood.set(c + lx * y, y, c + lz * y, y < 3 ? fshade(bark, 0.8) : bark);
-  const nT = 3 + rng.int(0, 1);
-  for (let t = 0; t < nT; t++) {
-    const y0 = h * k * (0.38 + (t / nT) * 0.58);
-    const nb = 3 + rng.int(0, 2);
-    for (let b = 0; b < nb; b++) {
-      const a = (b / nb) * 6.28 + t * 1.1 + rng.range(-0.3, 0.3);
-      const len = (1 - t / nT * 0.55) * 0.42 * h * k * rng.range(0.8, 1.1);
-      const sx = c + lx * y0, sz = c + lz * y0;
-      for (let s = 0; s < len; s++) {
-        const x = sx + Math.cos(a) * s, z = sz + Math.sin(a) * s, y = y0 + s * 0.35 - (s / len) ** 2 * len * 0.3;
-        if (s < len * 0.5) wood.set(x, y, z, fshade(bark, 0.9));
-        // leaf sprays along the outer half: flat, lit on top
-        if (s > len * 0.25) for (let q = -2; q <= 2; q++) for (let p = -1; p <= 1; p++) {
-          if (Math.abs(q) + Math.abs(p) > 2 || hash3(Math.round(x + q), Math.round(y), Math.round(z + p), seed) < 0.22) continue;
-          const X = x - Math.sin(a) * q + Math.cos(a) * p * 0.5, Z = z + Math.cos(a) * q + Math.sin(a) * p * 0.5;
-          const lit = (Math.cos(a) * -0.36 + Math.sin(a) * -0.82) * 0.5 + (s / len) * 0.5 + (t / nT) * 0.4;
-          leaves.set(X, y + (Math.abs(q) === 2 ? -0.4 : 0), Z, leaf[lit > 0.75 ? 0 : lit > 0.45 ? 1 : lit > 0.15 ? 2 : 3]);
-          if (Math.abs(q) < 2 && p === 0) leaves.set(X, y - 1, Z, leaf[4]);
-        }
-      }
+  // the stem: a gentle zig-zag (each shoot pulls it a little)
+  const stem = [[c, 0, c]];
+  let sx = c, sz = c;
+  const nS = Math.round(h * k * 0.95);
+  for (let y = 1; y <= nS; y++) { if (y % 5 === 0) { sx += rng.range(-0.6, 0.6); sz += rng.range(-0.6, 0.6); } stem.push([sx, y, sz]); }
+  for (const [x, y, z] of stem) wood.set(x, y, z, y < 3 ? fshade(bark, 0.8) : bark);
+  const clusters = [];
+  const nB = 4 + rng.int(0, 3);
+  for (let b = 0; b < nB; b++) {
+    const t = 0.35 + (b / nB) * 0.55 + rng.range(-0.04, 0.04);
+    const [x0, y0, z0] = stem[Math.min(stem.length - 1, Math.round(t * nS))];
+    const a = b * 2.4 + rng.range(-0.4, 0.4); // alternate, spiralling round the stem
+    const len = (1.05 - t) * 0.45 * h * k * rng.range(0.8, 1.15);
+    let x = x0, y = y0, z = z0;
+    for (let s = 0; s < len; s++) { x += Math.cos(a); z += Math.sin(a); y += 0.45 - s / len * 0.4; if (s < len * 0.8) wood.set(x, y, z, fshade(bark, 0.9)); }
+    clusters.push([x, y, z, (0.13 + (1 - t) * 0.12) * k * rng.range(0.85, 1.15)]);
+    if (len > 5) clusters.push([x0 + Math.cos(a) * len * 0.5, y0 + len * 0.25, z0 + Math.sin(a) * len * 0.5, 0.1 * k]);
+  }
+  const top = stem[stem.length - 1];
+  clusters.push([top[0], top[1] + 1, top[2], 0.16 * k]);
+  for (const [cx, cy, cz, r] of clusters) {
+    for (let z = Math.floor(cz - r - 1); z <= cz + r + 1; z++) for (let y = Math.floor(cy - r * 0.7); y <= cy + r * 0.7 + 1; y++) for (let x = Math.floor(cx - r - 1); x <= cx + r + 1; x++) {
+      const dx = (x + 0.5 - cx) / r, dy = (y + 0.5 - cy) / (r * 0.62), dz = (z + 0.5 - cz) / r;
+      const e = dx * dx + dy * dy + dz * dz;
+      if (e > 1 || (e > 0.5 && hash3(x, y, z, seed) < 0.3)) continue;
+      const lit = dy * 0.7 + (-dx * 0.36 - dz * 0.82) * 0.35 + (hash3(x >> 1, y >> 1, z >> 1, seed + 1) - 0.5) * 0.5;
+      leaves.set(x, y, z, leaf[lit > 0.55 ? 0 : lit > 0.15 ? 1 : lit > -0.2 ? 2 : lit > -0.55 ? 3 : 4]);
     }
   }
   const o = { scale: 1 / k, pivot: [c, 0, c] };

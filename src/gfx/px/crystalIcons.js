@@ -2,10 +2,9 @@
 // lumite, echo, bioxide, magmaite, frostite, voidstone), halite cubes, the floating gravium
 // bipyramid and the amethyst geode. Built on the facet renderer in facets.js.
 import { makeRng } from '../../core/util.js';
-import { mix } from './color.js';
-import { hash2, vnoise, bayer } from './shade.js';
-import { Scene, material, rampOf, stoneTex, glint, prismUV, xf } from './facets.js';
-import { ROCK, rockMat, hostRock, recolor, specks } from './oreIcons.js';
+import { hash2, bayer } from './shade.js';
+import { Scene, material, rampOf, stoneTex, glint, prismUV, xf, ypr } from './facets.js';
+import { ROCK, rockMat, hostRock, recolor, inPoly } from './oreIcons.js';
 
 /** Translucent crystal material: darker toward the root, lighter toward the tip, faint inner streaks. */
 function crystalMat(R, o = {}) {
@@ -23,11 +22,48 @@ function crystalMat(R, o = {}) {
   });
 }
 
-/** Grow prisms from a base: each spec {x, y (screen base), dx, dy, dz (axis), len, r, tip, tw, sk}. */
-function grow(sc, m, specs, o = {}) {
-  return specs.map((s) => {
-    const z = s.z ?? (sc.zAt(Math.floor(s.x), Math.floor(s.y)) > -1e8 ? sc.zAt(Math.floor(s.x), Math.floor(s.y)) - (s.sink ?? 1.5) : 0);
-    return sc.prism(m, { b: [s.x, s.y, z], d: [s.dx, s.dy, s.dz ?? 0.35], len: s.len, r: s.r, tip: s.tip ?? s.r * 1.5, sides: s.sides ?? 6, twist: s.tw ?? 0.35, skew: s.sk, taper: s.taper, squash: s.sq, ...o });
+/**
+ * A druse: n crystals rooted over an elliptical patch (world rx × rz around the screen point
+ * (cx, cy)), each pointing away from the patch centre and up, tallest near `peak`.
+ * o: n, rx, rz, len [min, max], rk (radius per length), lean (world x tilt), spread, slim, tip, seed,
+ *    sides, peak [u, w] (-1..1), p (view pitch).
+ */
+export function druse(sc, m, o) {
+  const rng = makeRng(o.seed ?? 1);
+  const p = o.p ?? 0.62, cp = Math.cos(p), sp = Math.sin(p);
+  const toScr = ([X, Y, Z]) => [X, -(Y * cp - Z * sp), Y * sp + Z * cp];
+  const n = o.n ?? 6, [lmin, lmax] = o.len || [6, 20];
+  const pk = o.peak || [0, 0];
+  const roots = [];
+  for (let i = 0; i < n; i++) {
+    // golden-angle disc sampling, jittered: even but not regular
+    const t = (i + 0.5) / n, a = i * 2.39996 + rng.range(-0.5, 0.5), r = Math.sqrt(t) * rng.range(0.75, 1.05);
+    roots.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  const out = [];
+  roots.forEach(([u, w], i) => {
+    const dpk = Math.hypot(u - pk[0], w - pk[1]);
+    const len = Math.max(lmin, lmax * (1 - 0.5 * dpk) * rng.range(0.72, 1.08) * (i === 0 ? 1.05 : 1));
+    const spread = o.spread ?? 0.65;
+    let dx = u * spread + (o.lean ?? 0) + rng.range(-0.15, 0.15), dz = w * spread * 0.8 + 0.15 + rng.range(-0.1, 0.1);
+    const pd = o.pd ?? 0.22;
+    const d = [dx, -Math.cos(pd) + dz * Math.sin(pd), Math.sin(pd) + dz * Math.cos(pd)];
+    const root = toScr([u * o.rx, 0, w * (o.rz ?? o.rx * 0.6)]);
+    const r = Math.max(1.2, (o.rk ?? 0.17) * len * (o.slim ? 0.75 : 1) * rng.range(0.85, 1.15));
+    const tipL = r * (o.tip ?? 1.5) * rng.range(0.8, 1.25);
+    out.push({ b: [o.cx + root[0], o.cy + root[1], root[2] - (o.sink ?? 1.2) + (o.z ?? 0)], d, len, r, tip: tipL, tw: rng.range(0, 1), sk: o.skew ? [rng.range(-o.skew, o.skew), rng.range(-o.skew, o.skew) * 0.5] : undefined });
+  });
+  return out.map((s) => sc.prism(m, { b: s.b, d: s.d, len: s.len, r: s.r, tip: s.tip, sides: o.sides ?? 6, twist: s.tw, skew: s.sk }));
+}
+
+/** Glints near the tips of the tallest crystals (screen-highest apexes). */
+function tipGlints(pc, sc, xs, R, n = 2, emit = 0) {
+  const tips = xs.map((ob) => { const f = ob.o.frame; return [f.b[0] + f.d[0] * f.len, f.b[1] + f.d[1] * f.len, ob]; }).sort((a, b) => a[1] - b[1]);
+  tips.slice(0, n).forEach(([x, y, ob], i) => {
+    for (let k = 2; k < 6; k++) {
+      const X = Math.round(x - 0.5 - ob.o.frame.d[0] * k), Y = Math.round(y - 0.5 - ob.o.frame.d[1] * k);
+      if (sc.objAt(X, Y) === ob.id) { glint(pc, X, Y, i === 0 ? 2 : 1, 0xffffff, R[1], emit); break; }
+    }
   });
 }
 
@@ -76,19 +112,11 @@ const CR = {
 // ---------------------------------------------------------------- icons
 function quartz(pc) {
   const sc = new Scene(32);
-  base(sc, ROCK.grey(), 61);
+  base(sc, ROCK.grey(), 61, { y: 25.5, a: 12.5 });
   const QR = CR.quartz();
-  const q = crystalMat(QR);
-  grow(sc, q, [
-    { x: 19.5, y: 23, dx: 0.42, dy: -1, dz: 0.2, len: 15, r: 2.6, tw: 0.9 },
-    { x: 10.5, y: 24, dx: -0.55, dy: -1, dz: 0.3, len: 12, r: 2.4, tw: 0.2 },
-    { x: 15, y: 25, dx: -0.06, dy: -1, dz: 0.42, len: 21, r: 3.3, tw: 0.55 },
-    { x: 22.5, y: 25.5, dx: 1, dy: -0.75, dz: 0.5, len: 8, r: 1.9, tw: 0.1 },
-    { x: 8, y: 26, dx: -1, dy: -0.55, dz: 0.55, len: 6, r: 1.6, tw: 0.8 },
-  ]);
+  const xs = druse(sc, crystalMat(QR), { cx: 16, cy: 24, rx: 8.5, rz: 4, n: 7, len: [6, 22], seed: 2, lean: 0.12, peak: [-0.3, 0.2] });
   sc.render(pc);
-  glint(pc, 14, 6, 2, 0xffffff, QR[1]);
-  glint(pc, 23, 11, 1, 0xffffff, QR[1]);
+  tipGlints(pc, sc, xs, QR, 2);
 }
 
 function salt(pc) {
@@ -103,8 +131,6 @@ function salt(pc) {
   sc.render(pc);
   // hopper steps: a smaller lighter square inset on each lit face
   for (const ob of sc.objs) for (const f of ob.faces) {
-    const k0 = sc.k[f.pts.reduce((s, p) => s, 0)];
-    void k0;
     const cx = f.pts.reduce((s, p) => s + p[0], 0) / 4, cy = f.pts.reduce((s, p) => s + p[1], 0) / 4;
     const inner = f.pts.map((p) => [cx + (p[0] - cx) * 0.45, cy + (p[1] - cy) * 0.45]);
     const lit = f.n[1] < -0.3;
@@ -119,60 +145,40 @@ function salt(pc) {
   glint(pc, 6, 18, 1, 0xffffff, SR[1]);
 }
 
-function inPoly(P, x, y) {
-  let c = false;
-  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
-    if ((P[i][1] > y) !== (P[j][1] > y) && x < ((P[j][0] - P[i][0]) * (y - P[i][1])) / (P[j][1] - P[i][1]) + P[i][0]) c = !c;
-  }
-  return c;
-}
-
 function lumite(pc) {
   const sc = new Scene(32);
-  base(sc, ROCK.char(), 62, { y: 26 });
+  const rock = base(sc, ROCK.char(), 62, { y: 26, a: 11 });
   const LR = CR.lumite();
   const m = crystalMat(LR, { glow: (c) => (c.k <= 2 ? 1 : 0.75), root: 3 });
-  grow(sc, m, [
-    { x: 10.5, y: 24.5, dx: -0.6, dy: -1, dz: 0.3, len: 13, r: 2.6, tw: 0.3 },
-    { x: 21, y: 24, dx: 0.55, dy: -1, dz: 0.25, len: 14, r: 2.6, tw: 0.8 },
-    { x: 15.5, y: 25.5, dx: 0.02, dy: -1, dz: 0.4, len: 22, r: 3.6, tw: 0.5 },
-    { x: 24.5, y: 26.5, dx: 1, dy: -0.6, dz: 0.5, len: 6, r: 1.6, tw: 0.2 },
-  ]);
+  const xs = druse(sc, m, { cx: 16, cy: 24.5, rx: 7.5, rz: 3.5, n: 6, len: [6, 23], seed: 6, rk: 0.19, peak: [0, 0] });
   sc.render(pc);
   // light spill on the rock under the crystals
-  recolor(pc, sc, sc.objs.filter((o) => o.m !== m), (x, y, k) => y < 26 && k >= 2 && hash2(x, y, 5) < 0.6, rampOf([LR[2], LR[3], LR[3], LR[4], LR[5], LR[5], LR[6]]));
-  glint(pc, 15, 4, 2, 0xffffff, LR[1], 1);
-  glint(pc, 7, 12, 1, 0xffffff, LR[1], 1);
+  recolor(pc, sc, rock, (x, y, k) => y < 27 && k >= 2 && hash2(x, y, 5) < 0.55, rampOf([LR[2], LR[3], LR[3], LR[4], LR[5], LR[5], LR[6]]));
+  tipGlints(pc, sc, xs, LR, 2, 1);
 }
 
 function echo(pc) {
   const sc = new Scene(32);
-  base(sc, ROCK.slate(), 63, { a: 9.5, y: 26 });
+  base(sc, ROCK.slate(), 63, { a: 10, y: 26 });
   const ER = CR.echo();
   const m = crystalMat(ER, { root: 4 });
-  grow(sc, m, [
-    { x: 12.5, y: 25, dx: -0.28, dy: -1, dz: 0.3, len: 17, r: 1.9, tip: 4, tw: 0.3 },
-    { x: 19, y: 25, dx: 0.3, dy: -1, dz: 0.3, len: 16, r: 1.8, tip: 4, tw: 0.7 },
-    { x: 15.5, y: 26, dx: 0, dy: -1, dz: 0.38, len: 23, r: 2.4, tip: 5, tw: 0.5 },
-    { x: 22, y: 26, dx: 0.8, dy: -1, dz: 0.4, len: 7, r: 1.3, tip: 2.5, tw: 0.2 },
-  ]);
+  const xs = druse(sc, m, { cx: 16, cy: 24.5, rx: 6, rz: 3, n: 6, len: [7, 23], seed: 4, rk: 0.11, tip: 2.4, lean: -0.05, spread: 0.45, peak: [0.2, 0] });
   sc.render(pc);
-  // resonance: ")))" arcs either side, fading outward, dithered
+  // resonance: ")))" arcs either side, fading outward
   const arcs = (cx, cy, side) => {
     for (let i = 0; i < 3; i++) {
       const r = 3.2 + i * 2.4;
       const c = [0xeaf6ff, 0xa8d0ff, 0x6a90d8][i];
       for (let a = -0.8 + i * 0.08; a <= 0.8 - i * 0.08; a += 0.05) {
         const x = Math.round(cx + side * Math.cos(a) * r - 0.5), y = Math.round(cy + Math.sin(a) * r - 0.5);
-        if (pc.alpha(x, y) > 200 && !(i > 0)) continue;
         if (pc.alpha(x, y)) continue;
         pc.set(x, y, c); pc.emit(x, y, 0.6 - i * 0.15);
       }
     }
   };
-  arcs(9, 10, -1);
-  arcs(23, 10, 1);
-  glint(pc, 15, 4, 1, 0xffffff, ER[1]);
+  arcs(8.5, 11, -1);
+  arcs(23.5, 11, 1);
+  tipGlints(pc, sc, xs, ER, 1);
 }
 
 function gravium(pc) {
@@ -186,11 +192,11 @@ function gravium(pc) {
   const m = material(GR, { eq: 0.65, ridgeAll: true, grad: 0.05, glow: 0.35 });
   // hexagonal bipyramid
   const ring = [], n = 6;
-  for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; ring.push([Math.cos(a) * 6.2, 0, Math.sin(a) * 6.2]); }
-  const top = [0, -10.5, 0], bot = [0, 8, 0];
+  for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; ring.push([Math.cos(a) * 7, 0, Math.sin(a) * 7]); }
+  const top = [0, -12.5, 0], bot = [0, 9.5, 0];
   const polys = [];
   for (let i = 0; i < n; i++) { polys.push([ring[i], ring[(i + 1) % n], top]); polys.push([ring[(i + 1) % n], ring[i], bot]); }
-  const rot = (P) => xf(P, { ry: 0.35, rx: -0.32, rz: 0.22, t: [16, 14, 0] });
+  const rot = (P) => ypr(P, 0.5, 0.22, 0.14, [16, 14.5, 0]);
   sc.add(m, polys.map(rot));
   // drifting chips
   const chip = (cx, cy, s, a) => {
@@ -213,51 +219,38 @@ function bioxide(pc) {
   base(sc, ROCK.slate(), 64, { y: 26 });
   const BR = CR.bioxide();
   const m = crystalMat(BR, { glow: (c) => (c.k <= 2 ? 1 : 0.7), root: 3 });
-  grow(sc, m, [
-    { x: 10, y: 24.5, dx: -0.7, dy: -1, dz: 0.3, len: 12, r: 2.3, tip: 6, sk: [0.6, 0], tw: 0.3 },
-    { x: 21.5, y: 24, dx: 0.6, dy: -1, dz: 0.25, len: 13, r: 2.3, tip: 6.5, sk: [-0.6, 0.2], tw: 0.9 },
-    { x: 15, y: 25.5, dx: -0.1, dy: -1, dz: 0.4, len: 20, r: 3.2, tip: 8, sk: [0.5, 0.3], tw: 0.5 },
-    { x: 18.5, y: 25.5, dx: 0.25, dy: -1, dz: 0.5, len: 12, r: 2, tip: 5, sk: [-0.5, 0], tw: 0.1 },
-  ]);
+  const xs = druse(sc, m, { cx: 16, cy: 24.5, rx: 8, rz: 4, n: 6, len: [6, 21], seed: 9, tip: 2.6, skew: 0.7, peak: [0.2, 0.2] });
   sc.render(pc);
   bolt(pc, [[3, 4], [6, 7], [4, 9], [7, 13]], 0xffffff, 0xfff27a);
   bolt(pc, [[28, 2], [25, 6], [28, 8], [25, 12]], 0xffffff, 0xfff27a);
-  bolt(pc, [[18, 0], [20, 2], [18, 4]], 0xffffff, 0xfff27a);
-  glint(pc, 13, 6, 1, 0xffffff, BR[1], 1);
+  tipGlints(pc, sc, xs, BR, 1, 1);
 }
 
 function magmaite(pc) {
   const sc = new Scene(32);
-  const rock = base(sc, ROCK.char(), 65, { y: 26 });
+  const rock = base(sc, ROCK.char(), 65, { y: 26, a: 12 });
   const MR = CR.magma();
   const m = crystalMat(MR, { streak: false, root: 2, eq: 0.6 });
-  const xs = grow(sc, m, [
-    { x: 9.5, y: 24.5, dx: -0.65, dy: -1, dz: 0.3, len: 13, r: 3, tip: 4.5, tw: 0.4 },
-    { x: 22, y: 24, dx: 0.55, dy: -1, dz: 0.25, len: 14, r: 3, tip: 4.5, tw: 0.9 },
-    { x: 15.5, y: 25.5, dx: -0.05, dy: -1, dz: 0.4, len: 21, r: 4, tip: 6, tw: 0.6 },
-  ]);
+  const xs = druse(sc, m, { cx: 16, cy: 24.5, rx: 8, rz: 3.5, n: 7, len: [7, 22], seed: 11, rk: 0.17, tip: 1.7, peak: [0, 0] });
   sc.render(pc);
-  // molten cracks: wandering glowing seams up each crystal, hottest near the core
+  // molten cracks: wandering glowing seams up each crystal, hottest near the root
   const lava = [0xfff6c0, 0xffd04a, 0xff8a2a, 0xd8481a];
   const rng = makeRng(66);
   for (const ob of xs) {
     const fr = ob.o.frame;
-    for (const off of [-0.25, 0.35]) {
-      let v = off;
-      for (let u = 0.1; u < 0.92; u += 0.04) {
-        v += rng.range(-0.12, 0.12);
-        v = Math.max(-0.55, Math.min(0.55, v));
-        const p = [fr.b[0] + fr.d[0] * u * fr.len + fr.e1[0] * v * fr.r, fr.b[1] + fr.d[1] * u * fr.len + fr.e1[1] * v * fr.r];
-        const x = Math.floor(p[0]), y = Math.floor(p[1]);
-        if (sc.objAt(x, y) !== ob.id) continue;
-        const k = Math.min(3, Math.floor((1 - u) * 3.5));
-        pc.set(x, y, lava[k]); pc.emit(x, y, 1);
-      }
+    let v = rng.range(-0.3, 0.3);
+    for (let u = 0.05; u < 0.9; u += 0.035) {
+      v += rng.range(-0.18, 0.18);
+      v = Math.max(-0.6, Math.min(0.6, v));
+      const x = Math.floor(fr.b[0] + fr.d[0] * u * fr.len + fr.e1[0] * v * fr.r), y = Math.floor(fr.b[1] + fr.d[1] * u * fr.len + fr.e1[1] * v * fr.r);
+      if (sc.objAt(x, y) !== ob.id) continue;
+      const k = Math.min(3, Math.floor(u * 4.2));
+      pc.set(x, y, lava[k]); pc.emit(x, y, 1);
     }
   }
   // glowing seam in the rock and embers
-  recolor(pc, sc, rock, (x, y) => Math.abs(y - 25.5 - Math.sin(x * 0.6) * 1.2) < 0.6, rampOf([0xfff6c0, 0xffd04a, 0xff9a3a, 0xe0602a, 0xa83a1a, 0x6a2010, 0x2a0a06]));
-  for (const [x, y] of [[6, 7], [26, 9], [21, 2], [11, 4]]) { pc.set(x, y, 0xffb04a); pc.emit(x, y, 1); }
+  recolor(pc, sc, rock, (x, y) => Math.abs(y - 26 - Math.sin(x * 0.55) * 1.3) < 0.6, rampOf([0xfff6c0, 0xffd04a, 0xff9a3a, 0xe0602a, 0xa83a1a, 0x6a2010, 0x2a0a06]));
+  for (const [x, y] of [[5, 8], [27, 10], [22, 3], [9, 4]]) { pc.set(x, y, 0xffb04a); pc.emit(x, y, 1); }
 }
 
 function frostite(pc) {
@@ -265,22 +258,17 @@ function frostite(pc) {
   const rock = base(sc, ROCK.blue(), 67, { y: 26 });
   const FR = CR.frost();
   const m = crystalMat(FR, { glow: 0.35, root: 3 });
-  const xs = grow(sc, m, [
-    { x: 9.5, y: 24.5, dx: -0.7, dy: -1, dz: 0.3, len: 14, r: 2.4, tip: 4, tw: 0.3 },
-    { x: 22, y: 24, dx: 0.6, dy: -1, dz: 0.25, len: 15, r: 2.4, tip: 4, tw: 0.8 },
-    { x: 15.5, y: 25.5, dx: 0, dy: -1, dz: 0.4, len: 22, r: 3.2, tip: 5.5, tw: 0.5 },
-    { x: 12, y: 26, dx: -0.3, dy: -1, dz: 0.5, len: 15, r: 2, tip: 3.5, tw: 0.2 },
-  ]);
+  const xs = druse(sc, m, { cx: 16, cy: 24.5, rx: 8, rz: 4, n: 7, len: [6, 22], seed: 11, rk: 0.15, tip: 1.8, peak: [0.1, 0] });
   sc.render(pc);
-  rime(pc, sc, [...rock, ...xs], 20, [0xffffff, 0xd8f4ff], 7);
+  rime(pc, sc, [...rock, ...xs], 21, [0xffffff, 0xd8f4ff], 7);
   const flake = (x, y, c = 0xffffff, c2 = 0xbff0ff) => {
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { pc.set(x + dx, y + dy, c2); pc.set(x + dx * 2, y + dy * 2, c); pc.emit(x + dx, y + dy, 0.7); pc.emit(x + dx * 2, y + dy * 2, 0.7); }
     for (const [dx, dy] of [[1, 1], [-1, -1], [1, -1], [-1, 1]]) { pc.set(x + dx * 2, y + dy * 2, c2); pc.emit(x + dx * 2, y + dy * 2, 0.7); }
     pc.set(x, y, c); pc.emit(x, y, 0.8);
   };
-  flake(5, 8);
-  flake(27, 6);
-  glint(pc, 15, 5, 1, 0xffffff, FR[1], 1);
+  flake(4, 7);
+  flake(27, 5);
+  tipGlints(pc, sc, xs, FR, 1, 1);
 }
 
 function voidstone(pc) {
@@ -288,11 +276,7 @@ function voidstone(pc) {
   base(sc, ROCK.char(), 68, { y: 26 });
   const VR = CR.void();
   const m = crystalMat(VR, { root: 2, eq: 0.6 });
-  grow(sc, m, [
-    { x: 10, y: 24.5, dx: -0.6, dy: -1, dz: 0.3, len: 13, r: 2.8, tip: 4.5, tw: 0.3 },
-    { x: 21.5, y: 24, dx: 0.55, dy: -1, dz: 0.25, len: 14, r: 2.8, tip: 4.5, tw: 0.9 },
-    { x: 15.5, y: 25.5, dx: 0, dy: -1, dz: 0.4, len: 21, r: 3.8, tip: 6, tw: 0.55 },
-  ]);
+  const xs = druse(sc, m, { cx: 16, cy: 24.5, rx: 7.5, rz: 3.5, n: 5, len: [7, 21], seed: 3, rk: 0.2, tip: 1.4, peak: [0, 0] });
   sc.render(pc);
   // light-drinking aura: dark violet fringe round the silhouette, motes being pulled in
   const has = (x, y) => pc.alpha(x, y) > 200;
@@ -306,7 +290,7 @@ function voidstone(pc) {
   }
   for (const [x, y, c, a] of add) pc.set(x, y, c, a);
   for (const [x, y, dx, dy] of [[4, 8, 1, 1], [27, 6, -1, 1], [3, 18, 1, 0], [28, 17, -1, 0]]) { pc.set(x, y, 0xc8a0ff); pc.set(x - dx, y - dy, 0x6a3ab0, 200); }
-  glint(pc, 15, 5, 1, 0xf0e0ff, VR[1]);
+  tipGlints(pc, sc, xs, VR, 1);
 }
 
 function amethyst(pc) {
@@ -318,18 +302,18 @@ function amethyst(pc) {
   const pts = [];
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * Math.PI * 2, r = 1 - rng.range(0, 0.12);
-    pts.push([Math.cos(a) * 13 * r, Math.sin(a) * 11.5 * r, 0]); // cut rim
-    if (i % 2 === 0) { const r2 = 1 - rng.range(0, 0.15); pts.push([Math.cos(a) * 11.5 * r2, Math.sin(a) * 10 * r2, -5.5 * r2]); }
+    pts.push([Math.cos(a) * 14 * r, Math.sin(a) * 12.5 * r, 0]); // cut rim
+    if (i % 2 === 0) { const r2 = 1 - rng.range(0, 0.15); pts.push([Math.cos(a) * 12 * r2, Math.sin(a) * 10.5 * r2, -7.5 * r2]); }
   }
-  pts.push([0, 0, -8]);
-  const P = xf(pts, { rx: -0.85, t: [16, 16.5, 0] });
+  pts.push([0, 0, -13], [5, 3, -11.5], [-5, 2, -11.5], [0, 6, -10]);
+  const P = xf(pts, { rx: 0.95, t: [16, 12.5, 0] });
   const geo = sc.hull(shell, P);
   sc.render(pc);
   // the cut face: the face whose normal is closest to the cut plane normal
-  const cutN = xf([[0, 0, 1]], { rx: -0.85 })[0];
+  const cutN = xf([[0, 0, 1]], { rx: 0.95 })[0];
   let cut = null, best = -1;
   for (const f of geo.faces) { const d = f.n[0] * cutN[0] + f.n[1] * cutN[1] + f.n[2] * cutN[2]; if (d > best) { best = d; cut = f; } }
-  const inCut = (x, y) => sc.inb(x, y) && sc.fb[y * 32 + x] === cut.id;
+  const inCut = (x, y) => sc.pidAt(x, y) === cut.pid;
   // distance from the rim inside the cut face (chamfer)
   const D = new Float32Array(1024).fill(99);
   for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
@@ -343,38 +327,32 @@ function amethyst(pc) {
   for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
     const d = D[y * 32 + x];
     if (d > 90) continue;
-    if (d < 1.2) pc.set(x, y, x + y < 30 ? rind[0] : rind[3]);
-    else if (d < 2.2) pc.set(x, y, rind[1]);
-    else if (d < 3) pc.set(x, y, rind[2]);
+    if (d < 1.1) pc.set(x, y, x + y < 28 ? rind[0] : rind[3]);
+    else if (d < 1.8) pc.set(x, y, rind[1]);
+    else if (d < 2.4) pc.set(x, y, rind[2]);
     else pc.set(x, y, AR[6]);
   }
-  // crystal teeth growing inward from the rim of the cavity
-  const cav = (x, y) => D[y * 32 + x] >= 3 && D[y * 32 + x] < 90;
-  let cx = 0, cy = 0, n = 0;
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (cav(x, y)) { cx += x + 0.5; cy += y + 0.5; n++; }
+  // crystal lining: a ring of jittered sawtooth points round a dark hollow
+  const cav = (x, y) => D[y * 32 + x] >= 2.4 && D[y * 32 + x] < 90;
+  let cx = 0, cy = 0, n = 0, dmax = 0;
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (cav(x, y)) { cx += x + 0.5; cy += y + 0.5; n++; dmax = Math.max(dmax, D[y * 32 + x]); }
   cx /= n; cy /= n;
-  const teeth = [];
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (cav(x, y) && D[y * 32 + x] < 4 && hash2(x, y, 9) < 0.45) teeth.push([x + 0.5, y + 0.5]);
-  teeth.sort((a, b) => b[1] - a[1]);
-  for (const [bx, by] of teeth) {
-    const dx = cx - bx, dy = cy - by, l = Math.hypot(dx, dy) || 1;
-    const len = Math.min(l * 0.85, 3 + hash2(bx | 0, by | 0, 3) * 3.5), w = 1.6;
-    const ux = dx / l, uy = dy / l, px = -uy, py = ux;
-    const tip = [bx + ux * len, by + uy * len];
-    const left = [bx + px * w, by + py * w], right = [bx - px * w, by - py * w];
-    const litLeft = px * -0.6 + py * -0.8 > 0;
-    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-      if (!cav(x, y)) continue;
-      const X = x + 0.5, Y = y + 0.5;
-      if (!inPoly([left, tip, right], X, Y)) continue;
-      const s = (X - bx) * px + (Y - by) * py;
-      const lit = (s > 0) === litLeft;
-      const u = ((X - bx) * ux + (Y - by) * uy) / len;
-      pc.set(x, y, AR[lit ? (u > 0.6 ? 1 : 2) : (u > 0.6 ? 3 : 4)]);
-    }
+  const NT = 13;
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+    if (!cav(x, y)) continue;
+    const th = Math.atan2(y + 0.5 - cy, (x + 0.5 - cx) * 0.8) + Math.PI;
+    const f = (th / (Math.PI * 2)) * NT, ti = Math.floor(f), ph = f - ti;
+    const depth = (dmax - 2.4) * (0.6 + hash2(ti, 3, 7) * 0.45);
+    const rho = D[y * 32 + x] - 2.4; // 0 at the rind
+    const tri = 1 - Math.abs(ph * 2 - 1);
+    if (rho < depth * tri + 0.6) {
+      // which flank faces the light: the tooth's flanks turn round the ring
+      const tang = th + (ph < 0.5 ? -Math.PI / 2 : Math.PI / 2);
+      const lit = Math.cos(tang) * -0.55 + Math.sin(tang) * -0.8 > 0;
+      const tipward = rho > depth * tri * 0.55;
+      pc.set(x, y, AR[lit ? (tipward ? 1 : 2) : (tipward ? 3 : 4)]);
+    } else pc.set(x, y, rho > depth + 0.8 ? 0x12061e : AR[5]);
   }
-  // depth: darken the cavity floor (centre)
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (cav(x, y) && pc.getHex(x, y) === AR[6] && Math.hypot(x + 0.5 - cx, y + 0.5 - cy) < 2.2) pc.set(x, y, 0x12061e);
   glint(pc, Math.round(cx) - 3, Math.round(cy) - 2, 1, 0xffffff, AR[1]);
   glint(pc, Math.round(cx) + 3, Math.round(cy) + 2, 0, 0xffffff, AR[1]);
 }
@@ -389,4 +367,3 @@ export function drawCrystal(pc, id) {
   return true;
 }
 
-export { mix, vnoise, specks };
