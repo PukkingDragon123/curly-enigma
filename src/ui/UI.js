@@ -20,7 +20,6 @@ import { qColor } from './common.js';
 import { Radar } from './Radar.js';
 import { Crosshair } from './Crosshair.js';
 import { Tracker } from './Tracker.js';
-import { DSPR } from './deepArt.js';
 import { Tutor } from './Tutor.js';
 import { Convo } from './Convo.js'; // cutscene talk (game.convo)
 import { Onboard } from './Onboard.js'; // the cinematic tutorial's layer (prompts, letterbox, tutorial UI level)
@@ -91,12 +90,8 @@ export class UI {
     this.radar = new Radar(this);
     this.tracker = new Tracker(this); // the objective strip (quests part)
     this.crosshair = new Crosshair(this);
-    this.lookCatch = el('div', { class: 'look-catch', 'aria-label': 'Click to look around' }, [
-      el('div', { class: 'look-card' }, [
-        el('img', { class: 'pix', src: DSPR.mouse(), alt: '' }),
-        el('div', {}, [el('b', {}, 'Click to look around'), el('small', {}, [el('kbd', {}, 'Esc'), ' frees the mouse'])]),
-      ]),
-    ]);
+    // (one faint line, no card: the whole view is the button)
+    this.lookCatch = el('div', { class: 'look-catch', 'aria-label': 'Click to look around' }, [el('div', { class: 'look-card' }, 'Click to look around')]);
     this.lookCatch.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.preventDefault();

@@ -10,7 +10,7 @@ import { clamp, lerp, el } from '../core/util.js';
 import { FPSRig, BoxWorld } from '../fps/FPSKit.js';
 import { buildWorld } from '../forge/world.js';
 import { ForgeParticles } from '../forge/particles.js';
-import { injectStyles, decorateLayer, popWord, TouchAction } from '../forge/ui.js';
+import { injectStyles, decorateLayer, TouchAction } from '../forge/ui.js';
 import { Menus } from '../forge/menus.js';
 import { Paws } from '../forge/paws.js';
 import { makeGlow } from '../bookends/fx.js';
@@ -415,9 +415,19 @@ export default class ForgeScene extends Scene {
 
   screenOf(v) { return this.toScreen(v); }
 
+  /**
+   * How a blow, a quench or a step went: said by the metal, not by a floating word. A fine one
+   * throws a glitter of gold motes off the work, a so-so one a few pale ones, a bad one a wisp of
+   * dark scale and a small jolt (the callers already ring the anvil, hiss or crack). `text` is never
+   * drawn; `color` (the old word's colour) picks the tone.
+   */
   pop(text, worldPos, color = '#fff', size = 1) {
-    const s = this.toScreen(worldPos);
-    if (s.visible) popWord(this.layer, text, s.x, s.y, color, size);
+    const n = parseInt(String(color).replace('#', ''), 16) || 0xffffff;
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const P = this.particles;
+    if (r > 200 && g > 180 && b < 140) P.sparkle(worldPos, 0xffd870, Math.round(10 * size), 0.16, 0.3);
+    else if (g > r + 20 && g > b) P.sparkle(worldPos, 0xfff0c8, Math.round(5 * size), 0.12, 0.2);
+    else if (r > g + 40 && r > b + 40) { P.smoke(worldPos, 0.06, 0.5); this.addShake(0.008); }
   }
 
   /** Hand the paws a tool kind ('none' | 'tongs' | 'smith' | 'hammer'). */

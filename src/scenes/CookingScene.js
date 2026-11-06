@@ -602,7 +602,9 @@ export default class CookingScene extends Scene {
         this.ui.timer(null);
         const kind = this.ui.feedback(s);
         this.game.audio.play(kind === 'perfect' ? 'perfect' : kind === 'oops' ? 'oops' : 'good');
-        if (kind === 'perfect') sparkle(this.fx, this.camLook.clone().setY(0.3), 14);
+        // no grade word: a burst of sparks over the work for a fine step, a nudge of the camera for a bad one
+        if (kind === 'perfect' || kind === 'great') sparkle(this.fx, this.camLook.clone().setY(0.3), kind === 'perfect' ? 18 : 9);
+        else if (kind === 'oops') this.shake(0.006);
         this.phase = 'feedback';
         this.phaseT = 0;
       }

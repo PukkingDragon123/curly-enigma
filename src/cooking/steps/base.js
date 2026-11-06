@@ -9,6 +9,18 @@
 import * as THREE from 'three';
 import { clamp } from '../../core/util.js';
 import { disposeObject } from '../../core/Scene.js';
+import { sparkle, puff } from '../fx.js';
+
+/** The tone of an old feedback colour: gold → great, green → good, cool/neutral → meh, warm red → bad. */
+function toneOf(color = '#fff') {
+  const n = parseInt(String(color).replace('#', ''), 16);
+  if (!Number.isFinite(n)) return 'meh';
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  if (r > 200 && g > 180 && b < 140) return 'great';
+  if (g > r + 20 && g > b) return 'good';
+  if (r > g + 40 && r > b + 40) return 'bad';
+  return 'meh';
+}
 
 export class Step {
   constructor(cook, opts = {}) {
@@ -103,9 +115,19 @@ export class Step {
 
   screen(v) { return this.cook.toScreen(v); }
 
+  /**
+   * How a moment went, said by the kitchen instead of a floating word: a glint of sparks for a
+   * fine one, a soft wisp for a so-so one, a puff and a jolt for a bad one. `text` is only a note
+   * for whoever reads the step (it is never drawn); `color` (the old word's colour) picks the tone.
+   */
   float(text, at, color) {
-    const p = this.screen(at);
-    this.ui.floatAt(text, p.x, p.y, color);
+    const tone = toneOf(color);
+    const p = at.clone();
+    p.y -= 0.1; // the old words floated above the food: the reaction belongs on it
+    if (tone === 'great') sparkle(this.fx, p, 10);
+    else if (tone === 'good') sparkle(this.fx, p, 5, [0xfffaf0, 0xffe8b0]);
+    else if (tone === 'meh') puff(this.fx, p, 0xece6dc, 4, 0.08);
+    else { puff(this.fx, p, 0x8a8078, 6, 0.1); this.cook.shake(0.003); }
   }
 
   /** Paw resting on the counter near the station (side −1 left, 1 right). */

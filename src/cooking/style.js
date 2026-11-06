@@ -259,7 +259,7 @@ const CSS = /* css */`
 .ck-slate kbd { font-size: 16px; }
 @keyframes ckHintIn { from { transform: translate(-50%, calc(var(--px) * 8)); opacity: 0; } }
 
-/* big words */
+/* big words (only the step's name now: how a step went is told by sparks and sound, not a word) */
 .ck-big { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); text-align: center; white-space: nowrap; pointer-events: none; }
 .ck-word { font-family: var(--font-display); line-height: .85; letter-spacing: .02em; color: var(--gold); display: inline-block;
   text-shadow: 0 calc(var(--px) * 2) 0 var(--gold-dk), 0 calc(var(--px) * 4) 0 var(--wood-dk), calc(var(--px) * 2) 0 0 var(--wood-dk), calc(var(--px) * -2) 0 0 var(--wood-dk), 0 calc(var(--px) * -2) 0 var(--wood-dk), 0 calc(var(--px) * 7) 0 rgba(0,0,0,.4); }
@@ -267,21 +267,6 @@ const CSS = /* css */`
 .ck-title .ck-sub { display: block; font-size: calc(var(--px) * 6); color: var(--text-light); text-shadow: 0 var(--px) 0 #000, var(--px) 0 0 #000, calc(var(--px)*-1) 0 0 #000; margin-bottom: calc(var(--px) * 2); animation: ckFadeUp 1.1s ease-out forwards; }
 @keyframes ckTitle { 0% { transform: scale(.2) rotate(-8deg); opacity: 0; } 25% { transform: scale(1.15) rotate(3deg); opacity: 1; } 40% { transform: scale(.96) rotate(-1deg); } 55% { transform: scale(1); } 85% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.1) translateY(calc(var(--px) * -10)); opacity: 0; } }
 @keyframes ckFadeUp { 0% { opacity: 0; transform: translateY(calc(var(--px) * 4)); } 20%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
-.ck-fb .ck-word { font-size: calc(var(--px) * 36); animation: ckFb 1.35s cubic-bezier(.2,1.7,.35,1) forwards; }
-.ck-fb.great .ck-word { color: #9af07a; text-shadow: 0 calc(var(--px) * 2) 0 #3a8a2a, 0 calc(var(--px) * 4) 0 #1a3a12, calc(var(--px) * 2) 0 0 #1a3a12, calc(var(--px) * -2) 0 0 #1a3a12, 0 calc(var(--px) * -2) 0 #1a3a12, 0 calc(var(--px) * 7) 0 rgba(0,0,0,.4); }
-.ck-fb.good .ck-word { color: #9fdcff; font-size: calc(var(--px) * 30); text-shadow: 0 calc(var(--px) * 2) 0 #3a7ab8, 0 calc(var(--px) * 4) 0 #12304a, calc(var(--px) * 2) 0 0 #12304a, calc(var(--px) * -2) 0 0 #12304a, 0 calc(var(--px) * -2) 0 #12304a, 0 calc(var(--px) * 7) 0 rgba(0,0,0,.4); }
-.ck-fb.oops .ck-word { color: #ff9a8a; font-size: calc(var(--px) * 30); animation: ckOops 1.35s ease-out forwards; text-shadow: 0 calc(var(--px) * 2) 0 #a83a2a, 0 calc(var(--px) * 4) 0 #3a1010, calc(var(--px) * 2) 0 0 #3a1010, calc(var(--px) * -2) 0 0 #3a1010, 0 calc(var(--px) * -2) 0 #3a1010, 0 calc(var(--px) * 7) 0 rgba(0,0,0,.4); }
-.ck-fb.perfect .ck-word { animation: ckFb 1.35s cubic-bezier(.2,1.7,.35,1) forwards, ckRainbow .5s steps(4) infinite; }
-.ck-fb .ck-pts { display: flex; align-items: center; justify-content: center; gap: calc(var(--px) * 2); font-family: var(--font-display); font-size: calc(var(--px) * 9); color: var(--text-light); margin-top: calc(var(--px) * 2); text-shadow: 0 var(--px) 0 #000, var(--px) 0 0 #000, calc(var(--px)*-1) 0 0 #000, 0 calc(var(--px)*-1) 0 #000; animation: ckFadeUp 1.35s ease-out forwards; }
-.ck-fb .ck-pts .ck-stamp { height: calc(var(--px) * 9); width: auto; }
-@keyframes ckFb { 0% { transform: scale(.1) rotate(-12deg); opacity: 0; } 18% { transform: scale(1.3) rotate(4deg); opacity: 1; } 30% { transform: scale(.88) rotate(-2deg); } 42% { transform: scale(1.06) rotate(1deg); } 54% { transform: scale(1) rotate(0); } 85% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.15) translateY(calc(var(--px) * -14)); opacity: 0; } }
-@keyframes ckOops { 0% { transform: scale(.4); opacity: 0; } 15% { transform: scale(1.1); opacity: 1; } 22% { transform: translateX(calc(var(--px) * -4)) rotate(-4deg); } 30% { transform: translateX(calc(var(--px) * 4)) rotate(4deg); } 38% { transform: translateX(calc(var(--px) * -3)) rotate(-2deg); } 46% { transform: none; } 85% { opacity: 1; transform: translateY(calc(var(--px) * 3)); } 100% { opacity: 0; transform: translateY(calc(var(--px) * 12)); } }
-@keyframes ckRainbow { 0% { color: #ffe066; } 25% { color: #ffb0e0; } 50% { color: #a0f0ff; } 75% { color: #c0ff9a; } }
-.ck-star { position: absolute; width: calc(var(--px) * 4); height: calc(var(--px) * 4); background: #fff6b0; box-shadow: 0 0 0 var(--px) #ffd84a; animation: ckStar .9s ease-out forwards; }
-@keyframes ckStar { from { transform: translate(0, 0) scale(1.4) rotate(0); opacity: 1; } to { transform: translate(var(--dx), var(--dy)) scale(.2) rotate(180deg); opacity: 0; } }
-.ck-float { position: absolute; transform: translate(-50%, -50%); font-family: var(--font-display); font-size: calc(var(--px) * 9); white-space: nowrap; pointer-events: none;
-  text-shadow: 0 var(--px) 0 #000, var(--px) 0 0 #000, calc(var(--px) * -1) 0 0 #000, 0 calc(var(--px) * -1) 0 #000; animation: ckFloat .9s ease-out forwards; }
-@keyframes ckFloat { 0% { transform: translate(-50%, -50%) scale(.5); } 20% { transform: translate(-50%, -60%) scale(1.15); } 100% { transform: translate(-50%, calc(-50% - var(--px) * 14)) scale(1); opacity: 0; } }
 
 /* ---------- meters: glass tubes on a notched plank, the doneness bar, the kneading board ---------- */
 .ck-gauge { position: absolute; right: calc(var(--px) * 8 + var(--sar)); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: calc(var(--px) * 3); animation: ckGaugeIn .3s cubic-bezier(.2,1.4,.4,1); }

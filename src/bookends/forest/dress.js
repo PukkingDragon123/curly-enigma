@@ -230,7 +230,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
     for (const d of [-3.4, -2.75, -2.15, 2.15, 2.7, 3.3]) slab(B.s + d, rng.range(-0.12, 0.12), d < 0 ? 1 : 0);
     sg.forEach((g, v) => add(g, stiffMat, si[v], 'slabs', { cell: 26, cull: pick3(20, 24, 32) }));
     // roots creeping out across the trail's edge where the gate giants stand over it
-    const rg = [G(makeRootArcGeo(9321, { span: 1.5, r: 0.07, rise: 0.12 }))];
+    const rg = [G(makeRootArcGeo(9321, { span: 1.1, r: 0.055, rise: 0.1 }))];
     const ri = [[]];
     for (const g of FOREST.giants.slice(0, 3)) {
       let best = 0, bd = 1e9;
@@ -239,11 +239,11 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
         const s = best + (i - 1) * 1.1 + rng.range(-0.2, 0.2);
         const P = tr.at(s);
         const side = Math.sign((g.x - P.x) * -P.tz + (g.z - P.z) * P.tx) || 1; // the giant's side of the trail
-        const [x, z] = tr.beside(s, side * rng.range(0.75, 1.0));
+        const [x, z] = tr.beside(s, side * rng.range(1.1, 1.3));
         ri[0].push({ x, y: groundH(x, z) - 0.03, z, ry: P.yaw + Math.PI / 2 + rng.range(-0.35, 0.35), s: rng.range(0.75, 1.1) });
       }
     }
-    ri.forEach((l, v) => add(rg[v], stiffMat, l, 'roots', { outline: true }));
+    ri.forEach((l, v) => add(rg[v], stiffMat, l, 'roots', { cell: 30 }));
   }
 
   // ---- toadstools on the fallen logs and the stumps (not on phones: a draw each for little)
@@ -311,16 +311,19 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
   const woodMat = stiffMat;
   /**
    * Hang a leafy bough into the view from camera pos toward look: it comes in from one top corner
-   * (side -1 left, 1 right), dist metres out, and droops across the frame's upper edge.
+   * (side -1 left, 1 right; nearer 0, nearer the middle), dist metres out, and droops across the
+   * frame's upper edge (up: where its limb runs, in half-heights of the view). fov (vertical,
+   * degrees) and aspect: the camera's, so it lands in the frame on a tall phone too.
    */
-  const frame = (pos, look, { side = -1, dist = 2.2, up = 0.55, len = 3.0, seed = 9601, leaf, yaw = 0 } = {}) => {
+  const frame = (pos, look, { side = -1, dist = 2.2, up = 1.05, len = 3.0, seed = 9601, leaf, yaw = 0, fov = 48, aspect = 16 / 9 } = {}) => {
     const f = new THREE.Vector3().subVectors(look, pos).normalize();
     const r = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 1, 0)).normalize();
     const u = new THREE.Vector3().crossVectors(r, f).normalize();
     const geo = makeBoughGeo(seed, { len, kw: 24, kl: 24, ...(leaf ? { leaf } : {}) });
     G(geo.wood); G(geo.leaves);
     boughGeos.push(geo);
-    const anchor = pos.clone().addScaledVector(f, dist).addScaledVector(r, side * (dist * 0.95 + len * 0.45)).addScaledVector(u, dist * up);
+    const halfH = dist * Math.tan(THREE.MathUtils.degToRad(fov) / 2), halfW = halfH * aspect;
+    const anchor = pos.clone().addScaledVector(f, dist).addScaledVector(r, side * (halfW * 0.9 + len * 0.45)).addScaledVector(u, halfH * up);
     const g = new THREE.Group();
     const w = new THREE.Mesh(geo.wood, woodMat), l = new THREE.Mesh(geo.leaves, boughLeafMat);
     w.layers.enable(1);

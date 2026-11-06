@@ -399,28 +399,9 @@ export class CookUI {
     setTimeout(() => n.remove(), 1150);
   }
 
+  /** The step's grade (perfect | great | good | oops). No word on screen: the scene answers with sound and sparks. */
   feedback(score) {
-    const kind = score >= 90 ? 'perfect' : score >= 75 ? 'great' : score >= 50 ? 'good' : 'oops';
-    const word = { perfect: 'PERFECT!', great: 'GREAT!', good: 'GOOD', oops: 'OOPS!' }[kind];
-    const n = el('div', { class: 'ck-big ck-fb ' + kind }, [el('span', { class: 'ck-word' }, word), el('span', { class: 'ck-pts' }, [stampImg(score), `${Math.round(score)} pts`])]);
-    this.layer.append(n);
-    if (kind === 'perfect' || kind === 'great') {
-      for (let i = 0; i < (kind === 'perfect' ? 16 : 8); i++) {
-        const a = (i / 16) * Math.PI * 2 + Math.random() * 0.3, r = 120 + Math.random() * 120;
-        const s = el('i', { class: 'ck-star', style: { left: '50%', top: '45%', animationDelay: `${Math.random() * 0.15}s` } });
-        s.style.setProperty('--dx', `${Math.cos(a) * r}px`);
-        s.style.setProperty('--dy', `${Math.sin(a) * r * 0.6}px`);
-        n.append(s);
-      }
-    }
-    setTimeout(() => n.remove(), 1400);
-    return kind;
-  }
-
-  floatAt(text, x, y, color = '#fff') {
-    const n = el('div', { class: 'ck-float', style: { left: x + 'px', top: y + 'px', color } }, text);
-    this.layer.append(n);
-    setTimeout(() => n.remove(), 950);
+    return score >= 90 ? 'perfect' : score >= 75 ? 'great' : score >= 50 ? 'good' : 'oops';
   }
 
   // ------------------------------------------------------------------ widgets

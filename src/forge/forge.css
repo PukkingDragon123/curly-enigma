@@ -339,8 +339,6 @@
 .fg-cert-btns .fg-stampbtn { font-size: 1.05em; }
 
 /* ---------------------------------------------------------------- floating words, rings, rulers, hints */
-.fg-float { position: absolute; transform: translate(-50%, -50%); font-family: var(--font-display); font-size: 1.6em; white-space: nowrap; pointer-events: none; text-shadow: 0 var(--px) 0 #000, var(--px) 0 0 #000, calc(var(--px) * -1) 0 0 #000, 0 calc(var(--px) * -1) 0 #000; animation: fgFloat 1.3s ease-out forwards; }
-@keyframes fgFloat { 0% { transform: translate(-50%, -30%) scale(.6); opacity: 0; } 15% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; } 30% { transform: translate(-50%, -55%) scale(1); } 100% { transform: translate(-50%, -140%); opacity: 0; } }
 .fg-ring { position: absolute; border: calc(var(--px) * 1.5) solid; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 0 var(--px) #000; }
 .fg-tip { position: absolute; transform: translate(-50%, -100%); font-size: .7em; white-space: nowrap; text-shadow: 0 var(--px) 0 #000; color: var(--text-light); pointer-events: none; }
 .fg-ruler { position: absolute; height: calc(var(--px) * 7); transform: translateY(-50%); pointer-events: none; }

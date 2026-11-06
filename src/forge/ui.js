@@ -1,7 +1,8 @@
 // Forge DOM widgets layered in game.ui.world, drawn as decorated objects (pixel art from
 // forgeArt.js, styles in forge.css): the brass thermometer with its glass bulb and burner flame,
 // the rune-ring strike gauge, rune medallions for the steps, brass gauges for the stats, the
-// guild certificate for results, floating words and the touch screen's big action button.
+// guild certificate for results and the touch screen's big action button (no floating words:
+// ForgeScene.pop answers with sparks and smoke in the world).
 import { el, clamp } from '../core/util.js';
 import { gaugeGradient, glowCss, glowHex, glowAmount, heatWord } from './blackbody.js';
 import { Px, art, INK } from '../ui/uiArt.js';
@@ -285,14 +286,6 @@ export function certificate(o) {
 export function confirmText(title, body) {
   const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
   return `<b>${esc(title)}</b><span style="display:block;margin-top:calc(var(--px) * 4)">${esc(body)}</span>`;
-}
-
-/** Big pop-up word at a screen point. */
-export function popWord(parent, text, x, y, color = '#fff', size = 1) {
-  const n = el('div', { class: 'fg-float', style: { left: x + 'px', top: y + 'px', color, fontSize: size * 1.6 + 'em' } }, text);
-  parent.append(n);
-  setTimeout(() => n.remove(), 1350);
-  return n;
 }
 
 // ---------------------------------------------------------------- touch: the big action button

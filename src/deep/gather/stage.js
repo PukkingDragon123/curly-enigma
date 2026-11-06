@@ -253,9 +253,15 @@ export class Stage {
       life: 0.7 + Math.random() * 0.5, size: 0.005 + Math.random() * 0.004, color, alpha: 0.9, glow: true, drag: 1.2, grav: -0.1 });
   }
 
-  /** A word that pops up in the world (drawn by the HUD at this local point). */
-  word(text, color = '#fff4d8', x = 0, y = 0.2, z = 0, big = false) {
-    this.pops.push({ text, color, pos: new THREE.Vector3(x, y, z), t: 0, big, id: Math.random() });
+  /**
+   * Floating words are gone: the plant, the sparks and the sounds say how it went. Kept for the
+   * stages' old calls; a cheerful (gold or green) one still leaves a faint shimmer at the spot.
+   */
+  word(text, color = '#fff4d8', x = 0, y = 0.2, z = 0) {
+    const n = parseInt(String(color).replace('#', ''), 16) || 0;
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    if (r > 200 && g > 180 && b < 140) this.sparkle(x, y - 0.03, z, 6, [1, 0.9, 0.45], 0.35);
+    else if (g > r + 20 && g > b) for (let i = 0; i < 3; i++) this.motes(x, y - 0.03, z);
   }
 
   /** Occluder list: every mesh the paws should go behind. */

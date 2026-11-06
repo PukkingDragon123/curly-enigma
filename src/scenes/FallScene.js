@@ -181,8 +181,11 @@ export default class FallScene extends Scene {
     // boughs hanging into the opening crane (it starts up among them and sinks below)
     {
       const o = this.shot(0, 0.3, { pos: new THREE.Vector3(), look: new THREE.Vector3() });
-      this.dress.frame(o.pos, o.look, { side: -1, dist: 2.4, up: 0.5, len: 3.2, seed: 9601 });
-      this.dress.frame(o.pos, o.look, { side: 1, dist: 3.6, up: 0.62, len: 2.6, seed: 9613, yaw: 0.2 });
+      this.updateCamera(0.3, 0);
+      const fr = { fov: this.camera.fov, aspect: this.camera.aspect };
+      this.dress.frame(o.pos, o.look, { ...fr, side: -1, dist: 2.4, up: 1.0, len: 3.2, seed: 9601 });
+      this.dress.frame(o.pos, o.look, { ...fr, side: 1, dist: 3.6, up: 1.1, len: 2.6, seed: 9613, yaw: 0.2 });
+      this.dress.frame(o.pos, o.look, { ...fr, side: -0.45, dist: 4.6, up: 1.12, len: 3.4, seed: 9629, yaw: -0.25 });
     }
     // frame the opening shot now: the fade-in draws a few frames before the first update
     this.updateCamera(0, 0);
