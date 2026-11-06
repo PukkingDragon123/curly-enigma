@@ -157,24 +157,18 @@ export function drawWeaponArt(pc, type, metalColor, infusionColor) {
       break;
     }
     case 'rapier': {
-      knob(pc, -11.8, 0, 1.7, F);
-      grip(pc, -10.8, -6.8, -1, 1, F, { period: 2 });
-      // knuckle bow: one clean swept bar from the quillon round to the pommel
-      const bow = M();
-      for (let i = 0; i <= 80; i++) {
-        const s = i / 80;
-        const A = -6.2 + (-10.9 + 6.2) * s, d = 3.2 + Math.sin(s * Math.PI) * 2.6 - s * 1.8;
-        const [x, y] = diagAt(A, d); bow.set(Math.floor(x), Math.floor(y));
-      }
-      seam(pc, bow, 'shadow');
-      bow.each((x, y) => { const [A] = Ad(x, y); pc.set(x, y, F[A > -8 ? 2 : 3]); });
+      knob(pc, -11.6, 0, 1.7, F);
+      grip(pc, -10.6, -6.8, -1, 1, DL, { period: 3 });
+      // gold wire twisted along the grip
+      const gw = diagMask((A, d) => A >= -10.4 && A <= -7 && d === -1);
+      gw.each((x, y) => { if (y % 3 === 1) pc.set(x, y, F[1]); });
       head = blade(pc, -5.4, 13.6, (A) => (A < 9 ? 1 : 1 - (A - 9) * 0.2), (A) => (A < 1 ? 1 : 0.4), R, { ridge: 0 });
-      crossbar(pc, (d) => -6.2 + 0.05 * d * d, -4.4, 3.4, 0.8, F, { knobs: [[-4.4, 1]] });
-      // a small shell plate where the blade leaves the hilt
-      const [sx, sy] = diagAt(-5.4, -1.6);
-      const shell = M().disk(sx, sy, 1.5);
-      seam(pc, shell, 'shadow');
-      shell.each((x, y) => pc.set(x, y, F[(x + 0.5 - sx) + (y + 0.5 - sy) < 0 ? 1 : 3]));
+      // swept quillons and a side ring
+      crossbar(pc, (d) => -6.1 + 0.07 * d * Math.abs(d), -4.4, 4.4, 0.9, F, { knobs: [[-4.4, 1], [4.4, 1]] });
+      const [rx, ry] = diagAt(-4.7, -1.9);
+      const ring = M().disk(rx, ry, 1.7).sub(M().disk(rx, ry, 0.75));
+      seam(pc, ring, 'shadow');
+      ring.each((x, y) => pc.set(x, y, F[(x + 0.5 - rx) + (y + 0.5 - ry) < 0 ? 1 : 3]));
       runeLine = [-3, 9, 0];
       glints = [diagAt(4, -1)];
       break;
@@ -206,21 +200,21 @@ export function drawWeaponArt(pc, type, metalColor, infusionColor) {
       wrapStick(pc, x0, y0, x1, y1, 1.15, 0.3, 8, DL, { period: 2.3, slant: 0.8, grow: 0.4 });
       // bearded head in a local frame on the haft: u along (toward the tip), w across (toward the edge)
       const L = frame(A0, dh);
-      const body = L.poly([[3.4, -2.6], [3.4, 2.2], [2.2, 4.4], [3.2, 6.6], [4.5, 8.4], [3.6, 9.6], [1.4, 10.4], [-1.4, 10.7], [-4.2, 10.3], [-6.6, 9.3], [-8.4, 7.8], [-7.4, 7.1], [-5.8, 6.1], [-4, 4.6], [-3, 3], [-3, -2.6]]);
+      const body = L.poly([[2.6, -3.2], [3.4, -1.6], [3.4, 2.2], [2.4, 3.8], [3.2, 6], [5.2, 8.4], [4.2, 9.6], [1.6, 10.5], [-1.6, 10.8], [-4.8, 10.2], [-7.6, 8.4], [-9.6, 5.6], [-8.6, 4.6], [-6.6, 3.6], [-4.6, 3], [-3.2, 2.4], [-3.2, -1.6], [-2.2, -3.2]]);
       seam(pc, body, 'shadow');
       // planes: socket block (raised) with a short poll behind, cheek, polished edge bevel
       body.each((x, y) => {
         const [u, w] = L.uw(x, y);
         let k;
-        if (w < 2.4) k = isTop(body, x, y) ? 1 : u > 1.8 ? 2 : u < -1.8 ? 4 : 3;
-        else k = isTop(body, x, y) ? 2 : 3;
+        if (w < 2.4) k = isTop(body, x, y) ? 1 : u > 1.6 ? 2 : u < -1.6 ? 4 : 3;
+        else k = isTop(body, x, y) ? 2 : w < 3.6 ? 4 : 3;
         if (isBot(body, x, y)) k = Math.max(k, 4);
         pc.set(x, y, R[k]);
       });
       const inner = body.clone().erode(2), inner2 = inner.clone().erode(1);
       body.each((x, y) => {
         const [, w] = L.uw(x, y);
-        if (w < 7) return;
+        if (w < 6.6) return;
         if (!inner.get(x, y)) pc.set(x, y, R[isBot(body, x, y) ? 2 : 1]);
         else if (!inner2.get(x, y)) pc.set(x, y, R[4]);
       });
