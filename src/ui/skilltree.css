@@ -98,8 +98,8 @@
   -webkit-mask: linear-gradient(to right, transparent, #000 calc(var(--s) * 24));
           mask: linear-gradient(to right, transparent, #000 calc(var(--s) * 24));
 }
-.skt-row.clip { color: transparent; text-shadow: none; }
 .skt-row.root { color: #f0c860; border-bottom-color: rgba(240, 200, 120, .55); font-size: calc(var(--fs) * .9); -webkit-mask: none; mask: none; }
+.skt-row.clip { color: transparent; text-shadow: none; }
 
 /* ---- a node: frame, icon, gem, rank plate (+ chains) */
 .skt-node {
