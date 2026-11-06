@@ -23,11 +23,12 @@ varying vec3 vColor;
 uniform float uRound;
 void main() {
   if (vAlpha <= 0.004) discard;
-  if (uRound > 0.5) {
-    vec2 d = gl_PointCoord - 0.5;
-    if (dot(d, d) > 0.25) discard;
-  }
-  gl_FragColor = vec4(vColor, vAlpha);
+  // every spark, ember and puff is a tiny voxel (never a round dot): a lit top face and a shaded
+  // side; "round" puffs (uRound) just lose their four corner cells, like a chunky voxel clump
+  vec2 u = gl_PointCoord;
+  if (uRound > 0.5 && (u.x < 0.2 || u.x > 0.8) && (u.y < 0.2 || u.y > 0.8)) discard;
+  vec3 c = u.y < 0.34 ? vColor * 1.2 : u.x > 0.66 ? vColor * 0.7 : vColor;
+  gl_FragColor = vec4(c, vAlpha);
 }`;
 
 const _c0 = new THREE.Color();

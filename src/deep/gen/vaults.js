@@ -88,7 +88,7 @@ export function dressVaults(plan, density) {
       }
     }
     // glowing crystal clusters on the walls and the roof (and the light they give)
-    const nCl = r.int(2, 4);
+    const nCl = r.int(3, 5);
     for (let k = 0, tries = 0; k < nCl && tries < 24; tries++) {
       let ax, ay, az, nx, ny, nzz;
       if (r() < 0.35) {
@@ -116,8 +116,8 @@ export function dressVaults(plan, density) {
       const cl = makeCluster(ax, ay, az, nx, ny, nzz, D.cry, r, 1);
       cl.vault = v.id;
       plan.clusters.push(cl);
-      const L = D.light, s = r.range(0.75, 1.05);
-      plan.lights.push({ x: ax + nx * 1.1, y: ay + ny * 1.1, z: az + nzz * 1.1, c: [L[0] * s, L[1] * s, L[2] * s], r: r.range(8, 11), crystal: true, vault: v.id });
+      const L = D.light, s = r.range(1.2, 1.6);
+      plan.lights.push({ x: ax + nx * 1.1, y: ay + ny * 1.1, z: az + nzz * 1.1, c: [L[0] * s, L[1] * s, L[2] * s], r: r.range(10, 13), crystal: true, vault: v.id });
       k++;
     }
   }

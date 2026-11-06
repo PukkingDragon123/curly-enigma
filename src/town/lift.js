@@ -12,7 +12,7 @@ import { signCanvas } from '../iso/pixel.js';
 import { TOWN } from '../iso/townLayout.js';
 import { ceilingInfo } from './cave.js';
 import { M } from './units.js';
-import { voxelMaterial } from '../gfx/Voxel.js';
+import { voxMesh } from '../bookends/vox.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 
 const CAGE = 1.86; // cage width (TU)
@@ -199,33 +199,6 @@ export function coalCart(seed = 2) {
   return { obj: M32(g, [15, 0, 20]), shadow: { rx: 0.55, rz: 0.75, k: 0.55 } };
 }
 
-/** A W×H pixel texture (1/32 TU texels, row 0 at the bottom); the colour function's 0 is see-through. */
-function pixelTexture(W, H, pix) {
-  const cv = document.createElement('canvas');
-  cv.width = W; cv.height = H;
-  const ctx = cv.getContext('2d');
-  const img = ctx.createImageData(W, H);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const c = pix(x, y);
-    if (!c) continue;
-    const i = ((H - 1 - y) * W + x) * 4;
-    img.data[i] = (c >> 16) & 255; img.data[i + 1] = (c >> 8) & 255; img.data[i + 2] = c & 255; img.data[i + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-/** Flat pixel panels (a lattice): double-sided, alpha-tested, lit like the voxels and outlined. */
-function pixelMesh(geo, tex) {
-  const mat = new THREE.MeshToonMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, gradientMap: voxelMaterial('toon').gradientMap });
-  const m = new THREE.Mesh(geo, mat);
-  m.layers.enable(LAYER_OUTLINE);
-  m.userData.noBatch = true;
-  return m;
-}
-
 /** The brass cage (local origin = floor centre). Returns { obj, gate, lamp, cableTop }. */
 export function liftCage() {
   const S = Math.round(CAGE * 32), Hh = Math.round(CAGE_H * 32);
@@ -259,12 +232,18 @@ export function liftCage() {
   const lampGlow = G32(glow, [S / 2, 0, S / 2]);
   lampGlow.userData.ol = false;
   const body = group(shell, lampGlow);
-  const tex = pixelTexture(S, Hh, panelPix);
+  // the lattice panels: one voxel thick (1/32), three sides
   const place = (rotY, x, z) => new THREE.Matrix4().makeRotationY(rotY).setPosition(x, 0, z);
-  const pg = (m) => new THREE.PlaneGeometry(S / 32, Hh / 32).translate(0, Hh / 64, 0).applyMatrix4(m);
-  const panels = pixelMesh(mergeGeometries([
+  const lat = new VoxelGrid(S, Hh, 1);
+  for (let y = 0; y < Hh; y++) for (let u = 0; u < S; u++) { const c = panelPix(u, y); if (c) lat.set(u, y, 0, c); }
+  const lm = voxMesh(lat, { scale: 1 / 32, pivot: [S / 2, 0, 0.5] });
+  const pg = (m) => lm.geometry.clone().applyMatrix4(m);
+  const panels = new THREE.Mesh(mergeGeometries([
     pg(place(0, 0, -S / 2 / 32 + 0.5 / 32)), pg(place(Math.PI / 2, -S / 2 / 32 + 0.5 / 32, 0)), pg(place(-Math.PI / 2, S / 2 / 32 - 0.5 / 32, 0)),
-  ]), tex);
+  ]), lm.material);
+  panels.layers.mask = lm.layers.mask;
+  panels.userData.noBatch = true;
+  lm.geometry.dispose();
   body.add(panels);
   // the folding gate across the front (slides sideways)
   const gatePix = (x, y) => {
@@ -272,7 +251,10 @@ export function liftCage() {
     const d = (x + y) % 10 === 0 || (x - y + 1000) % 10 === 0;
     return d || y === 0 || y === Hh - 7 || y === 22 || x === S - 2 ? (y === 22 ? 0xffe08a : C.brass) : 0;
   };
-  const gate = pixelMesh(new THREE.PlaneGeometry(S / 32, (Hh - 6) / 32).translate(0, (Hh - 6) / 64, 0.5 / 32), pixelTexture(S, Hh - 6, gatePix));
+  const gg = new VoxelGrid(S, Hh - 6, 1);
+  for (let y = 0; y < Hh - 6; y++) for (let x = 0; x < S; x++) { const c = gatePix(x, y); if (c) gg.set(x, y, 0, c); }
+  const gate = voxMesh(gg, { scale: 1 / 32, pivot: [S / 2, 0, 0] });
+  gate.userData.noBatch = true;
   gate.position.set(0, 3 / 32, (S / 2 - 1) / 32);
   body.add(gate);
   return { obj: body, gate, size: S / 32, height: Hh / 32, lamp: { x: 0, y: (Hh - 6) / 32, z: 0 } };

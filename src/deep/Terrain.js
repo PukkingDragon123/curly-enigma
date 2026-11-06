@@ -8,6 +8,7 @@ import { CS } from './Generator.js';
 import { VOX } from './materials.js';
 import { meshChunk, meshChunkFluid, fillPad, rawToGeometry, PAD, FLUID } from './Mesher.js';
 import { makeTerrainMaterial, makeFluidMaterial } from './TerrainMaterial.js';
+import { vaultAt } from './gen/network.js';
 
 const CM = CS / VOX; // chunk size in meters
 
@@ -53,12 +54,15 @@ export class TerrainView {
       this.build(ch);
     }
     // 2. new chunks, nearest first (re-sorted when the player crosses a chunk border)
-    const key = pcx + ',' + pcy + ',' + pcz;
+    // in a giant cavern the roof is far overhead: stream a little higher there (the fog still
+    // hides the rest; most chunks over a roof are solid rock and cost nothing)
+    const inV = !!vaultAt(w.plan?.net, x, y, z, 0.1);
+    const key = pcx + ',' + pcy + ',' + pcz + (inV ? 'v' : '');
     if (key !== this.lastKey) {
       this.lastKey = key;
       const R = this.radius, list = [];
-      for (let dz = -R; dz <= R; dz++) for (let dy = -R + 1; dy <= R - 1; dy++) for (let dx = -R; dx <= R; dx++) {
-        const d2 = dx * dx + dy * dy * 1.4 + dz * dz;
+      for (let dz = -R; dz <= R; dz++) for (let dy = -R + 1; dy <= R - (inV ? 0 : 1); dy++) for (let dx = -R; dx <= R; dx++) {
+        const d2 = dx * dx + dy * dy * (inV && dy > 0 ? 0.85 : 1.4) + dz * dz;
         if (d2 > R * R) continue;
         list.push([d2, pcx + dx, pcy + dy, pcz + dz]);
       }

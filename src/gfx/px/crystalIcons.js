@@ -295,80 +295,84 @@ function amethyst(pc) {
   const rng = makeRng(71);
   const pts = [];
   for (let i = 0; i < 11; i++) {
-    const a = (i / 11) * Math.PI * 2 + rng.range(-0.2, 0.2), r = 1 - rng.range(0, 0.22);
-    pts.push([Math.cos(a) * 14 * r, Math.sin(a) * 12.5 * r, 0]); // cut rim
-    if (i % 2 === 0) { const r2 = 1 - rng.range(0, 0.15); pts.push([Math.cos(a) * 12 * r2, Math.sin(a) * 10.5 * r2, -7.5 * r2]); }
+    const a = (i / 11) * Math.PI * 2 + rng.range(-0.2, 0.2), r = 1 - rng.range(0, 0.16);
+    pts.push([Math.cos(a) * 15 * r, Math.sin(a) * 14.4 * r, 0]); // cut rim
+    if (i % 2 === 0) { const r2 = 1 - rng.range(0, 0.15); pts.push([Math.cos(a) * 13.4 * r2, Math.sin(a) * 12.4 * r2, -7.5 * r2]); }
   }
   pts.push([0, 0, -13], [5, 3, -11.5], [-5, 2, -11.5], [0, 6, -10]);
-  const P = xf(pts, { rx: 0.95, t: [16, 12.5, 0] });
+  const P = xf(pts, { rx: 0.72, t: [15.6, 13.4, 0] });
   const geo = sc.hull(shell, P);
-  // a lump of host rock still stuck to it, and a chipped, ragged outline
-  sc.chunk(shell, makeRng(72), { x: 25, y: 22.5, a: 4.5, c: 4, h: 5, n: [5, 5, 4], jag: 0.3, p: 0.7, z: -1, group: 7 });
+  sc.chunk(shell, makeRng(72), { x: 26.4, y: 25.4, a: 3.4, c: 3.2, h: 3.6, n: [5, 5, 4], jag: 0.3, p: 0.7, z: -2, group: 7 });
   geo.g = 7;
-  sc.roughen(sc.objs, { amount: 0.34, scale: 0.6, seed: 21, depth: 1 });
+  sc.roughen(sc.objs, { amount: 0.3, scale: 0.6, seed: 21, depth: 1 });
   sc.render(pc);
   // the cut face: the face whose normal is closest to the cut plane normal
-  const cutN = xf([[0, 0, 1]], { rx: 0.95 })[0];
+  const cutN = xf([[0, 0, 1]], { rx: 0.72 })[0];
   let cut = null, best = -1;
   for (const f of geo.faces) { const d = f.n[0] * cutN[0] + f.n[1] * cutN[1] + f.n[2] * cutN[2]; if (d > best) { best = d; cut = f; } }
-  // the break is ragged: the opened face is a jagged inset of the cut plane (polar teeth)
   const onFace = (x, y) => sc.pidAt(x, y) === cut.pid;
   let fx = 0, fy = 0, fn = 0;
   for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (onFace(x, y)) { fx += x + 0.5; fy += y + 0.5; fn++; }
   fx /= fn; fy /= fn;
+  // the break is ragged: the opened face is a jagged inset of the cut plane
   const ext = new Float32Array(48);
   for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (onFace(x, y)) {
     const b = Math.floor(((Math.atan2(y + 0.5 - fy, x + 0.5 - fx) + Math.PI) / (Math.PI * 2)) * 48) % 48;
     ext[b] = Math.max(ext[b], Math.hypot(x + 0.5 - fx, y + 0.5 - fy));
   }
-  const jag = (b) => 0.86 + 0.1 * vnoise(b * 0.7, 0, 8) + (hash2(b, 9, 3) < 0.3 ? -0.1 : 0);
+  const jag = (b) => 0.9 + 0.07 * vnoise(b * 0.7, 0, 8) + (hash2(b, 9, 3) < 0.25 ? -0.07 : 0);
   const inCut = (x, y) => {
     if (!onFace(x, y)) return false;
     const a = (Math.atan2(y + 0.5 - fy, x + 0.5 - fx) + Math.PI) / (Math.PI * 2) * 48, b = Math.floor(a) % 48;
     const e = Math.min(ext[b] || 99, ext[(b + 1) % 48] || 99, ext[(b + 47) % 48] || 99);
     return Math.hypot(x + 0.5 - fx, y + 0.5 - fy) < e * jag(b) - 0.3;
   };
-  // distance from the rim inside the cut face (chamfer)
   const D = new Float32Array(1024).fill(99);
   for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
     if (!inCut(x, y)) continue;
     let d = 99;
-    for (let j = -6; j <= 6; j++) for (let i = -6; i <= 6; i++) if (!inCut(x + i, y + j)) d = Math.min(d, Math.hypot(i, j * 1.25));
-    D[y * 32 + x] = d;
+    for (let j = -6; j <= 6; j++) for (let i = -6; i <= 6; i++) if (!inCut(x + i, y + j)) d = Math.min(d, Math.hypot(i, j * 1.2));
+    D[y * 32 + x] = Math.min(d, 8); // deep inside the face: still the hollow
   }
   const AR = CR.amethyst();
-  const rind = [0xf4f0f8, 0xc9c2d6, 0xe8e2ee, 0x9d94b4];
+  // agate rind: a white chalcedony skin, a grey-blue band, then the violet root of the crystals
+  const RIND = [0xf6f2fa, 0xb8b4cc, 0xd8d4e6, 0x8a84a8];
+  let cx = 0, cy = 0, n = 0;
   for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
     const d = D[y * 32 + x];
     if (d > 90) continue;
-    if (d < 1.1) pc.set(x, y, x + y < 28 ? rind[0] : rind[3]);
-    else if (d < 1.8) pc.set(x, y, rind[1]);
-    else if (d < 2.4) pc.set(x, y, rind[2]);
-    else pc.set(x, y, AR[6]);
+    if (d < 1.1) pc.set(x, y, (x + 0.5 - fx) * 0.6 + (y + 0.5 - fy) * 0.8 < 0 ? RIND[0] : RIND[3]);
+    else if (d < 1.7) pc.set(x, y, RIND[1]);
+    else if (d < 2.3) pc.set(x, y, RIND[2]);
+    else { pc.set(x, y, AR[5]); cx += x + 0.5; cy += y + 0.5; n++; }
   }
-  // crystal lining: a ring of jittered sawtooth points round a dark hollow
-  const cav = (x, y) => D[y * 32 + x] >= 2.4 && D[y * 32 + x] < 90;
-  let cx = 0, cy = 0, n = 0, dmax = 0;
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (cav(x, y)) { cx += x + 0.5; cy += y + 0.5; n++; dmax = Math.max(dmax, D[y * 32 + x]); }
   cx /= n; cy /= n;
-  const NT = 13;
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-    if (!cav(x, y)) continue;
-    const th = Math.atan2(y + 0.5 - cy, (x + 0.5 - cx) * 0.8) + Math.PI;
-    const f = (th / (Math.PI * 2)) * NT, ti = Math.floor(f), ph = f - ti;
-    const depth = (dmax - 2.4) * (0.6 + hash2(ti, 3, 7) * 0.45);
-    const rho = D[y * 32 + x] - 2.4; // 0 at the rind
-    const tri = 1 - Math.abs(ph * 2 - 1);
-    if (rho < depth * tri + 0.6) {
-      // which flank faces the light: the tooth's flanks turn round the ring
-      const tang = th + (ph < 0.5 ? -Math.PI / 2 : Math.PI / 2);
-      const lit = Math.cos(tang) * -0.55 + Math.sin(tang) * -0.8 > 0;
-      const tipward = rho > depth * tri * 0.55;
-      pc.set(x, y, AR[lit ? (tipward ? 1 : 2) : (tipward ? 3 : 4)]);
-    } else pc.set(x, y, rho > depth + 0.8 ? 0x12061e : AR[5]);
+  const hollow = (x, y) => D[y * 32 + x] >= 2.3 && D[y * 32 + x] < 90;
+  // the hollow itself: dark violet, deepest just below the middle
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (hollow(x, y)) {
+    const r = Math.hypot((x + 0.5 - cx) / 1.25, y + 0.5 - cy - 0.6);
+    pc.set(x, y, r < 2.2 ? 0x16081f : r < 3.6 ? AR[6] : AR[5]);
   }
-  glint(pc, Math.round(cx) - 3, Math.round(cy) - 2, 1, 0xffffff, AR[1]);
-  glint(pc, Math.round(cx) + 3, Math.round(cy) + 2, 0, 0xffffff, AR[1]);
+  // a ring of distinct crystal points rooted in the rind, leaning in over the hollow and up at
+  // the viewer: real little faceted prisms (a second scene, clipped to the hollow)
+  const sc2 = new Scene(32);
+  const XM = crystalMat(AR, { root: 3, streak: false });
+  const NK = 11;
+  for (let k = 0; k < NK; k++) {
+    const th = (k / NK) * Math.PI * 2 + 0.25 + (hash2(k, 1, 5) - 0.5) * 0.3;
+    const ux = Math.cos(th) * 1.3, uy = Math.sin(th);
+    let r = 0.5;
+    while (r < 16 && hollow(Math.floor(cx + ux * r), Math.floor(cy + uy * r))) r += 0.25;
+    const bx = cx + ux * (r + 0.6), by = cy + uy * (r + 0.6);
+    const len = 3.6 + hash2(k, 2, 5) * 2.2;
+    sc2.prism(XM, { b: [bx, by, -1], d: [-Math.cos(th) * 0.8, -Math.sin(th) * 0.8, 0.75], len, r: 1.35 + hash2(k, 3, 5) * 0.5, tip: 2.2, sides: 5, twist: k * 0.7 });
+  }
+  for (const [x, y, l] of [[cx - 2.4, cy + 1.6, 3], [cx + 2, cy + 0.6, 2.6], [cx - 0.2, cy - 1, 2.2]]) sc2.prism(XM, { b: [x, y, -4], d: [0.1, -0.35, 1], len: l, r: 1.1, tip: 1.6, sides: 5, twist: x });
+  const tmp = new pc.constructor(32);
+  sc2.render(tmp);
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (hollow(x, y) && tmp.alpha(x, y) > 0) pc.set(x, y, tmp.getHex(x, y));
+  glint(pc, Math.round(cx) - 5, Math.round(cy) - 3, 1, 0xffffff, AR[1]);
+  glint(pc, Math.round(cx) + 4, Math.round(cy) + 2, 0, 0xffffff, AR[1]);
 }
 
 const DRAW = { quartz, salt_crystal: salt, lumite, echo_crystal: echo, gravium, bioxide, magmaite, frostite, voidstone, amethyst };

@@ -3,7 +3,7 @@
 // The voxel ingredient is really split at the knife, so sloppy cuts make uneven pieces.
 import { Step, V3, THREE } from './base.js';
 import { spriteCells, slabMesh, mainColor, itemName, pxFor } from '../food.js';
-import { dashTex } from '../tex.js';
+import { VoxelGrid, meshGridGreedy } from '../../gfx/Voxel.js';
 import { crumbs, sparkle } from '../fx.js';
 import { BOARD_TOP } from '../kitchen.js';
 import { clamp, damp } from '../../core/util.js';
@@ -42,12 +42,14 @@ export class ChopStep extends Step {
       this.lines.push({ b, x: this.bx(b), cut: false, score: 0 });
     }
     const len = (z1 - z0 + 1) * this.px + 0.14;
-    const tex = dashTex();
-    tex.repeat.set(1, len / 0.1);
+    // the cut guides: a dashed row of tiny voxels (1/80 m) along the board, one shared geometry
+    const vs = 1 / 80, nv = Math.max(2, Math.round(len / vs));
+    const dg = new VoxelGrid(1, 1, nv);
+    for (let k = 0; k < nv; k++) if (k % 2 === 0) dg.set(0, 0, k, 0xffffff);
+    const dash = meshGridGreedy(dg, { scale: vs, pivot: [0.5, 0, nv / 2], ao: false });
     for (const L of this.lines) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.016, len), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
-      m.rotation.x = -Math.PI / 2;
-      m.position.set(L.x, this.top + 0.004, this.base.z);
+      const m = new THREE.Mesh(L === this.lines[0] ? dash : dash.clone(), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }));
+      m.position.set(L.x, this.top + 0.001, this.base.z);
       m.renderOrder = 3;
       L.mesh = this.temp(m);
     }

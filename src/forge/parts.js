@@ -9,6 +9,7 @@
 //   partStatus(state, id) → { ok, why, done, ins: [{id, n, have}], hot }
 //   new PartRun(scene, id) → an activity (start, update, onEscape, dispose, touchAction, framePoints)
 import * as THREE from 'three';
+import { cellGlowTexture } from '../bookends/fx.js';
 import { el, clamp, lerp } from '../core/util.js';
 import { ITEMS } from '../data/items.js';
 import { METALS, FORGE_MAX_TEMP, gradeFor } from '../data/weapons.js';
@@ -814,21 +815,9 @@ export class PartRun {
 
 const _tmpC = new THREE.Color();
 
-/** Soft round glow behind the revealed part (the post pass dithers it into pixels). */
+/** A glow of light cells behind the revealed part (no round blob). */
 function makeHalo(color) {
-  const n = 64;
-  const c = document.createElement('canvas');
-  c.width = c.height = n;
-  const ctx = c.getContext('2d');
-  const col = new THREE.Color(color);
-  const g = ctx.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
-  const rgb = `${Math.round(col.r * 255)},${Math.round(col.g * 255)},${Math.round(col.b * 255)}`;
-  g.addColorStop(0, `rgba(${rgb},0.9)`);
-  g.addColorStop(0.35, `rgba(${rgb},0.4)`);
-  g.addColorStop(1, `rgba(${rgb},0)`);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, n, n);
-  const tex = new THREE.CanvasTexture(c);
+  const tex = cellGlowTexture(color); // light voxels, not a round gradient blob
   const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
   const s = new THREE.Sprite(mat);
   s.renderOrder = -1;

@@ -250,47 +250,38 @@ function blindfern(pc) {
 }
 
 function ashfern(pc) {
-  // a fire-scorched fern: two pale ash fronds arching over and drooping under the heat, the
-  // outer leaflets burnt to charcoal with a glowing rim, a young curl, a mound of grey ash
-  const R = mat(0xbab6a6, { cont: 1.1, sat: 0.6 });
-  const CH = mat(0x4e4844, { cont: 1.05 });
-  const STK = 0x4a4440;
-  const burnt = [];
-  const fr = (pts, n, len, char) => {
-    const at = spline(pts);
-    for (let i = n - 1; i >= 0; i--) {
-      const s = 0.16 + (i / n) * 0.8, [x, y] = at(s), [x2, y2] = at(Math.min(1, s + 0.03));
-      const ta = Math.atan2(y2 - y, x2 - x), l = len * (1 - s * 0.55) + 1;
-      for (const side of [-1, 1]) {
-        const a = ta + side * 1.0, ex = x + Math.cos(a) * l, ey = y + Math.sin(a) * l;
-        const m = leafMask(x, y, ex, ey, Math.max(1, l * 0.3), 0.4 * side);
-        const up = Math.sin(a) < 0.15;
-        const C = s > char ? CH : R;
-        seam(pc, m, 'shadow');
-        m.each((X, Y) => { const t = isTop(m, X, Y) && !isBot(m, X, Y), b = isBot(m, X, Y) && !isTop(m, X, Y); pc.set(X, Y, C[t ? 1 : b ? 4 : up ? 2 : 3]); });
-        if (s > char) burnt.push([ex, ey]);
-      }
-    }
-    let last = '';
-    for (let i = 0; i <= 80; i++) { const [x, y] = at(i / 80 * 0.98), k = Math.floor(x) + ',' + Math.floor(y); if (k === last) continue; last = k; pc.set(x, y, STK); }
-  };
-  fr([[13, 27], [10.4, 19.6], [6, 14], [2.6, 15.6]], 4, 4.6, 0.7);
-  fr([[15, 27], [16, 18.6], [20, 10.6], [25.4, 7.4], [29.4, 10.4]], 6, 5.6, 0.74);
-  const SM = mat(0x8a847a, { cont: 1.1 });
-  tube(pc, [[16.4, 27], [20.4, 24.6], [23, 22.4]], 0.8, SM, { bias: 0.1 });
-  const cu = []; for (let i = 0; i <= 14; i++) { const a = -1.2 - i * 0.5, r = 2.8 * (1 - i / 20); cu.push([23.4 + Math.cos(a) * r, 19.6 + Math.sin(a) * r]); }
-  tube(pc, cu, (s) => Math.max(0.5, 1 - s * 0.5), SM, { bias: 0.1 });
+  // a fire-scorched fern: two pale ash fronds and a young curl rising from a mound of grey ash,
+  // the tip of each frond burnt to charcoal with a glowing rim
+  // warm ash greys picked by hand (a generated ramp drifts violet in the shadows)
+  const R = [0xf2eee2, 0xdcd6c6, 0xc2bba8, 0xa29a86, 0x857c6a, 0x5e5648, 0x302a24];
+  const RR = [0xe0d8c8, 0xc0b8a6, 0xa49c8a, 0x8c8472, 0x6e6656, 0x4e463a, 0x2a241e];
+  const CH = mat(0x4a423c, { cont: 1.05 });
+  // wilted by the heat: both fronds arch over and hang their tips down
+  const L = [[12.6, 27.6], [10, 20.6], [6, 15.6], [2.8, 15.6], [1.6, 19.6]];
+  const Rt = [[14.4, 27.6], [15.4, 19], [19, 11.4], [24.2, 8], [28.4, 9.8], [29.6, 14.4]];
+  tube(pc, [[13.4, 27.6], [12.8, 22.6], [13.4, 17.6]], 0.85, RR, { bias: 0.1 });
+  fiddle(pc, 14.8, 15.2, 2.8, RR, 1);
+  fernFrond(pc, L, R, { pairs: 5, len: 4.4, RR });
+  fernFrond(pc, Rt, R, { pairs: 7, len: 5.2, RR });
+  const tips = [spline(L)(1), spline(Rt)(1)];
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+    const k = R.indexOf(pc.get(x, y)), kk = RR.indexOf(pc.get(x, y));
+    if ((k >= 0 || kk >= 0) && tips.some(([tx, ty]) => Math.hypot(x + 0.5 - tx, y + 0.5 - ty) < 5.2)) pc.set(x, y, CH[clamp(k >= 0 ? k : kk, 1, 5)]);
+  }
   const ASH = mat(0x9a948e, { cont: 1.05 });
-  const mound = loop([[5.6, 29.6], [8, 26.8], [12, 25.6], [17, 25.2], [21.4, 26], [24.4, 27.8], [25.4, 30.2], [15.6, 30.8]]);
+  const mound = loop([[5.6, 29.8], [8, 27], [12, 25.8], [16.6, 25.4], [21, 26.2], [24, 28], [25, 30.4], [15.6, 31]]);
   seam(pc, mound, 'shadow');
   form(pc, mound, ASH, { bias: 0.1 });
   for (const [x, y] of [[10, 28], [17, 27], [21, 28]]) { pc.set(x, y, ASH[1]); pc.set(x + 1, y + 1, ASH[4]); }
   ink(pc);
-  // the burnt leaflet tips glow along their ragged ends; an ember in the ash, one drifting up
-  for (const [x, y] of burnt) { const X = Math.floor(x), Y = Math.floor(y); for (const [dx, dy] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) if (CH.indexOf(pc.get(X + dx, Y + dy)) >= 0) { gl(pc, X + dx, Y + dy, (X + Y) % 2 ? 0xff8a2a : 0xffb050, 1); break; } }
+  // the burn line glows where charcoal meets leaf; an ember in the ash, one drifting up
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+    if (CH.indexOf(pc.get(x, y)) < 0) continue;
+    const d = Math.min(...tips.map(([tx, ty]) => Math.hypot(x + 0.5 - tx, y + 0.5 - ty)));
+    if (d > 4 && hash2(x, y, 3) < 0.7) gl(pc, x, y, (x + y) % 2 ? 0xff8a2a : 0xffb050, 1);
+  }
   gl(pc, 14, 28, 0xff6a2a, 0.9); gl(pc, 15, 28, 0xffa040, 0.9);
-  gl(pc, 26, 3, 0xffb050, 0.9);
-  pc.set(6, 8, 0xb0a8a0, 150);
+  gl(pc, 29, 2, 0xffb050, 0.9); gl(pc, 6, 7, 0xff9a40, 0.8);
 }
 
 function whisperweed(pc) {
@@ -342,30 +333,39 @@ function rubberSap(pc) {
 
 function sparkmoss(pc) {
   const RK = mat(0x6e6864, { cont: 1.1 });
-  const R = mat(0x3a8ad8, { cont: 1.15 });
+  const R = mat(0x2e9a82, { cont: 1.15 });
   // a weathered pebble
-  const rock = blob(16, 25.5, 13.4, 5.2, { seed: 9, lump: 0.1, flat: 0.75 });
+  const rock = blob(16, 26, 13.4, 4.8, { seed: 9, lump: 0.1, flat: 0.75 });
   form(pc, rock, RK, { dome: 0.2, flatten: 0.8, bias: 0.04 });
   marks(pc, rock, RK, { dens: 0.08, seed: 2, len: 3, dir: [1, 0] });
-  // moss cushion built from little round tufts, back to front, each with its own fuzz
-  const tufts = [[8.5, 17, 2.8], [13.5, 15, 3], [19, 14.6, 3], [24, 17, 2.7], [5, 20.4, 2.4], [11, 19.4, 3], [16.5, 18.5, 3.2], [22, 20.4, 3], [27, 21, 2.2], [8, 23, 2.5], [14, 22.6, 2.8], [19.6, 23.4, 2.4]];
-  tufts.forEach(([x, y, r], i) => {
-    const t = fringe(blob(x, y, r, r * 0.85, { seed: i + 3, lump: 0.12 }), x, y + r, { dens: 0.6, seed: i + 9, len: 1.4, only: (X, Y) => Y < y });
-    seam(pc, t, 'shadow');
-    form(pc, t, R, { cy: y + r * 0.4, ry: r * 1.2, bias: 0.04, lo: 2, dome: 0.6, lip: false });
-    bumps(pc, t, R, { dens: 0.45, seed: i + 1 });
+  // one low cushion of moss hugging the stone: a bristly top edge of tiny upright shoots,
+  // the pile combed into vertical strands, darker in the hollows between clumps
+  const cush = loop([[3, 24.6], [3.4, 21.4], [4.8, 19], [6.8, 17.4], [9.2, 16.8], [11.4, 17.4], [12.8, 16], [14.8, 14.6], [17.4, 14.2], [19.8, 14.8], [21.4, 16.2], [23.4, 15.8], [25.8, 16.4], [27.6, 18.2], [28.8, 20.8], [29.2, 23.6], [26, 25.6], [16, 26.2], [6, 25.6]]);
+  const m = fringe(cush, 16, 30, { dens: 0.75, seed: 4, len: 2.2, lean: 0, only: (x, y) => y < 21 });
+  seam(pc, m, 'shadow');
+  const K = form(pc, m, R, { cx: 13, cy: 19, rx: 15, ry: 8, bias: 0.06, dome: 0.4 });
+  void K;
+  m.clone().erode(1).each((x, y) => {
+    const h = hash2(x, 0, 7), col = x % 2 ? 0 : 1;
+    if ((y + Math.floor(h * 3)) % 3 === col) step(pc, R, x, y, 1, 1, 5);
   });
+  // hollows between the clumps
+  for (const [x0, y0, x1, y1] of [[12, 17, 11, 24], [21, 17, 22, 24]]) line(pc, x0, y0, x1, y1, (i, X, Y) => (m.get(X, Y) && !isBot(m, X, Y) ? (step(pc, R, X, Y, 2, 1, 5), step(pc, R, X - 1, Y, -1, 1, 5), null) : null));
+  // the bristle tips catch the light
+  m.each((x, y) => { if (!m.get(x, y - 1) && hash2(x, y, 3) < 0.6) pc.set(x, y, R[1]); });
   ink(pc);
-  // spore stalks with glowing capsules, and static sparks crackling off the tips
-  for (const [x, y, h] of [[10, 13, 4], [17, 11, 5], [23, 13, 3], [6, 17, 3]]) {
-    line(pc, x, y, x + (x % 3 ? 1 : 0), y - h, (n) => (n ? 0x2a4a8a : null));
-    gl(pc, x + (x % 3 ? 1 : 0), y - h, 0xbff4ff, 1);
+  // spore stalks with glowing capsules, and static arcs crackling between the tips
+  const caps = [[8, 9, 6], [14, 6, 7], [19, 7, 6], [25, 10, 5]];
+  for (const [x, y, h] of caps) {
+    line(pc, x, y + h, x + (x % 2 ? 1 : -1) * 0, y + 1, (n) => (n ? 0x1e4a5a : null));
+    gl(pc, x, y, 0xe8fbff, 1); gl(pc, x, y + 1, 0x7adcff, 1); gl(pc, x + 1, y + 1, 0x3aa0d0, 0.8);
   }
-  const bolt = (pts, c = 0xfff27a) => { for (let i = 0; i + 1 < pts.length; i++) line(pc, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], (n, X, Y) => (gl(pc, X, Y, n === 0 ? 0xffffff : c, 1), null)); };
-  bolt([[11, 8], [13, 5], [11, 3], [13, 0]]);
-  bolt([[21, 8], [19, 5], [22, 3]]);
-  bolt([[27, 14], [29, 11], [28, 9]], 0xbff0ff);
-  for (const [x, y] of [[4, 11], [29, 4], [16, 3]]) twinkle(pc, x, y, 0xffffff, 0xfff27a, 1, 1);
+  const arc = (pts, c = 0xfff27a) => { for (let i = 0; i + 1 < pts.length; i++) line(pc, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], (n, X, Y) => (gl(pc, X, Y, n === 0 ? 0xffffff : c, 1), null)); };
+  arc([[9, 8], [10, 6], [11, 7], [12, 5]]);
+  arc([[20, 7], [21, 5], [22, 6], [23, 8]], 0xbff0ff);
+  arc([[14, 5], [14, 3], [16, 2]]);
+  for (const [x, y] of [[4, 13], [28, 5], [17, 1]]) twinkle(pc, x, y, 0xffffff, 0xfff27a, 1, 1);
+  pc.set(27, 14, 0xfff6a0); pc.emit(27, 14, 1); pc.set(5, 9, 0xbff0ff); pc.emit(5, 9, 1);
 }
 
 function bubblebulb(pc) {

@@ -8,6 +8,7 @@ import { PixelCanvas, pixelTexture } from '../gfx/PixelArt.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
 import { makeRng, makeNoise2D, clamp } from '../core/util.js';
 import { GLSL_BAYER } from './fx.js';
+import { meshRelief } from './vox.js';
 
 /** Shared uniforms: time, wind, the cloud-shadow map, the sun, fog. */
 export const MF = {
@@ -464,9 +465,15 @@ export function makePond({ cx, cz, rx, rz, y, layer = 3 }) {
     transparent: true,
     depthWrite: true,
   });
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(rx * 2.4, rz * 2.4), mat);
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.set(cx, y, cz);
+  // the surface is the caps of a layer of 1/16 water voxels filling the basin (a stepped outline
+  // under the banks, never a plane); the shader works in world space
+  const VS = 1 / 16, W = Math.ceil((rx * 2.4) / VS), D = Math.ceil((rz * 2.4) / VS);
+  const hh = new Uint16Array(W * D), top = new Uint32Array(W * D);
+  for (let k = 0; k < D; k++) for (let i = 0; i < W; i++) {
+    const u = (i + 0.5) / W * 2 - 1, v = (k + 0.5) / D * 2 - 1;
+    if (u * u + v * v <= 1) { hh[i + W * k] = 1; top[i + W * k] = 0xffffff; }
+  }
+  const mesh = new THREE.Mesh(meshRelief({ W, D, h: hh, top, U: [VS, 0, 0], V: [0, 0, VS], N: [0, VS, 0], origin: [cx - W * VS / 2, y - VS, cz - D * VS / 2], walls: false, ao: false }), mat);
   mesh.renderOrder = 2;
   mesh.userData.noBatch = true;
   const vcam = new THREE.PerspectiveCamera();

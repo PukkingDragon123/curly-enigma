@@ -5,7 +5,7 @@
 // fused starmetal lump.
 import { makeRng } from '../../core/util.js';
 import { hash2, vnoise } from './shade.js';
-import { Scene, material, rampOf, glint, view, slabPts, stonePts, stoneTex, gemTone } from './facets.js';
+import { Scene, material, rampOf, glint, view, stonePts, stoneTex, gemTone } from './facets.js';
 
 const RAMPS = {
   copper: [0xfff0dc, 0xffc496, 0xf08e56, 0xc8622e, 0x8e3e22, 0x5e2418, 0x2a0e0c],
@@ -83,20 +83,37 @@ function copper(pc) {
 function tin(pc) {
   const R = rampOf(RAMPS.tin);
   const sc = new Scene(32);
-  const m = metal(R, { eq: 0.45, grad: 0.06, ridgeAll: false, ridge: false, clean: true, tex: (c) => (vnoise(c.x * 0.5, c.y * 0.5, 7) - 0.5) * 0.6 });
-  // a soft, round-shouldered pig, sagging a little to one end
-  const pts = slabPts(makeRng(5), { a: 11, c: 5, h: 6, n: [8, 8, 8], jag: 0.08, rings: [[0, 0.78], [0.35, 1], [1, 0.82]], lean: [1, 0] });
-  const P = view(yawPts(pts, 0.32), 15.5, 18, 0.72);
-  const body = sc.hull(m, P, { smooth: { c: [15.5, 18, 0], r: [11, 4.5, 5], k: 0.3 }, group: 1 });
-  // the sprue nub where the runner was knocked off, and a sag where it cooled last
-  const nub = [[0, 0, -1.6], [2.6, 0.4, -1.2], [2.8, 0.3, 1.2], [0, 0, 1.6], [0, 2.6, 0], [2.2, 2, 0.2]].map(([x, y, z]) => [x + 10.3, y - 2.6, z]);
-  sc.hull(m, view(yawPts(nub, 0.32), 15.5, 18, 0.72), { group: 1 });
-  m.eqShare = true;
-  sc.carve((x, y, oi) => oi === body.id && Math.hypot((x + 0.5 - 13) / 3, (y + 0.5 - 13.2) / 0.9) < 1);
+  // a soft pig of tin: a loaf-shaped cast with sloped sides and well-rounded arrises, the top
+  // sagging into a shrink hollow along its length where the metal cooled last, a stamp and the
+  // stub of the runner on one end
+  const m = metal(R, { eq: 0.7, q: [0.1, 0.36, 0.68, 0.9], grad: 0.05, eqShare: true, ridgeAll: true, tex: (c) => (vnoise(c.x * 0.6, c.y * 0.6, 7) - 0.5) * 0.3 });
+  const o = { a: 12.4, c: 6.6, h: 6.4, top: 0.8, chamfer: 2.6, bevel: 0.72, yaw: -0.3, x: 15.6, y: 17.2, p: 0.84 };
+  const body = sc.hull(m, place(bar(o), o), { group: 1 });
+  const nub = [[0, 0, -1.6], [2.4, 0.4, -1.2], [2.6, 0.4, 1.2], [0, 0, 1.6], [0, 3, -1], [0, 3, 1], [2, 2.4, 0]].map(([x, y, z]) => [x + o.a - 0.4, y + 0.6, z]);
+  sc.hull(m, place(nub, o), { group: 1 });
   sc.render(pc);
-  // dull bloom of oxide on the shoulders
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (sc.objAt(x, y) >= 0 && hash2(x, y, 5) < 0.06 && sc.k[y * 32 + x] < 4) pc.set(x, y, R[sc.k[y * 32 + x] + 1]);
-  glint(pc, 11, 13, 0, 0xffffff, R[1]);
+  // the lid of the pig: the biggest plane that faces up (topPlane would pick a sliver of bevel)
+  const cnt = new Map();
+  for (let i = 0; i < 1024; i++) if (sc.ob[i] === body.id) { const f = sc.faces[sc.fb[i]]; if (-f.n[1] > 0.35) cnt.set(f.pid, (cnt.get(f.pid) || 0) + 1); }
+  let tp = -1, tn = 0;
+  for (const [pid, n] of cnt) if (n > tn) { tn = n; tp = pid; }
+  const T = { inT: (x, y) => sc.pidAt(x, y) === tp, x0: 99, x1: -1, y0: 99, y1: -1 };
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (T.inT(x, y)) { T.x0 = Math.min(T.x0, x); T.x1 = Math.max(T.x1, x); T.y0 = Math.min(T.y0, y); T.y1 = Math.max(T.y1, y); }
+  sheen(pc, T, R, { base: 2, off: -0.04 });
+  // the shrink hollow: a soft trough along the top, shaded on its near lip, lit on its far slope
+  const midY = (x) => T.y0 + (T.y1 - T.y0) * 0.5 + (x - (T.x0 + T.x1) / 2) * 0.1;
+  for (let x = T.x0 + 3; x <= T.x1 - 3; x++) {
+    const y = Math.round(midY(x));
+    if (T.inT(x, y)) pc.set(x, y, R[4]);
+    if (T.inT(x, y + 1)) pc.set(x, y + 1, R[2]);
+
+  }
+  // the stamp: a sunk oval cartouche with a little crown of three dots
+  const sx = Math.round(T.x0 + (T.x1 - T.x0) * 0.3), sy = Math.round(midY(sx)) - 1;
+  for (const [dx, dy, k] of [[0, 0, 4], [1, 0, 4], [2, 0, 4], [3, 0, 4], [-1, 1, 4], [4, 1, 2], [0, 2, 1], [1, 2, 1], [2, 2, 1], [3, 2, 1], [1, 1, 5], [2, 1, 3]]) if (T.inT(sx + dx, sy + dy)) pc.set(sx + dx, sy + dy, R[k]);
+  // a dull oxide bloom on the shoulders, and a satin glint
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (sc.objAt(x, y) >= 0 && hash2(x, y, 5) < 0.05 && sc.k[y * 32 + x] < 4 && sc.k[y * 32 + x] > 1) pc.set(x, y, R[sc.k[y * 32 + x] + 1]);
+  glint(pc, T.x0 + 2, T.y0 + 1, 1, 0xffffff, R[1]);
 }
 
 function bronze(pc) {

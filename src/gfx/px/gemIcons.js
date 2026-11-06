@@ -4,6 +4,7 @@ import { makeRng } from '../../core/util.js';
 import { hash2, bayer } from './shade.js';
 import { Scene, material, rampOf, stoneTex, glint, ypr, dot, nrm, gemTone } from './facets.js';
 import { ROCK, rockMat } from './oreIcons.js';
+import { M, loop, ink, isTop, line, mix } from './lifeKit.js';
 
 // ---------------------------------------------------------------- cut-gem meshes
 /**
@@ -177,7 +178,7 @@ function sunstone(pc) {
   m.toneFn = (f, n) => gemTone(n, { phase: 2.2, bias: 0.12 });
   m.tex = null;
   m.glow = 0.8;
-  const ob = sc.chunk(m, makeRng(31), { x: 16, y: 16.5, a: 12.5, b: 11, c: 10, n: 13, jag: 0.3, base: 0.75, yaw: 0.4, p: 0.55 });
+  const ob = sc.chunk(m, makeRng(31), { x: 16, y: 16.5, a: 14, b: 12.2, c: 11.2, n: 13, jag: 0.3, base: 0.75, yaw: 0.4, p: 0.55 });
   sc.roughen([ob], { amount: 0.2, scale: 0.7, seed: 6 });
   sc.render(pc);
   // aventurescence: copper and gold sparks inside
@@ -191,76 +192,72 @@ function sunstone(pc) {
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2 + 0.2, long = i % 2 === 0;
     let r = 4;
-    while (r < 16 && sc.objAt(Math.floor(16 + Math.cos(a) * r), Math.floor(16.5 + Math.sin(a) * r)) >= 0) r += 0.5;
-    for (let k = r + 1.6, e = Math.min(r + (long ? 4 : 2.6), 16.5); k < e; k += 0.5) {
+    while (r < 17 && sc.objAt(Math.floor(16 + Math.cos(a) * r), Math.floor(16.5 + Math.sin(a) * r)) >= 0) r += 0.5;
+    for (let k = r + 1.4, e = Math.min(r + (long ? 3.4 : 2.4), 17); k < e; k += 0.5) {
       const x = Math.floor(16 + Math.cos(a) * k), y = Math.floor(16.5 + Math.sin(a) * k);
       if (pc.alpha(x, y)) continue;
       pc.set(x, y, k < r + 2.6 ? 0xffd860 : long ? 0xffeeb0 : 0xffc040);
       pc.emit(x, y, 0.8);
     }
   }
-  glint(pc, 11, 10, 2, 0xffffff, 0xfffbd0, 1);
+  glint(pc, 10, 9, 2, 0xffffff, 0xfffbd0, 1);
 }
 
 function amber(pc, bug) {
-  // a resin nodule: a lumpy main body, a drip run down from it and a small bead, flow lines inside
+  // a clear resin nodule: a rounded, slightly lopsided bead of amber with a drip still hanging
+  // from its underside, lit through: a dark Fresnel rim on the lit side, light gathering into a
+  // bright caustic crescent inside the far side, a sharp window highlight, a few flow lines and
+  // trapped bubbles (or a beetle caught inside)
   const R = G.amber();
-  const sc = new Scene(32);
-  const m = material(R, { eq: 0.5, eqShare: true, q: [0.06, 0.26, 0.6, 0.86], spec: 0.8, shine: 7, grad: 0.05, ridge: false, rim: false, bounce: true, clean: true });
-  const blob = (seed, cx, cy, a, b, c, rot, n = 24, jag = 0.1) => {
-    const rng = makeRng(seed), pts = [];
-    for (let i = 0; i < n; i++) {
-      const v = 1 - ((i + 0.5) / n) * 2, r = Math.sqrt(1 - v * v), t = i * 2.39996;
-      const k = 1 - rng.range(0, jag);
-      pts.push([Math.cos(t) * r * a * k, v * b * k, Math.sin(t) * r * c * k]);
-    }
-    return sc.hull(m, ypr(pts, rot[0], rot[1], rot[2], [cx, cy, 0]), { smooth: { c: [cx, cy, 0], r: [a, b, c], k: 0.96 }, group: 3 });
-  };
-  const body = blob(81, 14, 14, 11.5, 9.5, 7.5, [0.3, 0.2, -0.35], 26, 0.16);
-  const drip = blob(82, 22, 21, 4, 6, 3.4, [0, 0.1, -0.75], 18, 0.08);
-  const bead = blob(83, 26.5, 27, 2.3, 2.6, 2.2, [0, 0, -0.5], 12, 0.05);
-  const lump = blob(84, 7.5, 21, 4.5, 3.8, 3.8, [0.4, 0.2, 0.3], 14, 0.12);
-  sc.roughen([body, lump], { amount: 0.12, scale: 0.8, seed: 3 });
-  sc.render(pc);
-  const ids = new Set([body.id, drip.id, bead.id, lump.id]);
-  const inA = (x, y) => ids.has(sc.objAt(x, y));
-  const edge = (x, y) => !inA(x - 1, y) || !inA(x + 1, y) || !inA(x, y - 1) || !inA(x, y + 1);
-  // light caught inside: the far (lower-right) side of the body glows through
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-    if (!inA(x, y) || edge(x, y)) continue;
-    const d = Math.hypot((x + 0.5 - 17) / 1.2, y + 0.5 - 17);
-    const k = sc.k[y * 32 + x];
-    if (d < 6 && k >= 3 && (d < 4 || bayer(x, y) < 0.5)) pc.set(x, y, R[k - 1]);
-  }
-  // flow lines: the resin's layers sweeping round the body and down into the drip
-  for (const [ox, oy, rr, a0, a1] of [[13, 12, 6.5, 0.2, 2.2], [14, 13, 4.2, -0.4, 1.9], [12, 12, 8, 1.0, 2.6]]) {
-    for (let a = a0; a < a1; a += 0.05) {
-      const x = Math.floor(ox + Math.cos(a) * rr), y = Math.floor(oy + Math.sin(a) * rr * 0.8);
-      if (!inA(x, y) || edge(x, y)) continue;
-      const k = sc.k[y * 32 + x];
+  // one outline: the nodule sags at its lower right into a hanging tear of resin
+  const m = loop([[4.6, 16], [5.6, 10.8], [9.4, 6.8], [14.6, 5.2], [19.6, 6.2], [23.6, 9], [26, 13.2], [25.8, 17.4], [24, 20.6], [22.8, 23.4], [23.2, 26.4], [22, 29.2], [19.8, 29.8], [18.2, 28], [17.8, 25], [14.6, 23.8], [9.6, 23.2], [6.2, 20.6]]);
+  const drip = M().fn((x, y) => y + 0.5 > 23.6 && x + 0.5 > 16.6).and(m);
+  const body = m.clone().sub(drip);
+  const e1 = m.clone().erode(1), e2 = m.clone().erode(2), e3 = m.clone().erode(3);
+  const cx = 15.6, cy = 15.4;
+  m.each((x, y) => {
+    const u = ((x + 0.5 - cx) * 0.6 + (y + 0.5 - cy) * 0.8) / 10; // -1 toward the light .. +1 away
+    let k;
+    if (!e1.get(x, y)) k = u < 0 ? 5 : 3;
+    else if (!e2.get(x, y)) k = u < -0.15 ? 4 : u > 0.35 ? 1 : 3;
+    else if (!e3.get(x, y)) k = u > 0.3 ? 1 : u > -0.2 ? 2 : 3;
+    else k = u > -0.35 ? 2 : 3;
+    if (drip.get(x, y)) k = !e1.get(x, y) ? (x < 20 ? 3 : 4) : (x < 20 ? 1 : 2);
+    pc.set(x, y, R[k]);
+  });
+  // drip tip gathers the light
+  pc.set(20, 28, R[1]); pc.set(21, 28, R[2]);
+  // flow lines: faint darker curves following the resin's layers
+  for (const [ox, oy, rr, a0, a1, sq] of [[15, 15.4, 6, 0.3, 2.4, 0.8], [16, 15, 8, 3.7, 5.2, 0.72]]) {
+    let last = '';
+    for (let a = a0; a < a1; a += 0.04) {
+      const x = Math.floor(ox + Math.cos(a) * rr), y = Math.floor(oy + Math.sin(a) * rr * sq), key = x + ',' + y;
+      if (key === last || !e2.get(x, y)) continue;
+      last = key;
+      const k = R.indexOf(pc.get(x, y));
       if (k > 0 && k < 5) pc.set(x, y, R[k + 1]);
     }
   }
-  for (let t = 0; t < 1; t += 0.06) { const x = Math.floor(19.5 + t * 5), y = Math.floor(17 + t * 7); if (inA(x, y) && !edge(x, y) && sc.k[y * 32 + x] > 0) pc.set(x, y, R[Math.min(5, sc.k[y * 32 + x] + 1)]); }
   if (bug) {
-    // a beetle caught in the resin: dark shell with a lit edge, head, six legs and feelers
-    const K = 0x2a1206, K2 = 0x5a2a0c, K3 = 0xb06a2a;
-    const shell = [[12, 13], [13, 13], [14, 13], [15, 13], [11, 14], [12, 14], [13, 14], [14, 14], [15, 14], [16, 14], [11, 15], [12, 15], [13, 15], [14, 15], [15, 15], [16, 15], [11, 16], [12, 16], [13, 16], [14, 16], [15, 16], [16, 16], [12, 17], [13, 17], [14, 17], [15, 17], [13, 18], [14, 18]];
-    for (const [x, y] of shell) pc.set(x, y, K);
-    for (const [x, y] of [[13, 14], [13, 15], [12, 15], [12, 16]]) pc.set(x, y, K3);
-    for (let y = 13; y <= 18; y++) pc.set(14, y, K2);
-    for (const [x, y] of [[13, 11], [14, 11], [13, 12], [14, 12]]) pc.set(x, y, K2);
-    for (const [x, y] of [[10, 13], [9, 12], [17, 13], [18, 12], [10, 15], [9, 15], [17, 15], [18, 15], [10, 17], [9, 18], [17, 17], [18, 18], [12, 10], [11, 9], [15, 10], [16, 9]]) pc.set(x, y, K2);
+    // a small beetle caught inside, seen through the resin (its colours pulled toward amber)
+    const K = (c) => mix(c, R[4], 0.25);
+    const shell = loop([[12.4, 12.6], [14.6, 11.2], [17.2, 11.6], [18.6, 13.8], [18, 16.8], [15.6, 18.4], [13, 17.6], [11.8, 15.4]]);
+    shell.each((x, y) => pc.set(x, y, K(isTop(shell, x, y) ? 0x8a4a1a : (x + 0.5) < 15.4 + (y - 11) * 0.12 ? 0x4a2410 : 0x2e140a)));
+    for (let y = 12; y <= 17; y++) pc.set(15 + (y > 14 ? 1 : 0), y, K(0x1a0a04));
+    const head = loop([[17.6, 10.6], [19.6, 9.6], [20.4, 11.6], [18.8, 12.6]]);
+    head.each((x, y) => pc.set(x, y, K(0x2a1206)));
+    for (const [x0, y0, x1, y1] of [[13, 13, 10, 11], [12, 15, 9, 15], [13, 17, 10, 19], [17, 12, 18, 9.6], [18, 15, 21, 15.6], [17, 17, 19.6, 20], [20, 10, 22.6, 8], [19, 10, 20, 7.4]]) line(pc, x0, y0, x1, y1, (i) => (i ? K(0x3a1a08) : null));
+    pc.set(14, 12, K(0xd88a3a));
   } else {
-    for (const [x, y, big] of [[16, 15, 1], [9, 18, 0], [19, 9, 0], [21, 21, 0], [12, 16, 0]]) {
-      if (!inA(x, y)) continue;
-      pc.set(x, y, R[1]);
-      if (big) { pc.set(x + 1, y, R[1]); pc.set(x, y + 1, R[1]); pc.set(x + 1, y + 1, R[2]); pc.set(x + 2, y + 1, R[4]); pc.set(x + 1, y + 2, R[4]); }
-      else pc.set(x + 1, y + 1, R[4]);
-    }
+    // trapped bubbles: a light dot with a dark rim below it, and a speck of bark
+    for (const [x, y] of [[19, 10], [11, 18], [21, 17]]) { pc.set(x, y, R[0]); pc.set(x, y + 1, R[4]); }
+    pc.set(12, 11, R[5]); pc.set(13, 11, R[4]);
   }
-  // crisp white cores inside the specular patches
-  for (let y = 1; y < 31; y++) for (let x = 1; x < 31; x++) if (inA(x, y) && sc.k[y * 32 + x] === 0 && sc.k[y * 32 + x - 1] === 0 && sc.k[(y - 1) * 32 + x] === 0) pc.set(x, y, 0xffffff);
+  ink(pc);
+  // the window highlight: a hard white sliver and a softer second one
+  for (const [x, y, c] of [[8, 11, 0xffffff], [9, 10, 0xffffff], [10, 9, R[0]], [8, 12, R[0]], [11, 9, R[1]], [7, 14, R[1]]]) pc.set(x, y, c);
+  pc.set(23, 18, R[0]); pc.set(24, 16, R[1]);
+  glint(pc, 10, 10, 0, 0xffffff, R[1]);
 }
 
 // ---------------------------------------------------------------- coal, fossil, obsidian

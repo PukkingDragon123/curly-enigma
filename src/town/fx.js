@@ -38,7 +38,10 @@ varying vec4 vColor;
 varying float vFog;
 void main() {
   if (vColor.a < 0.01) discard;
-  vec3 c = uAdd > 0.5 ? vColor.rgb * (1.0 - vFog) : mix(vColor.rgb, uFogCol, vFog);
+  // a tiny voxel: lit top face, shaded side
+  vec2 u = gl_PointCoord;
+  vec3 k = u.y < 0.34 ? vColor.rgb * 1.18 : u.x > 0.66 ? vColor.rgb * 0.72 : vColor.rgb;
+  vec3 c = uAdd > 0.5 ? k * (1.0 - vFog) : mix(k, uFogCol, vFog);
   gl_FragColor = vec4(c, vColor.a);
   #include <colorspace_fragment>
 }`;
@@ -177,12 +180,19 @@ const AW = 256, AH = 128;
 function glowAtlas() {
   if (ATLAS) return ATLAS;
   const pc = new PixelCanvas(AW, AH);
+  // light voxels, not discs: every glow is built of square cells (16 across) whose brightness falls
+  // off over a chamfered square (a stepped pixel-art octagon), each cell a touch brighter or dimmer
+  const cellR = (x, y, n) => {
+    const cs = n / 16, cx = Math.floor(x / cs), cy = Math.floor(y / cs);
+    const ax = Math.abs((cx + 0.5) / 16 - 0.5) * 2, ay = Math.abs((cy + 0.5) / 16 - 0.5) * 2;
+    const h = (((cx * 19349663) ^ (cy * 83492791)) >>> 0) % 100 / 100;
+    return { r: Math.max(ax, ay) * 0.62 + (ax + ay) * 0.38 + (h - 0.5) * 0.2, j: 0.86 + (((cx * 73856093) ^ (cy * 19349663)) >>> 0) % 100 / 100 * 0.28 };
+  };
   const disk = (ox, oy, n, steps, pow) => {
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      const dx = (x + 0.5 - n / 2) / (n / 2), dy = (y + 0.5 - n / 2) / (n / 2);
-      const r = Math.sqrt(dx * dx + dy * dy);
+      const { r, j } = cellR(x, y, n);
       if (r >= 1) continue;
-      const v = Math.pow(1 - r, pow);
+      const v = Math.pow(1 - r, pow) * j;
       const lv = Math.floor(v * steps + BAYER[(y % 4) * 4 + (x % 4)] / 16) / steps;
       if (lv > 0) pc.set(ox + x, oy + y, 0xffffff, Math.round(Math.min(1, lv) * 255));
     }
@@ -190,15 +200,15 @@ function glowAtlas() {
   disk(0, 0, 128, 5, 1.6);
   disk(128, 0, 64, 4, 2);
   for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
-    const r = Math.hypot(x + 0.5 - 32, y + 0.5 - 32) / 32;
-    const v = Math.max(0, 1 - Math.abs(r - 0.78) / 0.22);
+    const { r, j } = cellR(x, y, 64);
+    const v = Math.max(0, 1 - Math.abs(r - 0.78) / 0.22) * j;
     const lv = Math.floor(v * 3 + BAYER[(y % 4) * 4 + (x % 4)] / 16) / 3;
     if (lv > 0) pc.set(192 + x, y, 0xffffff, Math.round(lv * 255));
   }
   // a soft star (sparkles, glints)
   for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
     const dx = Math.abs(x + 0.5 - 32) / 32, dy = Math.abs(y + 0.5 - 32) / 32;
-    const v = Math.max(0, 1 - Math.hypot(dx, dy) * 1.6) + Math.max(0, 1 - dx * 8) * Math.max(0, 1 - dy) * 0.6 + Math.max(0, 1 - dy * 8) * Math.max(0, 1 - dx) * 0.6;
+    const v = Math.max(0, 1 - (Math.max(dx, dy) * 0.62 + (dx + dy) * 0.38) * 1.6) + Math.max(0, 1 - dx * 8) * Math.max(0, 1 - dy) * 0.6 + Math.max(0, 1 - dy * 8) * Math.max(0, 1 - dx) * 0.6;
     const lv = Math.floor(Math.min(1, v) * 4 + BAYER[(y % 4) * 4 + (x % 4)] / 16) / 4;
     if (lv > 0) pc.set(128 + x, 64 + y, 0xffffff, Math.round(Math.min(1, lv) * 255));
   }

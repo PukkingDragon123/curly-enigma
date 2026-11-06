@@ -64,17 +64,21 @@ const frag = /* glsl */`
   float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
   void main() {
     float a = vCol.a;
+    vec3 shadeK = vec3(1.0);
     if (vSize >= 3.0) {
-      // a round pixel disc; big soft puffs fade toward the rim in dithered steps
-      vec2 c = (floor(gl_PointCoord * vSize) + 0.5) / vSize - 0.5;
-      float r2 = dot(c, c) * 4.0;
-      if (r2 > 1.0) discard;
-      if (vSize >= 6.0 && additive < 0.5) a *= clamp(1.3 - r2 * 1.1, 0.0, 1.0);
+      // a tiny voxel, not a disc: a lit top face, a shaded side; big soft puffs are voxel clumps
+      // (corner cells knocked off) that fade toward their edge over a chamfered square, in dithered steps
+      vec2 u = gl_PointCoord;
+      vec2 c = abs((floor(u * vSize) + 0.5) / vSize - 0.5) * 2.0;
+      float r2 = max(c.x, c.y) * 0.62 + (c.x + c.y) * 0.38;
+      if (vSize >= 6.0 && r2 > 1.08) discard;
+      if (vSize >= 6.0 && additive < 0.5) a *= clamp(1.3 - r2 * r2 * 1.1, 0.0, 1.0);
+      shadeK = vec3(u.y < 0.34 ? 1.18 : u.x > 0.66 ? 0.72 : 1.0);
     }
     if (additive < 0.5 && a < 0.9) a = floor(a * 5.0 + bayer4(gl_FragCoord.xy) * 0.999) / 5.0;
     if (a <= 0.0) discard;
     float f = 1.0 - exp(-pow(vDist / fogDist, 2.6) * 3.2);
-    vec3 c = additive > 0.5 ? vCol.rgb * (1.0 - f) : mix(vCol.rgb, fogCol, f);
+    vec3 c = additive > 0.5 ? vCol.rgb * shadeK * (1.0 - f) : mix(vCol.rgb * shadeK, fogCol, f);
     gl_FragColor = vec4(c, a);
   }`;
 

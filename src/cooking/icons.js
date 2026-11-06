@@ -5,8 +5,8 @@
 // glints, steam, and thin details (stalks, root hairs, legs) laid over the ink so they stay
 // 1px. gfx/PixelArt.js calls drawCookIcon.
 import {
-  M, mat, mix, hash2, vnoise, step, ink, seam, glint, line, gl, clamp, isTop, isBot, blob, loop, fringe, form, sheen, marks, bumps,
-  speckle, blade, tube, spline, steam, twinkle, RAMPS, shadowOf,
+  M, mat, mix, hash2, vnoise, step, ink, seam, glint, line, gl, clamp, isTop, isBot, loop, fringe, form, sheen, marks, bumps,
+  blade, tube, spline, steam, twinkle, RAMPS,
 } from '../gfx/px/lifeKit.js';
 
 /** Icon spec for recipes.js / items: t = drawing, c = the dish's tint (liquids in the 3D kitchen). */
@@ -442,18 +442,18 @@ function rootPie(pc) {
   const tin = loop([[1.4, 19.6], [3.6, 16.4], [9, 14.6], [16, 14], [23, 14.6], [28.6, 16.4], [30.6, 19.6], [29.6, 24], [25, 27.6], [16, 29], [7, 27.6], [2.4, 24]]);
   tin.each((x, y) => pc.set(x, y, TN[y > 25 ? 4 : x % 2 ? 2 : 3]));
   tin.each((x, y) => { if (!tin.get(x, y + 1)) pc.set(x, y, TN[5]); });
-  const CR = mat(0xdcb070, { cont: 1.1 });
+  const CR = mat(0xd8aa66, { cont: 1.08, sat: 0.9 });
   const top = loop([[2.6, 18.4], [5.4, 13.6], [10.4, 10.4], [16, 9.4], [22, 10.2], [26.8, 13], [29.4, 17.8], [27.6, 22], [22.4, 24.6], [16, 25.4], [9.4, 24.6], [4.4, 22.2]]);
   seam(pc, top, 'shadow');
-  form(pc, top, CR, { cx: 12, cy: 13, rx: 15, ry: 11, bias: 0.12, lo: 1, hi: 4 });
+  form(pc, top, CR, { cx: 12, cy: 13, rx: 15, ry: 11, bias: 0.06, lo: 1, hi: 4 });
   // egg-wash: glossy golden patches on the crown
-  top.clone().erode(3).each((x, y) => { if (vnoise(x * 0.4, y * 0.5, 6) > 0.66) pc.set(x, y, mix(pc.getHex(x, y), 0xc8862e, 0.35)); });
+  top.clone().erode(3).each((x, y) => { if (vnoise(x * 0.4, y * 0.5, 6) > 0.7) pc.set(x, y, mix(pc.getHex(x, y), 0xc8862e, 0.25)); });
   const rim = top.clone().sub(top.clone().erode(2));
-  rim.each((x, y) => { const a = Math.atan2(y + 0.5 - 17.4, (x + 0.5 - 16) * 0.7), f = ((a * 24 / (Math.PI * 2)) % 1 + 1) % 1; pc.set(x, y, CR[f < 0.4 ? 1 : f < 0.7 ? 2 : 4]); });
+  rim.each((x, y) => { const a = Math.atan2(y + 0.5 - 17.4, (x + 0.5 - 16) * 0.7), f = ((a * 15 / (Math.PI * 2)) % 1 + 1) % 1; pc.set(x, y, CR[f < 0.55 ? (isTop(top, x, y) ? 1 : 2) : 3]); });
   // pastry leaves
-  const LV = mat(0xeed2a0, { cont: 1.08 });
-  blade(pc, 6.6, 17.6, 12.6, 12, 2.5, LV, { bend: 1.2, veins: 2, rib: LV[4], bias: 0.1 });
-  blade(pc, 25.4, 18.4, 19.6, 12.6, 2.3, LV, { bend: -1.2, veins: 2, rib: LV[4], bias: 0.1 });
+  const LV = mat(0xf4dcae, { cont: 1.1 });
+  blade(pc, 6.4, 18, 12.6, 12.6, 2.6, LV, { bend: 1.4, veins: 1, rib: LV[3], bias: 0.16, fold: 0.45, lo: 1, hi: 3 });
+  blade(pc, 25.6, 18.6, 19.6, 13, 2.4, LV, { bend: -1.4, veins: 1, rib: LV[3], bias: 0.16, fold: 0.45, lo: 1, hi: 3 });
   // steam slits: dark cuts with a lit lip, filling glowing deep inside
   for (const [x0, y0] of [[12, 19], [15, 16], [18, 19]]) {
     line(pc, x0, y0, x0 + 2, y0 - 2, (i, X, Y) => { pc.set(X, Y + 1, CR[1]); return i === 1 ? 0xd8642a : 0x5a3018; });
@@ -467,19 +467,21 @@ function fishPie(pc) {
   // stargazy pie: a deep clay dish, a golden domed crust, three fish heads poking up through it
   // to look at the ceiling, each with an open mouth, a big eye and a gill slit
   const DSH = mat(0xb0603a, { cont: 1.12 });
-  vessel(pc, DSH, [[1.6, 18.6], [4, 15.6], [9, 14], [16, 13.6], [23, 14], [28, 15.6], [30.4, 18.6], [30, 22.6], [27, 26.4], [21, 28.6], [11, 28.6], [5, 26.4], [2, 22.6]],
-    [[3.6, 18.6], [7, 16.4], [16, 15.6], [25, 16.4], [28.4, 18.6], [25, 21], [16, 22], [7, 21]], { band: [0xf0d8a0, 0.5], wall: 0 });
-  const CR = mat(0xe2b06c, { cont: 1.1, warm: 45, sat: 0.9 });
-  const crust = loop([[3.4, 18.6], [5.6, 15], [10, 12.6], [16, 11.8], [22, 12.6], [26.4, 15], [28.6, 18.6], [25.4, 21.2], [16, 22.2], [6.6, 21.2]]);
+  vessel(pc, DSH, [[1.6, 20.6], [4, 18], [9, 16.6], [16, 16.2], [23, 16.6], [28, 18], [30.4, 20.6], [30, 24.2], [27, 27.6], [21, 29.6], [11, 29.6], [5, 27.6], [2, 24.2]],
+    [[3.6, 20.6], [7, 18.8], [16, 18], [25, 18.8], [28.4, 20.6], [25, 22.6], [16, 23.4], [7, 22.6]], { band: [0xf0d8a0, 0.5], wall: 0 });
+  const CR = mat(0xe4b874, { cont: 1.08, warm: 40, sat: 0.85 });
+  // the lid domes well above the dish, its crimped edge sitting on the rim
+  const crust = loop([[3.2, 20.6], [4.6, 16.6], [8.4, 13.4], [13, 11.8], [19, 11.8], [23.6, 13.4], [27.4, 16.6], [28.8, 20.6], [25.6, 22.8], [16, 23.6], [6.4, 22.8]]);
   seam(pc, crust, 'shadow');
-  form(pc, crust, CR, { cx: 13, cy: 15, rx: 14, ry: 8, bias: 0.1, lo: 1, hi: 4 });
+  form(pc, crust, CR, { cx: 12, cy: 15, rx: 15, ry: 9, bias: 0.12, lo: 1, hi: 4 });
   bumps(pc, crust, CR, { dens: 0.08, seed: 3 });
+  crust.each((x, y) => { if (!crust.get(x, y + 1) || !crust.get(x, y + 2)) { const f = (x * 0.7) % 2; pc.set(x, y, CR[f < 1 ? 1 : 3]); } });
   const FR = mat(0xb4c4d4, { cont: 1.22 });
   const BK = mat(0x3e5a7a, { cont: 1.15 });
   // a head in local coords (u across, v up from the crust), rotated by a and placed at (x, y)
   const HEAD = [[-2.8, 0.4], [-3, 3.4], [-2.4, 6.2], [-1.2, 8.4], [0, 9.6, 1], [1.2, 8.4], [2.4, 6], [3, 3.2], [2.8, 0.4]];
   const place = (x, y, a, k) => [x + k[0] * Math.cos(a) + k[1] * Math.sin(a), y + k[0] * Math.sin(a) - k[1] * Math.cos(a)];
-  [[8.6, 17.6, -0.42, 0.9], [16, 16.6, 0.04, 1.05], [23.4, 17.8, 0.46, 0.92]].forEach(([x, y, a, sz], i) => {
+  [[9, 17.4, -0.42, 0.9], [16, 16.2, 0.04, 1.05], [23, 17.6, 0.46, 0.92]].forEach(([x, y, a, sz], i) => {
     const P = HEAD.map(([u, v, c]) => [...place(x, y, a, [u * sz, v * sz]), c]);
     const m = loop(P);
     seam(pc, m, 'shadow');
@@ -502,7 +504,7 @@ function fishPie(pc) {
   });
   ink(pc);
   glint(pc, 6, 16, 0);
-  steam(pc, 4, 13, 6, { a: 150 }); steam(pc, 28, 13, 6, { a: 150, phase: 2 });
+  steam(pc, 5, 14, 6, { a: 150 }); steam(pc, 27, 14, 6, { a: 150, phase: 2 });
 }
 
 function friedGrubs(pc) {
@@ -540,10 +542,10 @@ function friedGrubs(pc) {
 function saltFish(pc) {
   // a stiff salt-cured fish on a heap of coarse salt, crystals crusted along its back
   const SL = mat(0xe6e2dc, { cont: 1.08, sat: 0.4, cool: 220 });
-  const heap = loop([[2.6, 26], [5.6, 22.6], [10.6, 21.2], [17, 21.6], [23.4, 20.6], [28.4, 22.4], [30.4, 26.2], [27, 29.4], [17, 30.4], [7, 29.6]]);
-  form(pc, heap, SL, { bias: 0.02, dome: 0.4 });
-  // coarse crystals all over the heap: small cubes, a lit top and a shaded side
-  heap.clone().erode(1).each((x, y) => { if (hash2(x, y, 5) < 0.16 && heap.get(x + 1, y + 1)) { pc.set(x, y, 0xffffff); pc.set(x + 1, y, SL[3]); pc.set(x, y + 1, SL[4]); } });
+  const heap = loop([[2.4, 27.4], [4.6, 24.6], [8.6, 22.6], [13, 20.2], [17.6, 19.4], [22, 20.4], [26, 22.2], [29.2, 24.6], [30.6, 27.6], [27, 29.8], [17, 30.6], [6.4, 30]]);
+  form(pc, heap, SL, { cx: 14, cy: 22, rx: 15, ry: 9, bias: -0.02, dome: 0.6 });
+  // coarse crystals all over the heap: small cubes, a lit top and a shaded side, a few loose ones
+  heap.clone().erode(1).each((x, y) => { if (hash2(x, y, 5) < 0.24 && heap.get(x + 1, y + 1)) { pc.set(x, y, 0xffffff); pc.set(x + 1, y, SL[3]); pc.set(x, y + 1, SL[5]); } });
   const R = mat(0xd4a868, { cont: 1.15, warm: 40 });
   const tail = loop([[24.6, 9.6], [27.4, 4.4], [29.8, 2.6], [29, 6.6, 1], [30.6, 9.6], [28.4, 11.6]]);
   seam(pc, tail, 'shadow');

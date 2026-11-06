@@ -151,7 +151,7 @@ export function lin(hex) {
 }
 export const srgb = (hex) => [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
 
-/** A camera-facing ring (for the berry timing ring and other markers drawn in the world). */
+/** A camera-facing ring marker built of cells (for the berry timing ring and other markers drawn in the world). */
 export function ringMesh(color = 0xffe066) {
   const mat = new THREE.ShaderMaterial({
     uniforms: { uCol: { value: new THREE.Color(color) }, uA: { value: 1 }, uW: { value: 0.16 }, uFill: { value: 0 }, uDash: { value: 0 } },
@@ -173,9 +173,12 @@ export function ringMesh(color = 0xffe066) {
       uniform float uDash;
       varying vec2 vUv;
       void main() {
-        float r = length(vUv);
-        // dashed (a berry to leave alone): every other arc is cut out
-        if (uDash > 0.5 && fract(atan(vUv.y, vUv.x) / 6.2831853 * 12.0) > 0.55) discard;
+        // built on a grid of cells, round a chamfered square (a stepped pixel-art octagon): never a circle
+        vec2 q = (floor(vUv * 14.0) + 0.5) / 14.0;
+        vec2 a = abs(q);
+        float r = max(a.x, a.y) * 0.62 + (a.x + a.y) * 0.38;
+        // dashed (a berry to leave alone): every other run of cells is cut out
+        if (uDash > 0.5 && fract(atan(q.y, q.x) / 6.2831853 * 12.0) > 0.55) discard;
         // pixel-art ring: hard edges, a dark outline both sides
         float ring = step(1.0 - uW, r) * step(r, 1.0);
         float edge = step(1.0 - uW - 0.07, r) * step(r, 1.07) - ring;

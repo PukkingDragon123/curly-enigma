@@ -2,7 +2,7 @@
 // left or right leans your weight on that end of the pin. The dough starts lumpy: lean into the thick
 // side until every strip sits in the band. Roll a strip too thin and it tears.
 import { Step, V3, THREE } from './base.js';
-import { flourTex } from '../tex.js';
+import { flourDust } from '../kitchenVox.js';
 import { puff, sparkle } from '../fx.js';
 import { BOARD_TOP } from '../kitchen.js';
 import { setOutline } from '../../gfx/Voxel.js';
@@ -39,9 +39,8 @@ export class RollStep extends Step {
     const color = mixHex(0xf2e4c4, this.cook.food.liquid, 0.18);
     this.color = color;
     // a dusting of flour, then the dough as strips (each its own thickness)
-    const fl = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.75), new THREE.MeshBasicMaterial({ map: flourTex(), transparent: true, alphaTest: 0.5, depthWrite: false }));
-    fl.rotation.x = -Math.PI / 2;
-    fl.position.copy(this.base).setY(BOARD_TOP + 0.002);
+    const fl = flourDust(1.0, 0.75);
+    fl.position.copy(this.base).setY(BOARD_TOP + 0.001);
     this.temp(fl);
     this.group = this.temp(new THREE.Group());
     this.group.position.copy(this.base);

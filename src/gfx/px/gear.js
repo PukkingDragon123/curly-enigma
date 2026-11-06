@@ -4,7 +4,7 @@
 import { mat } from './color.js';
 import { vol, vnoise } from './shade.js';
 import { M, ring } from './parts.js';
-import { loop, form, sheen, marks, seam, step, ink, glint, line } from './lifeKit.js';
+import { loop, form, marks, seam, step, ink, glint, line, isTop, isBot, hash2 } from './lifeKit.js';
 import { drawExplosiveIcon } from '../../deep/explosives/icon.js';
 import * as TOOLS from './gearTools.js';
 import * as WEAR from './gearWear.js';
@@ -39,28 +39,52 @@ export { drawWeaponArt } from './gearWeapons.js';
 // Hand-built outlines (lifeKit.loop), flat planes lit from the top-left, the tinted ink outline,
 // rim light and glints: a hand-struck coin, a jagged bolt, a worn tome, a plump heart.
 function coin(pc) {
-  const R = mat(0xf0bc34, { cont: 1.22, warm: 55 });
-  // a hand-struck coin, a touch out of round and clipped flat on one side, seen slightly tilted
-  const FACE = [[15.4, 2.6], [20.6, 3.6], [24.8, 6.6], [27.4, 11], [27.8, 15.8], [26.4, 20.6], [23, 24.6], [18.6, 26.8], [13.4, 27], [9.2, 25.2, 1], [5.8, 21.6, 1], [3.6, 16.4], [3.8, 11.2], [6.4, 6.8], [10.4, 3.8]];
+  const R = mat(0xeab434, { cont: 1.22, warm: 55 });
+  // a worn, hand-struck coin leaning on a little stack of two more: a touch out of round with a
+  // flat spot, a raised beaded rim with a fresh nick in it, the thick reeded edge showing on
+  // its right, an embossed mole paw rubbed smooth on its high points, scuffs
+  const flat = (P, th) => {
+    const top = loop(P), side = top.clone().shift(0, th).sub(top);
+    side.each((x, y) => pc.set(x, y, R[(x % 2) ? 3 : 5]));
+    side.each((x, y) => { if (!side.get(x, y + 1)) pc.set(x, y, R[5]); });
+    top.each((x, y) => pc.set(x, y, R[isTop(top, x, y) ? 1 : isBot(top, x, y) ? 4 : (x + y) % 5 ? 2 : 3]));
+    return top;
+  };
+  flat([[15.6, 27.4], [20, 25.4], [26, 25.2], [30.4, 26.4], [30.8, 28.2], [27, 29.6], [21, 30], [16.6, 29.2]], 2);
+  flat([[13.6, 24.6], [17.6, 22.6], [23.6, 21.8], [28.6, 22.8], [30.2, 24.6], [27.8, 26.4], [21.6, 27], [16, 26.4]], 2);
+  const FACE = [[13.4, 2.4], [18, 3.2], [21.6, 5.8], [23.6, 9.6], [24.2, 14], [23.4, 18.6], [21, 22.6], [17.4, 25.2], [13, 26], [8.8, 25], [5.4, 22.2], [3.4, 18], [2.8, 13.6], [3.6, 9.2], [5.6, 5.8, 1], [9.2, 3.4]];
   const face = loop(FACE);
-  const edge = loop(FACE.map(([x, y, c]) => [x + 1.2, y + 2.4, c])).sub(face);
-  edge.each((x, y) => pc.set(x, y, R[(x % 2) ? 4 : 5]));
-  form(pc, face, R, { flatten: 0.55, dome: 0.5, round: 3, bias: 0.06 });
-  // raised rim: the field inside is sunk, shadowed on its top-left, lit on its bottom-right
-  const field = face.clone().erode(2);
-  field.each((x, y) => pc.set(x, y, R[3]));
-  field.edge().each((x, y) => { const tl = !field.get(x - 1, y) || !field.get(x, y - 1); pc.set(x, y, R[tl ? 4 : 2]); });
-  // embossed mole paw: a pad and four toe beans, each lit top-left / shaded bottom-right
-  const parts = [loop([[11.6, 17.4], [14.6, 14.6], [18.4, 14.8], [20.6, 17.8], [19.4, 21], [15.6, 21.8], [12.4, 20.6]]),
-    loop([[9.4, 13.2], [10.6, 11.2], [12.4, 12], [11.8, 14.4]]), loop([[13, 10.4], [14.6, 8.6], [16.4, 9.6], [15.4, 12]]),
-    loop([[17.4, 9.8], [19.4, 8.8], [20.4, 10.8], [18.6, 12.2]]), loop([[20.8, 12.6], [22.6, 11.8], [23.4, 13.8], [21.6, 15]])];
-  for (const m of parts) m.each((x, y) => { const t = !m.get(x - 1, y) || !m.get(x, y - 1), b2 = !m.get(x + 1, y) || !m.get(x, y + 1); pc.set(x, y, R[t && !b2 ? 1 : b2 && !t ? 4 : 2]); });
-  // wear: a nick in the rim and a couple of scratches
-  pc.set(24, 21, R[5]); pc.set(25, 20, R[4]);
-  line(pc, 8, 19, 10, 22, (i) => (i % 2 ? null : R[4]));
+  const nick = loop([[19.6, 2.6], [25, 4.4], [21.2, 8.6, 1]]);
+  const edge = loop(FACE.map(([x, y, c]) => [x + 2.2, y + 0.6, c])).sub(face);
+  face.sub(nick); edge.sub(nick);
+  seam(pc, face.clone().union(edge), 'shadow');
+  edge.each((x, y) => pc.set(x, y, R[(y % 2) ? 3 : 5]));
+  edge.each((x, y) => { if (isBot(edge, x, y) && !face.get(x - 1, y)) pc.set(x, y, R[5]); });
+  // the face: raised rim, sunk field, a row of beads inside the rim
+  const field = face.clone().erode(2), bead = field.clone().sub(field.clone().erode(1));
+  face.each((x, y) => {
+    const lit = (x + 0.5 - 13) * 0.6 + (y + 0.5 - 14) * 0.8 < 0;
+    if (!field.get(x, y)) pc.set(x, y, R[isTop(face, x, y) ? 1 : lit ? 2 : 4]);
+    else pc.set(x, y, R[3]);
+  });
+  bead.each((x, y) => { const lit = (x + 0.5 - 13) * 0.6 + (y + 0.5 - 14) * 0.8 < 0; pc.set(x, y, (x + y) % 3 === 0 ? R[lit ? 2 : 1] : R[lit ? 4 : 2]); });
+  // wear: the field rubbed brighter toward the top-left
+  field.clone().erode(1).each((x, y) => { if ((x + 0.5 - 13) * 0.6 + (y + 0.5 - 14) * 0.8 < -4 && hash2(x, y, 3) < 0.5) pc.set(x, y, R[2]); });
+  // embossed paw: pad and four toe beans, high points worn bright, low edges shaded
+  const parts = [loop([[9.4, 17], [12.4, 14.4], [16, 14.6], [18, 17.6], [16.8, 20.6], [13, 21.2], [10, 20]]),
+    loop([[7, 13.2], [8.4, 11], [10.2, 11.8], [9.6, 14.2]]), loop([[10.6, 9.8], [12.4, 8], [14.2, 9], [13.2, 11.6]]),
+    loop([[15.2, 9.4], [17.2, 8.4], [18.2, 10.4], [16.4, 12]]), loop([[18.4, 12.6], [20.2, 11.8], [21, 13.8], [19.2, 15]])];
+  for (const m of parts) {
+    m.each((x, y) => { const t = isTop(m, x, y), b2 = isBot(m, x, y); pc.set(x, y, R[t && !b2 ? 1 : b2 && !t ? 4 : 2]); });
+    m.clone().dilate(1).sub(m).each((x, y) => { if (field.get(x, y) && (m.get(x - 1, y) || m.get(x, y - 1))) pc.set(x, y, R[5]); });
+  }
+  // the nick: bright fresh metal along its cut, and scratches across the field
+  nick.clone().dilate(1).and(face.clone().union(edge)).each((x, y) => pc.set(x, y, R[x < 22 ? 1 : 3]));
+  line(pc, 6, 19, 9, 23, (i) => (i % 2 ? null : R[4]));
+  line(pc, 17, 21, 21, 19, (i) => (i % 3 === 1 ? null : R[2]));
   ink(pc);
-  glint(pc, 9, 7, 1, R[0]);
-  pc.set(7, 10, R[0]); pc.set(23, 6, R[1]);
+  glint(pc, 7, 7, 1, 0xffffff, R[0]);
+  pc.set(6, 10, R[0]); pc.set(22, 7, 0xffffff);
 }
 
 function boltGlyph(pc) {
@@ -105,16 +129,38 @@ function bookGlyph(pc) {
 }
 
 function heartGlyph(pc) {
-  const R = mat(0xe0303e, { cont: 1.18 });
-  // a plump, hand-drawn heart: the left lobe a bit fuller, the tip leaning, a soft cleft
+  const R = mat(0xd8343e, { cont: 1.15 });
+  // a stuffed felt heart: two plump lobes either side of a pinched cleft, a running stitch all
+  // round its edge, a lopsided patch sewn on with cross stitches, the left lobe catching the light
   const m = loop([[16, 8.6], [18.6, 5.2], [22.4, 3.6], [26.4, 4.6], [29, 8.4], [28.8, 13.4], [26, 18.6], [21.4, 23.4], [16.8, 28.6, 1], [11.2, 24.2], [5.6, 19.4], [2.4, 14], [2.6, 8.6], [5.4, 4.6], [9.6, 3.4], [13.4, 5]]);
-  form(pc, m, R, { cx: 15, cy: 13, rx: 15, ry: 14, bias: 0.06 });
-  // the cleft: a short shaded crease running down from the dip
-  for (const [x, y] of [[16, 9], [16, 10], [15, 11]]) step(pc, R, x, y, 1, 1, 5);
-  sheen(pc, m, R[1], { inset: 1, a0: -2.9, a1: -1.7 });
+  form(pc, m, R, { cx: 15, cy: 13, rx: 15, ry: 14, bias: 0.04 });
+  // each lobe puffs out on its own: a lit crown on the left lobe, a softer one on the right
+  const lobeL = loop([[5, 9], [7.6, 6], [11, 5.6], [13.2, 7.4], [12, 10.6], [8.4, 12], [5.6, 11.6]]);
+  lobeL.and(m).each((x, y) => step(pc, R, x, y, -1, 1, 5));
+  const lobeR = loop([[19, 7.6], [21.6, 5.6], [25, 5.6], [26.6, 8], [25, 10.4], [21.4, 10.6]]);
+  lobeR.and(m).each((x, y) => { if (hash2(x, y, 2) < 0.8) step(pc, R, x, y, -1, 2, 5); });
+  // the cleft pinched in, a fold running down from it
+  for (const [x, y, d] of [[16, 9, 2], [16, 10, 2], [16, 11, 1], [15, 12, 1], [15, 13, 1]]) step(pc, R, x, y, d, 1, 5);
+  pc.set(17, 10, R[2]); pc.set(16, 12, R[2]);
+  // felt texture: a sparse dither of the neighbouring tone
+  m.clone().erode(1).each((x, y) => { if ((x * 3 + y * 5) % 11 === 0 && hash2(x, y, 9) < 0.7) step(pc, R, x, y, 1, 1, 5); });
+  // the patch, sewn on crooked
+  const PT = mat(0xf07a8a, { cont: 1.1 });
+  const patch = loop([[17.4, 14.6, 1], [23.6, 13.2, 1], [24.6, 18.8, 1], [18.6, 20.4, 1]]);
+  seam(pc, patch, 'shadow');
+  patch.each((x, y) => pc.set(x, y, PT[isTop(patch, x, y) ? 1 : isBot(patch, x, y) ? 4 : (x + y) % 2 ? 2 : 3]));
+  // the running stitch, inset from the edge, and the patch's cross stitches
+  const TH = 0xf6e6c8;
+  const stitchRing = m.clone().erode(2).sub(m.clone().erode(3));
+  // dashes measured along the seam (arc length round each lobe, then round the point): two on, one off
+  stitchRing.each((x, y) => {
+    const [cx, cy] = y < 12 ? (x < 16 ? [9, 10] : [23, 9.4]) : [15.6, 12];
+    const dx = x + 0.5 - cx, dy = y + 0.5 - cy, arc = Math.atan2(dy, dx) * Math.hypot(dx, dy);
+    if (((Math.floor(arc / 1.1) % 3) + 3) % 3 !== 2 && !patch.get(x, y)) pc.set(x, y, TH);
+  });
+  for (const [x, y] of [[18, 15], [22, 14], [23, 18], [19, 19]]) { pc.set(x, y, TH); pc.set(x + 1, y + 1, TH); pc.set(x + 1, y, 0xd8c0a0); pc.set(x, y + 1, 0xd8c0a0); }
   ink(pc);
-  glint(pc, 8, 7, 1, R[0]);
-  pc.set(6, 10, R[0]); pc.set(22, 7, R[1]); pc.set(23, 7, R[1]);
+  pc.set(8, 7, 0xffe8ec); pc.set(9, 7, R[0]); pc.set(8, 8, R[0]); pc.set(23, 6, R[1]);
 }
 
 // ---------------------------------------------------------------- dispatcher

@@ -259,7 +259,7 @@ void main() {
 }
 `;
 
-// Light voxels, not a disc: the halo is a field of square cells (14 across). Their brightness falls
+// Light voxels, not a disc: the halo is a field of square cells (18 across). Their brightness falls
 // off over a chamfered square (a stepped pixel-art octagon) with a one-cell cross of rays along the
 // axes, each cell a touch brighter or dimmer than its neighbour, and the edge dissolves through
 // the ordered dither, so no round outline ever shows. Shared by makeGlow and makeLightPool.
@@ -272,12 +272,13 @@ varying vec2 vUv;
 ${GLSL_BAYER}
 float bk_cellHash(vec2 p) { return fract(sin(dot(p, vec2(41.31, 289.17))) * 45758.5453); }
 void main() {
-  const float CELLS = 14.0;
+  const float CELLS = 18.0;
   vec2 cell = floor(vUv * CELLS);
   vec2 a = abs((cell + 0.5) / CELLS - 0.5) * 2.0;
   float d = max(a.x, a.y) * 0.62 + (a.x + a.y) * 0.38;
+  d += (bk_cellHash(cell + 7.0) - 0.5) * 0.24;              // a ragged, hand-placed edge
   float i = pow(clamp(1.0 - d, 0.0, 1.0), uFalloff);
-  i += 0.22 * pow(clamp(1.0 - max(a.x, a.y), 0.0, 1.0), 2.0) * step(min(a.x, a.y), 0.08);
+  i += 0.22 * pow(clamp(1.0 - max(a.x, a.y), 0.0, 1.0), 2.0) * step(min(a.x, a.y), 0.06);
   i *= (0.84 + 0.32 * bk_cellHash(cell)) * uIntensity;
   float q = bk_steps(i, uLevels);
   if (q <= 0.0) discard;
@@ -287,6 +288,40 @@ void main() {
 
 const quadGeo = new THREE.PlaneGeometry(1, 1);
 quadGeo.userData.shared = true;
+
+/**
+ * The same light-voxel glow baked into a canvas texture (for THREE.Sprite halos): `cells` square
+ * cells across, stepped alpha, a cross of rays, no round edge. NearestFilter so the cells stay crisp.
+ */
+export function cellGlowTexture(color, { cells = 16, px = 4, falloff = 1.6, alpha = 0.9 } = {}) {
+  const n = cells * px;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = n;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(n, n);
+  const col = new THREE.Color(color);
+  const r = Math.round(col.r * 255), g = Math.round(col.g * 255), b = Math.round(col.b * 255);
+  for (let cy = 0; cy < cells; cy++) for (let cx = 0; cx < cells; cx++) {
+    const ax = Math.abs((cx + 0.5) / cells - 0.5) * 2, ay = Math.abs((cy + 0.5) / cells - 0.5) * 2;
+    const h2 = ((cx * 19349663 + cy * 83492791) >>> 0) % 1000 / 1000;
+    const d = Math.max(ax, ay) * 0.62 + (ax + ay) * 0.38 + (h2 - 0.5) * 0.24; // ragged edge
+    let i = Math.pow(Math.max(0, 1 - d), falloff);
+    if (Math.min(ax, ay) < 0.07) i += 0.22 * Math.pow(Math.max(0, 1 - Math.max(ax, ay)), 2);
+    const hh = ((cx * 374761393 + cy * 668265263) >>> 0) % 1000 / 1000;
+    i = Math.round(Math.min(1, i * (0.84 + 0.32 * hh)) * 6) / 6;
+    const a = Math.round(i * alpha * 255);
+    for (let y = cy * px; y < (cy + 1) * px; y++) for (let x = cx * px; x < (cx + 1) * px; x++) {
+      const o = (y * n + x) * 4;
+      img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = a;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  return tex;
+}
 
 /** A camera-facing, ordered-dithered additive glow (pixel-art light halo). */
 export function makeGlow({ color = 0xffa040, size = 1, intensity = 0.8, falloff = 1.6, levels = 4, renderOrder = 6 } = {}) {
@@ -377,7 +412,7 @@ void main() {
   float x = abs(vUv.x * 2.0 - 1.0);
   float core = pow(1.0 - x, 1.4);
   float v = vUv.y; // 1 = top (source), 0 = bottom
-  float along = smoothstep(0.0, 0.18, v) * (0.55 + 0.45 * smoothstep(0.0, 1.0, v));
+  float along = smoothstep(0.0, 0.18, v) * (0.55 + 0.45 * smoothstep(0.0, 1.0, v)) * smoothstep(1.0, 0.9, v); // no hard end
   float shimmer = 0.82 + 0.18 * sin(v * 23.0 - uTime * 1.7 + sin(vUv.x * 9.0 + uTime) * 1.5);
   float i = core * along * shimmer * uIntensity;
   float q = bk_steps(i, uLevels);

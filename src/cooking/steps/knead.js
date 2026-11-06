@@ -2,7 +2,7 @@
 // (left / right mouse button, or A / D) on the beat. The dough squishes flatter as you go.
 import { Step, V3, THREE } from './base.js';
 import { dough as doughModel } from '../models.js';
-import { flourTex } from '../tex.js';
+import { flourDust } from '../kitchenVox.js';
 import { puff } from '../fx.js';
 import { BOARD_TOP } from '../kitchen.js';
 import { mixHex } from '../../core/util.js';
@@ -21,9 +21,8 @@ export class KneadStep extends Step {
     const color = mixHex(0xf2e4c4, this.cook.food.liquid, 0.22);
     this.group = this.temp(new THREE.Group());
     this.group.position.set(S.x, BOARD_TOP, S.z - 0.02);
-    const fl = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.75), new THREE.MeshBasicMaterial({ map: flourTex(), transparent: true, alphaTest: 0.5, depthWrite: false }));
-    fl.rotation.x = -Math.PI / 2;
-    fl.position.y = 0.002;
+    const fl = flourDust(0.95, 0.75);
+    fl.position.y = 0.001;
     this.group.add(fl);
     this.dough = doughModel(color);
     this.dough.scale.setScalar(1.2);

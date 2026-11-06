@@ -8,8 +8,9 @@
 //                     pivot, kind, outline, material, ao })
 //     builds a VoxelGrid w × h × maxDepth (canvas row 0 at the top, the plate's back at z = 0,
 //     facing +z) and meshes it greedily. Default pivot: the centre of the back face.
+import * as THREE from 'three';
 import { VoxelGrid } from './Voxel.js';
-import { voxMesh } from '../bookends/vox.js';
+import { voxMesh, meshRelief } from '../bookends/vox.js';
 
 export function readPixels(src) {
   const canvas = src.isTexture ? src.image : src.canvas && src.canvas.getContext ? src.canvas : src;
@@ -51,4 +52,44 @@ export function voxelPlate(src, o = {}) {
   });
   m.userData.plate = { w, h, d: D };
   return m;
+}
+
+/**
+ * A painted surface (wall, floor, ceiling) as a voxel relief at its texture's own resolution: one
+ * column per texel, the dark seams (mortar, board gaps, cracks: darker than `seam` × their
+ * neighbourhood) sunk one voxel (dz) behind the faces, which sit exactly on the old plane. The
+ * pixel art stays on the faces (planar uv), the relief adds real depth and baked AO, and flat runs
+ * merge into a few quads. topLeft = world corner of canvas pixel (0, 0); xDir / yDir = unit
+ * vectors along canvas x and down the canvas rows; normal = the side that faces the room.
+ */
+export function texRelief(tex, { topLeft, xDir, yDir, normal, width, height, dz, seam = 0.72, tint = 0xffffff }) {
+  const pix = readPixels(tex);
+  const W = pix.w, D = pix.h;
+  const lum = new Float32Array(W * D);
+  for (let k = 0; k < D; k++) for (let i = 0; i < W; i++) {
+    const c = pix.get(i, k);
+    lum[i + W * k] = c < 0 ? 0 : 0.3 * ((c >> 16) & 255) + 0.59 * ((c >> 8) & 255) + 0.11 * (c & 255);
+  }
+  // 5x5 neighbourhood mean through an integral image
+  const I = new Float64Array((W + 1) * (D + 1));
+  for (let k = 0; k < D; k++) { let row = 0; for (let i = 0; i < W; i++) { row += lum[i + W * k]; I[(i + 1) + (W + 1) * (k + 1)] = I[(i + 1) + (W + 1) * k] + row; } }
+  const box = (i0, k0, i1, k1) => I[i1 + (W + 1) * k1] - I[i0 + (W + 1) * k1] - I[i1 + (W + 1) * k0] + I[i0 + (W + 1) * k0];
+  const h = new Uint16Array(W * D), top = new Uint32Array(W * D).fill(0xffffff);
+  for (let k = 0; k < D; k++) for (let i = 0; i < W; i++) {
+    const i0 = Math.max(0, i - 2), k0 = Math.max(0, k - 2), i1 = Math.min(W, i + 3), k1 = Math.min(D, k + 3);
+    const avg = box(i0, k0, i1, k1) / ((i1 - i0) * (k1 - k0));
+    h[i + W * k] = lum[i + W * k] < avg * seam ? 1 : 2;
+  }
+  const sx = width / W, sy = height / D;
+  const mul = (v, s) => [v[0] * s, v[1] * s, v[2] * s];
+  const o = [topLeft[0] - normal[0] * 2 * dz, topLeft[1] - normal[1] * 2 * dz, topLeft[2] - normal[2] * 2 * dz];
+  const geo = meshRelief({ W, D, h, top, U: mul(xDir, sx), V: mul(yDir, sy), N: mul(normal, dz), origin: o, wallAO: false });
+  const p = geo.attributes.position, uv = new Float32Array(p.count * 2);
+  for (let n = 0; n < p.count; n++) {
+    const rx = p.getX(n) - topLeft[0], ry = p.getY(n) - topLeft[1], rz = p.getZ(n) - topLeft[2];
+    uv[n * 2] = (rx * xDir[0] + ry * xDir[1] + rz * xDir[2]) / width;
+    uv[n * 2 + 1] = 1 - (rx * yDir[0] + ry * yDir[1] + rz * yDir[2]) / height;
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex, vertexColors: true, color: tint }));
 }

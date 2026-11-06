@@ -69,7 +69,7 @@ export class Atmosphere {
     this.vault = null; this.vk = 0; this.lakeK = 0; this.lakeY = 0; // the giant cavern round the eye
     this.audio = null; this.fluids = null; // lent by Fluids (sounds; it owns the underwater fog)
     this.dripT = 1; this.windH = null;
-    this.fog0 = { dist: U.fogDist.value, col: U.fogCol.value.clone() };
+    this.fog0 = { dist: U.fogDist.value };
     this.ray = { k: 0, pos: new THREE.Vector3(), col: new THREE.Color(1, 0.85, 0.6), target: -1 };
     this.moteAcc = 0;
     // the sky: a screen-filling triangle drawn before everything, at the far plane
@@ -211,15 +211,15 @@ export class Atmosphere {
     } else U.mist.value.set(mk, 1.4 - this.hallK * 0.5, 0.55 + this.hallK * 0.25, 0);
     U.mistCol.value.setRGB(C.mistCol[0] + (vc[0] * 0.03 + 0.02) * lkk, C.mistCol[1] + (vc[1] * 0.03 + 0.026) * lkk, C.mistCol[2] + (vc[2] * 0.03 + 0.032) * lkk);
     // the cavern's crystals fill the shade a little with their colour
-    U.skyCol.value.setRGB(C.sky[0] + vc[0] * 0.012 * vk, C.sky[1] + vc[1] * 0.012 * vk, C.sky[2] + vc[2] * 0.012 * vk);
+    U.skyCol.value.setRGB(C.sky[0] + vc[0] * 0.022 * vk, C.sky[1] + vc[1] * 0.022 * vk, C.sky[2] + vc[2] * 0.022 * vk);
     U.bounce.value.setRGB(C.bounce[0] + vc[0] * 0.006 * vk, C.bounce[1] + vc[1] * 0.006 * vk, C.bounce[2] + vc[2] * 0.006 * vk);
-    // the air opens up: the fog reaches farther, a faint glow in its colour (not under water:
-    // Fluids owns the fog there)
-    if (!(this.fluids?.uwK > 0.01)) {
-      const F = this.fog0;
-      U.fogDist.value = F.dist + 5 * vk;
-      U.fogCol.value.setRGB(F.col.r + vc[0] * 0.006 * vk, F.col.g + vc[1] * 0.006 * vk, F.col.b + vc[2] * 0.006 * vk);
-    }
+    // its air holds a little of its crystals' light: far rock fades into a faint glow, not black,
+    // and stands against it (thicker over the lake, where the mist is)
+    const al = (0.011 + 0.008 * lkk) * vk;
+    U.airLit.value.setRGB(vc[0] * al + 0.002 * vk, vc[1] * al + 0.0025 * vk, vc[2] * al + 0.003 * vk);
+    // the air opens up: the fog reaches farther (not under water: Fluids owns the fog there; the
+    // fog's colour is the scene's, by zone)
+    if (!(this.fluids?.uwK > 0.01)) U.fogDist.value = this.fog0.dist + 5 * vk;
     this.sounds(dt, V);
     U.mood.value.set(C.mood[0], C.mood[1], C.mood[2], C.mood[3]);
     this.motes(dt, C);

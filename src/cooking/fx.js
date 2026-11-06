@@ -1,4 +1,5 @@
-// Crisp square-pixel particles (steam, crumbs, salt, flour, smoke, sparkles, droplets).
+// Crisp tiny-voxel particles (steam, crumbs, salt, flour, smoke, sparkles, droplets): square points
+// shaded like little cubes (lit top, darker side), never round dots.
 import * as THREE from 'three';
 
 const VERT = /* glsl */`
@@ -20,7 +21,10 @@ varying float vA;
 varying vec3 vC;
 void main() {
   if (vA < 0.02) discard;
-  gl_FragColor = vec4(vC, vA);
+  // each particle is a tiny voxel: a lit top face and a shaded side (shows from 3px up)
+  vec2 u = gl_PointCoord;
+  vec3 c = u.y < 0.34 ? vC * 1.2 : u.x > 0.66 ? vC * 0.7 : vC;
+  gl_FragColor = vec4(c, vA);
 }`;
 
 const _c = new THREE.Color();

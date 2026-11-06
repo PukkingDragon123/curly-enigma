@@ -15,7 +15,8 @@ import {
   makeSack, makeScrapPile, makeStool, makeLogs, makeStoneBlock, makeBladeBarrel, makeWallDisplay, makeBucket, makeTongs,
   makeBellowsPull, makeChainSpan, makeDoor, makePlinth,
 } from './models.js';
-import { backWallTexture, sideWallTexture, floorTexture, postcardTexture, rugTexture, WaterTexture } from './textures.js';
+import { backWallTexture, sideWallTexture, floorTexture, postcardTexture, rugTexture, WaterTexture, TPU } from './textures.js';
+import { texRelief, voxelPlate } from '../gfx/voxPlate.js';
 import { batchStatic } from '../bookends/batch.js';
 import { makeShimmer } from './fx.js';
 import { makeGlow } from '../bookends/fx.js';
@@ -27,9 +28,6 @@ export const ROOM = { w: 5.6, d: 4.8, h: 2.5 };
 export const MS = 0.5;
 const U = (m) => m / S; // meters → model units (textures are laid out in units)
 
-function plane(w, h, tex, color = 0xffffff) {
-  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({ map: tex, color }));
-}
 
 export function buildWorld(scene) {
   const t0 = performance.now();
@@ -50,30 +48,17 @@ export function buildWorld(scene) {
 
   // ---------------------------------------------------------------- shell
   const hearthX = 2.0;
-  const floor = plane(R.w, R.d, floorTexture(U(R.w), U(R.d), [U(hearthX - 0.95), 0, U(hearthX + 0.95), U(1.75)]));
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.set(R.w / 2, 0, R.d / 2);
-  root.add(floor);
-  const north = plane(R.w, R.h, backWallTexture(U(R.w), U(R.h), [U(hearthX - 0.68), U(hearthX + 0.68)]));
-  north.position.set(R.w / 2, R.h / 2, 0);
-  root.add(north);
-  const west = plane(R.d, R.h, sideWallTexture(U(R.d), U(R.h), [U(1.7), U(0.75), U(1.15), U(0.68)], 7));
-  west.rotation.y = Math.PI / 2;
-  west.position.set(0, R.h / 2, R.d / 2);
-  root.add(west);
-  const east = plane(R.d, R.h, sideWallTexture(U(R.d), U(R.h), null, 13));
-  east.rotation.y = -Math.PI / 2;
-  east.position.set(R.w, R.h / 2, R.d / 2);
-  root.add(east);
-  const south = plane(R.w, R.h, sideWallTexture(U(R.w), U(R.h), null, 17));
-  south.rotation.y = Math.PI;
-  south.position.set(R.w / 2, R.h / 2, R.d);
-  root.add(south);
+  // the room's shell: each painted surface is a voxel relief at its texture's resolution (mortar,
+  // board gaps and cracks sunk one voxel behind the faces, which sit on the room's planes)
+  const dz = S / TPU;
+  const shell = (tex, topLeft, xDir, yDir, normal, w, h, tint) => { const m = texRelief(tex, { topLeft, xDir, yDir, normal, width: w, height: h, dz, tint }); m.userData.noBatch = true; root.add(m); return m; };
+  shell(floorTexture(U(R.w), U(R.d), [U(hearthX - 0.95), 0, U(hearthX + 0.95), U(1.75)]), [0, 0, 0], [1, 0, 0], [0, 0, 1], [0, 1, 0], R.w, R.d).name = 'floor';
+  shell(backWallTexture(U(R.w), U(R.h), [U(hearthX - 0.68), U(hearthX + 0.68)]), [0, R.h, 0], [1, 0, 0], [0, -1, 0], [0, 0, 1], R.w, R.h).name = 'north';
+  shell(sideWallTexture(U(R.d), U(R.h), [U(1.7), U(0.75), U(1.15), U(0.68)], 7), [0, R.h, R.d], [0, 0, -1], [0, -1, 0], [1, 0, 0], R.d, R.h).name = 'west';
+  shell(sideWallTexture(U(R.d), U(R.h), null, 13), [R.w, R.h, 0], [0, 0, 1], [0, -1, 0], [-1, 0, 0], R.d, R.h).name = 'east';
+  shell(sideWallTexture(U(R.w), U(R.h), null, 17), [R.w, R.h, R.d], [-1, 0, 0], [0, -1, 0], [0, 0, -1], R.w, R.h).name = 'south';
   // ceiling boards, smoked dark over the years
-  const ceil = plane(R.w, R.d, floorTexture(U(R.w), U(R.d), null, 23), 0x9a7a6a);
-  ceil.rotation.x = Math.PI / 2;
-  ceil.position.set(R.w / 2, R.h, R.d / 2);
-  root.add(ceil);
+  shell(floorTexture(U(R.w), U(R.d), null, 23), [0, R.h, R.d], [1, 0, 0], [0, 0, -1], [0, -1, 0], R.w, R.d, 0x9a7a6a).name = 'ceiling';
   // floor, ceiling and thick walls for the walker
   solid(-1, -1, -1, R.w + 1, 0, R.d + 1); solid(-1, R.h, -1, R.w + 1, R.h + 1, R.d + 1);
   solid(-1, 0, -1, 0, 3, R.d + 1); solid(R.w, 0, -1, R.w + 1, 3, R.d + 1);
@@ -174,8 +159,12 @@ export function buildWorld(scene) {
   solid(3.82, 0, 0, 5.08, 0.5, 0.52, 'bench');
   const rack = makeToolRack();
   put(rack, 4.45, 0.78, 0.015);
-  const card = new THREE.Mesh(new THREE.PlaneGeometry(14 * V * S, 10 * V * S), new THREE.MeshLambertMaterial({ map: postcardTexture() }));
-  card.position.set(5.32, 1.0, 0.012);
+  // the postcard: a thin voxel card (one voxel per texel), pinned to the wall
+  const cardTex = postcardTexture();
+  const card = voxelPlate(cardTex, { scale: (14 * V * S) / cardTex.image.width, depth: () => 1 });
+  cardTex.dispose();
+  card.scale.z = 0.25;
+  card.position.set(5.32, 1.0, 0.003);
   card.rotation.z = 0.06;
   root.add(card);
   const grind = makeGrindstone();
@@ -220,10 +209,14 @@ export function buildWorld(scene) {
   W.bladeBarrel = new THREE.Vector3(5.05, 0.45, 4.28);
   const display = makeWallDisplay();
   put(display, 3.4, 1.35, R.d - 0.03, Math.PI);
-  const rug = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 0.8), new THREE.MeshLambertMaterial({ map: rugTexture(U(1.25), U(0.8)), transparent: true, alphaTest: 0.5 }));
+  // the rug: woven voxels (one per texel, the fringe left ragged), a little nap on the pattern
+  const rugTex = rugTexture(U(1.25), U(0.8));
+  const rug = voxelPlate(rugTex, { scale: 1.25 / rugTex.image.width, depth: (x, y, c) => (((c >> 16) & 255) > 200 && ((c >> 8) & 255) > 150 ? 2 : 1), outline: false });
+  rugTex.dispose();
   rug.rotation.x = -Math.PI / 2;
   rug.rotation.z = 0.05;
-  rug.position.set(1.7, 0.004, 3.55);
+  rug.scale.z = 0.3;
+  rug.position.set(1.7, 0.001, 3.55);
   root.add(rug);
 
   // ---------------------------------------------------------------- hanging things

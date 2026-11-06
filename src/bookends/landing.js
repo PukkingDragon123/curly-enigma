@@ -8,6 +8,7 @@ import { makeLantern, makeMushrooms, makeRock, S16 } from './props.js';
 import { Particles, SHAPE, makeGlow, makeBlobShadow, fitFov } from './fx.js';
 import { signTexture } from './pixfont.js';
 import { PixelCanvas, pixelTexture } from '../gfx/PixelArt.js';
+import { voxelPlate } from '../gfx/voxPlate.js';
 import { makeFolk } from './actors.js';
 import { randomSpec } from '../gfx/characters.js';
 import { SHOPS } from '../data/shops.js';
@@ -34,11 +35,19 @@ function platform(textures) {
       pc.set(x, z, c);
     }
   }
-  const tex = pixelTexture(pc.commit());
-  textures.push(tex);
-  const top = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), new THREE.MeshToonMaterial({ map: tex, gradientMap: null }));
-  top.rotation.x = -Math.PI / 2;
-  top.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
+  // the boards are voxels (1/8 wide, 1/16 high): planks a step proud of their seams
+  pc.commit();
+  const h = new Uint16Array(W * D), top0 = new Uint32Array(W * D);
+  for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+    const c = pc.getHex(x, z);
+    h[x + W * z] = c === 0x3a2416 ? 1 : 2;
+    top0[x + W * z] = c;
+  }
+  const top = new THREE.Mesh(meshRelief({
+    W, D, h, top: top0, side: (q, lv, dir) => shade(top0[q], dir === 3 ? 0.9 : 0.7),
+    U: [VS, 0, 0], V: [0, 0, VS], N: [0, 1 / 16, 0], origin: [x0, -2 / 16, z0],
+  }), voxelMaterial('toon'));
+  top.name = 'boardwalk';
   const grp = new THREE.Group();
   grp.add(top);
   // brass-trimmed front edge
@@ -182,10 +191,24 @@ function bunting(a, b, sag, seed) {
   return { grp, mesh: merged, ph: rng.range(0, 6) };
 }
 
-function signMesh(lines, style, width) {
+/** A painted sign built as voxels (one per texel): its frame and letters stand proud, unlit so it reads. */
+function signMesh(lines, style, width, { thin = false } = {}) {
   const t = signTexture(lines, style);
   const h = width * (t.h / t.w);
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(width, h), new THREE.MeshBasicMaterial({ map: t.texture, transparent: false }));
+  const text = style.text ?? 0xffd65a, shadow = style.shadow ?? 0x1a0a06, rivet = style.rivet ?? 0xfff0a0;
+  const m = voxelPlate(t.texture, {
+    scale: width / t.w, kind: 'basic',
+    depth: (x, y, c) => {
+      const e = Math.min(x, y, t.w - 1 - x, t.h - 1 - y);
+      if (c === rivet && e === 2) return thin ? 2 : 3;
+      if (e < 2) return thin ? 2 : 2 + (e === 1 ? 1 : 0);
+      if (c === text) return thin ? 2 : 3;
+      if (c === shadow) return 1;
+      return thin ? 1 : 2;
+    },
+    color: (x, y, c, z, d) => (z < d - 1 ? shade(c, 0.75) : c),
+  });
+  m.name = 'sign';
   return { mesh: m, texture: t.texture, h };
 }
 
@@ -239,7 +262,7 @@ export function buildLanding(ctx) {
   ctx.textures.push(sign.texture);
 
   // the farewell banner the townsfolk painted
-  const banner = signMesh(['BON VOYAGE!', 'WE ♥ YOU'], { bg: 0xf3e2bf, border: 0x6b4226, border2: 0xd6b97f, text: 0xc94a3a, shadow: 0xe8c890, grain: 0xe8d2a8, rivet: 0x6b4226 }, 3.6);
+  const banner = signMesh(['BON VOYAGE!', 'WE ♥ YOU'], { bg: 0xf3e2bf, border: 0x6b4226, border2: 0xd6b97f, text: 0xc94a3a, shadow: 0xe8c890, grain: 0xe8d2a8, rivet: 0x6b4226 }, 3.6, { thin: true });
   banner.mesh.position.set(-5.3, 3.75, -3.05);
   banner.mesh.rotation.z = 0.02;
   for (const bx of [-7.15, -3.45]) {

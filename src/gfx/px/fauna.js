@@ -3,7 +3,7 @@
 // between body parts, segment rings, scales, fur fringes, wet sheens and glints; thin parts
 // (legs, antennae, threads) are 1px strokes laid over the ink so they stay delicate.
 import {
-  M, mat, mix, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, isTop, isBot, blob, loop, fringe, form, sheen, marks, bumps, speckle,
+  M, mat, mix, hash2, vnoise, step, ink, inkOf, seam, glint, line, gl, clamp, isTop, isBot, blob, loop, fringe, form, sheen, marks, bumps,
   blade, tube, spline, twinkle, sparkle, shadowOf, liftOf, bead, sweep,
 } from './lifeKit.js';
 import { CRITTER_DRAW } from '../critters32.js';

@@ -144,6 +144,7 @@ export function makeTerrainUniforms() {
     mist: { value: new THREE.Vector4(0, 1.5, 0.6, 0) }, // ground mist: density, depth below the eye, falloff
     mistCol: { value: new THREE.Color(0, 0, 0) },
     mood: { value: new THREE.Vector4(0, 0, 0, 0) }, // moss on tops, damp, rime, hot cracks (0..1 each)
+    airLit: { value: new THREE.Color(0, 0, 0) }, // the air of a giant cavern, faintly lit by its crystals (the fog fades into it)
   };
 }
 
@@ -226,10 +227,11 @@ const AIR = /* glsl */`
   uniform float haze;
   uniform vec4 mist;
   uniform vec3 mistCol;
+  uniform vec3 airLit;
   // reaches the dark at the edge of the streamed world (~16-24 m)
   float fogAmount(float d) { return 1.0 - exp(-pow(d / fogDist, 2.6) * 3.2); }
   // the far dark in a direction: deeper overhead (the roof of a hall is lost in it)
-  vec3 voidCol(vec3 dir) { return fogCol * (1.0 - 0.38 * smoothstep(0.0, 0.8, dir.y)); }
+  vec3 voidCol(vec3 dir) { return fogCol * (1.0 - 0.38 * smoothstep(0.0, 0.8, dir.y)) + airLit * (1.0 - 0.25 * smoothstep(0.2, 0.9, dir.y)); }
   // the helmet lamp's flood scattered toward the eye by the dust along a ray of length d
   vec3 airGlow(vec3 dir, float d) {
     float c = dot(dir, lampDir);

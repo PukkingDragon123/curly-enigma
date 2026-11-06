@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { VoxelGrid, voxelMaterial } from '../gfx/Voxel.js';
 import { meshRelief, voxMesh, hash3, fshade, fmix } from '../bookends/vox.js';
 import { readPixels, voxelPlate } from '../gfx/voxPlate.js';
-import { caveWallTex, tilesTex, caveViewTex, sunPaintingTex, chalkboardTex } from './tex.js';
+import { caveWallTex, tilesTex, caveViewTex, sunPaintingTex, chalkboardTex, flourTex } from './tex.js';
 
 const disposeTex = (t) => { t.dispose(); return t; };
 
@@ -229,5 +229,23 @@ export function burnerKnob() {
   }
   const m = voxMesh(g, { scale: VS, pivot: [4.5, 4.5, 2], kind: 'lambert' });
   m.name = 'knob';
+  return m;
+}
+
+/**
+ * A dusting of flour on the board (w × d m): one thin layer of flour voxels (one per texel of the
+ * ragged flour pattern) with the odd clump two high, lying flat. Origin at its centre, on the board.
+ */
+export function flourDust(w, d) {
+  const tex = flourTex();
+  const pix = readPixels(tex);
+  disposeTex(tex);
+  const m = voxelPlate(pix, {
+    scale: 1 / 32, kind: 'basic', outline: false,
+    depth: (x, y, c) => (hash3(x, y, 2, 41) < 0.07 ? 2 : 1),
+  });
+  m.rotation.x = -Math.PI / 2;
+  m.scale.set((w / pix.w) * 32, (d / pix.h) * 32, 0.13); // flour voxels are flat: ~4 mm a layer
+  m.name = 'flour';
   return m;
 }
