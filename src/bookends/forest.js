@@ -17,7 +17,7 @@ import { makeNoise2D, makeRng, clamp, lerp } from '../core/util.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { MF, initMF, updateMF, resetMeadowMaterials } from './meadowfx.js';
 import { forestToon, makeOpenness, makeStream, makeMist, resetForestMaterials } from './forestfx.js';
-import { makeStumpGeo, makeBridgeGeo, makeSignGeo, instanceChunked } from './foresttrees.js';
+import { makeStumpGeo, makeBridgeGeo, makeSignGeo, instanceChunked, instance } from './foresttrees.js';
 import { makeChest, makeSpill, makeCrust, makeCracks } from './chest.js';
 import { Twinkles, SHAPE, makeGlow } from './fx.js';
 import { makePaintedSky } from './forest/atmos.js';
@@ -347,12 +347,16 @@ export async function buildForest(opts = {}) {
     return (level + (q % 7)) % 5 === 0 ? 0x4a3422 : level % 3 === 0 ? 0x5a4028 : 0x6a4a30;
   };
   const terrainMat = forestToon({ dapple: true });
-  const ROWS = 96;
-  for (let k0 = 0; k0 < D; k0 += ROWS) {
-    const geo = G(meshRelief({ W, D, h, top, side, U: [VS, 0, 0], V: [0, 0, VS], N: [0, VY, 0], origin: [TB.x0, -BASE * VY, TB.z0], rows: [k0, k0 + ROWS], wallAO: false }));
+  // in tiles (~12 m square), so the ground off to the sides and behind the camera is culled (and
+  // the outline pass skips the tiles past the outline's reach)
+  const ROWS = 96, COLS = 96;
+  for (let k0 = 0; k0 < D; k0 += ROWS) for (let c0 = 0; c0 < W; c0 += COLS) {
+    const geo = G(meshRelief({ W, D, h, top, side, U: [VS, 0, 0], V: [0, 0, VS], N: [0, VY, 0], origin: [TB.x0, -BASE * VY, TB.z0], rows: [k0, k0 + ROWS], cols: [c0, c0 + COLS], wallAO: false }));
+    if (!geo.index.count) continue;
     const m = new THREE.Mesh(geo, terrainMat);
     if (!lite) m.layers.enable(LAYER_OUTLINE); // (phones skip the ground's outline pass)
     m.userData.noBatch = true;
+    m.userData.still = true;
     group.add(m);
     stats.tris.terrain = (stats.tris.terrain || 0) + triCount(geo);
   }
@@ -374,9 +378,10 @@ export async function buildForest(opts = {}) {
     }
     const oside = (q, level) => (oh[q] - level <= 1 ? fshade(otop[q], 0.8) : 0x5a4028);
     const outerMat = terrainMat;
-    const OR = 64;
-    for (let k0 = 0; k0 < OD; k0 += OR) {
-      const geo = G(meshRelief({ W: OW, D: OD, h: oh, top: otop, side: oside, U: [OS, 0, 0], V: [0, 0, OS], N: [0, VY, 0], origin: [OUT.x0, -BASE * VY - 0.01, OUT.z0], rows: [k0, k0 + OR], wallAO: false }));
+    const OR = 64, OC = 50; // tiles (frustum-culled)
+    for (let k0 = 0; k0 < OD; k0 += OR) for (let c0 = 0; c0 < OW; c0 += OC) {
+      const geo = G(meshRelief({ W: OW, D: OD, h: oh, top: otop, side: oside, U: [OS, 0, 0], V: [0, 0, OS], N: [0, VY, 0], origin: [OUT.x0, -BASE * VY - 0.01, OUT.z0], rows: [k0, k0 + OR], cols: [c0, c0 + OC], wallAO: false }));
+      if (!geo.index.count) continue;
       const m = new THREE.Mesh(geo, outerMat);
       m.userData.noBatch = true;
       group.add(m);
@@ -398,6 +403,7 @@ export async function buildForest(opts = {}) {
   };
   const K = soft ? { w: 4, l: 2.6, c: 3.5, g: 4, gl: 2 } : lite ? { w: 4, l: 3, c: 4, g: 5, gl: 2.5 } : { w: 5, l: 3.6, c: 5, g: 6, gl: 3 };
   const near = {};
+  const lodCells = []; // { full: [wood, leaves], far: [wood, leaves], c, r }: see addTrees
   for (const [kind, makers] of Object.entries({
     beech: lite ? [() => makeBroadleaf(101, { kind: 'beech', k: K.w, kl: K.l })] : [() => makeBroadleaf(101, { kind: 'beech', k: K.w, kl: K.l }), () => makeBroadleaf(117, { kind: 'beech', k: K.w, kl: K.l, height: 14.5, crownR: 4.6 })],
     oak: [() => makeBroadleaf(131, { kind: 'oak', k: K.w, kl: K.l })],
@@ -422,12 +428,30 @@ export async function buildForest(opts = {}) {
     snag: [makeSnag(181, { height: 7.5, k: 3 })],
   };
   for (const set of [near, mid]) for (const list of Object.values(set)) for (const t of list) { G(t.wood); G(t.leaves); }
+  // the detailed trees by the trail, per 28 m cell; a cell well past the camera (LOD_D) shows the
+  // coarser voxel model the trees off the trail use instead (same trees, same places)
+  const LOD_D = lite ? 32 : 40;
+  const addTrees = (geo, lodGeo, kind, items) => {
+    if (!items.length) return;
+    if (!lodGeo) { add(geo.wood, woodMat, items, kind + '-wood', true, 28); add(geo.leaves, leafMat(K.l), items, kind + '-leaves', false, 28); return; }
+    const bins = new Map();
+    for (const it of items) { const k = Math.floor(it.x / 28) + ',' + Math.floor(it.z / 28); if (!bins.has(k)) bins.set(k, []); bins.get(k).push(it); }
+    const lmat = leafMat(K.l), lmat2 = leafMat(2);
+    for (const list of bins.values()) {
+      const full = [instance(geo.wood, woodMat, list, { outline: true, name: kind + '-wood' }), instance(geo.leaves, lmat, list, { outline: false, name: kind + '-leaves' })];
+      const far = [instance(lodGeo.wood, woodMat, list, { outline: false, name: kind + '-wood-far' }), instance(lodGeo.leaves, lmat2, list, { outline: false, name: kind + '-leaves-far' })];
+      for (const m of [...full, ...far]) { m.userData.lodPair = true; group.add(m); }
+      const sp = full[1].boundingSphere.clone().union(full[0].boundingSphere);
+      lodCells.push({ full, far, c: sp.center, r: sp.radius });
+    }
+    stats.tris[kind + '-wood'] = (stats.tris[kind + '-wood'] || 0) + triCount(geo.wood) * items.length;
+    stats.tris[kind + '-leaves'] = (stats.tris[kind + '-leaves'] || 0) + triCount(geo.leaves) * items.length;
+  };
   for (const [kind, list] of Object.entries(near)) {
     const pick = (t) => t.v % list.length;
     list.forEach((geo, v) => {
       const its = (lod) => trees.filter((t) => t.kind === kind && t.near === !lod && (lod ? 0 : pick(t)) === (lod ? 0 : v)).map((t) => ({ x: t.x, y: groundH(t.x, t.z) - 0.06, z: t.z, ry: t.ry, s: t.s }));
-      add(geo.wood, woodMat, its(false), kind + '-wood', true, 28);
-      add(geo.leaves, leafMat(K.l), its(false), kind + '-leaves', false, 28);
+      addTrees(geo, mid[kind]?.[0] || null, kind, its(false));
       if (v === 0 && !lite) {
         const m = mid[kind][0];
         add(m.wood, woodMat, its(true), kind + '-wood-lod', false, 30);
@@ -828,9 +852,18 @@ export async function buildForest(opts = {}) {
   // ---- far chunks are hidden (the fog has them by then)
   const cullDist = soft ? 32 : lite ? 44 : 68;
   const cullable = [];
+  // outlined pieces wholly past the outline's reach (F.outlineFar: the engine fades outlines out by
+  // then) leave the outline mask pass: it would draw them a second time for nothing
+  const outlined = [];
+  group.updateMatrixWorld(true);
   group.traverse((o) => {
-    if (o.isInstancedMesh && o.boundingSphere) cullable.push({ m: o, c: o.boundingSphere.center, r: o.boundingSphere.radius });
+    if (o.isInstancedMesh && o.boundingSphere && !o.userData.lodPair) cullable.push({ m: o, c: o.boundingSphere.center, r: o.boundingSphere.radius });
     else if (soft && o.isMesh && o.frustumCulled && o.geometry && o.geometry.isInstancedBufferGeometry && o.geometry.boundingSphere) cullable.push({ m: o, c: o.geometry.boundingSphere.center, r: o.geometry.boundingSphere.radius - 8 });
+    // (only what never moves: the instanced trees, logs and rocks, and the ground tiles)
+    if ((o.isInstancedMesh || o.userData.still) && o.layers.isEnabled(LAYER_OUTLINE)) {
+      const sp = o.isInstancedMesh ? o.boundingSphere : o.geometry.boundingSphere;
+      if (sp) { const w = sp.clone().applyMatrix4(o.matrixWorld); outlined.push({ m: o, c: w.center, r: w.radius }); }
+    }
   });
 
   // ---- per-frame
@@ -844,6 +877,13 @@ export async function buildForest(opts = {}) {
     glints.update(dt, F.glintGain ?? 1);
     const cp = camera.position;
     for (const c of cullable) c.m.visible = c.c.distanceTo(cp) - c.r < cullDist;
+    for (const c of lodCells) {
+      const d = c.c.distanceTo(cp) - c.r, inRange = d < cullDist, far = d > LOD_D;
+      c.full[0].visible = c.full[1].visible = inRange && !far;
+      c.far[0].visible = c.far[1].visible = inRange && far;
+    }
+    const of = F.outlineFar || 0;
+    for (const c of outlined) { if (!of || c.c.distanceTo(cp) - c.r < of) c.m.layers.enable(LAYER_OUTLINE); else c.m.layers.disable(LAYER_OUTLINE); }
     for (const b of beams) {
       const B = b.userData.beam;
       _axis.subVectors(B.top, B.bottom).normalize();

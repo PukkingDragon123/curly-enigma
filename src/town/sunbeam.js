@@ -148,7 +148,7 @@ export function sunbeam(top, bottom, rTop = 0.7, rBot = 1.35) {
   const len = top.distanceTo(bottom);
   const time = { value: 0 };
   const grp = new THREE.Group();
-  for (const [k, n, op] of [[1, 3, 0.05], [0.5, 2, 0.085]]) {
+  for (const [k, n, op] of [[1, 3, 0.044], [0.5, 2, 0.075]]) {
     const mat = new THREE.ShaderMaterial({
       uniforms: { uTime: time, uLen: { value: len }, uR: { value: new THREE.Vector2(rBot * k, rTop * k) }, uColor: { value: new THREE.Color(0xffeec0) }, uOpacity: { value: op } },
       vertexShader: SHEET_VERT, fragmentShader: SHEET_FRAG,

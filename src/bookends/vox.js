@@ -296,6 +296,8 @@ export function meshRelief(o) {
   const wallAO = o.wallAO ?? useAO;
   const walls = o.walls ?? true;
   const k0 = o.rows ? Math.max(0, o.rows[0]) : 0, k1 = o.rows ? Math.min(D, o.rows[1]) : D;
+  // opts.cols = [i0, i1): a band of columns as well (tiles cull better than full-width strips)
+  const i0 = o.cols ? Math.max(0, o.cols[0]) : 0, i1 = o.cols ? Math.min(W, o.cols[1]) : W, CW = i1 - i0;
   const U = o.U, V = o.V, N = o.N, O = o.origin || [0, 0, 0];
   const det = U[0] * (V[1] * N[2] - V[2] * N[1]) - U[1] * (V[0] * N[2] - V[2] * N[0]) + U[2] * (V[0] * N[1] - V[1] * N[0]);
   const flip = det < 0;
@@ -354,10 +356,10 @@ export function meshRelief(o) {
 
   // ---- caps: greedy rectangles of equal (colour, height, flat AO)
   const rowsN = k1 - k0;
-  const mask = new Float64Array(W * rowsN);
+  const mask = new Float64Array(CW * rowsN);
   for (let k = k0; k < k1; k++) {
     const pr = PW * (k + 1) + 1;
-    for (let i = 0; i < W; i++) {
+    for (let i = i0; i < i1; i++) {
       const q = i + W * k, hc = h[q], c = top[q];
       if (!hc || !c) continue;
       let a0 = 0, a1 = 0, a2 = 0, a3 = 0;
@@ -371,27 +373,27 @@ export function meshRelief(o) {
           a3 = l && f ? 3 : l + f + (hp[p + PW - 1] > hc ? 1 : 0);
         }
       }
-      if (a0 === a1 && a1 === a2 && a2 === a3) { mask[i + W * (k - k0)] = ((c & 0xffffff) * 1024 + hc) * 4 + a0 + 1; continue; }
+      if (a0 === a1 && a1 === a2 && a2 === a3) { mask[i - i0 + CW * (k - k0)] = ((c & 0xffffff) * 1024 + hc) * 4 + a0 + 1; continue; }
       cu[0] = i; cv[0] = k; cu[1] = i + 1; cv[1] = k; cu[2] = i + 1; cv[2] = k + 1; cu[3] = i; cv[3] = k + 1;
       cl[0] = cl[1] = cl[2] = cl[3] = hc;
       ca[0] = a0; ca[1] = a1; ca[2] = a2; ca[3] = a3;
       emit(nTop, c & 0xffffff);
     }
   }
-  for (let r = 0; r < rowsN; r++) for (let i = 0; i < W; i++) {
-    const mi = i + W * r, key = mask[mi];
+  for (let r = 0; r < rowsN; r++) for (let ii = 0; ii < CW; ii++) {
+    const mi = ii + CW * r, key = mask[mi];
     if (!key) continue;
     let w = 1;
-    while (i + w < W && mask[mi + w] === key) w++;
+    while (ii + w < CW && mask[mi + w] === key) w++;
     let hh = 1;
     outer: while (r + hh < rowsN) {
-      const row = mi + hh * W;
+      const row = mi + hh * CW;
       for (let t = 0; t < w; t++) if (mask[row + t] !== key) break outer;
       hh++;
     }
-    for (let a = 0; a < hh; a++) mask.fill(0, mi + a * W, mi + a * W + w);
+    for (let a = 0; a < hh; a++) mask.fill(0, mi + a * CW, mi + a * CW + w);
     const v0 = Math.floor((key - 1) / 4), ao = (key - 1) % 4, hc = v0 % 1024, c = Math.floor(v0 / 1024);
-    const k = k0 + r;
+    const k = k0 + r, i = i0 + ii;
     cu[0] = i; cv[0] = k; cu[1] = i + w; cv[1] = k; cu[2] = i + w; cv[2] = k + hh; cu[3] = i; cv[3] = k + hh;
     cl[0] = cl[1] = cl[2] = cl[3] = hc;
     ca[0] = ca[1] = ca[2] = ca[3] = ao;
@@ -446,7 +448,7 @@ export function meshRelief(o) {
       R = RELIEF_DIRS[dir];
       nD = nDir[dir];
       alongV = R.tv === 1;
-      const S0 = alongV ? 0 : k0, S1 = alongV ? W : k1, T0 = alongV ? k0 : 0, T1 = alongV ? k1 : W;
+      const S0 = alongV ? i0 : k0, S1 = alongV ? i1 : k1, T0 = alongV ? k0 : i0, T1 = alongV ? k1 : i1;
       const tStep = R.tu + PW * R.tv;
       for (slc = S0; slc < S1; slc++) {
         for (let tt = T0; tt < T1; tt++) {
@@ -496,9 +498,9 @@ export function meshRelief(o) {
   g.setIndex(new THREE.BufferAttribute(nq * 4 > 65535 ? idx.slice(0, nq * 6) : Uint16Array.from(idx.subarray(0, nq * 6)), 1));
   // bounds from the cell range (cheaper than walking every vertex)
   let hMax = 0;
-  for (let k = Math.max(0, k0 - 1); k < Math.min(D, k1 + 1); k++) for (let i = 0; i < W; i++) { const v = h[i + W * k]; if (v > hMax) hMax = v; }
+  for (let k = Math.max(0, k0 - 1); k < Math.min(D, k1 + 1); k++) for (let i = Math.max(0, i0 - 1); i < Math.min(W, i1 + 1); i++) { const v = h[i + W * k]; if (v > hMax) hMax = v; }
   const box = new THREE.Box3();
-  for (const [u, v, l] of [[0, k0, 0], [W, k0, 0], [0, k1, 0], [W, k1, 0], [0, k0, hMax], [W, k0, hMax], [0, k1, hMax], [W, k1, hMax]]) {
+  for (const [u, v, l] of [[i0, k0, 0], [i1, k0, 0], [i0, k1, 0], [i1, k1, 0], [i0, k0, hMax], [i1, k0, hMax], [i0, k1, hMax], [i1, k1, hMax]]) {
     box.expandByPoint(new THREE.Vector3(O[0] + U[0] * u + V[0] * v + N[0] * l, O[1] + U[1] * u + V[1] * v + N[1] * l, O[2] + U[2] * u + V[2] * v + N[2] * l));
   }
   g.boundingBox = box;

@@ -78,7 +78,7 @@ const CAST = {
     // his star is long and points wherever he looks (head-on it filled the whole frame): a 3/4
     // view from a little above, him looking past the camera toward the words and a touch down, so
     // the star sits off to the side under the glasses, and the eyes, lamp and beard read
-    view: [-0.2, 0.4, 1], look: [0.5, -0.3], pan: -0.04, frame: 0.62,
+    view: [-0.15, 0.3, 1], look: [0.4, -0.16], pan: -0.02, frame: 0.64,
     build: async () => {
       const m = await import('./char/starmole.js');
       const r = m.makeStarMole({ height: 1 });

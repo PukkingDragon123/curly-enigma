@@ -75,18 +75,26 @@ function farModel(f) {
   return meshVoxGreedy(g, { scale: 1 / K, pivot: [c + 0.5, 0, c + 0.5], ao: false });
 }
 
-/** The far trees, instanced per kind. items: [{x, y, z, h, frame, tint}]. */
+/** Sectors of the ring: each kind is instanced per sector, so the ones behind and beside the camera are frustum-culled. */
+const SECTORS = 10;
+
+/** The far trees, instanced per kind and sector. items: [{x, y, z, h, frame, tint}]. */
 export function makeFarTrees(items) {
   const group = new THREE.Group();
   group.name = 'far-trees';
   const mat = forestToon({ dapple: false });
-  const byKind = Array.from({ length: FAR_FRAMES }, () => []);
-  for (const it of items) byKind[Math.max(0, Math.min(FAR_FRAMES - 1, it.frame | 0))].push(it);
+  const byKind = Array.from({ length: FAR_FRAMES * SECTORS }, () => []);
+  for (const it of items) {
+    const sec = Math.min(SECTORS - 1, Math.floor(((Math.atan2(it.z, it.x) / (Math.PI * 2)) + 1) % 1 * SECTORS));
+    byKind[Math.max(0, Math.min(FAR_FRAMES - 1, it.frame | 0)) * SECTORS + sec].push(it);
+  }
   const M = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
-  const meshes = [];
-  byKind.forEach((list, f) => {
+  const meshes = [], geos = new Map();
+  byKind.forEach((list, fs) => {
     if (!list.length) return;
-    const geo = farModel(f);
+    const f = Math.floor(fs / SECTORS);
+    if (!geos.has(f)) geos.set(f, farModel(f));
+    const geo = geos.get(f);
     const m = new THREE.InstancedMesh(geo, mat, list.length);
     list.forEach((it, i) => {
       const k = it.h / MODEL_H;

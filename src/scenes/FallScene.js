@@ -839,6 +839,7 @@ export default class FallScene extends Scene {
     const H0 = this.heroPivot.position;
     this.fallLight.position.set(H0.x + 0.3, H0.y + 1.4, H0.z + 0.5);
     this.fallLight.intensity = t > T.J ? 3.2 * fogK * (1 - ease(T.K + 1.2, T.L, t)) : 0;
+    F.outlineFar = this.post.outline === false ? 0 : this.post.outlineFar || 0; // (the forest leaves what's past it out of the outline pass)
     F.update(dt, cam, sc.fog);
     this.dress.update(dt, cam);
     this.drift.update(dt, cam, this.game.engine.height);

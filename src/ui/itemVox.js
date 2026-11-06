@@ -369,7 +369,7 @@ function turnOf(key) {
     t = new Turn(key, TURN_N, (i, m) => ({ ...spinPose(i, m.pose), fit: m.fitTurn }));
     if (!t.m) return null;
     turns.set(key, t);
-    while (turns.size > 8) turns.delete(turns.keys().next().value);
+    while (turns.size > 5) turns.delete(turns.keys().next().value); // (128-px frames: ~3 MB a turn)
   }
   return t;
 }
@@ -410,7 +410,7 @@ function popImg(img, key) {
   idle(() => {
     if (!img.isConnected) return;
     let turn = pops.get(key);
-    if (!turn) { turn = new Turn(key, POP_N, popJob); if (!turn.m) return; pops.set(key, turn); while (pops.size > 12) pops.delete(pops.keys().next().value); }
+    if (!turn) { turn = new Turn(key, POP_N, popJob); if (!turn.m) return; pops.set(key, turn); while (pops.size > 8) pops.delete(pops.keys().next().value); }
     const t0 = performance.now();
     let last = -1;
     const tick = () => {

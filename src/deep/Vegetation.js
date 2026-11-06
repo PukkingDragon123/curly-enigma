@@ -625,13 +625,14 @@ export class Vegetation {
       this.pool.hide(rec.slot.s + p.q0, p.nq);
     }
     if (!burst || !this.fx) return;
-    // a puff of torn leaves (a few per frame at most)
+    // a puff of torn leaf bits: tiny voxels (the voxel spray when Fluids lends it; a few per frame at most)
     if (this.burstT > this.time) return;
     this.burstT = this.time + 0.05;
-    const col = p.col, R = Math.random;
+    const col = p.col, R = Math.random, V = this.owner?.fluids?.vfx;
     for (let i = 0; i < 6; i++) {
       const a = R() * Math.PI * 2, sp = 0.4 + R() * 0.8;
-      this.fx.spawn({ x: p.x, y: p.y + (p.hang ? -0.1 : 0.06), z: p.z, vx: Math.cos(a) * sp, vy: 0.6 + R() * 0.9, vz: Math.sin(a) * sp, life: 0.5 + R() * 0.5, size: 0.012 + R() * 0.008, color: col, alpha: 1, drag: 1.6, grav: 5, fade: false });
+      const o = { x: p.x, y: p.y + (p.hang ? -0.1 : 0.06), z: p.z, vx: Math.cos(a) * sp, vy: 0.6 + R() * 0.9, vz: Math.sin(a) * sp, life: 0.5 + R() * 0.5, size: R() < 0.5 ? 1 / 48 : 1 / 64, color: col, alpha: 1, drag: 1.6, grav: 5, fade: false };
+      if (V) V.spawn(o); else this.fx.spawn(o);
     }
   }
   /** Chain into world.onChange (DigScene wires props + fluids there; we add ourselves after them). */
