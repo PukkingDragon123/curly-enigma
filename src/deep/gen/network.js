@@ -192,6 +192,19 @@ function makeEdge(a, b, rng, ramp) {
   };
 }
 
+/** Re-derive a passage's segment vectors and box after its floor line moved. */
+function reshape(e) {
+  const p = e.p, ax = p[0], az = p[2], mx = p[3], mz = p[5], bx = p[6], bz = p[8];
+  e.v0x = mx - ax; e.v0z = mz - az; e.v1x = bx - mx; e.v1z = bz - mz;
+  const l0 = Math.max(1e-6, e.v0x * e.v0x + e.v0z * e.v0z), l1 = Math.max(1e-6, e.v1x * e.v1x + e.v1z * e.v1z);
+  e.il0 = 1 / l0; e.il1 = 1 / l1; e.len0 = Math.sqrt(l0); e.len1 = Math.sqrt(l1);
+  const pad = (e.kind === 1 ? e.rt : e.r) + 2.2;
+  e.x0 = Math.min(ax, mx, bx) - pad; e.x1 = Math.max(ax, mx, bx) + pad;
+  e.z0 = Math.min(az, mz, bz) - pad; e.z1 = Math.max(az, mz, bz) + pad;
+  e.y0 = Math.min(p[1], p[4], p[7]) - 0.8;
+  e.y1 = Math.max(p[1], p[4], p[7]) + (e.kind === 1 ? e.H : e.r * 2) + 1.2;
+}
+
 /** Does a passage run through a protected place? */
 function crosses(e, near) {
   const p = e.p;
@@ -390,8 +403,8 @@ function makeVault(id, n, band, rng, d, nodes, edges) {
   if (rng() < 0.65) {
     const a = rng() * 6.283, aw = rng.range(0.45, 0.85), hT = rng.range(0.66, 0.74), yT = y0 + rng.range(3.2, 5.6);
     v.terr = { a, aw, h: hT, y: yT };
-    const e = at((hT + 0.95) / 2, a + aw * 0.8 * (rng() < 0.5 ? 1 : -1));
-    v.mouths.push({ x: e.x, z: e.z, y: yT - 0.1, ramp: true });
+    const sd = rng() < 0.5 ? 1 : -1, ea = a + aw * 0.8 * sd, e = at((hT + 0.95) / 2, ea);
+    v.mouths.push({ x: e.x, z: e.z, y: yT - 0.1, ramp: true, ledge: true, th: ea, dir: sd });
   }
   // columns where a stalactite met its stalagmite long ago
   const nc = rng.int(2, 6);
@@ -418,6 +431,18 @@ function makeVault(id, n, band, rng, d, nodes, edges) {
     if (ia && ib) { e.dead = true; A.deg--; B.deg--; continue; }
     if (e.x1 < v.x - Rm - 2 || e.x0 > v.x + Rm + 2 || e.z1 < v.z - Rm - 2 || e.z0 > v.z + Rm + 2 || e.y1 < y0 - 4 || e.y0 > y0 + H + 2) continue;
     const p = e.p, N = 48;
+    if (ia || ib) {
+      // a passage to a swallowed chamber: it bends at the cavern's wall, coming down (a ramp in
+      // the rock) to a height you can walk out of the wall at, then runs level into the cavern
+      const cap = y0 + H * 0.42, oi = ia ? 6 : 0, bi = ia ? 0 : 6;
+      const ox = p[oi], oy = p[oi + 1], oz = p[oi + 2], bx = p[bi], bz = p[bi + 2];
+      let t = 0;
+      for (; t < 1; t += 0.02) if (hOf(ox + (bx - ox) * t, oz + (bz - oz) * t) < 1.12) break;
+      const my = Math.min(oy, cap);
+      p[3] = ox + (bx - ox) * t; p[4] = my; p[5] = oz + (bz - oz) * t;
+      p[bi + 1] = my;
+      reshape(e);
+    }
     const pt = (t) => { const s = t < 0.5 ? t * 2 : (t - 0.5) * 2, k = t < 0.5 ? 0 : 3; return [p[k] + (p[k + 3] - p[k]) * s, p[k + 1] + (p[k + 4] - p[k + 1]) * s, p[k + 2] + (p[k + 5] - p[k + 2]) * s]; };
     const inside = (q) => { const h = hOf(q[0], q[2]); return h < 1 && q[1] > y0 - 3.5 && q[1] < roofAt(h) + 0.5; };
     const ms = [];
@@ -430,10 +455,17 @@ function makeVault(id, n, band, rng, d, nodes, edges) {
     }
     if (!ms.length && !ia && !ib) continue;
     // a passage coming in too high to reach (or under the lake): the network can do without it?
-    const tooHigh = ms.some((m) => m.y > y0 + H * 0.7);
+    const tooHigh = ms.some((m) => m.y > y0 + H * 0.6);
     if (tooHigh && !ia && !ib && A.deg > 1 && B.deg > 1) { e.dead = true; A.deg--; B.deg--; continue; }
     e.vlt = v;
     for (const m of ms) v.mouths.push(m);
+  }
+  // a mouth high up the wall gets a ledge: a shelf along the wall that slopes down from it both
+  // ways (in from the wall as far as the roof leaves head room), a landing under the mouth itself
+  for (const m of v.mouths) {
+    if (m.ledge || m.y - y0 < 1.6) continue;
+    const dx = m.x - v.x, dz = m.z - v.z;
+    m.ledge = true; m.th = Math.atan2((-dx * v.s + dz * v.c) / Rz, (dx * v.c + dz * v.s) / Rx); m.dir = 0;
   }
   v.yb0 = y0 - (v.lake ? v.lake.D + 1.5 : 1.5);
   v.yb1 = y0 + H + 2.5;
@@ -471,11 +503,29 @@ export function vaultFloor(v, nz, x, z, h, u, w) {
       if (lf < f) f = lf;
     }
   }
-  // talus under the mouths: lumpy rubble at ~30°
+  // under the mouths: a talus cone under a low one, a ledge sloping down along the wall from a
+  // high one (and a landing under it), lumpy with rubble
   const M = v.mouths;
+  let th = null;
   for (let i = 0; i < M.length; i++) {
-    const m = M[i], c = m.y + 0.25 - TALUS * Math.hypot(x - m.x, z - m.z);
+    const m = M[i];
+    const dm = Math.hypot(x - m.x, z - m.z);
+    const c = m.y + 0.25 - (m.ledge ? 1.6 : TALUS) * dm;
     if (c > f - 0.6) { const t = c + nz[3].n(x * 0.9 + i, 2.2, z * 0.9) * 0.22; if (t > f) f = t; }
+    if (!m.ledge) continue;
+    if (th === null) th = Math.atan2(w, u);
+    let da = th - m.th;
+    if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI;
+    if (m.dir && da * m.dir < 0) continue;
+    const ly = m.y + 0.15 - 0.5 * Math.abs(da) * v.Rm * Math.max(h, 0.5);
+    if (ly < f) continue;
+    // the band: in from where the roof leaves head room over the shelf
+    const q = (ly + 2.4 - v.y0) / v.H;
+    if (q >= 1) continue;
+    const hh = Math.pow(1 - q * q, 0.125);
+    const e = (h - hh + 2.8 / v.Rm) * v.Rm;
+    const t = ly + Math.min(0, e) * 2.6 + nz[3].n(x * 0.8 - i, 3.1, z * 0.8) * 0.15;
+    if (t > f) f = t;
   }
   for (const p of v.piles) {
     const dx = x - p.x, dz = z - p.z, pd = (dx * dx + dz * dz) * p.i2;

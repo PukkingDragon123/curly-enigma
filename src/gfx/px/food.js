@@ -774,7 +774,7 @@ function dish(pc, id, spec) {
       const heap = blob(15.6, 14, 10.4, 4, { seed: 5, lump: 0.14 }).union(blob(13, 11.4, 5, 3, { seed: 6, lump: 0.12 }));
       seam(pc, heap, 'shadow');
       form(pc, heap, MR, { bias: 0.06, tex: (x, y) => (vnoise(x * 0.8, y * 0.8, 4) - 0.5) * 0.4 });
-      for (const [x, y, r] of [[10, 12, 1.2], [18.6, 13.6, 1], [14, 15, 0.8]]) M().disk(x, y, r + 0.4).edge().each((X, Y) => { if (heap.get(X, Y)) pc.set(X, Y, (X + 0.5 - x) + (Y + 0.5 - y) < 0 ? MR[1] : MR[4]); });
+      for (const [x, y, r] of [[10, 12, 1.2], [18.6, 13.6, 1], [14, 15, 0.8]]) blob(x, y, r + 0.5, r + 0.3, { seed: x | 0, lump: 0.25 }).edge().each((X, Y) => { if (heap.get(X, Y)) pc.set(X, Y, (X + 0.5 - x) + (Y + 0.5 - y) < 0 ? MR[1] : MR[4]); });
       for (const [x, y] of [[8, 15], [20, 15]]) { pc.set(x, y, 0xc0a0d0); pc.set(x + 1, y, 0x6a4a7a); }
       ink(pc);
       pc.set(5, 5, 0x1e1a22); pc.set(4, 4, 0xd8e8ff, 200); pc.set(6, 4, 0xc8d8f0, 180);

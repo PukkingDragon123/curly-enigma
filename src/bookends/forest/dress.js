@@ -219,8 +219,8 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
       const v = Math.hypot(cx, cz) < CLEAR_R + 1 || FOREST.dist.trail(cx, cz) < 1.6 ? 1 : n1(cx * 0.13, cz * 0.13) > -0.1 ? 0 : rng.int(0, 1);
       its[v].push({ x: cx, y: floorY(cx, cz) - 0.015, z: cz, ry: rng.range(0, 6.28), s: rng.range(0.85, 1.25) });
     };
-    for (let i = 0; i < pick3(30, 80, 170); i++) place(...anywhere());
-    for (let i = 0; i < pick3(25, 50, 100); i++) {
+    for (let i = 0; i < pick3(25, 50, 170); i++) place(...anywhere());
+    for (let i = 0; i < pick3(20, 35, 100); i++) {
       const s = rng.range(0, L - 1), off = (rng() < 0.5 ? -1 : 1) * rng.range(1.05, 4);
       if (rng() < 0.75) { if (!inLane(s, off)) place(...tr.beside(s, off)); }
       else { const a = rng.range(0, 6.28), r = rng.range(CLEAR_R - 2.2, CLEAR_R + 1.2); place(Math.cos(a) * r, Math.sin(a) * r); }
@@ -280,7 +280,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
       for (let s = -0.5; s <= 0.5; s += 0.2) addBlock(x + Math.cos(ry) * s * len, z - Math.sin(ry) * s * len, 0.5);
       F.spots.logs.push({ x, z, ry, len, top: floorY(x, z) + (v ? 0.5 : 0.72), extra: true });
     }
-    li.forEach((l, v) => add(lg[v], stiffMat, l, 'logs', { outline: tier === 2, cell: 30, cull: pick3(30, 40, 56) }));
+    li.forEach((l, v) => add(lg[v], stiffMat, l, 'logs', { outline: tier === 2, cell: 60, cull: pick3(30, 40, 56) }));
     const bg = [G(makeBoulderGeo(9811, { w: 1.4, h: 0.9, d: 1.1, moss: 0.8 })), G(makeBoulderGeo(9817, { w: 0.7, h: 0.45, d: 0.6, moss: 0.5, tone: 0x8a8478 }))];
     const bi = [[], []];
     for (let i = 0; i < pick3(10, 20, 40); i++) {
@@ -290,7 +290,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
       bi[v].push({ x, y: floorY(x, z) - 0.08, z, ry: rng.range(0, 6.28), s: rng.range(0.8, 1.3) });
       addBlock(x, z, r);
     }
-    bi.forEach((l, v) => add(bg[v], stiffMat, l, 'boulders', { outline: tier === 2, cell: 30, cull: pick3(30, 40, 56) }));
+    bi.forEach((l, v) => add(bg[v], stiffMat, l, 'boulders', { outline: tier === 2, cell: 60, cull: pick3(30, 40, 56) }));
   }
 
   // ---- the floor's small change: fallen branches, cones and acorns
@@ -302,7 +302,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
       if (!inOut(x, z) || FOREST.dist.stream(x, z) < 1.1 || FOREST.dist.trail(x, z) < 0.7 || Math.hypot(x, z) < HOLE_R + 1.5 || !free(x, z, 0.4)) continue;
       bi[0].push({ x, y: floorY(x, z) - 0.01, z, ry: rng.range(0, 6.28), s: rng.range(0.85, 1.2) });
     }
-    bi.forEach((l, v) => add(bg[v], stiffMat, l, 'branches', { cell: 30, cull: pick3(18, 22, 30) }));
+    bi.forEach((l, v) => add(bg[v], stiffMat, l, 'branches', { cell: 60, cull: pick3(18, 22, 30) }));
     if (tier === 2) {
       const cg = [G(makeConesGeo(9211, { pine: true, n: 9 }))];
       const ci = [[]];
@@ -415,7 +415,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
     const f = new THREE.Vector3().subVectors(look, pos).normalize();
     const r = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 1, 0)).normalize();
     const u = new THREE.Vector3().crossVectors(r, f).normalize();
-    const geo = makeBoughGeo(seed, { len, kw: 24, kl: 24, ...(leaf ? { leaf } : {}) });
+    const geo = makeBoughGeo(seed, { len, kw: tier === 2 ? 24 : 16, kl: tier === 2 ? 24 : 16, ...(leaf ? { leaf } : {}) });
     G(geo.wood); G(geo.leaves);
     const halfH = dist * Math.tan(THREE.MathUtils.degToRad(fov) / 2), halfW = halfH * aspect;
     const anchor = pos.clone().addScaledVector(f, dist).addScaledVector(r, side * (halfW * (1 - reach) + len * 0.92)).addScaledVector(u, halfH * up);

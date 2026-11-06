@@ -923,20 +923,24 @@ const F = {
     const S = mat(0xe4e0d8, { cont: 1.05 });
     const cam = CAM({ cy: 30, scale: 1 });
     box(pc, cam, -8, 0, -6, 8, 6, 6, mat(0x9a948e, { cont: 1.08 }), { tone: { top: 2 }, paintAll: stone(mat(0x9a948e, { cont: 1.08 }), { h: 3, w: 6 }) });
-    // a heroic marble mole: body, head, snout, raised paw holding a pick; squinting
-    const body = blob(15.6, 17.4, 7.2, 7.4, { seed: 3, lump: 0.04 });
-    const head = blob(16, 8.6, 5.6, 4.8, { seed: 4 });
-    const snout = blob(21.6, 10, 3, 2, { seed: 5 });
-    for (const m of [body, head, snout]) { seam(pc, m, 'shadow'); form(pc, m, S, { bias: 0.06 }); }
+    // a heroic marble mole in profile: pear body, long snout, a raised digging paw gripping a pick
+    const body = loop([[8.6, 15], [11.6, 11.6], [16.6, 11], [20.6, 13], [22.4, 17.4], [22, 22.4], [19.6, 25.8], [14, 26.4], [9.4, 24.6], [7.4, 20]]);
+    const head = loop([[10.4, 9], [12.6, 5.4], [16.6, 4], [20.4, 5.2], [24, 7.4], [27.4, 9], [27.6, 10.6], [24.6, 11.4], [20, 12.4], [15, 12.8], [11.4, 11.6]]);
+    for (const m of [body, head]) { seam(pc, m, 'shadow'); form(pc, m, S, { bias: 0.06 }); }
     marks(pc, body, S, { dens: 0.05, seed: 2, len: 2, dir: [1, 1] });
-    tube(pc, [[23, 18], [27.4, 6]], 0.8, mat(0xc8c0b8, { cont: 1.05 }), { capEnd: 0.1 });
+    const PK = mat(0xc8c0b8, { cont: 1.05 });
+    tube(pc, [[23.4, 19], [27.4, 6]], 0.8, PK, { capEnd: 0.1 });
     const pick = M();
     for (let t = -5; t <= 5; t += 0.25) pick.disk(27.4 + t * 0.9, 5.6 + t * 0.4 - Math.abs(t) * 0.25, Math.max(0.5, 1.2 - Math.abs(t) / 6));
-    seam(pc, pick, 'shadow'); form(pc, pick, mat(0xc8c0b8, { cont: 1.05 }), { bias: 0.08 });
-    const paw = blob(22.4, 16.4, 2.6, 2.2, { seed: 6 }); seam(pc, paw, 'shadow'); form(pc, paw, S, { bias: 0.08 });
-    for (const x of [21, 22, 23]) pc.set(x, 15, S[4]);
-    line(pc, 17, 7, 19, 7, S[5]); pc.set(24, 10, S[4]);
-    for (const [x, y] of [[11, 14], [13, 20]]) pc.set(x, y, S[0]);
+    seam(pc, pick, 'shadow'); form(pc, pick, PK, { bias: 0.08 });
+    const paw = loop([[20.6, 15.4], [23, 14], [25.4, 15], [25.6, 17.6], [23.4, 18.8], [21, 18]]);
+    seam(pc, paw, 'shadow'); form(pc, paw, S, { bias: 0.08 });
+    for (const x of [22, 24]) pc.set(x, 18, S[5]);
+    // squinting eye, nose tip, a crease of fur at the neck
+    line(pc, 17, 7, 19, 7, S[5]); pc.set(18, 6, S[4]);
+    pc.set(27, 9, S[4]); pc.set(27, 10, S[5]);
+    line(pc, 12, 12, 19, 13, (i) => (i % 2 ? S[4] : null));
+    for (const [x, y] of [[11, 15], [13, 20]]) pc.set(x, y, S[0]);
     ink(pc);
     line(pc, 9, 19, 11, 22, 0xa8a49c);
   },
@@ -1170,7 +1174,7 @@ function ticket(pc) {
   for (let x = 5; x < 20; x++) { pc.set(x, 11, RD); pc.set(x, 21, RD); }
   const FONT = { O: ['.#.', '#.#', '#.#', '#.#', '.#.'], N: ['##.', '#.#', '#.#', '#.#', '#.#'], E: ['###', '#..', '##.', '#..', '###'] };
   [...'ONE'].forEach((ch, i) => FONT[ch].forEach((row, y) => [...row].forEach((v, x) => { if (v === '#') { pc.set(7 + i * 4 + x, 13 + y, 0x6a3a10); if (!FONT[ch][y + 1] || FONT[ch][y + 1][x] !== '#') pc.set(7 + i * 4 + x, 14 + y, G[1]); } })));
-  const st = M().disk(26, 15, 2.8);
+  const st = blob(26, 15, 2.9, 2.7, { seed: 4, lump: 0.2 });
   st.edge().each((x, y) => { if (hash2(x, y, 3) < 0.85) pc.set(x, y, RD); });
   pc.set(26, 15, RD); pc.set(25, 14, RD); pc.set(27, 14, RD); pc.set(26, 16, RD);
   ink(pc);

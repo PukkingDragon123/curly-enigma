@@ -92,7 +92,7 @@ export function makeBroadleaf(seed, opts = {}) {
   // asked for (1.6x; the wood is a small share of a tree's faces), far copies keep theirs
   // (the giants' crowns too: they hang over the opening shot)
   // (the light forests' coarser requests are refined less)
-  const k = (opts.k ?? 8) * (lod ? 1 : giant ? 1.3 : (opts.k ?? 8) >= 5 ? 1.6 : 1.3), kl = (opts.kl ?? 5) * (giant && !lod ? ((opts.kl ?? 5) >= 3 ? 1.35 : 1.15) : 1);
+  const k = (opts.k ?? 8) * (lod ? 1 : giant ? ((opts.k ?? 8) >= 6 ? 1.3 : 1.1) : (opts.k ?? 8) >= 5 ? 1.6 : 1.3), kl = (opts.kl ?? 5) * (giant && !lod ? ((opts.kl ?? 5) >= 3 ? 1.35 : 1.15) : 1);
   const bark = opts.bark || BARK[kind] || BARK.oak;
   const leafPal = opts.leaf || LEAF[kind] || LEAF.oak;
 

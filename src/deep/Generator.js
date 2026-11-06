@@ -12,7 +12,9 @@ import { stampRuin, ruinBB, dungeonFootprint, ruinLayout, toWorld } from './gen/
 import { stampLift, stampShaft, liftBB } from './gen/lifts.js';
 import { stampPassage, passageBB, planPassage } from './gen/passages.js';
 import { settleLakes } from './fluids/lakes.js';
-import { buildNetwork, netDensity, GROTTO, CAVERN } from './gen/network.js';
+import { buildNetwork, netDensity, GROTTO, CAVERN, vaultAt, lakeDist } from './gen/network.js';
+import { VAULT_BANDS, dressVaults, stampFalls, stampClusters, makeColumns, vaultColumns, vaultSolid } from './gen/vaults.js';
+import { planVeins, stampVeins } from './gen/veins.js';
 import { RELIC_IDS } from './ruins/relics.js';
 
 export const CS = 32; // chunk size (voxels)
@@ -132,6 +134,10 @@ export function makePlan(seed, opts = {}) {
       ...plan.stations.map((s) => ({ x: s.x + 1, y: s.y + 1, z: s.z, r: 4.5 }))],
     avoidCol: [{ x: plan.shaft.x, z: plan.shaft.z, r: 2.4, y0: -210, y1: T.y + 4 }],
     dino: (x, y, z) => dinoAt(plan, x, y, z),
+    // the giant caverns (gen/vaults.js), clear of the town and the folk's burrows (addPlaces)
+    vaults: VAULT_BANDS,
+    vaultAvoid: [{ x: T.x, y: T.y, z: T.z, r: 15 }, { x: L0.x - 16, y: L0.y - 2.5, z: L0.z + 13, r: 10 }, { x: L0.x + 25, y: -21, z: L0.z + 18, r: 10 },
+      { x: -26, y: -38, z: -28, r: 10 }, { x: -18, y: -98, z: 38, r: 10 }],
   });
   for (let zone = 1; zone <= 6; zone++) {
     for (let k = 0; k < 3; k++) {
@@ -149,37 +155,16 @@ export function makePlan(seed, opts = {}) {
   }
   for (const st of plan.stations) addLift('s' + st.n, st.n === 0 ? 'Below Deep Town' : `Shaft stop ${st.n}`, st.x, st.y, st.z, st.zone, false);
 
-  // ore areas: per zone, clusters of one ore type (what the radar shows)
-  for (let zone = 1; zone <= 6; zone++) {
-    const spawn = ORE_SPAWN[zone] || [];
-    const total = spawn.reduce((s, e) => s + e[1], 0);
-    const count = zone === 1 ? 34 : 28;
-    for (let k = 0; k < count; k++) {
-      let r = rng() * total, item = spawn[0][0];
-      for (const [id, w] of spawn) { r -= w; if (r <= 0) { item = id; break; } }
-      const d0 = ZONE_DEPTHS[zone - 1] + 2, d1 = ZONE_DEPTHS[zone] - 2;
-      let x = rng.range(-70, 70), z = rng.range(-70, 70);
-      // the first ores are close to the burrow
-      if (zone === 1 && k < 8) { x = W / 2 + rng.range(-14, 14); z = D / 2 + rng.range(-14, 14); }
-      const y = -rng.range(d0, d1);
-      const rad = rng.range(2.5, 5);
-      const area = { id: plan.areas.length, item, oreId: ORE_ID[item], x, y, z, r: rad, zone, deposits: [] };
-      const n = Math.round(rng.range(5, 12) * (item === 'diamond' || item === 'sunstone' || item === 'voidstone' ? 0.5 : 1));
-      for (let i = 0; i < n; i++) {
-        const a = rng() * Math.PI * 2, b = (rng() - 0.5) * Math.PI, dd = Math.sqrt(rng()) * rad;
-        area.deposits.push({
-          x: x + Math.cos(a) * Math.cos(b) * dd, y: y + Math.sin(b) * dd * 0.6, z: z + Math.sin(a) * Math.cos(b) * dd,
-          r: rng.range(0.14, 0.32), q: clamp(84 + (rng() + rng() + rng() - 1.5) * 14, 50, 100), seed: rng.int(1, 1e6),
-        });
-      }
-      plan.areas.push(area);
-    }
-  }
+  // ore areas: per zone, vein systems of one ore type (what the radar shows): branching veins of
+  // vein rock with nuggets strung along them, rich pockets where they split (gen/veins.js). The
+  // first few are close to the burrow.
+  planVeins(plan, rng, caveDensity, ZONE_DEPTHS, { zone: 1, n: 8, x: W / 2, z: D / 2, r: 14 });
 
   // danger zones: lakes, lava, nests, gas
   const addLake = (kind, zone, n) => {
     for (let k = 0; k < n; k++) {
       const x = rng.range(-70, 70), z = rng.range(-70, 70), y = -rng.range(ZONE_DEPTHS[zone - 1] + 4, ZONE_DEPTHS[zone] - 4), r = rng.range(3.5, 7);
+      if (vaultAt(plan.net, x, y, z, 0.5)) continue; // (the giant caverns have their own lakes)
       plan.dangers.push({ kind, x, y, z, r, zone });
       plan.features.push({ kind: 'lake', x, y, z, r, fluid: kind === 'lava' ? M.LAVA : M.WATER });
       if (kind === 'lava') plan.lights.push({ x, y: y - r * 0.2, z, c: [1.6, 0.55, 0.16], r: r * 2.2, lava: true });
@@ -191,14 +176,18 @@ export function makePlan(seed, opts = {}) {
     for (let k = 0; k < 3 + zone; k++) {
       const x = rng.range(-70, 70), z = rng.range(-70, 70), y = -rng.range(ZONE_DEPTHS[zone - 1] + 3, ZONE_DEPTHS[zone] - 3);
       if (Math.hypot(x - W / 2, z - D / 2) < 14 && zone === 1) continue; // keep the burrow safe
-      plan.dangers.push({ kind: 'nest', x, y, z, r: rng.range(3, 5), zone });
-      plan.features.push({ kind: 'sphere', x, y, z, r: rng.range(3, 4.5), ry: 2.2, m: 0 });
+      const nr = rng.range(3, 5), sr = rng.range(3, 4.5);
+      if (vaultAt(plan.net, x, y, z, 0.4)) continue; // (never a hole in a giant cavern's lake)
+      plan.dangers.push({ kind: 'nest', x, y, z, r: nr, zone });
+      plan.features.push({ kind: 'sphere', x, y, z, r: sr, ry: 2.2, m: 0 });
     }
     if (zone >= 2 && zone <= 4) for (let k = 0; k < 2; k++) {
       const x = rng.range(-70, 70), z = rng.range(-70, 70), y = -rng.range(ZONE_DEPTHS[zone - 1] + 3, ZONE_DEPTHS[zone] - 3);
       plan.dangers.push({ kind: 'gas', x, y, z, r: rng.range(3, 5), zone });
     }
   }
+  // the giant caverns' lakes, falls, crystal clusters and lights (gen/vaults.js)
+  dressVaults(plan, caveDensity);
   addPlaces(plan, rng, L0);
   // stamp in order: the caves first, then what is cut into them; the lift stations last (nothing
   // cuts into those). A stable sort: features of one kind keep their order.
@@ -255,7 +244,7 @@ const QDIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]]; // a dungeon's forward (its a 
  * of the dungeon). Returns the plan entry or null.
  */
 function placeDungeon(plan, rng, id, zone, kind, puzzle, plain, relic = null) {
-  const open = (x, y, z) => caveDensity(plan, x, y, z) > 0.02;
+  const open = (x, y, z) => caveDensity(plan, x, y, z) > 0.02 && !underLake(plan, x, y, z);
   const Fp = dungeonFootprint(kind, puzzle, plain);
   const V = 1 / VOX, T = plan.town, pro = plan.prologue;
   const ext = Math.max(-Fp.a0, Fp.a1, -Fp.b0, Fp.b1) * V; // the reach round the centre, any way it turns
@@ -398,7 +387,7 @@ function addPlaces(plan, rng, L0) {
   }
   // natural passages: every burrow's door opens onto a winding cave that runs to the nearest open
   // cave, and one more joins the mine entrance to the trading post (gen/passages.js)
-  const open = (x, y, z) => caveDensity(plan, x, y, z) > 0.02;
+  const open = (x, y, z) => caveDensity(plan, x, y, z) > 0.02 && !underLake(plan, x, y, z);
   const pr = makeRng(plan.seed + 7373);
   const door = (b) => { const f = plan.features.find((q) => q.kind === 'burrow' && q.id === b.id); const dd = burrowDoor(f); const l = Math.hypot(dd.x - b.x, dd.z - b.z) || 1; return { A: { x: dd.x, y: b.y, z: dd.z }, d: [(dd.x - b.x) / l, (dd.z - b.z) / l] }; };
   const passage = (id, A, d, o = {}) => {
@@ -421,6 +410,7 @@ const orderOf = (f) => ORDER[f.kind] ?? (f.kind === 'prologue' ? 1 : 0);
 function aabbOf(f) {
   const pad = 0.5;
   if (f.kind === 'sphere') { f.bb = [f.x - f.r - pad, f.y - (f.ry || f.r) - pad, f.z - f.r - pad, f.x + f.r + pad, f.y + (f.ry || f.r) + pad, f.z + f.r + pad]; }
+  else if (f.kind === 'lake' && f.basin) { f.bb = [f.x - f.r, f.wl - f.depth, f.z - f.r, f.x + f.r, f.wl + 0.3, f.z + f.r]; }
   else if (f.kind === 'lake') { f.bb = [f.x - f.r - 1, f.y - f.r * 0.6 - 1, f.z - f.r - 1, f.x + f.r + 1, f.y + f.r * 0.5 + 1, f.z + f.r + 1]; }
   else if (f.kind === 'box') { f.bb = [f.x0 - pad, f.y0 - pad, f.z0 - pad, f.x1 + pad, f.y1 + pad, f.z1 + pad]; }
   else if (f.kind === 'gate') { f.bb = [f.x - 3, f.y - 1, f.z - 3, f.x + 3, f.y + 4, f.z + 3]; }
@@ -459,6 +449,13 @@ const S = 4; // coarse sample stride (voxels)
 // materials the dressing may cover or grow from (not timber, bricks, lanterns or ores)
 const NATURAL = new Uint8Array(256);
 for (const m of [M.DIRT, M.LOAM, M.CLAY, M.STONE, M.MUDSTONE, M.LIMESTONE, M.GRANITE, M.CRYSTALROCK, M.BASALT, M.OBSIDIAN, M.MAGMAROCK, M.PERMAFROST, M.ICE, M.CORE, M.STARROCK, M.VOIDROCK, M.ROOTS, M.GRAVEL, M.SAND, M.SNOW, M.ASH, M.SANDSTONE, M.MYCEL, M.MOSS, M.FLOWSTONE]) NATURAL[m] = 1;
+// rock a vein of ore may run through (and an ore deposit may sit in: vein rock too)
+const VEIN_HOST = new Uint8Array(256);
+for (const m of [M.DIRT, M.LOAM, M.CLAY, M.STONE, M.MUDSTONE, M.LIMESTONE, M.GRANITE, M.CRYSTALROCK, M.BASALT, M.OBSIDIAN, M.MAGMAROCK, M.PERMAFROST, M.ICE, M.CORE, M.STARROCK, M.VOIDROCK, M.GRAVEL, M.SAND, M.SNOW, M.ASH, M.SANDSTONE, M.MYCEL, M.MOSS, M.FLOWSTONE]) VEIN_HOST[m] = 1;
+const ORE_HOST = new Uint8Array(256);
+for (let m = 1; m < 40; m++) ORE_HOST[m] = 1;
+for (let m = 44; m <= 53; m++) ORE_HOST[m] = 1; // vein rock (materials.js)
+for (const m of [M.BEDROCK, M.BURROW, M.TIMBER, M.BRICK]) ORE_HOST[m] = 0;
 const SH = Math.round(Math.log2(VOX / 4)); // voxel → quarter-meter cell shift (spike spacing)
 const NS = CS / S + 1; // 9 samples per axis
 
@@ -473,6 +470,8 @@ export function caveDensity(p, x, y, z) {
   const [n0, n1, n2, n3] = p.noise;
   // the network: chambers (grottos, caverns, halls) and the passages joining them (gen/network.js)
   let d = p.net ? netDensity(p.net, p.noise, x, y, z) : -1;
+  // (no noise caves under a giant cavern's lake: its basin holds the water)
+  if (p.net && p.net.vaults && p.net.vaults.length && underLake(p, x, y, z, 1.2, 1.75)) return d;
   // crawlways: tight, twisty side tunnels here and there (often low enough that you crouch through)
   if (depth > 4) {
     const c = n2.n(x * 0.13 + 7.1, y * 0.17, z * 0.13 + 3.3), e = n3.n(x * 0.13 - 5.2, y * 0.17 + 9.9, z * 0.13);
@@ -498,6 +497,18 @@ export function caveDensity(p, x, y, z) {
     d += bed * 0.022 + sc * 0.03;
   }
   return d;
+}
+
+/** Is (x, y, z) under (or within `up` metres above) the water of a giant cavern's lake? */
+export function underLake(p, x, y, z, up = 0.3, reach = 1.7) {
+  const V = p.net && p.net.vaults;
+  if (!V) return false;
+  for (const v of V) {
+    const L = v.lake;
+    if (!L || y > L.wl + up || y < L.wl - L.D - 3 || Math.abs(x - L.x) > v.Rm || Math.abs(z - L.z) > v.Rm) continue;
+    if (lakeDist(L, p.noise, x, z) < reach) return true;
+  }
+  return false;
 }
 
 /** How much of dinosaur country a point is in (0..1): wide regions between 26 and 135 m down. */
@@ -553,6 +564,7 @@ export class ChunkGen {
     this.bio = new Uint8Array(NS * NS * NS); // biome per sample
     this.patch = new Float32Array(NS * NS * NS); // moss / sand / mycelium patches
     this.lump = new Float32Array(NS * NS * NS); // half-meter lumps on every cave surface
+    this.vcols = makeColumns(CS); // a giant cavern's stalactites, stalagmites and columns (gen/vaults.js)
   }
 
   /**
@@ -579,6 +591,8 @@ export class ChunkGen {
       this.lump[o] = n1.n(x / 0.7 - 21.1, y / 0.7 + 5.5, z / 0.7 + 13.9) * 0.035;
     }
     const hx = p.house;
+    const VD = vaultColumns(p, X0, Y0, Z0, CS, VOX, this.vcols);
+    this.vaultHere = VD ? VD.v : null;
     for (let lz = 0; lz < CS; lz++) {
       const kz = lz / S | 0, fz = (lz % S) / S;
       for (let ly = 0; ly < CS; ly++) {
@@ -595,7 +609,12 @@ export class ChunkGen {
           // lumpy, not speckled: smooth half-meter lumps and a hair of per-voxel grain (together
           // under isSolid's 0.05 margin)
           const dens = tri(this.dens, o, fx, fy, fz) + tri(this.lump, o, fx, fy, fz) + (h3(vx, vy, vz, p.seed) - 0.5) * 0.012;
-          if (dens > 0) { vox[vi] = 0; continue; }
+          if (dens > 0) {
+            // a giant cavern's formations (gen/vaults.js) stand in its open air
+            const fm = VD ? vaultSolid(VD, lx + CS * lz, xm, ym, zm, h3(vx, vy, vz, p.seed + 3) - 0.5) : 0;
+            vox[vi] = fm;
+            continue;
+          }
           const band = tri(this.band, o, fx, fy, fz);
           const zone = zoneAt(Math.max(0, band));
           const zm2 = ZMAT[zone];
@@ -622,10 +641,15 @@ export class ChunkGen {
       if (bb[3] < cx0 || bb[0] > cx1 || bb[4] < cy0 || bb[1] > cy1 || bb[5] < cz0 || bb[2] > cz1) continue;
       this.stamp(f, vox, X0, Y0, Z0);
     }
+    // falls pouring from the roofs of the giant caverns into their lakes (gen/vaults.js)
+    stampFalls(p.falls, vox, X0, Y0, Z0, CS, VOX, NATURAL);
     // no lone voxels floating in the air
     this.unspeck(vox);
     // decorations need to know where the air is
     this.decorate(vox, X0, Y0, Z0);
+    // glowing crystal clusters in the giant caverns, then the veins of ore through the rock
+    stampClusters(p.clusters, vox, X0, Y0, Z0, CS, VOX, NATURAL);
+    stampVeins(p.veins, vox, X0, Y0, Z0, CS, VOX, VEIN_HOST);
     // ore deposits last (inside rock only)
     for (const a of p.areas) {
       if (a.x + a.r + 1 < cx0 || a.x - a.r - 1 > cx1 || a.y + a.r < cy0 - 1 || a.y - a.r > cy1 + 1 || a.z + a.r + 1 < cz0 || a.z - a.r - 1 > cz1) continue;
@@ -727,6 +751,12 @@ export class ChunkGen {
         const dx = (xm - f.x) / f.r, dy = (ym - f.y) / (f.ry || f.r), dz = (zm - f.z) / f.r;
         const d2 = dx * dx + dy * dy + dz * dz + (h3(vx, vy, vz, 3) - 0.5) * 0.12;
         if (d2 < 1 && cur !== M.BURROW) vox[vi] = f.m;
+      } else if (f.kind === 'lake' && f.basin) {
+        // a giant cavern's lake: its basin (the cavern's own floor) fills up to the level
+        if (cur === 0 && ym < f.wl) {
+          const v = p.net.vaults[f.vault];
+          if (v && v.lake && lakeDist(v.lake, p.noise, xm, zm) < 1.6) vox[vi] = f.fluid;
+        }
       } else if (f.kind === 'lake') {
         const dx = (xm - f.x) / f.r, dy = (ym - f.y) / (f.r * 0.55), dz = (zm - f.z) / f.r;
         const d2 = dx * dx + dy * dy + dz * dz + (h3(vx, vy, vz, 4) - 0.5) * 0.1;
@@ -916,7 +946,7 @@ export class ChunkGen {
       if (dist > 1) continue;
       const vi = x + CS * (y + CS * z);
       const cur = vox[vi];
-      if (!cur || cur >= 40 || cur === M.BEDROCK || cur === M.BURROW || cur === M.TIMBER || cur === M.BRICK) continue;
+      if (!ORE_HOST[cur]) continue;
       vox[vi] = mo;
       n++;
     }

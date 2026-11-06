@@ -20,6 +20,8 @@ const G = -9.8;
 
 /** A coarse-pointer device (phone, tablet): fewer particles per sheet. */
 export const CLOTH_LOW = typeof matchMedia !== 'undefined' && (() => { try { return matchMedia('(pointer: coarse)').matches; } catch (e) { return false; } })();
+/** ?cloth=0: no cloth anywhere (A/B frame-time tests): sets build hidden and never step. */
+export const CLOTH_OFF = typeof location !== 'undefined' && /[?&]cloth=0/.test(location.search || '');
 /** Particles along a side of a sheet for this device (n on desktop, about 60% of it on phones). */
 export function clothRes(n) { return CLOTH_LOW ? Math.max(3, Math.round(n * 0.6)) : n; }
 
@@ -127,7 +129,8 @@ export function clothTexture(kind, o = {}) {
     const pat = Array.from({ length: 16 }, () => rnd());
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
       let [r, g, b] = base, on = true;
-      let k = ((i + j) % 2 ? 1.03 : 0.97) * (0.94 + rnd() * 0.08);
+      // the weave: over-under threads (a texel ≈ a 1/64 m voxel), every fourth thread a shade darker
+      let k = ((i + j) % 2 ? 1.07 : 0.9) * (i % 4 === 3 || j % 4 === 3 ? 0.93 : 1) * (0.94 + rnd() * 0.08);
       const u = i / (w - 1), v = j / (h - 1);
       if (kind === 'curtain') {
         if (i % 6 === 0) k *= 0.82; // the folds the light catches
@@ -526,6 +529,7 @@ export class ClothSet {
     if (this.outline) this.mesh.layers.enable(1); // (the 1 px ink line round it, like the voxel art: Engine LAYER_OUTLINE)
     // (the camera it was last drawn with: for culling when the scene doesn't hand one over)
     this.mesh.onBeforeRender = (r, sc, cam) => { if (cam?.isPerspectiveCamera) this.lastCam = cam; };
+    if (CLOTH_OFF) { this.mesh.visible = false; this.off = true; return this.mesh; }
     // let them settle before anyone sees them
     for (let i = 0; i < 75; i++) for (const c of L) c.sim(1 / 30, [], i / 30, this.wind, 1 / 30, 3);
     for (const c of L) { c.acc = 0; this.write(c); }
@@ -557,7 +561,7 @@ export class ClothSet {
    * by index, from the last frame); camera: for sleeping what's far off or out of view.
    */
   update(dt, colliders = [], time = 0, camera = null) {
-    if (!this.mesh || !dt) return;
+    if (!this.mesh || !dt || this.off) return;
     camera = camera || this.lastCam || null;
     this.frame++;
     // collider speeds (the air they push)

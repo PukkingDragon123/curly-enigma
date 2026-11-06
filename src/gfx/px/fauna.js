@@ -283,7 +283,7 @@ function slugSlime(pc) {
   for (const [x, y] of [[14, 15], [15, 16], [16, 16], [17, 16], [18, 16], [19, 15]]) if (m.get(x, y)) step(pc, R, x, y, 2, 1, 5);
   // bubbles and swallowed metal flecks
   for (const [x, y, r] of [[12.5, 20, 1.6], [19, 22.5, 1.2], [6.5, 26, 1.1], [24.5, 26.4, 0.9]]) {
-    M().disk(x, y, r).edge().each((X, Y) => { if (m.get(X, Y)) pc.set(X, Y, (X + 0.5 - x) + (Y + 0.5 - y) < 0 ? R[1] : R[4]); });
+    blob(x, y, r + 0.2, r, { seed: (x * 3) | 0, lump: 0.25 }).edge().each((X, Y) => { if (m.get(X, Y)) pc.set(X, Y, (X + 0.5 - x) + (Y + 0.5 - y) < 0 ? R[1] : R[4]); });
   }
   for (const [x, y, c] of [[17, 19, 0xf2c23a], [15, 25, 0xd8dde6], [21, 26, 0xd9773f], [9, 22, 0xf2c23a]]) { pc.set(x, y, c); pc.set(x + 1, y + 1, mix(c, 0x1a4a2a, 0.55)); }
   ink(pc);

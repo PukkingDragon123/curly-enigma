@@ -361,7 +361,7 @@ function bubblebulb(pc) {
   }
   // bubbles floating inside: lit rim on top-left, shade on bottom-right, a glint
   for (const [x, y, r] of [[12.5, 16.5, 2.2], [19.5, 12, 1.7], [18.5, 18, 1.3], [12.5, 10.5, 1.1]]) {
-    const b = M().disk(x, y, r);
+    const b = blob(x, y, r, r * 0.9, { seed: (x * 7) | 0, lump: 0.22 });
     b.edge().each((X, Y) => { if (bulb.get(X, Y)) pc.set(X, Y, (X + 0.5 - x) + (Y + 0.5 - y) < 0 ? R[1] : R[4]); });
     pc.set(Math.floor(x - r * 0.4), Math.floor(y - r * 0.4), 0xffffff);
   }
