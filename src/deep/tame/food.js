@@ -93,7 +93,7 @@ const _v = new THREE.Vector3();
 
 /** A piece of food in flight, then on the floor (meters). */
 export class Tossed {
-  constructor(mgr, id, from, to) {
+  constructor(mgr, id, from, to, T = 0.55) {
     this.mgr = mgr;
     this.id = id;
     const look = RAPTOR_FOOD[id]?.look || 'steak';
@@ -105,8 +105,7 @@ export class Tossed {
     this.mesh.rotation.y = Math.random() * 6.28;
     mgr.root.add(this.mesh);
     this.pos = this.mesh.position;
-    // an arc that lands at `to`
-    const T = 0.55;
+    // an arc that lands at `to` in T s
     this.vel = new THREE.Vector3((to.x - from.x) / T, (to.y - from.y) / T + 0.5 * 9.8 * T, (to.z - from.z) / T);
     this.spin = new THREE.Vector3(rand(-9, 9), rand(-6, 6), rand(-9, 9));
     this.landed = false;

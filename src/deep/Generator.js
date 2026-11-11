@@ -138,6 +138,7 @@ export function makePlan(seed, opts = {}) {
   // the cave network (gen/network.js): chambers joined by passages, like a dungeon nature dug.
   // It keeps clear of the burrow, Old Star's dig, the mine entrance and the town shaft's stops.
   const P0 = plan.prologue;
+  plan.dinoGrow = growDino(plan); // (before the network: its chambers grow into halls there)
   plan.net = buildNetwork(seed, {
     avoid: [{ x: W / 2, y: 0, z: D / 2, r: 10 }, { x: P0.x, y: P0.y, z: P0.z, r: 8 }, { x: L0.x, y: L0.y, z: L0.z, r: 5 },
       ...plan.stations.map((s) => ({ x: s.x + 1, y: s.y + 1, z: s.z, r: 4.5 }))],
@@ -533,9 +534,32 @@ export function underLake(p, x, y, z, up = 0.3, reach = 1.7) {
 export function dinoAt(p, x, y, z) {
   const depth = -y;
   if (depth < 26 || depth > 135) return 0;
-  const n = p.noise[0].n(x / 85 + 13.7, 0.73, z / 85 - 6.1);
+  const n = dinoNoise(p, x, z);
   const fade = Math.min(1, (depth - 26) / 8, (135 - depth) / 8);
   return Math.max(0, Math.min(1, (n - 0.35) / 0.1)) * fade;
+}
+/** The slow noise dinosaur country comes from (> 0.4: dino caverns), and the patch growDino adds to it. */
+const dinoRaw = (p, x, z) => p.noise[0].n(x / 85 + 13.7, 0.73, z / 85 - 6.1);
+const dinoBump = (g, x, z) => { const q = g ? 1 - ((x - g.x) ** 2 + (z - g.z) ** 2) / (g.r * g.r) : 0; return q > 0 ? g.k * q * q : 0; };
+const dinoNoise = (p, x, z) => dinoRaw(p, x, z) + dinoBump(p.dinoGrow, x, z);
+/**
+ * Every mine has dinosaur country (the raptors, the shellbacks and the lone raptor you can tame
+ * live nowhere else). The noise alone leaves some worlds with none, or a sliver: those get it grown
+ * round where the noise comes closest, well inside the cave network, until it covers DINO_MIN of
+ * the mine. → { x, z, r, k } (plan.dinoGrow), or null when the noise has enough on its own (those
+ * worlds stay exactly as they were).
+ */
+const DINO_MIN = 0.03;
+function growDino(p) {
+  const pts = [];
+  for (let x = -80; x <= 80; x += 4) for (let z = -80; z <= 80; z += 4) pts.push({ x, z, n: dinoRaw(p, x, z) });
+  const cover = (g) => pts.reduce((c, q) => c + (q.n + dinoBump(g, q.x, q.z) > 0.4 ? 1 : 0), 0) / pts.length;
+  if (cover(null) >= DINO_MIN) return null;
+  let best = null;
+  for (const q of pts) if (Math.abs(q.x) <= 56 && Math.abs(q.z) <= 56 && (!best || q.n > best.n)) best = q;
+  const g = { x: best.x, z: best.z, r: 36, k: 0 };
+  while (g.k < 2 && cover(g) < DINO_MIN) g.k = Math.round((g.k + 0.05) * 100) / 100;
+  return g;
 }
 
 /**

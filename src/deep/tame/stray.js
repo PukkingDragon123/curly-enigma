@@ -21,9 +21,11 @@ import * as THREE from 'three';
 import { Raptor } from '../enemies/dinos.js';
 import { TameRaptor } from './body.js';
 import { RAPTOR_FOOD } from './food.js';
+import { clearLine } from '../enemies/physics.js';
 import { clamp, rand } from '../../core/util.js';
 
 const _v = new THREE.Vector3();
+const TURNS = [0, 0.5, -0.5, 1, -1, 1.5, -1.5]; // straight back, else turned aside (radians)
 
 export class Stray extends TameRaptor {
   static info = { ...Raptor.info, name: 'Lone Raptor', aggro: 'timid', social: 'solo', diet: 'none', morale: false, sleepy: 0, keepFar: 40, flee: 0 };
@@ -151,6 +153,25 @@ export class Stray extends TameRaptor {
     this.want.limp = Math.max(this.want.limp || 0, 0.8); // the hurt leg
   }
 
+  /**
+   * Level ground r m off along (ux, uz), turned aside if it must (turns: radians to try): the
+   * way there walkable at about its own height (no drop, no ledge it couldn't come back up), or
+   * null. A wary raptor gives ground there; it never backs off a cliff.
+   */
+  footing(ux, uz, r, turns = TURNS) {
+    const m = this.mgr, y = this.pos.y, h = 0.5 * this.size;
+    for (const a of turns) {
+      const c = Math.cos(a), s = Math.sin(a), dx = ux * c - uz * s, dz = ux * s + uz * c;
+      let f = null;
+      for (let k = 1; k <= 3; k++) {
+        f = m.floorAt(this.pos.x + dx * r * k / 3, y + 0.5, this.pos.z + dz * r * k / 3, 0.9, 1.1, 1);
+        if (!f || Math.abs(f.y - y) > 0.45) { f = null; break; }
+      }
+      if (f && clearLine(m.world, this.pos.x, y + h, this.pos.z, f.x, f.y + h, f.z)) return f;
+    }
+    return null;
+  }
+
   /** The first time it settles down near you. */
   settle() {
     this.calmed = true;
@@ -167,7 +188,8 @@ export class Stray extends TameRaptor {
       // wary: stand its ground, watch you, give a little ground if you crowd it
       this.feel(this.fear > 0.65 ? 'scared' : 'wary');
       this.lookAt.copy(m.eye);
-      if (d < comfort * 0.75) { const [dx, dz] = this.dirToPlayer(); this.walkTo(this.pos.x - dx * 1.2, this.pos.z - dz * 1.2, this.I.walk * 0.6, dt, 0.2, [m.pc.x, m.pc.z]); }
+      const [dx, dz] = this.dirToPlayer();
+      if (d < comfort * 0.75 && this.footing(-dx, -dz, 0.8, [0])) this.walkTo(this.pos.x - dx * 1.2, this.pos.z - dz * 1.2, this.I.walk * 0.6, dt, 0.2, [m.pc.x, m.pc.z]);
       else { this.push(0, 0, 6, dt); this.facePlayer(3, dt); }
       if (this.fear > 0.65 && d < comfort && Math.random() < dt * 0.6) this.hiss();
       return;
@@ -206,12 +228,13 @@ export class Stray extends TameRaptor {
     if (!this.goalSet) {
       this.goalSet = true;
       const [dx, dz] = this.dirToPlayer();
-      const f = m.floorAt(this.pos.x - dx * 3.2 + rand(-1, 1), this.pos.y + 0.5, this.pos.z - dz * 3.2 + rand(-1, 1), 0.9, 2, 1);
-      this.goal.set(f ? f.x : this.pos.x - dx * 2, this.pos.y, f ? f.z : this.pos.z - dz * 2);
+      const f = this.footing(-dx, -dz, rand(2.6, 3.8));
+      this.goal.set(f ? f.x : this.pos.x, this.pos.y, f ? f.z : this.pos.z); // (no ground to give: it stands its ground)
       this.hiss();
     }
     const r = this.walkTo(this.goal.x, this.goal.z, this.I.run * 0.7, dt, 0.4);
-    if (r === true || r === 'stuck' || this.planT > 2.2) { this.setPlan('idle'); this.facePlayer(4, dt); }
+    if (r === true) this.facePlayer(4, dt);
+    if ((r === true && this.planT > 0.8) || r === 'stuck' || this.planT > 2.2) { this.setPlan('idle'); this.facePlayer(4, dt); }
   }
 
   doBolt(dt) {

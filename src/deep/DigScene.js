@@ -121,12 +121,12 @@ export default class DigScene extends Scene {
       gather: (id, o) => window.__gather?.run?.(id, o),
       biomeAt: (x, y, z) => biomeAt(plan, x, y, z),
       density: (x, y, z) => caveDensity(plan, x, y, z),
-      /** an open spot with a floor (meters) where test(biome, depth, x, y, z) holds, or null */
-      find: (test, { r = 60, d0 = 4, d1 = 80, tries = 40000, seed = 1 } = {}) => {
+      /** an open spot with a floor (meters) where test(biome, depth, x, y, z) holds, or null (within r of (x, z): the mole, unless given) */
+      find: (test, { r = 60, d0 = 4, d1 = 80, tries = 40000, seed = 1, x: cx = pl.pos.x, z: cz = pl.pos.z } = {}) => {
         let h = seed;
         const rnd = () => ((h = (h * 16807) % 2147483647) / 2147483647);
         for (let i = 0; i < tries; i++) {
-          const x = pl.pos.x + (rnd() * 2 - 1) * r, z = pl.pos.z + (rnd() * 2 - 1) * r;
+          const x = cx + (rnd() * 2 - 1) * r, z = cz + (rnd() * 2 - 1) * r;
           let y = -(d0 + rnd() * (d1 - d0));
           if (caveDensity(plan, x, y, z) < 0.04) continue;
           let k = 0;
@@ -423,6 +423,11 @@ export default class DigScene extends Scene {
 
   /** Reach along the crosshair, clipped to the rock it hits. */
   reach() { return this.target ? Math.min(REACH, this.target.dist + 0.05) : REACH; }
+  /** How far along the aim the things you use (plants, chests, doors...) count: not past a tame raptor you're looking at. */
+  useReach(eye, f, reach) {
+    const t = this.enemies?.tame?.under?.(eye, f, reach)?.t;
+    return t === undefined ? reach : Math.min(reach, Math.max(0, t - 0.3));
+  }
 
   updateTarget() {
     const pl = this.player;
@@ -432,8 +437,9 @@ export default class DigScene extends Scene {
     const ui = this.game.ui;
     if (!ui.setCrosshair) return;
     const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
-    // something to pick or catch (props' plants, critters) comes first
-    const use = this.clumps?.target(eye, f, reach) || this.traders?.target?.(eye, f, reach) || this.ruins?.target?.(eye, f, reach) || this.builder?.target?.(eye, f, reach) || this.props?.target?.(eye, f, reach) || this.enemies?.catchTest?.(eye, f, reach);
+    // something to pick or catch (props' plants, critters) comes first (unless it's behind a tame raptor)
+    const near = this.useReach(eye, f, reach);
+    const use = this.clumps?.target(eye, f, near) || this.traders?.target?.(eye, f, near) || this.ruins?.target?.(eye, f, near) || this.builder?.target?.(eye, f, near) || this.props?.target?.(eye, f, near) || this.enemies?.catchTest?.(eye, f, reach);
     if (use) { ui.setCrosshair({ visible: true, kind: 'use', label: use.label }); return; }
     const foe = this.enemies?.hitTest(eye, f, reach);
     if (foe) { ui.setCrosshair(foe.passive ? { visible: true, kind: 'rock', label: foe.constructor.info?.name || '' } : { visible: true, kind: 'enemy' }); return; }
@@ -1183,16 +1189,16 @@ export default class DigScene extends Scene {
     const pl = this.player;
     // pick a plant, catch a critter
     {
-      const eye = pl.eye(), f = pl.forward(), reach = this.reach();
-      const pr = this.firstDig?.use?.(eye, f, reach);
+      const eye = pl.eye(), f = pl.forward(), reach = this.reach(), near = this.useReach(eye, f, reach); // (not past a tame raptor)
+      const pr = this.firstDig?.use?.(eye, f, near);
       if (pr) { this.events(pr); return; }
-      const cl = this.clumps?.use(eye, f, reach);
+      const cl = this.clumps?.use(eye, f, near);
       if (cl) { this.events(cl); return; }
       for (const mod of [this.traders, this.ruins, this.builder]) { // builder: doors, chests, the workbench
-        const r = mod?.use?.(eye, f, reach);
+        const r = mod?.use?.(eye, f, near);
         if (r) { this.events(Array.isArray(r) ? r : [r]); if (this.vm) this.vm.impact('none', 0.3); return; }
       }
-      const got = this.props?.use?.(eye, f, reach);
+      const got = this.props?.use?.(eye, f, near);
       if (got) { this.events([got]); if (this.vm) this.vm.impact('none', 0.3); return; }
       const evs = this.enemies?.catch?.(eye, f, reach, this.slotName);
       if (evs && evs.length) { this.events(evs); if (this.vm) this.vm.impact('none', 0.3); return; }

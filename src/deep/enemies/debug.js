@@ -9,8 +9,9 @@
 //   block(on)                    hold the guard (as if F were held; DigScene's own input wins)
 //   hit(e, power)                a pick blow on a creature (as DigScene.strike would)
 //   step(n, dt)                  run the scene n frames
-//   stage(kind, { dist, n, depth: [d0, d1], test(biome, depth), awake, yaw, roomy }) → spot
-//                                find a fitting cave, teleport the mole there, spawn in front, aim
+//   stage(kind, { dist, n, depth: [d0, d1], test(biome, depth), awake, yaw, roomy, at: {x, z}, r0 }) → spot
+//                                find a fitting cave (within r0 of `at`, or of the mole), teleport the
+//                                mole there, spawn in front, aim
 //   look(e)                      aim the camera at a creature
 //   clean()                      hide toasts and the "click to look" card (screenshots)
 //   eco() · perf() · info()      ecosystem, timing, spawn stats
@@ -124,7 +125,7 @@ export function makeDebug(mgr) {
       const need = o.roomy ?? (S?.info?.space?.[1] > 2 ? 6 : 4);
       let spot = null;
       for (let seed = 1; seed < 12 && !spot; seed++) {
-        const p = s.debug.find((b, d, x, y, z) => (!o.test || o.test(b, d, x, y, z)) && mgr.spawner.roomyD(x, y + 0.1, z, o.ceil ?? Math.max(2.2, (S?.info?.space?.[1] ?? 1) + 0.6), o.r ?? 4.5) >= need && (o.flat === false || flat(x, y, z, o.flatR ?? 2.4)), { r: o.r0 ?? 70, d0, d1, seed: seed * 7 + (o.seed || 0) });
+        const p = s.debug.find((b, d, x, y, z) => (!o.test || o.test(b, d, x, y, z)) && mgr.spawner.roomyD(x, y + 0.1, z, o.ceil ?? Math.max(2.2, (S?.info?.space?.[1] ?? 1) + 0.6), o.r ?? 4.5) >= need && (o.flat === false || flat(x, y, z, o.flatR ?? 2.4)), { r: o.r0 ?? 70, d0, d1, seed: seed * 7 + (o.seed || 0), x: o.at?.x, z: o.at?.z });
         if (p) spot = p;
       }
       if (!spot) return null;

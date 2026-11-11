@@ -118,9 +118,10 @@ lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, t
 **Raptor taming** (`enemies.tame`, `src/deep/tame/`, made by Enemies; hooks: `tame.update(dt, busy)` before
 Enemies' busy return, `tame.target` / `tame.use` first in `catchTest` / `catch`, `tame.dispose()`):
 - `stray.js`: a lone, injured young raptor (passive, in `enemies.list`) that turns up in the dino caverns. Fear
-  rises when you crowd it, run, swing near it or make noise, falls while you crouch (C) and keep still; E on it
-  tosses the best liked food from the bag (`food.js` `RAPTOR_FOOD`: meat > fish > grubs), it comes for it,
-  sniffs, eats. Two meals a visit, then it wanders off and comes back later. Body language only (`body.js`
+  rises when you crowd it, run, swing near it or make noise, falls while you crouch (C) and keep still (it gives
+  ground on level footing, never off a ledge); E on it (its body or its head, whichever you can see; nothing
+  behind it steals the E) tosses the best liked food from the bag (`food.js` `RAPTOR_FOOD`: meat > fish >
+  grubs) on a lob that clears the rock, it comes for it, sniffs, eats. Two meals a visit, then it wanders off and comes back later. Body language only (`body.js`
   moods: tail wag / stiff / tucked, head tilt, sniffs, crouch, chirps, hisses). At 100 trust it bonds: the
   naming moment in the cutscene talk (`naming.js`, the raptor is a Speaker), then it's yours.
 - `pal.js`: the companion (not in `enemies.list`: the pick can't hit it). Follows behind and to one side, out of
@@ -263,11 +264,13 @@ Fluids internals (`src/deep/fluids/`):
   hanging vines), 2 Sandstone Hollows (`M.SANDSTONE` walls, sand floors that pour), 3 Mushroom
   Hollow (`M.MYCEL` floors, glowcap buttons, giant `M.STEM`/`M.GLOWCAP` mushrooms). Topsoil roots
   hang as thin tendrils. The light and fog lean toward the biome's tint; the first visit says so
-  and the HUD shows the biome after the zone name.
+  and the HUD shows the biome after the zone name. 4 Dino Caverns (`dinoAt`, 26–135 m down, slow
+  noise): every mine has some: where the noise leaves too little, `plan.dinoGrow` grows a patch
+  round where it comes closest (`growDino`, at least 3% of the mine; other worlds are unchanged).
 - Player: `C` (touch: the crouch toggle) crouches (0.5 m tall, slower, won't walk off ledges); in
   water it dives, and swimming forward under water follows the look.
 - Test hooks: `scene.debug.{ biomeAt(x,y,z), density(x,y,z), find(test(biome, depth, x, y, z),
-  { r, d0, d1 }) → {x,y,z} | null, teleport(x, y, z, yaw, pitch) }`.
+  { r, d0, d1, x, z }) → {x,y,z} | null, teleport(x, y, z, yaw, pitch) }`.
 
 ## Cave look: shaders, light and air (wave 3)
 

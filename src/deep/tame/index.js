@@ -17,7 +17,8 @@
 // Debug: window.__game.debug.tame (debug.js).
 import * as THREE from 'three';
 import { ITEMS } from '../../data/items.js';
-import { boxHits } from '../enemies/physics.js';
+import { boxHits, solidAt } from '../enemies/physics.js';
+import { VS } from '../enemies/vox.js';
 import { randInt } from '../../core/util.js';
 import { Stray } from './stray.js';
 import { Pal } from './pal.js';
@@ -42,7 +43,8 @@ export function activeRaptor(state) {
   return T.raptors.find((r) => r.id === T.active) || T.raptors[0] || null;
 }
 
-const _a = new THREE.Vector3(), _b = new THREE.Vector3();
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _h = new THREE.Vector3();
+const G = 9.8; // the food's fall (food.js)
 
 export class Tame {
   constructor(mgr) {
@@ -292,20 +294,31 @@ export class Tame {
   }
 
   // ------------------------------------------------------------------ the crosshair and E
-  /** The tame raptor (stray or companion) under the crosshair: { e, kind, t } or null. */
+  /** The middle of a raptor's head (world): you can aim at that when rock hides its body. */
+  head(e, out = _h) {
+    if (!e.headObj) return out.set(e.center.x, e.center.y + e.hitR * e.size * 0.85, e.center.z);
+    e.headObj.updateWorldMatrix(true, false);
+    return e.headObj.localToWorld(out.set(0, 3 * VS, 2 * VS));
+  }
+
+  /**
+   * The tame raptor (stray or companion) under the crosshair: { e, kind, t } or null. Its body or
+   * its head (a crystal by your nose, a ledge it stands behind: you aim at the part you can see).
+   */
   under(eye, dir, reach) {
     const w = this.mgr.world;
     let best = null;
     for (const [e, kind, max] of [[this.pal, 'pal', 3.2], [this.stray, 'stray', 3.8]]) {
       if (!e?.alive || !e.root.visible) continue;
-      const c = e.center, r = e.hitR * e.size + 0.14;
-      const ox = c.x - eye.x, oy = c.y - eye.y, oz = c.z - eye.z;
-      const t = ox * dir.x + oy * dir.y + oz * dir.z;
-      if (t < 0 || t > max) continue;
-      if (ox * ox + oy * oy + oz * oz - t * t > r * r) continue;
-      const t0 = Math.max(0, t - r * 0.6);
-      if (t0 > reach && (reach < 2.25 || w.raycast(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, t0))) continue; // rock in between
-      if (!best || t < best.t) best = { e, kind, t };
+      for (const [c, r] of [[e.center, e.hitR * e.size + 0.14], [this.head(e), 0.15 * e.size + 0.1]]) {
+        const ox = c.x - eye.x, oy = c.y - eye.y, oz = c.z - eye.z;
+        const t = ox * dir.x + oy * dir.y + oz * dir.z;
+        if (t < 0 || t > max) continue;
+        if (ox * ox + oy * oy + oz * oz - t * t > r * r) continue;
+        const t0 = Math.max(0, t - r * 0.6);
+        if (t0 > reach && (reach < 2.25 || w.raycast(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, t0))) continue; // rock in between
+        if (!best || t < best.t) best = { e, kind, t };
+      }
     }
     return best;
   }
@@ -336,25 +349,49 @@ export class Tame {
     return this.toss(s, id, eye, dir);
   }
 
-  /** Toss a bit of food in front of it (nearer to it while it's shy, nearer to you once it trusts you). */
+  /**
+   * Toss a bit of food in front of it (nearer to it while it's shy, nearer to you once it trusts
+   * you), on a lob that clears the rock: if the rock between you won't let it land there, nearer
+   * its feet, a flatter or a higher lob (you can see it, so the food can reach it).
+   */
   toss(s, id, eye, dir) {
-    const m = this.mgr, st = this.state;
+    const m = this.mgr, st = this.state, w = m.world;
     const removed = st.removeItem?.(id, 1, { lowFirst: true });
     if (!removed || (Array.isArray(removed) && !removed.length)) return null;
     const P = m.pl.pos;
     const dx = P.x - s.pos.x, dz = P.z - s.pos.z, d = Math.hypot(dx, dz) || 1;
     const tk = Math.min(1, (s.trust || 0) / 100);
-    const ld = Math.max(0.45, Math.min(d - 0.55, 0.7 + (d * 0.55 - 0.7) * tk));
-    const lx = s.pos.x + dx / d * ld, lz = s.pos.z + dz / d * ld;
-    const f = m.floorAt(lx, s.pos.y + 0.6, lz, 0.2, 1.6, 1) || { x: lx, y: s.pos.y, z: lz };
-    const from = _a.set(eye.x + dir.x * 0.35, eye.y - 0.12 + dir.y * 0.2, eye.z + dir.z * 0.35);
-    const food = new Tossed(m, id, from, _b.set(f.x, f.y + 0.02, f.z));
+    // out of the paw, a little in front of your nose (not into a crystal right there)
+    const k = Math.max(0, Math.min(0.35, (w.raycast(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 0.5)?.dist ?? 0.5) - 0.12));
+    const from = _a.set(eye.x + dir.x * k, eye.y - 0.12 + dir.y * k * 0.57, eye.z + dir.z * k);
+    if (solidAt(w, from.x, from.y, from.z)) from.y += 0.12;
+    const ld0 = Math.max(0.45, Math.min(d - 0.55, 0.7 + (d * 0.55 - 0.7) * tk));
+    let to = null, T = 0.55;
+    for (const ld of ld0 > 0.5 ? [ld0, 0.45, 0.22] : [ld0, 0.22]) {
+      const lx = s.pos.x + dx / d * ld, lz = s.pos.z + dz / d * ld;
+      const f = m.floorAt(lx, s.pos.y + 0.6, lz, 0.2, 1.6, 1) || { x: lx, y: s.pos.y, z: lz };
+      const p = _b.set(f.x, f.y + 0.02, f.z);
+      to ||= p.clone();
+      const lob = [0.55, 0.38, 0.75, 0.26].find((t) => this.lobClear(from, p, t));
+      if (lob) { to = p.clone(); T = lob; break; }
+    }
+    const food = new Tossed(m, id, from, to, T);
     this.foods.push(food);
     s.offered(food);
     m.sound('whoosh', { vol: 0.25, pitch: 1.6 });
     try { m.owner?.updateHotbar?.(); } catch (e) { /* the belt catches up */ }
     this.note(`toss ${id} (trust ${Math.round(s.trust)}, fear ${s.fear.toFixed(2)})`);
     return [{ act: { type: 'tame', what: 'offer', item: id } }];
+  }
+
+  /** Does a lob from `a` that lands at `b` in T s miss the rock on the way? */
+  lobClear(a, b, T) {
+    const w = this.mgr.world, vy = (b.y - a.y) / T + 0.5 * G * T;
+    for (let i = 1; i < 14; i++) {
+      const t = T * i / 14;
+      if (solidAt(w, a.x + (b.x - a.x) * i / 14, a.y + vy * t - 0.5 * G * t * t, a.z + (b.z - a.z) * i / 14)) return false;
+    }
+    return true;
   }
 
   dispose() {

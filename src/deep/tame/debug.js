@@ -2,20 +2,60 @@
 // these: crouch with the real C key, aim at the raptor, press E through DigScene.interact()).
 //
 //   info()                    save data + the live stray / companion
-//   stage(o)                  find a dino cavern, put the mole there, clear the creatures, and the lone
-//                             raptor o.dist m in front (o: { dist, trust }) → info()
+//   stage(o)                  find a dino cavern (the plan's dino halls nearest the mole first: they
+//                             can be anywhere in the mine), put the mole there, clear the creatures,
+//                             and the lone raptor o.dist m in front, in plain sight of a crouching
+//                             mole, both on dry ground (o: { dist, trust }) → info()
 //   stray() · pal()           the live ones (objects)
 //   visit(dist)               its next visit: the same lone raptor turns up in front of you
 //   crouch(on)                hold / release C (the real key)
-//   look(which)               aim the camera at 'stray' | 'pal' | a creature
-//   offer()                   aim at the stray and press E (the scene's own interact)
+//   look(which)               aim the camera at 'stray' | 'pal' | a creature (its body, or its head
+//                             when rock hides the body: what a player would aim at)
+//   offer()                   aim at the stray and press E (the scene's own interact): the crosshair on
+//                             the part of it that gives its own prompt (body, head), a step aside
+//                             first if a crystal or a plant hides it all; no E while the prompt
+//                             isn't its own (→ { label, pressed, info })
 //   step(n, dt, until)        run the scene n frames (until(): stop early)
 //   name(i)                   in the naming talk: pick answer i (finishing the typing first)
 //   fight(kind, dist)         a creature `dist` m in front, after you → summary
 //   reset()                   forget every tamed raptor and the stray (tests)
 
+import { fluidAt } from '../enemies/physics.js';
+
 const game = () => (typeof window !== 'undefined' ? window.__game : null);
 const T = () => game()?.scene?.enemies?.tame || null;
+
+/** The plan's dino halls (x, z), nearest the mole first, one per ~30 m (the places to look for a cavern). */
+function dinoHalls(s, [d0, d1]) {
+  const P = s.player.pos, out = [];
+  const hs = (s.world.plan.net?.nodes || []).filter((n) => !n.off && n.deg > 0 && n.kind >= 2 && n.dino > 0.5 && -n.yF > d0 && -n.yF < d1);
+  hs.sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z) - Math.hypot(b.x - P.x, b.z - P.z));
+  for (const n of hs) if (out.length < 6 && out.every((o) => Math.hypot(o.x - n.x, o.z - n.z) > 30)) out.push({ x: n.x, z: n.z });
+  return out;
+}
+
+/** Nothing solid on the line from a to b (all but its last `end` m)? */
+const sight = (w, a, b, end = 0.15) => { const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, l = Math.hypot(dx, dy, dz) || 1; return !w.raycast(a.x, a.y, a.z, dx / l, dy / l, dz / l, Math.max(0, l - end)); };
+/** The part of a raptor you can see from the mole's eye (its body, else its head), or null. */
+function seenAt(e) {
+  const s = game()?.scene, eye = s.player.eye();
+  if (sight(s.world, eye, e.center)) return e.center.clone();
+  const h = T()?.head?.(e, e.center.clone());
+  return h && sight(s.world, eye, h) ? h : null;
+}
+const aim = (pl, p) => { const eye = pl.eye(), dx = p.x - eye.x, dy = p.y - eye.y, dz = p.z - eye.z; pl.yaw = Math.atan2(-dx, -dz); pl.pitch = Math.atan2(dy, Math.hypot(dx, dz)); };
+/** Put the crosshair on the raptor where the prompt is its own (its body, its head, between): true if it is. */
+function aimOn(e) {
+  const s = game()?.scene, pl = s.player, t = T();
+  const c = e.center, h = t.head(e, c.clone());
+  for (const p of [c, h, c.clone().lerp(h, 0.5), c.clone().setY(c.y + 0.12)]) {
+    aim(pl, p);
+    s.updateTarget?.();
+    const tm = t.target(pl.eye(), pl.forward(), s.reach());
+    if (tm && (document.querySelector('.crosshair-label, .xh-label')?.textContent || '').endsWith(tm.label)) return true;
+  }
+  return false;
+}
 
 const sum = (e) => e && ({
   plan: e.plan, mode: e.mode, fear: e.fear !== undefined ? +e.fear.toFixed(2) : undefined, calm: e.calm !== undefined ? +e.calm.toFixed(2) : undefined,
@@ -37,9 +77,19 @@ export function makeTameDebug() {
     stage(o = {}) {
       const t = T(), s = game()?.scene, en = s?.enemies;
       if (!t || !en?.debug) return null;
-      const r = en.debug.stage('raptor', { test: (b) => b === 4, dist: o.dist ?? 4.2, depth: o.depth || [30, 130], r0: 90, flatR: 3, ...o.stage });
-      if (!r) return null;
-      const w = en.list.find((e) => e.alive && e.kind === 'raptor');
+      const depth = o.depth || [30, 130], pl = s.player;
+      // in plain sight of a crouching mole (a crystal or a lump of rock in between: somewhere else),
+      // both out of the water (in a lake the C key dives: no crouching there)
+      const dry = (p) => !fluidAt(s.world, p.x, p.y + 0.3, p.z);
+      const fits = (e) => dry(pl.pos) && dry(e.pos) && [0.4, 0.72].every((y) => sight(s.world, { x: pl.pos.x, y: pl.pos.y + y, z: pl.pos.z }, e.center, e.hitR * e.size));
+      let w = null, n = 0;
+      find: for (const at of [...dinoHalls(s, depth), null]) {
+        for (const seed of [0, 500, 1000]) {
+          if (!en.debug.stage('raptor', { test: (b) => b === 4, dist: o.dist ?? 4.2, depth, at, r0: at ? 24 : 90, flatR: 3, seed, ...o.stage })) break; // (no cave near that hall)
+          w = en.list.find((e) => e.alive && e.kind === 'raptor');
+          if (!w || fits(w) || ++n >= 8) break find;
+        }
+      }
       const at = w ? w.pos.clone() : null;
       en.debug.clear();
       if (!at) return null;
@@ -61,24 +111,46 @@ export function makeTameDebug() {
       return D.info().stray;
     },
     look(which = 'stray') {
-      const s = game()?.scene, en = s?.enemies, pl = s?.player;
+      const s = game()?.scene, pl = s?.player;
       const e = typeof which === 'object' ? which : which === 'pal' ? T()?.pal : T()?.stray;
       if (!e || !pl) return null;
-      const eye = pl.eye(), c = e.center;
-      const dx = c.x - eye.x, dy = c.y - eye.y, dz = c.z - eye.z;
-      pl.yaw = Math.atan2(-dx, -dz);
-      pl.pitch = Math.atan2(dy, Math.hypot(dx, dz));
-      void en;
+      // its body, or its head if rock hides the body (a crystal by your nose, a ledge it stands behind)
+      aim(pl, seenAt(e) || e.center);
       return { yaw: pl.yaw, pitch: pl.pitch };
+    },
+    /**
+     * The crosshair on it where the prompt is its own; if a crystal, a lump of rock or a plant hides
+     * all of it, shuffle (crouched, a step or so, on the same floor) to where it doesn't, as a player
+     * would. → true when the prompt is its own.
+     */
+    clearView(e) {
+      const s = game()?.scene, pl = s?.player, en = s?.enemies;
+      if (!e || !pl) return false;
+      if (aimOn(e)) return true;
+      const P = pl.pos.clone();
+      for (const r of [0.3, 0.6, 0.9, 1.2]) for (let i = 0; i < 8; i++) {
+        const x = P.x + Math.cos(i * Math.PI / 4) * r, z = P.z + Math.sin(i * Math.PI / 4) * r;
+        const f = en.floorAt(x, P.y + 0.4, z, pl.h + 0.05, 0.8, 0.4);
+        if (!f || Math.abs(f.y - P.y) > 0.3 || pl.hitsAt(x, f.y + 0.01, z)) continue;
+        const dx = x - P.x, dz = z - P.z, l = Math.hypot(dx, dz);
+        if (s.world.raycast(P.x, P.y + 0.3, P.z, dx / l, 0, dz / l, l)) continue; // (not through the rock)
+        pl.pos.set(x, f.y + 0.01, z); pl.vel.set(0, 0, 0);
+        if (aimOn(e)) return true;
+      }
+      pl.pos.copy(P);
+      return false;
     },
     /** Aim and press E the way the player does (DigScene.interact → Enemies.catch → tame.use). */
     offer(which = 'stray') {
       const s = game()?.scene;
+      const e = typeof which === 'object' ? which : which === 'pal' ? T()?.pal : T()?.stray;
       if (!D.look(which)) return false;
+      const its = D.clearView(e);
+      if (!its) D.look(which);
       s.updateTarget?.();
       const label = document.querySelector('.crosshair-label, .xh-label')?.textContent || null;
-      s.interact();
-      return { label, info: D.info() };
+      if (its) s.interact(); // (not while the prompt is a plant's in front of it, or nothing: it's too far yet)
+      return { label, pressed: its, info: D.info() };
     },
     step(n = 30, dt = 1 / 30, until = null) { const s = game()?.scene; for (let i = 0; i < n; i++) { s.update(dt); if (until && until()) return i + 1; } return n; },
     name(i = 0) {
