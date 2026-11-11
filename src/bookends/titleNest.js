@@ -131,7 +131,7 @@ function buildEgg(spec, seed) {
   list.forEach((v, i) => { const d = Math.hypot(v.x + 0.5 - pipAt[0], v.y + 0.5 - pipAt[1], v.z + 0.5 - pipAt[2]); if (d < pd) { pd = d; pip = i; } });
   // grow the crack: two tips set off left and right, zigzagging, and branch now and then
   const order = new Float32Array(list.length).fill(9);
-  const N = Math.round(list.length * 0.17);
+  const N = Math.round(list.length * 0.2);
   let count = 0;
   order[pip] = 0;
   const normal = (v) => { const n = [v.x + 0.5 - ECX, (v.y + 0.5 - EH * 0.5) * 0.55, v.z + 0.5 - ECZ]; const l = Math.hypot(...n) || 1; return n.map((q) => q / l); };
@@ -154,7 +154,7 @@ function buildEgg(spec, seed) {
       const j = surf.get(key(v.x + dx, v.y + dy, v.z + dz));
       if (j === undefined || order[j] < 9) continue;
       const l = Math.hypot(dx, dy, dz);
-      const sc = (dx * want[0] + dy * want[1] + dz * want[2]) / l + rng() * 0.5 - (l > 1.5 ? 0.3 : 0);
+      const sc = (dx * want[0] + dy * want[1] + dz * want[2]) / l + rng() * 0.5 - (l > 1.5 ? 0.3 : 0) + dz * 0.12;
       if (sc > bs) { bs = sc; best = j; }
     }
     if (best < 0 || T.life <= 0) continue;
@@ -165,7 +165,8 @@ function buildEgg(spec, seed) {
     T.d = tang([T.d[0] * 0.75 + st[0] * 0.25 + rng.range(-0.15, 0.15), T.d[1] * 0.75 + st[1] * 0.1 + rng.range(-0.1, 0.1), T.d[2] * 0.75 + st[2] * 0.25 + rng.range(-0.15, 0.15)], normal(b));
     T.i = best; T.life--;
     tips.push(T);
-    if (rng() < 0.065 && tips.length < 6) {
+    // (more branches as it goes on: a late egg is crazed all over its front)
+    if (rng() < 0.045 + 0.09 * (count / N) && tips.length < 9) {
       const a = rng.range(0.9, 1.4) * (rng() < 0.5 ? 1 : -1), nb = normal(b);
       const c = Math.cos(a), s = Math.sin(a);
       const cr = [nb[1] * T.d[2] - nb[2] * T.d[1], nb[2] * T.d[0] - nb[0] * T.d[2], nb[0] * T.d[1] - nb[1] * T.d[0]];
@@ -227,7 +228,7 @@ function eggMaterial(spec) {
       if (vEgg.x < uCrack) {
         // a crack: the light inside shows through
         diffuseColor.rgb = uLight * 0.12;
-        totalEmissiveRadiance += uLight * (0.85 + 0.85 * clamp((uCrack - vEgg.x) * 6.0, 0.0, 1.0)) * egPulse * uLeak;
+        totalEmissiveRadiance += uLight * (0.85 + 0.85 * clamp((uCrack - vEgg.x) * 6.0, 0.0, 1.0)) * (0.75 + 0.45 * clamp(uCrack, 0.0, 1.0)) * egPulse * uLeak;
       } else if (vEgg.y < uCrack) {
         // its lip: darker, with a little light bleeding round it
         diffuseColor.rgb *= 0.5;
@@ -355,7 +356,7 @@ const CSS = /* css */`
 .nt-head { position: absolute; left: 0; right: 0; top: calc(var(--px) * 8 + env(safe-area-inset-top, 0px)); font-family: var(--font-display); font-size: calc(var(--px) * 16); color: #ffe8c8;
   letter-spacing: .02em; text-align: center; line-height: 1; transform: translateY(calc(var(--px) * -6)); transition: transform .45s cubic-bezier(.2,1.3,.4,1); }
 .nt-view.on .nt-head { transform: none; transition-delay: .15s; }
-@media (max-aspect-ratio: 5/4) { .nt-head { top: calc(var(--px) * 30 + env(safe-area-inset-top, 0px)); } }
+@media (max-aspect-ratio: 5/4) { .nt-head { top: calc(var(--px) * 40 + env(safe-area-inset-top, 0px)); } }
 .nt-head small { display: block; font-family: var(--font); font-size: calc(var(--px) * 5.4); color: #e8d0a8; opacity: .9; margin-top: calc(var(--px) * 1.5); letter-spacing: .04em; }
 .nt-row { position: absolute; inset: 0; }
 .nt-slot { position: absolute; left: 0; top: 0; width: 0; height: 0; }
@@ -387,6 +388,12 @@ const CSS = /* css */`
 .nt-del:focus-visible { filter: drop-shadow(0 0 var(--px) #f2c23a) drop-shadow(0 0 var(--px) #f2c23a); }
 .nt-slot.busy .nt-del, .nt-slot.busy .nt-main { pointer-events: none; }
 #ui .nt-view:not(.on) .nt-main, #ui .nt-view:not(.on) .nt-del { pointer-events: none; }
+@media (max-height: 520px) and (min-aspect-ratio: 5/4) {
+  .nt-head { top: calc(var(--px) * 4 + env(safe-area-inset-top, 0px)); font-size: calc(var(--px) * 12); }
+  .nt-plaque { min-width: 0; padding: calc(var(--px) * 2.5) calc(var(--px) * 3.5) calc(var(--px) * 3); }
+  .nt-plaque b { font-size: calc(var(--px) * 9); }
+  .nt-plaque .nt-name, .nt-plaque .nt-meta, .nt-plaque .nt-new, .nt-plaque .nt-hatch { font-size: calc(var(--px) * 4.4); letter-spacing: .02em; }
+}
 @media (max-aspect-ratio: 5/4) {
   .nt-plaque { min-width: 0; padding: calc(var(--px) * 3) calc(var(--px) * 3.5) calc(var(--px) * 3.5); }
   .nt-plaque b { font-size: calc(var(--px) * 10); }
@@ -594,7 +601,7 @@ export function makeNest(parent, opts) {
       E.hot = true; slotEl.classList.add('hot');
       play('ui_hover');
       E.wobV += 4.5; E.axis.set(Math.random() < 0.5 ? 1 : -1, 0, R(-0.4, 0.4)).normalize();
-      if (E.hatchedOn) { play('egg_chirp', { pan: panOf(E) }); E.chirp = 0.5; } else play('egg_crack', { pan: panOf(E), vol: 0.8 });
+      if (E.hatchedOn) { play('egg_chirp', { pan: panOf(E) }); E.chirp = 0.5; } else play('egg_crack', { pan: panOf(E), vol: E.base > 0 ? 0.8 : 0.35 });
       E.tickT = 1.1;
     };
     const leave = () => { E.hot = false; slotEl.classList.remove('hot'); };
@@ -722,13 +729,13 @@ export function makeNest(parent, opts) {
     const fov = tall ? 58 : aspect > 1.95 ? 38 : 40;
     const tanV = Math.tan(THREE.MathUtils.degToRad(fov) / 2), tanH = tanV * aspect;
     const rowW = tall ? 0.95 : 1.3; // (wide: the whole nest; held tall: the eggs)
-    const fill = tall ? 0.96 : aspect > 1.95 ? 0.56 : 0.66;
+    const fill = tall ? 0.96 : aspect > 1.95 ? 0.8 : 0.66;
     const dist = Math.max(rowW / (2 * tanH * fill), 0.7);
     const pitch = tall ? 0.72 : 0.62;
     const centre = new THREE.Vector3(0, bedY + 0.1, 0);
     const eye = new THREE.Vector3(0, Math.sin(pitch) * dist, Math.cos(pitch) * dist).add(centre);
     // the eggs sit a little above the middle (the plaques go under them)
-    const lift = (tall ? 0.1 : aspect > 1.95 ? 0.12 : 0.15) * dist * tanV * 2;
+    const lift = (tall ? 0.0 : aspect > 1.95 ? 0.16 : 0.15) * dist * tanV * 2;
     const look = centre.clone().add(new THREE.Vector3(0, -Math.cos(pitch), Math.sin(pitch)).multiplyScalar(lift));
     let pos = group.localToWorld(eye), lk = group.localToWorld(look);
     if (leaveI >= 0) {
@@ -752,14 +759,14 @@ export function makeNest(parent, opts) {
     for (const E of eggs) {
       E.t += dt;
       // the crack: its save's progress, creeping a little while hovered, jumping when chosen
-      E.creep += ((E.hot ? 0.075 : 0) - E.creep) * (1 - Math.exp(-dt * (E.hot ? 0.9 : 1.6)));
+      E.creep += ((E.hot && E.base > 0 ? 0.075 : 0) - E.creep) * (1 - Math.exp(-dt * (E.hot ? 0.9 : 1.6)));
       if (E.boost > 0) E.boost = Math.min(0.32, E.boost + dt * 0.9);
       const want = E.base + E.creep + E.boost;
       E.cur += (want - E.cur) * (1 - Math.exp(-dt * 6));
       E.mat.userData.u.uCrack.value = E.cur;
       E.flash = Math.max(0, E.flash - dt * 2.2);
       E.mat.userData.u.uFlash.value = E.flash;
-      if (E.hot && !E.hatchedOn) {
+      if (E.hot && !E.hatchedOn && E.base > 0) {
         E.tickT -= dt;
         if (E.tickT <= 0) { E.tickT = R(1.2, 2.2); play('egg_crack', { pan: panOf(E), vol: 0.45 }); E.wobV += 1.6; }
       }

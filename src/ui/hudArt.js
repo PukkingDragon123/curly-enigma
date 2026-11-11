@@ -668,7 +668,8 @@ function waxCrack() {
 }
 
 // ---------------------------------------------------------------- registry
-const H = (k, fn) => art('h:' + k, fn);
+const LEATHERY = /^(pouch|leatherTag|vegT)/; // suede and veg-tan: leather pores, not wood grain, in the finishing pass
+const H = (k, fn) => art('h:' + k, fn, LEATHERY.test(k) ? { brown: 'leather' } : undefined);
 export const HART = {
   pouch: (open = false, S = 26) => H(`pouch${open ? 1 : 0}:${S}`, () => pouchArt(open, S)),
   goldTag: () => H('goldTag', goldTag),

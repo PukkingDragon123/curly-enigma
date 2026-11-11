@@ -41,12 +41,13 @@ export async function nameRaptor(game, e, taken = []) {
   if (!cv?.play) return pool[0];
   const sp = raptorSpeaker(e, '');
   try {
-    await cv.play({ who: sp, name: '', keep: true, lines: [{ text: '<i>It noses your paw, then tilts its head and waits.</i> <w>Chrrp?</w>', mood: 'happy', wait: true }] });
+    // (close on its face: in a dark cavern a shot over your shoulder is mostly your own silhouette)
+    await cv.play({ who: sp, name: '', keep: true, camera: 'close', lines: [{ text: '<i>It noses your paw, then tilts its head and waits.</i> <w>Chrrp?</w>', mood: 'happy', wait: true, camera: 'close' }] });
     for (let page = 0; page < 8; page++) {
       const opts = [0, 1, 2].map((k) => pool[(page * 3 + k) % pool.length]);
       const r = await cv.play({
-        who: 'hero', keep: true,
-        lines: [{ text: page ? 'Hmm. Not quite. What about…' : 'You can\'t keep calling it "the raptor". It needs a name.' }],
+        who: sp, name: '', keep: true, camera: 'close',
+        lines: [{ text: page ? '<i>It cocks its head the other way. Not that one, then. What about…</i>' : '<i>You can\'t keep calling it "the raptor". It needs a name.</i>', camera: 'close', mood: 'happy' }],
         choices: [...opts.map((n, i) => ({ label: n, value: n, primary: i === 0 })), { label: 'Other names…', value: '__more' }],
       });
       if (r?.skipped) return opts[0];
@@ -64,6 +65,6 @@ export function welcome(game, e, name) {
   const cv = game?.convo;
   if (!cv?.play) return Promise.resolve();
   // (the naming lines kept the talk framed: this last one ends it)
-  return cv.play({ who: raptorSpeaker(e, name), name, lines: [{ text: `<w>Chirrup!</w> <i>${name} bumps its snout against your paw. It's coming with you.</i>`, mood: 'happy', wait: true }] })
+  return cv.play({ who: raptorSpeaker(e, name), name, camera: 'close', lines: [{ text: `<w>Chirrup!</w> <i>${name} bumps its snout against your paw. It's coming with you.</i>`, mood: 'happy', wait: true, camera: 'close' }] })
     .catch(() => {}).then(() => { try { if (!cv.cur) cv.end(); } catch (err) { /* already over */ } });
 }

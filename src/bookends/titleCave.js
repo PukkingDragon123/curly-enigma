@@ -145,7 +145,7 @@ function rimOf(x, z) {
 /** The floor's height (m). */
 export function floorH(x, z) {
   const r = rimOf(x, z);
-  let y = nA(x * 0.16, z * 0.16) * 0.2 + nB(x * 0.55, z * 0.55) * 0.05;
+  let y = nA(x * 0.16, z * 0.16) * 0.2 + nB(x * 0.55, z * 0.55) * 0.022;
   y += Math.pow(Math.max(0, r - 0.8), 1.5) * 26;
   const P = CAVE.pool, pd = Math.hypot((x - P.x) / P.r, (z - P.z) / (P.r * 0.72));
   if (pd < 1.35) y -= 0.36 * (1 - sm(0.45, 1.35, pd));
@@ -232,10 +232,11 @@ function wallCol(x, y, z) {
     wcPh = nB(x * 0.5, z * 0.5) * 3;
     wcLi = nE(x * 0.13 + 3, z * 0.13 - 2);
   }
-  const band = Math.floor(y * 2.6 + wcN);
+  // strata: bands of a hand's breadth to half a metre (a few big runs per column: the mesher merges them)
+  const band = Math.floor(y * 1.7 + wcN);
   const b4 = ((band % 4) + 4) % 4;
-  let c = ROCK[2 + (b4 === 1 ? 1 : b4 === 3 ? -1 : 0) + (Math.sin(y * 1.9 + wcPh) > 0.45 ? 1 : 0)];
-  if (wcFl < 0.08) c = tone(FLOW, 1 + hash3(wcCol, Math.floor(y * 1.5), 0, 12) * 2.5); // flowstone curtain
+  let c = ROCK[2 + (b4 === 1 ? 1 : b4 === 3 ? -1 : 0) + (b4 === 2 && wcPh > 0.6 ? 1 : 0)];
+  if (wcFl < 0.08) c = tone(FLOW, 1 + hash3(wcCol, Math.floor(y * 0.8), 0, 12) * 2.5); // flowstone curtain
   else if (wcFl > 0.94) c = fshade(c, 0.7); // a wet streak
   // glowing lichen in a few patches, veining down the cracks there
   if (wcLi > 0.3 && y > 0.6) {
@@ -250,7 +251,10 @@ function roofCol(x, y, z, depth) {
   let c = ROCK[1 + (nB(x * 0.6, z * 0.6) > 0.2 ? 1 : 0) + (Math.floor(y * 2) % 3 === 0 ? 1 : 0)];
   if (depth > 0.5) c = tone(FLOW, depth > 1.2 ? 3 : 1.5 + hash3(Math.floor(x * 8), Math.floor(y * 8), Math.floor(z * 8), 3));
   if (z > -7 && nE(x * 0.4, z * 0.4) > 0.15) c = tone(SOIL, 2 + nA(x * 2, z * 2) * 2);
-  if (y > 7.5 && hash3(Math.floor(x * 8), 5, Math.floor(z * 8), 17) < 0.012) return glowHex(hash3(Math.floor(x * 8), 6, Math.floor(z * 8), 18) < 0.6 ? 0xa8f4ff : 0x7ac8ff, 3);
+  const gw = hash3(Math.floor(x * 8), 5, Math.floor(z * 8), 17);
+  if (y > 7.5 ? gw < 0.012 : gw < 0.012 + Math.max(0, nE(x * 0.3, z * 0.3)) * 0.03) return glowHex(hash3(Math.floor(x * 8), 6, Math.floor(z * 8), 18) < 0.6 ? 0xa8f4ff : 0x7ac8ff, 3);
+  // glowing lichen in patches over the brow
+  if (y < 7.5 && nD(x * 0.45, z * 0.45) > 0.16 && hash3(Math.floor(x * 4), 7, Math.floor(z * 4), 19) < 0.55) return glowHex(tone(RAMP.cyan, 3 + hash3(Math.floor(x * 8), 8, Math.floor(z * 8), 20) * 2), hash3(Math.floor(x * 4), 9, Math.floor(z * 4), 21) < 0.12 ? 2 : 1);
   return lit(c);
 }
 
@@ -267,7 +271,8 @@ function reliefChunks(o, colTop, colSide, keep, out, stats) {
     let any = false;
     for (let k = k0; k < Math.min(D, k0 + CK) && !any; k++) for (let i = i0; i < Math.min(W, i0 + CK); i++) if (h[i + W * k] && top[i + W * k]) { any = true; break; }
     if (!any) continue;
-    const geo = meshRelief({ W, D, h, top, side: colSide, origin: O, U, V, N, rows: [k0, k0 + CK], cols: [i0, i0 + CK] });
+    // (the walls without baked AO merge into long strips; the post pass shades the crevices)
+    const geo = meshRelief({ W, D, h, top, side: colSide, origin: O, U, V, N, rows: [k0, k0 + CK], cols: [i0, i0 + CK], wallAO: false });
     const P = geo.attributes.position.array, Nr = geo.attributes.normal.array;
     const nv = P.length / 3;
     if (!nv) { geo.dispose(); continue; }
@@ -308,6 +313,8 @@ function reliefRegion(RG, view, stats) {
   const h = new Int32Array(W * D), top = new Uint32Array(W * D), fH = new Float32Array(W * D).fill(NaN);
   const cw = Math.round(1 / vs);
   const nest = CAVE.nest;
+  // out in the dark at the back a glowing speck would be a 1/4 m dash of light: those stay dark (the glowworms there are points)
+  const keepGlow = vs >= 1 / 4 ? lit : (c) => c;
   const colX = (i) => RG.x0 + (i + 0.5) * vs, colZ = (k) => RG.z0 + (k + 0.5) * vs;
   const cells = [];
   for (let ck = 0; ck < D; ck += cw) for (let ci = 0; ci < W; ci += cw) {
@@ -333,7 +340,7 @@ function reliefRegion(RG, view, stats) {
       h[q] = Math.max(1, Math.round((f - FBASE) / FUP));
       const at = (qq) => (Number.isNaN(fH[qq]) ? f : fH[qq]);
       const s = (Math.abs(at(q + 1) - at(q - 1)) + Math.abs(at(q + W) - at(q - W))) / (2 * vs) * 0.5;
-      top[q] = floorTopCol(x, z, FBASE + h[q] * FUP, s) || 0x10;
+      top[q] = keepGlow(floorTopCol(x, z, FBASE + h[q] * FUP, s)) || 0x10;
     }
   } else {
     for (const [ci, ck] of cells) for (let k = ck; k < Math.min(D, ck + cw); k++) for (let i = ci; i < Math.min(W, ci + cw); i++) {
@@ -342,7 +349,7 @@ function reliefRegion(RG, view, stats) {
       if (c <= floorH(x, z)) continue;
       h[q] = Math.max(1, Math.round((CTOP - c) / CDN));
       const y = CTOP - h[q] * CDN;
-      top[q] = roofCol(x, y, z, Math.max(0, domeH(z) - y - 0.6)) || 0x10;
+      top[q] = keepGlow(roofCol(x, y, z, Math.max(0, domeH(z) - y - 0.6))) || 0x10;
     }
   }
   const side = floor
@@ -351,12 +358,12 @@ function reliefRegion(RG, view, stats) {
       const x = RG.x0 + (i + 0.5 + (dir === 0 ? -0.5 : dir === 1 ? 0.5 : 0)) * vs, z = RG.z0 + (k + 0.5 + (dir === 2 ? -0.5 : dir === 3 ? 0.5 : 0)) * vs;
       const y = FBASE + (level + 0.5) * FUP;
       if (h[q] * FUP + FBASE - y < 0.07 && y < 1.2) return top[q] & 0xfffffc; // a lip of the cap's own colour
-      return wallCol(x, y, z);
+      return keepGlow(wallCol(x, y, z));
     }
     : (q, level) => {
       const i = q % W, k = (q - i) / W;
       const x = colX(i), z = colZ(k), y = CTOP - (level + 0.5) * CDN;
-      return roofCol(x, y, z, Math.max(0, domeH(z) - y - 0.6));
+      return keepGlow(roofCol(x, y, z, Math.max(0, domeH(z) - y - 0.6)));
     };
   const out = [];
   stats.rH = (stats.rH || 0) + (performance.now() - tR0);
@@ -788,7 +795,7 @@ export async function buildCave(o = {}) {
   }
   mark('boulder');
   // boulders (furniture-sized: 1/32)
-  for (let i = 0, nb = 0; i < 40 && nb < (lite ? 7 : 18); i++) {
+  for (let i = 0, nb = 0; i < 40 && nb < (lite ? 7 : 14); i++) {
     const x = rr.range(-12.5, 12.5), z = rr.range(-26, 3.5);
     if (!okSpot(x, z, 1.3)) continue;
     const w = rr.range(0.5, 1.5), y = floorH(x, z);
@@ -856,7 +863,7 @@ export async function buildCave(o = {}) {
   const HANG = [['roots', 3, 1 / 56], ['rootsShort', 3, 1 / 56], ['glowVine', 2, 1 / 56], ['mossDrape', 2, 1 / 52], ['mycelCyan', 3, 1 / 56], ['mycel', 2, 1 / 56], ['vineBerry', 1, 1 / 56]];
   const hsum = HANG.reduce((a, f) => a + f[1], 0);
   const dripTips = [];
-  const nHang = soft ? 30 : lite ? 50 : 100;
+  const nHang = soft ? 30 : lite ? 50 : 80;
   for (let i = 0, placed = 0; i < nHang * 6 && placed < nHang; i++) {
     const x = rr.range(-13, 13), z = rr.range(-29, 3);
     const y = ceilH(x, z);
@@ -867,6 +874,16 @@ export async function buildCave(o = {}) {
     for (const F of HANG) { w -= F[1]; if (w <= 0) { f = F; break; } }
     if (z < -12 && f[0].startsWith('root')) f = HANG[4];
     put(proto(f[0], rr.int(0, 2), f[2], camDist(x, y, z) > LOD_D), x, y + 0.05, z, rr() * TAU, rr.range(0.9, 1.3), true);
+    placed++;
+  }
+  // the brow over the front of the cave: roots, moss curtains and glowworm threads, thick
+  for (let i = 0, placed = 0; i < 500 && placed < (soft ? 18 : lite ? 28 : 34); i++) {
+    const x = i % 2 ? rr.range(-2, 6) : rr.range(-9, 8), z = rr.range(-10, 1.5);
+    const y = ceilH(x, z);
+    if (y < floorH(x, z) + 2.6 || (Math.abs(x - CAVE.sign.x) < 1.3 && Math.abs(z - CAVE.sign.z) < 1.6)) continue;
+    if (!view.point(x, y - 0.5, z, 0.6)) continue;
+    const f = HANG[[0, 1, 3, 4, 4, 5, 2][rr.int(0, 6)]];
+    put(proto(f[0], rr.int(0, 2), f[2], camDist(x, y, z) > LOD_D), x, y + 0.05, z, rr() * TAU, rr.range(0.9, 1.25), true);
     placed++;
   }
   for (const s of STALACT) {
@@ -953,10 +970,11 @@ export async function buildCave(o = {}) {
   const glowPts = [];
   {
     const r = makeRng(55);
-    for (let i = 0; i < 1600 && glowPts.length < (lite ? 160 : 300); i++) {
-      const x = r.range(-14, 14), z = r.range(-31, -9);
+    for (let i = 0; i < 2400 && glowPts.length < (lite ? 220 : 400); i++) {
+      const brow = i % 3 === 0;
+      const x = r.range(-14, 14), z = brow ? r.range(-10, 3) : r.range(-31, -9);
       const y = ceilH(x, z) - 0.04;
-      if (y < 6.5 || !view.point(x, y, z, 0.1)) continue;
+      if (y < (brow ? 3.4 : 6.5) || y < floorH(x, z) + 2 || !view.point(x, y, z, 0.1)) continue;
       glowPts.push({ pos: [x, y - r() * 0.5, z], color: r() < 0.7 ? 0x9af4ff : 0x7aa8ff, size: r() < 0.2 ? 2 : 1, shape: SHAPE.square, speed: r.range(0.3, 1.2), phase: r() * 20, sharp: 1.5, amp: 0.6, base: 0.4 });
     }
   }

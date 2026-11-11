@@ -106,9 +106,11 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
   const mole = makeHeroMole({ height: 0.86, pack: true, hammer: true });
   mole.root.traverse((o) => { if (o.isMesh) o.layers.enable(LAYER_OUTLINE); });
   group.add(mole.root);
+  // his lantern's light (not under the mole: a light that comes and goes with him would change
+  // the scene's light count, and every material would recompile)
   const lantern = new THREE.PointLight(0xffb45a, 0, 4.5, 1.4);
-  lantern.position.set(0.12, 0.62, -0.2);
-  mole.root.add(lantern);
+  const LANTERN = new THREE.Vector3(0.12, 0.62, -0.2);
+  group.add(lantern);
   // ---- the raptor (its three colourings, swapped run to run)
   const mat = caveToon({ emissive: 0.06, key: 'raptor' }), eyeMat = caveToon({ emissive: 2.4, key: 'raptor-eye' });
   // (the first colouring now; the others are built when a run first needs them)
@@ -319,11 +321,13 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
       else if (Math.hypot(mx - B.x, mz - B.z) < 0.55) knock(B, _p.tx, _p.tz, false);
     }
     // his lantern, his feet
-    lantern.intensity = 1.6 * clamp(r.t * 2, 0, 1);
+    lantern.intensity = mole.root.visible ? 1.6 * clamp(r.t * 2, 0, 1) : 0;
     moleStepPh += dt * 14 * (r.vm / 1.45) / Math.PI;
     if (moleStepPh >= 1) { moleStepPh -= 1; if (hopY < 0.02) { sfx?.('chase_step', { at: mole.root.position, vol: 0.8 }); if (Math.random() < 0.5) kickDust(mx, my, mz, 2, 0.6); } }
     mole.update(dt);
     mole.root.rotation.y = mole.facing + twist;
+    mole.root.updateMatrixWorld(true);
+    lantern.position.copy(LANTERN).applyMatrix4(mole.root.matrixWorld);
     // gone into the dark on the far side
     if (sr > rt.L + 1.5) endRun();
   }

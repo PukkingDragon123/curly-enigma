@@ -51,7 +51,7 @@ const TURN = 0.14; // the post faces a little past the camera (so its depth show
 const FRAMES = {
   wide: { sx: 0.4, sy: -0.2, size: 0.36, fit: 'h', vx: -0.28, pitch: 0.06, fov: 40 },
   short: { sx: 0.45, sy: -0.12, size: 0.48, fit: 'h', vx: -0.3, pitch: 0.05, fov: 42 },
-  tall: { sx: 0.0, sy: -0.5, size: 0.78, fit: 'w', vx: -0.12, pitch: -0.2, fov: 52 },
+  tall: { sx: 0.0, sy: -0.34, size: 0.8, fit: 'w', vx: -0.1, pitch: 0.04, fov: 52 }, // (the boards seen near level: the carved words read)
 };
 const ASPECTS = [['wide', 16 / 9], ['short', 2.2], ['tall', 390 / 844], ['wide', 4 / 3], ['short', 844 / 390]];
 
@@ -175,7 +175,7 @@ export default class TitleScene extends Scene {
 
     // ---- light: the glowcaps' own (in the cave), a dim cool sky-glow from the roof's glowworms,
     // a cold key down from the high dome, a warm bounce onto the boards' faces (as from the nest)
-    this.hemi = new THREE.HemisphereLight(0x4a5a8a, 0x161220, 0.42);
+    this.hemi = new THREE.HemisphereLight(0x4a5a8a, 0x3a2c58, 0.45);
     this.key = new THREE.DirectionalLight(0x8ab8e8, 0.3);
     this.key.position.set(-0.4, 1, -0.35).multiplyScalar(30);
     this.bounce = new THREE.DirectionalLight(0xffc890, 0.85);

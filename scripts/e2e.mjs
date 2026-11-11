@@ -392,7 +392,7 @@ await step('deep: tame a lone raptor (calm, feed, name), it follows and fights',
   for (let i = 0; i < 10; i++) {
     const c = await page.evaluate(() => { const cv = window.__game.convo; return cv?.cur ? { choices: cv.cur.choices?.map((x) => x.label) || null } : null; });
     if (!c) break;
-    if (c.choices) { await wait(800); await shot('04j-tame-name'); named = c.choices[0]; }
+    if (c.choices) { await page.evaluate(() => { window.__game.convo.debug?.settle?.(); window.__game.debug.tame.step(4); }); await wait(900); await shot('04j-tame-name'); named = c.choices[0]; }
     await page.evaluate(() => window.__game.debug.tame.name(0));
     await wait(600);
   }

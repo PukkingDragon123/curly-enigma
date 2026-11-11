@@ -7,10 +7,11 @@ your section of it true when you finish (add an "As built" note under your part)
 
 ## The story now
 
-1. **Title.** A tough old-school blacksmith mole works his forge in a cave behind the menu (sparks,
-   glow, hammer blows). The menu buttons are wooden signs hanging on chains that swing with 2D
-   physics. **New Game / Continue** shows **three save stones**: an empty slot is a rough stone; the
-   further that save has got, the more the stone has turned into a cut gem (with its percentage).
+1. **Title.** A glowing mushroom cave (`titleCave.js`, `titleCaveFx.js`) where the hero mole runs
+   from a raptor in a looping chase (`titleChase.js`); the menu is a mossy wooden signpost.
+   **New Game / Continue** glides down to a raptor nest (`titleNest.js`) with **three eggs**: an
+   empty slot is a smooth egg; the further that save has got, the more the egg cracks (with its
+   percentage), and a save with `data.tame.raptors` shows a hatched baby raptor.
 2. **The journey** (`fall` scene, cinematic). Up on the surface, a blacksmith adventurer mole
    (leather apron, goggles, a hammer, a pack) walks a beautiful forest trail. Beside him walks
    **Nugget's coop**: a little Baba Yaga hut on two big chicken legs, Nugget the hen peeking out of
@@ -1134,7 +1135,9 @@ swings slower and scratches worse as those skills grow; those two must divide (s
   mined/forged/cooked) · zones 10% `(zoneMax - 1) / 5` · Index Book 10% (entries known / all
   minerals, gems, plants, creatures, weapons, recipes, mechanics) · quests 10% (`quests.done` /
   all of `QUESTS`). A missing part hands its weight to the others; `flags.endingSeen` = 100.
-- **Save stones** (`src/bookends/titleStones.js`): Continue / New Game raises the signs off the
+- **Save eggs** (`src/bookends/titleNest.js`) replaced the save stones described below; the stones'
+  flow (plaques, hammer delete with confirm, Back / Esc) carries over to the eggs.
+- **Save stones** (removed): Continue / New Game raised the signs off the
   screen and brings three stones up on a ledge. Empty = mossy rough stone ("A new adventure");
   used = rock that turns into a cut gem as completion grows (slot 1 round ruby, 2 step-cut
   emerald, 3 oval sapphire): coloured flecks, then cracks leaking light, the table breaking through

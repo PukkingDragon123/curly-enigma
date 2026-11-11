@@ -37,7 +37,7 @@ On touch screens the left half of the screen is a floating stick and dragging th
 
 ## What's in it
 
-- **Three save stones.** Each save slot is a stone on a ledge that turns into a cut gem as that game gets closer to the end. The menu is wooden signs hanging on chains that swing when you touch them, in front of a blacksmith mole hammering at his forge.
+- **Three raptor eggs.** The title is a glowing mushroom cave where a mole runs from a raptor behind a wooden signpost menu. Choosing a game glides down to a raptor nest: each save slot is an egg that cracks more as that game gets closer to the end, and hatches once that save has tamed a raptor.
 - **The journey.** A forest trail at golden hour, the hero and Nugget's coop on its chicken legs, a stream, the chest in the clearing, the ground giving way, the fall and the blackout.
 - **Old Star's cave workshop.** Your new home: a living cave with drips and glow-worms, his forge and quench trough, the hearth, old ruins, mining gear, his notes and chest, your bed, and the cage lift down to the mine. Old Star works, cooks, smokes his pipe and snores.
 - **An interactive tutorial.** Old Star takes you down to his practice dig (dig around ore, chip a clump clean, find a gem, fetch his map, learn to block), then talks you through smelting and forging a copper dagger and cooking a glowcap soup. Talk to him to skip it.

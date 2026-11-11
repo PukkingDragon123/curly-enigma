@@ -720,11 +720,12 @@ function beltTipSprite() {
 }
 
 // ---------------------------------------------------------------- registry
+const LEATHER_O = { brown: 'leather' }; // the finishing pass (src/ui/pxFine.js): their browns are leather
 export const SPR = {
-  pack: (fill = 0) => art('pack' + fill, () => packSprite(fill)),
-  bookPeek: () => art('bookPeek', bookPeekSprite),
-  journalIcon: () => art('journalIcon', journalIcon),
-  pouch: (open = false) => art('pouch' + (open ? 1 : 0), () => pouchSprite(open)),
+  pack: (fill = 0) => art('pack' + fill, () => packSprite(fill), LEATHER_O),
+  bookPeek: () => art('bookPeek', bookPeekSprite, LEATHER_O),
+  journalIcon: () => art('journalIcon', journalIcon, LEATHER_O),
+  pouch: (open = false) => art('pouch' + (open ? 1 : 0), () => pouchSprite(open), LEATHER_O),
   coins: () => art('coins', coinStrip),
   coinMini: () => art('coinMini', () => {
     const p = new Px(6, 6);

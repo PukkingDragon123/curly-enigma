@@ -532,7 +532,7 @@ export const KART = {
   basket: (l) => art('ck:basket:' + l, () => basket(l)),
   crate: (l) => art('ck:crate:' + l, () => crate(l)),
   jar: (l) => art('ck:jar:' + l, () => jar(l)),
-  pot: (l, full = false) => art(`ck:pot:${l}:${full ? 1 : 0}`, () => pot(l, full)),
+  pot: (l, full = false) => art(`ck:pot:${l}:${full ? 1 : 0}`, () => pot(l, full), { brown: 'brass' }), // copper: hammer marks, not grain
   stove: () => art('ck:stove', stove),
   slotRing: () => art('ck:slotRing', slotRing),
   bell: (down = false) => art('ck:bell' + (down ? 1 : 0), () => bell(down)),

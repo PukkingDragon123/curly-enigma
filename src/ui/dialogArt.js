@@ -133,8 +133,17 @@ function ribbon(R = PAL.oxblood) {
     }
     p.set(x, y, c);
   }
+  if (p.r > 1) p.fline(4, 4, w - 4.5, 4, mixHex(band[2], 0xffffff, 0.25), 140);
+  if (p.r > 1)
+    for (let x = 3; x < w - 3; x++) {
+      const ux = ((x - 10) % M + M) % M;
+      // finer: each gold stitch a twist (lit, then shaded), the satin's twill between the art twill
+      // lines, a hairline of sheen along the top of the band
+      if (ux % 3 === 1) { p.dot(x + 0.5, 2, TR[8]); p.dot(x + 0.5, 2.5, TR[5]); p.dot(x, 11.5, TR[3]); }
+      for (let y = 7; y < 10; y++) if ((ux + y) % 4 === 2) p.dot(x + 0.5, y + 0.5, mixHex(p.get(x, y), R.dd, 0.35));
+    }
   // the fold where the band turns under into the tail
-  for (let y = 4; y < 13; y++) { p.set(3, y, R.dd); p.set(w - 4, y, R.dd); p.set(4, y, mixHex(p.get(4, y), R.dd, 0.4)); p.set(w - 5, y, mixHex(p.get(w - 5, y), R.dd, 0.4)); }
+  for (let y = 4; y < 13; y++) { p.set(3, y, R.dd); p.set(w - 4, y, R.dd); p.tintBlock(4, y, R.dd, 0.4); p.tintBlock(w - 5, y, R.dd, 0.4); }
   p.outline(INK);
   return p;
 }

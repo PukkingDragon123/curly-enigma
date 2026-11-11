@@ -384,7 +384,8 @@ export class Pal extends TameRaptor {
       this.dig = null;
       this.setMode('follow');
     }
-    // you came to look: it hops aside
-    if (this.hd < 1.0) { this.dig = null; this.digT = 0; this.hop(1.4); this.setMode('follow'); }
+    // you stepped right in where it's digging: it hops aside
+    const P = m.pl.pos;
+    if (this.digT > 0.8 && Math.hypot(P.x - g.x, P.z - g.z) < 0.4) { this.dig = null; this.digT = 0; this.hop(1.4); this.setMode('follow'); }
   }
 }
