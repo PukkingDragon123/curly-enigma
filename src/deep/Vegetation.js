@@ -16,7 +16,8 @@
 //
 // API (DigScene): new Vegetation(ctx) · update(dt, { player, eye, time, busy }) → [] ·
 // lights(eye) → ≤ 2 faint glows of luminous patches · onVoxel(vx, vy, vz, old, m) (chained into
-// world.onChange by itself; calling it directly as well is harmless) · dispose() · info() ·
+// world.onChange by itself; calling it directly as well is harmless) · clearView(a, b, k) (a talk's
+// close-up: the plants between the camera and the face shrink away) · dispose() · info() ·
 // debug: { info(), near(x, y, z, r), models(), rebuild(), budget(ms), kinds(), bench(n) }.
 import * as THREE from 'three';
 import { CS, zoneAt, biomeAt } from './Generator.js';
@@ -742,6 +743,18 @@ export class Vegetation {
     st.ms = st.ms * 0.92 + ms * 0.08;
     if (this.age > 3) st.worst = Math.max(st.worst, ms);
     return EMPTY;
+  }
+
+  /**
+   * A talk's close-up (src/fx/director.js): the boxes in the capsule from a (the camera) to b (the
+   * face), radius ra at a and rb at b (m), shrink away by k (0..1). clearView(null): all back.
+   */
+  clearView(a, b, k = 1, ra = 0.34, rb = 0.26) {
+    const U = this.U;
+    if (!a || !b || !(k > 0)) { U.uClipK.value = 0; return; }
+    U.uClipA.value.set(a.x, a.y, a.z, ra);
+    U.uClipB.value.set(b.x, b.y, b.z, rb);
+    U.uClipK.value = Math.min(1, k);
   }
 
   /** Is the mole wading through grass or ferns right now? */

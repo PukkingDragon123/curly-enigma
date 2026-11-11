@@ -6,6 +6,9 @@
 // Boxes sway in the cave's breath (bend grows from the root to the tip), the mole pushes them
 // aside, small plants shrink away with distance, and each face is lit by its normal (taken from
 // the screen derivatives: flat, one light / mid / dark plane per face) like the rock.
+// While a talk is framed (src/fx/director.js) the boxes in a capsule from the camera to the
+// speaker's face (uClipA → uClipB, radius in w; uClipK 0 = off) shrink away into their own
+// centres, so no frond sits in front of a close-up.
 //
 // Lighting and air: when TerrainMaterial.js exports its GLSL chunks for mine materials (LIGHT with
 // lightAt(p, n), AIR with caveAir(col, p, d) / fogAmount(d)) the plants use them, so they sit in
@@ -74,6 +77,9 @@ export function makeVegMaterial(U) {
     uPush: { value: push },
     uPushK: { value: new Float32Array(PUSHERS) },
     uLod: { value: new THREE.Vector3(9.5, 17, 19) }, // small plants thin out between x and y (m); nothing past z
+    uClipA: { value: new THREE.Vector4(0, -9999, 0, 0) }, // the talk camera's clear capsule: the camera end, radius
+    uClipB: { value: new THREE.Vector4(0, -9999, 0, 0) }, // the face end, radius
+    uClipK: { value: 0 }, // how far the boxes in it have shrunk away (0: off)
   };
   const mat = new THREE.ShaderMaterial({
     uniforms,
@@ -91,6 +97,9 @@ export function makeVegMaterial(U) {
       uniform vec4 uPush[${PUSHERS}];
       uniform float uPushK[${PUSHERS}];
       uniform vec3 uLod;
+      uniform vec4 uClipA;
+      uniform vec4 uClipB;
+      uniform float uClipK;
       varying vec3 vWorld;
       varying vec3 vCol;
       varying float vGlow;
@@ -105,13 +114,30 @@ export function makeVegMaterial(U) {
         vec3 lc = iOff.xyz + iShape.xyz * 0.5;
         // off screen (the box with room for the most any sway or push moves it): nothing to do.
         // (the whole pool is one draw, so this is the frustum cull)
-        vec3 vr = (viewMatrix * vec4(iRoot + vec3(ca * lc.x + sa * lc.z, lc.y, -sa * lc.x + ca * lc.z) * vox, 1.0)).xyz;
+        vec3 wc = iRoot + vec3(ca * lc.x + sa * lc.z, lc.y, -sa * lc.x + ca * lc.z) * vox;
+        vec3 vr = (viewMatrix * vec4(wc, 1.0)).xyz;
         float br = 0.5 * length(iShape.xyz) * vox + 0.6, p0 = projectionMatrix[0][0], p1 = projectionMatrix[1][1];
         if (vr.z > br || abs(vr.x) * p0 + vr.z > br * sqrt(1.0 + p0 * p0) || abs(vr.y) * p1 + vr.z > br * sqrt(1.0 + p1 * p1)) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+        // a talk's close-up: a box in the capsule from the camera to the face shrinks away
+        float clip = 1.0;
+        if (uClipK > 0.0) {
+          vec3 ab = uClipB.xyz - uClipA.xyz, hb = iShape.xyz * 0.5 * vox;
+          float l2 = max(dot(ab, ab), 1e-6);
+          // the segment's point nearest the box (two alternating projections), then the gap to the box
+          float t = clamp(dot(wc - uClipA.xyz, ab) / l2, 0.0, 1.0);
+          vec3 d = uClipA.xyz + ab * t - wc;
+          vec3 cl = clamp(vec3(ca * d.x - sa * d.z, d.y, sa * d.x + ca * d.z), -hb, hb);
+          t = clamp(dot(wc + vec3(ca * cl.x + sa * cl.z, cl.y, -sa * cl.x + ca * cl.z) - uClipA.xyz, ab) / l2, 0.0, 1.0);
+          d = uClipA.xyz + ab * t - wc;
+          float gap = length(max(abs(vec3(ca * d.x - sa * d.z, d.y, sa * d.x + ca * d.z)) - hb, 0.0));
+          float r = mix(uClipA.w, uClipB.w, t);
+          clip = mix(1.0, smoothstep(r, r + 0.08, gap), uClipK);
+          if (clip < 0.02) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+        }
         vec3 e = (cameraPosition - iRoot) / vox;
         vec3 le = vec3(ca * e.x - sa * e.z, e.y, sa * e.x + ca * e.z) - lc;
         vec3 sg = step(0.0, le);
-        vec3 q = iOff.xyz + mix(1.0 - corner, corner, sg) * iShape.xyz;
+        vec3 q = lc + (iOff.xyz + mix(1.0 - corner, corner, sg) * iShape.xyz - lc) * clip;
         vec3 p = iRoot + vec3(ca * q.x + sa * q.z, q.y, -sa * q.x + ca * q.z) * vox;
         float cy = mix(1.0 - corner.y, corner.y, sg.y);
         float bend = mix(iSway.x, iSway.y, cy);

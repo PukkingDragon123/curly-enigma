@@ -17,6 +17,8 @@
 //   director.weight           0 (first person) … 1 (the shot)      director.shot  { kind, side, comp }
 //   director.headScreen(out)  where the subject's head is on screen ({ x, y, r } CSS px, or null)
 //   director.warm()           build your mole's body ahead of time (idle time)
+// The mine's plants (src/deep/Vegetation.js clearView) shrink out of a capsule from the camera to the
+// face while a shot is up, so no frond covers it (director.clearVeg = false: they stay).
 import * as THREE from 'three';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { rayBox } from '../fps/FPSKit.js';
@@ -63,6 +65,8 @@ export class Director {
     this.applyAt = -1e9;
     this.camScene = null;
     this.base = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
+    this.clearVeg = true;
+    this.faceAt = new THREE.Vector3();
   }
 
   get weight() { return this.w; }
@@ -437,6 +441,7 @@ export class Director {
     const fov = fov0 + (this.pose.fov - fov0) * e;
     if (Math.abs(camera.fov - fov) > 1e-4) { camera.fov = fov; camera.updateProjectionMatrix(); }
     camera.updateMatrixWorld();
+    this.clearView(camera, shot);
     if (this.w <= 0 && !this.want) { this.restore(); return; }
     // the paws go while the camera is away from the eyes; your body stands in for them
     const away = camera.position.distanceTo(this.base.p);
@@ -448,10 +453,22 @@ export class Director {
 
   restore() {
     this.axisSide = null;
+    this.game.scene?.vegetation?.clearView?.(null);
     const c = this.cam;
     if (c && this.fov0 != null) { if (Math.abs(c.fov - this.fov0) > 1e-4) { c.fov = this.fov0; c.updateProjectionMatrix(); } this.fov0 = null; }
     this.restoreVm();
     this.detachHero();
+  }
+
+  /** The plants between the camera and the face (theirs, or yours in a shot of you) shrink away. */
+  clearView(camera, shot) {
+    const v = this.game.scene?.vegetation;
+    if (!v?.clearView) return;
+    const k = this.clearVeg ? clamp(this.w * 3, 0, 1) : 0;
+    if (!k) { v.clearView(null); return; }
+    const pl = shot.focus === 'hero' ? this.player() : null;
+    const face = pl ? pl.eye(this.faceAt) : shot.speaker.eyes(this.faceAt);
+    v.clearView(camera.position, face, k);
   }
 
   vm() { const s = this.game.scene; return s?.rig?.vm || s?.vm || null; }
