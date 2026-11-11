@@ -117,7 +117,8 @@ export class NookDig {
     await this.tween(0.4, (k) => { c.yaw = y0 + dy * ease(k); c.pitch += (0.02 - c.pitch) * 0.2; });
     const st = this.game.state;
     this.rig.setTool('pick', st.data.equip?.pick || 'pick_first');
-    await this.sleepFor(0.35);
+    for (let i = 0; i < 8 && (this.rig.vm?.pending || (this.rig.vm?.stow ?? 0) > 0.2); i++) await this.sleepFor(0.12); // (the paws bring the pick up)
+    await this.sleepFor(0.2);
     const face = { x: d.x + d.nx * 0.02, z: d.z + d.nz * 0.02 };
     const blow = (k) => {
       this.rig.vm?.swing('pick', 0.22);

@@ -88,9 +88,10 @@ export function nookLanterns(set) {
     const [x0, z0, x1, z1] = n.rect.map((v) => v * T);
     // inside the alcove, on the wall beside where the neck comes in, a little to one side
     const nk = n.neck, cx = (nk[0] + nk[2]) / 2, cz = (nk[1] + nk[3]) / 2;
-    const side = n.open.n ? { x: Math.min(x1 - 0.25, nk[2] + 0.32), z: z0 + 0.08, nx: 0, nz: 1 } : n.open.e ? { x: x1 - 0.08, z: Math.min(z1 - 0.3, nk[3] + 0.3), nx: -1, nz: 0 } : { x: x0 + 0.08, z: cz, nx: 1, nz: 0 };
+    // (beside the neck on the wall it comes through, then a little out toward the middle so the light reaches the back)
+    const side = n.open.n ? { x: Math.min(x1 - 0.4, nk[2] + 0.45), z: z0 + 0.08, nx: 0, nz: 1 } : n.open.e ? { x: x1 - 0.08, z: Math.min(z1 - 0.45, nk[3] + 0.45), nx: -1, nz: 0 } : { x: x0 + 0.08, z: cz, nx: 1, nz: 0 };
     void cx;
-    out.push({ id: n.id, kind: 'lantern', x: side.x + side.nx * 0.12, y: Y + 1.18, z: side.z + side.nz * 0.12, wx: side.x, wz: side.z, nx: side.nx, nz: side.nz, color: 0xffb860, intensity: 0.85, distance: 3.4, flicker: 0.12, halo: 0.16, haloOpacity: 0.5, pool: 0.7, poolOpacity: 0.12, priority: 5, power: 0.72, radius: 3.0 });
+    out.push({ id: n.id, kind: 'lantern', x: side.x + side.nx * 0.3, y: Y + 1.18, z: side.z + side.nz * 0.3, wx: side.x, wz: side.z, nx: side.nx, nz: side.nz, color: 0xffb860, intensity: 1.0, distance: 3.8, flicker: 0.12, halo: 0.16, haloOpacity: 0.5, pool: 0.8, poolOpacity: 0.12, priority: 6, power: 1.0, radius: 3.7 });
   }
   return out;
 }

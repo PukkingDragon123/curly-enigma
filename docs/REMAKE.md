@@ -2725,11 +2725,11 @@ middle), plus the **alcoves you dig out** round it.
 
 - **What's in the hollow** (`src/home/spots.js` `SPOTS` / `STAR_SPOTS` / `NOOK_BED`; built by `house.js`):
   his stone forge against the north rock (soot up its flue crack), the bellows, the anvil on its stump (he
-  hammers from behind it, the forge at his back, facing the room), his quench bucket (`'The quench bucket'`,
-  water named `trough`), a coal heap (`'Take coal from the heap'`, 3 a day: the old cart's job), his tools on
+  hammers beside it, the forge's glow behind him: from your bedroll you see him side on), his quench bucket (`'The quench bucket'`,
+  water named `trough`), a coal heap under an old tarp (cloth; `'Take coal from the heap'`, 3 a day: the old cart's job), his tools on
   a peg board under an old shoring frame on the west rock, his leather apron on a nail (cloth), the grey
   fleece he sleeps on by the forge (`dyn.cot`, Old Star's `cot` spot), his trunk (`LootChest`), a stack of
-  books (`Browse the books`), the fire pit with tripod, pot and kettle (soot over it), his stump by it
+  books (`Browse the books`), the fire pit with tripod, pot and kettle (`Cook at the fire pit`; soot over it), his stump by it
   (`armchair` spot, `Sit on Old Star's stump`), a lantern hung over the middle, his notes nailed straight to
   the rock (`hollowProps.rockNotes`, same pins as the old board), the **Miners' Board as a chalked slate on
   a crate** (`slateOnCrate`) in the north-east corner with **THE WAY UP** chalked on the rock beside it, a

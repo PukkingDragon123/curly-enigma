@@ -48,8 +48,8 @@ export class WorkshopLife {
     this.addIt({ box: [S.anvil.x - 0.32, Y, S.anvil.z - 0.3, S.anvil.x + 0.32, Y + 0.75, S.anvil.z + 0.3], label: forgeLabel, action: () => this.useForge() });
     this.addIt({ box: [S.bellows.x - 0.48, Y + 0.2, S.bellows.z - 0.26, S.bellows.x + 0.48, Y + 0.75, S.bellows.z + 0.26], label: 'Pump the bellows', action: () => this.pumpBellows() });
     this.addIt({ box: [S.trough.x - 0.18, Y, S.trough.z - 0.18, S.trough.x + 0.18, Y + 0.32, S.trough.z + 0.18], label: 'The quench bucket', action: () => this.lookTrough() });
-    // the fire pit (the cooking spot: the old label kept for the lessons and the tests)
-    const cookLabel = () => (this.lessonStage?.() === 'cook' ? 'Cook with Old Star' : 'Cook at the range');
+    // the fire pit (the cooking spot)
+    const cookLabel = () => (this.lessonStage?.() === 'cook' ? 'Cook with Old Star' : 'Cook at the fire pit');
     const F = S.fire;
     this.addIt({ box: [F.x - 0.45, Y, F.z - 0.45, F.x + 0.45, Y + 0.95, F.z + 0.45], label: cookLabel, action: () => this.useHearth() });
     for (const f of c.furn) {

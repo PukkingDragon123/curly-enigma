@@ -43,7 +43,7 @@ export const DRIPS = [
 /** Dripstones hanging from the roof: x, z (m), length (m), base radius (m). Near the walls, or high enough to walk under. */
 const DRIPSTONES = [
   [2.95, -3.15, 0.3, 0.09], [5.95, -3.3, 0.26, 0.08], [7.55, -3.0, 0.32, 0.09], [2.75, -1.55, 0.28, 0.08],
-  [5.2, -3.95, 0.24, 0.07], [7.6, -1.25, 0.3, 0.09], [3.4, -3.95, 0.22, 0.07],
+  [5.2, -3.95, 0.24, 0.07], [6.95, -0.95, 0.26, 0.08], [3.4, -3.95, 0.22, 0.07],
 ];
 /** Where the floor's worn pale (m): the ways people walk. */
 const PATHS = [[5.0, -1.55, 3.85, -2.35], [5.0, -1.55, 7.45, -2.3], [5.3, -2.3, 6.55, -3.75], [3.8, -2.4, 3.2, -3.05], [5.3, -2.3, 5.65, -3.4]];

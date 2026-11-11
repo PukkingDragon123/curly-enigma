@@ -17,6 +17,7 @@
 //   P.setFocus(i | -1, nudge = true)   the board catches the light (and wobbles)
 //   P.knock(i, k)         a sharp knock (pressed / chosen)
 //   P.setLabel(i, text)   re-carve a board
+//   P.faceToward(world)   turn the boards to face the camera's spot (each screen shape has its own)
 //   P.perch               local point on the cap's ridge (for a bird)
 //   P.materials           every material (for shader warm-up)
 //   P.dispose()
@@ -352,7 +353,7 @@ function buildFoot(seed = 9) {
 }
 
 // ------------------------------------------------------------------ the signpost
-const WOOD_OF = ['walnut', 'pine', 'ash', 'oak'];
+const WOOD_OF = ['walnut', 'oak', 'ash', 'pine'];
 /**
  * Build the signpost. items: [{ label, primary, dir }] top to bottom. Returns the handle described
  * at the top of this file.
@@ -366,9 +367,9 @@ export function makeSignpost(items, { face = 0 } = {}) {
     post: forestToon({ dapple: true }),
     plant: forestToon({ dapple: true, swayLocal: 0.5, swayAmp: 0.04 }),
     wood: forestToon({ dapple: true, emissive: 0.08 }),
-    woodLit: forestToon({ dapple: true, emissive: 0.5 }),
+    woodLit: forestToon({ dapple: true, emissive: 0.2 }),
     paint: forestToon({ dapple: true, emissive: 0.45 }),
-    paintLit: forestToon({ dapple: true, emissive: 1.4 }),
+    paintLit: forestToon({ dapple: true, emissive: 0.95 }),
   };
   // the post leans a touch, as old posts do
   const lean = new THREE.Group();
@@ -464,6 +465,12 @@ export function makeSignpost(items, { face = 0 } = {}) {
       }
     },
     setLabel(i, text) { const b = boards[i]; if (!b || b.label === text) return; b.label = text; carve(b); },
+    /** Turn every board on its nail to face a point (world): the words read square on from there. */
+    faceToward(p) {
+      group.updateMatrixWorld(true);
+      const l = lean.worldToLocal(p.clone());
+      for (const b of boards) b.yaw = clamp(Math.atan2(l.x - b.pivot.position.x, l.z - b.pivot.position.z), -0.45, 0.45) + b.dir * 0.02 * (1 + (b.i % 2));
+    },
     update(dt, camera, heightPx) {
       t += dt;
       const h = Math.min(dt, 1 / 20);
@@ -487,7 +494,7 @@ export function makeSignpost(items, { face = 0 } = {}) {
         b.paintMesh.material = lit ? mat.paintLit : mat.paint;
         b.glints.update(dt, b.lit);
         b.glints.points.visible = b.lit > 0.02;
-        b.halo.userData.glow.uIntensity.value = b.lit * (0.42 + Math.sin(t * 2.3 + b.ph) * 0.05);
+        b.halo.userData.glow.uIntensity.value = b.lit * (0.3 + Math.sin(t * 2.3 + b.ph) * 0.04);
         b.halo.visible = b.lit > 0.02;
       }
     },

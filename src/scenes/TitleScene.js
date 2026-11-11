@@ -155,6 +155,7 @@ export default class TitleScene extends Scene {
     this.own(() => this.F.dispose());
     sc.add(this.F.group, this.F.sky);
     if (this.F.sign) this.F.sign.visible = false; // (ours stands in its place)
+    this.clearBeams();
     const perch = this.sign.group.localToWorld(this.sign.perch.clone());
     this.F.spots.sign = { x: perch.x, z: perch.z, top: perch.y };
     this.dress = dressForest(this.F, { lite, soft, view: this.viewWedge() });
@@ -203,6 +204,26 @@ export default class TitleScene extends Scene {
     if (this.wildlife) this.loop('forest_chorus', 0.6);
     this.loop('forest_brook', 0.18);
     for (const fn of this.pending.splice(0)) fn();
+  }
+
+  /** A shaft of sun that falls between a framing's camera and the boards would wash the words out: dim it. */
+  clearBeams() {
+    const shapes = [['wide', 16 / 9], ['short', 2.2], ['tall', 390 / 844]].map(([k, a]) => this.frame(k, a));
+    const seg = new THREE.Line3(), q = new THREE.Vector3(), p = new THREE.Vector3();
+    for (const b of this.F.beams) {
+      const B = b.userData.beam;
+      let near = Infinity;
+      for (const s of shapes) {
+        seg.set(s.pos, s.M);
+        for (let u = 0; u <= 1; u += 0.05) {
+          p.lerpVectors(B.bottom, B.top, u);
+          if (p.y > s.M.y + 1.5) break;
+          seg.closestPointToPoint(p, true, q);
+          near = Math.min(near, q.distanceTo(p) - B.w / 2);
+        }
+      }
+      if (near < 0.7) B.base *= 0.12;
+    }
   }
 
   loop(name, vol) {
@@ -267,12 +288,17 @@ export default class TitleScene extends Scene {
     return { pos: pos.clone(), look: out.look.clone(), fov: out.fov, f: f.clone(), M, dist };
   }
 
+  /** Which menu framing this screen shape gets. */
+  menuKind() {
+    const a = this.camera.aspect;
+    if (this.params.frame) { const v = String(this.params.frame).split(',').map(Number); return { sx: v[0], sy: v[1], size: v[2], vx: v[3], pitch: v[4], fov: v[5] || 40, fit: a < 1 ? 'w' : 'h' }; }
+    return a < 1 ? 'tall' : a > 1.95 || this.game.engine.height < 420 ? 'short' : 'wide';
+  }
+
   /** The framing for this screen (and shot). */
   shot() {
     const a = this.camera.aspect;
-    const kind = this.params.frame ? (() => { const v = String(this.params.frame).split(',').map(Number); return { sx: v[0], sy: v[1], size: v[2], vx: v[3], pitch: v[4], fov: v[5] || 40, fit: a < 1 ? 'w' : 'h' }; })()
-      : a < 1 ? 'tall' : a > 1.95 || this.game.engine.height < 420 ? 'short' : 'wide';
-    const s = this.frame(kind, a);
+    const s = this.frame(this.menuKind(), a);
     if (this.shotName === 'stones' || this.shotName === 'leave') {
       // out onto the trail itself, past the signpost (it slips away to the side), facing the sunny
       // clearing: it sits in the top of the screen over the stones' ledge; leaving walks on into it
@@ -474,6 +500,8 @@ export default class TitleScene extends Scene {
 
   layoutCamera(w, h, snap = false) {
     this.camera.aspect = w / h;
+    // the boards turn on their nails to face this screen's camera (so the words read square on)
+    this.sign.faceToward(this.frame(this.menuKind(), this.camera.aspect).pos);
     const s = this.shot();
     if (snap || !this.cam.init) {
       this.cam.pos.copy(s.pos); this.cam.look.copy(s.look); this.cam.fov = s.fov; this.cam.init = true;

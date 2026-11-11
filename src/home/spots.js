@@ -22,7 +22,7 @@ export const SPOTS = {
   // the fire pit (south-east), his stump by it, the sack of stores
   fire: { x: 6.3, z: -1.95 },
   hearth: { x: 6.3, z: -1.95 },
-  armchair: { x: 7.22, z: -1.56 },
+  armchair: { x: 6.98, z: -1.42 },
   larder: { x: 3.2, z: -1.45 },
   // the north rock: his notes nailed to it, the door to Deep Town, the slate on a crate (the Miners' Board) in the corner
   board: { x: 5.68, z: -4.12 },
@@ -34,13 +34,13 @@ export const SPOTS = {
   // (old names kept for the scene and the tests)
   sink: { x: 5.02, z: -3.08 },
   pool: { x: 5.02, z: -3.08 },
-  sofa: { x: 7.22, z: -1.56 },
+  sofa: { x: 6.98, z: -1.42 },
   clock: null,
 };
 
 /** Old Star's places: where he stands (or sits / lies), which way he faces, his pose. */
 export const STAR_SPOTS = {
-  anvil: { x: 4.3, z: -2.96, face: { x: SPOTS.anvil.x, z: SPOTS.anvil.z }, pose: 'hammer' }, // (behind it, the forge at his back: he faces the room)
+  anvil: { x: 3.86, z: -2.58, face: { x: SPOTS.anvil.x, z: SPOTS.anvil.z }, pose: 'hammer' }, // (beside it, the forge's glow behind him: from your bedroll you see him side on)
   bellows: { x: 3.05, z: -3.0, face: { x: 3.05, z: -3.7 }, pose: 'pump' },
   fire: { x: 6.25, z: -2.6, face: { x: SPOTS.fire.x, z: SPOTS.fire.z }, pose: 'stir' },
   board: { x: 5.68, z: -3.45, face: { x: 5.68, z: -4.3 }, pose: 'read' },

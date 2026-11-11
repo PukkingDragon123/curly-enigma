@@ -35,7 +35,7 @@ export const NOOKS = [
   },
   {
     id: 'nook_work', name: 'the workshop bay', title: 'Workshop Bay', parent: null,
-    rect: [13, 1, 18, 6], neck: [6.95, -1.05, 7.85, 0.62], dig: { x: 7.4, z: -0.6, nx: 0, nz: 1 },
+    rect: [13, 1, 18, 6], neck: [7.3, -1.45, 8.05, 0.62], dig: { x: 7.68, z: -0.95, nx: 0, nz: 1 },
     open: { n: [14, 15] }, parentOpen: null, icon: 'weapon_rack', cost: 1500,
     desc: 'A bay off the hollow by the lift: room to lay out tools, racks and benches.',
   },

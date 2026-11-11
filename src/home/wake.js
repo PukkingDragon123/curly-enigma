@@ -311,8 +311,9 @@ export class HomeWake {
     const line = (html, mood, gesture) => go(this.starLine(html, { mood, wait: true, camera: 'face', gesture }));
     const cam = this.camera, fov0 = this.fov0;
     const fovTo = (to, secs) => { const from = cam.fov; return tween(secs, (k) => { cam.fov = from + (to - from) * ease(k); cam.updateProjectionMatrix(); }); };
-    // where the sound comes from: the anvil, a little above it (his arms, the sparks)
-    const toAnvil = this.aimFrom(c, { x: anvil.x, y: anvil.y + 0.3, z: anvil.z });
+    // where the sound comes from: him at the anvil (between his face and the work: his arms, the sparks)
+    const focus = star?.rig ? starHead().setY(starHead().y - 0.18).lerp(new THREE.Vector3(anvil.x, anvil.y + 0.15, anvil.z), 0.4) : { x: anvil.x, y: anvil.y + 0.3, z: anvil.z };
+    const toAnvil = this.aimFrom(c, focus);
     const dYaw = Math.atan2(Math.sin(toAnvil.yaw - base.yaw), Math.cos(toAnvil.yaw - base.yaw)), dPitch = toAnvil.pitch - base.pitch;
     this.muffK = 0;
     muff.set(0);
@@ -412,7 +413,7 @@ export class HomeWake {
     let dx = from.x - hx, dz = from.z - hz;
     const L = Math.hypot(dx, dz) || 1;
     dx /= L; dz /= L;
-    const d = Math.min(1.0, L);
+    const d = Math.min(1.2, L);
     for (const turn of [0, 0.5, -0.5, 1, -1]) {
       const cs = Math.cos(turn), sn = Math.sin(turn);
       const x = hx + (dx * cs - dz * sn) * d, z = hz + (dx * sn + dz * cs) * d;
