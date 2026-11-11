@@ -24,7 +24,7 @@ export const UPGRADE_TABS = [
   { id: 'dig', name: 'Digging' },
   { id: 'haul', name: 'Hauling' },
   { id: 'blast', name: 'Blasting' },
-  { id: 'home', name: 'Tavern' },
+  { id: 'home', name: 'Home' },
   { id: 'gear', name: 'Tools' },
   { id: 'ms', name: 'Milestones' },
 ];
@@ -117,6 +117,36 @@ export const UPGRADES = {
     effect: (l) => l, fmt: (v) => (v ? 'Charges stick where they land' : 'Charges bounce and roll'),
     cost: { gold: [1500, 1], items: { 0: { slug_slime: 3 } } },
     req: { up: ['blast', 2] },
+  },
+
+  // ───────────── home: the alcoves you dig out round Old Star's cave (src/home/nooks.js) ─────────────
+  // (one level each: dug or not; HomeScene digs it the moment you buy it at home, else it's there next time)
+  nook_bed: {
+    tab: 'home', name: 'Sleeping Alcove', icon: 'bed_straw', badge: 'plus', max: 1,
+    desc: 'The soft rock behind your bedroll. A corner of your own: your bedroll and trunk move in, and there\'s room for furniture.',
+    effect: (l) => l, fmt: (v) => (v ? 'Dug out: yours to furnish' : 'Chalk-marked soft rock'),
+    cost: { gold: [50, 1] },
+  },
+  nook_store: {
+    tab: 'home', name: 'Storage Nook', icon: 'crate', badge: 'plus', max: 1,
+    desc: 'A dry pocket west of your sleeping alcove. Room for crates, racks and whatever you hoard.',
+    effect: (l) => l, fmt: (v) => (v ? 'Dug out: 20 tiles of floor' : 'Chalk-marked soft rock'),
+    cost: { gold: [400, 1] },
+    req: { up: ['nook_bed', 1] },
+  },
+  nook_work: {
+    tab: 'home', name: 'Workshop Bay', icon: 'weapon_rack', badge: 'plus', max: 1,
+    desc: 'A bay off the hollow by the lift: room to lay out racks, benches and the things you\'re proud of.',
+    effect: (l) => l, fmt: (v) => (v ? 'Dug out: 25 tiles of floor' : 'Chalk-marked soft rock'),
+    cost: { gold: [1500, 1], items: { 0: { copper_ingot: 2 } } },
+    req: { up: ['nook_bed', 1] },
+  },
+  nook_pantry: {
+    tab: 'home', name: 'Pantry', icon: 'planter', badge: 'plus', max: 1,
+    desc: 'Cool rock south of your sleeping alcove. Planters, jars and sacks keep down there.',
+    effect: (l) => l, fmt: (v) => (v ? 'Dug out: 12 cool tiles' : 'Chalk-marked soft rock'),
+    cost: { gold: [3500, 1], items: { 0: { iron_ingot: 2 } } },
+    req: { up: ['nook_bed', 1] },
   },
 
   // ───────────── the tavern ─────────────

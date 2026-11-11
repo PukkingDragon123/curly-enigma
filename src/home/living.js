@@ -1,8 +1,8 @@
-// Living in your room (mixed into HomeScene): the window and the poster,
-// the planters, sitting down (in your room or by Old Star's hearth), lamps, the music box, snacks, and the
-// bed: lying down, sleeping through to the next day and getting up again, all in first person.
+// Living in your alcoves (mixed into HomeScene): the planters, sitting down (in your alcoves or by
+// Old Star's fire), lamps, the music box, snacks, and the bed (your bedroll on the floor, or a bed
+// you've put in your alcove): lying down, sleeping through to the next day and getting up again,
+// all in first person.
 import * as THREE from 'three';
-import { WINDOW_SLOTS } from '../iso/homeLayout.js';
 import { FURNITURE } from '../data/furniture.js';
 import { ITEMS } from '../data/items.js';
 import { rand, pick, clamp } from '../core/util.js';
@@ -21,18 +21,6 @@ export class HomeLiving {
     this.game.audio.play(scene === 'forge' ? 'clunk' : 'stir');
     this.game.goto(scene, { from: 'home' });
     void rec;
-  }
-
-  peekWindow() {
-    this.game.audio.play('glow');
-    const wz = (WINDOW_SLOTS[0] + 0.5) * T;
-    for (let i = 0; i < 8; i++) this.fx.firefly(0.08 + Math.random() * 0.15, 1.0 + rand(-0.12, 0.12), wz + rand(-0.15, 0.15), pick([[0.6, 1, 0.85], [0.45, 0.85, 1], [1, 0.95, 0.6]]));
-    this.think(pick(['A whole cave of crystals out there, glowing like a lantern shop.', 'Somebody lived here once, and chose the view.']));
-  }
-
-  lookPoster() {
-    this.game.audio.play('glow');
-    this.think('<b>The Surface Express.</b> One way, back to the sun… for a million gold.');
   }
 
   /** The mole's own thoughts: a bubble low in the middle of the view. */
@@ -189,6 +177,12 @@ export class HomeLiving {
   // ------------------------------------------------------------ bed
   /** Where the eyes rest lying in a bed (meters) and the yaw looking toward its foot. */
   bedPose(rec) {
+    if (rec.bedroll) {
+      // on the bedroll: the head on the sack pillow, a hand's width off the floor, looking down along it
+      const l = rec.lie.lie;
+      const head = _v.set(l.x, l.y + 0.24, l.z + 0.26).applyMatrix4(rec.obj.matrixWorld).clone();
+      return { head, yaw: (rec.yaw || 0) + Math.PI };
+    }
     const lie = rec.res.lie || { y: 0.5, head: -0.55, foot: 0.75 };
     const head = _v.set(lie.x || 0, lie.y + 0.18, (lie.head ?? -0.55) + 0.12).applyMatrix4(rec.obj.matrixWorld).clone();
     const f = (rec.p.r || 0) * Math.PI / 2;
@@ -212,9 +206,11 @@ export class HomeLiving {
   async getUp(rec) {
     const c = this.cam;
     if (!c) return; // (the script was cut short: a test hook stood you up)
-    const spot = besideItem(this, rec) || { x: rec.cx + 1, z: rec.cz };
+    const st = this.bedStand?.(rec);
+    const spot = st ? { x: st.x / T, z: st.z / T } : besideItem(this, rec) || { x: rec.cx + 1, z: rec.cz };
     const tx = spot.x * T, tz = spot.z * T, ty = this.rig.player.eyeY;
-    const yaw1 = Math.atan2(-((this.W / 2) * T - tx), -((this.D / 2) * T - tz));
+    const fc = st?.face || { x: rec.cx * T, z: rec.cz * T - 1 };
+    const yaw1 = Math.atan2(-(fc.x - tx), -(fc.z - tz));
     const x0 = c.x, y0 = c.y, z0 = c.z, yw0 = c.yaw, p0 = c.pitch, r0 = c.roll;
     const dyaw = Math.atan2(Math.sin(yaw1 - yw0), Math.cos(yaw1 - yw0));
     // sit up first, then swing the legs out and stand

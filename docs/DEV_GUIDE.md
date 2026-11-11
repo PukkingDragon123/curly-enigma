@@ -119,9 +119,11 @@ The burrow, Deep Town, the forge and the mine are walked in first person with `s
 (`FPSRig` + `BoxWorld`) or the mine's own controller; the paws are `src/fps/ViewModel.js`; the lift
 network is `src/fps/lifts.js`. Scenes are in meters at mole scale (0.86 m tall, eyes at 0.72 m).
 
-- **Burrow** (`HomeScene.js`, `src/home/*`): the room is built in tile units (0.5 m per tile) from the
-  iso furniture models (`src/iso/furniture32.js` etc.) inside a group scaled to meters; walls, shell,
-  lift, build mode (`src/home/build.js`), landing, Nugget. Placement rules in `src/iso/homeLayout.js`.
+- **Home** (`HomeScene.js`, `src/home/*`): Old Star's one small cave (`plan.js`, `caveShell.js`,
+  `house.js`, `spots.js`) and the alcoves you dig out round it (`nooks.js`), on a tile grid (0.5 m per
+  tile) where the iso furniture models (`src/iso/furniture32.js` etc.) go, inside a group scaled to
+  meters; lift, build mode (`src/home/build.js`), the wake-up. Placement rules in `src/home/nooks.js`
+  (`canPlaceNooks`); footprints and kinds still in `src/iso/homeLayout.js`.
 - **Deep Town** (`TownScene.js`, `src/town/*`): cave, statics, shops, lift, folk, life, arrival, fx;
   layout in `src/iso/townLayout.js`, floors in `townFloor.js`, shop fronts `shopFront.js`, booth
   `booth.js`. Townsfolk switch to crowd LOD when far; shopkeepers always render in full.

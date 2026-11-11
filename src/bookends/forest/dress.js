@@ -15,7 +15,8 @@
 //   - more shafts of sun down the trail
 // Everything is instanced and chunked; far chunks are hidden, small things sooner than big ones.
 //
-//   const D = dressForest(F, { lite, soft });  scene.add(D.group);  D.frame(pos, look, opts);
+//   const D = dressForest(F, { lite, soft, view });  scene.add(D.group);  D.frame(pos, look, opts);
+//   (view: as buildForest's: a fixed camera's share only, the same layout with what it can't see left out)
 //   D.update(dt, camera);  D.dispose();  D.stats
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -59,7 +60,7 @@ function treeSpots(F) {
   return out;
 }
 
-export function dressForest(F, { lite = false, soft = false } = {}) {
+export function dressForest(F, { lite = false, soft = false, view = null } = {}) {
   const t0 = performance.now();
   const group = new THREE.Group();
   group.name = 'forest-dress';
@@ -70,6 +71,8 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
   const rng = makeRng(8801);
   const trees = treeSpots(F);
   const tier = soft ? 0 : lite ? 1 : 2;
+  const V = view;
+  const inV = V ? (x, z, pad = 0) => x > V.x0 - pad && x < V.x1 + pad && z > V.z0 - pad && z < V.z1 + pad && (!V.keep || V.keep(x, z, pad)) : () => true;
   const pick3 = (a, b, c) => [a, b, c][tier];
 
   // ---- the ground we dress: the fine ground, and a band of the coarse outer ground round it
@@ -116,6 +119,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
   const flowerMat = forestToon({ dapple: true, swayLocal: 0.25, swayAmp: 0.025 });
   const saplingLeafMat = forestToon({ dapple: true, swayLocal: 1.2, swayAmp: 0.06, backlit: 0.7 });
   const add = (geo, mat, its, name, { outline = false, cell = 16, cull = 0 } = {}) => {
+    if (V) its = its.filter((it) => inV(it.x, it.z, 2));
     if (!geo || !its.length) return null;
     const m = instanceChunked(geo, mat, its, { name, outline, cell });
     if (cull) m.traverse((o) => { o.userData.cull = cull; });
@@ -152,7 +156,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
   // ---- ground cover: a thick weave of grass, flowers and litter over the whole floor, a meadow in
   // the clearing, and more of it along the trail where every shot looks
   const items = [];
-  const put = (x, z, cell, size, tint = 1) => items.push({ x, y: floorY(x, z) - 0.02, z, rot: rng.range(0, 6.28), size, cell, tint });
+  const put = (x, z, cell, size, tint = 1) => { const rot = rng.range(0, 6.28); if (inV(x, z, 0.5)) items.push({ x, y: floorY(x, z) - 0.02, z, rot, size, cell, tint }); };
   const coverAt = (x, z) => {
     const td = FOREST.dist.trail(x, z), sd = FOREST.dist.stream(x, z), r = Math.hypot(x, z);
     if (r < HOLE_R + 0.3 || sd < 0.65 || td < 0.5 || onWalk(x, z) || !free(x, z, 0.04)) return;
@@ -386,7 +390,7 @@ export function dressForest(F, { lite = false, soft = false } = {}) {
 
   // ---- more shafts of sun down the trail and over the stream (the canopy opens there)
   if (!soft) {
-    const beam = (x, z, len, w, inten) => { const b = new THREE.Vector3(x, groundH(x, z), z); F.addBeam(b.clone().addScaledVector(SUN_DIR, len), b, w, inten, 0xffdcaa); };
+    const beam = (x, z, len, w, inten) => { if (!inV(x, z, 3) && !inV(x + SUN_DIR.x * len, z + SUN_DIR.z * len, 3)) return; const b = new THREE.Vector3(x, groundH(x, z), z); F.addBeam(b.clone().addScaledVector(SUN_DIR, len), b, w, inten, 0xffdcaa); };
     for (const s of tier === 2 ? [5.2, 9.6, 14, 18.8, 23.4, 27.6, 33.4] : [9.6, 18.8, 27.6]) {
       const [x, z] = tr.beside(s, ((s * 5.3) % 4) - 2);
       beam(x, z, 15, 0.45 + ((s * 7) % 3) * 0.15, 0.13 + ((s * 3) % 4) * 0.02);

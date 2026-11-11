@@ -11,6 +11,8 @@
 //   const F = await buildForest({ lite });  scene.add(F.group, F.sky);  F.update(dt, camera); F.dispose();
 //   FOREST.trail.at(s) → { x, y, z, yaw, tx, tz } (s: metres along the trail), FOREST.trail.length
 //   groundH(x, z), F.crust (pieces), F.cracks, F.chest, F.spill, F.glints, F.bridge, F.stream, F.spots
+//   buildForest({ view }): a fixed camera's share only (the title): view = { x0, x1, z0, z1 } on the
+//   ground, plus an optional keep(x, z, pad) → false where it can't see; the rest is never built.
 import * as THREE from 'three';
 import { meshRelief, hash3, fshade, VoxelGrid, meshVoxGreedy } from './vox.js';
 import { makeNoise2D, makeRng, clamp, lerp } from '../core/util.js';
@@ -204,8 +206,11 @@ export function groundColor(x, z, i = 0, k = 0, nearTree = 0) {
  * Build the forest (async: it yields between the heavy steps so the page stays responsive).
  * opts.lite: phones and 'Simple' shaders (fewer, coarser trees, less undergrowth); opts.soft: a software
  * rasterizer (the light forest, thinner still, with a short draw distance).
+ * opts.view: build only what a fixed camera sees (the title screen): { x0, x1, z0, z1 } (the ground it
+ * can see, fog included) and optionally keep(x, z, pad) → false outside its view. Same forest, same
+ * places; the fine ground, the trees, the undergrowth, the grass and the sun shafts out of view are skipped.
  * Returns { group, sky, textures, crust, cracks, chest, spill, glints, chestGlow, update, dispose,
- * stats, bridge, stream, beams, spots, holeY }.
+ * stats, bridge, stream, beams, spots, holeY, sign }.
  */
 export async function buildForest(opts = {}) {
   const t0 = performance.now();
@@ -214,7 +219,21 @@ export async function buildForest(opts = {}) {
   VS = soft ? 1 / 5 : lite ? 1 / 6 : 1 / 7;
   OUT = lite ? OUT_LITE : OUT_FULL;
   // the fine ground: the whole built box, or on phones just the corridor round the trail and the clearing
-  const TB = lite ? { x0: -19, x1: 21, z0: -17, z1: 50 } : BOX;
+  let TB = lite ? { x0: -19, x1: 21, z0: -17, z1: 50 } : BOX;
+  let OUTG = OUT; // the coarse outer ground
+  // opts.view: only what a fixed camera sees (inV: inside its box and its keep(), pad metres of slack)
+  const V = opts.view || null;
+  const inV = V ? (x, z, pad = 0) => x > V.x0 - pad && x < V.x1 + pad && z > V.z0 - pad && z < V.z1 + pad && (!V.keep || V.keep(x, z, pad)) : () => true;
+  if (V) {
+    // (snapped to the box's own voxel grid, so every voxel lands where it would anyway)
+    const clip = (b, pad, st) => {
+      const lo = (v, b0) => b0 + Math.floor((v - b0) / st) * st, hi = (v, b0) => b0 + Math.ceil((v - b0) / st) * st;
+      return { x0: Math.max(b.x0, lo(V.x0 - pad, b.x0)), x1: Math.min(b.x1, hi(V.x1 + pad, b.x0)), z0: Math.max(b.z0, lo(V.z0 - pad, b.z0)), z1: Math.min(b.z1, hi(V.z1 + pad, b.z0)) };
+    };
+    TB = clip(TB, 1, VS * 96); // (whole terrain tiles)
+    OUTG = clip(OUT, 4, 1); // (the coarse ground's 1 m cells)
+  }
+  const keepIts = (items, pad) => (V ? items.filter((it) => inV(it.x, it.z, pad)) : items);
   const textures = initMF();
   const geos = []; // everything we built, to dispose
   const G = (g) => { if (g) geos.push(g); return g; };
@@ -363,10 +382,10 @@ export async function buildForest(opts = {}) {
   // ---- the outer ground: coarse voxels out to the hills (under the built ground it ducks down)
   {
     const OS = 1;
-    const OW = Math.round((OUT.x1 - OUT.x0) / OS), OD = Math.round((OUT.z1 - OUT.z0) / OS);
+    const OW = Math.round((OUTG.x1 - OUTG.x0) / OS), OD = Math.round((OUTG.z1 - OUTG.z0) / OS);
     const oh = new Uint16Array(OW * OD), otop = new Uint32Array(OW * OD);
     for (let k = 0; k < OD; k++) for (let i = 0; i < OW; i++) {
-      const x = OUT.x0 + (i + 0.5) * OS, z = OUT.z0 + (k + 0.5) * OS;
+      const x = OUTG.x0 + (i + 0.5) * OS, z = OUTG.z0 + (k + 0.5) * OS;
       const q = i + OW * k;
       const inside = x > TB.x0 + 0.1 && x < TB.x1 - 0.1 && z > TB.z0 + 0.1 && z < TB.z1 - 0.1;
       if (inside) { oh[q] = 1; otop[q] = 0; continue; } // the fine ground covers it (and the hole must stay open)
@@ -380,7 +399,7 @@ export async function buildForest(opts = {}) {
     const outerMat = terrainMat;
     const OR = 64, OC = 50; // tiles (frustum-culled)
     for (let k0 = 0; k0 < OD; k0 += OR) for (let c0 = 0; c0 < OW; c0 += OC) {
-      const geo = G(meshRelief({ W: OW, D: OD, h: oh, top: otop, side: oside, U: [OS, 0, 0], V: [0, 0, OS], N: [0, VY, 0], origin: [OUT.x0, -BASE * VY - 0.01, OUT.z0], rows: [k0, k0 + OR], cols: [c0, c0 + OC], wallAO: false }));
+      const geo = G(meshRelief({ W: OW, D: OD, h: oh, top: otop, side: oside, U: [OS, 0, 0], V: [0, 0, OS], N: [0, VY, 0], origin: [OUTG.x0, -BASE * VY - 0.01, OUTG.z0], rows: [k0, k0 + OR], cols: [c0, c0 + OC], wallAO: false }));
       if (!geo.index.count) continue;
       const m = new THREE.Mesh(geo, outerMat);
       m.userData.noBatch = true;
@@ -397,6 +416,7 @@ export async function buildForest(opts = {}) {
   const woodMat = forestToon({ dapple: true });
   const leafMat = (kl) => forestToon({ dapple: false, sway: 1, swayBase: 3, shimmer: 1, cell: kl, backlit: 0.9 });
   const add = (geo, mat, items, name, outline = true, cell = 14) => {
+    items = keepIts(items, 3);
     if (!geo || !items.length) return;
     group.add(instanceChunked(geo, mat, items, { name, outline, cell }));
     stats.tris[name] = (stats.tris[name] || 0) + triCount(geo) * items.length;
@@ -414,6 +434,7 @@ export async function buildForest(opts = {}) {
     snag: [() => makeSnag(181, { height: 7.5, k: 7 })],
   })) {
     near[kind] = [];
+    if (V && !trees.some((t) => t.kind === kind && inV(t.x, t.z, 5))) continue; // (opts.view: none of this kind in sight)
     for (const make of makers) { near[kind].push(make()); await tick(); if (cancelled()) return bail(); }
   }
   await tick();
@@ -432,6 +453,7 @@ export async function buildForest(opts = {}) {
   // coarser voxel model the trees off the trail use instead (same trees, same places)
   const LOD_D = lite ? 32 : 40;
   const addTrees = (geo, lodGeo, kind, items) => {
+    items = keepIts(items, 5);
     if (!items.length) return;
     if (!lodGeo) { add(geo.wood, woodMat, items, kind + '-wood', true, 28); add(geo.leaves, leafMat(K.l), items, kind + '-leaves', false, 28); return; }
     const bins = new Map();
@@ -467,6 +489,12 @@ export async function buildForest(opts = {}) {
   // the giants
   const giantGeos = new Map();
   for (const g of GIANTS) {
+    // turn the hollow (local +z) toward the trail or the middle of the clearing
+    let fx, fz;
+    if (g.face === 'clear') { fx = -g.x; fz = -g.z; } else { const p = tp(TRAIL.P.reduce((b, q) => ((q.x - g.x) ** 2 + (q.z - g.z) ** 2 < (b.x - g.x) ** 2 + (b.z - g.z) ** 2 ? q : b), TRAIL.P[0]).s); fx = p.x - g.x; fz = p.z - g.z; }
+    g.ry = Math.atan2(fx, fz);
+    g.y = groundH(g.x, g.z) - 0.2;
+    if (!inV(g.x, g.z, 9)) continue; // (opts.view: out of sight, not built)
     if (!giantGeos.has(g.seed)) {
       giantGeos.set(g.seed, makeBroadleaf(g.seed, { kind: 'giant', k: K.g, kl: K.gl, height: 17 + (g.seed % 3), crownR: 7.2 + (g.seed % 5) * 0.2 }));
       await tick();
@@ -474,11 +502,6 @@ export async function buildForest(opts = {}) {
     }
     const geo = giantGeos.get(g.seed);
     G(geo.wood); G(geo.leaves);
-    // turn the hollow (local +z) toward the trail or the middle of the clearing
-    let fx, fz;
-    if (g.face === 'clear') { fx = -g.x; fz = -g.z; } else { const p = tp(TRAIL.P.reduce((b, q) => ((q.x - g.x) ** 2 + (q.z - g.z) ** 2 < (b.x - g.x) ** 2 + (b.z - g.z) ** 2 ? q : b), TRAIL.P[0]).s); fx = p.x - g.x; fz = p.z - g.z; }
-    g.ry = Math.atan2(fx, fz);
-    g.y = groundH(g.x, g.z) - 0.2;
   }
   for (const [seed, geo] of giantGeos) {
     const its = GIANTS.filter((g) => g.seed === seed).map((g) => ({ x: g.x, y: g.y, z: g.z, ry: g.ry, s: g.s }));
@@ -502,7 +525,7 @@ export async function buildForest(opts = {}) {
       add(m.wood, woodMat, its, kind + '-wood-far', false, 40);
       add(m.leaves, leafMat(2), its, kind + '-leaves-far', false, 40);
     }
-    const ft = makeFarTrees(bill);
+    const ft = makeFarTrees(keepIts(bill, 6));
     ft.traverse((o) => { if (o.geometry) G(o.geometry); });
     group.add(ft);
     stats.far = bill.length;
@@ -609,6 +632,7 @@ export async function buildForest(opts = {}) {
   FOREST.bridgeY = by + 5 / 16;
   FOREST.bridge = { x: bx, z: bz, s: CROSS.s, half: 1.7, y: by + 5 / 16 - 0.03 };
   // a signpost where the trail bends toward the clearing
+  let signMesh = null;
   {
     const s = trailAt(CROSS.s + 3.4);
     const sign = new THREE.Mesh(G(makeSignGeo()), stiffMat);
@@ -618,6 +642,7 @@ export async function buildForest(opts = {}) {
     sign.scale.setScalar(1.1);
     props.add(sign);
     spots.sign = { x: sign.position.x, z: sign.position.z, top: sign.position.y + 1.75 };
+    signMesh = sign;
   }
   group.add(props);
   await tick();
@@ -763,7 +788,7 @@ export async function buildForest(opts = {}) {
     const fl = roll < 0.25 ? FG.sorrel : roll < 0.45 ? FG.moss : roll < 0.6 ? FG.fern : roll < 0.7 ? FG.bracken : roll < 0.8 ? FG.strawberry : FG.short;
     put(x, z, fl, fl === FG.fern || fl === FG.bracken ? grng.range(0.4, 0.7) : grng.range(0.14, 0.26), tint * 0.92);
   }
-  const grass = makeForestGrassChunked(items, { bright: 0.95, cell: 16 });
+  const grass = makeForestGrassChunked(keepIts(items, 0.5), { bright: 0.95, cell: 16 });
   grass.traverse((o) => { if (o.geometry) G(o.geometry); });
   group.add(grass);
   stats.grass = items.length;
@@ -772,6 +797,7 @@ export async function buildForest(opts = {}) {
   // ---- low mist over the stream and in the hollows; the sky
   const mists = [];
   for (const [x, y, z, w, d, a] of [[-6, -0.2, 19, 16, 5, 0.85], [9, -0.15, 21, 14, 5, 0.85], [-12, 0.4, 30, 18, 12, 0.5], [12, 0.6, 8, 16, 14, 0.45], [-10, 0.3, -6, 16, 12, 0.5], [0, 0.9, 40, 22, 10, 0.4]]) {
+    if (!inV(x, z, Math.max(w, d) / 2)) continue;
     const m = makeMist(x, y, z, w, d, { alpha: a, seed: x * 0.13 + z * 0.07, color: 0xf4ecd8 });
     G(m.geometry);
     mists.push(m);
@@ -842,6 +868,7 @@ export async function buildForest(opts = {}) {
     return m;
   };
   const beamAt = (x, z, len, w, inten, color = 0xffe2b0) => {
+    if (!inV(x, z, 3) && !inV(x + SUN_DIR.x * len, z + SUN_DIR.z * len, 3)) return null; // (beams draw unculled)
     const bottom = new THREE.Vector3(x, groundH(x, z), z);
     return addBeam(bottom.clone().addScaledVector(SUN_DIR, len), bottom, w, inten, color);
   };
@@ -927,7 +954,7 @@ export async function buildForest(opts = {}) {
   stats.trisTotal = total;
   return Object.assign(F, {
     group, sky, textures, crust, cracks, chest, spill, glints, chestGlow, ceil, stream, mists, beams, bridge, stats, update, dispose,
-    holeY: -1.0, spots, giants: GIANTS, addBeam,
+    holeY: -1.0, spots, giants: GIANTS, addBeam, sign: signMesh,
   });
 }
 

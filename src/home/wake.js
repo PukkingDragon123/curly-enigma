@@ -1,24 +1,25 @@
-// Waking up in your cot at Old Star's (home { from: 'fall' }), mixed into HomeScene: the first
+// Waking up on your bedroll at Old Star's (home { from: 'fall' }), mixed into HomeScene: the first
 // cutscene (letterbox bars, nothing else on screen; a hold of Space / Enter / E, or of the ring on a
 // touch screen, skips it: never a tap). Dark, and through the dark, muffled, the rhythm of a hammer
-// on an anvil: Old Star has sat up with you, working at a little bench anvil on a stump by your
-// room's fire (tutorFx.benchAnvil; his 'hammer' pose's own clang, its sparks made bigger, a flash
-// of light off each blow). Heavy eyelids crack open on the beams overhead, blurred, and sink shut;
-// the head rolls toward the sound and the second look finds the fire's glow and the sparks jumping
-// off each blow; the third clears: Old Star at his anvil, hammering. The cot creaks; his hammer stops
-// mid-swing, his nose goes, he lays the hammer down on the anvil, turns, and walks over to your cot,
-// the view following him (first person, no cards). Three short lines, each waits for you (game.convo:
-// who he is, how you came down, the million; no pick, so you'll make one). You sit up and get out of
-// bed, and he goes back to his anvil: the lessons take over (lessons.js; no look / walk teaching: you
-// just move, with one tiny hint the first time). The overlay (WakeFx) draws the lids as a dark mask
-// with soft edges and lashes, warm where the light comes through; only the world (the canvas) is
-// ever blurred, never the interface. The sound comes back through a low-pass that opens as you come
-// round. Sets the flag fallen, starts the `lessons` quest and emits lesson { step: 'wake' } (and talk
-// oldstar), as before; unlocks look / move / use (src/ui/Onboard.js).
+// on an anvil. You're flat on your back on a heap of straw on the cave floor (his own bedroll: he
+// gave it you). Heavy eyelids crack open on the low rock roof, blurred, a speck of grey daylight far
+// up the hole you fell through, and sink shut; the head rolls on the straw toward the sound and the
+// second look finds the forge's glow and the sparks jumping off each blow; the third clears: from
+// down on the floor, Old Star at his anvil by the forge, hammering (his 'hammer' pose's own clang,
+// its sparks made bigger, a flash of light off each blow). The straw rustles; his hammer stops
+// mid-swing, his nose goes, he lays the hammer down on the anvil, turns, walks over, gets down on
+// his hunkers beside you and gives your shoulder a shake (pose 'crouch', nudge()), the view
+// following him (first person, no cards). Three short lines, each waits for you (game.convo: how
+// you came down, who he is and the million, no pick so you'll make one). He straightens up, you sit
+// up off the straw and get to your feet: the lessons take over (lessons.js; no look / walk
+// teaching: you just move, with one tiny hint the first time). The overlay (WakeFx) draws the lids
+// as a dark mask with soft edges and lashes, warm where the light comes through; only the world
+// (the canvas) is ever blurred, never the interface. The sound comes back through a low-pass that
+// opens as you come round. Sets the flag fallen, starts the `lessons` quest and emits lesson
+// { step: 'wake' } (and talk oldstar), as before; unlocks look / move / use (src/ui/Onboard.js).
 import * as THREE from 'three';
 import { el, clamp } from '../core/util.js';
 import { starData } from './starData.js';
-import { benchAnvil } from './tutorFx.js';
 import { besideItem } from './layoutfix.js';
 import { T } from './units.js';
 
@@ -251,7 +252,7 @@ export class HomeWake {
     const c = this.cam;
     const bed = this.findKind('bed');
     this.wakeBed = bed;
-    // lying in the cot, looking up at the rock
+    // flat on your back on the bedroll, on the floor, looking up at the rock (and the hole you came through)
     if (bed) await this.lieDown(bed, true);
     const base = { yaw: c.yaw, pitch: 1.12, roll: 0.18 };
     c.pitch = base.pitch; c.roll = base.roll;
@@ -260,15 +261,24 @@ export class HomeWake {
     this.fov0 = this.camera.fov;
     this.post.vignette = 0.95;
     this.post.fade = 0;
-    // Old Star at a little anvil by your fire, hammering (his pose clangs and throws sparks off each blow)
-    const anvil = this.setupBenchAnvil() || this.cave?.dyn?.anvilFace || this.questSpot?.('forge') || { x: c.x, y: c.y, z: c.z - 3 };
+    // Old Star at his anvil by the forge, hammering (his pose clangs and throws sparks off each blow)
+    const anvil = this.cave?.dyn?.anvilFace || this.questSpot?.('forge') || { x: c.x, y: c.y, z: c.z - 2 };
     if (star?.rig) {
       star.scripted = true;
-      if (!star.workFace) star.placeAt('anvil');
-      star.sparkK = 3.2;
-      star.clangK = 1.3;
+      star.placeAt('anvil');
+      star.sparkK = 2.4;
+      star.clangK = 1.35;
       star.pauseT = 0;
       star.nextT = 999;
+      this.moveStarBox?.();
+      // a flash of light off each blow, fading fast (the forge's glow behind him)
+      const L = this.addLight?.({ x: anvil.x, y: anvil.y + 0.16, z: anvil.z + 0.1, color: 0xffb060, intensity: 0, distance: 2.4, flicker: 0, halo: 0.14, haloOpacity: 0.7, priority: 9 });
+      if (L) {
+        star.onBlow = () => { L.intensity = 1.5; };
+        const tick = (dt) => { L.intensity = Math.max(0, L.intensity - dt * 5); };
+        this.tickers.push(tick);
+        this.own(() => { const i = this.tickers.indexOf(tick); if (i >= 0) this.tickers.splice(i, 1); this.removeLight?.(L); });
+      }
     }
     const starHead = () => (star?.rig ? star.head(new THREE.Vector3()) : new THREE.Vector3(anvil.x, anvil.y + 0.5, anvil.z));
     // the head drifts on the pillow (a slow sway that settles as you come round); `track` turns it to
@@ -278,7 +288,7 @@ export class HomeWake {
       sway.t += dt;
       if (sway.track > 0 && star?.rig) {
         const h = starHead();
-        const aim = this.aimFrom(c, h.setY(h.y - 0.1));
+        const aim = this.aimFrom(c, h.setY(h.y - 0.12));
         const ty = Math.atan2(Math.sin(aim.yaw - base.yaw), Math.cos(aim.yaw - base.yaw)), tp = aim.pitch - base.pitch;
         const k = Math.min(1, dt * 3 * sway.track);
         sway.yaw += (ty - sway.yaw) * k;
@@ -302,7 +312,7 @@ export class HomeWake {
     const cam = this.camera, fov0 = this.fov0;
     const fovTo = (to, secs) => { const from = cam.fov; return tween(secs, (k) => { cam.fov = from + (to - from) * ease(k); cam.updateProjectionMatrix(); }); };
     // where the sound comes from: the anvil, a little above it (his arms, the sparks)
-    const toAnvil = this.aimFrom(c, { x: anvil.x, y: anvil.y + 0.32, z: anvil.z });
+    const toAnvil = this.aimFrom(c, { x: anvil.x, y: anvil.y + 0.3, z: anvil.z });
     const dYaw = Math.atan2(Math.sin(toAnvil.yaw - base.yaw), Math.cos(toAnvil.yaw - base.yaw)), dPitch = toAnvil.pitch - base.pitch;
     this.muffK = 0;
     muff.set(0);
@@ -312,34 +322,35 @@ export class HomeWake {
       await go(sleep(1.9));
       breath(a, 0.04);
       clear(0.18, 1.6);
-      // ---- the lids crack on blurred rock overhead... and sink shut. The hammer goes on.
+      // ---- the lids crack on blurred rock overhead, a speck of grey daylight far up the hole... and sink shut
       await go(lids(0.14, 0.9));
       await go(sleep(0.8));
       await go(lids(0.02, 0.6));
       await go(sleep(0.7));
-      // ---- the head rolls toward the sound: the forge's glow, sparks jumping off each blow
+      // ---- the head rolls on the straw toward the sound: the forge's glow, sparks jumping off each blow
       clear(0.5, 2);
       blurTo(5, 1.8);
       look(dYaw * 0.82, dPitch * 0.78, 2.4);
+      a.play('step', { mat: 'sand', vol: 0.12 });
       await go(lids(0.4, 1.0));
       await go(sleep(1.3));
       await go(lids(0.16, 0.4));
       await go(lids(0.42, 0.45));
       await go(sleep(0.5));
-      // ---- it clears: Old Star at his anvil, hammering. The sound comes back.
+      // ---- it clears: from down on the floor, Old Star at his anvil, hammering. The sound comes back.
       clear(1, 2.4);
       blurTo(0, 2.2);
       glowTo(0, 1);
       tween(2.4, (k) => { this.post.vignette = 0.95 + (post0 - 0.95) * ease(k); });
       look(dYaw, dPitch, 2.0);
-      fovTo(fov0 * (cam.aspect < 1 ? 0.88 : 0.68), 3.2); // (the eyes settle on him: a slow push in; less on a phone held upright)
+      fovTo(fov0 * (cam.aspect < 1 ? 0.9 : 0.72), 3.2); // (the eyes settle on him: a slow push in; less on a phone held upright)
       await go(lids(0.75, 0.9));
       await go(lids(0.6, 0.18)); // a flutter
       await go(lids(1, 0.5));
       tween(1.6, (k) => { sway.amp = 1 - ease(k) * 0.65; });
-      await go(sleep(2.2));
-      // ---- you stir, the cot creaks; the hammer stops mid-swing. His nose goes.
-      a.play('creak', { vol: 0.3 });
+      await go(sleep(2.0));
+      // ---- you stir, the straw rustles; the hammer stops mid-swing. His nose goes.
+      a.play('step', { mat: 'sand', vol: 0.35 });
       if (star?.rig) {
         const r = star;
         r.pauseT = 99;
@@ -357,23 +368,29 @@ export class HomeWake {
         fovTo(fov0, 1.6);
         await go(sleep(0.35));
         sway.track = 1;
-        const at = this.bedsideFor(r, 1.05);
-        await go(Promise.race([r.walkTo(at.x, at.z, 0.95), sleep(5)]));
+        r.wakeFrom = { x: r.pos.x, z: r.pos.z };
+        const at = this.bedsideFor(r);
+        await go(Promise.race([r.walkTo(at.x, at.z, 0.9), sleep(5)]));
         r.mode = 'idle';
         r.path = null;
-        r.faceTo(c.x, c.z);
-        r.rig.play?.('idle');
-        await go(sleep(0.25));
+        r.faceTo(c.x, c.z, true);
+        // down on his hunkers beside you, a paw on your shoulder: a shake
+        r.setPose('crouch');
+        await go(sleep(0.5));
+        r.nudge(0.9);
+        sway.amp = 0.5;
+        tween(0.9, (k) => { c.roll = base.roll * 0.35 + Math.sin(k * Math.PI * 6) * 0.03 * (1 - k); });
+        await go(sleep(0.9));
       } else await go(sleep(0.6));
-      await line('Easy now. You came down through my roof last night, and brought half of it with you.', 'laugh', 'wave');
-      star?.rig && star.gesture('point', 1.6);
-      await line('Old Star. Smith. Sixty years I\'ve been stuck down here: the way up costs a <span class="gold-txt">million gold</span>.', 'worried');
-      star?.rig && star.gesture('beckon', 1.8);
+      await line('Oi. Oi! There you are. You came down through my roof last night, and half of it came with you.', 'laugh');
+      star?.rig && star.nudge(0.4);
+      await line('Old Star. Smith. Sixty years I\'ve been down here: the way up costs a <span class="gold-txt">million gold</span>.', 'worried');
       await line('Can\'t dig your way to that with bare paws. Up you get: we\'ll make you a pick.', 'proud');
-      // ---- sit up and get out of the cot (on its side)
+      // ---- he straightens up and steps back; you sit up off the straw and get to your feet
+      if (star?.rig) { star.setPose('idle'); star.gesture('beckon', 1.4); }
       this.wakeSway = null;
       sway.amp = 0;
-      a.play('step', { mat: 'wood' });
+      a.play('step', { mat: 'sand' });
       await go(this.wakeGetUp(bed, tween));
     } catch (e) {
       if (e !== CUT) throw e;
@@ -382,81 +399,50 @@ export class HomeWake {
     this.afterWake();
   }
 
-  /**
-   * The little bench anvil on its stump by your room's fire, Old Star at it, facing you across it
-   * with the fire behind him, and a light that flashes with each blow. Returns the anvil's face
-   * (world, meters), or null when the room has no fire of its own (he hammers at his forge then).
-   */
-  setupBenchAnvil() {
-    const f = this.shell?.hearth?.fire, star = this.star, c = this.cam;
-    if (!f || !Number.isFinite(f.x) || !c || !star?.rig) return null;
-    // from the fire toward your cot, a little to one side
-    let dx = c.x - f.x, dz = c.z - f.z;
-    const l = Math.hypot(dx, dz) || 1;
-    dx /= l; dz /= l;
-    const px = -dz, pz = dx; // (sideways)
-    const ax = f.x + dx * 1.0, az = f.z + dz * 1.0;
-    const m = benchAnvil();
-    const fy = this.floorY(ax, az);
-    m.position.set(ax, fy, az);
-    m.rotation.y = Math.atan2(px, pz);
-    this.scene.add(m);
-    this.own(() => { this.scene.remove(m); m.userData.dispose?.(); });
-    this.benchAnvil = m;
-    m.updateMatrixWorld(true);
-    const face = m.userData.face.clone().applyMatrix4(m.matrixWorld);
-    // he stands at its side, a little back toward the fire: three-quarters on to you
-    const sx = ax + px * 0.34 - dx * 0.16, sz = az + pz * 0.34 - dz * 0.16;
-    star.stand();
-    star.pos.set(sx, this.floorY(sx, sz), sz);
-    star.faceTo(ax, az, true);
-    star.spot = 'wake';
-    star.mode = 'idle';
-    star.workFace = face;
-    star.setPose('hammer');
-    this.moveStarBox?.();
-    // a flash of light off each blow, fading fast
-    const L = this.addLight?.({ x: face.x + dx * 0.15, y: face.y + 0.14, z: face.z + dz * 0.15, color: 0xffb060, intensity: 0, distance: 2.4, flicker: 0, halo: 0.14, haloOpacity: 0.7, priority: 9 });
-    if (L) {
-      star.onBlow = () => { L.intensity = 1.5; };
-      const tick = (dt) => { L.intensity = Math.max(0, L.intensity - dt * 5); };
-      this.tickers.push(tick);
-      this.own(() => { const i = this.tickers.indexOf(tick); if (i >= 0) this.tickers.splice(i, 1); this.removeLight?.(L); });
+  /** (Old: the little bench anvil by your room's fire. He wakes you from his own anvil now.) */
+  setupBenchAnvil() { return null; }
+
+  /** Where Old Star crouches by your bedroll: at your head, on his way over from the anvil, an arm's length off (meters). */
+  bedsideFor() {
+    const bed = this.wakeBed, c = this.cam, star = this.star;
+    let hx, hz;
+    if (bed?.bedroll) { const l = bed.lie, yaw = l.yaw || 0; hx = l.x - Math.sin(yaw) * 0.5; hz = l.z - Math.cos(yaw) * 0.5; } // (the head end)
+    else { const end = this.besideBed(bed) || c; hx = end.x; hz = end.z; }
+    const from = star?.wakeFrom || star?.pos || { x: hx, z: hz - 1 };
+    let dx = from.x - hx, dz = from.z - hz;
+    const L = Math.hypot(dx, dz) || 1;
+    dx /= L; dz /= L;
+    const d = Math.min(1.0, L);
+    for (const turn of [0, 0.5, -0.5, 1, -1]) {
+      const cs = Math.cos(turn), sn = Math.sin(turn);
+      const x = hx + (dx * cs - dz * sn) * d, z = hz + (dx * sn + dz * cs) * d;
+      if (!this.onFloor || this.onFloor(x, z)) return { x, z };
     }
-    return face;
+    return { x: hx + dx * d, z: hz + dz * d };
   }
 
-  /** Where Old Star stops by your cot: `d` from your head, on his side, on the floor (meters). */
-  bedsideFor(star, d = 1.0) {
-    const c = this.cam, end = this.besideBed(this.wakeBed);
-    // beside the cot where you'll get up, a step toward him
-    const p = end || c;
-    let dx = star.pos.x - p.x, dz = star.pos.z - p.z;
-    const l = Math.hypot(dx, dz) || 1;
-    dx /= l; dz /= l;
-    return { x: p.x + dx * Math.min(d, l), z: p.z + dz * Math.min(d, l) };
-  }
-
-  /** Sit up, swing the legs out of bed and stand beside it (the cutscene's own tweens: a skip stops it). */
+  /** Sit up off the straw and stand beside the bedroll (the cutscene's own tweens: a skip stops it). */
   async wakeGetUp(bed, tween) {
     const c = this.cam;
     const end = this.besideBed(bed);
     if (!end) { await tween(0.7, (k) => { c.pitch *= 1 - k; c.roll *= 1 - k; }); return; }
     const x0 = c.x, y0 = c.y, z0 = c.z, yw0 = c.yaw, p0 = c.pitch, r0 = c.roll;
     const dyaw = Math.atan2(Math.sin(end.yaw - yw0), Math.cos(end.yaw - yw0));
-    await tween(0.6, (k) => { const e = ease(k); c.pitch = p0 + (-0.15 - p0) * e; c.roll = r0 * (1 - e); c.y = y0 + 0.12 * e; });
+    // up on an elbow, then sitting
+    await tween(0.7, (k) => { const e = ease(k); c.pitch = p0 + (-0.25 - p0) * e; c.roll = r0 * (1 - e); c.y = y0 + 0.2 * e; });
     if (this.wakeCut?.on) return;
-    this.game.audio.play('step', { mat: 'wood' });
+    this.game.audio.play('step', { mat: 'sand' });
+    // a paw on the floor, and up onto your feet
     const y1 = c.y;
-    await tween(0.7, (k) => { const e = ease(k); c.x = x0 + (end.x - x0) * e; c.z = z0 + (end.z - z0) * e; c.y = y1 + (end.y - y1) * e; c.yaw = yw0 + dyaw * e; c.pitch = -0.15 + 0.1 * e; });
+    await tween(0.85, (k) => { const e = ease(k); c.x = x0 + (end.x - x0) * e; c.z = z0 + (end.z - z0) * e; c.y = y1 + (end.y - y1) * (k < 0.4 ? e * 0.3 : e) + Math.sin(k * Math.PI) * 0.04; c.yaw = yw0 + dyaw * e; c.pitch = -0.25 + 0.2 * e; });
   }
 
   /** Standing beside the bed, facing the room (where getting up ends): { x, y (eye), z, yaw } or null. */
   besideBed(bed) {
     if (!bed) return null;
-    const s = besideItem(this, bed) || { x: bed.cx + 1, z: bed.cz };
-    const x = s.x * T, z = s.z * T;
-    return { x, z, y: this.floorY(x, z) + this.rig.player.eyeY, yaw: Math.atan2(-((this.W / 2) * T - x), -((this.D / 2) * T - z)) };
+    const s = this.bedStand?.(bed) || (() => { const b = besideItem(this, bed) || { x: bed.cx + 1, z: bed.cz, face: { x: bed.cx, z: bed.cz - 2 } }; return { x: b.x * T, z: b.z * T, face: { x: b.face.x * T, z: b.face.z * T } }; })();
+    const f = s.face || { x: s.x, z: s.z - 1 };
+    return { x: s.x, z: s.z, y: this.floorY(s.x, s.z) + this.rig.player.eyeY, yaw: Math.atan2(-(f.x - s.x), -(f.z - s.z)) };
   }
 
   /** Hold to skip: the cutscene stops where it is (its tweens and line) and cuts to its end. */
@@ -488,9 +474,10 @@ export class HomeWake {
       star.clangK = 1;
       star.setHammerDown?.();
       star.setPose('idle');
-      const at = this.bedsideFor(star, 1.05);
+      const at = this.bedsideFor(star);
       star.pos.set(at.x, this.floorY(at.x, at.z), at.z);
       if (c) star.faceTo(c.x, c.z, true);
+      this.moveStarBox?.();
     }
     await this.sleepFor(0.15);
     await this.tween(0.45, (k) => { this.post.fade = 1 - k; });

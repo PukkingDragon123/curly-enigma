@@ -1,19 +1,18 @@
-// The camp's build jobs, the same in a build worker (houseWorker.js) and on the main thread:
-//   { kind: 'room', id, opts }           'rock' (the hollow's rock, floor and roof), 'west', 'east'
-//                                        (what's in them), or 'ways' (the steps, the door, the walls'
-//                                        collision; with `lights`: every job's)
-//   { kind: 'shell', W, D, wallId }      your nook's walls and ceiling
+// The cave's build jobs, the same in a build worker (houseWorker.js) and on the main thread:
+//   { kind: 'room', id, opts }           'rock' (the hollow's rock, floor and roof, the dug alcoves),
+//                                        'west', 'east' (what's in them), or 'ways' (the door, your
+//                                        corner, the walls' collision; with `lights`: every job's)
+//   opts: { doorOpen, notes, nooks (nooks.js nookKey of the dug alcoves) }
 // runJob(job) → { msg, transfer } (msg is plain data and typed arrays; transfer: their buffers).
 // Nothing here may touch the DOM: a worker has none.
 import * as THREE from 'three';
 import { StarHouse, JOBS } from './house.js';
 import { T } from './units.js';
-import { packShellSurfaces } from './shellSurf.js';
 
 export { JOBS };
 
 export function runJob(job) {
-  if (job.kind === 'shell') { const transfer = []; return { msg: { kind: 'shell', surf: packShellSurfaces(job.W, job.D, job.wallId, transfer) }, transfer }; }
+  if (job.kind === 'shell') return { msg: { kind: 'shell', surf: null }, transfer: [] }; // (your old room's walls: gone with it)
   const room = new THREE.Group();
   room.scale.setScalar(T);
   const world = new THREE.Group();

@@ -316,6 +316,7 @@ const CSS = /* css */`
 .st-del:hover, .st-del:focus-visible { opacity: 1; transform: rotate(-14deg) scale(1.1); }
 .st-del:focus-visible { filter: drop-shadow(0 0 var(--px) #f2c23a) drop-shadow(0 0 var(--px) #f2c23a); }
 .st-slot.busy .st-del, .st-slot.busy .st-main { pointer-events: none; }
+#ui .st-view:not(.on) .st-slot, #ui .st-view:not(.on) .st-main, #ui .st-view:not(.on) .st-del { pointer-events: none; } /* (sliding away: no stray clicks) */
 .st-row.shake { animation: stShake .3s linear; }
 @keyframes stShake { 0%, 100% { transform: none; } 20% { transform: translate(calc(var(--px) * -2), var(--px)); } 40% { transform: translate(calc(var(--px) * 2), 0); } 60% { transform: translate(calc(var(--px) * -1), calc(var(--px) * -1)); } 80% { transform: translate(var(--px), 0); } }
 `;

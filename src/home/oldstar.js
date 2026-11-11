@@ -1,8 +1,8 @@
-// Old Star, the old star-nosed mole blacksmith whose camp this is. He goes about his day between
-// his places (STAR_SPOTS in house.js): hammering at the anvil (clang, sparks off the face), pumping
-// the bellows (the coals flare), stirring the pot on the fire, a sit in his old armchair in the
-// shack, rereading his notes or a book, a look at the lift or at his slate of the million, a drink
-// at the spring, and at night he sleeps on his cot in the shack (snoring). He turns his head to follow you when you're near, his
+// Old Star, the old star-nosed mole blacksmith whose cave this is. He goes about his day between
+// his places (STAR_SPOTS in spots.js): hammering at the anvil (clang, sparks off the face), pumping
+// the bellows (the coals flare), stirring the pot on the fire, a sit on his stump by the fire,
+// rereading his notes or a book, a look at the lift or at THE WAY UP chalked on the rock, and at
+// night he sleeps on his fleece by the forge (snoring). He turns his head to follow you when you're near, his
 // star nose wiggles when he sniffs you out. E has him talk (the lessons, or a tip for where you
 // are). His model is src/gfx/char/starmole.js (makeStarMole); expressions come from the rig when
 // it has them (setExpression), and he talks through the tutor card (game.ui.tutor).
@@ -175,6 +175,7 @@ export class OldStar {
   faceTo(x, z, instant = false) { this.rig.face(Math.atan2(x - this.pos.x, z - this.pos.z), instant); }
 
   setPose(pose) {
+    if (this.pose === 'crouch' && pose !== 'crouch') { this.body.position.set(0, 0, 0); this.body.quaternion.identity(); }
     this.pose = pose;
     this.poseT = 0;
     this.work.t = 0;
@@ -482,6 +483,20 @@ export class OldStar {
         if (k < 0.5) this.pokeB = false;
         break;
       }
+      case 'crouch': {
+        // down on his hunkers beside you (the wake-up): knees out, low, leaning in, a paw on your
+        // shoulder that gives it a shake while nudgeT runs
+        const k = ease(Math.min(1, t * 2.2));
+        if (r.legL && r.legR) { r.legL.rotation.set(-1.55 * k, 0, 0.3 * k); r.legR.rotation.set(-1.55 * k, 0, -0.3 * k); }
+        this.body.position.y = -0.16 * k;
+        if (r.hip) r.hip.rotation.x += 0.3 * k;
+        this.nudgeT = Math.max(0, (this.nudgeT || 0) - dt);
+        const sh = this.nudgeT > 0 ? Math.sin(t * 17) * 0.2 : 0;
+        r.armR.rotation.set(-1.35 * k + sh, 0.2, -0.12 + sh * 0.3);
+        if (r.elbowR) r.elbowR.rotation.x = -0.3;
+        r.armL.rotation.set(-0.55 * k, 0, 0.42);
+        break;
+      }
       case 'read':
         r.armL.rotation.set(-1.5, 0.25, 0.35);
         if (r.neck) { r.neck.rotation.x += 0.16; r.neck.rotation.z += Math.sin(t * 0.7) * 0.06; }
@@ -513,6 +528,9 @@ export class OldStar {
       if (r.elbowL) { r.elbowL.rotation.x = -0.9; r.elbowR.rotation.x = -0.9; }
     }
   }
+
+  /** A shake of your shoulder (the 'crouch' pose's reaching paw) for `secs`. */
+  nudge(secs = 0.8) { this.nudgeT = secs; this.g.audio.play('step', { mat: 'sand', vol: 0.25 }); }
 
   /** Lay the hammer down on the anvil (it stays there till the next 'hammer' pose). */
   setHammerDown() {

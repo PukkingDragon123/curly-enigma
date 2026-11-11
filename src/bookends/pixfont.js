@@ -48,6 +48,9 @@ const G = {
   ' ': ['...', '...', '...', '...', '...', '...', '...'],
 };
 
+/** The 5x7 rows of one character ('#' = ink), for builders that carve or stamp it themselves. */
+export function glyphRows(ch) { return G[String(ch).toUpperCase()] || G[' ']; }
+
 export function textWidth(str, gap = 1) {
   let w = 0;
   for (const ch of str.toUpperCase()) w += (G[ch] || G[' '])[0].length + gap;

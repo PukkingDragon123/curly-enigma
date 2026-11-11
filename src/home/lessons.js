@@ -39,6 +39,7 @@ import { starPortraitURL } from '../ui/Tutor.js';
 import { openTalkMenu } from '../ui/choices.js';
 import { TUT } from '../ui/Onboard.js';
 import { Glint, flare, copperLump, satchel, notebook } from './tutorFx.js';
+import { grantNook } from './nooks.js';
 
 const _v = new THREE.Vector3();
 const ease = (k) => k * k * (3 - 2 * k);
@@ -128,6 +129,8 @@ export class HomeLessons {
     if (st.count('coal') < 3) st.addItem('coal', { spill: true, n: 3 });
     if (stage !== 'done') st.addItem('mushroom', { spill: true, n: 2 });
     st.flag('prologue', true);
+    // the soft rock behind your bedroll is yours now (nooks.js): dig it out when you like, no charge
+    grantNook(st, 'nook_bed');
     this.setLesson('done');
     this.endHomeTutor();
     this.lessonAct('skip'); // (src/ui/Onboard.js: everything unlocks)
@@ -139,7 +142,7 @@ export class HomeLessons {
       star.lessonSpot = null;
       star.scripted = false;
       star.nextT = 6;
-      this.starLine('A know-it-all, eh? Fine. Here: a pick, my spare chisel, a bit of coal. The cage goes down, the coins come up. And come home to sleep.', { mood: 'laugh' });
+      this.starLine(this.nooks?.has('nook_bed') ? 'A know-it-all, eh? Fine. Here: a pick, my spare chisel, a bit of coal. The cage goes down, the coins come up. And come home to sleep.' : 'A know-it-all, eh? Fine. Here: a pick, my spare chisel, a bit of coal. And that chalked rock behind your bedroll is yours: dig yourself a corner.', { mood: 'laugh' });
     }
     st.save();
   }

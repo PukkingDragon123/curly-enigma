@@ -1,7 +1,8 @@
-// First-person build mode for the burrow: X (or E at the build bench, or the chair button) puts a
-// little hammer in the mole's paw and opens a strip of everything in storage, the owned floors and
-// wall styles. A see-through ghost of the chosen piece snaps to the tile grid where the crosshair
-// meets the floor (or the wall, for things that hang), green when it fits and red when it doesn't;
+// First-person build mode for your alcoves (src/home/nooks.js): X (or the chair button) puts a
+// little hammer in the mole's paw and opens a strip of everything in storage and the owned floors
+// (the walls are the cave's rock: no wall styles). A see-through ghost of the chosen piece snaps to
+// the tile grid where the crosshair meets the floor of an alcove you've dug (or its rock wall, for
+// things that hang), green when it fits and red when it doesn't;
 // R / E turns it, a click places it with a pop and a puff of dust. With empty paws, look at
 // anything placed and click to pick it up and move it, or F / right-click to put it away.
 //   desktop: wheel or 1-9 picks from the strip, Q switches the tab, X is done
@@ -11,7 +12,8 @@ import { FURNITURE, FLOORS, WALLS } from '../data/furniture.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { el, uid, clamp } from '../core/util.js';
 import { buildFurniture } from '../iso/furniture.js';
-import { footprint, canPlace, itemAt, wallItemAt, isWallHung, isStorable, WALL_OF_R, R_OF_WALL } from '../iso/homeLayout.js';
+import { footprint, itemAt, isWallHung, isStorable, WALL_OF_R, R_OF_WALL } from '../iso/homeLayout.js';
+import { canPlaceNooks, wallItemAtNooks, nookAtTile, nookRect, NOOKS } from './nooks.js';
 import { VoxelGrid, mulc } from '../iso/kit.js';
 import { fastMesh } from '../iso/mesher.js';
 import { TOOL_KINDS, VMV } from '../fps/ViewModel.js';
@@ -75,10 +77,14 @@ export class FPBuild {
   }
 
   makeGrid() {
-    const { W, D } = this.s;
     const pts = [];
-    for (let x = 0; x <= W; x++) pts.push(x, 0.02, 0, x, 0.02, D);
-    for (let z = 0; z <= D; z++) pts.push(0, 0.02, z, W, 0.02, z);
+    // the tile lines of each alcove you've dug
+    for (const n of NOOKS) {
+      if (!this.s.nooks?.has(n.id)) continue;
+      const r = nookRect(n);
+      for (let x = r.x0; x <= r.x1; x++) pts.push(x, 0.02, r.z0, x, 0.02, r.z1);
+      for (let z = r.z0; z <= r.z1; z++) pts.push(r.x0, 0.02, z, r.x1, 0.02, z);
+    }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
     return new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xfff0c0, transparent: true, opacity: 0.16, depthWrite: false }));
@@ -155,15 +161,14 @@ export class FPBuild {
   entries() {
     const st = this.game.state, d = st.data;
     if (this.tab === 'furniture') return Object.keys(FURNITURE).filter((id) => (d.furniture[id] || 0) > 0).map((id) => ({ id, n: d.furniture[id], type: 'new' }));
-    if (this.tab === 'floor') return Object.keys(FLOORS).filter((id) => st.owns(id) || id === 'floor_dirt').map((id) => ({ id, n: null, type: 'floor' }));
-    return Object.keys(WALLS).filter((id) => st.owns(id) || id === 'wall_dirt').map((id) => ({ id, n: null, type: 'wall' }));
+    return Object.keys(FLOORS).filter((id) => st.owns(id) || id === 'floor_dirt').map((id) => ({ id, n: null, type: 'floor' }));
   }
 
   render() {
     if (!this.strip) return;
     const d = this.game.state.data;
     this.tabsEl.innerHTML = '';
-    for (const [k, label] of [['furniture', 'Furniture'], ['floor', 'Floors'], ['wall', 'Walls']]) {
+    for (const [k, label] of [['furniture', 'Furniture'], ['floor', 'Floors']]) {
       this.tabsEl.append(el('button', { class: 'tab' + (this.tab === k ? ' on' : ''), onclick: () => this.setTab(k) }, label));
     }
     this.row.innerHTML = '';
@@ -176,6 +181,7 @@ export class FPBuild {
       ]);
     };
     if (!list.length) this.row.append(el('div', { class: 'muted', style: { alignSelf: 'center', fontSize: '.8em' } }, this.tab === 'furniture' ? 'Nothing in storage: Burrow & Board in Deep Town sells furniture. Look at a placed piece to move it.' : 'Nothing here yet.'));
+    void WALLS;
     list.forEach((e, i) => this.row.append(slot(e, i)));
     this.renderInfo();
   }
@@ -199,8 +205,7 @@ export class FPBuild {
       const f = FURNITURE[this.hoverItem.id];
       txt = `<b>${f.name}</b> · ` + (isStorable(this.hoverItem.id) ? (isTouch() ? 'big button: move' : 'click: move · F: store') : 'it stays in your burrow, but you can move it');
       if (isStorable(this.hoverItem.id)) { const p = this.hoverItem; btn('Store', () => this.putAway(p)); }
-    } else if (this.tab === 'wall') txt = 'Pick a wall style for the whole burrow.';
-    else txt = 'Pick something, or look at a piece in the room to move it.';
+    } else txt = 'Pick something, or look at a piece in your alcove to move it.';
     btn('Done', () => this.toggle(false), false);
     if (this.info.innerHTML !== txt) this.info.innerHTML = txt;
   }
@@ -441,7 +446,7 @@ export class FPBuild {
   placeDirect(id, x, y, r = 0) {
     if (!FURNITURE[id]) return { ok: false, reason: 'unknown id' };
     const st = this.game.state;
-    const chk = canPlace(st.data.home.placed, this.s.W, this.s.D, id, x, y, r);
+    const chk = canPlaceNooks(st.data.home.placed, this.s.nooks || new Set(), id, x, y, r);
     if (!chk.ok) return chk;
     if ((st.data.furniture[id] || 0) <= 0) st.addItem(id, { spill: true, n: 1 });
     const wasActive = this.active;
@@ -455,31 +460,40 @@ export class FPBuild {
   }
 
   // ------------------------------------------------------------ aiming
-  /** The crosshair ray against the floor (y = 0) and the four walls, in tile units. */
+  /** The alcove you're aiming into: the one you stand in, else the one under the crosshair's floor point. */
+  aimNook(fl) {
+    const s = this.s, p = s.rig.player.pos, set = s.nooks || new Set();
+    return nookAtTile(Math.floor(p.x / T), Math.floor(p.z / T), set) || (fl && nookAtTile(Math.floor(fl.x), Math.floor(fl.z), set)) || null;
+  }
+
+  /** The crosshair ray against the floor (y = 0) and the four walls of the alcove you're in, in tile units. */
   aim() {
     const s = this.s, rig = s.rig;
     const o = rig.eye(_o), d = rig.forward(_d);
-    const W = s.W * T, D = s.D * T;
     let floor = null;
     if (d.y < -0.02) {
       const t = -o.y / d.y;
       if (t < 6) floor = { x: (o.x + d.x * t) / T, z: (o.z + d.z * t) / T, t };
     }
+    const n = this.aimNook(floor);
     let wall = null;
-    const tryWall = (name, t) => {
-      if (!(t > 0) || t > 6) return;
-      const y = o.y + d.y * t;
-      if (y < 0 || y > CEIL) return;
-      const x = o.x + d.x * t, z = o.z + d.z * t;
-      if (x < -0.01 || z < -0.01 || x > W + 0.01 || z > D + 0.01) return;
-      if (!wall || t < wall.t) wall = { wall: name, t, x: x / T, y: y / T, z: z / T, slot: Math.floor((name === 'n' || name === 's' ? x : z) / T) };
-    };
-    if (d.z < 0) tryWall('n', -o.z / d.z);
-    if (d.z > 0) tryWall('s', (D - o.z) / d.z);
-    if (d.x < 0) tryWall('w', -o.x / d.x);
-    if (d.x > 0) tryWall('e', (W - o.x) / d.x);
+    if (n) {
+      const r = nookRect(n), X0 = r.x0 * T, X1 = r.x1 * T, Z0 = r.z0 * T, Z1 = r.z1 * T;
+      const tryWall = (name, t) => {
+        if (!(t > 0) || t > 6) return;
+        const y = o.y + d.y * t;
+        if (y < 0 || y > CEIL) return;
+        const x = o.x + d.x * t, z = o.z + d.z * t;
+        if (x < X0 - 0.01 || z < Z0 - 0.01 || x > X1 + 0.01 || z > Z1 + 0.01) return;
+        if (!wall || t < wall.t) wall = { wall: name, t, x: x / T, y: y / T, z: z / T, slot: Math.floor((name === 'n' || name === 's' ? x : z) / T), nook: n };
+      };
+      if (d.z < 0) tryWall('n', (Z0 - o.z) / d.z);
+      if (d.z > 0) tryWall('s', (Z1 - o.z) / d.z);
+      if (d.x < 0) tryWall('w', (X0 - o.x) / d.x);
+      if (d.x > 0) tryWall('e', (X1 - o.x) / d.x);
+    }
     if (floor && wall && wall.t < floor.t) floor = null;
-    return { floor, wall };
+    return { floor, wall, nook: n };
   }
 
   /** The placed piece under the crosshair (furniture boxes first, then wall pieces). */
@@ -494,7 +508,7 @@ export class FPBuild {
     }
     if (best) return best;
     const placed = this.game.state.data.home.placed;
-    if (pk.wall) { const p = wallItemAt(placed, pk.wall.wall, pk.wall.slot); if (p) return p; }
+    if (pk.wall) { const r = nookRect(pk.wall.nook); const p = wallItemAtNooks(placed, s.nooks || new Set(), r.x0, r.z0, pk.wall.wall, pk.wall.slot); if (p) return p; }
     if (pk.floor) return itemAt(placed, Math.floor(pk.floor.x), Math.floor(pk.floor.z));
     return null;
   }
@@ -512,7 +526,7 @@ export class FPBuild {
     // picking from the strip
     if (inp.mouse.wheel) this.cycle(inp.mouse.wheel > 0 ? 1 : -1);
     for (let k = 1; k <= 9; k++) if (inp.pressed('Digit' + k)) { const e = this.entries()[k - 1]; if (e) { this.selIdx = k - 1; this.pickEntry(e); } }
-    if (inp.pressed('KeyQ')) this.setTab(this.tab === 'furniture' ? 'floor' : this.tab === 'floor' ? 'wall' : 'furniture');
+    if (inp.pressed('KeyQ')) this.setTab(this.tab === 'furniture' ? 'floor' : 'furniture');
     const rot = inp.pressed('KeyR') || inp.pressed('KeyE');
     const store = inp.pressed('KeyF') || inp.mousePressed(2);
     const click = s.rig.primaryPressed;
@@ -531,7 +545,7 @@ export class FPBuild {
       else if (store) { if (sel.type === 'move') this.putAwaySel(); else this.cancelSel(true); }
     } else if (sel && sel.type === 'floor') {
       const t = pk.floor && { x: Math.floor(pk.floor.x), y: Math.floor(pk.floor.z) };
-      const inside = t && t.x >= 0 && t.y >= 0 && t.x < s.W && t.y < s.D;
+      const inside = t && !!nookAtTile(t.x, t.y, s.nooks || new Set());
       this.mark.visible = !!inside;
       if (inside) { this.mark.position.set(t.x + 0.5, 0.03, t.y + 0.5); this.mark.scale.set(1, 1, 1); this.markMat.color.setHex(0x6aff6a); }
       label = inside ? `Paint ${FLOORS[sel.id].name}` : 'Look at the floor';
@@ -546,7 +560,7 @@ export class FPBuild {
         label = `Pick up ${FURNITURE[p.id].name}`;
         if (click || rot) this.pickUp(p);
         else if (store) this.putAway(p);
-      } else label = this.tab === 'wall' ? 'Pick a wall style below' : 'Pick something below';
+      } else label = 'Pick something below';
       this.mark.visible = false;
     }
     // gold label for "place" / "pick up" (no E key cap: it's a click), white when it won't fit
@@ -579,33 +593,36 @@ export class FPBuild {
     const s = this.s, sel = this.sel, id = sel.id, f = FURNITURE[id];
     const placed = this.game.state.data.home.placed;
     let x = 0, y = 0, r = this.r;
-    const W = s.W, D = s.D;
     const fl = pk.floor || (pk.wall ? { x: pk.wall.x, z: pk.wall.z } : null);
-    if (!fl) { this.hover = { x: 0, y: 0, r, ok: false, reason: 'Look at the floor' }; if (this.ghost) this.ghost.obj.visible = false; this.mark.visible = false; return; }
+    const n = pk.nook;
+    if (!fl || !n) { this.hover = { x: 0, y: 0, r, ok: false, reason: n ? 'Look at the floor' : 'Look into one of your alcoves' }; if (this.ghost) this.ghost.obj.visible = false; this.mark.visible = false; return; }
+    const R = nookRect(n), W = R.x1 - R.x0, D = R.z1 - R.z0;
+    const lx = fl.x - R.x0, lz = fl.z - R.z0; // (in the alcove's own tiles)
     if (f.kind === 'wall') {
       // hang it on the wall under the crosshair (or the one nearest the floor point)
-      const wname = pk.wall ? pk.wall.wall : nearestWall(fl.x, fl.z, W, D);
-      const slotF = pk.wall ? pk.wall.slot : Math.floor(wname === 'n' || wname === 's' ? fl.x : fl.z);
+      const wname = pk.wall ? pk.wall.wall : nearestWall(lx, lz, W, D);
+      const slotF = pk.wall ? pk.wall.slot - (wname === 'n' || wname === 's' ? R.x0 : R.z0) : Math.floor(wname === 'n' || wname === 's' ? lx : lz);
       const w = f.size[0];
       r = R_OF_WALL[wname];
       const along = wname === 'n' || wname === 's';
       const a = clamp(slotF - Math.floor((w - 1) / 2), 0, (along ? W : D) - w);
       if (wname === 'n') { x = a; y = 0; } else if (wname === 's') { x = a; y = D - 1; } else if (wname === 'w') { x = 0; y = a; } else { x = W - 1; y = a; }
     } else if (f.onWall) {
-      const wname = nearestWall(fl.x, fl.z, W, D);
+      const wname = nearestWall(lx, lz, W, D);
       r = R_OF_WALL[wname];
       const [fw, fd] = footprint(id, r);
-      if (wname === 'n') { x = clamp(Math.floor(fl.x - fw / 2 + 0.5), 0, W - fw); y = 0; }
-      else if (wname === 's') { x = clamp(Math.floor(fl.x - fw / 2 + 0.5), 0, W - fw); y = D - fd; }
-      else if (wname === 'w') { x = 0; y = clamp(Math.floor(fl.z - fd / 2 + 0.5), 0, D - fd); }
-      else { x = W - fw; y = clamp(Math.floor(fl.z - fd / 2 + 0.5), 0, D - fd); }
+      if (wname === 'n') { x = clamp(Math.floor(lx - fw / 2 + 0.5), 0, W - fw); y = 0; }
+      else if (wname === 's') { x = clamp(Math.floor(lx - fw / 2 + 0.5), 0, W - fw); y = D - fd; }
+      else if (wname === 'w') { x = 0; y = clamp(Math.floor(lz - fd / 2 + 0.5), 0, D - fd); }
+      else { x = W - fw; y = clamp(Math.floor(lz - fd / 2 + 0.5), 0, D - fd); }
     } else {
       const [fw, fd] = footprint(id, r);
-      x = Math.floor(fl.x - fw / 2 + 0.5);
-      y = Math.floor(fl.z - fd / 2 + 0.5);
+      x = Math.floor(lx - fw / 2 + 0.5);
+      y = Math.floor(lz - fd / 2 + 0.5);
     }
+    x += R.x0; y += R.z0;
     if (f.kind === 'wall' || f.onWall) this.r = r;
-    const chk = canPlace(placed, W, D, id, x, y, r, sel.p?.uid);
+    const chk = canPlaceNooks(placed, s.nooks || new Set(), id, x, y, r, sel.p?.uid);
     // never drop something on the mole's own feet
     let ok = chk.ok, reason = chk.ok ? null : chk.reason;
     if (ok && f.kind !== 'rug' && f.kind !== 'wall') {

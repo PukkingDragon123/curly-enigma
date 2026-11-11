@@ -2713,3 +2713,69 @@ tutorial; don't unlock anything yet like the skill tree etc — unlock things st
 - **Test hooks**: `ui.onboard.debug.unlocks()`, `.unlock(id | 'all')`, `.state().unlocks`; `scene.homeTutor()`
   (`{ step, t, walked }`). The e2e's lesson steps are unchanged; `cook_done` unlocks everything, so the
   later steps see the whole game. Screenshots: `shots/wake/`.
+
+### As built: one small old cave, the wake-up on the floor, alcoves you dig out (wave 8, home part)
+
+The user's words: "Make the house a lot smaller, like an old cave. No cabinets, not much furniture. He
+wakes you up on the floor. The house a lot smaller, but you can expand later on." The camp (shack, kitchen
+corner, spring nook) and your bedroom (the tile room up three steps: wardrobe, bedside table, poster,
+round window, rug, hearth, build bench) are gone. Home is **one small hollow on one floor** (y 0; ~18 m² of
+floor against the old ~85: `plan.js` `CAVE`, `caveSD`), low and uneven roof (1.4 m at the walls, ~2 m in the
+middle), plus the **alcoves you dig out** round it.
+
+- **What's in the hollow** (`src/home/spots.js` `SPOTS` / `STAR_SPOTS` / `NOOK_BED`; built by `house.js`):
+  his stone forge against the north rock (soot up its flue crack), the bellows, the anvil on its stump (he
+  hammers from behind it, the forge at his back, facing the room), his quench bucket (`'The quench bucket'`,
+  water named `trough`), a coal heap (`'Take coal from the heap'`, 3 a day: the old cart's job), his tools on
+  a peg board under an old shoring frame on the west rock, his leather apron on a nail (cloth), the grey
+  fleece he sleeps on by the forge (`dyn.cot`, Old Star's `cot` spot), his trunk (`LootChest`), a stack of
+  books (`Browse the books`), the fire pit with tripod, pot and kettle (soot over it), his stump by it
+  (`armchair` spot, `Sit on Old Star's stump`), a lantern hung over the middle, his notes nailed straight to
+  the rock (`hollowProps.rockNotes`, same pins as the old board), the **Miners' Board as a chalked slate on
+  a crate** (`slateOnCrate`) in the north-east corner with **THE WAY UP** chalked on the rock beside it, a
+  prop post, the lift in the east rock and the old door to Deep Town in the north rock (as before), the hole
+  you fell through with what came down under it; and **your corner** along the south rock: your **bedroll on
+  the floor** (`hollowProps.bedroll`: straw, a rough wool blanket, a sack pillow; `Sleep`), a flat stone at
+  its head with your notebook, quill and a candle (`Write in the Index Book`), your little trunk (`Your
+  trunk`). No cabinets, shelves, wardrobes or dressers anywhere.
+- **The rock** (`caveShell.js`): one 1/16 m volume over the open set's bounds (`rockBounds`, `caveGrid`); the
+  hollow (rough, leaning in), the necks (`leanNeck`: low 1.4 m passages) and the alcoves (`alcoveSD`: their
+  rock stands straight on the tile edges up to 1.55 m and only ever recedes, then vaults over; fresher, paler
+  rock with pick scars). `rockSolidAt(x, y, z)` is the exact voxel test; **`chalkDecal`** lays Old Star's
+  chalk at 1/64 m onto the rock's real face (an arch, an X and DIG on each soft wall still to dig; THE WAY UP,
+  the thermometer and the tally of years). `caveBoxes` / HomeScene `roofBoxes` are the collision.
+- **Alcoves** (`src/home/nooks.js` `NOOKS`): `nook_bed` your sleeping alcove (6×5 tiles, off the hollow
+  behind your bedroll), `nook_store` (4×5, off your alcove), `nook_work` the workshop bay (5×5, off the
+  hollow by the lift), `nook_pantry` (4×3, off your alcove). Each: a rect of tiles on the grid (`GRID`
+  18×10 tiles at the world origin, z > 0), a neck, the chalked dig spot on its parent's wall, a lantern Old
+  Star hangs in it (`house.js nookLanterns`). Open = `state.data.upgrades[id] >= 1` (cards on the **Miners'
+  Board's Home tab**, `data/upgrades.js`: 50 / 400 / 1,500 + 2 copper ingots / 3,500 + 2 iron ingots;
+  the tab was "Tavern", the tavern taps are still on it). **Your sleeping alcove is Old Star's gift when the
+  lessons end** (`HomeScene.enter` grants it once `cook_done`/skip has unlocked building; your bedroll,
+  stone and trunk move in, a sacking curtain across its neck; he mentions it once, `nookDig.mentionNookGift`);
+  the rest you dig: **E at the chalk** (`nookDig.js`: the price, then a first-person dig with your pick,
+  dust, the rock slumping) or buy it on the board at home (dug when the board closes; bought elsewhere,
+  it's there next time). Digging re-enters the scene (`home { from: 'dig', nook }`; only the `rock` and
+  `ways` jobs rebuild: `houseLoad.js` VERSION 11, `rock` and `ways` keyed on `nooks`).
+- **Building in alcoves**: `nooks.canPlaceNooks` replaces `homeLayout.canPlace` for home: floor pieces must
+  lie inside one open alcove; wall pieces and onWall pieces use that alcove's four walls (r picks the wall as
+  before); the tiles in front of each neck and each chalked soft wall, and your bedroll's corner
+  (`BED_TILES`), stay clear. `build.js` aims at the alcove you stand in (its walls), draws only open
+  alcoves' grid, paints floors only there (`nookFloor.js`: only painted tiles get a floor mesh; the earth is
+  the rock's), and has no Walls tab any more (the rock is the rock: bought wall styles have nothing to go on).
+  X outside your alcoves says so.
+- **Old saves** (`nooks.migrateHome`, flag `home6`): the straw bed goes into storage (you sleep on the
+  bedroll); a save past the lessons gets your alcove; a furnished room also gets the storage nook, a room
+  extension (`home.level` 1 / 2+) the workshop bay / the pantry; every piece is set back down where it fits
+  (biggest first), more alcoves are granted while things don't fit, and whatever still won't fit goes into
+  storage: nothing is lost. Painted floor tiles outside the alcoves stay in the save, unshown.
+- **The wake-up on the floor** (`wake.js`): flat on your back on the bedroll (eye ~0.4 m), lids cracking on
+  the low roof and the grey speck up the hole; the head rolls toward the clanks: Old Star at his anvil
+  (no bench anvil any more), sparks, the forge behind him; the straw rustles, he stops, sniffs, lays the
+  hammer down, walks over and gets down on his hunkers an arm's length off (new pose **`crouch`**, `nudge()`
+  shakes a paw and your view), three lines (cutscene talk, `camera: 'face'`), he straightens, you sit up
+  and get to your feet. Same flags, unlocks, quest and lesson hand-off; hold to skip as before.
+- **Test hooks**: `scene.debug.nooks()`, `scene.debug.expand(id)` (grant and rebuild at once, resolves when
+  home is back), `spots.nooks`; `scene.bedroll` (the bed record the sleep code uses). The e2e's steps are
+  unchanged: the build step's tiles fall in your sleeping alcove, granted because the cook lesson unlocked
+  building. Screenshots: `shots/home2/` (`before/` the camp, `after/` the cave).

@@ -1,15 +1,15 @@
-// Home, in first person: Old Star's house and, up three worn steps, the bedroom that's yours. The
-// house (src/home/house.js, its plan plan.js, walls and floors surfaces.js, the cavern outside its
-// round windows vista.js) has the living room with his fireplace, armchair, bookcases and clock,
-// the kitchen with the range (cooking), the sink and pump, the pantry and the dining table, the
-// smithy with his forge, bellows, anvil, quench trough and his box bed, and the hall with the cage
-// lift down to the mine, the front door to Deep Town (caved in until you find the way from below),
-// the Miners' Board, his chest and the coal cart. Old Star lives here (src/home/oldstar.js): he
-// works at his forge, cooks, reads, sits by the fire, sleeps in his box bed at night and talks you
-// through his lessons (lessons.js) after you wake up in your bed (wake.js). Your room is the save's
-// tile grid (it grows with room upgrades): sleep in the bed, sow the
-// planters, sit down, light the lamps; X (or E at the build bench) is build mode. There is no
-// digging out of the home: the lift is the way down.
+// Home, in first person: Old Star's cave. One small, old hollow in the rock (src/home/house.js; its
+// plan plan.js, the rock caveShell.js): his forge and anvil, the bellows, his quench bucket and
+// coal, his tools on pegs under old shoring timbers, the fleece he sleeps on, his trunk, the fire
+// pit with the pot and kettle and his stump beside it, his notes nailed to the rock, the slate on a
+// crate that is his Miners' Board, the cage lift down to the mine, the old door to Deep Town (caved
+// in until you find the way from below), the hole you fell through; and your bedroll on the floor
+// with a flat stone at its head (your notebook: the Index Book) and your little trunk. Old Star
+// lives here (src/home/oldstar.js) and talks you through his lessons (lessons.js) after he wakes you
+// on that bedroll (wake.js). The alcoves round the hollow are yours to dig out and furnish
+// (src/home/nooks.js: your sleeping alcove once the lessons are done, then a storage nook, a
+// workshop bay and a pantry, from the Miners' Board or with E at the chalk marks); X (or the chair
+// button) is build mode in them. There is no digging out of the home: the lift is the way down.
 import * as THREE from 'three';
 import { Scene } from '../core/Scene.js';
 import { FPSRig } from '../fps/FPSKit.js';
@@ -17,24 +17,24 @@ import { liftState } from '../fps/lifts.js';
 import { Particles } from '../deep/Particles.js';
 import { LightPool } from '../iso/LightPool.js';
 import { buildFurniture } from '../iso/furniture.js';
-import { footprint, roomSize, TUNNEL_SLOTS, WINDOW_SLOTS, occupancy, benchTiles } from '../iso/homeLayout.js';
-import { broom, firewood, letterCrate, ragRug } from '../iso/homeDecor.js';
-import { bedsideTable, wardrobe, pottedPlant } from '../home/houseProps.js';
+import { footprint, TUNNEL_SLOTS } from '../iso/homeLayout.js';
 import { FURNITURE } from '../data/furniture.js';
 import { ITEMS } from '../data/items.js';
 import { iconURL, iconCanvas } from '../gfx/PixelArt.js';
 import { el, rand, pick, clamp } from '../core/util.js';
-import { T, CEIL, HALL, ARCH, SHAFT, FRONT, HOLE, STAIRS, floorAt } from '../home/units.js';
-import { HomeShell } from '../home/shell.js';
-import { StarHouse, SPOTS, SHACK } from '../home/house.js';
-import { loadHouse, dropHouseCache } from '../home/houseLoad.js';
+import { T, HALL, ARCH, SHAFT, FRONT, HOLE, GRID } from '../home/units.js';
+import { NookFloor } from '../home/nookFloor.js';
+import { StarHouse, SPOTS } from '../home/house.js';
+import { loadHouse, dropHouseCache, houseWant } from '../home/houseLoad.js';
 import { houseLoading } from '../home/loading.js';
-import { ROOM, roomAt, doorAt, onTerrace } from '../home/plan.js';
+import { ROOM, walkable, ceilAt, setOpenNooks } from '../home/plan.js';
+import { NOOKS, NOOK, openNooks, nookAt, grantNook, migrateHome, reseatNooks, diggable } from '../home/nooks.js';
+import { NookDig } from '../home/nookDig.js';
 import { BoxWorld } from '../fps/FPSKit.js';
 import { liftBoxes, LIFT } from '../home/lift.js';
 import { FPGlow } from '../home/glow.js';
 import { FPBuild } from '../home/build.js';
-import { relocateBlocked, besideItem } from '../home/layoutfix.js';
+import { besideItem } from '../home/layoutfix.js';
 import { HomeMoves } from '../home/moves.js';
 import { HomeLiving } from '../home/living.js';
 import { WorkshopLife } from '../home/workshop.js';
@@ -45,8 +45,6 @@ import { HomeWake } from '../home/wake.js';
 import { OldStar } from '../home/oldstar.js';
 import { LootChest } from '../home/chest.js';
 import { starData } from '../home/starData.js';
-import { lootChest } from '../home/tavernProps.js';
-import { group } from '../iso/kit.js';
 import { loadNotes } from '../home/notes.js';
 import { campCloths } from '../home/campCloth.js';
 import { CampAir } from '../home/campAir.js';
@@ -98,24 +96,24 @@ export default class HomeScene extends Scene {
     mark('flags');
     if (!d.home.planters) d.home.planters = {};
     if (!d.home.floor) d.home.floor = {};
-    // [camp5] your nook is a corner of Old Star's cave camp: bare packed earth unless you've laid a
-    // floor yourself. The wave-3 house laid boards over a new room's whole floor by itself
-    // (flag('boards')); a floor that is still nothing but those boards goes back to earth, once.
-    if (!st.flag('camp5')) {
-      st.flag('camp5', true);
-      st.flag('boards', true);
-      const [w0, d0] = roomSize(d.home.level);
-      let all = true;
-      for (let y = 0; y < d0 && all; y++) for (let x = 0; x < w0; x++) if (d.home.floor[x + ',' + y] !== 'floor_plank') { all = false; break; }
-      if (all) d.home.floor = {};
-    }
-    mark('camp5');
-    starData(st);
-    // Old Star's forge and hearth are in the cave now: the room's own come out of the save
+    mark('flags');
+    const sd = starData(st);
+    // Old Star's forge and hearth are his: the room's own come out of the save
     if (d.home.placed.some((p) => IN_THE_CAVE.has(FURNITURE[p.id]?.kind))) d.home.placed = d.home.placed.filter((p) => !IN_THE_CAVE.has(FURNITURE[p.id]?.kind));
+    // [home6] the alcoves you dig out (src/home/nooks.js): an old save's room becomes the alcoves it
+    // was worth (its furniture set back down in them, the rest stored); once the lessons are over
+    // your sleeping alcove is yours (Old Star dug it out while you were at the pot)
+    const newGame = from === 'fall' || from === 'newgame';
+    const lessonsOver = !newGame && (sd.lesson === 'done' || !!sd.skipped || (!!d.unlocks && st.unlocked?.('build') !== false));
+    const mig = newGame ? null : migrateHome(st, { lessonsOver });
+    if (mig?.granted?.length || mig?.stored?.length) console.info('[home] old save moved into the cave', JSON.stringify(mig));
+    if (lessonsOver && grantNook(st, 'nook_bed')) this.nookGift = true;
+    this.nooks = openNooks(st);
+    setOpenNooks(this.nooks);
+    mark('nooks');
     // the lift always knows the mine entrance right below (lifts.js seeds 'L0')
     liftState(st);
-    const [W, D] = roomSize(d.home.level);
+    const W = GRID.W, D = GRID.D;
     this.W = W;
     this.D = D;
     this.tickers = [];
@@ -132,20 +130,19 @@ export default class HomeScene extends Scene {
     this.tunnels = [];
     for (const w of ['n', 's', 'e', 'w']) TUNNEL_SLOTS[w] = new Set();
     this.doorOpen = !!st.flag('escaped');
-    if (relocateBlocked(st, W, D)) st.save();
+    if (reseatNooks(st, this.nooks)) st.save();
     mark('relocate');
     this.notes = loadNotes();
     mark('prep');
 
-    // ---- your room (tile units, scaled to meters) and Old Star's house: the house and your room's
-    // walls are built in workers and kept between visits (src/home/houseLoad.js), the rest of your
-    // room here meanwhile; nothing renders until it's all in (see render())
-    const built = loadHouse({ doorOpen: this.doorOpen, notes: this.notes.length, W, D, wallId: d.home.wall }, (p) => loading.set(p));
+    // ---- the cave (built in workers and kept between visits: src/home/houseLoad.js) and the floors
+    // you've laid in your alcoves (here meanwhile); nothing renders until it's all in (see render())
+    const built = loadHouse(houseWant(st), (p) => loading.set(p));
     this.room = new THREE.Group();
     this.room.scale.setScalar(T);
     this.scene.add(this.room);
-    this.shell = new HomeShell(this.room, this.scene);
-    await this.shell.build(W, D, d.home.wall, d.home.floor, { tunnels: [], surf: built.then((b) => b.shell) });
+    this.shell = new NookFloor(this.room, this.scene);
+    await this.shell.build(W, D, d.home.floor, this.nooks);
     this.own(() => this.shell.dispose());
     const house = await built;
     // (it keeps its old name: `cave` is the house)
@@ -155,7 +152,7 @@ export default class HomeScene extends Scene {
     this.own(() => this.cave.dispose());
     this.lift = this.cave.lift;
     this.holeTop = this.cave.holeTop?.y ?? HALL.y + 2.4; // (up the hole you fell through)
-    // real cloth over the shack's doorway and window (you push through it)
+    // real cloth: his apron, the sacking across your alcove (you push through it)
     try { this.cloths = campCloths(this.scene, this.cave.laundry); this.own(() => this.cloths.dispose()); (this.cave.roomMeshes.camp ||= []).push(...this.cloths.list.map((c) => c.mesh)); } catch (e) { console.warn('[home] cloth', e); }
     mark('build');
 
@@ -197,7 +194,6 @@ export default class HomeScene extends Scene {
     // ---- furniture, loose things, collision, interactables
     this.items = new Map();
     this.loose = [];
-    this.buildLoose();
     for (const p of d.home.placed) this.addPlaced(p);
     this.addFixedInteractions();
     this.chest = new LootChest(this, this.cave.dyn.chest);
@@ -235,7 +231,7 @@ export default class HomeScene extends Scene {
     this.ambientLoop('forge_fire', () => this.nearPointVol(F, 4.0, 0.36 + (this.forgeAir || 0) * 0.3) * this.sameRoomK(F));
     this.ambientLoop('fire', () => this.nearPointVol(H, 3.6, 0.3) * this.sameRoomK(H) + this.nearPointVol(FP, 4.6, 0.42) * this.sameRoomK(FP) + this.nearKindVol('fireplace', 3, 0.4));
     this.ambientLoop('water', () => this.nearPointVol(P, 1.2, 0.05) + this.nearKindVol('fountain', 2.5, 0.22) + this.nearKindVol('fish_tank', 1.5, 0.08));
-    this.ambientLoop('wind', () => { const p = this.rig.player.pos; return onTerrace(p.x, p.z) ? 0.14 : this.inBedroom(p.x, p.z) ? 0.012 : 0.02; });
+    this.ambientLoop('wind', () => { const p = this.rig.player.pos; return this.inBedroom(p.x, p.z) ? 0.012 : 0.02 + 0.03 * Math.max(0, 1 - Math.hypot(p.x - HOLE.x, p.z - HOLE.z) / 2.5); });
     mark('loops');
     this.own(() => { for (const l of this.loops) if (l.h) l.h.stop(0.1); });
     this.own(() => { for (const k of this.anchors.keys()) g.ui.hideBubble(k); g.ui.setHints(null); g.ui.tutor?.hide(); });
@@ -258,7 +254,9 @@ export default class HomeScene extends Scene {
     else if (from === 'faint' || from === 'bed' || from === 'sleep') this.wakeUp(this.findKind('bed'), false);
     else if (from === 'forge' || back === 'cooking') this.later(0.6, () => (this.lessonStage() === 'done' ? this.greet() : this.onLessonArrival(back)));
     else if (from === 'town') { g.audio.play('door'); this.later(1.2, () => this.greet()); }
+    else if (from === 'dig') this.arriveFromDig(params.nook);
     else this.later(1.5, () => this.greet());
+    if (this.nookGift && from !== 'dig') this.mentionNookGift();
     this.debug = this.makeDebug();
     this.buildMs = performance.now() - t0;
     const steps = (o) => Object.entries(o).map(([k, v]) => k + ' ' + v).join(', ');
@@ -288,8 +286,8 @@ export default class HomeScene extends Scene {
     star.say(pick([
       'There you are. Kettle\'s on. Well, it\'s near the fire, which is nearly the same.',
       `Home again! ${g >= 1000 ? `<span class="gold-txt">${g.toLocaleString()}</span> in the pouch. That's a start.` : 'Empty pockets? The mine\'s still there.'}`,
-      'Mind the third board from the door. It squeaks. Sixty years I\'ve meant to fix it.',
-      'Boots off in the hall! Oh, never mind. Nobody\'s boots are ever off.',
+      'Mind your head by the door. The rock dips. Sixty years I\'ve meant to chip it back.',
+      'Small, isn\'t it? Dig out a bit more if you\'re staying. The soft rock\'s chalked.',
     ]), { mood: 'happy' });
   }
 
@@ -375,86 +373,103 @@ export default class HomeScene extends Scene {
 
   canInteract() { return !this.scripted && !this.seat && !this.build?.active && !this.chest?.busy; }
 
-  /** Your room's fixed things: the window, the poster, the build bench, your trunk. */
+  /** Your own things: the bedroll (sleep), the flat stone with your notebook (the Index Book), your trunk; the chalked soft rock. */
   addFixedInteractions() {
-    const { W, D } = this;
-    const wz = (WINDOW_SLOTS[0] + 0.5) * T;
-    this.addIt({ box: [0, 0.82, wz - 0.3, 0.1, 1.28, wz + 0.3], label: 'Peek through the window', action: () => this.peekWindow() });
-    const P = this.shell.poster;
-    this.addIt({ box: [(P.cx - P.w / 2) * T, (P.cy - P.h / 2) * T, 0, (P.cx + P.w / 2) * T, (P.cy + P.h / 2) * T, 0.06], label: 'Look at the poster', action: () => this.lookPoster() });
-    const B = benchTiles(W, D);
-    this.addIt({ box: [B.x * T + 0.1, 0, B.y * T, W * T, 1.6, (B.y + B.d) * T], label: 'Build bench: decorate', action: () => this.build.toggle(true) });
-    const tx = this.trunk.obj.position.x * T, tz = this.trunk.obj.position.z * T;
-    this.addIt({ box: [tx - 0.32, 0, tz - 0.2, tx + 0.32, 0.45, tz + 0.2], label: 'Your trunk', enabled: () => this.trunk.obj.visible, action: () => { this.game.audio.play('creak', { vol: 0.4 }); this.game.ui.openInventory(); } });
+    const c = this.cave, mine = c.mine, br = c.dyn.bedroll;
+    if (br) {
+      this.bedroll = this.bedrollRec(br);
+      const b = this.bedroll.bbox;
+      this.addIt({ box: [b.min.x, 0, b.min.z, b.max.x, 0.32, b.max.z], label: 'Sleep', action: () => this.trySleep(this.bedroll) });
+    }
+    if (mine?.ledge) {
+      const L = mine.ledge;
+      this.addIt({ x: L.x, y: L.top + 0.04, z: L.z, r: 0.24, label: 'Write in the Index Book', action: () => { this.game.audio.play('page'); this.game.ui.openIndex(); } });
+    }
+    if (mine?.trunk) {
+      const t = mine.trunk;
+      this.addIt({ box: [t.x - 0.26, 0, t.z - 0.26, t.x + 0.26, 0.36, t.z + 0.26], label: 'Your trunk', action: () => { this.game.audio.play('creak', { vol: 0.4 }); this.game.ui.openInventory(); } });
+    }
+    this.addDigSpots?.();
   }
 
+  /** The bedroll as the bed code wants it (living.js): a placed-piece look-alike in meters. */
+  bedrollRec(br) {
+    const obj = br.obj;
+    obj.updateMatrixWorld(true);
+    const yaw = br.yaw || 0, c = Math.abs(Math.cos(yaw)), s = Math.abs(Math.sin(yaw));
+    const hw = 0.25 * c + 0.72 * s, hd = 0.25 * s + 0.72 * c;
+    const bbox = new THREE.Box3(new THREE.Vector3(br.x - hw, 0, br.z - hd), new THREE.Vector3(br.x + hw, 0.2, br.z + hd));
+    // you get up on the side toward the room, facing into it
+    const side = br.inNook ? { x: br.x - 0.55, z: br.z + 0.1 } : { x: br.x + 0.25, z: br.z - 0.62 };
+    const face = br.inNook ? { x: br.x - 2.2, z: br.z - 0.3 } : { x: SPOTS.anvil.x, z: SPOTS.anvil.z - 0.4 };
+    return { bedroll: true, p: { uid: 'bedroll', id: 'bedroll', x: 0, y: 0, r: 0 }, res: { lie: br.lie }, obj, cx: br.x / T, cz: br.z / T, fw: 1, fd: 3, bbox, yaw, standAt: { x: side.x, z: side.z, face }, lie: br };
+  }
+
+  /** A bed you've placed in an alcove (sleeping there beats the bedroll), or null. */
+  findPlacedBed() { for (const it of this.items.values()) if (FURNITURE[it.p.id]?.kind === 'bed') return it; return null; }
+
   // ------------------------------------------------------------ collision
-  /** Is floor tile (tx, ty) of your room out of the room or under furniture / the bench? */
+  /** Is floor tile (tx, ty) out of your alcoves or under furniture? */
   tileBlocked(tx, ty) {
     if (tx < 0 || ty < 0 || tx >= this.W || ty >= this.D) return true;
+    if (!nookAt((tx + 0.5) * T, (ty + 0.5) * T, this.nooks || new Set(), false)) return true;
     return !!this.blockedTiles?.has(tx + ',' + ty);
   }
 
-  /** Is (x, z) (m) in your room (or its doorway down to the house)? The larder lies beside it, west. */
-  inBedroom(x, z) { return z >= HALL.z1 - 1e-4 && x > -0.3 && x < (this.W || 10) * T + 0.3; }
+  /** Is (x, z) (m) in one of your alcoves (or the neck into it)? (It keeps its old name: your room.) */
+  inBedroom(x, z) { return !!this.nooks && !!nookAt(x, z, this.nooks); }
 
-  /** Floor height under (x, z) meters: your room, the steps, the house's floors, the lift cage. */
+  /** Floor height under (x, z) meters: one floor everywhere, or the lift cage. */
   floorY(x, z) {
     if (this.inCage({ x, z })) return HALL.y + (this.lift?.cageY || 0) * T;
-    if (this.inBedroom(x, z) || (x >= STAIRS.x0 && x <= STAIRS.x1 && z >= STAIRS.z0)) return floorAt(x, z);
-    return this.cave ? this.cave.ground(x, z) : HALL.y;
+    return HALL.y;
   }
 
-  /** Is (x, z) (m) on a floor you can stand on: your room, the house's rooms and doorways, the steps? */
-  onFloor(x, z) {
-    if (this.inBedroom(x, z)) return x > 0.25 && z > 0.25 && x < this.W * T - 0.25 && z < this.D * T - 0.25 || (Math.abs(x - ARCH.x) < ARCH.hw && z < 0.3);
-    if (x >= STAIRS.x0 && x <= STAIRS.x1 && z >= STAIRS.z0) return true;
-    return !!(roomAt(x, z) || doorAt(x, z));
-  }
+  /** Is (x, z) (m) on open floor you can stand on? */
+  onFloor(x, z) { return walkable(x, z); }
 
   rebuildCollision() {
-    const { W, D } = this, w = this.world;
-    const Wm = W * T, Dm = D * T, z1 = HALL.z1;
+    const w = this.world;
     w.clear();
-    // your room: floor (and the arch's threshold), ceiling, walls
-    // (west of your room is rock, then the larder from x = -1.4: these stop short of it)
-    w.add(-0.9, -1, z1, Wm + 2, 0, Dm + 2, 'shell');
-    w.add(-0.9, CEIL, -0.01, Wm + 2, CEIL + 1, Dm + 2, 'shell');
-    const ax0 = ARCH.x - ARCH.hw, ax1 = ARCH.x + ARCH.hw;
-    w.add(-0.3, -1, z1, ax0, CEIL + 1, 0, 'shell');
-    w.add(ax1, -1, z1, Wm + 2, CEIL + 1, 0, 'shell');
-    w.add(ax0, ARCH.h, z1, ax1, CEIL + 1, 0, 'shell');
-    w.add(-0.9, -1, Dm, Wm + 2, CEIL + 1, Dm + 2, 'shell');
-    w.add(-0.9, -1, 0, 0, CEIL + 1, Dm + 2, 'shell');
-    w.add(Wm, -1, 0, Wm + 2, CEIL + 1, Dm + 2, 'shell');
-    // corner posts, the build bench
-    for (const [x0, z0] of [[0, 0], [Wm - 0.1875, 0], [0, Dm - 0.1875], [Wm - 0.1875, Dm - 0.1875]]) w.add(x0, 0, z0, x0 + 0.1875, CEIL, z0 + 0.1875, 'shell');
-    const B = benchTiles(W, D);
-    w.add(B.x * T + 0.06, 0, B.y * T, Wm, 0.5, (B.y + B.d) * T, 'shell');
-    for (const b of this.shell.hearthBoxes || []) w.add(...b, 'shell');
-    // the cave's things (its rock is the voxels) and the lift
+    // the cave's rock and floor (its own boxes), the low roof where a jump would reach it, the lift
     for (const b of this.cave.boxes) w.add(...b, 'cave');
+    for (const b of this.roofBoxes()) w.add(...b, 'roof');
     for (const b of liftBoxes(this.gateShut)) w.add(...b, 'lift');
-    // furniture in your room
+    // furniture in your alcoves
     this.blockedTiles = new Set();
-    for (let y = B.y; y < B.y + B.d; y++) this.blockedTiles.add(B.x + ',' + y);
     for (const rec of this.items.values()) {
       const f = FURNITURE[rec.p.id];
       if (!f || f.kind === 'rug' || f.kind === 'wall') continue;
       for (let y = rec.p.y; y < rec.p.y + rec.fd; y++) for (let x = rec.p.x; x < rec.p.x + rec.fw; x++) this.blockedTiles.add(x + ',' + y);
       const bb = rec.bbox;
-      const h = clamp(bb.max.y, 0.45, CEIL - 0.1);
+      const h = clamp(bb.max.y, 0.45, 1.9);
       w.add(Math.max(rec.p.x * T, bb.min.x) + 0.02, 0, Math.max(rec.p.y * T, bb.min.z) + 0.02, Math.min((rec.p.x + rec.fw) * T, bb.max.x) - 0.02, h, Math.min((rec.p.y + rec.fd) * T, bb.max.z) - 0.02, rec.p.uid);
     }
     this.starBoxAt = null;
     this.moveStarBox?.();
-    this.refreshLoose();
-    for (const r of this.loose) if (r.box && r.obj.visible) { w.add(...r.box, 'loose'); for (const t of r.tiles) this.blockedTiles.add(t.x + ',' + t.y); }
     this.refreshStepMap();
     // Old Star finds his way round the new furniture too
     if (this.starGrid) this.buildStarGrid();
     // never leave the mole stuck inside something new
     if (this.rig && !this.scripted && !this.seat) this.unstick();
+  }
+
+  /** The roof where it's low enough to bump your head on (boxes, m: 0.25 m cells merged along x). */
+  roofBoxes() {
+    if (this._roof) return this._roof;
+    const C = 0.25, out = [];
+    const x0 = 0, x1 = SHAFT.x0, z0 = FRONT.z - 0.2, z1 = GRID.D * T + 0.2;
+    for (let z = z0; z < z1; z += C) {
+      let run = null;
+      const flush = (xe) => { if (run) out.push([run.x, run.y, z, xe, run.y + 1.2, z + C]); run = null; };
+      for (let x = x0; x <= x1; x += C) {
+        const cx = x + C / 2, cz = z + C / 2;
+        const ok = x < x1 && walkable(cx, cz) && !this.inCage({ x: cx, z: cz });
+        const y = ok ? Math.round((ceilAt(cx, cz) - 0.05) * 20) / 20 : null;
+        if (y !== null && y < HALL.y + 1.95) { if (run && Math.abs(run.y - y) < 0.01) continue; flush(x); run = { x, y }; } else flush(x);
+      }
+    }
+    return (this._roof = out);
   }
 
   /** Push the mole out of anything solid (after furniture moved under it). */
@@ -469,75 +484,32 @@ export default class HomeScene extends Scene {
     }
   }
 
-  /** Footstep sounds follow the floor under the mole (rugs are soft, the cave is earth and stone). */
+  /** Footstep sounds follow the floor under the mole (the cave is earth; what you've laid in your alcoves; rugs are soft). */
   refreshStepMap() {
     const floors = this.game.state.data.home.floor;
     this.stepMats = new Map();
-    for (let y = 0; y < this.D; y++) for (let x = 0; x < this.W; x++) {
-      const id = floors[`${x},${y}`] || 'floor_dirt';
-      this.stepMats.set(x + ',' + y, id === 'floor_plank' ? 'wood' : id === 'floor_dirt' || id === 'floor_moss' ? 'dirt' : id === 'floor_carpet' ? 'sand' : 'stone');
+    for (const [k, id] of Object.entries(floors)) this.stepMats.set(k, id === 'floor_plank' ? 'wood' : id === 'floor_dirt' || id === 'floor_moss' ? 'dirt' : id === 'floor_carpet' ? 'sand' : 'stone');
+    for (const rec of this.items.values()) {
+      if (FURNITURE[rec.p.id]?.kind !== 'rug') continue;
+      for (let y = rec.p.y; y < rec.p.y + rec.fd; y++) for (let x = rec.p.x; x < rec.p.x + rec.fw; x++) this.stepMats.set(x + ',' + y, 'sand');
     }
-    const occ = occupancy(this.game.state.data.home.placed, null, this.W, this.D);
-    for (const k of occ.rugs.keys()) this.stepMats.set(k, 'sand');
-    for (const r of this.loose) if (r.rug && r.obj.visible) for (const t of r.tiles) this.stepMats.set(t.x + ',' + t.y, 'sand');
   }
 
   stepMatAt(x, z) {
-    if (!this.inBedroom(x, z) || z < 0) {
-      if (z > STAIRS.z0 - 0.05 && x >= STAIRS.x0 && x <= STAIRS.x1) return 'stone';
-      if (this.inCage({ x, z })) return 'wood';
-      // the camp: packed earth, straw by the shack, its own plank floor inside
-      if (x > SHACK.x - SHACK.W / 2 && x < SHACK.x + SHACK.W / 2 && z > SHACK.z - SHACK.D && z < SHACK.z) return 'wood';
-      if (Math.abs(x - SHACK.x + 1.05) < 0.4 && Math.abs(z - SHACK.z - 0.45) < 0.3) return 'sand';
-      return 'dirt';
-    }
-    return this.stepMats?.get(Math.floor(x / T) + ',' + Math.floor(z / T)) || 'dirt';
+    if (this.inCage({ x, z })) return 'wood';
+    const br = this.bedroll?.bbox;
+    if (br && x > br.min.x && x < br.max.x && z > br.min.z && z < br.max.z) return 'sand';
+    if (this.inBedroom(x, z) && z > 0) return this.stepMats?.get(Math.floor(x / T) + ',' + Math.floor(z / T)) || 'dirt';
+    return 'dirt';
   }
 
-  // ------------------------------------------------------------ loose things
-  /** Things that sit on a floor tile of your room and only show while the tile is free of furniture. */
-  buildLoose() {
-    const { W, D } = this;
-    const add = (tiles, make, x, z, yaw = 0, o = {}) => {
-      const obj = make();
-      obj.position.set(x, 0, z);
-      obj.rotation.y = yaw;
-      this.room.add(obj);
-      const rec = { tiles, obj, ...o };
-      this.loose.push(rec);
-      return rec;
-    };
-    const rx = Math.min(W - 1.6, 5.6), rz = Math.min(D - 1.6, 4.4);
-    const rugTiles = [];
-    for (let y = Math.floor(rz - 0.8); y <= Math.floor(rz + 0.8 - 0.01); y++) for (let x = Math.floor(rx - 1.2); x <= Math.floor(rx + 1.2 - 0.01); x++) rugTiles.push({ x, y });
-    add(rugTiles, () => ragRug(2.4, 1.6, 6), rx, rz, 0, { rug: true });
-    // the bedside table by the head of the bed, with its candle
-    const bt = bedsideTable();
-    const side = add([{ x: 0, y: 1 }], () => bt.obj, 0.44, 1.5, Math.PI / 2, { box: [0.02, 0, 0.54, 0.43, 0.5, 0.96] });
-    this.room.updateMatrixWorld(true);
-    const cp = new THREE.Vector3(bt.candle.x, bt.candle.y, bt.candle.z).applyMatrix4(side.obj.matrixWorld);
-    side.light = this.addLight({ kind: 'candle', x: cp.x, y: cp.y, z: cp.z, color: 0xffc070, intensity: 0.45, distance: 1.6, flicker: 0.2, real: true, halo: 0.09, haloOpacity: 0.65, priority: 1 });
-    // the wardrobe against the west wall, the firewood by the hearth, a fern under the window
-    if (D >= 7) add([{ x: 0, y: 4 }, { x: 0, y: 5 }], () => wardrobe().obj, 0.5, 5.0, Math.PI / 2, { box: [0.02, 0, 2.02, 0.48, 1.6, 2.98] });
-    add([{ x: 4, y: D - 1 }], () => firewood(3), 4.5, D - 0.42, 0);
-    add([{ x: 0, y: WINDOW_SLOTS[0] }], () => pottedPlant('fern', 7).obj, 0.42, WINDOW_SLOTS[0] + 0.5, 0.4);
-    add([{ x: W - 1, y: 0 }], () => broom(2), W - 0.36, 0.12, -0.15);
-    add([{ x: W - 1, y: 0 }], () => letterCrate(5), W - 0.7, 0.55, -0.1);
-    // your own old trunk at the foot of the bed (your backpack's things, as far as E is concerned)
-    this.trunk = add([{ x: 1, y: 3 }], () => { const c = lootChest(61); return group(c.obj, c.lid); }, 1.5, 3.45, 0, { box: [0.44, 0, 1.54, 1.06, 0.44, 1.92] });
-  }
-
-  refreshLoose() {
-    const occ = occupancy(this.game.state.data.home.placed, null, this.W, this.D);
-    for (const r of this.loose) {
-      r.obj.visible = r.tiles.every((t) => t.x < this.W && t.y < this.D && !occ.floor.has(t.x + ',' + t.y) && !(r.rug && occ.rugs.has(t.x + ',' + t.y)));
-      if (r.light) r.light.on = r.obj.visible;
-    }
-  }
+  /** (Old: things on your room's floor that hid under furniture. The cave has none.) */
+  refreshLoose() {}
 
   // ------------------------------------------------------------ furniture
   findKind(kind) {
     for (const it of this.items.values()) if (FURNITURE[it.p.id]?.kind === kind || it.p.id === kind) return it;
+    if (kind === 'bed' || kind === 'bedroll') return this.bedroll || null; // (your bedroll on the floor)
     return null;
   }
 
@@ -659,7 +631,7 @@ export default class HomeScene extends Scene {
     this.ray.set(eye, f);
     this.ray.far = reach;
     let best = null, bt = reach;
-    if (eye.z > -0.4 && eye.x > -0.4) for (const rec of this.items.values()) {
+    for (const rec of this.items.values()) {
       const b = rec.bbox;
       const t = rayBox3(eye, f, b.min.x - 0.03, -0.01, b.min.z - 0.03, b.max.x + 0.03, b.max.y + 0.03, b.max.z + 0.03);
       if (t === null || t >= bt) continue;
@@ -677,19 +649,31 @@ export default class HomeScene extends Scene {
   // ------------------------------------------------------------ spawning
   spawnByFrom(from, params = {}) {
     let spot = null;
-    if (from === 'bed' || from === 'faint' || from === 'sleep') { const rec = this.findKind('bed'); const s = rec && besideItem(this, rec); if (s) spot = { x: s.x * T, z: s.z * T, face: { x: s.face.x * T, z: s.face.z * T } }; }
-    if (from === 'forge') spot = { x: SPOTS.anvil.x + 0.55, z: SPOTS.anvil.z + 0.9, face: { x: SPOTS.forge.x, z: SPOTS.forge.z } };
-    if (from === 'cooking' || from === 'stove') spot = { x: SPOTS.fire.x + 0.62, z: SPOTS.fire.z + 0.6, face: { x: SPOTS.fire.x, z: SPOTS.fire.z } };
+    if (from === 'bed' || from === 'faint' || from === 'sleep') { const s = this.bedStand(this.findKind('bed')); if (s) spot = s; }
+    if (from === 'forge') spot = { x: SPOTS.anvil.x + 0.7, z: SPOTS.anvil.z + 0.75, face: { x: SPOTS.forge.x, z: SPOTS.forge.z } };
+    if (from === 'cooking' || from === 'stove') spot = { x: SPOTS.fire.x - 0.75, z: SPOTS.fire.z - 0.35, face: { x: SPOTS.fire.x, z: SPOTS.fire.z } };
     if (from === 'lift') spot = { x: LIFT.cx, z: LIFT.cz, yaw: Math.PI / 2 };
     if (from === 'town' || from === 'tunnel') spot = this.doorOpen && from === 'town' ? { x: FRONT.x, z: this.cave.passage.z + 0.85, yaw: Math.PI } : { x: LIFT.outX - 0.2, z: LIFT.cz, yaw: Math.PI / 2 };
-    void SHAFT;
-    if (from === 'fall' || from === 'newgame') { const rec = this.findKind('bed'); const s = rec && besideItem(this, rec); if (s) spot = { x: s.x * T, z: s.z * T, yaw: 0 }; }
-    // otherwise: at the foot of the steps, looking into the living room
-    if (!spot) spot = { x: ARCH.x + 0.05, z: STAIRS.z0 - 0.75, face: { x: 2.2, z: -4.6 } };
+    // just dug an alcove: at the end of its neck, looking in
+    if (from === 'dig' && NOOK[params.nook]) {
+      const n = NOOK[params.nook], nk = n.neck;
+      const x = (nk[0] + nk[2]) / 2, z = (nk[1] + nk[3]) / 2;
+      spot = { x: x - n.dig.nx * 0.2, z: z - n.dig.nz * 0.2, face: { x: (n.rect[0] + n.rect[2]) / 2 * T, z: (n.rect[1] + n.rect[3]) / 2 * T } };
+    }
+    if (from === 'fall' || from === 'newgame') { const s = this.bedStand(this.findKind('bed')); if (s) spot = s; }
+    // otherwise: in the middle of the hollow, looking at the forge
+    if (!spot) spot = { x: 5.55, z: -1.75, face: { x: SPOTS.forge.x, z: SPOTS.forge.z } };
     if (spot.face) spot.yaw = Math.atan2(-(spot.face.x - spot.x), -(spot.face.z - spot.z));
     this.rig.place(spot.x, this.floorY(spot.x, spot.z), spot.z, spot.yaw ?? 0, -0.06);
     if (from !== 'lift') this.unstick();
-    void params;
+  }
+
+  /** Where you stand up beside a bed (the bedroll or a placed one): { x, z, face } in meters, or null. */
+  bedStand(rec) {
+    if (!rec) return null;
+    if (rec.standAt) return { ...rec.standAt };
+    const s = besideItem(this, rec);
+    return s ? { x: s.x * T, z: s.z * T, face: { x: s.face.x * T, z: s.face.z * T } } : null;
   }
 
   // ------------------------------------------------------------ scripted moves
@@ -759,9 +743,9 @@ export default class HomeScene extends Scene {
 
   /** Build mode from the hammer / X: it's your room you decorate, up the steps. */
   toggleBuildHere() {
-    if (!this.build.active && !this.inBedroom(this.rig.player.pos.x, this.rig.player.pos.z + 0.05)) {
+    if (!this.build.active && !this.inBedroom(this.rig.player.pos.x, this.rig.player.pos.z)) {
       this.game.audio.play('ui_error', { vol: 0.5 });
-      this.think('This is Old Star\'s house. I\'ll do my decorating up the steps, in my own room.', 3);
+      this.think(this.nooks?.size ? 'This is Old Star\'s hollow. I\'ll put my things in my own alcove.' : 'Nowhere of my own to put things yet. Old Star chalked a soft bit of rock for me to dig out…', 3.4);
       return;
     }
     this.build.toggle();
@@ -821,14 +805,13 @@ export default class HomeScene extends Scene {
     this.updateLoops();
   }
 
-  /** Fireflies by the window and round the glowing fungi in your room. */
+  /** A glow-mote now and then over the glowing mushrooms in the damp corner. */
   tickAmbience(dt) {
     this.flyT = (this.flyT || 0) - dt;
     if (this.flyT <= 0) {
-      this.flyT = 0.9;
-      const spots = [{ x: 0.35, y: 0.9, z: (WINDOW_SLOTS[0] + 0.5) * T }, ...this.shell.fungi.map((f) => ({ x: f.x * T, y: f.y * T + 0.1, z: f.z * T }))];
-      const s = pick(spots);
-      this.fx.firefly(s.x + rand(-0.25, 0.25), s.y + rand(-0.1, 0.35), s.z + rand(-0.25, 0.25), pick([[0.78, 1, 0.48], [0.6, 1, 0.85], [1, 0.94, 0.62]]));
+      this.flyT = 1.6;
+      const p = this.rig.player.pos;
+      if (Math.hypot(p.x - 2.66, p.z + 3.18) < 6) this.fx.firefly(2.66 + rand(-0.2, 0.2), 0.2 + rand(0, 0.35), -3.18 + rand(-0.2, 0.2), pick([[0.6, 1, 0.85], [0.45, 0.9, 1]]));
     }
   }
 
@@ -940,7 +923,11 @@ export default class HomeScene extends Scene {
       /** Draw calls and triangles for one frame. */
       stats() { const r = s.game.engine.renderer; r.info.autoReset = false; r.info.reset(); s.render(); const o = { ...r.info.render }; r.info.autoReset = true; return o; },
       get target() { return s.rig.target ? String(s.rig.target.label) : null; },
-      spots: { cave: HALL, house: HALL, arch: ARCH, shaft: SHAFT, lift: LIFT, front: FRONT, hole: HOLE, rooms: ROOM, ...SPOTS },
+      /** The alcoves dug out (ids). */
+      nooks() { return [...(s.nooks || [])]; },
+      /** Dig out an alcove right away (no cost, no cutscene) and build the cave again: resolves when home is back. */
+      expand(id = 'nook_bed') { return s.digNook?.(id, { free: true, quick: true }); },
+      spots: { cave: HALL, house: HALL, arch: ARCH, shaft: SHAFT, lift: LIFT, front: FRONT, hole: HOLE, rooms: ROOM, nooks: NOOKS, ...SPOTS },
     };
   }
 
@@ -960,8 +947,8 @@ export default class HomeScene extends Scene {
   }
 }
 
-// the lift and the passage (src/home/moves.js); living in your room (living.js); the workshop
-// (workshop.js); the lessons (lessons.js); waking up (wake.js)
-for (const M of [HomeMoves, HomeLiving, WorkshopLife, HouseLife, HomeLessons, HomeWake]) {
+// the lift and the passage (src/home/moves.js); living in your alcoves (living.js); the workshop
+// (workshop.js); the lessons (lessons.js); waking up (wake.js); digging out alcoves (nookDig.js)
+for (const M of [HomeMoves, HomeLiving, WorkshopLife, HouseLife, HomeLessons, HomeWake, NookDig]) {
   for (const k of Object.getOwnPropertyNames(M.prototype)) if (k !== 'constructor') Object.defineProperty(HomeScene.prototype, k, Object.getOwnPropertyDescriptor(M.prototype, k));
 }

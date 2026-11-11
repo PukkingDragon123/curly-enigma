@@ -1,11 +1,11 @@
-// Building Old Star's camp without stopping the game. The camp is a few big jobs (houseJobs.js:
-// the rock, the west and east of the hollow, the steps and door, your nook's walls); they run in
+// Building Old Star's cave without stopping the game. The cave is a few big jobs (houseJobs.js:
+// the rock, the west and east of the hollow, the door, your corner and the collision); they run in
 // parallel in build workers (houseWorker.js) and come back packed (pack.js), and the scene puts them
 // together (StarHouse.assemble). While the scene is waiting for them (its loading screen is up) the
 // main thread takes jobs off the queue too, so a slow or busy worker never holds it up; without
 // workers at all (blocked, or ?houseWorkers=0) the main thread does them all, yielding between
-// jobs. Every finished job is kept (keyed by what it depends on: the notes on the board, whether the
-// door to Deep Town is open), so coming home again (from the lift, the forge, the kitchen, town)
+// jobs. Every finished job is kept (keyed by what it depends on: the notes on the rock, whether the
+// door to Deep Town is open, which alcoves are dug), so coming home again (from the lift, the forge, the kitchen, town)
 // reuses it instead of building it all over, and prebuildHouse(game) can start it early in the
 // workers only (during the journey, on the title) so the camp is ready when you get there.
 //
@@ -14,14 +14,17 @@
 import HouseWorker from './houseWorker.js?worker&inline';
 import { JOBS, runJob } from './houseJobs.js';
 import { loadNotes } from './notes.js';
-import { roomSize } from '../iso/homeLayout.js';
+import { openNooks, nookKey } from './nooks.js';
 
-/** Bump when the house's build changes shape (keys only: nothing is stored across page loads). */
-const VERSION = 10;
+/**
+ * Bump when the house's build changes shape (keys only: nothing is stored across page loads).
+ * 11: the camp and your room became one small cave with alcoves you dig out (nooks.js).
+ */
+const VERSION = 11;
 /** Rough relative cost of each job (for the progress bar and to start the big ones first). */
-const COST = { rock: 2.6, west: 2.2, east: 1.8, ways: 0.6, shell: 1.6 };
+const COST = { rock: 1.6, west: 1.6, east: 1.4, ways: 0.8 };
 /** What each job depends on (besides the code): the keys of `want` that change it. */
-const DEPENDS = { east: ['notes'], ways: ['doorOpen', 'notes'], shell: ['W', 'D', 'wallId'] };
+const DEPENDS = { rock: ['nooks'], east: ['notes'], ways: ['doorOpen', 'notes', 'nooks'] };
 const JOB_TIMEOUT = 60000;
 const KEEP = 24; // packed jobs kept
 
@@ -31,9 +34,7 @@ let runner = null;
 
 /** What the house to build depends on, from the save. */
 export function houseWant(state) {
-  const d = state.data;
-  const [W, D] = roomSize(d.home?.level || 0);
-  return { doorOpen: !!state.flag('escaped'), notes: loadNotes().length, W, D, wallId: d.home?.wall || 'wall_dirt' };
+  return { doorOpen: !!state.flag('escaped'), notes: loadNotes().length, nooks: nookKey(openNooks(state)) };
 }
 
 function jobKey(id, want) {
@@ -47,21 +48,21 @@ export function prebuildHouse(game) {
 }
 
 /** Is everything for `want` built already? */
-export function houseReady(want) { return [...JOBS, 'shell'].every((id) => cache.has(jobKey(id, want))); }
+export function houseReady(want) { return JOBS.every((id) => cache.has(jobKey(id, want))); }
 
 /** Forget what's kept (memory is short). */
 export function dropHouseCache() { cache.clear(); }
 
 /**
- * The house and your room's walls for `want`: kept, building (joined), or started now.
- * opts.background: workers only (a prebuild). Resolves { jobs, vista, shell, ms, workers, built }.
+ * The cave for `want`: kept, building (joined), or started now.
+ * opts.background: workers only (a prebuild). Resolves { jobs, vista, shell (null), ms, workers, built }.
  */
 export async function loadHouse(want, onProgress = null, opts = {}) {
   const t0 = performance.now();
   const r = getRunner();
   if (!opts.background) r.foreground++;
   const jobIds = JOBS.filter((id) => id !== 'ways');
-  const total = jobIds.reduce((s, id) => s + (COST[id] ?? 2), 0) + COST.ways + COST.shell;
+  const total = jobIds.reduce((s, id) => s + (COST[id] ?? 2), 0) + COST.ways;
   let done = 0, built = 0;
   const tick = (id) => { done += COST[id] ?? 2; onProgress?.({ k: Math.min(0.99, done / total), label: id }); };
   onProgress?.({ k: 0, label: 'start' });
@@ -81,14 +82,12 @@ export async function loadHouse(want, onProgress = null, opts = {}) {
     return p.then((m) => { tick(id); return m; });
   };
   try {
-    const opt = { doorOpen: want.doorOpen, notes: want.notes };
-    const shellP = get('shell', { kind: 'shell', W: want.W, D: want.D, wallId: want.wallId });
+    const opt = { doorOpen: want.doorOpen, notes: want.notes, nooks: want.nooks };
     const jobs = await Promise.all(jobIds.map((id) => get(id, { kind: 'room', id, opts: opt })));
     const lights = jobs.flatMap((p) => p.lights);
     jobs.push(await get('ways', { kind: 'room', id: 'ways', opts: opt, lights }));
-    const shell = await shellP;
     onProgress?.({ k: 1, label: 'done' });
-    return { jobs, vista: null, shell: shell.surf, ms: Math.round(performance.now() - t0), workers: r.n, built };
+    return { jobs, vista: null, shell: null, ms: Math.round(performance.now() - t0), workers: r.n, built };
   } finally {
     if (!opts.background) r.foreground--;
     r.pump();

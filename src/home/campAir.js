@@ -173,10 +173,10 @@ export class CampAir {
     const c = s.cave;
     this.beam = makeBeam();
     s.scene.add(this.beam);
-    // moths at the shack's lantern and the lamp by the lift
+    // moths at the lantern over the middle of the hollow and the one by the door
     const lamps = c.lights.filter((l) => l.kind === 'lantern');
     const pickL = (x, z) => lamps.reduce((b, l) => (Math.hypot(l.x - x, l.z - z) < Math.hypot(b.x - x, b.z - z) ? l : b), lamps[0]);
-    this.moths = lamps.length ? [pickL(2.4, -3.8), pickL(6.5, -2.2)].filter((l, i, a) => a.indexOf(l) === i).map((l, i) => new Moth({ x: l.x, y: l.y, z: l.z }, i * 1.7 + 0.4)) : [];
+    this.moths = lamps.length ? [pickL(5.3, -2.6), pickL(7.2, -4.0)].filter((l, i, a) => a.indexOf(l) === i).map((l, i) => new Moth({ x: l.x, y: l.y, z: l.z }, i * 1.7 + 0.4)) : [];
     for (const m of this.moths) s.scene.add(m.mesh);
     // (drawn only while the camp is: rooms.js culls them with its meshes)
     (c.roomMeshes.camp ||= []).push(this.beam, ...this.moths.map((m) => m.mesh));
@@ -238,7 +238,7 @@ export class CampAir {
       if (T.dust <= 0) {
         T.dust = 0.11;
         const r = HOLE_SHAFT.r * 1.05 * Math.sqrt(Math.random()), an = Math.random() * Math.PI * 2;
-        fx.spawn({ x: HOLE.x + Math.cos(an) * r, y: Y + rand(0.15, 2.4), z: HOLE.z + Math.sin(an) * r, vx: rand(-0.012, 0.012), vy: rand(-0.025, 0.01), vz: rand(-0.012, 0.012), life: rand(4, 7), size: rand(0.0035, 0.006), color: [0.78, 0.88, 1], alpha: 0.55, glow: true, drag: 0.05, grav: 0.002, swirl: 0.012 });
+        fx.spawn({ x: HOLE.x + Math.cos(an) * r, y: Y + rand(0.15, 2.0), z: HOLE.z + Math.sin(an) * r, vx: rand(-0.012, 0.012), vy: rand(-0.025, 0.01), vz: rand(-0.012, 0.012), life: rand(4, 7), size: rand(0.0035, 0.006), color: [0.78, 0.88, 1], alpha: 0.55, glow: true, drag: 0.05, grav: 0.002, swirl: 0.012 });
       }
     }
   }

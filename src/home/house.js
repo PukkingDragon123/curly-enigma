@@ -1,28 +1,29 @@
-// Old Star's camp, three worn steps and a rock passage down from your nook: an old, run-down camp
-// in a natural cave hollow, there for decades and patched ever since. His shack of warped grey
-// planks and a patched tarp against the north rock (his sagging cot, his old armchair, his notes on
-// the wall outside, a gramophone on a crate, a lantern on a hook by the sacking door); the fire pit
-// in a ring of stones with the kettle on its tripod (the cooking spot), a plank table and a wobbly
-// stool, logs to sit on, crates and barrels of stores; the forge corner: his old stone forge with
-// its pipe up a crack in the rock, the bellows, the anvil on its stump, the quench trough, coal and
-// tools leaning on the rock; the spring dripping out of the rock into a stone basin in the side nook;
-// the rusty cage lift in its rock shaft, the old door to Deep Town in a tunnel mouth (caved in until
-// you find it from below), his chest, the coal cart, the Miners' Board, his slate of the million;
-// the hole you fell through up in the roof, a thin grey light down it, what came down with you on
-// the floor under it. Candle stubs, cobwebs, roots, drips, glowing mushrooms in the damp corners.
+// Old Star's cave: one small, old hollow in the rock, lived in for sixty years and patched ever
+// since. His stone forge against the north rock with its pipe up a crack (black with soot round it),
+// the bellows, the anvil on its stump, his quench bucket and a heap of coal; his tools on pegs on the
+// west rock under an old frame of shoring timbers, his leather apron on a nail, the grey fleece he
+// sleeps on by the forge's warmth, his trunk in the south-west corner; the fire pit in its ring of
+// stones in the south-east with the tripod, the pot and the kettle, his stump to sit on; his notes
+// nailed straight to the rock, the slate on a crate in the corner that is his Miners' Board, THE WAY
+// UP chalked on the rock beside it; the rusty cage lift in its shaft in the east rock, the old door
+// to Deep Town in the north rock (caved in until you find it from below); the hole you fell through
+// up in the roof, a thin grey light down it, what came down with you on the floor under it; and your
+// bedroll on the floor along the south rock, a flat stone at its head with your notebook (the Index
+// Book) and a candle, your little trunk at its foot. Roots, drips, cobwebs, a few glowing mushrooms.
+// The alcoves you dig out later (nooks.js) open off it: the rock, your corner (which moves into your
+// sleeping alcove once it's dug), the soft walls still to dig and the collision follow the open set.
 //
-// Built in jobs (JOBS: the rock, the west of the hollow, the east, then 'ways', the steps, the door
-// and the walls' collision), each of which can run in a build worker (houseWorker.js, driven by
-// houseLoad.js) or on the main thread: a job builds its pieces, merges the static voxels by material,
-// bakes the camp's fixed lights into them and packs it all (pack.js); the scene puts the packed jobs
-// back together (StarHouse.assemble), builds the cage lift itself, and keeps fires, water and moving
-// parts live. Also the lights (for the scene's light pool), the collision boxes, the seats and Old
-// Star's places. (The scene still calls it `scene.cave` / `scene.house`.)
+// Built in jobs (JOBS: the rock, the west of the hollow, the east, then 'ways': the door, your
+// corner, the alcoves' lanterns and the walls' collision), each of which can run in a build worker
+// (houseWorker.js, driven by houseLoad.js) or on the main thread: a job builds its pieces, merges the
+// static voxels by material, bakes the cave's fixed lights into them and packs it all (pack.js); the
+// scene puts the packed jobs back together (StarHouse.assemble), builds the cage lift itself, and
+// keeps fires, water and moving parts live. Also the lights (for the scene's light pool), the
+// collision boxes, the seats and Old Star's places. (The scene still calls it `scene.cave` / `scene.house`.)
 import * as THREE from 'three';
 import { keepUnbatched } from '../iso/vox.js';
 import { lowRes, group, VoxelGrid, M32, M16, G16, line, h3, mulc } from '../iso/kit.js';
-import { barrel, crate, rubble } from '../iso/props.js';
-import { buildFurniture } from '../iso/furniture.js';
+import { crate, rubble } from '../iso/props.js';
 import { townDoor, doorRubble, lanternOnHook } from './props.js';
 import * as TP from './tavernProps.js';
 import * as CP from './caveProps.js';
@@ -30,9 +31,12 @@ import * as RP from './ruinProps.js';
 import * as HP from './houseProps.js';
 import * as KP from './clutterProps.js';
 import * as CMP from './campProps.js';
-import { buildCaveRock, caveBoxes, DRIPS } from './caveShell.js';
-import { ROOMS, FY, roomAt, hollowSD, ceilAt, lean } from './plan.js';
-import { T, HALL, ARCH, STAIRS, SHAFT, FRONT, HOLE, STEP_H, STEP_D, floorAt } from './units.js';
+import * as HW from './hollowProps.js';
+import { buildCaveRock, caveBoxes, DRIPS, chalkSpots, chalkDecal } from './caveShell.js';
+import { ROOMS, FY, roomAt, hollowSD, caveSD, ceilAt, lean, setOpenNooks } from './plan.js';
+import { NOOKS, diggable, nooksFromKey } from './nooks.js';
+import { SPOTS, STAR_SPOTS, NOOK_BED } from './spots.js';
+import { T, HALL, SHAFT, FRONT, HOLE, ROOM_CURTAINS } from './units.js';
 import { HomeLift, LIFT, LIFT_LIGHTS } from './lift.js';
 import { Merger, worldGeo, mergeQuads, matDesc, matFrom, quantize, qTransfer, unquantize, packNode, unpackNode, packRef, unpackRef, CSCALE } from './pack.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
@@ -40,110 +44,55 @@ import { LAYER_OUTLINE } from '../core/Engine.js';
 const tl = (m) => m / T;
 const Y = FY;
 
-/** His shack against the north rock (m): the middle of its front wall, its width and depth. */
-export const SHACK = { x: 2.35, z: -3.95, W: 2.6, D: 1.55, Hf: 1.5, Hb: 1.95, dc: -0.35, dw: 0.82 };
+/** (Old: his shack. Gone with the camp; kept so old imports still resolve.) */
+export const SHACK = { x: 99, z: 99, W: 0, D: 0, Hf: 0, Hb: 0, dc: 0, dw: 0 };
 
-/** Where things are (meters). */
-export const SPOTS = {
-  // the forge corner (north-west)
-  forge: { x: -2.0, z: -5.02, yaw: 0 },
-  bellows: { x: -3.07, z: -5.0, yaw: Math.PI },
-  anvil: { x: -1.12, z: -3.92, yaw: -0.55 },
-  trough: { x: 0.08, z: -4.78, yaw: Math.PI / 2 },
-  rack: { x: -3.6, z: -3.75 },
-  coal: { x: -0.92, z: -5.32, yaw: 0.4 },
-  // the shack (his cot along its back wall, his armchair, the books)
-  cot: { x: 1.92, z: -5.1 },
-  armchair: { x: 3.05, z: -4.58 },
-  books: { x: 1.3, z: -4.32 },
-  // the camp kitchen (south-west): the fire pit, the table, the spring in its nook
-  fire: { x: -0.9, z: -2.05 },
-  hearth: { x: -0.9, z: -2.05 },
-  sink: { x: -4.85, z: -2.15 },
-  pool: { x: -4.85, z: -2.15 },
-  table: { x: -2.55, z: -1.22, yaw: 0 },
-  // round the shack and the hole
-  board: { x: SHACK.x + SHACK.W / 2 + 0.06, z: -4.72 },
-  clock: { x: 3.98, z: -3.5 },
-  rubble: { x: 3.95, z: -1.05 },
-  // the east: the lift, the way out, his chest
-  chest: { x: 6.35, z: -0.66, yaw: Math.PI },
-  miners: { x: 5.12, z: -4.55 },
-  cart: { x: 6.95, z: -1.72 },
-  dream: { x: 5.3, z: -0.48 },
-  suitcase: { x: 5.38, z: -5.3 },
-  passage: { x: FRONT.x, z: FRONT.z },
-  // (old names kept for the scene and the tests)
-  sofa: { x: 3.05, z: -4.58 },
-  trinkets: { x: 5.3, z: -0.48 },
-  mound: { x: 3.95, z: -1.05 },
-  winch: { x: 6.95, z: -1.72 },
-  dais: { x: 5.3, z: -0.48 },
-  sealed: { x: 5.3, z: -0.48 },
-  mosaic: { x: 2.4, z: -2.6 },
-};
-
-/** Old Star's places: where he stands (or sits / lies), which way he faces, his pose. */
-export const STAR_SPOTS = {
-  anvil: { x: -1.6, z: -3.52, face: { x: SPOTS.anvil.x, z: SPOTS.anvil.z }, pose: 'hammer' },
-  bellows: { x: -2.86, z: -4.42, face: { x: -2.76, z: -5.1 }, pose: 'pump' },
-  fire: { x: -0.88, z: -2.72, face: { x: -0.9, z: -2.05 }, pose: 'stir' },
-  board: { x: 4.3, z: -4.72, face: { x: 3.7, z: -4.72 }, pose: 'read' },
-  lift: { x: 6.4, z: -3.32, face: { x: 7.8, z: -3.37 }, pose: 'idle' },
-  ruins: { x: 5.3, z: -1.12, face: { x: 5.3, z: -0.4 }, pose: 'ponder' }, // (his slate of the million)
-  pool: { x: -4.2, z: -2.12, face: { x: -4.95, z: -2.15 }, pose: 'idle' }, // (the spring)
-  books: { x: 1.62, z: -4.5, face: { x: 1.25, z: -4.3 }, pose: 'read' },
-  hearth: { x: -0.05, z: -1.62, face: { x: -0.9, z: -2.05 }, pose: 'idle' },
-  armchair: { sit: true, pose: 'sit' },
-  cot: { lie: true, pose: 'sleep' },
-};
+export { SPOTS, STAR_SPOTS };
 
 /** What a job hands the scene besides its meshes, lights, boxes and looks (dyn and furn too). */
-const KEEP = ['boardObj', 'doorFrame', 'doorLeaf', 'passage', 'boardAt', 'minersAt', 'notePins', 'glints', 'gramophone', 'holeTop', 'laundry'];
+const KEEP = ['boardObj', 'doorFrame', 'doorLeaf', 'passage', 'boardAt', 'minersAt', 'notePins', 'glints', 'gramophone', 'holeTop', 'laundry', 'mine', 'digAt'];
 
-/** The build jobs: the rock, the west of the hollow, the east, then the steps, the door and the walls' collision. */
+/** The build jobs: the rock, the west of the hollow, the east, then the door, your corner and the walls' collision. */
 export const JOBS = ['rock', 'west', 'east', 'ways'];
 const BUILDERS = { rock: 'buildRock', west: 'buildWest', east: 'buildEast', ways: 'buildWays' };
 
 /**
- * The camp's fixed lights (m): the fire pit, the forge, the lanterns, candles, the hole's grey light,
- * the glow in the damp corners. Every job bakes with them (the 'rock' job hands them to the scene).
+ * The cave's fixed lights (m): the fire pit, the forge, the lanterns, the hole's grey light, the glow
+ * in the damp corner. Every job bakes with them (the 'rock' job hands them to the scene).
  */
-/** The lantern at the foot of the steps up the passage (m): on a hook in the rock beside its mouth, facing the camp (its foot y over the floor). */
-const PASS_LAMP = (() => {
-  let x = ARCH.x - 0.78, z = -0.95;
-  for (let i = 0; i < 80 && hollowSD(x, z) + lean(1.1) < -0.01; i++) z += 0.02;
-  return { x, z, y: 0.6 };
-})();
-
 export function campLights() {
   const S = SPOTS;
   const L = [
     // (warm pools that end: past them the rock is cold and blue)
-    { kind: 'fire', x: S.fire.x, y: Y + 0.22, z: S.fire.z, color: 0xff9244, intensity: 2.1, distance: 3.3, flicker: 0.32, speed: 1.3, pool: 1.0, poolOpacity: 0.3, halo: 0.42, haloOpacity: 0.3, priority: 9, power: 1.35, radius: 2.5 },
-    { kind: 'forge', x: S.forge.x, y: Y + 0.62, z: S.forge.z + 0.05, color: 0xffb466, intensity: 1.7, distance: 3.0, flicker: 0.28, speed: 1.4, pool: 0.8, poolZ: S.forge.z + 0.6, poolOpacity: 0.22, halo: 0.36, haloOpacity: 0.3, priority: 9, power: 0.85, radius: 2.1 },
-    { kind: 'lantern', x: SHACK.x + SHACK.dc + SHACK.dw / 2 + 0.16, y: Y + 1.18, z: SHACK.z + 0.2, color: 0xffb860, intensity: 0.9, distance: 2.8, flicker: 0.12, halo: 0.2, haloOpacity: 0.55, pool: 0.65, poolOpacity: 0.14, priority: 6, power: 0.66, radius: 2.1 },
-    { kind: 'candle', x: SHACK.x + 0.95, y: Y + 0.62, z: SHACK.z - 1.05, color: 0xffc070, intensity: 0.55, distance: 2.0, flicker: 0.2, halo: 0.09, haloOpacity: 0.6, priority: 4, power: 0.4, radius: 1.5, real: true },
-    { kind: 'candle', x: S.table.x + 0.3, y: Y + 0.62, z: S.table.z - 0.12, color: 0xffc070, intensity: 0.5, distance: 1.8, flicker: 0.2, halo: 0.09, haloOpacity: 0.6, priority: 3, power: 0.32, radius: 1.3, real: true },
-    { kind: 'lantern', x: 6.55, y: Y + 1.3, z: -2.25, color: 0xffb050, intensity: 0.75, distance: 3.0, flicker: 0.12, halo: 0.18, haloOpacity: 0.5, pool: 0.55, poolOpacity: 0.12, priority: 5, power: 0.5, radius: 2.3 },
-    { kind: 'lantern', x: -1.5, y: Y + 1.25, z: -4.35, color: 0xffb060, intensity: 0.6, distance: 2.6, flicker: 0.1, halo: 0.16, haloOpacity: 0.5, priority: 4, power: 0.4, radius: 2.0 },
-    { kind: 'sky', x: HOLE.x, y: Y + 1.9, z: HOLE.z, color: 0xa8c0d8, intensity: 0.6, distance: 3.2, flicker: 0.03, speed: 0.2, pool: 0.8, poolX: HOLE.x, poolZ: HOLE.z, poolOpacity: 0.2, poolColor: 0xb8d0e8, halo: 0.3, haloOpacity: 0.1, priority: 5, power: 0.5, radius: 2.6 },
+    { kind: 'fire', x: S.fire.x, y: Y + 0.22, z: S.fire.z, color: 0xff9244, intensity: 2.0, distance: 3.2, flicker: 0.32, speed: 1.3, pool: 0.95, poolOpacity: 0.3, halo: 0.4, haloOpacity: 0.3, priority: 9, power: 1.3, radius: 2.4 },
+    { kind: 'forge', x: S.forge.x, y: Y + 0.62, z: S.forge.z + 0.05, color: 0xffb466, intensity: 1.7, distance: 3.0, flicker: 0.28, speed: 1.4, pool: 0.8, poolZ: S.forge.z + 0.6, poolOpacity: 0.22, halo: 0.36, haloOpacity: 0.3, priority: 9, power: 0.9, radius: 2.2 },
+    { kind: 'lantern', x: 5.3, y: Y + 1.42, z: -2.6, color: 0xffb860, intensity: 0.7, distance: 2.8, flicker: 0.12, halo: 0.18, haloOpacity: 0.5, pool: 0.6, poolOpacity: 0.12, priority: 6, power: 0.5, radius: 2.2 },
+    { kind: 'lantern', x: FRONT.x + 0.62, y: Y + 1.05, z: FRONT.z + 0.24, color: 0xffb050, intensity: 0.55, distance: 2.4, flicker: 0.12, halo: 0.15, haloOpacity: 0.5, pool: 0.45, poolOpacity: 0.12, priority: 4, power: 0.4, radius: 1.8 },
+    { kind: 'sky', x: HOLE.x, y: Y + 1.7, z: HOLE.z, color: 0xa8c0d8, intensity: 0.55, distance: 3.0, flicker: 0.03, speed: 0.2, pool: 0.75, poolX: HOLE.x, poolZ: HOLE.z, poolOpacity: 0.2, poolColor: 0xb8d0e8, halo: 0.28, haloOpacity: 0.1, priority: 5, power: 0.5, radius: 2.4 },
     // (bake only: the hole's shaft lit cold and grey from the daylight far up it)
-    { kind: 'skyhi', x: HOLE.x, y: Y + 3.0, z: HOLE.z, color: 0x9ab4cc, intensity: 0, real: false, flicker: 0, power: 0.8, radius: 1.5 },
-    { kind: 'shroom', x: -4.3, y: Y + 0.25, z: -1.45, color: 0x5ad0d8, intensity: 0, real: false, halo: 0.22, haloOpacity: 0.3, pool: 0.4, poolOpacity: 0.12, flicker: 0.06, speed: 0.3, power: 0.28, radius: 1.1 },
-    { kind: 'shroom', x: 7.15, y: Y + 0.25, z: -5.05, color: 0xa070f0, intensity: 0, real: false, halo: 0.22, haloOpacity: 0.3, pool: 0.4, poolOpacity: 0.12, flicker: 0.06, speed: 0.3, power: 0.28, radius: 1.1 },
-    { kind: 'shroom', x: 0.72, y: Y + 0.25, z: -5.42, color: 0x5ad0d8, intensity: 0, real: false, halo: 0.2, haloOpacity: 0.28, pool: 0.35, poolOpacity: 0.1, flicker: 0.06, speed: 0.3, power: 0.24, radius: 1.0 },
-    { kind: 'shroom', x: -4.75, y: Y + 0.5, z: -2.7, color: 0x6ae0c0, intensity: 0.35, real: true, distance: 1.8, halo: 0.2, haloOpacity: 0.32, flicker: 0.05, speed: 0.3, power: 0.36, radius: 1.4, priority: 2 },
-    { kind: 'lantern', x: -4.25, y: Y + 1.15, z: -1.75, color: 0xffb060, intensity: 0.55, distance: 2.4, flicker: 0.12, halo: 0.14, haloOpacity: 0.5, pool: 0.45, poolOpacity: 0.12, priority: 4, power: 0.42, radius: 1.9 },
-    // the passage up to your nook: a lantern on a hook over the worn steps
-    { kind: 'lantern', x: PASS_LAMP.x, y: Y + PASS_LAMP.y + 0.27, z: PASS_LAMP.z - 0.19, color: 0xffb460, intensity: 0.5, distance: 2.2, flicker: 0.12, halo: 0.14, haloOpacity: 0.5, pool: 0.4, poolX: PASS_LAMP.x + 0.3, poolZ: PASS_LAMP.z - 0.35, poolOpacity: 0.12, priority: 3, power: 0.42, radius: 1.6 },
-    { kind: 'lantern', x: FRONT.x - 0.62, y: Y + 1.05, z: FRONT.z + 0.22, color: 0xffb050, intensity: 0.6, distance: 2.6, flicker: 0.12, halo: 0.16, haloOpacity: 0.5, pool: 0.5, poolOpacity: 0.12, priority: 4, power: 0.45, radius: 2.0 },
+    { kind: 'skyhi', x: HOLE.x, y: Y + 2.9, z: HOLE.z, color: 0x9ab4cc, intensity: 0, real: false, flicker: 0, power: 0.8, radius: 1.4 },
+    { kind: 'shroom', x: 2.66, y: Y + 0.25, z: -3.18, color: 0x5ad0d8, intensity: 0.3, real: true, distance: 1.6, halo: 0.2, haloOpacity: 0.3, pool: 0.38, poolOpacity: 0.12, flicker: 0.06, speed: 0.3, power: 0.3, radius: 1.1, priority: 2 },
   ];
   const cl = LIFT_LIGHTS.cage, lp = LIFT_LIGHTS.portal;
   L.push({ kind: 'lift', x: cl.x, y: cl.y, z: cl.z, color: 0xffb860, intensity: 0.4, distance: 2.0, flicker: 0.1, halo: 0.16, haloOpacity: 0.55, priority: 2, power: 0.16, radius: 1.3 });
   L.push({ kind: 'portal', x: lp.x, y: lp.y, z: lp.z, color: 0xffb050, intensity: 0.25, distance: 2.2, flicker: 0.12, halo: 0.18, haloOpacity: 0.55, pool: 0.6, poolOpacity: 0.15, priority: 4, power: 0.22, radius: 1.6 });
   for (const l of L) { l.room = null; l.fixed = true; }
   return L;
+}
+
+/** The lanterns Old Star hung in the alcoves you've dug (m): one in each, on a hook in the rock by its neck. */
+export function nookLanterns(set) {
+  const out = [];
+  for (const n of NOOKS) {
+    if (!set.has(n.id)) continue;
+    const [x0, z0, x1, z1] = n.rect.map((v) => v * T);
+    // inside the alcove, on the wall beside where the neck comes in, a little to one side
+    const nk = n.neck, cx = (nk[0] + nk[2]) / 2, cz = (nk[1] + nk[3]) / 2;
+    const side = n.open.n ? { x: Math.min(x1 - 0.25, nk[2] + 0.32), z: z0 + 0.08, nx: 0, nz: 1 } : n.open.e ? { x: x1 - 0.08, z: Math.min(z1 - 0.3, nk[3] + 0.3), nx: -1, nz: 0 } : { x: x0 + 0.08, z: cz, nx: 1, nz: 0 };
+    void cx;
+    out.push({ id: n.id, kind: 'lantern', x: side.x + side.nx * 0.12, y: Y + 1.18, z: side.z + side.nz * 0.12, wx: side.x, wz: side.z, nx: side.nx, nz: side.nz, color: 0xffb860, intensity: 0.85, distance: 3.4, flicker: 0.12, halo: 0.16, haloOpacity: 0.5, pool: 0.7, poolOpacity: 0.12, priority: 5, power: 0.72, radius: 3.0 });
+  }
+  return out;
 }
 
 export class StarHouse {
@@ -170,10 +119,13 @@ export class StarHouse {
   }
 
   // ------------------------------------------------------------ a build job
-  /** Build one job ('rock', 'west', 'east', 'ways'). opts: { doorOpen, notes }. */
+  /** Build one job ('rock', 'west', 'east', 'ways'). opts: { doorOpen, notes, nooks (nookKey of the open alcoves) }. */
   buildJob(id, opts = {}) {
     const t0 = performance.now();
     this.opts = opts;
+    // (the alcoves dug in this save: the rock, your corner and the collision follow them)
+    this.nookSet = nooksFromKey(opts.nooks);
+    setOpenNooks(this.nookSet);
     this.decor = new THREE.Group();
     this.room.add(this.decor);
     // (a job that fails leaves its part bare: better a bare corner than no camp)
@@ -319,10 +271,7 @@ export class StarHouse {
 
   // ------------------------------------------------------------ placing
   /** The floor's top under (x, z) (m). */
-  ground(x, z) {
-    if (z > STAIRS.z0 - 1e-4 && x >= STAIRS.x0 && x <= STAIRS.x1) return floorAt(x, z);
-    return Y;
-  }
+  ground() { return Y; }
 
   /** The roof over (x, z) (m). */
   roofAt(x, z) { return ceilAt(x, z); }
@@ -454,30 +403,29 @@ export class StarHouse {
   }
 
   // ------------------------------------------------------------ the rock
-  /** The hollow's rock, its floor and roof, the hole, roots, drips, the glow in the damp corners. */
+  /** The hollow's rock, its floor and roof, the hole, roots, drips, the glow in the damp corner; your alcoves' lanterns' light. */
   buildRock() {
-    const rock = buildCaveRock();
+    const set = this.nookSet;
+    const rock = buildCaveRock(set);
     this.decor.add(rock.obj);
     this.holeTop = rock.top;
     for (const l of campLights()) this.lights.push(l);
+    for (const l of nookLanterns(set)) this.light({ ...l, wx: undefined, wz: undefined });
+    // Old Star's chalk on the rock: THE WAY UP, and an arch and an X on each soft wall still to dig
+    chalkSpots(set).forEach((c, i) => { const m = chalkDecal(c, set, 7 + i); if (m) this.decor.add(m); });
     // water dripping from the roof onto the dark wet patches in the floor
     DRIPS.forEach((d, i) => {
       this.drips.push({ x: d.x, z: d.z, y: ceilAt(d.x, d.z) - 0.04, t: 1 + i * 0.7, every: 2.4 + (i % 3) * 1.3, pool: false });
     });
-    // glowing mushrooms in the damp corners, a crystal cluster in the spring's nook
-    for (const [x, z, hue, size, seed] of [[-4.3, -1.45, 0, 1.15, 3], [7.15, -5.05, 2, 1.0, 5], [0.72, -5.42, 1, 0.85, 7], [-3.7, -4.3, 0, 0.75, 9], [4.6, -5.4, 2, 0.8, 11]]) {
-      const s = size < 0.9 ? lowRes(() => CMP.glowCaps(seed, hue, size)) : CMP.glowCaps(seed, hue, size); // (the small ones, off the paths, coarser)
-      this.place(s.obj, x, z, seed);
-      this.boxAt(x, z, 0.16 * size, 0.16 * size, 0.2 * size); // (knee-high: you walk round them)
-    }
-    this.look({ x: -4.3, y: Y + 0.2, z: -1.45, r: 0.3, label: 'Glowing mushrooms', pick: true, special: true });
-    const cr = CMP.crystalCluster(17, 1, 0.85);
-    this.place(cr.obj, -4.75, -2.75, 0.6);
-    this.boxAt(-4.75, -2.75, 0.22, 0.22, 0.4);
-    this.look({ x: HOLE.x, y: Y + 1.9, z: HOLE.z, r: 0.5, label: 'Look up at the hole', lines: ['A ragged hole in the roof, roots all round it, and far up a grey speck of daylight. That\'s where I came in.', 'Dirt still trickles down now and then. A long way down. Lucky the floor was soft.'], aside: 'hole' });
+    // a few glowing mushrooms in the damp corner behind the bellows
+    const s = CMP.glowCaps(3, 0, 0.75);
+    this.place(s.obj, 2.66, -3.18, 3);
+    this.boxAt(2.66, -3.18, 0.12, 0.12, 0.16);
+    this.look({ x: 2.66, y: Y + 0.15, z: -3.18, r: 0.24, label: 'Glowing mushrooms', pick: true, special: true });
+    this.look({ x: HOLE.x, y: Y + 1.7, z: HOLE.z, r: 0.45, label: 'Look up at the hole', lines: ['A ragged hole in the roof, roots all round it, and far up a grey speck of daylight. That\'s where I came in.', 'Dirt still trickles down now and then. A long way down. Lucky the floor was soft.'], aside: 'hole' });
   }
 
-  // ------------------------------------------------------------ the west: the forge corner, the fire pit, the spring
+  // ------------------------------------------------------------ the west: the forge corner, his fleece, his trunk
   buildWest() {
     const S = SPOTS;
     // his old stone forge against the north rock, its pipe up a crack in the roof
@@ -492,217 +440,38 @@ export class StarHouse {
     this.dyn.bellows = b;
     this.parts.push(b.obj);
     this.boxAt(S.bellows.x, S.bellows.z, 0.45, 0.24, 0.62, S.bellows.yaw);
-    // the anvil on its stump, the quench trough and his bucket, coal, scrap, tools against the rock
+    // the anvil on its stump, his quench bucket, the coal
     const a = CP.anvil(9);
     this.place(a.obj, S.anvil.x, S.anvil.z, S.anvil.yaw);
     this.dyn.anvilFace = this.toM(a.obj, a.face);
     this.boxAt(S.anvil.x, S.anvil.z, 0.3, 0.14, 0.72, S.anvil.yaw);
-    const tr = CP.trough(13);
-    this.place(tr.obj, S.trough.x, S.trough.z, S.trough.yaw);
-    const ws = this.toM(tr.obj, { x: 0, y: tr.water.y, z: 0 });
-    this.addWater('trough', ws.x, ws.y, ws.z, tr.water.w * T, tr.water.d * T, S.trough.yaw, 0x1e3a44);
-    this.boxAt(S.trough.x, S.trough.z, 0.52, 0.2, 0.42, S.trough.yaw);
-    this.dyn.troughAt = { x: S.trough.x, y: ws.y, z: S.trough.z };
     const bk = CP.quenchBucket(15);
-    this.place(bk.obj, S.trough.x + 0.32, S.trough.z + 0.62, 0.4);
-    this.dyn.bucket = { obj: bk.obj, water: bk.water, home: { x: S.trough.x + 0.32, z: S.trough.z + 0.62 } };
-    this.parts.push(bk.obj);
+    this.place(bk.obj, S.trough.x, S.trough.z, 0.4);
+    const mouth = this.toM(bk.obj, bk.mouth);
+    this.addWater('trough', mouth.x, Y + 13.4 / 64, mouth.z, 0.2, 0.2, 0, 0x1e3a44, true);
+    this.dyn.troughAt = { x: S.trough.x, y: Y + 13.4 / 64, z: S.trough.z };
+    this.dyn.bucket = { obj: bk.obj, water: bk.water, home: { x: S.trough.x, z: S.trough.z } };
+    this.boxAt(S.trough.x, S.trough.z, 0.15, 0.15, 0.3);
     const coal = lowRes(() => CP.coalHeap(33));
+    coal.obj.scale.setScalar(0.8);
     this.place(coal.obj, S.coal.x, S.coal.z, S.coal.yaw);
-    this.boxAt(S.coal.x, S.coal.z, 0.3, 0.24, 0.22, S.coal.yaw);
-    this.onRock(CMP.toolsLeaning(77), S.rack.x + 0.4, S.rack.z, 1, 0, 0, 0.9);
-    this.boxAt(S.rack.x + 0.05, S.rack.z, 0.12, 0.55, 1.1);
-    this.prop(KP.scrapPile(), -3.15, -3.3, 0.8, 0.3, 0.24, 0.25);
-    this.prop(KP.grindstone(), -0.05, -3.55, -Math.PI / 2, 0.38, 0.26, 0.7);
-    for (const [x, z, s] of [[-0.45, -5.48, 1], [-3.55, -4.42, 2]]) { this.place(CMP.oldSack(s, 0x4e4842), x, z, s); this.boxAt(x, z, 0.18, 0.16, 0.4, s); }
-    this.onRock(KP.horseshoes(), -2.0, -5.3, 0, 1, 1.35, 1.4);
-    // his leather apron, scorched, hung on its hook (cloth: it swings when you brush past)
-    const ah = this.onRock(KP.apronHook(247, { apron: false }), -1.25, -5.4, 0, 1, 0.42, 0.9);
-    this.drape('apron', ah.x + ah.nx * 0.07, Y + 0.42 + 55 / 64, ah.z + ah.nz * 0.07, ah.yaw, 0.36, 0.74, { nx: 6, ny: 9, pins: [[2, 0], [3, 0]], tex: { kind: 'apron', seed: 4 }, boxes: [[-1, -2, -1, 2, 1, -0.06]], floor: -(0.42 + 55 / 64) + 0.01, iters: 4, damping: 2.2, gust: 0.6 });
-    // an empty sack on a nail in the rock by the tools
-    const sk = this.rockAt(-3.3, -3.02, 1, 0, 1.0);
-    this.drape('sack', sk.x + 0.04, Y + 1.02, sk.z, sk.yaw, 0.34, 0.5, { nx: 6, ny: 7, pins: 'corners', slack: 1.04, tex: { kind: 'sacking', w: 28, h: 36, base: [138, 116, 80], seed: 9 }, boxes: [[-1, -2, -1, 2, 1, -0.03]], iters: 3, damping: 2.4, gust: 0.5 });
-    this.web(-0.35, 1.25, -5.55, -Math.PI / 4, 0.3, 7);
-    this.web(-4.15, 0.95, -1.15, Math.PI * 0.75, 0.26, 8);
-    const lan = HP.hangingOilLamp(0.45, 98);
-    this.place(lan.obj, -1.5, -4.35, 0, ceilAt(-1.5, -4.35) - 0.02);
-    this.web(-3.3, 1.2, -5.25, Math.PI / 4, 0.32, 1);
-    // the fire pit in its ring of stones, the tripod and the kettle (the cooking spot)
-    const ch = CP.cookHearth(23);
-    this.place(ch.obj, S.fire.x, S.fire.z, 0.4);
-    const fire = this.toM(ch.obj, ch.fire);
-    this.dyn.hearth = { flames: ch.flames, embers: ch.embers, fire, pot: this.toM(ch.obj, ch.pot), kettle: this.toM(ch.obj, ch.kettle) };
-    this.dyn.fireplace = { flames: ch.flames, fire };
-    this.boxAt(S.fire.x, S.fire.z, 0.36, 0.36, 0.28);
-    this.look({ x: S.fire.x, y: Y + 0.4, z: S.fire.z, r: 0.2, label: 'The kettle', lines: ['A black iron kettle on a hook, older than you. It sings when it boils, a bit flat.', 'Soot an inch thick on the pot. "Seasoning," says Old Star.'] });
-    // logs to sit on round the fire
-    for (const [x, z, yaw, seed] of [[-0.9, -1.25, 0, 85], [0.05, -2.15, Math.PI / 2, 86]]) {
-      const lg = CMP.logSeat(0.85, seed);
-      this.place(lg.obj, x, z, yaw);
-      const c = Math.abs(Math.cos(yaw)), s = Math.abs(Math.sin(yaw));
-      this.furn.push({ id: 'chair', obj: lg.obj, seats: [{ x: lg.seat.x, z: lg.seat.z, y: lg.seat.y, yaw: 0 }], box: [x - 0.42 * c - 0.15 * s, Y, z - 0.42 * s - 0.15 * c, x + 0.42 * c + 0.15 * s, Y + 0.3, z + 0.42 * s + 0.15 * c] });
-      this.boxAt(x, z, 0.42, 0.13, 0.26, yaw);
-    }
-    // the plank table, one wobbly stool and a crate for the other seat, herbs drying from the roof
-    const tb = CP.table(25);
-    this.place(tb.obj, S.table.x, S.table.z, S.table.yaw);
-    this.boxAt(S.table.x, S.table.z, 0.47, 0.27, 0.45);
-    const st = CP.stool(27);
-    const sx = S.table.x - 0.1, sz = S.table.z + 0.5;
-    this.place(st.obj, sx, sz, 0.35);
-    this.furn.push({ id: 'chair', obj: st.obj, seats: [{ x: 0, z: 0, y: st.seat.y, yaw: Math.PI }], box: [sx - 0.15, Y, sz - 0.15, sx + 0.15, Y + 0.32, sz + 0.15] });
-    this.boxAt(sx, sz, 0.14, 0.14, 0.3);
-    const cr = crate(4, {});
-    this.place(cr.obj, S.table.x - 0.72, S.table.z - 0.05, 0.3);
-    this.boxAt(S.table.x - 0.72, S.table.z - 0.05, 0.2, 0.2, 0.32, 0.3);
-    this.place(CP.herbLine(1.0, 31), S.table.x, S.table.z - 0.1, 0.1, ceilAt(S.table.x, S.table.z) - 0.12);
-    // stores along the south rock: crates, a barrel of water, sacks, the food crate
-    for (const [x, z, k, s] of [[-3.55, -0.82, 'crate', 1], [-3.0, -0.7, 'barrel', 3], [-1.62, -0.66, 'crate', 2], [-1.18, -0.62, 'sack', 5]]) {
-      const o = k === 'crate' ? crate(s, { open: s === 2 }) : k === 'barrel' ? barrel(s, { fill: 'water' }) : { obj: CMP.oldSack(s, 0x8a7a58) };
-      this.place(o.obj, x, z, s * 0.7);
-      this.boxAt(x, z, k === 'sack' ? 0.17 : 0.22, k === 'sack' ? 0.17 : 0.22, k === 'crate' ? 0.4 : 0.5, s * 0.7);
-    }
-    // an old tarp thrown over the crate and the water barrel beside it (cloth: it lifts in the draught)
-    {
-      const yw = 0.7, c = Math.cos(yw), sn = Math.sin(yw), dx = -3.0 + 3.55, dz = -0.7 + 0.82;
-      this.tarpOver(-3.55, -0.82, yw, [[0, 0, 0.22, 0.22, 0.4], [dx * c - dz * sn, dx * sn + dz * c, 0.22, 0.22, 0.5]], 0.72, 0.66, [4, 4], 3);
-    }
-    this.look({ x: -1.62, y: Y + 0.45, z: -0.66, r: 0.28, label: 'The food crate', larder: true, special: true });
-    // his pans on pegs over the stores, firewood stacked by the fire
-    this.onRock(CMP.potHooks(0.8, 101), -1.4, -0.75, 0, -1, 0.62, 1.1);
-    const ls = CP.logStack(35);
-    this.place(ls.obj, 0.36, -0.74, Math.PI + 0.06);
-    this.boxAt(0.36, -0.74, 0.37, 0.18, 0.47, Math.PI + 0.06);
-    const sh = CP.shelf(0.9, 29);
-    this.onRock(sh.obj ?? sh, -2.55, -0.6, 0, -1, 0.82, 1.2);
-    this.stubs(-3.0, -0.7, Y + 0.5, 2, 76);
-    this.web(-3.9, 1.05, -0.62, -Math.PI * 0.75, 0.28, 2);
-    // the spring in the side nook: a crack in the rock, a slick of moss, a basin of stones
-    const sp = CMP.springBasin(81);
-    const spp = this.onRock(sp.obj, S.sink.x - 0.2, S.sink.z, 1, 0, 0, 0.7);
-    const bw = this.toM(sp.obj, sp.basin);
-    this.addWater('pool', bw.x, Y + 0.05, bw.z, sp.water.r * 2 * T, sp.water.r * 2 * T, 0, 0x1e3a40, true);
-    this.dyn.pump = this.toM(sp.obj, sp.spout);
-    this.drips.push({ x: this.dyn.pump.x, z: this.dyn.pump.z, y: this.dyn.pump.y - 0.01, t: 1, every: 1.6, pool: true });
-    this.boxAt(bw.x, bw.z, 0.3, 0.3, 0.12);
-    void spp;
-    const sl = HP.hangingOilLamp(0.35, 95);
-    this.place(sl.obj, -4.25, -1.75, 0, ceilAt(-4.25, -1.75) - 0.02);
-    this.look({ x: bw.x, y: Y + 0.3, z: bw.z, r: 0.3, label: 'The spring', lines: ['Water seeping out of the rock, cold enough to hurt your teeth. Old Star\'s drunk from it for forty years.', 'A tin cup on a string, hung on a nail in the rock. Rust on the nail, none on the cup.'] });
-  }
-
-  // ------------------------------------------------------------ the camp gone to ruin
-  /** Fallen planks, a collapsed lean-to against the rock, rocks down from the roof (all solid). */
-  buildRuin() {
-    const inside = (x, z, m = 0.45) => hollowSD(x, z) < -m;
-    for (const [x, z, yaw, w, d, seed] of [[0.62, -5.0, 0.4, 0.9, 0.55, 93], [8.75, -5.35, 1.2, 1.0, 0.6, 94], [-4.95, -0.95, 2.4, 0.8, 0.5, 97]]) {
-      if (!inside(x, z)) continue;
-      const p = lowRes(() => CMP.brokenPlanks(w, d, seed));
-      this.place(p.obj, x, z, yaw);
-      this.boxAt(x, z, p.hw * 0.8, p.hd * 0.8, p.h, yaw);
-    }
-    for (const [x, z, nx, nz, seed] of [[-5.1, -4.55, 1, 0, 95], [9.0, -1.2, -1, 0, 96]]) {
-      if (!inside(x, z, 0.2)) continue;
-      const r = lowRes(() => CMP.leanToRuin(1.3, 1.25, seed));
-      const at = this.onRock(r.obj, x, z, nx, nz, 0, 0.6);
-      // (its posts and beam: a box along the rock)
-      this.boxAt(at.x + nx * 0.35, at.z + nz * 0.35, r.hw, 0.35, 1.0, at.yaw);
-      // the rag of canvas still snagged on a nail (cloth, hung by one corner)
-      this.drape('rag', at.x + nx * 0.42 + nz * 0.2, Y + 0.98, at.z + nz * 0.42 - nx * 0.2, at.yaw + 0.25, 0.34, 0.46, { nx: 5, ny: 6, pins: [[0, 0], [1, 0]], tex: { kind: 'rag', seed }, floor: -0.97, iters: 3, damping: 1.9, gust: 1.2 });
-      this.look({ x: at.x + nx * 0.4, y: Y + 0.6, z: at.z + nz * 0.4, r: 0.45, label: 'A fallen lean-to', lines: ['A lean-to that leaned too far. The beam came down one winter and nobody put it back.', 'A rag of canvas still snagged on a nail. Old Star says he\'ll get round to it.'] });
-    }
-    for (const [x, z, sz, seed] of [[1.05, -0.78, 11, 31], [8.6, -0.62, 9, 32], [-1.95, -5.5, 8, 33], [4.75, -2.55, 7, 34], [-5.25, -3.4, 10, 35]]) {
-      if (!inside(x, z, 0.25)) continue;
-      const st = lowRes(() => rubble(seed, sz / 8, sz / 11));
-      this.place(st.obj, x, z, seed);
-      this.boxAt(x, z, sz / 32 * 0.8, sz / 44 * 0.8, 0.14, seed);
-    }
-  }
-
-  // ------------------------------------------------------------ the east: his shack, the hole, the lift, the way out
-  buildEast() {
-    const S = SPOTS, K = SHACK;
-    // the shack: warped grey planks and a patched tarp against the north rock
-    const sk = CMP.shack({ W: K.W, D: K.D, Hf: K.Hf, Hb: K.Hb, dc: K.dc, dw: K.dw, wc: 0.72, ww: 0.42, seed: 71 });
-    this.place(sk.obj, K.x, K.z, 0);
-    for (const [a, b, c, d] of sk.walls) this.boxes.push([K.x + a, Y, K.z + b, K.x + c, Y + 1.8, K.z + d]);
-    this.boxes.push([K.x - K.W / 2 - 0.1, Y + K.Hf - 0.05, K.z - K.D - 0.1, K.x + K.W / 2 + 0.1, Y + K.Hb + 0.2, K.z + 0.3]); // its roof
-    const hook = this.toM(sk.obj, sk.hook);
-    const lan = lanternOnHook(3);
-    lan.obj.scale.setScalar(0.9);
-    this.place(lan.obj, hook.x, K.z + 0.05, 0, Y + 0.72);
-    this.look({ x: K.x, y: Y + 1.2, z: K.z + 0.05, r: 0.5, label: 'Old Star\'s shack', lines: ['Planks gone grey, nailed over planks gone greyer. Every winter he says he\'ll build a proper house.', 'A tarp for a roof, patched with sacks, a shirt and what looks like a flag. It keeps the drips off. Mostly.'] });
-    // inside: his cot along the back wall, his armchair, a crate with a candle, the gramophone, books
-    const cot = CP.cot(19);
-    this.place(cot.obj, S.cot.x, S.cot.z, 0);
-    this.dyn.cot = { obj: cot.obj, lie: cot.lie };
-    this.boxAt(S.cot.x, S.cot.z, 0.56, 0.28, 0.32);
-    // the quilt's end, hanging off the cot's side to the floor (cloth)
-    this.drape('quilt', S.cot.x, Y + 0.33, S.cot.z + 0.29, 0, 0.92, 0.3, { nx: 9, ny: 4, tex: { kind: 'quilt', seed: 19 }, boxes: [[-0.2, -1, -0.7, 1.2, 0.02, -0.01]], floor: -0.33 + 0.012, slack: 1.03, iters: 3, damping: 2.4, gust: 0.4 });
-    this.look({ x: S.cot.x, y: Y + 0.35, z: S.cot.z, r: 0.35, label: 'Old Star\'s cot', lines: ['A cot that sags in the middle like a hammock. The quilt is more darns than quilt.', 'A red nightcap on the pillow, and a moth hole in the nightcap.'] });
-    const ac = buildFurniture('armchair', {});
-    const ay = Math.atan2(K.x + K.dc - S.armchair.x, K.z + 0.4 - S.armchair.z);
-    this.place(ac.obj, S.armchair.x, S.armchair.z, ay);
-    this.furn.push({ id: 'armchair', obj: ac.obj, seats: ac.seats, box: null });
-    this.boxAt(S.armchair.x, S.armchair.z, 0.24, 0.24, 0.5, ay);
-    const ct = CMP.crateTable(89);
-    this.place(ct.obj, K.x + 0.95, K.z - 1.05, 0.2);
-    this.boxAt(K.x + 0.95, K.z - 1.05, 0.22, 0.22, 0.35, 0.2);
-    const gr = KP.gramophone();
-    gr.obj.scale.setScalar(0.62);
-    this.place(gr.obj, K.x + 0.95, K.z - 1.05, -0.4, Y + 0.35);
-    this.gramophone = this.toM(gr.obj, gr.horn);
-    this.look({ x: K.x + 0.95, y: Y + 0.65, z: K.z - 1.05, r: 0.25, label: 'Wind the gramophone', gramophone: true, special: true });
-    this.prop(KP.bookStack(6, 205), S.books.x, S.books.z, 0.4, 0.2, 0.18, 0.3);
-    this.prop(KP.bookStack(4, 206), S.books.x + 0.05, S.books.z - 0.38, 1.2, 0.16, 0.14, 0.2);
-    this.look({ x: S.books.x, y: Y + 0.3, z: S.books.z, r: 0.3, label: 'Browse the books', books: true, aside: 'books' });
-    this.stubs(S.cot.x - 0.62, S.cot.z + 0.05, Y, 3, 74);
-    this.prop(KP.slippers(), 2.28, -4.66, 0.35, 0.18, 0.17, 0.08);
-    this.onFace(CMP.framedPhoto(103), S.cot.x + 0.1, K.z - K.D + 0.07, 0, 1, 0.98);
-    this.look({ x: S.cot.x + 0.1, y: Y + 1.1, z: K.z - K.D + 0.1, r: 0.16, label: 'The photo over the cot', lines: ['Two moles squinting into the sun, a long time ago. One of them has Old Star\'s ears and a hat.', 'The other is laughing at something off the edge of the picture. A crack runs across the glass.'] });
-    this.web(K.x - K.W / 2 + 0.05, K.Hb - 0.35, K.z - K.D + 0.05, Math.PI / 4, 0.26, 3);
-    this.web(K.x + K.W / 2 - 0.05, K.Hb - 0.4, K.z - K.D + 0.05, -Math.PI / 4, 0.24, 4);
-    // his notes on the shack's east wall, outside; the clock on a crate by the door; straw, a log, the drying line
-    this.buildBoard();
-    const ct2 = CMP.crateTable(90);
-    this.place(ct2.obj, S.clock.x, S.clock.z, -0.3);
-    this.boxAt(S.clock.x, S.clock.z, 0.22, 0.22, 0.35, -0.3);
-    this.candleGlow(this.toM(ct2.obj, ct2.flame), 0.18);
-    this.place(CMP.alarmClock(87), S.clock.x - 0.08, S.clock.z + 0.06, -0.5, Y + 0.35);
-    this.look({ x: S.clock.x, y: Y + 0.45, z: S.clock.z, r: 0.22, label: 'The alarm clock', clock: true });
-    this.place(CMP.strawPile(0.8, 0.5, 79), K.x - 1.05, K.z + 0.45, 0.3);
-    this.boxAt(K.x - 1.05, K.z + 0.45, 0.38, 0.24, 0.16, 0.3);
-    const dl = CMP.dryingLine(1.5, 83);
-    this.place(dl.obj, K.x - K.W / 2 - 0.62, K.z + 0.25, 0.35, Y + 1.32);
-    // (the washing on it is real cloth, hung by the scene: campCloth.js)
-    this.laundry = dl.hang.map((q) => { const a = this.toM(dl.obj, { x: q.x0, y: q.y, z: 0.03 }), b = this.toM(dl.obj, { x: q.x1, y: q.y, z: 0.03 }); return { a: { x: a.x, y: a.y, z: a.z }, b: { x: b.x, y: b.y, z: b.z }, kind: q.kind, yaw: 0.35 }; });
-    this.prop(KP.logBasket(), K.x + K.W / 2 + 0.45, K.z - 1.4, 0.3, 0.27, 0.2, 0.3);
-    // a bench of one plank on two stumps under the window, a wash tub by the drying line
-    const bn = CMP.plankBench(0.82, 105);
-    const bx = K.x + 0.78, bz = K.z + 0.24;
-    this.place(bn.obj, bx, bz, 0);
-    this.furn.push({ id: 'chair', obj: bn.obj, seats: [{ x: 0, z: 0, y: bn.seat.y, yaw: 0 }], box: [bx - 0.43, Y, bz - 0.17, bx + 0.43, Y + 0.38, bz + 0.17] });
-    this.boxAt(bx, bz, 0.43, 0.17, 0.36);
-    this.prop(lowRes(() => CMP.washTub(107)), 0.64, -4.42, 0.5, 0.3, 0.3, 0.3);
-    // worn flagstones from the steps to his door
-    for (const [x, z, w, d, yaw, seed] of [[2.5, -1.28, 0.42, 0.34, 0.2, 1], [2.36, -1.8, 0.38, 0.32, -0.3, 2], [2.22, -2.32, 0.44, 0.3, 0.5, 3], [2.08, -2.84, 0.36, 0.34, 0.1, 4], [2.0, -3.36, 0.42, 0.32, -0.2, 5], [1.36, -2.3, 0.34, 0.3, 0.7, 6], [0.78, -2.12, 0.38, 0.3, 0.3, 7]]) {
-      this.place(CMP.flagstone(w, d, 109 + seed), x, z, yaw, Y - 0.018);
-    }
-    // what came down with you, under the hole
-    const db = lowRes(() => RP.fallDebris(65));
-    db.obj.scale.setScalar(0.55);
-    this.place(db.obj, S.rubble.x, S.rubble.z, 0.3, Y + 0.01);
-    this.glints = db.glints.map((p) => { const w = this.toM(db.obj, p); w.y = Y + 0.03; return w; });
-    this.dyn.debris = db.obj;
-    this.boxAt(S.rubble.x, S.rubble.z, 0.3, 0.3, 0.12);
-    // his slate of the million, propped against the south rock over a crate of odds
-    const tb = HP.tallyBoard();
-    const tp = this.onRock(tb.obj, S.dream.x, S.dream.z - 0.3, 0, -1, 0.4, 1.0);
-    this.look({ x: tp.x, y: Y + 0.85, z: tp.z - 0.05, r: 0.45, label: 'The slate on the rock', lines: ['"THE WAY UP", chalked over a long thermometer to a million. It reached nearly halfway once.', 'Then it was rubbed out, right down to the bottom. "LONG STORY", says the chalk.', 'Tally marks down the side. Years, by the look of them. Lots of years.'], aside: 'dream' });
-    const oc = crate(7, {});
-    this.place(oc.obj, S.dream.x, S.dream.z - 0.12, 0.2);
-    this.boxAt(S.dream.x, S.dream.z - 0.12, 0.22, 0.22, 0.38, 0.2);
-    // the east: his chest, the coal cart by the lift, the Miners' Board on its posts, the suitcase by the door
+    this.boxAt(S.coal.x, S.coal.z, 0.24, 0.2, 0.18, S.coal.yaw);
+    // an old tarp half over the coal (to keep the drips off it; cloth: it lifts in the draught)
+    this.tarpOver(S.coal.x + 0.06, S.coal.z + 0.02, S.coal.yaw, [[0, 0, 0.22, 0.17, 0.16]], 0.6, 0.5, [2, 2], 5);
+    // old shoring timbers along the west rock, his tools on pegs between the posts, his apron on a nail
+    const sh = this.rockAt(2.9, -2.33, 1, 0, 1.0);
+    this.place(HW.shoring(1.25, Math.min(1.5, ceilAt(2.7, -2.33) - Y - 0.04), 307), sh.x + 0.02, -2.33, Math.PI / 2, Y);
+    this.boxes.push([sh.x - 0.1, Y, -2.33 - 0.66, sh.x + 0.18, Y + 1.5, -2.33 - 0.5], [sh.x - 0.1, Y, -2.33 + 0.5, sh.x + 0.18, Y + 1.5, -2.33 + 0.66]);
+    this.onRock(HW.toolPegs(317), 2.9, -2.33, 1, 0, 0.42, 0.9);
+    const ah = this.onRock(KP.apronHook(247, { apron: false }), 2.9, -3.18, 1, 0, 0.42, 0.9);
+    this.drape('apron', ah.x + ah.nx * 0.07, Y + 0.42 + 55 / 64, ah.z + ah.nz * 0.07, ah.yaw, 0.36, 0.7, { nx: 6, ny: 9, pins: [[2, 0], [3, 0]], tex: { kind: 'apron', seed: 4 }, boxes: [[-1, -2, -1, 2, 1, -0.06]], floor: -(0.42 + 55 / 64) + 0.01, iters: 4, damping: 2.2, gust: 0.6 });
+    this.web(2.62, 1.1, -3.6, Math.PI / 4, 0.24, 1);
+    // his grey fleece along the west rock (where he sleeps: the forge keeps that corner warm)
+    const pl = HW.pelt(303);
+    this.place(pl.obj, S.cot.x, S.cot.z, S.cot.yaw);
+    this.dyn.cot = { obj: pl.obj, lie: pl.lie, foot: pl.foot };
+    this.look({ x: S.cot.x, y: Y + 0.1, z: S.cot.z, r: 0.3, label: 'Old Star\'s fleece', lines: ['A grey fleece gone flat and yellow at the edges, a cushion with a patch. Old Star sleeps here, by the forge.', 'He gave you his bedroll. He says the fleece is warmer anyway. It isn\'t.'] });
+    // his trunk in the south-west corner, a stack of books beside it, candle stubs on the rock
     const chs = TP.lootChest(17);
     const cg = group(chs.obj, chs.lid, chs.loot);
     this.place(cg, S.chest.x, S.chest.z, S.chest.yaw, null, this.room);
@@ -710,69 +479,75 @@ export class StarHouse {
     cg.traverse((m) => { m.userData.noBatch = true; });
     this.liveBake.push(cg);
     this.boxAt(S.chest.x, S.chest.z, 0.32, 0.2, 0.36, S.chest.yaw);
-    const c = lowRes(() => RP.mineCart(57));
-    this.place(c.obj, S.cart.x, S.cart.z, Math.PI / 2, Y);
-    this.boxAt(S.cart.x, S.cart.z, 0.36, 0.27, 0.6, Math.PI / 2);
-    const mb = TP.minersBoard(49);
-    const mp = this.onFace(mb, S.miners.x, S.miners.z, 1, 0, 0.5);
-    this.place(CMP.boardPosts(1.05, 1.42, 91), S.miners.x - 0.03, S.miners.z, Math.PI / 2);
-    for (const dz of [-0.52, 0.52]) this.boxes.push([S.miners.x - 0.08, Y, S.miners.z + dz - 0.05, S.miners.x + 0.02, Y + 1.4, S.miners.z + dz + 0.05]);
-    this.minersAt = { x: mp.x + 0.04, z: mp.z, y: Y + 0.5, nx: 1 };
-    const su = HP.suitcase();
-    this.place(su.obj, S.suitcase.x, S.suitcase.z, 0.12);
-    this.boxAt(S.suitcase.x, S.suitcase.z, 0.36, 0.16, 0.4, 0.12);
-    this.look({ x: S.suitcase.x, y: Y + 0.3, z: S.suitcase.z, r: 0.3, label: 'The old suitcase', lines: ['A leather suitcase, packed and strapped. A SURFACE EXPRESS label on the side. Dust on the hat.', 'Packed for a trip that never happened. Nobody has moved it in years. Nobody wants to.'], aside: 'suitcase' });
-    const dl2 = lanternOnHook(4);
-    this.onRock(dl2.obj, FRONT.x - 0.62, FRONT.z + 0.25, 0, 1, 0.62, 1.1);
-    const bs = HP.bootsAndStick();
-    this.place(bs.obj, FRONT.x + 0.72, FRONT.z + 0.32, 0.2);
-    this.boxAt(FRONT.x + 0.72, FRONT.z + 0.32, 0.16, 0.12, 0.35, 0.2);
-    // the way to Deep Town, painted on a board by someone long ago; cobwebs across the old arch, stones down from the cave-in
-    this.onRock(CMP.townSign(113).obj, FRONT.x + 0.84, FRONT.z + 0.3, 0, 1, 1.1, 1.25);
-    this.web(FRONT.x - 0.5, 0.92, FRONT.z + 0.1, 0, 0.26, 7);
-    this.web(FRONT.x + 0.5, 0.98, FRONT.z + 0.1, Math.PI, 0.2, 8);
-    this.place(CMP.fallenStones(6, 0.7, 0.32, 115), FRONT.x - 0.05, FRONT.z + 0.68, 0.1);
-    this.place(CMP.fallenStones(3, 0.3, 0.25, 117), FRONT.x - 0.85, FRONT.z + 0.55, 0.6);
-    this.buildRuin();
-    for (const [x, z, k, s] of [[5.35, -1.25, 'barrel', 6], [7.15, -0.88, 'crate', 8], [7.28, -1.32, 'crate', 9], [5.1, -2.3, 'sack', 6]]) {
-      const o = k === 'crate' ? crate(s, {}) : k === 'barrel' ? barrel(s, { fill: null }) : { obj: CMP.oldSack(s + 3, 0x7a6e56) };
-      this.place(o.obj, x, z, s * 0.7);
-      this.boxAt(x, z, k === 'sack' ? 0.17 : 0.22, k === 'sack' ? 0.17 : 0.22, k === 'crate' ? 0.4 : 0.5, s * 0.7);
-    }
-    // a tarp over the two crates by the way out
-    this.tarpOver(7.215, -1.1, 5.6, [[0.0885, 0.2117, 0.22, 0.22, 0.4], [-0.0885, -0.2117, 0.22, 0.22, 0.4]], 0.78, 1.04, [5, 6], 7);
-    this.prop(lowRes(() => CMP.ropeCoil(111)), 7.32, -4.52, -0.4, 0.33, 0.3, 0.18);
-    const ll = HP.hangingOilLamp(0.5, 96);
-    this.place(ll.obj, 6.55, -2.25, 0, ceilAt(6.55, -2.25) - 0.02);
-    this.web(SHAFT.x0 - 0.05, 1.45, SHAFT.z0 - 0.32, -Math.PI / 2, 0.3, 5);
-    this.web(4.4, 1.15, -0.45, Math.PI, 0.26, 6);
+    this.prop(KP.bookStack(5, 205), 3.22, -1.42, 0.5, 0.15, 0.13, 0.24);
+    this.look({ x: 3.22, y: Y + 0.22, z: -1.42, r: 0.2, label: 'Browse the books', books: true, aside: 'books' });
+    this.stubs(3.0, -1.72, Y, 2, 74);
+    this.web(2.95, 1.0, -1.05, -Math.PI * 0.75, 0.24, 2);
   }
 
-  /** The notes board on the shack's east wall (outside, facing east). */
+  // ------------------------------------------------------------ the east: the fire pit, the notes, the slate, the hole
+  buildEast() {
+    const S = SPOTS;
+    // the fire pit in its ring of stones, the tripod, the pot and the kettle (the cooking spot)
+    const ch = CP.cookHearth(23);
+    this.place(ch.obj, S.fire.x, S.fire.z, 0.4);
+    const fire = this.toM(ch.obj, ch.fire);
+    this.dyn.hearth = { flames: ch.flames, embers: ch.embers, fire, pot: this.toM(ch.obj, ch.pot), kettle: this.toM(ch.obj, ch.kettle) };
+    this.dyn.fireplace = { flames: ch.flames, fire };
+    this.boxAt(S.fire.x, S.fire.z, 0.36, 0.36, 0.28);
+    this.look({ x: S.fire.x, y: Y + 0.4, z: S.fire.z, r: 0.2, label: 'The kettle', lines: ['A black iron kettle on a hook, older than you. It sings when it boils, a bit flat.', 'Soot an inch thick on the pot. "Seasoning," says Old Star.'] });
+    // his stump by the fire (he sits there of an evening, with his pipe)
+    const st = HW.stumpSeat(305);
+    const ay = Math.atan2(S.fire.x - S.armchair.x, S.fire.z - S.armchair.z);
+    this.place(st.obj, S.armchair.x, S.armchair.z, ay);
+    this.furn.push({ id: 'armchair', obj: st.obj, seats: st.seats, box: null });
+    this.boxAt(S.armchair.x, S.armchair.z, 0.22, 0.22, 0.42, ay);
+    // the old lantern hanging over the middle of the hollow
+    const lan = HP.hangingOilLamp(Math.max(0.2, ceilAt(5.3, -2.6) - Y - 1.5), 98);
+    this.place(lan.obj, 5.3, -2.6, 0, ceilAt(5.3, -2.6) - 0.02);
+    // his notes nailed to the north rock
+    this.buildBoard();
+    // the slate on a crate in the north-east corner: his Miners' Board
+    const sl = HW.slateOnCrate(319);
+    this.place(sl.obj, S.miners.x, S.miners.z, S.miners.yaw);
+    this.boxAt(S.miners.x, S.miners.z, 0.2, 0.2, 0.62, S.miners.yaw);
+    const f = this.toM(sl.obj, sl.face);
+    this.minersAt = { x: f.x, y: Y + 0.32, z: f.z, nx: Math.sin(S.miners.yaw), nz: Math.cos(S.miners.yaw), slate: true };
+    this.look({ x: S.dream.x, y: Y + 1.15, z: S.dream.z + 0.1, r: 0.32, label: 'The chalk on the rock', lines: ['"THE WAY UP", chalked on the rock over a thermometer to a million. It reached nearly halfway once.', 'Then it was rubbed out, right down to the bottom. Tally marks beside it. Years, by the look of them. Lots of years.'], aside: 'dream' });
+    // the way to Deep Town: a lantern on a hook by the old door, a painted board, cobwebs, stones down from the cave-in
+    const dl = lanternOnHook(4);
+    this.onRock(dl.obj, FRONT.x + 0.62, FRONT.z + 0.3, 0, 1, 0.62, 1.1);
+    this.onRock(CMP.townSign(113).obj, FRONT.x + 0.66, FRONT.z + 0.3, 0, 1, 1.28, 1.35);
+    this.web(FRONT.x - 0.5, 0.92, FRONT.z + 0.1, 0, 0.24, 7);
+    this.place(CMP.fallenStones(5, 0.6, 0.3, 115), FRONT.x - 0.05, FRONT.z + 0.62, 0.1);
+    // what came down with you, under the hole
+    const db = lowRes(() => RP.fallDebris(65));
+    db.obj.scale.setScalar(0.45);
+    this.place(db.obj, S.rubble.x, S.rubble.z, 0.3, Y + 0.01);
+    this.glints = db.glints.map((p) => { const w = this.toM(db.obj, p); w.y = Y + 0.03; return w; });
+    this.dyn.debris = db.obj;
+    this.boxAt(S.rubble.x, S.rubble.z, 0.24, 0.24, 0.1);
+    // an old prop post holding up a cracked slab of roof by the lift
+    this.prop(HW.propPost(ceilAt(7.55, -3.32) - Y - 0.02, 309), 7.55, -3.32, 0.2, 0.1, 0.1, 1.6);
+    this.web(SHAFT.x0 - 0.05, 1.3, SHAFT.z0 - 0.3, -Math.PI / 2, 0.26, 5);
+    this.web(6.95, 0.95, -0.92, Math.PI, 0.22, 6);
+  }
+
+  /** His notes nailed to the north rock (facing south into the hollow). */
   buildBoard() {
     const S = SPOTS;
-    const board = TP.notesBoard(Math.max(3, Math.min(10, this.opts.notes ?? 8)), 13);
-    const bp = this.onFace(board.obj, S.board.x, S.board.z, 1, 0, 0.5);
+    const board = HW.rockNotes(Math.max(3, Math.min(7, this.opts.notes ?? 6)), 315);
+    const bp = this.onRock(board.obj, S.board.x, S.board.z + 0.5, 0, 1, 0.55, 0.9, 0.005);
     this.boardObj = board.obj;
     this.dyn.board = board;
     this.notePins = board.notes.map((q) => this.toM(board.obj, { x: q.x, y: q.y, z: 0.1 }));
-    this.boardAt = { x: bp.x, z: bp.z, y: Y + 0.5, w: (board.w ?? 1.6) * T, h: (board.h ?? 1.2) * T, nx: 1 };
-    this.light({ kind: 'notes', x: bp.x + 0.5, y: Y + 1.3, z: bp.z, color: 0xffd8a0, intensity: 0, real: false, power: 0.3, radius: 1.2 });
+    this.boardAt = { x: bp.x, z: bp.z, y: Y + 0.55, w: board.w * T, h: board.h * T, nx: 0, nz: 1 };
+    this.light({ kind: 'notes', x: bp.x, y: Y + 1.2, z: bp.z + 0.5, color: 0xffd8a0, intensity: 0, real: false, power: 0.25, radius: 1.1 });
   }
 
-  // ------------------------------------------------------------ the ways in and out, the walls' collision
+  // ------------------------------------------------------------ the way out, your corner, the alcoves, the walls' collision
   buildWays() {
-    // the worn steps up the rock passage to your nook, and the doorway's old frame
-    const steps = RP.wornSteps(64, 2, Math.round(STEP_H * 64), Math.round(STEP_D * 64), 43);
-    this.place(steps.obj, ARCH.x, HALL.z1 - 2 * STEP_D, Math.PI, Y);
-    const df = HP.doorFrame(ARCH.hw * 2, ARCH.h - Y, -HALL.z1, 7, { roundTop: true, step: -Y });
-    this.place(df, ARCH.x, HALL.z1 / 2, 0, Y);
-    // the rod the doorway's curtain hangs from (the curtain is cloth: campCloth.js)
-    this.rod(ARCH.x - ARCH.hw + 0.005, ARCH.x + ARCH.hw - 0.005, ARCH.h - ARCH.hw - 0.01, -0.035);
-    // a lantern on a hook over the steps (its light: campLights)
-    const pl = lanternOnHook(9);
-    this.place(pl.obj, PASS_LAMP.x, PASS_LAMP.z, Math.PI, Y + PASS_LAMP.y);
-    this.boxAt(PASS_LAMP.x, PASS_LAMP.z - 0.15, 0.08, 0.15, 0.56, 0, Y + PASS_LAMP.y);
+    const set = this.nookSet;
     // the old door to Deep Town in its tunnel mouth: choked with rubble until it's dug
     const P = FRONT;
     const door = townDoor(!!this.opts.doorOpen, 4);
@@ -788,10 +563,48 @@ export class StarHouse {
       this.boxes.push([P.x - 0.55, Y, P.z, P.x + 0.55, Y + 0.5, P.z + 0.4]);
     } else this.light({ kind: 'door', x: P.x, y: Y + 0.95, z: P.z + 0.15, color: 0xffd090, intensity: 0.8, distance: 2.8, flicker: 0.08, halo: 0.25, haloOpacity: 0.4, priority: 3, power: 0.4, radius: 1.6 });
     this.boxes.push([P.x - 0.6, Y, P.z - 0.6, P.x + 0.6, Y + 1.6, P.z - 0.02]); // the door itself and the tunnel behind
-    // the steps' collision, the floor, the rock walls
-    for (let i = 1; i <= 2; i++) this.boxes.push([STAIRS.x0, Y, HALL.z1 - i * STEP_D, STAIRS.x1, -i * STEP_H, HALL.z1 - (i - 1) * STEP_D]);
-    this.boxes.push([HALL.x0, Y - 1, HALL.z0, SHAFT.x0, Y, HALL.z1 + 0.02]);
-    this.boxes.push(...caveBoxes());
+    // your corner: the bedroll on the floor, the flat stone at its head (your notebook), your trunk;
+    // in the hollow along the south rock until your sleeping alcove is dug, then in there
+    const inNook = set.has('nook_bed');
+    const at = inNook ? NOOK_BED : SPOTS;
+    const br = HW.bedroll(301);
+    this.place(br.obj, at.bed.x, at.bed.z, at.bed.yaw);
+    const c = Math.abs(Math.cos(at.bed.yaw)), s = Math.abs(Math.sin(at.bed.yaw));
+    this.boxes.push([at.bed.x - br.hw * c - br.hd * s, Y, at.bed.z - br.hw * s - br.hd * c, at.bed.x + br.hw * c + br.hd * s, Y + 0.12, at.bed.z + br.hw * s + br.hd * c]);
+    this.shadowSpots.push({ x: at.bed.x, z: at.bed.z, w: (br.hw * c + br.hd * s) * 2 + 0.1, h: (br.hw * s + br.hd * c) * 2 + 0.1 });
+    this.dyn.bedroll = { obj: br.obj, lie: br.lie, head: br.head, foot: br.foot, x: at.bed.x, z: at.bed.z, yaw: at.bed.yaw, inNook };
+    const lg = HW.stoneLedge(311);
+    this.place(lg.obj, at.ledge.x, at.ledge.z, at.ledge.yaw);
+    this.boxAt(at.ledge.x, at.ledge.z, 0.23, 0.17, 0.3, at.ledge.yaw);
+    const fl = this.toM(lg.obj, lg.flame);
+    this.light({ kind: 'candle', x: fl.x, y: fl.y, z: fl.z, color: 0xffc070, intensity: 0.45, distance: 1.6, flicker: 0.2, halo: 0.08, haloOpacity: 0.6, priority: 3, power: 0.3, radius: 1.1, real: true });
+    const tr = HW.tinTrunk(313);
+    this.place(tr, at.mine.x, at.mine.z, at.mine.yaw);
+    this.boxAt(at.mine.x, at.mine.z, 0.24, 0.16, 0.3, at.mine.yaw);
+    this.mine = { ledge: { x: at.ledge.x, z: at.ledge.z, yaw: at.ledge.yaw, top: Y + lg.top * T }, trunk: { x: at.mine.x, z: at.mine.z, yaw: at.mine.yaw } };
+    // the alcoves you've dug: a lantern on a hook in each, a curtain of sacking across your own
+    for (const l of nookLanterns(set)) {
+      const h = lanternOnHook(9);
+      this.place(h.obj, l.wx, l.wz, Math.atan2(l.nx, l.nz), Y + 0.92);
+    }
+    if (inNook) {
+      const A = ROOM_CURTAINS.arch, pw = A.hw - 0.04;
+      this.rod(A.x - A.hw, A.x + A.hw, A.y + 0.02, A.z);
+      // one old sack split open and nailed up, pulled aside to the left (lamplight past it)
+      const cw = pw * 1.15;
+      this.drape('curtain', A.x - A.hw + cw / 2, A.y, A.z, 0, cw, A.y - 0.03, { nx: 7, ny: 11, tex: { kind: 'sacking', w: 26, h: 40, base: [128, 104, 76], seed: 41, holes: false }, floor: -A.y + 0.012, iters: 4, damping: 1.6, slack: 1.04 });
+    }
+    // the soft rock still to dig: loose earth heaped under the chalk (the chalk is on the rock itself)
+    this.digAt = [];
+    for (const n of NOOKS) {
+      if (!diggable(n.id, set)) continue;
+      const r = this.rockAt(n.dig.x - n.dig.nx * 0.6, n.dig.z - n.dig.nz * 0.6, -n.dig.nx, -n.dig.nz, 0.5);
+      this.place(HW.looseEarth(0.62, 321 + n.id.length), r.x - n.dig.nx * 0.03, r.z - n.dig.nz * 0.03, Math.atan2(-n.dig.nx, -n.dig.nz), Y);
+      this.digAt.push({ id: n.id, x: r.x, z: r.z, nx: -n.dig.nx, nz: -n.dig.nz });
+    }
+    // the floor and the rock walls
+    this.boxes.push([HALL.x0 - 8, Y - 1, HALL.z0 - 2, HALL.x1 + 4, Y, 6]);
+    this.boxes.push(...caveBoxes(set));
   }
 
   // ------------------------------------------------------------ water
