@@ -39,14 +39,14 @@ export async function nameRaptor(game, e, taken = []) {
   if (pool.length < 3) pool.push('Nib II', 'Pip II', 'Scree II');
   const cv = game?.convo;
   if (!cv?.play) return pool[0];
-  const sp = raptorSpeaker(e, '');
+  const sp = raptorSpeaker(e, 'Lone Raptor');
   try {
     // (close on its face: in a dark cavern a shot over your shoulder is mostly your own silhouette)
-    await cv.play({ who: sp, name: '', keep: true, camera: 'close', lines: [{ text: '<i>It noses your paw, then tilts its head and waits.</i> <w>Chrrp?</w>', mood: 'happy', wait: true, camera: 'close' }] });
+    await cv.play({ who: sp, name: 'Lone Raptor', keep: true, camera: 'close', lines: [{ text: '<i>It noses your paw, then tilts its head and waits.</i> <w>Chrrp?</w>', mood: 'happy', wait: true, camera: 'close' }] });
     for (let page = 0; page < 8; page++) {
       const opts = [0, 1, 2].map((k) => pool[(page * 3 + k) % pool.length]);
       const r = await cv.play({
-        who: sp, name: '', keep: true, camera: 'close',
+        who: sp, name: 'Lone Raptor', keep: true, camera: 'close',
         lines: [{ text: page ? '<i>It cocks its head the other way. Not that one, then. What about…</i>' : '<i>You can\'t keep calling it "the raptor". It needs a name.</i>', camera: 'close', mood: 'happy' }],
         choices: [...opts.map((n, i) => ({ label: n, value: n, primary: i === 0 })), { label: 'Other names…', value: '__more' }],
       });

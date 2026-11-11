@@ -127,7 +127,7 @@ export function homeRaptors(scene) {
     r.root.position.set(p.x, 0, p.z);
     r.root.rotation.y = p.yaw;
     r.yaw0 = p.yaw;
-    r.box = [p.x - 0.26, 0, p.z - 0.26, p.x + 0.26, 0.5, p.z + 0.26];
+    r.box = [p.x - 0.26, 0, p.z - 0.26, p.x + 0.26, 0.8, p.z + 0.26]; // (as tall as its head when it sits up: talk cameras keep off it too)
     r.tag = 'raptor:' + rec.id;
     scene.scene.add(r.root);
     list.push(r);
