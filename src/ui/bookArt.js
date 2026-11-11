@@ -15,7 +15,7 @@ const SEPIA = 0x4a2c16, SEPIA_LT = 0x7a5a3a, RED = 0xb8402c, RED_DK = 0x7a2414;
 // down their length, with curled caps and twine in the corner slices.
 function strip() {
   const W = 48, H = 24, S = 8, M = 32, p = new Px(W, H);
-  const F = CA.paperField(M, 8, { seed: 7, fibres: 1.2, fox: 0.6 });
+  const F = CA.paperField(M, 8, { seed: 7, fibres: 1.2, fox: 0.6, res: p.r });
   const tear = (e, x) => 2 + Math.round(CA.pnoise(((x - S) * 6) / M, e * 3, 6, 8, 19) * 1.6);
   CA.paintPaper(p, F, CA.TONES.paper, S, S, (x, y) => x >= 6 && x < W - 6 && y >= tear(0, x) && y <= H - 1 - tear(1, x));
   for (let x = 6; x < W - 6; x++) {

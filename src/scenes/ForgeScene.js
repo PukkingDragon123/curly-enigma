@@ -417,12 +417,19 @@ export default class ForgeScene extends Scene {
   screenOf(v) { return this.toScreen(v); }
 
   /**
-   * How a blow, a quench or a step went: said by the metal, not by a floating word. A fine one
-   * throws a burst of tiny gold voxel chips off the work, a so-so one a few pale ones, a bad one
-   * dark scale chips and a small jolt (the callers already ring the anvil, hiss or crack). `text`
-   * is never drawn; `color` (the old word's colour) picks the tone.
+   * How a blow, a quench or a step went: the word pops off the work as voxel letters in the forge
+   * (src/gfx/text3d.js: "Perfect!" slams down in gold, "Too soft" drifts off), and the metal says it
+   * too: a fine one throws a burst of tiny gold voxel chips, a so-so one a few pale ones, a bad one
+   * dark scale chips and a small jolt (the callers already ring the anvil, hiss or crack). `color`
+   * (the word's colour) picks the tone.
    */
   pop(text, worldPos, color = '#fff', size = 1) {
+    if (text && worldPos) {
+      // (a touch to the left of the work: the hammer comes down, and goes back up, on the right)
+      const at = worldPos.clone(), cam = this.camera;
+      if (cam) at.addScaledVector(new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0), -0.07);
+      this.game.ui.floatText(text, at, { color, size: 0.85 * size });
+    }
     const n = parseInt(String(color).replace('#', ''), 16) || 0xffffff;
     const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
     if (r > 200 && g > 180 && b < 140) chipBurst(this.scene, worldPos, { n: Math.round(10 * size), colors: [0xfff0b0, 0xffd870, 0xffb040], size: 0.008, speed: 0.4, gravity: 2.5 });

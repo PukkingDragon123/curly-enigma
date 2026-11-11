@@ -47,10 +47,10 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /** What he says the next step is, per stage (his "What now?"), and where he waits. */
 const NEXT = {
-  pick: { text: 'A miner without a pick is just a mole with ideas. To the <b>forge</b>.', mood: 'stern', where: 'anvil' },
-  mine: { text: 'Copper. Take the cage down and look for <b>orange specks</b> in the rock. Bring me a lump.', mood: 'calm', where: 'lift' },
-  forge: { text: 'Copper\'s no use as rock. To the <b>forge</b>: we melt it and make you a blade.', mood: 'happy', where: 'anvil' },
-  cook: { text: 'A smith who doesn\'t eat is a skeleton with a hammer. To the <b>fire pit</b>.', mood: 'happy', where: 'fire' },
+  pick: { text: 'A miner without a pick is just a mole with ideas. No pick, no digging. To my <b>forge</b>: we\'ll make you your own.', mood: 'stern', where: 'anvil' },
+  mine: { text: 'Copper! The cage drops to the mine entrance. Look for <b>orange specks</b> in the rock and bring me a lump.', mood: 'calm', where: 'lift' },
+  forge: { text: 'Copper\'s no good as rock. To the <b>forge</b>: we melt it and hammer you a blade.', mood: 'happy', where: 'anvil' },
+  cook: { text: 'A smith who doesn\'t eat is a skeleton with a hammer. To the <b>fire pit</b>!', mood: 'happy', where: 'fire' },
 };
 
 /** The one-line objective per step. */
@@ -102,7 +102,7 @@ export class HomeLessons {
     const opt = (label, sub, fn, primary = false) => ({ label, sub, primary, onClick: () => { close(); fn(); } });
     const h = openTalkMenu(this.game, {
       name: 'Old Star', face: starPortraitURL(n?.mood || 'calm'), who: 'oldstar',
-      line: 'Old Star peers at you over his spectacles. <i>"Well?"</i>',
+      line: 'Old Star squints at you over his spectacles. <i>"Well?"</i>',
       options: [
         opt('What now?', null, () => this.starLine(n.text, { mood: n.mood }), true),
         opt('Skip the lessons', 'I know my way round a mine, a forge and a pan.', () => this.confirmSkip()),
@@ -142,7 +142,7 @@ export class HomeLessons {
       star.lessonSpot = null;
       star.scripted = false;
       star.nextT = 6;
-      this.starLine(this.nooks?.has('nook_bed') ? 'A know-it-all, eh? Fine. Here: a pick, my spare chisel, a bit of coal. The cage goes down, the coins come up. And come home to sleep.' : 'A know-it-all, eh? Fine. Here: a pick, my spare chisel, a bit of coal. And that chalked rock behind your bedroll is yours: dig yourself a corner.', { mood: 'laugh' });
+      this.starLine(this.nooks?.has('nook_bed') ? 'A know-it-all, eh? Fine by me. Here: a pick, my spare chisel, a bit of coal. Off you go and earn that million: the cage goes down, the coins come up. And come home to sleep.' : 'A know-it-all, eh? Fine by me. Here: a pick, my spare chisel, a bit of coal. Off you go and earn that million. And that chalked rock behind your bedroll is yours: dig yourself a corner.', { mood: 'laugh' });
     }
     st.save();
   }
@@ -181,7 +181,7 @@ export class HomeLessons {
     this.endHomeTutor();
     this.game.ui.onboard?.goal(null);
     // (a word over his shoulder as the gate shuts)
-    if (this.star?.rig) this.starLine('Dig round the ore, not into it. Ring the bell to come home.', { mood: 'happy', dur: 3.2 });
+    if (this.star?.rig) this.starLine('Dig the rock <b>round</b> the ore, not the ore. Ring the bell to come home!', { mood: 'happy', dur: 3.2 });
   }
 
   // ------------------------------------------------------------ cutscenes at home
@@ -310,13 +310,13 @@ export class HomeLessons {
           this.game.audio.play('sparkle', { vol: 0.4 });
           this.copperHome();
           done = true;
-          await line('<i>*snff*</i> Copper, and you didn\'t smash it. Good. There\'s coal in your satchel for the fire.', 'proud');
+          await line('<i>*snff*</i> Copper! And you didn\'t smash it. Good. There\'s coal in your satchel for the fire.', 'proud');
           star.drop();
           lump.userData.dispose?.();
           await this.holdOut(notebook(), 'And this was mine: my old <b>notebook</b>. Write down what you find. Your jobs go in it too.', 'happy', tools);
           ui.unlock?.(['book', 'radar', 'layers']);
           star.gesture('point', 1.6);
-          await line('Now we melt that copper. To the <b>forge</b>!', 'happy');
+          await line('Now we melt that copper: to the <b>forge</b>!', 'happy');
         }, { face: false });
         if (star.carrying) star.drop();
         lump.userData.dispose?.();
@@ -350,12 +350,12 @@ export class HomeLessons {
         await go(sleep(0.4));
         star.gesture(q >= 55 ? 'cheer' : 'point', 1.6);
         this.flareAt(this.firePos('forge'), { n: 30 });
-        await line(q >= 80 ? 'Look at that edge. Half of Deep Town couldn\'t do better.' : q >= 55 ? 'A proper pick. Lumpy on the cheek, but it\'ll bite rock.' : 'Pick-shaped, more or less. It\'ll dig.', q >= 55 ? 'proud' : 'laugh');
+        await line(q >= 80 ? 'Look at that edge! It\'d shame half of Deep Town.' : q >= 55 ? 'A proper pick! Lumpy on the cheek, but it\'ll bite rock.' : 'Well, it\'s more or less pick-shaped. It\'ll dig.', q >= 55 ? 'proud' : 'laugh');
         await this.holdOut(satchel(), 'Here: my old <b>satchel</b>, with my spare <b>chisel</b> in it. Ore comes out of the wall in lumps. You\'ll want both.', 'happy', tools);
         this.giveChisel();
         ui.unlock?.(['pack', 'tools']);
         star.gesture('point', 1.6);
-        await line('Now, <b>copper</b>. The cage drops to the old mine. Look for <b>orange specks</b> in the rock.', 'calm');
+        await line('Now: <b>copper</b>. The cage drops to the old mine. Look for <b>orange specks</b> in the rock and bring me a lump.', 'happy');
       });
       this.giveChisel();
       ui.unlock?.(['pack', 'tools']);
@@ -373,7 +373,7 @@ export class HomeLessons {
       const good = 'SAB'.includes(w ? (w.grade || 'C') : 'C');
       await this.cutscene(async ({ line }) => {
         star.gesture(good ? 'cheer' : 'point', 1.6);
-        await line(`${good ? 'A fine' : 'A lumpy'} ${w?.name || 'blade'}, and it's yours. ${good ? 'Your granny would weep.' : 'It\'ll sell.'} Now I'm starving. To the <b>fire pit</b>.`, good ? 'proud' : 'laugh');
+        await line(`${good ? 'A fine' : 'A lumpy'} ${w?.name || 'blade'}, and it's yours. ${good ? 'Your granny would cry.' : 'It\'ll sell.'} Now I'm starving: to the <b>fire pit</b>!`, good ? 'proud' : 'laugh');
       });
       this.placeStarForLesson();
       this.startHomeTutor('cookGo');
@@ -396,7 +396,7 @@ export class HomeLessons {
         star.faceTo(p.x, p.z);
         star.scripted = false;
         await go(this.faceStar((s, f) => this.tween(s, f), 0.5));
-        await line('Mm. Proper food. Dig, forge, cook: that\'s all I know, near enough.', 'happy');
+        await line('Mm! Proper food. Now you can dig, forge and cook. That\'s all I know, more or less.', 'happy');
         // the fire roars up behind him: the lessons are over
         star.gesture('cheer', 2);
         const fire = this.firePos('hearth');
@@ -405,7 +405,7 @@ export class HomeLessons {
         this.post.flashColor = 0xffb060;
         this.tween(0.9, (k) => { this.post.flash = 0.18 * (1 - k); }).then(() => { this.post.flash = 0; });
         await go(sleep(1.2));
-        await line('The rest is a <span class="gold-txt">million gold</span> and a lot of digging. Deep Town\'s down there somewhere: they\'ll buy what you find. Go on, then.', 'proud');
+        await line('The rest is a <span class="gold-txt">million gold</span> and a lot of digging. Deep Town\'s down there somewhere: they\'ll buy the lot. Off you go!', 'proud');
       }, { face: false });
       star.scripted = false;
       // everything else comes in now: your gold, your skills, your tasks, building

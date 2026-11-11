@@ -383,10 +383,12 @@ export class HomeWake {
         tween(0.9, (k) => { c.roll = base.roll * 0.35 + Math.sin(k * Math.PI * 6) * 0.03 * (1 - k); });
         await go(sleep(0.9));
       } else await go(sleep(0.6));
-      await line('Oi. Oi! There you are. You came down through my roof last night, and half of it came with you.', 'laugh');
+      await line('Oi. Oi! There you are. Easy now: the cave likes to spin the first time.', 'happy');
+      await line('You came down through my roof last night, and half of it came with you.', 'laugh');
       star?.rig && star.nudge(0.4);
-      await line('Old Star. Smith. Sixty years I\'ve been down here: the way up costs a <span class="gold-txt">million gold</span>.', 'worried');
-      await line('Can\'t dig your way to that with bare paws. Up you get: we\'ll make you a pick.', 'proud');
+      await line('I\'m <b>Old Star</b>. Smith. Sixty years I\'ve been stuck down here: a ticket up costs a <span class="gold-txt">million gold</span>.', 'worried', 'point');
+      await line('So: I teach you to <b>dig</b>, <b>forge</b> and <b>cook</b>, we earn it together, and we <b>both</b> ride out.', 'proud');
+      await line('Where\'s your <b>pick</b>? Lost in the fall, I\'d guess, and you can\'t dig your way to a million with bare paws. Up you get: we\'ll make you your own at my <b>forge</b>!', 'happy');
       // ---- he straightens up and steps back; you sit up off the straw and get to your feet
       if (star?.rig) { star.setPose('idle'); star.gesture('beckon', 1.4); }
       this.wakeSway = null;

@@ -550,6 +550,7 @@ export default class DigScene extends Scene {
       this.audio.play('ore_damage');
       this.fx.sparks(px, py, pz, 10, col01(mat.accent), out, 3.5);
       if (r) {
+        this.game.ui.floatText?.(`-${Math.max(1, Math.round(r.ore.frag * power * this.bonus('clean')))}%`, new THREE.Vector3(px, py, pz), { color: '#ff8a6a', size: 0.8, kind: 'ore' });
         if (!this.flags.oreHit) { this.flags.oreHit = true; st.learn('ore_damage'); this.say('orehit', 'Careful! Hitting ore chips its quality. Clear the rock around it instead.', 'warn', 30); }
         if (r.s.q <= 0) this.shatter(r.d);
       }
@@ -905,6 +906,8 @@ export default class DigScene extends Scene {
     const it = ITEMS[d.item];
     if (!it) return;
     this.audio.play('sparkle', { vol: 0.5 });
+    // its name rises off the seam as voxel letters
+    this.game.ui.floatText?.(it.name, new THREE.Vector3(d.x, d.y, d.z), { color: '#ffe8a0', size: 0.9, kind: 'reveal' });
   }
 
   popOre(f, out) {

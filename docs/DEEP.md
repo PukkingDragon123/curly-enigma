@@ -115,6 +115,23 @@ lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, t
 - `lights(eye)` → `[{ x, y, z, c: [r,g,b], r }]` glowing enemies (≤ 3).
 - `dispose()`.
 
+**Raptor taming** (`enemies.tame`, `src/deep/tame/`, made by Enemies; hooks: `tame.update(dt, busy)` before
+Enemies' busy return, `tame.target` / `tame.use` first in `catchTest` / `catch`, `tame.dispose()`):
+- `stray.js`: a lone, injured young raptor (passive, in `enemies.list`) that turns up in the dino caverns. Fear
+  rises when you crowd it, run, swing near it or make noise, falls while you crouch (C) and keep still; E on it
+  tosses the best liked food from the bag (`food.js` `RAPTOR_FOOD`: meat > fish > grubs), it comes for it,
+  sniffs, eats. Two meals a visit, then it wanders off and comes back later. Body language only (`body.js`
+  moods: tail wag / stiff / tucked, head tilt, sniffs, crouch, chirps, hisses). At 100 trust it bonds: the
+  naming moment in the cutscene talk (`naming.js`, the raptor is a Speaker), then it's yours.
+- `pal.js`: the companion (not in `enemies.list`: the pick can't hit it). Follows behind and to one side, out of
+  the swing cone, along your trail when it can't see you, catches up out of sight; bites creatures that are after
+  you (a fraction of a pick blow, counted as your kill; some turn on it for a moment); retreats when hurt and
+  recovers (never dies); E on it: stay / come; now and then sniffs out hidden ore and scratches at the rock.
+- Save: `state.data.tame = { raptors: [{ id, name, trust, bornAt, bornDay, how, variant, size, bites, finds }],
+  active, stray }`. At home they curl up by the lift (`home.js`, one hook in HomeScene). Acts: `{ type: 'tame',
+  what: 'meet' | 'calm' | 'offer' | 'feed' | 'paw' | 'hurt' | 'bond' | 'stay' | 'follow' | 'sniff' | 'pet' }`.
+- Test hooks: `window.__game.debug.tame` (`debug.js`: stage, crouch, look, offer, visit, name, fight, info).
+
 **Fluids** (`new Fluids(ctx)`, parts in `src/deep/fluids/`):
 - `onVoxel(vx, vy, vz, old, m)`: called on every voxel edit (digging next to a lake starts a flow).
 - `update(dt, { player, eye, time })`: flow simulation, swimming, splashes, ripples, drips, sound.

@@ -603,7 +603,14 @@ export default class CookingScene extends Scene {
         this.ui.timer(null);
         const kind = this.ui.feedback(s);
         this.game.audio.play(kind === 'perfect' ? 'perfect' : kind === 'oops' ? 'oops' : 'good');
-        // no grade word: a burst of gold voxel chips over the work for a fine step, a nudge of the camera for a bad one
+        // the grade word slams down over the work in voxel letters (PERFECT! shimmers), its points under
+        // it; a burst of gold voxel chips for a fine step, a nudge of the camera for a bad one
+        {
+          const at = this.camLook.clone().setY(0.36), ui = this.game.ui;
+          const word = { perfect: 'PERFECT!', great: 'GREAT!', good: 'GOOD', oops: 'OOPS!' }[kind];
+          ui.floatText(word, at, { kind: kind === 'oops' ? 'bad' : kind, color: { perfect: '#ffe066', great: '#9af07a', good: '#9fdcff', oops: '#ff9a8a' }[kind], tint: true, rainbow: kind === 'perfect', size: kind === 'perfect' ? 1.15 : 1, life: 1.4 });
+          ui.floatText(`${Math.round(s)} pts`, at.clone().setY(0.26), { kind: 'info', color: '#f4efe6', size: 0.6, life: 1.4, stack: false });
+        }
         if (kind === 'perfect' || kind === 'great') chipBurst(this.scene, this.camLook.clone().setY(0.3), { n: kind === 'perfect' ? 18 : 9, colors: [0xfff6b0, 0xffd84a, 0xffffff], size: 0.018, speed: 0.8 });
         else if (kind === 'oops') this.shake(0.006);
         this.phase = 'feedback';

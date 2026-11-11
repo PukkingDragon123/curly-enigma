@@ -116,12 +116,12 @@ export class Step {
   screen(v) { return this.cook.toScreen(v); }
 
   /**
-   * How a moment went, said by the kitchen instead of a floating word: a burst of tiny gold voxel
-   * chips for a fine one, a few pale ones for a so-so one, dark crumbs and a jolt for a bad one.
-   * `text` is only a note for whoever reads the step (it is never drawn); `color` (the old word's
-   * colour) picks the tone.
+   * How a moment went: the word pops up over the food as voxel letters in the kitchen
+   * (src/gfx/text3d.js), and the food answers too: a burst of tiny gold voxel chips for a fine one,
+   * a few pale ones for a so-so one, dark crumbs and a jolt for a bad one. `color` picks the tone.
    */
   float(text, at, color) {
+    if (text && at) this.cook.game?.ui?.floatText?.(text, at, { color });
     const tone = toneOf(color);
     const p = at.clone();
     p.y -= 0.1; // the old words floated above the food: the reaction belongs on it

@@ -646,7 +646,12 @@ export class Site {
       this.R.st.addGold(g, 'hoard');
       this.R.sfx.coins(Math.min(8, 2 + (dug >> 3)));
       const e = this.R.player?.eye?.();
-      if (e) { const f = this.R.player.forward(); for (let i = 0; i < 4; i++) this.R.fx.glints(e.x + f.x * 1.2, e.y + f.y * 1.2 + (Math.random() - 0.5) * 0.2, e.z + f.z * 1.2, [1, 0.85, 0.4]); }
+      if (e) {
+        const f = this.R.player.forward();
+        for (let i = 0; i < 4; i++) this.R.fx.glints(e.x + f.x * 1.2, e.y + f.y * 1.2 + (Math.random() - 0.5) * 0.2, e.z + f.z * 1.2, [1, 0.85, 0.4]);
+        // "+12g" in gold voxel letters where the coins glint
+        this.R.ui?.floatText?.(`+${g}g`, { x: e.x + f.x * 1.1 + (Math.random() - 0.5) * 0.12, y: e.y + f.y * 1.1 + 0.08, z: e.z + f.z * 1.1 }, { color: '#ffd860', kind: 'gold' });
+      }
     } else if (n > this.hoardBase) this.hoardBase = n;
   }
 }

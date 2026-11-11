@@ -834,6 +834,7 @@ export class Clumps {
       c.dmgN += res.oreHit;
       this.audio?.play('ore_damage');
       this.fx?.sparks(hp.x, hp.y, hp.z, 6, c.oreMain, [out.x, out.y, out.z], 1.4);
+      if (loss >= 0.5) this.ui.floatText?.(`-${Math.max(1, Math.round(loss))}%`, hp.clone(), { color: '#ff8a6a', size: 0.8, kind: 'ore' });
       if (!this.flags.oreHit) { this.flags.oreHit = true; this.say('orehit', 'The pick scratches the ore! Use the <b>chisel</b> close to it.', 'warn', 30); }
     } else if (res.tink) {
       this.fx?.twinkle?.(hp.x + out.x * 0.01, hp.y + out.y * 0.01, hp.z + out.z * 0.01, c.oreCol, 0.012);

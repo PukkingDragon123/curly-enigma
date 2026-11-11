@@ -74,7 +74,7 @@ Input is disabled automatically while a UI panel is open.
 - Events: `state.on('gold'|'energy'|'items'|'discover'|'weapon'|'day'|'buffs'|'load', fn)` returns an unsubscribe function. Pass it to `this.own(...)`.
 
 ### UI (`game.ui`)
-- `toast(html, {icon, kind:'good'|'warn'|'bad', dur})`, `floatText(text, sx, sy, color, size)`
+- `toast(html, {icon, kind:'good'|'warn'|'bad', dur})`, `floatText(text, worldPos, {kind, color, size})` (a floating word as real voxel text in the 3D view, `src/gfx/text3d.js`; the old `floatText(text, sx, sy, color, size)` screen form still works and lifts the point into the view)
 - `bubble(key, html, sx, sy, {emote, life, name})`, `moveBubble(key, sx, sy, visible)`, `hideBubble(key)` (speech bubbles at screen coords)
 - `setPrompt(html | null)` shows a bottom-center prompt, e.g. `'<kbd>E</kbd> Talk'`.
 - `setHotbar(slots | null, selectedIndex, onPick)` and `setHints(html | null)` (small key hints at bottom-left)
@@ -104,6 +104,7 @@ Input is disabled automatically while a UI panel is open.
   - Optional spec fields (random by default): `patches` (0–3), `freckles`, `earring`, `tuft`, `fabric` (`plain`/`stripe`/`dots`/`plaid`), `eyeColor`. `buildStats` reports build timing.
   - `?scene=showroom&mode=…` lines characters up for review: `species ages bodies hats outfits eyes faces states hero hen paw kids portraits`, plus camera parameters and `set=key:val` spec overrides (see the top of `ShowroomScene.js`).
 - `gfx/PixelArt.js`: `PixelCanvas`, `drawTemplate`, `ramp(color)`, `iconURL(itemId)`, `weaponIconURL(type, metal, infusion)`, `drawWeapon(pc, type, color)`, `pixelTexture(canvas)`. All icons are **32×32** (`ICON = 32`): show them at 32 or 64 CSS px so pixels stay even. Also `drawIconArt(spec, seed, id)` (no UI halo; emissive pixels flagged on `pc.glow`) and `drawIconSmall(spec, seed, 16)` for tiny spots. The drawing toolkit lives in `gfx/px/` (palettes, volume shading, parts). `gfx/critters32.js` has `drawCritter(id, frame)` and `critterIconURL(id)`.
+- `gfx/text3d.js`: floating words (damage, CRIT!, +N gold, -N% ore damage, item names, minigame Perfect!/Good/Miss...) as chunky extruded voxel letters from the sign font (`bookends/pixfont.js` `glyphRows`), lit by the scene with an emissive core; they pop out of the spot, arc or rise, tumble a little and shatter into voxel bits. One pooled InstancedMesh (8192 voxels / 40 words cap) per game, ticked from the drawing scene's `onBeforeRender`; a dithered see-through draw shows a word behind scenery. Styles per `kind` (`TEXT3D_KINDS`), guessed from the text and colour when left out. `text3dStats(game)` for perf.
 - `core/util.js`: `clamp lerp damp rand randInt pick chance makeRng hashStr makeNoise2D mixHex shade hexCss formatGold formatGoldFull el wait uid`.
 
 ## Conventions

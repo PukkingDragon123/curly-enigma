@@ -35,7 +35,7 @@ import { findSpeaker } from '../fx/speakers.js';
 import { portrait3d } from '../gfx/portrait3d.js';
 import { typeText, STAR_VOICE } from './talkType.js';
 import { installDialogArt } from './dialogArt.js';
-import { Px, PAL, INK, art } from './uiArt.js';
+import { Px, PAL, INK, art, cssUrl } from './uiArt.js';
 import { speakerOf, materialOf } from './Tutor.js';
 import './convo.css';
 
@@ -77,12 +77,12 @@ function installConvoArt() {
   if (artIn) return;
   artIn = true;
   const r = document.documentElement.style;
-  r.setProperty('--cv-tail', `url("${art('cv:tail', () => tailSprite())}")`);
+  r.setProperty('--cv-tail', cssUrl(art('cv:tail', () => tailSprite())));
   // (ui3) a tail in each speaker's paper: forge-scorched, ledger, kraft
-  r.setProperty('--cv-tailForge', `url("${art('cv:tailForge', () => tailSprite(PAL.paper.base, 0x5a4234, 0x3a2418))}")`);
-  r.setProperty('--cv-tailLedger', `url("${art('cv:tailLedger', () => tailSprite(0xebe3c8, 0xb2a684, 0x6a6450))}")`);
-  r.setProperty('--cv-tailKraft', `url("${art('cv:tailKraft', () => tailSprite(0xba9058, 0x8a6339, 0x4a3018))}")`);
-  r.setProperty('--cv-num', `url("${art('cv:num', numSprite)}")`);
+  r.setProperty('--cv-tailForge', cssUrl(art('cv:tailForge', () => tailSprite(PAL.paper.base, 0x5a4234, 0x3a2418))));
+  r.setProperty('--cv-tailLedger', cssUrl(art('cv:tailLedger', () => tailSprite(0xebe3c8, 0xb2a684, 0x6a6450))));
+  r.setProperty('--cv-tailKraft', cssUrl(art('cv:tailKraft', () => tailSprite(0xba9058, 0x8a6339, 0x4a3018))));
+  r.setProperty('--cv-num', cssUrl(art('cv:num', numSprite)));
 }
 
 export class Convo {

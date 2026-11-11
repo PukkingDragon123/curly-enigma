@@ -35,6 +35,7 @@ import { Eco } from './enemies/eco.js';
 import { Spawner } from './enemies/spawn.js';
 import { lootFor } from './enemies/loot.js';
 import { makeDebug } from './enemies/debug.js';
+import { Tame } from './tame/index.js'; // raptor taming: the lone raptor, your companion
 import { SPECIES } from './enemies/species.js';
 import { Swarm, Bat } from './enemies/bats.js';
 import { Webs } from './enemies/spider.js';
@@ -132,6 +133,7 @@ export class Enemies {
     this.webs = new Webs(this);
     this.webbed = 0; // seconds the mole is stuck in web
     this.debug = makeDebug(this);
+    try { this.tame = new Tame(this); } catch (e) { console.warn('[tame]', e); this.tame = null; }
   }
 
   // ------------------------------------------------------------------ shared resources
@@ -194,6 +196,7 @@ export class Enemies {
     this.safe = !!this.peace || this.safeAt(pl.pos.x, pl.pos.y, pl.pos.z);
     this.busy = !!o.busy;
     if (typeof o.lamp === 'number') this.lampOn = o.lamp > 1.5;
+    this.tame?.update(dt, this.busy); // [tame hook] (keeps the raptor living through its naming talk)
     if (this.busy) { this.inUpdate = false; return this.events; }
     this.time += dt;
     this.invuln -= dt;
@@ -470,19 +473,17 @@ export class Enemies {
     if (k > 0.05) this.queueEv({ shake: k });
   }
 
-  /** A little word at a screen point over a world position. */
-  floatAt(text, p, color = '#fff', size = 1) {
-    const o = this.owner;
-    if (!o?.toScreen || !this.ui?.floatText) return;
-    const s = o.toScreen(_r.set(p.x, p.y, p.z));
-    if (s.visible === false) return;
-    this.ui.floatText(text, s.x, s.y, color, size);
+  /** A little word popping out of a world position, as voxel text in the world (src/gfx/text3d.js). */
+  floatAt(text, p, color = '#fff', size = 1, kind = undefined) {
+    if (!p || !this.ui?.floatText) return;
+    this.ui.floatText(text, { x: p.x, y: p.y, z: p.z }, { color, size, kind });
   }
 
   /** The pick bounced off a hide it can't hurt (crystal golems): say what to do instead. */
   pickHint(e, p) {
     const h = this.hint;
     h.tough++;
+    if (this.time - h.floatT > 0.7) { h.floatT = this.time; this.floatAt('too tough!', p, '#ffc89a', 0.9, 'tough'); }
     if (h.tough === 1) this.say('tough', 'Clang! Its rock hide is <b>too tough</b>. Get behind it and mine the <b>glowing crystal</b> on its back.', 'warn', 9999);
     else if (h.tough % 4 === 0 && this.time - h.toughT > 40) { h.toughT = this.time; this.say('tough2', 'Your pick just bounces off. <b>Circle around</b> (it turns slowly) and hit the <b>crystal</b>!', 'warn', 40); }
   }
@@ -512,6 +513,8 @@ export class Enemies {
   /** A creature notices the mole: a little "!" pops over its head. */
   alert(e) {
     this.sound('emote', { kind: 'alert' }, e.dist);
+    const p = e.headPos ? e.headPos(_r).add(_p.set(0, 0.15, 0)) : _r.set(e.center.x, e.center.y + e.hitR * e.size + 0.2, e.center.z);
+    this.floatAt('!', p, '#ffd84a', 1.4, 'alert');
   }
 
   /** First good look at a species: index entry + an intro toast the very first time. */
@@ -615,6 +618,7 @@ export class Enemies {
       const g = e.G?.core || [1, 0.9, 0.6];
       sparkle(this.fx, p.x, p.y, p.z, 12, g, 2.6, 3, 0.022, 0.6);
       this.sound('crystal_ring', { pitch: 1.4, vol: 0.7 });
+      if (this.time - this.hint.floatT > 0.7) { this.hint.floatT = this.time; this.floatAt('weak spot!', p, '#ffe08a', 0.9, 'weak'); }
     }
     const c = e.hitCol || this.dustCol(e.pos);
     this.fx.sparks(p.x, p.y, p.z, 7, [1, 0.92, 0.7], [-dir.x, -dir.y, -dir.z], 2.6);
@@ -856,6 +860,8 @@ export class Enemies {
 
   /** Something to grab, net, harvest or take under the crosshair? → { label, kind: 'use' } or null. */
   catchTest(eye, dir, reach = 2.3) {
+    const tm = this.tame?.target(eye, dir, reach); // [tame hook] offer food / stay / come
+    if (tm) return tm;
     const e = this.pickCritter(eye, dir, reach + 0.3, (c) => (c.info.catch === 'grab' || c.info.catch === 'net') && c.canGrab());
     if (e) return { label: `${e.info.catch === 'net' ? 'Net' : 'Grab'} ${e.info.name}`, kind: 'use' };
     const egg = this.eco.eggAt(eye, dir, reach);
@@ -867,6 +873,8 @@ export class Enemies {
 
   /** E / use: grab or net the critter under the crosshair, take an egg, harvest a carcass. */
   catch(eye, dir, reach = 2.3) {
+    const tu = this.tame?.use(eye, dir, reach); // [tame hook]
+    if (tu) return tu;
     const e = this.pickCritter(eye, dir, reach + 0.3, (c) => (c.info.catch === 'grab' || c.info.catch === 'net') && c.canGrab());
     if (!e) {
       const egg = this.eco.eggAt(eye, dir, reach);
@@ -1106,6 +1114,7 @@ export class Enemies {
     for (const s of this.shots) s.mesh.removeFromParent();
     this.shots.length = 0;
     this.hazards.length = 0;
+    this.tame?.dispose();
     this.eco.dispose();
     this.webs?.dispose?.();
     this.root.removeFromParent();

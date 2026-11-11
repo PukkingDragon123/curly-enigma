@@ -127,7 +127,7 @@ class Session {
     this.sfx = new GatherSfx(this.game.audio);
     // the stage on the plant's spot
     this.at = this.frameOf(plant);
-    const ctx = { scene3: owner.scene, U: owner.U, world: owner.world, fx: owner.fx, audio: this.game.audio };
+    const ctx = { scene3: owner.scene, U: owner.U, world: owner.world, fx: owner.fx, audio: this.game.audio, ui: this.game.ui };
     const Stage = STAGES[this.spec.tech] || PullStage;
     this.stage = new Stage(ctx, this.at, this.id, this.spec, this.sim, { seed: this.seed });
     if (plant.rec) props.hidePlant?.(plant, true);

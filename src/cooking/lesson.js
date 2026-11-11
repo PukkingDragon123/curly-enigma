@@ -133,6 +133,7 @@ export class CookLesson {
     this.endCine();
     if (this.done) return;
     this.stage = 'cooking';
+    this.say('Good. A dish is a few jobs, one after another.', { mood: 'happy', dur: 2.4 });
   }
 
   onStep(kind) {
@@ -168,7 +169,7 @@ export class CookLesson {
           : g === 'Okay' ? ['It\'s... soup. Of a sort. We all start somewhere.', 'laugh']
             : ['Burnt. Ha! My first one was worse. Much worse.', 'laugh'];
     await this.say(first[0], { mood: first[1], wait: true });
-    await this.say('Eat it down the mine: good food keeps you going longer. Home now.', { mood: 'proud', wait: true });
+    await this.say('Eat it down the mine: good food lights you up for a while (a <b>buff</b>). Cook what you find down there. Now, home with you!', { mood: 'proud', wait: true });
     this.stage = 'free';
   }
 

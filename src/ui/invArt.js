@@ -1,6 +1,6 @@
 // Pixel art for the inventory: the backpack's own sprites (sewn-shut pockets, the trunk's slots,
 // the toss pit, the tidy brush, the spring scale).
-import { Px, PAL, art, mixHex } from './uiArt.js';
+import { Px, PAL, art, mixHex, cssUrl } from './uiArt.js';
 
 // ---------------------------------------------------------------- backpack sprites
 const C = PAL.canvas, W = PAL.wood, B = PAL.brass;
@@ -76,7 +76,7 @@ function weightIcon() {
   return p;
 }
 
-const sprite = (key, fn) => art('inv:' + key, fn);
+const sprite = (key, fn) => art('inv:' + key, fn, { detail: false, edges: false }); // stretched by CSS: no material texture
 export const INV_ART = {
   sewn: () => sprite('sewn', sewnPocket),
   trunk: (on = false) => sprite('trunk' + (on ? 1 : 0), () => trunkSlot(on)),
@@ -87,7 +87,7 @@ export const INV_ART = {
 
 /** Publish the frames as CSS custom properties (--inv-*) on an element. */
 export function installInvArt(node) {
-  node.style.setProperty('--inv-sewn', `url("${INV_ART.sewn()}")`);
-  node.style.setProperty('--inv-trunk', `url("${INV_ART.trunk(false)}")`);
-  node.style.setProperty('--inv-trunkOn', `url("${INV_ART.trunk(true)}")`);
+  node.style.setProperty('--inv-sewn', cssUrl(INV_ART.sewn()));
+  node.style.setProperty('--inv-trunk', cssUrl(INV_ART.trunk(false)));
+  node.style.setProperty('--inv-trunkOn', cssUrl(INV_ART.trunk(true)));
 }

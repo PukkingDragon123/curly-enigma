@@ -2,7 +2,7 @@
 // CSS custom properties --dl-*). Light from the top-left, 1 art pixel = 1 canvas pixel, shown at --px.
 //   installDialogArt()      once: sets every --dl-* on :root
 //   DL.spark(i)             a 7×7 sparkle frame (0..2) for bursts
-import { Px, PAL, INK, art, mixHex } from './uiArt.js';
+import { Px, PAL, INK, art, mixHex, cssUrl } from './uiArt.js';
 import * as CA from './craftArt.js';
 
 const B = PAL.brass;
@@ -160,27 +160,23 @@ function quill() {
   return p;
 }
 
-// ------------------------------------------------------------------ the level plaque
-/**
- * Carved wooden plaque (slice 7 on 30; the middle tiles, for `fill`): bevelled oak with its grain, a
- * routed groove, a brass stud in each corner.
- */
 function plaqueFrame() {
   const n = 30, S = 7, M = 16, T = CA.TONES.oak;
-  const p = new Px(n, n);
-  const F = CA.woodField(M, M, { seed: 68, base: 0.5, knots: 0, wave: 3, spacing: 3.2, pores: 0, noise: 0.02 });
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+  const p = new Px(n, n), r = p.r;
+  const F = CA.woodField(M, M, { seed: 68, base: 0.5, knots: 0, wave: 3, spacing: 3.2, pores: 0, noise: 0.02, res: r });
+  p.fine((X, Y, fx, fy) => {
+    const x = Math.floor(X), y = Math.floor(Y);
     const cx = Math.min(x, n - 1 - x), cy = Math.min(y, n - 1 - y);
-    if (cx + cy < 2) continue;
+    if (cx + cy < 2) return undefined;
     const d = Math.min(cx, cy), tl = (cx === x && cx <= cy) || (cy === y && cy <= cx);
-    let k = F.K[(((y - S) % M + M) % M) * M + (((x - S) % M + M) % M)];
-    if (d === 0) { p.set(x, y, T[0]); continue; }
+    let k = F.k(X - S, Y - S);
+    if (d === 0) return T[0];
     if (d === 1) k += tl ? 0.28 : -0.22;
     else if (d === 2) k += tl ? 0.12 : -0.1;
     else if (d === 3) k += tl ? -0.26 : 0.16;
     else if (d === 4) k += tl ? 0.12 : -0.08;
-    p.set(x, y, CA.quant(T, k, x, y, 0.3));
-  }
+    return CA.quant(T, k, fx, fy, 0.3);
+  });
   for (const [x, y] of [[3, 3], [n - 3, 3], [3, n - 3], [n - 3, n - 3]]) CA.rivet(p, x, y, CA.TONES.brass, 1.2);
   p.outline(INK);
   return p;
@@ -288,7 +284,7 @@ function parchForge() {
 /** The forge parchment's face (96×96, tiles): soot clouds, a sooty thumbprint, ember burns, ash. */
 function sootTile() {
   const W = 96, H = 96, p = new Px(W, H);
-  CA.paintPaper(p, CA.paperField(W, H, { seed: 95, stains: 1, fox: 0.8 }), CA.TONES.paper);
+  CA.paintPaper(p, CA.paperField(W, H, { seed: 95, stains: 1, fox: 0.8, res: p.r }), CA.TONES.paper);
   const B4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
   p.each((x, y, c) => {
     const n = CA.fbm(x, y, W, H, 32, 3, 96), t = (n - 0.55) / 0.2;
@@ -345,7 +341,7 @@ function parchLedger() {
 /** Ledger paper (96×96, tiles): smooth rag stock, a faint cockle, sparse fibres. */
 function ledgerTile() {
   const W = 96, H = 96, p = new Px(W, H);
-  CA.paintPaper(p, CA.paperField(W, H, { seed: 103, base: 0.72, mottle: 0.2, grain: 0.05, fibres: 0.7, fox: 0.6, foxSize: 0.9, stains: 1 }), LEDGER);
+  CA.paintPaper(p, CA.paperField(W, H, { seed: 103, base: 0.72, mottle: 0.2, grain: 0.05, fibres: 0.7, fox: 0.6, foxSize: 0.9, stains: 1, res: p.r }), LEDGER);
   // a blot where the nib rested, and a figure scratched out long ago, showing through
   for (const [x, y, c, t] of [[70, 20, 0x2a3a5a, 0.7], [71, 20, 0x3a4a6a, 0.5], [70, 21, 0x3a4a6a, 0.45], [69, 21, 0x5a6a8a, 0.25], [72, 21, 0x5a6a8a, 0.2]]) p.set(x, y, CA.mix(p.get(x, y), c, t));
   for (let x = 12; x < 30; x++) if (CA.hash(x, 7, 115) < 0.8) p.set(x, 58 + (x % 3 === 0 ? 1 : 0), CA.mix(p.get(x, 58 + (x % 3 === 0 ? 1 : 0)), 0x6a7aa0, 0.14));
@@ -383,7 +379,7 @@ function parchKraft() {
 }
 function kraftTile() {
   const W = 96, H = 96, p = new Px(W, H);
-  CA.paintPaper(p, CA.paperField(W, H, { seed: 110, base: 0.64, mottle: 0.42, grain: 0.12, fibres: 2.4, fox: 0.2 }), KRAFT);
+  CA.paintPaper(p, CA.paperField(W, H, { seed: 110, base: 0.64, mottle: 0.42, grain: 0.12, fibres: 2.4, fox: 0.2, res: p.r }), KRAFT);
   // kraft is full of crushed wood: dark flecks and pale shreds through it
   for (let i = 0; i < 140; i++) {
     const x = Math.floor(CA.hash(i, 1, 116) * W), y = Math.floor(CA.hash(i, 2, 116) * H), dark = CA.hash(i, 3, 116) < 0.6;
@@ -499,5 +495,5 @@ let installed = false;
 export function installDialogArt(root = document.documentElement) {
   if (installed) return;
   installed = true;
-  for (const k of Object.keys(ASSETS)) root.style.setProperty('--dl-' + k, `url("${DL[k]()}")`);
+  for (const k of Object.keys(ASSETS)) root.style.setProperty('--dl-' + k, cssUrl(DL[k]()));
 }

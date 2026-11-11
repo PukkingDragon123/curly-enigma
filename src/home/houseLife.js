@@ -75,6 +75,7 @@ export class HouseLife {
       const o = this.cave.looks.find((l) => l.pick) || { x: -4.3, z: -1.45 };
       const g = { x: o.x + 0.55, z: o.z + 0.1 };
       for (let i = 0; i < 10; i++) this.fx.spawn({ x: g.x - 0.55 + rand(-0.1, 0.1), y: Y + 0.3, z: g.z - 0.1 + rand(-0.1, 0.1), vx: rand(-0.05, 0.05), vy: rand(0.1, 0.3), vz: rand(-0.05, 0.05), life: rand(1.5, 2.5), size: 0.008, color: [0.5, 1, 0.95], alpha: 0.9, glow: true, drag: 0.4, grav: -0.02 });
+      this.floatAt?.(g.x - 0.55, Y + 0.6, g.z - 0.1, '+2 glowcap', '#9af0e0');
       this.later(0.8, () => this.starAside('glowcap'));
       st.save();
     }

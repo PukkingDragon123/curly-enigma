@@ -123,6 +123,7 @@ export class PickStage extends Stage {
         this.pinch = 1;
         // a clean pick glitters (more with every clean one in a row); an ordinary one just gives a little
         this.sparkle(p.x, this.base0 + p.y, p.z, e.perfect ? 10 + Math.min(10, (e.streak || 0) * 2) : 5, e.perfect ? [1, 0.9, 0.4] : [1, 0.75, 0.75], e.perfect ? 0.6 : 0.4);
+        this.word(e.perfect ? (e.streak > 2 ? `Perfect ×${e.streak}` : 'Perfect!') : 'Good', e.perfect ? '#ffe066' : '#fff4d8', p.x, this.base0 + p.y + 0.04, p.z);
         break;
       case 'squash': {
         this.pinch = 1;
@@ -130,11 +131,12 @@ export class PickStage extends Stage {
         this.toWorld(_v.set(p.x, this.base0 + p.y, p.z), _v2);
         const c = e.ripe ? [0.7, 0.08, 0.15] : [0.55, 0.75, 0.3];
         for (let i = 0; i < 14; i++) fx?.spawn({ x: _v2.x, y: _v2.y, z: _v2.z, vx: (Math.random() - 0.5) * 0.8, vy: Math.random() * 0.8, vz: (Math.random() - 0.5) * 0.8, life: 0.5 + Math.random() * 0.4, size: 0.004 + Math.random() * 0.005, color: c, alpha: 1, drag: 1, grav: 6, bounce: 0.2, fade: false });
+        this.word(e.ripe ? (e.early ? 'Too soon!' : 'Too late!') : 'Not ripe!', e.ripe ? '#ff9a8a' : '#c8f08a', p.x, this.base0 + p.y + 0.04, p.z);
         break;
       }
       // a missed grab rustles the leaves; leaving an unripe one be gets a faint green shimmer
-      case 'miss': this.dirt(p.x, this.base0 + p.y, p.z, 4, 0.4, 0x6a8a4a); break;
-      case 'leave': for (let i = 0; i < 4; i++) this.motes(p.x, this.base0 + p.y, p.z); break;
+      case 'miss': this.dirt(p.x, this.base0 + p.y, p.z, 4, 0.4, 0x6a8a4a); this.word('Missed', '#d8c8b0', p.x, this.base0 + p.y + 0.04, p.z); break;
+      case 'leave': for (let i = 0; i < 4; i++) this.motes(p.x, this.base0 + p.y, p.z); this.word('Left it ✓', '#c8f08a', p.x, this.base0 + p.y + 0.04, p.z); break;
       case 'pop': {
         // the picked berries gather into a handful at the paw
         const n = Math.min(9, this.sim.picked);

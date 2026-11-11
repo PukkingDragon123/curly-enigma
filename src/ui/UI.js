@@ -9,7 +9,7 @@ import { critterIconURL } from '../gfx/critters32.js';
 import { ITEMS } from '../data/items.js';
 import { milestoneText } from '../data/upgrades.js';
 import { indexName } from '../core/State.js';
-import { installArt } from './uiArt.js';
+import { installArt, cssUrl } from './uiArt.js';
 import { SPR } from './uiSprites.js';
 import { Hud } from './Hud.js';
 import { Belt } from './Belt.js';
@@ -27,6 +27,7 @@ import { Convo } from './Convo.js'; // cutscene talk (game.convo)
 import { Onboard } from './Onboard.js'; // the cinematic tutorial's layer (prompts, letterbox, tutorial UI level)
 import { installSkillFeedback, openSkills } from './SkillTree.js';
 import { BuffStrip } from '../cooking/buffs.js';
+import { floatText3D } from '../gfx/text3d.js'; // floating words as voxel text in the world
 import './hud.css';
 import './backpack.css';
 import './book.css';
@@ -71,12 +72,12 @@ export class UI {
     installArt();
     const rs = document.documentElement.style;
     const css = { coin: SPR.coin(), sealX: SPR.seal('red', 'x'), sealCheck: SPR.seal('green', 'check'), sealStar: SPR.seal('amber', 'star'), tackRed: SPR.tack(0xc23c2c), coins: SPR.coins(), buckle: SPR.buckle(), beltTip: SPR.beltTip(), tap: SPR.tap(), knob: SPR.knob(), chain: SPR.chain(), twine: SPR.twine(), stampHandle: SPR.stampHandle(), sayTail: SPR.sayTail() };
-    for (const [k, v] of Object.entries(css)) rs.setProperty('--a-' + k, `url("${v}")`);
+    for (const [k, v] of Object.entries(css)) rs.setProperty('--a-' + k, cssUrl(v));
 
     // touch devices: tap glyphs instead of key caps, bigger targets
-    rs.setProperty('--a-tackGreen', `url("${SPR.tack(0x5a9a3a)}")`);
-    rs.setProperty('--a-tackGold', `url("${SPR.tack(0xd9901e)}")`);
-    rs.setProperty('--a-tackBlue', `url("${SPR.tack(0x3f7ec8)}")`);
+    rs.setProperty('--a-tackGreen', cssUrl(SPR.tack(0x5a9a3a)));
+    rs.setProperty('--a-tackGold', cssUrl(SPR.tack(0xd9901e)));
+    rs.setProperty('--a-tackBlue', cssUrl(SPR.tack(0x3f7ec8)));
 
     const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     if (coarse) document.documentElement.classList.add('is-touch');
@@ -369,11 +370,13 @@ export class UI {
   setHotbarMeter(i, v) { this.belt.meter(i, v); }
 
   // ------------------------------------------------------------ world-anchored
+  /**
+   * A floating word, as real voxel text in the 3D view (src/gfx/text3d.js): floatText(text, worldPos,
+   * { kind, color, size }) or the old screen-point form floatText(text, sx, sy, color, size), which
+   * lifts the point into the view in front of the camera.
+   */
   floatText(text, sx, sy, color = '#fff', size = 1) {
-    const t = el('div', { class: 'float-text', style: { left: sx + 'px', top: sy + 'px', color } }, text);
-    if (size && size !== 1) t.style.fontSize = size >= 1.4 ? (size >= 2 ? '32px' : '24px') : '';
-    this.world.append(t);
-    setTimeout(() => t.remove(), 1150);
+    return floatText3D(this.game, text, sx, sy, color, size);
   }
 
   /** Create/update a speech bubble at screen coords. */

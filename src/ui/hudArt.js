@@ -13,7 +13,7 @@
 //   waxSmall        a 10×10 wax seal (the strip's stand-in portrait)
 // installHudArt(node) publishes them as --h-* custom properties. Helpers (noise, tone ramps,
 // rivets, screws, stitches) are shared with uiSprites.js and deepArt.js.
-import { Px, art } from './uiArt.js';
+import { Px, art, cssUrl } from './uiArt.js';
 import * as CA from './craftArt.js';
 
 // ---------------------------------------------------------------- helpers
@@ -530,46 +530,48 @@ function linenTile() { const M = 20, p = new Px(M, M); for (let y = 0; y < M; y+
 
 /** The tooled leather tag (slice 6 on 32): veg-tan hide, a burnished edge, a saddle stitch in a groove. */
 function leatherTag() {
-  const s = 6, M = 20, W = 32, p = new Px(W, W);
-  const F = CA.leatherField(M, M, { seed: 211, cell: 3.2, dome: 0.035, valley: 0.08, wear: 0.26, base: 0.6 });
-  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
-    const { u, d, tl } = CA.edgeOf(x, y, W, W), uu = wrap(u - s, M);
-    if (Math.min(x, W - 1 - x) + Math.min(y, W - 1 - y) < 3) continue;
-    let k = F.K[wrap(y - s, M) * M + wrap(x - s, M)];
-    if (d === 0) { p.set(x, y, 0x2a160a); continue; }
-    if (d === 1) k -= 0.3; // the dyed, burnished edge
+  const s = 6, M = 20, W = 32, p = new Px(W, W), r = p.r;
+  const F = CA.leatherField(M, M, { seed: 211, cell: 3.2, dome: 0.035, valley: 0.08, wear: 0.26, base: 0.6, res: r });
+  p.fine((X, Y, fx, fy) => {
+    const x = Math.floor(X), y = Math.floor(Y);
+    const { u, d, df, tl } = CA.edgeOfF(X, Y, W, W, r), uu = wrap(u - s, M);
+    if (Math.min(x, W - 1 - x) + Math.min(y, W - 1 - y) < 3) return undefined;
+    let k = F.k(X - s, Y - s);
+    if (d === 0) return 0x2a160a;
+    if (d === 1) k -= r > 1 && df - d < 0.5 ? 0.22 : 0.3; // the dyed, burnished edge (finer: its polished lip)
     else if (d === 2) k += tl ? 0.18 : -0.08;
     else if (d === 3) k -= 0.2; // the stitching groove
-    if (d === 3) { const st = wrap(uu, 4); if (st < 2) { p.set(x, y, st === 0 ? 0xfff0cc : 0xe8d0a0); continue; } if (st === 2) k -= 0.22; }
-    else if (d === 4 && wrap(uu, 4) < 2) k -= 0.12;
-    p.set(x, y, CA.quant(VEG, k, x, y, 0.3));
-  }
+    if (d === 3) {
+      if (r > 1) { const t = wrap(uu - (df - d) * 0.9, 4); if (t < 1.75) return t < 0.5 ? 0xfff8e0 : t < 1.25 ? 0xf2dcb0 : 0xc8a878; if (t >= 2 && t < 2.5) k -= 0.3; }
+      else { const st = wrap(Math.floor(uu), 4); if (st < 2) return st === 0 ? 0xfff0cc : 0xe8d0a0; if (st === 2) k -= 0.22; }
+    } else if (d === 4 && wrap(Math.floor(uu), 4) < 2) k -= r > 1 && df - d >= 0.5 ? 0.05 : 0.12;
+    return CA.quant(VEG, k, fx, fy, 0.3);
+  });
   return p;
 }
-function vegTile() { const p = new Px(20, 20); CA.paintField(p, CA.leatherField(20, 20, { seed: 211, cell: 3.2, dome: 0.035, valley: 0.08, wear: 0.26, base: 0.6 }), VEG, 0, 0, 0.3); return p; }
-
+function vegTile() { const p = new Px(20, 20); CA.paintField(p, CA.leatherField(20, 20, { seed: 211, cell: 3.2, dome: 0.035, valley: 0.08, wear: 0.26, base: 0.6, res: p.r }), VEG, 0, 0, 0.3); return p; }
 /** The brass plate (slice 6 on 32): brushed, bevelled, an engraved line round it, a screw in each corner. */
 function brassTag() {
-  const s = 6, M = 20, W = 32, p = new Px(W, W);
-  const F = CA.brassField(M, M, { seed: 221, base: 0.6 });
-  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
-    const { d, tl } = CA.edgeOf(x, y, W, W);
-    if (Math.min(x, W - 1 - x) + Math.min(y, W - 1 - y) < 2) continue;
-    let k = F.K[wrap(y - s, M) * M + wrap(x - s, M)];
-    if (d === 0) { p.set(x, y, BR[0]); continue; }
-    if (d === 1) k += tl ? 0.3 : -0.3;
+  const s = 6, M = 20, W = 32, p = new Px(W, W), r = p.r;
+  const F = CA.brassField(M, M, { seed: 221, base: 0.6, res: r });
+  p.fine((X, Y, fx, fy) => {
+    const x = Math.floor(X), y = Math.floor(Y);
+    const { d, df, tl } = CA.edgeOfF(X, Y, W, W, r);
+    if (Math.min(x, W - 1 - x) + Math.min(y, W - 1 - y) < 2) return undefined;
+    let k = F.k(X - s, Y - s);
+    if (d === 0) return BR[0];
+    if (d === 1) k += tl ? (r > 1 && df - d < 0.5 ? 0.38 : 0.3) : -0.3; // finer: a bright arris on the bevel
     else if (d === 2) k += tl ? 0.12 : -0.14;
     else if (d === 4) k = tl ? 0.18 : 0.82; // the engraved line: its shaded wall...
     else if (d === 5) k = tl ? 0.8 : 0.3; // ...and the lit one
-    if (!tl && F.V[wrap(y - s, M) * M + wrap(x - s, M)] > 0.62 && d > 1) k -= 0.1; // tarnish low down
-    p.set(x, y, CA.quant(BR, k, x, y, 0.35));
-  }
+    if (!tl && F.v(X - s, Y - s) > 0.62 && d > 1) k -= 0.1; // tarnish low down
+    return CA.quant(BR, k, fx, fy, 0.35);
+  });
   for (const [x, y, dir] of [[2, 2, 0], [W - 5, 2, 2], [2, W - 5, 3], [W - 5, W - 5, 1]]) screw(p, x, y, dir, RAMP.brass);
-  for (const [x, y] of [[9, 1], [1, 12]]) { p.set(x, y, BR[9]); p.set(x + 1, y, BR[8]); }
+  for (const [x, y] of [[9, 1], [1, 12]]) CA.glint(p, x, y, BR[9], BR[8]);
   return p;
 }
-function brassTile() { const p = new Px(20, 20), F = CA.brassField(20, 20, { seed: 221, base: 0.6 }); for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) p.set(x, y, CA.quant(BR, F.K[y * 20 + x], x, y, 0.35)); return p; }
-
+function brassTile() { const p = new Px(20, 20), F = CA.brassField(20, 20, { seed: 221, base: 0.6, res: p.r }); p.fine((X, Y, fx, fy) => CA.quant(BR, F.k(X, Y), fx, fy, 0.35)); return p; }
 /** A forged nail head (3×2 at x, y) the tags hang from. */
 function nail(p, x, y) {
   const I = RAMP.iron;
@@ -700,7 +702,7 @@ let installed = false;
 export function installHudArt(node = document.documentElement) {
   if (installed && node === document.documentElement) return;
   if (node === document.documentElement) installed = true;
-  const u = (k, v) => node.style.setProperty('--h-' + k, `url("${v}")`);
+  const u = (k, v) => node.style.setProperty('--h-' + k, cssUrl(v));
   u('goldTag', HART.goldTag()); u('ironTag', HART.ironTag()); u('brassPlate', HART.brassPlate()); u('plaque', HART.plaque());
   u('paperTag', HART.paperTag(false)); u('paperTagRed', HART.paperTag(true)); u('gauge', HART.gauge());
   u('twineV', HART.twineV()); u('chainV', HART.chainV()); u('wax', HART.wax());

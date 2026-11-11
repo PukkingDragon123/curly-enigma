@@ -185,7 +185,7 @@ export class ForgeLesson {
     if (this.sc.view?.mode === 'walk' && !this.sc.activity) this.sc.dock?.(this.introDock(), { dur: 3.4 });
     await this.wait(1.0);
     if (!this.cut) await this.wakeFire();
-    if (!this.cut) await this.say('Two <b>copper ingots</b> I\'ve been saving. Heat them, beat them into a curve, cool them off: that\'s a pick.', 'happy', { wait: true });
+    if (!this.cut) await this.say('There she is! Two <b>copper ingots</b> I\'ve been saving. Heat them, hammer them into a curve, cool them off: your own pick.', 'happy', { wait: true });
     this.endCine();
     if (this.sc.game.scene !== this.sc || this.stage !== 'intro') return;
     this.stage = 'pick';

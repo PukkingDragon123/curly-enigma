@@ -1,10 +1,13 @@
-// Procedural pixel art for the interface chrome. Everything is drawn at 1 art pixel =
-// 1 canvas pixel and shown at an integer CSS scale (--px) with image-rendering: pixelated.
+// Procedural pixel art for the interface chrome. Coordinates are art pixels, shown at an integer
+// CSS scale (--px) with image-rendering: pixelated. Art cached through art() is drawn at ART_RES×
+// resolution (half-size fine pixels: src/ui/px.js) and finished by src/ui/pxFine.js; cssUrl()
+// wraps such an image as image-set(... 2x) so CSS keeps sizing and slicing it in art pixels.
 //  - Frames are 9-slice images used through CSS `border-image` (exposed as --a-* custom props).
 //  - Tiles are seamless textures used as backgrounds (paper, leather grain, canvas, wood).
 //  - Light always comes from the top-left.
 import { makeRng, mixHex, shade } from '../core/util.js';
 import { Px } from './px.js';
+import { refine } from './pxFine.js';
 import * as CA from './craftArt.js';
 
 // ---------------------------------------------------------------- raster (src/ui/px.js)
@@ -194,15 +197,35 @@ function smudgeTile() {
 }
 
 // ---------------------------------------------------------------- registry
-const cache = new Map();
-export function art(key, fn) {
+/** Fine pixels per art pixel for cached interface art (?hires=0 draws it at 1× for A/B shots). */
+export const ART_RES = (() => { try { return new URLSearchParams(location.search).get('hires') === '0' ? 1 : 2; } catch (e) { return 2; } })();
+const cache = new Map(), resOf = new Map();
+/**
+ * Draw (once) and cache a piece of interface art as a data URL. fn() draws into Px rasters, which
+ * are made at ART_RES while it runs. o: { res (1 keeps the art at 1×), edges / detail / brown /
+ * amount (pxFine's finishing pass, see refine) }.
+ */
+export function art(key, fn, o) {
   if (!cache.has(key)) {
-    let url = '';
-    try { url = fn().url(); } catch (e) { console.warn('uiArt', key, e); }
+    let url = '', r = 1;
+    const prev = Px.R;
+    Px.R = o?.res ?? ART_RES;
+    try {
+      const p = fn();
+      r = p.r || 1;
+      if (r > 1 && o?.refine !== false) refine(p, { seed: key, ...o });
+      url = p.url();
+    } catch (e) { console.warn('uiArt', key, e); } finally { Px.R = prev; }
     cache.set(key, url);
+    if (r > 1 && url) resOf.set(url, r);
   }
   return cache.get(key);
 }
+/** Fine pixels per art pixel of a URL made by art() (1 for anything else). */
+export const artRes = (url) => resOf.get(url) || 1;
+/** A CSS <image> for an art URL: image-set(... 2x) for hi-res art, so its natural size (and every
+ *  border-image slice and background size) stays in art pixels. */
+export const cssUrl = (url) => { const r = resOf.get(url); return r > 1 ? `image-set(url("${url}") ${r}x)` : `url("${url}")`; };
 
 const OAK = CA.TONES.wood, GREEN = CA.TONES.moss;
 const LEATHER = [0x22130a, 0x2e1a0c, 0x3f2412, 0x4c2c16, 0x56341b, 0x623c20, 0x704628, 0x7e5030, 0x8c5a32, 0x9a6638, 0xa87444];
@@ -280,14 +303,23 @@ const ASSETS = {
   smudge: () => smudgeTile(),
 };
 
-export function asset(key) { return ASSETS[key] ? art(key, ASSETS[key]) : ''; }
+// finishing-pass options per asset (src/ui/pxFine.js): what CSS stretches gets no material texture
+// (a stretched edge would smear it); the leather book covers and the belt are leather
+const FLAT = { detail: false, edges: false };
+const OPTS = { sign: FLAT, slate: FLAT, key: FLAT, loop: FLAT, loopOn: FLAT, pocket: FLAT, pocketOn: FLAT, track: FLAT, cut: { detail: false, edges: false }, beltT: { brown: 'leather' }, leatherT: { brown: 'leather' } };
+export function asset(key) { return ASSETS[key] ? art(key, ASSETS[key], OPTS[key]) : ''; }
 
+// the big tiles and frames of panels that only open later (the books, the notice boards, the Miners'
+// Board): drawn while the game idles after boot, so the first frame is not held up by them
+const LATER = new Set(['cover', 'journal', 'coverT', 'journalT', 'coverL', 'journalL', 'posterR', 'posterG', 'posterK', 'newsT', 'corkT', 'timber', 'chalkL', 'ledge', 'chalk', 'eraser', 'smudge', 'gutterL', 'gutterR']);
 /** Publish every frame/tile as a CSS custom property (--a-<key>) on :root. */
 export function installArt(root = document.documentElement) {
-  for (const k of Object.keys(ASSETS)) {
-    const u = asset(k);
-    if (u) root.style.setProperty('--a-' + k, `url("${u}")`);
-  }
+  const put = (k) => { const u = asset(k); if (u) root.style.setProperty('--a-' + k, cssUrl(u)); };
+  const later = [];
+  for (const k of Object.keys(ASSETS)) if (LATER.has(k)) later.push(k); else put(k);
+  const idle = (f) => (window.requestIdleCallback ? window.requestIdleCallback(f, { timeout: 600 }) : setTimeout(f, 60));
+  const step = () => { const t0 = performance.now(); while (later.length && performance.now() - t0 < 10) put(later.shift()); if (later.length) idle(step); };
+  if (later.length) idle(step);
 }
 
 export { mixHex, shade };

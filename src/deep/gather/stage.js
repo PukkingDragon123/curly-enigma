@@ -254,10 +254,11 @@ export class Stage {
   }
 
   /**
-   * Floating words are gone: the plant, the sparks and the sounds say how it went. Kept for the
-   * stages' old calls; a cheerful (gold or green) one still leaves a faint shimmer at the spot.
+   * A word that pops up at this local point, as voxel letters in the world (src/gfx/text3d.js),
+   * sized for the close-up; a cheerful (gold or green) one also leaves a faint shimmer at the spot.
    */
-  word(text, color = '#fff4d8', x = 0, y = 0.2, z = 0) {
+  word(text, color = '#fff4d8', x = 0, y = 0.2, z = 0, big = false) {
+    if (text) this.ctx.ui?.floatText?.(text, this.toWorld(_v.set(x, y, z), new THREE.Vector3()), { color, size: big ? 1.15 : 0.85 });
     const n = parseInt(String(color).replace('#', ''), 16) || 0;
     const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
     if (r > 200 && g > 180 && b < 140) this.sparkle(x, y - 0.03, z, 6, [1, 0.9, 0.45], 0.35);

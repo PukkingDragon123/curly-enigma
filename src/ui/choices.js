@@ -13,7 +13,7 @@
 import { el } from '../core/util.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
-import { Px, PAL, INK, art, mixHex } from './uiArt.js';
+import { Px, PAL, INK, art, mixHex, cssUrl } from './uiArt.js';
 import { portrait3d } from '../gfx/portrait3d.js';
 import { speakerOf, materialOf } from './Tutor.js';
 import { installDialogArt } from './dialogArt.js';
@@ -70,7 +70,7 @@ let artInstalled = false;
 function installArt() {
   if (artInstalled) return;
   artInstalled = true;
-  document.documentElement.style.setProperty('--a-pawPoint', `url("${art('pawPoint', pawPoint)}")`);
+  document.documentElement.style.setProperty('--a-pawPoint', cssUrl(art('pawPoint', pawPoint)));
 }
 
 // ------------------------------------------------------------------ talk menu
@@ -139,7 +139,7 @@ export function openSeedTray(game, { title = 'Planter', note = 'Pick a seed to s
       onclick: () => { b.classList.add('sown'); onPick?.(g.id); },
       onmouseenter: () => { game.audio?.play?.('ui_hover', { vol: 0.2 }); swing(b.firstChild, 3, 600); },
     }, [
-      el('span', { class: 'sd-paper', style: { backgroundImage: `url("${PACKET(bandOf(g.id))}")` } }, [el('img', { class: 'pix', src: iconURL(g.id), alt: '' })]),
+      el('span', { class: 'sd-paper', style: { backgroundImage: cssUrl(PACKET(bandOf(g.id))) } }, [el('img', { class: 'pix', src: iconURL(g.id), alt: '' })]),
       el('span', { class: 'sd-name' }, it?.name || g.id),
       el('span', { class: 'sd-n' }, '×' + g.n),
     ]);

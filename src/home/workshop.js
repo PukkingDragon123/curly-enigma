@@ -289,6 +289,7 @@ export class WorkshopLife {
     this.later(0.3, () => this.game.audio.play('pickup'));
     const p = SPOTS.cart;
     this.fx.dust(p.x, Y + 0.6, p.z, 10, [0.18, 0.17, 0.2], 0.12);
+    this.floatAt?.(p.x, Y + 0.85, p.z, `+${n} coal`, '#d8d0c8');
     st.save();
     return n;
   }
@@ -317,6 +318,7 @@ export class WorkshopLife {
     if (!this.poolToday()) {
       sd.poolDay = st.data.day;
       st.restoreEnergy?.(6);
+      this.floatAt?.(pump.x, pump.y + 0.1, pump.z, '+6 energy', '#bff0a0');
       this.later(0.8, () => this.starAside('pool'));
     }
     this.think(pick(['Cold and clean. It tastes of stone.', 'Ahh. Better than any tea in town.']), 2.4);
@@ -330,8 +332,8 @@ export class WorkshopLife {
     if (sd.glints[i]) return;
     sd.glints[i] = 1;
     const g = this.cave.glints[i];
-    if (g.gem) { st.addItem('quartz', { spill: true, q: 70, n: 1 }); this.game.audio.play('pickup_gem'); }
-    else { const n = 5 + i * 3; st.addGold(n, 'rubble'); this.game.audio.play('coins', { n: 3 }); }
+    if (g.gem) { st.addItem('quartz', { spill: true, q: 70, n: 1 }); this.game.audio.play('pickup_gem'); this.floatAt?.(g.x, g.y + 0.15, g.z, '+1 Quartz', '#bff6ff'); }
+    else { const n = 5 + i * 3; st.addGold(n, 'rubble'); this.game.audio.play('coins', { n: 3 }); this.floatAt?.(g.x, g.y + 0.15, g.z, `+${n} gold`, '#ffd34a', 'gold'); }
     if (this.glintHalos?.[i]) { this.glow.remove(this.glintHalos[i]); this.glintHalos[i] = null; }
     this.hideGlint?.(i);
     st.save();

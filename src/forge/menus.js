@@ -14,6 +14,7 @@ import { smeltStatus, quickSmelt, SmeltGame } from './smelt.js';
 import { ForgeRun } from './forging.js';
 import { PartRun, partStatus } from './parts.js';
 import { fart, token, blueprintURL } from './forgeArt.js';
+import { cssUrl } from '../ui/uiArt.js';
 
 const HEARTH_NAMES = ['Coal hearth', 'Coal hearth, double bellows', 'Magma hearth'];
 const NEED_WORDS = {
@@ -269,7 +270,7 @@ export class Menus {
       class: 'sm-chip' + (on ? ' on' : ''), disabled: !!why, title: why || '',
       onclick: () => { this.game.audio.play(on ? 'ui_click' : 'click'); onclick(); },
     }, [face || el('span'), el('span', {}, [title, el('small', { html: why ? `<span class="why">${why}</span>` : small })])]);
-    const tok = (hex, icon) => el('span', { class: 'sm-tok', style: `--tok:url("${token(hex)}")` }, [icon ? img(icon) : null]);
+    const tok = (hex, icon) => el('span', { class: 'sm-tok', style: `--tok:${cssUrl(token(hex))}` }, [icon ? img(icon) : null]);
     // left: the plan and the metal
     const typeGrid = el('div', { class: 'sm-chips' });
     for (const t of opt.types) {

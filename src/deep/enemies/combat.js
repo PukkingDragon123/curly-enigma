@@ -116,6 +116,7 @@ export class Combat {
       this.burst(g, 1.6, true);
       m.queueEv({ hitStop: 0.11 }); m.queueEv({ shake: 0.35 });
       m.owner?.vm?.guardHit?.(1.2, true);
+      m.floatAt('PARRY!', g, '#ffe27a', 1.2, 'parry');
       if (this.stats.parried === 1) m.say('parry1', this.perk('riposte') ? 'Perfect block! It\'s <b>reeling</b>: hit it now for a heavy counter.' : 'Perfect block! Strike back <b>right away</b> for a heavy counter.', 'good', 9999);
     } else {
       const k = heavy ? 0.6 : 0.25;
@@ -190,9 +191,17 @@ export class Combat {
     return blow;
   }
 
-  /** Sparks, a jolt and sound for a blow's tag (no floating words). */
+  /** A floating word (voxel text popping off the hit), sparks, a jolt and sound for a blow's tag. */
   flourish(e, blow, p) {
     const m = this.mgr;
+    if (blow.tag === 'crit') m.floatAt('CRIT!', p, '#ffd84a', 1.4, 'crit');
+    else if (blow.tag === 'finisher') m.floatAt('SMASH!', p, '#ffb070', 1.2, 'smash');
+    else if (blow.combo === 2) m.floatAt('×2', p, '#fff0c8', 0.8, 'combo');
+    else if (blow.power > 0) {
+      // a plain blow: how much it took off, small
+      const v = blow.power;
+      m.floatAt(v >= 9.5 ? String(Math.round(v)) : String(Math.round(v * 10) / 10), p, '#fff0dc', 1, 'damage');
+    }
     if (blow.tag === 'crit') {
       m.queueEv({ shake: 0.22 });
       sparkle(m.fx, p.x, p.y, p.z, 18, [1, 0.85, 0.35], 3.2, 3, 0.024, 0.7);

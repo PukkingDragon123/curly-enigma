@@ -1,88 +1,123 @@
-// Pixel art for the forge's decorated interface (drawn in code, 1 art pixel = 1 canvas pixel,
-// shown at the UI's --px scale): the chalkboard over the bench, the smith's ledger, the weapon
+// Pixel art for the forge's decorated interface (drawn in code in art pixels, shown at the UI's
+// --px scale; uiArt's art() draws it at 2× resolution and the r > 1 passes add the finer detail): the chalkboard over the bench, the smith's ledger, the weapon
 // blueprint, the brass thermometer, rune medallions, gauges, rubber stamps,
 // the guild certificate and its wax seal. Everything is cached through uiArt's art(); the frames
 // and tiles are published on the forge layer as CSS custom properties (--fa-<key>).
-import { Px, PAL, INK, art, mixHex, shade } from '../ui/uiArt.js';
+import { Px, PAL, INK, art, mixHex, shade, cssUrl } from '../ui/uiArt.js';
 import { blob, lumpDist } from '../iso/organic.js';
+import { TONES, rivet, glint } from '../ui/craftArt.js';
 import { SPR } from '../ui/uiSprites.js';
 import { PixelCanvas } from '../gfx/PixelArt.js';
 import { drawWeapon } from '../gfx/PixelArt.js';
 import { METALS, INFUSIONS } from '../data/weapons.js';
 
 const W = PAL.wood, B = PAL.brass, P = PAL.paper, L = PAL.leather;
-const CHALK = 0xeef2e6;
+const CHALK = 0xeef2e6, BT = TONES.brass;
+const wrap = (v, n) => ((v % n) + n) % n;
 const hash = (x, y, s = 0) => { let h = (x * 374761393 + y * 668265263 + s * 2246822519) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
-// ---------------------------------------------------------------- tiles
-/** Chalkboard slate: deep green-grey with old chalk smudges. 32×32 tile. */
+/** Chalkboard slate: deep green-grey with old chalk smudges. 32×32 tile. (Finer: chalk dust and grit.) */
 function chalkTile() {
-  const p = new Px(32, 32);
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+  const p = new Px(32, 32), r = p.r;
+  p.fine((X, Y, fx, fy) => {
+    const x = Math.floor(X), y = Math.floor(Y);
     const h = hash(x, y, 3);
     let c = h < 0.12 ? 0x2c3b33 : h > 0.93 ? 0x3c4c42 : 0x33433a;
     // wiped arcs of chalk dust
-    const a = Math.sin((x + y * 0.4) * 0.35) + Math.sin((y - x * 0.3) * 0.22);
+    const a = Math.sin((X + Y * 0.4) * 0.35) + Math.sin((Y - X * 0.3) * 0.22);
     if (a > 1.55 && hash(x, y, 9) > 0.35) c = mixHex(c, CHALK, 0.1);
-    p.set(x, y, c);
-  }
+    if (r > 1) {
+      const g = hash(fx, fy, 21);
+      if (g < 0.045) c = mixHex(c, CHALK, a > 1.2 ? 0.22 : 0.12); // a grain of chalk dust
+      else if (g > 0.97) c = mixHex(c, 0x141c18, 0.45); // a pit in the slate
+      else if (a > 1.35 && wrap(fx + fy * 2, 7) === 0 && g < 0.4) c = mixHex(c, CHALK, 0.07); // the cloth's wipe lines
+    }
+    return c;
+  });
   return p;
 }
 
-/** Blueprint paper: Prussian blue with a fine grid and a heavier line every 8 px. 16×16 tile. */
+/** Blueprint paper: Prussian blue with a fine grid and a heavier line every 8 px. 16×16 tile. (Finer: hairline grid.) */
 function blueTile() {
-  const p = new Px(16, 16);
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-    let c = hash(x, y, 5) < 0.1 ? 0x2a5c9c : 0x2d61a3;
-    if (x % 4 === 0 || y % 4 === 0) c = 0x3a70b2;
-    if (x % 8 === 0 || y % 8 === 0) c = 0x4a80c0;
-    p.set(x, y, c);
-  }
+  const p = new Px(16, 16), r = p.r;
+  p.fine((X, Y, fx, fy) => {
+    const x = Math.floor(X), y = Math.floor(Y), sx = fx % r, sy = fy % r;
+    let c = hash(r > 1 ? fx : x, r > 1 ? fy : y, 5) < 0.1 ? 0x2a5c9c : 0x2d61a3;
+    if ((x % 4 === 0 && sx === 0) || (y % 4 === 0 && sy === 0)) c = 0x3a70b2;
+    else if (r > 1 && (x % 4 === 0 || y % 4 === 0)) c = 0x3268a9; // the hairline's soft side
+    if (x % 8 === 0 || y % 8 === 0) c = (x % 8 === 0 && sx === 0) || (y % 8 === 0 && sy === 0) ? 0x4a80c0 : 0x3e74b4;
+    return c;
+  });
   return p;
 }
 
-/** Drafting paper: cream with a faint blue grid. 16×16 tile. */
+/** Drafting paper: cream with a faint blue grid. 16×16 tile. (Finer: hairline grid, paper tooth.) */
 function draftTile() {
-  const p = new Px(16, 16);
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-    let c = hash(x, y, 7) < 0.12 ? 0xf0e4c6 : 0xf5ead0;
-    if (x % 4 === 0 || y % 4 === 0) c = 0xe2e0cc;
-    if (x % 8 === 0 || y % 8 === 0) c = 0xcfd6cc;
-    p.set(x, y, c);
-  }
+  const p = new Px(16, 16), r = p.r;
+  p.fine((X, Y, fx, fy) => {
+    const x = Math.floor(X), y = Math.floor(Y), sx = fx % r, sy = fy % r;
+    let c = hash(r > 1 ? fx : x, r > 1 ? fy : y, 7) < 0.12 ? 0xf0e4c6 : 0xf5ead0;
+    if ((x % 4 === 0 && sx === 0) || (y % 4 === 0 && sy === 0)) c = 0xe2e0cc;
+    if ((x % 8 === 0 && sx === 0) || (y % 8 === 0 && sy === 0)) c = 0xcfd6cc;
+    else if (r > 1 && (x % 8 === 0 || y % 8 === 0)) c = 0xe2e0cc;
+    return c;
+  });
   return p;
 }
 
-/** Cork board for pinning things to. 24×24 tile. */
+/** Cork board for pinning things to. 24×24 tile. (Finer: every granule lit on its upper left.) */
 function corkTile() {
-  const p = new Px(24, 24);
+  const p = new Px(24, 24), r = p.r;
   for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) {
-    const h = hash(x, y, 11);
-    p.set(x, y, h < 0.18 ? 0x9a6a3e : h < 0.3 ? 0xc8945a : h > 0.9 ? 0x7a5230 : 0xb07c4a);
+    const h = hash(x, y, 11), c = h < 0.18 ? 0x9a6a3e : h < 0.3 ? 0xc8945a : h > 0.9 ? 0x7a5230 : 0xb07c4a;
+    p.set(x, y, c);
+    if (r > 1) {
+      const g = hash(x, y, 12);
+      if (g < 0.5) { p.dot(x, y, mixHex(c, 0xf0c890, 0.25)); p.dot(x + 0.5, y + 0.5, mixHex(c, 0x3a2410, 0.3)); }
+      else if (g < 0.62) p.dot(x + 0.5, y, 0x5a3a1e);
+    }
   }
   return p;
 }
 
 // ---------------------------------------------------------------- frames (9-slice)
-/** Heavy oak frame round the chalkboard, brass nails. slice 8. */
+/** Heavy oak frame round the chalkboard, brass nails. slice 8. (Finer: hairline grain, a knot, domed nails.) */
 function boardFrame() {
-  const p = new Px(28, 28);
-  p.rect(1, 1, 26, 26, W.base);
-  for (let y = 1; y <= 26; y++) for (let x = 1; x <= 26; x++) {
+  const p = new Px(28, 28), r = p.r;
+  p.fine((X, Y, fx, fy) => {
+    const x = Math.floor(X), y = Math.floor(Y);
+    if (x < 1 || y < 1 || x > 26 || y > 26) return undefined;
     const d = Math.min(x - 1, y - 1, 26 - x, 26 - y);
-    if (d >= 7) { p.clear(x, y); continue; }
+    if (d >= 7) return undefined;
     let c = W.base;
-    const along = d === Math.min(y - 1, 26 - y) ? x : y;
+    const horiz = d === Math.min(y - 1, 26 - y), along = horiz ? x : y;
     if (d === 0) c = x + y < 27 ? W.hi : W.dk;
     else if (d === 1) c = x + y < 27 ? W.lt : W.base;
     else if (d === 5) c = x + y < 27 ? W.dk : W.lt;
     else if (d === 6) c = W.dd;
     else if ((along * 5 + d * 3) % 9 === 0) c = W.dk;
     else if ((along * 3 + d) % 11 === 0) c = W.lt;
-    p.set(x, y, c);
-  }
+    if (r > 1 && d >= 1 && d <= 5) {
+      // hairline grain running along the rail, waving a little; the middle repeats every 12
+      const aF = horiz ? X : Y, dF = horiz ? (y - 1 < 26 - y ? Y - 1 : 27 - Y) : (x - 1 < 26 - x ? X - 1 : 27 - X);
+      const u = wrap(aF - 8, 12), g = wrap(dF * 1.6 + Math.sin((u / 12) * Math.PI * 2 + d) * 0.35, 1);
+      if (g < 0.18) c = mixHex(c, W.dd, 0.35);
+      else if (g > 0.86 && d !== 5) c = mixHex(c, W.hi, 0.18);
+    }
+    return c;
+  });
   for (let i = 1; i <= 7; i++) { p.set(i, i, W.dd); p.set(27 - i, i, W.dd); p.set(i, 27 - i, W.dd); p.set(27 - i, 27 - i, W.dd); }
-  for (const [x, y] of [[3, 3], [23, 3], [3, 23], [23, 23]]) { p.set(x, y, B.hi); p.set(x + 1, y, B.base); p.set(x, y + 1, B.base); p.set(x + 1, y + 1, B.dd); }
+  if (r > 1) {
+    // the mitre joints catch a hairline of light; a knot in the bottom-left corner block
+    for (const [ax, ay, bx, by] of [[1.5, 1, 7.5, 7], [26.5, 1, 20.5, 7], [1.5, 27, 7.5, 21], [26.5, 27, 20.5, 21]]) p.fline(ax, ay, bx, by, W.lt, 120);
+    for (const [kx, ky] of [[4.5, 21.5]]) {
+      p.fdisk(kx, ky, 1.3, W.dk); p.fdisk(kx - 0.1, ky - 0.1, 0.7, W.dd); p.dot(kx - 0.5, ky - 1.5, W.hi, 120);
+    }
+  }
+  for (const [x, y] of [[3, 3], [23, 3], [3, 23], [23, 23]]) {
+    if (r > 1) rivet(p, x + 1, y + 1, BT, 0.95);
+    else { p.set(x, y, B.hi); p.set(x + 1, y, B.base); p.set(x, y + 1, B.base); p.set(x + 1, y + 1, B.dd); }
+  }
   p.outline(W.ol);
   for (let i = 8; i <= 19; i++) { p.set(i, 8, 0x1a2420); p.set(8, i, 0x1a2420); }
   return p;
@@ -143,9 +178,9 @@ function tubeFrame() {
   return p;
 }
 
-/** Leather clipboard round the work order (activity panel). slice 9. */
+/** Leather clipboard round the work order (activity panel). slice 9. (Finer: saddle stitches, pores.) */
 function clipFrame() {
-  const p = new Px(28, 28);
+  const p = new Px(28, 28), r = p.r;
   p.rr(1, 1, 26, 26, 3, L.base);
   const D = p.dist(3);
   p.each((x, y) => {
@@ -154,16 +189,27 @@ function clipFrame() {
     if (d === 2) return x + y < 27 ? mixHex(L.base, L.lt, 0.5) : mixHex(L.base, L.dk, 0.4);
     return undefined;
   });
-  for (let i = 4; i <= 23; i++) if (i % 3 !== 0) { p.set(i, 4, L.stitch); p.set(i, 23, L.stitch); p.set(4, i, L.stitch); p.set(23, i, L.stitch); }
+  for (let i = 4; i <= 23; i++) if (i % 3 !== 0) {
+    p.set(i, 4, L.stitch); p.set(i, 23, L.stitch); p.set(4, i, L.stitch); p.set(23, i, L.stitch);
+    if (r > 1) {
+      // each stitch a slanted twist: a lit end, a shaded end sunk into its hole, the hole beyond
+      const first = i % 3 === 1, h = 0.5;
+      for (const [x, y, v] of [[i, 4, 0], [i, 23, 0], [4, i, 1], [23, i, 1]]) {
+        if (v) { p.dot(x + h, y + (first ? 0 : h), mixHex(L.stitch, 0xffffff, 0.35)); p.dot(x, y + (first ? h : 0), mixHex(L.stitch, L.dk, 0.35)); if (!first) p.dot(x + h, y + 2 * h, L.dd); }
+        else { p.dot(x + (first ? 0 : h), y, mixHex(L.stitch, 0xffffff, 0.35)); p.dot(x + (first ? h : 0), y + h, mixHex(L.stitch, L.dk, 0.35)); if (!first) p.dot(x + 2 * h, y + h, L.dd); }
+      }
+    }
+  }
   p.rect(7, 7, 14, 14, P.base);
   for (let i = 7; i <= 20; i++) { p.set(i, 7, P.hi); p.set(20, i, P.dk); p.set(i, 20, P.dk); }
+  if (r > 1) { p.fline(7, 7.5, 20.5, 7.5, P.base); p.fline(7, 6.5, 20.5, 6.5, L.dd, 120); p.fline(6.5, 7, 6.5, 20.5, L.dd, 120); } // the sheet's lip, its shadow in the leather
   p.outline(L.ol);
   return p;
 }
 
 /** The guild certificate: parchment with a red and gold double rule and flourished corners. slice 11. */
 function certFrame() {
-  const p = new Px(32, 32);
+  const p = new Px(32, 32), r = p.r;
   p.rect(1, 1, 30, 30, P.base);
   const R = PAL.red;
   for (let i = 1; i <= 30; i++) { p.set(i, 1, P.dk); p.set(1, i, P.dk); p.set(i, 30, P.burn); p.set(30, i, P.burn); }
@@ -172,12 +218,27 @@ function certFrame() {
     p.set(i, 6, B.dk); p.set(6, i, B.dk); p.set(i, 25, B.dk); p.set(25, i, B.dk);
     if (i % 2 === 0 && i > 6 && i < 25) { p.set(i, 5, B.lt); p.set(5, i, B.lt); p.set(i, 26, B.lt); p.set(26, i, B.lt); }
   }
+  if (r > 1) {
+    // engraved: each rule a dark hairline over a lighter one (constant along the edges: it stretches)
+    const h = 0.5, e = 1 - 1 / r;
+    for (const [a, b, c] of [[4, 27, R.base], [6, 25, B.base]]) {
+      p.fline(a + h, a + h, b + e, a + h, c); p.fline(a + h, a + h, a + h, b + e, c);
+      p.fline(a + h, b + h, b + e, b + h, c); p.fline(b + h, a + h, b + h, b + e, c);
+    }
+    p.fline(2, 1 + h, 30 + e, 1 + h, P.mid); p.fline(1 + h, 2, 1 + h, 30 + e, P.mid);
+  }
   // corner flourishes: a little diamond and a curl in each corner
   for (const [fx, fy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
     const X = (x) => (fx ? 31 - x : x), Y = (y) => (fy ? 31 - y : y);
     p.set(X(8), Y(8), R.base); p.set(X(9), Y(8), R.lt); p.set(X(8), Y(9), R.lt); p.set(X(9), Y(9), R.dk);
     p.set(X(7), Y(9), B.base); p.set(X(9), Y(7), B.base); p.set(X(10), Y(8), B.dk); p.set(X(8), Y(10), B.dk);
     p.set(X(2), Y(2), P.burn); p.set(X(3), Y(2), P.mid);
+    if (r > 1) {
+      // finer: the diamond's facets and a pen curl off it
+      const o = (v, f) => (f ? v + 0.5 : v);
+      p.dot(o(X(8), fx), o(Y(8), fy), R.hi); p.dot(o(X(9), !fx), o(Y(9), !fy), R.dd);
+      p.dot(o(X(10), !fx), o(Y(10), !fy), B.dk); p.dot(o(X(11), fx), o(Y(10), !fy), B.dk); p.dot(o(X(10), fx), o(Y(11), fy), B.dk);
+    }
   }
   p.outline(P.edge);
   return p;
@@ -415,15 +476,79 @@ function blueprintWeapon(type, metal) {
   return p;
 }
 
+// ---------------------------------------------------------------- finer detail (r > 1)
+// Passes run after a sprite is drawn when its raster is finer than the art grid: what a hand-
+// pixeller adds when the canvas doubles. At 1× (?hires=0) none of them run.
+const fineOnly = (fn, post) => (...a) => { const p = fn(...a); if (p && p.r > 1) post(p, ...a); return p; };
+const fineDots = (p, pred, fn) => { for (let fy = 0; fy < p.fh; fy++) for (let fx = 0; fx < p.fw; fx++) if (pred(fx, fy)) fn(fx, fy); };
+/** Dry chalk on slate: strokes lose a grain here and there, a little dust falls beside them. */
+function chalkify(p, seed = 1, amt = 1) {
+  const near = (fx, fy) => p.fa(fx - 1, fy) || p.fa(fx + 1, fy) || p.fa(fx, fy - 1) || p.fa(fx, fy + 1);
+  const dust = [];
+  fineDots(p, (fx, fy) => !p.fa(fx, fy) && near(fx, fy) && hash(fx, fy, seed + 3) < 0.07 * amt, (fx, fy) => dust.push([fx, fy, p.fget(...[[fx - 1, fy], [fx + 1, fy], [fx, fy - 1], [fx, fy + 1]].find(([x, y]) => p.fa(x, y)))]));
+  fineDots(p, (fx, fy) => p.fa(fx, fy) && hash(fx, fy, seed) < 0.16 * amt, (fx, fy) => { const i = (fy * p.fw + fx) * 4; p.d[i + 3] = Math.round(p.d[i + 3] * 0.45); });
+  for (const [fx, fy, c] of dust) p.fset(fx, fy, c, 70);
+}
+function bulbFine(p) {
+  // the glass: a curved reflection high on the left, a small one low on the right, the neck's rim lit
+  for (let a = 3.5; a < 4.4; a += 0.05) p.dot(8 + Math.cos(a) * 4.7, 8.5 + Math.sin(a) * 4.7, 0xffffff, 200);
+  for (let a = 0.35; a < 0.75; a += 0.08) p.dot(8 + Math.cos(a) * 4.9, 8.5 + Math.sin(a) * 4.9, 0xd8eef0, 120);
+  p.dot(5.5, 0.5, 0xd8e6ea); p.dot(10, 0.5, 0x5a6a70);
+}
+function nailFine(p) {
+  const F = [[0xd8d8e0, 0xb8b8c0, 0x9a9aa2], [0xb8b8c0, 0x8a8a90, 0x6a6a70], [0x9a9aa2, 0x6a6a70, 0x4a4a50]];
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) p.dot(1.5 + i * 0.5, 1.5 + j * 0.5, F[j][i]);
+  p.dot(2, 1, 0xf0f0f6); p.dot(3.5, 3.5, 0x3a3a40);
+}
+function tapeFine(p) {
+  // crêpe paper: fine ridges across the strip, the torn ends fraying
+  fineDots(p, (fx, fy) => p.fa(fx, fy) && fx % 3 === 0, (fx, fy) => p.fset(fx, fy, 0xbcae80, 70));
+  fineDots(p, (fx, fy) => p.fa(fx, fy) && (fx < 3 || fx >= p.fw - 3) && hash(fx, fy, 61) < 0.35, (fx, fy) => p.fclear(fx, fy));
+}
+function sticksFine(p) {
+  // chalk grain on the sticks, felt fibres on the duster
+  fineDots(p, (fx, fy) => p.fa(fx, fy) > 200 && hash(fx, fy, 71) < 0.18, (fx, fy) => { const c = p.fget(fx, fy); p.fset(fx, fy, mixHex(c, (c & 0xff) > 200 ? 0x9aa098 : 0x2a2a28, 0.3)); });
+}
+function medalFine(p, glyph, state) {
+  if (state === 'off') { glint(p, 4.5, 3, 0xd8c8b8, 0xb0a090, 120); return; }
+  glint(p, 4.5, 3, 0xffffff, state === 'on' ? 0xfff3c0 : 0xe8f0c0, 190);
+  p.dot(13, 13.5, 0x2a1a0a, 110);
+}
+function sealFine(p, hex) {
+  // the wax: air bubbles burst on its face, a gloss along its lit shoulder
+  const dk = shade(hex, 0.55), lt = mixHex(hex, 0xffffff, 0.45);
+  for (let i = 0; i < 9; i++) {
+    const a = hash(i, 1, 81) * Math.PI * 2, d = 2 + hash(i, 2, 81) * 6, x = 14 + Math.cos(a) * d, y = 14 + Math.sin(a) * d;
+    p.dot(x, y, dk, 170); p.dot(x + 0.5, y + 0.5, lt, 120);
+  }
+  for (let a = 3.6; a < 4.5; a += 0.04) p.dot(14 + Math.cos(a) * 9.8, 14 + Math.sin(a) * 9.4, 0xffffff, 110);
+}
+function ribbonFine(p, hex = 0xc23c2c) {
+  // silk: a sheen down each tail, the weave catching light in the folds
+  const lt = mixHex(hex, 0xffffff, 0.55);
+  p.fline(6.5, 1, 4.5, 11, lt, 150); p.fline(13.5, 1, 17.5, 12, lt, 90);
+  fineDots(p, (fx, fy) => p.fa(fx, fy) && (fx + fy) % 4 === 0 && hash(fx, fy, 91) < 0.5, (fx, fy) => p.fset(fx, fy, shade(hex, 0.75), 80));
+}
+function tokenFine(p, hex) {
+  glint(p, 5, 4.5, 0xffffff, mixHex(hex, 0xffffff, 0.6), 190);
+  for (let a = 0; a < Math.PI * 2; a += 0.09) p.dot(8 + Math.cos(a) * 3.6, 8 + Math.sin(a) * 3.6, Math.cos(a) + Math.sin(a) < 0 ? shade(hex, 0.6) : mixHex(hex, 0xffffff, 0.35), 90); // the die's ring
+}
+function flameFine(p) {
+  // a white-hot heart flickering inside each tongue, a spark lifting off
+  for (const ox of [0, 9]) { p.dot(ox + 4.5, 8, 0xffffff); p.dot(ox + 4.5, 9, 0xffffff, 200); p.dot(ox + 4, 9.5, 0xfffbe0, 180); }
+  p.dot(2.5, 1, 0xffd060, 180); p.dot(15, 0.5, 0xffd060, 160);
+}
+function capFine(p) { glint(p, 4, 5, 0xfff8e0, B.hi, 180); p.fline(3, 7.5, 10.5, 7.5, B.dd, 90); }
+
 // ---------------------------------------------------------------- registry
 const SPRITES = {
   chalkT: chalkTile, blueT: blueTile, draftT: draftTile, corkT: corkTile,
   board: boardFrame, blue: blueFrame, draft: draftFrame, chalkBox: () => chalkBox(false), chalkBoxOn: () => chalkBox(true),
   gauge: gaugeFrame, tube: tubeFrame, clip: clipFrame, cert: certFrame,
   stampRed: () => stampFrame(0xb8301e), stampBlue: () => stampFrame(0x2a5aa8), stampGreen: () => stampFrame(0x3a7a2a), stampInk: () => stampFrame(0x3a2414),
-  flame: flameStrip, bulb: bulbSprite, cap: capSprite, sticks: chalkSticks, tape: tapeSprite, nail: nailSprite,
-  dAnvil: () => doodle('anvil'), dSpark: () => doodle('spark'), dArrow: () => doodle('arrow'), dFlame: () => doodle('flame'),
-  ribbon: () => ribbonSprite(),
+  flame: fineOnly(flameStrip, flameFine), bulb: fineOnly(bulbSprite, bulbFine), cap: fineOnly(capSprite, capFine), sticks: fineOnly(chalkSticks, sticksFine), tape: fineOnly(tapeSprite, tapeFine), nail: fineOnly(nailSprite, nailFine),
+  dAnvil: fineOnly(() => doodle('anvil'), (p) => chalkify(p, 3)), dSpark: fineOnly(() => doodle('spark'), (p) => chalkify(p, 5)), dArrow: () => doodle('arrow'), dFlame: fineOnly(() => doodle('flame'), (p) => chalkify(p, 7)),
+  ribbon: fineOnly(() => ribbonSprite(), ribbonFine),
   tackRed: () => null, tackBlue: () => null, tackGold: () => null, tackGreen: () => null,
 };
 const TACKS = { tackRed: 0xc23c2c, tackBlue: 0x3f7ec8, tackGold: 0xe8b83a, tackGreen: 0x5a9a3a };
@@ -431,13 +556,16 @@ const TACKS = { tackRed: 0xc23c2c, tackBlue: 0x3f7ec8, tackGold: 0xe8b83a, tackG
 /** Data URL of a named forge sprite. */
 export function fart(key) {
   if (TACKS[key]) return SPR.tack(TACKS[key]);
-  return art('fa:' + key, SPRITES[key]);
+  return art('fa:' + key, SPRITES[key], FOPTS[key]);
 }
-export const medal = (glyph, state = 'off') => art(`fa:medal:${glyph}:${state}`, () => medalSprite(glyph, state));
-export const seal = (hex) => art(`fa:seal:${hex}`, () => bigSeal(hex));
-export const ribbon = (hex) => art(`fa:ribbon:${hex}`, () => ribbonSprite(hex));
-export const token = (hex) => art(`fa:token:${hex}`, () => tokenSprite(hex));
-export const blueprintURL = (type, metal) => art(`fa:bp:${type}:${metal}`, () => blueprintWeapon(type, metal));
+// finishing-pass options (src/ui/pxFine.js): no material texture on what CSS stretches, the cork has its own
+const FLAT = { detail: false, edges: false };
+const FOPTS = { corkT: FLAT, stampRed: FLAT, stampBlue: FLAT, stampGreen: FLAT, stampInk: FLAT, chalkBox: FLAT, chalkBoxOn: FLAT, gauge: FLAT, tube: FLAT, cert: FLAT, blueT: FLAT, draftT: FLAT, chalkT: FLAT };
+export const medal = (glyph, state = 'off') => art(`fa:medal:${glyph}:${state}`, fineOnly(() => medalSprite(glyph, state), (p) => medalFine(p, glyph, state)), { brown: 'brass' });
+export const seal = (hex) => art(`fa:seal:${hex}`, fineOnly(() => bigSeal(hex), (p) => sealFine(p, hex)), { brown: 'wax' });
+export const ribbon = (hex) => art(`fa:ribbon:${hex}`, fineOnly(() => ribbonSprite(hex), (p) => ribbonFine(p, hex)), { brown: 'none' });
+export const token = (hex) => art(`fa:token:${hex}`, fineOnly(() => tokenSprite(hex), (p) => tokenFine(p, hex)), { brown: 'brass' });
+export const blueprintURL = (type, metal) => art(`fa:bp:${type}:${metal}`, fineOnly(() => blueprintWeapon(type, metal), (p) => chalkify(p, 9, 0.7)), FLAT);
 export const metalHex = (metal) => METALS[metal]?.color ?? 0xa0a0a0;
 export const infusionHex = (id) => INFUSIONS[id]?.color ?? 0xffffff;
 
@@ -445,6 +573,6 @@ export const infusionHex = (id) => INFUSIONS[id]?.color ?? 0xffffff;
 export function installForgeArt(elm) {
   for (const k of Object.keys(SPRITES)) {
     const u = fart(k);
-    if (u) elm.style.setProperty('--fa-' + k, `url("${u}")`);
+    if (u) elm.style.setProperty('--fa-' + k, cssUrl(u));
   }
 }

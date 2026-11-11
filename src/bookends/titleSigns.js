@@ -10,7 +10,10 @@
 // cairn's stones are small things (1/64 m); the post and its cap are a prop the camera sees up close
 // (1/32 m, as the guide asks for close props).
 //
-//   const P = makeSignpost(items, { face });   scene.add(P.group)   (face: the boards' turn on the post, radians)
+//   const P = makeSignpost(items, { face, look });   scene.add(P.group)   (face: the boards' turn on the post, radians)
+//     look: 'forest' (default) | 'cave': planted in the mushroom cave (bookends/titleCave.js): the
+//     cave's materials (its glow and air), glowing mushrooms and moss at its foot instead of the
+//     toadstools and fern, shelf fungi up the post, glowcaps and mycelium on the cap
 //     items: [{ label, primary?, dir: 1 (points right) | -1 }]
 //   P.boards[i]: { pivot (Object3D at the nail), box (local Box3, metres), label, dir, ... }
 //   P.update(dt, camera, heightPx)   springs (the boards swing on their nails), light, glints, crumbs
@@ -31,6 +34,9 @@ import { makeMushroomGeo, makeFernGeo, makeBoulderGeo } from './forest/flora.js'
 import { Twinkles, Particles, SHAPE, makeGlow } from './fx.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { makeNoise2D, makeRng, clamp } from '../core/util.js';
+import { caveToon, vgGeo, withGlow } from './titleCaveFx.js';
+import { MODELS } from '../deep/veg/plants.js';
+import { rng as vrng } from '../deep/veg/paint.js';
 
 // ------------------------------------------------------------------ palettes
 /** Board woods: darkest, dark, base, light, sun-bleached. */
@@ -352,18 +358,69 @@ function buildFoot(seed = 9) {
   return { stones, plants: merged };
 }
 
+/** One of the mine's cave plants (src/deep/veg) as a mesh at s m per voxel, turned and moved. */
+function vegAt(name, v, s, x, y, z, ry = 0, rx = 0) {
+  let h = 4243 + v * 7919;
+  for (let i = 0; i < name.length; i++) h = Math.imul(h ^ name.charCodeAt(i), 16777619);
+  const g = vgGeo(MODELS[name](vrng(h)), s);
+  g.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, 0)).setPosition(x, y, z));
+  return g;
+}
+/** The cave's foot and fungi: the cairn's stones, glowing mushrooms and moss round them, brackets up the post, glowcaps on the cap. */
+function buildCaveDress(postHalf, capY) {
+  const stones = [];
+  const stone = (s, w, h, d, x, z, ry, moss = 0.85, tone = 0x6a6474) => {
+    const k = Math.round(1 / voxelSizeFor(Math.max(w, h, d)));
+    const geo = withGlow(makeBoulderGeo(s, { w, h, d, k, moss, tone }));
+    geo.applyMatrix4(new THREE.Matrix4().makeRotationY(ry).setPosition(x, -0.03, z));
+    stones.push(geo);
+  };
+  stone(9 + 1, 0.36, 0.22, 0.3, -0.22, 0.12, 0.4);
+  stone(9 + 2, 0.3, 0.2, 0.26, 0.24, 0.16, 1.7, 0.7, 0x726a7a);
+  stone(9 + 3, 0.42, 0.26, 0.34, 0.02, -0.26, 2.6, 0.95);
+  stone(9 + 4, 0.22, 0.14, 0.2, 0.3, -0.12, 0.9, 0.6, 0x5e586a);
+  stone(9 + 5, 0.2, 0.12, 0.18, -0.3, -0.16, 2.1, 0.9);
+  const plants = [
+    vegAt('glowShroom', 2, 1 / 64, 0.34, 0.02, 0.3, 0.6),
+    vegAt('mushTiny', 1, 1 / 64, -0.36, 0.04, 0.22, 2.0),
+    vegAt('mossGrass', 2, 1 / 64, -0.12, 0.08, 0.34, 1.1),
+    vegAt('fungusGrass', 0, 1 / 64, 0.18, 0.1, -0.34, 2.5),
+    vegAt('flowerCyan', 1, 1 / 64, -0.34, 0.0, -0.3, 0.2),
+  ];
+  // shelf fungi stacked up the post's shady side (they grow out along +z: turned to the sides)
+  const fungi = [
+    vegAt('wallFungus', 1, 1 / 64, postHalf + 0.004, 0.42, -0.02, Math.PI / 2),
+    vegAt('wallFungus', 2, 1 / 64, -postHalf - 0.004, 0.86, 0.01, -Math.PI / 2),
+    vegAt('wallMush', 0, 1 / 64, postHalf + 0.004, 1.02, 0.03, Math.PI / 2),
+    vegAt('wallFungus', 0, 1 / 64, 0.01, 0.62, -postHalf - 0.004, Math.PI),
+    // glowcaps on the cap's ridge, mycelium hanging off its eave
+    vegAt('mushTiny', 2, 1 / 64, 0.02, capY + 0.03, -0.04, 0.4),
+    vegAt('mycelCyan', 1, 1 / 72, 0.2, capY - 0.12, 0.17, 0.3),
+    vegAt('mycelCyan', 2, 1 / 72, -0.19, capY - 0.12, -0.15, 1.9),
+  ];
+  return { stones: mergeGeometries(stones), plants: mergeGeometries(plants), fungi: mergeGeometries(fungi), parts: [...stones, ...plants, ...fungi] };
+}
+
 // ------------------------------------------------------------------ the signpost
 const WOOD_OF = ['walnut', 'oak', 'ash', 'pine'];
 /**
  * Build the signpost. items: [{ label, primary, dir }] top to bottom. Returns the handle described
  * at the top of this file.
  */
-export function makeSignpost(items, { face = 0 } = {}) {
+export function makeSignpost(items, { face = 0, look = 'forest' } = {}) {
   const group = new THREE.Group();
   group.name = 'signpost';
   const geos = [];
   const G = (g) => { geos.push(g); return g; };
-  const mat = {
+  const cave = look === 'cave';
+  const mat = cave ? {
+    post: caveToon({ emissive: 0.05, key: 'sign-post' }),
+    plant: caveToon({ key: 'sign-plant' }),
+    wood: caveToon({ emissive: 0.16, key: 'sign-wood' }),
+    woodLit: caveToon({ emissive: 0.34, key: 'sign-wood-lit' }),
+    paint: caveToon({ emissive: 0.75, key: 'sign-paint' }),
+    paintLit: caveToon({ emissive: 1.5, key: 'sign-paint-lit' }),
+  } : {
     post: forestToon({ dapple: true }),
     plant: forestToon({ dapple: true, swayLocal: 0.5, swayAmp: 0.04 }),
     wood: forestToon({ dapple: true, emissive: 0.08 }),
@@ -427,11 +484,24 @@ export function makeSignpost(items, { face = 0 } = {}) {
   rope.position.set(0, 0, 0);
   rope.layers.enable(LAYER_OUTLINE);
   lean.add(rope);
-  const foot = buildFoot(9);
-  const stones = new THREE.Mesh(G(foot.stones), mat.post);
-  stones.layers.enable(LAYER_OUTLINE);
-  const plants = new THREE.Mesh(G(foot.plants), mat.plant);
-  group.add(stones, plants);
+  if (cave) {
+    const dress = buildCaveDress(post.half, post.perch.y - 0.04);
+    for (const p of dress.parts) p.dispose();
+    const stones = new THREE.Mesh(G(dress.stones), mat.post);
+    stones.layers.enable(LAYER_OUTLINE);
+    const plants = new THREE.Mesh(G(dress.plants), mat.plant);
+    plants.layers.enable(LAYER_OUTLINE);
+    const fungi = new THREE.Mesh(G(dress.fungi), mat.plant);
+    fungi.layers.enable(LAYER_OUTLINE);
+    group.add(stones, plants);
+    lean.add(fungi);
+  } else {
+    const foot = buildFoot(9);
+    const stones = new THREE.Mesh(G(foot.stones), mat.post);
+    stones.layers.enable(LAYER_OUTLINE);
+    const plants = new THREE.Mesh(G(foot.plants), mat.plant);
+    group.add(stones, plants);
+  }
   // a knock shakes loose a few crumbs of moss and wood dust (tiny voxels)
   const crumbs = new Particles({ max: 90, additive: false, atten: true, renderOrder: 6 });
   crumbs.points.frustumCulled = false;

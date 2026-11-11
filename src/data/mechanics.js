@@ -44,4 +44,5 @@ export const MECHANICS = {
   building: { name: 'Home Building', desc: 'Furniture from Burrow & Board can be placed, turned and moved around your burrow.' },
   planting: { name: 'Planting', desc: 'Plant a cave plant in a planter and it multiplies overnight.' },
   commissions: { name: 'Commissions', desc: 'Old Vex posts a daily request. Bring a matching weapon for a bonus.' },
+  raptor_friend: { name: 'A Raptor Friend', desc: 'A lone raptor will come round to a mole who stays low, keeps the pick down and brings meat. Tamed, it follows you, bites what bites you and sniffs out ore. E on it: stay, or come.' },
 };

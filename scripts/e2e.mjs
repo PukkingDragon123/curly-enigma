@@ -343,6 +343,100 @@ await step('deep: block a kobold, then fight it', async () => {
   if (!r.dead) throw new Error('the kobold would not go down: ' + JSON.stringify(r));
   await shot('04f-fight');
 });
+await step('deep: tame a lone raptor (calm, feed, name), it follows and fights', async () => {
+  // a lone raptor in a dino cavern and a pack of dino steaks; the real keys: C to crouch, E to toss
+  const s0 = await page.evaluate(() => {
+    const g = window.__game, d = g.debug?.tame;
+    if (!d) return { err: 'no raptor taming in the mine' };
+    g.ui.closeAllPanels();
+    g.state.addItem('dino_meat', { n: 6 });
+    const r = d.stage({ dist: 4.2 });
+    if (!r?.stray) return { err: 'no dino cavern for the lone raptor' };
+    g.scene.enemies.debug.clean(false);
+    d.step(20);
+    return r;
+  });
+  if (s0.err) throw new Error(s0.err);
+  // crouch and keep still: it settles (a coo), its fear drops
+  const calm = await page.evaluate(() => { const d = window.__game.debug.tame; d.crouch(true); for (let i = 0; i < 40 && !d.stray()?.calmed; i++) { d.step(15); d.look('stray'); } return { ...d.info().stray, calmed: !!d.stray()?.calmed }; });
+  await shot('04g-tame-calm');
+  if (!calm.calmed) throw new Error('the raptor never calmed down: ' + JSON.stringify(calm));
+  // feed it: E on it tosses a steak, it comes for it, sniffs, eats; two meals a visit, then it wanders off (and comes back)
+  let fedShot = false, offers = 0;
+  for (let k = 0; k < 9; k++) {
+    const r = await page.evaluate(() => {
+      const g = window.__game, d = g.debug.tame, t = g.scene.enemies.tame;
+      if (t.naming) return { naming: true };
+      if (!d.stray() || d.stray().full() || ['leave', 'full', 'bolt'].includes(d.stray().plan)) d.visit(3.2);
+      d.step(30);
+      d.look('stray');
+      const o = d.offer();
+      let eating = false;
+      for (let i = 0; i < 240; i++) { d.step(1); const s = d.stray(); if (!s) break; if (s.plan === 'eat' && s.planT > 0.5) { eating = true; break; } }
+      return { label: o?.label, eating, trust: d.info().stray?.trust, foods: d.info().foods };
+    });
+    if (r.naming) break;
+    offers++;
+    if (r.eating && !fedShot) { fedShot = true; await page.evaluate(() => { const d = window.__game.debug.tame; d.look('stray'); window.__game.scene.player.pitch -= 0.25; }); await shot('04h-tame-feed'); }
+    await page.evaluate(() => { const d = window.__game.debug.tame, t = window.__game.scene.enemies.tame; d.step(240, 1 / 30, () => !!t.naming || !d.stray() || (d.stray().plan !== 'eat' && d.stray().plan !== 'food' && d.stray().plan !== 'sniffFood' && d.stray().plan !== 'ate')); });
+  }
+  const meals = await page.evaluate(() => window.__game.state.data.tame?.stray?.meals ?? null);
+  if (!fedShot) throw new Error('it never ate: ' + JSON.stringify(await page.evaluate(() => window.__game.debug.tame.info())));
+  // full trust: a moment of happy hopping, then the naming talk (the game's own cutscene talk)
+  for (let i = 0; i < 80 && !(await page.evaluate(() => !!window.__game.convo?.cur)); i++) await page.evaluate(() => window.__game.debug.tame.step(3));
+  if (!(await page.evaluate(() => !!window.__game.convo?.cur))) throw new Error('no naming moment after ' + offers + ' meals: ' + JSON.stringify(await page.evaluate(() => window.__game.debug.tame.info())));
+  await page.evaluate(() => { window.__game.convo.debug?.settle?.(); window.__game.debug.tame.step(10); });
+  await wait(1500);
+  await shot('04i-tame-bond');
+  let named = null;
+  for (let i = 0; i < 10; i++) {
+    const c = await page.evaluate(() => { const cv = window.__game.convo; return cv?.cur ? { choices: cv.cur.choices?.map((x) => x.label) || null } : null; });
+    if (!c) break;
+    if (c.choices) { await wait(800); await shot('04j-tame-name'); named = c.choices[0]; }
+    await page.evaluate(() => window.__game.debug.tame.name(0));
+    await wait(600);
+  }
+  const bonded = await page.evaluate(() => { const g = window.__game, d = g.debug.tame; d.step(20); d.crouch(false); g.ui.closeAllPanels(); return d.info(); });
+  if (bonded.data?.raptors?.length !== 1 || !bonded.pal) throw new Error('not bonded: ' + JSON.stringify(bonded));
+  if (named && bonded.pal.name !== named) throw new Error(`named ${named} but it is ${bonded.pal.name}`);
+  // it follows: walk off (the real W key) and it keeps up, beside and behind you, out of your swing
+  const fol = await page.evaluate(() => {
+    const g = window.__game, d = g.debug.tame, pl = g.scene.player, p0 = pl.pos.clone();
+    g.input.down.add('KeyW'); d.step(80); pl.yaw += 0.8; d.step(40); g.input.down.delete('KeyW'); d.step(50);
+    const f = { x: -Math.sin(pl.yaw), z: -Math.cos(pl.yaw) }, p = d.pal();
+    const dx = p.pos.x - pl.pos.x, dz = p.pos.z - pl.pos.z, l = Math.hypot(dx, dz) || 1;
+    return { walked: +p0.distanceTo(pl.pos).toFixed(2), dist: +l.toFixed(2), inFront: +((dx * f.x + dz * f.z) / l).toFixed(2), pal: d.info().pal };
+  });
+  if (!(fol.dist < 4.5)) throw new Error('it did not follow: ' + JSON.stringify(fol));
+  await page.evaluate(() => { const d = window.__game.debug.tame; d.look('pal'); window.__game.scene.player.pitch -= 0.1; d.step(1); });
+  await shot('04k-tame-follow');
+  // a kobold comes for you: the raptor goes for it (bites count as yours), and never for you
+  const fight = await page.evaluate(() => {
+    const g = window.__game, d = g.debug.tame, en = g.scene.enemies, st = g.state;
+    if (!d.fight('kobold', 2.8)) return { err: 'no kobold' };
+    const e = en.list.find((x) => x.alive && x.kind === 'kobold');
+    const b0 = d.pal().stats.bites, hp0 = e.hp;
+    let shotAt = null;
+    for (let i = 0; i < 420 && d.pal().stats.bites === b0; i++) { st.data.energy = 100; d.step(1); }
+    return { bites: d.pal().stats.bites - b0, kobold: { alive: e.alive, hp: +e.hp.toFixed(2), hp0: +hp0.toFixed(2) }, pal: d.info().pal, shotAt };
+  });
+  if (fight.err) throw new Error(fight.err);
+  if (!(fight.bites > 0)) throw new Error('the raptor never bit the kobold: ' + JSON.stringify(fight));
+  await page.evaluate(() => { const g = window.__game, en = g.scene.enemies, d = g.debug.tame, e = en.list.find((x) => x.alive && x.kind === 'kobold'); d.step(4); if (e) d.look(e); g.scene.player.pitch -= 0.15; d.step(1); });
+  await shot('04l-tame-fight');
+  const after = await page.evaluate(() => {
+    const g = window.__game, en = g.scene.enemies, d = g.debug.tame, st = g.state;
+    const e = en.list.find((x) => x.alive && x.kind === 'kobold');
+    for (let k = 0; k < 40 && e?.alive; k++) { st.data.energy = 100; en.debug.look(e); en.debug.hit(e, 4); d.step(6); }
+    d.step(40);
+    // E on it: it sits and waits; E again: it comes along
+    const a = d.offer('pal'), s1 = d.pal().staying; d.step(10);
+    const b = d.offer('pal'), s2 = d.pal().staying;
+    return { dead: !e?.alive, a: a?.label, s1, b: b?.label, s2, pal: d.info().pal };
+  });
+  if (!after.dead) throw new Error('the kobold would not go down: ' + JSON.stringify(after));
+  if (!after.s1 || after.s2) throw new Error('stay / come did not toggle: ' + JSON.stringify(after));
+});
 await step('skills: activities give XP, a skill gets stamped', async () => {
   const r = await page.evaluate(() => {
     const st = window.__game.state, d = st.skillsDebug;
@@ -483,6 +577,26 @@ await step('home again + sleep', async () => {
   const d1 = await page.evaluate(() => window.__game.state.data.day);
   if (d1 !== d0 + 1) throw new Error('day did not advance');
   await shot('12-home');
+});
+await step('home: your raptor waits in the cave', async () => {
+  const r = await page.evaluate(async () => {
+    const s = window.__game.scene;
+    for (let i = 0; i < 50 && !s.raptors; i++) await new Promise((res) => setTimeout(res, 100));
+    if (!s.raptors) return { n: 0 };
+    const R = s.raptors.list[0], p = R.root.position;
+    // stand a step off it, toward the middle of the hollow, and look at it
+    const dx = 5.4 - p.x, dz = -2.4 - p.z, l = Math.hypot(dx, dz) || 1;
+    s.debug.stand(p.x + dx / l * 1.05, p.z + dz / l * 1.05);
+    s.debug.aim(p.x, 0.3, p.z);
+    s.debug.step(20);
+    const target = s.debug.target;
+    const pet = s.debug.interact('Pet ');
+    s.debug.step(12);
+    return { n: s.raptors.list.length, target, pet, name: R.rec.name };
+  });
+  if (!r.n) throw new Error('no raptor waiting at home');
+  if (!r.pet) throw new Error('could not pet it: ' + JSON.stringify(r));
+  await shot('12b-home-raptor');
 });
 await step("Old Star's cave: talk, his notes and his chest", async () => {
   const r = await page.evaluate(() => {

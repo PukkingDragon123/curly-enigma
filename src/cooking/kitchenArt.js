@@ -3,7 +3,7 @@
 // ui/uiArt.js: 1 art pixel = 1 canvas pixel, shown at an integer multiple of --px, light from the
 // top-left. Every sprite is cached as a data URL (KART.*); installKitchenArt() publishes the ones
 // the stylesheet uses as --a-ck-* custom properties.
-import { Px, PAL, INK, art, mixHex } from '../ui/uiArt.js';
+import { Px, PAL, INK, art, mixHex, cssUrl } from '../ui/uiArt.js';
 import { blob, lumpDist } from '../iso/organic.js';
 
 const W = PAL.wood, B = PAL.brass, P = PAL.paper;
@@ -565,5 +565,5 @@ export function installKitchenArt(root = document.documentElement) {
     'ck-token': KART.token(false), 'ck-tokenOn': KART.token(true), 'ck-card': KART.indexCard(), 'ck-corner': KART.corner(),
     'ck-ring': KART.slotRing(), 'ck-stove': KART.stove(), 'ck-arrow': KART.arrow(), 'ck-pointer': KART.pointer(), 'ck-hanger': KART.hanger(),
   };
-  for (const [k, v] of Object.entries(map)) if (v) root.style.setProperty('--a-' + k, `url("${v}")`);
+  for (const [k, v] of Object.entries(map)) if (v) root.style.setProperty('--a-' + k, cssUrl(v));
 }

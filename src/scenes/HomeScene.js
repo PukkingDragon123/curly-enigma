@@ -221,6 +221,7 @@ export default class HomeScene extends Scene {
     // ---- the mole
     this.spawnByFrom(from, params);
     mark('spawn');
+    if (d.tame?.raptors?.length) import('../deep/tame/home.js').then((m) => { if (!this.gone) m.homeRaptors(this); }).catch((e) => console.warn('[home] raptors', e)); // [tame hook] your raptors wait by the lift
     this.musicBox = { on: false, t: 0, i: 0 };
 
     // ---- build mode, sounds

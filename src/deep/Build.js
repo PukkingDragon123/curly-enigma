@@ -663,8 +663,12 @@ export class Build {
     this.owner.updateHotbar?.();
     this.owner.showBag?.();
   }
-  /** (floating words are gone: the pickup sound and the bag's gulp say it) */
-  floatNote() {}
+  /** "+1 Dirt Block": a small voxel word just under the crosshair (src/gfx/text3d.js), fanned out a little. */
+  floatNote(text, color = '#f6e6c0') {
+    const W = window.innerWidth, H = window.innerHeight;
+    this.floatK = ((this.floatK || 0) + 1) % 3;
+    this.ui.floatText?.(text, W / 2 + (this.floatK - 1) * 22, H / 2 + 46, color, 0.9);
+  }
 
   // ------------------------------------------------------------------ gathering what you dig
   gather(a) {

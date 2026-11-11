@@ -30,9 +30,9 @@ export class HomeLiving {
     this.game.ui.bubble('self', html, W / 2, H * 0.74, { life });
   }
 
-  floatAt(x, y, z, text, color = '#fff') {
-    const s = this.toScreen(_v.set(x, y, z));
-    if (s.visible) this.game.ui.floatText(text, s.x, s.y, color);
+  /** A word popping up off a spot at home (meters), as voxel letters in the cave (src/gfx/text3d.js). */
+  floatAt(x, y, z, text, color = '#fff', kind = undefined) {
+    this.game.ui.floatText(text, new THREE.Vector3(x, y, z), { color, kind });
   }
 
   planterLabel(rec) {
@@ -55,13 +55,14 @@ export class HomeLiving {
       this.game.audio.play('pickup');
       this.game.audio.play('sparkle');
       for (let i = 0; i < 10; i++) this.fx.spawn({ x: cx + rand(-0.1, 0.1), y: top, z: cz + rand(-0.1, 0.1), vx: rand(-0.3, 0.3), vy: rand(0.4, 1), vz: rand(-0.3, 0.3), life: 0.8, size: 0.012, color: [0.66, 0.94, 0.48], glow: true, grav: 1.5 });
+      this.floatAt(cx, top + 0.1, cz, `+3 ${ITEMS[pl.id]?.name || ''}`, '#d8ffb0', 'good');
       rec.res.setPlant?.(null, ITEMS);
       st.save();
       return;
     }
-    if (pl) { this.game.ui.toast('Still growing.', { dur: 1800 }); return; }
+    if (pl) { this.floatAt(cx, top + 0.1, cz, 'Growing', '#d8ffb0'); return; }
     const plants = st.inventory((it) => it && it.cat === 'plant');
-    if (!plants.length) { this.game.audio.play('ui_error'); this.game.ui.toast('Nothing to plant.', { dur: 1800 }); return; }
+    if (!plants.length) { this.game.audio.play('ui_error'); this.floatAt(cx, top + 0.1, cz, 'No plants to sow', '#e6dcc8'); return; }
     // a wooden seed box of paper seed packets (ui/choices.js)
     const h = openSeedTray(this.game, {
       title: 'Planter', note: 'Pick a seed to sow. It grows by morning.',

@@ -445,6 +445,18 @@ export const SIDE_QUESTS = {
     ],
     reward: { lore: ['s_return'] },
   }),
+  tm_raptor: {
+    title: 'A Wary Friend', giver: 'oldstar', kind: 'story', auto: true,
+    when: (st) => !!st.data.tame?.stray?.met || (st.data.tame?.raptors?.length || 0) > 0,
+    intro: 'A raptor on its own? Hurt, you say? A lone one\'s a frightened one. Get low, keep your pick to yourself and let it come to you. And take it meat: a dino steak, if you have one. Fish or grubs at a pinch.',
+    outro: 'You came up out of the dino caverns with a raptor at your heel. Sixty years down here and I never saw that. Keep it fed. Keep it away from my boots.',
+    steps: [
+      { id: 'calm', text: 'Calm the lone raptor', hint: 'Crouch (C) near it and keep still. Don\'t run at it, and keep your pick down. Its tail and head tell you how it feels.', on: { type: 'tame', what: 'calm' }, where: { biome: 'dino' } },
+      { id: 'feed', text: 'Feed it what it likes', hint: 'Look at it and press E to toss it food: dino steak is its favourite; fish and grubs will do.', on: { type: 'tame', what: 'feed' }, n: 3, where: { biome: 'dino' } },
+      { id: 'bond', text: 'Win its trust', hint: 'It may take a few visits: after two meals it wanders off, and comes back later.', on: { type: 'tame', what: 'bond' } },
+    ],
+    reward: { gold: 150, sp: 1, lore: ['cr_raptor_kin'] },
+  },
   lo_talpa_survey: V({
     title: 'Survey of the Deep Garden', from: 'blueprints', kind: 'lore', requires: ['lo_talpa_carvings'], when: reached(2),
     intro: 'Below the Clayworks there are caverns so big they have weather. Ferns! Bones! Beasts! I\'m drawing a survey and I need someone to walk it. A good long walk. Mind the teeth.',

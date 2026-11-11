@@ -17,8 +17,8 @@
 //   paintPipes(img, segs, joints) pipes on the board canvas (dim / lit / pending)
 // installSkillChrome() publishes the fixed ones as --skc-* custom properties.
 import { Px } from './px.js';
-import { art } from './uiArt.js';
-import { TONES, brassField, pnoise, hash, quant, edgeOf, rivet, leatherTile } from './craftArt.js';
+import { art, cssUrl } from './uiArt.js';
+import { TONES, brassField, pnoise, hash, quant, edgeOf, edgeOfF, rivet, leatherTile } from './craftArt.js';
 
 const B = TONES.brass; // 10 tones
 const GOLD = [0x3a2004, 0x6a3c08, 0x9a600c, 0xc88a18, 0xe8b030, 0xf8cc4c, 0xffe07a, 0xfff0a8, 0xfff8d4, 0xfffdf0];
@@ -49,50 +49,51 @@ export function drawText(p, s, x, y, c, shadow = null) {
   }
 }
 
-// ---------------------------------------------------------------- the panel frame (9-slice, 12)
 function panelFrame() {
   const s = 12, M = 32, W = s * 2 + M;
-  const p = new Px(W, W);
-  const F = brassField(M, M, { seed: 23 });
-  for (let y = 0; y < W; y++)
-    for (let x = 0; x < W; x++) {
-      const { u, d, tl } = edgeOf(x, y, W, W);
-      if (d >= s) continue;
-      const cx = Math.min(x, W - 1 - x), cy = Math.min(y, W - 1 - y);
-      if (cx + cy < 3) continue; // chamfered corners
-      const fx = wrap(x - s, M), fy = wrap(y - s, M), uu = wrap(u - s, M);
-      const lit = tl ? 1 : -1;
-      let k = F.K[fy * M + fx];
-      if (d === 0) { p.set(x, y, INK); continue; }
-      if (d === 1) k += 0.34 * lit;
-      else if (d === 2) k += 0.14 * lit;
-      else if (d >= 3 && d <= 6) {
-        // a rope moulding: twisted strands, each lit on its upper side
-        const t = wrap(uu + (tl ? d : -d), 5);
-        k = [0.18, 0.92, 0.74, 0.58, 0.4][t];
-        if (d === 3) k += 0.06 * lit; else if (d === 6) k -= 0.08 * lit;
-        if (F.V[fy * M + fx] > 0.66 && t === 0) { p.set(x, y, 0x2a2410); continue; }
-      } else if (d === 7) k -= 0.18 * lit;
-      else if (d === 8) k += 0.06 * lit;
-      else if (d === 9) { p.set(x, y, B[1]); continue; }
-      else if (d === 10) { p.set(x, y, IRON[3]); continue; } // the iron lip
-      else if (d === 11) { p.set(x, y, IRON[1]); continue; }
-      if (!tl && F.V[fy * M + fx] > 0.62) k -= 0.1; // tarnish on the lower/right rails
-      p.set(x, y, quant(B, k, x, y, 0.35));
-    }
-  // gear-tooth bosses in the corners
+  const p = new Px(W, W), r = p.r;
+  const F = brassField(M, M, { seed: 23, res: r });
+  p.fine((X, Y, fx, fy) => {
+    const x = Math.floor(X), y = Math.floor(Y);
+    const { u, d, df, tl } = edgeOfF(X, Y, W, W, r);
+    if (d >= s) return undefined;
+    const cx = Math.min(x, W - 1 - x), cy = Math.min(y, W - 1 - y);
+    if (cx + cy < 3) return undefined; // chamfered corners
+    const uu = wrap(u - s, M), lit = tl ? 1 : -1;
+    let k = F.k(X - s, Y - s);
+    if (d === 0) return INK;
+    if (d === 1) k += (r > 1 && df - d < 0.5 ? 0.42 : 0.34) * lit; // finer: a bright arris on the bevel
+    else if (d === 2) k += 0.14 * lit;
+    else if (d >= 3 && d <= 6) {
+      // a rope moulding: twisted strands, each lit on its upper side (finer: half-pixel strands)
+      const t = Math.floor(wrap(uu + (tl ? df : -df), 5));
+      k = [0.18, 0.92, 0.74, 0.58, 0.4][t];
+      if (d === 3) k += 0.06 * lit; else if (d === 6) k -= 0.08 * lit;
+      if (F.v(X - s, Y - s) > 0.66 && t === 0) return 0x2a2410;
+    } else if (d === 7) k -= 0.18 * lit;
+    else if (d === 8) k += 0.06 * lit;
+    else if (d === 9) return B[1];
+    else if (d === 10) return IRON[3]; // the iron lip
+    else if (d === 11) return IRON[1];
+    if (!tl && F.v(X - s, Y - s) > 0.62) k -= 0.1; // tarnish on the lower/right rails
+    return quant(B, k, fx, fy, 0.35);
+  });
+  // gear-tooth bosses in the corners (finer: shaded per fine pixel, so the teeth and the hub are crisp)
   for (const [cx, cy] of [[6, 6], [W - 7, 6], [6, W - 7], [W - 7, W - 7]]) {
-    for (let y = -6; y <= 6; y++) for (let x = -6; x <= 6; x++) {
-      const r = Math.hypot(x + 0.5, y + 0.5), a = Math.atan2(y + 0.5, x + 0.5);
+    p.fine((X, Y) => {
+      const x = X - cx, y = Y - cy, hc = 0.5 / r;
+      const rr = Math.hypot(x + hc, y + hc), a = Math.atan2(y + hc, x + hc);
       const tooth = Math.cos(a * 8) > 0.2 ? 5.6 : 4.6;
-      if (r > tooth) continue;
+      if (rr > tooth) return undefined;
       let k = 0.62 - (x + y) * 0.04;
-      if (r > tooth - 1) k = 0.25;
-      else if (r < 2.2) k = 0.85 - (x + y) * 0.06;
-      else if (r < 3.1) k = 0.3;
-      p.set(cx + x, cy + y, tone(B, k));
-    }
-    p.set(cx - 1, cy - 1, B[9]);
+      if (rr > tooth - (r > 1 ? 0.75 : 1)) k = 0.25;
+      else if (r > 1 && rr > tooth - 1.25 && x + y < 0) k = 0.9; // the teeth's lit edge
+      else if (rr < 2.2) k = 0.85 - (x + y) * 0.06;
+      else if (rr < 3.1) k = 0.3;
+      return tone(B, k);
+    }, cx - 6, cy - 6, 13, 13);
+    if (r > 1) { p.dot(cx - 1, cy - 1, B[9]); p.dot(cx - 0.5, cy - 1, B[8]); p.dot(cx + 0.5, cy + 0.5, B[3]); }
+    else p.set(cx - 1, cy - 1, B[9]);
   }
   // rivets along the band, on the middle's period
   for (const v of [s + 8, s + 24]) for (const [x, y] of [[v, 8], [8, v], [v, W - 9], [W - 9, v]]) rivet(p, x + 0.5, y + 0.5, B, 1.3);
@@ -561,7 +562,7 @@ export const SKC = {
   chainB: () => art('skc:chB', () => chainArt(-1)),
   lock: (lv) => art('skc:lock:' + (lv || 0), () => lockArt(lv)),
   tab: (on) => art('skc:tab:' + (on ? 1 : 0), () => tabArt(on)),
-  btn: (k, dn) => art(`skc:btn:${k}:${dn ? 1 : 0}`, () => btnArt(k, dn)),
+  btn: (k, dn) => art(`skc:btn:${k}:${dn ? 1 : 0}`, () => btnArt(k, dn), { detail: false, edges: false }),
   ico: (n, c, hi) => art(`skc:ico:${n}:${c ?? ''}:${hi ?? ''}`, () => icoArt(n, c, hi)),
   knob: (h) => art('skc:knob:' + (h ? 1 : 0), () => knobArt(h)),
   inset: () => art('skc:inset', insetArt),
@@ -575,7 +576,7 @@ let installed = false;
 export function installSkillChrome(root = document.documentElement) {
   if (installed) return;
   installed = true;
-  const set = (k, u) => { if (u) root.style.setProperty('--skc-' + k, `url("${u}")`); };
+  const set = (k, u) => { if (u) root.style.setProperty('--skc-' + k, cssUrl(u)); };
   set('panel', SKC.panel()); set('head', SKC.head()); set('medal', SKC.medal()); set('leather', SKC.leather());
   set('wm', SKC.watermark()); set('inset', SKC.inset()); set('knob', SKC.knob(false)); set('knobH', SKC.knob(true));
   set('btn', SKC.btn('brass')); set('btnDn', SKC.btn('brass', true)); set('btnGo', SKC.btn('green')); set('btnGoDn', SKC.btn('green', true)); set('btnOff', SKC.btn('iron'));

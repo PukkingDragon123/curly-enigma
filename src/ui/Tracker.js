@@ -15,7 +15,7 @@ import { BART, PIN_KINDS } from './bookArt.js';
 import { SFX } from './bookSfx.js';
 import { QuestMarks } from './QuestMarks.js';
 import { npcFace, faceReady } from './npcFace.js';
-import { Px, art } from './uiArt.js';
+import { Px, art, cssUrl } from './uiArt.js';
 import { HART, installHudArt } from './hudArt.js';
 import { swing } from './common.js';
 import './quests.css';
@@ -92,7 +92,7 @@ export class Tracker {
     this.starts = [];
     this.toastT = {};
     // the scroll: fibrous paper, curled ends (src/ui/hudArt.js; same 8 px 9-slice as quests.css expects)
-    document.documentElement.style.setProperty('--a-qstrip', `url("${HART.strip()}")`);
+    document.documentElement.style.setProperty('--a-qstrip', cssUrl(HART.strip()));
     installHudArt(); // the wax seal (--h-wax)
 
     this.face = el('img', { class: 'pix qt-face', src: SEAL(), alt: '' });
