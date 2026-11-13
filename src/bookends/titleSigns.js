@@ -11,7 +11,7 @@
 // (1/32 m, as the guide asks for close props).
 //
 //   const P = makeSignpost(items, { face, look });   scene.add(P.group)   (face: the boards' turn on the post, radians)
-//     look: 'forest' (default) | 'cave': planted in the mushroom cave (bookends/titleCave.js): the
+//     look: 'forest' (default) | 'cave': planted in a mushroom cave (the old title cave, wave 9): the
 //     cave's materials (its glow and air), glowing mushrooms and moss at its foot instead of the
 //     toadstools and fern, shelf fungi up the post, glowcaps and mycelium on the cap
 //     items: [{ label, primary?, dir: 1 (points right) | -1 }]

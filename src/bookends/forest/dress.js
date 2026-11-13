@@ -100,6 +100,7 @@ export function dressForest(F, { lite = false, soft = false, view = null } = {})
   for (const r of F.spots.rocks) addBlock(r.x, r.z, r.r * 0.9);
   for (const s of F.spots.stumps) addBlock(s.x, s.z, 0.35);
   for (const g of FOREST.giants) addBlock(g.x, g.z, 1.4 * g.s);
+  for (const [x, z, r] of F.spots.clear || []) addBlock(x, z, r);
   if (F.spots.nest) addBlock(F.spots.nest.x, F.spots.nest.z, 1.1); // (the raptor's nest keeps its patch of short turf)
   const B = FOREST.bridge;
   const free = (x, z, r = 0.1) => {
@@ -122,7 +123,7 @@ export function dressForest(F, { lite = false, soft = false, view = null } = {})
   const add = (geo, mat, its, name, { outline = false, cell = 16, cull = 0 } = {}) => {
     if (V) its = its.filter((it) => inV(it.x, it.z, 2));
     if (!geo || !its.length) return null;
-    const m = instanceChunked(geo, mat, its, { name, outline, cell });
+    const m = instanceChunked(geo, mat, its, { name, outline, cell: V ? Math.max(cell * 4, 60) : cell }); // (a fixed camera's share: big chunks, fewer draws)
     if (cull) m.traverse((o) => { o.userData.cull = cull; });
     group.add(m);
     stats.tris[name] = (stats.tris[name] || 0) + triCount(geo) * its.length;

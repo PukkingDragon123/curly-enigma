@@ -174,7 +174,11 @@ export function patchCave(sh, { emissive = 0, sway = 0, glow = 1, sun = 1 } = {}
     {
       vec3 caD = vCaW - cameraPosition;
       float caDist = length(caD);
+      #ifdef FOG_EXP2
       float caF = 1.0 - exp(-fogDensity * fogDensity * caDist * caDist);
+      #else
+      float caF = smoothstep(fogNear, fogFar, caDist); // (a linear fog: the title's forest)
+      #endif
       float caK = uMistFall * caD.y;
       float caA = uMistDen * exp(-(cameraPosition.y - uMistBase) * uMistFall);
       float caOd = abs(caK) < 0.001 ? caA * caDist : caA * caDist * (1.0 - exp(-caK)) / caK;

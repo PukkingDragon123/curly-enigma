@@ -78,8 +78,8 @@ function farModel(f) {
 /** Sectors of the ring: each kind is instanced per sector, so the ones behind and beside the camera are frustum-culled. */
 const SECTORS = 10;
 
-/** The far trees, instanced per kind and sector. items: [{x, y, z, h, frame, tint}]. */
-export function makeFarTrees(items) {
+/** The far trees, instanced per kind and sector (sectors: 1 for a fixed camera's share, already cut to its view). items: [{x, y, z, h, frame, tint}]. */
+export function makeFarTrees(items, { sectors: SECTORS = 10 } = {}) {
   const group = new THREE.Group();
   group.name = 'far-trees';
   const mat = forestToon({ dapple: false });

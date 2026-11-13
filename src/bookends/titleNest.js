@@ -26,13 +26,12 @@ import { formatPlayTime } from '../core/saves.js';
 import { VoxelGrid, hash3, fmix, fshade } from './vox.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
-import { raptorModel } from './titleChase.js';
+import { buildRaptor } from '../deep/enemies/dinos.js';
 import { VS as RVS } from '../deep/enemies/vox.js';
 import { MODELS, RAMP } from '../deep/veg/plants.js';
 import { rng as vrng } from '../deep/veg/paint.js';
 import { makeBoulderGeo } from './forest/flora.js';
 import { Particles, SHAPE } from './fx.js';
-import { CAVE, floorH } from './titleCave.js';
 import { CF, caveToon, patchCave, glowHex, lit, meshGlow, vgGeo, withGlow } from './titleCaveFx.js';
 
 const TAU = Math.PI * 2;
@@ -40,6 +39,15 @@ const R = (a, b) => a + Math.random() * (b - a);
 const smooth = (t) => t * t * (3 - 2 * t);
 
 /** The three eggs (the slots): shell ramp (dark → light), speckles, the light inside, the hatchling's colouring. */
+/** The mine's raptor model in colouring v (0..2), built once and shared by the hatchlings. */
+const RAPTORS = new Map();
+function raptorModel(v) {
+  v %= 3;
+  let G = RAPTORS.get(v);
+  if (!G) { G = buildRaptor(v); RAPTORS.set(v, G); }
+  return G;
+}
+
 export const EGGS = [
   { name: 'Amber', shell: [0x8a6a44, 0xc4a070, 0xe4cc9c, 0xf6e8cc], spot: [0x5a3418, 0x84542a], inner: 0xfff0d8, light: 0xffb048, raptor: 0, css: '#ffc870' },
   { name: 'Moss', shell: [0x5e6e44, 0x93a670, 0xbccc98, 0xdeeac4], spot: [0x2e3c1a, 0x4c5e28], inner: 0xf2fadc, light: 0xffcc50, raptor: 1, css: '#d8f08a' },
@@ -492,9 +500,8 @@ export function makeNest(parent, opts) {
   group.name = 'nest';
   const geos = [], mats = [];
   // ---- where: on a rock shelf at the nest spot, turned to face the menu's camera
-  const N = CAVE.nest;
-  const y0 = floorH(N.x, N.z);
-  group.position.set(N.x, y0, N.z);
+  const N = opts.at; // { x, y, z }: where the shelf stands
+  group.position.set(N.x, N.y, N.z);
   group.rotation.y = opts.yaw ?? 0;
   const rockGeo = withGlow(makeBoulderGeo(77, { w: 1.75, h: 0.5, d: 1.45, k: 32, moss: 0.3, tone: 0x6a6476 }));
   rockGeo.computeBoundingBox();

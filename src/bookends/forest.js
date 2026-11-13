@@ -254,6 +254,7 @@ export function groundColor(x, z, i = 0, k = 0, nearTree = 0) {
  * opts.view: build only what a fixed camera sees (the title screen): { x0, x1, z0, z1 } (the ground it
  * can see, fog included) and optionally keep(x, z, pad) → false outside its view. Same forest, same
  * places; the fine ground, the trees, the undergrowth, the grass and the sun shafts out of view are skipped.
+ * opts.clear: [[x, z, r], ...] spots no tree, rock or undergrowth is put on (the title's save nest and its shot).
  * Returns { group, sky, textures, crust, cracks, chest, spill, glints, chestGlow, update, dispose,
  * stats, bridge, stream, beams, spots, holeY, sign }.
  */
@@ -289,6 +290,7 @@ export async function buildForest(opts = {}) {
   const cancelled = () => !!(opts.cancel && opts.cancel());
   const bail = () => ({ cancelled: true, group, textures, stats, dispose: () => { for (const g of geos) { try { g.dispose(); } catch (e) { /* shared */ } } resetMeadowMaterials(); resetForestMaterials(); } });
   const rng = makeRng(77);
+  const CLEAR = opts.clear || []; // [x, z, r]: spots kept open (the title's save nest)
   MF.uSun.value.copy(SUN_DIR);
   MF.uKey.value.set(0xffc888);
   MF.uSky.value.set(0x9cc0e4);
@@ -303,6 +305,7 @@ export async function buildForest(opts = {}) {
     if (Math.hypot(x, z) < CLEAR_R + 1.2) return false;
     if (!giantClear(x, z, r)) return false;
     for (const t of trees) if ((t.x - x) ** 2 + (t.z - z) ** 2 < (t.r + r) ** 2) return false;
+    for (const [cx, cz, cr] of CLEAR) if ((cx - x) ** 2 + (cz - z) ** 2 < (cr + r) ** 2) return false;
     return true;
   };
   // near: a mixed wood along the trail and round the clearing
@@ -471,7 +474,7 @@ export async function buildForest(opts = {}) {
   const add = (geo, mat, items, name, outline = true, cell = 14) => {
     items = keepIts(items, 3);
     if (!geo || !items.length) return;
-    group.add(instanceChunked(geo, mat, items, { name, outline, cell }));
+    group.add(instanceChunked(geo, mat, items, { name, outline, cell: V ? Math.max(cell * 4, 60) : cell })); // (a fixed camera's share: big chunks, fewer draws)
     stats.tris[name] = (stats.tris[name] || 0) + triCount(geo) * items.length;
   };
   const K = soft ? { w: 4, l: 2.6, c: 3.5, g: 4, gl: 2 } : lite ? { w: 4, l: 3, c: 4, g: 5, gl: 2.5 } : { w: 5, l: 3.6, c: 5, g: 6, gl: 3 };
@@ -578,7 +581,7 @@ export async function buildForest(opts = {}) {
       add(m.wood, woodMat, its, kind + '-wood-far', false, 40);
       add(m.leaves, leafMat(2), its, kind + '-leaves-far', false, 40);
     }
-    const ft = makeFarTrees(keepIts(bill, 6));
+    const ft = makeFarTrees(keepIts(bill, 6), { sectors: V ? 1 : 10 });
     ft.traverse((o) => { if (o.geometry) G(o.geometry); });
     group.add(ft);
     stats.far = bill.length;
@@ -593,7 +596,8 @@ export async function buildForest(opts = {}) {
   const tf = performance.now();
   const props = new THREE.Group();
   const spots = { logs: [], rocks: [], stumps: [] }; // for the critters
-  const blocked = []; // footprints the undergrowth keeps off: [x, z, r]
+  const blocked = [...CLEAR]; // footprints the undergrowth keeps off: [x, z, r]
+  spots.clear = CLEAR;
   const plantMat = forestToon({ dapple: true, swayLocal: 0.6, swayAmp: 0.07 });
   const stiffMat = forestToon({ dapple: true });
   // great fallen logs (along the trail and in the forest)
@@ -619,6 +623,7 @@ export async function buildForest(opts = {}) {
   ];
   const rockItems = [[], [], [], []];
   const putRock = (x, z, v, s = 1, ry = 0) => {
+    if (CLEAR.some(([cx, cz, cr]) => (cx - x) ** 2 + (cz - z) ** 2 < cr * cr)) return;
     rockItems[v].push({ x, y: groundH(x, z) - 0.08, z, ry, s });
     const r = [0.8, 0.5, 1.2, 0.3][v] * s;
     blocked.push([x, z, r]);
@@ -792,7 +797,8 @@ export async function buildForest(opts = {}) {
   }
   // a few toadstools by the trail where the camera passes close
   for (const s of [5.5, 14.2, 19.5, 33, 41]) { const [x, z] = beside(s, urng.chance(0.5) ? 1.25 : -1.35); shroomIts[0].push({ x, y: groundH(x, z) - 0.02, z, ry: s, s: 0.8 }); }
-  shroomIts.forEach((its, v) => add(shroomGeos[v], stiffMat, its, 'mushrooms', true, 30));
+  const open = (it) => !CLEAR.some(([cx, cz, cr]) => (cx - it.x) ** 2 + (cz - it.z) ** 2 < cr * cr);
+  shroomIts.forEach((its, v) => add(shroomGeos[v], stiffMat, its.filter(open), 'mushrooms', true, 30));
   const fox = [G(makeFoxgloveGeo(901)), G(makeFoxgloveGeo(907, { h: 1.1, color: 0xe8a0d0 })), G(makeFoxgloveGeo(911, { h: 0.75, color: 0xa860c8 }))];
   const foxIts = [[], [], []];
   scatter(lite ? 32 : 80, (x, z, td, sd, r) => {
@@ -876,7 +882,7 @@ export async function buildForest(opts = {}) {
     const fl = roll < 0.25 ? FG.sorrel : roll < 0.45 ? FG.moss : roll < 0.6 ? FG.fern : roll < 0.7 ? FG.bracken : roll < 0.8 ? FG.strawberry : FG.short;
     put(x, z, fl, fl === FG.fern || fl === FG.bracken ? grng.range(0.4, 0.7) : grng.range(0.14, 0.26), tint * 0.92);
   }
-  const grass = makeForestGrassChunked(keepIts(items, 0.5), { bright: 0.95, cell: 16 });
+  const grass = makeForestGrassChunked(keepIts(items, 0.5), { bright: 0.95, cell: V ? 30 : 16 });
   grass.traverse((o) => { if (o.geometry) G(o.geometry); });
   group.add(grass);
   stats.grass = items.length;
@@ -950,7 +956,7 @@ export async function buildForest(opts = {}) {
     G(m.geometry);
     m.userData.beam = { top: topP, bottom, w, len: topP.distanceTo(bottom), base: inten, ph: bottom.x * 1.7 + bottom.z };
     m.renderOrder = 7;
-    m.frustumCulled = false;
+    m.frustumCulled = !!V; // (re-faced and re-scaled every frame before the draw: a fixed camera's share culls the ones off screen)
     beams.push(m);
     group.add(m);
     return m;
