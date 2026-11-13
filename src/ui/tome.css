@@ -370,7 +370,7 @@
 .pm-tag.tm-chron .dot { color: #a8321e; opacity: 1; }
 .pm-tag.tm-chron .tm-cap { margin: calc(var(--px) * -8) calc(var(--px) * .5) calc(var(--px) * -8) 0; }
 /* (narrow: the initial at the strip's small size, snug to its word so it reads as one) */
-@media (max-width: 560px) { .pm-tag.tm-chron .tm-cap { width: calc(var(--px) * 16); height: calc(var(--px) * 16); font-size: 16px; margin: calc(var(--px) * -4) 0 calc(var(--px) * -4) 0; } }
+@media (max-width: 560px) { .pm-tag.tm-chron .tm-cap { width: calc(var(--px) * 16); height: calc(var(--px) * 16); font-size: 16px; margin: calc(var(--px) * -4) calc(var(--px) * -1) calc(var(--px) * -4) 0; } }
 .pm-tag.tm-chron .tm-chron-d { position: absolute; left: calc(var(--px) * -32); bottom: calc(var(--px) * -2); pointer-events: auto; }
 @media (max-width: 560px) { .pm-tag.tm-chron .tm-chron-d { display: none; } .pm-tag.tm-chron { font-size: 12px; padding-left: calc(var(--px) * 4); padding-right: calc(var(--px) * 5); } }
 
