@@ -266,8 +266,8 @@ export function homeEgg(scene) {
           const ax = pl.pos.x - at.x, az = pl.pos.z - at.z, al = Math.hypot(ax, az) || 1;
           const A = { x: ax / al, z: az / al }, S = { x: A.z, z: -A.x };
           const side = Math.hypot(at.x + S.x * 0.6 - br.x, at.z + S.z * 0.6 - br.z) > Math.hypot(at.x - S.x * 0.6 - br.x, at.z - S.z * 0.6 - br.z) ? 1 : -1;
-          shot.p = new THREE.Vector3(at.x + S.x * 0.62 * side + A.x * 0.42, 0.3, at.z + S.z * 0.62 * side + A.z * 0.42);
-          Object.assign(shot, { kind: 'close', fixed: true, hero: true, focus: 'speaker', fov: 42, drift: 0.02, comp: { x: 0.12 * side, y: shot.portrait ? 0.18 : 0.06 }, side });
+          shot.p = new THREE.Vector3(at.x + S.x * 0.85 * side + A.x * 0.62, 0.42, at.z + S.z * 0.85 * side + A.z * 0.62);
+          Object.assign(shot, { kind: 'close', fixed: true, hero: true, focus: 'speaker', fov: 46, drift: 0.02, comp: { x: 0.12 * side, y: shot.portrait ? 0.18 : 0.06 }, side });
           return shot;
         };
       }
