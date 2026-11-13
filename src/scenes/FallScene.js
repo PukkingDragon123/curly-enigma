@@ -89,7 +89,7 @@ export default class FallScene extends Scene {
     this.own(() => { FF.uShade.value = 0.38; });
 
     // ---- while the forest grows (a few seconds on a phone): a quiet card and a way past it
-    this.loadCard = el('div', { class: 'bk-root bk-loading' }, [el('div', { class: 'bk-load' }, [el('i', { class: 'bk-load-leaf' }), el('span', {}, 'The forest stirs…')])]);
+    this.loadCard = el('div', { class: 'bk-root bk-loading' }, []);
     this.game.ui.world.append(this.loadCard);
     this.own(() => this.loadCard?.remove());
     // ---- the forest (phones, 'Simple' shaders and software GL get a lighter one; ?lite=0 / 1 forces it)

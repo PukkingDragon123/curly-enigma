@@ -113,7 +113,7 @@ export default class TitleScene extends Scene {
     MF.uWind.value.set(0.82, 0.57);
 
     // a quiet card while the wood grows (a second or two; longer on a phone)
-    this.loadCard = el('div', { class: 'bk-root bk-loading' }, [el('div', { class: 'bk-load' }, [el('i', { class: 'bk-load-leaf' }), el('span', {}, 'The old wood stirs…')])]);
+    this.loadCard = el('div', { class: 'bk-root bk-loading' }, []);
     g.ui.world.append(this.loadCard);
     this.own(() => this.loadCard?.remove());
 

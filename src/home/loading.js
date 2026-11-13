@@ -32,6 +32,7 @@ function style() {
 .hl-wick em:after{content:"";position:absolute;right:calc(var(--px) * -2);top:calc(var(--px) * -2);width:calc(var(--px) * 7);height:calc(var(--px) * 7);background:#fff0b0;box-shadow:0 0 calc(var(--px) * 4) calc(var(--px) * 2) #ffb04a;animation:hlEmber .5s steps(2) infinite}
 .hl-what{min-height:1.3em;font-size:var(--fs);color:#d8b888;opacity:.9}
 .hl-what:after{content:"";display:inline-block;width:1.6em;text-align:left;animation:hlDots 1.2s steps(4) infinite}
+.hl-title,.hl-what{display:none}
 .hl-back.dark{background:#000}
 .hl-back.dark .hl-lamp,.hl-back.dark .hl-title{display:none}
 .hl-back.dark .hl-card{position:absolute;bottom:calc(var(--sab, 0px) + var(--px) * 18);transform:none}
