@@ -123,7 +123,6 @@ export function openUpgrades(game, startTab) {
     const chk = st.canUpgrade(id, ZONE_NAMES);
     const lock = chk.lock || upgradeLock(id, st, ZONE_NAMES);
     const c = el('div', { class: 'ug-card' + (maxed ? ' maxed' : '') + (lock ? ' locked' : '') + (chk.ok ? ' can' : ''), 'data-id': id });
-    c.addEventListener('pointerenter', () => swing(c, 2.2, 800)); // (wave 9) the pinned card sways on its tack
     c.style.setProperty('--rot', ((((id.charCodeAt(0) * 7 + id.length * 13) % 9) - 4) * 0.25) + 'deg');
     const ic = el('div', { class: 'ug-ic' }, [
       el('img', { class: 'pix', src: iconFor(u.icon), alt: '' }),

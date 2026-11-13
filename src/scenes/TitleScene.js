@@ -254,7 +254,7 @@ export default class TitleScene extends Scene {
   updateIntro(dt) {
     const I = this.intro;
     I.t += dt;
-    const sh = introShot(I.t, this.shot(), this.chase.live(), this.introCam);
+    const sh = introShot(I.t, this.shot(), this.chase.live(), this.introCam, this.camera.aspect < 1);
     // on a screen held tall the close shots widen to keep the mole and the raptor in
     const c = { aspect: this.camera.aspect, fov: sh.fov, updateProjectionMatrix() {} };
     fitFov(c, sh.fov, this.camera.aspect < 1 ? 50 : 0);
@@ -408,7 +408,7 @@ export default class TitleScene extends Scene {
       // the opening's cameras (its script is fixed: the cave is built for all of them)
       if (this.params.intro !== '0' && this.params.chase !== '0') {
         for (let t = 0; t <= INTRO.dur; t += 0.35) {
-          const sh = introShot(t, menu);
+          const sh = introShot(t, menu, null, undefined, a < 1);
           const c = { aspect: a, fov: sh.fov, updateProjectionMatrix() {} };
           fitFov(c, sh.fov, a < 1 ? 50 : 0);
           introShots.push([{ pos: sh.pos.clone(), look: sh.look.clone(), fov: c.fov }, a]);

@@ -10,8 +10,9 @@
 //
 //   INTRO                       timings and the run's script
 //   introGap(t)                 how far behind the mole the raptor is (m along the route)
-//   introShot(t, menu, live?, out?) → { pos, look, fov }   menu: the menu framing { pos, look, fov };
-//                               live: { mole: head position, raptor: head position } (else scripted)
+//   introShot(t, menu, live?, out?, tall?) → { pos, look, fov }   menu: the menu framing { pos, look,
+//                               fov }; live: { mole: head position, raptor: head position } (else
+//                               scripted); tall: a screen held tall (the close shots look up a little)
 import * as THREE from 'three';
 import { CHASE_PATHS, floorH, route } from './titleCave.js';
 import { clamp } from '../core/util.js';
@@ -53,7 +54,7 @@ const _m = new THREE.Vector3(), _r = new THREE.Vector3(), _d = new THREE.Vector3
 let curveKey = '', curve = null;
 
 /** The camera at time t of the opening (see the header). */
-export function introShot(t, menu, live = null, out = { pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 40 }) {
+export function introShot(t, menu, live = null, out = { pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 40 }, tall = false) {
   const sm = introMoleS(t);
   const moleHead = live?.mole ? _m.copy(live.mole) : onRoute(sm, 0, 0.64, _m);
   const rapHead = live?.raptor ? _r.copy(live.raptor) : onRoute(sm - introGap(Math.min(t, INTRO.hold + 0.4)), 0, 1.1, _r);
@@ -72,15 +73,19 @@ export function introShot(t, menu, live = null, out = { pos: new THREE.Vector3()
     }
     onRoute(sc, lat, h, out.pos);
     out.look.lerpVectors(moleHead, rapHead, w);
+    // (a screen held tall sees a lot of floor so close: lift the gaze, and the mushrooms come in)
+    if (tall) { out.pos.y += 0.12; out.look.y += 0.3; }
     out.fov = fov;
     return out;
   }
   // C: up and back to the menu
-  const key = menu.pos.x.toFixed(3) + ',' + menu.pos.y.toFixed(3) + ',' + menu.pos.z.toFixed(3);
+  const key = menu.pos.x.toFixed(3) + ',' + menu.pos.y.toFixed(3) + ',' + menu.pos.z.toFixed(3) + (tall ? 't' : '');
   if (key !== curveKey || !curve) {
     curveKey = key;
-    const start = introShot(T2 - 1e-4, null).pos.clone();
+    const start = introShot(T2 - 1e-4, null, null, undefined, tall).pos.clone();
     curve = new THREE.CatmullRomCurve3([start, ...WAY.map((v) => v.clone()), menu.pos.clone()], false, 'centripetal', 0.5);
+    // (that call used the shared scratch vectors: the raptor's head again)
+    if (live?.raptor) rapHead.copy(live.raptor); else onRoute(sm - introGap(Math.min(t, INTRO.hold + 0.4)), 0, 1.1, rapHead);
   }
   const u = smooth((t - T2) / (INTRO.dur - T2));
   curve.getPointAt(u, out.pos);

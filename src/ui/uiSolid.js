@@ -105,8 +105,10 @@ function check(node, o) {
   const av = node._av || (node._av = { dx: 0, dy: 0, w: 0 });
   const r = node.getBoundingClientRect();
   if (r.width < 1 || r.height < 1) return true;
-  // (where it would be without our move)
-  const base = { l: r.left - av.dx, t: r.top - av.dy, r: r.right - av.dx, b: r.bottom - av.dy };
+  // (where it would be without our move: the move as it is right now, mid-slide included)
+  let mx = 0, my = 0;
+  if (av.dx || av.dy) { const t = getComputedStyle(node).translate; if (t && t !== 'none') { const p = t.split(' ').map(parseFloat); mx = p[0] || 0; my = p[1] || 0; } }
+  const base = { l: r.left - mx, t: r.top - my, r: r.right - mx, b: r.bottom - my };
   let res = clearOf(base, { ...o, skip: node });
   if (!res.ok && o.wrap && res.w > 40 && res.w < base.r - base.l) {
     // wrap narrower into the widest free span on its row (re-checked next time round)

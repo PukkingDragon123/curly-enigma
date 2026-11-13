@@ -160,6 +160,7 @@ the view model, HUD, and the optional enemies/fluids/props modules).
 - Particles, sparks, motes and debris are tiny voxels, not round dots.
 - NEVER strip, flatten or "simplify" the existing UI. The hand-made pixel-art/paper UI (parchment tags, seals, tacks, wood and brass plates, the level-up plaque, discovery cards, stamp buttons) is the baseline the player loves. Changes only ever add detail, variety and interactivity; never replace art with plain boxes, pills, sans fonts or bare subtitles.
 - Wave 9 (player request): dialogue and short text (lines, choices, hints, toasts, target labels, prompts) are boxless floating text in the world with rich appear/leave transitions. Panels (book, backpack, forge, skills, shop, board, HUD) get remade as richer, medieval, book-like pixel art. A remake must always end up more detailed than what it replaces; never plainer.
+- Book/panel manuscript kit: `src/ui/tomeArt.js` art, `src/ui/tomeFx.js` (dropCap, inkIn, margins, curlTurn, bindCover, ribbonTabs, TSFX). Touch-button action art: `src/ui/touchArt.js`. Forge heat/fire: `src/forge/hotMetal.js`, `src/forge/hearthFire.js`.
 - Everything on screen is detailed, high-resolution pixel art with pixel fonts. Paper is welcome, with material variety by context (parchment, leather, wood, brass, slate, cloth).
 - Prefer physical, in-world UI where it fits; the 2D UI that remains is interactive and tactile (presses, slides, flutters, glints).
 
