@@ -282,7 +282,7 @@ export class HomeLessons {
    * rock and chisels at it: tink, tink, the rock flies off in chips, the copper comes out bright.
    * Two floating words say it; he says one. (Test hook: scene.debug.chipDemo().)
    */
-  async chipDemo({ line, go, sleep, tween }) {
+  async chipDemo({ go, sleep, tween }) {
     const star = this.star, fx = this.fx, a = this.game.audio;
     if (!star?.rig) return;
     if (star.carrying) { const o = star.drop(); o?.userData?.dispose?.(); }
@@ -291,13 +291,24 @@ export class HomeLessons {
     lump.rotation.set(0.2, 0.5, 0);
     lump.scale.setScalar(2.6);
     // (held up between you, just under his eyes and toward the camera: never behind his snout)
+    // (your own eyes are the camera here: the scripted view this.cam, not a talk shot round his side)
+    const eyeAt = () => (this.cam ? new THREE.Vector3(this.cam.x, this.cam.y, this.cam.z) : this.camera.getWorldPosition(new THREE.Vector3()));
     const hold = (bob = 0) => {
-      const h = star.head(new THREE.Vector3()), c = this.camera.getWorldPosition(new THREE.Vector3());
-      const to = c.sub(h); to.y = 0; to.normalize();
-      const w = h.add(to.multiplyScalar(0.3)).add(new THREE.Vector3(0, -0.07 + bob, 0));
+      const h = star.head(new THREE.Vector3()), c = eyeAt();
+      const to = c.clone().sub(h); to.y = 0;
+      const d = to.length() || 1;
+      const w = h.add(to.multiplyScalar(Math.min(0.4, d * 0.45) / d));
+      w.y = h.y + (c.y - h.y) * 0.4 - 0.05 + bob;
       if (lump.parent) { lump.parent.updateMatrixWorld(true); lump.position.copy(lump.parent.worldToLocal(w)); }
     };
     hold();
+    // look at it: the view eases down onto the lump in his paws
+    if (this.cam) {
+      const c = this.cam, p = lump.getWorldPosition(new THREE.Vector3());
+      const yaw1 = Math.atan2(-(p.x - c.x), -(p.z - c.z)), pitch1 = Math.atan2(p.y + 0.04 - c.y, Math.hypot(p.x - c.x, p.z - c.z));
+      const y0 = c.yaw, p0 = c.pitch, dy = wrap(yaw1 - y0);
+      await go(tween(0.35, (k) => { const e = ease(k); c.yaw = y0 + dy * e; c.pitch = p0 + (pitch1 - p0) * e; hold(); }));
+    }
     this.chipLump = lump;
     a.play('pickup', { vol: 0.45 });
     const at = () => lump.getWorldPosition(new THREE.Vector3());
@@ -318,7 +329,8 @@ export class HomeLessons {
       jolt *= 0.75;
       hold(jolt);
     });
-    await line('<i>Tink, tink.</i> Like so.', 'happy', { camera: 'close' });
+    // (one passing word by his head: it doesn't take the camera away from the lump)
+    this.starLine('<i>Tink, tink.</i> Like so.', { mood: 'happy', dur: 2.8 });
     await go(blows);
     // the last of the crust lets go: the copper's bare, and it shines
     for (const b of lump.children) if (b.userData.rock) b.visible = false;
