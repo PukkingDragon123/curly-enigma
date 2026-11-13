@@ -364,7 +364,7 @@
   animation: skSpark .85s cubic-bezier(.2, .8, .4, 1) var(--sd, 0s) both; }
 @keyframes skSpark { 0% { opacity: 1; transform: translate(0, 0) scale(.4); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(var(--dx) * var(--px)), calc(var(--dy) * var(--px))) scale(1) rotate(45deg); } }
 #ui[data-hud=none] .sk-chip, #ui.panel-open .sk-chip, #ui.focus .sk-chip { display: none; }
-@media (max-height: 500px) { .sk-chip { top: 30%; } }
+@media (max-height: 500px) { .sk-chip { top: 45%; } } /* (under the radar and its tag, above the stick) */
 
 /* the level-up card pinned to the toasts: a carved plaque, a ribbon, the big seal in brass, sparks */
 .toast.sk-toast, .toast.sk-nudge { pointer-events: auto; cursor: pointer; }

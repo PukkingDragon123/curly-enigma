@@ -672,6 +672,39 @@ export class Convo {
     if (b) this.place(dt, b);
   }
 
+  /**
+   * The speaker's head and body on screen: a rect ({ l, t, r, b } page px) per part of its model, so
+   * a long or turned body is its own shape, not one roomy box. Re-measured a few times a second.
+   * Parts behind the camera or filling the frame (a close-up: no room to keep off) don't count.
+   */
+  bodyRects(sp, d, W, H) {
+    const obj = sp?.obj;
+    if (!obj) return null;
+    const now = performance.now(), c = this._body;
+    if (c && c.sp === sp && now - c.t < 150) return c.r;
+    const out = [];
+    obj.updateMatrixWorld(true);
+    obj.traverseVisible((o) => {
+      if (!o.isMesh || o.isInstancedMesh || out.length >= 48) return;
+      const g = o.geometry;
+      if (o.isSkinnedMesh) { if (!o.boundingBox) o.computeBoundingBox(); _bb.copy(o.boundingBox); } else { if (!g.boundingBox) g.computeBoundingBox(); _bb.copy(g.boundingBox); }
+      if (_bb.isEmpty()) return;
+      _bb.applyMatrix4(o.matrixWorld);
+      let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+      for (let i = 0; i < 8; i++) {
+        _bp.set(i & 1 ? _bb.max.x : _bb.min.x, i & 2 ? _bb.max.y : _bb.min.y, i & 4 ? _bb.max.z : _bb.min.z);
+        const s = d.toScreen(_bp, _bs);
+        if (!s.front) return;
+        l = Math.min(l, s.x); r = Math.max(r, s.x); t = Math.min(t, s.y); b = Math.max(b, s.y);
+      }
+      if (r - l < 3 || b - t < 3 || (r - l) * (b - t) > W * H * 0.4 || r < 0 || b < 0 || l > W || t > H) return;
+      out.push({ l, t, r, b });
+    });
+    const res = out.length ? out : null;
+    this._body = { sp, t: now, r: res };
+    return res;
+  }
+
   /** Float the label beside the speaker's head, its tail pointing at them; answers on your side. */
   place(dt, b) {
     const L = this.label, d = this.director, W = this.W, H = this.H, bar = this.barPx, m = 10;
@@ -692,6 +725,9 @@ export class Convo {
     }
     // the solid interface still on screen (a forge page, a panel...): the words keep out of it
     const solid = solidRects();
+    // the speaker's own head and body count as solid for the words (a long raptor under its line)
+    const body = head && !b.hero ? this.bodyRects(b.speaker, d, W, H) : null;
+    const solidB = body ? solid.concat(body) : solid;
     // the answers: near your side of the frame (over your shoulder), a column at the bottom
     const cw = this.choicesEl.offsetWidth, ch = this.choicesEl.offsetHeight;
     let cx = 0, cy = 0;
@@ -731,16 +767,20 @@ export class Convo {
         if (s === 'below') return { x: head.x - lw / 2, y: head.y + head.r * 0.8 + 18 };
         return { x: head.x - lw / 2, y: head.y - head.r * 1.15 - 18 - lh };
       };
-      const free = (p) => !solid.some((q) => p.x < q.r + 6 && p.x + lw > q.l - 6 && p.y - plateH < q.b + 6 && p.y + lh > q.t - 6);
-      const fits = (p) => p.x >= m && p.x + lw <= W - m && p.y >= lo && p.y + lh <= hi && free(p);
+      const free = (p, rs = solid) => !rs.some((q) => p.x < q.r + 6 && p.x + lw > q.l - 6 && p.y - plateH < q.b + 6 && p.y + lh > q.t - 6);
+      const fits = (p, rs) => p.x >= m && p.x + lw <= W - m && p.y >= lo && p.y + lh <= hi && free(p, rs);
       let p = null;
-      for (const s of order) { const q = at(s); if (fits(q) || (s === 'below' || s === 'above') && q.y >= lo && q.y + lh <= hi) { p = q; side = s; break; } }
+      // (first a side clear of the speaker too; then the old rule: a free side, or above / below)
+      if (body) for (const s of order) { const q = at(s); if (fits(q, solidB)) { p = q; side = s; break; } }
+      if (!p) for (const s of order) { const q = at(s); if (fits(q) || (s === 'below' || s === 'above') && q.y >= lo && q.y + lh <= hi) { p = q; side = s; break; } }
       if (!p) { side = order[0]; p = at(side); }
       x = clamp(p.x, m, W - m - lw);
       y = clamp(p.y, lo, Math.max(lo, hi - lh));
     }
     // still under something solid: the nearest free place (its name over it included)
-    if (solid.length) {
+    // (off the speaker too, when there's room: the nearest free spot up or down the frame)
+    const bodyFree = body && nearFree(x, y, lw, lh, plateH, solid, body, m, lo, hi, W);
+    if (bodyFree) { x = bodyFree.x; y = bodyFree.y; } else if (solid.length) {
       const c = clearOf({ l: x, t: y - plateH, r: x + lw, b: y + lh }, { rects: solid, bounds: { l: m, t: lo - plateH, r: W - m, b: hi } });
       x += c.dx; y += c.dy;
     }
@@ -770,6 +810,36 @@ export class Convo {
 }
 
 const newV = () => new THREE.Vector3();
+
+/**
+ * The nearest place for a label (lw × lh, its name plate plateH over it) at x, y that keeps off the
+ * solid interface (hard) and as much of the speaker's parts (soft) as it can, stepping up and down
+ * the frame and trying it where it is, centred or at either side. → { x, y } or null (no room).
+ */
+function nearFree(x, y, lw, lh, plateH, hard, soft, m, lo, hi, W) {
+  const pad = 4;
+  const hit = (px, py) => hard.some((q) => px < q.r + pad && px + lw > q.l - pad && py - plateH < q.b + pad && py + lh > q.t - pad);
+  const over = (px, py) => {
+    let a = 0;
+    for (const q of soft) {
+      const w = Math.min(px + lw, q.r + pad) - Math.max(px, q.l - pad), h = Math.min(py + lh, q.b + pad) - Math.max(py - plateH, q.t - pad);
+      if (w > 0 && h > 0) a += w * h;
+    }
+    return a;
+  };
+  const xs = [clamp(x, m, W - m - lw), (W - lw) / 2, m, W - m - lw];
+  if (y >= lo && y + lh <= hi && !hit(xs[0], y) && !over(xs[0], y)) return { x: xs[0], y };
+  let best = null;
+  for (let py = lo; py + lh <= hi; py += 6) for (const px of xs) {
+    if (hit(px, py)) continue;
+    // (covering the speaker costs far more than moving away from where it wanted to be)
+    const cost = Math.abs(py - y) + Math.abs(px - x) * 0.7 + over(px, py) * 0.05;
+    if (!best || cost < best.cost) best = { x: px, y: py, cost };
+  }
+  return best;
+}
+const _bb = new THREE.Box3(), _bp = new THREE.Vector3(), _bs = {};
+
 /** Your eyes (for your own lines). */
 function pl3(d) { const pl = d.player(); return pl ? pl.eye() : null; }
 

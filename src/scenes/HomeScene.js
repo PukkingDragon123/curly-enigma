@@ -222,6 +222,7 @@ export default class HomeScene extends Scene {
     this.spawnByFrom(from, params);
     mark('spawn');
     if (d.tame?.raptors?.length) import('../deep/tame/home.js').then((m) => { if (!this.gone) m.homeRaptors(this); }).catch((e) => console.warn('[home] raptors', e)); // [tame hook] your raptors wait by the lift
+    if (d.egg) import('../home/eggNest.js').then((m) => { if (!this.gone) m.homeEgg(this); }).catch((e) => console.warn('[home] egg', e)); // [egg hook] the raptor egg from the forest, by your bedroll
     this.musicBox = { on: false, t: 0, i: 0 };
 
     // ---- build mode, sounds
@@ -346,6 +347,15 @@ export default class HomeScene extends Scene {
     const af = this.cave.dyn.anvilFace;
     this.anvilFlash = this.addLight({ x: af.x, y: af.y + 0.1, z: af.z, color: 0xffc070, intensity: 0, distance: 1.8, flicker: 0, halo: 0.16, haloOpacity: 0.7, priority: 7 });
     this.wormHalos = [];
+    // the hollow's firelight spilling round the corner into each alcove dug out (no lamp of your own
+    // yet: the rock still reads, dim and warm by the way in, darker at the back)
+    for (const id of this.nooks || []) {
+      const n = NOOK[id];
+      if (!n) continue;
+      const cx = (n.rect[0] + n.rect[2]) * T / 2, cz = (n.rect[1] + n.rect[3]) * T / 2;
+      const nx = (n.neck[0] + n.neck[2]) / 2, nz = (n.neck[1] + n.neck[3]) / 2;
+      this.addLight({ x: nx + (cx - nx) * 0.7, y: HALL.y + 1.35, z: nz + (cz - nz) * 0.7, color: 0xffb27a, intensity: 0.9, distance: 3.8, flicker: 0.05, speed: 0.4, priority: 0 });
+    }
   }
 
   /** Halos over the coins in the rubble (until picked up). */

@@ -220,6 +220,7 @@ html.is-touch .journal-btn { opacity: .7; }
   transition: opacity .6s, transform .6s; pointer-events: none;
 }
 #ui:not([data-hud=mine]):not([data-hud=deep]) .depth { display: none; }
+#ui.panel-open .depth { opacity: 0; transition: opacity .2s; } /* (a panel over it would leave half a word showing) */
 .depth.show { opacity: 1; transform: none; transition: opacity .2s, transform .3s var(--pop); }
 .depth img { width: calc(var(--px) * 11); height: calc(var(--px) * 19); order: 2; animation: plumbSwing 2.4s ease-in-out infinite; transform-origin: 50% 0; margin-top: calc(var(--px) * 2); }
 @keyframes plumbSwing { 50% { transform: rotate(8deg); } }
@@ -323,36 +324,6 @@ html.is-touch .loop .k { display: none; }
 #ui.focus .belt-buckle, #ui.focus .belt-tip { display: none; }
 .hud-tl, .hud-tr, .cal { transition: opacity .3s; }
 
-/* ---------- discovery: a sketch card that flips out of the book ---------- */
-.disc {
-  position: absolute; right: calc(var(--sar) + var(--px) * 8); top: calc(var(--sat) + var(--px) * 50); width: max-content; max-width: calc(var(--px) * 110);
-  perspective: 600px; pointer-events: none; z-index: 6;
-  animation: discIn .7s var(--pop) both;
-}
-.disc.out { animation: discOut .5s cubic-bezier(.5, 0, .8, .4) forwards; }
-@keyframes discIn {
-  0% { transform: translate(calc(var(--px) * 8), calc(var(--px) * -40)) scale(.15) rotate(-30deg); opacity: 0; }
-  30% { opacity: 1; }
-}
-@keyframes discOut { to { transform: translate(calc(var(--px) * 6), calc(var(--px) * -42)) scale(.15) rotate(25deg); opacity: 0; } }
-.disc-card {
-  display: grid; grid-template-columns: auto 1fr; gap: calc(var(--px) * 3); align-items: center; color: var(--ink);
-  border-style: solid; border-width: calc(var(--px) * 8);
-  border-image: var(--a-parchDog) 8 / calc(var(--px) * 8) repeat;
-  background: var(--a-pageT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box;
-  padding: 0; filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(10, 4, 8, .5));
-  transform-origin: 100% 0; animation: discFlip .7s cubic-bezier(.3, 1.3, .5, 1) .1s both;
-}
-@keyframes discFlip { from { transform: rotateY(-95deg); } }
-.disc-sketch {
-  width: calc(var(--icon-s) + var(--px) * 8); height: calc(var(--icon-s) + var(--px) * 8); box-sizing: border-box; display: grid; place-items: center;
-  border-style: solid; border-width: calc(var(--px) * 4); border-image: var(--a-sketch) 4 / calc(var(--px) * 4) repeat;
-}
-.disc-sketch img { width: var(--icon-s); height: var(--icon-s); }
-.disc small { display: block; font-size: 8px; letter-spacing: .14em; text-transform: uppercase; color: #8a4a22; }
-.disc b { display: block; font-family: var(--font-script); font-weight: 400; font-size: var(--fs-s); line-height: 1; color: var(--sepia); margin-top: calc(var(--px) * 1); }
-@media (min-width: 901px) and (min-height: 601px) { .disc small { font-size: 16px; letter-spacing: .06em; } }
-
 /* the load gauge: a thin brass scale beside the bag (fills green → amber → red past the bag's carry) */
 /* a brass tube with a glass window (hudArt gauge: the window is 4×22 at 2,5) */
 .pack-load { position: absolute; right: calc(var(--px) * -4); top: 0; width: calc(var(--px) * 8); height: calc(var(--px) * 30); z-index: 2; pointer-events: auto; background: var(--h-gauge) 0 0 / 100% 100%; }
@@ -430,13 +401,25 @@ html.is-touch .loop .k { display: none; }
 .belt .loop.empty { opacity: 1; }
 .loop-face img { width: calc(var(--icon-s) * 1.3); height: calc(var(--icon-s) * 1.3); margin: calc(var(--icon-s) * -.15); image-rendering: pixelated; }
 
-/* ---- ui3: the discovery card comes out of the Index Book with the book's silk ribbon still tucked
-   in it; it flutters as it settles and the light catches the sketch */
-.disc-card { position: relative; animation: discFlip .7s cubic-bezier(.3, 1.3, .5, 1) .1s both, discFlutter .9s steps(9) .75s both; }
-@keyframes discRibbon { 0%, 100% { rotate: 0deg; } 50% { rotate: 4deg; } }
-@keyframes discFlutter { 0% { rotate: 1.8deg; } 22% { rotate: -1.2deg; } 44% { rotate: .7deg; } 66% { rotate: -.35deg; } 100% { rotate: 0deg; } }
-.disc-card::before { content: ''; position: absolute; right: calc(var(--px) * 10); top: calc(100% + var(--px) * 4); width: calc(var(--px) * 6); height: calc(var(--px) * 18); transform-origin: 50% 0; animation: discRibbon 2.4s ease-in-out 1s infinite;
-  background: var(--a-ribbonV) 0 0 / calc(var(--px) * 6) calc(var(--px) * 12) repeat-y; clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - var(--px) * 3), 0 100%); }
-.disc-sketch { position: relative; overflow: hidden; }
-.disc-sketch::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--dl-glint) 0 0 / calc(var(--px) * 10) 100% no-repeat; opacity: 0; animation: discGlint .7s steps(7) 1s both; }
-@keyframes discGlint { 0% { opacity: .9; background-position: -30% 0; } 99% { opacity: .9; background-position: 130% 0; } 100% { opacity: 0; } }
+
+/* the home's decorate button (HomeScene.hammerBtn): a little brass plate under the purse with the
+   chair and its key cap; quiet till hovered, lit while building */
+.decorate-btn {
+  position: absolute; left: calc(var(--sal) + var(--px) * 6); top: calc(var(--sat) + var(--px) * 62); z-index: 4; pointer-events: auto; cursor: pointer;
+  display: flex; align-items: center; gap: calc(var(--px) * 2); margin: 0; padding: 0 var(--px); background: none; color: #2a1806; font: inherit;
+  border-style: solid; border-width: calc(var(--px) * 2) calc(var(--px) * 4); border-image: var(--h-brassPlate) 2 4 fill / calc(var(--px) * 2) calc(var(--px) * 4) repeat;
+  filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .5)); opacity: .8; transition: opacity .2s, translate .1s;
+}
+.decorate-btn img { width: var(--icon-s, 32px); height: var(--icon-s, 32px); display: block; image-rendering: pixelated; }
+.decorate-btn:hover, .decorate-btn:focus-visible, .decorate-btn.alt { opacity: 1; }
+.decorate-btn:active { translate: 0 var(--px); }
+.decorate-btn.alt { filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .5)) drop-shadow(0 0 calc(var(--px) * 2) rgba(255, 210, 110, .8)); }
+#ui .decorate-btn:focus-visible { outline: none; }
+.decorate-k {
+  --kp: 2px; display: inline-block; box-sizing: border-box; min-width: calc(var(--kp) * 10); padding: 0 var(--kp);
+  border-style: solid; border-width: calc(var(--kp) * 2) calc(var(--kp) * 2) calc(var(--kp) * 3);
+  border-image: var(--a-key) 2 2 3 2 fill / calc(var(--kp) * 2) calc(var(--kp) * 2) calc(var(--kp) * 3) stretch;
+  font: 16px/12px var(--font); color: var(--ink); text-align: center;
+}
+#ui[data-hud=none] .decorate-btn, #ui.focus .decorate-btn { display: none; }
+html.is-touch .decorate-k { display: none; }

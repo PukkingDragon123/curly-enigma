@@ -50,6 +50,8 @@ const THREAD = 0xe8dcb8;
 const BRASS = 0xc8a048;
 const LEATHER = 0x6a4224;
 const STAR_N = 22;
+/** His walk (gait.js): short, careful, stooped steps, low feet, little arm swing. */
+const STAR_GAIT = Object.freeze({ stride: 0.95, lift: 0.5, bob: 0.65, sway: 0.9, lean: 1.5, arm: 0.6, twist: 0.7, toeOut: 0.2, armRun: 0.8 });
 
 // ---------------------------------------------------------------- parts
 /** The long coat, the satchel and its strap, in the body's voxel frame (origin at the hip point). */
@@ -278,6 +280,7 @@ export class StarMoleRig extends CharacterRig {
     this.lookYaw = 0; this.lookPitch = 0; this.lookYawT = 0; this.lookPitchT = 0;
     this.lampK = 0.55;
     this.waveArm = false;
+    this.gaitStyle = STAR_GAIT;
   }
 
   sniff(sec = 1.2) { this.sniffT = Math.max(this.sniffT, sec); }
@@ -342,12 +345,22 @@ export class StarMoleRig extends CharacterRig {
       armL.rotation.set(-0.5 + Math.sin(t * 14) * 0.35, 0, 0.3);
       armR.rotation.set(-0.5 - Math.sin(t * 14) * 0.35, 0, -0.3);
       hip.rotation.x = this.baseHunch + 0.2;
-    } else if (st === 'walk') {
-      // an old fellow's walk: shorter steps, the pick plants like a cane
-      legL.rotation.x *= 0.7; legR.rotation.x *= 0.7;
-      armR.rotation.x *= 0.35;
-      hip.rotation.x += 0.08;
     }
+    // an old fellow's walk (STAR_GAIT: short shuffling steps, stooped, a gentle sway): the pick
+    // is his cane. It plants with his left foot and stays put while he walks past it, then
+    // swings forward with that foot (the arm holding it does not swing).
+    const gw = this.gaitW || 0;
+    if (gw > 0 && this.pick && this.pick.visible && st !== 'carry') {
+      const g = this.gait, Lft = g.legs[0];
+      const Lc = this.caneLen;
+      const z = Lft.z + s * 0.6; // a touch ahead of the foot
+      const lift = Lft.fy > 0 ? Lft.fy * 0.6 : 0;
+      const a = -Math.asin(Math.max(-0.9, Math.min(0.9, z / Lc)));
+      armR.rotation.x += (a - hip.rotation.x - armR.rotation.x) * gw;
+      armR.rotation.z += (-0.12 - hip.rotation.z - armR.rotation.z) * gw;
+      // his paw rides up the haft as it lifts (the tip leaves the ground)
+      this.pick.position.y = lift;
+    } else if (this.pick) this.pick.position.y = 0;
     // sniffing: nose up, quick little head bobs
     if (this.sniffT > 0) {
       this.sniffT -= dt;
@@ -584,6 +597,7 @@ export function makeStarMole(opts = {}) {
   });
   rig.star = star;
   rig.pick = pick;
+  rig.caneLen = hip.position.y + (p.bh - 1.5) * u; // shoulder → the pick's tip on the ground
   rig.lensMat = lensMat;
   rig.lampK = opts.lamp ?? 0.55;
   const eyeZ = Math.max(...info.eyes.map((e) => e.z));

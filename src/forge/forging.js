@@ -28,7 +28,9 @@ const _white = new THREE.Color(0xfff6ee);
 
 /** A glow of light cells behind the revealed weapon (no round blob). */
 function makeHalo(color) {
-  const tex = cellGlowTexture(color); // light voxels, not a round gradient blob
+  // light voxels, not a round gradient blob: fine cells gathered close behind the blade (big ones
+  // read as a blocky haze over the room)
+  const tex = cellGlowTexture(color, { cells: 28, px: 2, falloff: 2.6 });
   const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
   const s = new THREE.Sprite(mat);
   s.renderOrder = -1;
@@ -1150,13 +1152,15 @@ export class ForgeRun {
     const glow = 0.025 + 0.015 * Math.sin(this.time * 3);
     this.weapon.mat.emissive.copy(this.glowCol).multiplyScalar(glow * k);
     this.weapon.heat.u.uPolish.value = k;
+    // the hilt under the same soft display light: a neutral lift, so a brass guard isn't fire-orange
+    if (this.weapon.hiltMat) { this.weapon.hiltMat.emissive.setRGB(0.11, 0.1, 0.075).multiplyScalar(k); this.weapon.hiltMat.color.setRGB(1 - 0.16 * k, 1, 1 + 0.1 * k); }
     if (this.weapon.veinMat) this.weapon.veinMat.color.setScalar(0.8 + 0.3 * Math.sin(this.time * 5));
     const mid = this.weapon.group.localToWorld(new THREE.Vector3(0, this.bladeLen * 0.5, 0));
     if (Math.random() < dt * 14) P.sparkle(mid, this.gradeCol.getHex(), 1, 0.25, 0.1);
     if (this.halo) {
       this.halo.position.copy(mid).addScaledVector(fwd, 0.3);
-      this.halo.material.opacity = (0.4 + 0.1 * Math.sin(this.time * 2.4)) * k;
-      this.halo.scale.setScalar(0.42 + 0.03 * Math.sin(this.time * 1.7));
+      this.halo.material.opacity = (0.42 + 0.1 * Math.sin(this.time * 2.4)) * k;
+      this.halo.scale.setScalar(0.3 + 0.02 * Math.sin(this.time * 1.7));
     }
     sc.post.vignette = lerp(this.savedPost.vignette ?? 0.38, 0.7, k);
     sc.W.hemi.color.setHex(this.savedHemi.sky).lerp(_white, 0.22 * k);

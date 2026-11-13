@@ -347,13 +347,7 @@ html.is-touch .prompt-in .prompt-tap { display: block; animation: tapBob 1.2s ea
 .hint-keys kbd { margin-right: calc(var(--px) * 1); }
 html.is-touch .hint-keys { display: none !important; }
 
-/* ---------- floating texts & speech bubbles ---------- */
-.float-text {
-  position: absolute; transform: translate(-50%, -50%); font-family: var(--font); font-size: 16px; white-space: nowrap; pointer-events: none;
-  text-shadow: 0 var(--px) 0 #1a0e08, var(--px) 0 0 #1a0e08, calc(var(--px) * -1) 0 0 #1a0e08, 0 calc(var(--px) * -1) 0 #1a0e08, 0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .4);
-  animation: floatUp 1.1s cubic-bezier(.2, .8, .3, 1) forwards;
-}
-@keyframes floatUp { 0% { transform: translate(-50%, -30%) scale(.7); opacity: 0; } 15% { transform: translate(-50%, -60%) scale(1.08); opacity: 1; } 70% { opacity: 1; } 100% { transform: translate(-50%, calc(-50% - var(--px) * 18)); opacity: 0; } }
+/* ---------- speech bubbles ---------- */
 .bubble {
   position: absolute; transform: translate(-50%, -100%); width: max-content; max-width: calc(var(--px) * 96);
   background: #fffaf0; color: var(--ink);
@@ -375,8 +369,8 @@ html.is-touch .hint-keys { display: none !important; }
 }
 .bubble.emote { font-size: 24px; padding: 0 calc(var(--px) * 2); min-width: 0; line-height: 1.2; }
 .bubble b { color: var(--wood-2); display: block; font-size: 16px; font-weight: 400; margin-bottom: var(--px); }
-@media (max-width: 900px), (max-height: 600px) { .bubble { font-size: 8px; } .bubble b { font-size: 8px; } .bubble.emote { font-size: 16px; } .float-text { font-size: 16px; } }
-@media (min-width: 1700px) and (min-height: 1000px) { .bubble { font-size: 24px; } .bubble b { font-size: 16px; } .float-text { font-size: 24px; } }
+@media (max-width: 900px), (max-height: 600px) { .bubble { font-size: 8px; } .bubble b { font-size: 8px; } .bubble.emote { font-size: 16px; } }
+@media (min-width: 1700px) and (min-height: 1000px) { .bubble { font-size: 24px; } .bubble b { font-size: 16px; } }
 .nametag { position: absolute; transform: translate(-50%, -100%); font-size: .7em; color: var(--text-light); text-shadow: 0 var(--px) 0 #000; white-space: nowrap; }
 
 /* ---------- confirm: a parchment card with two rubber stamps ---------- */

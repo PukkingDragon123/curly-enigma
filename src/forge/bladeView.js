@@ -320,7 +320,7 @@ const smooth01 = (t) => t * t * (3 - 2 * t);
  * broad faces toward ±z. The blade has a diamond cross-section with polished bevels, a temper
  * line on quench-hardened metals, a fuller, cracks where the forging cracked it and glowing
  * veins for infusions. opts: { infusion, gem, gemColor }.
- * Returns { group, blade, hilt, pommel, headCap, mat, veinMat, length, hiltLength, hafted }.
+ * Returns { group, blade, hilt, hiltMat, pommel, headCap, mat, veinMat, length, hiltLength, hafted }.
  */
 export function buildWeapon(sim, opts = {}) {
   const metal = METALS[sim.metal];
@@ -414,7 +414,7 @@ export function buildWeapon(sim, opts = {}) {
   const hg = new VoxelGrid(HW, gripV + 12, 11);
   const hcx = Math.floor(HW / 2), hcz = 5;
   const leather = 0x5a3420, leatherDk = 0x3a2214, wood = 0x6a4424, woodDk = 0x4a2e18;
-  const guardC = sim.metal === 'iron' || sim.metal === 'steel' ? 0xc98a3a : shade(mc, 0.85);
+  const guardC = sim.metal === 'iron' || sim.metal === 'steel' ? 0xb0974e : shade(mc, 0.85); // (brass: yellow, not copper-orange, under the forge's warm light)
   const gy = gripV + 4; // guard base row
   const round = (y0, y1, rad, fn) => {
     for (let y = y0; y < y1; y++) for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) {
@@ -441,7 +441,7 @@ export function buildWeapon(sim, opts = {}) {
       const y0 = gy + (end ? 1 : 0), h = end ? 4 : 4;
       for (let y = y0; y < y0 + h; y++) for (let dz = -2; dz <= 2; dz++) {
         const top = y === y0 + h - 1;
-        hg.set(hcx + dx, y, hcz + dz, top ? shade(guardC, 1.2) : dz === -2 || dz === 2 ? shade(guardC, 0.85) : guardC);
+        hg.set(hcx + dx, y, hcz + dz, top ? shade(guardC, 1.2) : y === y0 ? shade(guardC, 0.78) : dz === -2 || dz === 2 ? shade(guardC, 0.88) : guardC);
       }
     }
     hg.box(hcx - 3, gy + 4, hcz - 2, 7, 3, 5, (x, y) => (y === gy + 6 ? shade(guardC, 1.15) : guardC));
@@ -456,7 +456,8 @@ export function buildWeapon(sim, opts = {}) {
       for (let a = 0; a <= Math.PI; a += 0.12) hg.set(hcx + Math.round(Math.cos(a) * 7 + 0), Math.round(gy - Math.sin(a) * (gy - 3)), hcz, guardC);
     }
   }
-  const hilt = voxelMesh(hg, { pivot: [hcx + 0.5, gy + 6, hcz + 0.5], scale: VW, greedy: true });
+  // (its own material: the reveal lifts it out of the forge's orange light so the brass reads as brass)
+  const hilt = voxelMesh(hg, { pivot: [hcx + 0.5, gy + 6, hcz + 0.5], scale: VW, greedy: true, material: voxelMaterial('toon', { unique: true }) });
   group.add(hilt);
   // pommel (separate so the balance step can grow it)
   const pg = new VoxelGrid(11, 11, 11);
@@ -474,5 +475,5 @@ export function buildWeapon(sim, opts = {}) {
   headCap.position.y = GY * VW - 2 * VW;
   headCap.visible = false;
   group.add(headCap);
-  return { group, blade, hilt, pommel, headCap, mat, heat, veinMat, length: GY * VW, hiltLength: hiltLen + 4 * VW, hafted };
+  return { group, blade, hilt, hiltMat: hilt.material, pommel, headCap, mat, heat, veinMat, length: GY * VW, hiltLength: hiltLen + 4 * VW, hafted };
 }

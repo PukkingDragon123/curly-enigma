@@ -27,6 +27,7 @@ import { makeBroadleaf, makeConifer, makeSnag, triCount } from './forest/trees.j
 import { makeFernGeo, makeMushroomGeo, makeMossGeo, makeBoulderGeo, makeFallenLogGeo, makeFoxgloveGeo, makeShrubGeo, makeRootArcGeo, makePebblesGeo, makeTwigGeo, makeLeavesGeo } from './forest/flora.js';
 import { makeForestGrassChunked, FG } from './forest/grass.js';
 import { makeFarTrees } from './forest/far.js';
+import { buildRaptorEgg, nestGeo } from './forest/egg.js';
 
 let VS = 1 / 8; // terrain voxel (across): 1/8 m, or 1/6 m for the light forest
 const VY = 1 / 16; // terrain step (up)
@@ -59,6 +60,10 @@ const CROSS = (() => {
   for (const p of TRAIL.P) for (const q of STREAM.P) { const d = (p.x - q.x) ** 2 + (p.z - q.z) ** 2; if (d < bd) { bd = d; best = { s: p.s, x: p.x, z: p.z, ss: q.s }; } }
   return best;
 })();
+/** The journey's egg is the title's at this scale (its voxels 1/126 m: a small thing, fine voxels). */
+export const EGG_K = 0.76;
+/** The raptor's nest at the clearing's edge, a step off the trail on his right (the journey's egg). */
+const NEST = (() => { const s = TRAIL.L - 5.5; const t = TRAIL.curve.getTangentAt(s / TRAIL.L), p = TRAIL.curve.getPointAt(s / TRAIL.L); return { s, x: p.x - t.z * 0.95, z: p.z + t.x * 0.95, ry: 0.6 }; })();
 export const CLEAR_R = 7.2; // the clearing
 export const HOLE_R = 1.5; // the crust over the hollow
 
@@ -145,6 +150,45 @@ export function groundH(x, z) {
   return H;
 }
 
+/**
+ * The footbridge as a walker sees it: { x, z, s, half, tx, tz, yaw, y (the deck top mid-span),
+ * deckY(along), walk(x, z, out) }. along: metres along the span from its middle (+ toward the
+ * clearing). walk() takes a point on the trail and gives where his feet go: pulled onto the span's
+ * middle line as he nears it (the trail bends, the logs are straight), on the deck's top while he's
+ * on it (the logs sag a voxel in the middle) and eased from the bank onto it at each end; w: how far
+ * onto the bridge (0 off it, 1 on it), on: his boots are on the wood.
+ */
+function makeBridgeWalk(b) {
+  const { half, tx, tz, eA, eB } = b;
+  const deckY = (along) => {
+    const a = clamp(along, -half, half), t = (a + half) / (2 * half);
+    const sag = Math.sin(t * Math.PI) * 1.2;
+    return lerp(eA, eB, t) + (1 - Math.min(1, sag)) / 16;
+  };
+  const walk = (x, z, out = {}) => {
+    const along = (x - b.x) * tx + (z - b.z) * tz;
+    const k = Math.abs(along);
+    const w = 1 - sm(half - 0.15, half + 0.9, k); // drawn onto the middle line
+    out.x = lerp(x, b.x + tx * along, w);
+    out.z = lerp(z, b.z + tz * along, w);
+    const g = groundH(out.x, out.z);
+    // on the logs: the deck; past their ends: from the deck's end down onto the bank it rests on
+    out.y = k <= half ? Math.max(g, deckY(along)) : Math.max(g, lerp(deckY(along), g, sm(half, half + 0.32, k)));
+    out.w = w;
+    out.on = k < half - 0.05;
+    out.along = along;
+    return out;
+  };
+  /** A point on top of the rope rail (u 0..1 from the trail's end of it): where small birds perch. */
+  const railAt = (u, out = {}) => {
+    const lz = lerp(-1.53, 1.47, u), k = u < 0.5 ? u * 2 : (u - 0.5) * 2, lx = 10.5 / 16;
+    out.x = b.x + tz * lx + tx * lz; out.z = b.z - tx * lx + tz * lz;
+    out.y = lerp(eA, eB, (lz + half) / (2 * half)) + (16 - 3 * Math.sin(k * Math.PI)) / 16 + 0.01;
+    return out;
+  };
+  return { ...b, yaw: Math.atan2(tx, tz), y: deckY(0), deckY, walk, railAt };
+}
+
 /** Trail sampler: point at s metres from the start. */
 function trailAt(s, out = {}) {
   const t = clamp(s / TRAIL.L, 0, 1);
@@ -158,6 +202,7 @@ function trailAt(s, out = {}) {
 
 export const FOREST = {
   trail: { at: trailAt, length: TRAIL.L, curve: TRAIL.curve, cross: CROSS, beside },
+  nest: NEST,
   stream: STREAM,
   box: BOX,
   giants: GIANTS,
@@ -310,9 +355,17 @@ export async function buildForest(opts = {}) {
     for (const g of GIANTS) splat(g.x, g.z, 7.5 * g.s, 1);
     return { N, c, at: (x, z) => { const i = clamp(Math.floor(((x - BOX.x0) / w) * N), 0, N - 1), j = clamp(Math.floor(((z - BOX.z0) / d) * N), 0, N - 1); return c[j * N + i]; } };
   })();
+  // where the shafts of sun come down (the trail's and the wood's: see the light shafts below), each
+  // lighting a pool of sun on the ground under it
+  const SHAFTS = [];
+  for (const s of soft ? [7.5, 16.5, 31, 40] : [3, 7.5, 12, 16.5, 21, 25.5, 31, 35.5, 40, 44]) { const [x, z] = beside(s, (s * 7) % 3 - 1.2); SHAFTS.push([x + 0.8, z - 0.6, 0.6 + ((s * 13) % 5) * 0.12, 0.18 + ((s * 3) % 4) * 0.02]); }
+  if (!soft) for (const [x, z] of [[-5, 14], [6, 27], [-3, 36], [9, 12], [-9, 20]]) SHAFTS.push([x, z, 0.8, 0.16]);
+  // wave 10: more, slimmer shafts slanting down between the trunks either side of the trail
+  if (!soft) for (const s of lite ? [5, 14, 23, 33, 42] : [5, 9.5, 14, 18.5, 23, 28.5, 33, 38, 42]) { const side = Math.sin(s * 2.3) > 0 ? 1 : -1; const [x, z] = beside(s, side * (2.6 + ((s * 5) % 3))); SHAFTS.push([x, z, 0.32 + ((s * 7) % 3) * 0.08, 0.13 + ((s * 11) % 3) * 0.02, true]); }
   textures.push(makeOpenness({ x0: BOX.x0, z0: BOX.z0, w: BOX.x1 - BOX.x0, d: BOX.z1 - BOX.z0 }, (x, z) => {
     const td = FIELD.trail(x, z), sd = FIELD.stream(x, z), r = Math.hypot(x, z);
     let o = 0.95 - cover.at(x, z) * 0.85;
+    for (const [bx2, bz2, bw] of SHAFTS) { const dd = Math.hypot(x - bx2, z - bz2); if (dd < bw * 2.2) o = Math.max(o, 0.82 * (1 - sm(bw * 0.5, bw * 2.2, dd))); } // (a pool of sun under each shaft)
     o = Math.max(o, 0.5 * (1 - sm(0.6, 3.2, td)));
     o = Math.max(o, 0.55 * (1 - sm(0.5, 3.0, sd)));
     o = Math.max(o, 1 - sm(CLEAR_R - 1.0, CLEAR_R + 2.5, r));
@@ -579,6 +632,9 @@ export async function buildForest(opts = {}) {
     putRock(x, z, rng.int(0, 3), rng.range(0.8, 1.25), rng.range(0, 6));
   }
   putRock(-5.0, -3.4, 2, 1, 0.5); putRock(5.8, 1.6, 0, 1, 2); putRock(-6.4, -0.8, 1, 1.1); putRock(3.4, 6.2, 3, 1.2);
+  // the raptor's nest sits in the lee of a mossy stone, a step off the trail (its own patch of short turf)
+  blocked.push([NEST.x, NEST.z, 0.42], [NEST.x + (NEST.x - TRAIL.curve.getPointAt(NEST.s / TRAIL.L).x) * 0.9, NEST.z + (NEST.z - TRAIL.curve.getPointAt(NEST.s / TRAIL.L).z) * 0.9, 0.9]); // (and the camera's corner beyond it)
+  { const t = TRAIL.curve.getTangentAt(NEST.s / TRAIL.L); putRock(NEST.x - t.x * 0.72 - t.z * 0.25, NEST.z - t.z * 0.72 + t.x * 0.25, 1, 0.75, 1.1); } // (on the side he comes from)
   // stepping stones in the stream by the bridge
   const streamRocks = [];
   for (let i = 0; i < 7; i++) {
@@ -623,14 +679,19 @@ export async function buildForest(opts = {}) {
   const bridgeGeo = G(makeBridgeGeo(3.4));
   const tgB = TRAIL.curve.getTangentAt(CROSS.s / TRAIL.L);
   const bx = CROSS.x, bz = CROSS.z;
-  const by = Math.max(groundH(bx + tgB.x * 1.9, bz + tgB.z * 1.9), groundH(bx - tgB.x * 1.9, bz - tgB.z * 1.9)) + 0.02;
+  // each end of the logs rests on its own bank (the deck top meets the trail there), so the span
+  // tilts a little when one bank is lower: no step up onto it, no step down off it
+  const BH = 1.69; // half the span (54 voxels)
+  const eA = groundH(bx - tgB.x * 1.9, bz - tgB.z * 1.9) + 0.02 - 1 / 16, eB = groundH(bx + tgB.x * 1.9, bz + tgB.z * 1.9) + 0.02 - 1 / 16;
+  const by = (eA + eB) / 2;
   const bridge = new THREE.Mesh(bridgeGeo, stiffMat);
   bridge.layers.enable(LAYER_OUTLINE);
   bridge.position.set(bx, by, bz);
-  bridge.rotation.y = Math.atan2(tgB.x, tgB.z);
+  bridge.rotation.order = 'YXZ';
+  bridge.rotation.set(-Math.asin(clamp((eB - eA) / (2 * BH), -0.2, 0.2)), Math.atan2(tgB.x, tgB.z), 0);
   props.add(bridge);
-  FOREST.bridgeY = by + 5 / 16;
-  FOREST.bridge = { x: bx, z: bz, s: CROSS.s, half: 1.7, y: by + 5 / 16 - 0.03 };
+  FOREST.bridgeY = by + 1 / 16;
+  FOREST.bridge = makeBridgeWalk({ x: bx, z: bz, s: CROSS.s, half: BH, tx: tgB.x, tz: tgB.z, eA, eB });
   // a signpost where the trail bends toward the clearing
   let signMesh = null;
   {
@@ -643,6 +704,32 @@ export async function buildForest(opts = {}) {
     props.add(sign);
     spots.sign = { x: sign.position.x, z: sign.position.z, top: sign.position.y + 1.75 };
     signMesh = sign;
+  }
+  // the raptor's nest and its egg (the journey finds it; the egg is its own mesh so it can wobble and go)
+  let nest = null;
+  if (!V || inV(NEST.x, NEST.z, 1)) {
+    const y = groundH(NEST.x, NEST.z);
+    const ng = new THREE.Group();
+    ng.name = 'nest';
+    ng.position.set(NEST.x, y - 0.02, NEST.z);
+    ng.rotation.y = NEST.ry;
+    const nm = new THREE.Mesh(G(nestGeo(17, { r: 0.2 })), stiffMat);
+    nm.layers.enable(LAYER_OUTLINE);
+    ng.add(nm);
+    const E = buildRaptorEgg(31);
+    G(E.geo); G(E.half); G(E.top);
+    const egg = new THREE.Mesh(E.geo, forestToon({ dapple: true }));
+    egg.name = 'raptor-egg';
+    egg.layers.enable(LAYER_OUTLINE);
+    const hold = new THREE.Group(); // (wobbles on the egg's foot)
+    hold.position.set(0, 0.026, 0);
+    hold.rotation.set(-0.12, -0.5, 0.1); // lying back in the straw a little
+    egg.scale.setScalar(EGG_K); // (21 cm: a big egg in his two paws)
+    hold.add(egg);
+    ng.add(hold);
+    group.add(ng);
+    nest = { group: ng, egg, hold, E, x: NEST.x, z: NEST.z, y, s: NEST.s };
+    spots.nest = { x: NEST.x, z: NEST.z, top: y + 0.1 };
   }
   group.add(props);
   await tick();
@@ -664,7 +751,7 @@ export async function buildForest(opts = {}) {
   };
   const fernGeos = [G(makeFernGeo(601, { r: 0.55, k: lite ? 12 : 14 })), G(makeFernGeo(607, { r: 0.4, k: lite ? 12 : 14 })), G(makeFernGeo(613, { r: 0.7, k: lite ? 11 : 13 })), G(makeFernGeo(619, { r: 0.5, k: 12, dry: 0.55 }))];
   const fernIts = [[], [], [], []];
-  scatter(soft ? 80 : lite ? 150 : 400, (x, z, td, sd, r) => {
+  scatter(soft ? 80 : lite ? 190 : 560, (x, z, td, sd, r) => {
     if (td < 1.15 || sd < 1.1 || (r < CLEAR_R + 0.4 && r > HOLE_R + 0.6 && urng() > 0.12) || r < HOLE_R + 0.6) return false;
     // thickest along the verges and in the hollows; patchy deeper in
     const want = (td < 6 ? 0.85 : 0.45) * (0.6 + 0.4 * n3(x * 0.25, z * 0.25) + 0.3);
@@ -676,7 +763,7 @@ export async function buildForest(opts = {}) {
   fernIts.forEach((its, v) => add(fernGeos[v], plantMat, its, 'ferns', false, 26));
   const mossGeos = [G(makeMossGeo(701)), G(makeMossGeo(709, { r: 0.7, h: 0.22 }))];
   const mossIts = [[], []];
-  scatter(lite ? 70 : 170, (x, z, td, sd, r) => {
+  scatter(lite ? 85 : 220, (x, z, td, sd, r) => {
     if (td < 1.2 || sd < 1.0 || r < CLEAR_R - 0.5 || !free(x, z, 0.3)) return false;
     mossIts[urng() < 0.4 ? 1 : 0].push({ x, y: groundH(x, z) - 0.04, z, ry: urng.range(0, 6.28), s: urng.range(0.7, 1.4) });
     return true;
@@ -708,7 +795,7 @@ export async function buildForest(opts = {}) {
   shroomIts.forEach((its, v) => add(shroomGeos[v], stiffMat, its, 'mushrooms', true, 30));
   const fox = [G(makeFoxgloveGeo(901)), G(makeFoxgloveGeo(907, { h: 1.1, color: 0xe8a0d0 })), G(makeFoxgloveGeo(911, { h: 0.75, color: 0xa860c8 }))];
   const foxIts = [[], [], []];
-  scatter(lite ? 25 : 60, (x, z, td, sd, r) => {
+  scatter(lite ? 32 : 80, (x, z, td, sd, r) => {
     if (!((td > 1.1 && td < 3.6) || (r > CLEAR_R - 1.5 && r < CLEAR_R + 1.5)) || sd < 1.2 || !free(x, z, 0.2)) return false;
     foxIts[urng.int(0, 2)].push({ x, y: groundH(x, z) - 0.02, z, ry: urng.range(0, 6.28), s: urng.range(0.85, 1.2) });
     return true;
@@ -716,7 +803,7 @@ export async function buildForest(opts = {}) {
   foxIts.forEach((its, v) => add(fox[v], plantMat, its, 'foxgloves', false, 30));
   const shrubGeos = [G(makeShrubGeo(1001, { berry: 0x4a5ad0 })), G(makeShrubGeo(1009, { r: 0.7, h: 0.6, berry: 0xd82a2a, leaf: [0x5a7a3a, 0x46682e, 0x345626, 0x26421e] })), G(makeShrubGeo(1013, { r: 0.6, h: 0.5 }))];
   const shrubIts = [[], [], []];
-  scatter(lite ? 35 : 80, (x, z, td, sd, r) => {
+  scatter(lite ? 45 : 110, (x, z, td, sd, r) => {
     if (td < 1.6 || sd < 1.3 || r < CLEAR_R - 0.6 || !free(x, z, 0.5)) return false;
     shrubIts[urng.int(0, 2)].push({ x, y: groundH(x, z) - 0.04, z, ry: urng.range(0, 6.28), s: urng.range(0.8, 1.3) });
     return true;
@@ -752,7 +839,7 @@ export async function buildForest(opts = {}) {
   const items = [];
   const grng = makeRng(91);
   const put = (x, z, cell, size, tint = 1) => items.push({ x, y: groundH(x, z) - 0.02, z, rot: grng.range(0, 6.28), size, cell, tint });
-  const N = soft ? 3200 : lite ? 5200 : 16000;
+  const N = soft ? 3200 : lite ? 6000 : 19000;
   for (let i = 0; i < N; i++) {
     const x = grng.range(BOX.x0 + 0.5, BOX.x1 - 0.5), z = grng.range(BOX.z0 + 0.5, BOX.z1 - 0.5);
     const td = FIELD.trail(x, z), sd = FIELD.stream(x, z), r = Math.hypot(x, z);
@@ -760,6 +847,7 @@ export async function buildForest(opts = {}) {
     if (td < 0.62) { if (grng() < 0.05) put(x, z, FG.short, 0.14, 0.9); continue; }
     if (sd < 0.62) continue;
     if (Math.abs(x) < 0.9 && z > -0.5 && z < 2.6) continue; // the walk up to the chest
+    { const dn = Math.hypot(x - NEST.x, z - NEST.z); if (dn < 0.34) continue; if (dn < 0.95) { if (grng() < 0.6) put(x, z, grng() < 0.12 ? FG.daisy : grng() < 0.2 ? FG.clover : FG.short, grng.range(0.12, 0.2)); continue; } } // the nest's patch: short turf
     const tint = 0.85 + grng() * 0.3;
     const roll = grng();
     if (sd < 1.35) { put(x, z, roll < 0.45 ? FG.reed : roll < 0.6 ? FG.cattail : roll < 0.8 ? FG.tall : FG.forgetme, roll < 0.8 ? grng.range(0.5, 0.85) : 0.3, tint); continue; }
@@ -876,8 +964,7 @@ export async function buildForest(opts = {}) {
   beamAt(-1.9, -2.6, 14, 1.1, 0.24);
   beamAt(2.6, -1.9, 14, 0.9, 0.22);
   beamAt(-3.2, 2.6, 13, 0.7, 0.2);
-  for (const s of soft ? [7.5, 16.5, 31, 40] : [3, 7.5, 12, 16.5, 21, 25.5, 31, 35.5, 40, 44]) { const [x, z] = beside(s, (s * 7) % 3 - 1.2); beamAt(x + 0.8, z - 0.6, 13, 0.6 + ((s * 13) % 5) * 0.12, 0.18 + ((s * 3) % 4) * 0.02); }
-  if (!soft) for (const [x, z] of [[-5, 14], [6, 27], [-3, 36], [9, 12], [-9, 20]]) beamAt(x, z, 14, 0.8, 0.16);
+  for (const [x, z, w, inten, slim] of SHAFTS) beamAt(x, z, slim ? 15 : 13, w, inten * (slim ? 1.15 : 1.3), slim ? 0xfff0c8 : 0xffe2b0); // (wave 10: brighter)
 
   // ---- far chunks are hidden (the fog has them by then)
   const cullDist = soft ? 32 : lite ? 44 : 68;
@@ -953,7 +1040,7 @@ export async function buildForest(opts = {}) {
   for (const v of Object.values(stats.tris)) total += v;
   stats.trisTotal = total;
   return Object.assign(F, {
-    group, sky, textures, crust, cracks, chest, spill, glints, chestGlow, ceil, stream, mists, beams, bridge, stats, update, dispose,
+    group, sky, textures, crust, cracks, chest, spill, glints, chestGlow, ceil, stream, mists, beams, bridge, nest, stats, update, dispose,
     holeY: -1.0, spots, giants: GIANTS, addBeam, sign: signMesh,
   });
 }

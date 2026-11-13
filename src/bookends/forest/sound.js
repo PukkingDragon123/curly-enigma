@@ -86,4 +86,26 @@ export function forestSounds(au) {
   au.define('forest_rustle', (a, o = {}) => a.sample(['rustle1', 'rustle2', 'rustle3', 'brush1', 'brush2'], { vol: (o.vol ?? 1) * 0.22, pitch: R(1.05, 1.5), pan: o.pan || 0, filter: 'highpass', ff: 700, dur: R(0.25, 0.45), release: 0.12 }), 0.15);
   au.define('forest_twig', (a, o = {}) => a.sample(['snap2', 'snap1', 'tick2'], { vol: (o.vol ?? 1) * (o.far ? 0.12 : 0.28), pitch: R(1.2, 1.7), pan: o.pan || 0, reverb: o.far ? 0.6 : 0.15, filter: o.far ? 'lowpass' : undefined, ff: 2000 }), 0.2);
   au.define('forest_crunch', (a, o = {}) => a.sample(['brush1', 'brush2', 'brush3'], { vol: (o.vol ?? 1) * 0.16, pitch: R(1.1, 1.5), jit: 0.08, dur: 0.18, release: 0.06 }), 0.12);
+  // the raptor egg (wave 10): a faint peep from inside the shell, the tick of the shell, his kerchief
+  // wrapped round it, the bundle stowed on his pack
+  au.define('forest_eggchirp', (a, o = {}) => {
+    a.sample(['squeak1', 'squeak2', 'squeak3', 'chirp1'], { vol: (o.vol ?? 1) * 0.2, pitch: R(1.55, 1.95), pan: o.pan || 0, reverb: 0.3, filter: o.muffled ? 'lowpass' : undefined, ff: 1900 });
+    if (o.n > 1) a.sample(['squeak1', 'squeak2', 'chirp1'], { vol: (o.vol ?? 1) * 0.14, pitch: R(1.7, 2.0), pan: o.pan || 0, reverb: 0.3, delay: R(0.16, 0.24), filter: o.muffled ? 'lowpass' : undefined, ff: 1900 });
+  }, 0.2);
+  au.define('forest_eggtick', (a, o = {}) => a.sample(['crack1', 'crack2', 'crack3', 'tick1'], { vol: (o.vol ?? 1) * 0.1, pitch: R(1.6, 2.0), pan: o.pan || 0, dur: R(0.08, 0.14), release: 0.04, filter: 'highpass', ff: 1200, reverb: 0.2 }), 0.08);
+  au.define('forest_wrap', (a, o = {}) => {
+    a.sample(['brush1', 'brush2', 'brush3'], { vol: (o.vol ?? 1) * 0.22, pitch: R(0.8, 1.0), pan: o.pan || 0, dur: R(0.35, 0.5), release: 0.15 });
+    a.sample(['rustle1', 'rustle2', 'rustle3'], { vol: (o.vol ?? 1) * 0.1, pitch: R(1.2, 1.5), pan: o.pan || 0, delay: R(0.1, 0.2), filter: 'highpass', ff: 900, dur: 0.3, release: 0.1 });
+  }, 0.15);
+  au.define('forest_stow', (a, o = {}) => {
+    a.sample(['brush1', 'brush2'], { vol: (o.vol ?? 1) * 0.2, pitch: R(0.7, 0.85), dur: 0.3, release: 0.1 });
+    a.sample(['latch1', 'latch2'], { vol: (o.vol ?? 1) * 0.12, pitch: R(1.1, 1.3), delay: 0.22 });
+  }, 0.3);
+  // the small birds' own voices (forest/critters.js): a call, a tiny peck in the litter, a flock lifting off
+  au.define('forest_chirp', (a, o = {}) => a.sample(['chirp1', 'chirp2', 'bird5', 'bird4'], { vol: (o.vol ?? 1) * 0.22, pitch: (o.pitch ?? 1) * R(1.05, 1.35), pan: o.pan || 0, reverb: 0.25, jit: 0.04 }), 0.06);
+  au.define('forest_peck', (a, o = {}) => a.sample(['tick1', 'tick2'], { vol: (o.vol ?? 1) * 0.06, pitch: R(1.8, 2.4), pan: o.pan || 0, dur: 0.05, release: 0.02 }), 0.05);
+  au.define('forest_takeoff', (a, o = {}) => {
+    const n = o.n || 4;
+    for (let i = 0; i < n; i++) a.sample(['flap1', 'flap2'], { vol: (o.vol ?? 1) * R(0.18, 0.3), pitch: R(1.4, 1.9), pan: (o.pan || 0) + R(-0.15, 0.15), delay: i * R(0.03, 0.08), jit: 0.05 });
+  }, 0.25);
 }

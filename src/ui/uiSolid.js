@@ -14,9 +14,9 @@
 // Anything else can count as solid with a `data-solid` attribute.
 const SOLID = [
   '.modal-back > *', '#ui > .panel:not(.ob-layer)', '.hud > .panel',
-  '.hud-tl', '.hud-tr', '.qt', '.belt-strap', '.radar', '.depth', '.cal', '.fb-strip', '.hint-keys',
+  '.hud-tl', '.hud-tr', '.qt', '.decorate-btn', '.belt-strap', '.radar', '.radar-tag', '.depth', '.cal', '.fb-strip', '.hint-keys',
   '.fg-side', '.fg-thermo', '.fg-actions', '.fg-cert', '.fg-ruler', '.fg-layer > .panel',
-  '.tc-stick', '.tc-btn', '.tc-dig', '.tc-pad > *', '.tc-deep > *',
+  '.tc-stick', '.tc-btn', '.tc-dig', '.tc-pad > *', '.tc-deep > *', '.look-catch .look-card',
   '[data-solid]',
 ].join(',');
 /** The floating 2D words (the 3D words keep off them too). */

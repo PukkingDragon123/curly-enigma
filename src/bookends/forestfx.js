@@ -62,6 +62,9 @@ float ffSun(vec3 w) {
   // open ground is mostly lit; under the canopy only the brightest leaf gaps let the sun through
   float thr = mix(0.62, 0.18, o);
   float s = smoothstep(thr - 0.05, thr + 0.05, n);
+  // wave 10: and in the shade, small flecks of sun through the leaves (a finer, faster-swaying octave)
+  float fl = texture2D(uCloud, w.xz * 1.35 - sway * 3.0 + vec2(0.71, 0.37)).r;
+  s = max(s, smoothstep(0.8, 0.86, fl) * (1.0 - o) * 0.67);
   s = mix(1.0, s, uDapple);
   float q = floor(s * 3.0 + bk_bayer4(gl_FragCoord.xy) * 0.999) / 3.0;
   return mix(uShade, 1.0, q);

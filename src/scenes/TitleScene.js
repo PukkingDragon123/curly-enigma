@@ -65,32 +65,21 @@ const FRAMES = {
 const ASPECTS = [['wide', 16 / 9], ['short', 2.2], ['tall', 390 / 844], ['wide', 4 / 3], ['short', 844 / 390]];
 
 const TITLE_CSS = /* css */`
-.tt-cave .tt-left { top: calc(var(--px) * 13); transform: none; }
-.tt-left { transition: opacity .35s; }
-.bk-title.stones .tt-left { opacity: 0; }
 .bk-title.stones .bk-controls, .bk-title.stones .bk-sound { visibility: hidden; }
 .tt-back { position: absolute; left: 0; top: 0; }
-.tt-cave .bk-logo { filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(6, 4, 14, .6)) drop-shadow(0 0 calc(var(--px) * 6) rgba(120, 230, 220, .22)); }
-.tt-cave .bk-sub { color: #e8fff8; }
 /* the opening shot: letterbox bars of dark loam with a mossy lip, the menu's words held back */
 .bk-title .tt-bar { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; z-index: 3;
   background: #0d0a08; transition: height .7s cubic-bezier(.5, 0, .2, 1); }
 .bk-title .tt-bar.top { top: 0; box-shadow: 0 calc(var(--px) * 1) 0 #24341c, 0 calc(var(--px) * 2) 0 rgba(36, 52, 28, .45); }
 .bk-title .tt-bar.bot { bottom: 0; box-shadow: 0 calc(var(--px) * -1) 0 #24341c, 0 calc(var(--px) * -2) 0 rgba(36, 52, 28, .45); }
 .bk-title.intro .tt-bar { height: 9vh; }
-.bk-title.intro .tt-left, .bk-title.intro .bk-controls, .bk-title.intro .bk-sound { opacity: 0; transition: none; }
-.bk-title.intro-in .tt-left, .bk-title.intro-in .bk-controls, .bk-title.intro-in .bk-sound { transition: opacity .9s ease .1s; }
+.bk-title.intro .bk-controls, .bk-title.intro .bk-sound { opacity: 0; transition: none; }
+.bk-title.intro-in .bk-controls, .bk-title.intro-in .bk-sound { transition: opacity .9s ease .1s; }
 .bk-title .tt-skip { position: absolute; right: calc(var(--px) * 8 + env(safe-area-inset-right, 0px)); bottom: calc(9vh + var(--px) * 4);
   z-index: 4; opacity: 0; transition: opacity .5s; pointer-events: none; color: #fff2d0; font-size: calc(var(--px) * 7); }
 .bk-title.intro .tt-skip { opacity: .85; transition: opacity .8s ease 1.2s; }
 .bk-title .tt-skip kbd { margin-right: calc(var(--px) * 2); }
-@media (max-height: 520px) and (min-aspect-ratio: 5/4) {
-  .tt-cave .tt-left { top: calc(var(--px) * 6); }
-  .tt-left .bk-logo { --lp: calc(var(--px) * 1.5); }
-  .tt-left .bk-sub { margin-top: calc(var(--px) * 2.5); }
-}
 @media (max-aspect-ratio: 5/4) {
-  .tt-cave .tt-left { top: calc(var(--px) * 12 + env(safe-area-inset-top, 0px)); bottom: auto; }
   .bk-title .bk-sound { top: auto; bottom: calc(var(--px) * 8 + env(safe-area-inset-bottom, 0px)); }
 }
 `;

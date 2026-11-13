@@ -43,6 +43,11 @@ import { buildBody, buildTail } from './body.js';
 import { buildArm, buildLeg } from './limbs.js';
 import { CharacterRig } from './rig.js';
 
+const TAU = Math.PI * 2;
+const mixf = (a, b, k) => a + (b - a) * k;
+/** His walk (gait.js): a sturdy, rolling smith's stride with his toes turned out. */
+const HERO_GAIT = Object.freeze({ stride: 1, lift: 0.9, bob: 1.15, sway: 1.3, lean: 0.9, arm: 1.1, twist: 1, toeOut: 0.14, armRun: 1 });
+
 const SHIRT = 0x8a3a2c; // rust-red work shirt
 const LEATHER = 0x7a4a2a; // the apron
 const LEATHER_D = 0x55321c;
@@ -539,6 +544,7 @@ export class HeroRig extends CharacterRig {
     this.autoSwing = 0;
     this.onStrike = null;
     this.gogglesPos = 'up';
+    this.gaitStyle = HERO_GAIT;
   }
 
   setHammer(mode = null) { this.hammerMode = mode; }
@@ -589,23 +595,17 @@ export class HeroRig extends CharacterRig {
     const breathe = Math.sin(t * 2.2);
 
     switch (st) {
-      case 'idle':
-        // planted feet, chest out
-        hip.rotation.x = this.baseHunch - 0.04;
-        legL.rotation.z = 0.06; legR.rotation.z = -0.06;
-        armL.rotation.set(Math.sin(t * 1.3) * 0.04, 0, 0.22);
-        break;
-      case 'walk': case 'run': {
-        const f = st === 'run' ? 14 : 8.5;
-        const w = Math.sin(t * f);
-        legL.rotation.x = w * (st === 'run' ? 0.95 : 0.72);
-        legR.rotation.x = -w * (st === 'run' ? 0.95 : 0.72);
-        armL.rotation.x = -w * 0.7;
-        armL.rotation.z = 0.18;
-        hip.rotation.y = w * 0.08; // a swagger in the shoulders
-        neck.rotation.y = -w * 0.06;
+      case 'idle': {
+        // planted feet, chest out (eased in as a walk winds down)
+        const k = 1 - (this.gaitW || 0);
+        hip.rotation.x = mixf(hip.rotation.x, this.baseHunch - 0.04, k);
+        legL.rotation.z = mixf(legL.rotation.z, 0.06, k); legR.rotation.z = mixf(legR.rotation.z, -0.06, k);
+        armL.rotation.set(mixf(armL.rotation.x, Math.sin(t * 1.3) * 0.04, k), armL.rotation.y, mixf(armL.rotation.z, 0.22, k));
         break;
       }
+      case 'walk': case 'run':
+        // the stride is gait.js (HERO_GAIT): planted feet, waddle, counter-swinging free arm
+        break;
       case 'hammer': {
         // 0 → 0.62 raise (easing out), hold at the top, 0.8 → 1 slam down
         const ph = this.swingPhase % 1;
@@ -679,9 +679,13 @@ export class HeroRig extends CharacterRig {
     const H = this.hammerHand, B = this.hammerBack;
     if (H) {
       if (mode === 'shoulder') {
-        // forearm raised, the haft resting on the shoulder, the head behind it
-        armR.rotation.set(-1.0 + (st === 'walk' || st === 'run' ? Math.sin(t * (st === 'run' ? 14 : 8.5)) * 0.06 : breathe * 0.02), 0, -0.05);
-        this.hammerGrip.rotation.set(0.05, 0, -0.42);
+        // forearm raised, the haft resting on the shoulder, the head behind it; walking, the
+        // heavy head bounces a beat behind his steps and sways behind his hips
+        const g = this.gait, gw = this.gaitW || 0;
+        const bo = g ? g.bounce : 0, sw = g ? g.swayLag : 0;
+        const run = g ? g.runW : 0;
+        armR.rotation.set(-1.0 - run * 0.18 + bo * (0.05 + run * 0.06) + breathe * 0.02 * (1 - gw) + this.earA * 0.5, 0, -0.05 - (this.gait ? hip.rotation.z * 0.5 : 0));
+        this.hammerGrip.rotation.set(0.05 - bo * (0.07 + run * 0.08), sw * 0.06 - this.jigX * 0.6, -0.42 - bo * 0.04);
         this.hammerGrip.position.set(this.s * 0.6, 0, 0);
         H.position.y = 0;
       } else if (mode === 'hand') {
@@ -694,6 +698,17 @@ export class HeroRig extends CharacterRig {
       }
       H.visible = mode === 'shoulder' || mode === 'hand';
       B.visible = mode === 'back';
+    }
+    // the pack swings from its straps: out from his back on each step (never into it), side to
+    // side behind his hips, settling as he stops
+    if (this.packPivot) {
+      const g = this.gait, gw = this.gaitW || 0;
+      const bo = g ? g.bounce : 0, sw = g ? g.swayLag : 0, run = g ? g.runW : 0;
+      this.packPivot.rotation.set(
+        Math.max(0, gw * (0.045 + run * 0.06) + bo * (0.04 + run * 0.05) + this.earA * 1.2),
+        sw * 0.03,
+        -sw * (0.05 + run * 0.03) - hip.rotation.z * 0.45 - this.jigX * 1.2,
+      );
     }
     if (this.gogglesPos === 'down') this.eyes.forEach((g) => { g.scale.y = 1; });
     // head look (relative to the body)
@@ -748,8 +763,13 @@ export function makeHeroMole(opts = {}) {
   A.attach(bodyMesh, apronGeo(p, withPack));
   const tail = group(hip, 0, 3 * vs, (-p.bd + 1.5) * vs);
   A.part(tail, buildTail({ species: 'mole', fur: spec.fur, age: spec.age }, bake), { scale: R });
-  let packBone = null;
-  if (withPack) packBone = scaleVisible(A.part(hip, packGeo(p), { scale: R }));
+  // the pack hangs from its shoulder straps (a pivot at the top of his back) so it can swing
+  let packBone = null, packPivot = null;
+  const packAt = [0, p.bh * 2 * vs, -p.bd * vs];
+  if (withPack) {
+    packPivot = group(hip, packAt[0], packAt[1], packAt[2]);
+    packBone = scaleVisible(A.part(packPivot, packGeo(p), { pos: [-packAt[0], -packAt[1], -packAt[2]], scale: R }));
+  }
 
   // head and face
   const neck = group(hip, 0, (p.bh - 1) * u, u * 0.5);
@@ -849,7 +869,9 @@ export function makeHeroMole(opts = {}) {
   if (withHammer) {
     hammerGrip = group(handR, 0, 0, 0);
     hammerHand = scaleVisible(A.part(hammerGrip, hammerGeo(), { scale: R }));
-    const backG = group(hip, 0, (p.bh * 1.1) * u, -(p.bd + (withPack ? 8 : 3)) * vs);
+    const backG = packPivot
+      ? group(packPivot, 0, (p.bh * 1.1) * u - packAt[1], -(p.bd + 8) * vs - packAt[2])
+      : group(hip, 0, (p.bh * 1.1) * u, -(p.bd + 3) * vs);
     backG.rotation.set(0, 0, 0.75);
     hammerBack = scaleVisible(A.part(backG, hammerGeo(), { pos: [0, -12 * vs, 0], scale: R, rot: [0, Math.PI / 2, 0] }));
     hammerBack.visible = false;
@@ -870,6 +892,7 @@ export function makeHeroMole(opts = {}) {
     skin: { assembler: A, main: skin.main, detail: skin.detail, lens: null, lensPart: null },
   });
   rig.packBone = packBone;
+  rig.packPivot = packPivot;
   rig.hammerHand = hammerHand;
   rig.hammerBack = hammerBack;
   rig.hammerGrip = hammerGrip;

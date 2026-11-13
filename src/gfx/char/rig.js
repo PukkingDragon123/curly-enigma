@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { lerp } from '../../core/util.js';
 import { mergeSkinned, rebindDispose } from './skin.js';
 import { EXPR, exprName, MOUTH_FALLBACK, BLINKS, gesture } from './expr.js';
+import { initGait, measureGait, applyGait } from './gait.js';
 
 const GROUNDED = new Set(['idle', 'walk', 'run', 'carry', 'talk']);
 /** States the expression gestures play over (sitting: arms and head only). */
@@ -66,6 +67,9 @@ export class CharacterRig {
     this.yawnT = 6 + Math.random() * 6;
     this.yawnK = 0;
     this.fxT = 0;
+    // walk/run: planted feet matched to the real ground speed (gait.js)
+    this.jigX = 0; this.jigXV = 0; this.prevHipX = null; this.prevVx = 0; this.prevRoll = 0;
+    if (this.legL && this.p) initGait(this);
   }
 
   // ------------------------------------------------------------------ expressions
@@ -146,6 +150,7 @@ export class CharacterRig {
     while (d < -Math.PI) d += Math.PI * 2;
     this.facing += d * Math.min(1, dt * 14);
     this.root.rotation.y = this.facing;
+    if (this.gait) measureGait(this, dt);
 
     // reset pose
     const s = this.s;
@@ -170,29 +175,9 @@ export class CharacterRig {
     const breathe = Math.sin(t * 2.2);
 
     switch (this.state) {
-      case 'walk': case 'run': {
-        const f = this.state === 'run' ? 14 : 9;
-        const a = this.state === 'run' ? 0.9 : 0.6;
-        const w = Math.sin(t * f);
-        legL.rotation.x = w * a;
-        legR.rotation.x = -w * a;
-        armL.rotation.x = -w * a * 0.9;
-        armR.rotation.x = w * a * 0.9;
-        hip.position.y += Math.abs(Math.cos(t * f)) * s * (this.state === 'run' ? 1.6 : 1);
-        hip.rotation.x += this.state === 'run' ? 0.18 : 0.06;
-        hip.rotation.z = w * 0.05;
-        neck.rotation.z = -w * 0.04;
-        if (jointed) {
-          // knees bend as each leg swings through, elbows stay soft (tucked in when running)
-          const kA = this.state === 'run' ? 1.5 : 0.75;
-          kneeL.rotation.x = Math.max(0, Math.sin(t * f + 0.9)) ** 1.5 * kA;
-          kneeR.rotation.x = Math.max(0, Math.sin(t * f + 0.9 + Math.PI)) ** 1.5 * kA;
-          const eA = this.state === 'run' ? -1.25 : -0.35;
-          elbowL.rotation.x = eA + w * 0.15;
-          elbowR.rotation.x = eA - w * 0.15;
-        }
+      case 'walk': case 'run':
+        // the stride itself is gait.js (applied below, over every state, by weight)
         break;
-      }
       case 'jump': case 'fall': {
         armL.rotation.set(-2.4, 0, 0.5);
         armR.rotation.set(-2.4, 0, -0.5);
@@ -343,6 +328,8 @@ export class CharacterRig {
       }
     }
 
+    if (this.gait) applyGait(this, dt);
+
     // expressions: the held one runs out back to the mood; the body gesture eases in and out
     if (this.held) { this.heldT -= dt; if (this.heldT <= 0) this.held = null; }
     const ex = this.held || this.mood;
@@ -447,10 +434,23 @@ export class CharacterRig {
     this.prevFacing = this.facing;
     this.tailV += (-50 * this.tailA - 7 * this.tailV - (df / Math.max(dtc, 1e-3)) * 0.9) * dtc;
     this.tailA += this.tailV * dtc;
+    // a sideways spring too (the hips swaying and rolling under it): tails, packs and tools lag
+    const hx = this.hip.position.x / s, hr = this.hip.rotation.z;
+    if (this.prevHipX === null) { this.prevHipX = hx; this.prevRoll = hr; }
+    const vx = (hx - this.prevHipX) / Math.max(dtc, 1e-3) + (hr - this.prevRoll) / Math.max(dtc, 1e-3) * 6;
+    this.prevHipX = hx; this.prevRoll = hr;
+    const ax = (vx - this.prevVx) / Math.max(dtc, 1e-3);
+    this.prevVx = vx;
+    this.jigXV += (-70 * this.jigX - 8 * this.jigXV + Math.max(-300, Math.min(300, ax)) * 0.004) * dtc;
+    this.jigX += this.jigXV * dtc;
     const t = this.t;
     if (this.tail) {
-      const wag = this.state === 'cheer' || this.emote === 'hop' ? Math.sin(t * 14) * 0.35 : Math.sin(t * 3) * 0.2;
-      this.tail.rotation.set(-Math.abs(this.earA) * 0.6 + (this.state === 'run' ? 0.25 : 0), wag + this.tailA, 0);
+      const gw = this.gaitW || 0;
+      const idleWag = this.state === 'cheer' || this.emote === 'hop' ? Math.sin(t * 14) * 0.35 : Math.sin(t * 3) * 0.2;
+      // walking: the tail swishes against the hips, a beat behind them, and lifts with speed
+      const swish = gw ? Math.cos(Math.PI * 2 * ((this.gaitPhase || 0) - 0.42)) * 0.22 * (0.5 + 0.5 * (this.gait?.strideK || 0)) : 0;
+      const up = (this.gait?.runW || 0) * 0.3 * gw;
+      this.tail.rotation.set(-Math.abs(this.earA) * 0.6 + up + this.earA * 0.8 * gw, lerp(idleWag, swish, gw) + this.tailA - this.jigX * 1.2, this.jigX * 0.5);
     }
     // ear twitch now and then
     this.twitchT -= dt;

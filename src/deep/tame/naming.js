@@ -34,20 +34,21 @@ const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math
  * with Esc, or when there's no talk UI). taken: names already used. The talk stays framed (keep):
  * the caller says the last line (welcome()).
  */
-export async function nameRaptor(game, e, taken = []) {
+export async function nameRaptor(game, e, taken = [], o = {}) {
   const pool = shuffle(NAMES.filter((n) => !taken.includes(n)));
   if (pool.length < 3) pool.push('Nib II', 'Pip II', 'Scree II');
   const cv = game?.convo;
   if (!cv?.play) return pool[0];
-  const sp = raptorSpeaker(e, 'Lone Raptor');
+  const who = o.who || 'Lone Raptor', cam = o.camera || 'close';
+  const sp = raptorSpeaker(e, who);
   try {
     // (close on its face: in a dark cavern a shot over your shoulder is mostly your own silhouette)
-    await cv.play({ who: sp, name: 'Lone Raptor', keep: true, camera: 'close', lines: [{ text: '<i>It noses your paw, then tilts its head and waits.</i> <w>Chrrp?</w>', mood: 'happy', wait: true, camera: 'close' }] });
+    await cv.play({ who: sp, name: who, keep: true, camera: cam, lines: [{ text: o.first || '<i>It noses your paw, then tilts its head and waits.</i> <w>Chrrp?</w>', mood: 'happy', wait: true, camera: cam }] });
     for (let page = 0; page < 8; page++) {
       const opts = [0, 1, 2].map((k) => pool[(page * 3 + k) % pool.length]);
       const r = await cv.play({
-        who: sp, name: 'Lone Raptor', keep: true, camera: 'close',
-        lines: [{ text: page ? '<i>It cocks its head the other way. Not that one, then. What about…</i>' : '<i>You can\'t keep calling it "the raptor". It needs a name.</i>', camera: 'close', mood: 'happy' }],
+        who: sp, name: who, keep: true, camera: cam,
+        lines: [{ text: page ? '<i>It cocks its head the other way. Not that one, then. What about…</i>' : '<i>You can\'t keep calling it "the raptor". It needs a name.</i>', camera: cam, mood: 'happy' }],
         choices: [...opts.map((n, i) => ({ label: n, value: n, primary: i === 0 })), { label: 'Other names…', value: '__more' }],
       });
       if (r?.skipped) return opts[0];
@@ -60,11 +61,12 @@ export async function nameRaptor(game, e, taken = []) {
   return pool[0];
 }
 
-/** The last line: the raptor, by its new name. Resolves when the talk is over. */
-export function welcome(game, e, name) {
+/** The last line: the raptor, by its new name (o.text: another line for it). Resolves when the talk is over. */
+export function welcome(game, e, name, o = {}) {
   const cv = game?.convo;
   if (!cv?.play) return Promise.resolve();
   // (the naming lines kept the talk framed: this last one ends it)
-  return cv.play({ who: raptorSpeaker(e, name), name, camera: 'close', lines: [{ text: `<w>Chirrup!</w> <i>${name} bumps its snout against your paw. It's coming with you.</i>`, mood: 'happy', wait: true, camera: 'close' }] })
+  const cam = o.camera || 'close';
+  return cv.play({ who: raptorSpeaker(e, name), name, camera: cam, lines: [{ text: o.text || `<w>Chirrup!</w> <i>${name} bumps its snout against your paw. It's coming with you.</i>`, mood: 'happy', wait: true, camera: cam }] })
     .catch(() => {}).then(() => { try { if (!cv.cur) cv.end(); } catch (err) { /* already over */ } });
 }

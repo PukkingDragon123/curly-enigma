@@ -120,9 +120,10 @@ export function homeRaptors(scene) {
   const cache = { geo: (k, fn) => { let v = geos.get(k); if (!v) geos.set(k, (v = fn())); return v; } };
   const mats = { body: new THREE.MeshLambertMaterial({ vertexColors: true }), eye: new THREE.MeshBasicMaterial({ vertexColors: true }) };
   const spots = restSpots(scene, recs.length);
-  const list = [];
+  const list = [], its = [];
   recs.forEach((rec, i) => {
-    const p = spots[i] || { x: LANDING.x - 0.6 - i * 0.7, z: LANDING.z + 0.5, yaw: Math.PI / 2 };
+    // (one hatched at home sleeps where it hatched: its nest by your bedroll, rec.restAt)
+    const p = rec.restAt || spots[i] || { x: LANDING.x - 0.6 - i * 0.7, z: LANDING.z + 0.5, yaw: Math.PI / 2 };
     const r = curled(rec, cache, mats);
     r.root.position.set(p.x, 0, p.z);
     r.root.rotation.y = p.yaw;
@@ -131,11 +132,11 @@ export function homeRaptors(scene) {
     r.tag = 'raptor:' + rec.id;
     scene.scene.add(r.root);
     list.push(r);
-    scene.addIt({
-      x: p.x, y: 0.32, z: p.z, r: 0.42, reach: 2.2,
+    its.push(scene.addIt({
+      x: p.x, y: 0.32 * (rec.size || 0.88) / 0.88, z: p.z, r: 0.42 * (rec.size || 0.88) / 0.88, reach: 2.2,
       label: () => (T.active && T.active !== rec.id ? `Take ${rec.name} along` : `Pet ${rec.name}`),
       action: () => pet(r),
-    });
+    }));
   });
   const audio = g.audio;
   const say = (r, name, opts = {}) => {
@@ -207,6 +208,8 @@ export function homeRaptors(scene) {
       const i = scene.tickers.indexOf(tick);
       if (i >= 0) scene.tickers.splice(i, 1);
       for (const r of list) { r.root.removeFromParent(); scene.world?.remove?.(r.tag); }
+      for (const it of its) scene.rig?.remove?.(it);
+      its.length = 0;
       mats.body.dispose(); mats.eye.dispose();
       for (const gg of geos.values()) for (const x of Object.values(gg?.isBufferGeometry ? { gg } : gg || {})) { if (x?.isBufferGeometry) x.dispose(); else if (Array.isArray(x)) x.forEach((y) => y?.dispose?.()); }
     },

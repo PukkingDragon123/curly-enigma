@@ -100,6 +100,7 @@ export function dressForest(F, { lite = false, soft = false, view = null } = {})
   for (const r of F.spots.rocks) addBlock(r.x, r.z, r.r * 0.9);
   for (const s of F.spots.stumps) addBlock(s.x, s.z, 0.35);
   for (const g of FOREST.giants) addBlock(g.x, g.z, 1.4 * g.s);
+  if (F.spots.nest) addBlock(F.spots.nest.x, F.spots.nest.z, 1.1); // (the raptor's nest keeps its patch of short turf)
   const B = FOREST.bridge;
   const free = (x, z, r = 0.1) => {
     const bx = Math.floor(x / 4), bz = Math.floor(z / 4);

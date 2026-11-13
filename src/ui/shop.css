@@ -282,6 +282,11 @@
   background: var(--dl-clip) 0 0 / 100% 100% no-repeat; pointer-events: none; filter: drop-shadow(var(--px) var(--px) 0 rgba(20, 8, 4, .35)); }
 .sh-card-txt p { --lh: calc(var(--px) * 8); line-height: var(--lh); background: var(--dl-rule8) 0 0 / calc(var(--px) * 64) var(--lh) repeat; }
 .sh-card-icon { background: rgba(255, 255, 255, .25); }
+/* the name sits by the picture; the notes run the full width of the leaf under them (a narrow column
+   wrapped them a word a line and pushed the ×5 stamp out of sight) */
+.sh-card-txt { display: contents; }
+.sh-card-txt > p { grid-column: 1 / -1; }
+.sh-card-name { align-self: center; min-width: 0; }
 .sh-ledger { padding-left: calc(var(--px) * 9);
   background: var(--dl-margin) calc(var(--px) * 2) 0 / calc(var(--px) * 5) calc(var(--px) * 16) repeat-y, var(--dl-ledgerT) 0 0 / calc(var(--px) * 96) repeat, #ebe3c8; }
 .sh-line { border-bottom: 0; background: var(--dl-rule8) 0 100% / calc(var(--px) * 64) calc(var(--px) * 8) repeat-x; }

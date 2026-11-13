@@ -510,6 +510,8 @@
 .bp-strap { width: calc(var(--px) * 22); height: calc(var(--px) * 30); bottom: calc(var(--px) * -24); background: var(--pk-buckle) 0 0 / 100% 100%; image-rendering: pixelated; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 2, .5)); animation: strapSwing 1.2s .35s ease-out both; transform-origin: 50% 0; }
 .bp-strap::after { display: none; }
 @keyframes strapSwing { 0% { transform: rotate(0); } 25% { transform: rotate(9deg); } 50% { transform: rotate(-6deg); } 75% { transform: rotate(3deg); } }
+/* (upright phones: the buckles hang over the lining's top row; the cells count and the scale start under them) */
+@media (max-width: 640px) and (min-height: 501px) { .bp-main { padding-top: calc(var(--px) * 18); } }
 /* the lining, with the bag's mouth: a rolled leather lip along the top and its shadow inside */
 .bp-main {
   background: var(--pk-canvas) 0 0 / calc(var(--px) * 64) repeat, #c2ac80; image-rendering: pixelated;

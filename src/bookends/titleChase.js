@@ -464,9 +464,8 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     }
     // his lantern, his feet
     lantern.intensity = mole.root.visible ? 1.0 * clamp(r.t * 2, 0, 1) : 0;
-    moleStepPh += dt * 14 * (r.vm / 1.45) / Math.PI;
-    if (moleStepPh >= 1) { moleStepPh -= 1; if (hopY < 0.02) { sfx?.('chase_step', { at: mole.root.position, vol: 0.8 }); if (Math.random() < 0.5) kickDust(mx, my, mz, 2, 0.6); } }
     mole.update(dt);
+    if (mole.stepN !== moleStepPh) { moleStepPh = mole.stepN; if (hopY < 0.02) { sfx?.('chase_step', { at: mole.root.position, vol: 0.8 }); if (Math.random() < 0.5) kickDust(mx, my, mz, 2, 0.6); } } // (his footfalls: gait.js)
     mole.root.rotation.y = mole.facing + twist;
     // heaving for breath: the head bobs with each gasp, the shoulders hunch; fear all over his face
     const gasp = Math.sin(r.t * 8.5);

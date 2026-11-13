@@ -2,6 +2,7 @@
 // reports console errors. Usage: node scripts/e2e.mjs [outDir]
 import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
+import { chromePath } from './chrome.mjs';
 import { mkdirSync } from 'node:fs';
 
 const outDir = process.argv[2] || 'shots/e2e';
@@ -10,7 +11,7 @@ const server = await createServer({ server: { port: 0, host: '127.0.0.1', hmr: f
 await server.listen();
 const port = server.httpServer.address().port;
 const browser = await chromium.launch({
-  executablePath: process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  executablePath: chromePath(),
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -65,6 +66,15 @@ await step("waking up in Old Star's house", async () => {
   const q = await page.evaluate(() => window.__game.quests?.active?.().map((x) => x.id || x) || []);
   if (!q.includes('lessons')) throw new Error('the lessons quest did not start: ' + JSON.stringify(q));
   await shot('02c-old-star');
+});
+await step('the raptor egg from the journey is in its nest by the bedroll', async () => {
+  // (the journey wraps it and stows it on his pack; skipped short, it still comes along)
+  let r = null;
+  for (let i = 0; i < 40 && !(r && r.nest); i++) { await wait(250); r = await page.evaluate(() => ({ egg: window.__game.state.data.egg, nest: window.__game.scene.egg ? { x: window.__game.scene.egg.at.x, z: window.__game.scene.egg.at.z } : null })); }
+  if (!r?.egg || !(r.egg.day >= 1)) throw new Error('no egg saved from the journey: ' + JSON.stringify(r));
+  if (!r.nest) throw new Error('the egg is not at home: ' + JSON.stringify(r));
+  const lbl = await page.evaluate(() => window.__game.scene.rig.items.some((i) => /raptor egg/i.test(String(i.label))));
+  if (!lbl) throw new Error('the egg cannot be looked at');
 });
 await step("Old Star's pickaxe lesson (forge your own pick first)", async () => {
   const st0 = await page.evaluate(() => ({ stage: window.__game.scene.lessonStage(), pick: window.__game.state.equipped('pick')?.id || null }));

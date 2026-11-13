@@ -10,6 +10,7 @@
 //   {"waitFor": "window.__game.sceneName === 'town'", "timeout": 30000}
 import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
+import { chromePath } from './chrome.mjs';
 import { readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
@@ -28,7 +29,7 @@ const server = await createServer({ server: { port: 0, host: '127.0.0.1', hmr: f
 await server.listen();
 const port = server.httpServer.address().port;
 const browser = await chromium.launch({
-  executablePath: process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  executablePath: chromePath(),
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
 });
 const touch = args.includes('--touch');

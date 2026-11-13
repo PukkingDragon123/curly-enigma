@@ -20,40 +20,39 @@ import { clamp, makeRng } from '../../core/util.js';
 import { forestToon } from '../forestfx.js';
 import { groundH, FOREST, CLEAR_R, HOLE_R } from '../forest.js';
 
-/** Build a part mesh from a grid painter: fn(g) fills the grid; pivot in voxels. */
-function part(w, h, d, fn, scale, pivot, mat) {
-  const g = new VoxelGrid(w, h, d);
-  fn(g);
-  const geo = meshVoxGreedy(g, { scale, pivot });
-  const m = new THREE.Mesh(geo, mat);
-  m.layers.enable(LAYER_OUTLINE);
-  return m;
-}
-
 // ------------------------------------------------------------------ songbird
-function makeBird(mat, { back = 0x7a6248, breast = 0xe8783a, belly = 0xf4ece0, cap = null, cheek = null } = {}) {
-  const S = 1 / 96;
-  const root = new THREE.Group();
-  const body = new THREE.Group();
-  body.position.y = 2 * S;
-  root.add(body);
-  body.add(part(10, 14, 16, (g) => {
+const BS = 1 / 96;
+/** One plumage's voxel parts (1/96 m): the body (with head, beak, tail, feet) and a left and a right wing. */
+export function birdGeos({ back = 0x7a6248, breast = 0xe8783a, belly = 0xf4ece0, cap = null, cheek = null } = {}) {
+  const grid = (w, h, d, fn) => { const g = new VoxelGrid(w, h, d); fn(g); return g; };
+  const body = meshVoxGreedy(grid(10, 14, 16, (g) => {
     g.ellipsoid(5, 5, 7, 3.4, 3.6, 4.6, (x, y, z) => (z > 8 && y < 7 ? breast : y < 3 ? belly : back));
     g.ellipsoid(5, 9, 10, 2.8, 2.8, 2.8, (x, y, z) => (cap && y > 10 ? cap : cheek && z > 10 && y < 10 && y > 8 ? cheek : z > 10.5 && y < 9.5 ? breast : back));
     g.set(5, 9, 13, 0x2a2018); g.set(5, 9, 14, 0x2a2018); // beak
     g.set(3, 10, 11.5, 0x0e0a08); g.set(7, 10, 11.5, 0x0e0a08);
     for (let z = 0; z < 4; z++) g.set(5, 6 + z * 0.5, 2 - z * 0.4, fshade(back, 0.8)); // tail
     for (const x of [4, 6]) for (let y = 0; y < 2; y++) g.set(x, y, 7, 0x3a2a20);
-  }, S, [5, 0, 7], mat));
+  }), { scale: BS, pivot: [5, 0, 7] });
+  const wing = (sd) => meshVoxGreedy(grid(9, 3, 9, (g) => { for (let x = 0; x < 8; x++) for (let z = 0; z < 7 - x * 0.4; z++) g.set(sd > 0 ? x : 8 - x, 1, z + 1, x > 5 ? fshade(back, 0.75) : back); }), { scale: BS, pivot: [sd > 0 ? 0 : 8, 1, 5] });
+  return { body, wings: [wing(-1), wing(1)], S: BS };
+}
+function makeBird(mat, look = {}) {
+  const G = birdGeos(look), S = G.S;
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  body.position.y = 2 * S;
+  root.add(body);
+  const mesh = (geo) => { const m = new THREE.Mesh(geo, mat); m.layers.enable(LAYER_OUTLINE); return m; };
+  body.add(mesh(G.body));
   const wings = [];
-  for (const sd of [-1, 1]) {
+  [-1, 1].forEach((sd, k) => {
     const w = new THREE.Group();
     w.position.set(sd * 3 * S, 6 * S, 0);
-    w.add(part(9, 3, 9, (g) => { for (let x = 0; x < 8; x++) for (let z = 0; z < 7 - x * 0.4; z++) g.set(sd > 0 ? x : 8 - x, 1, z + 1, x > 5 ? fshade(back, 0.75) : back); }, S, [sd > 0 ? 0 : 8, 1, 5], mat));
+    w.add(mesh(G.wings[k]));
     w.visible = false;
     body.add(w);
     wings.push(w);
-  }
+  });
   return { root, body, wings };
 }
 /** A small bird rig in the forest's light ({ root, body, wings }; wings shown), for flights scripted elsewhere. */
@@ -161,7 +160,7 @@ export function makeCritters(F, { lite = false } = {}) {
           R.position.y = (cur.ground ? groundH(R.position.x, R.position.z) : cur.y) + (st % 0.62 < 0.07 ? 0.035 : 0);
           b.body.rotation.x = (Math.sin(st * 13) > 0.7 && ph % 3 === 0) ? 0.65 : Math.sin(st * 3) * 0.05;
           sing -= dt;
-          if (sing <= 0 && c.t < 29.5) {
+          if (sing <= 0 && !c.quiet) {
             sing = rng.range(3, 8);
             const s = placed(c, R.position);
             if (s.k > 0.2) c.sfx?.('song', { kind: P.song, pan: s.pan, vol: 0.022 * s.k + 0.006, pitch: rng.range(0.92, 1.15) });

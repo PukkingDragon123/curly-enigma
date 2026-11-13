@@ -58,6 +58,7 @@ export function defaultData() {
     created: Date.now(),
     skills: defaultSkills(), // the skill tree: XP, levels, points, stamped nodes (core/skills.js)
     tame: { raptors: [] }, // raptors you've tamed (src/deep/tame/index.js: raptors, active, stray)
+    egg: null, // the raptor egg found on the journey: { day, at, crack, spot, hatched, id } (src/home/eggNest.js)
   };
 }
 
