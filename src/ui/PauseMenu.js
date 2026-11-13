@@ -1,6 +1,6 @@
 // The pause menu (Esc, ui.openMenu): carved signs drop down from the cave roof on chains over the
 // dimmed scene: Resume, Book, Settings, Save & Quit, under a "Paused" banner. A brass tag at the
-// bottom shows the save stone in use (slot, gem, completion) and the day.
+// bottom shows the save egg in use (slot, gem, completion) and the day.
 // Also the Settings board shared with the title screen: openSettings(game).
 //   openPauseMenu(game) → panel handle
 //   openSettings(game, { onClose }) → panel handle
@@ -146,7 +146,7 @@ export function openPauseMenu(game) {
   const slot = st.slot ?? 0;
   const pct = st.completion ? st.completion() : 0;
   const tag = el('div', { class: 'pm-tag bk-outline' }, [
-    el('i'), el('span', {}, `Save stone ${slot + 1}`), el('b', {}, `${GEM_NAMES[slot] || ''} ${pct}%`), el('span', { class: 'dot' }, '·'),
+    el('i'), el('span', {}, `Nest egg ${slot + 1}`), el('b', {}, `${GEM_NAMES[slot] || ''} ${pct}%`), el('span', { class: 'dot' }, '·'),
     el('span', {}, `Day ${st.data.day}`), el('span', { class: 'dot' }, '·'), el('span', {}, formatPlayTime(st.data.playTime)),
   ]);
   tag.style.setProperty('--gc', GEM_COL[slot] || '#f2c23a');

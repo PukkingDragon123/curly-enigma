@@ -128,6 +128,7 @@ export function homeRaptors(scene) {
     r.root.position.set(p.x, 0, p.z);
     r.root.rotation.y = p.yaw;
     r.yaw0 = p.yaw;
+    r.home = { x: p.x, z: p.z };
     r.box = [p.x - 0.26, 0, p.z - 0.26, p.x + 0.26, 0.8, p.z + 0.26]; // (as tall as its head when it sits up: talk cameras keep off it too)
     r.tag = 'raptor:' + rec.id;
     scene.scene.add(r.root);
@@ -167,6 +168,19 @@ export function homeRaptors(scene) {
     const eye = scene.rig.eye ? scene.rig.eye(_w) : _w.set(pl.pos.x, pl.pos.y + 0.72, pl.pos.z);
     for (const r of list) {
       r.t += dt;
+      // never in your face: when you come right up to it, it shuffles aside (away from you), and it
+      // isn't drawn at all if the camera still ends up inside it; back to its spot when you go
+      {
+        const hx = r.home.x - pl.pos.x, hz = r.home.z - pl.pos.z, hd = Math.hypot(hx, hz) || 1e-3;
+        const keep = 0.95 * (r.rec.size || 0.88) / 0.88 + 0.25;
+        const push = clamp(keep - hd, 0, 0.6);
+        const tx = r.home.x + (hx / hd) * push, tz = r.home.z + (hz / hd) * push;
+        const k = Math.min(1, dt * 5);
+        r.root.position.x += (tx - r.root.position.x) * k;
+        r.root.position.z += (tz - r.root.position.z) * k;
+        const ex = eye.x - r.root.position.x, ez = eye.z - r.root.position.z;
+        r.root.visible = Math.hypot(ex, ez) > 0.32 * (r.rec.size || 0.88) / 0.88 + 0.12 || eye.y > 0.9;
+      }
       const d = Math.hypot(pl.pos.x - r.root.position.x, pl.pos.z - r.root.position.z);
       const near = d < 3.2;
       r.awake += ((near ? 1 : d < 6 ? 0.35 : 0) - r.awake) * Math.min(1, dt * 2);
