@@ -6,9 +6,10 @@
 // was; he jinks aside, hops a root; it skids, barges through more mushrooms (a cap goes flying),
 // and they're gone into the dark on the far side. A pause; the knocked caps regrow; again. Each
 // loop varies: the direction, the raptor's colours, speeds, where it lunges, which way he jinks.
-// He's terrified: eyes popped wide, panting open-mouthed, his head bobbing with each gasp, sweat
-// beading on his brow and running off him (tiny voxel droplets, 1/170 m, that flick away behind
-// him and splash in the grass), and the grass parts round both of them (titleVeg.js pushers).
+// He's terrified: eyes popped wide, brows shot up and tilted together, gulping air and trembling
+// between gasps, his head jerking with each one; sweat streams down his brow and cheeks in fat
+// drops that leave wet, glinting trails and sprays off him at every gasp (tiny voxels, 1/170 m,
+// flashing in the light, splashing in the grass); the grass parts round both of them (titleVeg.js).
 // The title's opening (titleIntro.js) is run 0 on a fixed script (startIntro): the raptor keeps
 // its distance, then closes on cue; after that it's an ordinary run.
 //
@@ -134,9 +135,10 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     for (let i = 0; i < n; i++) dust.spawn({ pos: [x + R(-0.08, 0.08), y + 0.02, z + R(-0.08, 0.08)], vel: [R(-0.5, 0.5) * k, R(0.2, 0.7) * k, R(-0.5, 0.5) * k], life: R(0.4, 0.8), color: [0x3a3028, 0x4a3e32, 0x2e2620][i % 3], size: R(0.018, 0.03), shape: SHAPE.square, gravity: 3, drag: 2 });
   };
 
-  // ---- sweat: voxel beads (1/170 m: a dark-bottomed drop, a pale tip, a glint) that gather on his
-  // brow, run down his face and fly off him as he runs
-  const SWEAT_N = lite ? 36 : 60;
+  // ---- sweat (tiny voxels, 1/170 m): fat drops that well up on his brow and temples and stream
+  // down past his eyes and cheeks, leaving a wet, glinting trail; beads flung off him on every
+  // gasping bob of his head, flashing as they tumble through the light; then splashes in the grass
+  const SWEAT_N = lite ? 48 : 80, GLINT_N = lite ? 70 : 120;
   const sweatGeo = (() => {
     const g = new VoxelGrid(3, 5, 3);
     const D = lit(0x4a9ad8), B = lit(0x8ad0f6), L = lit(0xc4ecff), W = glowHex(0xf6feff, 2);
@@ -146,47 +148,71 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     g.set(1, 3, 1, L);
     return meshGlow(g, { scale: 1 / 170, pivot: [1.5, 1.5, 1.5] });
   })();
-  const sweatMat = caveToon({ emissive: 0.55, key: 'sweat' });
+  const glintGeo = (() => { const g = new VoxelGrid(1, 1, 1); g.set(0, 0, 0, glowHex(0xeefaff, 3)); return meshGlow(g, { scale: 1 / 170, pivot: [0.5, 0.5, 0.5] }); })();
+  const sweatMat = caveToon({ emissive: 0.6, key: 'sweat' }), glintMat = caveToon({ emissive: 0.9, key: 'sweat-glint' });
   const sweat = new THREE.InstancedMesh(sweatGeo, sweatMat, SWEAT_N);
-  sweat.frustumCulled = false;
-  sweat.count = 0;
-  sweat.name = 'sweat';
-  group.add(sweat);
-  const drops = [];
+  const glints = new THREE.InstancedMesh(glintGeo, glintMat, GLINT_N);
+  const _dc = new THREE.Color(1, 1, 1);
+  for (let i = 0; i < SWEAT_N; i++) sweat.setColorAt(i, _dc); // (each bead flashes on its own)
+  for (const m of [sweat, glints]) { m.frustumCulled = false; m.count = 0; m.name = 'sweat'; group.add(m); }
+  const drops = [], trail = [];
   const _dm = new THREE.Matrix4(), _dq = new THREE.Quaternion(), _dv = new THREE.Vector3(), _ds = new THREE.Vector3(), _dp = new THREE.Vector3();
   const UP = new THREE.Vector3(0, 1, 0);
-  let sweatAcc = 0;
+  let sweatAcc = 0, streamAcc = 0, bobN = -1;
   const A = mole.anchors;
-  const spawnDrop = () => {
+  const hx = A.headW / 2, ex = A.eyes;
+  // where on his face (head frame) a stream runs: [start, end] for a side; brow → past the eye → cheek, or down the temple
+  const streamPath = (side, temple) => (temple
+    ? [new THREE.Vector3(side * (hx * 0.9 + 0.006), ex.y + A.headH * 0.24, ex.z * 0.3), new THREE.Vector3(side * (hx * 0.86 + 0.006), ex.y - A.headH * 0.22, ex.z * 0.36)]
+    : [new THREE.Vector3(side * hx * 0.36, ex.y + A.headH * 0.27, ex.z * 0.84 + 0.01), new THREE.Vector3(side * hx * 0.62, ex.y - A.headH * 0.2, ex.z * 0.62 + 0.01)]);
+  const spawnDrop = (kind = 'bead') => {
     if (drops.length >= SWEAT_N) return;
     const side = Math.random() < 0.5 ? -1 : 1;
-    // on his brow (just in front of it) and down his temples (just outside them), in his head's frame
-    const brow = Math.random() < 0.55;
-    drops.push({
-      cling: R(0.12, 0.45), t: 0, side,
-      l: brow ? new THREE.Vector3(side * A.headW * R(0.05, 0.3), A.eyes.y + A.headH * R(0.12, 0.3), A.eyes.z + 0.012)
-        : new THREE.Vector3(side * (A.headW * 0.5 + 0.01), A.eyes.y + A.headH * R(-0.05, 0.25), A.eyes.z * R(0.1, 0.6)),
-      p: new THREE.Vector3(), v: new THREE.Vector3(), s: R(1.1, 1.6), fly: false,
-    });
+    const d = { kind, t: 0, side, p: new THREE.Vector3(), v: new THREE.Vector3(), fly: false, ph: Math.random() * 6.28, trailT: 0 };
+    if (kind === 'stream') {
+      // a fat drop welling up and streaming slowly down his face
+      d.path = streamPath(side, Math.random() < 0.45);
+      d.cling = R(0.7, 1.15); d.s = R(2.0, 2.6); d.l = d.path[0].clone();
+    } else if (kind === 'bead') {
+      d.cling = R(0.12, 0.4); d.s = R(1.2, 1.7);
+      d.l = Math.random() < 0.55 ? new THREE.Vector3(side * hx * R(0.1, 0.55), ex.y + A.headH * R(0.12, 0.3), ex.z * 0.86 + 0.012)
+        : new THREE.Vector3(side * (hx * 0.9 + 0.008), ex.y + A.headH * R(-0.05, 0.25), ex.z * R(0.1, 0.5));
+    } else {
+      // flung off as his head jerks with a gasp: straight into the air
+      d.cling = 0; d.s = R(1.1, 1.8);
+      d.l = new THREE.Vector3(side * hx * R(0.4, 0.95), ex.y + A.headH * R(-0.1, 0.32), ex.z * R(0.2, 0.8));
+    }
+    drops.push(d);
   };
-  const stepSweat = (dt, rate, vx, vz) => {
-    sweatAcc += dt * rate;
-    while (sweatAcc >= 1) { sweatAcc -= 1; spawnDrop(); }
+  const stepSweat = (dt, k, vx, vz, gaspN) => {
+    sweatAcc += dt * 8 * k;
+    while (sweatAcc >= 1) { sweatAcc -= 1; spawnDrop('bead'); }
+    // a couple of fat streams always on his face (more in the close-up)
+    streamAcc += dt * 2.2 * k;
+    while (streamAcc >= 1) { streamAcc -= 1; if (drops.filter((d) => d.kind === 'stream' && !d.fly).length < 2 + Math.round(k)) spawnDrop('stream'); }
+    // every gasp jerks his head: a spray of beads
+    if (gaspN !== bobN) { if (bobN >= 0) for (let i = 0, n = Math.round(2 + 2.5 * k); i < n; i++) spawnDrop('fling'); bobN = gaspN; }
     mole.root.updateMatrixWorld(true);
-    let n = 0;
+    _ds.set(-vz, 0, vx).normalize(); // (his left, in the world)
     for (let i = drops.length - 1; i >= 0; i--) {
       const d = drops[i];
       d.t += dt;
       if (!d.fly) {
-        // running down his face
-        d.l.y -= dt * 0.16;
+        if (d.kind === 'stream') {
+          // it swells, then runs: slow, then quicker, wobbling across the brow's curve
+          const u = Math.max(0, (d.t - 0.15) / (d.cling - 0.15));
+          d.l.lerpVectors(d.path[0], d.path[1], u * u * (3 - 2 * u));
+          d.l.x += Math.sin(d.t * 9 + d.ph) * 0.003;
+          d.trailT -= dt;
+          if (d.trailT <= 0 && u > 0.02 && trail.length < GLINT_N) { d.trailT = 0.035; trail.push({ l: d.l.clone(), t: 0, life: R(0.5, 0.9) }); }
+        } else d.l.y -= dt * 0.16;
         d.p.copy(d.l);
         mole.neck.localToWorld(d.p);
         if (d.t >= d.cling) {
-          // flung off: his own speed, out to the side, up a little, back a little
+          // flung off: his own speed, out to the side, up, back a little
           d.fly = true;
-          _ds.set(-vz, 0, vx).normalize();
-          d.v.set(vx * R(0.6, 0.85), R(0.5, 1.2), vz * R(0.6, 0.85)).addScaledVector(_ds, -d.side * R(0.4, 1.0));
+          const out = d.kind === 'fling' ? R(1.0, 1.7) : R(0.4, 1.0);
+          d.v.set(vx * R(0.6, 0.85), R(0.6, 1.4) * (d.kind === 'fling' ? 1.3 : 1), vz * R(0.6, 0.85)).addScaledVector(_ds, -d.side * out);
         }
       } else {
         d.v.y -= 9.8 * dt;
@@ -194,22 +220,59 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
         d.p.addScaledVector(d.v, dt);
         const gy = floorH(d.p.x, d.p.z);
         if (d.p.y < gy + 0.01) {
-          for (let k = 0; k < 2; k++) dust.spawn({ pos: [d.p.x, gy + 0.03, d.p.z], vel: [R(-0.3, 0.3), R(0.3, 0.7), R(-0.3, 0.3)], life: R(0.2, 0.35), color: 0xc8eeff, size: 0.012, shape: SHAPE.square, gravity: 6 });
+          for (let q = 0; q < 3; q++) dust.spawn({ pos: [d.p.x, gy + 0.03, d.p.z], vel: [R(-0.35, 0.35), R(0.3, 0.8), R(-0.35, 0.35)], life: R(0.2, 0.35), color: 0xd8f4ff, size: 0.012, shape: SHAPE.square, gravity: 6 });
           drops.splice(i, 1);
           continue;
         }
       }
-      if (d.t > 2.5) { drops.splice(i, 1); continue; }
+      if (d.t > 3) drops.splice(i, 1);
     }
+    let n = 0;
     for (const d of drops) {
       if (n >= SWEAT_N) break;
       if (d.fly) { _dv.copy(d.v).normalize().negate(); _dq.setFromUnitVectors(UP, _dv); } else _dq.identity();
-      const sc = d.s * (d.t < 0.06 ? d.t / 0.06 : 1);
-      _dm.compose(d.p, _dq, _ds.set(sc, sc * (d.fly ? 1.25 : 1), sc));
-      sweat.setMatrixAt(n++, _dm);
+      const sc = d.s * (d.t < 0.12 ? 0.35 + 0.65 * d.t / 0.12 : 1) * (d.kind === 'stream' && !d.fly ? 1 + 0.08 * Math.sin(d.t * 14) : 1);
+      _dm.compose(d.p, _dq, _dv.set(sc, sc * (d.fly ? 1.3 : 1.15), sc));
+      sweat.setMatrixAt(n, _dm);
+      // tumbling through the air they flash as they catch the light
+      const f = d.fly ? 1 + 1.4 * Math.max(0, Math.sin(d.t * 26 + d.ph)) ** 4 : 1.15;
+      sweat.setColorAt(n++, _dc.setRGB(f, f, f));
     }
     sweat.count = n;
     sweat.instanceMatrix.needsUpdate = true;
+    if (sweat.instanceColor) sweat.instanceColor.needsUpdate = true;
+    // the wet trails: glinting beads of damp in the head's frame, drying away
+    let g = 0;
+    for (let i = trail.length - 1; i >= 0; i--) { const T = trail[i]; T.t += dt; if (T.t > T.life) trail.splice(i, 1); }
+    for (const T of trail) {
+      if (g >= GLINT_N) break;
+      _dp.copy(T.l);
+      mole.neck.localToWorld(_dp);
+      const k2 = 1 - T.t / T.life, sc = (0.6 + 0.6 * k2) * (0.85 + 0.3 * Math.max(0, Math.sin(T.t * 19 + T.l.y * 900)));
+      _dm.compose(_dp, _dq.identity(), _dv.set(sc, sc * 1.6, sc));
+      glints.setMatrixAt(g++, _dm);
+    }
+    glints.count = g;
+    glints.instanceMatrix.needsUpdate = true;
+  };
+  /** Fear on his face (after the rig's own update): brows high and tilted up in the middle, quivering; a gasping, trembling mouth. */
+  const _mouthRest = mole.mouth.position.clone();
+  const fearFace = (tt) => {
+    const lift = 2.9 + Math.sin(tt * 31) * 0.25, q = Math.sin(tt * 23) * 0.05;
+    for (const b of mole.brows || []) {
+      const side = b.userData.side;
+      b.rotation.z = side * (-1.12 + q * side);
+      b.position.y = b.userData.y + lift * mole.vs;
+    }
+    // gulping air (the open "oh") and between gasps a clenched, trembling grimace
+    const ov = mole.mouth.userData.variants;
+    const inhale = Math.sin(tt * 8.5) > -0.35;
+    if (ov && ov.oh && ov.grimace) {
+      for (const k in ov) ov[k].visible = k === (inhale ? 'oh' : 'grimace');
+      mole.mouth.visible = true;
+      mole.curOpen = null; // (the rig sets its own again next frame)
+    }
+    mole.mouth.position.set(_mouthRest.x + Math.sin(tt * 47) * mole.vs * 0.35, _mouthRest.y + Math.sin(tt * 39) * mole.vs * 0.25, _mouthRest.z);
   };
 
   // ---- what gets knocked about
@@ -282,8 +345,8 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     mole.play('run', run.vm / 1.45);
     // terrified: eyes wide, gasping for breath
     mole.setExpression('surprised', { body: false });
-    mole.talk(true);
-    drops.length = 0;
+    mole.talk(false); // (the panting mouth is fearFace's)
+    drops.length = 0; trail.length = 0; bobN = -1;
   };
   const endRun = () => {
     // (the next run's colouring is built now, in the quiet between runs)
@@ -292,7 +355,9 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     run = null;
     mole.root.visible = false; rap.root.visible = false;
     mole.talk(false);
-    drops.length = 0; sweat.count = 0;
+    mole.curOpen = null;
+    mole.mouth.position.copy(_mouthRest);
+    drops.length = 0; trail.length = 0; sweat.count = 0; glints.count = 0;
     if (cave) cave.pushers = [];
     lantern.intensity = 0;
     waitT = R(3.5, 6.5);
@@ -403,14 +468,15 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     if (moleStepPh >= 1) { moleStepPh -= 1; if (hopY < 0.02) { sfx?.('chase_step', { at: mole.root.position, vol: 0.8 }); if (Math.random() < 0.5) kickDust(mx, my, mz, 2, 0.6); } }
     mole.update(dt);
     mole.root.rotation.y = mole.facing + twist;
-    // heaving for breath: the head bobs with each gasp, the shoulders hunch
+    // heaving for breath: the head bobs with each gasp, the shoulders hunch; fear all over his face
     const gasp = Math.sin(r.t * 8.5);
     mole.neck.rotation.x += gasp * 0.07 - 0.05;
     mole.hip.rotation.x += 0.08 + gasp * 0.025;
+    fearFace(r.t);
     mole.root.updateMatrixWorld(true);
     lantern.position.copy(LANTERN).applyMatrix4(mole.root.matrixWorld);
     // sweat pouring off him (more in the opening's close-up)
-    if (mole.root.visible) stepSweat(dt, r.intro && r.t < INTRO.dur ? 20 : 8, _p.tx * r.vm, _p.tz * r.vm);
+    if (mole.root.visible) stepSweat(dt, r.intro && r.t < INTRO.dur ? 2.4 : 1, _p.tx * r.vm, _p.tz * r.vm, Math.floor((r.t * 8.5 + 1.2) / (Math.PI * 2)));
     // the grass parts round them
     if (cave) {
       const P = cave.pushers || (cave.pushers = []);
@@ -496,13 +562,13 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     /** End the current run at once (the nest is opening and wants a quiet cave). */
     stop() { if (run) endRun(); },
     lights: [lantern],
-    materials: [mat, eyeMat, sweatMat],
+    materials: [mat, eyeMat, sweatMat, glintMat],
     dispose() {
       disposed = true;
       mole.dispose?.();
       releaseRaptorModels();
       puffs.geo.dispose(); puffs.mat.dispose(); dust.geo.dispose(); dust.mat.dispose();
-      sweatGeo.dispose();
+      sweatGeo.dispose(); glintGeo.dispose();
       for (const f of flying) f.o.removeFromParent();
     },
   };
