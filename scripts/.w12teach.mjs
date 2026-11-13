@@ -45,7 +45,9 @@ if (want('chip')) {
   await page.evaluate(() => { window.__arr = window.__game.scene.debug.arrive('forge'); });
   await page.evaluate(() => window.__game.scene.debug.run(600, 1 / 30, () => { const s = window.__game.scene; if (s.chipLump) return true; window.__game.convo?.next?.(); return false; }));
   await page.evaluate(() => window.__game.scene.debug.run(40, 1 / 30));
+  console.log(JSON.stringify(await page.evaluate(() => { const s = window.__game.scene, l = s.chipLump; if (!l) return null; const w = l.getWorldPosition(new s.camera.position.constructor()); const h = s.star.head(new s.camera.position.constructor()); const c = s.camera.getWorldPosition(new s.camera.position.constructor()); let vis = true; for (let o = l; o; o = o.parent) if (!o.visible) vis = false; const ws = new s.camera.position.constructor(); l.getWorldScale(ws); return { w, h, c, vis, ws, kids: l.children.filter((b) => b.visible).length, inScene: !!l.parent?.parent }; })));
   await shot('01-star-chips');
+  console.log('after', await page.evaluate(() => { const s = window.__game.scene; const sp = s.toScreen?.(s.chipLump.getWorldPosition(s.camera.position.clone())); const hp = s.toScreen?.(s.star.head(s.camera.position.clone())); return [JSON.stringify(sp), JSON.stringify(hp), s.camera.near, s.camera.layers.mask, s.chipLump.children[0].layers.mask, !!s.chipLump, s.chipLump?.children.filter((b) => b.visible).length, s.camera.position.toArray().map((v) => v.toFixed(2)).join(','), window.__game.engine?.camera === s.camera]; }));
   await page.evaluate(() => window.__game.scene.debug.run(60, 1 / 30));
   await page.evaluate(() => window.__game.convo?.next?.());
   await page.evaluate(() => window.__game.scene.debug.run(14, 1 / 30));

@@ -180,6 +180,7 @@
 @media (max-height: 460px) {
   .qt { top: calc(var(--sat) + var(--px) * 42); }
   .qt-head { display: none; }
+  .qt-paper { padding-right: calc(var(--px) * 2); }
   .qt-bar, .qt-where { margin-left: 0; }
 }
 
