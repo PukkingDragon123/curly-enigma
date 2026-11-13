@@ -6,7 +6,7 @@
 // gamepads in bookends/titleSignNav.js): they catch the light and swing on their nails when
 // touched, knock when chosen. Behind it, over and over, the mole comes sprinting across the cave
 // with a raptor bursting through the mushrooms after him (bookends/titleChase.js); the camera
-// drifts slowly. The pixel MOLEFORGE logo sits over it all.
+// drifts slowly. No game name on screen (the player asked for none); the scene is the title.
 // Wave 9: the cave is the old wood's mushroom hollow now, the forest's golden light pouring down
 // through openings in its roof (shafts, dappled pools, a sky-lit funnel over the clearing), a voxel
 // grass carpet and ferns that sway and part as they run through, vines and moss hanging. The
@@ -31,7 +31,6 @@ import { Scene } from '../core/Scene.js';
 import { el, clamp } from '../core/util.js';
 import { slotRaw } from '../core/saves.js';
 import { useBookendStyles } from '../bookends/css.js';
-import { logoLetters, glintURL } from '../bookends/logo.js';
 import { disposeTextures, setPixelScale, fitFov } from '../bookends/fx.js';
 import { buildCave, CAVE, floorH, SHAFTS, SUN } from '../bookends/titleCave.js';
 import { CF, setSun } from '../bookends/titleCaveFx.js';
@@ -260,7 +259,7 @@ export default class TitleScene extends Scene {
     fitFov(c, sh.fov, this.camera.aspect < 1 ? 50 : 0);
     this.cam.pos.copy(sh.pos); this.cam.look.copy(sh.look); this.cam.fov = c.fov;
     if (I.t >= INTRO.ui && this.root.classList.contains('intro')) {
-      // the logo and the words come up slowly as the camera settles
+      // the words come up slowly as the camera settles
       this.root.classList.add('intro-in');
       this.root.classList.remove('intro');
       clearTimeout(this.introInT);
@@ -432,25 +431,6 @@ export default class TitleScene extends Scene {
   // ------------------------------------------------------------------ DOM
   buildDom() {
     const g = this.game;
-    const word = 'MOLEFORGE';
-    const cssVars = (e, vars) => { for (const [k, v] of Object.entries(vars)) e.style.setProperty(k, String(v)); return e; }; // el() can't set custom properties
-    const letters = logoLetters().map((L, i) => cssVars(el('span', { class: L.hot ? 'hot' : '', 'aria-hidden': 'true' }, [
-      el('img', { class: 'pix', src: L.url, alt: '', draggable: 'false', style: { width: `calc(var(--lp) * ${L.w})`, height: `calc(var(--lp) * ${L.h})` } }),
-    ]), { '--i': i }));
-    const glint = glintURL();
-    const sparkles = [[1, 0.18, 0.22, 0], [8, 0.25, 0.12, 1.9], [5, 0.4, 0.05, 3.3]].map(([li, x, y, d]) => cssVars(el('img', { class: 'pix bk-glint', src: glint, alt: '', style: { animationDelay: `${2.6 + d}s` } }), { '--gl': li, '--gx': x, '--gy': y }));
-    const embers = Array.from({ length: 9 }, (_, i) => el('i', { class: 'bk-ember', style: { left: `${46 + ((i * 37) % 52)}%`, animationDelay: `${(i * 0.53) % 2.6 + 2}s`, animationDuration: `${2.1 + (i % 4) * 0.35}s` } }));
-    const logo = el('h1', { class: 'bk-logo', 'aria-label': word }, [...letters, ...sparkles, ...embers]);
-    requestAnimationFrame(() => {
-      for (const sp of sparkles) {
-        const li = +sp.style.getPropertyValue('--gl');
-        const L = letters[li];
-        if (!L) continue;
-        sp.style.left = `${L.offsetLeft + L.offsetWidth * +sp.style.getPropertyValue('--gx')}px`;
-        sp.style.top = `${L.offsetTop + L.offsetHeight * +sp.style.getPropertyValue('--gy')}px`;
-      }
-    });
-    const sub = el('div', { class: 'bk-sub bk-outline' }, [el('i'), 'One million gold to the surface', el('i')]);
     const keys = [['WASD', 'move'], ['C', 'crouch/dive'], ['Mouse', 'dig/aim'], ['E', 'interact'], ['B', 'the book'], ['I', 'backpack'], ['Esc', 'menu']];
     const controls = el('div', { class: 'bk-controls bk-outline' });
     keys.forEach(([k, label], i) => {
@@ -458,10 +438,9 @@ export default class TitleScene extends Scene {
       controls.append(el('kbd', {}, k), label);
     });
     this.soundHint = el('div', { class: 'bk-sound bk-outline', role: 'status' }, [el('span', { class: 'bk-sound-in' }, [el('span', { class: 'note' }, '♪'), (window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 'tap' : 'click') + ' anywhere for sound'])]);
-    this.left = el('div', { class: 'bk-left tt-left' }, [logo, sub]);
     const touchy = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     this.skipHint = el('div', { class: 'tt-skip bk-outline', 'aria-hidden': 'true' }, touchy ? ['tap to skip'] : [el('kbd', {}, 'any key'), 'skip']);
-    this.root = el('div', { class: 'bk-root bk-title tt-cave' }, [el('i', { class: 'tt-bar top' }), el('i', { class: 'tt-bar bot' }), this.left, controls, this.soundHint, this.nestHolder, this.skipHint]);
+    this.root = el('div', { class: 'bk-root bk-title tt-cave' }, [el('i', { class: 'tt-bar top' }), el('i', { class: 'tt-bar bot' }), controls, this.soundHint, this.nestHolder, this.skipHint]);
     g.ui.world.append(this.root);
     this.own(() => this.root.remove());
     this.audioOn = false;
