@@ -288,29 +288,37 @@ export class HomeLessons {
     if (star.carrying) { const o = star.drop(); o?.userData?.dispose?.(); }
     const lump = rockyLump(1);
     star.carry(lump);
-    lump.position.set(0, 0.44, 0.38);
     lump.rotation.set(0.2, 0.5, 0);
-    lump.scale.setScalar(2.3);
+    lump.scale.setScalar(2.6);
+    // (held up between you, just under his eyes and toward the camera: never behind his snout)
+    const hold = (bob = 0) => {
+      const h = star.head(new THREE.Vector3()), c = this.camera.getWorldPosition(new THREE.Vector3());
+      const to = c.sub(h); to.y = 0; to.normalize();
+      const w = h.add(to.multiplyScalar(0.3)).add(new THREE.Vector3(0, -0.07 + bob, 0));
+      if (lump.parent) { lump.parent.updateMatrixWorld(true); lump.position.copy(lump.parent.worldToLocal(w)); }
+    };
+    hold();
     this.chipLump = lump;
     a.play('pickup', { vol: 0.45 });
     const at = () => lump.getWorldPosition(new THREE.Vector3());
     const eye = () => this.cam ? new THREE.Vector3(this.cam.x, this.cam.y, this.cam.z) : null;
     // the blows play out on scene time while he says his one word (a skip cuts them short)
-    let left = 1, n = 0;
+    let left = 1, n = 0, jolt = 0;
     const blows = tween(2.6, (k) => {
       const want = Math.min(7, Math.floor(k * 7.2));
       while (n < want && left > 0) {
         n++;
         left = chipLump(fx, lump, 9, eye());
         lump.rotation.y += 0.55;
-        lump.position.y = 0.455;
+        jolt = 0.015;
         star.rig.doEmote?.('nod', 0.3);
         a.play('chisel', { vol: 0.55, pitch: 0.95 + Math.random() * 0.15 });
         if (n === 2) teachWord(this.game, 'Chip the rock off', at().add(new THREE.Vector3(0, 0.16, 0)), { life: 2.6 });
       }
-      lump.position.y += (0.44 - lump.position.y) * 0.25;
+      jolt *= 0.75;
+      hold(jolt);
     });
-    await line('<i>Tink, tink.</i> Like so.', 'happy', { camera: 'ots' });
+    await line('<i>Tink, tink.</i> Like so.', 'happy', { camera: 'close' });
     await go(blows);
     // the last of the crust lets go: the copper's bare, and it shines
     for (const b of lump.children) if (b.userData.rock) b.visible = false;
