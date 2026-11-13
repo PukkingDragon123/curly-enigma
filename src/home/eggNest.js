@@ -17,6 +17,7 @@ import { clamp, rand } from '../core/util.js';
 import { SPOTS, STAR_SPOTS } from './spots.js';
 import { walkable } from './plan.js';
 import { tameData } from '../deep/tame/index.js';
+import { Glint, teachWord } from './tutorFx.js';
 
 /** In-game days from finding it to hatching. */
 export const HATCH_DAYS = 4;
@@ -160,7 +161,18 @@ export function homeEgg(scene) {
   }));
 
   // ---- alive in its straw: a rock and a peep now and then while you're near (more as it gets on)
-  let t = 0, rock = 0, peepT = rand(2, 5), hatching = null, boxT = 0;
+  let t = 0, rock = 0, peepT = rand(2, 5), hatching = null, boxT = 0, wordT = 1.5, glint = null;
+  // (wave 12: shown, not told) the first time you come near, a few words say how it hatches; on its
+  // day it glints with gold motes and says so as you come near
+  const eggTop = () => new THREE.Vector3(at.x, 0.62, at.z);
+  const teach = (dt, dist, n) => {
+    if (n >= HATCH_DAYS && !glint && scene.fx) glint = new Glint(scene.fx, () => (hatching || E.hatched ? null : new THREE.Vector3(at.x, 0.3, at.z)), { r: 0.18, rate: 0.1 });
+    glint?.update(dt);
+    if ((wordT -= dt) > 0 || dist > 3.2 || scene.cine || scene.scripted || scene.waking) return;
+    const st = g.state;
+    if (n >= HATCH_DAYS) { wordT = 14; teachWord(g, 'It\'s hatching!', eggTop(), { kind: 'great', life: 2.4 }); }
+    else if (st?.flag && !st.flag('tipEgg')) { st.flag('tipEgg', true); wordT = 9; teachWord(g, 'Sleep. It hatches.', eggTop(), { life: 2.6 }); }
+  };
   const peep = (v = 1, muffled = false) => {
     const pl = scene.rig?.player?.pos;
     const dist = pl ? Math.hypot(pl.x - at.x, pl.z - at.z) : 2;
@@ -174,6 +186,7 @@ export function homeEgg(scene) {
     const pl = scene.rig?.player?.pos;
     const dist = pl ? Math.hypot(pl.x - at.x, pl.z - at.z) : 99;
     const n = dayN();
+    teach(dt, dist, n);
     peepT -= dt;
     if (dist < 4 && peepT <= 0) {
       peepT = rand(3, 7) / (1 + n * 0.6);

@@ -200,7 +200,7 @@ export class Menus {
       el('div', { class: 'sm-hand', html: `<img class="pix" src="${itemVox.src('coal')}" alt=""> Coal in the bin: <b>${st.count('coal')}</b>` }),
       el('div', { class: 'sm-hand' }, [el('i', { class: 'sm-flame' }), ` ${HEARTH_NAMES[lvl] || HEARTH_NAMES[0]}: tops out at `, el('b', {}, FORGE_MAX_TEMP[lvl] + '°C')]),
       last ? el('div', { class: 'sm-margin', html: last }) : null,
-      el('div', { class: 'sm-hand sm-hide-s', style: { marginTop: 'calc(var(--px) * 3)', fontSize: '.66em', color: '#8a6a4a' } }, 'Keep the crucible in its band with the bellows, then pour. A steady hand makes a good ingot.'),
+      el('div', { class: 'sm-hand sm-hide-s', style: { marginTop: 'calc(var(--px) * 3)', fontSize: 'max(var(--g), round(.66em + 2px, var(--g)))', color: '#8a6a4a' } }, 'Keep the crucible in its band with the bellows, then pour. A steady hand makes a good ingot.'),
       img(bart('inkCrucible'), 'pix sm-diagram sm-hide-s'),
       el('div', { class: 'sm-cap sm-hide-s' }, 'Melt it, hold it in the band, pour.'),
       el('div', { class: 'sm-spacer' }),

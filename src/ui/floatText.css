@@ -48,7 +48,7 @@ kbd.ft-c { text-shadow: none; }
 .ft em { font-style: normal; color: #ff9a76; }
 .ft em .ft-c.on { animation: ftIn .52s ease-out var(--d, 0s) both, ftShake .24s steps(2) calc(var(--q) * -.24s) infinite; }
 @keyframes ftShake { 50% { transform: translate(calc(var(--px) * .5), calc(var(--px) * -.5)); } }
-.ft big { font-size: calc(var(--fs) * 1.5); line-height: 1; color: #ffcf6a; }
+.ft big { font-size: max(var(--g), round(calc(var(--fs) * 1.5) + 2px, var(--g))); line-height: 1; color: #ffcf6a; }
 .ft big .ft-c.on { animation: ftStomp .6s ease-out var(--d, 0s) both; }
 @keyframes ftStomp { 0% { opacity: 0; scale: 2.6; translate: 0 calc(var(--px) * -6); color: var(--ft-hot); } 45% { opacity: 1; scale: .82 1.14; translate: 0 0; } 70% { scale: 1.08 .94; } 100% { opacity: 1; scale: 1; } }
 .ft small { font-size: var(--fs); opacity: .84; }
@@ -158,7 +158,7 @@ kbd.ft-c { text-shadow: none; }
 .bubble.ft-bub b .ft-c.on { animation: ftIn .52s ease-out var(--d, 0s) both; }
 .bubble.ft-bub::before, .bubble.ft-bub::after { display: none; }
 .bubble.ft-bub b { color: #ffd890; font-family: var(--font-head); font-size: var(--fs-h); line-height: 1; margin-bottom: 0; }
-.bubble.ft-bub.emote { font-size: calc(var(--fs) * 1.5); }
+.bubble.ft-bub.emote { font-size: max(var(--g), round(calc(var(--fs) * 1.5) + 2px, var(--g))); }
 .bubble.ft-bub.emote .ft-c.on { animation: ftStomp .6s ease-out var(--d, 0s) both; }
 
 /* ---- the crosshair's target name and the held item's name: a word or two floating under them */

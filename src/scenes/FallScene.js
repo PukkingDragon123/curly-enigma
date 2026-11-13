@@ -8,7 +8,7 @@
 // under his boots, cracks race over the clearing, roots snap, the birds burst from the trees, and
 // the crust gives way: he tumbles down a dark shaft.
 // Darkness, a heartbeat, muffled ringing: he blacks out. Ends with goto('home', { from: 'fall' }).
-// ~55 s, not skippable.
+// ~39 s (wave 12: tighter cuts, the stroll at the same pace), not skippable.
 // Wave 8: the wood is dressed for the camera (forest/dress.js: thick ground cover, flowers and stones in fine
 // voxels, saplings, boughs hanging into the opening shot), leaves and pollen drift on the GPU (forest/drift.js),
 // small birds perch, flit and sing about the trail (forest/critters.js: birds only, no other animals), and
@@ -39,10 +39,11 @@ import { heartbeat, muffle } from '../bookends/journey.js';
 
 // the timeline (seconds): shots A..L
 // (F: into the clearing, a peep; N, N2, N3: the nest, the egg in his paws, wrapped and stowed; F2: on, the chest glints)
-const T = { A: 0, B: 6.2, C: 10.4, D: 13.6, E: 15.6, F: 20.4, N: 23.2, N2: 26.4, N3: 29.8, F2: 33.2, G: 37.6, H: 40.2, I: 42.4, I2: 44.1, J: 46.0, K: 47.6, L: 50.6, END: 55.2 };
+// (wave 12, "the intro a little faster": was 55.2 s; the shots are cut shorter, nobody walks faster)
+const T = { A: 0, B: 3.4, C: 5.8, D: 8.0, E: 9.3, F: 12.3, N: 14.5, N2: 17.1, N3: 19.3, F2: 22.3, G: 25.3, H: 27.3, I: 28.9, I2: 30.4, J: 31.9, K: 33.3, L: 35.7, END: 39.1 };
 const SHOTS = [T.A, T.B, T.C, T.D, T.E, T.F, T.N, T.N2, T.N3, T.F2, T.G, T.H, T.I, T.I2, T.J, T.K, T.L];
 const FALL_SHOT = 14; // (the shots from here on are below the ground)
-const CAP = [0.9, 5.0];
+const CAP = [0.7, 3.4];
 const WALK = 0.8; // m/s (a brisk, bouncy stroll: ~3 steps a second with gait.js's cadence)
 const smooth = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
 const ease = (a, b, x) => smooth((x - a) / (b - a));
@@ -367,14 +368,15 @@ export default class FallScene extends Scene {
   /** The hero's trail position s (m) at time t; cuts jump ahead along the trail. */
   heroS(t) {
     const L = FOREST.trail.length, X = FOREST.trail.cross.s, sN = FOREST.nest.s - 0.1;
-    if (t < T.E) return 6.5 + WALK * t;
-    if (t < T.F) return X - 1.95 + WALK * (t - T.E); // (onto the bridge early in the shot, off it before the cut)
+    if (t < T.D) return 6.5 + WALK * t;
+    if (t < T.E) return 6.5 + WALK * (13.6 + t - T.D); // (a cut: the boots shot on the stretch of trail it was framed for)
+    if (t < T.F) return X - 1.85 + WALK * (t - T.E); // (onto the bridge early in the shot; the cut comes as he crosses it)
     // into the clearing: a peep from the grass, he slows and stops beside the nest
-    if (t < T.F2) return lerp(L - 7.0, sN, 1 - Math.pow(1 - clamp((t - T.F) / 2.8, 0, 1), 1.6));
+    if (t < T.F2) return lerp(sN - 1.1, sN, 1 - Math.pow(1 - clamp((t - T.F) / (T.N - T.F), 0, 1), 1.6));
     // on again: something glitters ahead, he slows to a stop when he sees it
-    if (t < T.F2 + 3.2) return sN + (L - 3.6 - sN) * (1 - Math.pow(1 - (t - T.F2) / 3.2, 1.6));
-    // ...a long look, then slowly up to the chest: he stops right at the spill
-    return lerp(L - 3.6, L - 0.05, ease(T.F2 + 4.0, T.G + 2.4, t));
+    if (t < T.G) return sN + 1.5 * (1 - Math.pow(1 - clamp((t - T.F2) / 2.3, 0, 1), 1.6));
+    // (cut to the chest) ...and up to it: he stops right at the spill
+    return lerp(L - 1.6, L - 0.05, ease(T.G + 0.2, T.H + 0.4, t));
   }
   /** At the nest: how far he has stepped off the trail toward it (0..1). */
   nestStep(t) { return ease(T.N - 0.1, T.N + 0.8, t) * (1 - ease(T.F2 - 0.1, T.F2 + 1.0, t)); }
@@ -406,7 +408,7 @@ export default class FallScene extends Scene {
       this.heroPivot.position.set(x, y + 0.42, z);
       this.heroPivot.rotation.set(0, 0, 0);
       const speed = jump ? WALK : Math.abs(vH);
-      const walking = t < T.N - 0.3 || (t > T.F2 - 0.4 && t < T.F2 + 3.2) || (t > T.F2 + 4.0 && t < T.G + 2.4);
+      const walking = t < T.N - 0.3 || (t > T.F2 - 0.4 && t < T.F2 + 2.3) || (t >= T.G && t < T.H + 0.4);
       if (t >= T.N - 0.3 && t < T.F2 - 0.4) this.nestBeat(t, x, z);
       else if (walking) {
         // (on the span he faces along the logs, not along the trail's bend under them)
@@ -449,10 +451,10 @@ export default class FallScene extends Scene {
   nestBeat(t, x, z) {
     const hero = this.hero, NS = FOREST.nest;
     hero.face(Math.atan2(NS.x - x, NS.z - z));
-    if (t < T.N + 0.75) hero.play('walk', 0.55);
-    else if (t < T.N3 + 1.5) hero.play('reach');
+    if (t < T.N + 0.6) hero.play('walk', 0.55);
+    else if (t < T.N3 + 1.35) hero.play('reach');
     else hero.play('idle');
-    hero.setHammer?.(t > T.N + 0.5 && t < T.F2 - 0.6 ? 'back' : null); // (both paws for the egg)
+    hero.setHammer?.(t > T.N + 0.45 && t < T.F2 - 0.6 ? 'back' : null); // (both paws for the egg)
   }
   /**
    * The nest beat's body and the egg (after his rig's own update): a crouch, his paws down to the egg,
@@ -463,11 +465,11 @@ export default class FallScene extends Scene {
     const h = this.hero, N = this.F.nest;
     if (!N || !this.eggCarry) return;
     const s = h.s;
-    const kneel = ease(T.N + 0.7, T.N + 1.3, t) * (1 - ease(T.N3 + 1.3, T.N3 + 1.9, t));
-    const down = ease(T.N + 2.3, T.N + 2.9, t) * (1 - ease(T.N2 - 0.15, T.N2 + 0.45, t)); // paws down to the egg
-    const hold = ease(T.N2 - 0.15, T.N2 + 0.45, t) * (1 - ease(T.N3 + 1.9, T.N3 + 2.15, t)); // the egg at his chest
-    const lift = ease(T.N3 + 1.9, T.N3 + 2.3, t) * (1 - ease(T.N3 + 2.45, T.N3 + 2.9, t)); // his right paw over his shoulder
-    const pat = t > T.N3 + 2.75 && t < T.N3 + 3.35 ? Math.sin(((t - T.N3 - 2.75) / 0.6) * Math.PI) : 0;
+    const kneel = ease(T.N + 0.6, T.N + 1.1, t) * (1 - ease(T.N3 + 1.2, T.N3 + 1.75, t));
+    const down = ease(T.N + 1.9, T.N + 2.4, t) * (1 - ease(T.N2 - 0.15, T.N2 + 0.4, t)); // paws down to the egg
+    const hold = ease(T.N2 - 0.15, T.N2 + 0.4, t) * (1 - ease(T.N3 + 1.75, T.N3 + 2.0, t)); // the egg at his chest
+    const lift = ease(T.N3 + 1.75, T.N3 + 2.1, t) * (1 - ease(T.N3 + 2.25, T.N3 + 2.65, t)); // his right paw over his shoulder
+    const pat = t > T.N3 + 2.45 && t < T.N3 + 2.95 ? Math.sin(((t - T.N3 - 2.45) / 0.5) * Math.PI) : 0;
     const beat = t > T.N - 0.3 && t < T.F2 - 0.4;
     if (beat) {
       const { hip, neck, armL, armR, legL, legR } = h;
@@ -490,7 +492,7 @@ export default class FallScene extends Scene {
     const inNest = t < T.N2 - 0.15;
     if (inNest) {
       if (egg.parent !== N.hold) { N.hold.add(egg); egg.position.set(0, 0, 0); egg.quaternion.identity(); }
-      egg.rotation.z = wob(T.N + 1.6) + wob(T.N + 2.15) * 0.6;
+      egg.rotation.z = wob(T.N + 1.3) + wob(T.N + 1.75) * 0.6;
       egg.visible = true;
       this.eggBundle.visible = false;
       return;
@@ -502,14 +504,14 @@ export default class FallScene extends Scene {
     const paws = _v4.copy(pL).add(pR).multiplyScalar(0.5);
     const f = this.facing(_v);
     paws.x += f.x * 0.11; paws.z += f.z * 0.11; paws.y += 0.005; // (it sits in his cupped paws, out in front of his snout)
-    const up = ease(T.N2 - 0.15, T.N2 + 0.45, t);
+    const up = ease(T.N2 - 0.15, T.N2 + 0.4, t);
     const P = carry.position;
     if (up < 1) {
       P.lerpVectors(this.nestEggP, paws, up);
       P.y += Math.sin(up * Math.PI) * 0.04;
     } else P.copy(paws);
     // over his shoulder and onto the top of his pack (then it rides there, the fall included)
-    const st = ease(T.N3 + 2.0, T.N3 + 2.6, t);
+    const st = ease(T.N3 + 1.85, T.N3 + 2.4, t);
     if (st > 0) {
       const pack = (h.packBone?.parent || h.hip).localToWorld(_v2.copy(PACK_TOP));
       const sh = h.handR.getWorldPosition(_v3);
@@ -523,9 +525,9 @@ export default class FallScene extends Scene {
     // facing: the knot to his right while he holds it; on the pack, square with his back
     carry.quaternion.copy(h.root.getWorldQuaternion(_q));
     if (st >= 1) carry.quaternion.copy((h.packBone?.parent || h.hip).getWorldQuaternion(_q)).multiply(_q2.setFromAxisAngle(_X, -0.2));
-    carry.rotateZ(wob(T.N2 + 1.3) + wob(T.N2 + 2.0) * 0.5);
+    carry.rotateZ(wob(T.N2 + 0.95) + wob(T.N2 + 1.55) * 0.5);
     // his kerchief wrapped round it (the cloth rising round the shell), then just the bundle
-    const wrap = ease(T.N3 + 0.15, T.N3 + 1.25, t);
+    const wrap = ease(T.N3 + 0.15, T.N3 + 1.1, t);
     this.eggBundle.visible = wrap > 0.02;
     this.eggBundle.scale.set(EGG_K * lerp(1.06, 1, wrap), EGG_K * Math.max(0.04, wrap), EGG_K * lerp(1.06, 1, wrap));
     egg.visible = wrap < 0.99;
@@ -569,65 +571,65 @@ export default class FallScene extends Scene {
     }
     this.once('cap', CAP[0], () => this.caption.classList.add('on'));
     this.once('capoff', CAP[1], () => this.caption.classList.remove('on'));
-    this.once('nod', 8.4, () => this.hero.doEmote('nod', 1));
+    this.once('nod', T.B + 1.2, () => this.hero.doEmote('nod', 1));
     // his close-up: he tips his face up into the sun through the leaves, and smiles
-    this.once('sunup', T.C + 0.5, () => this.hero.look(0.25, 0.5));
-    this.once('smile', T.C + 1.2, () => this.hero.setExpression?.('happy', { hold: 1.8, body: false }));
-    this.once('sundown', T.C + 2.6, () => this.hero.look(0, 0));
+    this.once('sunup', T.C + 0.35, () => this.hero.look(0.25, 0.5));
+    this.once('smile', T.C + 0.9, () => this.hero.setExpression?.('happy', { hold: 1.8, body: false }));
+    this.once('sundown', T.C + 2.1, () => this.hero.look(0, 0));
     // the clearing's edge: a faint peep from the grass by the trail; he stops, turns to it... a nest
     if (this.F.nest) {
       const NS = FOREST.nest;
       const peep = (o = {}) => { _v.set(NS.x, groundH(NS.x, NS.z) + 0.1, NS.z).sub(this.camera.position); const r = _v2.set(1, 0, 0).applyQuaternion(this.camera.quaternion); this.sfx('forest_eggchirp', { pan: clamp(_v.dot(r) / Math.max(1, _v.length()), -0.8, 0.8), ...o }); };
-      this.once('peep', T.F + 1.0, () => peep({ vol: 0.55, muffled: true }));
-      this.once('notice', T.F + 1.45, () => { this.hero.look(-0.75, -0.2); this.hero.doEmote('surprise', 1.0); });
-      this.once('peep2', T.F + 2.3, () => peep({ vol: 0.7, n: 2, muffled: true }));
+      this.once('peep', T.F + 0.6, () => peep({ vol: 0.55, muffled: true }));
+      this.once('notice', T.F + 1.0, () => { this.hero.look(-0.75, -0.2); this.hero.doEmote('surprise', 1.0); });
+      this.once('peep2', T.F + 1.7, () => peep({ vol: 0.7, n: 2, muffled: true }));
       this.once('nestlook', T.N + 0.1, () => this.hero.look(0, -0.3));
-      this.once('wob1', T.N + 1.6, () => { peep({ vol: 0.85, n: 2 }); this.sfx('forest_eggtick', { vol: 0.8 }); this.hero.doEmote('surprise', 0.9); this.hero.look(0, 0.05); });
-      this.once('wob1b', T.N + 2.15, () => this.sfx('forest_eggtick', { vol: 0.5 }));
-      this.once('lean', T.N + 2.4, () => this.hero.look(0, -0.4));
+      this.once('wob1', T.N + 1.3, () => { peep({ vol: 0.85, n: 2 }); this.sfx('forest_eggtick', { vol: 0.8 }); this.hero.doEmote('surprise', 0.9); this.hero.look(0, 0.05); });
+      this.once('wob1b', T.N + 1.75, () => this.sfx('forest_eggtick', { vol: 0.5 }));
+      this.once('lean', T.N + 1.95, () => this.hero.look(0, -0.4));
       this.once('lift', T.N2 - 0.1, () => this.sfx('forest_rustle', { vol: 0.7 }));
-      this.once('liftlook', T.N2 + 0.3, () => this.hero.look(0, -0.25));
-      this.once('wob2', T.N2 + 1.3, () => { peep({ vol: 1, n: 2 }); this.sfx('forest_eggtick', { vol: 0.6 }); });
-      this.once('smile2', T.N2 + 1.55, () => this.hero.setExpression?.('happy', { hold: 2.0, body: false }));
-      this.once('glance', T.N2 + 2.4, () => this.hero.look(-0.7, 0.2)); // (is its mother about?)
-      this.once('glance2', T.N2 + 3.0, () => this.hero.look(0.2, -0.2));
+      this.once('liftlook', T.N2 + 0.25, () => this.hero.look(0, -0.25));
+      this.once('wob2', T.N2 + 0.95, () => { peep({ vol: 1, n: 2 }); this.sfx('forest_eggtick', { vol: 0.6 }); });
+      this.once('smile2', T.N2 + 1.15, () => this.hero.setExpression?.('happy', { hold: 2.0, body: false }));
+      this.once('glance', T.N2 + 1.6, () => this.hero.look(-0.7, 0.2)); // (is its mother about?)
+      this.once('glance2', T.N2 + 2.0, () => this.hero.look(0.2, -0.2));
       this.once('wrap1', T.N3 + 0.2, () => this.sfx('forest_wrap', { vol: 0.9 }));
-      this.once('wrap2', T.N3 + 0.85, () => this.sfx('forest_wrap', { vol: 0.7 }));
-      this.once('stand', T.N3 + 1.4, () => { this.sfx('forest_rustle', { vol: 0.5 }); this.hero.look(0, 0); });
-      this.once('stow', T.N3 + 2.55, () => { this.sfx('forest_stow', { vol: 1 }); this.keepEgg(); });
-      this.once('pat', T.N3 + 2.95, () => { this.hero.doEmote('nod', 0.9); peep({ vol: 0.35, muffled: true }); });
+      this.once('wrap2', T.N3 + 0.75, () => this.sfx('forest_wrap', { vol: 0.7 }));
+      this.once('stand', T.N3 + 1.25, () => { this.sfx('forest_rustle', { vol: 0.5 }); this.hero.look(0, 0); });
+      this.once('stow', T.N3 + 2.35, () => { this.sfx('forest_stow', { vol: 1 }); this.keepEgg(); });
+      this.once('pat', T.N3 + 2.55, () => { this.hero.doEmote('nod', 0.9); peep({ vol: 0.35, muffled: true }); });
     }
     // the clearing: something glitters
-    this.once('glint', T.F2 + 1.2, () => { this.sfx('sparkle', { vol: 0.6 }); this.hero.doEmote('surprise', 1.3); this.glint = true; });
-    this.once('stop', T.F2 + 3.2, () => { this.hero.play('peer'); this.hero.look(0, 0.1); });
-    this.once('walk2', T.F2 + 4.0, () => this.hero.look(0, 0));
+    this.once('glint', T.F2 + 1.0, () => { this.sfx('sparkle', { vol: 0.6 }); this.hero.doEmote('surprise', 1.3); this.glint = true; });
+    this.once('stop', T.F2 + 2.3, () => { this.hero.play('peer'); this.hero.look(0, 0.1); });
+    this.once('walk2', T.G, () => this.hero.look(0, 0));
     // the chest: the lid creaks wider and gold light pours out
-    this.once('lid', T.G + 0.8, () => { this.sfx('forest_chest'); this.lidOpen = t; });
-    this.once('chord', T.G + 1.1, () => { this.sfx('forest_chord', { vol: 0.05 }); this.sfx('coins', { n: 5 }); });
-    this.once('reach', T.H + 1.3, () => this.hero.play('reach'));
-    this.once('chime', T.H + 1.6, () => this.sfx('sparkle', { vol: 0.8 }));
+    this.once('lid', T.G + 0.55, () => { this.sfx('forest_chest'); this.lidOpen = t; });
+    this.once('chord', T.G + 0.8, () => { this.sfx('forest_chord', { vol: 0.05 }); this.sfx('coins', { n: 5 }); });
+    this.once('reach', T.H + 0.9, () => this.hero.play('reach'));
+    this.once('chime', T.H + 1.15, () => this.sfx('sparkle', { vol: 0.8 }));
     // the ground goes
-    this.once('hush', T.I - 0.6, () => { this.loops.forest_chorus?.set?.({ density: 0 }); });
+    this.once('hush', T.I - 0.5, () => { this.loops.forest_chorus?.set?.({ density: 0 }); });
     this.once('creak', T.I, () => { this.sfx('creak'); this.sfx('forest_groan', { vol: 0.06 }); this.loop('rumble', 0.5); au.stopMusic(1.4); this.shake = 0.015; this.hero.play('idle'); this.hero.look(0, 0.35); });
-    this.once('crack1', T.I + 0.6, () => { this.sfx('crack'); this.sfx('rumble_hit'); this.hero.doEmote('surprise', 2); this.hero.play('brace'); this.F.cracks.mesh.visible = true; this.crack = true; this.gust = 1; if (this.wildlife) { this.burstFlock(); this.sfx('forest_flock'); this.loop('forest_chorus', 0); } });
-    this.once('feet', T.I + 1.0, () => this.hero.look(0.15, -0.5)); // he looks down at his boots
-    [1.3, 1.95, 2.5, 3.05].forEach((d, i) => this.once('snap' + i, T.I + d, () => this.snapRoot(i)));
-    this.once('crack2', T.I + 1.7, () => { this.sfx('crack'); this.sfx('trickle'); this.shake = 0.05; });
-    this.once('look', T.I + 2.2, () => { this.hero.look(-0.4, 0.3); this.sfx('squeak'); });
-    this.once('crack3', T.I + 2.9, () => { this.sfx('crack'); this.sfx('debris'); this.sfx('forest_groan', { vol: 0.07, pitch: 0.8 }); this.shake = 0.08; });
+    this.once('crack1', T.I + 0.5, () => { this.sfx('crack'); this.sfx('rumble_hit'); this.hero.doEmote('surprise', 2); this.hero.play('brace'); this.F.cracks.mesh.visible = true; this.crack = true; this.gust = 1; if (this.wildlife) { this.burstFlock(); this.sfx('forest_flock'); this.loop('forest_chorus', 0); } });
+    this.once('feet', T.I + 0.85, () => this.hero.look(0.15, -0.5)); // he looks down at his boots
+    [1.1, 1.6, 2.1, 2.55].forEach((d, i) => this.once('snap' + i, T.I + d, () => this.snapRoot(i)));
+    this.once('crack2', T.I + 1.4, () => { this.sfx('crack'); this.sfx('trickle'); this.shake = 0.05; });
+    this.once('look', T.I + 1.85, () => { this.hero.look(-0.4, 0.3); this.sfx('squeak'); });
+    this.once('crack3', T.I + 2.4, () => { this.sfx('crack'); this.sfx('debris'); this.sfx('forest_groan', { vol: 0.07, pitch: 0.8 }); this.shake = 0.08; });
     this.once('break', T.J, () => this.breakGround());
-    this.once('whoosh', T.J + 0.4, () => { this.sfx('whoosh'); this.loop('wind', 0.6); this.loop('forest_leaves', 0); this.loop('forest_air', 0); this.loop('forest_chorus', 0); });
-    this.once('deb', T.K + 0.6, () => this.sfx('debris'));
-    this.once('dark', T.K + 1.2, () => { this.unmuffle = muffle(au, 360); this.loop('rumble', 0); });
+    this.once('whoosh', T.J + 0.35, () => { this.sfx('whoosh'); this.loop('wind', 0.6); this.loop('forest_leaves', 0); this.loop('forest_air', 0); this.loop('forest_chorus', 0); });
+    this.once('deb', T.K + 0.5, () => this.sfx('debris'));
+    this.once('dark', T.K + 0.95, () => { this.unmuffle = muffle(au, 360); this.loop('rumble', 0); });
     this.once('thud', T.L - 0.25, () => { this.sfx('thud', { vol: 1 }); this.sfx('land', { hard: true }); this.loop('wind', 0); });
     // knocked out: the heart thumps in the dark, slowing
-    const beats = [T.L + 0.5, T.L + 1.55, T.L + 2.7, T.L + 3.95];
+    const beats = [T.L + 0.4, T.L + 1.25, T.L + 2.15, T.L + 3.1];
     beats.forEach((b, i) => this.once('beat' + i, b, () => heartbeat(au, 0.5 - i * 0.08)));
     // the sagging ground and the cracks
     if (t >= T.I && t < T.J) {
       const k = ease(T.I, T.J, t);
       this.sag = k * k;
-      this.F.cracks.uniforms.uReveal.value = ease(T.I + 0.55, T.J - 0.3, t);
+      this.F.cracks.uniforms.uReveal.value = ease(T.I + 0.45, T.J - 0.25, t);
       if (Math.random() < dt * 30) this.crackDust();
     }
   }
@@ -866,7 +868,7 @@ export default class FallScene extends Scene {
         break;
       }
       case 8: { // wrapped and stowed: three-quarters from his right, swinging round behind him as the bundle goes up onto his pack
-        const u = ease(T.N3 + 1.5, T.N3 + 3.0, t);
+        const u = ease(T.N3 + 1.3, T.N3 + 2.8, t);
         const f = this.facing(_v2);
         const rx = -f.z, rz = f.x; // his right
         const fwd = lerp(1.35, 0.35, u), side = lerp(0.85, 1.25, u);
@@ -931,7 +933,7 @@ export default class FallScene extends Scene {
       }
       case 15: { // falling with him from below: the light of the hole shrinking above
         const tau = t - T.K;
-        const gap = lerp(3.2, 1.5, smooth(tau / 2.2));
+        const gap = lerp(3.2, 1.5, smooth(tau / (T.L - T.K - 0.4)));
         o.pos.set(0.45, H.y - gap, 0.55);
         o.look.set(H.x * 0.5, H.y + 0.6, H.z * 0.5);
         o.roll = Math.sin(tau * 1.3) * 0.14;
@@ -1042,15 +1044,15 @@ export default class FallScene extends Scene {
     }
     if (p.flash > 0) p.flash = Math.max(0, p.flash - dt * 2.4);
     // black out: the light fades, the eyes close round the speck of light far above
-    if (t >= T.K + 1.0) {
-      const k = ease(T.K + 1.0, T.L - 0.1, t);
+    if (t >= T.K + 0.8) {
+      const k = ease(T.K + 0.8, T.L - 0.1, t);
       p.fade = k * 0.92;
       p.fadeColor = 0x000000;
     }
     if (t >= T.L) {
       if (this.bottomY == null) this.bottomY = this.heroPivot.position.y + 0.3;
       const u = t - T.L;
-      const blink = Math.max(0, Math.sin(Math.min(u, 3.4) * 2.2)) * (1 - u / 3.4);
+      const blink = Math.max(0, Math.sin(Math.min(u, 2.6) * 2.6)) * (1 - u / 2.6);
       const R = Math.hypot(this.game.engine.width, this.game.engine.height);
       p.fade = clamp(1 - blink * 0.85, 0, 1);
       p.iris = blink > 0.02 ? R * 0.25 * blink : 0;
@@ -1062,7 +1064,7 @@ export default class FallScene extends Scene {
     // the light that falls with him: from just above his head
     const H0 = this.heroPivot.position;
     this.fallLight.position.set(H0.x + 0.3, H0.y + 1.4, H0.z + 0.5);
-    this.fallLight.intensity = t > T.J ? 3.2 * fogK * (1 - ease(T.K + 1.2, T.L, t)) : 0;
+    this.fallLight.intensity = t > T.J ? 3.2 * fogK * (1 - ease(T.K + 0.95, T.L, t)) : 0;
     F.outlineFar = this.post.outline === false ? 0 : this.post.outlineFar || 0; // (the forest leaves what's past it out of the outline pass)
     F.update(dt, cam, sc.fog);
     this.dress.update(dt, cam);

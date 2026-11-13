@@ -762,7 +762,7 @@ export class PartRun {
       kicker: `Forged by your own paws · quality ${this.score}%`,
       title: p.name,
       grade,
-      value: `<img class="pix" src="${iconURL(p.gives)}" alt=""><span style="font-size:.6em;color:var(--sepia)">Pick power ${(1.1 * (0.85 + 0.3 * this.score / 100)).toFixed(2)}</span>`,
+      value: `<img class="pix" src="${iconURL(p.gives)}" alt=""><span style="font-size:max(var(--g), round(.6em + 2px, var(--g)));color:var(--sepia)">Pick power ${(1.1 * (0.85 + 0.3 * this.score / 100)).toFixed(2)}</span>`,
       note: `Ingots <b style="color:${qColor(this.matQ)}">${this.matQ}%</b> · ${where}`,
       rows,
       buttons: [{ label: 'To the mine!', key: 'Enter', fn: () => { this.game.audio.play('ui_click'); sc.leave(); } }],

@@ -485,7 +485,7 @@
 .inv-ghost.tiled.blade img { transform: rotate(-45deg) scale(1.5); }
 .inv-ghost.tiled.blade.rot img { transform: rotate(45deg) scale(1.5); }
 .inv-ghost.tiled .n { left: calc(var(--gw) - var(--gox) - 14px); top: calc(var(--gh) - var(--goy) - 16px); }
-.inv-turn .inv-turn-ico { font-size: 18px; line-height: 1; }
+.inv-turn .inv-turn-ico { font-size: max(var(--g), round(18px + 2px, var(--g))); line-height: 1; }
 .inv-gridbox.bag { --cell: calc(var(--slot-w) * 1.18); }
 .inv-gridbox.bag.big { --cell: calc(var(--slot-w) * .86); }
 .bp-nextbag { display: flex; justify-content: center; align-items: center; gap: calc(var(--px) * 2); margin-top: calc(var(--px) * 3); font-size: 8px; color: #6a4a2a; text-transform: uppercase; letter-spacing: .06em; }

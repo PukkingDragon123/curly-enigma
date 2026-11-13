@@ -144,7 +144,7 @@ export function makeFpsDemo(showroom, params) {
     vm.dispose();
   });
   if (params.help !== '0') {
-    game.ui.world.append(el('div', { style: { position: 'absolute', right: '8px', top: '6px', color: '#f0e0c0', font: '11px monospace', background: 'rgba(0,0,0,.45)', padding: '3px 6px', whiteSpace: 'pre', textAlign: 'right' } }, [
+    game.ui.world.append(el('div', { style: { position: 'absolute', right: '8px', top: '6px', color: '#f0e0c0', font: '16px var(--font)', background: 'rgba(0,0,0,.45)', padding: '3px 6px', whiteSpace: 'pre', textAlign: 'right' } }, [
       '1-9 tool · T tier · Space swing · E use · Q eat · H hurt\nJ jump · W walk · R run · C climb · V swim · arrows look · P demo']));
   }
 

@@ -114,7 +114,7 @@ export class CookLesson {
   pantryTip() {
     this.stage = 'pantry';
     const names = this.ids.map((id) => `<b>${ITEMS[id]?.name || id}</b>`).join(' and the ');
-    this.say(`Pick the ${names} from the pantry, then <b>Cook!</b>`, { mood: 'calm', dur: Infinity });
+    this.say(`The ${names}, then <b>Cook!</b>`, { mood: 'calm', dur: Infinity });
     this.teach('click', { title: 'Into the pot', subPc: `<b>Click</b> the ${names}, then <b>Cook!</b>`, subT: `<b>Tap</b> the ${names}, then <b>Cook!</b>`, done: () => this.stage !== 'pantry' });
   }
 
@@ -123,7 +123,7 @@ export class CookLesson {
     if (this.done) return true;
     const ok = ids.length === this.ids.length && this.ids.every((id) => ids.includes(id));
     if (!ok) {
-      this.say(`Not that! Just the ${this.ids.map((id) => `<b>${ITEMS[id]?.name || id}</b>`).join(' and the ')}. Experiment later.`, { mood: 'stern', dur: 4 });
+      this.say(`Not that! The ${this.ids.map((id) => `<b>${ITEMS[id]?.name || id}</b>`).join(' and ')}.`, { mood: 'stern', dur: 4 });
       this.game.audio.play('ui_error');
     }
     return ok;
@@ -133,7 +133,7 @@ export class CookLesson {
     this.endCine();
     if (this.done) return;
     this.stage = 'cooking';
-    this.say('Good. A dish is a few jobs, one after another.', { mood: 'happy', dur: 2.4 });
+    this.say('Good. Next job!', { mood: 'happy', dur: 2.4 });
   }
 
   onStep(kind) {
@@ -169,7 +169,7 @@ export class CookLesson {
           : g === 'Okay' ? ['It\'s... soup. Of a sort. We all start somewhere.', 'laugh']
             : ['Burnt. Ha! My first one was worse. Much worse.', 'laugh'];
     await this.say(first[0], { mood: first[1], wait: true });
-    await this.say('Eat it down the mine: good food lights you up for a while (a <b>buff</b>). Cook what you find down there. Now, home with you!', { mood: 'proud', wait: true });
+    await this.say('Eat it down the mine: a <b>buff</b>. Home!', { mood: 'proud', wait: true });
     this.stage = 'free';
   }
 

@@ -1,7 +1,15 @@
 /* Moleforge UI — a diegetic interface: leather, parchment, brass and chalk over the pixel canvas.
    Art comes from src/ui/uiArt.js (published as --a-* custom properties) and is always shown at an
-   integer multiple of --px. Pixel fonts are only used at sizes where they render crisp:
-   Tiny5 8n px · Jersey 15 27n px · Jacquarda Bastarda 9 13n px. */
+   integer multiple of --px. Every letter is a pixel font, bundled with the game (src/ui/fonts/, no
+   system or web fallback ever shows): Tiny5 for text, Jersey 15 for headings, display and script,
+   and Mole Marks (pixel arrows, notes, stars, ticks) for the symbols both lack (scripts/molemarks.py).
+   Pixel fonts render crisp only on their grid: Tiny5 at 8n device px, Jersey 15 at 27n. --g / --gj
+   are those grids in CSS px (src/ui/fontGrid.js divides by devicePixelRatio), and font sizes are
+   snapped to them with round(). */
+@font-face { font-family: 'Tiny5'; src: url('./fonts/tiny5.woff2') format('woff2'); font-display: block; }
+@font-face { font-family: 'Jersey 15'; src: url('./fonts/jersey15.woff2') format('woff2'); font-display: block; }
+@font-face { font-family: 'Mole Marks'; src: url('./fonts/molemarks.woff2') format('woff2'); font-display: block; }
+@font-face { font-family: 'Mole Marks 15'; src: url('./fonts/molemarks15.woff2') format('woff2'); font-display: block; }
 :root {
   --ink: #2a1a12;
   --ink-soft: #5a4030;
@@ -29,18 +37,20 @@
   --text-light: #fbf1dc;
   --chalk: #eef2e6;
   --px: 3px;
-  /* text: Tiny5 at 2× its pixel grid, headings in Jersey 15 at 1×, script at 2× */
+  /* text: Tiny5 at 2× its pixel grid, headings and script in Jersey 15 at 1× */
+  --g: 8px;
+  --gj: 27px;
   --fs: 16px;
   --fs-h: 27px;
-  --fs-s: 26px;
+  --fs-s: 27px;
   --fs-ui: 16px;
   /* item icons (32×32 art at 1×/2×, 16×16 art at 2×/4×) */
   --icon: 64px;
   --icon-s: 32px;
-  --font: 'Tiny5', ui-monospace, 'Cascadia Mono', Menlo, monospace;
-  --font-display: 'Jersey 10', 'Tiny5', ui-monospace, monospace;
-  --font-head: 'Jersey 15', 'Jersey 10', 'Tiny5', ui-monospace, monospace;
-  --font-script: 'Jacquarda Bastarda 9', 'Jersey 15', serif;
+  --font: 'Tiny5', 'Mole Marks', 'Jersey 15', 'Mole Marks 15';
+  --font-display: 'Jersey 15', 'Mole Marks 15', 'Tiny5', 'Mole Marks';
+  --font-head: var(--font-display);
+  --font-script: var(--font-display);
   --sat: env(safe-area-inset-top, 0px);
   --sar: env(safe-area-inset-right, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
@@ -50,10 +60,10 @@
   color-scheme: dark;
 }
 @media (max-width: 900px), (max-height: 600px) {
-  :root { --px: 2px; --icon: 32px; --fs-ui: calc(var(--px) * 5.4); }
+  :root { --px: 2px; --icon: 32px; --fs-ui: max(var(--g), round(calc(var(--px) * 5.4) + 2px, var(--g))); }
 }
 @media (min-width: 1700px) and (min-height: 1000px) {
-  :root { --px: 4px; --fs: 24px; --fs-ui: 24px; --fs-h: 54px; --fs-s: 39px; }
+  :root { --px: 4px; --fs: 24px; --fs-ui: 24px; --fs-h: 54px; --fs-s: 54px; }
 }
 
 [hidden] { display: none !important; }
@@ -64,7 +74,9 @@ html, body {
   background: var(--cave);
   color: var(--text-light);
   font-family: var(--font);
-  -webkit-font-smoothing: none;
+  -webkit-font-smoothing: none; -moz-osx-font-smoothing: grayscale; font-smooth: never;
+  font-synthesis: none; /* no smeared fake bold / slanted italic on the pixel faces */
+  font-kerning: none; text-rendering: optimizeSpeed;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -85,6 +97,14 @@ html, body {
 }
 #ui .interactive, #ui button, #ui .panel, #ui .hotbar-slot, #ui input, #ui select, #ui a { pointer-events: auto; }
 #ui button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+/* form controls don't inherit the page font by default: keep them on the pixel faces too */
+button, input, select, textarea, optgroup { font-family: inherit; }
+/* the browser's own sizes for these (smaller, 1.17em ...) fall off the pixel grid: snap them (zero specificity, any rule wins) */
+:where(small) { font-size: max(var(--g), round(.83em + 2px, var(--g))); }
+:where(h1) { font-size: max(var(--g), round(2em, var(--g))); }
+:where(h2) { font-size: max(var(--g), round(1.5em + 2px, var(--g))); }
+:where(h3) { font-size: max(var(--g), round(1.17em + 2px, var(--g))); }
+:where(h5, h6, sub, sup) { font-size: max(var(--g), round(.83em + 2px, var(--g))); }
 img.pix, .pix { image-rendering: pixelated; image-rendering: crisp-edges; }
 .world-layer { position: absolute; inset: 0; }
 .hud { position: absolute; inset: 0; }
@@ -129,7 +149,7 @@ kbd {
 }
 .btn.danger:active { border-image-source: var(--a-btnDangerDn); }
 .btn.danger[disabled] { border-image-source: var(--a-btnDanger); }
-.btn.big { font-size: 1.2em; padding: calc(var(--px) * 3) calc(var(--px) * 8) calc(var(--px) * 4); }
+.btn.big { font-size: max(var(--g), round(1.2em + 2px, var(--g))); padding: calc(var(--px) * 3) calc(var(--px) * 8) calc(var(--px) * 4); }
 .btn:focus-visible, .icon-btn:focus-visible, #ui button:focus-visible { outline: var(--px) solid var(--gold); outline-offset: var(--px); }
 /* (ui3) a glint runs across the brass as you reach for it; pressed, the plate sinks a pixel further */
 .btn::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0;
@@ -161,9 +181,9 @@ kbd {
    must not pick up the parchment look above, or a big sheet of paper covers the screen behind
    every window) */
 .ob-layer.panel { background: none; border: 0; box-shadow: none; padding: 0; max-width: none; max-height: none; animation: none; display: block; }
-:where(.panel) h2 { margin: 0 0 calc(var(--px) * 3); font-family: var(--font-display); font-weight: 400; font-size: 2em; line-height: 1; color: var(--wood-dk); letter-spacing: .02em; text-wrap: balance; }
-:where(.panel) h3 { margin: calc(var(--px) * 2) 0; font-size: 1em; color: var(--wood); }
-:where(.panel) .sub { margin: calc(var(--px) * -2) 0 calc(var(--px) * 4); color: var(--ink-soft); font-size: .85em; max-width: 60ch; }
+:where(.panel) h2 { margin: 0 0 calc(var(--px) * 3); font-family: var(--font-display); font-weight: 400; font-size: max(var(--gj), round(2em, var(--gj))); line-height: 1; color: var(--wood-dk); letter-spacing: .02em; text-wrap: balance; }
+:where(.panel) h3 { margin: calc(var(--px) * 2) 0; font-size: max(var(--g), round(1em + 2px, var(--g))); color: var(--wood); }
+:where(.panel) .sub { margin: calc(var(--px) * -2) 0 calc(var(--px) * 4); color: var(--ink-soft); font-size: max(var(--g), round(.85em + 2px, var(--g))); max-width: 60ch; }
 .panel .scroll { overflow-y: auto; min-height: 0; padding-right: calc(var(--px) * 2); scrollbar-color: var(--wood) transparent; scrollbar-width: thin; overscroll-behavior: contain; touch-action: pan-y; }
 .panel .close {
   position: absolute; right: calc(var(--px) * -5); top: calc(var(--px) * -5); width: calc(var(--px) * 13); height: calc(var(--px) * 13);
@@ -206,12 +226,12 @@ kbd {
   margin: 0 calc(var(--px) * 8) calc(var(--px) * 3) 0; padding-bottom: calc(var(--px) * 2);
   background: linear-gradient(var(--parch-3), var(--parch-3)) 0 100% / calc(var(--px) * 30) var(--px) no-repeat;
 }
-.modal-back > .panel.sheet > .sub { margin: calc(var(--px) * -1) 0 calc(var(--px) * 4); font-size: 1em; }
+.modal-back > .panel.sheet > .sub { margin: calc(var(--px) * -1) 0 calc(var(--px) * 4); font-size: max(var(--g), round(1em + 2px, var(--g))); }
 .modal-back > .panel.sheet > .close { right: calc(var(--px) * -9); top: calc(var(--px) * -9); }
 
 .tabs { display: flex; gap: var(--px); flex-wrap: wrap; margin-bottom: calc(var(--px) * 3); }
 .tab {
-  font: inherit; font-size: .8em; cursor: pointer; padding: var(--px) calc(var(--px) * 3) calc(var(--px) * 2.5);
+  font: inherit; font-size: max(var(--g), round(.8em + 2px, var(--g))); cursor: pointer; padding: var(--px) calc(var(--px) * 3) calc(var(--px) * 2.5);
   background: var(--parch-2) padding-box; color: var(--ink-soft);
   border: var(--px) solid transparent;
   border-image: var(--a-btnAlt) 2 3 3 fill / calc(var(--px) * 2) calc(var(--px) * 3) calc(var(--px) * 3) repeat stretch;
@@ -225,9 +245,9 @@ kbd {
 .slot:hover { background: #fff4d0; border-color: var(--wood); }
 .slot.on { border-color: var(--gold-dk); box-shadow: inset 0 0 0 var(--px) var(--gold); }
 .slot img { width: var(--icon); height: var(--icon); }
-.slot .n { position: absolute; right: var(--px); bottom: 0; font-size: .7em; font-weight: 700; font-variant-numeric: tabular-nums; }
-.slot .q { position: absolute; left: var(--px); top: 0; font-size: .6em; font-weight: 700; }
-.slot .eq { position: absolute; left: var(--px); bottom: 0; font-size: .55em; color: #fff; background: var(--energy-dk); padding: 0 var(--px); }
+.slot .n { position: absolute; right: var(--px); bottom: 0; font-size: max(var(--g), round(.7em + 2px, var(--g))); font-weight: 700; font-variant-numeric: tabular-nums; }
+.slot .q { position: absolute; left: var(--px); top: 0; font-size: max(var(--g), round(.6em + 2px, var(--g))); font-weight: 700; }
+.slot .eq { position: absolute; left: var(--px); bottom: 0; font-size: max(var(--g), round(.55em + 2px, var(--g))); color: #fff; background: var(--energy-dk); padding: 0 var(--px); }
 .list { display: flex; flex-direction: column; gap: calc(var(--px) * 1.5); }
 .li {
   display: grid; grid-template-columns: calc(var(--px) * 20) 1fr auto; gap: calc(var(--px) * 3); align-items: center;
@@ -237,11 +257,11 @@ kbd {
 .li:hover { border-color: var(--wood-2); background: rgba(255, 248, 228, .85); }
 .li img { width: var(--icon-s); height: var(--icon-s); }
 .li .name { font-weight: 700; }
-.li .desc { font-size: .78em; color: var(--ink-soft); line-height: 1.25; min-width: 0; }
+.li .desc { font-size: max(var(--g), round(.78em + 2px, var(--g))); color: var(--ink-soft); line-height: 1.25; min-width: 0; }
 .li.locked { opacity: .55; }
 .li .price { font-weight: 700; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: var(--px); white-space: nowrap; }
 .li .price img { width: calc(var(--px) * 6); height: calc(var(--px) * 6); }
-.detail { margin-top: calc(var(--px) * 3); padding: calc(var(--px) * 3); background: rgba(255, 248, 228, .6); border: var(--px) solid var(--parch-3); font-size: .85em; min-height: calc(var(--px) * 26); }
+.detail { margin-top: calc(var(--px) * 3); padding: calc(var(--px) * 3); background: rgba(255, 248, 228, .6); border: var(--px) solid var(--parch-3); font-size: max(var(--g), round(.85em + 2px, var(--g))); min-height: calc(var(--px) * 26); }
 .qbar { display: inline-block; width: calc(var(--px) * 24); height: calc(var(--px) * 3); background: #b8a080; vertical-align: middle; border: var(--px) solid var(--wood-dk); position: relative; }
 .qbar > i { position: absolute; left: 0; top: 0; bottom: 0; }
 .chip {
@@ -251,7 +271,7 @@ kbd {
 }
 .chip img { width: var(--icon-s); height: var(--icon-s); }
 .stamp {
-  display: inline-block; font-size: .8em; padding: 0 calc(var(--px) * 2); border: var(--px) solid currentColor; color: #a8321e;
+  display: inline-block; font-size: max(var(--g), round(.8em + 2px, var(--g))); padding: 0 calc(var(--px) * 2); border: var(--px) solid currentColor; color: #a8321e;
   box-shadow: inset 0 0 0 var(--px) rgba(255, 255, 255, .25); margin-left: calc(var(--px) * 2); letter-spacing: .06em;
 }
 .goal-bar { width: calc(var(--px) * 60); height: calc(var(--px) * 4); background: #2a1a12; border: var(--px) solid #000; position: relative; overflow: hidden; }
@@ -345,6 +365,8 @@ html.is-touch .prompt-in .prompt-tap { display: block; animation: tapBob 1.2s ea
   transition: opacity .3s;
 }
 .hint-keys:hover { opacity: .95; }
+.hint-keys.rest:not(:hover) { opacity: 0; transition-duration: .8s; }
+#ui .hint-keys.rest { pointer-events: auto; }
 .hint-keys kbd { margin-right: calc(var(--px) * 1); }
 html.is-touch .hint-keys { display: none !important; }
 
@@ -372,7 +394,7 @@ html.is-touch .hint-keys { display: none !important; }
 .bubble b { color: var(--wood-2); display: block; font-size: 16px; font-weight: 400; margin-bottom: var(--px); }
 @media (max-width: 900px), (max-height: 600px) { .bubble { font-size: 8px; } .bubble b { font-size: 8px; } .bubble.emote { font-size: 16px; } }
 @media (min-width: 1700px) and (min-height: 1000px) { .bubble { font-size: 24px; } .bubble b { font-size: 16px; } }
-.nametag { position: absolute; transform: translate(-50%, -100%); font-size: .7em; color: var(--text-light); text-shadow: 0 var(--px) 0 #000; white-space: nowrap; }
+.nametag { position: absolute; transform: translate(-50%, -100%); font-size: max(var(--g), round(.7em + 2px, var(--g))); color: var(--text-light); text-shadow: 0 var(--px) 0 #000; white-space: nowrap; }
 
 /* ---------- confirm: a parchment card with two plate buttons (a brass plate, a wood plate), each with a wax seal ---------- */
 .modal-back > .panel.confirm-card { width: min(calc(var(--px) * 130), calc(100vw - 32px)); padding-top: calc(var(--px) * 3); }
@@ -422,7 +444,7 @@ html.is-touch .hint-keys { display: none !important; }
 
 /* ---------- full-screen overlays ---------- */
 .center-msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; pointer-events: none; }
-.big-title { font-family: var(--font-display); font-size: calc(var(--px) * 26); line-height: .9; color: var(--gold); letter-spacing: .02em;
+.big-title { font-family: var(--font-display); font-size: max(var(--gj), round(calc(var(--px) * 26), var(--gj))); line-height: .9; color: var(--gold); letter-spacing: .02em;
   text-shadow: 0 calc(var(--px) * 2) 0 var(--gold-dk), 0 calc(var(--px) * 4) 0 var(--wood-dk), calc(var(--px) * 2) 0 0 var(--wood-dk), calc(var(--px) * -2) 0 0 var(--wood-dk), 0 calc(var(--px) * -2) 0 var(--wood-dk), 0 calc(var(--px) * 7) 0 rgba(0,0,0,.4); }
 
 @media (prefers-reduced-motion: reduce) {

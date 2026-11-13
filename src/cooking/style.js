@@ -265,8 +265,8 @@ const CSS = /* css */`
 .ck-big { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); text-align: center; white-space: nowrap; pointer-events: none; }
 .ck-word { font-family: var(--font-display); line-height: .85; letter-spacing: .02em; color: var(--gold); display: inline-block;
   text-shadow: 0 calc(var(--px) * 2) 0 var(--gold-dk), 0 calc(var(--px) * 4) 0 var(--wood-dk), calc(var(--px) * 2) 0 0 var(--wood-dk), calc(var(--px) * -2) 0 0 var(--wood-dk), 0 calc(var(--px) * -2) 0 var(--wood-dk), 0 calc(var(--px) * 7) 0 rgba(0,0,0,.4); }
-.ck-title .ck-word { font-size: calc(var(--px) * 30); animation: ckTitle 1.1s cubic-bezier(.2,1.6,.4,1) forwards; }
-.ck-title .ck-sub { display: block; font-size: calc(var(--px) * 6); color: var(--text-light); text-shadow: 0 var(--px) 0 #000, var(--px) 0 0 #000, calc(var(--px)*-1) 0 0 #000; margin-bottom: calc(var(--px) * 2); animation: ckFadeUp 1.1s ease-out forwards; }
+.ck-title .ck-word { font-size: max(var(--gj), round(calc(var(--px) * 30), var(--gj))); animation: ckTitle 1.1s cubic-bezier(.2,1.6,.4,1) forwards; }
+.ck-title .ck-sub { display: block; font-size: max(var(--g), round(calc(var(--px) * 6) + 2px, var(--g))); color: var(--text-light); text-shadow: 0 var(--px) 0 #000, var(--px) 0 0 #000, calc(var(--px)*-1) 0 0 #000; margin-bottom: calc(var(--px) * 2); animation: ckFadeUp 1.1s ease-out forwards; }
 @keyframes ckTitle { 0% { transform: scale(.2) rotate(-8deg); opacity: 0; } 25% { transform: scale(1.15) rotate(3deg); opacity: 1; } 40% { transform: scale(.96) rotate(-1deg); } 55% { transform: scale(1); } 85% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.1) translateY(calc(var(--px) * -10)); opacity: 0; } }
 @keyframes ckFadeUp { 0% { opacity: 0; transform: translateY(calc(var(--px) * 4)); } 20%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 

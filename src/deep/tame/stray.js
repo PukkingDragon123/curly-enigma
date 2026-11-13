@@ -24,7 +24,7 @@ import { RAPTOR_FOOD } from './food.js';
 import { clearLine } from '../enemies/physics.js';
 import { clamp, rand } from '../../core/util.js';
 
-const _v = new THREE.Vector3();
+const _v = new THREE.Vector3(), _w = new THREE.Vector3();
 const TURNS = [0, 0.5, -0.5, 1, -1, 1.5, -1.5]; // straight back, else turned aside (radians)
 
 export class Stray extends TameRaptor {
@@ -136,6 +136,7 @@ export class Stray extends TameRaptor {
     fear -= this.calm * dt * 0.3;
     this.fear = fear = clamp(fear, 0, 1);
     if (!this.calmed && this.calm > 0.6 && fear < 0.35) this.settle();
+    this.teach(dt, d, crouched);
     // ---- what it does
     switch (this.plan) {
       case 'back': this.doBack(dt); break;
@@ -172,8 +173,25 @@ export class Stray extends TameRaptor {
     return null;
   }
 
+  /**
+   * (wave 12: shown, not told) the first times you meet it, a few words over its head: how to come
+   * near (crouch, keep still) while it's wary, then what to do once it settles (settle()).
+   */
+  teach(dt, d, crouched) {
+    const m = this.mgr, st = m.state;
+    if (!st?.flag || st.flag('tipStray') || this.calmed || this.plan === 'bolt') return;
+    this.tipT = (this.tipT ?? 1.5) - dt;
+    if (this.tipT > 0 || crouched || d > 8 || d < 1) return;
+    this.tipT = 10;
+    m.floatAt?.('Crouch. Keep still.', this.headPos(_v).add(_w.set(0, 0.35, 0)), '#cfe6ff', 0.9, 'meh');
+  }
+
   /** The first time it settles down near you. */
   settle() {
+    if (this.mgr.state?.flag && !this.mgr.state.flag('tipStray')) {
+      this.mgr.state.flag('tipStray', true);
+      this.mgr.floatAt?.('Now offer food', this.headPos(_v).add(_w.set(0, 0.35, 0)), '#9af07a', 0.9, 'good');
+    }
     this.calmed = true;
     this.addTrust(8);
     this.coo();

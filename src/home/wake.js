@@ -2,9 +2,10 @@
 // cutscene (letterbox bars, nothing else on screen; a hold of Space / Enter / E, or of the ring on a
 // touch screen, skips it: never a tap). Dark, and through the dark, muffled, the rhythm of a hammer
 // on an anvil. You're flat on your back on a heap of straw on the cave floor (his own bedroll: he
-// gave it you). Heavy eyelids crack open on the low rock roof, blurred, a speck of grey daylight far
-// up the hole you fell through, and sink shut; the head rolls on the straw toward the sound and the
-// second look finds the forge's glow and the sparks jumping off each blow; the third clears: from
+// gave it you). The world swims up out of the black, dim, blurred and doubled, on the low rock roof
+// and a speck of grey daylight far up the hole you fell through, and fades away again (a slow blink:
+// a fade to black, no lid art); the head rolls on the straw toward the sound and the second look
+// finds the forge's glow and the sparks jumping off each blow; a blink, and the third clears: from
 // down on the floor, Old Star at his anvil by the forge, hammering (his 'hammer' pose's own clang,
 // its sparks made bigger, a flash of light off each blow). The straw rustles; his hammer stops
 // mid-swing, his nose goes, he lays the hammer down on the anvil, turns, walks over, gets down on
@@ -12,9 +13,10 @@
 // following him (first person, no cards). Three short lines, each waits for you (game.convo: how
 // you came down, who he is and the million, no pick so you'll make one). He straightens up, you sit
 // up off the straw and get to your feet: the lessons take over (lessons.js; no look / walk
-// teaching: you just move, with one tiny hint the first time). The overlay (WakeFx) draws the lids
-// as a dark mask with soft edges and lashes, warm where the light comes through; only the world
-// (the canvas) is ever blurred, never the interface. The sound comes back through a low-pass that
+// teaching: you just move, with one tiny hint the first time). The overlay (WakeFx) is only the
+// world's own frame, blurred, dimmed and doubled (a ghost copy drifting back into register), and a
+// plain fade to black for the blinks (wave 12: no eyelid shapes); only the world (the canvas) is
+// ever blurred, never the interface. The sound comes back through a low-pass that
 // opens as you come round. Sets the flag fallen, starts the `lessons` quest and emits lesson
 // { step: 'wake' } (and talk oldstar), as before; unlocks look / move / use (src/ui/Onboard.js).
 import * as THREE from 'three';
@@ -25,111 +27,84 @@ import { T } from './units.js';
 
 const ease = (k) => k * k * (3 - 2 * k);
 
-// ---------------------------------------------------------------- the eyelids
+// ---------------------------------------------------------------- the bleary eyes
 /**
- * Eyelids over the view: open 0 (shut) … 1 (wide open, gone). The lids are dark curves meeting in
- * a soft almond, the upper one moving most, with a band of warm flesh-light along each edge and a
- * fringe of lashes; shut, the light glows dull red through them. Drawn on a small canvas and
- * softened with a CSS blur (they're far too close to focus on). blur: the view's own blur (px).
+ * Waking eyes over the world (wave 12: no lids drawn, ever). open: 0 (black) … 1 (eyes open): the
+ * blinks are plain fades to black. blur: the world's blur (px). ghost: double vision, the offset (px)
+ * of a second, fainter copy of the frame that drifts back into register as the eyes focus. dim: the
+ * world's brightness (0.4 bleary … 1). Only the 3D view is touched, never the interface.
  */
 export class WakeFx {
   constructor(game) {
     this.game = game;
     this.open = 1;
     this.blur = 0;
-    this.glow = 0.5; // how much light comes through the shut lids (red)
-    this.c = el('canvas', { class: 'wake-lids', style: { position: 'absolute', inset: '-24px', width: 'calc(100% + 48px)', height: 'calc(100% + 48px)', pointerEvents: 'none', zIndex: 3, filter: 'blur(13px)' } });
+    this.ghost = 0;
+    this.dim = 1;
+    this.glow = 0; // (kept for old callers: the shut eyes no longer glow red)
+    this.t = 0;
+    const layer = { position: 'absolute', inset: '0', width: '100%', height: '100%', pointerEvents: 'none', zIndex: 3 };
+    // the double image: a small copy of each finished frame, offset and faint
+    this.c = el('canvas', { class: 'wake-ghost', style: { ...layer, opacity: '0', imageRendering: 'auto' } });
     this.ctx = this.c.getContext('2d');
-    game.ui.root.insertBefore(this.c, game.ui.root.querySelector('.tutor'));
+    // the blink: the dark itself (a flat black fade, nothing shaped)
+    this.dark = el('div', { class: 'wake-dark', style: { ...layer, background: '#030202', opacity: '0' } });
+    const before = game.ui.root.querySelector('.tutor');
+    game.ui.root.insertBefore(this.c, before);
+    game.ui.root.insertBefore(this.dark, before);
+    this.copyQueued = false;
     this.resize();
-    this.last = '';
   }
 
   resize() {
-    const W = 320, a = window.innerHeight / Math.max(1, window.innerWidth);
+    const W = 360, a = window.innerHeight / Math.max(1, window.innerWidth);
     this.W = W; this.H = Math.max(120, Math.round(W * a));
     this.c.width = this.W; this.c.height = this.H;
-    this.last = '';
   }
 
-  update() {
-    const g = this.ctx, W = this.W, H = this.H;
-    const k = clamp(this.open, 0, 1);
-    const key = `${k.toFixed(3)}|${this.glow.toFixed(2)}`;
-    if (key !== this.last) {
-      this.last = key;
-      g.clearRect(0, 0, W, H);
-      if (k < 0.995) this.drawLids(g, W, H, k);
-    }
+  /** Copy the frame once it's drawn (a microtask: after this frame's render, before it's shown). */
+  queueCopy() {
+    if (this.copyQueued) return;
+    this.copyQueued = true;
+    queueMicrotask(() => {
+      this.copyQueued = false;
+      if (!this.c.isConnected) return;
+      try { this.ctx.drawImage(this.game.canvas, 0, 0, this.W, this.H); } catch (e) { /* (no frame to copy) */ }
+    });
+  }
+
+  update(dt = 0) {
+    this.t += dt;
+    const k = clamp(this.open, 0, 1), b = this.blur, gh = this.ghost, dim = clamp(this.dim, 0, 1);
+    const awake = k >= 0.999 && b <= 0.05 && gh <= 0.3 && dim >= 0.999;
     // the blur and the dim on the canvas itself
     const canvas = this.game.canvas;
-    const b = this.blur;
-    canvas.style.filter = b > 0.05 ? `blur(${b.toFixed(2)}px) brightness(${(1 - Math.min(0.3, b * 0.03)).toFixed(3)}) saturate(${(1 - Math.min(0.4, b * 0.04)).toFixed(3)})` : '';
-    // eyes open: the (blurred) lid layer leaves the page, so nothing soft lingers over the view
-    const awake = k >= 0.999 && b <= 0.05;
-    this.c.style.display = awake ? 'none' : '';
+    const bright = dim * (1 - Math.min(0.2, b * 0.02));
+    const filt = awake ? '' : `blur(${b.toFixed(2)}px) brightness(${bright.toFixed(3)}) saturate(${(1 - Math.min(0.45, b * 0.045)).toFixed(3)})`;
+    canvas.style.filter = filt;
+    // the dark between blinks
+    this.dark.style.opacity = awake ? '0' : (1 - k).toFixed(3);
+    this.dark.style.display = awake || k >= 0.999 ? 'none' : '';
+    // double vision: the frame again, a little to one side and a touch high, drifting as the eyes swim
+    const seeGhost = !awake && gh > 0.3 && k > 0.02;
+    this.c.style.display = seeGhost ? '' : 'none';
+    if (seeGhost) {
+      this.queueCopy();
+      const sx = window.innerWidth / Math.max(1, canvas.clientWidth || window.innerWidth);
+      const dx = gh * (1 + Math.sin(this.t * 0.9) * 0.18) * sx, dy = -gh * 0.22 + Math.sin(this.t * 0.6 + 1) * gh * 0.08;
+      this.c.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+      this.c.style.filter = filt;
+      this.c.style.opacity = Math.min(0.5, 0.12 + gh * 0.03).toFixed(3);
+    }
     return !awake;
   }
 
-  drawLids(g, W, H, k) {
-    const mid = H * 0.5;
-    // the aperture: an almond, sized by the width (a slit stays a slit on a tall phone screen), that
-    // grows past the screen's edges as the eye opens
-    const S = Math.min(H, W * 0.56), far = k * k * k * H * 0.45;
-    const reachUp = k * S * 0.78, reachDn = k * S * 0.62;
-    const top = (x) => { const u = (x - W / 2) / (W * 0.62); return mid - reachUp * Math.max(0, 1 - u * u) - far; };
-    const bot = (x) => { const u = (x - W / 2) / (W * 0.66); return mid + reachDn * Math.max(0, 1 - u * u * 1.1) + far; };
-    const shut = 1 - Math.min(1, k * 4);
-    // the lids: deep red-brown where the light glows through, near black at the rims of the view
-    const lid = (t) => `rgb(${Math.round(18 + 34 * this.glow * t)},${Math.round(6 + 6 * this.glow * t)},${Math.round(6 + 4 * this.glow * t)})`;
-    const N = 40;
-    const path = (edge, upper) => {
-      g.beginPath();
-      g.moveTo(0, upper ? 0 : H);
-      for (let i = 0; i <= N; i++) { const x = (i / N) * W; g.lineTo(x, edge(x)); }
-      g.lineTo(W, upper ? 0 : H);
-      g.closePath();
-    };
-    for (const upper of [true, false]) {
-      const edge = upper ? top : bot;
-      path(edge, upper);
-      const gr = upper ? g.createLinearGradient(0, 0, 0, Math.max(1, mid)) : g.createLinearGradient(0, H, 0, Math.min(H - 1, mid));
-      gr.addColorStop(0, lid(0.4 + shut * 0.6));
-      gr.addColorStop(1, lid(1));
-      g.fillStyle = gr;
-      g.fill();
-      // the warm, lit band along the rim of each lid
-      g.save();
-      path(edge, upper);
-      g.clip();
-      g.lineWidth = S * 0.09;
-      g.strokeStyle = `rgba(86,30,22,${0.35 + shut * 0.3})`;
-      g.beginPath();
-      for (let i = 0; i <= N; i++) { const x = (i / N) * W; if (i) g.lineTo(x, edge(x)); else g.moveTo(x, edge(x)); }
-      g.stroke();
-      g.restore();
-      // lashes: dark curved strokes off the rim, longer on the upper lid
-      if (k > 0.02 && k < 0.98) {
-        g.strokeStyle = 'rgba(8,3,3,0.9)';
-        g.lineWidth = 1.4;
-        const n = upper ? 34 : 22, L = (upper ? 0.07 : 0.035) * S;
-        for (let i = 1; i < n; i++) {
-          const x = (i / n) * W + Math.sin(i * 7.3) * 2;
-          const y = edge(x);
-          const lean = (x - W / 2) / W;
-          g.beginPath();
-          g.moveTo(x, y);
-          g.quadraticCurveTo(x + lean * L * 0.8, y + (upper ? 1 : -1) * L * 0.7, x + lean * L * 1.6, y + (upper ? 1 : -1) * L * (0.9 + Math.sin(i * 3.1) * 0.15));
-          g.stroke();
-        }
-      }
-    }
-    // shut tight: the light still glows dully through
-    if (k < 0.02) { g.fillStyle = lid(1); g.fillRect(0, 0, W, H); }
-  }
+  /** Eyes open: no blur, no ghost, full light. */
+  clear() { this.open = 1; this.blur = 0; this.ghost = 0; this.dim = 1; this.glow = 0; }
 
   dispose() {
     this.c.remove();
+    this.dark.remove();
     this.game.canvas.style.filter = '';
   }
 }
@@ -169,7 +144,7 @@ function muffler(a) {
 const CUT = { cut: true };
 
 export class HomeWake {
-  /** Per frame (HomeScene.update): the eyelids, the head's sway, and the tutorial at home (lessons.js). */
+  /** Per frame (HomeScene.update): the bleary eyes, the head's sway, and the tutorial at home (lessons.js). */
   tickWakeFx(dt) {
     if (this.wakeFx) this.wakeFx.update(dt);
     if (this.waking && this.wakeSway) this.wakeSway(dt);
@@ -244,7 +219,7 @@ export class HomeWake {
     this.own(() => muff.dispose());
     ui.setTouchControls?.(false);
     this.hammer && (this.hammer.style.visibility = 'hidden');
-    // no "click to look around" card over your eyelids: it's a cutscene till you're on your feet
+    // no "click to look around" card over your waking eyes: it's a cutscene till you're on your feet
     const lc = ui.lookCatch;
     if (lc) { lc.style.visibility = 'hidden'; this.own(() => { lc.style.visibility = ''; }); }
     this.beginScript(false);
@@ -256,7 +231,7 @@ export class HomeWake {
     if (bed) await this.lieDown(bed, true);
     const base = { yaw: c.yaw, pitch: 1.12, roll: 0.18 };
     c.pitch = base.pitch; c.roll = base.roll;
-    fx.open = 0; fx.blur = 10; fx.glow = 0.3;
+    fx.open = 0; fx.blur = 10; fx.ghost = 16; fx.dim = 0.62;
     const post0 = (this.wakeVignette = this.post.vignette);
     this.fov0 = this.camera.fov;
     this.post.vignette = 0.95;
@@ -303,9 +278,11 @@ export class HomeWake {
     const cut = (this.wakeCut = { on: false });
     ob?.cinema(true, { skip: () => this.skipWakeCinema() });
     const { tween, sleep, go } = this.cineTools(cut);
-    const lids = (to, secs) => { const from = fx.open; return tween(secs, (k) => { fx.open = from + (to - from) * ease(k); }); };
+    // (the eyes: fade up from / down to black; and the blur, the double image and the dim easing off)
+    const eyes = (to, secs) => { const from = fx.open; return tween(secs, (k) => { fx.open = from + (to - from) * ease(k); }); };
     const blurTo = (to, secs) => { const from = fx.blur; return tween(secs, (k) => { fx.blur = from + (to - from) * ease(k); }); };
-    const glowTo = (to, secs) => { const from = fx.glow; return tween(secs, (k) => { fx.glow = from + (to - from) * ease(k); }); };
+    const ghostTo = (to, secs) => { const from = fx.ghost; return tween(secs, (k) => { fx.ghost = from + (to - from) * ease(k); }); };
+    const dimTo = (to, secs) => { const from = fx.dim; return tween(secs, (k) => { fx.dim = from + (to - from) * ease(k); }); };
     const clear = (to, secs) => { const from = this.muffK ?? 0; return tween(secs, (k) => { this.muffK = from + (to - from) * ease(k); muff.set(this.muffK); }); };
     const look = (dyaw, dpitch, secs) => { const y0 = sway.yaw, p0 = sway.pitch; return tween(secs, (k) => { sway.yaw = y0 + (dyaw - y0) * ease(k); sway.pitch = p0 + (dpitch - p0) * ease(k); }); };
     const line = (html, mood, gesture) => go(this.starLine(html, { mood, wait: true, camera: 'face', gesture }));
@@ -319,47 +296,51 @@ export class HomeWake {
     muff.set(0);
     try {
       // ---- dark; through it, muffled, a hammer on an anvil, steady. A breath.
-      glowTo(0.55, 2);
-      await go(sleep(1.9));
-      breath(a, 0.04);
-      clear(0.18, 1.6);
-      // ---- the lids crack on blurred rock overhead, a speck of grey daylight far up the hole... and sink shut
-      await go(lids(0.14, 0.9));
-      await go(sleep(0.8));
-      await go(lids(0.02, 0.6));
-      await go(sleep(0.7));
-      // ---- the head rolls on the straw toward the sound: the forge's glow, sparks jumping off each blow
-      clear(0.5, 2);
-      blurTo(5, 1.8);
-      look(dYaw * 0.82, dPitch * 0.78, 2.4);
-      a.play('step', { mat: 'sand', vol: 0.12 });
-      await go(lids(0.4, 1.0));
       await go(sleep(1.3));
-      await go(lids(0.16, 0.4));
-      await go(lids(0.42, 0.45));
-      await go(sleep(0.5));
+      breath(a, 0.04);
+      clear(0.18, 1.4);
+      // ---- the world swims up out of the black: dim, blurred and doubled, rock overhead and a speck
+      // of grey daylight far up the hole... and fades away again (a slow blink)
+      ghostTo(13, 1.8);
+      await go(eyes(0.74, 1.0));
+      await go(sleep(0.7));
+      await go(eyes(0, 0.7));
+      await go(sleep(0.35));
+      // ---- the head rolls on the straw toward the sound: the forge's glow, sparks jumping off each blow
+      clear(0.5, 1.8);
+      blurTo(5, 1.6);
+      ghostTo(7, 1.8);
+      dimTo(0.78, 1.6);
+      look(dYaw * 0.82, dPitch * 0.78, 2.2);
+      a.play('step', { mat: 'sand', vol: 0.12 });
+      await go(eyes(0.78, 0.95));
+      await go(sleep(0.9));
+      // a second slow blink, and the two images start to slide together
+      await go(eyes(0.08, 0.45));
+      await go(sleep(0.12));
+      await go(eyes(0.85, 0.5));
+      await go(sleep(0.25));
       // ---- it clears: from down on the floor, Old Star at his anvil, hammering. The sound comes back.
-      clear(1, 2.4);
-      blurTo(0, 2.2);
-      glowTo(0, 1);
-      tween(2.4, (k) => { this.post.vignette = 0.95 + (post0 - 0.95) * ease(k); });
-      look(dYaw, dPitch, 2.0);
-      fovTo(fov0 * (cam.aspect < 1 ? 0.9 : 0.72), 3.2); // (the eyes settle on him: a slow push in; less on a phone held upright)
-      await go(lids(0.75, 0.9));
-      await go(lids(0.6, 0.18)); // a flutter
-      await go(lids(1, 0.5));
-      tween(1.6, (k) => { sway.amp = 1 - ease(k) * 0.65; });
-      await go(sleep(2.0));
+      clear(1, 2.1);
+      blurTo(0, 1.9);
+      ghostTo(0, 1.6);
+      dimTo(1, 1.8);
+      tween(2.1, (k) => { this.post.vignette = 0.95 + (post0 - 0.95) * ease(k); });
+      look(dYaw, dPitch, 1.8);
+      fovTo(fov0 * (cam.aspect < 1 ? 0.9 : 0.72), 2.8); // (the eyes settle on him: a slow push in; less on a phone held upright)
+      await go(eyes(1, 0.8));
+      tween(1.4, (k) => { sway.amp = 1 - ease(k) * 0.65; });
+      await go(sleep(1.5));
       // ---- you stir, the straw rustles; the hammer stops mid-swing. His nose goes.
       a.play('step', { mat: 'sand', vol: 0.35 });
       if (star?.rig) {
         const r = star;
         r.pauseT = 99;
-        await go(sleep(0.55));
+        await go(sleep(0.45));
         r.sniff();
         this.sniffSound();
         r.faceTo(c.x, c.z);
-        await go(sleep(0.6));
+        await go(sleep(0.5));
         // he lays the hammer down on the anvil, and comes over
         r.setHammerDown();
         a.play('clunk', { vol: 0.35 });
@@ -377,11 +358,11 @@ export class HomeWake {
         r.faceTo(c.x, c.z, true);
         // down on his hunkers beside you, a paw on your shoulder: a shake
         r.setPose('crouch');
-        await go(sleep(0.5));
+        await go(sleep(0.4));
         r.nudge(0.9);
         sway.amp = 0.5;
-        tween(0.9, (k) => { c.roll = base.roll * 0.35 + Math.sin(k * Math.PI * 6) * 0.03 * (1 - k); });
-        await go(sleep(0.9));
+        tween(0.8, (k) => { c.roll = base.roll * 0.35 + Math.sin(k * Math.PI * 6) * 0.03 * (1 - k); });
+        await go(sleep(0.8));
       } else await go(sleep(0.6));
       await line('Oi. Oi! There you are. Easy now: the cave likes to spin the first time.', 'happy');
       await line('You came down through my roof last night, and half of it came with you.', 'laugh');
@@ -461,7 +442,7 @@ export class HomeWake {
   async wakeCutToEnd() {
     const fx = this.wakeFx, c = this.cam, star = this.star;
     await this.tween(0.22, (k) => { this.post.fade = Math.max(this.post.fade || 0, k); });
-    if (fx) { fx.open = 1; fx.blur = 0; fx.glow = 0; }
+    fx?.clear();
     this.wakeMuff?.dispose();
     this.wakeSway = null;
     if (this.wakeVignette !== undefined) this.post.vignette = this.wakeVignette;
@@ -497,7 +478,7 @@ export class HomeWake {
     if (this.scripted) this.endScript();
     this.unstick();
     this.waking = false;
-    if (this.wakeFx) { this.wakeFx.open = 1; this.wakeFx.blur = 0; }
+    this.wakeFx?.clear();
     this.wakeMuff?.dispose();
     if (this.wakeVignette !== undefined) this.post.vignette = this.wakeVignette;
     this.post.fade = 0;
@@ -539,7 +520,7 @@ export class HomeWake {
     st.emit('act', { type: 'lesson', step: 'wake' });
     if (this.lessonStage() === 'wake') { this.setLesson('pick'); this.takeStartPick?.(); }
     if (this.wakeCut) { this.wakeCut.on = true; this.wakeCut.fire?.(); }
-    if (this.wakeFx) { this.wakeFx.open = 1; this.wakeFx.blur = 0; }
+    this.wakeFx?.clear();
     this.wakeMuff?.dispose();
     if (this.wakeVignette !== undefined) this.post.vignette = this.wakeVignette;
     if (this.fov0) { this.camera.fov = this.fov0; this.camera.updateProjectionMatrix(); }

@@ -19,7 +19,7 @@
 .qt-roll.opening { transition: transform .32s var(--pop); }
 .qt-roll.shake { animation: qtShake .38s ease-out; }
 @keyframes qtShake { 15% { transform: translate(calc(var(--px) * 1), calc(var(--px) * 1)) rotate(.8deg); } 40% { transform: translate(calc(var(--px) * -1), 0) rotate(-.6deg); } 70% { transform: translateY(calc(var(--px) * .5)); } }
-.qt-paper { position: relative; margin: calc(var(--px) * -4) 0; padding: 0 calc(var(--px) * 2) 0 calc(var(--px) * 1); }
+.qt-paper { position: relative; margin: calc(var(--px) * -4) 0; padding: 0 calc(var(--px) * 9) 0 calc(var(--px) * 1); } /* (wave 12) room for the seal now the step count is gone */
 .qt-head {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: calc(var(--px) * 2); max-height: 4em; overflow: hidden; white-space: nowrap;
   font-size: var(--fs); line-height: 1.1; transition: max-height .35s var(--soft), opacity .3s, margin .35s;
@@ -31,7 +31,7 @@
 }
 .qt-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #8a3a1a; letter-spacing: .02em; }
 .qt.main .qt-title::before { content: '★ '; color: #c2862a; }
-.qt-of { color: #9a7a52; font-size: .85em; }
+.qt-of { color: #9a7a52; font-size: max(var(--g), round(.85em + 2px, var(--g))); }
 /* the step: tick box | text (wraps, never under the box) | count */
 .qt-line { position: relative; display: grid; grid-template-columns: calc(var(--px) * 11) minmax(0, 1fr) auto; align-items: start; column-gap: calc(var(--px) * 2); font-size: var(--fs); line-height: 1.2; color: #3a2010; white-space: normal; overflow-wrap: anywhere; }
 .qt-box { width: calc(var(--px) * 11); height: calc(var(--px) * 10); margin-top: calc(var(--px) * -0.5); }
@@ -144,7 +144,7 @@
 .qm-eye-t { font-size: var(--fs); color: #fff3d8; text-shadow: 0 var(--px) 0 #000; white-space: nowrap; }
 
 /* ---------- the talk board's quest bits (src/ui/questTalk.js) ---------- */
-.qtk-reward { display: block; margin-top: calc(var(--px) * 2); padding-top: var(--px); border-top: var(--px) dashed rgba(110, 74, 42, .35); font-size: .92em; }
+.qtk-reward { display: block; margin-top: calc(var(--px) * 2); padding-top: var(--px); border-top: var(--px) dashed rgba(110, 74, 42, .35); font-size: max(var(--g), round(.92em + 2px, var(--g))); }
 .qtk-next { display: inline-block; margin-top: var(--px); color: #6a4a2a; }
 
 /* ---------- the notice board (Deep Town plaza) ---------- */
@@ -167,7 +167,7 @@
 .nb-note b { font-family: var(--font-head); font-weight: 400; letter-spacing: .08em; color: #8a3a1a; }
 .nb-note.taken b { color: #3d6a2a; }
 .nb-note.misc b { color: #5a4a3a; }
-.nb-note small { color: var(--ink-soft); font-size: .85em; }
+.nb-note small { color: var(--ink-soft); font-size: max(var(--g), round(.85em + 2px, var(--g))); }
 .nb-tack { position: absolute; left: 50%; top: calc(var(--px) * -1); width: calc(var(--px) * 4); height: calc(var(--px) * 4); margin-left: calc(var(--px) * -2); border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ff9a8a 0 25%, #c8382a 26% 100%); box-shadow: 0 var(--px) 0 rgba(40, 10, 10, .55); }
 .nb-note.taken .nb-tack { background: radial-gradient(circle at 35% 30%, #c8f0a0 0 25%, #4a8a3a 26% 100%); }
 .nb-note.misc .nb-tack { background: radial-gradient(circle at 35% 30%, #f6e09a 0 25%, #b8923e 26% 100%); }

@@ -1,6 +1,9 @@
 import './ui/styles.css';
+import { setupFontGrid } from './ui/fontGrid.js';
 import { Game } from './core/Game.js';
 import { setupTouch } from './ui/TouchControls.js';
+
+setupFontGrid();
 
 function boot(hotData) {
   const root = document.getElementById('app');

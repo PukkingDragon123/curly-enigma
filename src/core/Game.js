@@ -276,7 +276,7 @@ export class Game {
 
   /** Small loading overlay for slow scene builds. */
   showLoading(text = 'Digging...') {
-    const n = el('div', { class: 'center-msg' }, [el('div', { class: 'big-title', style: { fontSize: 'calc(var(--px) * 14)' } }, text)]);
+    const n = el('div', { class: 'center-msg' }, [el('div', { class: 'big-title', style: { fontSize: 'max(var(--g), round(calc(var(--px) * 14) + 2px, var(--g)))' } }, text)]);
     this.ui.overlay.append(n);
     return () => n.remove();
   }

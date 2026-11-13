@@ -14,6 +14,11 @@ export const VS = 1 / 24; // meters per creature voxel as modelled (terrain voxe
  * one and none of them look blockier than a kobold.
  */
 export const FINE = 1 / 40;
+/**
+ * The skin style models are being built under (Enemies.geo sets it by model key): when set, every
+ * geometry VB.geo makes carries its source voxels (userData.hiSrc) for the hi-res near copy.
+ */
+export const HI = { style: null };
 
 const key = (x, y, z) => (x + 128) | ((y + 128) << 8) | ((z + 128) << 16);
 
@@ -140,6 +145,13 @@ export class VB {
    * voxels) that becomes the mesh origin. Returns the geometry with userData { vox, pivot, vs } for debris.
    */
   geo(px = 0, py = 0, pz = 0, vs = VS) {
+    const g = this.geoLo(px, py, pz, vs);
+    // the near copy (./hires.js): the voxels as modelled, for a worker to build much finer with
+    // surface detail (scales, cracked stone, fur, chitin); only models built under a skin style
+    if (HI.style && this.v.size) g.userData.hiSrc = { list: this.list(), pivot: [px, py, pz], vs, style: HI.style, seed: this.seed };
+    return g;
+  }
+  geoLo(px = 0, py = 0, pz = 0, vs = VS) {
     // refined to the shared voxel size (FINE): k × finer, the pivot and voxel size with it
     let k = Math.max(1, Math.round(vs / FINE));
     if (k > 1 && this.v.size) {
@@ -152,7 +164,7 @@ export class VB {
     if (k > 1) {
       // (the coarse voxels stay on it too: code that picks voxels by model coordinates uses them)
       const cl = this.list();
-      const g = refine(this, k).geo(px * k, py * k, pz * k, vs / k);
+      const g = refine(this, k).geoLo(px * k, py * k, pz * k, vs / k);
       g.userData.cvox = cl; g.userData.cpivot = [px, py, pz]; g.userData.ck = k;
       return g;
     }
@@ -252,6 +264,15 @@ function meshFast(L, x0, y0, z0, W, H, D, s, px, py, pz) {
   const SY = W + 2, SZ = SY * (H + 2);
   const g = new Uint32Array(SZ * (D + 2));
   for (const v of L) g[(v.x - x0 + 1) + SY * (v.y - y0 + 1) + SZ * (v.z - z0 + 1)] = ((v.c & 0xffffff) | 0x1000000) >>> 0;
+  return meshGrid(g, W, H, D, s, px, py, pz);
+}
+/**
+ * Greedy-mesh a dense grid: g is (W+2)×(H+2)×(D+2) (an empty one-cell border round W×H×D), x
+ * fastest, cells sRGB colour | 0x1000000 (0 = empty). (px, py, pz): the pivot in cells from the
+ * first inner cell; s: metres per cell. (The hi-res worker meshes its own grids with this.)
+ */
+export function meshGrid(g, W, H, D, s, px, py, pz) {
+  const SY = W + 2, SZ = SY * (H + 2);
   const dims = [W, H, D], str = [1, SY, SZ];
   let vc = 0, ic = 0, lastHex = -1, cr = 0, cg = 0, cb = 0;
   const grow = () => {

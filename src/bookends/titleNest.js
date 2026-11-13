@@ -361,11 +361,11 @@ function babyRig(v, mat, eyeMat) {
 const CSS = /* css */`
 .nt-view { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .4s; }
 .nt-view.on { opacity: 1; }
-.nt-head { position: absolute; left: 0; right: 0; top: calc(var(--px) * 8 + env(safe-area-inset-top, 0px)); font-family: var(--font-display); font-size: calc(var(--px) * 16); color: #ffe8c8;
+.nt-head { position: absolute; left: 0; right: 0; top: calc(var(--px) * 8 + env(safe-area-inset-top, 0px)); font-family: var(--font-display); font-size: max(var(--gj), round(calc(var(--px) * 16), var(--gj))); color: #ffe8c8;
   letter-spacing: .02em; text-align: center; line-height: 1; transform: translateY(calc(var(--px) * -6)); transition: transform .45s cubic-bezier(.2,1.3,.4,1); }
 .nt-view.on .nt-head { transform: none; transition-delay: .15s; }
 @media (max-aspect-ratio: 5/4) { .nt-head { top: calc(var(--px) * 40 + env(safe-area-inset-top, 0px)); } }
-.nt-head small { display: block; font-family: var(--font); font-size: calc(var(--px) * 5.4); color: #e8d0a8; opacity: .9; margin-top: calc(var(--px) * 1.5); letter-spacing: .04em; }
+.nt-head small { display: block; font-family: var(--font); font-size: max(var(--g), round(calc(var(--px) * 5.4) + 2px, var(--g))); color: #e8d0a8; opacity: .9; margin-top: calc(var(--px) * 1.5); letter-spacing: .04em; }
 .nt-row { position: absolute; inset: 0; }
 .nt-slot { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 #ui .nt-main:focus-visible, #ui .nt-del:focus-visible { outline: none; }
@@ -379,13 +379,13 @@ const CSS = /* css */`
 .nt-plaque { position: absolute; left: 0; top: 0; transform: translateX(-50%); min-width: calc(var(--px) * 52); text-align: center; color: #fbeedc; line-height: 1.15; pointer-events: none;
   padding: calc(var(--px) * 3.5) calc(var(--px) * 5) calc(var(--px) * 4); white-space: nowrap; }
 .nt-tag { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; z-index: -1; }
-.nt-plaque b { display: block; font-family: var(--font-display); font-weight: 400; font-size: calc(var(--px) * 12); line-height: .95; }
-.nt-plaque .nt-name { display: block; font-size: calc(var(--px) * 5.4); letter-spacing: .08em; text-transform: uppercase; opacity: .9; }
-.nt-plaque .nt-meta { display: block; font-size: calc(var(--px) * 5.4); opacity: .92; }
-.nt-plaque .nt-new { display: block; font-size: calc(var(--px) * 5.4); opacity: .88; font-style: italic; }
-.nt-plaque .nt-hatch { display: block; font-size: calc(var(--px) * 5.4); color: #ffe080; }
+.nt-plaque b { display: block; font-family: var(--font-display); font-weight: 400; font-size: max(var(--gj), round(calc(var(--px) * 12), var(--gj))); line-height: .95; }
+.nt-plaque .nt-name { display: block; font-size: max(var(--g), round(calc(var(--px) * 5.4) + 2px, var(--g))); letter-spacing: .08em; text-transform: uppercase; opacity: .9; }
+.nt-plaque .nt-meta { display: block; font-size: max(var(--g), round(calc(var(--px) * 5.4) + 2px, var(--g))); opacity: .92; }
+.nt-plaque .nt-new { display: block; font-size: max(var(--g), round(calc(var(--px) * 5.4) + 2px, var(--g))); opacity: .88; font-style: italic; }
+.nt-plaque .nt-hatch { display: block; font-size: max(var(--g), round(calc(var(--px) * 5.4) + 2px, var(--g))); color: #ffe080; }
 .nt-slot.used .nt-plaque b { color: var(--gc); }
-.nt-last { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); font-size: calc(var(--px) * 5.4); color: #ffd890; white-space: nowrap; pointer-events: none; animation: ntBob 1.6s ease-in-out infinite; }
+.nt-last { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); font-size: max(var(--g), round(calc(var(--px) * 5.4) + 2px, var(--g))); color: #ffd890; white-space: nowrap; pointer-events: none; animation: ntBob 1.6s ease-in-out infinite; }
 @keyframes ntBob { 50% { margin-top: calc(var(--px) * -1.5); } }
 #ui .nt-del, .nt-del { position: absolute; left: 0; top: 0; width: calc(var(--px) * 14); height: calc(var(--px) * 14); min-width: 30px; min-height: 30px; transform: translate(-50%, -50%);
   padding: 0; margin: 0; border: 0; background: transparent; cursor: pointer; pointer-events: auto; opacity: 0; transition: opacity .15s; outline: none; }
@@ -397,15 +397,15 @@ const CSS = /* css */`
 .nt-slot.busy .nt-del, .nt-slot.busy .nt-main { pointer-events: none; }
 #ui .nt-view:not(.on) .nt-main, #ui .nt-view:not(.on) .nt-del { pointer-events: none; }
 @media (max-height: 520px) and (min-aspect-ratio: 5/4) {
-  .nt-head { top: calc(var(--px) * 4 + env(safe-area-inset-top, 0px)); font-size: calc(var(--px) * 12); }
+  .nt-head { top: calc(var(--px) * 4 + env(safe-area-inset-top, 0px)); font-size: max(var(--g), round(calc(var(--px) * 12) + 2px, var(--g))); }
   .nt-plaque { min-width: 0; padding: calc(var(--px) * 2.5) calc(var(--px) * 3.5) calc(var(--px) * 3); }
-  .nt-plaque b { font-size: calc(var(--px) * 9); }
-  .nt-plaque .nt-name, .nt-plaque .nt-meta, .nt-plaque .nt-new, .nt-plaque .nt-hatch { font-size: calc(var(--px) * 4.4); letter-spacing: .02em; }
+  .nt-plaque b { font-size: max(var(--g), round(calc(var(--px) * 9) + 2px, var(--g))); }
+  .nt-plaque .nt-name, .nt-plaque .nt-meta, .nt-plaque .nt-new, .nt-plaque .nt-hatch { font-size: max(var(--g), round(calc(var(--px) * 4.4) + 2px, var(--g))); letter-spacing: .02em; }
 }
 @media (max-aspect-ratio: 5/4) {
   .nt-plaque { min-width: 0; padding: calc(var(--px) * 3) calc(var(--px) * 3.5) calc(var(--px) * 3.5); }
-  .nt-plaque b { font-size: calc(var(--px) * 10); }
-  .nt-plaque .nt-name, .nt-plaque .nt-meta, .nt-plaque .nt-new, .nt-plaque .nt-hatch { font-size: calc(var(--px) * 4.6); letter-spacing: .02em; }
+  .nt-plaque b { font-size: max(var(--g), round(calc(var(--px) * 10) + 2px, var(--g))); }
+  .nt-plaque .nt-name, .nt-plaque .nt-meta, .nt-plaque .nt-new, .nt-plaque .nt-hatch { font-size: max(var(--g), round(calc(var(--px) * 4.6) + 2px, var(--g))); letter-spacing: .02em; }
 }
 `;
 

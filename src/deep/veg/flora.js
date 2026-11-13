@@ -211,7 +211,9 @@ export function layPlant(w, P, out) {
   const pf = list[Math.floor(r() * list.length)];
   // far chunks (w.lod) take the half-resolution copy: the same plant, the same size, coarser voxels
   const far = !!(w.lod && pf.lod);
-  const pr = far ? pf.lod : pf;
+  // near: wave 12's twice-as-fine copy once its worker has built it (out.pend: still coarse)
+  const pr = far ? pf.lod : pf.fine || pf;
+  out.pend = !far && !!pf.wantFine && !pf.fine;
   const sc = K.sc ? lerp(K.sc[0], K.sc[1], r()) : 1;
   const base = K.div || 56;
   // the voxel follows the plant's size: fine plants stay within 1/48–1/64 m
@@ -222,14 +224,16 @@ export function layPlant(w, P, out) {
   const wall = K.lay === 'fan' || K.lay === 'tuft' || K.lay === 'decal';
   const yaw = wall ? Math.atan2(P.nx || 0, P.nz || 1) : P.yaw;
   let cut = -1e9, H = pr.H;
+  // (a model's copies differ in resolution: rk = voxels per modelled voxel; the far copy is half
+  // as fine, wave 12's near copy twice)
+  const rk = far ? 0.5 : pr.res || 1;
   if (pr.mode === 'down') {
     // hanging: the voxel picked so the model fits the room under it (cut short where it can't)
     const L = Math.min(P.room ?? 9, lerp(K.len[0], K.len[1], r()));
-    div = clamp(Math.round(pf.H / L), 48, 64);
-    if (far) div = Math.round(div / 2);
+    div = Math.round(clamp(Math.round(pf.H / L), 48, 64) * rk);
     cut = -Math.round(L * div);
     H = Math.min(pr.H, -cut);
-  } else if (far) div = Math.round(div / 2);
+  } else div = Math.round(div * rk);
   let y = P.y;
   if (K.lay === 'flat') y += 0.002;
   w.begin(P.x + (P.nx || 0) * (K.lay === 'decal' ? 0.002 : 0), y, P.z + (P.nz || 0) * (K.lay === 'decal' ? 0.002 : 0), yaw, rank, r(), P.gust ?? 0, K.sway || 0, K.push ?? 1, div, !!K.hang,

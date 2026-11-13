@@ -113,7 +113,7 @@
 .ib-sketch img { width: calc(var(--icon) * 2); height: calc(var(--icon) * 2); }
 .ib-sketch.smudged { background: var(--a-smudge) center / calc(var(--px) * 48) calc(var(--px) * 48) no-repeat; }
 .ib-sketch.smudged img { filter: brightness(0) opacity(.22); }
-.ib-sketch .unk { position: absolute; font-family: var(--font-script); font-size: calc(var(--fs-s) * 2); color: rgba(90, 58, 32, .55); }
+.ib-sketch .unk { position: absolute; font-family: var(--font-script); font-size: max(var(--gj), round(calc(var(--fs-s) * 2), var(--gj))); color: rgba(90, 58, 32, .55); }
 .ib-sketch .tape { position: absolute; width: calc(var(--px) * 14); height: calc(var(--px) * 5); background: rgba(236, 222, 160, .75); box-shadow: 0 0 0 var(--px) rgba(160, 140, 90, .35); }
 .ib-sketch .tape.a { left: calc(var(--px) * -7); top: calc(var(--px) * -2); transform: rotate(-35deg); }
 .ib-sketch .tape.b { right: calc(var(--px) * -7); bottom: calc(var(--px) * -1); transform: rotate(-35deg); }

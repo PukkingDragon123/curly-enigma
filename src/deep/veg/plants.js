@@ -12,6 +12,7 @@
 // darker at the root, paler at the tips, spots, rims, glowing bits (glow 1..3).
 import { VG, tone, dir8, DIR8, boxify, down2 } from './vox.js';
 import { rng, ph } from './paint.js';
+import { RES12 } from '../../gfx/voxRes.js';
 
 // ---------------------------------------------------------------- ramps (dark → light)
 export const RAMP = {
@@ -742,19 +743,32 @@ const PROTOS = new Map(); // name → { list, want }
 export const protoStats = { built: 0, ms: 0, boxes: 0 };
 function buildOne(name, i) {
   const t0 = performance.now();
-  let hsh = 9001 + i * 7919;
-  for (let k = 0; k < name.length; k++) hsh = Math.imul(hsh ^ name.charCodeAt(k), 16777619);
-  const m = MODELS[name](rng(hsh));
+  const m = modelOf(name, i);
   const p = boxify(m.g, m.pivot, m.mode);
   p.name = name;
   // the far copy: the same plant at half the resolution (Vegetation uses it past ~10 m)
   p.lod = boxify(down2(m.g), m.pivot.map((q) => Math.round(q / 2)), m.mode);
+  // wave 12: near, the plant twice as fine (./fine.js: leaf rims, teeth, veins, gills), built in a
+  // worker (./fineWorker.js) and swapped in when it arrives (p.fine; flora.js layPlant), when it
+  // still fits the boxes' byte offsets (tall vines and roots stay as modelled)
+  const ext = Math.max(m.pivot[0], m.g.w - m.pivot[0], m.pivot[1], m.g.h - m.pivot[1], m.pivot[2], m.g.d - m.pivot[2]);
+  if (RES12 && fineAsk && ext * 2 <= 126) { p.wantFine = true; fineAsk(p, name, i); }
   protoStats.built++;
   protoStats.boxes += p.n;
   protoStats.lodBoxes = (protoStats.lodBoxes || 0) + p.lod.n;
   protoStats.ms += performance.now() - t0;
   return p;
 }
+/** The model a variant is built from (the same in the fine worker): { g, pivot, mode }. */
+export function modelOf(name, i) {
+  let hsh = 9001 + i * 7919;
+  for (let k = 0; k < name.length; k++) hsh = Math.imul(hsh ^ name.charCodeAt(k), 16777619);
+  return MODELS[name](rng(hsh));
+}
+// ---- the fine copies (wave 12): Vegetation hands in the asker (./fineAsk.js, a worker), so the
+// worker itself, which builds from this module, never starts one
+let fineAsk = null;
+export function setFineAsk(fn) { fineAsk = fn; }
 /**
  * The variants of a model: [proto, …] (null when there's no such model). The first is built on
  * first use; the rest come one at a time from growProtos() (spare time in a frame), so meeting a

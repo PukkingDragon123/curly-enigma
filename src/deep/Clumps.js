@@ -588,16 +588,23 @@ export class Clumps {
     this.updateCard(c, true);
     const st = this.st;
     if (st && !st.flag?.('clumpHint')) {
+      // (wave 12: shown, not told: a few words float over it; the tag beside it has the controls, and
+      // the mining lesson lights the chisel and glints the rock to chip: src/deep/FirstDig.js)
       st.flag?.('clumpHint', true);
-      const touch = this.isTouch();
-      this.say('hint', touch
-        ? `<b>${c.it.name}</b> clump! Drag it to turn it, chip with the dig button (pick = big bites, chisel = rock, brush = dirt). Clean it for full value, then <b>Bag it</b>.`
-        : `<b>${c.it.name}</b> clump! Right-drag to turn it, click to chip (pick = big bites, chisel = rock, brush = dirt). Clean it for full value, <b>E</b> bags it, <b>G</b> drops it.`, 'good', 999);
+      this.word('Chip the rock off', 0.13, 'reveal', 2.6);
     }
     this.save(c);
   }
 
   isTouch() { return document.documentElement.classList.contains('is-touch'); }
+
+  /** A few floating words just over the clump in paw (in front of the camera, up `up` m). */
+  word(text, up = 0.12, kind = 'reveal', life = 2) {
+    const cam = this.owner?.camera;
+    if (!cam || !this.ui?.floatText) return;
+    cam.updateMatrixWorld();
+    this.ui.floatText(text, cam.localToWorld(new THREE.Vector3(INSPECT.x * 0.5, up, -0.6)), { kind, life, size: 0.8 });
+  }
   rotating() {
     const inp = this.owner?.game?.input;
     return !!(inp && inp.mouseDown(2) && !this.isTouch());
@@ -812,7 +819,7 @@ export class Clumps {
     } else if (tool === 'brush') {
       res = g.sweep(px + hit.nx * 0.5, py + hit.ny * 0.5, pz + hit.nz * 0.5, 5 + Math.round(power * 3), 3.4);
       if (Math.random() < 0.45) this.audio?.play('brush', { vol: 0.5 });
-      if (!res.removed.length && hit.k === ROCK) this.say('brushrock', 'The brush only sweeps loose dirt. Chip the rock with the <b>chisel</b>.', 'warn', 10);
+      if (!res.removed.length && hit.k === ROCK && this.time - (this.brushT ?? -99) > 10) { this.brushT = this.time; this.word('Rock? Use the chisel', 0.1, 'meh', 1.8); }
       this.owner.energy?.(0.02);
     } else if (tool === 'drill') {
       res = g.bore(px + hit.d.x * 0.8, py + hit.d.y * 0.8, pz + hit.d.z * 0.8, 2.1 + (power - 3) * 0.1);
@@ -835,7 +842,7 @@ export class Clumps {
       this.audio?.play('ore_damage');
       this.fx?.sparks(hp.x, hp.y, hp.z, 6, c.oreMain, [out.x, out.y, out.z], 1.4);
       if (loss >= 0.5) this.ui.floatText?.(`-${Math.max(1, Math.round(loss))}%`, hp.clone(), { color: '#ff8a6a', size: 0.8, kind: 'ore' });
-      if (!this.flags.oreHit) { this.flags.oreHit = true; this.say('orehit', 'The pick scratches the ore! Use the <b>chisel</b> close to it.', 'warn', 30); }
+      if (!this.flags.oreHit) { this.flags.oreHit = true; this.word('Chisel near the ore', 0.14, 'bad', 2.2); }
     } else if (res.tink) {
       this.fx?.twinkle?.(hp.x + out.x * 0.01, hp.y + out.y * 0.01, hp.z + out.z * 0.01, c.oreCol, 0.012);
     }
@@ -855,7 +862,7 @@ export class Clumps {
       this.audio?.play('sparkle');
       if (v.p) this.audio?.play('pristine');
       for (let k = 0; k < 10; k++) { const p = this.cellWorld(c, c.g.ore[(Math.random() * c.g.ore.length) | 0], new THREE.Vector3()); this.fx?.twinkle?.(p.x, p.y, p.z, c.oreCol, 0.014); }
-      this.say('clean', v.p ? `Spotless and unscratched: a <b>pristine</b> ${c.it.name}!` : `Spotless! The ${c.it.name} is worth its full value now.`, 'good', 4);
+      this.word(v.p ? 'Pristine!' : 'Spotless!', 0.12, v.p ? 'perfect' : 'great', 1.6);
     }
   }
 

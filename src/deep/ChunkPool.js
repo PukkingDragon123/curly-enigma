@@ -1,6 +1,7 @@
 // A few workers that generate and mesh chunks off the main thread (src/deep/genWorker.js). If the
 // page can't start workers (or one fails), `ok` goes false and the world falls back to doing the
 // same work on the main thread within the frame budget.
+import { RES12 } from '../gfx/voxRes.js';
 import GenWorker from './genWorker.js?worker&inline';
 
 export class ChunkPool {
@@ -20,7 +21,7 @@ export class ChunkPool {
         const w = new GenWorker();
         w.onmessage = (e) => this.onMsg(i, e.data);
         w.onerror = (e) => this.fail(e);
-        w.postMessage({ t: 'init', ...init, sendPlan: i === 0 });
+        w.postMessage({ t: 'init', ...init, sendPlan: i === 0, res12: RES12 });
         this.workers.push(w);
         this.busy.push(0);
       }

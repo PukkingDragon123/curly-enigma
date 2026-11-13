@@ -109,7 +109,7 @@ export function openShop(game, shopId) {
     renderCounter();
     const hidden = Array.isArray(shop.stock) ? shop.stock.filter((s) => s.minZone && s.minZone > st.data.zoneMax).length : 0;
     backNote.hidden = !hidden;
-    if (hidden) backNote.textContent = `${hidden} more in the back. Dig deeper and come back!`;
+    if (hidden) { backNote.textContent = `+${hidden} deeper down`; backNote.title = `${hidden} more in the back. Dig deeper and come back!`; }
   };
 
   const isUnique = (it) => ['tool', 'equip', 'blueprint', 'floor', 'wallpaper', 'key'].includes(it.cat);

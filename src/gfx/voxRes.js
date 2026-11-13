@@ -18,6 +18,15 @@
 /** ?voxrule=0 turns the rule off (A/B screenshots): everything is built at the voxel it was drawn at. */
 export const VOX_RULE_ON = !(typeof location !== 'undefined' && /[?&]voxrule=0/.test(location.search || ''));
 
+/**
+ * ?res12=0 turns off the wave-12 "super high resolution" pass (A/B shots): creatures' hi-res near
+ * copies (deep/enemies/hires.js), the finer plants (deep/veg/plants.js), the finer crystals and the
+ * ore nodes in the walls.
+ */
+export let RES12 = !(typeof location !== 'undefined' && /[?&]res12=0/.test(location.search || ''));
+/** (a worker has no page query: the game hands the switch over with its init message) */
+export function setRes12(on) { RES12 = !!on; }
+
 /** Size classes (largest extent in m → voxel edge in m). */
 export const VOX_RULE = [
   { upTo: 0.8, vox: 1 / 64 }, // cups, tools, books, candles, mushrooms, lanterns, plants

@@ -129,15 +129,14 @@ export class UI {
     this.tracker = new Tracker(this); // the objective strip (quests part)
     this.crosshair = new Crosshair(this);
     // (wave 9) a floating prompt, no card: the words arrive whenever it shows (CSS animations restart)
-    const lookB = el('b'), lookS = el('small');
-    this.lookCatch = el('div', { class: 'look-catch', 'aria-label': 'Click to look around' }, [
+    const lookB = el('b');
+    this.lookCatch = el('div', { class: 'look-catch', 'aria-label': 'Click to look around', title: 'Esc frees the mouse' }, [
       el('div', { class: 'look-card' }, [
         el('img', { class: 'pix', src: DSPR.mouse(), alt: '' }),
-        el('div', {}, [lookB, lookS]),
+        el('div', {}, [lookB]),
       ]),
     ]);
     floatIn(lookB, 'Click to look around', { delay: 0.1, stagger: 0.025, max: 0.5 });
-    floatIn(lookS, '<kbd>Esc</kbd> frees the mouse', { delay: 0.45, stagger: 0.015, max: 0.35 });
     this.lookCatch.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
@@ -282,6 +281,20 @@ export class UI {
     this._hints = html;
     this.hintEl.hidden = false;
     this.hintEl.innerHTML = html;
+    this.wakeHints();
+  }
+
+  /** (wave 12: less text) the key legend shows when it changes, then rests out of sight; F1, ? or
+   *  hovering it brings it back for a while. */
+  wakeHints(ms = 6500) {
+    if (!this._hintKeys) {
+      this._hintKeys = (e) => { if (e.code === 'F1' || e.key === '?') { if (e.code === 'F1') e.preventDefault(); this.wakeHints(); } };
+      window.addEventListener('keydown', this._hintKeys);
+      this.hintEl.addEventListener('pointerenter', () => this.wakeHints());
+    }
+    this.hintEl.classList.remove('rest');
+    clearTimeout(this._hintRest);
+    this._hintRest = setTimeout(() => this.hintEl.classList.add('rest'), ms);
   }
 
   /** Per-frame tick (gold count-up, belt, buff expiry). */

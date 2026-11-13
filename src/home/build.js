@@ -129,11 +129,11 @@ export class FPBuild {
     const touch = isTouch();
     this.tabsEl = el('div', { class: 'tabs', style: { margin: 0 } });
     this.row = el('div', { style: { display: 'flex', gap: 'calc(var(--px) * 2)', overflowX: 'auto', padding: 'calc(var(--px) * 1) 0', minHeight: 'calc(var(--px) * 22)' } });
-    this.info = el('div', { class: 'muted', style: { fontSize: '.78em', minWidth: 0, flex: '1 1 auto' } });
+    this.info = el('div', { class: 'muted', style: { fontSize: 'max(var(--g), round(.78em + 2px, var(--g)))', minWidth: 0, flex: '1 1 auto' } });
     this.actions = el('div', { class: 'row', style: { gap: 'calc(var(--px) * 2)', flexWrap: 'nowrap' } });
     const keys = touch ? '' : '<kbd>Wheel</kbd>pick <kbd>Q</kbd>tab <kbd>R</kbd>turn <kbd>Click</kbd>place <kbd>F</kbd>store <kbd>X</kbd>done';
     const panel = el('div', { class: 'panel', style: { width: touch ? 'min(calc(100vw - var(--px) * 96), calc(var(--px) * 230))' : 'min(calc(100vw - 40px), calc(var(--px) * 250))', padding: 'calc(var(--px) * 2) calc(var(--px) * 4)', animation: 'none', pointerEvents: 'auto' } }, [
-      el('div', { class: 'row', style: { gap: 'calc(var(--px) * 3)', flexWrap: 'wrap' } }, [el('b', { style: { fontFamily: 'var(--font-display)', fontSize: '1.35em', fontWeight: 400, color: 'var(--wood-dk)', lineHeight: 1 } }, 'Decorate'), el('span', { class: 'muted', style: { fontSize: '.68em' }, html: keys }), el('span', { class: 'spacer' }), this.tabsEl]),
+      el('div', { class: 'row', style: { gap: 'calc(var(--px) * 3)', flexWrap: 'wrap' } }, [el('b', { style: { fontFamily: 'var(--font-display)', fontSize: 'max(var(--gj), round(1.35em, var(--gj)))', fontWeight: 400, color: 'var(--wood-dk)', lineHeight: 1 } }, 'Decorate'), el('span', { class: 'muted', style: { fontSize: 'max(var(--g), round(.68em + 2px, var(--g)))' }, html: keys }), el('span', { class: 'spacer' }), this.tabsEl]),
       this.row,
       el('div', { class: 'row', style: { flexWrap: 'nowrap', gap: 'calc(var(--px) * 3)' } }, [this.info, this.actions]),
     ]);
@@ -180,7 +180,7 @@ export class FPBuild {
         el('img', { class: 'pix', src: iconURL(e.id), alt: name, style: { width: 'var(--icon-s, 32px)', height: 'var(--icon-s, 32px)' } }), e.n !== null ? el('span', { class: 'n' }, '×' + e.n) : null,
       ]);
     };
-    if (!list.length) this.row.append(el('div', { class: 'muted', style: { alignSelf: 'center', fontSize: '.8em' } }, this.tab === 'furniture' ? 'Nothing in storage: Burrow & Board in Deep Town sells furniture. Look at a placed piece to move it.' : 'Nothing here yet.'));
+    if (!list.length) this.row.append(el('div', { class: 'muted', style: { alignSelf: 'center', fontSize: 'max(var(--g), round(.8em + 2px, var(--g)))' } }, this.tab === 'furniture' ? 'Nothing in storage: Burrow & Board in Deep Town sells furniture. Look at a placed piece to move it.' : 'Nothing here yet.'));
     void WALLS;
     list.forEach((e, i) => this.row.append(slot(e, i)));
     this.renderInfo();

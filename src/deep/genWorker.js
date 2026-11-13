@@ -4,6 +4,7 @@ import { makePlan, addMouth, ChunkGen, CS } from './Generator.js';
 import { meshSolidRaw, FLUID, PAD } from './Mesher.js';
 // cave prop models (Props.js asks for them here, so building and meshing them never costs a frame)
 import { buildModel, modelBuffers } from './props/models.js';
+import { setRes12 } from '../gfx/voxRes.js';
 import '../cooking/plantModels.js';
 
 /** Does the chunk inside a padded block hold any fluid? (saves the main thread a 32³ scan) */
@@ -21,6 +22,7 @@ let gen = null;
 self.onmessage = (e) => {
   const m = e.data;
   if (m.t === 'init') {
+    setRes12(m.res12 !== false); // (wave 12's finer models follow the page's ?res12)
     const plan = makePlan(m.seed, m.opts);
     for (const t of m.tunnels || []) addMouth(plan, t.wall, t.t);
     gen = new ChunkGen(plan);

@@ -17,7 +17,7 @@
 /* tab badges: a small dot with a number */
 .tr-badge {
   position: static; display: inline-block; vertical-align: 1px; margin-left: 6px; min-width: 15px; height: 15px; padding: 0 4px; box-sizing: border-box; border-radius: 8px;
-  font: 600 10px/15px var(--gl-font); font-style: normal; letter-spacing: 0; text-align: center; color: #17120d; background: var(--gl-good); box-shadow: none; text-shadow: none;
+  font: 600 max(var(--g), round(10px + 2px, var(--g)))/15px var(--gl-font); font-style: normal; letter-spacing: 0; text-align: center; color: #17120d; background: var(--gl-good); box-shadow: none; text-shadow: none;
 }
 /* (something new today: just a small gold dot) */
 .tr-badge.hot { vertical-align: 2px; margin-left: 5px; min-width: 6px; width: 6px; height: 6px; padding: 0; font-size: 0; color: transparent; background: var(--gl-gold); animation: none; }
@@ -33,7 +33,7 @@
 /* Rocco's banner and weapons */
 .tr-banner {
   display: flex; align-items: center; gap: 10px; margin: 0 0 8px; padding: 8px 12px; border-radius: 8px;
-  font-size: 13px; line-height: 1.4; color: var(--gl-mute); background: rgba(255, 255, 255, .04); box-shadow: none;
+  font-size: max(var(--g), round(13px + 2px, var(--g))); line-height: 1.4; color: var(--gl-mute); background: rgba(255, 255, 255, .04); box-shadow: none;
 }
 .tr-banner img { width: 28px; height: 28px; flex: none; }
 .tr-banner b { color: var(--gl-gold); font-weight: 600; }
@@ -43,7 +43,7 @@
 
 /* the haggle: a thin track with a green zone and a swinging needle */
 .tr-haggle { margin: 0; }
-.tr-hrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--gl-faint); margin-top: 8px; }
+.tr-hrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: max(var(--g), round(12px + 2px, var(--g))); color: var(--gl-faint); margin-top: 8px; }
 .tr-dots { display: inline-flex; gap: 4px; margin-right: 10px; }
 .tr-dots i { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, .14); box-shadow: none; }
 .tr-dots.tries i.on { background: var(--gl-gold); }
@@ -75,14 +75,14 @@
 
 /* jobs */
 .tr-jobs { display: flex; flex-direction: column; gap: 4px; }
-.tr-news { font-size: 13px; line-height: 1.45; color: var(--gl-ink); padding: 8px 12px; border-radius: 6px; background: rgba(230, 192, 122, .08); box-shadow: inset 2px 0 0 var(--gl-gold); }
+.tr-news { font-size: max(var(--g), round(13px + 2px, var(--g))); line-height: 1.45; color: var(--gl-ink); padding: 8px 12px; border-radius: 6px; background: rgba(230, 192, 122, .08); box-shadow: inset 2px 0 0 var(--gl-gold); }
 .tr-news b { color: var(--gl-gold); font-weight: 600; }
 .tr-job { padding: 10px 0; border-bottom: 1px solid var(--gl-line); }
 .tr-job:last-child { border-bottom: 0; }
-.tr-job > b { display: block; font: 600 15px/1.3 var(--gl-font); color: var(--gl-ink); }
-.tr-job p { margin: 3px 0 0; font-size: 13px; line-height: 1.45; color: var(--gl-mute); }
+.tr-job > b { display: block; font: 600 max(var(--g), round(15px + 2px, var(--g)))/1.3 var(--gl-font); color: var(--gl-ink); }
+.tr-job p { margin: 3px 0 0; font-size: max(var(--g), round(13px + 2px, var(--g))); line-height: 1.45; color: var(--gl-mute); }
 .tr-need { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
-.tr-need-it { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--gl-bad); }
+.tr-need-it { display: inline-flex; align-items: center; gap: 4px; font-size: max(var(--g), round(13px + 2px, var(--g))); color: var(--gl-bad); }
 .tr-need-it.ok { color: var(--gl-good); }
 .tr-need-it img { width: 28px; height: 28px; }
 .tr-prog { margin-top: 8px; }
@@ -99,3 +99,5 @@
   .tr-meter { margin-top: 8px; }
   .tr-hrow { margin-top: 4px; }
 }
+/* (wave 12: less text) the HUD's gold pouch already shows the purse; no second number on the sign */
+.shop-burrow .sh-purse { display: none; }

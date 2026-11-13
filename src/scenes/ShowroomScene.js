@@ -161,7 +161,7 @@ export default class ShowroomScene extends Scene {
         const c = renderPortrait(this.game.engine.renderer, { seed: 9, eyes: 'bead', dirt: 0.2, blush: true, ...k, hat: k.hat || 'none', glasses: k.glasses || false }, 72);
         stats.push({ ms: performance.now() - t0, tris: 0, meshes: 0, label: id });
         c.style.width = '216px'; c.style.height = '216px'; c.style.imageRendering = 'pixelated';
-        wrap.append(el('div', { style: { color: '#f0e0c0', font: '12px monospace' } }, [c, el('div', {}, [k.name])]));
+        wrap.append(el('div', { style: { color: '#f0e0c0', font: '16px var(--font)' } }, [c, el('div', {}, [k.name])]));
       }
       this.game.ui.world.append(wrap);
     } else if (mode === 'hero') {
@@ -247,7 +247,7 @@ export default class ShowroomScene extends Scene {
       console.log('[showroom]', line);
       for (const s of stats) console.log('[showroom]', s.label, s.ms.toFixed(2), 'ms', s.tris, 'tris');
       if (params.stats !== '0') {
-        this.statsEl = el('div', { style: { position: 'absolute', left: '8px', top: '6px', color: '#f0e0c0', font: '12px monospace', background: 'rgba(0,0,0,.45)', padding: '2px 6px', whiteSpace: 'pre' } }, [line]);
+        this.statsEl = el('div', { style: { position: 'absolute', left: '8px', top: '6px', color: '#f0e0c0', font: '16px var(--font)', background: 'rgba(0,0,0,.45)', padding: '2px 6px', whiteSpace: 'pre' } }, [line]);
         this.statsLine = line;
         this.game.ui.world.append(this.statsEl);
       }
@@ -255,7 +255,7 @@ export default class ShowroomScene extends Scene {
     // labels
     if (params.labels !== '0') {
       for (const L of this.labels) {
-        const d = el('div', { style: { position: 'absolute', color: '#f8ecd0', font: '11px monospace', transform: 'translate(-50%, 0)', textShadow: '0 1px 0 #000', whiteSpace: 'nowrap' } }, [L.text]);
+        const d = el('div', { style: { position: 'absolute', color: '#f8ecd0', font: '16px var(--font)', transform: 'translate(-50%, 0)', textShadow: '0 1px 0 #000', whiteSpace: 'nowrap' } }, [L.text]);
         this.game.ui.world.append(d);
         L.el = d;
       }

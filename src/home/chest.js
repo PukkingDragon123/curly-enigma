@@ -154,7 +154,7 @@ export class LootChest {
       setTimeout(() => {
         const src = it.gold ? null : iconURL(it.id);
         const img = el('div', { class: 'loot-fly', style: { position: 'fixed', left: '0', top: '0', width: 'var(--icon, 64px)', height: 'var(--icon, 64px)', marginLeft: 'calc(var(--icon, 64px) / -2)', marginTop: 'calc(var(--icon, 64px) / -2)', pointerEvents: 'none', zIndex: 60, imageRendering: 'pixelated', filter: 'drop-shadow(0 2px 0 rgba(0,0,0,.5)) drop-shadow(0 0 6px rgba(255,220,120,.8))' } });
-        if (it.gold) img.append(el('div', { style: { width: '100%', height: '100%', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontSize: '1.6em', color: 'var(--gold)', textShadow: '0 2px 0 #3a2210' } }, `+${it.gold}`));
+        if (it.gold) img.append(el('div', { style: { width: '100%', height: '100%', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontSize: 'max(var(--gj), round(1.6em, var(--gj)))', color: 'var(--gold)', textShadow: '0 2px 0 #3a2210' } }, `+${it.gold}`));
         else img.append(el('img', { class: 'pix', src, alt: '', style: { width: '100%', height: '100%' } }));
         document.body.append(img);
         const sx = p0.x, sy = p0.y;

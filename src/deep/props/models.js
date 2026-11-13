@@ -9,7 +9,8 @@ import { PGrid, PU, meshPropSteps, rng32, hv, shade, mixc } from './grid.js';
 import { LIFT_BUILD } from './lifts.js';
 import { HIRES } from './hires.js';
 import { HIRES_PLANTS } from './hiresPlants.js';
-import { refineSteps, refineGrid, contentExtent } from '../../gfx/voxRes.js';
+import { refineSteps, refineGrid, contentExtent, RES12 } from '../../gfx/voxRes.js';
+import { crystalHi, crystalCHi, shardHi, CRYSTAL_K } from './crystalHi.js';
 
 // ---------------------------------------------------------------- palettes
 const WOOD = 0x8a5a32, WOOD_D = 0x5e3a1e, WOOD_L = 0xb07a44, WOOD_G = 0x7a6650;
@@ -251,6 +252,8 @@ export const BUILD = {
   crystal(r, v, p) {
     const pal = CRYSTAL_PAL[p] || CRYSTAL_PAL.violet;
     const big = v % 2 === 0;
+    // wave 12: 1/48 m hexagonal crystals with facets, striations and inclusions (./crystalHi.js)
+    if (RES12) return { grid: crystalHi(r, v, pal), scale: PU / CRYSTAL_K, refine: false, pivot: [(big ? 12 : 8) * CRYSTAL_K, 0.5 * CRYSTAL_K, (big ? 12 : 8) * CRYSTAL_K], light: { c: pal.light, r: big ? 4.6 : 3, at: [0, big ? 0.7 : 0.4, 0] }, emit: { k: 'glint', c: lin(pal.hi), at: [0, big ? 0.8 : 0.45, 0], spread: big ? 0.4 : 0.25 }, main: srgbArr(pal.c), chime: true };
     const S = big ? 24 : 16, H = big ? 30 : 18;
     const g = new PGrid(S, H, S);
     const c = S / 2;
@@ -269,6 +272,7 @@ export const BUILD = {
   },
   crystalC(r, v, p) {
     const pal = CRYSTAL_PAL[p] || CRYSTAL_PAL.violet;
+    if (RES12) return { grid: crystalCHi(r, pal), scale: PU / CRYSTAL_K, refine: false, pivot: [8 * CRYSTAL_K, 17.5 * CRYSTAL_K, 8 * CRYSTAL_K], light: { c: pal.light, r: 3, at: [0, -0.4, 0] }, emit: { k: 'glint', c: lin(pal.hi), at: [0, -0.45, 0], spread: 0.25 }, main: srgbArr(pal.c), chime: true };
     const g = new PGrid(16, 18, 16);
     rubble(g, 8, 17, 8, 4, 1.6, pal.base, shade(pal.base, 0.8), 19);
     const n = r.int(3, 6);
@@ -421,6 +425,10 @@ export const BUILD = {
   // ---------- The Core
   shard(r, v, hover) {
     const L = r.int(9, 15), W = r.range(2, 3);
+    if (RES12) {
+      const { g: hg, edge: he } = shardHi(r, v, L, W);
+      return { grid: hg, scale: PU / CRYSTAL_K, refine: false, pivot: [4 * CRYSTAL_K, -hover * CRYSTAL_K, 4 * CRYSTAL_K], bob: true, light: { c: v % 2 ? [0.3, 0.8, 1.2] : [0.9, 0.35, 1.2], r: 3.2, at: [0, (hover + L * 0.45) * PU, 0] }, emit: { k: 'mote', c: lin(he), at: [0, (hover + L * 0.45) * PU, 0], spread: 0.25 }, main: srgbArr(he) };
+    }
     const g = new PGrid(9, L + 1, 9);
     const edge = v % 2 ? 0x6af0ff : 0xe070ff;
     for (let y = 0; y < L; y++) {

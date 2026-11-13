@@ -177,7 +177,6 @@ export function openBook(game, tab, opts = {}) {
       put(left,
         head('Quests', `${L.active.length} under way${L.done.length ? ` · ${L.done.length} done` : ''}`),
         list,
-        el('footer', { class: 'bk-foot' }, [el('span', {}, 'Tap a quest to read it. The pinned one is on your strip; a gold ! means someone has work.')]),
       );
     },
     right() {

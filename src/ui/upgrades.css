@@ -60,7 +60,7 @@
 .ug-tab.on { color: var(--ink); text-shadow: 0 calc(var(--px) * .5) 0 rgba(255, 244, 200, .6); background: #e8be5a padding-box; border-image-source: var(--a-btnGoldDn); }
 .ug-dot {
   position: absolute; right: calc(var(--px) * -3); top: calc(var(--px) * -3); min-width: calc(var(--px) * 6); height: calc(var(--px) * 6); padding: 0 var(--px);
-  font-style: normal; font-size: 13px; line-height: calc(var(--px) * 6); text-align: center; color: #fff; text-shadow: none;
+  font-style: normal; font-size: max(var(--g), round(13px + 2px, var(--g))); line-height: calc(var(--px) * 6); text-align: center; color: #fff; text-shadow: none;
   background: #3d7a2e; box-shadow: 0 0 0 var(--px) #1a3a10;
 }
 .ug-dot.new { background: #c23c2c; box-shadow: 0 0 0 var(--px) #5a140c; animation: dotPulse 1.2s ease-in-out infinite; }
@@ -132,7 +132,7 @@
 .ug-card.pop { animation: ugPop .5s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes ugPop { 0% { transform: scale(1); } 25% { transform: scale(1.07) rotate(-1deg); filter: drop-shadow(0 0 calc(var(--px) * 3) #ffe08a) brightness(1.15); } 100% { transform: rotate(var(--rot, 0deg)); } }
 .ug-float {
-  position: absolute; left: 50%; top: 24%; z-index: 4; pointer-events: none; white-space: nowrap; font-family: var(--font-head); font-size: calc(var(--fs-h) * 1.25); line-height: 1; color: #ffe08a;
+  position: absolute; left: 50%; top: 24%; z-index: 4; pointer-events: none; white-space: nowrap; font-family: var(--font-head); font-size: max(var(--gj), round(calc(var(--fs-h) * 1.25), var(--gj))); line-height: 1; color: #ffe08a;
   text-shadow: 0 var(--px) 0 #6e4a1a, var(--px) 0 0 #6e4a1a, calc(var(--px) * -1) 0 0 #6e4a1a, 0 calc(var(--px) * -1) 0 #6e4a1a, 0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .4);
   translate: -50% 0; animation: ugFloat 1.1s ease-out forwards;
 }
@@ -161,7 +161,7 @@
 .ug-ms.done .ug-rew { opacity: .55; }
 .ug-bar { position: relative; height: calc(var(--px) * 6); margin-top: var(--px); background: #d8c49a; box-shadow: inset 0 0 0 var(--px) #a8875a; max-width: calc(var(--px) * 110); }
 .ug-bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(to bottom, #c8f08a 0 var(--px), #6faa44 var(--px) calc(100% - var(--px)), #3a6a24 calc(100% - var(--px))); }
-.ug-bar > em { position: relative; display: block; font-style: normal; font-size: 13px; line-height: calc(var(--px) * 6); text-align: center; color: #2a1a12; }
+.ug-bar > em { position: relative; display: block; font-style: normal; font-size: max(var(--g), round(13px + 2px, var(--g))); line-height: calc(var(--px) * 6); text-align: center; color: #2a1a12; }
 
 /* tools: the ladder of each tool */
 .ug-hint { margin: 0 0 calc(var(--px) * 4); font-size: 16px; line-height: 1.3; color: #e8cfa0; text-shadow: 0 var(--px) 0 #1a0c04; }

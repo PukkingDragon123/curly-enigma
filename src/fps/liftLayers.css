@@ -189,7 +189,7 @@ button.ll-stop:active { filter: brightness(.95); }
 }
 @media (max-height: 500px) {
   .modal-back > .panel.sheet.ll-panel > .sub { display: none; }
-  .modal-back > .panel.sheet.ll-panel > h2 { font-size: 27px; margin-bottom: var(--px); }
+  .modal-back > .panel.sheet.ll-panel > h2 { font-size: max(var(--g), round(27px + 2px, var(--g))); margin-bottom: var(--px); }
   .ll-view { height: calc(100vh - 16px - var(--sat) - var(--sab) - var(--px) * 16 - 36px); }
 }
 @media (pointer: coarse) {

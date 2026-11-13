@@ -29,7 +29,9 @@ import { prologueLayout, prologueInside } from './gen/prologue.js';
 import { TRAIL_W } from './gen/trails.js';
 import { KINDS, floraOf, FERT, ROCK, layPlant, modelsOf } from './veg/flora.js';
 import { makeVegMaterial, PUSHERS, boxTemplate } from './veg/material.js';
-import { protoStats, growProtos } from './veg/plants.js';
+import { protoStats, growProtos, setFineAsk } from './veg/plants.js';
+import { askFine } from './veg/fineAsk.js';
+import { RES12 } from '../gfx/voxRes.js';
 import { rng } from './veg/paint.js';
 
 const CM = CS / VOX; // chunk size in metres
@@ -234,6 +236,7 @@ export class Vegetation {
     this.trails = (this.plan.features || []).filter((f) => f.kind === 'trail' && !f.ladder && f.bb);
     const pf = (this.plan.features || []).find((f) => f.kind === 'prologue');
     this.pro = pf ? { bb: pf.bb, L: prologueLayout(pf) } : null;
+    if (RES12) setFineAsk(askFine); // wave 12: near plants twice as fine (./veg/fineAsk.js)
     this.debug = {
       info: () => this.info(),
       near: (x, y, z, r = 3) => this.near(x, y, z, r),
@@ -396,6 +399,7 @@ export class Vegetation {
     const K = P.K;
     const p = { q0, nq: st.n - q0, x: P.x, y: P.y, z: P.z, kind: P.kind, col: res.col, gone: false, rad: res.rad, h: res.h, hang: !!K.hang };
     rec.plants.push(p);
+    if (res.pend) rec.pend = (rec.pend || 0) + 1; // (wave 12: a fine copy still on its way)
     for (const k of [k1, k2]) { const a = rec.at.get(k); if (a) a.push(p); else rec.at.set(k, [p]); }
     if (K.light) {
       const L = rec.glow || (rec.glow = { x: 0, y: 0, z: 0, c: [0, 0, 0], n: 0 });
@@ -506,7 +510,7 @@ export class Vegetation {
   // ------------------------------------------------------------ chunks → buffer
   build(ch, lod) {
     const t0 = performance.now();
-    const rec = { key: ch.key, ch, x: (ch.cx + 0.5) * CM, y: (ch.cy + 0.5) * CM, z: (ch.cz + 0.5) * CM, slot: null, d: null, plants: [], at: new Map(), glow: null };
+    const rec = { key: ch.key, ch, x: (ch.cx + 0.5) * CM, y: (ch.cy + 0.5) * CM, z: (ch.cz + 0.5) * CM, slot: null, d: null, plants: [], at: new Map(), glow: null, pend: 0, gen: protoStats.fineGen || 0 };
     const E = this.eyeAt;
     rec.lod = lod ?? (!!E && Math.hypot(rec.x - E.x, rec.y - E.y, rec.z - E.z) > this.lodR[1]);
     this.built.set(ch.key, rec);
@@ -538,7 +542,7 @@ export class Vegetation {
     if (this.built.get(rec.key) !== rec || this.w.chunks.get(rec.key) !== rec.ch || !rec.ch.vox) return;
     const old = rec.slot;
     rec.slot = null;
-    this.build(rec.ch, !rec.lod);
+    this.build(rec.ch, rec.replant ? rec.lod : !rec.lod);
     if (old) this.pool.release(old);
   }
   /** Move a chunk's boxes down into a hole (keeps the drawn range dense). */
@@ -588,6 +592,7 @@ export class Vegetation {
       const d = Math.hypot(rec.x - ex, rec.y - ey, rec.z - ez);
       if (d > (this.rDrop ?? R_DROP) || w.chunks.get(rec.key) !== rec.ch) this.drop(rec);
       else if (rec.lod ? d < this.lodR[0] : d > this.lodR[1]) relod.push([rec.lod ? d : d + 100, rec]); // fine ones first
+      else if (!rec.lod && rec.pend && rec.gen !== (protoStats.fineGen || 0)) { rec.replant = true; relod.push([d + 50, rec]); } // wave 12: fine copies arrived
       if ((++n & 63) === 0) yield;
     }
     relod.sort((a, b) => a[0] - b[0]);

@@ -291,7 +291,9 @@ export class Tracker {
     this.title.style.color = NPCS[def.giver]?.ink || '';
     this.face.src = def.giver ? npcFace(this.game, def.giver, { size: 40 }) : SEAL();
     this._faceOk = !def.giver || faceReady(def.giver, 40);
-    this.of.textContent = def.steps.length > 1 && v.status === 'active' ? `step ${v.i + 1} of ${def.steps.length}` : '';
+    // (wave 12: less text) the step count lives in the book and on hover, not on the strip
+    this.of.textContent = '';
+    this.paper.title = def.steps.length > 1 && v.status === 'active' ? `Step ${v.i + 1} of ${def.steps.length}` : '';
     this.text.textContent = v.text;
     this.setCount(v);
     this.box.src = BART.box(false);

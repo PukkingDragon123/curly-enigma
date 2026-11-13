@@ -277,7 +277,7 @@
 .ug.tm-ug .ug-card.maxed { background: linear-gradient(170deg, rgba(255, 236, 160, .55), rgba(242, 220, 154, .35)) padding-box, var(--t-vellum) 0 0 / calc(var(--px) * 128) repeat padding-box, #f2dc9a padding-box; }
 .ug.tm-ug .ug-card.locked { background: var(--t-vellumDk) 0 0 / calc(var(--px) * 96) repeat padding-box, #e6d8bc padding-box; }
 .ug.tm-ug .ug-hd b { color: #4a2410; }
-.ug.tm-ug .ug-hd b::first-letter { color: #a8321e; font-size: 1.25em; line-height: .8; text-shadow: var(--px) var(--px) 0 rgba(230, 180, 74, .55); }
+.ug.tm-ug .ug-hd b::first-letter { color: #a8321e; font-size: max(var(--g), round(1.25em + 2px, var(--g))); line-height: .8; text-shadow: var(--px) var(--px) 0 rgba(230, 180, 74, .55); }
 .ug.tm-ug .ug-hd small { color: #a8321e; }
 .ug.tm-ug .ug-card.maxed .ug-hd small { color: #3d6a30; }
 .ug.tm-ug .ug-next i { display: inline-block; width: calc(var(--px) * 3); height: calc(var(--px) * 5); margin-right: calc(var(--px) * 1.5); vertical-align: middle; font-size: 0; background: var(--t-pilcrow) 0 0 / 100% 100%; filter: hue-rotate(95deg) saturate(.8) brightness(.8); }
@@ -300,7 +300,7 @@
 .ug.tm-ug .ug-line span { color: #8a3a1a; }
 /* the milestones ledger: vellum, a red initial on each milestone */
 .ug.tm-ug .ug-ledger { background: var(--t-vellum) 0 0 / calc(var(--px) * 128) repeat, #f3e2bf; }
-.ug.tm-ug .ug-ms-txt b::first-letter { color: #a8321e; font-family: var(--font-head); font-size: 1.5em; line-height: .8; }
+.ug.tm-ug .ug-ms-txt b::first-letter { color: #a8321e; font-family: var(--font-head); font-size: max(var(--gj), round(1.5em, var(--gj))); line-height: .8; }
 .ug.tm-ug .ug-ms { border-bottom: var(--px) dotted rgba(110, 74, 42, .45); }
 .ug.tm-ug .ug-ms:hover .ug-seal { animation: tmWiggle .45s ease-in-out; }
 .ug.tm-ug .ug-lad h4::first-letter { color: #a8321e; }
@@ -372,7 +372,7 @@
 /* (narrow: the initial at the strip's small size, snug to its word so it reads as one) */
 @media (max-width: 560px) { .pm-tag.tm-chron .tm-cap { width: calc(var(--px) * 16); height: calc(var(--px) * 16); font-size: 16px; margin: calc(var(--px) * -4) calc(var(--px) * -1) calc(var(--px) * -4) 0; } }
 .pm-tag.tm-chron .tm-chron-d { position: absolute; left: calc(var(--px) * -32); bottom: calc(var(--px) * -2); pointer-events: auto; }
-@media (max-width: 560px) { .pm-tag.tm-chron .tm-chron-d { display: none; } .pm-tag.tm-chron { font-size: 12px; padding-left: calc(var(--px) * 4); padding-right: calc(var(--px) * 5); } }
+@media (max-width: 560px) { .pm-tag.tm-chron .tm-chron-d { display: none; } .pm-tag.tm-chron { font-size: max(var(--g), round(12px + 2px, var(--g))); padding-left: calc(var(--px) * 4); padding-right: calc(var(--px) * 5); } }
 
 /* ---- the settings board, iron-bound (PauseMenu.js openSettings): corner pieces and clasps on a
    wrapper round the scrolling board, the note at the foot on a vellum slip ---- */

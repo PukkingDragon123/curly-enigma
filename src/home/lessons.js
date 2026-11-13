@@ -38,7 +38,7 @@ import { starData } from './starData.js';
 import { starPortraitURL } from '../ui/Tutor.js';
 import { openTalkMenu } from '../ui/choices.js';
 import { TUT } from '../ui/Onboard.js';
-import { Glint, flare, copperLump, satchel, notebook } from './tutorFx.js';
+import { Glint, flare, copperLump, satchel, notebook, rockyLump, chipLump, teachWord } from './tutorFx.js';
 import { grantNook } from './nooks.js';
 
 const _v = new THREE.Vector3();
@@ -181,7 +181,7 @@ export class HomeLessons {
     this.endHomeTutor();
     this.game.ui.onboard?.goal(null);
     // (a word over his shoulder as the gate shuts)
-    if (this.star?.rig) this.starLine('Dig the rock <b>round</b> the ore, not the ore. Ring the bell to come home!', { mood: 'happy', dur: 3.2 });
+    if (this.star?.rig) this.starLine('Dig <b>round</b> the ore, not the ore!', { mood: 'happy', dur: 3.2 });
   }
 
   // ------------------------------------------------------------ cutscenes at home
@@ -277,6 +277,53 @@ export class HomeLessons {
     this.game.audio.play('pickup', { vol: 0.5, pitch: 1.15 });
   }
 
+  /**
+   * Inside a cutscene: Old Star shows how ore is cleaned. He holds up a lump still in its crust of
+   * rock and chisels at it: tink, tink, the rock flies off in chips, the copper comes out bright.
+   * Two floating words say it; he says one. (Test hook: scene.debug.chipDemo().)
+   */
+  async chipDemo({ line, go, sleep, tween }) {
+    const star = this.star, fx = this.fx, a = this.game.audio;
+    if (!star?.rig) return;
+    if (star.carrying) { const o = star.drop(); o?.userData?.dispose?.(); }
+    const lump = rockyLump(1);
+    star.carry(lump);
+    lump.position.set(0, 0.44, 0.38);
+    lump.rotation.set(0.2, 0.5, 0);
+    lump.scale.setScalar(2.3);
+    this.chipLump = lump;
+    a.play('pickup', { vol: 0.45 });
+    const at = () => lump.getWorldPosition(new THREE.Vector3());
+    const eye = () => this.cam ? new THREE.Vector3(this.cam.x, this.cam.y, this.cam.z) : null;
+    // the blows play out on scene time while he says his one word (a skip cuts them short)
+    let left = 1, n = 0;
+    const blows = tween(2.6, (k) => {
+      const want = Math.min(7, Math.floor(k * 7.2));
+      while (n < want && left > 0) {
+        n++;
+        left = chipLump(fx, lump, 9, eye());
+        lump.rotation.y += 0.55;
+        lump.position.y = 0.455;
+        star.rig.doEmote?.('nod', 0.3);
+        a.play('chisel', { vol: 0.55, pitch: 0.95 + Math.random() * 0.15 });
+        if (n === 2) teachWord(this.game, 'Chip the rock off', at().add(new THREE.Vector3(0, 0.16, 0)), { life: 2.6 });
+      }
+      lump.position.y += (0.44 - lump.position.y) * 0.25;
+    });
+    await line('<i>Tink, tink.</i> Like so.', 'happy', { camera: 'ots' });
+    await go(blows);
+    // the last of the crust lets go: the copper's bare, and it shines
+    for (const b of lump.children) if (b.userData.rock) b.visible = false;
+    const p = at();
+    flare(fx, p, { n: 10, speed: 1.2 });
+    a.play('sparkle', { vol: 0.45 });
+    teachWord(this.game, 'Clean ore sells', p.add(new THREE.Vector3(0, 0.12, 0)), { kind: 'gold', life: 2.2 });
+    await go(sleep(1.1));
+    star.drop();
+    lump.userData.dispose?.();
+    this.chipLump = null;
+  }
+
   /** Back home in the middle of the lessons (from: 'lift' | 'forge' | 'cooking'). */
   async onLessonArrival(from) {
     const st = this.game.state, stage = this.lessonStage(), star = this.star, ui = this.game.ui;
@@ -310,13 +357,13 @@ export class HomeLessons {
           this.game.audio.play('sparkle', { vol: 0.4 });
           this.copperHome();
           done = true;
-          await line('<i>*snff*</i> Copper! And you didn\'t smash it. Good. There\'s coal in your satchel for the fire.', 'proud');
+          await line('<i>*snff*</i> Copper! Good. Coal\'s in your satchel.', 'proud');
           star.drop();
           lump.userData.dispose?.();
-          await this.holdOut(notebook(), 'And this was mine: my old <b>notebook</b>. Write down what you find. Your jobs go in it too.', 'happy', tools);
+          await this.holdOut(notebook(), 'My old <b>notebook</b>. Yours now.', 'happy', tools);
           ui.unlock?.(['book', 'radar', 'layers']);
           star.gesture('point', 1.6);
-          await line('Now we melt that copper: to the <b>forge</b>!', 'happy');
+          await line('To the <b>forge</b>!', 'happy');
         }, { face: false });
         if (star.carrying) star.drop();
         lump.userData.dispose?.();
@@ -351,11 +398,13 @@ export class HomeLessons {
         star.gesture(q >= 55 ? 'cheer' : 'point', 1.6);
         this.flareAt(this.firePos('forge'), { n: 30 });
         await line(q >= 80 ? 'Look at that edge! It\'d shame half of Deep Town.' : q >= 55 ? 'A proper pick! Lumpy on the cheek, but it\'ll bite rock.' : 'Well, it\'s more or less pick-shaped. It\'ll dig.', q >= 55 ? 'proud' : 'laugh');
-        await this.holdOut(satchel(), 'Here: my old <b>satchel</b>, with my spare <b>chisel</b> in it. Ore comes out of the wall in lumps. You\'ll want both.', 'happy', tools);
+        await this.holdOut(satchel(), 'My old <b>satchel</b>, and my spare <b>chisel</b>.', 'happy', tools);
         this.giveChisel();
         ui.unlock?.(['pack', 'tools']);
+        // (he shows you what the chisel's for: ore comes out of the wall in a crust of rock)
+        await this.chipDemo(tools);
         star.gesture('point', 1.6);
-        await line('Now: <b>copper</b>. The cage drops to the old mine. Look for <b>orange specks</b> in the rock and bring me a lump.', 'happy');
+        await line('Now: <b>copper</b>. Down the cage. <b>Orange specks</b>.', 'happy');
       });
       this.giveChisel();
       ui.unlock?.(['pack', 'tools']);

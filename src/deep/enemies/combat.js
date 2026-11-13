@@ -117,7 +117,7 @@ export class Combat {
       m.queueEv({ hitStop: 0.11 }); m.queueEv({ shake: 0.35 });
       m.owner?.vm?.guardHit?.(1.2, true);
       m.floatAt('PARRY!', g, '#ffe27a', 1.2, 'parry');
-      if (this.stats.parried === 1) m.say('parry1', this.perk('riposte') ? 'Perfect block! It\'s <b>reeling</b>: hit it now for a heavy counter.' : 'Perfect block! Strike back <b>right away</b> for a heavy counter.', 'good', 9999);
+      if (this.stats.parried === 1) m.floatAt('Hit back now!', _b.set(g.x, g.y + 0.25, g.z), '#ffe8a0', 0.85, 'great');
     } else {
       const k = heavy ? 0.6 : 0.25;
       ev.damage = Math.max(heavy ? 1 : 0, Math.round(n * k / sk * (guard ? 0.5 : 1)));
@@ -128,7 +128,7 @@ export class Combat {
       this.burst(g, heavy ? 1.2 : 0.8, false);
       m.queueEv({ hitStop: heavy ? 0.07 : 0.045 }); m.queueEv({ shake: heavy ? 0.4 : 0.18 });
       m.owner?.vm?.guardHit?.(heavy ? 1.1 : 0.7, false);
-      if (heavy && this.mgr.time - this.lastBlock > 0.5) m.say('heavyblock', 'That one was too <b>heavy</b> to block. When it glows <b>red</b>, get out of the way!', 'warn', 120);
+      if (heavy && this.mgr.time - this.lastBlock > 0.5 && m.time - (this.heavyT ?? -999) > 120) { this.heavyT = m.time; m.floatAt('Red glow: dodge!', _b.set(g.x, g.y + 0.25, g.z), '#ff8a6a', 0.85, 'bad'); }
     }
     this.lastBlock = m.time;
     // (DigScene turns blocked / parried events into act { type: 'block', perfect })
@@ -157,6 +157,15 @@ export class Combat {
       this.mgr.fx.spawn({ x: p.x, y: p.y, z: p.z, vx: Math.cos(a) * 1.4, vy: Math.sin(a) * 1.4, vz: 0, life: 0.14, size: 0.016, color: c, glow: true, drag: 6 });
     }
     this.mgr.sound(e.tellHeavy ? 'tell_heavy' : 'tell', {}, e.dist, e.center);
+    // (wave 12) the first few tells say what they mean, in a word over its head: white = guard,
+    // red = too heavy to block, get out of the way
+    const st = this.mgr.state, key = e.tellHeavy ? 'tipTellHeavy' : 'tipTell';
+    if (st?.flag && e.dist < 9 && !st.flag(key)) {
+      this.tellN = this.tellN || {};
+      this.tellN[key] = (this.tellN[key] || 0) + 1;
+      if (this.tellN[key] >= 3) st.flag(key, true);
+      this.mgr.floatAt(e.tellHeavy ? 'Dodge!' : 'Guard!', _b.set(p.x, p.y + 0.22, p.z), e.tellHeavy ? '#ff8a6a' : '#fff0c8', 1, e.tellHeavy ? 'bad' : 'alert');
+    }
   }
 
   /**

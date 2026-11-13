@@ -159,7 +159,7 @@ export class ForgeLesson {
     this.banked = true;
     await this.wait(0.6);
     if (!this.cut) await this.wakeFire();
-    if (!this.cut) await this.say('First we melt your copper into an <b>ingot</b>. Then a blade!', 'proud', { wait: true });
+    if (!this.cut) await this.say('Melt it to an <b>ingot</b>. Then a blade!', 'proud', { wait: true });
     this.endCine();
     if (this.sc.game.scene !== this.sc || this.stage !== 'intro') return;
     // already at it before he'd finished talking
@@ -185,7 +185,7 @@ export class ForgeLesson {
     if (this.sc.view?.mode === 'walk' && !this.sc.activity) this.sc.dock?.(this.introDock(), { dur: 3.4 });
     await this.wait(1.0);
     if (!this.cut) await this.wakeFire();
-    if (!this.cut) await this.say('There she is! Two <b>copper ingots</b> I\'ve been saving. Heat them, hammer them into a curve, cool them off: your own pick.', 'happy', { wait: true });
+    if (!this.cut) await this.say('Two <b>copper ingots</b>. Heat, hammer, cool: a pick.', 'happy', { wait: true });
     this.endCine();
     if (this.sc.game.scene !== this.sc || this.stage !== 'intro') return;
     this.stage = 'pick';
@@ -236,15 +236,15 @@ export class ForgeLesson {
         this.say(g === 'S' || g === 'A' ? 'Now <b>that</b> is a pick. I\'d trade you mine for it, if mine didn\'t know my paws.' : g === 'B' || g === 'C' ? 'A good honest pick. It\'ll bite rock. Your granny would hang it over the fire.' : 'It\'s... pick-ish. It\'ll dig. You\'ll make a better one when you\'re rich.', g === 'F' || g === 'D' ? 'laugh' : 'proud', { dur: 6 });
         this.star?.rig?.play?.(g === 'F' || g === 'D' ? 'laugh' : 'cheer');
       });
-      this.later(5.0, () => this.say('Hang it on your belt. Home we go: time you dug something.', 'happy', { key: 'step', dur: Infinity }));
+      this.later(5.0, () => this.say('On your belt. Home we go!', 'happy', { key: 'step', dur: Infinity }));
       this.stage = 'leave';
       return;
     }
     if (name === 'melt') {
       const a = d.acc;
       if (a >= 0.9) this.say('Ha! A <b>perfect</b> melt. Are you sure you\'ve never done this before?', 'laugh', { dur: 4 });
-      else if (a >= 0.6) this.say('Good melt! Now watch it pour into the mould.', 'happy', { dur: 4 });
-      else this.say('Lumpy, but it\'ll pour. Steadier on the bellows next time.', 'calm', { dur: 4 });
+      else if (a >= 0.6) this.say('Good melt!', 'happy', { dur: 4 });
+      else this.say('Lumpy, but it\'ll pour.', 'calm', { dur: 4 });
       this.star?.rig?.doEmote?.(a >= 0.6 ? 'nod' : 'shake', 1);
       return;
     }
@@ -259,15 +259,15 @@ export class ForgeLesson {
       this.stepPrompt(d.step, run);
       if (d.step === 'heat' && !this.cool.heatIntro) {
         this.cool.heatIntro = this.t;
-        this.say(`Into the coals. Pump till it glows into the <b>gold band</b> (${Math.round(k[0])}–${Math.round(k[1])}°).`, 'calm', { key: 'step', dur: Infinity });
+        this.say('Pump to the <b>gold band</b>.', 'calm', { key: 'step', dur: Infinity });
       } else if (d.step === 'hammer') {
         if (!this.cool.hammerIntro) {
           this.cool.hammerIntro = this.t;
-          this.say('Hammer where it\'s fatter than the outline. Hard blows move a lot, soft ones tidy up.', 'happy', { key: 'step', dur: Infinity });
+          this.say('Hit the fat bits.', 'happy', { key: 'step', dur: Infinity });
         }
-      } else if (d.step === 'grind') this.say('Good shape. Now the grindstone: nice and steady.', 'calm', { key: 'step', dur: 6 });
-      else if (d.step === 'balance') this.say('Slide the weight till the blade sits level.', 'calm', { key: 'step', dur: Infinity });
-      else if (d.step === 'quench') this.say('Into the barrel while it\'s in the <b>blue band</b>: too hot cracks, too cold stays soft.', 'stern', { key: 'step', dur: Infinity });
+      } else if (d.step === 'grind') this.say('Now grind. Steady.', 'calm', { key: 'step', dur: 6 });
+      else if (d.step === 'balance') this.say('Make it sit level.', 'calm', { key: 'step', dur: Infinity });
+      else if (d.step === 'quench') this.say('Quench in the <b>blue band</b>.', 'stern', { key: 'step', dur: Infinity });
       return;
     }
     if (name === 'strike') {
@@ -301,7 +301,7 @@ export class ForgeLesson {
         this.star?.rig?.play?.(g === 'F' || g === 'D' ? 'laugh' : 'cheer');
       });
       this.later(4.4, () => {
-        this.say('Yours to sell or keep. All this hammering: I\'m starving. Home, and we\'ll <b>cook</b>.', 'happy', { key: 'step', dur: Infinity });
+        this.say('Yours! Now, home to <b>cook</b>.', 'happy', { key: 'step', dur: Infinity });
         this.stage = 'leave';
       });
     }
@@ -328,17 +328,17 @@ export class ForgeLesson {
       if (seen.has('p-heat')) { this.remark('reheat', 'Back in the coals. Pump till it glows orange again.', 'calm', 10); return; }
       seen.add('p-heat');
       const w = run.sim?.workRange || [550, 880];
-      this.say(`Pump the bellows till the bar glows into the <b>gold band</b> (${Math.round(w[0])}–${Math.round(w[1])}°).`, 'calm', { key: 'step', dur: Infinity });
+      this.say('Pump to the <b>gold band</b>.', 'calm', { key: 'step', dur: Infinity });
       this.teach('hold', { title: 'Heat the bar', subPc: '<b>Hold</b> the left button (or <kbd>Space</kbd>) to pump', subT: '<b>Hold</b> the big button to pump', spot: this.touchSpot(), progress: () => { const s = run.sim; if (!s?.workRange) return 0; return clamp((s.T - 300) / Math.max(1, s.workRange[0] - 300), 0, 1); }, done: () => !live() });
     } else if (step === 'hammer') {
       if (seen.has('p-hammer')) return;
       seen.add('p-hammer');
-      this.say('Now hammer it into a curve! Let go in the <b>green</b>; the gold strip is a perfect blow.', 'happy', { key: 'step', dur: Infinity });
+      this.say('Let go in the <b>green</b>.', 'happy', { key: 'step', dur: Infinity });
       this.teach('hold', { title: 'Hammer the head', subPc: '<b>Hold</b> to raise · <b>let go</b> in the green', subT: '<b>Hold</b> the button · <b>let go</b> in the green', spot: this.touchSpot(), done: () => !live() });
     } else if (step === 'quench') {
       if (seen.has('p-quench')) return;
       seen.add('p-quench');
-      this.say('Into the water while it\'s hot: that sets the edge. Mind the steam.', 'stern', { key: 'step', dur: Infinity });
+      this.say('Into the water, hot!', 'stern', { key: 'step', dur: Infinity });
     }
   }
 
@@ -355,8 +355,8 @@ export class ForgeLesson {
     m.sel.infusion = null;
     m.sel.gem = null;
     m.plan();
-    if (!skipLine) this.say('An ingot! Now a blade: the <b>Dagger</b>, in copper.', 'proud', { key: 'step', dur: Infinity });
-    else this.say('You\'ve an ingot already: let\'s make a blade. The <b>Dagger</b>, in copper.', 'calm', { key: 'step', dur: Infinity });
+    if (!skipLine) this.say('An ingot! Now a <b>Dagger</b>.', 'proud', { key: 'step', dur: Infinity });
+    else this.say('Now a <b>Dagger</b>.', 'calm', { key: 'step', dur: Infinity });
     this.teach('click', { title: 'Forge a dagger', subPc: '<b>Click</b> Start forging', subT: '<b>Tap</b> Start forging', done: () => this.stage !== 'planMenu' });
   }
 
@@ -390,12 +390,12 @@ export class ForgeLesson {
       this.stage = 'smelt';
       this.said = 0;
       this.teach('hold', { title: 'Pump the bellows', subPc: '<b>Hold</b> the left button (or <kbd>Space</kbd>)', subT: '<b>Hold</b> the big button', spot: this.touchSpot(), progress: () => { const s = this.sc.activity?.sim; return s ? clamp((s.inBand || 0) / (s.required || 6), 0, 1) : 1; }, done: () => this.stage !== 'smelt' });
-      this.say('Bring the crucible into the <b>pour heat</b> band and hold it there till it\'s melted.', 'calm', { key: 'step', dur: Infinity });
+      this.say('Hold it in the <b>pour heat</b> band.', 'calm', { key: 'step', dur: Infinity });
     }
     if (this.stage === 'smelt' && a && a.sim && a.r) {
       const sim = a.sim;
       if (sim.overheat) this.remark('slag', 'Too hot! Let go of the bellows, you\'re making slag!', 'worried', 5);
-      else if (sim.inBandNow && !this.cool.inBand) { this.cool.inBand = this.t; this.say('There! Hold it right there. Ease off if it climbs, pump if it sinks.', 'happy', { key: 'remark', dur: 4 }); }
+      else if (sim.inBandNow && !this.cool.inBand) { this.cool.inBand = this.t; this.say('There! Hold it.', 'happy', { key: 'remark', dur: 4 }); }
       else if (sim.started && !sim.inBandNow && sim.T < sim.band[0] - 120 && !sc.fire.pumping && a.elapsed > 4) this.remark('pump', 'Pump! Long, steady pulls. The fire wants air.', 'stern', 7);
     }
     if (this.stage === 'smelted' && !a && sc.menus.mode !== 'plan') this.toForging();
@@ -403,7 +403,7 @@ export class ForgeLesson {
       const T = a.sim.meanT(), w = a.sim.workRange;
       if (T >= w[0] && !this.cool.workHot) {
         this.cool.workHot = this.t;
-        this.say('<b>Working heat!</b> To the anvil with it, while it glows.', 'happy', { key: 'remark', dur: 4 });
+        this.say('<b>Working heat!</b> Anvil!', 'happy', { key: 'remark', dur: 4 });
         if (!(this.taught ||= new Set()).has('anvil')) { this.taught.add('anvil'); this.teach('use', { title: 'To the anvil', subPc: 'Press <kbd>E</kbd> while it glows', subT: 'Tap <b>To the anvil</b>', done: () => !(this.sc.activity && this.sc.activity.step === 'heat') }); }
       }
       if (T < w[0] - 60) this.cool.workHot = undefined;

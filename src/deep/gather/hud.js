@@ -40,7 +40,7 @@ html.gt-still #ui *, html.gt-still .modal-back { transition: none !important; an
 .gt-icon { width: var(--icon-s); height: var(--icon-s); image-rendering: pixelated; display: block; }
 .gt-icon.big { width: var(--icon); height: var(--icon); margin: 0 auto; }
 .gt-name { font-family: var(--font-head); font-size: var(--fs-h); line-height: 1; color: #fff1d0; text-shadow: 0 var(--px) 0 #3a2212, var(--px) 0 0 #3a2212, calc(var(--px) * -1) 0 0 #3a2212, 0 calc(var(--px) * -1) 0 #3a2212; }
-.gt-verb { font-family: var(--font-display); font-size: calc(var(--fs-h) * .8); line-height: 1; color: #fff4d0; padding: 0 calc(var(--px) * 2) calc(var(--px) * .5); margin-left: calc(var(--px) * 1);
+.gt-verb { font-family: var(--font); font-size: max(var(--g), round(calc(var(--fs-h) * .8) + 2px, var(--g))); line-height: 1; color: #fff4d0; padding: 0 calc(var(--px) * 2) calc(var(--px) * .5); margin-left: calc(var(--px) * 1);
   padding: calc(var(--px) * 1) calc(var(--px) * 3) calc(var(--px) * 1.5); text-shadow: 0 var(--px) 0 rgba(20, 10, 4, .7);
   border: var(--px) solid transparent; border-image: var(--a-btnWood) 2 3 3 fill / calc(var(--px) * 2) calc(var(--px) * 3) calc(var(--px) * 3) repeat stretch; filter: drop-shadow(0 var(--px) 0 rgba(20, 10, 6, .5));
   display: inline-block; animation: gtVerb .42s cubic-bezier(.3, 1.6, .5, 1) infinite alternate; }
@@ -50,24 +50,24 @@ html.gt-still #ui *, html.gt-still .modal-back { transition: none !important; an
 .gt-gauge canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
 .gt-gauge.shake { animation: gtShake .12s linear infinite; }
 @keyframes gtShake { 25% { translate: var(--px) 0; } 75% { translate: calc(var(--px) * -1) 0; } }
-.gt-cap { text-align: center; margin-top: calc(var(--px) * 2); font-size: .72em; color: #fbe8c0; text-shadow: 0 var(--px) 0 #000; letter-spacing: .02em; }
+.gt-cap { text-align: center; margin-top: calc(var(--px) * 2); font-size: max(var(--g), round(.72em + 2px, var(--g))); color: #fbe8c0; text-shadow: 0 var(--px) 0 #000; letter-spacing: .02em; }
 .gt-hint { position: absolute; left: 50%; bottom: calc(var(--sab) + var(--px) * 5); transform: translateX(-50%); max-width: min(calc(100vw - 32px), calc(var(--px) * 175)); text-align: center;
   border-style: solid; border-width: calc(var(--px) * 5); border-image: var(--a-note) 5 / calc(var(--px) * 5) repeat; background: #f8ecd2 padding-box; padding: calc(var(--px) * 1) calc(var(--px) * 3);
-  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 8, .45)); line-height: 1.25; font-size: .82em; transition: opacity .4s, transform .4s; animation: gtUp .6s .3s cubic-bezier(.25,1.5,.4,1) both; }
+  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 8, .45)); line-height: 1.25; font-size: max(var(--g), round(.82em + 2px, var(--g))); transition: opacity .4s, transform .4s; animation: gtUp .6s .3s cubic-bezier(.25,1.5,.4,1) both; }
 @keyframes gtUp { from { transform: translate(-50%, 160%); } }
 .gt-hint b { color: #a8402a; }
-.gt-hint .keys { display: block; font-size: .78em; color: var(--ink-soft); margin-top: calc(var(--px) * .5); }
+.gt-hint .keys { display: block; font-size: max(var(--g), round(.78em + 2px, var(--g))); color: var(--ink-soft); margin-top: calc(var(--px) * .5); }
 .gt-hint kbd { font: inherit; padding: 0 var(--px); border: var(--px) solid #8a6a48; border-bottom-width: calc(var(--px) * 2); background: #fff8e8; color: #4a2c16; }
 .gt-hint.dim { opacity: .55; }
 .gt-hint.hide { opacity: 0; transform: translate(-50%, 40%); }
-.gt-leave { position: absolute; left: calc(var(--sal) + var(--px) * 6); top: calc(var(--sat) + var(--px) * 6); pointer-events: auto; cursor: pointer; font: inherit; font-size: .85em; color: #fff1d0;
+.gt-leave { position: absolute; left: calc(var(--sal) + var(--px) * 6); top: calc(var(--sat) + var(--px) * 6); pointer-events: auto; cursor: pointer; font: inherit; font-size: max(var(--g), round(.85em + 2px, var(--g))); color: #fff1d0;
   border-style: solid; border-width: calc(var(--px) * 7); border-image: var(--a-wood) 7 / calc(var(--px) * 7) repeat; background: #6b4226 padding-box; padding: 0 calc(var(--px) * 2);
   text-shadow: 0 var(--px) 0 #2a160c; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 8, .5)); transition: transform .12s var(--pop); }
 .gt-leave:hover { transform: rotate(-3deg) scale(1.05); }
 .gt-leave:active { transform: scale(.94); }
-.gt-pop { position: absolute; transform: translate(-50%, -50%); font-family: var(--font-display); font-size: calc(var(--px) * 11); line-height: 1; white-space: nowrap; color: #fff;
+.gt-pop { position: absolute; transform: translate(-50%, -50%); font-family: var(--font-display); font-size: max(var(--gj), round(calc(var(--px) * 11), var(--gj))); line-height: 1; white-space: nowrap; color: #fff;
   text-shadow: 0 var(--px) 0 #1a0e08, var(--px) 0 0 #1a0e08, calc(var(--px) * -1) 0 0 #1a0e08, 0 calc(var(--px) * -1) 0 #1a0e08, 0 calc(var(--px) * 3) 0 rgba(0,0,0,.45); animation: gtPop 1.05s ease-out forwards; }
-.gt-pop.big { font-size: calc(var(--px) * 19); }
+.gt-pop.big { font-size: max(var(--g), round(calc(var(--px) * 19) + 2px, var(--g))); }
 @keyframes gtPop { 0% { transform: translate(-50%, -50%) scale(.3); } 18% { transform: translate(-50%, -80%) scale(1.25); } 30% { transform: translate(-50%, -90%) scale(1); } 100% { transform: translate(-50%, -200%) scale(1); opacity: 0; } }
 .gt-card { position: absolute; left: calc(var(--sal) + 6vw); top: 50%; width: calc(var(--px) * 92); padding: calc(var(--px) * 5) calc(var(--px) * 5) calc(var(--px) * 4); text-align: center;
   border-style: solid; border-width: calc(var(--px) * 8); border-image: var(--a-parchDog) 8 / calc(var(--px) * 8) repeat; background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box;
@@ -75,19 +75,19 @@ html.gt-still #ui *, html.gt-still .modal-back { transition: none !important; an
 @keyframes gtCard { from { transform: translate(-60%, -50%) rotate(-14deg) scale(.4); opacity: 0; } }
 .gt-card::before { content: ''; position: absolute; left: 50%; top: calc(var(--px) * -10); width: calc(var(--px) * 8); height: calc(var(--px) * 9); margin-left: calc(var(--px) * -4); background: var(--a-tackRed) center / 100% 100% no-repeat; }
 .gt-card .nm { font-family: var(--font-head); font-size: var(--fs-h); line-height: 1; color: var(--sepia); }
-.gt-card .q { font-family: var(--font-display); font-size: calc(var(--fs-h) * 1.5); line-height: 1; margin-top: calc(var(--px) * 2); }
-.gt-card .st { margin-top: calc(var(--px) * 1); letter-spacing: .12em; color: #d89a10; font-size: 1.15em; text-shadow: 0 var(--px) 0 #7a4a08; }
+.gt-card .q { font-family: var(--font-display); font-size: max(var(--gj), round(calc(var(--fs-h) * 1.5), var(--gj))); line-height: 1; margin-top: calc(var(--px) * 2); }
+.gt-card .st { margin-top: calc(var(--px) * 1); letter-spacing: .12em; color: #d89a10; font-size: max(var(--g), round(1.15em + 2px, var(--g))); text-shadow: 0 var(--px) 0 #7a4a08; }
 .gt-card .st i { font-style: normal; color: #c8b090; text-shadow: none; }
-.gt-card .w { font-size: .82em; margin-top: calc(var(--px) * 2); line-height: 1.25; color: var(--ink); }
-.gt-card .n { position: absolute; left: calc(var(--px) * -6); top: calc(var(--px) * -4); font-family: var(--font-display); font-size: 1.4em; color: #fff4d0; background: #3a7a2a; padding: 0 calc(var(--px) * 2); box-shadow: 0 0 0 var(--px) #1a3a12; }
+.gt-card .w { font-size: max(var(--g), round(.82em + 2px, var(--g))); margin-top: calc(var(--px) * 2); line-height: 1.25; color: var(--ink); }
+.gt-card .n { position: absolute; left: calc(var(--px) * -6); top: calc(var(--px) * -4); font-family: var(--font-display); font-size: max(var(--gj), round(1.4em, var(--gj))); color: #fff4d0; background: #3a7a2a; padding: 0 calc(var(--px) * 2); box-shadow: 0 0 0 var(--px) #1a3a12; }
 .gt-card .seal { position: absolute; right: calc(var(--px) * -12); bottom: calc(var(--px) * -10); width: calc(var(--px) * 26); image-rendering: pixelated; animation: gtSeal .45s .35s cubic-bezier(.2,1.6,.4,1) both; }
-.gt-card .stamp { position: absolute; right: calc(var(--px) * -8); top: calc(var(--px) * -7); font-family: var(--font-display); font-size: 1.2em; color: #24420e; padding: calc(var(--px) * 1) calc(var(--px) * 3) calc(var(--px) * 1.5);
+.gt-card .stamp { position: absolute; right: calc(var(--px) * -8); top: calc(var(--px) * -7); font-family: var(--font); font-size: max(var(--g), round(1.2em + 2px, var(--g))); color: #24420e; padding: calc(var(--px) * 1) calc(var(--px) * 3) calc(var(--px) * 1.5);
   text-shadow: 0 calc(var(--px) * .5) 0 rgba(255, 244, 200, .6); border: var(--px) solid transparent; border-image: var(--a-btnGold) 2 3 3 fill / calc(var(--px) * 2) calc(var(--px) * 3) calc(var(--px) * 3) repeat stretch; filter: drop-shadow(0 var(--px) 0 rgba(20, 10, 6, .55)); animation: gtSeal .3s .2s cubic-bezier(.3, 1.6, .5, 1) both; }
 .gt-card .stamp.bad { color: #f6e6c8; text-shadow: 0 var(--px) 0 rgba(20, 10, 4, .7); border-image-source: var(--a-btnWood); }
 .gt-card .stamp.gold { color: #4a2a08; }
 /* plates and seals land straight: squashed under the press, then a spring back */
 @keyframes gtSeal { 0% { transform: scale(1.6); opacity: 0; } 45% { transform: scale(1.18, .8); opacity: 1; } 75% { transform: scale(.95, 1.06); } 100% { transform: none; } }
-.gt-card .go { margin-top: calc(var(--px) * 3); font-size: .7em; color: var(--ink-soft); animation: gtBlink 1.2s steps(2) infinite; }
+.gt-card .go { margin-top: calc(var(--px) * 3); font-size: max(var(--g), round(.7em + 2px, var(--g))); color: var(--ink-soft); animation: gtBlink 1.2s steps(2) infinite; }
 @keyframes gtBlink { 50% { opacity: .35; } }
 .gt-flash { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 50%, rgba(255, 244, 200, .55), rgba(255, 244, 200, 0) 60%); animation: gtFlash .5s ease-out forwards; }
 .gt-flash.red { background: radial-gradient(ellipse at 50% 50%, rgba(255, 80, 50, .35), rgba(255, 80, 50, 0) 65%); }
@@ -98,7 +98,7 @@ html.gt-still #ui *, html.gt-still .modal-back { transition: none !important; an
   .gt-sign { top: calc(var(--sat) + var(--px) * 22); }
   .gt-card { left: 50%; top: calc(var(--sat) + var(--px) * 46); transform: translateX(-50%) rotate(-2deg); animation-name: gtCardP; }
   @keyframes gtCardP { from { transform: translate(-50%, -30%) rotate(-12deg) scale(.4); opacity: 0; } }
-  .gt-hint { bottom: calc(var(--sab) + var(--px) * 6); font-size: .85em; }
+  .gt-hint { bottom: calc(var(--sab) + var(--px) * 6); font-size: max(var(--g), round(.85em + 2px, var(--g))); }
 }
 @media (max-height: 500px) { .gt-hint .keys { display: none; } .gt-sign { top: calc(var(--sat) + var(--px) * 8); } }
 `;

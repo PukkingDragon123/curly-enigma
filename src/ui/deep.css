@@ -30,7 +30,7 @@
 /* shown while a first-person scene has a depth to report (setDepth(null) hides it) */
 #ui[data-hud=deep] .depth.show { opacity: 1; transform: none; }
 #ui[data-hud=deep] .depth img { order: 0; }
-#ui[data-hud=deep] .depth-txt b { font-size: 27px; }
+#ui[data-hud=deep] .depth-txt b { font-size: max(var(--g), round(27px + 2px, var(--g))); }
 #ui.panel-open .depth, #ui.panel-open .depth.show { opacity: 0; }
 
 /* crosshair: a pixel reticle in the middle, the name of what you look at under it */

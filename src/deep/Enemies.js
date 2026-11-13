@@ -26,6 +26,7 @@ import { ITEMS } from '../data/items.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { clamp, rand } from '../core/util.js';
 import { VB, VS, rgb } from './enemies/vox.js';
+import { HiRes, withStyle } from './enemies/hires.js';
 import { boxHits, clearLine, airAbove, fluidAt, solidAt } from './enemies/physics.js';
 import { spores, sparkle, puff } from './enemies/fx.js';
 import { creatureMaterial } from './enemies/material.js';
@@ -53,25 +54,26 @@ const DMG = [1, 1, 1.25, 1.55, 1.9, 2.3, 2.7];
  */
 export const DANGER = { dmg: 1.7, hp: 1.4, haste: 1.18, invuln: 0.35 };
 const MAX_ALIVE = 13;
+// (wave 12) the first good look at each kind: its tell in a few words over its head, not a toast
 const INTRO = {
-  pebble_mimic: 'That rock just blinked! A <b>Pebble Mimic</b>. Give it a whack with your pick.',
-  rubble_golem: 'The wall stood up! A <b>Rubble Golem</b>. Jump over its shockwave, then hit its <b>glowing seam</b>.',
-  crystal_golem: 'A <b>Crystal Golem</b>! Its rock hide is too tough for a pick. Get behind it and <b>mine the crystal</b> off its back.',
-  gloom_wisp: 'A <b>Gloom Wisp</b> is eating the light. Keep your lamp on it!',
-  ember_imp: 'An <b>Ember Imp</b>! Watch out for its bouncing embers.',
-  crystal_wyrm: 'A <b>Crystal Wyrmling</b>! When it coils back, sidestep the lunge.',
-  spore_puffer: 'A <b>Spore Puffer</b>. Back away when it swells up!',
-  shade_bat: '<b>Shade Bats</b>! They swoop at your lamp. One whack each.',
-  kobold: '<b>Kobold miners</b>! Raise your guard (<b>F</b> or right mouse) when one winds up, and strike back.',
-  cave_troll: 'A <b>Cave Troll</b>. Block its swipes, but when it glows <b>red</b>, get out of the way!',
-  cave_spider: 'A <b>Giant Cave Spider</b>. Its webs slow you down: cut them with your pick.',
-  ruin_wraith: 'A <b>Wraith</b>! It hates light: keep your lamp on it.',
-  cave_slime: 'A <b>Cave Slime</b>. Hit it hard and it splits!',
-  cave_drake: 'A <b>Cave Drake</b>! When its chest glows, get out of the fire.',
-  raptor: '<b>Raptors</b> hunt in packs. Keep them in front of you and block the leaps.',
-  tyrant: 'A <b>Cave Tyrant</b>... Its bite is too heavy to block. <b>Dodge</b>, then strike.',
-  shellback: 'A herd of <b>Shellbacks</b>. Peaceful grazers, unless you threaten their young.',
-  pterosaur: '<b>Pterosaurs</b> wheel under the roof. They dive at small things like you.',
+  pebble_mimic: 'Whack it!',
+  rubble_golem: 'Jump the shockwave',
+  crystal_golem: 'Mine its back crystal',
+  gloom_wisp: 'Keep your lamp on it',
+  ember_imp: 'Mind the embers',
+  crystal_wyrm: 'Coils back: sidestep',
+  spore_puffer: 'Swells: back away',
+  shade_bat: 'One whack each',
+  kobold: 'Winds up: guard',
+  cave_troll: 'Red glow: get away',
+  cave_spider: 'Cut webs with your pick',
+  ruin_wraith: 'Light hurts it',
+  cave_slime: 'Hit hard: it splits',
+  cave_drake: 'Chest glows: move',
+  raptor: 'Keep them in front',
+  tyrant: 'Too heavy: dodge!',
+  shellback: 'Peaceful. Mind the young',
+  pterosaur: 'Watch the roof',
 };
 const LOOT_COL = { ember_scale: 0xff7a2a, wisp_essence: 0xc89aff, bat_guano: 0x7a6a50, glowcap: 0x9affc0, slug_slime: 0x9ad0a0, spark_dust: 0x7fe7ff, spider_silk: 0xe0f0ff };
 
@@ -134,6 +136,7 @@ export class Enemies {
     this.webbed = 0; // seconds the mole is stuck in web
     this.debug = makeDebug(this);
     try { this.tame = new Tame(this); } catch (e) { console.warn('[tame]', e); this.tame = null; }
+    try { this.hires = new HiRes(this); } catch (e) { console.warn('[hires]', e); this.hires = null; } // near copies (enemies/hires.js)
   }
 
   // ------------------------------------------------------------------ shared resources
@@ -154,7 +157,7 @@ export class Enemies {
   }
   geo(key, build) {
     let g = this.geos.get(key);
-    if (!g) { g = build(); this.geos.set(key, g); }
+    if (!g) { g = withStyle(key, build); this.geos.set(key, g); }
     return g;
   }
   material(opts = {}) {
@@ -242,6 +245,7 @@ export class Enemies {
     this.sweep();
     // build the zone's likely models ahead of a first sighting, one per calm frame (never mid-fight)
     if ((this.warmT -= dt) <= 0 && this.autoSpawn && performance.now() - t0 < 4 && !this.threat()) this.prewarm();
+    this.hires?.update(); // creatures in arm's reach wear their hi-res near copies
     this.perf = performance.now() - t0;
     this.perfAvg += (this.perf - this.perfAvg) * 0.05;
     this.inUpdate = false;
@@ -523,7 +527,10 @@ export class Enemies {
     if (this.seenKinds.has(id)) return;
     this.seenKinds.add(id);
     const fresh = this.state.discover?.('critter', id);
-    if (fresh && INTRO[id]) this.say('intro_' + id, INTRO[id], 'warn', 9999);
+    if (fresh && INTRO[id]) {
+      const p = e.headPos ? e.headPos(_r).add(_p.set(0, 0.35, 0)) : _r.set(e.center.x, e.center.y + e.hitR * e.size + 0.4, e.center.z);
+      this.ui?.floatText?.(INTRO[id], { x: p.x, y: p.y, z: p.z }, { kind: 'reveal', life: 3, size: 0.9 });
+    }
   }
 
   /** Something made a sound (running, digging, a fight, a roar, a blast): creatures in range hear it. */
@@ -1109,6 +1116,7 @@ export class Enemies {
   }
 
   dispose() {
+    this.hires?.dispose();
     for (const e of this.list) e.dispose();
     this.list.length = 0;
     for (const s of this.shots) s.mesh.removeFromParent();

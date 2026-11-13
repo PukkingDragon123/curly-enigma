@@ -154,7 +154,7 @@
 /* ---------- quests: groups, "ask around", the Now box (quests part, wave 3) ---------- */
 .bk-group {
   display: flex; align-items: baseline; justify-content: space-between; gap: calc(var(--px) * 2); margin: calc(var(--px) * 3) 0 0; padding: var(--px) calc(var(--px) * 1);
-  font-family: var(--font-head); font-weight: 400; font-size: var(--fs); letter-spacing: .06em; text-transform: uppercase; color: #8a5a2a;
+  font-family: var(--font); font-weight: 400; font-size: var(--fs); letter-spacing: .06em; text-transform: uppercase; color: #8a5a2a;
   border-bottom: var(--px) solid rgba(110, 74, 42, .45);
 }
 .bk-group:first-child { margin-top: 0; }
@@ -163,10 +163,10 @@
 .bk-q.ready .bk-qt small { color: #7a3a1a; }
 .bk-ready { font-style: normal; color: #fff3d8; background: #c2862a; padding: 0 var(--px); margin-right: var(--px); box-shadow: 0 0 0 var(--px) #6a3a12; }
 .bk-bang {
-  display: grid; place-items: center; width: calc(var(--px) * 5); height: calc(var(--px) * 7); font-family: var(--font-head); font-style: normal; line-height: 1;
+  display: grid; place-items: center; width: calc(var(--px) * 5); height: calc(var(--px) * 7); font-family: var(--font); font-style: normal; line-height: 1;
   color: #f2c23a; text-shadow: var(--px) 0 0 #3a1e0c, calc(var(--px) * -1) 0 0 #3a1e0c, 0 var(--px) 0 #3a1e0c, 0 calc(var(--px) * -1) 0 #3a1e0c; animation: newBob 1.4s ease-in-out infinite;
 }
-.bk-bang.big { width: calc(var(--px) * 11); font-size: 1.5em; }
+.bk-bang.big { width: calc(var(--px) * 11); font-size: max(var(--g), round(1.5em + 2px, var(--g))); }
 .bk-q.ask { grid-template-columns: calc(var(--px) * 5) minmax(0, 1fr) auto; }
 .bk-face { background: #2a1e1a; }
 .ib-sketch.bk-sketch.bk-face img { width: calc(var(--px) * 30); height: calc(var(--px) * 30); object-fit: cover; image-rendering: pixelated; }
@@ -175,7 +175,7 @@
   margin: calc(var(--px) * 1) 0 calc(var(--px) * 3); padding: calc(var(--px) * 2) calc(var(--px) * 3) calc(var(--px) * 3);
   background: rgba(255, 248, 224, .6); box-shadow: inset calc(var(--px) * 1) 0 0 var(--ink), 0 0 0 var(--px) rgba(110, 74, 42, .3);
 }
-.bk-now h4 { margin: 0 0 calc(var(--px) * 2); font-family: var(--font-head); font-weight: 400; font-size: var(--fs); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
+.bk-now h4 { margin: 0 0 calc(var(--px) * 2); font-family: var(--font); font-weight: 400; font-size: var(--fs); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
 .bk-now-line { display: grid; grid-template-columns: calc(var(--px) * 11) minmax(0, 1fr) auto; column-gap: calc(var(--px) * 3); align-items: start; line-height: 1.25; }
 .bk-now-line img { width: calc(var(--px) * 11); height: calc(var(--px) * 10); margin-top: calc(var(--px) * -1); }
 .bk-now-line b { font-weight: 400; color: #2a1408; }

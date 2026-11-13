@@ -124,7 +124,8 @@ export function openBackpack(game, opts = {}) {
     const nodes = [...box.querySelectorAll('.inv-slot')];
     if (animate) stagger(nodes, firstRender ? 16 : 8);
     const f = Inv.bagFill(st);
-    count.innerHTML = `<b>${f.used}</b>/${f.slots} cells`;
+    count.innerHTML = `<b>${f.used}</b>/${f.slots}`;
+    count.title = `${f.used} of ${f.slots} cells used`;
     count.classList.toggle('full', f.full);
     renderScale();
   };
@@ -194,14 +195,14 @@ export function openBackpack(game, opts = {}) {
       ]),
       el('div', { class: 'bp-coin' }, [
         el('img', { class: 'pix', src: SPR.pouch(g > 0), alt: '' }),
-        el('div', {}, [el('b', {}, formatGoldFull(g)), el('small', {}, 'gold in the pouch')]),
+        el('div', { title: 'Gold in the pouch' }, [el('b', {}, formatGoldFull(g))]),
       ]),
       el('div', { class: 'bp-jar', title: 'Savings toward the Surface Ticket' }, [
         el('img', { class: 'pix', src: SPR.jar(p), alt: '' }),
         el('div', { class: 'bp-jar-txt' }, [
           el('small', {}, 'Surface Ticket'),
           el('div', { class: 'bp-goal' }, [el('i', { style: { width: (p * 100).toFixed(2) + '%' } }), el('img', { class: 'pix', src: iconURL('exit_ticket'), alt: '' })]),
-          el('span', {}, `${formatGold(g)} / 1M · ${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`),
+          el('span', { title: `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}% of the way` }, `${formatGold(g)} / 1M`),
         ]),
       ]),
       el('div', { class: 'bp-day' }, [
@@ -532,8 +533,7 @@ export function openBackpack(game, opts = {}) {
   const renderHot = () => {
     const bar = hotbarOf(st);
     hotRow.innerHTML = '';
-    hotRow.append(el('span', { class: 'bp-hot-t' }, 'Hotbar'));
-    bar.forEach((k, i) => {
+        bar.forEach((k, i) => {
       const b = el('button', { class: 'bp-hot-slot' + (k ? '' : ' empty') + (selKey === 'hot:' + i ? ' on' : ''), 'data-key': 'hot:' + i, title: k ? `${i + 1}: ${KIND_LABEL[k]}` : `${i + 1}: empty`, 'aria-label': k ? `Hotbar ${i + 1}: ${KIND_LABEL[k]}` : `Hotbar ${i + 1}: empty` }, [
         k ? el('img', { class: 'pix', src: itemVox.src(KIND_ICON[k]), alt: '' }) : null, el('i', { class: 'k' }, String(i + 1)),
       ]);

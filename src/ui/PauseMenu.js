@@ -28,7 +28,7 @@ const CSS = /* css */`
 .pm-tag i { width: calc(var(--px) * 4); height: calc(var(--px) * 4); transform: rotate(45deg); background: var(--gc); box-shadow: 0 0 0 var(--px) #1a0c08, 0 0 calc(var(--px) * 4) var(--gc); }
 .pm-tag b { color: var(--gc); font-weight: 400; }
 .pm-tag .dot { opacity: .5; }
-.pm-hint { position: absolute; right: calc(var(--px) * 6); bottom: calc(var(--px) * 6); font-size: .7em; color: #e8d0b0; opacity: .7; pointer-events: none; }
+.pm-hint { position: absolute; right: calc(var(--px) * 6); bottom: calc(var(--px) * 6); font-size: max(var(--g), round(.7em + 2px, var(--g))); color: #e8d0b0; opacity: .7; pointer-events: none; }
 .is-touch .pm-hint { display: none; }
 @keyframes pmUp { from { transform: translate(-50%, calc(var(--px) * 12)); opacity: 0; } }
 /* settings */
@@ -45,14 +45,14 @@ const CSS = /* css */`
 .pm-slider::-moz-range-thumb { width: calc(var(--px) * 8); height: calc(var(--px) * 12); border: 0; border-radius: 0; background: #e0b040; box-shadow: 0 0 0 var(--px) #3a2210; }
 .pm-slider:focus-visible { outline: var(--px) solid var(--gold); outline-offset: var(--px); }
 .pm-opts { display: flex; gap: calc(var(--px) * 1.5); }
-.pm-opts button { font: inherit; font-size: .85em; cursor: pointer; padding: calc(var(--px) * 1) calc(var(--px) * 3); color: var(--ink-soft); background: var(--parch-2);
+.pm-opts button { font: inherit; font-size: max(var(--g), round(.85em + 2px, var(--g))); cursor: pointer; padding: calc(var(--px) * 1) calc(var(--px) * 3); color: var(--ink-soft); background: var(--parch-2);
   border: 0; box-shadow: 0 0 0 var(--px) var(--wood-dk), inset 0 calc(var(--px) * -1) 0 rgba(0, 0, 0, .15); }
 .pm-opts button.on { color: #fff3e0; background: #3d6a30; box-shadow: 0 0 0 var(--px) #1a3014, inset 0 calc(var(--px) * -1) 0 rgba(0, 0, 0, .3); }
 .pm-lever { position: relative; width: calc(var(--px) * 22); height: calc(var(--px) * 10); padding: 0; border: 0; cursor: pointer; background: #482b15; box-shadow: 0 0 0 var(--px) #26160c, inset 0 var(--px) 0 #26160c; }
 .pm-lever::after { content: ''; position: absolute; top: var(--px); left: var(--px); width: calc(var(--px) * 10); height: calc(var(--px) * 8); background: #e0b040; box-shadow: inset 0 var(--px) 0 #ffe8a0, inset 0 calc(var(--px) * -1) 0 #8a5a1a; transition: left .15s; }
 .pm-lever.on { background: #3d6a30; box-shadow: 0 0 0 var(--px) #1a3014, inset 0 var(--px) 0 #1a3014; }
 .pm-lever.on::after { left: calc(100% - var(--px) * 11); }
-.pm-note { margin: 0; font-size: .75em; color: var(--ink-soft); }
+.pm-note { margin: 0; font-size: max(var(--g), round(.75em + 2px, var(--g))); color: var(--ink-soft); }
 @media (pointer: coarse) { .pm-opts button { min-height: 36px; } .pm-lever { min-height: 30px; } }
 /* the settings board: brass name plates and wooden switches on dark wood */
 .modal-back > .panel.tk-panel.pm-setpanel { width: min(calc(100vw - 16px - var(--sal) - var(--sar)), calc(var(--px) * 150)); }

@@ -533,13 +533,27 @@ export default class TitleScene extends Scene {
   buildDom() {
     const g = this.game;
     const keys = [['WASD', 'move'], ['C', 'crouch/dive'], ['Mouse', 'dig/aim'], ['E', 'interact'], ['B', 'the book'], ['I', 'backpack'], ['Esc', 'menu']];
-    const controls = el('div', { class: 'bk-controls bk-outline' });
+    // (wave 12: less text) the key legend rests out of sight; it shows only when it's wanted: a
+    // game key pressed on the title ("how do I move?") or a long idle look at the forest
+    const controls = el('div', { class: 'bk-controls bk-outline rest' });
     keys.forEach(([k, label], i) => {
       if (i) controls.append(el('span', { class: 'dot' }, '·'));
       controls.append(el('kbd', {}, k), label);
     });
+    let legendT = 0;
+    const legend = (ms) => {
+      controls.classList.remove('rest');
+      controls.classList.add('woke');
+      clearTimeout(legendT);
+      legendT = setTimeout(() => { controls.classList.add('rest'); controls.classList.remove('woke'); }, ms);
+    };
+    const gameKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'KeyE', 'KeyB', 'KeyI', 'F1']);
+    const onLegendKey = (e) => { if (gameKeys.has(e.code) || e.key === '?') legend(5000); };
+    window.addEventListener('keydown', onLegendKey);
+    const idleT = setTimeout(() => legend(6000), 20000);
+    this.own(() => { window.removeEventListener('keydown', onLegendKey); clearTimeout(legendT); clearTimeout(idleT); });
     const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-    this.soundHint = el('div', { class: 'bk-sound bk-outline', role: 'status' }, [el('span', { class: 'bk-sound-in' }, [el('span', { class: 'note' }, '♪'), (touch ? 'tap' : 'click') + ' anywhere for sound'])]);
+    this.soundHint = el('div', { class: 'bk-sound bk-outline', role: 'status' }, [el('span', { class: 'bk-sound-in' }, [el('span', { class: 'note' }, '♪'), (touch ? 'tap' : 'click') + ' for sound'])]);
     this.root = el('div', { class: 'bk-root bk-title tt-forest' }, [controls, this.soundHint, this.nestHolder]);
     g.ui.world.append(this.root);
     this.own(() => this.root.remove());

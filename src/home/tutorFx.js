@@ -177,3 +177,71 @@ export function benchAnvil() {
   g.userData.dispose = () => { for (const x of geos) x.dispose(); for (const m of mats) m.dispose(); };
   return g;
 }
+
+// ---------------------------------------------------------------- teaching by showing (wave 12)
+/**
+ * A few floating words in the world (2-5 words, voxel text: src/gfx/text3d.js): all the text a
+ * lesson shows next to what it demonstrates. pos: a world point. o: { kind, life, size }.
+ */
+export function teachWord(game, text, pos, o = {}) {
+  if (!pos || !game?.ui?.floatText) return;
+  try { game.ui.floatText(text, new THREE.Vector3(pos.x, pos.y, pos.z), { kind: o.kind || 'reveal', life: o.life ?? 2.4, size: o.size ?? 0.85, stack: o.stack }); } catch (e) { /* no words, no harm */ }
+}
+
+/**
+ * A lump of ore still in its crust of rock (~10 cm, fine voxels): a copper core, grey-brown rock
+ * all round it (each rock cell tagged userData.rock, outermost first to go). For Old Star's chisel
+ * demonstration: chipLump() knocks the crust off a few cells at a time.
+ */
+export function rockyLump(scale = 1) {
+  const g = new THREE.Group();
+  const s = 0.011 * scale;
+  const geo = new THREE.BoxGeometry(s, s, s);
+  const M = {
+    cu: new THREE.MeshLambertMaterial({ color: 0xd8743a, emissive: 0x3a1406 }),
+    cuHi: new THREE.MeshLambertMaterial({ color: 0xf6a862, emissive: 0x5a2410 }),
+    cuDk: new THREE.MeshLambertMaterial({ color: 0xa8542a, emissive: 0x2a0c04 }),
+    rock: new THREE.MeshLambertMaterial({ color: 0x7a6a5a }),
+    rockHi: new THREE.MeshLambertMaterial({ color: 0x9a8a76 }),
+    rockDk: new THREE.MeshLambertMaterial({ color: 0x4e4238 }),
+    dirt: new THREE.MeshLambertMaterial({ color: 0x5e4630 }),
+  };
+  const h = (x, y, z) => { const n = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return n - Math.floor(n); };
+  for (let x = -4; x <= 4; x++) for (let y = -3; y <= 3; y++) for (let z = -3; z <= 3; z++) {
+    const d = Math.hypot(x / 1.25, y, z) + (h(x, y, z) - 0.5) * 0.7;
+    if (d > 3.3) continue;
+    const core = Math.hypot(x / 1.3 + 0.3, y * 1.1, z) + (h(z, x, y) - 0.5) * 0.6 < 1.9;
+    let m;
+    if (core) m = y > 0 && x < 1 ? M.cuHi : (x + y + z) & 1 ? M.cu : (h(y, z, x) < 0.3 ? M.cuDk : M.cu);
+    else m = y >= 2 && h(x, z, y) < 0.5 ? M.rockHi : h(y, x, z) < 0.18 ? M.dirt : (x * 3 + y * 5 + z) % 4 === 0 ? M.rockDk : M.rock;
+    const b = new THREE.Mesh(geo, m);
+    b.position.set(x * s, y * s, z * s);
+    if (!core) { b.userData.rock = true; b.userData.d = d; }
+    g.add(b);
+  }
+  g.userData.dispose = () => { geo.dispose(); for (const m of Object.values(M)) m.dispose(); };
+  return g;
+}
+
+/**
+ * One blow of the chisel on a rockyLump: up to n of its outermost rock cells (round the side facing
+ * `from`, a world point, when given) go flying as tiny voxel chips. Returns the rock cells left.
+ */
+export function chipLump(fx, lump, n = 6, from = null) {
+  const rock = lump.children.filter((b) => b.userData.rock && b.visible);
+  if (!rock.length) return 0;
+  lump.updateMatrixWorld(true);
+  const c = new THREE.Vector3().setFromMatrixPosition(lump.matrixWorld);
+  const side = from ? new THREE.Vector3(from.x - c.x, 0, from.z - c.z).normalize() : null;
+  const wp = new THREE.Vector3();
+  const score = (b) => { b.getWorldPosition(wp); return b.userData.d + (side ? wp.sub(c).normalize().dot(side) * 1.5 : 0) + Math.random() * 0.8; };
+  rock.sort((a, b) => score(b) - score(a));
+  for (const b of rock.slice(0, n)) {
+    b.visible = false;
+    b.getWorldPosition(wp);
+    const out = wp.clone().sub(c).normalize();
+    const col = b.material.color;
+    fx?.chips?.(wp.x, wp.y, wp.z, 2, [col.r, col.g, col.b], [out.x * 0.6, out.y * 0.6 + 0.3, out.z * 0.6]);
+  }
+  return Math.max(0, rock.length - n);
+}

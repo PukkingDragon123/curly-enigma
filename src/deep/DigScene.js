@@ -557,7 +557,7 @@ export default class DigScene extends Scene {
       this.fx.sparks(px, py, pz, 10, col01(mat.accent), out, 3.5);
       if (r) {
         this.game.ui.floatText?.(`-${Math.max(1, Math.round(r.ore.frag * power * this.bonus('clean')))}%`, new THREE.Vector3(px, py, pz), { color: '#ff8a6a', size: 0.8, kind: 'ore' });
-        if (!this.flags.oreHit) { this.flags.oreHit = true; st.learn('ore_damage'); this.say('orehit', 'Careful! Hitting ore chips its quality. Clear the rock around it instead.', 'warn', 30); }
+        if (!this.flags.oreHit) { this.flags.oreHit = true; st.learn('ore_damage'); this.game.ui.floatText?.('Hit the rock, not ore', new THREE.Vector3(px + out[0] * 0.1, py + 0.2, pz + out[2] * 0.1), { kind: 'bad', life: 2.4, size: 0.85 }); }
         if (r.s.q <= 0) this.shatter(r.d);
       }
       return;
@@ -922,7 +922,7 @@ export default class DigScene extends Scene {
       this.audio.play('ore_free');
       for (let k = 0; k < 6; k++) this.fx.glints(f.d.x, f.d.y, f.d.z);
       this.clumps.spawn(f, out);
-      if (!this.flags.firstOre) { this.flags.firstOre = true; this.say('ore1', `<b>${ITEMS[f.d.item]?.name || 'Ore'}!</b> A clump broke out of the wall. Pick it up (E) and chip it clean.`, 'good', 10); }
+      if (!this.flags.firstOre) { this.flags.firstOre = true; this.game.ui.floatText?.(`${ITEMS[f.d.item]?.name || 'Ore'}! Pick it up`, new THREE.Vector3(f.d.x, f.d.y + 0.3, f.d.z), { kind: 'reveal', life: 2.4, size: 0.85 }); }
       return;
     }
     const { d, s, voxels } = f;
@@ -990,11 +990,22 @@ export default class DigScene extends Scene {
       const t = this.load.tier;
       if ((t === 'heavy' || t === 'over' || t === 'max') && !st.flag('tipHeavy')) {
         st.flag('tipHeavy', true);
-        this.say('heavy', 'Oof, your pack is <b>heavy</b>: you can\'t run and every step costs energy. Ore weighs a lot. Take it home and lighten the load.', 'warn', 9999);
-      } else if (t === 'max' && this.lastTier !== 'max') this.say('heavymax', 'You can\'t lift any more! Drop something or head home.', 'warn', 12);
+        // (wave 12: shown, not told) a few words float up, and the load gauge on the pack pulses for a moment
+        this.packWord('Heavy: no running', 'bad');
+        const ob = this.game.ui.onboard, sp = ob?.spot?.('.pack-load');
+        if (sp) setTimeout(() => sp.remove(), 4500);
+      } else if (t === 'max' && this.lastTier !== 'max') this.packWord('Too heavy!', 'bad');
       this.lastTier = t;
     }
     return this.load;
+  }
+
+  /** A few floating words just in front of the mole (the pack's weight). */
+  packWord(text, kind = 'info') {
+    const cam = this.camera;
+    if (!cam || !this.game.ui.floatText) return;
+    cam.updateMatrixWorld();
+    this.game.ui.floatText(text, cam.localToWorld(new THREE.Vector3(0, -0.12, -0.9)), { kind, life: 2.4, size: 0.85 });
   }
 
   /** Too heavy to pick something up (a short note, not every frame). */
@@ -1229,8 +1240,10 @@ export default class DigScene extends Scene {
   liftFound(L) {
     this.audio.play('ding');
     this.audio.play('bell', { vol: 0.4 });
-    if (!liftUnlocked(this.state, L.id)) this.say('lift' + L.id, `<b>Lift found: ${L.name}!</b> Its gate is chained. Ring its bell (<b>E</b>) to unlock it as a <b>checkpoint</b>: then you can ride here from any lift you know.`, 'good', 99);
-    else this.say('lift' + L.id, `<b>Lift found: ${L.name}!</b> Ring its bell (E) to ride up home whenever you're tired, and come back down here later.`, 'good', 99);
+    // (wave 12: shown, not told) a few words over the cage, and its bell glints for a while
+    const at = new THREE.Vector3(L.x, L.y + 1.5, L.z);
+    this.game.ui.floatText?.(liftUnlocked(this.state, L.id) ? 'Ring to ride home' : 'Ring: a checkpoint', at, { kind: 'reveal', life: 3, size: 0.9 });
+    for (let k = 0; k < 8; k++) setTimeout(() => { if (this.game.scene === this) this.fx.glints(L.x + rand(-0.3, 0.3), L.y + 1.1 + rand(0, 0.4), L.z + rand(-0.3, 0.3)); }, k * 350);
   }
   /** Ring a locked lift's bell: the chain drops, the lamp lights, it's a checkpoint now. */
   unlockCheckpoint(L) {
@@ -1323,7 +1336,16 @@ export default class DigScene extends Scene {
     st.data.deepest = Math.max(st.data.deepest || 0, depth);
     // energy
     if (st.energy <= 0 && !this.fainting) this.faint();
-    else if (st.energy < 25 && !this.flags.low) { this.flags.low = true; this.say('low', 'Running low on energy! Eat something, or find a lift (the radar shows them) and ride up home.', 'warn', 60); }
+    else if (st.energy < 25 && !this.flags.low) {
+      // (wave 12: shown, not told) a few words, and the lamp gauge and the snack pulse for a moment
+      this.flags.low = true;
+      if ((this.lowT ?? -999) < this.time - 60) {
+        this.lowT = this.time;
+        this.packWord('Low energy: eat', 'bad');
+        const ob = this.game.ui.onboard, sp = [ob?.spot?.('.hud-tl .lamp'), ob?.spot?.('snack')];
+        setTimeout(() => sp.forEach((x) => x?.remove()), 4500);
+      }
+    }
     else if (st.energy > 40) this.flags.low = false;
     // remember explored cells for the radar
     this.exploreT = (this.exploreT || 0) - dt;

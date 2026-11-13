@@ -56,12 +56,12 @@ const CSS = /* css */`
 .fb-buff img { width: var(--icon-s); height: var(--icon-s); display: block; image-rendering: pixelated; }
 .fb-bar { width: 100%; height: calc(var(--px) * 1.5); background: #3a2414; position: relative; }
 .fb-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--c); }
-.fb-t { font-size: 11px; line-height: 1; color: #3a2414; letter-spacing: .02em; }
+.fb-t { font-size: max(var(--g), round(11px + 2px, var(--g))); line-height: 1; color: #3a2414; letter-spacing: .02em; }
 .fb-buff.low { animation: fbLow .6s steps(2) infinite; }
 .fb-buff.pop { animation: fbPop .5s cubic-bezier(.2,1.8,.4,1); }
 .fb-buff.pop::after { content: ''; position: absolute; inset: calc(var(--px) * -3); border: var(--px) solid var(--c); animation: fbRing .5s ease-out forwards; pointer-events: none; }
 .fb-tip { position: absolute; left: 0; top: calc(100% + var(--px) * 3); width: max-content; max-width: calc(var(--px) * 90); text-align: left;
-  font-size: 15px; line-height: 1.25; color: var(--ink, #2a1a14); background: #f8ecd2; padding: calc(var(--px) * 2) calc(var(--px) * 3);
+  font-size: max(var(--g), round(15px + 2px, var(--g))); line-height: 1.25; color: var(--ink, #2a1a14); background: #f8ecd2; padding: calc(var(--px) * 2) calc(var(--px) * 3);
   box-shadow: 0 0 0 var(--px) #3a2414, 0 calc(var(--px) * 2) 0 var(--px) rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 4; }
 .fb-tip small { color: #7a5a3a; }
 .fb-buff:hover .fb-tip, .fb-buff.open .fb-tip, .fb-buff:focus-visible .fb-tip { opacity: 1; }
@@ -71,7 +71,7 @@ const CSS = /* css */`
 @keyframes fbLow { 50% { opacity: .45; } }
 .fb-buff.out { animation: fbOut .35s ease-in forwards; }
 @keyframes fbOut { to { transform: translateY(calc(var(--px) * -20)) scale(.6); opacity: 0; } }
-@media (max-width: 640px), (max-height: 440px) { .fb-t { font-size: 9px; } .fb-strip { gap: var(--px); } }
+@media (max-width: 640px), (max-height: 440px) { .fb-t { font-size: max(var(--g), round(9px + 2px, var(--g))); } .fb-strip { gap: var(--px); } }
 `;
 let styled = false;
 function ensureCss() {

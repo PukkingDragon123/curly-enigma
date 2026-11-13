@@ -190,8 +190,9 @@ export function openBurrowShop(game, shopId, o = {}) {
     renderCounter();
     const hidden = rocco ? 0 : shop.stock.filter((e) => e.minZone && e.minZone > (st.data.zoneMax || 1)).length;
     backNote.hidden = !hidden && !rocco;
-    if (rocco) backNote.textContent = 'New oddities every morning. Don\'t ask where from.';
-    else if (hidden) backNote.textContent = `${hidden} more in the back. Dig deeper and come back!`;
+    // (wave 12: less text) a short tag; the full line stays on hover
+    if (rocco) { backNote.textContent = 'New every morning'; backNote.title = 'New oddities every morning. Don\'t ask where from.'; }
+    else if (hidden) { backNote.textContent = `+${hidden} deeper down`; backNote.title = `${hidden} more in the back. Dig deeper and come back!`; }
   };
   const good = (e) => {
     const it = ITEMS[e.id], p = st.buyPrice(shopPrice(shop, e));
