@@ -6,17 +6,26 @@
 // gamepads in bookends/titleSignNav.js): they catch the light and swing on their nails when
 // touched, knock when chosen. Behind it, over and over, the mole comes sprinting across the cave
 // with a raptor bursting through the mushrooms after him (bookends/titleChase.js); the camera
-// drifts slowly. The pixel MOLEFORGE logo sits over it all. Continue / New Game glides the camera
+// drifts slowly. The pixel MOLEFORGE logo sits over it all.
+// Wave 9: the cave is the old wood's mushroom hollow now, the forest's golden light pouring down
+// through openings in its roof (shafts, dappled pools, a sky-lit funnel over the clearing), a voxel
+// grass carpet and ferns that sway and part as they run through, vines and moss hanging. The
+// title opens on a short shot (bookends/titleIntro.js, ~8 s): close on the mole fleeing in a
+// sweat, the raptor bursting through the glowcaps after him, then up and back into the menu.
+// Any key, click or tap skips it at once (and only skips: the boards ignore that press). Continue / New Game glides the camera
 // down to a raptor's nest on a mossy shelf (bookends/titleNest.js): three eggs, one per save slot,
 // cracked as far as each save has got (hatched, a baby raptor in the shell, once a raptor's been
 // tamed); choosing one cracks it open and the camera pushes into its light, into the journey.
 //
 // Debug (scene.debug): openStones(), closeStones(), pick(i), fake(i, pct), hatch(i, on), smash(i),
 // hover(i), focus(i), press(i), boardCenter(i) → [x, y] page px, shot('menu'|'stones'), step(sec),
-// chase(t, n) (play chase run n to t s), perf(), ready(), menu (the nav). Calls made while the
-// cave is still being built wait for it.
+// chase(t, n) (play chase run n to t s), perf(), ready(), menu (the nav), skipIntro(),
+// introAt(t) (the opening, replayed to t s and held there), intro() (its time, or null). Calls
+// made while the cave is still being built wait for it; every one but introAt/intro/step/perf
+// skips the opening first (so tests see the menu at once).
 // Dev: ?lite=0|1 (cave detail), &cam=x,y,z,lookX,lookY,lookZ[,fov] (a fixed camera),
-// &frame=sx,sy,size,vx,pitch,fov (try a menu framing for this screen shape), &chase=0 (no chase).
+// &frame=sx,sy,size,vx,pitch,fov (try a menu framing for this screen shape), &chase=0 (no chase),
+// &intro=0 (no opening shot).
 import * as THREE from 'three';
 import { Scene } from '../core/Scene.js';
 import { el, clamp } from '../core/util.js';
@@ -24,9 +33,10 @@ import { slotRaw } from '../core/saves.js';
 import { useBookendStyles } from '../bookends/css.js';
 import { logoLetters, glintURL } from '../bookends/logo.js';
 import { disposeTextures, setPixelScale, fitFov } from '../bookends/fx.js';
-import { buildCave, CAVE, floorH } from '../bookends/titleCave.js';
-import { CF } from '../bookends/titleCaveFx.js';
+import { buildCave, CAVE, floorH, SHAFTS, SUN } from '../bookends/titleCave.js';
+import { CF, setSun } from '../bookends/titleCaveFx.js';
 import { makeChase } from '../bookends/titleChase.js';
+import { INTRO, introShot } from '../bookends/titleIntro.js';
 import { makeNest, EGGS } from '../bookends/titleNest.js';
 import { caveSounds } from '../bookends/titleSounds.js';
 import { makeSignpost } from '../bookends/titleSigns.js';
@@ -36,10 +46,10 @@ import { makeSignMenu } from '../ui/signs.js';
 
 const REDUCED = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 const CONTINUE_OK = new Set(['town', 'home', 'forge', 'cooking']); // the mine and the deep fall back to home
-/** Under the glowcaps: cool, blue-green shadows, a warm lift in the highlights. */
-const GRADE = { lift: [0.004, 0.012, 0.03], gamma: [1.02, 1.0, 0.97], gain: [1.08, 1.02, 0.94] };
+/** The old wood's golden light pouring in among the glowcaps: warm highlights, cool blue-green shade. */
+const GRADE = { lift: [0.006, 0.014, 0.028], gamma: [1.02, 1.0, 0.97], gain: [1.12, 1.03, 0.88] };
 const DARK = 0x0a0806; // the loading card's colour (the journey's too)
-const AIR = 0x0b0d18; // the cave's far dark
+const AIR = 0x34443a; // the hollow's haze: soft, sun-warmed green-grey depth
 const TURN = 0.14; // the post faces a little past the camera (so its depth shows; the boards turn back to face it)
 
 /**
@@ -63,6 +73,18 @@ const TITLE_CSS = /* css */`
 .tt-back { position: absolute; left: 0; top: 0; }
 .tt-cave .bk-logo { filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(6, 4, 14, .6)) drop-shadow(0 0 calc(var(--px) * 6) rgba(120, 230, 220, .22)); }
 .tt-cave .bk-sub { color: #e8fff8; }
+/* the opening shot: letterbox bars of dark loam with a mossy lip, the menu's words held back */
+.bk-title .tt-bar { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; z-index: 3;
+  background: #0d0a08; transition: height .7s cubic-bezier(.5, 0, .2, 1); }
+.bk-title .tt-bar.top { top: 0; box-shadow: 0 calc(var(--px) * 1) 0 #24341c, 0 calc(var(--px) * 2) 0 rgba(36, 52, 28, .45); }
+.bk-title .tt-bar.bot { bottom: 0; box-shadow: 0 calc(var(--px) * -1) 0 #24341c, 0 calc(var(--px) * -2) 0 rgba(36, 52, 28, .45); }
+.bk-title.intro .tt-bar { height: 9vh; }
+.bk-title .tt-left, .bk-title .bk-controls, .bk-title .bk-sound { transition: opacity .9s ease .1s; }
+.bk-title.intro .tt-left, .bk-title.intro .bk-controls, .bk-title.intro .bk-sound { opacity: 0; transition: none; }
+.bk-title .tt-skip { position: absolute; right: calc(var(--px) * 8 + env(safe-area-inset-right, 0px)); bottom: calc(9vh + var(--px) * 4);
+  z-index: 4; opacity: 0; transition: opacity .5s; pointer-events: none; color: #fff2d0; font-size: calc(var(--px) * 7); }
+.bk-title.intro .tt-skip { opacity: .85; transition: opacity .8s ease 1.2s; }
+.bk-title .tt-skip kbd { margin-right: calc(var(--px) * 2); }
 @media (max-height: 520px) and (min-aspect-ratio: 5/4) {
   .tt-cave .tt-left { top: calc(var(--px) * 6); }
   .tt-left .bk-logo { --lp: calc(var(--px) * 1.5); }
@@ -99,7 +121,10 @@ export default class TitleScene extends Scene {
 
     const sc = this.scene;
     sc.background = new THREE.Color(AIR);
-    sc.fog = new THREE.FogExp2(AIR, 0.032);
+    sc.fog = new THREE.FogExp2(AIR, 0.034);
+    setSun(SUN);
+    CF.uMistCol.value.set(0x3a6a52);
+    CF.uMistDen.value = 0.1;
     this.camera = new THREE.PerspectiveCamera(40, eng.aspect, 0.05, 160);
 
     // a quiet card while the cave is built (a second or two; longer on a phone)
@@ -173,19 +198,21 @@ export default class TitleScene extends Scene {
     this.own(() => this.chase.dispose());
     sc.add(this.chase.group);
 
-    // ---- light: the glowcaps' own (in the cave), a dim cool sky-glow from the roof's glowworms,
-    // a cold key down from the high dome, a warm bounce onto the boards' faces (as from the nest)
-    this.hemi = new THREE.HemisphereLight(0x4a5a8a, 0x3a2c58, 0.45);
-    this.key = new THREE.DirectionalLight(0x8ab8e8, 0.3);
-    this.key.position.set(-0.4, 1, -0.35).multiplyScalar(30);
-    this.bounce = new THREE.DirectionalLight(0xffc890, 0.85);
+    // ---- light: the glowcaps' own (in the cave), the wood's daylight spilling down through the
+    // openings (a soft warm key from the sun's side, sky light over a mossy, sun-warmed floor; the
+    // shafts themselves are in the materials, titleCaveFx.js caSun), a warm bounce onto the boards
+    this.hemi = new THREE.HemisphereLight(0xb8c8b0, 0x6a5430, 1.6);
+    this.key = new THREE.DirectionalLight(0xffd29a, 1.25);
+    this.key.position.copy(SUN).multiplyScalar(30);
+    this.bounce = new THREE.DirectionalLight(0xffc890, 0.9);
     this.bounce.position.set(-0.3, 0.45, 1).multiplyScalar(30);
     this.bounce.target = this.sign.group;
     sc.add(this.hemi, this.key, this.bounce);
 
     Object.assign(this.post, {
-      outlineFar: 22, vignette: 0.42, saturation: 1.14, contrast: 1.08, grade: GRADE, gradeMix: 1, exposure: 1.0,
-      bloom: 0.85, bloomThreshold: 0.62, bloomKnee: 0.25, wideGlow: 0.6, rays: 0, ao: 0.85, aoRadius: 0.5,
+      outlineFar: 22, vignette: 0.36, saturation: 1.12, contrast: 1.08, grade: GRADE, gradeMix: 1, exposure: 1.0,
+      bloom: 0.75, bloomThreshold: 0.7, bloomKnee: 0.25, wideGlow: 0.55, ao: 0.85, aoRadius: 0.5,
+      rays: 0.9, raysPos: SHAFTS[0].top.clone(), raysSky: 1, raysThreshold: 0.82, raysColor: 0xffd49a, raysRadius: 0.55, raysDecay: 0.968, raysLength: 0.95,
       fade: 0, fadeColor: DARK,
     });
     if (soft) this.post.outline = false; // (a software rasterizer can't afford the outline pass)
@@ -207,7 +234,49 @@ export default class TitleScene extends Scene {
     // the cave's sound: its slow breath, far drips, a trickle behind the glowcaps
     this.loop('cave_air', 0.55);
     this.loop('cave_water', 0.16);
+    // the opening shot (not with the chase off, and not twice in a row if the motion is reduced)
+    if (this.chaseOn && this.params.intro !== '0' && !REDUCED) this.startIntro();
     for (const fn of this.pending.splice(0)) fn();
+  }
+
+  // ------------------------------------------------------------------ the opening
+  startIntro() {
+    this.intro = { t: 0 };
+    this.C.setIntro(true);
+    this.root.classList.add('intro');
+    this.chase.startIntro();
+    this.menu.enabled = false;
+    this.introCam = { pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 40 };
+    this.updateIntro(0);
+  }
+
+  /** The opening's camera at its time now (and the menu's words coming up near its end). */
+  updateIntro(dt) {
+    const I = this.intro;
+    I.t += dt;
+    const sh = introShot(I.t, this.shot(), this.chase.live(), this.introCam);
+    // on a screen held tall the close shots widen to keep the mole and the raptor in
+    const c = { aspect: this.camera.aspect, fov: sh.fov, updateProjectionMatrix() {} };
+    fitFov(c, sh.fov, this.camera.aspect < 1 ? 50 : 0);
+    this.cam.pos.copy(sh.pos); this.cam.look.copy(sh.look); this.cam.fov = c.fov;
+    if (I.t >= INTRO.ui && this.root.classList.contains('intro')) this.root.classList.remove('intro');
+    if (I.t >= INTRO.dur) this.endIntro(false);
+  }
+
+  /** The opening's over (skipped: the camera is in the menu's place at once). */
+  endIntro(skip = true) {
+    if (!this.intro) return;
+    this.intro = null;
+    this.C.setIntro(false);
+    this.root.classList.remove('intro');
+    this.menu.enabled = !(this.nest?.open || this.busy);
+    if (skip) {
+      const s = this.shot();
+      this.cam.pos.copy(s.pos); this.cam.look.copy(s.look); this.cam.fov = s.fov;
+      this.skipT = performance.now();
+    }
+    this.applyCamera(this.time || 0);
+    if (!this.nest?.open && !(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) this.menu.focus(0, true);
   }
 
   /** Has save slot i tamed a raptor? (data.tame.raptors) */
@@ -317,23 +386,40 @@ export default class TitleScene extends Scene {
    * is the distance to the nearest of their cameras (for detail).
    */
   makeView() {
-    const frusta = [], eyes = [];
+    const frusta = [], eyes = [], menuN = { f: 0, e: 0 };
     const add = (s, aspect, widen = 1.12) => {
       const c = new THREE.PerspectiveCamera(Math.min(150, s.fov * widen + 4), aspect * 1.08, 0.05, 160);
       c.position.copy(s.pos); c.lookAt(s.look); c.updateMatrixWorld(); c.updateProjectionMatrix();
       frusta.push(new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse)));
       eyes.push(s.pos.clone());
     };
+    const introShots = [];
     for (const [k, a] of ASPECTS) {
-      add(this.frame(k, a), a);
+      const menu = this.frame(k, a);
+      add(menu, a);
       add(this.nest.shot(a), a, 1.05);
+      // the opening's cameras (its script is fixed: the cave is built for all of them)
+      if (this.params.intro !== '0' && this.params.chase !== '0') {
+        for (let t = 0; t <= INTRO.dur; t += 0.35) {
+          const sh = introShot(t, menu);
+          const c = { aspect: a, fov: sh.fov, updateProjectionMatrix() {} };
+          fitFov(c, sh.fov, a < 1 ? 50 : 0);
+          introShots.push([{ pos: sh.pos.clone(), look: sh.look.clone(), fov: c.fov }, a]);
+        }
+      }
     }
+    menuN.f = frusta.length; menuN.e = eyes.length;
+    for (const [sh, a] of introShots) add(sh, a, 1.18);
     const B = new THREE.Box3(), S = new THREE.Sphere();
-    return {
-      box(x0, y0, z0, x1, y1, z1) { B.min.set(x0, y0, z0); B.max.set(x1, y1, z1); for (const F of frusta) if (F.intersectsBox(B)) return true; return false; },
-      point(x, y, z, r = 0.3) { S.center.set(x, y, z); S.radius = r; for (const F of frusta) if (F.intersectsSphere(S)) return true; return false; },
-      dist(x, y, z) { let d = Infinity; for (const e of eyes) d = Math.min(d, Math.hypot(e.x - x, e.y - y, e.z - z)); return d; },
-    };
+    const make = (nf, ne) => ({
+      box(x0, y0, z0, x1, y1, z1) { B.min.set(x0, y0, z0); B.max.set(x1, y1, z1); for (let i = 0; i < nf; i++) if (frusta[i].intersectsBox(B)) return true; return false; },
+      point(x, y, z, r = 0.3) { S.center.set(x, y, z); S.radius = r; for (let i = 0; i < nf; i++) if (frusta[i].intersectsSphere(S)) return true; return false; },
+      dist(x, y, z) { let d = Infinity; for (let i = 0; i < ne; i++) { const e = eyes[i]; d = Math.min(d, Math.hypot(e.x - x, e.y - y, e.z - z)); } return d; },
+    });
+    const all = make(frusta.length, eyes.length);
+    // (view.menu: just the menu's framings and the nest's; what only the opening sees is built apart)
+    if (introShots.length) all.menu = make(menuN.f, menuN.e);
+    return all;
   }
 
   // ------------------------------------------------------------------ DOM
@@ -366,7 +452,9 @@ export default class TitleScene extends Scene {
     });
     this.soundHint = el('div', { class: 'bk-sound bk-outline', role: 'status' }, [el('span', { class: 'bk-sound-in' }, [el('span', { class: 'note' }, '♪'), (window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 'tap' : 'click') + ' anywhere for sound'])]);
     this.left = el('div', { class: 'bk-left tt-left' }, [logo, sub]);
-    this.root = el('div', { class: 'bk-root bk-title tt-cave' }, [this.left, controls, this.soundHint, this.nestHolder]);
+    const touchy = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    this.skipHint = el('div', { class: 'tt-skip bk-outline', 'aria-hidden': 'true' }, touchy ? ['tap to skip'] : [el('kbd', {}, 'any key'), 'skip']);
+    this.root = el('div', { class: 'bk-root bk-title tt-cave' }, [el('i', { class: 'tt-bar top' }), el('i', { class: 'tt-bar bot' }), this.left, controls, this.soundHint, this.nestHolder, this.skipHint]);
     g.ui.world.append(this.root);
     this.own(() => this.root.remove());
     this.audioOn = false;
@@ -375,7 +463,7 @@ export default class TitleScene extends Scene {
     const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     this.menu = makeSignNav({
       layer: this.root, canvas: g.engine.canvas, camera: this.camera, post: this.sign, items: this.items, audio: g.audio, label: 'Main menu',
-      blocked: () => g.ui.isPanelOpen() || this.nest?.open || this.busy || g.transitioning,
+      blocked: () => g.ui.isPanelOpen() || this.nest?.open || this.busy || g.transitioning || !!this.intro || performance.now() - (this.skipT || 0) < 350,
       onBack: () => { if (g.ui.isPanelOpen()) g.ui.closePanel(); else if (this.nest?.open) this.closeStones(); },
     });
     this.own(() => this.menu.destroy());
@@ -386,6 +474,10 @@ export default class TitleScene extends Scene {
     };
     window.addEventListener('keydown', this.onKey);
     this.own(() => window.removeEventListener('keydown', this.onKey));
+    // any key, click or tap skips the opening (first, before the boards hear it)
+    this.onSkip = () => { if (this.intro) this.endIntro(true); };
+    for (const ev of ['keydown', 'pointerdown', 'touchstart', 'wheel']) window.addEventListener(ev, this.onSkip, { capture: true, passive: true });
+    this.own(() => { for (const ev of ['keydown', 'pointerdown', 'touchstart', 'wheel']) window.removeEventListener(ev, this.onSkip, { capture: true }); });
   }
 
   /** The first board reads Continue while any egg holds a save. */
@@ -511,7 +603,7 @@ export default class TitleScene extends Scene {
     const M = this._m || (this._m = new THREE.Vector3());
     M.copy(this.stack.getCenter(M)).applyMatrix4(this.sign.group.matrixWorld);
     if (this.shotName !== 'menu') M.copy(look);
-    const calm = (this.shotName === 'menu' ? 1 : 0.35) * (REDUCED ? 0 : 1);
+    const calm = (this.shotName === 'menu' ? 1 : 0.35) * (REDUCED || this.intro ? 0 : 1);
     const yaw = (Math.sin(t * 0.061) * 0.028 + Math.sin(t * 0.023 + 1.3) * 0.018) * calm;
     const breathe = 1 + Math.sin(t * 0.047) * 0.012 * calm;
     const off = this._off || (this._off = new THREE.Vector3());
@@ -551,13 +643,17 @@ export default class TitleScene extends Scene {
   update(dt) {
     super.update(dt);
     if (!this.ready) return;
+    if (this.intro?.hold) return; // (debug.introAt: a still of the opening)
     const a = performance.now();
-    // glide toward the current framing (down to the nest a little slower, an easy swoop)
-    const s = this.shot();
-    const k = 1 - Math.exp(-dt * (this.shotName === 'leave' ? 1.9 : this.shotName === 'stones' ? 1.7 : 2.2));
-    this.cam.pos.lerp(s.pos, k);
-    this.cam.look.lerp(s.look, k);
-    this.cam.fov += (s.fov - this.cam.fov) * k;
+    if (this.intro) this.updateIntro(dt);
+    else {
+      // glide toward the current framing (down to the nest a little slower, an easy swoop)
+      const s = this.shot();
+      const k = 1 - Math.exp(-dt * (this.shotName === 'leave' ? 1.9 : this.shotName === 'stones' ? 1.7 : 2.2));
+      this.cam.pos.lerp(s.pos, k);
+      this.cam.look.lerp(s.look, k);
+      this.cam.fov += (s.fov - this.cam.fov) * k;
+    }
     this.applyCamera(this.time);
     this.sign.update(dt, this.camera, this.game.engine.height);
     this.menu.update(dt);
@@ -613,9 +709,24 @@ export default class TitleScene extends Scene {
   // ------------------------------------------------------------------ test hooks
   makeDebug() {
     const self = this;
-    const later = (fn) => (...a) => { if (self.ready) return fn(...a); self.whenReady(() => fn(...a)); return undefined; };
+    // (every action skips the opening first, so a test sees the menu at once)
+    const later = (fn) => (...a) => { const go = () => { self.endIntro(true); return fn(...a); }; if (self.ready) return go(); self.whenReady(go); return undefined; };
     return {
       ready: () => !!self.ready,
+      /** Skip the opening shot (as any key does). */
+      skipIntro: later(() => {}),
+      /** The opening's time (s), or null when it isn't playing. */
+      intro: () => (self.intro ? +self.intro.t.toFixed(2) : null),
+      /** (screenshots) Replay the opening from the start to t seconds, in 1/30 s steps, and hold it there. */
+      introAt: (t = 0) => {
+        const run = () => {
+          self.startIntro();
+          const n = Math.round(t * 30);
+          for (let i = 0; i < n && self.intro; i++) self.update(1 / 30);
+          if (self.intro) self.intro.hold = true;
+        };
+        if (self.ready) run(); else self.whenReady(run);
+      },
       get menu() { return self.menu; },
       get stones() { return self.nest; },
       get nest() { return self.nest; },

@@ -7,9 +7,10 @@
 // end on). Late voxels (the haft, the grip) are set in when the work is done. PartView renders it
 // all as two instanced meshes.
 import * as THREE from 'three';
-import { voxelMaterial, VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
+import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { METALS } from '../data/weapons.js';
-import { applyHeat, glowAmount, glowHex } from './blackbody.js';
+import { glowAmount, glowHex } from './blackbody.js';
+import { makeHotMetal } from './hotMetal.js';
 import { mixHex, shade } from '../core/util.js';
 import { makeGlow } from '../bookends/fx.js';
 import { pieceOf } from '../data/forgePieces.js';
@@ -205,12 +206,10 @@ export class PartView {
     this.group = new THREE.Group();
     this.inner = new THREE.Group();
     this.group.add(this.inner);
-    const mat = voxelMaterial('toon', { unique: true, vertexColors: false, color: this.base, emissive: 0x000000 });
-    // hot metal glows unevenly: the per-voxel tint scales its glow too
-    mat.onBeforeCompile = (sh) => {
-      sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n#ifdef USE_COLOR\n\ttotalEmissiveRadiance *= (0.15 + 0.95 * vColor.rgb * vColor.rgb);\n#endif');
-    };
-    mat.customProgramCacheKey = () => 'fg-part-glow';
+    // burning-hot metal (hotMetal.js): the glow per voxel cell, crawling, with scale, cooler where
+    // the tongs hold it; the per-voxel tint (hammer tones, cracks) scales its glow too
+    this.hm = makeHotMetal({ mode: 'part', base: this.base, cell: VX, scale: 0.28, gain: 1 });
+    const mat = this.hm.material;
     this.mat = mat;
     const N = def.N;
     this.mesh = new THREE.InstancedMesh(unit, mat, N);
@@ -341,8 +340,10 @@ export class PartView {
         if (this.lateMat) this.lateMat.color.setScalar(0.9 + 0.12 * Math.sin(time * 9));
       }
     }
-    // heat: dark forge scale, the glow and its haze
-    applyHeat(this.mat, this.base, T, 0.85);
+    // heat: dark forge scale, the glow and its haze (the end in the tongs stays cooler)
+    this.hm.setT(T);
+    this.hm.u.uHeld.value.set(-this.extent.x + VX, this.extent.x * 0.8, 260, 1);
+    this.hm.update(time);
     const g = glowAmount(T);
     const hu = this.halo.userData.glow;
     hu.uIntensity.value = Math.min(0.32, g * 0.24) * (0.92 + Math.sin(time * 7.3) * 0.08);
@@ -397,7 +398,7 @@ export class PartView {
   }
 
   dispose() {
-    this.mat.dispose();
+    this.hm.dispose();
     this.mesh.dispose();
     if (this.lateMesh) { this.lateMesh.dispose(); this.lateMat.dispose(); }
     this.halo.material.dispose();

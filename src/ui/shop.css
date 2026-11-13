@@ -291,3 +291,16 @@
 @media (max-width: 900px), (max-height: 600px) {
   .sh-card-txt p { --lh: calc(var(--px) * 11); background-image: var(--dl-rule11); }
 }
+
+/* ---- wave 9: forged iron strap hinges over the frame's corners (src/ui/panelArt.js), a spearhead fleur
+   at each arm's end; they sit on the wooden border and only just reach in */
+.sh-room::after {
+  content: ''; position: absolute; inset: calc(var(--px) * -8); pointer-events: none; z-index: 4;
+  background: var(--pn-strapTL) left top / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat, var(--pn-strapTR) right top / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat,
+    var(--pn-strapBL) left bottom / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat, var(--pn-strapBR) right bottom / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat;
+  filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .5));
+}
+/* the sign creaks on its chains when you reach for it; the goods on the shelf lean toward your paw */
+.sh-sign:hover { animation-duration: 1.6s; }
+.sh-good:hover .sh-item { rotate: -3deg; }
+.sh-good:active .sh-item { transform: translateY(var(--px)); }

@@ -10,6 +10,7 @@ import { SPR } from '../ui/uiSprites.js';
 import { PixelCanvas } from '../gfx/PixelArt.js';
 import { drawWeapon } from '../gfx/PixelArt.js';
 import { METALS, INFUSIONS } from '../data/weapons.js';
+import { bart, BOOK_KEYS } from './forgeBookArt.js';
 
 const W = PAL.wood, B = PAL.brass, P = PAL.paper, L = PAL.leather;
 const CHALK = 0xeef2e6, BT = TONES.brass;
@@ -569,10 +570,14 @@ export const blueprintURL = (type, metal) => art(`fa:bp:${type}:${metal}`, fineO
 export const metalHex = (metal) => METALS[metal]?.color ?? 0xa0a0a0;
 export const infusionHex = (id) => INFUSIONS[id]?.color ?? 0xffffff;
 
-/** Publish the frames and tiles as --fa-<key> on an element (the forge layer). */
+/** Publish the frames and tiles as --fa-<key> on an element (the forge layer), the grimoire art too. */
 export function installForgeArt(elm) {
   for (const k of Object.keys(SPRITES)) {
     const u = fart(k);
+    if (u) elm.style.setProperty('--fa-' + k, cssUrl(u));
+  }
+  for (const k of BOOK_KEYS) {
+    const u = bart(k);
     if (u) elm.style.setProperty('--fa-' + k, cssUrl(u));
   }
 }

@@ -328,6 +328,7 @@ export class Tracker {
     this.tag.classList.toggle('on', fresh);
     await wait(320);
     this.roll.classList.remove('opening');
+    this.flutter(true);
     // the quill writes the new line in
     await this.write(this.line);
     if (fresh) setTimeout(() => this.tag.classList.remove('on'), 2600);
@@ -355,9 +356,19 @@ export class Tracker {
     this.quill.classList.add('on', sweep ? 'sweep' : 'jot');
   }
 
+  /** The strip's paper flutters (a breath of air lifts its corner) and its seal swings on its tails. */
+  flutter(big = false) {
+    if (!this.visible()) return;
+    this.paper.classList.remove('flutter', 'flutter-big');
+    void this.paper.offsetWidth;
+    this.paper.classList.add(big ? 'flutter-big' : 'flutter');
+    swing(this.wax, big ? 9 : 5, big ? 1100 : 700);
+  }
+
   /** A count goes up: the old number is crossed out and the new one written over it. */
   async scribble(v, visible) {
     if (!visible) { this.setCount(v); this.shown.n = v.n; return; }
+    this.flutter();
     this.num.classList.remove('scratch');
     void this.num.offsetWidth;
     this.num.classList.add('scratch');

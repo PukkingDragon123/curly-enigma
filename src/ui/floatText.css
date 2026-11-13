@@ -1,0 +1,163 @@
+/* Boxless floating text (src/ui/floatType.js), wave 9: no paper, plate or panel behind the words.
+   Crisp pixel letters with a strong dark ink outline all round, a hard drop below and a soft dark
+   halo (they read on bright rock, in the dark, on a phone), each letter its own little body: it
+   rises out of a white-hot glint, overshoots and settles (some catch a pixel sparkle); it leaves by
+   flaring, scattering and shrinking away while tiny voxel bits and embers fly off. Emphasis keeps
+   its meaning in colour and motion: <b> ember, <i> mist drifting, .gold-txt gold with a shimmer
+   running through it, <em> shaking, <big> stomping in, <w> (.ft-wv) waving. All sizes in --px. */
+/* (the class doubled: it wins over the shadow a host's own rules give it; a few hosts that aren't
+   split into letters wear it too) */
+.ft.ft, .ft-ol.ft-ol, .ob-sub.ob-sub, .ob-lockhint.ob-lockhint {
+  --ol: max(2px, calc(var(--fs) / 8));
+  --ft-ink: #140a07;
+  text-shadow:
+    var(--ol) 0 0 var(--ft-ink), calc(var(--ol) * -1) 0 0 var(--ft-ink), 0 var(--ol) 0 var(--ft-ink), 0 calc(var(--ol) * -1) 0 var(--ft-ink),
+    var(--ol) var(--ol) 0 var(--ft-ink), calc(var(--ol) * -1) var(--ol) 0 var(--ft-ink), var(--ol) calc(var(--ol) * -1) 0 var(--ft-ink), calc(var(--ol) * -1) calc(var(--ol) * -1) 0 var(--ft-ink),
+    0 calc(var(--ol) * 2) 0 var(--ft-ink), var(--ol) calc(var(--ol) * 2) 0 var(--ft-ink), calc(var(--ol) * -1) calc(var(--ol) * 2) 0 var(--ft-ink),
+    0 0 calc(var(--ol) * 5) rgba(10, 4, 2, .6);
+}
+.ft { --ft-hot: #fffbe6; --ft-ember: #ff8a3a; font-variant-ligatures: none; }
+.ft-w { white-space: nowrap; }
+.ft-c { display: inline-block; position: relative; opacity: 0; }
+.ft-c.on { opacity: 1; animation: ftIn .52s ease-out var(--d, 0s) both; }
+@keyframes ftIn {
+  0% { opacity: 0; translate: calc(var(--r) * var(--px) * 1.5) calc(var(--px) * 5); scale: .2 1.7; color: var(--ft-hot); }
+  35% { opacity: 1; translate: 0 calc(var(--px) * -1.5); scale: 1.18 .86; color: var(--ft-hot); }
+  65% { translate: 0 calc(var(--px) * .5); scale: .94 1.06; }
+  100% { opacity: 1; translate: 0 0; scale: 1; }
+}
+/* a letter now and then catches the light as it lands: a four-point pixel sparkle */
+.ft-c.gl.on::before {
+  content: ''; position: absolute; left: calc(50% - var(--px) * .5); top: calc(var(--px) * -1.5); width: var(--px); height: var(--px); pointer-events: none;
+  background: #fffbe8; box-shadow: 0 calc(var(--px) * -1) #fffbe8, 0 var(--px) #fffbe8, calc(var(--px) * -1) 0 #fffbe8, var(--px) 0 #fffbe8;
+  opacity: 0; animation: ftGlint .7s steps(5) calc(var(--d, 0s) + .2s) both;
+}
+@keyframes ftGlint { 0% { opacity: 0; scale: .2; } 30% { opacity: 1; scale: 1; } 60% { opacity: 1; scale: .6; } 100% { opacity: 0; scale: 0; } }
+kbd.ft-c { text-shadow: none; }
+
+/* ---- emphasis */
+.ft b, .ft strong { color: #ffb45e; font-weight: 400; }
+.ft b .ft-c.on { animation: ftIn .52s ease-out var(--d, 0s) both, ftHeat 2.4s steps(1) calc(var(--d, 0s) + .6s + var(--q) * 1.2s) infinite; }
+@keyframes ftHeat { 0%, 100% { color: #ffb45e; } 40% { color: #ffcb7a; } 70% { color: #ff9d48; } }
+.ft i { color: #d9d2f0; font-style: normal; }
+.ft i .ft-c.on { animation: ftIn .52s ease-out var(--d, 0s) both, ftDrift 3.2s ease-in-out calc(var(--k) * -.14s) infinite; }
+@keyframes ftDrift { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(var(--px) * -1)); } }
+.ft .gold-txt { color: #ffd84a; font-weight: 400; }
+.ft .gold-txt .ft-c.on { animation: ftIn .52s ease-out var(--d, 0s) both, ftShimmer 2.6s linear calc(var(--d, 0s) + var(--k) * .06s) infinite; }
+@keyframes ftShimmer { 0%, 76%, 100% { color: #ffd84a; } 82% { color: #fff6c4; } 89% { color: #ffe680; } }
+.ft em { font-style: normal; color: #ff9a76; }
+.ft em .ft-c.on { animation: ftIn .52s ease-out var(--d, 0s) both, ftShake .24s steps(2) calc(var(--q) * -.24s) infinite; }
+@keyframes ftShake { 50% { transform: translate(calc(var(--px) * .5), calc(var(--px) * -.5)); } }
+.ft big { font-size: calc(var(--fs) * 1.5); line-height: 1; color: #ffcf6a; }
+.ft big .ft-c.on { animation: ftStomp .6s ease-out var(--d, 0s) both; }
+@keyframes ftStomp { 0% { opacity: 0; scale: 2.6; translate: 0 calc(var(--px) * -6); color: var(--ft-hot); } 45% { opacity: 1; scale: .82 1.14; translate: 0 0; } 70% { scale: 1.08 .94; } 100% { opacity: 1; scale: 1; } }
+.ft small { font-size: var(--fs); opacity: .84; }
+.ft .ft-wv { color: #ffe3a0; }
+.ft .ft-wv .ft-c.on { animation: ftIn .52s ease-out var(--d, 0s) both, ftWave 1.1s ease-in-out calc(var(--k) * -.08s) infinite; }
+@keyframes ftWave { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(var(--px) * -1.5)); } }
+
+/* ---- leaving: each letter flares, lifts and scatters away small (left to right across the line),
+   while the bits fly (floatType.bits) */
+.ft-out .ft-c.on { animation: ftOut .62s ease-out var(--o, 0s) both !important; }
+.ft-out .ft-c:not(.on) { visibility: hidden; }
+.ft-out .ft-c.gl::before { display: none; }
+/* (it flares white-hot, bursts up and away, shrinks to a glowing ember speck, cools and is gone) */
+@keyframes ftOut {
+  0% { opacity: 1; }
+  14% { opacity: 1; translate: calc(var(--r) * var(--px) * .6) calc(var(--px) * -1.5); scale: 1.2; color: var(--ft-hot, #fffbe6); }
+  65% { opacity: 1; scale: .32; color: var(--ft-ember, #ff8a3a); }
+  100% { opacity: 0; translate: calc(var(--r) * var(--px) * 13) calc(var(--px) * (-10 - var(--q) * 12)); scale: .12; rotate: calc(var(--r) * 140deg); color: #a8381a; }
+}
+.ft-ghost { pointer-events: none !important; }
+
+/* ---- the bits: tiny voxels (lit top-left, shaded bottom-right) and embers that cool as they rise */
+.ft-fx { position: fixed; inset: 0; z-index: 60; pointer-events: none; overflow: hidden; }
+.ft-batch { position: absolute; inset: 0; }
+.ft-bit {
+  position: absolute; width: var(--px); height: var(--px); background: var(--c); opacity: 0;
+  animation: ftBit var(--t, .7s) cubic-bezier(.2, .7, .4, 1) var(--sd, 0s) both;
+}
+.ft-bit.big {
+  width: calc(var(--px) * 2); height: calc(var(--px) * 2);
+  box-shadow: inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(40, 12, 0, .38), inset var(--px) var(--px) 0 rgba(255, 252, 230, .5), 0 0 0 1px rgba(20, 10, 6, .5);
+}
+@keyframes ftBit {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0); }
+  55% { opacity: 1; transform: translate(calc(var(--dx) * .75), var(--dy)) rotate(calc(var(--rot) * .6)); }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + var(--g))) rotate(var(--rot)) scale(.5); }
+}
+.ft-bit.ember { animation-name: ftEmber; box-shadow: 0 0 calc(var(--px) * 2) rgba(255, 150, 60, .7); }
+@keyframes ftEmber {
+  0% { opacity: 1; transform: translate(0, 0); background: #fff6d0; }
+  40% { opacity: 1; background: var(--c); }
+  100% { opacity: 0; transform: translate(calc(var(--dx) * .5), calc(var(--dy) * 1.6 - var(--px) * 6)) scale(.5); background: #a8381a; }
+}
+
+/* ---- toasts (UI.toast): words floating down from the top, a seal and the item in 3D beside them.
+   (#ui: these win over the tags and plates in styles.css, which the level-up plaque still uses) */
+#ui .toast.ft-toast {
+  border: 0; background: none; padding: 0 calc(var(--px) * 2); filter: none; color: #fff2da; gap: calc(var(--px) * 2);
+  max-width: min(calc(100vw - 40px), calc(var(--px) * 170)); margin-top: 0; text-align: center; justify-content: center;
+  animation: ftToastBob 3.4s ease-in-out .8s infinite; rotate: none; transform-origin: 50% 50%;
+}
+#ui .toast.ft-toast::after, #ui .toast.ft-toast::before { display: none; }
+#ui .toast.ft-toast .toast-text { font-size: var(--fs); line-height: 1.4; }
+#ui .toast.ft-toast .toast-text b { color: #ffcf7a; }
+#ui .toast.ft-toast.good .toast-text b { color: #b8f08a; }
+#ui .toast.ft-toast.warn .toast-text b, #ui .toast.ft-toast.warn .toast-text { color: #ffcf8a; }
+#ui .toast.ft-toast.warn .toast-text b { color: #ff9a5a; }
+#ui .toast.ft-toast.bad .toast-text { color: #ffc0a8; }
+#ui .toast.ft-toast.bad .toast-text b { color: #ff7a5a; }
+#ui .toast.ft-toast .toast-text small { opacity: .84; }
+#ui .toast.ft-toast .qt-said, #ui .toast.ft-toast .qt-first { color: #e8d4b0; }
+#ui .toast.ft-toast .toast-icon { animation: ftIconIn .6s cubic-bezier(.2, 1.4, .4, 1) both; filter: drop-shadow(0 calc(var(--px) * 1) 0 rgba(10, 4, 2, .7)); }
+#ui .toast.ft-toast .toast-seal { position: static; width: calc(var(--px) * 10); height: calc(var(--px) * 10); margin: 0; animation: ftSealIn .5s cubic-bezier(.3, 1.6, .5, 1) .25s both; filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 2, .7)); }
+#ui .toast.ft-toast.out { animation: none; }
+#ui .toast.ft-toast.out .toast-icon, #ui .toast.ft-toast.out .toast-seal { animation: ftIconOut .45s ease-in .1s both; }
+@keyframes ftToastBob { 0%, 100% { translate: 0 0; } 50% { translate: 0 calc(var(--px) * -1); } }
+@keyframes ftIconIn { 0% { opacity: 0; transform: translateY(calc(var(--px) * -6)) scale(.3) rotate(-30deg); } 60% { opacity: 1; transform: scale(1.15) rotate(6deg); } 100% { transform: none; } }
+@keyframes ftSealIn { 0% { opacity: 0; transform: scale(2.2) rotate(-25deg); } 60% { opacity: 1; transform: scale(.85); } 100% { transform: none; } }
+@keyframes ftIconOut { to { opacity: 0; transform: translateY(calc(var(--px) * -6)) scale(.4) rotate(20deg); } }
+/* good news: a glint runs over the words once they're up */
+#ui .toast.ft-toast.good .toast-text .ft-c.on { animation: ftIn .52s ease-out var(--d, 0s) both, ftShimmer 2.2s linear calc(var(--d, 0s) + .4s + var(--k) * .03s) 1; }
+
+/* ---- discovery (UI._showDiscover): the find's picture spins out with sparkles, its kind in small
+   caps over its name in the script hand, a flourish drawn out under it, then it all scatters */
+.ft-disc {
+  position: absolute; right: calc(var(--sar) + var(--px) * 8); top: calc(var(--sat) + var(--px) * 50); z-index: 6; pointer-events: none;
+  display: flex; align-items: center; gap: calc(var(--px) * 3); width: max-content; max-width: min(calc(100vw - 24px), calc(var(--px) * 130));
+  transition: margin-top .3s var(--soft, ease-out);
+}
+.ft-disc-pic { position: relative; flex: none; width: calc(var(--icon-s) + var(--px) * 6); height: calc(var(--icon-s) + var(--px) * 6); display: grid; place-items: center; animation: ftDiscPic .8s cubic-bezier(.2, 1.4, .4, 1) both; }
+.ft-disc-pic img { width: var(--icon-s); height: var(--icon-s); filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 2, .75)) drop-shadow(0 0 calc(var(--px) * 3) rgba(255, 220, 140, .45)); animation: ftDiscFloat 2.6s ease-in-out .8s infinite; }
+/* a slow shaft of light turning behind it (pixel rays, not a disc) */
+.ft-disc-pic::before { content: ''; position: absolute; inset: calc(var(--px) * -4); z-index: -1; pointer-events: none; opacity: .55;
+  background: conic-gradient(from 0deg, transparent 0 8%, rgba(255, 226, 150, .55) 10% 12%, transparent 14% 33%, rgba(255, 226, 150, .5) 35% 37%, transparent 39% 58%, rgba(255, 226, 150, .55) 60% 62%, transparent 64% 83%, rgba(255, 226, 150, .5) 85% 87%, transparent 89%);
+  -webkit-mask: radial-gradient(closest-side, #000 30%, transparent 100%); mask: radial-gradient(closest-side, #000 30%, transparent 100%); animation: ftRays 6s linear infinite; }
+@keyframes ftRays { to { rotate: 1turn; } }
+@keyframes ftDiscPic { 0% { opacity: 0; transform: scale(.1) rotate(-200deg); } 55% { opacity: 1; transform: scale(1.25) rotate(12deg); } 80% { transform: scale(.92) rotate(-4deg); } 100% { transform: none; } }
+@keyframes ftDiscFloat { 0%, 100% { translate: 0 0; } 50% { translate: 0 calc(var(--px) * -1); } }
+.ft-disc-t { display: flex; flex-direction: column; align-items: flex-start; gap: calc(var(--px) * 1); }
+.ft-disc-t small { font-size: var(--fs); line-height: 1; color: #f0c27a; letter-spacing: .14em; text-transform: uppercase; }
+.ft-disc-t b { font-family: var(--font-script); font-weight: 400; font-size: var(--fs-s); line-height: 1; color: #fff0c8; }
+.ft-disc-t b .ft-c.on { animation: ftIn .52s ease-out var(--d, 0s) both, ftShimmer 3s linear calc(var(--d, 0s) + .5s + var(--k) * .05s) infinite; }
+.ft-disc-rule { display: block; height: var(--px); width: calc(var(--px) * 44); max-width: 100%; transform-origin: 0 50%; animation: ftRule .6s ease-out .45s both;
+  background: linear-gradient(90deg, #ffd27a, #ffd27a 70%, transparent); box-shadow: 0 var(--px) 0 #140a07; }
+@keyframes ftRule { from { transform: scaleX(0); } }
+.ft-disc.out .ft-disc-pic { animation: ftIconOut .5s ease-in .15s both; }
+.ft-disc.out .ft-disc-rule { animation: ftRuleOut .35s ease-in both; }
+@keyframes ftRuleOut { to { transform: scaleX(0); opacity: 0; } }
+@media (min-width: 901px) and (min-height: 601px) { .ft-disc-t small { font-size: 16px; } }
+
+/* ---- the town's speech (UI.bubble): words floating over the speaker, the name above them */
+.bubble.ft-bub { background: none; box-shadow: none; padding: 0; color: #fff2da; filter: none; max-width: calc(var(--px) * 110); font-size: 16px; line-height: 1.4; }
+@media (min-width: 1700px) and (min-height: 1000px) { .bubble.ft-bub { font-size: 24px; } }
+.bubble.ft-bub b .ft-c.on { animation: ftIn .52s ease-out var(--d, 0s) both; }
+.bubble.ft-bub::before, .bubble.ft-bub::after { display: none; }
+.bubble.ft-bub b { color: #ffd890; font-family: var(--font-head); font-size: var(--fs-h); line-height: 1; margin-bottom: 0; }
+.bubble.ft-bub.emote { font-size: calc(var(--fs) * 1.5); }
+.bubble.ft-bub.emote .ft-c.on { animation: ftStomp .6s ease-out var(--d, 0s) both; }
+
+/* ---- the crosshair's target name and the held item's name: a word or two floating under them */
+#ui .belt .belt-label { background: none; box-shadow: none; color: #fff2da; padding: 0 calc(var(--px) * 2); animation: none; }
+#ui .belt .belt-label.ft-ghost { position: absolute; }

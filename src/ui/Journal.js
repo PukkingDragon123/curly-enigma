@@ -22,7 +22,7 @@ import { loreSheet } from './loreReader.js';
 import './lore.css';
 import { indexName } from '../core/State.js';
 import { BART } from './bookArt.js';
-import { SFX } from './bookSfx.js';
+import { TSFX, bindCover, curlTurn, dropCap, inkIn, margins, ribbonTabs, wiggleOn, sealCss, ensureTomeArt, vars } from './tomeFx.js';
 import { countText, rewardText } from './Tracker.js';
 import { onSwipe, put } from './common.js';
 import './journal.css';
@@ -36,6 +36,8 @@ export const CHAPTERS = [
   { id: 'lore', label: 'Lore', color: '#3a5a6a' },
 ];
 const TAB_ALIAS = { notes: 'lore', map: 'quests' };
+/** Each chapter's illuminated-initial field (src/ui/tomeArt.js). */
+const CAP_FIELD = { quests: 'red', skills: 'gold', index: 'blue', lore: 'green' };
 const INDEX_CATS = [
   { id: 'mineral', label: 'Minerals', icon: () => iconURL('copper_ore'), list: () => Object.keys(ITEMS).filter((k) => ITEMS[k].cat === 'mineral') },
   { id: 'gem', label: 'Gems', icon: () => iconURL('ruby'), list: () => Object.keys(ITEMS).filter((k) => ITEMS[k].cat === 'gem') },
@@ -93,7 +95,9 @@ export function openBook(game, tab, opts = {}) {
   const tabs = el('nav', { class: 'ib-tabs bk-tabs', 'aria-label': 'Chapters' });
   const ribbon = el('i', { class: 'ib-ribbon' });
   const cover = el('div', { class: 'ib-cover' }, [pages]);
-  const book = el('div', { class: 'ib bk' }, [ribbon, cover, tabs]);
+  const book = el('div', { class: 'ib bk tm-book' }, [ribbon, cover, tabs]);
+  ensureTomeArt();
+  bindCover(cover);
   let chapter = tab, side = 'left', h = null, cleanup = [];
 
   // ---------------- tabs
@@ -107,6 +111,8 @@ export function openBook(game, tab, opts = {}) {
     tabEls[c.id] = b;
     tabs.append(b);
   }
+  ribbonTabs(tabs); // silk ribbon bookmarks (src/ui/tomeFx.js)
+  wiggleOn(tabs, '.ib-tab', game.audio);
   const markTabs = () => {
     for (const c of CHAPTERS) tabEls[c.id].classList.toggle('on', c.id === chapter);
     tabEls.quests.querySelector('.bk-dot').hidden = !(Q && Q.unseen());
@@ -115,7 +121,7 @@ export function openBook(game, tab, opts = {}) {
   };
 
   // ---------------- chapters
-  const head = (title, sub) => el('header', { class: 'bk-head' }, [el('h2', { class: 'ib-title' }, title), sub ? el('div', { class: 'bk-sub', html: sub }) : null]);
+  const head = (title, sub) => el('header', { class: 'bk-head' }, [dropCap(el('h2', { class: 'ib-title' }, title), CAP_FIELD[chapter]), sub ? el('div', { class: 'bk-sub', html: sub }) : null]);
   const back = () => el('button', { class: 'ib-back', onclick: () => { side = 'left'; flip(-1, () => {}); } }, '‹ Back');
 
   // ===== Quests
@@ -125,7 +131,7 @@ export function openBook(game, tab, opts = {}) {
       class: 'bk-q' + (v.status === 'done' ? ' done' : '') + (v.tracked ? ' tracked' : '') + (v.id === lastQuest ? ' on' : '') + (v.isNew ? ' new' : '') + (ready ? ' ready' : ''),
       onclick: () => pickQuest(v.id),
     }, [
-      el('i', { class: 'bk-seal', style: { '--ink': NPCS[v.giver]?.ink || '#8a3a1a' } }),
+      vars(el('i', { class: 'bk-seal' }), { '--ink': NPCS[v.giver]?.ink || '#8a3a1a', '--seal': sealCss(NPCS[v.giver]?.ink || '#8a3a1a', 14, v.status === 'done' ? 'check' : 'star') }),
       el('span', { class: 'bk-qt' }, [
         el('b', {}, v.title),
         v.status === 'done' ? el('small', {}, `${npcTitle(v.giver)} · day ${v.doneDay}${v.choice ? ' · ' + (QUESTS[v.id].steps.flatMap((s) => s.choose?.options || []).find((o) => o.id === v.choice)?.label || '') : ''}`)
@@ -164,7 +170,7 @@ export function openBook(game, tab, opts = {}) {
         for (const npc of askers.slice(0, 8)) list.append(askRow(npc));
       }
       if (L.done.length) {
-        const tog = el('button', { class: 'bk-fold' + (showDone ? ' open' : ''), onclick: () => { showDone = !showDone; SFX.flick(game.audio); quests.left(); } }, [`Done (${L.done.length})`]);
+        const tog = el('button', { class: 'bk-fold' + (showDone ? ' open' : ''), onclick: () => { showDone = !showDone; TSFX.tab(game.audio); quests.left(); margins(left, 'questsL', { list }); } }, [`Done (${L.done.length})`]);
         list.append(tog);
         if (showDone) for (const v of L.done) list.append(questRow(v));
       }
@@ -205,7 +211,7 @@ export function openBook(game, tab, opts = {}) {
         class: 'bk-track' + (v.tracked ? ' on' : ''), onclick: () => {
           if (v.tracked) return;
           Q.track(v.id);
-          SFX.pin(game.audio);
+          TSFX.clasp(game.audio);
           render();
         },
       }, [el('img', { class: 'pix', src: BART.pin('pin'), alt: '' }), v.tracked ? 'On your strip' : 'Pin to your strip']) : null;
@@ -214,7 +220,7 @@ export function openBook(game, tab, opts = {}) {
         el('div', { class: 'bk-giver' }, [
           el('div', { class: 'ib-sketch bk-sketch bk-face' }, [el('img', { class: 'pix', src: npcFace(game, giver, { size: 64 }), alt: '' }), el('i', { class: 'tape a' })]),
           el('div', {}, [
-            el('h2', { class: 'ib-title bk-qtitle' }, v.title),
+            dropCap(el('h2', { class: 'ib-title bk-qtitle' }, v.title), 'red'),
             el('div', { class: 'bk-from' }, [npcTitle(giver), el('small', {}, NPCS[giver]?.where ? ` · ${NPCS[giver].where}` : '')]),
             el('div', { class: 'bk-kind' }, { main: 'The way up', story: 'Old Star\'s advice', request: 'A request', village: 'A favour for Deep Town', lore: 'Lore' }[v.kind] || ''),
           ]),
@@ -243,7 +249,7 @@ export function openBook(game, tab, opts = {}) {
     put(right, back(),
       el('div', { class: 'bk-giver' }, [
         el('div', { class: 'ib-sketch bk-sketch bk-face' }, [el('img', { class: 'pix', src: npcFace(game, npc, { size: 64 }), alt: '' }), el('i', { class: 'tape a' })]),
-        el('div', {}, [el('h2', { class: 'ib-title bk-qtitle' }, `${npcName(npc)} has work`), el('div', { class: 'bk-from' }, [NPCS[npc]?.title || '', el('small', {}, NPCS[npc]?.where ? ` · ${NPCS[npc].where}` : '')])]),
+        el('div', {}, [dropCap(el('h2', { class: 'ib-title bk-qtitle' }, `${npcName(npc)} has work`), 'gold'), el('div', { class: 'bk-from' }, [NPCS[npc]?.title || '', el('small', {}, NPCS[npc]?.where ? ` · ${NPCS[npc].where}` : '')])]),
       ]),
       el('section', { class: 'bk-now', style: { '--ink': NPCS[npc]?.ink || '#8a3a1a' } }, [
         el('h4', {}, 'How to start it'),
@@ -256,11 +262,13 @@ export function openBook(game, tab, opts = {}) {
   };
   const pickQuest = (id) => {
     lastQuest = id;
-    if (book.classList.contains('single')) { flip(1, () => { side = 'right'; }); return; }
+    if (book.classList.contains('single')) { flip(1, () => { side = 'right'; setTimeout(inkRight, 30); }); return; }
     game.audio.play('ui_click');
     quests.left();
     quests.right();
+    decorate();
     right.classList.remove('ink'); void right.offsetWidth; right.classList.add('ink');
+    inkRight();
   };
 
   // ===== Lore: shelves of what you've found (Old Star's notes are one shelf)
@@ -272,7 +280,7 @@ export function openBook(game, tab, opts = {}) {
       if (!L) { put(left, head('Lore'), el('p', { class: 'ib-note muted' }, 'Nothing written yet.')); return; }
       for (const sh of L.shelves()) {
         const open = sh.id === lastShelf;
-        list.append(el('button', { class: 'bk-shelf' + (open ? ' open' : ''), style: { '--ink': sh.ink }, onclick: () => { lastShelf = open ? null : sh.id; SFX.flick(game.audio); lore.left(); } }, [
+        list.append(el('button', { class: 'bk-shelf' + (open ? ' open' : ''), style: { '--ink': sh.ink }, onclick: () => { lastShelf = open ? null : sh.id; TSFX.tab(game.audio); lore.left(); margins(left, 'loreL', { list: left.querySelector('.ib-scroll') }); } }, [
           el('i', { class: 'bk-spine' }), el('span', {}, [el('b', {}, sh.label), el('small', {}, sh.sub)]), el('em', {}, `${sh.n}/${sh.max}`), sh.unread ? el('i', { class: 'bk-new' }) : null,
         ]));
         if (!open) continue;
@@ -297,17 +305,21 @@ export function openBook(game, tab, opts = {}) {
       } else e = LORE_BY_ID[lastLore] && L?.has(lastLore) ? LORE_BY_ID[lastLore] : null;
       if (!e) { put(right, back(), head('Lore'), el('p', { class: 'ib-note' }, '"Every stone down here remembers something. Most of it is about other stones." — Old Star')); return; }
       L?.markRead(e.id);
-      put(right, back(), el('div', { class: 'bk-lorepage' }, [loreSheet(e)]));
+      const sheet = loreSheet(e);
+      dropCap(sheet.querySelector('.lr-title'), 'green');
+      put(right, back(), el('div', { class: 'bk-lorepage' }, [sheet]));
     },
   };
   const SRC_HINT = { carving: 'Carved in a ruin', journal: 'A lost miner\'s satchel', tale: 'Someone in Deep Town knows', relic: 'In a ruin\'s treasure room', book: 'In a book somewhere', quest: 'At the end of a quest', note: '' };
   const pickLore = (id, shelf) => {
     lastLore = id;
     lastShelf = shelf;
-    if (book.classList.contains('single')) { flip(1, () => { side = 'right'; }); return; }
-    SFX.flick(game.audio);
+    if (book.classList.contains('single')) { flip(1, () => { side = 'right'; setTimeout(inkRight, 30); }); return; }
+    TSFX.tab(game.audio);
     lore.right(); lore.left(); markTabs();
+    decorate();
     right.classList.remove('ink'); void right.offsetWidth; right.classList.add('ink');
+    inkRight();
   };
 
   // ===== Notes
@@ -346,7 +358,7 @@ export function openBook(game, tab, opts = {}) {
   const pickNote = (id) => {
     lastNote = id;
     if (book.classList.contains('single')) { flip(1, () => { side = 'right'; }); return; }
-    SFX.flick(game.audio);
+    TSFX.tab(game.audio);
     notes.right(); notes.left(); markTabs();
     right.classList.remove('ink'); void right.offsetWidth; right.classList.add('ink');
   };
@@ -427,7 +439,20 @@ export function openBook(game, tab, opts = {}) {
     for (const f of cleanup.splice(0)) { try { f(); } catch (e) { /* noop */ } }
     const C = CH[chapter];
     if (sp) C.spread(o);
-    else { C.left(); C.right(); }
+    else { C.left(); C.right(); decorate(); }
+  };
+  /** Marginalia, a stain, new entries inked in (src/ui/tomeFx.js). */
+  const decorate = () => {
+    margins(left, chapter + 'L' + (st.data.day || 0), { list: left.querySelector('.ib-scroll'), kinds: chapter === 'index' ? ['ore', 'beetle', 'mushroom', 'pick'] : chapter === 'lore' ? ['snail', 'raptor', 'mole', 'hand'] : ['mole', 'raptor', 'snail', 'pick', 'mushroom'] });
+    margins(right, chapter + 'R' + (lastQuest || lastLore || ''), { corner: 'br' });
+    // quests and lore you haven't read yet write themselves into the book
+    left.querySelectorAll('.bk-q.new .bk-qt > b, .bk-entry.unread').forEach((n, i) => inkIn(n, { delay: 260 + i * 160, dur: 620, audio: i < 3 ? game.audio : null }));
+  };
+  const inkRight = () => {
+    const t = right.querySelector('.bk-qtitle, .lr-title, .bk-note .ib-title');
+    if (t) inkIn(t, { audio: game.audio, dur: 700 });
+    const now = right.querySelector('.bk-now-line b');
+    if (now) inkIn(now, { delay: 420, dur: 600, quill: false });
   };
 
   // ---------------- page turning
@@ -435,9 +460,10 @@ export function openBook(game, tab, opts = {}) {
   const flip = (dir, swap, o) => {
     if (turning) { swap(); render(o); return; }
     turning = true;
-    game.audio.play('page');
+    TSFX.turn(game.audio);
     turn.hidden = false;
-    turn.className = 'ib-turn ' + (dir > 0 ? 'fwd' : 'back');
+    turn.className = 'ib-turn ' + (dir > 0 ? 'fwd' : 'back') + (book.classList.contains('single') ? ' single-turn' : '');
+    curlTurn(turn); // the sheet bends as it goes over (src/ui/tomeFx.js)
     void turn.offsetWidth;
     turn.classList.add('go');
     setTimeout(() => { swap(); render(o); }, 190);
@@ -452,7 +478,7 @@ export function openBook(game, tab, opts = {}) {
       return;
     }
     const dir = CHAPTERS.findIndex((c) => c.id === id) > CHAPTERS.findIndex((c) => c.id === chapter) ? 1 : -1;
-    SFX.flick(game.audio);
+    TSFX.tab(game.audio);
     flip(dir, () => { chapter = id; lastTab = id; side = 'left'; }, o);
   };
   onSwipe(pages, (dir) => {
@@ -485,10 +511,11 @@ export function openBook(game, tab, opts = {}) {
 
   lastTab = chapter;
   render();
-  game.audio.play('page');
+  TSFX.open(game.audio);
   h = ui.openPanel({
     body: book, className: 'ib-panel bk-panel',
     onClose: () => {
+      TSFX.close(game.audio);
       window.removeEventListener('resize', fit);
       window.removeEventListener('keydown', onKey);
       for (const f of cleanup.splice(0)) { try { f(); } catch (e) { /* noop */ } }

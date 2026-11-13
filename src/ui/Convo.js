@@ -2,10 +2,12 @@
 // camera eases from your eyes to a framing of the speaker's real 3D model in the world (a close-up,
 // over your shoulder, a two-shot: src/fx/director.js picks what fits the room), black bars slide
 // in, the world keeps living while you're held; the speaker turns to you, looks at you, pulls faces
-// and talks, and the words float beside their head (a parchment label anchored to the head on
-// screen, with a tail, typing out in their voice). Lines carry on with a click / tap / E / Space /
-// Enter; answers float in near your side of the frame (1–4, ↑ ↓, Enter, tap); then the camera eases
-// back. Esc leaves the talk.
+// and talks, and the words float beside their head (wave 9: no paper, no box: crisp outlined pixel
+// letters anchored to the head on screen and kept on it, arriving one by one in their voice and
+// scattering into voxel bits when the line is done, src/ui/floatType.js; their name a small floating
+// title over them; three little voxel motes leading to their mouth). Lines carry on with a click /
+// tap / E / Space / Enter; answers float in near your side of the frame as words you pick (1–4,
+// ↑ ↓, Enter, tap); then the camera eases back. Esc leaves the talk.
 //
 //   const r = await game.convo.play({
 //     who,            // 'oldstar' | 'rocco' | 'trader' | 'herbalist' | 'outpost' | a Deep Town shop id |
@@ -24,51 +26,68 @@
 //   game.convo.pick(i)         choose answer i (tests)   game.convo.speaker(who) → the 3D speaker or null
 //   game.convo.director        the camera director (src/fx/director.js)
 // Lines that follow each other within a moment (a play() right after another) stay one cutscene.
-// HTML in lines: <b> (rust red), <i> (soft), .gold-txt (gold), <em> (shaky), <big> (loud),
-// <small>, <w>wavy words</w>. Lines with `wait: false` go by themselves after a reading time (dur).
-// Without a 3D model of the speaker in this scene the words still float (a live portrait in the label).
+// HTML in lines: <b> (ember), <i> (soft, drifting), .gold-txt (gold, shimmering), <em> (shaky), <big>
+// (loud, stomps in), <small>, <w>wavy words</w>. Lines with `wait: false` go by themselves after a
+// reading time (dur). Without a 3D model of the speaker in this scene the words still float (their
+// live portrait in a brass frame beside them).
 // openTalkMenu (src/ui/choices.js) and questTalk come here through convoTalkMenu(game, opts).
 import * as THREE from 'three';
 import { el, clamp, pick as pickOne } from '../core/util.js';
 import { Director } from '../fx/director.js';
 import { findSpeaker } from '../fx/speakers.js';
 import { portrait3d } from '../gfx/portrait3d.js';
-import { typeText, STAR_VOICE } from './talkType.js';
+import { STAR_VOICE } from './talkType.js';
+import { typeFloat, floatIn, ghost } from './floatType.js';
 import { installDialogArt } from './dialogArt.js';
-import { Px, PAL, INK, art, cssUrl } from './uiArt.js';
+import { Px, INK, art, cssUrl } from './uiArt.js';
 import { speakerOf, materialOf } from './Tutor.js';
 import './convo.css';
 
 const isTouch = () => document.documentElement.classList.contains('is-touch');
 const GESTURE = { happy: 'nod', laugh: 'hop', surprised: 'hop', stern: 'shake', angry: 'shake', proud: 'nod', smug: 'nod' };
 const GRACE = 0.4; // seconds a finished talk waits for a follow-up line before the camera goes back
+/** The bits a speaker's words scatter into: Old Star's embers, the traders' green ink, your blue, warm dust. */
+const BITS = {
+  forge: ['#fff0c0', '#ffd27a', '#ff9a3a', '#e8602a'],
+  ledger: ['#f4ffe8', '#c8f0a8', '#8ac86a', '#ffd27a'],
+  journal: ['#ffffff', '#cfeaff', '#8ac4f0', '#ffd27a'],
+  kraft: ['#fff2d6', '#f2c890', '#d08a48', '#ff9a3a'],
+  parch: ['#fff6e0', '#f0d8a8', '#ffd27a', '#e8a050'],
+};
 
-/** <w>wavy</w>: each letter in its own span (typed one by one, bobbing in turn). */
+/** <w>wavy</w>: a run of letters bobbing in turn (floatText.css .ft-wv). */
 function prep(html) {
-  return String(html ?? '').replace(/<w>([^<]*)<\/w>/g, (_, t) => [...t].map((c, i) => (c === ' ' ? ' ' : `<span class="cv-wv" style="--i:${i}">${c}</span>`)).join(''));
+  return String(html ?? '').replace(/<w>([^<]*)<\/w>/g, '<span class="ft-wv">$1</span>');
 }
 const plain = (s) => String(s || '').replace(/<[^>]*>/g, '');
 
 // ------------------------------------------------------------------ art (--cv-*)
-/** The label's tail: parchment, inked edges, open on the right where it joins the label (10×13). */
-function tailSprite(fill = PAL.paper.base, burn = PAL.paper.burn, edge = PAL.paper.edge) {
-  const p = new Px(10, 13);
-  for (let x = 1; x < 10; x++) {
-    const half = (x / 9) * 5.4;
-    for (let y = Math.ceil(6 - half); y <= Math.floor(6 + half); y++) p.set(x, y, fill);
-  }
-  // a burnt line inside the inked edge, and the ink
-  p.each((x, y) => (x < 9 && (!p.a(x, y - 1) || !p.a(x, y + 1)) ? burn : undefined));
-  p.outline(edge);
-  for (let y = 0; y < 13; y++) if (p.a(9, y)) p.set(9, y, y < 2 || y > 10 ? edge : fill);
+/**
+ * The motes from the words to the speaker's mouth: three little voxels, small (by the mouth, on the
+ * left) to big (by the words), each lit top-left and shaded bottom-right in the speaker's colour,
+ * with a glint on the big one, inked round (15×9).
+ */
+function motesSprite(c) {
+  const p = new Px(15, 9);
+  const cube = (x, y, s) => {
+    p.rect(x, y, s, s, c.base);
+    p.hl(x, x + s - 1, y, c.lt); p.vl(x, y, y + s - 1, c.lt);
+    p.hl(x + 1, x + s - 1, y + s - 1, c.dk); p.vl(x + s - 1, y + 1, y + s - 1, c.dk);
+    p.set(x, y, c.hi);
+  };
+  cube(1, 4, 2);
+  cube(5, 3, 3);
+  cube(10, 2, 4);
+  p.set(11, 3, c.hi);
+  p.outline(INK);
   return p;
 }
-/** A brass disc for the answers' numbers (10×10). */
-function numSprite() {
-  const B = PAL.brass;
-  const p = new Px(10, 10);
-  p.disk(5, 5, 4.5, B.base);
-  p.each((x, y) => (Math.hypot(x - 3.5, y - 3.5) < 2.2 ? B.lt : Math.hypot(x - 5.5, y - 5.5) > 3.6 ? B.dk : undefined));
+/** A faceted gem for the answers' numbers, dim or kindled (7×8: hand-set, lit top-left, a glint). */
+function gemSprite(on) {
+  const p = new Px(7, 8);
+  const pal = on ? { h: 0xffffff, l: 0xfff0a0, b: 0xffc040, d: 0xd9801e } : { h: 0xf7d97c, l: 0xdcae4e, b: 0xa8772c, d: 0x6e4a1a };
+  p.tpl(['..h..', '.hlb.', 'hlbbd', 'lbbdd', '.bdd.', '..d..'], pal, 1, 1);
+  if (on) p.set(2, 3, 0xffffff);
   p.outline(INK);
   return p;
 }
@@ -77,12 +96,13 @@ function installConvoArt() {
   if (artIn) return;
   artIn = true;
   const r = document.documentElement.style;
-  r.setProperty('--cv-tail', cssUrl(art('cv:tail', () => tailSprite())));
-  // (ui3) a tail in each speaker's paper: forge-scorched, ledger, kraft
-  r.setProperty('--cv-tailForge', cssUrl(art('cv:tailForge', () => tailSprite(PAL.paper.base, 0x5a4234, 0x3a2418))));
-  r.setProperty('--cv-tailLedger', cssUrl(art('cv:tailLedger', () => tailSprite(0xebe3c8, 0xb2a684, 0x6a6450))));
-  r.setProperty('--cv-tailKraft', cssUrl(art('cv:tailKraft', () => tailSprite(0xba9058, 0x8a6339, 0x4a3018))));
-  r.setProperty('--cv-num', cssUrl(art('cv:num', numSprite)));
+  // the motes in each speaker's colour: folk cream, Old Star's ember, the traders' green, your blue
+  r.setProperty('--cv-motes', cssUrl(art('cv:motes', () => motesSprite({ hi: 0xffffff, lt: 0xfff2d6, base: 0xf0d8a8, dk: 0xb08a5a }))));
+  r.setProperty('--cv-motesForge', cssUrl(art('cv:motesForge', () => motesSprite({ hi: 0xfff6d0, lt: 0xffd27a, base: 0xff9a3a, dk: 0xb04a1a }))));
+  r.setProperty('--cv-motesLedger', cssUrl(art('cv:motesLedger', () => motesSprite({ hi: 0xf4ffe8, lt: 0xc8f0a8, base: 0x8ac86a, dk: 0x4a7a34 }))));
+  r.setProperty('--cv-motesJournal', cssUrl(art('cv:motesJournal', () => motesSprite({ hi: 0xffffff, lt: 0xcfeaff, base: 0x8ac4f0, dk: 0x3f6ea0 }))));
+  r.setProperty('--cv-gem', cssUrl(art('cv:gem', () => gemSprite(false))));
+  r.setProperty('--cv-gemOn', cssUrl(art('cv:gemOn', () => gemSprite(true))));
 }
 
 export class Convo {
@@ -121,7 +141,7 @@ export class Convo {
     this.plate = el('div', { class: 'cv-plate' }, [this.nameEl]);
     this.subEl = el('div', { class: 'cv-sub' });
     this.textEl = el('div', { class: 'cv-text' });
-    this.nextEl = el('div', { class: 'cv-next', 'aria-hidden': 'true' }, [el('kbd', {}, 'E'), el('span', { class: 'cv-tap' }, 'tap'), el('i', { class: 'cv-arrow' })]);
+    this.nextEl = el('span', { class: 'cv-next', 'aria-hidden': 'true' }, [el('kbd', {}, 'E'), el('span', { class: 'cv-tap ft-ol' }, 'tap'), el('i', { class: 'cv-arrow' })]);
     this.wick = el('i', { class: 'cv-wick', 'aria-hidden': 'true' });
     this.tail = el('i', { class: 'cv-tail', 'aria-hidden': 'true' });
     this.faceEl = el('div', { class: 'cv-face' });
@@ -218,7 +238,9 @@ export class Convo {
     b.done = false;
     this.root.classList.remove('typed');
     const sp = b.speaker;
-    b.typer = typeText(this.textEl, prep(html), { voice: b.voice, mood: b.mood, audio: this.game.audio, face: sp ? { talk: (on) => sp.talk(on) } : this.face, delay: 0.05, onDone: () => this.onTyped(b) });
+    ghost(this.textEl); // (the old words scatter as the new ones come)
+    b.typer = typeFloat(this.textEl, prep(html), { voice: b.voice, mood: b.mood, audio: this.game.audio, face: sp ? { talk: (on) => sp.talk(on) } : this.face, delay: 0.05, onDone: () => this.onTyped(b) });
+    this.textEl.append(this.nextEl);
   }
 
   /** Carry on (as a click): finish the typing, then the line. With answers up it picks the one in focus. */
@@ -354,7 +376,23 @@ export class Convo {
 
   hideSoon() {
     clearTimeout(this.hideT);
-    this.hideT = setTimeout(() => { if (!this.s && !this.barsOn) { this.root.hidden = true; this.root.classList.remove('out'); } }, 620);
+    // (after the last words have scattered)
+    this.hideT = setTimeout(() => { if (!this.s && !this.barsOn) { this.root.hidden = true; this.root.classList.remove('out'); } }, 1000);
+  }
+
+  /** The words up now scatter into voxel bits where they are (keepName: the speaker's name stays). */
+  ghostLabel(keepName = false) {
+    const L = this.label;
+    if (L.classList.contains('gone')) return null;
+    const g = ghost(L, { cls: keepName ? ['same'] : [], colors: BITS[L.dataset.mat] });
+    g?.classList.remove('pop', 'swap', 'gone');
+    return g;
+  }
+
+  /** The answers up now scatter (the picked one rises and burns away last). */
+  ghostChoices() {
+    if (!this.choicesEl.children.length || !this.root.classList.contains('choosing')) return null;
+    return ghost(this.choicesEl, { colors: BITS.forge, sample: 10 });
   }
 
   onHoldClosed(hold) {
@@ -386,8 +424,10 @@ export class Convo {
     this.root.classList.remove('held', 'typed', 'choosing', 'timed');
     if (!this.barsOn) this.root.classList.remove('bars');
     this.root.classList.add('out');
+    // the words go with the talk, scattering (the bars may stay up for someone's scripted scene: bars(true))
+    this.ghostLabel();
+    this.ghostChoices();
     this.choicesEl.textContent = '';
-    // the words go with the talk (the bars may stay up for someone's scripted scene: bars(true))
     this.label.classList.add('gone');
     this.lastBeat = null;
     this.hideSoon();
@@ -401,6 +441,7 @@ export class Convo {
       this.cur = null;
       // nothing more to say: a moment for a follow-up line, then back to your eyes
       if (s && !s.keep) s.endAt = this.clock() + GRACE;
+      this.ghostLabel();
       this.root.classList.remove('typed', 'choosing');
       this.label.classList.add('gone');
       return;
@@ -427,11 +468,12 @@ export class Convo {
     // the words
     const sp = b.speaker;
     const mouth = heroLine ? { talk: (on) => this.director.hero?.talk(on) } : sp ? { talk: (on) => sp.talk(on) } : this.face;
-    b.typer = typeText(this.textEl, prep(b.html), {
+    b.typer = typeFloat(this.textEl, prep(b.html), {
       voice: b.voice, mood: b.mood, audio: this.game.audio, face: mouth,
       delay: b.n === 0 ? 0.55 : 0.18, speed: b.mood === 'laugh' ? 52 : b.mood === 'stern' ? 40 : 46,
       onDone: () => this.onTyped(b),
     });
+    this.textEl.append(this.nextEl); // ("carry on" waits right after the last word)
   }
 
   onTyped(b) {
@@ -448,6 +490,7 @@ export class Convo {
     b.done = true;
     b.typer?.stop();
     if (b.speaker) b.speaker.talk(false);
+    this.ghostChoices();
     this.choicesEl.textContent = '';
     this.root.classList.remove('choosing', 'typed', 'timed');
     if (!b.board) this.game.audio.play('ui_click', { vol: 0.35, pitch: 0.85 });
@@ -511,12 +554,16 @@ export class Convo {
   // ------------------------------------------------------------ the label
   showLabel(b) {
     const L = this.label;
-    this.nameEl.textContent = b.name;
+    // a fresh speaker's words pop in with their name; a following line from the same speaker keeps
+    // the name, and the old words scatter as the new ones come
+    const fresh = !this.lastBeat || this.lastBeat.key !== b.key || this.lastBeat.hero !== b.hero || L.classList.contains('gone') || this.lastBeat.name !== b.name;
+    this.ghostLabel(!fresh);
+    if (fresh || this.nameEl.textContent !== b.name) floatIn(this.nameEl, b.name || '', { stagger: 0.035, delay: 0.04, max: 0.4 });
     this.plate.hidden = !b.name;
-    // the label is never narrower than the name ribbon over it
+    // the words are never narrower than the name over them
     L.style.minWidth = '';
-    if (b.name) L.style.minWidth = Math.ceil(this.plate.offsetWidth + 14) + 'px';
-    this.subEl.innerHTML = b.sub || '';
+    if (b.name) L.style.minWidth = Math.ceil(this.plate.offsetWidth + 6) + 'px';
+    floatIn(this.subEl, b.sub || '', { delay: 0.1 });
     this.subEl.hidden = !b.sub;
     L.className = 'cv-say' + (b.cls ? ' ' + b.cls : '');
     L.dataset.kind = b.hero ? 'hero' : b.key === 'oldstar' ? 'oldstar' : b.key === 'rocco' ? 'rocco' : 'folk';
@@ -529,8 +576,6 @@ export class Convo {
     const noModel = !b.speaker && !b.hero;
     L.classList.toggle('portrait', noModel);
     if (noModel) this.ensureFace(b.cast, b.mood); else this.disposeFace();
-    // a fresh label pops; a following line from the same speaker just turns over
-    const fresh = !this.lastBeat || this.lastBeat.key !== b.key || this.lastBeat.hero !== b.hero || this.label.classList.contains('gone');
     L.classList.remove('pop', 'swap', 'gone');
     void L.offsetWidth;
     L.classList.add(fresh ? 'pop' : 'swap');
@@ -560,11 +605,16 @@ export class Convo {
     box.textContent = '';
     this.focusI = Math.max(0, b.choices.findIndex((c) => c.primary));
     b.choices.forEach((c, i) => {
-      const btn = el('button', { class: 'cv-opt' + (c.primary ? ' primary' : ''), role: 'menuitem', type: 'button' }, [
-        el('span', { class: 'cv-num' }, String(i + 1)),
-        el('span', { class: 'cv-opt-t' }, [el('b', { html: c.label }), c.sub ? el('small', { html: c.sub }) : null]),
+      const lab = el('b'), sub = c.sub ? el('small') : null;
+      const btn = el('button', { class: 'cv-opt' + (c.primary ? ' primary' : ''), role: 'menuitem', type: 'button', 'aria-label': plain(c.label) }, [
+        el('span', { class: 'cv-num ft-ol' }, String(i + 1)),
+        el('span', { class: 'cv-opt-t' }, [lab, sub]),
       ]);
-      btn.style.setProperty('--d', `${0.05 + i * 0.07}s`);
+      // the answers float in one after another, each a quick run of letters
+      const d = 0.05 + i * 0.12;
+      btn.style.setProperty('--d', `${d}s`);
+      floatIn(lab, c.label, { delay: d, stagger: 0.018, max: 0.35 });
+      if (sub) floatIn(sub, c.sub, { delay: d + 0.12, stagger: 0.01, max: 0.3 });
       btn.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
       btn.addEventListener('click', (e) => { e.stopPropagation(); this.pick(i, true); });
       btn.addEventListener('pointerenter', () => { this.focus(i); this.game.audio.play('ui_hover', { vol: 0.2 }); });
@@ -690,7 +740,9 @@ export class Convo {
     this.lab.y += (y - this.lab.y) * k;
     this.lab.ok = true;
     L.style.transform = `translate(${Math.round(this.lab.x)}px, ${Math.round(this.lab.y)}px)`;
-    // the tail: on the edge facing the head, pointing at the mouth
+    // (words left of the head line up on their right edge, towards it)
+    if (L.dataset.side !== side) L.dataset.side = side;
+    // the motes: on the edge facing the head, leading to the mouth
     const t = this.tail;
     t.dataset.side = side;
     let plateR = false;
@@ -714,15 +766,17 @@ function pl3(d) { const pl = d.player(); return pl ? pl.eye() : null; }
 // ------------------------------------------------------------------ the talk board, as a cutscene
 /**
  * openTalkMenu's options as a cutscene line with answers (src/ui/choices.js calls this first):
- * returns a handle like the board's ({ close(), closed, portrait, typer, el }) or null when the
- * speaker has no 3D model in this scene (the board opens as before).
+ * returns a handle like the board's ({ close(), closed, portrait, typer, el }). A speaker with no 3D
+ * model in this scene talks the same way (wave 9: floating words, no board), their live portrait
+ * floating beside the words; null only without the talk (o.convo === false keeps the old board).
  */
 export function convoTalkMenu(game, o = {}) {
   const cv = game.convo;
   if (!cv || o.convo === false) return null;
   const who = o.npc ?? (typeof o.who === 'string' ? o.who : null) ?? o.name;
   const sp = cv.speaker(who) || (o.name ? cv.speaker(o.name) : null) || (o.who && typeof o.who === 'object' ? cv.speaker(o.who) : null);
-  if (!sp) return null;
+  // (no model here: who they are for the portrait, by key or name)
+  const whoKey = sp || (typeof o.who === 'string' ? o.who : null) || (typeof o.npc === 'string' ? o.npc : null) || o.name || 'oldstar';
   const opts = o.options || [];
   let beat = null;
   const h = {
@@ -736,7 +790,7 @@ export function convoTalkMenu(game, o = {}) {
     },
   };
   beat = {
-    who: sp, name: o.name || sp.name, html: o.line || '', sub: o.sub || '', mood: o.mood || 'calm', camera: o.camera || 'auto', wait: true,
+    who: whoKey, name: o.name || sp?.name, html: o.line || '', sub: o.sub || '', mood: o.mood || 'calm', camera: o.camera || 'auto', wait: true,
     cls: o.className, board: true,
     choices: opts.length ? opts.map((x, i) => ({ label: x.label, sub: x.sub, primary: x.primary, value: i })) : null,
     onPick: (i) => opts[i]?.onClick?.(),

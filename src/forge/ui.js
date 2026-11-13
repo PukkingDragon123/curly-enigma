@@ -8,6 +8,7 @@ import { gaugeGradient, glowCss, glowHex, glowAmount, heatWord } from './blackbo
 import { Px, art, INK } from '../ui/uiArt.js';
 import { DSPR } from '../ui/deepArt.js';
 import { fart, medal, seal, ribbon, installForgeArt } from './forgeArt.js';
+import { bart, inkStepURL, heatChartURL } from './forgeBookArt.js';
 import CSS from './forge.css?inline';
 
 let styleRefs = 0;
@@ -24,6 +25,37 @@ export function injectStyles() {
   return () => {
     styleRefs--;
     if (styleRefs <= 0) { s.remove(); styleRefs = 0; }
+  };
+}
+
+/**
+ * A title with an illuminated initial: the first letter set in a gilt box (src/forge/forgeBookArt.js
+ * initial) as the scribes did. Returns children for el(); blue: the azure ground.
+ */
+export function illum(text, blue = false) {
+  const m = String(text).match(/^([^A-Za-z0-9]*)([A-Za-z0-9])([\s\S]*)$/);
+  if (!m) return text;
+  return [m[1] || null, el('span', { class: 'fg-initial' + (blue ? ' blue' : '') }, m[2]), m[3]];
+}
+
+/**
+ * Dress a work page (.fg-side) as a leaf of the smith's grimoire: the forge's wax seal pressed on
+ * its corner and a hand-inked diagram of the step in hand in its margin (set later with ink()).
+ * Returns { ink(step) }.
+ */
+export function bookDeco(panel, step = 'heat') {
+  const diagram = el('img', { class: 'pix fg-inkstep', src: inkStepURL(step), alt: '' });
+  const sealImg = el('img', { class: 'pix fg-pageseal', src: bart('forgeSeal'), alt: '' });
+  const rib = el('i', { class: 'fg-pageribbon' });
+  panel.append(diagram, sealImg, rib);
+  let cur = step;
+  return {
+    ink(st) {
+      if (!st || st === cur) return;
+      cur = st;
+      diagram.src = inkStepURL(st);
+      diagram.classList.remove('inked'); void diagram.offsetWidth; diagram.classList.add('inked'); // drawn in afresh
+    },
   };
 }
 
@@ -74,8 +106,11 @@ export class Thermo {
     this.word = el('small');
     this.read = el('div', { class: 'fg-read' }, [this.num, this.word]);
     this.title = el('div', { class: 'fg-thermo-title' }, 'Heat');
-    this.col = el('div', { class: 'fg-tm-col' }, [el('img', { class: 'pix fg-tm-cap', src: fart('cap'), alt: '' }), el('div', { class: 'fg-tm-glass' }, [this.zones, this.tube, this.needle]), this.bulb, this.flame]);
-    this.el = el('div', { class: 'fg-thermo' }, [this.title, this.col, this.read]);
+    // the smith's own colour chart, painted beside the glass: what each heat looks like in the coals
+    this.chart = el('img', { class: 'pix fg-chart', alt: '', title: 'The smith\'s colour chart: black, blood red, cherry, orange, yellow, white' });
+    this.col = el('div', { class: 'fg-tm-col' }, [el('img', { class: 'pix fg-tm-cap', src: fart('cap'), alt: '' }), el('div', { class: 'fg-tm-glass' }, [this.zones, this.tube, this.needle, this.chart]), this.bulb, this.flame]);
+    const cap = (c) => el('i', { class: 'fg-cap ' + c });
+    this.el = el('div', { class: 'fg-thermo' }, [this.title, this.col, this.read, cap('tl'), cap('tr'), cap('bl'), cap('br')]);
     this.marks = [];
     parent.append(this.el);
     this.setMax(maxT);
@@ -86,6 +121,7 @@ export class Thermo {
     this.maxT = maxT;
     const g = gaugeGradient(maxT, '#4a3c36');
     this.fill.style.backgroundImage = g;
+    if (this.chart) this.chart.src = heatChartURL(maxT);
   }
   pct(t) { return clamp(t / this.maxT, 0, 1) * 100; }
   setTitle(t) { setText(this.title, t); }
@@ -144,8 +180,10 @@ export class Steps {
       this.el.append(n);
     }
     parent.append(this.el);
+    this.deco = bookDeco(parent, steps[0]?.id || 'heat');
   }
   set(active, done = []) {
+    if (active[0]) this.deco.ink(active[0]);
     for (const [id, n] of this.items) {
       const st = active.includes(id) ? 'on' : done.includes(id) ? 'done' : 'off';
       if (n._st === st) continue;
@@ -270,12 +308,14 @@ export function certificate(o) {
       el('small', {}, g.word),
     ]),
     el('div', { class: 'fg-kicker' }, o.kicker || ''),
-    el('h2', {}, o.title),
+    el('h2', {}, illum(o.title)),
     o.value ? el('div', { class: 'fg-value', html: o.value }) : null,
     o.note ? el('div', { class: 'fg-note', html: o.note }) : null,
     rows,
     o.extra || null,
     btns,
+    el('img', { class: 'pix fg-guildseal', src: bart('forgeSeal'), alt: '' }),
+    el('img', { class: 'pix fg-certink', src: inkStepURL('result'), alt: '' }),
   ]);
 }
 

@@ -10,10 +10,78 @@
 //       grabs the stick wherever the thumb lands, and plain taps never dig
 // Everything hides while a panel is open. In focus mode the stick dims and the buttons become
 // use, snack and back (back calls the scene's onBack, or taps KeyS, which leaves face mode).
+// Each button is a forged roundel with a vellum window (src/ui/touchArt.js) in which the mole acts
+// out what it does: a short loop on press (looping while a hold button is held), a quiet idle of
+// breaths and blinks the rest of the time; the stick's brass knob shows him running.
+// (.tc-ic keeps the old glyph, hidden, for the tutorial's button pictures: src/ui/Onboard.js.)
 import { el } from '../core/util.js';
 import { SPR } from './uiSprites.js';
 import { DSPR } from './deepArt.js';
+import { TART, TOUCH_ACTS } from './touchArt.js';
 import { iconURL } from '../gfx/PixelArt.js';
+
+/** The little scene in a button's window: frames from touchArt, timings from TOUCH_ACTS. */
+const SCENE_OF = { jump: 'jump', use: 'use', snack: 'snack', tool: 'tool', build: 'build', rotate: 'rotate', done: 'done', back: 'back', crouch: 'crouch', block: 'block', dig: 'dig' };
+const vigs = new Set();
+// frames past the first are drawn a few at a time while the game idles (each is a few ms), so
+// building the controls does not stall the first frames; a frame needed sooner is drawn on the spot
+const warmQ = [];
+const warm = () => {
+  const t0 = performance.now();
+  while (warmQ.length && performance.now() - t0 < 6) { const f = warmQ.shift(); const u = f(); if (u) { const im = new Image(); im.src = u; } }
+  if (warmQ.length) (window.requestIdleCallback ? requestIdleCallback(warm, { timeout: 500 }) : setTimeout(warm, 50));
+};
+const queueWarm = (fns) => { const was = warmQ.length; warmQ.push(...fns); if (!was) setTimeout(warm, 400); };
+function vignette(action, big = false, cls = 'tc-vig') {
+  const n = TART.count(action, big), url = (i) => TART.frame(action, big, i);
+  queueWarm(Array.from({ length: n - 1 }, (_, i) => () => url(i + 1)));
+  const spec = TOUCH_ACTS[action] || TOUCH_ACTS.use;
+  const img = el('img', { class: 'pix ' + cls, src: url(0), alt: '' });
+  const v = {
+    img, action, held: false, low: false, seq: null, i: 0, t: 0, shown: 0,
+    breath: 0, blinkT: 1.5 + Math.random() * 4,
+    show(f) { if (f !== v.shown && f < n) { v.shown = f; img.src = url(f); } },
+    play(seq) { v.seq = seq; v.i = 0; v.t = 0; v.show(seq[0][0]); },
+    press() { v.held = true; v.play(spec.act); },
+    release() { v.held = false; },
+    setLow(on) { if (on === v.low) return; v.low = on; if (!on) v.play([[3, 90], [0, 1]]); },
+    tick(ms) {
+      if (v.seq) {
+        v.t += ms;
+        while (v.seq && v.t >= v.seq[v.i][1]) {
+          v.t -= v.seq[v.i][1];
+          v.i++;
+          if (v.i >= v.seq.length) {
+            if (spec.mode === 'loop' && v.held) v.i = 0;
+            else if (spec.mode === 'hold' && v.held && spec.hold) { v.seq = spec.hold; v.i = 0; }
+            else if (spec.mode === 'toggle' && v.low && spec.low) { v.seq = spec.low; v.i = 0; }
+            else { v.seq = null; v.t = 0; break; }
+          }
+          v.show(v.seq[v.i][0]);
+        }
+        return;
+      }
+      // idle: slow breaths, a blink now and then
+      v.breath = (v.breath + ms) % 1700;
+      v.blinkT -= ms / 1000;
+      if (v.blinkT <= 0) { v.blinkT = 2.5 + Math.random() * 5; v.play([[2, 130], [0, 1]]); return; }
+      v.show(v.breath < 950 ? 0 : 1);
+    },
+  };
+  vigs.add(v);
+  return v;
+}
+let vigClock = null;
+function runVignettes(root) {
+  if (vigClock) return;
+  let last = performance.now();
+  vigClock = setInterval(() => {
+    const now = performance.now(), ms = Math.min(200, now - last);
+    last = now;
+    if (document.hidden || !root.offsetParent) return;
+    for (const v of vigs) if (v.img.offsetParent) v.tick(ms);
+  }, 40);
+}
 
 /** An 11×11 shield glyph in the style of the other button icons (cream, a dark outline). */
 let shieldURL = null;
@@ -48,7 +116,18 @@ export function setupTouch(game) {
     const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
 
     // ---------------- joystick
-    const knob = el('img', { class: 'pix tc-knob', src: SPR.knob(), alt: '' });
+    const knob = el('img', { class: 'pix tc-knob', src: TART.knobFrame(0), alt: '' });
+    queueWarm(Array.from({ length: 12 }, (_, i) => () => TART.knobFrame((i % 6) + 1, i >= 6)));
+    // the knob's mole runs while the stick is pushed (facing the way you go), stands when it rests
+    let runF = 0, runT = 0, runLeft = false, running = false;
+    vigs.add({ img: knob, tick(ms) {
+      if (!running) { if (runF) { runF = 0; knob.src = TART.knobFrame(0); } return; }
+      runT += ms;
+      if (runT < 85) return;
+      runT = 0;
+      runF = (runF % 6) + 1;
+      knob.src = TART.knobFrame(runF, runLeft);
+    } });
     const stick = el('div', { class: 'tc-stick', 'aria-label': 'Move', role: 'slider' }, [el('img', { class: 'pix tc-base', src: SPR.stick(), alt: '' }), knob]);
     let pid = null, cx = 0, cy = 0, R = 1;
     const unit = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 2;
@@ -64,6 +143,8 @@ export function setupTouch(game) {
       const want = { KeyA: nx < -0.38, KeyD: nx > 0.38, KeyW: ny < -yT, KeyS: ny > yT };
       for (const [code, on] of Object.entries(want)) on ? press(code) : release(code);
       stick.classList.toggle('up', want.KeyW);
+      running = want.KeyA || want.KeyD || want.KeyW || want.KeyS;
+      if (want.KeyA) runLeft = true; else if (want.KeyD) runLeft = false;
     };
     const stopStick = () => {
       pid = null;
@@ -71,6 +152,7 @@ export function setupTouch(game) {
       stick.style.bottom = '';
       knob.style.transform = '';
       stick.classList.remove('on', 'up');
+      running = false;
       for (const c of ['KeyA', 'KeyD', 'KeyW', 'KeyS']) release(c);
     };
     stick.addEventListener('pointerdown', (e) => {
@@ -89,10 +171,12 @@ export function setupTouch(game) {
     stick.addEventListener('pointermove', (e) => { if (e.pointerId !== pid) return; swallow(e); steer(e); });
     for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) stick.addEventListener(ev, (e) => { if (e.pointerId !== pid) return; e.stopPropagation(); stopStick(); });
 
-    // ---------------- carved buttons
+    // ---------------- forged buttons, each with the mole acting out its job in the window
     const btn = (icon, label, cls, onDown, onUp) => {
-      const face = el('img', { class: 'pix tc-face', src: SPR.rbtn(false), alt: '' });
-      const b = el('button', { class: 'tc-btn ' + cls, 'aria-label': label, title: label }, [face, el('img', { class: 'pix tc-ic', src: SPR.icon(icon), alt: '' })]);
+      const face = el('img', { class: 'pix tc-face', src: TART.face(false), alt: '' });
+      const vig = vignette(SCENE_OF[icon] || 'use');
+      const b = el('button', { class: 'tc-btn ' + cls, 'aria-label': label, title: label }, [face, el('img', { class: 'pix tc-ic', src: SPR.icon(icon), alt: '' }), vig.img]);
+      b._vig = vig;
       let bid = null;
       b.addEventListener('pointerdown', (e) => {
         swallow(e);
@@ -101,7 +185,8 @@ export function setupTouch(game) {
         bid = e.pointerId;
         try { b.setPointerCapture(bid); } catch (err) { /* noop */ }
         b.classList.add('on');
-        face.src = SPR.rbtn(true);
+        face.src = TART.face(true);
+        vig.press();
         if (navigator.vibrate && navigator.userActivation?.hasBeenActive) try { navigator.vibrate(8); } catch (err) { /* noop */ }
         onDown();
       });
@@ -110,7 +195,8 @@ export function setupTouch(game) {
         e.stopPropagation();
         bid = null;
         b.classList.remove('on');
-        face.src = SPR.rbtn(false);
+        face.src = TART.face(false);
+        vig.release();
         if (onUp) onUp();
       };
       for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, up);
@@ -134,18 +220,32 @@ export function setupTouch(game) {
 
     // ---------------- first person: dig button, buttons around it, look pad under the HUD
     let digId = null;
-    const digFace = el('img', { class: 'pix tc-dface', src: DSPR.bigBtn(false), alt: '' });
+    const digFace = el('img', { class: 'pix tc-dface', src: TART.bigFace(false), alt: '' });
     const digIcon = el('img', { class: 'pix tc-dic', src: DSPR.pick(), alt: '' });
-    const dig = el('button', { class: 'tc-dig', 'aria-label': 'Dig (hold)', title: 'Dig (hold)' }, [digFace, digIcon]);
-    // scenes pick what the big button shows: an icon URL, null (the pick) or false (no button)
-    ui._applyActionIcon = (src) => { digIcon.src = src || DSPR.pick(); dig.style.display = src === false ? 'none' : ''; };
+    // the big window: the mole swinging his pick (or, decorating, hammering a beam)
+    const digVig = vignette('dig', true, 'tc-dvig'), buildVig = vignette('build', true, 'tc-dvig');
+    buildVig.img.hidden = true;
+    let bigVig = digVig;
+    const dig = el('button', { class: 'tc-dig vig', 'aria-label': 'Dig (hold)', title: 'Dig (hold)' }, [digFace, digIcon, digVig.img, buildVig.img]);
+    // scenes pick what the big button shows: an icon URL, null (the pick) or false (no button);
+    // the pick and the build hammer are played as scenes, any other icon sits on the vellum
+    ui._applyActionIcon = (src) => {
+      const build = !!src && src === iconURL('support_beam');
+      bigVig = dig._vig = build ? buildVig : digVig;
+      digVig.img.hidden = !!src;
+      buildVig.img.hidden = !build;
+      dig.classList.toggle('vig', !src || build);
+      digIcon.src = src || DSPR.pick();
+      dig.style.display = src === false ? 'none' : '';
+    };
     ui._applyActionIcon(ui.actionIcon ?? null);
     const digDown = () => { inp.mouse.buttons[0] = true; inp.mouse.pressed[0] = true; };
     const digEnd = () => {
       if (digId === null) return;
       digId = null;
       dig.classList.remove('on');
-      digFace.src = DSPR.bigBtn(false);
+      digFace.src = TART.bigFace(false);
+      bigVig.release();
       inp.mouse.buttons[0] = false;
       inp.mouse.released[0] = true;
     };
@@ -156,7 +256,8 @@ export function setupTouch(game) {
       digId = e.pointerId;
       try { dig.setPointerCapture(digId); } catch (err) { /* noop */ }
       dig.classList.add('on');
-      digFace.src = DSPR.bigBtn(true);
+      digFace.src = TART.bigFace(true);
+      bigVig.press();
       digDown();
     });
     for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) dig.addEventListener(ev, (e) => { if (e.pointerId !== digId) return; e.stopPropagation(); digEnd(); });
@@ -171,9 +272,10 @@ export function setupTouch(game) {
       const low = !held.has('KeyC');
       if (low) press('KeyC'); else release('KeyC');
       dCrouch.classList.toggle('lit', low);
+      dCrouch._vig.setLow(low);
     });
     // block: hold to raise the guard (DigScene reads KeyF)
-    const dBlock = key('use', 'KeyF', 'Block (hold)', 'tc-d d-block');
+    const dBlock = key('block', 'KeyF', 'Block (hold)', 'tc-d d-block');
     dBlock.querySelector('.tc-ic').src = shieldIcon();
     dBlock.style.cssText = 'right: calc(var(--px) * 70); bottom: calc(var(--px) * 37);';
     const deepPad = el('div', { class: 'tc-deep' }, [dTool, dSnack, dUse, dJump, dCrouch, dBlock, dig]);
@@ -223,13 +325,14 @@ export function setupTouch(game) {
     const root = el('div', { class: 'tc' }, [stick, pad, deepPad]);
     ui.root.append(root);
     game.touch = root;
+    runVignettes(root);
     // the tutorial (src/ui/Onboard.js) lights the real controls it teaches: name → element, and a highlight
     const named = { stick, look, dig, jump: dJump, use: dUse, snack: dSnack, tool: dTool, crouch: dCrouch, block: dBlock, padUse: use, padJump: jump, build: buildB };
     ui.touchEl = (name) => named[name] || null;
     ui.touchHi = (elm, on) => elm?.classList?.toggle('tc-hi', !!on);
 
     // never leave keys stuck when the controls vanish (panels, scene changes, app switch)
-    const releaseAll = () => { stopStick(); digEnd(); lookId = null; for (const c of [...held]) release(c); dCrouch.classList.remove('lit'); };
+    const releaseAll = () => { stopStick(); digEnd(); lookId = null; for (const c of [...held]) release(c); dCrouch.classList.remove('lit'); dCrouch._vig.setLow(false); for (const v of vigs) v.release?.(); };
     window.addEventListener('blur', releaseAll);
     document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
     new MutationObserver(() => { if (ui.root.classList.contains('panel-open') || ui.root.classList.contains('no-touch')) releaseAll(); }).observe(ui.root, { attributes: true, attributeFilter: ['class', 'data-hud'] });

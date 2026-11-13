@@ -9,7 +9,7 @@ import { CrucibleSim } from './bladeSim.js';
 import { applyHeat, glowColor, glowHex, glowAmount } from './blackbody.js';
 import { makeCrucible, makeIngot, V, P as PV } from './models.js';
 import { S, MS } from './world.js';
-import { Thermo, bar, setText, setHtml, confirmText } from './ui.js';
+import { Thermo, bar, setText, setHtml, confirmText, bookDeco, illum } from './ui.js';
 import { Seq, ease, arcPoint } from './fx.js';
 
 const QUICK_ACC = 0.8;
@@ -133,13 +133,14 @@ export class SmeltGame {
     const out = ITEMS[r.out];
     this.panel = el('div', { class: 'panel fg-side act fg-col' }, [
       el('div', { class: 'fg-kicker' }, 'Smelting'),
-      el('h2', {}, out.name + (r.n > 1 ? ' ×' + r.n : '')),
+      el('h2', {}, illum(out.name + (r.n > 1 ? ' ×' + r.n : ''))),
       el('p', { class: 'sub', html: `${Object.entries(r.inputs).map(([id, n]) => `${n}× ${ITEMS[id].name}`).join(' + ')} + ${r.coal} coal · ore quality <b style="color:${qColor(this.taken.avgQ)}">${Math.round(this.taken.avgQ)}%</b>` }),
       el('div', { class: 'fg-stat' }, [el('span', {}, 'Melted'), this.meltTxt, this.meltBar.el]),
       el('div', { class: 'fg-stat' }, [el('span', {}, 'Time'), this.timeTxt, this.timeBar.el]),
       el('div', { class: 'fg-stat' }, [el('span', {}, 'Slag'), this.slagTxt, this.slagBar.el]),
       this.status,
     ]);
+    bookDeco(this.panel, 'smelt');
     sc.layer.append(this.panel);
     this.nodes.push(this.panel);
     this.bigHint = el('div', { class: 'fg-big-hint' }, document.documentElement.classList.contains('is-touch') ? 'Hold the button to pump' : 'Hold to pump the bellows');
@@ -153,6 +154,9 @@ export class SmeltGame {
 
   /** The touch screen's big button. */
   touchAction() { return this.phase === 'heat' ? { kind: 'pump', label: 'Pump' } : null; }
+
+  /** What the hearth view keeps in frame (ForgeScene.dockPose): the crucible in the coals. */
+  framePoints(name) { return name === 'hearth' && this.cru ? [this.cru.group.position.clone(), this.cru.group.position.clone().add(new THREE.Vector3(0, 0.15, 0))] : []; }
 
   /** Where the tongs bite the crucible's rim (world). */
   gripWorld(out = new THREE.Vector3()) {
@@ -177,11 +181,13 @@ export class SmeltGame {
     if (this.phase === 'heat') {
       if (!sim.started && (sc.fire.pumping || this.elapsed > 2.5)) sim.started = true;
       sim.step(dt, sc.fire.air);
+      sc.flames.keepClear = { x: this.cru.group.position.x, w: 0.1 }; // the flames lick round the pot, not over it
       this.updateVisuals(dt);
       this.updateUI(dt);
       if (this.bigHint && (sim.started || sc.fire.pumping)) { this.bigHint.remove(); this.bigHint = null; }
       if (sim.done) this.finish();
     } else if (this.phase === 'pour') {
+      sc.flames.keepClear = null;
       this.thermo.set(sim.T, dt);
       sim.T = Math.max(25, sim.T - dt * 120);
     }

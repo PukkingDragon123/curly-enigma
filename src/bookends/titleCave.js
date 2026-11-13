@@ -16,9 +16,11 @@
 //
 //   CAVE.sign / CAVE.nest / CAVE.vista / CAVE.pool   the layout
 //   floorH(x, z), ceilH(x, z)                        the rock's heights (analytic: no build needed)
-//   CHASE_PATHS                                      the chase's two routes (titleChase.js)
+//   CHASE_PATHS, route(pts)                          the chase's two routes (titleChase.js), as curves
 //   const C = await buildCave({ lite, soft, view, cancel });  scene.add(C.group)
 //   C.update(dt, camera, heightPx)   C.breakables   C.dispose()   C.stats
+//   C.setIntro(on)   what only the opening shot sees (view.menu: what the menu's framings see) is
+//                    built apart (finer giants it passes close to, its own foliage) and hidden after
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VoxelGrid, meshRelief, hash3, fshade, fmix } from './vox.js';
@@ -28,7 +30,8 @@ import { LAYER_OUTLINE } from '../core/Engine.js';
 import { MODELS, RAMP } from '../deep/veg/plants.js';
 import { rng as vrng } from '../deep/veg/paint.js';
 import { down2 } from '../deep/veg/vox.js';
-import { makeBoulderGeo, makeRootArcGeo } from './forest/flora.js';
+import { makeBoulderGeo, makeRootArcGeo, makeFlowerClumpGeo, makeBoughGeo, makeFoxgloveGeo, makeLeavesGeo } from './forest/flora.js';
+import { makeTitleVeg } from './titleVeg.js';
 import { Particles, Twinkles, SHAPE } from './fx.js';
 import { CF, caveToon, glowHex, lit, meshGlow, vgGeo, withGlow, makeMistSheet, GLOW } from './titleCaveFx.js';
 
@@ -73,10 +76,62 @@ export const BREAK_SPOTS = [
   { kind: 'puff', x: -3.15, z: -5.25, seed: 15 },
   { kind: 'puff', x: -4.3, z: -8.6, seed: 17 },
 ];
+/** A route as an arc-length curve over the floor (titleChase.js, titleIntro.js). */
+export function route(pts) {
+  const curve = new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 0, z)), false, 'centripetal');
+  const L = curve.getLength();
+  const _p = new THREE.Vector3(), _t = new THREE.Vector3();
+  return {
+    L,
+    at(s, out = {}) {
+      const u = clamp(s / L, 0, 1);
+      curve.getPointAt(u, _p); curve.getTangentAt(u, _t);
+      // (before the start and past the end it runs straight on)
+      const over = s < 0 ? s : s > L ? s - L : 0;
+      out.x = _p.x + _t.x * over; out.z = _p.z + _t.z * over; out.tx = _t.x; out.tz = _t.z;
+      return out;
+    },
+    /** Arc length of the point nearest (x, z). */
+    nearest(x, z) {
+      let best = 0, bd = 1e9;
+      for (let s = 0; s <= L; s += 0.1) { const p = this.at(s); const d = (p.x - x) ** 2 + (p.z - z) ** 2; if (d < bd) { bd = d; best = s; } }
+      return { s: best, d: Math.sqrt(bd) };
+    },
+  };
+}
+
 /** Roots arching out of the floor across the routes (the mole hops them). */
 export const ROOT_ARCS = [{ x: 0.05, z: -7.85, span: 2.0 }, { x: -3.72, z: -7.1, span: 1.9 }];
+/**
+ * Openings in the roof where the forest floor above has fallen in: the old wood's golden light
+ * pours down through them in shafts (x, z: the opening's middle; r: its radius, m). Leafy boughs
+ * hang over them; roots, vines and moss curtains trail from their rims.
+ */
+export const SKY = [
+  { x: -6.4, z: -18.4, r: 2.8 },
+  { x: 3.0, z: -17.6, r: 2.0 },
+  { x: -1.8, z: -11.6, r: 1.7 },
+  { x: -11.0, z: -11.4, r: 1.6 },
+  { x: 1.4, z: -27.2, r: 2.2 },
+  { x: 6.3, z: -8.8, r: 1.4 },
+  { x: -2.2, z: -3.4, r: 2.2 }, // the big one over the clearing round the signpost
+];
+/** Toward the sun (it stands high over the back left of the wood). */
+export const SUN = new THREE.Vector3(-0.3, 1, -0.48).normalize();
 
 const nA = makeNoise2D(901), nB = makeNoise2D(902), nC = makeNoise2D(903), nD = makeNoise2D(904), nE = makeNoise2D(905);
+/** How far into an opening (x, z) is: < 1 inside (its rim ragged), else ≥ 1. */
+function holeAt(x, z) {
+  let best = 9;
+  for (let i = 0; i < SKY.length; i++) {
+    const S = SKY[i], dx = x - S.x, dz = z - S.z;
+    if (Math.abs(dx) > S.r * 1.6 || Math.abs(dz) > S.r * 1.6) continue;
+    const a = Math.atan2(dz, dx);
+    const R = S.r * (1 + 0.14 * Math.sin(5 * a + i * 1.7) + 0.08 * Math.sin(9 * a + i) + 0.1 * nC(x * 1.6, z * 1.6));
+    best = Math.min(best, Math.hypot(dx, dz) / R);
+  }
+  return best;
+}
 
 // stalagmites (on the floor) and stalactites (hanging), placed once
 const STALAG = [], STALACT = [];
@@ -99,13 +154,15 @@ const STALAG = [], STALACT = [];
   for (let i = 0; i < 200 && STALACT.length < 34; i++) {
     const x = r.range(-12, 10), z = r.range(-10.5, -3.5);
     if (Math.abs(x - CAVE.sign.x) < 1.6 && z > -4.5) continue;
-    STALACT.push({ x, z, h: r.range(0.35, 1.5), r: r.range(0.14, 0.42) });
+    if (holeAt(x, z) < 2.7) continue;
+    STALACT.push({ x, z, h: r.range(0.35, 1.2), r: r.range(0.18, 0.42) });
   }
-  for (let i = 0; i < 260 && STALACT.length < 100; i++) {
+  for (let i = 0; i < 260 && STALACT.length < 80; i++) {
     const x = r.range(-14, 14), z = r.range(-30, 4);
     if (Math.abs(x - CAVE.sign.x) < 1.4 && Math.abs(z - CAVE.sign.z) < 2) continue;
     if (GIANTS.some((G) => Math.hypot(x - G.x, z - G.z) < G.R + 0.4)) continue;
-    STALACT.push({ x, z, h: r.range(0.4, z > -6 ? 1.6 : 3.2), r: r.range(0.18, 0.55) });
+    if (holeAt(x, z) < 2.7) continue;
+    STALACT.push({ x, z, h: r.range(0.4, z > -6 ? 1.3 : 2.2), r: r.range(0.22, 0.55) });
   }
 }
 
@@ -161,11 +218,20 @@ export function floorH(x, z) {
   return Math.min(y, 14);
 }
 
+const FUNNEL = 15.5; // the openings' rims (just under the roof's top, CTOP)
 /** The roof's height (m). */
 export function ceilH(x, z) {
   const r = rimOf(x, z);
   let y = 4.75 + 7.8 * sm(-5.5, -13.5, z) + nA(x * 0.2 + 5, z * 0.2) * 0.55 + nB(x * 0.7, z * 0.7) * 0.15;
   y -= Math.pow(Math.max(0, r - 0.6), 1.35) * 14;
+  // round the openings the roof bends up into a sinkhole's funnel, thin at the rim (the sky shows)
+  for (const S of SKY) {
+    const dx = x - S.x, dz = z - S.z, R = S.r * 2.6;
+    if (dx > R || dx < -R || dz > R || dz < -R) continue;
+    const d = Math.sqrt(dx * dx + dz * dz) / S.r;
+    // (in ledges half a metre tall: rock that broke away in layers)
+    if (d < 2.6) { const f = Math.pow(sm(2.6, 0.92, d), 1.4); if (f > 0.03) y = Math.max(y, Math.min(FUNNEL, Math.round((y + (FUNNEL - y) * f) * 2) / 2)); }
+  }
   for (const s of STALACT) {
     const dx = x - s.x, dz = z - s.z;
     if (dx > s.r || dx < -s.r || dz > s.r || dz < -s.r) continue;
@@ -175,12 +241,46 @@ export function ceilH(x, z) {
   return y;
 }
 
+// ------------------------------------------------------------------ the shafts of sun
+/**
+ * Each opening's shaft: top (the opening, on the roof), bottom (where it lands on the floor), r
+ * (its radius across), and the floor's sunlit pool. sunFloor(x, z): how sunny the floor is there
+ * (0..1, smooth; the shader dapples it).
+ */
+export const SHAFTS = SKY.map((S) => {
+  const top = new THREE.Vector3(S.x, ceilH(S.x, S.z) + 0.05, S.z);
+  const b = top.clone();
+  for (let i = 0; i < 400 && b.y > floorH(b.x, b.z); i++) b.addScaledVector(SUN, -0.05);
+  return { top, bottom: b, r: S.r * 0.92, len: top.distanceTo(b) };
+});
+const _sv = new THREE.Vector3();
+export function sunFloor(x, z, y = floorH(x, z)) {
+  let best = 0;
+  for (const S of SHAFTS) {
+    _sv.set(x - S.top.x, y - S.top.y, z - S.top.z);
+    const t = _sv.dot(SUN);
+    _sv.addScaledVector(SUN, -t);
+    const k = 1 - sm(0.55, 1.05, _sv.length() / S.r);
+    if (k > best) best = k;
+  }
+  // (under a giant's cap it's shade)
+  if (best > 0) for (const G of GIANTS) {
+    const capY = floorH(G.x, G.z) + G.h * 0.92;
+    if (y > capY) continue;
+    const u = (capY - y) / SUN.y;
+    if (Math.hypot(x + SUN.x * u - G.x, z + SUN.z * u - G.z) < G.R * 0.95) return 0;
+  }
+  return best;
+}
+
 // ------------------------------------------------------------------ palettes
 const ROCK = [0x1a1824, 0x221f2c, 0x2c2836, 0x363140, 0x423b4c, 0x52485a, 0x625868];
 const SOIL = [0x1e1712, 0x271e17, 0x31261d, 0x3c2f24, 0x4a3a2c];
 const FLOW = [0x5a5248, 0x6c6254, 0x807462, 0x988a74];
 const STEM = [0x4a4254, 0x6a6074, 0x8a8092, 0xaaa0b0, 0xc8c0cc, 0xe2dce2, 0xf6f2f2];
 const MOSS = RAMP.moss;
+const TURF = RAMP.grass;
+const LITTER = [0x4a2c16, 0x6a3e1c, 0x8a5424, 0xa86e30, 0xc48a40];
 
 // ------------------------------------------------------------------ the rock (two heightfields)
 const X0 = -18, X1 = 18, Z0 = -34, Z1 = 9;
@@ -201,11 +301,16 @@ function floorTopCol(x, z, y, slope) {
   const cell = hash3(Math.floor(x * 2), 0, Math.floor(z * 2), 7);
   if (slope > 0.9 || y > 1.4) return wallCol(x, y, z);
   let c;
-  if (n2 > 0.2 && slope < 0.5) c = tone(MOSS, 1.6 + Math.round(n * 2) * 0.8 + (cell < 0.2 ? 0.6 : 0));
-  else c = tone(SOIL, 1.6 + Math.round(n * 2) + (cell < 0.25 ? -0.8 : 0));
+  const sun = sunFloor(x, z, y);
+  if (slope < 0.6 && (n2 > -0.32 || sun > 0.25)) {
+    // turf: deep moss in the shade, lush grass where the sun comes down, loam and litter between
+    c = sun > 0.3 ? tone(TURF, 1.8 + Math.round(n * 2) * 0.7 + (cell < 0.2 ? 0.7 : 0)) : tone(MOSS, 1.7 + Math.round(n * 2) * 0.7 + (cell < 0.2 ? 0.7 : 0));
+    if (n2 < -0.12 && cell > 0.62) c = tone(SOIL, 2.5 + n);
+    else if (sun > 0.1 && hash3(Math.floor(x * 8), 1, Math.floor(z * 8), 9) < 0.05 * sun) c = tone(LITTER, 0.5 + cell * 2.5); // leaves fallen from the wood above
+  } else c = tone(SOIL, 1.6 + Math.round(n * 2) + (cell < 0.25 ? -0.8 : 0));
   if (hash3(Math.floor(x * 8), 0, Math.floor(z * 8), 7) > 0.985) c = tone(ROCK, 4 + cell * 2); // pebbles
   const pd = nearPath(x, z);
-  if (pd < 0.65) c = fmix(c, SOIL[0], 0.45);
+  if (pd < 0.65) c = fmix(c, SOIL[1], 0.55 - pd * 0.4);
   // mycelium threads round the giants' feet (and the pool's rim), glowing
   for (const G of GIANTS) {
     const dx = x - G.x, dz = z - G.z;
@@ -248,13 +353,24 @@ function wallCol(x, y, z) {
 }
 /** The roof: dark rock, roots near the brow, pale wet stalactite tips, glowworms. */
 function roofCol(x, y, z, depth) {
+  // round the openings: the forest's topsoil and roots, moss over the rims
+  const hd = holeAt(x, z);
+  if (hd < 1.7) {
+    // (one colour down each column's side, so the funnel's walls mesh as long strips)
+    const k = hash3(Math.floor(x * 8), 0, Math.floor(z * 8), 23);
+    if (y > CTOP - 1.3) return lit(k < 0.3 ? tone(RAMP.root, 3 + k * 6) : tone(SOIL, 1.2 + k * 3));
+    if (hd < 1.3 && k < 0.5) return lit(tone(MOSS, 2.2 + k * 4));
+    if (k < 0.14) return lit(tone(RAMP.root, 2 + k * 18));
+  }
   let c = ROCK[1 + (nB(x * 0.6, z * 0.6) > 0.2 ? 1 : 0) + (Math.floor(y * 2) % 3 === 0 ? 1 : 0)];
   if (depth > 0.5) c = tone(FLOW, depth > 1.2 ? 3 : 1.5 + hash3(Math.floor(x * 8), Math.floor(y * 8), Math.floor(z * 8), 3));
   if (z > -7 && nE(x * 0.4, z * 0.4) > 0.15) c = tone(SOIL, 2 + nA(x * 2, z * 2) * 2);
+  // moss creeping over the roof from the openings and the brow (the wood's floor is just above)
+  if (y < 11 && nC(x * 0.5 + 7, z * 0.5) > (z > -9 ? -0.15 : 0.2) && hash3(Math.floor(x * 4), 0, Math.floor(z * 4), 22) < 0.75) c = tone(MOSS, 1.8 + Math.round(nA(x * 1.3, z * 1.3) * 2 + hash3(Math.floor(x * 4), 1, Math.floor(z * 4), 24)) * 0.6);
   const gw = hash3(Math.floor(x * 8), 5, Math.floor(z * 8), 17);
   if (y > 7.5 ? gw < 0.012 : gw < 0.012 + Math.max(0, nE(x * 0.3, z * 0.3)) * 0.03) return glowHex(hash3(Math.floor(x * 8), 6, Math.floor(z * 8), 18) < 0.6 ? 0xa8f4ff : 0x7ac8ff, 3);
   // glowing lichen in patches over the brow
-  if (y < 7.5 && nD(x * 0.45, z * 0.45) > 0.16 && hash3(Math.floor(x * 4), 7, Math.floor(z * 4), 19) < 0.55) return glowHex(tone(RAMP.cyan, 3 + hash3(Math.floor(x * 8), 8, Math.floor(z * 8), 20) * 2), hash3(Math.floor(x * 4), 9, Math.floor(z * 4), 21) < 0.12 ? 2 : 1);
+  if (y < 7.5 && nD(x * 0.45, z * 0.45) > 0.3 && hash3(Math.floor(x * 4), 7, Math.floor(z * 4), 19) < 0.4) return glowHex(tone(RAMP.cyan, 3 + hash3(Math.floor(x * 8), 8, Math.floor(z * 8), 20) * 2), hash3(Math.floor(x * 4), 9, Math.floor(z * 4), 21) < 0.12 ? 2 : 1);
   return lit(c);
 }
 
@@ -326,7 +442,7 @@ function reliefRegion(RG, view, stats) {
     }
     const see = floor
       ? view.box(x0 - 0.3, fmin - 0.6, z0 - 0.3, x0 + 1.3, Math.min(fmax + 2.6, Math.max(cmax, fmax + 0.5)), z0 + 1.3)
-      : cmin >= fmax + 0.2 && view.box(x0 - 0.3, Math.max(cmin - 0.4, fmin), z0 - 0.3, x0 + 1.3, cmax + 0.4, z0 + 1.3);
+      : cmin >= fmax + 0.2 && view.box(x0 - 0.3, Math.max(cmin - 0.4, fmin), z0 - 0.3, x0 + 1.3, holeAt(x0 + 0.5, z0 + 0.5) < 2.2 ? CTOP : cmax + 0.4, z0 + 1.3);
     if (see) cells.push([ci, ck]);
   }
   if (floor) {
@@ -346,7 +462,7 @@ function reliefRegion(RG, view, stats) {
     for (const [ci, ck] of cells) for (let k = ck; k < Math.min(D, ck + cw); k++) for (let i = ci; i < Math.min(W, ci + cw); i++) {
       const q = i + W * k, x = colX(i), z = colZ(k);
       const c = ceilH(x, z);
-      if (c <= floorH(x, z)) continue;
+      if (c <= floorH(x, z) || holeAt(x, z) < 1) continue;
       h[q] = Math.max(1, Math.round((CTOP - c) / CDN));
       const y = CTOP - h[q] * CDN;
       top[q] = keepGlow(roofCol(x, y, z, Math.max(0, domeH(z) - y - 0.6))) || 0x10;
@@ -602,6 +718,81 @@ void main() {
   gl_FragColor = vec4(mix(col, fogColor, f), 1.0);
 }`;
 
+// ------------------------------------------------------------------ the beams
+const BEAM_FRAG = /* glsl */`
+uniform vec3 uColor;
+uniform float uIntensity;
+uniform float uTime;
+uniform float uFade;
+uniform vec2 uCells;
+varying vec2 vUv;
+float bh(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 45758.5); }
+float bayer2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
+float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+void main() {
+  // drawn in cells of its own (1/8 m), so the shaft steps like the voxels round it
+  vec2 c = (floor(vUv * uCells) + 0.5) / uCells;
+  float x = abs(c.x * 2.0 - 1.0);
+  // light and shade from the leaves over the opening run down it in streaks
+  float streak = 0.62 + 0.38 * sin(c.x * 17.0 + sin(c.x * 5.0 + uTime * 0.21) * 2.0 + uTime * 0.13);
+  float core = pow(max(0.0, 1.0 - x), 1.3) * streak;
+  float along = smoothstep(0.0, 0.16, c.y) * smoothstep(1.0, 0.72, c.y);
+  float shimmer = 0.82 + 0.18 * sin(c.y * 23.0 - uTime * 1.1 + c.x * 6.0);
+  float i = core * along * shimmer * uIntensity * uFade;
+  float q = floor(i * 5.0 + bayer4(gl_FragCoord.xy)) / 5.0;
+  if (q <= 0.0) discard;
+  gl_FragColor = vec4(uColor * q, 1.0);
+}`;
+/**
+ * The sky over the roof: a lid of bright, hazy day seen up through the openings (warmest round the
+ * sun's side, banded in dithered steps), above the boughs.
+ */
+function makeSkyLid() {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uSun: { value: SUN.clone() } },
+    vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: /* glsl */`
+      uniform vec3 uSun;
+      varying vec3 vW;
+      float bayer2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
+      float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+      void main() {
+        vec3 v = normalize(vW - cameraPosition);
+        float k = clamp(dot(v, uSun) * 0.5 + 0.5, 0.0, 1.0);
+        k = floor(k * 6.0 + bayer4(gl_FragCoord.xy)) / 6.0;
+        vec3 col = mix(vec3(0.62, 0.78, 0.62), vec3(1.25, 1.06, 0.72), k);
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+    side: THREE.DoubleSide,
+    depthWrite: true,
+  });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(X1 - X0 + 8, Z1 - Z0 + 8), mat);
+  m.rotation.x = Math.PI / 2;
+  m.position.set((X0 + X1) / 2, CTOP + 2.6, (Z0 + Z1) / 2);
+  m.name = 'sky';
+  return m;
+}
+
+/** A shaft of sun from its opening to the floor (turned to face the camera every frame). */
+function makeShaftBeam(S, k = 1) {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color(0xffd890) }, uIntensity: { value: 0.26 * k }, uTime: { value: 0 }, uFade: { value: 1 }, uCells: { value: new THREE.Vector2(Math.max(4, Math.round(S.r * 1.6 * 8)), Math.round(S.len * 8)) } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: BEAM_FRAG,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(S.r * 1.6, S.len), mat);
+  m.position.copy(S.top).add(S.bottom).multiplyScalar(0.5);
+  m.renderOrder = 7;
+  m.frustumCulled = false;
+  m.name = 'shaft';
+  m.userData.shaft = S;
+  return m;
+}
+
 // ------------------------------------------------------------------ build
 /**
  * Build the cave. o: { lite, soft, view: { box(x0, y0, z0, x1, y1, z1) → bool, point(x, y, z, r) → bool },
@@ -611,6 +802,8 @@ export async function buildCave(o = {}) {
   const t0 = performance.now();
   const lite = !!o.lite, soft = !!o.soft;
   const view = o.view || { box: () => true, point: () => true };
+  const vm = view.menu || view; // what the menu's framings (and the nest's) see
+  const camD = (x, y, z) => (view.dist ? view.dist(x, y, z) : Math.hypot(x - 0.6, y - 1.2, z - 4.5));
   const cancel = o.cancel || (() => false);
   const stats = { reliefQuads: 0, models: 0, ms: 0, tris: 0, giantsMs: 0 };
   const group = new THREE.Group();
@@ -679,16 +872,32 @@ export async function buildCave(o = {}) {
   const tg = performance.now();
   const lights = [];
   const giantInfo = [];
+  const introGroup = new THREE.Group();
+  introGroup.name = 'intro-only';
+  group.add(introGroup);
+  const swapIntro = []; // [menu's coarse mesh, the opening's fine one]
   for (const G of GIANTS) {
     const y0 = floorH(G.x, G.z);
     if (!view.box(G.x - G.R, y0, G.z - G.R, G.x + G.R, y0 + G.h + G.R * 0.6, G.z + G.R)) continue;
-    // (out in the dark at the back a giant is built coarser: a 1/16 m voxel is a pixel there)
-    const far = view.dist ? view.dist(G.x, y0 + G.h * 0.6, G.z) : Math.hypot(G.x - 0.6, G.z - 4.5);
-    const m = giantGeo(G, far > 17 ? (lite ? 8 : 10) : lite ? 12 : 16);
+    // (out in the dark at the back a giant is built coarser: a 1/16 m voxel is a pixel there; one
+    // the opening passes close to gets a fine copy for it)
+    const inMenu = vm.box(G.x - G.R, y0, G.z - G.R, G.x + G.R, y0 + G.h + G.R * 0.6, G.z + G.R);
+    const far = (inMenu ? vm.dist : camD)(G.x, y0 + G.h * 0.6, G.z);
+    const kG = (d) => (d > 17 ? (lite ? 8 : 10) : lite ? 12 : 16);
+    const m = giantGeo(G, kG(far));
     const mesh = addMesh(m.geo, matPlant, far < 24, 'giant');
     mesh.position.set(G.x, y0 - 0.02, G.z);
     mesh.rotation.y = (G.seed % 7) * 0.9;
     mesh.updateMatrixWorld(true);
+    if (inMenu && view.menu && kG(camD(G.x, y0 + G.h * 0.6, G.z)) > kG(far)) {
+      const fine = new THREE.Mesh(giantGeo(G, kG(0)).geo, matPlant);
+      fine.layers.enable(LAYER_OUTLINE);
+      fine.name = 'giant-intro';
+      fine.position.copy(mesh.position); fine.rotation.copy(mesh.rotation);
+      introGroup.add(fine);
+      geos.push(fine.geometry);
+      swapIntro.push([mesh, fine]);
+    }
     const lp = m.light.clone().applyMatrix4(mesh.matrixWorld);
     giantInfo.push({ G, mesh, light: lp, capY: y0 + m.capY, top: y0 + m.top, axisAt: m.axisAt, rStem: m.rStem, y0 });
     await tick();
@@ -720,9 +929,12 @@ export async function buildCave(o = {}) {
     stats.byTag[tag] = (stats.byTag[tag] || 0) + (geo.index ? geo.index.count / 3 : 0);
     const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry), new THREE.Vector3(s, s, s));
     const g = geo.clone().applyMatrix4(m);
-    const key = (hang ? 'h' : 'p') + Math.floor((x - X0) / 6) + ',' + Math.floor((z - Z0) / 6);
+    // (what hangs over the openings, up in the sun, is its own mesh: seen only through them, never
+    // outlined; what only the opening shot sees is its own too, hidden after it)
+    const intro = !!view.menu && !vm.point(x, y + 0.2, z, 0.6);
+    const key = (intro ? 'i' : '') + (hang === 'sky' ? 's' : hang ? 'h' : 'p') + Math.floor((x - X0) / 6) + ',' + Math.floor((z - Z0) / 6);
     let b = buckets.get(key);
-    if (!b) buckets.set(key, (b = { hang, list: [] }));
+    if (!b) buckets.set(key, (b = { hang, intro, list: [] }));
     b.list.push(g);
     stats.models++;
   };
@@ -746,7 +958,8 @@ export async function buildCave(o = {}) {
     }
     return g;
   };
-  const camDist = (x, y, z) => (view.dist ? view.dist(x, y, z) : Math.hypot(x - 0.6, y - 1.2, z - 4.5));
+  // (what the menu sees takes its detail from the menu's cameras; what only the opening sees, from its own)
+  const camDist = (x, y, z, r = 0.4) => (view.menu && vm.point(x, y, z, r) ? vm.dist(x, y, z) : camD(x, y, z));
   const LOD_D = lite ? 6.5 : 9;
   const rr = makeRng(777);
   const okSpot = (x, z, pad = 0.9) => {
@@ -779,8 +992,17 @@ export async function buildCave(o = {}) {
     }
   }
   mark('wall');
-  // walls: shelves and the mine's wall plants where the floor turns steep
-  for (let i = 0; i < 260; i++) {
+  // the swaying plants (grass, ferns, flowers, mushrooms, everything hanging): one instanced pool
+  const V = makeTitleVeg({ lite }), VI = makeTitleVeg({ lite }); // (the menu's; the opening's own)
+  const plant = (name, x, y, z, o = {}) => {
+    // (nothing grows right in front of a lens: the opening's low camera runs through the grass)
+    if (o.cut == null && view.dist && camD(x, y + 0.25, z) < 0.8) return null;
+    stats.byTag[tag] = (stats.byTag[tag] || 0) + 1;
+    const pool = view.menu && !vm.point(x, y + (o.cut != null ? -0.5 : 0.15), z, 0.4) ? VI : V;
+    return pool.add(name, x, y, z, { yaw: rr() * TAU, variant: rr.int(0, 2), ...o });
+  };
+  // walls: shelves, the mine's wall plants and ferns where the floor turns steep
+  for (let i = 0; i < (lite ? 260 : 360); i++) {
     const x = rr.range(-15, 15), z = rr.range(-31, 3);
     const r = rimOf(x, z);
     if (r < 0.86 || r > 1.12) continue;
@@ -789,9 +1011,10 @@ export async function buildCave(o = {}) {
     if (!view.point(x, y, z, 0.5) || camDist(x, y, z) > 17) continue;
     const gx = floorH(x + 0.3, z) - floorH(x - 0.3, z), gz = floorH(x, z + 0.3) - floorH(x, z - 0.3);
     const yaw = Math.atan2(-gx, -gz);
-    const pick = rr();
-    if (pick < 0.22) put(shelfGeo(i, { w: rr.range(0.5, 1.1), ramp: rr() < 0.5 ? RAMP.amber : RAMP.cyan }), x, y, z, yaw);
-    else put(proto(pick < 0.5 ? 'wallMush' : pick < 0.72 ? 'wallFungus' : pick < 0.86 ? 'wallLichenCrystal' : 'wallMoss', i % 3, 1 / 48, camDist(x, y, z) > LOD_D), x, y, z, yaw);
+    const pick = rr(), lod = camDist(x, y, z) > LOD_D;
+    if (pick < 0.16) put(shelfGeo(i, { w: rr.range(0.5, 1.1), ramp: rr() < 0.5 ? RAMP.amber : RAMP.cyan }), x, y, z, yaw);
+    else if (pick < 0.5) plant(pick < 0.36 ? 'wallFern' : 'wallGrass', x, y, z, { yaw, lod, div: 52, sway: 0.08 });
+    else plant(pick < 0.64 ? 'wallMush' : pick < 0.78 ? 'wallFungus' : pick < 0.88 ? 'wallLichenCrystal' : 'wallMoss', x, y, z, { yaw, lod, div: 48, sway: 0.03, push: 0 });
   }
   mark('boulder');
   // boulders (furniture-sized: 1/32)
@@ -822,14 +1045,15 @@ export async function buildCave(o = {}) {
     }
   }
   mark('floorPlants');
-  // the mine's cave plants on the floor (1/56–1/64 m voxels)
-  const FLOOR_SET = [
-    ['glowShroom', 3, 1 / 56], ['mushTiny', 3, 1 / 60], ['fungusCyan', 2, 1 / 56], ['fungusViolet', 2, 1 / 56], ['fungusBlue', 2, 1 / 56], ['fungusPink', 1, 1 / 56],
-    ['puffballs', 1, 1 / 56], ['flowerCyan', 2, 1 / 60], ['flowerViolet', 2, 1 / 60], ['fungusGrass', 4, 1 / 60], ['mossGrass', 4, 1 / 60], ['cloverGlow', 2, 1 / 60],
-    ['inkcap', 1, 1 / 56], ['fern', 2, 1 / 56], ['pebbles', 2, 1 / 60], ['lichenCrystal', 1, 1 / 60], ['starMoss', 1, 1 / 60], ['fungusAmber', 1, 1 / 56],
+  // the mine's mushrooms, puffballs, glowing flowers and lichens on the floor (1/56–1/64 m voxels)
+  const SHROOMS = [
+    ['glowShroom', 3, 56], ['mushTiny', 3, 60], ['fungusCyan', 2, 56], ['fungusViolet', 2, 56], ['fungusBlue', 2, 56], ['fungusPink', 1, 56],
+    ['puffballs', 1, 56], ['flowerCyan', 2, 60], ['flowerViolet', 2, 60], ['flowerPink', 1, 60], ['cloverGlow', 2, 60], ['inkcap', 1, 56],
+    ['pebbles', 1, 60], ['lichenCrystal', 1, 60], ['starMoss', 1, 60], ['fungusAmber', 1, 56], ['brownCap', 1, 56], ['toadstool', 1, 56],
   ];
-  const wsum = FLOOR_SET.reduce((a, f) => a + f[1], 0);
-  const nPlants = soft ? 90 : lite ? 150 : 300;
+  const wsum = SHROOMS.reduce((a, f) => a + f[1], 0);
+  const RIGID = { sway: 0.03, push: 0.4 };
+  const nPlants = soft ? 80 : lite ? 150 : 280;
   for (let i = 0, placed = 0; i < nPlants * 4 && placed < nPlants; i++) {
     // more round the giants' feet and the pool, fewer out in the open
     let x, z;
@@ -838,34 +1062,95 @@ export async function buildCave(o = {}) {
     if (!okSpot(x, z, 0.75)) continue;
     const y = floorH(x, z);
     if (!view.point(x, y + 0.2, z, 0.4)) continue;
-    let w = rr() * wsum, f = FLOOR_SET[0];
-    for (const F of FLOOR_SET) { w -= F[1]; if (w <= 0) { f = F; break; } }
-    // (close to the camera: smaller things only)
-    put(proto(f[0], rr.int(0, 2), f[2], camDist(x, y, z) > LOD_D), x, y - 0.02, z, rr() * TAU, rr.range(0.85, 1.25));
-    placed++;
-  }
-  // the foreground (what's closest to the menu's camera) gets its own sprinkling
-  for (let i = 0, placed = 0; i < 400 && placed < (soft ? 20 : 40); i++) {
-    const x = rr.range(-6, 4.5), z = rr.range(-5.5, 3.2);
-    if (!okSpot(x, z, 0.8)) continue;
-    const y = floorH(x, z);
-    if (!view.point(x, y + 0.2, z, 0.3)) continue;
-    const f = FLOOR_SET[[0, 1, 2, 3, 7, 8, 9, 10, 11, 14, 16][rr.int(0, 10)]];
-    put(proto(f[0], rr.int(0, 2), f[2], false), x, y - 0.02, z, rr() * TAU, rr.range(0.85, 1.2));
+    let w = rr() * wsum, f = SHROOMS[0];
+    for (const F of SHROOMS) { w -= F[1]; if (w <= 0) { f = F; break; } }
+    plant(f[0], x, y - 0.02, z, { lod: camDist(x, y, z) > LOD_D, div: Math.round(f[2] / rr.range(0.85, 1.25)), rank: rr.range(0.3, 1), ...RIGID });
     placed++;
   }
   // round the signpost's foot and along the pool's edge: a few glowing ones
   for (const [x, z, nm] of [[2.35, 1.5, 'glowShroom'], [0.85, 0.55, 'mushTiny'], [2.4, 0.4, 'fungusGrass'], [0.7, 1.7, 'mossGrass'], [-0.9, -9.4, 'flowerCyan'], [-3.2, -10.6, 'fungusCyan'], [0.6, -11.6, 'flowerViolet'], [-2.4, -12.8, 'glowShroom']]) {
-    if (view.point(x, floorH(x, z), z, 0.5)) put(proto(nm, 1, 1 / 60), x, floorH(x, z) - 0.02, z, rr() * TAU);
+    if (view.point(x, floorH(x, z), z, 0.5)) plant(nm, x, floorH(x, z) - 0.02, z, { variant: 1, div: 60, ...RIGID });
   }
+
+  mark('turf');
+  // the turf: a carpet of voxel grass, moss and clover over all the floor the cameras see, thickest
+  // near them; lush and tall in the sunlit pools, mossy in the shade, short along the trodden routes
+  const okTurf = (x, z, y) => {
+    if (rimOf(x, z) > 0.9) return false;
+    if (Math.hypot(x - CAVE.sign.x, z - CAVE.sign.z) < 0.45 || Math.hypot(x - nest.x, z - nest.z) < 1.55) return false;
+    if (Math.hypot((x - CAVE.pool.x) / CAVE.pool.r, (z - CAVE.pool.z) / (CAVE.pool.r * 0.72)) < 1.05) return false;
+    for (const gi of giantInfo) if (Math.hypot(x - gi.G.x, z - gi.G.z) < gi.rStem * 1.5 + 0.12) return false;
+    for (const B of BREAK_SPOTS) if (Math.hypot(x - B.x, z - B.z) < 0.32) return false;
+    return Math.abs(floorH(x + 0.12, z) - floorH(x - 0.12, z)) + Math.abs(floorH(x, z + 0.12) - floorH(x, z - 0.12)) < 0.2 + (y < 0.5 ? 0.05 : 0);
+  };
+  const GAP = soft ? 0.42 : 0.3;
+  const dens = soft ? [0.45, 0.22, 0.07, 0.012] : lite ? [0.52, 0.25, 0.085, 0.018] : [0.9, 0.5, 0.2, 0.05];
+  const TURF_LOD = lite ? 4.2 : 7.5;
+  for (let gz = -27.5; gz < 4.2; gz += GAP) for (let gx = -13; gx < 13; gx += GAP) {
+    const x = gx + (rr() - 0.5) * GAP, z = gz + (rr() - 0.5) * GAP;
+    const y = floorH(x, z);
+    const menuSees = !view.menu || vm.point(x, y + 0.12, z, 0.22);
+    const d = menuSees && view.menu ? vm.dist(x, y, z) : camD(x, y, z);
+    const sun = sunFloor(x, z, y);
+    const p = (d < 7 ? dens[0] : d < 11 ? dens[1] : d < 16 ? dens[2] : dens[3]) * (1 + sun * 1.2) * (menuSees ? 1 : lite ? 0.55 : 0.75);
+    if (rr() > p) continue;
+    const pd = nearPath(x, z);
+    if (pd < 0.26 || !okTurf(x, z, y) || !view.point(x, y + 0.12, z, 0.22)) continue;
+    const short = pd < 0.72, q = rr();
+    let name;
+    if (sun > 0.25) name = short ? (q < 0.65 ? 'grass' : 'clover') : q < 0.3 ? 'grassTall' : q < 0.8 ? 'grass' : q < 0.9 ? 'clover' : 'dryGrass';
+    else name = short ? (q < 0.45 ? 'mossGrass' : q < 0.82 ? 'grass' : 'clover') : q < 0.3 ? 'mossGrass' : q < 0.66 ? 'grass' : q < 0.8 ? 'fungusGrass' : q < 0.92 ? 'clover' : 'grassTall';
+    plant(name, x, y - 0.02, z, { lod: d > TURF_LOD, div: Math.round(56 / rr.range(0.9, 1.2)), rank: rr(), sway: name === 'clover' ? 0.04 : 0.12, tint: 0.94 + sun * 0.1 });
+  }
+
+  mark('undergrowth');
+  // ferns in drifts round the giants' feet, along the walls and by the pool, giant ferns in the damp
+  const nFern = soft ? 14 : lite ? 34 : 64;
+  for (let i = 0, placed = 0; i < nFern * 8 && placed < nFern; i++) {
+    let x, z;
+    const w = rr();
+    if (w < 0.45 && giantInfo.length) { const gi = giantInfo[rr.int(0, giantInfo.length - 1)]; const a = rr() * TAU, d = gi.rStem + rr.range(0.5, 2.2); x = gi.G.x + Math.cos(a) * d; z = gi.G.z + Math.sin(a) * d; }
+    else if (w < 0.6) { const a = rr() * TAU; x = CAVE.pool.x + Math.cos(a) * CAVE.pool.r * 1.25; z = CAVE.pool.z + Math.sin(a) * CAVE.pool.r * 0.9; }
+    else { x = rr.range(-13, 13); z = rr.range(-27, 3.5); if (rimOf(x, z) < 0.74) continue; }
+    if (!okSpot(x, z, 0.9) || rimOf(x, z) > 0.88) continue;
+    const y = floorH(x, z), d = camDist(x, y, z);
+    if (!view.point(x, y + 0.3, z, 0.7)) continue;
+    const big = rr() < (d > 6 ? 0.3 : 0.12);
+    plant(big ? 'giantFern' : rr() < 0.7 ? 'fern' : rr() < 0.5 ? 'fernPale' : 'horsetail', x, y - 0.03, z, { lod: d > LOD_D + 1, div: big ? 50 : 54, rank: 1, sway: 0.11, push: 0.8 });
+    placed++;
+  }
+  // woodland flowers in the sun (1/40 m), foxgloves (1/40) and leaf litter blown down from above
+  const FLOWERS = ['bluebell', 'campion', 'anemone', 'violet', 'bluebell', 'primrose'];
+  const nFl = soft ? 10 : lite ? 26 : 50;
+  for (let i = 0, placed = 0; i < nFl * 12 && placed < nFl; i++) {
+    const S = SHAFTS[rr.int(0, SHAFTS.length - 1)];
+    const a = rr() * TAU, rd = Math.sqrt(rr()) * S.r * 1.3;
+    const x = S.bottom.x + Math.cos(a) * rd, z = S.bottom.z + Math.sin(a) * rd;
+    const y = floorH(x, z);
+    if (!okSpot(x, z, 0.6) || !okTurf(x, z, y) || sunFloor(x, z, y) < 0.15) continue;
+    if (!view.point(x, y + 0.15, z, 0.3)) continue;
+    const near = camDist(x, y, z) < 9;
+    if (rr() < 0.18) put(withGlow(makeFoxgloveGeo(500 + i, { h: rr.range(0.55, 0.85), k: near ? 40 : 24, color: [0xc85aa8, 0xe07ab8, 0xf0e0f0][i % 3] })), x, y - 0.02, z, rr() * TAU);
+    else put(withGlow(makeFlowerClumpGeo(600 + i, { kind: FLOWERS[i % FLOWERS.length], n: rr.int(4, 7), k: near ? 48 : 32 })), x, y - 0.02, z, rr() * TAU);
+    if (rr() < 0.4) put(withGlow(makeLeavesGeo(700 + i, { k: 40, n: rr.int(5, 9) })), x + rr.range(-0.5, 0.5), floorH(x, z) - 0.01, z + rr.range(-0.5, 0.5), rr() * TAU);
+    placed++;
+  }
+
   mark('hang');
   // hanging from the roof: roots and vines off the brow, mycelium and glowworm threads in the dome
-  const HANG = [['roots', 3, 1 / 56], ['rootsShort', 3, 1 / 56], ['glowVine', 2, 1 / 56], ['mossDrape', 2, 1 / 52], ['mycelCyan', 3, 1 / 56], ['mycel', 2, 1 / 56], ['vineBerry', 1, 1 / 56]];
+  const HANG = [['roots', 3, 56], ['rootsShort', 3, 56], ['glowVine', 2, 56], ['mossDrape', 3, 52], ['mycelCyan', 3, 56], ['mycel', 2, 56], ['vineBerry', 1, 56], ['vine', 3, 56]];
   const hsum = HANG.reduce((a, f) => a + f[1], 0);
+  const hang = (name, x, y, z, d0, o = {}) => {
+    const room = y - floorH(x, z) - 0.55;
+    if (room < 0.6) return;
+    const div = Math.round(d0 / rr.range(0.85, 1.2)), lod = camDist(x, y, z) > LOD_D;
+    plant(name, x, y + 0.04, z, { lod, div, rank: 1, sway: 0.15, push: 0.3, cut: -Math.round(room * (lod ? div / 2 : div)), ...o });
+  };
   const dripTips = [];
-  const nHang = soft ? 30 : lite ? 50 : 80;
+  const nHang = soft ? 30 : lite ? 52 : 110;
   for (let i = 0, placed = 0; i < nHang * 6 && placed < nHang; i++) {
     const x = rr.range(-13, 13), z = rr.range(-29, 3);
+    if (holeAt(x, z) < 1.05) continue;
     const y = ceilH(x, z);
     if (y < floorH(x, z) + 2.4) continue;
     if (Math.abs(x - CAVE.sign.x) < 1.2 && Math.abs(z - CAVE.sign.z) < 1.5) continue;
@@ -873,19 +1158,45 @@ export async function buildCave(o = {}) {
     let w = rr() * hsum, f = HANG[0];
     for (const F of HANG) { w -= F[1]; if (w <= 0) { f = F; break; } }
     if (z < -12 && f[0].startsWith('root')) f = HANG[4];
-    put(proto(f[0], rr.int(0, 2), f[2], camDist(x, y, z) > LOD_D), x, y + 0.05, z, rr() * TAU, rr.range(0.9, 1.3), true);
+    hang(f[0], x, y, z, f[2]);
     placed++;
   }
-  // the brow over the front of the cave: roots, moss curtains and glowworm threads, thick
-  for (let i = 0, placed = 0; i < 500 && placed < (soft ? 18 : lite ? 28 : 34); i++) {
+  // the brow over the front of the cave: roots, vines, moss curtains and glowworm threads, thick
+  for (let i = 0, placed = 0; i < 600 && placed < (soft ? 18 : lite ? 30 : 50); i++) {
     const x = i % 2 ? rr.range(-2, 6) : rr.range(-9, 8), z = rr.range(-10, 1.5);
+    if (holeAt(x, z) < 1.05) continue;
     const y = ceilH(x, z);
     if (y < floorH(x, z) + 2.6 || (Math.abs(x - CAVE.sign.x) < 1.3 && Math.abs(z - CAVE.sign.z) < 1.6)) continue;
     if (!view.point(x, y - 0.5, z, 0.6)) continue;
-    const f = HANG[[0, 1, 3, 4, 4, 5, 2][rr.int(0, 6)]];
-    put(proto(f[0], rr.int(0, 2), f[2], camDist(x, y, z) > LOD_D), x, y + 0.05, z, rr() * TAU, rr.range(0.9, 1.25), true);
+    const f = HANG[[0, 1, 3, 3, 4, 7, 7, 2][rr.int(0, 7)]];
+    hang(f[0], x, y, z, f[2]);
     placed++;
   }
+  // round every opening: vines, roots and moss trailing off the rim, ferns and grass leaning out
+  // over it, and the wood's leafy boughs across it up top (in the sun)
+  SKY.forEach((S, si) => {
+    const yTop = ceilH(S.x, S.z);
+    if (!view.box(S.x - S.r - 1, yTop - 3, S.z - S.r - 1, S.x + S.r + 1, CTOP + 2, S.z + S.r + 1)) return;
+    const n = Math.round((soft ? 6 : lite ? 10 : 16) * S.r / 2);
+    for (let i = 0; i < n * 3; i++) {
+      const a = (i / (n * 3)) * TAU + rr.range(-0.1, 0.1);
+      let rd = S.r * 0.8;
+      while (holeAt(S.x + Math.cos(a) * rd, S.z + Math.sin(a) * rd) < 1.02 && rd < S.r * 1.8) rd += 0.05;
+      const x = S.x + Math.cos(a) * (rd + 0.04), z = S.z + Math.sin(a) * (rd + 0.04), y = ceilH(x, z);
+      const k = i % 3;
+      if (k === 0) hang(['vine', 'roots', 'mossDrape', 'rootsShort', 'vine', 'glowVine'][rr.int(0, 5)], x, y, z, 54, { rank: 1 });
+      else if (k === 1) plant(rr() < 0.6 ? 'wallFern' : 'wallGrass', x - Math.cos(a) * 0.03, y + rr.range(0.05, 0.3), z - Math.sin(a) * 0.03, { yaw: Math.atan2(-Math.cos(a), -Math.sin(a)), div: 50, sway: 0.14, lod: camDist(x, y, z) > LOD_D });
+      else if (rr() < 0.5) hang(rr() < 0.5 ? 'mossDrape' : 'rootsShort', x + Math.cos(a) * 0.25, ceilH(x + Math.cos(a) * 0.25, z + Math.sin(a) * 0.25), z + Math.sin(a) * 0.25, 52);
+    }
+    // boughs over the opening, lit by the sun, leaves glowing gold where it comes through them
+    for (let j = 0; j < (soft || lite ? 1 : 2); j++) {
+      const a = si * 1.9 + j * 2.6, L = S.r * 1.7 + 0.8;
+      const B = makeBoughGeo(800 + si * 7 + j, { len: L, kw: 16, kl: 10 });
+      const bx = S.x - Math.cos(a) * (S.r + 0.9), bz = S.z + Math.sin(a) * (S.r + 0.9), by = CTOP + 0.15 + j * 0.45;
+      put(withGlow(B.wood), bx, by, bz, a, 1, 'sky');
+      put(withGlow(B.leaves, 0.35), bx, by, bz, a, 1, 'sky');
+    }
+  });
   for (const s of STALACT) {
     const y = ceilH(s.x, s.z);
     if (s.h < 0.7 || y < floorH(s.x, s.z) + 0.6) continue;
@@ -899,10 +1210,19 @@ export async function buildCave(o = {}) {
     if (!g) continue;
     g.computeBoundingSphere();
     const c = g.boundingSphere.center;
-    addMesh(g, b.hang ? matHang : matPlant, camDist(c.x, c.y, c.z) - g.boundingSphere.radius < 22, b.hang ? 'hang' : 'plants');
+    const m = addMesh(g, b.hang === true ? matHang : matPlant, b.hang !== 'sky' && camDist(c.x, c.y, c.z, g.boundingSphere.radius) - g.boundingSphere.radius < 22, b.hang === 'sky' ? 'sky-boughs' : b.hang ? 'hang' : 'plants');
+    if (b.intro) introGroup.add(m);
   }
   for (const g of protoCache.values()) g.dispose();
   protoCache.clear();
+  // the swaying plants: one draw (and one more for the opening's own)
+  const vegMesh = V.build();
+  group.add(vegMesh);
+  const vegIntro = VI.build();
+  vegIntro.name = 'foliage-intro';
+  introGroup.add(vegIntro);
+  stats.veg = V.stats;
+  stats.vegIntro = VI.stats;
   await tick();
   if (cancel()) return { cancelled: true };
 
@@ -978,6 +1298,24 @@ export async function buildCave(o = {}) {
       glowPts.push({ pos: [x, y - r() * 0.5, z], color: r() < 0.7 ? 0x9af4ff : 0x7aa8ff, size: r() < 0.2 ? 2 : 1, shape: SHAPE.square, speed: r.range(0.3, 1.2), phase: r() * 20, sharp: 1.5, amp: 0.6, base: 0.4 });
     }
   }
+  // the shafts of sun: stepped, dithered beams that turn to face the camera, motes drifting in them
+  const beams = [];
+  for (const S of SHAFTS) {
+    const mid = S.top.clone().add(S.bottom).multiplyScalar(0.5);
+    if (!view.point(mid.x, mid.y, mid.z, S.len / 2 + S.r)) continue;
+    const b = makeShaftBeam(S, soft ? 0.7 : 1);
+    beams.push(b);
+    group.add(b);
+    mats.add(b.material);
+    geos.push(b.geometry);
+  }
+  // the wood's bright day up through the openings: a lid of sky over the roof (only seen through them)
+  const lid = makeSkyLid();
+  group.add(lid);
+  mats.add(lid.material);
+  geos.push(lid.geometry);
+  const motes = new Particles({ max: soft ? 60 : lite ? 140 : 260, additive: true, atten: true, renderOrder: 8 });
+  group.add(motes.points);
   const glowworms = new Twinkles(glowPts, { additive: true });
   glowworms.points.renderOrder = 4;
   group.add(glowworms.points);
@@ -1005,8 +1343,23 @@ export async function buildCave(o = {}) {
   // ---- per frame
   let sporeAcc = 0, dripT = 1.2, t = 0;
   const ripples = water ? water.material.uniforms.uRip.value : null;
+  // the giants' caps throw shade in the shafts (the shader's list)
+  giantInfo.slice(0, 6).forEach((gi, i) => CF.uCap.value[i].set(gi.light.x, gi.capY + 0.1, gi.light.z, gi.G.R * 0.92));
+  for (let i = giantInfo.length; i < 6; i++) CF.uCap.value[i].w = 0;
+  SHAFTS.slice(0, 8).forEach((S, i) => CF.uShaft.value[i].set(S.top.x, S.top.y, S.top.z, S.r));
+  for (let i = SHAFTS.length; i < 8; i++) CF.uShaft.value[i].w = 0;
+  let moteAcc = 0;
+  const _bx = new THREE.Vector3(), _bs = new THREE.Vector3(), _bn = new THREE.Vector3(), _bt = new THREE.Vector3(), _bm = new THREE.Matrix4();
+  introGroup.visible = false;
   const C = {
-    group, lights, stats, breakables, giants: giantInfo, water, dripTips,
+    group, lights, stats, breakables, giants: giantInfo, water, dripTips, veg: V, beams,
+    /** The opening shot's own things on (its fine giants in place of the menu's coarse ones) or off. */
+    setIntro(on) {
+      introGroup.visible = !!on;
+      for (const [coarse, fine] of swapIntro) { coarse.visible = !on; fine.visible = !!on; }
+    },
+    /** Who runs through the grass ([{ x, y, z, r }], set by the chase). */
+    pushers: [],
     materials: [...mats],
     /** sfx(name, opts): drips call it as they land (pan from the screen, far by distance). */
     sfx: null,
@@ -1029,6 +1382,33 @@ export async function buildCave(o = {}) {
       spores.setScaleFromCamera(cam, heightPx);
       spores.update(dt);
       glowworms.update(dt);
+      V.update(dt, cam, group.parent, C.pushers);
+      if (introGroup.visible) VI.update(dt, cam, group.parent, C.pushers);
+      // the beams turn round their own axis to face the camera; they fade when it stands in one
+      for (const b of beams) {
+        const B = b.userData.shaft, u = b.material.uniforms;
+        _bx.subVectors(B.top, B.bottom).normalize();
+        _bt.subVectors(cam.position, b.position);
+        _bs.crossVectors(_bx, _bt).normalize();
+        _bn.crossVectors(_bs, _bx).normalize();
+        _bm.makeBasis(_bs, _bx, _bn);
+        b.quaternion.setFromRotationMatrix(_bm);
+        u.uTime.value = t;
+        _bt.subVectors(cam.position, B.bottom);
+        const along = clamp(_bt.dot(_bx), 0, B.len);
+        u.uFade.value = sm(B.r * 0.7, B.r * 0.7 + 2.2, _bt.addScaledVector(_bx, -along).length());
+      }
+      // motes and pollen drifting slowly down the shafts, catching the sun
+      moteAcc += dt * (lite ? 16 : 30) * (beams.length ? 1 : 0);
+      while (moteAcc >= 1) {
+        moteAcc -= 1;
+        const B = beams[(Math.random() * beams.length) | 0].userData.shaft;
+        const k = Math.random() * 0.85 + 0.1, a = Math.random() * TAU, rd = Math.sqrt(Math.random()) * B.r * 0.8;
+        _bt.lerpVectors(B.bottom, B.top, k);
+        motes.spawn({ pos: [_bt.x + Math.cos(a) * rd, _bt.y, _bt.z + Math.sin(a) * rd], vel: [(Math.random() - 0.5) * 0.06, -0.03 - Math.random() * 0.05, (Math.random() - 0.5) * 0.06], life: 5 + Math.random() * 5, color: Math.random() < 0.7 ? 0xfff0b8 : 0xe8ffc8, color2: 0xffd890, size: 0.012 + Math.random() * 0.014, shape: SHAPE.square, drag: 0.4, flicker: 0.5, wobble: 0.05, fadeIn: 1.2 });
+      }
+      motes.setScaleFromCamera(cam, heightPx);
+      motes.update(dt);
       // drips: a bead swells at a tip and falls; it splashes (and rings the pool)
       dripT -= dt;
       if (dripT <= 0 && dripTips.length) {
@@ -1065,6 +1445,8 @@ export async function buildCave(o = {}) {
       for (const g of geos) g.dispose();
       for (const m of mats) if (!m.userData?.shared && !String(m.customProgramCacheKey?.() || '').startsWith('cave-toon')) m.dispose();
       glowworms.points.geometry.dispose(); glowworms.points.material.dispose();
+      motes.geo.dispose(); motes.mat.dispose();
+      V.dispose(); VI.dispose();
       spores.geo.dispose(); spores.mat.dispose();
       drips.geo.dispose(); drips.mat.dispose();
     },

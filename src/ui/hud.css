@@ -44,6 +44,29 @@
   opacity: 0;
 }
 @keyframes coinSpin { to { background-position: calc(var(--px) * -32) 0; } }
+/* gold in: each coin drops out of the air into the pouch's mouth (it lands with a clink: a glint, a bob) */
+.pouch-coins .coin.in { animation: coinSpin .24s steps(4) infinite, coinIn .62s cubic-bezier(.45, 0, .8, .6) both; }
+@keyframes coinIn {
+  0% { transform: translate(calc(var(--dx) * var(--px) * 14), calc(var(--h) * var(--px) * -30)) scale(.8); opacity: 0; }
+  18% { opacity: 1; }
+  55% { transform: translate(calc(var(--dx) * var(--px) * 6), calc(var(--h) * var(--px) * -16)); }
+  92% { opacity: 1; }
+  100% { transform: translate(0, calc(var(--px) * 1)) scale(.7); opacity: 0; }
+}
+/* gold out: coins spill over the lip and tumble down past the tag */
+.pouch-coins .coin.out { animation: coinSpin .2s steps(4) infinite, coinOut .95s cubic-bezier(.3, 0, .7, 1) both; }
+@keyframes coinOut {
+  0% { transform: translate(0, 0); opacity: 0; }
+  12% { opacity: 1; transform: translate(calc(var(--dx) * var(--px) * 3), calc(var(--px) * -4)); }
+  100% { transform: translate(calc(var(--dx) * var(--px) * 14), calc(var(--px) * 30)) rotate(200deg); opacity: 0; }
+}
+.pouch-coins .clink {
+  position: absolute; left: calc(var(--px) * (-3.5 + var(--gx, 0))); top: calc(var(--px) * -3); width: calc(var(--px) * 7); height: calc(var(--px) * 7);
+  background: var(--h-glint) 0 0 / 100% 100%; opacity: 0; animation: clink .38s steps(5) both;
+}
+@keyframes clink { 0% { opacity: 1; transform: scale(.3) rotate(0deg); } 40% { opacity: 1; transform: scale(1.1) rotate(20deg); } 100% { opacity: 0; transform: scale(.4) rotate(45deg); } }
+.pouch-img.bob, .pouch.jingle .pouch-img.bob { animation: pouchBob .22s ease-out; }
+@keyframes pouchBob { 40% { transform: translateY(var(--px)) scale(1.04, .95); } }
 @keyframes coinHop {
   0% { transform: translate(0, calc(var(--px) * 6)); opacity: 0; }
   10% { opacity: 1; }
@@ -207,6 +230,32 @@ html.is-touch .journal-btn { opacity: .7; }
   filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .5));
 }
 .depth-txt b { display: block; font-family: var(--font-head); font-weight: 400; font-size: var(--fs-h); line-height: 1; color: var(--gold); text-shadow: 0 var(--px) 0 #3a2212, 0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .4); }
+/* the plaque's crest: the radar's brass fleur pinned on top; a new depth turns the plaque over on its
+   pins (Hud.setDepth) while the plumb-bob drops on its twine and bounces */
+.depth-txt { position: relative; transform-origin: 50% 0; }
+.depth-txt::before {
+  content: ''; position: absolute; left: 50%; top: calc(var(--px) * -10); width: calc(var(--px) * 9); height: calc(var(--px) * 12); margin-left: calc(var(--px) * -4.5);
+  background: var(--d-fleur) 0 0 / 100% 100% no-repeat; filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .45)); pointer-events: none;
+}
+.depth-txt.flip { animation: plaqueFlip .55s steps(7) both; }
+@keyframes plaqueFlip { 0% { transform: perspective(200px) rotateX(0); } 35% { transform: perspective(200px) rotateX(88deg); filter: brightness(.6) drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .5)); } 70% { transform: perspective(200px) rotateX(-14deg); } 100% { transform: none; } }
+.depth.drop img { animation: plumbDrop .7s cubic-bezier(.3, 1.6, .5, 1) both, plumbSwing 2.4s ease-in-out .7s infinite; }
+@keyframes plumbDrop { 0% { transform: translateY(calc(var(--px) * -6)) rotate(-10deg); } 45% { transform: translateY(calc(var(--px) * 3)) rotate(6deg); } 100% { transform: none; } }
+
+/* the hotbar: picking a loop makes its tool hop and a glint run over the brass */
+.loop-face { position: relative; }
+.loop.sel .loop-face img { animation: loopHop .32s var(--pop); }
+@keyframes loopHop { 35% { transform: translateY(calc(var(--px) * -3)) rotate(-6deg); } 70% { transform: translateY(calc(var(--px) * 0.5)) rotate(2deg); } }
+.loop.sel .loop-face::after {
+  content: ''; position: absolute; inset: calc(var(--px) * -4); pointer-events: none; opacity: 0;
+  background: var(--dl-glint) -30% 0 / calc(var(--px) * 10) 100% no-repeat; animation: loopGlint .5s steps(8) .05s both;
+}
+@keyframes loopGlint { 0% { opacity: .85; background-position: -30% 0; } 99% { opacity: .85; background-position: 130% 0; } 100% { opacity: 0; } }
+.loop:active .loop-face { transform: translateY(var(--px)); }
+
+/* tapping the backpack: the bag heaves, its flap lifting */
+.pack-bag.open img { animation: packOpen .4s var(--pop); transform-origin: 50% 90%; }
+@keyframes packOpen { 30% { transform: scale(1.08, .9) translateY(var(--px)); } 60% { transform: scale(.95, 1.08) translateY(calc(var(--px) * -2)); } }
 
 /* ---------- tool belt ---------- */
 .belt {
@@ -338,6 +387,29 @@ html.is-touch .loop .k { display: none; }
   filter: drop-shadow(0 var(--px) 0 rgba(20, 6, 4, .45));
 }
 .qt.idle .qt-wax { transform: rotate(6deg) scale(.8); }
+/* the strip flutters when it changes (Tracker.flutter): the sheet ripples from the left roll and its
+   free corner lifts, showing the paper's darker back for a moment, then settles */
+.qt-paper { transform-origin: 0 50%; }
+.qt-paper.flutter { animation: qtFlutter .62s steps(8) both; }
+.qt-paper.flutter-big { animation: qtFlutter .95s steps(12) both; }
+@keyframes qtFlutter {
+  0% { transform: none; }
+  15% { transform: skewY(-1.4deg) rotate(.6deg); }
+  32% { transform: skewY(1deg) rotate(-.4deg) translateY(calc(var(--px) * -1)); }
+  50% { transform: skewY(-.6deg) rotate(.25deg); }
+  68% { transform: skewY(.35deg); }
+  100% { transform: none; }
+}
+.qt-paper::after {
+  content: ''; position: absolute; z-index: 2; right: calc(var(--px) * 1); bottom: calc(var(--px) * -2); width: calc(var(--px) * 9); height: calc(var(--px) * 9); pointer-events: none;
+  background: linear-gradient(135deg, transparent 0 48%, #6e4a2a 48% 54%, rgba(110, 74, 42, .25) 54% 66%, transparent 66%), var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat, #c8a874;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%); transform-origin: 100% 100%; transform: scale(0); image-rendering: pixelated;
+}
+.qt-paper.flutter::after { animation: qtCorner .62s steps(6) both; }
+.qt-paper.flutter-big::after { animation: qtCorner .95s steps(9) both; }
+/* rubrication: the step's first letter inked in vermilion with a touch of gold, as a scribe would */
+.qt-tx::first-letter { color: #a8321e; text-shadow: 0 var(--px) 0 rgba(232, 178, 50, .5); }
+@keyframes qtCorner { 0%, 100% { transform: scale(0); } 25% { transform: scale(1) rotate(-6deg); } 55% { transform: scale(.7) rotate(3deg); } 80% { transform: scale(.35); } }
 @media (max-height: 460px) { .qt-wax { display: none; } }
 
 /* the 5-slot hotbar: an empty loop is a dashed outline waiting for a tool */

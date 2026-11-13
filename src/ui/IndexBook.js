@@ -13,6 +13,7 @@ import { ZONES } from '../data/zones.js';
 import * as blocks from '../data/ores.js';
 import { creatureIconURL } from './UI.js';
 import { onSwipe, put } from './common.js';
+import { TSFX, bindCover, curlTurn, dropCap, inkIn, margins, ribbonTabs, wiggleOn, roman, ensureTomeArt } from './tomeFx.js';
 
 const bookIcon = () => specURL('ui:book', { k: 'book' });
 
@@ -61,7 +62,10 @@ export function openIndexBook(game, startCat, startId) {
   const tabs = el('nav', { class: 'ib-tabs', 'aria-label': 'Chapters' });
   const ribbon = el('i', { class: 'ib-ribbon' });
   const cover = el('div', { class: 'ib-cover' }, [pages]);
-  const book = el('div', { class: 'ib' }, [ribbon, cover, tabs]);
+  const book = el('div', { class: 'ib tm-book tm-index' }, [ribbon, cover, tabs]);
+  ensureTomeArt();
+  bindCover(cover); // iron corners and clasps (src/ui/tomeFx.js)
+  wiggleOn(tabs, '.ib-tab', game.audio);
 
   const iconFor = (c, id) => {
     if (c === 'critter') return creatureIconURL(id);
@@ -94,6 +98,7 @@ export function openIndexBook(game, startCat, startId) {
       b.style.setProperty('--tc', c.color);
       tabs.append(b);
     }
+    ribbonTabs(tabs); // silk ribbon bookmarks
   };
 
   // ---------------- left page: the chapter's sketches
@@ -118,7 +123,7 @@ export function openIndexBook(game, startCat, startId) {
     }
     put(left,
       el('header', { class: 'ib-head' }, [
-        el('h2', { class: 'ib-title' }, def.label),
+        dropCap(el('h2', { class: 'ib-title' }, def.label), 'blue'),
         el('div', { class: 'ib-count' }, [el('b', {}, `${known.length}`), ` of ${list.length} recorded`]),
       ]),
       el('div', { class: 'ib-scroll' }, [grid]),
@@ -134,7 +139,7 @@ export function openIndexBook(game, startCat, startId) {
       const s = st.data.stats;
       put(right,
         back,
-        el('h2', { class: 'ib-title' }, 'Field Notes'),
+        dropCap(el('h2', { class: 'ib-title' }, 'Field Notes'), 'red'),
         el('p', { class: 'ib-note' }, 'Everything in here was learned the hard way: by digging, poking, burning, zapping and tasting.'),
         el('p', { class: 'ib-note muted' }, 'Pick a sketch to read your notes.'),
         el('ul', { class: 'ib-stats' }, [
@@ -203,24 +208,34 @@ export function openIndexBook(game, startCat, startId) {
     put(right,
       back,
       el('div', { class: 'ib-entryhead' }, [
-        el('div', { class: 'ib-sketch' }, [el('img', { class: 'pix', src: iconFor(cat, sel), alt: '', 'data-vox': voxFor(cat, sel) }), el('i', { class: 'tape a' }), el('i', { class: 'tape b' })]),
-        el('div', {}, [el('h2', { class: 'ib-title' }, nameFor(cat, sel)), el('span', { class: 'ib-stamp' }, `Day ${entry.day}`)]),
+        el('div', { class: 'ib-sketch' }, [el('img', { class: 'pix', src: iconFor(cat, sel), alt: '', 'data-vox': voxFor(cat, sel) }), el('i', { class: 'tape a' }), el('i', { class: 'tape b' }),
+          // a hand-inked figure: its number, measuring lines along the top and the side
+          el('i', { class: 'tm-dim h', 'aria-hidden': 'true' }), el('i', { class: 'tm-dim v', 'aria-hidden': 'true' }), el('i', { class: 'tm-fig' }, `Fig. ${roman(CATS.find((c) => c.id === cat).list().indexOf(sel) + 1)}`)]),
+        el('div', {}, [dropCap(el('h2', { class: 'ib-title' }, nameFor(cat, sel)), 'red'), el('span', { class: 'ib-stamp' }, `Day ${entry.day}`)]),
       ]),
       first ? el('p', { class: 'ib-note lead', html: first }) : null,
       rest.length ? el('ul', { class: 'ib-lines' }, rest.map((l) => el('li', { html: l }))) : null,
     );
   };
 
-  const render = () => { renderTabs(); renderLeft(); renderRight(); book.dataset.side = side; };
+  const render = () => {
+    renderTabs(); renderLeft(); renderRight(); book.dataset.side = side;
+    // marginalia and a stain on each page; new finds write themselves into the book
+    margins(left, 'ix' + cat, { list: left.querySelector('.ib-scroll'), kinds: ['ore', 'beetle', 'mushroom', 'snail', 'pick', 'mole'] });
+    margins(right, 'ixr' + cat + (sel || ''), { corner: 'br', kinds: ['hand', 'raptor', 'mole', 'snail'] });
+    left.querySelectorAll('.ib-entry.new img').forEach((n, i) => inkIn(n, { delay: 300 + i * 180, dur: 560, quill: i < 2, audio: i < 2 ? game.audio : null }));
+  };
+  const inkRight = () => { const t = right.querySelector('.ib-title'); if (t) inkIn(t, { audio: game.audio, dur: 680 }); };
 
   // ---------------- page turning
   let turning = false;
   const flip = (dir, swap) => {
     if (turning) { swap(); render(); return; }
     turning = true;
-    game.audio.play('page');
+    TSFX.turn(game.audio);
     turn.hidden = false;
-    turn.className = 'ib-turn ' + (dir > 0 ? 'fwd' : 'back');
+    turn.className = 'ib-turn ' + (dir > 0 ? 'fwd' : 'back') + (book.classList.contains('single') ? ' single-turn' : '');
+    curlTurn(turn); // the sheet bends as it goes over
     void turn.offsetWidth;
     turn.classList.add('go');
     setTimeout(() => { swap(); render(); }, 190);
@@ -234,13 +249,14 @@ export function openIndexBook(game, startCat, startId) {
   const pick = (id) => {
     seenNew.add(cat + ':' + id);
     st.flag('indexSeen', JSON.stringify([...seenNew]));
-    if (book.classList.contains('single')) { flip(1, () => { sel = id; side = 'right'; }); return; }
+    if (book.classList.contains('single')) { flip(1, () => { sel = id; side = 'right'; setTimeout(inkRight, 30); }); return; }
     sel = id;
     game.audio.play('ui_click');
     render();
     right.classList.remove('ink');
     void right.offsetWidth;
     right.classList.add('ink');
+    inkRight();
   };
   onSwipe(pages, (dir) => {
     if (book.classList.contains('single') && side === 'right') { if (dir > 0) { side = 'left'; flip(-1, () => {}); } return; }
@@ -256,7 +272,7 @@ export function openIndexBook(game, startCat, startId) {
   fit();
   window.addEventListener('resize', fit);
   render();
-  game.audio.play('page');
+  TSFX.open(game.audio);
   let h = null;
   const onKey = (e) => {
     if (!h || h.closed || game.ui.panelStack[game.ui.panelStack.length - 1] !== h) return;
@@ -268,6 +284,7 @@ export function openIndexBook(game, startCat, startId) {
   h = game.ui.openPanel({
     body: book, className: 'ib-panel',
     onClose: () => {
+      TSFX.close(game.audio);
       window.removeEventListener('resize', fit);
       window.removeEventListener('keydown', onKey);
       st.flag('indexSeen', JSON.stringify([...seenNew]));

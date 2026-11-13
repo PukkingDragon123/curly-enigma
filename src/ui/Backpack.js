@@ -26,6 +26,7 @@ import { SlotDnD, slotEl, gridBox, stackIcon, stackName, bounce } from './invGri
 import { INV_ART, installInvArt } from './invArt.js';
 import { installPackArt } from './packArt.js';
 import { itemVox } from './itemVox.js';
+import { installPanelArt } from './panelArt.js'; // (wave 9: cast brass corners and forged studs on the bag)
 
 const TOOL_SLOTS = [['pick', 'Pickaxe', 'pick_rusty'], ['chisel', 'Chisel', 'chisel_basic'], ['brush', 'Brush', 'brush_basic'], ['drill', 'Drill', 'drill_steam'], ['xray', 'X-Ray Lamp', 'xray_lamp']];
 const GEAR_SLOTS = [['helmet', 'Helmet', 'helmet_basic'], ['gloves', 'Gloves', 'rubber_gloves'], ['suit', 'Suit', 'heat_suit'], ['boots', 'Boots', 'grip_boots'], ['bag', 'Bag', 'bag_small']];
@@ -90,6 +91,7 @@ export function openBackpack(game, opts = {}) {
   const root = el('div', { class: 'bp' }, [flap, body, tip]);
   installInvArt(root);
   installPackArt(root);
+  installPanelArt();
 
   // ---------------------------------------------------------------- sounds
   const sfx = (k) => {

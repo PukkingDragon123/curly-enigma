@@ -11,9 +11,10 @@ import { WEAPON_TYPES, METALS, GRADES, gradeFor } from '../data/weapons.js';
 import { portrait3d } from '../gfx/portrait3d.js';
 import { moodOf, KEEPER_MOODS } from '../town/moods.js';
 import { COIN } from './UI.js';
-import { qColor, pips } from './common.js';
+import { qColor, pips, swing } from './common.js';
 import { SPR } from './uiSprites.js';
 import { GOAL_GOLD } from '../core/State.js';
+import { installPanelArt } from './panelArt.js'; // (wave 9: the forged strap hinges on the shop's frame)
 
 const price = (n, cls = '') => el('span', { class: 'price ' + cls }, [el('img', { class: 'pix', src: cls.includes('big') ? SPR.coin() : SPR.coinMini(), alt: '' }), formatGoldFull(n)]);
 
@@ -45,6 +46,7 @@ export function openShop(game, shopId) {
   if (shop.panel === 'burrow') return import('../deep/traders/shop.js').then((m) => m.openBurrowShop(game, shopId, { folk: game.scene?.traders?.find?.(shopId)?.built?.folk, ctx: game.scene?.traders?.c }));
   const st = game.state;
   const ui = game.ui;
+  installPanelArt();
   game.audio.play('babble', { pitch: shop.keeper.voice, n: 6 });
 
   // ---------------- the room
@@ -122,7 +124,8 @@ export function openShop(game, shopId) {
     const b = el('button', {
       class: 'sh-good' + (picked === id ? ' on' : '') + (owned ? ' owned' : '') + (!owned && !can ? ' dear' : ''), title: it.name, 'aria-label': `${it.name}, ${tagTxt}`,
       onclick: () => { picked = id; game.audio.play('ui_click'); for (const n of stock.children) n.classList.toggle('on', n === b); renderCounter(true); },
-      onmouseenter: () => game.audio.play('ui_hover', { vol: 0.14 }), // (ui3) the shelf answers your paw
+      // (ui3) the shelf answers your paw; (wave 9) the price tag swings on its thread
+      onmouseenter: () => { game.audio.play('ui_hover', { vol: 0.14 }); swing(b.querySelector('.sh-tag'), 9, 900); },
     }, [
       el('span', { class: 'sh-item', 'data-vox': id }, [el('img', { class: 'pix', src: itemVox.src(id), alt: '' })]),
       el('span', { class: 'sh-tag' }, [owned ? null : el('img', { class: 'pix', src: SPR.coinMini(), alt: '' }), tagTxt]),

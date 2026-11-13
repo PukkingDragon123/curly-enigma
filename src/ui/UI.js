@@ -21,13 +21,13 @@ import { Radar } from './Radar.js';
 import { Crosshair } from './Crosshair.js';
 import { Tracker } from './Tracker.js';
 import { DSPR } from './deepArt.js';
-import { HART } from './hudArt.js';
 import { Tutor } from './Tutor.js';
 import { Convo } from './Convo.js'; // cutscene talk (game.convo)
 import { Onboard } from './Onboard.js'; // the cinematic tutorial's layer (prompts, letterbox, tutorial UI level)
 import { installSkillFeedback, openSkills } from './SkillTree.js';
 import { BuffStrip } from '../cooking/buffs.js';
 import { floatText3D } from '../gfx/text3d.js'; // floating words as voxel text in the world
+import { floatIn, leave, bits } from './floatType.js'; // boxless floating text (toasts, notices, prompts, speech)
 import './hud.css';
 import './backpack.css';
 import './book.css';
@@ -45,10 +45,9 @@ export { qColor };
 // the lift layers (another part builds it): M and the radar open it once it exists
 const LAYER_MODS = import.meta.glob('../fps/liftLayers.js');
 const SEAL_FOR = { good: 'green', warn: 'amber', bad: 'red' };
-const TACK_FOR = { good: 0x5a9a3a, warn: 0xd9901e, bad: 0xc23c2c };
-// (ui3) what each kind of tag hangs from: a loop of green thread (linen), twine through an eyelet
-// (leather), a chain (brass); the plain paper note keeps its tack
-const HANG_FOR = { good: 'hangLoop', warn: 'hangTwine', bad: 'hangChain' };
+/** The bits a toast's words scatter into, by kind (good news: green and gold sparkles). */
+const TOAST_BITS = { good: ['#f4ffe0', '#b8f08a', '#ffd84a', '#7ac85a'], warn: ['#fff0c0', '#ffcf8a', '#ff9a3a'], bad: ['#ffe0d0', '#ff9a76', '#e8502a'], '': ['#fff6e0', '#f0d8a8', '#ffd27a'] };
+const GOLD_BITS = ['#ffffff', '#fff6c4', '#ffd84a', '#f0a830'];
 /** Things you can press: they press in with a soft latch click on the way down (ui3). */
 const PRESSABLE = '.btn, .sh-tab, .ug-tab, .stamp-btn, .tk-note, .cv-opt, .nb-note, .sd-pack, .sh-good, .qt-roll';
 
@@ -111,12 +110,16 @@ export class UI {
     this.radar = new Radar(this);
     this.tracker = new Tracker(this); // the objective strip (quests part)
     this.crosshair = new Crosshair(this);
+    // (wave 9) a floating prompt, no card: the words arrive whenever it shows (CSS animations restart)
+    const lookB = el('b'), lookS = el('small');
     this.lookCatch = el('div', { class: 'look-catch', 'aria-label': 'Click to look around' }, [
       el('div', { class: 'look-card' }, [
         el('img', { class: 'pix', src: DSPR.mouse(), alt: '' }),
-        el('div', {}, [el('b', {}, 'Click to look around'), el('small', {}, [el('kbd', {}, 'Esc'), ' frees the mouse'])]),
+        el('div', {}, [lookB, lookS]),
       ]),
     ]);
+    floatIn(lookB, 'Click to look around', { delay: 0.1, stagger: 0.025, max: 0.5 });
+    floatIn(lookS, '<kbd>Esc</kbd> frees the mouse', { delay: 0.45, stagger: 0.015, max: 0.35 });
     this.lookCatch.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
@@ -282,18 +285,26 @@ export class UI {
   }
 
   // ------------------------------------------------------------ toasts / popups
+  /**
+   * A toast (wave 9): words floating down from the top, no tag behind them: the item spinning in
+   * in 3D (or the kind's seal) beside them, the letters arriving in a quick run; good news sparkles;
+   * after `dur` ms the words scatter into voxel bits.
+   */
   toast(text, { icon, kind = '', dur = 2600 } = {}) {
     const color = SEAL_FOR[kind] || 'brown';
-    const t = el('div', { class: 'toast ' + kind, role: 'status' }, [
-      el('img', { class: 'pix toast-tack', src: HANG_FOR[kind] ? HART[HANG_FOR[kind]]() : SPR.tack(TACK_FOR[kind] || 0xc23c2c), alt: '' }),
-      icon ? itemVox.img(icon, 'pix toast-icon', { pop: true, game: this.game }) : null, // (an item's icon comes in 3D, with a little turn)
-      el('span', { class: 'toast-text', html: text }),
-      el('img', { class: 'pix toast-seal', src: SPR.seal(color, kind === 'good' ? 'check' : kind === 'bad' ? 'x' : 'ring'), alt: '' }),
+    const words = el('span', { class: 'toast-text' });
+    const seal = el('img', { class: 'pix toast-seal', src: SPR.seal(color, kind === 'good' ? 'check' : kind === 'bad' ? 'x' : 'ring'), alt: '' });
+    const t = el('div', { class: 'toast ft-toast ' + kind, role: 'status' }, [
+      icon ? itemVox.img(icon, 'pix toast-icon', { pop: true, game: this.game }) : seal, // (an item's icon comes in 3D, with a little turn)
+      words,
+      icon && kind ? seal : null,
     ]);
-    if (!icon) t.insertBefore(t.lastChild, t.children[1]);
     this.toasts.append(t);
+    floatIn(words, text, { delay: 0.08, stagger: 0.016, max: 0.5 });
+    const colors = TOAST_BITS[kind] || TOAST_BITS[''];
+    if (kind === 'good') setTimeout(() => { if (t.isConnected && !t.classList.contains('out')) bits(words, { colors, n: 12, rise: 20, spread: 30, sample: 10 }); }, 520);
     while (this.toasts.children.length > 4) this.toasts.firstChild.remove();
-    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 360); }, dur);
+    setTimeout(() => { t.classList.add('out'); leave(words, { colors }); setTimeout(() => t.remove(), 900); }, dur);
     return t;
   }
 
@@ -314,21 +325,37 @@ export class UI {
     setTimeout(() => this._nextDiscover(), this._discQ.length > 3 ? 650 : 1300);
   }
 
+  /**
+   * A discovery (wave 9: floating, no card): the find's picture spins out of nowhere with a burst of
+   * gold voxel sparkles and a slow shaft of light behind it, its kind in small caps over its name in
+   * the script hand, a flourish drawn out under it; a voxel "NEW!" pops up in the world beside it
+   * (text3d); then the words scatter into bits.
+   */
   _showDiscover({ cat, id, name }) {
     const icon = this.indexIcon(cat, id);
     const label = { mineral: 'New mineral', gem: 'New gem', plant: 'New plant', critter: 'New creature', weapon: 'New weapon', recipe: 'New recipe', mechanic: 'Learned' }[cat] || 'Discovered';
-    const card = el('div', { class: 'disc', role: 'status' }, [el('div', { class: 'disc-card' }, [
-      el('div', { class: 'disc-sketch' }, [el('img', { class: 'pix', src: icon, alt: '' })]),
-      el('div', {}, [el('small', {}, label), el('b', {}, name)]),
-    ])]);
+    const pic = el('div', { class: 'ft-disc-pic' }, [el('img', { class: 'pix', src: icon, alt: '' })]);
+    const kindEl = el('small'), nameEl = el('b');
+    const words = el('div', { class: 'ft-disc-t' }, [kindEl, nameEl, el('i', { class: 'ft-disc-rule' })]);
+    const card = el('div', { class: 'ft-disc', role: 'status', 'aria-label': `${label}: ${name}` }, [pic, words]);
     this.hud.append(card);
+    floatIn(kindEl, label, { delay: 0.25, stagger: 0.03, max: 0.4 });
+    floatIn(nameEl, name, { delay: 0.4, stagger: 0.045, max: 0.7 });
+    setTimeout(() => { if (card.isConnected) bits(pic, { from: 'rect', n: 16, colors: GOLD_BITS, rise: 30, spread: 36, life: 0.9 }); }, 360);
+    // a voxel word in the world by it (only where there is a 3D view)
+    setTimeout(() => {
+      if (!card.isConnected || this.panelStack.length) return;
+      const r = pic.getBoundingClientRect();
+      if (r.width) floatText3D(this.game, 'NEW!', r.left + r.width / 2 - r.width * 1.4, r.top + r.height * 0.4, '#ffd76a', 0.55);
+    }, 420);
     this.status.setBadge(true);
     this.game.audio.play('discover');
-    const live = [...this.hud.querySelectorAll('.disc:not(.out)')];
+    const gone = (c) => { c.classList.add('out'); leave(c.querySelector('.ft-disc-t'), { colors: GOLD_BITS }); setTimeout(() => c.remove(), 900); };
+    const live = [...this.hud.querySelectorAll('.ft-disc:not(.out)')];
     const max = window.innerWidth < 640 || window.innerHeight < 420 ? 1 : 3;
-    while (live.length > max) { const old = live.shift(); old.classList.add('out'); setTimeout(() => old.remove(), 500); }
-    live.forEach((c, i) => { c.style.marginTop = `calc(var(--px) * ${(live.length - 1 - i) * 30})`; });
-    setTimeout(() => { card.classList.add('out'); setTimeout(() => card.remove(), 520); }, 3400);
+    while (live.length > max) gone(live.shift());
+    live.forEach((c, i) => { c.style.marginTop = `calc(var(--px) * ${(live.length - 1 - i) * 26})`; });
+    setTimeout(() => gone(card), 3400);
   }
 
   indexIcon(cat, id) {
@@ -343,7 +370,9 @@ export class UI {
     if (!html) { this.promptEl.hidden = true; this._prompt = null; return; }
     if (this._prompt === html) return;
     this._prompt = html;
-    this.promptIn.innerHTML = html;
+    const words = el('span', { class: 'prompt-t' });
+    this.promptIn.replaceChildren(words);
+    floatIn(words, html, { stagger: 0.02, max: 0.4 });
     const k = this.promptIn.querySelector('kbd');
     this._promptKey = k ? keyCode(k.textContent) : 'KeyE';
     this.promptIn.prepend(el('img', { class: 'pix prompt-tap', src: SPR.tap(), alt: '' }));
@@ -390,10 +419,13 @@ export class UI {
     }
     if (text !== null && text !== b.text) {
       b.text = text;
-      b.node.innerHTML = name ? `<b>${name}</b>${text}` : text;
+      // (wave 9) the words float over them, no bubble: the letters arrive in a quick run
+      b.node.className = 'bubble ft-bub' + (emote ? ' emote' : '');
+      b.node._ftLeaving = false;
+      b.out = false;
+      floatIn(b.node, name ? `<b>${name}</b>${text}` : text, { stagger: emote ? 0.06 : 0.02, max: 0.5 });
       b.t = 0;
       b.life = life;
-      b.node.className = 'bubble' + (emote ? ' emote' : '');
     }
     b.node.style.left = sx + 'px';
     b.node.style.top = sy + 'px';
@@ -409,12 +441,17 @@ export class UI {
   }
   hideBubble(key) {
     const b = this.bubbles.get(key);
-    if (b) { b.node.remove(); this.bubbles.delete(key); }
+    if (!b) return;
+    this.bubbles.delete(key);
+    // words still up scatter where they are (a new line for the same speaker gets a fresh node)
+    if (b.out || !b.node.isConnected || !b.node.querySelector('.ft-c.on')) b.node.remove();
+    else leave(b.node, { remove: true, n: 8, sample: 8 });
   }
   tickBubbles(dt) {
     for (const [k, b] of this.bubbles) {
       b.t += dt;
-      if (b.life && b.t > b.life) { b.node.style.opacity = '0'; if (b.t > b.life + 0.3) this.hideBubble(k); }
+      // (the words scatter into bits, then go)
+      if (b.life && b.t > b.life) { if (!b.out) { b.out = true; leave(b.node, { n: 8, sample: 8 }); } if (b.t > b.life + 0.9) this.hideBubble(k); }
     }
   }
   clearWorld() {

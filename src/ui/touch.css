@@ -36,6 +36,16 @@ html.is-touch .world-layer > .btn[aria-label="Build mode"] { display: none !impo
 .tc-face { position: absolute; inset: 0; width: 100%; height: 100%; }
 .tc-ic { position: absolute; left: 50%; top: 50%; width: calc(var(--px) * 11); height: calc(var(--px) * 11); margin: calc(var(--px) * -6) 0 0 calc(var(--px) * -5.5); pointer-events: none; }
 .tc-btn.on .tc-ic { transform: translateY(var(--px)); }
+/* the forged roundel's window: the mole acting the button out (src/ui/touchArt.js); the old glyph
+   stays in the DOM for the tutorial's pictures, hidden */
+.tc-btn .tc-ic { display: none; }
+.tc-vig { position: absolute; left: calc(var(--px) * 2); top: calc(var(--px) * 2); width: calc(var(--px) * 26); height: calc(var(--px) * 26); pointer-events: none; }
+.tc-btn.on .tc-vig { transform: translateY(var(--px)); }
+.tc-btn .tc-face { filter: drop-shadow(0 0 0 transparent); transition: filter .2s; }
+.tc-btn.on .tc-face { filter: brightness(1.06); }
+/* lit (crouching, a threat near the guard): the brass warms and a slow ember glow rings the iron */
+.tc-btn.lit .tc-face { filter: drop-shadow(0 0 calc(var(--px) * 2) rgba(255, 190, 90, .85)) brightness(1.12); animation: tcLit 1.4s ease-in-out infinite; }
+@keyframes tcLit { 50% { filter: drop-shadow(0 0 calc(var(--px) * 3.5) rgba(255, 150, 60, .95)) brightness(1.2); } }
 .b-jump { grid-area: jump; }
 .b-use { grid-area: use; }
 .b-snack { grid-area: snack; }

@@ -4,7 +4,7 @@
 // lift stations and glow stakes. Markers well above or below you show as ▲ / ▼.
 // Click / tap it (or press M) for the layers below (the underground's layer scene).
 import { el } from '../core/util.js';
-import { Px, mixHex } from './uiArt.js';
+import { Px, mixHex, cssUrl } from './uiArt.js';
 import { DSPR, RADAR, plotGlyph } from './deepArt.js';
 
 export const CELL = { unknown: 0, open: 1, water: 2, lava: 3, rock: 4 };
@@ -64,6 +64,14 @@ export class Radar {
       class: 'radar', hidden: true, title: 'Radar · M or tap: the layers below', 'aria-label': 'Radar: open the layers below',
       onclick: () => ui.openSurvey(),
     }, [this.screen.c, el('img', { class: 'pix radar-ring', src: DSPR.radarRing(), alt: '' }), this.tag]);
+    // the north fleur: rides the dial band, swung toward north on a damped spring (it overshoots
+    // and wobbles when you turn fast, trembles a little while you walk, and jumps when tapped)
+    this.north = el('img', { class: 'pix radar-north', src: DSPR.north(), alt: '' });
+    document.documentElement.style.setProperty('--d-fleur', cssUrl(DSPR.north())); // (the depth plaque's crest: hud.css)
+    this.el.append(this.north);
+    this.nAng = 0;
+    this.nVel = 0;
+    this.el.addEventListener('pointerdown', () => { this.nVel += (Math.random() < 0.5 ? -1 : 1) * 7; });
     ui.hud.append(this.el);
   }
 
@@ -112,7 +120,25 @@ export class Radar {
       this.heading += d * Math.min(1, dt * 14);
     }
     this.sweep = (this.sweep + dt * 2.2) % TAU;
+    this.swingNorth(dt);
     this.draw();
+  }
+
+  /** North sits at the heading's angle (clockwise from the lubber mark); the fleur chases it on a spring. */
+  swingNorth(dt) {
+    const d = this.data;
+    let diff = (this.heading - this.nAng) % TAU;
+    if (diff > Math.PI) diff -= TAU;
+    if (diff < -Math.PI) diff += TAU;
+    const step = Math.min(0.05, dt);
+    this.nVel += diff * 90 * step;
+    this.nVel *= Math.exp(-5.5 * step);
+    // a tremble while walking (the scope bobs in your paw)
+    if (d && this._lx !== undefined && Math.hypot(d.x - this._lx, d.z - this._lz) > 0.02) this.nVel += (Math.random() - 0.5) * 0.9;
+    if (d) { this._lx = d.x; this._lz = d.z; }
+    this.nAng += this.nVel * step;
+    const deg = ((this.nAng * 180) / Math.PI).toFixed(2);
+    if (deg !== this._nDeg) { this._nDeg = deg; this.north.style.transform = `rotate(${deg}deg) translateY(calc(var(--px) * -22))`; }
   }
 
   /** "Town 230 m" under the radar while the town is beyond the rim. */

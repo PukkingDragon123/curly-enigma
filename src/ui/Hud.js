@@ -56,7 +56,8 @@ export class Hud {
     this.bookBtn = el('button', { class: 'pack-book', title: 'Book (B)', 'aria-label': 'Book: quests, map, skills, index', onclick: (e) => { e.stopPropagation(); if (ui.openBook) ui.openBook(); else ui.openIndex(); } }, [
       el('img', { class: 'pix', src: SPR.bookPeek(), alt: '' }), this.badge,
     ]);
-    this.packBtn = el('button', { class: 'pack-bag', title: 'Backpack (I)', 'aria-label': 'Backpack', onclick: () => ui.openInventory() }, [this.packImg, this.packTag]);
+    // a tap: the flap heaves open with a puff (then the backpack panel)
+    this.packBtn = el('button', { class: 'pack-bag', title: 'Backpack (I)', 'aria-label': 'Backpack', onclick: () => { const b = this.packBtn; b.classList.remove('open'); void b.offsetWidth; b.classList.add('open'); ui.openInventory(); } }, [this.packImg, this.packTag]);
     // the load gauge: a little spring scale hanging off the bag's strap (mine only)
     this.loadFill = el('i');
     this.loadTxt = el('span', { class: 'pack-load-t' });
@@ -128,15 +129,27 @@ export class Hud {
     clearTimeout(this._pouchShut);
     this._pouchShut = setTimeout(() => { this.pouchImg.src = HART.pouch(false); }, 1400);
     if (d > 0) this.spawnCoins(clamp(Math.round(Math.log10(d + 1) * 2), 2, 9));
+    else this.spawnCoins(clamp(Math.round(Math.log10(-d + 1) * 1.5), 1, 6), false);
   }
-  spawnCoins(n) {
+  /**
+   * Gold in: coins arc down into the pouch's mouth one after another, each landing with a clink (a
+   * glint at the mouth, the pouch bobbing). Gold out: coins spill from the mouth and tumble away.
+   */
+  spawnCoins(n, gain = true) {
     for (let i = 0; i < n; i++) {
-      const c = el('i', { class: 'coin' });
-      c.style.setProperty('--dx', (Math.random() * 2 - 1).toFixed(2));
+      const c = el('i', { class: 'coin ' + (gain ? 'in' : 'out') });
+      c.style.setProperty('--dx', ((Math.random() * 2 - 1) * (gain ? 1 : 0.7) + (gain ? 0.25 : 0.35)).toFixed(2));
       c.style.setProperty('--h', (0.6 + Math.random() * 0.6).toFixed(2));
-      c.style.animationDelay = `${i * 70}ms, ${i * 70}ms`;
+      c.style.animationDelay = `${i * 85}ms, ${i * 85}ms`;
       this.coinFx.append(c);
-      setTimeout(() => c.remove(), 1100 + i * 70);
+      setTimeout(() => c.remove(), 1100 + i * 85);
+      if (!gain) continue;
+      const g = el('i', { class: 'clink' });
+      g.style.setProperty('--gx', (Math.random() * 4 - 2).toFixed(1));
+      g.style.animationDelay = `${520 + i * 85}ms`;
+      this.coinFx.append(g);
+      setTimeout(() => g.remove(), 1000 + i * 85);
+      if (i < 4) setTimeout(() => { const im = this.pouchImg; im.classList.remove('bob'); void im.offsetWidth; im.classList.add('bob'); }, 540 + i * 85);
     }
   }
 
@@ -145,7 +158,7 @@ export class Hud {
     const st = this.game.state;
     const p = clamp(st.energy / Math.max(1, st.maxEnergy), 0, 1);
     const lvl = p > 0.8 ? 4 : p > 0.55 ? 3 : p > LOW ? 2 : p > 0.08 ? 1 : 0;
-    if (lvl !== this.lampLvl) { this.lampLvl = lvl; this.lampImg.src = SPR.lantern(lvl); }
+    if (lvl !== this.lampLvl) { this.lampLvl = lvl; this.lampImg.src = SPR.lantern(lvl, this.flick || 0); }
     this.lamp.style.setProperty('--e', p.toFixed(3));
     this.lamp.classList.toggle('low', p < LOW);
     this.lampTxt.textContent = `${Math.ceil(st.energy)}/${st.maxEnergy}`;
@@ -225,6 +238,8 @@ export class Hud {
     const first = this._depthHtml == null;
     this._depthHtml = h;
     this.depthTxt.innerHTML = h;
+    // a new depth: the plaque turns over on its pins to show it, the plumb-bob drops and bounces
+    if (!first) for (const [node, cls] of [[this.depthTxt, 'flip'], [this.depth, 'drop']]) { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); }
     if (!first || this.ui.hudMode === 'deep') { this.depthT = 2.4; this.depth.classList.add('show'); }
   }
   setBag(n, cap, fromDepth = false) {
@@ -295,7 +310,17 @@ export class Hud {
     }
     if (this.peekT > 0) this.peekT -= dt;
     if (this.lampT > 0) this.lampT -= dt;
-    this.lamp.classList.toggle('show', this.lampT > 0 || this.peekT > 0 || this.lamp.classList.contains('low'));
+    const lampUp = this.lampT > 0 || this.peekT > 0 || this.lamp.classList.contains('low');
+    this.lamp.classList.toggle('show', lampUp);
+    // the flame dances while the lantern hangs in view: upright, bending, stretching (uneven beats)
+    if (lampUp) {
+      this.flickT = (this.flickT || 0) - dt;
+      if (this.flickT <= 0) {
+        this.flick = this.flick ? 0 : 1 + (Math.random() < 0.5 ? 1 : 0);
+        this.flickT = this.flick ? 0.08 + Math.random() * 0.12 : 0.15 + Math.random() * 0.45;
+        if (this.lampLvl >= 0) this.lampImg.src = SPR.lantern(this.lampLvl, this.flick);
+      }
+    }
     // in first person the depth stays up (hanging under the radar); elsewhere it fades after a moment
     if (this.depthT > 0 && this.ui.hudMode !== 'deep') { this.depthT -= dt; if (this.depthT <= 0) this.depth.classList.remove('show'); }
     if (this.packTagT > 0 && !(this.bag && this.bag.n >= this.bag.cap)) { this.packTagT -= dt; if (this.packTagT <= 0) this.packTag.hidden = true; }

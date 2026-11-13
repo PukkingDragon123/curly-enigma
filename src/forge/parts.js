@@ -18,7 +18,7 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { qColor } from '../ui/UI.js';
 import { fireIdleFor, widen, quenchResult, AMBIENT } from './bladeSim.js';
 import { glowAmount } from './blackbody.js';
-import { Thermo, Steps, StrikeMeter, bar, setText, setHtml, confirmText, certificate } from './ui.js';
+import { Thermo, Steps, StrikeMeter, bar, setText, setHtml, confirmText, certificate, illum } from './ui.js';
 import { Seq, ease, arcPoint } from './fx.js';
 import { PartView } from './partModel.js';
 
@@ -192,7 +192,7 @@ export class PartRun {
     const steps = [{ id: 'heat', label: 'Heat' }, { id: 'hammer', label: 'Shape' }];
     if (p.quench) steps.push({ id: 'quench', label: 'Quench' });
     steps.push({ id: 'result', label: 'Done' });
-    this.title = el('h2', {}, p.name);
+    this.title = el('h2', {}, illum(p.name));
     this.stats = el('div', { class: 'fg-col', style: { gap: 'calc(var(--px) * 1.5)' } });
     this.status = el('div', { class: 'fg-note' });
     this.panel = el('div', { class: 'fg-side act fg-col' }, [
@@ -288,6 +288,10 @@ export class PartRun {
 
   /** What the view keeps in frame at a station (ForgeScene.dockPose). */
   framePoints(name) {
+    if (name === 'hearth' && this.view && this.step === 'heat') {
+      const p = this.firePose().pos;
+      return [p.clone().add(_v2.set(-0.08, 0, 0)), p.clone().add(_v2.set(0.08, 0.06, 0))];
+    }
     if (name === 'anvil' && this.view) {
       const p = this.anvilPose().pos, ax = this.scene.W.anvilAxis, e = this.view.extent;
       const L = Math.max(e.x, 0.09);
@@ -365,13 +369,17 @@ export class PartRun {
     this.sim.heats++;
     this.setThermoMarks(false);
     this.thermo.el.hidden = false;
-    this.setActions([{ label: 'To the anvil ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toAnvil() }]);
-    this.game.ui.setHints('<span class="fg-nolig">Hold the mouse or <kbd>Space</kbd>: pump the bellows<br><kbd>E</kbd> carry it to the anvil · <kbd>Esc</kbd> stop</span>');
+    this.setActions([
+      { label: 'Stoke ', keyLabel: 'R', fn: () => sc.stoke(), alt: true },
+      { label: 'To the anvil ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toAnvil() },
+    ]);
+    this.game.ui.setHints('<span class="fg-nolig">Hold the mouse or <kbd>Space</kbd>: pump the bellows · drag it to pump by hand<br><kbd>R</kbd> stoke the coals · <kbd>E</kbd> carry it to the anvil · <kbd>Esc</kbd> stop</span>');
   }
 
   update_heat(dt) {
     const sc = this.scene, sim = this.sim;
     const over = sim.heatStep(dt, !this.moving, sc.fire.air);
+    sc.flames.keepClear = this.moving ? null : { x: this.center().x, w: 0.07 };
     this.workLight();
     this.thermo.set(sim.T, dt);
     const [w0, w1] = sim.workRange;
@@ -393,6 +401,8 @@ export class PartRun {
   toAnvil() {
     if (this.moving || this.step !== 'heat') return;
     this.game.audio.play('whoosh');
+    this.scene.flames.keepClear = null;
+    this.scene.particles.coalBurst(this.center(), 10, 0.7, 0.2); // lifted out of the bed: the coals spit
     this.moveObj(this.view.group, this.anvilPose(), 0.7, 0.14, () => this.game.audio.play('place'));
     this.go('hammer');
   }
@@ -551,12 +561,14 @@ export class PartRun {
     // the clang: pitch climbs as the part takes shape, sparks by the power
     this.game.audio.play('clang', { pitch: 0.82 + sim.progress * 0.35 + Math.random() * 0.05, vol: 0.5 + power * 0.6 });
     const white = zone === 'hot' || zone === 'burn';
-    P.sparks(pos, 10 + Math.round(power * 26), power, white ? 0xffffff : 0xfff0b0);
-    P.streaks(pos, 8 + Math.round(power * 22), power, white ? 0xffffff : 0xfff6d0);
-    P.scaleFlakes(pos, 3 + Math.round(power * 6), 0.45);
+    const af = sc.W.anvilFace, surf = { y: af.y + 0.004, x: af.x, z: af.z, r: 0.2 };
+    P.sparks(pos, 10 + Math.round(power * 26), power, white ? 0xffffff : 0xfff0b0, 0xff7a1a, surf);
+    P.streaks(pos, 8 + Math.round(power * 22), power, white ? 0xffffff : 0xfff6d0, 0xff6a1a, surf);
+    P.scaleFlakes(pos, 4 + Math.round(power * 7), 0.45, surf);
+    this.game.audio.play('bell', { vol: 0.06 + power * 0.08, pitch: 2.3 });
     sc.addShake(0.01 + power * 0.03);
     sc.impact(pos, kind === 'perfect' ? 1 : power, T);
-    sc.extraLight = 1.5 + power * 2.5;
+    sc.extraLight = 0.9 + power * 1.4;
     if (zone === 'burn') { P.burnSpray(pos, 22); this.game.audio.play('sizzle'); }
     const words = { perfect: ['Perfect!', '#ffd34a'], good: ['Good', '#8af07a'], soft: ['Too soft', '#e6dcc8'], hard: ['Too hard!', '#ff9a6a'] }[kind];
     this.popOnce('blow', words[0], pos.clone().add(_v.set(0, 0.07, 0)), words[1], kind === 'perfect' ? 1 : 0.8, 0.1);

@@ -36,6 +36,7 @@ import { el, clamp } from '../core/util.js';
 import { Px, art } from './uiArt.js';
 import { SPR } from './uiSprites.js';
 import { DSPR } from './deepArt.js';
+import { floatIn, leave } from './floatType.js';
 import './onboard.css';
 
 /** Tutorial UI levels, in the order the pieces are introduced. */
@@ -401,11 +402,12 @@ export class Onboard {
     if (d?.seen?.includes('hint:' + id)) return null;
     if (d) { d.seen.push('hint:' + id); this.game.state.dirty = true; }
     this.hintEl?.remove();
-    const n = el('div', { class: 'ob-hint', html });
+    // (wave 9) floating words, no card: the letters arrive in a run and scatter into bits when it goes
+    const n = el('div', { class: 'ob-hint' });
     this.layer.append(n);
-    void n.offsetWidth;
+    floatIn(n, html, { delay: 0.1, stagger: 0.022, max: 0.6 });
     n.classList.add('in');
-    const h = { el: n, t: 0, dur, until, gone: false, remove: () => { if (h.gone) return; h.gone = true; n.classList.add('out'); setTimeout(() => n.remove(), 900); if (this.hintH === h) this.hintH = null; } };
+    const h = { el: n, t: 0, dur, until, gone: false, remove: () => { if (h.gone) return; h.gone = true; n.classList.add('out'); leave(n, { n: 10 }); setTimeout(() => n.remove(), 950); if (this.hintH === h) this.hintH = null; } };
     this.hintH = h;
     return h;
   }
@@ -418,14 +420,18 @@ export class Onboard {
   goal(html, o = {}) {
     const g = this.goalEl;
     if (!html) {
-      if (g) { this.goalEl = null; g.classList.add('out'); setTimeout(() => g.remove(), 500); }
+      if (g) { this.goalEl = null; g.classList.add('out'); leave(g, { n: 8 }); setTimeout(() => g.remove(), 900); }
       this.goalHtml = null;
       return null;
     }
     if (g && this.goalHtml === html && !g.classList.contains('done')) return html;
-    if (g) { g.classList.add('out'); setTimeout(() => g.remove(), 500); }
-    const n = el('div', { class: 'ob-goal' + (o.sub ? ' has-sub' : '') }, [el('i', { class: 'ob-goal-dot' }), el('span', { class: 'ob-goal-t', html }), o.sub ? el('small', { html: o.sub }) : null]);
+    if (g) { g.classList.add('out'); leave(g, { n: 8 }); setTimeout(() => g.remove(), 900); }
+    // (wave 9) floating words, no pill: the letters arrive in a run, the old line scatters into bits
+    const t = el('span', { class: 'ob-goal-t' }), sm = o.sub ? el('small') : null;
+    const n = el('div', { class: 'ob-goal' + (o.sub ? ' has-sub' : '') }, [el('i', { class: 'ob-goal-dot' }), t, sm]);
     this.layer.append(n);
+    floatIn(t, html, { delay: 0.1, stagger: 0.02, max: 0.5 });
+    if (sm) floatIn(sm, o.sub, { delay: 0.3, stagger: 0.015, max: 0.4 });
     void n.offsetWidth;
     n.classList.add('in');
     this.goalEl = n;
@@ -558,7 +564,8 @@ export class Onboard {
     let resolve;
     const promise = new Promise((r) => { resolve = r; });
     const glyph = el('div', { class: 'ob-glyph' }, [spec.glyph ? spec.glyph() : null]);
-    const title = el('b', { class: 'ob-title', html: spec.title });
+    const title = el('b', { class: 'ob-title' });
+    floatIn(title, spec.title, { delay: 0.12, stagger: 0.025, max: 0.45 });
     const sub = el('span', { class: 'ob-sub', html: spec.sub });
     const fill = el('i', { class: 'ob-fill' });
     const meter = el('div', { class: 'ob-meter', hidden: !opts.progress }, [fill]);
@@ -676,10 +683,11 @@ export class Onboard {
    * too while it's further than this, m) }. Returns { remove(), label(html) }.
    */
   mark(pos, o = {}) {
-    const lab = el('span', { class: 'ob-mark-l', html: o.label || '' });
+    const lab = el('span', { class: 'ob-mark-l' });
+    if (o.label) floatIn(lab, o.label, { stagger: 0.02, max: 0.4 });
     const node = el('div', { class: 'ob-mark' }, [el('i', { class: 'ob-mark-chev' }), lab, el('i', { class: 'ob-mark-arrow' })]);
     this.layer.append(node);
-    const m = { pos, node, lab, edgeOnly: !!o.edgeOnly, near: o.near ?? null, remove: () => { this.marks.delete(m); node.remove(); }, label: (h) => { lab.innerHTML = h || ''; } };
+    const m = { pos, node, lab, labHtml: o.label || '', edgeOnly: !!o.edgeOnly, near: o.near ?? null, remove: () => { this.marks.delete(m); node.remove(); }, label: (h) => { if ((h || '') !== m.labHtml) { m.labHtml = h || ''; floatIn(lab, h || '', { stagger: 0.02, max: 0.4 }); } } };
     this.marks.add(m);
     return m;
   }

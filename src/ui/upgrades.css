@@ -223,3 +223,12 @@
 .ug.narrow .ug-main::after { height: calc(var(--px) * 12); margin-top: calc(var(--px) * -6); background-position: calc(var(--px) * 10) calc(var(--px) * 1), right calc(var(--px) * 8) top calc(var(--px) * -3), 0 calc(var(--px) * 3); }
 /* (the frame takes a little room: the cards keep their two columns on a desktop window) */
 .ug-scroll .ug-grid { grid-template-columns: repeat(auto-fill, minmax(calc(var(--px) * 82), 1fr)); }
+
+/* ---- wave 9: forged iron strap hinges over the frame's corners (src/ui/panelArt.js), a spearhead fleur
+   at each arm's end; they sit on the wooden border and only just reach in */
+.ug-room::after {
+  content: ''; position: absolute; inset: calc(var(--px) * -8); pointer-events: none; z-index: 4;
+  background: var(--pn-strapTL) left top / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat, var(--pn-strapTR) right top / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat,
+    var(--pn-strapBL) left bottom / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat, var(--pn-strapBR) right bottom / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat;
+  filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .5));
+}

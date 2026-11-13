@@ -13,7 +13,9 @@ import { qColor } from '../ui/UI.js';
 import { smeltStatus, quickSmelt, SmeltGame } from './smelt.js';
 import { ForgeRun } from './forging.js';
 import { PartRun, partStatus } from './parts.js';
-import { fart, token, blueprintURL } from './forgeArt.js';
+import { fart, token } from './forgeArt.js';
+import { bart, inkWeaponURL } from './forgeBookArt.js';
+import { illum } from './ui.js';
 import { cssUrl } from '../ui/uiArt.js';
 
 const HEARTH_NAMES = ['Coal hearth', 'Coal hearth, double bellows', 'Magma hearth'];
@@ -136,6 +138,7 @@ export class Menus {
     }, [img(icon), el('span', {}, [el('b', {}, title), el('small', { html: sub })]), kbd(key)]);
     const node = el('div', { class: 'sm-board interactive' + (refresh ? ' again' : '') }, [
       el('i', { class: 'sm-cord l' }), el('i', { class: 'sm-cord r' }),
+      el('i', { class: 'fg-cap tl' }), el('i', { class: 'fg-cap tr' }), el('i', { class: 'fg-cap bl' }), el('i', { class: 'fg-cap br' }),
       img(fart('dAnvil'), 'pix sm-doodle', { right: 'calc(var(--px) * 3)', top: 'calc(var(--px) * 2)', width: 'calc(var(--px) * 30)', height: 'calc(var(--px) * 22)' }),
       img(fart('dSpark'), 'pix sm-doodle', { right: 'calc(var(--px) * 34)', top: 'calc(var(--px) * 4)', width: 'calc(var(--px) * 9)', height: 'calc(var(--px) * 9)' }),
       el('div', { class: 'fg-kicker' }, 'Home forge · today\'s work'),
@@ -193,12 +196,13 @@ export class Menus {
     const last = this.lastSmelt;
     const left = el('div', { class: 'sm-page l' }, [
       el('div', { class: 'fg-kicker' }, 'The smith\'s ledger · smelting'),
-      el('h2', {}, 'Ore into ingots'),
+      el('h2', {}, illum('Ore into ingots')),
       el('div', { class: 'sm-hand', html: `<img class="pix" src="${itemVox.src('coal')}" alt=""> Coal in the bin: <b>${st.count('coal')}</b>` }),
       el('div', { class: 'sm-hand' }, [el('i', { class: 'sm-flame' }), ` ${HEARTH_NAMES[lvl] || HEARTH_NAMES[0]}: tops out at `, el('b', {}, FORGE_MAX_TEMP[lvl] + '°C')]),
       last ? el('div', { class: 'sm-margin', html: last }) : null,
       el('div', { class: 'sm-hand sm-hide-s', style: { marginTop: 'calc(var(--px) * 3)', fontSize: '.66em', color: '#8a6a4a' } }, 'Keep the crucible in its band with the bellows, then pour. A steady hand makes a good ingot.'),
-      img(fart('dFlame'), 'pix sm-ink sm-hide-s', { width: 'calc(var(--px) * 18)', height: 'calc(var(--px) * 24)', margin: 'calc(var(--px) * 3) auto 0', display: 'block' }),
+      img(bart('inkCrucible'), 'pix sm-diagram sm-hide-s'),
+      el('div', { class: 'sm-cap sm-hide-s' }, 'Melt it, hold it in the band, pour.'),
       el('div', { class: 'sm-spacer' }),
       el('div', {}, [link('Back', 'Esc', () => this.back())]),
     ]);
@@ -303,7 +307,8 @@ export class Menus {
       const base = { type: sel.type, metal: sel.metal, matQ, infusion: sel.infusion || undefined, gem: sel.gem || undefined, gemQ };
       const lo = weaponValue({ ...base, score: 55 }, ITEMS), hi = weaponValue({ ...base, score: 95 }, ITEMS);
       draw.append(
-        img(blueprintURL(sel.type, sel.metal), 'pix sm-bigdraw'),
+        img(inkWeaponURL(sel.type, sel.metal), 'pix sm-bigdraw'),
+        img(bart('forgeSeal'), 'pix sm-drawseal'),
         el('div', { class: 'sm-dname' }, `${sel.infusion ? INFUSIONS[sel.infusion].name + ' ' : ''}${m.name} ${wt.name}`),
         el('div', { class: 'sm-anno', html: `${wt.ingots} × ${m.name} ingot · material <b>${matQ}%</b>` }),
         el('div', { class: 'sm-anno', html: `works <b>${m.work[0]}–${m.work[1]}°C</b> · burns <b>${m.burn}°C</b>${m.quench ? ` · hardens <b>${m.quench[0]}–${m.quench[1]}°C</b>` : ' · no quench'}` }),
@@ -311,11 +316,10 @@ export class Menus {
       );
     } else draw.append(el('div', { class: 'sm-anno', style: { marginTop: 'calc(var(--px) * 20)' } }, 'Pick a plan and a metal: the drawing goes here.'));
     const start = el('button', { class: 'fg-stampbtn big', disabled: !ok, onclick: () => this.startForge() }, ['Forge it', kbd('Enter')]);
-    const tape = (c) => img(fart('tape'), 'pix sm-tape ' + c);
     const node = el('div', { class: 'sm-blue interactive' + (refresh ? ' again' : '') }, [
-      tape('tl'), tape('tr'), tape('bl'), tape('br'),
-      el('div', { class: 'fg-kicker' }, 'Forging · blueprint'),
-      el('h2', {}, 'What will you make?'),
+      el('i', { class: 'sm-ribbon' }),
+      el('div', { class: 'fg-kicker' }, 'Forging · the pattern book'),
+      el('h2', {}, illum('What will you make?', true)),
       el('div', { class: 'sm-bp-grid sm-scroll' }, [
         el('div', { class: 'sm-bp-col' }, [el('div', { class: 'sm-sec' }, 'Plan'), typeGrid, el('div', { class: 'sm-sec' }, 'Metal'), metalGrid]),
         draw,

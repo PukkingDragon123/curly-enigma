@@ -1,8 +1,9 @@
 // Small diegetic pickers shared by the scenes:
 //   openTalkMenu(game, { name, who, npc, mood, line, sub, options: [{ label, sub, primary, onClick }], onClose, convo })
-//     when the speaker (npc / who / name) has a 3D model in this scene, this is a cutscene talk
-//     (src/ui/Convo.js: the camera on them, the line floating by their head, the options floating in;
-//     the handle has close(), closed, typer); `convo: false` keeps the board. Otherwise the talk board: the carved dialogue board with the speaker's live 3D portrait (portrait3d) in a
+//     a cutscene talk (src/ui/Convo.js, wave 9: no board; with a 3D model of the speaker here the
+//     camera on them and the line floating by their head, else their live portrait floating beside
+//     the words; the options float in as words you pick; the handle has close(), closed, typer).
+//     `convo: false` keeps the old talk board: the carved dialogue board with the speaker's live 3D portrait (portrait3d) in a
 //     brass frame, a name ribbon, what they say typing out on parchment in their voice, and the
 //     choices as paper notes pinned below (click, tap, the number keys or ↑ ↓ + Enter). onClick runs
 //     with the menu still open (callers close it as they like). who: the portrait (default from

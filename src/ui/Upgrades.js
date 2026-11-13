@@ -15,7 +15,9 @@ import { explosiveIconURL } from '../deep/explosives/icon.js';
 import { SPR } from './uiSprites.js';
 import { Px, art } from './uiArt.js';
 import { put, swing } from './common.js';
+import { installPanelArt } from './panelArt.js'; // (wave 9: iron strap hinges on the board's frame)
 import './upgrades.css';
+import { dropCap, inkIn, margins, sealCss, vars, ensureTomeArt } from './tomeFx.js'; // (wave 9: the notices as vellum leaves, src/ui/tome.css)
 
 const ZONE_NAMES = ZONES.map((z) => z?.name);
 const iconFor = (id) => (ITEMS[id]?.blast ? explosiveIconURL(id) : iconURL(id));
@@ -57,6 +59,7 @@ function badgeURL(kind) {
 // ---------------------------------------------------------------- the board
 export function openUpgrades(game, startTab) {
   const st = game.state, ui = game.ui;
+  installPanelArt();
   st.checkMilestones?.();
   const fresh = new Set((st.takeMilestones?.() || []).map((m) => m.id));
   let tab = UPGRADE_TABS.some((t) => t.id === startTab) ? startTab : fresh.size ? 'ms' : 'dig';
@@ -72,7 +75,8 @@ export function openUpgrades(game, startTab) {
   const main = el('div', { class: 'ug-main' }, [tabsEl, scroll]);
   const room = el('div', { class: 'ug-room' }, [side, main]);
   const sign = el('div', { class: 'sh-sign ug-sign' }, [el('i', { class: 'sh-chain l' }), el('i', { class: 'sh-chain r' }), el('h2', {}, 'The Miners\' Board')]);
-  const root = el('div', { class: 'ug' }, [sign, room]);
+  const root = el('div', { class: 'ug tm-ug' }, [sign, room]);
+  ensureTomeArt();
 
   // ---------------- left: purse + rig sheet
   const renderSide = () => {
@@ -87,7 +91,7 @@ export function openUpgrades(game, startTab) {
     const swing = (pk?.rate || 0.36) * mb.rate;
     sheet.innerHTML = '';
     put(sheet,
-      el('h3', {}, 'Your rig'),
+      dropCap(el('h3', {}, 'Your rig'), 'red'),
       line('Pick', pk ? pk.name.replace(' Pickaxe', '') : 'None', pk ? `tier ${pk.tier || 1}` : ''),
       line('Power', ((pk?.power || 1) * mb.power).toFixed(1), mb.power > 1 ? `×${mb.power.toFixed(2)}` : ''),
       line('Swing', `${swing.toFixed(2)} s`, mb.rate < 1 ? `${Math.round((1 / mb.rate - 1) * 100)}% faster` : ''),
@@ -119,6 +123,7 @@ export function openUpgrades(game, startTab) {
     const chk = st.canUpgrade(id, ZONE_NAMES);
     const lock = chk.lock || upgradeLock(id, st, ZONE_NAMES);
     const c = el('div', { class: 'ug-card' + (maxed ? ' maxed' : '') + (lock ? ' locked' : '') + (chk.ok ? ' can' : ''), 'data-id': id });
+    c.addEventListener('pointerenter', () => swing(c, 2.2, 800)); // (wave 9) the pinned card sways on its tack
     c.style.setProperty('--rot', ((((id.charCodeAt(0) * 7 + id.length * 13) % 9) - 4) * 0.25) + 'deg');
     const ic = el('div', { class: 'ug-ic' }, [
       el('img', { class: 'pix', src: iconFor(u.icon), alt: '' }),
@@ -127,7 +132,7 @@ export function openUpgrades(game, startTab) {
     const pips = el('div', { class: 'ug-pips', title: `Level ${lvl} of ${u.max}` });
     for (let i = 0; i < u.max; i++) pips.append(el('i', { class: i < lvl ? 'on' : '' }));
     const head = el('div', { class: 'ug-hd' }, [
-      el('b', {}, u.name),
+      el('b', {}, u.name), // (its initial is rubricated: src/ui/tome.css)
       el('small', {}, maxed ? 'Max level' : lock ? 'Locked' : `Level ${lvl} / ${u.max}`),
       pips,
     ]);
@@ -137,7 +142,7 @@ export function openUpgrades(game, startTab) {
       : [lvl ? el('span', { class: 'ug-now' }, now) : el('span', { class: 'ug-desc' }, u.desc), el('span', { class: 'ug-next' }, [el('i', {}, '▸ '), next])]);
     const foot = el('div', { class: 'ug-foot' });
     if (lock) foot.append(el('span', { class: 'ug-lock' }, lock));
-    else if (maxed) foot.append(el('span', { class: 'ug-stamp' }, 'Maxed'));
+    else if (maxed) foot.append(vars(el('i', { class: 'tm-ugseal', 'aria-hidden': 'true' }), { '--seal': sealCss('#3d7a2e', 20, 'crown') }), el('span', { class: 'ug-stamp' }, 'Maxed'));
     else {
       const cost = chk.cost || st.upgradeCost(id);
       const costs = el('div', { class: 'ug-cost' }, [coinPrice(cost.gold, st.canAfford(cost.gold) ? '' : 'short')]);
@@ -176,6 +181,8 @@ export function openUpgrades(game, startTab) {
     const c = grid.querySelector(`.ug-card[data-id="${id}"]`);
     if (!c) return;
     c.classList.add('pop');
+    // the new level writes itself onto the notice
+    for (const [n, k] of [[c.querySelector('.ug-hd small'), 0], [c.querySelector('.ug-now, .ug-max'), 1]]) if (n) inkIn(n, { delay: 120 + k * 260, dur: 520, quill: !k, audio: k ? null : game.audio });
     const pip = c.querySelectorAll('.ug-pips i.on')[r.level - 1];
     pip?.classList.add('new');
     c.append(el('div', { class: 'ug-float' }, r.level >= u.max ? 'MAX!' : `Lv ${r.level}!`));
@@ -255,6 +262,7 @@ export function openUpgrades(game, startTab) {
   const render = () => {
     renderSide();
     renderTabs();
+    margins(sheet, 'rig' + tab, { doodle: false });
     grid.innerHTML = '';
     root.dataset.tab = tab;
     grid.classList.toggle('enter', enter);

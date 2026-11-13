@@ -324,7 +324,43 @@ function tri(dir, color) {
   return p;
 }
 
+/**
+ * The radar's north fleur (9×12): a little brass fleur-de-lis riding the dial band, its middle
+ * petal tipped in red enamel, a pin through its foot (Radar.js swings it on a damped spring).
+ */
+function northFleur() {
+  const BR = RAMP.brass, red = PAL.red;
+  const p = new Px(9, 12);
+  const T = [
+    '....r....',
+    '...rRr...',
+    '...rRr...',
+    '.b.rbr.b.',
+    'bBb.b.bBb',
+    'bBbbBbbBb',
+    '.bbbBbbb.',
+    '..bbbbb..',
+    '...bBb...',
+    '..bbbbb..',
+    '...bbb...',
+    '....b....',
+  ];
+  const m = new Px(9, 12);
+  m.tpl(T, { r: 1, R: 1, b: 1, B: 1 });
+  for (let y = 0; y < 12; y++) for (let x = 0; x < 9; x++) {
+    const ch = T[y][x];
+    if (ch === '.') continue;
+    const rim = (!m.a(x - 1, y) || !m.a(x, y - 1) ? 0.22 : 0) - (!m.a(x + 1, y) || !m.a(x, y + 1) ? 0.22 : 0);
+    if (ch === 'r' || ch === 'R') p.set(x, y, ch === 'R' ? red.hi : rim > 0 ? red.lt : rim < 0 ? red.dk : red.base);
+    else p.set(x, y, tone(BR, (ch === 'B' ? 0.82 : 0.55) + rim));
+  }
+  p.set(4, 9, 0x1a0e08); // the pin
+  p.outline(0x1a0e08);
+  return p;
+}
+
 export const DSPR = {
+  north: () => art('radarNorth', northFleur),
   tri: (dir, color = 0x3a2006) => art(`tri:${dir}:${color}`, () => tri(dir, color)),
   radarRing: () => art('radarRing', radarRing),
   reticle: (kind) => art('ret:' + kind, () => reticle(kind)),

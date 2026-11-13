@@ -30,6 +30,8 @@ import { ORE_SPAWN } from '../data/ores.js';
 import { creatureIconURL } from '../ui/UI.js';
 import { liftDestinations, lockedLifts, liftUnlocked, rideTo } from './lifts.js';
 import './liftLayers.css';
+import { dropCap, inkIn, ensureTomeArt } from '../ui/tomeFx.js'; // (wave 9: the survey as an atlas leaf, src/ui/tome.css)
+import { doodleURL, cssUrl } from '../ui/tomeArt.js';
 
 /** Zone n spans [n-1]..[n] metres down. Mirrors ZONE_DEPTHS in deep/Generator.js (where the lifts are). */
 export const LIFT_ZONE_DEPTHS = [0, 25, 55, 90, 130, 170, 210];
@@ -1972,6 +1974,14 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
     title: opts.title || 'The Lift', sub: opts.sub || (canRide ? 'Where to?' : 'The layers you know.'), body, className: 'll-panel',
     onClose: () => { alive = false; cancelAnimationFrame(raf); clearTimeout(idleT); ro?.disconnect(); window.removeEventListener('keydown', onKey, true); },
   });
+  // (wave 9) an atlas leaf: the title as an illuminated initial over a knotwork band, a compass rose
+  // in the margin, a raptor chasing a mole along the top edge (src/ui/tome.css)
+  ensureTomeArt();
+  h.el.classList.add('tm-atlas');
+  const h2 = h.el.querySelector(':scope > h2');
+  if (h2) { dropCap(h2, 'blue'); inkIn(h2, { dur: 700, quill: false, audio: game.audio }); }
+  const chase = el('div', { class: 'tm-chase', 'aria-hidden': 'true' }, ['raptor', 'mole'].map((k) => { const d = el('i', { class: 'tm-doodle tm-d-' + k }); d.style.setProperty('--d', cssUrl(doodleURL(k))); return d; }));
+  h.el.append(el('i', { class: 'tm-compass', 'aria-hidden': 'true' }), chase);
 
   let idleT = 0;
   const build = () => {

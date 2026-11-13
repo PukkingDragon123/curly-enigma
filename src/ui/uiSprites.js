@@ -221,8 +221,12 @@ function coinStrip() {
 }
 
 // ---------------------------------------------------------------- lantern (energy)
-/** level 0..4: flame size. 16×28: a hook ring, a vented iron cap, a brass band, glass lit from inside, brass and iron base. */
-function lanternSprite(level = 4) {
+/**
+ * level 0..4: flame size; flick 0..2: the flame's dance (0 upright, 1 bending left, 2 stretching up
+ * and right; the glow inside the glass follows it). 16×28: a hook ring, a vented iron cap, a brass
+ * band, glass lit from inside, brass and iron base.
+ */
+function lanternSprite(level = 4, flick = 0) {
   const IR = RAMP.iron, BR = RAMP.brass;
   const p = new Px(16, 28);
   const cx = 7.5;
@@ -255,8 +259,8 @@ function lanternSprite(level = 4) {
   for (let y = 10; y <= 21; y++) {
     for (const [x, k] of [[1, 0.7], [2, 0.45], [13, 0.3], [14, 0.15]]) p.set(x, y, tone(IR, k));
     for (let x = 3; x <= 12; x++) {
-      const d = Math.hypot((x + 0.5 - 8) * 1.1, (y + 0.5 - 18.2) * 0.9);
-      const g = lit * Math.max(0, 1 - d / 7.5);
+      const d = Math.hypot((x + 0.5 - 8 + (flick === 1 ? 0.8 : flick === 2 ? -0.5 : 0)) * 1.1, (y + 0.5 - 18.2 + (flick === 2 ? 0.8 : 0)) * 0.9);
+      const g = lit * Math.max(0, 1 - d / (7.5 + (flick === 2 ? 0.6 : flick === 1 ? -0.4 : 0)));
       let k = 0.12 + lit * 0.22 + g * 0.66;
       if (y === 10) k -= 0.12; // shadow under the band
       if (x === 3 || x === 12) k -= 0.1;
@@ -275,7 +279,23 @@ function lanternSprite(level = 4) {
     ['..o...', '.oyo..', '.oyyo.', '.oywo.', '.oywo.', '..yy..', '..kk..'],
     ['..o...', '..oo..', '.oyo..', '.oyyo.', '.oywo.', 'oywwyo', 'oywwyo', '.oyyo.', '..kk..'],
   ][level];
-  p.tpl(FL, { o: level <= 1 ? 0xff7a3a : 0xff9a3a, y: 0xffd34a, w: 0xfff6c0, r: 0xe0502a, k: IR[1] }, 5, 21 - FL.length);
+  // the flame's dance: bending left, or stretching up and leaning right
+  const FL1 = [
+    ['..r...', '..kk..'],
+    ['.r....', '.rr...', '..kk..'],
+    ['.o....', 'ooo...', 'oyo...', '.ooo..', '..kk..'],
+    ['.o....', 'oyo...', 'oyyo..', '.oywo.', '.oywo.', '..yy..', '..kk..'],
+    ['.o....', '.oo...', 'oyo...', 'oyyo..', '.oywo.', 'oywwyo', 'oywwyo', '.oyyo.', '..kk..'],
+  ][level];
+  const FL2 = [
+    ['...r..', '..kk..'],
+    ['...r..', '..r...', '..rr..', '..kk..'],
+    ['...o..', '..oo..', '.ooo..', '.oyo..', '..oo..', '..kk..'],
+    ['...o..', '..oo..', '.oyo..', '.oyyo.', '.oywo.', '.oywo.', '..yy..', '..kk..'],
+    ['...o..', '...o..', '..oo..', '.oyo..', '.oyyo.', '.oywo.', 'oywwyo', 'oywwyo', '.oyyo.', '..kk..'],
+  ][level];
+  const fl = flick === 1 ? FL1 : flick === 2 ? FL2 : FL;
+  p.tpl(fl, { o: level <= 1 ? 0xff7a3a : 0xff9a3a, y: 0xffd34a, w: 0xfff6c0, r: 0xe0502a, k: IR[1] }, 5, 21 - fl.length);
   // the burner and the base
   p.hl(6, 9, 21, BR[3]); p.set(6, 21, BR[6]);
   for (let y = 23; y <= 25; y++) {
@@ -733,7 +753,7 @@ export const SPR = {
     return p;
   }),
   coin: () => art('coin1', () => { const s = coinStrip(), p = new Px(8, 8); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (s.a(x, y)) p.set(x, y, s.get(x, y)); return p; }),
-  lantern: (lvl) => art('lantern' + lvl, () => lanternSprite(lvl)),
+  lantern: (lvl, flick = 0) => art('lantern' + lvl + (flick ? ':' + flick : ''), () => lanternSprite(lvl, flick)),
   charm: (id) => art('charm:' + id, () => charmSprite(id)),
   calendar: (torn = false) => art('cal' + (torn ? 1 : 0), () => calendarSprite(torn)),
   plumb: () => art('plumb', plumbSprite),

@@ -9,8 +9,8 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { COIN, qColor } from '../ui/UI.js';
 import { BladeSim, balanceScore, balanceTolerance, quenchResult, fireIdleFor, AMBIENT } from './bladeSim.js';
 import { BladeView, buildWeapon, COL } from './bladeView.js';
-import { applyHeat, glowAmount } from './blackbody.js';
-import { Thermo, Steps, StrikeMeter, bar, setText, setHtml, confirmText, certificate } from './ui.js';
+import { glowAmount } from './blackbody.js';
+import { Thermo, Steps, StrikeMeter, bar, setText, setHtml, confirmText, certificate, illum } from './ui.js';
 import { Seq, ease, arcPoint, Lightning, INFUSION_FX } from './fx.js';
 import { makeCrystal } from './models.js';
 import { disposeTree } from './smelt.js';
@@ -135,7 +135,7 @@ export class ForgeRun {
     if (this.inf) steps.push({ id: 'infuse', label: 'Infuse' });
     steps.push({ id: 'result', label: 'Done' });
     this.stepList = steps.map((s) => s.id);
-    this.title = el('h2', {}, `${this.inf ? this.inf.name + ' ' : ''}${this.m.name} ${this.wt.name}`);
+    this.title = el('h2', {}, illum(`${this.inf ? this.inf.name + ' ' : ''}${this.m.name} ${this.wt.name}`));
     this.stats = el('div', { class: 'fg-col', style: { gap: 'calc(var(--px) * 1.5)' } });
     this.status = el('div', { class: 'fg-note' });
     this.panel = el('div', { class: 'panel fg-side act fg-col' }, [el('div', { class: 'fg-kicker' }, 'Forging'), this.title]);
@@ -245,6 +245,11 @@ export class ForgeRun {
 
   /** What the view should keep in frame at a station (ForgeScene.dockPose). */
   framePoints(name) {
+    if (name === 'hearth' && this.view && (this.step === 'heat' || this.step === 'none')) {
+      const p = this.firePose(), ax = new THREE.Vector3(1, 0, 0).applyEuler(p.rot);
+      const L = this.sim.length * COL;
+      return [p.pos.clone().addScaledVector(ax, -0.06), p.pos.clone().addScaledVector(ax, L)];
+    }
     if (name === 'anvil') {
       const p = this.anvilPose(), ax = this.scene.W.anvilAxis;
       const L = Math.max(this.sim.N, this.sim.length) * COL;
@@ -261,6 +266,13 @@ export class ForgeRun {
   tangWorld(out = new THREE.Vector3()) {
     this.view.group.updateMatrixWorld(true);
     return this.view.group.localToWorld(this.view.tangPoint(out));
+  }
+
+  /** The tip of the finished blade (world). */
+  bladeTipWorld(out = new THREE.Vector3()) {
+    const g = this.weapon.group;
+    g.updateMatrixWorld(true);
+    return g.localToWorld(out.set(0, this.bladeLen, 0));
   }
 
   /** The tongs' bite on the finished weapon: just under the guard (world). */
@@ -307,12 +319,35 @@ export class ForgeRun {
     this.view.hover = -1;
     this.setThermoMarks(false);
     this.thermo.el.hidden = false;
-    this.setActions([{ label: 'To the anvil ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toAnvil() }]);
-    this.game.ui.setHints('<span class="fg-nolig">Hold the mouse or <kbd>Space</kbd>: pump the bellows<br><kbd>E</kbd> carry it to the anvil · <kbd>Esc</kbd> abandon</span>');
+    this.setActions([
+      { label: 'Stoke ', keyLabel: 'R', fn: () => sc.stoke(), alt: true },
+      { label: 'Turn it ', keyLabel: 'F', key: ['KeyF'], fn: () => this.turn(), alt: true },
+      { label: 'To the anvil ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toAnvil() },
+    ]);
+    this.game.ui.setHints('<span class="fg-nolig">Hold the mouse or <kbd>Space</kbd>: pump the bellows · drag it to pump by hand<br><kbd>R</kbd> stoke the coals · <kbd>F</kbd> turn it in the tongs<br><kbd>E</kbd> carry it to the anvil · <kbd>Esc</kbd> abandon</span>');
   }
+
+  /** Turn the bar over in the tongs (in the coals or on the anvil): the jaws ease, the bar rolls. */
+  turn() {
+    if (this.moving || this.swing || this.charge || !this.view || this.view.turning) return;
+    if (this.step !== 'heat' && this.step !== 'hammer') return;
+    const sc = this.scene;
+    this.view.turn();
+    sc.paws.jaw = 0.12;
+    setTimeout(() => { if (sc.activity === this) sc.paws.jaw = 0; }, 260);
+    this.game.audio.play('flip');
+    this.game.audio.play(this.step === 'heat' ? 'clunk' : 'place', { vol: 0.35, pitch: 1.3 });
+    if (this.step === 'heat') sc.particles.coalBurst(this.bladeCenter(), 8, 0.6, 0.15);
+    else sc.particles.scaleFlakes(this.bladeCenter(), 4, 0.5, this.anvilSurf());
+  }
+
+  /** The anvil's face as a surface sparks and scale bounce on (world {y, x, z, r}). */
+  anvilSurf() { const af = this.scene.W.anvilFace; return { y: af.y + 0.004, x: af.x, z: af.z, r: 0.2 }; }
 
   update_heat(dt) {
     const sc = this.scene, sim = this.sim;
+    this.view.inFire = !this.moving;
+    sc.flames.keepClear = this.moving ? null : { x: this.bladeCenter().x, w: 0.06 };
     const burning = sim.heatStep(dt, !this.moving, sc.fire.air);
     const T = sim.meanT();
     this.workLight(sim.maxTemp());
@@ -353,6 +388,7 @@ export class ForgeRun {
   toAnvil() {
     if (this.moving || this.step !== 'heat') return;
     this.game.audio.play('whoosh');
+    this.scene.particles.coalBurst(this.bladeCenter(), 10, 0.7, 0.2); // lifted out of the bed: the coals spit
     this.moveObj(this.view.group, this.anvilPose(), 0.7, 0.14, () => this.game.audio.play('place'));
     this.go('hammer');
   }
@@ -360,6 +396,8 @@ export class ForgeRun {
   // ---------------------------------------------------------------- hammer
   enter_hammer() {
     const sc = this.scene;
+    this.view.inFire = false;
+    sc.flames.keepClear = null;
     sc.dock('anvil', { dur: 0.75 });
     sc.pumpAllowed = false;
     this.view.setDotsVisible(true);
@@ -371,10 +409,11 @@ export class ForgeRun {
     sc.paws.set('R', { mode: 'hammer', at: () => this.hammerAt(), theta: () => this.theta });
     sc.paws.jaw = 0;
     this.setActions([
+      { label: 'Turn it ', keyLabel: 'F', key: ['KeyF'], fn: () => this.turn(), alt: true },
       { label: 'Reheat ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toFire(), alt: true },
       { label: 'Done shaping ', keyLabel: 'Enter', key: ['Enter', 'NumpadEnter'], fn: () => this.finishShaping() },
     ]);
-    this.game.ui.setHints('<span class="fg-nolig">Point at a spot · hold the mouse to raise the hammer, let go to strike<br><kbd>A</kbd><kbd>D</kbd> move along · hold <kbd>Space</kbd> to strike<br><kbd>E</kbd> reheat in the coals · <kbd>Esc</kbd> abandon</span>');
+    this.game.ui.setHints('<span class="fg-nolig">Point at a spot · hold the mouse to raise the hammer, let go to strike<br><kbd>A</kbd><kbd>D</kbd> move along · hold <kbd>Space</kbd> to strike · <kbd>F</kbd> turn it<br><kbd>E</kbd> reheat in the coals · <kbd>Esc</kbd> abandon</span>');
   }
 
   /** Where the hammer face comes down: the top of the aimed column (world). */
@@ -517,6 +556,7 @@ export class ForgeRun {
     if (ev.kind === 'cold') {
       this.game.audio.play('clunk', { vol: 0.6 + power * 0.6 });
       P.flakes(pos, 4 + Math.round(power * 6));
+      sc.rig.kick.x -= 0.004 + power * 0.008;
       sc.addShake(0.006 + power * 0.01);
       if (ev.crack) { this.game.audio.play('crack'); this.popOnce('crack', 'Crack!', pos.clone().add(_v2.set(0, 0.08, 0)), '#ff7a5a', 1, 0.5); }
       else this.popOnce('cold', 'Too cold!', pos.clone().add(_v2.set(0, 0.08, 0)), '#9ad0ff', 0.9, 1.4);
@@ -524,12 +564,16 @@ export class ForgeRun {
       this.game.audio.play('clang', { pitch: 0.8 + thin * 0.45 + Math.random() * 0.06, vol: 0.55 + power * 0.6 });
       const n = 10 + Math.round(power * 28);
       const white = ev.kind === 'hot' || ev.kind === 'burn';
-      P.sparks(pos, n, power, white ? 0xffffff : 0xfff0b0);
-      P.streaks(pos, 8 + Math.round(power * 26), power, white ? 0xffffff : 0xfff6d0);
-      P.scaleFlakes(pos, 3 + Math.round(power * 7), 0.45);
+      const surf = this.anvilSurf();
+      P.sparks(pos, n, power, white ? 0xffffff : 0xfff0b0, 0xff7a1a, surf);
+      P.streaks(pos, 8 + Math.round(power * 26), power, white ? 0xffffff : 0xfff6d0, 0xff6a1a, surf);
+      // scale pops off the face in flakes: more of it the longer the bar has sat in the fire
+      P.scaleFlakes(pos, 4 + Math.round(power * 8 + Math.min(6, sim.heats || 0)), 0.45, surf);
+      // the anvil rings on after the blow
+      this.game.audio.play('bell', { vol: 0.06 + power * 0.08, pitch: 2.2 + thin * 0.4 });
       sc.addShake(0.01 + power * 0.03);
       sc.impact(pos, power, this.sim.T[i] ?? 900);
-      sc.extraLight = 1.5 + power * 2.5;
+      sc.extraLight = 0.9 + power * 1.4;
       if (ev.kind === 'burn') {
         P.burnSpray(pos, 26);
         this.game.audio.play('sizzle');
@@ -665,9 +709,9 @@ export class ForgeRun {
     this.orient.add(this.weapon.group);
     sc.scene.add(this.carrier);
     this.metalColor = this.m.color;
-    applyHeat(this.weapon.mat, 0xffffff, this.sim.meanT(), 0.9);
     this.weapon.mat.color.setRGB(1, 1, 1);
     this.weaponT = this.sim.meanT();
+    this.weapon.heat.setT(this.weaponT);
   }
 
   update_balance(dt) {
@@ -738,7 +782,7 @@ export class ForgeRun {
       this.weaponT += (fireT - this.weaponT) * (0.09 + 0.13 * air) * m.heat * dt;
       this.weaponT = Math.min(this.weaponT, this.maxT);
     } else this.weaponT -= (this.weaponT - AMBIENT) * 0.035 * dt;
-    applyHeat(this.weapon.mat, 0xffffff, this.weaponT, 0.9);
+    this.weapon.heat.setT(this.weaponT);
     return this.weaponT;
   }
 
@@ -794,6 +838,7 @@ export class ForgeRun {
   update_quench(dt) {
     const sc = this.scene, inp = this.game.input;
     const T = this.coolWeapon(dt, this.inFire && !this.busy, sc.fire.air);
+    sc.flames.keepClear = this.inFire && !this.plunged ? { x: this.carrier.position.x, w: 0.06 } : null;
     this.thermo.set(T, dt);
     this.workLight(T, this.carrier.position);
     const [q0, q1] = this.sim.quenchRange || this.m.quench;
@@ -829,13 +874,22 @@ export class ForgeRun {
     const dunk = { pos: top.clone().add(_v2.set(0.02, 0.03 + L * 0.5 - L * 0.85, 0)), rot: down };
     this.game.audio.play('whoosh');
     this.moveObj(this.carrier, above, 0.7, 0.04);
-    this.seq.add(0.2, (k) => { this.carrier.position.lerpVectors(above.pos, dunk.pos, ease.in(k)); })
+    const heat = this.weapon.heat;
+    this.seq.add(0.2, (k) => {
+      this.carrier.position.lerpVectors(above.pos, dunk.pos, ease.in(k));
+      // the water line climbs the blade as it goes in (world y): the tip goes dark first
+      heat.u.uWaterY.value = top.y;
+      heat.u.uTWet.value = lerp(Tp, Tp * 0.45, k);
+    })
       .call(() => {
         this.game.audio.play('quench');
         this.game.audio.play('steam');
-        P.steam(top, 70, 0.3, 1.3);
-        P.billow(top, 26, 0.3, 1.4);
+        this.game.audio.play('hiss', { vol: 1.2 });
+        this.game.audio.play('sizzle');
+        P.steam(top, 90, 0.3, 1.3);
+        P.billow(top, 36, 0.3, 1.4);
         P.bubbles(top, 14, 0.3);
+        P.drips(top, 18, 1.4);
         for (let k = 0; k < 12; k++) P.streak.spawn(P.w({ x: top.x, y: top.y + 0.01, z: top.z, vx: (Math.random() - 0.5) * 1.6, vy: 1 + Math.random() * 1.6, vz: (Math.random() - 0.5) * 1.2, life: 0.4, color: 0xd8f4ff, color1: 0x5a8a98, gravity: 6, drag: 0.6, len: 0.02 }));
         W.water.splash(1.4);
         sc.waterEnergy = 1.2;
@@ -846,14 +900,21 @@ export class ForgeRun {
         if (res.crack) { this.game.audio.play('crack'); setTimeout(() => this.game.audio.play('crack'), 160); }
       })
       .add(1.2, (k, dt) => {
+        // under the water the colour snaps dark in a blink; what's still in the air cools slower
         this.weaponT = lerp(Tp, 60, ease.out(k));
-        applyHeat(this.weapon.mat, 0xffffff, this.weaponT, 0.9);
+        heat.u.uTWet.value = lerp(Tp, 30, 1 - Math.exp(-k * 14));
+        heat.setT(this.weaponT);
         if (Math.random() < dt * 30) P.steam(top, 2, 0.25, 0.8);
         if (Math.random() < dt * 9 * (1 - k)) P.billow(top, 2, 0.22, 0.9);
         if (Math.random() < dt * 20) P.bubbles(top, 2, 0.25);
         this.carrier.position.x = dunk.pos.x + Math.sin(k * 30) * 0.004 * (1 - k); // the tongs tremble in the boil
       })
-      .add(0.45, (k) => { this.carrier.position.lerpVectors(dunk.pos, above.pos, ease.out(k)); })
+      .add(0.45, (k, dt) => {
+        this.carrier.position.lerpVectors(dunk.pos, above.pos, ease.out(k));
+        if (Math.random() < dt * 14) P.steam(this.bladeTipWorld(), 2, 0.08, 0.7); // still steaming as it comes out
+        if (Math.random() < dt * 10) P.drips(this.bladeTipWorld(), 1);
+      })
+      .call(() => { heat.u.uWaterY.value = -100; heat.setT(Math.min(this.weaponT, 60)); })
       .call(() => {
         this.scores.quench = res.score;
         if (res.crack) this.sim.cracks[Math.floor(this.sim.length * 0.4)] = Math.max(1, this.sim.cracks[Math.floor(this.sim.length * 0.4)] || 0);
@@ -1008,6 +1069,8 @@ export class ForgeRun {
     this.revealScale = clamp(0.36 / total, 0.42, 1.25);
     this.weapon.mat.color.setRGB(1, 1, 1);
     this.weapon.mat.emissive.setRGB(0, 0, 0);
+    this.weapon.heat.setT(20);
+    this.weapon.heat.u.uWaterY.value = -100;
     this.weapon.group.position.y = 0;
     this.orient.rotation.set(0, 0, 0);
     this.revealFrom = this.carrier.position.clone();
@@ -1115,6 +1178,7 @@ export class ForgeRun {
     const fn = this['update_' + this.step];
     if (fn) fn.call(this, dt);
     if (this.view && this.view.group.parent) this.view.update(dt, this.time);
+    if (this.weapon) this.weapon.heat.update(this.time);
     if (this.step !== 'result') this.updateUI(dt);
     this.pollActionKeys();
   }

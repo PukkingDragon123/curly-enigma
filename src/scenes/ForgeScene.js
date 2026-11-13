@@ -17,6 +17,7 @@ import { Paws } from '../forge/paws.js';
 import { makeGlow } from '../bookends/fx.js';
 import { glowHex, glowAmount } from '../forge/blackbody.js';
 import { ForgeLesson } from '../forge/tutorial.js';
+import { HearthFire } from '../forge/hearthFire.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -62,6 +63,11 @@ export default class ForgeScene extends Scene {
     this.own(() => this.rig.dispose());
     this.particles = new ForgeParticles(this.scene, 0.5);
     this.own(() => this.particles.dispose());
+    // the fire itself: licking voxel flames over coals that breathe (fewer flame voxels on phones)
+    const phone = document.documentElement.classList.contains('is-touch') || Math.min(innerWidth, innerHeight) < 560;
+    this.flames = new HearthFire(this.W, { max: phone ? 760 : 1100, tongues: phone ? 20 : 26 });
+    this.own(() => this.flames.dispose());
+    this.stokeCd = 0;
     // the white-hot flash where the hammer meets the metal
     this.impactGlow = makeGlow({ color: 0xfff0c0, size: 0.2, intensity: 0, falloff: 1.4, levels: 6, renderOrder: 22 });
     this.impactGlow.visible = false;
@@ -74,7 +80,8 @@ export default class ForgeScene extends Scene {
     this.paws = new Paws(this);
 
     // hearth & bellows
-    this.fire = { air: 0, pumping: false, cycle: 0, compress: 0, glow: 0.45, flick: 0, spawn: { ember: 0, flame: 0, smoke: 0 }, nudge: 0 };
+    this.fire = { air: 0, pumping: false, cycle: 0, compress: 0, glow: 0.45, flick: 0, spawn: { ember: 0, flame: 0, smoke: 0 }, nudge: 0, armed: true };
+    this.drag = null; // dragging the bellows pull by hand (pointer / finger down on the view)
     this.pumpAllowed = false;
     this.fireLoop = this.game.audio.loop('forge_fire', { vol: 0.35 });
     this.own(() => this.fireLoop.stop());
@@ -152,6 +159,7 @@ export default class ForgeScene extends Scene {
     this.allowMenus = true;
     this.pumpAllowed = false;
     this.workSrc = null;
+    if (this.flames) this.flames.keepClear = null;
     this.game.ui.setHints(null);
     this.paws.clear();
     this.rig.setTool('none');
@@ -187,7 +195,10 @@ export default class ForgeScene extends Scene {
     const W = this.W, rig = this.rig;
     const free = () => this.walking();
     const fp = W.firePos;
-    rig.add({ box: [fp.x - 0.56, 0.2, 0.05, fp.x + 0.56, 1.0, 0.86], label: 'Smelt ore', enabled: free, action: () => { this.game.audio.play('ui_click'); this.menus.smeltList(); } });
+    // the hearth's body smelts; the coals on top get a poke (the box over them is met first)
+    // (the stoke box reaches out over the hearth's lip: the hearth's solid stands taller than its coals)
+    rig.add({ box: [fp.x - 0.36, fp.y - 0.02, fp.z - 0.22, fp.x + 0.36, fp.y + 0.36, 0.9], label: 'Stoke the coals', enabled: free, action: () => this.stoke() });
+    rig.add({ box: [fp.x - 0.56, 0.2, 0.05, fp.x + 0.56, fp.y - 0.02, 0.9], label: 'Smelt ore', enabled: free, action: () => { this.game.audio.play('ui_click'); this.menus.smeltList(); } });
     const af = W.anvilFace;
     rig.add({ box: [af.x - 0.2, 0.1, af.z - 0.75, af.x + 0.2, af.y + 0.08, af.z + 0.45], label: 'Forge a weapon', enabled: free, action: () => { this.game.audio.play('ui_click'); this.menus.plan(); } });
     const d = W.doorPos;
@@ -226,7 +237,8 @@ export default class ForgeScene extends Scene {
         const c = new THREE.Vector3();
         for (const p of pts) c.add(p);
         c.multiplyScalar(1 / pts.length);
-        look.lerp(c, narrow * 0.8);
+        // (at the hearth with work in the coals, wide screens turn toward it too: the work panel covers the left)
+        look.lerp(c, Math.max(narrow * 0.8, name === 'hearth' && this.activity?.framePoints?.(name)?.length ? 0.4 : 0));
         const tanV = Math.tan(THREE.MathUtils.degToRad(fov) / 2), tanH = tanV * a;
         const dh = new THREE.Vector3(eye.x - look.x, 0, eye.z - look.z);
         const h0 = Math.max(0.05, dh.length());
@@ -353,12 +365,13 @@ export default class ForgeScene extends Scene {
     let wk = 0;
     if (ws) {
       wk = Math.min(1.3, glowAmount(ws.T));
+      // (held well above the work: close up, a point light burns everything round it to one flat colour)
       wl.position.copy(ws.pos);
-      wl.position.y += 0.2;
-      wl.position.lerp(this.camera.position, 0.15);
-      if (wk > 0) wl.color.setHex(glowHex(Math.max(700, ws.T)));
+      wl.position.y += 0.38;
+      wl.position.lerp(this.camera.position, 0.2);
+      if (wk > 0) wl.color.setHex(glowHex(Math.max(700, Math.min(1000, ws.T))));
     }
-    wl.intensity = wk * 0.35 * (0.95 + Math.sin(this.time * 9.1) * 0.05) + this.extraLight * 0.25;
+    wl.intensity = wk * 0.16 * (0.92 + Math.sin(this.time * 9.1) * 0.05 + Math.sin(this.time * 23.7) * 0.03) + this.extraLight * 0.14;
     const dl = this.displayLight;
     if (dl) { wl.position.copy(dl.pos); wl.color.setHex(dl.color); wl.intensity = dl.intensity; }
     if (!vm) return;
@@ -449,12 +462,33 @@ export default class ForgeScene extends Scene {
   }
 
   updateFire(dt) {
-    const f = this.fire, W = this.W;
+    const f = this.fire, W = this.W, inp = this.game.input;
     f.pumping = this.readPump();
     f.nudge = Math.max(0, f.nudge - dt);
-    const pumping = f.pumping || f.nudge > 0;
-    f.air = clamp(f.air + (f.pumping ? 2.0 : -0.8) * dt, 0, 1);
-    if (pumping) {
+    // drag the pull by hand: a press that moves up or down works the bellows stroke by stroke
+    // (pull down to squeeze; every full stroke breathes the fire up), a still hold pumps steadily
+    if (f.pumping && inp.mouseDown(0) && !this.debugPump) {
+      const m = inp.mouse, span = Math.max(120, (this.game.engine.height || innerHeight) * 0.22);
+      if (!this.drag) this.drag = { y0: m.y, manual: false };
+      const d = this.drag;
+      if (!d.manual && Math.abs(m.y - d.y0) > 10) { d.manual = true; d.y0 = m.y - f.compress * span; }
+      if (d.manual) {
+        const want = clamp((m.y - d.y0) / span, 0, 1);
+        if (want < 0.001) d.y0 = m.y; // (the stroke's top follows the pointer up)
+        const prev = f.compress;
+        f.compress += (want - f.compress) * Math.min(1, dt * 22);
+        const dc = f.compress - prev;
+        if (dc > 0) f.air = clamp(f.air + dc * 1.15, 0, 1);
+        if (f.armed && f.compress > 0.82) { f.armed = false; this.game.audio.play('bellows', { vol: 0.85 }); this.puff(); }
+        if (f.compress < 0.3) f.armed = true;
+        f.air = clamp(f.air - 0.35 * dt, 0, 1);
+        f.cycle = 0;
+      }
+    } else this.drag = null;
+    const manual = !!this.drag?.manual;
+    const pumping = (f.pumping && !manual) || f.nudge > 0;
+    if (!manual) f.air = clamp(f.air + (f.pumping ? 2.0 : -0.8) * dt, 0, 1);
+    if (manual) { /* the stroke follows the paw */ } else if (pumping) {
       const prev = f.cycle;
       f.cycle += dt / 0.8;
       if (f.pumping && (Math.floor(prev) !== Math.floor(f.cycle) || prev === 0)) {
@@ -467,6 +501,7 @@ export default class ForgeScene extends Scene {
     } else {
       f.cycle = 0;
       f.compress += (0 - f.compress) * Math.min(1, dt * 6);
+      f.armed = true;
     }
     W.bellows.setCompress(f.compress);
     W.pull.setPull(f.compress);
@@ -475,7 +510,12 @@ export default class ForgeScene extends Scene {
     // the magma hearth (forge level 2) never banks down: redder, brighter, always churning
     const magma = (this.game.state.data.forgeLevel || 0) >= 2;
     f.glow += (((magma ? 0.7 : 0.45) + f.air * 0.75) - f.glow) * Math.min(1, dt * 3);
-    f.flick = 0.88 + 0.12 * Math.sin(this.time * 13.1) * Math.sin(this.time * 7.7 + 1.3) + (Math.random() - 0.5) * 0.08;
+    this.flames.update(dt, this.time, { air: f.air, glow: f.glow, magma });
+    this.stokeCd = Math.max(0, this.stokeCd - dt);
+    // the light flickers with the flames themselves (their height this frame), plus a crackle now and then
+    if (Math.random() < dt * 1.5) f.crackle = 0.25 + Math.random() * 0.25;
+    f.crackle = Math.max(0, (f.crackle || 0) - dt * 3);
+    f.flick = 0.72 + this.flames.heat * 0.32 + 0.06 * Math.sin(this.time * 13.1) * Math.sin(this.time * 7.7 + 1.3) + (Math.random() - 0.5) * 0.05 + f.crackle;
     const g = f.glow * f.flick;
     if (magma) W.hearth.coalMat.color.setRGB(0.8 + g * 0.6, 0.32 + g * 0.42, 0.18 + g * 0.2);
     else W.hearth.coalMat.color.setRGB(0.72 + g * 0.5, 0.5 + g * 0.42, 0.4 + g * 0.3);
@@ -492,19 +532,38 @@ export default class ForgeScene extends Scene {
     this.fireLoop.set({ vol: 0.3 + f.air * 0.45, intensity: f.air });
     // emitters
     const P = this.particles, fp = W.firePos, sp = f.spawn;
-    sp.ember += dt * (4 + f.air * 22);
-    sp.flame += dt * (12 + f.air * 40);
+    sp.ember += dt * (5 + f.air * 26 + this.flames.flare * 10);
+    sp.flame += dt * (3 + f.air * 10);
     sp.smoke += dt * (1.6 + f.air * 2.4);
-    while (sp.ember >= 1) { sp.ember--; P.ember(_v.copy(fp).setY(fp.y + 0.02), 0.5, 0.6 + f.air); }
-    while (sp.flame >= 1) { sp.flame--; P.flame(_v.copy(fp).setY(fp.y - 0.01), 0.6, 0.5 + f.air * 0.8); }
+    while (sp.ember >= 1) { sp.ember--; P.ember(_v.copy(fp).setY(fp.y + 0.04), 0.5, 0.6 + f.air); }
+    while (sp.flame >= 1) { sp.flame--; P.flame(_v.copy(fp).setY(fp.y + 0.02), 0.45, 0.35 + f.air * 0.6); }
     while (sp.smoke >= 1) { sp.smoke--; P.smoke(_v.copy(fp).setY(fp.y + 0.3), 0.4, 0.8); }
   }
 
-  /** Bellows stroke: a breath of sparks out of the coals. */
+  /** Bellows stroke: a breath of sparks out of the coals, and the bed flares. */
   puff() {
     const fp = this.W.firePos;
     for (let i = 0; i < 6; i++) this.particles.ember(_v.copy(fp), 0.4, 1.6);
-    for (let i = 0; i < 8; i++) this.particles.flame(_v.copy(fp), 0.4, 1.4);
+    for (let i = 0; i < 4; i++) this.particles.flame(_v.copy(fp), 0.4, 1.0);
+    this.particles.coalBurst(fp, 6, 0.6, 0.35);
+    this.flames?.pulse(1);
+  }
+
+  /** Poke the coals: the bed heaves, sparks and embers fly, the flames jump (R at the hearth, or E on the coals). */
+  stoke() {
+    if (this.stokeCd > 0 || !this.flames) return false;
+    this.stokeCd = 0.45;
+    const fp = this.W.firePos;
+    this.flames.stoke();
+    this.particles.coalBurst(fp, 28, 1.1, 0.45);
+    this.particles.smoke(_v.copy(fp).setY(fp.y + 0.2), 0.3, 1.2);
+    this.game.audio.play('clunk', { vol: 0.55, pitch: 0.8 });
+    this.game.audio.play('ignite', { vol: 0.5 });
+    this.extraLight = Math.max(this.extraLight, 1.4);
+    this.addShake(0.004);
+    this.activity?.onStoke?.();
+    this.lesson?.event?.('stoke', {});
+    return true;
   }
 
   /** Quick smelt: a burst of sparks and steam over the ingot mold. */
@@ -561,6 +620,8 @@ export default class ForgeScene extends Scene {
     }
     this.extraLight = Math.max(0, this.extraLight - dt * 14);
     this.syncHud();
+    // R: poke the coals whenever the work is at the hearth
+    if (this.pumpAllowed && !this.game.ui.isPanelOpen() && this.game.input.pressed('KeyR')) this.stoke();
     // touch: the big button does what holding the mouse does in the current activity
     const tb = this.activity?.touchAction?.() ?? null;
     this.touchBtn.set(tb?.kind || null, tb?.label || '');

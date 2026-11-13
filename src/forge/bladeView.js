@@ -4,33 +4,10 @@ import * as THREE from 'three';
 import { VoxelGrid, voxelMesh, voxelMaterial } from '../gfx/Voxel.js';
 import { METALS, INFUSIONS } from '../data/weapons.js';
 import { mixHex, shade } from '../core/util.js';
-import { applyHeat, glowAmount, glowHex } from './blackbody.js';
+import { glowAmount, glowHex } from './blackbody.js';
+import { makeHotMetal, MAXC } from './hotMetal.js';
 import { HAFTED } from './bladeSim.js';
-import { PixelCanvas, pixelTexture } from '../gfx/PixelArt.js';
 import { makeGlow } from '../bookends/fx.js';
-
-/** Mottled forge-scale texture: used as both colour and emissive map so hot metal glows unevenly. */
-let scaleTex = null;
-function getScaleTex() {
-  if (scaleTex) return scaleTex;
-  const pc = new PixelCanvas(16, 16);
-  let s = 91;
-  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-    const v = rnd();
-    const blot = Math.sin(x * 0.9 + Math.sin(y * 0.7) * 2) + Math.sin(y * 1.1 + x * 0.3);
-    let c = v < 0.06 ? 0xffffff : blot > 1.2 ? 0x8a8a8a : blot < -1.35 ? 0x9a9a9a : v < 0.2 ? 0xc8c8c8 : 0xe6e6e6;
-    if (v > 0.97) c = 0x6a6a6a;
-    pc.set(x, y, c);
-  }
-  scaleTex = pixelTexture(pc.commit());
-  scaleTex.colorSpace = THREE.NoColorSpace;
-  // the bar's slices are long and narrow: tile the mottling so it isn't smeared across them
-  scaleTex.wrapS = scaleTex.wrapT = THREE.RepeatWrapping;
-  scaleTex.repeat.set(0.4, 2.2);
-  scaleTex.userData.shared = true;
-  return scaleTex;
-}
 
 /** Meters per old forge unit for the blade (a mole-sized blade: a shortsword is ~45 cm). */
 export const BS = 0.62;
@@ -54,30 +31,21 @@ export class BladeView {
     this.sim = sim;
     this.group = new THREE.Group();
     this.base = scaleColor(sim.metal);
+    // the whole bar (every column's slices and the tang) is one instanced mesh of boxes in the
+    // hot-metal material: the glow is worked out per voxel cell from the columns' temperatures
+    this.hm = makeHotMetal({ base: mixHex(METALS[sim.metal]?.color ?? 0x8a8f96, 0x1e1a1a, 0.66), scaleCol: 0x1a1414, mode: 'bar', colLen: COL, cell: COL / 6, scale: 0.3, gain: 1.05 });
+    this.nInst = sim.maxLen * SUB + 1;
+    this.bar = new THREE.InstancedMesh(unitBox, this.hm.material, this.nInst);
+    this.bar.frustumCulled = false;
+    this.bar.layers.enable(1);
+    this.group.add(this.bar);
     this.cols = [];
-    const st = getScaleTex();
-    for (let i = 0; i < sim.maxLen; i++) {
-      const mat = voxelMaterial('toon', { unique: true, vertexColors: false, color: this.base, emissive: 0x000000 });
-      mat.map = st; mat.emissiveMap = st;
-      const slices = [];
-      for (let j = 0; j < SUB; j++) {
-        const m = new THREE.Mesh(unitBox, mat);
-        m.visible = false;
-        m.layers.enable(1);
-        this.group.add(m);
-        slices.push(m);
-      }
-      this.cols.push({ slices, mat, disp: sim.w[i] ?? 0, squash: 0, cracks: [] });
-    }
-    // tang: a stub the tongs hold
-    const tm = voxelMaterial('toon', { unique: true, vertexColors: false, color: this.base, emissive: 0x000000 });
-    tm.map = st; tm.emissiveMap = st;
-    this.tang = new THREE.Mesh(unitBox, tm);
-    this.tang.scale.set(0.16 * BS, 0.02 * BS, 0.035 * BS);
-    this.tang.position.set(-0.08 * BS, 0.01 * BS, 0);
-    this.tang.layers.enable(1);
-    this.tangMat = tm;
-    this.group.add(this.tang);
+    for (let i = 0; i < sim.maxLen; i++) this.cols.push({ disp: sim.w[i] ?? 0, squash: 0, cracks: [] });
+    this.chill = new Float32Array(MAXC);
+    this.marks = new Float32Array(MAXC);
+    this.side = 0; // >0 the underside runs hotter (lying in the coals), <0 the top (just turned)
+    this.inFire = false;
+    this.roll = 0; // turned over by the tongs (a half turn about the bar's length)
     this.crackMat = new THREE.MeshBasicMaterial({ color: 0x0a0606 });
     this.hover = -1;
     this.frame = this._makeFrame();
@@ -96,7 +64,30 @@ export class BladeView {
     this.halo.position.set(0, 0.03 * BS, 0);
     this.group.add(this.halo);
     this.maxTh = 0.02 * BS;
+    this._setBox(this.nInst - 1, -0.08 * BS, 0.01 * BS, 0, 0.16 * BS, 0.02 * BS, 0.035 * BS);
   }
+
+  /** Instance i: a box centred at (x, y, z) sized (sx, sy, sz) in the bar's frame. */
+  _setBox(i, x, y, z, sx, sy, sz) {
+    const a = this.bar.instanceMatrix.array, o = i * 16;
+    a[o] = sx; a[o + 1] = 0; a[o + 2] = 0; a[o + 3] = 0;
+    a[o + 4] = 0; a[o + 5] = sy; a[o + 6] = 0; a[o + 7] = 0;
+    a[o + 8] = 0; a[o + 9] = 0; a[o + 10] = sz; a[o + 11] = 0;
+    a[o + 12] = x; a[o + 13] = y; a[o + 14] = z; a[o + 15] = 1;
+  }
+
+  /** A blow on column i: the hammer face chills the spot and leaves its facets. */
+  struck(i, k = 1) {
+    if (i < 0 || i >= MAXC) return;
+    this.chill[i] = Math.min(1, this.chill[i] + 0.55 * k);
+    if (i > 0) this.chill[i - 1] = Math.min(1, this.chill[i - 1] + 0.15 * k);
+    if (i + 1 < MAXC) this.chill[i + 1] = Math.min(1, this.chill[i + 1] + 0.15 * k);
+    this.marks[i] = Math.min(6, this.marks[i] + 1);
+  }
+
+  /** Turn the bar over in the tongs (a half turn about its length): the hot underside comes up. */
+  turn() { if (this.rollT === undefined) this.rollT = 0; }
+  get turning() { return this.rollT !== undefined; }
 
   /** Where the tongs bite: the middle of the tang (local). */
   tangPoint(out = new THREE.Vector3()) { return out.set(-0.11 * BS, 0.01 * BS, 0); }
@@ -178,19 +169,18 @@ export class BladeView {
     for (let i = 0; i < this.cols.length; i++) {
       const c = this.cols[i];
       const vis = i < sim.w.length && c.disp > 0.03;
-      if (!vis) { for (const m of c.slices) m.visible = false; for (const k of c.cracks) k.visible = false; continue; }
+      if (!vis) {
+        for (let j = 0; j < SUB; j++) this._setBox(i * SUB + j, 0, 0, 0, 0, 0, 0);
+        for (const k of c.cracks) k.visible = false;
+        continue;
+      }
       for (let j = 0; j < SUB; j++) {
-        const m = c.slices[j];
         const x = (i + (j + 0.5) / SUB) * COL;
         const hw = this.widthAt(x);
         const th = thick(hw) * (1 - c.squash * 0.45);
         maxTh = Math.max(maxTh, th);
-        m.visible = true;
-        m.scale.set(COL / SUB * 1.002, th, Math.max(0.004, 2 * hw * HWU * (1 + c.squash * 0.12)));
-        m.position.set(x, th / 2, 0);
+        this._setBox(i * SUB + j, x, th / 2, 0, COL / SUB * 1.002, th, Math.max(0.004, 2 * hw * HWU * (1 + c.squash * 0.12)));
       }
-      applyHeat(c.mat, this.base, sim.T[i] ?? 20, 0.95);
-      if (i === this.hover) c.mat.emissive.addScalar(0.05);
       // crack marks
       const n = sim.cracks[i] || 0;
       while (c.cracks.length < n) {
@@ -211,15 +201,37 @@ export class BladeView {
         k.position.set((i + 0.5) * COL + (j - 1) * 0.018 * BS, th + 0.002 * BS, (j % 2 ? 1 : -1) * Math.min(c.disp * HWU * 0.4, 0.03 * BS));
       });
     }
+    this.bar.instanceMatrix.needsUpdate = true;
+    // turning over: a half roll about the bar's length, lifted off the coals (or the anvil)
+    if (this.rollT !== undefined) {
+      this.rollT += dt / 0.42;
+      const k = Math.min(1, this.rollT), r = (k * k * (3 - 2 * k)) * Math.PI;
+      this.bar.rotation.x = r;
+      this.bar.position.y = maxTh * (1 - Math.cos(r)) / 2 + Math.sin(r) * 0.03;
+      if (k >= 1) { this.rollT = undefined; this.bar.rotation.x = 0; this.bar.position.y = 0; this.side = -Math.max(40, Math.abs(this.side)); }
+    }
+    // heat: the columns' temperatures, the hammer's chill, the side in the coals, the held tang
+    const u = this.hm.u;
+    this.hm.setCols(sim.T, sim.w.length);
+    for (let i = 0; i < MAXC; i++) this.chill[i] = Math.max(0, this.chill[i] - dt * 0.55 * (0.4 + this.chill[i]));
+    u.uChill.value.set(this.chill);
+    u.uMarks.value.set(this.marks);
+    u.uLen.value = sim.length * COL;
+    const want = this.inFire ? 70 : 0;
+    this.side += (want - this.side) * Math.min(1, dt * (this.side < 0 ? 0.45 : 0.25));
+    u.uSide.value = this.side;
+    u.uScale.value = Math.min(0.62, 0.22 + (sim.heats || 0) * 0.05 + (sim.lost || 0) * 2);
+    // the tang end, in the tongs, never comes up to the heat of the coals
+    u.uHeld.value.set(-0.04 * BS, 0.12 * BS, 420, 1);
+    this.hm.update(time);
     this.maxTh = maxTh;
-    applyHeat(this.tangMat, this.base, sim.T[0] ?? 20, 0.7);
     // heat halo: centred on the bar, as bright as its hottest part
     let hot = 0, sumT = 0, sumX = 0;
     for (let i = 0; i < sim.w.length; i++) { const T = sim.T[i] ?? 20; const k = glowAmount(T); if (k > 0) { sumT += k; sumX += k * (i + 0.5) * COL; } if (T > hot) hot = T; }
     const gk = glowAmount(hot);
     this.hot = hot;
     const hu = this.halo.userData.glow;
-    hu.uIntensity.value = Math.min(0.3, gk * 0.22) * (0.92 + Math.sin(time * 7.3) * 0.08);
+    hu.uIntensity.value = Math.min(0.2, gk * 0.14) * (this.inFire ? 0.5 : 1) * (0.92 + Math.sin(time * 7.3) * 0.08);
     if (gk > 0) hu.uColor.value.setHex(glowHex(hot));
     hu.uSize.value.setScalar(0.12 + sim.length * COL * 0.75);
     this.halo.position.x = sumT > 0 ? sumX / sumT : sim.length * COL * 0.5;
@@ -269,7 +281,7 @@ export class BladeView {
   }
 
   /** Hammer-impact squash on a column. */
-  squash(i, k = 1) { if (this.cols[i]) this.cols[i].squash = Math.min(1, k); }
+  squash(i, k = 1) { if (this.cols[i]) this.cols[i].squash = Math.min(1, k); this.struck(i, k); }
 
   /** Column index under a local-space x, or -1. */
   pick(localX, localZ) {
@@ -282,8 +294,8 @@ export class BladeView {
 
   dispose() {
     this.halo.material.dispose();
-    for (const c of this.cols) c.mat.dispose();
-    this.tangMat.dispose();
+    this.hm.dispose();
+    this.bar.dispose();
     this.crackMat.dispose();
     this.frame.userData.mat.dispose();
     this.ghostMat.dispose();
@@ -383,7 +395,9 @@ export function buildWeapon(sim, opts = {}) {
       }
     }
   }
-  const mat = voxelMaterial('toon', { unique: true, emissive: 0x000000 });
+  // the blade glows (and quenches) with the hot-metal look along its length
+  const heat = makeHotMetal({ mode: 'blade', vertexColors: true, base: 0xffffff, cell: VW, len: GY * VW, scale: 0, grain: 0.06, scaleCol: 0x5a5250 });
+  const mat = heat.material;
   const blade = voxelMesh(g, { pivot: [cx + 0.5, 0, GZ / 2], scale: VW, material: mat, greedy: true });
   const group = new THREE.Group();
   group.add(blade);
@@ -460,5 +474,5 @@ export function buildWeapon(sim, opts = {}) {
   headCap.position.y = GY * VW - 2 * VW;
   headCap.visible = false;
   group.add(headCap);
-  return { group, blade, hilt, pommel, headCap, mat, veinMat, length: GY * VW, hiltLength: hiltLen + 4 * VW, hafted };
+  return { group, blade, hilt, pommel, headCap, mat, heat, veinMat, length: GY * VW, hiltLength: hiltLen + 4 * VW, hafted };
 }

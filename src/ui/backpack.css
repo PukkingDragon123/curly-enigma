@@ -567,3 +567,14 @@
 .bp-tag-icon.vox { position: relative; }
 .bp-tag-icon.vox > img { visibility: hidden; }
 .bp-tag-icon .vox-spin { position: absolute; left: 50%; top: 50%; width: 160%; height: 160%; transform: translate(-50%, -50%); image-rendering: pixelated; pointer-events: none; }
+
+/* ---- wave 9: cast brass book corners on the bag's leather (src/ui/panelArt.js), set just inside its
+   stitched edge; they catch a glint when the bag opens */
+.bp-body::after {
+  content: ''; position: absolute; inset: calc(var(--px) * -11); pointer-events: none; z-index: 3;
+  background: var(--pn-capTL) left top / calc(var(--px) * 14) calc(var(--px) * 14) no-repeat, var(--pn-capTR) right top / calc(var(--px) * 14) calc(var(--px) * 14) no-repeat,
+    var(--pn-capBL) left bottom / calc(var(--px) * 14) calc(var(--px) * 14) no-repeat, var(--pn-capBR) right bottom / calc(var(--px) * 14) calc(var(--px) * 14) no-repeat;
+  filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .45));
+  animation: capGlint .9s steps(6) .35s both;
+}
+@keyframes capGlint { 0% { filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .45)) brightness(1); } 40% { filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .45)) brightness(1.45); } 100% { filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .45)) brightness(1); } }

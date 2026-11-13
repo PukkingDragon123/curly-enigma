@@ -667,6 +667,14 @@ function waxCrack() {
   return p;
 }
 
+// ---------------------------------------------------------------- the pouch's clink: a glint where a coin lands
+/** A 4-point star of light, 7×7 (white core, pale gold, a darker gold fringe). */
+function glintStar() {
+  const p = new Px(7, 7), G = RAMP.gold;
+  p.tpl(['...a...', '...b...', '..aca..', 'abcwcba', '..aca..', '...b...', '...a...'], { a: G[4], b: G[6], c: G[7], w: 0xffffff });
+  return p;
+}
+
 // ---------------------------------------------------------------- registry
 const LEATHERY = /^(pouch|leatherTag|vegT)/; // suede and veg-tan: leather pores, not wood grain, in the finishing pass
 const H = (k, fn) => art('h:' + k, fn, LEATHERY.test(k) ? { brown: 'leather' } : undefined);
@@ -694,6 +702,7 @@ export const HART = {
   hangTwine: () => H('hangTwine', hangTwine),
   hangChain: () => H('hangChain', hangChain),
   waxCrack: () => H('waxCrack', waxCrack),
+  glint: () => art('h:glint', glintStar, { detail: false }),
 };
 /** (the ui3 pieces, for previews) */
 export const HAX = { clothTag, linenTile, leatherTag, vegTile, brassTag, brassTile, hangLoop, hangTwine, hangChain, waxCrack };
@@ -710,4 +719,5 @@ export function installHudArt(node = document.documentElement) {
   // ui3: the toast tags by kind, and the strip's seal cracking
   u('clothTag', HART.clothTag()); u('linenT', HART.linenT()); u('leatherTag', HART.leatherTag()); u('vegT', HART.vegT());
   u('brassTag', HART.brassTag()); u('brassT', HART.brassT()); u('waxCrack', HART.waxCrack());
+  u('glint', HART.glint());
 }

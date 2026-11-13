@@ -2,6 +2,8 @@
 // from ui/uiArt.js (--a-wood, --a-sign, --a-note, --a-slate...) and cooking/kitchenArt.js (--a-ck-*),
 // always at a whole multiple of --px. Text is Tiny5 at 16px (24px on big screens) and the pixel
 // heading fonts at their own sizes, so it stays crisp.
+import { installPanelArt } from '../ui/panelArt.js'; // (wave 9: forged strap hinges on the cupboard)
+
 const CSS = /* css */`
 .ck-root { position: absolute; inset: 0; pointer-events: none; font-family: var(--font); }
 .ck-root .interactive, .ck-root button { pointer-events: auto; }
@@ -431,12 +433,20 @@ const CSS = /* css */`
   .ck-hbar { width: 76vw; }
   .ck-gauge, .ck-roll { right: calc(var(--px) * 4 + var(--sar)); }
 }
+/* wave 9: forged iron strap hinges on the cupboard's corners (src/ui/panelArt.js); the tabs press in like
+   brass-capped drawer pulls */
+.ck-cupboard::after { content: ''; position: absolute; inset: calc(var(--px) * -8); pointer-events: none; z-index: 4;
+  background: var(--pn-strapTL) left top / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat, var(--pn-strapTR) right top / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat,
+    var(--pn-strapBL) left bottom / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat, var(--pn-strapBR) right bottom / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat;
+  filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .5)); }
+.ck-tab:active { transform: translateY(var(--px)); }
 `;
 
 let injected = false;
 export function ensureStyles() {
   if (injected) return;
   injected = true;
+  installPanelArt();
   const s = document.createElement('style');
   s.id = 'ck-styles';
   s.textContent = CSS;

@@ -8,6 +8,8 @@ import { el } from '../core/util.js';
 import { makeSignMenu } from './signs.js';
 import { formatPlayTime } from '../core/saves.js';
 import './choices.css';
+import { bindCover, dropCap, sealCss, vars, ensureTomeArt } from './tomeFx.js'; // (wave 9: the chronicle and the bound board, src/ui/tome.css)
+import { doodleURL, cssUrl } from './tomeArt.js';
 
 const GEM_NAMES = ['Ruby', 'Emerald', 'Sapphire'];
 const GEM_COL = ['#f04652', '#3ccc74', '#4a98ff'];
@@ -124,9 +126,12 @@ export function openSettings(game, { onClose } = {}) {
     el('p', { class: 'pm-note' }, 'Settings are kept with your save.'),
   ]);
   // a wooden control board under a hanging sign (the board styles live in ui/choices.css)
-  const board = el('div', { class: 'tk pm-board' }, [
+  // (wave 9) the board is iron-bound: corner pieces and clasps sit on a wrapper (the board scrolls)
+  ensureTomeArt();
+  const bound = bindCover(el('div', { class: 'tm-bound' }, [el('div', { class: 'tk-board' }, [body])]));
+  const board = el('div', { class: 'tk pm-board tm-pmset' }, [
     el('div', { class: 'tk-sign' }, [el('i', { class: 'tk-chain l' }), el('i', { class: 'tk-chain r' }), el('h2', {}, 'Settings')]),
-    el('div', { class: 'tk-board' }, [body]),
+    bound,
   ]);
   const h = game.ui.openPanel({ body: board, className: 'tk-panel pm-setpanel', onClose: () => { if (game.state.hasSave()) game.state.save(); onClose?.(); } });
   if (!document.documentElement.classList.contains('is-touch')) setTimeout(() => body.querySelector('input')?.focus({ preventScroll: true }), 40);
@@ -145,6 +150,14 @@ export function openPauseMenu(game) {
     el('span', {}, `Day ${st.data.day}`), el('span', { class: 'dot' }, '·'), el('span', {}, formatPlayTime(st.data.playTime)),
   ]);
   tag.style.setProperty('--gc', GEM_COL[slot] || '#f2c23a');
+  // (wave 9) the chronicle: the save stone's line as a vellum leaf in a tooled band, its gem a wax
+  // seal, an illuminated initial, a mole with his lantern in the margin
+  ensureTomeArt();
+  tag.classList.add('tm-chron');
+  vars(tag.querySelector('i'), { '--seal': sealCss(GEM_COL[slot] || '#f2c23a', 14, 'star') });
+  dropCap(tag.children[1], 'red');
+  const mole = vars(el('span', { class: 'tm-doodle tm-d-mole tm-chron-d', 'aria-hidden': 'true' }), { '--d': cssUrl(doodleURL('mole')) });
+  tag.append(mole);
   const hint = el('div', { class: 'pm-hint bk-outline' }, [el('kbd', {}, 'Esc'), ' resume']);
   const box = el('div', { class: 'pm-box' }, [col, tag, hint]);
   let menu = null;

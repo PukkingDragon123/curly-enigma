@@ -1,7 +1,8 @@
-// The dialogue box (game.ui.tutor): a carved oak board with brass corner brackets, the speaker's
-// live 3D portrait (src/gfx/portrait3d.js: the real rig, breathing, blinking, talking, a face per
-// line) in an ornate brass frame, a red name ribbon, and a parchment where the words type themselves
-// out with the speaker's own voice blips. Every scene calls
+// The hint line (game.ui.tutor), wave 9: no board, no paper. The speaker's live 3D portrait
+// (src/gfx/portrait3d.js: the real rig, breathing, blinking, talking, a face per line) floats in an
+// ornate brass frame, their name beside it as a small floating title, and the words float as crisp
+// outlined pixel letters that arrive one by one with the speaker's own voice blips and scatter into
+// voxel bits when the line is done (src/ui/floatType.js; tutor.css). Every scene calls
 //   game.ui.tutor?.say(html, { mood, key, wait, dur, name, who, place, sound, muffled })  → Promise
 //   game.ui.tutor?.hide(key?)        (hide the line; with a key, only that line)
 //   game.ui.tutor?.next()            (carry on, as the player would: first finishes the typing)
@@ -25,6 +26,7 @@ import { portrait3d } from '../gfx/portrait3d.js';
 import { randomSpec } from '../gfx/characters.js';
 import { installDialogArt } from './dialogArt.js';
 import { voiceBlip, breathAfter, STAR_VOICE } from './talkType.js';
+import { letterize, arrive, floatIn, ghost, bits } from './floatType.js';
 import { SHOPS } from '../data/shops.js';
 import './tutor.css';
 
@@ -32,6 +34,14 @@ export const MOODS = ['calm', 'happy', 'stern', 'proud', 'worried', 'laugh'];
 const EXPR_MOODS = new Set([...MOODS, 'neutral', 'surprised', 'sad', 'angry', 'smug', 'thinking', 'sleepy']);
 const EMOTE = { happy: 'emHappy', laugh: 'emLaugh', surprised: 'emSurprised', thinking: 'emThinking', worried: 'emWorried', stern: 'emStern', angry: 'emStern', proud: 'emProud', smug: 'emProud', sad: 'emSad' };
 const isTouch = () => document.documentElement.classList.contains('is-touch');
+/** The bits a speaker's words scatter into (by their material, materialOf). */
+const BITS = {
+  forge: ['#fff0c0', '#ffd27a', '#ff9a3a', '#e8602a'],
+  ledger: ['#f4ffe8', '#c8f0a8', '#8ac86a', '#ffd27a'],
+  journal: ['#ffffff', '#cfeaff', '#8ac4f0', '#ffd27a'],
+  kraft: ['#fff2d6', '#f2c890', '#d08a48', '#ff9a3a'],
+  parch: ['#fff6e0', '#f0d8a8', '#ffd27a', '#e8a050'],
+};
 const hashName = (s) => { let h = 7; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
 
 /** The speaker for a line: a portrait cast (an unknown name gets a townsfolk of its own). */
@@ -81,13 +91,13 @@ export class Tutor {
     this.nameEl = el('span', { class: 'tt-name' });
     this.plate = el('div', { class: 'tt-plate', 'aria-hidden': 'true' }, [this.nameEl]);
     this.textEl = el('div', { class: 'tt-text' });
-    this.nextEl = el('div', { class: 'tt-next', 'aria-hidden': 'true' }, [el('kbd', {}, 'E'), el('span', { class: 'tt-tap' }, 'tap'), el('i', { class: 'tt-arrow' })]);
+    this.nextEl = el('span', { class: 'tt-next', 'aria-hidden': 'true' }, [el('kbd', {}, 'E'), el('span', { class: 'tt-tap' }, 'tap'), el('i', { class: 'tt-arrow' })]);
     this.quill = el('i', { class: 'tt-quill', 'aria-hidden': 'true' });
     this.wick = el('i', { class: 'tt-wick', 'aria-hidden': 'true' });
-    this.body = el('div', { class: 'tt-body' }, [this.textEl, this.nextEl, this.quill, this.wick]);
+    this.nextEl.querySelector('.tt-tap').classList.add('ft-ol');
+    this.body = el('div', { class: 'tt-body' }, [this.plate, this.textEl, this.nextEl, this.quill, this.wick]);
     this.card = el('div', { class: 'tt-card interactive', role: 'status', 'aria-live': 'polite' }, [
       el('div', { class: 'tt-face' }, [this.frameEl, el('i', { class: 'tt-glass' }), this.emoteEl]),
-      this.plate,
       this.body,
     ]);
     this.el = el('div', { class: 'tutor', hidden: true }, [this.card]);
@@ -139,7 +149,7 @@ export class Tutor {
       const changed = c.html !== html;
       if (c.mood !== mood) this.setMood(mood);
       c.wait = !!opts.wait;
-      if (changed) { c.html = html; this.typeIn(html); this.face?.talk(true); }
+      if (changed) { c.html = html; this.typeIn(html, true); this.face?.talk(true); }
       c.t = 0;
       c.dur = this.durFor(html, opts);
       this.el.classList.toggle('waits', c.wait);
@@ -158,7 +168,8 @@ export class Tutor {
     const line = { key: opts.key || null, html, mood, wait: !!opts.wait, resolve, promise, t: 0, typed: false, dur: 0, name, voice: opts.sound !== false, muffled, cast, vo: cast?.voice || STAR_VOICE };
     line.dur = this.durFor(html, opts);
     this.cur = line;
-    this.nameEl.textContent = line.name;
+    // the name drops in letter by letter (a following line by the same speaker keeps it)
+    if (!wasUp || this.nameEl.textContent !== line.name) floatIn(this.nameEl, line.name, { stagger: 0.035, delay: 0.08, max: 0.4 });
     this.card.dataset.who = cast?.key?.split(':')[0] || 'oldstar';
     this.card.dataset.mat = muffled ? 'forge' : materialOf(cast?.key || opts.who);
     clearTimeout(this.outT);
@@ -180,7 +191,7 @@ export class Tutor {
     this.delayT = wasUp ? 0.08 : 0.2;
     this.ensureFace(cast);
     this.setMood(mood, !wasUp);
-    this.typeIn(html);
+    this.typeIn(html, wasUp);
     this.game.audio?.play?.('page', { vol: 0.25 });
     if (mood === 'laugh' && line.voice) this.game.audio?.play?.('laugh', { pitch: 300 });
     this.stepAt = performance.now();
@@ -219,7 +230,9 @@ export class Tutor {
       this.cur = null;
       this.face?.talk(false);
       if (!replaced) {
+        // the words scatter into voxel bits (tutor.css .tutor.out), the portrait shrinks away
         this.el.classList.add('out');
+        bits(this.card, { colors: BITS[this.card.dataset.mat] });
         const el0 = this.el;
         clearTimeout(this.outT);
         this.outT = setTimeout(() => {
@@ -231,7 +244,7 @@ export class Tutor {
           this.face?.dispose();
           this.face = null;
           this.shownMood = null;
-        }, 240);
+        }, 900);
       }
     }
     c.resolve?.();
@@ -278,25 +291,16 @@ export class Tutor {
   }
 
   // ------------------------------------------------------------ typing
-  typeIn(html) {
+  typeIn(html, swap = false) {
     const t = this.textEl;
-    t.innerHTML = html;
-    // every text node: full text kept aside, shown a little at a time (layout reserved by a ghost span)
-    this.nodes = [];
-    const walk = (n) => {
-      for (const ch of [...n.childNodes]) {
-        if (ch.nodeType === 3) {
-          const full = ch.textContent;
-          if (!full) continue;
-          const shown = document.createTextNode('');
-          const ghost = el('span', { class: 'tt-ghost' }, full);
-          ch.replaceWith(shown, ghost);
-          this.nodes.push({ shown, ghost, full });
-        } else if (ch.nodeType === 1) walk(ch);
-      }
-    };
-    walk(t);
-    this.flat = this.nodes.map((n) => n.full).join('');
+    // words already up (a new line replacing them) scatter where they are as the new ones come
+    if (swap) ghost(t, { colors: BITS[this.card.dataset.mat] });
+    // every letter its own span, hidden till it's typed (the layout is the whole line's from the start)
+    const L = letterize(t, html);
+    t.append(this.nextEl); // ("carry on" waits right after the last word)
+    this.cells = L.cells;
+    this.shownN = 0;
+    this.flat = L.flat;
     this.total = this.flat.length;
     this.typedN = 0;
     this.blipT = 0;
@@ -307,21 +311,18 @@ export class Tutor {
   }
 
   revealAll() {
-    for (const n of this.nodes || []) { n.shown.textContent = n.full; n.ghost.textContent = ''; }
+    this.showChars(this.total);
     this.typedN = this.total;
     if (this.cur) this.cur.typed = true;
     this.el.classList.add('typed');
     this.face?.talk(false);
   }
 
+  /** The first k letters are up (the new ones arrive). */
   showChars(k) {
-    let left = k;
-    for (const n of this.nodes) {
-      const take = Math.max(0, Math.min(n.full.length, left));
-      n.shown.textContent = n.full.slice(0, take);
-      n.ghost.textContent = n.full.slice(take);
-      left -= n.full.length;
-    }
+    if (!this.cells || k <= this.shownN) return;
+    arrive(this.cells, this.shownN, k, { stagger: 0.008, max: 0.3 });
+    this.shownN = k;
   }
 
   // ------------------------------------------------------------ frame

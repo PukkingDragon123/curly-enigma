@@ -1,10 +1,15 @@
 // The first-person crosshair: a small pixel reticle that changes with what you're looking at
-// (rock, ore, a creature, something to use), a name tag under it and a ring for hold actions.
+// (rock, ore, a creature, something to use), its name floating under it and a ring for hold
+// actions. Wave 9: the name has no tag behind it: outlined pixel letters that drop in when you look
+// at something new while the old name scatters into voxel bits (src/ui/floatType.js).
 import { el } from '../core/util.js';
+import { floatIn, ghost } from './floatType.js';
 import { Px } from './uiArt.js';
 import { DSPR, progressRing } from './deepArt.js';
 
 const KINDS = new Set(['none', 'rock', 'ore', 'enemy', 'use']);
+const BITS = { ore: ['#fff6c4', '#ffe08a', '#d9a030'], enemy: ['#ffe0d0', '#ffb4a0', '#e8502a'], use: ['#ffffff', '#c8f4ff', '#7fc0f0'] };
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
 export class Crosshair {
   constructor(ui) {
@@ -34,12 +39,11 @@ export class Crosshair {
     const text = o.label ? String(o.label) : '';
     if (text !== this.text) {
       this.text = text;
+      // the old name scatters where it was (after the live one in the page: tests read the first)
+      if (!this.label.hidden) ghost(this.label, { after: true, n: 6, sample: 6, life: 0.5, rise: 14, spread: 16, colors: BITS[this.kind] });
       this.label.hidden = !text;
-      this.label.innerHTML = '';
-      if (text) {
-        if (kind === 'use') this.label.append(el('kbd', {}, 'E'));
-        this.label.append(document.createTextNode(text));
-      }
+      if (text) floatIn(this.label, `${kind === 'use' ? '<kbd>E</kbd>' : ''}${esc(text)}`, { stagger: 0.016, max: 0.25 });
+      else this.label.textContent = '';
     }
     const pr = Number(o.progress) || 0;
     const q = pr > 0.001 ? Math.round(Math.min(1, pr) * 24) : 0;

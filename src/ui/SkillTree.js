@@ -20,6 +20,7 @@ import { skillIconURL, lineIconURL } from './skillIcons.js';
 import { SKC, installSkillChrome, paintPipes, FRAME_Y } from './skillChrome.js';
 import { DL, installDialogArt } from './dialogArt.js';
 import { put } from './common.js';
+import { bindCover, dropCap, inkIn, margins, ensureTomeArt } from './tomeFx.js'; // the Wave 9 book kit (vellum side leaf, initials, ink)
 import './skilltree.css';
 
 const isTouch = () => document.documentElement.classList.contains('is-touch');
@@ -201,8 +202,10 @@ export function renderSkills(host, game, opts = {}) {
   const goBtn = el('button', { class: 'skt-btn go', type: 'button', title: 'Keep the picked skills (Enter)', onclick: () => confirm() }, [el('i', { class: 'skt-ico' }), el('span', {}, 'Confirm')]);
   const foot = el('footer', { class: 'skt-foot' }, [pts, hint, el('div', { class: 'skt-acts' }, [undoBtn, goBtn])]);
   const tip = el('div', { class: 'skt-tip', role: 'tooltip', hidden: true });
-  const root = el('div', { class: 'skt' + (inBook ? ' in-book' : '') }, [head, tabs, main, foot, tip]);
+  const root = el('div', { class: 'skt tm-skt' + (inBook ? ' in-book' : '') }, [head, tabs, main, foot, tip]);
   host.append(root);
+  ensureTomeArt();
+  margins(side, 'skt', { doodle: false });
 
   // ---------------- tabs
   const tabEls = {};
@@ -251,7 +254,7 @@ export function renderSkills(host, game, opts = {}) {
     card.innerHTML = '';
     const next = info.max ? 'Mastered' : `${Math.floor(info.into)} / ${info.need} XP`;
     put(card,
-      el('div', { class: 'skt-card-top' }, [el('b', {}, L.name), el('span', { class: 'skt-lv' }, `Lv ${info.level}`)]),
+      el('div', { class: 'skt-card-top' }, [dropCap(el('b', {}, L.name), 'gold'), el('span', { class: 'skt-lv' }, `Lv ${info.level}`)]),
       el('div', { class: 'skt-xp', title: next }, [el('i', { style: { width: (info.frac * 100).toFixed(1) + '%' } })]),
       el('small', { class: 'skt-card-next' }, [el('span', {}, info.max ? 'Every point this line can give, given.' : `Lv ${info.level + 1}: +${pointsForLevel(info.level + 1)} point${pointsForLevel(info.level + 1) > 1 ? 's' : ''}`), el('em', {}, next)]));
     know.innerHTML = '';
@@ -607,6 +610,8 @@ export function renderSkills(host, game, opts = {}) {
     if (!got.length) { au.play('ui_error'); renderAll(); return false; }
     au.play('clang');
     renderAll(true);
+    // what you now know writes itself onto the side leaf
+    know.querySelectorAll('h4, .skt-fxl li').forEach((n, i) => setTimeout(() => { if (!disposed) inkIn(n, { dur: 520, quill: i === 0, audio: i === 0 ? au : null, host: side }); }, 240 + i * 120));
     const here = got.filter((id) => NODE[id].line === line);
     here.forEach((id, i) => setTimeout(() => { if (!disposed) celebrate(id); }, 90 + i * 150));
     const lit = geo ? geo.edges.filter((e) => here.includes(e.c) && S().nodes[e.p]).map((e) => e.p + '>' + e.c) : [];
@@ -778,6 +783,7 @@ export function renderSkills(host, game, opts = {}) {
 export function openSkills(game, line) {
   const ui = game.ui;
   const wrap = el('div', { class: 'skt-wrap' });
+  bindCover(wrap); // iron corners and clasps on the brass frame (src/ui/tomeFx.js)
   let ctl = null;
   const h = ui.openPanel({ body: wrap, className: 'skt-panel', onClose: () => ctl?.dispose() });
   h.kind = 'skills';

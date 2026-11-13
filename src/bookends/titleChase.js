@@ -6,9 +6,15 @@
 // was; he jinks aside, hops a root; it skids, barges through more mushrooms (a cap goes flying),
 // and they're gone into the dark on the far side. A pause; the knocked caps regrow; again. Each
 // loop varies: the direction, the raptor's colours, speeds, where it lunges, which way he jinks.
+// He's terrified: eyes popped wide, panting open-mouthed, his head bobbing with each gasp, sweat
+// beading on his brow and running off him (tiny voxel droplets, 1/220 m, that flick away behind
+// him and splash in the grass), and the grass parts round both of them (titleVeg.js pushers).
+// The title's opening (titleIntro.js) is run 0 on a fixed script (startIntro): the raptor keeps
+// its distance, then closes on cue; after that it's an ordinary run.
 //
 //   const ch = makeChase({ cave, lite, sfx });  scene.add(ch.group)
 //   ch.update(dt, camera)   ch.hold = true (no new run starts: the nest is open)
+//   ch.startIntro()  ch.live() → { mole, raptor } head positions (or null between runs)
 //   ch.jump(t, loop)        (debug) restart a run and play it to t seconds
 //   ch.dispose()
 import * as THREE from 'three';
@@ -19,9 +25,11 @@ import { VS as RVS } from '../deep/enemies/vox.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { clamp } from '../core/util.js';
 import { Particles, SHAPE } from './fx.js';
-import { CHASE_PATHS, ROOT_ARCS, floorH } from './titleCave.js';
-import { caveToon } from './titleCaveFx.js';
+import { CHASE_PATHS, ROOT_ARCS, floorH, route } from './titleCave.js';
+import { caveToon, glowHex, lit, meshGlow } from './titleCaveFx.js';
 import { RAMP } from '../deep/veg/plants.js';
+import { VoxelGrid } from './vox.js';
+import { INTRO, introGap } from './titleIntro.js';
 
 const TAU = Math.PI * 2;
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -41,30 +49,6 @@ export function raptorModel(v) {
 export function releaseRaptorModels() {
   for (const M of RAPTORS.values()) for (const g of Object.values(M)) { if (g && g.isBufferGeometry) g.dispose(); else if (Array.isArray(g)) g.forEach((x) => x.isBufferGeometry && x.dispose()); }
   RAPTORS.clear();
-}
-
-/** A route as an arc-length curve over the floor. */
-function route(pts) {
-  const curve = new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 0, z)), false, 'centripetal');
-  const L = curve.getLength();
-  const _p = new THREE.Vector3(), _t = new THREE.Vector3();
-  return {
-    L,
-    at(s, out = {}) {
-      const u = clamp(s / L, 0, 1);
-      curve.getPointAt(u, _p); curve.getTangentAt(u, _t);
-      // (before the start and past the end it runs straight on)
-      const over = s < 0 ? s : s > L ? s - L : 0;
-      out.x = _p.x + _t.x * over; out.z = _p.z + _t.z * over; out.tx = _t.x; out.tz = _t.z;
-      return out;
-    },
-    /** Arc length of the point nearest (x, z). */
-    nearest(x, z) {
-      let best = 0, bd = 1e9;
-      for (let s = 0; s <= L; s += 0.1) { const p = this.at(s); const d = (p.x - x) ** 2 + (p.z - z) ** 2; if (d < bd) { bd = d; best = s; } }
-      return { s: best, d: Math.sqrt(bd) };
-    },
-  };
 }
 
 /** The raptor, assembled from the mine's model the way Raptor (src/deep/enemies/dinos.js) does it. */
@@ -150,6 +134,84 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     for (let i = 0; i < n; i++) dust.spawn({ pos: [x + R(-0.08, 0.08), y + 0.02, z + R(-0.08, 0.08)], vel: [R(-0.5, 0.5) * k, R(0.2, 0.7) * k, R(-0.5, 0.5) * k], life: R(0.4, 0.8), color: [0x3a3028, 0x4a3e32, 0x2e2620][i % 3], size: R(0.018, 0.03), shape: SHAPE.square, gravity: 3, drag: 2 });
   };
 
+  // ---- sweat: voxel beads (1/220 m: a dark-bottomed drop, a pale tip, a glint) that gather on his
+  // brow, run down his face and fly off him as he runs
+  const SWEAT_N = lite ? 36 : 60;
+  const sweatGeo = (() => {
+    const g = new VoxelGrid(3, 5, 3);
+    const D = lit(0x4a9ad8), B = lit(0x8ad0f6), L = lit(0xc4ecff), W = glowHex(0xf6feff, 2);
+    g.set(1, 0, 1, D);
+    for (const [x, z] of [[1, 1], [0, 1], [2, 1], [1, 0], [1, 2]]) g.set(x, 1, z, B);
+    g.set(0, 2, 1, W); g.set(1, 2, 1, B); g.set(1, 2, 0, L); g.set(2, 1, 1, D);
+    g.set(1, 3, 1, L);
+    return meshGlow(g, { scale: 1 / 220, pivot: [1.5, 1.5, 1.5] });
+  })();
+  const sweatMat = caveToon({ emissive: 0.55, key: 'sweat' });
+  const sweat = new THREE.InstancedMesh(sweatGeo, sweatMat, SWEAT_N);
+  sweat.frustumCulled = false;
+  sweat.count = 0;
+  sweat.name = 'sweat';
+  group.add(sweat);
+  const drops = [];
+  const _dm = new THREE.Matrix4(), _dq = new THREE.Quaternion(), _dv = new THREE.Vector3(), _ds = new THREE.Vector3(), _dp = new THREE.Vector3();
+  const UP = new THREE.Vector3(0, 1, 0);
+  let sweatAcc = 0;
+  const A = mole.anchors;
+  const spawnDrop = () => {
+    if (drops.length >= SWEAT_N) return;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    // on his brow (just in front of it) and down his temples (just outside them), in his head's frame
+    const brow = Math.random() < 0.55;
+    drops.push({
+      cling: R(0.08, 0.3), t: 0, side,
+      l: brow ? new THREE.Vector3(side * A.headW * R(0.05, 0.3), A.eyes.y + A.headH * R(0.12, 0.3), A.eyes.z + 0.012)
+        : new THREE.Vector3(side * (A.headW * 0.5 + 0.01), A.eyes.y + A.headH * R(-0.05, 0.25), A.eyes.z * R(0.1, 0.6)),
+      p: new THREE.Vector3(), v: new THREE.Vector3(), s: R(1.3, 1.9), fly: false,
+    });
+  };
+  const stepSweat = (dt, rate, vx, vz) => {
+    sweatAcc += dt * rate;
+    while (sweatAcc >= 1) { sweatAcc -= 1; spawnDrop(); }
+    mole.root.updateMatrixWorld(true);
+    let n = 0;
+    for (let i = drops.length - 1; i >= 0; i--) {
+      const d = drops[i];
+      d.t += dt;
+      if (!d.fly) {
+        // running down his face
+        d.l.y -= dt * 0.16;
+        d.p.copy(d.l);
+        mole.neck.localToWorld(d.p);
+        if (d.t >= d.cling) {
+          // flung off: his own speed, out to the side, up a little, back a little
+          d.fly = true;
+          _ds.set(-vz, 0, vx).normalize();
+          d.v.set(vx * R(0.6, 0.85), R(0.5, 1.2), vz * R(0.6, 0.85)).addScaledVector(_ds, -d.side * R(0.4, 1.0));
+        }
+      } else {
+        d.v.y -= 9.8 * dt;
+        d.v.multiplyScalar(Math.exp(-0.6 * dt));
+        d.p.addScaledVector(d.v, dt);
+        const gy = floorH(d.p.x, d.p.z);
+        if (d.p.y < gy + 0.01) {
+          for (let k = 0; k < 2; k++) dust.spawn({ pos: [d.p.x, gy + 0.03, d.p.z], vel: [R(-0.3, 0.3), R(0.3, 0.7), R(-0.3, 0.3)], life: R(0.2, 0.35), color: 0xc8eeff, size: 0.012, shape: SHAPE.square, gravity: 6 });
+          drops.splice(i, 1);
+          continue;
+        }
+      }
+      if (d.t > 2.5) { drops.splice(i, 1); continue; }
+    }
+    for (const d of drops) {
+      if (n >= SWEAT_N) break;
+      if (d.fly) { _dv.copy(d.v).normalize().negate(); _dq.setFromUnitVectors(UP, _dv); } else _dq.identity();
+      const sc = d.s * (d.t < 0.06 ? d.t / 0.06 : 1);
+      _dm.compose(d.p, _dq, _ds.set(sc, sc * (d.fly ? 1.25 : 1), sc));
+      sweat.setMatrixAt(n++, _dm);
+    }
+    sweat.count = n;
+    sweat.instanceMatrix.needsUpdate = true;
+  };
+
   // ---- what gets knocked about
   const breaks = cave?.breakables || [];
   const flying = [];
@@ -181,10 +243,10 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
   // ---- the runs
   let loopN = 0, run = null, t = 0, waitT = 1.4, disposed = false;
   const _p = {}, _q = {};
-  const newRun = (n) => {
-    const variant = n % 2;
+  const newRun = (n, intro = false) => {
+    const variant = intro ? 0 : n % 2;
     const rt = routes[variant];
-    const vm = R(3.3, 3.8);
+    const vm = intro ? INTRO.vm : R(3.3, 3.8);
     const vr0 = vm + R(0.7, 1.0);
     // where it lunges (and which way he jinks); where he hops the root
     const lungeAt = rt.L * R(0.38, 0.5);
@@ -198,19 +260,30 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
       const side = Math.sign((B.x - p.x) * -p.tz + (B.z - p.z) * p.tx) || 1;
       hits.push({ B, s: near.s, off: side * near.d, hit: false });
     }
+    if (intro) {
+      return {
+        n, variant, rt, vm, vr0: vm + 0.85, lungeAt: INTRO.lungeAt, jinkDir: 1, hopS: arc.d < 1.2 ? arc.s : -99, hits, intro: true, visFrom: -7,
+        colour: 0, t: 0, sm: INTRO.s0, gap: introGap(0), lunge: null, glances: [...INTRO.glances, (INTRO.lungeAt - INTRO.s0) / vm + 0.5], burst: false, ended: false,
+        skid: 0, stepPh: 0,
+      };
+    }
     return {
-      n, variant, rt, vm, vr0, lungeAt, jinkDir: Math.random() < 0.5 ? 1 : -1, hopS: arc.d < 1.2 ? arc.s : -99, hits,
+      n, variant, rt, vm, vr0, lungeAt, jinkDir: Math.random() < 0.5 ? 1 : -1, hopS: arc.d < 1.2 ? arc.s : -99, hits, visFrom: -1.2,
       colour: n % 3, t: 0, sm: -1.2, gap: R(3.4, 4.2), lunge: null, glances: [R(2.2, 3.5), lungeAt / vm + R(1.6, 2.6)], burst: false, ended: false,
       skid: 0, stepPh: 0,
     };
   };
-  const startRun = () => {
-    run = newRun(loopN++);
+  const startRun = (intro = false) => {
+    run = newRun(loopN++, intro);
     setColours(run.colour);
     legs.inited = false;
     e.vel.set(0, 0, 0);
     mole.root.visible = false; rap.root.visible = false;
     mole.play('run', run.vm / 1.45);
+    // terrified: eyes wide, gasping for breath
+    mole.setExpression('surprised', { body: false });
+    mole.talk(true);
+    drops.length = 0;
   };
   const endRun = () => {
     // (the next run's colouring is built now, in the quiet between runs)
@@ -218,6 +291,9 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     setTimeout(() => { if (!disposed) raptorModel(next); }, 400);
     run = null;
     mole.root.visible = false; rap.root.visible = false;
+    mole.talk(false);
+    drops.length = 0; sweat.count = 0;
+    if (cave) cave.pushers = [];
     lantern.intensity = 0;
     waitT = R(3.5, 6.5);
   };
@@ -279,6 +355,7 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
         if (!L.landed) { L.landed = true; sfx?.('chase_skid', { at: e.pos, vol: 1 }); kickDust(e.pos.x, e.pos.y, e.pos.z, 10, 1.5); }
       } else r.gap -= dt * (r.vr0 - r.vm) * 0.6;
     } else if (r.burst) r.gap -= dt * (r.vr0 - r.vm);
+    if (r.intro && r.t < INTRO.hold) r.gap = introGap(r.t); // (the opening's script)
     r.gap = Math.max(0.3, r.gap);
     const sr = r.sm - r.gap;
     // its line bends through the clumps near the route (it barges straight through them)
@@ -298,7 +375,7 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     rap.root.position.copy(e.pos);
     rap.root.rotation.y = e.yaw;
     rap.root.scale.setScalar(SIZE);
-    rap.root.visible = sr > -1.2;
+    rap.root.visible = sr > r.visFrom;
     if (!legs.inited) legs.reset();
     legs.update(dt);
     // its pose (as the mine's Raptor.animate)
@@ -326,8 +403,21 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     if (moleStepPh >= 1) { moleStepPh -= 1; if (hopY < 0.02) { sfx?.('chase_step', { at: mole.root.position, vol: 0.8 }); if (Math.random() < 0.5) kickDust(mx, my, mz, 2, 0.6); } }
     mole.update(dt);
     mole.root.rotation.y = mole.facing + twist;
+    // heaving for breath: the head bobs with each gasp, the shoulders hunch
+    const gasp = Math.sin(r.t * 8.5);
+    mole.neck.rotation.x += gasp * 0.07 - 0.05;
+    mole.hip.rotation.x += 0.08 + gasp * 0.025;
     mole.root.updateMatrixWorld(true);
     lantern.position.copy(LANTERN).applyMatrix4(mole.root.matrixWorld);
+    // sweat pouring off him (more in the opening's close-up)
+    if (mole.root.visible) stepSweat(dt, r.intro && r.t < INTRO.dur ? 15 : 7, _p.tx * r.vm, _p.tz * r.vm);
+    // the grass parts round them
+    if (cave) {
+      const P = cave.pushers || (cave.pushers = []);
+      P.length = 0;
+      if (mole.root.visible) P.push({ x: mx, y: my, z: mz, r: 0.42 });
+      if (rap.root.visible) P.push({ x: rx, y: ry - jumpY, z: rz, r: 0.75 });
+    }
     // gone into the dark on the far side
     if (sr > rt.L + 1.5) endRun();
   }
@@ -372,10 +462,20 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     }
   }
 
+  const _lm = new THREE.Vector3(), _lr = new THREE.Vector3();
   return {
     group, mole, raptor: rap,
     hold: false,
     get running() { return !!run; },
+    get intro() { return !!run?.intro; },
+    /** The opening's run (run 0 on its script), from its first moment. */
+    startIntro() { waitT = 0; startRun(true); stepRun(1 / 60); },
+    /** Where their heads are now (for the opening's camera), or null between runs. */
+    live() {
+      if (!run) return null;
+      rap.neck.updateWorldMatrix(true, false);
+      return { mole: mole.neck.localToWorld(_lm.copy(mole.anchors.eyes)), raptor: rap.neck.localToWorld(_lr.set(0, 3 * RVS, 4 * RVS)), t: run.t };
+    },
     update(dt, camera, heightPx = 600) {
       t += dt;
       if (run) stepRun(dt);
@@ -387,21 +487,22 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
       dust.update(dt);
     },
     /** (debug) start run n afresh and play it to t seconds. */
-    jump(time = 3, n = loopN) {
+    jump(time = 3, n = loopN, intro = false) {
       loopN = n;
-      startRun();
+      startRun(intro);
       const step = 1 / 30;
       for (let s = 0; s < time && run; s += step) { stepRun(step); stepBits(step); puffs.update(step); dust.update(step); }
     },
     /** End the current run at once (the nest is opening and wants a quiet cave). */
     stop() { if (run) endRun(); },
     lights: [lantern],
-    materials: [mat, eyeMat],
+    materials: [mat, eyeMat, sweatMat],
     dispose() {
       disposed = true;
       mole.dispose?.();
       releaseRaptorModels();
       puffs.geo.dispose(); puffs.mat.dispose(); dust.geo.dispose(); dust.mat.dispose();
+      sweatGeo.dispose();
       for (const f of flying) f.o.removeFromParent();
     },
   };

@@ -15,6 +15,10 @@
 //                        mesh in the same format
 //   withGlow(geo, v)     give a geometry without glow a flat aGlow (so it can be merged)
 //   makeMistSheet(...)   a drifting sheet of mist in dithered cells (pixel art, no soft edge)
+//   GLSL_SUN             caSun(world, normal): the sun pouring down through the roof's openings
+//                        (CF.uShaft: up to 8 openings; dappled by the leaves over them, stepped to
+//                        the 1/16 m voxel grid, shaded by the giants' caps, CF.uCap); every cave
+//                        material adds it, and so do the foliage boxes (titleVeg.js)
 import * as THREE from 'three';
 import { voxelMaterial, VoxelGrid } from '../gfx/Voxel.js';
 import { meshVoxGreedy } from './vox.js';
@@ -31,7 +35,92 @@ export const CF = {
   uMistMax: { value: 0.3 },
   uFogSteps: { value: 12 },
   uDraught: { value: new THREE.Vector2(0.7, 0.3) },
+  // the sun through the roof's openings (titleCave.js SHAFTS sets them; 0 radius = none)
+  uSunDir: { value: new THREE.Vector3(-0.32, 1, -0.5).normalize() }, // toward the light
+  uSunU: { value: new THREE.Vector3(1, 0, 0) },
+  uSunV: { value: new THREE.Vector3(0, 0, 1) },
+  uSunCol: { value: new THREE.Color(0xffd290).multiplyScalar(2.4) },
+  uShaft: { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 0, 0)) },
+  uCap: { value: Array.from({ length: 6 }, () => new THREE.Vector4(0, 0, 0, 0)) },
+  uSkyCol: { value: new THREE.Color(0x9ab894).multiplyScalar(0.5) }, // daylight spilling in round the openings
 };
+/** Point the sun (toward the light) and refresh the axes across its shafts. */
+export function setSun(dir) {
+  const D = CF.uSunDir.value.copy(dir).normalize();
+  const U = CF.uSunU.value.set(0, 1, 0).cross(D);
+  if (U.lengthSq() < 1e-6) U.set(1, 0, 0);
+  U.normalize();
+  CF.uSunV.value.crossVectors(D, U).normalize();
+}
+setSun(CF.uSunDir.value);
+
+/**
+ * The sun down the shafts. caSun(w, n): how much sun lights the voxel face at w (normal n), in
+ * three dithered steps; the light pool edges step with the 1/16 m voxels. (Needs GLSL_BAYER and
+ * uTime.)
+ */
+export const GLSL_SUN = /* glsl */`
+uniform vec3 uSunDir;
+uniform vec3 uSunU;
+uniform vec3 uSunV;
+uniform vec3 uSunCol;
+uniform vec4 uShaft[8];
+uniform vec4 uCap[6];
+float caHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float caVN(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(caHash(i), caHash(i + vec2(1.0, 0.0)), f.x), mix(caHash(i + vec2(0.0, 1.0)), caHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float caSunAt(vec3 w) {
+  float s = 0.0;
+  for (int i = 0; i < 8; i++) {
+    vec4 S = uShaft[i];
+    if (S.w <= 0.0) continue;
+    vec3 d = w - S.xyz;
+    float t = dot(d, uSunDir);
+    if (t > 0.4) continue; // (above the opening)
+    vec2 q = vec2(dot(d, uSunU), dot(d, uSunV));
+    float r = length(q) / S.w;
+    if (r > 1.25) continue;
+    // the leaves over the opening: dapples that drift as the canopy moves
+    float leaf = caVN(q * 2.1 + vec2(uTime * 0.06, uTime * 0.045) + S.xz * 3.1) * 0.62 + caVN(q * 4.7 - vec2(uTime * 0.035, -uTime * 0.05)) * 0.38;
+    float k = (1.0 - smoothstep(0.6, 1.05, r + (leaf - 0.5) * 0.45)) * (0.35 + 0.65 * smoothstep(0.2, 0.42, leaf + 0.22 * (1.0 - r)));
+    s = max(s, k);
+  }
+  if (s <= 0.0) return 0.0;
+  // the giants' caps throw their shade
+  for (int i = 0; i < 6; i++) {
+    vec4 C = uCap[i];
+    if (C.w <= 0.0 || w.y > C.y) continue;
+    vec2 e = w.xz + uSunDir.xz * ((C.y - w.y) / uSunDir.y) - C.xz;
+    if (dot(e, e) < C.w * C.w) return 0.0;
+  }
+  return s;
+}
+// the day spilling in: bright up in the openings' funnels, a soft lift on everything under them
+uniform vec3 uSkyCol;
+float caSky(vec3 w, vec3 n) {
+  float k = 0.0;
+  for (int i = 0; i < 8; i++) {
+    vec4 S = uShaft[i];
+    if (S.w <= 0.0) continue;
+    float d = length(w.xz - S.xz) / S.w;
+    if (d > 3.6) continue;
+    float up = smoothstep(S.y - 9.0, S.y - 0.4, w.y);
+    k = max(k, (1.0 - smoothstep(0.7, 3.6, d)) * (0.3 + 1.7 * up * up));
+  }
+  k *= 0.75 + 0.25 * abs(n.y);
+  return floor(k * 4.0 + bk_bayer4(gl_FragCoord.xy) * 0.999) / 4.0;
+}
+float caSun(vec3 w, vec3 n) {
+  vec3 cell = (floor(w * 16.0 - n * 0.45) + 0.5) / 16.0;
+  float s = caSunAt(cell);
+  if (s <= 0.0) return 0.0;
+  float lam = clamp(dot(n, uSunDir) * 0.8 + 0.25, 0.0, 1.0);
+  return floor(s * lam * 3.0 + bk_bayer4(gl_FragCoord.xy) * 0.999) / 3.0;
+}
+`;
 
 /** Glow strength per level (the veg models' 1..3). */
 export const GLOW = [0, 0.5, 1.15, 2.1];
@@ -46,15 +135,17 @@ const cache = new Map();
  * Patch a toon shader into the cave's (see caveToon). Exported so other materials (the eggs) can
  * build on it: they find the CAVE_EMIT marker comment at the end of the emissive code to add their own.
  */
-export function patchCave(sh, { emissive = 0, sway = 0, glow = 1 } = {}) {
+export function patchCave(sh, { emissive = 0, sway = 0, glow = 1, sun = 1 } = {}) {
   Object.assign(sh.uniforms, CF);
-  sh.vertexShader = 'attribute float aGlow;\nvarying float vCaGlow;\nvarying vec3 vCaW;\nuniform float uTime;\nuniform vec2 uDraught;\n' + sh.vertexShader.replace('#include <project_vertex>', /* glsl */`
+  sh.vertexShader = 'attribute float aGlow;\nvarying float vCaGlow;\nvarying vec3 vCaW;\nvarying vec3 vCaN;\nuniform float uTime;\nuniform vec2 uDraught;\n' + sh.vertexShader.replace('#include <project_vertex>', /* glsl */`
     #ifdef USE_INSTANCING
     vec4 caW = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
     vec3 caO = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    vCaN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal);
     #else
     vec4 caW = modelMatrix * vec4(transformed, 1.0);
     vec3 caO = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    vCaN = normalize(mat3(modelMatrix) * objectNormal);
     #endif
     ${sway ? /* glsl */`
     {
@@ -67,7 +158,7 @@ export function patchCave(sh, { emissive = 0, sway = 0, glow = 1 } = {}) {
     vec4 mvPosition = viewMatrix * caW;
     gl_Position = projectionMatrix * mvPosition;`);
   let fs = sh.fragmentShader;
-  fs = fs.replace('#include <common>', '#include <common>\nvarying float vCaGlow;\nvarying vec3 vCaW;\nuniform float uTime;\nuniform float uGlowGain;\nuniform vec3 uMistCol;\nuniform float uMistDen;\nuniform float uMistFall;\nuniform float uMistBase;\nuniform float uMistMax;\nuniform float uFogSteps;\n' + GLSL_BAYER);
+  fs = fs.replace('#include <common>', '#include <common>\nvarying float vCaGlow;\nvarying vec3 vCaW;\nvarying vec3 vCaN;\nuniform float uTime;\nuniform float uGlowGain;\nuniform vec3 uMistCol;\nuniform float uMistDen;\nuniform float uMistFall;\nuniform float uMistBase;\nuniform float uMistMax;\nuniform float uFogSteps;\n' + GLSL_BAYER + GLSL_SUN);
   // glowing voxels light themselves (a slow breath that drifts across the cave)
   fs = fs.replace('#include <emissivemap_fragment>', /* glsl */`#include <emissivemap_fragment>
     if (vCaGlow > 0.001) {
@@ -75,6 +166,7 @@ export function patchCave(sh, { emissive = 0, sway = 0, glow = 1 } = {}) {
       totalEmissiveRadiance += diffuseColor.rgb * vCaGlow * uGlowGain * caB;
     }
     ${emissive ? `totalEmissiveRadiance += diffuseColor.rgb * ${emissive.toFixed(3)};` : ''}
+    ${sun ? `{ vec3 caN = normalize(vCaN); totalEmissiveRadiance += ((diffuseColor.rgb + 0.035) * uSunCol * caSun(vCaW, caN) + (diffuseColor.rgb + 0.01) * uSkyCol * caSky(vCaW, caN)) * ${sun.toFixed(2)}; }` : ''}
     /*CAVE_EMIT*/`);
   // the air: dithered distance fog (the scene's FogExp2) and the mist lying on the floor
   fs = fs.replace('#include <fog_fragment>', /* glsl */`
@@ -101,14 +193,14 @@ export function patchCave(sh, { emissive = 0, sway = 0, glow = 1 } = {}) {
  * The cave material. emissive: a flat self-light (the signpost's painted words read in the dark);
  * sway: how far hanging things swing (m at 1 m below their root).
  */
-export function caveToon({ emissive = 0, sway = 0, glow = 1, tint = null, key = '' } = {}) {
-  const ck = `${emissive}|${sway}|${glow}|${tint}|${key}`;
+export function caveToon({ emissive = 0, sway = 0, glow = 1, tint = null, key = '', sun = 1 } = {}) {
+  const ck = `${emissive}|${sway}|${glow}|${tint}|${key}|${sun}`;
   if (cache.has(ck)) return cache.get(ck);
   const m = voxelMaterial('toon').clone();
   m.userData = { caveKey: ck };
   if (tint) m.color.set(tint);
-  m.onBeforeCompile = (sh) => patchCave(sh, { emissive, sway, glow });
-  m.customProgramCacheKey = () => 'cave-toon2-' + ck;
+  m.onBeforeCompile = (sh) => patchCave(sh, { emissive, sway, glow, sun });
+  m.customProgramCacheKey = () => 'cave-toon3-' + ck;
   cache.set(ck, m);
   return m;
 }

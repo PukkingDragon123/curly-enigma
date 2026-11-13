@@ -7,6 +7,7 @@
 import { el, clamp } from '../core/util.js';
 import { installPackArt } from './packArt.js';
 import { hotbarOf } from '../core/hotbar.js';
+import { floatIn, ghost } from './floatType.js'; // the held item's name floats (wave 9: no tag behind it)
 
 
 export class Belt {
@@ -87,7 +88,14 @@ export class Belt {
     }
     const lab = slots[sel]?.label;
     const show = lab && !/^[\s\-–—]*$/.test(lab);
-    this.label.textContent = show ? lab : '';
+    const text = show ? lab : '';
+    if (text !== this.labelText) {
+      // the old name scatters into bits, the new one's letters drop in (src/ui/floatType.js)
+      if (this.labelText && !this.label.hidden) ghost(this.label, { n: 6, sample: 6, life: 0.55, rise: 14, spread: 18 });
+      this.labelText = text;
+      if (text) floatIn(this.label, text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]), { stagger: 0.02, max: 0.3 });
+      else this.label.textContent = '';
+    }
     this.label.hidden = !show;
   }
 
