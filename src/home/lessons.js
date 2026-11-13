@@ -289,7 +289,7 @@ export class HomeLessons {
     const lump = rockyLump(1);
     star.carry(lump);
     lump.rotation.set(0.2, 0.5, 0);
-    lump.scale.setScalar(2.6);
+    lump.scale.setScalar(3.4);
     // (held up between you, just under his eyes and toward the camera: never behind his snout)
     // (your own eyes are the camera here: the scripted view this.cam, not a talk shot round his side)
     const eyeAt = () => (this.cam ? new THREE.Vector3(this.cam.x, this.cam.y, this.cam.z) : this.camera.getWorldPosition(new THREE.Vector3()));
@@ -297,15 +297,16 @@ export class HomeLessons {
       const h = star.head(new THREE.Vector3()), c = eyeAt();
       const to = c.clone().sub(h); to.y = 0;
       const d = to.length() || 1;
-      const w = h.add(to.multiplyScalar(Math.min(0.4, d * 0.45) / d));
-      w.y = h.y + (c.y - h.y) * 0.4 - 0.05 + bob;
+      // (well out in front of his snout, a little under your eye line, so it sits below his star nose)
+      const w = h.add(to.multiplyScalar(Math.min(0.85, d * 0.62) / d));
+      w.y = Math.min(h.y, c.y) - 0.26 + bob;
       if (lump.parent) { lump.parent.updateMatrixWorld(true); lump.position.copy(lump.parent.worldToLocal(w)); }
     };
     hold();
     // look at it: the view eases down onto the lump in his paws
     if (this.cam) {
       const c = this.cam, p = lump.getWorldPosition(new THREE.Vector3());
-      const yaw1 = Math.atan2(-(p.x - c.x), -(p.z - c.z)), pitch1 = Math.atan2(p.y + 0.04 - c.y, Math.hypot(p.x - c.x, p.z - c.z));
+      const yaw1 = Math.atan2(-(p.x - c.x), -(p.z - c.z)), pitch1 = Math.atan2(p.y + 0.12 - c.y, Math.hypot(p.x - c.x, p.z - c.z));
       const y0 = c.yaw, p0 = c.pitch, dy = wrap(yaw1 - y0);
       await go(tween(0.35, (k) => { const e = ease(k); c.yaw = y0 + dy * e; c.pitch = p0 + (pitch1 - p0) * e; hold(); }));
     }
@@ -337,7 +338,7 @@ export class HomeLessons {
     const p = at();
     flare(fx, p, { n: 10, speed: 1.2 });
     a.play('sparkle', { vol: 0.45 });
-    teachWord(this.game, 'Clean ore sells', p.add(new THREE.Vector3(0, 0.12, 0)), { kind: 'gold', life: 2.2 });
+    teachWord(this.game, 'Clean ore sells', p.add(new THREE.Vector3(0, 0.34, 0)), { kind: 'gold', life: 2.2 });
     await go(sleep(1.1));
     star.drop();
     lump.userData.dispose?.();
