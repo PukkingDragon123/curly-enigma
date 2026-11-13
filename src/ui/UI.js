@@ -51,6 +51,12 @@ const TOAST_BITS = { good: ['#f4ffe0', '#b8f08a', '#ffd84a', '#7ac85a'], warn: [
 const GOLD_BITS = ['#ffffff', '#fff6c4', '#ffd84a', '#f0a830'];
 /** Things you can press: they press in with a soft latch click on the way down (ui3). */
 const PRESSABLE = '.btn, .sh-tab, .ug-tab, .stamp-btn, .tk-note, .cv-opt, .nb-note, .sd-pack, .sh-good, .qt-roll';
+/** (wave 10, quick and bouncy) Things that squash as you press them and spring back with an overshoot
+ *  on release. Done with the Web Animations API on the separate `scale` property, so it stacks on each
+ *  element's own transform / hover / CSS animation without touching them. */
+const BOUNCY = PRESSABLE + ', .fg-stampbtn, .sm-chip, .ck-plank-btn, .bk-q, .ib-entry, .ib-tab, .ug-buy, .sh-buy, .panel .close, .bp-book, .pack-book, .loop, .sk-node, .tm-tab';
+const SQUASH = [{ scale: '1' }, { scale: '1.05 .9' }];
+const SPRING = [{ scale: '1.05 .9' }, { scale: '.96 1.06', offset: 0.38 }, { scale: '1.015 .99', offset: 0.7 }, { scale: '1' }];
 
 /** '<kbd>E</kbd>' text → KeyboardEvent.code, for tapping prompts on touch screens. */
 function keyCode(label) {
@@ -87,10 +93,21 @@ export class UI {
     // (ui3) whatever you press presses in (CSS) with a soft latch click on the way down
     this.root.addEventListener('pointerdown', (e) => {
       if (e.button > 0) return;
+      const bb = e.target.closest?.(BOUNCY);
+      if (bb && !bb.disabled && bb.animate) { this._squash?.cancel(); this._squashEl = bb; try { this._squash = bb.animate(SQUASH, { duration: 60, easing: 'ease-out', fill: 'forwards' }); } catch { this._squash = null; } }
       const b = e.target.closest?.(PRESSABLE);
       if (!b || b.disabled || b.getAttribute('aria-disabled') === 'true') return;
       this.game.audio.play('click', { vol: 0.2, pitch: 1.35 });
     }, true);
+    const spring = () => {
+      const bb = this._squashEl;
+      if (!bb) return;
+      this._squashEl = null;
+      this._squash?.cancel(); this._squash = null;
+      try { bb.animate(SPRING, { duration: 230, easing: 'ease-out' }); } catch { /* old engines: no spring */ }
+    };
+    window.addEventListener('pointerup', spring, true);
+    window.addEventListener('pointercancel', spring, true);
     this.world = el('div', { class: 'world-layer' });
     this.hud = el('div', { class: 'hud' });
     this.overlay = el('div', { class: 'overlay' });
@@ -510,7 +527,7 @@ export class UI {
     }
     h.closed = true;
     h.back.classList.add('closing');
-    setTimeout(() => h.back.remove(), 170);
+    setTimeout(() => h.back.remove(), 130);
     this.panelStack = this.panelStack.filter((p) => p !== h);
     if (!this.panelStack.length) {
       this.root.classList.remove('panel-open');
@@ -525,13 +542,13 @@ export class UI {
     while (this.panelStack.length) this.closePanel();
   }
 
-  /** Parchment card with two rubber stamps. Resolves true/false. */
+  /** Parchment card with two plate buttons, each with a wax seal pressed on it. Resolves true/false. */
   confirm(text, yes = 'Yes', no = 'No') {
     return new Promise((resolve) => {
       let done = false;
       const card = el('div', { class: 'cf-body' });
       const stamp = (label, ok) => el('button', { class: 'stamp-btn ' + (ok ? 'yes' : 'no'), onclick: (e) => press(ok, e.currentTarget) }, [
-        el('img', { class: 'pix', src: SPR.stampHandle(), alt: '' }), el('span', {}, label),
+        el('img', { class: 'pix', src: ok ? SPR.seal('green', 'check') : SPR.seal('brown', 'x'), alt: '' }), el('span', {}, label),
       ]);
       const press = (ok, btn) => {
         if (done) return;

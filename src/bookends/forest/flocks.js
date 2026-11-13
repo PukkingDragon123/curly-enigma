@@ -66,7 +66,7 @@ export function makeFlocks(F, { lite = false } = {}) {
   const X = tr.cross.s;
   const defs = [
     // the opening: a flock of sparrows working the trail ahead of him, up the slope into the light
-    { name: 'sparrows', look: LOOKS.sparrow, n: lite ? 5 : 7, arrive: 0.4, s: 1.35, spots: [ground(12.6, 0.1, 0.9), nearLog(15, 24) || ground(19, 1.8, 0.8), ground(23.5, -1.4, 1.0)].filter(Boolean) },
+    { name: 'sparrows', look: LOOKS.sparrow, n: lite ? 5 : 7, arrive: 0, settled: true, s: 1.35, spots: [ground(14.2, 0.1, 0.9), nearLog(15, 24) || ground(19, 1.8, 0.8), ground(23.5, -1.4, 1.0)].filter(Boolean) },
     // goldfinches along the footbridge's rope rail, then the far bank
     { name: 'goldfinches', look: LOOKS.goldfinch, n: lite ? 4 : 6, arrive: 12.5, s: 1.3, spots: [rail, ground(X + 3.4, 1.2, 0.8), ground(X + 7.5, -1.5, 1.0)].filter(Boolean) },
     // bullfinches in the clearing's turf, on his left (the nest is on his right)
@@ -157,11 +157,18 @@ export function makeFlocks(F, { lite = false } = {}) {
       F2.st += dt;
       if (F2.state === 'wait') {
         if (c.t < D.arrive) return;
-        // in from the canopy, high on the side away from him
         const sp = D.spots[0];
+        if (D.settled) {
+          // already down on the trail when we first see it, pecking
+          for (const b of birds) { placeIn(b, 0); b.p.copy(b.to); b.air = false; }
+          show(R, true);
+          F2.state = 'down'; F2.spot = 0;
+        } else {
+        // in from the canopy, high on the side away from him
         for (const b of birds) { b.p.set(sp.x + rng.range(-2, 2) - 7, groundH(sp.x, sp.z) + 6 + rng.range(0, 1.5), sp.z + rng.range(-2, 2) + 3); }
         show(R, true);
         takeOff(c, 0, true);
+        }
       }
       if (c.crack && (F2.state === 'fly' || F2.state === 'down')) takeOff(c, 99);
       let landed = 0, cx = 0, cz = 0;

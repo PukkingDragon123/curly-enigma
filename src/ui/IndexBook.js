@@ -223,9 +223,9 @@ export function openIndexBook(game, startCat, startId) {
     // marginalia and a stain on each page; new finds write themselves into the book
     margins(left, 'ix' + cat, { list: left.querySelector('.ib-scroll'), kinds: ['ore', 'beetle', 'mushroom', 'snail', 'pick', 'mole'] });
     margins(right, 'ixr' + cat + (sel || ''), { corner: 'br', kinds: ['hand', 'raptor', 'mole', 'snail'] });
-    left.querySelectorAll('.ib-entry.new img').forEach((n, i) => inkIn(n, { delay: 300 + i * 180, dur: 560, quill: i < 2, audio: i < 2 ? game.audio : null }));
+    left.querySelectorAll('.ib-entry.new img').forEach((n, i) => inkIn(n, { delay: 200 + i * 120, dur: 400, quill: i < 2, audio: i < 2 ? game.audio : null }));
   };
-  const inkRight = () => { const t = right.querySelector('.ib-title'); if (t) inkIn(t, { audio: game.audio, dur: 680 }); };
+  const inkRight = () => { const t = right.querySelector('.ib-title'); if (t) inkIn(t, { audio: game.audio, dur: 480 }); };
 
   // ---------------- page turning
   let turning = false;
@@ -238,8 +238,8 @@ export function openIndexBook(game, startCat, startId) {
     curlTurn(turn); // the sheet bends as it goes over
     void turn.offsetWidth;
     turn.classList.add('go');
-    setTimeout(() => { swap(); render(); }, 190);
-    setTimeout(() => { turn.hidden = true; turn.className = 'ib-turn'; turning = false; }, 460);
+    setTimeout(() => { swap(); render(); }, 130);
+    setTimeout(() => { turn.hidden = true; turn.className = 'ib-turn'; turning = false; }, 330);
   };
   const goCat = (id, dir) => {
     if (id === cat) { if (side === 'right') { side = 'left'; flip(-1, () => {}); } return; }

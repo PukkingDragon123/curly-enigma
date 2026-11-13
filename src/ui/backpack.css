@@ -27,7 +27,7 @@
   border-style: solid; border-width: calc(var(--px) * 10) calc(var(--px) * 10) 0;
   border-image: var(--a-leather) 10 10 0 / calc(var(--px) * 10) calc(var(--px) * 10) 0 repeat;
   background: var(--a-leatherT) 0 0 / calc(var(--px) * 24) repeat padding-box, var(--leather) padding-box;
-  transform-origin: 50% 100%; animation: flapOpen .55s cubic-bezier(.3, 1.35, .5, 1) both;
+  transform-origin: 50% 100%; animation: flapOpen .38s cubic-bezier(.3, 1.45, .5, 1) both;
   display: flex; justify-content: center; align-items: flex-start;
 }
 @keyframes flapOpen { from { transform: rotateX(-160deg); } 45% { transform: rotateX(12deg); } }
@@ -61,9 +61,9 @@
   background: var(--a-leatherT) 0 0 / calc(var(--px) * 24) repeat padding-box, var(--leather) padding-box;
   padding: calc(var(--px) * 1);
   filter: drop-shadow(0 calc(var(--px) * 4) 0 rgba(8, 4, 6, .5));
-  animation: bagIn .4s var(--pop) both;
+  animation: bagIn .28s var(--pop) both;
 }
-@keyframes bagIn { from { transform: translateY(calc(var(--px) * 10)) scale(.97); opacity: 0; } 30% { opacity: 1; } }
+@keyframes bagIn { 0% { transform: translateY(calc(var(--px) * 10)) scale(.92, .96); opacity: 0; } 30% { opacity: 1; } 65% { transform: translateY(calc(var(--px) * -1)) scale(1.015, .99); } 100% { transform: none; } }
 
 /* main compartment (canvas lining) */
 .bp-main {
@@ -504,14 +504,12 @@
   border-width: calc(var(--px) * 16) calc(var(--px) * 16) 0;
   background: var(--pk-flap) 0 0 / calc(var(--px) * 96) repeat padding-box, #4c2c18 padding-box;
   height: calc(var(--px) * 26); margin-bottom: calc(var(--px) * -12);
-  animation: flapOpen .7s cubic-bezier(.25, 1.3, .45, 1) both;
+  animation: flapOpen .45s cubic-bezier(.25, 1.4, .45, 1) both;
 }
 @keyframes flapOpen { from { transform: rotateX(-172deg); filter: brightness(.6); } 50% { transform: rotateX(14deg); } 75% { transform: rotateX(-4deg); } }
-.bp-strap { width: calc(var(--px) * 22); height: calc(var(--px) * 30); bottom: calc(var(--px) * -24); background: var(--pk-buckle) 0 0 / 100% 100%; image-rendering: pixelated; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 2, .5)); animation: strapSwing 1.2s .35s ease-out both; transform-origin: 50% 0; }
+.bp-strap { width: calc(var(--px) * 22); height: calc(var(--px) * 30); bottom: calc(var(--px) * -24); background: var(--pk-buckle) 0 0 / 100% 100%; image-rendering: pixelated; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 2, .5)); animation: strapSwing .8s .22s ease-out both; transform-origin: 50% 0; }
 .bp-strap::after { display: none; }
 @keyframes strapSwing { 0% { transform: rotate(0); } 25% { transform: rotate(9deg); } 50% { transform: rotate(-6deg); } 75% { transform: rotate(3deg); } }
-/* (upright phones: the buckles hang over the lining's top row; the cells count and the scale start under them) */
-@media (max-width: 640px) and (min-height: 501px) { .bp-main { padding-top: calc(var(--px) * 18); } }
 /* the lining, with the bag's mouth: a rolled leather lip along the top and its shadow inside */
 .bp-main {
   background: var(--pk-canvas) 0 0 / calc(var(--px) * 64) repeat, #c2ac80; image-rendering: pixelated;
@@ -564,6 +562,8 @@
 .bp-hot-slot .k { color: #fff4dc; text-shadow: var(--px) var(--px) 0 #1a0c06; left: calc(var(--px) * -4); top: calc(var(--px) * -5); }
 .bp-count { color: #5a4030; }
 .bp-main { padding-top: calc(var(--px) * 17); }
+/* (upright phones: the buckles hang over the lining's top row; the cells count and the scale start under them) */
+@media (max-width: 640px) and (min-height: 501px) { .bp .bp-main { padding-top: calc(var(--px) * 27); } }
 .bp-loop.empty img { filter: brightness(0) invert(.9) sepia(.5); opacity: .16; }
 /* the picked item turning in 3D on its tag (itemVox.js) */
 .bp-tag-icon.vox { position: relative; }

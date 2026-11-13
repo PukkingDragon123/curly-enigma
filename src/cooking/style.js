@@ -246,8 +246,8 @@ const CSS = /* css */`
 @keyframes ckCur { 50% { transform: translateY(calc(var(--px) * -2)) scale(1.06); } }
 .ck-pip.done { color: #d8c0a0; background: linear-gradient(to bottom, #8a5a32 0 var(--px), #6a4224 var(--px) calc(100% - var(--px) * 1.5), #4a2c16 calc(100% - var(--px) * 1.5)) padding-box; }
 .ck-pip.done { padding-right: calc(var(--px) * 5); }
-.ck-pip .ck-stamp { position: absolute; right: calc(var(--px) * -5); top: calc(var(--px) * -6); height: calc(var(--px) * 9); width: auto; animation: ckStampIn .35s cubic-bezier(.3,1.6,.5,1) both; }
-@keyframes ckStampIn { from { transform: scale(2.4) rotate(-20deg); opacity: 0; } }
+.ck-pip .ck-stamp { position: absolute; right: calc(var(--px) * -5); top: calc(var(--px) * -6); height: calc(var(--px) * 9); width: auto; animation: ckStampIn .28s cubic-bezier(.3,1.6,.5,1) both; }
+@keyframes ckStampIn { 0% { transform: scale(1.8); opacity: 0; } 45% { transform: scale(1.2, .8); opacity: 1; } 75% { transform: scale(.94, 1.06); } 100% { transform: none; } }
 .ck-timer { flex: none; width: calc(var(--px) * 22); height: calc(var(--px) * 24); margin-top: calc(var(--px) * 2); filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .45)); transform-origin: 50% 80%; }
 .ck-timer-img { display: block; width: 100%; height: 100%; }
 .ck-timer.low { animation: ckRattle .24s steps(2) infinite; }
@@ -363,8 +363,8 @@ const CSS = /* css */`
 .ck-dish-img { width: var(--dish); height: var(--dish); animation: ckRevealPop .7s cubic-bezier(.2,1.7,.35,1); filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(0,0,0,.25)); }
 @keyframes ckRevealPop { 0% { transform: scale(0) rotate(-30deg); } 60% { transform: scale(1.18) rotate(6deg); } 100% { transform: scale(1); } }
 .ck-grade { display: flex; flex-direction: column; align-items: center; gap: var(--px); }
-.ck-ros { width: calc(var(--px) * 26); height: calc(var(--px) * 36); filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .3)); animation: ckStamp .5s cubic-bezier(.2,1.6,.4,1) .35s both; transform-origin: 50% 30%; }
-@keyframes ckStamp { 0% { transform: scale(3) rotate(-25deg); opacity: 0; } 100% { transform: scale(1) rotate(-6deg); opacity: 1; } }
+.ck-ros { width: calc(var(--px) * 26); height: calc(var(--px) * 36); filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .3)); animation: ckStamp .36s cubic-bezier(.3,1.6,.5,1) .22s both; transform-origin: 50% 30%; }
+@keyframes ckStamp { 0% { transform: translateY(-30%) scale(.3); opacity: 0; } 50% { transform: scale(1.15, .86); opacity: 1; } 75% { transform: scale(.96, 1.05); } 100% { transform: none; opacity: 1; } }
 .ck-grade b { font-family: var(--font-head); font-weight: 400; font-size: var(--fs-h); line-height: 1; animation: ckFadeIn .3s ease-out .6s both; }
 .ck-grade small { font-size: 16px; color: var(--ink-soft); }
 @keyframes ckFadeIn { from { opacity: 0; } }
@@ -372,11 +372,11 @@ const CSS = /* css */`
 .ck-sres { display: flex; flex-direction: column; align-items: center; gap: var(--px); }
 .ck-sres .ck-stamp { height: calc(var(--px) * 9); width: auto; }
 .ck-sres small { font-size: 16px; line-height: 1; color: #7a5a3a; }
-.ck-sres:nth-child(1) .ck-stamp { animation: ckStampIn .35s cubic-bezier(.3,1.6,.5,1) .5s both; }
-.ck-sres:nth-child(2) .ck-stamp { animation: ckStampIn .35s cubic-bezier(.3,1.6,.5,1) .62s both; }
-.ck-sres:nth-child(3) .ck-stamp { animation: ckStampIn .35s cubic-bezier(.3,1.6,.5,1) .74s both; }
-.ck-sres:nth-child(4) .ck-stamp { animation: ckStampIn .35s cubic-bezier(.3,1.6,.5,1) .86s both; }
-.ck-sres:nth-child(n+5) .ck-stamp { animation: ckStampIn .35s cubic-bezier(.3,1.6,.5,1) .98s both; }
+.ck-sres:nth-child(1) .ck-stamp { animation: ckStampIn .28s cubic-bezier(.3,1.6,.5,1) .3s both; }
+.ck-sres:nth-child(2) .ck-stamp { animation: ckStampIn .28s cubic-bezier(.3,1.6,.5,1) .36s both; }
+.ck-sres:nth-child(3) .ck-stamp { animation: ckStampIn .28s cubic-bezier(.3,1.6,.5,1) .42s both; }
+.ck-sres:nth-child(4) .ck-stamp { animation: ckStampIn .28s cubic-bezier(.3,1.6,.5,1) .48s both; }
+.ck-sres:nth-child(n+5) .ck-stamp { animation: ckStampIn .28s cubic-bezier(.3,1.6,.5,1) .54s both; }
 .ck-stats { display: flex; gap: calc(var(--px) * 2) calc(var(--px) * 3); flex-wrap: wrap; justify-content: center; margin: calc(var(--px) * 2) 0; }
 .ck-stat { display: inline-flex; align-items: center; gap: calc(var(--px) * 1.5); font-size: 16px; line-height: 1; color: var(--ink); white-space: nowrap;
   background: #fffaf0; padding: calc(var(--px) * 1) calc(var(--px) * 2) calc(var(--px) * .5); box-shadow: 0 0 0 var(--px) var(--paper-edge), 0 calc(var(--px) * 2) 0 0 rgba(0, 0, 0, .2); }

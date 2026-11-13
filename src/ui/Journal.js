@@ -446,13 +446,13 @@ export function openBook(game, tab, opts = {}) {
     margins(left, chapter + 'L' + (st.data.day || 0), { list: left.querySelector('.ib-scroll'), kinds: chapter === 'index' ? ['ore', 'beetle', 'mushroom', 'pick'] : chapter === 'lore' ? ['snail', 'raptor', 'mole', 'hand'] : ['mole', 'raptor', 'snail', 'pick', 'mushroom'] });
     margins(right, chapter + 'R' + (lastQuest || lastLore || ''), { corner: 'br' });
     // quests and lore you haven't read yet write themselves into the book
-    left.querySelectorAll('.bk-q.new .bk-qt > b, .bk-entry.unread').forEach((n, i) => inkIn(n, { delay: 260 + i * 160, dur: 620, audio: i < 3 ? game.audio : null }));
+    left.querySelectorAll('.bk-q.new .bk-qt > b, .bk-entry.unread').forEach((n, i) => inkIn(n, { delay: 170 + i * 110, dur: 440, audio: i < 3 ? game.audio : null }));
   };
   const inkRight = () => {
     const t = right.querySelector('.bk-qtitle, .lr-title, .bk-note .ib-title');
     if (t) inkIn(t, { audio: game.audio, dur: 700 });
     const now = right.querySelector('.bk-now-line b');
-    if (now) inkIn(now, { delay: 420, dur: 600, quill: false });
+    if (now) inkIn(now, { delay: 280, dur: 420, quill: false });
   };
 
   // ---------------- page turning
@@ -466,8 +466,8 @@ export function openBook(game, tab, opts = {}) {
     curlTurn(turn); // the sheet bends as it goes over (src/ui/tomeFx.js)
     void turn.offsetWidth;
     turn.classList.add('go');
-    setTimeout(() => { swap(); render(o); }, 190);
-    setTimeout(() => { turn.hidden = true; turn.className = 'ib-turn'; turning = false; }, 460);
+    setTimeout(() => { swap(); render(o); }, 130);
+    setTimeout(() => { turn.hidden = true; turn.className = 'ib-turn'; turning = false; }, 330);
   };
   const go = (id, o = {}) => {
     if (id === 'notes') lastShelf = 'notes';

@@ -38,6 +38,8 @@ import {
   stakeGeo, beamGeo, foodGeo, BEAM_GRIP, MALLET_HEAD, metalOf,
 } from './viewmodel/parts.js';
 import { Pose, P, aim, aimZ, Spring, ease, easeOut, easeIn, clamp, wobble } from './viewmodel/pose.js';
+/** Ease out with a small overshoot (about 6%), for recoveries that settle with a bounce. */
+const backOut = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : 1 + 2.2 * (t - 1) ** 3 + 1.2 * (t - 1) ** 2);
 import { XrayBeam } from './viewmodel/beam.js';
 import { hammerGeo, tongsGeo, HAMMER_FACE, TONGS_JAW, TONGS_RIVET } from './viewmodel/smith.js';
 import { ITEMS } from '../data/items.js';
@@ -170,8 +172,8 @@ export class ViewModel {
     this.swimPh = 0;
     this.layout = { x: 1, y: 1 };
     this.sway = { x: new Spring(90, 13), y: new Spring(90, 13) };
-    this.land = new Spring(170, 15);
-    this.recoil = new Spring(220, 16);
+    this.land = new Spring(240, 13); // (wave 10) a bouncier landing squash on the paws
+    this.recoil = new Spring(320, 15); // (wave 10) a punchier, quicker recoil
     this.sink = new Spring(150, 13); // a pick biting into soft ground (radians, down)
     this.jolt = new Spring(260, 18); // a pick thrown back off hard rock (radians, up)
     this.buzz = { t: 0, a: 0, f: 70 }; // the haft ringing after hard rock
@@ -468,7 +470,7 @@ export class ViewModel {
     const act = this.action;
     const stop = (this.stopping = this.stopT > 0);
     this.stopT = Math.max(0, this.stopT - dt);
-    if (act) { act.t += stop ? dt * 0.06 : dt; if (act.t > act.dur + 0.55 && !(act.kind === 'stake' || act.kind === 'beam') || act.t > act.dur + 1.1) this.action = null; }
+    if (act) { act.t += stop ? dt * 0.06 : dt; if (act.t > act.dur + 0.4 && !(act.kind === 'stake' || act.kind === 'beam') || act.t > act.dur + 1.1) this.action = null; }
     if (this.eating) { this.eating.t += dt; if (this.eating.t > 1.45) this.finishEat(); }
     if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
     this.shake = Math.max(0, this.shake - dt * 3.2);
@@ -675,7 +677,7 @@ export class ViewModel {
       const windEnd = Math.max(d * 0.55, d - 0.085);
       const wind = ease(a / windEnd);
       const strike = clamp((a - windEnd) / (d - windEnd), 0, 1);
-      const rec = ease((a - d - 0.1) / 0.35);
+      const rec = backOut((a - d - 0.06) / 0.26); // (wave 10) a shorter hang, a quicker recovery that springs a touch past rest
       if (kind === 'pick' || kind === 'hammer' || kind === 'smith') {
         // wind up over the shoulder, snap down so the point lands at `dur`, hang, recover
         // the point lands near the crosshair at `dur`, then the arm sags back as the head bites

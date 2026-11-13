@@ -61,7 +61,7 @@
 .qt-n.scratch { animation: qtScratch .44s steps(6); }
 @keyframes qtScratch { 0% { filter: none; } 20% { transform: translateX(calc(var(--px) * .5)); text-decoration: line-through; text-decoration-color: #a8321e; } 45% { opacity: .2; } 60% { opacity: 1; transform: none; } }
 .qt-n.pulse { animation: qtPop .34s var(--pop); }
-@keyframes qtPop { 0% { transform: scale(1.45) rotate(-4deg); color: #c23c2c; } }
+@keyframes qtPop { 0% { transform: scale(1.4, .8); color: #8a5a10; } 45% { transform: scale(.92, 1.12); } 75% { transform: scale(1.04, .97); } }
 .qt-line.ink > * { animation: qtInk .5s steps(10) both; }
 .qt-line.ink > .qt-box { animation: none; }
 @keyframes qtInk { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
@@ -86,24 +86,24 @@
   80% { transform: translate(calc(var(--sweep) * .8), calc(var(--px) * 1)) rotate(-4deg); } 100% { transform: translate(var(--sweep), calc(var(--px) * -2)) rotate(10deg); opacity: .9; }
 }
 
-/* Old Star's stamp */
+/* Old Star's gilded seal: pressed straight down on a finished quest, squashing flat and springing back */
 .qt-stamp {
   position: absolute; z-index: 2; right: calc(var(--px) * 2); top: 50%; margin-top: calc(var(--px) * -15); width: calc(var(--px) * 30); height: calc(var(--px) * 30);
-  opacity: 0; pointer-events: none; transform: rotate(-14deg); mix-blend-mode: multiply;
+  opacity: 0; pointer-events: none; filter: drop-shadow(0 var(--px) 0 rgba(20, 8, 2, .55));
 }
-.qt-stamp.on { opacity: .9; }
-.qt-stamp.slam { animation: qtSlam .34s cubic-bezier(.6, 0, .9, .5) both; }
-@keyframes qtSlam { 0% { transform: scale(2.6) rotate(-34deg); opacity: 0; } 60% { opacity: .5; } 82% { transform: scale(.92) rotate(-12deg); opacity: .95; } 100% { transform: scale(1) rotate(-14deg); } }
-.qt-dot { position: absolute; right: calc(var(--px) * 4); top: calc(var(--px) * 1); width: var(--px); height: var(--px); background: #b8402c; pointer-events: none; animation: qtDot .6s ease-out forwards; }
+.qt-stamp.on { opacity: 1; }
+.qt-stamp.slam { animation: qtSlam .32s cubic-bezier(.3, 1.6, .5, 1) both; }
+@keyframes qtSlam { 0% { transform: translateY(calc(var(--px) * -10)) scale(1.5); opacity: 0; } 40% { transform: scale(1.22, .76); opacity: 1; } 70% { transform: scale(.94, 1.08); } 100% { transform: none; opacity: 1; } }
+.qt-dot { position: absolute; right: calc(var(--px) * 4); top: calc(var(--px) * 1); width: var(--px); height: var(--px); background: #e2aa3a; box-shadow: var(--px) var(--px) 0 #925212; pointer-events: none; animation: qtDot .6s ease-out forwards; }
 @keyframes qtDot { from { transform: none; opacity: 1; } to { transform: translate(var(--dx), var(--dy)); opacity: 0; } }
 
 /* "New" ribbon tag */
 .qt-tag {
   position: absolute; left: calc(var(--px) * -6); top: calc(var(--px) * -11); padding: var(--px) calc(var(--px) * 3); font-size: var(--fs); line-height: 1;
   color: #fff3e0; background: #b8402c; box-shadow: 0 0 0 var(--px) #5a140c, 0 var(--px) 0 var(--px) rgba(0, 0, 0, .3);
-  transform: rotate(-6deg) scale(0); transform-origin: 30% 100%; transition: transform .3s var(--pop); pointer-events: none;
+  transform: scale(0); transform-origin: 30% 100%; transition: transform .24s cubic-bezier(.3, 1.8, .5, 1); pointer-events: none;
 }
-.qt-tag.on { transform: rotate(-6deg) scale(1); }
+.qt-tag.on { transform: scale(1); }
 
 .toast .qt-said { display: inline-block; margin-top: var(--px); color: #6a4a2a; font-style: normal; max-width: 52ch; }
 .toast .qt-first { color: #6a4a2a; }

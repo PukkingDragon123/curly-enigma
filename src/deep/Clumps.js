@@ -38,7 +38,7 @@ const CARRY = { x: 0, y: -0.25, s: 0.8 }, INSPECT = { x: -0.065, y: 0.03, s: 1 }
 const HOLD_ANG = 0.25; // apparent radius (rad) on a landscape screen
 const GRAV = 14;
 const HELD_LIGHT = 0.58; // lamp and lights on a clump in paw (it's right under the helmet lamp)
-const PICK_T = 0.3, STASH_T = 0.5;
+const PICK_T = 0.3, STASH_T = 0.38; // (wave 10: a quicker, bouncier stash)
 const SPOTLESS = 0.97; // this much of the ore's surface bared counts as clean (the rest crumbles off)
 const col01 = (hex) => { const c = hexToRgb(hex); return [c.r / 255, c.g / 255, c.b / 255]; };
 const ease = (t) => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
@@ -995,10 +995,12 @@ export class Clumps {
     const e = clamp(c.stashT / STASH_T, 0, 1);
     const grp = c.group;
     // a little hop, then off into the backpack in the corner of the screen
-    const k = e < 0.18 ? 0 : (e - 0.18) / 0.82;
+    // (it stretches up as it hops and squashes a little as it leaves: squash and stretch)
+    const k = e < 0.22 ? 0 : (e - 0.22) / 0.78;
     grp.position.lerpVectors(c.stashFrom, c.stashTo, k * k);
-    grp.position.y += Math.sin(Math.min(1, e / 0.5) * Math.PI) * 0.035 * (1 - k);
-    grp.scale.setScalar(c.stashS * (1 + Math.sin(Math.min(1, e / 0.18) * Math.PI) * 0.08 - k * 0.85));
+    grp.position.y += Math.sin(Math.min(1, e / 0.5) * Math.PI) * 0.05 * (1 - k);
+    const pop = Math.sin(Math.min(1, e / 0.22) * Math.PI), base = c.stashS * (1 + pop * 0.1 - k * 0.85);
+    grp.scale.set(base * (1 - pop * 0.09), base * (1 + pop * 0.2), base * (1 - pop * 0.09));
     _q.setFromAxisAngle(AY, dt * 9);
     grp.quaternion.premultiply(_q);
     if (Math.random() < 0.5) { const p = this.worldPos(c, _v2); this.fx?.glints(p.x, p.y, p.z, c.oreCol); }

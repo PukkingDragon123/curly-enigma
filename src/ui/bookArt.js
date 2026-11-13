@@ -1,5 +1,5 @@
 // Pixel art for the quest tracker and the book: the parchment strip with its rolled ends, the
-// quill, the ink stamp, check boxes, chapter tab icons, givers' ink sketches and map pins.
+// quill, Old Star's gilded seal, check boxes, chapter tab icons, givers' ink sketches and map pins.
 // Drawn once at 1 art px = 1 canvas px (shown at --px), cached as data URLs.
 import { Px, PAL, INK, art } from './uiArt.js';
 import { makeRng } from '../core/util.js';
@@ -61,25 +61,58 @@ function quill() {
   return p;
 }
 
-// ---------------------------------------------------------------- Old Star's stamp (red ink, a star in a ring)
-function stamp(color = RED) {
-  const S = 30, c = S / 2, p = new Px(S, S);
+// ---------------------------------------------------------------- Old Star's seal (gilded wax, sitting straight)
+// A blob of amber wax with a wobbly, dripped edge, a raised rim, his eight-point star in relief and two
+// green silk tails behind it. Lit from the top left. (Was a tilted red ink stamp; the player hates those.)
+const GOLDWAX = [0x2a1404, 0x4a2608, 0x6e3c0c, 0x925212, 0xb26c18, 0xcc8a22, 0xe2aa3a, 0xf2c85a, 0xfce490, 0xfff6d0];
+const SILK = [0x0c1e10, 0x16341c, 0x22482a, 0x2e5e36, 0x3e7646, 0x5a9a5e];
+function stamp() {
+  const S = 30, cx = 15, cy = 13, p = new Px(S, S);
   const rng = makeRng(31);
+  // the silk tails (behind), splaying down, a swallowtail cut in each end
+  for (const side of [-1, 1]) {
+    const ang = side * 0.5, dx = Math.sin(ang), dy = Math.cos(ang);
+    for (let t = 4; t <= 16; t++)
+      for (let w = -2.5; w <= 2.5; w += 0.5) {
+        if (t > 13 && Math.abs(w) < (t - 13) * 0.9) continue;
+        const x = Math.round(cx + dx * t + dy * w), y = Math.round(cy + 3 + dy * t - dx * w);
+        if (x < 0 || y < 0 || x >= S || y >= S) continue;
+        p.set(x, y, Math.abs(w) > 2 ? SILK[0] : SILK[(w * side < -0.5 ? 4 : w * side > 1 ? 2 : 3) - (t < 7 ? 1 : 0)]);
+      }
+  }
+  // the wax: a wobbly blob, domed rim, a flat pressed face
+  const R0 = 11.2;
+  const edge = (a) => R0 + Math.sin(a * 7 + 0.6) * 0.55 + Math.sin(a * 3 + 2.1) * 0.45 + Math.sin(a * 11) * 0.2;
+  const tone = (k) => GOLDWAX[Math.max(0, Math.min(GOLDWAX.length - 1, Math.round(k * (GOLDWAX.length - 1))))];
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const d = Math.hypot(x + 0.5 - c, y + 0.5 - c);
-      const ring = (d > 12.2 && d < 14.4) || (d > 9.6 && d < 10.6);
-      if (ring && rng() > 0.08) p.set(x, y, color);
+      const X = x + 0.5 - cx, Y = y + 0.5 - cy, a = Math.atan2(Y, X), d = Math.hypot(X, Y), e = edge(a), r = d / e;
+      if (r > 1) continue;
+      const lit = -(X + Y) / (d || 1); // +1 top-left, -1 bottom-right
+      let k;
+      if (r > 0.78) k = 0.5 + lit * 0.32 * (r > 0.92 ? 1.2 : 1); // the rolled rim
+      else if (r > 0.7) k = 0.24 - lit * 0.14; // the groove inside the rim (lit the other way)
+      else k = 0.4 + lit * 0.05 + (rng() - 0.5) * 0.04; // the pressed face (darker, so the star stands out)
+      p.set(x, y, tone(k));
     }
-  // the star: twenty-two little fingers, drawn as an eight-point star
-  for (let k = 0; k < 16; k++) {
-    const a = (k / 16) * Math.PI * 2 - Math.PI / 2, r = k % 2 ? 3.6 : 8.2;
-    const a2 = ((k + 1) / 16) * Math.PI * 2 - Math.PI / 2, r2 = (k + 1) % 2 ? 3.6 : 8.2;
-    p.poly([[c, c], [c + Math.cos(a) * r, c + Math.sin(a) * r], [c + Math.cos(a2) * r2, c + Math.sin(a2) * r2]], color);
-  }
-  // ink grain: worn spots
-  for (let i = 0; i < 46; i++) { const x = Math.floor(rng() * S), y = Math.floor(rng() * S); if (p.a(x, y)) p.clear(x, y); }
-  p.set(Math.round(c), Math.round(c), 0xf2e1b9);
+  // drips of wax at the bottom right
+  for (const [x, y, n] of [[22, 22, 2], [9, 23, 1]]) for (let i = 0; i < n; i++) { p.set(x, y + i, GOLDWAX[3]); p.set(x + 1, y + i, GOLDWAX[2]); }
+  // the eight-point star in relief: raised planes lit top-left, a shade on the lower-right flanks
+  const star = (ox, oy, col) => {
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2 - Math.PI / 2, r = k % 2 ? 2.8 : 7;
+      const a2 = ((k + 1) / 16) * Math.PI * 2 - Math.PI / 2, r2 = (k + 1) % 2 ? 2.8 : 7;
+      const mid = a + Math.PI / 16, face = -(Math.cos(mid) + Math.sin(mid)) / Math.SQRT2;
+      p.poly([[cx + ox, cy + oy], [cx + ox + Math.cos(a) * r, cy + oy + Math.sin(a) * r], [cx + ox + Math.cos(a2) * r2, cy + oy + Math.sin(a2) * r2]], col ?? tone(0.76 + face * 0.18));
+    }
+  };
+  star(1, 1, GOLDWAX[1]); // its cast shadow in the pressed face
+  star(0, 0);
+  p.set(cx, cy - 1, GOLDWAX[9]); p.set(cx - 1, cy - 1, GOLDWAX[8]); p.set(cx, cy, GOLDWAX[6]);
+  // a few pits in the wax, a glint on the rim
+  for (let i = 0; i < 10; i++) { const x = 6 + Math.floor(rng() * 18), y = 4 + Math.floor(rng() * 18); if (p.a(x, y) && Math.hypot(x + 0.5 - cx, y + 0.5 - cy) > 7.5) p.set(x, y, GOLDWAX[3]); }
+  p.set(8, 5, 0xffffff); p.set(9, 5, GOLDWAX[9]); p.set(7, 6, GOLDWAX[8]);
+  p.outline(0x24120a);
   return p;
 }
 
@@ -288,7 +321,7 @@ export const BART = {
   eye: () => art('b:eye', eye),
   strip: () => art('b:strip', strip),
   quill: () => art('b:quill', quill),
-  stamp: (c) => art('b:stamp' + (c || ''), () => stamp(c || RED)),
+  stamp: () => art('b:seal', stamp),
   box: (t) => art('b:box' + (t ? 1 : 0), () => checkBox(t)),
   tab: (k) => art('b:tab:' + k, () => tabIcon(k)),
   giver: (id) => art('b:giver:' + id, () => giver(id)),
@@ -296,5 +329,5 @@ export const BART = {
 };
 /** The raw pin raster, for drawing straight onto the map. */
 export const pinPx = (k) => pin(k);
-export const stampPx = (c) => stamp(c);
+export const stampPx = () => stamp();
 export const quillPx = () => quill();

@@ -4,7 +4,7 @@
 // distance (▲ ▼ when it's above or below you) and the place ("Nibble & Root · Deep Town", "The town
 // lift · in the mine"). Progress is scratched in with a quill, a finished step gets ticked and struck
 // through before the strip rolls up and opens on the next one, and a finished quest gets Old Star's
-// red stamp. Tap it for the book. It also drives the world markers (src/ui/QuestMarks.js) and the
+// gilded seal, pressed on straight. Tap it for the book. It also drives the world markers (src/ui/QuestMarks.js) and the
 // toasts: a new quest, progress on quests not on the strip, the next step, people's lines, rewards.
 // Reads game.quests (src/core/quests.js) once it exists; UI.update drives it.
 import { el, formatGoldFull } from '../core/util.js';

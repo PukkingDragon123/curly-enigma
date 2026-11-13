@@ -364,7 +364,7 @@
   animation: skSpark .85s cubic-bezier(.2, .8, .4, 1) var(--sd, 0s) both; }
 @keyframes skSpark { 0% { opacity: 1; transform: translate(0, 0) scale(.4); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(var(--dx) * var(--px)), calc(var(--dy) * var(--px))) scale(1) rotate(45deg); } }
 #ui[data-hud=none] .sk-chip, #ui.panel-open .sk-chip, #ui.focus .sk-chip { display: none; }
-@media (max-height: 500px) { .sk-chip { top: 45%; } } /* (under the radar and its tag, above the stick) */
+@media (max-height: 500px) { .sk-chip { top: 30%; } #ui[data-hud=deep] .sk-chip { left: calc(var(--sal) + var(--px) * 62); } } /* (underground: beside the radar column, clear of its tag and the depth) */
 
 /* the level-up card pinned to the toasts: a carved plaque, a ribbon, the big seal in brass, sparks */
 .toast.sk-toast, .toast.sk-nudge { pointer-events: auto; cursor: pointer; }
@@ -379,9 +379,9 @@
 .sk-toast-medal .sk-chip-burst { left: 50%; }
 .sk-toast .toast-text small { display: block; font-size: var(--fs); color: #6a5a3a; margin-top: var(--px); }
 .sk-toast .toast-text b:first-child { color: var(--lc); }
-.sk-toast-seal { position: absolute; left: calc(var(--px) * 3.5); top: calc(var(--px) * 3.5); width: calc(var(--px) * 24); height: calc(var(--px) * 24); animation: skStampMini .55s cubic-bezier(.3, 1.5, .5, 1) .15s both; }
+.sk-toast-seal { position: absolute; left: calc(var(--px) * 3.5); top: calc(var(--px) * 3.5); width: calc(var(--px) * 24); height: calc(var(--px) * 24); animation: skStampMini .38s cubic-bezier(.3, 1.5, .5, 1) .1s both; }
 .sk-toast.big .sk-toast-seal { animation-duration: .7s; }
-@keyframes skStampMini { 0% { transform: scale(2.2) rotate(-18deg); opacity: 0; } 45% { transform: scale(.85) rotate(4deg); opacity: 1; } 70% { transform: scale(1.08); } 100% { transform: none; } }
+@keyframes skStampMini { 0% { transform: scale(1.8); opacity: 0; } 40% { transform: scale(1.2, .8); opacity: 1; } 70% { transform: scale(.94, 1.07); } 100% { transform: none; } }
 .sk-toast kbd { font-size: 8px; }
 .sk-badge { position: absolute; right: calc(var(--px) * -5); bottom: calc(var(--px) * -3); width: calc(var(--px) * 9); height: calc(var(--px) * 9); pointer-events: none; animation: newBob 1.4s ease-in-out infinite; z-index: 2; }
 #ui.panel-open .toast.sk-toast, #ui.panel-open .toast.sk-nudge { display: none; }

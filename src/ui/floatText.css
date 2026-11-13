@@ -19,7 +19,7 @@
 .ft { --ft-hot: #fffbe6; --ft-ember: #ff8a3a; font-variant-ligatures: none; }
 .ft-w { white-space: nowrap; }
 .ft-c { display: inline-block; position: relative; opacity: 0; }
-.ft-c.on { opacity: 1; animation: ftIn .52s ease-out var(--d, 0s) both; }
+.ft-c.on { opacity: 1; animation: ftIn .4s ease-out var(--d, 0s) both; }
 @keyframes ftIn {
   0% { opacity: 0; translate: calc(var(--r) * var(--px) * 1.5) calc(var(--px) * 5); scale: .2 1.7; color: var(--ft-hot); }
   35% { opacity: 1; translate: 0 calc(var(--px) * -1.5); scale: 1.18 .86; color: var(--ft-hot); }
@@ -113,16 +113,16 @@ kbd.ft-c { text-shadow: none; }
 #ui .toast.ft-toast.bad .toast-text b { color: #ff7a5a; }
 #ui .toast.ft-toast .toast-text small { opacity: .84; }
 #ui .toast.ft-toast .qt-said, #ui .toast.ft-toast .qt-first { color: #e8d4b0; }
-#ui .toast.ft-toast .toast-icon { animation: ftIconIn .6s cubic-bezier(.2, 1.4, .4, 1) both; filter: drop-shadow(0 calc(var(--px) * 1) 0 rgba(10, 4, 2, .7)); }
-#ui .toast.ft-toast .toast-seal { position: static; width: calc(var(--px) * 10); height: calc(var(--px) * 10); margin: 0; animation: ftSealIn .5s cubic-bezier(.3, 1.6, .5, 1) .25s both; filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 2, .7)); }
+#ui .toast.ft-toast .toast-icon { animation: ftIconIn .4s cubic-bezier(.25, 1.6, .45, 1) both; filter: drop-shadow(0 calc(var(--px) * 1) 0 rgba(10, 4, 2, .7)); }
+#ui .toast.ft-toast .toast-seal { position: static; width: calc(var(--px) * 10); height: calc(var(--px) * 10); margin: 0; animation: ftSealIn .34s cubic-bezier(.3, 1.6, .5, 1) .15s both; filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 2, .7)); }
 #ui .toast.ft-toast.out { animation: none; }
 #ui .toast.ft-toast.out .toast-icon, #ui .toast.ft-toast.out .toast-seal { animation: ftIconOut .45s ease-in .1s both; }
 @keyframes ftToastBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(var(--px) * -1)); } }
 @keyframes ftIconIn { 0% { opacity: 0; transform: translateY(calc(var(--px) * -6)) scale(.3) rotate(-30deg); } 60% { opacity: 1; transform: scale(1.15) rotate(6deg); } 100% { transform: none; } }
-@keyframes ftSealIn { 0% { opacity: 0; transform: scale(2.2) rotate(-25deg); } 60% { opacity: 1; transform: scale(.85); } 100% { transform: none; } }
+@keyframes ftSealIn { 0% { opacity: 0; transform: scale(1.8); } 45% { opacity: 1; transform: scale(1.2, .8); } 75% { transform: scale(.94, 1.06); } 100% { transform: none; } }
 @keyframes ftIconOut { to { opacity: 0; transform: translateY(calc(var(--px) * -6)) scale(.4) rotate(20deg); } }
 /* good news: a glint runs over the words once they're up */
-#ui .toast.ft-toast.good .toast-text .ft-c.on { animation: ftIn .52s ease-out var(--d, 0s) both, ftShimmer 2.2s linear calc(var(--d, 0s) + .4s + var(--k) * .03s) 1; }
+#ui .toast.ft-toast.good .toast-text .ft-c.on { animation: ftIn .4s ease-out var(--d, 0s) both, ftShimmer 2.2s linear calc(var(--d, 0s) + .4s + var(--k) * .03s) 1; }
 
 /* ---- discovery (UI._showDiscover): the find's picture spins out with sparkles, its kind in small
    caps over its name in the script hand, a flourish drawn out under it, then it all scatters */

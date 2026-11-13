@@ -79,6 +79,8 @@ export class Belt {
     }
     if (sel !== this.sel) {
       this.nodes.forEach((n, i) => n.node.classList.toggle('sel', i === sel));
+      // (wave 10) the picked loop springs: squashed as it's grabbed, stretched up, settled
+      if (this.sel >= 0) try { this.nodes[sel]?.node.animate?.([{ scale: '1.2 .8' }, { scale: '.9 1.14', offset: 0.35 }, { scale: '1.04 .97', offset: 0.68 }, { scale: '1' }], { duration: 240, easing: 'ease-out' }); } catch { /* no WAAPI scale */ }
       if (this.sel >= 0 || wasHidden) {
         this.expand();
         this.label.classList.remove('flash');

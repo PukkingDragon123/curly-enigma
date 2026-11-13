@@ -41,8 +41,10 @@ html.gt-still #ui *, html.gt-still .modal-back { transition: none !important; an
 .gt-icon.big { width: var(--icon); height: var(--icon); margin: 0 auto; }
 .gt-name { font-family: var(--font-head); font-size: var(--fs-h); line-height: 1; color: #fff1d0; text-shadow: 0 var(--px) 0 #3a2212, var(--px) 0 0 #3a2212, calc(var(--px) * -1) 0 0 #3a2212, 0 calc(var(--px) * -1) 0 #3a2212; }
 .gt-verb { font-family: var(--font-display); font-size: calc(var(--fs-h) * .8); line-height: 1; color: #fff4d0; padding: 0 calc(var(--px) * 2) calc(var(--px) * .5); margin-left: calc(var(--px) * 1);
-  background: #a8402a; box-shadow: 0 0 0 var(--px) #4a1a10, inset 0 calc(var(--px) * -1) 0 #6a2414, inset 0 var(--px) 0 #d0684a; transform: rotate(-4deg); animation: gtVerb .8s ease-in-out infinite alternate; }
-@keyframes gtVerb { to { transform: rotate(3deg) scale(1.06); } }
+  padding: calc(var(--px) * 1) calc(var(--px) * 3) calc(var(--px) * 1.5); text-shadow: 0 var(--px) 0 rgba(20, 10, 4, .7);
+  border: var(--px) solid transparent; border-image: var(--a-btnWood) 2 3 3 fill / calc(var(--px) * 2) calc(var(--px) * 3) calc(var(--px) * 3) repeat stretch; filter: drop-shadow(0 var(--px) 0 rgba(20, 10, 6, .5));
+  display: inline-block; animation: gtVerb .42s cubic-bezier(.3, 1.6, .5, 1) infinite alternate; }
+@keyframes gtVerb { from { transform: scale(1.06, .94); } to { transform: translateY(calc(var(--px) * -1)) scale(.97, 1.05); } }
 .gt-gauge { position: absolute; right: calc(var(--sar) + var(--px) * 12); top: 50%; transform: translateY(-46%); filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(10, 4, 8, .5)); animation: gtSlide .6s .15s cubic-bezier(.25,1.5,.4,1) both; }
 @keyframes gtSlide { from { transform: translate(140%, -46%); } }
 .gt-gauge canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
@@ -77,13 +79,14 @@ html.gt-still #ui *, html.gt-still .modal-back { transition: none !important; an
 .gt-card .st { margin-top: calc(var(--px) * 1); letter-spacing: .12em; color: #d89a10; font-size: 1.15em; text-shadow: 0 var(--px) 0 #7a4a08; }
 .gt-card .st i { font-style: normal; color: #c8b090; text-shadow: none; }
 .gt-card .w { font-size: .82em; margin-top: calc(var(--px) * 2); line-height: 1.25; color: var(--ink); }
-.gt-card .n { position: absolute; left: calc(var(--px) * -6); top: calc(var(--px) * -4); font-family: var(--font-display); font-size: 1.4em; color: #fff4d0; background: #3a7a2a; padding: 0 calc(var(--px) * 2); box-shadow: 0 0 0 var(--px) #1a3a12; transform: rotate(-10deg); }
+.gt-card .n { position: absolute; left: calc(var(--px) * -6); top: calc(var(--px) * -4); font-family: var(--font-display); font-size: 1.4em; color: #fff4d0; background: #3a7a2a; padding: 0 calc(var(--px) * 2); box-shadow: 0 0 0 var(--px) #1a3a12; }
 .gt-card .seal { position: absolute; right: calc(var(--px) * -12); bottom: calc(var(--px) * -10); width: calc(var(--px) * 26); image-rendering: pixelated; animation: gtSeal .45s .35s cubic-bezier(.2,1.6,.4,1) both; }
-.gt-card .stamp { position: absolute; right: calc(var(--px) * -8); top: calc(var(--px) * -6); transform: rotate(9deg); font-family: var(--font-display); font-size: 1.2em; color: #fff; padding: 0 calc(var(--px) * 2);
-  background: #3a8a3a; box-shadow: 0 0 0 var(--px) #1a3a12; animation: gtSeal .45s .3s cubic-bezier(.2,1.6,.4,1) both; }
-.gt-card .stamp.bad { background: #a8302a; box-shadow: 0 0 0 var(--px) #3a1010; }
-.gt-card .stamp.gold { background: #c8901a; box-shadow: 0 0 0 var(--px) #4a2a08; }
-@keyframes gtSeal { from { transform: rotate(20deg) scale(2.6); opacity: 0; } }
+.gt-card .stamp { position: absolute; right: calc(var(--px) * -8); top: calc(var(--px) * -7); font-family: var(--font-display); font-size: 1.2em; color: #24420e; padding: calc(var(--px) * 1) calc(var(--px) * 3) calc(var(--px) * 1.5);
+  text-shadow: 0 calc(var(--px) * .5) 0 rgba(255, 244, 200, .6); border: var(--px) solid transparent; border-image: var(--a-btnGold) 2 3 3 fill / calc(var(--px) * 2) calc(var(--px) * 3) calc(var(--px) * 3) repeat stretch; filter: drop-shadow(0 var(--px) 0 rgba(20, 10, 6, .55)); animation: gtSeal .3s .2s cubic-bezier(.3, 1.6, .5, 1) both; }
+.gt-card .stamp.bad { color: #f6e6c8; text-shadow: 0 var(--px) 0 rgba(20, 10, 4, .7); border-image-source: var(--a-btnWood); }
+.gt-card .stamp.gold { color: #4a2a08; }
+/* plates and seals land straight: squashed under the press, then a spring back */
+@keyframes gtSeal { 0% { transform: scale(1.6); opacity: 0; } 45% { transform: scale(1.18, .8); opacity: 1; } 75% { transform: scale(.95, 1.06); } 100% { transform: none; } }
 .gt-card .go { margin-top: calc(var(--px) * 3); font-size: .7em; color: var(--ink-soft); animation: gtBlink 1.2s steps(2) infinite; }
 @keyframes gtBlink { 50% { opacity: .35; } }
 .gt-flash { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 50%, rgba(255, 244, 200, .55), rgba(255, 244, 200, 0) 60%); animation: gtFlash .5s ease-out forwards; }

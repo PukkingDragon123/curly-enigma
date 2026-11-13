@@ -43,7 +43,7 @@ const T = { A: 0, B: 6.2, C: 10.4, D: 13.6, E: 15.6, F: 20.4, N: 23.2, N2: 26.4,
 const SHOTS = [T.A, T.B, T.C, T.D, T.E, T.F, T.N, T.N2, T.N3, T.F2, T.G, T.H, T.I, T.I2, T.J, T.K, T.L];
 const FALL_SHOT = 14; // (the shots from here on are below the ground)
 const CAP = [0.9, 5.0];
-const WALK = 1.05; // m/s
+const WALK = 0.8; // m/s (a brisk, bouncy stroll: ~3 steps a second with gait.js's cadence)
 const smooth = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
 const ease = (a, b, x) => smooth((x - a) / (b - a));
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
@@ -368,9 +368,9 @@ export default class FallScene extends Scene {
   heroS(t) {
     const L = FOREST.trail.length, X = FOREST.trail.cross.s, sN = FOREST.nest.s - 0.1;
     if (t < T.E) return 6.5 + WALK * t;
-    if (t < T.F) return X - 3.0 + WALK * (t - T.E);
+    if (t < T.F) return X - 1.95 + WALK * (t - T.E); // (onto the bridge early in the shot, off it before the cut)
     // into the clearing: a peep from the grass, he slows and stops beside the nest
-    if (t < T.F2) return lerp(L - 7.6, sN, 1 - Math.pow(1 - clamp((t - T.F) / 2.8, 0, 1), 1.6));
+    if (t < T.F2) return lerp(L - 7.0, sN, 1 - Math.pow(1 - clamp((t - T.F) / 2.8, 0, 1), 1.6));
     // on again: something glitters ahead, he slows to a stop when he sees it
     if (t < T.F2 + 3.2) return sN + (L - 3.6 - sN) * (1 - Math.pow(1 - (t - T.F2) / 3.2, 1.6));
     // ...a long look, then slowly up to the chest: he stops right at the spill

@@ -31,7 +31,7 @@
 #ui[data-hud=deep] .depth.show { opacity: 1; transform: none; }
 #ui[data-hud=deep] .depth img { order: 0; }
 #ui[data-hud=deep] .depth-txt b { font-size: 27px; }
-#ui.panel-open .depth { opacity: 0; }
+#ui.panel-open .depth, #ui.panel-open .depth.show { opacity: 0; }
 
 /* crosshair: a pixel reticle in the middle, the name of what you look at under it */
 .xh { position: absolute; left: 50%; top: 50%; width: calc(var(--px) * 25); height: calc(var(--px) * 25); margin: calc(var(--px) * -12) 0 0 calc(var(--px) * -12); pointer-events: none; }

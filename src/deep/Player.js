@@ -29,6 +29,9 @@ export class FPSPlayer {
     this.inLava = false;
     this.bobT = 0;
     this.dip = 0; // landing dip (meters)
+    this.dipV = 0; // its spring's velocity (the dip bounces back with a small overshoot)
+    this.coyote = 0; // a moment after walking off a ledge when a jump still counts (s)
+    this.jumpBuf = 0; // a jump pressed just before landing (s)
     this.eyeY = EYE;
     this.h = HEIGHT; // body height now (lower while crouched)
     this.crouched = false;
@@ -94,7 +97,8 @@ export class FPSPlayer {
     let tx = (fx * mv.y + rx * mv.x) * speed, tz = (fz * mv.y + rz * mv.x) * speed;
     // a current carries you along (you can still swim against it)
     if (this.flow && (this.inWater || this.wade)) { tx += this.flow.x; tz += this.flow.z; }
-    const accel = this.grounded ? 30 : 9;
+    // (wave 10: quick and bouncy) snappier start/stop on the ground, more air control
+    const accel = this.grounded ? 46 : 14;
     v.x += clamp(tx - v.x, -accel * dt, accel * dt);
     v.z += clamp(tz - v.z, -accel * dt, accel * dt);
 
@@ -119,8 +123,13 @@ export class FPSPlayer {
       v.y += -GRAV * 0.1 * dt; v.y *= Math.max(0, 1 - 5 * dt);
       if (jumpHeld) v.y = Math.max(v.y, 1.6);
     } else {
-      v.y -= GRAV * dt;
-      if (jump && this.grounded) { v.y = 5.0 * jumpMul; ev.jump = true; }
+      // a snappier jump: a faster take-off against a stronger pull while rising, so the apex stays
+      // where it was (5.7² / (2·15·1.3) ≈ 5.0² / (2·15)) but the hop pops; the fall is unchanged
+      // (landing speeds and fall damage stay as they were). A little coyote time and a jump buffer
+      // so a press just before landing or just after walking off a ledge still counts.
+      v.y -= GRAV * (v.y > 0 ? 1.3 : 1) * dt;
+      this.jumpBuf = jump ? 0.12 : Math.max(0, this.jumpBuf - dt);
+      if (this.jumpBuf > 0 && (this.grounded || this.coyote > 0)) { v.y = 5.7 * jumpMul; ev.jump = true; this.jumpBuf = 0; this.coyote = 0; this.dip = -0.03; }
     }
     v.y = Math.max(v.y, -18);
 
@@ -145,7 +154,13 @@ export class FPSPlayer {
     // camera: bob while walking, dip recovery, smooth step-ups
     const hs = Math.hypot(v.x, v.z);
     if (this.grounded && hs > 0.3) this.bobT += dt * hs * 2.6;
-    this.dip = damp(this.dip, 0, 9, dt);
+    this.coyote = this.grounded ? 0.09 : Math.max(0, this.coyote - dt);
+    // the landing dip springs back with a small overshoot (a squash, then a bounce) instead of easing out
+    // (a dip set from outside, by a cutscene, or by a landing or a hop this frame: the spring starts from rest)
+    if (this.dip !== this._dipWas) this.dipV = 0;
+    this.dipV += (-this.dip * 260 - this.dipV * 20) * dt;
+    this.dip += this.dipV * dt;
+    this._dipWas = this.dip;
     this.eyeY = damp(this.eyeY, this.crouched ? EYE_C : EYE, 14, dt);
     this.speed = hs;
     return ev;

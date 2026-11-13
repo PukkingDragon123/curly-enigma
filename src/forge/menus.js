@@ -1,6 +1,6 @@
 // Forge menus (DOM in the scene's layer), each one a thing in the smithy:
 //   main()       the order board: a chalkboard on chains with pinned cards (1 smelt, 2 forge)
-//   smeltList()  the smith's ledger: a leather notebook, one inked entry per recipe, rubber stamps
+//   smeltList()  the smith's ledger: a leather notebook, one inked entry per recipe, riveted forge-plate buttons
 //   plan()       the weapon blueprint: chalk boxes for the plan, metal tokens, the drawing in the middle
 // Styles: forge.css, art: forgeArt.js.
 import { el, formatGoldFull } from '../core/util.js';

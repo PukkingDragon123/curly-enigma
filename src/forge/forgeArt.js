@@ -1,11 +1,11 @@
 // Pixel art for the forge's decorated interface (drawn in code in art pixels, shown at the UI's
 // --px scale; uiArt's art() draws it at 2× resolution and the r > 1 passes add the finer detail): the chalkboard over the bench, the smith's ledger, the weapon
-// blueprint, the brass thermometer, rune medallions, gauges, rubber stamps,
+// blueprint, the brass thermometer, rune medallions, gauges, the riveted forge-plate buttons,
 // the guild certificate and its wax seal. Everything is cached through uiArt's art(); the frames
 // and tiles are published on the forge layer as CSS custom properties (--fa-<key>).
 import { Px, PAL, INK, art, mixHex, shade, cssUrl } from '../ui/uiArt.js';
 import { blob, lumpDist } from '../iso/organic.js';
-import { TONES, rivet, glint } from '../ui/craftArt.js';
+import { TONES, rivet, glint, quant, pnoise } from '../ui/craftArt.js';
 import { SPR } from '../ui/uiSprites.js';
 import { PixelCanvas } from '../gfx/PixelArt.js';
 import { drawWeapon } from '../gfx/PixelArt.js';
@@ -245,22 +245,50 @@ function certFrame() {
   return p;
 }
 
-/** A rubber stamp's inked border (worn, a few gaps). slice 4. color = ink. */
-function stampFrame(color) {
-  const p = new Px(16, 12);
-  for (let x = 1; x <= 14; x++) {
-    if (hash(x, 1, 4) > 0.1) p.set(x, 1, color);
-    if (hash(x, 2, 4) > 0.3) p.set(x, 2, color);
-    if (hash(x, 10, 4) > 0.1) p.set(x, 10, color);
-    if (hash(x, 9, 4) > 0.3) p.set(x, 9, color);
+/**
+ * A forge-plate button (9-slice, slice 5 · fill, 26×15): a blackened iron strap riveted round a
+ * face of the plate's material, lit from the top left, a bright arris, a dark front lip and a
+ * brass rivet in each corner. kind: brass (default) · blue (blued steel) · green (verdigris
+ * copper) · ink (smoked oak). down: pressed in (the lip goes, the top falls into shade).
+ */
+const PLATE = {
+  brass: TONES.brass,
+  blue: [0x0e1622, 0x16243a, 0x1e3250, 0x2a4468, 0x34567e, 0x426a94, 0x5a84ac, 0x7aa0c4, 0x9cbcd8, 0xc4daec],
+  green: [0x10241a, 0x183424, 0x22462e, 0x2c5838, 0x386a42, 0x467c4c, 0x5a9058, 0x74a46a, 0x96bc84, 0xbcd6a6],
+  ink: TONES.oak,
+};
+const IRON = [0x0c0a0a, 0x16120f, 0x221c18, 0x2e2620, 0x3c322a, 0x4c4036, 0x605246, 0x786858];
+function forgePlate(kind = 'brass', down = false) {
+  const W = 26, H = 15, pal = PLATE[kind] || PLATE.brass, p = new Px(W, H), r = p.r;
+  p.fine((X, Y, fx, fy) => {
+    const x = Math.floor(X), y = Math.floor(Y), sub = Y - y;
+    if (x === 0 || y === 0 || x === W - 1 || y === H - 1) return INK;
+    // the iron strap: two pixels deep, hammer-dimpled, lit on its top/left lips
+    if (x <= 2 || y <= 2 || x >= W - 3 || y >= H - 3) {
+      let k = 0.5 + (hash(r > 1 ? fx : x, r > 1 ? fy : y, 41) - 0.5) * 0.25;
+      if (y === 1 || x === 1) k = down ? 0.35 : 0.85;
+      if (y === H - 2 || x === W - 2) k = 0.12;
+      if (!down && y === H - 3 && x > 2 && x < W - 3) k = 0.05; // the strap's shadow over the lip
+      return quant(IRON, k, fx, fy, 0.35);
+    }
+    // the face: hammered, brighter at the top, a soft hammer pattern
+    let k = 0.64 - (y - 3) * 0.035 + (pnoise(X / 3.5, Y / 2.5, 8, 8, kind.length * 7) - 0.5) * 0.2 + (hash(r > 1 ? fx : x, r > 1 ? fy : y, 44) - 0.5) * 0.05;
+    if (down) k -= 0.1;
+    if (!down) {
+      if (y === 3) k = r > 1 && sub ? 0.86 : 0.95; // the arris
+      else if (x === 3) k += 0.14;
+      else if (x === W - 4) k -= 0.14;
+      else if (y === H - 4) k -= 0.2; // the front lip
+    } else if (y === 3) k = 0.22;
+    return quant(pal, k, fx, fy, 0.4);
+  });
+  for (const [x, y] of [[0, 0], [W - 1, 0], [0, H - 1], [W - 1, H - 1]]) p.clear(x, y);
+  // four brass rivets in the strap's corners; a glint on the face
+  for (const [x, y] of [[1.6, 1.6], [W - 2.4, 1.6], [1.6, H - 2.4], [W - 2.4, H - 2.4]]) {
+    if (r > 1) rivet(p, x + 0.4, y + 0.4, TONES.brass, 0.95);
+    else { p.set(Math.round(x), Math.round(y), B.hi); p.set(Math.round(x) + 1, Math.round(y) + 1, B.dk); }
   }
-  for (let y = 1; y <= 10; y++) {
-    if (hash(1, y, 6) > 0.1) p.set(1, y, color);
-    if (hash(2, y, 6) > 0.3) p.set(2, y, color);
-    if (hash(14, y, 6) > 0.1) p.set(14, y, color);
-    if (hash(13, y, 6) > 0.3) p.set(13, y, color);
-  }
-  for (let x = 4; x <= 11; x++) if (hash(x, 4, 8) > 0.5) p.set(x, 3, color, 70);
+  if (!down) glint(p, 5, 4, 0xffffff, mixHex(pal[pal.length - 1], 0xffffff, 0.5), 200);
   return p;
 }
 
@@ -546,7 +574,8 @@ const SPRITES = {
   chalkT: chalkTile, blueT: blueTile, draftT: draftTile, corkT: corkTile,
   board: boardFrame, blue: blueFrame, draft: draftFrame, chalkBox: () => chalkBox(false), chalkBoxOn: () => chalkBox(true),
   gauge: gaugeFrame, tube: tubeFrame, clip: clipFrame, cert: certFrame,
-  stampRed: () => stampFrame(0xb8301e), stampBlue: () => stampFrame(0x2a5aa8), stampGreen: () => stampFrame(0x3a7a2a), stampInk: () => stampFrame(0x3a2414),
+  plate: () => forgePlate('brass'), plateDn: () => forgePlate('brass', true), plateBlue: () => forgePlate('blue'), plateBlueDn: () => forgePlate('blue', true),
+  plateGreen: () => forgePlate('green'), plateGreenDn: () => forgePlate('green', true), plateInk: () => forgePlate('ink'), plateInkDn: () => forgePlate('ink', true),
   flame: fineOnly(flameStrip, flameFine), bulb: fineOnly(bulbSprite, bulbFine), cap: fineOnly(capSprite, capFine), sticks: fineOnly(chalkSticks, sticksFine), tape: fineOnly(tapeSprite, tapeFine), nail: fineOnly(nailSprite, nailFine),
   dAnvil: fineOnly(() => doodle('anvil'), (p) => chalkify(p, 3)), dSpark: fineOnly(() => doodle('spark'), (p) => chalkify(p, 5)), dArrow: () => doodle('arrow'), dFlame: fineOnly(() => doodle('flame'), (p) => chalkify(p, 7)),
   ribbon: fineOnly(() => ribbonSprite(), ribbonFine),
@@ -561,7 +590,7 @@ export function fart(key) {
 }
 // finishing-pass options (src/ui/pxFine.js): no material texture on what CSS stretches, the cork has its own
 const FLAT = { detail: false, edges: false };
-const FOPTS = { corkT: FLAT, stampRed: FLAT, stampBlue: FLAT, stampGreen: FLAT, stampInk: FLAT, chalkBox: FLAT, chalkBoxOn: FLAT, gauge: FLAT, tube: FLAT, cert: FLAT, blueT: FLAT, draftT: FLAT, chalkT: FLAT };
+const FOPTS = { corkT: FLAT, plate: FLAT, plateDn: FLAT, plateBlue: FLAT, plateBlueDn: FLAT, plateGreen: FLAT, plateGreenDn: FLAT, plateInk: FLAT, plateInkDn: FLAT, chalkBox: FLAT, chalkBoxOn: FLAT, gauge: FLAT, tube: FLAT, cert: FLAT, blueT: FLAT, draftT: FLAT, chalkT: FLAT };
 export const medal = (glyph, state = 'off') => art(`fa:medal:${glyph}:${state}`, fineOnly(() => medalSprite(glyph, state), (p) => medalFine(p, glyph, state)), { brown: 'brass' });
 export const seal = (hex) => art(`fa:seal:${hex}`, fineOnly(() => bigSeal(hex), (p) => sealFine(p, hex)), { brown: 'wax' });
 export const ribbon = (hex) => art(`fa:ribbon:${hex}`, fineOnly(() => ribbonSprite(hex), (p) => ribbonFine(p, hex)), { brown: 'none' });

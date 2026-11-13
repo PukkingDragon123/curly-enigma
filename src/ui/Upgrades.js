@@ -181,7 +181,7 @@ export function openUpgrades(game, startTab) {
     if (!c) return;
     c.classList.add('pop');
     // the new level writes itself onto the notice
-    for (const [n, k] of [[c.querySelector('.ug-hd small'), 0], [c.querySelector('.ug-now, .ug-max'), 1]]) if (n) inkIn(n, { delay: 120 + k * 260, dur: 520, quill: !k, audio: k ? null : game.audio });
+    for (const [n, k] of [[c.querySelector('.ug-hd small'), 0], [c.querySelector('.ug-now, .ug-max'), 1]]) if (n) inkIn(n, { delay: 80 + k * 180, dur: 380, quill: !k, audio: k ? null : game.audio });
     const pip = c.querySelectorAll('.ug-pips i.on')[r.level - 1];
     pip?.classList.add('new');
     c.append(el('div', { class: 'ug-float' }, r.level >= u.max ? 'MAX!' : `Lv ${r.level}!`));

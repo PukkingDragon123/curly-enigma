@@ -26,11 +26,11 @@
 .tm-clasp.b { bottom: 24%; }
 .ib.single .tm-clasp { left: calc(var(--px) * -15); }
 @media (max-width: 480px) { .tm-clasp { display: none; } }
-.modal-back:not(.closing) .tm-book .tm-clasp { animation: tmClasp .55s .1s var(--pop) both; }
+.modal-back:not(.closing) .tm-book .tm-clasp { animation: tmClasp .34s .05s var(--pop) both; }
 @keyframes tmClasp { 0% { transform: rotate(-90deg) translateY(calc(var(--px) * -6)) rotate(-8deg); } 60% { transform: rotate(-90deg) translateY(var(--px)); } }
 
 /* the book shuts as it is put away */
-.modal-back.closing .tm-book { animation: tmShut .17s ease-in forwards; }
+.modal-back.closing .tm-book { animation: tmShut .13s ease-in forwards; }
 @keyframes tmShut { to { transform: scaleX(.35) translateY(calc(var(--px) * 6)); opacity: 0; } }
 
 /* ---- vellum pages in an inked frame ---- */
@@ -139,7 +139,6 @@
   background: linear-gradient(#5a3a20, #5a3a20) 50% 0 / var(--px) 100% no-repeat; opacity: .7; }
 .tm-book .ib-entryhead { padding: calc(var(--px) * 6) 0 calc(var(--px) * 8); }
 .tm-book .ib-entry.known { background: rgba(255, 250, 235, .35) padding-box; }
-.tm-book .ib-stamp { color: #a8321e; box-shadow: 0 0 0 var(--px) #a8321e, inset 0 0 0 var(--px) rgba(168, 50, 30, .25); }
 
 /* ---- marginalia ---- */
 .tm-doodle {
@@ -177,10 +176,10 @@
 .ib-turn.tm-curl.back:not(.single-turn) .tm-seg .tm-seg { left: auto; right: 100%; transform-origin: 100% 50%; }
 .ib-turn.tm-curl.back:not(.single-turn) .tm-seg::after { background: linear-gradient(to left, rgba(70, 36, 12, .05), rgba(70, 36, 12, .38)); }
 .ib-turn.tm-curl.back:not(.single-turn) .tm-seg:not(:has(.tm-seg))::before { right: auto; left: 0; background-image: var(--t-edgeL); background-position: 0 0; }
-.ib-turn.tm-curl.go .tm-seg { animation: tmCurlL .46s cubic-bezier(.45, .05, .55, .95) both; }
+.ib-turn.tm-curl.go .tm-seg { animation: tmCurlL .32s cubic-bezier(.45, .05, .55, .95) both; }
 .ib-turn.tm-curl.go.back:not(.single-turn) .tm-seg { animation-name: tmCurlR; }
 .ib-turn.tm-curl.go.single-turn.back .tm-seg { animation-direction: reverse; }
-.ib-turn.tm-curl.go .tm-seg::after { animation: tmSegShade .46s ease-in-out both; }
+.ib-turn.tm-curl.go .tm-seg::after { animation: tmSegShade .32s ease-in-out both; }
 @keyframes tmCurlL { 0% { transform: rotateY(0); } 30% { transform: rotateY(-11deg); } 64% { transform: rotateY(8deg); } 100% { transform: rotateY(0); } }
 @keyframes tmCurlR { 0% { transform: rotateY(0); } 30% { transform: rotateY(11deg); } 64% { transform: rotateY(-8deg); } 100% { transform: rotateY(0); } }
 @keyframes tmSegShade { 0%, 100% { opacity: 0; } 50% { opacity: calc(.4 + var(--k) * .12); } }
