@@ -683,6 +683,16 @@ export default class TitleScene extends Scene {
 
   updateWorld(dt) {
     const cam = this.camera, h = this.game.engine.height;
+    // the god rays gather toward whichever opening is on (or nearest) the screen
+    const v = this._rv || (this._rv = new THREE.Vector3());
+    let best = null, bd = Infinity;
+    for (const S of SHAFTS) {
+      v.copy(S.top).project(cam);
+      if (v.z > 1) continue;
+      const d = Math.max(Math.abs(v.x), Math.abs(v.y));
+      if (d < bd) { bd = d; best = S; }
+    }
+    if (best) this.post.raysPos.copy(best.top);
     this.C.update(dt, cam, h);
     this.chase.update(dt, cam, h);
     this.nest.update(dt, h);

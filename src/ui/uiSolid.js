@@ -100,7 +100,7 @@ export function clearOf(rect, o = {}) {
 const watched = new Map();
 let timer = 0;
 
-function check(node, o) {
+function check(node, o, placed = []) {
   if (!node.isConnected) return false;
   const av = node._av || (node._av = { dx: 0, dy: 0, w: 0 });
   const r = node.getBoundingClientRect();
@@ -109,7 +109,9 @@ function check(node, o) {
   let mx = 0, my = 0;
   if (av.dx || av.dy) { const t = getComputedStyle(node).translate; if (t && t !== 'none') { const p = t.split(' ').map(parseFloat); mx = p[0] || 0; my = p[1] || 0; } }
   const base = { l: r.left - mx, t: r.top - my, r: r.right - mx, b: r.bottom - my };
-  let res = clearOf(base, { ...o, skip: node });
+  // (the solid interface, and the floating words placed before this one: toasts stack, never pile up)
+  const rects = placed.length ? solidRects().concat(placed) : undefined;
+  let res = clearOf(base, { ...o, rects, skip: node });
   if (!res.ok && o.wrap && res.w > 40 && res.w < base.r - base.l) {
     // wrap narrower into the widest free span on its row (re-checked next time round)
     if (!av.w) av.full = base.r - base.l;
@@ -118,7 +120,7 @@ function check(node, o) {
   } else if (res.ok && av.w) {
     // (room again: it gets its width back once it would be clear at full size)
     const c = (base.l + base.r) / 2, full = { l: c - av.full / 2, r: c + av.full / 2, t: base.t, b: base.b };
-    if (clearOf(full, { ...o, skip: node }).ok) { node.style.maxWidth = ''; av.w = 0; }
+    if (clearOf(full, { ...o, rects, skip: node }).ok) { node.style.maxWidth = ''; av.w = 0; }
   }
   if (!res.ok) res = { dx: res.dx, dy: 0 };
   const dx = Math.round(res.dx), dy = Math.round(res.dy);
@@ -127,11 +129,14 @@ function check(node, o) {
     node.classList.add('ft-avoid');
     node.style.translate = dx || dy ? `${dx}px ${dy}px` : '';
   }
+  if (!o.free) placed.push({ l: base.l + dx, t: base.t + dy, r: base.r + dx, b: base.b + dy, el: node });
   return true;
 }
 
+/** Every watched node in turn (the older ones keep their place; each later one keeps off them too). */
 function tick() {
-  for (const [node, o] of watched) if (!check(node, o)) watched.delete(node);
+  const placed = [];
+  for (const [node, o] of watched) if (!check(node, o, placed)) watched.delete(node);
   if (!watched.size) { clearInterval(timer); timer = 0; }
 }
 
@@ -141,6 +146,6 @@ export function keepClear(node, o = {}) {
   watched.set(node, o);
   if (!timer) timer = setInterval(tick, 180);
   // first look once it's laid out
-  requestAnimationFrame(() => { if (watched.has(node)) check(node, o); });
+  requestAnimationFrame(() => { if (watched.has(node)) tick(); });
   return () => watched.delete(node);
 }

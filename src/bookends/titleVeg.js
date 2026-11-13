@@ -23,6 +23,7 @@ import { GLSL_BAYER } from './fx.js';
 import { CF, GLSL_SUN } from './titleCaveFx.js';
 
 const PUSH = 4;
+const _tv = new THREE.Vector3();
 const NL = 4; // glowcap point lights the foliage takes
 
 /** A plant model's boxes (and its half-resolution copy), built once per name and variant. */
@@ -258,7 +259,7 @@ export function makeTitleVeg({ lite = false } = {}) {
         else if (o.isDirectionalLight && nd < 2) {
           o.updateMatrixWorld();
           const d = U.uDirD.value[nd].setFromMatrixPosition(o.matrixWorld);
-          if (o.target) d.sub(new THREE.Vector3().setFromMatrixPosition(o.target.matrixWorld));
+          if (o.target) { o.target.updateMatrixWorld(); d.sub(_tv.setFromMatrixPosition(o.target.matrixWorld)); }
           d.normalize();
           U.uDirC.value[nd].copy(o.color).multiplyScalar(o.visible ? o.intensity : 0);
           nd++;
