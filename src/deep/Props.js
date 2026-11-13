@@ -67,7 +67,7 @@ const FACES6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, 
 // prop voxels (1/16 m); fixed: fixed hanging length (m); flat/minUp/maxUp: wall flatness (voxels) and
 // height above the floor (1/8 m voxels); sway/bob: animation (m); snd: what it sounds like breaking.
 const TYPES = {
-  // wave 12: the 1/96 m ore skin, one per exposed ore face (props/oreBits.js; param = ore id)
+  // wave 12: the 1/128 m ore skin, one per exposed ore face (props/oreBits.js; param = ore id)
   orebit: { mount: 'floor', vars: 4, r: 0.07, h: 0.06, snd: 'stone', ore: true },
   orebitC: { mount: 'ceil', vars: 4, r: 0.07, h: 0.06, snd: 'stone', ore: true },
   orebitW: { mount: 'wall', vars: 4, r: 0.07, h: 0.06, snd: 'stone', ore: true },
@@ -915,10 +915,13 @@ export class Props {
   }
 
   // ------------------------------------------------------------ the ore skin (wave 12)
-  /** One 1/96 m ore patch on each face of an ore voxel that meets open cave (props/oreBits.js). */
+  /** One 1/128 m ore patch on each face of an ore voxel that meets open cave (props/oreBits.js). */
   placeOre(c, vox) {
+    // (a chunk carries at most this many: all of a deposit on desktop, a sprinkling on phones)
+    const fx = this.ctx.owner?.game?.engine?.fx || 'high', touch = typeof document !== 'undefined' && document.documentElement.classList.contains('is-touch');
+    const max = fx === 'off' ? 0 : fx === 'low' || touch ? 24 : 256;
     let n = 0;
-    for (let i = 0; i < vox.length && n < 64; i++) {
+    for (let i = 0; i < vox.length && n < max; i++) {
       const m = vox[i];
       if (m < ORE_BASE || !MAT[m]?.ore) continue;
       const lx = i % CS, ly = ((i / CS) | 0) % CS, lz = (i / (CS * CS)) | 0;
@@ -1355,8 +1358,9 @@ export class Props {
     const t2 = performance.now();
     this.stream(eye, deadline - performance.now());
     const t3 = performance.now();
+    let nUp = 0;
     for (const rec of this.dirty) {
-      if (performance.now() > deadline + 0.6) break;
+      if (nUp++ && performance.now() > deadline + 0.6) break; // (at least one a frame: a slow frame's streaming never starves them)
       this.dirty.delete(rec);
       if (this.built.get(rec.key) === rec) this.upload(rec);
     }

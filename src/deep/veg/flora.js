@@ -212,8 +212,10 @@ export function layPlant(w, P, out) {
   // far chunks (w.lod) take the half-resolution copy: the same plant, the same size, coarser voxels
   const far = !!(w.lod && pf.lod);
   // near: wave 12's twice-as-fine copy once its worker has built it (out.pend: still coarse)
-  const pr = far ? pf.lod : pf.fine || pf;
-  out.pend = !far && !!pf.wantFine && !pf.fine;
+  const near = !far && w.fine !== false; // (Vegetation: only chunks in arm's reach)
+  const pr = far ? pf.lod : (near && pf.fine) || pf;
+  out.pend = near && !!pf.wantFine && !pf.fine;
+  out.fineable = !far && !!(pf.wantFine || pf.fine);
   const sc = K.sc ? lerp(K.sc[0], K.sc[1], r()) : 1;
   const base = K.div || 56;
   // the voxel follows the plant's size: fine plants stay within 1/48–1/64 m

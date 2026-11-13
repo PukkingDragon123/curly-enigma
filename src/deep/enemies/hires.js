@@ -64,8 +64,8 @@ export class HiRes {
     const eng = this.mgr.owner?.game?.engine, fx = eng?.fx || 'high';
     const touch = typeof document !== 'undefined' && document.documentElement.classList.contains('is-touch');
     if (fx === 'off') return null;
-    if (fx === 'low' || touch) return { r: 3.6, max: 2, vox: 1 / 72 };
-    return { r: 8, max: 8, vox: 1 / 96 };
+    if (fx === 'low' || touch) return { r: 3.2, max: 2, vox: 1 / 72 };
+    return { r: 6, max: 4, vox: 1 / 96 };
   }
   request(geo, P) {
     const src = geo.userData.hiSrc;

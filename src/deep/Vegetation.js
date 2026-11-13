@@ -41,6 +41,8 @@ const R_DROP = 19;
 // switches as the mole comes within LOD[0] m of its centre (fine) or goes past LOD[1] (coarse).
 // By tier: there a fine voxel (1/48–1/64 m) is a pixel or less.
 const LOD_BY_FX = { high: [10, 12], low: [6.5, 8.5], off: [5, 7] };
+// wave 12: chunks within this many m of the eye plant the twice-as-fine copies (./veg/fine.js)
+const FINE_BY_FX = { high: 6.5, low: 3.5, off: 0 };
 const STEP = 3; // floor / ceiling placement grid (voxels)
 const WSTEP = 4; // wall placement grid (voxels)
 const M1 = CS - 1;
@@ -224,6 +226,7 @@ export class Vegetation {
     this.age = 0;
     this.budget = 1.3; // ms of planting per frame in play
     this.lodR = LOD_BY_FX.high;
+    this.fineR = FINE_BY_FX.high; // wave 12: chunks this close plant the twice-as-fine copies
     this.eyeAt = null; // where the eye was this frame (a new chunk is planted fine or coarse by it)
     this.trail = [];
     this.trailT = 0;
@@ -400,6 +403,7 @@ export class Vegetation {
     const p = { q0, nq: st.n - q0, x: P.x, y: P.y, z: P.z, kind: P.kind, col: res.col, gone: false, rad: res.rad, h: res.h, hang: !!K.hang };
     rec.plants.push(p);
     if (res.pend) rec.pend = (rec.pend || 0) + 1; // (wave 12: a fine copy still on its way)
+    if (res.fineable) rec.fineable = (rec.fineable || 0) + 1; // (one that has a fine copy)
     for (const k of [k1, k2]) { const a = rec.at.get(k); if (a) a.push(p); else rec.at.set(k, [p]); }
     if (K.light) {
       const L = rec.glow || (rec.glow = { x: 0, y: 0, z: 0, c: [0, 0, 0], n: 0 });
@@ -516,6 +520,8 @@ export class Vegetation {
     this.built.set(ch.key, rec);
     this.stage.reset();
     this.stage.lod = rec.lod;
+    // (wave 12: the fine copies only in arm's reach; rec.fine: planted with them)
+    rec.fine = this.stage.fine = !rec.lod && !!E && Math.hypot(rec.x - E.x, rec.y - E.y, rec.z - E.z) < this.fineR;
     try { this.place(rec); } catch (e) {
       if (!this.warned) { this.warned = true; console.warn('vegetation: planting failed', e); }
       rec.plants.length = 0; rec.at.clear(); this.stage.reset();
@@ -592,7 +598,8 @@ export class Vegetation {
       const d = Math.hypot(rec.x - ex, rec.y - ey, rec.z - ez);
       if (d > (this.rDrop ?? R_DROP) || w.chunks.get(rec.key) !== rec.ch) this.drop(rec);
       else if (rec.lod ? d < this.lodR[0] : d > this.lodR[1]) relod.push([rec.lod ? d : d + 100, rec]); // fine ones first
-      else if (!rec.lod && rec.pend && rec.gen !== (protoStats.fineGen || 0)) { rec.replant = true; relod.push([d + 50, rec]); } // wave 12: fine copies arrived
+      else if (!rec.lod && rec.fine && rec.pend && rec.gen !== (protoStats.fineGen || 0)) { rec.replant = true; relod.push([d + 50, rec]); } // wave 12: fine copies arrived
+      else if (!rec.lod && rec.fineable && (rec.fine ? d > this.fineR + 2 : d < this.fineR)) { rec.replant = true; relod.push([d + 60, rec]); } // wave 12: in or out of arm's reach
       if ((++n & 63) === 0) yield;
     }
     relod.sort((a, b) => a[0] - b[0]);
@@ -725,6 +732,7 @@ export class Vegetation {
       // plant (and keep) only as far as the shader shows anything: past its cut-off a chunk's boxes
       // are only vertex work (a chunk's plants are up to 1.75 m from its centre)
       this.lodR = LOD_BY_FX[fx] || LOD_BY_FX.off;
+      this.fineR = FINE_BY_FX[fx] ?? 0;
       this.rBuild = fx === 'high' ? R_BUILD : lod[2] + 0.5;
       this.rDrop = fx === 'high' ? R_DROP : lod[2] + 2.5;
       this._ring = null;

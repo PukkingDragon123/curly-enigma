@@ -170,5 +170,6 @@ the view model, HUD, and the optional enemies/fluids/props modules).
 - `?voxrule=0`: turn off the size-based voxel resolution rule (src/gfx/voxRes.js) for A/B shots.
 - `?hires=0`: draw the interface art at 1× instead of 2× (uiArt.js `ART_RES`; finer detail lives in `r > 1` branches, src/ui/px.js and src/ui/pxFine.js) for A/B shots.
 - `?cloth=0`: turn off all cloth simulation (src/gfx/cloth.js).
+- `?res12=0`: turn off the fine-voxel pass for near creatures, plants, crystals and ore skins (src/deep/enemies/hires.js, src/deep/veg/fine.js, src/deep/props/crystalHi.js, oreBits.js) for A/B shots.
 - `?wildlife=0`: no birds in the forest.
 - `?q=<tier>`: pin a render quality tier (ultra/high/balanced/medium/low/lower/potato); `?hdr=0` turns HDR off.

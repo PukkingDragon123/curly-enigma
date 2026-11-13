@@ -66,7 +66,7 @@ function rubble(g, cx, cy, cz, rx, ry, c0, c1, seed) {
 // ---------------------------------------------------------------- builders
 // each: (r, v, p) → { grid, pivot, sway?, light?: {c, r, at}, emit?: {k, at, c?}, main }
 export const BUILD = {
-  // ---------- wave 12: the 1/96 m ore skin on exposed ore faces (./oreBits.js; p = ore id)
+  // ---------- wave 12: the 1/128 m ore skin on exposed ore faces (./oreBits.js; p = ore id)
   orebit: (r, v, p) => oreBit(r, v, p, 'floor'),
   orebitC: (r, v, p) => oreBit(r, v, p, 'ceil'),
   orebitW: (r, v, p) => oreBit(r, v, p, 'wall'),

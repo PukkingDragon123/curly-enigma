@@ -14,6 +14,16 @@
 //
 // Budget: refining is only for the small and middle sizes (a few thousand voxels each), the greedy
 // mesher keeps flat runs merged, and big pieces are never refined.
+//
+// Wave 12 ("super high resolution"): some categories go finer than this table, each with its own
+// LOD so the cost stays near the eye (RES12 below, ?res12=0 turns all of it off):
+//   creatures   near copies at 1/96 m (phones 1/72 m) built in a worker with surface detail, worn
+//               only by the few creatures in arm's reach (deep/enemies/hires.js, hiBuild.js)
+//   plants      twice as fine (1/96-1/128 m) with leaf rims, teeth, veins and gills, worker-built,
+//               planted only in chunks within ~6.5 m (phones 3.5 m) (deep/veg/fine.js, fineAsk.js)
+//   crystals    1/48 m hexagonal crystals instead of refined 1/16 m blocks (deep/props/crystalHi.js)
+//   ore         a 1/128 m skin of nuggets / crystal points on every exposed ore face, built in the
+//               chunk workers, fewer per chunk on phones (deep/props/oreBits.js, Props.placeOre)
 
 /** ?voxrule=0 turns the rule off (A/B screenshots): everything is built at the voxel it was drawn at. */
 export const VOX_RULE_ON = !(typeof location !== 'undefined' && /[?&]voxrule=0/.test(location.search || ''));
