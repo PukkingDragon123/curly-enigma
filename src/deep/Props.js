@@ -23,13 +23,13 @@ import * as THREE from 'three';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { ITEMS } from '../data/items.js';
 import { CS, zoneAt, biomeAt } from './Generator.js';
-import { VOX, M, MAT } from './materials.js';
+import { VOX, M, MAT, ORE_BASE } from './materials.js';
 import { OPAQUE } from './Mesher.js';
 import { h3, h3i } from './noise.js';
 import { LIGHT, makeObjectMaterial } from './TerrainMaterial.js';
 import { LiftFlags } from './props/flags.js';
 import { getModel, modelCached, modelStats, modelSteps, defineModel, forgetModel, putModel } from './props/models.js';
-import { VOX_RULE_ON } from '../gfx/voxRes.js';
+import { VOX_RULE_ON, RES12 } from '../gfx/voxRes.js';
 import { key3, CB } from './World.js';
 import { rng32 } from './props/grid.js';
 import { liftSnapshotSteps, liftLayoutSteps } from './props/lifts.js';
@@ -59,6 +59,7 @@ const DY5 = offs(-v8(2), v8(2)); // ±1/4 m
 const DY3 = offs(-v8(1), v8(1)); // ±1/8 m
 const DE = offs(-v8(2), v8(3)); // wall depth offsets tried (+ = further in)
 const N8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]];
+const FACES6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
 // ---------------------------------------------------------------- prop types
 // mount: floor | ceil | wall. r: footprint radius (m); h: height (m); vars: model variants;
@@ -66,6 +67,10 @@ const N8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]
 // prop voxels (1/16 m); fixed: fixed hanging length (m); flat/minUp/maxUp: wall flatness (voxels) and
 // height above the floor (1/8 m voxels); sway/bob: animation (m); snd: what it sounds like breaking.
 const TYPES = {
+  // wave 12: the 1/96 m ore skin, one per exposed ore face (props/oreBits.js; param = ore id)
+  orebit: { mount: 'floor', vars: 4, r: 0.07, h: 0.06, snd: 'stone', ore: true },
+  orebitC: { mount: 'ceil', vars: 4, r: 0.07, h: 0.06, snd: 'stone', ore: true },
+  orebitW: { mount: 'wall', vars: 4, r: 0.07, h: 0.06, snd: 'stone', ore: true },
   mush: { mount: 'floor', vars: 4, r: 0.48, h: 0.85, react: 'puff', snd: 'dirt', brittle: true },
   shelf: { mount: 'wall', vars: 3, r: 0.35, flat: 2, minUp: 2, maxUp: 14, snd: 'dirt', brittle: true },
   roots: { mount: 'ceil', vars: 3, len: [6, 30], r: 0.4, sway: 0.035, snd: 'dirt', brittle: true },
@@ -560,6 +565,7 @@ export class Props {
     if (!open && !this.fixturesIn(c).length) return;
 
     for (const l of this.fixturesIn(c)) this.placeFixture(c, l);
+    if (RES12) this.placeOre(c, vox);
 
     for (let cz = 0; cz < CPC; cz++) for (let cy = 0; cy < CPC; cy++) for (let cx = 0; cx < CPC; cx++) {
       const gx = ch.cx * CPC + cx, gy = ch.cy * CPC + cy, gz = ch.cz * CPC + cz;
@@ -906,6 +912,51 @@ export class Props {
     }
     c.rec.props.push(p);
     return p;
+  }
+
+  // ------------------------------------------------------------ the ore skin (wave 12)
+  /** One 1/96 m ore patch on each face of an ore voxel that meets open cave (props/oreBits.js). */
+  placeOre(c, vox) {
+    let n = 0;
+    for (let i = 0; i < vox.length && n < 64; i++) {
+      const m = vox[i];
+      if (m < ORE_BASE || !MAT[m]?.ore) continue;
+      const lx = i % CS, ly = ((i / CS) | 0) % CS, lz = (i / (CS * CS)) | 0;
+      for (const d of FACES6) {
+        if (c.at(lx + d[0], ly + d[1], lz + d[2]) !== 0) continue;
+        if (this.oreBit(c.rec, m, c.X0 + lx, c.Y0 + ly, c.Z0 + lz, d)) n++;
+      }
+    }
+  }
+  /** The ore patch on face d of the ore voxel (vx, vy, vz) (material m), added to chunk record rec. */
+  oreBit(rec, m, vx, vy, vz, d) {
+    const h = h3i(vx * 3 + d[0], vy * 3 + d[1], vz * 3 + d[2], this.seed + 911);
+    const v = h & 3, oreId = MAT[m].ore;
+    const cx = (vx + 0.5) / VOX, cy = (vy + 0.5) / VOX, cz = (vz + 0.5) / VOX;
+    let p;
+    if (d[1] > 0) p = this.make({ rec }, 'orebit', v, oreId, cx, (vy + 1) / VOX, cz, ((h >> 2) & 3) * Math.PI / 2, 'floor', vx, vy, vz, 0.5, { fixture: true });
+    else if (d[1] < 0) p = this.make({ rec }, 'orebitC', v, oreId, cx, vy / VOX, cz, ((h >> 2) & 3) * Math.PI / 2, 'ceil', vx, vy, vz, 0.5, { fixture: true });
+    else {
+      p = this.make({ rec }, 'orebitW', v, oreId, cx + d[0] * 0.5 / VOX, cy, cz + d[2] * 0.5 / VOX, Math.atan2(d[0], d[2]), 'wall', vx, vy, vz, 0.5, { fixture: true });
+      if (p) { p.nx = d[0]; p.nz = d[2]; }
+    }
+    if (p) { p.cx = cx + d[0] * 0.55 / VOX; p.cy = cy + d[1] * 0.55 / VOX; p.cz = cz + d[2] * 0.55 / VOX; p.rad = 0.07; }
+    return p;
+  }
+  /** A voxel was dug open: ore beside it shows a new face, which gets its patch. */
+  oreOpened(vx, vy, vz) {
+    for (const d of FACES6) {
+      const ox = vx - d[0], oy = vy - d[1], oz = vz - d[2];
+      const m = this.w.voxelAt(ox, oy, oz);
+      if (m < ORE_BASE || !MAT[m]?.ore) continue;
+      const rec = this.built.get(this.w.chunk(ox >> CB, oy >> CB, oz >> CB)?.key);
+      if (!rec) continue;
+      const p = this.oreBit(rec, m, ox, oy, oz, d);
+      if (!p) continue;
+      this.register(p);
+      if (modelCached(p.mtype, p.v, p.param)) { this.finalize(p, getModel(p.mtype, p.v, p.param)); this.urgent.add(rec); }
+      else { this.queueModel(p); rec.wait = (rec.wait || 0) + 1; }
+    }
   }
 
   /** Attach the meshed model: exact bounds, light and particle emitter in world space. */
@@ -1627,6 +1678,7 @@ export class Props {
   onVoxel(vx, vy, vz, old, m) {
     const was = OPAQUE[old] === 1, now = OPAQUE[m] === 1;
     if (was === now) return;
+    if (was && RES12) this.oreOpened(vx, vy, vz);
     if (was) {
       const k = vkey(vx, vy, vz);
       const list = this.support.get(k);
@@ -1672,6 +1724,7 @@ export class Props {
     if (p.gone) return;
     this.remove(p);
     const T = TYPES[p.type];
+    if (T?.ore) return; // (the ore skin goes with its voxel: the ore itself pops out as a clump)
     if (!p.m) return;
     if (this.fallers.length >= 10 || !this.scene3) { this.crumbleAt(p, p.cx, p.cy, p.cz, 1); return; }
     const m = p.m, c = p.cos, s = p.sin;

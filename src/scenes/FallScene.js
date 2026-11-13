@@ -899,7 +899,9 @@ export default class FallScene extends Scene {
       }
       case 11: { // his face, lit gold from below; he reaches for it
         const u = ease(T.H, T.I, t);
-        o.pos.set(H.x + lerp(0.34, 0.27, u), lerp(0.36, 0.34, u), H.z - lerp(1.5, 1.34, u));
+        // (wave 12: out beside the chest, not against it: the gems in it kept ~0.4 m off the lens, the
+        // line to his face clearing the chest's corner)
+        o.pos.set(H.x + lerp(0.78, 0.7, u), lerp(0.4, 0.38, u), H.z - lerp(1.42, 1.3, u));
         o.look.set(H.x, H.y + 0.2, H.z);
         o.fov = lerp(38, 33, u);
         o.minH = portrait ? 26 : 36;

@@ -109,7 +109,7 @@ export function buildHi({ list, pivot, vs, k, style, seed = 1 }) {
   }
 
   // ---- surface detail
-  if (style && style !== 'smooth' && n >= 40) detail(g, W, H, D, k, style, seed, (fx, fy, fz) => nb[Math.floor((fx - 1) / k) + SX * Math.floor((fy - 1) / k) + SXY * Math.floor((fz - 1) / k)]);
+  if (style && style !== 'smooth' && n >= 12) detail(g, W, H, D, k, style, seed, (fx, fy, fz) => nb[Math.floor((fx - 1) / k) + SX * Math.floor((fy - 1) / k) + SXY * Math.floor((fz - 1) / k)]);
 
   // ---- mesh: fine cell (1, 1, 1) of g is model fine voxel ((x0 - 1) k, …)
   const s = vs / k;
