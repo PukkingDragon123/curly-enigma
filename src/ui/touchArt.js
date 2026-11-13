@@ -41,6 +41,7 @@ const DEF = {
   o: [ORE, 0.62], g: [GLASS, 0.45],
   u: [CAP, 0.55], U: [CAP, 0.82], k: [CREAM, 0.62],
   i: [IR, 0.5], I: [IR, 0.76], m: [ST, 0.6], M: [ST, 0.86],
+  v: [RAMP.moss, 0.6], V: [RAMP.moss, 0.86],
   e: { ink: 0x0c0606 }, h: { ink: 0x3a1a1a },
 };
 
@@ -359,6 +360,23 @@ function clipWindow(p, cx, cy, r) {
   for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 > r * r) p.clear(x, y);
 }
 
+/**
+ * Painted signs in the window that say what a button does at a glance while it rests (a brass arrow
+ * up / down / back, a turning arrow, a green tick), lit and outlined like the rest of the scene.
+ */
+const SIGNS = {
+  up: ['..b..', '.bBb.', 'bbBbb', '..b..', '..b..'],
+  down: ['..b..', '..b..', 'bbBbb', '.bBb.', '..b..'],
+  left: ['..b...', '.bb...', 'bBbbbb', '.bb...', '..b...'],
+  turn: ['.bbbb..', 'b....b.', 'b...bBb', '.....b.'],
+  tick: ['....v', '...vV', 'v.vv.', 'vVv..', '.v...'],
+};
+function sign(p, g, kind, x, y) {
+  const pt = new Part(g.S, g.S);
+  pt.tpl(SIGNS[kind], Math.round(x), Math.round(y));
+  paint(p, pt, { seed: 97, rim: 0.32 });
+}
+
 // ---------------------------------------------------------------- the mole, posed
 /**
  * pose: { bx, gy (feet row), lift (px up off the ground), build, lean, look, eye, mouth, cheek,
@@ -475,9 +493,12 @@ function jumpFrames(big) {
     const r = drawMole(p, g.S, g.S, P);
     if (fx) fx(p, g, r);
   }, 5));
-  S({ ...STAND });
-  S({ ...STAND, fa: [1, 2, 3, 2] });
-  S({ ...STAND, eye: '-' });
+  // 0-2 at rest: crouched, about to spring (an arrow up over him, a stir of dust at his feet)
+  const ready = { build: 's', fa: [1, 2, -1, 3], ba: [-1, 2, -3, 3], fl: [2, 1], bl: [-2, 1], look: 'up', eye: 'o' };
+  const readyFx = (bob) => (p, g) => { sign(p, g, 'up', g.x(-2), g.y(-10) - bob); dust(p, g.x(-1), g.gy, 0.15, 11, 6, 3); for (const dx of [-7, 6]) p.fline(g.x(dx), g.y(-3) - bob, g.x(dx), g.y(0) - bob, SEPIA, 150); };
+  S(ready, readyFx(0));
+  S({ ...ready, fa: [1, 1, -1, 2] }, readyFx(1));
+  S({ ...ready, eye: '-' }, readyFx(0));
   // 3 crouch to spring
   S({ build: 's', fa: [2, 2, 4, 3], ba: [0, 3, 2, 4], fl: [2, 1], bl: [-2, 1], look: 'down', eye: 'x' });
   // 4 launch: stretched, paws up, dust kicked
@@ -499,9 +520,11 @@ function crouchFrames(big) {
     const r = drawMole(p, g.S, g.S, P);
     if (fx) fx(p, g, r);
   }, 7));
-  S({ ...STAND });
-  S({ ...STAND, fa: [1, 2, 3, 2] });
-  S({ ...STAND, eye: '-' });
+  // 0-2 at rest: down low in the sneak, an arrow pointing down over his back
+  const sneak = { build: 's', lift: -2, lean: 2, fa: [2, 2, 5, 3], ba: [1, 3, 3, 4], fl: [2, 0], bl: [-3, 0], look: 'down', eye: 'o' };
+  S(sneak, (p, g) => sign(p, g, 'down', g.x(-4), g.y(-9)));
+  S({ ...sneak, fa: [3, 1, 6, 2] }, (p, g) => sign(p, g, 'down', g.x(-4), g.y(-8)));
+  S({ ...sneak, eye: '-' }, (p, g) => sign(p, g, 'down', g.x(-4), g.y(-9)));
   // 3 bending, 4 low, 5 low sneaking (paw forward), 6 low blink
   S({ build: 's', lean: 1, fa: [2, 2, 4, 3], ba: [0, 3, 2, 4], fl: [2, 1], bl: [-2, 1], look: 'down' });
   S({ build: 's', lift: -2, lean: 2, fa: [2, 2, 5, 3], ba: [1, 3, 3, 4], fl: [2, 0], bl: [-3, 0], look: 'down', eye: 'o' }, (p, g) => { p.dot(g.x(5), g.y(-3), 0xfff6e0, 180); p.dot(g.x(6), g.y(-4), 0xfff6e0, 140); });
@@ -536,9 +559,11 @@ function useFrames(big) {
     const r = drawMole(p, g.S, g.S, P);
     if (fx) fx(p, g, r);
   }, 9));
-  S({ ...STAND }, 0);
-  S({ ...STAND, fa: [1, 2, 3, 2] }, 0);
-  S({ ...STAND, eye: '-' }, 0);
+  // 0-2 at rest: a paw on the strongbox's lid, eyeing the lock
+  const paw = { lean: 1, fa: [2, 1, 5, 2], ba: [-1, 3, 0, 5], look: 'down', eye: 'o' };
+  S(paw, 0);
+  S({ ...paw, fa: [2, 1, 5, 1] }, 0);
+  S({ ...paw, eye: '-' }, 0);
   // 3 reach for the lid, 4 lift it (straining), 5 lid up: gold light, 6 a sparkle of luck, a grin
   S({ lean: 1, fa: [2, 1, 5, 2], ba: [-1, 3, 0, 5], look: 'down', eye: 'O' }, 0);
   S({ lean: 2, build: 's', fa: [2, 0, 5, 0], ba: [1, 2, 3, 2], look: 'level', eye: 'x' }, 1);
@@ -582,10 +607,12 @@ function toolFrames(big) {
     if (fx) fx(p, g, r);
   }, 17));
   const fly = (kind, x, y, ang) => (p, g) => drawTool(p, g.S, g.S, kind, [g.x(x), g.y(y)], ang, 4);
-  const rest = { fa: [2, 2, 3, 0], tool: { kind: 'pick', ang: -128, len: 8 } };
-  S({ ...STAND, ...rest });
-  S({ ...STAND, ...rest, fa: [2, 1, 3, -1] });
-  S({ ...STAND, ...rest, eye: '-' });
+  // 0-2 at rest: the pick held up, the hammer waiting in the air, a turning arrow between them
+  const rest = { fa: [2, 0, 3, -3], tool: { kind: 'pick', ang: -100, len: 6 }, look: 'up', eye: 'o' };
+  const swap = (bob) => (p, g) => { fly('hammer', 7, -6 - bob, 200)(p, g); sign(p, g, 'turn', g.x(2), g.y(-13) - bob); };
+  S({ ...STAND, ...rest }, swap(0));
+  S({ ...STAND, ...rest, fa: [2, 0, 3, -2] }, swap(1));
+  S({ ...STAND, ...rest, eye: '-' }, swap(0));
   // 3 toss, 4 spinning (looking up), 5 spinning the other way, 6 caught: the hammer
   S({ ...STAND, fa: [2, -2, 3, -5], look: 'up', eye: 'O' }, fly('pick', 3, -10, -60));
   S({ ...STAND, fa: [2, 0, 3, -3], look: 'up', eye: 'o' }, (p, g) => { fly('pick', 3, -12, 60)(p, g); smear(p, g.x(3), g.y(-12), 5, 120, 250); });
@@ -602,10 +629,11 @@ function blockFrames(big) {
     const r = drawMole(p, g.S, g.S, P);
     if (fx) fx(p, g, r);
   }, 23));
-  const low = { fa: [2, 2, 3, 3], tool: { kind: 'shield', ang: 0, len: 0, front: true } };
-  S({ ...STAND, ...low });
-  S({ ...STAND, ...low, fa: [2, 2, 3, 2] });
-  S({ ...STAND, ...low, eye: '-' });
+  // 0-2 at rest: the shield up in front of him, feet planted
+  const guard = { ...STAND, lean: 1, fa: [3, 0, 4, -1], tool: { kind: 'shield', ang: 0, len: 0 }, look: 'level', eye: 'o', fl: [2, 2], bl: [-2, 2] };
+  S(guard);
+  S({ ...guard, fa: [3, 0, 4, 0] });
+  S({ ...guard, eye: '-' });
   // 3 up, 4 guard (braced), 5 struck: sparks off the rim, 6 holding firm
   S({ ...STAND, lean: 1, fa: [3, 0, 4, -1], tool: { kind: 'shield', ang: 0, len: 0 }, look: 'level', eye: 'x', fl: [2, 2], bl: [-2, 2] });
   S({ build: 's', lean: 1, fa: [3, -1, 4, -2], tool: { kind: 'shield', ang: 0, len: 0 }, look: 'level', eye: 'x', fl: [2, 1], bl: [-3, 1] });
@@ -652,17 +680,21 @@ function buildFrames(big) {
 function rotateFrames(big) {
   const F = [];
   const crate = (p, g, a) => {
-    const pt = new Part(g.S, g.S), cx = g.x(4), cy = g.gy - 4;
+    const pt = new Part(g.S, g.S), cx = g.x(5), cy = g.gy - 3;
     const rows = [['WWWWW', 'wiwiw', 'wwWww', 'wiwiw', 'wwwww'], ['.WWW.', 'WwiwW', 'wiWiw', 'wwiww', '.www.']][a & 1];
     pt.tpl(rows, cx - 2, cy - 2);
     paint(p, pt, { seed: 83 });
   };
   const S = (o, a, fx) => F.push((g) => frame(big, (p) => crate(p, g, a), (p) => {
-    const P = { bx: g.x(-4), gy: g.gy, ...o };
+    const P = { bx: g.x(-5), gy: g.gy, ...o };
     const r = drawMole(p, g.S, g.S, P);
     if (fx) fx(p, g, r);
   }, 31));
-  S({ ...STAND }, 0); S({ ...STAND, fa: [1, 2, 3, 2] }, 0); S({ ...STAND, eye: '-' }, 0);
+  // 0-2 at rest: both paws on the crate, a turning arrow over it
+  const hold = { lean: 1, fa: [3, 0, 6, -1], ba: [2, 2, 5, 3], eye: 'o' };
+  S(hold, 0, (p, g) => sign(p, g, 'turn', g.x(1), g.y(-9)));
+  S({ ...hold, fa: [3, 0, 6, 0] }, 0, (p, g) => sign(p, g, 'turn', g.x(1), g.y(-10)));
+  S({ ...hold, eye: '-' }, 0, (p, g) => sign(p, g, 'turn', g.x(1), g.y(-9)));
   S({ lean: 1, fa: [3, 0, 6, -1], ba: [2, 2, 5, 3], eye: 'x' }, 0);
   S({ lean: 1, fa: [3, 1, 6, 1], ba: [2, 1, 5, 0], eye: 'x' }, 1, (p, g) => smear(p, g.x(4), g.gy - 4, 4, -60, 60));
   S({ lean: 1, fa: [3, 0, 6, -1], ba: [2, 2, 5, 3], eye: '^' }, 0);
@@ -677,7 +709,11 @@ function doneFrames(big) {
     const r = drawMole(p, g.S, g.S, P);
     if (fx) fx(p, g, r);
   }, 37));
-  S({ ...STAND }); S({ ...STAND, fa: [1, 2, 3, 2] }); S({ ...STAND, eye: '-' });
+  // 0-2 at rest: a paw raised in a pleased salute, a green tick beside him
+  const ok = { fa: [2, 0, 3, -3], ba: [-1, 3, 0, 5], look: 'level', eye: '^' };
+  S(ok, (p, g) => sign(p, g, 'tick', g.x(3), g.y(-8)));
+  S({ ...ok, fa: [2, 0, 3, -4] }, (p, g) => sign(p, g, 'tick', g.x(3), g.y(-9)));
+  S({ ...ok, eye: '-' }, (p, g) => sign(p, g, 'tick', g.x(3), g.y(-8)));
   S({ fa: [2, 1, 4, 0], ba: [1, 1, 3, 1], eye: '^' }, (p, g) => dust(p, g.x(3), g.y(-2), 0.3, 41, 6, 2));
   S({ fa: [2, 1, 4, 1], ba: [1, 1, 3, 0], eye: '^' }, (p, g) => dust(p, g.x(3), g.y(-2), 0.7, 41, 6, 3));
   S({ fa: [2, 0, 3, -3], ba: [-1, 3, 0, 5], look: 'up', eye: '^' }, (p, g) => { spark(p, g.x(5), g.y(-9), 1.5); });
@@ -692,7 +728,11 @@ function backFrames(big) {
     const r = drawMole(p, g.S, g.S, P);
     if (fx) fx(p, g, r);
   }, 43));
-  S({ ...STAND }); S({ ...STAND, fa: [1, 2, 3, 2] }); S({ ...STAND, eye: '-' });
+  // 0-2 at rest: leaning back on his heels, an arrow pointing back behind him
+  const lean = { dx: 2, lean: -1, fa: [2, 2, 4, 1], ba: [-2, 1, -3, 0], fl: [2, 2], bl: [-1, 2], eye: 'o' };
+  S(lean, (p, g) => sign(p, g, 'left', g.x(-10), g.y(-3)));
+  S({ ...lean, fa: [2, 1, 4, 0] }, (p, g) => sign(p, g, 'left', g.x(-11), g.y(-3)));
+  S({ ...lean, eye: '-' }, (p, g) => sign(p, g, 'left', g.x(-10), g.y(-3)));
   S({ dx: 0, lean: -1, lift: 2, fa: [2, 1, 4, 0], ba: [-2, 1, -3, -1], fl: [1, 2], bl: [-2, 2], tipF: 1, eye: 'O' }, (p, g) => dust(p, g.x(3), g.gy, 0.3, 43, 6, 3));
   S({ dx: -2, lean: -1, fa: [2, 2, 4, 1], ba: [-2, 1, -3, 0], fl: [2, 2], bl: [-1, 2], eye: 'o' }, (p, g) => dust(p, g.x(2), g.gy, 0.7, 43, 6, 3));
   S({ dx: -3, ...STAND, eye: '-' });

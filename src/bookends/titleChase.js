@@ -7,7 +7,7 @@
 // and they're gone into the dark on the far side. A pause; the knocked caps regrow; again. Each
 // loop varies: the direction, the raptor's colours, speeds, where it lunges, which way he jinks.
 // He's terrified: eyes popped wide, panting open-mouthed, his head bobbing with each gasp, sweat
-// beading on his brow and running off him (tiny voxel droplets, 1/220 m, that flick away behind
+// beading on his brow and running off him (tiny voxel droplets, 1/170 m, that flick away behind
 // him and splash in the grass), and the grass parts round both of them (titleVeg.js pushers).
 // The title's opening (titleIntro.js) is run 0 on a fixed script (startIntro): the raptor keeps
 // its distance, then closes on cue; after that it's an ordinary run.
@@ -134,7 +134,7 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     for (let i = 0; i < n; i++) dust.spawn({ pos: [x + R(-0.08, 0.08), y + 0.02, z + R(-0.08, 0.08)], vel: [R(-0.5, 0.5) * k, R(0.2, 0.7) * k, R(-0.5, 0.5) * k], life: R(0.4, 0.8), color: [0x3a3028, 0x4a3e32, 0x2e2620][i % 3], size: R(0.018, 0.03), shape: SHAPE.square, gravity: 3, drag: 2 });
   };
 
-  // ---- sweat: voxel beads (1/220 m: a dark-bottomed drop, a pale tip, a glint) that gather on his
+  // ---- sweat: voxel beads (1/170 m: a dark-bottomed drop, a pale tip, a glint) that gather on his
   // brow, run down his face and fly off him as he runs
   const SWEAT_N = lite ? 36 : 60;
   const sweatGeo = (() => {
@@ -144,7 +144,7 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     for (const [x, z] of [[1, 1], [0, 1], [2, 1], [1, 0], [1, 2]]) g.set(x, 1, z, B);
     g.set(0, 2, 1, W); g.set(1, 2, 1, B); g.set(1, 2, 0, L); g.set(2, 1, 1, D);
     g.set(1, 3, 1, L);
-    return meshGlow(g, { scale: 1 / 220, pivot: [1.5, 1.5, 1.5] });
+    return meshGlow(g, { scale: 1 / 170, pivot: [1.5, 1.5, 1.5] });
   })();
   const sweatMat = caveToon({ emissive: 0.55, key: 'sweat' });
   const sweat = new THREE.InstancedMesh(sweatGeo, sweatMat, SWEAT_N);
@@ -163,10 +163,10 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     // on his brow (just in front of it) and down his temples (just outside them), in his head's frame
     const brow = Math.random() < 0.55;
     drops.push({
-      cling: R(0.08, 0.3), t: 0, side,
+      cling: R(0.12, 0.45), t: 0, side,
       l: brow ? new THREE.Vector3(side * A.headW * R(0.05, 0.3), A.eyes.y + A.headH * R(0.12, 0.3), A.eyes.z + 0.012)
         : new THREE.Vector3(side * (A.headW * 0.5 + 0.01), A.eyes.y + A.headH * R(-0.05, 0.25), A.eyes.z * R(0.1, 0.6)),
-      p: new THREE.Vector3(), v: new THREE.Vector3(), s: R(1.3, 1.9), fly: false,
+      p: new THREE.Vector3(), v: new THREE.Vector3(), s: R(1.1, 1.6), fly: false,
     });
   };
   const stepSweat = (dt, rate, vx, vz) => {
@@ -398,7 +398,7 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
       else if (Math.hypot(mx - B.x, mz - B.z) < 0.55) knock(B, _p.tx, _p.tz, false);
     }
     // his lantern, his feet
-    lantern.intensity = mole.root.visible ? 1.6 * clamp(r.t * 2, 0, 1) : 0;
+    lantern.intensity = mole.root.visible ? 1.0 * clamp(r.t * 2, 0, 1) : 0;
     moleStepPh += dt * 14 * (r.vm / 1.45) / Math.PI;
     if (moleStepPh >= 1) { moleStepPh -= 1; if (hopY < 0.02) { sfx?.('chase_step', { at: mole.root.position, vol: 0.8 }); if (Math.random() < 0.5) kickDust(mx, my, mz, 2, 0.6); } }
     mole.update(dt);
@@ -410,7 +410,7 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     mole.root.updateMatrixWorld(true);
     lantern.position.copy(LANTERN).applyMatrix4(mole.root.matrixWorld);
     // sweat pouring off him (more in the opening's close-up)
-    if (mole.root.visible) stepSweat(dt, r.intro && r.t < INTRO.dur ? 15 : 7, _p.tx * r.vm, _p.tz * r.vm);
+    if (mole.root.visible) stepSweat(dt, r.intro && r.t < INTRO.dur ? 20 : 8, _p.tx * r.vm, _p.tz * r.vm);
     // the grass parts round them
     if (cave) {
       const P = cave.pushers || (cave.pushers = []);
