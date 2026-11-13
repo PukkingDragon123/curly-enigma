@@ -163,8 +163,8 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
   const hx = A.headW / 2, ex = A.eyes;
   // where on his face (head frame) a stream runs: [start, end] for a side; brow → past the eye → cheek, or down the temple
   const streamPath = (side, temple) => (temple
-    ? [new THREE.Vector3(side * (hx * 0.9 + 0.006), ex.y + A.headH * 0.24, ex.z * 0.3), new THREE.Vector3(side * (hx * 0.86 + 0.006), ex.y - A.headH * 0.22, ex.z * 0.36)]
-    : [new THREE.Vector3(side * hx * 0.36, ex.y + A.headH * 0.27, ex.z * 0.84 + 0.01), new THREE.Vector3(side * hx * 0.62, ex.y - A.headH * 0.2, ex.z * 0.62 + 0.01)]);
+    ? [new THREE.Vector3(side * (hx * 0.9 + 0.008), ex.y + A.headH * 0.24, ex.z * 0.35), new THREE.Vector3(side * (hx * 0.88 + 0.008), ex.y - A.headH * 0.26, ex.z * 0.42)]
+    : [new THREE.Vector3(side * hx * 0.5, ex.y + A.headH * 0.3, ex.z + 0.008), new THREE.Vector3(side * hx * 0.8, ex.y - A.headH * 0.28, ex.z * 0.84 + 0.008)]);
   const spawnDrop = (kind = 'bead') => {
     if (drops.length >= SWEAT_N) return;
     const side = Math.random() < 0.5 ? -1 : 1;
@@ -172,7 +172,7 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
     if (kind === 'stream') {
       // a fat drop welling up and streaming slowly down his face
       d.path = streamPath(side, Math.random() < 0.45);
-      d.cling = R(0.7, 1.15); d.s = R(2.0, 2.6); d.l = d.path[0].clone();
+      d.cling = R(0.75, 1.2); d.s = R(2.4, 3.0); d.l = d.path[0].clone();
     } else if (kind === 'bead') {
       d.cling = R(0.12, 0.4); d.s = R(1.2, 1.7);
       d.l = Math.random() < 0.55 ? new THREE.Vector3(side * hx * R(0.1, 0.55), ex.y + A.headH * R(0.12, 0.3), ex.z * 0.86 + 0.012)
@@ -204,7 +204,7 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
           d.l.lerpVectors(d.path[0], d.path[1], u * u * (3 - 2 * u));
           d.l.x += Math.sin(d.t * 9 + d.ph) * 0.003;
           d.trailT -= dt;
-          if (d.trailT <= 0 && u > 0.02 && trail.length < GLINT_N) { d.trailT = 0.035; trail.push({ l: d.l.clone(), t: 0, life: R(0.5, 0.9) }); }
+          if (d.trailT <= 0 && u > 0.02 && trail.length < GLINT_N) { d.trailT = 0.025; trail.push({ l: d.l.clone(), t: 0, life: R(0.6, 1.0) }); }
         } else d.l.y -= dt * 0.16;
         d.p.copy(d.l);
         mole.neck.localToWorld(d.p);
@@ -248,7 +248,7 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
       if (g >= GLINT_N) break;
       _dp.copy(T.l);
       mole.neck.localToWorld(_dp);
-      const k2 = 1 - T.t / T.life, sc = (0.6 + 0.6 * k2) * (0.85 + 0.3 * Math.max(0, Math.sin(T.t * 19 + T.l.y * 900)));
+      const k2 = 1 - T.t / T.life, sc = (0.9 + 0.8 * k2) * (0.85 + 0.35 * Math.max(0, Math.sin(T.t * 19 + T.l.y * 900)));
       _dm.compose(_dp, _dq.identity(), _dv.set(sc, sc * 1.6, sc));
       glints.setMatrixAt(g++, _dm);
     }
@@ -258,10 +258,10 @@ export function makeChase({ cave, lite = false, sfx = null } = {}) {
   /** Fear on his face (after the rig's own update): brows high and tilted up in the middle, quivering; a gasping, trembling mouth. */
   const _mouthRest = mole.mouth.position.clone();
   const fearFace = (tt) => {
-    const lift = 2.9 + Math.sin(tt * 31) * 0.25, q = Math.sin(tt * 23) * 0.05;
+    const lift = 2.1 + Math.sin(tt * 31) * 0.22, q = Math.sin(tt * 23) * 0.05;
     for (const b of mole.brows || []) {
       const side = b.userData.side;
-      b.rotation.z = side * (-1.12 + q * side);
+      b.rotation.z = side * (-0.92 + q * side);
       b.position.y = b.userData.y + lift * mole.vs;
     }
     // gulping air (the open "oh") and between gasps a clenched, trembling grimace
