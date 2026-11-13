@@ -3,7 +3,8 @@
 // boxless text of src/ui/floatType.js, the talk's lines in Convo.js, the voxel words of
 // src/gfx/text3d.js) keep out of it: they slide into free space (or wrap narrower, or shrink) so a
 // whole word is always seen instead of being covered or cut off by a panel.
-//   solidRects()              → [{ l, t, r, b, el }] page CSS px (read at most ~8 times a second)
+//   solidRects(withText)      → [{ l, t, r, b, el }] page CSS px (read at most ~8 times a second);
+//        withText: the floating 2D words too (toasts, the hint line, the talk's words), for the 3D words
 //   clearOf(rect, o)          → { dx, dy, ok, w? }  the smallest move that takes rect ({ l, t, r, b })
 //        clear of them and inside the screen; ok false: no room at this size (w: the widest free span
 //        on its row, to wrap or shrink into). o: { pad, margin, bounds, prefer: 'x' | 'y', rects,
@@ -18,8 +19,10 @@ const SOLID = [
   '.tc-stick', '.tc-btn', '.tc-dig', '.tc-pad > *', '.tc-deep > *',
   '[data-solid]',
 ].join(',');
+/** The floating 2D words (the 3D words keep off them too). */
+const WORDS = '.toasts > .toast, .tutor:not([hidden]) .tt-card, .ft-disc:not(.out), .cv-say:not(.gone):not(.ft-ghost), .cv.choosing .cv-choices:not(.ft-ghost), .ob-hint:not(.out), .ob-goal:not(.out)';
 
-let cache = null, cacheT = 0;
+let cache = null, cacheT = 0, cacheW = null;
 const shown = (e) => {
   if (e.checkVisibility) return e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, opacityProperty: true, visibilityProperty: true });
   const cs = getComputedStyle(e);
@@ -27,19 +30,24 @@ const shown = (e) => {
 };
 
 /** The solid interface's rects now (cached for a few frames). */
-export function solidRects(force = false) {
+export function solidRects(withText = false) {
   const now = performance.now();
-  if (!force && cache && now - cacheT < 120) return cache;
+  if (cache && now - cacheT < 120) return withText ? cacheW : cache;
+  cache = read(SOLID);
+  cacheW = cache.concat(read(WORDS));
+  cacheT = now;
+  return withText ? cacheW : cache;
+}
+
+function read(sel) {
   const W = innerWidth, H = innerHeight, out = [];
-  for (const e of document.querySelectorAll(SOLID)) {
+  for (const e of document.querySelectorAll(sel)) {
     const r = e.getBoundingClientRect();
     if (r.width < 4 || r.height < 4 || r.right <= 0 || r.bottom <= 0 || r.left >= W || r.top >= H) continue;
     if (r.width * r.height > W * H * 0.6) continue; // (a layer over everything, not a widget)
     if (!shown(e)) continue;
     out.push({ l: r.left, t: r.top, r: r.right, b: r.bottom, el: e });
   }
-  cache = out;
-  cacheT = now;
   return out;
 }
 

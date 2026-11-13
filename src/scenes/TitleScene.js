@@ -273,6 +273,7 @@ export default class TitleScene extends Scene {
   endIntro(skip = true) {
     if (!this.intro) return;
     this.intro = null;
+    this.introEnd = this.time || 0;
     this.C.setIntro(false);
     this.root.classList.remove('intro');
     this.menu.enabled = !(this.nest?.open || this.busy);
@@ -609,7 +610,9 @@ export default class TitleScene extends Scene {
     const M = this._m || (this._m = new THREE.Vector3());
     M.copy(this.stack.getCenter(M)).applyMatrix4(this.sign.group.matrixWorld);
     if (this.shotName !== 'menu') M.copy(look);
-    const calm = (this.shotName === 'menu' ? 1 : 0.35) * (REDUCED || this.intro ? 0 : 1);
+    // (after the opening the drift eases in, so the settled shot doesn't jump)
+    const easeIn = this.introEnd != null ? clamp((t - this.introEnd) / 2.5, 0, 1) : 1;
+    const calm = (this.shotName === 'menu' ? 1 : 0.35) * (REDUCED || this.intro ? 0 : 1) * easeIn * easeIn * (3 - 2 * easeIn);
     const yaw = (Math.sin(t * 0.061) * 0.028 + Math.sin(t * 0.023 + 1.3) * 0.018) * calm;
     const breathe = 1 + Math.sin(t * 0.047) * 0.012 * calm;
     const off = this._off || (this._off = new THREE.Vector3());

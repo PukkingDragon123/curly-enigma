@@ -436,7 +436,8 @@ class Text3D {
     _q.setFromRotationMatrix(_m.extractRotation(cam.matrixWorld));
     const M = this.mesh.instanceMatrix.array, C = this.mesh.instanceColor.array, F = this.fx.array;
     // the solid 2D interface on screen (cached a few frames) and where the view sits on the page
-    const solid = persp ? solidRects() : [];
+    // (the floating 2D words count too, and each word keeps off the ones placed before it this frame)
+    const solid = persp ? solidRects(true).slice() : [];
     if (!this.viewR || now - (this.viewAt || 0) > 400) {
       const cv = this.game.canvas || this.game.engine?.renderer?.domElement;
       const r = cv?.getBoundingClientRect?.();
@@ -472,11 +473,7 @@ class Text3D {
         sx = Math.max(-hw, Math.min(hw, sx)); sy = Math.max(-hh, Math.min(hh, sy));
       }
       // ...and out from under the solid interface: the nearest free space on screen, eased there
-      if (persp && !solid.length && w.avx !== undefined) {
-        // (the panel's gone: ease back to its own place and size)
-        const e = 1 - Math.exp(-dt * 12);
-        w.avx -= w.avx * e; w.avy -= w.avy * e; w.avS += (1 - w.avS) * e;
-      } else if (persp && solid.length) {
+      if (persp) {
         const kx = VR.w / vw, ky = VR.h / vh;
         const hwp = (U / 7) * L.W * 0.5 * Math.max(1, mo.s) * kx, hhp = (U / 7) * L.H * 0.5 * Math.max(1, mo.s) * ky;
         const qx = VR.l + VR.w / 2 + sx * kx, qy = VR.t + VR.h / 2 - sy * ky;
@@ -488,6 +485,7 @@ class Text3D {
         if (w.avx === undefined) { w.avx = c.dx; w.avy = c.dy; w.avS = tS; }
         const e = 1 - Math.exp(-dt * 12);
         w.avx += (c.dx - w.avx) * e; w.avy += (c.dy - w.avy) * e; w.avS += (tS - w.avS) * e;
+        if (mo.k < 0.3) { const b = box(w.avS); solid.push({ l: b.l + w.avx, t: b.t + w.avy, r: b.r + w.avx, b: b.b + w.avy }); }
       }
       if (w.avx !== undefined) {
         const kx = VR.w / vw, ky = VR.h / vh;
