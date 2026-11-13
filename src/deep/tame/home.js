@@ -173,7 +173,7 @@ export function homeRaptors(scene) {
       {
         const hx = r.home.x - pl.pos.x, hz = r.home.z - pl.pos.z, hd = Math.hypot(hx, hz) || 1e-3;
         const keep = 0.95 * (r.rec.size || 0.88) / 0.88 + 0.25;
-        const push = clamp(keep - hd, 0, 0.6);
+        const push = r.rec.restAt ? 0 : clamp(keep - hd, 0, 0.6); // (one in its nest stays put: its box keeps you off it)
         const tx = r.home.x + (hx / hd) * push, tz = r.home.z + (hz / hd) * push;
         const k = Math.min(1, dt * 5);
         r.root.position.x += (tx - r.root.position.x) * k;

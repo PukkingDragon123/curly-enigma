@@ -858,8 +858,9 @@ export default class FallScene extends Scene {
         const u = ease(T.N2, T.N3, t);
         const f = this.facing(_v2), E = this.eggAt(_v3);
         const lx = f.z, lz = -f.x; // his left
-        o.pos.set(E.x + f.x * lerp(1.0, 0.88, u) + lx * 0.28, E.y + 0.1, E.z + f.z * lerp(1.0, 0.88, u) + lz * 0.28);
-        o.look.set(E.x - f.x * 0.05, E.y + lerp(0.14, 0.16, u), E.z - f.z * 0.05);
+        // (from a little above the egg, so his snout doesn't hide it)
+        o.pos.set(E.x + f.x * lerp(0.95, 0.85, u) + lx * 0.34, E.y + 0.24, E.z + f.z * lerp(0.95, 0.85, u) + lz * 0.34);
+        o.look.set(E.x - f.x * 0.04, E.y + lerp(0.1, 0.12, u), E.z - f.z * 0.04);
         o.fov = 38;
         o.minH = portrait ? 26 : 36;
         break;

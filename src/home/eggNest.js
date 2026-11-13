@@ -255,11 +255,30 @@ export function homeEgg(scene) {
         hop() { r.hop = 1; r.happy = 2.5; g.audio?.play?.('raptor_chirp', { n: 2 }); },
       };
       if (hatching) hatching.naming = true;
-      const taken = T.raptors.filter((x) => x !== rec).map((x) => x.name);
-      const name = await N.nameRaptor(g, e, taken, { who: 'Hatchling', first: '<i>Wet, wobbly, all eyes. It blinks at you, sneezes out a bit of shell and squeaks.</i> <w>Peep!</w>' }).catch(() => 'Pip');
-      rec.name = String(name || 'Pip').slice(0, 16);
-      try { st.save?.(); } catch (err) { /* autosave */ }
-      await N.welcome(g, e, rec.name, { text: `<w>Peep-peep!</w> <i>${rec.name} totters out of its shell and curls up against your boot. You found it in the forest; now it's found you.</i>` });
+      // the talk's camera: low beside the nest, on the open side (away from the bedroll), the little one
+      // and its shell in the frame, you (your stand-in body) at the edge of it, not over your dark head
+      const dir = g.convo?.director, plan0 = dir?.plan;
+      if (dir && plan0) {
+        dir.plan = function (kind, sp, pl, o) {
+          if (sp?.obj !== r.root) return plan0.call(this, kind, sp, pl, o);
+          const shot = plan0.call(this, 'close', sp, pl, o) || plan0.call(this, 'face', sp, pl, o);
+          if (!shot) return shot;
+          const ax = pl.pos.x - at.x, az = pl.pos.z - at.z, al = Math.hypot(ax, az) || 1;
+          const A = { x: ax / al, z: az / al }, S = { x: A.z, z: -A.x };
+          const side = Math.hypot(at.x + S.x * 0.6 - br.x, at.z + S.z * 0.6 - br.z) > Math.hypot(at.x - S.x * 0.6 - br.x, at.z - S.z * 0.6 - br.z) ? 1 : -1;
+          shot.p = new THREE.Vector3(at.x + S.x * 0.62 * side + A.x * 0.42, 0.3, at.z + S.z * 0.62 * side + A.z * 0.42);
+          Object.assign(shot, { kind: 'close', fixed: true, hero: true, focus: 'speaker', fov: 42, drift: 0.02, comp: { x: 0.12 * side, y: shot.portrait ? 0.18 : 0.06 }, side });
+          return shot;
+        };
+      }
+      const unplan = () => { if (dir && plan0) dir.plan = plan0; };
+      try {
+        const taken = T.raptors.filter((x) => x !== rec).map((x) => x.name);
+        const name = await N.nameRaptor(g, e, taken, { who: 'Hatchling', first: '<i>Wet, wobbly, all eyes. It blinks at you, sneezes out a bit of shell and squeaks.</i> <w>Peep!</w>' }).catch(() => 'Pip');
+        rec.name = String(name || 'Pip').slice(0, 16);
+        try { st.save?.(); } catch (err) { /* autosave */ }
+        await N.welcome(g, e, rec.name, { text: `<w>Peep-peep!</w> <i>${rec.name} totters out of its shell and curls up against your boot. You found it in the forest; now it's found you.</i>` });
+      } finally { unplan(); }
       if (hatching) hatching.naming = false;
       st.emit?.('act', { type: 'tame', what: 'hatch', name: rec.name });
     }).catch((err) => console.warn('[egg] hatch', err));
