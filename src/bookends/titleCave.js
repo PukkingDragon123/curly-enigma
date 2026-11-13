@@ -996,7 +996,7 @@ export async function buildCave(o = {}) {
   const V = makeTitleVeg({ lite }), VI = makeTitleVeg({ lite }); // (the menu's; the opening's own)
   const plant = (name, x, y, z, o = {}) => {
     // (nothing grows right in front of a lens: the opening's low camera runs through the grass)
-    if (o.cut == null && view.dist && camD(x, y + 0.25, z) < 0.8) return null;
+    if (o.cut == null && view.dist && camD(x, y + 0.25, z) < 0.45) return null;
     stats.byTag[tag] = (stats.byTag[tag] || 0) + 1;
     const pool = view.menu && !vm.point(x, y + (o.cut != null ? -0.5 : 0.15), z, 0.4) ? VI : V;
     return pool.add(name, x, y, z, { yaw: rr() * TAU, variant: rr.int(0, 2), ...o });
