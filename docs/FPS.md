@@ -82,6 +82,10 @@ game; tell the lead which test hooks your scene offers (e.g. `scene.debug.*`).
   `scene.debug.{ step, until, state, pump, smelt, forge, toAnvil, toFire, charge, release, strike,
   finishShaping, balance, quench, tap, heatTo, place, dock, part, partStrike, partsList }`
   (coop parts: see REMAKE.md › "As built: coop parts at the forge").
+  Wave 9 (REMAKE.md › "Wave 9: real fire, burning iron, the grimoire"): `scene.stoke()` (R at the
+  hearth, the **Stoke** button, or E on the coals while walking: "Stoke the coals"), drag a press
+  up/down on the view to work the bellows stroke by stroke (a still hold pumps steadily), F / **Turn
+  it** turns the bar in the tongs; `scene.flames` (`HearthFire`), the work glows via `hotMetal.js`.
 - **Mine**: see DEEP.md (lifts, build tool, clumps).
 
 ## Next: Old Star, the tavern, progression (in progress)

@@ -37,6 +37,7 @@ import { Px, art } from './uiArt.js';
 import { SPR } from './uiSprites.js';
 import { DSPR } from './deepArt.js';
 import { floatIn, leave } from './floatType.js';
+import { keepClear } from './uiSolid.js';
 import './onboard.css';
 
 /** Tutorial UI levels, in the order the pieces are introduced. */
@@ -406,6 +407,7 @@ export class Onboard {
     const n = el('div', { class: 'ob-hint' });
     this.layer.append(n);
     floatIn(n, html, { delay: 0.1, stagger: 0.022, max: 0.6 });
+    keepClear(n, { prefer: 'y' });
     n.classList.add('in');
     const h = { el: n, t: 0, dur, until, gone: false, remove: () => { if (h.gone) return; h.gone = true; n.classList.add('out'); leave(n, { n: 10 }); setTimeout(() => n.remove(), 950); if (this.hintH === h) this.hintH = null; } };
     this.hintH = h;
@@ -432,6 +434,7 @@ export class Onboard {
     this.layer.append(n);
     floatIn(t, html, { delay: 0.1, stagger: 0.02, max: 0.5 });
     if (sm) floatIn(sm, o.sub, { delay: 0.3, stagger: 0.015, max: 0.4 });
+    keepClear(n, { prefer: 'y' });
     void n.offsetWidth;
     n.classList.add('in');
     this.goalEl = n;

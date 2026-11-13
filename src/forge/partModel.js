@@ -341,6 +341,7 @@ export class PartView {
       }
     }
     // heat: dark forge scale, the glow and its haze (the end in the tongs stays cooler)
+    this.mat.emissive.setRGB(0, 0, 0); // (the run adds its grade's shine on top each frame)
     this.hm.setT(T);
     this.hm.u.uHeld.value.set(-this.extent.x + VX, this.extent.x * 0.8, 260, 1);
     this.hm.update(time);

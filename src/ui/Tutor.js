@@ -27,6 +27,7 @@ import { randomSpec } from '../gfx/characters.js';
 import { installDialogArt } from './dialogArt.js';
 import { voiceBlip, breathAfter, STAR_VOICE } from './talkType.js';
 import { letterize, arrive, floatIn, ghost, bits } from './floatType.js';
+import { keepClear } from './uiSolid.js';
 import { SHOPS } from '../data/shops.js';
 import './tutor.css';
 
@@ -190,6 +191,7 @@ export class Tutor {
     this.card.classList.add(anim);
     this.delayT = wasUp ? 0.08 : 0.2;
     this.ensureFace(cast);
+    this.clear ||= keepClear(this.card, { wrap: true }); // (out from under the forge's page, a panel, the HUD)
     this.setMood(mood, !wasUp);
     this.typeIn(html, wasUp);
     this.game.audio?.play?.('page', { vol: 0.25 });
@@ -238,6 +240,7 @@ export class Tutor {
         this.outT = setTimeout(() => {
           if (this.cur) return;
           el0.hidden = true;
+          this.clear?.(); this.clear = null;
           this.muteTracker(false);
           // let the rig go back to the shelf (cached: the next line mounts it again at once), so a
           // talk board or a still of the same face can use it meanwhile

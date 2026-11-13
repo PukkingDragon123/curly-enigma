@@ -28,6 +28,7 @@ import { installSkillFeedback, openSkills } from './SkillTree.js';
 import { BuffStrip } from '../cooking/buffs.js';
 import { floatText3D } from '../gfx/text3d.js'; // floating words as voxel text in the world
 import { floatIn, leave, bits } from './floatType.js'; // boxless floating text (toasts, notices, prompts, speech)
+import { keepClear } from './uiSolid.js'; // ...which slides out from under panels and HUD widgets
 import './hud.css';
 import './backpack.css';
 import './book.css';
@@ -301,6 +302,7 @@ export class UI {
     ]);
     this.toasts.append(t);
     floatIn(words, text, { delay: 0.08, stagger: 0.016, max: 0.5 });
+    keepClear(t, { wrap: true });
     const colors = TOAST_BITS[kind] || TOAST_BITS[''];
     if (kind === 'good') setTimeout(() => { if (t.isConnected && !t.classList.contains('out')) bits(words, { colors, n: 12, rise: 20, spread: 30, sample: 10 }); }, 520);
     while (this.toasts.children.length > 4) this.toasts.firstChild.remove();
@@ -339,6 +341,7 @@ export class UI {
     const words = el('div', { class: 'ft-disc-t' }, [kindEl, nameEl, el('i', { class: 'ft-disc-rule' })]);
     const card = el('div', { class: 'ft-disc', role: 'status', 'aria-label': `${label}: ${name}` }, [pic, words]);
     this.hud.append(card);
+    keepClear(card, { prefer: 'y' });
     floatIn(kindEl, label, { delay: 0.25, stagger: 0.03, max: 0.4 });
     floatIn(nameEl, name, { delay: 0.4, stagger: 0.045, max: 0.7 });
     setTimeout(() => { if (card.isConnected) bits(pic, { from: 'rect', n: 16, colors: GOLD_BITS, rise: 30, spread: 36, life: 0.9 }); }, 360);
@@ -373,6 +376,7 @@ export class UI {
     const words = el('span', { class: 'prompt-t' });
     this.promptIn.replaceChildren(words);
     floatIn(words, html, { stagger: 0.02, max: 0.4 });
+    keepClear(this.promptIn, { prefer: 'y' });
     const k = this.promptIn.querySelector('kbd');
     this._promptKey = k ? keyCode(k.textContent) : 'KeyE';
     this.promptIn.prepend(el('img', { class: 'pix prompt-tap', src: SPR.tap(), alt: '' }));
@@ -414,6 +418,7 @@ export class UI {
     if (!b) {
       const node = el('div', { class: 'bubble' + (emote ? ' emote' : '') });
       this.world.append(node);
+      keepClear(node, { wrap: true, prefer: 'y' });
       b = { node, text: null, t: 0 };
       this.bubbles.set(key, b);
     }

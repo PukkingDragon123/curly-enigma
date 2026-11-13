@@ -207,11 +207,12 @@ kbd.ob-key.on { transform: translateY(var(--px)); filter: brightness(1.1) sepia(
 /* the one-time control hint (Onboard.hint), wave 9: floating words low in the middle, no card behind
    them; the letters arrive in a run and scatter into voxel bits when it fades (src/ui/floatType.js) */
 .ob-hint {
-  position: absolute; left: 50%; bottom: calc(var(--sab, 0px) + 22%); transform: translateX(-50%);
+  position: absolute; left: 0; right: 0; margin: 0 auto; width: max-content; bottom: calc(var(--sab, 0px) + 22%);
   font: 16px/1.3 var(--font); color: #f6e8cc; letter-spacing: .02em; white-space: nowrap; pointer-events: none; padding: 0 calc(var(--px) * 2);
   animation: obHintBob 3.2s ease-in-out .8s infinite;
 }
 .ob-hint b { color: #ffd98a; }
 .ob-hint kbd { --kp: 2px; }
-@keyframes obHintBob { 0%, 100% { translate: 0 0; } 50% { translate: 0 calc(var(--px) * -1); } }
+/* (the bob on transform: `translate` is where uiSolid.keepClear slides it out from under a panel) */
+@keyframes obHintBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(var(--px) * -1)); } }
 html.is-touch .ob-hint { font-size: 16px; white-space: normal; text-align: center; width: max-content; max-width: calc(100vw - 32px); }

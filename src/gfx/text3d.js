@@ -19,6 +19,9 @@
 // Drawing: ONE pooled InstancedMesh of unit cubes for every live word (capped: MAX_VOX voxels,
 // MAX_WORDS words; the oldest goes first), lit by the scene (Lambert, so the forge's fire and the
 // burrow's lamps tint it) with an emissive core that feeds the bloom, faces pre-shaded light top-left.
+// Words never hide under the 2D interface: each frame a word's box on screen is kept clear of the
+// solid UI (open panels, HUD widgets, the forge's page and thermometer: src/ui/uiSolid.js), sliding
+// smoothly to the nearest free space, a little smaller if there's no room at its size.
 // Words are depth-tested; where something stands in front of one, a second draw of the same
 // instances (depthFunc Greater, drawn first) shows it through as a faint dithered silhouette so a
 // word behind a pillar still reads. Fades are an ordered dither (no blending, no sorting). Everything
@@ -27,6 +30,7 @@
 import * as THREE from 'three';
 import { glyphRows } from '../bookends/pixfont.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
+import { solidRects, clearOf } from '../ui/uiSolid.js';
 
 const MAX_VOX = 8192; // all live words together
 const MAX_WORDS = 40;
@@ -431,6 +435,15 @@ class Text3D {
     const aspect = persp ? cam.aspect : 1;
     _q.setFromRotationMatrix(_m.extractRotation(cam.matrixWorld));
     const M = this.mesh.instanceMatrix.array, C = this.mesh.instanceColor.array, F = this.fx.array;
+    // the solid 2D interface on screen (cached a few frames) and where the view sits on the page
+    const solid = persp ? solidRects() : [];
+    if (!this.viewR || now - (this.viewAt || 0) > 400) {
+      const cv = this.game.canvas || this.game.engine?.renderer?.domElement;
+      const r = cv?.getBoundingClientRect?.();
+      this.viewR = r && r.width ? { l: r.left, t: r.top, w: r.width, h: r.height } : { l: 0, t: 0, w: innerWidth, h: innerHeight };
+      this.viewAt = now;
+    }
+    const VR = this.viewR;
     const mo = this._mo || (this._mo = {});
     let n = 0, live = 0;
     for (let wi = 0; wi < words.length; wi++) {
@@ -451,12 +464,35 @@ class Text3D {
       const maxW = 0.9 * vw;
       const wide = (U / 7) * L.W;
       if (wide > maxW) U *= maxW / wide;
-      const vs = (U / 7) * mo.s;
+      let vs = (U / 7) * mo.s;
       // keep the whole word inside the view: a word born near the edge slides in
       let sx = (px * rx + py * ry + pz * rz) + mo.ox * U, sy = (px * ux + py * uy + pz * uz) + mo.oy * U;
       if (persp) {
         const hw = Math.max(0, vw / 2 - (U / 7) * L.W * 0.5 * Math.max(1, mo.s) - vw * 0.03), hh = Math.max(0, vh / 2 - (U / 7) * L.H * 0.5 * Math.max(1, mo.s) - vh * 0.04);
         sx = Math.max(-hw, Math.min(hw, sx)); sy = Math.max(-hh, Math.min(hh, sy));
+      }
+      // ...and out from under the solid interface: the nearest free space on screen, eased there
+      if (persp && !solid.length && w.avx !== undefined) {
+        // (the panel's gone: ease back to its own place and size)
+        const e = 1 - Math.exp(-dt * 12);
+        w.avx -= w.avx * e; w.avy -= w.avy * e; w.avS += (1 - w.avS) * e;
+      } else if (persp && solid.length) {
+        const kx = VR.w / vw, ky = VR.h / vh;
+        const hwp = (U / 7) * L.W * 0.5 * Math.max(1, mo.s) * kx, hhp = (U / 7) * L.H * 0.5 * Math.max(1, mo.s) * ky;
+        const qx = VR.l + VR.w / 2 + sx * kx, qy = VR.t + VR.h / 2 - sy * ky;
+        const box = (k) => ({ l: qx - hwp * k, t: qy - hhp * k, r: qx + hwp * k, b: qy + hhp * k });
+        const bounds = { l: VR.l + 6, t: VR.t + 6, r: VR.l + VR.w - 6, b: VR.t + VR.h - 6 };
+        let c = clearOf(box(1), { rects: solid, pad: 8, bounds }), tS = 1;
+        // (no room at its size: a little smaller)
+        for (const k of [0.78, 0.6]) { if (c.ok) break; const c2 = clearOf(box(k), { rects: solid, pad: 8, bounds }); if (c2.ok) { c = c2; tS = k; } }
+        if (w.avx === undefined) { w.avx = c.dx; w.avy = c.dy; w.avS = tS; }
+        const e = 1 - Math.exp(-dt * 12);
+        w.avx += (c.dx - w.avx) * e; w.avy += (c.dy - w.avy) * e; w.avS += (tS - w.avS) * e;
+      }
+      if (w.avx !== undefined) {
+        const kx = VR.w / vw, ky = VR.h / vh;
+        sx += w.avx / kx; sy -= w.avy / ky;
+        if (w.avS < 0.999) { U *= w.avS; vs *= w.avS; }
       }
       const fd = d; // (its depth stays; only the sideways / up offsets are clamped)
       const ax = cx + rx * sx + ux * sy - bx * fd, ay = cy + ry * sx + uy * sy - by * fd, az = cz + rz * sx + uz * sy - bz * fd;

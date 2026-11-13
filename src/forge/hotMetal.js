@@ -61,6 +61,7 @@ uniform float uTWet;
 uniform vec3 uBase;       // the metal's colour under its scale
 uniform vec3 uScaleCol;   // the dark oxide
 uniform float uGrain;     // cell-to-cell brightness of the metal
+uniform float uPolish;    // blade, finished and cold: a polished sheen sweeping along it, glints on its bevels
 varying vec3 vHL;         // piece-local position
 varying vec3 vHN;         // piece-local normal
 varying float vHW;        // bar: half width of this slice
@@ -171,6 +172,26 @@ const FRAG_BODY = /* glsl */`
   col *= 1.0 - glow * 0.7;
   diffuseColor.rgb *= col;
   totalEmissiveRadiance += em;
+  if (uPolish > 0.001) {
+    // polished metal: a band of light runs up the blade now and then, catching the bevels (the
+    // faces that turn sideways) more than the flat; single cells glint and go out
+    float aq = floor(along / uCell) * uCell;
+    float run = fract(uTime * 0.28) * (uLen * 2.2) - uLen * 0.4;
+    float band = (aq - run) / (uCell * 3.0);
+    float sweep = exp(-band * band) * (0.35 + 0.65 * clamp(abs(vHN.x) + abs(vHN.y), 0.0, 1.0));
+    float tw = step(0.992, hm_h(cell + floor(uTime * 2.5)));
+    vec3 sheen = diffuseColor.rgb * 0.45 + vec3(0.32, 0.31, 0.29);
+    float onBlade = uMode > 1.5 ? 1.0 : step(-0.01, along); // (a blade's guard and hilt aren't polished steel)
+    // metal is mostly reflection: less of the room's warm light on it, more of its own colour as a
+    // banded reflection of a cool, pale surround (lit from the top left), so steel reads as steel
+    vec3 vn = normalize(normal);
+    float m = vn.y * 0.6 - vn.x * 0.45 + vn.z * 0.25;
+    float b = m > 0.62 ? 1.0 : m > 0.25 ? 0.66 : m > -0.1 ? 0.42 : 0.24;
+    vec3 env = mix(vec3(0.66, 0.72, 0.82), vec3(1.0, 0.98, 0.94), step(0.62, m)) * b;
+    vec3 metalC = diffuseColor.rgb;
+    diffuseColor.rgb *= 1.0 - 0.55 * uPolish * onBlade;
+    totalEmissiveRadiance += (metalC * env * 1.35 + sheen * (sweep * 0.85 + tw * 0.9)) * uPolish * onBlade;
+  }
 }
 `;
 
@@ -203,6 +224,7 @@ export function makeHotMetal(o = {}) {
     uBase: { value: base },
     uScaleCol: { value: new THREE.Color(o.scaleCol ?? 0x2c2422) },
     uGrain: { value: o.grain ?? 0.24 },
+    uPolish: { value: 0 },
   };
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);

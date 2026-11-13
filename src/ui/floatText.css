@@ -69,6 +69,8 @@ kbd.ft-c { text-shadow: none; }
   100% { opacity: 0; translate: calc(var(--r) * var(--px) * 13) calc(var(--px) * (-10 - var(--q) * 12)); scale: .12; rotate: calc(var(--r) * 140deg); color: #a8381a; }
 }
 .ft-ghost { pointer-events: none !important; }
+/* (src/ui/uiSolid.js keepClear: a floating node slides out from under a panel or HUD widget) */
+.ft-avoid { transition: translate .32s cubic-bezier(.25, .8, .3, 1), max-width .2s, opacity .3s; }
 
 /* ---- the bits: tiny voxels (lit top-left, shaded bottom-right) and embers that cool as they rise */
 .ft-fx { position: fixed; inset: 0; z-index: 60; pointer-events: none; overflow: hidden; }
@@ -100,6 +102,7 @@ kbd.ft-c { text-shadow: none; }
   max-width: min(calc(100vw - 40px), calc(var(--px) * 170)); margin-top: 0; text-align: center; justify-content: center;
   animation: ftToastBob 3.4s ease-in-out .8s infinite; rotate: none; transform-origin: 50% 50%;
 }
+#ui .toast.ft-toast.ft-avoid { transition: translate .32s cubic-bezier(.25, .8, .3, 1), max-width .2s; }
 #ui .toast.ft-toast::after, #ui .toast.ft-toast::before { display: none; }
 #ui .toast.ft-toast .toast-text { font-size: var(--fs); line-height: 1.4; }
 #ui .toast.ft-toast .toast-text b { color: #ffcf7a; }
@@ -114,7 +117,7 @@ kbd.ft-c { text-shadow: none; }
 #ui .toast.ft-toast .toast-seal { position: static; width: calc(var(--px) * 10); height: calc(var(--px) * 10); margin: 0; animation: ftSealIn .5s cubic-bezier(.3, 1.6, .5, 1) .25s both; filter: drop-shadow(0 var(--px) 0 rgba(10, 4, 2, .7)); }
 #ui .toast.ft-toast.out { animation: none; }
 #ui .toast.ft-toast.out .toast-icon, #ui .toast.ft-toast.out .toast-seal { animation: ftIconOut .45s ease-in .1s both; }
-@keyframes ftToastBob { 0%, 100% { translate: 0 0; } 50% { translate: 0 calc(var(--px) * -1); } }
+@keyframes ftToastBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(var(--px) * -1)); } }
 @keyframes ftIconIn { 0% { opacity: 0; transform: translateY(calc(var(--px) * -6)) scale(.3) rotate(-30deg); } 60% { opacity: 1; transform: scale(1.15) rotate(6deg); } 100% { transform: none; } }
 @keyframes ftSealIn { 0% { opacity: 0; transform: scale(2.2) rotate(-25deg); } 60% { opacity: 1; transform: scale(.85); } 100% { transform: none; } }
 @keyframes ftIconOut { to { opacity: 0; transform: translateY(calc(var(--px) * -6)) scale(.4) rotate(20deg); } }

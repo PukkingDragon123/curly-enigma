@@ -41,6 +41,7 @@ import { typeFloat, floatIn, ghost } from './floatType.js';
 import { installDialogArt } from './dialogArt.js';
 import { Px, INK, art, cssUrl } from './uiArt.js';
 import { speakerOf, materialOf } from './Tutor.js';
+import { solidRects, clearOf } from './uiSolid.js';
 import './convo.css';
 
 const isTouch = () => document.documentElement.classList.contains('is-touch');
@@ -689,6 +690,8 @@ export class Convo {
         if (E.front && E.x > -W * 0.2 && E.x < W * 1.2 && E.y > -H * 0.2 && E.y < H * 1.2) head = { x: E.x, y: E.y, r: clamp(Math.hypot(T.x - E.x, T.y - E.y) * 1.25, 14, H * 0.3) };
       }
     }
+    // the solid interface still on screen (a forge page, a panel...): the words keep out of it
+    const solid = solidRects();
     // the answers: near your side of the frame (over your shoulder), a column at the bottom
     const cw = this.choicesEl.offsetWidth, ch = this.choicesEl.offsetHeight;
     let cx = 0, cy = 0;
@@ -697,6 +700,7 @@ export class Convo {
       const side = portrait ? 'mid' : shot?.choices || (head && head.x > W / 2 ? 'left' : 'right');
       cx = side === 'mid' ? (W - cw) / 2 : side === 'left' ? Math.max(m + 6, W * 0.06) : W - cw - Math.max(m + 6, W * 0.06);
       cy = H - bar - ch - (portrait ? 12 : 18);
+      if (solid.length) { const c = clearOf({ l: cx, t: cy, r: cx + cw, b: cy + ch }, { rects: solid, prefer: 'x', bounds: { l: m, t: bar + m, r: W - m, b: H - bar - m } }); cx += c.dx; cy += c.dy; }
       this.choicesEl.style.transform = `translate(${Math.round(cx)}px, ${Math.round(cy)}px)`;
     }
     const held = !!this.s?.hold;
@@ -727,12 +731,18 @@ export class Convo {
         if (s === 'below') return { x: head.x - lw / 2, y: head.y + head.r * 0.8 + 18 };
         return { x: head.x - lw / 2, y: head.y - head.r * 1.15 - 18 - lh };
       };
-      const fits = (p) => p.x >= m && p.x + lw <= W - m && p.y >= lo && p.y + lh <= hi;
+      const free = (p) => !solid.some((q) => p.x < q.r + 6 && p.x + lw > q.l - 6 && p.y - plateH < q.b + 6 && p.y + lh > q.t - 6);
+      const fits = (p) => p.x >= m && p.x + lw <= W - m && p.y >= lo && p.y + lh <= hi && free(p);
       let p = null;
       for (const s of order) { const q = at(s); if (fits(q) || (s === 'below' || s === 'above') && q.y >= lo && q.y + lh <= hi) { p = q; side = s; break; } }
       if (!p) { side = order[0]; p = at(side); }
       x = clamp(p.x, m, W - m - lw);
       y = clamp(p.y, lo, Math.max(lo, hi - lh));
+    }
+    // still under something solid: the nearest free place (its name over it included)
+    if (solid.length) {
+      const c = clearOf({ l: x, t: y - plateH, r: x + lw, b: y + lh }, { rects: solid, bounds: { l: m, t: lo - plateH, r: W - m, b: hi } });
+      x += c.dx; y += c.dy;
     }
     // ease after the camera, snap on a fresh line
     const k = this.lab.ok ? 1 - Math.exp(-dt * 12) : 1;

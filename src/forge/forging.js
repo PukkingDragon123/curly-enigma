@@ -1145,8 +1145,11 @@ export class ForgeRun {
     this.carrier.quaternion.slerpQuaternions(this.revealFromQ, q, ease.out(k));
     this.carrier.scale.setScalar(lerp(1, s, ease.out(k)));
     this.carrier.position.y += Math.sin(this.time * 1.6) * 0.004 * k;
-    const glow = 0.07 + 0.05 * Math.sin(this.time * 3);
+    // finished metal: its own colour under a soft, even light, a polished sheen running up the blade
+    // (the grade glows in the halo behind it, not on the steel)
+    const glow = 0.025 + 0.015 * Math.sin(this.time * 3);
     this.weapon.mat.emissive.copy(this.glowCol).multiplyScalar(glow * k);
+    this.weapon.heat.u.uPolish.value = k;
     if (this.weapon.veinMat) this.weapon.veinMat.color.setScalar(0.8 + 0.3 * Math.sin(this.time * 5));
     const mid = this.weapon.group.localToWorld(new THREE.Vector3(0, this.bladeLen * 0.5, 0));
     if (Math.random() < dt * 14) P.sparkle(mid, this.gradeCol.getHex(), 1, 0.25, 0.1);
@@ -1156,13 +1159,14 @@ export class ForgeRun {
       this.halo.scale.setScalar(0.42 + 0.03 * Math.sin(this.time * 1.7));
     }
     sc.post.vignette = lerp(this.savedPost.vignette ?? 0.38, 0.7, k);
-    sc.W.hemi.color.setHex(this.savedHemi.sky).lerp(_white, 0.55 * k);
-    sc.W.hemi.intensity = lerp(this.savedHemi.i, this.savedHemi.i * 1.3, k);
+    sc.W.hemi.color.setHex(this.savedHemi.sky).lerp(_white, 0.22 * k);
+    sc.W.hemi.intensity = lerp(this.savedHemi.i, this.savedHemi.i * 1.05, k);
     sc.post.brightness = lerp(this.savedPost.brightness ?? 1, 0.95, k);
-    sc.extraLight = 0.6 * k;
+    sc.extraLight = 0.3 * k;
     sc.workSrc = null;
     // a cool display light from over your shoulder so the metal reads as metal in the firelight
-    sc.displayLight = { pos: cam.position.clone().addScaledVector(up, 0.25).addScaledVector(right, -0.2), color: 0xdce6ff, intensity: 0.9 * k };
+    // (well back over the shoulder and soft: close up, a point light burns the metal white)
+    sc.displayLight = { pos: cam.position.clone().addScaledVector(up, 0.55).addScaledVector(right, -0.45).addScaledVector(fwd, -0.1), color: 0xe4ecff, intensity: 0.38 * k };
     if (this.sel.infusion && INFUSION_FX[this.sel.infusion] && this.lightning) {
       const g = this.weapon.group;
       INFUSION_FX[this.sel.infusion].tick(P, this.lightning, g.localToWorld(new THREE.Vector3(0, 0, 0)), g.localToWorld(new THREE.Vector3(0, this.bladeLen, 0)), this.time, dt, 0.35);

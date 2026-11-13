@@ -4,6 +4,7 @@
 // at something new while the old name scatters into voxel bits (src/ui/floatType.js).
 import { el } from '../core/util.js';
 import { floatIn, ghost } from './floatType.js';
+import { keepClear } from './uiSolid.js';
 import { Px } from './uiArt.js';
 import { DSPR, progressRing } from './deepArt.js';
 
@@ -42,7 +43,7 @@ export class Crosshair {
       // the old name scatters where it was (after the live one in the page: tests read the first)
       if (!this.label.hidden) ghost(this.label, { after: true, n: 6, sample: 6, life: 0.5, rise: 14, spread: 16, colors: BITS[this.kind] });
       this.label.hidden = !text;
-      if (text) floatIn(this.label, `${kind === 'use' ? '<kbd>E</kbd>' : ''}${esc(text)}`, { stagger: 0.016, max: 0.25 });
+      if (text) { floatIn(this.label, `${kind === 'use' ? '<kbd>E</kbd>' : ''}${esc(text)}`, { stagger: 0.016, max: 0.25 }); this.clear ||= keepClear(this.label, { prefer: 'y' }); }
       else this.label.textContent = '';
     }
     const pr = Number(o.progress) || 0;

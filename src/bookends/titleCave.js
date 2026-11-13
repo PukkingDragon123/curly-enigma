@@ -889,7 +889,7 @@ export async function buildCave(o = {}) {
     mesh.position.set(G.x, y0 - 0.02, G.z);
     mesh.rotation.y = (G.seed % 7) * 0.9;
     mesh.updateMatrixWorld(true);
-    if (inMenu && view.menu && kG(camD(G.x, y0 + G.h * 0.6, G.z)) > kG(far)) {
+    if (!soft && inMenu && view.menu && kG(camD(G.x, y0 + G.h * 0.6, G.z)) > kG(far)) {
       const fine = new THREE.Mesh(giantGeo(G, kG(0)).geo, matPlant);
       fine.layers.enable(LAYER_OUTLINE);
       fine.name = 'giant-intro';

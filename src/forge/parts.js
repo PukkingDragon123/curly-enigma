@@ -800,12 +800,14 @@ export class PartRun {
       this.halo.material.opacity = (0.4 + 0.1 * Math.sin(this.time * 2.4)) * k;
     }
     sc.post.vignette = lerp(this.savedPost.vignette ?? 0.38, 0.7, k);
-    sc.W.hemi.color.setHex(this.savedHemi.sky).lerp(_white, 0.55 * k);
-    sc.W.hemi.intensity = lerp(this.savedHemi.i, this.savedHemi.i * 1.3, k);
+    // finished metal: a soft even light (a close point light burns it white) and a polished sheen
+    sc.W.hemi.color.setHex(this.savedHemi.sky).lerp(_white, 0.22 * k);
+    sc.W.hemi.intensity = lerp(this.savedHemi.i, this.savedHemi.i * 1.05, k);
     sc.post.brightness = lerp(this.savedPost.brightness ?? 1, 0.95, k);
-    sc.extraLight = 0.6 * k;
+    sc.extraLight = 0.3 * k;
     sc.workSrc = null;
-    sc.displayLight = { pos: cam.position.clone().addScaledVector(up, 0.25).addScaledVector(right, -0.2), color: 0xdce6ff, intensity: 0.9 * k };
+    sc.displayLight = { pos: cam.position.clone().addScaledVector(up, 0.55).addScaledVector(right, -0.45).addScaledVector(fwd, -0.1), color: 0xe4ecff, intensity: 0.38 * k };
+    this.view.hm.u.uPolish.value = k;
   }
 
   // ================================================================ frame

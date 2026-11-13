@@ -396,3 +396,4 @@
 .tm-book .bk-giver > div:last-child { display: flow-root; min-width: 0; }
 .ib.tm-book .ib-right { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #b89a68 transparent; overscroll-behavior: contain; }
 .ib.tm-book .ib-right:has(.bk-note) { overflow: visible; }
+.tm-book .bk-lorepage .lr-title .tm-cap { margin-top: calc(var(--px) * -1); margin-bottom: calc(var(--px) * -4); }

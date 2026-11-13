@@ -79,8 +79,8 @@ const TITLE_CSS = /* css */`
 .bk-title .tt-bar.top { top: 0; box-shadow: 0 calc(var(--px) * 1) 0 #24341c, 0 calc(var(--px) * 2) 0 rgba(36, 52, 28, .45); }
 .bk-title .tt-bar.bot { bottom: 0; box-shadow: 0 calc(var(--px) * -1) 0 #24341c, 0 calc(var(--px) * -2) 0 rgba(36, 52, 28, .45); }
 .bk-title.intro .tt-bar { height: 9vh; }
-.bk-title .tt-left, .bk-title .bk-controls, .bk-title .bk-sound { transition: opacity .9s ease .1s; }
 .bk-title.intro .tt-left, .bk-title.intro .bk-controls, .bk-title.intro .bk-sound { opacity: 0; transition: none; }
+.bk-title.intro-in .tt-left, .bk-title.intro-in .bk-controls, .bk-title.intro-in .bk-sound { transition: opacity .9s ease .1s; }
 .bk-title .tt-skip { position: absolute; right: calc(var(--px) * 8 + env(safe-area-inset-right, 0px)); bottom: calc(9vh + var(--px) * 4);
   z-index: 4; opacity: 0; transition: opacity .5s; pointer-events: none; color: #fff2d0; font-size: calc(var(--px) * 7); }
 .bk-title.intro .tt-skip { opacity: .85; transition: opacity .8s ease 1.2s; }
@@ -259,7 +259,13 @@ export default class TitleScene extends Scene {
     const c = { aspect: this.camera.aspect, fov: sh.fov, updateProjectionMatrix() {} };
     fitFov(c, sh.fov, this.camera.aspect < 1 ? 50 : 0);
     this.cam.pos.copy(sh.pos); this.cam.look.copy(sh.look); this.cam.fov = c.fov;
-    if (I.t >= INTRO.ui && this.root.classList.contains('intro')) this.root.classList.remove('intro');
+    if (I.t >= INTRO.ui && this.root.classList.contains('intro')) {
+      // the logo and the words come up slowly as the camera settles
+      this.root.classList.add('intro-in');
+      this.root.classList.remove('intro');
+      clearTimeout(this.introInT);
+      this.introInT = setTimeout(() => this.root?.classList.remove('intro-in'), 1300);
+    }
     if (I.t >= INTRO.dur) this.endIntro(false);
   }
 

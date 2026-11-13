@@ -1416,6 +1416,36 @@ track, level, status: 'installed' | 'ready' | 'locked', why, need, have, carryin
 Screenshots: `shots/parts/` (`ui-*` desktop menus, `phone-*` portrait, `run-*` copper bands,
 `iron-*` talons with the quench, `models-*` every part in each pose, `art-sheet.png`).
 
+## Wave 9: real fire, burning iron, the grimoire (forge part)
+
+- **Fire** (`src/forge/hearthFire.js`, `scene.flames`): licking voxel flames (1/64 m, one instanced
+  draw, no outline; cap 1100, 760 on phones) over the coal bed, hard colour bands root → tip, sway,
+  flicker, tips tearing off as licks; they grow with the bellows and stay low round work lying in the
+  coals (`flames.keepClear = { x, w }`). The coals breathe (a shader on `hearth.coalMat`: crawling hot
+  patches, a flare per stroke: `flames.pulse()`). `flames.heat` drives the room light's flicker.
+- **Interaction**: hold the mouse / Space / the touch button to pump as before, or **drag** a press up
+  and down to work the pull stroke by stroke; `scene.stoke()` (R at the hearth, the **Stoke** action,
+  E on the coals: "Stoke the coals"; the body of the hearth is still "Smelt ore") heaves the bed, bursts
+  sparks and makes the fire jump (activities may implement `onStoke()`; the lesson gets `'stoke'`).
+  F / **Turn it** rolls the bar in the tongs (in the coals the side down in them runs hotter: turning
+  brings it up). Blows kick the camera, the anvil rings on (`bell`, high), the struck spot chills dark.
+- **Hot metal** (`src/forge/hotMetal.js`, `makeHotMetal({ mode: 'bar' | 'blade' | 'part' })`): a toon
+  material whose glow is worked out per voxel cell from a blackbody ramp texture: per-column heat along
+  the bar (`BladeView` is now one `InstancedMesh`), hot core / cool edges, the held end cooler, a
+  crawling shimmer, forge scale, hammer chill and facets (`BladeView.struck`); the blade's quench
+  waterline (`uWaterY`, `uTWet`: under the water it snaps dark); at the reveal `uPolish` gives finished
+  metal its own colour as a banded cool reflection with a sheen running up the blade and glints (the
+  reveal's display light sits further back and softer).
+- **Particles**: sparks are voxel heads with two trailing voxels that bounce off the anvil's face and
+  the floor (`StreakPool`, `surf`/`shelf`), scale flakes bounce, `drips()` and `coalBurst()` presets.
+- **UI as the smith's grimoire** (`src/forge/forgeBookArt.js`, `--fa-*` on the forge layer): iron-bound
+  oxblood boards with riveted brackets and a gilt edge on the work page, the ledger and the **pattern
+  book** (the weapon plan, now vellum with the weapon in ink and wash, inked choice boxes, rubricated
+  headings); illuminated initials (`illum(text)` in `ui.js`), an iron hasp, soot, wax seals, a
+  hand-inked diagram of the current step (`bookDeco(panel, step)`), the thermometer's painted
+  heat-colour chart and iron caps, iron corners on the action plates and the board.
+- Shots: `shots/wave9/forge/{before,after}/` (desktop 1280×720 and phone 390×844).
+
 ## Wave 3: polish (the user's ask, and who owns what)
 
 The user's words: "For the dialogue make the box look 100x better and use the 3D model instead of
