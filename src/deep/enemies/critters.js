@@ -6,8 +6,8 @@
 import * as THREE from 'three';
 import { Enemy, TAU, smooth, easeBack, wrapA } from './base.js';
 import { VB, VS, mix, mul, c01 } from './vox.js';
-import { puff, sparkle, mote, pebbles } from './fx.js';
-import { fluidAt, solidAt, airBelow } from './physics.js';
+import { puff, sparkle, mote, pebbles, dustBurst, converge } from './fx.js';
+import { fluidAt, solidAt, airBelow, clearLine } from './physics.js';
 import { rockPalette } from './rock.js';
 import { M } from '../materials.js';
 import { rand, clamp } from '../../core/util.js';
@@ -139,7 +139,7 @@ function buildBunny() {
   const ez = Math.max(front(1, 4), front(-2, 4)) + 1;
   const ear = new VB(112);
   ear.cap(0, 0, 0, 0, 4.5, -0.5, 1, (x, y, z) => (z >= 0 && y > 1 ? 0xffb8c0 : fur[2]));
-  return { body: b.geo(0, 0, 0), eyes: eyes.geo(0, 4.5, 0), ez, ear: ear.geo(0, 0, 0), fluff: c01(fur[3]) };
+  return { body: b.geo(0, 0, 0), eyes: eyes.geo(0, 4.5, 0), ez, ear: ear.geo(0, 0, 0), fluff: c01(fur[3]), furC: fur.map(c01) };
 }
 
 export class DustBunny extends Critter {
@@ -156,16 +156,47 @@ export class DustBunny extends Critter {
     this.hopT = rand(0.5, 2);
     this.brushT = 0;
     this.purr = 0;
+    // (wave 13) startled or crowded, it bursts into a cloud of dust, then re-forms a little way off
+    this.dmode = 'hop'; // hop | panic (puffing up) | cloud (it IS the cloud) | reform
+    this.modeT = 0;
+    this.puffK = 0;
+    this.burstCd = 0;
+    this.cloudAt = new THREE.Vector3();
   }
+  setMode(m) { this.dmode = m; this.modeT = 0; }
   think(dt) {
-    this.cool -= dt; this.scared -= dt; this.purr -= dt;
+    this.cool -= dt; this.scared -= dt; this.purr -= dt; this.burstCd -= dt;
+    this.modeT += dt;
+    const pl = this.mgr.pl;
+    if (this.dmode === 'panic') {
+      // the tell: fur bristles, ears shoot up, a squeak... and POOF
+      this.puffK = smooth(this.modeT / 0.26);
+      this.shiver = 1; this.sqT = 0.2 * this.puffK;
+      this.push(0, 0, 12, dt);
+      if (this.modeT > 0.26) this.burst();
+      return;
+    }
+    if (this.dmode === 'cloud') { this.cloudTick(dt); return; }
+    if (this.dmode === 'reform') {
+      this.vel.set(0, 0, 0);
+      if (Math.random() < dt * 60 * (this.fx.lod || 1)) converge(this.fx, this.pos.x, this.pos.y + 0.16, this.pos.z, 2, this.G.furC, 0.55, 0.3);
+      if (this.modeT > 0.36) this.reform();
+      return;
+    }
+    // crowded: a mole charging at it, or right on top of it (sneak up crouched and it stays put to be brushed)
+    if (this.burstCd <= 0 && this.purr <= 0 && ((this.dist < 1.5 && pl.speed > 3.1) || (this.dist < 0.62 && !pl.crouched))) {
+      this.setMode('panic');
+      this.sound('squeak', { pitch: 1.7 });
+      return;
+    }
+    this.puffK = Math.max(0, this.puffK - dt * 4);
     this.sqT = this.grounded ? 0 : clamp(this.vel.y * 0.06, -0.1, 0.3);
     if (!this.grounded) return;
     this.hopT -= dt;
     if (this.hopT < 0.12) this.sqT = -0.3;
     if (this.hopT > 0) return;
     let dx = rand(-1, 1), dz = rand(-1, 1);
-    const run = this.scared > 0 || (this.dist < 2.3 && this.mgr.pl.speed > 2.6);
+    const run = this.scared > 0 || (this.dist < 2.3 && pl.speed > 2.6);
     if (run) { const d = this.dirToPlayer(); dx = -d[0] + rand(-0.3, 0.3); dz = -d[1] + rand(-0.3, 0.3); }
     else { const hx = this.home.x - this.pos.x, hz = this.home.z - this.pos.z; if (Math.hypot(hx, hz) > 2.5) { dx = hx; dz = hz; } }
     const l = Math.hypot(dx, dz) || 1, sp = run ? 2.4 : rand(0.6, 1.2);
@@ -176,17 +207,84 @@ export class DustBunny extends Critter {
   }
   animate() {
     const flop = this.grounded ? 0.15 + Math.sin(this.t * 2) * 0.05 : -0.5 - this.vel.y * 0.08;
-    this.ears.forEach((e, i) => { e.rotation.x = -flop; e.rotation.z = (i ? -1 : 1) * (0.25 + (this.purr > 0 ? Math.sin(this.t * 12) * 0.15 : 0)); });
+    const up = this.puffK; // panicking: ears bolt upright, trembling
+    this.ears.forEach((e, i) => {
+      e.rotation.x = -flop * (1 - up) + up * 0.25;
+      e.rotation.z = (i ? -1 : 1) * (0.25 * (1 - up) + (this.purr > 0 ? Math.sin(this.t * 12) * 0.15 : 0) + up * Math.sin(this.t * 40 + i) * 0.12);
+    });
   }
-  /** Startled by the pick: it bursts into a cloud of dust. */
-  onPoke() {
-    const c = this.center;
-    puff(this.fx, c.x, c.y, c.z, 16, this.G.fluff.map((k) => k * 0.8), 0.18, 0.4, 0.09, 0.7);
-    this.sound('whoosh', { vol: 0.4 });
-    this.sound('sneeze', {});
-    this.alive = false;
+  place() {
+    super.place();
+    this.root.visible = this.dmode !== 'cloud' && this.dmode !== 'reform';
+    if (this.puffK > 0) this.root.scale.multiplyScalar(1 + this.puffK * 0.38); // fur standing on end
+  }
+  updateSpheres() { super.updateSpheres(); if (!this.root.visible) this.spheres[0].r = 0; }
+  /** Startled by the pick: it bursts at once. */
+  onPoke() { if (this.dmode === 'hop' || this.dmode === 'panic') this.burst(); }
+  /** POOF: the bunny becomes a billowing ball of dust (and some of it gets in your eyes). */
+  burst() {
+    const c = this.center, m = this.mgr;
+    this.cloudAt.copy(c);
+    dustBurst(this.fx, c.x, c.y, c.z, this.pos.y, this.G.furC, 1);
+    this.sound('dust_poof', { vol: 1 });
+    this.sound('squeak', { pitch: 1.9, vol: 0.5 });
+    // in your face: the closer (and the more you were looking at it) the thicker
+    const ex = c.x - m.eye.x, ey = c.y - m.eye.y, ez = c.z - m.eye.z, ed = Math.hypot(ex, ey, ez) || 1;
+    const facing = (ex * m.fwd.x + ey * m.fwd.y + ez * m.fwd.z) / ed;
+    const k = clamp((2.7 - ed) / 1.6, 0, 1) * (facing > 0.3 ? 1 : 0.55);
+    if (k > 0.1) m.veil.hit(k, { tones: BUNNY_VEIL });
+    this.puffK = 0; this.shiver = 0;
+    this.vel.set(0, 0, 0);
+    this.hitPuff = false;
+    this.setMode('cloud');
+  }
+  /** The cloud hangs and billows a moment (walk into it and you get another faceful). */
+  cloudTick(dt) {
+    this.vel.set(0, 0, 0);
+    const a = this.cloudAt, t = this.modeT, lod = this.fx.lod || 1;
+    if (t < 1.3 && Math.random() < dt * 36 * lod * (1.3 - t)) {
+      const r = 0.25 + t * 0.35;
+      this.fx.spawn({ x: a.x + rand(-r, r), y: a.y + rand(-0.15, r * 0.8), z: a.z + rand(-r, r), vx: rand(-0.2, 0.2), vy: rand(0, 0.25), vz: rand(-0.2, 0.2), life: rand(0.9, 1.5), size: rand(0.03, 0.06), grow: 0.05, color: this.G.furC[(Math.random() * 4) | 0], alpha: 0.7, drag: 2, grav: -0.05, swirl: 0.4, lit: 0.55 });
+    }
+    if (!this.hitPuff && t > 0.2 && t < 1.2 && Math.hypot(this.mgr.eye.x - a.x, this.mgr.eye.y - 0.25 - a.y, this.mgr.eye.z - a.z) < 0.75) {
+      this.hitPuff = true;
+      this.mgr.veil.hit(0.5, { tones: BUNNY_VEIL, sneeze: false });
+    }
+    if (t > 1.9) this.findReform();
+  }
+  /** Somewhere a few hops away from the mole, on the floor, to pull itself back together. */
+  findReform() {
+    const m = this.mgr, a = this.cloudAt;
+    let dx = a.x - m.pc.x, dz = a.z - m.pc.z;
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    const base = Math.atan2(dx, dz);
+    // (somewhere you can see it pull itself together, if there is such a spot)
+    let spot = null, hidden = null;
+    for (const off of [0, 0.6, -0.6, 1.2, -1.2, 2, -2]) {
+      const b = base + off, d = rand(1.8, 2.8);
+      const tx = a.x + Math.sin(b) * d, tz = a.z + Math.cos(b) * d;
+      const f = m.floorAt(tx, this.pos.y + 0.6, tz, 0.3, 2.5, 1.2);
+      if (!f || Math.abs(f.y - this.pos.y) > 1.2 || m.excluded?.(tx, f.y, tz, 0.5)) continue;
+      if (clearLine(this.w, m.eye.x, m.eye.y, m.eye.z, tx, f.y + 0.2, tz)) { spot = [tx, f.y + 0.01, tz]; break; }
+      hidden ||= [tx, f.y + 0.01, tz];
+    }
+    spot ||= hidden;
+    if (spot) this.pos.set(...spot);
+    this.home.copy(this.pos);
+    this.setMode('reform');
+  }
+  reform() {
+    this.setMode('hop');
+    this.emerge = 0; // pops back in (base: easeBack)
+    this.sqv += 10;
+    this.scared = 2.5; this.burstCd = 5; this.hopT = 0.08; // and bolts
+    sparkle(this.fx, this.pos.x, this.pos.y + 0.16, this.pos.z, 6, this.G.furC[3], 1.2, -0.3, 0.016, 0.5);
+    this.fx.dust(this.pos.x, this.pos.y + 0.04, this.pos.z, 5, this.G.furC[1], 0.12);
+    this.sound('dust_poof', { vol: 0.35, pitch: 1.5 });
+    this.sound('squeak', { pitch: 1.4, vol: 0.6 });
   }
   brush(dt) {
+    if (this.dmode !== 'hop') return [];
     this.purr = 1.2;
     this.brushT += dt;
     if (Math.random() < dt * 8) this.fx.spawn({ x: this.center.x + rand(-0.1, 0.1), y: this.center.y + 0.15, z: this.center.z + rand(-0.1, 0.1), vy: 0.6, life: 0.8, size: 0.03, color: [1, 0.55, 0.7], glow: true, drag: 1 });
@@ -199,6 +297,8 @@ export class DustBunny extends Critter {
     return [];
   }
 }
+// the veil a bunny leaves in your eyes: its own fur, dark → light
+const BUNNY_VEIL = [0x5e5446, 0x8a7e6c, 0xb4a690, 0xd6cab4, 0xf2e8d6];
 
 // ------------------------------------------------------------------ Glow Beetle
 function buildBeetle() {

@@ -67,8 +67,39 @@ export class Swarm {
     mgr.sound('chirp', {}, 3);
     const lead = this.members.find((b) => b.alive);
     if (lead) mgr.alert(lead);
+    // (wave 13) they drop off the roost in a shower of grit and fur
+    const r = this.roost || lead?.hang;
+    if (r) { puff(mgr.fx, r.x, r.y - 0.05, r.z, 8, [0.32, 0.27, 0.36], 0.35, -0.3, 0.06, 0.55); for (let i = 0; i < 10; i++) mgr.fx.spawn({ x: r.x + rand(-0.4, 0.4), y: r.y - 0.02, z: r.z + rand(-0.4, 0.4), vx: rand(-0.3, 0.3), vy: rand(-0.6, 0), vz: rand(-0.3, 0.3), life: rand(0.6, 1.1), size: rand(0.012, 0.02), color: [0.35, 0.3, 0.28], drag: 0.6, grav: 9, bounce: 0.3, fade: false }); }
+  }
+  /**
+   * (wave 13) A flockmate is struck: the whole flock bursts apart from that point with a screech,
+   * shedding fur, and wheels back together a moment later (a breather before the next swoop).
+   */
+  scatter(mgr, from) {
+    if (mgr.time - (this.scatterT ?? -9) < 0.6) return;
+    this.scatterT = mgr.time;
+    let n = 0;
+    for (const b of this.members) {
+      if (!b.alive || b.state === 'roost' || b.state === 'hurt') continue;
+      let dx = b.pos.x - from.x, dy = b.pos.y - from.y, dz = b.pos.z - from.z;
+      const l = Math.hypot(dx, dy, dz);
+      if (l < 1e-3) { dx = rand(-1, 1); dz = rand(-1, 1); dy = 0.3; } else { dx /= l; dy /= l; dz /= l; }
+      const sp = rand(4.5, 6);
+      b.vel.set(dx * sp + rand(-1, 1), dy * sp + rand(1, 2.2), dz * sp + rand(-1, 1));
+      b.setState('scatter');
+      b.sqv += 6;
+      puff(mgr.fx, b.pos.x, b.pos.y, b.pos.z, 2, b.G.fur.map((k) => k * 0.7), 0.06, 0.2, 0.05, 0.6);
+      n++;
+    }
+    // the burst itself: a ring of fur and dust thrown out from the blow
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * TAU, sp = rand(1.6, 2.6);
+      mgr.fx.spawn({ x: from.x, y: from.y, z: from.z, vx: Math.cos(a) * sp, vy: rand(-0.4, 0.8), vz: Math.sin(a) * sp, life: rand(0.5, 0.8), size: rand(0.025, 0.04), grow: 0.05, color: FURC[i % 4], alpha: 0.8, drag: 3, grav: 0.4, lit: 0.6 });
+    }
+    if (n) { mgr.sound('scatter', {}, 2); this.swoopT = Math.max(this.swoopT, 1.8); }
   }
 }
+const FURC = FUR.map(c01);
 
 export class Bat extends Enemy {
   static info = { id: 'shade_bat', name: 'Shade Bat', color: '#c86aa8', hits: 0.9, dmg: 2, flying: true, snd: 'flesh' };
@@ -171,6 +202,15 @@ export class Bat extends Enemy {
         this.vel.multiplyScalar(Math.max(0, 1 - dt * 3));
         if (this.st > 0.3) this.setState('fly');
         break;
+      case 'scatter': {
+        // flung out, braking hard, wings beating fast, fur flying
+        this.vel.multiplyScalar(Math.max(0, 1 - dt * 2.6));
+        this.vel.y += dt * 1.5;
+        this.squint = 0.55;
+        if (Math.random() < dt * 14) this.fx.spawn({ x: this.pos.x, y: this.pos.y, z: this.pos.z, vx: rand(-0.3, 0.3), vy: rand(-0.2, 0.2), vz: rand(-0.3, 0.3), life: rand(0.5, 0.9), size: rand(0.01, 0.016), color: FURC[(Math.random() * 4) | 0], drag: 1.5, grav: 1.2, swirl: 1, lit: 0.5 });
+        if (this.st > 0.7) this.setState('fly');
+        break;
+      }
     }
   }
 
@@ -178,6 +218,7 @@ export class Bat extends Enemy {
     this.swarm.wake(this.mgr);
     this.setState('hurt');
     this.sound('squeak', { pitch: 1.2 });
+    this.swarm.scatter(this.mgr, this.pos);
   }
 
   animate(dt) {
@@ -188,7 +229,7 @@ export class Bat extends Enemy {
       const sp = Math.hypot(this.vel.x, this.vel.z);
       if (sp > 0.2) this.yaw += Math.atan2(Math.sin(Math.atan2(this.vel.x, this.vel.z) - this.yaw), Math.cos(Math.atan2(this.vel.x, this.vel.z) - this.yaw)) * Math.min(1, dt * 8);
       if (this.state === 'aim') this.facePlayer(10, dt);
-      this.flapT += dt * (this.state === 'dive' ? 6 : this.state === 'aim' ? 22 : 14);
+      this.flapT += dt * (this.state === 'dive' ? 6 : this.state === 'aim' || this.state === 'scatter' ? 24 : 14);
       const f = Math.floor(this.flapT * 3) % 4;
       this.body.geometry = this.G.frames[f === 3 ? 1 : f];
       this.sqT = f === 0 ? 0.1 : f === 2 ? -0.08 : 0;
@@ -209,5 +250,6 @@ export class Bat extends Enemy {
     puff(this.fx, p.x, p.y, p.z, 6, this.G.fur.map((k) => k * 0.6), 0.1, 0.3, 0.06, 0.6);
     sparkle(this.fx, p.x, p.y, p.z, 6, this.G.eye, 1.6, 2, 0.018, 0.5);
     this.sound('squeak', { pitch: 0.8 });
+    this.swarm.scatter(this.mgr, p);
   }
 }

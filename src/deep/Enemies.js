@@ -10,7 +10,7 @@
 //
 // API (DigScene): update(dt, { player, eye, forward, time, busy, lamp, blocking, blockT }) → events
 //   { damage, kind, push, blocked?, parried? } · { energy } · { say, key, tone, cd } · { loot } ·
-//   { shake } · { hitStop }
+//   { shake } · { hitStop } · { view: [pitch, roll, dy] } (a sneeze moving the head, enemies/veil.js)
 // hitTest(eye, dir, reach) · damage(e, power, dir) → { hitStop, shake, kick, tag, combo } ·
 // blast(x, y, z, r, power) · noise(x, y, z, r, kind) · radarMarkers(pos) · lights(eye) ·
 // catchTest / catch / brushAt / xrayAt · threat() · dispose() · debug (enemies/debug.js).
@@ -40,6 +40,7 @@ import { Tame } from './tame/index.js'; // raptor taming: the lone raptor, your 
 import { SPECIES } from './enemies/species.js';
 import { Swarm, Bat } from './enemies/bats.js';
 import { Webs } from './enemies/spider.js';
+import { DustVeil, tonesOf } from './enemies/veil.js'; // (wave 13) dust in your eyes, the sneeze
 import { enemyIconURL } from './enemies/icons.js';
 import * as UIM from '../ui/UI.js';
 import { critterIconURL } from '../gfx/critters32.js';
@@ -135,6 +136,7 @@ export class Enemies {
     this.webs = new Webs(this);
     this.webbed = 0; // seconds the mole is stuck in web
     this.debug = makeDebug(this);
+    this.veil = new DustVeil(this);
     try { this.tame = new Tame(this); } catch (e) { console.warn('[tame]', e); this.tame = null; }
     try { this.hires = new HiRes(this); } catch (e) { console.warn('[hires]', e); this.hires = null; } // near copies (enemies/hires.js)
   }
@@ -200,6 +202,7 @@ export class Enemies {
     this.busy = !!o.busy;
     if (typeof o.lamp === 'number') this.lampOn = o.lamp > 1.5;
     this.tame?.update(dt, this.busy); // [tame hook] (keeps the raptor living through its naming talk)
+    this.veil.update(dt, this.busy ? [] : this.events); // dust in the eyes fades, the sneeze moves the head
     if (this.busy) { this.inUpdate = false; return this.events; }
     this.time += dt;
     this.invuln -= dt;
@@ -1074,7 +1077,7 @@ export class Enemies {
           if (h.acc > 0.55) {
             h.acc = 0;
             if (this.hurtPlayer(h.src || h, h.sting, [0, 0, 0], 'spores')) {
-              if (this.sneezeT <= 0) { this.sneezeT = 2.5; this.audio?.play('sneeze'); }
+              if (this.sneezeT <= 0) { this.sneezeT = 2.5; this.veil.hit(0.5, { tones: tonesOf(h.color) }); } // a faceful of spores: blink, sneeze
               this.say('spores', 'Achoo! The <b>spores</b> sting. Get out of the cloud!', 'bad', 45);
             }
           }
@@ -1117,6 +1120,7 @@ export class Enemies {
 
   dispose() {
     this.hires?.dispose();
+    this.veil.dispose();
     for (const e of this.list) e.dispose();
     this.list.length = 0;
     for (const s of this.shots) s.mesh.removeFromParent();

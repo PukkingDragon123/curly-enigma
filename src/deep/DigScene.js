@@ -376,8 +376,10 @@ export default class DigScene extends Scene {
     this.kick.multiplyScalar(kf);
     this.shakeAmp = Math.max(0, this.shakeAmp - dt * 1.4);
     const sh = this.shakeAmp;
-    this.camera.position.set(eye.x + (Math.random() - 0.5) * sh * 0.05, eye.y + bob + (Math.random() - 0.5) * sh * 0.05, eye.z + (Math.random() - 0.5) * sh * 0.05);
-    this.camera.rotation.set(pl.pitch + this.kick.x, pl.yaw + this.kick.y, this.kick.z, 'YXZ');
+    const vo = this.viewOff && this.state.data.settings.shake ? this.viewOff : null; // a sneeze moves the head (enemies/veil.js)
+    this.viewOff = null;
+    this.camera.position.set(eye.x + (Math.random() - 0.5) * sh * 0.05, eye.y + bob + (Math.random() - 0.5) * sh * 0.05 + (vo ? vo[2] : 0), eye.z + (Math.random() - 0.5) * sh * 0.05);
+    this.camera.rotation.set(pl.pitch + this.kick.x + (vo ? vo[0] : 0), pl.yaw + this.kick.y, this.kick.z + (vo ? vo[1] : 0), 'YXZ');
     this.camera.updateMatrixWorld();
     this.gather?.frame?.(dt); // the gathering close-up (deep/gather) steers the camera and paws
     this.game.convo?.director?.apply(this.camera, dt); // cutscene talk camera (src/fx/director.js) [convo hook]
@@ -410,6 +412,7 @@ export default class DigScene extends Scene {
         this.act('block', { perfect: !!e.parried });
       }
       if (e.shake) this.shake(e.shake);
+      if (e.view) this.viewOff = e.view;
       if (e.hitStop) this.hitStop = Math.max(this.hitStop || 0, e.hitStop);
       if (e.energy) this.state.useEnergy(e.energy);
       if (e.say) this.say(e.key || e.say, e.say, e.tone || 'warn', e.cd ?? 4);

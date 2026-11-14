@@ -2,7 +2,7 @@
 // giggles, and lobs ember blobs that arc, bounce off the rock and fizzle in a shower of sparks.
 import { Enemy } from './base.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
-import { sparkle, puff } from './fx.js';
+import { sparkle, puff, fireSpray } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
 const PAL = {
@@ -71,7 +71,7 @@ export function buildImp(zone) {
 
 export class Imp extends Enemy {
   static info = { id: 'ember_imp', name: 'Ember Imp', color: '#ff7a3a', hits: 2, dmg: 4, lavaProof: true, fire: true, snd: 'flesh' };
-  static tells = { windup: [0.55] };
+  static tells = { windup: [0.55], belch: [0.5] };
   static resume = 'kite';
   constructor(mgr, o) {
     super(mgr, o);
@@ -115,6 +115,25 @@ export class Imp extends Enemy {
         const n = Math.hypot(mx, mz) || 1;
         this.hopLoop(dt, mx / n, mz / n, [3.6, 4.6], this.hd < 2 ? 2.8 : 1.8);
         if (this.grounded && this.atkCd <= 0 && this.sees && this.hd > 2.2 && this.hd < 9 && this.lost === 0 && !m.safe) { this.setState('windup'); this.sound('laugh', { pitch: 880 }); }
+        // (wave 13) crowd it and it puffs its cheeks and belches a spray of fire sparks
+        else if (this.grounded && this.atkCd <= 0 && this.sees && this.hd < 1.9 && this.lost === 0 && !m.safe) { this.setState('belch'); this.sound('imp_inhale', {}); }
+        break;
+      }
+      case 'belch': {
+        // the tell: cheeks swell, the head flame roars up, embers are sucked into its mouth
+        this.facePlayer(8, dt);
+        this.sqT = -0.1 - this.st * 0.25;
+        this.shiver = 0.25 + this.st;
+        this.squint = 0.6;
+        if (Math.random() < dt * 30) { const mo = this.mouth(); this.fx.spawn({ x: mo.x + rand(-0.25, 0.25), y: mo.y + rand(-0.1, 0.25), z: mo.z + rand(-0.25, 0.25), vx: 0, vy: 0, vz: 0, life: 0.18, size: 0.016, color: this.G.ember, glow: true, drag: 0 }); }
+        if (this.st > 0.5) { this.setState('spew'); this.spitFire(); }
+        break;
+      }
+      case 'spew': {
+        // a short gout of sparks (0.3 s), the recoil hops it back
+        const mo = this.mouth(), f = this.spewDir;
+        if (this.st < 0.3) fireSpray(this.fx, mo.x, mo.y, mo.z, f[0], f[1], f[2], Math.max(2, Math.round(80 * dt * (this.fx.lod || 1) * 3)), this.G.hot, this.G.ember, 0.28, 5.5);
+        if (this.st > 0.3) { this.setState('kite'); this.atkCd = rand(1.8, 2.8); }
         break;
       }
       case 'windup': {
@@ -134,7 +153,7 @@ export class Imp extends Enemy {
         if (this.st > 0.35) this.setState('kite');
         break;
     }
-    this.eyes.geometry = this.state === 'windup' || this.state === 'throw' ? this.G.angry : this.G.eyes;
+    this.eyes.geometry = this.state === 'windup' || this.state === 'throw' || this.state === 'belch' || this.state === 'spew' ? this.G.angry : this.G.eyes;
     // water is bad news for a fire sprite
     if (this.inFluid === 1) {
       this.hp -= dt * 2;
@@ -177,6 +196,28 @@ export class Imp extends Enemy {
     this.sound('ignite', { vol: 0.5 });
   }
 
+  /** Where its mouth is (world). */
+  mouth() {
+    const s = this.size;
+    return { x: this.pos.x + Math.sin(this.yaw) * 0.16 * s, y: this.pos.y + 0.24 * s, z: this.pos.z + Math.cos(this.yaw) * 0.16 * s };
+  }
+
+  /** The belch: sparks along a cone at the mole's chest; it burns if you're still in the cone. */
+  spitFire() {
+    const m = this.mgr, mo = this.mouth();
+    const dx = m.pc.x - mo.x, dy = m.pc.y + 0.1 - mo.y, dz = m.pc.z - mo.z, d = Math.hypot(dx, dy, dz) || 1;
+    // aimed when the tell started (the yaw it faces): sidestep and it misses
+    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
+    this.spewDir = [fx, clamp(dy / d, -0.5, 0.4), fz];
+    fireSpray(this.fx, mo.x, mo.y, mo.z, fx, this.spewDir[1], fz, Math.round(40 * (this.fx.lod || 1)), this.G.hot, this.G.ember, 0.3, 6);
+    puff(this.fx, mo.x + fx * 0.2, mo.y + 0.05, mo.z + fz * 0.2, 6, this.G.smoke, 0.1, 0.5, 0.07, 0.5);
+    this.sound('fire_spit', {});
+    this.sqv += 10;
+    this.vel.x -= fx * 2.2; this.vel.z -= fz * 2.2; this.vel.y = 2; // the recoil
+    const inCone = (dx * fx + dz * fz) / (Math.hypot(dx, dz) || 1) > 0.8;
+    if (d < 2.4 && inCone) this.hurtPlayer(this.info.dmg * 0.6, [fx * 2.4, 1.2, fz * 2.4], 'burn');
+  }
+
   onHit() { this.setState('hurt'); this.sound('squeak', { pitch: 1.1 }); this.fx.sparks(this.center.x, this.center.y, this.center.z, 8, this.G.hot, [0, 1, 0], 2.5); }
 
   animate(dt) {
@@ -189,7 +230,8 @@ export class Imp extends Enemy {
     this.arms[1].rotation.z = -0.3 - (this.grounded ? 0 : 0.5);
     // flickering flame (grows when about to throw)
     this.flick += (rand(0.85, 1.2) - this.flick) * Math.min(1, dt * 18);
-    const f = this.flick * (1 + throwK * 0.6);
+    const belch = this.state === 'belch' ? Math.min(1, this.st / 0.45) : this.state === 'spew' ? Math.max(0, 1 - this.st / 0.3) : 0;
+    const f = this.flick * (1 + throwK * 0.6 + belch * 0.9);
     this.flame.scale.set(1 / Math.sqrt(f), f * (1 + Math.sin(this.t * 23) * 0.08), 1 / Math.sqrt(f));
     this.flame.rotation.z = Math.sin(this.t * 7) * 0.12 - this.vel.x * 0.04;
     this.flame.rotation.x = -this.vel.y * 0.04;

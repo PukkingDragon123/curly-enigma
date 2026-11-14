@@ -3,9 +3,9 @@
 // flinches, shuts its eye and flees — that's the moment to whack it.
 import { Enemy, TAU, smooth } from './base.js';
 import { VB, VS, mix, c01 } from './vox.js';
-import { mote, stream, sparkle, puff } from './fx.js';
+import { mote, stream, sparkle, puff, lightTrail, converge } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
-import { airBelow } from './physics.js';
+import { airBelow, clearLine, solidAt } from './physics.js';
 
 const PAL = {
   2: { shell: [0x1e1430, 0x2e1e4a, 0x463068, 0x6a4a94], iris: 0xc89aff, tail: 0x5a3a9a, mote: [0.62, 0.45, 1] },
@@ -143,7 +143,9 @@ export class Wisp extends Enemy {
         this.vel.multiplyScalar(Math.max(0, 1 - dt * 6));
         this.eyeOpen = 1; this.squint = 0.12; this.shiver = 1; this.sqT = -0.2;
         if (this.st < dt * 1.5) { this.sound('squeak', { pitch: 1.4 }); sparkle(this.fx, this.pos.x, this.pos.y, this.pos.z, 6, this.G.mote, 1.2, 0, 0.02, 0.5); }
-        if (this.st > 0.85) { this.setState('flee'); this.litT = 0; }
+        // (wave 13) the tell before it blinks away: it squeezes thin and light gathers in
+        if (this.st > 0.62) { this.sqT = 0.45; if (Math.random() < dt * 40) converge(this.fx, this.pos.x, this.pos.y, this.pos.z, 1, [this.G.mote, this.G.mote, [1, 1, 1], this.G.mote], 0.4, 0.22); }
+        if (this.st > 0.85) { this.litT = 0; if (!this.blink()) this.setState('flee'); }
         break;
       }
       case 'flee': {
@@ -156,7 +158,7 @@ export class Wisp extends Enemy {
       case 'hurt': {
         this.vel.multiplyScalar(Math.max(0, 1 - dt * 3));
         this.squint = 0.4;
-        if (this.st > 0.4) this.setState(Math.random() < 0.6 ? 'flee' : 'stalk');
+        if (this.st > 0.4) { const r = Math.random(); if (r < 0.35 && this.blink()) break; this.setState(r < 0.6 ? 'flee' : 'stalk'); }
         break;
       }
     }
@@ -164,6 +166,39 @@ export class Wisp extends Enemy {
   }
 
   onHit() { this.setState('hurt'); this.sound('squeak', { pitch: 1.2 }); }
+
+  /**
+   * (wave 13) Blink: it winks out and reappears a few metres off to the mole's side, leaving a ribbon
+   * of light along the way (so you can follow it). It never attacks straight out of a blink.
+   */
+  blink() {
+    const m = this.mgr, pc = m.pc, w = this.w, p = this.pos;
+    const side = Math.atan2(-m.fwd.x, -m.fwd.z) + Math.PI; // the way the mole faces
+    const s0 = Math.random() < 0.5 ? 1 : -1;
+    for (const off of [1.6, 1.25, 2.1, 0.9, 2.6]) {
+      for (const sd of [s0, -s0]) {
+        const a = side + sd * off, R = rand(2.6, 3.4);
+        const x = pc.x + Math.sin(a) * R, z = pc.z + Math.cos(a) * R, y = m.eye.y + rand(-0.15, 0.3);
+        if (solidAt(w, x, y, z) || solidAt(w, x, y + 0.2, z) || !clearLine(w, p.x, p.y, p.z, x, y, z)) continue;
+        const ox = p.x, oy = p.y, oz = p.z;
+        puff(this.fx, ox, oy, oz, 5, this.G.mote.map((k) => k * 0.4), 0.12, 0.2, 0.06, 0.5);
+        sparkle(this.fx, ox, oy, oz, 8, this.G.mote, 1.4, 0, 0.018, 0.4);
+        p.set(x, y, z);
+        this.vel.set(0, 0, 0);
+        this.home.copy(p);
+        lightTrail(this.fx, ox, oy, oz, x, y, z, this.G.mote, Math.round(34 * (this.fx.lod || 1)));
+        sparkle(this.fx, x, y, z, 14, this.G.mote, 2, -0.4, 0.022, 0.6);
+        this.sound('blink', { out: true });
+        this.emerge = 0.25; this.sqv -= 8; // pops back in
+        this.face(pc.x, pc.z, 99, 1);
+        this.setState('stalk');
+        this.atkCd = Math.max(this.atkCd, rand(1.6, 2.4));
+        this.orbitA = Math.atan2(x - pc.x, z - pc.z);
+        return true;
+      }
+    }
+    return false;
+  }
 
   animate(dt) {
     this.bob.position.y = Math.sin(this.t * 2.2) * 0.05;

@@ -102,7 +102,9 @@ lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, t
   `{ damage: n, kind, push: [x,y,z], blocked?, parried? }` (energy lost + knockback; a blocked blow is
   already reduced, a parried one is 0), `{ energy: n }` (the cost of holding / taking blows on the
   guard), `{ say: html, key, tone, cd }` (a toast), `{ loot: { id, q, p } }` (an item for the
-  backpack — same path as ore pickups), `{ shake: k }` and `{ hitStop: s }` (optional feel).
+  backpack — same path as ore pickups), `{ shake: k }` and `{ hitStop: s }` (optional feel),
+  `{ view: [pitch, roll, dy] }` (this frame's head offset while the mole sneezes off a faceful of dust:
+  `enemies/veil.js`, which also draws the pixel dust veil over the view; skipped with screen shake off).
   `blockT` = seconds since the guard went up (a perfect block is the first ~0.2 s).
 - `hitTest(eye, dir, reach)` → an enemy (or a spider web) the pick would hit before `reach`, or null.
 - `damage(enemy, power, dir)`: a pick blow (combos, crits after a parry, poise and stagger,

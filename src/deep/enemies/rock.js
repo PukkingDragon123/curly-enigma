@@ -177,7 +177,15 @@ export class Mimic extends Enemy {
           this.vel.x *= -0.4; this.vel.z *= -0.4;
           this.sound('thud', { vol: 0.5 });
         }
-        if (this.grounded && this.st > 0.1) { this.setState('recover'); this.atkCd = rand(1.1, 1.8); }
+        if (this.grounded && this.st > 0.1) {
+          this.setState('recover'); this.atkCd = rand(1.1, 1.8);
+          // (wave 13) the body-slam lands: a little ring of grit and pebbles skitters out
+          shockRing(this.fx, this.pos.x, this.pos.y, this.pos.z, 0.12, 2.4, this.G.dust, Math.round(22 * (this.fx.lod || 1)));
+          pebbles(this.fx, this.pos.x, this.pos.y + 0.12, this.pos.z, 8, this.G.chip, 0.18, 2.2);
+          this.sqv -= 10;
+          this.sound('stomp', { vol: 0.45 });
+          this.mgr.shake(this, 0.12);
+        }
         break;
       }
       case 'recover':

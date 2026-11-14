@@ -179,6 +179,60 @@ const SFX = {
     const v = o.vol ?? 1;
     for (let i = 0; i < 5; i++) a.noise({ filter: 'bandpass', f: R(1400, 2600), q: 3, dur: 0.04, vol: 0.15 * v, delay: i * 0.035 });
   }, 0.1],
+  // ---------------------------------------------------------------- wave 13 signature moves
+  /** A dust bunny bursts: a crisp "pff!" pop, a billow of fluff, a few ticks of grit. */
+  dust_poof: [(a, o) => {
+    const v = o.vol ?? 1, p = o.pitch || 1, pan = o.pan;
+    if (!a.sample) { a.noise({ filter: 'bandpass', f: 2400, f2: 600, q: 1, dur: 0.2, vol: 0.4 * v, pan }); return; }
+    a.sample(['n_pop'], { vol: 0.55 * v, rate: 0.62 * p, pan });
+    a.sample(['brush1', 'brush2', 'brush3'], { vol: 0.5 * v, rate: 1.35 * p, dur: 0.3, pan });
+    a.sample(['whoosh1', 'whoosh2', 'whoosh3'], { vol: 0.28 * v, rate: 1.25 * p, dur: 0.45, delay: 0.02, pan });
+    a.sample(['debris1', 'debris2', 'debris3'], { vol: 0.12 * v, rate: 1.4, delay: 0.09, pan });
+  }, 0.08],
+  /** Two little coughs after the sneeze. */
+  dust_cough: [(a, o) => {
+    const v = o.vol ?? 1;
+    if (!a.sample) return;
+    for (let i = 0; i < 2; i++) a.sample(['grunt1', 'grunt2', 'grunt3'], { vol: 0.2 * v, rate: R(1.75, 1.95), dur: 0.11, delay: i * 0.24 });
+    a.sample(['brush1', 'brush2'], { vol: 0.12 * v, rate: 1.5, dur: 0.12, delay: 0.02 });
+  }, 0.8],
+  /** A spore puffer bursts its quills. */
+  quill_burst: [(a, o) => {
+    const v = o.vol ?? 1, pan = o.pan;
+    if (!a.sample) { a.noise({ filter: 'bandpass', f: 2000, f2: 500, q: 1, dur: 0.2, vol: 0.4 * v, pan }); return; }
+    a.sample(['n_pop'], { vol: 0.6 * v, rate: 0.48, pan });
+    a.sample(['squish1', 'squish2'], { vol: 0.35 * v, rate: 1.2, pan });
+    for (let i = 0; i < 4; i++) a.sample(['tick1', 'tick2', 'debris1'], { vol: 0.09 * v, rate: R(1.3, 1.8), delay: 0.03 + i * R(0.03, 0.06), pan });
+  }, 0.1],
+  /** A gloom wisp blinks out (and in somewhere else). */
+  blink: [(a, o) => {
+    const v = o.vol ?? 1, pan = o.pan;
+    if (!a.sample) { a.tone({ f: 1400, f2: 300, type: 'sine', dur: 0.2, vol: 0.06 * v, pan }); return; }
+    a.sample(['magic1', 'magic2'], { vol: 0.32 * v, rate: o.out ? 1.5 : 0.85, dur: 0.4, pan, reverb: 0.5 });
+    a.sample(['whoosh1', 'whoosh2'], { vol: 0.22 * v, rate: 1.6, dur: 0.25, pan });
+  }, 0.08],
+  /** A bat flock bursts apart. */
+  scatter: [(a, o) => {
+    const v = o.vol ?? 1, pan = o.pan;
+    if (!a.sample) return;
+    a.sample(['screech1', 'screech2'], { vol: 0.3 * v, rate: R(1.5, 1.8), dur: 0.4, pan });
+    for (let i = 0; i < 4; i++) a.sample(['flap1', 'flap2'], { vol: 0.25 * v, rate: R(1.1, 1.5), delay: i * R(0.03, 0.07), pan });
+  }, 0.3],
+  /** An imp belches a spray of fire. */
+  fire_spit: [(a, o) => {
+    const v = o.vol ?? 1, pan = o.pan;
+    if (!a.sample) { a.noise({ filter: 'highpass', f: 3000, dur: 0.3, vol: 0.3 * v, pan }); return; }
+    a.sample(['firebreath1', 'firebreath2'], { vol: 0.42 * v, rate: 1.45, dur: 0.5, pan });
+    a.sample(['spit'], { vol: 0.35 * v, rate: 1.2, pan });
+  }, 0.2],
+  /** ...the imp drawing a breath before it belches. */
+  imp_inhale: [(a, o) => {
+    const v = o.vol ?? 1, pan = o.pan;
+    if (!a.sample) return;
+    a.sample(['inhale'], { vol: 0.4 * v, rate: 1.75, dur: 0.45, pan });
+    a.sample(['ignite1', 'ignite2'], { vol: 0.15 * v, rate: 1.4, delay: 0.15, pan });
+  }, 0.4],
+
   big_snore: [(a, o) => {
     const v = o.vol ?? 1, p = o.pitch || 1;
     a.noise({ color: 'brown', filter: 'bandpass', f: 140 * p, q: 3, dur: 1.2, a: 0.5, vol: 0.18 * v, pan: o.pan });

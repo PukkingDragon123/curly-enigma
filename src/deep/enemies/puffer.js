@@ -3,7 +3,7 @@
 // Step back while it inflates; whack it while it's deflated and wobbly.
 import { Enemy, smooth, easeBack } from './base.js';
 import { VB, VS, mix, mul, c01 } from './vox.js';
-import { spores, puff, sparkle } from './fx.js';
+import { spores, puff, sparkle, quills } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
 const CAPS = {
@@ -52,7 +52,19 @@ export function buildPuffer(zone) {
       }
     }
   }
-  return { stem: stem.geo(0, 0, 0), eyes: eyes.geo(0, 4.5, 0), angry: angry.geo(0, 4.5, 0), ez, cap: cap.geo(0, 0, 0), spots: spots.geo(0, 0, 0), spore: P.spore, light: P.light, capCol: c01(P.cap[2]) };
+  // (wave 13) quills folded inside the cap: they bristle out as it swells, and shoot off when it bursts
+  const spines = new VB(84);
+  const N = 16;
+  for (let i = 0; i < N; i++) {
+    const y = 0.22 + 0.74 * ((i + 0.5) / N), r = Math.sqrt(1 - y * y), a = i * 2.39996;
+    const dx = Math.cos(a) * r, dz = Math.sin(a) * r;
+    const bx = dx * 7, by = y * 5, bz = dz * 7; // just under the dome's skin
+    for (let t = 0; t <= 4.2; t += 0.5) {
+      const c = t > 3.4 ? P.spot : t > 1.8 ? P.cap[3] : P.cap[1];
+      spines.set(Math.round(bx + dx * t), Math.round(by + y * t * 1.1), Math.round(bz + dz * t), c);
+    }
+  }
+  return { stem: stem.geo(0, 0, 0), eyes: eyes.geo(0, 4.5, 0), angry: angry.geo(0, 4.5, 0), ez, cap: cap.geo(0, 0, 0), spots: spots.geo(0, 0, 0), spines: spines.geo(0, 0, 0), spore: P.spore, light: P.light, capCol: c01(P.cap[2]), capDark: c01(P.cap[1]) };
 }
 
 export class Puffer extends Enemy {
@@ -73,6 +85,8 @@ export class Puffer extends Enemy {
     this.capG = this.group3(this.root, 0, 8.2 * VS, -0.3 * VS);
     this.cap = this.part(G.cap, this.capMat, this.capG);
     this.spots = this.part(G.spots, this.glowMat, this.capG);
+    this.spines = this.part(G.spines, this.capMat, this.capG);
+    this.spineK = 0; // 0 folded inside the cap, 1 bristling
     this.state = 'wander';
     this.walkT = rand(1, 3);
     this.heading = Math.random() * Math.PI * 2;
@@ -111,7 +125,9 @@ export class Puffer extends Enemy {
       }
       case 'inflate': {
         this.facePlayer(3, dt);
-        this.inflate = smooth(this.st / 0.9);
+        // swells, then strains past full for a beat (quills bristling) before it bursts
+        this.inflate = smooth(this.st / 0.75) + smooth((this.st - 0.75) / 0.2) * 0.18;
+        this.spineK = smooth((this.st - 0.3) / 0.45);
         this.shiver = 0.4 + this.inflate * 0.6;
         this.sqT = -0.12 * this.inflate;
         angry = true;
@@ -150,6 +166,11 @@ export class Puffer extends Enemy {
     const m = this.mgr;
     const x = this.pos.x + Math.sin(this.yaw) * 0.5, y = this.pos.y + 0.55, z = this.pos.z + Math.cos(this.yaw) * 0.5;
     spores(this.fx, x, y, z, 110, this.G.spore, 0.6, 2.6);
+    // the quills shoot off in a ring (just for show: the spores are what sting)
+    const cy = this.pos.y + (8.2 + this.inflate * 1.2) * VS * this.size + 0.06;
+    quills(this.fx, this.pos.x, cy, this.pos.z, Math.round(16 * (this.fx.lod || 1)), this.G.capDark, this.G.spore, 3.4);
+    this.spineK = 0;
+    this.sound('quill_burst', {});
     puff(this.fx, x, y, z, 22, this.G.spore.map((k) => k * 0.5), 0.4, 0.25, 0.16, 0.4);
     m.addHazard({ kind: 'spores', x, y: y - 0.2, z, r: 1.8, life: 3.2, sting: this.info.dmg, zone: this.zone, color: this.G.spore });
     this.sound('sneeze', {});
@@ -168,6 +189,11 @@ export class Puffer extends Enemy {
     this.capG.rotation.z = Math.sin(this.t * 2.1) * 0.06 + (this.walking ? Math.sin(this.phase) * 0.12 : 0);
     this.root.rotation.z = this.walking ? Math.sin(this.phase) * 0.13 : 0;
     this.capMat.uniforms.emissive.value = 0.3 + inf * 0.6;
+    if (this.state !== 'inflate') this.spineK = Math.max(0, this.spineK - dt * 4);
+    // quills: tucked under the dome's skin (scaled in), out to full length as they bristle, trembling
+    const sk = this.spineK;
+    this.spines.visible = sk > 0.02;
+    this.spines.scale.setScalar(0.72 + sk * 0.3 + (sk > 0.9 ? Math.sin(this.t * 50) * 0.015 : 0));
     if (Math.random() < dt * 1.5) spores(this.fx, this.pos.x, this.pos.y + 0.6, this.pos.z, 1, this.G.spore, 0.3, 0.15); // a lazy spore now and then
   }
 
