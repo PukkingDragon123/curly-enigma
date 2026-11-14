@@ -114,7 +114,7 @@ export class CaveElk extends Beast {
     // cornered (a calf hurt, nowhere to run): a lowered-antler butt
     { id: 'butt', range: [0, 2.2], arc: 0.6, tell: 0.7, dur: 0.45, hitAt: 0.12, rec: 0.8, cd: [2, 3], w: 1,
       when(e) { return !e.baby; },
-      start() { this.sound('snort', {}); },
+      start() { this.sound('grunt', { pitch: 1.7 }); },
       tick(A, dt) { if (A.phase === 'go') this.push(Math.sin(this.yaw) * 4, Math.cos(this.yaw) * 4, 12, dt); },
       hit(A) { return this.strikeAt(A, this.reachPoint(0.3, 0.3), 0.5, { dmg: this.info.dmg, push: 4, up: 2 }); } },
   ];
@@ -157,7 +157,7 @@ export class CaveElk extends Beast {
     if (this.mgr.time - (this.group?.alarmT ?? -9) < 1.5) return;
     if (this.group) this.group.alarmT = this.mgr.time;
     this.flashK = 1;
-    this.sound('snort', { pitch: this.baby ? 1.6 : 1 });
+    this.sound('grunt', { pitch: this.baby ? 2.3 : 1.8 });
     this.sound('stomp', { vol: 0.35 });
     const h = this.headPos(_v);
     sparkle(this.fx, h.x, h.y + 0.25, h.z, 12, this.G.glow, 1.4, 0.4, 0.02, 0.6);
@@ -165,7 +165,7 @@ export class CaveElk extends Beast {
     // the herd hears it
     for (const c of this.group?.members || []) if (c !== this && c.alive && c.mode !== 'flee') { c.fleeFrom = this.fleeFrom; c.setMode('flee'); c.flashK = 0.6; }
   }
-  onHit() { this.sound('snort', { pitch: this.baby ? 1.8 : 1.3 }); if (this.baby && this.group) for (const c of this.group.members) if (c.alive && !c.baby) { c.lastHitT = this.mgr.time; c.lastHitBy = 'player'; } }
+  onHit() { this.sound('grunt', { pitch: this.baby ? 2.4 : 1.9 }); if (this.baby && this.group) for (const c of this.group.members) if (c.alive && !c.baby) { c.lastHitT = this.mgr.time; c.lastHitBy = 'player'; } }
   onNotice() { this.flashK = Math.max(this.flashK, 0.4); }
   animate(dt) {
     const t = this.t, A = this.atk;
@@ -177,7 +177,8 @@ export class CaveElk extends Beast {
     const down = this.headDown > 0.3 ? 1 : 0, low = A && A.phase !== 'rec' ? 1 : 0;
     const want = down ? 1.25 : low ? 0.7 : sp > 3 ? 0.55 : rest > 0.5 ? 0.5 : 0;
     this.neckG.rotation.x += (want - this.neckG.rotation.x) * Math.min(1, dt * 5);
-    if (!down && !low) look(this.headG, this.mode === 'flee' ? null : this.lookAt, dt, { yaw: 0.9, pitch: 0.4, rate: 6 });
+    if (!down && !low && this.mode !== 'flee') look(this.headG, this.lookAt, dt, { yaw: 0.9, pitch: 0.4, rate: 6 });
+    else if (!down && !low) { const k = Math.min(1, dt * 6); this.headG.rotation.y -= this.headG.rotation.y * k; this.headG.rotation.x += (0.15 - this.headG.rotation.x) * k; } // bolting: head forward
     else this.headG.rotation.set(down ? 0.2 + Math.sin(t * 7) * 0.06 : 0.3, 0, 0);
     this.flashK = Math.max(0, this.flashK - dt * 1.6);
     this.antMat.uniforms.emissive.value = 0.8 + Math.sin(t * 1.3 + this.pos.x) * 0.15 + this.flashK * 2.2;
@@ -189,7 +190,7 @@ export class CaveElk extends Beast {
     const h = this.headPos(_v), c = this.G.light, k = 0.35 + this.flashK * 0.9;
     return { x: h.x, y: h.y + 0.3, z: h.z, c: [c[0] * k, c[1] * k, c[2] * k], r: 2.2 };
   }
-  deathFx() { this.sound('snort', { pitch: 0.7 }); sparkle(this.fx, this.center.x, this.center.y + 0.6, this.center.z, 10, this.G.glow, 1.6, 2, 0.02, 0.6); }
+  deathFx() { this.sound('grunt', { pitch: 1.2 }); sparkle(this.fx, this.center.x, this.center.y + 0.6, this.center.z, 10, this.G.glow, 1.6, 2, 0.02, 0.6); }
 }
 
 // =====================================================================================
@@ -266,7 +267,7 @@ export class MoleBear extends Beast {
       } },
     // dives into the rock and tunnels at you: the bulge travels, a dirt fountain warns where it bursts out
     { id: 'burrow', range: [3.5, 11], arc: Math.PI, tell: 0.6, dur: 0.1, rec: 0.1, cd: [6, 9], w: 0.8,
-      when(e) { return e.mgr.time - (e.burrowEnd ?? -99) > 8; },
+      when(e, d, tg) { return tg === 'player' && e.mgr.time - (e.burrowEnd ?? -99) > 8; },
       go() { this.dive('hunt'); } },
   ];
   static warm(mgr) { return mgr.geo('molebear', () => buildMoleBear()); }
@@ -306,7 +307,7 @@ export class MoleBear extends Beast {
     if (this.burrow) return;
     this.endAttack?.(true);
     this.burrow = { phase: 'dive', t: 0, why, to: new THREE.Vector3() };
-    this.sound('crumble', { vol: 0.8 });
+    this.sound('golem_crumble', { vol: 0.35 });
     this.sound('growl', { pitch: 0.9, dur: 0.6 });
   }
   /** Where it comes up: beside the mole (not under it), or well away. */
@@ -349,7 +350,7 @@ export class MoleBear extends Beast {
       if (d > 0.05) { this.pos.x += dx / d * sp; this.pos.z += dz / d * sp; this.pos.y += (B.to.y - this.pos.y) * Math.min(1, dt * 3); }
       if (Math.random() < dt * 24) pebbles(this.fx, this.pos.x + rand(-0.3, 0.3), this.pos.y + 0.05, this.pos.z + rand(-0.3, 0.3), 1, m.dustCol(this.pos), 0.15, 1.6);
       if (Math.random() < dt * 8) this.fx.dust(this.pos.x, this.pos.y + 0.05, this.pos.z, 2, m.dustCol(this.pos), 0.3);
-      if (Math.random() < dt * 3) this.sound('crumble', { vol: 0.35 });
+      if (Math.random() < dt * 1.2) this.sound('golem_crumble', { vol: 0.15 });
       if (d < 0.1 || B.t > 4) { B.phase = 'warn'; B.t = 0; this.pos.copy(B.to); this.sound('rumble_hit', { vol: 0.6 }); }
     } else if (B.phase === 'warn') {
       // the tell: the ground shudders and a fountain of dirt marks the spot (get clear!)

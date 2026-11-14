@@ -113,6 +113,14 @@ lighting should come from `makeObjectMaterial(U, {emissive})` (terrain lights, t
   hunters come and look. `blast()` calls it itself. `threat()` → `{ kind, dist }` of the nearest
   hostile after the mole (or null).
 - `debug`: test hooks (`src/deep/enemies/debug.js`: spawn, list, stage, portrait, sheet, block, …).
+- Sizes (wave 13): tiny critters → kobolds → the big folk (`enemies/bigfolk.js`: cave elk herds with
+  crystal antlers, the burrowing mole-bear) → trolls and tyrants → the kaiju (`enemies/kaiju.js`: the
+  ~10 m Crystal Titan and ~12 m Fungal Colossus). Kaiju spawn only in halls they can walk (`hallAt`,
+  read from the built rock where loaded, the generator's cave shapes elsewhere), never two at once,
+  have no voxel collision (they can't wedge in a tunnel or pin the mole), keep a far (1/6 m) and a near
+  (1/12 m, desktop) copy of each part, and scatter everything small near them. `debug.kaiju(kind, o)`
+  stages one. Creature models refine to `FINE` = 1/60 m (`REFINE_MAX` 3, phones 2); the near pass
+  (`hires.js`) to 1/136 m (phones 1/100 m, one at a time).
 - `radarMarkers(pos)` → `[{ kind: 'enemy', x, y, z, label, color }]` for nearby awake enemies.
 - `lights(eye)` → `[{ x, y, z, c: [r,g,b], r }]` glowing enemies (≤ 3).
 - `dispose()`.

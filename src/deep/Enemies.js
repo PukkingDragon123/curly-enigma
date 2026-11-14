@@ -124,7 +124,8 @@ export class Enemies {
     this.stats = { spawned: 0, failed: 0, killed: 0 };
     this.inUpdate = false;
     this.hint = { tough: 0, toughT: -99, crystal: 0, floatT: -99 };
-    this.maxAlive = MAX_ALIVE;
+    // phones: a tighter cap (the creatures carry twice the voxels since wave 13)
+    this.maxAlive = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? MAX_ALIVE - 3 : MAX_ALIVE;
     this.tokens = new Set();
     this.lampOn = true;
     this.stepNoiseT = 0;
@@ -153,7 +154,8 @@ export class Enemies {
       const [kind, x] = this.warmQ.shift();
       const cls = SPECIES[kind];
       if (!cls?.warm) continue;
-      cls.warm(this, this.zone, x);
+      const done = cls.warm(this, this.zone, x);
+      if (cls.info?.kaiju && !done) this.warmQ.unshift([kind, x]); // (a kaiju builds a part per calm frame)
       return;
     }
   }
@@ -224,9 +226,11 @@ export class Enemies {
     for (const e of this.list) {
       if (!e.alive) continue;
       const px = e.pos.x, py = e.pos.y, pz = e.pos.z;
-      // far away and out of sight: think at a lower rate (cheap on phones)
-      if (e.dist > 18 && !e.awake && (e.skipT = (e.skipT || 0) + dt) < 0.12) continue;
-      const edt = e.skipT > 0 && e.dist > 18 && !e.awake ? Math.min(0.12, e.skipT) : dt;
+      // far away and out of sight, or just far (the herds and hunters out past the lamp), or a
+      // harmless critter a little way off: think at a lower rate (cheap on phones)
+      const slow = !e.info.kaiju && ((e.dist > 18 && !e.awake) || (e.passive && e.dist > 12) || (e.dist > 26 && e.mode !== 'fight'));
+      if (slow && (e.skipT = (e.skipT || 0) + dt) < (e.dist > 32 ? 0.15 : 0.12)) continue;
+      const edt = slow ? Math.min(0.15, e.skipT) : dt;
       e.skipT = 0;
       // (hunting: everything it does comes faster)
       e.update(e.awake && !e.passive && e.stunT <= 0 && e.dist < 14 ? edt * DANGER.haste : edt);
@@ -265,6 +269,7 @@ export class Enemies {
         const vx = Math.floor(e.pos.x * VOX), vy = Math.floor(e.pos.y * VOX), vz = Math.floor(e.pos.z * VOX);
         const unloaded = !this.world.chunk(Math.floor(vx / CS), Math.floor(vy / CS), Math.floor(vz / CS));
         gone = far || unloaded || e.pos.y < -230;
+        if (e.info.kaiju) gone = e.dist > e.info.keepFar; // (it walks the big halls whether or not the rock round it is loaded)
       }
       if (gone) { this.tokens.delete(e); e.alive = false; e.dispose(); this.list.splice(i, 1); }
     }

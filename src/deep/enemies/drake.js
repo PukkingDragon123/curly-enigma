@@ -100,7 +100,7 @@ export class Drake extends Beast {
   static info = {
     id: 'cave_drake', name: 'Cave Drake', color: '#ff8a4a', hits: 9, dmg: 7, poise: 3, tier: 4, flesh: true, snd: 'flesh', lavaProof: true,
     diet: 'hunt', social: 'solo', aggro: 'territorial', territory: 11, sleepy: 0.6, sight: 13, hear: 1, deep: 2, walk: 1.2, run: 3.2,
-    turn: 3, accel: 6, keep: 3.2, close: 1.6, agile: true, jump: 5.5, space: [0.5, 1.4], prey: ['critter', 'kobold', 'shellback', 'raptor'],
+    turn: 3, accel: 6, keep: 3.2, close: 1.6, agile: true, jump: 5.5, space: [0.5, 1.4], prey: ['critter', 'kobold', 'shellback', 'raptor', 'cave_elk'],
     wakeR: 3, snore: 'big_snore', snorePitch: 1.2, harvest: ['drake_meat', 'drake_scale'], metabolism: 0.003, depth: [92, 210], lie: 1, patience: 12, keepFar: 34,
   };
   static attacks = [

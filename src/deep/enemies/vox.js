@@ -14,8 +14,12 @@ export const VS = 1 / 24; // meters per creature voxel as modelled (terrain voxe
  * one and none of them look blockier than a kobold.
  */
 export const FINE = 1 / 60; // (wave 13: was 1/40; creatures carry about twice the voxels on their skin)
-/** How far a model may be refined (a refined part's surface grows k², and every voxel face is triangles on screen). */
-export const REFINE_MAX = 3;
+/**
+ * How far a model may be refined (a refined part's surface grows k², and every voxel face is
+ * triangles on screen). Phones keep the old 2× (their extra detail is the near copy, hires.js).
+ */
+const PHONE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+export const REFINE_MAX = PHONE ? 2 : 3;
 /**
  * The skin style models are being built under (Enemies.geo sets it by model key): when set, every
  * geometry VB.geo makes carries its source voxels (userData.hiSrc) for the hi-res near copy.
@@ -166,7 +170,7 @@ export class VB {
     if (k > 1) {
       // (the coarse voxels stay on it too: code that picks voxels by model coordinates uses them)
       const cl = this.list();
-      const g = refine(this, k).geoLo(px * k, py * k, pz * k, vs / k);
+      const g = refine(this, k).geoLo(px * k, py * k, pz * k, vs / k, 1);
       g.userData.cvox = cl; g.userData.cpivot = [px, py, pz]; g.userData.ck = k;
       return g;
     }

@@ -24,7 +24,7 @@ const STYLE = {
   raptor: 'scale', tameraptor: 'scale', tyrant: 'scale', shellback: 'scale', ptero: 'scale', drake: 'scale', wyrm: 'scale', kobold: 'scale', fish: 'scale',
   cgolem: 'stone', golem: 'stone', mimic: 'stone', troll_rock: 'stone', kobold_rock: 'stone', tortoise: 'stone', bones: 'stone',
   troll: 'hide', imp: 'hide', egg: 'hide', nest: 'hide',
-  bunny: 'fur', bat: 'fur',
+  bunny: 'fur', bat: 'fur', elk: 'fur', molebear: 'fur',
   spider: 'chitin', beetle: 'chitin', crab: 'chitin', shrimp: 'chitin',
   slime: 'smooth', wisp: 'smooth', voidwisp: 'smooth', wraith: 'smooth', puffer: 'smooth', worm: 'smooth', slug: 'smooth',
 };
@@ -67,7 +67,7 @@ export class HiRes {
     if (fx === 'off') return null;
     // (wave 13: twice the voxels on the skin: 1/96 → 1/136 m on desktop, 1/72 → 1/100 on phones,
     // which see them only in arm's reach and one or two at a time)
-    if (fx === 'low' || touch) return { r: 2.6, max: 2, vox: 1 / 100, cells: 7e6 };
+    if (fx === 'low' || touch) return { r: 2.6, max: 1, vox: 1 / 100, cells: 7e6 };
     return { r: 6, max: 4, vox: 1 / 136, cells: 14e6 };
   }
   request(geo, P) {

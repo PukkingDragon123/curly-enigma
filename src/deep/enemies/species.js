@@ -15,10 +15,13 @@ import { Slime } from './slime.js';
 import { Wraith } from './wraith.js';
 import { Drake } from './drake.js';
 import { Raptor, Tyrant, Shellback, Pterosaur } from './dinos.js';
+import { BIG_SPECIES } from './bigfolk.js'; // (wave 13) cave elk, mole-bear
+import { KAIJU } from './kaiju.js'; // (wave 13) crystal titan, fungal colossus
 
 export const SPECIES = {
   mimic: Mimic, golem: Golem, crystal_golem: CrystalGolem, wisp: Wisp, imp: Imp, wyrm: Wyrm, puffer: Puffer, bat: Bat,
   cave_fish: CaveFish, ...CRITTER_SPECIES,
   kobold: Kobold, cave_troll: Troll, cave_spider: Spider, cave_slime: Slime, ruin_wraith: Wraith, cave_drake: Drake,
   raptor: Raptor, tyrant: Tyrant, shellback: Shellback, pterosaur: Pterosaur,
+  ...BIG_SPECIES, ...KAIJU,
 };

@@ -99,7 +99,7 @@ export class Raptor extends Beast {
   static info = {
     id: 'raptor', name: 'Cave Raptor', color: '#e0a050', hits: 2.6, dmg: 4, poise: 1, tier: 2, flesh: true, snd: 'flesh',
     diet: 'hunt', social: 'pack', aggro: 'hostile', morale: true, sleepy: 0.25, sight: 14, hear: 1.3, walk: 1.6, run: 4.4, turn: 7, accel: 8,
-    keep: 3.2, close: 1.3, agile: true, jump: 4.6, space: [0.28, 0.9], prey: ['critter', 'shellback', 'kobold', 'cave_slime'],
+    keep: 3.2, close: 1.3, agile: true, jump: 4.6, space: [0.28, 0.9], prey: ['critter', 'shellback', 'kobold', 'cave_slime', 'cave_elk'],
     harvest: ['dino_meat'], metabolism: 0.007, depth: [30, 200], lie: 1, wakeR: 3, wander: 0.3, patience: 10, keepFar: 34,
   };
   static attacks = [
@@ -226,7 +226,7 @@ export class Tyrant extends Beast {
   static info = {
     id: 'tyrant', name: 'Cave Tyrant', color: '#a0b070', hits: 20, dmg: 12, poise: 5, tier: 5, flesh: true, snd: 'flesh',
     diet: 'hunt', social: 'solo', aggro: 'territorial', territory: 16, sleepy: 0.7, sight: 18, hear: 0.8, deep: 3, walk: 1.2, run: 3.4,
-    turn: 1.9, accel: 3, keep: 3.4, close: 2.4, space: [0.75, 3.2], prey: ['shellback', 'raptor', 'cave_troll', 'kobold'],
+    turn: 1.9, accel: 3, keep: 3.4, close: 2.4, space: [0.75, 3.2], prey: ['shellback', 'raptor', 'cave_troll', 'kobold', 'cave_elk', 'mole_bear'],
     wakeR: 4.5, snore: 'big_snore', snorePitch: 0.6, harvest: ['dino_meat', 'dino_meat', 'beast_hide'], metabolism: 0.0025, depth: [40, 200],
     lie: 1, keepFar: 40, patience: 16, parryStun: 1.4,
   };

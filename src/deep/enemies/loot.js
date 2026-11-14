@@ -31,6 +31,11 @@ export function lootFor(e) {
     case 'tyrant': add('tyrant_tooth', 1); add('tyrant_tooth', 0.4); break;
     case 'shellback': add('armor_plate', e.baby ? 0 : 0.8); break;
     case 'pterosaur': add('ptero_feather', 0.8); break;
+    // (wave 13) the big folk and the kaiju
+    case 'cave_elk': add('beast_hide', e.baby ? 0 : 0.7); add(z >= 5 ? 'sapphire' : 'amethyst', e.baby ? 0 : 0.3); break;
+    case 'mole_bear': add('beast_hide', 1); add('beast_hide', 0.5); if (Math.random() < 0.6) out.push(ore(4)); break;
+    case 'crystal_titan': for (let i = 0; i < 6; i++) add(z >= 6 ? 'amethyst' : z === 5 ? 'sapphire' : 'amethyst'); add('diamond', 0.6); add('ruby', 0.5); for (let i = 0; i < 4; i++) out.push(ore(5)); break;
+    case 'fungal_colossus': for (let i = 0; i < 6; i++) add('glowcap'); add('gloomshroom', 1); add('gloomshroom', 0.7); add('crystal_lily', 0.5); add('emerald', 0.4); for (let i = 0; i < 2; i++) out.push(ore(4)); break;
   }
   return out;
 }

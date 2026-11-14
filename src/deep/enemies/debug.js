@@ -13,10 +13,14 @@
 //                                find a fitting cave (within r0 of `at`, or of the mole), teleport the
 //                                mole there, spawn in front, aim
 //   look(e)                      aim the camera at a creature
+//   kaiju(kind, { dist, depth, seed, r0 }) → spot   find a hall a giant can walk, put the mole `dist` m
+//                                from it, spawn it there and aim at it (wave 13)
 //   clean()                      hide toasts and the "click to look" card (screenshots)
 //   eco() · perf() · info()      ecosystem, timing, spawn stats
 import * as THREE from 'three';
 import { zoneAt } from '../Generator.js';
+import { hallAt, floorD, ground } from './kaiju.js';
+import { clearLine } from './physics.js';
 
 export function makeDebug(mgr) {
   const scene = () => mgr.owner;
@@ -151,6 +155,37 @@ export function makeDebug(mgr) {
       if (first) { first.yaw = Math.atan2(spot.x - first.pos.x, spot.z - first.pos.z); D.look(first); }
       s.player.pitch = o.pitch ?? Math.min(0.1, s.player.pitch);
       return { spot, spawned: out };
+    },
+    kaiju(kind = 'crystal_titan', o = {}) {
+      const s = scene();
+      const S = mgr.species(kind);
+      if (!s?.debug || !S?.H) return null;
+      const G = ground(mgr);
+      const [d0, d1] = o.depth || (S.zones.includes(1) ? [18, 90] : [40, 120]);
+      const dist = o.dist ?? 16;
+      // a hall by the generator's shapes, then checked against the real rock once it's built round the mole
+      for (let seed = 1; seed < 16; seed++) {
+        const spot = s.debug.find((b, d, x, y, z) => hallAt(G, x, y, z, S.H, S.W, 9) >= 6, { r: o.r0 ?? 140, d0, d1, seed: seed * 13 + (o.seed || 0), tries: 5000 });
+        if (!spot) continue;
+        let px = null, pz = 0, py = 0;
+        for (let i = 0; i < 16 && px === null; i++) {
+          const a = i * Math.PI / 8 + (o.turn || 0), x = spot.x + Math.cos(a) * dist, z = spot.z + Math.sin(a) * dist;
+          const f = floorD(G, x, spot.y + 2, z, 3, 4);
+          if (f !== null && Math.abs(f - spot.y) < 2.5 && !mgr.excluded(x, f, z, 2)) { px = x; pz = z; py = f; }
+        }
+        if (px === null) continue;
+        s.debug.teleport(px, py + 0.05, pz, Math.atan2(-(spot.x - px), -(spot.z - pz)), 0.25);
+        s.terrain.warm(px, py + 0.5, pz, o.warm ?? 5);
+        s.terrain.warm(spot.x, spot.y + S.H * 0.5, spot.z, 3);
+        const ok = hallAt(G, spot.x, spot.y, spot.z, S.H, S.W, 7) >= 5 && clearLine(mgr.world, spot.x, spot.y + S.H * 0.5, spot.z, px, py + 0.75, pz);
+        if (!ok && seed < 15) continue;
+        mgr.autoSpawn = false;
+        D.clear();
+        const e = mgr.debugSpawn(kind, spot.x, spot.y + 1, spot.z, { zone: o.zone ?? zoneAt(Math.max(0, -spot.y)) });
+        if (e) { e.pos.y = spot.y; e.floorY = spot.y; e.yaw = o.yaw ?? Math.atan2(px - spot.x, pz - spot.z) + 1.2; e.place(); e.updateSpheres(); }
+        return { spot: { x: +spot.x.toFixed(1), y: +spot.y.toFixed(1), z: +spot.z.toFixed(1) }, mole: { x: +px.toFixed(1), y: +py.toFixed(1), z: +pz.toFixed(1) }, kind, seed, ok };
+      }
+      return null;
     },
     clean(hideHands = true) {
       const ui = mgr.ui;

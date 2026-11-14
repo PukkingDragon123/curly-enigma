@@ -12,25 +12,31 @@
 //              raptor packs, shellback herds with young and a nest, pterosaur flocks under tall
 //              roofs, and now and then a cave tyrant in the biggest halls
 //   critters   the harmless ones (critters.js), fish in lakes
+//   big folk   (wave 13) cave elk herds (prey for the hunters) and the lone mole-bear (bigfolk.js)
+//   kaiju      (wave 13) now and then one giant (kaiju.js) in a hall big enough, never two at once,
+//              only once its model is built (Enemies.prewarm builds it a part per calm frame)
 import { zoneAt, ZONE_DEPTHS, biomeAt, BIOMES, caveDensity } from '../Generator.js';
 import { M } from '../materials.js';
 import { clamp, rand } from '../../core/util.js';
 import { airAbove, fluidAt } from './physics.js';
 import { Group } from './beast.js';
+import { floorD, hallAt, ground } from './kaiju.js';
 
 // wanderer tables: [kind, weight, minDepth?] (kinds are species keys; 'bats' = a roost)
 const WANDER = {
-  1: [['mimic', 3], ['puffer', 2], ['kobold', 2.2, 8], ['cave_slime', 2], ['cave_spider', 0.6, 14]],
-  2: [['mimic', 1.4], ['puffer', 1.4], ['bats', 1.6], ['golem', 0.8], ['wisp', 0.8], ['crystal_golem', 0.3], ['kobold', 2.6], ['cave_slime', 1.6], ['cave_spider', 1.6], ['cave_troll', 0.5, 40]],
-  3: [['wyrm', 1.6], ['wisp', 1.2], ['bats', 1.2], ['golem', 0.8], ['crystal_golem', 0.7], ['kobold', 1.2], ['cave_spider', 1.8], ['cave_slime', 1.2], ['cave_troll', 1.3], ['ruin_wraith', 0.5, 70]],
-  4: [['imp', 3], ['golem', 0.9], ['bats', 0.9], ['crystal_golem', 0.6], ['cave_drake', 1.5], ['cave_troll', 0.9], ['cave_slime', 1], ['cave_spider', 0.8]],
-  5: [['wyrm', 1.4], ['wisp', 1.3], ['golem', 1.2], ['crystal_golem', 0.7], ['cave_troll', 2], ['cave_drake', 1.2], ['ruin_wraith', 1.4], ['cave_slime', 0.9]],
+  1: [['mimic', 3], ['puffer', 2], ['kobold', 2.2, 8], ['cave_slime', 2], ['cave_spider', 0.6, 14], ['mole_bear', 0.5, 14]],
+  2: [['mimic', 1.4], ['puffer', 1.4], ['bats', 1.6], ['golem', 0.8], ['wisp', 0.8], ['crystal_golem', 0.3], ['kobold', 2.6], ['cave_slime', 1.6], ['cave_spider', 1.6], ['cave_troll', 0.5, 40], ['cave_elk', 1.3], ['mole_bear', 0.8]],
+  3: [['wyrm', 1.6], ['wisp', 1.2], ['bats', 1.2], ['golem', 0.8], ['crystal_golem', 0.7], ['kobold', 1.2], ['cave_spider', 1.8], ['cave_slime', 1.2], ['cave_troll', 1.3], ['ruin_wraith', 0.5, 70], ['cave_elk', 1.5], ['mole_bear', 0.7]],
+  4: [['imp', 3], ['golem', 0.9], ['bats', 0.9], ['crystal_golem', 0.6], ['cave_drake', 1.5], ['cave_troll', 0.9], ['cave_slime', 1], ['cave_spider', 0.8], ['mole_bear', 0.6]],
+  5: [['wyrm', 1.4], ['wisp', 1.3], ['golem', 1.2], ['crystal_golem', 0.7], ['cave_troll', 2], ['cave_drake', 1.2], ['ruin_wraith', 1.4], ['cave_slime', 0.9], ['cave_elk', 1.3]],
   6: [['imp', 1.8], ['wisp', 1.6], ['wyrm', 1.4], ['crystal_golem', 0.7], ['cave_drake', 2], ['ruin_wraith', 2.4], ['cave_slime', 0.9], ['cave_troll', 0.8]],
 };
 // the dino caverns
-const DINO = [['raptor', 3], ['shellback', 3], ['pterosaur', 1.6], ['tyrant', 0.55], ['cave_slime', 0.5]];
+const DINO = [['raptor', 3], ['shellback', 3], ['pterosaur', 1.6], ['tyrant', 0.55], ['cave_slime', 0.5], ['cave_elk', 1.6], ['mole_bear', 0.4]];
+// the giants and where they walk (kaiju.js)
+const KAIJU_KINDS = ['crystal_titan', 'fungal_colossus'];
 // how many come together: [min, max] at the top of the zone; +1 max in its deeper half
-const PACK = { kobold: [2, 3], cave_slime: [1, 2], raptor: [3, 4], shellback: [2, 3], pterosaur: [2, 2], ruin_wraith: [1, 1], cave_spider: [1, 1] };
+const PACK = { cave_elk: [3, 5], kobold: [2, 3], cave_slime: [1, 2], raptor: [3, 4], shellback: [2, 3], pterosaur: [2, 2], ruin_wraith: [1, 1], cave_spider: [1, 1] };
 // lairs (plan nests) per zone: a group, or a lair recipe
 const LAIRS = {
   1: [['mimic', 'mimic', 'puffer'], ['@kobold_camp'], ['cave_slime', 'cave_slime', 'cave_slime'], ['puffer', 'mimic']],
@@ -55,7 +61,7 @@ const DIRTY = new Set([M.DIRT, M.LOAM, M.CLAY, M.MOSS, M.ROOTS, M.MUDSTONE]);
 const WANDER_CAP = [0, 2, 3, 3, 3, 4, 4];
 const GRACE = [0, 75, 25, 15, 10, 10, 10];
 // at most this many of the big ones around at once
-const UNIQUE = { crystal_golem: 1, cave_troll: 2, cave_drake: 1, tyrant: 1 };
+const UNIQUE = { crystal_golem: 1, cave_troll: 2, cave_drake: 1, tyrant: 1, mole_bear: 1 };
 const PACK_CAP = { raptor: 1, kobold: 2, ruin_wraith: 1 };
 const LAIR_KIND = { '@spider_lair': 'cave_spider', '@troll_den': 'cave_troll', '@drake_roost': 'cave_drake' };
 
@@ -135,6 +141,7 @@ export class Spawner {
     for (const g of LAIRS[zone] || []) for (const k of g) {
       if (k === '@kobold_camp') { add('kobold'); add('kobold', true); } else add(LAIR_KIND[k] || k);
     }
+    for (const k of KAIJU_KINDS) if (this.mgr.species(k)?.zones?.includes(zone)) add(k);
     return out;
   }
 
@@ -145,6 +152,35 @@ export class Spawner {
     this.ruins();
     this.critters(dt);
     this.wanderers(dt);
+    this.kaiju(dt);
+  }
+
+  // ---------------------------------------------------------------- kaiju
+  /** Now and then a giant, 20–38 m off, in a hall it can walk (never two; never near a safe place). */
+  kaiju(dt) {
+    const m = this.mgr, pl = m.pl;
+    this.kaijuT = (this.kaijuT ?? 25) - dt;
+    if (this.kaijuT > 0) return;
+    this.kaijuT = rand(10, 18);
+    if (m.safe || -pl.pos.y < 18 || m.list.some((e) => e.alive && e.info.kaiju)) return;
+    const kinds = KAIJU_KINDS.filter((k) => m.species(k)?.zones?.includes(m.zone));
+    if (!kinds.length || Math.random() > 0.5) return;
+    const kind = kinds[Math.floor(Math.random() * kinds.length)];
+    const S = m.species(kind);
+    if (!S.ready(m, m.zone)) { if (!m.warmQ.some((q) => q[0] === kind)) m.warmQ.unshift([kind]); return; }
+    for (let k = 0; k < 12; k++) {
+      const a = Math.random() * Math.PI * 2, d = rand(20, 38);
+      const x = pl.pos.x + Math.cos(a) * d, z = pl.pos.z + Math.sin(a) * d;
+      const fy = floorD(ground(m), x, pl.pos.y + 4, z, 4, 10);
+      if (fy === null || Math.abs(fy - pl.pos.y) > 8 || m.excluded(x, fy, z, 12)) continue;
+      if (hallAt(ground(m), x, fy, z, S.H, S.W, 9) < 6) continue;
+      const e = new S(m, { x, y: fy, z, zone: m.zone });
+      e.key = kind;
+      m.add(e);
+      this.stats.kaiju = (this.stats.kaiju || 0) + 1;
+      return;
+    }
+    this.stats.kaijuMiss = (this.stats.kaijuMiss || 0) + 1;
   }
 
   // ---------------------------------------------------------------- lairs

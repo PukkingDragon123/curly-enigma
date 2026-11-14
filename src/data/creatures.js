@@ -72,4 +72,13 @@ export const CREATURES = {
     desc: 'Armoured grazers that crop ferns and moss in herds with their young. Peaceful, unless you threaten the herd or its nest: then a lowered-head charge, and a swing of that tail club you really should not stand beside.' },
   pterosaur: { name: 'Pterosaur', zones: [2, 3, 4, 5, 6], catch: 'hit', drop: 'ptero_feather', color: 0xe09060,
     desc: 'Wheels in pairs under tall cavern roofs, screeching. Folds its wings and dives at small things, like you. Lands on carcasses to pick them clean.' },
+  // (wave 13) the big folk and the kaiju (src/deep/enemies/bigfolk.js, kaiju.js)
+  cave_elk: { name: 'Cave Elk', zones: [2, 3, 5, 6], catch: 'hit', drop: 'beast_hide', color: 0x9af0ff,
+    desc: 'Tall, skittish grazers with antlers of living crystal. They crop moss in herds with their calves. One stamps and its antlers flash, and the whole herd bolts. Raptors, drakes and tyrants hunt them.' },
+  mole_bear: { name: 'Mole-Bear', zones: [1, 2, 3, 4], catch: 'hit', drop: 'beast_hide', color: 0xff8aa8,
+    desc: 'A huge velvet digger with a pink star of feelers for a nose. Nearly blind, hears everything. Scavenges carcasses and guards its patch: it swipes, rears up to slam, and dives into the rock to tunnel at you. Watch for the dirt fountain where it will burst out.' },
+  crystal_titan: { name: 'Crystal Titan', zones: [3, 4, 5, 6], catch: 'hit', drop: 'amethyst', color: 0xc8a0ff,
+    desc: 'A walking hill of living rock with a forest of glowing crystal on its back. Each step shakes grit off the roof. It means you no harm, unless it notices you: when it rears up glowing, a roar and a shockwave follow. Jump it. Hit it and it will stomp where you stand.' },
+  fungal_colossus: { name: 'Fungal Colossus', zones: [1, 2, 3], catch: 'hit', drop: 'glowcap', color: 0x8afff0,
+    desc: 'A toadstool as tall as a tower, walking on four root legs, its gills glowing. It roots into the floor to feed. When its cap swells, a storm of spores is coming: get out from under it.' },
 };

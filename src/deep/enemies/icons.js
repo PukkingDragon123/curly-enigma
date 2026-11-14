@@ -16,6 +16,8 @@ import { buildSlime } from './slime.js';
 import { buildWraith } from './wraith.js';
 import { buildDrake } from './drake.js';
 import { buildRaptor, buildTyrant, buildShellback, buildPtero } from './dinos.js';
+import { buildElk, buildMoleBear } from './bigfolk.js';
+import { TITAN_PARTS, COLO_PARTS, kaijuLo } from './kaiju.js';
 
 const vox = (geo, ox = 0, oy = 0, oz = 0, mirror = false) => ({ v: geo?.userData?.cvox || geo?.userData?.vox || [], o: [ox, oy, oz], mirror });
 /** A part turned about its own origin (rz around z, then rx around x, ry around y) before it's placed. */
@@ -130,6 +132,29 @@ const POSES = {
     const G = buildBat();
     return [vox(G.frames[0]), vox(G.eyes, 0, 0, 2)];
   },
+  // (wave 13) the big folk and the kaiju
+  cave_elk: () => {
+    const G = buildElk(3), out = [vox(G.body, 0, 16, 0), vox(G.neck, 0, 19, 10), vox(G.head, 0, 26, 14), vox(G.eyes, 0, 27, 14), vox(G.antlers, 0, 28, 14)];
+    for (const [x, z] of [[3, 8], [-4, 8], [3, -8], [-4, -8]]) out.push(vox(G.thigh, x, 13, z), vox(G.shin, x, 5, z));
+    return out;
+  },
+  mole_bear: () => {
+    const G = buildMoleBear(), out = [vox(G.body, 0, 13, 0), vox(G.head, 0, 15, 13), vox(G.star, 0, 14, 22), vox(G.eyes, 0, 15, 13)];
+    for (const sd of [1, -1]) out.push(vox(G.arm, sd * 6, 12, 7), vox(G.paw, sd * 6, 0, 8), vox(G.leg, sd * 6, 10, -8));
+    return out;
+  },
+  crystal_titan: () => kaijuLo(() => {
+    const B = TITAN_PARTS.body(3), H = TITAN_PARTS.head(3), A = TITAN_PARTS.arm(3), L = TITAN_PARTS.leg(3);
+    const out = [vox(B.torso.lo, 0, 31, 0), vox(B.crystals.lo, 0, 31, 0), vox(H.head.lo, 0, 35, 18), vox(H.jaw.lo, 0, 33, 20), vox(H.eyes.lo, 0, 35, 18)];
+    for (const sd of [1, -1]) out.push(vox(A.upper.lo, sd * 13, 34, 10, sd < 0), vox(A.fore.lo, sd * 13, 19, 11), vox(A.fist.lo, sd * 13, 8, 11), vox(L.thigh.lo, sd * 9, 27, -12), vox(L.shin.lo, sd * 9, 15, -12), vox(L.foot.lo, sd * 9, 4, -11));
+    return out;
+  }),
+  fungal_colossus: () => kaijuLo(() => {
+    const S = COLO_PARTS.stalk(), C = COLO_PARTS.cap(), L = COLO_PARTS.leg();
+    const out = [vox(S.stalk.lo, 0, 19, 0), vox(S.eyes.lo, 0, 19, 0), vox(C.cap.lo, 0, 60, 0), vox(C.gills.lo, 0, 60, 0)];
+    for (const [x, z] of [[6, 6], [-6, 6], [6, -6], [-6, -6]]) out.push(vox(L.thigh.lo, x, 20, z), vox(L.shin.lo, x, 9, z), vox(L.foot.lo, x, 0, z));
+    return out;
+  }),
 };
 
 const cache = new Map();
