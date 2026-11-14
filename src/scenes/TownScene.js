@@ -858,8 +858,10 @@ export default class TownScene extends Scene {
     for (const a of this.actors) {
       if (!a.collide) continue;
       const min = r + a.radius * 0.85;
-      const dx = px - a.x, dz = pz - a.z, d2 = dx * dx + dz * dz;
-      if (d2 >= min * min || d2 < 1e-6) continue;
+      let dx = px - a.x, dz = pz - a.z, d2 = dx * dx + dz * dz;
+      if (d2 >= min * min) continue;
+      // right on top of each other (someone walked or was placed onto the mole): out backwards
+      if (d2 < 1e-6) { dx = Math.sin(pl.yaw) * 1e-3; dz = Math.cos(pl.yaw) * 1e-3; d2 = 1e-6; }
       const d = Math.sqrt(d2);
       ox += (dx / d) * (min - d) * 0.5;
       oz += (dz / d) * (min - d) * 0.5;

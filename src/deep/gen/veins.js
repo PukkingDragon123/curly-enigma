@@ -28,9 +28,12 @@ export const VEIN_OF = {
 };
 const SEAM = new Set(['coal', 'salt_crystal', 'fossil', 'amber', 'truffle', 'iron_ore']);
 export const GEMS = new Set(['quartz', 'amethyst', 'echo_crystal', 'ruby', 'emerald', 'sapphire', 'diamond', 'sunstone', 'voidstone', 'frostite']);
-const RARE = new Set(['diamond', 'sunstone', 'voidstone']);
+export const RARE = new Set(['diamond', 'sunstone', 'voidstone']);
 
 const STEP = 0.9; // m between path points
+const VEIN_DROP = 0.4; // share of the common-ore veins (past the first few by the burrow) left out
+const NUGGET_KEEP = 0.7; // share of a kept common vein's nuggets that stay
+const COMMON_W = 8; // ORE_SPAWN weight from which an ore counts as a zone's staple (thinned)
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 /** The strata band at a point, as the generator's coarse field has it. */
@@ -142,7 +145,21 @@ export function planVeins(plan, rng, density, zoneDepths, near) {
         if (score > bs) { bs = score; best = { pts, kind, a, dv, B, x, y, z }; }
       }
       if (!best) continue;
+      // common-ore veins are thinned out (ore was too common): the vein is still planned (the rng
+      // stream, so everything planned after it, stays the same), then dropped on a hash, or its
+      // nuggets are. Only a zone's staple ores (weight COMMON_W and up: coal, copper, tin, iron,
+      // silver, gold, mithril); the first veins by the burrow, the specials and every gem vein stay.
+      const a0 = plan.areas.length, v0 = plan.veins.length;
       addVein(plan, rng, best, item, zone, size);
+      const isNear = near && zone === near.zone && k < near.n;
+      if (!isNear && (ent[1] || 0) >= COMMON_W && !GEMS.has(item) && !RARE.has(item)) {
+        if (h3(zone, k, 7, plan.seed + 91) < VEIN_DROP) { plan.areas.length = a0; plan.veins.length = v0; continue; }
+        const A = plan.areas[a0];
+        if (A && A.deposits.length > 4) {
+          const kept = A.deposits.filter((d) => h3(d.seed, 3, 5, plan.seed) < NUGGET_KEEP);
+          A.deposits = kept.length >= 3 ? kept : A.deposits.slice(0, 3);
+        }
+      }
     }
   }
 }

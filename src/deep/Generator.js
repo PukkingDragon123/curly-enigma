@@ -17,10 +17,11 @@ import { stampPassage, passageBB, planPassage } from './gen/passages.js';
 import { settleLakes } from './fluids/lakes.js';
 import { buildNetwork, netDensity, GROTTO, CAVERN, vaultAt, lakeDist } from './gen/network.js';
 import { VAULT_BANDS, dressVaults, stampFalls, stampClusters, makeColumns, vaultColumns, vaultSolid, makeCluster } from './gen/vaults.js';
-import { planVeins, stampVeins } from './gen/veins.js';
+import { planVeins, stampVeins, GEMS as VEIN_GEMS, RARE as VEIN_RARE } from './gen/veins.js';
 import { RELIC_IDS } from './ruins/relics.js';
 
 export const CS = 32; // chunk size (voxels)
+const SCATTER_KEEP = 0.3, SCATTER_KEEP_GEM = 0.5; // share of the scattered ore drawn that is kept (ChunkGen.scatter)
 export const BOUNDS = { x0: -96, x1: 96, z0: -96, z1: 96, y0: -216, y1: 8 }; // meters
 export const ZONE_DEPTHS = [0, 25, 55, 90, 130, 170, 210]; // zone n spans ZONE_DEPTHS[n-1]..[n]
 
@@ -702,7 +703,12 @@ export class ChunkGen {
     return deps;
   }
 
-  /** The common ore scattered through this chunk (about one deposit per 20 m³ of rock). */
+  /**
+   * The common ore scattered through this chunk: about one deposit per 20 m³ of rock is drawn (the
+   * hash stream and the ids stay as they were), then thinned: SCATTER_KEEP of the plain ores stay,
+   * SCATTER_KEEP_GEM of the gems (ore was far too common; the gems are cut less, but the rarest (veins.js RARE) as
+   * much as plain ore, so they never outnumber their zone's metal).
+   */
   scatter(cx, cy, cz) {
     const p = this.plan, CM = CS / VOX;
     const cx0 = cx * CM, cy0 = cy * CM, cz0 = cz * CM;
@@ -714,6 +720,7 @@ export class ChunkGen {
     const out = [];
     for (let k = 0; k < n && spawn.length; k++) {
       const e = spawn[(hc >>> (4 + k * 3)) % Math.min(3, spawn.length)];
+      if (h3(cx, cy, cz, k + 41) >= (VEIN_GEMS.has(e[0]) && !VEIN_RARE.has(e[0]) ? SCATTER_KEEP_GEM : SCATTER_KEEP)) continue;
       out.push({ id: `s${cx}_${cy}_${cz}_${k}`, oreId: ORE_ID[e[0]], item: e[0], x: cx0 + h3(cx, cy, cz, k + 1) * CM, y: cy0 + h3(cx, cy, cz, k + 9) * CM, z: cz0 + h3(cx, cy, cz, k + 17) * CM, r: 0.14 + h3(cx, cy, cz, k + 3) * 0.14, q: 70 + h3(cx, cy, cz, k + 5) * 25, seed: hc + k });
     }
     return out;

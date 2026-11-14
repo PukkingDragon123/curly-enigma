@@ -31,6 +31,7 @@ import { ROOM, walkable, ceilAt, setOpenNooks } from '../home/plan.js';
 import { NOOKS, NOOK, openNooks, nookAt, grantNook, migrateHome, reseatNooks, diggable } from '../home/nooks.js';
 import { NookDig } from '../home/nookDig.js';
 import { BoxWorld } from '../fps/FPSKit.js';
+import { HW as PLAYER_HW } from '../deep/Player.js';
 import { liftBoxes, LIFT } from '../home/lift.js';
 import { FPGlow } from '../home/glow.js';
 import { FPBuild } from '../home/build.js';
@@ -495,6 +496,30 @@ export default class HomeScene extends Scene {
     }
   }
 
+  /**
+   * Every frame: something that moves (Old Star's box as he walks, sits up or is placed for a
+   * lesson; a tame raptor's or the egg's box put back) may have come down on the mole, and the
+   * mole's body can't walk out of a box it starts inside. Slide it out the shortest way along x or z
+   * (a nudge as he shuffles past), or search round for room when it's boxed in.
+   */
+  pushOutOfBoxes() {
+    const pl = this.rig?.player, w = this.world;
+    if (!pl || !w || !pl.hitsAt(pl.pos.x, pl.pos.y, pl.pos.z)) return;
+    const p = pl.pos, hw = PLAYER_HW, h = pl.h, e = 0.04; // (clear of the box by more than half a 1/16 m voxel)
+    const cand = [];
+    for (const b of w.boxes) {
+      if (b.x1 <= p.x - hw || b.x0 >= p.x + hw || b.z1 <= p.z - hw || b.z0 >= p.z + hw || b.y1 <= p.y || b.y0 >= p.y + h) continue;
+      cand.push([b.x1 + hw + e - p.x, 0], [b.x0 - hw - e - p.x, 0], [0, b.z1 + hw + e - p.z], [0, b.z0 - hw - e - p.z]);
+    }
+    cand.sort((a, b) => Math.abs(a[0] + a[1]) - Math.abs(b[0] + b[1]));
+    for (const [dx, dz] of cand) {
+      if (Math.abs(dx + dz) > 0.7) break;
+      const x = p.x + dx, z = p.z + dz;
+      if (this.onFloor(x, z) && !pl.hitsAt(x, p.y, z)) { p.x = x; p.z = z; return; }
+    }
+    this.unstick();
+  }
+
   /** Footstep sounds follow the floor under the mole (the cave is earth; what you've laid in your alcoves; rugs are soft). */
   refreshStepMap() {
     const floors = this.game.state.data.home.floor;
@@ -801,6 +826,8 @@ export default class HomeScene extends Scene {
     }
     this.tickMusicBox(dt);
     if (this.star?.rig) this.star.update(dt);
+    // never stuck inside Old Star (or anything else that moved onto the mole this frame)
+    if (!this.scripted && !this.seat && !this.riding) this.pushOutOfBoxes();
     if (this.cloths) {
       const P = this.rig.player.pos, Y0 = HALL.y - 0.1, cols = [{ x: P.x, z: P.z, r: 0.26, y0: Y0, y1: Y0 + 1.2 }];
       if (this.star?.rig) cols.push({ x: this.star.pos.x, z: this.star.pos.z, r: 0.24, y0: Y0, y1: Y0 + 1.0 });

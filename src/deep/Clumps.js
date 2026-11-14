@@ -39,7 +39,13 @@ const HOLD_ANG = 0.25; // apparent radius (rad) on a landscape screen
 const GRAV = 14;
 const HELD_LIGHT = 0.58; // lamp and lights on a clump in paw (it's right under the helmet lamp)
 const PICK_T = 0.3, STASH_T = 0.38; // (wave 10: a quicker, bouncier stash)
-const SPOTLESS = 0.97; // this much of the ore's surface bared counts as clean (the rest crumbles off)
+const SPOTLESS = 0.95; // this much of the ore's surface bared counts as clean (the rest crumbles off)
+// cleaning pace (quick and bouncy: about twice as fast as it was): tool cooldowns are the item's
+// rate × CD_MUL + CD_ADD, the swing lands after *_LAND s; past CRUMBLE clean, loose bits of rind
+// (hanging on by two faces or fewer) let go by themselves after each blow
+const PICK_CD_MUL = 0.72, PICK_CD_ADD = 0.04, PICK_LAND = 0.1;
+const CHISEL_CD_MUL = 0.75, CHISEL_CD_ADD = 0.03, CHISEL_LAND = 0.07;
+const CRUMBLE = 0.85;
 const col01 = (hex) => { const c = hexToRgb(hex); return [c.r / 255, c.g / 255, c.b / 255]; };
 const ease = (t) => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
 
@@ -734,16 +740,16 @@ export class Clumps {
       if (!it) {
         if (inp.mousePressed(0) || tap) this.say('notool', tool === 'pick' || tool === 'chisel' || tool === 'brush' ? `You don't have a ${tool}.` : 'Clean it with the <b>pick</b>, <b>chisel</b> or <b>brush</b>.', 'warn', 5);
       } else if (tool === 'pick') {
-        this.cd = (it.rate || 0.36) * (this.st?.hasBuff?.('zippy') ? 0.8 : 1) + 0.06;
-        this.pending = { t: 0.13, tool, it, ray };
-        vm?.swing('pick', 0.13);
+        this.cd = (it.rate || 0.36) * PICK_CD_MUL * (this.st?.hasBuff?.('zippy') ? 0.8 : 1) + PICK_CD_ADD;
+        this.pending = { t: PICK_LAND, tool, it, ray };
+        vm?.swing('pick', PICK_LAND);
         this.audio?.play('whoosh', { vol: 0.2, pitch: 1.5 });
       } else if (tool === 'chisel') {
-        this.cd = (it.rate || 0.2) + 0.05;
-        this.pending = { t: 0.1, tool, it, ray };
-        vm?.swing('chisel', 0.1);
+        this.cd = (it.rate || 0.2) * CHISEL_CD_MUL + CHISEL_CD_ADD;
+        this.pending = { t: CHISEL_LAND, tool, it, ray };
+        vm?.swing('chisel', CHISEL_LAND);
       } else if (tool === 'brush') {
-        this.cd = it.rate || 0.12;
+        this.cd = (it.rate || 0.12) * 0.85;
         this.strike('brush', it, ray);
       } else if (tool === 'drill') {
         this.cd = 0.08;
@@ -800,29 +806,30 @@ export class Clumps {
     let res = null, loss = 0;
     const before = g.clean;
     if (tool === 'pick') {
-      const r = clamp(3.3 + power * 0.5, 3.6, 5.8);
+      // a big bite of rock (r), but the point only scratches ore as close as it always did (sr)
+      const r = clamp(4.1 + power * 0.6, 4.4, 7), sr = clamp(3.3 + power * 0.5, 3.6, 5.8) - 0.6;
       // the spall breaks off along a plane facing back up the blow, tilted a little at random
       const sd = (this.time * 1000) | 0, j = [h3(sd, 1, 2, 3) - 0.5, h3(sd, 4, 5, 6) - 0.5, h3(sd, 7, 8, 9) - 0.5];
       const nx = -hit.d.x + hit.nx * 0.4 + j[0] * 0.6, ny = -hit.d.y + hit.ny * 0.4 + j[1] * 0.6, nz = -hit.d.z + hit.nz * 0.4 + j[2] * 0.6, nl = Math.hypot(nx, ny, nz) || 1;
-      res = g.bite(px + hit.d.x * 1.4, py + hit.d.y * 1.4, pz + hit.d.z * 1.4, r, nx / nl, ny / nl, nz / nl, sd);
+      res = g.bite(px + hit.d.x * 1.4, py + hit.d.y * 1.4, pz + hit.d.z * 1.4, r, nx / nl, ny / nl, nz / nl, sd, sr);
       loss = res.oreHit ? (ore.frag ?? 12) * 0.45 * Math.min(1, 0.2 + res.oreHit / 12) * (0.75 + 0.25 * power) : 0;
       vm?.impact('pick', 0.55 + Math.min(0.4, res.removed.length / 120));
       this.audio?.play('hit', { snd: MAT[c.spec.rock]?.snd || 'stone' });
       if (res.removed.length > 30) this.audio?.play('break', { snd: MAT[c.spec.rock]?.snd || 'stone', vol: 0.5 });
       this.owner.energy?.(0.25);
     } else if (tool === 'chisel') {
-      res = g.nibble(hit, [hit.d.x, hit.d.y, hit.d.z], Math.round((power > 1 ? 18 : 12) + (hit.k === SOFT ? 5 : 0)), (this.time * 1000) | 0);
+      res = g.nibble(hit, [hit.d.x, hit.d.y, hit.d.z], Math.round((power > 1 ? 24 : 16) + (hit.k === SOFT ? 7 : 0)), (this.time * 1000) | 0);
       vm?.impact('chisel', 0.4);
       if (res.tink) { this.audio?.play('chisel', { vol: 0.5 }); this.audio?.play('clang', { vol: 0.15 }); }
       else this.audio?.play('chisel');
       this.owner.energy?.(0.08);
     } else if (tool === 'brush') {
-      res = g.sweep(px + hit.nx * 0.5, py + hit.ny * 0.5, pz + hit.nz * 0.5, 5 + Math.round(power * 3), 3.4);
+      res = g.sweep(px + hit.nx * 0.5, py + hit.ny * 0.5, pz + hit.nz * 0.5, 8 + Math.round(power * 4), 3.8);
       if (Math.random() < 0.45) this.audio?.play('brush', { vol: 0.5 });
       if (!res.removed.length && hit.k === ROCK && this.time - (this.brushT ?? -99) > 10) { this.brushT = this.time; this.word('Rock? Use the chisel', 0.1, 'meh', 1.8); }
       this.owner.energy?.(0.02);
     } else if (tool === 'drill') {
-      res = g.bore(px + hit.d.x * 0.8, py + hit.d.y * 0.8, pz + hit.d.z * 0.8, 2.1 + (power - 3) * 0.1);
+      res = g.bore(px + hit.d.x * 0.8, py + hit.d.y * 0.8, pz + hit.d.z * 0.8, 2.5 + (power - 3) * 0.1);
       loss = res.oreHit ? (ore.frag ?? 12) * 0.12 * Math.min(1, 0.3 + res.oreHit / 8) : 0;
       if (Math.random() < 0.5) this.audio?.play('hit', { snd: 'stone', vol: 0.35 });
       this.owner.energy?.(0.06);
@@ -849,7 +856,16 @@ export class Clumps {
     if (all.length || res.oreHit) {
       g.updateClean();
       c.dirty = true;
-      if (all.length > 8) this.measure(c);
+      // nearly there: the loose rind crumbles off by itself (a little patter of bits)
+      if (all.length && g.clean >= CRUMBLE && g.clean < SPOTLESS) {
+        const loose = g.crumble(60, 2, 2);
+        if (loose.length) {
+          this.crumbs(c, loose, [out.x, out.y + 0.2, out.z], 0.45, 'brush');
+          if (loose.length > 6) this.audio?.play('debris', { vol: 0.3 });
+          g.updateClean();
+        }
+      }
+      if (all.length > 8 || g.clean >= CRUMBLE) this.measure(c);
     }
     // spotless! the last crumbs of rock let go of the ore
     if (g.clean >= SPOTLESS && before < SPOTLESS) {

@@ -183,9 +183,10 @@ export class ClumpGrid {
   /**
    * A pick blow at (cx, cy, cz): a ragged crater of radius r, and the rock outside a fracture
    * plane through it (normal (nx, ny, nz), pointing out of the clump) spalls off in one piece.
-   * Ore skin in the crater gets scratched (ore is never removed). Returns { removed, oreHit, detached }.
+   * Ore skin in the crater (within scratchR of the blow) gets scratched (ore is never removed).
+   * Returns { removed, oreHit, detached }.
    */
-  bite(cx, cy, cz, r, nx = 0, ny = 0, nz = 0, seed = 0) {
+  bite(cx, cy, cz, r, nx = 0, ny = 0, nz = 0, seed = 0, scratchR = r - 0.6) {
     const n = this.n, K = this.kind, removed = [];
     let oreHit = 0;
     const rs = nx || ny || nz ? r * 1.75 : r;
@@ -201,7 +202,7 @@ export class ClumpGrid {
       const d = dist + (h3(x, y, z, seed) - 0.5) * 1.4;
       if (k === ORE) {
         // the point scratches the ore's skin (not what's buried behind more ore)
-        if (d < r - 0.6 && this.dmg[i] < 3 && this.oreSkin(x, y, z)) { this.dmg[i]++; oreHit++; }
+        if (d < scratchR && this.dmg[i] < 3 && this.oreSkin(x, y, z)) { this.dmg[i]++; oreHit++; }
         continue;
       }
       if (d < r) { this._take(i, removed); continue; }
@@ -341,6 +342,29 @@ export class ClumpGrid {
     }
     const out = [];
     for (let i = 0; i < K.length; i++) if (K[i] && M[i] !== g) this._take(i, out);
+    return out;
+  }
+
+  /**
+   * Loose bits let go by themselves: rock and crust hanging on by `hold` faces or fewer (up to `max`
+   * cells, `passes` times over, so a thin rind crumbles away). Never ore. Returns the removed cells.
+   */
+  crumble(max = 40, hold = 2, passes = 2) {
+    const n = this.n, K = this.kind, out = [];
+    for (let p = 0; p < passes && out.length < max; p++) {
+      const take = [];
+      for (let i = 0; i < K.length && out.length + take.length < max; i++) {
+        const k = K[i];
+        if (k !== SOFT && k !== ROCK) continue;
+        const x = i % n, y = ((i / n) | 0) % n, z = (i / (n * n)) | 0;
+        let s = 0;
+        for (const d of N6) if (this.at(x + d[0], y + d[1], z + d[2]) !== AIR) s++;
+        if (s <= hold) take.push(i);
+      }
+      if (!take.length) break;
+      for (const i of take) this._take(i, out);
+    }
+    if (out.length) { out.push(...this.detach()); this.version++; }
     return out;
   }
 
