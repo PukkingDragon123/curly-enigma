@@ -17,7 +17,7 @@ const HANDLE = new THREE.Vector3(-0.0125, 0.075, 0.68); // pan-local grip on the
 export class FryStep extends Step {
   get station() { return 'pan'; }
   get title() { return 'FRY!'; }
-  get hint() { return this.touch ? '<b>Tap</b> or flick up to flip when it\'s golden · both sides' : '<kbd>Click</kbd> or flick the mouse up to flip when it\'s golden · both sides'; }
+  get hint() { return 'Flip when golden'; }
 
   begin() {
     this.W = this.win(WIN[0], WIN[1], 0.3, 1);
@@ -98,7 +98,7 @@ export class FryStep extends Step {
   }
 
   tick(dt, live) {
-    if (this.t > 0.5 && !this.bar) { this.bar = this.ui.hbar({ win: this.W, label: 'Side 1' }); this.bar.setWin(this.W[0], this.W[1]); }
+    if (this.t > 0.5 && !this.bar) { this.bar = this.ui.hbar({ win: this.W, label: '1/2' }); this.bar.setWin(this.W[0], this.W[1]); }
     const inp = this.input;
     // cook the side facing down (only while it's in the pan and the step is running)
     if (this.flipT < 0 && this.side < 2 && live) {
@@ -127,7 +127,7 @@ export class FryStep extends Step {
         this.swapped = true;
         this.side++;
         this.d = 0;
-        if (this.bar) this.bar.side(this.side < 2 ? 'Side 2' : 'Done');
+        if (this.bar) this.bar.side(this.side < 2 ? '2/2' : '✓');
       }
       if (k >= 1) {
         this.flipT = -1;

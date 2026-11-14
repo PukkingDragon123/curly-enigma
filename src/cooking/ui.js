@@ -20,6 +20,9 @@ import { onSwipe } from '../ui/common.js';
 import { ensureStyles } from './style.js';
 import { KART, stampKind, installKitchenArt } from './kitchenArt.js';
 import { pantryItems, pantryCount, pantryLots } from './quality.js';
+import { stepIcon } from './stepArt.js';
+import { wart } from '../forge/workArt.js';
+import { floatIn, ghost, bits, leave } from '../ui/floatType.js';
 
 export const GRADES = [
   { g: 'Perfect', min: 90, color: '#d89a10' },
@@ -91,7 +94,7 @@ export class CookUI {
     let added = null; // the ingredient that just went into the pot (it drops in with a splash)
     let intro = true; // the goods settle onto the shelves when the cupboard opens (not on every click)
 
-    const sign = el('div', { class: 'ck-sign' }, [el('i', { class: 'ck-chain l' }), el('i', { class: 'ck-chain r' }), el('h2', {}, 'Pantry')]);
+    const sign = el('div', { class: 'ck-sign', title: 'Pantry' }, [el('i', { class: 'ck-chain l' }), el('i', { class: 'ck-chain r' }), img(KART.mini('pot'), 'ck-sign-ic', 'Pantry')]);
     const tabs = el('div', { class: 'ck-tabs' });
     const scroll = el('div', { class: 'ck-scroll' });
     const cupboard = el('div', { class: 'ck-cupboard' }, [tabs, scroll]);
@@ -106,7 +109,7 @@ export class CookUI {
         ring();
         if (!opts.onCook(sel.slice())) cookBtn.disabled = false;
       },
-    }, [bellImg, el('span', { class: 'ck-bell-lbl' }, 'Cook!')]);
+    }, [bellImg, el('span', { class: 'ck-bell-lbl' }, 'Cook!'), img(wart.pointer(), 'ck-ptr')]);
     const ring = () => {
       audio.play('bell', { vol: 0.5 });
       bellImg.src = KART.bell(true);
@@ -121,7 +124,7 @@ export class CookUI {
     this.side = panel;
     this.layer.append(panel);
     const leave = el('button', { class: 'ck-leave interactive', title: 'Back home (Esc)', onclick: () => { audio.play('creak', { vol: 0.4 }); opts.onLeave(); } }, [
-      el('i', { class: 'ck-hook' }), img(KART.mini('door'), 'ck-plaque-ic'), el('span', {}, 'Back home'),
+      el('i', { class: 'ck-hook' }), img(KART.mini('door'), 'ck-plaque-ic'), el('span', {}, 'Home'),
     ]);
     this.layer.append(leave);
     this.leaveBtn = leave;
@@ -154,7 +157,7 @@ export class CookUI {
       if (!list.length) {
         scroll.append(el('div', { class: 'ck-empty' }, [
           img(KART.basket('front'), 'ck-empty-art'),
-          el('p', { html: 'The pantry is bare.<br>Plants and critters turn up in the mines, and the grocer in town sells basics.' }),
+          el('p', {}, 'Bare shelves'),
         ]));
         return;
       }
@@ -168,9 +171,9 @@ export class CookUI {
           const b = el('button', {
             class: `ck-good ${sh.kind}` + (on ? ' on' : ''), 'data-id': id, title: it.name, 'aria-pressed': on ? 'true' : 'false', 'aria-label': `${it.name}, ${pantryCount(st, id)} in the pantry`,
             onclick: () => toggle(id),
-            onmouseenter: () => showInfo(`<b>${it.name}</b> · ${it.desc || ''}`),
+            onmouseenter: () => showInfo(`<b>${it.name}</b>`),
             onmouseleave: () => showInfo(opts.matchInfo(sel)),
-            onfocus: () => showInfo(`<b>${it.name}</b> · ${it.desc || ''}`),
+            onfocus: () => showInfo(`<b>${it.name}</b>`),
             onblur: () => showInfo(opts.matchInfo(sel)),
           }, [
             el('span', { class: 'ck-cont' }, [img(KART[sh.kind]('back'), 'ck-c-back'), img(itemVox.src(id), 'ck-c-item', it.name), img(KART[sh.kind]('front'), 'ck-c-front'), qPip(st, id)]),
@@ -179,7 +182,7 @@ export class CookUI {
           b.style.setProperty('--d', Math.min(360, n * 30) + 'ms');
           goods.append(b);
         });
-        scroll.append(el('div', { class: 'ck-shelf' }, [el('div', { class: 'ck-plate' }, sh.name), goods]));
+        scroll.append(el('div', { class: 'ck-shelf', title: sh.name }, [goods]));
       }
     };
 
@@ -209,7 +212,7 @@ export class CookUI {
       const box = el('div', { class: 'ck-rbox' });
       const left = RECIPES.length - list.length;
       if (!list.length) {
-        box.append(el('div', { class: 'ck-rcard blank' }, [el('p', { html: 'No recipe cards yet.<br>Toss things together and see what happens!' })]));
+        box.append(el('div', { class: 'ck-rcard blank' }, [el('p', {}, 'No cards yet')]));
       } else {
         this.cardI = clamp(this.cardI, 0, list.length - 1);
         // the dividers sticking up out of the box
@@ -236,12 +239,16 @@ export class CookUI {
           el('div', { class: 'ck-rc-head' }, [
             el('span', { class: 'ck-rc-pic', 'data-vox': dish }, [img(itemVox.src(dish), '', D.name)]),
             el('div', { class: 'ck-rc-name' }, [el('b', {}, D.name), D.buff ? el('span', { class: 'ck-buffchip', style: { background: BUFFS[D.buff].color } }, BUFFS[D.buff].name) : null]),
-            el('div', { class: 'ck-rc-best', title: `Best: ${gr.g} (${Math.round(best)})` }, [img(KART.rosette(gr.g, true), 'ck-ros-s'), el('span', { style: { color: gr.color } }, gr.g)]),
+            el('div', { class: 'ck-rc-side' }, [
+              el('div', { class: 'ck-rc-best', title: `Best: ${gr.g} (${Math.round(best)})` }, [img(KART.rosette(gr.g, true), 'ck-ros-s'), el('span', { style: { color: gr.color } }, gr.g)]),
+              el('button', { class: 'btn ck-rc-use', disabled: missing.length ? true : null, title: missing.length ? `Missing ${missing.length}` : 'Into the pot', onclick: () => useCard(r) }, [img(KART.mini('pot'), 'ck-rc-useic'), missing.length ? `−${missing.length}` : 'Use']),
+            ]),
           ]),
-          el('div', { class: 'ck-rc-row' }, [el('small', {}, 'Steps'), el('span', { class: 'ck-rc-steps' }, r.steps.map((k, i) => el('i', { class: 'ck-tok' }, `${i + 1}. ${STEP_LABEL[k] || k}`)))]),
+          // what goes in, then the steps, in pictures; the button puts it all in the pot
           el('div', { class: 'ck-rc-row' }, [
-            el('small', {}, 'Needs'), el('span', { class: 'ck-rc-ings' }, ings.map((id) => el('span', { class: 'ck-rc-ing' + (pantryCount(st, id) < r.ing[id] ? ' no' : ''), title: ITEMS[id]?.name }, [img(itemVox.src(id), '', ITEMS[id]?.name || id)]))),
-            el('button', { class: 'btn ck-rc-use', disabled: missing.length ? true : null, onclick: () => useCard(r) }, missing.length ? `Missing ${missing.length}` : 'Into the pot'),
+            el('span', { class: 'ck-rc-ings' }, ings.map((id) => el('span', { class: 'ck-rc-ing' + (pantryCount(st, id) < r.ing[id] ? ' no' : ''), title: ITEMS[id]?.name }, [img(itemVox.src(id), '', ITEMS[id]?.name || id)]))),
+            img(KART.arrow(), 'ck-rc-arrow'),
+            el('span', { class: 'ck-rc-steps' }, r.steps.map((k) => img(stepIcon(k), 'ck-rc-step', STEP_LABEL[k] || k))),
           ]),
         ]);
         onSwipe(card, (d) => flip(-d));
@@ -251,8 +258,8 @@ export class CookUI {
           el('button', { class: 'ck-flipb next', 'aria-label': 'Next card', title: 'Next card (→)', disabled: list.length < 2 ? true : null, onclick: () => flip(1) }),
         ]));
       }
-      const which = list.length ? `Card ${this.cardI + 1} of ${list.length} · ` : '';
-      box.append(el('div', { class: 'ck-rfront' }, [el('span', { class: 'ck-rlabel', html: which + (left ? `<b>${left}</b> still undiscovered` : '<b>Every</b> recipe found. Grandma Mole would weep.') })]));
+      const which = list.length ? `${this.cardI + 1}/${list.length}` : '';
+      box.append(el('div', { class: 'ck-rfront' }, [el('span', { class: 'ck-rlabel', title: left ? `${left} undiscovered` : 'All found', html: which + (left ? ` · <b>?</b>×${left}` : ' · <b>★</b>') })]));
       scroll.append(box);
       flipDir = 0;
     };
@@ -288,9 +295,9 @@ export class CookUI {
       const nCards = known().length;
       for (const [k, label, ic] of [['ings', 'Shelves', 'jar'], ['cards', 'Recipe box', 'card']]) {
         tabs.append(el('button', {
-          class: 'ck-tab' + (tab === k ? ' on' : ''), 'aria-pressed': tab === k ? 'true' : 'false',
+          class: 'ck-tab' + (tab === k ? ' on' : ''), 'aria-pressed': tab === k ? 'true' : 'false', title: label, 'aria-label': label,
           onclick: () => { if (tab === k) return; tab = k; intro = true; audio.play(k === 'cards' ? 'page' : 'ui_click'); render(); scroll.scrollTop = 0; },
-        }, [img(KART.mini(ic), 'ck-tab-ic'), label, k === 'cards' ? el('b', { class: 'ck-tab-n' }, String(nCards)) : null]));
+        }, [img(KART.mini(ic), 'ck-tab-ic'), k === 'cards' ? el('b', { class: 'ck-tab-n' }, String(nCards)) : null]));
       }
       panel.dataset.tab = tab;
       const keep = scroll.scrollTop;
@@ -302,6 +309,7 @@ export class CookUI {
       renderPot();
       cookBtn.disabled = !sel.length;
       cookBtn.classList.toggle('ready', sel.length > 0);
+      panel.dataset.n = String(sel.length);
       showInfo(opts.matchInfo(sel));
     };
 
@@ -340,14 +348,14 @@ export class CookUI {
     this.clearHud();
     this.top = el('div', { class: 'ck-top' });
     this.dishEl = el('div', { class: 'ck-dish' }, dishLabel);
-    this.pips = steps.map((s, i) => el('span', { class: 'ck-pip' }, [el('small', {}, String(i + 1)), STEP_LABEL[s] || s]));
+    this.pips = steps.map((s) => el('span', { class: 'ck-pip', title: STEP_LABEL[s] || s }, [img(stepIcon(s), 'ck-pip-ic', STEP_LABEL[s] || s)]));
     this.timerImg = img(KART.timer(1), 'ck-timer-img');
     this.timerEl = el('div', { class: 'ck-timer', hidden: true, title: 'Time left' }, [this.timerImg]);
     this.timerK = -1;
     this.top.append(el('div', { class: 'ck-ticket' }, [el('i', { class: 'ck-tack' }), this.dishEl, el('div', { class: 'ck-pips' }, this.pips)]), this.timerEl);
     this.layer.append(this.top);
     this.esc = el('button', { class: 'ck-stop interactive', title: 'Stop cooking (Esc)', onclick: () => opts.onStop?.() }, [
-      el('i', { class: 'ck-hook' }), img(KART.mini('stop'), 'ck-plaque-ic'), el('span', {}, 'Stop'), el('kbd', {}, 'Esc'),
+      el('i', { class: 'ck-hook' }), img(KART.mini('stop'), 'ck-plaque-ic'), el('span', {}, 'Stop'), document.documentElement.classList.contains('is-touch') ? null : el('kbd', {}, 'Esc'),
     ]);
     if (!opts.onStop) this.esc.disabled = true;
     this.layer.append(this.esc);
@@ -366,6 +374,7 @@ export class CookUI {
     p.classList.remove('cur');
     p.classList.add('done');
     p.append(stampImg(score));
+    bits(p, { from: 'rect', n: score >= 75 ? 16 : 8, colors: score >= 75 ? ['#fff4c0', '#ffd34a', '#ffffff'] : ['#e8dcc8', '#b8a890'], rise: 26, spread: 22 });
   }
 
   timer(frac) {
@@ -379,11 +388,18 @@ export class CookUI {
     this.timerEl.classList.toggle('low', low);
   }
 
+  /** The step's cue: a few boxless floating words low in the middle (src/ui/floatType.js), arriving with motion. */
   hint(html) {
-    if (this.hintEl) { this.hintEl.remove(); this.hintEl = null; }
-    if (!html) return;
-    this.hintEl = el('div', { class: 'ck-hint' }, [el('div', { class: 'ck-slate', html })]);
-    this.layer.append(this.hintEl);
+    if (!html) {
+      if (this.hintEl) { leave(this.hintEl, { remove: true }); this.hintEl = null; this.hintText = null; }
+      return;
+    }
+    if (!this.hintEl) {
+      this.hintText = el('div', { class: 'ft ck-cuet' });
+      this.hintEl = el('div', { class: 'ck-hint' }, [this.hintText]);
+      this.layer.append(this.hintEl);
+    } else ghost(this.hintText);
+    floatIn(this.hintText, html, { stagger: 0.02, max: 0.35 });
   }
 
   clearHud() {
@@ -393,8 +409,8 @@ export class CookUI {
   }
 
   // ------------------------------------------------------------------ big words
-  title(word, sub) {
-    const n = el('div', { class: 'ck-big ck-title' }, [sub ? el('span', { class: 'ck-sub' }, sub) : null, el('span', { class: 'ck-word' }, word)]);
+  title(word, icon = null) {
+    const n = el('div', { class: 'ck-big ck-title' }, [icon ? img(icon, 'ck-title-ic') : null, el('span', { class: 'ck-word' }, word)]);
     this.layer.append(n);
     setTimeout(() => n.remove(), 1150);
   }
@@ -424,7 +440,7 @@ export class CookUI {
     const mark = el('div', { class: 'mark', hidden: true });
     const track = el('div', { class: 'ck-track' }, [zoneEl, fill, el('div', { class: 'ticks' })]);
     const plank = el('div', { class: 'ck-plank' }, [notch, track, mark]);
-    const kids = [top ? el('div', { class: 'lbl top' }, top) : null, plank, label ? el('div', { class: 'lbl' }, label) : null];
+    const kids = [plank, label ? el('div', { class: 'lbl' }, label) : null];
     let btn = null;
     if (button) { btn = el('button', { class: 'btn', onclick: button.onClick }, button.text); kids.push(btn); }
     const node = this.addWidget(el('div', { class: 'ck-gauge' }, kids));
@@ -452,7 +468,7 @@ export class CookUI {
     const mark = el('div', { class: 'mark' }, [img(KART.spoon(), '', '')]);
     const winEl = el('div', { class: 'win', style: { left: (win[0] * 100) + '%', width: ((win[1] - win[0]) * 100) + '%' } });
     const side = el('div', { class: 'side' }, label);
-    const bar = el('div', { class: 'ck-hbar' }, [el('div', { class: 'ends' }, [el('span', {}, 'Raw'), el('span', {}, 'Burnt')]), winEl, mark]);
+    const bar = el('div', { class: 'ck-hbar' }, [winEl, mark]);
     const flips = el('div', { class: 'ck-flips' });
     const node = this.addWidget(el('div', { class: 'ck-done' }, [side, bar, flips]));
     return {
@@ -495,44 +511,46 @@ export class CookUI {
     this.closeSide(true);
     const d = DISHES[r.dish];
     const gr = gradeOf(r.score);
-    const audio = this.game.audio;
     const tag = (kids, o = {}) => el('span', { class: 'ck-stat', ...o }, kids);
+    // what it does: energy and the buff (a picture or a colour, the number, the buff's name)
     const stats = el('div', { class: 'ck-stats' }, [
-      tag([img(BOLT(), 'ck-stat-ic'), `+${d.energy} energy`]),
+      tag([img(BOLT(), 'ck-stat-ic'), `+${d.energy}`], { title: 'Energy' }),
       ...[d.buff, d.buff2].filter(Boolean).map((b) => tag([el('i', { class: 'ck-dot', style: { background: BUFFS[b].color } }), `${BUFFS[b].name} ${r.buffSecs ? fmtSecs(r.buffSecs) : ''}`], { title: BUFFS[b].desc, class: 'ck-stat buff' })),
-      r.ingQ !== undefined ? tag(`Ingredients ${Math.round(r.ingQ)}%`) : null,
-      d.maxEnergy ? tag(`+${d.maxEnergy} max energy`) : null,
-      tag(`×${r.made} made`),
+      d.maxEnergy ? tag([img(BOLT(), 'ck-stat-ic'), `max +${d.maxEnergy}`]) : null,
     ]);
-    const eatBtn = el('button', { class: 'ck-plank-btn eat', onclick: () => { r.onEat(); refresh(); } }, 'Eat now');
+    const eatBtn = el('button', { class: 'ck-plank-btn eat', onclick: (e) => { this.squash(e.currentTarget); r.onEat(); refresh(); } }, 'Eat');
     const actions = el('div', { class: 'ck-actions' }, [
       eatBtn,
-      el('button', { class: 'ck-plank-btn', onclick: () => r.onAgain() }, 'Cook again'),
-      el('button', { class: 'ck-plank-btn', onclick: () => r.onDone() }, 'Done'),
+      el('button', { class: 'ck-plank-btn', onclick: (e) => { this.squash(e.currentTarget); r.onAgain(); } }, [img(KART.mini('pot'), 'ck-btn-ic'), 'Again']),
+      el('button', { class: 'ck-plank-btn', onclick: (e) => { this.squash(e.currentTarget); r.onDone(); } }, [img(KART.mini('door'), 'ck-btn-ic'), 'Done']),
     ]);
     const refresh = () => {
       const n = this.game.state.count(r.dish);
       eatBtn.disabled = n <= 0;
-      eatBtn.textContent = n > 0 ? `Eat now (${n})` : 'Yum!';
+      eatBtn.innerHTML = '';
+      eatBtn.append(img(itemVox.src(r.dish), 'ck-btn-ic'), n > 0 ? `Eat ×${n}` : 'Yum!');
     };
     refresh();
-    const steps = el('div', { class: 'ck-bars' }, r.steps.map((s) => el('span', { class: 'ck-sres', title: `${STEP_LABEL[s.kind]}: ${Math.round(s.score)}` }, [stampImg(s.score), el('small', {}, STEP_LABEL[s.kind])])));
+    // how each step went: its picture with the stamp it earned
+    const steps = el('div', { class: 'ck-bars' }, r.steps.map((s, i) => el('span', { class: 'ck-sres', title: `${STEP_LABEL[s.kind]}: ${Math.round(s.score)}`, style: `--d:${(0.55 + i * 0.09).toFixed(2)}s` }, [img(stepIcon(s.kind), 'ck-sres-ic', STEP_LABEL[s.kind]), stampImg(s.score)])));
     const card = el('div', { class: 'ck-rescard' }, [
       el('i', { class: 'ck-tack l' }), el('i', { class: 'ck-tack r' }),
       r.isNew ? el('div', { class: 'ck-new' }, 'New recipe!') : null,
-      el('h3', { class: 'ck-dname' }, d.name),
+      el('h3', { class: 'ck-dname' }, d.name + (r.made > 1 ? ` ×${r.made}` : '')),
       el('div', { class: 'ck-r-mid' }, [
         el('div', { class: 'ck-reveal' }, [el('div', { class: 'ck-rays' }), el('div', { class: 'ck-frame' }, [itemVox.img(r.dish, 'pix ck-dish-img', { turn: true, alt: d.name })])]),
-        el('div', { class: 'ck-grade' }, [img(KART.rosette(gr.g), 'ck-ros'), el('b', { style: { color: gr.color } }, gr.g + (gr.g === 'Perfect' ? '!' : '')), el('small', {}, `score ${Math.round(r.score)} / 100`)]),
+        el('div', { class: 'ck-grade' }, [img(KART.rosette(gr.g), 'ck-ros'), el('b', { style: { color: gr.color } }, gr.g + (gr.g === 'Perfect' ? '!' : '')), el('small', {}, String(Math.round(r.score)))]),
       ]),
       steps,
       stats,
-      el('div', { class: 'ck-line' }, `“${r.line}”`),
     ]);
     const panel = el('div', { class: 'ck-side ck-result', role: 'dialog', 'aria-label': 'Dish result' }, [el('div', { class: 'scroll' }, [card, actions])]);
     this.side = panel;
     this.layer.append(panel);
-    setTimeout(() => { if (panel.isConnected) audio.play('thud', { vol: 0.35 }); }, 420);
+    setTimeout(() => { if (panel.isConnected) this.game.audio.play('thud', { vol: 0.35 }); }, 420);
     return panel;
   }
+
+  /** A press squashes a button flat and lets it spring back. */
+  squash(node) { node.classList.remove('squash'); void node.offsetWidth; node.classList.add('squash'); }
 }

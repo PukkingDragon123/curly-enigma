@@ -1,14 +1,18 @@
 // Forge DOM widgets layered in game.ui.world, drawn as decorated objects (pixel art from
-// forgeArt.js, styles in forge.css): the brass thermometer with its glass bulb and burner flame,
-// the rune-ring strike gauge, rune medallions for the steps, brass gauges for the stats, the
-// guild certificate for results and the touch screen's big action button (no floating words:
-// ForgeScene.pop answers with sparks and smoke in the world).
+// forgeArt.js and workArt.js, styles in forge.css): the brass thermometer with its glass bulb and
+// burner flame, the work HUD (wave 14: the steps as a trail of pictures, a meter or two, the action
+// plates with the next one glowing, a few floating words of cue), the rune-ring strike gauge, the
+// guild certificate for results and the touch screen's big action button (how a blow went is told
+// in the world: ForgeScene.pop answers with voxel words, sparks and smoke).
 import { el, clamp } from '../core/util.js';
-import { gaugeGradient, glowCss, glowHex, glowAmount, heatWord } from './blackbody.js';
+import { gaugeGradient, glowCss, glowHex, glowAmount } from './blackbody.js';
 import { Px, art, INK } from '../ui/uiArt.js';
 import { DSPR } from '../ui/deepArt.js';
-import { fart, medal, seal, ribbon, installForgeArt } from './forgeArt.js';
+import { fart, seal, ribbon, installForgeArt } from './forgeArt.js';
 import { bart, inkStepURL, heatChartURL } from './forgeBookArt.js';
+import { wart } from './workArt.js';
+import { KART } from '../cooking/kitchenArt.js';
+import { floatIn, ghost, bits } from '../ui/floatType.js';
 import CSS from './forge.css?inline';
 
 let styleRefs = 0;
@@ -36,27 +40,6 @@ export function illum(text, blue = false) {
   const m = String(text).match(/^([^A-Za-z0-9]*)([A-Za-z0-9])([\s\S]*)$/);
   if (!m) return text;
   return [m[1] || null, el('span', { class: 'fg-initial' + (blue ? ' blue' : '') }, m[2]), m[3]];
-}
-
-/**
- * Dress a work page (.fg-side) as a leaf of the smith's grimoire: the forge's wax seal pressed on
- * its corner and a hand-inked diagram of the step in hand in its margin (set later with ink()).
- * Returns { ink(step) }.
- */
-export function bookDeco(panel, step = 'heat') {
-  const diagram = el('img', { class: 'pix fg-inkstep', src: inkStepURL(step), alt: '' });
-  const sealImg = el('img', { class: 'pix fg-pageseal', src: bart('forgeSeal'), alt: '' });
-  const rib = el('i', { class: 'fg-pageribbon' });
-  panel.append(diagram, sealImg, rib);
-  let cur = step;
-  return {
-    ink(st) {
-      if (!st || st === cur) return;
-      cur = st;
-      diagram.src = inkStepURL(st);
-      diagram.classList.remove('inked'); void diagram.offsetWidth; diagram.classList.add('inked'); // drawn in afresh
-    },
-  };
 }
 
 /** Publish the forge art (--fa-*) on the layer the forge's DOM lives in. */
@@ -87,9 +70,11 @@ export function setHtml(node, html) {
 }
 
 /**
- * The brass thermometer: a glass tube on an enamel scale with painted zones (work, quench,
- * melt bands; burn and max lines), a glass bulb that glows with the metal's color and a
- * burner flame that grows with the heat. API: setTitle, setMarks, set(T, dt), setMax, remove.
+ * The brass thermometer: a glass tube on an enamel scale with painted zones (the band to hit glows
+ * and a gold pointer bounces beside it; the burn line is red), a glass bulb that glows with the
+ * metal's color and a burner flame that grows with the heat. Its head plate shows the metal (an
+ * ingot), its foot the number and which way to go (wave 14: no words on it).
+ * API: setTitle(iconURL), setMarks, set(T, dt), setMax, remove.
  */
 export class Thermo {
   constructor(parent, maxT) {
@@ -103,19 +88,21 @@ export class Thermo {
     this.bulb = el('div', { class: 'fg-bulb' }, [this.glowDot, el('img', { class: 'pix', src: fart('bulb'), alt: '' })]);
     this.flame = el('div', { class: 'fg-flame' });
     this.num = el('span');
-    this.word = el('small');
-    this.read = el('div', { class: 'fg-read' }, [this.num, this.word]);
-    this.title = el('div', { class: 'fg-thermo-title' }, 'Heat');
+    this.dir = el('img', { class: 'pix fg-dir', src: wart.pointer(), alt: '' });
+    this.read = el('div', { class: 'fg-read' }, [this.num, this.dir]);
+    this.icon = el('img', { class: 'pix', alt: '' });
+    this.title = el('div', { class: 'fg-thermo-title' }, [this.icon]);
     // the smith's own colour chart, painted beside the glass: what each heat looks like in the coals
-    this.chart = el('img', { class: 'pix fg-chart', alt: '', title: 'The smith\'s colour chart: black, blood red, cherry, orange, yellow, white' });
+    this.chart = el('img', { class: 'pix fg-chart', alt: '' });
     this.col = el('div', { class: 'fg-tm-col' }, [el('img', { class: 'pix fg-tm-cap', src: fart('cap'), alt: '' }), el('div', { class: 'fg-tm-glass' }, [this.zones, this.tube, this.needle, this.chart]), this.bulb, this.flame]);
     const cap = (c) => el('i', { class: 'fg-cap ' + c });
-    this.el = el('div', { class: 'fg-thermo' }, [this.title, this.col, this.read, cap('tl'), cap('tr'), cap('bl'), cap('br')]);
+    this.el = el('div', { class: 'fg-thermo', 'data-solid': '' }, [this.title, this.col, this.read, cap('tl'), cap('tr'), cap('bl'), cap('br')]);
     this.marks = [];
     parent.append(this.el);
     this.setMax(maxT);
     this.shown = 20;
     this.lastZone = null;
+    this.target = null;
   }
   setMax(maxT) {
     this.maxT = maxT;
@@ -124,22 +111,25 @@ export class Thermo {
     if (this.chart) this.chart.src = heatChartURL(maxT);
   }
   pct(t) { return clamp(t / this.maxT, 0, 1) * 100; }
-  setTitle(t) { setText(this.title, t); }
-  /** marks: [{kind:'work'|'quench'|'melt', range:[a,b], label} | {kind:'burn'|'max', at, label}] */
+  /** The head plate's picture (an item still: the metal's ingot). */
+  setTitle(icon) { if (icon && this.icon.src !== icon) this.icon.src = icon; this.title.hidden = !icon; }
+  /** marks: [{kind:'work'|'quench'|'melt', range:[a,b]} | {kind:'burn'|'max', at}]; the first range is the one to hit. */
   setMarks(marks) {
     for (const m of this.marks) m.remove();
     this.marks = [];
     this.ranges = [];
+    this.target = null;
     for (const m of marks) {
       let node;
       if (m.range) {
         const b = this.pct(m.range[0]), t = this.pct(m.range[1]);
-        node = el('div', { class: 'fg-band ' + m.kind, style: { bottom: b + '%', height: Math.max(0.6, t - b) + '%' } },
-          [el('span', { class: 'fg-tag' }, m.label)]);
+        const first = !this.target;
+        node = el('div', { class: 'fg-band ' + m.kind + (first ? ' target' : ''), style: { bottom: b + '%', height: Math.max(0.6, t - b) + '%' } },
+          first ? [el('img', { class: 'pix fg-bandptr', src: wart.pointer(), alt: '' })] : []);
+        if (first) this.target = m.range;
         this.ranges.push(m);
       } else {
-        const p = this.pct(m.at);
-        node = el('div', { class: 'fg-line ' + m.kind, style: { bottom: p + '%' } }, [el('span', { class: 'fg-tag' }, m.label)]);
+        node = el('div', { class: 'fg-line ' + m.kind, style: { bottom: this.pct(m.at) + '%' } });
       }
       this.zones.append(node);
       this.marks.push(node);
@@ -151,47 +141,206 @@ export class Thermo {
     this.fill.style.height = p.toFixed(2) + '%';
     this.fill.style.backgroundSize = `100% ${(10000 / Math.max(0.5, p)).toFixed(1)}%`;
     this.needle.style.bottom = p.toFixed(2) + '%';
-    setText(this.num, Math.round(t) + '°C');
-    setText(this.word, heatWord(t));
+    setText(this.num, Math.round(t) + '°');
     this.num.style.color = t > 450 ? glowCss(Math.min(t, 1400)) : '#fbf1dc';
     // the bulb glows with the metal, the burner flame grows with it
     const g = glowAmount(t);
     this.glowDot.style.background = g > 0 ? glowCss(Math.max(t, 600)) : '#5a4a44';
     this.glowDot.style.opacity = (0.55 + Math.min(0.45, g * 0.4)).toFixed(2);
     this.flame.style.setProperty('--k', (0.45 + Math.min(1, t / Math.max(600, this.maxT * 0.75)) * 0.75).toFixed(2));
-    // light the painted zone the needle sits in
+    // light the painted zone the needle sits in; the foot says which way to go (up · in · down)
     let zone = null;
     for (const m of this.ranges || []) if (t >= m.range[0] && t <= m.range[1]) zone = m.kind;
     if (zone !== this.lastZone) { this.lastZone = zone; this.el.dataset.zone = zone || ''; }
+    const tg = this.target, d = !tg ? '' : t < tg[0] ? 'up' : t > tg[1] ? 'down' : 'ok';
+    if (d !== this.el.dataset.dir) { this.el.dataset.dir = d; this.dir.src = d === 'ok' ? KART.stamp('check') : wart.pointer(); }
   }
   remove() { this.el.remove(); }
 }
 
-/** Rune medallions for the steps: [{id, label}] (id picks the rune: heat, hammer, grind, balance, quench, infuse, result, shape). */
-export class Steps {
-  constructor(parent, steps) {
-    this.el = el('div', { class: 'fg-steps' });
+// ---------------------------------------------------------------- the work HUD (wave 14)
+const isTouch = () => document.documentElement.classList.contains('is-touch');
+
+/**
+ * One clear step at a time, in pictures (wave 14: the work page of words is gone):
+ *  - the trail: the steps as big pictures standing on a plank across the top (the ore, the fire,
+ *    the anvil... the ingot or the weapon at its end); the one in hand is bigger, glows and bobs
+ *    under a bouncing gold pointer, done ones get a green check and the plank's link turns gold
+ *  - meters under the plank: a picture, a brass gauge and a number for what matters right now
+ *  - the action plates (bottom right): a glyph, one word and the key; the one to press next glows,
+ *    with the pointer bouncing over it
+ *  - a cue: 2–4 boxless floating words arriving near what they are about
+ * steps: [{ id, icon, tip }]. API: set(active, done), meter(key, o | null), actions(list), next(id),
+ * cue(text | null, at), update(), poll(input), remove().
+ */
+export class WorkHud {
+  constructor(parent, steps = []) {
+    this.parent = parent;
+    this.row = el('div', { class: 'fg-trow' });
+    this.metersEl = el('div', { class: 'fg-tmeters' });
+    this.trail = el('div', { class: 'fg-trail', 'data-solid': '' }, [el('div', { class: 'fg-tshelf' }, [this.row, el('i', { class: 'fg-tplank' })]), this.metersEl]);
+    this.actEl = el('div', { class: 'fg-actions', 'data-solid': '' });
+    this.cueText = el('div', { class: 'ft fg-cuet' });
+    this.cuePtr = el('img', { class: 'pix fg-cueptr', src: wart.pointer(), alt: '' });
+    this.cueEl = el('div', { class: 'fg-cue', hidden: true }, [this.cueText, this.cuePtr]);
+    parent.append(this.trail, this.actEl, this.cueEl);
     this.items = new Map();
-    for (const s of steps) {
-      const img = el('img', { class: 'pix', src: medal(s.id, 'off'), alt: '' });
-      const n = el('span', { class: 'fg-step' }, [img, el('small', {}, s.label)]);
-      n._img = img; n._id = s.id; n._st = 'off';
+    this.meters = new Map();
+    this.btns = new Map();
+    this.keys = {};
+    this.active = null;
+    this.nextId = null;
+    this.setSteps(steps);
+  }
+
+  setSteps(steps) {
+    this.row.innerHTML = '';
+    this.items.clear();
+    steps.forEach((s, i) => {
+      if (i) this.row.append(el('i', { class: 'fg-tlink', 'data-to': s.id }));
+      const n = el('span', { class: 'fg-ts', title: s.tip || '' }, [
+        el('img', { class: 'pix fg-tic', src: s.icon, alt: s.tip || '' }),
+        el('img', { class: 'pix fg-tok', src: KART.stamp('check'), alt: '' }),
+      ]);
       this.items.set(s.id, n);
-      this.el.append(n);
-    }
-    parent.append(this.el);
-    this.deco = bookDeco(parent, steps[0]?.id || 'heat');
+      this.row.append(n);
+    });
   }
+
+  /** The step in hand (an id) and the ones done. */
   set(active, done = []) {
-    if (active[0]) this.deco.ink(active[0]);
+    const ids = [...this.items.keys()], ai = ids.indexOf(active);
+    let i = 0;
     for (const [id, n] of this.items) {
-      const st = active.includes(id) ? 'on' : done.includes(id) ? 'done' : 'off';
-      if (n._st === st) continue;
-      n._st = st;
-      n.className = 'fg-step ' + st;
-      n._img.src = medal(n._id, st);
+      const st = id === active ? 'on' : done.includes(id) || (ai >= 0 && i < ai) ? 'done' : 'off';
+      if (n._st !== st) {
+        // a step done throws a burst of gold voxel bits off its picture; the next one pops up big
+        if (st === 'done' && n._st === 'on') bits(n, { from: 'rect', n: 16, colors: ['#fff4c0', '#ffd34a', '#ff9a3a'], rise: 30, spread: 26 });
+        n.className = 'fg-ts ' + st;
+        if (st === 'on' && n._seen) n.classList.add('pop');
+        n._st = st;
+        n._seen = true;
+      }
+      const link = n.previousElementSibling;
+      if (link?.classList.contains('fg-tlink')) link.classList.toggle('lit', st !== 'off');
+      i++;
     }
+    this.active = active;
   }
+
+  /** A meter under the trail: o = { icon, v (0..1), text, cls } or null to take it away. */
+  meter(key, o) {
+    let m = this.meters.get(key);
+    if (!o) { if (m) { m.el.remove(); this.meters.delete(key); } return; }
+    if (!m) {
+      const b = bar(o.cls || '');
+      const ic = el('img', { class: 'pix', src: o.icon, alt: '' });
+      const val = el('b');
+      m = { el: el('div', { class: 'fg-tm ' + key }, [ic, b.el, val]), bar: b, val, ic };
+      this.meters.set(key, m);
+      this.metersEl.append(m.el);
+    }
+    if (o.icon && m.ic.src !== o.icon) m.ic.src = o.icon;
+    if (o.v !== undefined) m.bar.set(o.v, o.cls);
+    if (o.text !== undefined) setText(m.val, o.text);
+    m.el.classList.toggle('warn', !!o.warn);
+  }
+
+  /** The plates: [{ id, glyph | icon, label (one word), keyLabel, key: [codes], fn, alt }]. */
+  actions(list) {
+    this.actEl.innerHTML = '';
+    this.btns.clear();
+    this.keys = {};
+    const touch = isTouch();
+    for (const a of list) {
+      const b = el('button', {
+        class: 'fg-act' + (a.alt ? ' alt' : ''), title: a.tip || a.label || '',
+        onclick: (e) => { e.currentTarget.classList.remove('press'); void e.currentTarget.offsetWidth; e.currentTarget.classList.add('press'); a.fn(); },
+      }, [
+        el('img', { class: 'pix fg-aic', src: a.icon || wart.glyph(a.glyph || 'flame'), alt: '' }),
+        a.label ? el('span', {}, a.label) : null,
+        a.keyLabel && !touch ? el('kbd', {}, a.keyLabel) : null,
+        el('img', { class: 'pix fg-aptr', src: wart.pointer(), alt: '' }),
+      ]);
+      this.actEl.append(b);
+      this.btns.set(a.id || a.label, b);
+      if (a.key) for (const k of [].concat(a.key)) this.keys[k] = a.fn;
+    }
+    if (this.nextId) this.next(this.nextId, true);
+  }
+
+  /** Make one plate glow with the pointer over it (null: none). */
+  next(id, force = false) {
+    if (id === this.nextId && !force) return;
+    this.nextId = id;
+    for (const [k, b] of this.btns) b.classList.toggle('next', k === id);
+  }
+
+  /** The key bindings of the plates (call once a frame; busy: ignore them). */
+  poll(inp, busy = false) {
+    if (busy) return;
+    for (const [k, fn] of Object.entries(this.keys)) if (inp.pressed(k)) { inp.consume(k); fn(); return; }
+  }
+
+  /**
+   * A cue of 2–4 floating words: at = a plate id ('act:anvil'), an element, a function → {x, y}
+   * (screen px, called every update) or null (bottom middle). text null: it scatters away.
+   */
+  cue(text, at = null) {
+    if (this.muted) text = null; // (Old Star's lesson says it himself)
+    if (text === this.cueT && at === this.cueAt) return;
+    const changed = text !== this.cueT;
+    this.cueT = text;
+    this.cueAt = at;
+    clearTimeout(this._hideT);
+    if (!text) {
+      // the words scatter into voxel bits where they are, then the cue goes
+      if (!this.cueEl.hidden && this.cueText.textContent) ghost(this.cueText);
+      this.cueText.innerHTML = '';
+      this.cueEl.classList.add('off');
+      this._hideT = setTimeout(() => { if (!this.cueT) this.cueEl.hidden = true; }, 900);
+      return;
+    }
+    if (changed) {
+      if (!this.cueEl.hidden && this.cueText.textContent) ghost(this.cueText);
+      floatIn(this.cueText, text, { stagger: 0.018, max: 0.3 });
+    }
+    this.cueEl.classList.remove('off');
+    this.cueEl.hidden = false;
+    this.place();
+  }
+
+  place() {
+    const at = this.cueAt;
+    let x = innerWidth / 2, y = innerHeight * 0.72, mode = 'free';
+    if (typeof at === 'string' && at.startsWith('act:')) {
+      const b = this.btns.get(at.slice(4));
+      if (b) { const r = b.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top - 6; mode = 'act'; }
+    } else if (at instanceof Element) {
+      const r = at.getBoundingClientRect(); x = r.left + r.width / 2; y = r.bottom + 6; mode = 'below';
+    } else if (typeof at === 'function') {
+      const p = at();
+      if (p) { x = p.x; y = p.y; mode = 'pt'; }
+    }
+    // never over the trail: a point too close under it gets its words below, the pointer looking up
+    const h = this.cueEl.offsetHeight || 80;
+    const tb = this.trail.hidden ? 0 : this.trail.getBoundingClientRect().bottom;
+    if (mode === 'pt' && y - h < tb + 6) { y += 26; mode = 'below'; }
+    if (this.cueEl.dataset.mode !== mode) this.cueEl.dataset.mode = mode;
+    // keep the words on screen (they are centred over the point)
+    const w = this.cueText.offsetWidth || 120;
+    x = clamp(x, w / 2 + 8, innerWidth - w / 2 - 8);
+    y = clamp(y, mode === 'below' ? tb + 4 : h + 4, innerHeight - (mode === 'below' ? h + 4 : 8));
+    this.cueEl.style.left = Math.round(x) + 'px';
+    this.cueEl.style.top = Math.round(y) + 'px';
+  }
+
+  /** Once a frame: the cue follows what it points at. */
+  update() { if (!this.cueEl.hidden && this.cueAt) this.place(); }
+
+  hideTrail(on = true) { this.trail.hidden = on; }
+
+  remove() { clearTimeout(this._hideT); this.trail.remove(); this.actEl.remove(); this.cueEl.remove(); }
 }
 
 // ---------------------------------------------------------------- the rune ring (strike gauge)
@@ -283,34 +432,36 @@ const mix = (a, b, t) => {
 
 // ---------------------------------------------------------------- the guild certificate (results)
 /**
- * A framed certificate with a wax seal for the grade.
- * o: { kicker, title, grade: {g, word, color}, value (html, optional), note (html), rows: [{label, v, extra}], buttons: [{label, key, alt, fn}] }
+ * A framed certificate with a wax seal for the grade (wave 14: the name, the worth and the grade
+ * lead; how each step went is its picture and a number; no words besides).
+ * o: { title, grade: {g, word, color}, value (html), rows: [{icon, v, tip}], buttons: [{label, glyph, key, alt, fn}] }
  * Returns the element (hidden until shown).
  */
 export function certificate(o) {
   const g = o.grade;
   const hex = parseInt(String(g.color).replace('#', ''), 16) || 0xc23c2c;
-  const rows = el('div', { class: 'fg-break' });
-  for (const r of o.rows || []) {
-    const b = bar(r.v > 0.85 ? '' : r.v > 0.6 ? 'warm' : 'bad');
-    b.set(r.v);
-    rows.append(el('span', {}, r.label), b.el, el('b', {}, Math.round(r.v * 100) + '%' + (r.extra || '')));
-  }
+  const rows = el('div', { class: 'fg-cmeds' });
+  (o.rows || []).forEach((r, i) => {
+    const v = clamp(r.v, 0, 1);
+    rows.append(el('span', { class: 'fg-cmed ' + (v > 0.85 ? 'good' : v > 0.6 ? 'warm' : 'bad'), title: r.tip || '', style: `--d:${(0.5 + i * 0.08).toFixed(2)}s` }, [
+      el('img', { class: 'pix', src: r.icon, alt: r.tip || '' }), el('b', {}, Math.round(v * 100) + '%'),
+    ]));
+  });
   const btns = el('div', { class: 'fg-cert-btns' });
   for (const b of o.buttons || []) {
-    btns.append(el('button', { class: 'fg-stampbtn' + (b.alt ? ' alt' : ''), onclick: b.fn }, [b.label, b.key ? el('kbd', {}, b.key) : null]));
+    btns.append(el('button', { class: 'fg-stampbtn' + (b.alt ? ' alt' : ''), onclick: (e) => { e.currentTarget.classList.add('thud'); b.fn(); } }, [
+      b.glyph ? el('img', { class: 'pix fg-bic', src: wart.glyph(b.glyph), alt: '' }) : null, b.label, b.key && !isTouch() ? el('kbd', {}, b.key) : null,
+    ]));
   }
-  return el('div', { class: 'fg-cert interactive', hidden: true }, [
+  return el('div', { class: 'fg-cert interactive', 'data-solid': '', hidden: true }, [
     el('div', { class: 'fg-cert-seal', style: `--gc:${g.color}` }, [
       el('img', { class: 'pix fg-ribbon', src: ribbon(0xc23c2c), alt: '' }),
       el('img', { class: 'pix fg-wax', src: seal(hex), alt: '' }),
       el('b', {}, g.g),
       el('small', {}, g.word),
     ]),
-    el('div', { class: 'fg-kicker' }, o.kicker || ''),
-    el('h2', {}, illum(o.title)),
+    el('h2', {}, o.title),
     o.value ? el('div', { class: 'fg-value', html: o.value }) : null,
-    o.note ? el('div', { class: 'fg-note', html: o.note }) : null,
     rows,
     o.extra || null,
     btns,

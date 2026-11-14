@@ -29,7 +29,7 @@ const HALF = 0.34; // half width of the dough sheet (m)
 export class RollStep extends Step {
   get station() { return 'board'; }
   get title() { return 'ROLL!'; }
-  get hint() { return this.touch ? '<b>Drag</b> up & down to roll · drag left/right to lean on the thick side' : 'Move the mouse <kbd>up & down</kbd> to roll · left/right leans on that side (<kbd>W</kbd>/<kbd>S</kbd> + <kbd>A</kbd>/<kbd>D</kbd>)'; }
+  get hint() { return 'Roll it flat'; }
 
   begin() {
     this.B = this.win(BAND[0], BAND[1], 0.05, 1);
@@ -83,7 +83,7 @@ export class RollStep extends Step {
       row.append(b);
       bars.push({ b, fill });
     }
-    const wrap = el('div', { class: 'ck-roll' }, [el('div', { class: 'lbl' }, 'Thickness'), row,
+    const wrap = el('div', { class: 'ck-roll' }, [row,
       el('button', { class: 'btn', onclick: () => this.stop() }, 'Done')]);
     this.ui.addWidget(wrap);
     this.widget = { wrap, bars };

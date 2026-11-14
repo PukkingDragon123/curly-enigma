@@ -15,14 +15,14 @@ import { ForgeRun } from './forging.js';
 import { PartRun, partStatus } from './parts.js';
 import { fart, token } from './forgeArt.js';
 import { bart, inkWeaponURL } from './forgeBookArt.js';
-import { illum } from './ui.js';
 import { cssUrl } from '../ui/uiArt.js';
+import { wart } from './workArt.js';
 
 const HEARTH_NAMES = ['Coal hearth', 'Coal hearth, double bellows', 'Magma hearth'];
 const NEED_WORDS = {
-  zap: 'Too shocking to handle without rubber gloves',
-  heat: 'Too hot to handle without heat-proof mitts',
-  cold: 'Too cold to handle without frost gauntlets',
+  zap: 'Needs rubber gloves',
+  heat: 'Needs heat-proof mitts',
+  cold: 'Needs frost gauntlets',
 };
 const GEM_HEX = { quartz: 0xf2f2f8, amber: 0xf2a32c, amber_bug: 0xf2a32c, amethyst: 0xa05ad9, ruby: 0xe02a3a, emerald: 0x2ad96a, sapphire: 0x2a5ae0, diamond: 0xd8f6ff };
 
@@ -37,8 +37,11 @@ export function bestLots(state, id, n) {
 
 const kbd = (k) => el('kbd', {}, k);
 const img = (src, cls = 'pix', style = null) => el('img', { class: cls, src, alt: '', style });
-/** A handwritten link (back / leave). */
-const link = (label, key, on) => el('button', { class: 'sm-link', onclick: on }, [label, key ? kbd(key) : null]);
+const isTouch = () => document.documentElement.classList.contains('is-touch');
+/** A handwritten link (back / leave), with a little glyph in front. */
+const link = (label, key, on, glyph = null) => el('button', { class: 'sm-link', onclick: on }, [glyph ? img(wart.glyph(glyph), 'pix sm-lg') : null, label, key && !isTouch() ? kbd(key) : null]);
+/** A picture with a number on it (counts, have/need, quality). */
+const badge = (src, n, cls = '', tip = '') => el('span', { class: 'sm-cnt ' + cls, title: tip }, [img(src), el('b', {}, String(n))]);
 
 export class Menus {
   constructor(scene) {
@@ -128,32 +131,33 @@ export class Menus {
     const lvl = d.forgeLevel || 0;
     const ingotIds = Object.values(METALS).map((m) => m.ingot);
     const ingots = ingotIds.reduce((s, id) => s + st.count(id), 0);
+    const bestIngot = ingotIds.filter((id) => st.count(id) > 0).sort((a, b) => st.count(b) - st.count(a))[0] || 'copper_ingot';
     const oreIds = [...new Set(SMELTING.flatMap((r) => Object.keys(r.inputs)))];
     const ores = oreIds.reduce((s, id) => s + st.count(id), 0);
+    const bestOre = oreIds.filter((id) => st.count(id) > 0).sort((a, b) => st.count(b) - st.count(a))[0] || 'copper_ore';
     const plans = Object.keys(WEAPON_TYPES).filter((t) => st.owns('bp_' + t)).length;
     const forged = d.weapons.length;
-    const card = (icon, title, sub, key, on, r, tack, delay) => el('button', {
+    // two pinned cards, each a big picture, one word and what you have for it (pictures and numbers)
+    const card = (icon, title, counts, key, on, r, tack, delay) => el('button', {
       class: 'sm-card', style: `--r:${r}deg;--tack:var(--fa-${tack});--d:${delay}s`,
-      onclick: () => { this.game.audio.play('ui_click'); on(); },
-    }, [img(icon), el('span', {}, [el('b', {}, title), el('small', { html: sub })]), kbd(key)]);
+      onclick: (e) => { e.currentTarget.classList.add('thud'); this.game.audio.play('ui_click'); on(); },
+    }, [img(icon), el('span', {}, [el('b', {}, title), el('span', { class: 'sm-cnts' }, counts)]), isTouch() ? null : kbd(key)]);
     const node = el('div', { class: 'sm-board interactive' + (refresh ? ' again' : '') }, [
       el('i', { class: 'sm-cord l' }), el('i', { class: 'sm-cord r' }),
       el('i', { class: 'fg-cap tl' }), el('i', { class: 'fg-cap tr' }), el('i', { class: 'fg-cap bl' }), el('i', { class: 'fg-cap br' }),
       img(fart('dAnvil'), 'pix sm-doodle', { right: 'calc(var(--px) * 3)', top: 'calc(var(--px) * 2)', width: 'calc(var(--px) * 30)', height: 'calc(var(--px) * 22)' }),
       img(fart('dSpark'), 'pix sm-doodle', { right: 'calc(var(--px) * 34)', top: 'calc(var(--px) * 4)', width: 'calc(var(--px) * 9)', height: 'calc(var(--px) * 9)' }),
-      el('div', { class: 'fg-kicker' }, 'Home forge · today\'s work'),
-      el('h2', { class: 'sm-chalk-h' }, 'The Forge'),
       el('div', { class: 'sm-cards' }, [
-        card(itemVox.src('copper_ingot'), 'Smelt ore', `${ores} ore · ${st.count('coal')} coal`, '1', () => this.smeltList(), -1.2, 'tackRed', 0.08),
-        card(itemVox.weapon('shortsword', 'iron'), 'Forge a weapon', `${ingots} ingot${ingots === 1 ? '' : 's'} · ${plans} plan${plans === 1 ? '' : 's'}`, '2', () => this.plan(), 1, 'tackBlue', 0.16),
+        card(itemVox.src('copper_ingot'), 'Smelt', [badge(itemVox.src(bestOre), ores, ores ? '' : 'miss', 'Ore'), badge(itemVox.src('coal'), st.count('coal'), st.count('coal') ? '' : 'miss', 'Coal')], '1', () => this.smeltList(), -1.2, 'tackRed', 0.08),
+        card(itemVox.weapon('shortsword', 'iron'), 'Forge', [badge(itemVox.src(bestIngot), ingots, ingots ? '' : 'miss', 'Ingots'), badge(itemVox.src('bp_dagger'), plans, '', 'Plans')], '2', () => this.plan(), 1, 'tackBlue', 0.16),
       ]),
-      forged ? el('div', { class: 'sm-chalknote', html: `In the barrel by the door: <b>${forged}</b> forged weapon${forged === 1 ? '' : 's'} for the assay office.` }) : null,
       el('div', { class: 'sm-foot' }, [
-        link('Look around', null, () => { this.game.audio.play('ui_close'); this.hide(); }),
-        link('Leave forge', 'Esc', () => this.scene.leave()),
+        link('Look', null, () => { this.game.audio.play('ui_close'); this.hide(); }, 'eye'),
+        forged ? badge(itemVox.weapon('dagger', 'bronze'), '×' + forged, 'sm-barrel', 'Forged, for the assay office') : null,
+        link('Leave', 'Esc', () => this.scene.leave(), 'door'),
       ]),
       img(fart('sticks'), 'pix sm-sticks'),
-      el('div', { class: 'sm-hsign' }, `${HEARTH_NAMES[lvl] || HEARTH_NAMES[0]} · up to ${FORGE_MAX_TEMP[lvl]}°C`),
+      el('div', { class: 'sm-hsign', title: HEARTH_NAMES[lvl] || HEARTH_NAMES[0] }, [img(wart.glyph('flame'), 'pix sm-lg'), `${FORGE_MAX_TEMP[lvl]}°`]),
     ]);
     if (!refresh) this.game.audio.play('page');
     this.show(node, 'main');
@@ -164,50 +168,39 @@ export class Menus {
   smeltList(refresh = false) {
     if (!refresh) this.from = this.mode === 'main' ? 'main' : this.mode === 'smelt' ? this.from : null;
     const st = this.state;
-    const lvl = st.data.forgeLevel || 0;
     const list = el('div', { class: 'sm-list sm-scroll' });
     const rows = SMELTING.map((r) => ({ r, s: smeltStatus(st, r) }));
     rows.sort((a, b) => (b.s.ok - a.s.ok) || (b.s.known - a.s.known));
+    const unknown = { filter: 'brightness(0) opacity(.35)' };
     rows.forEach(({ r, s }, i) => {
-      const out = ITEMS[r.out];
+      // ore + coal → ingot, in pictures: every input shows have/need (red when short)
       const f = el('div', { class: 'sm-formula' });
-      const ins = el('div', { class: 'sm-ins' });
       for (const [id, n] of Object.entries(r.inputs)) {
         const have = st.count(id);
         const known = st.known('mineral', id) || have > 0;
-        f.append(el('span', { class: 'n' }, n + '×'), img(itemVox.src(id), 'pix', known ? null : { filter: 'brightness(0) opacity(.35)' }));
-        ins.append(el('span', { class: have < n ? 'miss' : '' }, `${known ? ITEMS[id].name : 'unknown ore'} ${have}/${n}`));
+        f.append(el('span', { class: 'sm-in' + (have < n ? ' miss' : ''), title: known ? ITEMS[id].name : '?' }, [img(itemVox.src(id), 'pix', known ? null : unknown), el('b', {}, `${have}/${n}`)]));
       }
-      f.append(el('span', { class: 'n' }, '+' + r.coal + '×'), img(itemVox.src('coal')));
-      f.append(img(fart('dArrow'), 'pix sm-arrow'), img(itemVox.src(r.out), 'pix out', s.known ? null : { filter: 'brightness(0) opacity(.35)' }));
-      ins.append(el('span', { class: st.count('coal') < r.coal ? 'miss' : '' }, `coal ${st.count('coal')}/${r.coal}`));
-      ins.append(el('span', { class: 'sm-heat' }, [el('i', { class: 'sm-flame' }), ` ${r.temp[0]}–${r.temp[1]}°C`]));
+      f.append(el('span', { class: 'sm-in' + (st.count('coal') < r.coal ? ' miss' : ''), title: ITEMS.coal.name }, [img(itemVox.src('coal')), el('b', {}, `${st.count('coal')}/${r.coal}`)]));
+      f.append(img(fart('dArrow'), 'pix sm-arrow'), el('span', { class: 'sm-out', title: s.known ? ITEMS[r.out].name : '?' }, [img(itemVox.src(r.out), 'pix', s.known ? null : unknown), r.n > 1 ? el('b', {}, '×' + r.n) : null]));
       const stamps = el('div', { class: 'sm-stamps' });
-      stamps.append(el('button', { class: 'fg-stampbtn', disabled: !s.ok, onclick: (e) => { e.currentTarget.classList.add('thud'); this.game.audio.play('place'); this.startSmelt(r); } }, 'Smelt'));
+      const hot = (r.forge || 0) > (st.data.forgeLevel || 0);
+      stamps.append(el('button', { class: 'fg-stampbtn', disabled: !s.ok, title: s.why || '', onclick: (e) => { e.currentTarget.classList.add('thud'); this.game.audio.play('place'); this.startSmelt(r); } }, [hot ? img(wart.glyph('lock'), 'pix fg-bic') : null, 'Smelt']));
       if (s.ok && s.learned && !this.scene.lesson) {
-        stamps.append(el('button', { class: 'fg-stampbtn alt', title: 'Smelts every batch you can afford at once (steady 80% heat control).', onclick: () => this.quick(r, s.batches) }, `Quick ×${s.batches}`));
+        stamps.append(el('button', { class: 'fg-stampbtn alt', title: 'Smelt them all at once', onclick: () => this.quick(r, s.batches) }, [img(wart.glyph('quick'), 'pix fg-bic'), `×${s.batches}`]));
       }
-      const outName = s.known ? `${out.name}${r.n > 1 ? ' ×' + r.n : ''}` : '???';
-      list.append(el('div', { class: 'sm-entry' + (s.ok ? '' : ' locked') + (this.scene.lesson?.highlight === r.id ? ' fg-lesson' : ''), style: `--d:${Math.min(0.5, i * 0.04)}s` }, [
-        el('div', {}, [f, el('div', { class: 'sm-name' }, outName), ins, s.why ? el('div', { class: 'sm-why' }, s.why) : null]),
+      list.append(el('div', { class: 'sm-entry' + (s.ok ? '' : ' locked') + (this.scene.lesson?.highlight === r.id ? ' fg-lesson' : ''), style: `--d:${Math.min(0.5, i * 0.04)}s`, title: s.why || '' }, [
+        el('div', {}, [f, el('div', { class: 'sm-name' }, s.known ? ITEMS[r.out].name.replace(/ Ingot$/, '') : '?')]),
         stamps,
       ]));
     });
+    // the left page: the smith's own drawing of the work (crucible in the coals, the pour), the last pour
     const last = this.lastSmelt;
     const left = el('div', { class: 'sm-page l' }, [
-      el('div', { class: 'fg-kicker' }, 'The smith\'s ledger · smelting'),
-      el('h2', {}, illum('Ore into ingots')),
-      el('div', { class: 'sm-hand', html: `<img class="pix" src="${itemVox.src('coal')}" alt=""> Coal in the bin: <b>${st.count('coal')}</b>` }),
-      el('div', { class: 'sm-hand' }, [el('i', { class: 'sm-flame' }), ` ${HEARTH_NAMES[lvl] || HEARTH_NAMES[0]}: tops out at `, el('b', {}, FORGE_MAX_TEMP[lvl] + '°C')]),
-      last ? el('div', { class: 'sm-margin', html: last }) : null,
-      el('div', { class: 'sm-hand sm-hide-s', style: { marginTop: 'calc(var(--px) * 3)', fontSize: 'max(var(--g), round(.66em + 2px, var(--g)))', color: '#8a6a4a' } }, 'Keep the crucible in its band with the bellows, then pour. A steady hand makes a good ingot.'),
-      img(bart('inkCrucible'), 'pix sm-diagram sm-hide-s'),
-      el('div', { class: 'sm-cap sm-hide-s' }, 'Melt it, hold it in the band, pour.'),
-      el('div', { class: 'sm-spacer' }),
-      el('div', {}, [link('Back', 'Esc', () => this.back())]),
+      img(bart('inkCrucible'), 'pix sm-diagram'),
+      last ? el('div', { class: 'sm-last', title: 'Last pour' }, [img(itemVox.src(last.id)), el('b', {}, '×' + last.n), el('b', { style: { color: qColor(last.q) } }, last.q + '%')]) : null,
     ]);
     const node = el('div', { class: 'sm-ledger interactive' + (refresh ? ' again' : '') }, [
-      el('div', { class: 'sm-spread' }, [left, el('div', { class: 'sm-page r' }, [list]), el('i', { class: 'sm-ribbon' })]),
+      el('div', { class: 'sm-spread' }, [left, el('div', { class: 'sm-page r' }, [list, el('div', { class: 'sm-rfoot' }, [link('Back', 'Esc', () => this.back(), 'back')])]), el('i', { class: 'sm-ribbon' })]),
     ]);
     if (!refresh) this.game.audio.play('page');
     const scrollTop = this.mode === 'smelt' && this.panel ? this.panel.querySelector('.sm-list')?.scrollTop : 0;
@@ -230,7 +223,7 @@ export class Menus {
     setTimeout(() => this.game.audio.play('ding'), 350);
     setTimeout(() => this.game.audio.play('coins', { n: Math.min(8, res.count) }), 600);
     const out = ITEMS[recipe.out];
-    this.lastSmelt = `Quick smelt: <b>${res.count}× ${out.name}</b> at about <b style="color:${qColor(res.avgQ)}">${res.avgQ}%</b> quality.`;
+    this.lastSmelt = { id: recipe.out, n: res.count, q: res.avgQ };
     this.game.ui.toast(`+${res.count} ${out.name} <b>${res.avgQ}%</b>`, { icon: iconURL(recipe.out), kind: 'good' });
     this.scene.quickSmeltFx?.(recipe, res.count);
     this.smeltList(true);
@@ -246,8 +239,8 @@ export class Menus {
       const have = st.count(m.ingot);
       const need = this.sel.type ? WEAPON_TYPES[this.sel.type].ingots : 1;
       let why = null;
-      if (m.work[0] > maxT) why = `Works at ${m.work[0]}°C+. Your hearth tops out at ${maxT}°C: it needs an upgrade from Inkwell Plans.`;
-      else if (have < need) why = `Need ${need} ingots, you have ${have}.`;
+      if (m.work[0] > maxT) why = `Needs ${m.work[0]}°: hearth too cool`;
+      else if (have < need) why = `${have}/${need} ingots`;
       return { id, m, have, need, why, q: avgQ(bestLots(st, m.ingot, need)) };
     });
     const infusions = Object.entries(INFUSIONS).filter(([id]) => st.count(id) > 0).map(([id, inf]) => ({
@@ -270,34 +263,36 @@ export class Menus {
     }
     if (sel.infusion && !opt.infusions.some((i) => i.id === sel.infusion && !i.why)) sel.infusion = null;
     if (sel.gem && !opt.gems.some((g) => g.id === sel.gem)) sel.gem = null;
-    const chip = (on, face, title, small, onclick, why) => el('button', {
-      class: 'sm-chip' + (on ? ' on' : ''), disabled: !!why, title: why || '',
+    // tiles: a big picture each, its numbers in the corners; the name and any reason it can't be used on hover
+    const chip = (on, face, tip, nums, onclick, why) => el('button', {
+      class: 'sm-chip' + (on ? ' on' : ''), disabled: !!why, title: why || tip,
       onclick: () => { this.game.audio.play(on ? 'ui_click' : 'click'); onclick(); },
-    }, [face || el('span'), el('span', {}, [title, el('small', { html: why ? `<span class="why">${why}</span>` : small })])]);
+    }, [face || el('span'), ...(nums || []), why ? img(wart.glyph('lock'), 'pix sm-lock') : null]);
+    const q = (v) => el('b', { class: 'sm-q', style: { color: qColor(v) } }, v + '%');
+    const n = (v) => el('b', { class: 'sm-n' }, '×' + v);
     const tok = (hex, icon) => el('span', { class: 'sm-tok', style: `--tok:${cssUrl(token(hex))}` }, [icon ? img(icon) : null]);
     // left: the plan and the metal
     const typeGrid = el('div', { class: 'sm-chips' });
     for (const t of opt.types) {
       const wt = WEAPON_TYPES[t];
-      typeGrid.append(chip(sel.type === t, img(itemVox.weapon(t, sel.metal || 'iron')), wt.name, `${wt.ingots} ingot${wt.ingots > 1 ? 's' : ''}`, () => { sel.type = t; this.plan(true); }));
+      typeGrid.append(chip(sel.type === t, img(itemVox.weapon(t, sel.metal || 'iron')), wt.name, [n(wt.ingots)], () => { sel.type = t; this.plan(true); }));
     }
-    if (!opt.types.length) typeGrid.append(el('div', { class: 'sm-anno' }, 'No weapon plans. Inkwell Plans in town sells them.'));
+    if (!opt.types.length) typeGrid.append(el('div', { class: 'sm-anno' }, [img(wart.glyph('lock'), 'pix sm-lg'), 'Inkwell Plans']));
     const metalGrid = el('div', { class: 'sm-chips' });
     for (const mm of opt.metals) {
-      metalGrid.append(chip(sel.metal === mm.id, tok(mm.m.color, itemVox.src(mm.m.ingot)), mm.m.name, `${mm.have} ingot${mm.have > 1 ? 's' : ''} · <b style="color:${qColor(mm.q)}">${mm.q}%</b> · ${mm.m.work[0]}–${mm.m.work[1]}°C`, () => { sel.metal = mm.id; this.plan(true); }, mm.why));
+      metalGrid.append(chip(sel.metal === mm.id, img(itemVox.src(mm.m.ingot)), mm.m.name, [q(mm.q), n(mm.have)], () => { sel.metal = mm.id; this.plan(true); }, mm.why));
     }
-    if (!opt.metals.length) metalGrid.append(el('div', { class: 'sm-anno' }, [el('span', {}, 'No ingots yet. '), link('Smelt some ore', null, () => this.smeltList())]));
-    // right: infusion and gem
+    if (!opt.metals.length) metalGrid.append(el('div', { class: 'sm-anno' }, [link('Smelt', null, () => this.smeltList(), 'flame')]));
+    // right: infusion and gem (an empty token: none)
     const infGrid = el('div', { class: 'sm-chips' });
-    infGrid.append(chip(!sel.infusion, tok(0x6a8ab0, null), 'None', 'Plain metal', () => { sel.infusion = null; this.plan(true); }));
+    infGrid.append(chip(!sel.infusion, tok(0x6a8ab0, null), 'None', null, () => { sel.infusion = null; this.plan(true); }));
     for (const inf of opt.infusions) {
-      infGrid.append(chip(sel.infusion === inf.id, tok(inf.inf.color ?? 0xffffff, itemVox.src(inf.id)), inf.inf.name, `${ITEMS[inf.id].name} · +${Math.round(inf.inf.bonus * 100)}% value`, () => { sel.infusion = inf.id; this.plan(true); }, inf.why));
+      infGrid.append(chip(sel.infusion === inf.id, img(itemVox.src(inf.id)), `${inf.inf.name} · +${Math.round(inf.inf.bonus * 100)}%`, [q(inf.q)], () => { sel.infusion = inf.id; this.plan(true); }, inf.why));
     }
-    if (!opt.infusions.length) infGrid.append(el('div', { class: 'sm-anno' }, 'Strange minerals from the deep can be worked into a blade.'));
     const gemGrid = el('div', { class: 'sm-chips' });
-    gemGrid.append(chip(!sel.gem, tok(0x6a8ab0, null), 'None', 'Bare pommel', () => { sel.gem = null; this.plan(true); }));
-    for (const g of opt.gems) gemGrid.append(chip(sel.gem === g.id, tok(GEM_HEX[g.id] ?? 0xffffff, itemVox.src(g.id)), ITEMS[g.id].name, `<b style="color:${qColor(g.q)}">${g.q}%</b> quality`, () => { sel.gem = g.id; this.plan(true); }));
-    // the drawing
+    gemGrid.append(chip(!sel.gem, tok(0x6a8ab0, null), 'None', null, () => { sel.gem = null; this.plan(true); }));
+    for (const g of opt.gems) gemGrid.append(chip(sel.gem === g.id, img(itemVox.src(g.id)), ITEMS[g.id].name, [q(g.q)], () => { sel.gem = g.id; this.plan(true); }));
+    // the drawing: the weapon in ink, its name, what it could fetch
     const ok = sel.type && sel.metal;
     const draw = el('div', { class: 'sm-draw' });
     if (ok) {
@@ -310,22 +305,18 @@ export class Menus {
         img(inkWeaponURL(sel.type, sel.metal), 'pix sm-bigdraw'),
         img(bart('forgeSeal'), 'pix sm-drawseal'),
         el('div', { class: 'sm-dname' }, `${sel.infusion ? INFUSIONS[sel.infusion].name + ' ' : ''}${m.name} ${wt.name}`),
-        el('div', { class: 'sm-anno', html: `${wt.ingots} × ${m.name} ingot · material <b>${matQ}%</b>` }),
-        el('div', { class: 'sm-anno', html: `works <b>${m.work[0]}–${m.work[1]}°C</b> · burns <b>${m.burn}°C</b>${m.quench ? ` · hardens <b>${m.quench[0]}–${m.quench[1]}°C</b>` : ' · no quench'}` }),
-        el('div', { class: 'sm-anno', html: `<span class="gold-txt">${formatGoldFull(lo)}g</span> if ${GRADES[3].word.toLowerCase()} · up to <span class="gold-txt">${formatGoldFull(hi)}g</span> if ${GRADES[0].word.toLowerCase()}` }),
+        el('div', { class: 'sm-worth', title: `${GRADES[3].word} … ${GRADES[0].word}` }, [img(wart.glyph('coin')), `${formatGoldFull(lo)}–${formatGoldFull(hi)}`]),
       );
-    } else draw.append(el('div', { class: 'sm-anno', style: { marginTop: 'calc(var(--px) * 20)' } }, 'Pick a plan and a metal: the drawing goes here.'));
-    const start = el('button', { class: 'fg-stampbtn big', disabled: !ok, onclick: () => this.startForge() }, ['Forge it', kbd('Enter')]);
+    } else draw.append(img(fart('dAnvil'), 'pix sm-bigdraw', { opacity: 0.4 }));
+    const start = el('button', { class: 'fg-stampbtn big', disabled: !ok, onclick: (e) => { e.currentTarget.classList.add('thud'); this.startForge(); } }, [img(wart.glyph('hammer'), 'pix fg-bic'), 'Forge', isTouch() ? null : kbd('Enter')]);
     const node = el('div', { class: 'sm-blue interactive' + (refresh ? ' again' : '') }, [
       el('i', { class: 'sm-ribbon' }),
-      el('div', { class: 'fg-kicker' }, 'Forging · the pattern book'),
-      el('h2', {}, illum('What will you make?', true)),
       el('div', { class: 'sm-bp-grid sm-scroll' }, [
         el('div', { class: 'sm-bp-col' }, [el('div', { class: 'sm-sec' }, 'Plan'), typeGrid, el('div', { class: 'sm-sec' }, 'Metal'), metalGrid]),
         draw,
-        el('div', { class: 'sm-bp-col' }, [el('div', { class: 'sm-sec' }, 'Infusion · optional'), infGrid, el('div', { class: 'sm-sec' }, 'Pommel gem · optional'), gemGrid]),
+        el('div', { class: 'sm-bp-col' }, [el('div', { class: 'sm-sec' }, 'Infuse'), infGrid, el('div', { class: 'sm-sec' }, 'Gem'), gemGrid]),
       ]),
-      el('div', { class: 'sm-bp-foot' }, [link('Back', 'Esc', () => this.back()), start]),
+      el('div', { class: 'sm-bp-foot' }, [link('Back', 'Esc', () => this.back(), 'back'), start]),
     ]);
     if (!refresh) this.game.audio.play('page');
     const scroller = this.mode === 'plan' && this.panel ? this.panel.querySelector('.sm-bp-grid') : null;

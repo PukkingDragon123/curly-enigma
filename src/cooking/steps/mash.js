@@ -10,7 +10,7 @@ import { clamp, damp, mixHex, shade } from '../../core/util.js';
 export class MashStep extends Step {
   get station() { return this.vessel; }
   get title() { return 'MASH!'; }
-  get hint() { return this.touch ? '<b>Tap</b> the lumps to mash them · steady, not frantic' : 'Aim at a lump and <kbd>Click</kbd> / <kbd>Space</kbd> to mash · steady, not frantic'; }
+  get hint() { return 'Squash the lumps'; }
 
   constructor(cook, opts) {
     super(cook, opts);

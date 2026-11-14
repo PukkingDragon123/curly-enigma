@@ -12,6 +12,7 @@ import { Kitchen, SPOTS, BOARD_TOP } from '../cooking/kitchen.js';
 import { Paws } from '../cooking/paws.js';
 import { Particles, sparkle, puff, steam } from '../cooking/fx.js';
 import { CookUI, gradeOf, STEP_LABEL } from '../cooking/ui.js';
+import { stepIcon } from '../cooking/stepArt.js';
 import { Contents, VESSEL } from '../cooking/vessels.js';
 import { makeStep } from '../cooking/steps/index.js';
 import { chopQueue, dishColor, slabMesh, spriteCells, standeeMesh } from '../cooking/food.js';
@@ -20,6 +21,7 @@ import { buffSecs } from '../cooking/buffs.js';
 import { kitchenData, ingredientQ, pantryCount, pantryTake, pantryGive } from '../cooking/quality.js';
 import { CookLesson } from '../cooking/lesson.js';
 import { ITEMS } from '../data/items.js';
+import { itemVox } from '../ui/itemVox.js';
 import { pick, clamp } from '../core/util.js';
 import { chipBurst } from '../fx/chips.js';
 
@@ -247,23 +249,23 @@ export default class CookingScene extends Scene {
     this.syncPreviews();
   }
 
+  /** The pot's slip (wave 14: a picture and a name or a "?"; a sniff hint as a picture). */
   matchInfo(ids) {
-    if (!ids.length) return '<span>Nothing in the pot yet.</span>';
+    if (!ids.length) return '<span class="ck-pick">Pick up to 4</span>';
     const r = findRecipe(Object.fromEntries(ids.map((id) => [id, 1])));
-    const names = ids.map((id) => ITEMS[id]?.name).join(' + ');
     const st = this.game.state;
     if (r && st.data.recipes[r.dish] !== undefined) {
       const g = gradeOf(st.data.recipes[r.dish]);
-      return `<b>${DISHES[r.dish].name}</b> · recipe card, best <b style="color:${g.color}">${g.g}</b>`;
+      return `<img class="pix ck-info-ic" src="${itemVox.src(r.dish)}" alt=""><b>${DISHES[r.dish].name}</b> <b style="color:${g.color}">${g.g}</b>`;
     }
-    // one short of something? the nose knows (a little hint toward undiscovered recipes)
+    // one short of something? the nose knows: a hint toward undiscovered recipes, as a picture
     const near = !r && ids.length < MAX_INGS ? closeRecipe(ids, (d) => st.data.recipes[d] !== undefined) : null;
     if (near) {
       const it = ITEMS[near.missing];
-      const what = it?.cat === 'plant' ? 'something that grows' : it?.cat === 'critter' ? 'something that wriggles' : it?.cat === 'mineral' ? 'something salty' : 'something from the grocer';
-      return `${names} · <i>who knows what this makes?</i><span class="ck-sniff">Your nose twitches: one more thing would make this sing... ${what}?</span>`;
+      const hint = it?.cat === 'plant' ? 'cave_carrot' : it?.cat === 'critter' ? 'worm' : it?.cat === 'mineral' ? 'salt_crystal' : 'flour';
+      return `<span class="ck-q-ic">?</span><b>New dish</b><span class="ck-sniff" title="One more thing...">+<img class="pix ck-info-ic dim" src="${itemVox.src(hint)}" alt="">?</span>`;
     }
-    return `${names} · <i>who knows what this makes?</i>`;
+    return '<span class="ck-q-ic">?</span><b>New dish</b>';
   }
 
   /** The chosen ingredients sit on the board while you decide. */
@@ -336,7 +338,7 @@ export default class CookingScene extends Scene {
     const known = st.data.recipes[this.dish] !== undefined;
     this.ui.stepHud(known ? DISHES[this.dish].name : '???', this.steps, { onStop: () => { if (!this.game.ui.isPanelOpen() && this.phase !== 'finale') this.askStop(); } });
     if (this.lesson) this.ui.top?.classList.add('lesson');
-    this.ui.title('LET\'S COOK!', ids.map((id) => ITEMS[id].name).join(' + '));
+    this.ui.title('LET\'S COOK!');
     this.game.audio.play('ding');
     this.phase = 'start';
     this.phaseT = 0;
@@ -368,7 +370,7 @@ export default class CookingScene extends Scene {
     this.step.begin();
     this.setView(this.step.station);
     this.ui.setStep(this.stepI);
-    this.ui.title(this.step.title, `Step ${this.stepI + 1} of ${this.steps.length}`);
+    this.ui.title(this.step.title, stepIcon(kind));
     this.ui.hint(null);
     this.ui.timer(null);
     this.phase = 'intro';
@@ -379,7 +381,7 @@ export default class CookingScene extends Scene {
   askStop() {
     if (this.asking) return;
     this.asking = true;
-    this.game.ui.confirm('Stop cooking? The ingredients are already in the pot, so they will be lost.', 'Stop cooking', 'Keep cooking').then((yes) => {
+    this.game.ui.confirm('Stop cooking? The ingredients are lost.', 'Stop', 'Keep cooking').then((yes) => {
       this.asking = false;
       if (!yes || this.phase === 'pantry' || this.phase === 'result') return;
       this.abandon();
@@ -392,7 +394,7 @@ export default class CookingScene extends Scene {
     this.ui.clearHud();
     this.stopHeat();
     this.resetKitchen();
-    this.game.ui.toast('Into the compost it goes...', { kind: 'warn' });
+    this.game.ui.toast('Composted', { kind: 'warn' });
     this.openPantry();
   }
 

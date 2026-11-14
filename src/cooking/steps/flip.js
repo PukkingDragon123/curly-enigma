@@ -19,7 +19,7 @@ const G = 4.2;
 export class FlipStep extends Step {
   get station() { return 'pan'; }
   get title() { return 'FLIP!'; }
-  get hint() { return this.touch ? '<b>Tap</b> to toss when it\'s golden · <b>drag</b> the pan under it to catch' : '<kbd>Click</kbd> to toss when golden · move the mouse (or <kbd>A</kbd>/<kbd>D</kbd>) to catch it'; }
+  get hint() { return 'Toss when golden'; }
 
   begin() {
     this.W = this.win(WIN[0], WIN[1], 0.3, 1);
@@ -82,7 +82,7 @@ export class FlipStep extends Step {
   }
 
   tick(dt, live) {
-    if (this.t > 0.5 && !this.bar) { this.bar = this.ui.hbar({ win: this.W, label: 'Side 1' }); this.bar.setWin(this.W[0], this.W[1]); }
+    if (this.t > 0.5 && !this.bar) { this.bar = this.ui.hbar({ win: this.W, label: '1/2' }); this.bar.setWin(this.W[0], this.W[1]); }
     const inp = this.input;
     // the pan follows the mouse along x (and A/D)
     if (live) {
@@ -137,7 +137,7 @@ export class FlipStep extends Step {
           puff(this.fx, this.food.position.clone(), 0xd8c8a8, 8, 0.15);
           this.float('On the stove!', this.food.position.clone().add(V3(0, 0.3, 0)), '#ff9a8a');
         }
-        if (this.bar) this.bar.side(this.side < 2 ? 'Side 2' : 'Done');
+        if (this.bar) this.bar.side(this.side < 2 ? '2/2' : '✓');
         if (this.side >= 2) this.finishT = 0;
       }
     } else if (this.missT >= 0) {

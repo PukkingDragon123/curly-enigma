@@ -167,7 +167,7 @@ export class ForgeLesson {
     if (st.count('copper_ingot') > 0 && st.count('copper_ore') < 2) { this.toForging(true); return; }
     this.stage = 'smeltMenu';
     this.sc.menus.smeltList();
-    this.teach('click', { title: 'Smelt your copper', subPc: '<b>Click</b> Copper Ingot, then <b>Smelt</b>', subT: '<b>Tap</b> Copper Ingot, then <b>Smelt</b>', done: () => this.stage !== 'smeltMenu' });
+    this.teach('click', { title: 'Smelt your copper', subPc: '<b>Click</b> <b>Smelt</b> by the copper', subT: '<b>Tap</b> <b>Smelt</b> by the copper', done: () => this.stage !== 'smeltMenu' });
   }
 
   /** The pickaxe lesson: the forge woken, his copper tossed to you, then the pick head on the forge. */
@@ -357,7 +357,7 @@ export class ForgeLesson {
     m.plan();
     if (!skipLine) this.say('An ingot! Now a <b>Dagger</b>.', 'proud', { key: 'step', dur: Infinity });
     else this.say('Now a <b>Dagger</b>.', 'calm', { key: 'step', dur: Infinity });
-    this.teach('click', { title: 'Forge a dagger', subPc: '<b>Click</b> Start forging', subT: '<b>Tap</b> Start forging', done: () => this.stage !== 'planMenu' });
+    this.teach('click', { title: 'Forge a dagger', subPc: '<b>Click</b> <b>Forge</b>', subT: '<b>Tap</b> <b>Forge</b>', done: () => this.stage !== 'planMenu' });
   }
 
   // ------------------------------------------------------------ frame

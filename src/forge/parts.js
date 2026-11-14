@@ -18,7 +18,9 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { qColor } from '../ui/UI.js';
 import { fireIdleFor, widen, quenchResult, AMBIENT } from './bladeSim.js';
 import { glowAmount } from './blackbody.js';
-import { Thermo, Steps, StrikeMeter, bar, setText, setHtml, confirmText, certificate, illum } from './ui.js';
+import { Thermo, WorkHud, StrikeMeter, confirmText, certificate } from './ui.js';
+import { stepIcon, wart } from './workArt.js';
+import { itemVox } from '../ui/itemVox.js';
 import { Seq, ease, arcPoint } from './fx.js';
 import { PartView } from './partModel.js';
 
@@ -189,31 +191,14 @@ export class PartRun {
   // ================================================================ UI
   buildUI() {
     const sc = this.scene, p = this.part;
-    const steps = [{ id: 'heat', label: 'Heat' }, { id: 'hammer', label: 'Shape' }];
-    if (p.quench) steps.push({ id: 'quench', label: 'Quench' });
-    steps.push({ id: 'result', label: 'Done' });
-    this.title = el('h2', {}, illum(p.name));
-    this.stats = el('div', { class: 'fg-col', style: { gap: 'calc(var(--px) * 1.5)' } });
-    this.status = el('div', { class: 'fg-note' });
-    this.panel = el('div', { class: 'fg-side act fg-col' }, [
-      el('div', { class: 'fg-kicker' }, 'At the anvil · a forge piece'),
-      this.title,
-    ]);
-    this.steps = new Steps(this.panel, steps);
-    this.panel.append(this.stats, this.status);
-    sc.layer.append(this.panel);
-    this.nodes.push(this.panel);
-    const row = (label, cls) => { const b = bar(cls); const v = el('b'); const r = el('div', { class: 'fg-stat' }, [el('span', {}, label), v, b.el]); this.stats.append(r); return { row: r, bar: b, val: v }; };
-    this.rShape = row('Shape', '');
-    this.rCraft = row('Blows', '');
-    this.rHeat = row('Heat', '');
-    this.rQuench = row('Quench', 'cool');
-    this.rQuench.row.hidden = true;
-    this.actions = el('div', { class: 'fg-actions' });
-    sc.layer.append(this.actions);
-    this.nodes.push(this.actions);
+    // the trail (wave 14): heat → shape → quench? → the piece itself
+    const steps = [{ id: 'heat', tip: 'Heat' }, { id: 'hammer', tip: 'Shape' }];
+    if (p.quench) steps.push({ id: 'quench', tip: 'Quench' });
+    steps.push({ id: 'result', tip: p.name, icon: itemVox.src(p.gives) });
+    this.hud = new WorkHud(sc.layer, steps.map((s) => ({ ...s, icon: s.icon || stepIcon(s.id) })));
+    this.hud.muted = !!sc.lesson;
     this.thermo = new Thermo(sc.layer, this.maxT);
-    this.thermo.setTitle(this.m.name);
+    this.thermo.setTitle(itemVox.src(this.m.ingot));
     this.setThermoMarks(false);
     this.meter = new StrikeMeter(sc.layer);
   }
@@ -221,47 +206,41 @@ export class PartRun {
   setThermoMarks(quench) {
     const m = this.m, sim = this.sim;
     const marks = [];
-    if (quench && sim.quenchRange) marks.push({ kind: 'quench', range: sim.quenchRange, label: 'quench' });
-    else marks.push({ kind: 'work', range: sim.workRange, label: 'work' });
-    marks.push({ kind: 'burn', at: m.burn, label: 'burn' });
-    if (m.burn < this.maxT - 60) marks.push({ kind: 'max', at: this.maxT, label: 'max' });
+    if (quench && sim.quenchRange) marks.push({ kind: 'quench', range: sim.quenchRange });
+    else marks.push({ kind: 'work', range: sim.workRange });
+    marks.push({ kind: 'burn', at: m.burn });
+    if (m.burn < this.maxT - 60) marks.push({ kind: 'max', at: this.maxT });
     this.thermo.setMarks(marks);
   }
 
-  /** actions: [{label, key, keyLabel, fn, alt}] */
-  setActions(list) {
-    this.actions.innerHTML = '';
-    this.actionKeys = {};
-    for (const a of list) {
-      const b = el('button', { class: 'btn' + (a.alt ? ' alt' : ''), onclick: () => { this.game.audio.play('ui_click'); a.fn(); } }, [a.label, a.keyLabel ? el('kbd', {}, a.keyLabel) : null]);
-      this.actions.append(b);
-      if (a.key) for (const k of [].concat(a.key)) this.actionKeys[k] = a.fn;
-    }
-  }
+  /** The action plates: [{ id, glyph, label (one word), keyLabel, key, fn, alt }]. */
+  setActions(list) { this.hud.actions(list); this.actionKeys = null; }
 
   pollActionKeys() {
-    if (!this.actionKeys || this.busy) return;
+    if (this.busy) return;
     const inp = this.game.input;
-    for (const [k, fn] of Object.entries(this.actionKeys)) if (inp.pressed(k)) { inp.consume(k); fn(); return; }
+    if (this.actionKeys) { for (const [k, fn] of Object.entries(this.actionKeys)) if (inp.pressed(k)) { inp.consume(k); fn(); return; } return; }
+    this.hud.poll(inp);
   }
 
   updateUI() {
     const sim = this.sim;
+    this.hud.set(this.step, this.done);
+    // the blows still to go, as a gauge of the piece's shape
     const k = sim.progress;
-    this.rShape.bar.set(k, k >= 1 ? '' : 'warm');
-    setText(this.rShape.val, `${Math.floor(sim.good + 1e-6)} / ${sim.need} blows`);
-    const c = sim.blows.length ? sim.shapeScore() : 1;
-    this.rCraft.bar.set(c, c > 0.85 ? '' : c > 0.6 ? 'warm' : 'bad');
-    setText(this.rCraft.val, sim.blows.length ? Math.round(c * 100) + '%' : '-');
+    const shaping = this.step === 'hammer' || (this.step === 'heat' && sim.blows.length > 0);
+    this.hud.meter('shape', shaping ? { icon: stepIcon('hammer'), v: k, text: `${Math.floor(sim.good + 1e-6)}/${sim.need}`, cls: k >= 1 ? '' : 'warm' } : null);
     const h = sim.heatScore();
-    this.rHeat.bar.set(h, h > 0.85 ? '' : h > 0.6 ? 'warm' : 'bad');
-    const why = sim.cracks ? `${sim.cracks} crack${sim.cracks > 1 ? 's' : ''}` : sim.burnt > 1 ? 'burnt' : sim.coldBlows ? 'cold blows' : '';
-    setText(this.rHeat.val, Math.round(h * 100) + '%' + (why ? ' · ' + why : ''));
-    if (this.scores.quench !== undefined) { this.rQuench.row.hidden = false; this.rQuench.bar.set(this.scores.quench); setText(this.rQuench.val, Math.round(this.scores.quench * 100) + '%'); }
-    this.steps.set([this.step], this.done);
+    this.hud.meter('temper', shaping && h < 0.995 ? { icon: wart.glyph('flame'), v: h, text: Math.round(h * 100) + '%', cls: h > 0.85 ? '' : h > 0.6 ? 'warm' : 'bad', warn: h < 0.8 } : null);
+    this.hud.update();
   }
 
-  setStatus(html) { setHtml(this.status, html); }
+  cueOver(getPos, lift = 0.12) {
+    return () => {
+      const s = this.scene.toScreen(getPos().add(_v2.set(0, lift, 0)));
+      return s.visible === false ? null : { x: s.x, y: s.y };
+    };
+  }
 
   popOnce(key, text, pos, color, size = 1, gap = 1.6) {
     if (this.lastPop[key] && this.time - this.lastPop[key] < gap) return;
@@ -335,7 +314,7 @@ export class PartRun {
   touchAction() {
     if (this.busy) return null;
     if (this.step === 'heat' || (this.step === 'quench' && this.inFire)) return { kind: 'pump', label: 'Pump' };
-    if (this.step === 'hammer') return { kind: 'strike', label: 'Hold · let go in the green' };
+    if (this.step === 'hammer') return { kind: 'strike', label: 'Strike' };
     return null;
   }
 
@@ -370,10 +349,9 @@ export class PartRun {
     this.setThermoMarks(false);
     this.thermo.el.hidden = false;
     this.setActions([
-      { label: 'Stoke ', keyLabel: 'R', fn: () => sc.stoke(), alt: true },
-      { label: 'To the anvil ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toAnvil() },
+      { id: 'stoke', glyph: 'poker', label: 'Stoke', keyLabel: 'R', fn: () => sc.stoke(), alt: true },
+      { id: 'anvil', glyph: 'anvil', label: 'Anvil', keyLabel: 'E', key: ['KeyE'], fn: () => this.toAnvil() },
     ]);
-    this.game.ui.setHints('<span class="fg-nolig">Hold the mouse or <kbd>Space</kbd>: pump the bellows · drag it to pump by hand<br><kbd>R</kbd> stoke the coals · <kbd>E</kbd> carry it to the anvil · <kbd>Esc</kbd> stop</span>');
   }
 
   update_heat(dt) {
@@ -390,12 +368,15 @@ export class PartRun {
       if (Math.random() < dt * (6 + over / 20)) P.burnSpray(this.center(), 6);
       if (Math.random() < dt * 2) this.game.audio.play('sizzle');
       this.popOnce('burn', 'Burning!', this.center().add(_v.set(0, 0.18, 0)), '#ffffff', 0.9, 3);
-      this.setStatus('<span class="fg-warn">It is burning! Out of the fire with it.</span>');
-    } else if (sim.T > w1) this.setStatus('<span class="fg-warn">Hotter than it needs to be.</span>');
-    else if (sim.T >= w0) this.setStatus('<span class="fg-good">Glowing at working heat: to the anvil!</span>');
-    else if (this.m.work[1] < 400) this.setStatus(`${this.m.name} wants only a little heat: let the coals do it, don't pump.`);
-    else if (sim.T > 450) this.setStatus('Starting to glow.');
-    else this.setStatus('Sitting in the coals. Pump the bellows.');
+    }
+    const hot = sim.T >= w0 && !this.moving;
+    this.hud.next(hot ? 'anvil' : null);
+    const at = this.cueOver(() => this.center());
+    if (over > 0 || sim.T > w1) this.hud.cue('Too hot!', at);
+    else if (hot) this.hud.cue('To the anvil!', 'act:anvil');
+    else if (this.m.work[1] < 400) this.hud.cue('No pumping', at);
+    else if (sc.fire.air < 0.3 && !this.moving) this.hud.cue('Hold to pump', at);
+    else this.hud.cue(null);
   }
 
   toAnvil() {
@@ -436,8 +417,7 @@ export class PartRun {
     sc.paws.set('R', { mode: 'hammer', at: () => this.spotWorld(), theta: () => this.theta });
     sc.paws.jaw = 0;
     this.spotT = 0;
-    this.setActions([{ label: 'Reheat ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toFire(), alt: true }]);
-    this.game.ui.setHints('<span class="fg-nolig">Hold the mouse or <kbd>Space</kbd> to raise the hammer,<br>let go when the runes reach the green (gold: perfect)<br><kbd>E</kbd> reheat in the coals · <kbd>Esc</kbd> stop</span>');
+    this.setActions([{ id: 'fire', glyph: 'flame', label: 'Reheat', keyLabel: 'E', key: ['KeyE'], fn: () => this.toFire(), alt: true }]);
   }
 
   /** Energy a blow costs (the Stamina skill makes it less). */
@@ -458,7 +438,7 @@ export class PartRun {
         if (this.st.energy < this.blowEnergy()) {
           this.game.audio.play('oops');
           this.popOnce('tired', 'Too tired to swing', this.spotWorld(), '#ffb0a0', 0.8, 2);
-          this.game.ui.toast('You are out of energy. Eat something (bag) or rest.', { kind: 'warn' });
+          this.game.ui.toast('Out of energy: eat or rest', { kind: 'warn' });
         } else this.charge = { t: 0, src: inp.isDown('Space') ? 'key' : 'mouse', v: 0 };
       }
     }
@@ -469,7 +449,7 @@ export class PartRun {
       this.theta = lerp(REST, WIND, ease.out(c.v));
       const s = sc.toScreen(this.spotWorld(_v));
       const inZ = c.v >= this.zoneR[0] && c.v <= this.zoneR[1];
-      this.meter.show(s.x, s.y - 34, c.v, c.v >= 0.99 ? 'too high!' : inZ ? (c.v >= this.perfR[0] && c.v <= this.perfR[1] ? 'NOW!' : 'now') : '');
+      this.meter.show(s.x, s.y - 34, c.v, c.v >= 0.99 ? 'Too high!' : inZ && c.v >= this.perfR[0] && c.v <= this.perfR[1] ? 'NOW!' : '');
       if (inZ && !c.chimed) { c.chimed = true; this.game.audio.play('click', { pitch: 1.6, vol: 0.5 }); }
       const released = c.src === 'mouse' ? !inp.mouseDown(0) : c.src === 'key' ? !inp.isDown('Space') : false;
       if (released) this.release();
@@ -478,10 +458,11 @@ export class PartRun {
       this.meter.show(s.x, s.y - 34, 0, '');
     }
     this.updateSwing(dt);
-    const z = sim.zone();
-    const left = sim.need - sim.good;
-    const heat = z === 'cold' ? '<span class="fg-warn">too cold to shape: reheat it (E)</span>' : z === 'burn' ? '<span class="fg-warn">burning!</span>' : z === 'hot' ? 'very hot' : '<span class="fg-good">workable</span>';
-    if (!this.shaped) this.setStatus(`${Math.ceil(left - 1e-6)} more blow${Math.ceil(left - 1e-6) === 1 ? '' : 's'} to shape it · ${heat}.`);
+    const cold = ready && sim.zone() === 'cold';
+    this.hud.next(cold ? 'fire' : null);
+    if (cold) this.hud.cue('Too cold!', 'act:fire');
+    else if (ready && !sim.blows.length && !this.charge && !this.swing) this.hud.cue('Hold, let go in green', this.cueOver(() => this.spotWorld(new THREE.Vector3()), 0.16));
+    else this.hud.cue(null);
   }
 
   /** Let the blow go: the hammer comes down on the marked spot. */
@@ -586,7 +567,7 @@ export class PartRun {
     const sc = this.scene;
     this.scores.shape = this.sim.shapeScore();
     this.setActions([]);
-    this.game.ui.setHints(null);
+    this.hud.cue(null);
     this.view.showMarker(null);
     this.meter.hide();
     this.seq.wait(0.45).call(() => {
@@ -612,13 +593,12 @@ export class PartRun {
     this.busy = true;
     this.moveObj(this.view.group, this.holdPose(), 0.85, 0.12, () => { this.busy = false; });
     this.setQuenchActions();
-    this.game.ui.setHints('<span class="fg-nolig">Let it cool (or heat it) into the blue band<br><kbd>E</kbd> in/out of the fire · <kbd>Q</kbd> plunge it in the barrel</span>');
   }
 
   setQuenchActions() {
     this.setActions([
-      { label: this.inFire ? 'Pull it out ' : 'Back in the fire ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toggleQuenchFire(), alt: true },
-      { label: 'Plunge! ', keyLabel: 'Q', key: ['KeyQ'], fn: () => this.plunge() },
+      { id: 'fire', glyph: this.inFire ? 'turn' : 'flame', label: this.inFire ? 'Out' : 'Fire', keyLabel: 'E', key: ['KeyE'], fn: () => this.toggleQuenchFire(), alt: true },
+      { id: 'plunge', glyph: 'drop', label: 'Plunge', keyLabel: 'Q', key: ['KeyQ'], fn: () => this.plunge() },
     ]);
   }
 
@@ -637,9 +617,14 @@ export class PartRun {
       const over = sim.heatStep(dt, this.inFire && !this.busy, sc.fire.air);
       if (over > 0 && this.inFire) { if (Math.random() < dt * 8) sc.particles.burnSpray(this.center(), 5); this.popOnce('qburn', 'Burning!', this.center().add(_v.set(0, 0.14, 0)), '#ffffff', 0.9, 3); }
       const [q0, q1] = sim.quenchRange;
-      if (sim.T >= q0 && sim.T <= q1) { this.setStatus('<span class="fg-good">Right in the hardening window: plunge it (Q)!</span>'); if (!this.wasQ) { this.wasQ = true; this.game.audio.play('glow'); } }
-      else if (sim.T > q1) { this.setStatus('Too hot to quench: let it cool a little.'); this.wasQ = false; }
-      else { this.setStatus(this.inFire ? 'Heating it back up.' : '<span class="fg-warn">Too cold to harden: back in the fire (E).</span>'); this.wasQ = false; }
+      const inWin = sim.T >= q0 && sim.T <= q1, at = this.cueOver(() => this.center(), 0.16);
+      if (inWin && !this.wasQ) { this.wasQ = true; this.game.audio.play('glow'); }
+      if (!inWin) this.wasQ = false;
+      this.hud.next(inWin ? 'plunge' : sim.T < q0 && !this.inFire ? 'fire' : null);
+      if (this.busy) this.hud.cue(null);
+      else if (inWin) this.hud.cue('Plunge now!', 'act:plunge');
+      else if (sim.T > q1) this.hud.cue('Let it cool', at);
+      else this.hud.cue(this.inFire ? 'Hold to pump' : 'Too cold!', this.inFire ? at : 'act:fire');
     }
     this.thermo.set(sim.T, dt);
     this.workLight();
@@ -660,7 +645,7 @@ export class PartRun {
     const Tp = this.sim.T;
     const res = quenchResult(this.m, Tp, this.skill);
     this.setActions([]);
-    this.game.ui.setHints(null);
+    this.hud.cue(null);
     const top = W.barrelTop.clone();
     const H = Math.max(0.06, this.view.extent.y);
     const above = { pos: top.clone().add(_v2.set(0.02, 0.1, 0)), rot: new THREE.Euler(0, 0, 0) };
@@ -705,9 +690,11 @@ export class PartRun {
     this.busy = true;
     sc.pumpAllowed = false;
     this.thermo.el.hidden = true;
-    this.panel.hidden = true;
     this.setActions([]);
-    this.game.ui.setHints(null);
+    this.hud.cue(null);
+    this.hud.set('result', ['heat', 'hammer', 'quench']);
+    this.hud.meter('shape', null); this.hud.meter('temper', null);
+    setTimeout(() => { if (sc.activity === this) this.hud.hideTrail(); }, 1400);
     const shape = this.scores.shape ?? sim.shapeScore();
     const heat = sim.heatScore();
     const quench = p.quench ? (this.scores.quench ?? 0) : null;
@@ -755,17 +742,14 @@ export class PartRun {
 
   buildCard(grade, s) {
     const sc = this.scene, p = this.part;
-    const rows = [{ label: 'Shape', v: s.shape }, { label: 'Heat', v: s.heat }];
-    if (s.quench !== null) rows.push({ label: 'Quench', v: s.quench });
-    const where = 'It\'s on your belt (slot 1). Swing it in the mine: how well you made it shows in every blow.';
+    const rows = [{ icon: stepIcon('hammer'), v: s.shape, tip: 'Shape' }, { icon: stepIcon('heat'), v: s.heat, tip: 'Heat' }];
+    if (s.quench !== null) rows.push({ icon: stepIcon('quench'), v: s.quench, tip: 'Quench' });
     const card = certificate({
-      kicker: `Forged by your own paws · quality ${this.score}%`,
       title: p.name,
       grade,
-      value: `<img class="pix" src="${iconURL(p.gives)}" alt=""><span style="font-size:max(var(--g), round(.6em + 2px, var(--g)));color:var(--sepia)">Pick power ${(1.1 * (0.85 + 0.3 * this.score / 100)).toFixed(2)}</span>`,
-      note: `Ingots <b style="color:${qColor(this.matQ)}">${this.matQ}%</b> · ${where}`,
+      value: `<img class="pix" src="${itemVox.src(p.gives)}" alt="">${this.score}%`,
       rows,
-      buttons: [{ label: 'To the mine!', key: 'Enter', fn: () => { this.game.audio.play('ui_click'); sc.leave(); } }],
+      buttons: [{ label: 'To the mine', glyph: 'door', key: 'Enter', fn: () => { this.game.audio.play('ui_click'); sc.leave(); } }],
     });
     sc.layer.append(card);
     this.nodes.push(card);

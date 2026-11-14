@@ -9,7 +9,9 @@ import { CrucibleSim } from './bladeSim.js';
 import { applyHeat, glowColor, glowHex, glowAmount } from './blackbody.js';
 import { makeCrucible, makeIngot, V, P as PV } from './models.js';
 import { S, MS } from './world.js';
-import { Thermo, bar, setText, setHtml, confirmText, bookDeco, illum } from './ui.js';
+import { Thermo, WorkHud, confirmText } from './ui.js';
+import { stepIcon, wart } from './workArt.js';
+import { itemVox } from '../ui/itemVox.js';
 import { Seq, ease, arcPoint } from './fx.js';
 
 const QUICK_ACC = 0.8;
@@ -116,37 +118,25 @@ export class SmeltGame {
     sc.paws.set('L', { mode: 'tongs', at: () => this.gripWorld() });
     sc.paws.jaw = 0.45;
     sc.pumpAllowed = true;
-    // UI
+    // UI (wave 14): the trail ore → fire → pour → ingot, the melt meter, the thermometer, one cue
     this.thermo = new Thermo(sc.layer, FORGE_MAX_TEMP[lvl]);
-    this.thermo.setTitle('Crucible');
+    this.thermo.setTitle(itemVox.src(r.out));
     this.thermo.setMarks([
-      { kind: 'melt', range: this.sim.band, label: 'pour heat' },
-      { kind: 'burn', at: this.sim.slagT, label: 'slag' },
+      { kind: 'melt', range: this.sim.band },
+      { kind: 'burn', at: this.sim.slagT },
     ]);
-    this.timeBar = bar('warm');
-    this.meltBar = bar();
-    this.slagBar = bar('bad');
-    this.timeTxt = el('b');
-    this.meltTxt = el('b');
-    this.slagTxt = el('b');
-    this.status = el('div', { class: 'fg-note' });
-    const out = ITEMS[r.out];
-    this.panel = el('div', { class: 'panel fg-side act fg-col' }, [
-      el('div', { class: 'fg-kicker' }, 'Smelting'),
-      el('h2', {}, illum(out.name + (r.n > 1 ? ' ×' + r.n : ''))),
-      el('p', { class: 'sub', html: `${Object.entries(r.inputs).map(([id, n]) => `${n}× ${ITEMS[id].name}`).join(' + ')} + ${r.coal} coal · ore quality <b style="color:${qColor(this.taken.avgQ)}">${Math.round(this.taken.avgQ)}%</b>` }),
-      el('div', { class: 'fg-stat' }, [el('span', {}, 'Melted'), this.meltTxt, this.meltBar.el]),
-      el('div', { class: 'fg-stat' }, [el('span', {}, 'Time'), this.timeTxt, this.timeBar.el]),
-      el('div', { class: 'fg-stat' }, [el('span', {}, 'Slag'), this.slagTxt, this.slagBar.el]),
-      this.status,
+    const io = { ore: firstOre, out: r.out };
+    this.hud = new WorkHud(sc.layer, [
+      { id: 'ore', icon: stepIcon('ore', io), tip: ITEMS[firstOre]?.name },
+      { id: 'heat', icon: stepIcon('heat', io), tip: 'Melt' },
+      { id: 'pour', icon: stepIcon('pour', io), tip: 'Pour' },
+      { id: 'ingot', icon: stepIcon('ingot', io), tip: ITEMS[r.out]?.name },
     ]);
-    bookDeco(this.panel, 'smelt');
-    sc.layer.append(this.panel);
-    this.nodes.push(this.panel);
-    this.bigHint = el('div', { class: 'fg-big-hint' }, document.documentElement.classList.contains('is-touch') ? 'Hold the button to pump' : 'Hold to pump the bellows');
-    sc.layer.append(this.bigHint);
-    this.nodes.push(this.bigHint);
-    this.game.ui.setHints('<span class="fg-nolig">Hold the mouse or <kbd>Space</kbd>: pump the bellows<br><kbd>Esc</kbd> stop smelting</span>');
+    this.hud.muted = !!sc.lesson;
+    this.hud.set('heat', ['ore']);
+    this.hud.actions([{ id: 'stoke', glyph: 'poker', label: 'Stoke', keyLabel: 'R', fn: () => sc.stoke(), alt: true }]);
+    this.syncMeters();
+    this.hud.cue('Hold to pump', () => this.cueAt());
     this.phase = 'heat';
     this.wasInBand = false;
     this.game.audio.play('place');
@@ -166,7 +156,7 @@ export class SmeltGame {
 
   onEscape() {
     if (this.phase !== 'heat') return true;
-    this.game.ui.confirm(confirmText('Stop smelting?', 'The ore and coal go back in your bag.'), 'Stop', 'Keep going').then((yes) => {
+    this.game.ui.confirm(confirmText('Stop smelting?', 'Ore and coal go back.'), 'Stop', 'Keep going').then((yes) => {
       if (!yes || this.phase !== 'heat') return;
       refundInputs(this.st, this.taken);
       this.phase = 'done';
@@ -184,7 +174,6 @@ export class SmeltGame {
       sc.flames.keepClear = { x: this.cru.group.position.x, w: 0.1 }; // the flames lick round the pot, not over it
       this.updateVisuals(dt);
       this.updateUI(dt);
-      if (this.bigHint && (sim.started || sc.fire.pumping)) { this.bigHint.remove(); this.bigHint = null; }
       if (sim.done) this.finish();
     } else if (this.phase === 'pour') {
       sc.flames.keepClear = null;
@@ -222,23 +211,31 @@ export class SmeltGame {
     this.wasInBand = sim.inBandNow;
   }
 
-  updateUI(dt) {
+  /** Where the cue floats: just over the crucible in the coals. */
+  cueAt() {
+    const s = this.scene.toScreen(_v.copy(this.cru.group.position).add(new THREE.Vector3(0, 0.2, 0)));
+    return s.visible === false ? null : { x: s.x, y: s.y };
+  }
+
+  syncMeters() {
     const sim = this.sim;
-    this.thermo.set(sim.T, dt);
-    this.meltBar.set(sim.progress);
-    setText(this.meltTxt, Math.round(sim.progress * 100) + '%');
+    this.hud.meter('melt', { icon: stepIcon('ingot', { out: this.r.out }), v: sim.progress, text: Math.round(sim.progress * 100) + '%', cls: '' });
     const left = Math.max(0, sim.limit - sim.time);
-    this.timeBar.set(left / sim.limit, left < 4 ? 'bad' : 'warm');
-    setText(this.timeTxt, sim.started ? left.toFixed(1) + 's' : 'ready');
-    this.slagBar.set(Math.min(1, sim.impurity / 0.6));
-    setText(this.slagTxt, sim.impurity > 0.005 ? '−' + Math.round(sim.impurity * 100) + '%' : 'clean');
-    let s;
-    if (!sim.started) s = 'The crucible sits in the coals.';
-    else if (sim.overheat) s = '<span class="fg-warn">Too hot! Slag is forming.</span>';
-    else if (sim.inBandNow) s = '<span class="fg-good">Melting nicely.</span>';
-    else if (sim.T < sim.band[0]) s = 'Not hot enough to melt.';
-    else s = 'Above pouring heat.';
-    setHtml(this.status, s);
+    this.hud.meter('time', { icon: wart.glyph('glass'), v: left / sim.limit, text: Math.ceil(left) + 's', cls: left < 4 ? 'bad' : 'warm', warn: left < 4 });
+    if (sim.impurity > 0.005) this.hud.meter('slag', { icon: itemVox.src('coal'), v: Math.min(1, sim.impurity / 0.6), text: '−' + Math.round(sim.impurity * 100) + '%', cls: 'bad', warn: true });
+  }
+
+  updateUI(dt) {
+    const sim = this.sim, sc = this.scene;
+    this.thermo.set(sim.T, dt);
+    this.syncMeters();
+    // one cue at a time, a few words, where the eye is (the crucible)
+    let cue = null;
+    if (!sim.started && !sc.fire.pumping) cue = 'Hold to pump';
+    else if (sim.overheat) cue = 'Too hot!';
+    else if (sim.T < sim.band[0] && sc.fire.air < 0.35) cue = 'Pump!';
+    this.hud.cue(cue, () => this.cueAt());
+    this.hud.update();
   }
 
   finish() {
@@ -247,9 +244,11 @@ export class SmeltGame {
     sc.pumpAllowed = false;
     this.acc = sim.accuracy;
     this.q = ingotQuality(this.taken.avgQ, this.acc);
-    this.game.ui.setHints(null);
     this.updateUI(0);
-    setHtml(this.status, this.acc >= 0.3 ? '<span class="fg-good">Molten! Pouring the ingot...</span>' : 'Pouring what melted...');
+    this.hud.cue(null);
+    this.hud.meter('time', null); this.hud.meter('slag', null); this.hud.meter('melt', null);
+    this.hud.set('pour', ['ore', 'heat']);
+    this.hud.actions([]);
     const mold = W.mold;
     const moldTop = W.moldTop.clone();
     const start = cru.group.position.clone();
@@ -324,7 +323,7 @@ export class SmeltGame {
         ingot.rotation.z = Math.sin(k * Math.PI) * 0.8;
         applyHeat(ingot.userData.mat, 0xffffff, 380 * (1 - k), 1);
       })
-      .call(() => { this.game.audio.play('place'); this.reward(); })
+      .call(() => { this.game.audio.play('place'); this.hud.set('ingot', ['ore', 'heat', 'pour']); this.reward(); })
       .wait(1.6)
       .call(() => { this.phase = 'done'; sc.endActivity('smelt'); });
   }
@@ -341,13 +340,14 @@ export class SmeltGame {
     const msg = `+${r.n} ${out.name} <b style="color:${qColor(this.q)}">${this.q}%</b>`;
     this.game.ui.toast(msg, { icon: iconURL(r.out), kind: 'good' });
     sc.pop(`+${r.n} ${out.name}`, this.ingot.position.clone().add(new THREE.Vector3(0, 0.12, 0)), '#ffd34a', 0.8);
-    sc.menus.lastSmelt = `Last pour: <b>${r.n}× ${out.name}</b> at <b style="color:${qColor(this.q)}">${this.q}%</b> (heat control ${Math.round(this.acc * 100)}%).` + (first ? ' Quick smelting unlocked for this recipe.' : '');
+    sc.menus.lastSmelt = { id: r.out, n: r.n, q: this.q };
   }
 
   dispose() {
     const sc = this.scene;
     for (const n of this.nodes) n.remove();
     this.thermo?.remove();
+    this.hud?.remove();
     if (this.cru) { sc.scene.remove(this.cru.group); disposeTree(this.cru.group); }
     if (this.stream) { sc.scene.remove(this.stream); this.stream.geometry.dispose(); this.stream.material.dispose(); }
     if (this.ingot) { sc.scene.remove(this.ingot); disposeTree(this.ingot); }

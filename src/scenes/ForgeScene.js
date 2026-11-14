@@ -151,6 +151,7 @@ export default class ForgeScene extends Scene {
     this.activity = act; // first, so closing the menu doesn't send the view back to walking
     this.menus.hide();
     this.allowMenus = false;
+    this.game.ui.setHints(null); // (the work shows what to do in pictures: no key legend)
   }
 
   endActivity(next = 'main') {
@@ -185,7 +186,7 @@ export default class ForgeScene extends Scene {
       this.hud = want;
       if (this.game.scene === this || force) this.game.ui.setHudMode(want);
       if (want === 'deep') this.game.ui.setHints(this.game.ui.root && document.documentElement.classList.contains('is-touch') ? null
-        : '<span class="fg-nolig"><kbd>E</kbd> use · <kbd>1</kbd> smelt · <kbd>2</kbd> forge · <kbd>Esc</kbd> menu</span>');
+        : '<span class="fg-nolig"><kbd>E</kbd> use · <kbd>1</kbd> smelt · <kbd>2</kbd> forge</span>');
       else if (!this.activity) this.game.ui.setHints(null);
     }
   }
@@ -197,27 +198,27 @@ export default class ForgeScene extends Scene {
     const fp = W.firePos;
     // the hearth's body smelts; the coals on top get a poke (the box over them is met first)
     // (the stoke box reaches out over the hearth's lip: the hearth's solid stands taller than its coals)
-    rig.add({ box: [fp.x - 0.36, fp.y - 0.02, fp.z - 0.22, fp.x + 0.36, fp.y + 0.36, 0.9], label: 'Stoke the coals', enabled: free, action: () => this.stoke() });
-    rig.add({ box: [fp.x - 0.56, 0.2, 0.05, fp.x + 0.56, fp.y - 0.02, 0.9], label: 'Smelt ore', enabled: free, action: () => { this.game.audio.play('ui_click'); this.menus.smeltList(); } });
+    rig.add({ box: [fp.x - 0.36, fp.y - 0.02, fp.z - 0.22, fp.x + 0.36, fp.y + 0.36, 0.9], label: 'Stoke', enabled: free, action: () => this.stoke() });
+    rig.add({ box: [fp.x - 0.56, 0.2, 0.05, fp.x + 0.56, fp.y - 0.02, 0.9], label: 'Smelt', enabled: free, action: () => { this.game.audio.play('ui_click'); this.menus.smeltList(); } });
     const af = W.anvilFace;
-    rig.add({ box: [af.x - 0.2, 0.1, af.z - 0.75, af.x + 0.2, af.y + 0.08, af.z + 0.45], label: 'Forge a weapon', enabled: free, action: () => { this.game.audio.play('ui_click'); this.menus.plan(); } });
+    rig.add({ box: [af.x - 0.2, 0.1, af.z - 0.75, af.x + 0.2, af.y + 0.08, af.z + 0.45], label: 'Forge', enabled: free, action: () => { this.game.audio.play('ui_click'); this.menus.plan(); } });
     const d = W.doorPos;
-    rig.add({ box: [d.x - 0.4, 0, d.z - 0.12, d.x + 0.4, 1.25, d.z + 0.12], label: this.from === 'town' ? 'Back to town' : 'Back to the cave', enabled: free, action: () => this.leave() });
-    rig.add({ x: W.barrelTop.x, y: W.barrelTop.y, z: W.barrelTop.z, r: 0.26, label: 'Quench barrel', enabled: free, action: () => {
+    rig.add({ box: [d.x - 0.4, 0, d.z - 0.12, d.x + 0.4, 1.25, d.z + 0.12], label: this.from === 'town' ? 'To town' : 'Home', enabled: free, action: () => this.leave() });
+    rig.add({ x: W.barrelTop.x, y: W.barrelTop.y, z: W.barrelTop.z, r: 0.26, label: 'Barrel', enabled: free, action: () => {
       this.game.audio.play('splash', { vol: 0.5 });
       W.water.splash(0.8);
       this.waterEnergy = 0.8;
       this.particles.bubbles(W.barrelTop, 6, 0.2);
     } });
-    rig.add({ x: 0, y: 0, z: 0, r: 0.13, label: 'Pump the bellows', enabled: free, action: () => { this.fire.nudge = 0.9; this.game.audio.play('bellows', { vol: 0.7 }); this.puff(); } });
+    rig.add({ x: 0, y: 0, z: 0, r: 0.13, label: 'Bellows', enabled: free, action: () => { this.fire.nudge = 0.9; this.game.audio.play('bellows', { vol: 0.7 }); this.puff(); } });
     const pullIt = rig.items[rig.items.length - 1];
     this.pullItem = pullIt;
     const bb = W.bladeBarrel;
     rig.add({ x: bb.x, y: bb.y, z: bb.z, r: 0.3, label: 'Finished work', enabled: free, action: () => {
       const n = this.game.state.data.weapons.length;
-      this.game.ui.toast(n ? `${n} forged weapon${n === 1 ? '' : 's'} waiting for the assay office.` : 'Nothing forged yet. The anvil is waiting.');
+      this.game.ui.toast(n ? `×${n} for the assay office` : 'Nothing forged yet');
     } });
-    rig.add({ x: 0.4, y: 0.3, z: 0.58, r: 0.3, label: 'Coal bin', enabled: free, action: () => this.game.ui.toast(`Coal in the bin: ${this.game.state.count('coal')}`) });
+    rig.add({ x: 0.4, y: 0.3, z: 0.58, r: 0.3, label: 'Coal bin', enabled: free, action: () => this.game.ui.toast(`Coal ×${this.game.state.count('coal')}`) });
   }
 
   // ---------------------------------------------------------------- the view: walking or docked

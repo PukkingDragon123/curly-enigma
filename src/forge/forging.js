@@ -10,7 +10,10 @@ import { COIN, qColor } from '../ui/UI.js';
 import { BladeSim, balanceScore, balanceTolerance, quenchResult, fireIdleFor, AMBIENT } from './bladeSim.js';
 import { BladeView, buildWeapon, COL } from './bladeView.js';
 import { glowAmount } from './blackbody.js';
-import { Thermo, Steps, StrikeMeter, bar, setText, setHtml, confirmText, certificate, illum } from './ui.js';
+import { Thermo, WorkHud, StrikeMeter, confirmText, certificate, setText } from './ui.js';
+import { stepIcon, wart } from './workArt.js';
+import { itemVox } from '../ui/itemVox.js';
+import { KART } from '../cooking/kitchenArt.js';
 import { Seq, ease, arcPoint, Lightning, INFUSION_FX } from './fx.js';
 import { makeCrystal } from './models.js';
 import { disposeTree } from './smelt.js';
@@ -36,6 +39,10 @@ function makeHalo(color) {
   s.renderOrder = -1;
   return s;
 }
+
+const KART_CHECK = () => KART.stamp('check');
+/** Run fn after secs if the run is still the scene's activity. */
+function later2(run, secs, fn) { setTimeout(() => { if (run.scene.activity === run) fn(); }, secs * 1000); }
 
 const GEM_COLORS = { quartz: 0xf2f2f8, amber: 0xf2a32c, amber_bug: 0xf2a32c, amethyst: 0xa05ad9, ruby: 0xe02a3a, emerald: 0x2ad96a, sapphire: 0x2a5ae0, diamond: 0xd8f6ff };
 
@@ -98,7 +105,7 @@ export class ForgeRun {
   onEscape() {
     if (this.step === 'result') { this.scene.endActivity('main'); return true; }
     if (this.busy || this.step === 'grind') return true;
-    this.game.ui.confirm(confirmText('Abandon this blade?', 'The metal goes back into your bag as ingots.'), 'Abandon', 'Keep forging').then((yes) => {
+    this.game.ui.confirm(confirmText('Abandon this blade?', 'The ingots go back.'), 'Abandon', 'Keep forging').then((yes) => {
       if (!yes || this.finished) return;
       this.refund();
       this.scene.endActivity('plan');
@@ -111,6 +118,7 @@ export class ForgeRun {
     if (!this.finished) this.refund();
     for (const n of this.nodes) n.remove();
     this.thermo?.remove();
+    this.hud?.remove();
     this.meter?.el.remove();
     this.grindLoop?.stop();
     if (this.view) { sc.scene.remove(this.view.group); this.view.dispose(); }
@@ -131,33 +139,17 @@ export class ForgeRun {
 
   // ================================================================ UI
   buildUI() {
-    const sc = this.scene;
-    const steps = [{ id: 'heat', label: 'Heat' }, { id: 'hammer', label: 'Hammer' }, { id: 'balance', label: 'Balance' }];
-    if (this.m.quench) steps.push({ id: 'quench', label: 'Quench' });
-    if (this.inf) steps.push({ id: 'infuse', label: 'Infuse' });
-    steps.push({ id: 'result', label: 'Done' });
+    const sc = this.scene, io = { type: this.sel.type, metal: this.sel.metal, infusion: this.sel.infusion };
+    // the trail (wave 14): heat → hammer → balance → quench? → infuse? → the weapon itself
+    const steps = [{ id: 'heat', tip: 'Heat' }, { id: 'hammer', tip: 'Hammer' }, { id: 'balance', tip: 'Balance' }];
+    if (this.m.quench) steps.push({ id: 'quench', tip: 'Quench' });
+    if (this.inf) steps.push({ id: 'infuse', tip: this.inf.name });
+    steps.push({ id: 'result', tip: `${this.m.name} ${this.wt.name}` });
     this.stepList = steps.map((s) => s.id);
-    this.title = el('h2', {}, illum(`${this.inf ? this.inf.name + ' ' : ''}${this.m.name} ${this.wt.name}`));
-    this.stats = el('div', { class: 'fg-col', style: { gap: 'calc(var(--px) * 1.5)' } });
-    this.status = el('div', { class: 'fg-note' });
-    this.panel = el('div', { class: 'panel fg-side act fg-col' }, [el('div', { class: 'fg-kicker' }, 'Forging'), this.title]);
-    this.steps = new Steps(this.panel, steps);
-    this.panel.append(this.stats, this.status);
-    sc.layer.append(this.panel);
-    this.nodes.push(this.panel);
-    // stat rows
-    const row = (label, cls) => { const b = bar(cls); const v = el('b'); const r = el('div', { class: 'fg-stat' }, [el('span', {}, label), v, b.el]); this.stats.append(r); return { row: r, bar: b, val: v }; };
-    this.rShape = row('Shape', '');
-    this.rTemper = row('Temper', '');
-    this.rBalance = row('Balance', '');
-    this.rQuench = row('Quench', 'cool');
-    this.rBalance.row.hidden = true;
-    this.rQuench.row.hidden = true;
-    this.actions = el('div', { class: 'fg-actions' });
-    sc.layer.append(this.actions);
-    this.nodes.push(this.actions);
+    this.hud = new WorkHud(sc.layer, steps.map((s) => ({ ...s, icon: stepIcon(s.id, io) })));
+    this.hud.muted = !!sc.lesson;
     this.thermo = new Thermo(sc.layer, this.maxT);
-    this.thermo.setTitle(this.m.name);
+    this.thermo.setTitle(itemVox.src(this.m.ingot));
     this.setThermoMarks(false);
     this.meter = new StrikeMeter(sc.layer);
   }
@@ -165,46 +157,48 @@ export class ForgeRun {
   setThermoMarks(quench) {
     const m = this.m;
     const marks = [];
-    if (quench && m.quench) marks.push({ kind: 'quench', range: this.sim?.quenchRange || m.quench, label: 'quench' });
-    else marks.push({ kind: 'work', range: this.sim?.workRange || m.work, label: 'work' });
-    marks.push({ kind: 'burn', at: m.burn, label: 'burn' });
-    if (m.burn < this.maxT - 60) marks.push({ kind: 'max', at: this.maxT, label: 'max' });
+    if (quench && m.quench) marks.push({ kind: 'quench', range: this.sim?.quenchRange || m.quench });
+    else marks.push({ kind: 'work', range: this.sim?.workRange || m.work });
+    marks.push({ kind: 'burn', at: m.burn });
+    if (m.burn < this.maxT - 60) marks.push({ kind: 'max', at: this.maxT });
     this.thermo.setMarks(marks);
   }
 
-  /** actions: [{label, key, fn, alt}] */
-  setActions(list) {
-    this.actions.innerHTML = '';
-    this.actionKeys = {};
-    for (const a of list) {
-      const b = el('button', { class: 'btn' + (a.alt ? ' alt' : '') + (a.big ? ' big' : ''), onclick: () => { this.game.audio.play('ui_click'); a.fn(); } }, [a.label, a.keyLabel ? el('kbd', {}, a.keyLabel) : null]);
-      this.actions.append(b);
-      if (a.key) for (const k of [].concat(a.key)) this.actionKeys[k] = a.fn;
-    }
-  }
+  /** The action plates: [{ id, glyph, label (one word), keyLabel, key, fn, alt }]. */
+  setActions(list) { this.hud.actions(list); this.actionKeys = null; }
 
   pollActionKeys() {
-    if (!this.actionKeys || this.busy) return;
+    if (this.busy) return;
     const inp = this.game.input;
-    for (const [k, fn] of Object.entries(this.actionKeys)) if (inp.pressed(k)) { inp.consume(k); fn(); return; }
+    if (this.actionKeys) { for (const [k, fn] of Object.entries(this.actionKeys)) if (inp.pressed(k)) { inp.consume(k); fn(); return; } return; }
+    this.hud.poll(inp);
   }
 
   updateUI(dt) {
-    const sim = this.sim;
+    const sim = this.sim, st = this.step;
+    this.hud.set(st === 'grind' ? 'hammer' : st, this.done);
+    // what matters now, as a picture, a gauge and a number: the shape while it's being hammered,
+    // the temper only once stress or burning has hurt it
     const acc = this.scores.shape ?? sim.accuracy();
-    this.rShape.bar.set(acc, acc > 0.85 ? '' : acc > 0.6 ? 'warm' : 'bad');
-    setText(this.rShape.val, Math.round(acc * 100) + '%');
+    const shaping = st === 'hammer' || st === 'grind' || (st === 'heat' && sim.strikes > 0);
+    this.hud.meter('shape', shaping ? { icon: stepIcon('hammer'), v: acc, text: Math.round(acc * 100) + '%', cls: acc > 0.85 ? '' : acc > 0.6 ? 'warm' : 'bad' } : null);
     const tmp = sim.temperScore();
-    this.rTemper.bar.set(tmp, tmp > 0.85 ? '' : tmp > 0.6 ? 'warm' : 'bad');
-    const why = sim.stress > 0.5 && sim.burnt > 0.5 ? 'stressed + burnt' : sim.stress > 0.5 ? 'stressed' : sim.burnt > 0.5 ? 'burnt' : '';
-    setText(this.rTemper.val, Math.round(tmp * 100) + '%' + (why ? ' · ' + why : ''));
-    if (this.scores.balance !== undefined) { this.rBalance.row.hidden = false; this.rBalance.bar.set(this.scores.balance); setText(this.rBalance.val, Math.round(this.scores.balance * 100) + '%'); }
-    if (this.scores.quench !== undefined) { this.rQuench.row.hidden = false; this.rQuench.bar.set(this.scores.quench); setText(this.rQuench.val, Math.round(this.scores.quench * 100) + '%'); }
-    const active = this.step === 'grind' ? ['hammer'] : [this.step];
-    this.steps.set(active, this.done);
+    this.hud.meter('temper', shaping && tmp < 0.995 ? { icon: wart.glyph('flame'), v: tmp, text: Math.round(tmp * 100) + '%', cls: tmp > 0.85 ? '' : tmp > 0.6 ? 'warm' : 'bad', warn: tmp < 0.8 } : null);
+    this.hud.update();
   }
 
-  setStatus(html) { setHtml(this.status, html); }
+  /** Playing by touch? (the cues say so) */
+  touchy() { return document.documentElement.classList.contains('is-touch'); }
+
+  /** Where a cue floats over the work (screen point a little above a world point). */
+  cueOver(getPos, lift = 0.12) {
+    return () => {
+      const p = getPos();
+      if (!p) return null;
+      const s = this.scene.toScreen(p.clone().add(_v2.set(0, lift, 0)));
+      return s.visible === false ? null : { x: s.x, y: s.y };
+    };
+  }
 
   popOnce(key, text, pos, color, size = 1, gap = 1.6) {
     if (this.lastPop[key] && this.time - this.lastPop[key] < gap) return;
@@ -240,7 +234,7 @@ export class ForgeRun {
   touchAction() {
     if (this.busy && this.step !== 'infuse') return null;
     if (this.step === 'heat' || (this.step === 'quench' && !this.plunged && this.inFire)) return { kind: 'pump', label: 'Pump' };
-    if (this.step === 'hammer') return { kind: 'strike', label: 'Hold · strike' };
+    if (this.step === 'hammer') return { kind: 'strike', label: 'Strike' };
     if (this.step === 'infuse' && this.infPhase === 'ring') return { kind: 'strike', label: 'Strike!' };
     return null;
   }
@@ -322,11 +316,11 @@ export class ForgeRun {
     this.setThermoMarks(false);
     this.thermo.el.hidden = false;
     this.setActions([
-      { label: 'Stoke ', keyLabel: 'R', fn: () => sc.stoke(), alt: true },
-      { label: 'Turn it ', keyLabel: 'F', key: ['KeyF'], fn: () => this.turn(), alt: true },
-      { label: 'To the anvil ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toAnvil() },
+      { id: 'stoke', glyph: 'poker', label: 'Stoke', keyLabel: 'R', fn: () => sc.stoke(), alt: true },
+      { id: 'turn', glyph: 'turn', label: 'Turn', keyLabel: 'F', key: ['KeyF'], fn: () => this.turn(), alt: true },
+      { id: 'anvil', glyph: 'anvil', label: 'Anvil', keyLabel: 'E', key: ['KeyE'], fn: () => this.toAnvil() },
     ]);
-    this.game.ui.setHints('<span class="fg-nolig">Hold the mouse or <kbd>Space</kbd>: pump the bellows · drag it to pump by hand<br><kbd>R</kbd> stoke the coals · <kbd>F</kbd> turn it in the tongs<br><kbd>E</kbd> carry it to the anvil · <kbd>Esc</kbd> abandon</span>');
+    this.hud.next(null);
   }
 
   /** Turn the bar over in the tongs (in the coals or on the anvil): the jaws ease, the bar rolls. */
@@ -358,11 +352,14 @@ export class ForgeRun {
     const [w0, w1] = this.sim.workRange;
     if (T >= w0 && !this.wasWorkHot) { this.wasWorkHot = true; this.game.audio.play('glow'); this.popOnce('workheat', 'Working heat', this.bladeCenter(), '#ffd34a', 0.8, 4); }
     if (T < w0 - 30) this.wasWorkHot = false;
-    if (burning > 0) this.setStatus('<span class="fg-warn">It is burning! Sparks are its grain giving way.</span>');
-    else if (T > w1) this.setStatus('<span class="fg-warn">Hotter than it needs to be.</span>');
-    else if (T >= w0) this.setStatus('<span class="fg-good">Glowing at working heat.</span>');
-    else if (T > 450) this.setStatus('Starting to glow.');
-    else this.setStatus('Sitting in the coals.');
+    // one thing to do, said in pictures: pump until it glows, then the anvil plate lights up
+    const hot = T >= w0 && !this.moving;
+    this.hud.next(hot ? 'anvil' : null);
+    let cue = null, at = this.cueOver(() => this.bladeCenter());
+    if (burning > 0 || T > w1) cue = 'Too hot!';
+    else if (hot) { cue = 'To the anvil!'; at = 'act:anvil'; }
+    else if (sc.fire.air < 0.3 && !this.moving) cue = 'Hold to pump';
+    this.hud.cue(cue, at);
   }
 
   burnFx(burning, dt) {
@@ -411,11 +408,11 @@ export class ForgeRun {
     sc.paws.set('R', { mode: 'hammer', at: () => this.hammerAt(), theta: () => this.theta });
     sc.paws.jaw = 0;
     this.setActions([
-      { label: 'Turn it ', keyLabel: 'F', key: ['KeyF'], fn: () => this.turn(), alt: true },
-      { label: 'Reheat ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toFire(), alt: true },
-      { label: 'Done shaping ', keyLabel: 'Enter', key: ['Enter', 'NumpadEnter'], fn: () => this.finishShaping() },
+      { id: 'turn', glyph: 'turn', label: 'Turn', keyLabel: 'F', key: ['KeyF'], fn: () => this.turn(), alt: true },
+      { id: 'fire', glyph: 'flame', label: 'Reheat', keyLabel: 'E', key: ['KeyE'], fn: () => this.toFire(), alt: true },
+      { id: 'done', icon: KART_CHECK(), label: 'Done', keyLabel: 'Enter', key: ['Enter', 'NumpadEnter'], fn: () => this.finishShaping() },
     ]);
-    this.game.ui.setHints('<span class="fg-nolig">Point at a spot · hold the mouse to raise the hammer, let go to strike<br><kbd>A</kbd><kbd>D</kbd> move along · hold <kbd>Space</kbd> to strike · <kbd>F</kbd> turn it<br><kbd>E</kbd> reheat in the coals · <kbd>Esc</kbd> abandon</span>');
+    this.hud.next(null);
   }
 
   /** Where the hammer face comes down: the top of the aimed column (world). */
@@ -463,7 +460,7 @@ export class ForgeRun {
         if (this.st.energy < this.strikeEnergy()) {
           this.game.audio.play('oops');
           this.popOnce('tired', 'Too tired to swing', this.colWorld(col), '#ffb0a0', 0.8, 2);
-          this.game.ui.toast('You are out of energy. Eat something (bag) or rest.', { kind: 'warn' });
+          this.game.ui.toast('Out of energy: eat or rest', { kind: 'warn' });
         } else {
           this.charge = { col, src, t: 0, power: 0 };
           this.selCol = col;
@@ -487,12 +484,14 @@ export class ForgeRun {
     const show = view.hover >= 0 ? sim.T[view.hover] : sim.meanT();
     this.thermo.set(show, dt);
     const z = sim.zone(show);
-    if (view.hover >= 0) {
-      const d = sim.w[view.hover] - (sim.target[view.hover] ?? 0);
-      const shape = d > 0.3 ? 'too thick here' : d < -0.3 ? 'too thin here' : 'on the line';
-      const heat = z === 'cold' ? '<span class="fg-warn">too cold to move</span>' : z === 'burn' ? '<span class="fg-warn">burning</span>' : z === 'hot' ? 'very hot' : '<span class="fg-good">workable</span>';
-      this.setStatus(`Spot ${view.hover + 1}: ${shape}, ${heat}.`);
-    } else this.setStatus('On the anvil.');
+    // next: too cold → the reheat plate; well shaped → the done plate; else the first-blow cue
+    const acc = sim.accuracy(), cold = ready && (z === 'cold' || sim.maxTemp() < sim.workRange[0]);
+    this.hud.next(cold ? 'fire' : acc >= 0.85 && ready ? 'done' : null);
+    let cue = null, at = null;
+    if (cold) { cue = 'Too cold!'; at = 'act:fire'; }
+    else if (ready && !sim.strikes && !this.charge && !this.swing) { cue = this.touchy() ? 'Hold, then let go' : 'Hold, aim, let go'; at = this.cueOver(() => this.colWorld(this.selCol), 0.14); }
+    else if (ready && acc >= 0.85 && !this.charge && !this.swing) { cue = 'Looks good!'; at = 'act:done'; }
+    this.hud.cue(cue, at);
   }
 
   /** Let the charged blow go: the hammer comes down on the aimed spot. */
@@ -609,7 +608,7 @@ export class ForgeRun {
     const sc = this.scene, W = sc.W;
     this.busy = true;
     this.setActions([]);
-    this.game.ui.setHints(null);
+    this.hud.cue(null);
     this.view.setDotsVisible(false);
     this.thermo.el.hidden = true;
     sc.dock('grind', { dur: 0.8 });
@@ -684,20 +683,19 @@ export class ForgeRun {
     const assist = !!this.inf?.balanceAssist;
     this.balTol = balanceTolerance(assist, this.skill);
     const label = this.bal.mode === 'pommel' ? (this.sim.type === 'spear' ? 'Butt-cap weight' : 'Pommel weight') : 'Head weight';
-    this.balLabel = el('span', {}, label);
+    // the weight: a brass slider on a little plank under the blade (a picture of scales, the grams)
     this.balVal = el('b');
-    this.slider = el('input', { type: 'range', min: 0, max: 1000, value: 0, class: 'fg-slider interactive', 'aria-label': label, oninput: (e) => { this.balW = parseInt(e.target.value, 10) / 1000; } });
-    this.balBox = el('div', { class: 'fg-col', style: { gap: 'var(--px)' } }, [el('div', { class: 'fg-stat' }, [this.balLabel, this.balVal]), this.slider]);
-    this.stats.append(this.balBox);
+    this.slider = el('input', { type: 'range', min: 0, max: 1000, value: 0, class: 'fg-slider interactive', 'aria-label': label, title: label, oninput: (e) => { this.balW = parseInt(e.target.value, 10) / 1000; } });
+    this.balBox = el('div', { class: 'fg-balbox interactive', 'data-solid': '' }, [el('img', { class: 'pix', src: wart.glyph('scale'), alt: '' }), this.slider, this.balVal]);
+    sc.layer.append(this.balBox);
     // ruler overlay
     this.rZone = el('div', { class: 'zone' });
     this.rMark = el('div', { class: 'mark' });
-    this.rLabT = el('div', { class: 'lab', style: { color: '#a8f49a' } }, 'target');
-    this.ruler = el('div', { class: 'fg-ruler', hidden: true }, [el('div', { class: 'track' }), this.rZone, this.rMark, this.rLabT]);
+    this.ruler = el('div', { class: 'fg-ruler', hidden: true }, [el('div', { class: 'track' }), this.rZone, this.rMark]);
     sc.layer.append(this.ruler);
     this.nodes.push(this.ruler, this.balBox);
-    this.setActions([{ label: 'Set balance ', keyLabel: 'Enter', key: ['Enter', 'NumpadEnter'], fn: () => this.confirmBalance() }]);
-    this.game.ui.setHints(`<span class="fg-nolig">Drag the slider to level the blade<br><kbd>←</kbd><kbd>→</kbd> adjust · <kbd>Enter</kbd> set${assist ? '<br>Gravium makes it forgiving' : ''}</span>`);
+    this.setActions([{ id: 'set', icon: KART_CHECK(), label: 'Set', keyLabel: 'Enter', key: ['Enter', 'NumpadEnter'], fn: () => this.confirmBalance() }]);
+    this.hud.cue('Drag to level', this.balBox);
   }
 
   buildWeaponModel() {
@@ -742,7 +740,8 @@ export class ForgeRun {
     const inZone = Math.abs(off) <= this.balTol;
     if (inZone && !this.wasLevel && !this.busy) { this.game.audio.play('ding'); this.wasLevel = true; }
     if (!inZone) this.wasLevel = false;
-    this.setStatus(`Balance point ${Math.round(b.frac * 100)}% along the blade · aim for ${Math.round(this.bal.target * 100)}%` + (inZone ? ' <span class="fg-good">· level!</span>' : off > 0 ? ' · tip-heavy' : ' · hilt-heavy'));
+    this.hud.next(inZone && !this.busy ? 'set' : null);
+    if (!this.busy) this.hud.cue(inZone ? 'Level!' : 'Drag to level', inZone ? 'act:set' : this.balBox);
     // ruler under the blade
     if (!this.busy) {
       const g = this.weapon.group;
@@ -755,7 +754,6 @@ export class ForgeRun {
       const z0 = px(this.bal.target - this.balTol), z1 = px(this.bal.target + this.balTol);
       Object.assign(this.rZone.style, { left: Math.min(z0, z1) + 'px', width: Math.abs(z1 - z0) + 'px' });
       this.rMark.style.left = clamp(px(b.frac), -20, x1 - x0 + 20) + 'px';
-      this.rLabT.style.left = px(this.bal.target) + 'px';
       this.rMark.style.borderTopColor = inZone ? '#8af07a' : '#ffd34a';
     }
   }
@@ -770,6 +768,7 @@ export class ForgeRun {
     this.scene.pop(words[0], this.carrier.position.clone().add(_v2.set(0, 0.3, 0)), words[1], 0.9);
     this.ruler.hidden = true;
     this.balBox.remove();
+    this.hud.cue(null);
     this.weapon.group.position.y = -0.5 * this.bladeLen;
     this.carrier.position.add(_v2.set((0.5 - this.bal.target) * this.bladeLen, 0, 0));
     this.carrier.rotation.z = 0;
@@ -792,7 +791,6 @@ export class ForgeRun {
   enter_quench() {
     const sc = this.scene;
     this.thermo.el.hidden = false;
-    this.thermo.setTitle(this.m.name);
     this.setThermoMarks(true);
     sc.dock('hearth');
     sc.paws.jaw = 0;
@@ -804,13 +802,12 @@ export class ForgeRun {
     this.busy = true;
     this.moveObj(this.carrier, this.quenchFirePose(), 0.85, 0.15, () => { this.busy = false; this.game.audio.play('ignite'); sc.puff(); });
     this.setQuenchActions();
-    this.game.ui.setHints('<span class="fg-nolig">Hold the mouse or <kbd>Space</kbd>: pump · <kbd>E</kbd> in/out of the fire<br><kbd>Q</kbd> plunge it in the barrel · <kbd>Esc</kbd> abandon</span>');
   }
 
   setQuenchActions() {
     this.setActions([
-      { label: this.inFire ? 'Pull it out ' : 'Back in the fire ', keyLabel: 'E', key: ['KeyE'], fn: () => this.toggleQuenchFire(), alt: true },
-      { label: 'Plunge! ', keyLabel: 'Q', key: ['KeyQ'], fn: () => this.plunge() },
+      { id: 'fire', glyph: this.inFire ? 'turn' : 'flame', label: this.inFire ? 'Out' : 'Fire', keyLabel: 'E', key: ['KeyE'], fn: () => this.toggleQuenchFire(), alt: true },
+      { id: 'plunge', glyph: 'drop', label: 'Plunge', keyLabel: 'Q', key: ['KeyQ'], fn: () => this.plunge() },
     ]);
   }
 
@@ -850,9 +847,12 @@ export class ForgeRun {
       this.popOnce('qburn', 'Burning!', this.carrier.position.clone().add(_v2.set(0, 0.14, 0)), '#ffffff', 0.9, 3);
     }
     if (!this.plunged) {
-      if (T >= q0 && T <= q1) this.setStatus('<span class="fg-good">Right in the hardening window!</span>');
-      else if (T > q1) this.setStatus('<span class="fg-warn">Too hot to quench safely.</span>');
-      else this.setStatus(this.inFire ? 'Heating up for the quench.' : 'Cooling in the air.');
+      const inWin = T >= q0 && T <= q1, at = this.cueOver(() => this.carrier.position, 0.16);
+      this.hud.next(inWin ? 'plunge' : T < q0 && !this.inFire ? 'fire' : null);
+      if (this.busy) this.hud.cue(null);
+      else if (inWin) this.hud.cue('Plunge now!', 'act:plunge');
+      else if (T > q1) this.hud.cue(this.inFire ? 'Hot enough' : 'Let it cool', this.inFire ? 'act:fire' : at);
+      else this.hud.cue(this.inFire ? 'Hold to pump' : 'Too cold!', this.inFire ? at : 'act:fire');
     }
   }
 
@@ -867,7 +867,7 @@ export class ForgeRun {
     const Tp = this.weaponT;
     const res = quenchResult(this.m, Tp, this.skill);
     this.setActions([]);
-    this.game.ui.setHints(null);
+    this.hud.cue(null);
     const top = W.barrelTop.clone();
     const L = this.bladeLen;
     // tip down over the water (the carrier's +x, along the blade, turns to point at the floor)
@@ -953,8 +953,7 @@ export class ForgeRun {
     sc.paws.set('R', { mode: 'hammer', at: () => this.crystal.mesh.position.clone().add(_v2.set(0, 0.03, 0)), theta: () => this.theta });
     this.theta = REST + 0.25;
     this.setActions([]);
-    this.setStatus(`${ITEMS[this.sel.infusion].name} hums above the blade.`);
-    this.game.ui.setHints('<span class="fg-nolig">Strike (click or <kbd>Space</kbd>) when the rings meet</span>');
+    this.hud.cue('Strike in the ring', this.cueOver(() => this.crystalBase, 0.1));
   }
 
   startRing() {
@@ -996,6 +995,7 @@ export class ForgeRun {
         this.infuseBonus = q === 'perfect' ? 4 : q === 'good' ? 2 : 0.5;
         this.infQ = q;
         this.ringTarget.remove(); this.ringMove.remove();
+        this.hud.cue(null);
         this.infPhase = 'strike';
         // the hammer comes down on the crystal: the infusion goes in with the blow
         this.swing = { t: 0, from: Math.max(this.theta, 1.1), col: 0, power: 0.7, hit: false, onHit: () => this.releaseInfusion() };
@@ -1044,9 +1044,11 @@ export class ForgeRun {
     this.busy = true;
     sc.pumpAllowed = false;
     this.thermo.el.hidden = true;
-    this.panel.hidden = true;
     this.setActions([]);
-    this.game.ui.setHints(null);
+    this.hud.cue(null);
+    this.hud.set('result', this.stepList.slice(0, -1));
+    this.hud.meter('shape', null); this.hud.meter('temper', null);
+    later2(this, 1.4, () => this.hud.hideTrail());
     const shape = this.scores.shape ?? sim.accuracy();
     const temper = sim.temperScore();
     const balance = this.scores.balance ?? 0;
@@ -1107,18 +1109,16 @@ export class ForgeRun {
 
   buildCard(w, grade, s) {
     const sc = this.scene;
-    const rows = [{ label: 'Shape', v: s.shape }, { label: 'Temper', v: s.temper }, { label: 'Balance', v: s.balance }];
-    if (s.quench !== null) rows.push({ label: 'Quench', v: s.quench });
+    const rows = [{ icon: stepIcon('hammer'), v: s.shape, tip: 'Shape' }, { icon: stepIcon('heat'), v: s.temper, tip: 'Temper' }, { icon: stepIcon('balance'), v: s.balance, tip: 'Balance' }];
+    if (s.quench !== null) rows.push({ icon: stepIcon('quench'), v: s.quench, tip: 'Quench' });
     const card = certificate({
-      kicker: 'Forged · craft score ' + Math.round(w.score),
       title: w.name,
       grade,
-      value: `<img class="pix" src="${COIN()}" alt="">${formatGoldFull(w.value)} g`,
-      note: `Material quality <b style="color:${qColor(w.matQ)}">${w.matQ}%</b>` + (w.gem ? ` · ${ITEMS[w.gem].name} pommel` : '') + (s.bonus ? ` · infusion +${s.bonus}` : ''),
+      value: `<img class="pix" src="${COIN()}" alt="">${formatGoldFull(w.value)}`,
       rows,
       buttons: [
-        { label: 'Forge another', key: 'Enter', fn: () => { this.game.audio.play('ui_click'); sc.endActivity('plan'); } },
-        { label: 'Leave', alt: true, fn: () => sc.leave() },
+        { label: 'Again', glyph: 'hammer', key: 'Enter', fn: () => { this.game.audio.play('ui_click'); sc.endActivity('plan'); } },
+        { label: 'Leave', glyph: 'door', alt: true, fn: () => sc.leave() },
       ],
     });
     sc.layer.append(card);

@@ -440,6 +440,70 @@ const CSS = /* css */`
     var(--pn-strapBL) left bottom / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat, var(--pn-strapBR) right bottom / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat;
   filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .5)); }
 .ck-tab:active { transform: translateY(var(--px)); }
+/* ================================================================ wave 14: pictures, not words
+   The pantry sign shows a pot, the tabs are pictures, the shelves have no name plates, the pot's slip
+   says what it'll make in a picture and a name (or "?"), the bell glows under a bouncing pointer once
+   something is in; the order ticket's steps are pictures; the hint is a few boxless floating words;
+   the result leads with the dish, its grade and what each step earned. */
+.ck-sign-ic { display: block; width: calc(var(--px) * 18); height: calc(var(--px) * 18); margin: calc(var(--px) * -1) 0; filter: drop-shadow(0 var(--px) 0 rgba(0, 0, 0, .4)); }
+.ck-tab { padding: calc(var(--px) * 1) calc(var(--px) * 3) calc(var(--px) * 2); }
+.ck-tab-ic { width: calc(var(--px) * 13); height: calc(var(--px) * 13); }
+.ck-shelf { padding-top: calc(var(--px) * 4); }
+.ck-info { display: flex; align-items: center; gap: calc(var(--px) * 1.5); flex-wrap: wrap; }
+.ck-info-ic { width: var(--icon-s); height: var(--icon-s); margin: calc(var(--px) * -3) 0; }
+.ck-info-ic.dim { filter: brightness(0) opacity(.45); width: calc(var(--icon-s) * .75); height: calc(var(--icon-s) * .75); }
+.ck-q-ic { display: inline-grid; place-items: center; width: calc(var(--px) * 9); height: calc(var(--px) * 9); color: #fff4e0; background: #a8402a; box-shadow: 0 0 0 var(--px) #3a1a0a; animation: ckWob 1.6s ease-in-out infinite; }
+@keyframes ckWob { 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+.ck-sniff { display: inline-flex; align-items: center; gap: var(--px); margin: 0 0 0 auto; color: #a8402a; }
+.ck-pick { color: #8a6a4a; }
+.ck-pantry[data-n="0"] .ck-pring { animation: ckRingPulse 1.1s ease-in-out infinite; }
+.ck-pantry[data-n="0"] .ck-pring:nth-of-type(2n) { animation-delay: .18s; }
+@keyframes ckRingPulse { 50% { transform: scale(1.25, 1.4); filter: brightness(1.6) drop-shadow(0 0 calc(var(--px) * 2) #ffe08a); } }
+.ck-pantry[data-n="0"] .ck-good:nth-child(1) .ck-c-item { animation: ckGoodHop 1.4s ease-in-out infinite; }
+@keyframes ckGoodHop { 0%, 60%, 100% { transform: translateY(0); } 70% { transform: translateY(calc(var(--px) * -5)) scale(.96, 1.05); } 80% { transform: translateY(0) scale(1.05, .95); } }
+.ck-ptr { position: absolute; left: 50%; bottom: calc(100% + var(--px) * 2); width: calc(var(--px) * 15); height: calc(var(--px) * 15); translate: -50% 0; display: none; pointer-events: none; filter: drop-shadow(0 var(--px) 0 rgba(0, 0, 0, .6)); }
+.ck-bell.ready .ck-ptr { display: block; animation: ckPtrBounce .55s ease-in-out infinite; }
+.ck-bell.ready .ck-bell-img { filter: drop-shadow(0 0 calc(var(--px) * 3) #ffd34a) drop-shadow(0 var(--px) 0 rgba(0, 0, 0, .45)); animation: ckBellNudge 1.4s ease-in-out infinite; }
+@keyframes ckPtrBounce { 0%, 100% { transform: translateY(calc(var(--px) * -3)) scale(.95, 1.05); } 50% { transform: translateY(var(--px)) scale(1.08, .9); } }
+@keyframes ckBellNudge { 0%, 70%, 100% { transform: rotate(0); } 78% { transform: rotate(-7deg); } 86% { transform: rotate(6deg); } 93% { transform: rotate(-3deg); } }
+.ck-rc-step { width: var(--icon-s); height: var(--icon-s); filter: drop-shadow(0 var(--px) 0 rgba(58, 36, 20, .4)); }
+.ck-rc-steps { gap: var(--px); }
+.ck-rc-arrow { width: calc(var(--px) * 6); height: calc(var(--px) * 8); flex: none; }
+.ck-rcard .ck-rc-row { margin-top: calc(var(--px) * 2); gap: calc(var(--px) * 1.5); }
+.ck-rc-steps .ck-rc-step + .ck-rc-step { position: relative; }
+.ck-rc-use { display: inline-flex; align-items: center; gap: var(--px); margin: calc(var(--px) * 1) 0 0; }
+.ck-rc-side { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--px) * 1); padding-top: calc(var(--px) * 8); }
+/* the best grade: a little rosette pinned over the card's top corner */
+.ck-rc-side .ck-rc-best { position: absolute; right: calc(var(--px) * 2); top: calc(var(--px) * -8); z-index: 1; flex-direction: row; align-items: flex-start; gap: var(--px); }
+.ck-rc-side .ck-rc-best span { margin-top: calc(var(--px) * 9); font-size: max(var(--g), round(.7em + 2px, var(--g))); }
+.ck-rc-side .ck-ros-s { filter: drop-shadow(0 var(--px) 0 rgba(58, 36, 20, .45)); animation: ckStampIn .3s cubic-bezier(.3,1.6,.5,1) both; }
+.ck-rc-pic { width: calc(var(--icon) + var(--px) * 4); height: calc(var(--icon) + var(--px) * 4); }
+@media (max-height: 520px) { .ck-buffchip { display: none; } .ck-rc-name b { font-size: max(var(--gj), round(calc(var(--px) * 9), var(--gj))); } }
+.ck-rc-useic { width: calc(var(--px) * 9); height: calc(var(--px) * 9); margin: calc(var(--px) * -2) 0; }
+/* the order ticket: each step a picture; the one in hand glows and bobs, done ones get their stamp */
+.ck-pip { padding: calc(var(--px) * .5) calc(var(--px) * 1); }
+.ck-pip-ic { display: block; width: var(--icon-s); height: var(--icon-s); filter: drop-shadow(0 var(--px) 0 rgba(0, 0, 0, .5)); }
+.ck-pip:not(.cur):not(.done) .ck-pip-ic { filter: grayscale(.7) brightness(.7) drop-shadow(0 var(--px) 0 rgba(0, 0, 0, .5)); }
+.ck-pip.cur { transform: translateY(calc(var(--px) * -1)) scale(1.25); z-index: 1; }
+.ck-pip.cur .ck-pip-ic { filter: drop-shadow(0 0 var(--px) #fff4c0) drop-shadow(0 var(--px) 0 rgba(0, 0, 0, .5)); }
+@keyframes ckCur { 50% { transform: translateY(calc(var(--px) * -3)) scale(1.25); } }
+.ck-pip.done { padding-right: calc(var(--px) * 1); }
+/* the hint: boxless floating words */
+.ck-hint.ck-hint { left: 50%; right: auto; transform: translateX(-50%); bottom: calc(var(--px) * 30 + var(--sab)); max-width: none; animation: none; pointer-events: none; }
+.ck-cuet { --fs: calc(var(--px) * 9); font-family: var(--font-display); font-size: max(var(--gj), round(calc(var(--px) * 13), var(--gj))); line-height: 1; color: #fff4d0; white-space: nowrap; text-align: center; }
+.ck-title-ic { display: block; width: var(--icon); height: var(--icon); margin: 0 auto calc(var(--px) * 1); filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .5)); animation: ckTitle 1.1s cubic-bezier(.2,1.6,.4,1) forwards; }
+/* the result */
+.ck-sres { position: relative; }
+.ck-sres-ic { width: var(--icon-s); height: var(--icon-s); animation: ckStepIn .3s cubic-bezier(.3,1.6,.5,1) var(--d, .5s) both; }
+@keyframes ckStepIn { from { transform: translateY(calc(var(--px) * -6)) scale(.4); opacity: 0; } }
+.ck-sres .ck-stamp { position: absolute; right: calc(var(--px) * -4); top: calc(var(--px) * -4); height: calc(var(--px) * 8); }
+.ck-bars { gap: calc(var(--px) * 4); }
+.ck-grade small { font-family: var(--font-display); font-size: max(var(--gj), round(calc(var(--px) * 13), var(--gj))); color: var(--sepia); }
+.ck-btn-ic { width: calc(var(--px) * 9); height: calc(var(--px) * 9); vertical-align: middle; margin: calc(var(--px) * -2) calc(var(--px) * 1.5) calc(var(--px) * -1) 0; }
+.ck-plank-btn.squash { animation: ckSquash .26s cubic-bezier(.3,1.6,.5,1); }
+@keyframes ckSquash { 0% { transform: scale(1.14, .8); } 50% { transform: scale(.95, 1.08) translateY(calc(var(--px) * -2)); } 100% { transform: none; } }
+.ck-gauge .lbl.top { display: none; }
+
 `;
 
 let injected = false;
