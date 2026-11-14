@@ -1,5 +1,5 @@
 // The hi-res near copy of a creature model (wave 12, "super high resolution"): the voxels as
-// modelled, refined k× (to ~1/96 m on desktop, ~1/72 m on phones) and given real surface detail at
+// modelled, refined k× (to ~1/136 m on desktop, ~1/100 m on phones) and given real surface detail at
 // that size by the skin style the model was built under (./vox.js HI.style, set by Enemies.geo):
 //
 //   scale    overlapping scale rows (grooves cut between them, a lit upper rim on each), belly

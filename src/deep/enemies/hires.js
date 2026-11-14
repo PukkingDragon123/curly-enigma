@@ -3,7 +3,8 @@
 // creature near the eye swaps each of its parts' geometry for a near copy built in a worker
 // (./hiWorker.js → ./hiBuild.js: refined to ~1/96 m, with scales, cracked stone, fur, chitin…).
 // Far creatures keep the normal model (coarse far, fine near), so the cost is only paid on the few
-// in arm's reach; phones get a coarser near copy, a shorter reach and fewer of them.
+// in arm's reach; phones get a coarser near copy, a shorter reach and fewer of them. Models without a
+// skin style (the kaiju: enemies/kaiju.js) never get one.
 //
 // The swap is purely visual: animation code that sets mesh.geometry to another shared model (eyes,
 // frames) is followed (the near copy of that model is put back on the next frame), and the near
@@ -64,8 +65,10 @@ export class HiRes {
     const eng = this.mgr.owner?.game?.engine, fx = eng?.fx || 'high';
     const touch = typeof document !== 'undefined' && document.documentElement.classList.contains('is-touch');
     if (fx === 'off') return null;
-    if (fx === 'low' || touch) return { r: 3.2, max: 2, vox: 1 / 72 };
-    return { r: 6, max: 4, vox: 1 / 96 };
+    // (wave 13: twice the voxels on the skin: 1/96 → 1/136 m on desktop, 1/72 → 1/100 on phones,
+    // which see them only in arm's reach and one or two at a time)
+    if (fx === 'low' || touch) return { r: 2.6, max: 2, vox: 1 / 100, cells: 7e6 };
+    return { r: 6, max: 4, vox: 1 / 136, cells: 14e6 };
   }
   request(geo, P) {
     const src = geo.userData.hiSrc;
@@ -76,7 +79,7 @@ export class HiRes {
     for (const v of src.list) { if (v.x < x0) x0 = v.x; if (v.x > x1) x1 = v.x; if (v.y < y0) y0 = v.y; if (v.y > y1) y1 = v.y; if (v.z < z0) z0 = v.z; if (v.z > z1) z1 = v.z; }
     const cells = (x1 - x0 + 3) * (y1 - y0 + 3) * (z1 - z0 + 3);
     let k = Math.max(2, Math.round(src.vs / P.vox));
-    while (k > 2 && cells * k * k * k > 7e6) k--;
+    while (k > 2 && cells * k * k * k > (P.cells || 7e6)) k--;
     const list = new Int32Array(src.list.length * 4);
     src.list.forEach((v, i) => { list[i * 4] = v.x; list[i * 4 + 1] = v.y; list[i * 4 + 2] = v.z; list[i * 4 + 3] = v.c; });
     const id = ++this.id;

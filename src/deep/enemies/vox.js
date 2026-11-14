@@ -13,7 +13,9 @@ export const VS = 1 / 24; // meters per creature voxel as modelled (terrain voxe
  * its silhouette smoothed from the coarse shape, so a big monster has far more voxels than a small
  * one and none of them look blockier than a kobold.
  */
-export const FINE = 1 / 40;
+export const FINE = 1 / 60; // (wave 13: was 1/40; creatures carry about twice the voxels on their skin)
+/** How far a model may be refined (a refined part's surface grows k², and every voxel face is triangles on screen). */
+export const REFINE_MAX = 3;
 /**
  * The skin style models are being built under (Enemies.geo sets it by model key): when set, every
  * geometry VB.geo makes carries its source voxels (userData.hiSrc) for the hi-res near copy.
@@ -158,8 +160,7 @@ export class VB {
       let lo = 0, hi = 0;
       for (const kk of this.v.keys()) { const a = Math.min(kk & 255, (kk >> 8) & 255, (kk >> 16) & 255) - 128, b = Math.max(kk & 255, (kk >> 8) & 255, (kk >> 16) & 255) - 128; if (a < lo) lo = a; if (b > hi) hi = b; }
       while (k > 1 && Math.max(-lo, hi + 1) * k > 124) k--;
-      // (at most 2×: a refined part's surface grows k², and every voxel face is triangles on screen)
-      k = Math.min(k, 2);
+      k = Math.min(k, REFINE_MAX);
     }
     if (k > 1) {
       // (the coarse voxels stay on it too: code that picks voxels by model coordinates uses them)
