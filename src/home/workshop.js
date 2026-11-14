@@ -69,10 +69,10 @@ export class WorkshopLife {
     const SH = this.shaftBox;
     this.addIt({ box: SH, label: liftLabel, action: () => this.useLift() });
     this.addIt({ box: [S.cart.x - 0.28, Y, S.cart.z - 0.24, S.cart.x + 0.28, Y + 0.3, S.cart.z + 0.24], label: () => (this.cartReady() ? 'Take coal from the heap' : 'The coal heap'), action: () => this.useCart() });
-    // the old door to Deep Town
+    // the old door to Deep Town: caved in until the way is found from below; then it stands open
+    // and you just walk up the old passage (src/home/passage.js)
     const P = c.passage;
-    if (this.doorOpen) this.addIt({ box: [P.x - 0.45, Y, P.z - 0.1, P.x + 0.45, Y + 1.2, P.z + 0.35], label: 'Through to Deep Town', action: () => this.leave() });
-    else this.addIt({ box: [P.x - 0.55, Y, P.z - 0.1, P.x + 0.55, Y + 1.2, P.z + 0.55], label: 'The front door: caved in', action: () => this.blockedDoor() });
+    if (!this.doorOpen) this.addIt({ box: [P.x - 0.55, Y, P.z - 0.1, P.x + 0.55, Y + 1.2, P.z + 0.55], label: 'The front door: caved in', action: () => this.blockedDoor() });
     // the spring, the coins in what came down with you
     const pump = c.dyn.pump;
     if (pump) this.addIt({ x: pump.x, y: pump.y - 0.12, z: pump.z + 0.05, r: 0.24, label: () => (this.poolToday() ? 'The spring' : 'Drink from the spring'), action: () => this.drinkPool() });

@@ -1,8 +1,14 @@
 // A few workers that generate and mesh chunks off the main thread (src/deep/genWorker.js). If the
 // page can't start workers (or one fails), `ok` goes false and the world falls back to doing the
-// same work on the main thread within the frame budget.
+// same work on the main thread within the frame budget. A worker that never says it's ready, or
+// a pool that stops answering with jobs out, counts as failed too (a sandboxed page can swallow a
+// blocked worker without an error).
 import { RES12 } from '../gfx/voxRes.js';
 import GenWorker from './genWorker.js?worker&inline';
+
+/** No 'ready' from the workers in this long, or no answer at all with jobs out: failed (ms). */
+const READY_WAIT = 12000;
+const ANSWER_WAIT = 20000;
 
 export class ChunkPool {
   /** init: { seed, opts: { W, D }, tunnels } — the plan parameters (the worker rebuilds the plan). */
@@ -28,7 +34,24 @@ export class ChunkPool {
       this.ok = this.workers.length > 0;
     } catch (err) {
       console.warn('chunk workers unavailable, generating on the main thread', err);
+      for (const w of this.workers) { try { w.terminate(); } catch (e) { /* gone */ } }
+      this.workers = [];
       this.ok = false;
+    }
+    if (this.ok) {
+      this.readyN = 0;
+      this.lastMsg = performance.now();
+      let tick = performance.now();
+      this.watch = setInterval(() => {
+        if (!this.ok) { clearInterval(this.watch); return; }
+        // (this page was busy for a while: their answers may be queued behind it, not missing)
+        const now = performance.now();
+        if (now - tick > 2500) this.lastMsg = now;
+        tick = now;
+        const quiet = now - this.lastMsg;
+        if (this.readyN === 0 && quiet > READY_WAIT) this.fail(new Error('the chunk workers never started'));
+        else if (this.inflight > 0 && quiet > ANSWER_WAIT) this.fail(new Error('the chunk workers stopped answering'));
+      }, 1000);
     }
   }
 
@@ -41,7 +64,8 @@ export class ChunkPool {
     if (this.planGot !== undefined) return Promise.resolve(this.planGot);
     return new Promise((res) => {
       const done = (p) => { clearTimeout(t); this.planWait = null; res(p); };
-      const t = setTimeout(() => done(null), ms);
+      // (not one worker ready by then: they never will be)
+      const t = setTimeout(() => { if (!this.readyN) this.fail(new Error('the chunk workers never started')); done(null); }, ms);
       this.planWait = done;
     });
   }
@@ -52,6 +76,7 @@ export class ChunkPool {
   /** Post a job to the least busy worker; cb(result) later. Returns false when everyone is full. */
   send(msg, transfer, cb) {
     if (!this.ok) return false;
+    if (this.inflight === 0) this.lastMsg = performance.now(); // (the quiet clock starts with the first job out)
     let best = -1;
     for (let i = 0; i < this.workers.length; i++) if (this.busy[i] < this.max && (best < 0 || this.busy[i] < this.busy[best])) best = i;
     if (best < 0) return false;
@@ -63,7 +88,9 @@ export class ChunkPool {
   }
 
   onMsg(i, m) {
+    this.lastMsg = performance.now();
     if (m.t === 'ready') {
+      this.readyN++;
       if (i === 0) { this.planGot = m.plan || null; this.planWait?.(this.planGot); }
       return;
     }
@@ -74,9 +101,12 @@ export class ChunkPool {
   }
 
   fail(e) {
+    e?.preventDefault?.();
     if (!this.ok) return;
     console.warn('chunk worker failed, generating on the main thread', e?.message || e);
     this.ok = false;
+    clearInterval(this.watch);
+    for (const w of this.workers) { try { w.terminate(); } catch (err) { /* gone */ } }
     // jobs that will never come back: tell their owners so they can redo the work
     for (const f of this.cb.values()) try { f(null); } catch (err) { /* noop */ }
     this.cb.clear();
@@ -84,6 +114,7 @@ export class ChunkPool {
   }
 
   dispose() {
+    clearInterval(this.watch);
     for (const w of this.workers) w.terminate();
     this.workers = [];
     this.ok = false;

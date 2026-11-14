@@ -1,9 +1,10 @@
 // The mole's scripted moves at home (mixed into HomeScene): the old cage lift in the hall (up to
 // the portal, into the cage, the gate rattles shut, the bell, the lever, down into the dark; rising
-// back up into the hall), and the front door to Deep Town (through it once the way is found, caved
-// in until then). There is no digging out of the home: the lift is the way down. The first ride
-// down (the mining lesson) is a cutscene of its own (lessonDrop: the lurch, the guttering lantern,
-// the long drop into the dark; a hold skips it).
+// back up into the hall), and the front door to Deep Town (caved in until the way is found; then it
+// stands open and you walk up the old passage: src/home/passage.js, HomeScene.checkPassage). There
+// is no digging out of the home: the lift is the way down. The first ride down (the mining lesson)
+// is a cutscene of its own (lessonDrop: the lurch, the guttering lantern, the long drop into the
+// dark; a hold skips it).
 import * as THREE from 'three';
 import { openLiftPanel, rideTo } from '../fps/lifts.js';
 import { T, HALL, SHAFT } from './units.js';
@@ -13,18 +14,7 @@ const _v = new THREE.Vector3();
 const ease = (k) => k * k * (3 - 2 * k);
 
 export class HomeMoves {
-  // ------------------------------------------------------------ the old passage
-  async leave() {
-    if (this.scripted) return;
-    this.beginScript();
-    const P = this.cave.passage;
-    this.game.audio.play('door');
-    await this.walkCam(P.x, P.z + 0.55, 1.8, 0);
-    const leaf = this.cave.doorLeaf;
-    this.tween(0.5, (k) => { if (leaf) leaf.rotation.y = -k * 1.3; });
-    this.game.goto('town', { from: 'home' }, { transition: 'iris', dur: 0.6 });
-  }
-
+  // ------------------------------------------------------------ the old door
   blockedDoor() {
     const P = this.cave.passage;
     this.game.audio.play('debris', { vol: 0.5 });

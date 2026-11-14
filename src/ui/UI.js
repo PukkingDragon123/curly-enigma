@@ -375,8 +375,12 @@ export class UI {
     floatIn(kindEl, label, { delay: 0.25, stagger: 0.03, max: 0.4 });
     floatIn(nameEl, name, { delay: 0.4, stagger: 0.045, max: 0.7 });
     setTimeout(() => { if (card.isConnected) bits(pic, { from: 'rect', n: 16, colors: GOLD_BITS, rise: 30, spread: 36, life: 0.9 }); }, 360);
-    // a voxel word in the world by it (only where there is a 3D view)
-    setTimeout(() => {
+    // a voxel word in the world by it (only where there is a 3D view), for real finds only (a learned
+    // mechanic's card says so already) and at most one at a time: a burst of finds gets one NEW!
+    const now = performance.now();
+    const wantNew = cat !== 'mechanic' && now - (this._newAt || -1e9) > 4000;
+    if (wantNew) this._newAt = now;
+    if (wantNew) setTimeout(() => {
       if (!card.isConnected || this.panelStack.length) return;
       const r = pic.getBoundingClientRect();
       if (r.width) floatText3D(this.game, 'NEW!', r.left + r.width / 2 - r.width * 1.4, r.top + r.height * 0.4, '#ffd76a', 0.55);

@@ -349,3 +349,38 @@ Fluids internals (`src/deep/fluids/`):
   (one instanced draw); `fluids.fx` routes drops, drips, foam, bubbles, mist, steam, crowns and lava
   blobs there. Falls spray and ring their lake; mist drifts over vault lakes. Atmosphere's motes use
   it too, and Atmosphere plays a vault's drips with their echo (it gets `audio` / `fluids` from Fluids).
+
+## Mining feel (wave 14)
+
+- **A blow, by what it lands on** (`DigScene` `FEEL`, keyed by `feelKey(m)`: dirt, clay, sand, wood,
+  stone, hard, crystal, ore): camera kick (a spring: `kick` / `kickV`, a touch of overshoot), hit-stop
+  on a crack and on a break, shake, a zoom punch on a break (`fovK` / `fovV`, off with screen shake
+  off), swing cadence (× the pick's rate: soft ground swings quicker than hard rock) and the paw's
+  wind-up (`vm.swing('pick', windup, { weight })`). Rock cracks in three stages (hairline,
+  spreading, about to go: `Cracks.js` widens them and gives each a lit lip, grit runs, it groans);
+  when it gives, `breakPop()`: a low pop under the crunch, a pixel-stepped flash, a ring of dust
+  along the face, the zoom punch, a spray of bits. Extra recorded layers through `scene.sfx(ids, o)`.
+- **Chunky debris** (`src/deep/Debris.js`, `scene.bits`): little blocks on the 1/64 m grid with the
+  stuff's grain and pixel bevels, per material (dirt clods, clay lumps, sand, stone chips, crystal
+  slivers, ore nuggets that glint); they tumble, bounce, skid, roll onto a face, lie a moment and
+  sink away; one instanced draw on the outline layer. `bits.burst(x, y, z, n, { kind, out, colors,
+  glow, speed, size, spread })`. Slabs stay `Bodies`, dust and sparks `Particles`.
+- **Holding dig** chains swings with no dead frame (the time past one swing's end carries into the
+  next); the first blow from rest lands a little sooner. `vm.swing` grows a held swing out of the
+  last one's recovery (anticipation that hangs a beat at the top, a snap, a follow-through).
+- **Target highlight** (terrain uniforms `aim`, `aimP`, `aimR`; `scene.aimAt(hit)`): with the pick out,
+  the plate the next blow cracks (its cell id from `plateOf`) or the round bite of soil it takes
+  lifts a little in the lamp and its edge is picked out in pixel dots. Rock and ore are not named
+  under the crosshair any more.
+- **Tunnels**: `scene.smooth(broken)` takes spikes and voxel-thin fins left round a bite. The mole
+  (`player.assist`, on in the mine only) ducks into openings too low to stand in, hops ledges up to
+  `HOP` (0.62 m) it walks into, slips round corners a voxel or three wide, and is pushed out if rock
+  ends up inside it (not while the chunk is still on its way). Falls are swept (never through a
+  thin floor) and land on the right voxel; a crouched eye never rides above the body.
+- **Reading ore** (no words): ore glints catch the lamp, in bigger cells far off, and carry through
+  the fog (shader); open seams in the beam throw twinkles up to ~11 m (`oreSense`); a hidden pocket
+  close under the rock gives a faint, panned tinkle and a pale sparkle on the face over it (quicker
+  the closer you are). Breaking into one: chimes, a shine runs over the seam from the opening
+  (`U.reveal`), glints and slivers burst out, its colour lights the rock round it for a moment.
+- Finds still lying about when the mole leaves go home with it (`bankFinds()`); a find is never
+  dropped when `Bodies` is over its cap.

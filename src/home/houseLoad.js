@@ -19,13 +19,16 @@ import { openNooks, nookKey } from './nooks.js';
 /**
  * Bump when the house's build changes shape (keys only: nothing is stored across page loads).
  * 11: the camp and your room became one small cave with alcoves you dig out (nooks.js).
+ * 12: the rock opens behind Old Star's door once the way to town is found (the old passage).
  */
-const VERSION = 11;
+const VERSION = 12;
 /** Rough relative cost of each job (for the progress bar and to start the big ones first). */
 const COST = { rock: 1.6, west: 1.6, east: 1.4, ways: 0.8 };
 /** What each job depends on (besides the code): the keys of `want` that change it. */
-const DEPENDS = { rock: ['nooks'], east: ['notes'], ways: ['doorOpen', 'notes', 'nooks'] };
+const DEPENDS = { rock: ['nooks', 'doorOpen'], east: ['notes'], ways: ['doorOpen', 'notes', 'nooks'] };
 const JOB_TIMEOUT = 60000;
+/** A worker's job still out after this long while a scene waits: this thread builds it too (ms). */
+const STEAL_MS = 7000;
 const KEEP = 24; // packed jobs kept
 
 const cache = new Map(); // job key → packed result
@@ -60,7 +63,8 @@ export function dropHouseCache() { cache.clear(); }
 export async function loadHouse(want, onProgress = null, opts = {}) {
   const t0 = performance.now();
   const r = getRunner();
-  if (!opts.background) r.foreground++;
+  // (a scene waiting now: this thread may help, or take over jobs a prebuild left with slow workers)
+  if (!opts.background) { r.foreground++; setTimeout(() => r.pump(), 0); }
   const jobIds = JOBS.filter((id) => id !== 'ways');
   const total = jobIds.reduce((s, id) => s + (COST[id] ?? 2), 0) + COST.ways;
   let done = 0, built = 0;
@@ -158,8 +162,28 @@ class Runner {
       const t = this.queue.shift();
       slot.busy = t;
       t.key = Math.random();
-      t.timer = setTimeout(() => { if (slot.busy === t) { slot.busy = null; slot.dead = true; try { slot.w.terminate(); } catch (e) { /* gone */ } this.queue.unshift(t); this.pump(); } }, JOB_TIMEOUT);
+      t.sent = performance.now();
+      t.timer = setTimeout(() => { if (slot.busy === t) { slot.busy = null; slot.dead = true; try { slot.w.terminate(); } catch (e) { /* gone */ } if (!t.done) this.queue.unshift(t); this.pump(); } }, JOB_TIMEOUT);
       try { slot.w.postMessage({ ...t.job, key: t.key }); } catch (e) { clearTimeout(t.timer); slot.busy = null; slot.dead = true; this.queue.unshift(t); }
+    }
+    // a worker that's slow to answer (or never will: a sandbox can swallow a blocked worker
+    // without an error) while a scene waits: this thread builds the same job, first answer wins
+    if (!this.queue.length && !this.mainBusy && this.foreground > 0) {
+      const now = performance.now();
+      const slow = this.slots.find((sl) => sl.busy && !sl.busy.done && !sl.busy.stolen && now - sl.busy.sent > STEAL_MS);
+      if (slow) {
+        const t = slow.busy;
+        t.stolen = true;
+        this.mainBusy = true;
+        setTimeout(() => {
+          if (!t.done) { t.done = true; t.resolve(runHere(t.job)); }
+          this.mainBusy = false;
+          this.pump();
+        }, 0);
+      } else if (this.slots.some((sl) => sl.busy && !sl.busy.done && !sl.busy.stolen)) {
+        clearTimeout(this.stealT);
+        this.stealT = setTimeout(() => this.pump(), 1000);
+      }
     }
     // this thread lends a hand while a scene waits (or does it all when no worker can)
     const noWorkers = !this.slots.some((s) => !s.dead);
@@ -167,7 +191,7 @@ class Runner {
       this.mainBusy = true;
       setTimeout(() => {
         const t = this.queue.shift();
-        if (t) { const m = runHere(t.job); t.resolve(m); }
+        if (t && !t.done) { const m = runHere(t.job); t.done = true; t.resolve(m); }
         this.mainBusy = false;
         this.pump();
       }, 0);
@@ -181,8 +205,8 @@ class Runner {
     if (!t || d.key !== t.key) return;
     clearTimeout(t.timer);
     slot.busy = null;
-    if (d.ok) t.resolve(d.msg);
-    else { console.warn(`[home] build worker failed on ${t.job.id || t.job.kind}, building it here`, d.error); t.resolve(runHere(t.job)); }
+    if (t.done) { /* (this thread built it first) */ } else if (d.ok) { t.done = true; t.resolve(d.msg); }
+    else { console.warn(`[home] build worker failed on ${t.job.id || t.job.kind}, building it here`, d.error); t.done = true; t.resolve(runHere(t.job)); }
     this.pump();
   }
 
@@ -192,13 +216,13 @@ class Runner {
     slot.dead = true;
     const t = slot.busy;
     slot.busy = null;
-    if (t) { clearTimeout(t.timer); this.queue.unshift(t); }
+    if (t) { clearTimeout(t.timer); if (!t.done) this.queue.unshift(t); }
     if (this.slots.every((s) => s.dead)) { console.warn('[home] build workers failed, building on the main thread', e?.message || ''); this.broken = true; }
     this.pump();
   }
 
   closeWorkers() {
-    for (const s of this.slots) { try { s.w.terminate(); } catch (e) { /* gone */ } if (s.busy) { clearTimeout(s.busy.timer); this.queue.unshift(s.busy); } }
+    for (const s of this.slots) { try { s.w.terminate(); } catch (e) { /* gone */ } if (s.busy) { clearTimeout(s.busy.timer); if (!s.busy.done) this.queue.unshift(s.busy); } }
     this.slots = [];
   }
 }

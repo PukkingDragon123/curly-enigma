@@ -28,7 +28,8 @@ URL params understood by `Game.start()`:
 
 ### Game (`src/core/Game.js`), available as `this.game` in scenes
 - `game.engine`, `game.input`, `game.audio`, `game.state`, `game.ui`
-- `game.goto(name, params?, {transition:'iris'|'fade'|'none', dur, color, center:[u,v]})` switches scene. Scene names: `title fall home deep town forge cooking ending showroom` (`mine` is an alias of `deep` for old links).
+- `game.goto(name, params?, {transition:'iris'|'fade'|'none'|'seamless', dur, color, center:[u,v]})` switches scene. Scene names: `title fall home deep town forge cooking ending showroom` (`mine` is an alias of `deep` for old links). `'seamless'` holds the frame on screen (no black) while the next scene builds and dissolves into it; held keys and the pointer lock carry over (the old passage uses it). A scene whose `enter()` throws or runs past ~45 s is let go for a safe one (`FALLBACK` in `Game.js`: the mine, town, forge and cooking fall back home, home to the title); a lantern shows if a build takes a while (title, journey and home have their own). A `goto` made while a scene is loading is dropped; one made while it fades in waits its turn.
+- Loading must never wait forever: `renderer.compileAsync` is capped (7 s, and gives up during a WebGL context loss); every worker (`?worker&inline`, so the single-file build carries them) has a watchdog and a main-thread fallback. On a context loss the game pauses under a lantern (a Reload button after ~9 s); on restore `scene.onContextRestored()` runs (the town builds itself again: its statics drop their CPU copies once uploaded).
 - `game.eat(itemId)` eats food (handles energy, buffs, toasts). `game.sleep()` advances the day: restores energy, collects eggs and grows planters.
 - `game.showLoading(text)` returns a remover function.
 
@@ -129,6 +130,14 @@ network is `src/fps/lifts.js`. Scenes are in meters at mole scale (0.86 m tall, 
 - **Deep Town** (`TownScene.js`, `src/town/*`): cave, statics, shops, lift, folk, life, arrival, fx;
   layout in `src/iso/townLayout.js`, floors in `townFloor.js`, shop fronts `shopFront.js`, booth
   `booth.js`. Townsfolk switch to crowd LOD when far; shopkeepers always render in full.
+- **The old passage** (`src/home/passage.js`): once `state.escaped`, Old Star's front door stands open
+  and a timbered tunnel doglegs up to your round green door in the town's north cliff (it stands
+  open too). Both scenes build the same tunnel from this module (the burrow's frame; the town sees
+  it turned half round, `TOWN_XF`). You just walk it: halfway along the cross leg (`SWAP`, where
+  neither end can be seen) the other scene takes over with a `'seamless'` switch, the mole keeping
+  its place, heading and stride; near the line the town's look eases into the burrow's
+  (`PASSAGE_LOOK`) so the two frames match. Test hooks: home `debug.walkToTown()`, town
+  `debug.walkHome()`, both `debug.pose()`.
 - **Forge** (`ForgeScene.js`, `src/forge/*`): a walkable smithy; the smelting/forging simulations are
   unchanged, the paws work through `vm.drive`.
 - Shared iso tools still in use: `kit.js` (modelling kit), `mesher.js` (`fastMesh`), `bake.js`,

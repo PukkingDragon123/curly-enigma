@@ -9,6 +9,7 @@ import { ITEMS } from '../data/items.js';
 import { BUFFS } from '../data/recipes.js';
 import { foodBuffs } from '../cooking/buffs.js';
 import { clamp, wait, el } from './util.js';
+import { houseLoading } from '../home/loading.js';
 
 // Scenes load lazily so each one stays self-contained.
 const SCENES = {
@@ -23,6 +24,23 @@ const SCENES = {
   ending: () => import('../scenes/EndingScene.js'),
   showroom: () => import('../scenes/ShowroomScene.js'),
 };
+
+/** How long a scene may take to build before it's taken as stuck (ms; phones get 1.6×). */
+const SCENE_WAIT = 45000;
+/** Where to go when a scene can't be built: [scene, params]. */
+const FALLBACK = {
+  deep: ['home', { from: 'continue' }], mine: ['home', { from: 'continue' }], town: ['home', { from: 'continue' }],
+  forge: ['home', { from: 'forge' }], cooking: ['home', { from: 'cooking' }], fall: ['home', { from: 'fall' }],
+  ending: ['title', {}], showroom: ['title', {}], home: ['title', {}],
+};
+/** Scenes with a loading card of their own (the title's and the journey's, the house's lantern). */
+const OWN_LOADER = new Set(['title', 'fall', 'home', 'ending', 'showroom']);
+/** Resolves once the page has painted (a lantern put up now is on screen before a long build). */
+const nextPaint = () => new Promise((res) => { let done = false; const go = () => { if (!done) { done = true; res(); } }; requestAnimationFrame(() => setTimeout(go, 0)); setTimeout(go, 120); });
+/** The lantern while a scene builds (no words): late, so a quick build never shows it. */
+function loadLamp(game, { corner = false, delay = 0.6 } = {}) {
+  try { return houseLoading(game, { corner, appear: delay, wick: false, label: 'Loading' }); } catch (e) { return null; }
+}
 
 export class Game {
   constructor(root, hotData = {}) {
@@ -68,6 +86,7 @@ export class Game {
     window.addEventListener('beforeunload', saveIfPlaying);
     document.addEventListener('visibilitychange', () => { if (document.hidden) saveIfPlaying(); });
     window.claude?.hot?.snapshot?.(() => ({ save: JSON.stringify(this.state.data) }));
+    this.engine.onContext((lost) => this.onContext(lost));
     this.state.on('gold', () => this.checkGoal());
     this.state.on('energy', () => {});
   }
@@ -92,12 +111,14 @@ export class Game {
     dt = Math.min(dt, 1 / 20);
     this.engine.time += dt;
     const st = this.state;
-    if (this.scene && !this.transitioning) {
+    // (while the GPU context is lost nothing can be seen: the world waits too)
+    const blind = this.engine.contextLost;
+    if (this.scene && !this.transitioning && !blind) {
       if (this.sceneName !== 'title') st.data.playTime += dt;
       try { this.scene.update(dt); } catch (e) { console.error(e); this.reportError(e); }
       this.cheats();
     }
-    if (this.scene) {
+    if (this.scene && !blind) {
       try { this.scene.render(); } catch (e) { console.error(e); this.reportError(e); }
     }
     this.ui.update(dt);
@@ -108,6 +129,42 @@ export class Game {
       this.autosaveT = 0;
       st.save();
     }
+  }
+
+  /**
+   * The GPU context was lost (lost = true: phones do it under memory pressure) or came back. While
+   * it's gone: the save is written, a lantern swings on a dark screen, and after a while a
+   * button offers a reload in case it never comes back. When it's back the scene carries on, or
+   * is built again if it can't put its meshes back on the GPU (scene.onContextRestored()).
+   */
+  onContext(lost) {
+    if (lost) {
+      if (this.sceneName && this.sceneName !== 'title' && this.sceneName !== 'showroom') this.state.save();
+      try { this.dropCaches?.(); } catch (e) { /* optional */ }
+      this.lostLamp?.done();
+      this.lostLamp = loadLamp(this, { delay: 0.4 });
+      clearTimeout(this.lostT);
+      this.lostT = setTimeout(() => {
+        if (!this.engine.contextLost || this.lostBtn) return;
+        const b = el('button', { class: 'btn ctx-reload interactive', style: { position: 'absolute', left: '50%', bottom: 'calc(var(--px) * 30)', transform: 'translateX(-50%)', zIndex: 9, pointerEvents: 'auto' }, onclick: () => { try { this.state.save(); } catch (e) { /* noop */ } location.reload(); } }, 'Reload');
+        this.ui.overlay.append(b);
+        this.lostBtn = b;
+      }, 9000);
+      return;
+    }
+    clearTimeout(this.lostT);
+    this.lostLamp?.done();
+    this.lostLamp = null;
+    this.lostBtn?.remove();
+    this.lostBtn = null;
+    const sc = this.scene;
+    try { sc?.onContextRestored?.(); } catch (e) { console.warn(e); }
+  }
+
+  /** Let go of what's kept only to make the next visit quicker (the built house): memory is short. */
+  dropCaches() {
+    if (!this.visited?.has('home')) return; // (nothing kept: don't load the house's code just to say so)
+    import('../home/houseLoad.js').then((m) => m.dropHouseCache?.()).catch(() => {});
   }
 
   reportError(e) {
@@ -132,47 +189,127 @@ export class Game {
 
   /**
    * Switch scene with a transition.
-   * opts.transition: 'iris' | 'fade' | 'none'; opts.center: [u,v] iris center in 0..1 screen coords
+   * opts.transition: 'iris' | 'fade' | 'none' | 'seamless'; opts.center: [u,v] iris center in 0..1 screen coords
+   *  'seamless': no black at all: the frame on screen now is held over the canvas while the next
+   *  scene builds (a small lantern after a moment if it takes a while), then dissolves into the
+   *  next scene's first frame. For hand-offs where both scenes show the same place (the passage
+   *  between the burrow and Deep Town, src/home/passage.js). Held keys and the pointer lock carry on.
+   * A request made while another switch is loading is dropped (the old scene is on its way out);
+   * one made while the new scene is fading in waits its turn. A scene whose enter() throws or
+   * never finishes (SCENE_WAIT) is let go for a safe one (FALLBACK) instead of a screen left black.
    */
   async goto(name, params = {}, opts = {}) {
-    if (this.transitioning) return;
+    if (this.transitioning) {
+      if (this._phase === 'open' && name !== this.sceneName) this._queued = { name, params, opts };
+      else console.warn(`[game] goto(${name}) while switching to ${this._target}: dropped`);
+      return;
+    }
     const loader = SCENES[name];
     if (!loader) { console.warn('no scene', name); return; }
     this.transitioning = true;
+    this._phase = 'close';
+    this._target = name;
     this.input.enabled = false;
     const tr = this.engine.transition;
     const kind = opts.transition ?? 'iris';
+    const seamless = kind === 'seamless' && !!this.scene;
     const maxR = Math.hypot(this.engine.width, this.engine.height);
-    if (this.scene && kind !== 'none') {
-      tr.irisCenter = opts.center || [0.5, 0.5];
-      tr.color = opts.color ?? 0x000000;
-      const dur = opts.dur ?? 0.45;
-      const t0 = performance.now();
-      while (true) {
-        const k = clamp((performance.now() - t0) / 1000 / dur, 0, 1);
-        if (kind === 'iris') tr.iris = maxR * (1 - k) * (1 - k);
-        else tr.fade = k;
-        if (k >= 1) break;
-        await wait(16);
+    let hold = null;
+    try {
+      if (seamless) {
+        hold = this.holdFrame();
+      } else if (this.scene && kind !== 'none') {
+        tr.irisCenter = opts.center || [0.5, 0.5];
+        tr.color = opts.color ?? 0x000000;
+        const dur = opts.dur ?? 0.45;
+        const t0 = performance.now();
+        while (true) {
+          const k = clamp((performance.now() - t0) / 1000 / dur, 0, 1);
+          if (kind === 'iris') tr.iris = maxR * (1 - k) * (1 - k);
+          else tr.fade = k;
+          if (k >= 1) break;
+          await wait(16);
+        }
+        if (kind === 'iris') tr.iris = 0;
+      } else if (kind !== 'none' && kind !== 'seamless') {
+        tr.fade = 1;
       }
-      if (kind === 'iris') tr.iris = 0;
-    } else if (kind !== 'none') {
-      tr.fade = 1;
+      this._phase = 'load';
+      let entered = await this.enterScene(name, params, { seamless, hold });
+      // the scene couldn't be built: somewhere safe instead of a black screen (at most two hops)
+      for (let hop = 0, at = name; !entered && hop < 2; hop++) {
+        const fb = FALLBACK[at];
+        if (!fb || !SCENES[fb[0]]) break;
+        console.warn(`[game] ${at} failed to load, going to ${fb[0]}`);
+        if (!hop) this.ui.toast('That place wouldn\'t load. Back to safety!', { kind: 'warn', dur: 3500 });
+        at = fb[0];
+        entered = await this.enterScene(at, { ...fb[1] }, { seamless: false, hold: null });
+      }
+      if (name !== 'title' && this.sceneName !== 'title') this.state.save();
+      // open
+      this._phase = 'open';
+      if (hold) {
+        // the next scene's first frame under the held one, then the held one dissolves (quick)
+        tr.iris = -1; tr.fade = 0;
+        try { this.scene?.render(); } catch (e) { console.warn(e); }
+        hold.release(opts.dur ?? 0.22);
+      } else if (kind !== 'none' && kind !== 'seamless') {
+        const dur = opts.dur ?? 0.5;
+        const t0 = performance.now();
+        tr.fade = kind === 'fade' ? 1 : 0;
+        while (true) {
+          const k = clamp((performance.now() - t0) / 1000 / dur, 0, 1);
+          if (kind === 'iris') { tr.irisCenter = opts.openCenter || [0.5, 0.5]; tr.iris = maxR * k * k; }
+          else tr.fade = 1 - k;
+          if (k >= 1) break;
+          await wait(16);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      this.reportError(e);
+      hold?.release(0);
+    } finally {
+      tr.iris = -1;
+      tr.fade = 0;
+      this.transitioning = false;
+      this._phase = null;
+      this.input.enabled = !this.ui.isPanelOpen();
+      if (!seamless) this.input.clearAll();
     }
+    const q = this._queued;
+    this._queued = null;
+    if (q && q.name !== this.sceneName) await this.goto(q.name, q.params, q.opts);
+  }
 
+  /** Start fetching a scene's code ahead of a switch that's coming (e.g. walking up the old passage). */
+  prefetch(name) {
+    if (!SCENES[name] || this._prefetched?.has(name)) return;
+    (this._prefetched ||= new Set()).add(name);
+    SCENES[name]().catch(() => this._prefetched.delete(name));
+  }
+
+  /**
+   * Leave the current scene and build scene `name` in its place. Resolves true when it entered,
+   * false when its module or its enter() failed or ran past SCENE_WAIT (the half-built scene is
+   * let go). While it builds: the house's own lantern screen at home; elsewhere a lantern that
+   * shows only if the build takes a while (a small one in the corner over a held frame).
+   */
+  async enterScene(name, params, { seamless = false, hold = null } = {}) {
     let mod;
     try {
-      mod = await loader();
+      mod = await SCENES[name]();
     } catch (e) {
       console.error(e);
       this.ui.toast(`Couldn't load ${name}: ${e.message}`, { kind: 'bad', dur: 6000 });
-      tr.iris = -1; tr.fade = 0;
-      this.transitioning = false;
-      this.input.enabled = true;
-      return;
+      // (the old scene stays, when there is one: nothing was torn down yet)
+      return !!this.scene;
     }
-    if (this.scene) {
-      try { this.scene.exit(); } catch (e) { console.warn(e); }
+    const old = this.scene;
+    if (old) {
+      this.handingOff = seamless; // (the old scene keeps the pointer lock for the next)
+      try { old.exit(); } catch (e) { console.warn(e); }
+      this.handingOff = false;
       this.audio.stopAllLoops();
     }
     this.ui.closeAllPanels();
@@ -181,40 +318,81 @@ export class Game {
     this.ui.setHotbar(null);
     this.ui.setHints(null);
     const Cls = mod.default;
-    const scene = new Cls(this);
+    let scene;
+    try { scene = new Cls(this); } catch (e) { console.error(e); this.reportError(e); this.scene = null; return false; }
     this.scene = scene;
     this.sceneName = name;
+    (this.visited ||= new Set()).add(name);
     this.engine.sceneName = name; // per-scene post defaults (Engine SCENE_POST)
+    const lamp = OWN_LOADER.has(name) || scene.ownLoader ? null : loadLamp(this, { corner: seamless, delay: seamless ? 0.35 : 0.6 });
+    let ok = true;
     try {
       this.ui.setActionIcon?.(null);
-      await scene.enter(params);
+      // (let the lantern reach the screen before a long build blocks the page)
+      if (lamp) await nextPaint();
+      const p = scene.enter({ ...params, ...(seamless ? { seamless: true } : null) });
+      p?.catch?.(() => {}); // (a scene let go may still fail later: nobody's listening any more)
+      // (a stuck build waits on something that never comes; a slow one keeps the page busy: a
+      // timer that fires late means it was still working, so it gets another while)
+      let late = null;
+      const span = this.engine.mobile ? SCENE_WAIT * 1.6 : SCENE_WAIT;
+      const watch = new Promise((res) => {
+        const arm = () => { const due = performance.now() + span; late = setTimeout(() => { if (performance.now() - due > 2500) arm(); else res('late'); }, span); };
+        arm();
+      });
+      const r = await Promise.race([p, watch]);
+      clearTimeout(late);
+      if (r === 'late') throw new Error(`${name} took too long to load`);
     } catch (e) {
       console.error(e);
-      this.reportError(e);
+      ok = false;
     }
+    lamp?.done();
+    if (!ok && FALLBACK[name]) {
+      // let the broken scene go (it may be half built) so something else can take its place
+      scene.gone = true;
+      try { scene.exit(); } catch (e) { console.warn(e); }
+      this.audio.stopAllLoops();
+      return false;
+    }
+    // (nowhere else to go: show what there is)
+    if (!ok) this.reportError(new Error(`${name} did not load properly`));
     this.ui.setHudMode(scene.hud);
     if (scene.music) this.audio.playMusic(scene.music, scene.musicParams || {});
-    scene.onResize(this.engine.width, this.engine.height);
-    if (name !== 'title') this.state.save();
+    try { scene.onResize(this.engine.width, this.engine.height); } catch (e) { console.warn(e); }
+    return ok;
+  }
 
-    // open
-    if (kind !== 'none') {
-      const dur = opts.dur ?? 0.5;
-      const t0 = performance.now();
-      tr.fade = kind === 'fade' ? 1 : 0;
-      while (true) {
-        const k = clamp((performance.now() - t0) / 1000 / dur, 0, 1);
-        if (kind === 'iris') { tr.irisCenter = opts.openCenter || [0.5, 0.5]; tr.iris = maxR * k * k; }
-        else tr.fade = 1 - k;
-        if (k >= 1) break;
-        await wait(16);
-      }
+  /**
+   * Hold the frame on screen now over the canvas (for a seamless switch): draws the current scene
+   * once more and copies the canvas into a 2D canvas laid exactly over it. Returns
+   * { release(secs) } (fades it out and removes it), or null if it can't.
+   */
+  holdFrame() {
+    const src = this.canvas;
+    try {
+      this.scene?.render();
+      const c = document.createElement('canvas');
+      c.width = src.width; c.height = src.height;
+      c.className = 'hold-frame';
+      c.style.cssText = `position:absolute;left:0;top:0;width:${src.style.width};height:${src.style.height};image-rendering:pixelated;image-rendering:crisp-edges;pointer-events:none;z-index:1;transition:opacity .2s linear`;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(src, 0, 0);
+      src.after(c);
+      let gone = false;
+      return {
+        release(secs = 0.22) {
+          if (gone) return;
+          gone = true;
+          c.style.transition = `opacity ${Math.max(0, secs)}s linear`;
+          // (two frames: the new scene's first frame is on screen before the old one fades)
+          requestAnimationFrame(() => requestAnimationFrame(() => { c.style.opacity = '0'; setTimeout(() => c.remove(), secs * 1000 + 60); }));
+        },
+      };
+    } catch (e) {
+      console.warn('[game] could not hold the frame', e);
+      return null;
     }
-    tr.iris = -1;
-    tr.fade = 0;
-    this.transitioning = false;
-    this.input.enabled = !this.ui.isPanelOpen();
-    this.input.clearAll();
   }
 
   // ------------------------------------------------------------ shared gameplay helpers

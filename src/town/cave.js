@@ -75,7 +75,8 @@ function frameMatrix(along, up, out, origin) {
 
 /**
  * Build all four walls. opts.flats[axis]: [{a, b, top, d}] world ranges where the rock is pressed
- * to face + d (TU) up to `top`; opts.holes[axis]: [{a, b, y0, y1, depth, shape(du, y), tint}].
+ * to face + d (TU) up to `top`; opts.holes[axis]: [{a, b, y0, y1, depth, shape(du, y), tint, through}]
+ * (through: the hole goes right through, back plane and all).
  * Returns { meshes: [THREE.Mesh] (world TU), frames }.
  */
 export function buildWalls(opts = {}) {
@@ -156,7 +157,7 @@ function wallSampler(fr, flats, holes) {
     // rock hidden behind a building: one flat colour so it collapses into a few big faces
     if (flat && flat.hide && j < flat.hide * WV) return [d, mul(bc, 0.7)];
     let tint = null;
-    for (const h of holes) if (uw > h.ua[0] && uw < h.ua[1] && j >= h.y0 * WV && j < h.y1 * WV && (!h.shape || h.shape(along(uw) - h.c, j / WV))) { d = Math.min(d, F - h.depth * WV); tint = h.tint || tint; }
+    for (const h of holes) if (uw > h.ua[0] && uw < h.ua[1] && j >= h.y0 * WV && j < h.y1 * WV && (!h.shape || h.shape(along(uw) - h.c, j / WV))) { if (h.through) return [-1, 0]; d = Math.min(d, F - h.depth * WV); tint = h.tint || tint; }
     // colour
     let c = mul(bc, 0.88 + Math.floor(br2 * 4) * 0.055 + (patch > 0.42 ? 0.05 : patch < -0.5 ? -0.04 : 0));
     if (coarse) return [d, mul(bc, 0.9 + Math.floor(br2 * 2) * 0.08 + (patch > 0.3 ? 0.05 : 0))];
@@ -191,7 +192,8 @@ function wallChunk(fr, S, c0, c1, y0, y1, res) {
     for (let j = -1; j <= V; j++) {
       const y = y0 + (j + 0.5) / res;
       const [d16, c] = S.sample(y * 16, res);
-      let d = Math.max(1, Math.round(d16 / k16));
+      // (a hole right through the wall: nothing at all, not even the back plane)
+      let d = d16 < 0 ? 0 : Math.max(1, Math.round(d16 / k16));
       // seams: close the wall's ends and the joint between the fine and coarse bands
       if (i < 0 && c0 <= fr.u0) d = 0;
       if (i >= U && c1 >= fr.u1) d = 0;

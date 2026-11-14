@@ -510,8 +510,45 @@ await step('mine lift home', async () => {
   if ((await scene()) !== 'home') throw new Error('did not get home: ' + (await scene()));
   await wait(2500);
   await shot('08-home-by-lift');
-  await go('town', { from: 'home' });
-  await wait(1500);
+});
+await step('home → town on foot: out of the door and up the old passage (no black, no prompt)', async () => {
+  // Old Star's front door stands open once the way is found: walk up the passage and the town
+  // takes over halfway (a seamless switch: the frame is held, never a black screen)
+  const r = await page.evaluate(async () => {
+    const g = window.__game, held = [];
+    const mo = new MutationObserver(() => { if (document.querySelector('.hold-frame')) held.push(1); });
+    mo.observe(document.body, { childList: true, subtree: true });
+    const to = await g.scene.debug.walkToTown();
+    window.__passMo = mo;
+    return { to, iris: g.engine.transition.iris, fade: g.engine.transition.fade, held: held.length };
+  });
+  if (r.to !== 'town') throw new Error('walking up the passage did not reach town: ' + JSON.stringify(r));
+  for (let i = 0; i < 240 && ((await scene()) !== 'town' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
+  if ((await scene()) !== 'town') throw new Error('not in town after the passage: ' + (await scene()));
+  const t = await page.evaluate(() => { window.__passMo?.disconnect(); const s = window.__game.scene; return { pose: s.debug.pose(), fade: window.__game.engine.transition.fade, iris: window.__game.engine.transition.iris }; });
+  if (t.fade > 0 || t.iris >= 0) throw new Error('the switch went through black: ' + JSON.stringify(t));
+  if (t.pose.u === null) throw new Error('not in the passage after the switch: ' + JSON.stringify(t.pose));
+  await shot('08b-passage-town-side');
+  // and on out under the arch into the street
+  const out = await page.evaluate(() => window.__game.scene.debug.walkOut());
+  if (!(out.z > 2.6)) throw new Error('could not walk out of the burrow door: ' + JSON.stringify(out));
+  await wait(1200);
+  await shot('08c-out-in-town');
+});
+await step('town → home on foot: in at the burrow door and down the old passage', async () => {
+  const to = await page.evaluate(() => window.__game.scene.debug.walkHome());
+  if (to !== 'home') throw new Error('walking into the passage did not reach home: ' + to);
+  for (let i = 0; i < 240 && ((await scene()) !== 'home' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
+  if ((await scene()) !== 'home') throw new Error('not home after the passage: ' + (await scene()));
+  const p = await page.evaluate(() => window.__game.scene.debug.pose());
+  if (p.u === null) throw new Error('not in the passage after the switch: ' + JSON.stringify(p));
+  await wait(1000);
+  await shot('08d-passage-home-side');
+  // and back up to town the same way (the shops are next)
+  const r = await page.evaluate(() => window.__game.scene.debug.walkToTown());
+  if (r !== 'town') throw new Error('second walk to town: ' + r);
+  for (let i = 0; i < 240 && ((await scene()) !== 'town' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
+  if ((await scene()) !== 'town') throw new Error('not in town: ' + (await scene()));
 });
 await step('assay sells', async () => {
   await page.evaluate(() => { const st = window.__game.state; st.addItem('copper_ore', { q: 80, n: 3 }); return window.__game.scene.debug.openShop('assay'); });

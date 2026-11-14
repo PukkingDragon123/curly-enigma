@@ -233,7 +233,7 @@ export class FPSRig {
 
   dispose() {
     const g = this.g;
-    g.input.unlockPointer();
+    if (!g.handingOff) g.input.unlockPointer(); // (a seamless hand-off keeps it: Game.goto)
     g.ui.setCrosshair?.(null);
     if (this.vm) { if (this.vm.world) this.o.scene.remove(this.vm.world); this.vm.dispose(); }
   }

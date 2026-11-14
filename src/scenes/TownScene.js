@@ -2,8 +2,9 @@
 // burrows and walkways, a dome roof of stalactites, crystals and glow-worms, a sunbeam pouring
 // through a crack onto the Surface Express booth, shops tucked into the cliffs with counters and
 // keepers, the assay office's brass scale, the plaza fountain, market stalls, a waterfall, the
-// mine lift with Bramble at the crank, the back lanes with their mound houses, your burrow door,
-// the boarded tunnel you escape through, and a crowd of townsfolk who look round, wave and chat.
+// mine lift with Bramble at the crank, the back lanes with their mound houses, your burrow door
+// (open on the old passage home once the way's found: src/home/passage.js), the boarded tunnel you
+// escape through, and a crowd of townsfolk who look round, wave and chat.
 // Built in town units under one scaled root (src/town/units.js); the mole walks in meters
 // (FPSRig + BoxWorld, docs/FPS.md).
 import * as THREE from 'three';
@@ -34,6 +35,8 @@ import { RigLOD } from '../town/lod.js';
 import { KEEPER_MOODS, moodOf } from '../town/moods.js';
 import { updatePatches, cullPatches, disposePatches } from '../town/batch.js';
 import { pick, rand, chance, clamp, makeRng } from '../core/util.js';
+import { DEFAULT_POST, SCENE_POST } from '../core/Engine.js';
+import { buildPassage, passageBoxes, toTown, toHome, passageU, passageK, SWAP, TOWN_XF, PASSAGE_LOOK, PASSAGE_GRADE, PASSAGE_PAWS } from '../home/passage.js';
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -64,6 +67,8 @@ const KEEPER_LOOKS = {
 };
 const EMOTE_COLORS = { '♥': '#e0404a', '!': '#c0402a', '?': '#3a6ac9', '♪': '#6a3a8a', '♫': '#6a3a8a', 'Zz': '#5a6a9a', '…': '#5a4030' };
 let FLOOR_CACHE = null;
+/** The town's post settings in effect where its own post doesn't say (Engine defaults). */
+const TOWN_POST = { ...DEFAULT_POST, ...SCENE_POST.town };
 
 export default class TownScene extends Scene {
   async enter(params = {}) {
@@ -74,6 +79,9 @@ export default class TownScene extends Scene {
     const from = params.from || 'home';
     this.from = from;
     if (from === 'escape') st.flag('escaped', true);
+    // your burrow door stands open on the old passage home once the way's been found from below
+    // (src/home/passage.js: you walk it, and the burrow takes over halfway)
+    this.passageOpen = !!st.flag('escaped');
     liftState(st);
     this.post = { vignette: 0.42, saturation: 1.14, contrast: 1.06, outlineAlpha: 0.85, innerThresh: 0.25 };
     WATER_TIME.value = 0;
@@ -136,6 +144,7 @@ export default class TownScene extends Scene {
     if (sheet) { fin.bake(sheet.geometry); this.scene.add(sheet); }
     this.map = this.B.map;
     this.worms = glowWorms(this.root, this.U, this.roofWorms || []);
+    if (this.passageOpen) run('passage', () => this.buildPassage());
     this.buildMs = performance.now() - t0;
     this.buildSteps = steps;
     if (MESH_STATS.log) { this.meshLog = MESH_STATS.log; MESH_STATS.log = null; }
@@ -171,6 +180,20 @@ export default class TownScene extends Scene {
     } else if (from === 'ending') {
       const S = TOWN.sun;
       this.place(S.x, S.z + 0.4, Math.PI * 0.8);
+    } else if (from === 'passage' && this.passage && params.pose) {
+      // walked up the old passage from the burrow: just where it left you, still walking
+      const P = params.pose, [x, z] = toTown(P.x, P.z);
+      this.rig.place(x, P.y, z, P.yaw + TOWN_XF.yaw, P.pitch);
+      this.rig.player.vel.set(-(P.vx || 0), P.vy || 0, -(P.vz || 0));
+      if (P.crouch) { this.rig.player.crouched = true; this.rig.player.h = 0.5; }
+      this.syncPlayerProxy();
+      this.passageLook(true);
+    } else if (from === 'restore' && params.at) {
+      // built again after the GPU context came back: where you were
+      const A = params.at;
+      this.rig.place(A.x, A.y, A.z, A.yaw, A.pitch);
+      this.syncPlayerProxy();
+      if (this.passage) this.passageLook(true);
     } else {
       // out of the burrow door, looking down the street toward the plaza and the sunbeam
       this.place(H.spawn.x, H.spawn.z + 0.3, Math.PI + 0.62);
@@ -189,6 +212,79 @@ export default class TownScene extends Scene {
     this.own(st.on('act', (e) => { if (this.shopKeeper && e && (e.type === 'buy' || e.type === 'sell')) this.keeperDeal(e.type === 'buy' ? -(e.gold || 1) : (e.gold || 1)); }));
     this.debug = this.makeDebug();
     await this.warmShaders();
+  }
+
+  /** The old passage behind your burrow door: the burrow's tunnel turned round into the town's frame. */
+  buildPassage() {
+    const P = this.passage = buildPassage();
+    P.group.rotation.y = TOWN_XF.yaw;
+    P.group.position.set(TOWN_XF.ox, 0, TOWN_XF.oz);
+    P.group.updateMatrixWorld(true);
+    for (const m of P.group.children) { m.matrixAutoUpdate = false; m.updateMatrix(); m.updateMatrixWorld(true); }
+    this.scene.add(P.group);
+    for (const [x0, y0, z0, x1, y1, z1] of passageBoxes()) this.world.add(TOWN_XF.ox - x1, y0, TOWN_XF.oz - z1, TOWN_XF.ox - x0, y1, TOWN_XF.oz - z0, 'passage');
+    // the town's look and the paws' light, to ease into the burrow's on the way through
+    this.basePost = { ...this.post };
+    this.basePaws = null;
+  }
+
+  /**
+   * In the old passage: the town's look eases into the burrow's toward the hand-off (the two frames
+   * match there), and past it the burrow takes over (a seamless switch). src/home/passage.js
+   */
+  passageLook(force = false) {
+    const pl = this.rig.player, [hx, hz] = toHome(pl.pos.x, pl.pos.z);
+    // (in the passage the markers over the townsfolk's heads would float on its rock)
+    this.hideQuestMarks = pl.pos.z < TOWN.northFace * M - 0.1 && hx > 2.5 && hx < 7.5;
+    if (this.hideQuestMarks && !this.prebuilt) {
+      // heading home: fetch the burrow's code and have its build workers start on the cave now
+      this.prebuilt = true;
+      this.game.prefetch?.('home');
+      import('../home/houseLoad.js').then((m) => { if (!this.gone) m.prebuildHouse?.(this.game); }).catch(() => {});
+    }
+    const k = passageK(hx, hz);
+    if (!force && k === this._passK) return hx;
+    this._passK = k;
+    const b = this.basePost, p = this.post;
+    for (const key of ['vignette', 'outlineAlpha', 'innerThresh', 'saturation', 'contrast', 'brightness', 'bloom', 'bloomThreshold', 'aoRadius', 'aoFar']) {
+      const from = b[key] ?? TOWN_POST[key], to = PASSAGE_LOOK[key];
+      if (k <= 0) { if (key in b) p[key] = b[key]; else delete p[key]; } else p[key] = from + (to - from) * k;
+    }
+    // the grade: the town's fades out, then the burrow's fades in (they can't be mixed)
+    if (k <= 0) { if ('grade' in b) p.grade = b.grade; else delete p.grade; if ('gradeMix' in b) p.gradeMix = b.gradeMix; else delete p.gradeMix; }
+    else if (k < 0.5) { p.grade = b.grade ?? TOWN_POST.grade; p.gradeMix = (b.gradeMix ?? TOWN_POST.gradeMix) * (1 - k * 2); }
+    else { p.grade = PASSAGE_GRADE; p.gradeMix = PASSAGE_LOOK.gradeMix * (k * 2 - 1); }
+    const rig = this.rig;
+    this.basePaws ||= { lamp: rig.lampCol.toArray(), ambient: rig.ambient.toArray() };
+    const L = this.basePaws, mix = (a, c) => a.map((v, i) => v + (c[i] - v) * k);
+    rig.lampCol.fromArray(mix(L.lamp, PASSAGE_PAWS.lamp));
+    rig.ambient.fromArray(mix(L.ambient, PASSAGE_PAWS.ambient));
+    return hx;
+  }
+
+  /** Past the passage's halfway mark toward the burrow: the burrow takes over. */
+  checkPassage() {
+    if (!this.passage || this.locked || this.cut || this.seat || this.handingOff || this.game.transitioning) return;
+    this.passageLook();
+    const pl = this.rig.player, [hx, hz] = toHome(pl.pos.x, pl.pos.z);
+    const u = passageU(hx, hz);
+    if (u === null || u >= -SWAP.band) return;
+    this.handingOff = true;
+    const pose = { x: hx, y: pl.pos.y, z: hz, yaw: pl.yaw - TOWN_XF.yaw, pitch: pl.pitch, vx: -pl.vel.x, vy: pl.vel.y, vz: -pl.vel.z, crouch: !!pl.crouched };
+    this.game.state.flag('homeVisited', true);
+    this.game.goto('home', { from: 'passage', pose }, { transition: 'seamless' }).finally(() => { this.handingOff = false; });
+  }
+
+  /** The GPU context came back: the statics dropped their CPU copies once uploaded, so build again. */
+  onContextRestored() {
+    // (not one more frame of these statics: their arrays are gone)
+    this.buffersLost = true;
+    // (mid-switch: once it's settled, if this is still the scene)
+    if (this.game.transitioning || !this.rig) { this.rebuildPending = true; return; }
+    this.rebuildPending = false;
+    const pl = this.rig.player;
+    const [hx, hz] = toHome(pl.pos.x, pl.pos.z);
+    this.game.goto('town', { from: 'restore', at: { x: pl.pos.x, y: pl.pos.y, z: pl.pos.z, yaw: pl.yaw, pitch: pl.pitch, hx, hz } }, { transition: 'none' });
   }
 
   async warmShaders() {
@@ -223,7 +319,9 @@ export default class TownScene extends Scene {
     t.map.generateMipmaps = true;
     t.map.needsUpdate = true;
     const L = TOWN.lift;
-    const hole = (x, z) => x >= L.cage.x - 1 && x < L.cage.x + 1 && z >= L.cage.z - 1 && z < L.cage.z + 1;
+    // (the lift pit; and with the passage open, the tiles under its threshold: it brings its own floor)
+    const hx = TOWN.home.door.x;
+    const hole = (x, z) => (x >= L.cage.x - 1 && x < L.cage.x + 1 && z >= L.cage.z - 1 && z < L.cage.z + 1) || (this.passageOpen && z < TOWN.northFace && x >= Math.floor(hx - 1.4) && x < Math.ceil(hx + 1.4));
     const pos = [], uv = [], nor = [], idx = [];
     let v = 0;
     for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
@@ -533,8 +631,8 @@ export default class TownScene extends Scene {
     // the lift: the cage, and Bramble at the crank
     const c = TOWN.lift.cage;
     rig.add({ box: boxM([c.x - 1.0, 0, c.z - 0.6, c.x + 1.0, 2.3, c.z + 1.2]), label: 'Ride the lift', reach: 2.4, enabled: () => !this.locked, action: () => this.openLift() });
-    // the burrow door
-    rig.add({ box: boxM(this.homeDoor.box), label: 'Go home', reach: 2.2, enabled: () => !this.locked, action: () => this.goHome() });
+    // the burrow door (once it stands open you just walk in: the old passage leads home)
+    if (!this.homeDoor.open) rig.add({ box: boxM(this.homeDoor.box), label: 'Go home', reach: 2.2, enabled: () => !this.locked, action: () => this.goHome() });
     // the fountain, the well, the notice board, the sunbeam, the old tunnel
     const F = TOWN.fountain;
     // the basin only (a flat box, not a big sphere), so the folk on the benches round it can be talked to
@@ -746,6 +844,7 @@ export default class TownScene extends Scene {
     WATER_TIME.value += dt;
     const g = this.game, rig = this.rig;
     if (!rig) return;
+    if (this.rebuildPending) { this.onContextRestored(); return; }
     const busy = g.ui.isPanelOpen();
     if (!this.hudClean) { this.hudClean = true; g.ui.setDepth?.(null); g.ui.setBag?.(null); g.ui.setRadar?.(null); }
     for (const t of [...this.tickers]) t(dt, this.time);
@@ -759,6 +858,7 @@ export default class TownScene extends Scene {
       rig.update(dt, { busy, frozen: this.locked || !!this.seat });
       if (this.seat) { rig.camera.position.y -= 0.16; rig.camera.updateMatrixWorld(); }
       this.pushPlayer();
+      this.checkPassage();
     }
     this.syncPlayerProxy();
     this.eyeTarget.copy(rig.camera.position);
@@ -787,6 +887,7 @@ export default class TownScene extends Scene {
     this.glow.update();
     this.particles.update(dt);
     if (this.worms) this.worms.time.value += dt;
+    this.passage?.update(this.time);
     if (this.beamFx) this.beamFx.time.value += dt;
     const e = g.engine;
     this.U.uPx.value = e.height / (2 * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2));
@@ -873,7 +974,7 @@ export default class TownScene extends Scene {
   }
 
   render() {
-    if (!this.rig) return;
+    if (!this.rig || this.buffersLost) return;
     if (this.blocks) {
       const cam = this.rig.camera;
       cam.updateMatrixWorld();
@@ -896,6 +997,7 @@ export default class TownScene extends Scene {
   }
 
   exit() {
+    this.gone = true;
     for (const a of this.actors || []) a._lod?.dispose();
     disposePatches(this.patches || [], this.blocks || []);
     this.rig?.dispose();
@@ -919,6 +1021,55 @@ export default class TownScene extends Scene {
       /** Ride the lift to a destination id ('home', 'L0', a mine lift id…); without an id, open Bramble's panel. */
       useLift(id) { S.locked = false; if (id) return S.rideLift(id); return S.openLift(); },
       goHome() { S.locked = false; S.goHome(); },
+      /**
+       * Walk in at your burrow door and up the old passage until the burrow takes over (holding W,
+       * steering toward each turn; frames stepped here). Resolves with the scene it ends in.
+       */
+      async walkHome(maxFrames = 400) {
+        if (!S.passage) return 'no passage';
+        const g = S.game, inp = g.input;
+        // (an arrival still playing ends first: it puts the mole down where it ends)
+        if (S.arrival && !S.arrival.done) { S.arrival.skip = true; for (let i = 0; i < 90 && !S.arrival.done; i++) { S.update(1 / 30); for (let k = 0; k < 8; k++) await null; } }
+        S.cut = null; S.seat = null; S.locked = false;
+        const mx = TOWN.home.door.x * M, mz = TOWN.northFace * M;
+        S.rig.place(mx, 0.001, mz + 0.7, 0, -0.04);
+        const [, cz] = toTown(0, -6.6);
+        const marks = [[mx, cz], [toTown(SWAP.x + 0.6, 0)[0], cz]];
+        let mi = 0;
+        inp.down.add('KeyW');
+        try {
+          for (let i = 0; i < maxFrames && g.scene === S && !g.transitioning; i++) {
+            const p = S.rig.player.pos, m = marks[mi];
+            if (Math.hypot(m[0] - p.x, m[1] - p.z) < 0.25 && mi < marks.length - 1) mi++;
+            S.rig.player.yaw = Math.atan2(-(m[0] - p.x), -(m[1] - p.z));
+            S.update(1 / 30); g.ui.update(1 / 30); g.input.endFrame();
+            for (let k = 0; k < 8; k++) await null;
+          }
+        } finally { inp.down.delete('KeyW'); }
+        return g.scene === S && !g.transitioning ? 'town' : g._target || g.sceneName;
+      },
+      /**
+       * From inside the old passage, walk on out under the arch into the street (W held, steering
+       * along the cross leg, then down leg 3). Resolves with where it ends (pose).
+       */
+      async walkOut(maxFrames = 300) {
+        const g = S.game, inp = g.input, mx = TOWN.home.door.x * M, [, cz] = toTown(0, -6.6);
+        const marks = [[mx, cz], [mx, TOWN.northFace * M + 1.3]];
+        let mi = 0;
+        inp.down.add('KeyW');
+        try {
+          for (let i = 0; i < maxFrames && g.scene === S && !g.transitioning; i++) {
+            const p = S.rig.player.pos, m = marks[mi];
+            if (Math.hypot(m[0] - p.x, m[1] - p.z) < 0.25) { if (mi < marks.length - 1) mi++; else break; }
+            S.rig.player.yaw = Math.atan2(-(m[0] - p.x), -(m[1] - p.z));
+            S.update(1 / 30); g.ui.update(1 / 30); g.input.endFrame();
+            for (let k = 0; k < 8; k++) await null;
+          }
+        } finally { inp.down.delete('KeyW'); }
+        return this.pose();
+      },
+      /** Where the mole is (meters), in the burrow's frame too. */
+      pose() { const p = S.rig.player.pos; const h = toHome(p.x, p.z); return { x: p.x, y: p.y, z: p.z, yaw: S.rig.player.yaw, home: h, u: passageU(h[0], h[1]) }; },
       /** Teleport the mole (town units) facing yaw (0 north, π south). */
       place(x, y, z, yaw = 0, pitch = 0) { S.cut = null; S.seat = null; S.rig.place(x * M, (y || 0) * M + 0.001, z * M, yaw, pitch); S.syncPlayerProxy(); },
       /** Draw calls, triangles and update ms for one frame. */

@@ -59,7 +59,15 @@ export class Bodies {
       stay: opts.stay ?? 0.6, crumble: !!opts.crumble, color: voxels[0].c,
     };
     this.list.push(b);
-    while (this.list.length > MAX) this.kill(this.list.find((q) => !q.pickup) || this.list[0], true);
+    // too many: the oldest debris makes way (a find is never dropped: if only finds are left, the
+    // oldest goes straight into the pack)
+    while (this.list.length > MAX) {
+      const q = this.list.find((o) => !o.pickup);
+      if (q) { this.kill(q, true); continue; }
+      const f = this.list[0];
+      this.kill(f, true);
+      this.hooks.collect?.(f);
+    }
     return b;
   }
 

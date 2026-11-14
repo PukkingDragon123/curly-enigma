@@ -3,7 +3,8 @@
 // coal, his tools on pegs under old shoring timbers, the fleece he sleeps on, his trunk, the fire
 // pit with the pot and kettle and his stump beside it, his notes nailed to the rock, the slate on a
 // crate that is his Miners' Board, the cage lift down to the mine, the old door to Deep Town (caved
-// in until you find the way from below), the hole you fell through; and your bedroll on the floor
+// in until you find the way from below; then it stands open on the old passage and you walk up it
+// into town: src/home/passage.js), the hole you fell through; and your bedroll on the floor
 // with a flat stone at its head (your notebook: the Index Book) and your little trunk. Old Star
 // lives here (src/home/oldstar.js) and talks you through his lessons (lessons.js) after he wakes you
 // on that bedroll (wake.js). The alcoves round the hollow are yours to dig out and furnish
@@ -49,6 +50,8 @@ import { starData } from '../home/starData.js';
 import { loadNotes } from '../home/notes.js';
 import { campCloths } from '../home/campCloth.js';
 import { CampAir } from '../home/campAir.js';
+import { buildPassage, passageBoxes, inPassage, passageU, SWAP, PASSAGE_LOOK, toTown } from '../home/passage.js';
+import { inDoorway } from '../home/caveShell.js';
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -86,7 +89,8 @@ export default class HomeScene extends Scene {
     const makeIcon = () => { if (this.buildIconURL || this.gone) return; try { iconCanvas('chair_wood').toBlob((b) => { if (!b) return; this.buildIconURL = URL.createObjectURL(b); if (this.hammerImg) this.hammerImg.src = this.buildIconURL; }); } catch (e) { this.buildIconURL = iconURL('chair_wood'); if (this.hammerImg) this.hammerImg.src = this.buildIconURL; } };
     const from = params.from || 'continue';
     // the wait while the house is built (or put back together): src/home/loading.js
-    const loading = this.loading = houseLoading(g, { dark: from === 'fall' || from === 'newgame' });
+    // (walking in from the old passage the frame held on screen stays: just a small lantern in the corner)
+    const loading = this.loading = houseLoading(g, from === 'passage' ? { corner: true, appear: 0.35, label: 'Loading' } : { dark: from === 'fall' || from === 'newgame' });
     this.own(() => loading.done());
     mark('loadscreen');
     this.arrivalLesson = params.lesson || null; // cooking { tutorial } comes back with lesson: 'cook_done' | 'cook'
@@ -123,7 +127,8 @@ export default class HomeScene extends Scene {
     this.hideFrom = new Map(); // bubble key → () => true while it's out of sight
     this.scripted = false;
     // split-toned: the rock's shade goes cold blue, the fire- and lamplight stays amber
-    this.post = { vignette: 0.5, outlineAlpha: 0.7, innerThresh: 0.22, saturation: 1.02, contrast: 1.1, brightness: 1.06, grade: { lift: [0.0, 0.012, 0.042], gamma: [1.02, 1.0, 0.97], gain: [1.06, 0.99, 0.88] }, gradeMix: 1, bloom: 0.7, bloomThreshold: 0.72 };
+    // (the old passage to town wears this look too: src/home/passage.js PASSAGE_LOOK)
+    this.post = { ...PASSAGE_LOOK };
     this.scene.background = new THREE.Color(0x05060a);
     // a thin cold haze: the far end of the hollow goes blue-black (depth in a small cave)
     this.scene.fog = new THREE.FogExp2(0x090c12, 0.05);
@@ -155,6 +160,11 @@ export default class HomeScene extends Scene {
     this.holeTop = this.cave.holeTop?.y ?? HALL.y + 2.4; // (up the hole you fell through)
     // real cloth: his apron, the sacking across your alcove (you push through it)
     try { this.cloths = campCloths(this.scene, this.cave.laundry); this.own(() => this.cloths.dispose()); (this.cave.roomMeshes.camp ||= []).push(...this.cloths.list.map((c) => c.mesh)); } catch (e) { console.warn('[home] cloth', e); }
+    // the old passage up to Deep Town, behind the open door (the same tunnel the town has behind
+    // your burrow door: src/home/passage.js); you walk it, and the town takes over halfway
+    if (this.doorOpen) {
+      try { this.passage = buildPassage(); this.scene.add(this.passage.group); } catch (e) { console.warn('[home] passage', e); this.passage = null; }
+    }
     mark('build');
 
     // ---- light: a dim cave, a pool of point lights shared by the fires, lanterns and candles, glows and contact shadows
@@ -257,6 +267,7 @@ export default class HomeScene extends Scene {
     else if (from === 'faint' || from === 'bed' || from === 'sleep') this.wakeUp(this.findKind('bed'), false);
     else if (from === 'forge' || back === 'cooking') this.later(0.6, () => (this.lessonStage() === 'done' ? this.greet() : this.onLessonArrival(back)));
     else if (from === 'town') { g.audio.play('door'); this.later(1.2, () => this.greet()); }
+    else if (from === 'passage') this.later(2.4, () => this.greet());
     else if (from === 'dig') this.arriveFromDig(params.nook);
     else this.later(1.5, () => this.greet());
     if (this.nookGift && from !== 'dig') this.mentionNookGift();
@@ -437,8 +448,8 @@ export default class HomeScene extends Scene {
     return HALL.y;
   }
 
-  /** Is (x, z) (m) on open floor you can stand on? */
-  onFloor(x, z) { return walkable(x, z); }
+  /** Is (x, z) (m) on open floor you can stand on? (The doorway and the old passage too, once open.) */
+  onFloor(x, z) { return walkable(x, z) || (!!this.passage && (inPassage(x, z, 0.2) || inDoorway(x, 0.5, z) && Math.abs(x - FRONT.x) < 0.14)); }
 
   rebuildCollision() {
     const w = this.world;
@@ -447,6 +458,7 @@ export default class HomeScene extends Scene {
     for (const b of this.cave.boxes) w.add(...b, 'cave');
     for (const b of this.roofBoxes()) w.add(...b, 'roof');
     for (const b of liftBoxes(this.gateShut)) w.add(...b, 'lift');
+    if (this.passage) for (const b of passageBoxes()) w.add(...b, 'passage');
     // furniture in your alcoves
     this.blockedTiles = new Set();
     for (const rec of this.items.values()) {
@@ -690,6 +702,15 @@ export default class HomeScene extends Scene {
     if (from === 'cooking' || from === 'stove') spot = { x: SPOTS.fire.x - 0.75, z: SPOTS.fire.z - 0.35, face: { x: SPOTS.fire.x, z: SPOTS.fire.z } };
     if (from === 'lift') spot = { x: LIFT.cx, z: LIFT.cz, yaw: Math.PI / 2 };
     if (from === 'town' || from === 'tunnel') spot = this.doorOpen && from === 'town' ? { x: FRONT.x, z: this.cave.passage.z + 0.85, yaw: Math.PI } : { x: LIFT.outX - 0.2, z: LIFT.cz, yaw: Math.PI / 2 };
+    // walked in from the town up the old passage: just where it left you, still walking
+    const P = params.pose;
+    if (from === 'passage' && P && this.passage && inPassage(P.x, P.z, 0.05)) {
+      this.rig.place(P.x, P.y, P.z, P.yaw, P.pitch);
+      this.rig.player.vel.set(P.vx || 0, P.vy || 0, P.vz || 0);
+      if (P.crouch) { this.rig.player.crouched = true; this.rig.player.h = 0.5; }
+      return;
+    }
+    if (from === 'passage') spot = { x: FRONT.x, z: FRONT.z + 0.85, yaw: Math.PI };
     // just dug an alcove: at the end of its neck, looking in
     if (from === 'dig' && NOOK[params.nook]) {
       const n = NOOK[params.nook], nk = n.neck;
@@ -835,12 +856,33 @@ export default class HomeScene extends Scene {
     }
     this.lift.update(dt, this.time);
     this.air?.update(dt, this.time);
+    this.passage?.update(this.time);
+    this.checkPassage();
     this.lights.update(dt, pl.x, pl.z);
     this.glow.update(this.camera);
     this.shadows.update(this.camera);
     this.fx.update(dt);
     this.updateAnchors();
     this.updateLoops();
+  }
+
+  /**
+   * Up the old passage past its halfway mark: the town takes over (a seamless switch: the frame
+   * holds while it's built, the mole keeps its place, heading and stride). src/home/passage.js
+   */
+  checkPassage() {
+    if (!this.passage) return;
+    // (out in the passage the markers over heads back in the hollow would float on its rock)
+    this.hideQuestMarks = this.rig.player.pos.z < FRONT.z - 0.1;
+    if (this.hideQuestMarks) this.game.prefetch?.('town');
+    if (this.scripted || this.riding || this.handingOff || this.game.transitioning) return;
+    const pl = this.rig.player, u = passageU(pl.pos.x, pl.pos.z);
+    if (u === null || u <= SWAP.band) return;
+    this.handingOff = true;
+    this.build?.toggle(false);
+    const pose = { x: pl.pos.x, y: pl.pos.y, z: pl.pos.z, yaw: pl.yaw, pitch: pl.pitch, vx: pl.vel.x, vy: pl.vel.y, vz: pl.vel.z, crouch: !!pl.crouched };
+    this.game.state.flag('homeVisited', true);
+    this.game.goto('town', { from: 'passage', pose }, { transition: 'seamless' }).finally(() => { this.handingOff = false; });
   }
 
   /** A glow-mote now and then over the glowing mushrooms in the damp corner. */
@@ -899,6 +941,7 @@ export default class HomeScene extends Scene {
     const at = {
       lift: { x: LIFT.outX, y: Y + 1.0, z: LIFT.cz },
       passage: { x: FRONT.x, y: Y + 0.9, z: FRONT.z + 0.2 },
+      town: { x: FRONT.x, y: Y + 0.9, z: FRONT.z - 0.6 },
       hole: { x: HOLE.x, y: Y + 2.2, z: HOLE.z },
       hearth: { x: S.fire.x, y: Y + 0.9, z: S.fire.z + 0.3 },
       forge: { x: S.anvil.x, y: Y + 0.9, z: S.anvil.z },
@@ -966,6 +1009,31 @@ export default class HomeScene extends Scene {
       /** Dig out an alcove right away (no cost, no cutscene) and build the cave again: resolves when home is back. */
       expand(id = 'nook_bed') { return s.digNook?.(id, { free: true, quick: true }); },
       spots: { cave: HALL, house: HALL, arch: ARCH, shaft: SHAFT, lift: LIFT, front: FRONT, hole: HOLE, rooms: ROOM, nooks: NOOKS, ...SPOTS },
+      /**
+       * Walk out of the door and up the old passage until the town takes over (holding W, as a
+       * player does; the frames are stepped here). Resolves with the scene name it ends in.
+       */
+      async walkToTown(maxFrames = 400) {
+        if (!s.passage) return 'no passage';
+        const g = s.game, inp = g.input;
+        if (s.scripted && !s.seat) s.endScript();
+        s.rig.place(FRONT.x, s.floorY(FRONT.x, FRONT.z + 0.6), FRONT.z + 0.6, 0, -0.05);
+        // the way: north up leg 1, west along the cross leg (steered by turning toward each mark)
+        const marks = [[FRONT.x, -6.6], [SWAP.x - 0.6, -6.6]];
+        let mi = 0;
+        inp.down.add('KeyW');
+        try {
+          for (let i = 0; i < maxFrames && g.scene === s && !g.transitioning; i++) {
+            const p = s.rig.player.pos, m = marks[Math.min(mi, marks.length - 1)];
+            if (Math.hypot(m[0] - p.x, m[1] - p.z) < 0.25 && mi < marks.length - 1) mi++;
+            s.rig.player.yaw = Math.atan2(-(m[0] - p.x), -(m[1] - p.z));
+            await frame(1 / 30);
+          }
+        } finally { inp.down.delete('KeyW'); }
+        return g.scene === s && !g.transitioning ? 'home' : g._target || g.sceneName;
+      },
+      /** Where the mole is, in the town's frame too (for the hand-off checks). */
+      pose() { const p = s.rig.player.pos; return { x: p.x, y: p.y, z: p.z, yaw: s.rig.player.yaw, town: toTown(p.x, p.z), u: passageU(p.x, p.z) }; },
     };
   }
 

@@ -240,12 +240,17 @@ export function markerArrow() {
  * a terracotta pot of glowcaps and a lantern on an iron bracket.
  * Origin: bottom-center at the wall line (z=0 sits 0.1 behind the rock face).
  * Returns { obj, lights:[{x,y,z,...}], pot:{x,z} } in local units.
+ * opts.open: the door stands open (the way through to the old passage behind it): the arch is
+ * left empty and the leaf comes back on its own as `leaf` (its origin on the hinge line, which is
+ * at `hinge` in the arch's units: swing it with rotation.y; -PI/2 lays it square out of the wall).
  */
-export function homeEntrance(seed = 7) {
+export function homeEntrance(seed = 7, { open = false } = {}) {
   const W = 88, H = 80, D = 40, cx = 44;
   const g = new VoxelGrid(W, H, D);
   const glass = new VoxelGrid(W, H, D);
   const r = 20, base = 28, R = r + 8, Z0 = 3, ZF = 11;
+  // the leaf's own grids when it opens (else it's built into the arch)
+  const lf = open ? new VoxelGrid(W, H, D) : g;
   const st = stone(0x8e847a, { seed: seed + 3 });
   // jambs: coursed quoins (long/short), arch: 11 wedge voussoirs with mortar seams + keystone
   const NV = 11, kIdx = (NV - 1) / 2;
@@ -309,37 +314,40 @@ export function homeEntrance(seed = 7) {
     const dx = x + 0.5 - cx, dy = y + 0.5 - base;
     const d = y < base ? Math.abs(dx) : Math.hypot(dx, dy);
     if (d > r) continue;
-    g.set(x, y, Z0, 0x1e1612);
-    if (d > r - 1.2) { g.set(x, y, Z0 + 1, 0x2a1e16); continue; } // reveal
+    if (!open) g.set(x, y, Z0, 0x1e1612);
+    if (d > r - 1.2) { if (!open) g.set(x, y, Z0 + 1, 0x2a1e16); continue; } // reveal
     const pl = Math.floor((x - (cx - r)) / 6);
     const seamX = (x - (cx - r)) % 6 === 0;
     let c = seamX ? 0x3e4a32 : mulc(plank(x, y, Z0 + 1), 0.92 + hash2(pl, 7, seed) * 0.14);
     if (!seamX && y < 2) c = mulc(c, 0.8); // weathered foot
-    g.set(x, y, Z0 + 1, c);
-    g.set(x, y, Z0 + 2, c);
+    lf.set(x, y, Z0 + 1, c);
+    lf.set(x, y, Z0 + 2, c);
+    if (open) lf.set(x, y, Z0, seamX ? 0x34402a : mulc(c, 0.82)); // (its back shows now)
   }
   for (const by of [7, 33]) for (let x = cx - r + 2; x < cx + r - 2; x++) {
     const dx = x + 0.5 - cx, dy = by + 0.5 - base;
     if (by >= base && Math.hypot(dx, dy) > r - 2) continue;
-    g.set(x, by, Z0 + 3, 0x5a6e48); g.set(x, by + 1, Z0 + 3, 0x4e6040);
+    lf.set(x, by, Z0 + 3, 0x5a6e48); lf.set(x, by + 1, Z0 + 3, 0x4e6040);
   }
   // strap hinges with rivets and curled ends
   for (const hy of [10, 30]) {
-    for (let x = cx - r + 1; x < cx + 2; x++) { g.set(x, hy, Z0 + 4, C.iron); g.set(x, hy + 1, Z0 + 4, (x % 5 === 0) ? C.ironL : C.ironD); }
-    for (const [dx, dy] of [[0, -1], [1, -1], [2, 0], [2, 1], [1, 2], [0, 2], [-1, 1]]) g.set(cx + 2 + dx, hy + dy, Z0 + 4, C.iron);
+    for (let x = cx - r + 1; x < cx + 2; x++) { lf.set(x, hy, Z0 + 4, C.iron); lf.set(x, hy + 1, Z0 + 4, (x % 5 === 0) ? C.ironL : C.ironD); }
+    for (const [dx, dy] of [[0, -1], [1, -1], [2, 0], [2, 1], [1, 2], [0, 2], [-1, 1]]) lf.set(cx + 2 + dx, hy + dy, Z0 + 4, C.iron);
     g.box(cx - r - 1, hy - 1, Z0 + 3, 3, 4, 2, C.ironD); // pintle on the jamb
+    if (open) g.box(cx - r - 2, hy - 1, ZF - 1, 3, 4, 3, C.ironD); // (and the long pins out front it swings on)
   }
   // knob with a backplate, a ring knocker, a brass house number plate
-  g.box(cx + 12, 14, Z0 + 3, 3, 7, 1, 0x8a6a30);
-  g.box(cx + 12, 17, Z0 + 4, 3, 3, 2, C.brass); g.set(cx + 13, 19, Z0 + 5, 0xffe8a0);
-  for (const [dx, dy] of [[-1, 0], [1, 0], [-2, -1], [2, -1], [-2, -2], [2, -2], [-1, -3], [0, -3], [1, -3]]) g.set(cx + dx, 29 + dy, Z0 + 4, C.brass);
-  g.box(cx - 1, 29, Z0 + 3, 3, 2, 2, 0x8a6a30);
+  lf.box(cx + 12, 14, Z0 + 3, 3, 7, 1, 0x8a6a30);
+  lf.box(cx + 12, 17, Z0 + 4, 3, 3, 2, C.brass); lf.set(cx + 13, 19, Z0 + 5, 0xffe8a0);
+  for (const [dx, dy] of [[-1, 0], [1, 0], [-2, -1], [2, -1], [-2, -2], [2, -2], [-1, -3], [0, -3], [1, -3]]) lf.set(cx + dx, 29 + dy, Z0 + 4, C.brass);
+  lf.box(cx - 1, 29, Z0 + 3, 3, 2, 2, 0x8a6a30);
   // peephole: a round iron-framed window, glowing from inside
   for (let y = 31; y < 46; y++) for (let x = cx - 7; x < cx + 8; x++) {
     const d = Math.hypot(x + 0.5 - cx, y + 0.5 - 38.5);
-    if (d <= 6.2 && d > 4.6) { g.set(x, y, Z0 + 3, C.iron); g.set(x, y, Z0 + 4, d > 5.6 ? C.ironD : C.ironL); }
+    if (d <= 6.2 && d > 4.6) { lf.set(x, y, Z0 + 3, C.iron); lf.set(x, y, Z0 + 4, d > 5.6 ? C.ironD : C.ironL); }
     else if (d <= 4.6) {
-      if (Math.abs(x + 0.5 - cx) < 0.6 || Math.abs(y + 0.5 - 38.5) < 0.6) g.set(x, y, Z0 + 3, C.ironD);
+      if (Math.abs(x + 0.5 - cx) < 0.6 || Math.abs(y + 0.5 - 38.5) < 0.6) lf.set(x, y, Z0 + 3, C.ironD);
+      else if (open) lf.set(x, y, Z0 + 2, 0x3a3428); // (dark glass: the light's behind you now)
       else glass.set(x, y, Z0 + 2, y > 39 ? C.glowW : C.glowO);
     }
   }
@@ -412,8 +420,12 @@ export function homeEntrance(seed = 7) {
   glass.box(lx - 1, ly + 3, lz - 1, 3, 5, 3, C.glowY);
   const obj = group(M32(g, [cx, 0, 0]), G32(glass, [cx, 0, 0]));
   const u = (v) => v * S32;
+  // the open leaf: hinged at the jamb's front edge, standing on the step
+  const leaf = open ? group(M32(lf, [cx - r, 0, Z0])) : null;
   return {
     obj,
+    leaf,
+    hinge: { x: u(-r), y: u(4), z: u(ZF + 1) },
     lights: [
       { x: u(lx + 0.5 - cx), y: u(ly + 6), z: u(lz + 0.5), lantern: true },
       { x: 0, y: u(38), z: u(Z0 + 3), weak: true },

@@ -697,6 +697,7 @@ export class Engine {
       this.gpuName = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
     } catch (e) { /* unknown */ }
     this.softwareGL = /swiftshader|llvmpipe|softpipe|software/i.test(this.gpuName);
+    this.guardContext(canvas);
     this.pixelOffset = 0;
     this.width = 640;
     this.height = 360;
@@ -853,6 +854,60 @@ export class Engine {
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
+
+  /**
+   * WebGL context loss (phones drop the context under memory pressure; a GPU reset does it too):
+   * the loss is caught so the browser can give the context back, nothing is drawn meanwhile, and
+   * listeners (Game: a lantern while it waits, the scene rebuilt if it can't re-upload) hear about
+   * both ends. The context comes back one quality tier lighter. compileAsync gets a time limit
+   * and gives up during a loss: three's own polls a lost program forever, and a scene that awaited
+   * it never finished loading.
+   */
+  guardContext(canvas) {
+    this.contextLost = false;
+    this.contextLosses = 0;
+    this.contextListeners = new Set();
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      if (this.contextLost) return;
+      this.contextLost = true;
+      this.contextLosses++;
+      console.warn('[engine] WebGL context lost');
+      for (const cb of this.contextListeners) { try { cb(true); } catch (err) { console.warn(err); } }
+    }, false);
+    canvas.addEventListener('webglcontextrestored', () => {
+      if (!this.contextLost) return;
+      this.contextLost = false;
+      console.warn('[engine] WebGL context restored');
+      // lighter from now on (a loss under memory pressure tends to come back)
+      if (this.tier < TIERS.length - 1) { try { this.setTier(this.tier + 1); } catch (err) { /* sized on the next frame */ } }
+      this._sized = false;
+      this._grade = { ref: undefined, mix: -1 };
+      try { this.resize(); } catch (err) { /* next frame */ }
+      for (const cb of this.contextListeners) { try { cb(false); } catch (err) { console.warn(err); } }
+    }, false);
+    const r = this.renderer;
+    const COMPILE_WAIT = 7000;
+    r.compileAsync = (scene, camera, target = null) => new Promise((resolve) => {
+      if (this.contextLost) { resolve(scene); return; }
+      let mats;
+      try { mats = r.compile(scene, camera, target); } catch (e) { resolve(scene); return; }
+      if (!mats || !mats.size) { resolve(scene); return; }
+      const t0 = performance.now();
+      const check = () => {
+        if (this.contextLost || performance.now() - t0 > COMPILE_WAIT) { resolve(scene); return; }
+        try {
+          for (const m of mats) { const p = r.properties.get(m)?.currentProgram; if (!p || p.isReady()) mats.delete(m); }
+        } catch (e) { mats.clear(); }
+        if (!mats.size) { resolve(scene); return; }
+        setTimeout(check, 10);
+      };
+      if (r.extensions.has('KHR_parallel_shader_compile')) check(); else setTimeout(check, 10);
+    });
+  }
+
+  /** cb(lost: boolean) on a context loss / restore. Returns an unsubscribe. */
+  onContext(cb) { this.contextListeners.add(cb); return () => this.contextListeners.delete(cb); }
 
   /** HDR scene colour on/off (off: 8-bit sRGB, highlights clip; for comparisons and old GPUs). */
   setHdr(on) {
@@ -1039,6 +1094,7 @@ export class Engine {
    * @param {object} post overrides for DEFAULT_POST; post.overlay = {scene, camera} draws a first-person layer on top
    */
   render(scene, camera, post = {}) {
+    if (this.contextLost) return; // (nothing reaches the screen until the context is back)
     const p = { ...DEFAULT_POST, ...(SCENE_POST[this.sceneName] || null), ...post };
     // a scene's own per-frame adjustments (e.g. the mine's air: shafts toward a lantern in a hall)
     const hook = scene.userData && scene.userData.postHook;

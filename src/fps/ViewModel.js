@@ -241,10 +241,16 @@ export class ViewModel {
     this.pending = { kind, item, geo };
   }
 
-  /** Wind up a strike that lands `dur` seconds from now. */
-  swing(kind = this.kind, dur = 0.3) {
+  /**
+   * Wind up a strike that lands `dur` seconds from now. o.weight (about 0.8..1.25, the pick only):
+   * how heavy the blow is (a bigger wind-up and a deeper follow-through for hard rock). A swing
+   * started while the last one is still recovering grows out of where the paw is (no snap back).
+   */
+  swing(kind = this.kind, dur = 0.3, o = {}) {
     if (this.mode !== 'tool' || this.pending) return;
-    this.action = { kind: SWING_TOOLS.has(this.kind) ? this.kind : kind, t: 0, dur: Math.max(0.08, dur) };
+    const prev = this.action;
+    this.action = { kind: SWING_TOOLS.has(this.kind) ? this.kind : kind, t: 0, dur: Math.max(0.08, dur), weight: o.weight ?? 1 };
+    if (prev && prev.kind === 'pick' && this.action.kind === 'pick' && this.pickPose) this.action.from = { ...this.pickPose };
   }
 
   /** Contact: recoil and shake (strength 0..1+). */
@@ -470,7 +476,7 @@ export class ViewModel {
     const act = this.action;
     const stop = (this.stopping = this.stopT > 0);
     this.stopT = Math.max(0, this.stopT - dt);
-    if (act) { act.t += stop ? dt * 0.06 : dt; if (act.t > act.dur + 0.4 && !(act.kind === 'stake' || act.kind === 'beam') || act.t > act.dur + 1.1) this.action = null; }
+    if (act) { act.t += stop ? dt * 0.06 : dt; if (act.t > act.dur + 0.4 && !(act.kind === 'stake' || act.kind === 'beam') || act.t > act.dur + 1.1) { this.action = null; this.pickPose = null; } }
     if (this.eating) { this.eating.t += dt; if (this.eating.t > 1.45) this.finishEat(); }
     if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
     this.shake = Math.max(0, this.shake - dt * 3.2);
@@ -678,7 +684,37 @@ export class ViewModel {
       const wind = ease(a / windEnd);
       const strike = clamp((a - windEnd) / (d - windEnd), 0, 1);
       const rec = backOut((a - d - 0.06) / 0.26); // (wave 10) a shorter hang, a quicker recovery that springs a touch past rest
-      if (kind === 'pick' || kind === 'hammer' || kind === 'smith') {
+      if (kind === 'pick' && act.kind === 'pick') {
+        // (wave 14) anticipation, snap, follow-through: the pick rises fast and hangs a beat at the
+        // top over the shoulder (the paw squeezes in), snaps down accelerating so the point lands at
+        // `dur`, bites on past the face (the head sinks, the arm sags), then springs back a touch past
+        // rest. Held, the next swing grows out of the recovery.
+        const W = act.weight || 1;
+        const WIND = 0.8 + 0.12 * W, HIT = -0.42, DIP = -0.13 * W;
+        const wEnd = d * 0.6;
+        let ang, k, fwd, lunge;
+        if (a < wEnd) {
+          const u = a / wEnd, up = 1 - (1 - u) * (1 - u) * (1 - u);
+          ang = WIND * up; k = up; fwd = 0; lunge = 0;
+        } else if (a < d) {
+          const sN = (a - wEnd) / (d - wEnd), e = sN * sN * sN;
+          ang = WIND + (HIT - WIND) * e; k = 1 - e; fwd = e; lunge = e;
+        } else {
+          const f = a - d;
+          const dip = Math.sin(Math.min(1, f / 0.08) * Math.PI * 0.5);
+          const rec = backOut((f - 0.06) / 0.24);
+          ang = (HIT + DIP * dip) * (1 - rec);
+          k = 0; fwd = 1 - rec; lunge = (1 - rec) * (1 - 0.6 * dip);
+        }
+        if (act.from) {
+          const b = ease(a / Math.max(0.03, Math.min(0.08, wEnd)));
+          ang = act.from.ang + (ang - act.from.ang) * b; k = act.from.k + (k - act.from.k) * b;
+          fwd = act.from.fwd + (fwd - act.from.fwd) * b; lunge = act.from.lunge + (lunge - act.from.lunge) * b;
+        }
+        this.pickPose = { ang, k, fwd, lunge };
+        R.move(0.035 * k - 0.03 * fwd, 0.075 * k - 0.015 * fwd, 0.1 * k - 0.09 * fwd - 0.025 * lunge).rot(ang, 0.12 * k, -0.08 * fwd + 0.05 * k);
+        L.move(-0.02 * k, -0.04 * fwd + 0.012 * k, 0.035 * k - 0.01 * lunge);
+      } else if (kind === 'pick' || kind === 'hammer' || kind === 'smith') {
         // wind up over the shoulder, snap down so the point lands at `dur`, hang, recover
         // the point lands near the crosshair at `dur`, then the arm sags back as the head bites
         const WIND = 0.8, HIT = -0.42;

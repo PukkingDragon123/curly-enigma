@@ -197,7 +197,7 @@ export class QuestMarks {
       for (const [npc, m] of this.marks) if (!seen.has(npc)) { m.dispose(); this.marks.delete(npc); }
     }
     const camPos = cam.getWorldPosition(_f);
-    const hideAll = !!(g.ui.tracker?.muted || g.ui.focus || sc.cut || sc.locked && g.sceneName !== 'town');
+    const hideAll = !!(g.ui.tracker?.muted || g.ui.focus || sc.cut || sc.locked && g.sceneName !== 'town' || sc.hideQuestMarks);
     for (const m of this.marks.values()) {
       m.group.visible = !!m.kind && !hideAll;
       if (!m.kind || !m.anchor || hideAll) continue;

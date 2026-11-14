@@ -407,7 +407,7 @@ export class StarHouse {
   /** The hollow's rock, its floor and roof, the hole, roots, drips, the glow in the damp corner; your alcoves' lanterns' light. */
   buildRock() {
     const set = this.nookSet;
-    const rock = buildCaveRock(set);
+    const rock = buildCaveRock(set, { doorOpen: !!this.opts.doorOpen });
     this.decor.add(rock.obj);
     this.holeTop = rock.top;
     for (const l of campLights()) this.lights.push(l);
@@ -562,8 +562,23 @@ export class StarHouse {
       const rb = doorRubble(4);
       this.place(rb, P.x, P.z + 0.05, 0, Y);
       this.boxes.push([P.x - 0.55, Y, P.z, P.x + 0.55, Y + 0.5, P.z + 0.4]);
-    } else this.light({ kind: 'door', x: P.x, y: Y + 0.95, z: P.z + 0.15, color: 0xffd090, intensity: 0.8, distance: 2.8, flicker: 0.08, halo: 0.25, haloOpacity: 0.4, priority: 3, power: 0.4, radius: 1.6 });
-    this.boxes.push([P.x - 0.6, Y, P.z - 0.6, P.x + 0.6, Y + 1.6, P.z - 0.02]); // the door itself and the tunnel behind
+      this.boxes.push([P.x - 0.6, Y, P.z - 0.6, P.x + 0.6, Y + 1.6, P.z - 0.02]); // the door itself and the tunnel behind
+    } else {
+      // the way is open: the leaf stands back against the rock, the old passage runs on behind
+      // (src/home/passage.js); lamplight from up the passage
+      this.light({ kind: 'door', x: P.x, y: Y + 0.95, z: P.z + 0.15, color: 0xffd090, intensity: 0.8, distance: 2.8, flicker: 0.08, halo: 0.25, haloOpacity: 0.4, priority: 3, power: 0.4, radius: 1.6 });
+      // (hinged on the front of its jamb and stood on the step, swung square into the room and a
+      // little back toward the rock: clear of the arch's stones)
+      door.hinge.position.z = tl(0.09);
+      door.hinge.position.y = tl(0.045);
+      door.hinge.rotation.y = -Math.PI / 2 - 0.12;
+      // the jambs and the round head of the doorway (the opening itself is clear)
+      this.boxes.push([P.x - 0.62, Y, P.z - 0.62, P.x - 0.33, Y + 1.6, P.z + 0.06]);
+      this.boxes.push([P.x + 0.33, Y, P.z - 0.62, P.x + 0.62, Y + 1.6, P.z + 0.06]);
+      this.boxes.push([P.x - 0.62, Y + 1.12, P.z - 0.62, P.x + 0.62, Y + 1.8, P.z + 0.06]);
+      // the leaf, swung back into the room against the rock to the left
+      this.boxes.push([P.x - 0.55, Y, P.z + 0.06, P.x - 0.33, Y + 1.2, P.z + 0.84]);
+    }
     // your corner: the bedroll on the floor, the flat stone at its head (your notebook), your trunk;
     // in the hollow along the south rock until your sleeping alcove is dug, then in there
     const inNook = set.has('nook_bed');
@@ -605,7 +620,7 @@ export class StarHouse {
     }
     // the floor and the rock walls
     this.boxes.push([HALL.x0 - 8, Y - 1, HALL.z0 - 2, HALL.x1 + 4, Y, 6]);
-    this.boxes.push(...caveBoxes(set));
+    this.boxes.push(...caveBoxes(set, { doorOpen: !!this.opts.doorOpen }));
   }
 
   // ------------------------------------------------------------ water

@@ -5,6 +5,10 @@
 // just the ember line and three dots (you're out cold).
 //
 //   const ld = houseLoading(game, { dark }); ld.set({ k, label }); ld.done()
+// opts.corner: no screen, just a small lantern in the corner (over a frame held on screen while a
+// scene is swapped in under it: Game.goto 'seamless'); opts.appear: seconds before it fades in, as
+// a CSS delay (a page busy building can't run a timer, but the compositor still runs this);
+// opts.wick: false leaves the progress wick out (a wait with nothing to count).
 import { el } from '../core/util.js';
 
 const LINES = {
@@ -40,6 +44,17 @@ function style() {
 .hl-back.dark .hl-wick em{background:linear-gradient(90deg,#3a1408,#a8481c)}
 .hl-back.dark .hl-wick em:after{width:calc(var(--px) * 3);height:calc(var(--px) * 3);top:calc(var(--px) * -1);right:calc(var(--px) * -1);background:#ff9a4a;box-shadow:0 0 calc(var(--px) * 3) var(--px) #a8481c}
 .hl-back.dark .hl-what{color:#6a5040}
+.hl-back.corner{background:none;pointer-events:none}
+.hl-back.corner .hl-card{position:absolute;right:calc(var(--sar, 0px) + var(--px) * 14);bottom:calc(var(--sab, 0px) + var(--px) * 12);transform:none;gap:0}
+.hl-back.corner .hl-lamp{width:calc(var(--px) * 7);height:calc(var(--px) * 15);filter:drop-shadow(0 0 calc(var(--px) * 4) #ff9a3a66)}
+.hl-back.corner .hl-lamp i{height:calc(var(--px) * 4)}
+.hl-back.corner .hl-lamp b{top:calc(var(--px) * 4);width:calc(var(--px) * 7);height:calc(var(--px) * 9)}
+.hl-back.corner .hl-lamp b:before,.hl-back.corner .hl-lamp b:after{width:calc(var(--px) * 9)}
+.hl-back.corner .hl-wick,.hl-back.nowick .hl-wick{display:none}
+.is-touch .hl-back.corner .hl-card{right:auto;left:50%;bottom:auto;top:calc(var(--sat, 0px) + var(--px) * 12);transform:translateX(-50%)}
+.hl-back.late{opacity:0;animation:hlIn .25s ease-out var(--hl-in, .5s) forwards}
+.hl-back.late.out{animation:none;opacity:0}
+@keyframes hlIn{to{opacity:1}}
 @keyframes hlSwing{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(7deg)}}
 @keyframes hlGlow{0%,100%{filter:brightness(1)}40%{filter:brightness(1.18)}70%{filter:brightness(.9)}}
 @keyframes hlEmber{50%{opacity:.6;transform:scale(.8)}}
@@ -59,14 +74,15 @@ export function houseLoading(game, opts = {}) {
       style();
       bar = el('em');
       what = el('div', { class: 'hl-what' }, opts.dark ? '' : LINES.start);
-      root = el('div', { class: 'hl-back' + (opts.dark ? ' dark' : ''), role: 'status', 'aria-label': 'Loading Old Star\'s camp' }, [
+      root = el('div', { class: 'hl-back' + (opts.dark ? ' dark' : '') + (opts.corner ? ' corner' : '') + (opts.wick === false ? ' nowick' : '') + (opts.appear ? ' late' : ''), role: 'status', 'aria-label': opts.label || 'Loading Old Star\'s camp' }, [
         el('div', { class: 'hl-card' }, [el('div', { class: 'hl-lamp', 'aria-hidden': 'true' }, [el('i'), el('b')]), el('div', { class: 'hl-title' }, 'Old Star\'s camp'), el('div', { class: 'hl-wick' }, [bar]), what]),
       ]);
+      if (opts.appear) root.style.setProperty('--hl-in', `${opts.appear}s`);
       (game.ui?.overlay || document.body).append(root);
     } catch (e) { /* no DOM to show it in */ }
   };
-  // a house that's ready in a blink never flashes the screen
-  const timer = setTimeout(show, opts.delay ?? 120);
+  // a house that's ready in a blink never flashes the screen (with opts.appear the CSS waits instead)
+  const timer = opts.appear ? (show(), 0) : setTimeout(show, opts.delay ?? 120);
   return {
     set(p) {
       if (gone) return;

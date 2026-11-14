@@ -88,8 +88,20 @@ export function chalkSpots(set) {
   return out;
 }
 
-/** The rock, the floor and the roof, as voxels and meshes. */
-export function buildCaveRock(set = openNookSet()) {
+/**
+ * The way through the north rock behind Old Star's door, once it's open (m): the door's own shape
+ * (its frame's opening, a hair wider) straight back to where the rock ends and the old passage
+ * begins (src/home/passage.js). du: from the door's middle, h: over the floor.
+ */
+export function inDoorway(x, h, z) {
+  if (z > FRONT.z + 0.02 || z < FRONT.z - 0.6) return false;
+  const du = x - FRONT.x, hw = 0.38, spring = 1.18 - 0.36;
+  if (Math.abs(du) > hw || h < 0) return false;
+  return h < spring || du * du + (h - spring) ** 2 <= hw * hw;
+}
+
+/** The rock, the floor and the roof, as voxels and meshes. opts.doorOpen: the doorway is cut through. */
+export function buildCaveRock(set = openNookSet(), opts = {}) {
   const CG = caveGrid(set);
   const { x0, y0, z0, nx, ny, nz } = CG;
   const S = 1 / CV;
@@ -131,6 +143,7 @@ export function buildCaveRock(set = openNookSet()) {
       else if (iy >= top) s = true;
       else {
         const h = (iy + 0.5) / CV - (FLOOR / CV);
+        if (opts.doorOpen && inDoorway(x, h, z)) continue; // (the way to Deep Town)
         const sC = dC + lean(h);
         const sN = dN + leanNeck(h);
         const sA = dA + leanAlcove(h);
@@ -397,12 +410,14 @@ function chalkAt(c, x, h, z, ix, iy, iz) {
  * The collision of the rock walls (m): every patch of rock within reach of the floor, as boxes
  * (rows of 0.1 m cells merged along x). Floor and roof are the scene's own boxes.
  */
-export function caveBoxes(set = openNookSet()) {
+export function caveBoxes(set = openNookSet(), opts = {}) {
   const B = rockBounds(set);
   const C = 0.1, X0 = B.x0, X1 = Math.min(B.x1, SHAFT.x0 + 0.01), Z0 = B.z0, Z1 = B.z1;
   const nx = Math.ceil((X1 - X0) / C), nz = Math.ceil((Z1 - Z0) / C);
   const walk = new Uint8Array(nx * nz);
-  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) walk[i + j * nx] = walkable(X0 + (i + 0.5) * C, Z0 + (j + 0.5) * C) ? 1 : 0;
+  // (the open doorway: its jambs are the scene's boxes, the passage's are passage.js's)
+  const door = (x, z) => opts.doorOpen && Math.abs(x - FRONT.x) < 0.33 && z < FRONT.z + 0.15 && z > FRONT.z - 0.6;
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const x = X0 + (i + 0.5) * C, z = Z0 + (j + 0.5) * C; walk[i + j * nx] = walkable(x, z) || door(x, z) ? 1 : 0; }
   const near = (i, j) => { for (let dj = -4; dj <= 4; dj++) for (let di = -4; di <= 4; di++) { const a = i + di, b = j + dj; if (a >= 0 && b >= 0 && a < nx && b < nz && walk[a + b * nx]) return true; } return false; };
   const out = [];
   const Y0 = FY - 0.5, Y1 = FY + 2.6;

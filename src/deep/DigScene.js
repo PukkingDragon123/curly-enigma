@@ -7,7 +7,9 @@ import { DeepWorld } from './World.js';
 import { TerrainView } from './Terrain.js';
 import { ChunkPool } from './ChunkPool.js';
 import { FPSPlayer } from './Player.js';
-import { Digger, breakable, plateOf } from './Dig.js';
+import { Digger, breakable, plateOf, plateScale } from './Dig.js';
+import { Debris } from './Debris.js'; // (wave 14) chunky voxel bits knocked out of the face
+import { isBuilt } from './build/blocks.js';
 import { Cracks } from './Cracks.js'; // cracks on rock that took a blow but hasn't given yet
 import { Bodies } from './Bodies.js';
 import { Particles } from './Particles.js';
@@ -33,6 +35,34 @@ import { Build } from './Build.js'; // building part: blocks, ladders, torches, 
 import { TOOL_KINDS, HOTBAR_N, hotbarOf } from '../core/hotbar.js';
 // the build slot (slot 7) puts up what Build.js says: blocks on a 0.5 m grid, ladders, torches, doors…
 const REACH = 2.3;
+// (wave 14) how a blow feels, by what it lands on: camera kick, hit-stop on a crack (stop) and on a
+// break (brk), shake on a break, swing cadence (× the pick's rate: soft ground goes quicker), the
+// wind-up (s, until the point lands) and its weight (the paw's anticipation), the break pop
+const FEEL = {
+  dirt: { kick: 0.55, stop: 0.03, brk: 0.05, shake: 0.08, cad: 0.86, wind: 0.12, w: 0.85, pop: 0.8 },
+  clay: { kick: 0.5, stop: 0.035, brk: 0.055, shake: 0.08, cad: 0.9, wind: 0.125, w: 0.9, pop: 0.75 },
+  sand: { kick: 0.4, stop: 0.02, brk: 0.04, shake: 0.05, cad: 0.8, wind: 0.115, w: 0.8, pop: 0.6 },
+  wood: { kick: 0.7, stop: 0.035, brk: 0.055, shake: 0.09, cad: 0.95, wind: 0.13, w: 0.95, pop: 0.8 },
+  stone: { kick: 1, stop: 0.045, brk: 0.075, shake: 0.17, cad: 1, wind: 0.14, w: 1, pop: 1 },
+  hard: { kick: 1.25, stop: 0.055, brk: 0.085, shake: 0.22, cad: 1.08, wind: 0.15, w: 1.18, pop: 1.15 },
+  crystal: { kick: 0.9, stop: 0.05, brk: 0.08, shake: 0.15, cad: 1, wind: 0.14, w: 1.05, pop: 1.1 },
+  ore: { kick: 1.1, stop: 0.06, brk: 0.08, shake: 0.12, cad: 1.05, wind: 0.145, w: 1.1, pop: 1 },
+};
+/** FEEL key of a material (by how it breaks). */
+function feelKey(m) {
+  if (m >= ORE_BASE) return 'ore';
+  const d = MAT[m];
+  if (!d) return 'stone';
+  const b = d.brk;
+  if (b === 'shatter') return 'crystal';
+  if (b === 'peel') return 'clay';
+  if (b === 'trickle') return 'sand';
+  if (b === 'crumble') return 'dirt';
+  if (b === 'splinter') return 'wood';
+  return d.hs === 'hard' || d.hp >= 3 ? 'hard' : 'stone';
+}
+/** Debris kind for a FEEL key. */
+const DEB = { dirt: 'dirt', clay: 'clay', sand: 'sand', wood: 'wood', stone: 'stone', hard: 'hard', crystal: 'crystal', ore: 'ore' };
 const vmModules = import.meta.glob('../fps/ViewModel.js');
 // optional systems, built separately (see docs/DEEP.md): fantasy enemies, flowing fluids
 const extModules = import.meta.glob(['./Enemies.js', './Fluids.js', './Props.js', './Clumps.js', './FirstDig.js', './Explosives.js', './Ruins.js', './Traders.js', './Vegetation.js']);
@@ -77,9 +107,11 @@ export default class DigScene extends Scene {
     this.bodies = new Bodies(this.scene, this.world, this.U);
     this.fx = new Particles(this.scene, this.world, this.U);
     this.fx.setPixelScale(g.engine.height, this.fov);
+    this.bits = new Debris(this.scene, this.world, this.U);
     this.digger = new Digger(this.world);
     this.ores = new Ores(this.world);
     this.player = new FPSPlayer(this.world);
+    this.player.assist = true; // (wave 14) duck into low tunnels, hop small ledges, slip round corners, never stay buried
     this.stakes = deep.stakes ||= [];
     this.slot = 0;
     this.trip = 0;
@@ -89,6 +121,9 @@ export default class DigScene extends Scene {
     this.swing = null;
     this.drillHeat = 0;
     this.kick = new THREE.Vector3();
+    this.kickV = new THREE.Vector3(); // the kick springs back (a touch past rest: bouncy)
+    this.fovK = 0; this.fovV = 0; // a little zoom punch when rock gives (springs back)
+    this.aimK = 0; // the target highlight's strength (eased)
     this.shakeAmp = 0;
     this.flags = {};
     this.toastCd = {};
@@ -323,8 +358,14 @@ export default class DigScene extends Scene {
     const exhausted = st.energy < 8;
     const load = this.weigh(dt);
     const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted && load.run, crouch: inp.isDown('KeyC'), jumpMul: (st.hasBuff('bouncy') ? 1.35 : 1) * load.jump, frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (st.skill?.('speed') || 1) * (this.blocking ? 0.55 : 1) * load.speed });
-    // props are solid (crystal clusters, mushrooms, fossils, stalagmites): walk round them
-    if (this.props?.collide(pl.pos, 0.26, 0.85) && this.world.voxelAt(Math.floor(pl.pos.x * VOX), Math.floor((pl.pos.y + 0.3) * VOX), Math.floor(pl.pos.z * VOX))) { pl.pos.x -= pl.vel.x * dt; pl.pos.z -= pl.vel.z * dt; }
+    // props are solid (crystal clusters, mushrooms, fossils, stalagmites): walk round them (a push
+    // that would shove the mole into the rock is undone, back to where it stood: it never gets
+    // wedged in a wall)
+    {
+      const ox = pl.pos.x, oz = pl.pos.z;
+      if (this.props?.collide(pl.pos, 0.26, 0.85) && pl.hitsAt(pl.pos.x, pl.pos.y, pl.pos.z)) { pl.pos.x = ox; pl.pos.z = oz; }
+    }
+    if (ev.hop) { this.audio.play('jump', { vol: 0.12, pitch: 1.25 }); this.energy(0.05); }
     // hauling a heavy pack is hard work
     if (load.r > 1 && !busy && (mv.x || mv.y) && pl.grounded) this.energy(dt * 0.3 * Math.min(2, load.r - 1));
     if (ev.landed > 8) this.enemies?.noise?.(pl.pos.x, pl.pos.y, pl.pos.z, 3, 'land');
@@ -346,7 +387,7 @@ export default class DigScene extends Scene {
     }
     // dig / use
     const held = !!this.clumps?.capture();
-    if (held) { if (this.vm) this.vm.use(this.slotName, false); }
+    if (held) { if (this.vm) this.vm.use(this.slotName, false); this.aimAt(null); }
     else { this.updateTarget(); this.useTools(dt, busy); }
     this.updateGhost(held || busy);
     if (this.clumps) this.events(this.clumps.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy }));
@@ -356,6 +397,7 @@ export default class DigScene extends Scene {
     this.hitStop = Math.max(0, (this.hitStop || 0) - dt);
     this.digTick(dt); // loose grains slide, loose roofs, ore glints (mining)
     this.bodies.update(sdt, pl.eye(), pl.pos);
+    this.bits.update(sdt, pl.eye());
     if (this.fluids) this.fluids.update(dt, { player: pl, eye: pl.eye(), time: this.time });
     if (this.firstDig) this.events(this.firstDig.update(dt, { player: pl, eye: pl.eye(), time: this.time, busy }));
     if (this.explosives) this.events(this.explosives.update(dt, { player: pl, eye: pl.eye(), time: this.time }));
@@ -372,14 +414,25 @@ export default class DigScene extends Scene {
     // camera (with kick and shake)
     const eye = pl.eye();
     const bob = pl.grounded ? Math.sin(pl.bobT * 2) * 0.022 * clamp(pl.speed / 3, 0, 1) : 0;
-    const kf = Math.max(0, 1 - dt * 16);
-    this.kick.multiplyScalar(kf);
+    // the kick springs back with a small overshoot (quick and bouncy), the zoom punch too
+    {
+      const h = Math.min(dt, 1 / 30);
+      this.kickV.addScaledVector(this.kick, -760 * h).multiplyScalar(Math.max(0, 1 - 27 * h));
+      this.kick.addScaledVector(this.kickV, h);
+      this.fovV += (-this.fovK * 520 - this.fovV * 30) * h;
+      this.fovK += this.fovV * h;
+      if (Math.abs(this.fovK) < 0.005 && Math.abs(this.fovV) < 0.05) this.fovK = this.fovV = 0;
+    }
     this.shakeAmp = Math.max(0, this.shakeAmp - dt * 1.4);
     const sh = this.shakeAmp;
     const vo = this.viewOff && this.state.data.settings.shake ? this.viewOff : null; // a sneeze moves the head (enemies/veil.js)
     this.viewOff = null;
     this.camera.position.set(eye.x + (Math.random() - 0.5) * sh * 0.05, eye.y + bob + (Math.random() - 0.5) * sh * 0.05 + (vo ? vo[2] : 0), eye.z + (Math.random() - 0.5) * sh * 0.05);
     this.camera.rotation.set(pl.pitch + this.kick.x + (vo ? vo[0] : 0), pl.yaw + this.kick.y, this.kick.z + (vo ? vo[1] : 0), 'YXZ');
+    if (!this.gather) {
+      const fov = this.fov + (this.state.data.settings.shake ? this.fovK : 0);
+      if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    }
     this.camera.updateMatrixWorld();
     this.gather?.frame?.(dt); // the gathering close-up (deep/gather) steers the camera and paws
     this.game.convo?.director?.apply(this.camera, dt); // cutscene talk camera (src/fx/director.js) [convo hook]
@@ -437,6 +490,7 @@ export default class DigScene extends Scene {
     const eye = pl.eye(), f = pl.forward();
     const hit = this.world.raycast(eye.x, eye.y, eye.z, f.x, f.y, f.z, REACH);
     this.target = hit;
+    this.aimAt(hit);
     const ui = this.game.ui;
     if (!ui.setCrosshair) return;
     const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
@@ -451,7 +505,47 @@ export default class DigScene extends Scene {
     const ore = hit.m >= ORE_BASE;
     if (hit.m === M.DOOR) { ui.setCrosshair({ visible: true, kind: 'use', label: 'Home' }); return; }
     if (this.liftNear()) { ui.setCrosshair({ visible: true, kind: 'use', label: `Ride the lift` }); return; }
-    ui.setCrosshair({ visible: true, kind: ore ? 'ore' : breakable(hit.m) ? 'rock' : 'none', label: m ? m.name : '' });
+    // (wave 14: fewer words) rock and ore go unnamed: the reticle and the highlight on the face say it
+    void m;
+    ui.setCrosshair({ visible: true, kind: ore ? 'ore' : breakable(hit.m) ? 'rock' : 'none' });
+  }
+
+  /**
+   * (wave 14) The target highlight (TerrainMaterial aim): with the pick out, the plate of rock the
+   * next blow cracks, or the round bite of soil it takes, lifts a little in the lamp and its edge is
+   * picked out in pixel dots. Eased in and out; nothing for ore, placed blocks or rock too hard.
+   */
+  aimAt(hit) {
+    const U = this.U;
+    let want = 0;
+    const tool = this.slotName;
+    if (hit && (tool === 'pick') && !this.clumps?.held && breakable(hit.m) && hit.m < ORE_BASE && !isBuilt(hit.m) && MAT[hit.m]) {
+      const mat = MAT[hit.m], brk = mat.brk || 'slab';
+      const it = this.state.equipped('pick');
+      const zone = zoneAt(-hit.y), needs = HARD_ROCK_TIER?.[zone] ?? (zone >= 4 ? 3 : 0);
+      if (it && !(mat.hp > 3.5 && (it.tier || 1) < needs)) {
+        const n = [hit.nx, hit.ny, hit.nz];
+        if (brk === 'slab' || brk === 'shatter') {
+          const S = plateScale(hit.m), key = plateOf(hit.vx, hit.vy, hit.vz, S);
+          const cz = (key % 8192) - 4096, cy = (Math.floor(key / 8192) % 8192) - 4096, cx = Math.floor(key / 67108864) - 4096;
+          U.aimP.value.set(cx, cy, cz, Math.round(S * 16) / 16);
+          U.aim.value.set(hit.x, hit.y, hit.z, U.aim.value.w);
+        } else {
+          const hp = Math.max(0.3, mat.hp), power = this.digger.kitPower(this.pickPower());
+          const R = clamp(0.11 + 0.2 * Math.sqrt(power / hp), 0.1, 0.46) * (brk === 'crumble' ? 1.08 : 1); // m (Dig.strike)
+          const sink = brk === 'peel' ? R * 0.2 : R * 0.45;
+          U.aimP.value.w = 0;
+          U.aimR.value = R * 0.97;
+          U.aim.value.set((hit.vx + 0.5) / VOX - n[0] * sink, (hit.vy + 0.5) / VOX - n[1] * sink, (hit.vz + 0.5) / VOX - n[2] * sink, U.aim.value.w);
+        }
+        want = 1;
+      }
+    }
+    const dt = Math.min(0.1, Math.max(0, this.time - (this.aimT ?? this.time)));
+    this.aimT = this.time;
+    this.aimK += (want - this.aimK) * Math.min(1, dt * (want ? 16 : 10));
+    if (this.aimK < 0.01 && !want) this.aimK = 0;
+    U.aim.value.w = this.aimK;
   }
 
   useTools(dt, busy) {
@@ -464,18 +558,13 @@ export default class DigScene extends Scene {
     if (this.swing) {
       this.swing.t += dt;
       if (!this.swing.hit && this.swing.t >= this.swing.windup) { this.swing.hit = true; if (this.swing.fn) this.swing.fn(); else this.strike(); }
-      if (this.swing.t >= this.swing.dur) this.swing = null;
+      // a held pick goes straight into the next swing: the time left over carries into it (no dead frame)
+      if (this.swing.t >= this.swing.dur) { this.swingCarry = this.swing.pick ? Math.max(1e-4, Math.min(0.04, this.swing.t - this.swing.dur)) : 0; this.swingEnd = this.time; this.swing = null; }
     }
     if (this.vm) this.vm.use(tool, want && (tool === 'brush' || tool === 'drill' || tool === 'xray') && !!it);
-    if (!want || !it) return;
+    if (!want || !it) { this.swingCarry = 0; return; }
     if (tool === 'pick') {
-      if (!this.swing && this.useT <= 0) {
-        const rate = (it.rate || 0.36) * this.bonus('rate');
-        this.useT = rate * (st.hasBuff('zippy') ? 0.8 : 1) + 0.06;
-        this.swing = { t: 0, windup: 0.13, dur: this.useT, hit: false };
-        if (this.vm) this.vm.swing('pick', 0.13);
-        this.audio.play('whoosh', { vol: 0.25, pitch: 1.4 });
-      }
+      if (!this.swing) this.startPick(it);
     } else if (tool === 'chisel') {
       // the mallet cocks back and knocks the chisel home
       if (this.useT <= 0 && !this.swing) { this.useT = (it.rate || 0.2) * this.bonus('rate') + 0.05; this.swing = { t: 0, windup: 0.1, dur: this.useT, hit: false, fn: () => this.chiselHit(it) }; if (this.vm) this.vm.swing('chisel', 0.1); }
@@ -508,6 +597,42 @@ export default class DigScene extends Scene {
     }
   }
 
+  /**
+   * (wave 14) Start a pick swing. Its cadence and wind-up follow what's under the crosshair (soft
+   * ground goes quicker than hard rock: FEEL); the swing lands `windup` s in, and a held button chains
+   * the next one on from the end of this (DigScene.useTools).
+   */
+  startPick(it) {
+    const st = this.state;
+    const F = FEEL[this.target ? feelKey(this.target.m) : 'stone'];
+    const rate = (it.rate || 0.36) * this.bonus('rate') * (st.hasBuff('zippy') ? 0.8 : 1);
+    const dur = (rate + 0.06) * F.cad;
+    const chain = !!this.swingCarry || this.time - (this.swingEnd ?? -9) < 0.05;
+    const carry = Math.min(this.swingCarry || 0, F.wind * 0.5);
+    this.swingCarry = 0;
+    // the first blow from rest lands a little sooner (the click feels immediate); held, each swing
+    // takes its full wind-up
+    const wind = chain ? F.wind : F.wind * 0.8;
+    this.swing = { t: carry, windup: wind, dur: Math.max(wind + 0.12, dur), hit: false, pick: true };
+    this.useT = 0;
+    if (this.vm) this.vm.swing('pick', wind - carry, { weight: F.w });
+    this.audio.play('whoosh', { vol: 0.2 + 0.06 * F.w, pitch: 1.5 - 0.2 * F.w, delay: Math.max(0, wind * 0.55 - carry) });
+  }
+
+  /** The pick's power for a blow now (the forged quality, the strong meal, the board, skills). */
+  pickPower() {
+    const st = this.state, it = st.equipped('pick');
+    const tq = it && st.data.toolQ?.[it.id];
+    return (it?.power || 1) * (typeof tq === 'number' ? 0.85 + 0.3 * tq / 100 : 1) * (st.hasBuff('strong') ? 1.3 : 1) * this.bonus('power');
+  }
+
+  /** A recorded sound layered under a preset (src/audio); quiet if audio isn't up yet. */
+  sfx(ids, o = {}) {
+    const a = this.audio;
+    if (a.ctx?.state !== 'running' || !a.sample) return;
+    a.sample(ids, o);
+  }
+
   /** An upgrade multiplier from the Miners' Board (state.mineBonus), 1 when there is none. */
   bonus(k) {
     const b = this.state.mineBonus?.();
@@ -521,8 +646,7 @@ export default class DigScene extends Scene {
   strike() {
     const st = this.state, hit = this.target;
     const it = st.equipped('pick');
-    const tq = it && st.data.toolQ?.[it.id]; // a tool you forged yourself: how well you made it
-    const power = (it?.power || 1) * (typeof tq === 'number' ? 0.85 + 0.3 * tq / 100 : 1) * (st.hasBuff('strong') ? 1.3 : 1) * this.bonus('power');
+    const power = this.pickPower(); // a tool you forged yourself: how well you made it, meals, the board
     if (this.enemies && it) {
       const eye = this.player.eye(), f = this.player.forward();
       const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
@@ -543,10 +667,13 @@ export default class DigScene extends Scene {
     const px = (hit.vx + 0.5 + hit.nx * 0.5) / VOX, py = (hit.vy + 0.5 + hit.ny * 0.5) / VOX, pz = (hit.vz + 0.5 + hit.nz * 0.5) / VOX;
     this.energy(0.45);
     this.U.hit.value.set(px, py, pz, 0.7);
-    this.kick.set(-0.012 * power, (Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.012);
+    // the camera takes the blow: a kick up and a twist, by what it hit (soft soil gives, hard rock jars)
+    const F = FEEL[feelKey(m)], kp = Math.sqrt(Math.max(0.3, power)) * F.kick;
+    this.kick.set(-0.011 * kp, (Math.random() - 0.5) * 0.01 * F.kick, (Math.random() - 0.5) * 0.014 * F.kick);
+    this.kickV.set(0, 0, 0);
     const mat = MAT[m];
     const hard = !breakable(m) || m >= ORE_BASE;
-    if (this.vm && hard) this.vm.impact('pick', Math.min(1.2, 0.6 + power * 0.15), { feel: m >= ORE_BASE ? 'rebound' : 'clang', stop: 0.04 });
+    if (this.vm && hard) this.vm.impact('pick', Math.min(1.2, 0.6 + power * 0.15), { feel: m >= ORE_BASE ? 'rebound' : 'clang', stop: F.stop });
     if (!breakable(m)) {
       this.audio.play('clang', { vol: 0.6 });
       this.fx.sparks(px, py, pz, 6, [1, 0.85, 0.5], out, 3);
@@ -557,7 +684,12 @@ export default class DigScene extends Scene {
       // direct hit on ore: sparks, quality chips
       const r = this.ores.hitOre(hit.vx, hit.vy, hit.vz, power * this.bonus('clean'));
       this.audio.play('ore_damage');
+      this.sfx(['hit_metal1', 'hit_metal2'], { vol: 0.22, pitch: 1.3 + Math.random() * 0.2, reverb: 0.25 });
       this.fx.sparks(px, py, pz, 10, col01(mat.accent), out, 3.5);
+      // bits of the ore itself fly off: you're chipping it
+      this.bits.burst(px, py, pz, 4, { kind: 'ore', out, colors: mat.tones.slice(1).map(col01), glow: 0.35 });
+      this.hitStop = Math.max(this.hitStop || 0, F.stop);
+      this.shake(F.shake * 0.5);
       if (r) {
         this.game.ui.floatText?.(`-${Math.max(1, Math.round(r.ore.frag * power * this.bonus('clean')))}%`, new THREE.Vector3(px, py, pz), { color: '#ff8a6a', size: 0.8, kind: 'ore' });
         if (!this.flags.oreHit) { this.flags.oreHit = true; st.learn('ore_damage'); this.game.ui.floatText?.('Hit the rock, not ore', new THREE.Vector3(px + out[0] * 0.1, py + 0.2, pz + out[2] * 0.1), { kind: 'bad', life: 2.4, size: 0.85 }); }
@@ -580,6 +712,8 @@ export default class DigScene extends Scene {
     this.enemies?.noise?.(px, py, pz, 4, 'dig'); // the ring of the pick carries
     this.ores.vibrate(px, py, pz, power * 0.4);
     if (res.brk) {
+      // spikes and fins a voxel thick left round the bite go too (nothing to snag the mole)
+      if (res.broken.length > 6) res.broken.push(...this.smooth(res.broken));
       this.digFx(hit, res, mat, power, px, py, pz, out);
       this.afterBreak(res.broken, out, power, 'pick', res);
       return;
@@ -601,46 +735,110 @@ export default class DigScene extends Scene {
   digFx(hit, res, mat, power, px, py, pz, out) {
     const brk = res.brk, hs = mat.hs || mat.snd || 'stone';
     const rocky = brk === 'slab' || brk === 'shatter', hard = mat.hp >= 2.6;
+    const key = feelKey(mat.id), F = FEEL[key];
     const pitch = (0.92 + Math.random() * 0.16) * (hard ? 0.94 : 1);
     const dustC = col01(mat.tones[1]), chipC = col01(mat.tones[2]);
+    const cols = [mat.tones[1], mat.tones[2], mat.tones[3], mat.tones[2]].map(col01);
+    for (let i = 0; i < Math.min(4, res.broken.length); i++) cols.push(col01(res.broken[(Math.random() * res.broken.length) | 0].c));
     this.bodies.hooks.crumble ||= (b) => this.clodBurst(b);
     this.U.hit.value.w = rocky ? 0.55 : 0.3;
     if (rocky) {
       this.audio.play('hit', { snd: hs, pitch: pitch * (1 + 0.08 * (res.cracked || 0)) });
+      if (brk === 'shatter') this.sfx('n_glass', { vol: 0.1 + 0.08 * (res.cracked ?? 1), pitch: 1.6 + Math.random() * 0.4, reverb: 0.35 });
       this.fx.sparks(px, py, pz, hard ? 4 + Math.round(mat.hp * 1.5) : 2, brk === 'shatter' ? [0.85, 0.92, 1] : [1, 0.8, 0.45], out, hard ? 3.2 : 2.4);
-      this.fx.chips(px, py, pz, 3 + (Math.random() * 3 | 0), chipC, out);
+      this.fx.chips(px, py, pz, 2 + (Math.random() * 2 | 0), chipC, out);
       this.fx.dust(px, py, pz, 3, dustC, 0.04, out);
       if (res.cracked !== undefined) {
-        // not yet: the face cracks (sharper as the plate gets close to giving), the pick jumps back
+        // not yet: the face cracks in stages (hairline, spreading, about to go: the cracks reach the
+        // seams, grit runs out of them and it groans), the pick jumps back
+        const stage = res.cracked < 0.34 ? 1 : res.cracked < 0.67 ? 2 : 3;
         this.audio.play('crack', { vol: 0.1 + 0.32 * res.cracked, pitch: 1.3 - 0.35 * res.cracked, delay: 0.03 });
+        if (stage === 3) this.sfx(['creak1', 'creak2'], { vol: 0.12, pitch: 1.6 + Math.random() * 0.3, delay: 0.08 });
         this.crackAt(hit, res, px, py, pz, mat);
-        this.vm?.impact('pick', Math.min(1.3, 0.65 + power * 0.1) * (hard ? 1.15 : 0.85), { feel: 'rebound', stop: 0.035 });
-        this.hitStop = Math.max(this.hitStop || 0, 0.03);
-        if (res.cracked > 0.45) this.fx.grit(px, py - 0.01, pz, 2, chipC, 0.05); // grit trickles out of the cracks
+        this.bits.burst(px, py, pz, 2 + stage, { kind: DEB[key], out, colors: cols, glow: brk === 'shatter' ? 0.25 : 0, size: 0.8 });
+        this.vm?.impact('pick', Math.min(1.3, 0.65 + power * 0.1) * (hard ? 1.15 : 0.85), { feel: 'rebound', stop: F.stop });
+        this.hitStop = Math.max(this.hitStop || 0, F.stop * (0.8 + 0.2 * stage));
+        if (stage >= 2) this.fx.grit(px, py - 0.01, pz, stage, chipC, 0.05 + 0.03 * stage); // grit trickles out of the cracks
+        if (stage === 3) this.fx.dust(px, py, pz, 3, dustC, 0.1, [out[0] * 0.3, out[1] * 0.3 - 0.2, out[2] * 0.3]);
       } else {
-        // it gives: the plate breaks out along its seams with a crunch and a rattle of debris
+        // it gives: the plate breaks out along its seams with a crunch, a pop and a rattle of debris
         this.audio.play('break', { snd: hs, pitch });
         this.audio.play('debris', { vol: 1.8, delay: 0.1 });
         if (brk === 'shatter') this.audio.play('crystal_ring', { vol: 0.5, pitch: 0.9 + Math.random() * 0.3 });
         for (const k of res.cleared || []) this.cracks?.clear(k);
-        this.vm?.impact('pick', Math.min(1.2, 0.5 + power * 0.1), { feel: hard ? 'rebound' : undefined, stop: 0.065 });
-        this.hitStop = Math.max(this.hitStop || 0, 0.07);
-        this.shake(0.16 + 0.04 * (res.slabs?.length || 1));
-        this.kick.x -= 0.006;
+        this.vm?.impact('pick', Math.min(1.2, 0.5 + power * 0.1), { feel: hard ? 'rebound' : undefined, stop: F.brk });
+        this.hitStop = Math.max(this.hitStop || 0, F.brk);
+        this.shake(F.shake + 0.04 * (res.slabs?.length || 1));
+        this.kick.x -= 0.006 * F.kick;
+        this.breakPop(px, py, pz, out, F, mat, res.broken.length, cols, key);
         if (mat.id === M.GEODE) this.geodeOpen(px, py, pz, out);
       }
     } else {
-      // soft ground: the point sinks in with a dull thud, no sparks
+      // soft ground: the point sinks in with a dull thud, no sparks; what it takes comes away as clods
       this.audio.play('hit', { snd: hs, pitch });
-      if (res.broken.length > 6) this.audio.play('break', { snd: hs, vol: 0.6, pitch, delay: 0.06 });
+      if (key === 'clay') this.sfx(['squish1', 'squish2'], { vol: 0.16, pitch: 0.8 + Math.random() * 0.2 });
+      const big = res.broken.length > 6;
+      if (big) this.audio.play('break', { snd: hs, vol: 0.6, pitch, delay: 0.06 });
       this.fx.dust(px, py, pz, brk === 'trickle' ? 8 : 4, dustC, 0.06, out);
-      this.fx.chips(px, py, pz, 3, chipC, out);
-      this.vm?.impact('pick', Math.min(1, 0.55 + power * 0.1), { feel: brk === 'splinter' ? undefined : 'bite', stop: 0.02 });
-      this.hitStop = Math.max(this.hitStop || 0, res.broken.length ? 0.03 : 0.015);
-      this.kick.multiplyScalar(0.6);
-      if (res.broken.length > 6) this.shake(0.1);
+      this.fx.chips(px, py, pz, 2, chipC, out);
+      if (res.broken.length) this.bits.burst(px, py, pz, key === 'sand' ? 4 : key === 'clay' ? 5 : 7 + Math.min(5, res.broken.length / 60 | 0), { kind: DEB[key], out, colors: cols, spread: 0.06 });
+      this.vm?.impact('pick', Math.min(1, 0.55 + power * 0.1), { feel: brk === 'splinter' ? undefined : 'bite', stop: F.stop });
+      this.hitStop = Math.max(this.hitStop || 0, res.broken.length ? F.brk * 0.7 : F.stop * 0.5);
+      this.kick.multiplyScalar(0.75);
+      if (big) { this.shake(F.shake); this.breakPop(px, py, pz, out, F, mat, res.broken.length, cols, key); }
     }
     this.oreHint(px, py, pz, out);
+  }
+
+  /**
+   * The break pop (wave 14): the moment rock gives. A short low pop under the crunch, the face
+   * flashes, a ring of dust puffs out round the hole along the face, the view punches in a touch
+   * and springs back. Scaled by the stuff (FEEL.pop) and how much came out.
+   */
+  breakPop(px, py, pz, out, F, mat, n, cols, key) {
+    const big = Math.min(1.4, 0.6 + n / 260);
+    this.sfx('n_pop', { vol: 0.16 + 0.1 * F.pop * big, pitch: (key === 'hard' ? 0.62 : key === 'crystal' ? 0.95 : key === 'dirt' || key === 'clay' ? 0.7 : 0.78) + Math.random() * 0.08 });
+    if (key === 'hard' || key === 'stone') this.sfx(['rumble_hit1', 'rumble_hit2'], { vol: 0.09 * big * F.pop, pitch: 1.4 });
+    this.U.hit.value.w = 0.62;
+    this.fovV -= 26 * F.pop * big;
+    // the ring of dust round the hole, along the face
+    const ax = Math.abs(out[1]) > 0.7 ? [1, 0, 0] : [0, 1, 0];
+    const t1 = [out[1] * ax[2] - out[2] * ax[1], out[2] * ax[0] - out[0] * ax[2], out[0] * ax[1] - out[1] * ax[0]];
+    const tl = Math.hypot(...t1) || 1; t1[0] /= tl; t1[1] /= tl; t1[2] /= tl;
+    const t2 = [out[1] * t1[2] - out[2] * t1[1], out[2] * t1[0] - out[0] * t1[2], out[0] * t1[1] - out[1] * t1[0]];
+    const dc = col01(mat.tones[2]), N = Math.round(10 * this.fx.lod);
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2 + Math.random() * 0.4, c = Math.cos(a), sn = Math.sin(a), sp = 0.9 + Math.random() * 0.7;
+      const dx = t1[0] * c + t2[0] * sn, dy = t1[1] * c + t2[1] * sn, dz = t1[2] * c + t2[2] * sn;
+      this.fx.spawn({ x: px + dx * 0.08 + out[0] * 0.03, y: py + dy * 0.08 + out[1] * 0.03, z: pz + dz * 0.08 + out[2] * 0.03, vx: dx * sp + out[0] * 0.5, vy: dy * sp + out[1] * 0.5 + 0.1, vz: dz * sp + out[2] * 0.5,
+        life: 0.45 + Math.random() * 0.35, size: 0.035 + Math.random() * 0.03, grow: 0.12, color: dc, alpha: 0.55, drag: 4.5, grav: -0.1, lit: 0.6 });
+    }
+    // a spray of bits from the pop itself
+    this.bits.burst(px, py, pz, Math.round(5 + 5 * big), { kind: DEB[key], out, colors: cols, glow: key === 'crystal' ? 0.3 : 0, speed: 1.15, spread: 0.07 });
+  }
+
+  /**
+   * (wave 14) Tidy the edge of a fresh bite: rock left as a spike or a fin one voxel thick (open on
+   * both sides) goes as well, so dug tunnels have no slivers for the mole's body to snag on. Ore,
+   * placed blocks and anything unbreakable stay. Returns the voxels it took (already removed).
+   */
+  smooth(broken) {
+    const w = this.world;
+    let x0 = 1e9, y0 = 1e9, z0 = 1e9, x1 = -1e9, y1 = -1e9, z1 = -1e9;
+    for (const v of broken) { if (v.x < x0) x0 = v.x; if (v.x > x1) x1 = v.x; if (v.y < y0) y0 = v.y; if (v.y > y1) y1 = v.y; if (v.z < z0) z0 = v.z; if (v.z > z1) z1 = v.z; }
+    if ((x1 - x0) * (y1 - y0) * (z1 - z0) > 6000) return [];
+    const open = (x, y, z) => { const m = w.voxelAt(x, y, z); return !m || !!MAT[m]?.fluid; };
+    const out = [];
+    for (let z = z0 - 1; z <= z1 + 1 && out.length < 60; z++) for (let y = y0 - 1; y <= y1 + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) {
+      const m = w.voxelAt(x, y, z);
+      if (!m || !breakable(m) || m >= ORE_BASE || isBuilt(m) || MAT[m]?.fluid) continue;
+      const ox = open(x - 1, y, z) + open(x + 1, y, z), oy = open(x, y - 1, z) + open(x, y + 1, z), oz = open(x, y, z - 1) + open(x, y, z + 1);
+      const n = ox + oy + oz;
+      // a spike (5 open sides), or a fin / pillar a voxel thick (4 open, two of them opposite)
+      if (n >= 5 || (n === 4 && (ox === 2 || oz === 2 || (oy === 2 && (ox || oz))))) out.push({ x, y, z, m, c: voxelColor(m, x, y, z, h3(x, y, z, 1)) });
+    }
+    for (const v of out) w.setVoxel(v.x, v.y, v.z, 0);
+    return out;
   }
 
   /** Breaking through a geode's shell: if the hollow behind is lined with crystal, it rings and glitters. */
@@ -756,8 +954,9 @@ export default class DigScene extends Scene {
         const L = lumps[i];
         if (n < 5 && L.length >= 5) {
           if (i + 1 < lumps.length && chance(0.5)) { L.push(...lumps[i + 1]); lumps[i + 1] = []; }
-          const sp = 0.6 + Math.random();
-          this.bodies.spawn(L, { vel: [out[0] * sp + rand(-0.5, 0.5), out[1] * sp + rand(0.3, 1.2), out[2] * sp + rand(-0.5, 0.5)], bounce: 0.15, crumble: true, stay: 1, life: 2, mat: L[0].m });
+          // (wave 14) they tumble off the face and drop at the mole's feet rather than fly into its face
+          const sp = 0.25 + Math.random() * 0.5;
+          this.bodies.spawn(L, { vel: [out[0] * sp + rand(-0.6, 0.6), out[1] * sp + rand(0.2, 0.9), out[2] * sp + rand(-0.6, 0.6)], bounce: 0.15, crumble: true, stay: 1, life: 2, mat: L[0].m });
           n++;
         } else if (L.length) { const v = L[0]; this.fx.chips((v.x + 0.5) / VOX, (v.y + 0.5) / VOX, (v.z + 0.5) / VOX, Math.min(3, L.length), col01(v.c), out); }
       }
@@ -824,10 +1023,11 @@ export default class DigScene extends Scene {
       }
       this.loose = this.loose.filter((l) => !l.gone && this.world.voxelAt(l.x, l.y, l.z));
     }
-    // ore under a thin skin of rock glints in the lamp beam
-    this.glintT = (this.glintT || 0) - dt;
-    if (this.glintT <= 0) {
-      this.glintT = 0.22;
+    // ore under a thin skin of rock glints in the lamp beam (its own timer: it used to share
+    // ambient()'s, which then never fired)
+    this.skinT = (this.skinT || 0) - dt;
+    if (this.skinT <= 0) {
+      this.skinT = 0.22;
       const e = pl.eye(), f = pl.forward(), w = this.world;
       for (const d of w.depositsNear(e.x, e.y, e.z, 2.2)) {
         const s = w.depState(d);
@@ -855,7 +1055,7 @@ export default class DigScene extends Scene {
       if (res.cracked === undefined) this.undermine(broken);
       const b = broken[0];
       const freed = this.ores.checkFree((b.x + 0.5) / VOX, (b.y + 0.5) / VOX, (b.z + 0.5) / VOX, tool);
-      if (freed.seenNew) this.revealed(freed.seenNew);
+      if (freed.seenNew) this.revealed(freed.seenNew, this.target ? [this.target.x, this.target.y, this.target.z] : null);
       for (const f of freed) this.popOre(f, out);
       return;
     }
@@ -866,7 +1066,7 @@ export default class DigScene extends Scene {
     const b = broken[0];
     const x = (b.x + 0.5) / VOX, y = (b.y + 0.5) / VOX, z = (b.z + 0.5) / VOX;
     const freed = this.ores.checkFree(x, y, z, tool);
-    if (freed.seenNew) this.revealed(freed.seenNew);
+    if (freed.seenNew) this.revealed(freed.seenNew, [x, y, z]);
     for (const f of freed) this.popOre(f, out);
   }
 
@@ -911,12 +1111,40 @@ export default class DigScene extends Scene {
     }
   }
 
-  revealed(d) {
+  /**
+   * Breaking into ore (wave 14: no words): a bright chime and a sparkle, the seam shines (a ring of
+   * light runs out over it from where it opened: TerrainMaterial reveal), glints burst out of it,
+   * its own colour lights the rock round it for a moment, and the world holds its breath a beat.
+   * at: where it opened (m), or the deposit's middle.
+   */
+  revealed(d, at = null, quiet = false) {
     const it = ITEMS[d.item];
     if (!it) return;
-    this.audio.play('sparkle', { vol: 0.5 });
-    // its name rises off the seam as voxel letters
-    this.game.ui.floatText?.(it.name, new THREE.Vector3(d.x, d.y, d.z), { color: '#ffe8a0', size: 0.9, kind: 'reveal' });
+    const [x, y, z] = at || [d.x, d.y, d.z];
+    const acc = MAT[ORE_BASE + d.oreId]?.accent ?? 0xffe8a0, c = col01(acc);
+    const bright = c.map((v) => Math.min(1, v * 0.55 + 0.5));
+    if (quiet) { this.audio.play('sparkle', { vol: 0.35 }); this.U.reveal.value.set(x, y, z, this.time); return; } // seen through the x-ray lamp
+    this.audio.play('sparkle', { vol: 0.55 });
+    this.sfx(['chime2', 'chime3'], { vol: 0.28, pitch: 1 + Math.random() * 0.1, reverb: 0.5, delay: 0.04 });
+    this.sfx('n_glass', { vol: 0.14, pitch: 1.5, reverb: 0.45, delay: 0.17 });
+    this.U.reveal.value.set(x, y, z, this.time);
+    this.revealGlow = { x: x + (d.x - x) * 0.3, y: y + (d.y - y) * 0.3, z: z + (d.z - z) * 0.3, c, t: this.time };
+    // glints burst out of the seam where it shows
+    const e = this.player.eye();
+    for (let i = 0; i < Math.round(14 * this.fx.lod); i++) {
+      const a = Math.random() * Math.PI * 2, r = Math.random() * Math.min(0.3, d.r + 0.08);
+      const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r * 0.8, pz = z + Math.sin(a + 1.3) * r;
+      const k = 0.02 + Math.random() * 0.02;
+      setTimeout(() => { if (this.game.scene === this) this.fx.twinkle(px + (e.x - px) * k, py + (e.y - py) * k, pz + (e.z - pz) * k, i & 1 ? bright : c, 0.012 + Math.random() * 0.008); }, i * 45);
+    }
+    for (let k = 0; k < 6; k++) this.fx.glints(x, y, z, bright);
+    // glinting slivers of it spray out of the opening
+    const o = [e.x - x, e.y - y, e.z - z], ol = Math.hypot(...o) || 1;
+    this.fx.shards(x, y, z, 10, bright, [o[0] / ol * 0.6, o[1] / ol * 0.6 + 0.3, o[2] / ol * 0.6]);
+    this.hitStop = Math.max(this.hitStop || 0, 0.07);
+    this.fovV -= 14;
+    this.post.flash = Math.max(this.post.flash || 0, 0.07);
+    this.post.flashColor = acc;
   }
 
   popOre(f, out) {
@@ -925,7 +1153,8 @@ export default class DigScene extends Scene {
       this.audio.play('ore_free');
       for (let k = 0; k < 6; k++) this.fx.glints(f.d.x, f.d.y, f.d.z);
       this.clumps.spawn(f, out);
-      if (!this.flags.firstOre) { this.flags.firstOre = true; this.game.ui.floatText?.(`${ITEMS[f.d.item]?.name || 'Ore'}! Pick it up`, new THREE.Vector3(f.d.x, f.d.y + 0.3, f.d.z), { kind: 'reveal', life: 2.4, size: 0.85 }); }
+      // (wave 14: no words) the clump glints where it lands and the crosshair offers to pick it up
+      this.flags.firstOre = true;
       return;
     }
     const { d, s, voxels } = f;
@@ -1463,7 +1692,7 @@ export default class DigScene extends Scene {
     // hidden ore glints through the rock it's buried in (only ore close under the surface)
     this.glintT = (this.glintT || 0) - dt;
     if (this.glintT <= 0) {
-      this.glintT = 0.06;
+      this.glintT = 0.14;
       const nose = this.bonus('glint') * (this.state.hasBuff('sense') ? 1.4 : 1);
       const ds = this.world.depositsNear(eye.x, eye.y, eye.z, 6.5 * nose);
       const d = ds[(Math.random() * ds.length) | 0];
@@ -1474,11 +1703,13 @@ export default class DigScene extends Scene {
           const x = d.x + (dx / l) * t + rand(-0.12, 0.12), y = d.y + (dy / l) * t + rand(-0.12, 0.12), z = d.z + (dz / l) * t + rand(-0.12, 0.12);
           if (this.world.solidAt(x, y, z)) continue;
           const c = col01(MAT[ORE_BASE + d.oreId]?.accent ?? 0xffffff);
-          this.fx.glints(x - (dx / l) * 0.03, y - (dy / l) * 0.03, z - (dz / l) * 0.03, c.map((v) => Math.min(1, v * 0.6 + 0.45)));
+          // a faint pale sparkle on the rock over it (wave 14: a small cross, not a blob)
+          this.fx.twinkle(x - (dx / l) * 0.03, y - (dy / l) * 0.03, z - (dz / l) * 0.03, c.map((v) => Math.min(1, v * 0.6 + 0.45)), 0.006);
           break;
         }
       }
     }
+    this.oreSense(dt, eye);
     // dust motes in the lamp beam
     if (chance(dt * 14)) {
       const f = pl.forward();
@@ -1494,6 +1725,65 @@ export default class DigScene extends Scene {
     }
   }
 
+  /**
+   * (wave 14) Reading ore without words. Seams already open catch the helmet lamp from across a cave:
+   * now and then one in the beam (up to ~11 m) throws a glint the size of what the eye can see from
+   * there. A pocket still hidden close under the rock nearby gives a faint tinkle now and then (from
+   * its side, quicker and a little louder the closer you get) with a pale sparkle on the face over it.
+   */
+  oreSense(dt, eye) {
+    const w = this.world, f = this.player.forward();
+    // glints off open seams in the lamp
+    this.farT = (this.farT || 0) - dt;
+    if (this.farT <= 0) {
+      this.farT = 0.16;
+      const R = Math.min(11, 5 + this.state.lightRadius());
+      const ds = w.depositsNear(eye.x, eye.y, eye.z, R).filter((d) => { const s = w.depState(d); return s.seen && !s.taken; });
+      for (let tries = 0; tries < 3 && ds.length; tries++) {
+        const d = ds[(Math.random() * ds.length) | 0];
+        const dx = d.x - eye.x, dy = d.y - eye.y, dz = d.z - eye.z, dl = Math.hypot(dx, dy, dz) || 1;
+        if (dl < 1.2 || (dx * f.x + dy * f.y + dz * f.z) / dl < 0.8) continue;
+        const h = w.raycast(eye.x, eye.y, eye.z, dx / dl, dy / dl, dz / dl, dl + 0.3);
+        if (!h || h.m < ORE_BASE) continue;
+        const c = col01(MAT[h.m]?.accent ?? 0xffffff).map((v) => Math.min(1, v * 0.5 + 0.55));
+        const back = Math.min(0.08, h.dist * 0.02);
+        this.fx.twinkle(h.x - (dx / dl) * back, h.y - (dy / dl) * back, h.z - (dz / dl) * back, c, 0.006 + h.dist * 0.0045);
+        break;
+      }
+    }
+    // hidden pockets close under the rock: a faint tinkle and a sparkle on the face
+    this.pocketT = (this.pocketT ?? 1) - dt;
+    if (this.pocketT > 0) return;
+    this.pocketT = 0.45;
+    const nose = this.bonus('glint') * (this.state.hasBuff('sense') ? 1.4 : 1);
+    let best = null;
+    for (const d of w.depositsNear(eye.x, eye.y, eye.z, 3.4 * nose)) {
+      const s = w.depState(d);
+      if (s.taken || s.seen) continue;
+      const dx = eye.x - d.x, dy = eye.y - d.y, dz = eye.z - d.z, l = Math.hypot(dx, dy, dz) || 1;
+      // the face over it: from the ore toward the mole until open air, no more than a skin away
+      for (let t = d.r; t < Math.min(1.0 * nose, l); t += 1 / VOX) {
+        const x = d.x + (dx / l) * t, y = d.y + (dy / l) * t, z = d.z + (dz / l) * t;
+        if (w.solidAt(x, y, z)) continue;
+        const dist = l - t;
+        if (!best || dist < best.dist) best = { d, x, y, z, dist, dx: -dx / l, dz: -dz / l };
+        break;
+      }
+    }
+    if (!best) { this.pocketNext = 0; return; }
+    this.pocketNext = (this.pocketNext || 0) - 0.45;
+    if (this.pocketNext > 0) return;
+    const k = 1 - Math.min(1, best.dist / (3.4 * nose));
+    this.pocketNext = 2.6 - 1.6 * k + Math.random() * 0.8;
+    // from its side: pan by where it is relative to the way the mole faces
+    const rx = Math.cos(this.player.yaw), rz = -Math.sin(this.player.yaw);
+    const pan = clamp((best.dx * rx + best.dz * rz) * 0.8, -0.8, 0.8);
+    this.sfx(['n_glass', 'chime3', 'n_ping'], { vol: 0.035 + 0.075 * k, pitch: 1.7 + Math.random() * 0.35, pan, reverb: 0.6, jit: 0.04 });
+    const c = col01(MAT[ORE_BASE + best.d.oreId]?.accent ?? 0xffffff).map((v) => Math.min(1, v * 0.6 + 0.45));
+    const e = 0.02;
+    for (let i = 0; i < 1 + Math.round(k * 2); i++) this.fx.twinkle(best.x + rand(-0.06, 0.06) - best.dx * e, best.y + rand(-0.06, 0.06), best.z + rand(-0.06, 0.06) - best.dz * e, c, 0.007 + 0.004 * k);
+  }
+
   lights(eye) {
     const U = this.U, pl = this.player, st = this.state;
     U.lampPos.value.copy(eye);
@@ -1507,6 +1797,13 @@ export default class DigScene extends Scene {
     // glowing enemies and hot fluids light the rock too
     for (const src of [this.enemies, this.fluids, this.props, this.clumps, this.explosives, this.traders, this.ruins, this.vegetation]) {
       for (const l of src?.lights?.(eye) || []) near.push([Math.hypot(l.x - eye.x, l.y - eye.y, l.z - eye.z) - l.r * 0.3, l]);
+    }
+    // ore just broken into lights the rock round it in its own colour for a moment (first in line)
+    const rg = this.revealGlow;
+    if (rg) {
+      const a = this.time - rg.t, k = a < 0.08 ? a / 0.08 : Math.max(0, 1 - (a - 0.08) / 1.1);
+      if (k <= 0) this.revealGlow = null;
+      else near.push([-99, { x: rg.x, y: rg.y, z: rg.z, c: rg.c.map((v) => v * 1.6 * k), r: 2.4 }]);
     }
     near.sort((a, b) => a[0] - b[0]);
     for (let i = 0; i < MAX_LIGHTS; i++) {
@@ -1552,7 +1849,7 @@ export default class DigScene extends Scene {
           this.scene.add(mesh);
           gh = { mesh, k: 0, d };
           G.set(d.id, gh);
-          if (!s.seen) { s.seen = true; this.revealed(d); }
+          if (!s.seen) { s.seen = true; this.revealed(d, null, true); }
         }
         gh.lit = this.time;
       }
@@ -1595,15 +1892,29 @@ export default class DigScene extends Scene {
     if (this.vm) this.vm.resize(w / h);
   }
 
+  /** Finds still lying about (a full pack left them on the floor) go home with the mole: nothing is lost. */
+  bankFinds() {
+    const st = this.state;
+    for (const b of this.bodies?.list || []) {
+      const p = b.pickup, it = p && ITEMS[p.id];
+      if (!it) continue;
+      b.pickup = null;
+      st.addItem(p.id, { ...(it.q ? { q: p.q, p: p.p } : {}), spill: true });
+      if (it.cat === 'mineral' || it.cat === 'gem') { st.data.stats.ores++; if (p.p) st.data.stats.pristine++; }
+    }
+  }
+
   exit() {
     this.world.saveEdits();
     const g = this.game;
+    try { this.bankFinds(); } catch (e) { console.warn('bank finds', e); }
     g.input.unlockPointer();
     g.ui.setRadar?.(null);
     g.ui.setCrosshair?.(null);
     this.terrain.dispose();
     this.world.pool?.dispose();
     this.bodies.dispose();
+    this.bits?.dispose();
     this.cracks?.dispose();
     this.fx.dispose();
     this.enemies?.dispose();

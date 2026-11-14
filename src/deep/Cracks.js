@@ -4,6 +4,9 @@
 // plate reads as one piece about to come out). Every vertex is dropped onto the real voxel surface
 // by a short ray, so the lines lie on the rock. One mesh of thin quads, rebuilt only when a crack
 // changes; a plate's cracks go when it breaks out or the rock under them is dug away.
+// Wave 14: the stages read at a glance: hairline cracks after the first blow, wider as the plate
+// weakens, and close to giving each crack gets a pale lit lip along one side (the broken edge
+// catching the lamp), so a plate about to go looks loose.
 //
 //   const cracks = new Cracks(scene3, world);
 //   cracks.hit(key, [x, y, z] (m, on the face), [nx, ny, nz], damage 0..1, samePlate(vx, vy, vz) → bool, pale);
@@ -112,6 +115,7 @@ export class Cracks {
       // the first blow shows short cracks; they reach the seams as the plate is about to give
       const reach = Math.min(1, 0.3 + s.d * 0.85);
       const col = s.pale ? [0.82, 0.9, 1, 0.55] : [0.02, 0.016, 0.012, 0.92];
+      const lip = !s.pale && s.d > 0.62 ? [1, 0.9, 0.74, Math.min(0.5, (s.d - 0.62) * 1.6)] : null;
       let any = false;
       for (const br of s.branches) {
         if (br.at > reach) continue;
@@ -129,8 +133,9 @@ export class Cracks {
           const end = b === false;
           const bb = end ? this.land({ ...s, same: null }, p0.u + (p1.u - p0.u) * f * 0.5, p0.v + (p1.v - p0.v) * f * 0.5, t1, t2) : b;
           if (!bb) break;
-          // a thin quad from a to b in the face, tapering toward the tip
-          const wd = 0.009 * br.w * (1 - 0.6 * (k / nseg)), wd1 = 0.009 * br.w * (1 - 0.6 * ((k + 1) / nseg));
+          // a thin quad from a to b in the face, tapering toward the tip (wider as the plate weakens)
+          const W = 0.009 * br.w * (0.7 + 0.6 * Math.min(1, s.d));
+          const wd = W * (1 - 0.6 * (k / nseg)), wd1 = W * (1 - 0.6 * ((k + 1) / nseg));
           const dx = bb[0] - a[0], dy = bb[1] - a[1], dz = bb[2] - a[2];
           let sx = n[1] * dz - n[2] * dy, sy = n[2] * dx - n[0] * dz, sz = n[0] * dy - n[1] * dx;
           const sl = Math.hypot(sx, sy, sz) || 1;
@@ -143,6 +148,16 @@ export class Cracks {
           for (let j = 0; j < 4; j++) C.set(col, q * 16 + j * 4);
           q++;
           any = true;
+          // about to give: a pale lip along one side of the main cracks
+          if (lip && br.w > 0.9 && q < MAXQ) {
+            const o2 = q * 12, l0 = wd * 1.0, l1 = wd1 * 1.0, w0 = wd * 2.1, w1 = wd1 * 2.1;
+            P[o2] = a[0] + sx * w0; P[o2 + 1] = a[1] + sy * w0; P[o2 + 2] = a[2] + sz * w0;
+            P[o2 + 3] = bb[0] + sx * w1; P[o2 + 4] = bb[1] + sy * w1; P[o2 + 5] = bb[2] + sz * w1;
+            P[o2 + 6] = bb[0] + sx * l1; P[o2 + 7] = bb[1] + sy * l1; P[o2 + 8] = bb[2] + sz * l1;
+            P[o2 + 9] = a[0] + sx * l0; P[o2 + 10] = a[1] + sy * l0; P[o2 + 11] = a[2] + sz * l0;
+            for (let j = 0; j < 4; j++) C.set(lip, q * 16 + j * 4);
+            q++;
+          }
           if (end) break;
           a = bb;
         }

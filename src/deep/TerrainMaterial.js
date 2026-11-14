@@ -135,6 +135,13 @@ export function makeTerrainUniforms() {
     fogDist: { value: 22 },
     time: { value: 0 },
     hit: { value: new THREE.Vector4(0, -9999, 0, 0) }, // impact flash: xyz, strength
+    // (wave 14) the target highlight: what the next blow takes lifts a little in the lamp and its
+    // edge is picked out in pixel dots. aim: centre (m), strength; aimP: the rock plate's cell id
+    // and plate scale (voxels), or w = 0 for a round bite of radius aimR (m)
+    aim: { value: new THREE.Vector4(0, -9999, 0, 0) },
+    aimP: { value: new THREE.Vector4(0, 0, 0, 0) },
+    aimR: { value: 0 },
+    reveal: { value: new THREE.Vector4(0, -9999, 0, -99) }, // ore just broken into: a shine runs over it (centre, start time)
     xray: { value: 0 },
     // ---- cave look
     noise3: { value: noise3D() },
@@ -282,6 +289,10 @@ export function makeTerrainMaterial(U) {
       uniform float fogDist;
       uniform float time;
       uniform vec4 hit;
+      uniform vec4 aim;
+      uniform vec4 aimP;
+      uniform float aimR;
+      uniform vec4 reveal;
       uniform vec4 mood;
       varying vec3 vWorld;
       varying vec3 vNormal;
@@ -295,6 +306,7 @@ export function makeTerrainMaterial(U) {
 
       // rock plates: jittered-grid Voronoi on the texel position q (in voxels); x = id hash,
       // y = edge distance (voxels); off = q minus the plate's centre
+      vec3 gPid; // the cell id of the last plates() call (the target highlight compares it)
       vec2 plates(vec3 q, float S, out vec3 off) {
         vec3 g = floor(q / S - 0.5);
         float f1 = 1e9, f2 = 1e9; vec3 id = vec3(0.0);
@@ -305,6 +317,7 @@ export function makeTerrainMaterial(U) {
           float d = dot(q - fp, q - fp);
           if (d < f1) { f2 = f1; f1 = d; id = c; off = q - fp; } else if (d < f2) { f2 = d; }
         }
+        gPid = id;
         return vec2(hash3(id + 7.7), (sqrt(f2) - sqrt(f1)) * 0.5);
       }
 
@@ -340,6 +353,7 @@ export function makeTerrainMaterial(U) {
         vec4 N2 = texture(noise3, qw * 0.5 + 0.31);
         vec3 poff;
         vec2 pl = plates(q, max(S, 1.0), poff);
+        vec3 pid = gPid;
         vec3 dome = (poff - n * dot(poff, n)) / max(S, 1.0); // across the plate, -0.6..0.6
         float clump = hash3(floor(q * 2.0) + 5.3) * 0.6 + hash3(floor(q * TEXN * 0.25) + 9.1) * 0.4;
         // strata: wobbly horizontal layers, each a shade off its neighbours, a thin line between
@@ -612,14 +626,28 @@ export function makeTerrainMaterial(U) {
           col += base * ex.b * min(dot(L, vec3(0.33)), 0.6) * 0.18; // light soaking through
         }
         if (style == 2.0 && accent > 0.5) col += base * 0.25 * L;
-        // ore reads from across a cave: a little light of its own and facets that twinkle
+        // ore reads from across a cave: a little light of its own and facets that twinkle. (wave 14)
+        // The glints catch the helmet lamp (brightest in its beam), and farther off they come in
+        // bigger cells (a voxel or two) so a seam still sparkles from across a cave instead of
+        // shimmering away below a pixel; they also shine on through the fog (oreGl, below)
+        vec3 oreGl = vec3(0.0);
         if (style == 6.0) {
           col += base * (oreFam == 3.0 || oreFam == 7.0 ? 0.05 : 0.16);
-          float twk = oreFam == 2.0 ? 0.955 : oreFam == 1.0 || oreFam == 8.0 ? 0.97 : oreFam == 4.0 ? 0.975 : 0.992;
-          float tw = step(twk, hash3(floor(q * TEXN) + floor(time * 2.5 + vh * 7.0) * 0.37));
-          col += pal(mat, 4.0) * tw * (oreFam == 2.0 ? 1.8 : 1.4);
+          float twk = oreFam == 2.0 ? 0.955 : oreFam == 1.0 || oreFam == 8.0 ? 0.97 : oreFam == 4.0 ? 0.975 : oreFam == 3.0 ? 0.982 : 0.992;
+          float gs = clamp(floor(dist * 0.5), 1.0, 8.0);
+          float tw = step(twk, hash3(floor(q * TEXN / gs) + floor(time * 2.5 + vh * 7.0) * 0.37));
+          float shine = 0.55 + 1.3 * min(1.0, lampAtt(dist) * lampCone(V) * 1.6);
+          oreGl = pal(mat, 4.0) * tw * (oreFam == 2.0 ? 1.8 : 1.4) * shine;
+          col += oreGl;
           // glowing minerals: their veinlets pulse
           if (oreFam == 8.0 && accent > 0.5) col += base * (0.6 + 0.4 * sin(time * 2.1 + vh * 6.283)) * 0.9;
+          // just broken into: a shine runs out over the seam from where it opened
+          float rage = time - reveal.w;
+          if (rage > 0.0 && rage < 1.7) {
+            float dr = length(qw - reveal.xyz);
+            float band = step(abs(dr - rage * 1.3), 0.05 + 0.02 * hash3(floor(q * TEXN) + 1.3));
+            col += pal(mat, 4.0) * band * (1.0 - rage / 1.7) * 1.8 + base * step(dr, 1.4) * exp(-rage * 3.5) * 0.9;
+          }
         }
         // hot zones: cracks in volcanic rock glow and breathe
         if (hot > 0.5 && mood.w > 0.0) {
@@ -634,12 +662,35 @@ export function makeTerrainMaterial(U) {
         vec3 hi = max(col - 0.62, 0.0);
         col = min(col, 0.62) + hi / (1.0 + hi * 1.6);
         // impact flash on the struck rock
-        float hd = length(vWorld - hit.xyz);
-        col += vec3(1.0, 0.86, 0.6) * hit.w * clamp(1.0 - hd / 0.45, 0.0, 1.0);
+        float hd = length(qw - hit.xyz);
+        // (wave 14) in pixel steps on the texel grid, and a little tighter: a flash, not a soft disc
+        float hk = clamp(1.0 - hd / 0.36, 0.0, 1.0);
+        col += vec3(1.0, 0.86, 0.6) * hit.w * floor(hk * hk * 4.0 + hash3(floor(q * TEXN) + 2.7) * 0.999) / 4.0;
+        // (wave 14) the target: the plate (or the bite of soil) the next blow takes lifts a little in
+        // the lamp, breathing, and its edge is picked out in a dotted line of lit pixels (no box)
+        if (aim.w > 0.0 && dist < 4.5) {
+          float da = length(qw - aim.xyz), ak = 0.0, rim = 0.0;
+          if (aimP.w > 0.0) {
+            if (da < aimP.w * 0.11 + 0.06 && abs(S - aimP.w) < 0.05 && dot(abs(pid - aimP.xyz), vec3(1.0)) < 0.5) {
+              ak = 1.0;
+              rim = step(pl.y, 0.24);
+            }
+          } else if (da < aimR) {
+            ak = 1.0;
+            rim = step(aimR - 0.024, da);
+          }
+          if (ak > 0.0) {
+            float br = aim.w * (0.8 + 0.2 * sin(time * 5.5));
+            float dots = mod(tx.x + tx.y, 2.0);
+            col += base * L * 0.14 * br;
+            col += (base * 0.75 + lampCol * 0.045) * rim * dots * br * 0.6;
+          }
+        }
         col = caveAir(col, vWorld, dist);
         // what glows on its own carries farther through the dark than what is only lit (glowworms
         // on a hall's roof, crystals, lanterns): a little of it back over the fog
         if (glow > 0.45) col += emit * fogAmount(dist) * 0.55;
+        col += oreGl * fogAmount(dist) * 0.85;
         gl_FragColor = vec4(col, 1.0);
       }`,
   });

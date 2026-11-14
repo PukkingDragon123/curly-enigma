@@ -21,6 +21,7 @@ import { coalCart } from './lift.js';
 import { LID, cullFaces } from './build.js';
 import { M } from './units.js';
 import { buildTownCloth } from './townCloth.js';
+import { ARCH as PARCH, PASSAGE, TOWN_XF } from '../home/passage.js';
 
 const _v = new THREE.Vector3();
 const LEDGE_Y = 4.36;
@@ -44,6 +45,9 @@ export function buildCave(S) {
       { a: F.x - 0.36, b: F.x + 0.36, y0: 0.25, y1: F.top + 0.2, depth: 0.12, tint: [0.62, 0.72, 0.86] },
     ],
   };
+  // your burrow door stands open once the old passage is found: a hole right through the wall under
+  // its arch (the passage itself lies behind: src/home/passage.js)
+  if (S.passageOpen) holes.N.push({ a: T.home.door.x - ARCH_TU.hw, b: T.home.door.x + ARCH_TU.hw, y0: 0, y1: ARCH_TU.top + 0.02, through: true, shape: (du, y) => inArchTU(du, y) });
   const walls = buildWalls({ flats, holes });
   for (const m of walls.meshes) B.addStatic(m);
   for (const m of buildCeiling()) B.addStatic(m, { cls: 'roof' });
@@ -65,7 +69,17 @@ export function buildCave(S) {
   S.world.add(-2, -3, (c.z - 1) * M, (c.x - 1) * M, 0, (c.z + 1) * M, 'ground');
   S.world.add((c.x + 1) * M, -3, (c.z - 1) * M, T.W * M + 2, 0, (c.z + 1) * M, 'ground');
   const NF = T.northFace + 0.08;
-  B.solid(-2, -1, -2, Tu.cx - 0.85, 12, NF, 'wallN', { nav: false });
+  if (S.passageOpen) {
+    // the north wall's rock round the passage's box (the passage brings its own walls) and the
+    // way through under the arch
+    const pb = passageBoxTU(), hx0 = T.home.door.x - ARCH_TU.hw, hx1 = T.home.door.x + ARCH_TU.hw;
+    B.solid(-2, -1, -2, pb.x0, 12, NF, 'wallN', { nav: false });
+    B.solid(pb.x1, -1, -2, Tu.cx - 0.85, 12, NF, 'wallN', { nav: false });
+    B.solid(pb.x0, -1, pb.z1, hx0, 12, NF, 'wallN', { nav: false });
+    B.solid(hx1, -1, pb.z1, pb.x1, 12, NF, 'wallN', { nav: false });
+    B.solid(hx0, ARCH_TU.top - 0.12, pb.z1, hx1, 12, NF, 'wallN', { nav: false });
+    B.solid(pb.x0, 2.2, -2, pb.x1, 12, pb.z1, 'wallN', { nav: false }); // (over the passage's own roof)
+  } else B.solid(-2, -1, -2, Tu.cx - 0.85, 12, NF, 'wallN', { nav: false });
   B.solid(Tu.cx + 0.85, -1, -2, T.W + 2, 12, NF, 'wallN', { nav: false });
   B.solid(Tu.cx - 1, 2.05, -2, Tu.cx + 1, 12, NF, 'wallN', { nav: false });
   B.solid(Tu.cx - 1, -1, -2, Tu.cx + 1, 12, 0.9, 'tunnelBack', { nav: false });
@@ -421,18 +435,45 @@ export function buildBooth(S) {
 // ---------------------------------------------------------------- the burrow door, the boarded tunnel
 export function buildHomeDoor(S) {
   const B = S.B, h = TOWN.home;
-  const d = homeEntrance();
+  const open = !!S.passageOpen;
+  const d = homeEntrance(7, { open });
   const ox = h.x0 + h.w / 2, oz = TOWN.northFace - 0.1;
   d.obj.position.set(ox, 0, oz);
   B.addStatic(d.obj);
-  B.solid(h.x0 - 0.2, 0, TOWN.northFace - 0.5, h.x0 + h.w + 0.2, 9, TOWN.northFace + 0.2, 'home');
+  if (open) {
+    // the round green door stands open, swung out on its pins to the left of the arch; the way in
+    // under the arch is clear (its stones and the step are solid)
+    const leaf = d.leaf;
+    leaf.position.set(ox + d.hinge.x, d.hinge.y, oz + d.hinge.z);
+    leaf.rotation.y = -Math.PI / 2 - 0.16;
+    B.addStatic(leaf);
+    const jx = ARCH_TU.hw;
+    B.solid(h.x0 - 0.2, 0, TOWN.northFace - 0.5, ox - jx, 9, TOWN.northFace + 0.26, 'home');
+    B.solid(ox + jx, 0, TOWN.northFace - 0.5, h.x0 + h.w + 0.2, 9, TOWN.northFace + 0.26, 'home');
+    B.solid(ox - jx, ARCH_TU.top - 0.1, TOWN.northFace - 0.5, ox + jx, 9, TOWN.northFace + 0.26, 'home');
+    B.solid(ox + d.hinge.x - 0.38, 0, TOWN.northFace + 0.2, ox + d.hinge.x + 0.02, 1.6, TOWN.northFace + 1.5, 'homeLeaf', { nav: false });
+  } else B.solid(h.x0 - 0.2, 0, TOWN.northFace - 0.5, h.x0 + h.w + 0.2, 9, TOWN.northFace + 0.2, 'home');
   B.solidCircle(ox + d.pot.x, oz + d.pot.z, 0.26, 0.6);
   B.solidCircle(ox + d.mailbox.x, oz + d.mailbox.z, 0.2, 1.3);
   B.shadows.push({ x: ox + d.pot.x + 0.04, z: oz + d.pot.z + 0.05, rx: 0.3, rz: 0.22, k: 0.6 }, { x: ox + d.mailbox.x + 0.04, z: oz + d.mailbox.z + 0.03, rx: 0.22, rz: 0.2, k: 0.65 });
   const lan = d.lights[0], peep = d.lights[1];
   S.addLight({ x: ox + lan.x, y: lan.y, z: oz + lan.z, color: 0xffc070, intensity: 2.5, distance: 3.5, flicker: 0.12, real: true, pool: 1.0, poolOpacity: 0.26, poolZ: h.door.z + 0.75, poolX: ox + lan.x - 0.35, halo: 0.42, haloOpacity: 0.5 });
   S.addLight({ x: ox + peep.x, y: peep.y, z: oz + peep.z + 0.1, color: 0xffd27a, intensity: 0, real: false, pool: 0.7, poolOpacity: 0.12, poolZ: h.door.z + 0.55, halo: 0.25, haloOpacity: 0.35, bakePower: 0.3, bakeRadius: 1.6 });
-  S.homeDoor = { x: h.door.x, y: 0.9, z: TOWN.northFace + 0.15, box: [h.x0 + 0.25, 0, TOWN.northFace - 0.2, h.x0 + h.w - 0.25, 1.8, TOWN.northFace + 0.45] };
+  S.homeDoor = { x: h.door.x, y: 0.9, z: TOWN.northFace + 0.15, open, box: [h.x0 + 0.25, 0, TOWN.northFace - 0.2, h.x0 + h.w - 0.25, 1.8, TOWN.northFace + 0.45] };
+}
+
+/** The town's arch over your burrow door in town units (passage.js keeps it in meters). */
+const ARCH_TU = { hw: PARCH.hw / M + 0.03, spring: PARCH.spring / M, top: PARCH.top / M + 0.03 };
+function inArchTU(du, y) {
+  const hw = ARCH_TU.hw;
+  if (Math.abs(du) > hw || y < 0) return false;
+  if (y < ARCH_TU.spring) return true;
+  return du * du + (y - ARCH_TU.spring) ** 2 <= hw * hw;
+}
+/** The old passage's box in the town (TU): the burrow's frame turned round (passage.js TOWN_XF). */
+export function passageBoxTU() {
+  const b = PASSAGE.box;
+  return { x0: (TOWN_XF.ox - b.x1) / M, x1: (TOWN_XF.ox - b.x0) / M, z0: (TOWN_XF.oz - PASSAGE.rockEnd) / M, z1: (TOWN_XF.oz - PASSAGE.townBack) / M };
 }
 
 export function makeHomeMarker(S) {
