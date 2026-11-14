@@ -146,16 +146,17 @@ export class VB {
    * Greedy mesh, `vs` meters per voxel (VS by default). (px, py, pz) is the model-space pivot (in
    * voxels) that becomes the mesh origin. Returns the geometry with userData { vox, pivot, vs } for debris.
    */
-  geo(px = 0, py = 0, pz = 0, vs = VS) {
-    const g = this.geoLo(px, py, pz, vs);
+  geo(px = 0, py = 0, pz = 0, vs = VS, kMax = REFINE_MAX) {
+    const g = this.geoLo(px, py, pz, vs, kMax);
     // the near copy (./hires.js): the voxels as modelled, for a worker to build much finer with
     // surface detail (scales, cracked stone, fur, chitin); only models built under a skin style
     if (HI.style && this.v.size) g.userData.hiSrc = { list: this.list(), pivot: [px, py, pz], vs, style: HI.style, seed: this.seed };
     return g;
   }
-  geoLo(px = 0, py = 0, pz = 0, vs = VS) {
+  geoLo(px = 0, py = 0, pz = 0, vs = VS, kMax = REFINE_MAX) {
     // refined to the shared voxel size (FINE): k × finer, the pivot and voxel size with it
-    let k = Math.max(1, Math.round(vs / FINE));
+    // (kMax: a level of detail: the kaiju keep an unrefined far copy)
+    let k = Math.min(kMax, Math.max(1, Math.round(vs / FINE)));
     if (k > 1 && this.v.size) {
       let lo = 0, hi = 0;
       for (const kk of this.v.keys()) { const a = Math.min(kk & 255, (kk >> 8) & 255, (kk >> 16) & 255) - 128, b = Math.max(kk & 255, (kk >> 8) & 255, (kk >> 16) & 255) - 128; if (a < lo) lo = a; if (b > hi) hi = b; }
