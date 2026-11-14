@@ -1,6 +1,6 @@
-// The MOLEFORGE logo as real pixel art: chunky 10px-tall bitmap letters with a bevelled ramp,
-// a 3px extrusion and a dark outline. "MOLE" is dug-up gold, "FORGE" is hot metal, and the
-// first O holds a little gem. Each letter is its own image so the title can animate them.
+// The BURROWSMITH logo as real pixel art: chunky 10px-tall bitmap letters with a bevelled ramp,
+// a 3px extrusion and a dark outline. "BURROW" is dug-up gold, "SMITH" is hot metal, and the
+// O holds a little gem. Each letter is its own image so the title can animate them.
 import { PixelCanvas } from '../gfx/PixelArt.js';
 
 const GLYPHS = {
@@ -11,6 +11,13 @@ const GLYPHS = {
   F: ['#######', '#######', '##.....', '##.....', '######.', '######.', '##.....', '##.....', '##.....', '##.....'],
   R: ['######..', '#######.', '##...###', '##....##', '##...###', '#######.', '######..', '##..###.', '##...###', '##....##'],
   G: ['..#####.', '.#######', '###.....', '##......', '##..####', '##..####', '##....##', '###...##', '.#######', '..#####.'],
+  B: ['######..', '#######.', '##...###', '##....##', '#######.', '#######.', '##....##', '##...###', '#######.', '######..'],
+  U: ['##....##', '##....##', '##....##', '##....##', '##....##', '##....##', '##....##', '###..###', '.######.', '..####..'],
+  W: ['##......##', '##......##', '##......##', '##......##', '##..##..##', '##.####.##', '####..####', '###....###', '##......##', '#........#'],
+  S: ['.######.', '########', '##......', '###.....', '.#####..', '..#####.', '.....###', '......##', '########', '.######.'],
+  I: ['######', '######', '..##..', '..##..', '..##..', '..##..', '..##..', '..##..', '######', '######'],
+  T: ['########', '########', '...##...', '...##...', '...##...', '...##...', '...##...', '...##...', '...##...', '...##...'],
+  H: ['##....##', '##....##', '##....##', '##....##', '########', '########', '##....##', '##....##', '##....##', '##....##'],
 };
 
 // face ramps, top row to bottom row (10 rows), then the extrusion (3 rows) and the outline
@@ -51,13 +58,13 @@ function letterCanvas(ch, pal, gem) {
 }
 
 let cache = null;
-/** [{ch, url, w, h, hot}] for M-O-L-E-F-O-R-G-E. */
+/** [{ch, url, w, h, hot}] for B-U-R-R-O-W-S-M-I-T-H. */
 export function logoLetters() {
   if (cache) return cache;
-  const word = 'MOLEFORGE';
+  const word = 'BURROWSMITH';
   cache = [...word].map((ch, i) => {
-    const hot = i >= 4;
-    const { canvas, w, h } = letterCanvas(ch, hot ? HOT : GOLD, i === 1);
+    const hot = i >= 6;
+    const { canvas, w, h } = letterCanvas(ch, hot ? HOT : GOLD, i === 4);
     return { ch, url: canvas.toDataURL(), w, h, hot };
   });
   return cache;

@@ -63,8 +63,8 @@ export function buildCredits(game, handlers) {
   ]);
   const endBlock = el('div', { class: 'bk-endblock' }, [el('div', { class: 'bk-thanks bk-outline' }, 'Thanks for playing!'), end]);
 
-  // the same pixel logo as the title screen (gold MOLE, hot-metal FORGE), bobbing gently
-  const logo = el('div', { class: 'bk-logo bk-roll-logo', role: 'img', 'aria-label': 'MOLEFORGE' }, logoLetters().map((L, i) => withI(i, el('span', { class: L.hot ? 'hot' : '' }, [
+  // the same pixel logo as the title screen (gold BURROW, hot-metal SMITH), bobbing gently
+  const logo = el('div', { class: 'bk-logo bk-roll-logo', role: 'img', 'aria-label': 'BURROWSMITH' }, logoLetters().map((L, i) => withI(i, el('span', { class: L.hot ? 'hot' : '' }, [
     el('img', { class: 'pix', src: L.url, alt: '', draggable: 'false', style: { width: `calc(var(--lp) * ${L.w})`, height: `calc(var(--lp) * ${L.h})` } }),
   ]))));
   const roll = el('div', { class: 'bk-roll bk-outline' }, [

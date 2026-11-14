@@ -6,7 +6,7 @@ const src = process.argv[2] || 'dist-single/index.html';
 const out = process.argv[3] || 'dist-single/moleforge.html';
 const html = readFileSync(src, 'utf8');
 
-const title = (html.match(/<title>[\s\S]*?<\/title>/) || ['<title>Moleforge</title>'])[0];
+const title = (html.match(/<title>[\s\S]*?<\/title>/) || ['<title>Burrowsmith</title>'])[0];
 const fontLinks = [...html.matchAll(/<link[^>]+fonts\.googleapis\.com\/css2[^>]*>/g)].map((m) => m[0]);
 const styles = [...html.matchAll(/<style[^>]*>[\s\S]*?<\/style>/g)].map((m) => m[0]);
 const scripts = [...html.matchAll(/<script[^>]*>[\s\S]*?<\/script>/g)].map((m) => m[0]);

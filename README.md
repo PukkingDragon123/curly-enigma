@@ -1,10 +1,10 @@
-# MOLEFORGE
+# BURROWSMITH
 
 *One million gold to the surface.*
 
 You are a blacksmith adventurer mole, wandering the forest with Nugget the hen and her walking Baba Yaga coop. In a clearing you find a strange chest spilling gold and gems, and as you reach for it the ground gives way. You wake up deep underground with a bucket of cold quench water in your face: **Old Star**, an old star-nosed mole blacksmith, needed it for his forge anyway. He was this close to getting out: the way up costs **1,000,000 gold**. He'll teach you to mine, forge and cook, and together you'll earn it.
 
-Moleforge is a pixel-art voxel game that runs in the browser, played in first person: mining in huge Minecraft-like caves, a blacksmith sim at the anvil, cooking minigames, foraging, trading with the folk who live down there, ruins with puzzles, monsters and dinosaurs. Every model, texture, sound effect and music track is generated in code. There are no asset files.
+Burrowsmith is a pixel-art voxel game that runs in the browser, played in first person: mining in huge Minecraft-like caves, a blacksmith sim at the anvil, cooking minigames, foraging, trading with the folk who live down there, ruins with puzzles, monsters and dinosaurs. Every model, texture, sound effect and music track is generated in code. There are no asset files.
 
 ## Play
 

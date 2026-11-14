@@ -1,4 +1,4 @@
-/* Moleforge UI — a diegetic interface: leather, parchment, brass and chalk over the pixel canvas.
+/* Burrowsmith UI — a diegetic interface: leather, parchment, brass and chalk over the pixel canvas.
    Art comes from src/ui/uiArt.js (published as --a-* custom properties) and is always shown at an
    integer multiple of --px. Every letter is a pixel font, bundled with the game (src/ui/fonts/, no
    system or web fallback ever shows): Tiny5 for text, Jersey 15 for headings, display and script,

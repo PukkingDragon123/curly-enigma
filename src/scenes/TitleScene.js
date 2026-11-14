@@ -663,7 +663,7 @@ export default class TitleScene extends Scene {
       ]),
       el('p', { class: 'muted' }, 'Thank you for digging with us.'),
     ]);
-    this.game.ui.openPanel({ title: 'Credits', sub: 'MOLEFORGE', body, onClose: () => setTimeout(() => this.menu.focus(2, true), 30) });
+    this.game.ui.openPanel({ title: 'Credits', sub: 'BURROWSMITH', body, onClose: () => setTimeout(() => this.menu.focus(2, true), 30) });
   }
 
   // ------------------------------------------------------------------ camera

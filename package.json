@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "MOLEFORGE — a pixel-art voxel mining & medieval blacksmith game about a dirty mole saving up 1,000,000 gold for a ticket to the surface.",
+  "description": "BURROWSMITH — a pixel-art voxel mining & medieval blacksmith game about a dirty mole saving up 1,000,000 gold for a ticket to the surface.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
