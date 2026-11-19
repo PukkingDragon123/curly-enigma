@@ -236,7 +236,7 @@ function coral(r, P) {
   const C = r() < 0.5 ? P.cap : P.acc, T = P.glow;
   const clumps = r.int(1, 3);
   for (let k = 0; k < clumps; k++) {
-    const str = lsys('FX', { X: (q) => (q() < 0.55 ? 'F[&+X]/[&-X]' : q() < 0.5 ? 'F[&X]/[&X]/[&X]' : 'F/[&X]FX') }, r.int(3, 4), r);
+    const str = lsys('FA', { A: (q) => (q() < 0.55 ? 'F[&+A]/[&-A]' : q() < 0.5 ? 'F[&A]/[&A]/[&A]' : 'F/[&A]FA') }, r.int(3, 4), r); // (the tips left over bloom)
     const bx = c + (k ? r.int(-7, 7) : 0), bz = c + (k ? r.int(-7, 7) : 0), sc = k ? 0.7 : 1;
     walk(g, str, { r, x: bx, y: 0, z: bz, th: 0.12, ph: r() * TAU, a: 0.9, b: 0.42, step: 5.5 * sc, shrink: 0.82, w0: k ? 2 : 3, wd: 0.7, trop: 0.22, stem: C, H: 30 * sc,
       bloom: (s) => { g.set(s.x, s.y + 1, s.z, tone(T, 6), glowy ? 3 : 1); g.set(s.x, s.y, s.z, tone(C, 5.5), glowy ? 2 : 0); if (r() < 0.4) g.set(s.x + 1, s.y + 1, s.z, tone(T, 5), glowy ? 2 : 0); } });
