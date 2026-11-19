@@ -122,9 +122,10 @@ export class HiRes {
     // which see them only in arm's reach and one or two at a time)
     if (fx === 'low' || touch) {
       if (mem <= 3) return { near: null, mid: null, far };
-      return { near: { r: 2.6, max: 1, vox: 1 / 100, cells: mem <= 4 ? 3.5e6 : 6e6 }, mid: mem <= 4 ? null : { r: 4.2, max: 2, vox: 1 / 64, cells: 2.5e6 }, far };
+      return { near: { r: 2.6, max: 1, vox: 1 / 100, cells: mem <= 4 ? 3.5e6 : 6e6 }, mid: mem <= 4 ? null : { r: 4.2, max: 2, vox: 1 / 64, cells: 1.5e6, tris: 1.5e5 }, far };
     }
-    return { near: { r: 6, max: 4, vox: 1 / 136, cells: 14e6 }, mid: { r: 12, max: 10, vox: 1 / 96, cells: 6e6 }, far };
+    // (mid copies within a triangle budget: a cavern of dinos keeps its base models past it)
+    return { near: { r: 6, max: 4, vox: 1 / 136, cells: 14e6 }, mid: { r: 11, max: 8, vox: 1 / 96, cells: 2.5e6, tris: 9e5 }, far };
   }
   slot(geo) { let c = this.hi.get(geo); if (!c) { c = { near: undefined, mid: undefined, far: undefined }; this.hi.set(geo, c); } return c; }
   request(geo, tier, T) {
@@ -247,12 +248,12 @@ export class HiRes {
       cand.push([_v.distanceTo(eye), e]);
     }
     cand.sort((a, b) => a[0] - b[0]);
-    let nN = 0, nM = 0;
+    let nN = 0, nM = 0, mT = 0;
     const want = new Map();
     for (const [d, e] of cand) {
       let t = null;
       if (P.near && d < P.near.r && nN < P.near.max) { t = 'near'; nN++; }
-      else if (P.mid && d < P.mid.r && nM < P.mid.max) { t = 'mid'; nM++; }
+      else if (P.mid && d < P.mid.r && nM < P.mid.max && mT + (e.lodTris || 0) <= P.mid.tris) { t = 'mid'; nM++; mT += e.lodTris || 0; }
       else if (P.far && d > P.far.r) t = 'far';
       if (t) want.set(e, t);
     }
@@ -262,6 +263,7 @@ export class HiRes {
   wear(e, tier, P, t0 = performance.now()) {
     if (!e.root) return;
     e.lodTier = tier;
+    let tris = 0;
     e.root.traverse((o) => {
       if (!o.isMesh) return;
       const g = o.geometry;
@@ -277,7 +279,11 @@ export class HiRes {
         if (tier === 'near' && !c[tier] && c.mid === undefined && P.mid) this.request(base, 'mid', P.mid);
       }
       if (o.geometry !== to) o.geometry = to;
+      // (what it costs once its copies are in: the mid budget counts it)
+      const want = tier === 'mid' || tier === 'near' ? this.hi.get(base)?.mid || base : base;
+      tris += (want.index ? want.index.count : 0) / 3;
     });
+    e.lodTris = tris;
   }
   info() {
     let ready = 0, far = 0, mid = 0;

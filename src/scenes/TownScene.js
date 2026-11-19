@@ -634,7 +634,7 @@ export default class TownScene extends Scene {
     const rig = this.rig;
     // (wave 16) glowcaps, berries, thyme and spore pods at the feet of the mushroom trees (they grow back)
     try {
-      const kinds = ['glowcaps', 'bush', 'thyme', 'glowcaps', 'spores', 'bush'];
+      const kinds = ['glowcaps', 'bush', 'thyme', 'nuts', 'spores', 'glowcaps'];
       const spots = TOWN.trees.slice(0, 6).map((t, i) => { const a = 0.9 + i * 2.1, d = 0.95; return { kind: kinds[i % kinds.length], x: (t.x + Math.cos(a) * d) * M, z: (t.z + Math.sin(a) * d) * M, yaw: a }; });
       const add = (it) => { const o = { kind: 'use', ...it, enabled: () => !this.locked && it.enabled() }; Object.defineProperty(o, 'label', { get: it.label, enumerable: true }); return rig.add(o); };
       this.wild = new HarvestPatches(this, spots, { tag: 'town', add });

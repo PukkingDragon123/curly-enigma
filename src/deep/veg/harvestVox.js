@@ -81,7 +81,7 @@ function eggNest(stub, seed) {
   return { g, pivot: [c, 0, c] };
 }
 
-function berryBush(stub, seed) {
+function berryBush(stub, seed, nuts = false) {
   const g = new VoxelGrid(34, 30, 34), c = 17;
   // woody stems up from the root, then lobes of leaves
   for (let k = 0; k < 5; k++) { const a = (k / 5) * Math.PI * 2 + seed; for (let y = 0; y < 14; y++) g.set(Math.round(c + Math.cos(a) * y * 0.35), y, Math.round(c + Math.sin(a) * y * 0.35), 0x5a3a1e); }
@@ -93,10 +93,11 @@ function berryBush(stub, seed) {
   });
   if (!stub) {
     // clusters of glossy red berries on the outside, each with a highlight pixel
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0; i < (nuts ? 14 : 26); i++) {
       const L = lobes[i % lobes.length], a = hh(i, 1, 0, seed) * Math.PI * 2, b = (hh(i, 2, 0, seed) - 0.3) * 1.4;
       const X = Math.round(L[0] + Math.cos(a) * Math.cos(b) * L[3]), Y = Math.round(L[1] + Math.sin(b) * L[3] * 0.75), Z = Math.round(L[2] + Math.sin(a) * Math.cos(b) * L[3]);
-      g.box(X, Y, Z, 2, 2, 2, 0xb01c30); g.set(X, Y + 1, Z, 0xf06a7a); g.set(X + 1, Y, Z + 1, 0x7a1020);
+      if (nuts) { g.box(X, Y, Z, 3, 3, 3, 0x8a6a46); g.set(X, Y + 2, Z, 0xb89a72); g.set(X + 1, Y + 2, Z + 1, 0x5a4430); g.set(X + 2, Y, Z + 2, 0x6a5236); } // knobbly stone nuts in their husks
+      else { g.box(X, Y, Z, 2, 2, 2, 0xb01c30); g.set(X, Y + 1, Z, 0xf06a7a); g.set(X + 1, Y, Z + 1, 0x7a1020); }
     }
   }
   return { g, pivot: [c, 0, c] };
@@ -161,7 +162,7 @@ function thymeTuft(stub, seed) {
   return { g, pivot: [c, 0, c] };
 }
 
-const BUILD = { salt: saltRock, comb: honeycomb, nest: eggNest, bush: berryBush, spores: sporePod, roots: rootBundle, glowcaps, thyme: thymeTuft };
+const BUILD = { salt: saltRock, comb: honeycomb, nest: eggNest, bush: berryBush, nuts: (stub, seed) => berryBush(stub, seed, true), spores: sporePod, roots: rootBundle, glowcaps, thyme: thymeTuft };
 const cache = new Map();
 
 /** The geometry of a source (kind, stub?, seed 0..3): { geo, h, r } (shared; don't dispose). */

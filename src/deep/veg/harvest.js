@@ -231,11 +231,9 @@ export class Harvest {
     else if (/^wall/.test(k)) kind = 'comb';
     else if (/puff|fungus|Shroom|mush|Cap|cap|ink/.test(k)) kind = h1 < 0.6 ? 'spores' : 'salt';
     else if (/grass|Grass|clover|litter/.test(k)) kind = h1 < 0.3 ? 'nest' : h1 < 0.55 ? 'nuts' : 'salt';
-    else if (/fern|Fern|thorn|vine|horse/.test(k)) kind = h1 < 0.55 ? 'bush' : 'nuts';
+    else if (/fern|Fern|thorn|vine|horse/.test(k)) kind = h1 < 0.55 ? 'bush' : 'nuts'; // berries, or a nut bush
     else kind = 'salt';
-    if (kind === 'nuts') kind = 'bush'; // (nut bushes are the berry bush model; they drop nuts)
-    const nuts = kind === 'bush' && h1 > 0.55;
-    const s = { kind, nuts, spot: keyOf(p), key: 's' + ch.cx + ',' + ch.cy + ',' + ch.cz, x: p.x, y: p.y, z: p.z, hits: 0, hang: !!p.hang, seed: Math.floor(h1 * 4), anim: null };
+    const s = { kind, spot: keyOf(p), key: 's' + ch.cx + ',' + ch.cy + ',' + ch.cz, x: p.x, y: p.y, z: p.z, hits: 0, hang: !!p.hang, seed: Math.floor(h1 * 4), anim: null };
     // a comb on a wall faces out of it; one under a roof hangs (a comb is built facing +z)
     s.yaw = hash(ch.cx, ch.cy, ch.cz + 5) * Math.PI * 2;
     if (kind === 'comb' && !p.hang) {
@@ -265,7 +263,7 @@ export class Harvest {
 
   // ------------------------------------------------------------ aiming and using
   /** What's under the crosshair within `near` m: { kind: 'plant', rec, p, t } | { kind: 'src', s, t } | null. */
-  pick(eye, f, near) {
+  pick(eye, f, near, small = true) {
     let best = null;
     for (const s of this.src.values()) {
       if (!s || !s.full) continue;
@@ -279,6 +277,7 @@ export class Harvest {
         if (Math.hypot(rec.x - eye.x, rec.y - eye.y, rec.z - eye.z) > near + 2) continue;
         for (const p of rec.plants) {
           if (p.gone || p.cut || !DROPS[p.kind]) continue;
+          if (!small && !p.hang && p.h < 0.14) continue; // (grass and moss underfoot don't steal the crosshair from the rock; E still picks them)
           c.set(p.x, p.y + (p.hang ? -p.h * 0.5 : p.h * 0.5), p.z);
           const r = rayTo(eye, f, c, near + 0.15);
           if (!r) continue;
@@ -290,9 +289,9 @@ export class Harvest {
     return best;
   }
   target(eye, f, near) {
-    const h = this.pick(eye, f, near);
+    const h = this.pick(eye, f, near, false);
     if (!h) return null;
-    if (h.kind === 'src') return { label: h.s.nuts ? 'Stone Nuts' : SOURCES[h.s.kind].label };
+    if (h.kind === 'src') return { label: SOURCES[h.s.kind].label };
     return { label: ITEMS[DROPS[h.p.kind][0]]?.name || 'Pick' };
   }
   use(eye, f, near) {
@@ -341,7 +340,7 @@ export class Harvest {
     s.hits = 0;
     s.full = false;
     taken(this.st, s.key);
-    s.anim = { t: 0, kind: 'take', got: s.nuts ? 'stone_nut' : S.item, n: S.n, q: qOf(this.st) };
+    s.anim = { t: 0, kind: 'take', got: S.item, n: S.n, q: qOf(this.st) };
     return [{ shake: s.kind === 'salt' ? 0.14 : 0.04, act: { type: 'pluck', kind: s.kind } }];
   }
 
@@ -393,7 +392,7 @@ export class Harvest {
           A.popped = true;
           this.makeMesh(s);
           const c = this.centerOf(s, new THREE.Vector3());
-          burst(fx, c.x, c.y, c.z, s.kind === 'salt' ? [1, 0.9, 0.92] : s.kind === 'comb' ? [1, 0.7, 0.2] : s.kind === 'bush' ? [0.8, 0.15, 0.2] : [0.6, 0.8, 0.4], 14);
+          burst(fx, c.x, c.y, c.z, s.kind === 'salt' ? [1, 0.9, 0.92] : s.kind === 'comb' ? [1, 0.7, 0.2] : s.kind === 'bush' ? [0.8, 0.15, 0.2] : s.kind === 'nuts' ? [0.55, 0.42, 0.28] : [0.6, 0.8, 0.4], 14);
           this.o.audio?.play('bloop', { vol: 0.5, pitch: 1.2 });
           popFind(this.o, A.got, A.q, c, A.n);
         } else { const k = clamp((t - 0.18) / 0.3, 0, 1), b = backOut(k); m.scale.set(0.7 + 0.3 * b, 0.5 + 0.5 * b, 0.7 + 0.3 * b); if (k >= 1) { m.scale.setScalar(1); s.anim = null; } }

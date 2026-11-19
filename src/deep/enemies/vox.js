@@ -176,6 +176,7 @@ export class VB {
         for (const kk of this.v.keys()) { const x = kk & 255, y = (kk >> 8) & 255, z = (kk >> 16) & 255; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z; }
         const cells = (x1 - x0 + 3) * (y1 - y0 + 3) * (z1 - z0 + 3);
         while (k > 2 && cells * k * k * k > REFINE_CELLS) k--;
+        while (k > 3 && (this.v.size * k * k > 2.4e4 || vs > 1 / 21)) k--; // (4× only for small and middling parts drawn at 1/24 m or finer: the big beasts' detail is their mid and near copies)
       }
     }
     if (k > 1) {

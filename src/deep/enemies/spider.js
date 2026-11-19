@@ -84,12 +84,12 @@ export function buildSpider(zone) {
   const fem = new VB(75);
   taper(fem, 0, 0, 0, 0, -20, 0, 2.4, 1.8, (x, y, z, t) => (t < 0.08 ? S[3] : band(t, 5)));
   fem.ell(0, -21, 0, 2.5, 2.2, 2.5, (x, y, z, nx, ny) => (ny > 0.3 ? S[3] : S[2])); // knee
-  for (let i = 0; i < 26; i++) { const y = -2 - Math.floor(fem.n(i, 0, 0, 1) * 17), a = fem.n(i, 1, 0, 1) * Math.PI * 2; const x = Math.round(Math.cos(a) * 3), z = Math.round(Math.sin(a) * 3); fem.set(x, y, z, S[0]); if (i % 4 === 0) fem.set(Math.round(Math.cos(a) * 4), y + 1, Math.round(Math.sin(a) * 4), mul(P.mark, 0.6)); }
+  for (let i = 0; i < 12; i++) { const y = -2 - Math.floor(fem.n(i, 0, 0, 1) * 17), a = fem.n(i, 1, 0, 1) * Math.PI * 2; const x = Math.round(Math.cos(a) * 3), z = Math.round(Math.sin(a) * 3); fem.set(x, y, z, S[0]); if (i % 3 === 0) fem.set(Math.round(Math.cos(a) * 4), y + 1, Math.round(Math.sin(a) * 4), mul(P.mark, 0.6)); }
   const tib = new VB(76);
   taper(tib, 0, 0, 0, 0, -18, 0, 1.8, 1.1, (x, y, z, t) => (t < 0.07 ? S[3] : band(t, 4)));
   taper(tib, 0, -18, 0, 0, -25, 0.6, 1.1, 0.7, (x, y, z, t) => (t > 0.6 ? mul(P.mark, 0.6) : S[1]));
   tib.set(0, -26, 1, P.fang); tib.set(0, -26, 2, 0xd8c8b0); tib.set(0, -25, 2, P.fang); // hooked claw
-  for (let i = 0; i < 18; i++) { const y = -2 - Math.floor(tib.n(i, 0, 0, 2) * 20), a = tib.n(i, 1, 0, 2) * Math.PI * 2; tib.set(Math.round(Math.cos(a) * 2.3), y, Math.round(Math.sin(a) * 2.3), S[0]); }
+  for (let i = 0; i < 8; i++) { const y = -2 - Math.floor(tib.n(i, 0, 0, 2) * 20), a = tib.n(i, 1, 0, 2) * Math.PI * 2; tib.set(Math.round(Math.cos(a) * 2.3), y, Math.round(Math.sin(a) * 2.3), S[0]); }
   const V = (vb, px = 0, py = 0, pz = 0) => vb.geo(px * 2, py * 2, pz * 2, H);
   return { body: V(body), glow: glow.size ? V(glow) : null, eyes: V(eyes, 0, 1, 0), fang: V(fang), palp: V(palp), fem: V(fem), tib: V(tib), hide: c01(S[2]), eye: c01(P.eye) };
 }

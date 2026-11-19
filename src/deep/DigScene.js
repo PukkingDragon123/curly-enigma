@@ -1534,10 +1534,10 @@ export default class DigScene extends Scene {
       }
       const got = this.props?.use?.(eye, f, near);
       if (got) { this.events([got]); if (this.vm) this.vm.impact('none', 0.3); return; }
-      const hv = this.harvest?.use(eye, f, near); // pluck a plant, take salt, comb, eggs... (veg/harvest.js)
-      if (hv) { this.events(hv); return; }
       const evs = this.enemies?.catch?.(eye, f, reach, this.slotName);
       if (evs && evs.length) { this.events(evs); if (this.vm) this.vm.impact('none', 0.3); return; }
+      const hv = this.harvest?.use(eye, f, near); // pluck a plant, take salt, comb, eggs... (veg/harvest.js)
+      if (hv) { this.events(hv); return; }
     }
     // the burrow door at the end of a tunnel
     if (this.target && this.target.m === M.DOOR) {
