@@ -26,7 +26,7 @@ const P = (list) => list.map((h) => C32(h));
 const ROCK = P([0x0b0706, 0x160f0c, 0x231813, 0x30221a, 0x403022, 0x56402c, 0x6e5236]);
 const CRUST = P([0x17110f, 0x2e2622, 0x473b33, 0x615244, 0x7d6b56, 0x9c876a, 0xbca784]);
 const ORE = P([0x3a1a06, 0x7a3a0a, 0xb86010, 0xe89624, 0xffc84a, 0xffe890, 0xfffbe0]);
-const FUR = P([0x0e0807, 0x1d1310, 0x2e201a, 0x423026, 0x5a4434]);
+const FUR = P([0x120c12, 0x281e26, 0x3e323a, 0x5a4c54, 0x84747a]); // (velvet grey: it reads against the brown rock)
 const SKIN = P([0x5a2228, 0x9a4a52, 0xc8707a, 0xeca098, 0xffd0c0]);
 const CLAW = P([0x4a3a2a, 0x8e7e62, 0xcfc3a3, 0xf6eedc]);
 const MOSS = P([0x1e2c10, 0x3c5a1a, 0x6a8a2a]);
@@ -177,6 +177,12 @@ function drawStage(sc, c) {
         // a broken lip where a neighbour plate has come away (lit on its open side)
         const open = (j) => sc.outer[j] && !crustOn(j);
         if (open(i - 1) || open(i - W)) t += 0.2; else if (open(i + 1) || open(i + W)) t -= 0.12;
+        if (!sc.crack[i]) {
+          t += Math.sin(y * 1.3 + sc.cell[i] * 2.1) > 0.75 ? 0.06 : 0; // strata in each plate
+          if (sc.crack[i - W] || sc.crack[i - 1]) t += 0.1; // the crack's far lip catches the light
+          if (hash(x - 1, y - 1, 33) < 0.05) t += 0.12; // just under a pit: its lit rim
+        }
+        if (hash(x, y, 33) < 0.05 && !sc.crack[i]) t = 0.12; // pits and chip scars
         col = CRUST[clamp(Math.round(t * 7), 0, 6)];
         if (!sc.crack[i] && hash(x, y, 31) < 0.03 && y < CY) col = MOSS[1 + (hash(x, y, 32) < 0.5 ? 1 : 0)];
         vis[i] = 1;
@@ -202,48 +208,71 @@ function drawStage(sc, c) {
 /** A mole paw: dark fur arm from the corner, pink palm, five pale claws; tips at (ax, ay). */
 const PAD = 24, BW = W + PAD * 2, BH = H + PAD * 2; // (a paw is drawn once on a padded sheet, then slid about)
 function drawPaw(buf, ax, ay, dir, squash) {
+  // Drawn per pixel (each pixel asks which part of the paw it is in), lit from the top left:
+  // a furry arm with strands, a rim of lantern light and a shaggy edge; a lighter tuft at the wrist;
+  // a broad pink palm with toe pads; five long hooked claws, each with a lit edge, a shade side
+  // and a dark gap between them.
   const mask = new Uint8Array(BW * BH), cols = new Uint32Array(BW * BH);
-  const put = (x, y, col) => { x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= BW || y >= BH) return; mask[y * BW + x] = 1; cols[y * BW + x] = col; };
-  // local frame: u along the arm (down and outward), v across it
   const ux = 0.76 * dir, uy = 0.65, vx = -0.65 * dir, vy = 0.76;
-  const at = (u, v, col) => put(ax + ux * (u + 4.6) + vx * v, ay + uy * (u + 4.6) + vy * v, col);
-  // the arm: fur with streaks, a lighter cuff by the wrist
-  for (let u = 10; u < 50; u += 0.5) for (let v = -7.5; v <= 7.5; v += 0.5) {
-    const w = 6 + Math.min(1.5, (u - 10) * 0.1) + (vnoise(u * 0.4, v, 41) - 0.5) * 1.2;
-    if (Math.abs(v) > w) continue;
-    const streak = vnoise(u * 0.25, v * 1.6, 42);
-    let t = 2 + (v * dir < -2 ? 1 : v * dir > 3 ? -1 : 0) + (streak > 0.68 ? 1 : streak < 0.3 ? -1 : 0);
-    if (u < 14) t = 3 + (streak > 0.5 ? 1 : 0) - (Math.abs(v) > w - 1 ? 1 : 0);
-    at(u, v, FUR[clamp(t, 0, 4)]);
-  }
-  // the palm: broad and pink, creases, lit top left
-  for (let u = 1.5; u < 15; u += 0.5) for (let v = -8.5; v <= 8.5; v += 0.5) {
-    // a spade: broad across the knuckles, narrowing to the wrist
-    const ru = (u - 8) / 6.6, rv = v / (8.2 - Math.max(0, u - 8) * 0.7);
-    const r = ru * ru + rv * rv * (1 + squash * 0.3), edge = 1 + (vnoise(u, v, 43) - 0.5) * 0.25;
-    if (r > edge) continue;
-    let t = 2 + (rv * dir < -0.35 || ru < -0.5 ? 1 : 0) - (rv * dir > 0.55 || ru > 0.6 ? 1 : 0);
-    if (Math.abs(Math.sin(v * 0.95 + 0.4)) < 0.12 && u > 2.5 && u < 7) t -= 1; // between the fingers
-    if (ru < -0.6 && rv * dir < 0.1) t = 4;
-    if (r > edge - 0.16 && ru > -0.3) t = hash(Math.round(u * 2), Math.round(v * 2), 44) < 0.5 ? -1 : t; // a fringe of fur round the palm
-    at(u, v, t < 0 ? FUR[3] : SKIN[clamp(t, 0, 4)]);
-  }
-  // a toe pad at each claw's root
-  for (let k = 0; k < 5; k++) {
-    const v0 = (k - 2) * 3.1;
-    for (const [du, dv, t] of [[0, 0, 1], [0.5, 0, 1], [0, 0.6 * dir, 0], [-0.6, 0, 3]]) at(3.6 + du, v0 + dv, SKIN[t]);
-  }
-  // five claws fanning out from the palm's top edge
-  for (let k = 0; k < 5; k++) {
-    const v0 = (k - 2) * 3.1, len = 7.4 - Math.abs(k - 2) * 0.8 - squash * 1.5;
-    for (let s = 0; s <= len; s += 0.35) {
-      const u = 2.6 - s, v = v0 * (1 - s * 0.03) + s * s * 0.03 * dir, wd = s < len * 0.55 ? 1 : 0;
-      const t = s > len - 1 ? 3 : 2;
-      at(u, v, CLAW[t]);
-      if (wd) at(u, v + 0.8 * dir, CLAW[1]);
+  const lit = (nu, nv) => -((nu * ux + nv * vx) + (nu * uy + nv * vy)) * 0.7; // a local normal → light
+  const CLAWS = [];
+  for (let k = 0; k < 5; k++) CLAWS.push({ v0: (k - 2) * 3.2, len: 8.6 - Math.abs(k - 2) * 0.9 - squash * 1.8 });
+  const x0 = Math.max(0, Math.floor(ax - 36)), x1 = Math.min(BW - 1, Math.ceil(ax + 36)), y0 = Math.max(0, Math.floor(ay - 14)), y1 = Math.min(BH - 1, Math.ceil(ay + 44));
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const dx = x - ax, dy = y - ay;
+    const u = dx * ux + dy * uy - 4.6, v = dx * vx + dy * vy;
+    let col = 0;
+    // the claws (on top): from the palm's edge out along -u, curling a little, tapering to a hook
+    for (const c of CLAWS) {
+      const sc = 2.4 - u;
+      if (sc < 0 || sc > c.len) continue;
+      const k = sc / c.len, mid = c.v0 * (1 + k * 0.32) + k * k * 1.3 * dir;
+      const hw = 1.05 - k * 0.6, d = v - mid;
+      if (Math.abs(d) > hw) continue;
+      const side = lit(0, Math.sign(d) || 1);
+      col = k > 0.86 ? CLAW[3] : side > 0.2 ? CLAW[3] : side < -0.2 && Math.abs(d) > hw - 0.7 ? CLAW[1] : CLAW[2];
+      if (k < 0.12) col = CLAW[0]; // the cuticle
+      break;
     }
+    if (!col) {
+      // the fingers: five short pink digits from the knuckles to the claws, lit on top
+      for (const c of CLAWS) {
+        if (u < 1.6 || u > 6.2 || Math.abs(v - c.v0) > 1.3) continue;
+        const d = v - c.v0, side = lit(0, Math.sign(d) || 1);
+        col = Math.abs(d) > 0.85 ? (side > 0 ? SKIN[3] : SKIN[1]) : u < 2.6 ? SKIN[1] : SKIN[2];
+        if (u < 3.4 && Math.abs(d) < 0.9) col = SKIN[0]; // the dark nail bed
+        break;
+      }
+    }
+    if (!col) {
+      // the palm: broad across the knuckles, narrowing to the wrist
+      const ru = (u - 9.2) / 5.4, rv = v / (8.4 - Math.max(0, u - 9) * 0.8);
+      const r = ru * ru + rv * rv * (1 + squash * 0.3), edge = 1 + (vnoise(u, v, 43) - 0.5) * 0.22;
+      if (r <= edge) {
+        let t = 2 + Math.round(lit(ru, rv) * 1.6);
+        if (u < 7.4 && CLAWS.some((c) => Math.abs(v - c.v0) < 0.9)) t = u < 6.7 ? 4 : 1; // knuckle pads: a glint, a shade
+        if (r > edge - 0.14 && ru > -0.2) t = -1; // a fringe of fur round the heel
+        col = t < 0 ? (hash(Math.round(u * 2), Math.round(v * 2), 44) < 0.5 ? FUR[3] : FUR[2]) : SKIN[clamp(t, 0, 4)];
+      }
+    }
+    if (!col && u > 9.5 && u < 52) {
+      // the arm: velvet fur in strands, shaggy at the edge, a rim of light, a tuft at the wrist
+      const tuft = hash(Math.round(u), Math.sign(v), 45) > 0.62 ? 0.9 : 0;
+      const w = 6.4 + Math.min(1.4, (u - 10) * 0.1) + tuft + (u < 13 ? 0.8 : 0);
+      if (Math.abs(v) <= w) {
+        const side = lit(0, Math.sign(v) || 1) * (Math.abs(v) / w);
+        const strand = vnoise(u * 0.22 + v * 0.12, v * 1.1, 42);
+        let t = 2 + (strand > 0.64 ? 1 : strand < 0.32 ? -1 : 0);
+        if (side > 0.45) t = Math.abs(v) > w - 1.2 ? 4 : 3; // the lit edge
+        else if (side < -0.45) t = 0; // the shadow edge
+        if (u < 13.5) t = Math.min(4, t + 1); // the lighter wrist tuft
+        if (hash(Math.round(u * 1.5), Math.round(v * 1.5), 46) < 0.04) t = 4; // stray glinting hairs
+        col = FUR[clamp(t, 0, 4)];
+      }
+    }
+    if (col) { mask[y * BW + x] = 1; cols[y * BW + x] = col; }
   }
-  // a tinted outline, then onto the frame
+  // a tinted outline (and so a dark gap between the claws), then onto the frame
   for (let y = 1; y < BH - 1; y++) for (let x = 1; x < BW - 1; x++) {
     const i = y * BW + x;
     if (mask[i]) { buf[i] = cols[i]; continue; }
@@ -268,14 +297,18 @@ function drawBite(buf, sc, vis, c, px, py, t, seed) {
     put(px + out * t * 0.8 + Math.cos(a) * r, py - t * 0.6 + Math.sin(a) * r * 0.7, CRUST[t < 3 ? 4 : 3]);
   }
   // chips: little two-pixel bits of crust (and of ore, the cleaner it gets), arcing off
-  for (let k = 0; k < 9; k++) {
-    const a = -Math.PI / 2 + out * (0.3 + hash(k, seed, 53) * 1.2), v = 2.0 + hash(k, seed, 54) * 2.2;
-    const x = px + Math.cos(a) * v * t, y = py + Math.sin(a) * v * t + 0.55 * t * t;
+  for (let k = 0; k < 11; k++) {
+    const a = -Math.PI / 2 + out * (0.25 + hash(k, seed, 53) * 1.25), v = 2.2 + hash(k, seed, 54) * 2.4;
+    const x = Math.round(px + Math.cos(a) * v * t), y = Math.round(py + Math.sin(a) * v * t + 0.55 * t * t);
     if (y > FLOOR + 6 || t > 6) continue;
     const oreChip = hash(k, seed, 55) < c * 0.6;
-    const pal = oreChip ? ORE : CRUST, spin = (t + k) & 1;
-    put(x, y, pal[oreChip ? 5 : 5]); put(x + (spin ? 1 : 0), y + (spin ? 0 : 1), pal[oreChip ? 3 : 3]);
-    if (k % 3 === 0) put(x + 1, y + 1, pal[oreChip ? 2 : 2]);
+    const pal = oreChip ? ORE : CRUST, big = k % 4 === 0 ? 3 : k % 3 === 0 ? 1 : 2, spin = (t + k) & 3;
+    // a tumbling chunk: lit top-left, shaded bottom-right, an outline on its underside
+    for (let j = 0; j < big; j++) for (let i = 0; i < big + (spin & 1); i++) {
+      if (big === 3 && ((i === 0 && j === 0 && spin > 1) || (i === big && j === big - 1))) continue;
+      put(x + i, y + j, pal[i + j === 0 ? 6 : i + j >= big ? 2 : 4]);
+    }
+    for (let i = 0; i < big + (spin & 1); i++) put(x + i, y + big, LINE);
   }
   // sparks: quick and bright, a plus at first, a dot after
   if (t <= 3) for (let k = 0; k < 7; k++) {
@@ -405,7 +438,7 @@ function style() {
 /** Art px → CSS px: whole device pixels per art pixel, sized to the screen. */
 function artScale(mode) {
   const dpr = window.devicePixelRatio || 1, vw = window.innerWidth || 800, vh = window.innerHeight || 600;
-  const fit = mode === 'corner' ? Math.min(vw * 0.2 / W, vh * 0.16 / H, 1.6) : Math.min(vw * 0.62 / W, vh * 0.4 / H, mode === 'dark' ? 2.5 : 5);
+  const fit = mode === 'corner' ? Math.min(vw * 0.24 / W, vh * 0.18 / H, 2) : mode === 'dark' ? Math.min(vw * 0.5 / W, vh * 0.3 / H, 3) : Math.min(Math.min(vw, vh) * 0.6 / H, vw * 0.92 / W, vh * 0.8 / H);
   return Math.max(1, Math.floor(fit * dpr)) / dpr;
 }
 

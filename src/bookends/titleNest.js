@@ -402,14 +402,15 @@ const CSS = /* css */`
 /* breaking an egg: it cracks all over while two crafted buttons ask (an iron plate, a bark tag) */
 .nt-main { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
 .nt-slot.arming .nt-plaque, .nt-slot.arming .nt-del, .nt-slot.arming .nt-last { visibility: hidden; }
-.nt-ask { position: absolute; left: 0; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: calc(var(--px) * 1.5); pointer-events: none; animation: ntAsk .26s cubic-bezier(.3,1.7,.5,1) both; }
+.nt-ask { position: absolute; left: 0; top: 0; z-index: 3; transform: translateX(-50%); display: flex; flex-direction: column; align-items: stretch; gap: calc(var(--px) * 3); pointer-events: none; animation: ntAsk .26s cubic-bezier(.3,1.7,.5,1) both; }
 .nt-ask[hidden] { display: none; }
-.nt-ask-q { font-size: max(var(--g), round(calc(var(--px) * 5.4) + 2px, var(--g))); color: #ffd6b0; white-space: nowrap; letter-spacing: .04em; }
-.nt-ask-row { display: flex; gap: calc(var(--px) * 3); }
-#ui .nt-ask-b, .nt-ask-b { position: relative; isolation: isolate; pointer-events: auto; border: 0; margin: 0; background: transparent; cursor: pointer; outline: none; display: flex; align-items: center; gap: calc(var(--px) * 1.5);
-  padding: calc(var(--px) * 2.5) calc(var(--px) * 4.5) calc(var(--px) * 3); font-family: var(--font); font-size: max(var(--g), round(calc(var(--px) * 6) + 2px, var(--g))); color: #fbeedc; white-space: nowrap; text-shadow: 0 var(--px) 0 #120a08;
+.nt-row:has(.arming) .nt-slot:not(.arming) .nt-plaque, .nt-row:has(.arming) .nt-slot:not(.arming) .nt-last { opacity: .3; transition: opacity .15s; }
+#ui .nt-ask-b, .nt-ask-b { position: relative; isolation: isolate; pointer-events: auto; border: 0; margin: 0; background: transparent; cursor: pointer; outline: none; display: flex; align-items: center; justify-content: center; gap: calc(var(--px) * 4);
+  min-width: max(150px, calc(var(--px) * 66)); min-height: max(56px, calc(var(--px) * 24)); padding: calc(var(--px) * 4) calc(var(--px) * 10) calc(var(--px) * 5);
+  font-family: var(--font-display); font-size: max(var(--gj), round(calc(var(--px) * 14), var(--gj))); line-height: 1; color: #fbeedc; white-space: nowrap;
+  text-shadow: 0 var(--px) 0 #120a08, var(--px) 0 0 #120a08, calc(var(--px) * -1) 0 0 #120a08, 0 calc(var(--px) * -1) 0 #120a08, 0 calc(var(--px) * 2) 0 #0008;
   transition: transform .12s cubic-bezier(.3,1.8,.5,1), filter .12s; }
-.nt-ask-b img { width: calc(var(--px) * 8); height: calc(var(--px) * 8); image-rendering: pixelated; display: block; margin: calc(var(--px) * -1) 0; }
+.nt-ask-b img { width: max(32px, calc(var(--px) * 16)); height: max(32px, calc(var(--px) * 16)); image-rendering: pixelated; display: block; margin: calc(var(--px) * -2) 0; }
 .nt-ask-b:hover, .nt-ask-b:focus-visible { transform: translateY(calc(var(--px) * -1)) scale(1.07); }
 .nt-ask-b:active { transform: translateY(var(--px)) scale(.94, .9); transition-duration: .05s; }
 .nt-ask-b:focus-visible { filter: drop-shadow(0 0 var(--px) #f2c23a) drop-shadow(0 0 var(--px) #f2c23a); }
@@ -686,7 +687,8 @@ export function makeNest(parent, opts) {
     // the question while an egg is about to be broken: an iron plate to break it, a bark tag to keep it
     const brk = el('button', { class: 'nt-ask-b nt-brk', type: 'button', tabindex: '-1', 'aria-label': `Break egg ${E.i + 1}: delete this save for good` }, [el('canvas', { class: 'nt-tag', 'aria-hidden': 'true' }), el('img', { src: hammerURL, alt: '' }), el('span', {}, 'Break')]);
     const keep = el('button', { class: 'nt-ask-b nt-keep', type: 'button', tabindex: '-1', 'aria-label': `Keep egg ${E.i + 1}` }, [el('canvas', { class: 'nt-tag', 'aria-hidden': 'true' }), el('span', {}, 'Keep')]);
-    const ask = el('div', { class: 'nt-ask', hidden: true, role: 'group', 'aria-label': `Delete save ${E.i + 1}?` }, [el('span', { class: 'nt-ask-q bk-outline' }, 'Lose this save?'), el('div', { class: 'nt-ask-row' }, [brk, keep])]);
+    // (no question: the egg cracking all over is the question)
+    const ask = el('div', { class: 'nt-ask', hidden: true, role: 'group', 'aria-label': `Delete save ${E.i + 1}?` }, [brk, keep]);
     const slotEl = el('div', { class: 'nt-slot' }, [ring, main, plaque, del, last, ask]);
     slotEl.style.setProperty('--gc', E.spec.css);
     row.append(slotEl);
