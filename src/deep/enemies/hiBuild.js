@@ -160,10 +160,12 @@ function detail(g, W, H, D, k, style, seed, thinAt) {
         const row = Math.floor(w / sh), lv = w - row * sh;
         const uu = u + (row & 1) * (sw >> 1), col = Math.floor(uu / sw), lu = uu - col * sw;
         const tone = hash(col, row, out, seed + 9); // each scale its own shade
-        if (lv === 0 && !(lu === sw >> 1 && h0 < 0.5)) carve.push(i, out); // the groove under each scale row (the tip overlaps it)
-        else if (lu === 0 && lv < sh - 1) carve.push(i, out); // and between the scales of a row
-        else if (lv === sh - 1 && lu > 0) paint.push(i, mulc(c, 1.12 + tone * 0.06)); // the lit upper rim
-        else paint.push(i, mulc(c, 0.9 + tone * 0.14));
+        // (wave 17: quieter, so a body reads as one form: grooves only between rows on the upper
+        // surfaces, the scales of a row parted by a shade, a soft lit rim, little tone spread)
+        if (lv === 0 && ny > -0.2 && !(lu === sw >> 1 && h0 < 0.5)) carve.push(i, out);
+        else if (lv === 0 || (lu === 0 && lv < sh - 1)) paint.push(i, mulc(c, 0.9));
+        else if (lv === sh - 1 && lu > 0) paint.push(i, mulc(c, 1.07));
+        else paint.push(i, mulc(c, 0.96 + tone * 0.06));
       } else if (style === 'stone') {
         const crystal = sat > 0.35 && lum > 0.3;
         if (crystal) {
@@ -180,26 +182,26 @@ function detail(g, W, H, D, k, style, seed, thinAt) {
         if (cr < 0.55) { carve.push(i, out); continue; }
         if (ay < 0.6 && (((y + Math.floor(hash(x >> 3, 0, z >> 3, seed) * 3)) % (cell + 2)) === 0)) { carve.push(i, out); continue; } // strata
         if (cr < 1.1) paint.push(i, mulc(c, 0.86)); // weathered plate edges
-        else if (h0 < 0.025) paint.push(i, mixc(c, 0xfff6e0, 0.45)); // mica
-        else if (h0 < 0.045) paint.push(i, mulc(c, 0.6)); // dark inclusions
-        else if (ny > 0.6 && h0 > 0.93) paint.push(i, mulc(c, 1.12));
+        else if (h0 < 0.008) paint.push(i, mixc(c, 0xfff6e0, 0.4)); // mica (wave 17: sparse)
+        else if (ny > 0.6 && cr > cell * 0.4) paint.push(i, mulc(c, 1.08)); // each plate's lit crown
       } else if (style === 'hide') {
         if (thin) continue;
         const cr = crack(x, y, z, cell + 1, seed);
-        if (cr < 0.5) paint.push(i, mulc(c, 0.8)); // wrinkles
-        else if (h0 < 0.018 && !g[i + out]) bump.push(i + out, mulc(c, 0.9)); // warts
-        else if (h0 > 0.97) paint.push(i, mulc(c, 1.12));
+        if (cr < 0.5) paint.push(i, mulc(c, 0.84)); // wrinkles
+        else if (h0 < 0.006 && !g[i + out]) bump.push(i + out, mulc(c, 0.92)); // (wave 17: a few warts, no speckle)
       } else if (style === 'fur') {
         if (thin) continue;
-        const st = ((u * 3 + w * 2) % 7 + 7) % 7;
-        if (st === 0 && h0 > 0.35 && !g[i + out]) bump.push(i + out, mulc(c, 1.12)); // tufts
-        else if (st === 3) paint.push(i, mulc(c, 0.85)); // partings
+        // (wave 17) clumps, not stripes: a cell network a few coarse voxels wide; partings dark
+        // between the clumps, each clump's crest lit and raised a voxel (reads as locks of fur)
+        const fc = (cell + k) * 1.6, cr = crack(x, y, z, fc, seed + 3);
+        if (cr < 0.6) paint.push(i, mulc(c, 0.86));
+        else if (cr > fc * 0.42 && ny > -0.3) { paint.push(i, mulc(c, 1.1)); if (!g[i + out] && h0 < 0.5) bump.push(i + out, mulc(c, 1.16)); }
       } else if (style === 'chitin') {
         if (thin) { if (y % 2 === 0) paint.push(i, mulc(c, 0.85)); continue; }
         const seg = Math.max(4, k + 2);
         if (((z % seg) + seg) % seg === 0 && ay > 0.3) carve.push(i, out); // segment joints
-        else if (ny > 0.55 && h0 < 0.08) paint.push(i, mixc(c, 0xffffff, 0.3)); // gloss
-        else if (h0 > 0.96) carve.push(i, out); // pits
+        else if (ny > 0.62 && nz > -0.35 && nx < 0.5) paint.push(i, mixc(c, 0xfff8f0, 0.22 + (ny - 0.62) * 0.5)); // (wave 17) a gloss band, not speckle
+        else if (((z % seg) + seg) % seg === 1 && ay > 0.3) paint.push(i, mulc(c, 1.08)); // the lit lip of each plate
       }
     }
   }

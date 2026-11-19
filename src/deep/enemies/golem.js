@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { Enemy, smooth, easeBack, wrapA } from './base.js';
 import { VB, VS, mul, mix, c01, ramp } from './vox.js';
+import { hramp, vnoise, bake } from './voxKit.js';
 import { shockRing, puff, pebbles, sparkle } from './fx.js';
 import { rockPalette } from './rock.js';
 import { M } from '../materials.js';
@@ -93,11 +94,15 @@ export function buildCrystalGolem(pal, zone, seed = 23) {
   const L = golemLook(zone), T = pal.tones;
   const dark = mul(T[0], 0.45);
   const tint = L.dress === 'frost' ? (c) => mix(c, 0x9ab8d8, 0.22) : (c) => c;
+  // (wave 17) stone in readable masses: each boulder lit on its crown and shaded under, broad
+  // mottles instead of per-voxel static, veins of the accent mineral in clusters (no specks)
+  const TT = hramp(T[2], 6, { step: 0.1 });
   const sh = (vb, k0 = 0.3) => (x, y, z, nx, ny, nz) => {
-    const k = vb.n(x, y, z);
-    if (k > 0.965) return pal.acc;
-    if (ny > 0.7 && k < 0.5) return tint(mix(T[3], 0xffffff, 0.12));
-    return tint(ramp(T, clamp(k0 + ny * 0.45 + (nz || 0) * 0.08 + (k - 0.5) * 0.75, 0, 0.999)));
+    if (typeof ny !== 'number') { ny = 0; nz = 0; }
+    const m = vnoise(x, y, z, 3.2, seed);
+    if (vnoise(x, y, z, 2.2, seed + 9) > 0.8) return mix(pal.acc, TT[2], 0.25);
+    if (ny > 0.72 && m > 0.5) return tint(TT[5]);
+    return tint(TT[clamp(Math.floor((k0 + 0.05 + ny * 0.42 + (nz || 0) * 0.08 + (m - 0.5) * 0.32) * 6), 0, 5)]);
   };
   const torso = new VB(seed), glow = new VB(seed + 5);
   const s = sh(torso);
@@ -135,7 +140,7 @@ export function buildCrystalGolem(pal, zone, seed = 23) {
   // zone dressing
   const top = (x, y, z) => y > 9 && torso.open(x, y, z, 0, 1, 0);
   if (L.dress === 'moss') {
-    torso.paint((x, y, z, c) => (top(x, y, z) && torso.n(x, y, z, 9) < 0.7 ? (torso.n(x, y, z, 11) < 0.45 ? 0x3a7a3a : torso.n(x, y, z, 12) < 0.5 ? 0x5aa84a : 0x4a9040) : undefined));
+    torso.paint((x, y, z, c) => (top(x, y, z) && vnoise(x, y, z, 2.6, 9) < 0.62 ? (vnoise(x, y, z, 2.6, 9) < 0.4 ? 0x5aa84a : 0x3a7a3a) : undefined)); // (moss in patches, lit in the middle)
     // roots dangling from the shoulders, jaw and belly
     for (const [x, z, n] of [[12, 3, 5], [-13, -1, 4], [10, -3, 3], [-11, 4, 6], [2, 12, 3], [-2, 11, 4], [6, 7, 4], [-7, 8, 3]]) {
       let y0 = -99;
@@ -149,9 +154,9 @@ export function buildCrystalGolem(pal, zone, seed = 23) {
       torso.set(x, y + 1, z, 0x4a7a2a); torso.set(x, y + 2, z, 0x4a7a2a); torso.set(x + 1, y + 3, z, 0x8ad85a); torso.set(x - 1, y + 3, z, 0x5aa83a); torso.set(x + 2, y + 3, z, 0x8ad85a);
     }
   } else if (L.dress === 'lichen') {
-    torso.paint((x, y, z, c) => (top(x, y, z) && torso.n(x, y, z, 9) < 0.35 ? (torso.n(x, y, z, 10) < 0.5 ? 0x8a9ac8 : 0xb4c4e8) : undefined));
+    torso.paint((x, y, z, c) => (top(x, y, z) && vnoise(x, y, z, 2.2, 10) < 0.4 ? (vnoise(x, y, z, 2.2, 10) < 0.3 ? 0xb4c4e8 : 0x8a9ac8) : undefined));
   } else if (L.dress === 'frost') {
-    torso.paint((x, y, z, c) => (top(x, y, z) ? (torso.n(x, y, z, 12) < 0.3 ? 0xd0e4f4 : 0xf2f8ff) : undefined));
+    torso.paint((x, y, z, c) => (top(x, y, z) ? (torso.open(x, y, z, Math.sign(x) || 1, 0, 0) ? 0xd0e4f4 : 0xf2f8ff) : undefined));
     // icicles under the brow, jaw and shoulders
     for (const [x, z, n] of [[12, 3, 4], [-12, 2, 3], [9, -2, 2], [-9, 5, 3], [2, 12, 3], [-2, 12, 2], [-4, 13, 2], [4, 9, 3]]) {
       let y0 = -99;
@@ -184,7 +189,7 @@ export function buildCrystalGolem(pal, zone, seed = 23) {
   const leg = new VB(seed + 2), sl = sh(leg, 0.2);
   leg.ell(0, -3.5, 0, 4.6, 5, 4.6, sl);
   leg.cap(0, -6, 0.3, 0, -10, 0.6, 3.7, (x, y, z) => mul(sl(x, y, z, 0, 0.1, 0), 0.88));
-  leg.box(-4, -13, -3, 3, -11, 5, (x, y, z) => mul(ramp(T, 0.15 + leg.n(x, y, z) * 0.5), 0.82));
+  leg.box(-4, -13, -3, 3, -11, 5, (x, y, z) => (y === -11 ? TT[2] : TT[1]));
   for (const x of [-3, 0, 2]) leg.set(x, -12, 6, mul(T[0], 0.7));
   // arms (pivot at the shoulder): long knuckle-dragging arms with huge fists
   const arm = new VB(seed + 3), sa = sh(arm, 0.12);
@@ -196,6 +201,7 @@ export function buildCrystalGolem(pal, zone, seed = 23) {
   if (L.dress === 'moss') arm.paint((x, y, z, c) => (y > -4 && arm.open(x, y, z, 0, 1, 0) ? 0x4a9040 : undefined));
   if (L.dress === 'frost') arm.paint((x, y, z, c) => (arm.open(x, y, z, 0, 1, 0) && y > -6 ? 0xf2f8ff : undefined));
   ao(arm); ao(leg);
+  for (const vb of [torso, arm, leg]) bake(vb, { ao: 0.12, rim: 0.24, r: 1 }); // (wave 17: a lit rim on every boulder's top edge)
   // eyes under the brow
   const eyes = new VB(), angry = new VB();
   const zf = Math.max(front(torso, 2, 19), front(torso, -3, 19)) + 1;

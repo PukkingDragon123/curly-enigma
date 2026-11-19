@@ -41,6 +41,8 @@ export class Enemy {
     this.pos = new THREE.Vector3(o.x, o.y, o.z);
     this.vel = new THREE.Vector3();
     this.yaw = o.yaw ?? Math.random() * TAU;
+    // (wave 17) an individual: the seed picks its colour shift, markings and accessories
+    this.seed = o.seed ?? ((Math.random() * 0x7fffffff) | 0);
     this.root = new THREE.Group();
     this.mats = [];
     this.t = 0;
@@ -90,6 +92,30 @@ export class Enemy {
 
   // ------------------------------------------------------------ building
   material(opts) { const m = this.mgr.material(opts); this.mats.push(m); return m; }
+  /** A seeded 0..1 for this individual (k picks another one). */
+  rnd(k = 0) { let h = Math.imul(this.seed ^ Math.imul(k + 1, 0x9e3779b1), 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+  /**
+   * (wave 17) Per-individual colour: a seeded hue turn (± hue turns), saturation and value shift on
+   * every body material (glowing eyes and lights, emissive ≥ 0.9, keep their colour). Enemies.add
+   * calls it once; species tune it with static vary = { hue, sat, val } (or false).
+   */
+  vary() {
+    const V = this.constructor.vary;
+    if (V === false || this.varied) return;
+    this.varied = true;
+    // (a size of its own too, where the species didn't pick one)
+    if (this.size === 1 && !this.info?.kaiju && V?.size !== 0) this.size = 1 + (V?.size ?? 0.07) * (this.rnd(4) * 2 - 1);
+    const hue = (V?.hue ?? 0.03) * (this.rnd(1) * 2 - 1) * Math.PI * 2, sat = 1 + (V?.sat ?? 0.12) * (this.rnd(2) * 2 - 1), val = 1 + (V?.val ?? 0.07) * (this.rnd(3) * 2 - 1);
+    // hue rotation about the grey axis, then saturation round the luma, then value
+    const c = Math.cos(hue), s = Math.sin(hue), k = 1 / 3, q = Math.sqrt(k);
+    const R = [c + (1 - c) * k, k * (1 - c) - q * s, k * (1 - c) + q * s, k * (1 - c) + q * s, c + k * (1 - c), k * (1 - c) - q * s, k * (1 - c) - q * s, k * (1 - c) + q * s, c + k * (1 - c)];
+    const lw = [0.3, 0.59, 0.11], S = [0, 1, 2].map((i) => [0, 1, 2].map((j) => (i === j ? sat : 0) + (1 - sat) * lw[j]));
+    const M = [0, 1, 2].map((i) => [0, 1, 2].map((j) => val * (S[i][0] * R[j] + S[i][1] * R[3 + j] + S[i][2] * R[6 + j])));
+    for (const m of this.mats) {
+      if ((m.uniforms?.emissive?.value ?? 0) >= 0.9 || m.userData.noVary || !m.uniforms?.hueM) continue;
+      m.uniforms.hueM.value.set(M[0][0], M[0][1], M[0][2], M[1][0], M[1][1], M[1][2], M[2][0], M[2][1], M[2][2]);
+    }
+  }
   part(geo, mat, parent = this.root, x = 0, y = 0, z = 0) {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);

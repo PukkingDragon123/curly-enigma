@@ -2,7 +2,7 @@
 // giggles, and lobs ember blobs that arc, bounce off the rock and fizzle in a shower of sparks.
 import { Enemy } from './base.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
-import { H, taper, eye } from './voxKit.js';
+import { H, taper, eye, hramp, lit, bake } from './voxKit.js';
 import { sparkle, puff, fireSpray } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -16,13 +16,13 @@ export function buildImp(zone) {
   // (wave 16) at half the old voxel: a pot-bellied ember imp with a scaly belly plate, a big round
   // head, ridged horns curling back, long pointed ears, a heavy brow, a toothy grin, three-toed
   // clawed feet, clawed hands, a whip tail with a flame tip, and a crown of layered flame tongues
-  const P = palFor(zone);
+  const P = { ...palFor(zone) };
   const b = new VB(51);
-  const skin = (x, y, z, nx, ny, nz) => {
-    const k = ny * 0.6 + nz * 0.3 + (b.n(x, y, z) - 0.5) * 0.25 + ((x * 7 + y * 3 + z * 5) % 9 === 0 ? -0.25 : 0);
-    return k > 0.5 ? P.light : k < -0.35 ? P.dark : P.skin;
-  };
-  b.ell(0, 7.2, 0, 6.4, 6.6, 5.6, (x, y, z, nx, ny, nz) => (nz > 0.5 && ny < 0.5 ? (((y + 40) % 3 === 0) ? mix(P.belly, P.dark, 0.3) : P.belly) : skin(x, y, z, nx, ny, nz)));
+  // (wave 17) a six-tone hue-shifted skin ramp lit from up-front, no speckle; darker limbs and tail
+  const SK = hramp(P.skin, 6, { step: 0.1, shift: 0.03 }), BL = hramp(P.belly, 4, { step: 0.08 });
+  const skin = lit(SK, { bias: 0.04 });
+  P.dark = SK[1]; P.light = SK[4];
+  b.ell(0, 7.2, 0, 6.4, 6.6, 5.6, (x, y, z, nx, ny, nz) => (nz > 0.5 && ny < 0.5 ? (((y + 40) % 3 === 0) ? BL[1] : ny > 0 ? BL[3] : BL[2]) : skin(x, y, z, nx, ny, nz)));
   b.ell(0, 18, 0.6, 9.4, 8.4, 8.6, skin);
   b.ell(0, 16, 6.6, 4.2, 2.6, 2.6, skin); // muzzle
   for (const sd of [1, -1]) {
@@ -43,6 +43,7 @@ export function buildImp(zone) {
   }
   // heavy brow ridge over the eyes
   for (let x = -8; x <= 7; x++) { const y = 21 + (Math.abs(x + 0.5) > 5 ? -1 : 0); const h = b.hitFrom(x, y, 20, 0, 0, -1); if (h) b.set(h[0], h[1], h[2] + 1, P.dark); }
+  bake(b, { ao: 0.45, rim: 0.22 });
   // face: nostrils, a wide grin with a row of teeth and two fangs
   const front = (x, y) => { for (let z = 18; z > -12; z--) if (b.has(x, y, z)) return z; return 0; };
   b.set(-1, 17, front(-1, 17), 0x2a0a08); b.set(0, 17, front(0, 17), 0x2a0a08);

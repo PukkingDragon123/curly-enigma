@@ -4,6 +4,7 @@
 import { Vox, mix, dk, lt, lum, h3, furColor, cached, PY, NY, PZ, NZ, PX, NX } from './vox.js';
 import { SKIN_PINK, CLAW, DIGGERS, PATCH_COLORS } from './spec.js';
 import { pantsColor, sleeveColor } from './body.js';
+import { GLOVE, leather, stitch, brass, around } from './glove.js';
 
 const THREAD = 0xf0e4c4;
 
@@ -15,13 +16,19 @@ function pawColor(sp, fur) {
   return dk(fur, 0.12);
 }
 
-/** Arm geometry: { geo, socket:[x,y,z] } (voxels, relative to the shoulder pivot). */
-export function buildArm(spec, p, bake) {
+/**
+ * Arm geometry: { geo, socket:[x,y,z], glove } (voxels, relative to the shoulder pivot). The player
+ * (spec.player) always wears work gloves (wave 17): the paw then comes as `glove`, its own geometry
+ * built 2^gs times finer (the size rule, glove.js gloveSteps) and scaled back to arm voxels; attach
+ * it to the arm's bone.
+ */
+export function buildArm(spec, p, bake, gs = 0) {
   const sp = spec.species;
   const fur = spec.fur;
   const sleeve = sleeveColor(spec);
   const dirt = Math.round((spec.dirt ?? 0.4) * 4);
-  const key = `arm|${sp}|${fur}|${sleeve}|${spec.outfit}|${p.ah}|${spec.age}|${dirt}|${bake}`;
+  const gloved = !!spec.player && DIGGERS.has(sp);
+  const key = `arm|${sp}|${fur}|${sleeve}|${spec.outfit}|${p.ah}|${spec.age}|${dirt}|${bake}|${gloved ? 'g' + gs : ''}`;
   return cached(key, () => {
     const ah = p.ah * 2; // arm length in voxels
     const big = DIGGERS.has(sp);
@@ -54,7 +61,11 @@ export function buildArm(spec, p, bake) {
     if (short && sleeve !== null) v.ell(0, 0, 0, 3.8, 3, 3.8, (x, y) => (y < -1 ? lt(sleeve, 0.1) : sleeve));
 
     let socket;
-    if (big) {
+    if (gloved) {
+      socket = [0, -(p.ah + 1) * 2, 2];
+      const geo = v.geometry(bake);
+      return { geo, socket, glove: gloveGeo(ah, armBot, sp === 'molerat' ? 0xf0dcb0 : CLAW, dirt, 1 << gs, bake) };
+    } else if (big) {
       // the spade paw: broad, flat and pink, ending in five pale claws
       const pcx = 0.7, pcy = -ah - 0.4, pcz = 0.5;
       v.ell(pcx, pcy, pcz, 5, 3.4, 3, 0, 1, 2.5);
@@ -111,6 +122,97 @@ export function buildArm(spec, p, bake) {
     }
     return { geo: v.geometry(bake), socket };
   });
+}
+
+/**
+ * The player's work glove over the spade paw (third person), in a grid k times finer than the arm's
+ * voxels, scaled back to arm voxels: tan hide, an oiled knuckle patch rubbed pale, the finger tips
+ * cut open for the claws, a darker gauntlet cuff at the wrist with a strap and a brass buckle in
+ * front, stitched seams, soot. The arm frame: the paw hangs down -y, its back faces +z.
+ */
+function gloveGeo(ah, armBot, clawC, dirt, k, bake) {
+  const pcx = 0.7, pcy = -ah - 0.4, pcz = 0.5;
+  const K = (a) => a * k;
+  const v = new Vox(K(-8), K(10), K(-ah - 14), K(4), K(-7), K(9));
+  const U = (a) => (a + 0.5) / k; // a voxel's centre in arm voxels
+  // the paw in thick hide
+  v.ell(K(pcx), K(pcy), K(pcz), K(5.3), K(3.65), K(3.3), 0, 1, 2.5);
+  // the fingers along the bottom edge; their last bit (2) is the cut-open tip
+  const fingers = [-4, -2, 0, 2, 4];
+  for (const fx of fingers) v.ell(K(pcx + fx), K(pcy - 2.7), K(pcz + 0.7), K(1.15), K(1.5), K(2.1), 0, 2);
+  // the gauntlet cuff round the wrist, flaring a little at its top
+  const cy0 = armBot - 1.7, cy1 = armBot + 1.3;
+  v.fill(K(-6), K(7), K(cy0 - 1), K(cy1 + 1), K(-6), K(7), (x, y, z) => {
+    const X = x / k, Y = y / k, Z = z / k; // (fill hands over voxel centres)
+    if (Y < cy0 || Y > cy1) return false;
+    const r = 3.45 + Math.max(0, Y - armBot) * 0.16;
+    return (X - 0.2) ** 2 + (Z - 0.3) ** 2 <= r * r;
+  }, 0, 3);
+  // the strap round it, the buckle and the strap's tongue in front (+z)
+  const sy0 = armBot - 0.9, sy1 = armBot + 0.1;
+  v.fill(K(-6), K(7), K(sy0 - 1), K(sy1 + 1), K(-6), K(7), (x, y, z) => {
+    const X = x / k, Y = y / k, Z = z / k; // (fill hands over voxel centres)
+    return Y >= sy0 && Y <= sy1 && (X - 0.2) ** 2 + (Z - 0.3) ** 2 <= 3.78 * 3.78;
+  }, 0, 4);
+  // (on the outer side of the wrist, turned a little toward the front)
+  const ba = 0.95, bdx = Math.sin(ba), bdz = Math.cos(ba);
+  v.fill(K(-6), K(7), K(sy0 - 1), K(sy1 + 1), K(-6), K(7), (x, y, z) => {
+    const X = x / k - 0.2, Y = y / k, Z = z / k - 0.3; // (fill hands over voxel centres)
+    const t = X * bdz - Z * bdx, r = X * bdx + Z * bdz; // across the buckle, out from the wrist
+    if (Y < sy0 - 0.2 || Y > sy1 + 0.2 || Math.abs(t) > 0.75) return false;
+    if (r < 3.55 || r > 4.15) return false;
+    return k < 2 || Math.abs(t) > 0.35 || Y < sy0 + 0.1 || Y > sy1 - 0.1 || r < 3.85; // a frame round a sunk middle
+  }, 0, 5);
+  v.fill(K(-6), K(7), K(sy0 - 1), K(sy1 + 1), K(-6), K(7), (x, y, z) => { // the tongue past it
+    const X = x / k - 0.2, Y = y / k, Z = z / k - 0.3;
+    const t = X * bdz - Z * bdx, r = X * bdx + Z * bdz;
+    return Y >= sy0 + 0.05 && Y <= sy1 - 0.05 && t < -0.75 && t > -2 && r >= 3.6 && r <= 4.05;
+  }, 0, 4);
+  // claws out of the cut tips: curving forward to a point
+  fingers.forEach((fx, i) => {
+    const cx = pcx + fx, len = i === 2 ? 3.4 : i === 0 || i === 4 ? 2.4 : 3;
+    const y0 = pcy - 3.4, z0 = pcz + 1.2;
+    v.line(K(cx), K(y0), K(z0), K(cx), K(y0 - len * 0.65), K(z0 + len * 0.55), 0, K(0.62), 6);
+    v.line(K(cx), K(y0 - len * 0.65), K(z0 + len * 0.55), K(cx), K(y0 - len * 0.9), K(z0 + len * 1.1), 0, K(0.5), 7);
+  });
+  const UP = { up: PY, down: NY, s: k };
+  const patchY0 = pcy - 2.6, patchY1 = pcy - 0.6;
+  v.resolve({
+    1: (x, y, z, e) => {
+      const X = U(x), Y = U(y);
+      let c = leather(v, x, y, z, e, { ...UP, k: 4.6, seed: 61, soot: 0.5, wear: 0.6, grain: k > 1 ? 1 : 0.6 });
+      if ((e & PZ) && Y > patchY0 && Y < patchY1) { // the knuckle patch, stitched round
+        c = leather(v, x, y, z, e, { ...UP, ramp: GLOVE.patch, k: 4.6, seed: 62, soot: 0.25, wear: 0.9, grain: 0.6 });
+        if (k > 1 && (Y < patchY0 + 0.5 || Y > patchY1 - 0.5)) c = stitch(c, x, 2);
+      } else if (k > 1 && (e & PZ) && Y >= patchY1 && Math.abs(Math.abs(X - pcx) - 1.6) < 0.25) c = stitch(c, y, 2); // the points down the back
+      if (e & NZ) c = leather(v, x, y, z, e, { ...UP, ramp: GLOVE.patch, k: 3.8, seed: 63, soot: 0.6, wear: 0.4, grain: 0.6 }); // the palm
+      if (dirt > 1 && h3(Math.floor(x / k), Math.floor(y / k), Math.floor(z / k), 77) < dirt * 0.04) c = mix(c, 0x6a4a30, 0.35);
+      return c;
+    },
+    2: (x, y, z, e) => {
+      const Y = U(y);
+      if (Y < pcy - 3.75 && v.m(x, y - 1, z) === 6) return GLOVE.cuff[1]; // the dark opening round a claw
+      if (Y < pcy - 3.3) return leather(v, x, y, z, e, { ...UP, k: 5.7, seed: 64, soot: 0.1, wear: 1, grain: 0.4 }); // the rolled edge
+      let c = leather(v, x, y, z, e, { ...UP, ramp: GLOVE.patch, k: 4.8, seed: 65, soot: 0.3, wear: 1, grain: 0.6 });
+      if ((e & PZ) && Y > pcy - 2.6) c = mix(c, GLOVE.patch[7], 0.4); // knuckle tops rubbed pale
+      return c;
+    },
+    3: (x, y, z, e) => {
+      const Y = U(y);
+      let c = leather(v, x, y, z, e, { ...UP, ramp: GLOVE.cuff, k: 3.8, seed: 66, soot: 0.7, wear: 0.7, grain: 0.6 });
+      if (Y > cy1 - 0.5 / k - 0.01 || (e & PY)) c = leather(v, x, y, z, e, { ...UP, ramp: GLOVE.cuff, k: 5.2, seed: 67, soot: 0.2, wear: 1, grain: 0.4 }); // the rolled top
+      else if (k > 1 && Math.abs(Y - (cy1 - 0.75)) < 0.26) c = stitch(c, x + z, 2);
+      if (Y < cy0 + 0.5 / k + 0.01) c = mix(c, GLOVE.soot, 0.3);
+      return c;
+    },
+    4: (x, y, z, e) => leather(v, x, y, z, e, { ...UP, ramp: GLOVE.strap, k: 2.8, seed: 68, soot: 0, wear: 0.9, grain: 0.3 }),
+    5: (x, y, z, e) => brass((e & PY ? 4.6 : e & NY ? 1.6 : 3.2) + (h3(x, y, z, 69) < 0.2 ? -0.8 : 0) - (around(v, x, y, z) > 12 ? 1.2 : 0)),
+    6: (x, y, z, e) => ((e & NY) || (e & NZ) ? mix(clawC, 0xb8a888, 0.45) : (e & (PX | NX)) && !(e & PZ) ? mix(clawC, 0xc8b8a0, 0.3) : clawC),
+    7: (x, y, z, e) => (dirt > 2 ? mix(clawC, 0x6a4a30, 0.45) : (e & PZ) ? lt(clawC, 0.3) : clawC),
+  });
+  const geo = v.geometry(bake);
+  if (k !== 1) geo.scale(1 / k, 1 / k, 1 / k);
+  return geo;
 }
 
 /** Leg geometry (origin at the hip joint, foot at y = -(lh+1)*2). side ±1 picks the knee patch. */

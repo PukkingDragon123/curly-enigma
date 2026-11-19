@@ -131,21 +131,31 @@ function mouseSprite(lit = '') {
   return p;
 }
 
-/** A mole's paw pointing up-left with one claw (rotated in CSS for the other diagonals), 16×16. */
+/**
+ * A mole's paw pointing up-left with one claw (rotated in CSS for the other diagonals), 16×16. It
+ * wears the leather work glove (gfx/char/glove.js): a tan mitt, the claws out of the cut fingertips,
+ * the darker gauntlet in the corner with its strap and a brass buckle.
+ */
 function pawSprite() {
   const p = new Px(18, 18);
-  // the fur cuff in the corner
-  p.disk(16.5, 16.5, 5.2, 0x7a5232);
-  p.disk(15.5, 15.5, 2.5, 0x8c6240);
-  // the palm
-  p.ellipse(10.5, 10, 4.8, 4.4, 0xeaa092);
-  p.ellipse(9.6, 9.0, 2.8, 2.2, 0xf8c2b2);
-  p.each((x, y) => ((x - 10.5) + (y - 10) > 3.4 && p.get(x, y) !== 0x7a5232 && p.get(x, y) !== 0x8c6240 ? 0xc8786c : undefined));
-  // folded claws along the top of the paw
-  for (const [x, y] of [[12, 5], [14, 6], [15, 8]]) { p.set(x, y, 0xf2e6cc); p.set(x, y - 1, 0xfcf3dc); }
-  // the pointing claw
+  // the gauntlet in the corner: dark leather, a lighter rolled rim, the strap and its buckle
+  p.disk(16.5, 16.5, 5.4, 0x3e2416);
+  p.each((x, y) => (p.get(x, y) === 0x3e2416 && x + y < 26 ? 0x623c24 : undefined));
+  p.each((x, y) => (p.get(x, y) >= 0 && Math.abs(x + y - 28.5) < 0.8 && x > 10 && y > 10 ? 0x1c110a : undefined));
+  p.set(13, 15, 0xe6be52); p.set(14, 14, 0xc89a36); p.set(15, 13, 0x9c7024);
+  // the mitt: tan hide, lit top-left, shaded toward the cuff
+  p.ellipse(10.5, 10, 4.8, 4.4, 0x9e6a38);
+  p.ellipse(9.6, 9.0, 2.8, 2.2, 0xb88248);
+  p.each((x, y) => ((x - 10.5) + (y - 10) > 3.4 && [0x9e6a38, 0xb88248].includes(p.get(x, y)) ? 0x684022 : undefined));
+  // the oiled knuckle patch rubbed pale on top, a stitch line across the back
+  for (const [x, y] of [[11, 7], [12, 7], [13, 8], [13, 9]]) p.set(x, y, 0x8e6242);
+  for (const [x, y] of [[8, 12], [10, 13], [12, 14]]) p.set(x, y, 0xe8d8b0);
+  // folded claws out of the cut fingertips along the top of the paw
+  for (const [x, y] of [[12, 5], [14, 6], [15, 8]]) { p.set(x, y, 0xf2e6cc); p.set(x, y - 1, 0xfcf3dc); p.set(x - 1, y + 1, 0x24140a); }
+  // the pointing claw, out of its rolled leather tip
   for (let i = 0; i <= 6; i++) { p.set(2 + i, 2 + i, 0xf2e6cc); p.set(3 + i, 2 + i, 0xfcf3dc); p.set(2 + i, 3 + i, 0xc0a882); }
   p.set(1, 1, 0xfcf3dc); p.set(2, 1, 0xf2e6cc);
+  p.set(8, 8, 0xd09e62); p.set(9, 9, 0x4e2e19);
   p.outline(0x2a140a);
   return p;
 }

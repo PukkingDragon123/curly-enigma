@@ -27,7 +27,12 @@ const ROCK = P([0x0b0706, 0x160f0c, 0x231813, 0x30221a, 0x403022, 0x56402c, 0x6e
 const CRUST = P([0x17110f, 0x2e2622, 0x473b33, 0x615244, 0x7d6b56, 0x9c876a, 0xbca784]);
 const ORE = P([0x3a1a06, 0x7a3a0a, 0xb86010, 0xe89624, 0xffc84a, 0xffe890, 0xfffbe0]);
 const FUR = P([0x120c12, 0x281e26, 0x3e323a, 0x5a4c54, 0x84747a]); // (velvet grey: it reads against the brown rock)
-const SKIN = P([0x5a2228, 0x9a4a52, 0xc8707a, 0xeca098, 0xffd0c0]);
+// the work glove (gfx/char/glove.js): tan hide, the darker gauntlet, the oiled knuckle patch, strap, thread
+const GLV = P([0x24140a, 0x382012, 0x4e2e19, 0x684022, 0x84542c, 0x9e6a38, 0xb88248, 0xd09e62, 0xe4bc84]);
+const CUF = P([0x150c07, 0x21130b, 0x2f1b10, 0x3e2416, 0x50301d, 0x623c24, 0x784c2e]);
+const PAT = P([0x20130b, 0x311d12, 0x452a1a, 0x5b3a24, 0x734c30, 0x8e6242, 0xc89e7a]);
+const STR = P([0x100906, 0x1c110a, 0x2a1910, 0x3a2416, 0x4c311e]);
+const THR = P([0xc8b48a, 0xe8d8b0]);
 const CLAW = P([0x4a3a2a, 0x8e7e62, 0xcfc3a3, 0xf6eedc]);
 const MOSS = P([0x1e2c10, 0x3c5a1a, 0x6a8a2a]);
 const BLUE = P([0x0a2440, 0x16508a, 0x2e98da, 0x9ae6ff]);
@@ -205,24 +210,27 @@ function drawStage(sc, c) {
 }
 
 // ------------------------------------------------------------------ the moving parts
-/** A mole paw: dark fur arm from the corner, pink palm, five pale claws; tips at (ax, ay). */
+/** A mole paw in a leather work glove: dark fur arm from the corner, the gauntlet, five pale claws out of the cut-open fingertips; tips at (ax, ay). */
 const PAD = 24, BW = W + PAD * 2, BH = H + PAD * 2; // (a paw is drawn once on a padded sheet, then slid about)
 function drawPaw(buf, ax, ay, dir, squash) {
   // Drawn per pixel (each pixel asks which part of the paw it is in), lit from the top left:
-  // a furry arm with strands, a rim of lantern light and a shaggy edge; a lighter tuft at the wrist;
-  // a broad pink palm with toe pads; five long hooked claws, each with a lit edge, a shade side
-  // and a dark gap between them.
+  // a furry arm with strands and a rim of lantern light, spilling out of the glove's darker
+  // gauntlet (a rolled rim, a stitched seam, a strap with a brass buckle); the glove's back in tan
+  // hide with sooty blotches; an oiled knuckle patch rubbed pale; five
+  // gloved fingers whose cut-open tips let the long hooked claws out, each claw with a lit edge,
+  // a shade side and a dark gap between them. (gfx/char/glove.js has the 3D glove.)
   const mask = new Uint8Array(BW * BH), cols = new Uint32Array(BW * BH);
   const ux = 0.76 * dir, uy = 0.65, vx = -0.65 * dir, vy = 0.76;
   const lit = (nu, nv) => -((nu * ux + nv * vx) + (nu * uy + nv * vy)) * 0.7; // a local normal → light
   const CLAWS = [];
   for (let k = 0; k < 5; k++) CLAWS.push({ v0: (k - 2) * 3.2, len: 8.6 - Math.abs(k - 2) * 0.9 - squash * 1.8 });
+  const sooty = (u, v) => vnoise(u * 0.35, v * 0.35, 47) > 0.7;
   const x0 = Math.max(0, Math.floor(ax - 36)), x1 = Math.min(BW - 1, Math.ceil(ax + 36)), y0 = Math.max(0, Math.floor(ay - 14)), y1 = Math.min(BH - 1, Math.ceil(ay + 44));
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     const dx = x - ax, dy = y - ay;
     const u = dx * ux + dy * uy - 4.6, v = dx * vx + dy * vy;
     let col = 0;
-    // the claws (on top): from the palm's edge out along -u, curling a little, tapering to a hook
+    // the claws (on top): from the cut fingertips out along -u, curling a little, tapering to a hook
     for (const c of CLAWS) {
       const sc = 2.4 - u;
       if (sc < 0 || sc > c.len) continue;
@@ -231,41 +239,65 @@ function drawPaw(buf, ax, ay, dir, squash) {
       if (Math.abs(d) > hw) continue;
       const side = lit(0, Math.sign(d) || 1);
       col = k > 0.86 ? CLAW[3] : side > 0.2 ? CLAW[3] : side < -0.2 && Math.abs(d) > hw - 0.7 ? CLAW[1] : CLAW[2];
-      if (k < 0.12) col = CLAW[0]; // the cuticle
+      if (k < 0.12) col = LINE; // the dark opening the claw comes out of
       break;
     }
     if (!col) {
-      // the fingers: five short pink digits from the knuckles to the claws, lit on top
+      // the gloved fingers: five short digits from the knuckles to the cut tips, lit on top
       for (const c of CLAWS) {
-        if (u < 1.6 || u > 6.2 || Math.abs(v - c.v0) > 1.3) continue;
+        if (u < 1.6 || u > 6.2 || Math.abs(v - c.v0) > 1.4) continue;
         const d = v - c.v0, side = lit(0, Math.sign(d) || 1);
-        col = Math.abs(d) > 0.85 ? (side > 0 ? SKIN[3] : SKIN[1]) : u < 2.6 ? SKIN[1] : SKIN[2];
-        if (u < 3.4 && Math.abs(d) < 0.9) col = SKIN[0]; // the dark nail bed
+        if (Math.abs(d) > 1.05) { col = side > 0 ? GLV[4] : GLV[1]; break; } // the seam between fingers
+        col = u < 2.9 ? (side > 0 ? GLV[7] : GLV[5]) // the rolled edge of the cut tip
+          : u < 5.2 ? (side > 0.2 ? GLV[6] : side < -0.2 ? GLV[3] : GLV[5])
+            : (side > 0 ? PAT[5] : PAT[3]); // the knuckle patch's front edge
+        if (u >= 2.9 && u < 3.6) col = GLV[2]; // a crease under the rolled edge
         break;
       }
     }
+    if (!col && u > 12.2 && u < 19.6) {
+      // the gauntlet: a darker flared cuff, a strap with a brass buckle, a stitched rolled rim
+      const w = 7.8 + (u - 12.2) * 0.16;
+      if (Math.abs(v) <= w) {
+        const side = lit(0, Math.sign(v) || 1) * (Math.abs(v) / w);
+        let t = 3 + (side > 0.45 ? 2 : side > 0.1 ? 1 : side < -0.45 ? -2 : 0);
+        col = CUF[clamp(t, 0, 6)];
+        if (u > 13.6 && u < 15.8) { // the strap, and its buckle on the lit side
+          col = STR[clamp(t - 1, 0, 4)];
+          if (Math.abs(u - 13.7) < 0.35 || Math.abs(u - 15.7) < 0.35) col = STR[clamp(t, 0, 4)];
+          const bv = v + 3.8; // (the -v side faces the light for both paws)
+          if (Math.abs(bv) < 1.8 && u > 13.1 && u < 16.3) col = Math.abs(bv) < 0.6 && Math.abs(u - 14.7) < 0.7 ? BRASS[0] : bv < -0.6 && u < 14.2 ? BRASS[3] : BRASS[2]; // the buckle: lit corner, dark prong slot
+        } else if (u > 18.2) col = side > 0.3 ? CUF[6] : CUF[4]; // the rolled rim
+        else if (Math.abs(u - 17.6) < 0.4 && (Math.round(v) & 1)) col = THR[0]; // its stitched seam
+        else if (sooty(u, v + 9)) col = CUF[clamp(t - 2, 0, 6)];
+        if (Math.abs(v) > w - 0.8) col = side > 0 ? CUF[5] : CUF[1]; // the cuff's edge: a lit rim, a dark side
+      }
+    }
     if (!col) {
-      // the palm: broad across the knuckles, narrowing to the wrist
+      // the glove's back: broad across the knuckles, narrowing to the wrist
       const ru = (u - 9.2) / 5.4, rv = v / (8.4 - Math.max(0, u - 9) * 0.8);
-      const r = ru * ru + rv * rv * (1 + squash * 0.3), edge = 1 + (vnoise(u, v, 43) - 0.5) * 0.22;
+      const r = ru * ru + rv * rv * (1 + squash * 0.3), edge = 1 + (vnoise(u, v, 43) - 0.5) * 0.18;
       if (r <= edge) {
-        let t = 2 + Math.round(lit(ru, rv) * 1.6);
-        if (u < 7.4 && CLAWS.some((c) => Math.abs(v - c.v0) < 0.9)) t = u < 6.7 ? 4 : 1; // knuckle pads: a glint, a shade
-        if (r > edge - 0.14 && ru > -0.2) t = -1; // a fringe of fur round the heel
-        col = t < 0 ? (hash(Math.round(u * 2), Math.round(v * 2), 44) < 0.5 ? FUR[3] : FUR[2]) : SKIN[clamp(t, 0, 4)];
+        let t = 4 + Math.round(lit(ru, rv) * 2);
+        const knuckle = u < 7.6;
+        if (knuckle && CLAWS.some((c) => Math.abs(v - c.v0) < 0.9)) t = u < 6.8 ? 7 : 3; // knuckles rubbed pale, a shade under each
+        col = knuckle ? PAT[clamp(t - 1, 0, 6)] : GLV[clamp(t, 0, 8)];
+        if (Math.abs(u - 7.9) < 0.5 && (Math.round(v) & 1)) col = THR[1]; // the patch's stitched edge
+        else if (!knuckle && sooty(u, v)) col = GLV[clamp(t - 3, 0, 8)];
+        if (r > edge - 0.12) col = GLV[1]; // the rounded edge in shade
       }
     }
     if (!col && u > 9.5 && u < 52) {
-      // the arm: velvet fur in strands, shaggy at the edge, a rim of light, a tuft at the wrist
+      // the arm: velvet fur in strands, shaggy at the edge, a rim of light, a ruff out of the cuff
       const tuft = hash(Math.round(u), Math.sign(v), 45) > 0.62 ? 0.9 : 0;
-      const w = 6.4 + Math.min(1.4, (u - 10) * 0.1) + tuft + (u < 13 ? 0.8 : 0);
+      const w = 6.4 + Math.min(1.4, (u - 10) * 0.1) + tuft + (u < 22 ? 0.9 : 0);
       if (Math.abs(v) <= w) {
         const side = lit(0, Math.sign(v) || 1) * (Math.abs(v) / w);
         const strand = vnoise(u * 0.22 + v * 0.12, v * 1.1, 42);
         let t = 2 + (strand > 0.64 ? 1 : strand < 0.32 ? -1 : 0);
         if (side > 0.45) t = Math.abs(v) > w - 1.2 ? 4 : 3; // the lit edge
         else if (side < -0.45) t = 0; // the shadow edge
-        if (u < 13.5) t = Math.min(4, t + 1); // the lighter wrist tuft
+        if (u < 22) t = Math.min(4, t + 1); // the lighter ruff spilling out of the gauntlet
         if (hash(Math.round(u * 1.5), Math.round(v * 1.5), 46) < 0.04) t = 4; // stray glinting hairs
         col = FUR[clamp(t, 0, 4)];
       }

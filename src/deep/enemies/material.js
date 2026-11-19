@@ -5,6 +5,9 @@
 //                     red: too heavy to block, get out of the way)
 //   alpha             screen-door (ordered dither) translucency for ghosts: no sorting, stays
 //                     pixel-crisp and keeps writing depth for the outline pass
+//   blend             (wave 17) true alpha blending (slime jelly): no dither pattern, depth still written
+//   hueM              (wave 17) a colour matrix per individual: a seeded hue turn, saturation and
+//                     value shift (base.js vary()), identity by default
 import * as THREE from 'three';
 import { LIGHT } from '../TerrainMaterial.js';
 
@@ -21,6 +24,8 @@ export function creatureMaterial(U, opts = {}) {
       rimCol: { value: new THREE.Color(1, 0.85, 0.3) },
       alpha: { value: opts.alpha ?? 1 },
       wobble: { value: opts.wobble || 0 },
+      hueM: { value: new THREE.Matrix3() },
+      blend: { value: opts.blend ?? 1 },
     },
     vertexShader: /* glsl */`
       attribute vec3 color;
@@ -52,6 +57,8 @@ export function creatureMaterial(U, opts = {}) {
       uniform float rim;
       uniform vec3 rimCol;
       uniform float alpha;
+      uniform mat3 hueM;
+      uniform float blend;
       varying vec3 vColor;
       varying vec3 vWorld;
       varying vec3 vN;
@@ -72,11 +79,12 @@ export function creatureMaterial(U, opts = {}) {
         if (alpha < 0.999 && alpha * 16.0 <= bayer4(gl_FragCoord.xy) + 0.5) discard;
         vec3 n = normalize(vN);
         vec3 L = lightAt(vWorld, n);
-        vec3 c = vColor;
+        vec3 c = max(hueM * vColor, 0.0);
         if (texel > 0.0) {
+          // (wave 17: a quiet grain, mostly in patches: the old per-texel static read as noise)
           vec3 q = floor(vLocal * texel - vNo * 0.5);
           float k1 = h3o(q + 3.1), k2 = h3o(floor(q * 0.25) + 5.3);
-          c *= 0.8 + 0.3 * k1 + 0.14 * k2;
+          c *= 0.9 + 0.08 * k1 + 0.12 * k2;
         }
         vec3 col = c * L + c * emissive * (0.8 + 0.2 * sin(time * 3.0));
         if (rim > 0.0) {
@@ -86,8 +94,11 @@ export function creatureMaterial(U, opts = {}) {
         col = mix(col, flashCol, flash);
         float dist = length(vWorld - lampPos);
         col = mix(col, fogCol, 1.0 - exp(-pow(dist / fogDist, 2.0) * 2.2));
-        gl_FragColor = vec4(col, 1.0);
+        gl_FragColor = vec4(col, blend);
       }`,
   });
+  // (wave 17) real see-through (jelly) instead of the screen-door dither: blended after the opaque
+  // things, still writing depth (the outline pass and the fog read it)
+  if (opts.blend !== undefined && opts.blend < 1) m.transparent = true;
   return m;
 }

@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { Legs } from './rig.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
-import { H, taper, eye, tufts } from './voxKit.js';
+import { H, taper, eye, hramp, lit, bake, clumps, gloss, variant } from './voxKit.js';
 import { puff, sparkle } from './fx.js';
 import { LAYER_OUTLINE } from '../../core/Engine.js';
 import { rand, clamp } from '../../core/util.js';
@@ -24,74 +24,90 @@ const PAL = {
 const palFor = (z) => PAL[z >= 4 ? 4 : z >= 3 ? 3 : 1];
 const BODY_Y = 8.5; // body height (voxels) when standing
 
-export function buildSpider(zone) {
-  // (wave 16) at half the old voxel: a ridged carapace with a dark fovea and radial grooves, a hairy
-  // abdomen with a pale chevron saddle and side bands, eight eyes (two big glossy ones), hairy
-  // chelicerae with curved glossy fangs, clubbed palps, and jointed legs that taper to hooked claws,
-  // banded and bristled, with a knee knob at each joint
+export function buildSpider(zone, v = 0) {
+  // (wave 17) a chunky, fuzzy hunter that reads at a glance: a glossy domed carapace with a clean
+  // radial pattern, a big round abdomen in fur clumps with a bold seeded marking (chevrons, spots,
+  // a skull), a scar on some; eight eyes (two big glossy ones), glossy hooked fangs; thick legs in
+  // three clear segments, a pale ring at every joint, knobbly knees, bristle clumps and a hooked claw
   const P = palFor(zone), S = P.s;
-  const sc = (vb, k0 = 0.35) => (x, y, z, nx, ny, nz) => {
-    if (typeof ny !== 'number') { ny = 0; nz = 0; }
-    const n = vb.n(x, y, z);
-    return S[Math.floor(clamp(k0 + ny * 0.42 + (n - 0.5) * 0.3, 0, 0.999) * 4)];
-  };
-  const body = new VB(71), bs = sc(body);
-  body.ell(0, 0, 6, 9.2, 6, 10, bs); // cephalothorax
-  body.ell(0, 4.8, -15, 13.2, 10.8, 16, bs); // abdomen
-  body.ell(0, 2, -3, 4.4, 4, 4, bs); // waist
-  // carapace: radial grooves from the fovea, a lighter rim; abdomen: chevron saddle, side bands, spots
+  const T = hramp(S[2], 6, { step: 0.1 }), D = hramp(S[1], 4, { step: 0.08 });
+  const mk = P.mark, mkD = mix(mk, S[1], 0.45);
+  const body = new VB(71 + v);
+  body.ell(0, 0, 6, 9.4, 6.4, 10, lit(T, { bias: 0.02 })); // cephalothorax
+  body.ell(0, 5.4, -16, 14.4, 12, 17, lit(T, { clump: 0.35, cs: 3.4, seed: v })); // abdomen
+  body.ell(0, 2, -3, 4.6, 4.2, 4.4, D[1]); // waist
+  // carapace: a dark fovea, radial grooves, a pale rim; abdomen: the marking
   body.paint((x, y, z, c) => {
     if (!body.open(x, y, z, 0, 1, 0)) return undefined;
     if (z > -2) {
       const dx = x + 0.5, dz = z + 0.5 - 4, a = Math.atan2(dz, dx), r = Math.hypot(dx, dz);
-      if (r < 1.3) return S[0];
-      if (r > 3 && r < 8.5 && Math.abs(((a / (Math.PI / 4)) % 1 + 1) % 1 - 0.5) > 0.4) return mul(S[1], 0.85);
-      if (r > 8.2) return S[3];
+      if (r < 1.5) return D[0];
+      if (r > 3 && r < 8 && Math.abs(((a / (Math.PI / 4)) % 1 + 1) % 1 - 0.5) > 0.4) return D[1];
+      if (r > 8.4) return T[4];
       return undefined;
     }
-    const u = -z - 4, ax = Math.abs(x + 0.5);
-    if (u > 0 && u < 26 && Math.abs(ax - (u % 7) * 0.9) < 1.1 && u % 7 < 4.5) return P.mark;
-    if (u > 0 && u < 26 && ax < 1.2 && u % 7 > 5) return mul(P.mark, 0.75);
-    if (body.n(x, y, z, 4) > 0.93) return mul(P.mark, 0.8);
+    const u = -z - 6, ax = Math.abs(x + 0.5);
+    if (u < 0 || u > 26) return undefined;
+    if (v === 0) { // chevrons down the back, a midline
+      const k = u % 7;
+      if (Math.abs(ax - k * 1.1) < 1.2 && k < 5) return mk;
+      if (ax < 1 && k >= 5) return mkD;
+    } else if (v === 1) { // paired spots, big to small
+      const k = Math.floor(u / 6), cz = k * 6 + 3, r = 3 - k * 0.5;
+      if (k < 4 && Math.hypot(ax - 4.5 + k * 0.6, u - cz) < r) return Math.hypot(ax - 4.5 + k * 0.6, u - cz) > r - 1 ? mkD : mk;
+    } else { // a pale skull with dark sockets
+      const sx = ax, sy = u - 9;
+      if (Math.hypot(sx / 7, sy / 6) < 1 && sy < 4) return (Math.hypot(sx - 3, sy + 1) < 1.8 ? D[0] : sy > 2.5 && sx % 2 < 1 ? D[0] : mk);
+      if (sy >= 4 && sy < 7 && sx < 4.5) return sx % 2 < 1 ? mkD : mk;
+    }
     return undefined;
   });
-  body.paint((x, y, z) => (z < -4 && body.open(x, y, z, Math.sign(x) || 1, 0, 0) && Math.abs(x) > 9 && ((y + 40) % 5 === 0) ? mul(S[0], 1.1) : undefined));
-  tufts(body, 150, { tones: [S[0], S[1], S[2]], seed: 7, len: [1, 2], filter: (x, y, z) => z < -2 });
-  body.box(-2, 1, -32, 1, 3, -30, mul(S[2], 1.1)); body.box(-1, 1, -33, 0, 2, -33, mul(S[3], 1.1)); // spinnerets
+  // side bands on the abdomen, a scar across some (a claw-mark: three pale lines)
+  body.paint((x, y, z, c) => (z < -6 && Math.abs(x) > 11 && body.open(x, y, z, Math.sign(x) || 1, 0, 0) && ((y + 40) % 6 < 2) ? D[1] : undefined));
+  if (v !== 1) body.paint((x, y, z, c) => (x > 2 && z < -8 && z > -22 && body.open(x, y, z, 1, 0, 0) && [0, 3, 6].some((o) => Math.abs((y - 6) - (z + 15) * 0.7 - o) < 0.6) ? mix(mk, 0xffe8e0, 0.5) : undefined));
+  clumps(body, 70, { tones: [T[1], T[2], T[3]], seed: 7 + v, len: [1.5, 3], r: 1.2, droop: 0.35, filter: (x, y, z) => z < -3 });
+  body.box(-2, 1, -34, 1, 3, -32, T[3]); body.box(-1, 1, -35, 0, 2, -35, T[4]); // spinnerets
+  taper(body, 0, 1.5, -35, 0.5, -3, -38, 0.4, 0.3, 0xe8f0ff); // a strand of silk
+  gloss(body, { k: 0.4, min: 0.78, filter: (x, y, z) => z > -2 });
+  bake(body, { ao: 0.42, rim: 0.2 });
   const glow = new VB(72);
   if (P.crystal) for (let i = 0; i < 7; i++) {
-    const h = body.hitFrom(rand(-8, 8), 24, -8 - i * 3.2, 0, -1, 0);
+    const h = body.hitFrom(rand(-8, 8), 26, -9 - i * 3.2, 0, -1, 0);
     if (!h) continue;
-    taper(glow, h[0], h[1], h[2], h[0] + rand(-1.5, 1.5), h[1] + 5 + (i % 3) * 2, h[2] - 2, 1.6, 0.5, (x, y, z, t) => P.crystal[Math.min(2, Math.floor(t * 3))]);
+    taper(glow, h[0], h[1] - 1, h[2], h[0] + rand(-1.5, 1.5), h[1] + 6 + (i % 3) * 2, h[2] - 2, 1.8, 0.5, (x, y, z, t) => P.crystal[Math.min(2, Math.floor(t * 3 + (x > h[0] ? 0.5 : 0)))]);
   }
   // eyes: two big glossy ones in front, six small around (placed at (0, 1, 0) VS)
   const eyes = new VB();
-  const eyeSpots = [[2, 2.5, 1.6], [-2, 2.5, 1.6], [4.6, 4, 0.9], [-4.6, 4, 0.9], [1.3, 5.3, 0.75], [-1.3, 5.3, 0.75], [6.4, 1.2, 0.8], [-6.4, 1.2, 0.8]];
-  for (const [x, y, r] of eyeSpots) eye(eyes, x, y, 0, r, r, { iris: r > 1 ? mul(P.eye, 0.7) : P.eye, pupil: mul(P.eye, 0.22), pr: r > 1 ? 0.55 : 0, on: body });
+  const eyeSpots = [[2.1, 2.6, 1.9], [-2.1, 2.6, 1.9], [4.8, 4.2, 1], [-4.8, 4.2, 1], [1.3, 5.6, 0.8], [-1.3, 5.6, 0.8], [6.6, 1.4, 0.9], [-6.6, 1.4, 0.9]];
+  for (const [x, y, r] of eyeSpots) eye(eyes, x, y, 0, r, r, { iris: r > 1 ? mul(P.eye, 0.65) : P.eye, pupil: mul(P.eye, 0.18), pr: r > 1 ? 0.55 : 0, on: body });
   // fangs (one mesh per side, pivot at the root): a hairy chelicera and a curved glossy fang
   const fang = new VB(73);
-  fang.ell(0, 0, 0, 2.6, 2.8, 2.6, (x, y, z, nx, ny) => (fang.n(x, y, z) > 0.6 ? S[2] : ny > 0.2 ? S[2] : S[1]));
-  tufts(fang, 10, { tones: [S[0], S[1]], seed: 2, len: [1, 1] });
-  taper(fang, 0, -1.5, 1, 0.6, -5, 2.2, 1.5, 0.9, (x, y, z, t) => (t > 0.5 ? 0xd8c8b0 : P.fang));
-  taper(fang, 0.6, -5, 2.2, 0.8, -7.4, 1.4, 0.9, 0.35, (x, y, z, t) => (t > 0.5 ? 0xfff4e0 : 0xd8c8b0));
+  fang.ell(0, 0, 0, 2.8, 3, 2.8, lit(D, { bias: 0.2 }));
+  clumps(fang, 8, { tones: [D[1], D[2]], seed: 2, len: [1, 2], r: 0.8 });
+  taper(fang, 0, -1.5, 1, 0.6, -5, 2.4, 1.6, 1, (x, y, z, t) => (t > 0.5 ? 0xd8c8b0 : P.fang));
+  taper(fang, 0.6, -5, 2.4, 0.9, -7.8, 1.2, 1, 0.35, (x, y, z, t) => (t > 0.5 ? 0xfff4e0 : 0xd8c8b0));
+  gloss(fang, { k: 0.5, min: 0.7 });
   // palps: two segments and a dark club
   const palp = new VB(74);
-  taper(palp, 0, 0, 0, 0, 1, 6.8, 1.4, 1.2, (x, y, z, t) => (t > 0.85 ? S[3] : S[2]));
-  taper(palp, 0, 1, 6.8, 0, -2.4, 9.2, 1.2, 1, S[1]);
-  palp.ell(0, -2.6, 9.4, 1.6, 1.8, 1.6, S[0]); palp.set(0, -1, 10, S[3]);
-  // legs: femur (up from the body to the knee) and tibia (down to the foot), banded, bristled, jointed
-  const band = (t, n) => (Math.floor(t * n) % 2 ? S[1] : S[2]);
+  taper(palp, 0, 0, 0, 0, 1, 6.8, 1.7, 1.4, (x, y, z, t) => (t > 0.85 ? mk : T[2]));
+  taper(palp, 0, 1, 6.8, 0, -2.4, 9.2, 1.4, 1.2, T[1]);
+  palp.ell(0, -2.6, 9.4, 1.9, 2, 1.9, D[0]); palp.set(0, -1, 11, T[4]);
+  // legs: femur (up from the body to the knee) and tibia (down to the foot); the knee ring and the
+  // joint bands pale (the mark colour), fur clumps on the femur, a dark tarsus and a hooked claw
+  const ring = mix(mk, T[3], 0.35);
   const fem = new VB(75);
-  taper(fem, 0, 0, 0, 0, -20, 0, 2.4, 1.8, (x, y, z, t) => (t < 0.08 ? S[3] : band(t, 5)));
-  fem.ell(0, -21, 0, 2.5, 2.2, 2.5, (x, y, z, nx, ny) => (ny > 0.3 ? S[3] : S[2])); // knee
-  for (let i = 0; i < 12; i++) { const y = -2 - Math.floor(fem.n(i, 0, 0, 1) * 17), a = fem.n(i, 1, 0, 1) * Math.PI * 2; const x = Math.round(Math.cos(a) * 3), z = Math.round(Math.sin(a) * 3); fem.set(x, y, z, S[0]); if (i % 3 === 0) fem.set(Math.round(Math.cos(a) * 4), y + 1, Math.round(Math.sin(a) * 4), mul(P.mark, 0.6)); }
+  taper(fem, 0, 0, 0, 0, -20, 0, 3.4, 2.6, (x, y, z, t, nx) => (t < 0.08 ? T[3] : lit(T, { bias: 0.05 })(x, y, z, x / 3, 0, z / 3)));
+  fem.ell(0, -21, 0, 3.2, 2.6, 3.2, (x, y, z, nx, ny) => (ny > 0.2 ? ring : mul(ring, 0.8))); // knee
+  clumps(fem, 16, { tones: [T[1], T[2], T[3]], seed: 11, len: [1.5, 2.5], r: 0.9, droop: 0.6, filter: (x, y) => y < -2 && y > -18 });
+  bake(fem, { ao: 0.3, rim: 0.25 });
   const tib = new VB(76);
-  taper(tib, 0, 0, 0, 0, -18, 0, 1.8, 1.1, (x, y, z, t) => (t < 0.07 ? S[3] : band(t, 4)));
-  taper(tib, 0, -18, 0, 0, -25, 0.6, 1.1, 0.7, (x, y, z, t) => (t > 0.6 ? mul(P.mark, 0.6) : S[1]));
-  tib.set(0, -26, 1, P.fang); tib.set(0, -26, 2, 0xd8c8b0); tib.set(0, -25, 2, P.fang); // hooked claw
-  for (let i = 0; i < 8; i++) { const y = -2 - Math.floor(tib.n(i, 0, 0, 2) * 20), a = tib.n(i, 1, 0, 2) * Math.PI * 2; tib.set(Math.round(Math.cos(a) * 2.3), y, Math.round(Math.sin(a) * 2.3), S[0]); }
-  const V = (vb, px = 0, py = 0, pz = 0) => vb.geo(px * 2, py * 2, pz * 2, H);
-  return { body: V(body), glow: glow.size ? V(glow) : null, eyes: V(eyes, 0, 1, 0), fang: V(fang), palp: V(palp), fem: V(fem), tib: V(tib), hide: c01(S[2]), eye: c01(P.eye) };
+  taper(tib, 0, 0, 0, 0, -16, 0, 2.6, 1.7, (x, y, z, t) => (t < 0.08 || (t > 0.5 && t < 0.56) ? ring : lit(T)(x, y, z, x / 2.5, 0, z / 2.5)));
+  taper(tib, 0, -16, 0, 0, -25, 0.8, 1.6, 0.9, (x, y, z, t) => (t < 0.12 ? ring : t > 0.6 ? D[0] : D[1]));
+  tib.set(0, -26, 1, P.fang); tib.set(0, -26, 2, 0xd8c8b0); tib.set(0, -25, 2, P.fang); tib.set(0, -25, 3, 0xfff4e0); // hooked claw
+  clumps(tib, 8, { tones: [D[1], T[2]], seed: 13, len: [1, 2], r: 0.7, droop: 0.6, filter: (x, y) => y < -2 && y > -15 });
+  bake(tib, { ao: 0.3, rim: 0.25 });
+  const VV = (vb, px = 0, py = 0, pz = 0) => vb.geo(px * 2, py * 2, pz * 2, H);
+  return { body: VV(body), glow: glow.size ? VV(glow) : null, eyes: VV(eyes, 0, 1, 0), fang: VV(fang), palp: VV(palp), fem: VV(fem), tib: VV(tib), hide: c01(T[2]), eye: c01(P.eye) };
 }
 
 // ------------------------------------------------------------------ webs
@@ -237,9 +253,9 @@ export class Spider extends Beast {
   static lair(m, e, n) { m.webs?.lair(n.x, e.pos.y, n.z, 3); e.lurk = true; e.fallAsleep(); }
 
   /** The shared model for a zone; Enemies' prewarm builds it before a first sighting. */
-  static warm(mgr, zone) {
+  static warm(mgr, zone, v = 0) {
     const z = zone >= 4 ? 4 : zone >= 3 ? 3 : 1;
-    return mgr.geo('spider|' + z, () => buildSpider(z));
+    return mgr.geo('spider|' + z + '|' + v, () => buildSpider(z, v));
   }
   constructor(mgr, o) {
     super(mgr, o);
@@ -248,7 +264,7 @@ export class Spider extends Beast {
     this.size = rand(0.95, 1.12) * (this.zone >= 4 ? 1.15 : 1);
     this.step = 0.3; this.friction = 11;
     this.springK = 200; this.springC = 10; this.sqScale = 0.6;
-    const G = this.G = Spider.warm(mgr, this.zone);
+    const G = this.G = Spider.warm(mgr, this.zone, variant(this.seed, 3));
     this.hitCol = G.hide;
     this.mat = this.material({});
     this.eyeMat = this.material({ emissive: 1.4, rimK: 0.3 });

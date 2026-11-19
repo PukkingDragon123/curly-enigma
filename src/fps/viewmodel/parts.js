@@ -10,7 +10,8 @@
 //   tools origin = the point gripped by the fist; their handle runs along +Y.
 //   arm   origin = wrist centre; the forearm runs along +Z toward the shoulder.
 import { Vox, cached, mix, dk, lt, h3, PX, NX, PY, NY, PZ, NZ } from '../../gfx/char/vox.js';
-import { SKIN_PINK, CLAW } from '../../gfx/char/spec.js';
+import { CLAW } from '../../gfx/char/spec.js';
+import { GLOVE, leather, stitch, brass, around } from '../../gfx/char/glove.js';
 import { ITEMS } from '../../data/items.js';
 import { drawIconSmall } from '../../gfx/PixelArt.js';
 import { hashStr } from '../../core/util.js';
@@ -52,9 +53,9 @@ function armFur(base, x, y, z, seed, k = 1) {
   return c;
 }
 
-/** A long furry forearm (wrist at z = 0, running +Z toward the shoulder) with a fluffy cuff. */
+/** A long furry forearm (wrist at z = 0, running +Z toward the shoulder), a ruff of fur out of the glove. */
 export function forearmGeo(fur = PLAYER_FUR, dirt = 1) {
-  return cached(`vm-arm|${fur}|${dirt}`, () => {
+  return cached(`vm-arm-g|${fur}|${dirt}`, () => {
     const L = 170;
     const v = new Vox(-20, 21, -20, 21, -10, L + 1);
     v.fill(-20, 20, -20, 20, 0, L, (x, y, z) => {
@@ -62,13 +63,13 @@ export function forearmGeo(fur = PLAYER_FUR, dirt = 1) {
       const rx = 8.6 + t * 3, ry = 8 + t * 2.6;
       return (x * x) / (rx * rx) + (y * y) / (ry * ry) <= 1;
     }, 0, 1);
-    // the cuff: a ring of tufts reaching over the wrist toward the paw
-    v.fill(-20, 20, -20, 20, -9, 12, (x, y, z) => {
+    // a ruff of fur spilling out of the glove's gauntlet (its open end is at z ≈ 11)
+    v.fill(-20, 20, -20, 20, 6, 17, (x, y, z) => {
       const a = Math.atan2(y, x);
-      const ring = Math.floor(((a + Math.PI) / (Math.PI * 2)) * 16);
-      const reach = ring % 2 ? -5 : -2.5 - (ring % 3 === 0 ? 1.5 : 0);
-      const r = 9.8 + (ring % 2) * 1.1 - Math.max(0, z - 4) * 0.45;
-      return x * x + y * y <= r * r && z >= reach && z < 11;
+      const ring = Math.floor(((a + Math.PI) / (Math.PI * 2)) * 18);
+      const reach = 13 + (ring % 2 ? 2.5 : 0) + (ring % 3 === 0 ? 1.2 : 0);
+      const r = 10.4 + (ring % 2) * 1.3 - Math.max(0, z - 11) * 0.55;
+      return x * x + y * y <= r * r && z < reach;
     }, 0, 2);
     const spots = dirt ? [[6, 9, 40, 6], [-8, 7, 72, 7], [9, -3, 110, 8], [-3, 11, 128, 6]] : [];
     const cuff = lt(fur, 0.2);
@@ -76,7 +77,7 @@ export function forearmGeo(fur = PLAYER_FUR, dirt = 1) {
       1: (x, y, z) => smudged(armFur(fur, x, y, z, 31), x, y, z, spots, 0.3),
       2: (x, y, z) => {
         let c = armFur(cuff, x, y, z, 32, 1.4);
-        if (z < -3) c = lt(c, 0.06); // sunlit tuft tips
+        if (z > 12) c = lt(c, 0.06); // sunlit tuft tips
         return c;
       },
     });
@@ -84,102 +85,206 @@ export function forearmGeo(fur = PLAYER_FUR, dirt = 1) {
   });
 }
 
-// ---------------------------------------------------------------- paws
-function pawPaint(spots) {
-  return (x, y, z, e) => {
-    let c = SKIN_PINK;
-    if (e & PY) c = lt(c, 0.08);
-    if (e & NY) c = dk(c, 0.1);
-    if ((e & (PX | NX)) && !(e & PY)) c = dk(c, 0.05);
-    // fine skin creases
-    if (h3(x >> 1, y, z >> 1, 77) < 0.07) c = dk(c, 0.07);
-    return smudged(c, x, y, z, spots, 0.28);
-  };
-}
+// ---------------------------------------------------------------- paws (gloved)
+// Wave 17: the paws always wear thick leather work gloves (gfx/char/glove.js): tan hide with
+// stitched seams, oiled knuckle patches worn pale on the tops, a darker flared gauntlet with a
+// strap and a brass buckle, soot and scuffs; the fingertips are cut open and the claws poke out.
+// The voxels stay at the view model's fine size (VMV is well under the size rule's 1/64 m class).
 const clawBase = (x, y, z, e) => ((e & NY) || (e & NZ) ? mix(CLAW, 0xb8a888, 0.4) : (e & PY) ? lt(CLAW, 0.25) : CLAW);
 const clawTip = (dirt) => (x, y, z, e) => (dirt && (e & NY) ? mix(CLAW, DIRT, 0.45) : (e & PY) ? lt(CLAW, 0.4) : CLAW);
+const G_UP = { up: PY, down: NY };
+/** Gauntlet shell test (axis along +z through (cx, cy), from z0 to the flared open end z1). */
+function gauntletAt(cx, cy, rx, ry, z0, z1, x, y, z, grow = 0) {
+  if (z < z0 || z > z1) return false;
+  const f = 1 + Math.max(0, z - (z0 + 5)) * 0.012 + grow;
+  const qx = (x - cx) / (rx * f), qy = (y - cy) / (ry * f); // (x, y: voxel centres)
+  const r = qx * qx + qy * qy;
+  const th = 2.4 / Math.min(rx, ry);
+  return r <= 1 && r >= (1 - th) * (1 - th);
+}
+/**
+ * The gauntlet: material 7 shell, a thicker rolled rim (also 7) at the open end, a raised strap
+ * (8) and its brass buckle and rivets (9). phi0: where the buckle sits (radians, from +x toward +y).
+ */
+function addGauntlet(v, g) {
+  const { cx, cy, rx, ry, z0, z1, phi0 } = g;
+  v.fill(cx - rx * 1.4, cx + rx * 1.4, cy - ry * 1.4, cy + ry * 1.4, z0, z1 + 1, (x, y, z) => gauntletAt(cx, cy, rx, ry, z0, z1, x, y, z), 0, 7);
+  v.fill(cx - rx * 1.4, cx + rx * 1.4, cy - ry * 1.4, cy + ry * 1.4, z1 - 2, z1 + 1, (x, y, z) => gauntletAt(cx, cy, rx, ry, z1 - 2, z1, x, y, z, 0.07), 0, 7);
+  const sz0 = g.strap, sz1 = g.strap + 3;
+  v.fill(cx - rx * 1.4, cx + rx * 1.4, cy - ry * 1.4, cy + ry * 1.4, sz0, sz1 + 1, (x, y, z) => gauntletAt(cx, cy, rx, ry, sz0, sz1, x, y, z, 0.085), 0, 8);
+  // the buckle: a brass frame standing on the strap (tangent t × axis z), a prong down its middle
+  const bx = Math.cos(phi0), by = Math.sin(phi0);
+  const R = Math.max(rx, ry) * (1.1 + (sz0 - z0 - 5) * 0.012);
+  for (let t = -3; t <= 3; t++) for (let dz = -1; dz <= 4; dz++) {
+    const frame = Math.abs(t) === 3 || dz === -1 || dz === 4;
+    const prong = t === 0 && dz >= 0 && dz <= 3;
+    if (!frame && !prong) continue;
+    for (let dr = 0; dr <= 1.2; dr += 0.6) {
+      const px = cx + bx * (R + dr) * (rx / Math.max(rx, ry)) - by * t, py = cy + by * (R + dr) * (ry / Math.max(rx, ry)) + bx * t;
+      v.setM(Math.floor(px), Math.floor(py), sz0 + dz, 9);
+    }
+  }
+  // the strap's tongue tucked on past the buckle
+  for (let t = 4; t <= 8; t++) for (let dz = 0; dz <= 3; dz++) {
+    const px = cx + bx * (R + 0.5) * (rx / Math.max(rx, ry)) - by * t, py = cy + by * (R + 0.5) * (ry / Math.max(rx, ry)) + bx * t;
+    if (!(t === 8 && (dz === 0 || dz === 3))) v.setM(Math.floor(px), Math.floor(py), sz0 + dz, 8);
+  }
+  // rivets either side of the side seam, near the rim
+  for (const a of [phi0 + 2.2, phi0 + 2.55]) {
+    const px = cx + Math.cos(a) * rx * 1.13, py = cy + Math.sin(a) * ry * 1.13;
+    v.setM(Math.floor(px), Math.floor(py), z1 - 4, 9);
+  }
+}
+/** Painters for the gauntlet parts (7 cuff, 8 strap, 9 brass), given the shared geometry. */
+function gauntletPaint(v, g, seed) {
+  const { cx, cy, z1, phi0 } = g;
+  return {
+    7: (x, y, z, e) => {
+      let c = leather(v, x, y, z, e, { ...G_UP, ramp: GLOVE.cuff, k: 3.6, seed, soot: 0.75, wear: 0.6 });
+      const a = Math.atan2(y + 0.5 - cy, x + 0.5 - cx);
+      const da = Math.abs(((a - phi0 - 2.37 + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      if (z >= z1 - 2) { // the rolled rim: worn paler, a stitch line under it
+        c = leather(v, x, y, z, e, { ...G_UP, ramp: GLOVE.cuff, k: 5, seed: seed + 1, soot: 0.3, wear: 1 });
+        if (e & NZ) c = GLOVE.cuff[1];
+      } else if (z === z1 - 3) c = stitch(c, a * 12, 2);
+      else if (da < 0.07 && !(e & NZ)) c = stitch(c, z, 2); // the side seam
+      else if (da < 0.16) c = GLOVE.cuff[1];
+      if (z === g.z0 || z === g.z0 + 1) c = mix(c, GLOVE.soot, 0.3); // tucked under the glove's wrist
+      return c;
+    },
+    8: (x, y, z, e) => {
+      let c = leather(v, x, y, z, e, { ...G_UP, ramp: GLOVE.strap, k: 2.6, seed: seed + 2, soot: 0, wear: 0.8, grain: 0.4 });
+      if (z === g.strap || z === g.strap + 3) c = mix(c, GLOVE.thread[1], 0.25); // the strap's stitched edges
+      return c;
+    },
+    9: (x, y, z, e) => brass((e & PY ? 5 : e & NY ? 1.5 : 3.4) + (h3(x, y, z, seed + 4) < 0.25 ? -1 : 0) + (around(v, x, y, z) <= 8 ? 1 : 0)),
+  };
+}
+/** The cut-open fingertip: a pale rolled edge, dark where the claw comes out of it. */
+function rimPaint(v, seed) {
+  return (x, y, z, e) => {
+    const nearClaw = v.m(x + 1, y, z) === 3 || v.m(x - 1, y, z) === 3 || v.m(x, y + 1, z) === 3 || v.m(x, y - 1, z) === 3 || v.m(x, y, z + 1) === 3 || v.m(x, y, z - 1) === 3;
+    if (nearClaw) return GLOVE.cuff[1];
+    return leather(v, x, y, z, e, { ...G_UP, k: 5.6, seed, soot: 0.2, wear: 1, grain: 0.5 });
+  };
+}
 
-/** A gripping fist around a handle that runs along +Y (see the frame notes above). */
+/** A gloved fist around a handle that runs along +Y (see the frame notes above). */
 export function fistGeo(dirt = 1) {
-  return cached(`vm-fist|${dirt}`, () => {
-    const v = new Vox(-17, 18, -18, 19, -18, 17);
-    // the mitt: heel and back of the paw behind/outside the handle
-    v.ell(2.6, 0.4, 2.8, 10.6, 12.2, 10.6, 0, 1, 2.6);
-    // four fingers curled around the front of the handle; their big pale claws hook back round
-    // the near side of the handle (the side the player sees)
+  return cached(`vm-fist-glove|${dirt}`, () => {
+    const v = new Vox(-17, 18, -18, 20, -18, 26);
+    // the mitt: heel and back of the paw behind/outside the handle (a touch fuller: thick hide)
+    v.ell(2.6, 0.4, 2.8, 11, 12.5, 10.9, 0, 1, 2.6);
+    // four fingers curled around the front of the handle; the cut-open tips (6) let the big pale
+    // claws out, hooking back round the near side of the handle (the side the player sees)
     const fy = [8.6, 3.2, -2.2, -7.6];
     fy.forEach((y, i) => {
-      const R = i === 3 ? 7.9 : 8.6;
+      const R = i === 3 ? 8.1 : 8.8;
       let prev = null;
       for (let k = 0; k <= 7; k++) {
         const th = ((22 + k * 23) * Math.PI) / 180;
         const p = [Math.cos(th) * R, y, -Math.sin(th) * R];
-        if (prev) v.line(prev[0], prev[1], prev[2], p[0], p[1], p[2], 0, i === 0 ? 3.3 : 3.1, 2);
+        if (prev) v.line(prev[0], prev[1], prev[2], p[0], p[1], p[2], 0, (i === 0 ? 3.45 : 3.25) + (k === 7 ? 0.25 : 0), k === 7 ? 6 : 2);
         prev = p;
       }
       const [ex, ey, ez] = prev;
-      // claw: thick at the root, curling round toward the wrist and in against the handle
       const c1 = [ex - 1.2, ey - 0.3, ez + 4.2], c2 = [ex + 0.6, ey - 0.8, ez + 8.2], c3 = [ex + 3.4, ey - 1.4, ez + 10.6];
       v.line(ex, ey, ez, c1[0], c1[1], c1[2], 0, 2.2, 3);
       v.line(c1[0], c1[1], c1[2], c2[0], c2[1], c2[2], 0, 1.6, 3);
       v.line(c2[0], c2[1], c2[2], c3[0], c3[1], c3[2], 0, 0.9, 4);
     });
-    // knuckle ridge on the back
-    for (const y of fy) v.ell(8.2, y, -4.6, 2.4, 2.2, 2.6, 0, 2);
-    // the thumb hooks over the top of the handle
-    v.line(-4, 9.5, 6.5, -6, 13, 0.5, 0, 3.5, 2);
-    v.line(-6, 13, 0.5, -3.5, 13.6, -5.5, 0, 3.1, 2);
+    // the knuckle ridge on the back, under an oiled leather patch
+    for (const y of fy) v.ell(8.5, y, -4.6, 2.6, 2.3, 2.8, 0, 5);
+    // the thumb hooks over the top of the handle; its tip cut open too
+    v.line(-4, 9.5, 6.5, -6, 13, 0.5, 0, 3.7, 2);
+    v.line(-6, 13, 0.5, -4.8, 13.3, -2.6, 0, 3.3, 2);
+    v.line(-4.8, 13.3, -2.6, -3.5, 13.6, -5.5, 0, 3.4, 6);
     v.line(-3.5, 13.6, -5.5, -0.6, 12.8, -9.5, 0, 2, 3);
     v.line(-0.6, 12.8, -9.5, 2.4, 10.4, -12, 0, 1.1, 4);
+    // the gauntlet round the wrist (the forearm runs out of it along +z)
+    const G = { cx: 1.2, cy: 0.3, rx: 12.3, ry: 12.6, z0: 8, z1: 23, strap: 12, phi0: 0.75 };
+    addGauntlet(v, G);
     const spots = dirt ? [[8, 9, -4, 3.2], [-7, -6, 2, 3], [4, -11, 6, 3]] : [];
+    const inPatch = (x, y, z) => x >= 6 && z >= -10 && z <= 0 && y >= -11 && y <= 12;
     v.resolve({
-      1: pawPaint(spots),
+      1: (x, y, z, e) => {
+        let c = leather(v, x, y, z, e, { ...G_UP, k: 4.4, seed: 21, soot: 0.5, wear: 0.6 });
+        if (inPatch(x, y, z)) {
+          c = leather(v, x, y, z, e, { ...G_UP, ramp: GLOVE.patch, k: 4.2, seed: 22, soot: 0.3, wear: 0.8 });
+          if (z === -10 || z === 0 || y === -11 || y === 12) c = stitch(c, z === -10 || z === 0 ? y : z, 2);
+        } else if (z >= 6 && z <= 7) c = stitch(c, Math.atan2(y, x - 1.2) * 12, 2); // the seam where the gauntlet is sewn on
+        else if (Math.abs(y - 0.3) < 0.6 && x > 3 && (e & PX)) c = stitch(c, z, 2); // a seam down the back
+        return smudged(c, x, y, z, spots, 0.22);
+      },
       2: (x, y, z, e) => {
-        let c = pawPaint(spots)(x, y, z, e);
-        // creases between the finger rolls
-        for (const fyy of fy) if (Math.abs(y - (fyy + 2.6)) < 0.6 && !(e & PY)) c = dk(c, 0.12);
-        return c;
+        let c = leather(v, x, y, z, e, { ...G_UP, k: 4.6, seed: 23, soot: 0.65, wear: 0.7 });
+        // the seams between the finger rolls: stitched
+        for (const fyy of fy) if (Math.abs(y - (fyy + 2.8)) < 0.6 && !(e & PY)) c = stitch(c, Math.atan2(-z, x) * 9, 2);
+        return smudged(c, x, y, z, spots, 0.22);
       },
       3: clawBase,
       4: clawTip(dirt),
+      5: (x, y, z, e) => {
+        let c = leather(v, x, y, z, e, { ...G_UP, ramp: GLOVE.patch, k: 4.6, seed: 24, soot: 0.25, wear: 1 });
+        if (x >= 10) c = mix(c, GLOVE.patch[7], 0.45 + (h3(x, y >> 1, z >> 1, 25) < 0.3 ? 0.25 : 0)); // knuckle tops rubbed pale
+        if ((z === -10 || z === 0) && x < 10) c = stitch(c, y, 2);
+        return c;
+      },
+      6: rimPaint(v, 26),
+      ...gauntletPaint(v, G, 27),
     });
     return v.geometry(false);
   });
 }
 
-/** An open spade paw: palm down, five fingers forward with big pale digging claws. */
+/** An open gloved spade paw: palm down, five fingers forward, the claws out of the cut tips. */
 export function openPawGeo(dirt = 1) {
-  return cached(`vm-open|${dirt}`, () => {
-    const v = new Vox(-22, 22, -14, 11, -36, 18);
-    v.ell(0, 0, -1, 13, 6.2, 10.5, 0, 1, 2.5); // broad spade palm
-    v.ell(0, 0.6, 7, 9.5, 5.6, 6.5, 0, 1); // heel toward the wrist
+  return cached(`vm-open-glove|${dirt}`, () => {
+    const v = new Vox(-22, 22, -14, 15, -36, 26);
+    v.ell(0, 0, -1, 13.3, 6.6, 10.8, 0, 1, 2.5); // broad spade palm (thick hide)
+    v.ell(0, 0.6, 7, 9.8, 6, 6.8, 0, 1); // heel toward the wrist
     const fingers = [-10, -5, 0, 5, 10];
     for (const fx of fingers) {
       const tx = fx * 1.14;
-      v.ell(fx * 0.95, 3.6, -8, 2.3, 2, 2.6, 0, 1); // knuckle
-      v.line(fx * 0.95, -0.2, -9, tx, -0.6, -16, 0, 2.15, 2); // finger
+      v.ell(fx * 0.95, 3.8, -8, 2.5, 2.2, 2.8, 0, 5); // knuckle, under the patch
+      v.line(fx * 0.95, -0.2, -9, tx * 0.97, -0.5, -14.2, 0, 2.4, 2); // finger
+      v.line(tx * 0.97, -0.5, -14.2, tx, -0.6, -16.2, 0, 2.6, 6); // the cut-open tip
       v.line(tx, -0.6, -16.5, tx * 1.03, -2.4, -23.5, 0, 2.3, 3); // claw root
       v.line(tx * 1.03, -2.4, -23.5, tx * 1.05, -6, -28.5, 0, 1.5, 3); // claw, hooking down
       v.line(tx * 1.05, -6, -28.5, tx * 1.06, -9.5, -31, 0, 0.8, 4);
     }
+    const G = { cx: 0, cy: 0.4, rx: 12.2, ry: 11.6, z0: 8, z1: 23, strap: 12, phi0: 1.25 };
+    addGauntlet(v, G);
     const spots = dirt ? [[-7, 5, -4, 2.6], [8, 4, 3, 2.4], [0, -6, -4, 3]] : [];
+    const onFinger = (x) => fingers.some((f) => Math.abs(x + 0.5 - f * 0.95 - 2.5) < 0.6);
     v.resolve({
       1: (x, y, z, e) => {
-        let c = pawPaint(spots)(x, y, z, e);
-        if ((e & NY) && h3(x >> 1, z >> 1, 1, 9) < 0.35) c = dk(c, 0.06); // pads
-        if ((e & PY) && z < -5 && fingers.some((f) => Math.abs(x + 0.5 - f * 0.95 - 2.5) < 0.6)) c = dk(c, 0.1); // creases
-        if ((e & PY) && (z === -4 || z === 2)) c = dk(c, 0.06); // knuckle lines
-        if ((e & PY) && Math.abs(z + 8) < 1.5 && fingers.some((f) => Math.abs(x + 0.5 - f * 0.95) < 1.2)) c = lt(c, 0.1); // knuckle shine
-        return c;
+        let c = leather(v, x, y, z, e, { ...G_UP, k: 4.5, seed: 31, soot: 0.45, wear: 0.6 });
+        if ((e & PY) && z >= -12 && z <= -4) { // the knuckle patch
+          c = leather(v, x, y, z, e, { ...G_UP, ramp: GLOVE.patch, k: 4.4, seed: 32, soot: 0.25, wear: 0.8 });
+          if (z === -12 || z === -4 || Math.abs(x + 0.5) >= 12.5) c = stitch(c, x, 2);
+        } else if ((e & PY) && z > -4 && z < 7 && (Math.abs(x + 0.5 - 3.8) < 0.6 || Math.abs(x + 0.5 + 3.8) < 0.6)) c = stitch(c, z, 2); // the points down the back
+        else if ((e & NY) && z >= -10 && z <= 5 && Math.abs(x + 0.5) <= 10) { // a reinforced palm
+          c = leather(v, x, y, z, e, { ...G_UP, ramp: GLOVE.patch, k: 4, seed: 33, soot: 0.6, wear: 0.5 });
+          if (z === -10 || z === 5 || Math.abs(x + 0.5) >= 9.5) c = stitch(c, z === -10 || z === 5 ? x : z, 2);
+        } else if (z === 6 || z === 7) c = stitch(c, x, 2); // sewn to the gauntlet
+        if ((e & PY) && z < -5 && onFinger(x)) c = mix(c, GLOVE.hide[1], 0.5); // creases into the fingers
+        return smudged(c, x, y, z, spots, 0.22);
       },
       2: (x, y, z, e) => {
-        let c = SKIN_PINK;
-        if (e & PY) c = lt(c, 0.1);
-        if (e & NY) c = mix(c, 0xd87a8a, 0.5);
+        let c = leather(v, x, y, z, e, { ...G_UP, k: 4.7, seed: 34, soot: 0.55, wear: 0.7 });
+        if ((e & (PX | NX)) && !(e & PY) && !(e & NY)) c = stitch(c, z, 2); // the finger side seams
         return c;
       },
       3: clawBase,
       4: clawTip(dirt),
+      5: (x, y, z, e) => {
+        let c = leather(v, x, y, z, e, { ...G_UP, ramp: GLOVE.patch, k: 4.6, seed: 35, soot: 0.2, wear: 1 });
+        if ((e & PY) && y >= 5) c = mix(c, GLOVE.patch[7], 0.45 + (h3(x >> 1, y, z, 36) < 0.3 ? 0.25 : 0)); // rubbed pale
+        return c;
+      },
+      6: rimPaint(v, 37),
+      ...gauntletPaint(v, G, 38),
     });
     return v.geometry(false);
   });

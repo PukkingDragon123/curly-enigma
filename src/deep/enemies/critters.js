@@ -6,7 +6,8 @@
 import * as THREE from 'three';
 import { Enemy, TAU, smooth, easeBack, wrapA } from './base.js';
 import { VB, VS, mix, mul, c01 } from './vox.js';
-import { H, taper, eye, tufts, ramp4 } from './voxKit.js';
+import { variant } from './voxKit.js';
+import { buildWorm, buildBunny, buildBeetle, buildFish, buildShrimp, buildTortoise, buildCrab, buildSlug, buildSpider, buildVoidWisp } from './critterArt.js'; // (wave 17)
 import { puff, sparkle, mote, pebbles, dustBurst, converge } from './fx.js';
 import { fluidAt, solidAt, airBelow, clearLine } from './physics.js';
 import { rockPalette } from './rock.js';
@@ -66,19 +67,6 @@ export class Critter extends Enemy {
 }
 
 // ------------------------------------------------------------------ Earthworm
-function buildWorm() {
-  const b = new VB(101);
-  const L = 12;
-  for (let z = 0; z <= L; z++) {
-    const band = z === 8 || z === 9;
-    const c = band ? 0xd88a86 : z % 3 === 0 ? 0xc87a7a : z % 2 ? 0xe8a8a0 : 0xf2bcb2;
-    for (const [x, y] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]]) if (z < L || (x === 0 && y === 0)) b.set(x, y, z, c);
-    if (band) { b.set(-1, 1, z, 0xd88a86); b.set(1, 1, z, 0xd88a86); }
-  }
-  b.set(-1, 0, L - 1, 0x2a1418); b.set(1, 0, L - 1, 0x2a1418); // beady eyes
-  b.set(0, -1, L - 1, 0xb8606a);
-  return { body: b.geo(0, 0, 0), len: L + 1 };
-}
 
 export class Earthworm extends Critter {
   static info = { id: 'earthworm', name: 'Earthworm', catch: 'grab', drop: 'worm', snd: 'flesh' };
@@ -86,7 +74,7 @@ export class Earthworm extends Critter {
     super(mgr, o);
     this.hitR = 0.12; this.cy = 0;
     this.normal = new THREE.Vector3(...(o.normal || [0, 1, 0]));
-    const G = this.G = mgr.geo('worm', buildWorm);
+    const wv = variant(this.seed, 3), G = this.G = mgr.geo('worm|' + wv, () => buildWorm(wv));
     this.mat = this.material({ emissive: 0.08 });
     this.bend = this.group3();
     this.body = this.part(G.body, this.mat, this.bend);
@@ -125,45 +113,6 @@ export class Earthworm extends Critter {
 }
 
 // ------------------------------------------------------------------ Dust Bunny
-function buildBunny() {
-  // (wave 16) at half the old voxel: a ball of fluff made of clumps with strands sticking out, a
-  // cowlick, lint and a stray twig caught in it, long ears, a pink nose, a "w" mouth, blush, and big
-  // shiny eyes
-  const b = new VB(111);
-  const fur = [0x8a7e70, 0xa89c8a, 0xc4b8a4, 0xdcd0bc, 0xf2e8d6];
-  const sh = (x, y, z, nx, ny, nz) => ramp4(fur, 0.48 + ny * 0.3 + nz * 0.1 + (b.n(x, y, z) - 0.5) * 0.4);
-  b.ell(0, 6.8, 0, 7.2, 6.8, 6.8, sh);
-  // clumps round the surface, each lit on its own top
-  for (let i = 0; i < 26; i++) {
-    const u = b.n(i, 1, 1, 5) * 2 - 1, a = b.n(i, 2, 2, 5) * Math.PI * 2, r = Math.sqrt(1 - u * u);
-    const cx = Math.cos(a) * r * 6.6, cy = 6.8 + u * 6.2, cz = Math.sin(a) * r * 6.4;
-    if (cz > 3.5 && Math.abs(cx) < 4.5 && cy > 4 && cy < 11) continue; // (the face stays clear)
-    const rr = 1.8 + b.n(i, 3, 3, 5) * 1.2;
-    b.ell(cx, cy, cz, rr, rr * 0.9, rr, (x, y, z, nx, ny) => ramp4(fur, 0.38 + ny * 0.45 + (b.n(x, y, z, 9) - 0.5) * 0.25));
-  }
-  tufts(b, 36, { tones: [fur[3], fur[4]], seed: 3, len: [1, 1], filter: (x, y, z) => !(z > 4 && Math.abs(x) < 4 && y > 4 && y < 11) });
-  // cowlick on the crown, the tail puff
-  taper(b, 0, 13, 0.5, 1.5, 16.5, 2.5, 1.4, 0.4, fur[4]); taper(b, 1.5, 16.5, 2.5, 3, 16, 3.5, 0.6, 0.3, fur[3]);
-  b.ell(0, 4.8, -7.2, 2.6, 2.6, 2.4, (x, y, z) => (b.n(x, y, z, 4) > 0.5 ? fur[4] : fur[3]));
-  // lint: a pebble and a twig caught in the fluff
-  b.ell(-5.5, 3, 3.5, 1, 0.9, 1, 0x6e6458); b.set(-5, 4, 4, 0x8a8070);
-  taper(b, 4.5, 10, -3, 8.5, 12.5, -4.5, 0.6, 0.4, 0x6a4a2a); b.set(7, 12, -4, 0x5a8a3a); b.set(8, 13, -4, 0x6aa848);
-  const front = (x, y) => { for (let z = 14; z > -10; z--) if (b.has(x, y, z)) return z; return 0; };
-  // face: nose with nostrils, a "w" mouth, blush
-  for (const [x, y, c] of [[-1, 7, 0xff8a9a], [0, 7, 0xff8a9a], [-1, 6, 0xd86878], [0, 6, 0xd86878], [-1, 8, 0xffc0c8]]) b.set(x, y, front(x, y) + 1, c);
-  for (const [x, y] of [[-3, 5], [-2, 4], [-1, 5], [0, 5], [1, 4], [2, 5]]) b.set(x, y, front(x, y), 0x4a3028);
-  for (const sd of [1, -1]) for (let dx = 0; dx < 3; dx++) for (let dy = 0; dy < 2; dy++) { const x = sd > 0 ? 3 + dx : -4 - dx, y = 6 + dy; b.set(x, y, front(x, y), dy ? 0xf4b0b0 : 0xe89a9e); }
-  // eyes (placed at (0, 4.5, ez) VS)
-  const eyes = new VB();
-  for (const sd of [1, -1]) eye(eyes, sd * 3.2, 9.2, 0, 1.9, 2.4, { iris: 0x3a2418, pupil: 0x0e0806, pr: 0.5, on: b });
-  const ez = (Math.max(front(3, 9), front(-4, 9)) + 1) / 2;
-  const ear = new VB(112);
-  // a long ear: soft rim, a pink inside, a darker tip that folds back
-  taper(ear, 0, 0, 0, 0, 8, -1, 2.1, 1.6, (x, y, z) => (z >= 0 && y > 1 && Math.abs(x) < 1.2 ? 0xffb0bc : fur[3]));
-  taper(ear, 0, 8, -1, 0, 10.5, -3, 1.6, 0.9, (x, y, z) => (y > 9.5 ? fur[1] : fur[2]));
-  tufts(ear, 6, { tones: [fur[3], fur[4]], seed: 5, len: [1, 1] });
-  return { body: b.geo(0, 0, 0, H), eyes: eyes.geo(0, 9, ez * 2, H), ez, ear: ear.geo(0, 0, 0, H), fluff: c01(fur[4]), furC: fur.slice(1).map(c01) };
-}
 
 export class DustBunny extends Critter {
   static info = { id: 'dust_bunny', name: 'Dust Bunny', catch: 'brush', drop: 'dust_fluff', snd: 'flesh' };
@@ -171,7 +120,7 @@ export class DustBunny extends Critter {
     super(mgr, o);
     this.hw = 0.13; this.h = 0.28; this.cy = 0.15; this.hitR = 0.17;
     this.springK = 300; this.springC = 7;
-    const G = this.G = mgr.geo('bunny', buildBunny);
+    const bv = variant(this.seed, 3), G = this.G = mgr.geo('bunny|' + bv, () => buildBunny(bv));
     this.mat = this.material({ emissive: 0.1 });
     this.body = this.part(G.body, this.mat);
     this.eyes = this.part(G.eyes, this.material({ emissive: 0.5 }), this.root, 0, 4.5 * VS, G.ez * VS);
@@ -324,17 +273,6 @@ export class DustBunny extends Critter {
 const BUNNY_VEIL = [0x5e5446, 0x8a7e6c, 0xb4a690, 0xd6cab4, 0xf2e8d6];
 
 // ------------------------------------------------------------------ Glow Beetle
-function buildBeetle() {
-  const b = new VB(121);
-  b.ell(0, 0, 0, 2.3, 1.7, 3, (x, y, z, nx, ny) => (Math.abs(x + 0.5) < 0.6 && ny > 0.2 ? 0x1a3a1a : ny > 0.4 ? 0x3a7a3a : 0x2a5a2a));
-  b.ell(0, -0.2, 3, 1.4, 1.1, 1.2, 0x1e2a1a); // head
-  b.set(-1, 1, 4, 0x1e2a1a); b.set(-2, 2, 5, 0x1e2a1a); b.set(0, 1, 4, 0x1e2a1a); b.set(1, 2, 5, 0x1e2a1a); // antennae
-  const glow = new VB(122);
-  glow.ell(0, -0.6, -1.8, 1.9, 1.2, 1.7, (x, y) => (y < -1 ? 0xf0ffb0 : 0xc8ff7a));
-  const wing = new VB(123);
-  wing.box(0, 0, -2, 2, 0, 1, (x, y, z) => (z === 1 || x === 2 ? 0x9ac88a : 0xc8f0b8));
-  return { body: b.geo(0, 0, 0), glow: glow.geo(0, 0, 0), wing: wing.geo(0, 0, 0) };
-}
 
 export class GlowBeetle extends Critter {
   static info = { id: 'glow_beetle', name: 'Glow Beetle', catch: 'grab', drop: 'glow_beetle', flying: true, snd: 'flesh' };
@@ -377,29 +315,6 @@ export class GlowBeetle extends Critter {
 }
 
 // ------------------------------------------------------------------ Blind Cave Fish / Frost Shrimp
-function buildFish() {
-  const b = new VB(131);
-  b.ell(0, 0, 0, 1.5, 2.2, 3.6, (x, y, z, nx, ny, nz) => (ny < -0.4 ? 0xfff0ec : nz > 0.6 && Math.abs(nx) > 0.5 ? 0xf8b8b8 : ny > 0.5 ? 0xe8c8c8 : 0xf4dcd8));
-  b.set(0, 3, -1, 0xe8b8b8); b.set(0, 3, 0, 0xe8b8b8); b.set(0, 2, -2, 0xe8b8b8); // dorsal fin
-  b.set(1, 0, 2, 0xd8d0d8); b.set(-2, 0, 2, 0xd8d0d8); // pale blind eyes
-  const tail = new VB(132);
-  tail.box(0, -2, -3, 0, 1, -1, (x, y, z) => (z === -3 ? 0xf8c8c8 : 0xf0d0d0));
-  tail.set(0, -3, -3, 0xf8c8c8); tail.set(0, 2, -3, 0xf8c8c8);
-  return { body: b.geo(0, 0, 0), tail: tail.geo(0, 0, -3) };
-}
-function buildShrimp() {
-  const b = new VB(141);
-  const C = [0xd85a4a, 0xff8a7a, 0xffb0a0];
-  for (let i = 0; i < 7; i++) {
-    const a = i * 0.42, r = 1.8 - i * 0.15;
-    b.ell(0, Math.sin(a) * -2.4, 3 - Math.cos(a) * 1.5 - i * 1.0, r * 0.9, r, 1.1, (x, y, z, nx, ny) => C[ny > 0.3 ? 2 : i % 2 ? 0 : 1]);
-  }
-  b.set(1, 1, 4, 0x1a0a0a); b.set(-2, 1, 4, 0x1a0a0a);
-  for (let i = 0; i < 6; i++) { b.set(0 + (i > 3 ? 1 : 0), 1 + Math.floor(i * 0.3), 5 + i, C[0]); b.set(-1 - (i > 3 ? 1 : 0), 1 + Math.floor(i * 0.3), 5 + i, C[0]); }
-  b.box(-2, -4, -5, 1, -4, -4, C[2]); // tail fan
-  const tail = new VB(142); tail.set(0, 0, -1, C[1]);
-  return { body: b.geo(0, 0, 0), tail: tail.geo(0, 0, 0) };
-}
 
 export class CaveFish extends Critter {
   static info = { id: 'blind_fish', name: 'Blind Cave Fish', catch: 'net', drop: 'blind_fish', flying: true, snd: 'flesh' };
@@ -452,31 +367,6 @@ export class CaveFish extends Critter {
 const SHRIMP_INFO = { id: 'frost_shrimp', name: 'Frost Shrimp', catch: 'net', drop: 'frost_shrimp', flying: true, snd: 'flesh' };
 
 // ------------------------------------------------------------------ Gem Tortoise
-function buildTortoise(mossy) {
-  const b = new VB(151);
-  const shell = (x, y, z) => {
-    const u = Math.floor((x + 20 + (Math.floor((z + 20) / 3) % 2) * 1.5) / 3), w = Math.floor((z + 20) / 3);
-    const seam = (x + 20 + (w % 2) * 1.5) % 3 < 0.6 || (z + 20) % 3 < 0.6;
-    return seam ? 0x3e5a32 : (u + w) % 2 ? 0x6a8a5a : 0x7a9a64;
-  };
-  b.ell(0, 3, 0, 5.6, 3.8, 6.4, (x, y, z) => (y < 2 ? -1 : shell(x, y, z)));
-  for (let z = -7; z <= 6; z++) for (let x = -6; x <= 5; x++) { const r = Math.hypot((x + 0.5) / 5.8, (z + 0.5) / 6.6); if (r < 1 && r > 0.7) b.set(x, 2, z, 0x4a6a3a); }
-  b.box(-4, 2, -5, 3, 2, 4, 0xc8b888); // belly plate
-  for (const [x, z] of [[3, 3], [-4, 3], [3, -4], [-4, -4]]) b.box(x, 0, z, x + 1, 2, z + 1, 0x8a9a6a); // legs
-  b.set(0, 2, -7, 0x8a9a6a); // tail
-  if (mossy) {
-    for (const v of b.list()) if (v.y >= 5 && b.open(v.x, v.y, v.z, 0, 1, 0) && b.n(v.x, v.y, v.z, 4) < 0.75) {
-      b.set(v.x, v.y + 1, v.z, b.n(v.x, v.y, v.z, 5) < 0.5 ? 0x3a7a32 : 0x5aa84a);
-      if (b.n(v.x, v.y, v.z, 6) < 0.2) b.set(v.x, v.y + 2, v.z, 0x7ac85a);
-    }
-  } else {
-    b.box(-1, 6, -1, 0, 7, 0, 0xe02a3a); b.set(-1, 7, -1, 0xff9aa2); // the gem on its back
-  }
-  const head = new VB(152);
-  head.ell(0, 0, 1.5, 1.9, 1.7, 2.3, 0x8a9a6a);
-  head.set(1, 1, 3, 0x1a1a10); head.set(-2, 1, 3, 0x1a1a10); head.set(1, 2, 3, 0x6a7a4a); head.set(-2, 2, 3, 0x6a7a4a); // sleepy eyes
-  return { body: b.geo(0, 0, 0), head: head.geo(0, 0, 0) };
-}
 
 export class GemTortoise extends Critter {
   static info = { id: 'gem_tortoise', name: 'Gem Tortoise', catch: 'brush', drop: 'ruby', snd: 'stone' };
@@ -521,24 +411,6 @@ export class GemTortoise extends Critter {
 }
 
 // ------------------------------------------------------------------ Rock Crab
-function buildCrab(pal) {
-  const T = pal.tones;
-  const make = (shell) => {
-    const b = new VB(161);
-    const soft = [0xd8785a, 0xf09a78, 0xffbc98];
-    b.ell(0, 1.6, 0, 3, 1.5, 2.5, (x, y, z, nx, ny) => soft[ny > 0.3 ? 2 : ny > -0.3 ? 1 : 0]);
-    if (shell) b.ell(0, 2.2, -0.3, 4.2, 2.8, 3.8, (x, y, z, nx, ny) => (y < 1 ? -1 : b.n(x, y, z) > 0.93 ? pal.acc : ramp4(T, 0.3 + ny * 0.4 + (b.n(x, y, z, 2) - 0.5) * 0.5)));
-    for (const sd of [1, -1]) {
-      const X = (x) => (sd > 0 ? x : -1 - x);
-      b.set(X(1), 3 + (shell ? 2 : 0), 3, 0xe08a6a); b.set(X(1), 4 + (shell ? 2 : 0), 3, 0x1a1010); // eye stalks
-      for (let y = 3; y < 3 + (shell ? 2 : 0); y++) b.set(X(1), y, 3, 0xe08a6a);
-      b.box(X(4), 1, 2, X(4), 2, 4, 0xe86a4a); b.set(X(5), 2, 4, 0xe86a4a); b.set(X(5), 2, 5, 0xffb090); // claws
-      for (const z of [-1, 0, 1]) b.set(X(3 + (shell ? 1 : 0)), 0, z * 1.5 | 0, 0xc86a4a); // legs
-    }
-    return b.geo(0, 0, 0);
-  };
-  return { shell: make(true), naked: make(false), dust: c01(T[1]) };
-}
 
 export class RockCrab extends Critter {
   static info = { id: 'rock_crab', name: 'Rock Crab', catch: 'hit', drop: 'crab_shell', snd: 'stone' };
@@ -576,13 +448,6 @@ export class RockCrab extends Critter {
 }
 
 // ------------------------------------------------------------------ Ore Slug
-function buildSlug() {
-  const b = new VB(171);
-  const g = [0x5a9a6a, 0x7ac090, 0x9ad8a8, 0xc0f0c8];
-  b.ell(0, 0.5, 0, 2.2, 2, 4.8, (x, y, z, nx, ny) => (y < 0 ? -1 : b.n(x, y, z) > 0.92 ? (b.n(x, y, z, 3) < 0.5 ? 0xe8e8f0 : 0xe0b050) : g[clamp(Math.floor((0.4 + ny * 0.5) * 4), 0, 3)]));
-  for (const x of [1, -2]) { b.set(x, 2, 4, g[2]); b.set(x, 3, 4, g[2]); b.set(x, 4, 5, 0x1a2a1a); }
-  return { body: b.geo(0, 0, 0), slime: c01(g[3]) };
-}
 
 export class OreSlug extends Critter {
   static info = { id: 'ore_slug', name: 'Ore Slug', catch: 'hit', drop: 'slug_slime', snd: 'flesh' };
@@ -608,23 +473,6 @@ export class OreSlug extends Critter {
 }
 
 // ------------------------------------------------------------------ Crystal Spider
-function buildSpider() {
-  const body = new VB(181);
-  const C = [0x6a9ac8, 0x9ac8e8, 0xbfe6ff, 0xf0faff];
-  body.ell(0, 2.6, -1.8, 2.4, 2, 2.8, (x, y, z, nx, ny, nz) => C[clamp(Math.floor((0.4 + ny * 0.4 + ((((nx > 0) + (nz > 0) * 2) * 0.37) % 1 - 0.5) * 0.5) * 4), 0, 3)]);
-  body.ell(0, 2.2, 1.4, 1.6, 1.3, 1.6, C[1]);
-  for (const [x, y] of [[0, 3], [-1, 3], [1, 2], [-2, 2]]) body.set(x, y, 3, 0xff6a8a);
-  const frames = [0, 1].map((f) => {
-    const b = new VB(182);
-    for (const sd of [1, -1]) for (let i = 0; i < 4; i++) {
-      const z = 1.5 - i * 1.1, lift = (i + f) % 2 ? 1 : 0, X = (x) => sd * x;
-      b.cap(X(1.4), 2.2, z, X(4), 3.6 + lift, z + (i - 1.5) * 0.6, 0.5, 0x8ab8d8);
-      b.cap(X(4), 3.6 + lift, z + (i - 1.5) * 0.6, X(5.6), 0 + lift * 0.6, z + (i - 1.5) * 1.1, 0.5, 0x6a98b8);
-    }
-    return b.geo(0, 0, 0);
-  });
-  return { body: body.geo(0, 0, 0), legs: frames, glit: c01(C[3]) };
-}
 
 export class CrystalSpider extends Critter {
   static info = { id: 'crystal_spider', name: 'Crystal Spider', catch: 'hit', drop: 'spider_silk', snd: 'crystal' };
@@ -656,18 +504,6 @@ export class CrystalSpider extends Critter {
 }
 
 // ------------------------------------------------------------------ Void Wisp
-function buildVoidWisp() {
-  const b = new VB(191);
-  const C = [0x4a1a8a, 0x7a3ac8, 0xb080f0, 0xe8d8ff];
-  const sh = (x, y, z, nx, ny, nz) => C[clamp(Math.floor((0.35 + nz * 0.3 + ny * 0.2 + (b.n(x, y, z) - 0.5) * 0.4) * 4), 0, 3)];
-  b.ell(0, 0, 0, 3.4, 3.2, 3.2, sh);
-  b.ell(0, 3, -0.5, 2.4, 2.2, 2.2, sh);
-  b.ell(0.5, 5.2, -1, 1.4, 1.6, 1.4, sh);
-  b.set(1, 7, -1, C[3]); b.set(0, 7, -2, C[2]); b.set(-2, 4, 0, C[2]); b.set(2, 5, 0, C[3]);
-  const front = (x, y) => { for (let z = 6; z > -6; z--) if (b.has(x, y, z)) return z; return 0; };
-  for (const [x, y] of [[1, 0], [2, 0], [1, 1], [2, 1], [-2, 0], [-3, 0], [-2, 1], [-3, 1]]) b.set(x, y, front(x, y), 0x12061e); // hollow eyes
-  return { body: b.geo(0, 0, 0), mote: [0.7, 0.45, 1] };
-}
 
 export class VoidWisp extends Critter {
   static info = { id: 'void_wisp', name: 'Void Wisp', catch: 'xray', drop: 'wisp_essence', flying: true, snd: 'crystal' };

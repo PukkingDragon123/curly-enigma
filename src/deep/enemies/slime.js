@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
-import { H, taper, eye } from './voxKit.js';
+import { H, taper, eye, hramp } from './voxKit.js';
 import { puff, sparkle } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -34,20 +34,26 @@ export function buildSlime(zone) {
     const rr = Math.sqrt(1 - h * h);
     bub.push([Math.cos(a) * rr * R * 0.98, R * 0.78 + h * R * 0.8, Math.sin(a) * rr * R * 0.98, 1.2 + jelly.n(i, 3, 0, 3) * 1.4]);
   }
-  jelly.ell(0, R * 0.78, 0, R, R * 0.82, R, (x, y, z, nx, ny, nz) => {
+  // (wave 17) a clean six-tone hue-shifted ramp, no static: light pools low in the body (light through
+  // jelly), a bright rim round the silhouette, a darker heart, the long wet highlight and bubbles
+  const J = hramp(C[1], 6, { step: 0.09 });
+  const js = (x, y, z, nx, ny, nz) => {
     if (y < 0) return -1;
-    // the long highlight up-left, a small one beside it
-    const hl = ny > 0.42 && ny < 0.8 && nx < -0.05 && nx > -0.55 && nz > 0.25 && Math.abs(nx + 0.3 - (ny - 0.6) * 0.6) < 0.09;
-    if (hl || Math.hypot(nx + 0.12, ny - 0.82, nz - 0.4) < 0.1) return C[3];
-    for (const [bx, by, bz, br] of bub) { const d = Math.hypot(x + 0.5 - bx, y + 0.5 - by, z + 0.5 - bz); if (d < br) return d < br * 0.5 ? C[3] : mix(C[2], C[3], 0.35); }
-    const rim = 1 - Math.abs(ny); // (silhouette: lighter, like light through the edge)
-    const k = clamp(0.18 + ny * 0.45 + (y / (R * 1.6)) * 0.3 + (rim > 0.82 ? 0.22 : 0) + (jelly.n(x, y, z, 2) - 0.5) * 0.12, 0, 0.999);
-    return C[Math.floor(k * 4)];
-  });
+    const hl = ny > 0.42 && ny < 0.8 && nx < -0.05 && nx > -0.55 && nz > 0.25 && Math.abs(nx + 0.3 - (ny - 0.6) * 0.6) < 0.1;
+    if (hl || Math.hypot(nx + 0.12, ny - 0.82, nz - 0.4) < 0.1) return 0xffffff;
+    for (const [bx, by, bz, br] of bub) { const d = Math.hypot(x + 0.5 - bx, y + 0.5 - by, z + 0.5 - bz); if (d < br) return d < br * 0.5 ? J[5] : J[4]; }
+    const rim = 1 - Math.abs(nz) * 0.6 - Math.abs(ny) * 0.4;
+    const low = y < R * 0.4 && ny < 0.2 ? 0.16 : 0; // (light caught in the lip)
+    const k = clamp(0.22 + ny * 0.3 + low + (rim > 0.72 ? 0.2 : 0), 0, 0.999);
+    return J[Math.floor(k * 6)];
+  };
+  jelly.ell(0, R * 0.78, 0, R, R * 0.82, R, js);
+  jelly.ell(0, R * 0.4, 0, R + 0.8, R * 0.44, R + 0.8, js); // (wave 17) the sagging base: a dome, not a ball
   // a curled peak on the crown
   taper(jelly, 0, R * 1.5, 0, -1, R * 1.72, -1.5, 3.2, 1.6, C[2]); taper(jelly, -1, R * 1.72, -1.5, -3.2, R * 1.82, -2.2, 1.6, 0.7, C[3]);
   // the sagging lip round the bottom, and a few drips
-  for (let a = 0; a < 120; a++) { const t = (a / 120) * Math.PI * 2; for (let w = 0; w < 2; w++) jelly.set(Math.round(Math.cos(t) * (R + 0.6 + w * 0.5)), w, Math.round(Math.sin(t) * (R + 0.6 + w * 0.5)), C[w ? 0 : 1]); }
+  // (wave 17: a filled lip, not a ring floating round the foot)
+  jelly.ell(0, 1.2, 0, R + 1, 2.2, R + 1, (x, y, z, nx, ny) => (y < 0 || jelly.has(x, y, z) ? undefined : ny > 0.2 ? J[2] : J[1]));
   for (let i = 0; i < 7; i++) { const t = jelly.n(i, 5, 5, 1) * Math.PI * 2; jelly.ell(Math.cos(t) * (R + 1.2), 1, Math.sin(t) * (R + 1.2), 1.6, 1.3, 1.6, C[1]); }
   // face
   const face = new VB(82);
@@ -104,7 +110,7 @@ export class Slime extends Beast {
     if (z === 4) this.lavaProof = true;
     const G = this.G = Slime.warm(mgr, this.zone);
     this.hitCol = G.col;
-    this.mat = this.material({ alpha: 0.82, emissive: G.glow, wobble: 0.006 });
+    this.mat = this.material({ blend: 0.84, emissive: G.glow, wobble: 0.006 }); // (wave 17: blended, not dithered)
     this.coreMat = this.material({ emissive: G.glow * 0.5, rimK: 0 });
     this.faceMat = this.material({ rimK: 0 });
     this.body = this.group3(this.root);

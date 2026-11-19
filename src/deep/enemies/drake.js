@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { Legs, Chain, look } from './rig.js';
+import { vnoise } from './voxKit.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
 import { puff, sparkle } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
@@ -26,10 +27,10 @@ export function buildDrake(zone) {
   const L = lookFor(zone), S = L.s;
   const sc = (vb, k0 = 0.35) => (x, y, z, nx, ny, nz) => {
     if (typeof ny !== 'number') { ny = 0; nz = 0; }
-    const n = vb.n(x, y, z);
     if (ny < -0.45) return (z & 1) ? L.belly[0] : L.belly[1]; // belly plates
-    const k = clamp(k0 + ny * 0.45 + (n - 0.5) * 0.3, 0, 0.999);
-    return ((x + y + z) & 3) === 0 && n < 0.5 ? mul(S[Math.floor(k * 4)], 0.85) : S[Math.floor(k * 4)];
+    // (wave 17) structured: broad soft mottles, no per-voxel static or diagonal hatch
+    const k = clamp(k0 + ny * 0.45 + (nz || 0) * 0.06 + (vnoise(x, y, z, 2.5, 13) - 0.5) * 0.22, 0, 0.999);
+    return S[Math.floor(k * 4)];
   };
   const body = new VB(101), bs = sc(body);
   body.ell(0, 0, -0.5, 6.4, 5.8, 8.4, bs);

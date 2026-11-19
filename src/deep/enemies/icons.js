@@ -52,6 +52,7 @@ const chain = (geos, ox, oy, oz, step, dy = 0) => geos.map((g, i) => vox(g, ox, 
 /** Each species posed for its portrait: a list of voxel parts with offsets (model voxels). */
 const POSES = {
   pebble_mimic: () => {
+    UNIT = 1 / 24; // (wave 17: its body is drawn at half that)
     const G = buildMimic(rockPalette(M.DIRT), 1, 7);
     return [vox(G.body, 0, 2), vox(G.eyes, 0, 2), vox(G.sprout, -1, 11, -1), vox(G.foot, 2, 2), vox(G.foot, -1, 2)];
   },
@@ -158,11 +159,13 @@ const POSES = {
   },
   // (wave 13) the big folk and the kaiju
   cave_elk: () => {
+    UNIT = 1 / 16; // (wave 17: body, neck, head and eyes are drawn at half that)
     const G = buildElk(3), out = [vox(G.body, 0, 16, 0), vox(G.neck, 0, 19, 10), vox(G.head, 0, 26, 14), vox(G.eyes, 0, 27, 14), vox(G.antlers, 0, 28, 14)];
     for (const [x, z] of [[3, 8], [-4, 8], [3, -8], [-4, -8]]) out.push(vox(G.thigh, x, 13, z), vox(G.shin, x, 5, z));
     return out;
   },
   mole_bear: () => {
+    UNIT = 1 / 16;
     const G = buildMoleBear(), out = [vox(G.body, 0, 13, 0), vox(G.head, 0, 15, 13), vox(G.star, 0, 14, 22), vox(G.eyes, 0, 15, 13)];
     for (const sd of [1, -1]) out.push(vox(G.arm, sd * 6, 12, 7), vox(G.paw, sd * 6, 0, 8), vox(G.leg, sd * 6, 10, -8));
     return out;

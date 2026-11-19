@@ -13,7 +13,7 @@ import { Beast } from './beast.js';
 import { Legs, Chain, look } from './rig.js';
 import { VB, mul, mix, c01, REFINE_MAX } from './vox.js';
 const HK = REFINE_MAX > 2 ? 2 : 1; // (the head at half the troll voxel: 2× more on desktops, as drawn on phones)
-import { taper, eye, tufts } from './voxKit.js';
+import { taper, eye, tufts, hramp, vnoise, bake, variant } from './voxKit.js';
 import { shockRing, puff, pebbles, sparkle } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -26,16 +26,28 @@ const LOOKS = {
   5: { s: [0x5a6a7a, 0x7a8c9c, 0x9cb0c0, 0xc8d8e4], belly: 0xb0c0cc, wart: 0x4a5866, hair: [0xd8e4ec, 0xf4f8fc], eye: 0x7ae0ff, dress: 'frost' },
 };
 const lookFor = (z) => LOOKS[z >= 5 ? 5 : z >= 4 ? 4 : 3];
+const HID = [0x4a3220, 0x6a4a2e, 0x82603a, 0x9a7848];
 
-export function buildTroll(zone) {
-  const L = lookFor(zone), S = L.s;
+export function buildTroll(zone, v = 0) {
+  const L = lookFor(zone);
+  // (wave 17) a six-tone hue-shifted hide, lit from up-front, in broad soft mottles (no static, no
+  // speckled warts: warts come in clusters); baked AO and rim per part; a story per individual
+  // (v: a necklace of teeth, claw scars and an earring, or a skull buckle and a mossy shoulder)
+  const S = hramp(L.s[2], 6, { step: 0.095 });
   const sc = (vb, k0 = 0.35) => (x, y, z, nx, ny, nz) => {
     if (typeof ny !== 'number') { ny = 0; nz = 0; }
-    const n = vb.n(x, y, z), patch = vb.n(x >> 2, y >> 2, z >> 2, 17);
-    if (n > 0.94) return L.wart; // warts
-    // (wave 16) structured skin: broad mottled patches, a little grain, not static
-    const k = clamp(k0 + ny * 0.42 + nz * 0.06 + (patch - 0.5) * 0.22 + (n - 0.5) * 0.12, 0, 0.999);
-    return S[Math.floor(k * 4)];
+    const k = clamp(k0 + 0.08 + ny * 0.4 + nz * 0.08 + (vnoise(x, y, z, 4, 17) - 0.5) * 0.3, 0, 0.999);
+    return S[Math.floor(k * 6)];
+  };
+  const warts = (vb, n, seed, filter) => {
+    const Lv = vb.list();
+    for (let i = 0, m = 0; i < n * 10 && m < n; i++) {
+      const p = Lv[Math.floor(vb.n(i, 3, 1, seed) * Lv.length)];
+      if (!vb.open(p.x, p.y, p.z, 0, 1, 0) && !vb.open(p.x, p.y, p.z, 0, 0, 1) && !vb.open(p.x, p.y, p.z, Math.sign(p.x) || 1, 0, 0)) continue;
+      if (filter && !filter(p.x, p.y, p.z)) continue;
+      m++;
+      for (let j = 0; j < 3; j++) { const dx = Math.round(vb.n(i, j, 7, seed) * 4 - 2), dz = Math.round(vb.n(i, j, 8, seed) * 4 - 2); vb.ell(p.x + dx, p.y + 0.5, p.z + dz, 1.1, 1, 1.1, (xx, yy, zz, nx, ny) => (vb.has(xx, yy, zz) ? undefined : ny > 0.3 ? S[3] : L.wart)); }
+    }
   };
   // ---------------- torso (pivot at the hips): pot belly, a hunched back, boulder shoulders
   const torso = new VB(51), ts = sc(torso);
@@ -44,24 +56,45 @@ export function buildTroll(zone) {
   torso.ell(0, 15, -1, 11, 7, 9, ts); // chest
   torso.ell(0, 19, -4, 8.5, 5.5, 7, ts); // hump
   for (const sd of [1, -1]) torso.ell(sd * 11.5, 17, 0, 5.8, 5.2, 5.8, ts);
-  torso.paint((x, y, z, c) => (z > 7 && Math.abs(x) < 6 && y > 3 && y < 14 ? (torso.n(x, y, z, 3) > 0.9 ? L.wart : L.belly) : undefined));
+  const BEL = hramp(L.belly, 4, { step: 0.07 });
+  torso.paint((x, y, z, c) => (z > 7 && Math.abs(x) < 6.5 && y > 3 && y < 14 ? ((y + 64) % 3 === 0 ? BEL[0] : torso.open(x, y, z, 0, 1, 0) ? BEL[3] : BEL[2]) : undefined)); // belly folds
   // a loincloth of hides, a rope belt
   torso.paint((x, y, z, c) => {
-    if (y === 4 || y === 5) return (x + z) % 3 ? 0x5a4a2e : 0x7a6438;
-    if (y < 4 && y > -4 && (z > 4 || z < -4) && Math.abs(x) < 6) return torso.n(x, y, z, 5) < 0.5 ? 0x6a4a2e : 0x82603a;
+    if (y === 4 || y === 5) return y === 5 ? 0x8a7040 : (x + z) % 3 ? 0x5a4a2e : 0x7a6438; // a twisted rope belt
+    if (y < 4 && y > -4 && (z > 4 || z < -4) && Math.abs(x) < 6) return HID[y > 0 ? 2 : 1];
     return undefined;
   });
-  torso.box(-5, -3, 5, 5, 3, 7, (x, y, z) => (z >= 6 && (y > -3 || Math.abs(x) < 4) ? (torso.n(x, y, z, 6) < 0.5 ? 0x6a4a2e : 0x82603a) : -1));
-  torso.box(-5, -3, -7, 5, 3, -6, (x, y, z) => (torso.n(x, y, z, 6) < 0.5 ? 0x6a4a2e : 0x82603a));
-  // shaggy hair / moss / frost along the spine and the shoulders
+  // a hide loincloth: lit folds, a ragged hem, a stitched edge
+  torso.box(-5, -4, 5, 5, 3, 7, (x, y, z) => (z >= 6 && (y > -3 || Math.abs(x) < 4) && !(y === -4 && (x & 1)) ? (Math.abs(x) === 5 ? HID[0] : x % 3 === 0 ? HID[1] : z === 7 ? HID[3] : HID[2]) : -1));
+  torso.box(-5, -3, -7, 5, 3, -6, (x, y, z) => (x % 3 === 0 ? HID[1] : HID[2]));
+  warts(torso, 10, 3, (x, y, z) => y > 9 && !(z > 7 && Math.abs(x) < 7));
+  // shaggy hair / moss / frost along the spine and the shoulders (in patches, not specks)
   torso.paint((x, y, z, c) => {
     if (!(torso.open(x, y, z, 0, 1, 0) || torso.open(x, y, z, 0, 0, -1)) || y < 11) return undefined;
-    const n = torso.n(x, y, z, 9);
+    const n = vnoise(x, y, z, 2.5, 9) * 1.15 - 0.08;
     if (L.dress === 'moss' && n < 0.55 && z < 3) return n < 0.25 ? 0x3a7a2e : 0x4e9a3a;
     if (L.dress === 'frost' && n < 0.7) return n < 0.3 ? L.hair[0] : L.hair[1];
     if (L.dress === 'ember' && n < 0.4 && z < 0) return L.hair[(x + y) & 1];
     return undefined;
   });
+  // ---- the story on this one
+  if (v === 0) { // a necklace of teeth and knuckle-bones on a cord
+    for (let a = -1.2; a <= 1.21; a += 0.2) {
+      const x = Math.sin(a) * 9.5, y = 15.5 - Math.cos(a) * 3.5, h = torso.hitFrom(Math.round(x), Math.round(y), 20, 0, 0, -1);
+      if (!h) continue;
+      torso.set(h[0], h[1], h[2] + 1, 0x3a2a1a);
+      const big = Math.abs(a) < 0.3;
+      taper(torso, h[0], h[1] - 0.5, h[2] + 1.5, h[0], h[1] - (big ? 4 : 2.5), h[2] + 2, big ? 1.1 : 0.8, 0.4, (xx, yy, zz, t) => (t > 0.6 ? 0xfff4e0 : 0xe0d4b4));
+    }
+  } else if (v === 1) { // three pale claw scars across the chest
+    torso.paint((x, y, z, c) => (z > 4 && torso.open(x, y, z, 0, 0, 1) && [0, 2.5, 5].some((o) => Math.abs(y - 11 - (x + 4) * 0.55 - o) < 0.55) && x > -6 && x < 6 ? mix(c, 0xe8c8b0, 0.55) : undefined));
+  } else { // a skull for a belt buckle, moss and mushrooms on the left shoulder
+    torso.ell(0, 4.5, 8.4, 2.4, 2.2, 1.6, (x, y, z, nx, ny) => (ny > 0.3 ? 0xf4ead0 : 0xd8ccb0));
+    for (const sx of [-1, 1]) torso.set(sx > 0 ? 0 : -2, 5, 10, 0x1a120c); torso.box(-1, 3, 10, 0, 3, 10, 0x2a1e14);
+    for (const v2 of torso.list()) if (v2.x < -7 && v2.y > 18 && torso.open(v2.x, v2.y, v2.z, 0, 1, 0)) torso.set(v2.x, v2.y + 1, v2.z, vnoise(v2.x, 0, v2.z, 2, 4) < 0.5 ? 0x3a7a2e : 0x5a9a3a);
+    for (const [x, z] of [[-13, 1], [-11, -2]]) { torso.set(x, 24, z, 0xe8dcc0); torso.set(x, 25, z, 0xe8dcc0); torso.ell(x, 26, z, 1.6, 0.8, 1.6, 0x4ab0d8); }
+  }
+  for (const vb of [torso]) bake(vb, { ao: 0.42, rim: 0.2, r: 2 });
   const glow = new VB(52);
   if (L.dress === 'ember') {
     // glowing cracks over the chest and back
@@ -85,8 +118,11 @@ export function buildTroll(zone) {
     // sunken sockets
     for (let y = 9; y <= 12; y++) for (let x = 3; x <= 8; x++) { const X = sd > 0 ? x : -1 - x, h = head.hitFrom(X, y, 30, 0, 0, -1); if (h) { head.del(...h); head.set(h[0], h[1], h[2] - 1, 0x1a120c); } }
   }
+  warts(head, 4, 5, (x, y, z) => z > 4 && y < 12);
+  if (v === 1) for (let i = 0; i < 3; i++) head.set(15, 11 - i, -1 + (i === 1 ? 1 : 0), i === 1 ? 0xf0c860 : 0xb88a30); // a brass ring in its ear
   tufts(head, 28, { tones: L.dress === 'frost' ? [L.hair[0], L.hair[1]] : L.dress === 'moss' ? [0x2e6a26, 0x4e9a3a] : [L.hair[0], L.hair[1]], seed: 4, len: [1, 3], filter: (x, y, z) => y > 15 && z < 8 });
   head.paint((x, y, z) => (L.dress === 'frost' && y > 13 && head.open(x, y, z, 0, 1, 0) ? L.hair[1] : L.dress === 'moss' && y > 15 && head.n(x, y, z, 2) < 0.4 ? 0x3a6a2a : undefined));
+  bake(head, { ao: 0.4, rim: 0.2 });
   const jaw = new VB(54), jsh = sc(jaw, 0.25);
   jaw.ell(0, -2, 9.2, 10.4, 4.6, 8, jsh);
   jaw.ell(0, -1, 15, 6, 2.6, 2.6, mul(S[1], 0.8)); // the lower lip
@@ -110,17 +146,18 @@ export function buildTroll(zone) {
   arm.ell(0.5, -22, 5, 4.2, 3.8, 4.3, sc(arm, 0.3));
   for (const x of [-2, 0, 2]) arm.set(x, -24, 9, L.wart);
   if (L.dress === 'frost') arm.paint((x, y, z) => (y > -9 && arm.open(x, y, z, 0, 0, -1) && arm.n(x, y, z) < 0.6 ? L.hair[1] : undefined));
+  arm.box(-3, -18, -2, 4, -16, 4, (x, y, z) => (arm.has(x, y, z) && (Math.abs(x - 0.5) > 2.6 || Math.abs(z - 2) > 2.6) ? (y === -17 ? 0x8a7a6a : 0x5a5048) : -1)); // a rusted iron cuff
+  for (const vb of [thigh, shin, foot, arm, jaw]) bake(vb, { ao: 0.38, rim: 0.2, r: vb === jaw ? 2 : 1 });
   // the club: a broken stalactite lashed to a branch, a rock in its head
   const club = new VB(59);
   club.cap(0, -5, 0, 0, 8, 0, 1.6, (x, y, z) => (y % 3 ? 0x5a4026 : 0x6e5030));
-  club.cap(0, 8, 0, 0, 22, 1, 4.2, (x, y, z, t) => {
-    const n = club.n(x, y, z);
-    return n > 0.85 ? 0x9aa4a0 : mix(0x6a6460, 0x9a948c, clamp(t + (n - 0.5) * 0.5, 0, 1));
-  });
+  const CS = hramp(0x8a847c, 5, { step: 0.09 });
+  club.cap(0, 8, 0, 0, 22, 1, 4.2, (x, y, z, t) => CS[clamp(Math.floor((0.2 + t * 0.5 + (x < 0 ? 0.15 : 0) + (vnoise(x, y, z, 2.5, 3) - 0.5) * 0.35) * 5), 0, 4)]);
   for (const [x, y, z] of [[3, 16, 2], [-3, 13, -1], [1, 20, 4], [-2, 19, -3]]) club.cap(x * 0.5, y, z * 0.5, x * 1.4, y + 2, z * 1.4, 0.8, 0xc8c4bc); // stone spikes
   for (let y = 6; y <= 9; y++) for (const [x, z] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) club.set(x, y, z, 0x8a7448); // the lashing
   // (wave 16: the big body stays at 3× on desktops, ~1/60 m: its mid and near copies carry the skin)
   const V = (vb, px = 0, py = 0, pz = 0) => vb.hollow().geo(px, py, pz, TV, 3);
+  bake(club, { ao: 0.35, rim: 0.25, r: 1 });
   return {
     torso: V(torso), glow: glow.size ? glow.geo(0, 0, 0, TV) : null, head: head.hollow().geo(0, 0, 0, TV / 2, HK), jaw: jaw.hollow().geo(0, 0, 0, TV / 2, HK), eyes: eyes.geo(0, 10, 0, TV / 2), angry: angry.geo(0, 10, 0, TV / 2),
     thigh: V(thigh), shin: V(shin), foot: V(foot), arm: V(arm), club: V(club),
@@ -157,9 +194,9 @@ export class Troll extends Beast {
   ];
 
   /** The shared model for a zone; Enemies' prewarm builds it before a first sighting. */
-  static warm(mgr, zone) {
+  static warm(mgr, zone, v = 0) {
     const z = zone >= 5 ? 5 : zone >= 4 ? 4 : 3;
-    return mgr.geo('troll|' + z, () => buildTroll(z));
+    return mgr.geo('troll|' + z + '|' + v, () => buildTroll(z, v));
   }
   constructor(mgr, o) {
     super(mgr, o);
@@ -168,7 +205,7 @@ export class Troll extends Beast {
     this.size = rand(0.95, 1.08);
     this.step = 0.34; this.friction = 9;
     this.springK = 120; this.springC = 11; this.sqScale = 0.4;
-    const G = this.G = Troll.warm(mgr, this.zone);
+    const G = this.G = Troll.warm(mgr, this.zone, variant(this.seed, 3));
     this.hitCol = G.hide;
     this.mat = this.material({});
     this.eyeMat = this.material({ emissive: 1.1, rimK: 0 });

@@ -25,6 +25,7 @@ import { buildHead, earGeo } from './char/head.js';
 import { eyeSet, browGeo, browSize, mouthGeo, mouthSize, whiskerGeo, fxGeo } from './char/face.js';
 import { buildBody, buildTail } from './char/body.js';
 import { buildArm, buildLeg } from './char/limbs.js';
+import { gloveSteps } from './char/glove.js';
 import { buildArmParts, buildLegParts } from './char/jointed.js';
 import { EXPRESSIONS } from './char/expr.js';
 import { buildHat, buildGlasses, buildCane } from './char/hats.js';
@@ -257,9 +258,11 @@ export function makeCharacter(specIn, opts = {}) {
     handR = group(elbowR, 0, ap.socket[1] * vs, ap.socket[2] * vs);
     handL = group(elbowL, 0, ap.socket[1] * vs, ap.socket[2] * vs);
   } else {
-    const arm = buildArm(spec, p, bake);
-    A.part(armR, arm.geo, { scale: R });
-    A.part(armL, arm.geo, { scale: L });
+    // (the player's paws wear work gloves: a finer part on the arm's bone, char/glove.js)
+    const arm = buildArm(spec, p, bake, spec.player ? gloveSteps(vs, 14, (p.lh + p.bh + p.hh + 1) * u) : 0);
+    const armRb = A.part(armR, arm.geo, { scale: R });
+    const armLb = A.part(armL, arm.geo, { scale: L });
+    if (arm.glove) { A.attach(armRb, arm.glove); A.attach(armLb, arm.glove); }
     // sockets at the paws for held items
     handL = group(armL, 0, -(p.ah + 1) * u, u);
     handR = group(armR, 0, -(p.ah + 1) * u, u);

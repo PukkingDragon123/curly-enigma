@@ -12,19 +12,24 @@
 import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { Legs, Chain, look } from './rig.js';
-import { VB, mul, mix, c01 } from './vox.js';
+import { VB, mul, mix, c01, refine, REFINE_MAX } from './vox.js';
+import { hramp, lit, vnoise, bake, clumps, gloss, sideEye, eye, variant, taper } from './voxKit.js';
 import { puff, sparkle, shockRing, pebbles } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
 const EV = 1 / 16; // both are modelled at 1/16 m (refined finer when meshed)
 const _v = new THREE.Vector3();
 
+// (wave 17) structured light in broad soft mottles (no per-voxel static)
 const band = (vb, ramp, k0 = 0.4, belly) => (x, y, z, nx, ny, nz) => {
   if (typeof ny !== 'number') { ny = 0; nz = 0; }
   if (belly && ny < -0.45) return belly;
-  const n = vb.n(x, y, z);
-  return ramp[Math.floor(clamp(k0 + ny * 0.45 + (n - 0.5) * 0.22, 0, 0.999) * ramp.length)];
+  return ramp[Math.floor(clamp(k0 + ny * 0.45 + (nz || 0) * 0.06 + (vnoise(x, y, z, 3, 7) - 0.5) * 0.18, 0, 0.999) * ramp.length)];
 };
+/** (wave 17) The coarse shape refined 2× (smoothed), so surface detail can be painted at 1/32 m. */
+const up = (vb) => refine(vb, 2);
+const EV2 = EV / 2;
+const K2 = REFINE_MAX > 2 ? 2 : 1; // (meshed at 1/64 m on desktops; phones keep their 1/32 m)
 /** Two small round eyes on a head's surface at height y, toward +z: { eyes } (pivot at y). */
 function smallEyes(head, x, y, z0, col = 0x16100c, glint = true) {
   const eyes = new VB();
@@ -48,8 +53,11 @@ const ANTLER = {
 };
 const antlerFor = (z) => (z >= 5 ? ANTLER[5] : ANTLER[3]);
 
-export function buildElk(zone = 3) {
-  const F = ELK.fur, A = antlerFor(zone);
+export function buildElk(zone = 3, v = 0) {
+  // (wave 17) a richer hide (six hue-shifted tones), a pale rump and belly, fawn dapples on the back
+  // (some), a shaggy mane and throat ruff in locks, big dark glossy eyes with a lid and a glint,
+  // baked AO and rim; drawn as before at 1/16 m, refined 2× and detailed at 1/32 m
+  const F = hramp(ELK.fur[2], 6, { step: 0.1 }), A = antlerFor(zone);
   const body = new VB(401);
   const bs = band(body, F, 0.42, ELK.belly);
   body.ell(0, 0, 0, 5.2, 6, 11.5, bs);
@@ -67,7 +75,7 @@ export function buildElk(zone = 3) {
   for (let y = -2; y < 4; y++) neck.set(0, y, 4, mix(ELK.belly, F[2], 0.4)); // the throat ruff
   // the head (pivot at the top of the neck)
   const head = new VB(403);
-  const hs = band(head, F, 0.5);
+  const hs = band(head, F, 0.55);
   head.ell(0, 0.5, 1.5, 3, 3.2, 4, hs);
   head.ell(0, -0.8, 5.5, 2.2, 2.2, 3.2, hs); // the long muzzle
   head.ell(0, -1.2, 8.2, 1.9, 1.7, 1.2, ELK.nose);
@@ -76,7 +84,16 @@ export function buildElk(zone = 3) {
     const X = (x) => (sd > 0 ? x : -1 - x);
     head.cap(X(2), 3, 0, X(5), 5, -2, 1.1, (x, y, z, t) => (t > 0.3 && head.n(x, y, z) < 0.5 ? 0xd8b8a0 : F[2])); // ears
   }
-  const eyes = smallEyes(head, 3, 1.5, 3);
+  // detail at 1/32 m: the coarse parts refined 2×
+  const B = up(body), N = up(neck), Hd = up(head);
+  if (v !== 2) B.paint((x, y, z, c) => (y > 4 && z > -16 && z < 8 && B.open(x, y, z, 0, 1, 0) && vnoise(x, 0, z, 1.6, 31 + v) > 0.72 ? ELK.rump : undefined)); // dapples
+  clumps(B, 16, { tones: [ELK.mane, F[0], F[1]], seed: 3, len: [2, 3.5], r: 1.4, droop: 0.4, filter: (x, y, z) => y > 7 && z > 4 });
+  clumps(N, 14, { tones: [mix(ELK.belly, F[2], 0.5), ELK.belly, ELK.rump], seed: 5, len: [2, 4], r: 1.3, droop: 0.8, filter: (x, y, z) => z > 5 && y < 8 });
+  clumps(N, 10, { tones: [ELK.mane, F[0]], seed: 6, len: [2, 3], r: 1.2, droop: 0.3, filter: (x, y, z) => z < 1 });
+  for (const vb of [B, N, Hd]) bake(vb, { ao: 0.4, rim: 0.22 });
+  gloss(Hd, { k: 0.5, min: 0.7, filter: (x, y, z, c) => c === ELK.nose });
+  const eyes = new VB();
+  for (const sd of [1, -1]) sideEye(eyes, Hd, sd, 3, 7, 1.8, 1.6, { iris: 0x2a1a10, pupil: 0x08050a, pr: 0.6, lid: F[1], gr: 0.32 });
   // antlers of living crystal: a beam each side with tines, faceted points at the tips
   const ant = new VB(404);
   const tc = (x, y, z, t) => A[Math.min(3, Math.floor(t * 3.2 + ant.n(x, y, z) * 0.6))];
@@ -95,10 +112,11 @@ export function buildElk(zone = 3) {
   // long slim legs: modelled hanging from the pivot
   const thigh = new VB(405); thigh.cap(0, 0, 0, 0, -8, 0, 2.3, band(thigh, F, 0.35));
   thigh.ell(0, -1, 0, 2.8, 3, 2.8, band(thigh, F, 0.35));
-  const shin = new VB(406); shin.cap(0, 0, 0, 0, -8.5, 0, 1.2, (x, y, z, t) => (t > 0.75 ? ELK.mane : F[1]));
-  const foot = new VB(407); foot.box(-1, 0, -1, 0, 1, 1, ELK.hoof); foot.set(-1, 0, 2, ELK.hoof); foot.set(0, 0, 2, ELK.hoof);
+  const shin = new VB(406); shin.cap(0, 0, 0, 0, -8.5, 0, 1.2, (x, y, z, t) => (t > 0.75 ? ELK.mane : t < 0.12 ? F[2] : F[1]));
+  const foot = new VB(407); foot.box(-1, 0, -1, 0, 1, 1, ELK.hoof); foot.set(-1, 0, 2, 0x4a4038); foot.set(0, 0, 2, ELK.hoof);
+  gloss(ant, { k: 0.4, min: 0.75 });
   return {
-    body: body.geo(0, 0, 0, EV), neck: neck.geo(0, 0, 0, EV), head: head.geo(0, 0, 0, EV), eyes: eyes.geo(0, 0, 0, EV), antlers: ant.geo(0, 0, 0, EV),
+    body: B.geo(0, 0, 0, EV2, K2), neck: N.geo(0, 0, 0, EV2, K2), head: Hd.geo(0, 0, 0, EV2, K2), eyes: eyes.geo(0, 0, 0, EV2), antlers: ant.geo(0, 0, 0, EV),
     thigh: thigh.geo(0, 0, 0, EV), shin: shin.geo(0, 0, 0, EV), foot: foot.geo(0, 0, 0, EV), hide: c01(F[2]), glow: c01(A[2]), light: c01(A[1]),
   };
 }
@@ -118,7 +136,7 @@ export class CaveElk extends Beast {
       tick(A, dt) { if (A.phase === 'go') this.push(Math.sin(this.yaw) * 4, Math.cos(this.yaw) * 4, 12, dt); },
       hit(A) { return this.strikeAt(A, this.reachPoint(0.3, 0.3), 0.5, { dmg: this.info.dmg, push: 4, up: 2 }); } },
   ];
-  static warm(mgr, zone = 3) { const z = zone >= 5 ? 5 : 3; return mgr.geo('elk|' + z, () => buildElk(z)); }
+  static warm(mgr, zone = 3, v = 0) { const z = zone >= 5 ? 5 : 3; return mgr.geo('elk|' + z + '|' + v, () => buildElk(z, v)); }
   constructor(mgr, o) {
     super(mgr, o);
     this.baby = !!o.baby;
@@ -127,7 +145,7 @@ export class CaveElk extends Beast {
     this.size = this.baby ? rand(0.5, 0.58) : rand(0.94, 1.08);
     if (this.baby) { this.hp = this.maxHp *= 0.35; this.mass = 1.4; this.hw = 0.2; this.h = 0.9; }
     this.step = 0.34; this.friction = 9; this.springK = 140; this.springC = 10; this.sqScale = 0.3;
-    const G = this.G = CaveElk.warm(mgr, this.zone);
+    const G = this.G = CaveElk.warm(mgr, this.zone, variant(this.seed, 3));
     this.hitCol = G.hide;
     this.mat = this.material({});
     this.eyeMat = this.material({ emissive: 0.4, rimK: 0 });
@@ -198,16 +216,17 @@ export class CaveElk extends Beast {
 // =====================================================================================
 const BEAR = { fur: [0x1c1820, 0x2a2430, 0x3c3444, 0x544a5e], belly: 0x5a4636, nose: [0xd85a7a, 0xff8aa8, 0xffc0d0], claw: [0xc8b898, 0xe8dcc0, 0xfff4e0] };
 
-export function buildMoleBear() {
-  const F = BEAR.fur;
+export function buildMoleBear(v = 0) {
+  // (wave 17) velvet in a six-tone slate-violet ramp that reads in the dark (a lavender sheen on
+  // top), a cream crescent on the chest, shaggy locks over the shoulders, glossy pink feelers, pink
+  // spade paws with ivory claws caked with earth at the roots, tiny glossy bead eyes; a torn ear and
+  // claw scars on some (v); refined 2× and detailed at 1/32 m
+  const F = hramp(0x4c4260, 6, { step: 0.095 });
   const body = new VB(411);
-  const bs = (x, y, z, nx, ny) => {
-    if (typeof ny !== 'number') ny = 0;
+  const bs = (x, y, z, nx, ny, nz) => {
+    if (typeof ny !== 'number') { ny = 0; nz = 0; }
     if (ny < -0.5) return BEAR.belly;
-    const n = body.n(x, y, z), n2 = body.n(x >> 1, y >> 1, z >> 1, 4);
-    // velvet: soft lengthwise bands, a sheen on top
-    if (ny > 0.55 && n2 > 0.72) return F[3];
-    return F[Math.floor(clamp(0.35 + ny * 0.4 + (n - 0.5) * 0.2 + ((z & 3) === 0 ? -0.08 : 0), 0, 0.999) * 4)];
+    return F[Math.floor(clamp(0.32 + ny * 0.42 + (nz || 0) * 0.06 + (vnoise(x, y, z, 3, 11) - 0.5) * 0.16, 0, 0.999) * 6)];
   };
   body.ell(0, 0, -1, 8.5, 8, 13, bs);
   body.ell(0, 2.5, 5, 9, 8.5, 7.5, bs); // the great digging shoulders
@@ -215,7 +234,7 @@ export function buildMoleBear() {
   body.cap(0, 1, -14, 0, 0, -17, 1.2, BEAR.nose[0]); // a pink stub tail
   // the head: a small skull, a tapering snout, the pink star of feelers
   const head = new VB(412);
-  const hs = (x, y, z, nx, ny) => F[Math.floor(clamp(0.4 + (ny || 0) * 0.4 + (head.n(x, y, z) - 0.5) * 0.2, 0, 0.999) * 4)];
+  const hs = (x, y, z, nx, ny) => F[Math.floor(clamp(0.42 + (ny || 0) * 0.4, 0, 0.999) * 6)];
   head.ell(0, 0, 1, 5.2, 4.8, 5.2, hs);
   head.ell(0, -0.8, 5.5, 3, 2.8, 3.6, hs);
   const star = new VB(413);
@@ -224,19 +243,27 @@ export function buildMoleBear() {
     star.cap(0, -0.5, 0, Math.cos(a) * r, -0.5 + Math.sin(a) * r * 0.9, 1.2, 0.75, (x, y, z, t) => BEAR.nose[t > 0.7 ? 2 : 1]);
   }
   star.ell(0, -0.5, 0.4, 1.4, 1.3, 1, BEAR.nose[0]);
+  const B = up(body), Hd = up(head);
+  // the chest crescent, locks over the shoulders and back, scars (v)
+  B.paint((x, y, z, c) => (z > 14 && B.open(x, y, z, 0, 0, 1) && Math.abs(Math.hypot(x / 1.3, y + 2) - 9) < 1.8 && y < 4 ? (y > 0 ? 0xf0e0c0 : 0xd8c4a0) : undefined));
+  clumps(B, 34, { tones: F.slice(1, 5), seed: 4 + v, len: [2, 4], r: 1.6, droop: 0.5, filter: (x, y, z) => y > 8 && z > -16 });
+  if (v === 1) B.paint((x, y, z, c) => (x > 6 && B.open(x, y, z, 1, 0, 0) && z > -8 && z < 6 && [0, 3, 6].some((o) => Math.abs(y - (z * 0.5) - o) < 0.6) ? 0xc8a8b8 : undefined));
+  if (v === 2) Hd.paint((x, y, z) => (x < -4 && y > 6 && z < 2 && Hd.open(x, y, z, 0, 1, 0) ? -1 : undefined)); // a torn ear: a bite out of the crown
+  for (const vb of [B, Hd]) bake(vb, { ao: 0.45, rim: 0.28, rimCol: 0xe8d8ff });
   const eyes = new VB();
-  for (const sd of [1, -1]) { const h = head.hitFrom(sd * 3, 1.5, 4, -sd, 0, -0.3, 12); if (h) eyes.set(h[0], h[1] - 1, h[2], 0x0c0a10); } // tiny, nearly blind
+  for (const sd of [1, -1]) { const h = Hd.hitFrom(sd * 6, 3, 8, -sd, 0, -0.3, 24); if (h) { const X = h[0]; for (const [dz, dy] of [[0, 0], [0, -1], [-1, 0], [-1, -1]]) eyes.set(X + sd, h[1] + dy, h[2] + dz, 0x0c0a10); eyes.set(X + sd, h[1], h[2] + 1, 0xffffff); } } // tiny, nearly blind
   // limbs: thick fore-arms with spade paws and long claws, shorter hind legs
   const arm = new VB(414); arm.cap(0, 0, 0, 0, -7, 0, 3.4, (x, y, z, t) => F[t < 0.3 ? 2 : 1]);
   const fore = new VB(415); fore.cap(0, 0, 0, 0, -7, 0, 2.8, F[1]);
   const paw = new VB(416);
   paw.ell(0, 1, 1.5, 3.4, 1.6, 3.4, mix(BEAR.nose[0], F[2], 0.55));
-  for (let i = -2; i <= 2; i++) paw.cap(i * 1.3, 1, 3.5, i * 1.6, 0, 8 - Math.abs(i) * 0.8, 0.7, (x, y, z, t) => BEAR.claw[t > 0.7 ? 2 : t > 0.3 ? 1 : 0]);
+  for (let i = -2; i <= 2; i++) paw.cap(i * 1.3, 1, 3.5, i * 1.6, 0, 8 - Math.abs(i) * 0.8, 0.7, (x, y, z, t) => (t < 0.25 ? 0x4a3424 : BEAR.claw[t > 0.7 ? 2 : t > 0.45 ? 1 : 0])); // earth caked at the roots
   const leg = new VB(417); leg.cap(0, 0, 0, 0, -5, 0, 3, F[1]);
   const shin = new VB(418); shin.cap(0, 0, 0, 0, -5, 0, 2.4, F[1]);
   const hfoot = new VB(419); hfoot.ell(0, 0.8, 1, 2.6, 1.2, 3, mix(BEAR.nose[0], F[2], 0.55)); for (const x of [-1, 0, 1]) hfoot.set(x * 1.5 | 0, 0, 4, BEAR.claw[1]);
+  gloss(star, { k: 0.45, min: 0.7 });
   return {
-    body: body.geo(0, 0, 0, EV), head: head.geo(0, 0, 0, EV), star: star.geo(0, 0, 0, EV), eyes: eyes.geo(0, 0, 0, EV),
+    body: B.geo(0, 0, 0, EV2, K2), head: Hd.geo(0, 0, 0, EV2, K2), star: star.geo(0, 0, 0, EV), eyes: eyes.geo(0, 0, 0, EV2),
     arm: arm.geo(0, 0, 0, EV), fore: fore.geo(0, 0, 0, EV), paw: paw.geo(0, 0, 0, EV), leg: leg.geo(0, 0, 0, EV), shin: shin.geo(0, 0, 0, EV), hfoot: hfoot.geo(0, 0, 0, EV),
     hide: c01(F[2]), pink: c01(BEAR.nose[1]),
   };
@@ -270,14 +297,14 @@ export class MoleBear extends Beast {
       when(e, d, tg) { return tg === 'player' && e.mgr.time - (e.burrowEnd ?? -99) > 8; },
       go() { this.dive('hunt'); } },
   ];
-  static warm(mgr) { return mgr.geo('molebear', () => buildMoleBear()); }
+  static warm(mgr, zone, v = 0) { return mgr.geo('molebear|' + v, () => buildMoleBear(v)); }
   constructor(mgr, o) {
     super(mgr, o);
     this.hw = 0.5; this.h = 1.35; this.cy = 0.85; this.hitR = 0.75;
     this.mass = 10; this.kb = 0.9;
     this.size = rand(0.94, 1.08);
     this.step = 0.4; this.friction = 9; this.springK = 120; this.springC = 10; this.sqScale = 0.3;
-    const G = this.G = MoleBear.warm(mgr);
+    const G = this.G = MoleBear.warm(mgr, this.zone, variant(this.seed, 3));
     this.hitCol = G.hide;
     this.mat = this.material({});
     this.eyeMat = this.material({ emissive: 0.2, rimK: 0 });

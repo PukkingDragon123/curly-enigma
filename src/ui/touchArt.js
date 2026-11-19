@@ -18,6 +18,9 @@ import { RAMP, tone, h2, vnoise, rimLight, mixC, shadeC, paperK, rivet } from '.
 const FUR = [0x120a08, 0x1e1410, 0x2a1e1a, 0x382a24, 0x46362e, 0x56443a, 0x6a5648, 0x826c5c, 0x9c8472];
 const PINK = [0x4a1e22, 0x7a3438, 0xa84c52, 0xcc6a72, 0xe68a92, 0xf4a8ae, 0xfcc8cc, 0xffe6e8];
 const CLAW = [0x4a3e30, 0x7a6c56, 0xaa9c80, 0xd2c8ac, 0xeee6d2, 0xfffaf0];
+// the work gloves the mole always wears (gfx/char/glove.js): tan hide, and the darker gauntlet
+const GLV = [0x24140a, 0x382012, 0x4e2e19, 0x684022, 0x84542c, 0x9e6a38, 0xb88248, 0xd09e62, 0xe4bc84];
+const GCUFF = [0x150c07, 0x21130b, 0x2f1b10, 0x3e2416, 0x50301d, 0x623c24, 0x784c2e];
 const SHIRT = [0x220806, 0x3e120c, 0x5c1e14, 0x7a2c1e, 0x96402c, 0xb2563c, 0xcc7454, 0xe29a78];
 const WOOD = [0x1c0e06, 0x2e1a0c, 0x462812, 0x60381a, 0x7c4a24, 0x985e30, 0xb47640, 0xcc9258, 0xe0ae78];
 const STONE = [0x16141a, 0x24222a, 0x34313a, 0x47434c, 0x5c5760, 0x736d74, 0x8c8588, 0xa8a09e, 0xc4bcb6];
@@ -33,6 +36,7 @@ const DEF = {
   f: [FUR, 0.44], F: [FUR, 0.66], d: [FUR, 0.24], t: [FUR, 0.58],
   p: [PINK, 0.56], P: [PINK, 0.8], n: [PINK, 0.3],
   c: [CLAW, 0.66], C: [CLAW, 0.9],
+  j: [GLV, 0.56], J: [GLV, 0.8], y: [GCUFF, 0.5],
   s: [SHIRT, 0.5], S: [SHIRT, 0.72],
   l: [LE, 0.48], L: [LE, 0.7], q: [LE, 0.22],
   b: [BR, 0.62], B: [BR, 0.86],
@@ -215,12 +219,17 @@ function drawArm(p, W, H, s, e, w, o = {}) {
   pt.line(s[0], s[1], e[0], e[1], o.back ? 's' : 'S', 2);
   pt.line(e[0], e[1], w[0], w[1], 'f', 2);
   pt.put(e[0], e[1], 'S'); // the rolled cuff
-  // the paw: a pink pad, claws reaching the way the forearm points
+  // the paw in its leather work glove (never bare): a tan mitt, the darker gauntlet at the wrist
+  // with a brass buckle glint, the claws out of the cut-open fingertips the way the forearm points
   const dx = w[0] - e[0], dy = w[1] - e[1], L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
-  pt.put(w[0], w[1], 'p'); pt.put(w[0] + 1, w[1], 'p'); pt.put(w[0], w[1] + 1, 'p'); pt.put(w[0] + 1, w[1] + 1, 'P');
+  const gx = Math.round(w[0] + 0.5 - ux * 1.4 - 0.5), gy = Math.round(w[1] + 0.5 - uy * 1.4 - 0.5);
+  pt.put(gx, gy, 'y'); pt.put(gx + Math.round(-uy), gy + Math.round(ux), 'y');
+  pt.put(w[0], w[1], 'j'); pt.put(w[0] + 1, w[1], 'J'); pt.put(w[0], w[1] + 1, 'j'); pt.put(w[0] + 1, w[1] + 1, 'j');
   const cx = w[0] + 0.5 + ux * 1.8, cy = w[1] + 0.5 + uy * 1.8;
   if (!o.fist) { pt.put(cx + uy * 0.6, cy - ux * 0.6, 'c'); pt.put(cx - uy * 0.6, cy + ux * 0.6, 'C'); }
   paint(p, pt, { rim: 0.26, seed: 31, dark: o.back ? 0.16 : 0 });
+  p.dot(gx + 0.5, gy, BR[o.back ? 5 : 7]); // the buckle
+  p.dot(w[0] + 1, w[1] + 1.5, 0xe8d4a8, o.back ? 120 : 190); // a stitch across the knuckles
   if (!o.fist) { p.dot(cx + ux * 0.8 + uy * 0.6, cy + uy * 0.8 - ux * 0.6, CLAW[5]); p.dot(cx + ux * 0.8 - uy * 0.6, cy + uy * 0.8 + ux * 0.6, CLAW[4]); }
 }
 

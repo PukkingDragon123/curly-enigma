@@ -50,19 +50,19 @@ function packetSprite(band) {
 const PACKET = (band) => art('seedPacket' + band, () => packetSprite(band));
 const bandOf = (id) => { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
 
-/** Pointing paw (aims right) beside the focused note: 12×9. */
+/** Pointing paw (aims right) beside the focused note, 12×9: gloved (gfx/char/glove.js), the claw out of the cut fingertip. */
 function pawPoint() {
   const p = new Px(13, 10);
   p.tpl([
     '..........',
-    '.aaaaa....',
-    'aaaaaaaaaa',
-    'aaaaaaaaaa',
-    'aaaaaaa...',
-    'aaaaaaa...',
-    '.aaaaa....',
-  ], { a: 0xf6dcc0 }, 1, 1);
-  p.hl(7, 10, 2, 0xffffff);
+    '.kbbbb....',
+    'kkbbbbbbcc',
+    'kgaaaaaddc',
+    'kkataaa...',
+    'kkaaaad...',
+    '.kdddd....',
+  ], { a: 0x9e6a38, b: 0xc8945a, d: 0x684022, t: 0xe8d8b0, c: 0xf4ecd8, k: 0x3e2416, g: 0xe6be52 }, 1, 1);
+  p.hl(4, 7, 2, 0xd8ac74);
   p.outline(INK);
   return p;
 }

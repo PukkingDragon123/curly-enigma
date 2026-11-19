@@ -35,6 +35,9 @@ export const MAT = {
   amethyst: [0x200c36, 0x381658, 0x542280, 0x7434aa, 0x9652cc, 0xb880e8, 0xdcb6fa, 0xf6eaff],
   ice: [0x163040, 0x2a5468, 0x427e96, 0x62a8c0, 0x8ccce0, 0xb8e6f4, 0xe2f8ff, 0xffffff],
   skin: [0x3e1218, 0x68222a, 0x94383e, 0xbc5656, 0xdc7a76, 0xf4a49c, 0xffcac2, 0xffeae4],
+  // the mole's leather work gloves (gfx/char/glove.js): its paws never show bare
+  glove: [0x24140a, 0x382012, 0x4e2e19, 0x684022, 0x84542c, 0x9e6a38, 0xb88248, 0xd8ac74],
+  gcuff: [0x150c07, 0x21130b, 0x2f1b10, 0x3e2416, 0x50301d, 0x623c24, 0x784c2e, 0x8e5c38],
   fur: [0x100c10, 0x1e1820, 0x2e2632, 0x403646, 0x54485a, 0x6c5e72, 0x86788c],
   bone: [0x3a3022, 0x5e5038, 0x867452, 0xac9a74, 0xcabc98, 0xe2d8ba, 0xf4eedc, 0xfffcf2],
   paper: [0x4a3418, 0x6e5230, 0x96784a, 0xbca06c, 0xd8c08a, 0xeedcaa, 0xfaeed0, 0xfffaec],
@@ -461,24 +464,34 @@ const P = {
     D.disk(cx - 1.4, cy + 0.6, 0.9, M.meat, { flat: true, k: 0.05, bevel: false, seam: false });
     D.disk(cx + 1.4, cy + 0.6, 0.9, M.meat, { flat: true, k: 0.05, bevel: false, seam: false });
   },
-  /** A mole's digging paw (pink palm, five ivory claws), pointing up. */
+  /** A mole's digging paw in its leather work glove (five ivory claws out of the cut tips), pointing up. */
   paw(D, cx = 16, cy = 18, s = 1) {
     D.push(cx - 16 * s, cy - 18 * s, s);
     D.ell(16, 24, 9, 6, M.fur, { spec: 0.15 }); // the furry wrist
-    D.ell(16, 18, 9.5, 7.5, M.skin, { spec: 0.3 });
+    D.rr(8, 22.5, 16, 4, 1.5, M.gcuff, { cylX: true, spec: 0.2 }); // the gauntlet
+    D.ell(16, 18, 9.5, 7.5, M.glove, { spec: 0.2 });
     for (let i = 0; i < 5; i++) {
       const x = 8.4 + i * 3.8, top = 3 + Math.abs(i - 2) * 2;
       D.shape((X, Y) => { const t = (14 - Y) / (14 - top); if (t < 0 || t > 1) return false; const cx = x + (i - 2) * 0.6 * t + t * t * 1.4; return Math.abs(X - cx) <= 1.6 * (1 - t * 0.75) + 0.2; }, M.bone, { normal: (X, Y) => { const t = (14 - Y) / (14 - top), cx = x + (i - 2) * 0.6 * t + t * t * 1.4, s = Math.max(-1, Math.min(1, (X - cx) / (1.6 * (1 - t * 0.75) + 0.2))); return [s, -0.2, Math.sqrt(1 - s * s)]; }, spec: 0.7, shine: 10 });
     }
-    D.ell(16, 19, 3.6, 2.6, M.skin, { k: 0.3, flat: true, bevel: false, seam: false, kadd: -0.2 });
+    D.ell(16, 19, 3.6, 2.6, M.glove, { k: 0.3, flat: true, bevel: false, seam: false, kadd: -0.2 }); // the oiled patch
+    for (let x = 10; x <= 22; x += 2) D.px(x, 13.6, 0xe8d8b0, 200); // the seam where the fingers start
+    D.px(20, 24, C(M.brass, 6)).px(21, 24, C(M.brass, 4)).px(20, 25, C(M.brass, 3)); // the buckle
     D.pop();
   },
-  fist(D, mat = M.skin) {
+  /** A fist: the mole's own in its work glove (the default), or a gauntlet of `mat`. */
+  fist(D, mat = M.glove) {
     D.rr(8, 9, 17, 14, 4, mat, { k: 0.55, rim: 0.24 });
     for (let i = 0; i < 4; i++) D.ell(10.5 + i * 4, 10.5, 2.3, 2.6, mat, { spec: 0.3 });
     D.ell(9, 17, 3, 4.2, mat, { spec: 0.2 }); // thumb
     D.rr(10, 22, 13, 7, 2, M.fur, { cylX: true, spec: 0.1 }); // wrist fur
     for (let i = 1; i < 4; i++) D.ln(8.5 + i * 4, 9, 8.5 + i * 4, 13, C(mat, 1));
+    if (mat === M.glove) {
+      D.rr(9.5, 21, 14, 4, 1.5, M.gcuff, { cylX: true, spec: 0.2 }); // the gauntlet
+      D.px(19, 22, C(M.brass, 6)).px(20, 22, C(M.brass, 4)).px(19, 23, C(M.brass, 3)); // its buckle
+      for (let x = 11; x <= 23; x += 2) D.px(x, 15, 0xe8d8b0, 190); // stitches across the back
+      for (let i = 0; i < 4; i++) D.px(10.5 + i * 4, 9.5, C(mat, 7)); // knuckles rubbed pale
+    }
   },
   feather(D, mat = M.egg, vane = null) {
     vane = vane || mat;
@@ -659,7 +672,7 @@ const R = {
   m_brute: (D) => {
     D.shape((X, Y) => Y > 18 && Math.hypot((X - 16) / 1.4, Y - 30) < 11, M.stone, { k: 0.5, tex: 0.2, seed: 9 });
     D.ln(16, 19, 13, 24, OUT).ln(13, 24, 15, 29, OUT).ln(16, 19, 20, 25, OUT).ln(20, 25, 19, 30, OUT);
-    D.push(0, -5, 0.9); P.fist(D, M.skin); D.pop();
+    D.push(0, -5, 0.9); P.fist(D, M.glove); D.pop();
     for (const [x, y] of [[3, 17], [28, 18], [5, 23], [27, 24]]) D.px(x, y, C(M.stone, 6)).px(x + 1, y + 1, C(M.stone, 3));
     D.arc(16, 12, 14, Math.PI * 1.1, Math.PI * 1.35, 0xffe8a8).arc(16, 12, 14, -Math.PI * 0.35, -Math.PI * 0.1, 0xffe8a8);
   },
@@ -903,7 +916,7 @@ const R = {
     for (const [x, y] of [[10, 11], [22, 11], [10, 21], [22, 21]]) D.px(x, y, C(M.iron, 7));
   },
   f_tough: (D) => {
-    P.fist(D, M.skin);
+    P.fist(D, M.glove);
     for (const [a, b, c, d] of [[3, 30, 10, 21], [29, 29, 22, 20], [6, 6, 10, 12]]) D.line(a, b, c, d, 1.8, M.wood, { spec: 0.1 });
     D.line(10, 12, 22, 20, 1.6, M.wood, { seam: false });
     D.leaf(3, 28, 5, -1.4, 0.45); D.leaf(28, 27, 5, -2.0, 0.45);

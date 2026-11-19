@@ -28,7 +28,7 @@ export function buildWisp(zone) {
     const band = Math.abs(ny) < 0.1 || Math.abs(Math.abs(ny) - 0.55) < 0.06; // lantern bands
     if (band && nz < 0.6) return Sh[0];
     const facet = (Math.floor((Math.atan2(nz, nx) + 4) * 2.6) + Math.floor((ny + 2) * 3)) % 2;
-    const k = clamp(0.35 + rim * 0.42 + facet * 0.1 + (orb.n(x, y, z) - 0.5) * 0.15, 0, 0.999);
+    const k = clamp(0.35 + rim * 0.42 + facet * 0.1, 0, 0.999); // (wave 17: no static)
     return Sh[Math.floor(k * 4)];
   });
   // thick lids round the eye (a ring a little proud of the shell)

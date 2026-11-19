@@ -423,6 +423,7 @@ export class Enemies {
   }
 
   add(e) {
+    e.vary?.(); // (wave 17: each one its own shade)
     this.root.add(e.root);
     e.updateSpheres();
     e.place();

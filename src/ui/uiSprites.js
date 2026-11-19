@@ -582,22 +582,22 @@ function iconSprite(name, color = 0xf6e8c8) {
   return p;
 }
 
-/** Pointing paw for touch prompts ("tap"). */
+/** Pointing paw for touch prompts ("tap"), in the mole's leather work glove (gfx/char/glove.js): the claw out of the cut fingertip, the dark gauntlet with its buckle. */
 function tapSprite() {
   const p = new Px(11, 13);
   p.tpl([
-    '...aa....',
-    '...aa....',
-    '...aa....',
-    '...aaaaa.',
-    '.a.aaaaaa',
-    '.aaaaaaaa',
-    '.aaaaaaaa',
-    '..aaaaaa.',
-    '..aaaaaa.',
-    '...aaaa..',
-  ], { a: 0xf6dcc0 }, 1, 1);
-  p.set(4, 1, 0xffffff); p.set(4, 2, 0xffffff);
+    '...cc....',
+    '...ba....',
+    '...ba....',
+    '...babbb.',
+    '.b.baaaad',
+    '.baaaaaad',
+    '.bataatad',
+    '..kkkkkk.',
+    '..kgkkkk.',
+    '...rrrr..',
+  ], { a: 0x9e6a38, b: 0xc8945a, d: 0x684022, t: 0xe8d8b0, c: 0xf4ecd8, k: 0x3e2416, g: 0xe6be52, r: 0x623c24 }, 1, 1);
+  p.set(4, 2, 0x84542c); p.set(4, 1, 0xd8ac74);
   p.outline(INK);
   // ripple marks
   p.set(0, 1, 0xfff0c0); p.set(1, 0, 0xfff0c0); p.set(8, 0, 0xfff0c0); p.set(9, 1, 0xfff0c0);

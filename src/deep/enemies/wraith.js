@@ -26,7 +26,7 @@ export function buildWraith(zone) {
     if (typeof ny !== 'number') ny = 0;
     // vertical folds
     const fold = Math.sin(Math.atan2(x, z) * 7) * 0.18;
-    return C[Math.floor(clamp(k0 + ny * 0.3 + fold + (vb.n(x, y, z) - 0.5) * 0.2, 0, 0.999) * 4)];
+    return C[Math.floor(clamp(k0 + ny * 0.3 + fold * 1.3, 0, 0.999) * 4)]; // (wave 17: clean folds, no static)
   };
   // ---------------- robe (pivot at the waist): shoulders → flaring skirt that frays
   const robe = new VB(91);
@@ -117,7 +117,8 @@ export class Wraith extends Beast {
     this.size = rand(0.95, 1.08);
     const G = this.G = Wraith.warm(mgr, this.zone);
     this.hitCol = G.dark;
-    this.mat = this.material({ alpha: 0.9 });
+    // (wave 17) the robe blended (no screen-door grid over the body); the tatters keep the dither
+    this.mat = this.material({ blend: 0.92 });
     this.tatMat = this.material({ alpha: 0.6, wobble: 0.012 });
     this.eyeMat = this.material({ emissive: 1.6, rimK: 0 });
     this.boneMat = this.material({});
@@ -219,7 +220,7 @@ export class Wraith extends Beast {
     this.neck.rotation.set(-0.15, Math.sin(t * 0.7) * 0.2, 0);
     this.eyes.geometry = this.mode === 'fight' ? this.G.angry : this.G.eyes;
     const a = this.fade;
-    this.mat.uniforms.alpha.value = 0.9 * a;
+    this.mat.uniforms.blend.value = 0.92 * a;
     this.tatMat.uniforms.alpha.value = 0.6 * a;
     this.boneMat.uniforms.alpha.value = a < 0.98 ? a : 1;
     this.eyeMat.uniforms.emissive.value = (1.4 + this.tellK * 1.2) * a;

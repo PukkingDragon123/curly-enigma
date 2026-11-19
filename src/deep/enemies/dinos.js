@@ -16,7 +16,7 @@ import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { Legs, Chain, look } from './rig.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
-import { H, taper, sideEye } from './voxKit.js';
+import { H, taper, sideEye, vnoise } from './voxKit.js';
 import { puff, sparkle, shockRing, pebbles } from './fx.js';
 import { airBelow, airAbove, solidAt } from './physics.js';
 import { rand, clamp } from '../../core/util.js';
@@ -67,10 +67,9 @@ export function buildRaptor(v) {
   const sk = (vb, o = {}) => (x, y, z, nx, ny, nz) => {
     if (typeof ny !== 'number') { ny = 0; nz = 0; }
     if (ny < -0.35) return ((y + 64) % 3 === 0) ? mul(P.belly, 0.86) : P.belly; // scutes
-    const n = vb.n(x, y, z);
-    if (o.stripe && ny > 0 && ((((z + Math.round(x * 0.4)) % 7) + 7) % 7) < 2 && n > 0.2) return P.stripe;
-    const scale = ((x + 64) % 3 === 0) !== ((z + 64) % 3 === 0) ? -0.08 : 0; // a fine scale grid
-    return S[Math.floor(clamp((o.k0 ?? 0.35) + ny * 0.45 + (n - 0.5) * 0.2 + scale, 0, 0.999) * S.length)];
+    // (wave 17) clean tiger stripes and structured light; the scales come from the near copy's skin
+    if (o.stripe && ny > 0 && ((((z + Math.round(x * 0.4)) % 7) + 7) % 7) < 2) return P.stripe;
+    return S[Math.floor(clamp((o.k0 ?? 0.35) + ny * 0.45 + (nz || 0) * 0.06, 0, 0.999) * S.length)];
   };
   const body = new VB(121);
   body.ell(0, 0, 0, 7.6, 7.6, 11.2, sk(body, { stripe: 1 }));
@@ -372,7 +371,7 @@ export function buildShellback() {
     // hexagonal-ish plates with darker seams and bony knobs on top
     const u = x + (Math.floor(z / 3) & 1) * 1.5;
     if (((Math.floor(u / 3) + Math.floor(z / 3)) & 1) === 0 && (Math.abs(u % 3) < 0.6 || Math.abs(z % 3) < 0.6)) return P.plate[0];
-    return P.plate[Math.floor(clamp(0.4 + ny * 0.5 + (shell.n(x, y, z) - 0.5) * 0.3, 0, 0.999) * 4)];
+    return P.plate[Math.floor(clamp(0.4 + ny * 0.5 + (vnoise(x, y, z, 3, 21) - 0.5) * 0.24, 0, 0.999) * 4)];
   });
   for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; const h = shell.hitFrom(Math.cos(a) * 5, 12, Math.sin(a) * 7, 0, -1, 0); if (h) shell.set(h[0], h[1] + 1, h[2], P.knob); }
   for (let z = -8; z <= 8; z += 3) { const h = shell.hitFrom(0, 12, z, 0, -1, 0); if (h) { shell.set(0, h[1] + 1, z, P.knob); shell.set(0, h[1] + 2, z, P.knob); } }

@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { Enemy, smooth, easeBack, TAU } from './base.js';
 import { VB, VS, mul, mix, c01, ramp } from './vox.js';
-import { H, eye, tufts } from './voxKit.js';
+import { H, eye, tufts, taper, hramp, lit, vnoise, bake } from './voxKit.js';
 import { shockRing, puff, pebbles, sparkle } from './fx.js';
 import { MAT, M } from '../materials.js';
 import { rand, clamp } from '../../core/util.js';
@@ -36,20 +36,33 @@ function eyeVox(vb, x0, y0, z, col, hi, angry, side) {
 
 // ------------------------------------------------------------------ Pebble Mimic
 export function buildMimic(pal, zone, seed) {
-  const T = pal.tones, dark = mul(T[0], 0.55);
+  // (wave 17) at H: a pebble with a secret: lumpy lit masses, deep sockets with glowing eyes, a
+  // jagged crack of a mouth full of little teeth, a crystal growing out of one flank, moss on top
+  const T = pal.tones, dark = mul(T[0], 0.4);
+  const TT = hramp(T[2], 6, { step: 0.1 });
   const body = new VB(seed);
-  const shadeAt = (x, y, z, nx, ny) => {
-    const k = body.n(x, y, z);
-    if (k > 0.94) return pal.acc;
-    return ramp(T, clamp(0.25 + ny * 0.35 + (k - 0.5) * 0.6, 0, 0.999));
-  };
-  body.ell(0, 4.4, 0, 5.6, 4.4, 5.2, shadeAt);
-  body.ell(2.5, 6.5, -1.5, 2.6, 2.2, 2.6, shadeAt); // lumps
-  body.ell(-3, 5.5, 1, 2.2, 2, 2.2, shadeAt);
-  // eye sockets and a crack of a mouth on the front
-  const front = (x, y) => { for (let z = 8; z > -8; z--) if (body.has(x, y, z)) return z; return 0; };
-  for (const [x, y] of [[1, 4], [2, 4], [1, 5], [2, 5], [1, 6], [2, 6], [-2, 4], [-3, 4], [-2, 5], [-3, 5], [-2, 6], [-3, 6]]) body.set(x, y, front(x, y), dark);
-  for (const [x, y] of [[-2, 2], [-1, 3], [0, 2], [1, 3]]) body.set(x, y, front(x, y), dark);
+  const shadeAt = lit(TT, { clump: 0.25, cs: 4, seed });
+  body.ell(0, 8.8, 0, 11.2, 8.8, 10.4, shadeAt);
+  body.ell(5, 13, -3, 5.4, 4.6, 5.4, shadeAt); // lumps
+  body.ell(-6, 11, 2, 4.6, 4.2, 4.6, shadeAt);
+  body.ell(-1, 15.5, -4, 5, 2.4, 4.4, shadeAt);
+  const fr = (x, y) => { for (let z = 16; z > -16; z--) if (body.has(x, y, z)) return z; return 0; };
+  // the crystal on its flank (in the rock's accent colour)
+  for (const [x0, y0, z0, x1, y1, z1, r] of [[-9, 8, -4, -14, 13, -6, 2], [-9, 6, -1, -13, 8, 1, 1.3]]) taper(body, x0, y0, z0, x1, y1, z1, r, 0.5, (x, y, z, t) => (t > 0.7 ? mix(pal.acc, 0xffffff, 0.55) : x > x0 - 1 ? mul(pal.acc, 0.75) : pal.acc));
+  if (zone <= 2) body.paint((x, y, z, c) => (y > 13 && body.open(x, y, z, 0, 1, 0) && vnoise(x, y, z, 2.5, 3) < 0.62 ? (body.open(x, y + 1, z, Math.sign(x) || 1, 0, 0) ? 0x3a7a32 : 0x5aa84a) : undefined));
+  bake(body, { ao: 0.45, rim: 0.22 });
+  // deep sockets (the eyes sit in them), a jagged mouth with little teeth
+  for (const [cx, sd] of [[3.5, 1], [-4.5, -1]]) for (let y = 7; y <= 13; y++) for (let x = Math.floor(cx - 3); x <= Math.ceil(cx + 3); x++) {
+    if (Math.hypot((x + 0.5 - cx) / 2.8, (y + 0.5 - 10) / 3.2) > 1) continue;
+    const z = fr(x, y); body.del(x, y, z); body.set(x, y, z - 1, dark);
+  }
+  for (let x = -7; x <= 6; x++) {
+    const y = 4 + ((x + 8) % 3 === 0 ? 1 : 0) - (Math.abs(x + 0.5) > 5 ? -1 : 0), z = fr(x, y);
+    body.del(x, y, z); body.set(x, y, z - 1, 0x1a0c08);
+    if (x % 2 === 0) body.set(x, y + 1, fr(x, y + 1) + 1, 0xfff4e0); // upper teeth
+    else body.set(x, y - 1, fr(x, y - 1) + 1, 0xe8dcc0); // lower teeth
+  }
+  const front = (x, y) => Math.round((Math.max(fr(x * 2, y * 2), fr(x * 2 + 1, y * 2)) - 1) / 2);
   const zf = Math.max(front(1, 5), front(-2, 5)) + 1;
   const eyes = new VB(), angry = new VB();
   const ec = 0xffd04a, hi = 0xfffbe0;
@@ -71,7 +84,7 @@ export function buildMimic(pal, zone, seed) {
     sprout.box(-2, 2, 0, -1, 2, 0, g1); sprout.set(-3, 3, 0, g2); sprout.set(-2, 3, 0, g1);
   }
   return {
-    body: body.geo(0, 0, 0), eyes: eyes.geo(0, 5.5, 0), angry: angry.geo(0, 5.5, 0), foot: foot.geo(-0.5, 0, 0),
+    body: body.geo(0, 0, 0, H), eyes: eyes.geo(0, 5.5, 0), angry: angry.geo(0, 5.5, 0), foot: foot.geo(-0.5, 0, 0),
     sprout: sprout ? sprout.geo(0.5, 0, 0.5) : null, dust: c01(T[1]), chip: c01(T[2]),
   };
 }
@@ -221,12 +234,16 @@ export function buildGolem(pal, zone, seed) {
   // jaw; glowing runes cut into the shoulders and a core seam down the chest; boulder arms with a
   // pebble elbow and a big knuckled fist; stubby pillar legs with toe stones
   const T = pal.tones, dark = mul(T[0], 0.45), core = CORE[zone] || 0xffc860;
+  // (wave 17) each boulder lit as one mass on a hue-shifted ramp: a lit crown, strata on the flanks,
+  // a cluster of the accent mineral here and there (no per-voxel static or specks)
+  const TT = hramp(T[2], 6, { step: 0.1 });
   const sh = (vb, off = 0) => (x, y, z, nx, ny, nz) => {
-    const k = vb.n(x, y, z);
-    if (k > 0.96) return pal.acc;
-    if (ny > 0.7 && k < 0.6) return mix(T[3], 0xffffff, 0.14); // a rim of light on top
-    if (((y + off + 64) % 6 === 0) && Math.abs(ny) < 0.6) return mul(T[0], 0.8); // strata
-    return ramp(T, clamp(0.32 + ny * 0.5 + (nz || 0) * 0.1 + (k - 0.5) * 0.4 + off * 0.02, 0, 0.999));
+    if (typeof ny !== 'number') { ny = 0; nz = 0; }
+    const m = vnoise(x, y, z, 3.5, seed + off);
+    if (vnoise(x, y, z, 2, seed + 40) > 0.82) return mix(pal.acc, TT[3], 0.2);
+    if (ny > 0.72 && m > 0.45) return TT[5]; // a rim of light on top
+    if (((y + off + 64) % 6 === 0) && Math.abs(ny) < 0.6) return TT[0]; // strata
+    return TT[clamp(Math.floor((0.34 + ny * 0.46 + (nz || 0) * 0.1 + (m - 0.5) * 0.3 + off * 0.02) * 6), 0, 5)];
   };
   const torso = new VB(seed), glow = new VB(seed + 5);
   // boulders: the chest, the belly, shoulders, the head, a hump behind
@@ -257,8 +274,8 @@ export function buildGolem(pal, zone, seed) {
   const seam = [0, 5, sz / 14 / 2];
   // zone dressing
   torso.paint((x, y, z, c) => {
-    if (zone <= 2 && y > 18 && torso.open(x, y, z, 0, 1, 0) && torso.n(x, y, z, 9) < 0.55) return torso.n(x, y, z, 11) < 0.5 ? 0x3a7a3a : 0x5aa84a; // moss
-    if (zone === 5 && torso.open(x, y, z, 0, 1, 0) && y > 16) return torso.n(x, y, z, 12) < 0.3 ? 0xd8e8f4 : 0xf4faff; // snow
+    if (zone <= 2 && y > 18 && torso.open(x, y, z, 0, 1, 0) && vnoise(x, y, z, 3, 9) < 0.6) return vnoise(x, y, z, 3, 9) < 0.4 ? 0x5aa84a : 0x3a7a3a; // moss, in patches
+    if (zone === 5 && torso.open(x, y, z, 0, 1, 0) && y > 16) return torso.open(x, y, z, Math.sign(x) || 1, 0, 0) ? 0xd8e8f4 : 0xf4faff; // snow
     return undefined;
   });
   if (zone <= 2) tufts(torso, 40, { tones: [0x2a6a2a, 0x3a8a3a, 0x6ab84a], seed: 4, len: [1, 2], filter: (x, y, z) => y > 22 });
@@ -267,6 +284,7 @@ export function buildGolem(pal, zone, seed) {
       if (torso.n(x, y, z, 13) < 0.05 && (torso.open(x, y, z, 0, 0, 1) || torso.open(x, y, z, 1, 0, 0) || torso.open(x, y, z, -1, 0, 0))) { torso.del(x, y, z); glow.set(x, y, z, zone === 4 ? (torso.n(x, y, z, 14) < 0.5 ? 0xff7a1a : 0xffc040) : 0xffe08a); }
     }
   }
+  bake(torso, { ao: 0.4, rim: 0.22 });
   // legs (pivot at the hip): a pillar of two stones and toe pebbles
   const leg = new VB(seed + 2);
   leg.ell(0, -6, 0, 6.8, 8, 6.8, (x, y, z, nx, ny, nz) => mul(sh(leg, 1)(x, y, z, nx, ny, nz), 0.88));
@@ -279,6 +297,7 @@ export function buildGolem(pal, zone, seed) {
   arm.ell(3, -21, 2, 8.8, 8.4, 8.8, sh(arm, 1));
   for (let x = -3; x <= 9; x++) for (const y of [-19, -23]) arm.set(x, y, front(arm, x, y), mul(T[0], 0.65)); // knuckle grooves
   for (const x of [-1, 3, 7]) for (let y = -22; y <= -20; y++) arm.set(x, y, front(arm, x, y), mul(T[0], 0.7));
+  bake(leg, { ao: 0.35, rim: 0.2 }); bake(arm, { ao: 0.35, rim: 0.2 });
   // eyes, glowing in the sockets (placed at (0, 13, 0) VS)
   const eyes = new VB(), angry = new VB();
   for (const [vb, a, col] of [[eyes, false, core], [angry, true, 0xff4a2a]]) {

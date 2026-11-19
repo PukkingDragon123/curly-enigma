@@ -19,7 +19,7 @@ const RADII = [3.3, 3.1, 2.8, 2.4, 2.0, 1.6];
 /** Faceted crystal colors: each facet (sign octant + noise) gets its own tone. */
 function facet(vb, P, x, y, z, nx, ny, nz) {
   const f = (nx > 0 ? 1 : 0) + (ny > 0 ? 2 : 0) + (nz > 0 ? 4 : 0);
-  const k = clamp(0.25 + ny * 0.45 + ((f * 0.37) % 1 - 0.5) * 0.5 + (vb.n(x, y, z) - 0.5) * 0.15, 0, 0.999);
+  const k = clamp(0.25 + ny * 0.45 + ((f * 0.37) % 1 - 0.5) * 0.45, 0, 0.999); // (wave 17: facets, no static)
   if (ny < -0.55) return P.belly;
   return P.t[Math.floor(k * 4)];
 }

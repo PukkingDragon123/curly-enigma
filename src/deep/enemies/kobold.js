@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { Legs, Chain, look } from './rig.js';
 import { VB, mul, mix, c01 } from './vox.js';
+import { vnoise, bake } from './voxKit.js';
 import { sparkle, puff, pebbles } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -29,10 +30,8 @@ export function buildKobold(zone, chief = false) {
   // shading for ell (x, y, z, nx, ny, nz) and cap (x, y, z, t) fills alike
   const sc = (vb, k0 = 0.35) => (x, y, z, nx, ny, nz) => {
     if (typeof ny !== 'number') { ny = 0; nz = 0; }
-    const n = vb.n(x, y, z);
-    const k = clamp(k0 + ny * 0.42 + (nz || 0) * 0.08 + (n - 0.5) * 0.3, 0, 0.999);
-    // a scale pattern: darker scale edges in staggered rows
-    if (((x + (y & 1) * 2 + z * 3) & 3) === 0 && n < 0.55) return mul(S[Math.floor(k * 4)], 0.84);
+    // (wave 17) structured light, no static; the scale rows only on the flanks, a quiet step darker
+    const k = clamp(k0 + ny * 0.42 + (nz || 0) * 0.1 + (vnoise(x, y, z, 3, 5) - 0.5) * 0.16, 0, 0.999);
     return S[Math.floor(k * 4)];
   };
   // ---------------- head (pivot at the neck)
@@ -61,7 +60,7 @@ export function buildKobold(zone, chief = false) {
   }
   // helmet: a dented iron dome, a brim, rivets, a candle on top; little horns poke out of the sides
   const iron = chief ? [0x5a4422, 0x8a6a32, 0xb89040, 0xe8c868] : [0x34363e, 0x50545e, 0x747a86, 0x9ea4b0];
-  head.ell(0, 7.3, -0.9, 4.5, 2.7, 4.4, (x, y, z, nx, ny) => (y < 7 ? -1 : iron[clamp(Math.floor(1.4 + ny * 2 + (head.n(x, y, z, 4) - 0.5) * 0.8), 0, 3)]));
+  head.ell(0, 7.3, -0.9, 4.5, 2.7, 4.4, (x, y, z, nx, ny) => (y < 7 ? -1 : iron[clamp(Math.floor(1.2 + ny * 2.2 + (nx < -0.3 ? 0.5 : 0)), 0, 3)])); // (wave 17: a clean dome, lit up-left)
   for (let a = 0; a < 36; a++) { const ang = (a / 36) * Math.PI * 2; for (const rr of [4.7, 5.3]) head.set(Math.round(Math.cos(ang) * rr - 0.5), 7, Math.round(Math.sin(ang) * rr - 0.9), rr > 5 ? iron[0] : a % 4 === 0 ? iron[3] : iron[1]); }
   for (let a = 0; a < 8; a++) { const ang = (a / 8) * Math.PI * 2 + 0.2; const h = head.hitFrom(Math.cos(ang) * 8 - 0.5, 8, Math.sin(ang) * 8 - 0.9, -Math.cos(ang), 0, -Math.sin(ang)); if (h) head.set(h[0], h[1], h[2], 0xd8d4c8); }
   head.set(1, 10, 1, iron[0]); head.set(2, 9, 1, iron[0]); // a dent
@@ -92,7 +91,7 @@ export function buildKobold(zone, chief = false) {
   const vest = [0x5a3a20, 0x7a5030, 0x9a683c];
   torso.paint((x, y, z, c) => {
     if (z > 1.2 && Math.abs(x + 0.5) < 1.8 && y < 9) return y % 2 ? P.belly : mul(P.belly, 0.93); // belly scutes
-    if (y >= 4 && y <= 10 && !(z > 0.6 && Math.abs(x + 0.5) < 2.4)) return vest[torso.n(x, y, z, 7) < 0.25 ? 0 : (y + x) % 4 ? 1 : 2];
+    if (y >= 4 && y <= 10 && !(z > 0.6 && Math.abs(x + 0.5) < 2.4)) return vest[(y === 4 || y === 10) ? 0 : z > 1 ? 2 : 1]; // (wave 17: stitched hems, lit front, no hatch)
     if (y === 3 || y === 2) return z > 2.2 && (x === 0 || x === -1) ? 0xe0b84a : 0x2a1a10; // belt + buckle
     return undefined;
   });
@@ -127,6 +126,7 @@ export function buildKobold(zone, chief = false) {
   glass.box(-1, -6, -1, 0, -3, 0, (x, y, z) => (y === -5 || y === -4 ? 0xfff6c0 : 0xffb848));
   const flame = new VB(); flame.set(0, 0, 0, 0xfff0a0); flame.set(-1, 0, 0, 0xffc050); flame.set(0, 1, 0, 0xffa030); flame.set(-1, 1, -1, 0xff8020);
   const V = (vb, px = 0, py = 0, pz = 0) => vb.geo(px, py, pz, KV);
+  for (const vb of [head, torso, thigh, shin, arm]) bake(vb, { ao: 0.35, rim: 0.2, r: 1 }); // (wave 17)
   return {
     head: V(head), jaw: V(jaw), eyes: V(eyes, 0, EYE_Y, 0), angry: V(angry, 0, EYE_Y, 0), torso: V(torso),
     tail: [tailSeg(1.6), tailSeg(1.15), tailSeg(0.75, true)].map((t) => V(t)), thigh: V(thigh), shin: V(shin), foot: V(foot), arm: V(arm),

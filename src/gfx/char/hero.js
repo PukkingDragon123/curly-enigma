@@ -2,7 +2,8 @@
 // skinned assembly as makeCharacter (one skinned mesh + whiskers), with his own extras:
 //   - a scorched leather smithing apron (stitched hem, rivets, a bib pocket with a chisel and a
 //     pencil, burn marks), a tool belt with a brass buckle and two pouches, a rust-red work shirt;
-//   - sleeves rolled up over big furry forearms: a leather bracer on the right, a wrap on the left;
+//   - sleeves rolled up over big furry forearms: a leather bracer on the right, a wrap on the left,
+//     over thick leather work gloves (char/glove.js: the player never shows a bare paw);
 //   - brass-rimmed goggles pushed up on the forehead (or pulled down over the eyes), a cowlick,
 //     a determined brow;
 //   - leather boot wraps over his digging feet;
@@ -41,6 +42,7 @@ import { buildHead, skullRow } from './head.js';
 import { eyeSet, mouthGeo, mouthSize, whiskerGeo } from './face.js';
 import { buildBody, buildTail } from './body.js';
 import { buildArm, buildLeg } from './limbs.js';
+import { gloveSteps } from './glove.js';
 import { CharacterRig } from './rig.js';
 
 const TAU = Math.PI * 2;
@@ -855,10 +857,12 @@ export function makeHeroMole(opts = {}) {
   const shoulderY = (p.bh - 1.5) * u;
   const armL = group(hip, -(p.bw / 2 + 1.5) * u, shoulderY, u * 0.5);
   const armR = group(hip, (p.bw / 2 + 1.5) * u, shoulderY, u * 0.5);
-  const arm = buildArm({ ...spec, outfit: 'none', dirt: 0.6 }, p, bake);
+  // (his paws wear the work gloves, under the bracer and the wrap: char/glove.js, limbs.js)
+  const arm = buildArm({ ...spec, outfit: 'none', dirt: 0.6 }, p, bake, gloveSteps(vs * 1.1, 14, height));
   const big = [vs * 1.1, vs * 1.06, vs * 1.1], bigL = [-vs * 1.1, vs * 1.06, vs * 1.1];
   const armRb = A.part(armR, arm.geo, { scale: big });
   const armLb = A.part(armL, arm.geo, { scale: bigL });
+  if (arm.glove) { A.attach(armRb, arm.glove); A.attach(armLb, arm.glove); }
   A.attach(armRb, sleeveGeo(p, spec.fur, 'R'));
   A.attach(armLb, sleeveGeo(p, spec.fur, 'L'));
   const handL = group(armL, 0, -(p.ah + 1) * u * 1.06, u);

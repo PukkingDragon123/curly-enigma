@@ -3,7 +3,7 @@
 // turns swooping at the lamp. One whack each.
 import { Enemy, TAU } from './base.js';
 import { VB, VS, c01 } from './vox.js';
-import { H, taper, eye, ramp4 } from './voxKit.js';
+import { H, taper, eye, hramp, lit, bake, clumps } from './voxKit.js';
 import { puff, sparkle } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -14,13 +14,16 @@ const WING = [0x2e1c40, 0x45295e, 0x5e3a7a, 0x7a5296], BONE = 0x1c1228, EAR = [0
 // big veined ears and a pug snout with a nose-leaf, fangs; wings of real membrane stretched between
 // an arm and three finger bones, scalloped between the tips, with a thumb claw at the wrist.
 export function buildBat() {
-  const furSh = (b) => (x, y, z, nx, ny, nz) => ramp4(FUR, 0.42 + ny * 0.3 + nz * 0.12 + (b.n(x, y, z) - 0.5) * 0.35 + ((x * 3 + y * 5 + z) % 4 === 0 ? 0.12 : 0));
+  // (wave 17) structured light in soft clumps (no per-voxel static), a pale chest, baked AO and rim
+  const FR = hramp(FUR[3], 6, { step: 0.1 });
+  const furSh = () => lit(FR, { clump: 0.3, cs: 2.6, seed: 4, bias: -0.05 });
   const body = () => {
     const b = new VB(91), sh = furSh(b);
     b.ell(0, -1, -1, 4.6, 5.2, 4.4, sh); // body
     b.ell(0, 3.2, 2.4, 4, 3.6, 3.6, sh); // head
-    b.ell(0, 0.6, 1.2, 4.4, 2.4, 3.6, (x, y, z) => (b.n(x, y, z, 2) > 0.45 ? FUR[3] : FUR[4])); // the ruff
-    b.ell(0, -1.6, 2.2, 2.8, 3.2, 1.8, (x, y, z) => (((x + y) & 1) ? FUR[3] : FUR[2])); // chest
+    b.ell(0, 0.6, 1.2, 4.4, 2.4, 3.6, lit(FR, { bias: 0.18 })); // the ruff
+    b.ell(0, -1.6, 2.2, 2.8, 3.2, 1.8, lit(FR, { bias: 0.1 })); // chest
+    clumps(b, 10, { tones: FR.slice(2, 5), seed: 6, len: [1.2, 2], r: 1, droop: 0.5, filter: (x, y, z) => y < 2 && y > -2 && z > -1 });
     for (const sd of [1, -1]) {
       const X = (x) => (sd > 0 ? x : -1 - x);
       // ears: tall, tilted out, a pink inside with dark veins
@@ -36,6 +39,7 @@ export function buildBat() {
     b.box(-1, 2, 6, 0, 2, 6, BONE); // nostrils
     b.box(-1, 3, 6, 0, 4, 6, EAR[1]); b.set(0, 5, 6, EAR[2]); b.set(-1, 5, 6, EAR[1]); // the leaf
     b.box(-1, 0, 6, 0, 0, 6, 0x1a0a12); // mouth
+    bake(b, { ao: 0.4, rim: 0.25, skip: (c) => c === 0xf4eef0 || c === 0xd8ccd8 });
     return b;
   };
   /** One wing (sd = 1 right, -1 left) raised to angle a (radians up from level). */
@@ -89,14 +93,14 @@ export function buildBat() {
     // wings wrapped round like a cloak, the wrist claws up by the ears
     for (let y = -7; y <= 3; y++) for (let z = -3; z <= 3; z++) {
       const xx = 5 + (Math.abs(z) > 2 ? -1 : 0) + (y < -4 ? -1 : 0);
-      folded.set(X(xx), y, z, z === 3 ? BONE : (y + z) % 4 === 0 ? WING[0] : y < -4 ? WING[2] : WING[1]);
+      folded.set(X(xx), y, z, z === 3 ? BONE : z % 2 === 0 ? WING[0] : y < -4 ? WING[2] : WING[1]); // (wave 17: fold ribs, not a diagonal hatch)
     }
     folded.set(X(5), 4, 2, BONE); folded.set(X(5), 5, 2, 0xd8ccd8);
   }
   frames.push(folded.geo(0, 0, 0, H));
   // eyes: glowing, with a slit pupil and a glint (placed at (0, 0.5, 2) VS = (0, 1, 4) H)
   const eyes = new VB(), ref = body();
-  for (const sd of [1, -1]) eye(eyes, sd * 1.8, 3.6, 0, 1.4, 1.6, { iris: 0xff5a8a, pupil: 0x3a0a1a, slit: true, pr: 0.5, on: ref });
+  for (const sd of [1, -1]) eye(eyes, sd * 1.9, 3.7, 0, 1.5, 1.8, { iris: 0xff5a8a, pupil: 0x3a0a1a, slit: true, pr: 0.5, gr: 0.36, on: ref }); // (wave 17: a little bigger)
   return { frames, eyes: eyes.geo(0, 1, 4, H), fur: c01(FUR[2]), eye: [1, 0.35, 0.55] };
 }
 

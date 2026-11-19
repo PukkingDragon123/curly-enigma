@@ -21,6 +21,8 @@
 import * as THREE from 'three';
 import { Enemy, TAU, wrapA, smooth } from './base.js';
 import { VB, mul, mix, c01 } from './vox.js';
+import { vnoise, bake } from './voxKit.js';
+import { h3 } from '../noise.js';
 import { puff, sparkle, shockRing, pebbles, spores } from './fx.js';
 import { airAbove, solidAt } from './physics.js';
 import { caveDensity, CS } from '../Generator.js';
@@ -79,18 +81,31 @@ export function hallAt(plan, x, fy, z, H, W, R) {
 }
 
 // ------------------------------------------------------------------ modelling helpers
-const RAMP = (vb, ramp, k0, nk = 0.25) => (x, y, z, nx, ny) => ramp[Math.floor(clamp(k0 + (ny || 0) * 0.45 + (vb.n(x, y, z) - 0.5) * nk, 0, 0.999) * ramp.length)];
-/** Living stone: plates with dark seams, a moss cap on top, flecks. */
+const RAMP = (vb, ramp, k0, nk = 0.25) => (x, y, z, nx, ny) => ramp[Math.floor(clamp(k0 + (ny || 0) * 0.45 + (vnoise(x, y, z, 3, 2) - 0.5) * nk, 0, 0.999) * ramp.length)];
+/**
+ * Living stone (wave 17): big readable plates (each a soft mass with a lit crown), dark crevices
+ * between them from a cell network (not a brick grid), moss in patches on top, no specks.
+ */
 function stone(vb, P, k0 = 0.4) {
   return (x, y, z, nx, ny, nz) => {
     if (typeof ny !== 'number') { ny = 0; nx = 0; nz = 0; }
-    const n = vb.n(x, y, z), cell = vb.n(Math.floor((x + 64) / 4), Math.floor((y + 64) / 3), Math.floor((z + 64) / 4), 7);
-    const seam = ((x + 64) % 4 === 0 && cell > 0.4) || ((y + 64) % 3 === 0 && cell < 0.55) || ((z + 64) % 4 === 0 && cell > 0.7);
-    if (ny > 0.62 && vb.n(x >> 1, y >> 1, z >> 1, 3) > 0.45) return n > 0.7 ? P.moss[1] : P.moss[0];
-    if (seam) return P.seam;
-    if (n > 0.965) return P.fleck;
-    return P.s[Math.floor(clamp(k0 + ny * 0.42 + (cell - 0.5) * 0.3 + (n - 0.5) * 0.12, 0, 0.999) * P.s.length)];
+    const cr = plates(x, y * 1.3, z, 4.5), m = vnoise(x, y, z, 3, 7);
+    if (ny > 0.6 && vnoise(x, y, z, 2.5, 3) > 0.45) return ny > 0.85 ? P.moss[1] : P.moss[0];
+    if (cr < 0.42) return P.seam;
+    const crown = cr > 1.5 && ny > 0.3 ? 0.12 : 0;
+    return P.s[Math.floor(clamp(k0 + ny * 0.42 + (m - 0.5) * 0.26 + crown, 0, 0.999) * P.s.length)];
   };
+}
+/** Distance to the nearest plate edge (a jittered cell network, s voxels a cell). */
+function plates(x, y, z, s) {
+  const cx = Math.floor(x / s), cy = Math.floor(y / s), cz = Math.floor(z / s);
+  let d1 = 1e9, d2 = 1e9;
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+    const X = cx + a, Y = cy + b, Z = cz + c;
+    const d = Math.hypot((X + h3(X, Y, Z, 41)) * s - x, (Y + h3(X, Y, Z, 42)) * s - y, (Z + h3(X, Y, Z, 43)) * s - z);
+    if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+  }
+  return (d2 - d1) / 2;
 }
 /** A crystal: a six-sided prism from a to b that tapers to a point, banded light along its length. */
 function crystal(vb, ax, ay, az, bx, by, bz, r, C) {
@@ -98,13 +113,14 @@ function crystal(vb, ax, ay, az, bx, by, bz, r, C) {
   for (let i = 0; i < steps; i++) {
     const t0 = i / steps, t1 = (i + 1) / steps, rr = r * (i < steps - 2 ? 1 : i === steps - 2 ? 0.75 : 0.42);
     vb.cap(ax + (bx - ax) * t0, ay + (by - ay) * t0, az + (bz - az) * t0, ax + (bx - ax) * t1, ay + (by - ay) * t1, az + (bz - az) * t1, rr,
-      (x, y, z) => C[Math.min(C.length - 1, Math.floor((t0 + 0.2) * C.length * 0.9 + (((x + y * 2 + z) % 3 + 3) % 3 === 0 ? 1 : 0)))]);
+      (x, y, z) => C[Math.min(C.length - 1, Math.floor((t0 + 0.2) * C.length * 0.9 + (x + 0.5 < ax + (bx - ax) * t0 ? 1 : 0)))]); // (wave 17: a lit facet and a shaded one, no stripes)
   }
   vb.set(Math.round(bx), Math.round(by), Math.round(bz), C[C.length - 1]);
 }
 /** Build both copies of a part: { hi, lo }. */
 const LO = { only: false }; // (icons.js: portraits need only the far copy)
 const two = (vb, px = 0, py = 0, pz = 0) => {
+  if (vb.size > 12) bake(vb, { ao: 0.32, rim: 0.2, r: 1 }); // (wave 17: crevices and lit top edges baked in)
   const lo = vb.geo(px, py, pz, KV, 1);
   return { lo, hi: NEAR_K > 1 && !LO.only ? vb.geo(px, py, pz, KV, NEAR_K) : lo };
 };
@@ -160,6 +176,7 @@ const TITAN_PARTS = {
     const eyes = new VB(505);
     for (const sd of [1, -1]) eyes.box(sd > 0 ? 2 : -4, 1, 9, sd > 0 ? 3 : -3, 2, 9, C[4]);
     eyes.set(2, 2, 9, 0xffffff); eyes.set(-4, 2, 9, 0xffffff); // glints
+    for (const sd of [1, -1]) for (let x = 0; x < 4; x++) eyes.set((sd > 0 ? 1 : -5) + x, 3, 9, P.seam); // (wave 17) a scowling lid over each
     return { head: two(h), jaw: two(jaw), eyes: two(eyes) };
   },
   arm(z) {
@@ -203,10 +220,10 @@ const COLO_PARTS = {
     const P = COLO;
     const s = new VB(521);
     const fib = (x, y, z, t) => {
-      const n = s.n(x, y, z), a = Math.atan2(z, x);
-      if (((Math.floor((a + Math.PI) * 4) % 3) === 0) && n > 0.3) return P.ridge;
-      if (s.n(x >> 1, y >> 2, z >> 1, 5) > 0.82) return P.lichen[n > 0.5 ? 1 : 0];
-      return P.stalk[Math.floor(clamp(0.35 + Math.cos(a - 0.8) * 0.25 + (n - 0.5) * 0.3 + y * 0.004, 0, 0.999) * 5)];
+      const a = Math.atan2(z, x), m = vnoise(x, y, z, 3, 5);
+      if ((Math.floor((a + Math.PI) * 4) % 3) === 0 && m > 0.35) return P.ridge; // (wave 17: fibres in clean runs)
+      if (vnoise(x, y * 0.6, z, 2.5, 6) > 0.78) return P.lichen[m > 0.5 ? 1 : 0];
+      return P.stalk[Math.floor(clamp(0.35 + Math.cos(a - 0.8) * 0.25 + (m - 0.5) * 0.2 + y * 0.004, 0, 0.999) * 5)];
     };
     s.cap(0, 2, 0, 0, 40, 0, 6.6, fib);
     s.ell(0, 4, 0, 9.5, 6, 9.5, fib); // the base flares out
@@ -222,7 +239,7 @@ const COLO_PARTS = {
   cap() {
     const P = COLO;
     const c = new VB(523), glow = new VB(524);
-    c.ell(0, 0, 0, 27, 13, 27, (x, y, z, nx, ny) => (y < 0 ? -1 : P.cap[Math.floor(clamp(0.3 + ny * 0.55 + (c.n(x, y, z) - 0.5) * 0.25, 0, 0.999) * 4)]));
+    c.ell(0, 0, 0, 27, 13, 27, (x, y, z, nx, ny) => (y < 0 ? -1 : P.cap[Math.floor(clamp(0.3 + ny * 0.55 + (vnoise(x, y, z, 4, 8) - 0.5) * 0.2, 0, 0.999) * 4)])); // (wave 17: no static)
     // glowing spots on the dome
     const spots = [];
     for (let i = 0; i < 26; i++) { const a = c.n(i, 1, 2, 9) * TAU, e = 0.15 + c.n(i, 2, 3, 9) * 0.8; spots.push([Math.cos(a) * Math.cos(e) * 26, Math.sin(e) * 12.5, Math.sin(a) * Math.cos(e) * 26, 1.6 + c.n(i, 3, 4, 9) * 2.2]); }
