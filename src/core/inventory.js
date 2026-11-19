@@ -380,12 +380,13 @@ export function canAdd(state, id, n = 1) {
 export function bagLoad(state) { return W.moleLoad(state, bag(state).slice(0, bagSlots(state))); }
 /** Can the mole lift n more of this item (by weight: up to twice what it carries comfortably)? */
 export function canLift(state, id, n = 1) { return !slotted(id) || W.canLift(state, bag(state), id, n); }
-/** { used, slots, free, full } of every carried slot (belt + pack; full = not one free slot left). */
+/** { used, slots, free, full } of the carried slots that hold things (belt + pack, not the belt's tools). */
 export function bagFill(state) {
   const s = bag(state), cap = bagSlots(state);
-  let used = 0;
-  for (let i = 0; i < cap; i++) if (s[i]) used++;
-  return { used, slots: cap, free: cap - used, full: used >= cap };
+  let used = 0, refs = 0;
+  for (let i = 0; i < cap; i++) if (s[i]?.tool) refs++; else if (s[i]) used++;
+  const slots = cap - refs;
+  return { used, slots, free: slots - used, full: used >= slots };
 }
 /** Would everything carried fit with this bag on? (a smaller bag can't hold what it has no slots for) */
 export function fitsBag(state, bagIt) {

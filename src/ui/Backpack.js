@@ -42,7 +42,7 @@ const COLS = Inv.COLS;
  */
 export function bagFullToast(game, id) {
   const ui = game.ui;
-  game.audio.play('ui_error');
+  game.audio.play('thud', { vol: 0.25 }); // (the caller already said "no": ui_error)
   ui.belt?.full?.(id);
   const f = game.state.bagFill?.();
   if (f) ui.setBag?.(f.slots, f.slots);

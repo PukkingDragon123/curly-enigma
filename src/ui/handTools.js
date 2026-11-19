@@ -156,6 +156,7 @@ export class HandTools {
     rig.vm?.impact?.(kind, kind === 'pick' ? 0.7 : 0.4);
     this.g.audio.play(sw.snd, { vol: 0.32, pitch: sw.pitch });
     rig.shake?.(kind === 'pick' ? 0.12 : 0.05);
+    try { this.s.fx?.dust?.(h.x + h.nx * 0.02, h.y, h.z + h.nz * 0.02, kind === 'pick' ? 5 : 2, [0.46, 0.36, 0.26], 0.05); } catch (e) { /* no voxel dust here */ }
   }
 
   stopLoop() { if (this.loop) { this.loop.stop?.(); this.loop = null; } }

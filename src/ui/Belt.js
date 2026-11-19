@@ -46,9 +46,12 @@ export class Belt {
 
   /** slots: [{icon, key, label, off, n, meter}] */
   set(slots, sel = 0, onPick = null) {
-    if (!slots) { this.el.hidden = true; this.slots = null; this._sig = null; this.sel = -1; return; }
-    // a loop holding a stack shows that stack (whatever kind the scene made of it)
+    if (!slots) { this.el.hidden = true; this.slots = null; this.raw = null; this._sig = null; this.sel = -1; return; }
+    this.raw = slots;
+    // a loop holding a stack shows that stack (whatever kind the scene made of it), and keeps up
+    // with it as things come and go
     const st0 = this.ui.game.state;
+    if (st0?.on && this.watched !== st0) { this.watched = st0; st0.on('items', () => { if (this.raw && !this.el.hidden) this.set(this.raw, this.sel, this.onPick); }); }
     slots = slots.map((d, i) => {
       const s = st0?.data?.inv ? hotStack(st0, i) : null;
       if (!s || s.tool) return d;
