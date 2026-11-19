@@ -184,6 +184,14 @@ the view model, HUD, and the optional enemies/fluids/props modules).
 - Everything on screen is detailed, high-resolution pixel art with pixel fonts. Paper is welcome, with material variety by context (parchment, leather, wood, brass, slate, cloth).
 - Prefer physical, in-world UI where it fits; the 2D UI that remains is interactive and tactile (presses, slides, flutters, glints).
 
+## House style: "Lamplight Woodcut" (binding, from the player: "not AI slop, our own stylized art style")
+Everything (2D pixel art, voxel models, UI, FX) follows one recognizable style:
+- **Palette:** warm earth tones lit by lamps and forge. Shadows fall to deep plum/indigo (never pure black); highlights go to warm cream (never pure white). One accent colour per scene or panel. Saturation is restrained; glow is rare and earned (fire, ore, magic), not on everything.
+- **2D:** a woodcut/linocut look. Selective 1px dark-plum outlines, broken on the lit side. Shading uses hatching and 3–4 flat tones, not airbrushed gradients, glossy bevels or soft blur. Paper, wood, leather and iron read through texture marks.
+- **Shapes:** chunky, hand-carved and a little lopsided. Exaggerated proportions; nothing perfectly symmetric or perfectly round. Silhouettes first.
+- **Voxel 3D:** a carved-toy feel. Chunky readable forms, 3–5 step ramps per material, baked AO, warm key light and cool plum fill. Detail is concentrated where the eye goes (faces, hands, edges, focal props); quiet areas stay quiet. No speckle-noise dithering.
+- **Avoid (AI tells):** bloom halos and glow on everything, rainbow saturation, generic gold-filigree UI-kit frames, random sparkles, perfectly symmetric icon compositions, uniform noise detail, plastic gloss, stock fantasy motifs.
+
 ## Debug switches (URL query)
 - `?voxrule=0`: turn off the size-based voxel resolution rule (src/gfx/voxRes.js) for A/B shots.
 - `?hires=0`: draw the interface art at 1× instead of 2× (uiArt.js `ART_RES`; finer detail lives in `r > 1` branches, src/ui/px.js and src/ui/pxFine.js) for A/B shots.
