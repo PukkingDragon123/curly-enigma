@@ -125,7 +125,7 @@ export const QUESTS = {
     intro: 'We\'re not the only ones down here. There\'s a Trading Post along the old rail tunnel, and an herbalist who smells of mint and grudges. Say hello. Politely.',
     outro: 'Made friends? Good. Friends buy ore.',
     steps: [
-      { id: 'post', text: 'Visit the Trading Post', hint: 'Out of the mine lift and along the rails.', on: [{ type: 'talk', npc: 'trader' }, { type: 'reach', place: 'burrow:trader' }], where: { burrow: 'trader' } },
+      { id: 'post', text: 'Visit the Trading Post', hint: 'Town square, with the other stalls.', on: [{ type: 'talk', npc: 'trader' }, { type: 'reach', place: 'burrow:trader' }], where: { burrow: 'trader' } },
       { id: 'herbs', text: "Visit the Herbalist's Hollow", hint: 'Follow your nose. Mint. And grudges.', on: [{ type: 'talk', npc: 'herbalist' }, { type: 'reach', place: 'burrow:herbalist' }], where: { burrow: 'herbalist' } },
     ],
     reward: { gold: 80, sp: 1 },
