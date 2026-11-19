@@ -286,7 +286,68 @@ function buckle() {
   return p;
 }
 
-const sp = (key, fn, o) => art('pk:' + key, fn, o ?? (/^(pocket|sleeve|loop)/.test(key) ? { detail: false, edges: false } : { brown: 'leather' })); // stretched pieces: no material texture
+
+// ---------------------------------------------------------------- wave 19: deep pockets for bigger items
+/**
+ * A pocket you can see into (9-slice 7 on 24, the floor tiles): a rolled lip that catches the lamp
+ * on its top and left, a stitched band, the edge where it drops in, the inner walls (top and left in
+ * shadow, bottom and right lit) and a darker floor with the rim's shadow along its top and left.
+ * kind 'pocket' (the pack's lining, canvas floor) | 'loop' (a strap loop on the belt: leather floor,
+ * a rivet in each top corner). on: picked (a warm brass trim on the lip).
+ */
+function well(kind = 'pocket', on = false) {
+  const S = 24;
+  const rim = leatherTile(kind === 'loop' ? LEATHER_D : LEATHER, on ? 41 : 43, 32);
+  const floor = kind === 'loop' ? leatherTile(LEATHER_D, 45, 32) : canvasTile(32, 47);
+  const p = new Px(S, S);
+  eachFine(p, 0, 0, S, S, (x, y, get) => {
+    const dl = x, dt = y, dr = S - 1 - x, db = S - 1 - y, d = Math.min(dl, dt, dr, db);
+    if (d === 0) return 0x1a0c06;
+    const c = get(rim, x, y);
+    if (d === 1) {
+      const lit = dt === 1 || dl === 1;
+      if (on) return lit ? BRASS[5] : BRASS[2];
+      return lit ? mixC(c, 0xe6b07a, dt === 1 && dl === 1 ? 0.5 : 0.38) : shadeC(c, 0.66);
+    }
+    if (d <= 3) return on ? mixC(c, 0xffd890, 0.14) : c;
+    if (d === 4) return 0x1e0e08; // where it drops in
+    const f = kind === 'loop' ? shadeC(get(floor, x, y), 0.8) : shadeC(get(floor, x, y), 0.62);
+    if (d === 5) {
+      if (dt === 5 && dt <= dl && dt <= dr) return shadeC(f, 0.42); // the top wall, in its own shadow
+      if (dl === 5) return shadeC(f, 0.58);
+      if (db === 5) return mixC(f, 0xd09060, 0.3); // the bottom wall faces the lamp
+      return shadeC(f, 0.9);
+    }
+    if (dt === 6 || dl === 6) return shadeC(f, 0.74); // the rim's shadow on the floor
+    return on ? mixC(f, 0xffe0a0, 0.08) : f;
+  });
+  // the band's stitches (the top run sits in the lamp, the bottom one in the lip's shade)
+  stitches(p, 3, 2, S - 4, 2, 2, 2); stitches(p, 3, S - 3, S - 4, S - 3, 2, 2);
+  stitches(p, 2, 3, 2, S - 4, 2, 2); stitches(p, S - 3, 3, S - 3, S - 4, 2, 2);
+  if (kind === 'loop') { rivet(p, 1, 1); rivet(p, S - 5, 1); }
+  return p;
+}
+
+/** A small stamped brass plate for a stack's count (9-slice 3 on 12×10): bevelled, a nail hole. */
+function brassTag() {
+  const W = 12, H = 10;
+  const p = new Px(W, H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const d = Math.min(x, y, W - 1 - x, H - 1 - y);
+    let c;
+    if (d === 0) c = 0x2a1406;
+    else if (d === 1) c = y === 1 || x === 1 ? BRASS[5] : BRASS[2];
+    else c = (x + y * 3) % 7 === 0 ? BRASS[3] : BRASS[4];
+    p.set(x, y, c);
+  }
+  // a corner cut off the top right (cut from sheet, not stamped round), and the nail hole on the left
+  p.clear(W - 1, 0); p.set(W - 2, 1, 0x2a1406); p.set(W - 1, 1, 0x2a1406);
+  p.set(2, 4, 0x3a2408); p.set(2, 5, 0x6a4612);
+  if (p.r > 1) { p.fline(1.5, 1, W - 2.5, 1, BRASS[6], 170); p.dot(2.5, 4.5, BRASS[5]); }
+  return p;
+}
+
+const sp = (key, fn, o) => art('pk:' + key, fn, o ?? (/^(pocket|sleeve|loop|well|brass)/.test(key) ? { detail: false, edges: false } : { brown: 'leather' })); // stretched pieces: no material texture
 export const PACK_ART = {
   leather: () => sp('leather', () => leatherTile(LEATHER, 3)),
   flapLeather: () => sp('flapLeather', () => leatherTile(LEATHER_D, 29)),
@@ -297,6 +358,8 @@ export const PACK_ART = {
   loop: (on = false) => sp('loop' + (on ? 1 : 0), () => loopFrame(on)),
   buckle: () => sp('buckle', buckle),
   rivet: () => sp('rivet', () => { const p = new Px(4, 4); rivet(p, 0, 0); return p; }),
+  well: (kind = 'pocket', on = false) => sp('well' + kind + (on ? 1 : 0), () => well(kind, on)),
+  brassTag: () => sp('brassTag', brassTag),
 };
 
 /** Publish the art as --pk-* custom properties on a node (the backpack root, or :root for the HUD). */
@@ -307,4 +370,7 @@ export function installPackArt(node) {
   u('sleeve', PACK_ART.sleeve(false)); u('sleeveOn', PACK_ART.sleeve(true));
   u('loop', PACK_ART.loop(false)); u('loopOn', PACK_ART.loop(true));
   u('buckle', PACK_ART.buckle()); u('rivet', PACK_ART.rivet());
+  u('well', PACK_ART.well('pocket', false)); u('wellOn', PACK_ART.well('pocket', true));
+  u('loopWell', PACK_ART.well('loop', false)); u('loopWellOn', PACK_ART.well('loop', true));
+  u('brassTag', PACK_ART.brassTag());
 }

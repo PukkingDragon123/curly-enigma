@@ -10,8 +10,8 @@ import { el, clamp } from '../core/util.js';
 import { installPackArt } from './packArt.js';
 import { hotbarOf, hotStack } from '../core/hotbar.js';
 import * as Inv from '../core/inventory.js';
-import { stackIcon, stackName } from './invGrid.js';
-import { iconURL } from '../gfx/PixelArt.js';
+import { stackIcon, stackName, stackKey } from './invGrid.js';
+import { itemVox } from './itemVox.js'; // (wave 19) what hangs in a loop is its real 3D model
 import { floatIn, ghost } from './floatType.js'; // the held item's name floats (wave 9: no tag behind it)
 import { keepClear } from './uiSolid.js';
 
@@ -51,12 +51,17 @@ export class Belt {
     // a loop holding a stack shows that stack (whatever kind the scene made of it), and keeps up
     // with it as things come and go
     const st0 = this.ui.game.state;
-    if (st0?.on && this.watched !== st0) { this.watched = st0; st0.on('items', () => { if (this.raw && !this.el.hidden) this.set(this.raw, this.sel, this.onPick); }); }
+    if (st0?.on && this.watched !== st0) {
+      this.watched = st0;
+      st0.on('items', () => { if (this.raw && !this.el.hidden) this.set(this.raw, this.sel, this.onPick); itemVox.prewarm(st0); });
+      itemVox.init(this.ui.game); // the pack's pictures are made ahead of time, in idle time
+    }
+    const size = itemVox.itemPx('belt');
     slots = slots.map((d, i) => {
       const s = st0?.data?.inv ? hotStack(st0, i) : null;
-      if (!s || s.tool) return d;
+      if (!s || s.tool) return { ...d, icon: d.icon ? itemVox.fromIcon(d.icon, size) : d.icon, vox: d.icon ? itemVox.keyOf(d.icon) : null };
       const n = Inv.stackN(s);
-      return { ...d, icon: stackIcon(s), label: stackName(s), n: n > 1 ? n : undefined, off: false, empty: false, q: s.lots ? Inv.stackQ(s) : undefined };
+      return { ...d, icon: stackIcon(s, size), vox: stackKey(s), label: stackName(s), n: n > 1 ? n : undefined, off: false, empty: false, q: s.lots ? Inv.stackQ(s) : undefined };
     });
     this.onPick = onPick;
     this.slots = slots;
@@ -66,7 +71,7 @@ export class Belt {
     const st = this.ui.game.state, all = st.unlocked?.('hotbar') ?? true;
     const kinds = all ? null : hotbarOf(st);
     this.hide = slots.map((s, i) => !all && (s.empty || s.off || (kinds[i] === 'build' && !st.unlocked('build'))));
-    const sig = JSON.stringify(slots.map((s, i) => [s.icon, s.key, s.off, s.n, s.label, this.hide[i]]));
+    const sig = JSON.stringify(slots.map((s, i) => [s.vox || s.icon, s.key, s.off, s.n, s.label, this.hide[i], size]));
     if (sig !== this._sig) {
       this._sig = sig;
       this.loops.innerHTML = '';
@@ -81,7 +86,7 @@ export class Belt {
             if (this.onPick) this.onPick(i);
           },
         }, [
-          el('span', { class: 'loop-face' }, [s.empty ? null : el('img', { class: 'pix', src: s.icon, alt: '' })]),
+          el('span', { class: 'loop-face' }, [s.empty ? null : el('img', { class: 'pix', src: s.icon, alt: '', 'data-vox': s.vox || null }), el('i', { class: 'lip', 'aria-hidden': 'true' })]),
           s.key ? el('span', { class: 'k' }, s.key) : null,
           s.n !== undefined ? el('span', { class: 'n' }, String(s.n)) : null,
           gauge,
@@ -129,7 +134,7 @@ export class Belt {
     clearTimeout(this._nopeT);
     this._nopeT = setTimeout(() => this.strap.classList.remove('nope'), 520);
     if (!id) return;
-    const ico = el('img', { class: 'pix belt-bounce', src: iconURL(id), alt: '' });
+    const ico = el('img', { class: 'pix belt-bounce', src: itemVox.src(id, itemVox.itemPx('belt')), alt: '' });
     this.strap.append(ico);
     setTimeout(() => ico.remove(), 760);
   }

@@ -85,6 +85,8 @@ export function buildPuffer(zone) {
   return { stem: stem.geo(0, 0, 0, H), eyes: eyes.geo(0, 9, ez * 2, H), angry: angry.geo(0, 9, ez * 2, H), ez, cap: cap.geo(0, 0, 0, H), spots: spots.geo(0, 0, 0, H), spines: spines.geo(0, 0, 0, H), spore: P.spore, light: P.light, capCol: c01(P.cap[2]), capDark: c01(P.cap[1]) };
 }
 
+// (wave 19, sizes.js) Knee-high to the mole now. It swells from nearer (base gapK, √K), waddles its
+// size, and its spore cloud is smaller (√K), centred on its own cap.
 export class Puffer extends Enemy {
   static info = { id: 'spore_puffer', name: 'Spore Puffer', color: '#ff8a6a', hits: 2.5, dmg: 1.2, snd: 'flesh' };
   static tells = { inflate: [0.95, true] };
@@ -125,7 +127,7 @@ export class Puffer extends Enemy {
         if (this.heading != null) { this.yaw += Math.atan2(Math.sin(this.heading - this.yaw), Math.cos(this.heading - this.yaw)) * Math.min(1, dt * 3); walk = 0.4; }
         if (this.ev.bumped) this.heading = Math.random() * Math.PI * 2;
         this.inflate = Math.max(0, this.inflate - dt);
-        if (this.dist < 4.6 && this.sees && !m.safe) { this.wake(); this.setState('notice'); this.vel.y = 2.2; this.sqv += 6; }
+        if (this.dist < 4.6 && this.sees && !m.safe) { this.wake(); this.setState('notice'); this.vel.y = 2.2 * this.walkK; this.sqv += 6; }
         break;
       }
       case 'notice': {
@@ -137,8 +139,8 @@ export class Puffer extends Enemy {
         if (m.safe || this.dist > 12) { this.lost += dt; if (this.lost > 3) { this.awake = false; this.lost = 0; this.setState('wander'); break; } }
         else this.lost = 0;
         const off = this.facePlayer(4, dt);
-        walk = this.hd > 1.5 && off < 0.8 ? 0.7 : 0;
-        if (this.hd < 2.0 && this.atkCd <= 0 && this.sees && this.lost === 0) { this.setState('inflate'); this.sound('bubble', {}); }
+        walk = this.hd > this.gapK(1.5, 0.5) && off < 0.8 ? 0.7 : 0;
+        if (this.hd < this.gapK(2.0, 0.5) && this.atkCd <= 0 && this.sees && this.lost === 0) { this.setState('inflate'); this.sound('bubble', {}); }
         break;
       }
       case 'inflate': {
@@ -150,7 +152,7 @@ export class Puffer extends Enemy {
         this.sqT = -0.12 * this.inflate;
         angry = true;
         if (Math.random() < dt * 8) this.sound('bubble', {});
-        if (Math.random() < dt * 20) spores(this.fx, this.pos.x, this.pos.y + 0.45, this.pos.z, 1, this.G.spore, 0.25, 0.3);
+        if (Math.random() < dt * 20) spores(this.fx, this.pos.x, this.pos.y + 0.45 * this.K, this.pos.z, 1, this.G.spore, 0.25 * this.K, 0.3);
         if (this.st > 0.95) this.puff();
         break;
       }
@@ -171,33 +173,35 @@ export class Puffer extends Enemy {
     }
     // waddle: little hops from foot to foot
     if (walk && this.grounded) {
-      this.push(Math.sin(this.yaw) * walk, Math.cos(this.yaw) * walk, 8, dt);
+      const kv = this.walkK;
+      this.push(Math.sin(this.yaw) * walk * kv, Math.cos(this.yaw) * walk * kv, 8, dt);
       const ph = this.phase;
       this.phase += dt * 9;
-      if (Math.floor(ph / Math.PI) !== Math.floor(this.phase / Math.PI)) { this.vel.y = 1.1; this.sqv += 2.5; }
+      if (Math.floor(ph / Math.PI) !== Math.floor(this.phase / Math.PI)) { this.vel.y = 1.1 * kv; this.sqv += 2.5; }
     }
     this.walking = walk > 0;
     this.eyes.geometry = angry ? this.G.angry : this.G.eyes;
   }
 
   puff() {
-    const m = this.mgr;
-    const x = this.pos.x + Math.sin(this.yaw) * 0.5, y = this.pos.y + 0.55, z = this.pos.z + Math.cos(this.yaw) * 0.5;
-    spores(this.fx, x, y, z, 110, this.G.spore, 0.6, 2.6);
+    const m = this.mgr, k = this.K, kc = Math.sqrt(k); // (wave 19: its cloud is its size, √K)
+    const x = this.pos.x + Math.sin(this.yaw) * 0.5 * k, y = this.pos.y + 0.55 * k, z = this.pos.z + Math.cos(this.yaw) * 0.5 * k;
+    spores(this.fx, x, y, z, 110, this.G.spore, 0.6 * kc, 2.6);
     // the quills shoot off in a ring (just for show: the spores are what sting)
-    const cy = this.pos.y + (8.2 + this.inflate * 1.2) * VS * this.size + 0.06;
+    const cy = this.pos.y + (8.2 + this.inflate * 1.2) * VS * this.size + 0.06 * k;
     quills(this.fx, this.pos.x, cy, this.pos.z, Math.round(16 * (this.fx.lod || 1)), this.G.capDark, this.G.spore, 3.4);
     this.spineK = 0;
     this.sound('quill_burst', {});
-    puff(this.fx, x, y, z, 22, this.G.spore.map((k) => k * 0.5), 0.4, 0.25, 0.16, 0.4);
-    m.addHazard({ kind: 'spores', x, y: y - 0.2, z, r: 1.8, life: 3.2, sting: this.info.dmg, zone: this.zone, color: this.G.spore });
+    puff(this.fx, x, y, z, 22, this.G.spore.map((c) => c * 0.5), 0.4 * kc, 0.25, 0.16, 0.4);
+    // (the cloud rises to the mole's face whatever the puffer's size)
+    m.addHazard({ kind: 'spores', x, y: Math.max(y - 0.2, this.pos.y + 0.3), z, r: 1.8 * kc, life: 3.2, sting: this.info.dmg, zone: this.zone, color: this.G.spore });
     this.sound('sneeze', {});
     this.sound('whoosh', { vol: 0.4 });
     this.sqv += 9;
     this.setState('recharge');
   }
 
-  onHit() { this.setState('hurt'); this.sound('squish', {}); spores(this.fx, this.center.x, this.center.y + 0.2, this.center.z, 6, this.G.spore, 0.2, 0.8); }
+  onHit() { this.setState('hurt'); this.sound('squish', {}); spores(this.fx, this.center.x, this.center.y + 0.2 * this.K, this.center.z, 6, this.G.spore, 0.2 * this.K, 0.8); }
 
   animate(dt) {
     const inf = this.inflate;
@@ -212,19 +216,20 @@ export class Puffer extends Enemy {
     const sk = this.spineK;
     this.spines.visible = sk > 0.02;
     this.spines.scale.setScalar(0.72 + sk * 0.3 + (sk > 0.9 ? Math.sin(this.t * 50) * 0.015 : 0));
-    if (Math.random() < dt * 1.5) spores(this.fx, this.pos.x, this.pos.y + 0.6, this.pos.z, 1, this.G.spore, 0.3, 0.15); // a lazy spore now and then
+    if (Math.random() < dt * 1.5) spores(this.fx, this.pos.x, this.pos.y + 0.6 * this.K, this.pos.z, 1, this.G.spore, 0.3 * this.K, 0.15); // a lazy spore now and then
   }
 
   light() {
     const c = this.G.light, k = 1 + this.inflate * 1.2;
-    return { x: this.pos.x, y: this.pos.y + 0.55, z: this.pos.z, c: [c[0] * k, c[1] * k, c[2] * k], r: 2.4 };
+    return { x: this.pos.x, y: this.pos.y + 0.55 * this.K, z: this.pos.z, c: [c[0] * k, c[1] * k, c[2] * k], r: 2.4 };
   }
 
   deathFx() {
     const p = this.center;
-    spores(this.fx, p.x, p.y + 0.2, p.z, 40, this.G.spore, 0.4, 1.6);
-    puff(this.fx, p.x, p.y, p.z, 8, this.G.spore.map((k) => k * 0.5), 0.2, 0.3, 0.1, 0.4);
-    sparkle(this.fx, p.x, p.y + 0.2, p.z, 8, this.G.spore, 2, 2, 0.02, 0.6);
+    const k = this.K;
+    spores(this.fx, p.x, p.y + 0.2 * k, p.z, 40, this.G.spore, 0.4 * k, 1.6);
+    puff(this.fx, p.x, p.y, p.z, 8, this.G.spore.map((c) => c * 0.5), 0.2 * k, 0.3, 0.1, 0.4);
+    sparkle(this.fx, p.x, p.y + 0.2 * k, p.z, 8, this.G.spore, 2, 2, 0.02, 0.6);
     this.sound('squish', {});
     this.sound('bloop', {});
   }

@@ -70,6 +70,8 @@ export function buildWyrm(zone) {
 
 const _v = new THREE.Vector3();
 
+// (wave 19, sizes.js) A little dragon: about half a metre nose to tail. It circles as before; its
+// wiggle, its coil back before the lunge and its glitter are its size.
 export class Wyrm extends Enemy {
   static info = { id: 'crystal_wyrm', name: 'Crystal Wyrmling', color: '#a8a8ff', hits: 3.5, dmg: 6, flying: true, snd: 'crystal', poise: 2 };
   static tells = { coil: [0.75] };
@@ -110,7 +112,7 @@ export class Wyrm extends Enemy {
     const hover = (y, h = 0.85) => y + clamp(h - this.floor, -0.5, 0.7);
     this.squint = 1;
     let angry = false, jawT = 0.08;
-    const wig = Math.sin(this.t * 4.2) * 0.9;
+    const wig = Math.sin(this.t * 4.2) * 0.9 * this.K;
     switch (this.state) {
       case 'roam': {
         if (this.pos.distanceTo(this.target) < 0.5 || this.st > 5) {
@@ -138,7 +140,7 @@ export class Wyrm extends Enemy {
       case 'coil': {
         // rear back, glow up, open the jaw: here it comes
         const dx = pc.x - this.pos.x, dz = pc.z - this.pos.z, d = Math.hypot(dx, dz) || 1;
-        this.steer(this.pos.x - (dx / d) * 0.5, m.eye.y + 0.25, this.pos.z - (dz / d) * 0.5, 0.9, 4, dt);
+        this.steer(this.pos.x - (dx / d) * 0.5 * this.K, m.eye.y + 0.25, this.pos.z - (dz / d) * 0.5 * this.K, 0.9, 4, dt);
         this.lookYaw = Math.atan2(dx, dz);
         this.shiver = 0.5; angry = true; jawT = 0.25 + this.st * 0.4; this.squint = 0.7;
         this.glowK = Math.min(1, this.st / 0.6);
@@ -190,7 +192,7 @@ export class Wyrm extends Enemy {
   slither(tx, ty, tz, speed, wig, dt) {
     const dx = tx - this.pos.x, dz = tz - this.pos.z, d = Math.hypot(dx, dz) || 1;
     const ox = (-dz / d) * wig * 0.6, oz = (dx / d) * wig * 0.6;
-    this.steer(tx + ox, ty + Math.sin(this.t * 2.3) * 0.15, tz + oz, speed, 2.5, dt);
+    this.steer(tx + ox, ty + Math.sin(this.t * 2.3) * 0.15 * this.K, tz + oz, speed, 2.5, dt);
   }
 
   onHit() {
@@ -249,7 +251,7 @@ export class Wyrm extends Enemy {
       sparkle(this.fx, p.x, p.y, p.z, 8, this.G.glit, 2.6, 4, 0.022, 1);
       for (let k = 0; k < 3; k++) this.fx.glints(p.x, p.y, p.z, this.G.glit);
     }
-    puff(this.fx, this.pos.x, this.pos.y, this.pos.z, 6, this.G.mid.map((k) => k * 0.6), 0.2, 0.3, 0.07, 0.4);
+    puff(this.fx, this.pos.x, this.pos.y, this.pos.z, 6, this.G.mid.map((k) => k * 0.6), 0.2 * this.K, 0.3, 0.07, 0.4);
     this.sound('break', { snd: 'crystal' });
     this.sound('sparkle', {});
   }

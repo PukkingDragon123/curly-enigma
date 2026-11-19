@@ -98,7 +98,8 @@ class Carcass {
     this.kind = e.kind; this.name = e.info.name;
     this.harvest = e.info.harvest || [];
     this.pos = e.pos.clone();
-    this.r = Math.max(0.25, e.hitR * e.size);
+    this.K = Math.min(1, e.K ?? 1); // (wave 19: a small one leaves a small body)
+    this.r = Math.max(0.25 * this.K, e.hitR * e.size);
     this.size = e.size * (e.hitR / 0.3);
     this.meat = 1;
     this.t = 0;
@@ -155,10 +156,11 @@ class Carcass {
   }
   showBones() {
     const m = this.eco.mgr;
-    const sz = clamp(Math.round(this.r / VS * 0.55), 5, 22);
+    const sz = clamp(Math.round(this.r / this.K / VS * 0.55), 5, 22);
     const g = m.geo('bones|' + sz, () => buildBones(sz, sz).geo(0, 0, 0));
     this.bones = new THREE.Mesh(g, m.eco.boneMat);
     this.bones.position.set(this.pos.x, this.pos.y, this.pos.z);
+    if (this.K < 1) this.bones.scale.setScalar(this.K);
     this.bones.rotation.y = Math.random() * TAU;
     this.bones.layers.enable(LAYER_OUTLINE);
     m.root.add(this.bones);
@@ -286,7 +288,7 @@ export class Eco {
   }
   /** E on a carcass: harvest meat and hide once. */
   harvestAt(eye, dir, reach) {
-    const c = this.pick(this.carcasses.filter((q) => !q.gone && !q.harvested && q.meat > 0.3 && q.harvest.length), eye, dir, reach, (q) => q.center, (q) => q.r);
+    const c = this.pick(this.carcasses.filter((q) => !q.gone && !q.harvested && q.meat > 0.3 && q.harvest.length), eye, dir, reach, (q) => q.center, (q) => Math.max(q.r, 0.16)); // (wave 19: a small body stays easy to pick)
     return c;
   }
 

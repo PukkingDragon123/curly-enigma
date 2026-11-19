@@ -18,9 +18,13 @@
 // third is a finisher), counters (a hit on an open creature after a parry is a crit), poise (enough
 // blows stagger it and interrupt its wind-up), hit-stop (the creature freezes a few frames and the
 // world should too: the returned { hitStop }), knockback scaled by all of it.
+//
+// (wave 19) Camera shake follows the size of who did it (sizes.js heftK): a blocked bat bite or a
+// whacked beetle barely jolts the view, a troll's smash as hard as ever.
 import * as THREE from 'three';
 import { clamp, rand } from '../../core/util.js';
 import { sparkle } from './fx.js';
+import { heftK, markK } from './sizes.js';
 
 export const PARRY = 0.2; // perfect-block window (s), widened by the 'block' skill and the 'guard' food buff
 const COMBO_WIN = 1.05;
@@ -96,6 +100,7 @@ export class Combat {
     const guard = !!m.state?.hasBuff?.('guard'); // food buff (Iron Belly): soaks more, wider parry
     const perfect = this.blockT <= PARRY * Math.min(1.6, sk) * (guard ? 1.4 : 1) && !heavy && !o.noParry && !NOPARRY.has(kind);
     const g = this.guardPoint(dx, dz);
+    const hk = heftK(src.K ?? 1);
     const ev = { damage: 0, kind, push: [push[0] * 0.5, Math.min(push[1], 1.5) * 0.5, push[2] * 0.5], blocked: true };
     if (perfect) {
       ev.parried = true;
@@ -114,7 +119,7 @@ export class Combat {
       m.audio?.play('parry', {});
       m.audio?.play('perfect', { vol: 0.5 });
       this.burst(g, 1.6, true);
-      m.queueEv({ hitStop: 0.11 }); m.queueEv({ shake: 0.35 });
+      m.queueEv({ hitStop: 0.11 }); m.queueEv({ shake: 0.35 * hk });
       m.owner?.vm?.guardHit?.(1.2, true);
       m.floatAt('PARRY!', g, '#ffe27a', 1.2, 'parry');
       if (this.stats.parried === 1) m.floatAt('Hit back now!', _b.set(g.x, g.y + 0.25, g.z), '#ffe8a0', 0.85, 'great');
@@ -126,7 +131,7 @@ export class Combat {
       m.events.push({ energy: Math.round(n * (heavy ? 0.5 : 0.3) / sk * 10) / 10 });
       m.audio?.play('block', { heavy });
       this.burst(g, heavy ? 1.2 : 0.8, false);
-      m.queueEv({ hitStop: heavy ? 0.07 : 0.045 }); m.queueEv({ shake: heavy ? 0.4 : 0.18 });
+      m.queueEv({ hitStop: heavy ? 0.07 : 0.045 }); m.queueEv({ shake: (heavy ? 0.4 : 0.18) * hk });
       m.owner?.vm?.guardHit?.(heavy ? 1.1 : 0.7, false);
       if (heavy && this.mgr.time - this.lastBlock > 0.5 && m.time - (this.heavyT ?? -999) > 120) { this.heavyT = m.time; m.floatAt('Red glow: dodge!', _b.set(g.x, g.y + 0.25, g.z), '#ff8a6a', 0.85, 'bad'); }
     }
@@ -151,10 +156,11 @@ export class Combat {
     if (!this.mgr.near(e, 14)) return;
     const p = e.headPos(_b);
     const c = e.tellHeavy ? [1, 0.35, 0.2] : [1, 0.95, 0.7];
-    this.mgr.fx.spawn({ x: p.x, y: p.y, z: p.z, life: 0.2, size: 0.05, grow: 0.25, color: c, glow: true, drag: 0 });
+    const fx = e.fx || this.mgr.fx, mk = markK(e.K ?? 1); // (wave 19: a glint the size of its eye)
+    fx.spawn({ x: p.x, y: p.y, z: p.z, life: 0.2, size: 0.05, grow: 0.25, color: c, glow: true, drag: 0 });
     for (let i = 0; i < 4; i++) {
       const a = i * Math.PI / 2 + 0.4;
-      this.mgr.fx.spawn({ x: p.x, y: p.y, z: p.z, vx: Math.cos(a) * 1.4, vy: Math.sin(a) * 1.4, vz: 0, life: 0.14, size: 0.016, color: c, glow: true, drag: 6 });
+      fx.spawn({ x: p.x, y: p.y, z: p.z, vx: Math.cos(a) * 1.4, vy: Math.sin(a) * 1.4, vz: 0, life: 0.14, size: 0.016, color: c, glow: true, drag: 6 });
     }
     this.mgr.sound(e.tellHeavy ? 'tell_heavy' : 'tell', {}, e.dist, e.center);
     // (wave 12) the first few tells say what they mean, in a word over its head: white = guard,
@@ -164,7 +170,7 @@ export class Combat {
       this.tellN = this.tellN || {};
       this.tellN[key] = (this.tellN[key] || 0) + 1;
       if (this.tellN[key] >= 3) st.flag(key, true);
-      this.mgr.floatAt(e.tellHeavy ? 'Dodge!' : 'Guard!', _b.set(p.x, p.y + 0.22, p.z), e.tellHeavy ? '#ff8a6a' : '#fff0c8', 1, e.tellHeavy ? 'bad' : 'alert');
+      this.mgr.floatAt(e.tellHeavy ? 'Dodge!' : 'Guard!', _b.set(p.x, p.y + 0.22 * mk, p.z), e.tellHeavy ? '#ff8a6a' : '#fff0c8', Math.max(0.75, mk), e.tellHeavy ? 'bad' : 'alert');
     }
   }
 
@@ -184,7 +190,7 @@ export class Combat {
     const blow = {
       power: power * mult, tag, kb, combo: tag === 'finisher' ? 3 : c.n,
       hitStop: tag === 'crit' ? 0.13 : tag === 'finisher' ? 0.1 : 0.055 + 0.02 * big,
-      shake: tag ? 0.32 : 0.1 + 0.08 * big,
+      shake: (tag ? 0.32 : 0.1 + 0.08 * big) * heftK(e.K ?? 1),
     };
     // poise: enough blows (or one heavy one) stagger it
     if (!e.passive && e.alive) {
@@ -211,14 +217,15 @@ export class Combat {
       const v = blow.power;
       m.floatAt(v >= 9.5 ? String(Math.round(v)) : String(Math.round(v * 10) / 10), p, '#fff0dc', 1, 'damage');
     }
+    const hk = heftK(e.K ?? 1), fx = e.fx || m.fx;
     if (blow.tag === 'crit') {
-      m.queueEv({ shake: 0.22 });
-      sparkle(m.fx, p.x, p.y, p.z, 18, [1, 0.85, 0.35], 3.2, 3, 0.024, 0.7);
+      m.queueEv({ shake: 0.22 * hk });
+      sparkle(fx, p.x, p.y, p.z, 18, [1, 0.85, 0.35], 3.2, 3, 0.024, 0.7);
       m.audio?.play('smash', { vol: 1 });
       m.audio?.play('perfect', { vol: 0.6 });
     } else if (blow.tag === 'finisher') {
-      m.queueEv({ shake: 0.14 });
-      sparkle(m.fx, p.x, p.y, p.z, 10, [1, 0.7, 0.4], 2.6, 3, 0.02, 0.5);
+      m.queueEv({ shake: 0.14 * hk });
+      sparkle(fx, p.x, p.y, p.z, 10, [1, 0.7, 0.4], 2.6, 3, 0.02, 0.5);
       m.audio?.play('smash', { vol: 0.8 });
     }
     m.audio?.play('thwack', { vol: 0.8, pitch: blow.combo === 2 ? 1.15 : rand(0.9, 1.05) });

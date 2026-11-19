@@ -24,6 +24,14 @@
 //   crystals    1/48 m hexagonal crystals instead of refined 1/16 m blocks (deep/props/crystalHi.js)
 //   ore         a 1/128 m skin of nuggets / crystal points on every exposed ore face, built in the
 //               chunk workers, fewer per chunk on phones (deep/props/oreBits.js, Props.placeOre)
+//
+// Wave 19 (creature sizes, deep/enemies/sizes.js): a creature is never rebuilt at the voxel its
+// new size would get from VOX_RULE (a 4 cm beetle at 1/64 m would be a 3-voxel blob). It is scaled
+// as a whole, so it keeps the voxels it was drawn with and each gets K× finer: the smaller the
+// creature, the finer its voxels (creatureVoxel). Its level of detail (deep/enemies/hires.js near /
+// mid / far copies) goes by how big it looks, distance / K (creatureLodDist), so a beetle at your
+// paws wears its 1/136 m near copy (≈ 1/900 m in the world) and one across the cave its far copy.
+// CREATURE_MIN_VOXELS is the floor every creature keeps across its height.
 
 /** ?voxrule=0 turns the rule off (A/B screenshots): everything is built at the voxel it was drawn at. */
 export const VOX_RULE_ON = !(typeof location !== 'undefined' && /[?&]voxrule=0/.test(location.search || ''));
@@ -60,6 +68,21 @@ export function refineSteps(L, vox) {
   while (v > want * 1.4 && n < most) { v /= 2; n++; }
   return n;
 }
+
+/** (wave 19) Fewest voxels a creature may have top to bottom, whatever its size. */
+export const CREATURE_MIN_VOXELS = 16;
+/**
+ * (wave 19) The world voxel edge (m) of a creature drawn at `drawnVox` m per voxel and scaled by K
+ * (deep/enemies/sizes.js): the scale shrinks the voxels, never the count of them.
+ */
+export function creatureVoxel(drawnVox, K = 1) { return drawnVox * Math.min(1, Math.max(0.05, K)); }
+/** (wave 19) The distance a creature's level of detail is picked by: how far it looks, by its size. */
+export function creatureLodDist(d, K = 1) { return K >= 1 ? d : d / Math.max(0.1, K); }
+/**
+ * (wave 19) Does a model of `heightVox` voxels (as drawn) keep enough of them across its height?
+ * (sizes.js lists every scaled species' count: none is below the floor.)
+ */
+export function creatureDetailed(heightVox) { return heightVox >= CREATURE_MIN_VOXELS; }
 
 /** Largest extent (in voxels) of the filled voxels of a grid { w, h, d, data }. */
 export function contentExtent(g) {

@@ -1,109 +1,80 @@
-/* ---------- the objective tracker: a parchment strip with rolled ends under the backpack ---------- */
+/* ---------- the objective tracker: a wanted poster on a nail, the step on a scroll hung under it
+   (Tracker.js; the art: questPoster.js, woodcut.js). Everything is sized in art pixels (--px). ---------- */
 .qt {
-  position: absolute; z-index: 5; right: calc(var(--sar) + var(--px) * 3); top: calc(var(--sat) + var(--px) * 46);
-  pointer-events: none; transition: opacity .35s, transform .35s var(--soft);
-  max-width: min(calc(100vw - var(--sal) - var(--sar) - var(--px) * 70), calc(var(--px) * 124));
+  position: absolute; z-index: 5; right: calc(var(--sar) + var(--px) * 4); top: calc(var(--sat) + var(--px) * 46);
+  width: calc(var(--px) * 46); pointer-events: none; transform-origin: 60% 0; transition: opacity .35s, transform .45s var(--pop);
 }
 #ui:not([data-hud=deep]) .qt { display: none; }
 #ui.panel-open .qt, #ui.focus .qt, #ui.no-touch .qt, .qt.muted { opacity: 0; transform: translateY(calc(var(--px) * -6)); visibility: hidden; transition: opacity .25s, transform .25s, visibility 0s .25s; }
 .qt-roll {
-  position: relative; display: block; box-sizing: border-box; pointer-events: auto; cursor: pointer; text-align: left;
-  min-width: calc(var(--px) * 76); max-width: 100%; margin-left: auto; padding: 0; font: inherit; color: var(--sepia);
-  border-style: solid; border-width: calc(var(--px) * 8); border-image: var(--a-qstrip) 8 fill / calc(var(--px) * 8) repeat; background: none;
-  filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(20, 10, 4, .45));
-  transform-origin: 50% 50%; transition: transform .32s var(--pop), filter .2s;
+  position: relative; display: block; width: 100%; margin: 0; padding: calc(var(--px) * 9) 0 0; border: 0; background: none;
+  font: inherit; color: #2e1a28; text-align: left; cursor: pointer; pointer-events: auto; outline: none;
+  transform-origin: 50% calc(var(--px) * 11); transition: transform .5s var(--pop), opacity .5s;
 }
-.qt-roll:hover { filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(20, 10, 4, .45)) brightness(1.04); }
-.qt-roll:active { transform: translateY(var(--px)); }
-.qt-roll.rolled { transform: scaleX(.14); transition: transform .28s cubic-bezier(.6, 0, .9, .4); }
-.qt-roll.opening { transition: transform .32s var(--pop); }
-.qt-roll.shake { animation: qtShake .38s ease-out; }
-@keyframes qtShake { 15% { transform: translate(calc(var(--px) * 1), calc(var(--px) * 1)) rotate(.8deg); } 40% { transform: translate(calc(var(--px) * -1), 0) rotate(-.6deg); } 70% { transform: translateY(calc(var(--px) * .5)); } }
-.qt-paper { position: relative; margin: calc(var(--px) * -4) 0; padding: 0 calc(var(--px) * 9) 0 calc(var(--px) * 1); } /* (wave 12) room for the seal now the step count is gone */
-.qt-head {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: calc(var(--px) * 2); max-height: 4em; overflow: hidden; white-space: nowrap;
-  font-size: var(--fs); line-height: 1.1; transition: max-height .35s var(--soft), opacity .3s, margin .35s;
-  margin-bottom: calc(var(--px) * 1.5); padding-bottom: var(--px); border-bottom: var(--px) dashed rgba(110, 74, 42, .35);
+.qt-roll img { image-rendering: pixelated; -webkit-user-drag: none; }
+/* the cork patch and the forged nail (static: the poster swings about the nail) */
+.qt-cork { position: absolute; left: calc(var(--px) * 6); top: calc(var(--px) * 1); width: calc(var(--px) * 34); height: calc(var(--px) * 15); filter: drop-shadow(var(--px) var(--px) 0 rgba(24, 10, 18, .45)); }
+.qt-nail { position: absolute; z-index: 4; left: calc(var(--px) * 19.8); top: calc(var(--px) * 8.4); width: calc(var(--px) * 7); height: calc(var(--px) * 7); pointer-events: none; }
+.qt-scrap { position: absolute; z-index: 1; left: calc(var(--px) * 16); top: calc(var(--px) * 9); width: calc(var(--px) * 14); height: calc(var(--px) * 8); filter: drop-shadow(0 var(--px) 0 rgba(24, 10, 18, .45)); }
+.qt-drop, .qt-swing { position: relative; z-index: 2; transform-origin: 50% calc(var(--px) * 2.5); }
+.qt-drop { will-change: transform; }
+.qt-poster {
+  position: relative; z-index: 2; width: calc(var(--px) * 46); height: calc(var(--px) * 50); background: 0 0 / 100% 100% no-repeat;
+  image-rendering: pixelated; filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(26, 10, 20, .5)); transition: filter .2s;
 }
-.qt-face {
-  width: calc(var(--px) * 10); height: calc(var(--px) * 10); object-fit: cover; image-rendering: pixelated;
-  box-shadow: 0 0 0 var(--px) #6a4a2a, 0 0 0 calc(var(--px) * 2) #d8b46a; background: #3a2a22;
+.qt-roll:hover .qt-poster, .qt-roll:focus-visible .qt-poster { filter: drop-shadow(calc(var(--px) * 2) calc(var(--px) * 3) 0 rgba(26, 10, 20, .42)) brightness(1.06); }
+/* the title, printed: ink multiplied into the paper */
+.qt-title {
+  position: absolute; left: calc(var(--px) * 4); right: calc(var(--px) * 4); top: calc(var(--px) * 36);
+  font-size: var(--fs); line-height: 1.1; text-align: center; text-transform: uppercase; letter-spacing: .04em; text-wrap: balance;
+  color: #2e1a28; mix-blend-mode: multiply; overflow-wrap: anywhere;
 }
-.qt-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #8a3a1a; letter-spacing: .02em; }
-.qt.main .qt-title::before { content: '★ '; color: #c2862a; }
-.qt-of { color: #9a7a52; font-size: max(var(--g), round(.85em + 2px, var(--g))); }
-/* the step: tick box | text (wraps, never under the box) | count */
-.qt-line { position: relative; display: grid; grid-template-columns: calc(var(--px) * 11) minmax(0, 1fr) auto; align-items: start; column-gap: calc(var(--px) * 2); font-size: var(--fs); line-height: 1.2; color: #3a2010; white-space: normal; overflow-wrap: anywhere; }
-.qt-box { width: calc(var(--px) * 11); height: calc(var(--px) * 10); margin-top: calc(var(--px) * -0.5); }
-.qt-bar { display: block; height: calc(var(--px) * 2); margin: calc(var(--px) * 1.5) 0 0 calc(var(--px) * 13); background: rgba(110, 74, 42, .22); box-shadow: inset 0 0 0 var(--px) rgba(110, 74, 42, .35); }
-.qt-bar[hidden] { display: none; }
-.qt-bar > b { display: block; height: 100%; width: 0; background: linear-gradient(#e8a23a, #c2642a); transition: width .5s var(--pop); }
-.qt-where {
-  display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: start; column-gap: calc(var(--px) * 2);
-  margin: calc(var(--px) * 1.5) 0 0 calc(var(--px) * 13); font-size: var(--fs); line-height: 1.1; color: #6a4a2a; white-space: nowrap;
-}
-.qt-where[hidden] { display: none; }
-.qt-arrow { width: calc(var(--px) * 9); height: calc(var(--px) * 9); }
-.qt-arrow[hidden] { display: none; }
-.qt-dist { color: #8a3a1a; font-weight: 400; font-variant-numeric: tabular-nums; }
-.qt-dist:empty { display: none; }
-.qt-place { min-width: 0; color: #7a5a3a; white-space: normal; text-wrap: pretty; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.qt-where.via .qt-place { color: #3d6a5a; }
-.qt-box.pulse { animation: qtPop .3s var(--pop); }
-.qt-tx { position: relative; flex: 1; min-width: 0; text-wrap: pretty; }
-.qt-strike {
-  position: absolute; left: calc(var(--px) * -1); top: .62em; height: var(--px); width: 0; background: #a8321e; pointer-events: none;
-  box-shadow: 0 var(--px) 0 rgba(168, 50, 30, .35); transform: rotate(-1.2deg); transform-origin: 0 50%;
-}
-.qt-strike.go { width: calc(100% + var(--px) * 2); transition: width .42s cubic-bezier(.3, .1, .4, 1); }
-.qt-n { flex: none; color: #7a3a1a; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.qt-n:empty { display: none; }
-.qt-n.scratch { animation: qtScratch .44s steps(6); }
-@keyframes qtScratch { 0% { filter: none; } 20% { transform: translateX(calc(var(--px) * .5)); text-decoration: line-through; text-decoration-color: #a8321e; } 45% { opacity: .2; } 60% { opacity: 1; transform: none; } }
+.qt.main .qt-title { color: #3a1420; }
+/* the scroll: twine, the top rod, the sheet (its height animates as it unrolls), the heavy rod */
+.qt-scroll { position: relative; z-index: 1; width: calc(var(--px) * 50); margin: calc(var(--px) * -3.5) 0 0 calc(var(--px) * -2); transform-origin: 50% 0; filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(26, 10, 20, .42)); }
+.qt-twine { display: block; height: calc(var(--px) * 11); background: var(--qt-twine) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
+.qt-rod { position: relative; z-index: 2; display: block; height: calc(var(--px) * 6); margin: calc(var(--px) * -2) 0; background: var(--qt-rod) 0 0 / 100% 400% no-repeat; image-rendering: pixelated; transform-origin: 50% 50%; }
+.qt-rod.heavy { background-image: var(--qt-rodH); }
+.qt-rod.spin { animation: qtSpin calc(.18s * var(--qt-slow, 1)) steps(4) infinite; }
+@keyframes qtSpin { from { background-position-y: 0; } to { background-position-y: 133.333%; } }
+.qt-sheet { position: relative; z-index: 1; width: calc(var(--px) * 44); margin: 0 auto; overflow: hidden; background: var(--qt-sheet) 0 0 / 100% calc(var(--px) * 18) repeat-y; image-rendering: pixelated; }
+.qt-sheet::before, .qt-sheet::after { content: ''; position: absolute; z-index: 2; left: 0; right: 0; height: calc(var(--px) * 4); background: var(--qt-curl) 0 0 / 100% 100% no-repeat; pointer-events: none; image-rendering: pixelated; }
+.qt-sheet::before { top: calc(var(--px) * 1); }
+.qt-sheet::after { bottom: calc(var(--px) * 1); transform: scaleY(-1); }
+.qt-scroll.rolled .qt-sheet { height: 0; }
+.qt-sheet-in { padding: calc(var(--px) * 4.5) calc(var(--px) * 2.5) calc(var(--px) * 4); }
+.qt-line { position: relative; font-size: var(--fs); line-height: 1.1; color: #2e1a28; text-align: center; text-wrap: balance; overflow-wrap: anywhere; }
+/* struck through: a vermilion stroke drawn across each line of the step */
+.qt-text { background: linear-gradient(#a8321e, #a8321e) no-repeat 0 58% / 0 var(--px); -webkit-box-decoration-break: clone; box-decoration-break: clone; transition: background-size calc(.45s * var(--qt-slow, 1)) cubic-bezier(.3, .1, .4, 1), color calc(.45s * var(--qt-slow, 1)); }
+.qt-text.struck { background-size: 100% var(--px); color: #6a4a4a; }
+.qt-tick { position: absolute; right: calc(var(--px) * -2); top: calc(var(--px) * -3); width: calc(var(--px) * 12); height: calc(var(--px) * 10); opacity: 0; pointer-events: none; }
+.qt-tick.on { opacity: 1; animation: qtTick calc(.26s * var(--qt-slow, 1)) steps(5) both; }
+@keyframes qtTick { from { clip-path: inset(0 100% 0 0); transform: scale(1.25); } to { clip-path: inset(0 0 0 0); transform: none; } }
+.qt-prog { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--px) calc(var(--px) * 3); margin-top: calc(var(--px) * 1.5); font-size: var(--fs); line-height: 1; }
+.qt-prog[hidden] { display: none; }
+.qt-pips { position: relative; display: flex; gap: calc(var(--px) * .5); }
+.qt-pips:empty, .qt-n:empty { display: none; }
+.qt-pip { width: calc(var(--px) * 7); height: calc(var(--px) * 6); }
+.qt-pip.inked { animation: qtPip calc(.42s * var(--qt-slow, 1)) var(--pop); }
+@keyframes qtPip { 0% { transform: scale(1.7, .5); } 40% { transform: scale(.85, 1.2); } 70% { transform: scale(1.06, .95); } }
+.qt-n { color: #6a2418; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.qt-n.scratch { animation: qtScratch calc(.44s * var(--qt-slow, 1)) steps(6); }
+@keyframes qtScratch { 20% { transform: translateX(calc(var(--px) * .5)); text-decoration: line-through; text-decoration-color: #a8321e; } 45% { opacity: .2; } 60% { opacity: 1; transform: none; } }
 .qt-n.pulse { animation: qtPop .34s var(--pop); }
 @keyframes qtPop { 0% { transform: scale(1.4, .8); color: #8a5a10; } 45% { transform: scale(.92, 1.12); } 75% { transform: scale(1.04, .97); } }
-.qt-line.ink > * { animation: qtInk .5s steps(10) both; }
-.qt-line.ink > .qt-box { animation: none; }
-@keyframes qtInk { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
-.qt.idle { opacity: .86; }
-.qt.idle .qt-head { max-height: 0; opacity: 0; margin: 0; padding: 0; border-color: transparent; }
-.qt.idle .qt-bar { opacity: .7; }
-.qt.idle .qt-roll:hover { opacity: 1; }
-
-/* the quill: its nib rides the line being written */
-.qt-quill {
-  position: absolute; z-index: 3; width: calc(var(--px) * 16); height: calc(var(--px) * 20); margin: calc(var(--px) * -19) 0 0 calc(var(--px) * -1);
-  pointer-events: none; opacity: 0; transform-origin: calc(var(--px) * 1) calc(var(--px) * 19);
-  filter: drop-shadow(var(--px) var(--px) 0 rgba(20, 10, 4, .4));
-}
-.qt-quill.on { opacity: 1; }
-.qt-quill.jot { animation: qtJot .42s ease-in-out; }
-.qt-quill.sweep { animation: qtSweep .5s linear forwards; }
-@keyframes qtJot { 0%, 100% { transform: rotate(0); } 25% { transform: translate(calc(var(--px) * 3), calc(var(--px) * -1)) rotate(8deg); } 50% { transform: translate(calc(var(--px) * 1), calc(var(--px) * 1)) rotate(-6deg); } 75% { transform: translate(calc(var(--px) * 4), 0) rotate(6deg); } }
-@keyframes qtSweep {
-  0% { transform: translate(0, 0) rotate(0); } 20% { transform: translate(calc(var(--sweep) * .2), calc(var(--px) * -1)) rotate(7deg); }
-  40% { transform: translate(calc(var(--sweep) * .4), calc(var(--px) * 1)) rotate(-5deg); } 60% { transform: translate(calc(var(--sweep) * .6), 0) rotate(6deg); }
-  80% { transform: translate(calc(var(--sweep) * .8), calc(var(--px) * 1)) rotate(-4deg); } 100% { transform: translate(var(--sweep), calc(var(--px) * -2)) rotate(10deg); opacity: .9; }
-}
-
-/* Old Star's gilded seal: pressed straight down on a finished quest, squashing flat and springing back */
-.qt-stamp {
-  position: absolute; z-index: 2; right: calc(var(--px) * 2); top: 50%; margin-top: calc(var(--px) * -15); width: calc(var(--px) * 30); height: calc(var(--px) * 30);
-  opacity: 0; pointer-events: none; filter: drop-shadow(0 var(--px) 0 rgba(20, 8, 2, .55));
-}
-.qt-stamp.on { opacity: 1; }
-.qt-stamp.slam { animation: qtSlam .32s cubic-bezier(.3, 1.6, .5, 1) both; }
-@keyframes qtSlam { 0% { transform: translateY(calc(var(--px) * -10)) scale(1.5); opacity: 0; } 40% { transform: scale(1.22, .76); opacity: 1; } 70% { transform: scale(.94, 1.08); } 100% { transform: none; opacity: 1; } }
-.qt-dot { position: absolute; right: calc(var(--px) * 4); top: calc(var(--px) * 1); width: var(--px); height: var(--px); background: #e2aa3a; box-shadow: var(--px) var(--px) 0 #925212; pointer-events: none; animation: qtDot .6s ease-out forwards; }
-@keyframes qtDot { from { transform: none; opacity: 1; } to { transform: translate(var(--dx), var(--dy)); opacity: 0; } }
-
-/* "New" ribbon tag */
-.qt-tag {
-  position: absolute; left: calc(var(--px) * -6); top: calc(var(--px) * -11); padding: var(--px) calc(var(--px) * 3); font-size: var(--fs); line-height: 1;
-  color: #fff3e0; background: #b8402c; box-shadow: 0 0 0 var(--px) #5a140c, 0 var(--px) 0 var(--px) rgba(0, 0, 0, .3);
-  transform: scale(0); transform-origin: 30% 100%; transition: transform .24s cubic-bezier(.3, 1.8, .5, 1); pointer-events: none;
-}
-.qt-tag.on { transform: scale(1); }
+.qt-where { display: inline-flex; align-items: center; gap: var(--px); color: #4a2430; white-space: nowrap; }
+.qt-where[hidden], .qt-arrow[hidden] { display: none; }
+.qt-where.via { color: #2f5a52; }
+.qt-arrow { width: calc(var(--px) * 9); height: calc(var(--px) * 9); margin: calc(var(--px) * -1.5) 0; }
+.qt-dist { font-weight: 400; font-variant-numeric: tabular-nums; }
+.qt-dist:empty { display: none; }
+/* ink flicked off a fresh mark: tiny square drops */
+.qt-ink { position: absolute; z-index: 3; width: var(--px); height: var(--px); background: var(--c, #a8321e); pointer-events: none; animation: qtInk calc(.6s * var(--qt-slow, 1)) cubic-bezier(.2, .6, .4, 1) forwards; }
+@keyframes qtInk { from { transform: none; opacity: 1; } to { transform: translate(var(--dx), var(--dy)); opacity: 0; } }
+/* idle: it tucks itself smaller; the HUD's quiet spell (hud.css) fades it right out, smaller still */
+.qt.idle .qt-roll { transform: scale(.78); opacity: .9; }
+.qt.idle .qt-roll:hover { transform: scale(.9); opacity: 1; }
+#ui.hud-calm .qt.qt:not(.muted) { opacity: 0; transform: translateY(calc(var(--px) * -8)) scale(.7); }
 
 .toast .qt-said { display: inline-block; margin-top: var(--px); color: #6a4a2a; font-style: normal; max-width: 52ch; }
 .toast .qt-first { color: #6a4a2a; }
@@ -171,29 +142,6 @@
 .nb-tack { position: absolute; left: 50%; top: calc(var(--px) * -1); width: calc(var(--px) * 4); height: calc(var(--px) * 4); margin-left: calc(var(--px) * -2); border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ff9a8a 0 25%, #c8382a 26% 100%); box-shadow: 0 var(--px) 0 rgba(40, 10, 10, .55); }
 .nb-note.taken .nb-tack { background: radial-gradient(circle at 35% 30%, #c8f0a0 0 25%, #4a8a3a 26% 100%); }
 .nb-note.misc .nb-tack { background: radial-gradient(circle at 35% 30%, #f6e09a 0 25%, #b8923e 26% 100%); }
-
-@media (max-width: 640px) {
-  .qt { top: calc(var(--sat) + var(--px) * 44); max-width: min(calc(100vw - var(--sal) - var(--sar) - var(--px) * 66), calc(var(--px) * 110)); }
-  .qt-roll { min-width: calc(var(--px) * 70); }
-  .qt-where { margin-left: 0; }
-}
-@media (max-height: 460px) {
-  .qt { top: calc(var(--sat) + var(--px) * 42); }
-  .qt-head { display: none; }
-  .qt-paper { padding-right: calc(var(--px) * 2); }
-  .qt-bar, .qt-where { margin-left: 0; }
-}
-
-/* ---- ui3: the strip's seal cracks as a step is done, and a fresh one drops in and settles
-   (pixel frames: hudArt waxCrack, 6 × 15×20; Tracker.crackSeal) */
-.qt-wax.crack { background-image: var(--h-waxCrack); background-size: 600% 100%; animation: qtWaxCrack 1.3s steps(1) both, qtWaxJolt 1.3s steps(1) both; }
-@keyframes qtWaxCrack { 0% { background-position: 0 0; } 10% { background-position: 20% 0; } 22% { background-position: 40% 0; } 34% { background-position: 60% 0; } 56% { background-position: 80% 0; } 72%, 100% { background-position: 100% 0; } }
-/* (whole pixels only: the halves knock apart, the broken seal drops off, the new one lands, bounces, sits) */
-@keyframes qtWaxJolt { 0% { translate: 0 0; opacity: 1; } 10% { translate: 0 var(--px); } 22% { translate: var(--px) var(--px); } 34% { translate: calc(var(--px) * 2) calc(var(--px) * 2); }
-  46% { translate: calc(var(--px) * 3) calc(var(--px) * 4); opacity: 0; } 56% { translate: 0 calc(var(--px) * -3); opacity: 1; } 64% { translate: 0 0; } 72% { translate: 0 calc(var(--px) * -1); } 80%, 100% { translate: 0 0; opacity: 1; } }
-.qt-chip { position: absolute; left: calc(var(--px) * 11); top: calc(var(--px) * 5); width: var(--px); height: var(--px); background: var(--c, #b42c1e); box-shadow: var(--px) 0 0 var(--c, #b42c1e);
-  opacity: 0; pointer-events: none; animation: qtChip .75s cubic-bezier(.3, 0, .8, .5) both; }
-@keyframes qtChip { 0% { opacity: 1; transform: none; } 30% { transform: translate(calc(var(--dx) * .5), calc(var(--px) * -3)); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); } }
 
 /* ---- ui3: the notice board: torn posters pasted to a cork board in a wooden frame, real pushpins
    (uiArt posterR/G/K, newsT, corkT; the tacks: SPR.tack, published by UI.js) */

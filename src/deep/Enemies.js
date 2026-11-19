@@ -18,6 +18,13 @@
 // Hit spheres may carry a `part` (and `idx`, `prio`): hitTest() reports the part the pick would hit
 // as enemy.hitPart / hitIdx / hitLabel, and damage() hands blows to a species' pickHit() when it has
 // one.
+//
+// Sizes (wave 19, enemies/sizes.js): add() scales each creature to its size class (base.js
+// applyScale). Here that means: small ones are picked with a generous radius (e.pickR) and lit with
+// a small cream rim when aimed at (aimT), their spawn room and spacing shrink, the marks and words
+// over their heads sit lower and smaller, their dust and sparks are their size (e.fx), their slams
+// and blocked bites shake the camera less (heftK), their lights reach less far and loot pops clear
+// of the floor.
 import * as THREE from 'three';
 import { zoneAt, CS } from './Generator.js';
 import { VOX, M, MAT } from './materials.js';
@@ -45,6 +52,7 @@ import { enemyIconURL } from './enemies/icons.js';
 import * as UIM from '../ui/UI.js';
 import { critterIconURL } from '../gfx/critters32.js';
 import { PHONE } from '../core/platform.js';
+import { scaleOf, heftK, markK } from './enemies/sizes.js'; // (wave 19) how big everything is
 
 // creature toughness tracks the pick you'd expect at that depth; damage scales with depth
 const ZONE_POWER = [1, 1, 1.4, 2.1, 2.8, 3.6, 4.8];
@@ -335,11 +343,15 @@ export class Enemies {
   /** Room a species needs: [half width, headroom] (m). */
   space(kind) {
     const S = this.species(kind);
-    if (S?.info?.space) return S.info.space;
-    if (kind === 'crystal_golem') return [0.48, 2.3];
-    if (kind === 'golem') return [0.32, 1.2];
-    if (kind === 'bats') return [0.2, 1.8];
-    return [0.2, S?.info.flying ? 1.6 : 0.7];
+    if (!S?.info?.space) {
+      if (kind === 'crystal_golem') return [0.48, 2.3];
+      if (kind === 'golem') return [0.32, 1.2];
+      if (kind === 'bats') return [0.2, 1.8];
+    }
+    const sp = S?.info?.space || [0.2, S?.info.flying ? 1.6 : 0.7];
+    // (wave 19) a small walker needs less room, but stays where the mole can get at it
+    const K = scaleOf(S?.info?.id);
+    return K < 1 && !S?.info?.flying ? [Math.max(0.06, sp[0] * K), Math.max(0.5, sp[1] * K)] : sp;
   }
   /** Find a free spot for a species near (cx, cy, cz) between rMin and rMax meters. */
   findSpot(kind, cx, cy, cz, rMin, rMax, { hidden = true, tries = 10, ray = false, roomy = 1 } = {}) {
@@ -386,8 +398,10 @@ export class Enemies {
     kinds.forEach((kind, i) => {
       if (this.alive() >= this.maxAlive + 2) return;
       const big = kind === 'crystal_golem';
+      // (wave 19) small ones keep closer together
+      const ks = Math.max(0.4, scaleOf(this.species(kind)?.info?.id));
       // a big guardian needs a roomy spot: look harder, then settle for a little less headroom
-      let s = i === 0 && spot ? spot : this.findSpot(kind, x, y, z, 0, r + (big ? 2.5 : 1.5), { hidden, tries: big ? 40 : 14 })
+      let s = i === 0 && spot ? spot : this.findSpot(kind, x, y, z, 0, (r + (big ? 2.5 : 1.5)) * ks, { hidden, tries: big ? 40 : 14 })
         || (big ? this.findSpot(kind, x, y, z, 0, r + 2.5, { hidden, tries: 30, roomy: 0.85 }) : null);
       if (!s && big && nest) { kind = 'golem'; s = this.findSpot(kind, x, y, z, 0, r + 1.5, { hidden, tries: 14 }); } // no room: a smaller guardian
       if (!s) return;
@@ -411,11 +425,12 @@ export class Enemies {
     const sw = new Swarm({ x: s.x, y: top - 0.14, z: s.z });
     const n = zone >= 3 ? 4 + (Math.random() < 0.5 ? 1 : 0) : 3 + (Math.random() < 0.5 ? 1 : 0);
     const out = [];
+    const K = scaleOf(Bat.info.id), spr = 0.45 * Math.max(0.45, K); // (wave 19: little bats hang close)
     for (let i = 0; i < n && this.alive() < this.maxAlive + 2; i++) {
-      const hx = s.x + rand(-0.45, 0.45), hz = s.z + rand(-0.45, 0.45);
+      const hx = s.x + rand(-spr, spr), hz = s.z + rand(-spr, spr);
       const c = airAbove(this.world, hx, top - 0.5, hz, 1.5);
       if (c >= 1.5) continue;
-      const e = new Bat(this, { x: hx, y: top - 0.5 + c - 0.13, z: hz, zone, swarm: sw, group: sw, nest });
+      const e = new Bat(this, { x: hx, y: top - 0.5 + c - 0.13 * K, z: hz, zone, swarm: sw, group: sw, nest });
       e.key = 'bat';
       this.add(e);
       out.push(e);
@@ -425,6 +440,7 @@ export class Enemies {
 
   add(e) {
     e.vary?.(); // (wave 17: each one its own shade)
+    e.applyScale?.(); // (wave 19: its size class, enemies/sizes.js)
     this.root.add(e.root);
     e.updateSpheres();
     e.place();
@@ -483,7 +499,7 @@ export class Enemies {
 
   /** A heavy creature shakes the ground: { shake } event, weaker with distance. */
   shake(src, a) {
-    const k = clamp(1.2 - (src.dist ?? 0) / 8, 0, 1) * a;
+    const k = clamp(1.2 - (src.dist ?? 0) / 8, 0, 1) * a * heftK(src.K ?? 1); // (wave 19: a little thing jolts the world a little)
     if (k > 0.05) this.queueEv({ shake: k });
   }
 
@@ -527,8 +543,9 @@ export class Enemies {
   /** A creature notices the mole: a little "!" pops over its head. */
   alert(e) {
     this.sound('emote', { kind: 'alert' }, e.dist);
-    const p = e.headPos ? e.headPos(_r).add(_p.set(0, 0.15, 0)) : _r.set(e.center.x, e.center.y + e.hitR * e.size + 0.2, e.center.z);
-    this.floatAt('!', p, '#ffd84a', 1.4, 'alert');
+    const mk = markK(e.K ?? 1); // (wave 19: over a small head, lower and smaller)
+    const p = e.headPos ? e.headPos(_r).add(_p.set(0, 0.15 * mk, 0)) : _r.set(e.center.x, e.center.y + e.hitR * e.size + 0.2 * mk, e.center.z);
+    this.floatAt('!', p, '#ffd84a', 1.4 * mk, 'alert');
   }
 
   /** First good look at a species: index entry + an intro toast the very first time. */
@@ -538,8 +555,9 @@ export class Enemies {
     this.seenKinds.add(id);
     const fresh = this.state.discover?.('critter', id);
     if (fresh && INTRO[id]) {
-      const p = e.headPos ? e.headPos(_r).add(_p.set(0, 0.35, 0)) : _r.set(e.center.x, e.center.y + e.hitR * e.size + 0.4, e.center.z);
-      this.ui?.floatText?.(INTRO[id], { x: p.x, y: p.y, z: p.z }, { kind: 'reveal', life: 3, size: 0.9 });
+      const mk = markK(e.K ?? 1);
+      const p = e.headPos ? e.headPos(_r).add(_p.set(0, 0.35 * mk, 0)) : _r.set(e.center.x, e.center.y + e.hitR * e.size + 0.4 * mk, e.center.z);
+      this.ui?.floatText?.(INTRO[id], { x: p.x, y: p.y, z: p.z }, { kind: 'reveal', life: 3, size: 0.9 * Math.max(0.75, mk) });
     }
   }
 
@@ -585,7 +603,7 @@ export class Enemies {
       if (!e.alive || e.emerge < 0.3) continue;
       for (const s of e.spheres) {
         if (s.r <= 0) continue;
-        const r = s.r + 0.07;
+        const r = Math.max(s.r + 0.07, e.pickR || 0); // (wave 19: tiny ones get a generous pick radius)
         const ox = s.x - eye.x, oy = s.y - eye.y, oz = s.z - eye.z;
         const t = ox * dir.x + oy * dir.y + oz * dir.z;
         if (t < -r) continue;
@@ -622,9 +640,10 @@ export class Enemies {
     const p = e.lastHit;
     this.noise(p.x, p.y, p.z, 5, 'fight');
     if (e.pickHit) { e.lastHitT = this.time; e.lastHitBy = 'player'; e.pickHit(blow.power, dir, e.hitPart, e.hitIdx, blow); if (blow.tag) this.combat.flourish(e, blow, p); return this.feel(blow); }
+    const fx = e.fx || this.fx; // (wave 19: bits the size of what was hit)
     if (e.passive) {
-      this.fx.dust(p.x, p.y, p.z, 3, this.dustCol(e.pos), 0.04);
-      sparkle(this.fx, p.x, p.y, p.z, 3, [1, 1, 0.85], 1, 2, 0.015, 0.3);
+      fx.dust(p.x, p.y, p.z, 3, this.dustCol(e.pos), 0.04);
+      sparkle(fx, p.x, p.y, p.z, 3, [1, 1, 0.85], 1, 2, 0.015, 0.3);
       this.sound('hit', { snd: e.info.snd || 'flesh', vol: 0.5 });
       e.takeHit(power, dir);
       return { hitStop: 0.02, shake: 0.03, kick: 0.6, tag: null, combo: 0 };
@@ -633,15 +652,15 @@ export class Enemies {
       // a weak spot (a rubble golem's glowing seam): a harder blow, a bright ring
       blow.power *= e.hitWeak;
       const g = e.G?.core || [1, 0.9, 0.6];
-      sparkle(this.fx, p.x, p.y, p.z, 12, g, 2.6, 3, 0.022, 0.6);
+      sparkle(fx, p.x, p.y, p.z, 12, g, 2.6, 3, 0.022, 0.6);
       this.sound('crystal_ring', { pitch: 1.4, vol: 0.7 });
       if (this.time - this.hint.floatT > 0.7) { this.hint.floatT = this.time; this.floatAt('weak spot!', p, '#ffe08a', 0.9, 'weak'); }
     }
     const c = e.hitCol || this.dustCol(e.pos);
-    this.fx.sparks(p.x, p.y, p.z, 7, [1, 0.92, 0.7], [-dir.x, -dir.y, -dir.z], 2.6);
-    sparkle(this.fx, p.x, p.y, p.z, 4, [1, 1, 0.85], 1.5, 3, 0.018, 0.35);
-    this.fx.dust(p.x, p.y, p.z, 3, c, 0.05);
-    if (e.info.flesh) for (let i = 0; i < 5; i++) this.fx.spawn({ x: p.x, y: p.y, z: p.z, vx: -dir.x * 1.5 + R(-1, 1), vy: R(0.5, 2), vz: -dir.z * 1.5 + R(-1, 1), life: R(0.3, 0.6), size: R(0.012, 0.022), color: c, drag: 0.8, grav: 8, bounce: 0.3, fade: false });
+    fx.sparks(p.x, p.y, p.z, 7, [1, 0.92, 0.7], [-dir.x, -dir.y, -dir.z], 2.6);
+    sparkle(fx, p.x, p.y, p.z, 4, [1, 1, 0.85], 1.5, 3, 0.018, 0.35);
+    fx.dust(p.x, p.y, p.z, 3, c, 0.05);
+    if (e.info.flesh) for (let i = 0; i < 5; i++) fx.spawn({ x: p.x, y: p.y, z: p.z, vx: -dir.x * 1.5 + R(-1, 1), vy: R(0.5, 2), vz: -dir.z * 1.5 + R(-1, 1), life: R(0.3, 0.6), size: R(0.012, 0.022), color: c, drag: 0.8, grav: 8, bounce: 0.3, fade: false });
     this.sound('hit', { snd: e.info.snd || 'flesh', vol: 0.9 });
     this.combat.flourish(e, blow, p);
     e.takeHit(blow.power, dir, { kb: blow.kb });
@@ -662,16 +681,16 @@ export class Enemies {
       this.state.emit?.('act', { type: 'kill', kind: e.kind });
       this.state.discover?.('critter', e.kind);
     }
-    const c = e.center;
+    const c = e.center, fx = e.fx || this.fx;
     if (e.info.flesh && !e.passive) {
       // a few bits fly, the body stays
-      puff(this.fx, c.x, c.y, c.z, 6, e.hitCol || this.dustCol(e.pos), 0.2 * e.size, 0.4, 0.07, 0.5);
-      sparkle(this.fx, c.x, c.y, c.z, 8, [1, 0.95, 0.75], 2.2, 3, 0.02, 0.6);
+      puff(fx, c.x, c.y, c.z, 6, e.hitCol || this.dustCol(e.pos), 0.2 * e.size, 0.4, 0.07, 0.5);
+      sparkle(fx, c.x, c.y, c.z, 8, [1, 0.95, 0.75], 2.2, 3, 0.02, 0.6);
       this.eco.addCarcass(e);
     } else {
       this.debris(e, dir || { x: 0, y: 0, z: 0 });
-      sparkle(this.fx, c.x, c.y, c.z, 14, [1, 0.95, 0.75], 2.8, 3, 0.022, 0.8);
-      puff(this.fx, c.x, c.y, c.z, 8, this.dustCol(e.pos), 0.2 * e.size, 0.4, 0.07, 0.5);
+      sparkle(fx, c.x, c.y, c.z, 14, [1, 0.95, 0.75], 2.8, 3, 0.022, 0.8);
+      puff(fx, c.x, c.y, c.z, 8, this.dustCol(e.pos), 0.2 * e.size, 0.4, 0.07, 0.5);
     }
     if (e.deathFx) e.deathFx();
     this.sound('pristine', {}, e.dist);
@@ -713,7 +732,8 @@ export class Enemies {
     if (!n) return;
     const big = e.kind === 'crystal_golem' || e.size > 1.6;
     // big creatures crumble into coarser blocks (a few voxels a side): cheaper and chunkier
-    const step = vs * Math.max(1, Math.sqrt(n / 700)) * Math.max(1, e.size || 1);
+    // (wave 19: a small one bursts into chunks its own size: binned at its scaled voxel)
+    const step = vs * Math.max(1, Math.sqrt(n / 700)) * ((e.K ?? 1) < 1 ? e.size : Math.max(1, e.size || 1));
     const glow = !!e.info.glowBits || e.kind === 'crystal_wyrm' || e.kind === 'ember_imp' || e.kind === 'gloom_wisp';
     this.burst(pts, step, big ? 16 : e.kind === 'rubble_golem' ? 10 : 6, {
       center: e.center, dir, glow,
@@ -792,7 +812,8 @@ export class Enemies {
   }
 
   loot(e) {
-    lootFor(e).forEach((id, i) => this.dropItem(e, id, i * 0.18, e.kind === 'crystal_golem' ? 1.5 : 0.8, e.kind === 'crystal_golem' ? e.lootAt : null, e.kind === 'crystal_golem' ? 4.6 : 3.4));
+    const ks = Math.max(0.45, e.K ?? 1); // (wave 19: a small one's loot doesn't fly as far)
+    lootFor(e).forEach((id, i) => this.dropItem(e, id, i * 0.18, e.kind === 'crystal_golem' ? 1.5 : 0.8 * ks, e.kind === 'crystal_golem' ? e.lootAt : null, e.kind === 'crystal_golem' ? 4.6 : 3.4));
   }
 
   /** Loot pops out as a little glowing gem and flies into the backpack (same path as ore). */
@@ -815,11 +836,13 @@ export class Enemies {
     let mx = 0, my = 0, mz = 0;
     for (const v of g) { mx += v.x; my += v.y; mz += v.z; }
     mx /= g.length; my /= g.length; mz /= g.length;
-    const bx = c.x * VOX - mx - 0.5, by = (c.y + 0.1) * VOX - my - 0.5, bz = c.z * VOX - mz - 0.5;
+    // (wave 19) a tiny creature's centre is a few cm off the floor: the gem (≈ 0.12 m) starts clear of it
+    const gy = e.pos && !at ? Math.max(c.y + 0.1, e.pos.y + 0.14) : c.y + 0.1;
+    const bx = c.x * VOX - mx - 0.5, by = gy * VOX - my - 0.5, bz = c.z * VOX - mz - 0.5;
     const vox = g.map((v) => ({ x: v.x + bx, y: v.y + by, z: v.z + bz, c: v.c }));
     const b = this.bodies.spawn(vox, { vel: [rand(-spread, spread), up + rand(0, spread * 0.4), rand(-spread, spread)], scale: s, glow: true, pickup: { id, q, p: false, delay: 0.75 + delay } });
     if (!b) this.queueEv({ loot: { id, q, p: false } });
-    sparkle(this.fx, c.x, c.y, c.z, 6, [1, 0.95, 0.6], 1.5, 1, 0.02, 0.6);
+    sparkle(e.fx || this.fx, c.x, c.y, c.z, 6, [1, 0.95, 0.6], 1.5, 1, 0.02, 0.6);
   }
 
   // ------------------------------------------------------------------ explosions
@@ -863,7 +886,7 @@ export class Enemies {
       if (!e.alive || !e.passive || !filter(e)) continue;
       const s = e.spheres[0];
       if (s.r <= 0) continue;
-      const r = s.r + 0.12;
+      const r = Math.max(s.r + 0.12, (e.pickR || 0) + 0.03); // (wave 19: tiny ones stay easy to grab and brush)
       const ox = s.x - eye.x, oy = s.y - eye.y, oz = s.z - eye.z;
       const t = ox * dir.x + oy * dir.y + oz * dir.z;
       if (t < -r) continue;
@@ -872,6 +895,7 @@ export class Enemies {
       const t0 = Math.max(0, t - Math.sqrt(r * r - d2));
       if (t0 <= bt) { bt = t0; best = e; }
     }
+    if (best) best.aimT = this.time; // (the small highlight)
     return best;
   }
 
@@ -960,9 +984,9 @@ export class Enemies {
   /** A critter is caught: it hops into the backpack. */
   caught(e, id, say) {
     e.alive = false;
-    const c = e.center;
-    sparkle(this.fx, c.x, c.y, c.z, 12, [1, 0.95, 0.7], 1.6, 1, 0.022, 0.7);
-    puff(this.fx, c.x, c.y, c.z, 4, this.dustCol(e.pos), 0.08, 0.3, 0.05, 0.4);
+    const c = e.center, fx = e.fx || this.fx, ks = Math.max(0.3, e.K ?? 1);
+    sparkle(fx, c.x, c.y, c.z, 12, [1, 0.95, 0.7], 1.6, 1, 0.022, 0.7);
+    puff(fx, c.x, c.y, c.z, 4, this.dustCol(e.pos), 0.08 * ks, 0.3, 0.05, 0.4);
     this.sound('squeak', { pitch: 1.3 });
     this.state.discover?.('critter', e.info.id);
     const ev = [{ loot: { id, q: ITEMS[id]?.q ? Math.round(rand(70, 95)) : undefined, p: false } }];
@@ -994,7 +1018,7 @@ export class Enemies {
     mesh.position.set(o.x, o.y, o.z);
     this.root.add(mesh);
     this.shots.push({
-      pos: mesh.position, vel: new THREE.Vector3(...o.v), g: o.g ?? 9, t: 0, life: o.life ?? 3, bounces: 0, maxB: o.bounces ?? 3, sq: 0, mesh, dmg: o.dmg, zone: o.zone,
+      pos: mesh.position, vel: new THREE.Vector3(...o.v), g: o.g ?? 9, t: 0, life: o.life ?? 3, bounces: 0, maxB: o.bounces ?? 3, sq: 0, mesh, dmg: o.dmg, zone: o.zone, k: o.scale ?? 1,
       src: o.src, kind: o.kind || 'fire', info: { fire: (o.kind || 'fire') === 'fire' }, ember: o.ember, hot: o.hot, light: o.light, onHit: o.onHit, trail: o.trail, r: o.r ?? 0.07, spin: o.spin ?? 1,
     });
   }
@@ -1026,7 +1050,7 @@ export class Enemies {
         if (Math.random() < 0.25) this.fx.ember(p.x, p.y, p.z);
       } else if (s.trail && Math.random() < 0.6) this.fx.spawn({ x: p.x, y: p.y, z: p.z, life: 0.35, size: 0.02, color: s.trail, alpha: 0.7, drag: 1 });
       s.sq = Math.max(0, s.sq - dt * 6);
-      s.mesh.scale.set(1 + s.sq * 0.5, 1 - s.sq * 0.45, 1 + s.sq * 0.5);
+      s.mesh.scale.set((1 + s.sq * 0.5) * s.k, (1 - s.sq * 0.45) * s.k, (1 + s.sq * 0.5) * s.k);
       s.mesh.rotation.x += dt * 9 * s.spin; s.mesh.rotation.y += dt * 6 * s.spin;
       let done = false;
       // hits the mole?
@@ -1111,8 +1135,9 @@ export class Enemies {
     const c = [];
     for (const e of this.list) {
       if (!e.alive) continue;
-      const l = e.light();
+      let l = e.light();
       if (!l) continue;
+      if ((e.K ?? 1) < 1) l = { ...l, r: l.r * Math.sqrt(e.K) }; // (wave 19: a little glow lights a little rock)
       const d = Math.hypot(l.x - eye.x, l.y - eye.y, l.z - eye.z);
       if (d < 18) c.push([d, l]);
     }

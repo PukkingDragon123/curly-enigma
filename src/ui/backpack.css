@@ -719,3 +719,125 @@ html.is-touch .bp-hot .inv-slot .k { display: none; }
 }
 .inv-slot:not(.empty) img { filter: drop-shadow(var(--px) var(--px) 0 rgba(40, 18, 6, .38)); }
 .inv-slot.pocket.on::after { background: linear-gradient(to bottom, rgba(255, 214, 120, .28), transparent); }
+
+/* ---------- wave 19: bigger pockets, and the things in them are their real 3D models (itemVox.js),
+   sitting down in deep leather pockets: a lit lip at the top left, walls in shadow, a floor, and the
+   pocket's front lip drawn over the item's foot. Counts are stamped brass tags. Sizes come from here
+   (itemVox.itemPx() reads --inv-item, --belt-item... so each picture is drawn at the size it shows). ---------- */
+:root {
+  --inv-gap: calc(var(--px) * 2);
+  --inv-side: calc(var(--px) * 52);
+  --inv-chrome: calc(var(--px) * 76 + 28px);
+  --inv-slot: max(40px, round(down, min(calc(var(--px) * 36), calc((100vw - var(--sal) - var(--sar) - var(--inv-chrome) - var(--inv-side)) / 9 - var(--inv-gap))), 2px));
+  --inv-item: round(down, calc(var(--inv-slot) - var(--px) * 5), 2px);
+  --belt-loop: round(down, calc(var(--px) * 28), 2px);
+  --belt-item: round(down, calc(var(--belt-loop) - var(--px) * 5), 2px);
+  --rack-item: round(down, calc(var(--icon) * .72), 2px);
+  --snack-item: round(down, calc(var(--icon-s) * 1.5), 2px);
+  --tag-item: round(down, calc(var(--icon) * 1.75), 2px);
+  --tip-item: var(--icon);
+}
+@media (min-width: 641px) and (min-height: 501px) {
+  .bp { --slot-w0: var(--inv-slot); --slot-w: var(--inv-slot); --slot-h: var(--inv-slot); --gap: var(--inv-gap); --side-w: var(--inv-side);
+    width: min(calc(100vw - 16px - var(--sal) - var(--sar)), calc(var(--px) * 76 + var(--inv-slot) * 9 + var(--inv-gap) * 8 + var(--inv-side) + 12px)); }
+  .bp.with-trunk { --side-w: calc(var(--inv-slot) * 3 + var(--gap) * 2 + var(--px) * 14); }
+  .bp-equip .bp-loop, .bp-equip .bp-loop.empty, .bp-equip .inv-slot.bp-loop {
+    width: calc((var(--rack-item) + var(--px) * 8) * var(--rk, 1)); height: calc((var(--rack-item) + var(--px) * 8) * var(--rk, 1));
+  }
+  .bp-equip .bp-loop img { width: calc(var(--rack-item) * var(--rk, 1)); height: calc(var(--rack-item) * var(--rk, 1)); margin-top: 0; }
+  .bp-front > div, .bp-front > button { padding: calc(var(--px) * 2); }
+  .bp-coin b { font-size: var(--fs-h); }
+}
+
+/* the pockets and the belt row: deep wells, the item a little sunk in */
+.bp-pack .inv-slot.pocket, .bp-pack .inv-slot.sewn, .bp-hot .inv-slot.loop, .bp-tgrid .inv-slot.trunk {
+  border-width: calc(var(--px) * 7); border-image: var(--pk-well) 7 fill / calc(var(--px) * 7) round; image-rendering: pixelated; overflow: visible;
+}
+.bp-hot .inv-slot.loop { border-image-source: var(--pk-loopWell); }
+.bp-pack .inv-slot.pocket.on, .bp-tgrid .inv-slot.trunk.on { border-image-source: var(--pk-wellOn); }
+.bp-hot .inv-slot.loop.on { border-image-source: var(--pk-loopWellOn); }
+.bp-pack .inv-slot.sewn { border-image-source: var(--inv-sewn); border-image-slice: 5 3 3 fill; border-width: calc(var(--px) * 5) calc(var(--px) * 3) calc(var(--px) * 3); }
+.bp-pack .inv-slot.pocket:not(.ghosted)::after { display: none; }
+.bp-pack .inv-slot img, .bp-hot .inv-slot img, .bp-tgrid .inv-slot img {
+  position: absolute; left: 50%; top: 50%; width: var(--inv-item); height: var(--inv-item); max-width: none;
+  margin: calc(var(--inv-item) / -2) 0 0 calc(var(--inv-item) / -2); translate: 0 calc(var(--px) * 1.5);
+  filter: none; image-rendering: pixelated; z-index: 1;
+}
+.inv-slot.blade img, .inv-slot.blade:not(.empty):hover img { transform: none; }
+.inv-slot:not(.empty):hover img, .inv-slot:not(.empty) img { filter: none; }
+.bp-pack .inv-slot:not(.empty):hover, .bp-hot .inv-slot:not(.empty):hover { transform: none; filter: brightness(1.05); }
+.bp-pack .inv-slot:not(.empty):hover img, .bp-hot .inv-slot:not(.empty):hover img { transform: none; }
+/* the front lip over the item's foot */
+.inv-slot > .lip {
+  position: absolute; z-index: 2; left: calc(var(--px) * -7); right: calc(var(--px) * -7); bottom: calc(var(--px) * -7); height: calc(var(--px) * 4); pointer-events: none;
+  border-style: solid; border-width: 0 calc(var(--px) * 7) calc(var(--px) * 4); border-image: var(--pk-well) 0 7 4 7 / 0 calc(var(--px) * 7) calc(var(--px) * 4) round; image-rendering: pixelated;
+}
+.bp-hot .inv-slot > .lip { border-image-source: var(--pk-loopWell); }
+.bp-pack .inv-slot.pocket.on > .lip { border-image-source: var(--pk-wellOn); }
+.bp-hot .inv-slot.loop.on > .lip { border-image-source: var(--pk-loopWellOn); }
+.inv-slot.ghosted > .lip { opacity: .7; }
+.bp-hot .inv-slot.cur::after { inset: calc(var(--px) * -8); }
+.bp-hot .inv-slot .k { z-index: 3; left: calc(var(--px) * -5); top: calc(var(--px) * -6); }
+.bp-pack .inv-slot .pips { z-index: 3; top: calc(var(--px) * -5); left: calc(var(--px) * -4); }
+.bp-pack .inv-slot.q::before { z-index: 3; }
+.bp-hot .inv-slot.ref.off img { opacity: .45; filter: grayscale(1) brightness(.7); }
+
+/* counts: a little stamped brass plate nailed to the pocket's corner */
+.inv-slot .n, .bp-pack .inv-slot .n, .bp-hot .inv-slot .n, .bp-snack .n, .inv-ghost .n, #ui .belt .loop .n, .bp-loop .n {
+  position: absolute; z-index: 4; right: calc(var(--px) * -4); bottom: calc(var(--px) * -4); left: auto; top: auto;
+  box-sizing: border-box; min-width: calc(var(--px) * 9); padding: 0 calc(var(--px) * .5) 0 calc(var(--px) * 1.5); text-align: center;
+  font-family: var(--font); font-size: 16px; line-height: 1; color: #3a2006; text-shadow: 0 1px 0 rgba(255, 244, 196, .65);
+  border-style: solid; border-width: calc(var(--px) * 2) calc(var(--px) * 2) calc(var(--px) * 2) calc(var(--px) * 3);
+  border-image: var(--pk-brassTag) 3 3 3 4 fill / calc(var(--px) * 2) calc(var(--px) * 2) calc(var(--px) * 2) calc(var(--px) * 3) stretch;
+  image-rendering: pixelated; filter: drop-shadow(var(--px) var(--px) 0 rgba(36, 16, 30, .55)); transform: rotate(-3deg); pointer-events: none;
+}
+@media (min-width: 1700px) and (min-height: 1000px) { .inv-slot .n, .bp-snack .n, .inv-ghost .n, #ui .belt .loop .n, .bp-loop .n { font-size: 24px; } }
+
+/* the stack in your paw: lifted out of its pocket with a little tilt, its shadow left far below */
+.inv-ghost img {
+  left: calc(var(--inv-item) / -2); top: calc(var(--inv-item) / -2); width: var(--inv-item); height: var(--inv-item); image-rendering: pixelated;
+  transform: rotate(var(--tilt, -5deg)) scale(1.1); transform-origin: 50% 35%; transition: transform .12s var(--soft);
+  filter: drop-shadow(calc(var(--px) * 3) calc(var(--px) * 6) 0 rgba(42, 22, 46, .32));
+}
+.inv-ghost.grab img { animation: lift .34s var(--pop); }
+@keyframes lift { 0% { transform: rotate(0) scale(.94) translateY(calc(var(--px) * 3)); filter: drop-shadow(var(--px) var(--px) 0 rgba(42, 22, 46, .45)); } 45% { transform: rotate(-11deg) scale(1.16) translateY(calc(var(--px) * -3)); } }
+.inv-ghost .n { left: calc(var(--inv-item) * .18); right: auto; top: calc(var(--inv-item) * .2); bottom: auto; }
+.inv-ghost.blade img { transform: rotate(var(--tilt, -5deg)) scale(1.1); }
+.inv-ghost.out img { transform: rotate(28deg) scale(.96) translateY(calc(var(--px) * 3)); opacity: .82; }
+.inv-ghost.touch img { top: calc(var(--inv-item) * -1.2); }
+
+/* the tag's turning item, the tooltip's picture, the gear and snack pictures at their own sizes */
+.bp-tag-icon { width: calc(var(--tag-item) * .72 + var(--px) * 8); height: calc(var(--tag-item) * .72 + var(--px) * 8); }
+.bp-tag-icon img { width: calc(var(--tag-item) * .72); height: calc(var(--tag-item) * .72); }
+.bp-tag-icon .vox-spin { width: var(--tag-item); height: var(--tag-item); }
+.bp-snack { width: calc(var(--snack-item) + var(--px) * 6); height: calc(var(--snack-item) + var(--px) * 7); border-image: var(--pk-well) 7 fill / calc(var(--px) * 4) round; border-width: calc(var(--px) * 3); }
+.bp-snack img { width: var(--snack-item); height: var(--snack-item); }
+.bp-snack .n { right: calc(var(--px) * -3); bottom: calc(var(--px) * -3); }
+.inv-tip { display: grid; grid-template-columns: auto 1fr; column-gap: calc(var(--px) * 2); align-items: center; }
+.inv-tip > :not(.inv-tip-pic) { grid-column: 2; }
+.inv-tip .inv-tip-pic { grid-row: 1 / span 3; width: var(--tip-item); height: var(--tip-item); image-rendering: pixelated; margin: calc(var(--px) * -2) 0 calc(var(--px) * -2) calc(var(--px) * -2); }
+.bp-swap-row img { image-rendering: pixelated; }
+
+/* ---------- the HUD belt: bigger loops, deep like the pockets ---------- */
+#ui .belt .belt-strap { height: calc(var(--belt-loop) + var(--px) * 6); }
+#ui .belt .loop { max-width: calc(var(--belt-loop) + var(--px) * 4); }
+#ui .belt .loop-face {
+  position: relative; width: var(--belt-loop); height: var(--belt-loop); border-width: calc(var(--px) * 6);
+  border-image: var(--pk-loopWell) 7 fill / calc(var(--px) * 6) round; image-rendering: pixelated;
+}
+#ui .belt .loop.sel .loop-face { border-image-source: var(--pk-loopWellOn); filter: none; }
+#ui .belt .loop-face img {
+  position: absolute; left: 50%; top: 50%; width: var(--belt-item); height: var(--belt-item); margin: calc(var(--belt-item) / -2) 0 0 calc(var(--belt-item) / -2);
+  translate: 0 calc(var(--px) * 1); image-rendering: pixelated; z-index: 1;
+}
+#ui .belt .loop-face > .lip {
+  position: absolute; z-index: 2; left: calc(var(--px) * -6); right: calc(var(--px) * -6); bottom: calc(var(--px) * -6); height: calc(var(--px) * 4); pointer-events: none;
+  border-style: solid; border-width: 0 calc(var(--px) * 6) calc(var(--px) * 4); border-image: var(--pk-loopWell) 0 7 4 7 / 0 calc(var(--px) * 6) calc(var(--px) * 4) round; image-rendering: pixelated;
+}
+#ui .belt .loop.sel .loop-face > .lip { border-image-source: var(--pk-loopWellOn); }
+#ui .belt .loop.empty .loop-face > .lip { display: none; }
+#ui .belt .loop .k { z-index: 3; font-size: 16px; left: calc(var(--px) * 1); top: calc(var(--px) * 0); }
+#ui .belt .loop .n { right: calc(var(--px) * -2); bottom: calc(var(--px) * -1); }
+#ui .belt .loop.sel .loop-face::before { inset: calc(var(--px) * -7); }
+#ui .belt .loop .gauge { z-index: 3; }
+.belt-bounce { width: var(--belt-item); height: var(--belt-item); margin-left: calc(var(--belt-item) / -2); }

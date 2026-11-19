@@ -63,6 +63,8 @@ export function buildWisp(zone) {
   return { orb: orb.geo(0, 0, 0, H), eye: eye.geo(0, -1, 10, H), red: red.geo(0, -1, 10, H), tails, mote: P.mote, glow: c01(P.iris) };
 }
 
+// (wave 19, sizes.js) A floating eye the size of a mole's head. It still stalks round your back at
+// arm's length and more; its bob, tail drift and motes are its size.
 export class Wisp extends Enemy {
   static info = { id: 'gloom_wisp', name: 'Gloom Wisp', color: '#a87ae0', hits: 2, dmg: 4, flying: true, snd: 'crystal' };
   static tells = { charge: [0.55] };
@@ -196,7 +198,7 @@ export class Wisp extends Enemy {
         const x = pc.x + Math.sin(a) * R, z = pc.z + Math.cos(a) * R, y = m.eye.y + rand(-0.15, 0.3);
         if (solidAt(w, x, y, z) || solidAt(w, x, y + 0.2, z) || !clearLine(w, p.x, p.y, p.z, x, y, z)) continue;
         const ox = p.x, oy = p.y, oz = p.z;
-        puff(this.fx, ox, oy, oz, 5, this.G.mote.map((k) => k * 0.4), 0.12, 0.2, 0.06, 0.5);
+        puff(this.fx, ox, oy, oz, 5, this.G.mote.map((k) => k * 0.4), 0.12 * this.K, 0.2, 0.06, 0.5);
         sparkle(this.fx, ox, oy, oz, 8, this.G.mote, 1.4, 0, 0.018, 0.4);
         p.set(x, y, z);
         this.vel.set(0, 0, 0);
@@ -216,7 +218,8 @@ export class Wisp extends Enemy {
   }
 
   animate(dt) {
-    this.bob.position.y = Math.sin(this.t * 2.2) * 0.05;
+    const k = this.K;
+    this.bob.position.y = Math.sin(this.t * 2.2) * 0.05 * k;
     this.bob.rotation.z = Math.sin(this.t * 1.3) * 0.12;
     this.bob.rotation.x = clamp(Math.hypot(this.vel.x, this.vel.z) * 0.08, 0, 0.35);
     // tail chain trails from the back of the orb
@@ -226,8 +229,8 @@ export class Wisp extends Enemy {
     this.tails.forEach((t, i) => {
       const L = (0.09 + i * 0.01) * s;
       const p = t.position;
-      p.y += (0.25 - i * 0.05) * dt; // ghostly drift up
-      p.x -= Math.sin(this.yaw) * 0.6 * dt; p.z -= Math.cos(this.yaw) * 0.6 * dt; // and streams out behind
+      p.y += (0.25 - i * 0.05) * dt * k; // ghostly drift up
+      p.x -= Math.sin(this.yaw) * 0.6 * dt * k; p.z -= Math.cos(this.yaw) * 0.6 * dt * k; // and streams out behind
       const dx = p.x - px, dy = p.y - py, dz = p.z - pz, d = Math.hypot(dx, dy, dz) || 1;
       if (d > L) { p.set(px + (dx / d) * L, py + (dy / d) * L, pz + (dz / d) * L); }
       t.scale.setScalar(s * (1 + Math.sin(this.t * 6 - i) * 0.12));
@@ -237,7 +240,7 @@ export class Wisp extends Enemy {
     // ghostly trail
     const tl = this.tails[2].position;
     if (Math.random() < dt * 30) mote(this.fx, tl.x, tl.y, tl.z, this.G.mote, 0.035, 0.8);
-    if (Math.random() < dt * 6) mote(this.fx, this.pos.x + rand(-0.15, 0.15), this.pos.y + 0.2, this.pos.z + rand(-0.15, 0.15), this.G.mote, 0.02, 1.2);
+    if (Math.random() < dt * 6) mote(this.fx, this.pos.x + rand(-0.15, 0.15) * k, this.pos.y + 0.2 * k, this.pos.z + rand(-0.15, 0.15) * k, this.G.mote, 0.02, 1.2);
   }
 
   updateSpheres() {
@@ -255,7 +258,7 @@ export class Wisp extends Enemy {
 
   deathFx() {
     sparkle(this.fx, this.pos.x, this.pos.y, this.pos.z, 26, this.G.mote, 2.4, -0.5, 0.025, 1.1);
-    puff(this.fx, this.pos.x, this.pos.y, this.pos.z, 10, this.G.mote.map((k) => k * 0.4), 0.2, 0.5, 0.08, 0.5);
+    puff(this.fx, this.pos.x, this.pos.y, this.pos.z, 10, this.G.mote.map((k) => k * 0.4), 0.2 * this.K, 0.5, 0.08, 0.5);
     for (const t of this.tails) puff(this.fx, t.position.x, t.position.y, t.position.z, 3, this.G.mote.map((k) => k * 0.5), 0.1, 0.4, 0.06, 0.5);
   }
 }

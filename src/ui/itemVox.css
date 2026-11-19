@@ -1,3 +1,5 @@
-/* Items as 3D voxel art (itemVox.js): stills and turning frames are plain <img>s and keep their
-   places' own styling; only the turning canvas on the backpack's tag is placed here. */
-canvas.vox-spin { image-rendering: pixelated; image-rendering: crisp-edges; image-rendering: pixelated; }
+/* Items as real 3D models (itemVox.js): stills and frames are plain <img>s and keep their places'
+   own styling. A still that arrives settles in with a little drop; the tag's slow turn is placed here. */
+img.vox-in { animation: voxIn .26s var(--pop, cubic-bezier(.25, 1.65, .45, 1)); }
+@keyframes voxIn { from { transform: translateY(calc(var(--px, 3px) * -2)) scale(.9); } }
+.vox-spin { image-rendering: pixelated; }

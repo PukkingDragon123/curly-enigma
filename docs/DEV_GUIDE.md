@@ -190,6 +190,14 @@ Everything (2D pixel art, voxel models, UI, FX) follows one recognizable style:
 - **2D:** a woodcut/linocut look. Selective 1px dark-plum outlines, broken on the lit side. Shading uses hatching and 3–4 flat tones, not airbrushed gradients, glossy bevels or soft blur. Paper, wood, leather and iron read through texture marks.
 - **Shapes:** chunky, hand-carved and a little lopsided. Exaggerated proportions; nothing perfectly symmetric or perfectly round. Silhouettes first.
 - **Voxel 3D:** a carved-toy feel. Chunky readable forms, 3–5 step ramps per material, baked AO, warm key light and cool plum fill. Detail is concentrated where the eye goes (faces, hands, edges, focal props); quiet areas stay quiet. No speckle-noise dithering.
+- **HAND-DRAWN FIRST (the player: "make it feel hand-drawn, not AI at all").** The AI look comes from procedural noise, gradients, glow and detail spread evenly everywhere. Hand-made pixel art is the opposite:
+  - **Author key 2D art by hand as pixel maps** (string grids plus a small named palette, like `src/bookends/logo.js` GLYPHS). This covers icons, HUD objects, portraits, frames, posters and map vignettes. Code may only tile, recolour or animate them. No per-pixel random noise, no procedural "texture" fills, no smooth gradients.
+  - **Small canvases, big pixels.** Icons are 16–24 px, HUD objects 24–48 px, scaled by integer only. Less resolution, more intent.
+  - **Limited palette.** 4–6 colours per sprite and about 32 for the whole game. Every pixel is chosen; anti-aliasing is placed by hand only on curves.
+  - **Clean clusters and deliberate lines.** Even 1px outlines with no jaggies or doubles; shapes made of clear pixel clusters, not speckle.
+  - **Imperfect on purpose.** Slight wobble in lines, uneven hand-cut edges and asymmetry, like ink on paper.
+  - **Restraint.** Fewer details, placed where they matter. Empty space is fine. If in doubt, remove it.
+  - **Voxels too.** Flat colour per material area (2–3 tones), clean planes, and shapes modelled on purpose; no noise jitter on every voxel.
 - **Avoid (AI tells):** bloom halos and glow on everything, rainbow saturation, generic gold-filigree UI-kit frames, random sparkles, perfectly symmetric icon compositions, uniform noise detail, plastic gloss, stock fantasy motifs.
 
 ## Debug switches (URL query)

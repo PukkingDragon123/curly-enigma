@@ -49,7 +49,7 @@ export function bagFullToast(game, id) {
 }
 
 export function openBackpack(game, opts = {}) {
-  itemVox.init(game); // (items in the pack are drawn as 3D voxel stills; the picked one turns on its tag)
+  itemVox.init(game); // (items in the pack are their real 3D models; hovered ones sway, the picked one turns on its tag)
   const st = game.state;
   const ui = game.ui;
   const audio = game.audio;
@@ -71,7 +71,10 @@ export function openBackpack(game, opts = {}) {
   const slotsOf = (c) => (c === 'bag' ? Inv.bag(st) : c === 'trunk' ? Inv.stash(st) : c === 'rack' ? rack : null);
   const capOf = (c) => (c === 'bag' ? Inv.bagSlots(st) : c === 'trunk' ? Infinity : slotsOf(c).length);
   const hasTool = (k) => k === 'build' || !!st.equipped(k);
-  const refIcon = (k) => itemVox.src(refItem(st, k)?.id || KIND_ICON[k]);
+  const refKey = (k) => refItem(st, k)?.id || KIND_ICON[k];
+  const refIcon = (k, size) => itemVox.src(refKey(k), size);
+  // the CSS px an item shows at in a pocket / on a sleeve (bigger pockets: wave 19)
+  const SZ = () => itemVox.itemPx('slot'), RZ = () => itemVox.itemPx('rack');
   const refOff = (k) => !hasTool(k);
   /** The belt slot the mole holds (the scene's), for the crisp highlight. */
   const curHot = () => { const sc = game.scene; const v = sc?.hands?.slot ?? sc?.slot; return Number.isInteger(v) ? v : -1; };
@@ -128,11 +131,11 @@ export function openBackpack(game, opts = {}) {
     grid.classList.toggle('bp-settle', !!animate);
     // the pack: rows of nine pockets; the rest of the last row and the next bag's row sewn shut
     const nb = nextBag();
-    const rows = Math.ceil(P / COLS), cells = rows * COLS + (nb ? COLS : 0);
+    const rows = Math.ceil(P / COLS), cells = rows * COLS + (nb ? COLS : 0), sz = SZ();
     const pack = el('div', { class: 'bp-pack', role: 'grid', 'aria-label': 'Pack' });
     for (let k = 0; k < cells; k++) {
       const i = H + k;
-      if (k < P) pack.append(slotEl(slots[i] || null, { c: 'bag', i, frame: 'pocket', hide: dnd?.heldFrom('bag', i) || 0, sel: selKey === `slot:bag:${i}` }));
+      if (k < P) pack.append(slotEl(slots[i] || null, { c: 'bag', i, frame: 'pocket', size: sz, hide: dnd?.heldFrom('bag', i) || 0, sel: selKey === `slot:bag:${i}` }));
       else pack.append(slotEl(null, { c: 'sewn', i: k, frame: 'pocket', locked: true, lockLabel: nb && k === rows * COLS ? nb.name : '' }));
     }
     grid.append(pack);
@@ -172,7 +175,7 @@ export function openBackpack(game, opts = {}) {
         const extras = [];
         if (owned.length > 1) extras.push(el('span', { class: 'n' }, '+' + (owned.length - 1)));
         const b = el('button', { class: 'bp-loop' + (cur ? '' : ' empty') + (selKey === key ? ' on' : ''), title: cur ? `${label}: ${cur.name}` : `${label}: empty`, 'aria-label': cur ? `${label}: ${cur.name}` : `${label}: empty`, 'data-key': key }, [
-          el('img', { class: 'pix', src: itemVox.src(cur ? cur.id : sample), alt: '' }), ...extras,
+          el('img', { class: 'pix', src: itemVox.src(cur ? cur.id : sample, RZ()), alt: '', 'data-vox': cur ? cur.id : null }), ...extras,
         ]);
         b.onclick = () => selectGear(slot, label, sample, b);
         c.append(b);
@@ -184,7 +187,7 @@ export function openBackpack(game, opts = {}) {
     const belt = Inv.bag(st).slice(0, H);
     rack.forEach((r, i) => {
       const k = r.tool, label = TOOL_SLOTS[i][1], cur = refItem(st, k);
-      const b = slotEl(r, { c: 'rack', i, frame: 'sleeve', refIcon, refOff, sel: selKey === `slot:rack:${i}` });
+      const b = slotEl(r, { c: 'rack', i, frame: 'sleeve', size: RZ(), refIcon, refKey, refOff, sel: selKey === `slot:rack:${i}` });
       b.classList.add('bp-loop');
       if (!hasTool(k)) b.classList.add('empty');
       const at = belt.findIndex((x) => x?.tool === k);
@@ -258,7 +261,7 @@ export function openBackpack(game, opts = {}) {
       const slots = Inv.bag(st);
       const i = slots.findIndex((s) => s && s.id === f.id);
       const b = el('button', { class: 'bp-snack', title: `${it.name} (+${it.energy ?? it.food})` }, [
-        el('img', { class: 'pix', src: itemVox.src(f.id), alt: '' }), el('span', { class: 'n' }, String(f.n)),
+        el('img', { class: 'pix', src: itemVox.src(f.id, itemVox.itemPx('snack')), alt: '', 'data-vox': f.id }), el('span', { class: 'n' }, String(f.n)),
       ]);
       b.onclick = () => { if (i >= 0) selectSlot('bag', i, root.querySelector(`.inv-slot[data-c="bag"][data-i="${i}"]`)); };
       row.append(b);
@@ -273,7 +276,8 @@ export function openBackpack(game, opts = {}) {
     const slots = Inv.stash(st);
     const n = Math.max(12, Math.ceil((slots.length + 4) / 4) * 4);
     const tg = el('div', { class: 'bp-tgrid' });
-    for (let i = 0; i < n; i++) tg.append(slotEl(slots[i] || null, { c: 'trunk', i, frame: 'trunk', hide: dnd?.heldFrom('trunk', i) || 0, sel: selKey === `slot:trunk:${i}` }));
+    const sz = SZ();
+    for (let i = 0; i < n; i++) tg.append(slotEl(slots[i] || null, { c: 'trunk', i, frame: 'trunk', size: sz, hide: dnd?.heldFrom('trunk', i) || 0, sel: selKey === `slot:trunk:${i}` }));
     return el('div', { class: 'bp-trunk' }, [
       el('div', { class: 'bp-trunk-head' }, [el('b', {}, 'The trunk'), el('small', {}, atHome ? 'Whatever didn\'t fit in your pack waits in here.' : 'It stays at home.'), el('button', { class: 'bp-tool sm', title: 'Tidy the trunk', 'aria-label': 'Tidy the trunk', onclick: () => tidy('trunk') }, [el('img', { class: 'pix', src: INV_ART.brush(), alt: '' })])]),
       el('div', { class: 'bp-tscroll' }, [tg]),
@@ -477,7 +481,7 @@ export function openBackpack(game, opts = {}) {
     const box = el('div', { class: 'bp-tag-icon' }, [el('img', { class: 'pix', src: icon, alt: '' })]);
     // the picked item turns slowly on its tag, in 3D voxels
     tagSpin?.dispose();
-    tagSpin = voxId ? itemVox.spin(box, voxId) : null;
+    tagSpin = voxId ? itemVox.spin(box, voxId, itemVox.itemPx('tag')) : null;
     if (tagSpin) box.classList.add('vox');
     return el('div', { class: 'bp-tag-head' }, [box, el('div', {}, [el('small', {}, kind), el('b', {}, name), extra || null])]);
   };
@@ -508,7 +512,7 @@ export function openBackpack(game, opts = {}) {
     actions.append(el('button', { class: 'btn alt danger', onclick: () => tossStack(c, i, n) }, 'Toss'));
     put(tag,
       tagClose(),
-      tagHead(stackIcon(s), it.name, CAT_LABEL[it.cat] || it.cat, q !== null ? pips(q, Inv.stackPristine(s)) : null, s.id),
+      tagHead(stackIcon(s, itemVox.itemPx('tag')), it.name, CAT_LABEL[it.cat] || it.cat, q !== null ? pips(q, Inv.stackPristine(s)) : null, s.id),
       el('p', { class: 'bp-desc' }, it.desc || ''),
       facts(info),
       actions,
@@ -531,7 +535,7 @@ export function openBackpack(game, opts = {}) {
     actions.append(el('button', { class: 'btn alt danger', onclick: () => tossStack(c, i, 1) }, 'Toss'));
     put(tag,
       tagClose(),
-      tagHead(stackIcon({ w }), w.name, 'Forged weapon', el('span', { class: 'bp-grade', style: { color: g.color, borderColor: g.color } }, `Grade ${g.g}`), itemVox.wkey(w.type, w.metal, w.infusion)),
+      tagHead(stackIcon({ w }, itemVox.itemPx('tag')), w.name, 'Forged weapon', el('span', { class: 'bp-grade', style: { color: g.color, borderColor: g.color } }, `Grade ${g.g}`), itemVox.wkey(w.type, w.metal, w.infusion)),
       el('p', { class: 'bp-desc', html: `Forged on day ${w.day}. Metal quality ${w.matQ}% · craft score ${Math.round(w.score)}` + (w.gem ? ` · socketed ${ITEMS[w.gem]?.name}` : '') }),
       facts([`Worth about <span class="gold-txt">${formatGoldFull(w.value)}g</span> at the assay office.`, `Takes a whole pocket · weighs <b>${W.weaponKg(w).toFixed(1)} kg</b>.`]),
       actions,
@@ -555,7 +559,7 @@ export function openBackpack(game, opts = {}) {
     const list = el('div', { class: 'bp-swap' });
     for (const id of others) {
       list.append(el('div', { class: 'bp-swap-row' }, [
-        el('img', { class: 'pix', src: itemVox.src(id), alt: '' }), el('span', {}, ITEMS[id].name),
+        el('img', { class: 'pix', src: itemVox.src(id, 32), alt: '', 'data-vox': id }), el('span', {}, ITEMS[id].name),
         el('button', { class: 'btn', onclick: () => {
           if (!st.equip(id)) { sfx('nope'); ui.toast('<b>Bag too small</b>', { kind: 'warn', dur: 2000 }); return; }
           audio.play('ui_click'); render(); reanchor(); showSlot(slot, label, sample);
@@ -572,7 +576,7 @@ export function openBackpack(game, opts = {}) {
     const kitDesc = slot === 'build' ? 'Builds at home and below. Hold Q to choose.' : null;
     put(tag,
       tagClose(),
-      tagHead(itemVox.src(cur ? cur.id : sample), cur ? cur.name : kitDesc ? label : `No ${label.toLowerCase()}`, cur ? `${label} · in use` : label, null, cur ? cur.id : null),
+      tagHead(itemVox.src(cur ? cur.id : sample, itemVox.itemPx('tag')), cur ? cur.name : kitDesc ? label : `No ${label.toLowerCase()}`, cur ? `${label} · in use` : label, null, cur ? cur.id : null),
       el('p', { class: 'bp-desc' }, cur ? cur.desc || '' : kitDesc || 'Empty loop. Try the shops in Deep Town.'),
       facts(info),
       others.length ? el('small', { class: 'bp-swap-t' }, 'Also packed') : null,
@@ -606,7 +610,10 @@ export function openBackpack(game, opts = {}) {
       tip.innerHTML = '';
       const it = s.w ? null : ITEMS[s.id];
       const val = s.w ? s.w.value : sellPrice(s.id, q ?? 100);
+      // the same picture as the pocket's, small, beside the words
+      const pic = el('img', { class: 'pix inv-tip-pic', src: stackIcon(s, itemVox.itemPx('tip')), alt: '' });
       put(tip,
+        pic,
         el('b', {}, stackName(s)),
         el('span', { class: 'inv-tip-sub' }, [
           s.w ? `Grade ${s.w.grade}` : (CAT_LABEL[it?.cat] || ''),
@@ -625,10 +632,10 @@ export function openBackpack(game, opts = {}) {
 
   // ---------------------------------------------------------------- the belt row (the hotbar)
   const renderHot = () => {
-    const slots = Inv.bag(st), cur = curHot();
+    const slots = Inv.bag(st), cur = curHot(), sz = SZ();
     hotRow.innerHTML = '';
     for (let i = 0; i < H; i++) {
-      const b = slotEl(slots[i] || null, { c: 'bag', i, frame: 'loop', key: String(i + 1), refIcon, refOff, hide: dnd?.heldFrom('bag', i) || 0, sel: selKey === `slot:bag:${i}` });
+      const b = slotEl(slots[i] || null, { c: 'bag', i, frame: 'loop', size: sz, key: String(i + 1), refIcon, refKey, refOff, hide: dnd?.heldFrom('bag', i) || 0, sel: selKey === `slot:bag:${i}` });
       if (i === cur) b.classList.add('cur');
       hotRow.append(b);
     }
@@ -659,6 +666,7 @@ export function openBackpack(game, opts = {}) {
     hover,
     changed: () => render(false),
     sfx,
+    itemSize: SZ,
   });
   render(true);
 

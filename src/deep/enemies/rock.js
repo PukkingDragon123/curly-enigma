@@ -80,6 +80,8 @@ export function buildMimic(pal, zone, seed) {
   };
 }
 
+// (wave 19, sizes.js) A pebble now: about a mole's paw high. It still wakes when you come close, but
+// it hops its size and body-slams from nearer (a leap: base gapK with √K).
 export class Mimic extends Enemy {
   static info = { id: 'pebble_mimic', name: 'Pebble Mimic', color: '#d8b070', hits: 2, dmg: 2, snd: 'stone' };
   static tells = { windup: [0.45] };
@@ -117,21 +119,22 @@ export class Mimic extends Enemy {
         if (this.awake || (this.dist < 3.3 && this.sees && !m.safe)) { this.setState('wake'); this.wake(); this.sound('click', { vol: 0.6 }); break; }
         // a tell for the observant: a little wiggle and a trickle of grit
         this.tellT -= dt;
-        if (this.tellT <= 0 && this.dist < 9) { this.tellT = rand(3, 7); this.sqv += 3.5; pebbles(this.fx, this.pos.x, this.pos.y + 0.3, this.pos.z, 2, this.G.chip, 0.12, 0.6); }
+        if (this.tellT <= 0 && this.dist < 9) { this.tellT = rand(3, 7); this.sqv += 3.5; pebbles(this.fx, this.pos.x, this.pos.y + 0.3 * this.K, this.pos.z, 2, this.G.chip, 0.12 * this.K, 0.6); }
         break;
       }
       case 'wake': {
         this.shiver = 0.8;
         this.sqT = -0.18;
-        if (Math.random() < dt * 14) pebbles(this.fx, this.pos.x, this.pos.y + 0.32, this.pos.z, 1, this.G.chip, 0.18, 1);
+        const k = this.K;
+        if (Math.random() < dt * 14) pebbles(this.fx, this.pos.x, this.pos.y + 0.32 * k, this.pos.z, 1, this.G.chip, 0.18 * k, 1);
         this.facePlayer(4, dt);
         if (this.st > 0.55) {
           this.setState('hop');
-          this.vel.y = 3;
+          this.vel.y = 3 * this.walkK;
           this.sqv += 9;
           this.sound('squeak', { pitch: 0.7 });
-          pebbles(this.fx, this.pos.x, this.pos.y + 0.3, this.pos.z, 6, this.G.chip, 0.2, 1.6);
-          this.fx.dust(this.pos.x, this.pos.y + 0.05, this.pos.z, 6, this.G.dust, 0.15);
+          pebbles(this.fx, this.pos.x, this.pos.y + 0.3 * k, this.pos.z, 6, this.G.chip, 0.2 * k, 1.6);
+          this.fx.dust(this.pos.x, this.pos.y + 0.05 * k, this.pos.z, 6, this.G.dust, 0.15 * k);
         }
         break;
       }
@@ -145,12 +148,12 @@ export class Mimic extends Enemy {
         this.hopT -= dt;
         if (this.hopT < 0.16) this.sqT = -0.28; // crouch before the hop
         if (this.hopT <= 0) {
-          if (this.hd < 1.7 && this.atkCd <= 0 && !m.safe && this.lost === 0) { this.setState('windup'); this.sound('emote', { kind: 'angry' }); break; }
+          if (this.hd < this.gapK(1.7, 0.5) && this.atkCd <= 0 && !m.safe && this.lost === 0) { this.setState('windup'); this.sound('emote', { kind: 'angry' }); break; }
           const [dx, dz] = this.dirToPlayer();
           const away = this.lost > 0 ? -1 : 1;
           const side = (Math.random() - 0.5) * 0.8;
-          const sp = this.hd > 1.2 ? rand(1.4, 2.1) : 0.3;
-          this.vel.set((dx * away - dz * side) * sp, rand(3.2, 4), (dz * away + dx * side) * sp);
+          const kv = this.walkK, sp = (this.hd > this.gapK(1.2, 0.5) ? rand(1.4, 2.1) : 0.3) * kv;
+          this.vel.set((dx * away - dz * side) * sp, rand(3.2, 4) * kv, (dz * away + dx * side) * sp);
           this.sqv += 8;
           this.hopT = rand(0.3, 0.55);
           this.sound('clunk', { vol: 0.25 });
@@ -164,8 +167,8 @@ export class Mimic extends Enemy {
         this.squint = 0.7;
         if (this.st > 0.45) {
           const [dx, dz] = this.dirToPlayer();
-          const sp = clamp(this.hd * 2.4, 2, 4.4);
-          this.vel.set(dx * sp, 4.4, dz * sp);
+          const sp = clamp(this.hd * 2.4, 2 * this.walkK, 4.4);
+          this.vel.set(dx * sp, 4.4 * this.walkK, dz * sp);
           this.sqv += 12;
           this.hitDone = false;
           this.setState('lunge');
@@ -185,8 +188,8 @@ export class Mimic extends Enemy {
         if (this.grounded && this.st > 0.1) {
           this.setState('recover'); this.atkCd = rand(1.1, 1.8);
           // (wave 13) the body-slam lands: a little ring of grit and pebbles skitters out
-          shockRing(this.fx, this.pos.x, this.pos.y, this.pos.z, 0.12, 2.4, this.G.dust, Math.round(22 * (this.fx.lod || 1)));
-          pebbles(this.fx, this.pos.x, this.pos.y + 0.12, this.pos.z, 8, this.G.chip, 0.18, 2.2);
+          shockRing(this.fx, this.pos.x, this.pos.y, this.pos.z, 0.12 * this.K, 2.4, this.G.dust, Math.round(22 * (this.fx.lod || 1)));
+          pebbles(this.fx, this.pos.x, this.pos.y + 0.12 * this.K, this.pos.z, 8, this.G.chip, 0.18 * this.K, 2.2);
           this.sqv -= 10;
           this.sound('stomp', { vol: 0.45 });
           this.mgr.shake(this, 0.12);

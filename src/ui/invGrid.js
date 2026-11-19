@@ -17,20 +17,27 @@ import * as Inv from '../core/inventory.js';
 import { KIND_ICON, KIND_LABEL } from '../core/hotbar.js';
 import { itemVox } from './itemVox.js';
 import { qColor, pips } from './common.js';
+import { installPackArt } from './packArt.js';
 
-/** Icon URL for a stack (a belt tool: its sample item). */
-export function stackIcon(s) {
+/** Picture URL for a stack (a belt tool: its sample item), at size CSS px (default: an icon). */
+export function stackIcon(s, size) {
   if (!s) return '';
-  if (s.tool) return itemVox.src(KIND_ICON[s.tool] || 'pick_rusty');
-  return itemVox.stack(s); // in 3D, as voxels (itemVox.js): the flat icon until its still is made
+  if (s.tool) return itemVox.src(KIND_ICON[s.tool] || 'pick_rusty', size);
+  return itemVox.stack(s, size); // its real 3D model (itemVox.js): the flat icon until its still is made
 }
+/** The model key of a stack (what data-vox carries). */
+export const stackKey = (s) => (!s ? null : s.tool ? KIND_ICON[s.tool] || 'pick_rusty' : itemVox.stackKey(s));
+/** A stack's count as a little stamped brass tag. */
+const countTag = (n) => el('span', { class: 'n', 'aria-hidden': 'true' }, String(n));
 /** Display name for a stack. */
 export function stackName(s) { return !s ? '' : s.tool ? KIND_LABEL[s.tool] || s.tool : s.w ? s.w.name : ITEMS[s.id]?.name || s.id; }
 
 /**
  * Build one slot button. opts: { c (container key), i, frame ('pocket' | 'loop' | 'trunk'),
  * locked (sewn shut), lockLabel, hide (units held in the paw from this slot), sel, key (a number
- * on a belt slot), refIcon(kind) (a belt tool's icon), refOff(kind) (that tool isn't owned) }.
+ * on a belt slot), refIcon(kind, size) (a belt tool's icon), refOff(kind) (that tool isn't owned),
+ * size (CSS px the item shows at) }. A pocket or loop gets a front lip drawn over the item's foot
+ * (it sits down in it).
  */
 export function slotEl(s, o = {}) {
   const b = el('button', { class: 'inv-slot ' + (o.frame || '') + (o.locked ? ' sewn' : '') + (s ? '' : ' empty') + (o.sel ? ' on' : ''), 'data-c': o.c, 'data-i': String(o.i), type: 'button', tabindex: o.locked ? -1 : 0 });
@@ -48,14 +55,16 @@ export function slotEl(s, o = {}) {
     b.classList.add('ref');
     if (ghosted) b.classList.add('ghosted');
     if (o.refOff?.(s.tool)) b.classList.add('off');
-    b.append(el('img', { class: 'pix', src: o.refIcon?.(s.tool) || stackIcon(s), alt: '', draggable: 'false' }));
+    b.append(el('img', { class: 'pix', src: o.refIcon?.(s.tool, o.size) || stackIcon(s, o.size), alt: '', draggable: 'false', 'data-vox': o.refKey?.(s.tool) || stackKey(s) }));
+    if (o.frame === 'pocket' || o.frame === 'loop') b.append(el('i', { class: 'lip', 'aria-hidden': 'true' }));
     b.setAttribute('aria-label', (o.key ? `Belt ${o.key}: ` : '') + stackName(s));
     return b;
   }
   const n = Inv.stackN(s) - (o.hide || 0);
   if (n <= 0) { b.classList.add('empty', 'ghosted'); b.setAttribute('aria-label', 'Empty'); return b; }
-  const img = el('img', { class: 'pix', src: stackIcon(s), alt: '', draggable: 'false' });
+  const img = el('img', { class: 'pix', src: stackIcon(s, o.size), alt: '', draggable: 'false', 'data-vox': stackKey(s) });
   b.append(img);
+  if (o.frame === 'pocket' || o.frame === 'loop') b.append(el('i', { class: 'lip', 'aria-hidden': 'true' }));
   if (s.w) {
     const g = gradeFor(s.w.score);
     b.classList.add('blade');
@@ -66,7 +75,7 @@ export function slotEl(s, o = {}) {
     b.style.setProperty('--qc', qColor(q));
     b.classList.add('q');
   }
-  if (n > 1) b.append(el('span', { class: 'n' }, String(n)));
+  if (n > 1) b.append(countTag(n));
   if (o.hide) b.classList.add('ghosted');
   b.setAttribute('aria-label', `${o.key ? `Belt ${o.key}: ` : ''}${stackName(s)}${n > 1 ? ' ×' + n : ''}${s.lots ? `, quality ${Inv.stackQ(s)}%` : ''}`);
   return b;
@@ -105,6 +114,8 @@ export class SlotDnD {
     this.drag = null; // a press that may become a drag
     this.hand = null; // { c, i, k } units held in the paw (still in their slot until dropped)
     this.ghost = el('div', { class: 'inv-ghost', hidden: true, 'aria-hidden': 'true' }, [el('img', { class: 'pix', alt: '' }), el('span', { class: 'n' })]);
+    this.ghostSway = null;
+    installPackArt(this.ghost); // (its count's brass tag)
     document.body.append(this.ghost);
     this.lastTap = { t: 0, key: '' };
     this.hoverSlot = null;
@@ -183,7 +194,7 @@ export class SlotDnD {
 
   move(e) {
     const d = this.drag;
-    if (this.hand && !d) { this.showGhost(e.clientX, e.clientY); this.highlight(e.clientX, e.clientY); return; }
+    if (this.hand && !d) { this.showGhost(e.clientX, e.clientY, e.clientX - (this.lastPt?.x ?? e.clientX)); this.highlight(e.clientX, e.clientY); return; }
     if (!d || e.pointerId !== d.pid) return;
     d.x = e.clientX; d.y = e.clientY;
     const dist = Math.hypot(d.x - d.x0, d.y - d.y0);
@@ -355,21 +366,30 @@ export class SlotDnD {
   ghostFor(s, k, quiet = false) {
     if (!s) return;
     const [img, n] = this.ghost.children;
-    img.src = stackIcon(s);
+    const key = stackKey(s), size = this.ctx.itemSize?.() ?? itemVox.itemPx('slot');
+    const sameItem = this.ghost.dataset.key === key && !this.ghost.hidden;
+    img.src = stackIcon(s, size);
+    this.ghost.dataset.key = key || '';
     n.textContent = k > 1 ? String(k) : '';
+    n.hidden = k <= 1;
     this.ghost.hidden = false;
     this.ghost.classList.toggle('touch', !!this.drag?.touch);
     this.ghost.classList.toggle('blade', !!s.w);
     this.ctx.held?.(true);
+    // the stack in the paw sways gently while it's carried (one live picture at a time)
+    if (!sameItem) { this.ghostSway?.dispose(); this.ghostSway = itemVox.hold(img, key); }
     if (!quiet) bounce(this.ghost, 'grab');
   }
   showGhost(x, y, vx = 0) {
     this.lastPt = { x, y };
     if (this.ghost.hidden) return;
-    const tilt = Math.max(-14, Math.min(14, vx * 0.8));
-    this.ghost.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) rotate(${tilt.toFixed(1)}deg)`;
+    // a little tilt that leans into the way it's dragged and eases back (it's carried, not glued)
+    const target = Math.max(-16, Math.min(16, vx * 0.9)) - 5;
+    this.tilt = (this.tilt ?? -5) + (target - (this.tilt ?? -5)) * 0.35;
+    this.ghost.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    this.ghost.style.setProperty('--tilt', this.tilt.toFixed(1) + 'deg');
   }
-  hideGhost() { this.ghost.hidden = true; this.ctx.held?.(false); }
+  hideGhost() { this.ghost.hidden = true; this.ghostSway?.dispose(); this.ghostSway = null; this.ghost.dataset.key = ''; this.tilt = -5; this.ctx.held?.(false); }
   flyBack(h) {
     if (!h) return;
     bounce(this.nodeOf(h.c, h.i));
@@ -397,6 +417,7 @@ export class SlotDnD {
   destroy() {
     clearTimeout(this.drag?.longT);
     for (const off of this.on) off();
+    this.ghostSway?.dispose();
     this.ghost.remove();
   }
 }

@@ -1,6 +1,7 @@
 // Shade Bats: a little swarm that roosts upside down under cave ceilings. The lamp (or a mole
 // walking right under them) wakes them; they whirl around the mole's head as a flock and take
-// turns swooping at the lamp. One whack each.
+// turns swooping at the lamp. One whack each. (wave 19: a mole's paw across, wings folded; the flock
+// whirls in closer and keeps a body's width apart, see sizes.js)
 import { Enemy, TAU } from './base.js';
 import { VB, VS, c01 } from './vox.js';
 import { H, taper, eye, hramp, lit, bake, clumps } from './voxKit.js';
@@ -125,8 +126,8 @@ export class Swarm {
     const lead = this.members.find((b) => b.alive);
     if (lead) mgr.alert(lead);
     // (wave 13) they drop off the roost in a shower of grit and fur
-    const r = this.roost || lead?.hang;
-    if (r) { puff(mgr.fx, r.x, r.y - 0.05, r.z, 8, [0.32, 0.27, 0.36], 0.35, -0.3, 0.06, 0.55); for (let i = 0; i < 10; i++) mgr.fx.spawn({ x: r.x + rand(-0.4, 0.4), y: r.y - 0.02, z: r.z + rand(-0.4, 0.4), vx: rand(-0.3, 0.3), vy: rand(-0.6, 0), vz: rand(-0.3, 0.3), life: rand(0.6, 1.1), size: rand(0.012, 0.02), color: [0.35, 0.3, 0.28], drag: 0.6, grav: 9, bounce: 0.3, fade: false }); }
+    const r = this.roost || lead?.hang, fx = lead?.fx || mgr.fx, k = Math.max(0.45, lead?.K ?? 1);
+    if (r) { puff(fx, r.x, r.y - 0.05 * k, r.z, 8, [0.32, 0.27, 0.36], 0.35 * k, -0.3, 0.06, 0.55); for (let i = 0; i < 10; i++) fx.spawn({ x: r.x + rand(-0.4, 0.4) * k, y: r.y - 0.02, z: r.z + rand(-0.4, 0.4) * k, vx: rand(-0.3, 0.3), vy: rand(-0.6, 0), vz: rand(-0.3, 0.3), life: rand(0.6, 1.1), size: rand(0.012, 0.02), color: [0.35, 0.3, 0.28], drag: 0.6, grav: 9, bounce: 0.3, fade: false }); }
   }
   /**
    * (wave 13) A flockmate is struck: the whole flock bursts apart from that point with a screech,
@@ -136,22 +137,23 @@ export class Swarm {
     if (mgr.time - (this.scatterT ?? -9) < 0.6) return;
     this.scatterT = mgr.time;
     let n = 0;
+    const one = this.members.find((b) => b.fx), fx = one?.fx || mgr.fx, kv = one?.walkK ?? 1;
     for (const b of this.members) {
       if (!b.alive || b.state === 'roost' || b.state === 'hurt') continue;
       let dx = b.pos.x - from.x, dy = b.pos.y - from.y, dz = b.pos.z - from.z;
       const l = Math.hypot(dx, dy, dz);
       if (l < 1e-3) { dx = rand(-1, 1); dz = rand(-1, 1); dy = 0.3; } else { dx /= l; dy /= l; dz /= l; }
-      const sp = rand(4.5, 6);
+      const sp = rand(4.5, 6) * Math.max(0.6, kv);
       b.vel.set(dx * sp + rand(-1, 1), dy * sp + rand(1, 2.2), dz * sp + rand(-1, 1));
       b.setState('scatter');
       b.sqv += 6;
-      puff(mgr.fx, b.pos.x, b.pos.y, b.pos.z, 2, b.G.fur.map((k) => k * 0.7), 0.06, 0.2, 0.05, 0.6);
+      puff(b.fx || mgr.fx, b.pos.x, b.pos.y, b.pos.z, 2, b.G.fur.map((k) => k * 0.7), 0.06 * b.K, 0.2, 0.05, 0.6);
       n++;
     }
     // the burst itself: a ring of fur and dust thrown out from the blow
     for (let i = 0; i < 18; i++) {
       const a = (i / 18) * TAU, sp = rand(1.6, 2.6);
-      mgr.fx.spawn({ x: from.x, y: from.y, z: from.z, vx: Math.cos(a) * sp, vy: rand(-0.4, 0.8), vz: Math.sin(a) * sp, life: rand(0.5, 0.8), size: rand(0.025, 0.04), grow: 0.05, color: FURC[i % 4], alpha: 0.8, drag: 3, grav: 0.4, lit: 0.6 });
+      fx.spawn({ x: from.x, y: from.y, z: from.z, vx: Math.cos(a) * sp, vy: rand(-0.4, 0.8), vz: Math.sin(a) * sp, life: rand(0.5, 0.8), size: rand(0.025, 0.04), grow: 0.05, color: FURC[i % 4], alpha: 0.8, drag: 3, grav: 0.4, lit: 0.6 });
     }
     if (n) { mgr.sound('scatter', {}, 2); this.swoopT = Math.max(this.swoopT, 1.8); }
   }
@@ -195,16 +197,18 @@ export class Bat extends Enemy {
         // flock around the mole's head (or back to the roost when bored)
         const home = !sw.awake;
         const a = sw.orbit + this.idx * (TAU / Math.max(3, sw.members.length)) + Math.sin(this.t * 0.9 + this.idx) * 0.4;
-        const R = 2.3 + Math.sin(this.t * 1.1 + this.idx * 2) * 0.5;
+        // (wave 19) little bats whirl in closer, where you can see them
+        const R = (2.3 + Math.sin(this.t * 1.1 + this.idx * 2) * 0.5) * (0.6 + 0.4 * this.K);
         const tx = home ? this.hang.x : m.pc.x + Math.sin(a) * R;
         const ty = home ? this.hang.y : m.eye.y + 0.35 + Math.sin(this.t * 1.7 + this.idx) * 0.35;
         const tz = home ? this.hang.z : m.pc.z + Math.cos(a) * R;
         this.steer(tx, ty, tz, 3.4, 2.6, dt);
-        // keep apart from flock mates
+        // keep apart from flock mates (a few body widths)
+        const sep = 0.45 * Math.max(0.5, this.K);
         for (const o of sw.members) {
           if (o === this || !o.alive || o.state === 'roost') continue;
           const dx = this.pos.x - o.pos.x, dy = this.pos.y - o.pos.y, dz = this.pos.z - o.pos.z, d = Math.hypot(dx, dy, dz);
-          if (d < 0.45 && d > 1e-3) { const k = (0.45 - d) * 12 * dt / d; this.vel.x += dx * k; this.vel.y += dy * k; this.vel.z += dz * k; }
+          if (d < sep && d > 1e-3) { const k = (sep - d) * 12 * dt / d; this.vel.x += dx * k; this.vel.y += dy * k; this.vel.z += dz * k; }
         }
         this.vel.x += rand(-1, 1) * dt * 6; this.vel.y += rand(-1, 1) * dt * 4; this.vel.z += rand(-1, 1) * dt * 6;
         if (home && this.pos.distanceTo(this.hang) < 0.15) { this.setState('roost'); this.awake = false; }
@@ -299,7 +303,7 @@ export class Bat extends Enemy {
   place() {
     super.place();
     // hanging bats dangle from their feet
-    if (this.state === 'roost') this.root.position.y = this.pos.y - 0.04;
+    if (this.state === 'roost') this.root.position.y = this.pos.y - 0.04 * this.K;
   }
 
   deathFx() {

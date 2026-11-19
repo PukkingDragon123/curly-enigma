@@ -21,6 +21,7 @@ import { clamp, rand } from '../../core/util.js';
 import { airAbove, fluidAt } from './physics.js';
 import { Group } from './beast.js';
 import { floorD, hallAt, ground } from './kaiju.js';
+import { scaleOf } from './sizes.js';
 
 // wanderer tables: [kind, weight, minDepth?] (kinds are species keys; 'bats' = a roost)
 const WANDER = {
@@ -291,6 +292,7 @@ export class Spawner {
     const kinds = Array(Math.max(1, n)).fill(kind);
     const type = S?.info?.social || 'band';
     const g = type !== 'solo' ? m.eco.addGroup(new Group(kind, type, { x, y, z })) : null;
+    if (g) g.spread *= Math.max(0.4, scaleOf(S?.info?.id)); // (wave 19: a band of small ones keeps close)
     let nest = o.nest || null;
     // a clutch of eggs to guard
     if (!nest && o.nestChance && Math.random() < o.nestChance && S?.nestStyle) {

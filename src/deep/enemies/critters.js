@@ -3,6 +3,10 @@
 // shrimp in the lakes, plodding gem tortoises, rock crabs, ore slugs, crystal spiders and void
 // wisps. Each is caught its own way (creatures.js `catch`): grab / net (E), brush, a tap of the
 // pick, or the x-ray beam.
+//
+// (wave 19, sizes.js) Worms, beetles, slugs, crystal spiders, fish, shrimp and crabs are a few cm
+// long now, bunnies, tortoises and void wisps a mole's paw to a mole's head. They amble, hop and
+// swim at √K the speed and wander nearer home; how close the mole may come before they bolt stays.
 import * as THREE from 'three';
 import { Enemy, TAU, smooth, easeBack, wrapA } from './base.js';
 import { VB, VS, mix, mul, c01 } from './vox.js';
@@ -46,6 +50,8 @@ export class Critter extends Enemy {
       if (!solidAt(this.w, x, y + 0.1, z)) { this.target.set(x, y, z); return; }
     }
   }
+  /** How far it wanders from home (m): small ones stay nearer. */
+  get roam() { return this.K < 1 ? Math.max(0.4, Math.sqrt(this.K)) : 1; }
   /** Walk toward the target (or away from the mole when scared). */
   amble(dt, speed, flee = 2.4) {
     this.cool -= dt;
@@ -53,13 +59,13 @@ export class Critter extends Enemy {
     let tx = this.target.x, tz = this.target.z;
     const run = this.scared > 0 || (this.dist < flee && this.mgr.pl.speed > 2.6);
     if (run) { const [dx, dz] = this.dirToPlayer(); tx = this.pos.x - dx * 2; tz = this.pos.z - dz * 2; }
-    const d = Math.hypot(tx - this.pos.x, tz - this.pos.z);
-    if (!run && (d < 0.25 || this.st > 6 || this.ev.bumped)) { this.st = 0; this.newTarget(2.5); this.pause = rand(0.5, 3); }
+    const d = Math.hypot(tx - this.pos.x, tz - this.pos.z), near = 0.25 * Math.max(0.3, this.K);
+    if (!run && (d < near || this.st > 6 || this.ev.bumped)) { this.st = 0; this.newTarget(2.5 * this.roam); this.pause = rand(0.5, 3); }
     this.pause = (this.pause || 0) - dt;
-    const go = run || (this.pause <= 0 && d > 0.25);
+    const go = run || (this.pause <= 0 && d > near);
     if (go) {
       const off = this.face(tx, tz, run ? 9 : 4, dt);
-      const s = off < 0.8 ? speed * (run ? 2.2 : 1) : 0;
+      const s = off < 0.8 ? speed * (run ? 2.2 : 1) * this.walkK : 0;
       this.push(Math.sin(this.yaw) * s, Math.cos(this.yaw) * s, 8, dt);
     } else this.push(0, 0, 8, dt);
     return go;
@@ -106,10 +112,10 @@ export class Earthworm extends Critter {
     this.body.position.z = (this.k * this.G.len * 0.85 - this.G.len) * VS;
     // wiggle and look around at the tip
     this.bend.rotation.set(Math.sin(this.t * 3.1) * 0.25 * this.k, Math.sin(this.t * 2.3 + this.look) * 0.35 * this.k, 0);
-    r.scale.setScalar(s);
-    this.center.copy(this.normal).multiplyScalar(this.k * this.G.len * 0.6 * VS).add(this.pos);
+    r.scale.setScalar(s * this.size); // (wave 19: a few cm of worm)
+    this.center.copy(this.normal).multiplyScalar(this.k * this.G.len * 0.6 * VS * this.size).add(this.pos);
   }
-  updateSpheres() { const s = this.spheres[0]; s.x = this.center.x; s.y = this.center.y; s.z = this.center.z; s.r = this.k > 0.15 ? 0.13 : 0; }
+  updateSpheres() { const s = this.spheres[0]; s.x = this.center.x; s.y = this.center.y; s.z = this.center.z; s.r = this.k > 0.15 ? 0.13 * this.size : 0; }
 }
 
 // ------------------------------------------------------------------ Dust Bunny
@@ -151,7 +157,7 @@ export class DustBunny extends Critter {
     if (this.dmode === 'cloud') { this.cloudTick(dt); return; }
     if (this.dmode === 'reform') {
       this.vel.set(0, 0, 0);
-      if (Math.random() < dt * 60 * (this.fx.lod || 1)) converge(this.fx, this.pos.x, this.pos.y + 0.16, this.pos.z, 2, this.G.furC, 0.55, 0.3);
+      if (Math.random() < dt * 60 * (this.fx.lod || 1)) converge(this.fx, this.pos.x, this.pos.y + 0.16 * this.K, this.pos.z, 2, this.G.furC, 0.55 * this.roam, 0.3);
       if (this.modeT > 0.36) this.reform();
       return;
     }
@@ -171,9 +177,9 @@ export class DustBunny extends Critter {
     const run = this.scared > 0 || (this.dist < 2.3 && pl.speed > 2.6);
     if (run) { const d = this.dirToPlayer(); dx = -d[0] + rand(-0.3, 0.3); dz = -d[1] + rand(-0.3, 0.3); }
     else { const hx = this.home.x - this.pos.x, hz = this.home.z - this.pos.z; if (Math.hypot(hx, hz) > 2.5) { dx = hx; dz = hz; } }
-    const l = Math.hypot(dx, dz) || 1, sp = run ? 2.4 : rand(0.6, 1.2);
+    const kv = this.walkK, l = Math.hypot(dx, dz) || 1, sp = (run ? 2.4 : rand(0.6, 1.2)) * kv;
     this.yaw = Math.atan2(dx, dz);
-    this.vel.set(dx / l * sp, run ? 3.6 : rand(2.4, 3.2), dz / l * sp);
+    this.vel.set(dx / l * sp, (run ? 3.6 : rand(2.4, 3.2)) * kv, dz / l * sp); // (wave 19: hops its size)
     this.sqv += 8;
     this.hopT = this.purr > 0 ? 1.5 : run ? rand(0.15, 0.3) : rand(0.6, 2.2);
   }
@@ -215,8 +221,8 @@ export class DustBunny extends Critter {
     this.vel.set(0, 0, 0);
     const a = this.cloudAt, t = this.modeT, lod = this.fx.lod || 1;
     if (t < 1.3 && Math.random() < dt * 36 * lod * (1.3 - t)) {
-      const r = 0.25 + t * 0.35;
-      this.fx.spawn({ x: a.x + rand(-r, r), y: a.y + rand(-0.15, r * 0.8), z: a.z + rand(-r, r), vx: rand(-0.2, 0.2), vy: rand(0, 0.25), vz: rand(-0.2, 0.2), life: rand(0.9, 1.5), size: rand(0.03, 0.06), grow: 0.05, color: this.G.furC[(Math.random() * 4) | 0], alpha: 0.7, drag: 2, grav: -0.05, swirl: 0.4, lit: 0.55 });
+      const r = (0.25 + t * 0.35) * this.roam; // (wave 19: a little bunny makes a little cloud)
+      this.fx.spawn({ x: a.x + rand(-r, r), y: a.y + rand(-0.15 * this.roam, r * 0.8), z: a.z + rand(-r, r), vx: rand(-0.2, 0.2), vy: rand(0, 0.25), vz: rand(-0.2, 0.2), life: rand(0.9, 1.5), size: rand(0.03, 0.06), grow: 0.05, color: this.G.furC[(Math.random() * 4) | 0], alpha: 0.7, drag: 2, grav: -0.05, swirl: 0.4, lit: 0.55 });
     }
     if (!this.hitPuff && t > 0.2 && t < 1.2 && Math.hypot(this.mgr.eye.x - a.x, this.mgr.eye.y - 0.25 - a.y, this.mgr.eye.z - a.z) < 0.75) {
       this.hitPuff = true;
@@ -233,7 +239,7 @@ export class DustBunny extends Critter {
     // (somewhere you can see it pull itself together, if there is such a spot)
     let spot = null, hidden = null;
     for (const off of [0, 0.6, -0.6, 1.2, -1.2, 2, -2]) {
-      const b = base + off, d = rand(1.8, 2.8);
+      const b = base + off, d = rand(1.8, 2.8) * Math.max(0.5, this.roam);
       const tx = a.x + Math.sin(b) * d, tz = a.z + Math.cos(b) * d;
       const f = m.floorAt(tx, this.pos.y + 0.6, tz, 0.3, 2.5, 1.2);
       if (!f || Math.abs(f.y - this.pos.y) > 1.2 || m.excluded?.(tx, f.y, tz, 0.5)) continue;
@@ -250,8 +256,8 @@ export class DustBunny extends Critter {
     this.emerge = 0; // pops back in (base: easeBack)
     this.sqv += 10;
     this.scared = 2.5; this.burstCd = 5; this.hopT = 0.08; // and bolts
-    sparkle(this.fx, this.pos.x, this.pos.y + 0.16, this.pos.z, 6, this.G.furC[3], 1.2, -0.3, 0.016, 0.5);
-    this.fx.dust(this.pos.x, this.pos.y + 0.04, this.pos.z, 5, this.G.furC[1], 0.12);
+    sparkle(this.fx, this.pos.x, this.pos.y + 0.16 * this.K, this.pos.z, 6, this.G.furC[3], 1.2, -0.3, 0.016, 0.5);
+    this.fx.dust(this.pos.x, this.pos.y + 0.04 * this.K, this.pos.z, 5, this.G.furC[1], 0.12 * this.K);
     this.sound('dust_poof', { vol: 0.35, pitch: 1.5 });
     this.sound('squeak', { pitch: 1.4, vol: 0.6 });
   }
@@ -259,11 +265,12 @@ export class DustBunny extends Critter {
     if (this.dmode !== 'hop') return [];
     this.purr = 1.2;
     this.brushT += dt;
-    if (Math.random() < dt * 8) this.fx.spawn({ x: this.center.x + rand(-0.1, 0.1), y: this.center.y + 0.15, z: this.center.z + rand(-0.1, 0.1), vy: 0.6, life: 0.8, size: 0.03, color: [1, 0.55, 0.7], glow: true, drag: 1 });
+    const k = this.K;
+    if (Math.random() < dt * 8) this.fx.spawn({ x: this.center.x + rand(-0.1, 0.1) * k, y: this.center.y + 0.15 * k, z: this.center.z + rand(-0.1, 0.1) * k, vy: 0.6, life: 0.8, size: 0.03, color: [1, 0.55, 0.7], glow: true, drag: 1 });
     if (this.brushT > 0.7 && this.cool <= 0) {
       this.brushT = 0; this.cool = 25;
       this.sound('squeak', { pitch: 0.8 });
-      sparkle(this.fx, this.center.x, this.center.y + 0.1, this.center.z, 8, [1, 0.6, 0.75], 1.2, -0.5, 0.025, 0.9);
+      sparkle(this.fx, this.center.x, this.center.y + 0.1 * k, this.center.z, 8, [1, 0.6, 0.75], 1.2, -0.5, 0.025, 0.9);
       return this.mgr.gift(this, 'dust_fluff', 'The dust bunny purrs and leaves you some <b>fluff</b>.');
     }
     return [];
@@ -292,13 +299,15 @@ export class GlowBeetle extends Critter {
     this.scared -= dt;
     this.floorT -= dt;
     if (this.floorT <= 0) { this.floorT = 0.3; this.floor = airBelow(this.w, this.pos.x, this.pos.y, this.pos.z, 3); }
+    const kv = this.walkK;
     if (this.scared > 0) {
       const [dx, dz] = this.dirToPlayer();
-      this.steer(this.pos.x - dx * 2, this.pos.y + 0.6, this.pos.z - dz * 2, 2.2, 3, dt);
+      this.steer(this.pos.x - dx * 2, this.pos.y + 0.6, this.pos.z - dz * 2, 2.2 * kv, 3, dt);
     } else {
-      if (this.pos.distanceTo(this.target) < 0.3 || this.st > 5) { this.st = 0; this.newTarget(2.2, true); }
-      const ty = this.target.y + clamp(1.2 - this.floor, -0.5, 0.6);
-      this.steer(this.target.x, ty + Math.sin(this.t * 1.7) * 0.1, this.target.z, 0.45, 1.2, dt);
+      // (wave 19) it drifts about at the height of your eyes, slowly: a firefly, not a lantern on a string
+      if (this.pos.distanceTo(this.target) < 0.3 * Math.max(0.4, this.K) || this.st > 5) { this.st = 0; this.newTarget(2.2 * this.roam, true); }
+      const ty = this.target.y + clamp((this.K < 1 ? 0.95 : 1.2) - this.floor, -0.5, 0.6);
+      this.steer(this.target.x, ty + Math.sin(this.t * 1.7) * 0.1 * kv, this.target.z, 0.45 * kv, 1.2, dt);
     }
     const sp = Math.hypot(this.vel.x, this.vel.z);
     if (sp > 0.05) this.yaw += wrapA(Math.atan2(this.vel.x, this.vel.z) - this.yaw) * Math.min(1, dt * 4);
@@ -308,7 +317,7 @@ export class GlowBeetle extends Critter {
     this.wings[0].rotation.z = 0.5 + f; this.wings[1].rotation.z = -0.5 - f;
     this.root.rotation.x = Math.sin(this.t * 2) * 0.1;
     this.glowMat.uniforms.emissive.value = 1.1 + Math.sin(this.t * 2.4 + this.pulse) * 0.4;
-    if (Math.random() < dt * 3) this.fx.firefly(this.pos.x, this.pos.y - 0.04, this.pos.z, [0.75, 1, 0.4]);
+    if (Math.random() < dt * 3) this.fx.firefly(this.pos.x, this.pos.y - 0.04 * this.K, this.pos.z, [0.75, 1, 0.4]);
   }
   canGrab() { return true; }
   light() { const k = 0.85 + Math.sin(this.t * 2.4 + this.pulse) * 0.25; return { x: this.pos.x, y: this.pos.y, z: this.pos.z, c: [0.45 * k, 0.75 * k, 0.2 * k], r: 2.6 }; }
@@ -340,22 +349,23 @@ export class CaveFish extends Critter {
   }
   think(dt) {
     this.scared -= dt;
+    const kv = this.walkK, kr = this.roam;
     if (this.scared > 0 || (this.dist < 1.6 && this.mgr.pl.speed > 2)) {
       const [dx, dz] = this.dirToPlayer();
-      this.steer(this.pos.x - dx * 2, this.pos.y, this.pos.z - dz * 2, 2.2, 4, dt);
+      this.steer(this.pos.x - dx * 2, this.pos.y, this.pos.z - dz * 2, 2.2 * kv, 4, dt);
     } else {
-      if (this.pos.distanceTo(this.target) < 0.3 || this.st > 4) {
+      if (this.pos.distanceTo(this.target) < 0.3 * Math.max(0.4, this.K) || this.st > 4) {
         this.st = 0;
         for (let k = 0; k < 8; k++) {
-          const t = [this.home.x + rand(-2.5, 2.5), this.home.y + rand(-0.6, 0.5), this.home.z + rand(-2.5, 2.5)];
+          const t = [this.home.x + rand(-2.5, 2.5) * kr, this.home.y + rand(-0.6, 0.5) * kr, this.home.z + rand(-2.5, 2.5) * kr];
           if (fluidAt(this.w, t[0], t[1], t[2]) === 1 && fluidAt(this.w, t[0], t[1] + 0.12, t[2]) === 1) { this.target.set(...t); break; }
         }
       }
-      this.steer(this.target.x, this.target.y, this.target.z, this.shrimp ? 0.8 : 0.55, 1.5, dt);
+      this.steer(this.target.x, this.target.y, this.target.z, (this.shrimp ? 0.8 : 0.55) * kv, 1.5, dt);
     }
     const sp = Math.hypot(this.vel.x, this.vel.z);
-    if (sp > 0.05) this.yaw += wrapA(Math.atan2(this.vel.x, this.vel.z) - this.yaw) * Math.min(1, dt * 5);
-    if (Math.random() < dt * 0.6) this.fx.spawn({ x: this.pos.x, y: this.pos.y + 0.05, z: this.pos.z, vy: 0.4, life: 1.2, size: 0.016, color: [0.75, 0.9, 1], alpha: 0.7, drag: 0.5 }); // a bubble
+    if (sp > 0.05 * kv) this.yaw += wrapA(Math.atan2(this.vel.x, this.vel.z) - this.yaw) * Math.min(1, dt * 5);
+    if (Math.random() < dt * 0.6) this.fx.spawn({ x: this.pos.x, y: this.pos.y + 0.05 * this.K, z: this.pos.z, vy: 0.4, life: 1.2, size: 0.016, color: [0.75, 0.9, 1], alpha: 0.7, drag: 0.5 }); // a bubble
   }
   animate() {
     const sp = Math.hypot(this.vel.x, this.vel.y, this.vel.z);
@@ -400,11 +410,12 @@ export class GemTortoise extends Critter {
   brush(dt) {
     if (!this.hasMoss) return [];
     this.brushT += dt;
-    if (Math.random() < dt * 14) pebbles(this.fx, this.pos.x + rand(-0.15, 0.15), this.pos.y + 0.3, this.pos.z + rand(-0.15, 0.15), 1, [0.3, 0.6, 0.25], 0.05, 0.8);
+    const k = this.K;
+    if (Math.random() < dt * 14) pebbles(this.fx, this.pos.x + rand(-0.15, 0.15) * k, this.pos.y + 0.3 * k, this.pos.z + rand(-0.15, 0.15) * k, 1, [0.3, 0.6, 0.25], 0.05 * k, 0.8);
     if (this.brushT < 1.4) return [];
     this.hasMoss = false;
     this.body.geometry = this.clean.body;
-    sparkle(this.fx, this.pos.x, this.pos.y + 0.35, this.pos.z, 10, [1, 0.4, 0.45], 1.6, 1, 0.025, 0.8);
+    sparkle(this.fx, this.pos.x, this.pos.y + 0.35 * k, this.pos.z, 10, [1, 0.4, 0.45], 1.6, 1, 0.025, 0.8);
     this.sound('pristine', {});
     return this.mgr.gift(this, 'ruby', 'The tortoise sighs happily. A <b>ruby</b> rolls out of its clean shell!');
   }
@@ -426,13 +437,13 @@ export class RockCrab extends Critter {
   }
   think(dt) {
     const near = this.dist < 2.2;
-    if (!this.shelled) { this.scared = 9; this.amble(dt, 0.9); this.life = (this.life || 0) + dt; if (this.life > 5) { this.alive = false; puff(this.fx, this.pos.x, this.pos.y, this.pos.z, 5, this.G.dust, 0.1, 0.2, 0.06, 0.6); } return; }
+    if (!this.shelled) { this.scared = 9; this.amble(dt, 0.9); this.life = (this.life || 0) + dt; if (this.life > 5) { this.alive = false; puff(this.fx, this.pos.x, this.pos.y, this.pos.z, 5, this.G.dust, 0.1 * this.K, 0.2, 0.06, 0.6); } return; }
     if (near && this.mgr.pl.speed > 0.5) {
       // scuttle sideways, of course
-      const [dx, dz] = this.dirToPlayer();
+      const [dx, dz] = this.dirToPlayer(), kv = this.walkK;
       this.face(this.pos.x - dz, this.pos.z + dx, 6, dt);
       if (Math.random() < dt * 0.6) this.side = -this.side;
-      this.push(dz * this.side * 1.2 - dx * 0.4, -dx * this.side * 1.2 - dz * 0.4, 10, dt);
+      this.push((dz * this.side * 1.2 - dx * 0.4) * kv, (-dx * this.side * 1.2 - dz * 0.4) * kv, 10, dt);
       this.sqT = Math.sin(this.t * 30) * 0.05;
     } else this.push(0, 0, 10, dt);
   }
@@ -442,7 +453,7 @@ export class RockCrab extends Critter {
     this.body.geometry = this.G.naked;
     this.sound('clunk', {});
     this.sound('squeak', { pitch: 1.5 });
-    pebbles(this.fx, this.center.x, this.center.y + 0.1, this.center.z, 6, this.G.dust, 0.1, 1.4);
+    pebbles(this.fx, this.center.x, this.center.y + 0.1 * this.K, this.center.z, 6, this.G.dust, 0.1 * this.K, 1.4);
     this.mgr.gift(this, 'crab_shell', null, true);
   }
 }
@@ -500,7 +511,7 @@ export class CrystalSpider extends Critter {
     sparkle(this.fx, this.center.x, this.center.y, this.center.z, 6, this.G.glit, 1.2, 1, 0.02, 0.6);
     this.mgr.gift(this, 'spider_silk', null, true);
   }
-  light() { return { x: this.pos.x, y: this.pos.y + 0.12, z: this.pos.z, c: [0.25, 0.4, 0.55], r: 1.6 }; }
+  light() { return { x: this.pos.x, y: this.pos.y + 0.12 * this.K, z: this.pos.z, c: [0.25, 0.4, 0.55], r: 1.6 }; }
 }
 
 // ------------------------------------------------------------------ Void Wisp
@@ -518,10 +529,11 @@ export class VoidWisp extends Critter {
   move(dt) { this.pos.addScaledVector(this.vel, dt); } // it drifts right through rock
   think(dt) {
     this.xrayT = Math.max(0, this.xrayT - dt * 0.5);
-    if (this.pos.distanceTo(this.target) < 0.3 || this.st > 6) { this.st = 0; this.target.set(this.home.x + rand(-3, 3), this.home.y + rand(-0.6, 0.8), this.home.z + rand(-3, 3)); }
-    this.steer(this.target.x, this.target.y + Math.sin(this.t) * 0.2, this.target.z, 0.35 * (1 - Math.min(0.8, this.xrayT)), 1, dt);
+    const kr = this.roam;
+    if (this.pos.distanceTo(this.target) < 0.3 * Math.max(0.4, this.K) || this.st > 6) { this.st = 0; this.target.set(this.home.x + rand(-3, 3) * kr, this.home.y + rand(-0.6, 0.8), this.home.z + rand(-3, 3) * kr); }
+    this.steer(this.target.x, this.target.y + Math.sin(this.t) * 0.2 * kr, this.target.z, 0.35 * this.walkK * (1 - Math.min(0.8, this.xrayT)), 1, dt);
     this.facePlayer(1, dt);
-    if (Math.random() < dt * 10) mote(this.fx, this.pos.x, this.pos.y + 0.1, this.pos.z, this.G.mote, 0.025, 0.9);
+    if (Math.random() < dt * 10) mote(this.fx, this.pos.x, this.pos.y + 0.1 * this.K, this.pos.z, this.G.mote, 0.025, 0.9);
     this.mat.uniforms.emissive.value = 0.6 + Math.sin(this.t * 3) * 0.15 + this.xrayT * 0.8;
   }
   onPoke() { this.sound('wisp', {}); this.vel.y += 1; } // the pick goes right through it

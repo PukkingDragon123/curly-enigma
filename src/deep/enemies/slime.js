@@ -83,10 +83,11 @@ export class Slime extends Beast {
     prey: ['critter'],
   };
   static attacks = [
-    { id: 'slam', range: [0, 2.4], arc: 0.7, tell: 0.6, dur: 0.55, hitAt: 0.05, rec: 0.6, cd: [1.2, 2.2], w: 1,
-      start() { this.sound('blorp', { pitch: 0.7 / this.size }); },
-      go(A) { const t = this.targetPos(A); const dx = t.x - this.pos.x, dz = t.z - this.pos.z, d = Math.hypot(dx, dz) || 1; const v = Math.min(5, Math.max(0, d - 0.35) / 0.45); this.vel.set(dx / d * v, 3.6, dz / d * v); this.sqv += 12; this.hopping = true; },
-      hit(A) { return A.t > 0.5 || this.strikeAt(A, this.center, this.hitR * this.size * 0.9, { dmg: this.info.dmg * this.size, push: 3, up: 2 }); } },
+    { id: 'slam', range: [0, 2.4], leap: true, arc: 0.7, tell: 0.6, dur: 0.55, hitAt: 0.05, rec: 0.6, cd: [1.2, 2.2], w: 1,
+      start() { this.sound('blorp', { pitch: 0.7 / this.tierSize }); },
+      go(A) { const t = this.targetPos(A); const dx = t.x - this.pos.x, dz = t.z - this.pos.z, d = Math.hypot(dx, dz) || 1; const v = Math.min(5, Math.max(0, d - 0.35 * this.K) / 0.45); this.vel.set(dx / d * v, 3.6 * this.walkK, dz / d * v); this.sqv += 12; this.hopping = true; },
+      // (its damage goes by its tier, not by how small the whole species is: wave 19)
+      hit(A) { return A.t > 0.5 || this.strikeAt(A, this.center, this.hitR * this.size * 0.9, { dmg: this.info.dmg * this.tierSize, push: 3, up: 2 }); } },
   ];
 
   /** The shared model for a zone; Enemies' prewarm builds it before a first sighting. */
@@ -145,11 +146,11 @@ export class Slime extends Beast {
     this.sqT = this.hopT < 0.15 && want > 0.1 ? -0.3 : 0;
     if (this.hopT <= 0 && want > 0.1) {
       const sp = Math.min(2.6, want * 1.6);
-      this.vel.set(this.wantX / want * sp, rand(2.4, 3.2), this.wantZ / want * sp);
+      this.vel.set(this.wantX / want * sp, rand(2.4, 3.2) * this.walkK, this.wantZ / want * sp); // (wave 19: little hops)
       this.sqv += 9;
       this.hopping = true;
       this.hopT = rand(0.25, 0.5) * (0.8 + this.tierN * 0.2);
-      if (this.dist < 9) this.sound('blorp', { pitch: rand(0.8, 1.2) / this.size, vol: 0.5 });
+      if (this.dist < 9) this.sound('blorp', { pitch: rand(0.8, 1.2) / this.tierSize, vol: 0.5 });
     }
   }
 
@@ -158,12 +159,14 @@ export class Slime extends Beast {
     this.hopping = false;
     this.sqv -= 6;
     if (sp > 2 && this.dist < 10) {
-      this.sound('splat', { vol: 0.25 * this.size });
+      this.sound('splat', { vol: 0.25 * this.tierSize });
       for (let i = 0; i < 6; i++) this.fx.spawn({ x: this.pos.x + rand(-0.2, 0.2) * this.size, y: this.pos.y + 0.03, z: this.pos.z + rand(-0.2, 0.2) * this.size, vx: rand(-1, 1), vy: rand(0.5, 1.4), vz: rand(-1, 1), life: rand(0.3, 0.6), size: rand(0.014, 0.024), color: this.G.col, drag: 0.6, grav: 9, bounce: 0.2, fade: false });
     }
   }
 
-  onNotice() { this.sound('blorp', { pitch: 1.3 / this.size }); this.sqv += 8; }
+  onNotice() { this.sound('blorp', { pitch: 1.3 / this.tierSize }); this.sqv += 8; }
+  /** Its size within the species (the tier: small, medium, big), whatever the species' scale. */
+  get tierSize() { return this.size / this.K; }
   onHit() { this.sound('splat', { vol: 0.6 }); this.sqv -= 10; }
 
   animate(dt) {
@@ -176,7 +179,7 @@ export class Slime extends Beast {
     this.inside.rotation.y += dt * 0.6;
     this.eyeOpen = this.asleep ? 0.3 : 1;
     this.faceM.scale.y = this.blinkD > 0 ? 0.3 : 1;
-    if (this.G.glow > 0.3 && Math.random() < dt * 3 && this.dist < 12) this.fx.spawn({ x: this.center.x + rand(-0.2, 0.2), y: this.pos.y + this.size * 0.5, z: this.center.z + rand(-0.2, 0.2), vy: 0.3, life: 0.8, size: 0.02, color: this.G.light, glow: true, drag: 1 });
+    if (this.G.glow > 0.3 && Math.random() < dt * 3 && this.dist < 12) this.fx.spawn({ x: this.center.x + rand(-0.2, 0.2) * this.size, y: this.pos.y + this.size * 0.5, z: this.center.z + rand(-0.2, 0.2) * this.size, vy: 0.3, life: 0.8, size: 0.02, color: this.G.light, glow: true, drag: 1 });
   }
 
   light() {
@@ -192,8 +195,9 @@ export class Slime extends Beast {
     // a big one splits in two
     if (this.tierN > 0) {
       for (let i = 0; i < 2; i++) {
-        const out = m.spawnGroup(['cave_slime'], this.pos.x + (i ? 0.25 : -0.25), this.pos.y + 0.05, this.pos.z, this.zone, { hidden: false, r: 0.6, split: this.tierN - 1 });
-        for (const e of out) { e.awake = true; e.lastHitT = m.time; e.lastHitBy = 'player'; e.vel.set(rand(-2, 2), 3, rand(-2, 2)); e.emerge = 0.4; }
+        const k = this.K, kv = this.walkK;
+        const out = m.spawnGroup(['cave_slime'], this.pos.x + (i ? 0.25 : -0.25) * k, this.pos.y + 0.05 * k, this.pos.z, this.zone, { hidden: false, r: 0.6 * k, split: this.tierN - 1 });
+        for (const e of out) { e.awake = true; e.lastHitT = m.time; e.lastHitBy = 'player'; e.vel.set(rand(-2, 2) * kv, 3 * kv, rand(-2, 2) * kv); e.emerge = 0.4; }
       }
       m.say('slime_split', '<b>It split!</b>', 'warn', 120);
     }

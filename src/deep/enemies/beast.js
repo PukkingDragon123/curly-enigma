@@ -19,6 +19,11 @@
 // aggro ('hostile' | 'territorial' | 'defensive' | 'timid'), sleepy (0..1), sight, hear, walk,
 // run, turn (rad/s), accel, keep (circling distance), lightShy, agile (jumps), flesh (leaves a
 // carcass), territory (m).
+//
+// (wave 19) Small beasts (sizes.js K < 1): attack ranges and how close it comes are measured body to
+// body (base gapK: leaps and lunges with √K), it circles nearer, walks a little slower and roams
+// less far; how far it sees, hears and flees stays (the mole is as big as ever). An attack marked
+// `ranged` (a spit) keeps its range.
 import * as THREE from 'three';
 import { Enemy, TAU, wrapA, smooth } from './base.js';
 import { clearLine, solidAt, boxHits } from './physics.js';
@@ -278,7 +283,7 @@ export class Beast extends Enemy {
     // circle at a slot around the mole (packs spread out and flank), or come in close
     const g = this.group;
     const ready = this.atkCd <= 0.4 && m.tokenFree(this);
-    const keep = ready ? (I.close ?? 1.4) : (I.keep ?? 2.6) + (g ? 0.4 : 0);
+    const keep = ready ? this.gapK(I.close ?? 1.4) : this.gapK((I.keep ?? 2.6) + (g ? 0.4 : 0), 0.5);
     let tx = pc.x, tz = pc.z;
     if (g && g.alive() > 1) {
       const base = Math.atan2(g.cx - pc.x, g.cz - pc.z) + m.time * 0.12 * (g.dir || 1);
@@ -290,9 +295,9 @@ export class Beast extends Enemy {
       const s = this.strafe ?? (this.strafe = Math.random() < 0.5 ? 1 : -1);
       tx = this.pos.x - dx * 0.6 - dz * s * 0.8; tz = this.pos.z - dz * 0.6 + dx * s * 0.8;
     }
-    const far = Math.hypot(tx - this.pos.x, tz - this.pos.z);
+    const far = Math.hypot(tx - this.pos.x, tz - this.pos.z), kb = Math.max(0.35, this.K);
     const sp = far > 4 ? I.run : far > 1.2 ? (I.walk + I.run) * 0.5 : I.walk * 0.7;
-    if (far > 0.35) this.walkTo(tx, tz, sp, dt, 0.3, d < 4 ? [pc.x, pc.z] : null);
+    if (far > 0.35 * kb) this.walkTo(tx, tz, sp, dt, 0.3 * kb, d < 4 ? [pc.x, pc.z] : null);
     else { this.push(0, 0, 6, dt); this.facePlayer(I.turn ?? 4, dt); }
     if (Math.random() < dt * 0.25) this.onTaunt?.();
   }
@@ -327,7 +332,7 @@ export class Beast extends Enemy {
       k = off < 0.5 ? 1 : off < 1.3 ? 0.45 : 0.08;
       if (I.strafeless !== false && off < 1.3) { mx = Math.sin(this.yaw); mz = Math.cos(this.yaw); }
     }
-    const s = Math.min(speed, d * 2.5 + 0.3) * k;
+    const s = Math.min(speed * (this.K < 1 ? Math.pow(this.K, 0.3) : 1), d * 2.5 + 0.3) * k; // (wave 19: little legs)
     this.push(mx * s, mz * s, I.accel ?? 6, dt);
     // stuck? slide around it, hop over it (agile ones), or give up on that goal
     const real = Math.hypot(this.vel.x, this.vel.z);
@@ -344,8 +349,9 @@ export class Beast extends Enemy {
   pickRoam() {
     const m = this.mgr, w = this.w;
     const far = Math.random() < (this.I.wander ?? 0.15) && !this.nest;
+    const kr = this.K < 1 ? Math.max(0.4, Math.sqrt(this.K)) : 1; // (wave 19: a small one roams nearer home)
     for (let k = 0; k < 8; k++) {
-      const a = Math.random() * TAU, d = far ? rand(8, 18) : rand(2, (this.I.territory ?? 8) * 0.6);
+      const a = Math.random() * TAU, d = (far ? rand(8, 18) : rand(2, (this.I.territory ?? 8) * 0.6)) * kr;
       const cx = far ? this.pos.x : this.home.x, cz = far ? this.pos.z : this.home.z;
       const x = cx + Math.sin(a) * d, z = cz + Math.cos(a) * d;
       const h = (this.h || 0.5) * this.size;
@@ -403,8 +409,8 @@ export class Beast extends Enemy {
     this.zT -= dt;
     if (this.zT <= 0 && m.near(this, 14)) {
       this.zT = rand(0.9, 1.6);
-      const p = this.headPos(_v);
-      for (let i = 0; i < 3; i++) this.fx.spawn({ x: p.x + i * 0.04, y: p.y + 0.08 + i * 0.05, z: p.z, vx: 0.08, vy: 0.22, vz: 0, life: 1.4, size: 0.02 + i * 0.006, color: ZZZ, alpha: 0.75, drag: 0.6 });
+      const p = this.headPos(_v), mk = this.markK;
+      for (let i = 0; i < 3; i++) this.fx.spawn({ x: p.x + i * 0.04 * mk, y: p.y + (0.08 + i * 0.05) * mk, z: p.z, vx: 0.08, vy: 0.22, vz: 0, life: 1.4, size: 0.02 + i * 0.006, color: ZZZ, alpha: 0.75, drag: 0.6 });
       if (I.snore) this.sound(I.snore, { vol: 0.6, pitch: I.snorePitch || 1 });
     }
     // waking: the mole walks right up (crouching sneaks closer), shines a lamp in its face, or it got hungry
@@ -424,8 +430,12 @@ export class Beast extends Enemy {
     const ok = [];
     const tgt = target === 'player' ? this.mgr.pc : target.center;
     const ang = Math.abs(wrapA(Math.atan2(tgt.x - this.pos.x, tgt.z - this.pos.z) - this.yaw));
+    const K = this.K;
     for (const a of list) {
-      if (d < a.range[0] || d > a.range[1]) continue;
+      // (wave 19) a small body's reach: ranges measured body to body, leaps and lunges with √K
+      const r0 = K < 1 && !a.ranged ? this.gapK(a.range[0], a.leap ? 0.5 : 1) : a.range[0];
+      const r1 = K < 1 && !a.ranged ? this.gapK(a.range[1], a.leap ? 0.5 : 1) : a.range[1];
+      if (d < r0 || d > r1) continue;
       if (ang > (a.arc ?? 1)) continue;
       if (target !== 'player' && a.noPrey) continue;
       if (a.when && !a.when(this, d, target)) continue;

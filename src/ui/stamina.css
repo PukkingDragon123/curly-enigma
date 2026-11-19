@@ -1,14 +1,16 @@
-/* ---------- the stamina gauge (src/ui/Stamina.js): one art pixel = one --px ---------- */
+/* ---------- the stamina gauge (src/ui/Stamina.js): one art pixel = one --px, one canvas pixel = one CSS pixel ---------- */
 /* nothing here takes a touch or a click: the stick, the look pad and the belt under it get them */
 .stam-dock, .stam-dock *, .stam-veil { pointer-events: none !important; }
 .stam {
-  position: relative; width: calc(var(--px) * 92); height: calc(var(--px) * 18);
-  filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(8, 4, 6, .45));
+  position: relative; width: calc(var(--px) * 112); height: calc(var(--px) * 18);
+  /* a flat cast shadow (no blur): the stave stands a little off what's behind it */
+  filter: drop-shadow(var(--px) var(--px) 0 rgba(22, 8, 20, .5));
   transform: translateY(calc(var(--px) * 10)) scale(.6, .2); opacity: 0;
   transition: transform .18s cubic-bezier(.5, -0.5, .8, .6), opacity .14s .04s;
 }
 .stam-dock.show .stam { transform: none; opacity: 1; transition: transform .38s var(--pop, cubic-bezier(.3, 1.6, .5, 1)), opacity .1s; }
-.stam-cv { position: absolute; left: 0; bottom: 0; display: block; width: 100%; height: calc(var(--px) * 28); image-rendering: pixelated; transform-origin: 10% 75%; }
+/* the canvas reaches up past the stave for the medallion (and the helmet over its rim) */
+.stam-cv { position: absolute; left: 0; bottom: 0; display: block; width: 100%; height: calc(var(--px) * 38); image-rendering: pixelated; transform-origin: 15% 56%; }
 
 /* elsewhere: bottom middle, where the belt would be (clear of the thumbs on a phone) */
 .stam-dock.free { position: absolute; left: 0; right: 0; bottom: calc(var(--sab) + var(--px) * 6); display: flex; justify-content: center; }
@@ -21,6 +23,6 @@
 .stam-dock.docked .stam { flex: none; }
 #ui[data-hud=none] .stam-dock { display: none; }
 
-/* the screen's edges (a dithered vignette when nearly out; the eyelids of a blackout) */
+/* the screen's edges (a hatched vignette when nearly out; the eyelids of a blackout) */
 .stam-veil { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
 .stam-veil.black { z-index: 9; }

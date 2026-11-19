@@ -1,206 +1,257 @@
-// Pixel art for the stamina gauge (src/ui/Stamina.js), drawn at R fine pixels per art pixel (one
-// art pixel = one --px on screen, like the rest of the HUD art):
-//  - a stitched oxhide strap, a brass tube with a smoked-glass window riveted to it by three brass
-//    clips (the quarter marks) and a capped, screwed right end: the lamp's oil reservoir
-//  - on the left a little brass oil lamp (wave 18; it replaced the ruby heart): a hammered font, a
-//    knurled collar, a pierced burner gallery and a tulip glass chimney whose flame (drawn per frame
-//    in Stamina.js) burns tall when rested, gutters when nearly out and flares with the heartbeat
-// The tube's window (GEO.ch) stays empty here: the stamina, the hunger and the injury are painted
-// into it every frame. Light from the top left, tinted outlines, glints.
-import { RAMP, INK, h2, vnoise, pebble, dtone, mixC, THREAD, THREAD_DK } from './hudArt.js';
+// Art for the stamina gauge (src/ui/Stamina.js) in the house style ("Lamplight Woodcut"): flat tones,
+// hatching for shade, texture marks for the material, a dark-plum outline broken on the lit side.
+// Drawn at R fine pixels per art pixel (R = the page's --px, so the canvas sits 1:1 on CSS pixels
+// and never smears); one art pixel = one --px like the rest of the HUD.
+//  - a carved walnut stave, lopsided along its top, grain cut in long strokes, a knot; a trough
+//    gouged along it (stamina, hunger and injury are painted into GEO.ch every frame); hand-forged
+//    iron staples clamp the trough at the quarters; an iron shoe on the right end, two square nails
+//  - on the left a medallion (wave 19: it replaced the oil lamp): a lopsided forged iron ring with
+//    three square rivets, a carved oak bevel ribbed with gouge cuts, a deep plum recess the mole's
+//    live 3D face (src/ui/staminaFace.js) sits in; the ring's lower half is drawn again over the
+//    face (layers.front) so the head leans out of the frame, its helmet over the top rim
+// Light from the top left. Shadows fall to plum, highlights stop at cream.
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const TAU = Math.PI * 2;
+const h2 = (x, y, s = 0) => { let h = (x * 374761393 + y * 668265263 + s * 1442695041) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function vnoise(x, y, s = 0) {
+  const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+  return (h2(xi, yi, s) * (1 - u) + h2(xi + 1, yi, s) * u) * (1 - v) + (h2(xi, yi + 1, s) * (1 - u) + h2(xi + 1, yi + 1, s) * u) * v;
+}
 
-export const R = 2;
-/** Layout in art pixels. ch: the glass window (x0..x1, y0..y1 inclusive). */
-const G0 = { W: 92, H: 18, ch: { x0: 17, x1: 85, y0: 6, y1: 11 } };
-/** Rows of headroom above the strap for the lamp's chimney and flame. */
-export const OY = 10;
-export const GEO = { W: 92, H: 18 + OY, ch: { x0: 17, x1: 85, y0: 6 + OY, y1: 11 + OY }, lamp: { cx: 9, wick: 12, chim: { y0: 1, y1: 12 } } };
+/** Layout in art pixels. ch: the trough (x0..x1, y0..y1 inclusive); med: the medallion; face: the 3D face's box. */
+export const GEO = {
+  W: 112, H: 38,
+  strap: { x0: 24, x1: 111, y0: 20, y1: 37 },
+  ch: { x0: 38, x1: 103, y0: 25, y1: 31 },
+  med: { cx: 17, cy: 21.4, r: 16.1, ring: 2.7, bevel: 2.3 },
+  face: { x: 0, y: 0, w: 34, h: 36 },
+};
 
 // colours as 0xRRGGBB; the canvas buffer wants 0xAABBGGRR
 export const pk = (c, a = 255) => ((a << 24) | ((c & 255) << 16) | (c & 0xff00) | ((c >> 16) & 255)) >>> 0;
 
-/** A fine-pixel raster over a Uint32Array (canvas byte order). */
-export class Raster {
-  constructor(w, h) { this.w = w; this.h = h; this.u = new Uint32Array(w * h); }
-  set(x, y, c, a = 255) {
-    x |= 0; y |= 0;
-    if (x < 0 || y < 0 || x >= this.w || y >= this.h) return;
-    const i = y * this.w + x;
-    if (a >= 255 || !(this.u[i] >>> 24)) { this.u[i] = pk(c, a); return; }
-    const o = this.u[i], t = a / 255;
-    const r = (o & 255) * (1 - t) + ((c >> 16) & 255) * t, g = ((o >> 8) & 255) * (1 - t) + ((c >> 8) & 255) * t, b = ((o >> 16) & 255) * (1 - t) + (c & 255) * t;
-    this.u[i] = ((Math.max(o >>> 24, a) << 24) | ((b | 0) << 16) | ((g | 0) << 8) | (r | 0)) >>> 0;
-  }
-  a(x, y) { return x < 0 || y < 0 || x >= this.w || y >= this.h ? 0 : this.u[y * this.w + x] >>> 24; }
-  /** Art pixel → an R×R block. */
-  A(x, y, c, a) { for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) this.set(x * R + i, y * R + j, c, a); }
-  /** 1 fine px outline round what's drawn (inside the box). */
-  outline(c, x0 = 0, y0 = 0, x1 = this.w - 1, y1 = this.h - 1) {
-    const add = [];
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      if (this.a(x, y) > 40) continue;
-      if (this.a(x - 1, y) > 40 || this.a(x + 1, y) > 40 || this.a(x, y - 1) > 40 || this.a(x, y + 1) > 40) add.push(x, y);
-    }
-    for (let k = 0; k < add.length; k += 2) this.set(add[k], add[k + 1], c);
-  }
-}
-
-const B = RAMP.brass, LE = RAMP.leather;
-/** Blackened bronze (the tube's rails: dark, so the honey light in the glass shines). */
-const BZ = [0x120a08, 0x1e140e, 0x2c1e14, 0x3e2a1a, 0x523822, 0x6a4a2c, 0x866038, 0xa87c4a];
-const OX = [0x12040a, 0x200810, 0x320c14, 0x46121a];
-let layers = null;
-/** The static layer, made once: { W, H, base } (a Uint32Array of W × H fine pixels). */
-export function gaugeLayers() {
-  if (layers) return layers;
-  const W = G0.W * R, H = G0.H * R, c = G0.ch;
-  const r = new Raster(W, H);
-  // ---- the strap: pebbled oxhide with a burnished top edge, a darker bottom, running stitches
-  for (let y = 1; y <= 16; y++) for (let x = 9; x <= 91; x++) {
-    if (x === 91 && (y <= 2 || y >= 15)) continue; // rounded end
-    if (x === 90 && (y === 1 || y === 16)) continue;
-    for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
-      const fx = x * R + i, fy = y * R + j;
-      let k = 0.55 + pebble(fx, fy, 41, 2.2) * 0.35 + (y === 1 ? 0.25 : y === 2 ? 0.1 : y >= 15 ? -0.2 : 0);
-      k += (vnoise(fx / 9, fy / 5, 43) - 0.5) * 0.18; // the hide's broad mottling
-      r.set(fx, fy, dtone(LE, k, fx, fy));
-    }
-  }
-  for (const y of [2.5, 15]) for (let fx = 18 * R; fx < 85 * R; fx++) {
-    const k = fx % 6;
-    const fy = Math.round(y * R);
-    if (k < 3) r.set(fx, fy, k === 0 ? mixC(THREAD, 0xffffff, 0.3) : THREAD);
-    else if (k === 3) r.set(fx, fy, THREAD_DK);
-  }
-  r.outline(INK);
-  // ---- the brass tube round the window: rolled rails above and below, a soft shine along them
-  for (let y = 4; y <= 13; y++) for (let x = 15; x <= 86; x++) {
-    if (y >= c.y0 && y <= c.y1 && x >= c.x0 && x <= c.x1) continue;
-    for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
-      const fx = x * R + i, fy = y * R + j;
-      const top = y < c.y0, row = top ? fy - 4 * R : 13 * R + R - 1 - fy; // 0 at the outer edge
-      let k = top ? [0.3, 0.92, 0.7, 0.5][Math.min(3, row)] : [0.1, 0.3, 0.42, 0.36][Math.min(3, row)];
-      if (x < c.x0 || x > c.x1) k = 0.3 + (x > c.x1 ? -0.1 : 0.15) + (fy < (c.y0 + 2) * R ? 0.25 : 0);
-      k += (h2(fx >> 1, fy, 47) - 0.5) * 0.12 + (h2(fx >> 2, 0, 48) < 0.1 ? -0.15 : 0); // hammer-dark, pitted
-      r.set(fx, fy, dtone(BZ, k, fx, fy));
-    }
-  }
-  // the window's inner lip: a dark groove the glass sits in
-  for (let fx = c.x0 * R - 1; fx <= (c.x1 + 1) * R; fx++) { r.set(fx, c.y0 * R - 1, BZ[0]); r.set(fx, (c.y1 + 1) * R, BZ[5]); }
-  for (let fy = c.y0 * R - 1; fy <= (c.y1 + 1) * R; fy++) { r.set(c.x0 * R - 1, fy, BZ[0]); r.set((c.x1 + 1) * R, fy, BZ[4]); }
-  // ---- smoked glass, empty: near black, a dull amber film at the bottom, faint swirls
-  for (let fy = c.y0 * R; fy < (c.y1 + 1) * R; fy++) for (let fx = c.x0 * R; fx < (c.x1 + 1) * R; fx++) {
-    const j = fy - c.y0 * R;
-    let k = 0.35 + (j < 2 ? -0.25 : 0) + (j >= (c.y1 - c.y0 + 1) * R - 2 ? 0.18 : 0) + (vnoise(fx / 7, fy / 3, 53) - 0.5) * 0.25;
-    r.set(fx, fy, dtone(EMPTY, k, fx, fy));
-  }
-  // ---- three brass clips at the quarters (rivet on each), the right end cap with its screw
-  for (const q of [0.25, 0.5, 0.75]) {
-    const x = Math.round(c.x0 + (c.x1 + 1 - c.x0) * q) - 1;
-    for (const [y0, y1] of [[3, 5], [12, 14]]) {
-      for (let y = y0; y <= y1; y++) for (let i = 0; i < 3; i++) {
-        const k = (i === 0 ? 0.8 : i === 1 ? 0.6 : 0.3) + (y === y0 ? 0.1 : y === y1 ? -0.15 : 0);
-        r.A(x + i, y, dtone(B, k, x + i, y));
-      }
-      r.set((x + 1) * R, (y0 + 1) * R, B[8]); r.set((x + 1) * R + 1, (y0 + 1) * R, B[6]);
-      r.set((x + 1) * R, (y0 + 1) * R + 1, B[5]); r.set((x + 1) * R + 1, (y0 + 1) * R + 1, B[2]);
-      for (let fy = y0 * R; fy < (y1 + 1) * R; fy++) { r.set(x * R - 1, fy, INK); r.set((x + 3) * R, fy, INK); }
-      r.set(x * R, (y0 === 3 ? y0 : y1 + 1) * R - (y0 === 3 ? 1 : 0), INK);
-    }
-    for (let i = -1; i <= 3 * R; i++) { r.set(x * R + i, 3 * R - 1, INK); r.set(x * R + i, 15 * R, INK); }
-  }
-  for (let y = 3; y <= 14; y++) for (let x = 86; x <= 90; x++) {
-    if (x === 90 && (y === 3 || y === 14)) continue;
-    for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
-      const fx = x * R + i, fy = y * R + j, u = (fx - 86 * R) / (5 * R), v = (fy - 3 * R) / (12 * R);
-      const k = 0.85 - u * 0.55 - v * 0.35 + (x === 86 ? -0.25 : 0) + (h2(fx, fy >> 1, 59) - 0.5) * 0.08;
-      r.set(fx, fy, dtone(B, k, fx, fy));
-    }
-  }
-  for (let fy = 3 * R; fy < 15 * R; fy++) r.set(86 * R, fy, B[1]); // the seam
-  // slotted screw (sunk), and the cap's outline
-  { const sx = 87 * R + 1, sy = 7 * R; for (let j = -1; j <= 3; j++) for (let i = -1; i <= 3; i++) r.set(sx + i, sy + j, (i + j) > 2 ? B[6] : B[1]); for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) r.set(sx + i, sy + j, [B[7], B[6], B[4]][Math.min(2, (i + j) >> 1)]); r.set(sx, sy + 2, B[0]); r.set(sx + 1, sy + 1, B[0]); r.set(sx + 2, sy, B[0]); }
-  for (let fy = 3 * R - 1; fy <= 15 * R; fy++) r.set(91 * R, fy, INK);
-  for (let fx = 86 * R; fx < 91 * R; fx++) { r.set(fx, 3 * R - 1, INK); r.set(fx, 15 * R, INK); }
-  for (let fx = 15 * R; fx < 86 * R; fx++) { r.set(fx, 4 * R - 1, INK); r.set(fx, 14 * R, INK); } // the tube's outline on the strap
-  // ---- shift it all down under the headroom, then the lamp over the strap's end
-  const FH = GEO.H * R, base = new Raster(W, FH);
-  base.u.set(r.u, OY * R * W);
-  drawLamp(base);
-  layers = { W, H: FH, base: base.u };
-  return layers;
-}
-
-const GLASS = [0x2a3a40, 0x4a6670, 0x86aab0, 0xd8f0f0];
-/**
- * The lamp (over the strap's left end): a squat hammered brass font with an engraved belt, a
- * knurled collar, the wick-turner's knob, a pierced burner gallery and a tulip glass chimney with a
- * brass crown. The chimney's inside stays clear (the flame and its glow are painted per frame).
- */
-function drawLamp(r) {
-  const cx = GEO.lamp.cx * R;
-  // the font: a squat onion of brass, lit from the top left like a ball, hammer dimples
-  const fy0 = (OY + 5) * R, fy1 = (OY + 16) * R, fcy = (OY + 10.8) * R, rx = 7.8 * R, ry = 5.6 * R;
-  const q = (k) => Math.round(clamp(k, 0, 1) * (B.length - 1)) / (B.length - 1); // flat planes, no dither
-  for (let fy = fy0; fy < fy1; fy++) for (let fx = 0; fx < 19 * R; fx++) {
-    const u = (fx + 0.5 - cx) / rx, v = (fy + 0.5 - fcy) / ry;
-    const d = Math.pow(Math.abs(u), 2.6) + Math.pow(Math.abs(v), 2.2);
-    if (d > 1) continue;
-    const nz = Math.sqrt(Math.max(0, 1 - u * u * 0.8 - v * v * 0.8));
-    let k = 0.12 + 0.82 * Math.max(0, -0.55 * u - 0.62 * v + 0.56 * nz);
-    // hammer facets: each little cell leans its own way
-    const cxh = fx >> 2, cyh = fy >> 2;
-    k += (h2(cxh, cyh, 61) - 0.5) * 0.16;
-    if (Math.abs(fy + 0.5 - (fcy + 1.6 * R)) < 1) k = 0.1; // the engraved belt
-    else if (Math.abs(fy + 0.5 - (fcy + 1.6 * R + 1.5)) < 0.6) k += 0.18; // its lit lower lip
-    if (u > 0.55 && v > -0.2 && v < 0.5) k += 0.12 * (u - 0.55) * 4; // a warm rim light on the right (the oil's glow)
-    r.set(fx, fy, dtone(B, q(k), fx, fy));
-  }
-  // its foot ring
-  for (let fy = fy1 - R; fy < fy1 + R; fy++) for (let fx = cx - 6 * R; fx < cx + 6 * R; fx++) r.set(fx, fy, dtone(B, q(fy < fy1 ? 0.5 : 0.25) - (fx > cx + 3 * R ? 0.12 : 0), fx, fy));
-  // the knurled collar on its shoulder, the burner gallery (pierced crown) above it
-  for (let fy = (OY + 3) * R; fy < (OY + 5) * R + 1; fy++) for (let fx = cx - 5 * R; fx < cx + 5 * R; fx++) {
-    const tooth = ((fx >> 1) & 1) === 0;
-    const k = (fy < (OY + 4) * R ? 0.75 : 0.45) + (tooth ? 0.12 : -0.12) - (fx > cx + 2 * R ? 0.2 : 0);
-    r.set(fx, fy, dtone(B, k, fx, fy));
-  }
-  for (let fy = (GEO.lamp.chim.y1) * R; fy < (OY + 3) * R; fy++) for (let fx = cx - 4 * R; fx < cx + 4 * R; fx++) {
-    const hole = (fy === GEO.lamp.chim.y1 * R + 2 || fy === GEO.lamp.chim.y1 * R + 3) && ((fx - cx + 16) % 4) < 2;
-    r.set(fx, fy, hole ? B[1] : dtone(B, 0.62 - (fx - cx) / (8 * R) * 0.5, fx, fy));
-  }
-  // the wick-turner's knob (right of the collar)
-  for (let fy = (OY + 3) * R; fy < (OY + 5) * R; fy++) for (let fx = cx + 5 * R; fx < cx + 7 * R; fx++) r.set(fx, fy, dtone(B, fy < (OY + 4) * R ? 0.7 : 0.35, fx, fy));
-  r.set(cx + 5 * R + 1, (OY + 3) * R, B[8]);
-  // the tulip chimney: thin glass walls (a bright streak down the left, tinted right), a crown
-  const ch = GEO.lamp.chim, top = ch.y0 * R, bot = ch.y1 * R;
-  for (let fy = top; fy < bot; fy++) {
-    const v = (fy - top) / (bot - top);
-    const half = (2.4 + 2.6 * Math.sin(Math.min(1, v * 1.25) * Math.PI * 0.86) + (v > 0.85 ? -0.6 : 0)) * R;
-    const xl = Math.round(cx - half), xr = Math.round(cx + half) - 1;
-    for (let fx = xl + 2; fx < xr - 1; fx++) r.set(fx, fy, 0xa8d0d8, 34); // the glass's faint tint
-    r.set(xl - 1, fy, INK, 150); r.set(xr + 1, fy, INK, 200);
-    r.set(xl, fy, GLASS[3], v > 0.15 && v < 0.75 ? 230 : 150); r.set(xl + 1, fy, GLASS[2], 90);
-    r.set(xr, fy, GLASS[1], 200); r.set(xr - 1, fy, GLASS[2], 60);
-  }
-  for (let fx = cx - 3 * R; fx < cx + 3 * R; fx++) for (let fy = top - R; fy < top + 1; fy++) r.set(fx, fy, dtone(B, fy < top ? 0.8 : 0.4, fx, fy)); // the crown
-  for (let fx = cx - 3 * R - 1; fx <= cx + 3 * R; fx++) r.set(fx, top - R - 1, INK);
-  r.set(cx - 3 * R - 1, top - R, INK); r.set(cx + 3 * R, top - R, INK); r.set(cx - 3 * R - 1, top, INK); r.set(cx + 3 * R, top, INK);
-  r.outline(INK, 0, (OY + 2) * R, 19 * R + 2, GEO.H * R - 1);
-  // rivets on the font's shoulder, a glint on its belly
-  for (const dx of [-5, 4]) { const x = cx + dx * R, y = (OY + 7) * R; r.set(x, y, B[8]); r.set(x + 1, y, B[6]); r.set(x, y + 1, B[5]); r.set(x + 1, y + 1, B[2]); }
-  r.set(cx - 4 * R, (OY + 9) * R, 0xffffff); r.set(cx - 4 * R + 1, (OY + 9) * R, B[7]); r.set(cx - 4 * R, (OY + 9) * R + 1, B[7]);
-}
-
-/** The glass when empty (darkest first). */
-const EMPTY = [0x0a0606, 0x140c0a, 0x1e140e, 0x2a1c12, 0x3a2814, 0x4e3616];
-
-/** Fill ramps (darkest first): stamina (honey-gold, glowing), low stamina (ember red), hunger (biscuit), injury (cloth red). */
-export const RAMPS = {
-  stam: [0x5a1e08, 0x8a3610, 0xb85a18, 0xe08424, 0xf6a832, 0xffcc4e, 0xffe68a, 0xfff8d0],
-  low: [0x3a0806, 0x6a1008, 0x9a2010, 0xc83a18, 0xe85a20, 0xff8a3a, 0xffb870, 0xffe0b0],
-  hunger: [0x4a2408, 0x7a4212, 0xa8641e, 0xc8862c, 0xdca444, 0xeec06a, 0xf8dc9c],
-  injury: [0x2a0406, 0x4e0a0e, 0x761218, 0x9c1c22, 0xc0302e, 0xdc5040, 0xf27a62, 0xffb0a0],
-  thread: [0x8a7454, 0xc8b490, 0xf4e6c8],
+/** Flat tones, darkest first (3–5 per material). */
+export const PAL = {
+  ink: 0x26101e,
+  cream: 0xf6e6c4,
+  walnut: [0x2e1820, 0x4a2a24, 0x683c2a, 0x885434, 0xaa7244],
+  oak: [0x4a2c24, 0x7a4a2e, 0xa26a3c, 0xc69050, 0xe2b674],
+  iron: [0x221a26, 0x38303e, 0x544a58, 0x786c76, 0xa89a9a],
+  recess: [0x170c1a, 0x221428, 0x2e1c30, 0x3c2632, 0x52362e],
+  trough: [0x1a0e1c, 0x261624, 0x34202c],
+  stam: [0x5a2212, 0x9a4418, 0xce7828, 0xeeaa46, 0xf8d88e],
+  low: [0x4a1214, 0x86221a, 0xbe421e, 0xe6743a, 0xf6b884],
+  hunger: [0x5a3418, 0x8a5a28, 0xb6823a, 0xdaac5c, 0xf0d290],
+  linen: [0x5a4a46, 0x8e7e70, 0xbeac92, 0xe0d2b4, 0xf4eada],
+  blood: [0x4a0e16, 0x7a1a1e, 0xa82e26],
 };
+/** Hatch spacing in fine pixels (about 1.4 art pixels at any R). */
+export const hatchP = (R) => Math.max(3, Math.round(R * 1.4));
+
+/** The medallion's lopsided outer radius at angle a (art px). */
+export function medR(a) {
+  const M = GEO.med;
+  return M.r + 0.38 * Math.sin(3 * a + 0.7) + 0.22 * Math.sin(5 * a + 2.1) + 0.18 * Math.sin(2 * a - 0.4);
+}
+
+const cache = new Map();
+/**
+ * The static layers at R fine px per art px (made once per R):
+ * { W, H, R, base, front (the ring's lower half, drawn over the face), clip (where the face may draw),
+ * rec (the recess, where the face's shadow falls) }.
+ */
+export function gaugeLayers(R) {
+  if (cache.has(R)) return cache.get(R);
+  const W = GEO.W * R, H = GEO.H * R;
+  const base = new Uint32Array(W * H), front = new Uint32Array(W * H), clip = new Uint8Array(W * H);
+  const kind = new Uint8Array(W * H); // 1 stave, 2 medallion
+  const P = hatchP(R);
+  const S = GEO.strap, C = GEO.ch, M = GEO.med;
+  const WAL = PAL.walnut, IR = PAL.iron, OAK = PAL.oak, RC = PAL.recess, TR = PAL.trough, INK = PAL.ink;
+  const put = (fx, fy, c, k = 0) => { if (fx < 0 || fy < 0 || fx >= W || fy >= H) return; const i = fy * W + fx; base[i] = pk(c); if (k) kind[i] = k; };
+
+  // ---------------------------------------------------------------- the stave
+  const topY = (u) => S.y0 + 0.4 * Math.sin(u * 0.31 + 1.2) + 0.25 * Math.sin(u * 0.83) + 0.3;
+  const botY = (u) => S.y1 + 1 - 0.3 * Math.sin(u * 0.27 + 2.0) - 0.2;
+  const inStave = (u, v) => {
+    if (u < S.x0 || u >= S.x1 + 1) return false;
+    const t = topY(u), b = botY(u);
+    if (v < t || v >= b) return false;
+    const rr = 3.2, ex = S.x1 + 1 - rr; // the right end rounded (a little more at the bottom)
+    if (u > ex) { if (v < t + rr && Math.hypot(u - ex, v - (t + rr)) > rr) return false; if (v > b - rr - 0.6 && Math.hypot(u - ex, (v - (b - rr - 0.6)) * 0.9) > rr) return false; }
+    return true;
+  };
+  const grain = (u, ar) => vnoise(u / 8.5, ar * 1.7, 11) > 0.71; // a long cut along the grain on art row ar
+  const knot = { u: 74.5, v: 34.2 };
+  for (let fy = 0; fy < H; fy++) for (let fx = 0; fx < W; fx++) {
+    const u = (fx + 0.5) / R, v = (fy + 0.5) / R;
+    if (!inStave(u, v)) continue;
+    const dv = v - topY(u), db = botY(u) - v;
+    let c = WAL[2];
+    if (dv < 1.1) c = dv < 1 / R + 0.01 && ((fx / (2 * R)) | 0) % 5 !== 2 ? WAL[4] : WAL[3]; // the lit top edge, a nick or two in it
+    else if (db < 2.2) c = (fx - fy + 999 * P) % P === 0 ? WAL[0] : WAL[1]; // the underside: hatched
+    else {
+      const ar = Math.floor(v);
+      if (fy === ar * R + (R >> 1) && grain(u, ar)) c = WAL[1];
+      else if (fy === ar * R + (R >> 1) && dv < 5 && vnoise(u / 6, ar * 2.3, 17) < 0.16) c = WAL[3];
+      const kd = Math.hypot((u - knot.u) / 1.9, (v - knot.v) / 1.05);
+      if (kd < 0.55) c = WAL[0]; else if (kd < 1 && kd > 0.78) c = WAL[1]; else if (kd < 1.5 && kd > 1.3 && v < knot.v) c = WAL[3];
+    }
+    // the trough: gouged along the stave (its lip casts a cut shadow; the lower lip catches the light)
+    const inCh = u >= C.x0 && u < C.x1 + 1 && v >= C.y0 && v < C.y1 + 1;
+    if (inCh) {
+      const j = fy - C.y0 * R;
+      c = j < R ? TR[0] : fy >= (C.y1 + 1) * R - 1 ? TR[2] : TR[1];
+      if (j >= R && fy % R === 0 && vnoise(u / 5, v * 3, 23) > 0.74) c = TR[2]; // gouge marks
+    } else if (u >= C.x0 && u < C.x1 + 1) {
+      if (fy === C.y0 * R - 1) c = INK;
+      else if (fy === (C.y1 + 1) * R) c = WAL[4];
+      else if (fy === (C.y1 + 1) * R + 1 && R > 2) c = WAL[3];
+    } else if (u >= C.x1 + 1 && u < C.x1 + 1 + 1 / R + 0.01 && v >= C.y0 && v < C.y1 + 1) c = INK;
+    put(fx, fy, c, 1);
+  }
+  // ---- the iron shoe on the right end: wrapped round, two square nails, hammer marks
+  for (let fy = 0; fy < H; fy++) for (let fx = 0; fx < W; fx++) {
+    const u = (fx + 0.5) / R, v = (fy + 0.5) / R;
+    if (u < C.x1 + 1.6 || !inStave(u, v)) continue;
+    const dv = v - topY(u), db = botY(u) - v, du = u - (C.x1 + 1.6);
+    let c = IR[2];
+    if (du < 1 / R + 0.01) c = INK;
+    else if (du < 1) c = IR[3];
+    else if (dv < 1) c = dv < 1 / R + 0.01 && (fx % (3 * R)) > 0 ? IR[4] : IR[3];
+    else if (db < 2.2) c = (fx - fy + 999 * P) % P === 0 ? IR[0] : IR[1];
+    if (h2(fx >> 1, fy, 31) < 0.035 && dv >= 1 && db >= 2.2) c = IR[1];
+    put(fx, fy, c, 1);
+  }
+  const nail = (ax, ay, s = 1) => {
+    for (let j = -1; j <= s * R; j++) for (let i = -1; i <= s * R; i++) {
+      const x = Math.round(ax * R) + i, y = Math.round(ay * R) + j;
+      const edge = i < 0 || j < 0 || i >= s * R || j >= s * R;
+      put(x, y, edge ? INK : i === 0 && j === 0 ? IR[4] : i + j >= 2 * s * R - 2 ? IR[0] : i < R / 2 || j < R / 2 ? IR[3] : IR[2]);
+    }
+  };
+  nail(107.2, 22.6); nail(108, 33.4);
+  // ---- iron staples clamping the trough at the quarters (a nail through each)
+  const CWa = C.x1 + 1 - C.x0;
+  [0.25, 0.5, 0.75].forEach((qq, n) => {
+    const x0 = Math.round(C.x0 + CWa * qq) - 1 + (n === 1 ? 0 : n === 0 ? 0.4 : -0.3);
+    for (const [y0, y1] of [[C.y0 - 3.6, C.y0 - 0.2], [C.y1 + 1.2, C.y1 + 4.4]]) {
+      const fx0 = Math.round(x0 * R), fx1 = Math.round((x0 + 3) * R), fy0 = Math.round(y0 * R), fy1 = Math.round(y1 * R);
+      for (let fy = fy0 - 1; fy <= fy1; fy++) for (let fx = fx0 - 1; fx <= fx1; fx++) {
+        const edge = fx < fx0 || fy < fy0 || fx >= fx1 || fy >= fy1;
+        if (edge) { if (!(fy < fy0 && fx > fx0 + R && ((fx >> 1) & 1))) put(fx, fy, INK); continue; } // (its lit top edge is broken)
+        const i = (fx - fx0) / R, j = (fy - fy0) / R;
+        put(fx, fy, j < 0.6 ? IR[4] : i < 0.9 ? IR[3] : i > 2.2 ? IR[1] : IR[2]);
+      }
+      nail(x0 + 1, (y0 + y1) / 2 - 0.5);
+    }
+  });
+  // the stave's outline: ink, broken here and there along its lit top
+  outline(base, kind, 1, W, H, (fx, fy, below, right) => below && !right && ((fx / (3 * R)) | 0) % 4 === 1, INK);
+
+  // ---------------------------------------------------------------- the medallion
+  const L = [-0.62, -0.78];
+  const rivA = [-2.45, -0.3, 1.82];
+  const ring = new Uint8Array(W * H); // 1 ring, 2 bevel, 3 recess
+  for (let fy = 0; fy < H; fy++) for (let fx = 0; fx < W; fx++) {
+    const u = (fx + 0.5) / R, v = (fy + 0.5) / R;
+    const dx = u - M.cx, dy = v - M.cy, r = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
+    const ro = medR(a);
+    // its shadow on the stave: hatched, down and to the right
+    if (r >= ro && kind[fy * W + fx] === 1 && r < ro + 2.2 && dx > -2 && dy > -6 && Math.hypot(dx - 1.3, dy - 1.6) < medR(Math.atan2(dy - 1.6, dx - 1.3)) + 0.2) {
+      if ((fx + fy) % P < 2) put(fx, fy, WAL[0]);
+      continue;
+    }
+    if (r >= ro) continue;
+    const nd = r > 0 ? (dx * L[0] + dy * L[1]) / r : 0; // +1 facing the light (top left)
+    const rr = ro - M.ring, rb = rr - M.bevel + 0.25 * Math.sin(4 * a + 1);
+    let c;
+    if (r >= rr) { // forged iron, rounded: the outer half lit where it faces the lamp, the inner half the other way
+      const f = (r - rr) / M.ring;
+      const lit = nd * (f - 0.38) * 1.7;
+      c = lit > 0.42 ? IR[4] : lit > 0.1 ? IR[3] : lit > -0.28 ? IR[2] : (fx - fy + 999 * P) % P === 0 ? IR[0] : IR[1];
+      if (h2(Math.round(a * 26), Math.round(r * 2), 37) < 0.07 && lit < 0.42) c = IR[1]; // hammer marks
+      if (Math.abs(r - (rr + M.ring * 0.42)) < 0.5 / R && h2(Math.round(a * 9), 0, 39) < 0.3) c = IR[1]; // a forge seam
+      ring[fy * W + fx] = 1;
+    } else if (r >= rb) { // the oak bevel, sloping into the recess: lit on the far side, ribbed with gouge cuts
+      const lit = -nd;
+      let t = lit > 0.4 ? 3 : lit > -0.25 ? 2 : 1;
+      // gouge cuts: unevenly spaced, some only part way across the bevel
+      const g = ((a / TAU) * 34 + vnoise(a * 5, 1.7, 41) * 2.2 + 99) % 1, cell = Math.floor((a / TAU) * 34 + vnoise(a * 5, 1.7, 41) * 2.2 + 99);
+      const reach = h2(cell, 3, 43), into = (ro - M.ring - r) / M.bevel; // 0 at the ring, 1 at the recess
+      if (g < 0.2 && into > reach * 0.6) t -= 1; else if (g < 0.32 && t >= 2 && into > reach * 0.6) t += 1;
+      t -= 1; // a shade darker than the raw oak: the face is what's lit
+      c = OAK[clamp(t, 0, 4)];
+      if (r < rb + 1 / R + 0.01 && nd < 0.2) c = OAK[0];
+      ring[fy * W + fx] = 2;
+    } else { // the recess: the rim's shadow crescent top left, lamplight pooling bottom right
+      const toL = -(dx * L[0] + dy * L[1]);
+      c = RC[1];
+      if (r > rb - 2.6 && nd > 0.2) c = RC[0];
+      else if (toL > 5.5 && r > rb - 3.5) c = RC[3];
+      else if (toL > 2.5) c = RC[2];
+      else if (nd > -0.1 && (fx + fy) % P === 0) c = RC[0];
+      ring[fy * W + fx] = 3;
+    }
+    put(fx, fy, c, 2);
+  }
+  // the seams: ring | bevel always inked; bevel | recess inked except where the light catches it
+  for (let fy = 1; fy < H - 1; fy++) for (let fx = 1; fx < W - 1; fx++) {
+    const i = fy * W + fx, k = ring[i];
+    if (k === 1 && (ring[i + 1] === 2 || ring[i - 1] === 2 || ring[i + W] === 2 || ring[i - W] === 2)) base[i] = pk(INK);
+    if (k === 2 && (ring[i + 1] === 3 || ring[i - 1] === 3 || ring[i + W] === 3 || ring[i - W] === 3)) {
+      const u = (fx + 0.5) / R - M.cx, v = (fy + 0.5) / R - M.cy;
+      if (!(u * L[0] + v * L[1] < -4 && ((fx + fy) >> 1) % 3 === 0)) base[i] = pk(INK);
+    }
+  }
+  // three square rivets (not evenly spaced)
+  for (const a of rivA) {
+    const r = medR(a) - M.ring * 0.5;
+    const ax = M.cx + Math.cos(a) * r - 1, ay = M.cy + Math.sin(a) * r - 1;
+    const fx0 = Math.round(ax * R), fy0 = Math.round(ay * R), s = 2 * R;
+    for (let j = -1; j <= s; j++) for (let i = -1; i <= s; i++) {
+      const edge = i < 0 || j < 0 || i >= s || j >= s;
+      if (edge) { if (!((i < 0 || j < 0) && (i + j) % 3 === 0)) put(fx0 + i, fy0 + j, INK); continue; }
+      put(fx0 + i, fy0 + j, i + j < R ? IR[4] : i + j > 2 * s - R - 2 ? IR[0] : i < s / 2 && j < s / 2 ? IR[3] : IR[2]);
+    }
+  }
+  // the medallion's outline: ink, broken along its lit top left
+  outline(base, kind, 2, W, H, (fx, fy) => {
+    const u = (fx + 0.5) / R - M.cx, v = (fy + 0.5) / R - M.cy, r = Math.hypot(u, v) || 1;
+    return (u * L[0] + v * L[1]) / r > 0.45 && ((Math.atan2(v, u) * 7 + 99) | 0) % 3 === 0;
+  }, INK);
+
+  // ---------------------------------------------------------------- front, clip
+  for (let fy = 0; fy < H; fy++) for (let fx = 0; fx < W; fx++) {
+    const i = fy * W + fx, u = (fx + 0.5) / R, v = (fy + 0.5) / R;
+    const dx = u - M.cx, dy = v - M.cy, r = Math.hypot(dx, dy), ro = medR(Math.atan2(dy, dx));
+    // the lower rim (and its outline) comes in front of the face, so the neck sinks behind it
+    if (dy > 3.6 + Math.max(0, -dx) * 0.08 && r > ro - M.ring - M.bevel - 0.35 && r < ro + 1.2 && kind[i] === 2) front[i] = base[i];
+    // the face may draw over the medallion, and above the stave over its left end
+    if (r < ro + 0.6 || (v < S.y0 + 0.5 && Math.abs(dx) < ro + 1)) clip[i] = 1;
+  }
+  const rec = new Uint8Array(W * H);
+  for (let i = 0; i < rec.length; i++) rec[i] = ring[i] === 3 ? 1 : 0;
+  const L2 = { W, H, R, base, front, clip, rec };
+  cache.set(R, L2);
+  return L2;
+}
+
+/**
+ * Ink one fine pixel round what's of kind k (into the empty pixels next to it). lit(fx, fy, below,
+ * right): true where the line breaks (below/right: the shape is under / right of this pixel).
+ */
+function outline(buf, kind, k, W, H, lit, ink) {
+  const add = [];
+  for (let fy = 0; fy < H; fy++) for (let fx = 0; fx < W; fx++) {
+    const i = fy * W + fx;
+    if (kind[i] === k || (k === 1 && kind[i])) continue;
+    const r = fx + 1 < W && kind[i + 1] === k, l = fx > 0 && kind[i - 1] === k, d = fy + 1 < H && kind[i + W] === k, up = fy > 0 && kind[i - W] === k;
+    if (!(r || l || d || up)) continue;
+    if (lit(fx, fy, d && !up, r && !l)) continue;
+    add.push(i);
+  }
+  for (const i of add) { buf[i] = pk(ink); kind[i] = k; }
+}

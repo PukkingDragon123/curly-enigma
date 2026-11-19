@@ -13,10 +13,17 @@
 //   tellK    0..1 while an attack winds up: drives the rim glow (yellow = block it, red = dodge it).
 //            Species call tell(k, heavy) in their wind-up states, or list them in `static tells`
 //            ({ stateName: [seconds, heavy] }) and the base does it for them.
+//
+// Size (wave 19, ./sizes.js): Enemies.add calls applyScale() once the species has built itself:
+// K (the species' scale from the size table) goes into `size` (so the model, its hit sphere, its
+// legs and its dust all shrink), the collider (hw, h, rad, step), the pick radius, and a particle
+// system seen through the scale (this.fx). Species use this.K for body lengths in their own code.
 import * as THREE from 'three';
 import { LAYER_OUTLINE } from '../../core/Engine.js';
 import { walk, fly, clearLine, airBelow } from './physics.js';
 import { clamp, rand } from '../../core/util.js';
+import { VOX } from '../materials.js';
+import { scaleOf, scaledFx, gapK, heftK, markK, pickR, walkK } from './sizes.js';
 
 export const TAU = Math.PI * 2;
 export const wrapA = (a) => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; };
@@ -28,6 +35,7 @@ const TELL_R = new THREE.Color(1, 0.18, 0.08);
 const FLASH_W = new THREE.Color(1, 0.95, 0.9);
 const FLASH_G = new THREE.Color(1, 0.86, 0.35);
 const STAR = [1, 0.92, 0.4];
+const AIM_C = new THREE.Color(1, 0.9, 0.72); // (wave 19) a small creature under the crosshair: a warm cream rim
 
 export class Enemy {
   /** static info = { id, name, color (css), hits, dmg, flying, lavaProof, poise, flesh, tier } */
@@ -88,7 +96,40 @@ export class Enemy {
     this.asleep = false;
     this.scare = 0; // seconds left of running away (blasts, predators)
     this.alarm = null; // a point it heard something at
+    // size (wave 19): K from the size table, applied by applyScale() once the body is built
+    this.K = 1;
+    this.pickR = 0;
+    this.aimT = -9; this.aimHL = 0;
   }
+
+  // ------------------------------------------------------------ size (wave 19)
+  /**
+   * Scale the whole creature to its size class (./sizes.js). Called once by Enemies.add, after the
+   * species built its body and vary() picked its own size. K = 1 changes nothing.
+   */
+  applyScale(K = scaleOf(this.info?.id)) {
+    if (this.scaled) return;
+    this.scaled = true;
+    this.K = K;
+    if (!(K < 1)) return;
+    this.size *= K;
+    this.hw *= K; this.h *= K; this.rad *= K;
+    // (a small walker still steps up one rock voxel)
+    this.step = Math.max((this.step ?? 0.26) * K, 1.15 / VOX);
+    this.pickR = pickR(K);
+    this.fx = scaledFx(this.mgr.fx, K);
+    // (hand-drawn first) no texel grain on a small body: it would only read as speckle
+    for (const m of this.mats) if (m.uniforms?.texel) m.uniforms.texel.value = 0;
+    this.onScale?.(K);
+  }
+  /** A melee distance centre to centre (see sizes.js gapK); kk 0.5 for leaps and lunges. */
+  gapK(d, kk = 1) { return gapK(d, this.K, kk); }
+  /** How hard what it does shakes the camera (1 for anything mole-sized or bigger). */
+  get heft() { return heftK(this.K); }
+  /** Marker scale: words and marks over its head. */
+  get markK() { return markK(this.K); }
+  /** Walking / hopping speed factor. */
+  get walkK() { return walkK(this.K); }
 
   // ------------------------------------------------------------ building
   material(opts) { const m = this.mgr.material(opts); this.mats.push(m); return m; }
@@ -217,12 +258,21 @@ export class Enemy {
     this.tellK += (this.tellW - this.tellK) * Math.min(1, dt * (this.tellW > this.tellK ? 14 : 8));
     const pulse = this.tellK > 0.01 ? this.tellK * (0.65 + 0.35 * Math.sin(this.t * (this.tellHeavy ? 34 : 24))) : 0;
     const fl = Math.max(this.flash * 0.85, this.flashGold * 0.7);
+    // (wave 19) a small creature under the crosshair (Enemies.hitTest / pickCritter set aimT) gets a
+    // soft cream rim, so the tiny ones show they're the target; the attack tell wins over it
+    const aimed = this.K < 1 && this.alive && (this.mgr.time ?? 0) - this.aimT < 0.15;
+    this.aimHL += ((aimed ? 1 : 0) - this.aimHL) * Math.min(1, dt * (aimed ? 16 : 8));
+    const hl = this.aimHL > 0.01 ? this.aimHL * 0.3 : 0;
     for (const m of this.mats) {
       const u = m.uniforms;
       if (u.flash) u.flash.value = fl;
       else u.emissive.value = (m.userData.e0 ?? 0) + this.flash * 2;
       if (u.flashCol) u.flashCol.value.copy(this.flashGold > this.flash ? FLASH_G : FLASH_W);
-      if (u.rim) { u.rim.value = pulse * (m.userData.rimK ?? 1); u.rimCol.value.copy(this.tellHeavy ? TELL_R : TELL_Y); }
+      if (u.rim) {
+        const rk = m.userData.rimK ?? 1, tp = pulse * rk, ah = hl * Math.max(0.5, rk);
+        u.rim.value = Math.max(tp, ah);
+        u.rimCol.value.copy(tp >= ah ? (this.tellHeavy ? TELL_R : TELL_Y) : AIM_C);
+      }
     }
     if (this.emerge < 1) this.emerge = Math.min(1, this.emerge + dt * 2.4);
     this.shiver = Math.max(0, this.shiver - dt * 3);
@@ -353,10 +403,11 @@ export class Enemy {
       this.starT = 0.06;
       this.starA += 1.1;
       const p = this.headPos(_h);
-      const r = 0.12 + 0.12 * Math.min(2, this.size * (this.hitR / 0.3));
+      const mk = this.markK; // (wave 19: a small head gets a small ring of stars)
+      const r = 0.12 * mk + 0.12 * Math.min(2, this.size * (this.hitR / 0.3));
       for (let k = 0; k < 2; k++) {
         const a = this.starA + k * Math.PI;
-        this.fx.spawn({ x: p.x + Math.cos(a) * r, y: p.y + 0.12 + Math.sin(this.t * 6 + k) * 0.03, z: p.z + Math.sin(a) * r, vx: -Math.sin(a) * 0.6, vy: 0.05, vz: Math.cos(a) * 0.6, life: 0.32, size: 0.022, color: k ? STAR : [1, 1, 0.85], glow: true, drag: 2 });
+        this.fx.spawn({ x: p.x + Math.cos(a) * r, y: p.y + 0.12 * mk + Math.sin(this.t * 6 + k) * 0.03 * mk, z: p.z + Math.sin(a) * r, vx: -Math.sin(a) * 0.6, vy: 0.05, vz: Math.cos(a) * 0.6, life: 0.32, size: 0.022, color: k ? STAR : [1, 1, 0.85], glow: true, drag: 2 });
       }
     }
   }

@@ -1,27 +1,40 @@
-// The objective tracker: a parchment strip hung under the backpack in every first-person scene.
-// It says plainly what to do now: the quest (with its giver's seal), the current step with a
-// tick box, the count and a progress bar, and where it is: an arrow that turns as you turn, the
-// distance (▲ ▼ when it's above or below you) and the place ("Nibble & Root · Deep Town", "The town
-// lift · in the mine"). Progress is scratched in with a quill, a finished step gets ticked and struck
-// through before the strip rolls up and opens on the next one, and a finished quest gets Old Star's
-// gilded seal, pressed on straight. Tap it for the book. It also drives the world markers (src/ui/QuestMarks.js) and the
-// toasts: a new quest, progress on quests not on the strip, the next step, people's lines, rewards.
+// The objective tracker: a wanted poster nailed to a cork patch under the backpack, in every
+// first-person scene. The poster is a torn, stained handbill with a woodcut of the quest's goal and
+// its title (src/ui/questPoster.js, src/ui/woodcut.js); under it, on two lengths of twine, hangs a
+// scroll with the current step in a few words, its progress (inked pips or a count) and where it is
+// (an arrow that turns as you turn, the distance, ▲ ▼ when it's above or below you).
+//  - a new quest: the poster flutters down from above, catches on the nail with a jolt and swings
+//    (a damped pendulum, src: physics() below), then the scroll drops open with a wobble;
+//  - progress: the next pip is inked in;
+//  - a step done: an ink tick and a strike, the scroll rolls up and opens again on the next step;
+//  - a quest done: tick, roll up, then the poster is torn off its nail (a scrap stays pinned) and
+//    flutters away, and the next one drops in;
+//  - idle: it sways a little; after a quiet spell it tucks smaller (the HUD's calm fades it out).
+// Click it for the quest book. It also drives the world markers (src/ui/QuestMarks.js) and the
+// toasts: a new quest, progress on quests not on the poster, the next step, rewards.
 // Reads game.quests (src/core/quests.js) once it exists; UI.update drives it.
 import { el, formatGoldFull } from '../core/util.js';
 import { ITEMS } from '../data/items.js';
-import { NPCS, QUESTS, npcName } from '../data/quests.js';
+import { npcName } from '../data/quests.js';
 import { LORE_BY_ID } from '../data/lore.js';
 import { BART, PIN_KINDS } from './bookArt.js';
 import { SFX } from './bookSfx.js';
 import { QuestMarks } from './QuestMarks.js';
-import { npcFace, faceReady } from './npcFace.js';
-import { Px, art, cssUrl } from './uiArt.js';
-import { HART, installHudArt } from './hudArt.js';
-import { swing } from './common.js';
+import { npcFace } from './npcFace.js';
+import { Px, art } from './uiArt.js';
+import {
+  posterLook, posterArt, scrapArt, corkArt, nailArt, rodArt, sheetArt, curlArt, twineArt, pipArt, tickArt, brief, shortGold, PSFX,
+  POSTER_W, TITLE_Y,
+} from './questPoster.js';
 import './quests.css';
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const IDLE = 14; // seconds before the strip settles down to just the line
+// ?qtslow=N plays the poster's animations N times slower (for screenshots of single frames)
+const SLOW = (() => { try { return Math.max(1, +new URLSearchParams(location.search).get('qtslow') || 1); } catch (e) { return 1; } })();
+const wait = (ms) => new Promise((r) => setTimeout(r, ms * SLOW));
+const anim = (node, kf, o) => node.animate(kf, typeof o === 'number' ? o * SLOW : { ...o, duration: o.duration * SLOW });
+const done = (a) => (a?.finished ? a.finished.catch(() => {}) : Promise.resolve());
+const IDLE = 8; // seconds before the poster tucks itself smaller
+const MAX_PIPS = 5;
 
 /** "2/5", or gold as "12,400 / 1,000,000". */
 export function countText(v) {
@@ -46,13 +59,13 @@ export function rewardText(r, o = {}) {
 }
 
 // ------------------------------------------------------------ the direction arrow (8 crisp pixel arrows)
-/** An inked arrow: a dark sepia outline, a red-brown fill lit along one flank, a soft shadow on the paper. 13×13. */
+/** An inked arrow: a dark plum outline, a red-brown fill lit along one flank, a soft shadow on the paper. 13×13. */
 function arrowPx(k) {
   const p = new Px(13, 13);
   const a = (k / 8) * Math.PI * 2, c = 6;
   const fx = Math.sin(a), fy = -Math.cos(a);
   const tip = [c + fx * 5, c + fy * 5], tail = [c - fx * 4, c - fy * 4];
-  const ink = 0x4a1608, fill = 0xa8461e, hi = 0xe0783a;
+  const ink = 0x3a1420, fill = 0xa8461e, hi = 0xe0783a;
   const m = new Px(13, 13);
   m.line(Math.round(tail[0]), Math.round(tail[1]), Math.round(tip[0]), Math.round(tip[1]), 1);
   m.line(Math.round(tail[0] + fy * 0.9), Math.round(tail[1] - fx * 0.9), Math.round(tip[0] + fy * 0.9 - fx), Math.round(tip[1] - fx * 0.9 - fy), 1);
@@ -61,8 +74,7 @@ function arrowPx(k) {
     m.line(Math.round(tip[0]), Math.round(tip[1]), Math.round(bx), Math.round(by), 1);
     m.line(Math.round(tip[0] - fx), Math.round(tip[1] - fy), Math.round(bx - fx * 0.8), Math.round(by - fy * 0.8), 1);
   }
-  // a faint shadow on the paper, down and right
-  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) if (m.a(x, y) && !m.a(x + 1, y + 1)) p.set(x + 1, y + 1, 0x6e4a2a, 70);
+  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) if (m.a(x, y) && !m.a(x + 1, y + 1)) p.set(x + 1, y + 1, 0x6e4a3a, 70);
   for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) {
     if (!m.a(x, y)) continue;
     const lit = !m.a(x - 1, y) || !m.a(x, y - 1);
@@ -70,14 +82,13 @@ function arrowPx(k) {
   }
   for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) {
     if (!m.a(x, y)) continue;
-    const edge = !m.a(x + 1, y) && !m.a(x, y + 1);
-    if (edge) p.set(x, y, ink);
+    if (!m.a(x + 1, y) && !m.a(x, y + 1)) p.set(x, y, ink);
   }
   p.set(Math.round(tip[0]), Math.round(tip[1]), ink);
   return p;
 }
-const ARROW = (k) => art('qt:arrow2:' + k, () => arrowPx(k));
-const SEAL = () => HART.waxSmall();
+const ARROW = (k) => art('qt:arrow3:' + k, () => arrowPx(k));
+const cssPx = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 3;
 
 export class Tracker {
   constructor(ui) {
@@ -91,42 +102,53 @@ export class Tracker {
     this.muted = false;
     this.starts = [];
     this.toastT = {};
-    // the scroll: fibrous paper, curled ends (src/ui/hudArt.js; same 8 px 9-slice as quests.css expects)
-    document.documentElement.style.setProperty('--a-qstrip', cssUrl(HART.strip()));
-    installHudArt(); // the wax seal (--h-wax)
+    // the pendulum: the poster on its nail (deg, deg/s), the scroll on its twine
+    this.ang = 0; this.vel = 0; this.sAng = 0; this.sVel = 0; this.t = Math.random() * 10;
 
-    this.face = el('img', { class: 'pix qt-face', src: SEAL(), alt: '' });
+    const img = (cls, src) => el('img', { class: 'pix ' + cls, src, alt: '', draggable: 'false' });
+    this.cork = img('qt-cork', corkArt());
+    this.nail = img('qt-nail', nailArt());
+    this.scrap = el('img', { class: 'pix qt-scrap', alt: '', hidden: true });
     this.title = el('span', { class: 'qt-title' });
-    this.of = el('span', { class: 'qt-of' });
-    this.box = el('img', { class: 'pix qt-box', src: BART.box(false), alt: '' });
+    this.poster = el('div', { class: 'qt-poster' }, [this.title]);
     this.text = el('span', { class: 'qt-text' });
-    this.strike = el('i', { class: 'qt-strike' });
+    this.tick = img('qt-tick', tickArt());
+    this.line = el('div', { class: 'qt-line' }, [el('span', { class: 'qt-step' }, [this.text]), this.tick]);
+    this.pips = el('span', { class: 'qt-pips' });
     this.num = el('span', { class: 'qt-n' });
-    this.bar = el('i', { class: 'qt-bar', hidden: true }, [el('b')]);
-    this.line = el('div', { class: 'qt-line' }, [this.box, el('span', { class: 'qt-tx' }, [this.text, this.strike]), this.num]);
-    this.arrow = el('img', { class: 'pix qt-arrow', src: ARROW(0), alt: '' });
+    this.arrow = img('qt-arrow', ARROW(0));
     this.dist = el('b', { class: 'qt-dist' });
-    this.place = el('span', { class: 'qt-place' });
-    this.where = el('div', { class: 'qt-where', hidden: true }, [this.arrow, this.dist, this.place]);
-    this.paper = el('div', { class: 'qt-paper' }, [el('div', { class: 'qt-head' }, [this.face, this.title, this.of]), this.line, this.bar, this.where]);
-    this.quill = el('img', { class: 'pix qt-quill', src: BART.quill(), alt: '' });
-    this.stamp = el('img', { class: 'pix qt-stamp', src: BART.stamp(), alt: '' });
-    this.tag = el('span', { class: 'qt-tag' }, 'New');
+    this.where = el('span', { class: 'qt-where', hidden: true }, [this.arrow, this.dist]);
+    this.prog = el('div', { class: 'qt-prog' }, [this.pips, this.num, this.where]);
+    this.sheetIn = el('div', { class: 'qt-sheet-in' }, [this.line, this.prog]);
+    this.sheet = el('div', { class: 'qt-sheet' }, [this.sheetIn]);
+    this.rodT = el('i', { class: 'qt-rod' });
+    this.rodB = el('i', { class: 'qt-rod heavy' });
+    this.scroll = el('div', { class: 'qt-scroll' }, [el('i', { class: 'qt-twine' }), this.rodT, this.sheet, this.rodB]);
+    this.swingEl = el('div', { class: 'qt-swing' }, [this.poster, this.scroll]);
+    this.drop = el('div', { class: 'qt-drop' }, [this.swingEl]);
     this.roll = el('button', {
-      class: 'qt-roll', title: 'Your quests (B)', 'aria-label': 'Current objective: open the book',
+      class: 'qt-roll', title: 'Your quests (B)', 'aria-label': 'Current objective: open the quest book',
       onclick: (e) => { e.stopPropagation(); this.game.audio.init?.(); ui.openBook?.('quests'); },
-    }, [this.paper, this.wax = el('i', { class: 'qt-wax', 'aria-hidden': 'true' }), this.tag, this.stamp]);
-    this.el = el('div', { class: 'qt', hidden: true, role: 'status', 'aria-live': 'polite' }, [this.roll, this.quill]);
-    // (ui3) reach for the strip and its seal swings on its silk tails
-    this.roll.addEventListener('pointerenter', () => { this.wake(); swing(this.wax, 7, 900); });
+    }, [this.cork, this.scrap, this.drop, this.nail]);
+    this.el = el('div', { class: 'qt', hidden: true, role: 'status', 'aria-live': 'polite' }, [this.roll]);
+    // reach for it and it swings on its nail
+    this.roll.addEventListener('pointerenter', () => { this.wake(); this.vel += 26 * (Math.random() < 0.5 ? -1 : 1); this.sVel += 18; });
     ui.hud.append(this.el);
+    const root = document.documentElement.style;
+    root.setProperty('--qt-rod', `url("${rodArt(false)}")`);
+    root.setProperty('--qt-rodH', `url("${rodArt(true)}")`);
+    root.setProperty('--qt-sheet', `url("${sheetArt()}")`);
+    root.setProperty('--qt-curl', `url("${curlArt()}")`);
+    if (SLOW > 1) root.setProperty('--qt-slow', SLOW);
+    root.setProperty('--qt-twine', `url("${twineArt()}")`);
     this.marks = ui.questMarks = new QuestMarks(ui);
     // draw the book's little pictures while nothing's happening, so the first opening is instant
-    const warm = () => { try { for (const k of ['quests', 'map', 'skills', 'index', 'lore']) BART.tab(k); for (const k of PIN_KINDS) BART.pin(k); BART.box(true); for (let k = 0; k < 8; k++) ARROW(k); } catch (e) { /* noop */ } };
+    const warm = () => { try { for (const k of ['quests', 'map', 'skills', 'index', 'lore']) BART.tab(k); for (const k of PIN_KINDS) BART.pin(k); for (let k = 0; k < 8; k++) ARROW(k); pipArt(true); pipArt(false); } catch (e) { /* noop */ } };
     if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 8000 }); else setTimeout(warm, 4000);
   }
 
-  /** Hide the strip (cutscenes) or bring it back. */
+  /** Hide the poster (cutscenes) or bring it back. */
   mute(on = true) { this.muted = !!on; this.el.classList.toggle('muted', this.muted); }
 
   bind(q) {
@@ -146,7 +168,7 @@ export class Tracker {
     if (!this.quests) return;
     this.idleT += dt;
     if (this.idleT > IDLE && !this.el.classList.contains('idle') && !this.running) this.el.classList.add('idle');
-    // a quest finished in another screen (no event seen): keep the strip honest
+    // a quest finished in another screen (no event seen): keep the poster honest
     this._syncT = (this._syncT || 0) + dt;
     if (this._syncT > 1 && !this.running && !this.pending.length) {
       this._syncT = 0;
@@ -157,7 +179,30 @@ export class Tracker {
     this._whereT = (this._whereT || 0) - dt;
     if (this._whereT <= 0) { this._whereT = 0.12; this.updateWhere(); }
     this._posT = (this._posT || 0) - dt;
-    if (this._posT <= 0) { this._posT = 0.5; this.placeUnderPack(); }
+    if (this._posT <= 0) { this._posT = 0.5; this.placeUnderPack(); if (this._guess && this.visible()) this.layoutPoster(); }
+    this.physics(dt / SLOW);
+  }
+
+  /**
+   * The swing: a damped pendulum about the nail, nudged by drops, tugs and the cursor; at rest it
+   * drifts in a faint draught. The scroll hangs off it and lags behind on its twine.
+   */
+  physics(dt) {
+    if (this.el.hidden || !this.visible()) { this.ang = this.vel = this.sAng = this.sVel = 0; return; }
+    dt = Math.min(dt, 0.05);
+    this.t += dt;
+    const sway = Math.sin(this.t * 1.13) * 0.5 + Math.sin(this.t * 0.47 + 1.7) * 0.35;
+    const n = Math.max(1, Math.ceil(dt * 240)), h = dt / n;
+    for (let i = 0; i < n; i++) {
+      const acc = -72 * (this.ang - sway) - 2.4 * this.vel;
+      this.vel += acc * h; this.ang += this.vel * h;
+      const sacc = -150 * this.sAng - 7 * this.sVel - 0.3 * acc;
+      this.sVel += sacc * h; this.sAng += this.sVel * h;
+    }
+    this.ang = Math.max(-28, Math.min(28, this.ang));
+    const a = this.ang.toFixed(2) + 'deg', s = this.sAng.toFixed(2) + 'deg';
+    if (a !== this._a) { this._a = a; this.swingEl.style.rotate = a; }
+    if (s !== this._s) { this._s = s; this.scroll.style.rotate = s; }
   }
 
   wake() { this.idleT = 0; this.el.classList.remove('idle'); }
@@ -175,39 +220,42 @@ export class Tracker {
       }
     }
     if (!bottom) { this.el.style.top = ''; return; }
-    const px = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 3;
-    const top = Math.round(bottom - base.top + px * 3);
+    const top = Math.round(bottom - base.top - cssPx() * 2);
     if (this._top !== top) { this._top = top; this.el.style.top = top + 'px'; }
   }
 
-  /** The where line: arrow, distance, place (from the world markers' resolved target). */
+  /** The where line: arrow and distance (the place's name is in the tooltip). */
   updateWhere() {
-    if (!this.shown) { this.where.hidden = true; return; }
-    // the giver's face is drawn in the background: swap the stand-in sketch for it when it's ready
-    if (!this._faceOk) { const g = QUESTS[this.shown.id]?.giver; if (g && faceReady(g, 40)) { this.face.src = npcFace(this.game, g, { size: 40 }); this._faceOk = true; } else if (g) npcFace(this.game, g, { size: 40 }); }
+    if (!this.shown) { this.where.hidden = true; this.syncProg(); return; }
     const r = this.marks.bearing();
     const t = r?.t, b = r?.b;
-    if (!t || t.quest?.id !== this.shown.id || (!t.label && !t.sub && !b && !t.depth)) { this.where.hidden = true; return; }
-    this.where.hidden = false;
+    if (!t || t.quest?.id !== this.shown.id || (!b && !t.depth)) { this.where.hidden = true; this.syncProg(); this.setTip(null); return; }
     const deep = this.game.sceneName === 'deep' || this.game.sceneName === 'mine';
     let dist = '', k = -1;
     if (b) {
       k = ((Math.round(b.rel / (Math.PI / 4)) % 8) + 8) % 8;
       const near = b.d3 < (t.r || 2.5);
-      dist = near ? 'here' : `${Math.round(b.dist)} m`;
-      if (deep && Math.abs(b.dy) > 3 && !near) dist += ` ${b.dy > 0 ? '▲' : '▼'}${Math.round(Math.abs(b.dy))}`;
+      dist = near ? 'here' : `${Math.round(b.dist)}m`;
+      if (deep && Math.abs(b.dy) > 3 && !near) dist += `${b.dy > 0 ? '▲' : '▼'}`;
       if (near) k = -1;
     } else if (t.depth && deep) {
       const me = this.game.scene?.player?.pos;
       const down = me ? Math.round(t.depth + me.y) : 0;
-      dist = down > 0 ? `▼ ${down} m deeper` : 'you\'re there';
+      dist = down > 0 ? `▼${down}m` : 'here';
     }
+    this.where.hidden = !dist;
+    this.syncProg();
     this.arrow.hidden = k < 0;
     if (k >= 0 && this._k !== k) { this._k = k; this.arrow.src = ARROW(k); }
     if (this.dist.textContent !== dist) this.dist.textContent = dist;
-    const place = [t.label, t.sub].filter(Boolean).join(' · ');
-    if (this.place.textContent !== place) this.place.textContent = place;
     this.where.classList.toggle('via', !!t.via);
+    this.setTip([t.label, t.sub].filter(Boolean).join(' · '));
+  }
+
+  setTip(place) {
+    const v = this.shown;
+    const tip = v ? [v.full, place].filter(Boolean).join(' · ') : 'Your quests (B)';
+    if (this._tip !== tip) { this._tip = tip; this.roll.title = tip; }
   }
 
   // ------------------------------------------------------------ events → a queue of little animations
@@ -244,65 +292,94 @@ export class Tracker {
       const v = q.get(e.id);
       if (!v || v.status !== 'active') return;
       this.wake();
-      // gold ticks and rapid counts (walking a biome) update quietly; a real step forward gets the quill
-      const now = performance.now(), quick = now - (this._lastScribble || 0) < 1600;
-      if ((e.passive && v.step?.gold) || quick) { this.setCount(v); this.shown.n = v.n; if (!quick) this.pulse(this.num); return; }
-      this._lastScribble = now;
-      await this.scribble(v, visible);
+      // gold ticks and rapid counts (walking a biome) update quietly; a real step forward is inked in
+      const now = performance.now(), quick = now - (this._lastInk || 0) < 1600;
+      if ((e.passive && v.step?.gold) || quick || !visible) { this.setCount(v); this.shown.n = v.n; if (!quick && visible) this.pulse(this.num); return; }
+      this._lastInk = now;
+      await this.inkProgress(v);
       return;
     }
     if (e.kind === 'step') {
       if (q.get(e.id)?.status !== 'active') return; // finished meanwhile: its 'done' plays next
-      if (e.id !== this.shown?.id) { if (e.id === tracked) await this.swap(q.tracked(), visible); return; }
+      if (e.id !== this.shown?.id) { if (e.id === tracked) await this.swapPoster(q.tracked(), visible, { tear: false }); return; }
       this.wake();
-      await this.tickOff(visible);
-      await this.swap(q.get(e.id), visible, { roll: true });
+      if (!visible) { this.show(q.get(e.id), { instant: true }); return; }
+      await this.tickOff();
+      await this.rollUp();
+      this.fillStep(q.get(e.id));
+      await this.unroll();
       return;
     }
     if (e.kind === 'done') {
       if (e.id !== this.shown?.id) return;
       this.wake();
-      await this.tickOff(visible);
-      await this.slam(visible);
-      await wait(visible ? 1100 : 0);
-      this.stamp.classList.remove('on', 'slam');
-      await this.swap(q.tracked(), visible, { roll: true });
+      if (visible) { await this.tickOff(); await this.rollUp(); }
+      await this.swapPoster(q.tracked(), visible, { tear: true });
       return;
     }
     if (e.kind === 'track') {
       const v = q.tracked();
       if ((v?.id || null) === (this.shown?.id || null)) return;
       this.wake();
-      await this.swap(v, visible, { roll: !!this.shown, fresh: true });
+      await this.swapPoster(v, visible, { tear: false });
     }
   }
 
-  // ------------------------------------------------------------ pieces of animation
+  // ------------------------------------------------------------ filling it in
   setCount(v) {
-    this.num.textContent = countText(v);
-    const show = v.max > 1;
-    this.bar.hidden = !show;
-    if (show) this.bar.firstChild.style.width = Math.round(Math.min(1, v.n / v.max) * 100) + '%';
+    const max = v.max || 1, n = Math.min(v.n || 0, max);
+    this.pips.textContent = '';
+    this.num.textContent = '';
+    if (max > 1 && max <= MAX_PIPS && !v.step?.gold) {
+      const acc = this.look?.acc;
+      for (let i = 0; i < max; i++) this.pips.append(el('img', { class: 'pix qt-pip' + (i < n ? ' on' : ''), src: pipArt(i < n, acc), alt: '' }));
+    } else if (max > 1) this.num.textContent = v.step?.gold ? `${shortGold(n)}/${shortGold(max)}` : `${n}/${max}`;
+    this._max = max;
+    this.syncProg();
+    this.el.dataset.n = n; this.el.dataset.max = max;
+  }
+
+  syncProg() { const h = (this._max || 1) <= 1 && this.where.hidden; if (this.prog.hidden !== h) this.prog.hidden = h; }
+
+  fillStep(v) {
+    this.text.textContent = brief(v.text) || v.text;
+    this.setCount(v);
+    this.text.classList.remove('struck');
+    this.tick.classList.remove('on');
+    this.el.dataset.step = v.i;
+    this.shown = { ...(this.shown || {}), id: v.id, i: v.i, n: v.n, text: v.text, full: v.text };
+    this._tip = null;
+    this.setTip(null);
   }
 
   fill(v) {
     const def = v.def;
+    this.look = posterLook(def, v.id);
     this.title.textContent = v.title;
-    this.title.style.color = NPCS[def.giver]?.ink || '';
-    this.face.src = def.giver ? npcFace(this.game, def.giver, { size: 40 }) : SEAL();
-    this._faceOk = !def.giver || faceReady(def.giver, 40);
-    // (wave 12: less text) the step count lives in the book and on hover, not on the strip
-    this.of.textContent = '';
-    this.paper.title = def.steps.length > 1 && v.status === 'active' ? `Step ${v.i + 1} of ${def.steps.length}` : '';
-    this.text.textContent = v.text;
-    this.setCount(v);
-    this.box.src = BART.box(false);
-    this.strike.classList.remove('go');
     this.el.classList.toggle('main', def.kind === 'main');
     this.el.dataset.kind = def.kind;
-    this.shown = { id: v.id, i: v.i, n: v.n, text: v.text };
+    this.el.dataset.quest = v.id;
+    this.el.dataset.motif = this.look.motif;
+    this.shown = { id: v.id };
+    this.fillStep(v);
     this._k = null;
+    this.layoutPoster();
     this.updateWhere();
+  }
+
+  /** Size the poster to its title (one, two or three lines) and print it. */
+  layoutPoster() {
+    if (!this.shown || !this.look) return;
+    const P = cssPx(), th = this.title.offsetHeight;
+    this._guess = !th;
+    const lines = th ? Math.max(1, Math.round(th / (parseFloat(getComputedStyle(this.title).lineHeight) || th))) : Math.ceil(this.title.textContent.length / 11);
+    const lh = th ? th / P / lines : 5.6;
+    const H = Math.round(TITLE_Y + lines * lh + 4.6);
+    const key = this.shown.id + ':' + H;
+    if (this._posterKey === key) return;
+    this._posterKey = key;
+    this.poster.style.height = `calc(var(--px) * ${H})`;
+    this.poster.style.backgroundImage = `url("${posterArt(this.shown.id, this.look, H)}")`;
   }
 
   show(v, { instant = false } = {}) {
@@ -310,148 +387,153 @@ export class Tracker {
     this.el.hidden = false;
     this.fill(v);
     this.placeUnderPack();
-    if (instant) { this.roll.classList.remove('rolled', 'opening'); this.tag.classList.remove('on'); }
-  }
-
-  async swap(v, visible, { roll = false, fresh = false } = {}) {
-    if (!visible) { this.show(v, { instant: true }); return; }
-    if (roll && this.shown) {
-      SFX.unroll(this.game.audio, { up: true });
-      this.roll.classList.add('rolled');
-      await wait(300);
+    if (instant) {
+      for (const a of this.drop.getAnimations()) a.cancel();
+      for (const a of this.sheet.getAnimations()) a.cancel();
+      this.sheet.style.height = '';
+      this.scroll.classList.remove('rolled');
     }
-    if (!v) { this.show(null); this.roll.classList.remove('rolled'); return; }
-    this.show(v);
-    this.roll.classList.add('rolled');
-    void this.roll.offsetWidth;
-    this.roll.classList.remove('rolled');
-    this.roll.classList.add('opening');
-    SFX.unroll(this.game.audio);
-    this.tag.classList.toggle('on', fresh);
-    await wait(320);
-    this.roll.classList.remove('opening');
-    this.flutter(true);
-    // the quill writes the new line in
-    await this.write(this.line);
-    if (fresh) setTimeout(() => this.tag.classList.remove('on'), 2600);
   }
 
-  /** The quill hovers at a node, scratching, while it's revealed left to right. */
-  async write(node, { ms = 520 } = {}) {
-    node.classList.remove('ink');
-    void node.offsetWidth;
-    node.classList.add('ink');
-    this.quillTo(node, true);
-    SFX.scratch(this.game.audio, { n: 5 });
-    await wait(ms);
-    this.quill.classList.remove('on');
-    node.classList.remove('ink');
-  }
-
-  quillTo(node, sweep = false) {
-    const r = node.getBoundingClientRect(), base = this.el.getBoundingClientRect();
-    this.quill.style.left = Math.round(r.left - base.left) + 'px';
-    this.quill.style.top = Math.round(r.top - base.top + r.height * 0.5) + 'px';
-    this.quill.style.setProperty('--sweep', Math.round(r.width) + 'px');
-    this.quill.classList.remove('on', 'sweep', 'jot');
-    void this.quill.offsetWidth;
-    this.quill.classList.add('on', sweep ? 'sweep' : 'jot');
-  }
-
-  /** The strip's paper flutters (a breath of air lifts its corner) and its seal swings on its tails. */
-  flutter(big = false) {
-    if (!this.visible()) return;
-    this.paper.classList.remove('flutter', 'flutter-big');
-    void this.paper.offsetWidth;
-    this.paper.classList.add(big ? 'flutter-big' : 'flutter');
-    swing(this.wax, big ? 9 : 5, big ? 1100 : 700);
-  }
-
-  /** A count goes up: the old number is crossed out and the new one written over it. */
-  async scribble(v, visible) {
-    if (!visible) { this.setCount(v); this.shown.n = v.n; return; }
-    this.flutter();
-    this.num.classList.remove('scratch');
-    void this.num.offsetWidth;
-    this.num.classList.add('scratch');
-    this.quillTo(this.num);
-    SFX.scratch(this.game.audio, { n: 3 });
-    await wait(180);
-    this.setCount(v);
+  // ------------------------------------------------------------ pieces of animation
+  /** The next pip is inked in (or the count scratched over), a little ink flicks off it. */
+  async inkProgress(v) {
+    const before = this.pips.querySelectorAll('.qt-pip.on').length;
+    if (v.max > MAX_PIPS || v.step?.gold) {
+      this.num.classList.remove('scratch'); void this.num.offsetWidth; this.num.classList.add('scratch');
+      SFX.scratch(this.game.audio, { n: 3 });
+      await wait(170);
+      this.setCount(v);
+      this.pulse(this.num);
+    } else {
+      this.setCount(v);
+      const pips = [...this.pips.children];
+      for (let i = before; i < Math.min(v.n, pips.length); i++) { pips[i].classList.add('inked'); this.splat(pips[i]); }
+      SFX.tick(this.game.audio);
+    }
     this.shown.n = v.n;
-    this.pulse(this.num);
-    await wait(260);
-    this.num.classList.remove('scratch');
-    this.quill.classList.remove('on');
+    this.sVel += 14;
+    await wait(360);
+  }
+
+  /** Three or four tiny square drops of ink thrown off a mark. */
+  splat(node) {
+    for (let i = 0; i < 4; i++) {
+      const d = el('i', { class: 'qt-ink' });
+      const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 5;
+      d.style.setProperty('--dx', `calc(var(--px) * ${(Math.cos(a) * r).toFixed(1)})`);
+      d.style.setProperty('--dy', `calc(var(--px) * ${(Math.sin(a) * r * 0.7).toFixed(1)})`);
+      d.style.setProperty('--c', this.look?.acc ? '#' + this.look.acc.toString(16).padStart(6, '0') : '#a8321e');
+      node.parentNode?.append(d);
+      d.style.left = node.offsetLeft + node.offsetWidth / 2 + 'px';
+      d.style.top = node.offsetTop + node.offsetHeight / 2 + 'px';
+      setTimeout(() => d.remove(), 650 * SLOW);
+    }
   }
 
   pulse(node) { node.classList.remove('pulse'); void node.offsetWidth; node.classList.add('pulse'); }
 
-  /**
-   * (ui3) The strip's wax seal breaks as a step is done (a hairline, the halves split, a chip flies)
-   * and a fresh one drops and settles: pixel frames (hudArt waxCrack), a jolt, three wax crumbs.
-   */
-  crackSeal() {
-    const w = this.wax;
-    if (!w) return;
-    w.classList.remove('crack');
-    for (const c of w.querySelectorAll('.qt-chip')) c.remove();
-    void w.offsetWidth;
-    w.classList.add('crack');
-    const au = this.game.audio;
-    setTimeout(() => au.play('crack', { vol: 0.16, pitch: 1.8 }), 140);
-    setTimeout(() => au.play('click', { vol: 0.24, pitch: 0.75 }), 900);
-    for (let i = 0; i < 3; i++) {
-      const c = el('i', { class: 'qt-chip' });
-      c.style.setProperty('--dx', `calc(var(--px) * ${[3, 6, 1][i]})`);
-      c.style.setProperty('--dy', `calc(var(--px) * ${[14, 18, 11][i]})`);
-      c.style.setProperty('--c', ['#b42c1e', '#6e140e', '#d0442c'][i]);
-      c.style.animationDelay = `${180 + i * 50}ms`;
-      w.append(c);
-    }
-    clearTimeout(this._crackT);
-    this._crackT = setTimeout(() => { w.classList.remove('crack'); for (const c of w.querySelectorAll('.qt-chip')) c.remove(); }, 1500);
-  }
-
-  /** Tick the box and strike the line through. */
-  async tickOff(visible) {
-    if (!visible) return;
-    this.box.src = BART.box(true);
-    this.pulse(this.box);
-    this.crackSeal();
+  /** A brushed ink tick in the margin and a stroke through the step. */
+  async tickOff() {
+    this.tick.classList.remove('on'); void this.tick.offsetWidth; this.tick.classList.add('on');
     SFX.tick(this.game.audio);
-    await wait(120);
-    this.strike.classList.add('go');
-    this.quillTo(this.text, true);
+    this.vel += 9;
+    await wait(200);
+    this.text.classList.add('struck');
     SFX.scratch(this.game.audio, { n: 4 });
-    await wait(480);
-    this.quill.classList.remove('on');
+    await wait(560);
   }
 
-  /** Old Star's stamp comes down on a finished quest. */
-  async slam(visible) {
-    if (!visible) return;
-    this.stamp.classList.remove('on', 'slam');
-    void this.stamp.offsetWidth;
-    this.stamp.classList.add('on', 'slam');
-    await wait(150);
-    SFX.stamp(this.game.audio);
-    this.roll.classList.remove('shake');
-    void this.roll.offsetWidth;
-    this.roll.classList.add('shake');
-    this.splatter();
-    await wait(260);
+  /** The scroll rolls itself up onto its top rod. */
+  async rollUp() {
+    const h = this.sheet.offsetHeight;
+    if (!h) { this.scroll.classList.add('rolled'); return; }
+    SFX.unroll(this.game.audio, { up: true });
+    this.rodB.classList.add('spin');
+    const a = anim(this.sheet, [{ height: h + 'px' }, { height: '0px' }], { duration: 300, easing: 'cubic-bezier(.55, 0, .9, .45)', fill: 'forwards' });
+    await done(a);
+    this.scroll.classList.add('rolled');
+    this.sheet.style.height = '0px';
+    a.cancel();
+    this.rodB.classList.remove('spin');
+    this.sVel -= 30;
+    await wait(90);
   }
 
-  splatter() {
-    for (let i = 0; i < 7; i++) {
-      const d = el('i', { class: 'qt-dot' });
-      const a = Math.random() * Math.PI * 2, r = 14 + Math.random() * 16;
-      d.style.setProperty('--dx', Math.round(Math.cos(a) * r) + 'px');
-      d.style.setProperty('--dy', Math.round(Math.sin(a) * r * 0.6) + 'px');
-      this.roll.append(d);
-      setTimeout(() => d.remove(), 700);
-    }
+  /** It drops open: the heavy rod falls, overshoots, bounces, wobbles still. */
+  async unroll() {
+    const h = this.sheetIn.offsetHeight, P = cssPx();
+    this.scroll.classList.remove('rolled');
+    SFX.unroll(this.game.audio);
+    this.rodB.classList.add('spin');
+    const a = anim(this.sheet, [
+      { height: '0px', easing: 'cubic-bezier(.4, 0, .9, .6)' },
+      { height: `${h + P * 3}px`, offset: 0.62, easing: 'ease-out' },
+      { height: `${h - P * 1.5}px`, offset: 0.8, easing: 'ease-in-out' },
+      { height: `${h + P * 0.5}px`, offset: 0.92 },
+      { height: `${h}px` },
+    ], { duration: 560 });
+    setTimeout(() => { this.rodB.classList.remove('spin'); this.sVel += 34; }, 340 * SLOW);
+    await done(a);
+    this.sheet.style.height = '';
+    anim(this.rodB, [{ rotate: '-4deg' }, { rotate: '3deg', offset: 0.3 }, { rotate: '-1.5deg', offset: 0.6 }, { rotate: '0deg' }], { duration: 420, easing: 'ease-out' });
+  }
+
+  /** The poster lands from above, catches on the nail, swings; then the scroll opens. */
+  async dropIn(v) {
+    this.show(v);
+    this.scroll.classList.add('rolled');
+    this.sheet.style.height = '0px';
+    const P = cssPx(), r = this.drop.getBoundingClientRect(), dy = -Math.max(240, r.bottom + 40);
+    const kf = [
+      { transform: `translate(${P * 5}px, ${dy}px) rotate(-16deg)`, easing: 'cubic-bezier(.4, 0, .85, .55)' },
+      { transform: `translate(${-P * 4}px, ${dy * 0.52}px) rotate(10deg)`, offset: 0.38, easing: 'cubic-bezier(.3, 0, .8, .6)' },
+      { transform: `translate(${P * 2}px, ${dy * 0.16}px) rotate(-6deg)`, offset: 0.7, easing: 'cubic-bezier(.4, 0, 1, .7)' },
+      { transform: 'translate(0px, 0px) rotate(0deg)', offset: 0.84, easing: 'ease-out' },
+      { transform: `translate(0px, ${P * 2.5}px) scale(1.02, .955)`, offset: 0.91, easing: 'ease-in-out' },
+      { transform: `translate(0px, ${-P * 0.8}px) scale(.99, 1.015)`, offset: 0.96 },
+      { transform: 'translate(0px, 0px) rotate(0deg)' },
+    ];
+    const a = anim(this.drop, kf, { duration: 820 });
+    for (const old of this.drop.getAnimations()) if (old !== a) old.cancel();
+    PSFX.flutter(this.game.audio, { n: 6 });
+    await wait(820 * 0.84);
+    PSFX.catch(this.game.audio);
+    this.vel += 95 * (Math.random() < 0.5 ? -1 : 1);
+    await done(a);
+    await wait(120);
+    await this.unroll();
+  }
+
+  /** Off the nail: torn (a scrap stays pinned) or just lifted off; it flutters down out of sight. */
+  async away(tear) {
+    const P = cssPx(), dir = Math.random() < 0.5 ? -1 : 1;
+    if (tear && this.shown && this.look) {
+      PSFX.rip(this.game.audio);
+      this.scrap.src = scrapArt(this.look, this.shown.id);
+      this.scrap.hidden = false;
+      anim(this.scrap, [{ translate: `0 ${P * 1.5}px` }, { translate: '0 0' }], { duration: 240, easing: 'cubic-bezier(.3, 1.6, .5, 1)' });
+    } else SFX.unroll(this.game.audio, { up: true });
+    const a = anim(this.drop, [
+      { transform: 'translate(0px, 0px) rotate(0deg)', opacity: 1, easing: 'ease-out' },
+      { transform: `translate(0px, ${P * (tear ? 3 : -3)}px) rotate(${dir * 2}deg)`, offset: 0.1, easing: 'ease-in' },
+      { transform: `translate(${dir * P * 7}px, ${P * 20}px) rotate(${-dir * 18}deg) scale(.95, .88)`, offset: 0.32, easing: 'ease-in-out' },
+      { transform: `translate(${-dir * P * 9}px, ${P * 48}px) rotate(${dir * 14}deg) scale(.72, 1)`, offset: 0.56, easing: 'ease-in-out' },
+      { transform: `translate(${dir * P * 12}px, ${P * 84}px) rotate(${-dir * 32}deg) scale(.9, .62)`, opacity: 1, offset: 0.8, easing: 'ease-in' },
+      { transform: `translate(${-dir * P * 4}px, ${P * 126}px) rotate(${-dir * 10}deg) scale(.55, .9)`, opacity: 0 },
+    ], { duration: 1150, fill: 'forwards' });
+    PSFX.flutter(this.game.audio, { n: 9, vol: 0.8, delay: 0.12 });
+    this.vel = 0;
+    await done(a);
+  }
+
+  /** Swap the poster: the old one goes (torn or lifted off), the new one drops in. */
+  async swapPoster(v, visible, { tear = false } = {}) {
+    if (!visible) { this.show(v, { instant: true }); return; }
+    if (this.shown && !this.el.hidden) await this.away(tear);
+    if (!v) { this.show(null); for (const a of this.drop.getAnimations()) a.cancel(); return; }
+    await wait(140);
+    await this.dropIn(v);
   }
 
   // ------------------------------------------------------------ toasts
@@ -465,17 +547,16 @@ export class Tracker {
       if (!list.length) return;
       this.ui.status?.setBadge?.(true);
       if (list.length === 1) {
-        const v = list[0].quest, who = v.giverName;
-        const head = list[0].accept ? 'Quest accepted' : v.kind === 'request' ? `A request from ${who}` : v.kind === 'village' || v.kind === 'lore' ? `${who} asks a favour` : `New task from ${who}`;
-        void head;
-        this.ui.toast(`New: <b>${v.title}</b>`, { icon: npcFace(this.game, v.giver, { size: 40 }), dur: 2600 }); // (wave 18: short; the strip has the rest)
+        const v = list[0].quest;
+        if (v?.id && v.id === this.quests?.data.tracked && this.visible()) return; // its poster drops in: no words needed
+        this.ui.toast(`New: <b>${v.title}</b>`, { icon: npcFace(this.game, v.giver, { size: 40 }), dur: 2600 }); // (wave 18: short; the poster has the rest)
       } else {
         this.ui.toast(`<b>${list.length} new tasks</b>`, { icon: BART.tab('quests') });
       }
     }, 80);
   }
 
-  /** Progress on a quest that isn't on the strip (or while the strip can't be seen): a little note. */
+  /** Progress on a quest that isn't on the poster (or while it can't be seen): a little note. */
   progressToast(e) {
     const v = e.quest;
     if (!v || (e.passive && v.step?.gold) || this.quests.talking) return;
@@ -486,7 +567,7 @@ export class Tracker {
     this.ui.toast(`<b>${v.title}</b> <b class="gold-txt">${countText(v)}</b>`, { icon: npcFace(this.game, v.giver, { size: 40 }), dur: 1800 });
   }
 
-  /** A step done: what's next (when the strip isn't showing that quest, or can't be seen). */
+  /** A step done: what's next (when the poster isn't showing that quest, or can't be seen). */
   stepToast(e) {
     const v = e.quest;
     if (!v || v.id === 'lessons' || this.quests.talking) return;
@@ -520,3 +601,5 @@ export class Tracker {
     }, this.ui.hudMode === 'deep' ? 650 : 0);
   }
 }
+
+export { POSTER_W };

@@ -7,6 +7,8 @@
 //           couple of seconds (a raised guard catches it)
 // Webs (Webs, below) are sheets of silk strung across tunnels near its lair: walking into one slows
 // you to a crawl and twangs (the spider comes running). Cut them with the pick: a little silk.
+// (wave 19) It's a mole's head across now (sizes.js): its reach, lunges and spit glob are its size;
+// its webs still span the tunnel.
 import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { Legs } from './rig.js';
@@ -240,13 +242,13 @@ export class Spider extends Beast {
   static attacks = [
     { id: 'bite', range: [0, 1.6], arc: 0.6, tell: 0.55, dur: 0.32, hitAt: 0.08, rec: 0.6, cd: [1.1, 1.9], w: 2.5,
       start() { this.sound('spider_hiss', {}); },
-      go() { this.vel.x += Math.sin(this.yaw) * 3.2; this.vel.z += Math.cos(this.yaw) * 3.2; },
-      hit(A) { return this.strikeAt(A, this.reachPoint(0.25, 0), 0.32, { dmg: this.info.dmg, push: 2.4, kind: 'bite' }); } },
-    { id: 'pounce', range: [2, 4.4], arc: 0.45, tell: 0.6, dur: 0.6, hitAt: 0.05, rec: 0.7, cd: [2.2, 3.4], w: 1.4,
+      go() { const v = 3.2 * this.walkK; this.vel.x += Math.sin(this.yaw) * v; this.vel.z += Math.cos(this.yaw) * v; },
+      hit(A) { return this.strikeAt(A, this.reachPoint(0.25 * this.K, 0), 0.32 * this.K, { dmg: this.info.dmg, push: 2.4, kind: 'bite' }); } },
+    { id: 'pounce', range: [2, 4.4], leap: true, arc: 0.45, tell: 0.6, dur: 0.6, hitAt: 0.05, rec: 0.7, cd: [2.2, 3.4], w: 1.4,
       start() { this.sound('chitter', {}); },
-      go(A) { const t = this.targetPos(A); const dx = t.x - this.pos.x, dz = t.z - this.pos.z, d = Math.hypot(dx, dz) || 1; const v = Math.min(7, Math.max(0, d - 0.55) / 0.5); this.vel.set(dx / d * v, 4, dz / d * v); this.sound('whoosh', { vol: 0.5 }); },
-      hit(A) { return A.t > 0.55 || this.strikeAt(A, this.reachPoint(0.15, 0), 0.38, { dmg: this.info.dmg * 1.2, push: 3.2, kind: 'bite' }); } },
-    { id: 'spit', range: [3, 9], arc: 0.3, tell: 0.55, dur: 0.2, rec: 0.6, cd: [3, 4.5], w: 1, noPrey: true,
+      go(A) { const t = this.targetPos(A); const dx = t.x - this.pos.x, dz = t.z - this.pos.z, d = Math.hypot(dx, dz) || 1; const v = Math.min(7, Math.max(0, d - 0.55 * this.K) / 0.5); this.vel.set(dx / d * v, 4 * this.walkK, dz / d * v); this.sound('whoosh', { vol: 0.5 }); },
+      hit(A) { return A.t > 0.55 || this.strikeAt(A, this.reachPoint(0.15 * this.K, 0), 0.38 * this.K, { dmg: this.info.dmg * 1.2, push: 3.2, kind: 'bite' }); } },
+    { id: 'spit', range: [3, 9], ranged: true, arc: 0.3, tell: 0.55, dur: 0.2, rec: 0.6, cd: [3, 4.5], w: 1, noPrey: true,
       when(e) { return e.sees && e.mgr.webbed <= 0; },
       go() { this.spit(); } },
   ];
@@ -296,14 +298,14 @@ export class Spider extends Beast {
 
   spit() {
     const m = this.mgr, pl = m.pl;
-    const h = this.reachPoint(0.1, 0.05, new THREE.Vector3());
+    const h = this.reachPoint(0.1 * this.K, 0.05 * this.K, new THREE.Vector3());
     const T = clamp(this.dist / 8, 0.35, 0.9);
     const tx = pl.pos.x + pl.vel.x * T * 0.6, ty = pl.pos.y + 0.5, tz = pl.pos.z + pl.vel.z * T * 0.6;
     const g = 6;
     const v = [(tx - h.x) / T, (ty - h.y + 0.5 * g * T * T) / T, (tz - h.z) / T];
     const geo = m.geo('web_glob', () => { const r = new VB(77); r.ell(0, 0, 0, 2, 2, 2, (x, y, z, nx, ny) => (ny > 0.3 ? 0xffffff : 0xd8e0ec)); r.set(2, 0, 0, 0xe8f0ff); r.set(-2, 1, 0, 0xe8f0ff); return r.geo(0, 0, 0); });
     m.addShot({
-      x: h.x, y: h.y, z: h.z, v, g, geo, dmg: 1, zone: this.zone, src: this, kind: 'web', mat: m.webs.mat, bounces: 0, trail: [0.9, 0.93, 1], spin: 0.5,
+      x: h.x, y: h.y, z: h.z, v, g, geo, dmg: 1, zone: this.zone, src: this, kind: 'web', mat: m.webs.mat, bounces: 0, trail: [0.9, 0.93, 1], spin: 0.5, scale: Math.max(0.5, Math.sqrt(this.K)),
       onHit: (s, from) => {
         // a guard up in front catches it; otherwise: stuck
         if (m.blocking && m.combat.incoming(this, 0, [0, 0, 0], 'web_glob', { from, noParry: true }).blocked) return;
@@ -324,7 +326,7 @@ export class Spider extends Beast {
     // shies from the lamp: backs off a few steps
     this.stun(0.5, 'recoil');
     const [dx, dz] = this.dirToPlayer();
-    this.vel.x -= dx * 2.5; this.vel.z -= dz * 2.5;
+    this.vel.x -= dx * 2.5 * this.walkK; this.vel.z -= dz * 2.5 * this.walkK;
     this.sound('spider_hiss', { vol: 0.6 });
   }
 
@@ -357,7 +359,8 @@ export class Spider extends Beast {
   light() {
     if (this.dist > 12 || this.asleep) return null;
     const c = this.G.eye;
-    return { x: this.center.x + Math.sin(this.yaw) * 0.3, y: this.center.y + 0.1, z: this.center.z + Math.cos(this.yaw) * 0.3, c: [c[0] * 0.35, c[1] * 0.35, c[2] * 0.35], r: 1.6 };
+    const k = this.K;
+    return { x: this.center.x + Math.sin(this.yaw) * 0.3 * k, y: this.center.y + 0.1 * k, z: this.center.z + Math.cos(this.yaw) * 0.3 * k, c: [c[0] * 0.35, c[1] * 0.35, c[2] * 0.35], r: 1.6 };
   }
 
   deathFx() {

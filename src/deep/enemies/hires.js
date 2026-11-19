@@ -17,6 +17,10 @@
 //   far   past ~11 m (7 m on phones) a coarser copy (~1/48 m, 1/32 on phones), built here from the
 //         coarse voxels the base model keeps, so a swarm across a cavern costs a quarter
 //
+// Wave 19: the tiers go by how big a creature looks, not how far it is (voxRes.js creatureLodDist:
+// distance / K, its scale in deep/enemies/sizes.js), so a 4 cm beetle wears its near copy only at
+// your paws and its far copy a couple of metres off; the near slots go to what fills the view.
+//
 // API (Enemies): new HiRes(mgr) · update() (once a frame, after the creatures moved) · info() ·
 // dispose(). ?res12=0 turns it off (A/B shots).
 //
@@ -26,10 +30,11 @@
 // cells each (a little coarser, so no frame stalls).
 import * as THREE from 'three';
 import { HI, VB } from './vox.js';
-import { RES12 } from '../../gfx/voxRes.js';
+import { RES12, creatureLodDist } from '../../gfx/voxRes.js';
 import { buildHi } from './hiBuild.js';
 import HiWorker from './hiWorker.js?worker&inline';
 import { PHONE } from '../../core/platform.js';
+import { scaleOfKey } from './sizes.js';
 
 /** A job the worker hasn't answered in this long: the worker is taken as gone (ms). */
 const WORKER_WAIT = 20000;
@@ -52,7 +57,10 @@ const STYLE = {
 };
 export function styleFor(key) {
   const k = String(key).split('|')[0].replace(/[^a-z_]/g, '');
-  return STYLE[k] || null;
+  const st = STYLE[k] || null;
+  // (wave 19, hand-drawn first) a creature scaled down (sizes.js) gets its finer voxels in flat
+  // colour, as drawn: no scale rows, fur strands or cracks jittered over a body a few cm long
+  return st && scaleOfKey(key) < 1 ? 'smooth' : st;
 }
 /** Run build() with the skin style of a model key in effect (nested builds restore it). */
 export function withStyle(key, build) {
@@ -245,8 +253,9 @@ export class HiRes {
     if (T) { if (T.pal) all.add(T.pal); if (T.stray) all.add(T.stray); for (const e of T.away || []) all.add(e); }
     for (const e of all) {
       if (!e?.alive || !e.root || !e.root.visible || e.info?.kaiju) continue;
-      e.root.getWorldPosition(_v);
-      cand.push([_v.distanceTo(eye), e]);
+      // (wave 19: the root of a world-space model, a wyrm, sits at the origin: its head is where it is)
+      (e.root.position.lengthSq() > 0 ? e.root.getWorldPosition(_v) : _v.copy(e.pos));
+      cand.push([creatureLodDist(_v.distanceTo(eye), e.K ?? 1), e]);
     }
     cand.sort((a, b) => a[0] - b[0]);
     let nN = 0, nM = 0, mT = 0;
