@@ -146,7 +146,7 @@ function slab(map, zr, Wpx, Hpx, seed, o = {}) {
   }
   const R = RAMPS[zr];
   const grid = new VoxelGrid(GW, GH, GD + 1); // (the extra layer in front: relief on the cut face)
-  const backR = [mixc(R.A[1], R.back[1], 0.5), mixc(R.A[1], R.A[2], 0.35), mixc(R.A[2], R.A[1], 0.3)];
+  const backR = [mixc(R.A[1], R.back[1], 0.35), mixc(R.A[1], R.A[2], 0.5), mixc(R.A[2], R.A[3], 0.25)];
   const bandOf = (px, py) => (kindOf(cellCh(Math.floor(px / CS), Math.floor((py + n(px * 0.03, 5) * 4) / CS))) === 'B' ? 'B' : 'A');
   const relief = reliefFn(zr, n);
   for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
@@ -175,9 +175,12 @@ function slab(map, zr, Wpx, Hpx, seed, o = {}) {
       // relief standing out of the cut face: pebbles, clay lumps, basalt ridges, ice lenses, star flecks
       if (!slotD && !recess && above !== 1 && below !== 1) { const rc = relief(px, py, RR, band); if (rc != null) grid.set(gx, y, GD, rc); }
     } else {
-      const tb = 2 + Math.round((n(px * 0.05, py * 0.05 + 9) + 1) * 1.1);
+      // the back wall: carved in depth (flowstone columns standing out, recesses going in), so the
+      // lamps and shadows have something to work on; the walls of a room stay flat
       const bc = o.backCol ? o.backCol(px, py) : null;
-      for (let gz = 0; gz < tb; gz++) grid.set(gx, y, gz, bc != null ? bc : gz === tb - 1 ? backR[2] : backR[1]);
+      const colm = Math.abs(((px + Math.round(n(py * 0.04, 2) * 6)) % 34) - 17) / 17; // 0 at a column's middle
+      const tb = bc != null ? 2 : Math.max(1, Math.round(2 + (n(px * 0.035, py * 0.05 + 9) + 1) * 1.6 + (colm < 0.22 ? 3 - colm * 8 : 0)));
+      for (let gz = 0; gz < tb; gz++) grid.set(gx, y, gz, bc != null ? bc : gz === tb - 1 ? (colm < 0.22 ? backR[2] : backR[1]) : backR[0]);
     }
   }
   // (no baked AO on the big slab: on long merged faces it shows as diagonal streaks once the colour is stepped)
