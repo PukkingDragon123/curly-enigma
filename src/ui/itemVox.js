@@ -1,11 +1,12 @@
 // Items as real 3D models in the UI (wave 19). Every item is drawn from its in-game model where the game
 // has one (plants, ore, dishes, tools, furniture, blocks, forged weapons: ./itemModels.js) or a voxel
-// model of its own (./itemBuild.js), in a 3/4 view under a warm lamp with real shadows and a soft
-// floor shadow (./itemRaster.js). One renderer for all of them, off the main thread (./itemWorker.js;
-// on the page in idle time if workers fail), each picture made once and kept.
+// model of its own (./itemBuild.js), drawn in a 3/4 view as a small pixel sprite (24-32 px, flat warm
+// key light, plum fill, a few colours, a plum outline and floor shadow: ./itemRaster.js) and shown at a
+// whole multiple, so it sits in the hand-drawn UI as pixel art. One renderer for all of them, off the
+// main thread (./itemWorker.js; on the page in idle time if workers fail), each picture made once and kept.
 //
-//   itemVox.src(id, size?) → string        what an <img> shows: the still once it's made; until then
-//                                           the flat icon, tagged so the still replaces it by itself.
+//   itemVox.src(id, size?) → string        what an <img> shows: the still once it's made; until then an
+//                                           empty tagged placeholder the still replaces by itself.
 //                                           size: CSS px it's shown at (default 64)
 //   itemVox.weapon(type, metal, inf, size?) the same for a forged weapon
 //   itemVox.stack(s, size?)                 the same for an inventory stack ({ id } or { w })
@@ -21,7 +22,8 @@
 //   data-vox="key" on an icon (or its box): hovering it, or the button it sits in, sways it (mouse)
 //
 // Pictures are queued by priority (what's on screen first, then the pack ahead of time) and made one
-// or two at a time. Anything that can't be made keeps its flat icon.
+// or two at a time. Anything that can't be made shows its flat icon. itemVox._build is the old flat-icon
+// extrusion, kept for the kitchen's ingredients (cooking/ingVox.js).
 import { VB, FINE } from '../deep/enemies/vox.js';
 import { drawIconSmall, iconURL, weaponIconURL, iconKeyOf, drawWeapon, PixelCanvas, ICON } from '../gfx/PixelArt.js';
 import { hashStr } from '../core/util.js';
@@ -33,7 +35,6 @@ import './itemVox.css';
 
 const TAG = 'data:image/png;vox='; // a tagged flat icon: data:image/png;vox=<key>~<size>;base64,…
 const DEBUG = { made: 0, real: 0, flat: 0, failed: 0, frames: 0, swaps: 0, workerMs: 0, mainMs: 0, maxMainMs: 0, mode: 'idle', err: '', firstMs: 0, queuedMax: 0 };
-const dpr = () => Math.max(1, Math.min(2, Math.round((window.devicePixelRatio || 1) * 4) / 4));
 const reduced = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 const idle = (fn, timeout = 200) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout }) : setTimeout(() => fn({ timeRemaining: () => 8, didTimeout: true }), 30));
 
@@ -48,11 +49,35 @@ const flatOf = (key) => {
 const isKey = (k) => typeof k === 'string' && (!!ITEMS[k] || k.startsWith('w.'));
 
 // ------------------------------------------------------------------ the picture store
-const stills = new Map(); // `${key}~${px}` → url | null (null: can't be made)
-const urlInfo = new Map(); // url → { key, px }
-const frames = new Map(); // `${kind}:${key}~${px}` → { urls: [], want: Set } (the last few)
+const stills = new Map(); // `${key}~${res}` → url | null (null: can't be made)
+const urlInfo = new Map(); // url → { key, px (its sprite resolution) }
+const frames = new Map(); // `${kind}:${key}~${res}` → { urls: [], n } (the last few)
 const sizeKey = (key, px) => key + '~' + px;
-const pxOf = (css) => Math.max(16, Math.min(320, Math.round((css || 64) * dpr())));
+// an empty picture to hold a tagged place until the still is in (no flat icon drawn on the way)
+const BLANK = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+let uiPx = 0, uiPxW = 0;
+/** The UI's art pixel in CSS px (--px). */
+function artPx() {
+  if (!uiPx || uiPxW !== window.innerWidth) { uiPxW = window.innerWidth; uiPx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 3; }
+  return uiPx;
+}
+/**
+ * The sprite resolution for a picture shown at css px: one sprite pixel = one UI art pixel where that
+ * gives 24-40 px (the pockets, the belt, the tag), else 32 or 24 px at a whole multiple (icons).
+ */
+function resOf(css = 64) {
+  css = Math.round(css || 64);
+  const u = artPx(), r = css / u;
+  if (Number.isInteger(r) && r >= 24 && r <= 40) return r;
+  for (const R of [32, 24]) if (css % R === 0) return R;
+  return css < 28 ? 24 : 32;
+}
+/**
+ * A picture's spec "RxK": drawn at R px, shown K times over. The worker scales it up (nearest), so the
+ * page shows it at its own size: no browser scaling, crisp at any size.
+ */
+function pxOf(css = 64) { const R = resOf(css); return R + 'x' + Math.max(1, Math.round((css || 64) / R)); }
+const specOf = (px) => { const [R, K] = String(px).split('x').map(Number); return { R: R || 32, K: K || 1 }; };
 
 // ------------------------------------------------------------------ jobs
 // { k (job key), key, px, kind, i, pri, at }; pri: 0 on screen now, 1 soon, 2 ahead of time
@@ -112,7 +137,7 @@ function startWorker() {
     if (m.ms) { DEBUG.renderMs = (DEBUG.renderMs || 0) + m.ms[0]; DEBUG.encMs = (DEBUG.encMs || 0) + m.ms[1]; }
     let url = null;
     if (m.ok && m.blob) url = URL.createObjectURL(m.blob);
-    else if (m.ok && m.px) url = encode(new ImageData(new Uint8ClampedArray(m.px), j.px, j.px));
+    else if (m.ok && m.px) { const { R, K } = specOf(j.px); url = encode(new ImageData(new Uint8ClampedArray(m.px), R * K, R * K)); }
     else if (m.err) DEBUG.err = m.err;
     done(j, url, m.real);
     pump();
@@ -137,6 +162,13 @@ function loadMain() {
   mainLoading = true;
   import('./itemRender.js').then((m) => { mainRender = m.renderFrame; mainLoading = false; pump(); }).catch((e) => { DEBUG.err = 'main: ' + (e?.message || e); mainLoading = false; });
 }
+/** Nearest-neighbour K times over. */
+export function upscale(img, K) {
+  if (K <= 1) return img;
+  const W = img.width, out = new ImageData(W * K, img.height * K), s = new Uint32Array(img.data.buffer), d = new Uint32Array(out.data.buffer);
+  for (let y = 0; y < out.height; y++) { const sy = ((y / K) | 0) * W, dy = y * W * K; for (let x = 0; x < W * K; x++) d[dy + x] = s[sy + ((x / K) | 0)]; }
+  return out;
+}
 let scratch = null;
 function encode(img) {
   if (!scratch) scratch = document.createElement('canvas');
@@ -147,8 +179,9 @@ function encode(img) {
 function renderHere(j) {
   const t0 = performance.now();
   let out = null;
-  try { out = mainRender(j.key, j.px, j.kind, j.i); } catch (e) { DEBUG.err = String(e?.message || e); }
-  const url = out ? encode(out.img) : null;
+  const { R, K } = specOf(j.px);
+  try { out = mainRender(j.key, R, j.kind, j.i); } catch (e) { DEBUG.err = String(e?.message || e); }
+  const url = out ? encode(upscale(out.img, K)) : null;
   const ms = performance.now() - t0;
   DEBUG.mainMs += ms; DEBUG.maxMainMs = Math.max(DEBUG.maxMainMs, ms);
   done(j, url, out?.real);
@@ -166,7 +199,8 @@ function pump() {
       const id = wSeq++;
       wJobs.set(id, j);
       inflight++;
-      worker.postMessage({ id, key: j.key, size: j.px, kind: j.kind, i: j.i });
+      const { R, K } = specOf(j.px);
+      worker.postMessage({ id, key: j.key, size: R, scale: K, kind: j.kind, i: j.i });
       // a job that takes forever means the worker is stuck: the page takes over
       clearTimeout(wTimer);
       wTimer = setTimeout(() => { if (wJobs.size) dropWorker(); }, 20000);
@@ -200,14 +234,14 @@ function parseTag(s) {
   if (!s || !s.startsWith(TAG)) return null;
   const e = s.indexOf(';', TAG.length);
   const body = s.slice(TAG.length, e), t = body.lastIndexOf('~');
-  return t > 0 ? { key: body.slice(0, t), px: +body.slice(t + 1) } : { key: body, px: pxOf(64) };
+  return t > 0 ? { key: body.slice(0, t), px: body.slice(t + 1) } : { key: body, px: '32x2' };
 }
 /** Every tagged flat icon on the page whose still is ready shows the still now (with a little settle). */
 function swapTagged() {
   for (const img of document.querySelectorAll(`img[src^="${TAG}"]`)) {
     const t = parseTag(img.getAttribute('src'));
     const u = t && stills.get(sizeKey(t.key, t.px));
-    if (u) { img.src = u; DEBUG.swaps++; img.classList.remove('vox-in'); void img.offsetWidth; img.classList.add('vox-in'); }
+    if (u) { img.src = u; DEBUG.swaps++; img.classList.remove('vox-in'); requestAnimationFrame(() => img.classList.add('vox-in')); }
     else if (u === null) img.src = flatOf(t.key);
   }
 }
@@ -219,10 +253,9 @@ function srcOf(key, css = 64, pri = 0) {
   const px = pxOf(css);
   const u = stills.get(sizeKey(key, px));
   if (u) return u;
-  const flat = flatOf(key);
-  if (u === null || !flat.startsWith('data:image/png;base64,')) return flat;
+  if (u === null) return flatOf(key);
   enqueue(key, px, 'still', 0, pri);
-  return TAG + key + '~' + px + ';' + flat.slice(15);
+  return TAG + key + '~' + px + ';base64,' + BLANK;
 }
 /** The key and pixel size of what an <img> shows (a still, a frame or a tagged icon). */
 function infoOf(img) {
@@ -241,7 +274,9 @@ function framesOf(kind, key, px, n, pri = 0) {
     while (frames.size > 8) {
       const [k0, f0] = frames.entries().next().value;
       frames.delete(k0);
-      for (const u of f0.urls) if (u && u.startsWith('blob:')) { urlInfo.delete(u); URL.revokeObjectURL(u); }
+      // (frames only: a still is never let go, it may be on the page anywhere)
+      const keep = new Set(stills.values());
+      for (const u of f0.urls) if (u && u.startsWith('blob:') && !keep.has(u)) { urlInfo.delete(u); URL.revokeObjectURL(u); }
     }
   }
   // ask for the frames not made yet, in order (one live set at a time: drop other sways still queued)
@@ -261,7 +296,7 @@ function runFrames(img, f, fps, alive, loop = true, onEnd) {
     if (!loop && i >= f.n) { on = false; onEnd?.(); return; }
     i %= f.n;
     raf = requestAnimationFrame(tick);
-    if (i !== last) { last = i; const u = f.urls[i]; if (u) img.src = u; }
+    if (i !== last) { last = i; const u = f.urls[i] || (i === 0 ? f.still : null); if (u) img.src = u; }
   };
   raf = requestAnimationFrame(tick);
   return { dispose() { on = false; cancelAnimationFrame(raf); } };
@@ -274,8 +309,8 @@ function turnImg(img, key) {
   const still = stills.get(sizeKey(key, px));
   if (!still) return null;
   const f = framesOf('rock', key, px, ROCK_N, 0);
-  f.urls[0] ||= still;
-  const h = runFrames(img, f, 12, (ms) => img.isConnected || ms < 600);
+  f.still = still;
+  const h = runFrames(img, f, 7, (ms) => img.isConnected || ms < 600);
   return { dispose() { h.dispose(); if (img.isConnected) img.src = stills.get(sizeKey(key, px)) || img.src; } };
 }
 /** The stack in the paw: lifted off its floor (no floor shadow), swaying; the still while frames come. */
@@ -285,7 +320,7 @@ function holdImg(img, key) {
   const f = framesOf('held', key, px, ROCK_N, 0);
   if (f.urls[0]) img.src = f.urls[0];
   if (reduced()) return { dispose() {} };
-  const h = runFrames(img, f, 12, () => img.isConnected);
+  const h = runFrames(img, f, 7, () => img.isConnected);
   return { dispose: () => h.dispose() };
 }
 function popImg(img, key) {
@@ -299,7 +334,7 @@ function popImg(img, key) {
     const ready = f.urls.filter(Boolean).length;
     if (ready < f.n && tries++ < 20) { setTimeout(go, 60); return; }
     if (ready < f.n * 0.7) return;
-    runFrames(img, f, POP_N / 0.62, () => img.isConnected, false, () => { const u = stills.get(sizeKey(key, px)); if (u && img.isConnected) img.src = u; });
+    runFrames(img, f, POP_N / 0.5, () => img.isConnected, false, () => { const u = stills.get(sizeKey(key, px)); if (u && img.isConnected) img.src = u; });
   };
   setTimeout(go, 120);
 }
@@ -382,7 +417,9 @@ export const itemVox = {
   weapon(type, metal, infusion, size) { return srcOf(wkey(type, metal, infusion), size); },
   stack(s, size) { return !s ? '' : s.w ? srcOf(wkey(s.w.type, s.w.metal, s.w.infusion), size) : srcOf(s.id, size); },
   /** A flat iconURL()/weaponIconURL() string → the 3D version; anything else comes back as it was. */
-  fromIcon(url, size) { const k = this.keyOf(url); return k ? srcOf(k, size ?? (urlInfo.get(url)?.px ? urlInfo.get(url).px / dpr() : undefined)) : url; },
+  fromIcon(url, size) { const k = this.keyOf(url); return k ? srcOf(k, size) : url; },
+  /** The sprite resolution a picture shown at css px is drawn at. */
+  resOf: (css) => resOf(css),
   /** The key an icon string stands for (item id / weapon key), or null. */
   keyOf(url) {
     if (typeof url !== 'string') return null;
@@ -440,7 +477,7 @@ export const itemVox = {
   hold(img, key) { return holdImg(img, key || this.keyOf(img?.getAttribute?.('src'))); },
   pop(img, key) { popImg(img, key || this.keyOf(img?.getAttribute?.('src'))); },
   /** A still right now if it's made (url), else null (and it's on its way). */
-  url(id, size) { const px = pxOf(size); const u = stills.get(sizeKey(id, px)); if (u === undefined) enqueue(id, px); return u || null; },
+  url(id, size) { if (!isKey(id)) return null; const px = pxOf(size); const u = stills.get(sizeKey(id, px)); if (u === undefined) enqueue(id, px); return u || null; },
   /** A whole slow turn in el (key: id or wkey): { canvas (an <img>), dispose } or null. */
   spin(el, key, size = 128) {
     if (reduced() || !isKey(key)) return null;
@@ -452,7 +489,7 @@ export const itemVox = {
     img.src = srcOf(key, size);
     el.append(img);
     const f = framesOf('spin', key, px, SPIN_N, 1);
-    const h = runFrames(img, f, 14, (ms) => img.isConnected || ms < 600);
+    const h = runFrames(img, f, 6, (ms) => img.isConnected || ms < 600);
     return { canvas: img, dispose() { h.dispose(); img.remove(); } };
   },
   /** Numbers for the curious (and the perf check); reset: start counting again. */

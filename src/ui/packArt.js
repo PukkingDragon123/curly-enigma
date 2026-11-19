@@ -287,67 +287,103 @@ function buckle() {
 }
 
 
-// ---------------------------------------------------------------- wave 19: deep pockets for bigger items
-/**
- * A pocket you can see into (9-slice 7 on 24, the floor tiles): a rolled lip that catches the lamp
- * on its top and left, a stitched band, the edge where it drops in, the inner walls (top and left in
- * shadow, bottom and right lit) and a darker floor with the rim's shadow along its top and left.
- * kind 'pocket' (the pack's lining, canvas floor) | 'loop' (a strap loop on the belt: leather floor,
- * a rivet in each top corner). on: picked (a warm brass trim on the lip).
- */
-function well(kind = 'pocket', on = false) {
-  const S = 24;
-  const rim = leatherTile(kind === 'loop' ? LEATHER_D : LEATHER, on ? 41 : 43, 32);
-  const floor = kind === 'loop' ? leatherTile(LEATHER_D, 45, 32) : canvasTile(32, 47);
-  const p = new Px(S, S);
-  eachFine(p, 0, 0, S, S, (x, y, get) => {
-    const dl = x, dt = y, dr = S - 1 - x, db = S - 1 - y, d = Math.min(dl, dt, dr, db);
-    if (d === 0) return 0x1a0c06;
-    const c = get(rim, x, y);
-    if (d === 1) {
-      const lit = dt === 1 || dl === 1;
-      if (on) return lit ? BRASS[5] : BRASS[2];
-      return lit ? mixC(c, 0xe6b07a, dt === 1 && dl === 1 ? 0.5 : 0.38) : shadeC(c, 0.66);
-    }
-    if (d <= 3) return on ? mixC(c, 0xffd890, 0.14) : c;
-    if (d === 4) return 0x1e0e08; // where it drops in
-    const f = kind === 'loop' ? shadeC(get(floor, x, y), 0.8) : shadeC(get(floor, x, y), 0.62);
-    if (d === 5) {
-      if (dt === 5 && dt <= dl && dt <= dr) return shadeC(f, 0.42); // the top wall, in its own shadow
-      if (dl === 5) return shadeC(f, 0.58);
-      if (db === 5) return mixC(f, 0xd09060, 0.3); // the bottom wall faces the lamp
-      return shadeC(f, 0.9);
-    }
-    if (dt === 6 || dl === 6) return shadeC(f, 0.74); // the rim's shadow on the floor
-    return on ? mixC(f, 0xffe0a0, 0.08) : f;
-  });
-  // the band's stitches (the top run sits in the lamp, the bottom one in the lip's shade)
-  stitches(p, 3, 2, S - 4, 2, 2, 2); stitches(p, 3, S - 3, S - 4, S - 3, 2, 2);
-  stitches(p, 2, 3, 2, S - 4, 2, 2); stitches(p, S - 3, 3, S - 3, S - 4, 2, 2);
-  if (kind === 'loop') { rivet(p, 1, 1); rivet(p, S - 5, 1); }
+// ---------------------------------------------------------------- wave 19: pockets drawn by hand
+// Pixel maps, one character a pixel, and a small named palette ("HAND-DRAWN FIRST", DEV_GUIDE): drawn
+// at one fine pixel per art pixel (big integer pixels), shown as 9-slices whose plain middle tiles. The pocket: a lip lit along its top and left, a stitched band, the edge where it drops in,
+// the inner walls (the top and left in shadow, the bottom catching the lamp) and the floor.
+// (wave 19) hand-drawn pixel maps, one letter a pixel: 18 square, shown as 9-slices (slice 6)
+const POCKET = [
+  '.kkkkkkkkkkkkkkkk.',
+  'kLLLLLLLLLLLLLLLmk',
+  'kLsLlsllsllsllslmk',
+  'kLleeeeeeeeeeeelmk',
+  'kLlewwwwwwwwwwelmk',
+  'kLsevxxxxxxxxresmk',
+  'kLlevyfffffffrelmk',
+  'kLlevyfffffffrelmk',
+  'kLsevyfffffffresmk',
+  'kLlevyfffffffrelmk',
+  'kLlevyfffffffrelmk',
+  'kLsevyfffffffresmk',
+  'kLlevyfffffffrelmk',
+  'kLlebbbbbbbbbbelmk',
+  'kLseeeeeeeeeeeesmk',
+  'kLslsslsllsllslsmk',
+  'kmmmmmmmmmmmmmmmmk',
+  '.kkkkkkkkkkkkkkkk.',
+];
+// a belt loop: the same well in darker strap leather, a brass rivet in each top corner
+const LOOP = [
+  '.kkkkkkkkkkkkkkkk.',
+  'kYZLLLLLLLLLLLYZmk',
+  'kZoLlsllsllslLZomk',
+  'kLleeeeeeeeeeeelmk',
+  'kLlewwwwwwwwwwelmk',
+  'kLsevxxxxxxxxresmk',
+  'kLlevyfffffffrelmk',
+  'kLlevyfffffffrelmk',
+  'kLsevyfffffffresmk',
+  'kLlevyfffffffrelmk',
+  'kLlevyfffffffrelmk',
+  'kLsevyfffffffresmk',
+  'kLlevyfffffffrelmk',
+  'kLlebbbbbbbbbbelmk',
+  'kLseeeeeeeeeeeesmk',
+  'kLslsslsllsllslsmk',
+  'kmmmmmmmmmmmmmmmmk',
+  '.kkkkkkkkkkkkkkkk.',
+];
+// a pocket sewn shut (the next bag's row): the flap stitched down over its mouth, a cross-stitch
+const SEWN = [
+  '.kkkkkkkkkkkkkkkk.',
+  'kLLLLLLLLLLLLLLLmk',
+  'kLsLlsllsllsllslmk',
+  'kLleeeeeeeeeeeelmk',
+  'kLleqqqqqqqqqqelmk',
+  'kLseqPPPPPPPPqesmk',
+  'kLleqPPPPPPPPqelmk',
+  'kLleqPPPtPPtPqelmk',
+  'kLseqPPPPttPPqesmk',
+  'kLleqPPPPttPPqelmk',
+  'kLleqPPPtPPtPqelmk',
+  'kLseqPPPPPPPPqesmk',
+  'kLleqPPPPPPPPqelmk',
+  'kLleqqqqqqqqqqelmk',
+  'kLseeeeeeeeeeeesmk',
+  'kLslsslsllsllslsmk',
+  'kmmmmmmmmmmmmmmmmk',
+  '.kkkkkkkkkkkkkkkk.',
+];
+const POCKET_PAL = { k: 0x22120c, L: 0xb07c4e, l: 0x845636, m: 0x5a3824, s: 0xe8d098, e: 0x1c0e08, w: 0x3a2214, x: 0x6e5638, v: 0x56402a, y: 0x84694a, r: 0x9a7e56, b: 0xc0a474, f: 0x9c8460 };
+const PALS = {
+  pocket: POCKET_PAL,
+  pocketOn: { ...POCKET_PAL, L: 0xf2c860, m: 0x9a6a1e, f: 0xb09468, y: 0x98785a, b: 0xd0b484 },
+  loop: { ...POCKET_PAL, L: 0x8a5c38, l: 0x60402a, m: 0x402818, f: 0x5a3c26, x: 0x3a2618, y: 0x4a3220, r: 0x6a4a30, b: 0x7a5636, v: 0x3e2a1a, w: 0x24160c, Y: 0xf2c860, Z: 0xc8902e, o: 0x6a4612 },
+  loopOn: { ...POCKET_PAL, L: 0xf2c860, l: 0x6e4a2e, m: 0x9a6a1e, f: 0x6a4a2e, x: 0x4a3020, y: 0x5a3c26, r: 0x7a5636, b: 0x8a6440, v: 0x4a3020, w: 0x2c1a10, Y: 0xfff0b0, Z: 0xf2c860, o: 0x9a6a1e },
+  sewn: { ...POCKET_PAL, P: 0x7a5434, q: 0x4a2e1c, t: 0xe8d098 },
+};
+/** Draw a pixel map with a palette ('.' and unknown letters stay clear). */
+function pixmap(rows, pal) {
+  const p = new Px(rows[0].length, rows.length);
+  rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) { const c = pal[row[x]]; if (c !== undefined) p.set(x, y, c); } });
   return p;
 }
+const well = (kind = 'pocket', on = false) => pixmap(kind === 'loop' ? LOOP : kind === 'sewn' ? SEWN : POCKET, PALS[kind + (on ? 'On' : '')] || PALS[kind]);
 
-/** A small stamped brass plate for a stack's count (9-slice 3 on 12×10): bevelled, a nail hole. */
-function brassTag() {
-  const W = 12, H = 10;
-  const p = new Px(W, H);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const d = Math.min(x, y, W - 1 - x, H - 1 - y);
-    let c;
-    if (d === 0) c = 0x2a1406;
-    else if (d === 1) c = y === 1 || x === 1 ? BRASS[5] : BRASS[2];
-    else c = (x + y * 3) % 7 === 0 ? BRASS[3] : BRASS[4];
-    p.set(x, y, c);
-  }
-  // a corner cut off the top right (cut from sheet, not stamped round), and the nail hole on the left
-  p.clear(W - 1, 0); p.set(W - 2, 1, 0x2a1406); p.set(W - 1, 1, 0x2a1406);
-  p.set(2, 4, 0x3a2408); p.set(2, 5, 0x6a4612);
-  if (p.r > 1) { p.fline(1.5, 1, W - 2.5, 1, BRASS[6], 170); p.dot(2.5, 4.5, BRASS[5]); }
-  return p;
-}
+// a stack's count: a small stamped brass plate (9-slice 3), lit along the top and left, a nail hole
+const TAG = [
+  '.kkkkkkkk.',
+  'kHHHHHHHok',
+  'kHyyyyyyok',
+  'knyyyyyyok',
+  'kHyyyyyyok',
+  'kHyyyyyyok',
+  'kooooooook',
+  '.kkkkkkkk.',
+];
+const brassTag = () => pixmap(TAG, { k: 0x2a1406, H: 0xf8dc86, y: 0xd8a440, o: 0x8a5a1a, n: 0x3a2408 });
 
-const sp = (key, fn, o) => art('pk:' + key, fn, o ?? (/^(pocket|sleeve|loop|well|brass)/.test(key) ? { detail: false, edges: false } : { brown: 'leather' })); // stretched pieces: no material texture
+const sp = (key, fn, o) => art('pk:' + key, fn, o ?? (/^(pocket|sleeve|loop)/.test(key) ? { detail: false, edges: false } : /^(well|brass)/.test(key) ? { res: 1, refine: false, detail: false, edges: false } : { brown: 'leather' })); // stretched pieces: no material texture; the hand-drawn maps at one pixel a pixel
 export const PACK_ART = {
   leather: () => sp('leather', () => leatherTile(LEATHER, 3)),
   flapLeather: () => sp('flapLeather', () => leatherTile(LEATHER_D, 29)),
@@ -372,5 +408,5 @@ export function installPackArt(node) {
   u('buckle', PACK_ART.buckle()); u('rivet', PACK_ART.rivet());
   u('well', PACK_ART.well('pocket', false)); u('wellOn', PACK_ART.well('pocket', true));
   u('loopWell', PACK_ART.well('loop', false)); u('loopWellOn', PACK_ART.well('loop', true));
-  u('brassTag', PACK_ART.brassTag());
+  u('brassTag', PACK_ART.brassTag()); u('sewnWell', PACK_ART.well('sewn', false));
 }

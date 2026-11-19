@@ -36,19 +36,33 @@ async function png(px, w, h) {
   return new Blob([sig, chunk('IHDR', ihdr), chunk('IDAT', await deflate(raw)), chunk('IEND', new Uint8Array(0))], { type: 'image/png' });
 }
 
+/** Nearest-neighbour K times over (the page shows the picture at its own size). */
+function upscale(img, K) {
+  if (K <= 1) return img;
+  const W = img.width, out = new ImageData(W * K, img.height * K), s = new Uint32Array(img.data.buffer), d = new Uint32Array(out.data.buffer);
+  for (let y = 0; y < out.height; y++) { const sy = ((y / K) | 0) * W, dy = y * W * K; for (let x = 0; x < W * K; x++) d[dy + x] = s[sy + ((x / K) | 0)]; }
+  return out;
+}
+// the last few drawn sprites (the same sprite is often wanted at another scale)
+const drawn = new Map();
+
 self.onmessage = async (e) => {
-  const { id, key, size, kind, i } = e.data;
+  const { id, key, size, kind, i } = e.data, K = e.data.scale || 1;
   let out = null, err = '';
   const t0 = performance.now();
-  try { out = renderFrame(key, size, kind, i); } catch (x) { err = String(x?.message || x); }
+  const dk = `${kind}:${key}~${size}:${i}`;
+  try { out = drawn.get(dk) || renderFrame(key, size, kind, i); } catch (x) { err = String(x?.message || x); }
+  if (out && !drawn.has(dk)) { drawn.set(dk, out); while (drawn.size > 64) drawn.delete(drawn.keys().next().value); }
   const t1 = performance.now();
   if (!out) { self.postMessage({ id, ok: false, err }); return; }
   try {
-    const blob = await png(out.img.data, size, size);
+    const big = upscale(out.img, K);
+    const blob = await png(big.data, big.width, big.height);
     self.postMessage({ id, ok: true, blob, real: out.real, src: out.src, ms: [t1 - t0, performance.now() - t1] });
   } catch (x) {
     // no CompressionStream here: send the pixels, the page encodes them
-    self.postMessage({ id, ok: true, px: out.img.data.buffer, real: out.real, src: out.src }, [out.img.data.buffer]);
+    const big = upscale(out.img, K), buf = big === out.img ? big.data.slice().buffer : big.data.buffer;
+    self.postMessage({ id, ok: true, px: buf, real: out.real, src: out.src }, [buf]);
   }
 };
 self.postMessage({ hello: true });

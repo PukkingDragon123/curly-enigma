@@ -1,6 +1,6 @@
 // The objective tracker: a wanted poster nailed to a cork patch under the backpack, in every
-// first-person scene. The poster is a torn, stained handbill with a woodcut of the quest's goal and
-// its title (src/ui/questPoster.js, src/ui/woodcut.js); under it, on two lengths of twine, hangs a
+// first-person scene. The poster is a torn handbill with a hand-drawn woodcut of the quest's goal and
+// its title (src/ui/questPoster.js, src/ui/posterPics.js); under it, on two lengths of twine, hangs a
 // scroll with the current step in a few words, its progress (inked pips or a count) and where it is
 // (an arrow that turns as you turn, the distance, ▲ ▼ when it's above or below you).
 //  - a new quest: the poster flutters down from above, catches on the nail with a jolt and swings
@@ -21,10 +21,9 @@ import { BART, PIN_KINDS } from './bookArt.js';
 import { SFX } from './bookSfx.js';
 import { QuestMarks } from './QuestMarks.js';
 import { npcFace } from './npcFace.js';
-import { Px, art } from './uiArt.js';
 import {
-  posterLook, posterArt, scrapArt, corkArt, nailArt, rodArt, sheetArt, curlArt, twineArt, pipArt, tickArt, brief, shortGold, PSFX,
-  POSTER_W, TITLE_Y,
+  posterLook, posterArt, scrapArt, corkArt, nailArt, rodArt, sheetArt, curlArt, twineArt, pipArt, tickArt, arrowArt, brief, shortGold, PSFX,
+  POSTER_W, TITLE_Y, MID_H,
 } from './questPoster.js';
 import './quests.css';
 
@@ -58,36 +57,7 @@ export function rewardText(r, o = {}) {
   return out.join(' · ');
 }
 
-// ------------------------------------------------------------ the direction arrow (8 crisp pixel arrows)
-/** An inked arrow: a dark plum outline, a red-brown fill lit along one flank, a soft shadow on the paper. 13×13. */
-function arrowPx(k) {
-  const p = new Px(13, 13);
-  const a = (k / 8) * Math.PI * 2, c = 6;
-  const fx = Math.sin(a), fy = -Math.cos(a);
-  const tip = [c + fx * 5, c + fy * 5], tail = [c - fx * 4, c - fy * 4];
-  const ink = 0x3a1420, fill = 0xa8461e, hi = 0xe0783a;
-  const m = new Px(13, 13);
-  m.line(Math.round(tail[0]), Math.round(tail[1]), Math.round(tip[0]), Math.round(tip[1]), 1);
-  m.line(Math.round(tail[0] + fy * 0.9), Math.round(tail[1] - fx * 0.9), Math.round(tip[0] + fy * 0.9 - fx), Math.round(tip[1] - fx * 0.9 - fy), 1);
-  for (const s of [-1, 1]) {
-    const bx = tip[0] - fx * 3.4 + fy * s * 3.2, by = tip[1] - fy * 3.4 - fx * s * 3.2;
-    m.line(Math.round(tip[0]), Math.round(tip[1]), Math.round(bx), Math.round(by), 1);
-    m.line(Math.round(tip[0] - fx), Math.round(tip[1] - fy), Math.round(bx - fx * 0.8), Math.round(by - fy * 0.8), 1);
-  }
-  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) if (m.a(x, y) && !m.a(x + 1, y + 1)) p.set(x + 1, y + 1, 0x6e4a3a, 70);
-  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) {
-    if (!m.a(x, y)) continue;
-    const lit = !m.a(x - 1, y) || !m.a(x, y - 1);
-    p.set(x, y, lit ? hi : fill);
-  }
-  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) {
-    if (!m.a(x, y)) continue;
-    if (!m.a(x + 1, y) && !m.a(x, y + 1)) p.set(x, y, ink);
-  }
-  p.set(Math.round(tip[0]), Math.round(tip[1]), ink);
-  return p;
-}
-const ARROW = (k) => art('qt:arrow3:' + k, () => arrowPx(k));
+const ARROW = (k) => arrowArt(k);
 const cssPx = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 3;
 
 export class Tracker {
@@ -133,18 +103,17 @@ export class Tracker {
     }, [this.cork, this.scrap, this.drop, this.nail]);
     this.el = el('div', { class: 'qt', hidden: true, role: 'status', 'aria-live': 'polite' }, [this.roll]);
     // reach for it and it swings on its nail
-    this.roll.addEventListener('pointerenter', () => { this.wake(); this.vel += 26 * (Math.random() < 0.5 ? -1 : 1); this.sVel += 18; });
+    this.roll.addEventListener('pointerenter', () => { this.wake(); this.vel += 16 * (Math.random() < 0.5 ? -1 : 1); this.sVel += 10; });
     ui.hud.append(this.el);
     const root = document.documentElement.style;
-    root.setProperty('--qt-rod', `url("${rodArt(false)}")`);
-    root.setProperty('--qt-rodH', `url("${rodArt(true)}")`);
+    root.setProperty('--qt-rod', `url("${rodArt()}")`);
     root.setProperty('--qt-sheet', `url("${sheetArt()}")`);
     root.setProperty('--qt-curl', `url("${curlArt()}")`);
     if (SLOW > 1) root.setProperty('--qt-slow', SLOW);
     root.setProperty('--qt-twine', `url("${twineArt()}")`);
     this.marks = ui.questMarks = new QuestMarks(ui);
     // draw the book's little pictures while nothing's happening, so the first opening is instant
-    const warm = () => { try { for (const k of ['quests', 'map', 'skills', 'index', 'lore']) BART.tab(k); for (const k of PIN_KINDS) BART.pin(k); for (let k = 0; k < 8; k++) ARROW(k); pipArt(true); pipArt(false); } catch (e) { /* noop */ } };
+    const warm = () => { try { for (const k of ['quests', 'map', 'skills', 'index', 'lore']) BART.tab(k); for (const k of PIN_KINDS) BART.pin(k); pipArt(true); pipArt(false); for (let k = 0; k < 8; k++) ARROW(k); } catch (e) { /* noop */ } };
     if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 8000 }); else setTimeout(warm, 4000);
   }
 
@@ -196,11 +165,13 @@ export class Tracker {
     for (let i = 0; i < n; i++) {
       const acc = -72 * (this.ang - sway) - 2.4 * this.vel;
       this.vel += acc * h; this.ang += this.vel * h;
-      const sacc = -150 * this.sAng - 7 * this.sVel - 0.3 * acc;
+      const sacc = -150 * this.sAng - 8 * this.sVel - 0.2 * acc;
       this.sVel += sacc * h; this.sAng += this.sVel * h;
     }
     this.ang = Math.max(-28, Math.min(28, this.ang));
-    const a = this.ang.toFixed(2) + 'deg', s = this.sAng.toFixed(2) + 'deg';
+    // whole quarter degrees only: at rest the pixels hold still between the draught's little tilts
+    const q = (v) => (Math.abs(v) < 0.2 ? 0 : Math.round(v * 4) / 4);
+    const a = q(this.ang) + 'deg', s = q(this.sAng) + 'deg';
     if (a !== this._a) { this._a = a; this.swingEl.style.rotate = a; }
     if (s !== this._s) { this._s = s; this.scroll.style.rotate = s; }
   }
@@ -267,6 +238,7 @@ export class Tracker {
   async run() {
     this.running = true;
     try {
+      await null; // let a burst of events (a quest finished in one go: its steps, then 'done') queue up first
       while (this.pending.length) {
         let e = this.pending.shift();
         // a burst of steps (a lesson skipping ahead) plays once, landing on the latest
@@ -306,6 +278,7 @@ export class Tracker {
       if (!visible) { this.show(q.get(e.id), { instant: true }); return; }
       await this.tickOff();
       await this.rollUp();
+      if (q.get(e.id)?.status !== 'active') return; // finished while it rolled up: the 'done' tears it off
       this.fillStep(q.get(e.id));
       await this.unroll();
       return;
@@ -313,7 +286,7 @@ export class Tracker {
     if (e.kind === 'done') {
       if (e.id !== this.shown?.id) return;
       this.wake();
-      if (visible) { await this.tickOff(); await this.rollUp(); }
+      if (visible && !this.scroll.classList.contains('rolled')) { await this.tickOff(); await this.rollUp(); }
       await this.swapPoster(q.tracked(), visible, { tear: true });
       return;
     }
@@ -367,19 +340,18 @@ export class Tracker {
     this.updateWhere();
   }
 
-  /** Size the poster to its title (one, two or three lines) and print it. */
+  /** Size the poster to its title (one, two or three lines: more middle bands of paper) and print it. */
   layoutPoster() {
     if (!this.shown || !this.look) return;
     const P = cssPx(), th = this.title.offsetHeight;
     this._guess = !th;
-    const lines = th ? Math.max(1, Math.round(th / (parseFloat(getComputedStyle(this.title).lineHeight) || th))) : Math.ceil(this.title.textContent.length / 11);
-    const lh = th ? th / P / lines : 5.6;
-    const H = Math.round(TITLE_Y + lines * lh + 4.6);
-    const key = this.shown.id + ':' + H;
+    const art = th ? th / P : Math.ceil(this.title.textContent.length / 10) * 6;
+    const k = Math.max(1, Math.ceil((TITLE_Y + art - 27) / MID_H));
+    const key = this.shown.id + ':' + k;
     if (this._posterKey === key) return;
     this._posterKey = key;
-    this.poster.style.height = `calc(var(--px) * ${H})`;
-    this.poster.style.backgroundImage = `url("${posterArt(this.shown.id, this.look, H)}")`;
+    this.poster.style.height = `calc(var(--px) * ${27 + k * MID_H + 6})`;
+    this.poster.style.backgroundImage = `url("${posterArt(this.shown.id, this.look, k)}")`;
   }
 
   show(v, { instant = false } = {}) {
@@ -423,7 +395,7 @@ export class Tracker {
       const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 5;
       d.style.setProperty('--dx', `calc(var(--px) * ${(Math.cos(a) * r).toFixed(1)})`);
       d.style.setProperty('--dy', `calc(var(--px) * ${(Math.sin(a) * r * 0.7).toFixed(1)})`);
-      d.style.setProperty('--c', this.look?.acc ? '#' + this.look.acc.toString(16).padStart(6, '0') : '#a8321e');
+      d.style.setProperty('--c', '#' + (this.look?.acc?.[0] ?? 0xa8321e).toString(16).padStart(6, '0'));
       node.parentNode?.append(d);
       d.style.left = node.offsetLeft + node.offsetWidth / 2 + 'px';
       d.style.top = node.offsetTop + node.offsetHeight / 2 + 'px';
@@ -456,7 +428,7 @@ export class Tracker {
     this.sheet.style.height = '0px';
     a.cancel();
     this.rodB.classList.remove('spin');
-    this.sVel -= 30;
+    this.sVel -= 18;
     await wait(90);
   }
 
@@ -473,7 +445,7 @@ export class Tracker {
       { height: `${h + P * 0.5}px`, offset: 0.92 },
       { height: `${h}px` },
     ], { duration: 560 });
-    setTimeout(() => { this.rodB.classList.remove('spin'); this.sVel += 34; }, 340 * SLOW);
+    setTimeout(() => { this.rodB.classList.remove('spin'); this.sVel += 20; }, 340 * SLOW);
     await done(a);
     this.sheet.style.height = '';
     anim(this.rodB, [{ rotate: '-4deg' }, { rotate: '3deg', offset: 0.3 }, { rotate: '-1.5deg', offset: 0.6 }, { rotate: '0deg' }], { duration: 420, easing: 'ease-out' });
@@ -499,7 +471,7 @@ export class Tracker {
     PSFX.flutter(this.game.audio, { n: 6 });
     await wait(820 * 0.84);
     PSFX.catch(this.game.audio);
-    this.vel += 95 * (Math.random() < 0.5 ? -1 : 1);
+    this.vel += 58 * (Math.random() < 0.5 ? -1 : 1);
     await done(a);
     await wait(120);
     await this.unroll();
@@ -510,7 +482,7 @@ export class Tracker {
     const P = cssPx(), dir = Math.random() < 0.5 ? -1 : 1;
     if (tear && this.shown && this.look) {
       PSFX.rip(this.game.audio);
-      this.scrap.src = scrapArt(this.look, this.shown.id);
+      this.scrap.src = scrapArt(this.look);
       this.scrap.hidden = false;
       anim(this.scrap, [{ translate: `0 ${P * 1.5}px` }, { translate: '0 0' }], { duration: 240, easing: 'cubic-bezier(.3, 1.6, .5, 1)' });
     } else SFX.unroll(this.game.audio, { up: true });

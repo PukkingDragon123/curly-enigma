@@ -1,18 +1,20 @@
 // The mole's own face in the stamina gauge's medallion (src/ui/Stamina.js): the hero's real voxel
 // head (src/gfx/char/hero.js, the model the cutscenes and the title use) rendered live into one
 // tiny offscreen target on the game's own renderer (no extra GL context), read back without a GPU
-// stall and inked in the house style (flat tones lifted to plum and cream, hatched deep shade, a
-// dark-plum outline broken on the lit side). It only renders when the face actually changes (a
-// blink, a sniff, a new expression), at most ~15 times a second and never while the gauge is
-// tucked away; the idle breathing, the tummy rumble, the panting and the flinch are whole-pixel
-// offsets of the finished picture (bob), so they cost nothing.
+// stall, at the HUD's own pixel grid (one picture pixel = one art pixel, like the hand-drawn frame
+// round it). Hand-drawn first: every part is snapped to a few hand-picked flat colours (no fur
+// strokes, no dirt), lit by one warm key over a plum ambient so each material shows two or three
+// tones, the darks fall to plum, the brightest stop at cream, one even line of ink round it. It
+// only renders when the face actually changes (a blink, a sniff, a new expression), at most ~15
+// times a second and never while the gauge is tucked away; the idle breathing, the tummy rumble,
+// the panting and the flinch are whole-pixel offsets of the finished picture (bob), so they cost nothing.
 //
 //   const f = new MoleFace(game)
-//   f.setBox(FW, FH, R)            // the picture box in art pixels, R fine pixels per art pixel
+//   f.setBox(FW, FH, R)            // the picture box in art pixels, R picture pixels per art pixel (1)
 //   f.tick(dt, vit, active)        // vit: { s, h, i, out } fractions of the bar (out: the blackout lids)
 //   f.react('hit' | 'eat' | 'level')
-//   f.pic → { w, h, u: Uint32Array (canvas byte order), a: Uint8Array } | null, f.bob → { x, y } fine px
-//   f.mouth → { x, y } fine px in the picture, f.rumble (0..1), f.mood, f.key
+//   f.pic → { w, h, u: Uint32Array (canvas byte order), a: Uint8Array } | null, f.bob → { x, y } px
+//   f.mouth → { x, y } px in the picture, f.rumble (0..1), f.mood, f.key
 //
 // Faces: content (blinks, sniffs, whisker twitches, a glance at the bar), hungry (looking down, the
 // tongue out, a licked lip, the tummy rumbling), hurt (a linen bandage round the head, a plaster on
@@ -21,23 +23,86 @@
 // happy chew when eating, a grin on a level up. The helmet he has on is worn: the Miner's Cap with
 // its candle, the brass lamp helmet, the lumite helmet or the sunstone crown.
 import * as THREE from 'three';
-import { Vox, templateVox, dk, lt, h3, glowMaterial } from '../gfx/char/vox.js';
+import { Vox, templateVox, dk, lt, mix, glowMaterial } from '../gfx/char/vox.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
 import { buildHead, skullRow } from '../gfx/char/head.js';
 import { buildHat } from '../gfx/char/hats.js';
 
 const LOW = 0.25;
-const SS = 2; // the 3D render's supersampling, folded down to the fine grid
-const K = 0.72; // art pixels per head voxel
+const SS = 4; // the 3D render's supersampling, folded down to the art grid (each pixel keeps its commonest colour)
+const K = 0.88; // art pixels per head voxel
 const MAX_FPS = 15;
 const TAU = Math.PI * 2;
 const rnd = (a, b) => a + Math.random() * (b - a);
 const q = (v, s) => Math.round(v / s) * s;
 
 // the house palette for the picture: shadows fall to plum, highlights stop at cream
-const PLUM = [36, 20, 42], CREAM = [255, 242, 220], INK = [38, 16, 34], DEEP = [24, 12, 30];
+const PLUM = [36, 20, 42], CREAM = [255, 242, 220], INK = [42, 20, 32];
 /** Read-back values (linear-ish) → the page's tones (a gentle lift, as the portraits do). */
 const LIFT = new Uint8ClampedArray(256).map((_, v) => Math.round(255 * Math.min(1, Math.pow(v / 255, 0.88) * 1.04)));
+
+// ------------------------------------------------------------------ flat colours (hand-picked per material)
+// The model's voxels carry fur strokes and dirt; here every part is snapped to a few flat colours
+// chosen by hand (2–3 tones per material once lit), so the face reads in clean clusters. A '*' entry
+// is only taken by colours darker than it (so dark fur strokes stay fur, they don't turn to ink).
+const FLAT = {
+  head: [0x4a3832, 0x7a6a60, 0xec96a2, 0xc06878, 0xf2eadc, '*', 0x2a1a1c],
+  eye: [0x1c1020, 0x2e2040, 0xf2eadc, 0x3a2a26],
+  mouth: [0x2a1420, 0x5a1622, 0xd86a78, 0xf2eadc],
+  brow: [0x1c1020],
+  gog: [0xd8a840, 0xf0cc78, 0x8a6322, 0x643818, 0xb8c4d8],
+  body: [0x8a3a2c, 0x7a4a2a, 0x4e2e1a, 0xd8a840, 0xf2eadc, 0x4a3832],
+  whisk: [0x9a8c80],
+};
+const s2l = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+const l2s = (c) => Math.round(255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055));
+/** The nearest of a hand-picked palette (sRGB in, sRGB out). */
+function nearest(r, g, b, pal) {
+  let best = pal[0], bd = Infinity, darkOnly = false;
+  const l = (r * 0.3 + g * 0.59 + b * 0.11) / 255;
+  for (const p of pal) {
+    if (p === '*') { darkOnly = true; continue; }
+    if (darkOnly && l > 0.1) continue;
+    const dr = r - ((p >> 16) & 255), dg = g - ((p >> 8) & 255), db = b - (p & 255);
+    const d = dr * dr * 0.3 + dg * dg * 0.59 + db * db * 0.11;
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+/** Snap a geometry's vertex colours (stored linear) to a palette; palOf(i) may pick one per vertex. */
+function snapColors(geo, palOf) {
+  const c = geo.getAttribute('color');
+  if (!c) return geo;
+  for (let i = 0; i < c.count; i++) {
+    const pal = typeof palOf === 'function' ? palOf(i) : palOf;
+    const p = nearest(l2s(c.getX(i)), l2s(c.getY(i)), l2s(c.getZ(i)), pal);
+    c.setXYZ(i, s2l((p >> 16) & 255), s2l((p >> 8) & 255), s2l(p & 255));
+  }
+  c.needsUpdate = true;
+  return geo;
+}
+/** The hero's own meshes: each part bone gets its material's palette (eyes, mouth, brows, goggles, head, body). */
+function flattenRig(rig) {
+  const kindOf = new Map();
+  const under = (b, g) => { for (let p = b; p; p = p.parent) if (p === g) return true; return false; };
+  const gog = new Set([...(rig.gogUp || []), ...(rig.gogDown || [])]);
+  for (const [i, b] of rig.skeleton.bones.entries()) {
+    let k = 'body';
+    if (rig.eyes.some((g) => under(b, g))) k = 'eye';
+    else if (under(b, rig.mouth) || under(b, rig.mouthRest)) k = 'mouth';
+    else if ((rig.brows || []).some((g) => under(b, g))) k = 'brow';
+    else if (gog.has(b)) k = 'gog';
+    else if (b.parent === rig.neck) k = 'head';
+    kindOf.set(i, FLAT[k]);
+  }
+  for (const m of [rig.skin.main, rig.skin.detail]) {
+    if (!m) continue;
+    const si = m.geometry.getAttribute('skinIndex');
+    snapColors(m.geometry, m === rig.skin.detail ? FLAT.whisk : (i) => kindOf.get(si.getX(i)) || FLAT.body);
+  }
+}
+/** A hat's palette from its colour (as hats.js shades it), without the dirt. */
+const hatPal = (hc, extra = []) => [hc, dk(hc, 0.16), dk(hc, 0.4), lt(hc, 0.16), ...extra];
 
 // ------------------------------------------------------------------ extras (voxels in the head's frame)
 const LINEN = [0x8a7a6a, 0xc8b898, 0xe8dcc0, 0xf6eedc];
@@ -61,17 +126,16 @@ function bandageGeo(info, hat) {
     const d = (x * nx + y * ny + z * nz) / nl;
     if (Math.abs(d - d0) > half) continue;
     if (!inside(outer, x, y, z) || inside(inner, x, y, z)) continue;
-    // the turns of the wrap: clean slanted seams, each a shadow line then a lit edge; the band's
-    // underside in shade
-    const turn = ((Math.atan2(x + 0.5, z + 0.5) / TAU * 6 + (d - d0) * 0.13) % 1 + 1) % 1;
-    const c = turn < 0.08 ? LINEN[1] : turn < 0.2 || d - d0 > half - 0.7 ? LINEN[3] : LINEN[2];
+    // two flat tones: the lit upper edge, the body; one seam where the end is tucked in, over the near brow
+    const a = Math.atan2(x + 0.5, z + 0.5);
+    const c = Math.abs(a + 0.55) < 0.07 ? LINEN[1] : d - d0 > half - 0.8 ? LINEN[3] : LINEN[2];
     v.set(x, y, z, c);
   }
   // the blood: a blot soaking through over the near brow
   v.paint((x, y, z) => {
     if (z < 2) return undefined;
-    const e = Math.hypot((x + 4.5) / 2.8, (y - d0 + 0.3) / 1.7, (z - 9) / 4) + (h3(x, y, z, 5) - 0.5) * 0.45;
-    return e < 0.7 ? BLOOD[0] : e < 1.1 ? BLOOD[1] : undefined;
+    const e = Math.hypot((x + 4.5) / 2.8, (y - d0 + 0.3) / 1.7, (z - 9) / 4);
+    return e < 0.6 ? BLOOD[0] : e < 1.1 ? BLOOD[1] : undefined;
   });
   // the knot at the near temple (find the wrap's side there) and its two tails
   let kx = -hx - 2, ky = Math.round(d0 + 1.8), kz = 2;
@@ -163,7 +227,7 @@ function crownGeo(info) {
   const band = Math.round(info.browY) + 2;
   const v = new Vox(-hx - 4, hx + 4, band - 2, band + 9, -hz - 4, hz + 4);
   const GOLD = [0x7a4a14, 0xb07a22, 0xe0aa38, 0xf8d878];
-  v.seRows(0, 0, band, band + 2, hx + 3, hz + 3, skullRow(hx, hy, hz, n, 1.1, 1.1), (x, y, z) => (y === band + 2 ? GOLD[3] : y === band ? GOLD[0] : (x + z) % 4 === 0 ? GOLD[1] : GOLD[2]));
+  v.seRows(0, 0, band, band + 2, hx + 3, hz + 3, skullRow(hx, hy, hz, n, 1.1, 1.1), (x, y) => (y === band + 2 ? GOLD[3] : y === band ? GOLD[1] : GOLD[2]));
   const pts = [[-0.62, 4], [-0.3, 3], [0.02, 5], [0.36, 3], [0.7, 4]];
   for (const [a, h] of pts) {
     const dx = Math.sin(a), dz = Math.cos(a);
@@ -223,7 +287,6 @@ export class MoleFace {
     this.CW = FW * R; this.CH = FH * R;
     this.px = new Uint8Array(this.CW * SS * this.CH * SS * 4);
     this.small = new Uint8Array(this.CW * this.CH * 4);
-    this.flat = null; this.lum = null;
     const u = new Uint32Array(this.CW * this.CH), a = new Uint8Array(this.CW * this.CH);
     this.pic = null;
     this.next = { w: this.CW, h: this.CH, u, a };
@@ -256,12 +319,12 @@ export class MoleFace {
     this.vs = rig.vs;
     const scene = new THREE.Scene();
     scene.add(rig.root);
-    // lamplight: a warm key from the top left, a cool plum fill, a warm rim from behind
-    scene.add(new THREE.HemisphereLight(0xffeedc, 0x3a2440, 0.85));
-    const key = new THREE.DirectionalLight(0xfff0d8, 1.7); key.position.set(-1.3, 1.7, 1.6);
-    const fill = new THREE.DirectionalLight(0x9a84b8, 0.4); fill.position.set(2, 0.1, 0.7);
-    const rim = new THREE.DirectionalLight(0xffb468, 1.4); rim.position.set(1.4, 1.1, -1.7);
-    scene.add(key, fill, rim);
+    flattenRig(rig);
+    // lamplight, kept simple so each material shows two or three flat tones: a plum ambient and one
+    // warm key from the top left (voxel faces are flat, so each face direction is one tone)
+    scene.add(new THREE.AmbientLight(0x8a7088, 1.5));
+    const key = new THREE.DirectionalLight(0xfff0d8, 2.1); key.position.set(-1.9, 1.5, 1.2);
+    scene.add(key);
     this.scene = scene;
     this.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 10);
     scene.add(this.cam);
@@ -274,7 +337,7 @@ export class MoleFace {
     // extras on the head
     this.bandages = [part(bandageGeo(info, false)), part(bandageGeo(info, true))];
     this.bandage = this.bandages[0]; this.bandages[1].visible = false; this.bandage.visible = false;
-    this.plaster = part(plasterGeo());
+    this.plaster = part(plasterGeo()); this.plaster.scale.setScalar(rig.vs * 1.25);
     this.plaster.position.set(-10.2 * rig.vs, 6.6 * rig.vs, 9.2 * rig.vs);
     this.plaster.rotation.set(0, -0.62, 0.32);
     this.plaster.visible = false;
@@ -286,12 +349,12 @@ export class MoleFace {
     this.tongueLong = new THREE.Mesh(tongueGeo(4), mat); this.tongueLong.scale.setScalar(rig.vs);
     this.tongue.add(this.tongueShort, this.tongueLong);
     this.tongue.visible = false;
-    this.sweat = part(sweatGeo()); this.sweat.visible = false;
+    this.sweat = part(sweatGeo()); this.sweat.scale.setScalar(rig.vs * 1.5); this.sweat.visible = false;
     this.stars = new THREE.Group();
     this.stars.position.set(0, (info.H + 3) * rig.vs, 1 * rig.vs);
     this.stars.rotation.x = 0.32;
     rig.neck.add(this.stars);
-    this.starMeshes = [0, 1, 0].map((k, i) => { const s = new THREE.Mesh(starGeo(k), mat); s.scale.setScalar(rig.vs * (i === 1 ? 0.9 : 1)); this.stars.add(s); return s; });
+    this.starMeshes = [0, 1, 0].map((k, i) => { const s = new THREE.Mesh(starGeo(k), mat); s.scale.setScalar(rig.vs * (i === 1 ? 1.15 : 1.35)); this.stars.add(s); return s; });
     this.stars.visible = false;
     this.nose = part(noseGeo(info));
     this.nose.position.set(0, (info.noseY - 1) * rig.vs, (info.snoutFront - 2.6) * rig.vs);
@@ -299,6 +362,8 @@ export class MoleFace {
     this.helmet = new THREE.Group();
     rig.neck.add(this.helmet);
     this.rig = rig;
+    // after a lost GL context the target and any read in flight are gone: start them afresh
+    this.renderer()?.domElement?.addEventListener('webglcontextrestored', () => { this.rt = null; this.fence = null; this.pending = false; this.key = ''; this.firstPic = true; });
     this.setHelmet(this.game?.state?.data?.equip?.helmet || null);
     this.frame();
     return rig;
@@ -316,8 +381,8 @@ export class MoleFace {
     const spec = { ...rig.spec, dirt: 0.5 };
     if (id === 'helmet_basic') {
       // the Miner's Cap: a soft leather cap, a tin bracket and a candle stub on its front
-      const hat = buildHat({ ...spec, hat: 'cap', hatColor: 0x7a5434 }, info, false);
-      add(hat.geo);
+      const hat = buildHat({ ...spec, hat: 'cap', hatColor: 0xa8783e }, info, false);
+      add(snapColors(hat.geo.clone(), [0xa8783e, dk(0xa8783e, 0.22), lt(0xa8783e, 0.55)]), false, true);
       const band = Math.round(info.browY) + 1;
       let fz = info.hz;
       for (let z = info.hz + 6; z > 0; z--) if (info.skull(0.5, band + 3.5, z + 0.5)) { fz = z + 2; break; }
@@ -326,8 +391,9 @@ export class MoleFace {
       add(flameGeo(at), true, true);
     } else if (id === 'helmet_brass' || id === 'helmet_lumite') {
       const steel = id === 'helmet_lumite';
-      const hat = buildHat({ ...spec, hat: 'helmet', hatColor: steel ? 0x6e7680 : 0xc0902e }, info, false);
-      add(hat.geo);
+      const hc = steel ? 0x6e7680 : 0xc0902e;
+      const hat = buildHat({ ...spec, hat: 'helmet', hatColor: hc }, info, false);
+      add(snapColors(hat.geo.clone(), hatPal(hc, [mix(hc, 0xd8d8d0, 0.55), 0x7a7a84, 0x4a4a54, 0x2a2a30])), false, true);
       if (hat.lens) add(steel ? tintLens(hat.lens, [0xeafff0, 0xb4ffc4, 0x62dc84]) : hat.lens, true, steel);
     } else if (id === 'helmet_sun') {
       const c = crownGeo(info);
@@ -356,7 +422,7 @@ export class MoleFace {
     const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), dir).normalize();
     const up = new THREE.Vector3().crossVectors(dir, right);
     // the head's middle sits FY art pixels down the box (room above for a helmet, the stars)
-    const FY = this.FH * 0.61, FX = this.FW * 0.5 + 0.5;
+    const FY = this.FH * 0.6, FX = this.FW * 0.5 + 0.5;
     const target = head.clone().addScaledVector(up, (FY - this.FH / 2) * wpa).addScaledVector(right, (this.FW / 2 - FX) * wpa);
     cam.position.copy(target).addScaledVector(dir, 3);
     cam.lookAt(target);
@@ -431,9 +497,13 @@ export class MoleFace {
     if (mood === 'dazed') {
       // lids flutter, the head lolls, stars circle
       this.flutterT -= dt;
-      if (this.flutterT < 0) { this.flutterT = rnd(0.06, 0.22); const r = Math.random(); this.flutterEye = r < 0.35 ? 'shut' : r < 0.65 ? 'drowsy' : r < 0.85 ? 'half' : 'squeeze'; }
-      f.eyeL = f.eyeR = this.flutterEye;
-      if (Math.random() < 0.3) f.eyeR = this.flutterEye === 'shut' ? 'drowsy' : f.eyeL;
+      if (this.flutterT < 0) {
+        this.flutterT = rnd(0.06, 0.22);
+        const r = Math.random();
+        this.flutterEye = r < 0.35 ? 'shut' : r < 0.65 ? 'drowsy' : r < 0.85 ? 'half' : 'squeeze';
+        this.flutterEyeR = Math.random() < 0.3 && this.flutterEye === 'shut' ? 'drowsy' : this.flutterEye; // (the lids out of step now and then)
+      }
+      f.eyeL = this.flutterEye; f.eyeR = this.flutterEyeR || this.flutterEye;
       f.rest = 'frown'; f.open = Math.sin(t * 1.3) > 0.3 ? 'oh' : null; f.tongue = f.open ? 1 : 0;
       f.brow = [0.4, -0.2, 0.1, 0.1]; f.roll = q(Math.sin(t * 2.1) * 0.14, 0.035); f.pitch = 0.14 + q(Math.sin(t * 1.3) * 0.06, 0.03); f.droop = 0.16;
       f.stars = Math.floor((t * 0.75) % 1 * 18);
@@ -681,25 +751,11 @@ export class MoleFace {
    * the deepest shade hatched, a dark-plum outline that breaks on the lit (top-left) side.
    */
   ink() {
-    const W = this.CW, H = this.CH, sm = flatten(fold(this.px, this.small, W, H, SS), this.flat ||= new Uint8Array(W * H * 4), W, H);
+    const W = this.CW, H = this.CH, sm = fold(this.px, this.small, W, H, SS);
     const out = this.next;
     if (!out || out.w !== W || out.h !== H) return;
     const { u, a } = out;
     const A = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : sm[(y * W + x) * 4 + 3]);
-    const P = Math.max(3, Math.round(this.R * 1.4));
-    // the shade mask for the hatching, from a softened luminance (so the lines run clean, not in dots)
-    const lum = this.lum && this.lum.length === W * H ? this.lum : (this.lum = new Float32Array(W * H));
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      let t = 0, n = 0;
-      for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
-        const xx = x + k, yy = y + j;
-        if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
-        const q = (yy * W + xx) * 4;
-        if (!sm[q + 3]) continue;
-        t += LIFT[sm[q]] * 0.3 + LIFT[sm[q + 1]] * 0.59 + LIFT[sm[q + 2]] * 0.11; n++;
-      }
-      lum[y * W + x] = n ? t / n / 255 : 1;
-    }
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x, di = i * 4;
       if (sm[di + 3]) {
@@ -708,23 +764,12 @@ export class MoleFace {
         // the darks fall to plum (never black), the brightest stop at cream (never white)
         if (l < 0.2) { const k = (0.2 - l) / 0.2 * 0.75; r += (PLUM[0] - r) * k; g += (PLUM[1] - g) * k; b += (PLUM[2] - b) * k; }
         else if (l > 0.9) { r = CREAM[0]; g = CREAM[1]; b = CREAM[2]; }
-        // the deepest shade hatched (the lines run up to the right)
-        if (lum[i] < 0.2 && l < 0.3 && (x + H - y) % P === 0) { r = (r + DEEP[0]) / 2; g = (g + DEEP[1]) / 2; b = (b + DEEP[2]) / 2; }
-        // a warm rim where the silhouette turns away on the right (the lamp behind)
-        if (!A(x + 1, y) && l > 0.2) { r += (255 - r) * 0.18; g += (196 - g) * 0.18; b += (120 - b) * 0.18; }
         u[i] = ((255 << 24) | ((b | 0) << 16) | ((g | 0) << 8) | (r | 0)) >>> 0;
         a[i] = 255;
         continue;
       }
-      const L = A(x - 1, y), Rr = A(x + 1, y), T = A(x, y - 1), B = A(x, y + 1);
-      if (L || Rr || T || B) {
-        // the lit side (the shape below or to the right of this pixel): the line breaks in places
-        const lit = (Rr || B) && !L && !T;
-        if (lit && ((x * 5 + y * 3) % 7) < 3) { u[i] = 0; a[i] = 0; continue; }
-        u[i] = ((255 << 24) | (INK[2] << 16) | (INK[1] << 8) | INK[0]) >>> 0;
-        a[i] = 200;
-        continue;
-      }
+      // one even line of ink round the silhouette
+      if (A(x - 1, y) || A(x + 1, y) || A(x, y - 1) || A(x, y + 1)) { u[i] = ((255 << 24) | (INK[2] << 16) | (INK[1] << 8) | INK[0]) >>> 0; a[i] = 255; continue; }
       u[i] = 0; a[i] = 0;
     }
     this.pic = out;
@@ -736,32 +781,6 @@ export class MoleFace {
     this.dropRead();
     if (this.rig) { this.scene.remove(this.rig.root); try { this.rig.dispose(); } catch (e) { /* gone */ } this.rig = null; }
   }
-}
-
-/**
- * Flatten the voxel colour noise into flat tones (the house style: 3–5 flat tones per material, no
- * speckle): each pixel takes the mean of its 3×3 neighbours that are close to it in colour (an
- * edge-keeping smooth: eyes, lids, lips and outlines stay put; the fur's mottling settles).
- */
-function flatten(src, out, W, H) {
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const di = (y * W + x) * 4;
-    out[di + 3] = src[di + 3];
-    if (!src[di + 3]) continue;
-    const r0 = src[di], g0 = src[di + 1], b0 = src[di + 2];
-    let r = 0, g = 0, b = 0, n = 0;
-    for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
-      const xx = x + k, yy = y + j;
-      if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
-      const q = (yy * W + xx) * 4;
-      if (!src[q + 3]) continue;
-      const d = Math.abs(src[q] - r0) + Math.abs(src[q + 1] - g0) + Math.abs(src[q + 2] - b0);
-      if (d > 34) continue;
-      r += src[q]; g += src[q + 1]; b += src[q + 2]; n++;
-    }
-    out[di] = r / n; out[di + 1] = g / n; out[di + 2] = b / n;
-  }
-  return out;
 }
 
 /** Software GL (SwiftShader, llvmpipe): reading back at once costs nothing extra there, and fences signal late. */

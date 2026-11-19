@@ -1,60 +1,60 @@
 /* ---------- the objective tracker: a wanted poster on a nail, the step on a scroll hung under it
-   (Tracker.js; the art: questPoster.js, woodcut.js). Everything is sized in art pixels (--px). ---------- */
+   (Tracker.js; the hand-drawn pixel maps: questPoster.js, posterPics.js). One art pixel = one --px,
+   never scaled, never smoothed. ---------- */
 .qt {
-  position: absolute; z-index: 5; right: calc(var(--sar) + var(--px) * 4); top: calc(var(--sat) + var(--px) * 46);
-  width: calc(var(--px) * 46); pointer-events: none; transform-origin: 60% 0; transition: opacity .35s, transform .45s var(--pop);
+  position: absolute; z-index: 5; right: calc(var(--sar) + var(--px) * 7); top: calc(var(--sat) + var(--px) * 46);
+  width: calc(var(--px) * 37); pointer-events: none; transform-origin: 60% 0; transition: opacity .35s, transform .45s var(--pop);
 }
 #ui:not([data-hud=deep]) .qt { display: none; }
 #ui.panel-open .qt, #ui.focus .qt, #ui.no-touch .qt, .qt.muted { opacity: 0; transform: translateY(calc(var(--px) * -6)); visibility: hidden; transition: opacity .25s, transform .25s, visibility 0s .25s; }
 .qt-roll {
-  position: relative; display: block; width: 100%; margin: 0; padding: calc(var(--px) * 9) 0 0; border: 0; background: none;
+  position: relative; display: block; width: 100%; margin: 0; padding: calc(var(--px) * 7) 0 0; border: 0; background: none;
   font: inherit; color: #2e1a28; text-align: left; cursor: pointer; pointer-events: auto; outline: none;
-  transform-origin: 50% calc(var(--px) * 11); transition: transform .5s var(--pop), opacity .5s;
+  transform-origin: calc(var(--px) * 18.5) calc(var(--px) * 8.5); transition: transform .5s var(--pop), opacity .5s;
 }
 .qt-roll img { image-rendering: pixelated; -webkit-user-drag: none; }
 /* the cork patch and the forged nail (static: the poster swings about the nail) */
-.qt-cork { position: absolute; left: calc(var(--px) * 6); top: calc(var(--px) * 1); width: calc(var(--px) * 34); height: calc(var(--px) * 15); filter: drop-shadow(var(--px) var(--px) 0 rgba(24, 10, 18, .45)); }
-.qt-nail { position: absolute; z-index: 4; left: calc(var(--px) * 19.8); top: calc(var(--px) * 8.4); width: calc(var(--px) * 7); height: calc(var(--px) * 7); pointer-events: none; }
-.qt-scrap { position: absolute; z-index: 1; left: calc(var(--px) * 16); top: calc(var(--px) * 9); width: calc(var(--px) * 14); height: calc(var(--px) * 8); filter: drop-shadow(0 var(--px) 0 rgba(24, 10, 18, .45)); }
-.qt-drop, .qt-swing { position: relative; z-index: 2; transform-origin: 50% calc(var(--px) * 2.5); }
+.qt-cork { position: absolute; left: calc(var(--px) * 5); top: calc(var(--px) * 1); width: calc(var(--px) * 26); height: calc(var(--px) * 9); filter: drop-shadow(var(--px) var(--px) 0 rgba(24, 10, 18, .45)); }
+.qt-nail { position: absolute; z-index: 4; left: calc(var(--px) * 16); top: calc(var(--px) * 6); width: calc(var(--px) * 5); height: calc(var(--px) * 6); pointer-events: none; }
+.qt-scrap { position: absolute; z-index: 1; left: calc(var(--px) * 14); top: calc(var(--px) * 7); width: calc(var(--px) * 10); height: calc(var(--px) * 5); filter: drop-shadow(0 var(--px) 0 rgba(24, 10, 18, .45)); }
+.qt-drop, .qt-swing { position: relative; z-index: 2; transform-origin: calc(var(--px) * 18.5) calc(var(--px) * 1.5); }
 .qt-drop { will-change: transform; }
 .qt-poster {
-  position: relative; z-index: 2; width: calc(var(--px) * 46); height: calc(var(--px) * 50); background: 0 0 / 100% 100% no-repeat;
+  position: relative; z-index: 2; width: calc(var(--px) * 37); height: calc(var(--px) * 45); background: 0 0 / 100% 100% no-repeat;
   image-rendering: pixelated; filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(26, 10, 20, .5)); transition: filter .2s;
 }
 .qt-roll:hover .qt-poster, .qt-roll:focus-visible .qt-poster { filter: drop-shadow(calc(var(--px) * 2) calc(var(--px) * 3) 0 rgba(26, 10, 20, .42)) brightness(1.06); }
 /* the title, printed: ink multiplied into the paper */
 .qt-title {
-  position: absolute; left: calc(var(--px) * 4); right: calc(var(--px) * 4); top: calc(var(--px) * 36);
-  font-size: var(--fs); line-height: 1.1; text-align: center; text-transform: uppercase; letter-spacing: .04em; text-wrap: balance;
+  position: absolute; left: calc(var(--px) * 3); right: calc(var(--px) * 3); top: calc(var(--px) * 26);
+  font-size: var(--fs); line-height: 1.1; text-align: center; text-wrap: balance;
   color: #2e1a28; mix-blend-mode: multiply; overflow-wrap: anywhere;
 }
 .qt.main .qt-title { color: #3a1420; }
 /* the scroll: twine, the top rod, the sheet (its height animates as it unrolls), the heavy rod */
-.qt-scroll { position: relative; z-index: 1; width: calc(var(--px) * 50); margin: calc(var(--px) * -3.5) 0 0 calc(var(--px) * -2); transform-origin: 50% 0; filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(26, 10, 20, .42)); }
-.qt-twine { display: block; height: calc(var(--px) * 11); background: var(--qt-twine) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
-.qt-rod { position: relative; z-index: 2; display: block; height: calc(var(--px) * 6); margin: calc(var(--px) * -2) 0; background: var(--qt-rod) 0 0 / 100% 400% no-repeat; image-rendering: pixelated; transform-origin: 50% 50%; }
-.qt-rod.heavy { background-image: var(--qt-rodH); }
-.qt-rod.spin { animation: qtSpin calc(.18s * var(--qt-slow, 1)) steps(4) infinite; }
-@keyframes qtSpin { from { background-position-y: 0; } to { background-position-y: 133.333%; } }
-.qt-sheet { position: relative; z-index: 1; width: calc(var(--px) * 44); margin: 0 auto; overflow: hidden; background: var(--qt-sheet) 0 0 / 100% calc(var(--px) * 18) repeat-y; image-rendering: pixelated; }
-.qt-sheet::before, .qt-sheet::after { content: ''; position: absolute; z-index: 2; left: 0; right: 0; height: calc(var(--px) * 4); background: var(--qt-curl) 0 0 / 100% 100% no-repeat; pointer-events: none; image-rendering: pixelated; }
-.qt-sheet::before { top: calc(var(--px) * 1); }
-.qt-sheet::after { bottom: calc(var(--px) * 1); transform: scaleY(-1); }
+.qt-scroll { position: relative; z-index: 1; width: calc(var(--px) * 47); margin: calc(var(--px) * -6) 0 0 calc(var(--px) * -5); transform-origin: 50% 0; filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(26, 10, 20, .42)); }
+.qt-twine { display: block; height: calc(var(--px) * 14); background: var(--qt-twine) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
+.qt-rod { position: relative; z-index: 2; display: block; height: calc(var(--px) * 7); margin: calc(var(--px) * -3) 0 calc(var(--px) * -2); background: var(--qt-rod) 0 0 / 100% 200% no-repeat; image-rendering: pixelated; transform-origin: 50% 50%; }
+.qt-rod.spin { animation: qtSpin calc(.12s * var(--qt-slow, 1)) steps(1) infinite; }
+@keyframes qtSpin { 0% { background-position-y: 0; } 50% { background-position-y: 100%; } }
+.qt-sheet { position: relative; z-index: 1; width: calc(var(--px) * 43); margin: 0 auto; overflow: hidden; background: var(--qt-sheet) 0 0 / 100% calc(var(--px) * 6) repeat-y; image-rendering: pixelated; }
+.qt-sheet::before, .qt-sheet::after { content: ''; position: absolute; z-index: 2; left: calc(var(--px) * 1); right: calc(var(--px) * 1); height: calc(var(--px) * 2); background: var(--qt-curl) 0 0 / 100% 100% no-repeat; pointer-events: none; image-rendering: pixelated; }
+.qt-sheet::before { top: 0; }
+.qt-sheet::after { bottom: 0; transform: scaleY(-1); }
 .qt-scroll.rolled .qt-sheet { height: 0; }
-.qt-sheet-in { padding: calc(var(--px) * 4.5) calc(var(--px) * 2.5) calc(var(--px) * 4); }
+.qt-sheet-in { padding: calc(var(--px) * 4) calc(var(--px) * 2) calc(var(--px) * 3); }
 .qt-line { position: relative; font-size: var(--fs); line-height: 1.1; color: #2e1a28; text-align: center; text-wrap: balance; overflow-wrap: anywhere; }
-/* struck through: a vermilion stroke drawn across each line of the step */
+/* struck through: a flat vermilion stroke, one art pixel thick, drawn across each line of the step */
 .qt-text { background: linear-gradient(#a8321e, #a8321e) no-repeat 0 58% / 0 var(--px); -webkit-box-decoration-break: clone; box-decoration-break: clone; transition: background-size calc(.45s * var(--qt-slow, 1)) cubic-bezier(.3, .1, .4, 1), color calc(.45s * var(--qt-slow, 1)); }
 .qt-text.struck { background-size: 100% var(--px); color: #6a4a4a; }
-.qt-tick { position: absolute; right: calc(var(--px) * -2); top: calc(var(--px) * -3); width: calc(var(--px) * 12); height: calc(var(--px) * 10); opacity: 0; pointer-events: none; }
+.qt-tick { position: absolute; right: calc(var(--px) * -1); top: calc(var(--px) * -3); width: calc(var(--px) * 10); height: calc(var(--px) * 8); opacity: 0; pointer-events: none; }
 .qt-tick.on { opacity: 1; animation: qtTick calc(.26s * var(--qt-slow, 1)) steps(5) both; }
-@keyframes qtTick { from { clip-path: inset(0 100% 0 0); transform: scale(1.25); } to { clip-path: inset(0 0 0 0); transform: none; } }
+@keyframes qtTick { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 .qt-prog { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--px) calc(var(--px) * 3); margin-top: calc(var(--px) * 1.5); font-size: var(--fs); line-height: 1; }
 .qt-prog[hidden] { display: none; }
-.qt-pips { position: relative; display: flex; gap: calc(var(--px) * .5); }
+.qt-pips { position: relative; display: flex; gap: var(--px); }
 .qt-pips:empty, .qt-n:empty { display: none; }
-.qt-pip { width: calc(var(--px) * 7); height: calc(var(--px) * 6); }
+.qt-pip { width: calc(var(--px) * 6); height: calc(var(--px) * 4); }
 .qt-pip.inked { animation: qtPip calc(.42s * var(--qt-slow, 1)) var(--pop); }
 @keyframes qtPip { 0% { transform: scale(1.7, .5); } 40% { transform: scale(.85, 1.2); } 70% { transform: scale(1.06, .95); } }
 .qt-n { color: #6a2418; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -65,16 +65,19 @@
 .qt-where { display: inline-flex; align-items: center; gap: var(--px); color: #4a2430; white-space: nowrap; }
 .qt-where[hidden], .qt-arrow[hidden] { display: none; }
 .qt-where.via { color: #2f5a52; }
-.qt-arrow { width: calc(var(--px) * 9); height: calc(var(--px) * 9); margin: calc(var(--px) * -1.5) 0; }
+.qt-arrow { width: calc(var(--px) * 9); height: calc(var(--px) * 9); margin: calc(var(--px) * -2) 0; }
 .qt-dist { font-weight: 400; font-variant-numeric: tabular-nums; }
 .qt-dist:empty { display: none; }
 /* ink flicked off a fresh mark: tiny square drops */
 .qt-ink { position: absolute; z-index: 3; width: var(--px); height: var(--px); background: var(--c, #a8321e); pointer-events: none; animation: qtInk calc(.6s * var(--qt-slow, 1)) cubic-bezier(.2, .6, .4, 1) forwards; }
 @keyframes qtInk { from { transform: none; opacity: 1; } to { transform: translate(var(--dx), var(--dy)); opacity: 0; } }
-/* idle: it tucks itself smaller; the HUD's quiet spell (hud.css) fades it right out, smaller still */
-.qt.idle .qt-roll { transform: scale(.78); opacity: .9; }
-.qt.idle .qt-roll:hover { transform: scale(.9); opacity: 1; }
-#ui.hud-calm .qt.qt:not(.muted) { opacity: 0; transform: translateY(calc(var(--px) * -8)) scale(.7); }
+/* idle: it tucks itself smaller (the scroll rolls itself up onto its rod, the rod turning as it goes);
+   the HUD's quiet spell (hud.css) then lifts it out of view. Pixel art is never scaled. */
+.qt-sheet { max-height: calc(var(--px) * 40); transition: max-height calc(.45s * var(--qt-slow, 1)) cubic-bezier(.5, 0, .8, .5); }
+.qt.idle .qt-sheet { max-height: 0; }
+.qt.idle .qt-rod.heavy { animation: qtSpin calc(.12s * var(--qt-slow, 1)) steps(1) 4; }
+.qt.idle .qt-roll { opacity: .9; }
+#ui.hud-calm .qt.qt:not(.muted) { opacity: 0; transform: translateY(calc(var(--px) * -14)); }
 
 .toast .qt-said { display: inline-block; margin-top: var(--px); color: #6a4a2a; font-style: normal; max-width: 52ch; }
 .toast .qt-first { color: #6a4a2a; }

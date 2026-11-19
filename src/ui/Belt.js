@@ -29,6 +29,7 @@ export class Belt {
     this.el = el('div', { class: 'belt', hidden: true }, [this.label, this.strap]);
     ui.hud.append(this.el);
     installPackArt(this.el); // (the loops' and the strap's leather)
+    installPackArt(document.documentElement); // (wave 19: the pockets' and counts' art for every slot grid: chests, the trunk...)
     this.el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') { this.hover = true; this.expand(); } });
     this.el.addEventListener('pointerleave', () => { this.hover = false; });
     window.addEventListener('wheel', () => this.poke(), { passive: true });

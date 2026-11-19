@@ -1,16 +1,16 @@
-/* ---------- the stamina gauge (src/ui/Stamina.js): one art pixel = one --px, one canvas pixel = one CSS pixel ---------- */
+/* ---------- the stamina gauge (src/ui/Stamina.js): one canvas pixel = one art pixel = one --px (scaled whole) ---------- */
 /* nothing here takes a touch or a click: the stick, the look pad and the belt under it get them */
 .stam-dock, .stam-dock *, .stam-veil { pointer-events: none !important; }
 .stam {
-  position: relative; width: calc(var(--px) * 112); height: calc(var(--px) * 18);
+  position: relative; width: calc(var(--px) * 98); height: calc(var(--px) * 12);
   /* a flat cast shadow (no blur): the stave stands a little off what's behind it */
   filter: drop-shadow(var(--px) var(--px) 0 rgba(22, 8, 20, .5));
   transform: translateY(calc(var(--px) * 10)) scale(.6, .2); opacity: 0;
   transition: transform .18s cubic-bezier(.5, -0.5, .8, .6), opacity .14s .04s;
 }
 .stam-dock.show .stam { transform: none; opacity: 1; transition: transform .38s var(--pop, cubic-bezier(.3, 1.6, .5, 1)), opacity .1s; }
-/* the canvas reaches up past the stave for the medallion (and the helmet over its rim) */
-.stam-cv { position: absolute; left: 0; bottom: 0; display: block; width: 100%; height: calc(var(--px) * 38); image-rendering: pixelated; transform-origin: 15% 56%; }
+/* the canvas reaches up past the stave for the medallion */
+.stam-cv { position: absolute; left: 0; bottom: 0; display: block; width: 100%; height: calc(var(--px) * 34); image-rendering: pixelated; transform-origin: 15% 55%; }
 
 /* elsewhere: bottom middle, where the belt would be (clear of the thumbs on a phone) */
 .stam-dock.free { position: absolute; left: 0; right: 0; bottom: calc(var(--sab) + var(--px) * 6); display: flex; justify-content: center; }
@@ -19,7 +19,7 @@
 /* with the tool belt up: riding on it, between the held tool's name and the strap; the row
    folds away while it's tucked */
 .stam-dock.docked { display: flex; justify-content: center; align-items: flex-start; height: 0; transition: height .2s ease-in; }
-.stam-dock.docked.show { height: calc(var(--px) * 16); transition: height .26s var(--pop, cubic-bezier(.3, 1.6, .5, 1)); }
+.stam-dock.docked.show { height: calc(var(--px) * 13); transition: height .26s var(--pop, cubic-bezier(.3, 1.6, .5, 1)); }
 .stam-dock.docked .stam { flex: none; }
 #ui[data-hud=none] .stam-dock { display: none; }
 

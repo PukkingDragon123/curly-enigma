@@ -213,6 +213,21 @@ function meat(red) {
   ell(g, 33.5, 9, 9.5, 2, 2, 2, 0xf4ecd8); ell(g, 33.5, 9, 12.5, 2, 2, 2, 0xf4ecd8);
   return { grid: g, orient: 'stand' };
 }
+function pie() {
+  const g = G(32, 14, 32), m = 16;
+  // a tin, the crimped crust round its rim, a domed lid with steam slits
+  for (let z = 0; z < 32; z++) for (let x = 0; x < 32; x++) {
+    const d = Math.hypot(x + 0.5 - m, z + 0.5 - m);
+    if (d > 15) continue;
+    if (d > 13.5) { for (let y = 0; y < 4; y++) g.set(x, y, z, y === 3 ? 0xb0a8a0 : 0x7a726c); continue; } // the tin's rim
+    const a = Math.atan2(z + 0.5 - m, x + 0.5 - m);
+    if (d > 11.2) { const crimp = Math.floor((a + Math.PI) / (Math.PI * 2) * 22) % 2; for (let y = 0; y < 6 + crimp; y++) g.set(x, y, z, y >= 5 ? 0xe8b060 : 0xc88a44); continue; }
+    const h = Math.round(6 + 3 * (1 - (d / 11.2) ** 2));
+    const slit = Math.abs(Math.sin(a * 2)) < 0.12 && d > 3 && d < 8;
+    for (let y = 0; y < h; y++) g.set(x, y, z, y === h - 1 ? (slit ? 0x6a2a1a : 0xd89a50) : 0xc07a3a);
+  }
+  return { grid: g, orient: 'stand' };
+}
 function jar(fill, lid, o = {}) {
   const g = G(24, 32, 24), c = 12;
   const glass = 0xd8e4dc;
@@ -672,6 +687,7 @@ Object.assign(B, {
   butter,
   rootbeer: () => bottle(0x6a3418, 0xa8784a, { label: 0xe8d8b0 }),
   tea_flask: () => bottle(0x5a7a8a, 0x8a5a3a, { label: 0xc8b890 }),
+  hearty_pie: pie,
   grub_bar: () => ({ grid: (() => { const g = G(34, 10, 18); g.box(2, 0, 3, 30, 7, 12, (x, y, z) => (x < 6 || x > 27 ? ((x + y) % 2 ? 0xc8a050 : 0xa88038) : y === 6 ? (z % 3 === 0 ? 0x8a5a2a : 0xa86e34) : 0x9a6430)); return g; })(), orient: 'stand' }),
   // drops
   dust_fluff: () => fluff(0xa8a0a0), bat_guano: () => heap([0x5a4a3a, 0x3e3226, 0x4a3c2e], { r: 11, h: 7, lumps: 6 }),
@@ -704,4 +720,104 @@ Object.assign(B, {
   star_coin: () => coin(0xe8b840), brass_weights: weights,
   exit_ticket: (id) => sheet(id, { paper: 0xf0dca0 }), loam_letter: (id) => sheet(id, { paper: 0xe8dcc0 }), sun_hymn: (id) => sheet(id, { paper: 0xd8ccb0 }),
 });
+
+// ------------------------------------------------------------------ relics of the old ones
+const STONE = 0x8a8478, GOLD = 0xe0b040, BRONZE = 0xa8743a, PATINA = 0x5aa08a;
+const RELIC = {
+  idol() {
+    const g = G(24, 32, 22), m = 12;
+    g.box(5, 0, 4, 14, 3, 14, T(STONE, -0.2)); // the plinth
+    ell(g, m, 10, 11, 7, 8, 6.5, (x, y) => (y < 5 ? T(STONE, -0.1) : STONE)); // the seated body
+    ell(g, m, 21, 11, 5.5, 5, 5, T(STONE, 0.1)); // the head
+    for (let a = 0; a < 10; a++) { const t = a / 10 * Math.PI * 2; tube(g, [[m, 21, 16, 0.6], [m + Math.cos(t) * 3.2, 21 + Math.sin(t) * 3.2, 18, 0.6]], 0xd88a8a); } // the star nose
+    for (const s of [-1, 1]) { g.set(m + s * 2.5, 23, 15, 0x2a2026); tube(g, [[m + s * 6, 12, 13, 1.6], [m + s * 3, 8, 16, 1.5]], STONE); } // eyes, paws
+    return { grid: g, orient: 'stand' };
+  },
+  disc() {
+    const g = G(30, 6, 30), m = 15;
+    for (let z = 0; z < 30; z++) for (let x = 0; x < 30; x++) {
+      const d = Math.hypot(x + 0.5 - m, z + 0.5 - m), a = Math.atan2(z + 0.5 - m, x + 0.5 - m);
+      const ray = d > 9 && d < 14 && Math.floor((a + Math.PI) / (Math.PI * 2) * 16) % 2 === 0;
+      if (d > 9 && !ray) continue;
+      for (let y = 0; y < (d < 9 ? 3 : 2); y++) g.set(x, y, z, y === 0 ? T(GOLD, -0.3) : d < 4 ? T(GOLD, 0.25) : d > 7.5 && d < 9 ? T(GOLD, -0.12) : GOLD);
+    }
+    return { grid: g, orient: 'stand' };
+  },
+  ewer() {
+    const g = G(30, 32, 24), m = 13;
+    g.cylY(m, 12, 6, 0, 2, T(BRONZE, -0.2));
+    for (let y = 2; y < 26; y++) { const r = y < 16 ? 4 + Math.sin((y - 2) / 14 * Math.PI) * 5 : 3.2; g.cylY(m, 12, r, y, y + 1, (x, yy, z) => (yy % 7 === 0 ? PATINA : (x + z) % 9 === 0 ? T(BRONZE, -0.15) : BRONZE)); }
+    tube(g, [[m + 6, 16, 12, 1.8], [m + 11, 22, 12, 1.2], [m + 14, 25, 12, 0.9]], BRONZE); // the snout-spout
+    tube(g, [[m - 6, 22, 12, 1], [m - 11, 18, 12, 1], [m - 8, 9, 12, 1]], T(BRONZE, -0.1)); // the handle
+    return { grid: g, orient: 'stand' };
+  },
+  lens() {
+    const g = G(36, 8, 24), m = 12;
+    for (let z = 0; z < 24; z++) for (let x = 0; x < 24; x++) { const d = Math.hypot(x + 0.5 - m, z + 0.5 - m); if (d > 11) continue; const ring = d > 8.5; for (let y = 0; y < (ring ? 4 : 3); y++) g.set(x, y, z, ring ? (y === 3 ? T(BRONZE, 0.2) : BRONZE) : y === 2 ? (x < m && z < m ? 0xd8f0f0 : 0x9ac8d0) : 0x7aa8b8); }
+    g.box(22, 1, 10, 12, 2, 4, (x) => (x % 4 === 0 ? T(BRONZE, -0.2) : BRONZE)); // the handle
+    return { grid: g, orient: 'stand' };
+  },
+  tablet() {
+    const g = G(30, 34, 10);
+    g.box(2, 0, 2, 26, 32, 6, (x, y, z) => (z === 7 && ((x % 6 === 2 && y % 5 !== 0 && y > 4 && y < 28) || (y % 8 === 4 && x > 4 && x < 25 && x % 6 !== 2)) ? T(STONE, -0.4) : y > 30 ? T(STONE, 0.12) : STONE));
+    for (const [x, y] of [[27, 31], [2, 30], [27, 0]]) g.set(x, y, 4, -1); // chipped corners
+    return { grid: g, orient: 'stand' };
+  },
+  crown() {
+    const g = G(30, 22, 30), m = 15;
+    for (let y = 0; y < 18; y++) for (let a = 0; a < 80; a++) {
+      const t = a / 80 * Math.PI * 2, point = Math.abs(((a % 10) - 5)) / 5;
+      if (y > 7 && y > 7 + (1 - point) * 10) continue;
+      g.set(m + Math.cos(t) * 11, y, m + Math.sin(t) * 11, y < 2 ? T(GOLD, -0.25) : y < 7 ? GOLD : T(GOLD, 0.15));
+    }
+    for (let k = 0; k < 8; k++) { const t = k / 8 * Math.PI * 2; ell(g, m + Math.cos(t) * 11.6, 4.5, m + Math.sin(t) * 11.6, 1.4, 1.4, 1.4, 0xff7a2a, 2); }
+    return { grid: g, orient: 'stand' };
+  },
+  mirror() {
+    const g = G(26, 40, 8), m = 13;
+    for (let y = 0; y < 40; y++) for (let x = 0; x < 26; x++) {
+      const d = Math.hypot(x + 0.5 - m, y + 0.5 - 26);
+      if (d <= 12) for (let z = 1; z < 6; z++) g.set(x, y, z, d > 9.5 ? (z === 5 ? T(GOLD, 0.2) : GOLD) : z === 5 ? (x + y > 38 ? 0xfff0c0 : 0xe8d8a0) : T(GOLD, -0.3));
+      else if (y < 15 && Math.abs(x + 0.5 - m) < 2) for (let z = 2; z < 5; z++) g.set(x, y, z, y % 4 === 0 ? T(GOLD, -0.2) : GOLD);
+    }
+    return { grid: g, orient: 'stand' };
+  },
+  mask() {
+    const g = G(28, 32, 12), m = 14, ice = 0xb8e0f0;
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 28; x++) {
+      const dx = (x + 0.5 - m) / 12, dy = (y + 0.5 - 15) / 15;
+      if (dx * dx + dy * dy > 1) continue;
+      const eye = Math.abs(Math.abs(x + 0.5 - m) - 5) < 2.5 && Math.abs(y + 0.5 - 19) < 2;
+      if (eye) continue;
+      const depth = Math.round(4 * (1 - dx * dx));
+      for (let z = 1; z <= 1 + depth; z++) g.set(x, y, z, z === 1 + depth ? (Math.abs(x + 0.5 - m) < 1 && y > 8 && y < 18 ? T(ice, 0.25) : y < 8 && x % 4 === 0 ? 0x8ac0e0 : ice) : T(ice, -0.3));
+    }
+    return { grid: g, orient: 'stand' };
+  },
+  key() {
+    const g = G(14, 6, 44), m = 7;
+    g.box(m - 1, 1, 12, 2, 2, 28, (x, y, z) => (z % 6 === 0 ? T(0xc8d8f0, -0.2) : 0xc8d8f0)); // the shaft
+    g.box(m - 1, 1, 38, 5, 2, 2, 0xc8d8f0); g.box(m + 2, 1, 35, 2, 2, 3, 0xc8d8f0); // the bit
+    for (let a = 0; a < 5; a++) { const t = a / 5 * Math.PI * 2 - Math.PI / 2; tube(g, [[m, 2, 6, 1.4], [m + Math.cos(t) * 5.5, 2, 6 + Math.sin(t) * 5.5, 0.8]], 0xe8f0ff, 1); } // the star bow
+    return { grid: g, orient: 'flat', lay: { up: 1, along: 2 } };
+  },
+  orb() {
+    const g = G(26, 30, 26), m = 13;
+    g.cylY(m, m, 6, 0, 3, (x, y) => (y === 2 ? T(BRONZE, 0.15) : BRONZE)); g.cylY(m, m, 3, 3, 6, T(BRONZE, -0.1));
+    ell(g, m, 16, m, 10, 10, 10, (x, y, z, dx, dy) => (dy > 0.55 && dx < 0 ? 0xc8a0ff : Math.sin((x + y * 0.6) * 0.5) > 0.6 ? 0x9a5aff : dy < -0.4 ? 0x3a1a6a : 0x6a3ac0), 1);
+    return { grid: g, orient: 'stand' };
+  },
+  amulet() {
+    const g = G(30, 8, 36), m = 15;
+    for (let i = 0; i < 40; i++) { const t = i / 40 * Math.PI; g.set(m + Math.cos(t) * 12, 1, 4 + (1 - Math.sin(t)) * 20, i % 2 ? GOLD : T(GOLD, -0.3)); } // the chain
+    for (let z = 0; z < 16; z++) for (let x = 0; x < 18; x++) {
+      const u = (x + 0.5 - 9) / 8, v = (z + 0.5 - 6) / 8;
+      const heart = (u * u + v * v - 1) ** 3 - u * u * (-v) ** 3 < 0;
+      if (!heart) continue;
+      for (let y = 0; y < 4; y++) g.set(x + 6, y, z + 18, y === 3 ? (u < -0.2 && v < 0 ? 0xff8a8a : 0xd8303a) : y === 0 ? GOLD : 0xa8202a, y >= 2 ? 1 : 0);
+    }
+    return { grid: g, orient: 'stand' };
+  },
+};
+for (const id of Object.keys(ITEMS)) if (ITEMS[id].cat === 'relic' && RELIC[ITEMS[id].icon?.t]) B[id] = RELIC[ITEMS[id].icon.t];
 export const BUILD = B;

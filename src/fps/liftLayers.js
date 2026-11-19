@@ -1,9 +1,10 @@
-// The lift's panel (and the M key's map): the underground side-on as one hand-cut woodcut print, top
-// to bottom. The meadow and its oak; under the turf Old Star's burrow and Deep Town as little
-// vignettes; then the six layers (Rootsoil, Clayworks, Crystal Grotto, Magma Deep, Frost Vault, the
-// Core), each with its own rocks, sights and creatures (src/fps/liftArt/: kit, rock, features, props,
-// surface, anim, sketch), the town lift's shaft running down through them with its cage riding it,
-// and the Core's heart at the bottom. A survey staff down the left edge gives the depths.
+// The lift's panel (and the M key's map): the underground side-on, top to bottom, as hand-made pixel
+// art: big pixels, hand-drawn 8x8 tiles and sprites (src/fps/liftArt/tiles.js) laid out by
+// hand-composed maps (maps.js) and put together by paint.js. The meadow and its oak; under the turf
+// Old Star's burrow and Deep Town as little vignettes; then the six layers (Rootsoil, Clayworks,
+// Crystal Grotto, Magma Deep, Frost Vault, the Core), each with its own rocks, sights and creatures,
+// the town lift's shaft running down through them with its cage riding it (anim.js), and the Core's
+// heart at the bottom. A survey staff down the left edge gives the depths.
 //
 // Layers you've reached are printed in colour. The ones you haven't are still there, as the
 // cartographer's unfinished pencil-and-sepia sketch on the paper, fading the deeper it goes; the
@@ -13,7 +14,8 @@
 // Every layer has a small plaque: its name, what you've found there (icons), and a Dive button that
 // rides to the nearest unlocked lift in it. Each lift stands in its layer at its real x with a tag
 // (click to ride). One art pixel = one --px; each section is painted once (lazily) into an offscreen
-// canvas, and a small rAF loop composites the visible ones with the animation on top.
+// canvas at one art pixel = a whole number of screen pixels (about 288 art px across the view), and
+// a small rAF loop composites the visible ones with the animation on top.
 //
 //   openLiftLayers(game, here, opts, dests, ride, locked) → panel handle   (lifts.js openLiftPanel)
 //   openLayers(game) → panel handle   (view-only unless you're standing at an unlocked lift)
@@ -28,10 +30,8 @@ import { liftDestinations, lockedLifts, liftUnlocked, rideTo } from './lifts.js'
 import './liftLayers.css';
 import { dropCap, inkIn, ensureTomeArt } from '../ui/tomeFx.js'; // (wave 9: the survey as an atlas leaf, src/ui/tome.css)
 import { doodleURL, cssUrl } from '../ui/tomeArt.js';
-import { ZP, INK, hash, hashStrLite } from './liftArt/kit.js';
-import { paintLayer, LIFT_ZONE_DEPTHS } from './liftArt/rock.js';
-import { paintTop, paintCore, TOP_H, CORE_H, GROUND, ax } from './liftArt/surface.js';
-import { sketchOf } from './liftArt/sketch.js';
+import { hash, hashStrLite } from './liftArt/kit.js';
+import { paintLayer, paintTop, paintCore, sketchOf, LIFT_ZONE_DEPTHS, LAYER_H, TOP_H, CORE_H, GROUND, SHAFT_X } from './liftArt/paint.js';
 import { placeLife, drawLayerAnim, drawTopAnim, drawSky, drawCoreAnim, drawMole, cageSprite } from './liftArt/anim.js';
 
 export { LIFT_ZONE_DEPTHS };
@@ -42,7 +42,9 @@ const X0 = -96, X1 = 96; // the mine's x extent (Generator BOUNDS), mapped acros
  */
 export const EXPLORE_TARGET = [0, 9000, 25000, 45000, 42000, 32000, 26000];
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
-const PLQ_X = 20, PLQ_Y = 7; // where a layer's plaque sits (art px, right of the staff)
+const PLQ_X = 18, PLQ_Y = 3; // where a layer's plaque sits (art px, right of the staff and its numbers)
+/** World x (m) → art x, across the part of the scene every view shows. */
+const ax = (W, x) => clamp(Math.round(((x - X0) / (X1 - X0)) * (Math.min(W, 304) - 24) + 12), 10, W - 10);
 
 // plants by layer (as in the Index Book, src/ui/IndexBook.js)
 const PLANT_ZONES = {
@@ -62,7 +64,6 @@ const ORE_COL = {
 
 // ------------------------------------------------------------------ what's where (state)
 const zoneOfDepth = (d) => { for (let z = 1; z <= 6; z++) if (d < LIFT_ZONE_DEPTHS[z]) return z; return 6; };
-const cssPx = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 3;
 
 /** The ores, creatures and plants of a layer, with what you've recorded of them. */
 export function layerFinds(st, z) {
@@ -259,33 +260,29 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
 
   let idleT = 0;
   const build = () => {
-    const px = cssPx();
     const cw = view.clientWidth, ch = view.clientHeight;
     if (!cw || !ch) return false;
+    // big pixels, a whole number of screen pixels each: about 288 art px across whatever the view's width
+    const px = Math.max(2, Math.round(cw / 288));
     S.px = px;
     S.W = Math.max(160, Math.ceil(cw / px));
     S.VH = Math.max(60, Math.ceil(ch / px));
     canvas.width = S.W; canvas.height = S.VH;
     canvas.style.width = S.W * px + 'px'; canvas.style.height = S.VH * px + 'px';
     ctx.imageSmoothingEnabled = false;
-    // the plaques' size in art px (they sit in the quiet rock at the top left of each layer)
-    let pw = 0, ph = 0;
-    for (let z = 1; z <= 6; z++) { const r = plaques[z]; pw = Math.max(pw, r.offsetWidth); ph = Math.max(ph, r.offsetHeight); }
-    const plq = { x0: PLQ_X, y0: PLQ_Y, x1: PLQ_X + Math.ceil(pw / px) + 2, y1: PLQ_Y + Math.ceil(ph / px) + 2 };
-    const LH = clamp(S.VH - 12, Math.max(170, plq.y1 + 96), 236);
+    const LH = LAYER_H;
     const M = Math.ceil(0.22 * (TOP_H + S.VH) / 2) + 4;
     S.sections = [];
     let y = 0;
     S.sections.push({ kind: 'top', key: 0, y, H: TOP_H, W: S.W, M, art: null });
     y += TOP_H;
     for (let z = 1; z <= 6; z++) {
-      S.sections.push({ kind: 'layer', key: z, z, y, H: LH, W: S.W, M, art: null, plaque: plq });
+      S.sections.push({ kind: 'layer', key: z, z, y, H: LH, W: S.W, M, art: null });
       y += LH;
     }
     S.sections.push({ kind: 'core', key: 7, y, H: CORE_H, W: S.W, M: 0, art: null });
     y += CORE_H;
     S.total = y;
-    S.plq = plq;
     track.style.height = y * px + 'px';
     for (const sec of S.sections) {
       if (sec.kind !== 'layer') continue;
@@ -294,43 +291,34 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
     for (const s of stops) if (!s.where.top) s.ax = ax(S.W, s.where.x);
     for (const sec of S.sections) if (sec.kind === 'layer') sec.stops = layerStops(sec.z);
     // the town cage rides from the town's floor to the foot of the deepest layer you've reached
-    S.cageTop = TOP_H - 12; S.cageBot = S.sections[deepest].y + S.sections[deepest].H - 30;
+    S.cageTop = TOP_H - 8; S.cageBot = S.sections[deepest].y + 96;
     return true;
   };
 
-  // sketch settings: the layer just below what you know is half inked, deeper ones fade out
-  const sketchFor = (key) => {
-    const d = key - deepest;
-    return { ink: d <= 1 ? 0.42 : d === 2 ? 0.22 : 0.08, fade: d <= 1 ? 0 : d === 2 ? 0.12 : 0.26 };
-  };
+  // sketch settings: the layer just below what you know is half inked, deeper ones only pencilled
+  const sketchFor = (key) => { const d = key - deepest; return d <= 1 ? { ink: 0.55 } : d === 2 ? { ink: 0.18 } : { faint: true }; };
   const paintSection = (sec) => {
     if (sec.art) return;
     const k = sec.key;
     if (sec.kind === 'top') {
-      const A = paintTop({ W: sec.W, seed, town, M: sec.M });
+      const A = paintTop({ W: sec.W, town, M: sec.M });
       sec.art = A;
       sec.cv = A.art.commit();
-      if (!town || !(inked & bit(0))) { // the town's corner of the sheet in pencil until you've reached it
-        const R = A.townR;
-        sec.sk = sketchOf(A.art, { seed, ink: 0.4, fade: 0, wash: 0x7a4a30, region: (x, y) => x >= R.x0 - 4 && y >= GROUND - 1 && !(y > R.y1 + 3) }).commit();
-      }
+      if (!town || !(inked & bit(0))) sec.sk = sketchOf(A.art, { z: 1, ink: 0.75, region: (x, y) => x >= A.townX0 && y >= GROUND + 6 }).commit();
       placeTopTags(sec);
     } else if (sec.kind === 'layer') {
-      const z = sec.z;
-      const yx = you && !you.top && !you.stop && you.zone === z ? clamp(ax(sec.W, you.x), 4, sec.W - 6) : null;
-      const F = finds[z];
-      const R = paintLayer({ z, W: sec.W, H: sec.H, seed, plaque: sec.plaque, stops: sec.stops, shx: ax(sec.W, 38.5), ores: F.ores.filter((o) => ORE_COL[o.id]).map((o) => ({ id: o.id, col: ORE_COL[o.id], known: !!o.e })), here });
-      R.youX = yx;
+      const z = sec.z, F = finds[z];
+      const R = paintLayer({ z, W: sec.W, stops: sec.stops, ores: F.ores.filter((o) => ORE_COL[o.id]).map((o) => ({ id: o.id, col: ORE_COL[o.id], known: !!o.e })) });
       placeLife({ W: sec.W, finds: F }, R, makeRng(seed * 7 + z));
       sec.art = R;
       sec.cv = R.art.commit();
-      if (!reached[z] || !(inked & bit(z))) sec.sk = sketchOf(R.art, { seed: seed + z, wash: ZP[z].wash, ...sketchFor(z) }).commit();
+      if (!reached[z] || !(inked & bit(z))) sec.sk = sketchOf(R.art, { z, ...sketchFor(z) }).commit();
       placeLayerTags(sec);
     } else {
-      const R = paintCore({ W: sec.W, seed });
+      const R = paintCore({ W: sec.W });
       sec.art = R;
       sec.cv = R.art.commit();
-      if (!reached[7] || !(inked & bit(7))) sec.sk = sketchOf(R.art, { seed: seed + 9, wash: 0x8a52a0, ...sketchFor(7) }).commit();
+      if (!reached[7] || !(inked & bit(7))) sec.sk = sketchOf(R.art, { z: 6, ...sketchFor(7) }).commit();
     }
     sec.mode = reached[k] ? ((inked & bit(k)) ? 'color' : 'pending') : 'sketch';
   };
@@ -342,9 +330,9 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
   const placeTopTags = (sec) => {
     const A = sec.art;
     const ht = tags.get('home'), tt = tags.get('town');
-    if (ht) placeTag(ht, A.homeStop.x, sec.y + A.homeStop.fy - 22);
+    if (ht) placeTag(ht, A.homeStop.x, sec.y + A.homeStop.fy - 20);
     if (tt) placeTag(tt, A.townTag.x, sec.y + A.townTag.y);
-    if (you && you.top) { const f = (you.stop?.id === 'town' ? A.townStop : A.homeStop) || A.homeStop; youSpot = { sec, x: f.x - 13, fy: f.fy }; }
+    if (you && you.top) { const f = (you.stop?.id === 'town' ? A.townStop : A.homeStop) || A.homeStop; youSpot = { sec, x: f.x - (you.stop?.id === 'town' ? 0 : 14), fy: f.fy }; }
   };
   const placeLayerTags = (sec) => {
     const placed = [];
@@ -353,14 +341,14 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
       const tag = tags.get(s.id);
       if (!tag) continue;
       const w = tag.offsetWidth / S.px, hgt = tag.offsetHeight / S.px;
-      let y = sec.y + s.fy - 22;
+      let y = sec.y + s.fy - 20;
       const x = clamp(s.x, w / 2 + 2, sec.W - w / 2 - 14);
       for (const p of placed) if (Math.abs(p.x - x) < (p.w + w) / 2 + 1 && Math.abs(p.y - y) < hgt + 1) y = p.y - hgt - 1;
       placed.push({ x, y, w });
       placeTag(tag, x, y);
     }
     if (you && !you.top && you.zone === sec.z) {
-      const x = you.stop ? clamp(you.stop.x - 15, 4, sec.W - 6) : clamp(ax(sec.W, you.x), 4, sec.W - 6);
+      const x = you.stop ? clamp(you.stop.x - 15, 8, sec.W - 6) : clamp(ax(sec.W, you.x), 8, sec.W - 6);
       youSpot = { sec, x, fy: sec.art.floorTop[clamp(x, 0, sec.W - 1)] };
       if (!you.stop) placeTag(youTag, x, sec.y + youSpot.fy - 13);
     }
@@ -521,7 +509,7 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
   };
   /** The roller's front at row y (art px from the section's top), p 0..1. */
   const frontAt = (sec, y, p) => {
-    const x0 = sec.kind === 'top' ? sec.art.townR.x0 - 30 : -26;
+    const x0 = sec.kind === 'top' ? sec.art.townX0 - 30 : -26;
     return x0 + p * (sec.W + 26 - x0) + Math.sin(y * 0.09 + sec.key) * 7 + Math.sin(y * 0.31) * 2.5 + (hash(y >> 2, sec.key, 3) - 0.5) * 4;
   };
 
@@ -596,7 +584,7 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
         blit(sec.sk, 1, 0);
         ctx.save();
         ctx.beginPath();
-        const y0 = sec.kind === 'top' ? GROUND - 2 : 0;
+        const y0 = sec.kind === 'top' ? GROUND + 6 : 0;
         for (let y = y0; y < sec.H; y += 2) { const fx = Math.round(frontAt(sec, y, p)); if (fx > 0) ctx.rect(0, top + y, fx, 2); }
         ctx.clip();
         drawColor();
@@ -604,7 +592,7 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
         ctx.fillStyle = '#2a1626';
         for (let y = y0; y < sec.H; y += 2) {
           const fx = Math.round(frontAt(sec, y, p));
-          if (fx < -2 || fx > W || (sec.kind === 'top' && fx < sec.art.townR.x0 - 4)) continue;
+          if (fx < -2 || fx > W || (sec.kind === 'top' && fx < sec.art.townX0)) continue;
           ctx.fillRect(fx, top + y, 2, 2);
           if (hash(y, sec.key, 9) < 0.18) ctx.fillRect(fx + 3 + Math.round(hash(y, 2, 9) * 6), top + y + (y & 1), 1, 1);
         }
@@ -618,11 +606,9 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
       const gy = S.cageTop + (S.cageBot - S.cageTop) * u;
       const cy = Math.round(gy - sy);
       if (cy > -24 && cy < VH + 24) {
-        const cv = cageSprite(), x = ax(W, 38.5);
-        ctx.drawImage(cv, x - 11, cy - 20);
-        const f = 0.8 + 0.2 * Math.sin(t * 11);
-        ctx.fillStyle = f > 0.9 ? '#fde8a8' : '#f6c25a';
-        ctx.fillRect(x + 8, cy - 10, 1, 1);
+        ctx.drawImage(cageSprite(), SHAFT_X - 8, cy - 16);
+        ctx.fillStyle = Math.sin(t * 9) > 0.3 ? '#fde8a8' : '#f6c25a';
+        ctx.fillRect(SHAFT_X + 6, cy - 9, 1, 1);
       }
     }
     // the rail's thumb: where the view is
@@ -682,7 +668,6 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
     /** Re-run a layer's ink-in (for a look at it). */
     reink: (key) => { const s = S.sections.find((q) => q.key === key); if (s && s.sk) { s.mode = 'pending'; s.pendT = null; } },
   };
-  void INK;
   return h;
 }
 

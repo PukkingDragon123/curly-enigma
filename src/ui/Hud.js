@@ -8,6 +8,7 @@ import { BUFFS } from '../data/recipes.js';
 import { ITEMS } from '../data/items.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { SPR } from './uiSprites.js';
+import { itemVox } from './itemVox.js'; // (wave 19) an item flies home as its 3D model's picture
 import { HART, installHudArt } from './hudArt.js';
 import { StaminaBar } from './Stamina.js';
 
@@ -180,7 +181,8 @@ export class Hud {
         const x0 = (from?.x ?? innerWidth / 2) + (k - (copies - 1) / 2) * 14, y0 = (from?.y ?? innerHeight * 0.42) + (k % 2) * 6;
         const mx = (x0 + x1) / 2 + (x1 > x0 ? -40 : 40), my = Math.min(y0, y1) - 70 - Math.random() * 30;
         const size = target === 'pouch' ? 24 : 48;
-        const img = el('img', { class: 'pix fly-reward', src, alt: '', style: { width: size + 'px', height: size + 'px' } });
+        const pic = target === 'pack' ? itemVox.url(itemVox.keyOf(src), size) : null;
+        const img = el('img', { class: 'pix fly-reward', src: pic || src, alt: '', style: { width: size + 'px', height: size + 'px' } });
         this.ui.hud.append(img);
         const tf = (x, y, s, rot) => `translate(${(x - size / 2).toFixed(1)}px, ${(y - size / 2).toFixed(1)}px) scale(${s}) rotate(${rot}deg)`;
         const a = img.animate([
