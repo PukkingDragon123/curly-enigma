@@ -479,13 +479,14 @@ export class HarvestPatches {
     this.s = scene;
     this.g = scene.game;
     this.mat = voxelMaterial('toon');
+    this.glowMat = voxelMaterial('toon', { emissive: 0x1c4a50 }); // glowcaps and spore pods shine a little in the dark
     this.root = new THREE.Group();
     this.root.name = 'harvest-patches';
     scene.scene.add(this.root);
     this.list = spots.map((sp, i) => {
       const P = { ...sp, key: (o.tag || 'h') + ':' + i, anim: null, seed: i };
       P.full = ripe(this.g.state, P.key);
-      P.mesh = new THREE.Mesh(sourceGeo(P.kind, !P.full, i).geo, this.mat);
+      P.mesh = new THREE.Mesh(sourceGeo(P.kind, !P.full, i).geo, P.kind === 'glowcaps' || P.kind === 'spores' ? this.glowMat : this.mat);
       P.mesh.layers.enable(LAYER_OUTLINE);
       P.mesh.position.set(sp.x, sp.y || 0, sp.z);
       P.mesh.rotation.y = sp.yaw || 0;

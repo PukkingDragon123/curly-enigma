@@ -13,7 +13,7 @@
 // Wave 16: three levels of detail round the base model (refined 4× on desktops, 2× on phones):
 //   near  the 1/136 m copy above, the closest few in arm's reach
 //   mid   a worker-built copy at ~1/96 m with the same skin detail (fur, scales, chitin, cracked
-//         stone), for everything else in good view on desktops (a couple, close, on big phones)
+//         stone), for the next few in good view on desktops, within a triangle budget (not on phones)
 //   far   past ~11 m (7 m on phones) a coarser copy (~1/48 m, 1/32 on phones), built here from the
 //         coarse voxels the base model keeps, so a swarm across a cavern costs a quarter
 //
@@ -122,7 +122,7 @@ export class HiRes {
     // which see them only in arm's reach and one or two at a time)
     if (fx === 'low' || touch) {
       if (mem <= 3) return { near: null, mid: null, far };
-      return { near: { r: 2.6, max: 1, vox: 1 / 100, cells: mem <= 4 ? 3.5e6 : 6e6 }, mid: mem <= 4 ? null : { r: 4.2, max: 2, vox: 1 / 64, cells: 1.5e6, tris: 1.5e5 }, far };
+      return { near: { r: 2.6, max: 1, vox: 1 / 100, cells: mem <= 4 ? 3.5e6 : 6e6 }, mid: null, far }; // (phones: no mid copies, their density holds)
     }
     // (mid copies within a triangle budget: a cavern of dinos keeps its base models past it)
     return { near: { r: 6, max: 4, vox: 1 / 136, cells: 14e6 }, mid: { r: 11, max: 8, vox: 1 / 96, cells: 2.5e6, tris: 9e5 }, far };

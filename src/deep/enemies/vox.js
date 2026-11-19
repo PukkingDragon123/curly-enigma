@@ -156,17 +156,18 @@ export class VB {
    * voxels) that becomes the mesh origin. Returns the geometry with userData { vox, pivot, vs } for debris.
    */
   geo(px = 0, py = 0, pz = 0, vs = VS, kMax = REFINE_MAX) {
-    const g = this.geoLo(px, py, pz, vs, kMax);
+    // (also callable on a stand-in { list(), v } that only lists voxels: ui/itemVox.js's stills)
+    const g = VB.prototype.geoLo.call(this, px, py, pz, vs, kMax);
     // the near copy (./hires.js): the voxels as modelled, for a worker to build much finer with
     // surface detail (scales, cracked stone, fur, chitin); only models built under a skin style
-    if (HI.style && this.v.size) g.userData.hiSrc = { list: this.list(), pivot: [px, py, pz], vs, style: HI.style, seed: this.seed };
+    if (HI.style && this.v?.size) g.userData.hiSrc = { list: this.list(), pivot: [px, py, pz], vs, style: HI.style, seed: this.seed };
     return g;
   }
   geoLo(px = 0, py = 0, pz = 0, vs = VS, kMax = REFINE_MAX) {
     // refined to the shared voxel size (FINE): k × finer, the pivot and voxel size with it
     // (kMax: a level of detail: the kaiju keep an unrefined far copy)
     let k = Math.min(kMax, Math.max(1, Math.round(vs / FINE + 0.2))); // (+0.2: a 1/40 m kobold goes 3× on desktops)
-    if (k > 1 && this.v.size) {
+    if (k > 1 && this.v?.size) {
       let lo = 0, hi = 0;
       for (const kk of this.v.keys()) { const a = Math.min(kk & 255, (kk >> 8) & 255, (kk >> 16) & 255) - 128, b = Math.max(kk & 255, (kk >> 8) & 255, (kk >> 16) & 255) - 128; if (a < lo) lo = a; if (b > hi) hi = b; }
       while (k > 1 && Math.max(-lo, hi + 1) * k > 124) k--;
@@ -179,7 +180,7 @@ export class VB {
         while (k > 3 && (this.v.size * k * k > 2.4e4 || vs > 1 / 21)) k--; // (4× only for small and middling parts drawn at 1/24 m or finer: the big beasts' detail is their mid and near copies)
       }
     }
-    if (k > 1) {
+    if (k > 1 && this.v?.size) {
       // (the coarse voxels stay on it too: code that picks voxels by model coordinates uses them)
       const cl = this.list();
       const g = refine(this, k).geoLo(px * k, py * k, pz * k, vs / k, 1);
