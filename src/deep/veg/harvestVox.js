@@ -7,6 +7,9 @@
 //   sourceGeo(kind, stub, seed) → { geo, h (m), r (m) }
 import { VoxelGrid, meshGridGreedy } from '../../gfx/Voxel.js';
 import { shade, mixHex } from '../../core/util.js';
+import { VG } from './vox.js';
+import { rng } from './paint.js';
+import { bakeLight, groundBits, dew } from './finish.js'; // (wave 17) the cave plants' diorama pass
 
 export const HV = 1 / 64; // metres per voxel
 
@@ -137,29 +140,84 @@ function rootBundle(stub, seed) {
 }
 
 function glowcaps(stub, seed) {
-  const g = new VoxelGrid(30, 26, 30), c = 15;
-  g.ellipsoid(c, 1, c, 11, 2, 9, (x, y, z) => jit(0x4a6a2a, x, y, z, seed, 0.1)); // a moss pad
-  const caps = stub ? [[c - 2, c, 3, 3], [c + 4, c + 2, 2, 2]] : [[c, c, 14, 7], [c - 7, c + 3, 9, 5], [c + 7, c - 3, 10, 5], [c + 2, c + 7, 6, 3.5], [c - 5, c - 6, 7, 4]];
+  // (wave 17) a fuller clump: two big caps and their kin leaning out, ringed stalks, gills under a
+  // lit rim, pale spots, a glowing crown; companions (moss, pebbles, babies) come from dress()
+  const g = new VoxelGrid(34, 30, 34), c = 17;
+  g.ellipsoid(c, 1, c, 11, 2, 9, (x, y, z) => jit(0x3e6a2c, x, y, z, seed, 0.08)); // a moss pad
+  const caps = stub ? [[c - 2, c, 3, 3], [c + 4, c + 2, 2, 2], [c - 5, c - 4, 2, 1.6]]
+    : [[c, c, 16, 7], [c - 8, c + 3, 11, 5.4], [c + 7, c - 4, 12, 5.6], [c + 3, c + 8, 7, 3.6], [c - 5, c - 7, 8, 4], [c + 9, c + 5, 5, 2.6], [c - 10, c - 2, 4, 2.2]];
   caps.forEach(([x, z, h, r], i) => {
-    for (let y = 1; y < h; y++) g.set(x, y, z, y > h - 3 ? 0xe8f0e0 : 0xc8d8c0); // the stalk
-    if (!stub || r > 2.5) g.ellipsoid(x, h, z, r, r * 0.55, r, (X, Y, Z) => (Y < h - 1 ? -1 : (X + Z + Y) % 6 === 0 ? 0xcaffff : Y >= h + r * 0.35 ? 0x9ae8ff : jit(0x4ac0e8, X, Y, Z, seed + i, 0.05)));
+    const lx = (x - c) * 0.025, lz = (z - c) * 0.025; // the small ones lean away from the big one
+    for (let y = 1; y < h; y++) {
+      const X = x + lx * y, Z = z + lz * y, ring = r > 4 && y === Math.round(h * 0.7);
+      g.set(X, y, Z, ring ? 0xf4fff4 : y > h - 3 ? 0xe2eedc : y < 3 ? 0xa8b8a4 : 0xc8d8c0);
+      if (r > 5) g.set(X + 1, y, Z, y < 3 ? 0x98a894 : 0xb4c4ac); // the big ones' stalks are two wide
+      if (ring) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) g.set(X + dx, y, Z + dz, 0xe8f4e4);
+    }
+    if (stub && r <= 2.5) return;
+    const cx = x + lx * h, cz = z + lz * h;
+    g.ellipsoid(cx, h, cz, r, r * 0.6, r, (X, Y, Z) => {
+      if (Y < h - 1) return -1;
+      const d = Math.hypot(X - cx, Z - cz) / r, top = Y >= h + r * 0.38;
+      if (Y === h - 1) return d > 0.8 ? 0x9ef4ff : ((Math.round(Math.atan2(Z - cz, X - cx) * 4) & 1) ? 0x1e6a88 : 0x2e8aa8); // gills under a lit rim
+      if (hh(X >> 1, Y, Z >> 1, seed + i) < 0.1 && d < 0.8) return 0xe8ffff; // pale spots
+      if (top && d < 0.35) return 0xcaffff; // the glowing crown
+      return jit(top ? (X < cx ? 0x8ae4ff : 0x66cdf0) : d > 0.85 ? 0x7ad8f8 : X < cx ? 0x52c4ec : 0x3aa4d0, X, Y, Z, seed + i, 0.04);
+    });
   });
   return { g, pivot: [c, 0, c] };
 }
 
 function thymeTuft(stub, seed) {
-  const g = new VoxelGrid(28, 24, 28), c = 14;
+  // (wave 17) a woody little bush: wiry stems, paired leaves in two greens, lilac flower heads
+  const g = new VoxelGrid(30, 26, 30), c = 15;
   g.ellipsoid(c, 1, c, 8, 2, 7, (x, y, z) => jit(0x6a5a4a, x, y, z, seed, 0.1));
-  const n = stub ? 7 : 26;
+  const n = stub ? 7 : 30;
   for (let k = 0; k < n; k++) {
-    const a = hh(k, 1, 0, seed) * Math.PI * 2, lean = 0.15 + hh(k, 2, 0, seed) * 0.35, len = stub ? 3 : 10 + Math.round(hh(k, 3, 0, seed) * 10);
+    const a = hh(k, 1, 0, seed) * Math.PI * 2, lean = 0.15 + hh(k, 2, 0, seed) * 0.35, len = stub ? 3 : 9 + Math.round(hh(k, 3, 0, seed) * 11);
     for (let i = 0; i < len; i++) {
       const x = Math.round(c + Math.cos(a) * i * lean), z = Math.round(c + Math.sin(a) * i * lean);
-      g.set(x, 2 + i, z, i % 3 === 0 ? 0x8ab060 : 0x5a7a3a);
-      if (!stub && i > 3 && i % 2 === 0) g.set(x + 1, 2 + i, z, i > len - 3 ? 0xc8a0e0 : 0x7aa050); // little leaves; lilac flowers at the tips
+      g.set(x, 2 + i, z, i < 3 ? 0x6a4e34 : i % 3 === 0 ? 0x8ab060 : 0x5a7a3a); // woody at the foot
+      if (!stub && i > 2 && i % 2 === 0) {
+        const s2 = (i >> 1) & 1 ? 1 : -1;
+        g.set(x + s2, 2 + i, z, i > len - 3 ? 0xc8a0e0 : (k & 1 ? 0x7aa050 : 0x92b866)); // paired leaves
+        g.set(x - s2, 2 + i, z + 1, i > len - 3 ? 0xa078c8 : 0x4e6e34);
+      }
+    }
+    if (!stub && k % 3 === 0) { // a flower head: a lilac knot with a pale eye
+      const x = Math.round(c + Math.cos(a) * len * lean), z = Math.round(c + Math.sin(a) * len * lean), y = 2 + len;
+      g.set(x, y, z, 0xe8d0ff); g.set(x + 1, y, z, 0xb890e0); g.set(x, y, z + 1, 0xa880d8); g.set(x, y + 1, z, 0xd0b0f0);
     }
   }
   return { g, pivot: [c, 0, c] };
+}
+
+// ---- (wave 17) the diorama pass: companions round the floor finds and baked light on everything
+const MOSS = [0x0b261f, 0x123c28, 0x1a5833, 0x24763c, 0x379848, 0x5cbe5c, 0x9ce88a];
+const PEB = [0x26221e, 0x3a3530, 0x504a44, 0x68625a, 0x827b72, 0x9e968c, 0xbcb4a8];
+const CYAN = [0x082a32, 0x0d4650, 0x146c76, 0x209ca2, 0x48ccc8, 0x92eee2, 0xdcfff6];
+const STEM = [0x3a3040, 0x544a5a, 0x726876, 0x928896, 0xb2aab2, 0xd0caca, 0xeeeae6];
+const DRESS = { glowcaps: { buttons: CYAN, dew: 3 }, thyme: { sprouts: MOSS, dew: 3 }, bush: { dew: 2 }, nuts: {}, spores: { buttons: STEM }, salt: {}, nest: {} };
+function dress(b, kind, stub, seed) {
+  const D = DRESS[kind];
+  let { g, pivot } = b;
+  if (D) {
+    const pad = 6, s = g, v = new VG(s.w + pad * 2, s.h, s.d + pad * 2);
+    for (let z = 0; z < s.d; z++) for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) {
+      const q = s.data[x + s.w * (y + s.h * z)];
+      if (q) v.data[x + pad + v.w * (y + v.h * (z + pad))] = (q & 0xffffff) | (1 << 27);
+    }
+    const r = rng(seed * 7919 + kind.length * 131 + (stub ? 17 : 0)), cx = pivot[0] + pad, cz = pivot[2] + pad;
+    const half = Math.min(s.w, s.d) / 2;
+    groundBits(v, r, cx, cz, half * 0.7, half + pad - 1, { moss: MOSS, mossN: 2, peb: PEB, pebN: r.int(2, 3), roots: kind === 'bush' || kind === 'nuts' ? PEB : null, rootN: 2,
+      buttons: D.buttons && !stub ? [D.buttons, r.int(2, 3), false] : null, stemR: STEM, sprouts: D.sprouts || null, sproutN: 2 });
+    if (D.dew && !stub) dew(v, r, D.dew, 4);
+    g = new VoxelGrid(v.w, v.h, v.d);
+    for (let i = 0; i < v.data.length; i++) if (v.data[i]) g.data[i] = (v.data[i] & 0xffffff) | 0x1000000;
+    pivot = [pivot[0] + pad, pivot[1], pivot[2] + pad];
+  }
+  bakeLight(g, { flat: kind === 'comb', ground: kind !== 'roots' });
+  return { g, pivot };
 }
 
 const BUILD = { salt: saltRock, comb: honeycomb, nest: eggNest, bush: berryBush, nuts: (stub, seed) => berryBush(stub, seed, true), spores: sporePod, roots: rootBundle, glowcaps, thyme: thymeTuft };
@@ -169,7 +227,7 @@ const cache = new Map();
 export function sourceGeo(kind, stub = false, seed = 0) {
   const key = kind + '|' + (stub ? 1 : 0) + '|' + (seed & 3);
   if (cache.has(key)) return cache.get(key);
-  const b = (BUILD[kind] || saltRock)(stub, (seed & 3) + 1);
+  const b = dress((BUILD[kind] || saltRock)(stub, (seed & 3) + 1), BUILD[kind] ? kind : 'salt', stub, (seed & 3) + 1);
   const geo = meshGridGreedy(b.g, { scale: HV, pivot: b.pivot, shade: true });
   geo.computeBoundingSphere();
   geo.userData.shared = true;

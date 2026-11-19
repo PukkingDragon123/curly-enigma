@@ -126,7 +126,7 @@ export function floraOf(zone, bio, depth) {
 function floraTable(zone, bio, depth) {
   const T = floraBase(zone, bio, depth), near = depth < 6;
   // wave 17: every place grows its own random plants too (./grow.js), in its own palette
-  if (bio === 1) return withRandom(T, 'm', [['moss', 2.6], ['herb', 1.6], ['shroom', 1.4], ['creeper', 1.1], ['grass', 1.2], ['coral', 0.5], ['roots', 0.5], ['puff', 0.4]], [['curtain', 1.4]]);
+  if (bio === 1) return withRandom(T, 'm', [['moss', 2.4], ['herb', 1.1], ['shroom', 1.0], ['creeper', 0.9], ['grass', 1.0], ['coral', 0.5], ['roots', 0.5], ['puff', 0.5]], [['curtain', 1.4]]);
   if (bio === 2) return withRandom(T, 'd', [['lichen', 1.8], ['grass', 1.1], ['roots', 1], ['herb', 0.6], ['puff', 0.6], ['shroom', 0.5]]);
   if (bio === 3) return withRandom(T, 'f', [['coral', 1.8], ['shroom', 2.2], ['puff', 1.1], ['moss', 0.9], ['creeper', 0.9], ['lichen', 0.5]], [['curtain', 2.6]]);
   if (bio === 4) return withRandom(T, 'j', [['herb', 1.8], ['moss', 1.5], ['roots', 1], ['grass', 1.1], ['shroom', 0.6], ['creeper', 0.6]], [['curtain', 0.4]]);
@@ -142,10 +142,10 @@ function floraTable(zone, bio, depth) {
 function floraBase(zone, bio, depth) {
   const near = depth < 6; // close to the surface, a little light gets in: a few grass tufts
   if (bio === 1) return {
-    floor: [['mossGrass', 2.4], ['clover', 1.2], ['cloverGlow', 1.4], ['fern', 2.2], ['flowerCyan', 1.1], ['flowerViolet', 0.8], ['flowerPink', 0.3], ['fungusCyan', 1.6], ['mushTiny', 2], ['glowShroom', 1.2], ['toadstool', 0.8], ['brownCap', 0.8], ['litter', 0.3]],
+    floor: [['mossGrass', 2.4], ['clover', 1.2], ['cloverGlow', 1.4], ['fern', 2.2], ['flowerCyan', 0.75], ['flowerViolet', 0.55], ['flowerPink', 0.25], ['fungusCyan', 1.6], ['mushTiny', 2], ['glowShroom', 1.2], ['toadstool', 0.8], ['brownCap', 0.8], ['litter', 0.3]],
     ceil: [['vine', 5], ['vineBerry', 2], ['glowVine', 2], ['mossDrape', 3], ['roots', depth < 20 ? 1 : 0.2]],
     wall: [['wallMoss', 3], ['wallFern', 2.2], ['wallMush', 1.2]],
-    f: 0.75, c: 0.26, w: 0.12, rock: 0.75,
+    f: 0.68, c: 0.26, w: 0.12, rock: 0.75, // (wave 17: fuller clumps, a few less of them)
   };
   if (bio === 2) return {
     floor: [['pebbles', 3.5], ['dryGrass', 1], ['thorn', 1.3], ['stoneRose', 1.6], ['brownCap', 1], ['inkcap', 0.6]],
@@ -154,16 +154,16 @@ function floraBase(zone, bio, depth) {
     f: 0.2, c: 0.025, w: 0.035,
   };
   if (bio === 3) return {
-    floor: [['fungusGrass', 2.5], ['fungusViolet', 3], ['fungusCyan', 2.4], ['fungusBlue', 2], ['fungusPink', 1], ['puffballs', 2], ['glowShroom', 3], ['inkcap', 1.4], ['mushTiny', 2.4], ['toadstool', 1], ['flowerViolet', 0.5], ['fungusAmber', 0.7]],
+    floor: [['fungusGrass', 2.5], ['fungusViolet', 3], ['fungusCyan', 2.4], ['fungusBlue', 2], ['fungusPink', 1], ['puffballs', 2], ['glowShroom', 3], ['inkcap', 1.4], ['mushTiny', 2.4], ['toadstool', 1], ['flowerViolet', 0.35], ['fungusAmber', 0.7]],
     ceil: [['mycel', 3], ['mycelCyan', 1.5], ['glowVine', 0.8]],
     wall: [['wallFungus', 2], ['wallMush', 2], ['wallMoss', 0.4]],
-    f: 0.8, c: 0.12, w: 0.07, rock: 0.5,
+    f: 0.72, c: 0.12, w: 0.07, rock: 0.5,
   };
   if (bio === 4) return {
-    floor: [['giantFern', 1.6], ['fern', 3], ['horsetail', 2.4], ['grassTall', 1.2], ['grass', 0.8], ['clover', 1.2], ['litter', 1.6], ['flowerPink', 0.45], ['fungusBrown', 1], ['brownCap', 1], ['toadstool', 0.6], ['pebbles', 1]],
+    floor: [['giantFern', 1.6], ['fern', 3], ['horsetail', 2.4], ['grassTall', 1.2], ['grass', 0.8], ['clover', 1.2], ['litter', 1.6], ['flowerPink', 0.35], ['fungusBrown', 1], ['brownCap', 1], ['toadstool', 0.6], ['pebbles', 1]],
     ceil: [['vineDino', 4], ['roots', 1.4], ['vine', 1.2], ['glowVine', 0.6]],
     wall: [['wallFernDino', 2], ['wallFern', 2], ['wallBrown', 0.6]],
-    f: 0.75, c: 0.13, w: 0.08, rock: 0.65,
+    f: 0.7, c: 0.13, w: 0.08, rock: 0.65,
   };
   switch (zone) {
     case 1: return {
@@ -179,19 +179,19 @@ function floraBase(zone, bio, depth) {
       f: 0.3, c: 0.09, w: 0.055,
     };
     case 3: return {
-      floor: [['crystalGrass', 1.6], ['fungusCyan', 2], ['fungusBlue', 1.6], ['glowShroom', 1.8], ['mushTiny', 1.2], ['flowerCyan', 0.8], ['flowerViolet', 0.6], ['cloverGlow', 0.4], ['lichenCrystal', 1], ['pebbles', 1.6]],
+      floor: [['crystalGrass', 1.6], ['fungusCyan', 2], ['fungusBlue', 1.6], ['glowShroom', 1.8], ['mushTiny', 1.2], ['flowerCyan', 0.55], ['flowerViolet', 0.4], ['cloverGlow', 0.4], ['lichenCrystal', 1], ['pebbles', 1.6]],
       ceil: [['mycelCyan', 1.5], ['mycel', 0.5], ['glowVine', 0.8]],
       wall: [['wallLichenCrystal', 2], ['wallMush', 0.5]],
       f: 0.26, c: 0.05, w: 0.04,
     };
     case 4: return {
-      floor: [['ashWeed', 3], ['emberCap', 2.2], ['ashGrass', 1], ['flowerEmber', 0.8], ['pebbles', 1]],
+      floor: [['ashWeed', 3], ['emberCap', 2.2], ['ashGrass', 1], ['flowerEmber', 0.6], ['pebbles', 1]],
       ceil: [],
       wall: [],
       f: 0.18, c: 0, w: 0,
     };
     case 5: return {
-      floor: [['lichenFrost', 3], ['frostCap', 2], ['frostGrass', 1.2], ['flowerFrost', 0.7], ['pebbles', 1]],
+      floor: [['lichenFrost', 3], ['frostCap', 2], ['frostGrass', 1.2], ['flowerFrost', 0.5], ['pebbles', 1]],
       ceil: [['rime', 3]],
       wall: [['wallLichenFrost', 2]],
       f: 0.24, c: 0.08, w: 0.05,

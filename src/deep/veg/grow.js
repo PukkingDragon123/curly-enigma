@@ -191,7 +191,7 @@ function base(g, r, c, P, o = {}) {
 function herb(r, P) {
   const W = 45, H = 50, g = new VG(W, H, W), c = 22;
   const gram = r.int(0, 2), bloomKind = r.pick(['bell', 'star', 'spike', 'berry', 'orb']);
-  const leafW = r.int(3, 6), leafL = r.int(6, 11), glowy = r() < 0.65;
+  const leafW = r.int(4, 6), leafL = r.int(7, 12), glowy = r() < 0.65;
   const bloom = (s) => {
     const { x, y, z } = s, A = P.acc, G = P.glow;
     if (bloomKind === 'bell') { // a nodding bell: the stem hooks over, the bell hangs open and glows inside
@@ -220,12 +220,12 @@ function herb(r, P) {
   const stalks = gram === 2 ? r.int(2, 3) : 1;
   for (let k = 0; k < stalks; k++) {
     let str;
-    if (gram === 0) str = lsys('A', { A: (q) => (q() < 0.14 ? 'F[&&L][+&FA]/A' : 'F[&L]/A') }, r.int(5, 8), r);
+    if (gram === 0) str = lsys('A', { A: (q) => (q() < 0.14 ? 'F[&&L]F[+&FA]/A' : 'F[&L]F/A') }, r.int(4, 6), r);
     else if (gram === 1) str = lsys('FA', { A: (q) => (q() < 0.55 ? 'F[+&LA]/[-&LA]' : 'F[&L]/F[&LA]/A') }, r.int(3, 4), r);
     else str = lsys('FA', { A: (q) => (q() < 0.3 ? 'F[&L]/A' : 'FF/A') }, r.int(3, 5), r);
-    walk(g, str, { r, x: c + (k ? r.int(-4, 4) : 0), y: 1, z: c + (k ? r.int(-4, 4) : 0), th: 0.1 + r() * 0.25 + k * 0.15, ph: r() * TAU, a: 0.7, b: 0.5, step: gram === 1 ? 5 : 4.5, shrink: 0.85, w0: gram === 1 ? 3 : 2, wd: 0.8, trop: 0.18, stem: P.stem.map((v, i) => (i < 3 ? P.leaf[i + 1] : v)), H: 44, leaf, bloom });
+    walk(g, str, { r, x: c + (k ? r.int(-4, 4) : 0), y: 1, z: c + (k ? r.int(-4, 4) : 0), th: 0.1 + r() * 0.25 + k * 0.15, ph: r() * TAU, a: 0.7, b: 0.5, step: gram === 1 ? 5 : 3.6, shrink: 0.85, w0: gram === 1 ? 3 : 2, wd: 0.8, trop: 0.18, stem: P.stem.map((v, i) => (i < 3 ? P.leaf[i + 1] : v)), H: 44, leaf, bloom });
   }
-  base(g, r, c, P, { R: 13, rIn: 3, bits: [tone(P.acc, 4.6), r.int(3, 6), glowy], sprouts: r.int(1, 3), mossGlow: glowy && r() < 0.5 });
+  base(g, r, c, P, { R: 13, rIn: 3, bits: [tone(P.acc, 4.6), r.int(2, 4), glowy], sprouts: r.int(1, 3), mossGlow: glowy && r() < 0.5 });
   dew(g, r, r.int(3, 6), 4);
   return { g, pivot: [c, 0, c], mode: 'up' };
 }
@@ -250,7 +250,7 @@ function shroom(r, P) {
   const W = 47, H = 50, g = new VG(W, H, W), c = 23;
   const shape = r.pick(['dome', 'bell', 'cone', 'flat', 'umbo', 'funnel', 'dome', 'bell']);
   const C = r() < 0.7 ? P.cap : P.acc, glowy = r() < 0.7, spots = r() < 0.4 ? 0.06 + r() * 0.06 : 0;
-  const banded = !spots && glowy && r() < 0.3;
+  const banded = !spots && glowy && r() < 0.14;
   const n = r.int(3, 5), tall = 0.8 + r() * 0.6, lean = 0.1 + r() * 0.25;
   const caps = [];
   for (let i = 0; i < n; i++) {
@@ -268,7 +268,7 @@ function shroom(r, P) {
     const topY = cap(g, tx, h, tz, cr, ch, PROF[shape], C, { glow: glowy, seed: Math.round(m.x * 13 + m.z), spots, spotCol: r() < 0.5 ? 0xf6f0e6 : tone(P.acc, 6), bands: banded ? P.glow : null, gillGlow: glowy ? P.glow : null, hollow: shape === 'funnel' });
     if (m.k === 1 && r() < 0.7) g.set(tx + 1, topY, tz - 1, 0xeafcff, 1); // a dew bead on the crown
   }
-  base(g, r, c, P, { R: 15, rIn: 3, bits: [tone(C, 4.4), r.int(3, 7), glowy], buttons: r.int(1, 4), roots: r() < 0.5, mossGlow: glowy && r() < 0.6, glowy });
+  base(g, r, c, P, { R: 15, rIn: 3, bits: [tone(C, 4.4), r.int(2, 5), glowy], buttons: r.int(1, 4), roots: r() < 0.5, mossGlow: glowy && r() < 0.6, glowy });
   return { g, pivot: [c, 0, c], mode: 'up' };
 }
 
@@ -408,7 +408,7 @@ function grass(r, P) {
 
 /** Puffballs: a clutch of warty, lumpy balls, lit on top, one burst at the crown with a glowing spore haze. */
 function puff(r, P) {
-  const W = 37, g = new VG(W, 26, W), c = 18, C = r() < 0.6 ? P.peb.map((v, i) => P.stem[i] ?? v) : P.cap;
+  const W = 37, g = new VG(W, 26, W), c = 18, C = r() < 0.7 ? hramp(34 + (r() - 0.5) * 30, 0.3, 0.34, 0.97) : P.cap;
   const n = r.int(2, 6), burst = r.int(0, n - 1);
   for (let i = 0; i < n; i++) {
     const a = i * 2.4 + r(), d = i ? 4 + Math.sqrt(r()) * 8 : 0, x = c + Math.cos(a) * d, z = c + Math.sin(a) * d, rr = i ? 2 + r() * 2.6 : 4.5 + r() * 2, ry = rr * (0.8 + r() * 0.25);

@@ -41,7 +41,9 @@ const R_DROP = 19;
 // far chunks are planted from the half-resolution copies of the models (./veg/plants.js); a chunk
 // switches as the mole comes within LOD[0] m of its centre (fine) or goes past LOD[1] (coarse).
 // By tier: there a fine voxel (1/48–1/64 m) is a pixel or less.
-const LOD_BY_FX = { high: [10, 12], low: [6.5, 8.5], off: [5, 7] };
+// (wave 17: phones take the half-resolution copies from a few metres out: their richer models cost
+// boxes, and on a phone's small screen a fine voxel there is a pixel or less)
+const LOD_BY_FX = { high: [10, 12], low: [4.5, 6], off: [3.5, 5] };
 // wave 12: chunks within this many m of the eye plant the twice-as-fine copies (./veg/fine.js)
 // (wave 17: past ~4.5 m a fine voxel is under a pixel at 720 lines, so the richer models spend their
 // boxes where they show; phones, at their lower resolution, a couple of metres)
@@ -432,7 +434,7 @@ export class Vegetation {
     const kind = pickW(F.floor, h3(vx, vy, vz, S + 13) < 0.6 ? hc : h3(vx, vy, vz, S + 17));
     const K = KINDS[kind];
     if (!K) return;
-    if (K.amb && this.fxLevel && this.fxLevel !== 'high' && h3(vx, vy, vz, S + 19) < 0.5) return; // (wave 17) phones: half the ambient extras
+    if (this.lite() && h3(vx, vy, vz, S + 19) < (K.amb ? 0.5 : 0.22)) return; // (wave 17) phones: half the ambient extras, a fifth less of the rest
     if (this.blockedAt(c, x, y, z)) return;
     // room to stand in
     const at = c.at;
@@ -472,7 +474,7 @@ export class Vegetation {
     const kind = pickW(F.ceil, h3(vx, vy, vz, S + 53));
     const K = KINDS[kind];
     if (!K) return;
-    if (K.amb && this.fxLevel && this.fxLevel !== 'high' && h3(vx, vy, vz, S + 59) < 0.5) return; // (wave 17) phones: half the ambient extras
+    if (K.amb && this.lite() && h3(vx, vy, vz, S + 59) < 0.5) return; // (wave 17) phones: half the ambient extras
     if (this.blockedAt(c, x, y - 0.3, z)) return;
     // how far it may hang: leave headroom over the floor
     let free = 0;
@@ -512,6 +514,9 @@ export class Vegetation {
     this.plant(rec, { K, kind, r, x, y: y + (r() - 0.5) * 0.04, z, yaw: 0, nx: -dx, nz: -dz },
       vkey(vx + dx, vy, vz + dz), vkey(vx, vy, vz), this.gustOf(x, z));
   }
+
+  /** (wave 17) The simpler shader settings (phones): plant half the purely ambient extras. */
+  lite() { return (this.fxLevel || this.owner?.game?.engine?.fx || 'high') !== 'high'; }
 
   /** Gusts roll through the caves: the phase a plant at (x, z) feels them in (0..1). */
   gustOf(x, z) { const v = (x * 0.8 + z * 0.6) * 0.21; return v - Math.floor(v); }

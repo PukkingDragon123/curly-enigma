@@ -73,8 +73,8 @@ const wob = (seed, k = 0.1) => { const p1 = ph(seed, 1, 5) * TAU, p2 = ph(seed, 
 
 // ---------------------------------------------------------------- mushrooms
 export function lanterns(r, R) {
-  const W = 27, g = new VG(W, 34, W), c = 13, C = R.cyan, S = R.stem;
-  for (const m of spread(r, r.int(2, 4), c)) {
+  const W = 35, g = new VG(W, 34, W), c = 17, C = R.cyan, S = R.stem;
+  for (const m of spread(r, r.int(3, 6), c, 4, 12)) {
     const h = Math.round((m.big ? r.int(11, 15) : r.int(4, 8)) * (m.big ? 1 : 1)), cr = (m.big ? 4.4 : 2.4) * (0.9 + r() * 0.2), seed = m.x * 31 + m.z;
     const top = stalk(g, m.x, 0, m.z, h, m.big ? 2 : 1, (t, e) => tone(S, 3 + t * 1.5 + e * 0.5), 0, 0, (t) => (t > 0.85 ? 1 : 0));
     const w = wob(seed, 0.06), capH = cr * 1.45;
@@ -88,8 +88,8 @@ export function lanterns(r, R) {
 }
 
 export function witchHats(r, R) {
-  const W = 27, g = new VG(W, 36, W), c = 13, C = R.violet, S = R.stem;
-  for (const m of spread(r, r.int(2, 4), c)) {
+  const W = 35, g = new VG(W, 36, W), c = 17, C = R.violet, S = R.stem;
+  for (const m of spread(r, r.int(3, 5), c, 4, 12)) {
     const h = m.big ? r.int(6, 9) : r.int(2, 5), cr = m.big ? 4.2 : 2.2 + r() * 0.8, capH = cr * (2.2 + r() * 0.5);
     const top = stalk(g, m.x, 0, m.z, h, 1, (t) => tone(S, 2.6 + t * 1.6));
     const fa = r() * TAU, flop = cr * (0.9 + r() * 0.6), tw = r() * 2 + 2;
@@ -107,8 +107,8 @@ export function witchHats(r, R) {
 }
 
 export function frills(r, R) {
-  const W = 27, g = new VG(W, 28, W), c = 13, C = R.pink, S = R.stem;
-  for (const m of spread(r, r.int(1, 3), c, 5, 9)) {
+  const W = 33, g = new VG(W, 28, W), c = 16, C = R.pink, S = R.stem;
+  for (const m of spread(r, r.int(2, 4), c, 5, 11)) {
     const tiers = m.big ? r.int(3, 4) : 2, h = m.big ? r.int(14, 18) : r.int(6, 9);
     const top = stalk(g, m.x, 0, m.z, h, m.big ? 2 : 1, (t) => tone(S, 2.4 + t * 2));
     for (let i = 0; i < tiers; i++) {
@@ -127,8 +127,8 @@ export function frills(r, R) {
 }
 
 export function dotDomes(r, R) {
-  const W = 27, g = new VG(W, 24, W), c = 13, C = R.blue, S = R.stem;
-  for (const m of spread(r, r.int(2, 4), c)) {
+  const W = 35, g = new VG(W, 24, W), c = 17, C = R.blue, S = R.stem;
+  for (const m of spread(r, r.int(3, 6), c, 4, 12)) {
     const h = m.big ? r.int(6, 9) : r.int(2, 5), cr = m.big ? 5 : 2.4 + r() * 0.8, w = m.big ? 2 : 1;
     if (m.big) g.blob(m.x + 0.5, 1, m.z + 0.5, 2.4, 1.6, 2.4, () => tone(S, 3.4), 0, m.x, 0.15); // bulb foot
     const top = stalk(g, m.x, 0, m.z, h, w, (t) => tone(S, 3 + t * 1.4));
@@ -146,8 +146,8 @@ export function dotDomes(r, R) {
 }
 
 export function trumpets(r, R) {
-  const W = 25, g = new VG(W, 22, W), c = 12, C = R.amber;
-  for (const m of spread(r, r.int(3, 5), c, 3, 8)) {
+  const W = 33, g = new VG(W, 22, W), c = 16, C = R.amber;
+  for (const m of spread(r, r.int(4, 7), c, 3, 11)) {
     const H = m.big ? r.int(12, 15) : r.int(6, 9), cr = m.big ? 4.6 : 2.4 + r() * 0.8, wb = wob(m.x + m.z * 7, 0.16);
     // a funnel flaring from a narrow foot to a wavy, hollow cup; ridges (false gills) run down it
     lathe(g, m.x, 0, m.z, H, (hh, a) => (0.9 + (cr - 0.9) * Math.pow(hh, 1.6)) * (hh > 0.7 ? wb(a) : 1),
@@ -159,8 +159,8 @@ export function trumpets(r, R) {
 }
 
 export function porcini(r, R) {
-  const W = 25, g = new VG(W, 24, W), c = 12, C = R.brownCap, S = [0x4a4030, 0x6e624a, 0x948468, 0xb8a888, 0xd8caa8, 0xece0c0, 0xfaf2dc];
-  for (const m of spread(r, r.int(1, 3), c, 4.5, 8)) {
+  const W = 33, g = new VG(W, 24, W), c = 16, C = R.brownCap, S = [0x4a4030, 0x6e624a, 0x948468, 0xb8a888, 0xd8caa8, 0xece0c0, 0xfaf2dc];
+  for (const m of spread(r, r.int(2, 4), c, 5, 11)) {
     const H = m.big ? r.int(8, 11) : r.int(4, 6), sr = m.big ? 2.8 : 1.6, cr = m.big ? 5.4 : 3;
     // a fat club stem, netted
     lathe(g, m.x, 0, m.z, H, (hh) => sr * (1.25 - hh * 0.45) + 0.3, (hh, a) => ((Math.round(hh * H * 1.5) + Math.round(a * 4)) % 3 === 0 ? tone(S, 5.5) : tone(S, 3.4 + hh)));
@@ -173,8 +173,8 @@ export function porcini(r, R) {
 }
 
 export function parasols(r, R) {
-  const W = 29, g = new VG(W, 32, W), c = 14, C = R.brownCap, S = R.stem;
-  for (const m of spread(r, r.int(1, 2), c, 6, 10)) {
+  const W = 35, g = new VG(W, 32, W), c = 17, C = R.brownCap, S = R.stem;
+  for (const m of spread(r, r.int(2, 3), c, 6, 12)) {
     const H = m.big ? r.int(18, 24) : r.int(10, 13), cr = m.big ? 7 : 4;
     g.blob(m.x, 0.6, m.z, 1.8, 1.2, 1.8, () => tone(S, 3), 0, m.x, 0.1);
     const top = stalk(g, m.x, 0, m.z, H, 1, (t) => ((Math.round(t * H) % 3) === 0 ? tone(C, 2) : tone(S, 3.4 + t)));
@@ -187,8 +187,8 @@ export function parasols(r, R) {
 }
 
 export function toadstools(r, R) {
-  const W = 25, g = new VG(W, 24, W), c = 12, C = R.red, S = R.stem;
-  for (const m of spread(r, r.int(1, 3), c, 4, 8)) {
+  const W = 33, g = new VG(W, 24, W), c = 16, C = R.red, S = R.stem;
+  for (const m of spread(r, r.int(2, 4), c, 5, 11)) {
     const H = m.big ? r.int(8, 11) : r.int(4, 6), cr = m.big ? 5 : 2.8;
     // the cup at the foot, the stem, the skirt
     for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; g.set(m.x + Math.cos(a) * 1.8, 0, m.z + Math.sin(a) * 1.8, tone(S, 3)); if (i % 2) g.set(m.x + Math.cos(a) * 1.8, 1, m.z + Math.sin(a) * 1.8, tone(S, 4)); }
@@ -209,8 +209,8 @@ export function toadstools(r, R) {
 }
 
 export function shaggy(r, R) {
-  const W = 23, g = new VG(W, 30, W), c = 11, C = R.ink;
-  for (const m of spread(r, r.int(2, 4), c, 3, 7)) {
+  const W = 31, g = new VG(W, 30, W), c = 15, C = R.ink;
+  for (const m of spread(r, r.int(3, 5), c, 3, 10)) {
     const H = m.big ? r.int(6, 9) : r.int(3, 5), cr = m.big ? 3.2 : 2, capH = cr * (m.big ? 4 : 3.4);
     const top = stalk(g, m.x, 0, m.z, H, 1, (t) => tone(C, 5 + t));
     lathe(g, top[0], H - 1, top[2], capH, (hh) => cr * Math.sqrt(Math.max(0, 1 - Math.pow(Math.max(0, hh - 0.2) / 0.8, 3))) + 0.2,
@@ -227,8 +227,8 @@ export function shaggy(r, R) {
 
 export function glowStalks(r, R) {
   const C = r() < 0.33 ? R.violet : r() < 0.5 ? R.cyan : R.blue;
-  const W = 25, g = new VG(W, 40, W), c = 12, S = R.stem;
-  for (const m of spread(r, r.int(2, 3), c, 3, 7)) {
+  const W = 33, g = new VG(W, 40, W), c = 16, S = R.stem;
+  for (const m of spread(r, r.int(3, 5), c, 3, 10)) {
     const H = m.big ? r.int(18, 25) : r.int(8, 13), cr = m.big ? 4 : 2.6, lx = (r() - 0.5) * 0.25, lz = (r() - 0.5) * 0.25;
     const top = stalk(g, m.x, 0, m.z, H, 1, (t) => tone(S, 2.6 + t * 2), lx, lz, (t) => (Math.round(t * H) % 6 === 0 ? 1 : 0));
     const capH = cr * 0.95;
@@ -241,8 +241,8 @@ export function glowStalks(r, R) {
 
 export function bonnets(r, R) {
   const C = r() < 0.5 ? R.amber : r() < 0.6 ? R.cyan : R.brownCap, glow = C === R.brownCap ? 0 : 2;
-  const W = 19, g = new VG(W, 16, W), c = 9;
-  const n = r.int(6, 9);
+  const W = 23, g = new VG(W, 16, W), c = 11;
+  const n = r.int(8, 12);
   for (let i = 0; i < n; i++) {
     const a = (i / n) * TAU + r() * 0.5, out = 0.18 + r() * 0.2, H = r.int(5, 10);
     const top = stalk(g, c, 0, c, H, 1, (t) => tone(R.stem, 2.4 + t * 2.4), Math.cos(a) * out, Math.sin(a) * out);
@@ -255,8 +255,8 @@ export function bonnets(r, R) {
 }
 
 export function morels(r, R) {
-  const W = 23, g = new VG(W, 26, W), c = 11, C = R.ember, A = R.ash;
-  for (const m of spread(r, r.int(2, 4), c, 3, 7)) {
+  const W = 31, g = new VG(W, 26, W), c = 15, C = R.ember, A = R.ash;
+  for (const m of spread(r, r.int(3, 5), c, 3, 10)) {
     const H = m.big ? r.int(4, 6) : r.int(2, 4), cr = m.big ? 3.4 : 2.2, capH = cr * 2.6;
     const top = stalk(g, m.x, 0, m.z, H, m.big ? 2 : 1, (t) => tone(A, 4 + t));
     lathe(g, top[0], H, top[2], capH, (hh) => cr * Math.pow(Math.sin(Math.PI * Math.min(1, 0.25 + hh * 0.8)), 0.9) + 0.3,
@@ -272,8 +272,8 @@ export function morels(r, R) {
 }
 
 export function icicles(r, R) {
-  const W = 23, g = new VG(W, 26, W), c = 11, C = R.frost;
-  for (const m of spread(r, r.int(2, 4), c, 3, 7)) {
+  const W = 31, g = new VG(W, 26, W), c = 15, C = R.frost;
+  for (const m of spread(r, r.int(3, 5), c, 3, 10)) {
     const H = m.big ? r.int(7, 10) : r.int(3, 6), cr = m.big ? 4 : 2.4, capH = cr * 1.5;
     const top = stalk(g, m.x, 0, m.z, H, 1, (t) => tone(C, 3 + t * 2));
     lathe(g, top[0], H + 1, top[2], capH, (hh) => cr * Math.pow(1 - hh, 0.85) + 0.3,
@@ -284,8 +284,8 @@ export function icicles(r, R) {
 }
 
 export function earthstar(r, R) {
-  const W = 21, g = new VG(W, 10, W), c = 10, S = R.stem;
-  for (const m of spread(r, r.int(2, 4), c, 4, 7)) {
+  const W = 27, g = new VG(W, 10, W), c = 13, S = R.stem;
+  for (const m of spread(r, r.int(3, 5), c, 4, 10)) {
     const rr = m.big ? 2.6 : 1.5 + r() * 0.6;
     if (m.big || r() < 0.5) {
       // the star of split rays, tips curled up
@@ -353,8 +353,8 @@ export function crystalBloom(r, R, PET = R.violet, SR = R.fern) {
 
 /** Pitcher plants: veined tubes with a glowing lip and a lid leaf over the mouth. */
 export function pitchers(r, R, PET = R.pink, SR = R.vine) {
-  const W = 23, g = new VG(W, 26, W), c = 11;
-  for (const m of spread(r, r.int(2, 3), c, 4, 7)) {
+  const W = 29, g = new VG(W, 26, W), c = 14;
+  for (const m of spread(r, r.int(3, 4), c, 4, 10)) {
     const H = m.big ? r.int(14, 18) : r.int(8, 11), rr = m.big ? 2.8 : 2;
     lathe(g, m.x, 0, m.z, H, (hh) => rr * (0.55 + 0.45 * Math.sin(Math.PI * Math.min(1, hh * 1.1))) + (hh > 0.88 ? 0.8 : 0) + 0.2,
       (hh, a, d, rim, x, y, z) => (hh > 0.88 ? tone(PET, 6) : (Math.round(a * 4 + hh * 3) % 3 === 0) ? tone(PET, 2) : tone(SR, 2.5 + hh * 2.5 - (Math.cos(a) > 0.3 ? 0 : 0.6))),

@@ -76,7 +76,7 @@ export function fine2(g, pivot) {
       if (inPlaneOpen) {
         if (((u + w2) & 1) && hv < 0.55) cut.push(i); // toothed edge
         else paint.push(i, mul(v, 1.16)); // the light through its rim
-      } else if (((u - w2) % 4 + 4) % 4 === 0) paint.push(i, mul(v, 1.09)); // veins
+      } else if ((u & 3) === 0) paint.push(i, mul(v, 1.09)); // veins (wave 17: straight, so they pack into long boxes)
       else if (hv < 0.04) paint.push(i, mul(v, 0.85)); // a spot of rot
     } else if (nThin === 2) {
       if (open >= 5) paint.push(i, mul(v, 1.22)); // stem and blade tips

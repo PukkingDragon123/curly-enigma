@@ -685,6 +685,36 @@ function onWall(m) {
   return { g, pivot: [m.pivot[0], m.pivot[2], 0], mode: 'none' };
 }
 
+/**
+ * (wave 17) A clump instead of a lone stalk: the plant and one or two of its kin round it (each
+ * built afresh, so their heights, leans and blooms differ), merged into one model; the first one
+ * stands at the root and wins where they touch.
+ */
+function clump(build, r, o = {}) {
+  const n = 1 + (o.n ?? r.int(1, 2)), ms = [];
+  for (let i = 0; i < n; i++) {
+    const m = build(r), a = r() * Math.PI * 2, d = i ? (o.d0 ?? 6) + r() * ((o.d1 ?? 10) - (o.d0 ?? 6)) : 0;
+    ms.push({ m, ox: Math.round(Math.cos(a) * d), oz: Math.round(Math.sin(a) * d) });
+  }
+  let x0 = 0, x1 = 0, y1 = 0, z0 = 0, z1 = 0;
+  for (const { m, ox, oz } of ms) {
+    x0 = Math.min(x0, ox - m.pivot[0]); x1 = Math.max(x1, ox - m.pivot[0] + m.g.w);
+    z0 = Math.min(z0, oz - m.pivot[2]); z1 = Math.max(z1, oz - m.pivot[2] + m.g.d);
+    y1 = Math.max(y1, m.g.h - m.pivot[1]);
+  }
+  const g = new VG(x1 - x0, y1, z1 - z0), px = -x0, pz = -z0;
+  for (const { m, ox, oz } of ms) {
+    const s = m.g, bx = px + ox - m.pivot[0], by = -m.pivot[1], bz = pz + oz - m.pivot[2];
+    for (let z = 0; z < s.d; z++) for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) {
+      const v = s.data[x + s.w * (y + s.h * z)];
+      if (!v || y + by < 0) continue;
+      const i = x + bx + g.w * (y + by + g.h * (z + bz));
+      if (!g.data[i]) g.data[i] = v;
+    }
+  }
+  return { g, pivot: [px, 0, pz], mode: ms[0].m.mode };
+}
+
 // ---------------------------------------------------------------- the library
 /** Model builders by name: (r) → { g, pivot, mode }. A name may take one variant painter per call. */
 export const MODELS = {
@@ -726,11 +756,11 @@ export const MODELS = {
   mushTiny: (r) => SP.bonnets(r, R),
   emberCap: (r) => SP.morels(r, R),
   frostCap: (r) => SP.icicles(r, R),
-  flowerCyan: (r) => (r() < 0.55 ? SP.bellArch(r, R, R.cyan) : SP.lantern(r, R, R.cyan)),
-  flowerViolet: (r) => (r() < 0.65 ? SP.crystalBloom(r, R, R.violet) : flower(r, R.violet, 'spike')),
-  flowerPink: (r) => (r() < 0.6 ? SP.pitchers(r, R, R.pink) : flower(r, R.pink, 'star')),
-  flowerEmber: (r) => (r() < 0.6 ? SP.fireLily(r, R, R.ember, R.ash) : flower(r, R.ember, 'orb', { stem: R.ash })),
-  flowerFrost: (r) => (r() < 0.5 ? SP.crystalBloom(r, R, R.crystal, R.frost) : SP.bellArch(r, R, R.frost, R.frost)),
+  flowerCyan: (r) => clump((q) => (q() < 0.55 ? SP.bellArch(q, R, R.cyan) : SP.lantern(q, R, R.cyan)), r),
+  flowerViolet: (r) => clump((q) => (q() < 0.65 ? SP.crystalBloom(q, R, R.violet) : flower(q, R.violet, 'spike')), r),
+  flowerPink: (r) => clump((q) => (q() < 0.6 ? SP.pitchers(q, R, R.pink) : flower(q, R.pink, 'star')), r),
+  flowerEmber: (r) => clump((q) => (q() < 0.6 ? SP.fireLily(q, R, R.ember, R.ash) : flower(q, R.ember, 'orb', { stem: R.ash })), r),
+  flowerFrost: (r) => clump((q) => (q() < 0.5 ? SP.crystalBloom(q, R, R.crystal, R.frost) : SP.bellArch(q, R, R.frost, R.frost)), r),
   thorn,
   stoneRose,
   ashWeed,
@@ -793,7 +823,7 @@ function finishModel(m, name, r) {
     groundBits(m.g, r, m.pivot[0], m.pivot[2], rIn, R0, {
       moss: D.moss, mossN: D.small ? 1 : 2, mossGlow: D.mossGlow || (D.buttons && r() < 0.4 ? R.cyan : null),
       peb: D.peb, pebN: D.small ? r.int(0, 2) : r.int(1, 3),
-      bits: acc ? [acc.col, r.int(3, 6), acc.glow] : D.bits ? [tone(D.bits, 3 + r() * 2), r.int(2, 5), false] : null,
+      bits: acc ? [acc.col, r.int(2, 4), acc.glow] : D.bits ? [tone(D.bits, 3 + r() * 2), r.int(2, 5), false] : null,
       roots: D.roots, rootN: r.int(1, 3),
       buttons: D.buttons ? [acc && acc.glow ? R.cyan : R.brownCap, r.int(1, 3), !!(acc && acc.glow)] : null, stemR: R.stem,
       sprouts: D.sprouts, sproutN: r.int(1, 2),

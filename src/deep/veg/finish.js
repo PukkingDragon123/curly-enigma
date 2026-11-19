@@ -148,12 +148,12 @@ function bits(g, r, cx, cz, rIn, R, o) {
   if (o.bits) {
     const [col, n, gl] = o.bits;
     for (let i = 0; i < n; i++) {
-      const [x, z, a] = spot(1.05);
+      const [x, z, a] = spot(0.75);
       let y = 0;
       while (y < 3 && g.has(x, y, z)) y++;
       if (y >= 3) continue;
-      g.add(x, y, z, col, gl ? 1 : 0);
-      if (r() < 0.55) g.add(x + Math.round(Math.cos(a)), y, z + Math.round(Math.sin(a)), col, gl ? 1 : 0);
+      g.add(x, y, z, col, 0); // (a flake lying flat: two voxels along its fall)
+      if (r() < 0.7) g.add(x + Math.round(Math.cos(a)), y, z + Math.round(Math.sin(a)), hshift(col, 0.86), 0);
     }
   }
   // root fibres: thin brown strands running out from the foot, half sunk in the ground
