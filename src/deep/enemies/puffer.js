@@ -3,7 +3,7 @@
 // Step back while it inflates; whack it while it's deflated and wobbly.
 import { Enemy, smooth, easeBack } from './base.js';
 import { VB, VS, mix, mul, c01 } from './vox.js';
-import { H, taper, eye, hramp, lit, vnoise } from './voxKit.js';
+import { H, taper, hramp, lit, vnoise } from './voxKit.js';
 import { socketEye, mouth, nostrils } from './face.js';
 import { spores, puff, sparkle, quills } from './fx.js';
 import { rand, clamp } from '../../core/util.js';

@@ -288,3 +288,23 @@ export function gloss(vb, o = {}) {
   for (let i = 0; i < out.length; i += 4) vb.set(out[i], out[i + 1], out[i + 2], out[i + 3]);
   return vb;
 }
+
+/**
+ * Chisel an ellipsoidal lump (centre, radii as drawn) into a faceted rock: n planes at seeded tilts
+ * shave its caps flat (k: how far out each plane sits, 0..1 of the radius), so a boulder reads as
+ * broken stone, not a ball. Voxels of other lumps inside the shaved caps go too (the cut is clean).
+ */
+export function facet(vb, cx, cy, cz, rx, ry, rz, n = 5, seed = 0, k = 0.74) {
+  const dirs = [];
+  for (let i = 0; i < n; i++) {
+    const u = h3(i, 3, 7, seed) * 2 - 1, a = h3(i, 5, 1, seed) * Math.PI * 2, r = Math.sqrt(1 - u * u);
+    dirs.push([Math.cos(a) * r, u * 0.8 + (i === 0 ? 0.6 : 0), Math.sin(a) * r, k + (h3(i, 9, 2, seed) - 0.5) * 0.12]);
+  }
+  for (let z = Math.floor(cz - rz - 1); z <= Math.ceil(cz + rz + 1); z++) for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++) for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
+    if (!vb.has(x, y, z)) continue;
+    const ux = (x + 0.5 - cx) / rx, uy = (y + 0.5 - cy) / ry, uz = (z + 0.5 - cz) / rz;
+    if (ux * ux + uy * uy + uz * uz > 1.05) continue;
+    for (const [dx, dy, dz, kk] of dirs) { const l = Math.hypot(dx, dy, dz); if ((ux * dx + uy * dy + uz * dz) / l > kk) { vb.del(x, y, z); break; } }
+  }
+  return vb;
+}

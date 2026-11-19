@@ -14,6 +14,8 @@ import { VG, tone, dir8, DIR8, boxify, down2 } from './vox.js';
 import { rng, ph } from './paint.js';
 import { RES12 } from '../../gfx/voxRes.js';
 import * as SP from './shrooms.js'; // (wave 16) one design per mushroom and flower species
+import { RMODELS } from './grow.js'; // (wave 17) random plants: L-system herbs, coral, moss, lichen, curtains...
+import { bakeLight, padFor, accentOf, groundBits, dew } from './finish.js'; // (wave 17) the diorama pass
 
 // ---------------------------------------------------------------- ramps (dark → light)
 export const RAMP = {
@@ -755,7 +757,52 @@ export const MODELS = {
   wallLichenFrost: (r) => onWall(lichen(r, R.frost)),
   wallLichenCrystal: (r) => onWall(lichen(r, R.crystal, { speck: 0xe8fbff, glow: 3 })),
   wallStar: (r) => onWall(starMoss(r)),
+  ...RMODELS, // (wave 17) `${base}_${place}`: grown from a seed, every variant different (./grow.js)
 };
+
+// ---------------------------------------------------------------- the diorama pass (wave 17)
+// Every hand-designed plant gets companions at its foot (moss cushion, pebbles, fallen petals or
+// cap crumbs in its own colour, root fibres, baby buttons, sprouts), dew on its leaves, and baked
+// light: AO with cool shadows and warm sky-lit tops (./finish.js). The generated ones (./grow.js)
+// bring their own companions and only take the light.
+const SHROOMS = /^(fungus(Cyan|Violet|Pink|Blue|Amber|Brown)|brownCap|toadstool|inkcap|glowShroom|mushTiny|puffballs)$/;
+const GRASSES = /^(grass|grassTall|mossGrass|paleGrass|dryGrass|frostGrass|crystalGrass|ashGrass|voidGrass|fungusGrass)$/;
+function dressOf(name) {
+  if (name.includes('_')) return null;
+  if (SHROOMS.test(name)) return { moss: R.moss, peb: R.pebble, buttons: true, bits: 'acc', roots: R.root, dew: 2 };
+  if (name === 'emberCap' || name === 'flowerEmber' || name === 'ashWeed') return { moss: R.ash, mossGlow: R.ember, peb: R.ash, bits: 'acc', buttons: name === 'emberCap', dew: 0 };
+  if (name === 'frostCap' || name === 'flowerFrost') return { moss: R.frost, peb: R.frost, bits: 'acc', buttons: name === 'frostCap', dew: 3 };
+  if (/^flower/.test(name)) return { moss: R.moss, peb: R.pebble, bits: 'acc', sprouts: R.vine, dew: 3 };
+  if (name === 'fern' || name === 'fernPale' || name === 'horsetail') return { moss: R.moss, peb: R.pebble, bits: R.dry, sprouts: R.fern, roots: R.root, dew: 4 };
+  if (GRASSES.test(name)) return { moss: name === 'grass' || name === 'grassTall' || name === 'mossGrass' ? R.moss : null, peb: name === 'frostGrass' ? R.frost : name === 'ashGrass' ? R.ash : R.pebble, small: true, dew: name === 'ashGrass' ? 0 : 2 };
+  if (name === 'thorn' || name === 'stoneRose') return { peb: R.pebble, bits: R.dry, roots: R.root, dew: 1 };
+  if (name === 'voidTendril') return { moss: R.void, mossGlow: R.void, peb: R.ash, dew: 0 };
+  return null;
+}
+/** Finish a model: dress its foot, dew, bake the light. r: its own seeded random (the worker repeats it). */
+function finishModel(m, name, r) {
+  const D = m.mode === 'up' ? dressOf(name) : null;
+  if (D) {
+    // the plant's foot: how far its lowest voxels reach from the root
+    const s = m.g, [px, , pz] = m.pivot;
+    let foot = 1;
+    for (let z = 0; z < s.d; z++) for (let y = 0; y < Math.min(3, s.h); y++) for (let x = 0; x < s.w; x++) if (s.data[x + s.w * (y + s.h * z)]) foot = Math.max(foot, Math.hypot(x - px, z - pz));
+    const rIn = Math.min(6, foot * 0.55), R0 = Math.min(D.small ? 9 : 14, Math.max(rIn + (D.small ? 4 : 6), foot + (D.small ? 1 : 3)));
+    m = padFor(m, R0);
+    const acc = D.bits === 'acc' ? accentOf(m.g) : null;
+    groundBits(m.g, r, m.pivot[0], m.pivot[2], rIn, R0, {
+      moss: D.moss, mossN: D.small ? 1 : 2, mossGlow: D.mossGlow || (D.buttons && r() < 0.4 ? R.cyan : null),
+      peb: D.peb, pebN: D.small ? r.int(0, 2) : r.int(1, 3),
+      bits: acc ? [acc.col, r.int(3, 6), acc.glow] : D.bits ? [tone(D.bits, 3 + r() * 2), r.int(2, 5), false] : null,
+      roots: D.roots, rootN: r.int(1, 3),
+      buttons: D.buttons ? [acc && acc.glow ? R.cyan : R.brownCap, r.int(1, 3), !!(acc && acc.glow)] : null, stemR: R.stem,
+      sprouts: D.sprouts, sproutN: r.int(1, 2),
+    });
+    if (D.dew) dew(m.g, r, D.dew + r.int(0, 2), 3);
+  }
+  bakeLight(m.g, { glowOf: (v) => (v >>> 24) & 3, flat: m.mode === 'none', warm: m.mode === 'down' ? 0.4 : 1 });
+  return m;
+}
 
 // ---------------------------------------------------------------- protos (built once, cached)
 const PROTOS = new Map(); // name → { list, want }
@@ -782,7 +829,7 @@ function buildOne(name, i) {
 export function modelOf(name, i) {
   let hsh = 9001 + i * 7919;
   for (let k = 0; k < name.length; k++) hsh = Math.imul(hsh ^ name.charCodeAt(k), 16777619);
-  return MODELS[name](rng(hsh));
+  return finishModel(MODELS[name](rng(hsh)), name, rng(hsh ^ 0x2545f491));
 }
 // ---- the fine copies (wave 12): Vegetation hands in the asker (./fineAsk.js, a worker), so the
 // worker itself, which builds from this module, never starts one

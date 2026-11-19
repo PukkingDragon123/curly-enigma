@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { Enemy, smooth, easeBack, TAU } from './base.js';
 import { VB, VS, mul, mix, c01, ramp } from './vox.js';
-import { H, eye, tufts, taper, hramp, lit, vnoise, bake } from './voxKit.js';
+import { H, eye, tufts, taper, hramp, lit, vnoise, bake, facet } from './voxKit.js';
 import { socketEye, mouth } from './face.js';
 import { shockRing, puff, pebbles, sparkle } from './fx.js';
 import { MAT, M } from '../materials.js';
@@ -43,9 +43,9 @@ export function buildMimic(pal, zone, seed) {
   const TT = hramp(T[2], 6, { step: 0.1 });
   const body = new VB(seed);
   const shadeAt = lit(TT, { clump: 0.25, cs: 4, seed });
-  body.ell(0, 8.8, 0, 11.2, 8.8, 10.4, shadeAt);
-  body.ell(5, 13, -3, 5.4, 4.6, 5.4, shadeAt); // lumps
-  body.ell(-6, 11, 2, 4.6, 4.2, 4.6, shadeAt);
+  body.ell(0, 8.8, 0, 11.2, 8.8, 10.4, shadeAt); facet(body, 0, 8.8, 0, 11.2, 8.8, 10.4, 5, seed + 1, 0.8);
+  body.ell(5, 13, -3, 5.4, 4.6, 5.4, shadeAt); facet(body, 5, 13, -3, 5.4, 4.6, 5.4, 3, seed + 2); // lumps
+  body.ell(-6, 11, 2, 4.6, 4.2, 4.6, shadeAt); facet(body, -6, 11, 2, 4.6, 4.2, 4.6, 3, seed + 3);
   body.ell(-1, 15.5, -4, 5, 2.4, 4.4, shadeAt);
   const fr = (x, y) => { for (let z = 16; z > -16; z--) if (body.has(x, y, z)) return z; return 0; };
   // the crystal on its flank (in the rock's accent colour)
@@ -238,12 +238,14 @@ export function buildGolem(pal, zone, seed) {
   };
   const torso = new VB(seed), glow = new VB(seed + 5);
   // boulders: the chest, the belly, shoulders, the head, a hump behind
-  torso.ell(0, 17, -1, 18, 15, 13, sh(torso, 0));
-  torso.ell(0, 6, 2, 13, 8, 10, sh(torso, 2));
-  torso.ell(15, 26, 0, 9, 8.4, 9, sh(torso, 3));
-  torso.ell(-15, 26, 0, 9, 8.4, 9, sh(torso, 4));
-  torso.ell(0, 28, -8, 11, 7, 7, sh(torso, 1));
-  torso.ell(0, 27, 11, 10.5, 8.6, 8.6, sh(torso, 5)); // head
+  // (wave 17) each boulder chiselled into broken facets after it's placed (no balls)
+  const stoneLump = (vb, x, y, z, rx, ry, rz, off, n = 5) => { vb.ell(x, y, z, rx, ry, rz, sh(vb, off)); facet(vb, x, y, z, rx, ry, rz, n, seed + off * 7 + x); };
+  stoneLump(torso, 0, 17, -1, 18, 15, 13, 0, 6);
+  stoneLump(torso, 0, 6, 2, 13, 8, 10, 2);
+  stoneLump(torso, 15, 26, 0, 9, 8.4, 9, 3);
+  stoneLump(torso, -15, 26, 0, 9, 8.4, 9, 4);
+  stoneLump(torso, 0, 28, -8, 11, 7, 7, 1);
+  torso.ell(0, 27, 11, 10.5, 8.6, 8.6, sh(torso, 5)); facet(torso, 0, 27, 11, 10.5, 8.6, 8.6, 4, seed + 5, 0.82); // head
   torso.box(-7, 19, 14, 6, 21, 19, sh(torso, 5)); // jaw slab
   // pebbles chinked into the seams
   for (let i = 0; i < 22; i++) { const h = torso.hitFrom(rand(-16, 16), rand(4, 30), 30, 0, 0, -1); if (h) torso.ell(h[0], h[1], h[2], 1.4, 1.2, 1.4, ramp(T, torso.n(i, 1, 1) * 0.6)); }
@@ -279,14 +281,14 @@ export function buildGolem(pal, zone, seed) {
   bake(torso, { ao: 0.4, rim: 0.22 });
   // legs (pivot at the hip): a pillar of two stones and toe pebbles
   const leg = new VB(seed + 2);
-  leg.ell(0, -6, 0, 6.8, 8, 6.8, (x, y, z, nx, ny, nz) => mul(sh(leg, 1)(x, y, z, nx, ny, nz), 0.88));
+  leg.ell(0, -6, 0, 6.8, 8, 6.8, (x, y, z, nx, ny, nz) => mul(sh(leg, 1)(x, y, z, nx, ny, nz), 0.88)); facet(leg, 0, -6, 0, 6.8, 8, 6.8, 5, seed + 21);
   leg.ell(0, -11.5, 1, 7.2, 3, 8, (x, y, z, nx, ny, nz) => mul(sh(leg, 3)(x, y, z, nx, ny, nz), 0.8));
   for (const dx of [-4, 0, 4]) leg.ell(dx, -12.6, 8, 2, 1.6, 2, mul(ramp(T, 0.3), 0.85));
   // arms (pivot at the shoulder): a boulder upper arm, a pebble elbow, a big knuckled fist
   const arm = new VB(seed + 3);
-  arm.ell(1, -6, 0, 5.4, 7, 5.2, sh(arm, 2));
+  stoneLump(arm, 1, -6, 0, 5.4, 7, 5.2, 2);
   arm.ell(1.5, -13, 0.5, 3, 2.6, 3, sh(arm, 4));
-  arm.ell(3, -21, 2, 8.8, 8.4, 8.8, sh(arm, 1));
+  stoneLump(arm, 3, -21, 2, 8.8, 8.4, 8.8, 1, 4);
   for (let x = -3; x <= 9; x++) for (const y of [-19, -23]) arm.set(x, y, front(arm, x, y), mul(T[0], 0.65)); // knuckle grooves
   for (const x of [-1, 3, 7]) for (let y = -22; y <= -20; y++) arm.set(x, y, front(arm, x, y), mul(T[0], 0.7));
   bake(leg, { ao: 0.35, rim: 0.2 }); bake(arm, { ao: 0.35, rim: 0.2 });

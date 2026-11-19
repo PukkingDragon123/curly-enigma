@@ -4,18 +4,13 @@
 // Same interfaces and pivots (in VS units) as the old builders in ./critters.js; `v` picks a
 // seeded variant (markings, accessories) where the class asks for one.
 import { VB, mul, mix, c01 } from './vox.js';
-import { H, taper, eye, hramp, lit, bake, clumps, gloss } from './voxKit.js';
+import { H, taper, hramp, lit, bake, clumps, gloss } from './voxKit.js';
 import { socketEye, mouth, nostrils } from './face.js';
 import { clamp } from '../../core/util.js';
 
 /** Mesh at H; the pivot is given in VS units (as the classes place parts). */
 const V = (vb, px = 0, py = 0, pz = 0) => vb.geo(px * 2, py * 2, pz * 2, H);
 const INK = 0x140a10, GLINT = 0xffffff;
-/** A tiny beady eye (2 × 2 dark, a glint top-left) on the surface facing +z at (x, y). */
-function bead(vb, x, y, z, col = INK) {
-  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) vb.set(x + dx, y + dy, z, col);
-  vb.set(x, y + 1, z + 1, GLINT);
-}
 const front = (vb, x, y, z0 = 30, z1 = -30) => { for (let z = z0; z > z1; z--) if (vb.has(x, y, z)) return z; return 0; };
 
 // ------------------------------------------------------------------ earthworm
@@ -115,7 +110,12 @@ export function buildBeetle() {
   b.ell(0, 0.2, 5, 3.4, 2.4, 2.4, lit(head));
   b.ell(0, -0.2, 7.4, 2.6, 2.4, 2.2, lit(head, { bias: 0.08 }));
   b.ell(0, -1.4, -0.5, 3.6, 1.6, 5, lit(head, { bias: -0.1 })); // underside
-  for (const sd of [1, -1]) for (let i = 0; i < 3; i++) taper(b, sd * 2.6, -1.6, 3 - i * 3, sd * 4.8, -3.4, 3.6 - i * 3.4, 0.7, 0.5, head[1]); // legs
+  for (const sd of [1, -1]) for (let i = 0; i < 3; i++) { // legs: femur out and up, a knee, the tibia down to a hooked tarsus
+    const z = 3 - i * 3;
+    taper(b, sd * 2.6, -1.4, z, sd * 4.8, -0.4, z + 0.3, 0.9, 0.7, head[2]);
+    taper(b, sd * 4.8, -0.4, z + 0.3, sd * 5.6, -3.4, z + 0.8 - i * 0.4, 0.7, 0.45, head[1]);
+    b.set(Math.round(sd * 5.6 - (sd < 0 ? 1 : 0)), -4, Math.round(z + 1.4 - i * 0.4), 0xc8b890);
+  }
   gloss(b, { k: 0.55, min: 0.8, filter: (x, y, z) => z < 4 });
   bake(b, { ao: 0.35, rim: 0.2 });
   // (no simple face) faceted compound eyes set into the head's sides, a clypeus plate, curved
@@ -322,9 +322,11 @@ export function buildSpider() {
     const b = new VB(182);
     for (const sd of [1, -1]) for (let i = 0; i < 4; i++) {
       const z = 3 - i * 2.2, lift = (i + f) % 2 ? 2 : 0, X = (x) => sd * x, kz = z + (i - 1.5) * 1.2;
-      taper(b, X(2.6), 4.4, z, X(7), 8 + lift, kz, 1.1, 0.9, D[2]);
-      b.ell(X(7), 8 + lift, kz, 1.2, 1.2, 1.2, C[3]); // a crystal knee
-      taper(b, X(7), 8 + lift, kz, X(10.5), 0 + lift * 0.6, z + (i - 1.5) * 2.2, 0.9, 0.5, (x, y, zz, t) => (t > 0.7 ? C[4] : D[1]));
+      // (no stick legs) a thick hairy femur, a faceted crystal knee, a tapering tibia, a hooked tip
+      taper(b, X(2.6), 4.4, z, X(7), 8 + lift, kz, 1.6, 1.2, D[2]);
+      b.ell(X(7), 8.4 + lift, kz, 1.5, 1.6, 1.5, (x, y, zz, nx, ny) => (ny > 0.3 ? C[4] : C[2])); // a crystal knee
+      taper(b, X(7), 8 + lift, kz, X(9.6), 2 + lift * 0.6, z + (i - 1.5) * 2, 1.2, 0.8, (x, y, zz, t) => (t < 0.15 ? C[3] : D[1]));
+      taper(b, X(9.6), 2 + lift * 0.6, z + (i - 1.5) * 2, X(10.4), lift * 0.6, z + (i - 1.5) * 2.2 + 0.6, 0.7, 0.4, C[4]);
     }
     return V(b);
   });

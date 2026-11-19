@@ -43,7 +43,9 @@ const R_DROP = 19;
 // By tier: there a fine voxel (1/48–1/64 m) is a pixel or less.
 const LOD_BY_FX = { high: [10, 12], low: [6.5, 8.5], off: [5, 7] };
 // wave 12: chunks within this many m of the eye plant the twice-as-fine copies (./veg/fine.js)
-const FINE_BY_FX = { high: 6.5, low: 3.5, off: 0 };
+// (wave 17: past ~4.5 m a fine voxel is under a pixel at 720 lines, so the richer models spend their
+// boxes where they show; phones, at their lower resolution, a couple of metres)
+const FINE_BY_FX = { high: 4.5, low: 2.5, off: 0 };
 const STEP = 3; // floor / ceiling placement grid (voxels)
 const WSTEP = 4; // wall placement grid (voxels)
 const M1 = CS - 1;
@@ -430,6 +432,7 @@ export class Vegetation {
     const kind = pickW(F.floor, h3(vx, vy, vz, S + 13) < 0.6 ? hc : h3(vx, vy, vz, S + 17));
     const K = KINDS[kind];
     if (!K) return;
+    if (K.amb && this.fxLevel && this.fxLevel !== 'high' && h3(vx, vy, vz, S + 19) < 0.5) return; // (wave 17) phones: half the ambient extras
     if (this.blockedAt(c, x, y, z)) return;
     // room to stand in
     const at = c.at;
@@ -469,6 +472,7 @@ export class Vegetation {
     const kind = pickW(F.ceil, h3(vx, vy, vz, S + 53));
     const K = KINDS[kind];
     if (!K) return;
+    if (K.amb && this.fxLevel && this.fxLevel !== 'high' && h3(vx, vy, vz, S + 59) < 0.5) return; // (wave 17) phones: half the ambient extras
     if (this.blockedAt(c, x, y - 0.3, z)) return;
     // how far it may hang: leave headroom over the floor
     let free = 0;

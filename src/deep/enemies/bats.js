@@ -41,7 +41,7 @@ export function buildBat() {
     taper(b, 0, 2.6, 6.6, 0, 5.8, 6.4, 1.2, 0.35, (x, y, z, t) => (t > 0.75 ? EAR[2] : Math.abs(x + 0.5) > 0.6 ? EAR[0] : EAR[1]));
     nostrils(b, 0, 2.4, 1.8, { r: 0.55, col: 0x1a0a12, rim: EAR[1] });
     mouth(b, 0, 0.4, { w: 4.8, h: 2.4, d: 2, curve: 0.2, gap: 1, fangs: [-0.6, 0.6], fang: 2, lower: true, tooth: 0xf4eef0, gum: 0xa04060, throat: 0x1a0610, tongue: 0xe06a8a, lip: FR[1] });
-    for (const sd of [1, -1]) socketEye(b, ev, sd * 1.9, 3.8, sd, { r: 1.5, depth: 0.4, glow: true, iris: 0xff5a8a, pupil: 0x3a0a1a, slit: true, pr: 0.5, lid: 0.22, tilt: 0.4, skin: FR[2], brow: FR[4], browR: 0.8 });
+    for (const sd of [1, -1]) socketEye(b, ev, sd * 1.9, 3.9, sd, { r: 1.25, depth: 0.45, iris: 0xff5a8a, pupil: 0x1a0410, slit: true, pr: 0.55, ir: 0.55, sclera: 0x3a2030, lid: 0.26, tilt: 0.45, skin: FR[2], brow: FR[4], browR: 0.8 }); // (dark beady balls, a pink ring: no red visor)
     return b;
   };
   /** One wing (sd = 1 right, -1 left) raised to angle a (radians up from level). */

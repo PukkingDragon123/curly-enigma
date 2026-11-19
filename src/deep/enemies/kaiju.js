@@ -22,6 +22,7 @@ import * as THREE from 'three';
 import { Enemy, TAU, wrapA, smooth } from './base.js';
 import { VB, mul, mix, c01 } from './vox.js';
 import { vnoise, bake } from './voxKit.js';
+import { socketEye } from './face.js';
 import { h3 } from '../noise.js';
 import { puff, sparkle, shockRing, pebbles, spores } from './fx.js';
 import { airAbove, solidAt } from './physics.js';
@@ -173,10 +174,10 @@ const TITAN_PARTS = {
     const jaw = new VB(504);
     jaw.ell(0, -1.6, 4, 5.2, 2.2, 5.5, stone(jaw, P, 0.3));
     for (const sd of [1, -1]) jaw.cap(sd * 3.5, -0.5, 7.5, sd * 4, 3.5, 8.5, 0.9, (x, y, zz, tt) => P.tusk[tt > 0.5 ? 1 : 0]); // tusks
+    // (no simple face) glowing eyes deep in sockets under the brow, a scowling lid; a carved maw of
+    // stone teeth between the snout and the jaw
     const eyes = new VB(505);
-    for (const sd of [1, -1]) eyes.box(sd > 0 ? 2 : -4, 1, 9, sd > 0 ? 3 : -3, 2, 9, C[4]);
-    eyes.set(2, 2, 9, 0xffffff); eyes.set(-4, 2, 9, 0xffffff); // glints
-    for (const sd of [1, -1]) for (let x = 0; x < 4; x++) eyes.set((sd > 0 ? 1 : -5) + x, 3, 9, P.seam); // (wave 17) a scowling lid over each
+    for (const sd of [1, -1]) socketEye(h, eyes, sd * 2.8, 1.6, sd, { r: 1.4, depth: 0.6, glow: true, iris: C[3], pupil: C[0], slit: true, pr: 0.4, lid: 0.3, tilt: 0.5, skin: P.s[2], brow: P.s[1], browR: 1 });
     return { head: two(h), jaw: two(jaw), eyes: two(eyes) };
   },
   arm(z) {

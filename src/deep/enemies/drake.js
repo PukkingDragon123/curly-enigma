@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { Legs, Chain, look } from './rig.js';
 import { vnoise } from './voxKit.js';
+import { socketEye } from './face.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
 import { puff, sparkle } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
@@ -50,15 +51,15 @@ export function buildDrake(zone) {
     head.cap(sd * 4 - (sd < 0 ? 1 : 0), 1, -1, sd * 6 - (sd < 0 ? 1 : 0), 1.6, -3.4, 0.7, L.horn); // cheek spikes
   }
   head.set(-2, 1, 9, 0x140a08); head.set(1, 1, 9, 0x140a08); head.set(-2, 1, 10, 0x140a08); head.set(1, 1, 10, 0x140a08); // nostrils
-  const eyeAt = [];
-  for (const sd of [1, -1]) { const h = head.hitFrom(sd * 2.4 - (sd < 0 ? 1 : 0), 2.6, 14, sd * -0.15, 0, -1); if (h) { eyeAt.push(h); head.set(...h, 0x100808); } }
   const jaw = new VB(105);
   jaw.ell(0, -0.8, 4.5, 2.3, 1, 3.6, (x, y, z, nx, ny) => (ny < -0.2 ? L.belly[0] : S[1]));
   for (let z = 2; z <= 8; z += 2) for (const sd of [1, -1]) jaw.set(sd > 0 ? 1 : -2, 0, z, 0xfff4e0);
+  // (no simple face) glowing slit-pupilled eyes seated in sockets under horned brow ridges that dip
+  // to the snout; angry: the lids slam down
   const eyes = new VB(), angry = new VB();
-  for (const [vb, mad] of [[eyes, false], [angry, true]]) for (const [ex, ey, ez] of eyeAt) {
-    const sd = ex > 0 ? 1 : -1;
-    for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++) vb.set(ex + dx * sd, ey + dy, ez + 1, dy === 1 && dx === 0 ? (mad ? -1 : 0xffffff) : dy === 0 && dx === 1 ? 0x100808 : L.eye);
+  for (const sd of [1, -1]) {
+    const at = socketEye(head, eyes, sd * 2.5, 2.8, sd, { r: 1.3, depth: 0.5, glow: true, iris: L.eye, pupil: 0x100808, slit: true, pr: 0.5, lid: 0.28, tilt: 0.5, skin: S[2], brow: L.horn, browR: 0.8 });
+    socketEye(head, angry, sd * 2.5, 2.8, sd, { r: 1.3, cz: at[2], ballOnly: true, glow: true, iris: L.eye, pupil: 0x100808, slit: true, pr: 0.5, ballLid: 0.48, tilt: 0.9, lidCol: S[1] });
   }
   // legs
   const thigh = new VB(106); thigh.cap(0, 0, 0, 0, -6.5, 0, 2.8, sc(thigh, 0.45));

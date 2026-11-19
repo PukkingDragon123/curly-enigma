@@ -21,6 +21,7 @@ import { voxelMaterial } from '../../gfx/Voxel.js';
 import { LAYER_OUTLINE } from '../../core/Engine.js';
 import { ITEMS } from '../../data/items.js';
 import { iconPixels } from '../../cooking/food.js';
+import { RDROPS } from './grow.js'; // (wave 17) the random plants that can be gathered
 
 // ---------------------------------------------------------------- what each plant gives
 // kind → [item, rare item, rare chance]
@@ -41,6 +42,7 @@ export const DROPS = {
   wallFungus: ['mushroom'], wallMush: ['mushroom'], wallBrown: ['mushroom'],
   wallLichenRust: ['glow_moss'], wallLichenFrost: ['glow_moss'], wallLichenCrystal: ['glow_moss'], wallStar: ['glow_moss', 'sparkmoss', 0.15],
 };
+Object.assign(DROPS, RDROPS); // (wave 17) herbs, coral, mushroom clutches, moss, creepers, puffballs, cave grass
 // the larger finds: what they give, how many knocks, their sound
 export const SOURCES = {
   salt: { item: 'salt_crystal', hits: 3, n: 2, label: 'Rock Salt' },

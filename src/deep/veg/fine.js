@@ -14,6 +14,7 @@
 import { refine2 } from '../../gfx/voxRes.js';
 
 const RGB = 0xffffff;
+const PLAIN = 1 << 26; // (./finish.js)
 const hash = (x, y, z, s) => {
   let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(z | 0, 1274126177) + Math.imul(s | 0, 144269)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1103515245);
@@ -59,7 +60,7 @@ export function fine2(g, pivot) {
   const paint = [], cut = [];
   for (let z = 0; z < D; z++) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = x + W * (y + H * z), v = out[i];
-    if (!v) continue;
+    if (!v || v & PLAIN) continue; // (wave 17: moss cushions and pebbles stay smooth)
     const ox = x >> 1, oy = y >> 1, oz = z >> 1;
     const e = [!at(x - 1, y, z), !at(x + 1, y, z), !at(x, y - 1, z), !at(x, y + 1, z), !at(x, y, z - 1), !at(x, y, z + 1)];
     const open = e[0] + e[1] + e[2] + e[3] + e[4] + e[5];

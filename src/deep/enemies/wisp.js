@@ -4,6 +4,7 @@
 import { Enemy, TAU, smooth } from './base.js';
 import { VB, VS, mix, c01 } from './vox.js';
 import { H, taper } from './voxKit.js';
+import { socketEye } from './face.js';
 import { mote, stream, sparkle, puff, lightTrail, converge } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 import { airBelow, clearLine, solidAt } from './physics.js';
@@ -44,21 +45,12 @@ export function buildWisp(zone) {
     taper(orb, x, by, z, x + lean * h, by + h * 0.6, z - h * 0.35, 2.2, 1.4, (xx, yy, zz, t) => (t > 0.6 ? P.tail : Sh[2]));
     taper(orb, x + lean * h, by + h * 0.6, z - h * 0.35, x + lean * h * 1.4, by + h, z - h * 0.9, 1.4, 0.4, (xx, yy, zz, t) => (t > 0.7 ? mix(P.tail, P.iris, 0.7) : P.tail));
   }
-  // the big eye: veined sclera, ringed iris, slit pupil, glints
+  // (no flat eye) the big eye is a real eyeball seated deep in the orb under its thick lids: veined
+  // sclera, a ringed iris, a slit pupil and a specular; the red look is the same ball, bloodshot
   const eye = new VB(), red = new VB();
-  for (const [vb, iris] of [[eye, P.iris], [red, 0xff4a5a]]) {
-    for (let y = -6; y <= 4; y++) for (let x = -6; x <= 5; x++) {
-      const u = (x + 0.5) / 6.4, v = (y + 1.5) / 5.6, d = Math.hypot(u, v);
-      if (d > 1) continue;
-      const ir = Math.hypot((x + 0.5) / 3.8, (y + 1.5) / 3.8);
-      let c = v > 0.6 ? 0xb8a8d0 : (Math.abs(x + y * 2) % 7 === 0 && d > 0.75) ? 0xd88aa8 : 0xeee6ff;
-      if (ir < 1) c = ir > 0.82 ? mix(iris, 0x000000, 0.45) : v < -0.1 ? mix(iris, 0xffffff, 0.3) : iris;
-      if (Math.abs(x + 0.5) < 0.9 && Math.abs(y + 1.5) < 3.2) c = 0x120818;
-      if (Math.hypot(x + 2.5, y - 0.5) < 1.2 || (x === 1 && y === -4)) c = 0xffffff;
-      const h = orb.hitFrom(x, y, 20, 0, 0, -1);
-      vb.set(x, y, h ? h[2] + 1 : 10, c);
-    }
-  }
+  const at = socketEye(orb, eye, 0, -1.2, 1, { r: 5.4, depth: 0.5, iris: P.iris, pupil: 0x120818, slit: true, pr: 0.55, ir: 0.58, sclera: 0xeee6ff, lid: 0.2, tilt: 0, skin: Sh[2], brow: false });
+  socketEye(orb, red, 0, -1.2, 1, { r: 5.4, cz: at[2], ballOnly: true, iris: 0xff4a5a, pupil: 0x200408, slit: true, pr: 0.35, ir: 0.58, sclera: 0xf0c8d0 });
+  for (const vb of [eye, red]) vb.paint((x, y, z, c) => (c > 0xd00000 && ((c >> 16) & 255) > 0xd0 && ((c & 255) > 0xc0) && Math.abs((x * 3 + y * 5) % 11) === 0 ? 0xd88aa8 : undefined)); // veins
   const tails = [2.5, 1.9, 1.3].map((r, i) => {
     const t = new VB(40 + i), q = r * 2;
     t.ell(0, 0, 0, q, q, q, (x, y, z, nx, ny, nz) => {

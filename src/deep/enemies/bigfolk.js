@@ -13,7 +13,8 @@ import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { Legs, Chain, look } from './rig.js';
 import { VB, mul, mix, c01, refine, REFINE_MAX } from './vox.js';
-import { hramp, lit, vnoise, bake, clumps, gloss, sideEye, eye, variant, taper } from './voxKit.js';
+import { hramp, vnoise, bake, clumps, gloss, variant, taper } from './voxKit.js';
+import { socketEye, mouth } from './face.js';
 import { puff, sparkle, shockRing, pebbles } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -30,18 +31,6 @@ const band = (vb, ramp, k0 = 0.4, belly) => (x, y, z, nx, ny, nz) => {
 const up = (vb) => refine(vb, 2);
 const EV2 = EV / 2;
 const K2 = REFINE_MAX > 2 ? 2 : 1; // (meshed at 1/64 m on desktops; phones keep their 1/32 m)
-/** Two small round eyes on a head's surface at height y, toward +z: { eyes } (pivot at y). */
-function smallEyes(head, x, y, z0, col = 0x16100c, glint = true) {
-  const eyes = new VB();
-  for (const sd of [1, -1]) {
-    const h = head.hitFrom(sd * x - (sd < 0 ? 1 : 0), y, z0, -sd, 0, -0.4, 20);
-    if (!h) continue;
-    const ex = h[0] + (sd > 0 ? 1 : -1) * 0;
-    eyes.set(ex, h[1] - y, h[2], col); eyes.set(ex, h[1] + 1 - y, h[2], glint ? 0xffffff : col);
-    eyes.set(ex, h[1] - y, h[2] - 1, col); eyes.set(ex, h[1] + 1 - y, h[2] - 1, col);
-  }
-  return eyes;
-}
 
 // =====================================================================================
 // Cave Elk
@@ -92,8 +81,10 @@ export function buildElk(zone = 3, v = 0) {
   clumps(N, 10, { tones: [ELK.mane, F[0]], seed: 6, len: [2, 3], r: 1.2, droop: 0.3, filter: (x, y, z) => z < 1 });
   for (const vb of [B, N, Hd]) bake(vb, { ao: 0.4, rim: 0.22 });
   gloss(Hd, { k: 0.5, min: 0.7, filter: (x, y, z, c) => c === ELK.nose });
+  // (no simple face) big dark eyes set in sockets under a soft brow, a lip crease under the muzzle
   const eyes = new VB();
-  for (const sd of [1, -1]) sideEye(eyes, Hd, sd, 3, 7, 1.8, 1.6, { iris: 0x2a1a10, pupil: 0x08050a, pr: 0.6, lid: F[1], gr: 0.32 });
+  for (const sd of [1, -1]) socketEye(Hd, eyes, sd * 4.2, 3.4, sd, { r: 1.7, depth: 0.45, iris: 0x4a2a12, pupil: 0x08050a, pr: 0.62, ir: 0.72, look: [sd * 0.2, 0], lid: 0.24, tilt: -0.05, skin: F[2], brow: F[3], browR: 1 });
+  mouth(Hd, 0, -4.4, { w: 5, h: 1.2, d: 1, curve: 0.3, gap: 99, fangs: [], lip: F[1], gum: 0x5a2a2a, tongue: 0x8a4a4a });
   // antlers of living crystal: a beam each side with tines, faceted points at the tips
   const ant = new VB(404);
   const tc = (x, y, z, t) => A[Math.min(3, Math.floor(t * 3.2 + ant.n(x, y, z) * 0.6))];
@@ -112,7 +103,12 @@ export function buildElk(zone = 3, v = 0) {
   // long slim legs: modelled hanging from the pivot
   const thigh = new VB(405); thigh.cap(0, 0, 0, 0, -8, 0, 2.3, band(thigh, F, 0.35));
   thigh.ell(0, -1, 0, 2.8, 3, 2.8, band(thigh, F, 0.35));
-  const shin = new VB(406); shin.cap(0, 0, 0, 0, -8.5, 0, 1.2, (x, y, z, t) => (t > 0.75 ? ELK.mane : t < 0.12 ? F[2] : F[1]));
+  // (no stick legs) a knobbly hock, a cannon bone tapering to a fetlock with a tuft of dark hair
+  const shin = new VB(406);
+  taper(shin, 0, 0, 0, 0, -7.4, 0.2, 1.6, 1, (x, y, z, t) => (t < 0.1 ? F[3] : F[1]));
+  shin.ell(0, -0.6, -0.4, 1.9, 1.6, 1.8, band(shin, F, 0.45)); // the hock
+  shin.ell(0, -7.6, 0.3, 1.4, 1.3, 1.5, ELK.mane); // the fetlock
+  for (const [x, z] of [[1, -1], [-2, -1], [0, -2]]) shin.set(x, -8, z, F[0]);
   const foot = new VB(407); foot.box(-1, 0, -1, 0, 1, 1, ELK.hoof); foot.set(-1, 0, 2, 0x4a4038); foot.set(0, 0, 2, ELK.hoof);
   gloss(ant, { k: 0.4, min: 0.75 });
   return {
@@ -250,8 +246,11 @@ export function buildMoleBear(v = 0) {
   if (v === 1) B.paint((x, y, z, c) => (x > 6 && B.open(x, y, z, 1, 0, 0) && z > -8 && z < 6 && [0, 3, 6].some((o) => Math.abs(y - (z * 0.5) - o) < 0.6) ? 0xc8a8b8 : undefined));
   if (v === 2) Hd.paint((x, y, z) => (x < -4 && y > 6 && z < 2 && Hd.open(x, y, z, 0, 1, 0) ? -1 : undefined)); // a torn ear: a bite out of the crown
   for (const vb of [B, Hd]) bake(vb, { ao: 0.45, rim: 0.28, rimCol: 0xe8d8ff });
+  // (no simple face) tiny, nearly blind eyes squinting out of deep fur-browed sockets; under the
+  // star a mouth of gums and long digging incisors
   const eyes = new VB();
-  for (const sd of [1, -1]) { const h = Hd.hitFrom(sd * 6, 3, 8, -sd, 0, -0.3, 24); if (h) { const X = h[0]; for (const [dz, dy] of [[0, 0], [0, -1], [-1, 0], [-1, -1]]) eyes.set(X + sd, h[1] + dy, h[2] + dz, 0x0c0a10); eyes.set(X + sd, h[1], h[2] + 1, 0xffffff); } } // tiny, nearly blind
+  for (const sd of [1, -1]) socketEye(Hd, eyes, sd * 4.8, 3.6, sd, { r: 1.3, depth: 0.55, iris: 0x2a2030, pupil: 0x08060c, pr: 0.5, lid: sd > 0 ? 0.42 : 0.5, tilt: 0.3, skin: F[3], brow: F[4], browR: 1.3, sclera: 0xc8b8c0 });
+  mouth(Hd, 0, -5.2, { w: 6.4, h: 2.6, d: 2, curve: -0.1, asym: 0.3, gap: 9, fangs: [-0.18, 0.18], fang: 3, lower: true, tooth: 0xf0e4c4, gum: 0xc85a7a, throat: 0x1a0810, lip: F[2] });
   // limbs: thick fore-arms with spade paws and long claws, shorter hind legs
   const arm = new VB(414); arm.cap(0, 0, 0, 0, -7, 0, 3.4, (x, y, z, t) => F[t < 0.3 ? 2 : 1]);
   const fore = new VB(415); fore.cap(0, 0, 0, 0, -7, 0, 2.8, F[1]);

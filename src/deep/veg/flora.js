@@ -6,6 +6,7 @@
 // room below it), `fan` / `tuft` (out of a wall) and `decal` (a patch on a wall).
 import { M } from '../materials.js';
 import { protos } from './plants.js';
+import { RKINDS } from './grow.js'; // (wave 17) the random plants (`${base}_${place}`), 8 variants each
 
 // lay: layout · sc: size range (the voxel shrinks or grows with it, within 1/48–1/64 m) · div:
 // voxels per metre at size 1 (56; the giant ferns are coarser) · v: variants · len: rosette frond
@@ -93,7 +94,18 @@ export const KINDS = {
   wallLichenCrystal: { lay: 'decal', sc: [0.75, 1.0], rank: 'r', glow: 0.9, push: 0 },
   wallStar: { lay: 'decal', sc: [0.75, 1.0], rank: 'r', glow: 1, push: 0 },
 };
+Object.assign(KINDS, RKINDS);
 for (const [k, K] of Object.entries(KINDS)) K.m = K.m || k;
+// (wave 17) companions: the mushrooms and flowers come in fuller clumps now (a cluster with its moss,
+// pebbles and babies: plants.js finishModel), so a few less of them stand alone
+for (const k of ['fungusCyan', 'fungusViolet', 'fungusPink', 'fungusBlue', 'fungusAmber', 'fungusBrown', 'brownCap', 'toadstool', 'inkcap', 'glowShroom', 'flowerCyan', 'flowerViolet', 'flowerPink', 'flowerEmber', 'flowerFrost', 'emberCap', 'frostCap']) KINDS[k].v = Math.max(KINDS[k].v || 2, 3);
+
+/** (wave 17) Add the random plants of a place to a flora table: [base, weight] lists per layer. */
+function withRandom(T, place, floor, ceil = []) {
+  T.floor = T.floor.concat(floor.map(([b, w]) => [b + '_' + place, w]));
+  T.ceil = T.ceil.concat(ceil.map(([b, w]) => [b + '_' + place, w]));
+  return T;
+}
 
 /**
  * The flora of a place: { floor, ceil, wall } weighted lists and the chance per placement cell
@@ -112,6 +124,22 @@ export function floraOf(zone, bio, depth) {
 // and roots hang from the roofs (cave vines with glow berries further down); grass only near the
 // surface (the first few metres) and, thin, in the lush biomes (the mossy grotto, the dino caverns).
 function floraTable(zone, bio, depth) {
+  const T = floraBase(zone, bio, depth), near = depth < 6;
+  // wave 17: every place grows its own random plants too (./grow.js), in its own palette
+  if (bio === 1) return withRandom(T, 'm', [['moss', 2.6], ['herb', 1.6], ['shroom', 1.4], ['creeper', 1.1], ['grass', 1.2], ['coral', 0.5], ['roots', 0.5], ['puff', 0.4]], [['curtain', 1.4]]);
+  if (bio === 2) return withRandom(T, 'd', [['lichen', 1.8], ['grass', 1.1], ['roots', 1], ['herb', 0.6], ['puff', 0.6], ['shroom', 0.5]]);
+  if (bio === 3) return withRandom(T, 'f', [['coral', 1.8], ['shroom', 2.2], ['puff', 1.1], ['moss', 0.9], ['creeper', 0.9], ['lichen', 0.5]], [['curtain', 2.6]]);
+  if (bio === 4) return withRandom(T, 'j', [['herb', 1.8], ['moss', 1.5], ['roots', 1], ['grass', 1.1], ['shroom', 0.6], ['creeper', 0.6]], [['curtain', 0.4]]);
+  switch (zone) {
+    case 1: return withRandom(T, 1, [['moss', 1.6], ['shroom', 1.5], ['roots', 1.2], ['lichen', 0.8], ['herb', near ? 1.2 : 0.6], ['puff', 0.6], ['coral', 0.4], ['grass', near ? 1.2 : 0.3]], [['curtain', 0.6]]);
+    case 2: return withRandom(T, 2, [['lichen', 1.5], ['shroom', 1.3], ['roots', 1], ['puff', 0.8], ['coral', 0.6], ['moss', 0.6], ['grass', 0.4]], [['curtain', 0.5]]);
+    case 3: return withRandom(T, 3, [['crystal', 1.8], ['lichen', 1], ['coral', 1], ['shroom', 1], ['moss', 0.6], ['creeper', 0.8]], [['curtain', 1]]);
+    case 4: return withRandom({ ...T, c: 0.03 }, 4, [['crystal', 1.1], ['lichen', 1], ['roots', 0.6], ['shroom', 0.8], ['coral', 0.6]], [['curtain', 0.5]]);
+    case 5: return withRandom(T, 5, [['crystal', 1.3], ['lichen', 1.4], ['moss', 0.8], ['shroom', 0.8], ['grass', 0.6]], [['curtain', 0.6]]);
+    default: return withRandom(T, 6, [['crystal', 1], ['coral', 1.2], ['shroom', 1], ['creeper', 1], ['lichen', 0.8]], [['curtain', 1]]);
+  }
+}
+function floraBase(zone, bio, depth) {
   const near = depth < 6; // close to the surface, a little light gets in: a few grass tufts
   if (bio === 1) return {
     floor: [['mossGrass', 2.4], ['clover', 1.2], ['cloverGlow', 1.4], ['fern', 2.2], ['flowerCyan', 1.1], ['flowerViolet', 0.8], ['flowerPink', 0.3], ['fungusCyan', 1.6], ['mushTiny', 2], ['glowShroom', 1.2], ['toadstool', 0.8], ['brownCap', 0.8], ['litter', 0.3]],
