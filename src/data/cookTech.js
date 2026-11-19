@@ -8,14 +8,14 @@
 // cooked until that technique is known (the pantry shows the technique's cue instead of Cook); a
 // step listed here falls back to its plain cousin (STEP_FALLBACK) until it is known.
 export const COOK_TECH = [
-  { id: 'cook_roast', name: 'Roasting', icon: 'flame', desc: 'Skewer it over the fire', unlocks: ['skewer', 'zippy_skewer', 'shrimp_skewer', 'root_roast'] },
-  { id: 'cook_bake', name: 'Baking', icon: 'bread', desc: 'Sift, knead, bake golden', unlocks: ['bake', 'sift', 'herb_bread', 'root_pie', 'fish_pie', 'jam_toast'] },
-  { id: 'cook_whisk', name: 'Whisking', icon: 'egg', desc: 'Beat it light and fluffy', unlocks: ['whisk', 'grub_pancakes', 'truffle_omelette', 'frost_parfait'] },
-  { id: 'cook_grind', name: 'Grinding', icon: 'mortar', desc: 'Mortar, pestle, fine powder', unlocks: ['grind', 'glow_pesto', 'ember_curry'] },
-  { id: 'cook_brine', name: 'Brining', icon: 'drop', desc: 'Salt-cure fish and eggs', unlocks: ['salted_fish', 'brined_egg'] },
-  { id: 'cook_smoke', name: 'Smoking', icon: 'smoke', desc: 'Low smoke, long flavour', unlocks: ['drake_jerky', 'smoked_grubs'] },
-  { id: 'cook_ferment', name: 'Fermenting', icon: 'jar', desc: 'Spores turn sour and fizzy', unlocks: ['bubble_tea', 'spore_kraut'] },
-  { id: 'cook_candy', name: 'Candying', icon: 'honey', desc: 'Honey-glazed sticky sweets', unlocks: ['berry_jam', 'nut_brittle', 'crystal_tea'] },
+  { id: 'cook_roast', name: 'Roasting', icon: 'flame', desc: 'Turn it over the flame', unlocks: ['skewer', 'zippy_skewer', 'shrimp_skewer', 'root_roast'] },
+  { id: 'cook_bake', name: 'Baking', icon: 'bread', desc: 'Bread, pies, a hot oven', unlocks: ['bake', 'sift', 'herb_bread', 'root_pie', 'fish_pie', 'jam_toast'] },
+  { id: 'cook_whisk', name: 'Whisking', icon: 'egg', desc: 'Beat it till it\'s light', unlocks: ['whisk', 'grub_pancakes', 'truffle_omelette', 'frost_parfait'] },
+  { id: 'cook_grind', name: 'Grinding', icon: 'mortar', desc: 'Pound it to dust', unlocks: ['grind', 'glow_pesto', 'ember_curry'] },
+  { id: 'cook_brine', name: 'Brining', icon: 'drop', desc: 'Salt it so it keeps', unlocks: ['salted_fish', 'brined_egg'] },
+  { id: 'cook_smoke', name: 'Smoking', icon: 'smoke', desc: 'Low fire, long wait', unlocks: ['drake_jerky', 'smoked_grubs'] },
+  { id: 'cook_ferment', name: 'Fermenting', icon: 'jar', desc: 'Leave it. Let it fizz.', unlocks: ['bubble_tea', 'spore_kraut'] },
+  { id: 'cook_candy', name: 'Candying', icon: 'honey', desc: 'Honey, boiled till it sets', unlocks: ['berry_jam', 'nut_brittle', 'crystal_tea'] },
 ];
 
 export const COOK_TECH_BY_ID = Object.fromEntries(COOK_TECH.map((t) => [t.id, t]));

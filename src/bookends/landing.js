@@ -13,6 +13,7 @@ import { makeFolk } from './actors.js';
 import { randomSpec } from '../gfx/characters.js';
 import { SHOPS } from '../data/shops.js';
 import { makeNoise2D, makeRng, shade, clamp } from '../core/util.js';
+import { Handheld } from './cine.js';
 
 const VS = 1 / 8;
 export const LIFT_X = 4.4;
@@ -402,19 +403,20 @@ export function buildLanding(ctx) {
     }
   };
 
+  const hand = new Handheld(7);
   const update = (dt, api) => {
     const t = (state.t += dt);
     const audio = api.audio;
     // --- events
-    once('bell', 0.25, () => { audio.play('bell'); api.say(crowd[0], 'All aboard the<br>Surface Express!', 2.4); });
-    once('kid', 1.0, () => api.say(crowd[8], 'Bye, mole!!', 1.8));
-    once('hazel', 1.9, () => api.say(crowd[1], 'Send us a seashell!', 2.0));
+    once('bell', 0.25, () => { audio.play('bell'); api.say(crowd[0], 'Surface Express.<br>Last one up.', 2.6); });
+    once('kid', 1.0, () => api.say(crowd[8], 'Bye, mole!', 2.0));
+    once('hazel', 1.9, () => api.say(crowd[1], 'Bring me a shell.<br>A pink one.', 2.6));
     once('burst0', 0.15, () => { burst(-1.5, 0.4, 2.8, 50); burst(-6.5, 0.4, 2.2, 40); audio.play('firework'); });
     once('gate', 4.75, () => audio.play('gate'));
     once('clunk', 5.45, () => audio.play('clunk', { vol: 0.8 }));
     once('bell2', 5.6, () => { audio.play('bell'); setTimeout(() => api.alive() && audio.play('bell'), 420); api.startLoop('elevator', 0.6); });
     once('cheer', 5.6, () => { for (const c of crowd) c.rig.play('cheer'); burst(2.6, 0.5, 2.0, 70, 5.5); burst(-3.0, 0.5, 2.6, 60, 5); audio.play('firework'); });
-    once('grubb', 6.0, () => api.say(crowd[2], 'Don\'t forget us<br>down here!', 1.8));
+    once('grubb', 6.0, () => api.say(crowd[2], 'Don\'t let the sun<br>get you.', 2.4));
     once('wave2', 6.05, () => mole.doEmote('wave', 1.6));
 
     // --- mole: wave, walk into the cage, hop onto the velvet seat
@@ -447,6 +449,7 @@ export function buildLanding(ctx) {
     // camera: drifts in slowly, then rises with the cage (no rotation)
     camera.position.set(camBase.x + t * 0.03, camBase.y + state.cageY * 0.42, camBase.z - t * 0.12);
     camera.quaternion.copy(camQuat);
+    hand.apply(camera, t, 0.9); // (wave 18: an operator's sway, bookends/cine.js)
 
     // --- crowd
     mole.root.getWorldPosition(tmp2);

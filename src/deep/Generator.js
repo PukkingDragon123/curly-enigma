@@ -63,7 +63,7 @@ export function makePlan(seed, opts = {}) {
     lights: [], // fixed light sources (lanterns, lava) in meters
     features: [], // carve/fill shapes in meters: {kind, ...aabb}
     mouths: [],
-    burrows: [], // NPC homes and shops you walk to (gen/burrows.js, Traders.js)
+    burrows: [], // (wave 18: always empty: no shops down the mine; the folk keep stalls in town)
     ruins: [], // dungeons with a sealed strongroom and its puzzle (gen/ruins.js, ruins/dungeon.js, Ruins.js)
     rooms: [], // plain monster rooms: a spawner and chests, no puzzle (same features, kind 'ruin')
     trails: [], // old dug tunnels joining lifts, burrows and the town (gen/trails.js)
@@ -312,14 +312,11 @@ function placeDungeon(plan, rng, id, zone, kind, puzzle, plain, relic = null) {
 
 function addPlaces(plan, rng, L0) {
   const T = plan.town;
-  // NPC burrows (the folk who live down here): animal homes at a few depths, each reached by a
-  // natural passage from the caves (no dug trails any more)
-  const burrow = (id, kind, name, x, y, z, yaw, zone, size = 1) => {
-    const b = { id, kind, name, x, y, z, yaw, zone };
-    plan.burrows.push(b);
-    plan.features.push({ kind: 'burrow', id, burrow: kind, x, y, z, yaw, rx: 3.1 * size, rz: 2.6 * size, h: 2.4 * size });
-    return b;
-  };
+  // (wave 18: no shops down the mine any more: the burrow folk all keep their stalls on Deep
+  // Town's square, src/town/shopStalls.js.) Where their burrows used to be is still worked out (the
+  // same random numbers, so the rest of the world stays put) and the winding caves that ran from
+  // their doors are still there, now just natural side passages; the burrows themselves are gone.
+  const burrow = (id, kind, name, x, y, z, yaw, zone, size = 1) => ({ id, kind, name, x, y, z, yaw, zone, f: { kind: 'burrow', id, burrow: kind, x, y, z, yaw, rx: 3.1 * size, rz: 2.6 * size, h: 2.4 * size } });
   const jit = () => rng.range(-2.5, 2.5);
   const trader = burrow('trader', 'trader', 'Trading Post', L0.x - 16 + jit(), L0.y - 2.5, L0.z + 13 + jit(), Math.PI * 0.25, 1, 1.1);
   const herb = burrow('herbalist', 'herbalist', "Herbalist's Hollow", L0.x + 25 + jit(), -21, L0.z + 18 + jit(), -Math.PI * 0.6, 1);
@@ -409,7 +406,7 @@ function addPlaces(plan, rng, L0) {
   // cave, and one more joins the mine entrance to the trading post (gen/passages.js)
   const open = (x, y, z) => caveDensity(plan, x, y, z) > 0.02 && !underLake(plan, x, y, z);
   const pr = makeRng(plan.seed + 7373);
-  const door = (b) => { const f = plan.features.find((q) => q.kind === 'burrow' && q.id === b.id); const dd = burrowDoor(f); const l = Math.hypot(dd.x - b.x, dd.z - b.z) || 1; return { A: { x: dd.x, y: b.y, z: dd.z }, d: [(dd.x - b.x) / l, (dd.z - b.z) / l] }; };
+  const door = (b) => { const dd = burrowDoor(b.f); const l = Math.hypot(dd.x - b.x, dd.z - b.z) || 1; return { A: { x: dd.x, y: b.y, z: dd.z }, d: [(dd.x - b.x) / l, (dd.z - b.z) / l] }; };
   const passage = (id, A, d, o = {}) => {
     const pts = planPassage(A, d, open, { rng: pr, ...o });
     if (pts) plan.features.push({ kind: 'passage', id, pts, seed: pr.int(1, 1e6) });
@@ -573,7 +570,7 @@ export const BIOMES = [
   { id: 'moss', name: 'Mossy Grotto', desc: 'glow moss on every stone and vines hanging from the roof', tint: [0.0, 0.035, 0.012], fog: [0.0, 0.008, 0.004] },
   { id: 'dry', name: 'Sandstone Hollows', desc: 'warm and dusty; sand floors pour away under your paws', tint: [0.04, 0.022, 0.0], fog: [0.012, 0.006, 0.0] },
   { id: 'fungus', name: 'Mushroom Hollow', desc: 'glowcaps taller than a mole, soft mycelium underfoot', tint: [0.012, 0.0, 0.04], fog: [0.004, 0.0, 0.012] },
-  { id: 'dino', name: 'Dino Caverns', desc: 'huge warm halls of ferns and ancient bones, and something big breathing in the dark', tint: [0.03, 0.035, 0.0], fog: [0.01, 0.012, 0.002] },
+  { id: 'dino', name: 'Dino Caverns', desc: 'huge warm halls of ferns and old bones. Something big is breathing.', tint: [0.03, 0.035, 0.0], fog: [0.01, 0.012, 0.002] },
 ];
 export function biomeAt(p, x, y, z) {
   const depth = -y;
@@ -903,6 +900,16 @@ export class ChunkGen {
         }
         if (ym > vlt.y0 + 1.1 && zone <= 3 && NATURAL[vox[vi - CS]] && pt < 0.25) { vox[vi] = pt < -0.2 ? M.GRAVEL : M.RUBBLE; continue; }
       }
+      // (wave 18) wet rock round the water: a glossy band of wet calcite at the shore and a hand
+      // above it, where the splash and the drips keep it wet (ice in the frost)
+      if (inX && inZ && zone <= 5 && m !== M.CRYSTALROCK) {
+        let wet = false;
+        for (let k = 0; k <= 3 && !wet && y - k >= 1; k++) {
+          const wi = vi - CS * k;
+          wet = vox[wi - 1] === M.WATER || vox[wi + 1] === M.WATER || vox[wi - C2] === M.WATER || vox[wi + C2] === M.WATER || (k > 0 && vox[wi] === M.WATER);
+        }
+        if (wet && (zone >= 2 || pt > -0.4)) { vox[vi] = zone === 5 ? M.ICE : zone === 1 && pt > 0.3 ? M.MOSS : M.FLOWSTONE; continue; }
+      }
       if (airUp && m === M.FLOWSTONE && vlt) {
         // (the giant caverns' columns and dripstone stay clean calcite: no dirt on their ledges)
       } else if (airUp) {
@@ -916,6 +923,15 @@ export class ChunkGen {
           if (zone === 1 && depth < 9 && pt > 0.5 && h < 0.8) vox[vi] = M.MOSS;
           else if (pt < -0.3 && NATURAL[vox[vi - CS]]) vox[vi] = M.GRAVEL;
           else if (zone <= 2 && pt > -0.05) vox[vi] = M.DIRT;
+        }
+        // (wave 18) scree along the foot of the walls: chips and flakes that came off the rock, now
+        // and then a loose stone sitting on them
+        if (zone <= 4 && !vlt && bio !== 3 && inX && inZ && y < CS - 2 && vox[vi] === m) {
+          const up = vi + CS;
+          if ((vox[up - 1] !== 0 && vox[up - 1] !== M.WATER) || (vox[up + 1] !== 0 && vox[up + 1] !== M.WATER) || (vox[up - C2] !== 0 && vox[up - C2] !== M.WATER) || (vox[up + C2] !== 0 && vox[up + C2] !== M.WATER)) {
+            if (h < 0.55) vox[vi] = h < 0.32 ? M.RUBBLE : M.GRAVEL;
+            if (h < 0.1 && vox[up] === 0) vox[up] = M.RUBBLE;
+          }
         }
         // mushrooms: a few giants per meter-cell anchor (the small stuff, the ferns, grass and
         // glowcap buttons, are drawn as painted cards by Vegetation.js now: no blocky voxel plants)
@@ -941,8 +957,21 @@ export class ChunkGen {
         else if ((zone >= 2 || vlt) && h3(vx >> SH, vy, vz >> SH, seed + 49) < (vlt ? 0.024 : 0.01)) this.spike(vox, x, y - 1, z, -1, zone >= 5 ? M.ICE : zone <= 3 && bio !== 2 ? M.FLOWSTONE : m, (3 + (h2 * 50 | 0) % 6) * VK, h3(vx, vy, vz, seed + 50));
         else if (zone === 3 && h2 < 0.004 / (VK * VK)) this.crystal(vox, x, y - 1, z, -1, M.CRYSTAL, 3 * VK, h2 * 7 % 1);
       } else if (bio === 1 && pt > 0.05) vox[vi] = M.MOSS; // mossy walls in the grotto
+      else if (zone === 1 && depth < 15 && bio !== 2 && airSide && (m === M.DIRT || m === M.LOAM || m === M.CLAY || m === M.MUDSTONE || m === M.STONE) && this.rootAt(xm, ym, zm, depth)) {
+        // (wave 18) roots breaking through the walls near the surface: thick cables of them snaking
+        // down through the earth, standing proud of the wall here and there
+        vox[vi] = M.ROOTS;
+        if (h < 0.3) for (const o of [1, -1, C2, -C2]) if (vox[vi + o] === 0) { vox[vi + o] = M.ROOTS; break; }
+      }
       else if (zone >= 1 && zone <= 3 && bio !== 2 && depth > 5 && pt > -0.25 && m !== M.CRYSTALROCK && h3(vx >> 3, vy >> 5, vz >> 3, seed + 53) < (vlt ? 0.34 : 0.16)) vox[vi] = M.FLOWSTONE; // flowstone poured down the walls in sheets
     }
+  }
+
+  /** (wave 18) On one of the root cables that run down through the earth near the surface? */
+  rootAt(x, y, z, depth) {
+    const N = this.plan.noise;
+    const a = N[3].n(x * 0.9 + 5.5, y * 0.32 + 1.7, z * 0.9 - 2.2), b = N[2].n(x * 0.7 - 3.1, y * 0.5 + 3.3, z * 0.7 + 8.8);
+    return Math.abs(a) < 0.055 * (1.2 - depth / 15) && Math.abs(b) < 0.45;
   }
 
   /** Clear voxels with air on all six sides (inside the chunk; natural materials only). */

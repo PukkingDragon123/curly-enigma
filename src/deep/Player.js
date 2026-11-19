@@ -15,7 +15,7 @@ import { OPAQUE } from './Mesher.js';
 // the town walk on a BoxWorld)
 const CB = 5;
 const key3 = (cx, cy, cz) => ((cx + 512) * 1024 + (cy + 512)) * 1024 + (cz + 512);
-import { clamp, damp } from '../core/util.js';
+import { clamp } from '../core/util.js';
 
 const HW = 0.22; // half width
 const HEIGHT = 0.86;
@@ -28,6 +28,16 @@ const STEP = 0.32;
 const HOP = 0.7; // (assist) the tallest ledge the mole hops up by itself when walking into it
 const NUDGE = 0.19; // (assist) how far round a corner the body may slip sideways (m)
 const GRAV = 15;
+// fixed-timestep physics (step()): the body moves in steps of FIXED seconds whatever the display's
+// rate (60/120/144/240 Hz), and the eye is drawn between the last two steps
+const FIXED = 1 / 120;
+const MAX_STEPS = 12; // a long frame catches up at most this many steps (0.1 s), then lets time go
+// the camera's springs (critically damped: no snap, no wobble) and the landing dip's (a little bounce)
+const EYE_W = 19; // eye height (step-ups, crouch, crawl): rad/s
+const DIP_K = 330, DIP_C = 20; // landing dip: stiffness, damping (a squash, then ≈ 12% bounce past rest)
+const DIP_KICK = 34; // dip velocity (m/s) per metre of wanted dip depth (the spring's peak ≈ depth)
+
+const _eyeTmp = new THREE.Vector3();
 
 export class FPSPlayer {
   constructor(world) {
@@ -46,6 +56,15 @@ export class FPSPlayer {
     this.coyote = 0; // a moment after walking off a ledge when a jump still counts (s)
     this.jumpBuf = 0; // a jump pressed just before landing (s)
     this.eyeY = EYE;
+    this.eyeV = 0; // the eye height spring's velocity
+    // fixed-step interpolation (step()): the body before and after the last step, how far between
+    this.acc = 0;
+    this.alpha = 1;
+    this.prevPos = new THREE.Vector3();
+    this.postPos = new THREE.Vector3(NaN, 0, 0);
+    this.prevEyeY = this.postEyeY = EYE; this.prevDip = this.postDip = 0; this.prevBobT = 0; this.prevCrawlPh = 0;
+    this.rBobT = 0; this.rCrawlPh = 0; // bob / crawl phases as drawn (between steps)
+    this.jumpLatch = false;
     this.h = HEIGHT; // body height now (lower while crouched)
     this.crouched = false;
     this.lastFall = 0;
@@ -74,7 +93,69 @@ export class FPSPlayer {
   hitsAt(px, py, pz, h = this.h) { return this.boxHits(px - HW, py, pz - HW, px + HW, py + h, pz + HW); }
 
   forward(out = new THREE.Vector3()) { return out.set(-Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch)); }
-  eye(out = new THREE.Vector3()) { return out.set(this.pos.x, this.pos.y + this.eyeY - this.dip, this.pos.z); }
+
+  /**
+   * The eye as drawn: between the last two physics steps (step()). A move made from outside since
+   * then (a prop pushing the body, a teleport) is followed at once: small ones carry the
+   * interpolation along, big ones (over half a metre) cut to the new place.
+   */
+  eye(out = new THREE.Vector3()) {
+    const p = this.pos, q = this.prevPos, o = this.postPos;
+    // (an eye height or dip set from outside, a cutscene's: drawn as set)
+    if (this.eyeY !== this.postEyeY) this.prevEyeY = this.postEyeY = this.eyeY;
+    if (this.dip !== this.postDip) this.prevDip = this.postDip = this.dip;
+    if (!(o.x === p.x && o.y === p.y && o.z === p.z)) {
+      const dx = p.x - o.x, dy = p.y - o.y, dz = p.z - o.z;
+      if (Number.isFinite(dx) && dx * dx + dy * dy + dz * dz < 0.25) q.set(q.x + dx, q.y + dy, q.z + dz);
+      else { q.copy(p); this.prevEyeY = this.eyeY; this.prevDip = this.dip; }
+      o.copy(p);
+    }
+    const a = this.alpha;
+    const ey = this.prevEyeY + (this.eyeY - this.prevEyeY) * a, dp = this.prevDip + (this.dip - this.prevDip) * a;
+    return out.set(q.x + (p.x - q.x) * a, q.y + (p.y - q.y) * a + ey - dp, q.z + (p.z - q.z) * a);
+  }
+
+  /** Draw the body exactly where it is now (after placing it by hand: a teleport, a cutscene). */
+  snap() {
+    this.prevPos.copy(this.pos); this.postPos.copy(this.pos);
+    this.prevEyeY = this.postEyeY = this.eyeY; this.prevDip = this.postDip = this.dip;
+    this.prevBobT = this.rBobT = this.bobT; this.prevCrawlPh = this.rCrawlPh = this.crawlPh;
+    this.alpha = 1;
+  }
+
+  /** Kick the landing-dip spring (m/s; positive dips the view down, negative pops it up). */
+  kickDip(v) { this.dipV += v; this._dipWas = this.dip; }
+
+  /**
+   * One display frame: runs update() in fixed steps of 1/120 s (as many as the frame's time holds,
+   * the remainder carried over) and sets up the drawn eye between the last two steps. Same
+   * arguments and events as update(); a jump pressed this frame waits for the next step.
+   */
+  step(dt, mv, o = {}) {
+    if (!(dt > 0)) dt = 0;
+    if (o.jump) this.jumpLatch = true;
+    // a teleport or push since the last frame: start from there
+    this.eye(_eyeTmp);
+    this.acc = Math.min(this.acc + Math.min(dt, 0.25), FIXED * MAX_STEPS);
+    const ev = {};
+    const opts = { ...o };
+    while (this.acc >= FIXED) {
+      this.acc -= FIXED;
+      this.prevPos.copy(this.pos);
+      this.prevEyeY = this.eyeY; this.prevDip = this.dip; this.prevBobT = this.bobT; this.prevCrawlPh = this.crawlPh;
+      opts.jump = this.jumpLatch;
+      this.jumpLatch = false;
+      const e = this.update(FIXED, mv, opts);
+      for (const k in e) ev[k] = typeof e[k] === 'number' ? Math.max(ev[k] || 0, e[k]) : ev[k] || e[k];
+    }
+    this.alpha = this.acc / FIXED;
+    this.postPos.copy(this.pos);
+    this.postEyeY = this.eyeY; this.postDip = this.dip;
+    const a = this.alpha;
+    this.rBobT = this.prevBobT + (this.bobT - this.prevBobT) * a;
+    this.rCrawlPh = this.prevCrawlPh + (this.crawlPh - this.prevCrawlPh) * a;
+    return ev;
+  }
 
   look(dx, dy, sens = 0.0026) {
     this.yaw -= dx * sens;
@@ -125,10 +206,23 @@ export class FPSPlayer {
     let tx = (fx * mv.y + rx * mv.x) * speed, tz = (fz * mv.y + rz * mv.x) * speed;
     // a current carries you along (you can still swim against it)
     if (this.flow && (this.inWater || this.wade)) { tx += this.flow.x; tz += this.flow.z; }
-    // (wave 10: quick and bouncy) snappier start/stop on the ground, more air control
-    const accel = this.grounded ? 46 : 14;
-    v.x += clamp(tx - v.x, -accel * dt, accel * dt);
-    v.z += clamp(tz - v.z, -accel * dt, accel * dt);
+    // (quick and bouncy, never floaty) on the ground the legs bite at once and ease into full speed;
+    // letting go brakes a touch harder, turning back harder still; a little linear pull settles it
+    // exactly. In the air: some steering, no brakes.
+    {
+      const dx = tx - v.x, dz = tz - v.z, dl = Math.hypot(dx, dz);
+      if (dl > 1e-6) {
+        const want = Math.hypot(tx, tz);
+        let k, lin;
+        if (this.grounded || this.climbing) {
+          k = want < 0.05 ? 24 : v.x * tx + v.z * tz < 0 ? 30 : 20;
+          lin = 4;
+        } else { k = 3.2; lin = 2.5; }
+        const st = Math.min(dl, dl * (1 - Math.exp(-k * dt)) + lin * dt);
+        v.x += (dx / dl) * st;
+        v.z += (dz / dl) * st;
+      }
+    }
 
     // climbing: a ladder takes you up for free; otherwise pushing into a wall with jump held —
     // moles dig their claws in
@@ -157,7 +251,7 @@ export class FPSPlayer {
       // so a press just before landing or just after walking off a ledge still counts.
       v.y -= GRAV * (v.y > 0 ? 1.3 : 1) * dt;
       this.jumpBuf = jump ? 0.12 : Math.max(0, this.jumpBuf - dt);
-      if (this.jumpBuf > 0 && (this.grounded || this.coyote > 0)) { v.y = 5.7 * jumpMul; ev.jump = true; this.jumpBuf = 0; this.coyote = 0; this.dip = -0.03; }
+      if (this.jumpBuf > 0 && (this.grounded || this.coyote > 0)) { v.y = 5.7 * jumpMul; ev.jump = true; this.jumpBuf = 0; this.coyote = 0; this.kickDip(-0.025 * DIP_KICK); }
     }
     v.y = Math.max(v.y, -18);
 
@@ -178,7 +272,7 @@ export class FPSPlayer {
     if (!freeY) {
       if (v.y < 0) {
         this.grounded = true;
-        if (!wasGround && vyBefore < -3) { ev.landed = -vyBefore; this.dip = Math.min(0.12, -vyBefore * 0.012); }
+        if (!wasGround && vyBefore < -3) { ev.landed = -vyBefore; this.kickDip(Math.min(0.11, (-vyBefore - 1.5) * 0.011) * DIP_KICK); }
         if (!wasGround && vyBefore < -11.5) ev.fallDamage = (-vyBefore - 11.5) * 3;
       }
       v.y = 0;
@@ -192,7 +286,7 @@ export class FPSPlayer {
       const h = this.pushT > 0.06 && this.hopT <= 0 ? this.ledgeAhead(this.blockDir) : 0;
       if (h) {
         v.y = Math.sqrt(2 * GRAV * 1.3 * (h + 0.07)) * clamp(jumpMul, 0.9, 1.15);
-        this.grounded = false; this.hopT = 0.35; this.pushT = 0; ev.hop = h; this.dip = -0.02;
+        this.grounded = false; this.hopT = 0.35; this.pushT = 0; ev.hop = h; this.kickDip(-0.015 * DIP_KICK);
       }
     } else this.pushT = 0;
 
@@ -202,15 +296,22 @@ export class FPSPlayer {
     this.coyote = this.grounded ? 0.09 : Math.max(0, this.coyote - dt);
     // the landing dip springs back with a small overshoot (a squash, then a bounce) instead of easing out
     // (a dip set from outside, by a cutscene, or by a landing or a hop this frame: the spring starts from rest)
+    // (kicked from inside: the spring keeps its speed; a dip *set* from outside starts from rest)
     if (this.dip !== this._dipWas) this.dipV = 0;
-    this.dipV += (-this.dip * 260 - this.dipV * 20) * dt;
+    this.dipV += (-this.dip * DIP_K - this.dipV * DIP_C) * dt;
     this.dip += this.dipV * dt;
     this._dipWas = this.dip;
-    this.eyeY = damp(this.eyeY, this.crawl ? EYE_CR : this.crouched ? EYE_C : EYE, 14, dt);
+    // the eye height rides a critically damped spring: step-ups (stepUp drops the eye by the step),
+    // crouching, crawling and standing glide with no snap and no bounce
+    {
+      const goal = this.crawl ? EYE_CR : this.crouched ? EYE_C : EYE;
+      this.eyeV += (EYE_W * EYE_W * (goal - this.eyeY) - 2 * EYE_W * this.eyeV) * dt;
+      this.eyeY += this.eyeV * dt;
+    }
     if (this.crawl && this.grounded) this.crawlPh += hs * dt * 7.5;
     // crouching drops the body at once and the eye follows: never let the eye ride above the
     // body's top (it would look out through the roof of a low tunnel)
-    if (this.crouched && this.eyeY > this.h - 0.09 && this.boxHits(p.x - 0.08, p.y + this.h, p.z - 0.08, p.x + 0.08, p.y + this.eyeY + 0.08, p.z + 0.08)) this.eyeY = this.h - 0.09;
+    if (this.crouched && this.eyeY > this.h - 0.09 && this.boxHits(p.x - 0.08, p.y + this.h, p.z - 0.08, p.x + 0.08, p.y + this.eyeY + 0.08, p.z + 0.08)) { this.eyeY = this.h - 0.09; this.eyeV = Math.min(0, this.eyeV); }
     this.speed = hs;
     return ev;
   }

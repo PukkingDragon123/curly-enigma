@@ -54,8 +54,8 @@ function armFur(base, x, y, z, seed, k = 1) {
 }
 
 /** A long furry forearm (wrist at z = 0, running +Z toward the shoulder), a ruff of fur out of the glove. */
-export function forearmGeo(fur = PLAYER_FUR, dirt = 1) {
-  return cached(`vm-arm-g|${fur}|${dirt}`, () => {
+export function forearmGeo(fur = PLAYER_FUR, dirt = 1, ruff = true) {
+  return cached(`vm-arm-g|${fur}|${dirt}|${ruff ? 1 : 0}`, () => {
     const L = 170;
     const v = new Vox(-20, 21, -20, 21, -10, L + 1);
     v.fill(-20, 20, -20, 20, 0, L, (x, y, z) => {
@@ -63,8 +63,9 @@ export function forearmGeo(fur = PLAYER_FUR, dirt = 1) {
       const rx = 8.6 + t * 3, ry = 8 + t * 2.6;
       return (x * x) / (rx * rx) + (y * y) / (ry * ry) <= 1;
     }, 0, 1);
-    // a ruff of fur spilling out of the glove's gauntlet (its open end is at z ≈ 11)
-    v.fill(-20, 20, -20, 20, 6, 17, (x, y, z) => {
+    // a ruff of fur spilling out of the glove's gauntlet (its open end is at z ≈ 11); the upper
+    // arm (the same capsule behind the elbow) has none
+    if (ruff) v.fill(-20, 20, -20, 20, 6, 17, (x, y, z) => {
       const a = Math.atan2(y, x);
       const ring = Math.floor(((a + Math.PI) / (Math.PI * 2)) * 18);
       const reach = 13 + (ring % 2 ? 2.5 : 0) + (ring % 3 === 0 ? 1.2 : 0);

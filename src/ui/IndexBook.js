@@ -140,7 +140,7 @@ export function openIndexBook(game, startCat, startId) {
       put(right,
         back,
         dropCap(el('h2', { class: 'ib-title' }, 'Field Notes'), 'red'),
-        el('p', { class: 'ib-note' }, 'Everything in here was learned the hard way: by digging, poking, burning, zapping and tasting.'),
+        el('p', { class: 'ib-note' }, 'All of it learned the hard way.'),
         el('p', { class: 'ib-note muted' }, 'Pick a sketch to read your notes.'),
         el('ul', { class: 'ib-stats' }, [
           el('li', {}, [el('img', { class: 'pix', src: iconURL('pick_rusty'), alt: '' }), el('span', {}, 'Blocks dug'), el('b', {}, String(s.blocks))]),
@@ -159,7 +159,7 @@ export function openIndexBook(game, startCat, startId) {
       if (cat === 'plant' && PLANT_ZONES[sel]) hint = `Said to grow in: ${zoneNames(PLANT_ZONES[sel])}.`;
       if (cat === 'critter') hint = `Spotted in: ${zoneNames(CREATURES[sel].zones)}.`;
       if (cat === 'weapon') hint = st.owns('bp_' + sel) ? 'You have the plans. Forge one!' : 'Plans for this are sold at Inkwell Plans.';
-      if (cat === 'recipe') hint = 'Some combination of ingredients makes this. Experiment at the stove.';
+      if (cat === 'recipe') hint = 'Something in the pot makes this. Keep trying.';
       if (cat === 'mechanic') hint = 'You\'ll understand this one when it happens to you.';
       if (cat === 'relic') hint = `Said to lie sealed in ${ITEMS[sel]?.where || 'the old ruins'}.`;
       put(right,

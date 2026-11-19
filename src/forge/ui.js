@@ -5,11 +5,12 @@
 // guild certificate for results and the touch screen's big action button (how a blow went is told
 // in the world: ForgeScene.pop answers with voxel words, sparks and smoke).
 import { el, clamp } from '../core/util.js';
-import { gaugeGradient, glowCss, glowHex, glowAmount } from './blackbody.js';
+import { glowCss, glowHex } from './blackbody.js';
+import { CoalBed } from './coalMeter.js';
 import { Px, art, INK } from '../ui/uiArt.js';
 import { DSPR } from '../ui/deepArt.js';
 import { fart, seal, ribbon, installForgeArt } from './forgeArt.js';
-import { bart, inkStepURL, heatChartURL } from './forgeBookArt.js';
+import { bart, inkStepURL } from './forgeBookArt.js';
 import { wart } from './workArt.js';
 import { KART } from '../cooking/kitchenArt.js';
 import { floatIn, ghost, bits } from '../ui/floatType.js';
@@ -70,90 +71,65 @@ export function setHtml(node, html) {
 }
 
 /**
- * The brass thermometer: a glass tube on an enamel scale with painted zones (the band to hit glows
- * and a gold pointer bounces beside it; the burn line is red), a glass bulb that glows with the
- * metal's color and a burner flame that grows with the heat. Its head plate shows the metal (an
- * ingot), its foot the number and which way to go (wave 14: no words on it).
+ * The heat meter (wave 18): a coal bed in a wrought-iron fire basket on an iron-capped board
+ * (src/forge/coalMeter.js). The fire climbs the coal with the heat and the lit lumps take its
+ * colour; the band to hit is chalked on the board with a brass pointer at it, a brass rider marks
+ * the exact heat. Its head plate shows the metal (an ingot), its foot the number and which way to
+ * go (no words). The board warms with the coals' light.
  * API: setTitle(iconURL), setMarks, set(T, dt), setMax, remove.
  */
 export class Thermo {
   constructor(parent, maxT) {
     this.maxT = maxT;
-    this.scale = el('div', { class: 'fg-tube-scale' });
-    this.fill = el('div', { class: 'fg-tube-fill' });
-    this.needle = el('div', { class: 'fg-needle' });
-    this.tube = el('div', { class: 'fg-tube' }, [this.scale, this.fill]);
-    this.zones = el('div', { class: 'fg-zones' });
-    this.glowDot = el('i');
-    this.bulb = el('div', { class: 'fg-bulb' }, [this.glowDot, el('img', { class: 'pix', src: fart('bulb'), alt: '' })]);
-    this.flame = el('div', { class: 'fg-flame' });
+    this.bed = new CoalBed();
     this.num = el('span');
     this.dir = el('img', { class: 'pix fg-dir', src: wart.pointer(), alt: '' });
     this.read = el('div', { class: 'fg-read' }, [this.num, this.dir]);
     this.icon = el('img', { class: 'pix', alt: '' });
     this.title = el('div', { class: 'fg-thermo-title' }, [this.icon]);
-    // the smith's own colour chart, painted beside the glass: what each heat looks like in the coals
-    this.chart = el('img', { class: 'pix fg-chart', alt: '' });
-    this.col = el('div', { class: 'fg-tm-col' }, [el('img', { class: 'pix fg-tm-cap', src: fart('cap'), alt: '' }), el('div', { class: 'fg-tm-glass' }, [this.zones, this.tube, this.needle, this.chart]), this.bulb, this.flame]);
+    this.col = el('div', { class: 'fg-tm-col' }, [this.bed.el]);
     const cap = (c) => el('i', { class: 'fg-cap ' + c });
-    this.el = el('div', { class: 'fg-thermo', 'data-solid': '' }, [this.title, this.col, this.read, cap('tl'), cap('tr'), cap('bl'), cap('br')]);
-    this.marks = [];
+    this.el = el('div', { class: 'fg-thermo', 'data-solid': '' }, [el('i', { class: 'fg-heatlight' }), this.title, this.col, this.read, cap('tl'), cap('tr'), cap('bl'), cap('br')]);
+    this.el.dataset.dir = '';
     parent.append(this.el);
     this.setMax(maxT);
     this.shown = 20;
     this.lastZone = null;
     this.target = null;
+    this.ranges = [];
+    this.lightKey = '';
   }
-  setMax(maxT) {
-    this.maxT = maxT;
-    const g = gaugeGradient(maxT, '#4a3c36');
-    this.fill.style.backgroundImage = g;
-    if (this.chart) this.chart.src = heatChartURL(maxT);
-  }
+  setMax(maxT) { this.maxT = maxT; this.bed.setMax(maxT); }
   pct(t) { return clamp(t / this.maxT, 0, 1) * 100; }
   /** The head plate's picture (an item still: the metal's ingot). */
   setTitle(icon) { if (icon && this.icon.src !== icon) this.icon.src = icon; this.title.hidden = !icon; }
   /** marks: [{kind:'work'|'quench'|'melt', range:[a,b]} | {kind:'burn'|'max', at}]; the first range is the one to hit. */
   setMarks(marks) {
-    for (const m of this.marks) m.remove();
-    this.marks = [];
-    this.ranges = [];
-    this.target = null;
-    for (const m of marks) {
-      let node;
-      if (m.range) {
-        const b = this.pct(m.range[0]), t = this.pct(m.range[1]);
-        const first = !this.target;
-        node = el('div', { class: 'fg-band ' + m.kind + (first ? ' target' : ''), style: { bottom: b + '%', height: Math.max(0.6, t - b) + '%' } },
-          first ? [el('img', { class: 'pix fg-bandptr', src: wart.pointer(), alt: '' })] : []);
-        if (first) this.target = m.range;
-        this.ranges.push(m);
-      } else {
-        node = el('div', { class: 'fg-line ' + m.kind, style: { bottom: this.pct(m.at) + '%' } });
-      }
-      this.zones.append(node);
-      this.marks.push(node);
-    }
+    this.ranges = marks.filter((m) => m.range);
+    this.target = this.ranges[0]?.range || null;
+    this.bed.setMarks(marks);
   }
   set(t, dt = 1 / 60) {
     this.shown += (t - this.shown) * Math.min(1, dt * 14);
-    const p = this.pct(this.shown);
-    this.fill.style.height = p.toFixed(2) + '%';
-    this.fill.style.backgroundSize = `100% ${(10000 / Math.max(0.5, p)).toFixed(1)}%`;
-    this.needle.style.bottom = p.toFixed(2) + '%';
     setText(this.num, Math.round(t) + '°');
-    this.num.style.color = t > 450 ? glowCss(Math.min(t, 1400)) : '#fbf1dc';
-    // the bulb glows with the metal, the burner flame grows with it
-    const g = glowAmount(t);
-    this.glowDot.style.background = g > 0 ? glowCss(Math.max(t, 600)) : '#5a4a44';
-    this.glowDot.style.opacity = (0.55 + Math.min(0.45, g * 0.4)).toFixed(2);
-    this.flame.style.setProperty('--k', (0.45 + Math.min(1, t / Math.max(600, this.maxT * 0.75)) * 0.75).toFixed(2));
-    // light the painted zone the needle sits in; the foot says which way to go (up · in · down)
+    const hot = t > 450, nc = hot ? glowCss(clamp(t, 760, 1400)) : '#fbf1dc'; // (never darker than cherry: readable on the plate)
+    if (this.num._c !== nc) { this.num._c = nc; this.num.style.color = nc; }
+    // light the zone the heat sits in; the foot says which way to go (up · in · down)
     let zone = null;
-    for (const m of this.ranges || []) if (t >= m.range[0] && t <= m.range[1]) zone = m.kind;
+    for (const m of this.ranges) if (t >= m.range[0] && t <= m.range[1]) zone = m.kind;
     if (zone !== this.lastZone) { this.lastZone = zone; this.el.dataset.zone = zone || ''; }
     const tg = this.target, d = !tg ? '' : t < tg[0] ? 'up' : t > tg[1] ? 'down' : 'ok';
     if (d !== this.el.dataset.dir) { this.el.dataset.dir = d; this.dir.src = d === 'ok' ? KART.stamp('check') : wart.pointer(); }
+    if (this.el.hidden) return;
+    this.bed.render(this.shown, dt, d);
+    // the board and its brass catch the coals' light (stepped, so the style rarely changes)
+    const g = Math.round(clamp((this.shown - 480) / 800, 0, 1) * 8) / 8;
+    const key = g ? glowCss(Math.min(this.shown, 1400)) + g : '';
+    if (key !== this.lightKey) {
+      this.lightKey = key;
+      this.el.style.setProperty('--heat', g ? glowCss(Math.min(this.shown, 1400)) : 'transparent');
+      this.el.style.setProperty('--heatA', String(g));
+    }
   }
   remove() { this.el.remove(); }
 }

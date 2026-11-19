@@ -23,9 +23,11 @@ export function voiceFor(o = {}) {
 
 /** Pause after a letter (end of a sentence, a clause, a dash). */
 export function breathAfter(ch, nx) {
-  if ('.!?'.includes(ch) && nx !== '.' && nx !== '!' && nx !== '?' && nx !== '"') return 0.24;
-  if (',;:'.includes(ch)) return 0.11;
-  if (ch === '—' || ch === '…') return 0.16;
+  // (wave 18: a comfortable read; a full stop is a real breath, an ellipsis a hesitation)
+  if (ch === '.' && nx === '.') return 0;
+  if ('.!?'.includes(ch) && nx !== '.' && nx !== '!' && nx !== '?' && nx !== '"') return ch === '.' && nx === undefined ? 0 : 0.46;
+  if (',;:'.includes(ch)) return 0.2;
+  if (ch === '—' || ch === '…') return 0.34;
   return 0;
 }
 
@@ -49,7 +51,7 @@ export function typeText(host, html, o = {}) {
   walk(host);
   const flat = nodes.map((n) => n.full).join('');
   const total = flat.length;
-  const speed = o.speed || 46;
+  const speed = o.speed || 30;
   const face = o.face || null;
   let n = 0, pause = 0, delay = o.delay ?? 0.1, raf = 0, timer = 0, last = performance.now(), born = last, talking = false;
   const voice = voiceFor(o);

@@ -872,11 +872,26 @@ export function setFineAsk(fn) { fineAsk = fn; }
  */
 export function protos(name, n = 2) {
   let e = PROTOS.get(name);
-  if (e) return e.list;
+  if (e) { if (n > e.want) e.want = n; return e.list; }
   if (!MODELS[name]) return null;
   e = { list: [buildOne(name, 0)], want: n };
   PROTOS.set(name, e);
   return e.list;
+}
+/**
+ * A first variant built off the main thread (./plantWarm.js): p from boxify with p.lod, ext its
+ * model's half-extent (voxels). Ignored when that model is already built here.
+ */
+export function adoptProto(name, p, ext) {
+  if (PROTOS.has(name) || !MODELS[name]) return false;
+  p.name = name;
+  if (RES12 && fineAsk && ext * 2 <= 126) { p.wantFine = true; fineAsk(p, name, 0); }
+  protoStats.built++;
+  protoStats.boxes += p.n;
+  protoStats.lodBoxes = (protoStats.lodBoxes || 0) + p.lod.n;
+  protoStats.adopted = (protoStats.adopted || 0) + 1;
+  PROTOS.set(name, { list: [p], want: 2 });
+  return true;
 }
 /** Build one more variant of a model that wants more. Returns false when there's nothing to do. */
 export function growProtos() {

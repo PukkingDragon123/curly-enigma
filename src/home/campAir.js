@@ -180,7 +180,9 @@ export class CampAir {
     for (const m of this.moths) s.scene.add(m.mesh);
     // (drawn only while the camp is: rooms.js culls them with its meshes)
     (c.roomMeshes.camp ||= []).push(this.beam, ...this.moths.map((m) => m.mesh));
-    this.t = { smoke: 0, forge: 0.5, dust: 0, spark: 2, steam: 0, grit: 3, draught: 0 };
+    this.t = { smoke: 0, forge: 0.5, dust: 0, spark: 2, steam: 0, grit: 3, draught: 0, motes: 0 };
+    // (wave 18) the warm lights whose pools the dust drifts through
+    this.warm = c.lights.filter((l) => l.kind === 'lantern' || l.kind === 'fire' || l.kind === 'forge' || l.kind === 'candle');
   }
 
   update(dt, time) {
@@ -230,6 +232,18 @@ export class CampAir {
       if (T.draught <= 0) {
         T.draught = 0.35;
         fx.spawn({ x: FRONT.x + rand(-0.35, 0.35), y: Y + rand(0.15, 0.9), z: FRONT.z + 0.15, vx: rand(-0.03, 0.03), vy: rand(-0.005, 0.01), vz: rand(0.04, 0.09), life: rand(4, 6), size: rand(0.003, 0.006), color: [0.7, 0.8, 0.95], alpha: 0.4, drag: 0.08, grav: -0.002 });
+      }
+    }
+    // (wave 18) dust motes turning slowly in the lamplight: tiny warm specks in the light pools
+    if (this.warm.length) {
+      T.motes -= dt;
+      if (T.motes <= 0) {
+        T.motes = 0.14;
+        const l = this.warm[Math.floor(Math.random() * this.warm.length)];
+        if (near(l, 7)) {
+          const r = 0.25 + Math.random() * (l.kind === 'candle' ? 0.25 : 0.7), an = Math.random() * Math.PI * 2;
+          fx.spawn({ x: l.x + Math.cos(an) * r, y: Math.max(Y + 0.15, l.y + rand(-0.5, 0.35)), z: l.z + Math.sin(an) * r, vx: rand(-0.01, 0.01), vy: rand(-0.012, 0.012), vz: rand(-0.01, 0.01), life: rand(3.5, 6), size: rand(0.003, 0.0055), color: Math.random() < 0.6 ? [1, 0.82, 0.52] : [1, 0.92, 0.72], alpha: 0.6, glow: true, drag: 0.06, grav: 0.0015, swirl: 0.015 });
+        }
       }
     }
     // dust turning in the beam of daylight

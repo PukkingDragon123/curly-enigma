@@ -6,11 +6,11 @@
 const Q = (id, name, t, desc) => [id, { name, cat: 'key', quest: true, value: 0, icon: { k: 'quest', t }, desc }];
 
 export const QUEST_ITEMS = Object.fromEntries([
-  Q('ember_mitten', "Dilly's Mitten", 'mitten', 'One left mitten, ember-proof, slightly singed. Smells of lava and regret.'),
-  Q('brass_weights', "Vex's Brass Weights", 'weights', 'A set of brass assay weights, polished by kobold paws. One is a pebble painted gold.'),
-  Q('tuck_pick', "Tuck's Old Pick", 'oldpick', 'A Lantern & Pick Company pick with T.T. burnt into the handle. Still sharp. Still stubborn.'),
-  Q('sun_hymn', 'Rubbing of the Sun Hymn', 'rubbing', 'Charcoal on paper, rubbed off a ruin wall: raised runes that make a little tune when you run a paw along them.'),
-  Q('star_coin', 'Star-Stamped Coin', 'starcoin', 'A gold coin stamped with a little red star. Old Star stamps everything that\'s his.'),
-  Q('rocco_purse', "Rocco's Purse", 'purse', 'A purse of star-stamped coins and a note in terrible handwriting. For Old Star. From a raccoon.'),
-  Q('loam_letter', "Nana Loam's Letter", 'letter', 'A letter addressed "To my Fern, Up Top, where the clouds are". Sealed with wax and hope.'),
+  Q('ember_mitten', "Dilly's Mitten", 'mitten', 'Left one. Singed. Smells of lava.'),
+  Q('brass_weights', "Vex's Brass Weights", 'weights', 'One of them is a pebble painted gold.'),
+  Q('tuck_pick', "Tuck's Old Pick", 'oldpick', 'T.T. burnt into the handle. Still sharp.'),
+  Q('sun_hymn', 'Rubbing of the Sun Hymn', 'rubbing', 'Run a paw over the runes. It hums.'),
+  Q('star_coin', 'Star-Stamped Coin', 'starcoin', 'Old Star stamps all his things.'),
+  Q('rocco_purse', "Rocco's Purse", 'purse', 'Coins, and a note in awful handwriting.'),
+  Q('loam_letter', "Nana Loam's Letter", 'letter', '"To my Fern, Up Top, where the clouds are."'),
 ]);

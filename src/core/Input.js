@@ -20,13 +20,16 @@ export class Input {
     };
     // first-person look: pointer-lock mouse movement and touch look-drags accumulate here (CSS px)
     this.look = { dx: 0, dy: 0 };
-    this.pointerLocked = false;
+    this.pad = { x: 0, y: 0 }; // a controller's left stick (src/core/Gamepad.js)
+    this.locked = false; // the real pointer lock
+    this.padActive = false; // a controller was used last (src/core/Gamepad.js): aiming counts as locked
     document.addEventListener('pointerlockchange', () => {
-      this.pointerLocked = document.pointerLockElement === canvas;
-      for (const fn of this.listeners) fn({ type: 'pointerlock', code: this.pointerLocked ? 'Locked' : 'Unlocked' });
+      this.locked = document.pointerLockElement === canvas;
+      for (const fn of this.listeners) fn({ type: 'pointerlock', code: this.locked ? 'Locked' : 'Unlocked' });
     });
     window.addEventListener('mousemove', (e) => {
-      if (!this.pointerLocked) return;
+      if (!this.locked) return;
+      if (e.movementX || e.movementY) this.padActive = false;
       this.look.dx += e.movementX || 0;
       this.look.dy += e.movementY || 0;
     });
@@ -61,6 +64,7 @@ export class Input {
     };
     window.addEventListener('pointermove', updatePos);
     canvas.addEventListener('pointerdown', (e) => {
+      this.padActive = false;
       updatePos(e);
       canvas.focus({ preventScroll: true });
       const b = e.button === 2 ? 2 : e.button === 1 ? 1 : 0;
@@ -79,9 +83,19 @@ export class Input {
     }, { passive: false });
   }
 
+  /** First-person aiming is live: the pointer is locked, or a controller is in use. */
+  get pointerLocked() { return this.locked || this.padActive; }
+
+  /** Press or release a mouse button from another device (controller). */
+  setButton(b, on) {
+    const m = this.mouse;
+    if (on && !m.buttons[b]) { m.buttons[b] = true; m.pressed[b] = true; }
+    else if (!on && m.buttons[b]) { m.buttons[b] = false; m.released[b] = true; }
+  }
+
   /** Ask for pointer lock (call from a user gesture). */
   lockPointer() {
-    if (this.pointerLocked || !this.canvas.requestPointerLock) return;
+    if (this.locked || !this.canvas.requestPointerLock) return;
     try { const r = this.canvas.requestPointerLock({ unadjustedMovement: true }); if (r && r.catch) r.catch(() => { try { this.canvas.requestPointerLock(); } catch (e) { /* noop */ } }); } catch (e) { /* noop */ }
   }
   unlockPointer() {
@@ -132,11 +146,13 @@ export class Input {
   mouseReleased(b = 0) { return this.mouse.released[b]; }
 
   axisX() {
-    return (this.isDown('KeyD', 'ArrowRight') ? 1 : 0) - (this.isDown('KeyA', 'ArrowLeft') ? 1 : 0);
+    const k = (this.isDown('KeyD', 'ArrowRight') ? 1 : 0) - (this.isDown('KeyA', 'ArrowLeft') ? 1 : 0);
+    return k || (this.enabled ? this.pad.x : 0); // (a controller's left stick: analog)
   }
 
   axisY() {
-    return (this.isDown('KeyW', 'ArrowUp') ? 1 : 0) - (this.isDown('KeyS', 'ArrowDown') ? 1 : 0);
+    const k = (this.isDown('KeyW', 'ArrowUp') ? 1 : 0) - (this.isDown('KeyS', 'ArrowDown') ? 1 : 0);
+    return k || (this.enabled ? this.pad.y : 0);
   }
 
   /** True once when the player has typed the given word (cheat codes / secrets). */

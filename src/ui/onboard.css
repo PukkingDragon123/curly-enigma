@@ -216,3 +216,4 @@ kbd.ob-key.on { transform: translateY(var(--px)); filter: brightness(1.1) sepia(
 /* (the bob on transform: `translate` is where uiSolid.keepClear slides it out from under a panel) */
 @keyframes obHintBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(var(--px) * -1)); } }
 html.is-touch .ob-hint { font-size: 16px; white-space: normal; text-align: center; width: max-content; max-width: calc(100vw - 32px); }
+.ob-cine.nobars .ob-bar { display: none; }

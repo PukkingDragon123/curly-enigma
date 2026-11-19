@@ -10,10 +10,10 @@
   position: relative; display: block; box-sizing: border-box; pointer-events: auto; cursor: pointer; text-align: left;
   min-width: calc(var(--px) * 76); max-width: 100%; margin-left: auto; padding: 0; font: inherit; color: var(--sepia);
   border-style: solid; border-width: calc(var(--px) * 8); border-image: var(--a-qstrip) 8 fill / calc(var(--px) * 8) repeat; background: none;
-  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(20, 10, 4, .45));
+  filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(20, 10, 4, .45));
   transform-origin: 50% 50%; transition: transform .32s var(--pop), filter .2s;
 }
-.qt-roll:hover { filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(20, 10, 4, .45)) brightness(1.04); }
+.qt-roll:hover { filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(20, 10, 4, .45)) brightness(1.04); }
 .qt-roll:active { transform: translateY(var(--px)); }
 .qt-roll.rolled { transform: scaleX(.14); transition: transform .28s cubic-bezier(.6, 0, .9, .4); }
 .qt-roll.opening { transition: transform .32s var(--pop); }
@@ -202,7 +202,7 @@
 .nb-notes { padding: calc(var(--px) * 7) var(--px) calc(var(--px) * 2); gap: calc(var(--px) * 7) calc(var(--px) * 3); }
 .nb-note { border-style: solid; border-width: calc(var(--px) * 7); border-image: var(--a-posterR) 7 / calc(var(--px) * 7) repeat;
   background: var(--a-newsT) 0 0 / calc(var(--px) * 64) repeat padding-box, #e0dac4 padding-box; padding: 0 var(--px) var(--px);
-  box-shadow: none; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(30, 14, 6, .45)); transform-origin: 50% 0; }
+  box-shadow: none; filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(30, 14, 6, .45)); transform-origin: 50% 0; }
 .nb-note.taken { border-image-source: var(--a-posterG); }
 .nb-note.misc { border-image-source: var(--a-posterK); }
 .nb-note:nth-child(4n + 1) { --r: -1.4deg; } .nb-note:nth-child(4n + 2) { --r: 1.1deg; } .nb-note:nth-child(4n + 3) { --r: -.7deg; } .nb-note:nth-child(4n) { --r: 1.6deg; }

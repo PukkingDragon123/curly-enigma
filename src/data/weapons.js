@@ -122,16 +122,16 @@ export function weaponName(w) {
  * Blueprints sold by Professor Talpa. kind: weapon | forge | room
  */
 export const BLUEPRINTS = {
-  bp_dagger: { name: 'Dagger Plans', kind: 'weapon', weapon: 'dagger', price: 0, value: 0, icon: { k: 'blueprint', t: 'dagger' }, desc: 'A short blade. Every smith\'s first.' },
+  bp_dagger: { name: 'Dagger Plans', kind: 'weapon', weapon: 'dagger', price: 0, value: 0, icon: { k: 'blueprint', t: 'dagger' }, desc: 'Every smith\'s first.' },
   bp_shortsword: { name: 'Shortsword Plans', kind: 'weapon', weapon: 'shortsword', price: 350, value: 0, icon: { k: 'blueprint', t: 'shortsword' }, desc: 'Handy in a tunnel.' },
   bp_axe: { name: 'Hand Axe Plans', kind: 'weapon', weapon: 'axe', price: 900, value: 0, icon: { k: 'blueprint', t: 'axe' }, desc: 'Head-heavy. Chops roots and arguments.' },
-  bp_mace: { name: 'Mace Plans', kind: 'weapon', weapon: 'mace', price: 2200, value: 0, icon: { k: 'blueprint', t: 'mace' }, desc: 'A lump of metal on a stick, made properly.' },
+  bp_mace: { name: 'Mace Plans', kind: 'weapon', weapon: 'mace', price: 2200, value: 0, icon: { k: 'blueprint', t: 'mace' }, desc: 'A lump on a stick, done properly.' },
   bp_spear: { name: 'Spear Plans', kind: 'weapon', weapon: 'spear', price: 4500, value: 0, icon: { k: 'blueprint', t: 'spear' }, desc: 'Long reach, balanced in the middle.' },
-  bp_longsword: { name: 'Longsword Plans', kind: 'weapon', weapon: 'longsword', price: 9000, value: 0, icon: { k: 'blueprint', t: 'longsword' }, desc: 'The knightly classic.' },
-  bp_warhammer: { name: 'Warhammer Plans', kind: 'weapon', weapon: 'warhammer', price: 20000, value: 0, icon: { k: 'blueprint', t: 'warhammer' }, desc: 'For very determined smiths.' },
+  bp_longsword: { name: 'Longsword Plans', kind: 'weapon', weapon: 'longsword', price: 9000, value: 0, icon: { k: 'blueprint', t: 'longsword' }, desc: 'Two hands. Mind the ceiling.' },
+  bp_warhammer: { name: 'Warhammer Plans', kind: 'weapon', weapon: 'warhammer', price: 20000, value: 0, icon: { k: 'blueprint', t: 'warhammer' }, desc: 'Heavy. So is forging it.' },
   bp_rapier: { name: 'Rapier Plans', kind: 'weapon', weapon: 'rapier', price: 38000, value: 0, icon: { k: 'blueprint', t: 'rapier' }, desc: 'Needle-thin and unforgiving to forge.' },
-  bp_greatsword: { name: 'Greatsword Plans', kind: 'weapon', weapon: 'greatsword', price: 70000, value: 0, icon: { k: 'blueprint', t: 'greatsword' }, desc: 'Five ingots of pure ambition.' },
-  bp_moleblade: { name: 'Moleblade Plans', kind: 'weapon', weapon: 'moleblade', price: 160000, value: 0, icon: { k: 'blueprint', t: 'moleblade' }, desc: 'Half sword, half shovel, the legendary weapon of the first mole-kings.' },
+  bp_greatsword: { name: 'Greatsword Plans', kind: 'weapon', weapon: 'greatsword', price: 70000, value: 0, icon: { k: 'blueprint', t: 'greatsword' }, desc: 'Five ingots. Tall caves only.' },
+  bp_moleblade: { name: 'Moleblade Plans', kind: 'weapon', weapon: 'moleblade', price: 160000, value: 0, icon: { k: 'blueprint', t: 'moleblade' }, desc: 'Half sword, half shovel. Old mole-king stuff.' },
   bp_bellows: { name: 'Double Bellows', kind: 'forge', level: 1, price: 6000, value: 0, icon: { k: 'blueprint', t: 'bellows' }, desc: 'Forge reaches 1800°C. Needed to smelt mithril.' },
   bp_magma_hearth: { name: 'Magma Hearth', kind: 'forge', level: 2, price: 45000, value: 0, icon: { k: 'blueprint', t: 'hearth' }, desc: 'Forge reaches 2050°C. Needed for adamant and starmetal.' },
   bp_room1: { name: 'Burrow Extension I', kind: 'room', level: 1, price: 1500, value: 0, icon: { k: 'blueprint', t: 'room' }, desc: 'Dig your home out to 12×10.' },

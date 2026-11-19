@@ -192,7 +192,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     backNote.hidden = !hidden && !rocco;
     // (wave 12: less text) a short tag; the full line stays on hover
     if (rocco) { backNote.textContent = 'New every morning'; backNote.title = 'New oddities every morning. Don\'t ask where from.'; }
-    else if (hidden) { backNote.textContent = `+${hidden} deeper down`; backNote.title = `${hidden} more in the back. Dig deeper and come back!`; }
+    else if (hidden) { backNote.textContent = `+${hidden} deeper down`; backNote.title = `${hidden} more out back. Dig deeper, then ask.`; }
   };
   const good = (e) => {
     const it = ITEMS[e.id], p = st.buyPrice(shopPrice(shop, e));
@@ -346,7 +346,7 @@ export function openBurrowShop(game, shopId, o = {}) {
       const more = Q.forNpc?.(npc)?.lines || [];
       news.lines = more;
       au.play('success');
-      speak(more[0] || 'Ah, lovely. Thank you.', 'happy');
+      speak(more[0] || 'Lovely. Thank you.', 'happy');
       folk?.react('bought');
       rerender();
     } }, 'Hand it over'));

@@ -19,18 +19,18 @@ const NAMES = ['Pebble', 'Rooty', 'Moss', 'Tuck', 'Clover', 'Burr', 'Dusty', 'Fe
   'Dot', 'Ivo', 'Juniper', 'Nettle', 'Ollie', 'Rue', 'Sorrel', 'Thistle', 'Umber', 'Wren', 'Ginny', 'Barley', 'Cob', 'Loam', 'Marl'];
 
 export const ELDER_LINES = [
-  'Came out of Shaft Seven like a cork from a bottle, you did.',
+  'Out of Shaft Seven, of all places. Took ten years off me.',
   'Your burrow suits you. Needs more dirt, though.',
-  'Fifty years I have sat by that shaft. Never saw it sneeze before.',
-  'Save your coins, youngster. The surface is not cheap.',
-  'Grubb sells a fine pick. Do not tell him I said so.',
+  'Fifty years I\'ve sat by that shaft. Never saw it sneeze.',
+  'Save your coins, youngster. Up top isn\'t cheap.',
+  'Grubb sells a fine pick. Don\'t tell him I said.',
 ];
 const VENDOR_LINES = {
-  shrooms: ['Fresh glowcaps! They glow all the way home!', 'Mushrooms, mushrooms, picked this morning!', 'Try the blue ones. Or do not. Your tummy.'],
-  fish: ['Blind fish! Still wiggling!', 'Caught in the Deep Lake, they never saw it coming.', 'Smell that? That is freshness.'],
-  gems: ['Shiny rocks, shinier prices!', 'Every stone polished by my own paws.', 'Found it in a geode. Probably.'],
+  shrooms: ['Glowcaps! Glow all the way home.', 'Mushrooms! Picked this morning.', 'Try the blue ones. Or don\'t. Your tummy.'],
+  fish: ['Blind fish! Still wiggling.', 'Caught in the Deep Lake, they never saw it coming.', 'Smell that? That\'s fresh.'],
+  gems: ['Shiny rocks. Shinier prices.', 'Every stone polished by my own paws.', 'Found it in a geode. Probably.'],
 };
-const HELLOS = ['Oh! Hello there.', 'Evening, neighbour!', 'Mind the puddles.', 'Nice day for it. Probably. Who can tell down here.', 'Hullo!', 'You\'re the new one, aren\'t you?'];
+const HELLOS = ['Oh! Hello there.', 'Evening.', 'Mind the puddles.', 'Nice day for it. Probably. Who can tell down here.', 'Hullo!', 'You\'re the new one, aren\'t you?'];
 const DOORSTEP = ['Lovely and quiet back here.', 'Kettle\'s on, if you\'re passing.', 'My begonias glow better than Hazel\'s. Don\'t tell her.', 'Back lanes are the best lanes.'];
 
 function voiceFor(spec, rng) {
@@ -210,7 +210,7 @@ export class Townsfolk {
     npc.pause = 3.6;
     let line;
     if (npc.sleeping) line = pick(['Zzz... five more minutes...', 'Mmh? Wha... oh, hello. Zzz.', 'Zzz... shiny... so shiny...']);
-    else if (npc.role === 'busker') line = pick(['A coin for the song? Only joking. Mostly.', 'This one is about the sun. I have never seen it.', '♪ Dig, dig, dig, little paws... ♪']);
+    else if (npc.role === 'busker') line = pick(['A coin for the song? Only joking. Mostly.', 'This one\'s about the sun. Never seen it.', '♪ Dig, dig, dig, little paws... ♪']);
     else if (npc.role === 'baby') line = pick(['Bah!', 'Mama! Mole!', 'Hee hee!', 'Dirt!']);
     else if (npc.role === 'elder') line = pick(s.game.state.escaped ? ELDER_LINES : ['Mind the old shaft, youngster. Nothing comes out of there.', 'Shaft Seven caved in before you were born.']);
     else if (npc.role === 'vendor') line = pick(VENDOR_LINES[npc.kind] || VENDOR_LINES.shrooms);

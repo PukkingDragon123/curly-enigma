@@ -258,6 +258,15 @@ function chamber(c, nz, x, y, z, rx, rz) {
   if (h2 > 1.5) return -1;
   // the floor: a little tilt, silt hummocks, a breakdown pile of boulders under the roof
   let yF = c.yF + c.tx * (x - c.x) + c.tz * (z - c.z);
+  // (wave 18: no more flat sheets of silt) the floor rolls in low swells and hummocks, and here and
+  // there a harder bed lifts it into a raised bench a hand or two high; more of it in the big rooms,
+  // none round a lift station
+  if (!c.lift) {
+    const sw = nz[2].n(rx * 0.16 + 3.7, c.yF * 0.05 + 1.3, rz * 0.16 - 8.1), hu = nz[3].n(rx * 0.55 - 1.1, 4.4, rz * 0.55 + 2.9);
+    const be = nz[1].n(rx * 0.11 + 11.3, c.yF * 0.07 + 7.7, rz * 0.11 - 5.2);
+    const k = Math.min(1.25, (c.Rx + c.Rz) * 0.11);
+    yF += (sw * 0.24 + hu * 0.075 + (be > 0.22 ? Math.min(1, (be - 0.22) * 7) * 0.2 : 0)) * k;
+  }
   if (c.pileH > 0) {
     const px = rx - c.px, pz = rz - c.pz, pd = (px * px + pz * pz) * c.pr2;
     if (pd < 1) {

@@ -10,6 +10,9 @@ import { makeRoot, makeMushrooms, makeLantern, S16 } from './props.js';
 import { Particles, Twinkles, SHAPE, makeGlow, GLSL_BAYER } from './fx.js';
 import { ZONES } from '../data/zones.js';
 import { makeNoise2D, makeRng, shade, mixHex, clamp, lerp } from '../core/util.js';
+import { Handheld } from './cine.js';
+
+const hand = new Handheld(11);
 
 const VS = 0.25;
 const ZH = 20; // world units per zone
@@ -743,6 +746,7 @@ export function buildShaft(ctx) {
     cage.root.rotation.z = Math.sin(S.t * 2.3) * 0.012 * speedK;
     camera.position.set(0, y + CAM_UP, camDist);
     camera.quaternion.copy(camQuat);
+    hand.apply(camera, S.t, 0.6 + speedK * 0.5); // (wave 18: the operator rides up with it, bookends/cine.js)
     lampLight.position.set(0, y + 2.2, 0.4);
 
     // zone-dependent mood

@@ -47,7 +47,7 @@ export const SIDE_QUESTS = {
   // ================================================================== Grubb, picks & chisels
   v_grubb_iron: V({
     title: 'Grubb\'s Grindstone', from: 'tools',
-    intro: 'My grindstone\'s axle cracked. Iron. Four bars of it, smelted proper, no slag. Do that and I\'ll give you the fine chisel off my wall. It\'s been waiting for paws like yours.',
+    intro: 'My grindstone\'s axle cracked. Iron. Four bars, smelted proper, no slag. Do that and the fine chisel off my wall is yours. Nobody\'s touched it in years.',
     outro: 'Good iron. Rings true. Here: the fine chisel. Don\'t use it to open tins.',
     steps: [
       { id: 'bring', text: 'Bring Grubb 4 iron ingots', hint: 'Iron ore lives in the Clayworks; smelt it at Old Star\'s forge.', deliver: { to: 'tools', items: { iron_ingot: 4 } } },
@@ -56,7 +56,7 @@ export const SIDE_QUESTS = {
   }),
   v_grubb_axe: V({
     title: 'For the Window', from: 'tools', requires: ['v_grubb_iron'],
-    intro: 'Customers look at my window and see picks. Boring. I want an axe in it. Bronze, grade B or better, so it catches the lamp. Forge it, bring it, and the hand-axe plans are yours. Well. They\'re already yours, if you can forge one. I\'ll pay, then.',
+    intro: 'Folk look in my window and see picks. Boring. I want an axe in it. Bronze, grade B or better, so it catches the lamp. I\'ll pay.',
     outro: 'Look at the edge on that. I\'ll put a little card under it. "Not for sale." Then sell it.',
     steps: [
       { id: 'forge', text: 'Forge a bronze axe, grade B or better', hint: 'Hand axe plans (Inkwell Plans) and bronze ingots (copper + tin). Even heat, firm blows.', on: { type: 'forge', weapon: 'axe', metal: 'bronze', grade: gradeAtLeast('B') }, where: { place: 'home' } },
@@ -69,7 +69,7 @@ export const SIDE_QUESTS = {
     intro: 'New fuses. Twice as long. Customers say they\'re too long. Customers are wrong. Blast three bits of rock with them and come and tell me how much time you had.',
     outro: 'Plenty of time, you say? Hah! Told them. Here: a bundle on the house. Use them somewhere I can\'t hear.',
     steps: [
-      { id: 'blast', text: 'Blast rock with dynamite 3 times', hint: 'Light it, throw it, walk away. Not run. Walk. With dignity.', on: { type: 'blast' }, n: 3 },
+      { id: 'blast', text: 'Blast rock with dynamite 3 times', hint: 'Throw it and walk away. Not run. Walk. With dignity.', on: { type: 'blast' }, n: 3 },
       { id: 'tell', text: 'Tell Grubb how the fuses did', hint: 'He\'s at his counter on the north wall.', talk: 'tools' },
     ],
     reward: { gold: 350, items: { dynamite_bundle: 2 } },
@@ -226,7 +226,7 @@ export const SIDE_QUESTS = {
   }),
   v_mabel_hymn: V({
     title: 'The Sunbeam Festival: The Sun Hymn', from: 'mabel', requires: ['v_mabel_lanterns'],
-    intro: 'Last thing: the music. Lark wants to sing the old Sun Hymn, but nobody remembers it. It\'s carved in the ruins, they say, in bumpy letters. Take a rubbing of any old carving to Lark, and then come and stand in the sun with us.',
+    intro: 'Last thing: music. Lark wants the old Sun Hymn, but nobody remembers it. It\'s carved in the ruins, they say. Take a rubbing to Lark, then come and stand in the sun with us.',
     outro: 'Look at them all, eyes shut, faces up. Best festival in forty years. Thank you, dear. Here, from all of us.',
     steps: [
       { id: 'rub', text: 'Read a carving in an old ruin', hint: 'The old dens and grottos hide deep in the rock. E on a carved frieze or rune wall reads it.', on: { type: 'lore', src: 'carving' }, grant: { sun_hymn: 1 }, where: { ruin: 'nearest' }, say: { text: 'You rub charcoal over the raised runes: <b>a rubbing of the Sun Hymn</b>.' } },
@@ -279,7 +279,7 @@ export const SIDE_QUESTS = {
   }),
   v_digby_lair: V({
     title: 'The Old Workings', from: 'digby', requires: ['v_digby_coal'], when: reached(2),
-    intro: 'Something\'s nested in the old Company workings. We hear it scratching through the lift shaft at night. Find a lair and clear it out. Bring a big stick. Bring two.',
+    intro: 'Something\'s nested in the old Company workings. We hear it scratching up the lift shaft at night. Find its lair and clear it out. Take a lamp. Take two.',
     outro: 'Quiet as a cave last night. First good sleep in a month. Here, from the haulers.',
     steps: [{ id: 'clear', text: 'Clear out a creature lair', hint: 'Lairs and nests show as red rings on the radar. Block, then strike.', on: { type: 'nest' }, where: { danger: 'nest' } }],
     reward: { gold: 1000, sp: 1, lore: ['cr_nibbler'] },
@@ -315,14 +315,14 @@ export const SIDE_QUESTS = {
   }),
   v_kids_beetles: V({
     title: 'Beetle Jar', from: 'hops', when: onDay(2),
-    intro: 'I want the GLOWY ones. Glow beetles! Three! For my jar! I\'ll name them after you!',
+    intro: 'I want the GLOWY ones. Glow beetles. Three, for my jar! I\'ll name them after you.',
     outro: 'This one\'s you, this one\'s you, and this one\'s also you. Here, I made you a jar too!',
     steps: [{ id: 'bring', text: 'Bring Hops 3 glow beetles', hint: 'Glow beetles crawl on cave walls and floors. Catch them gently (E).', deliver: { to: 'hops', items: { glow_beetle: 3 } } }],
     reward: { gold: 120, items: { beetle_jar: 1 } },
   }),
   v_snorri_tea: V({
     title: 'A Strong Cup', from: 'snorri', when: onDay(2),
-    intro: 'Zzz... mm? Is it night? No? Then... tea. Stone-thyme tea. Strong enough to stand a pick in. Zzz.',
+    intro: 'Zzz. Mm? Is it night? No? Then tea. Stone-thyme. Strong enough to stand a pick in. Zzz.',
     outro: 'I am AWAKE. I can hear colours. Sit down, I\'ll tell you about the trolls.',
     steps: [{ id: 'bring', text: 'Bring Snorri a Stone-Thyme Tea', hint: 'Cook it at a hearth: stone thyme grows on rocky ledges in the upper layers.', deliver: { to: 'snorri', items: { thyme_tea: 1 } } }],
     reward: { gold: 300, lore: ['cr_trolls'] },
@@ -370,8 +370,8 @@ export const SIDE_QUESTS = {
   }),
   v_finn_shrimp: V({
     title: 'Frost Shrimp on Ice', from: 'finn', when: reached(5),
-    intro: 'Frost shrimp! From the Frost Vault! The Council\'s been asking. Three, still frosty. They go off if you look at them, so don\'t look at them.',
-    outro: 'Frosty! Fresh! The Council will be insufferable. Here, double the usual.',
+    intro: 'Frost shrimp, from the Vault. The Council\'s been asking. Three, still frosty. They go off if you look at them, so don\'t.',
+    outro: 'Still frosty. The Council will be insufferable. Here, double the usual.',
     steps: [{ id: 'bring', text: 'Bring Finnick 3 frost shrimp', hint: 'They scuttle on the ice of the Frost Vault. Bring something warm to eat.', deliver: { to: 'finn', items: { frost_shrimp: 3 } } }],
     reward: { gold: 4200, sp: 1 },
   }),
@@ -390,7 +390,7 @@ export const SIDE_QUESTS = {
     intro: 'My Albert\'s poorly again. Glowcap soup, made properly, mind: a good, careful pot, not one of those slapdash ones. He can tell.',
     outro: 'He says it\'s the best soup he\'s ever had. He says that every time. This time I believe him.',
     steps: [
-      { id: 'cook', text: 'Cook a careful Glowcap Soup (score 70+)', hint: 'Chop evenly, simmer gently, season to taste. A score of 70 or better.', on: { type: 'cook', dish: 'glowcap_soup', score: (v) => (v ?? 0) >= 70 }, where: { place: 'home' } },
+      { id: 'cook', text: 'Cook a careful Glowcap Soup (score 70+)', hint: 'Chop even, don\'t let it boil over. Score 70 or better.', on: { type: 'cook', dish: 'glowcap_soup', score: (v) => (v ?? 0) >= 70 }, where: { place: 'home' } },
       { id: 'bring', text: 'Bring Bess a Glowcap Soup', hint: 'Her doorstep in the back lanes, south-west.', deliver: { to: 'bess', items: { glowcap_soup: 1 } } },
     ],
     reward: { gold: 350 },
@@ -448,8 +448,8 @@ export const SIDE_QUESTS = {
   tm_raptor: {
     title: 'A Wary Friend', giver: 'oldstar', kind: 'story', auto: true,
     when: (st) => !!st.data.tame?.stray?.met || (st.data.tame?.raptors?.length || 0) > 0,
-    intro: 'A raptor on its own? Hurt, you say? A lone one\'s a frightened one. Get low, keep your pick to yourself and let it come to you. And take it meat: a dino steak, if you have one. Fish or grubs at a pinch.',
-    outro: 'You came up out of the dino caverns with a raptor at your heel. Sixty years down here and I never saw that. Keep it fed. Keep it away from my boots.',
+    intro: 'A raptor on its own is a scared one. Get low. Keep the pick down. Let it come to you. Bring it meat.',
+    outro: 'A raptor at your heel. Forty years down here and I never saw that. Keep it fed. Keep it off my boots.',
     steps: [
       { id: 'calm', text: 'Calm the lone raptor', hint: 'Crouch (C) near it and keep still. Don\'t run at it, and keep your pick down. Its tail and head tell you how it feels.', on: { type: 'tame', what: 'calm' }, where: { biome: 'dino' } },
       { id: 'feed', text: 'Feed it what it likes', hint: 'Look at it and press E to toss it food: dino steak is its favourite; fish and grubs will do.', on: { type: 'tame', what: 'feed' }, n: 3, where: { biome: 'dino' } },
@@ -459,7 +459,7 @@ export const SIDE_QUESTS = {
   },
   lo_talpa_survey: V({
     title: 'Survey of the Deep Garden', from: 'blueprints', kind: 'lore', requires: ['lo_talpa_carvings'], when: reached(2),
-    intro: 'Below the Clayworks there are caverns so big they have weather. Ferns! Bones! Beasts! I\'m drawing a survey and I need someone to walk it. A good long walk. Mind the teeth.',
+    intro: 'Below the Clayworks there are caverns so big they have weather. Ferns. Bones the size of houses. I\'m drawing a survey and need someone to walk it. Mind the teeth.',
     outro: 'Look at this! A whole new sheet. I shall call it the Deep Garden, and you shall have the first copy, and a fee.',
     steps: [{ id: 'walk', text: 'Walk the dino caverns', hint: 'Huge caves with ferns and giant bones. Walk around in them; the raptors bite.', on: { type: 'explore', biome: 'dino' }, sum: 'n', n: 150, where: { biome: 'dino' } }],
     reward: { gold: 1800, sp: 1, items: { bp_spear: 1 }, lore: ['cr_garden'] },
@@ -503,14 +503,14 @@ export const SIDE_QUESTS = {
 export const BURROW_QUESTS = {
   rc_amends: {
     title: 'Rocco Makes Amends', giver: 'rocco', kind: 'request', from: 'rocco', urgent: true, requires: ['lo_hollis_cart'], when: (st) => !!st.flag('starToldRocco'), gives: { rocco_purse: 1 },
-    intro: 'Fine! FINE. Grandpa found a cart in the deep, full of gold with little stars on. He... spent most of it. On this burrow. Here. It\'s what\'s left. Take it to the old star-nose. Tell him... tell him sorry. Don\'t tell him I cried. Raccoons don\'t cry.',
+    intro: 'Fine! FINE. Grandpa found a cart in the deep, full of gold with little stars on. He spent most of it. On this burrow. Here. It\'s what\'s left. Take it to the old star-nose. Tell him... tell him sorry. Don\'t tell him I cried. Raccoons don\'t cry.',
     outro: 'He laughed? He LAUGHED? ...Good. That\'s good.',
     steps: [{ id: 'bring', text: 'Bring Rocco\'s purse to Old Star', hint: 'At home, in his house above the mine.', deliver: { to: 'oldstar', items: { rocco_purse: 1 } }, say: { by: 'oldstar', text: 'Star-stamped. Every one. Forty years. ...Ha! A raccoon! I\'ll put it on the mantel. Not for spending. For remembering.', mood: 'laugh' } }],
     reward: { sp: 2, items: { music_box: 1 }, lore: ['os_sorry'] },
   },
   tr_gems: {
     title: 'A Gem Case for the Post', giver: 'trader', kind: 'request', from: 'trader', requires: ['tr_bronze'],
-    intro: 'Folk want to see sparkle when they walk in. Two amethysts and two amber for the display case, if you please. I\'ll pay you a sparkle\'s worth.',
+    intro: 'Folk want sparkle when they walk in. Two amethysts and two amber for the case, if you please.',
     outro: 'Look at them catch the lamp! The Post looks like a palace.',
     steps: [{ id: 'bring', text: 'Bring {trader} 2 amethysts and 2 amber', hint: 'Amber in the Rootsoil and Clayworks, amethyst a little lower.', deliver: { to: 'trader', items: { amethyst: 2, amber: 2 } }, where: { burrow: 'trader' } }],
     reward: { gold: 900, sp: 1 },

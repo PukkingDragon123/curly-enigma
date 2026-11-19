@@ -153,8 +153,9 @@ kbd.ft-c { text-shadow: none; }
 @media (min-width: 901px) and (min-height: 601px) { .ft-disc-t small { font-size: 16px; } }
 
 /* ---- the town's speech (UI.bubble): words floating over the speaker, the name above them */
-.bubble.ft-bub { background: none; box-shadow: none; padding: 0; color: #fff2da; filter: none; max-width: calc(var(--px) * 110); font-size: 16px; line-height: 1.4; }
-@media (min-width: 1700px) and (min-height: 1000px) { .bubble.ft-bub { font-size: 24px; } }
+/* (wave 18: speech a size up, on the font's own grid: 24px at 720p, 32px from 1080p) */
+.bubble.ft-bub { background: none; box-shadow: none; padding: 0; color: #fff2da; filter: none; --fs-talk: max(calc(var(--g) * 3), round(down, calc(var(--fs) * 1.5), var(--g)));
+  max-width: calc(var(--fs-talk) * 16); font-size: var(--fs-talk); line-height: 1.35; }
 .bubble.ft-bub b .ft-c.on { animation: ftIn .52s ease-out var(--d, 0s) both; }
 .bubble.ft-bub::before, .bubble.ft-bub::after { display: none; }
 .bubble.ft-bub b { color: #ffd890; font-family: var(--font-head); font-size: var(--fs-h); line-height: 1; margin-bottom: 0; }

@@ -6,7 +6,9 @@
    your side of the frame as words you pick (1–4, ↑ ↓, E, a tap): the one in focus lights up, steps
    out, gets a brass pointer, its gem kindles and an ember line runs under it. The letterbox stays
    (it's a film). Art: --dl-* (dialogArt.js) and --cv-* (Convo.js), all at --px. */
-.cv { position: absolute; inset: 0; z-index: 5; pointer-events: none; --cv-bar: 72px; }
+.cv { position: absolute; inset: 0; z-index: 5; pointer-events: none; --cv-bar: 72px;
+  /* wave 18: the spoken words a size up, on the font's own grid (Tiny5 at 3× its pixels at 720p, 4× from 1080p) */
+  --fs-talk: max(calc(var(--g) * 3), round(down, calc(var(--fs) * 1.5), var(--g))); }
 .cv.held { pointer-events: auto; cursor: pointer; }
 .cv .cv-say { pointer-events: auto; cursor: pointer; }
 .cv[hidden] { display: none !important; }
@@ -32,13 +34,13 @@ html.is-touch .cv-hint { right: 50%; transform: translate(50%, -50%); }
 .cv-say {
   --nm: #ffe0a0; /* the name's colour, the motes' and the gem's (per speaker below) */
   position: absolute; left: 0; top: 0; box-sizing: border-box; display: flex; align-items: flex-start;
-  width: max-content; max-width: min(calc(var(--px) * 124), calc(100vw - 24px - var(--sal) - var(--sar)));
+  width: max-content; max-width: min(calc(var(--fs-talk) * 22), calc(100vw - 24px - var(--sal) - var(--sar)));
   color: #fff2da; transform-origin: 0 50%; will-change: transform;
 }
 .cv-say.gone { opacity: 0; visibility: hidden; pointer-events: none; }
 .cv.out .cv-say:not(.ft-ghost) { opacity: 0; transition: opacity .2s; }
 .cv-body { position: relative; min-width: calc(var(--px) * 30); padding: 0 calc(var(--px) * 2) calc(var(--px) * 3); }
-.cv-text { font-size: var(--fs); line-height: 1.5; text-wrap: pretty; }
+.cv-text { --fs: var(--fs-talk); font-size: var(--fs-talk); line-height: 1.42; text-wrap: pretty; }
 .cv-text .qtk-reward { display: block; margin-top: calc(var(--px) * 2); }
 .cv-text .qtk-next { display: block; margin-top: var(--px); }
 .cv-say[data-side=left] .cv-body { text-align: right; }
@@ -184,7 +186,7 @@ html.is-touch .cv-opt { padding-top: calc(var(--px) * 3); padding-bottom: calc(v
   .cv-say { max-width: calc(100vw - 20px - var(--sal) - var(--sar)); }
 }
 @media (min-width: 1700px) and (min-height: 1000px) {
-  .cv-text, .cv-opt, .cv-sub, .cv-hint { font-size: 24px; }
+  .cv-opt, .cv-sub, .cv-hint { font-size: 24px; }
 }
 
 /* (guard: a layer that marks "a window is open" with a class named `panel` must not pick up the

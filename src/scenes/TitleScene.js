@@ -38,6 +38,7 @@ import { makeCritters } from '../bookends/forest/critters.js';
 import { makeFlocks } from '../bookends/forest/flocks.js';
 import { makeVoxelShadow } from '../bookends/forest/shadow.js';
 import { makeHeroMole } from '../gfx/char/hero.js';
+import { Spring, Handheld } from '../bookends/cine.js';
 import { makeNest } from '../bookends/titleNest.js';
 import { titleSounds } from '../bookends/titleSounds.js';
 import { makeSignpost } from '../bookends/titleSigns.js';
@@ -653,14 +654,14 @@ export default class TitleScene extends Scene {
 
   openCredits() {
     const body = el('div', { class: 'bk-credits-body' }, [
-      el('p', {}, 'A tough little mole, an old star-nosed smith, and one million gold between them and the sun.'),
+      el('p', {}, 'A mole fell through an old smith\'s roof. The way out costs a million gold.'),
       el('ul', {}, [
         el('li', {}, 'Made with Three.js'),
         el('li', {}, 'Every sound a real recording'),
         el('li', {}, 'All art procedurally generated'),
         el('li', {}, 'No image or model files'),
       ]),
-      el('p', { class: 'muted' }, 'Thank you for digging with us.'),
+      el('p', { class: 'muted' }, 'Thanks for digging.'),
     ]);
     this.game.ui.openPanel({ title: 'Credits', sub: 'BURROWSMITH', body, onClose: () => setTimeout(() => this.menu.focus(2, true), 30) });
   }
@@ -705,6 +706,7 @@ export default class TitleScene extends Scene {
     lk.subVectors(look, M).applyAxisAngle(THREE.Object3D.DEFAULT_UP, yaw).add(M);
     c.fov = fov;
     c.lookAt(lk);
+    (this.hand || (this.hand = new Handheld(2))).apply(c, t, 0.35 * calm); // (a faint operator's breath on the loop)
     c.updateProjectionMatrix();
     c.updateMatrixWorld();
   }
@@ -737,11 +739,14 @@ export default class TitleScene extends Scene {
     if (!this.ready) return;
     const a = performance.now();
     // glide toward the current framing (down to the nest a little slower, an easy swoop)
+    // (wave 18: critically damped springs, bookends/cine.js: the glide eases in as well as out, no lurch)
     const s = this.shot();
-    const k = 1 - Math.exp(-dt * (this.shotName === 'leave' ? 1.9 : this.shotName === 'stones' ? 1.7 : 2.2));
-    this.cam.pos.lerp(s.pos, k);
-    this.cam.look.lerp(s.look, k);
-    this.cam.fov += (s.fov - this.cam.fov) * k;
+    const T = this.shotName === 'leave' ? 0.55 : this.shotName === 'stones' ? 0.62 : 0.5;
+    const sp = this.camSpring || (this.camSpring = { pos: new Spring(T), look: new Spring(T), fov: new Spring(T, this.cam.fov) });
+    sp.pos.T = sp.look.T = sp.fov.T = T;
+    sp.pos.vec(this.cam.pos, s.pos, dt);
+    sp.look.vec(this.cam.look, s.look, dt);
+    this.cam.fov = sp.fov.to(s.fov, dt);
     this.applyCamera(this.time);
     this.sign.update(dt, this.camera, this.game.engine.height);
     this.menu.update(dt);

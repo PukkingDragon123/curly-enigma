@@ -27,7 +27,7 @@
 }
 .skt-emblem {
   position: absolute; left: calc(var(--px) * -12); top: calc(var(--px) * -10); width: calc(var(--px) * 48); height: calc(var(--px) * 48);
-  background: var(--skc-medal) 0 0 / 100% 100%; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .5));
+  background: var(--skc-medal) 0 0 / 100% 100%; filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(0, 0, 0, .5));
 }
 .skt-emblem img { position: absolute; left: calc(var(--px) * 8); top: calc(var(--px) * 8); width: calc(var(--px) * 32); height: calc(var(--px) * 32); animation: sktEmb .5s var(--pop); }
 @keyframes sktEmb { from { transform: scale(.6) rotate(-40deg); } }
@@ -240,7 +240,7 @@
   position: absolute; z-index: 20; width: min(calc(var(--px) * 112), calc(100% - 8px)); box-sizing: border-box; pointer-events: none;
   padding: calc(var(--px) * 3) calc(var(--px) * 4) calc(var(--px) * 3); color: var(--ink, #2a1a0e); font-size: max(var(--g), round(calc(var(--fs) * .95) + 2px, var(--g))); line-height: 1.25;
   border: calc(var(--px) * 8) solid transparent; border-image: var(--a-parch) 8 fill / calc(var(--px) * 8) repeat;
-  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .55)); animation: sktTip .14s ease-out;
+  filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(0, 0, 0, .55)); animation: sktTip .14s ease-out;
 }
 .skt-tip.pinned { pointer-events: auto; }
 @keyframes sktTip { from { opacity: 0; transform: translateY(calc(var(--px) * 2)); } }
@@ -291,7 +291,7 @@
 .skt-wrap {
   position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box;
   border: calc(var(--px) * 12) solid transparent; border-image: var(--skc-panel) 12 / calc(var(--px) * 12) repeat;
-  filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(8, 4, 2, .55));
+  filter: drop-shadow(var(--px) calc(var(--px) * 3) 0 rgba(8, 4, 2, .55));
 }
 .skt-wrap > .skt > .skt-head { margin: calc(var(--px) * -12) calc(var(--px) * -12) 0; }
 .modal-back > .panel.skt-panel > .close {
@@ -312,7 +312,7 @@
   position: absolute; z-index: 5; left: calc(var(--sal) + var(--px) * 4); top: 40%; display: flex; align-items: center; gap: calc(var(--px) * 2);
   border-style: solid; border-width: calc(var(--px) * 7); border-image: var(--dl-plaque) 7 fill / calc(var(--px) * 7) repeat;
   padding: 0 calc(var(--px) * 1) 0 0; margin-left: 0; color: #ffe6b0; pointer-events: none;
-  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .45));
+  filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(8, 4, 6, .45));
   transform: translateX(calc(-100% - var(--px) * 16)) rotate(-2deg); opacity: 0; transition: transform .4s var(--pop), opacity .25s;
 }
 .sk-chip.show { transform: translateX(0) rotate(-1deg); opacity: 1; }
@@ -357,7 +357,7 @@
 .sk-chip.lvl .sk-chip-ribbon { animation: skRibbon .7s var(--pop) .1s forwards; }
 @keyframes skRibbon { 0% { opacity: 0; transform: translateX(-50%) translateY(calc(var(--px) * -8)) rotate(-8deg); } 55% { opacity: 1; transform: translateX(-50%) rotate(3deg); } 80% { transform: translateX(-50%) rotate(-1.5deg); } 100% { opacity: 1; transform: translateX(-50%) rotate(0); } }
 .sk-chip.lvl .sk-chip-medal > img { animation: skStampMini .6s cubic-bezier(.3, 1.5, .5, 1) both; }
-.sk-chip.lvl { filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .45)) drop-shadow(0 0 calc(var(--px) * 3) rgba(255, 214, 110, .75)); }
+.sk-chip.lvl { filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(8, 4, 6, .45)) drop-shadow(0 0 calc(var(--px) * 3) rgba(255, 214, 110, .75)); }
 .sk-chip.lvl .sk-chip-head em { animation: skBump .5s var(--pop) .15s; }
 .sk-chip-burst { position: absolute; left: calc(var(--px) * 3.5); top: 50%; width: 0; height: 0; pointer-events: none; z-index: 3; }
 .sk-spark { position: absolute; left: calc(var(--px) * -3.5); top: calc(var(--px) * -3.5); width: calc(var(--px) * 7); height: calc(var(--px) * 7); opacity: 0;

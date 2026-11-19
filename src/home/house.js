@@ -32,6 +32,8 @@ import * as HP from './houseProps.js';
 import * as KP from './clutterProps.js';
 import * as CMP from './campProps.js';
 import * as HW from './hollowProps.js';
+import * as CZ from './cozyProps.js';
+import { bigRug } from './houseProps.js';
 import { buildCaveRock, caveBoxes, DRIPS, chalkSpots, chalkDecal } from './caveShell.js';
 import { ROOMS, FY, roomAt, hollowSD, caveSD, ceilAt, lean, setOpenNooks } from './plan.js';
 import { NOOKS, diggable, nooksFromKey } from './nooks.js';
@@ -43,6 +45,8 @@ import { LAYER_OUTLINE } from '../core/Engine.js';
 
 const tl = (m) => m / T;
 const Y = FY;
+/** (wave 18) The ridge beam along the hollow's crest (m): its ends sunk in the rock, its axis at y. */
+const RIDGE = { x0: 3.3, x1: 7.0, z: -2.62, y: FY + 1.86 };
 
 /** (Old: his shack. Gone with the camp; kept so old imports still resolve.) */
 export const SHACK = { x: 99, z: 99, W: 0, D: 0, Hf: 0, Hb: 0, dc: 0, dw: 0 };
@@ -418,12 +422,66 @@ export class StarHouse {
     DRIPS.forEach((d, i) => {
       this.drips.push({ x: d.x, z: d.z, y: ceilAt(d.x, d.z) - 0.04, t: 1 + i * 0.7, every: 2.4 + (i % 3) * 1.3, pool: false });
     });
-    // a few glowing mushrooms in the damp corner behind the bellows
-    const s = CMP.glowCaps(3, 0, 0.75);
-    this.place(s.obj, 2.66, -3.18, 3);
-    this.boxAt(2.66, -3.18, 0.12, 0.12, 0.16);
-    this.look({ x: 2.66, y: Y + 0.15, z: -3.18, r: 0.24, label: 'Glowing mushrooms', pick: true, special: true });
+    // his mushroom garden in the damp corner behind the bellows: a planter box of glowing caps
+    const mg = CZ.mushroomGarden(461);
+    this.place(mg.obj, 2.78, -3.2, Math.PI / 2);
+    this.boxAt(2.8, -3.2, 0.17, 0.2, 0.18, Math.PI / 2);
+    mg.glows.forEach((q, i) => { if (i < 3) { const w = this.toM(mg.obj, q); this.light({ kind: 'shroomlet', x: w.x, y: w.y, z: w.z, color: 0x5ad0d8, intensity: 0, real: false, halo: 0.06, haloOpacity: 0.35, flicker: 0.05, speed: 0.3, power: 0.12, radius: 0.6 }); } });
+    this.look({ x: 2.78, y: Y + 0.15, z: -3.2, r: 0.24, label: 'Glowing mushrooms', pick: true, special: true });
+    this.buildRoof(set);
     this.look({ x: HOLE.x, y: Y + 1.7, z: HOLE.z, r: 0.45, label: 'Look up at the hole', lines: ['A ragged hole in the roof, roots all round it, and far up a grey speck of daylight. That\'s where I came in.', 'Dirt still trickles down now and then. A long way down. Lucky the floor was soft.'], aside: 'hole' });
+  }
+
+  // ------------------------------------------------------------ the roof: roots for rafters, the ridge beam, herbs drying
+  /**
+   * (wave 18) The root-beam roof: great old roots run across the rock like rafters (following the
+   * roof, ends sunk in the rock, rootlets trailing down), a hewn ridge beam wedged between them along
+   * the hollow (iron straps, hooks), herbs, chillies, garlic and mushrooms hung from it to dry. And
+   * over your sleeping alcove once it's dug, one more root and a bunch of lavender.
+   */
+  buildRoof(set) {
+    const rib = (pts, seed, o) => { const r = CZ.rootRib(pts, seed, o); this.place(r.obj, r.at.x, r.at.z, 0, r.at.y); };
+    const across = (x, z0, z1, seed, wob = 0.08) => {
+      const pts = [];
+      for (let z = z0; z <= z1 + 1e-6; z += 0.14) {
+        const xx = x + wob * Math.sin(z * 2.1 + seed) + 0.04 * Math.sin(z * 5.3 + seed * 2);
+        const c = ceilAt(xx, z);
+        // (sunk a little way into the rock where the roof comes down to meet the walls)
+        const inside = hollowSD(xx, z) + lean(c - 0.1) < 0.05;
+        if (!inside && pts.length) { pts.push([xx, c - 0.01, z]); break; }
+        if (inside) { if (!pts.length) pts.push([xx, ceilAt(xx, z - 0.14) - 0.01, z - 0.14]); pts.push([xx, c - 0.035, z]); }
+      }
+      return pts;
+    };
+    [[3.35, 501], [5.95, 503], [7.02, 505]].forEach(([x, seed]) => { const p = across(x, -4.4, -0.5, seed); if (p.length > 3) rib(p, seed); });
+    // a smaller root slanting over the forge corner, out of the north-west
+    rib([[2.95, ceilAt(2.95, -3.6) - 0.01, -3.6], [3.4, ceilAt(3.4, -3.2) - 0.03, -3.2], [3.95, ceilAt(3.95, -2.95) - 0.035, -2.95], [4.3, ceilAt(4.3, -2.85) - 0.03, -2.85]], 507, { r: 1.6, sides: 2, tendrils: 9, drop: 0.38 });
+    // the ridge beam, from root to root along the hollow's crest, and what's hung from it
+    const R = RIDGE, len = R.x1 - R.x0;
+    const hooks = [0.1, 0.2, 0.42, 0.6, 0.79, 0.9];
+    const bm = CZ.hewnBeam(len, 411, { straps: [0.02, (5.95 - R.x0) / len - 0.01, 0.96], hooks });
+    this.place(bm.obj, (R.x0 + R.x1) / 2, R.z, 0, R.y);
+    const kinds = ['lavender', 'chilli', 'garlic', 'yarrow', 'shrooms', 'sage'];
+    bm.hooks.forEach((hx, i) => this.place(CZ.herbBundle(kinds[i % kinds.length], 421 + i), (R.x0 + R.x1) / 2 + hx * T, R.z + 0.016, i * 0.9, R.y - 0.155));
+    if (set.has('nook_bed')) {
+      // over your alcove: a root along its vault, lavender for sleeping
+      const pts = [];
+      for (let x = 2.75; x <= 6.25; x += 0.16) pts.push([x, ceilAt(x, 1.72 + 0.1 * Math.sin(x * 2.4)) - 0.035, 1.72 + 0.1 * Math.sin(x * 2.4)]);
+      rib(pts.filter((p) => hollowSD(p[0], p[2]) < 0.1), 509, { r: 1.9, sides: 4, tendrils: 6, drop: 0.42 });
+      this.place(CZ.herbBundle('lavender', 431), 5.75, 1.8, 0.4, ceilAt(5.75, 1.8) - 0.09);
+    }
+  }
+
+  /** (wave 18) The rugs on the packed earth: one in the middle of the hollow, a hearth rug by the fire, one by your bedroll. */
+  buildRugs(set) {
+    const r1 = bigRug(1.12, 0.74, 93, [0x8a2a24, 0x2a3a5a, 0xc89a3a, 0xe0d0a8, 0x3a5a3a]);
+    this.place(r1, 5.62, -2.86, 0.08, Y + 0.002);
+    const r2 = bigRug(0.66, 0.46, 95, [0x3a5a3a, 0x6a3a2a, 0xd8b050, 0xe8dcc0, 0x8a2a24]);
+    this.place(r2, 6.98, -1.86, Math.PI / 2 + 0.25, Y + 0.002);
+    if (set.has('nook_bed')) {
+      const r3 = bigRug(0.94, 0.54, 97, [0x6a3a5a, 0x2a3a5a, 0xc89a3a, 0xe8dcc0, 0x6e7e54]);
+      this.place(r3, 5.12, 2.12, Math.PI / 2, Y + 0.002);
+    }
   }
 
   // ------------------------------------------------------------ the west: the forge corner, his fleece, his trunk
@@ -482,8 +540,15 @@ export class StarHouse {
     this.boxAt(S.chest.x, S.chest.z, 0.32, 0.2, 0.36, S.chest.yaw);
     this.prop(KP.bookStack(5, 205), 3.22, -1.42, 0.5, 0.15, 0.13, 0.24);
     this.look({ x: 3.22, y: Y + 0.22, z: -1.42, r: 0.2, label: 'Browse the books', books: true, aside: 'books' });
-    this.stubs(3.0, -1.72, Y, 2, 74);
+    const cc = CZ.candleCluster(3, 474);
+    this.place(cc.obj, 3.0, -1.72, 0.6);
+    for (const f of cc.flames) this.candleGlow(this.toM(cc.obj, f), 0.14);
     this.web(2.95, 1.0, -1.05, -Math.PI * 0.75, 0.24, 2);
+    // a shelf of jars on the north rock over the coal: pickles, honey, buttons, rivets, his tongs under it
+    const js = CZ.jarShelf(0.52, 441);
+    this.onRock(js.obj, 4.98, -3.6, 0, 1, 0.6, 1.0);
+    this.candleGlow(this.toM(js.obj, js.flame), 0.16);
+    this.buildRugs(this.nookSet);
   }
 
   // ------------------------------------------------------------ the east: the fire pit, the notes, the slate, the hole
@@ -503,9 +568,10 @@ export class StarHouse {
     this.place(st.obj, S.armchair.x, S.armchair.z, ay);
     this.furn.push({ id: 'armchair', obj: st.obj, seats: st.seats, box: null });
     this.boxAt(S.armchair.x, S.armchair.z, 0.22, 0.22, 0.42, ay);
-    // the old lantern hanging over the middle of the hollow
-    const lan = HP.hangingOilLamp(Math.max(0.2, ceilAt(5.3, -2.6) - Y - 1.5), 98);
-    this.place(lan.obj, 5.3, -2.6, 0, ceilAt(5.3, -2.6) - 0.02);
+    // the old lantern hanging over the middle of the hollow, from the ridge beam
+    const lan = HP.hangingOilLamp(Math.max(0.2, RIDGE.y - 0.06 - Y - 1.5), 98);
+    this.place(lan.obj, 5.3, RIDGE.z, 0, RIDGE.y - 0.06);
+    this.buildCozyEast(this.nookSet);
     // his notes nailed to the north rock
     this.buildBoard();
     // the slate on a crate in the north-east corner: his Miners' Board
@@ -532,6 +598,43 @@ export class StarHouse {
     this.prop(HW.propPost(ceilAt(7.55, -3.32) - Y - 0.02, 309), 7.55, -3.32, 0.2, 0.1, 0.1, 1.6);
     this.web(SHAFT.x0 - 0.05, 1.3, SHAFT.z0 - 0.3, -Math.PI / 2, 0.26, 5);
     this.web(6.95, 0.95, -0.92, Math.PI, 0.22, 6);
+  }
+
+  /**
+   * (wave 18) The south rock of the hollow: the family portrait over where your bedroll was, and
+   * once your bed has moved into its alcove, his workbench there with a lantern on a hook beside it.
+   */
+  buildCozyEast(set) {
+    const fp = CZ.familyPortrait(451);
+    fp.obj.rotation.order = 'YXZ';
+    // (hung on a nail, its foot clear of the rock, its top leaning out with the rock as it leans in over the room)
+    const pp = this.onRock(fp.obj, 5.62, -1.3, 0, -1, 0.8, 0.8, 0.03);
+    fp.obj.rotation.x = 0.27;
+    this.look({ x: pp.x, y: Y + 0.98, z: pp.z - 0.06, r: 0.24, label: 'The old portrait', lines: ['Old Star, young and very proud of his apron, Marigold in her lace collar, and two little ones in front who would not sit still.', 'The paint has gone dark with the years. Someone has dusted the frame every day of them.'] });
+    // by his stump: a basket of logs, his slippers, the knitting he never finishes, a spice rack on the rock
+    this.prop(KP.logBasket(207), 7.5, -1.62, -0.5, 0.17, 0.14, 0.3);
+    this.place(KP.slippers(209), 6.74, -1.2, 2.6);
+    this.prop(KP.knittingBasket(203), 7.38, -1.12, 0.7, 0.13, 0.13, 0.22);
+    this.onRock(KP.spiceRack(229), 7.0, -1.25, 0, -1, 0.72, 0.9);
+    // horseshoes on a nail over the bellows, a second shelf of jars over his trunk in the south-west corner
+    this.onRock(KP.horseshoes(249), 3.05, -3.6, 0, 1, 0.92, 1.05);
+    const j2 = CZ.jarShelf(0.46, 443);
+    this.onRock(j2.obj, 3.72, -1.3, 0, -1, 0.66, 0.95);
+    this.candleGlow(this.toM(j2.obj, j2.flame), 0.14);
+    if (!set.has('nook_bed')) return;
+    const wb = CZ.workbench(431);
+    const r = this.rockAt(5.62, -1.3, 0, -1, 0.45, 0.02);
+    const bz = r.z - wb.hd - 0.01;
+    this.place(wb.obj, 5.62, bz, Math.PI);
+    this.boxAt(5.62, bz, wb.hw, wb.hd, 0.5, Math.PI);
+    const fl = this.toM(wb.obj, wb.flame);
+    this.light({ kind: 'candle', x: fl.x, y: fl.y, z: fl.z, color: 0xffc070, intensity: 0, real: false, halo: 0.08, haloOpacity: 0.6, flicker: 0.22, pool: 0.5, poolOpacity: 0.12, power: 0.28, radius: 1.0 });
+    this.look({ x: 5.62, y: Y + 0.5, z: bz, r: 0.3, label: 'Old Star\'s workbench', lines: ['Shavings, a plane, his chisels in their block and a little wooden mole he has been carving for years. It still has no paws.', 'His spectacles are on the book. He says he doesn\'t need them.'] });
+    // a lantern on a hook in the rock beside it
+    const lh = lanternOnHook(12);
+    this.onRock(lh.obj, 6.38, -1.25, 0, -1, 0.62, 1.05);
+    const lq = this.toM(lh.obj, lh.light);
+    this.light({ kind: 'lantern', x: lq.x, y: lq.y, z: lq.z, color: 0xffb860, intensity: 0.45, distance: 2.2, flicker: 0.12, halo: 0.14, haloOpacity: 0.5, pool: 0.55, poolOpacity: 0.14, priority: 3, power: 0.32, radius: 1.6 });
   }
 
   /** His notes nailed to the north rock (facing south into the hollow). */

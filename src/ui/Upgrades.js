@@ -24,12 +24,12 @@ const iconFor = (id) => (ITEMS[id]?.blast ? explosiveIconURL(id) : iconURL(id));
 const coinPrice = (n, cls = '') => el('span', { class: 'price ' + cls }, [el('img', { class: 'pix', src: cls.includes('big') ? SPR.coin() : SPR.coinMini(), alt: '' }), formatGoldFull(n)]);
 
 const STAR_LINES = [
-  'Strong paws dig deep. Clever paws dig deeper.',
+  'Don\'t buy a pick you can\'t lift.',
   'I paid for this tavern one nugget at a time. You\'ll get there.',
-  'Dynamite is a tool, not a toy. Mostly.',
-  'Clean your clumps, little one. Vex can tell.',
-  'A bigger bag is a lighter heart.',
-  'Every swing counts. Every coin too.',
+  'Dynamite\'s a tool. Ask my eyebrows.',
+  'Clean your clumps. Vex can tell.',
+  'Bigger bag, sorer back.',
+  'Count your coins. I do, twice.',
 ];
 
 // ---------------------------------------------------------------- the board
@@ -150,7 +150,7 @@ export function openUpgrades(game, startTab) {
     const maxP = Math.max(...bySlot('pick').map((id) => ITEMS[id].power || 1));
     const bar = (v, max) => `<i class="ug-mini"><i style="width:${Math.round(Math.min(1, v / max) * 100)}%"></i></i>`;
     grid.append(
-      el('p', { class: 'ug-hint' }, 'Grubb\'s in Deep Town sells the next rung once you\'ve dug deep enough. Hard rock in the deep zones needs a better pick.'),
+      el('p', { class: 'ug-hint' }, 'Grubb sells the next rung once you\'ve dug deep enough. Deep rock wants a better pick.'),
       ladder('Pickaxes', bySlot('pick'), (it) => `${bar(it.power, maxP)}${(it.power * mb.power).toFixed(1)}`),
       ladder('Chisels & brushes', bySlot('chisel').concat(bySlot('brush')), null),
       ladder('Drills & lamps', bySlot('drill').concat(bySlot('xray')), null),

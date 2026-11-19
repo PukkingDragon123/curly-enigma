@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { h3 } from '../noise.js';
 import { clamp } from '../../core/util.js';
+import { PHONE } from '../../core/platform.js';
 
 export const VS = 1 / 24; // meters per creature voxel as modelled (terrain voxels are 1/8 m)
 /**
@@ -20,7 +21,7 @@ export const FINE_DESK = 1 / 96; // (wave 16: was 1/60, and 1/40 before wave 13)
  * detail is the near copy, hires.js); desktops go to 4× (1/96 m) for anything that fits the cell
  * budget, and the far copies (hires.js LOD) drop back to 2× past ~11 m.
  */
-const PHONE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+// (PC only: src/core/platform.js PHONE is false)
 export const FINE = PHONE ? 1 / 60 : FINE_DESK; // (phones: as before, so their density holds)
 export const REFINE_MAX = PHONE ? 2 : 4;
 /** Fine cells one refine may walk on the main thread (a big troll stays at 3×: its near copy is finer). */

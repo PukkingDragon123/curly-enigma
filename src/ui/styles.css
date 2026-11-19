@@ -212,7 +212,7 @@ kbd {
   border-style: solid; border-width: calc(var(--px) * 8);
   border-image: var(--a-parchDog) 8 / calc(var(--px) * 8) repeat;
   background: var(--a-paperL) 0 0 / calc(var(--px) * 96) repeat padding-box, var(--parch) padding-box;
-  box-shadow: none; filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(10, 4, 8, .5));
+  box-shadow: none; filter: drop-shadow(var(--px) calc(var(--px) * 3) 0 rgba(10, 4, 8, .5));
   padding: calc(var(--px) * 1) calc(var(--px) * 2) calc(var(--px) * 1);
   max-width: min(calc(100vw - 16px - var(--sal) - var(--sar)), calc(var(--px) * 300));
   max-height: calc(100vh - 16px - var(--sat) - var(--sab));
@@ -295,7 +295,7 @@ kbd {
   border-image: var(--a-note) 5 / calc(var(--px) * 5) repeat;
   background: var(--a-noteT) 0 0 / calc(var(--px) * 32) repeat padding-box, #f8ecd2 padding-box;
   padding: calc(var(--px) * 1) calc(var(--px) * 2) 0;
-  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .45));
+  filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(8, 4, 6, .45));
   transform-origin: 50% 0;
   animation: toastIn .42s var(--pop) both, toastSway 3s ease-in-out .42s infinite;
 }
@@ -450,3 +450,30 @@ html.is-touch .hint-keys { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
+
+/* ---------- wave 18: panels are set down like a heavy book (UI.setDown): a drop from a little above,
+   the shadow tightening as it nears the table, a squash on landing and a puff of dust from under the
+   bottom edge; closing lifts it off and away. Hover and press feedback on everything that clicks. */
+.modal-back.setdown > .panel.panel { animation: setDown .26s cubic-bezier(.45, 0, .8, .35) backwards, setLand .34s cubic-bezier(.25, 1.6, .45, 1) .24s backwards; transform-origin: 50% 100%; }
+@keyframes setDown {
+  from { transform: translateY(calc(var(--px) * -18)) scale(1.05); opacity: 0; }
+  35% { opacity: 1; }
+  to { transform: none; }
+}
+@keyframes setLand { 0% { scale: 1 1; } 35% { scale: 1.012 .975; } 70% { scale: .996 1.006; } 100% { scale: 1 1; } }
+.modal-back.setdown.closing > * { animation: liftOff .19s cubic-bezier(.5, 0, .85, .4) forwards; }
+@keyframes liftOff { 25% { transform: translateY(calc(var(--px) * -3)) scale(1.01); opacity: 1; } to { transform: translateY(calc(var(--px) * 10)) scale(.94, .96); opacity: 0; } }
+.dust-puff { position: absolute; height: 0; pointer-events: none; z-index: 2; }
+.dust-puff i {
+  --s: 1; position: absolute; bottom: 0; width: calc(var(--px) * var(--s)); height: calc(var(--px) * var(--s)); background: #c8b498; opacity: 0;
+  box-shadow: var(--px) var(--px) 0 rgba(40, 24, 16, .35); animation: dustPuff .62s cubic-bezier(.2, .7, .4, 1) both;
+}
+.dust-puff i.dk { background: #8a7660; }
+@keyframes dustPuff {
+  0% { opacity: 0; transform: none; }
+  12% { opacity: .95; }
+  100% { opacity: 0; transform: translate(calc(var(--px) * var(--dx)), calc(var(--px) * var(--dy))); }
+}
+:where(button, .btn, .slot, [role=button], .loop):where(:not(:disabled)) { transition: filter .12s, translate .08s; }
+:where(button, .btn, .slot, [role=button], .loop):where(:not(:disabled)):hover { filter: brightness(1.1) saturate(1.06); }
+:where(button, .btn, .slot, [role=button], .loop):where(:not(:disabled)):active { translate: 0 var(--px); filter: brightness(.93); }

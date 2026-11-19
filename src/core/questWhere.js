@@ -47,9 +47,12 @@ export function stepGoal(view) {
   if (!w.npc && s.deliver) w.npc = s.deliver.to;
   if (!w.npc && s.choose) w.npc = s.choose.to;
   let scene = null;
+  // (wave 18) the burrow folk keep no shop down the mine any more: their stalls are on Deep Town's
+  // square, so a step about one of them (or their old burrow) points at the stall
+  if (!w.npc && w.burrow) { w.npc = Object.keys(BURROW_NPC).find((k) => BURROW_NPC[k] === w.burrow || k === w.burrow) || null; if (w.npc) delete w.burrow; }
   if (w.npc) {
     if (w.npc === 'oldstar') scene = 'home';
-    else if (BURROW_NPC[w.npc]) { scene = 'deep'; w.burrow = BURROW_NPC[w.npc]; }
+    else if (BURROW_NPC[w.npc]) { scene = 'town'; delete w.burrow; }
     else if (NPCS[w.npc]?.town) scene = 'town';
   }
   if (!scene && w.place) scene = w.place === 'home' ? 'home' : w.place === 'town' ? 'town' : 'deep';

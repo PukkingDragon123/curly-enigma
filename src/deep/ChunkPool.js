@@ -19,6 +19,11 @@ export class ChunkPool {
     this.cb = new Map();
     this.id = 1;
     this.max = 6; // jobs in flight per worker
+    // (no hitches when chunks land) in play the results wait here and are applied a few at a time
+    // within the frame's streaming budget (drain(), from Terrain.update), not all at once in the
+    // message handler between frames; during loading (defer off) they apply as they come
+    this.defer = false;
+    this.q = [];
     // the first worker sends back the plan it built (see plan())
     this.planWait = null;
     this.planGot = undefined;
@@ -97,7 +102,22 @@ export class ChunkPool {
     this.busy[i] = Math.max(0, this.busy[i] - 1);
     const f = this.cb.get(m.id);
     this.cb.delete(m.id);
-    if (f) f(m);
+    if (!f) return;
+    if (this.defer) this.q.push(f, m);
+    else f(m);
+  }
+
+  /** Apply waiting results for up to ms milliseconds (at least one). Returns how many still wait. */
+  drain(ms = 2) {
+    const q = this.q, t0 = performance.now();
+    let i = 0;
+    while (i < q.length && (i === 0 || performance.now() - t0 < ms)) {
+      const f = q[i], m = q[i + 1];
+      i += 2;
+      try { f(m); } catch (e) { console.warn('chunk result', e); }
+    }
+    if (i) q.splice(0, i);
+    return q.length / 2;
   }
 
   fail(e) {
@@ -107,7 +127,9 @@ export class ChunkPool {
     this.ok = false;
     clearInterval(this.watch);
     for (const w of this.workers) { try { w.terminate(); } catch (err) { /* gone */ } }
-    // jobs that will never come back: tell their owners so they can redo the work
+    // results that came back still apply; jobs that will never come back: tell their owners so they can redo the work
+    this.defer = false;
+    while (this.q.length) this.drain(1e9);
     for (const f of this.cb.values()) try { f(null); } catch (err) { /* noop */ }
     this.cb.clear();
     this.planWait?.(null);

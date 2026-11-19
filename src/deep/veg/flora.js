@@ -125,6 +125,9 @@ export function floraOf(zone, bio, depth) {
 // surface (the first few metres) and, thin, in the lush biomes (the mossy grotto, the dino caverns).
 function floraTable(zone, bio, depth) {
   const T = floraBase(zone, bio, depth), near = depth < 6;
+  // (wave 18: "less plants") outside the lush pockets only this share of the plants grows: the
+  // tunnels and plain caves are rock first; the lush biomes keep a little more (Vegetation.lushAt)
+  T.thin = THIN[bio] ?? THIN_ZONE[zone] ?? 0.3;
   // wave 17: every place grows its own random plants too (./grow.js), in its own palette
   if (bio === 1) return withRandom(T, 'm', [['moss', 2.4], ['herb', 1.1], ['shroom', 1.0], ['creeper', 0.9], ['grass', 1.0], ['coral', 0.5], ['roots', 0.5], ['puff', 0.5]], [['curtain', 1.4]]);
   if (bio === 2) return withRandom(T, 'd', [['lichen', 1.8], ['grass', 1.1], ['roots', 1], ['herb', 0.6], ['puff', 0.6], ['shroom', 0.5]]);
@@ -139,6 +142,10 @@ function floraTable(zone, bio, depth) {
     default: return withRandom(T, 6, [['crystal', 1], ['coral', 1.2], ['shroom', 1], ['creeper', 1], ['lichen', 0.8]], [['curtain', 1]]);
   }
 }
+// the share of plants outside a lush pocket, by biome (1 grotto, 2 sandstone, 3 mushroom hollow,
+// 4 dino caverns) and by zone for the plain caves
+const THIN = { 1: 0.4, 2: 0.55, 3: 0.42, 4: 0.42 };
+const THIN_ZONE = { 1: 0.3, 2: 0.28, 3: 0.34, 4: 0.5, 5: 0.4, 6: 0.42 };
 function floraBase(zone, bio, depth) {
   const near = depth < 6; // close to the surface, a little light gets in: a few grass tufts
   if (bio === 1) return {

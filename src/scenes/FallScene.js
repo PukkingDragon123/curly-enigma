@@ -8,7 +8,9 @@
 // under his boots, cracks race over the clearing, roots snap, the birds burst from the trees, and
 // the crust gives way: he tumbles down a dark shaft.
 // Darkness, a heartbeat, muffled ringing: he blacks out. Ends with goto('home', { from: 'fall' }).
-// ~39 s (wave 12: tighter cuts, the stroll at the same pace), not skippable.
+// ~39 s (wave 12: tighter cuts, the stroll at the same pace). Wave 18: shot like a film (an operator's
+// handheld sway per shot, eased blends, the haze racked in behind close-ups, music stings on the beats:
+// bookends/cine.js) and hold Esc / a click to skip (bookends/skipHold.js).
 // Wave 8: the wood is dressed for the camera (forest/dress.js: thick ground cover, flowers and stones in fine
 // voxels, saplings, boughs hanging into the opening shot), leaves and pollen drift on the GPU (forest/drift.js),
 // small birds perch, flit and sing about the trail (forest/critters.js: birds only, no other animals), and
@@ -37,6 +39,8 @@ import { buildFallShaft } from '../bookends/fallshaft.js';
 import { makeHeroMole } from '../gfx/char/hero.js';
 import { heartbeat, muffle } from '../bookends/journey.js';
 import { oreLoader } from '../ui/oreLoader.js';
+import { Handheld, Spring, sting, preloadStings, ease as E } from '../bookends/cine.js';
+import { SkipHold } from '../bookends/skipHold.js';
 
 // the timeline (seconds): shots A..L
 // (F: into the clearing, a peep; N, N2, N3: the nest, the egg in his paws, wrapped and stowed; F2: on, the chest glints)
@@ -45,8 +49,18 @@ const T = { A: 0, B: 3.4, C: 5.8, D: 8.0, E: 9.3, F: 12.3, N: 14.5, N2: 17.1, N3
 const SHOTS = [T.A, T.B, T.C, T.D, T.E, T.F, T.N, T.N2, T.N3, T.F2, T.G, T.H, T.I, T.I2, T.J, T.K, T.L];
 const FALL_SHOT = 14; // (the shots from here on are below the ground)
 const CAP = [0.7, 3.4];
+/**
+ * Per shot: hh = the operator's sway (1 = a steady hand on the move), rack = how far the haze is
+ * pulled in behind the subject (0 the wood sharp to the hills, 1 a close-up melting the wood to gold).
+ */
+const SHOT_FX = [
+  { hh: 0.5, rack: 0 }, { hh: 0.9, rack: 0.15 }, { hh: 0.6, rack: 0.85 }, { hh: 1.0, rack: 0.3 }, { hh: 0.6, rack: 0 },
+  { hh: 0.7, rack: 0.35 }, { hh: 0.5, rack: 0.6 }, { hh: 0.35, rack: 0.8 }, { hh: 0.6, rack: 0.55 }, { hh: 0.7, rack: 0.1 },
+  { hh: 0.45, rack: 0.3 }, { hh: 0.5, rack: 0.35 }, { hh: 1.3, rack: 0.4 }, { hh: 1.7, rack: 0 }, { hh: 1.4, rack: 0 },
+  { hh: 0.6, rack: 0 }, { hh: 0, rack: 0 },
+];
 const WALK = 0.8; // m/s (a brisk, bouncy stroll: ~3 steps a second with gait.js's cadence)
-const smooth = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+const smooth = E.smooth; // (wave 18: smootherstep, no jerk where a move starts or stops)
 const ease = (a, b, x) => smooth((x - a) / (b - a));
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _X = new THREE.Vector3(1, 0, 0);
@@ -77,7 +91,10 @@ export default class FallScene extends Scene {
     this.sag = 0;
     this.cur = { s: 0 };
     this.perfAcc = { n: 0, upd: 0, ren: 0, nu: 0 };
+    this.hh = new Handheld(3);
+    this.rack = new Spring(0.7);
     forestSounds(this.game.audio);
+    preloadStings(this.game.audio);
 
     const sc = this.scene;
     this.haze = new THREE.Color(0xc8d4bc);
@@ -202,9 +219,9 @@ export default class FallScene extends Scene {
     this.own(() => { for (const b of this.flockBirds) b.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); });
 
     // ---- DOM: caption, letterbox bars, skip
-    this.caption = el('div', { class: 'bk-caption bk-outline' }, ['Far above the Deep', el('small', {}, 'an old forest trail, late in the day')]);
+    this.caption = el('div', { class: 'bk-caption bk-outline' }, ['Far above the Deep', el('small', {}, 'a shortcut home')]);
     this.bars = el('div', { class: 'bk-bars' }, [el('i'), el('i')]);
-    // the intro can't be skipped (only the test hook debug.skip() ends it early)
+    // hold Esc or a click to skip (a tap never does)
     this.root = el('div', { class: 'bk-root bk-fall' }, [this.bars, this.caption]);
     this.game.ui.world.append(this.root);
     this.own(() => this.root.remove());
@@ -232,6 +249,8 @@ export default class FallScene extends Scene {
     this.buildMs = Math.round(performance.now() - t0);
     this.ready = true;
     this.loadCard?.remove(); this.loadCard = null;
+    this.skipper = new SkipHold({ onSkip: () => this.skip(), parent: this.game.ui.root });
+    this.own(() => this.skipper?.dispose());
     // build Old Star's camp in the background while the journey plays, so waking up doesn't wait
     import('../home/houseLoad.js').then((m) => m.prebuildHouse?.(this.game)).catch(() => {});
     console.log(`[fall] built in ${this.buildMs} ms (forest ${JSON.stringify(this.F.stats)})`);
@@ -542,6 +561,7 @@ export default class FallScene extends Scene {
     if (this.leaving) return;
     if (this.pendingSkip) { this.pendingSkip = false; this.skip(); return; }
     const t = (this.t += dt);
+    this.skipper?.update(dt);
     // the shaft walls stream in a few ms a frame while they walk; they must be ready for the fall
     this.shaft.prebuild(t < T.I ? 2 : 3);
     if (t > T.I) this.shaft.ensure(-14);
@@ -569,6 +589,8 @@ export default class FallScene extends Scene {
       this.rustleT = (this.rustleT ?? 3) - dt;
       if (this.rustleT <= 0) { this.rustleT = 3 + Math.random() * 5; this.sfx(Math.random() < 0.7 ? 'forest_rustle' : 'forest_twig', { pan: Math.random() * 1.6 - 0.8, vol: 0.6 + Math.random() * 0.4, far: true }); }
     }
+    // the score's stings on the beats (bookends/cine.js): the wood opening up, the egg, the gold, the ground going
+    this.once('st_warm', 0.35, () => sting(au, 'warm', { vol: 0.8 }));
     this.once('cap', CAP[0], () => this.caption.classList.add('on'));
     this.once('capoff', CAP[1], () => this.caption.classList.remove('on'));
     this.once('nod', T.B + 1.2, () => this.hero.doEmote('nod', 1));
@@ -589,7 +611,7 @@ export default class FallScene extends Scene {
       this.once('lean', T.N + 1.95, () => this.hero.look(0, -0.4));
       this.once('lift', T.N2 - 0.1, () => this.sfx('forest_rustle', { vol: 0.7 }));
       this.once('liftlook', T.N2 + 0.25, () => this.hero.look(0, -0.25));
-      this.once('wob2', T.N2 + 0.95, () => { peep({ vol: 1, n: 2 }); this.sfx('forest_eggtick', { vol: 0.6 }); });
+      this.once('wob2', T.N2 + 0.95, () => { peep({ vol: 1, n: 2 }); this.sfx('forest_eggtick', { vol: 0.6 }); sting(au, 'tender', { vol: 0.9 }); });
       this.once('smile2', T.N2 + 1.15, () => this.hero.setExpression?.('happy', { hold: 2.0, body: false }));
       this.once('glance', T.N2 + 1.6, () => this.hero.look(-0.7, 0.2)); // (is its mother about?)
       this.once('glance2', T.N2 + 2.0, () => this.hero.look(0.2, -0.2));
@@ -604,12 +626,16 @@ export default class FallScene extends Scene {
     this.once('stop', T.F2 + 2.3, () => { this.hero.play('peer'); this.hero.look(0, 0.1); });
     this.once('walk2', T.G, () => this.hero.look(0, 0));
     // the chest: the lid creaks wider and gold light pours out
-    this.once('lid', T.G + 0.55, () => { this.sfx('forest_chest'); this.lidOpen = t; });
+    this.once('lid', T.G + 0.55, () => { this.sfx('forest_chest'); this.lidOpen = t; sting(au, 'reveal', { vol: 0.8, delay: 0.25 }); });
     this.once('chord', T.G + 0.8, () => { this.sfx('forest_chord', { vol: 0.05 }); this.sfx('coins', { n: 5 }); });
+    // (anticipation: he hesitates, a glance back down the trail as if somebody might see, then reaches)
+    this.once('doubt', T.H + 0.2, () => this.hero.look(-0.7, 0.05));
+    this.once('doubt2', T.H + 0.62, () => { this.hero.look(0, -0.15); this.hero.doEmote('nod', 0.4); });
     this.once('reach', T.H + 0.9, () => this.hero.play('reach'));
     this.once('chime', T.H + 1.15, () => this.sfx('sparkle', { vol: 0.8 }));
     // the ground goes
     this.once('hush', T.I - 0.5, () => { this.loops.forest_chorus?.set?.({ density: 0 }); });
+    this.once('st_dread', T.I - 0.15, () => sting(au, 'dread', { vol: 1 }));
     this.once('creak', T.I, () => { this.sfx('creak'); this.sfx('forest_groan', { vol: 0.06 }); this.loop('rumble', 0.5); au.stopMusic(1.4); this.shake = 0.015; this.hero.play('idle'); this.hero.look(0, 0.35); });
     this.once('crack1', T.I + 0.5, () => { this.sfx('crack'); this.sfx('rumble_hit'); this.hero.doEmote('surprise', 2); this.hero.play('brace'); this.F.cracks.mesh.visible = true; this.crack = true; this.gust = 1; if (this.wildlife) { this.burstFlock(); this.sfx('forest_flock'); this.loop('forest_chorus', 0); } });
     this.once('feet', T.I + 0.85, () => this.hero.look(0.15, -0.5)); // he looks down at his boots
@@ -618,9 +644,11 @@ export default class FallScene extends Scene {
     this.once('look', T.I + 1.85, () => { this.hero.look(-0.4, 0.3); this.sfx('squeak'); });
     this.once('crack3', T.I + 2.4, () => { this.sfx('crack'); this.sfx('debris'); this.sfx('forest_groan', { vol: 0.07, pitch: 0.8 }); this.shake = 0.08; });
     this.once('break', T.J, () => this.breakGround());
+    this.once('st_drop', T.J + 0.2, () => sting(au, 'drop', { vol: 0.9 }));
     this.once('whoosh', T.J + 0.35, () => { this.sfx('whoosh'); this.loop('wind', 0.6); this.loop('forest_leaves', 0); this.loop('forest_air', 0); this.loop('forest_chorus', 0); });
     this.once('deb', T.K + 0.5, () => this.sfx('debris'));
     this.once('dark', T.K + 0.95, () => { this.unmuffle = muffle(au, 360); this.loop('rumble', 0); });
+    this.once('st_impact', T.L - 0.26, () => sting(au, 'impact', { vol: 1 }));
     this.once('thud', T.L - 0.25, () => { this.sfx('thud', { vol: 1 }); this.sfx('land', { hard: true }); this.loop('wind', 0); });
     // knocked out: the heart thumps in the dark, slowing
     const beats = [T.L + 0.4, T.L + 1.25, T.L + 2.15, T.L + 3.1];
@@ -861,8 +889,9 @@ export default class FallScene extends Scene {
         const f = this.facing(_v2), E = this.eggAt(_v3);
         const lx = f.z, lz = -f.x; // his left
         // (from a little above the egg, so his snout doesn't hide it)
-        o.pos.set(E.x + f.x * lerp(0.95, 0.85, u) + lx * 0.34, E.y + 0.24, E.z + f.z * lerp(0.95, 0.85, u) + lz * 0.34);
-        o.look.set(E.x - f.x * 0.04, E.y + lerp(0.1, 0.12, u), E.z - f.z * 0.04);
+        // (wave 18: a touch further and higher, so his eyes and the egg share the frame: the look between them)
+        o.pos.set(E.x + f.x * lerp(1.12, 1.0, u) + lx * 0.36, E.y + 0.3, E.z + f.z * lerp(1.12, 1.0, u) + lz * 0.36);
+        o.look.set(E.x - f.x * 0.04, E.y + lerp(0.17, 0.2, u), E.z - f.z * 0.04);
         o.fov = 38;
         o.minH = portrait ? 26 : 36;
         break;
@@ -960,8 +989,9 @@ export default class FallScene extends Scene {
     const A = this._sa || (this._sa = { pos: new THREE.Vector3(), look: new THREE.Vector3() });
     const B = this._sb || (this._sb = { pos: new THREE.Vector3(), look: new THREE.Vector3() });
     this.shot(i, t, A);
-    // hard cuts, except the shots that flow on from the one before
-    const blendFrom = { 1: 0.9, [FALL_SHOT]: 0.25 };
+    // hard cuts, except the shots that flow on from the one before (eased both ends: smootherstep)
+    // (wave 18: the wrap flows on from the egg in his paws; the wide of the sagging clearing pulls out of his face)
+    const blendFrom = { 1: 0.9, 8: 0.7, 13: 0.6, [FALL_SHOT]: 0.25 };
     const bl = blendFrom[i];
     if (bl && t - SHOTS[i] < bl) {
       const k = smooth((t - SHOTS[i]) / bl);
@@ -976,15 +1006,16 @@ export default class FallScene extends Scene {
     const cam = this.camera;
     cam.position.copy(A.pos);
     if (i < FALL_SHOT && !this.pin) cam.position.y = Math.max(cam.position.y, groundH(cam.position.x, cam.position.z) + 0.12);
-    // handheld drift, plus shake
-    const hh = this.pin ? 0 : i < FALL_SHOT ? 0.01 : 0.004;
-    cam.position.x += Math.sin(t * 0.7) * hh; cam.position.y += Math.sin(t * 0.9 + 1) * hh;
     this.shake = Math.max(0, this.shake - dt * 0.12);
     if (t > T.I && t < T.J) this.shake = Math.max(this.shake, 0.008 + 0.03 * ease(T.I, T.J, t));
     const sh = this.pin ? 0 : this.shake;
     if (sh > 0) cam.position.add(_v.set((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh));
     cam.lookAt(A.look);
     if (A.roll) cam.rotateZ(A.roll);
+    // the operator: a slow handheld sway, steadier on the tender shots, rougher when the ground goes
+    const fx = SHOT_FX[i] || SHOT_FX[0];
+    if (!this.pin) this.hh.apply(cam, t, fx.hh * (i < FALL_SHOT ? 1.6 : 0.7));
+    this.rack.to(this.pin ? 0 : fx.rack, dt);
     fitFov(cam, A.fov, A.minH ?? 46);
     cam.updateMatrixWorld();
     for (const p of this.pools) p.setScaleFromCamera(cam, this.game.engine.height);
@@ -1004,6 +1035,13 @@ export default class FallScene extends Scene {
     sc.fog.color.copy(this.haze).lerp(this.dark, fogK);
     sc.fog.near = lerp(30, 3, fogK);
     sc.fog.far = lerp(140, 22, fogK);
+    // rack focus: behind a close-up the haze thickens and the wood melts into gold light
+    const rk = this.rack.x * (1 - fogK);
+    if (rk > 0.001) {
+      FA.uFaDensity.value *= 1 + rk * 1.8;
+      sc.fog.near = lerp(sc.fog.near, 4, rk);
+      sc.fog.far = lerp(sc.fog.far, 40, rk);
+    }
     sc.background.copy(FA.uFaCool.value);
     const far = lerp(220, 40, fogK);
     if (Math.abs(cam.far - far) > 0.5) { cam.far = far; cam.updateProjectionMatrix(); }

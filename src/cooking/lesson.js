@@ -16,8 +16,8 @@ import { pantryCount, pantryGive } from './quality.js';
 function tipFor(kind) {
   return {
     chop: 'Knife first. Even pieces cook even.',
-    simmer: 'A simmer, not a boil! The pot is slow to follow, so lead it.',
-    season: 'A pinch of salt. Bland is sad; too salty is worse.',
+    simmer: 'A simmer, not a boil. The pot\'s slow, so lead it.',
+    season: 'Pinch of salt. Too much is worse than none.',
     stir: 'Round and round. Not too fast or it slops over.',
     crack: 'Gently does it.',
     fry: 'Flip it when it\'s <b>golden</b>, both sides.',
@@ -28,7 +28,7 @@ function tipFor(kind) {
     grate: 'Stop before you grate your <b>knuckles</b>.',
     bake: 'Pull it out at <b>golden</b>. Your nose will tell you.',
     mash: '<b>Steady</b>, not frantic.',
-    plate: 'Presentation, apprentice!',
+    plate: 'Make it look nice. Someone has to eat it.',
   }[kind] || 'Easy does it.';
 }
 
@@ -51,10 +51,10 @@ const STEP_CONTROL = {
 };
 
 const REACT = [
-  [90, 'proud', ['Ha! Clean as a fresh-cut gem.', 'Now that\'s a cook\'s paw!', 'Perfect! You\'ve done this before, haven\'t you?']],
+  [90, 'proud', ['Clean as a cut gem.', 'That\'s a cook\'s paw.', 'You\'ve done this before.']],
   [75, 'happy', ['Good, good.', 'Nicely done.', 'That\'ll do nicely.']],
   [50, 'calm', ['Not bad. You\'ll get the feel of it.', 'Hm, alright. Keep going.', 'Bit rough, but it\'ll eat.']],
-  [0, 'worried', ['Easy, easy... we\'ll fix it in the pot.', 'Oof. Well, soup forgives a lot.', 'Hmph. Slower next time.']],
+  [0, 'worried', ['Easy. We\'ll fix it in the pot.', 'Oof. Well, soup forgives a lot.', 'Hmph. Slower next time.']],
 ];
 
 export class CookLesson {
@@ -133,7 +133,7 @@ export class CookLesson {
     this.endCine();
     if (this.done) return;
     this.stage = 'cooking';
-    this.say('Good. Next job!', { mood: 'happy', dur: 2.4 });
+    this.say('Good. Next.', { mood: 'happy', dur: 2.4 });
   }
 
   onStep(kind) {
@@ -163,13 +163,13 @@ export class CookLesson {
     // the lesson's done the moment the dish is (quests listen for this)
     this.game.state.emit('act', { type: 'lesson', step: 'cook_done' });
     const g = res.grade;
-    const first = g === 'Perfect' ? ['Look at that! Better than mine, and I\'ve been at it sixty years.', 'proud']
-      : g === 'Great' ? ['That smells like home. Well done.', 'happy']
+    const first = g === 'Perfect' ? ['Better than mine. Don\'t let it go to your head.', 'proud']
+      : g === 'Great' ? ['Smells like home.', 'happy']
         : g === 'Good' ? ['Good honest soup. You\'ll do.', 'happy']
-          : g === 'Okay' ? ['It\'s... soup. Of a sort. We all start somewhere.', 'laugh']
-            : ['Burnt. Ha! My first one was worse. Much worse.', 'laugh'];
+          : g === 'Okay' ? ['It\'s soup. Of a sort.', 'laugh']
+            : ['Burnt. My first was worse.', 'laugh'];
     await this.say(first[0], { mood: first[1], wait: true });
-    await this.say('Eat it down the mine: a <b>buff</b>. Home!', { mood: 'proud', wait: true });
+    await this.say('Eat it down the mine for a <b>buff</b>.', { mood: 'proud', wait: true });
     this.stage = 'free';
   }
 

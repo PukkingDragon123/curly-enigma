@@ -504,6 +504,26 @@ const CSS = /* css */`
 @keyframes ckSquash { 0% { transform: scale(1.14, .8); } 50% { transform: scale(.95, 1.08) translateY(calc(var(--px) * -2)); } 100% { transform: none; } }
 .ck-gauge .lbl.top { display: none; }
 
+
+/* ---------- wave 18: the pantry as a real cupboard in lamplight ---------- */
+/* it swings in heavy (overshoots, settles) with a puff of dust off its foot */
+.ck-side { animation: ckSlideIn .42s cubic-bezier(.25, 1.25, .45, 1); }
+.ck-side::after { content: ''; position: absolute; left: 6%; right: 6%; bottom: calc(var(--px) * -2); height: calc(var(--px) * 3); pointer-events: none; opacity: 0;
+  background: repeating-linear-gradient(to right, #c8b498 0 var(--px), transparent 0 calc(var(--px) * 3), #8a7660 0 calc(var(--px) * 4), transparent 0 calc(var(--px) * 7));
+  animation: ckDust .7s ease-out .3s; }
+@keyframes ckDust { 0% { opacity: 0; transform: none; } 15% { opacity: .9; } 100% { opacity: 0; transform: translateY(calc(var(--px) * -4)) scaleX(1.12); } }
+/* depth: the cupboard's inside is sunk (shadow under the top rail and down the left), lit warm from the top left */
+.ck-cupboard::before { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  box-shadow: inset calc(var(--px) * 3) calc(var(--px) * 4) 0 rgba(20, 10, 4, .32), inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(255, 220, 160, .08);
+  background: radial-gradient(ellipse 80% 60% at 22% 18%, rgba(255, 196, 110, .14), transparent 70%); }
+/* the hint slip: a paper note tacked on, a little curled, its edge lit */
+.ck-info { box-shadow: 0 0 0 var(--px) #8a6a44, var(--px) calc(var(--px) * 2) 0 var(--px) rgba(20, 10, 4, .35), inset 0 calc(var(--px) * -2) 0 #e6d2a8, inset 0 var(--px) 0 #fffaf0; rotate: -.4deg; }
+/* name tags: paper on a thread, shadowed down-right, swinging when touched */
+.ck-tag { box-shadow: 0 0 0 var(--px) #6a4a2a, var(--px) calc(var(--px) * 2) 0 0 rgba(20, 10, 4, .4), inset 0 var(--px) 0 #fffaf0; }
+/* the bell's plate: engraved brass, lit on its top edge */
+.ck-bell-lbl { text-shadow: 0 var(--px) 0 rgba(255, 240, 190, .6); }
+.ck-bell:hover { filter: brightness(1.08); }
+.ck-bell:active { translate: 0 var(--px); }
 `;
 
 let injected = false;

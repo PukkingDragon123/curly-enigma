@@ -12,6 +12,7 @@ import { VoxelGrid, line, M32, G32, group, mulc, mixc, h3, S32, S16, lowRes } fr
 import { hash2 } from '../iso/surface.js';
 import { P, notesPins } from './tavernProps.js';
 import { crate } from '../iso/props.js';
+import { quiltColor } from './cozyProps.js';
 
 const T = (v) => v * S32; // 1/64 m voxels → tiles
 const T2 = (v) => v * S16; // 1/32 m voxels → tiles
@@ -45,16 +46,16 @@ export function bedroll(seed = 301) {
     const rump = Math.round(1.2 * Math.sin(z * 0.45 + x * 0.12) * Math.sin(x * 0.6 + seed) + (h3(x >> 2, 2, z >> 2, seed) < 0.3 ? 1 : 0));
     const edge = x <= 1 || x >= W - 2 || z >= L - 2;
     const y0 = 3 + Math.max(0, rump) - (edge ? 1 : 0);
-    let c = WOOL[Math.floor(h3(x >> 1, 3, z >> 1, seed) * WOOL.length)];
-    if ((z - fold) % 9 === 0) c = mulc(c, 0.82); // woven stripes
-    if (x > 8 && x < 13 && z > 26 && z < 33) c = (x + z) % 4 === 0 ? 0x6a2a22 : 0x8a3a2e; // a red patch, stitched on
-    if (x === 5 && z > 18 && z < 30 && z % 2) c = 0x3e3a34; // a darn
+    // (wave 18) a patchwork quilt Marigold made, squares of old shirts and aprons, bound in brown
+    let c = quiltColor(x + 1, z - fold, seed);
+    if (x <= 1 || x >= W - 2 || z >= L - 2) c = (z + x) % 3 ? 0x6a4a2e : 0x5a3e26; // the binding
+    if (h3(x >> 1, 3, z >> 1, seed) < 0.2) c = mulc(c, 0.9); // worn
     if (edge && h3(x, 4, z, seed) < 0.3) continue; // frayed
     g.set(x + ox, y0, z + oz, c);
     if (edge) g.set(x + ox, y0 - 1, z + oz, mulc(c, 0.8));
   }
   // the turned-back fold
-  for (let x = 1; x < W - 1; x++) for (const [z, y] of [[fold, 5], [fold - 1, 5], [fold - 2, 4]]) g.set(x + ox, y, z + oz, mulc(WOOL[(x >> 2) % 4], z === fold - 2 ? 0.85 : 1.06));
+  for (let x = 1; x < W - 1; x++) for (const [z, y] of [[fold, 5], [fold - 1, 5], [fold - 2, 4]]) g.set(x + ox, y, z + oz, z === fold - 2 ? 0xd8ccb0 : mulc(quiltColor(x + 1, 3 + (fold - z), seed + 1), 1.06)); // turned back: its linen underside shows
   // the sack pillow: a lumpy bolster at the head, tied at one end
   for (let z = 1; z < 9; z++) for (let x = 2; x < W - 2; x++) for (let y = 3; y < 8; y++) {
     const e = ((x + 0.5 - W / 2) / (W / 2 - 1.5)) ** 2 + ((y - 4.6) / 2.6) ** 2 + ((z - 4.8) / 4.2) ** 4;

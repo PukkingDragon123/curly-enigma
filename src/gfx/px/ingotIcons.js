@@ -23,7 +23,7 @@ const RAMPS = {
   copper: [0xfff0dc, 0xffc496, 0xf08e56, 0xc8622e, 0x8e3e22, 0x5e2418, 0x2a0e0c],
   tin: [0xffffff, 0xe6e9ea, 0xc6cbcd, 0xa0a6aa, 0x787e86, 0x545866, 0x262834],
   bronze: [0xfff6d8, 0xf6d28e, 0xd8a452, 0xb07a34, 0x7e5224, 0x52341c, 0x24140c],
-  iron: [0xd8dade, 0xa4a8b0, 0x7e838c, 0x5e636c, 0x454852, 0x30323c, 0x14161e],
+  iron: [0xeef0ec, 0xb4b8bc, 0x868c96, 0x5e6474, 0x404660, 0x2a2c44, 0x10101e], // (wave 18: more contrast, hue-shifted: warm lights, blue-violet shadows)
   steel: [0xffffff, 0xe0eaf4, 0xaebdcc, 0x8293a6, 0x5c6a80, 0x3c4660, 0x1a1e32],
   silver: [0xffffff, 0xf4f6fa, 0xd6dce6, 0xaab3c2, 0x7e879a, 0x585e74, 0x262a3c],
   gold: [0xfffbe0, 0xffe88a, 0xf8c43c, 0xdc941c, 0xa8641a, 0x703e14, 0x34180a],
@@ -220,7 +220,7 @@ function silver(pc) {
   const R = rampOf(RAMPS.silver);
   const sc = new Scene(32);
   // small and bright, rounded bevels, turned the other way
-  const o = { a: 8, c: 4.6, h: 4.6, top: 0.82, yaw: 0.42, x: 16, y: 19, p: 0.82, chamfer: 1.3, bevel: 0.72 };
+  const o = { a: 10.2, c: 5.2, h: 5, top: 0.82, yaw: 0.42, x: 16, y: 18.5, p: 0.82, chamfer: 1.4, bevel: 0.72 }; // (wave 18: bigger, it read as a crumb)
   const ob = sc.hull(metal(R, { q: [0.1, 0.34, 0.62, 0.86], eq: 0.75 }), place(bar(o), o));
   sc.render(pc);
   const T = topPlane(sc, ob);

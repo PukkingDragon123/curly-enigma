@@ -1,9 +1,13 @@
-// The stamina gauge (replaces the energy lantern): one brass-and-leather bar, PEAK-style.
-//  - stamina is honey-gold light in the glass, sloshing at its edge, a shine running through it;
+// The stamina gauge (replaces the energy lantern): a little brass oil lamp on a brass-and-leather
+// tube, PEAK-style (wave 18: the lamp replaced the ruby heart).
+//  - stamina is the lamp's honey-gold oil in the glass, sloshing at its edge, a shine running through it;
+//    the flame in the lamp's chimney burns tall when rested, shrinks and gutters (red, smoking) as
+//    the oil runs low and flares with each heartbeat;
 //    a drain leaves a pale ghost that drains after it (and shakes the bar), a refill springs up
 //    with sparkles; nearly out it turns ember-red, the ruby heart beats and the screen edges darken
-//  - afflictions eat the bar from the right: hunger (a bitten biscuit, crumbs) and injury (red
-//    cloth, bandage cross-stitches); their length is what stamina can't fill (State.energyCap)
+//  - afflictions eat the bar from the right: hunger (a bitten biscuit, crumbs on the rail) and
+//    injury (a linen bandage wound round the tube, blood seeping through); their length is what
+//    stamina can't fill (State.energyCap)
 //  - at 0 underground: blackout(cb) closes the eyes (a dithered vignette and eyelids), cb takes
 //    the mole home, and the eyes blink open in the next scene
 // It rides on the tool belt when the belt is up (between the held tool's name and the strap), at
@@ -28,6 +32,11 @@ const mix = (o, c, t) => {
   const s = 1 - t;
   return ((255 << 24) | ((((o >> 16) & 255) * s + ((c >> 16) & 255) * t) << 16) | ((((o >> 8) & 255) * s + ((c >> 8) & 255) * t) << 8) | ((o & 255) * s + (c & 255) * t)) >>> 0;
 };
+
+const LINEN = [0x2e2018, 0x5a4636, 0x8a7458, 0xb4a07c, 0xd4c4a0, 0xece0c4].map((c) => pk(c));
+const BLOOD = [0x3a0a0a, 0x5e1210, 0x861c16, 0xa8281e].map((c) => pk(c));
+const FLAME = { core: pk(0xfffbe6), yel: pk(0xffe070), org: pk(0xffa232), red: pk(0xe85a1e), dred: pk(0xa8301a), blue: pk(0x5a86ff), blueD: pk(0x2a3aa0) };
+const FLAME_LOW = { core: pk(0xffe8a0), yel: pk(0xffb848), org: pk(0xf07a28), red: pk(0xc8401a), dred: pk(0x7a2010), blue: pk(0x4a64d8), blueD: pk(0x22308a) };
 
 export class StaminaBar {
   constructor(hud) {
@@ -165,10 +174,69 @@ export class StaminaBar {
     this.render(dt);
   }
 
+  /** A bandage pixel: wound turns (a lit edge, the overlap's shadow), weave, the blood seeping out from its middle. */
+  linen(i, j, eI, CH, x, y) {
+    const CW = (GEO.ch.x1 - GEO.ch.x0 + 1) * R, ri = CW - 1 - i;
+    const q = (((ri + j * 0.9) % 8) + 8) % 8;
+    let k = q < 1.6 ? 0.12 : q < 3 ? 0.92 : 0.6 - (q - 3) * 0.04 + (((i + j) & 1) ? 0.05 : -0.05) + ((((i >> 1) + j) % 3) === 0 ? -0.06 : 0);
+    k += j < 0 ? 0.08 : j >= CH ? -0.2 : (j < 2 ? 0.06 : j > CH - 3 ? -0.1 : 0);
+    if (i - eI < 1) k = 0.1; // the frayed leading edge
+    else if (i - eI < 2 && hsh(i, j, 81) < 0.5) k = 0.3;
+    let col = dith(LINEN, k, x, y);
+    // the blood: a blot round the bandage's middle that spreads with the wound
+    const span = Math.max(1, CW * this.inj), mid = eI + span * 0.5;
+    const dx = (i - mid) / Math.max(4, span * 0.42), dy = (j - CH * 0.5) / (CH * 0.9 + 2);
+    const d = dx * dx + dy * dy * 1.6 + (hsh(i >> 1, j >> 1, 83) - 0.5) * 0.45 + (hsh(i >> 2, j >> 2, 84) - 0.5) * 0.3;
+    const rr = clamp(0.06 + this.inj * 0.9, 0.06, 0.55);
+    if (d < rr) col = dith(BLOOD, 0.85 - d / rr * 0.9 + (q < 1 ? -0.25 : 0), x, y);
+    else if (d < rr + 0.18 && bay(x, y) > 0.5) col = BLOOD[2];
+    return this.flashI > 0 ? mix(col, WHITE, this.flashI * 0.7) : col;
+  }
+
+  /** The lamp's flame in its chimney: height with the oil, swaying, guttering when low, flaring on a beat. */
+  flame(buf, W, t, fdt) {
+    const LM = GEO.lamp, cx = LM.cx * R, wick = LM.wick * R + R, top = LM.chim.y0 * R + 1;
+    const low = this.s < LOW, lid = this.veil.on ? this.veil.lid : 0;
+    let h = (2.4 + 7.2 * Math.sqrt(this.s)) * R * (1 + this.env * 0.45) * (1 - lid * 0.9);
+    h *= 1 + 0.07 * Math.sin(t * 17) + 0.05 * Math.sin(t * 29 + 1) + (low ? 0.18 * Math.sin(t * 41) * Math.sin(t * 7) : 0);
+    h = Math.min(h, wick - top);
+    const sway = (Math.sin(t * 5.3) * 0.8 + Math.sin(t * 13.1) * 0.45) * (low ? 1.8 : 1);
+    const w = 0.9 + h * 0.3, C = low || this.env > 0.5 ? FLAME_LOW : FLAME;
+    // a warm glow filling the chimney (behind the flame)
+    const ga = Math.round(clamp(30 + h * 3 + this.env * 60, 0, 120));
+    for (let fy = top; fy <= wick; fy++) for (let fx = cx - 4 * R; fx < cx + 4 * R; fx++) {
+      const i = fy * W + fx;
+      if ((buf[i] >>> 24) > 100) continue;
+      const dd = Math.hypot((fx + 0.5 - cx) / 3, (fy - (wick - h * 0.45)) / 5);
+      if (dd < 2.6 && bay(fx, fy) < 0.75) buf[i] = pk(dd < 1.4 ? 0xffb040 : 0xc86020, Math.round(ga * (1 - dd / 3)));
+    }
+    if (h < 1) return;
+    for (let fy = Math.floor(wick - h); fy <= wick; fy++) {
+      const v = (wick - fy) / h;
+      const half = w * (v < 0.28 ? 0.55 + 0.45 * Math.sqrt(v / 0.28) : Math.pow(Math.max(0, 1 - (v - 0.28) / 0.72), 0.85));
+      const xc = cx + sway * v * v;
+      for (let fx = Math.floor(xc - half - 1); fx <= Math.ceil(xc + half); fx++) {
+        const e = Math.abs(fx + 0.5 - xc) / Math.max(0.5, half);
+        if (e > 1) continue;
+        const i = fy * W + fx;
+        let c;
+        if (v < 0.1 && e > 0.55) c = e > 0.85 ? C.blueD : C.blue; // blue at the wick
+        else if (e < 0.42 && v < 0.62) c = C.core;
+        else if (e < 0.7 && v < 0.85) c = C.yel;
+        else if (e < 0.9) c = C.org;
+        else c = v > 0.7 ? C.dred : C.red;
+        buf[i] = c;
+      }
+    }
+    // the wick (a charred stub)
+    buf[(wick + 1) * W + cx] = INKP; buf[(wick + 1) * W + cx - 1] = pk(0x3a2418);
+    // smoke when guttering
+    if (low && Math.random() < fdt * 6) this.parts.push({ k: 'smoke', x: cx + (Math.random() - 0.5) * 3, y: top - 3, vx: (Math.random() - 0.5) * 6, vy: -8 - Math.random() * 8, life: 1.2 });
+  }
+
   render(fdt) {
     const L = this.L, W = L.W, buf = this.buf, c = GEO.ch, t = this.t;
     buf.set(L.base);
-    if (this.env > 0.35) { const B = L.beat; for (let y = 0; y < 18 * R + 2; y++) for (let x = 0; x < 18 * R + 2; x++) { const i = y * W + x; if (B[i] >>> 24) buf[i] = B[i]; } }
     const x0 = c.x0 * R, y0 = c.y0 * R, CW = (c.x1 - c.x0 + 1) * R, CH = (c.y1 - c.y0 + 1) * R;
     const lowK = clamp((LOW - this.s) / LOW, 0, 1);
     const ramp = lowK > 0 && (this.env > 0.3 || lowK > 0.85) ? P.low : P.stam;
@@ -196,14 +264,8 @@ export class StaminaBar {
           buf[idx] = dith(P.hunger, k + this.flashH * 0.5, x, y);
           continue;
         }
-        if (i >= eI) { // injury: red cloth, a weave, bandage cross-stitches, a torn edge
-          let k = 0.5 + (vk - 0.55) * 0.5 + (((i + j) & 1) ? 0.05 : -0.05) + ((((i >> 1) + (j >> 1)) & 3) === 0 ? -0.08 : 0);
-          if (i - eI < 1) k = 0.08;
-          let col = dith(P.injury, k, x, y);
-          const ri = CW - 1 - i - Math.round(CW * this.hu), sx = ((ri % 10) + 10) % 10 - 4, sy = j - (CH >> 1) + 0.5;
-          if (i - eI > 2 && Math.abs(Math.abs(sx) - Math.abs(sy)) < 0.6 && Math.abs(sy) < 3) col = sx + sy > 0 ? P.thread[1] : P.thread[2];
-          if ((j === 1 || j === CH - 2) && i - eI > 1 && (ri & 3) < 2) col = P.thread[0];
-          buf[idx] = this.flashI > 0 ? mix(col, WHITE, this.flashI * 0.7) : col;
+        if (i >= eI) { // injury: a linen bandage wound round the tube, blood seeping through
+          buf[idx] = this.linen(i, j, eI, CH, x, y);
           continue;
         }
         if (i < eS) { // stamina: honey light, swirling, a shine running through, bubbles
@@ -222,6 +284,26 @@ export class StaminaBar {
       if (this.hu > 0.004) { const bx = x0 + Math.floor(eH) - 1; if (bx >= x0 + eS) buf[row + bx] = INKP; }
       if (this.inj > 0.004 && this.hu > 0.004) buf[row + x0 + Math.min(CW - 1, Math.floor(hunX) - 1)] = INKP;
     }
+    // the bandage wraps over the rails too (bulging past the tube), crumbs lie on the bottom rail
+    if (this.inj > 0.004) {
+      const i0 = Math.max(0, Math.floor(injX)), i1 = Math.min(CW, Math.ceil(hunX));
+      for (let j = -5; j < CH + 5; j++) {
+        if (j >= 0 && j < CH) continue;
+        const y = y0 + j, row = y * W;
+        for (let i = i0; i < i1; i++) {
+          const ii = i - (j < 0 ? -j - 1 : j - CH) * 0.5; // (the wrap's edge leans with the turns)
+          if (ii < injX) continue;
+          buf[row + x0 + i] = j === -5 || j === CH + 4 ? INKP : this.linen(i, j, injX, CH, x0 + i, y);
+        }
+      }
+    }
+    if (this.hu > 0.004) for (let i = Math.floor(hunX) - 3; i < CW; i++) {
+      const n = hsh(i, 5, 97);
+      if (n < 0.62) continue;
+      const y = y0 + CH + (n > 0.9 ? 1 : 0), k = n > 0.85 ? 4 : 2;
+      if (i >= 0) buf[y * W + x0 + i] = P.hunger[k];
+    }
+    this.flame(buf, W, t, fdt);
     // bubbles rising through the honey
     for (let b = 0; b < 7; b++) {
       const bx = (hsh(b, 1, 5) * CW + t * (6 + b * 2)) % Math.max(1, sW - 3), by = CH - 2 - ((t * (3 + b) + hsh(b, 2, 5) * CH) % (CH - 3));
@@ -247,6 +329,10 @@ export class StaminaBar {
         const put = (x, y, c) => { if (x >= 0 && y >= 0 && x < W && y < L.H) buf[(y | 0) * W + (x | 0)] = c; };
         put(p.x, p.y, WHITE);
         for (let k = 1; k <= r; k++) { const cc = k === r ? P.stam[6] : P.stam[7]; put(p.x - k, p.y, cc); put(p.x + k, p.y, cc); put(p.x, p.y - k, cc); put(p.x, p.y + k, cc); }
+      } else if (p.k === 'smoke') {
+        p.x += (p.vx + Math.sin(p.t * 5 + p.y) * 4) * dtp; p.y += p.vy * dtp;
+        const fx = p.x | 0, fy = p.y | 0;
+        if (fy >= 0 && fx >= 0 && fx < W) buf[fy * W + fx] = pk(p.t / p.life < 0.5 ? 0x8a8078 : 0x5a5250, Math.round(200 * (1 - p.t / p.life)));
       } else {
         p.vy += 140 * dtp; p.x += p.vx * dtp; p.y += p.vy * dtp;
         const fy = Math.min(y0 + CH - 1, p.y), fx = clamp(p.x, x0, x0 + CW - 1);

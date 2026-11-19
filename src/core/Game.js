@@ -11,6 +11,8 @@ import { foodBuffs } from '../cooking/buffs.js';
 import { clamp, wait, el } from './util.js';
 import { houseLoading } from '../home/loading.js';
 import { attachVitals, tickVitals } from './vitals.js';
+import { Graphics } from './graphics.js';
+import { Gamepad } from './Gamepad.js';
 
 // Scenes load lazily so each one stays self-contained.
 const SCENES = {
@@ -49,6 +51,8 @@ export class Game {
     this.canvas = root.querySelector('#game');
     this.engine = new Engine(this.canvas);
     this.input = new Input(this.canvas, this.engine);
+    this.gfx = new Graphics(this.engine); // PC graphics + camera settings (the menu's hooks: src/core/graphics.js)
+    this.pad = new Gamepad(this.input); // controllers: move, look, jump, dig, use, hotbar (src/core/Gamepad.js)
     this.audio = new AudioSys();
     registerSounds(this.audio);
     this.state = new State();
@@ -107,6 +111,9 @@ export class Game {
 
   loop(now) {
     requestAnimationFrame((t) => this.loop(t));
+    // the frame cap (graphics setting): skip display frames that come too soon (half a ms of slack)
+    const cap = this.engine.fpsCap;
+    if (cap > 0 && now - this.last < 1000 / cap - 0.5) return;
     let dt = (now - this.last) / 1000;
     this.last = now;
     if (!(dt > 0)) dt = 1 / 60;
@@ -117,6 +124,7 @@ export class Game {
     const blind = this.engine.contextLost;
     if (this.scene && !this.transitioning && !blind) {
       if (this.sceneName !== 'title') st.data.playTime += dt;
+      this.pad.poll(dt);
       try { this.scene.update(dt); } catch (e) { console.error(e); this.reportError(e); }
       tickVitals(this, dt);
       this.cheats();
@@ -244,7 +252,7 @@ export class Game {
         const fb = FALLBACK[at];
         if (!fb || !SCENES[fb[0]]) break;
         console.warn(`[game] ${at} failed to load, going to ${fb[0]}`);
-        if (!hop) this.ui.toast('That place wouldn\'t load. Back to safety!', { kind: 'warn', dur: 3500 });
+        if (!hop) this.ui.toast('Couldn\'t load that place. Back you go.', { kind: 'warn', dur: 3500 });
         at = fb[0];
         entered = await this.enterScene(at, { ...fb[1] }, { seamless: false, hold: null });
       }
@@ -453,7 +461,7 @@ export class Game {
     const st = this.state;
     if (!st.flag('goalToast') && st.gold >= GOAL_GOLD) {
       st.flag('goalToast', true);
-      this.ui.toast('<b>1,000,000 gold!</b> The Surface Express ticket office is waiting...', { kind: 'good', dur: 6000 });
+      this.ui.toast('<b>1,000,000 gold.</b> Go and buy your ticket.', { kind: 'good', dur: 6000 });
       this.audio.play('fanfare');
     }
   }

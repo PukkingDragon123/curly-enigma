@@ -49,13 +49,13 @@ const _frustum = new THREE.Frustum();
 export const BRAMBLE = { name: 'Bramble', species: 'vole', age: 'elder', body: 'stocky', fur: 0x8a6a4a, outfit: 'overalls', outfitColor: 0x7a5a3a, hat: 'cap', hatColor: 0x3a5a3a, eyes: 'happy', brows: 'bushy', dirt: 0.6, seed: 31, blush: true, voice: 250 };
 const BRAMBLE_LINES = [
   'Going down? Hop in, mind the gap.',
-  'She creaks, but she has never dropped anyone. Twice.',
-  'The deeper stops open once you have dug to the bottom of one.',
+  'She creaks, but she\'s never dropped anyone. Twice.',
+  'Deeper stops open once you\'ve dug down to them.',
   'Bring me back something shiny, eh?',
   'Hold on to your helmet. And your lunch.',
 ];
-const WELCOME_BACK = ['Welcome back up! Still got all your claws?', 'Back in one piece! Mostly dirt, though.', 'Up you come. Old Vex will want a look at that haul.'];
-const NOTICES = ['LOST: one left mitten, ember-proof. Reward: a pie. — Dilly', 'BAND PRACTICE Thursdays at the fountain. Bring a spoon.', 'Please do NOT feed the glow-worms. — The Council', 'WANTED: brave digger for deep commissions. Ask Old Vex.', 'Mushroom swap, Sunday, back lane. No blue ones please.', 'Surface Express: ONE WAY ONLY. No refunds. No returns. No exceptions.'];
+const WELCOME_BACK = ['Back up. Still got all your claws?', 'Back in one piece! Mostly dirt, though.', 'Up you come. Old Vex will want a look at that haul.'];
+const NOTICES = ['LOST: left mitten, ember-proof. Reward: a pie. Ask Dilly.', 'BAND PRACTICE Thursdays at the fountain. Bring a spoon.', 'Do NOT feed the glow-worms. The Council.', 'WANTED: brave digger for deep commissions. Ask Old Vex.', 'Mushroom swap, Sunday, back lane. No blue ones please.', 'Surface Express: ONE WAY ONLY. No refunds.'];
 const KNOCK = ['(muffled) Not today, thank you!', '(muffled) Who\'s there? ...Oh, it\'s the new one!', '(muffled) Kettle\'s on! Come back later!', '(muffled) Zzz... wha? Go \'way...', '(muffled) If that\'s about the begonias, I didn\'t do it!'];
 /** Grown-up extras for the keepers' looks (the shop data only names the basics). */
 const KEEPER_LOOKS = {
@@ -965,6 +965,7 @@ export default class TownScene extends Scene {
     pl.pitch = c.pitch;
     pl.dip = c.dip ?? 0;
     pl.eyeY = 0.72;
+    pl.snap(); // (drawn exactly where the cutscene puts it)
     rig.syncCamera(dt);
     if (c.roll) { rig.camera.rotation.z += c.roll; rig.camera.updateMatrixWorld(); }
     if (rig.vm && !c.noPaws) rig.vm.update(dt, { speed: 0, grounded: true, climbing: false, swimming: false, look: { dx: 0, dy: 0 }, lamp: { color: rig.lampCol, intensity: rig.lampK }, ambient: rig.ambient, camera: rig.camera });
@@ -1012,7 +1013,7 @@ export default class TownScene extends Scene {
     if (!this.rig) return;
     // phones held upright: open the vertical field of view so the street still fits across
     const a = w / h;
-    this.rig.camera.fov = a < 1 ? Math.min(100, 74 + (1 - a) * 44) : 74;
+    this.rig.fovExtra = a < 1 ? Math.max(0, Math.min(100, this.rig.baseFov() + (1 - a) * 44) - this.rig.baseFov()) : 0; // (tall windows: wider; FPSRig eases to it)
     this.rig.onResize(w, h);
   }
 

@@ -21,7 +21,7 @@ export const VILLAGERS = {
   mabel: {
     name: 'Granny Mabel', look: { species: 'mole', age: 'elder', glasses: true, outfit: 'dress' }, seed: 102, title: 'baker, festival-keeper', where: 'The north bench on the plaza', ink: '#a04a5a',
     about: 'Tuck\'s wife. Runs the Sunbeam Festival, and everyone\'s business.',
-    wait: ['The festival won\'t bake itself, dear. Well, the pies will, if you put them in.', 'Off you go! And wear a scarf, it\'s draughty in the deep.'],
+    wait: ['The festival won\'t bake itself, dear. Well, the pies will, if you put them in.', 'Off you go. Wear a scarf, it\'s draughty down there.'],
     thanks: ['Oh, you lovely thing.', 'There. Now we\'re getting somewhere.'],
     tales: ['t_sunbeam'],
   },
@@ -58,7 +58,7 @@ export const VILLAGERS = {
     name: 'Finnick', look: { age: 'adult', outfit: 'apron', outfitColor: 0x8ab0d0, hat: 'bandana', hatColor: 0x3a6ac9, species: 'frog' }, seed: 171, title: 'fishmonger', where: 'The fish stall, east of the fountain', ink: '#3a6a8a',
     about: 'Sells blind fish. Says they don\'t mind. Says it a lot.',
     wait: ['Cold ones, mind. Frost shrimp go off if you look at them.', 'Still wiggling, that\'s what I want.'],
-    thanks: ['Fresh! Frosty! Wonderful!', 'That\'s a week\'s stock, that is.'],
+    thanks: ['Still frosty. Lovely.', 'That\'s a week\'s stock, that is.'],
     tales: ['cr_fish'],
   },
   garnet: {
@@ -72,13 +72,13 @@ export const VILLAGERS = {
     name: 'Lark', look: { species: 'golden', age: 'adult', hat: 'cap', hatColor: 0xc94a3a, outfit: 'vest', outfitColor: 0x6a3a6a, scarf: 0xe0b030 }, seed: 105, title: 'busker', where: 'By the fountain, with a lute', ink: '#6a3a6a',
     about: 'A golden mole who sings songs about the sun. Has never seen it. Sings them anyway.',
     wait: ['♪ ...and the strings went twang... ♪', 'A song is a long way down without a tune.'],
-    thanks: ['♪ Oh, that\'s the one! ♪', 'Listen, listen, LISTEN to that.'],
+    thanks: ['♪ Oh, that\'s the one! ♪', 'Listen to THAT.'],
     tales: ['cr_wraiths'],
   },
   puddle: {
     name: 'Puddle', look: { species: 'frog', age: 'adult', hat: 'bandana', hatColor: 0x3a6ac9, outfit: 'vest', outfitColor: 0x7a5a3a }, seed: 106, title: 'fisher', where: 'Fishing in the fountain', ink: '#3a7a5a',
     about: 'Fishes in the town fountain. There are no fish in the town fountain. That\'s the point, he says.',
-    wait: ['Patience. Patience is bait for the mind.', 'Shh. You\'ll scare the nothing.'],
+    wait: ['Patience is the bait. Also, bait.', 'Shh. You\'ll scare the nothing.'],
     thanks: ['A bite! Of a kind.', 'Now that\'s a catch.'],
     tales: ['t_fountain'],
   },

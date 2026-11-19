@@ -647,7 +647,7 @@ const FX_KEY = 'moleforge.fx';
  * Quality tiers, best first. px: internal pixel budget (the image is rendered at an integer
  * fraction of the device's own pixels, the largest that fits: crisp pixels at any DPR), fx: glow
  * level, ao: 2 = half-res AO with 10 samples, 1 = quarter-res with 6, 0 = off.
- * Desktop starts at 'high', phones at 'low'; 'auto' steps down when frames run long and back up
+ * Every PC starts at 'high' (src/core/graphics.js can pick one); 'auto' steps down when frames run long and back up
  * after a while of headroom (a tier that failed is not retried for a minute).
  */
 export const TIERS = [
@@ -838,10 +838,16 @@ export class Engine {
     this._grade = { ref: undefined, mix: -1 };
     this.sceneName = null; // set by Game.goto: picks the SCENE_POST defaults
 
-    // quality: a tier per device class, adapted to the frame time on 'auto'
-    const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-    this.mobile = coarse;
-    this.baseTier = tierIndex(coarse ? 'low' : 'high');
+    // quality: PC only (a Steam game): every machine starts at 'high' and 'auto' adapts to the frame
+    // time; the graphics settings (src/core/graphics.js) can pick a tier, render scale and shadows
+    this.mobile = false; // (kept for old callers: there are no phone caps any more)
+    this.baseTier = tierIndex('high');
+    this.userTier = -1; // a tier the player picked (graphics preset): the governor leaves it alone
+    this.renderScale = 1; // × the tier's pixel budget per axis
+    this.aoOverride = null; // 0 | 1 | 2 from the 'Shadows' setting, null = the tier's
+    this.viewDist = 1; // × how far scenes build and draw their world (graphics setting)
+    this.fpsCap = 0; // frames per second at most (0 = the display's rate; Game.loop)
+    this.vsync = true;
     this.tier = this.baseTier;
     this.aoLevel = TIERS[this.tier].ao;
     this._auto = { last: 0, dts: [], acc: 0, settle: 0, upOk: 0, raisedAt: -1, failUntil: [] };
@@ -936,6 +942,7 @@ export class Engine {
     if (this.fxAuto) this._applyFx(t.fx);
     // (software rasterizers — headless tests — get the cheap AO unless a tier is pinned with ?q=)
     if (this.fxAuto) this.aoLevel = this.softwareGL && this.fixedTier < 0 ? Math.min(t.ao, 1) : t.ao;
+    if (this.aoOverride !== null && this.fixedTier < 0) this.aoLevel = this.aoOverride;
     if (changed) this.resize();
     this._sizeAo();
   }
@@ -961,7 +968,7 @@ export class Engine {
     const A = this._auto;
     const dt = A.last ? now - A.last : 0;
     A.last = now;
-    if (!this.fxAuto || this.fixedTier >= 0 || this.softwareGL) return;
+    if (!this.fxAuto || this.fixedTier >= 0 || this.userTier >= 0 || this.softwareGL) return;
     if (!(dt > 0) || dt > 1000) return; // loading hitches, hidden tabs (the median ignores the odd spike)
     A.dts.push(dt);
     A.acc += dt;
@@ -969,8 +976,7 @@ export class Engine {
     const d = A.dts.sort((a, b) => a - b), med = d[d.length >> 1];
     A.dts.length = 0; A.acc = 0;
     if (A.settle > 0) { A.settle--; return; }
-    const slow = this.mobile ? 38 : 22, fast = this.mobile ? 24 : 17.9;
-    const top = this.mobile ? tierIndex('medium') : 0;
+    const slow = 22, fast = 17.9, top = 0;
     if (med > slow && this.tier < TIERS.length - 1) {
       if (A.raisedAt === this.tier) A.failUntil[this.tier] = now + 60000;
       A.raisedAt = -1; A.upOk = 0; A.settle = 1;
@@ -1014,6 +1020,25 @@ export class Engine {
     this.postUniforms.uAoRes.value.set(aw, ah);
   }
 
+  /**
+   * Graphics settings (src/core/graphics.js): tier 'auto' (adapts) or a TIERS name (kept as picked),
+   * shadows 'auto' | 'off' | 'low' | 'high' (screen-space AO). A ?q= test pin wins over both.
+   */
+  setQuality({ tier = 'auto', shadows = 'auto' } = {}) {
+    this.aoOverride = shadows === 'off' ? 0 : shadows === 'low' ? 1 : shadows === 'high' ? 2 : null;
+    const i = tier === 'auto' ? -1 : tierIndex(tier);
+    if (this.fixedTier >= 0) { this.setTier(this.fixedTier); return; }
+    this.userTier = i;
+    if (i >= 0) { this.baseTier = i; this._applyFx(TIERS[i].fx); this.fxAuto = true; this._auto.settle = 1; }
+    this.setTier(i >= 0 ? i : this.tier);
+  }
+
+  /** Render scale: × the tier's pixel budget per axis (0.5 .. 1.5). */
+  setRenderScale(k) {
+    this.renderScale = Math.max(0.5, Math.min(1.5, Number(k) || 1));
+    this.resize();
+  }
+
   setPixelOffset(o) {
     this.pixelOffset = o;
     this.resize();
@@ -1028,7 +1053,7 @@ export class Engine {
     // for fractional DPRs); then the player's 'Pixels' setting a step finer or coarser
     const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
     const dw = ww * dpr, dh = wh * dpr;
-    const budget = TIERS[this.tier].px;
+    const budget = TIERS[this.tier].px * (this.renderScale || 1) ** 2;
     const cand = [];
     for (let k = 1; k <= 16; k++) { cand.push(k); if (k <= 8) cand.push(k * dpr); }
     cand.sort((a, b) => a - b);

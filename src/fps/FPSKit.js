@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { FPSPlayer } from '../deep/Player.js';
 import { VOX } from '../deep/materials.js';
-import { clamp } from '../core/util.js';
+import { CamFeel } from './feel.js';
 
 const STONE = 4; // any opaque material id for the mole's collision
 
@@ -88,21 +88,22 @@ export class FPSRig {
     this.o = owner;
     this.g = owner.game;
     this.world = opts.world || new BoxWorld();
-    this.fov = opts.fov ?? 74;
+    this.fov = opts.fov ?? this.baseFov(); // (the player's Field of view setting, src/core/graphics.js)
+    this.feel = new CamFeel();
     this.reach = opts.reach ?? 2.2;
     this.stepMat = opts.stepMat || 'wood';
     this.lampK = opts.lamp ?? 0.8;
     this.tool = opts.tool || 'none';
     this.toolItem = opts.toolItem || null;
     const e = this.g.engine;
-    this.camera = new THREE.PerspectiveCamera(this.fov, e.width / e.height, 0.03, opts.far ?? 80);
+    this.far = opts.far ?? 80;
+    this.camera = new THREE.PerspectiveCamera(this.fov, e.width / e.height, 0.03, this.far * (e.viewDist || 1));
     this.camera.rotation.order = 'YXZ';
     this.player = new FPSPlayer(this.world);
     this.items = [];
     this.target = null;
     this.kick = new THREE.Vector3();
     this.shakeAmp = 0;
-    this.stepT = 0;
     this.vm = null;
     this.lampCol = new THREE.Color(1.25, 1.05, 0.8);
     this.ambient = new THREE.Color(0.35, 0.3, 0.28);
@@ -129,6 +130,7 @@ export class FPSRig {
     p.vel.set(0, 0, 0);
     p.yaw = yaw;
     p.pitch = pitch;
+    p.snap();
     this.syncCamera(0);
   }
 
@@ -146,6 +148,8 @@ export class FPSRig {
   remove(it) { const i = this.items.indexOf(it); if (i >= 0) this.items.splice(i, 1); }
 
   isTouch() { return document.documentElement.classList.contains('is-touch'); }
+  /** The first-person field of view the player chose (degrees). */
+  baseFov() { return this.g?.gfx?.get('fov') ?? 74; }
   eye(out = new THREE.Vector3()) { return this.player.eye(out); }
   forward(out = new THREE.Vector3()) { return this.player.forward(out); }
   shake(a) { if (this.g.state.data.settings?.shake !== false) this.shakeAmp = Math.max(this.shakeAmp, a); }
@@ -184,12 +188,9 @@ export class FPSRig {
     if (!busy) pl.look(look.dx, look.dy, this.isTouch() ? 0.0055 : 0.0026);
     if (!busy && inp.mousePressed(0) && !inp.pointerLocked && !this.isTouch()) { inp.lockPointer(); inp.mouse.pressed[0] = false; }
     const mv = { x: inp.axisX(), y: inp.axisY() };
-    const ev = pl.update(dt, mv, { jump: !busy && inp.pressed('Space'), jumpHeld: !busy && inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight'), crouch: !busy && inp.isDown('KeyC'), frozen: busy || !!opts.frozen, speedMul: opts.speedMul ?? 1 });
+    const ev = pl.step(dt, mv, { jump: !busy && inp.pressed('Space'), jumpHeld: !busy && inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight'), crouch: !busy && inp.isDown('KeyC'), frozen: busy || !!opts.frozen, speedMul: opts.speedMul ?? 1 });
     if (ev.landed) g.audio.play('land', { hard: ev.landed > 8 });
-    if (pl.grounded && pl.speed > 0.6) {
-      this.stepT -= dt * pl.speed / 2.4;
-      if (this.stepT <= 0) { this.stepT = 1; g.audio.play('step', { vol: 0.3, mat: this.stepMat }); }
-    }
+    this.running = !busy && inp.isDown('ShiftLeft', 'ShiftRight');
     this.primaryDown = !busy && inp.mouseDown(0) && (inp.pointerLocked || this.isTouch());
     this.primaryPressed = !busy && inp.mousePressed(0) && (inp.pointerLocked || this.isTouch());
     // targeting + E
@@ -204,18 +205,37 @@ export class FPSRig {
       t.action?.(t);
     }
     this.syncCamera(dt);
-    if (this.vm) this.vm.update(dt, { speed: pl.speed, grounded: pl.grounded, climbing: pl.climbing, swimming: pl.inWater, look, lamp: { color: this.lampCol, intensity: this.lampK }, ambient: this.ambient, camera: this.camera });
+    // field of view while walking: the setting (a scene may widen it for tall windows: fovExtra) plus
+    // the sprint kick; eased, so coming back from a scene's own view (a dock, a cutscene) never pops
+    {
+      const cam = this.camera, want = this.baseFov() + (this.fovExtra || 0) + this.feelNow.fov;
+      const fov = Math.abs(cam.fov - want) > 0.5 ? cam.fov + (want - cam.fov) * (1 - Math.exp(-dt * 10)) : want;
+      if (Math.abs(cam.fov - fov) > 1e-4) { cam.fov = fov; cam.updateProjectionMatrix(); }
+      this.fov = this.baseFov();
+    }
+    // footsteps on the head bob's beat (src/fps/feel.js)
+    if (this.feelNow?.step) g.audio.play('step', { vol: 0.3, mat: this.stepMat });
+    if (this.vm) this.vm.update(dt, { speed: pl.speed, grounded: pl.grounded, climbing: pl.climbing, swimming: pl.inWater, look, vel: pl.vel, yaw: pl.yaw, stridePh: pl.rBobT, sway: g.gfx?.get('sway') ?? 1, lamp: { color: this.lampCol, intensity: this.lampK }, ambient: this.ambient, camera: this.camera });
     return ev;
   }
 
+  /**
+   * Put the camera on the eye (drawn between physics steps), with the head bob, the sprint FOV kick
+   * (src/fps/feel.js), the scene's kick and shake. Look is never smoothed: yaw and pitch are the raw
+   * mouse/stick input of this frame.
+   */
   syncCamera(dt) {
-    const pl = this.player, eye = pl.eye();
-    const bob = pl.grounded ? Math.sin(pl.bobT * 2) * 0.02 * clamp(pl.speed / 3, 0, 1) : 0;
-    this.kick.multiplyScalar(Math.max(0, 1 - dt * 16));
+    const pl = this.player, eye = pl.eye(), gfx = this.g?.gfx;
+    const f = (this.feelNow = this.feel.update(dt, pl, { run: this.running, bob: gfx?.get('headBob') ?? true, kick: gfx?.get('fovKick') ?? true }));
+    this.kick.multiplyScalar(Math.exp(-dt * 16));
     this.shakeAmp = Math.max(0, this.shakeAmp - dt * 1.4);
     const sh = this.shakeAmp * 0.05;
-    this.camera.position.set(eye.x + (Math.random() - 0.5) * sh, eye.y + bob + (Math.random() - 0.5) * sh, eye.z + (Math.random() - 0.5) * sh);
-    this.camera.rotation.set(pl.pitch + this.kick.x, pl.yaw + this.kick.y, this.kick.z, 'YXZ');
+    const cy = Math.cos(pl.yaw), sy = Math.sin(pl.yaw);
+    this.camera.position.set(eye.x + f.x * cy + (Math.random() - 0.5) * sh, eye.y + f.y + (Math.random() - 0.5) * sh, eye.z - f.x * sy + (Math.random() - 0.5) * sh);
+    const vmKick = this.g?.state?.data?.settings?.shake !== false && this.vm ? this.vm.camPitch || 0 : 0; // the paws' swing (ViewModel)
+    this.camera.rotation.set(pl.pitch + this.kick.x + vmKick, pl.yaw + this.kick.y, this.kick.z + f.roll, 'YXZ');
+    const far = this.far * (this.g?.engine?.viewDist || 1);
+    if (this.camera.far !== far) { this.camera.far = far; this.camera.updateProjectionMatrix(); }
     this.camera.updateMatrixWorld();
   }
 

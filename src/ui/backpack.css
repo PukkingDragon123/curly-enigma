@@ -171,7 +171,7 @@
 }
 .inv-ghost img {
   position: absolute; left: calc(var(--icon) / -2); top: calc(var(--icon) / -2); width: var(--icon); height: var(--icon);
-  filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(20, 10, 4, .45)); transform: scale(1.12);
+  filter: drop-shadow(var(--px) calc(var(--px) * 3) 0 rgba(20, 10, 4, .45)); transform: scale(1.12);
 }
 .inv-ghost.touch img { top: calc(var(--icon) * -1.25); }
 .inv-ghost .n {
@@ -309,7 +309,7 @@
   border-style: solid; border-width: calc(var(--px) * 8);
   border-image: var(--a-parchDog) 8 / calc(var(--px) * 8) repeat;
   background: var(--a-paperT) 0 0 / calc(var(--px) * 32) repeat padding-box, var(--parch) padding-box;
-  padding: 0 calc(var(--px) * 1); color: var(--ink); filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(10, 4, 8, .45));
+  padding: 0 calc(var(--px) * 1); color: var(--ink); filter: drop-shadow(var(--px) calc(var(--px) * 3) 0 rgba(10, 4, 8, .45));
   transform-origin: calc(var(--px) * 4) calc(var(--px) * 4); user-select: text;
 }
 .bp-tag.swing { animation: tagSwing .5s var(--pop); }
@@ -507,7 +507,7 @@
   animation: flapOpen .45s cubic-bezier(.25, 1.4, .45, 1) both;
 }
 @keyframes flapOpen { from { transform: rotateX(-172deg); filter: brightness(.6); } 50% { transform: rotateX(14deg); } 75% { transform: rotateX(-4deg); } }
-.bp-strap { width: calc(var(--px) * 22); height: calc(var(--px) * 30); bottom: calc(var(--px) * -24); background: var(--pk-buckle) 0 0 / 100% 100%; image-rendering: pixelated; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 2, .5)); animation: strapSwing .8s .22s ease-out both; transform-origin: 50% 0; }
+.bp-strap { width: calc(var(--px) * 22); height: calc(var(--px) * 30); bottom: calc(var(--px) * -24); background: var(--pk-buckle) 0 0 / 100% 100%; image-rendering: pixelated; filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(10, 4, 2, .5)); animation: strapSwing .8s .22s ease-out both; transform-origin: 50% 0; }
 .bp-strap::after { display: none; }
 @keyframes strapSwing { 0% { transform: rotate(0); } 25% { transform: rotate(9deg); } 50% { transform: rotate(-6deg); } 75% { transform: rotate(3deg); } }
 /* the lining, with the bag's mouth: a rolled leather lip along the top and its shadow inside */
@@ -662,7 +662,7 @@ html.is-touch .bp-hot .inv-slot .k { display: none; }
 #ui .belt-strap.nope .loop-face { animation: nopeRed .4s steps(2); }
 .belt-bounce {
   position: absolute; left: 50%; bottom: 60%; width: var(--icon-s); height: var(--icon-s); margin-left: calc(var(--icon-s) / -2); pointer-events: none; z-index: 4;
-  image-rendering: pixelated; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 2, .5)); animation: bounceOff .74s cubic-bezier(.3, .7, .5, 1) both;
+  image-rendering: pixelated; filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(10, 4, 2, .5)); animation: bounceOff .74s cubic-bezier(.3, .7, .5, 1) both;
 }
 @keyframes bounceOff {
   0% { transform: translateY(calc(var(--px) * -40)) scale(.8); opacity: 0; }
@@ -710,3 +710,12 @@ html.is-touch .bp-hot .inv-slot .k { display: none; }
   html.is-touch #ui .belt .loop.sel .loop-face::before { inset: calc(var(--px) * -4); }
   html.is-touch #ui .belt .belt-label { align-self: center; }
 }
+
+/* wave 18: pockets have depth: the mouth's shadow under the top seam, things inside cast a
+   contact shadow down-right (lamp light from the top left), a lifted pocket glows warm */
+.inv-slot.pocket:not(.ghosted)::after {
+  content: ''; position: absolute; left: calc(var(--px) * 1); right: calc(var(--px) * 1); top: 0; height: calc(var(--px) * 5); pointer-events: none;
+  background: linear-gradient(to bottom, rgba(46, 22, 8, .34), rgba(46, 22, 8, .12) 60%, transparent);
+}
+.inv-slot:not(.empty) img { filter: drop-shadow(var(--px) var(--px) 0 rgba(40, 18, 6, .38)); }
+.inv-slot.pocket.on::after { background: linear-gradient(to bottom, rgba(255, 214, 120, .28), transparent); }

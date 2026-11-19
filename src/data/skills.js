@@ -39,11 +39,11 @@ export function levelInfo(xp) {
 // a: where the branch grows on the root map (degrees, 0 = east, clockwise), filled in by layout.
 export const SKILL_LINES = [
   { id: 'mining', name: 'Mining', glyph: 'pick', ink: '#6e4422', pal: [0xf0c890, 0xc08850, 0x93602e, 0x623c1a, 0x38200c],
-    how: 'Swing at rock, free ore, find gems, blast.', star: 'A good miner listens to the rock before he hits it.' },
+    how: 'Swing at rock, free ore, find gems, blast.', star: 'Listen first. Then hit it.' },
   { id: 'smithing', name: 'Smithing', glyph: 'anvil', ink: '#8a2418', pal: [0xffa080, 0xe8604a, 0xc23c2c, 0x8a2418, 0x50120a],
-    how: 'Smelt ingots, forge blades. Better grades teach more.', star: 'Heat, hammer, patience. Mostly patience.' },
+    how: 'Smelt ingots, forge blades. Better grades teach more.', star: 'Mostly it\'s waiting for the heat.' },
   { id: 'cooking', name: 'Cooking', glyph: 'pot', ink: '#a04a14', pal: [0xffd09a, 0xf79a52, 0xd96e2a, 0x9a4416, 0x58220a],
-    how: 'Cook dishes, forage what goes in them.', star: 'An empty belly digs a short tunnel.' },
+    how: 'Cook dishes, forage what goes in them.', star: 'Eat. You look like a stick.' },
   { id: 'building', name: 'Building', glyph: 'hammer', ink: '#37506e', pal: [0xd0e0f4, 0x8eaad2, 0x5a76a0, 0x3a5272, 0x1e2c40],
     how: 'Hammer pieces into your burrow, put up blocks below.', star: 'Measure twice. Hammer once. Then hammer again.' },
   { id: 'survival', name: 'Survival', glyph: 'heart', ink: '#3a6a24', pal: [0xc8f08a, 0x8ac85a, 0x5a9a3a, 0x3a6a24, 0x1e3a12],
@@ -154,7 +154,7 @@ const CORE_NODES = [
   N('mining', 'm_finesse', 3, 1, 'gem', 'Featherpick', { clean: 0.35 }, { req: ['m_nose', 'm_appraise'], excl: 'm_way' }),
   N('mining', 'm_sticky', 3, 2, 'drop', 'Sticky Fuse', { sticky: 1, spare: 0.15 }, { req: ['m_throw'] }),
   N('mining', 'm_mother', 4, 0, 'crown', 'Motherlode', { power: 0.12, clean: 0.12, glint: 0.2 }, { req: ['m_brute', 'm_finesse'] }),
-  N('mining', 'm_blast', 4, 1, 'bomb', 'Demolitionist', { blast: 0.25 }, { req: ['m_sticky'] }),
+  N('mining', 'm_blast', 4, 1, 'bomb', 'Powder Monkey', { blast: 0.25 }, { req: ['m_sticky'] }),
 
   // ---- Smithing
   N('smithing', 's_bellows', 0, 0, 'flame', 'Bellows Arm', { forge: 0.08 }),
@@ -165,7 +165,7 @@ const CORE_NODES = [
   N('smithing', 's_master', 3, 0, 'anvil', 'Master Smith', { craft: 0.25 }, { req: ['s_finish'], excl: 's_way' }),
   N('smithing', 's_sure', 3, 1, 'hammer', 'Sure Hands', { forge: 0.25 }, { req: ['s_finish'], excl: 's_way' }),
   N('smithing', 's_jewel', 3, 2, 'gem', 'Gem Setter', { gemset: 0.25 }, { req: ['s_crucible'] }),
-  N('smithing', 's_legend', 4, 0, 'crown', 'Legendary Smith', { craft: 0.15, forge: 0.15 }, { req: ['s_master', 's_sure', 's_jewel'] }),
+  N('smithing', 's_legend', 4, 0, 'crown', 'Red Star Stamp', { craft: 0.15, forge: 0.15 }, { req: ['s_master', 's_sure', 's_jewel'] }),
 
   // ---- Cooking (and the old Foraging); the techniques (data/cookTech.js) are added below
   N('cooking', 'c_nose', 0, 0, 'pot', 'Good Nose', { cook: 0.08 }),
@@ -174,8 +174,8 @@ const CORE_NODES = [
   N('cooking', 'c_helping', 2, 0, 'bowl', 'Second Helping', { helping: 0.2 }, { req: ['c_knife'] }),
   N('cooking', 'c_hearty', 2, 9, 'heart', 'Hearty Portions', { hearty: 0.2, buff: 0.2 }, { req: ['c_knife', 'g_eye'] }),
   N('cooking', 'g_sense', 3, 9, 'eye', 'Mushroom Sense', { sense: 1, double: 0.15 }, { req: ['g_eye'] }),
-  N('cooking', 'c_gourmet', 3, 0, 'star', 'Gourmet', { cook: 0.25 }, { req: ['c_helping', 'c_hearty'] }),
-  N('cooking', 'c_chef', 4, 0, 'crown', 'Head Chef', { cook: 0.15, helping: 0.1, buff: 0.2 }, { req: ['c_gourmet'] }),
+  N('cooking', 'c_gourmet', 3, 0, 'star', 'Good Palate', { cook: 0.25 }, { req: ['c_helping', 'c_hearty'] }),
+  N('cooking', 'c_chef', 4, 0, 'crown', 'Hazel\'s Rival', { cook: 0.15, helping: 0.1, buff: 0.2 }, { req: ['c_gourmet'] }),
 
   // ---- Building (the hammer; the alcoves and the tavern from the old board)
   N('building', 'b_mallet', 0, 0, 'hammer', 'Light Mallet', { bspeed: 0.2 }),
@@ -207,9 +207,9 @@ const CORE_NODES = [
   N('taming', 'a_treats', 1, 0, 'drumstick', 'Tasty Treats', { trust: 0.25 }, { req: ['a_gentle'] }),
   N('taming', 'a_bite', 1, 1, 'claws', 'Fierce Pal', { palbite: 0.25 }, { req: ['a_gentle'] }),
   N('taming', 'a_nose', 2, 0, 'nose', 'Truffle Pal', { palfind: 0.3 }, { req: ['a_treats'] }),
-  N('taming', 'a_bond', 2, 1, 'heart', 'Kindred Spirit', { trust: 0.4 }, { req: ['a_treats', 'a_bite'] }),
+  N('taming', 'a_bond', 2, 1, 'heart', 'Smells Right', { trust: 0.4 }, { req: ['a_treats', 'a_bite'] }),
   N('taming', 'a_pack', 3, 0, 'claws', 'Pack Leader', { palbite: 0.35, palfind: 0.2 }, { req: ['a_nose', 'a_bond'] }),
-  N('taming', 'a_master', 4, 0, 'crown', 'Beast Friend', { trust: 0.3, palbite: 0.2, palfind: 0.3 }, { req: ['a_pack'] }),
+  N('taming', 'a_master', 4, 0, 'crown', 'Pack Mole', { trust: 0.3, palbite: 0.2, palfind: 0.3 }, { req: ['a_pack'] }),
 ];
 
 // Cooking techniques: one node each, rings and line levels by their order (the first two straight off).

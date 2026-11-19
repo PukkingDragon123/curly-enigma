@@ -9,8 +9,8 @@ import { TOWN } from '../iso/townLayout.js';
 import { rand, pick } from '../core/util.js';
 import { M } from './units.js';
 
-export const ELDER_LINE = 'Another one from the deep tunnels? ...There\'s an empty burrow down the lane. It\'s yours now.';
-const GASPS = ['Did that wall just... sneeze out a mole?', 'Look at all that dirt!', 'Shaft Seven was sealed for years!', 'Somebody fetch a broom.'];
+export const ELDER_LINE = 'Another one from the deep tunnels? There\'s an empty burrow down the lane. Yours now.';
+const GASPS = ['Did that wall just sneeze out a mole?', 'Look at all that dirt!', 'Shaft Seven was sealed for years!', 'Somebody fetch a broom.'];
 
 export class EscapeArrival {
   constructor(S) {

@@ -185,7 +185,7 @@ export function openBook(game, tab, opts = {}) {
       if (lastQuest?.startsWith('ask:')) { askPage(lastQuest.slice(4)); return; }
       const id = lastQuest && Q?.get(lastQuest) ? lastQuest : Q?.data.tracked || Q?.active()[0]?.id;
       const v = id && Q ? Q.get(id) : null;
-      if (!v) { put(right, back(), head('Old Star says'), el('p', { class: 'ib-note' }, '"Write down what you mean to do, then do it. Then cross it out. Crossing out is the best part."')); return; }
+      if (!v) { put(right, back(), head('Old Star says'), el('p', { class: 'ib-note' }, '"Cross it out when it\'s done. Best part of the day."')); return; }
       Q.markSeen(v.id);
       const giver = v.giver, ink = NPCS[giver]?.ink || '#8a3a1a';
       // what to do now: the current step, big, with its count, hint and place
@@ -303,7 +303,7 @@ export function openBook(game, tab, opts = {}) {
         const n = NOTES.find((x) => x.id === lastLore) || NOTES.find((x) => !(st.data.notesRead || []).includes(x.id)) || NOTES[0];
         if (n) { e = { ...n, shelf: 'notes', src: 'note' }; lastLore = n.id; const rd = (st.data.notesRead ||= []); if (!rd.includes(n.id)) { rd.push(n.id); st.dirty = true; } }
       } else e = LORE_BY_ID[lastLore] && L?.has(lastLore) ? LORE_BY_ID[lastLore] : null;
-      if (!e) { put(right, back(), head('Lore'), el('p', { class: 'ib-note' }, '"Every stone down here remembers something. Most of it is about other stones." — Old Star')); return; }
+      if (!e) { put(right, back(), head('Lore'), el('p', { class: 'ib-note' }, '"Every stone down here remembers something. Mostly other stones." Old Star')); return; }
       L?.markRead(e.id);
       const sheet = loreSheet(e);
       dropCap(sheet.querySelector('.lr-title'), 'green');
@@ -350,7 +350,7 @@ export function openBook(game, tab, opts = {}) {
           el('i', { class: 'bk-tack big' }),
           el('h2', { class: 'ib-title' }, n.title),
           ...n.text.split('\n').map((p) => el('p', {}, p.trim())),
-          signed ? null : el('div', { class: 'bk-sign' }, [el('span', {}, '— Old Star'), el('img', { class: 'pix', src: BART.stamp(), alt: '' })]),
+          signed ? null : el('div', { class: 'bk-sign' }, [el('span', {}, 'Old Star'), el('img', { class: 'pix', src: BART.stamp(), alt: '' })]),
         ]),
       );
     },
@@ -391,7 +391,7 @@ export function openBook(game, tab, opts = {}) {
       }
       const s = st.data.stats || {};
       put(right, back(), head('Lately recorded'),
-        recent.length ? list : el('p', { class: 'ib-note muted' }, 'Nothing yet. Poke things. Taste things. Write it down.'),
+        recent.length ? list : el('p', { class: 'ib-note muted' }, 'Nothing yet. Go and poke something.'),
         el('ul', { class: 'ib-stats' }, [
           el('li', {}, [el('img', { class: 'pix', src: iconURL('pick_rusty'), alt: '' }), el('span', {}, 'Rock dug'), el('b', {}, String(s.blocks || 0))]),
           el('li', {}, [el('img', { class: 'pix', src: iconURL('copper_ore'), alt: '' }), el('span', {}, 'Finds'), el('b', {}, String(s.ores || 0))]),
@@ -420,7 +420,7 @@ export function openBook(game, tab, opts = {}) {
       spread.append(el('div', { class: 'bk-skillwait' }, [
         head('Skills'),
         el('p', { class: 'ib-note' }, `You have ${pts} skill point${pts === 1 ? '' : 's'} saved up.`),
-        el('p', { class: 'ib-note muted' }, '"Points are like ore: no use in your pocket. Spend them." — Old Star'),
+        el('p', { class: 'ib-note muted' }, '"Spend them. Points in a pocket don\'t dig." Old Star'),
       ]));
     },
   };

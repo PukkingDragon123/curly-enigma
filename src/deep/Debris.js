@@ -15,8 +15,9 @@ import { LIGHT, AIR } from './TerrainMaterial.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { VOX } from './materials.js';
 import { OPAQUE } from './Mesher.js';
+import { PHONE } from '../core/platform.js';
 
-const PHONE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+// (PC only: src/core/platform.js PHONE is false)
 const CAP = PHONE ? 220 : 420;
 const GRAV = 13;
 const rnd = (a, b) => a + Math.random() * (b - a);

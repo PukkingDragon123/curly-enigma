@@ -266,31 +266,12 @@ await step('deep: a ruin puzzle opens to treasure', async () => {
   if (!r.open || !r.acts.includes('puzzle')) throw new Error('the ruin did not open: ' + JSON.stringify(r));
   await shot('04d-ruin-treasure');
 });
-await step('deep: NPC burrows — the trading post and Rocco', async () => {
-  const r = await page.evaluate(async () => {
-    const s = window.__game.scene, d = s.traders?.debug;
-    if (!d) return { err: 'no traders module' };
-    const list = d.list();
-    d.go('trader', 'counter');
-    for (let k = 0; k < 60; k++) s.update(1 / 30);
-    const shop = await d.shop('trader', 'buy');
-    return { n: list.length, kinds: list.map((b) => b.kind), shop: !!shop };
+await step('deep: no shops down the mine (they are all in town)', async () => {
+  const r = await page.evaluate(() => {
+    const s = window.__game.scene, plan = s.world.plan;
+    return { traders: !!s.traders, burrows: (plan.burrows || []).length, feats: plan.features.filter((f) => f.kind === 'burrow').length };
   });
-  if (r.err) throw new Error(r.err);
-  if (r.n < 4 || !r.shop) throw new Error('burrows: ' + JSON.stringify(r));
-  await wait(2500);
-  await shot('04e-trading-post');
-  await page.evaluate(() => window.__game.ui.closeAllPanels());
-  const rocco = await page.evaluate(async () => {
-    const s = window.__game.scene, d = s.traders.debug;
-    d.go('raccoon', 'counter');
-    for (let k = 0; k < 60; k++) s.update(1 / 30);
-    return !!(await d.shop('raccoon', 'weapons'));
-  });
-  if (!rocco) throw new Error("Rocco's counter did not open");
-  await wait(2500);
-  await shot('04f-rocco');
-  await page.evaluate(() => window.__game.ui.closeAllPanels());
+  if (r.traders || r.burrows || r.feats) throw new Error('a shop is still down the mine: ' + JSON.stringify(r));
 });
 await step('deep: a heavy pack slows you', async () => {
   const r = await page.evaluate(() => {
@@ -486,6 +467,14 @@ await step('shops open & buy', async () => {
   if (!ok) throw new Error('buy failed');
   const line = await page.evaluate(() => { const d = window.__game.scene.debug; return d.talkTo(d.names()[0]); });
   if (!line) throw new Error('nobody to chat with');
+  // the burrow folk's stalls on the square: the trading post and Rocco (their counters were down the mine)
+  for (const [id, tab] of [['trader', 'trading-post'], ['rocco', 'rocco']]) {
+    const ok2 = await page.evaluate(async (k) => { const h = await window.__game.scene.debug.openShop(k); return !!h || window.__game.ui.isPanelOpen(); }, id);
+    if (!ok2) throw new Error(`the ${id} stall did not open`);
+    await wait(1500);
+    await shot('06b-' + tab);
+    await page.evaluate(() => window.__game.ui.closeAllPanels());
+  }
 });
 await step('town lift → deep station → back up', async () => {
   // Bramble's lift: the gate opens, the mole steps in, the cage drops into the pit → the first mine lift

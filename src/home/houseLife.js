@@ -68,7 +68,7 @@ export class HouseLife {
       return;
     }
     if (kind === 'pick') {
-      if (sd.pickDay === day) { this.think('You\'ve picked today\'s. They grow back overnight in the damp, Old Star says. They like the dark and being left alone.', 3.6); return; }
+      if (sd.pickDay === day) { this.think('Picked today\'s. They grow back overnight in the damp.', 3.6); return; }
       sd.pickDay = day;
       st.addItem('glowcap', { spill: true, n: 2 });
       a.play('pickup_gem');

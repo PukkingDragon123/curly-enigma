@@ -63,7 +63,7 @@ export class Radar {
     this.el = el('button', {
       class: 'radar', hidden: true, title: 'Radar · M or tap: the layers below', 'aria-label': 'Radar: open the layers below',
       onclick: () => ui.openSurvey(),
-    }, [this.screen.c, el('img', { class: 'pix radar-ring', src: DSPR.radarRing(), alt: '' }), this.tag]);
+    }, [this.screen.c, el('img', { class: 'pix radar-glass', src: glassURL(), alt: '' }), el('img', { class: 'pix radar-ring', src: DSPR.radarRing(), alt: '' }), this.tag]);
     // the north fleur: rides the dial band, swung toward north on a damped spring (it overshoots
     // and wobbles when you turn fast, trembles a little while you walk, and jumps when tapped)
     this.north = el('img', { class: 'pix radar-north', src: DSPR.north(), alt: '' });
@@ -258,4 +258,29 @@ export class Radar {
     const sector = ((Math.round(Math.atan2(ux, -uy) / (Math.PI / 4)) % 8) + 8) % 8;
     plotGlyph(this.screen, 'a' + sector, R + ux * (R - 3.6), R + uy * (R - 3.6), color, 0x020a05);
   }
+}
+
+let GLASS = null;
+/**
+ * Wave 18: the scope's glass: a pixel crescent of reflected lamplight round its top-left, a hard
+ * glint, a faint second reflection bottom-right (36×36 art px over the screen). Drawn once.
+ */
+function glassURL() {
+  if (GLASS) return GLASS;
+  const n = 36, c = document.createElement('canvas');
+  c.width = n; c.height = n;
+  const g = c.getContext('2d'), im = g.createImageData(n, n), d = im.data;
+  const put = (x, y, a, v = 255) => { const i = (y * n + x) * 4; d[i] = v; d[i + 1] = v; d[i + 2] = Math.min(255, v + 10); d[i + 3] = a; };
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const dx = x + 0.5 - n / 2, dy = y + 0.5 - n / 2, r = Math.hypot(dx, dy) / (n / 2), a = Math.atan2(dy, dx);
+    if (r > 0.98) continue;
+    // the crescent: a band just inside the rim, from 9 to 12 o'clock, thicker in its middle
+    const mid = -2.35, span = Math.abs(a - mid);
+    if (span < 0.85 && r > 0.8 - (0.85 - span) * 0.14 && r < 0.9) put(x, y, span < 0.4 ? 90 : 55);
+    else if (Math.abs(a - 0.8) < 0.35 && r > 0.84 && r < 0.9 && (x + y) % 2) put(x, y, 30);
+  }
+  for (const [x, y, a] of [[10, 8, 210], [11, 8, 140], [10, 9, 140], [13, 7, 90]]) put(x, y, a);
+  g.putImageData(im, 0, 0);
+  GLASS = c.toDataURL();
+  return GLASS;
 }

@@ -63,7 +63,7 @@ const gradeAtLeast = (g) => (w) => !!w && 'SABCDF'.indexOf(w.grade || 'F') <= 'S
 const startsWith = (p) => (v) => typeof v === 'string' && v.startsWith(p);
 const ZONE_LINES = [null, null,
   ['Below the roots it turns to clay. Sticky, stubborn stuff. Iron lives in it. So do slugs. Don\'t lick either.', 'Clay on your boots. Wipe them before you come in.'],
-  ['Further down, the walls start to sing. Crystal: pretty, sharp, and some of it bites with lightning. Wear gloves.', 'Hear them humming? Don\'t hum back. They take it personally.'],
+  ['Further down the walls hum. Crystal. Some of it bites with lightning. Wear gloves.', 'Hear them humming? Don\'t hum back. They take it personally.'],
   ['Below the crystal it gets warm. Then hot. Then you\'re standing on a stove. Gold down there, and rubies. Bring a suit.', 'Your whiskers are singed. Suits you.'],
   ['Then, for no reason anyone has ever explained to me, it\'s freezing. Diamonds. Mithril. Frostbite.', 'Frost Vault. I lost a boot there. If you see it, it\'s the left one. Probably.'],
   ['And at the bottom, the Core. I went once. I came back. That\'s all I\'ll say about it.', 'You came back too. We should start a club. Small club.'],
@@ -86,16 +86,16 @@ export const QUESTS = {
   // ======================================================== the lessons (the tutorial chain)
   lessons: {
     title: "Old Star's Lessons", giver: 'oldstar', kind: 'main',
-    intro: 'You fell through my roof, slept a whole day in my spare bed and ate my last grub bar. Fine. I\'ll teach you to dig, forge and cook, and we\'ll both earn our way out of this hole.',
-    outro: 'That\'s all I know, more or less. The rest is a million gold and a great deal of digging. Off you go.',
+    intro: 'You came through my roof and ate my last grub bar. Fine. You can work it off. Then we both get out of this hole.',
+    outro: 'That\'s all I know. The rest is digging. A lot of it.',
     steps: [
-      { id: 'wake', text: 'Get up and meet Old Star', hint: 'The old star-nosed mole poking at the bedroom fire. He\'s been waiting for you to wake up.', lesson: 'wake', on: { type: 'talk', npc: 'oldstar' } },
-      { id: 'pick', text: 'Forge your own pickaxe at his forge', hint: 'No pick, no digging. Heat the copper, hammer the head to shape, quench it. Old Star talks you through it.', lesson: 'pick_done', on: { type: 'lesson', step: 'pick_done' }, where: { place: 'home' } },
+      { id: 'wake', text: 'Get up and meet Old Star', hint: 'The old star-nose poking the fire. He\'s been waiting.', lesson: 'wake', on: { type: 'talk', npc: 'oldstar' } },
+      { id: 'pick', text: 'Forge your own pickaxe at his forge', hint: 'No pick, no digging. He\'ll talk you through it.', lesson: 'pick_done', on: { type: 'lesson', step: 'pick_done' }, where: { place: 'home' } },
       { id: 'lift', text: 'Ride the cage lift down to the mine', hint: 'The old cage in the rock shaft at his camp. "Mind the gate," he says. He always says.', lesson: 'lift', on: [{ type: 'reach', place: 'lift:L0' }], where: { place: 'home' } },
-      { id: 'ore', text: 'Dig out some copper ore', hint: 'Orange specks in the rock, in his old dig just east of the cage. Dig the rock round the ore, not the ore: it breaks out in a clump. Chip it clean and bag it.', lesson: ['mine_ore', 'mine_done'], on: { type: 'ore', id: 'copper_ore' }, where: { place: 'dig' } },
+      { id: 'ore', text: 'Dig out some copper ore', hint: 'Orange specks, in his old dig east of the cage. Dig round the ore, not at it. It comes out in a clump.', lesson: ['mine_ore', 'mine_done'], on: { type: 'ore', id: 'copper_ore' }, where: { place: 'dig' } },
       { id: 'copper', text: 'Bring the copper home to Old Star', hint: 'He\'ll want to see it before it goes in the fire. He likes to sniff it.', lesson: 'copper_home', on: [{ type: 'reach', place: 'home' }, { type: 'talk', npc: 'oldstar' }], need: (st) => has(st, 'copper_ore'), where: { place: 'home' } },
       { id: 'smelt', text: 'Smelt the copper into an ingot', hint: 'Ore in the crucible, pump the bellows, pour when it glows.', lesson: 'forge_smelt', on: { type: 'smelt' }, where: { place: 'home' } },
-      { id: 'forge', text: 'Forge your first blade', hint: 'Heat, hammer, quench. Don\'t hit your thumb; he only has the one bandage.', lesson: 'forge_done', on: { type: 'forge' }, where: { place: 'home' } },
+      { id: 'forge', text: 'Forge your first blade', hint: 'Don\'t hit your thumb. He\'s got one bandage.', lesson: 'forge_done', on: { type: 'forge' }, where: { place: 'home' } },
       { id: 'cook', text: 'Cook a meal at his hearth', hint: 'A miner who doesn\'t eat is called a skeleton.', lesson: 'cook_done', on: { type: 'cook' }, where: { place: 'home' } },
     ],
     reward: { gold: 100, sp: 2, items: { glow_stake: 3 } },
@@ -104,10 +104,10 @@ export const QUESTS = {
 
   million: {
     title: 'Earn the Million', giver: 'oldstar', kind: 'main',
-    intro: 'A seat on the Surface Express costs a million gold. Two seats cost two, but I\'m not greedy. Get yours first.',
+    intro: 'A seat up top is a million gold. Get yours first. I\'m in no hurry.',
     outro: 'Sunshine. Write me a postcard. A big one.',
     steps: [
-      { id: 'save', text: 'Save up 1,000,000 gold', hint: 'Ore, gems, blades and dinners. Sell the lot. Then dig more.', count: (st) => st.gold, n: 1000000, gold: true },
+      { id: 'save', text: 'Save up 1,000,000 gold', hint: 'Sell everything. Then dig more.', count: (st) => st.gold, n: 1000000, gold: true },
       { id: 'ticket', text: 'Buy your ticket at the Surface Express', hint: 'The ticket office in Deep Town. Mr. Fennimore will call you "darling".', on: { type: 'buy', id: 'exit_ticket' }, check: (st) => st.owns('exit_ticket'), where: { place: 'town' } },
     ],
   },
@@ -115,8 +115,8 @@ export const QUESTS = {
   // ======================================================== Old Star's follow-ups
   os_town: {
     title: 'Down to Deep Town', giver: 'oldstar', kind: 'story', auto: true, requires: ['lessons'],
-    intro: 'There\'s a town down there. Shops, an assay office that pays fair, and the ticket office for the Surface Express. Follow the old rail tunnel past the Trading Post, or dig toward the noise.',
-    outro: 'Deep Town! Don\'t let the outfitter sell you a hat. He\'ll try.',
+    intro: 'There\'s a town down there. Assay office pays fair. Ticket office for the way up. Follow the rail tunnel past the Trading Post, or dig toward the noise.',
+    outro: 'Deep Town. Don\'t let the outfitter sell you a hat.',
     steps: [{ id: 'town', text: 'Find Deep Town', hint: 'Fifteen meters down and a good walk east. The radar knows.', on: { type: 'reach', place: 'town' }, check: (st) => !!st.flag('escaped'), where: { place: 'town' } }],
     reward: { gold: 150, sp: 1 },
   },
@@ -154,21 +154,21 @@ export const QUESTS = {
   os_deeper6: deeper(6),
   os_lifts: {
     title: 'The Old Lifts', giver: 'oldstar', kind: 'story', auto: true, requires: ['lessons'],
-    intro: 'The old miners left lifts all through the rock when the workings closed. Find three and you\'ll never walk home again. Walking is overrated.',
+    intro: 'Old miners left lifts all through the rock. Find three and you can stop walking home.',
     outro: 'Three lifts. You can ride home from anywhere now. Don\'t get lazy.',
     steps: [{ id: 'lifts', text: 'Find 3 old lifts', hint: 'Dig toward the faint "? lift" signals on your radar.', count: liftsFound, n: 3 }],
     reward: { sp: 1, items: { glow_stake: 5 } },
   },
   os_pristine: {
     title: 'Not a Scratch', giver: 'oldstar', kind: 'story', auto: true, requires: ['lessons'],
-    intro: 'Bring up an ore that\'s never been struck. Pristine. It sells for twice the price and I\'ll stop calling you Hammerpaws.',
+    intro: 'Bring up an ore nobody\'s hit. Pristine. Then I\'ll stop calling you Hammerpaws.',
     outro: 'Not a scratch on it. All right. You\'re not Hammerpaws. Yet.',
     steps: [{ id: 'clean', text: 'Bag a pristine ore', hint: 'Dig round it, never at it. Chisel and brush it clean before you bag it.', on: { type: 'ore', pristine: true }, check: (st) => (st.data.stats?.pristine || 0) > 0 }],
     reward: { gold: 80, sp: 1 },
   },
   os_blade: {
     title: 'A Blade Worth Selling', giver: 'oldstar', kind: 'story', auto: true, requires: ['lessons'],
-    intro: 'Wobbly blades sell for wobbly money. Forge me a fine one: grade B or better. Even heat, even blows, a clean quench.',
+    intro: 'Wobbly blades fetch wobbly money. Make me a B or better.',
     outro: 'Now that\'s a blade. I\'d sell it. I\'d also keep it. Hard choice.',
     steps: [{ id: 'fine', text: 'Forge a weapon of grade B or better', hint: 'Work it inside its heat. Strike where it\'s thick. Quench at the right glow.', on: { type: 'forge', grade: anyOf('S', 'A', 'B') }, where: { place: 'home' } }],
     reward: { gold: 150, sp: 1 },
@@ -184,16 +184,16 @@ export const QUESTS = {
     title: 'Stand Well Back', giver: 'oldstar', kind: 'story', auto: true, requires: ['os_town'],
     intro: 'Grubb in town sells dynamite. It opens rock in a hurry and ore in a mess. Throw it, then step away. Further than that.',
     outro: 'Still got your eyebrows? Excellent. Most people don\'t, the first time.',
-    steps: [{ id: 'blast', text: 'Blast some rock with dynamite', hint: 'Grubb\'s Tools, in Deep Town. Light, throw, run.', on: { type: 'blast' } }],
+    steps: [{ id: 'blast', text: 'Blast some rock with dynamite', hint: 'Grubb\'s, in Deep Town.', on: { type: 'blast' } }],
     reward: { gold: 120, sp: 1 },
   },
   os_ruin: {
     title: 'Older Than Me', giver: 'oldstar', kind: 'story', auto: true, requires: ['os_deeper2'],
-    intro: 'Down there are hidden grottos, older than the mine and older than me, which is saying something. Find one. Mind the floor. Mind the walls. Mind everything.',
+    intro: 'There are halls down there older than the mine. Older than me, even. Find one. Mind the floor.',
     outro: 'Whoever built those knew rock better than I do. I\'ll never admit that again.',
     steps: [
       { id: 'find', text: 'Find an old ruin', hint: 'Carved stone, broken pillars. They show up as you dig.', on: { type: 'reach', place: startsWith('ruin:') }, where: { ruin: 'nearest' } },
-      { id: 'solve', text: "Solve the ruin's puzzle", hint: 'Crystal knobs, pressure stones, glow crystals. Poke everything. Gently.', on: { type: 'puzzle' }, where: { ruin: 'nearest' } },
+      { id: 'solve', text: "Solve the ruin's puzzle", hint: 'Poke everything. Gently.', on: { type: 'puzzle' }, where: { ruin: 'nearest' } },
     ],
     reward: { gold: 250, sp: 2 },
   },
@@ -222,7 +222,7 @@ export const QUESTS = {
   },
   tr_sand: {
     title: 'Sand in My Boots', giver: 'trader', kind: 'request', from: 'trader', requires: ['tr_copper'],
-    intro: 'There\'s a sandstone hollow somewhere below. Warm, dry, and the floor pours out from under you. Walk a good stretch of it for me. I sell maps. Well. I\'d like to.',
+    intro: 'There\'s a sandstone hollow somewhere below. Warm and dry, and the floor pours out from under you. Walk a good stretch of it. I sell maps. Well. I\'d like to.',
     outro: 'Sandstone Hollows, mapped. I\'ll charge double for the sandy bits.',
     steps: [{ id: 'walk', text: 'Explore the Sandstone Hollows', hint: 'Warm, dusty caves with sand floors. Walk around in them.', on: { type: 'explore', biome: 'dry' }, sum: 'n', n: 120 }],
     reward: { gold: 300, sp: 1 },
@@ -282,7 +282,7 @@ export const QUESTS = {
   // ======================================================== Rocco the raccoon
   rc_first: {
     title: 'No Questions Asked', giver: 'rocco', kind: 'request', from: 'rocco',
-    intro: 'Ah! A smith! I buy blades. For collectors. Very quiet collectors. Bring me a blade, don\'t tell me where it\'s been, and I won\'t tell you where it\'s going.',
+    intro: 'A smith? I buy blades. For collectors. Very quiet ones. Don\'t tell me where it\'s been and I won\'t tell you where it\'s going.',
     outro: 'Pleasure doing business. This never happened. Come again.',
     steps: [{ id: 'sell', text: 'Sell Rocco any weapon', hint: 'Forge one at Old Star\'s, bring it here.', on: { type: 'sell', to: 'rocco' }, where: { burrow: 'raccoon' } }],
     reward: { gold: 60, sp: 1 },
@@ -305,7 +305,7 @@ export const QUESTS = {
     title: 'A Little Errand', giver: 'rocco', kind: 'request', from: 'rocco', requires: ['rc_dagger'],
     intro: 'There\'s an old vault down there with a door that won\'t open for me. Doors don\'t like me. I can\'t think why. You, they might like.',
     outro: 'Open? Wonderful! I\'ll just... have a look round. Alone. You go on home.',
-    steps: [{ id: 'solve', text: 'Solve a puzzle in an old ruin', hint: 'Hidden grottos in the rock. Crystal knobs, pressure stones, glow crystals.', on: { type: 'puzzle' }, where: { ruin: 'nearest' } }],
+    steps: [{ id: 'solve', text: 'Solve a puzzle in an old ruin', hint: 'Carved stone in the deep. Poke everything.', on: { type: 'puzzle' }, where: { ruin: 'nearest' } }],
     reward: { gold: 640, sp: 2 },
   },
   rc_golem: {
@@ -317,7 +317,7 @@ export const QUESTS = {
   },
   rc_masterwork: {
     title: 'The Big Order', giver: 'rocco', kind: 'request', from: 'rocco', requires: ['rc_vault', 'rc_golem'],
-    intro: 'My best client wants a masterwork. A long blade, grade A at least. He pays in gold, not in fingers. Big order. Big money. Big secret.',
+    intro: 'My best client wants a masterwork. A long blade, grade A at least. He pays in gold, not fingers. Keep it under your hat.',
     outro: 'Magnificent. I may cry. I won\'t, raccoons don\'t, but I may.',
     steps: [{ id: 'sell', text: 'Sell Rocco a long blade, grade A or better', hint: 'A longsword or a greatsword. Good metal, perfect heat.', on: { type: 'sell', to: 'rocco', weapon: (w, a) => ['longsword', 'greatsword', 'moleblade'].includes(w?.type || a.id) && gradeAtLeast('A')(w) }, where: { burrow: 'raccoon' } }],
     reward: { gold: 2600, sp: 3 },

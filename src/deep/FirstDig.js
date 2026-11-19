@@ -1,16 +1,15 @@
 // The mining lesson, in the real mine (lesson stage 'mine', until the copper is home: flag
-// 'prologue'). Old Star saw you off at the cage; down here nothing is scripted and nearly nothing is
-// on screen: what you've been given so far (your pick on the belt, his satchel; no radar, no map
-// yet: those come once you've been down), one quiet line says what to find, and the copper in his
-// old dig (src/deep/gen/prologue.js: a grotto a short crawl east of the cage, its seams real
-// deposits) glints with gold motes (src/home/tutorFx.js; an arrow at the screen edge only while it's
-// off screen). A control gets a one-line hint the moment it's first needed (the crosshair names the
-// rest: "E Pick up"…):
-//   dig       facing rock within reach                 → hold the left button / the pick button
-//   bag it    a clump in paw                            → chip the rock off (the chisel), then E
-//   guard     something comes at you                    → the right button or F / the shield (it
-//             unlocks then: ui.unlock('guard'))
-// With copper in the pack the line says "ride home", the cage glints, and E at its bell rides
+// 'prologue'). Old Star saw you off at the cage; down here nothing is scripted and nothing is on
+// screen (wave 18: no cards, no objective line): what you've been given so far (your pick on the belt,
+// his satchel; no radar, no map yet: those come once you've been down), and the copper in his old dig
+// (src/deep/gen/prologue.js: a grotto a short crawl east of the cage, its seams real deposits) glints
+// with gold motes (src/home/tutorFx.js). A control is named the moment it's first needed by a few
+// voxel words floating in the world where you're looking (teachWord), not a card:
+//   dig       facing rock within reach                 → "hold left click"
+//   bag it    a clump in paw                            → the chisel's key, then "E to bag it"
+//   guard     something comes at you                    → "right click to block" (it unlocks then:
+//             ui.unlock('guard'))
+// With copper in the pack the cage glints ("ring the bell" floats by it), and E at its bell rides
 // straight home (home { from: 'lift' }: Old Star takes the lump; lessons.js). Riding the cage with
 // no copper opens the usual lift panel.
 // Teaching by showing (wave 12), a few floating words at most: the first time you come up to the
@@ -29,6 +28,9 @@ import { hotbarOf } from '../core/hotbar.js';
 import { AIR, ROCK, SOFT } from './clumps/grid.js';
 
 const _v = new THREE.Vector3();
+const _d = new THREE.Vector3();
+/** How often a cue's words float up again while it isn't done (s), and how many times at most. */
+const CUE_EVERY = 7, CUE_MAX = 3;
 
 export class FirstDig {
   constructor(ctx) {
@@ -106,22 +108,59 @@ export class FirstDig {
     this.glint?.remove();
     this.markH?.remove();
     this.glint = pos ? new Glint(this.fx, pos, { r: what === 'cage' ? 0.32 : 0.16, rate: what === 'cage' ? 0.09 : 0.07 }) : null;
-    this.markH = pos ? this.ob?.mark(pos, { edgeOnly: true }) : null; // (an arrow at the edge only while it's off screen; no words)
+    this.markH = null; // (wave 18: no arrow on screen: the glint, and the words when it matters)
   }
 
-  /** One prompt at a time: `key` names what it's for, so it isn't shown twice in a row. */
+  /**
+   * One cue at a time (wave 18: in-world words, no card): `key` names what it's for. opts: { word,
+   * at() → world point (default: just ahead of your eyes), done() → bool, onDone(), progress() → 0..1 }.
+   * The words float up where you're looking, again now and then (a few times) until it's done.
+   */
   prompt(key, id, opts) {
     if (this.hFor === key && this.h && !this.h.settled) return this.h;
     this.h?.close?.();
     this.hFor = key;
-    this.h = this.ob?.teach(id, opts) || null;
-    return this.h;
+    const h = { id, key, opts, t: CUE_EVERY - 0.4, n: 0, done: false, settled: false };
+    h.close = () => { h.settled = true; };
+    h.complete = () => { if (h.done) return; h.done = true; h.settled = true; try { opts.onDone?.(); } catch (e) { /* noop */ } };
+    this.h = h;
+    return h;
   }
 
   unprompt(key) { if (this.hFor === key && this.h && !this.h.done) this.h.close(); if (this.hFor === key) { this.h = null; this.hFor = null; } }
 
-  update(dt, { player, eye, busy }) {
+  /** Just ahead of your eyes, a little low (where a cue's words float up). */
+  ahead(d = 1.1, dy = -0.12) {
+    const cam = this.owner.camera, e = this.owner.player.eye();
+    cam?.getWorldDirection?.(_d);
+    return new THREE.Vector3(e.x + _d.x * d, e.y + _d.y * d + dy, e.z + _d.z * d);
+  }
+
+  /** The cue's life: done yet? else float its words now and then. */
+  tickCue(dt) {
+    const h = this.h;
+    if (!h || h.settled) return;
+    const o = h.opts;
+    let done = false;
+    try { done = !!o.done?.() || (o.progress && o.progress() >= 1); } catch (e) { done = true; }
+    if (done) { h.complete(); return; }
+    h.t += dt;
+    if (h.t < CUE_EVERY || h.n >= CUE_MAX || !o.word) return;
+    h.t = 0;
+    h.n++;
+    let p = null;
+    try { p = o.at?.() || null; } catch (e) { p = null; }
+    teachWord(this.owner.game, o.word, p || this.ahead(), { life: 2.6, size: 0.6 });
+  }
+
+  update(dt, ctx) {
     if (!this.on || this.leaving) return null;
+    const r = this.step0(dt, ctx);
+    this.tickCue(dt);
+    return r;
+  }
+
+  step0(dt, { player, eye, busy }) {
     this.t += dt;
     const ob = this.ob, st = this.st, owner = this.owner, inp = owner.game.input;
     if (!this.started && this.t > 0.4) {
@@ -133,7 +172,8 @@ export class FirstDig {
     this.glint?.update(dt);
     const cl = owner.clumps;
     if (this.step === 'find') {
-      if (this.t > 1.4 && !ob?.goalHtml) ob?.goal('Find <b>copper ore</b>');
+      // (the copper named once, in the world, the first time it's in sight)
+      if (!this.named && this.t > 1.4) { const sp = this.seamTarget(owner.player.eye()); if (sp && sp.distanceTo(owner.player.eye()) < 7) { this.named = true; teachWord(owner.game, 'Copper', sp.add(new THREE.Vector3(0, 0.3, 0)), { kind: 'gold', life: 2.6, size: 0.7 }); } }
       // what glints: a clump lying about, else the nearest seam
       const lying = this.clumpTarget();
       if (lying) this.aim('clump', () => (lying.state === 'world' ? lying.pos : null));
@@ -146,7 +186,7 @@ export class FirstDig {
       const threat = owner.enemies?.threat?.();
       if (threat && !this.guarded && threat.dist < 6) {
         this.ui.unlock?.('guard');
-        this.prompt('guard', 'guard', { done: () => inp.isDown?.('KeyF') || !!inp.mouse?.buttons?.[2], min: 0.3, onDone: () => { this.guarded = true; } });
+        this.prompt('guard', 'guard', { word: 'Right click to block', done: () => inp.isDown?.('KeyF') || !!inp.mouse?.buttons?.[2], onDone: () => { this.guarded = true; } });
       } else if (cl?.held) {
         // in paw: the chisel first (lit on the belt), then chip (the rock glints: showChip), then bag it
         const c = cl.held, clean = (c.g?.clean ?? 0) >= 0.8 || this.chipped > 14, touch = document.documentElement.classList.contains('is-touch');
@@ -154,21 +194,21 @@ export class FirstDig {
           const k = hotbarOf(st).indexOf('chisel') + 1;
           // (on a phone the line sits low, clear of the clump's tag; the ring goes on the chisel's own slot)
           const slot = k > 0 ? document.querySelectorAll('#ui .belt .loop')[k - 1] : null;
-          this.prompt('chisel', 'tool', { title: 'Chisel', subPc: k > 0 ? `<kbd>${k}</kbd>` : 'the wheel', subT: 'on your belt', place: touch ? 'low' : undefined, spot: slot || 'belt', done: () => owner.slotName === 'chisel', onDone: () => { this.hadChisel = true; } });
-        } else if (clean) this.prompt('bag', 'use', { title: 'Bag it', subPc: '<kbd>E</kbd>', subT: 'tap the bag', place: touch ? 'low' : undefined, spot: touch ? '.cc-btns > :first-child' : undefined, done: () => !cl.held });
+          void slot; void touch;
+          this.prompt('chisel', 'tool', { word: k > 0 ? `${k} for the chisel` : 'Wheel to the chisel', done: () => owner.slotName === 'chisel', onDone: () => { this.hadChisel = true; } });
+        } else if (clean) this.prompt('bag', 'use', { word: 'E to bag it', done: () => !cl.held });
         else if (this.hFor === 'chisel' && this.h?.done) { this.h = null; this.hFor = null; }
       } else if (!this.dug) {
         const tg = owner.target;
         if (this.hFor !== 'dig' && tg && tg.dist < 2.2) {
           this.blocks0 = st.data.stats?.blocks || 0;
-          this.prompt('dig', 'dig', { progress: () => ((st.data.stats?.blocks || 0) - this.blocks0) / 3, onDone: () => { this.dug = true; } });
+          this.prompt('dig', 'dig', { word: 'Hold left click', at: () => this.ahead(0.9, -0.05), progress: () => ((st.data.stats?.blocks || 0) - this.blocks0) / 3, onDone: () => { this.dug = true; } });
         }
       } else if (this.hFor && this.hFor !== 'dig') this.unprompt(this.hFor);
     } else if (this.step === 'home') {
-      if (this.t - (this.homeT || 0) > 1.3 && !ob?.goalHtml) ob?.goal('Ride <b>the cage</b> home');
       this.aim('cage', () => this.cagePos());
       const L = owner.liftNear?.();
-      if (L && L.id === 'L0') this.prompt('ride', 'use', { title: 'Ride home', subPc: 'Ring the bell: <kbd>E</kbd>', subT: 'Tap the hand to ring the bell', done: () => !!this.leaving });
+      if (L && L.id === 'L0') this.prompt('ride', 'use', { word: 'E to ring the bell', at: () => this.cagePos(), done: () => !!this.leaving });
       else this.unprompt('ride');
     }
     return null;
@@ -289,8 +329,9 @@ export class FirstDig {
     this.h?.close?.();
     this.h = null;
     this.hFor = null;
-    this.ob?.goalDone();
     this.owner.game.audio.play('success', { vol: 0.4 });
+    // (a few words where you're looking: home with it)
+    teachWord(this.owner.game, 'Take it home', this.ahead(1.2, 0.05), { kind: 'good', life: 2.6, size: 0.65 });
   }
 
   /** E at the cage's bell with the copper: straight home. */

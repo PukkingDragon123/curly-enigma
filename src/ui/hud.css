@@ -163,7 +163,7 @@ html.is-touch .pack { opacity: .82; }
   position: absolute; left: 50%; top: calc(100% + var(--px) * 3); transform: translateX(-50%); white-space: nowrap;
   font-size: 16px; line-height: 1; color: var(--ink); padding: 0 var(--px);
   border-style: solid; border-width: calc(var(--px) * 3); border-image: var(--h-paperTag) 3 fill / calc(var(--px) * 3) repeat;
-  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .35));
+  filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(0, 0, 0, .35));
   animation: tagIn .3s var(--pop);
 }
 /* tied on with a bit of twine */
@@ -239,7 +239,7 @@ html.is-touch .journal-btn { opacity: .7; }
   position: relative; display: flex; align-items: center; pointer-events: auto;
   height: calc(var(--px) * 14); padding: 0 calc(var(--px) * 1);
   background: var(--a-beltT) 0 0 / calc(var(--px) * 16) calc(var(--px) * 14) repeat-x;
-  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .45));
+  filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(8, 4, 6, .45));
 }
 .belt-buckle, .belt-tip { flex: none; position: relative; z-index: 2; }
 .belt-buckle { width: calc(var(--px) * 12); height: calc(var(--px) * 20); background: var(--a-buckle) 0 0 / 100% 100%; margin-left: calc(var(--px) * -6); }
@@ -310,9 +310,9 @@ html.is-touch .loop .k { display: none; }
 .pack-load-t {
   position: absolute; right: calc(100% + var(--px) * 1); top: calc(var(--px) * 28); white-space: nowrap; font-size: 16px; line-height: 1; color: #fff4e8; text-shadow: 0 var(--px) 0 #4a0c08;
   padding: 0 var(--px); border-style: solid; border-width: calc(var(--px) * 3); border-image: var(--h-paperTagRed) 3 fill / calc(var(--px) * 3) repeat;
-  filter: hue-rotate(18deg) brightness(1.08) drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .35));
+  filter: hue-rotate(18deg) brightness(1.08) drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(0, 0, 0, .35));
 }
-.pack-load.over .pack-load-t, .pack-load.max .pack-load-t { filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(0, 0, 0, .35)); }
+.pack-load.over .pack-load-t, .pack-load.max .pack-load-t { filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(0, 0, 0, .35)); }
 /* the weight tag and the bag's count tag both hang under the bag: stack them */
 .pack:has(.pack-load:not([hidden]) .pack-load-t:not([hidden])) .pack-tag { top: calc(100% + var(--px) * 10); }
 
@@ -361,7 +361,7 @@ html.is-touch .loop .k { display: none; }
 
 /* ---------- the hotbar: five riveted leather loops on a stitched strap (src/ui/packArt.js art) ---------- */
 .belt-strap { height: calc(var(--px) * 22); background: var(--pk-leather) 0 0 / calc(var(--px) * 96) repeat; image-rendering: pixelated;
-  box-shadow: 0 0 0 var(--px) #1a0c06, inset 0 var(--px) 0 rgba(255, 210, 160, .35), inset 0 calc(var(--px) * -2) 0 rgba(10, 4, 2, .35); filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .45)); }
+  box-shadow: 0 0 0 var(--px) #1a0c06, inset 0 var(--px) 0 rgba(255, 210, 160, .35), inset 0 calc(var(--px) * -2) 0 rgba(10, 4, 2, .35); filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(8, 4, 6, .45)); }
 .belt-loops { padding: 0 calc(var(--px) * 3); gap: calc(var(--px) * 1); }
 .loop-face {
   width: calc(var(--icon-s) + var(--px) * 12); height: calc(var(--icon-s) + var(--px) * 12);
@@ -395,3 +395,14 @@ html.is-touch .loop .k { display: none; }
 }
 #ui[data-hud=none] .decorate-btn, #ui.focus .decorate-btn { display: none; }
 html.is-touch .decorate-k { display: none; }
+
+/* ---------- wave 18: less on screen. A quiet spell tucks the corners away (Hud.wake brings them back):
+   the pack and journal lift out of view, the quest strip and the depth sign fade, the belt sinks and
+   dims (its picked loop stays bright). Weighty: they go slowly, they come back with a bounce. */
+.hud-tr, .qt, .depth, .belt, .radar { transition: opacity .32s, transform .42s var(--pop), translate .42s var(--pop), filter .32s; }
+#ui.hud-calm .hud-tr:not(:has(.pack.full, .pack.news)) { opacity: 0; transform: translateY(calc(var(--px) * -14)); pointer-events: none; transition: opacity 1.1s ease-in, transform 1.4s cubic-bezier(.6, 0, .8, .4); }
+#ui.hud-calm .qt:not(.muted) { opacity: 0; transform: translateY(calc(var(--px) * -8)); transition: opacity 1.1s ease-in, transform 1.4s cubic-bezier(.6, 0, .8, .4); }
+#ui.hud-calm[data-hud] .depth.show { opacity: 0; transition: opacity 1.2s ease-in; }
+#ui.hud-calm .belt { translate: 0 calc(var(--px) * 7); opacity: .58; filter: saturate(.75); transition: opacity 1.4s ease-in, translate 1.6s cubic-bezier(.6, 0, .8, .4), filter 1.4s; }
+#ui.hud-calm .belt .loop.sel { filter: brightness(1.12); }
+#ui.hud-calm .radar { opacity: .72; transition: opacity 1.4s ease-in; }

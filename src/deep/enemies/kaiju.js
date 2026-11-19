@@ -30,9 +30,10 @@ import { caveDensity, CS } from '../Generator.js';
 import { VOX } from '../materials.js';
 import { tonesOf } from './veil.js';
 import { rand, clamp } from '../../core/util.js';
+import { PHONE } from '../../core/platform.js';
 
 export const KV = 1 / 6; // meters per kaiju voxel as modelled
-const PHONE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+// (PC only: src/core/platform.js PHONE is false)
 const NEAR_K = PHONE ? 1 : 2; // the near copy: refined 2× (1/12 m) on desktop
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
 

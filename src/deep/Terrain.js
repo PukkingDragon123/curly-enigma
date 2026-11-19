@@ -9,6 +9,7 @@ import { VOX } from './materials.js';
 import { meshChunk, meshChunkFluid, fillPad, rawToGeometry, sliceCache, PAD, FLUID } from './Mesher.js';
 import { makeTerrainMaterial, makeFluidMaterial } from './TerrainMaterial.js';
 import { vaultAt } from './gen/network.js';
+import { PHONE } from '../core/platform.js';
 
 const CM = CS / VOX; // chunk size in meters
 const SLICE_KEEP = 24; // dug chunks that keep their slices (a re-mesh after a blow only redoes what it touched)
@@ -29,7 +30,7 @@ export class TerrainView {
     this.radius = Math.round(16 / CM); // chunks (16 m)
     this.keepRadius = Math.round(20 / CM);
     // how much farther up to stream in a giant cavern (less on phones)
-    this.upK = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 1.1 : 0.85;
+    this.upK = PHONE ? 1.1 : 0.85; // (PC only)
     this.queue = [];
     this.stats = { gen: 0, mesh: 0, tris: 0 };
     this.jobs = 0;
@@ -65,6 +66,7 @@ export class TerrainView {
       while (i < want.length && w.request(want[i][0], want[i][1], want[i][2])) i++;
       if (i >= want.length && !want.some(([a, b, c]) => w.chunk(a, b, c)?.pending)) break;
       await new Promise((res) => setTimeout(res, 8));
+      pool.drain?.(6); // (results held for the frame budget once play has started)
     }
     this.warm(x, y, z, r); // whatever didn't come is made here; the middle is meshed
   }
@@ -73,6 +75,9 @@ export class TerrainView {
   update(x, y, z, budgetMs = 6) {
     const t0 = performance.now();
     const w = this.w;
+    // worker results (generated chunks, meshes) are applied here, inside the budget, a few a frame
+    // (ChunkPool.defer): a burst of them landing at once used to stall a frame
+    if (w.pool?.ok) { w.pool.defer = true; w.pool.drain(Math.max(1, budgetMs * 0.35)); }
     const pcx = Math.floor(x / CM), pcy = Math.floor(y / CM), pcz = Math.floor(z / CM);
     // 1. dug chunks near the player first (they must update this frame)
     for (const ch of w.chunks.values()) {

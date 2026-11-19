@@ -4,7 +4,8 @@
 // crystal clusters and glow-worm threads in the grotto, obsidian and ember vents in the magma,
 // icicles and frozen crystals in the frost, floating void shards at the core) and the harvestable
 // cave plants cooking needs. Nothing anybody made: no rails, carts, crates, lanterns or signposts
-// in the caves any more (wave 4; the dungeons and lift stations dress themselves: Ruins.js), and
+// in the caves any more (wave 4; the dungeons and lift stations dress themselves: Ruins.js; wave 18
+// brought a few back: the old workings, WORKINGS), and
 // nothing grows in a lift room or in front of its car. (./props/lifts.js, the old iron cage
 // dressing, is no longer used: the stations are stone, planks and rails in the voxels.)
 //
@@ -36,6 +37,7 @@ import { liftSnapshotSteps, liftLayoutSteps } from './props/lifts.js';
 // cooking part: the new forage plants' models (registered into BUILD); 3D gathering: the minigame
 import { openGather, warmGather } from './gather/index.js';
 import '../cooking/plantModels.js';
+import { PHONE } from '../core/platform.js';
 
 const CM = CS / VOX; // chunk size in metres
 const R_BUILD = 19; // build chunks whose centre is this close to the eye (m)
@@ -140,11 +142,12 @@ const PARAM_TYPES = new Set(['crystal', 'crystalC', 'roots', 'vine', 'glowthread
 // (wave 4: only what grows or lies there naturally — the glowing mushroom clusters, shelf fungus,
 // roots and vines, bones and fossils, crystals, obsidian, vents, ice; the old miners' crates,
 // barrels, carts, posts, ropes, ladders, lanterns and signs are gone with the miners)
+// (wave 18: rock first) fewer mushroom clumps and vines in the plain caves, more dripstone
 const DECOR = {
-  1: { floor: [['mush', 6], ['stalagmite', 3], ['bones', 0.35]],
-    ceil: [['roots', 5], ['vine', 3.5], ['stalactite', 4]], wall: [['shelf', 4]], f: 0.15, c: 0.2, w: 0.08 },
-  2: { floor: [['bones', 2.5], ['mush', 3.5], ['stalagmite', 4]],
-    ceil: [['roots', 2.5], ['vine', 2.5], ['stalactite', 5]], wall: [['fossil', 4], ['shelf', 2]], f: 0.15, c: 0.17, w: 0.13 },
+  1: { floor: [['mush', 3], ['stalagmite', 4], ['bones', 0.35]],
+    ceil: [['roots', 5], ['vine', 1.8], ['stalactite', 5]], wall: [['shelf', 3]], f: 0.13, c: 0.2, w: 0.07 },
+  2: { floor: [['bones', 2.5], ['mush', 1.8], ['stalagmite', 5]],
+    ceil: [['roots', 2.2], ['vine', 1.2], ['stalactite', 6]], wall: [['fossil', 4], ['shelf', 1.5]], f: 0.15, c: 0.18, w: 0.13 },
   3: { floor: [['crystal', 5], ['mush', 2.2], ['stalagmite', 2], ['bones', 0.2]],
     ceil: [['glowthread', 3], ['crystalC', 2], ['stalactite', 2.5], ['vine', 0.8]], wall: [['shelf', 1.5]], f: 0.13, c: 0.16, w: 0.045 },
   4: { floor: [['obsidian', 3], ['vent', 2.2], ['stalagmite', 1.2], ['bones', 0.4], ['mush', 0.4]],
@@ -154,6 +157,16 @@ const DECOR = {
   6: { floor: [['shard', 4], ['obsidian', 1.2], ['crystal', 0.6]],
     ceil: [['crystalC', 1]], wall: [], f: 0.1, c: 0.04, w: 0 },
 };
+// (wave 18) the old workings: here and there in the upper zones a stretch the miners worked long
+// ago (WORKED: about one 8 m stretch in six) still has their leavings in it: timber supports against
+// the walls, a length of rail, crates, a barrel, a rope coil, a pick left leaning, now and then an
+// ore cart, and a lantern somebody lost, still glowing on the wall. [type, weight] + chances per cell.
+const WORKINGS = {
+  1: { floor: [['post', 4], ['rail', 2.5], ['crate', 1.6], ['barrel', 1], ['coil', 1], ['pick', 0.8], ['cart', 0.35]], wall: [['lantern', 1]], f: 0.075, w: 0.014 },
+  2: { floor: [['post', 4], ['rail', 2.5], ['crate', 1.2], ['barrel', 1.2], ['coil', 0.8], ['pick', 0.8], ['cart', 0.45]], wall: [['lantern', 1]], f: 0.07, w: 0.012 },
+  3: { floor: [['post', 3], ['rail', 1.4], ['crate', 0.8], ['pick', 0.6]], wall: [['lantern', 1]], f: 0.035, w: 0.007 },
+};
+const WORKED = (gx, gy, gz, S) => h3(gx >> 3, gy >> 2, gz >> 3, S + 171) < 0.17;
 // the old mine's plant table (zone → mount → [item, weight]) + chances per cell: sparse finds
 const PLANTS = {
   1: { floor: [['glowcap', 4], ['cave_carrot', 4], ['blindfern', 2.5], ['cave_berry', 3], ['stone_thyme', 2.5], ['tunnel_tuber', 3], ['grub', 1.5]], ceil: [['whisperweed', 1]], wall: [['glow_moss', 1]], f: 0.052, c: 0.008, w: 0.006 },
@@ -583,6 +596,12 @@ export class Props {
           if (!done && hp < Pz.f && Pz.floor.length) this.tryFloor(c, pickW(Pz.floor, h3(gx, gy, gz, S + 137)), sp, gx, gy, gz, zone);
         }
       }
+      // the old workings' leavings
+      const Wz = WORKINGS[zone];
+      if (Wz && WORKED(gx, gy, gz, S)) {
+        if (h3(gx, gy, gz, S + 173) < Wz.f) { const sp = this.findFloor(c, cx, cy, cz, gx, gy, gz); if (sp) this.tryFloor(c, pickW(Wz.floor, h3(gx, gy, gz, S + 175)), sp, gx, gy, gz, zone); }
+        if (h3(gx, gy, gz, S + 177) < Wz.w) { const sp = this.findWall(c, cx, cy, cz, gx, gy, gz); if (sp) this.tryWall(c, pickW(Wz.wall, h3(gx, gy, gz, S + 179)), sp, gx, gy, gz, zone); }
+      }
       const hc = h3(gx, gy, gz, S + 107), hq = h3(gx, gy, gz, S + 109);
       if ((hc < Dz.c && Dz.ceil.length) || (hq < Pz.c && Pz.ceil.length)) {
         const sp = this.findCeil(c, cx, cy, cz, gx, gy, gz);
@@ -918,7 +937,7 @@ export class Props {
   /** One 1/128 m ore patch on each face of an ore voxel that meets open cave (props/oreBits.js). */
   placeOre(c, vox) {
     // (a chunk carries at most this many: all of a deposit on desktop, a sprinkling on phones)
-    const fx = this.ctx.owner?.game?.engine?.fx || 'high', touch = typeof document !== 'undefined' && document.documentElement.classList.contains('is-touch');
+    const fx = this.ctx.owner?.game?.engine?.fx || 'high', touch = PHONE; // (PC only)
     const max = fx === 'off' ? 0 : fx === 'low' || touch ? 24 : 256;
     let n = 0;
     for (let i = 0; i < vox.length && n < max; i++) {
@@ -1620,7 +1639,7 @@ export class Props {
     if (burns) evs.push({ damage: 3 * burns, kind: 'burn', say: `Ouch! <b>${it?.name || 'It'}</b> really is on fire. Mitts would help.`, key: 'ember' });
     if (zaps) evs.push({ damage: 2 * zaps, kind: 'zap', say: '<b>Sparkmoss</b> bites! Rubber gloves would help.', key: 'spark' });
     if (res.spores) evs.push({ say: 'Sleepy spores... <i>achoo!</i>', key: 'gloom', tone: 'good' });
-    if (p.item === 'core_lotus') { this.audio?.play('sparkle'); evs.push({ say: `A <b>${it?.name || 'Core Lotus'}</b>! Legendary in mole cooking.`, tone: 'good', key: 'lotus' }); }
+    if (p.item === 'core_lotus') { this.audio?.play('sparkle'); evs.push({ say: `A <b>${it?.name || 'Core Lotus'}</b>! Hazel would cry.`, tone: 'good', key: 'lotus' }); }
     if (res.p) evs.push({ say: `<b>Pristine</b> ${it?.name || p.item}: whole, roots and all.`, tone: 'good', key: 'pristine-forage', cd: 1 });
     return evs;
   }

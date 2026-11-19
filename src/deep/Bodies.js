@@ -8,8 +8,9 @@ import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
 import { LAYER_OUTLINE } from '../core/Engine.js';
 import { makeObjectMaterial } from './TerrainMaterial.js';
 import { VOX } from './materials.js';
+import { PHONE } from '../core/platform.js';
 
-const MAX = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 28 : 48;
+const MAX = PHONE ? 28 : 48; // (PC only: 48)
 const GRAV = 14;
 
 export class Bodies {

@@ -196,7 +196,19 @@ function frameURL(line, kind, size = NODE_S) {
       if (kind === 'done') col = d < rIn - 2 ? (k * (d / rIn) > 0.3 ? wax[1] : k * (d / rIn) < -0.35 ? wax[3] : wax[2]) : wax[3];
       else if (kind === 'ready') col = d < rIn - 1.5 ? (k > 0.4 && d > rIn * 0.6 ? 0xfff6d8 : 0xf4e2b4) : 0xd8b070;
       else if (kind === 'open') col = d < rIn - 1.5 ? 0xe8d4a6 : 0xb89868;
-      else col = kind === 'barred' ? 0x8a8478 : d < rIn - 1.5 ? (k > 0.5 && d > rIn * 0.55 ? 0x5e4832 : 0x4a3826) : 0x2a1c10;
+      else if (kind === 'barred') col = 0x8a8478;
+      else {
+        // wave 18: a locked knot is the sawn end of a root: growth rings, a radial check, its
+        // top-left lip catching the lamp and the bottom-right sunk in shadow
+        const ring = Math.floor(d / 2.3 + wob * 0.6 + nz(x * 0.3, y * 0.3) * 0.8);
+        col = ring % 2 ? 0x4e3a28 : 0x443222;
+        if (ring % 4 === 3) col = 0x3a2a1c;
+        const crack = Math.abs(((a - 0.7 + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.09 && d > rIn * 0.25;
+        if (crack) col = 0x1e140c;
+        if (d > rIn - 1.6) col = k > 0.25 ? 0x7a5a3c : k < -0.25 ? 0x160e08 : 0x2a1c10; // the lip
+        else if (d > rIn - 3.2 && k < -0.3) col = 0x2e2014; // shadow inside the lip
+        else if (k > 0.45 && d > rIn * 0.5) col = ring % 2 ? 0x624834 : 0x584030; // the lit side
+      }
       if (kind === 'done' && ((x * 7 + y * 13) % 23 === 0)) col = wax[0];
       b.set(x, y, col);
     } else if (d <= rOut) {

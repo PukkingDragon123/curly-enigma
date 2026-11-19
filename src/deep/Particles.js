@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { VOX } from './materials.js';
 import { MAX_LIGHTS } from './TerrainMaterial.js';
 import { Atmosphere } from './Atmosphere.js';
+import { PHONE } from '../core/platform.js';
 
 const vert = /* glsl */`
   attribute vec4 pcol;
@@ -123,7 +124,7 @@ class Cloud {
 export class Particles {
   constructor(scene3, world, U) {
     this.w = world;
-    const phone = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    const phone = PHONE; // (PC only: always the full counts)
     this.soft = new Cloud(scene3, U, phone ? 2400 : 4000, false);
     this.bright = new Cloud(scene3, U, phone ? 1400 : 2600, true);
     this.lod = phone ? 0.6 : 1; // presets scale their counts by this

@@ -42,10 +42,10 @@ const CAM = {
 };
 
 const LINES = {
-  Perfect: ['Grandma Mole would be proud!', 'Chef\'s kiss! Mwah!', 'The surface folks would line up for this.', 'You do a little happy dance.'],
-  Great: ['Smells just like home.', 'Your whiskers are tingling. Good sign!', 'Old Star would ask for seconds.', 'That one goes in the family cookbook.'],
-  Good: ['Tasty! A little rustic.', 'Solid cooking, little digger.', 'Not bad for a mole with spade paws.'],
-  Okay: ['Edible. Mostly.', 'Well... it\'s food.', 'It has a certain underground charm.'],
+  Perfect: ['Hazel would want the recipe.', 'You lick the spoon. Then the pot.', 'You eat it standing up.', 'You do a little happy dance.'],
+  Great: ['Smells just like home.', 'Your whiskers twitch. Good sign.', 'Old Star would ask for seconds.', 'That one goes in the family cookbook.'],
+  Good: ['Tasty! A little rustic.', 'Solid. Nothing fancy.', 'Not bad for a mole with spade paws.'],
+  Okay: ['Edible. Mostly.', 'Well. It\'s warm.', 'It has a certain underground charm.'],
   Burnt: ['Crispy. Very crispy.', 'Smoke means flavor, right?', 'Even the smoke looks embarrassed.'],
   mush: ['What... is it?', 'It wobbled. Was it supposed to wobble?', 'Technically food.', 'It refuses to make eye contact with you.'],
 };
@@ -356,7 +356,7 @@ export default class CookingScene extends Scene {
     const known = st.data.recipes[this.dish] !== undefined;
     this.ui.stepHud(known ? DISHES[this.dish].name : '???', this.steps, { onStop: () => { if (!this.game.ui.isPanelOpen() && this.phase !== 'finale') this.askStop(); } });
     if (this.lesson) this.ui.top?.classList.add('lesson');
-    this.ui.title('LET\'S COOK!');
+    this.ui.title('COOK IT');
     this.game.audio.play('ding');
     this.phase = 'start';
     this.phaseT = 0;

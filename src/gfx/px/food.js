@@ -807,6 +807,156 @@ function dish(pc, id, spec) {
       steam(pc, 9, 8, 5, { c: 0xc8e0a0, a: 140 });
       return;
     }
+    case 'roast_nuts': {
+      // wave 18: a little carved scoop of a dish heaped with fire-roasted stone nuts, a few split
+      // to show the pale kernel, salt glittering on them, two rolled out onto the table
+      const s = vessel(pc, WOODB(), [[3.4, 17.4], [6, 15.2], [16, 14.2], [26, 15.2], [28.8, 17.4], [27.6, 21.4], [23.6, 25.4], [16, 27.2], [8.4, 25.4], [4.4, 21.4]],
+        [[5.4, 17.4], [9, 15.8], [16, 15.4], [23, 15.8], [26.8, 17.4], [24, 19.2], [16, 20], [8, 19.2]], { wood: true });
+      void s;
+      const NUT = mat(0xb87a40, { cont: 1.18, warm: 20 }), KER = mat(0xf0dcb0, { cont: 1.05 });
+      const nuts = [[9.4, 15.6, 2.6, 1], [14.6, 13.8, 2.8, 2], [20.2, 14.6, 2.6, 3], [24, 16.6, 2.2, 4], [12, 17.6, 2.4, 5], [17.6, 17.4, 2.5, 6], [7.4, 18.2, 2, 7]];
+      for (const [x, y, r, sd] of nuts) {
+        const m = lump(pc, x, y, r, NUT, sd, { lump: 0.22, sq: 0.78, bias: 0.14 });
+        // the shell's seam, and on some a split showing the kernel
+        line(pc, x - r * 0.6, y + 0.2, x + r * 0.5, y - 0.6, (n, X, Y) => (m.get(X, Y) ? NUT[5] : null));
+        if (sd % 3 === 0) { const k = blob(x + 0.4, y - 0.6, r * 0.45, r * 0.32, { seed: sd + 9 }); k.and(m); k.each((X, Y) => pc.set(X, Y, KER[(X + Y) % 3 ? 2 : 1])); }
+        dot(pc, x - r * 0.4, y - r * 0.5, NUT[0]);
+      }
+      for (const [x, y, sd] of [[27.6, 26.4, 11], [24.4, 28.2, 12]]) lump(pc, x, y, 1.9, NUT, sd, { lump: 0.2, sq: 0.75, bias: 0.12 });
+      ink(pc);
+      // salt: white grains with a sparkle
+      for (const [x, y] of [[10, 14], [15, 12.4], [19, 13.4], [22, 15], [13, 16.6], [18.4, 16.4], [8, 17], [26.6, 25.4]]) { dot(pc, x, y, 0xffffff); dot(pc, x + 0.5, y + 0.5, 0xd8e4ec); }
+      twinkle(pc, 16, 9, 0xffffff, 0xe0f0ff, 1, 0.5);
+      steam(pc, 12, 11, 4, { a: 120 }); steam(pc, 20, 10, 5, { phase: 2, a: 120 });
+      return;
+    }
+    case 'nut_brittle': {
+      // wave 18: snapped slabs of glassy honey brittle on a square of baking paper, nuts set in
+      // the amber, a lit edge on every break, crumbs where it snapped
+      platter(pc, mat(0xeadcb6, { cont: 1.05 }), [[3, 19], [15, 14.4], [29.4, 17.6], [27.4, 24.8], [14.6, 29], [2.6, 25.6]], null, { thick: 1, rimK: 0 });
+      const AM = mat(0xe8a038, { cont: 1.2, warm: 24 });
+      const shards = [
+        [[5.4, 18.4], [12.6, 14.6], [17.4, 16.4], [15.4, 21.2], [8.6, 22.6]],
+        [[16.8, 21.4], [19.2, 14.8], [27.2, 15.4], [26.2, 21.6], [21, 24.6]],
+        [[7.6, 24], [14.8, 22.4], [18, 26.4], [12.4, 28.4]],
+      ];
+      shards.forEach((pts, i) => {
+        const m = M().poly(pts);
+        seam(pc, m, 'shadow');
+        const b = m.bounds();
+        m.each((X, Y) => {
+          const t = (X - b.x0) / Math.max(1, b.w) + (Y - b.y0) / Math.max(1, b.h);
+          pc.set(X, Y, AM[t < 0.5 ? 1 : t < 1.1 ? 2 : t < 1.6 ? 3 : 4]);
+        });
+        // the broken edge catches light along its top, darker under
+        m.edge().each((X, Y) => pc.set(X, Y, m.get(X, Y - 1) ? AM[5] : AM[0]));
+        // nuts set in the amber
+        for (let k = 0; k < 4; k++) {
+          const x = b.x0 / S + 1.5 + hash2(i, k, 41) * (b.w / S - 3), y = b.y0 / S + 1.5 + hash2(i, k + 9, 41) * (b.h / S - 3);
+          if (!m.at(x, y) || !m.at(x + 1, y + 1)) continue;
+          dot(pc, x, y, 0x8a5226); dot(pc, x + 1, y, 0x6a3a1a); dot(pc, x, y + 1, 0x5a2e14); dot(pc, x + 0.5, y - 0.5, 0xc89060);
+        }
+        glint(pc, b.x0 / S + 1.6, b.y0 / S + 1.4, 0);
+      });
+      ink(pc);
+      for (const [x, y] of [[16.4, 22.6], [18.6, 22], [15.4, 23.6], [19.4, 27.2]]) dot(pc, x, y, AM[2]);
+      twinkle(pc, 24, 11, 0xffffff, 0xffe0a0, 1, 0.6);
+      return;
+    }
+    case 'spore_kraut': {
+      // wave 18: a squat glazed crock of fermenting kraut, a cloth tied over the mouth with twine,
+      // the shreds (green and puff-spore purple) packed against the glass window in its side,
+      // bubbles rising, a spore puff drifting off the top
+      const CROCK = mat(0x7a8a5a, { cont: 1.15 });
+      const s = vessel(pc, CROCK, [[7, 11.4], [9, 9.6], [16, 9], [23, 9.6], [25, 11.4], [26.6, 15], [27.4, 20], [26.4, 25], [23, 28.4], [16, 29.2], [9, 28.4], [5.6, 25], [4.6, 20], [5.4, 15]],
+        [[9, 11.2], [12, 10.2], [16, 10], [20, 10.2], [23, 11.2], [20.6, 12.4], [16, 12.8], [11.4, 12.4]], { band: 0xd8cc9a, dots: 0x4a5a34 });
+      void s;
+      // the cloth cap, gathered under the twine, its frill standing out
+      const CL = mat(0xc84a3a, { cont: 1.1 });
+      const cap = loop([[7.4, 11.6], [9, 7.4], [16, 6.2], [23, 7.4], [24.6, 11.6], [22, 13], [16, 13.4], [10, 13]]);
+      seam(pc, cap, 'shadow');
+      form(pc, cap, CL, { bias: 0.12 });
+      cap.each((X, Y) => { const c0 = pc.get(X, Y); if (c0 >= 0 && ((X >> 1) + (Y >> 1)) % 2 === 0 && hash2(X, Y, 3) < 0.9) pc.set(X, Y, mix(c0, 0xf4e8d8, 0.5)); });
+      for (let x = 7; x <= 25; x++) { dot(pc, x, 11.6 + Math.sin(x * 1.3) * 0.5, x % 2 ? 0xd8b880 : 0x9a7a4a); }
+      // a window of glass in the belly showing the kraut and its bubbles
+      const win = blob(16, 21, 6.6, 4.6, { seed: 5, lump: 0.05 });
+      seam(pc, win, 'shadow');
+      win.each((X, Y) => {
+        const x = (X + 0.5) / S, y = (Y + 0.5) / S, band = Math.floor((x * 0.9 + y * 1.6 + Math.sin(x * 1.1) * 1.3));
+        pc.set(X, Y, [0x6aa848, 0x4a8a3a, 0x9a6ab8, 0x2e5a2a, 0x7ab85a, 0x6a4a8a][((band % 6) + 6) % 6]);
+      });
+      for (const [x, y] of [[13, 20], [18, 18.6], [15.4, 23.4], [20, 22]]) { dot(pc, x, y, 0xeaffd8); dot(pc, x + 0.5, y + 0.5, 0x9ad070, 160); }
+      win.edge().each((X, Y) => pc.set(X, Y, win.get(X, Y - 1) ? 0x2a3a24 : 0xd8ecc8));
+      ink(pc);
+      glint(pc, 8.6, 16, 0);
+      // a puff of spores drifting up
+      for (const [x, y, c] of [[25, 6, 0xc8a0e0], [27, 4, 0xe0c8f0], [24, 3, 0xa880c8], [28.4, 7, 0xd8b8f0]]) dot(pc, x, y, c, 220);
+      twinkle(pc, 27, 2, 0xf8eaff, 0xc8a0e0, 1, 0.5);
+      return;
+    }
+    case 'root_roast':
+    case 'smoked_grubs': {
+      const grubs = id === 'smoked_grubs';
+      // wave 18: a skewer over the fire: charred root wedges striped with grill marks and thyme,
+      // or plump curled grubs smoked amber-brown, their rings lit; smoke curls off them
+      if (grubs) skewer(pc, 3.6, 4, 28.6, 28.4); else skewer(pc, 3, 28.6, 28.6, 3.4);
+      const at = grubs ? [[9, 9.6], [15.8, 16.2], [22.6, 22.8]] : [[8.6, 23], [15.4, 16.4], [22.2, 9.8]];
+      at.forEach(([x, y], i) => {
+        if (grubs) {
+          // a curled grub: a thick C of segments, smoked darker on the outside of the curl
+          const R = mat(0xd8a466, { cont: 1.2, warm: 26 });
+          const a0 = -0.6 + i * 0.4;
+          const pts = [];
+          for (let k = 0; k <= 6; k++) { const a = a0 + k * 0.62; pts.push([x + Math.cos(a) * 2.8, y + Math.sin(a) * 2.6]); }
+          const sw = tube(pc, pts, (t) => 2.2 - t * 0.9, R, { bias: 0.1 });
+          for (let k = 1; k < 7; k++) { const [px, py] = sw.at(k / 7); if (sw.mask.at(px, py)) { dot(pc, px, py, R[5]); dot(pc, px + 0.6, py - 0.6, R[1]); } }
+          const [hx, hy] = sw.at(0.02); dot(pc, hx, hy, 0x3a1e10); dot(pc, hx + 0.5, hy, 0x5a3420);
+        } else {
+          // a wedge of roast root: lit top, cut face pale, the skin charred in grill stripes
+          const R = mat(i === 1 ? 0xe8963a : 0xd8783a, { cont: 1.15, warm: 20 });
+          const m = blob(x, y, 3.8, 2.8, { seed: i + 21, lump: 0.22, rot: -0.8 });
+          seam(pc, m, 'shadow');
+          form(pc, m, R, { bias: 0.12, dome: 0.4 });
+          for (let k = -2; k <= 2; k++) line(pc, x - 3 + k * 1.6, y + 2, x + 0 + k * 1.6, y - 2.4, (n, X, Y) => (m.get(X, Y) && n % 3 !== 2 ? 0x3a1a0e : null));
+          const cut = blob(x - 1, y - 0.6, 1.4, 1.2, { seed: i + 31 }).and(m);
+          cut.each((X, Y) => pc.set(X, Y, (X + Y) % 2 ? 0xf8d49a : 0xffe8b8));
+        }
+      });
+      if (!grubs) herbs(pc, [[12, 18.6, -2.2], [19, 12.6, 0.9], [24.6, 6.6, -1.8]]);
+      ink(pc);
+      steam(pc, grubs ? 10 : 14, grubs ? 7 : 12, 6, { c: 0xc8c0b8, a: 150 });
+      steam(pc, grubs ? 21 : 20, grubs ? 13 : 6, 6, { c: 0xd8d0c8, a: 130, phase: 2 });
+      if (grubs) twinkle(pc, 26, 8, 0xffe8b0, 0xd8a466, 1, 0.5);
+      return;
+    }
+    case 'brined_egg': {
+      // wave 18: a small glazed saucer with a brine-gold egg cut in half (the yolk set deep amber)
+      // and a whole one beside it, red pepper rings and a pinch of salt
+      platter(pc, mat(0x6a9ac0, { cont: 1.1 }), [[2.6, 21.4], [7, 17.6], [16, 16.4], [25, 17.6], [29.4, 21.4], [25.6, 25.4], [16, 26.8], [6.4, 25.4]],
+        [[6, 21.4], [10, 19], [16, 18.4], [22, 19], [26, 21.4], [22, 23.8], [16, 24.4], [10, 23.8]], { thick: 1.6, trim: 0xf0e8d8 });
+      const EG = mat(0xe8b45a, { cont: 1.12, warm: 18 });
+      // the whole egg, standing at the back
+      const whole = blob(20.6, 14.4, 4.4, 5.6, { seed: 3, lump: 0.04, taper: 0.18 });
+      seam(pc, whole, 'shadow');
+      form(pc, whole, EG, { bias: 0.12, dome: 0.5 });
+      sheen(pc, whole, 0xfff0c8, { inset: 1 });
+      // the halved one in front: a golden rim of white round an amber yolk
+      const half = blob(12.6, 20.2, 5.2, 3.4, { seed: 7, lump: 0.05 });
+      seam(pc, half, 'shadow');
+      form(pc, half, mat(0xf2d48a, { cont: 1.05 }), { bias: 0.15 });
+      const yolk = blob(12.4, 20, 2.6, 1.8, { seed: 8, lump: 0.08 });
+      yolk.each((X, Y) => pc.set(X, Y, (Y + 0.5) / S < 19.6 ? 0xffb030 : (X % 2 ? 0xd8801a : 0xe8901e)));
+      dot(pc, 11.6, 19.4, 0xffe0a0);
+      // pepper rings
+      for (const [x, y] of [[23.6, 21.6], [7.4, 23]]) {
+        const r = blob(x, y, 1.8, 1.2, { seed: x | 0 });
+        r.edge().each((X, Y) => pc.set(X, Y, (Y + 0.5) / S < y ? 0xff6a4a : 0xb82a1a));
+      }
+      ink(pc);
+      for (const [x, y] of [[17, 22.6], [18, 23.2], [27, 20]]) dot(pc, x, y, 0xffffff);
+      twinkle(pc, 7, 9, 0xffffff, 0xffe8a0, 1, 0.6);
+      return;
+    }
     default: {
       const s = vessel(pc, WOODB(), [[3, 15], [6, 12.4], [16, 11.2], [26, 12.4], [29, 15], [28, 19.6], [24, 25], [16, 27.6], [8, 25], [4, 19.6]],
         [[5, 15], [9, 13.2], [16, 12.8], [23, 13.2], [27, 15], [24, 17], [16, 18], [8, 17]], { wood: true });

@@ -21,7 +21,7 @@ const Y = HALL.y;
 
 /** Books on Old Star's shelves (title, and what's inside). */
 const BOOKS = [
-  ['<b>Ores of the Deep</b>, vol. II', 'Copper sings, iron grumbles, gold says nothing at all. Pencil notes in every margin.'],
+  ['<b>Ores of the Deep</b>, vol. II', 'Copper sings, iron grumbles. Pencil notes in every margin.'],
   ['<b>The Surface: A Traveller\'s Guide</b>', 'Chapter one: the sky. Chapter two: more sky. Dog-eared at "the sea".'],
   ['<b>One Hundred Soups</b>', 'Ninety-nine of them have glowcaps in. The hundredth is just glowcaps.'],
   ['<b>Hammer &amp; Heat</b>, a smith\'s almanac', '"Strike while it\'s cherry. Quench while it\'s proud. Sleep while you can."'],
@@ -111,7 +111,7 @@ export class WorkshopLife {
 
   lookOut() {
     this.think(pick([
-      'A cavern so big it has weather. Crystals glow down the cliffs like lanterns, and far off, somebody\'s windows are lit.',
+      'A cavern you could lose a town in. Crystals glow down the cliffs, and far off, somebody\'s windows are lit.',
       'Waterfalls fall into the mist. Glowcaps light the ledges teal and violet. No way down from here: it\'s a sheer drop.',
       'Glow-worms all over the roof of the cavern, like the stars Old Star talks about.',
     ]), 4.6);
@@ -160,7 +160,7 @@ export class WorkshopLife {
     this.rig.vm?.impact('none', 0.2);
     this.game.state.emit('act', { type: 'talk', npc: 'oldstar' });
     if (star.mode === 'sleep') {
-      star.say(pick(['Zzz… hm? Oh… it\'s you. Mind the fire, it\'s… zzz…', 'Mmf… sixty years… in the rock… zzz.', 'Zzz… a million… and one… zzz.']), { card: false, life: 3.2 });
+      star.say(pick(['Zzz. Hm? Oh. You. Mind the fire… zzz.', 'Mmf… forty years… in the rock… zzz.', 'Zzz… a million… and one… zzz.']), { card: false, life: 3.2 });
       this.game.audio.play('snore', { vol: 0.3 });
       return null;
     }
@@ -180,16 +180,16 @@ export class WorkshopLife {
     const d = Math.hypot(star.pos.x - this.rig.player.pos.x, star.pos.z - this.rig.player.pos.z);
     if (d > 6.5) return;
     const lines = {
-      dream: [['Four hundred and eighty thousand. I had it in a sack under that bed. Then I trusted a raccoon. Long story.', 'worried'], ['We\'ll chalk it up again, you and me. From the bottom. It\'s the only way anybody ever climbs.', 'proud']],
-      suitcase: [['Packed it the week I had half the fare. Never unpacked it. Bad luck, unpacking.', 'worried'], ['There\'s a clean shirt in there for the day we go. Folded. Sixty years folded.', 'laugh']],
-      trinkets: [['That ticket was for the 9:15 up. Tore it in half the day the money went. Glued it the day after.', 'worried'], ['The shell? Marigold\'s. She said if you hold it to your ear you hear the sea. I hear the forge. Same thing, nearly.', 'calm']],
+      dream: [['A million, near enough. Pushed it to town in a cart. The tunnel had other plans.', 'worried'], ['We\'ll chalk it up again. From the bottom. Only way anybody climbs.', 'proud']],
+      suitcase: [['Packed it the week I had half the fare. Never unpacked. Bad luck.', 'worried'], ['Clean shirt in there for the day we go. Forty years folded.', 'laugh']],
+      trinkets: [['That ticket was for the 9:15 up. Tore it in half the day the money went. Glued it the day after.', 'worried'], ['Marigold\'s shell. Hold it to your ear, you hear the sea, she said. I hear the forge.', 'calm']],
       portrait: [['Marigold. Best cook in Deep Town, worst singer. She\'d have liked you.', 'calm']],
       sea: [['That\'s the sea. Blue all the way to the edge. One day I\'ll tell you if the painting\'s any good.', 'happy']],
-      books: [['Borrow anything you like. Bring it back with fewer jam stains than I would.', 'laugh'], ['I\'ve read every one twice. The soup book three times.', 'happy']],
-      hole: [['Came down through my roof like a sack of turnips, you did. Landed on my good dirt.', 'laugh'], ['That\'s sixty feet of loose rock up there. We go out the proper way: the Surface Express.', 'calm']],
-      bellows: [['Easy on my bellows! Long, steady pulls. You\'ll learn.', 'stern'], ['Hear that roar? That\'s the forge saying thank you.', 'happy']],
-      coins: [['Fell in with you, those. Keep \'em. First coins toward the million.', 'happy']],
-      pool: [['Best water in the deep, that spring. Sixty years and it\'s never once run dry.', 'proud']],
+      books: [['Borrow what you like. Fewer jam stains than me, please.', 'laugh'], ['Read them all twice. The soup one, three times.', 'happy']],
+      hole: [['Came through my roof like a sack of turnips. On my good dirt, too.', 'laugh'], ['Sixty feet of loose rock up there. We go out the proper way. The Express.', 'calm']],
+      bellows: [['Easy on my bellows. Long pulls.', 'stern'], ['Hear that roar? That\'s a thank you.', 'happy']],
+      coins: [['Fell in with you, those. Keep \'em. First of the million.', 'happy']],
+      pool: [['Best water in the deep. Forty years, never once dry.', 'proud']],
     }[what] || this.houseAsides?.(what);
     if (!lines) return;
     const [text, mood] = pick(lines);
@@ -201,18 +201,18 @@ export class WorkshopLife {
     const st = this.game.state, d = st.data, sd = starData(st);
     const out = [];
     const unread = this.unreadNotes();
-    if (unread) out.push({ text: `I've pinned ${unread === 1 ? 'a note' : unread + ' notes'} on my board you haven't read. Sixty years of digging, scribbled down for whoever came next.`, mood: 'calm' });
-    if (!st.flag('escaped')) out.push({ text: 'Deep Town\'s just out of my front door and up the old passage. Caved in years back. Find the town gate from below, in the mine, and we\'ll have a road again.', mood: 'worried' });
-    else out.push({ text: 'Sell your ore and blades in town. The assay office pays for pristine stones: chisel and brush them free, don\'t smash them.', mood: 'calm' });
-    out.push({ text: `A million gold for the Surface Express. You've ${st.gold >= 1000 ? 'a start' : 'a long way to go'}: <span class="gold-txt">${st.gold.toLocaleString()}</span>. Every blade counts.`, mood: st.gold > 100000 ? 'proud' : 'calm' });
-    out.push({ text: 'Iron wants a quench. Copper doesn\'t care. Heat it to cherry, hammer it, and into my trough while it still glows.', mood: 'calm' });
-    out.push({ text: 'There are old lifts all over the mine. Dig one out and ring its bell, and it\'ll bring you home any time.', mood: 'happy' });
-    out.push({ text: 'Low on energy? Eat. The pot\'s always on.', mood: 'happy' });
-    out.push({ text: 'Better picks dig faster. The Miners\' Board in the hall: that\'s where the money goes. Better tools, bigger bags.', mood: 'calm' });
+    if (unread) out.push({ text: `Pinned ${unread === 1 ? 'a note' : unread + ' notes'} on my board you haven't read. Forty years of scribbles.`, mood: 'calm' });
+    if (!st.flag('escaped')) out.push({ text: 'Deep Town\'s up the old passage past my door. Caved in years back. Find the town gate from below and we\'ll have a road again.', mood: 'worried' });
+    else out.push({ text: 'Sell in town. Vex pays for pristine. Chisel it free, don\'t smash it.', mood: 'calm' });
+    out.push({ text: `A million for the Express. You've ${st.gold >= 1000 ? 'a start' : 'a long way to go'}: <span class="gold-txt">${st.gold.toLocaleString()}</span>.`, mood: st.gold > 100000 ? 'proud' : 'calm' });
+    out.push({ text: 'Iron wants a quench. Copper doesn\'t care.', mood: 'calm' });
+    out.push({ text: 'Old lifts all over the mine. Ring the bell and it\'ll bring you home.', mood: 'happy' });
+    out.push({ text: 'Hungry? Eat. Pot\'s always on.', mood: 'happy' });
+    out.push({ text: 'Better pick, faster dig. Grubb\'s in town.', mood: 'calm' });
     out.push({ text: 'The coal cart by the lift fills up again overnight. Don\'t ask me how. Don\'t ask anyone how.', mood: 'laugh' });
-    out.push({ text: 'Mind the deep water and the hot rock lower down. The mine gets meaner the deeper you go.', mood: 'worried' });
-    out.push({ text: 'Sleep in your own bed up the steps. A tired mole digs crooked, and a crooked tunnel caves in.', mood: 'stern' });
-    if ((d.weapons || []).length) out.push({ text: `${d.weapons.length} blade${d.weapons.length > 1 ? 's' : ''} in your pack. Not bad. Not bad at all. Your granny would be proud. Probably.`, mood: 'proud' });
+    out.push({ text: 'Mind deep water and hot rock lower down. It gets meaner the deeper you go.', mood: 'worried' });
+    out.push({ text: 'Sleep in your own bed. A tired mole digs crooked.', mood: 'stern' });
+    if ((d.weapons || []).length) out.push({ text: `${d.weapons.length} blade${d.weapons.length > 1 ? 's' : ''} in your pack. Not bad. Your granny would be proud. Probably.`, mood: 'proud' });
     const i = (sd.talkI || 0) % out.length;
     sd.talkI = i + 1;
     st.dirty = true;
@@ -272,7 +272,7 @@ export class WorkshopLife {
     this.rig.vm?.impact('none', 0.2);
     if (typeof ui.openUpgrades === 'function') { this.game.audio.play('page'); return ui.openUpgrades(tab); }
     this.game.audio.play('click');
-    this.think('Notices: "Tools wanted." "Better pick. Bigger bag. Brighter lamp." Someday.', 4);
+    this.think('Notices: "Tools wanted." "Bigger bag." Someday.', 4);
     return null;
   }
 

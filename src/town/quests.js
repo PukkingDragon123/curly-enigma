@@ -17,11 +17,11 @@ import { moodOf } from './moods.js';
 
 const _h = new THREE.Vector3();
 const NOTICES = [
-  'Please do NOT feed the glow-worms. — The Council',
+  'Do NOT feed the glow-worms. The Council.',
   'BAND PRACTICE Thursdays at the fountain. Bring a spoon.',
   'Mushroom swap, Sunday, back lane. No blue ones please.',
-  'Surface Express: ONE WAY ONLY. No refunds. No returns. No exceptions.',
-  'FOUND: one sense of direction. Not mine. — Burdock',
+  'Surface Express: ONE WAY ONLY. No refunds.',
+  'FOUND: one sense of direction. Not mine. Burdock.',
 ];
 
 export class TownQuests {
@@ -82,7 +82,7 @@ export class TownQuests {
     const mark = Q.markerFor(k.id);
     const extra = k.id === 'blueprints' && this.game.lore ? [{ label: 'May I read your books?', sub: 'His shelf of lore', onClick: () => this.game.lore.readShelf('talpa') }] : null;
     if (!mark && extra) {
-      openTalkMenu(this.game, { name: k.spec.name, who: 'blueprints', mood: 'happy', line: pick(['Plans? Books? Theories? I have all three.', 'Ah, a visitor! Mind the ink.', 'Come in, come in. Touch nothing. Touch everything, carefully.']), options: [
+      openTalkMenu(this.game, { name: k.spec.name, who: 'blueprints', mood: 'happy', line: pick(['Plans? Books? Theories? I have all three.', 'A visitor. Mind the ink.', 'Come in, come in. Touch nothing. Touch everything, carefully.']), options: [
         { label: 'Let\'s see the plans', sub: 'Open the shop', primary: true, onClick: () => { this.game.ui.closePanel(); this.s.useKeeper(k, true); } },
         { ...extra[0], onClick: () => { this.game.ui.closePanel(); extra[0].onClick(); } },
       ] });
@@ -107,7 +107,7 @@ export class TownQuests {
     this.greeted ||= {};
     if (this.s.time - (this.greeted[k.id] ?? -1e9) < 90) return false;
     this.greeted[k.id] = this.s.time;
-    const sh = SHOPS[k.id], line = pick(sh.lines || [`Welcome to ${sh.name}!`]);
+    const sh = SHOPS[k.id], line = pick(sh.lines || [`${sh.name}. Come in.`]);
     cv.play({
       who: k.id, lines: [{ text: line, mood: k.faces?.greet || moodOf(line) }],
       choices: [

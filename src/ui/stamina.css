@@ -3,12 +3,12 @@
 .stam-dock, .stam-dock *, .stam-veil { pointer-events: none !important; }
 .stam {
   position: relative; width: calc(var(--px) * 92); height: calc(var(--px) * 18);
-  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .45));
+  filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(8, 4, 6, .45));
   transform: translateY(calc(var(--px) * 10)) scale(.6, .2); opacity: 0;
   transition: transform .18s cubic-bezier(.5, -0.5, .8, .6), opacity .14s .04s;
 }
 .stam-dock.show .stam { transform: none; opacity: 1; transition: transform .38s var(--pop, cubic-bezier(.3, 1.6, .5, 1)), opacity .1s; }
-.stam-cv { display: block; width: 100%; height: 100%; image-rendering: pixelated; transform-origin: 10% 50%; }
+.stam-cv { position: absolute; left: 0; bottom: 0; display: block; width: 100%; height: calc(var(--px) * 28); image-rendering: pixelated; transform-origin: 10% 75%; }
 
 /* elsewhere: bottom middle, where the belt would be (clear of the thumbs on a phone) */
 .stam-dock.free { position: absolute; left: 0; right: 0; bottom: calc(var(--sab) + var(--px) * 6); display: flex; justify-content: center; }

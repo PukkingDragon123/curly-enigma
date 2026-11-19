@@ -29,6 +29,7 @@ import { HI, VB } from './vox.js';
 import { RES12 } from '../../gfx/voxRes.js';
 import { buildHi } from './hiBuild.js';
 import HiWorker from './hiWorker.js?worker&inline';
+import { PHONE } from '../../core/platform.js';
 
 /** A job the worker hasn't answered in this long: the worker is taken as gone (ms). */
 const WORKER_WAIT = 20000;
@@ -112,7 +113,7 @@ export class HiRes {
    */
   policy() {
     const eng = this.mgr.owner?.game?.engine, fx = eng?.fx || 'high';
-    const touch = typeof document !== 'undefined' && document.documentElement.classList.contains('is-touch');
+    const touch = PHONE; // (PC only: the full reach and density)
     const far = { r: touch || fx === 'low' ? 7 : 11, vox: touch || fx === 'low' ? 1 / 32 : 1 / 48 };
     // (no worker copies after the GPU context has been lost once: memory is short there; none on the
     // smallest phones, and fewer fine cells on small ones: a near copy is a spike of tens of MB in the worker)

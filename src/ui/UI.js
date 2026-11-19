@@ -3,6 +3,7 @@
 // waits in a corner, the tool belt tucks itself away. Big things open as real objects: the
 // leather backpack, the Index Book, shop counters and the pause journal.
 import { el } from '../core/util.js';
+import { touchWanted } from '../core/platform.js';
 import { iconURL, specURL, weaponIconURL } from '../gfx/PixelArt.js';
 import { itemVox } from './itemVox.js'; // items as 3D voxel art in toasts and discovery cards
 import { critterIconURL } from '../gfx/critters32.js';
@@ -85,9 +86,11 @@ export class UI {
     rs.setProperty('--a-tackGold', cssUrl(SPR.tack(0xd9901e)));
     rs.setProperty('--a-tackBlue', cssUrl(SPR.tack(0x3f7ec8)));
 
-    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-    if (coarse) document.documentElement.classList.add('is-touch');
-    window.addEventListener('touchstart', () => document.documentElement.classList.add('is-touch'), { once: true, passive: true });
+    // (PC only: the touch controls are kept but off unless asked for, src/core/platform.js)
+    if (touchWanted()) {
+      document.documentElement.classList.add('is-touch');
+      window.addEventListener('touchstart', () => document.documentElement.classList.add('is-touch'), { once: true, passive: true });
+    }
 
     this.root.dataset.hud = 'none';
     // (ui3) whatever you press presses in (CSS) with a soft latch click on the way down
@@ -522,6 +525,7 @@ export class UI {
     if (closable) panel.append(el('button', { class: 'close', 'aria-label': 'Close', title: 'Close (Esc)', onclick: () => handle.close() }, 'X'));
     back.addEventListener('pointerdown', (e) => { if (e.target === back && closable && !noBack) handle.close(); });
     this.overlay.append(back);
+    this.setDown(back, panel, className);
     this.panelStack.push(handle);
     this.root.classList.add('panel-open');
     this.releasePointer();
@@ -544,7 +548,7 @@ export class UI {
     }
     h.closed = true;
     h.back.classList.add('closing');
-    setTimeout(() => h.back.remove(), 130);
+    setTimeout(() => h.back.remove(), 200);
     this.panelStack = this.panelStack.filter((p) => p !== h);
     if (!this.panelStack.length) {
       this.root.classList.remove('panel-open');
@@ -553,6 +557,38 @@ export class UI {
     }
     this.game.audio.play('ui_close');
     if (h.onClose) h.onClose();
+  }
+
+  /**
+   * Wave 18: a panel is set down like a heavy book on a table: it drops in from a little above with
+   * its shadow growing, lands with a squash, and puffs a little dust (tiny pixel squares) from under
+   * its bottom edge, with a soft thump. One layout read, after it's in.
+   */
+  setDown(back, panel, className = '') {
+    if (/\b(sv-panel|ob-layer)\b/.test(className)) return;
+    back.classList.add('setdown');
+    const audio = this.game.audio;
+    setTimeout(() => { if (back.isConnected && !back.classList.contains('closing')) audio.play('thud', { vol: 0.12, pitch: 0.62 }); }, 235);
+    requestAnimationFrame(() => {
+      if (!back.isConnected) return;
+      const r = panel.getBoundingClientRect(), br = back.getBoundingClientRect();
+      if (!r.width) return;
+      const puff = el('div', { class: 'dust-puff', style: { left: (r.left - br.left) + 'px', top: (r.bottom - br.top) + 'px', width: r.width + 'px' } });
+      for (let i = 0; i < 18; i++) {
+        const side = i % 2 ? 1 : -1, edge = i < 12; // most from the corners, a few along the edge
+        const x = edge ? (side < 0 ? Math.random() * 0.14 : 0.86 + Math.random() * 0.14) : 0.15 + Math.random() * 0.7;
+        const d = el('i');
+        d.style.left = (x * 100).toFixed(1) + '%';
+        d.style.setProperty('--dx', ((edge ? side : (Math.random() - 0.5)) * (6 + Math.random() * 16)).toFixed(1));
+        d.style.setProperty('--dy', (-(2 + Math.random() * 9)).toFixed(1));
+        d.style.setProperty('--s', String(1 + (Math.random() < 0.3 ? 1 : 0)));
+        d.style.animationDelay = (0.23 + Math.random() * 0.05).toFixed(2) + 's';
+        if (Math.random() < 0.4) d.className = 'dk';
+        puff.append(d);
+      }
+      back.append(puff);
+      setTimeout(() => puff.remove(), 1000);
+    });
   }
 
   closeAllPanels() {

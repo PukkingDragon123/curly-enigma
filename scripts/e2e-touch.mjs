@@ -45,7 +45,7 @@ const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchP
 const tap = async (x, y, hold = 60) => { await touch('touchStart', [[x, y]]); await wait(hold); await touch('touchEnd', []); };
 const center = (sel) => ev((s) => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return r.width ? [r.left + r.width / 2, r.top + r.height / 2] : null; }, sel);
 
-await page.goto(`http://127.0.0.1:${port}/?fresh=1&scene=deep`);
+await page.goto(`http://127.0.0.1:${port}/?fresh=1&scene=deep&touch=1`);
 await step('underground loads with touch controls', async () => {
   if (!(await waitFor(() => window.__game && window.__game.sceneName === 'deep' && !window.__game.transitioning, 120000))) throw new Error('deep never loaded');
   await wait(2500);

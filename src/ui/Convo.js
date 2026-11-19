@@ -42,6 +42,7 @@ import { installDialogArt } from './dialogArt.js';
 import { Px, INK, art, cssUrl } from './uiArt.js';
 import { speakerOf, materialOf } from './Tutor.js';
 import { solidRects, clearOf } from './uiSolid.js';
+import { cineMarks } from '../bookends/skipHold.js';
 import './convo.css';
 
 const isTouch = () => document.documentElement.classList.contains('is-touch');
@@ -357,6 +358,8 @@ export class Convo {
    * wait) without a backdrop; Esc (the UI's) closes it = leaves the talk. The bars slide in.
    */
   holdOn() {
+    // (wave 18: no quest marks bobbing over heads in a talk's close-ups)
+    if (this.s && !this.s.marks) { this.s.marks = true; cineMarks(this.ui, true); }
     const ui = this.ui, g = this.game, s = this.s;
     if (!s || s.hold) return;
     const back = document.createElement('div');
@@ -406,6 +409,7 @@ export class Convo {
     const s = this.s;
     if (!s) return;
     this.s = null;
+    if (s.marks) cineMarks(this.ui, false);
     for (const b of [this.cur, ...this.q]) {
       if (!b || b.done) continue;
       b.done = true;
@@ -461,7 +465,7 @@ export class Convo {
     b.name = b.name || b.speaker?.name || b.cast?.name || '';
     b.voice = b.speaker?.voice || b.cast?.voice || STAR_VOICE;
     b.hero = heroLine;
-    if (b.dur == null) b.dur = clamp(2.2 + plain(b.html).length * 0.05, 2.6, 9);
+    if (b.dur == null) b.dur = clamp(2.4 + plain(b.html).length * 0.055, 3.2, 10); // (seconds it stays up once typed)
     if (b.speaker) { s.held.add(b.speaker); s.speaker = b.speaker; }
     this.animate(b); // (first: they start turning to you, and the shot is planned for their face)
     this.frameFor(b);
@@ -471,7 +475,7 @@ export class Convo {
     const mouth = heroLine ? { talk: (on) => this.director.hero?.talk(on) } : sp ? { talk: (on) => sp.talk(on) } : this.face;
     b.typer = typeFloat(this.textEl, prep(b.html), {
       voice: b.voice, who: b.key, mood: b.mood, audio: this.game.audio, face: mouth,
-      delay: b.n === 0 ? 0.55 : 0.18, speed: b.mood === 'laugh' ? 52 : b.mood === 'stern' ? 40 : 46,
+      delay: b.n === 0 ? 0.55 : 0.18, speed: b.mood === 'laugh' ? 34 : b.mood === 'stern' ? 26 : b.mood === 'worried' ? 27 : 30,
       onDone: () => this.onTyped(b),
     });
     this.textEl.append(this.nextEl); // ("carry on" waits right after the last word)
@@ -597,8 +601,10 @@ export class Convo {
 
   hint(b) {
     const t = isTouch();
-    const h = b?.choices?.length ? (t ? 'Tap an answer' : '<kbd>1</kbd>–<kbd>' + b.choices.length + '</kbd> or <kbd>↑</kbd><kbd>↓</kbd> <kbd>E</kbd> answer') : t ? 'Tap to carry on' : '<kbd>E</kbd> carry on';
-    this.hintEl.innerHTML = `${h}<span class="cv-esc">${t ? '' : ' · <kbd>Esc</kbd> leave'}</span>`;
+    const h = b?.choices?.length ? (t ? 'Tap an answer' : '<kbd>1</kbd>–<kbd>' + b.choices.length + '</kbd> or <kbd>↑</kbd><kbd>↓</kbd> <kbd>Space</kbd> answer') : t ? 'Tap to carry on' : '<kbd>Space</kbd> carry on';
+    // (in a skippable cutscene Esc is held to skip it: its own little gauge says so, bookends/skipHold.js)
+    const cine = !!this.ui.onboard?.cine?.sk;
+    this.hintEl.innerHTML = `${h}<span class="cv-esc">${t || cine ? '' : ' · <kbd>Esc</kbd> leave'}</span>`;
   }
 
   showChoices(b) {

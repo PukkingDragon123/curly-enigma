@@ -159,7 +159,7 @@ export class ForgeLesson {
     this.banked = true;
     await this.wait(0.6);
     if (!this.cut) await this.wakeFire();
-    if (!this.cut) await this.say('Melt it to an <b>ingot</b>. Then a blade!', 'proud', { wait: true });
+    if (!this.cut) await this.say('Melt it to an <b>ingot</b>. Then a blade.', 'proud', { wait: true });
     this.endCine();
     if (this.sc.game.scene !== this.sc || this.stage !== 'intro') return;
     // already at it before he'd finished talking
@@ -233,17 +233,17 @@ export class ForgeLesson {
       const g = d.grade?.g || 'C';
       this.pushIn = true; // the reveal pushes in slowly on your pick
       this.later(1.2, () => {
-        this.say(g === 'S' || g === 'A' ? 'Now <b>that</b> is a pick. I\'d trade you mine for it, if mine didn\'t know my paws.' : g === 'B' || g === 'C' ? 'A good honest pick. It\'ll bite rock. Your granny would hang it over the fire.' : 'It\'s... pick-ish. It\'ll dig. You\'ll make a better one when you\'re rich.', g === 'F' || g === 'D' ? 'laugh' : 'proud', { dur: 6 });
+        this.say(g === 'S' || g === 'A' ? 'Now <b>that</b> is a pick. I\'d trade you mine for it, if mine didn\'t know my paws.' : g === 'B' || g === 'C' ? 'Good honest pick. It\'ll bite.' : 'It\'s pick-ish. It\'ll dig.', g === 'F' || g === 'D' ? 'laugh' : 'proud', { dur: 6 });
         this.star?.rig?.play?.(g === 'F' || g === 'D' ? 'laugh' : 'cheer');
       });
-      this.later(5.0, () => this.say('On your belt. Home we go!', 'happy', { key: 'step', dur: Infinity }));
+      this.later(5.0, () => this.say('On your belt. Home.', 'happy', { key: 'step', dur: Infinity }));
       this.stage = 'leave';
       return;
     }
     if (name === 'melt') {
       const a = d.acc;
-      if (a >= 0.9) this.say('Ha! A <b>perfect</b> melt. Are you sure you\'ve never done this before?', 'laugh', { dur: 4 });
-      else if (a >= 0.6) this.say('Good melt!', 'happy', { dur: 4 });
+      if (a >= 0.9) this.say('A <b>perfect</b> melt. You\'ve done this before.', 'laugh', { dur: 4 });
+      else if (a >= 0.6) this.say('Good melt.', 'happy', { dur: 4 });
       else this.say('Lumpy, but it\'ll pour.', 'calm', { dur: 4 });
       this.star?.rig?.doEmote?.(a >= 0.6 ? 'nod' : 'shake', 1);
       return;
@@ -273,11 +273,11 @@ export class ForgeLesson {
     if (name === 'strike') {
       this.strikes = (this.strikes || 0) + 1;
       const ev = d.ev;
-      if (ev.crack) this.remark('crack', 'Crack! That\'s what cold metal does. <b>Back in the fire</b>, and only strike it glowing.', 'stern', 8);
-      else if (ev.kind === 'cold') this.remark('cold', 'Too cold! It\'s just denting. Heat it up again first.', 'stern', 7);
-      else if (ev.kind === 'burn') this.remark('burn', 'It\'s <b>burning</b>! Out of the fire, quick, before it\'s all sparks!', 'worried', 6);
-      else if (d.gain > 0.035) this.remark('good', pick(['Good blow!', 'That\'s it, right there!', 'Ha! You\'ve got the wrist for it.', 'Lovely. Again.']), 'happy', 7);
-      else if (d.gain < -0.03) this.remark('bad', pick(['Easy! You\'re thinning the wrong spot.', 'Watch the outline: you\'re making it too thin there.']), 'worried', 7);
+      if (ev.crack) this.remark('crack', 'Crack. That\'s cold metal. <b>Back in the fire</b>.', 'stern', 8);
+      else if (ev.kind === 'cold') this.remark('cold', 'Too cold. You\'re just denting it.', 'stern', 7);
+      else if (ev.kind === 'burn') this.remark('burn', 'It\'s <b>burning</b>. Out, quick!', 'worried', 6);
+      else if (d.gain > 0.035) this.remark('good', pick(['Good.', 'There.', 'You\'ve the wrist for it.', 'Lovely. Again.']), 'happy', 7);
+      else if (d.gain < -0.03) this.remark('bad', pick(['Easy. Wrong spot.', 'Too thin there. Watch the outline.']), 'worried', 7);
       return;
     }
     if (name === 'result') {
@@ -289,10 +289,10 @@ export class ForgeLesson {
       this.st.dirty = true;
       this.st.save?.();
       const line = g === 'S' ? ['A <b>legendary</b> blade, first time? I need to sit down.', 'laugh']
-        : g === 'A' ? ['A <b>masterwork</b>! Sixty years and I\'ve not done better on a first go. Don\'t tell anyone.', 'proud']
-          : g === 'B' ? ['That\'s a <b>fine</b> blade. Fine! It\'ll sell, and it\'ll cut.', 'proud']
+        : g === 'A' ? ['A <b>masterwork</b>. First go. Don\'t tell anyone.', 'proud']
+          : g === 'B' ? ['That\'s a <b>fine</b> blade. It\'ll sell.', 'proud']
             : g === 'C' ? ['A <b>sturdy</b> little dagger. Every smith\'s first. Mine was worse.', 'happy']
-              : ['Well... it\'s pointy at one end. We all start somewhere. Mine looked like a spoon.', 'laugh'];
+              : ['Pointy at one end. Mine looked like a spoon.', 'laugh'];
       this.ui.tutor?.hide('step');
       this.untaught();
       this.pushIn = true;
@@ -301,7 +301,7 @@ export class ForgeLesson {
         this.star?.rig?.play?.(g === 'F' || g === 'D' ? 'laugh' : 'cheer');
       });
       this.later(4.4, () => {
-        this.say('Yours! Now, home to <b>cook</b>.', 'happy', { key: 'step', dur: Infinity });
+        this.say('Yours. Now we <b>cook</b>.', 'happy', { key: 'step', dur: Infinity });
         this.stage = 'leave';
       });
     }
@@ -355,7 +355,7 @@ export class ForgeLesson {
     m.sel.infusion = null;
     m.sel.gem = null;
     m.plan();
-    if (!skipLine) this.say('An ingot! Now a <b>Dagger</b>.', 'proud', { key: 'step', dur: Infinity });
+    if (!skipLine) this.say('An ingot. Now a <b>Dagger</b>.', 'proud', { key: 'step', dur: Infinity });
     else this.say('Now a <b>Dagger</b>.', 'calm', { key: 'step', dur: Infinity });
     this.teach('click', { title: 'Forge a dagger', subPc: '<b>Click</b> <b>Forge</b>', subT: '<b>Tap</b> <b>Forge</b>', done: () => this.stage !== 'planMenu' });
   }
@@ -394,9 +394,9 @@ export class ForgeLesson {
     }
     if (this.stage === 'smelt' && a && a.sim && a.r) {
       const sim = a.sim;
-      if (sim.overheat) this.remark('slag', 'Too hot! Let go of the bellows, you\'re making slag!', 'worried', 5);
+      if (sim.overheat) this.remark('slag', 'Too hot. Let go, you\'re making slag.', 'worried', 5);
       else if (sim.inBandNow && !this.cool.inBand) { this.cool.inBand = this.t; this.say('There! Hold it.', 'happy', { key: 'remark', dur: 4 }); }
-      else if (sim.started && !sim.inBandNow && sim.T < sim.band[0] - 120 && !sc.fire.pumping && a.elapsed > 4) this.remark('pump', 'Pump! Long, steady pulls. The fire wants air.', 'stern', 7);
+      else if (sim.started && !sim.inBandNow && sim.T < sim.band[0] - 120 && !sc.fire.pumping && a.elapsed > 4) this.remark('pump', 'Long, steady pulls. The fire wants air.', 'stern', 7);
     }
     if (this.stage === 'smelted' && !a && sc.menus.mode !== 'plan') this.toForging();
     if (this.stage === 'forge' && a && a.step === 'heat' && a.sim) {
@@ -410,7 +410,7 @@ export class ForgeLesson {
     }
     if (this.stage === 'forge' && a && a.step === 'hammer' && a.sim) {
       const T = a.sim.meanT(), w = a.sim.workRange;
-      if (T < w[0] - 40) this.remark('cooling', 'It\'s cooling off: back in the coals for a heat, then hammer again.', 'calm', 9);
+      if (T < w[0] - 40) this.remark('cooling', 'Cooling off. Back in the coals.', 'calm', 9);
     }
     if (this.stage === 'leave' && !a) {
       this.stage = 'gone';

@@ -311,6 +311,20 @@ export class Vegetation {
     const v = a * 0.6 + b * 0.55 + k;
     return Math.max(0, Math.min(1, (v + 0.35) / 0.7));
   }
+  /**
+   * (wave 18) How lush a spot is: 1 in the few lush pockets (a slow noise field, roughly one place in
+   * eight), down to the flora's `thin` share elsewhere, and half that again under a low roof (the
+   * tunnels and crawls stay bare rock). F: the flora there; low: the roof is close overhead.
+   */
+  lushAt(F, x, y, z, low = false) {
+    const N = this.noise;
+    const n = N[2].n(x / 19 + 41.7, y / 13 - 6.2, z / 19 + 17.3) * 0.75 + N[1].n(x / 7.5 - 3.1, y / 7.5 + 9.4, z / 7.5) * 0.3;
+    const pocket = Math.max(0, Math.min(1, (n - 0.3) / 0.22));
+    const k = (F.thin ?? 1) + (1 - (F.thin ?? 1)) * pocket * pocket * (3 - 2 * pocket);
+    return low && pocket < 0.5 ? k * 0.55 : k;
+  }
+  /** A low roof over a floor spot (a tunnel or crawl): no air 1.9 m up. */
+  lowRoof(c, lx, ly, lz) { return c.at(lx, ly + 30, lz) !== 0 || c.at(lx, ly + 22, lz) !== 0; }
   /** Inside a trail's trodden corridor (0 = middle of the path, 1 = clear of it). */
   trodden(c, x, y, z) {
     let best = 1;
@@ -426,7 +440,9 @@ export class Vegetation {
     const fert = F.rock && ROCK[sup] ? Math.max(FERT[sup], F.rock) : FERT[sup]; // moss creeps over the rock in lush places
     if (h >= F.f * fert) return; // the best this spot could do
     const x = (vx + 0.5) / VOX, y = vy / VOX, z = (vz + 0.5) / VOX;
-    const dens = fert * this.patch(x, y, z, F.bio === 1 || F.bio === 3 ? 0.25 : 0) * this.trodden(c, x, y, z);
+    let dens = fert * this.patch(x, y, z, F.bio === 1 || F.bio === 3 ? 0.25 : 0) * this.trodden(c, x, y, z);
+    if (h >= F.f * dens) return;
+    dens *= this.lushAt(F, x, y, z, this.lowRoof(c, lx, ly, lz));
     if (h >= F.f * dens) return;
     if (!c.fresh(lx, ly, lz) || !c.fresh(lx, ly - 1, lz)) return;
     // kinds come in little clumps: most picks share a hash over a 0.75 m cell
@@ -468,7 +484,7 @@ export class Vegetation {
     const fert = Math.max(0.35, FERT[sup]);
     if (h >= F.c * fert) return;
     const x = (vx + 0.5) / VOX, y = (vy + 1) / VOX, z = (vz + 0.5) / VOX;
-    const dens = fert * this.patch(x, y, z, 0.15) * (c.trails.length ? 0.4 + 0.6 * this.trodden(c, x, y - 1, z) : 1);
+    const dens = fert * this.patch(x, y, z, 0.15) * (c.trails.length ? 0.4 + 0.6 * this.trodden(c, x, y - 1, z) : 1) * this.lushAt(F, x, y, z);
     if (h >= F.c * dens) return;
     if (!c.fresh(lx, ly, lz) || !c.fresh(lx, ly + 1, lz)) return;
     const kind = pickW(F.ceil, h3(vx, vy, vz, S + 53));
@@ -493,7 +509,7 @@ export class Vegetation {
     const vx = c.X0 + lx, vy = c.Y0 + ly, vz = c.Z0 + lz;
     // the face of the rock (metres) and its outward normal
     const x = (vx + 0.5 + dx * 0.5) / VOX, y = (vy + 0.5) / VOX, z = (vz + 0.5 + dz * 0.5) / VOX;
-    if (hk > FERT[m] * this.patch(x, y, z, F.bio === 1 ? 0.3 : 0)) return;
+    if (hk > FERT[m] * this.patch(x, y, z, F.bio === 1 ? 0.3 : 0) * this.lushAt(F, x, y, z)) return;
     if (!c.fresh(lx, ly, lz) || !c.fresh(lx + dx, ly, lz + dz)) return;
     const kind = pickW(F.wall, h3(vx, vy, vz, S + 61));
     const K = KINDS[kind];

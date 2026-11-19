@@ -1050,7 +1050,7 @@ export default class HomeScene extends Scene {
     if (this.chest?.busy) this.game.ui.status?.pin?.(false);
     // the built house is kept for coming back (~80 MB of buffers): not on a phone or a small device,
     // where the mine needs the memory more than the house needs the seconds
-    try { if ((navigator.deviceMemory || 8) <= 4 || matchMedia('(pointer: coarse)').matches) dropHouseCache(); } catch (e) { /* keep it */ }
+    try { if ((navigator.deviceMemory || 8) <= 4) dropHouseCache(); } catch (e) { /* keep it */ }
     super.exit();
   }
 }

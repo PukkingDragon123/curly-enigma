@@ -110,7 +110,7 @@ export function floatIn(host, html, o = {}) {
 export function typeFloat(host, html, o = {}) {
   const { cells, flat } = letterize(host, html);
   const total = flat.length;
-  const speed = o.speed || 46;
+  const speed = o.speed || 30; // (letters a second: wave 18, slower and easier to read)
   const face = o.face || null;
   let n = 0, shown = 0, pause = 0, delay = o.delay ?? 0.1, raf = 0, timer = 0, last = performance.now(), born = last, talking = false;
   const voice = voiceFor(o); // (the 8-bit babble, one blip a syllable: src/audio/voice8.js)

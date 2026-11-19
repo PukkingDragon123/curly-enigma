@@ -44,6 +44,7 @@ import { DustVeil, tonesOf } from './enemies/veil.js'; // (wave 13) dust in your
 import { enemyIconURL } from './enemies/icons.js';
 import * as UIM from '../ui/UI.js';
 import { critterIconURL } from '../gfx/critters32.js';
+import { PHONE } from '../core/platform.js';
 
 // creature toughness tracks the pick you'd expect at that depth; damage scales with depth
 const ZONE_POWER = [1, 1, 1.4, 2.1, 2.8, 3.6, 4.8];
@@ -125,7 +126,7 @@ export class Enemies {
     this.inUpdate = false;
     this.hint = { tough: 0, toughT: -99, crystal: 0, floatT: -99 };
     // phones: a tighter cap (the creatures carry twice the voxels since wave 13)
-    this.maxAlive = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? MAX_ALIVE - 3 : MAX_ALIVE;
+    this.maxAlive = PHONE ? MAX_ALIVE - 3 : MAX_ALIVE; // (PC only)
     this.tokens = new Set();
     this.lampOn = true;
     this.stepNoiseT = 0;
@@ -504,7 +505,7 @@ export class Enemies {
   /** First crystal chipped off a golem: you're doing it right. */
   crystalHint() {
     if (this.hint.crystal++) return;
-    this.say('crystal', 'The crystal cracks! Keep mining it — every shard that breaks off staggers the golem.', 'good', 9999);
+    this.say('crystal', 'The crystal cracks. Keep at it: every shard staggers it.', 'good', 9999);
   }
 
   /** A sound from a creature: quieter with distance, panned toward where it is. */
@@ -1035,7 +1036,7 @@ export class Enemies {
         const from = [p.x - v.x / sp, p.y, p.z - v.z / sp];
         if (s.onHit) s.onHit(s, from);
         else if (this.hurtPlayer(s.src || s, s.dmg, [v.x / sp * 2.5, 1.8, v.z / sp * 2.5], s.kind, { from })) {
-          if (fire) { this.say('ember', 'Ouch, hot! Ember blobs <b>bounce</b> — keep moving.', 'bad', 40); this.sound('ignite', {}); }
+          if (fire) { this.say('ember', 'Ouch, hot! Embers <b>bounce</b>. Keep moving.', 'bad', 40); this.sound('ignite', {}); }
         }
         if (fire) this.fx.sparks(p.x, p.y, p.z, 16, s.hot, [0, 1, 0], 3.5);
         done = true;

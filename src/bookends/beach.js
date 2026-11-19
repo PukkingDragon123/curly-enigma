@@ -11,6 +11,9 @@ import { signTexture } from './pixfont.js';
 import { pixelTexture } from '../gfx/PixelArt.js';
 import { voxelMaterial } from '../gfx/Voxel.js';
 import { makeNoise2D, makeRng, clamp, lerp, shade } from '../core/util.js';
+import { Handheld } from './cine.js';
+
+const hand = new Handheld(5);
 
 const VS = 1 / 8;
 const RX = 8.6, RZ = 6.6, P = 2.4;
@@ -660,11 +663,12 @@ export function buildBeach(ctx) {
   const placeOrbit = (t) => {
     const a = A0 - t * (Math.PI * 2 / 150);
     const intro = clamp(t / 9, 0, 1);
-    const e = 1 - (1 - intro) * (1 - intro);
+    const e = intro * intro * intro * (intro * (intro * 6 - 15) + 10); // (wave 18: smootherstep, no jolt as it settles)
     const R = lerp(10.5, 8.4, e);
     const H = lerp(2.6, 1.55, e);
     camera.position.set(orbitTarget.x + Math.sin(a) * R, orbitTarget.y + H, orbitTarget.z + Math.cos(a) * R);
     camera.lookAt(orbitTarget);
+    hand.apply(camera, t, 0.7); // (an operator's sway, bookends/cine.js)
   };
 
   // shared per-frame things (water, sky, birds, crabs)

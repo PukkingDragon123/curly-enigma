@@ -46,7 +46,7 @@ export function openNotes(game, notes, start = 0, opts = {}) {
   let i = Math.max(0, Math.min(notes.length - 1, start));
   const title = el('div', { class: 'nt-title' });
   const text = el('div', { class: 'nt-text' });
-  const sign = el('div', { class: 'nt-sign' }, [el('span', {}, '— Old Star'), el('i', { class: 'nt-star', 'aria-hidden': 'true' })]);
+  const sign = el('div', { class: 'nt-sign' }, [el('span', {}, 'Old Star'), el('i', { class: 'nt-star', 'aria-hidden': 'true' })]);
   const paper = el('div', { class: 'nt-paper' }, [title, text, sign]);
   const pins = el('div', { class: 'nt-pins' });
   const count = el('span', { class: 'nt-count' });

@@ -36,6 +36,7 @@ import { Build } from './Build.js'; // building part: blocks, ladders, torches, 
 import { TOOL_KINDS, HOTBAR_N, hotbarOf, heldItem } from '../core/hotbar.js';
 import { startEating, glowLayer } from '../cooking/eating.js'; // (wave 16) the first-person bite sequence
 import { Harvest } from './veg/harvest.js'; // (wave 16) pluck plants, mine salt, rob honeycomb
+import { CamFeel } from '../fps/feel.js'; // head bob on the footsteps, sprint FOV kick
 // the build slot (slot 7) puts up what Build.js says: blocks on a 0.5 m grid, ladders, torches, doors…
 const REACH = 2.3;
 // (wave 14) how a blow feels, by what it lands on: camera kick, hit-stop on a crack (stop) and on a
@@ -103,7 +104,8 @@ export default class DigScene extends Scene {
     this.world = new DeepWorld({ seed: deep.seed, W, D, tunnels: deep.tunnels, plan: plan0 });
     this.world.pool = pool;
     this.scene.background = new THREE.Color(0x030203);
-    this.fov = 74;
+    this.fov = g.gfx?.get('fov') ?? 74; // (the Field of view setting, src/core/graphics.js)
+    this.feel = new CamFeel();
     this.camera = new THREE.PerspectiveCamera(this.fov, g.engine.width / g.engine.height, 0.03, 60);
     this.U = makeTerrainUniforms();
     this.terrain = new TerrainView(this.scene, this.world, this.U);
@@ -207,6 +209,9 @@ export default class DigScene extends Scene {
     }
     // (wave 16) every plant can be plucked, and salt, comb, nests, bushes, pods and roots grow among them
     this.harvest = null;
+    // (no hitches when chunks load) every plant model's first variant is built in a worker now,
+    // so meeting a new kind while walking doesn't build it mid-frame (src/deep/veg/plantWarm.js)
+    if (this.vegetation) import('./veg/plantWarm.js').then((m) => m.warmPlants()).catch(() => {});
     if (this.vegetation) try { this.harvest = new Harvest(this); this.harvest.attach(this.vegetation); this.debug.harvest = this.harvest.debug; } catch (e) { console.warn('Harvest failed', e); this.harvest = null; }
     if (this.fluids || this.props) this.world.onChange = (vx, vy, vz, old, m) => { this.fluids?.onVoxel(vx, vy, vz, old, m); this.props?.onVoxel?.(vx, vy, vz, old, m); };
     this.bodies.hooks = {
@@ -367,7 +372,8 @@ export default class DigScene extends Scene {
     this.wish = busy ? { x: 0, z: 0 } : { x: -sy * mv.y + cy * mv.x, z: -cy * mv.y - sy * mv.x };
     const exhausted = st.energy < 8;
     const load = this.weigh(dt);
-    const ev = pl.update(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted && load.run, crouch: inp.isDown('KeyC'), jumpMul: (st.hasBuff('bouncy') ? 1.35 : 1) * load.jump, frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (st.skill?.('speed') || 1) * (this.blocking ? 0.55 : 1) * load.speed });
+    const running = inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted && load.run;
+    const ev = pl.step(dt, mv, { jump: inp.pressed('Space'), jumpHeld: inp.isDown('Space'), run: inp.isDown('ShiftLeft', 'ShiftRight') && !exhausted && load.run, crouch: inp.isDown('KeyC'), jumpMul: (st.hasBuff('bouncy') ? 1.35 : 1) * load.jump, frozen: busy, speedMul: (exhausted ? 0.6 : 1) * (st.skill?.('speed') || 1) * (this.blocking ? 0.55 : 1) * load.speed });
     // props are solid (crystal clusters, mushrooms, fossils, stalagmites): walk round them (a push
     // that would shove the mole into the rock is undone, back to where it stood: it never gets
     // wedged in a wall)
@@ -392,10 +398,11 @@ export default class DigScene extends Scene {
       else if (z === 4 && !st.protects('heat')) { st.useEnergy(0.18 * dt * (st.hasBuff('cool') ? 0.4 : 1)); if (!st.hasBuff('cool')) this.say('heat', 'The heat down here is <b>draining you</b>. Something cooling to eat would help.', 'warn', 120); }
     }
     if (pl.inLava && !st.protects('heat')) { st.useEnergy(18 * dt * (st.hasBuff('cool') ? 0.4 : 1)); if (chance(dt * 4)) this.audio.play('sizzle'); this.say('lava', '<b>LAVA!</b> Get out!', 'bad', 2); for (let k = 0; k < 2; k++) this.fx.ember(pl.pos.x, pl.pos.y + 0.3, pl.pos.z); }
-    if (pl.grounded && pl.speed > 0.6) {
-      this.stepT = (this.stepT || 0) - dt * pl.speed / 2.4;
-      if (this.stepT <= 0) { this.stepT = 1; this.audio.play('step', { vol: 0.35 }); this.energy(0.04); }
-    }
+    // head bob, footsteps on its beat and the sprint FOV kick (src/fps/feel.js); the bob is off
+    // with the Head bob setting, the kick with Sprint FOV kick (or Screen shake off)
+    const gfx = g.gfx;
+    const feel = this.feel.update(dt, pl, { run: running && !busy, bob: gfx?.get('headBob') ?? true, kick: (gfx?.get('fovKick') ?? true) && !!this.state.data.settings.shake });
+    if (feel.step) { this.audio.play('step', { vol: 0.35 }); this.energy(0.04); }
     // dig / use
     const held = !!this.clumps?.capture();
     if (held) { if (this.vm) this.vm.use(this.slotName, false); this.aimAt(null); }
@@ -428,8 +435,10 @@ export default class DigScene extends Scene {
     // a belly crawl: the view low, heaving with each stroke and rolling side to side
     const crawlK = (this.crawlK = (this.crawlK || 0) + ((pl.crawl ? 1 : 0) - (this.crawlK || 0)) * Math.min(1, dt * 8));
     const cs = clamp(pl.speed / 1.1, 0, 1) * crawlK;
-    const bob = pl.grounded ? Math.sin(pl.bobT * 2) * 0.022 * clamp(pl.speed / 3, 0, 1) * (1 - crawlK) + Math.abs(Math.sin(pl.crawlPh)) * 0.022 * cs : 0;
-    const crawlRoll = Math.sin(pl.crawlPh) * 0.045 * cs, crawlPitch = -Math.abs(Math.cos(pl.crawlPh)) * 0.02 * cs;
+    const cph = pl.rCrawlPh ?? pl.crawlPh; // (drawn between physics steps)
+    const bob = (pl.grounded ? Math.abs(Math.sin(cph)) * 0.022 * cs : 0) + feel.y * (1 - crawlK);
+    const crawlRoll = Math.sin(cph) * 0.045 * cs + feel.roll * (1 - crawlK), crawlPitch = -Math.abs(Math.cos(cph)) * 0.02 * cs;
+    const bx = feel.x * (1 - crawlK), byaw = Math.cos(pl.yaw), bsy = Math.sin(pl.yaw);
     this.shadow?.update(dt, pl);
     // the kick springs back with a small overshoot (quick and bouncy), the zoom punch too
     {
@@ -444,8 +453,9 @@ export default class DigScene extends Scene {
     const sh = this.shakeAmp;
     const vo = this.viewOff && this.state.data.settings.shake ? this.viewOff : null; // a sneeze moves the head (enemies/veil.js)
     this.viewOff = null;
-    this.camera.position.set(eye.x + (Math.random() - 0.5) * sh * 0.05, eye.y + bob + (Math.random() - 0.5) * sh * 0.05 + (vo ? vo[2] : 0), eye.z + (Math.random() - 0.5) * sh * 0.05);
-    this.camera.rotation.set(pl.pitch + this.kick.x + crawlPitch + (vo ? vo[0] : 0), pl.yaw + this.kick.y, this.kick.z + crawlRoll + (vo ? vo[1] : 0), 'YXZ');
+    this.camera.position.set(eye.x + bx * byaw + (Math.random() - 0.5) * sh * 0.05, eye.y + bob + (Math.random() - 0.5) * sh * 0.05 + (vo ? vo[2] : 0), eye.z - bx * bsy + (Math.random() - 0.5) * sh * 0.05);
+    const vmKick = this.state.data.settings.shake && this.vm ? this.vm.camPitch || 0 : 0; // the swing's share of the view (ViewModel)
+    this.camera.rotation.set(pl.pitch + this.kick.x + crawlPitch + vmKick + (vo ? vo[0] : 0), pl.yaw + this.kick.y, this.kick.z + crawlRoll + (vo ? vo[1] : 0), 'YXZ');
     if (this.eatSeq) { // (wave 16) eating: a happy bob and a warm glow (cooking/eating.js)
       if (g.ui.isPanelOpen()) this.eatSeq.cancel();
       const e = this.eatSeq.update(dt);
@@ -453,22 +463,28 @@ export default class DigScene extends Scene {
       if (this.eatSeq.over) { this.eatSeq = null; glowLayer(0); }
     }
     if (!this.gather) {
-      const fov = this.fov + (this.state.data.settings.shake ? this.fovK : 0);
+      const base = gfx?.get('fov') ?? 74;
+      if (base !== this.fov) { this.fov = base; this.fx.setPixelScale(g.engine.height, base); }
+      const fov = this.fov + feel.fov + (this.state.data.settings.shake ? this.fovK : 0);
       if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     }
     this.camera.updateMatrixWorld();
     this.gather?.frame?.(dt); // the gathering close-up (deep/gather) steers the camera and paws
     this.game.convo?.director?.apply(this.camera, dt); // cutscene talk camera (src/fx/director.js) [convo hook]
     // terrain + lights
-    this.terrain.update(pl.pos.x, pl.pos.y + 0.5, pl.pos.z, 7);
-    this.terrain.cull(eye.x, eye.y, eye.z, this.U.fogDist.value + 2);
+    // (the View distance setting: how far chunks stream in and are drawn)
+    const T = this.terrain, vd = g.engine.viewDist || 1;
+    T.r0 ??= [T.radius, T.keepRadius];
+    if (T.vd !== vd) { T.vd = vd; T.radius = Math.max(4, Math.round(T.r0[0] * vd)); T.keepRadius = Math.max(T.radius + 2, Math.round(T.r0[1] * vd)); T.lastKey = null; }
+    T.update(pl.pos.x, pl.pos.y + 0.5, pl.pos.z, 7);
+    T.cull(eye.x, eye.y, eye.z, (this.U.fogDist.value + 2) * Math.min(1, vd) + (vd > 1 ? (vd - 1) * 16 : 0));
     this.lights(eye);
     const h = this.U.hit.value; h.w = Math.max(0, h.w - dt * 5);
     if (this.post.flash) this.post.flash = Math.max(0, this.post.flash - dt * 1.5);
     // hands and tools
     if (this.vm) {
       const lampK = clamp(st.lightRadius() / 5, 0.6, 1.6);
-      this.vm.update(dt, { speed: pl.speed, grounded: pl.grounded, climbing: pl.climbing, swimming: pl.inWater, crawling: pl.crawl, crawlPh: pl.crawlPh, look, lamp: { color: this.U.lampCol.value, intensity: lampK }, ambient: this.U.ambient.value, camera: this.camera, heat: this.drillHeat });
+      this.vm.update(dt, { speed: pl.speed, grounded: pl.grounded, climbing: pl.climbing, swimming: pl.inWater, crawling: pl.crawl, crawlPh: pl.rCrawlPh ?? pl.crawlPh, look, vel: pl.vel, yaw: pl.yaw, stridePh: pl.rBobT, sway: g.gfx?.get('sway') ?? 1, lamp: { color: this.U.lampCol.value, intensity: lampK }, ambient: this.U.ambient.value, camera: this.camera, heat: this.drillHeat });
     }
     this.hudTick(dt);
   }
@@ -717,7 +733,7 @@ export default class DigScene extends Scene {
       this.audio.play('clang'); this.fx.sparks(px, py, pz, 8, [1, 0.8, 0.4], out, 3);
       this.vm?.impact('pick', 1.2, { feel: 'clang', stop: 0.05 });
       const want = pickForTier?.(needs);
-      this.say('hard', `${mat.name} is too hard for this pickaxe${want ? ` — you need at least a <b>${want.name}</b>` : ''}.`, 'warn', 5);
+      this.say('hard', `${mat.name} is too hard for this pickaxe${want ? `: you need a <b>${want.name}</b> or better` : ''}.`, 'warn', 5);
       return;
     }
     const res = this.digger.strike(hit.vx, hit.vy, hit.vz, power, [hit.nx, hit.ny, hit.nz]);
@@ -1699,7 +1715,7 @@ export default class DigScene extends Scene {
     const st = this.state;
     st.data.stats.faints++;
     this.audio.play('faint');
-    this.say('faint', 'You fainted... and woke up back home, missing part of your haul.', 'bad', 1);
+    this.say('faint', 'You blacked out. Woke up at home, short part of the haul.', 'bad', 1);
     // lose half of this trip's finds
     const lost = this.tripItems.filter((_, i) => i % 2 === 1);
     for (const id of lost) st.removeItem(id, 1);

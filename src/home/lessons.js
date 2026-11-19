@@ -17,10 +17,10 @@
 //            tutorial: true }; src/cooking/lesson.js)
 //   done   → back with a meal in you: the graduation (the fire roars up, he cheers), everything
 //            else unlocks (skills, gold, the quest strip, building, shops...: ui.onboard.unlockAll).
-// On screen: one quiet line says what to do (ui.onboard.goal), the thing to use glints in the world
-// (gold motes rising off it: src/home/tutorFx.js; an arrow at the screen edge only while it's off
-// screen) and the crosshair names it. He shows the way: back at his anvil hammering, at the cage, at
-// the fire; he beckons when you come near. What he hands over he holds out in his paws first.
+// On screen: nothing (wave 18). The thing to use glints in the world (gold motes rising off it:
+// src/home/tutorFx.js), he goes there and works at it, beckons when you come near and calls you over
+// in a few words if you dawdle; what he hands over he holds out in his paws first; the crosshair
+// names things. The cutscenes are letterboxed, the HUD tucked away, and hold Esc / a click skips.
 // The beats are written against the home's stations (questSpot('lift' | 'forge' | 'hearth'), his
 // spots, the lift / forge / cooking functions), not against rooms.
 // While a lesson is on the cage (until the mining lesson), the way out, the build bench and the bed
@@ -53,12 +53,15 @@ const NEXT = {
   cook: { text: 'A smith who doesn\'t eat is a skeleton with a hammer. To the <b>fire pit</b>!', mood: 'happy', where: 'fire' },
 };
 
-/** The one-line objective per step. */
-const GOAL = {
-  pick: 'Make a pick at <b>the forge</b>',
-  lift: 'Ride <b>the cage</b> down',
-  forge: 'Smelt your copper at <b>the forge</b>',
-  cook: 'Cook at <b>the fire pit</b>',
+/**
+ * Wave 18: no objective line on screen. If you dawdle he calls you over himself (a passing line by
+ * his head, a beckon or a point), a few words, never the same twice running.
+ */
+const CALL = {
+  pick: ['Forge. Over here.', 'This way. Mind the bucket.', 'Picks don\'t make themselves.'],
+  lift: ['Cage is here.', 'Down you go. It only creaks.', 'Copper\'s not coming up on its own.'],
+  forge: ['Forge. Bring the copper.', 'Over here. It\'s warm.'],
+  cook: ['Fire pit. I\'m starving.', 'Over here. Bring an appetite.'],
 };
 
 /** Things at home that wait for an unlock (src/ui/Onboard.js UNLOCKS), by label. */
@@ -219,6 +222,30 @@ export class HomeLessons {
     return !cut.on;
   }
 
+  /**
+   * Inside a cutscene: he walks over to you (a few seconds at most), the view following him, and
+   * faces you, so the talk that follows is a proper close two-shot rather than a shout across the cave.
+   */
+  async comeOver({ go, sleep, tween }, d = 0.95) {
+    const star = this.star;
+    if (!star?.rig) return;
+    const p = this.cam || this.rig.player.pos;
+    if (Math.hypot(star.pos.x - p.x, star.pos.z - p.z) > d + 0.35) {
+      star.scripted = true;
+      const at = this.approachSpot(d);
+      const walk = star.walkTo(at.x, at.z, 1.15);
+      // (the view turns with him as he comes: a slow pan, not a snap)
+      const follow = (dt) => { if (!this.cam || !star.rig) return; const h = star.head(_v); const yaw1 = Math.atan2(-(h.x - this.cam.x), -(h.z - this.cam.z)); this.cam.yaw += wrap(yaw1 - this.cam.yaw) * Math.min(1, dt * 3); };
+      this.tickers.push(follow);
+      try { await go(Promise.race([walk, sleep(3.4)])); } finally { const i = this.tickers.indexOf(follow); if (i >= 0) this.tickers.splice(i, 1); }
+      star.mode = 'idle';
+      star.path = null;
+    }
+    star.faceTo(p.x, p.z, true);
+    star.scripted = false;
+    await go(this.faceStar(tween, 0.45));
+  }
+
   /** Ease the scripted camera round to look at Old Star's face. */
   faceStar(tween, secs = 0.8) {
     const c = this.cam, star = this.star;
@@ -270,8 +297,8 @@ export class HomeLessons {
     model.position.set(0, 0.52, 0.3);
     this.game.audio.play('pickup', { vol: 0.45 });
     await go(sleep(0.25));
-    // (a wider shot than his close-up, so what's in his paws is in it)
-    await line(html, mood, { camera: 'ots' });
+    // (a two-shot from the side, wider than his close-up, so what's in his paws is in it and nothing's on the lens)
+    await line(html, mood, { camera: 'two' });
     const o = star.drop();
     o?.userData?.dispose?.();
     this.game.audio.play('pickup', { vol: 0.5, pitch: 1.15 });
@@ -289,7 +316,7 @@ export class HomeLessons {
     const lump = rockyLump(1);
     star.carry(lump);
     lump.rotation.set(0.2, 0.5, 0);
-    lump.scale.setScalar(3.4);
+    lump.scale.setScalar(2.0); // (he's up close now: wave 18 has him come over first)
     // (held up between you, just under his eyes and toward the camera: never behind his snout)
     // (your own eyes are the camera here: the scripted view this.cam, not a talk shot round his side)
     const eyeAt = () => (this.cam ? new THREE.Vector3(this.cam.x, this.cam.y, this.cam.z) : this.camera.getWorldPosition(new THREE.Vector3()));
@@ -298,7 +325,7 @@ export class HomeLessons {
       const to = c.clone().sub(h); to.y = 0;
       const d = to.length() || 1;
       // (well out in front of his snout, a little under your eye line, so it sits below his star nose)
-      const w = h.add(to.multiplyScalar(Math.min(0.85, d * 0.62) / d));
+      const w = h.add(to.multiplyScalar(Math.min(0.6, d * 0.42) / d));
       w.y = Math.min(h.y, c.y) - 0.26 + bob;
       if (lump.parent) { lump.parent.updateMatrixWorld(true); lump.position.copy(lump.parent.worldToLocal(w)); }
     };
@@ -325,7 +352,7 @@ export class HomeLessons {
         jolt = 0.015;
         star.rig.doEmote?.('nod', 0.3);
         a.play('chisel', { vol: 0.55, pitch: 0.95 + Math.random() * 0.15 });
-        if (n === 2) teachWord(this.game, 'Chip the rock off', at().add(new THREE.Vector3(0, 0.16, 0)), { life: 2.6 });
+        if (n === 2) teachWord(this.game, 'Chip the rock off', at().add(new THREE.Vector3(0, 0.14, 0)), { life: 2.4, size: 0.42 });
       }
       jolt *= 0.75;
       hold(jolt);
@@ -338,7 +365,7 @@ export class HomeLessons {
     const p = at();
     flare(fx, p, { n: 10, speed: 1.2 });
     a.play('sparkle', { vol: 0.45 });
-    teachWord(this.game, 'Clean ore sells', p.add(new THREE.Vector3(0, 0.34, 0)), { kind: 'gold', life: 2.2 });
+    teachWord(this.game, 'Clean ore sells', p.add(new THREE.Vector3(0, 0.3, 0)), { kind: 'gold', life: 2.2, size: 0.42 });
     await go(sleep(1.1));
     star.drop();
     lump.userData.dispose?.();
@@ -378,13 +405,13 @@ export class HomeLessons {
           this.game.audio.play('sparkle', { vol: 0.4 });
           this.copperHome();
           done = true;
-          await line('<i>*snff*</i> Copper! Good. Coal\'s in your satchel.', 'proud');
+          await line('<i>Snff.</i> Copper. Not bad for a first go. Coal\'s in your bag.', 'proud');
           star.drop();
           lump.userData.dispose?.();
-          await this.holdOut(notebook(), 'My old <b>notebook</b>. Yours now.', 'happy', tools);
+          await this.holdOut(notebook(), 'My <b>notebook</b>. Don\'t read the back pages.', 'happy', tools);
           ui.unlock?.(['book', 'radar', 'layers']);
           star.gesture('point', 1.6);
-          await line('To the <b>forge</b>!', 'happy');
+          await line('<b>Forge</b>. Go on.', 'happy');
         }, { face: false });
         if (star.carrying) star.drop();
         lump.userData.dispose?.();
@@ -394,13 +421,13 @@ export class HomeLessons {
         this.placeStarForLesson();
         this.startHomeTutor('forgeGo');
       } else {
-        this.starLine('No copper? Orange specks in the rock, just past the cage. Back down you go.', { mood: 'stern' });
+        this.starLine('No copper? Orange flecks, just past the cage. Back down.', { mood: 'stern' });
         this.startHomeTutor('lift');
       }
       return;
     }
     if (stage === 'pick' && from === 'forge') {
-      this.starLine('No pick yet? You can\'t dig with your nose. Well, I can. Back to the forge.', { mood: 'stern' });
+      this.starLine('No pick? You can\'t dig with your nose. I can, mind. Forge.', { mood: 'stern' });
       this.placeStarForLesson();
       this.startHomeTutor('forgeGo');
       return;
@@ -413,19 +440,21 @@ export class HomeLessons {
       ui.unlock?.(['belt', 'dig']);
       await this.cutscene(async (tools) => {
         const { line, go, sleep } = tools;
+        // (wave 18: he comes over to see it, sniffing the air on the way; you turn to him as he comes)
+        await this.comeOver(tools, 1.0);
         star.sniff();
         this.sniffSound?.();
         await go(sleep(0.4));
         star.gesture(q >= 55 ? 'cheer' : 'point', 1.6);
         this.flareAt(this.firePos('forge'), { n: 30 });
-        await line(q >= 80 ? 'Look at that edge! It\'d shame half of Deep Town.' : q >= 55 ? 'A proper pick! Lumpy on the cheek, but it\'ll bite rock.' : 'Well, it\'s more or less pick-shaped. It\'ll dig.', q >= 55 ? 'proud' : 'laugh');
-        await this.holdOut(satchel(), 'My old <b>satchel</b>, and my spare <b>chisel</b>.', 'happy', tools);
+        await line(q >= 80 ? 'Huh. Look at that edge. Who taught you that?' : q >= 55 ? 'Lumpy on the cheek. It\'ll bite rock, though.' : 'It\'s pick-shaped. Mostly. It\'ll dig.', q >= 55 ? 'proud' : 'laugh');
+        await this.holdOut(satchel(), 'My old <b>satchel</b>. Spare <b>chisel</b> in it. Mind the hole.', 'happy', tools);
         this.giveChisel();
         ui.unlock?.(['pack', 'tools']);
         // (he shows you what the chisel's for: ore comes out of the wall in a crust of rock)
         await this.chipDemo(tools);
         star.gesture('point', 1.6);
-        await line('Now: <b>copper</b>. Down the cage. <b>Orange specks</b>.', 'happy');
+        await line('<b>Copper</b> next. Down the cage. Look for orange.', 'happy');
       });
       this.giveChisel();
       ui.unlock?.(['pack', 'tools']);
@@ -441,9 +470,11 @@ export class HomeLessons {
     if (stage === 'cook' && from === 'forge') {
       const w = (st.data.weapons || []).slice(-1)[0];
       const good = 'SAB'.includes(w ? (w.grade || 'C') : 'C');
-      await this.cutscene(async ({ line }) => {
+      await this.cutscene(async (tools) => {
+        const { line } = tools;
+        await this.comeOver(tools, 1.0);
         star.gesture(good ? 'cheer' : 'point', 1.6);
-        await line(`${good ? 'A fine' : 'A lumpy'} ${w?.name || 'blade'}, and it's yours. ${good ? 'Your granny would cry.' : 'It\'ll sell.'} Now I'm starving: to the <b>fire pit</b>!`, good ? 'proud' : 'laugh');
+        await line(good ? `That's a ${w?.name || 'blade'}. A real one. Now feed me: <b>fire pit</b>.` : 'Lumpy. It\'ll sell. Now feed me: <b>fire pit</b>.', good ? 'proud' : 'laugh');
       });
       this.placeStarForLesson();
       this.startHomeTutor('cookGo');
@@ -466,7 +497,7 @@ export class HomeLessons {
         star.faceTo(p.x, p.z);
         star.scripted = false;
         await go(this.faceStar((s, f) => this.tween(s, f), 0.5));
-        await line('Mm! Proper food. Now you can dig, forge and cook. That\'s all I know, more or less.', 'happy');
+        await line('Mm. That\'s proper food. Right. That\'s everything I know.', 'happy');
         // the fire roars up behind him: the lessons are over
         star.gesture('cheer', 2);
         const fire = this.firePos('hearth');
@@ -475,7 +506,7 @@ export class HomeLessons {
         this.post.flashColor = 0xffb060;
         this.tween(0.9, (k) => { this.post.flash = 0.18 * (1 - k); }).then(() => { this.post.flash = 0; });
         await go(sleep(1.2));
-        await line('The rest is a <span class="gold-txt">million gold</span> and a lot of digging. Deep Town\'s down there somewhere: they\'ll buy the lot. Off you go!', 'proud');
+        await line('The rest is a <span class="gold-txt">million</span> and a sore back. Deep Town\'s down there somewhere. They buy anything.', 'proud');
       }, { face: false });
       star.scripted = false;
       // everything else comes in now: your gold, your skills, your tasks, building
@@ -539,31 +570,25 @@ export class HomeLessons {
     if (ob?.data) ob.data.home = step;
     this.gateItems();
     if (star?.rig) star.nextT = 999;
-    let pos, glintAt, goal;
+    let pos, glintAt, call;
     if (step === 'lift') {
       const L = this.liftSpot();
-      pos = L; glintAt = L; goal = GOAL.lift;
+      pos = L; glintAt = L; call = CALL.lift;
     } else {
       const forge = step === 'forgeGo';
       const fire = this.firePos(forge ? 'forge' : 'hearth');
       const q = this.questSpot?.(forge ? 'forge' : 'hearth');
       pos = q ? new THREE.Vector3(q.x, q.y, q.z) : fire || pl.pos.clone();
       glintAt = fire || pos;
-      goal = forge ? (this.lessonStage() === 'pick' ? GOAL.pick : GOAL.forge) : GOAL.cook;
+      call = forge ? (this.lessonStage() === 'pick' ? CALL.pick : CALL.forge) : CALL.cook;
     }
     t.target = () => pos;
+    t.call = call;
+    t.calls = 0;
+    // (wave 18: nothing on screen. The thing glints in the world, he goes there and works, and he
+    // calls you over if you dawdle: tickHomeTutor)
     t.glint = new Glint(this.fx, () => glintAt, { r: step === 'lift' ? 0.3 : 0.28 });
-    t.mark = ob?.mark(() => pos, { edgeOnly: true }); // (an arrow at the edge only while it's off screen; no words)
-    // the line comes in once you're on your feet and looking (not over a cutscene's last word)
-    this.later(this.lessonStage() === 'pick' ? 2.2 : 0.8, () => { if (this.tut === t) ob?.goal(goal); });
-    // the very first time you can move: which keys / thumbs, once, tiny; it fades as you walk
-    if (this.lessonStage() === 'pick' && step === 'forgeGo') {
-      const touch = document.documentElement.classList.contains('is-touch');
-      this.later(1.0, () => {
-        if (this.tut !== t) return;
-        ob?.hint('move', touch ? 'Left thumb to walk &nbsp;·&nbsp; right thumb to look' : '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to walk &nbsp;·&nbsp; the mouse to look', { dur: 9, until: () => this.tut !== t || t.walked > 2.2 });
-      });
-    }
+    ob?.goal(null);
     if (star?.rig && step === 'lift' && star.spot !== 'lift') { star.scripted = false; this.placeStarForLesson(); }
   }
 
@@ -633,6 +658,13 @@ export class HomeLessons {
       star.pauseT = Math.max(star.pauseT || 0, 2.5);
       star.faceTo(pl.pos.x, pl.pos.z);
       star.gesture(t.step === 'lift' ? 'point' : 'beckon', 1.6);
+    }
+    // dawdling: he looks up from his work and calls you over (a few words by his head, no card)
+    if (star?.rig && !star.scripted && star.mode !== 'walk' && d > 2.4 && t.t > 12 && t.call?.length && this.tutCd('call', 16)) {
+      star.pauseT = Math.max(star.pauseT || 0, 2.8);
+      star.faceTo(pl.pos.x, pl.pos.z);
+      star.gesture(t.step === 'lift' ? 'point' : 'beckon', 1.8);
+      this.starLine(t.call[t.calls++ % t.call.length], { mood: 'calm', dur: 2.8 });
     }
   }
 

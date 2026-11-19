@@ -109,7 +109,7 @@ export function openShop(game, shopId) {
     renderCounter();
     const hidden = Array.isArray(shop.stock) ? shop.stock.filter((s) => s.minZone && s.minZone > st.data.zoneMax).length : 0;
     backNote.hidden = !hidden;
-    if (hidden) { backNote.textContent = `+${hidden} deeper down`; backNote.title = `${hidden} more in the back. Dig deeper and come back!`; }
+    if (hidden) { backNote.textContent = `+${hidden} deeper down`; backNote.title = `${hidden} more out back. Dig deeper, then ask.`; }
   };
 
   const isUnique = (it) => ['tool', 'equip', 'blueprint', 'floor', 'wallpaper', 'key'].includes(it.cat);
@@ -155,13 +155,13 @@ export function openShop(game, shopId) {
         if (r.ok) {
           game.audio.play('ui_buy');
           game.audio.play('coins', { n: 3 });
-          speak(pick(['Pleasure doing business!', 'Good choice.', 'Use it well!', 'Thank you kindly!', 'Come again!']));
+          speak(pick(shop.bought || ['Pleasure.', 'Good choice.', 'Ta.']));
           if (it.cat === 'furniture') ui.toast(`${it.name} is waiting at home. Place it in build mode.`, { icon: iconURL(id) });
           if (it.cat === 'blueprint' && it.kind === 'weapon') ui.toast(`New forge plans: ${it.name}`, { icon: iconURL(id), kind: 'good' });
           if (it.cat === 'blueprint' && it.kind === 'room') ui.toast('Your burrow is bigger now!', { kind: 'good' });
         } else {
           game.audio.play('ui_error');
-          speak(r.reason === 'Not enough gold' ? pick(['Bit short, are we?', 'Come back with more gold, dear.', 'No credit, sorry!']) : r.reason);
+          speak(r.reason === 'Not enough gold' ? pick(shop.poor || ['Bit short, are we?', 'No credit, sorry.']) : r.reason);
         }
         const top = scroll.scrollTop;
         render();
@@ -252,8 +252,8 @@ export function openShop(game, shopId) {
       ui.toast(`Sold for <b>${formatGoldFull(g)}</b> gold`, { icon: COIN(), kind: 'good' });
       st.learn('assay');
       tilt();
-      if (g > 5000) speak(pick(['Now THAT is quality.', 'Oh my. Oh my my.', 'You\'re going to make me retire early.']));
-      else speak(pick(['Fair price, fair price.', 'Mm. Decent.', 'I\'ll take it.', 'Pristine pieces pay more, remember.']));
+      if (g > 5000) speak(pick(['Now THAT is quality.', 'Hm. Hm! Well.', 'You\'re going to make me retire early.']));
+      else speak(pick(['Weighed. Fair.', 'Mm. Decent.', 'I\'ll take it.', 'Pristine pieces pay more, remember.']));
     }
     const top = scroll.scrollTop;
     render();
@@ -268,7 +268,7 @@ export function openShop(game, shopId) {
     const poster = el('div', { class: 'sh-poster' + (c.done ? ' done' : '') }, [
       el('small', {}, c.done ? 'Filled' : 'Wanted'),
       el('div', { class: 'sh-poster-icon' }, [itemVox.img(itemVox.wkey(c.type, c.metal), 'pix', { turn: !c.done })]),
-      el('b', {}, c.done ? 'Commission filled. Thank you!' : `${metal} ${type}`),
+      el('b', {}, c.done ? 'Commission filled.' : `${metal} ${type}`),
       el('p', {}, c.done ? 'A new request goes up tomorrow.' : `Grade ${c.minGrade} or better. Pays ${c.bonus}× its value. A new request goes up every day.`),
     ]);
     stock.append(poster);
@@ -281,7 +281,7 @@ export function openShop(game, shopId) {
           el('img', { class: 'pix', src: itemVox.weapon(w.type, w.metal, w.infusion), alt: '' }),
           el('div', { class: 'sh-line-txt' }, [el('b', {}, w.name), el('span', {}, `Grade ${w.grade}`)]),
           price(Math.round(w.value * c.bonus)),
-          el('div', { class: 'sh-line-btns' }, [el('button', { class: 'btn', onclick: () => { const g = st.sellWeapon(w.uid, c.bonus); c.done = true; afterSell(g); speak('Splendid! Exactly what my client wanted.'); } }, 'Deliver')]),
+          el('div', { class: 'sh-line-btns' }, [el('button', { class: 'btn', onclick: () => { const g = st.sellWeapon(w.uid, c.bonus); c.done = true; afterSell(g); speak('Correct. Exactly what was asked.'); } }, 'Deliver')]),
         ]));
       }
       stock.append(ledger);
@@ -324,7 +324,7 @@ export function openShop(game, shopId) {
     } }, have ? 'Board the Surface Express' : g >= GOAL_GOLD ? 'Buy ticket & board' : 'Not enough gold yet');
     stock.append(el('div', { class: 'sh-window' }, [ticket, gauge, buyBtn]));
     if (g < GOAL_GOLD) speak(pick(shop.lines));
-    else speak('A millionaire mole! Right this way, the lift is warmed up and waiting.');
+    else speak('A millionaire. This way, darling. Mind the step.');
   };
 
   render();

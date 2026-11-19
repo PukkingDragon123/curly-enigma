@@ -15,11 +15,12 @@
 // layout 'flat', lies in its local x-z plane (x right, z toward +z; for tarps and rugs). Its local
 // frame is a position and a turn about y in the set's space (meters).
 import * as THREE from 'three';
+import { PHONE } from '../core/platform.js';
 
 const G = -9.8;
 
 /** A coarse-pointer device (phone, tablet): fewer particles per sheet. */
-export const CLOTH_LOW = typeof matchMedia !== 'undefined' && (() => { try { return matchMedia('(pointer: coarse)').matches; } catch (e) { return false; } })();
+export const CLOTH_LOW = PHONE; // (PC only: always the full sheets)
 /** ?cloth=0: no cloth anywhere (A/B frame-time tests): sets build hidden and never step. */
 export const CLOTH_OFF = typeof location !== 'undefined' && /[?&]cloth=0/.test(location.search || '');
 /** Particles along a side of a sheet for this device (n on desktop, about 60% of it on phones). */

@@ -18,7 +18,7 @@
 // the guard when a blow lands on it (a parry snaps it forward with a ring).
 //
 // Extras: vm.tipView(out) (tool tip in view-camera space, for sparks and dust), vm.shake (0..1,
-// for the world camera), vm.heat (drill heat 0..1, simulated unless update() passes `heat`),
+// for the world camera), vm.camPitch (radians: the swing's small pitch kick, add it to the camera), vm.heat (drill heat 0..1, simulated unless update() passes `heat`),
 // vm.busy (an action or eat animation is playing), vm.world (a group to add to the WORLD scene
 // once: the x-ray beam cone lives there, lined up with the lens; pass `camera` = the world
 // camera to update() so it can follow).
@@ -107,6 +107,8 @@ const MOUTH = new THREE.Vector3(0.03, -0.052, -0.225); // where the snack is hel
 const SHOULDER = new THREE.Vector3(0.4, -0.6, 0.06);
 const WRIST_Z = 12; // voxels behind the grip/palm centre
 const ARM_LEN = 170; // forearm length (voxels, see forearmGeo)
+const UPPER_LEN = 170; // upper arm length (the same capsule without the gauntlet's ruff)
+const ARM_REACH = 0.97; // how much of the arm's full length a paw may use (it never locks out straight)
 
 const TWO_HANDED = new Set(['drill', 'beam']);
 const SWING_TOOLS = new Set(['pick', 'chisel', 'stake', 'beam', 'none', 'drill', 'brush', 'xray', 'food', 'hammer', 'tongs', 'smith', 'dynamite']);
@@ -143,7 +145,7 @@ export class ViewModel {
     const g = (parent) => { const o = new THREE.Group(); parent.add(o); return o; };
     this.handR = g(this.rig); this.handL = g(this.rig);
     this.armR = g(this.rig); this.armL = g(this.rig);
-    // upper arms: only shown when a steered paw reaches farther than the forearm (two-bone reach)
+    // upper arms: the forearm's continuation past the elbow toward the shoulder (placeArm)
     this.uarmR = g(this.rig); this.uarmL = g(this.rig);
     this.toolR = scaleVisible(g(this.handR), UNIT.clone());
     this.toolL = scaleVisible(g(this.handL), UNIT.clone());
@@ -193,10 +195,15 @@ export class ViewModel {
     this.swimPh = 0;
     this.layout = { x: 1, y: 1 };
     this.sway = { x: new Spring(90, 13), y: new Spring(90, 13) };
+    this.inert = { x: new Spring(110, 14), y: new Spring(140, 15), z: new Spring(110, 14) };
     this.land = new Spring(240, 13); // (wave 10) a bouncier landing squash on the paws
     this.recoil = new Spring(320, 15); // (wave 10) a punchier, quicker recoil
     this.sink = new Spring(150, 13); // a pick biting into soft ground (radians, down)
     this.jolt = new Spring(260, 18); // a pick thrown back off hard rock (radians, up)
+    this.cam = new Spring(250, 19); // the view's share of a blow (radians of pitch: vm.camPitch)
+    this.camPitch = 0;
+    this.squeeze = 0; // the fist's clench (-1 loose .. 1 tight), eased back to 0
+    this.gripSlide = 0; // where the paw holds the haft (voxels along it: + toward its end)
     this.buzz = { t: 0, a: 0, f: 70 }; // the haft ringing after hard rock
     this.stopT = 0; // hit-pause
     this.guarding = false;
@@ -210,6 +217,8 @@ export class ViewModel {
     this.drive = null;
     this.work = null; // default for update()'s `work` option
     this.driveK = 0;
+    this.driveSh = null; // the last drive's shoulders (kept while its paws let go)
+    this.shR = new THREE.Vector3(); this.shL = new THREE.Vector3(); this.shReady = false;
     this.jaw = 0;
     this.jawK = 0;
     this.jaws = null;
@@ -270,7 +279,10 @@ export class ViewModel {
   swing(kind = this.kind, dur = 0.3, o = {}) {
     if (this.mode !== 'tool' || this.pending) return;
     const prev = this.action;
-    this.action = { kind: SWING_TOOLS.has(this.kind) ? this.kind : kind, t: 0, dur: Math.max(0.08, dur), weight: o.weight ?? 1 };
+    // consecutive blows alternate their line a little (left, right...), never the same twice
+    this.swingN = (this.swingN || 0) + 1;
+    const vary = (this.swingN & 1 ? 1 : -1) * (0.65 + 0.35 * Math.abs(Math.sin(this.swingN * 12.9898)));
+    this.action = { kind: SWING_TOOLS.has(this.kind) ? this.kind : kind, t: 0, dur: Math.max(0.08, dur), weight: o.weight ?? 1, vary };
     if (prev && prev.kind === 'pick' && this.action.kind === 'pick' && this.pickPose) this.action.from = { ...this.pickPose };
   }
 
@@ -279,14 +291,24 @@ export class ViewModel {
     const s = clamp(strength, 0, 2);
     const k = kind === 'drill' ? 0.3 : kind === 'brush' ? 0.15 : kind === 'chisel' ? 0.6 : 1;
     const feel = o.feel;
-    if (feel === 'bite') { this.recoil.kick(2 * s * k); this.sink.kick(-3 * s * k); }
+    // the view takes a little of the blow (vm.camPitch: scenes add it to the camera's pitch); hard
+    // rock throws it more, soft ground less
+    this.cam.kick(-(feel === 'bite' ? 0.22 : feel === 'rebound' || feel === 'clang' ? 0.5 : 0.34) * s * k);
+    this.squeeze = 1; // the gloved fist clenches on contact
+    if (feel === 'bite') {
+      this.recoil.kick(2 * s * k); this.sink.kick(-3 * s * k);
+      // the point stuck in soft ground: a slow wobble as the paw tugs it free
+      if (!(this.buzz.a > 0.004)) { this.buzz.t = 0; this.buzz.a = 0.016 * s * k; this.buzz.f = 19; }
+    }
     else if (feel === 'rebound' || feel === 'clang') {
       const c = feel === 'clang' ? 1.5 : 1;
       this.recoil.kick(9 * s * k);
       this.jolt.kick(4.5 * s * k * c);
       this.buzz.t = 0; this.buzz.a = Math.max(this.buzz.a * 0.5, 0.03 * s * k * c); this.buzz.f = feel === 'clang' ? 95 : 72;
     } else this.recoil.kick(9 * s * k);
-    if (o.stop) this.stopT = Math.max(this.stopT, Math.min(0.12, o.stop));
+    // hit-stop: the blow holds still for a frame or three (the scene may ask for its own)
+    const stop = o.stop ?? (kind === 'pick' || kind === 'hammer' || kind === 'smith' || kind === 'chisel' ? (feel === 'bite' ? 0.018 : feel ? 0.045 : 0.03) * Math.min(1, s) : 0);
+    if (stop) this.stopT = Math.max(this.stopT, Math.min(0.12, stop));
     this.shake = Math.max(this.shake, (feel === 'bite' ? 0.22 : 0.35) * s * k);
   }
 
@@ -384,8 +406,8 @@ export class ViewModel {
     const V = VMV, S = [V, V, V], M = [-V, V, V];
     A.part(this.armR, forearmGeo(), { scale: S });
     A.part(this.armL, forearmGeo(), { scale: M });
-    A.part(this.uarmR, forearmGeo(), { scale: S });
-    A.part(this.uarmL, forearmGeo(), { scale: M });
+    A.part(this.uarmR, forearmGeo(undefined, 1, false), { scale: S });
+    A.part(this.uarmL, forearmGeo(undefined, 1, false), { scale: M });
     this.gripR = scaleVisible(A.part(this.handR, fistGeo(), { scale: S }));
     this.openR = scaleVisible(A.part(this.handR, openPawGeo(), { scale: S }));
     this.gripL = scaleVisible(A.part(this.handL, fistGeo(), { scale: M }));
@@ -485,6 +507,7 @@ export class ViewModel {
 
   // ---------------------------------------------------------------- frame
   update(dt, o = {}) {
+    if (this.kind === null) this.setTool('none'); // (drawn before any tool was set: bare paws)
     dt = Math.min(dt, 0.05);
     this.t += dt;
     const t = this.t;
@@ -532,7 +555,9 @@ export class ViewModel {
     this.grounded = grounded;
     const moving = grounded && this.mode === 'tool' ? clamp(speed / 3.2, 0, 1.5) : 0;
     this.bobAmp += (moving - this.bobAmp) * Math.min(1, dt * 6);
-    this.walkPh += dt * (3.2 + speed * 2.1) * (moving > 0.02 ? 1 : 0);
+    // (the stride: the body's own phase when the scene gives it, so paws and head bob dip together)
+    if (typeof o.stridePh === 'number') this.walkPh = o.stridePh;
+    else this.walkPh += dt * (3.2 + speed * 2.1) * (moving > 0.02 ? 1 : 0);
     if (this.mode === 'climb') this.climbPh += dt * (2.2 + speed * 2.4);
     if (this.mode === 'swim') this.swimPh += dt * (2.4 + speed * 1.2);
 
@@ -647,6 +672,11 @@ export class ViewModel {
       L.move(-0.02 * k, -0.05 * k, 0.05 * k).rot(0.35 * k, 0, 0.2 * k);
     }
 
+    // ---- the view's share of the swing (vm.camPitch, radians: scenes add it to the camera) and the grip
+    this.camPitch = this.cam.step(dt, this.camAim || 0);
+    this.camAim = 0;
+    if (!this.action || this.kind !== 'pick') { const r = Math.exp(-dt * 7); this.squeeze *= r; this.gripSlide *= r; }
+
     // ---- recoil spring (impacts)
     const rc = this.recoil.step(dt);
     R.rot(rc * 0.02, 0, 0).move(0, 0, rc * 0.0025);
@@ -667,6 +697,10 @@ export class ViewModel {
     this.place(this.handR, R);
     this.place(this.handL, L);
     this.gripR.visible = gripR; this.openR.visible = !gripR;
+    // the gloved fist loosens up the haft in a wind-up and clenches on the blow (a few % either way)
+    const sq = clamp(this.squeeze, -1, 1);
+    if (gripR && Math.abs(sq) > 0.002) this.gripR.scale.set(VMV * (1 - 0.03 * sq), VMV * (1 + 0.015 * sq), VMV);
+    this.toolR.position.set(0, this.kind === 'pick' ? this.gripSlide * VMV : 0, 0);
     this.gripL.visible = gripL; this.openL.visible = !gripL;
     this.toolR.visible = toolVis;
     this.toolL.visible = leftItem && !(this.eating && this.eating.hand === 'L');
@@ -680,13 +714,34 @@ export class ViewModel {
     if (this.tool.spin) this.tool.spin.rotation.z = this.spinA;
 
     // ---- forearms from the shoulders (below the view) to the wrists
+    // (the shoulders glide to where they belong: a drive that names its own shoulders, or ends,
+    // must not swing the arms round in one frame)
+    if (this.drive) this.driveSh = this.drive.shoulder || null;
+    else if (this.driveK <= 0.001) this.driveSh = null;
+    const shk = this.shReady ? 1 - Math.exp(-dt * 8) : 1;
+    this.shR.lerp(this.shoulderAt(1, _v), shk);
+    this.shL.lerp(this.shoulderAt(-1, _v), shk);
+    this.shReady = true;
     this.placeArm(this.armR, this.handR, 1, this.uarmR);
     this.placeArm(this.armL, this.handL, -1, this.uarmL);
 
-    // ---- whole-rig motion: look sway, walk bob, air, landing, shake, stow
-    const rate = Math.max(dt, 1 / 120);
-    const sx = this.sway.x.step(dt, clamp(-(look.dx || 0) / rate * 0.000032, -0.06, 0.06));
-    const sy = this.sway.y.step(dt, clamp((look.dy || 0) / rate * 0.000032, -0.05, 0.05));
+    // ---- whole-rig motion: look sway, movement inertia, walk bob, air, landing, shake, stow
+    // (look sway follows the look's speed, so it is the same at 60, 144 or 240 Hz; o.sway: the Paw
+    // sway setting, 0..1)
+    const swayK = clamp(o.sway ?? 1, 0, 1);
+    const rate = Math.max(dt, 1 / 1000);
+    const sx = this.sway.x.step(dt, clamp(-(look.dx || 0) / rate * 0.000032, -0.06, 0.06) * swayK);
+    const sy = this.sway.y.step(dt, clamp((look.dy || 0) / rate * 0.000032, -0.05, 0.05) * swayK);
+    // inertia: the paws trail the body's motion (strafe, run, fall) on springs that overshoot a
+    // touch when it stops (o.vel: the body's velocity, o.yaw: its heading)
+    let ix = 0, iy = 0, iz = 0;
+    if (o.vel) {
+      const v = o.vel, cy = Math.cos(o.yaw || 0), sy2 = Math.sin(o.yaw || 0);
+      const vr = v.x * cy - v.z * sy2, vf = -v.x * sy2 - v.z * cy;
+      ix = this.inert.x.step(dt, clamp(-vr * 0.0042, -0.02, 0.02) * swayK);
+      iz = this.inert.z.step(dt, clamp(vf * 0.0055, -0.016, 0.026) * swayK);
+      iy = this.inert.y.step(dt, clamp(-v.y * 0.0028, -0.022, 0.022) * swayK);
+    }
     const ld = this.land.step(dt);
     const air = this.grounded ? 0 : Math.min(1, this.airT * 4);
     const b = this.bobAmp, ph = this.walkPh;
@@ -697,14 +752,14 @@ export class ViewModel {
     const free = 1 - 0.9 * this.driveK;
     rig.scale.setScalar(Ls);
     rig.position.set(
-      (sx + Math.sin(ph) * 0.012 * b + wobble(t * 23, 1) * 0.006 * sh + Math.sin(t * 0.7) * 0.002) * free,
-      (sy - Math.abs(Math.cos(ph)) * 0.015 * b + 0.006 * b + ld * 0.35 + air * 0.022 + Math.sin(t * 1.9) * 0.0035 + wobble(t * 21, 2) * 0.006 * sh) * free - easeIn(this.stow) * 0.55,
-      wobble(t * 19, 3) * 0.004 * sh * free,
+      (sx + ix + Math.sin(ph) * 0.012 * b + wobble(t * 23, 1) * 0.006 * sh + Math.sin(t * 0.7) * 0.002) * free,
+      (sy + iy - Math.abs(Math.cos(ph)) * 0.015 * b + 0.006 * b + ld * 0.35 + air * 0.022 + Math.sin(t * 1.9) * 0.0035 + wobble(t * 21, 2) * 0.006 * sh) * free - easeIn(this.stow) * 0.55,
+      (iz + wobble(t * 19, 3) * 0.004 * sh) * free,
     );
     rig.rotation.set(
       (sy * 1.6 + Math.abs(Math.cos(ph)) * 0.02 * b - air * 0.06 + ld * 0.6) * free + this.stow * 0.45,
-      -sx * 1.4 * free,
-      (Math.sin(ph) * 0.025 * b + sx * 0.6 + wobble(t * 17, 4) * 0.03 * sh) * free,
+      (-sx * 1.4 - ix * 0.8) * free,
+      (Math.sin(ph) * 0.025 * b + sx * 0.6 + ix * 1.2 + wobble(t * 17, 4) * 0.03 * sh) * free,
     );
     if (Ls !== 1) rig.position.addScaledVector(this.layout.pivot, 1 - Ls);
 
@@ -732,35 +787,50 @@ export class ViewModel {
       const strike = clamp((a - windEnd) / (d - windEnd), 0, 1);
       const rec = backOut((a - d - 0.06) / 0.26); // (wave 10) a shorter hang, a quicker recovery that springs a touch past rest
       if (kind === 'pick' && act.kind === 'pick') {
-        // (wave 14) anticipation, snap, follow-through: the pick rises fast and hangs a beat at the
-        // top over the shoulder (the paw squeezes in), snaps down accelerating so the point lands at
-        // `dur`, bites on past the face (the head sinks, the arm sags), then springs back a touch past
-        // rest. Held, the next swing grows out of the recovery.
-        const W = act.weight || 1;
-        const WIND = 0.8 + 0.12 * W, HIT = -0.42, DIP = -0.13 * W;
-        const wEnd = d * 0.6;
-        let ang, k, fwd, lunge;
+        // (wave 18) the dig: a little load (the paw dips and the wrist cocks), a big wind-up that
+        // hangs a beat over the shoulder while the glove slides up the haft and loosens; a snap
+        // down that accelerates to the blow at `dur` (the fist clenches, the paw slides back to the
+        // haft's end); the impact pose held for the hit-stop (impact()); follow-through as the head
+        // bites on; a springy recoil that bounces a touch past rest; and the wrist and grip relax
+        // back last. Each blow's line leans a little left or right of the last (act.vary); a held
+        // swing grows out of wherever the last one is (act.from), never from rest.
+        const W = act.weight || 1, V = act.vary || 0;
+        const WIND = 0.82 + 0.14 * W, HIT = -0.44, DIP = -0.14 * W, LOAD = 0.075 * W;
+        const wEnd = d * 0.62;
+        let ang, k, fwd, lunge, twist, slide, sq;
         if (a < wEnd) {
-          const u = a / wEnd, up = 1 - (1 - u) * (1 - u) * (1 - u);
-          ang = WIND * up; k = up; fwd = 0; lunge = 0;
+          const u = a / wEnd, up = 1 - (1 - u) ** 3;
+          const load = Math.sin(Math.min(1, u / 0.24) * Math.PI) * (1 - u); // the little dip before it rises
+          ang = WIND * up - LOAD * load; k = up; fwd = 0; lunge = 0;
+          twist = up; slide = -4 * up; sq = -0.6 * up; // wrist cocked, glove up the haft, grip loose
         } else if (a < d) {
           const sN = (a - wEnd) / (d - wEnd), e = sN * sN * sN;
           ang = WIND + (HIT - WIND) * e; k = 1 - e; fwd = e; lunge = e;
+          twist = 1 - 1.5 * e; slide = -4 + 6 * sN * sN; sq = -0.6 + 1.6 * e; // the wrist snaps over, the fist clenches
         } else {
           const f = a - d;
-          const dip = Math.sin(Math.min(1, f / 0.08) * Math.PI * 0.5);
-          const rec = backOut((f - 0.06) / 0.24);
+          const dip = Math.sin(Math.min(1, f / 0.09) * Math.PI * 0.5); // follow-through
+          const rec = backOut((f - 0.05) / 0.22); // recoil: back up past rest, a little bounce
+          const relax = ease((f - 0.1) / 0.34); // the wrist and grip come back last, easy
           ang = (HIT + DIP * dip) * (1 - rec);
           k = 0; fwd = 1 - rec; lunge = (1 - rec) * (1 - 0.6 * dip);
+          twist = -0.5 * (1 - relax); slide = 2 * (1 - relax); sq = 1 - relax;
         }
         if (act.from) {
-          const b = ease(a / Math.max(0.03, Math.min(0.08, wEnd)));
-          ang = act.from.ang + (ang - act.from.ang) * b; k = act.from.k + (k - act.from.k) * b;
-          fwd = act.from.fwd + (fwd - act.from.fwd) * b; lunge = act.from.lunge + (lunge - act.from.lunge) * b;
+          const b = ease(a / Math.max(0.03, Math.min(0.09, wEnd)));
+          const F = act.from;
+          ang = F.ang + (ang - F.ang) * b; k = F.k + (k - F.k) * b; fwd = F.fwd + (fwd - F.fwd) * b; lunge = F.lunge + (lunge - F.lunge) * b;
+          twist = (F.twist ?? 0) + (twist - (F.twist ?? 0)) * b; slide = (F.slide ?? 0) + (slide - (F.slide ?? 0)) * b;
         }
-        this.pickPose = { ang, k, fwd, lunge };
-        R.move(0.035 * k - 0.03 * fwd, 0.075 * k - 0.015 * fwd, 0.1 * k - 0.09 * fwd - 0.025 * lunge).rot(ang, 0.12 * k, -0.08 * fwd + 0.05 * k);
-        L.move(-0.02 * k, -0.04 * fwd + 0.012 * k, 0.035 * k - 0.01 * lunge);
+        this.pickPose = { ang, k, fwd, lunge, twist, slide };
+        this.gripSlide = slide;
+        this.squeeze = sq;
+        this.camAim = 0.006 * k; // the view lifts a hair with the wind-up
+        // the line of this blow (alternating) and the wrist: pronation through the strike, a cock back in the wind-up
+        const lean = V * (0.5 * k + fwd);
+        R.move(0.035 * k - 0.03 * fwd + 0.008 * lean, 0.075 * k - 0.015 * fwd, 0.1 * k - 0.09 * fwd - 0.025 * lunge)
+          .rot(ang, 0.12 * k + 0.05 * lean + 0.1 * twist, -0.08 * fwd + 0.05 * k + 0.07 * twist - 0.04 * lean);
+        L.move(-0.02 * k, -0.04 * fwd + 0.012 * k, 0.035 * k - 0.01 * lunge).rot(0, 0, -0.06 * twist);
       } else if (kind === 'pick' || kind === 'hammer' || kind === 'smith') {
         // wind up over the shoulder, snap down so the point lands at `dur`, hang, recover
         // the point lands near the crosshair at `dur`, then the arm sags back as the head bites
@@ -776,7 +846,7 @@ export class ViewModel {
         const up = this.tmp.copy(hit);
         _v.set(0, 1, 0).applyQuaternion(R.q); // chisel axis (toward the tip)
         up.p.addScaledVector(_v, -0.045).add(_v2.set(-0.035, 0.05, -0.01));
-        up.rot(0.6, 0, 0.15);
+        up.rot(0.6, 0.06 * (act.vary || 0), 0.15);
         if (a < windEnd) L.mix(up, wind);
         else if (a < d) L.copy(up).mix(hit, easeIn(strike));
         else if (a < d + 0.07) L.copy(hit);
@@ -803,9 +873,16 @@ export class ViewModel {
         else if (a < d) R.copy(P.swipeUp).mix(P.swipeHit, easeIn(strike));
         else R.copy(P.swipeHit).mix(P.open, rec);
       } else {
-        // any other tool: a short jab forward
-        const k = a < d ? ease(a / d) : 1 - rec;
-        R.move(0, 0.01 * k, -0.06 * k).rot(-0.15 * k, 0, 0);
+        // any other tool (brush, drill, lamp, snack...): a quick jab. Pull back a touch, snap
+        // forward to the blow at `dur`, then spring back past rest and settle
+        const V = act.vary || 0, pre = 0.35 * d;
+        let z, rx;
+        if (a < pre) { const p2 = easeOut(a / pre); z = 0.022 * p2; rx = 0.08 * p2; }
+        else if (a < d) { const s2 = easeIn((a - pre) / (d - pre)); z = 0.022 - 0.087 * s2; rx = 0.08 - 0.25 * s2; }
+        else { const r2 = backOut((a - d - 0.03) / 0.22); z = -0.065 * (1 - r2); rx = -0.17 * (1 - r2); }
+        const reach = Math.max(0, -z / 0.065);
+        R.move(0.005 * V * reach, 0.01 * reach, z).rot(rx, 0.04 * V * reach, -0.05 * V * reach);
+        this.squeeze = reach;
       }
     }
     // continuous use
@@ -909,46 +986,57 @@ export class ViewModel {
     group.quaternion.copy(pose.q);
   }
 
-  /**
-   * The forearm from the wrist toward the shoulder. It is never stretched (a steered paw reaching
-   * far used to pull the forearm out to 1.7× its length: the "super long arm"); a paw farther from
-   * its shoulder than the forearm reaches gets an elbow and an upper arm instead (two bones of the
-   * forearm's length, the elbow bending out and down).
-   */
-  placeArm(arm, hand, side, upper = null) {
+  /** Where an arm's shoulder is now (rig space; side 1 right, -1 left). */
+  shoulderAt(side, out = new THREE.Vector3()) {
     const S = this.P.shoulder;
-    _v.set(0, 0, WRIST_Z * VMV).applyQuaternion(hand.quaternion).add(hand.position); // wrist
-    _v2.set(S.x * side, S.y, S.z);
+    out.set(S.x * side, S.y, S.z);
     // reaching out to steered work, the arm comes up from lower down (it stays out of the way)
-    // and is drawn a little slimmer
     // (a drive may say where its shoulders are instead: vm.drive.shoulder = { R: [x, y, z], L })
     if (this.driveK > 0) {
-      const sh = this.drive?.shoulder?.[side > 0 ? 'R' : 'L'];
-      if (sh) _up.set(sh[0], sh[1], sh[2]); else _up.set(Math.max(0.42, S.x) * side, S.y * 1.7, S.z + 0.2);
-      _v2.lerp(_up, this.driveK);
+      const sh = (this.drive ? this.drive.shoulder : this.driveSh)?.[side > 0 ? 'R' : 'L'];
+      const u = _e6;
+      if (sh) u.set(sh[0], sh[1], sh[2]); else u.set(Math.max(0.42, S.x) * side, S.y * 1.7, S.z + 0.2);
+      out.lerp(u, this.driveK);
     }
+    return out;
+  }
+
+  /**
+   * The arm from the wrist to the shoulder (below and behind the view): a forearm and an upper arm
+   * of fixed lengths that are never stretched. Both lie on the wrist-shoulder line (the shoulder
+   * always falls on the upper arm, which runs on past it out of view), so the elbow moves exactly
+   * with the wrist and nothing can snap. (The old two-bone fallback threw the elbow half a meter
+   * sideways the moment the wrist passed 98% of the forearm's length, which ordinary swings cross:
+   * a second full forearm flashed into view, the "very long arm".) A paw asked to go farther than
+   * the arm reaches (a steered target through toView's FOV-ratio depth, a dt spike) is pulled back
+   * toward its shoulder, softly near full stretch: the IK safety net.
+   */
+  placeArm(arm, hand, side, upper = null) {
+    const wrist = _v.set(0, 0, WRIST_Z * VMV).applyQuaternion(hand.quaternion).add(hand.position);
+    const sh = _v2.copy(side > 0 ? this.shR : this.shL);
+    // reaching out to steered work the arm is drawn a little slimmer
     const thin = 1 - 0.22 * this.driveK;
-    const Ln = ARM_LEN * VMV; // the forearm's length (rig space, like the wrist and shoulder)
-    arm.position.copy(_v);
-    arm.scale.set(thin, thin, 1);
-    _v2.sub(_v); // wrist → shoulder
-    const D = _v2.length();
-    _up.set(0, 1, 0).applyQuaternion(hand.quaternion);
-    if (!upper || D <= Ln * 0.98) {
-      aimZ(_v2, _up, arm.quaternion);
-      if (upper) upper.scale.setScalar(0);
-      return;
+    const Ln = ARM_LEN * VMV, reach = Ln + (upper ? UPPER_LEN * VMV : 0);
+    const dir = _e3.copy(sh).sub(wrist); // wrist → shoulder
+    let D = dir.length();
+    if (!(D > 1e-6)) { D = 1e-6; dir.set(0, -1, 1); }
+    dir.normalize();
+    const R = reach * ARM_REACH, soft = Math.min(0.06, R * 0.1);
+    if (D > R - soft) {
+      const Dc = R - soft * Math.exp(-(D - (R - soft)) / soft);
+      _e4.copy(dir).multiplyScalar(D - Dc);
+      hand.position.add(_e4);
+      wrist.add(_e4);
+      D = Dc;
     }
-    // two bones: where the elbow goes (out to the side and down, off the wrist-shoulder line)
-    const dir = _e3.copy(_v2).multiplyScalar(1 / D);
-    const h = D < 2 * Ln ? Math.sqrt(Math.max(0, Ln * Ln - (D / 2) * (D / 2))) : 0;
-    const bend = _e4.set(side * 0.7, -1, 0.2);
-    bend.addScaledVector(dir, -bend.dot(dir)).normalize();
-    const elbow = _e5.copy(_v).addScaledVector(dir, D < 2 * Ln ? D / 2 : Ln).addScaledVector(bend, h);
-    aimZ(_e6.copy(elbow).sub(_v), _up, arm.quaternion);
-    upper.position.copy(elbow);
+    _up.set(0, 1, 0).applyQuaternion(hand.quaternion);
+    arm.position.copy(wrist);
+    arm.scale.set(thin, thin, 1);
+    aimZ(dir, _up, arm.quaternion);
+    if (!upper) return;
+    upper.position.copy(wrist).addScaledVector(dir, Ln);
+    upper.quaternion.copy(arm.quaternion);
     upper.scale.set(thin * 1.06, thin * 1.06, 1);
-    aimZ(_e6.copy(_v).add(_v2).sub(elbow), _up, upper.quaternion);
   }
 
   updateLights(o) {

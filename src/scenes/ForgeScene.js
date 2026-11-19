@@ -18,6 +18,7 @@ import { makeGlow } from '../bookends/fx.js';
 import { glowHex, glowAmount } from '../forge/blackbody.js';
 import { ForgeLesson } from '../forge/tutorial.js';
 import { HearthFire } from '../forge/hearthFire.js';
+import { PHONE } from '../core/platform.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -64,7 +65,7 @@ export default class ForgeScene extends Scene {
     this.particles = new ForgeParticles(this.scene, 0.5);
     this.own(() => this.particles.dispose());
     // the fire itself: licking voxel flames over coals that breathe (fewer flame voxels on phones)
-    const phone = document.documentElement.classList.contains('is-touch') || Math.min(innerWidth, innerHeight) < 560;
+    const phone = PHONE; // (PC only: the full fire)
     this.flames = new HearthFire(this.W, { max: phone ? 760 : 1100, tongues: phone ? 20 : 26 });
     this.own(() => this.flames.dispose());
     this.stokeCd = 0;

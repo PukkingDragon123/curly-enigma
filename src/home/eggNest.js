@@ -290,7 +290,7 @@ export function homeEgg(scene) {
         const name = await N.nameRaptor(g, e, taken, { who: 'Hatchling', first: '<i>Wet, wobbly, all eyes. It blinks at you, sneezes out a bit of shell and squeaks.</i> <w>Peep!</w>' }).catch(() => 'Pip');
         rec.name = String(name || 'Pip').slice(0, 16);
         try { st.save?.(); } catch (err) { /* autosave */ }
-        await N.welcome(g, e, rec.name, { text: `<w>Peep-peep!</w> <i>${rec.name} totters out of its shell and curls up against your boot. You found it in the forest; now it's found you.</i>` });
+        await N.welcome(g, e, rec.name, { text: `<w>Peep-peep!</w> <i>${rec.name} totters out of its shell and curls up against your boot.</i>` });
       } finally { unplan(); }
       if (hatching) hatching.naming = false;
       st.emit?.('act', { type: 'tame', what: 'hatch', name: rec.name });

@@ -17,8 +17,8 @@
 //     unlocks listed for it (LEVEL_GRANTS), FULL grants them all. Saved in state.data.onboard.level.
 //   - goal(html): one short objective line at the top of the screen ("Talk to Old Star"); goal(null)
 //     hides it, goalDone() ticks it off (a soft chime, a green tick, it fades).
-//   - cinema(on, { skip }): letterbox bars over a cutscene, the HUD tucked away, and a "hold to skip"
-//     ring (hold Space / Enter / E, or hold the ring on a touch screen; a tap never skips).
+//   - cinema(on, { skip, bars }): letterbox bars over a cutscene (bars: false for a scene with its own),
+//     the HUD tucked away, and hold to skip (hold Esc or a click: src/bookends/skipHold.js; a tap never skips).
 //   - teach(id, opts): one quiet line for one control (no box: a small glyph, what, how), drawn per
 //     device (key caps / the mouse on a PC, the touch control's own art on a phone, whose real control
 //     gets a soft pulsing ring), with a hairline meter fed by opts.progress(). When it's done it fades.
@@ -38,6 +38,7 @@ import { SPR } from './uiSprites.js';
 import { DSPR } from './deepArt.js';
 import { floatIn, leave } from './floatType.js';
 import { keepClear } from './uiSolid.js';
+import { SkipHold, cineMarks } from '../bookends/skipHold.js';
 import './onboard.css';
 
 /** Tutorial UI levels, in the order the pieces are introduced. */
@@ -241,14 +242,7 @@ export class Onboard {
     this.layer = el('div', { class: 'ob-layer' });
     ui.root.insertBefore(this.layer, ui.overlay);
     this.installHiding();
-    // the hold-to-skip keys (registered before the dialogue box's, which swallows its own presses)
-    this.held = new Set();
-    window.addEventListener('keydown', (e) => {
-      if (!this.cine?.skip || e.repeat) return;
-      if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE') this.held.add(e.code);
-    }, true);
-    window.addEventListener('keyup', (e) => { this.held.delete(e.code); });
-    window.addEventListener('blur', () => this.held.clear());
+    // (hold to skip: Esc or a held click, bookends/skipHold.js)
     const st = this.game.state;
     st.on('load', () => this.sync());
     // the lessons end (the last one done, or all skipped): everything, no objective line
@@ -472,46 +466,36 @@ export class Onboard {
     const root = this.ui.root;
     if (on) {
       if (!this.cine) {
-        const fill = el('i', { class: 'ob-skip-fill' });
-        const skipEl = el('button', { class: 'ob-skip interactive', 'aria-label': 'Hold to skip' }, [
-          el('span', { class: 'ob-skip-ring' }, [fill, el('i', { class: 'ob-skip-core' })]),
-          el('span', { class: 'ob-skip-t', html: isTouch() ? 'Hold to skip' : 'Hold <kbd>Space</kbd> to skip' }),
-        ]);
         const top = el('div', { class: 'ob-bar t' }), bot = el('div', { class: 'ob-bar b' });
-        const c = el('div', { class: 'ob-cine' }, [top, bot]);
+        const c = el('div', { class: 'ob-cine' + (opts.bars === false ? ' nobars' : '') }, [top, bot]);
         this.layer.append(c);
-        // the skip ring sits over everything (the cutscene talk's own bars and words too)
-        this.skipWrap ||= el('div', { class: 'ob-skipwrap' });
-        if (!this.skipWrap.isConnected) root.append(this.skipWrap);
-        this.skipWrap.append(skipEl);
         this.fitBars();
         // (the cutscene talk's own bars slide in over these when he talks: the same height and colour)
         void c.offsetWidth;
         c.classList.add('on');
-        this.cine = { el: c, skipEl, fill, t: 0, skip: null, fired: false, ptr: false };
-        const down = (e) => { e.preventDefault(); e.stopPropagation(); this.game.audio.init?.(); if (this.cine) this.cine.ptr = true; };
-        const up = (e) => { e?.stopPropagation?.(); if (this.cine) this.cine.ptr = false; };
-        skipEl.addEventListener('pointerdown', down);
-        for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) skipEl.addEventListener(ev, up);
+        this.cine = { el: c, sk: null, skip: null, fired: false };
         root.classList.add('ob-cinema');
+        cineMarks(this.ui, true); // (no quest marks over heads in a cutscene)
       }
-      this.cine.skip = opts.skip || null;
-      this.cine.hold = opts.hold ?? 0.9;
-      this.cine.fired = false;
-      this.cine.t = 0;
-      this.cine.skipEl.hidden = !this.cine.skip;
-      return this.cine;
+      const c = this.cine;
+      c.skip = opts.skip || null;
+      c.fired = false;
+      // the skip: hold Esc or a click (a crafted rod that heats as you hold: src/bookends/skipHold.js)
+      if (c.skip && !c.sk) c.sk = new SkipHold({ parent: root, hold: opts.hold ?? 1.0, onSkip: () => { const f = c.skip; c.skip = null; c.fired = true; c.sk = null; f?.(); } });
+      else if (!c.skip && c.sk) { c.sk.dispose(); c.sk = null; }
+      return c;
     }
     const c = this.cine;
     if (!c) return null;
     this.cine = null;
-    this.held.clear();
     root.classList.remove('ob-cinema');
+    cineMarks(this.ui, false);
     if (c.el.classList.contains('ext')) { try { this.game.convo?.bars?.(false); } catch (e) { /* gone */ } }
     c.el.classList.remove('on');
     c.el.classList.add('off');
-    c.skipEl.classList.add('gone');
-    setTimeout(() => { c.el.remove(); c.skipEl.remove(); }, 700);
+    c.sk?.dispose();
+    c.sk = null;
+    setTimeout(() => c.el.remove(), 700);
     if (this.pendingReveal.size) this.revealSoon();
     return null;
   }
@@ -537,26 +521,14 @@ export class Onboard {
     this.ui.root.style.setProperty('--ob-bar', bar + 'px');
   }
 
-  /** Hold-to-skip: fills while held, drains when let go; a full ring skips once. */
+  /** Hold-to-skip: the rod heats while Esc or a click is held; hot through, it skips once. */
   tickSkip(dt) {
     const c = this.cine;
-    if (!c || !c.skip || c.fired) return;
-    // (keys count while the cutscene talk holds the player, not under a menu or a panel)
+    if (!c?.sk || c.fired) return;
+    // (not under a menu or a panel; the cutscene talk is fine)
     const top = this.ui.panelStack[this.ui.panelStack.length - 1];
-    const holding = c.ptr || (this.held.size > 0 && (!top || top.kind === 'convo' || top.closed));
-    c.t = holding ? c.t + dt : Math.max(0, c.t - dt * 2.5);
-    const k = clamp(c.t / c.hold, 0, 1);
-    c.fill.style.setProperty('--k', k.toFixed(3));
-    c.skipEl.classList.toggle('holding', holding && k > 0);
-    c.skipEl.classList.toggle('shown', holding || k > 0);
-    if (k >= 1) {
-      c.fired = true;
-      c.skipEl.classList.add('fired');
-      this.game.audio.play('whoosh', { vol: 0.5 });
-      const f = c.skip;
-      c.skip = null;
-      try { f(); } catch (e) { console.warn('[onboard] skip', e); }
-    }
+    if (top && top.kind !== 'convo' && !top.closed) return;
+    c.sk.update(dt);
   }
 
   // ------------------------------------------------------------ teaching a control
@@ -804,6 +776,7 @@ export class Onboard {
     for (const s of [...this.spots]) s.remove();
     for (const m of [...this.marks]) m.remove();
     this.cinema(false);
+    if (this.ui._cineN > 0) { this.ui._cineN = 1; cineMarks(this.ui, false); } // (a new scene: the quest marks are back)
   }
 
   // ------------------------------------------------------------ tests
@@ -814,7 +787,7 @@ export class Onboard {
       state: () => ({ level: this.lvl, unlocks: this.unlocks ? (this.unlocks.all ? 'all' : Object.keys(this.unlocks)) : 'all', saved: this.data?.level ?? null, cinema: !!this.cine, skippable: !!this.cine?.skip, prompt: this.prompt ? { id: this.prompt.id, k: +this.prompt.k.toFixed(2), done: this.prompt.done } : null, goal: this.goalHtml || null, spots: this.spots.size, marks: this.marks.size, hidden: this.hidden() }),
       level: (n) => (n === undefined ? this.lvl : this.setLevel(n, { force: true })),
       complete: () => { const h = this.prompt; if (!h) return null; this.donePrompt(h); return h.id; },
-      skip: () => { const c = this.cine; if (!c?.skip) return false; const f = c.skip; c.skip = null; c.fired = true; f(); return true; },
+      skip: () => { const c = this.cine; if (!c?.skip) return false; const f = c.skip; c.skip = null; c.fired = true; c.sk?.dispose(); c.sk = null; f(); return true; },
       cinema: (on) => (on === undefined ? !!this.cine : (this.cinema(on), !!this.cine)),
       hidden: () => this.hidden(),
       history: () => this.hist.slice(),

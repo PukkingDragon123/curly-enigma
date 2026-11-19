@@ -151,7 +151,7 @@ export function openBackpack(game, opts = {}) {
     const k = clamp(L.r / 2, 0, 1);
     scale.innerHTML = '';
     scale.className = 'bp-scale ' + L.tier;
-    scale.title = `${W.TIER_LABEL[L.tier]}. You carry ${L.carry.toFixed(0)} kg comfortably; past that you slow down. Twice that is the most you can lift.`;
+    scale.title = `${W.TIER_LABEL[L.tier]}. Fine up to ${L.carry.toFixed(0)} kg. Past that you slow down. Twice that, you can't lift.`;
     put(scale,
       el('img', { class: 'pix', src: INV_ART.weight ? INV_ART.weight() : iconURL('iron_ore'), alt: '' }),
       el('span', { html: `<b>${L.kg.toFixed(1)}</b>/${L.carry.toFixed(0)} kg` }),
@@ -569,11 +569,11 @@ export function openBackpack(game, opts = {}) {
       const on = Inv.bag(st).some((x, j) => j < H && x?.tool === slot);
       beltB = el('div', { class: 'bp-actions' }, [el('button', { class: 'btn alt', title: 'Shift-click', onclick: () => { const m = quick('rack', ri); sfx(m > 0 ? 'drop' : 'nope'); closeTag(); render(); } }, on ? 'Off the belt' : 'On the belt')]);
     }
-    const kitDesc = slot === 'build' ? 'Hammers pieces into your alcoves and blocks into the mine. Wheel or hold Q picks the piece.' : null;
+    const kitDesc = slot === 'build' ? 'Builds at home and below. Hold Q to choose.' : null;
     put(tag,
       tagClose(),
       tagHead(itemVox.src(cur ? cur.id : sample), cur ? cur.name : kitDesc ? label : `No ${label.toLowerCase()}`, cur ? `${label} · in use` : label, null, cur ? cur.id : null),
-      el('p', { class: 'bp-desc' }, cur ? cur.desc || '' : kitDesc || 'This loop is empty. The shops in Deep Town might have something for it.'),
+      el('p', { class: 'bp-desc' }, cur ? cur.desc || '' : kitDesc || 'Empty loop. Try the shops in Deep Town.'),
       facts(info),
       others.length ? el('small', { class: 'bp-swap-t' }, 'Also packed') : null,
       others.length ? list : null,

@@ -1,6 +1,7 @@
 // The ending: farewell at Deep Town's lift → the long ride up through every stratum →
 // a blinding first glimpse of the sun (sunglasses on) → a sunset beach, where the camera
-// finally turns. Works with ?scene=ending&fresh=1; dev: &phase=farewell|ascent|surface|beach|credits&at=secs
+// finally turns. Wave 18: hold Esc or a click to skip to the beach (bookends/skipHold.js), music
+// stings on the sunlight and the sea (bookends/cine.js), the cameras on an operator's sway. Works with ?scene=ending&fresh=1; dev: &phase=farewell|ascent|surface|beach|credits&at=secs
 import * as THREE from 'three';
 import { Scene, disposeObject } from '../core/Scene.js';
 import { el, clamp } from '../core/util.js';
@@ -15,6 +16,8 @@ import { buildBeach, BEACH_SUN } from '../bookends/beach.js';
 import { mixGrade } from '../core/Engine.js';
 import { buildCredits } from '../bookends/credits.js';
 import { HEART } from '../ui/UI.js';
+import { SkipHold } from '../bookends/skipHold.js';
+import { sting, preloadStings } from '../bookends/cine.js';
 
 const PHASES = ['farewell', 'ascent', 'surface', 'beach'];
 const SURFACE_DUR = 4.2;
@@ -47,6 +50,7 @@ export default class EndingScene extends Scene {
     this.wantLoops = {};
     this.loops = {};
     this.own(useBookendStyles());
+    preloadStings(this.game.audio);
     this.own(() => disposeTextures(this.textures));
 
     const st = this.game.state;
@@ -122,6 +126,7 @@ export default class EndingScene extends Scene {
       audio.stopMusic(0.6);
       this.stopLoop('elevator');
       audio.play('whoosh');
+      sting(audio, 'sunrise', { vol: 1, delay: 0.15 });
       this.post.flash = 1;
       this.depthEl.hidden = true;
       this.zbar.hidden = true;
@@ -138,7 +143,9 @@ export default class EndingScene extends Scene {
       this.post.flashColor = 0xfff2dc;
       this.depthEl.hidden = true;
       this.zbar.hidden = true;
-      this.skipBtn.hidden = true;
+      this.skipper?.dispose();
+      this.skipper = null;
+      sting(audio, 'warm', { vol: 0.7, delay: 0.6 });
     }
   }
 
@@ -260,8 +267,9 @@ export default class EndingScene extends Scene {
       dockBtn('Deep Town', () => this.leave('town')),
       dockBtn('Title', () => this.leave('title')),
     ]);
-    this.skipBtn = el('button', { class: 'btn alt bk-skip', type: 'button', hidden: true, onclick: () => this.skip() }, 'Skip ›');
-    this.root = el('div', { class: 'bk-root bk-ending' }, [this.veil, this.depthEl, this.zbar, this.line, this.credits.el, this.dock, this.skipBtn]);
+    // (wave 18: no Skip button: hold Esc or a click, bookends/skipHold.js, made in update())
+    this.root = el('div', { class: 'bk-root bk-ending' }, [this.veil, this.depthEl, this.zbar, this.line, this.credits.el, this.dock]);
+    this.own(() => { this.skipper?.dispose(); this.skipper = null; });
     g.ui.world.append(this.root);
     this.own(() => this.root.remove());
     // hold a key / mouse button to hurry the credits along
@@ -343,7 +351,8 @@ export default class EndingScene extends Scene {
     const t = this.phaseT;
     const v = this.views;
     const post = this.post;
-    if (this.phase !== 'beach' && t > 0.8) this.skipBtn.hidden = false;
+    if (this.phase !== 'beach' && t > 0.8 && !this.skipper) this.skipper = new SkipHold({ onSkip: () => { this.skipper = null; this.skip(); }, parent: this.game.ui.root });
+    this.skipper?.update(dt);
     switch (this.phase) {
       case 'farewell': {
         v.farewell.update(dt, this.api);

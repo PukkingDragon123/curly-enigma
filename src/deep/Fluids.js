@@ -31,6 +31,7 @@ import { WaterMap, patchTerrain } from './fluids/caustics.js';
 import { fxMethods, WATER_C } from './fluids/fx.js';
 import { VoxFx } from './fluids/voxfx.js';
 import { lakeDist } from './gen/network.js';
+import { PHONE } from '../core/platform.js';
 
 const UW_FOG = new THREE.Color(0.01, 0.05, 0.075);
 const FLOATS = new Set(['food', 'plant', 'ingredient', 'feed', 'critter', 'drop', 'consumable']);
@@ -61,7 +62,7 @@ export class Fluids {
     this.cur = { x: 0, y: 0, z: 0 };
     this.prof = { sim: 0, fx: 0, map: 0, all: 0 };
     // the spray as voxels; this.fx sends water's effects there, the rest on to Particles
-    const phone = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    const phone = PHONE; // (PC only)
     this.vfx = new VoxFx(ctx.scene3 || ctx.scene, this.w, ctx.U, phone ? 500 : 900);
     this.fx = routeFx(ctx.fx, this.vfx);
     // the cave's air plays the big halls' sounds and leaves the underwater fog to us

@@ -1,6 +1,5 @@
 // Waking up on your bedroll at Old Star's (home { from: 'fall' }), mixed into HomeScene: the first
-// cutscene (letterbox bars, nothing else on screen; a hold of Space / Enter / E, or of the ring on a
-// touch screen, skips it: never a tap). Dark, and through the dark, muffled, the rhythm of a hammer
+// cutscene (letterbox bars, nothing else on screen; holding Esc or a click skips it: never a tap). Dark, and through the dark, muffled, the rhythm of a hammer
 // on an anvil. You're flat on your back on a heap of straw on the cave floor (his own bedroll: he
 // gave it you). The world swims up out of the black, dim, blurred and doubled, on the low rock roof
 // and a speck of grey daylight far up the hole you fell through, and fades away again (a slow blink:
@@ -17,13 +16,16 @@
 // world's own frame, blurred, dimmed and doubled (a ghost copy drifting back into register), and a
 // plain fade to black for the blinks (wave 12: no eyelid shapes); only the world (the canvas) is
 // ever blurred, never the interface. The sound comes back through a low-pass that
-// opens as you come round. Sets the flag fallen, starts the `lessons` quest and emits lesson
+// opens as you come round. Wave 18: music stings on the beats (bookends/cine.js), the mouse turns your
+// head a little while you lie there (look round the cave), his lines cut to a few words, hold Esc
+// or a click to skip (bookends/skipHold.js through ui.onboard.cinema). Sets the flag fallen, starts the `lessons` quest and emits lesson
 // { step: 'wake' } (and talk oldstar), as before; unlocks look / move / use (src/ui/Onboard.js).
 import * as THREE from 'three';
 import { el, clamp } from '../core/util.js';
 import { starData } from './starData.js';
 import { besideItem } from './layoutfix.js';
 import { T } from './units.js';
+import { sting, preloadStings } from '../bookends/cine.js';
 
 const ease = (k) => k * k * (3 - 2 * k);
 
@@ -210,6 +212,7 @@ export class HomeWake {
   async wakeFromFall() {
     const g = this.game, st = g.state, a = g.audio, ui = g.ui, star = this.star, ob = ui.onboard;
     st.flag('fallen', true);
+    preloadStings(a);
     const sd = starData(st);
     sd.woke = false;
     ob?.begin(); // a new game: nothing on screen, nothing unlocked; things come in as he hands them over
@@ -258,9 +261,18 @@ export class HomeWake {
     const starHead = () => (star?.rig ? star.head(new THREE.Vector3()) : new THREE.Vector3(anvil.x, anvil.y + 0.5, anvil.z));
     // the head drifts on the pillow (a slow sway that settles as you come round); `track` turns it to
     // follow him once he's coming over
-    const sway = (this.wakeSwayS = { amp: 1, yaw: 0, pitch: 0, t: 0, track: 0 });
+    const sway = (this.wakeSwayS = { amp: 1, yaw: 0, pitch: 0, t: 0, track: 0, free: 1, fy: 0, fp: 0, bx: null, by: null });
+    const mouse = g.input.mouse;
     this.wakeSway = (dt) => {
       sway.t += dt;
+      // the mouse turns your head a little (look round the cave); the anchor follows the cursor
+      // slowly, so wherever it rests the view drifts back to centre
+      if (sway.bx == null) { sway.bx = mouse.nx; sway.by = mouse.ny; }
+      const ka = Math.min(1, dt * 0.35);
+      sway.bx += (mouse.nx - sway.bx) * ka; sway.by += (mouse.ny - sway.by) * ka;
+      const kf = 1 - Math.exp(-dt * 5);
+      sway.fy += (clamp(-(mouse.nx - sway.bx) * 0.7, -0.45, 0.45) * sway.free - sway.fy) * kf;
+      sway.fp += (clamp((mouse.ny - sway.by) * 0.45, -0.28, 0.28) * sway.free - sway.fp) * kf;
       if (sway.track > 0 && star?.rig) {
         const h = starHead();
         const aim = this.aimFrom(c, h.setY(h.y - 0.12));
@@ -270,8 +282,8 @@ export class HomeWake {
         sway.pitch += (tp - sway.pitch) * k;
       }
       const s = sway.amp;
-      c.yaw = base.yaw + sway.yaw + Math.sin(sway.t * 0.55) * 0.05 * s;
-      c.pitch = base.pitch + sway.pitch + Math.sin(sway.t * 0.37 + 1) * 0.035 * s;
+      c.yaw = base.yaw + sway.yaw + sway.fy + Math.sin(sway.t * 0.55) * 0.05 * s;
+      c.pitch = base.pitch + sway.pitch + sway.fp + Math.sin(sway.t * 0.37 + 1) * 0.035 * s;
       c.roll = base.roll * (0.35 + 0.65 * s) + Math.sin(sway.t * 0.43 + 2) * 0.04 * s;
     };
     // the cutscene: letterbox bars, and a hold (never a tap) skips it
@@ -302,6 +314,7 @@ export class HomeWake {
       // ---- the world swims up out of the black: dim, blurred and doubled, rock overhead and a speck
       // of grey daylight far up the hole... and fades away again (a slow blink)
       ghostTo(13, 1.8);
+      sting(a, 'wake', { vol: 0.9 });
       await go(eyes(0.74, 1.0));
       await go(sleep(0.7));
       await go(eyes(0, 0.7));
@@ -328,6 +341,7 @@ export class HomeWake {
       tween(2.1, (k) => { this.post.vignette = 0.95 + (post0 - 0.95) * ease(k); });
       look(dYaw, dPitch, 1.8);
       fovTo(fov0 * (cam.aspect < 1 ? 0.9 : 0.72), 2.8); // (the eyes settle on him: a slow push in; less on a phone held upright)
+      sting(a, 'warm', { vol: 0.55, delay: 0.4 });
       await go(eyes(1, 0.8));
       tween(1.4, (k) => { sway.amp = 1 - ease(k) * 0.65; });
       await go(sleep(1.5));
@@ -350,6 +364,7 @@ export class HomeWake {
         fovTo(fov0, 1.6);
         await go(sleep(0.35));
         sway.track = 1;
+        tween(1.2, (k) => { sway.free = 1 - k * 0.7; });
         r.wakeFrom = { x: r.pos.x, z: r.pos.z };
         const at = this.bedsideFor(r);
         await go(Promise.race([r.walkTo(at.x, at.z, 0.9), sleep(5)]));
@@ -364,12 +379,12 @@ export class HomeWake {
         tween(0.8, (k) => { c.roll = base.roll * 0.35 + Math.sin(k * Math.PI * 6) * 0.03 * (1 - k); });
         await go(sleep(0.8));
       } else await go(sleep(0.6));
-      await line('Oi. Oi! There you are. Easy now: the cave likes to spin the first time.', 'happy');
-      await line('You came down through my roof last night, and half of it came with you.', 'laugh');
+      await line('Oi. Still breathing? Good. Don\'t sit up fast.', 'happy');
+      await line('You came in through my roof. Brought half of it with you.', 'laugh');
       star?.rig && star.nudge(0.4);
-      await line('I\'m <b>Old Star</b>. Smith. Sixty years I\'ve been stuck down here: a ticket up costs a <span class="gold-txt">million gold</span>.', 'worried', 'point');
-      await line('So: I teach you to <b>dig</b>, <b>forge</b> and <b>cook</b>, we earn it together, and we <b>both</b> ride out.', 'proud');
-      await line('Where\'s your <b>pick</b>? Lost in the fall, I\'d guess, and you can\'t dig your way to a million with bare paws. Up you get: we\'ll make you your own at my <b>forge</b>!', 'happy');
+      await line('<b>Old Star</b>. Smith. Sixty years down here. A ticket up costs a <span class="gold-txt">million</span>.', 'worried', 'point');
+      await line('I can\'t afford one. Two of us might.', 'proud');
+      await line('Your <b>pick</b>\'s somewhere up that hole. Up you get. We\'ll make you one.', 'happy');
       // ---- he straightens up and steps back; you sit up off the straw and get to your feet
       if (star?.rig) { star.setPose('idle'); star.gesture('beckon', 1.4); }
       this.wakeSway = null;

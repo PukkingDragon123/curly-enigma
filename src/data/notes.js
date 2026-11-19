@@ -17,7 +17,7 @@ export const NOTES = [
   {
     id: 'lifts',
     title: 'The old lifts',
-    text: 'The old miners left lifts all through the rock. Find one, ring its bell, and it\'ll carry you home.\nEvery lift you find is a quick way back down. — O.S.',
+    text: 'Old miners left lifts all through the rock. Ring the bell and it\'ll carry you home.\nAnd back down again, quick. O.S.',
   },
   {
     id: 'ladders',
@@ -42,7 +42,7 @@ export const NOTES = [
   {
     id: 'layers',
     title: 'Down and down',
-    text: 'Rootsoil, Clayworks, the Crystal Grotto, Magma Deep, the Frost Vault, and the Core at the bottom.\nThe deeper the rock, the harder it is. Better picks, better gear, then go.',
+    text: 'Rootsoil, Clayworks, the Crystal Grotto, Magma Deep, the Frost Vault, and the Core at the bottom.\nDeeper rock is harder rock. Get a better pick first.',
   },
   {
     id: 'water',
@@ -67,7 +67,7 @@ export const NOTES = [
   {
     id: 'tavern',
     title: 'This old house',
-    text: 'This was the Company smith\'s house, once. Songs, sparks, mud on every chair.\nThen the Rumble came, the lift jammed, the miners left, and I went down for one last look. Forty years, that look took.',
+    text: 'This was the Company smith\'s house, once. Mud on every chair, somebody singing.\nThen the Rumble came, the lift jammed, the miners left, and I went down for one look. Forty years, that look took.',
   },
   {
     id: 'town',
@@ -82,7 +82,7 @@ export const NOTES = [
   {
     id: 'stamp',
     title: 'My stamp',
-    text: 'Everything I own gets my red star. Bags, crates, this board.\nSo I know it\'s mine. So I know I did it. Old habit. Expensive habit, once.',
+    text: 'Everything I own gets my red star. Even this board.\nSo I know it\'s mine. Old habit. Expensive habit, once.',
   },
   {
     id: 'shaft7',

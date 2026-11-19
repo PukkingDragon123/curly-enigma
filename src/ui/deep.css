@@ -4,7 +4,7 @@
 .radar {
   position: absolute; left: calc(var(--sal) + var(--px) * 3); top: calc(var(--sat) + var(--px) * 3);
   width: calc(var(--px) * 54); height: calc(var(--px) * 54); padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: inherit;
-  filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(6, 3, 4, .5)); transition: transform .15s var(--pop);
+  filter: drop-shadow(var(--px) calc(var(--px) * 2) 0 rgba(6, 3, 4, .5)); transition: transform .15s var(--pop);
 }
 #ui:not([data-hud=deep]) .radar, #ui.panel-open .radar { display: none; }
 .radar:hover { transform: translateY(calc(var(--px) * -1)); }
@@ -181,3 +181,5 @@ html.is-touch #ui[data-hud=deep]:not(.panel-open):not(.no-touch) > .tc-look { di
   .sv-dists { display: none; }
   .sv-foot { margin-top: var(--px); }
 }
+/* wave 18: the scope's glass catches the lamp (Radar.js glassURL) */
+.radar-glass { position: absolute; left: calc(var(--px) * 9); top: calc(var(--px) * 9); width: calc(var(--px) * 36); height: calc(var(--px) * 36); pointer-events: none; image-rendering: pixelated; }

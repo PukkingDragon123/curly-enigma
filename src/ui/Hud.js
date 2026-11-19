@@ -9,6 +9,8 @@ import { SPR } from './uiSprites.js';
 import { HART, installHudArt } from './hudArt.js';
 import { StaminaBar } from './Stamina.js';
 
+const CALM_AFTER = 9; // seconds of nothing happening before the corners tuck away
+
 export class Hud {
   constructor(ui) {
     this.ui = ui;
@@ -68,10 +70,18 @@ export class Hud {
     // ---- stamina: one bar, afflictions eating it from the right (src/ui/Stamina.js)
     this.stam = new StaminaBar(this);
 
-    st.on('gold', (e) => this.onGold(e));
-    st.on('energy', (e) => this.stam.onEnergy(e));
-    st.on('buffs', () => this.renderCharms());
+    st.on('gold', (e) => { this.wake(); this.onGold(e); });
+    st.on('energy', (e) => { if (e && (e.injury || e.fed || e.mend || Math.abs(e.delta || 0) > 2.5)) this.wake(); this.stam.onEnergy(e); });
+    st.on('buffs', () => { this.wake(); this.renderCharms(); });
     st.on('day', (e) => this.onDay(e));
+    st.on('items', () => this.wake(4));
+    // wave 18, less on screen: after a while with nothing happening the corner pieces (pack, journal,
+    // the quest strip, the depth sign) tuck away and the belt sinks and dims; anything that matters
+    // (a pickup, gold, a hit, the wheel or a number key, the cursor coming back) brings them back
+    this.calmT = 0;
+    addEventListener('keydown', (e) => { if (/^(Digit[1-9]|Tab|KeyI|KeyB|KeyQ|KeyJ)$/.test(e.code)) this.wake(); }, { passive: true });
+    addEventListener('wheel', () => this.wake(), { passive: true });
+    addEventListener('pointermove', () => { if (!this.game.input?.pointerLocked) this.wake(2); }, { passive: true });
     st.on('load', () => this.refresh());
     this.refresh();
   }
@@ -215,6 +225,7 @@ export class Hud {
     this.depthTxt.innerHTML = h;
     // a new depth: the plaque turns over on its pins to show it, the plumb-bob drops and bounces
     if (!first) for (const [node, cls] of [[this.depthTxt, 'flip'], [this.depth, 'drop']]) { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); }
+    if (!first) this.wake(1);
     if (!first || this.ui.hudMode === 'deep') { this.depthT = 2.4; this.depth.classList.add('show'); }
   }
   setBag(n, cap, fromDepth = false) {
@@ -237,6 +248,7 @@ export class Hud {
     this.pack.classList.toggle('full', full);
     this.packTag.textContent = full ? 'FULL' : `${n}/${cap}`;
     if (!prev || prev.n !== n || prev.cap !== cap) {
+      this.wake(3);
       if (prev && n > prev.n) {
         this.packBtn.classList.remove('gulp');
         void this.packBtn.offsetWidth;
@@ -270,9 +282,20 @@ export class Hud {
     }
   }
 
+  /** Bring the tucked pieces back (they settle again after `t` more quiet seconds than usual). */
+  wake(t = 0) {
+    this.calmT = Math.min(this.calmT, -t);
+    if (this.calm) { this.calm = false; this.ui.root.classList.remove('hud-calm'); }
+  }
+
   // ------------------------------------------------------------ per frame
   update(dt) {
     const st = this.game.state;
+    // quiet → calm (only in play, not while a panel is open; a full bag or news in the book keeps
+    // the pack up: hud.css)
+    const busy = this.ui.isPanelOpen() || this.ui.hudMode === 'none' || (this.ui.tracker && this.ui.tracker.idleT < 1);
+    if (busy) this.wake();
+    else if ((this.calmT += dt) > CALM_AFTER && !this.calm) { this.calm = true; this.ui.root.classList.add('hud-calm'); }
     const target = st.gold;
     const diff = target - this.goldShown;
     if (diff !== 0) {
