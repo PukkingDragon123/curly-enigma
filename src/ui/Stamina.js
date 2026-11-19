@@ -6,8 +6,8 @@
 //    cloth, bandage cross-stitches); their length is what stamina can't fill (State.energyCap)
 //  - at 0 underground: blackout(cb) closes the eyes (a dithered vignette and eyelids), cb takes
 //    the mole home, and the eyes blink open in the next scene
-// It sits on the tool belt in the mine (between the held tool's name and the strap) and at the
-// bottom middle elsewhere; it tucks away a moment after it's full and nothing's happening.
+// It rides on the tool belt when the belt is up (between the held tool's name and the strap), at
+// the bottom middle otherwise; it tucks away a moment after it's full and nothing's happening.
 // Rules: src/core/vitals.js. Art: src/ui/staminaArt.js.
 import { el, clamp } from '../core/util.js';
 import { GEO, R, RAMPS, pk, gaugeLayers } from './staminaArt.js';
@@ -62,11 +62,11 @@ export class StaminaBar {
     return { s: clamp(d.energy / m, 0, 1), h: clamp((d.hunger || 0) / m, 0, 1), i: clamp((d.injury || 0) / m, 0, 1) };
   }
 
-  /** The mine: ride on the tool belt; elsewhere: bottom middle. */
+  /** With the tool belt up: ride on it; without: bottom middle. */
   setMode(mode) {
     this.mode = mode;
     const belt = this.hud.ui.belt;
-    const dockIn = mode === 'deep' && belt?.el && belt.strap;
+    const dockIn = mode !== 'none' && belt?.el && belt.strap && !belt.el.hidden;
     if (dockIn && this.dock.parentNode !== belt.el) { belt.el.insertBefore(this.dock, belt.strap); this.dock.className = 'stam-dock docked'; }
     else if (!dockIn && this.dock.parentNode !== this.hud.ui.hud) { this.hud.ui.hud.append(this.dock); this.dock.className = 'stam-dock free'; }
     if (mode === 'none') this.show(false);
@@ -107,6 +107,8 @@ export class StaminaBar {
   update(dt) {
     const st = this.game.state, ui = this.hud.ui;
     this.t += dt;
+    this.dockT = (this.dockT || 0) - dt;
+    if (this.dockT <= 0) { this.dockT = 0.25; this.setMode(ui.hudMode); } // (the belt comes and goes)
     const v = this.read();
     // stamina: a drop snaps down and leaves a ghost; a rise springs up (a little overshoot)
     if (v.s < this.s - 0.0005) {
@@ -282,7 +284,7 @@ class Veil {
         const k = clamp(this.pt / 1.25, 0, 1);
         // the lids droop, flutter once, then shut
         this.lid = clamp(k * k * 1.05 + 0.1 * Math.sin(this.pt * 10) * (1 - k), 0, 1);
-        this.dark = Math.max(this.dark, k);
+        this.dark = Math.max(this.dark, k * k * 0.85); // the edges go first, the middle with the lids
         if (k >= 1) { this.phase = 'dark'; this.pt = 0; const cb = this.cb; this.cb = null; try { cb?.(); } catch (e) { console.error(e); } }
       } else if (this.phase === 'dark') {
         this.lid = 1; this.dark = 1;
