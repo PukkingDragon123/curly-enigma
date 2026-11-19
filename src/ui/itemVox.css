@@ -1,5 +1,3 @@
-/* Items as real 3D models (itemVox.js): stills and frames are plain <img>s and keep their places'
-   own styling. A still that arrives settles in with a little drop; the tag's slow turn is placed here. */
-img.vox-in { animation: voxIn .26s var(--pop, cubic-bezier(.25, 1.65, .45, 1)); }
-@keyframes voxIn { from { transform: translateY(calc(var(--px, 3px) * -2)) scale(.9); } }
-.vox-spin { image-rendering: pixelated; }
+/* Item icons (itemVox.js): a toast's or a reveal's icon hops in as it appears. */
+img.vox-pop { animation: voxPop .42s var(--pop, cubic-bezier(.25, 1.65, .45, 1)); }
+@keyframes voxPop { 0% { transform: translateY(calc(var(--px, 3px) * 3)) scale(.6); } 45% { transform: translateY(calc(var(--px, 3px) * -3)) scale(1.12, .92); } 70% { transform: scale(.96, 1.05); } }

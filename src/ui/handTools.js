@@ -2,7 +2,10 @@
 // first nine slots of the inventory (core/hotbar.js). Keys 1–9, the wheel or a tap on a loop pick
 // a slot; the paws hold what's in it, and it works: a pick or chisel swings and knocks on what it
 // hits (hold to keep swinging), the brush sweeps, the drill whirs, a snack is eaten, the build kit
-// opens the house's build mode. On a touch screen, tapping the picked loop again uses it.
+// opens the house's build mode. Anything else in the slot (an ore, a mushroom, a bowl, a plan, a
+// sword) is held up in the paw as its real 3D model (wave 19: src/fps/viewmodel/held.js), each in
+// its own grip; switching slots lowers one and raises the next. On a touch screen, tapping the
+// picked loop again uses it.
 //
 // Scenes hook it in with one line in their frame (after the FPSRig update):
 //   (this.hands ||= new HandTools(this)).update(dt, busy);
@@ -11,6 +14,7 @@ import { HOTBAR_N, hotbarOf, hotStack, refItem, KIND_ICON } from '../core/hotbar
 import { ITEMS } from '../data/items.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { itemVox } from './itemVox.js';
+import { heldGeo } from '../fps/viewmodel/held.js';
 import { startEating, glowLayer } from '../cooking/eating.js'; // (wave 16) the first-person bite sequence
 
 const PAW = { pick: 'pick', chisel: 'chisel', brush: 'brush', drill: 'drill', xray: 'xray', build: 'hammer', food: 'food', dynamite: 'dynamite', stake: 'stake' };
@@ -63,6 +67,7 @@ export class HandTools {
     let sig = this.slot + '|';
     for (let i = 0; i < HOTBAR_N; i++) { const s = bar[i]; sig += !s ? '-,' : s.tool ? s.tool + (st.equipped(s.tool)?.id || '') + ',' : (s.id || '') + (s.n ?? s.lots?.length ?? 1) + ','; }
     if (!force && sig === this._sig) return;
+    if (this._sig) this._warmed = false; // (the belt changed: warm its held models again)
     this._sig = sig;
     const slots = [];
     for (let i = 0; i < HOTBAR_N; i++) {
@@ -75,14 +80,38 @@ export class HandTools {
     this.g.ui.setHotbar(slots, this.slot, (i) => this.tap(i));
   }
 
-  /** The paws hold what's picked. */
+  /** The model key of the picked slot's stack when it isn't a tool (item id or a forged weapon's key). */
+  heldKey() {
+    const s = hotStack(this.g.state, this.slot);
+    if (!s || s.tool) return null;
+    if (s.w) return `w.${s.w.type}.${s.w.metal}.${s.w.infusion || ''}`;
+    return ITEMS[s.id] ? s.id : null;
+  }
+
+  /** The paws hold what's picked: a tool, a snack, or (any other item) its model in the paw. */
   holdIt() {
     const rig = this.s.rig;
     if (!rig) return;
     const k = this.kind, it = this.item(k);
-    const want = it || k === 'build' ? PAW[k] || 'none' : 'none';
-    const id = want === 'none' ? null : it?.id || null;
+    let want = it || k === 'build' ? PAW[k] || 'none' : 'none';
+    let id = want === 'none' ? null : it?.id || null;
+    if (want === 'none') { const hk = this.heldKey(); if (hk) { want = 'held'; id = hk; } }
     if (rig.tool !== want || rig.toolItem !== id) rig.setTool(want, id);
+    // the belt's other items are built ahead (each once, cached), so picking one never stalls a frame
+    if (!this._warmed) { this._warmed = true; this.warmHeld(); }
+  }
+  /** Build the belt's held models a little at a time in idle moments. */
+  warmHeld() {
+    const st = this.g.state, bar = st.data.inv?.slots || [];
+    const keys = [];
+    for (let i = 0; i < HOTBAR_N; i++) { const s = bar[i]; if (s && !s.tool) keys.push(s.w ? `w.${s.w.type}.${s.w.metal}.${s.w.infusion || ''}` : s.id); }
+    const next = () => {
+      if (this.gone || !keys.length) return;
+      const k = keys.shift();
+      try { if (k) heldGeo(k); } catch (e) { /* built when picked instead */ }
+      (window.requestIdleCallback || ((f) => setTimeout(f, 60)))(next, { timeout: 1500 });
+    };
+    (window.requestIdleCallback || ((f) => setTimeout(f, 60)))(next, { timeout: 1500 });
   }
 
   /** off: a cutscene, build mode... the belt goes away and the paws are left alone. */

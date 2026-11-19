@@ -720,10 +720,9 @@ html.is-touch .bp-hot .inv-slot .k { display: none; }
 .inv-slot:not(.empty) img { filter: drop-shadow(var(--px) var(--px) 0 rgba(40, 18, 6, .38)); }
 .inv-slot.pocket.on::after { background: linear-gradient(to bottom, rgba(255, 214, 120, .28), transparent); }
 
-/* ---------- wave 19: bigger pockets, and the things in them are their real 3D models (itemVox.js),
-   sitting down in deep leather pockets: a lit lip at the top left, walls in shadow, a floor, and the
-   pocket's front lip drawn over the item's foot. Counts are stamped brass tags. Sizes come from here
-   (itemVox.itemPx() reads --inv-item, --belt-item... so each picture is drawn at the size it shows). ---------- */
+/* ---------- wave 19: bigger pockets, deep leather ones (hand-drawn pixel maps, packArt.js): a lit lip
+   at the top left, walls in shadow, a floor, and the pocket's front lip drawn over the item's foot.
+   The icons show at whole multiples of their 64 px art (crisp); counts are stamped brass tags. ---------- */
 :root {
   --inv-gap: calc(var(--px) * 2);
   --inv-side: calc(var(--px) * 52);
@@ -732,11 +731,11 @@ html.is-touch .bp-hot .inv-slot .k { display: none; }
   /* the bag round the pockets: its edges, the gaps, the compartment's padding, a thin scrollbar */
   --inv-chrome: calc(var(--inv-equip) + var(--px) * 36 + 12px);
   --inv-slot: max(40px, round(down, min(calc(var(--px) * 36), calc((100vw - 28px - var(--sal) - var(--sar) - var(--inv-chrome) - var(--inv-side)) / 9 - var(--inv-gap))), var(--px)));
-  --inv-item: round(down, calc(var(--inv-slot) - var(--px) * 4), calc(var(--px) * 8));
+  --inv-item: max(32px, round(down, calc(var(--inv-slot) + var(--px) * 2), 64px));
   --belt-loop: calc(var(--px) * 28);
-  --belt-item: round(down, calc(var(--belt-loop) - var(--px) * 4), calc(var(--px) * 8));
+  --belt-item: max(32px, round(down, calc(var(--belt-loop) - var(--px) * 4), 64px));
   --snack-item: 48px;
-  --tag-item: calc(var(--px) * 32);
+  --tag-item: var(--icon);
   --tip-item: var(--icon);
 }
 @media (min-width: 641px) and (min-height: 501px) {
@@ -763,10 +762,9 @@ html.is-touch .bp-hot .inv-slot .k { display: none; }
 .bp-pack .inv-slot img, .bp-hot .inv-slot img, .bp-tgrid .inv-slot img {
   position: absolute; left: 50%; top: 50%; width: var(--inv-item); height: var(--inv-item); max-width: none;
   margin: calc(var(--inv-item) / -2) 0 0 calc(var(--inv-item) / -2);
-  filter: none; image-rendering: pixelated; z-index: 1;
+  filter: drop-shadow(var(--px) var(--px) 0 rgba(46, 24, 48, .35)); image-rendering: pixelated; z-index: 1;
 }
 .inv-slot.blade img, .inv-slot.blade:not(.empty):hover img { transform: none; }
-.inv-slot:not(.empty):hover img, .inv-slot:not(.empty) img { filter: none; }
 .bp-pack .inv-slot:not(.empty):hover, .bp-hot .inv-slot:not(.empty):hover { transform: none; filter: brightness(1.05); }
 .bp-pack .inv-slot:not(.empty):hover img, .bp-hot .inv-slot:not(.empty):hover img { transform: none; }
 /* the front lip over the item's foot (only where the deep pockets are drawn) */
@@ -810,11 +808,8 @@ html.is-touch .bp-hot .inv-slot .k { display: none; }
 .inv-ghost.out img { transform: rotate(28deg) scale(.96) translateY(calc(var(--px) * 3)); opacity: .82; }
 .inv-ghost.touch img { top: calc(var(--inv-item) * -1.2); }
 
-/* the tag's turning item, the tooltip's picture, the gear and snack pictures at their own sizes */
-.bp-tag-icon { width: calc(var(--tag-item) * .72 + var(--px) * 8); height: calc(var(--tag-item) * .72 + var(--px) * 8); }
-.bp-tag-icon img { width: calc(var(--px) * 24); height: calc(var(--px) * 24); image-rendering: pixelated; }
-.bp-tag-icon .vox-spin { width: var(--tag-item); height: var(--tag-item); }
-.bp-tag-icon.vox > img.vox-spin { visibility: visible; }
+/* the tooltip's picture, the gear and snack pictures at their own sizes */
+.bp-tag-icon img { image-rendering: pixelated; }
 .bp-snack { width: calc(var(--snack-item) + var(--px) * 4); height: calc(var(--snack-item) + var(--px) * 4); border-image: var(--pk-well) 6 fill / calc(var(--px) * 3) repeat; border-width: calc(var(--px) * 2); image-rendering: pixelated; }
 .bp-snack img { width: var(--snack-item); height: var(--snack-item); }
 .bp-snack .n { right: calc(var(--px) * -3); bottom: calc(var(--px) * -3); }

@@ -49,7 +49,7 @@ export function bagFullToast(game, id) {
 }
 
 export function openBackpack(game, opts = {}) {
-  itemVox.init(game); // (items in the pack are their real 3D models; hovered ones sway, the picked one turns on its tag)
+  itemVox.init(game); // (the pack shows the items' pixel-art icons; the paw holds their 3D models)
   const st = game.state;
   const ui = game.ui;
   const audio = game.audio;

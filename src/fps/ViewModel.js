@@ -5,7 +5,9 @@
 //
 //   const vm = new ViewModel();
 //   vm.resize(aspect);
-//   vm.setTool('pick', { item: 'pick_iron' });   // pick chisel brush drill xray stake beam food none hammer tongs smith
+//   vm.setTool('pick', { item: 'pick_iron' });   // pick chisel brush drill xray stake beam food none hammer tongs smith held
+//   vm.setTool('held', { item: 'glowcap' });     // (wave 19) any item in the paw as its real 3D model (./viewmodel/held.js):
+//                                                // pinched on the fist, cradled on the open palm, a sheet held up, or by its haft
 //   vm.update(dt, { speed, grounded, climbing, swimming, look: {dx, dy}, lamp: {color, intensity}, ambient, heat, camera });
 //   vm.swing('pick', 0.3); vm.impact('pick', 1); vm.use('drill', true); vm.eat('grub_bar'); vm.hurt();
 //   vm.impact('pick', 1, { feel: 'bite' | 'rebound' | 'clang', stop: 0.05 }): soft soil swallows the
@@ -49,13 +51,14 @@ import { shade as shadeC } from '../core/util.js';
 import { isDish, dishVoxInto, dishForm } from '../cooking/dishVox.js';
 import { mainColor } from '../cooking/food.js';
 import { Vox, cached } from '../gfx/char/vox.js';
+import { heldGeo } from './viewmodel/held.js';
 
 // (wave 16) eating: lift (bouncy) · three bites · lower, about 1.2 s; cooked dishes are whole voxel
 // servings (src/cooking/dishVox.js) with bites taken out of them, raw snacks the icon extruded
 const EAT = { up: 0.22, bite: 0.24, down: 0.95, end: 1.2 };
 /** The snack's voxels at a bite stage (0..3): a dish built whole, else the icon extruded (parts.js). */
 function snackGeo(id, stage) {
-  if (!isDish(id)) return foodGeo(id || 'grub_bar', stage);
+  if (!isDish(id)) { const h = id && heldGeo(id, stage); return h ? h.geo : foodGeo(id || 'grub_bar', stage); } // (wave 19: the real model, bitten)
   return cached(`vm-dish|${id}|${stage}`, () => {
     const v = new Vox(-24, 25, -2, 46, -24, 25);
     dishVoxInto(v, id, 13, stage);
@@ -65,7 +68,7 @@ function snackGeo(id, stage) {
 
 /** Meters per view-model voxel. */
 export const VMV = 0.0035;
-export const TOOL_KINDS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'beam', 'food', 'none', 'hammer', 'tongs', 'smith', 'dynamite'];
+export const TOOL_KINDS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'beam', 'food', 'none', 'hammer', 'tongs', 'smith', 'dynamite', 'held'];
 export { HAMMER_FACE, TONGS_JAW };
 
 // ---------------------------------------------------------------- poses (right hand, camera space)
@@ -79,7 +82,13 @@ const BASE = {
   stake: P([0.125, -0.16, -0.34], [-0.6, 0.5, -0.62], [-0.55, -0.6, -0.6]),
   dynamite: P([0.125, -0.16, -0.34], [-0.45, 0.7, -0.5], [-0.55, -0.6, -0.6]),
   beam: P([0.135, -0.135, -0.37], [1, 0.04, -0.1], [0, 0.45, -1]),
-  food: P([0.13, -0.15, -0.31], [-0.15, 1, 0.3], [-0.35, 0.05, -1]),
+  food: P([0.12, -0.13, -0.31], [-0.15, 1, 0.3], [-0.35, 0.05, -1]),
+  // (wave 19) an item in the paw, by grip (./viewmodel/held.js): stood on the fist, on the open palm
+  // turned up (tipped toward you so you see into a bowl), a sheet held up, a haft held low
+  held_pinch: P([0.11, -0.125, -0.32], [-0.12, 1, 0.32], [-0.35, 0.05, -1]),
+  held_cradle: P([0.1, -0.15, -0.33], [0.12, -1, -0.45], [-0.3, 0.12, -1]),
+  held_sheet: P([0.1, -0.13, -0.32], [-0.08, 1, 0.18], [-0.25, 0.05, -1]),
+  held_haft: P([0.16, -0.17, -0.33], [-0.25, 1, -0.2], [-0.8, -0.05, -0.6]),
   none: OPEN,
   hammer: P([0.17, -0.2, -0.33], [-0.3, 1, -0.25], [-0.8, -0.1, -0.6]),
   tongs: OPEN,
@@ -111,7 +120,7 @@ const UPPER_LEN = 170; // upper arm length (the same capsule without the gauntle
 const ARM_REACH = 0.97; // how much of the arm's full length a paw may use (it never locks out straight)
 
 const TWO_HANDED = new Set(['drill', 'beam']);
-const SWING_TOOLS = new Set(['pick', 'chisel', 'stake', 'beam', 'none', 'drill', 'brush', 'xray', 'food', 'hammer', 'tongs', 'smith', 'dynamite']);
+const SWING_TOOLS = new Set(['pick', 'chisel', 'stake', 'beam', 'none', 'drill', 'brush', 'xray', 'food', 'hammer', 'tongs', 'smith', 'dynamite', 'held']);
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _up = new THREE.Vector3();
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
@@ -467,8 +476,18 @@ export class ViewModel {
       A.part(this.toolR, beamGeo(), { scale: S });
       T.socket = { pos: [0, -2 * BEAM_GRIP, 0], q: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, Math.PI)) };
       T.tip = [0, -BEAM_GRIP, -8];
+    } else if (kind === 'held') {
+      // (wave 19) the item's real model in the paw, held its own way
+      const h = item ? heldGeo(item) : null;
+      T.grip = h?.grip || 'pinch';
+      if (h) {
+        A.part(this.toolR, h.geo, { scale: S });
+        if (h.glow) { A.part(this.toolR, h.glow, { scale: S, layer: 'detail' }); T.glow = { color: h.glowColor ?? 0xffe0a0, k: 0.45 }; }
+        T.tip = h.tip;
+      } else T.tip = [0, 20, 0];
     } else if (kind === 'food') {
-      const F = [V * 1.35, V * 1.35, V * 1.35];
+      const real = !isDish(item) && item && heldGeo(item);
+      const F = real ? S : [V * 1.35, V * 1.35, V * 1.35]; // (a real model is built in view-model voxels already)
       T.food = [0, 1, 2, 3].map((st) => scaleVisible(A.part(this.toolR, snackGeo(item || 'grub_bar', st), { scale: F })));
       T.food.forEach((b, i) => { b.visible = i === 0; });
       T.tip = [0, 20, 0];
@@ -493,7 +512,7 @@ export class ViewModel {
     // the snack the left paw is eating
     this.foodL = null;
     if (this.leftFood) {
-      const F = [V * 1.35, V * 1.35, V * 1.35];
+      const F = !isDish(this.leftFood) && heldGeo(this.leftFood) ? S : [V * 1.35, V * 1.35, V * 1.35];
       this.foodL = [0, 1, 2, 3].map((st) => scaleVisible(A.part(this.foodLGroup, snackGeo(this.leftFood, st), { scale: F })));
       this.foodL.forEach((b, i) => { b.visible = i === 0; });
     }
@@ -580,10 +599,16 @@ export class ViewModel {
       gripR = false; toolVis = false; leftItem = false;
     } else {
       const P = this.P;
-      R.copy(P.base[this.kind] || P.open);
-      if (this.kind === 'none') gripR = false;
+      const held = this.kind === 'held';
+      R.copy((held ? P.base['held_' + (this.tool.grip || 'pinch')] : P.base[this.kind]) || P.open);
+      if (this.kind === 'none' || (held && this.tool.grip === 'cradle')) gripR = false;
       // breathing
       R.rot(Math.sin(t * 1.9) * 0.012, 0, Math.sin(t * 0.8) * 0.01);
+      // something held (not a tool): a little idle sway and bob, as if weighed in the paw
+      if (held || this.kind === 'food') {
+        const w = this.tool.grip === 'haft' ? 0.6 : 1;
+        R.rot(Math.sin(t * 1.3) * 0.03 * w, Math.sin(t * 0.85 + 1) * 0.06 * w, Math.sin(t * 1.05 + 2) * 0.025 * w).move(0, Math.sin(t * 2.1) * 0.0025, 0);
+      }
       if (this.kind === 'chisel') L.copy(P.mallet).mirror();
       else if (HAS_TONGS.has(this.kind)) L.copy(P.tongsL).mirror();
       else L.copy(P.open).mirror();

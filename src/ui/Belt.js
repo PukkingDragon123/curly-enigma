@@ -11,7 +11,7 @@ import { installPackArt } from './packArt.js';
 import { hotbarOf, hotStack } from '../core/hotbar.js';
 import * as Inv from '../core/inventory.js';
 import { stackIcon, stackName, stackKey } from './invGrid.js';
-import { itemVox } from './itemVox.js'; // (wave 19) what hangs in a loop is its real 3D model
+import { itemVox } from './itemVox.js';
 import { floatIn, ghost } from './floatType.js'; // the held item's name floats (wave 9: no tag behind it)
 import { keepClear } from './uiSolid.js';
 
@@ -52,11 +52,7 @@ export class Belt {
     // a loop holding a stack shows that stack (whatever kind the scene made of it), and keeps up
     // with it as things come and go
     const st0 = this.ui.game.state;
-    if (st0?.on && this.watched !== st0) {
-      this.watched = st0;
-      st0.on('items', () => { if (this.raw && !this.el.hidden) this.set(this.raw, this.sel, this.onPick); itemVox.prewarm(st0); });
-      itemVox.init(this.ui.game); // the pack's pictures are made ahead of time, in idle time
-    }
+    if (st0?.on && this.watched !== st0) { this.watched = st0; st0.on('items', () => { if (this.raw && !this.el.hidden) this.set(this.raw, this.sel, this.onPick); }); }
     const size = itemVox.itemPx('belt');
     slots = slots.map((d, i) => {
       const s = st0?.data?.inv ? hotStack(st0, i) : null;

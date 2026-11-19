@@ -24,7 +24,7 @@ function sprite(key, rows, pal, flip = false) {
 }
 
 // ------------------------------------------------------------------ creatures (hand-made sprites, recoloured)
-const MOVE = {
+export const MOVE = {
   earthworm: 'worm', dust_bunny: 'hop', mole_cricket: 'walk', cave_bat: 'fly', rock_crab: 'walk', ore_slug: 'walk', glow_beetle: 'fly',
   spark_mite: 'swarm', crystal_spider: 'hang', blind_fish: 'swim', lava_newt: 'lava', ember_moth: 'fly', frost_shrimp: 'swim', gem_tortoise: 'walk',
   void_wisp: 'float', pebble_mimic: 'still', spore_puffer: 'hop', shade_bat: 'fly', rubble_golem: 'walk', gloom_wisp: 'float', crystal_wyrm: 'walk',
@@ -32,7 +32,7 @@ const MOVE = {
   cave_drake: 'walk', raptor: 'walk', tyrant: 'walk', shellback: 'walk', pterosaur: 'fly',
 };
 // facing right: 1 body, 2 light, 3 dark, e eye, w white, y yellow
-const CRIT = {
+export const CRIT = {
   bat: [['3.......3', '33.1.1.33', '.3311133.', '...1e1...', '....1....'], ['...1.1...', '..31113..', '.3311133.', '33.1e1.33', '3.......3']],
   crab: [['2.......2', '13.....31', '.1.e.e.1.', '.3222223.', '3.3.3.3.3'], ['.2.....2.', '.13...31.', '.1.e.e.1.', '.3222223.', '.3.3.3.3.']],
   cricket: [['.....33.', '..1111e.', '.122221.', '3.3..3.3'], ['....3..3', '..1111e.', '.122221.', '.3.3.3..']],
@@ -63,7 +63,7 @@ const CRIT = {
   wisp: [['.2.', '2e2', '.1.', '1.1']],
   mite: [['1.1', '.e.', '1.1']],
 };
-const CRIT_OF = {
+export const CRIT_OF = {
   cave_bat: 'bat', shade_bat: 'bat', rock_crab: 'crab', mole_cricket: 'cricket', dust_bunny: 'bunny', crystal_spider: 'spider', cave_spider: 'spiderBig',
   gem_tortoise: 'tortoise', rubble_golem: 'golem', crystal_golem: 'golem', cave_troll: 'troll', kobold: 'humanoid', ember_imp: 'imp', ruin_wraith: 'wraith',
   raptor: 'raptor', tyrant: 'tyrant', shellback: 'shellback', cave_drake: 'drake', pterosaur: 'ptero', lava_newt: 'newt', ember_moth: 'moth',
@@ -123,7 +123,7 @@ export function placeLife(L, R, rng) {
   });
 }
 
-const PLANT = {
+export const PLANT = {
   cave_carrot: ['..G.G', '.GgG.', '..o..', '..o..'], glowcap: ['.bb.', 'bxxX', '.C..', '.C..'], blindfern: ['e.e.e', '.eEe.', 'e.E.e', '..E..'],
   whisperweed: ['v.v.v', 'V.v.V', '.VvV.', '..u..'], pepperroot: ['.r.r', 'rRrR', '.GG.', '..G.'], sparkmoss: ['.x..x', 'GGGG.', 'GhgGG'],
   bubblebulb: ['.b.', 'bcb', 'bBb', '.G.'], crystal_lily: ['.c.', 'b.b', '.b.', '.G.'], gloomshroom: ['.VV.', 'VuuV', '.C..', '.C..'],

@@ -1,5 +1,5 @@
-// Where an item's 3D model comes from (for the stills of src/ui/itemVox.js). Wherever the game
-// already has the thing in 3D, that model is used:
+// Where an item's 3D model comes from (what the mole holds in first person: src/fps/viewmodel/held.js).
+// Wherever the game already has the thing in 3D, that model is used:
 //   plants and mushrooms   the gathering close-ups (deep/gather/models.js plantModel): head, stem, bulb
 //   ore and gems           the clump's ore core (deep/clumps/grid.js), cleaned, on a crumb of its rock
 //   cooked dishes          the kitchen's servings (cooking/dishVox.js)
@@ -12,7 +12,7 @@
 // drops, ingredients, gear...). Only what has no shape of its own (a ticket, a letter) is the old
 // flat icon, extruded.
 //
-//   itemMesh(key) → { M, real, pose, src } | null    M: the rasterizer's mesh (./itemRaster.js),
+//   itemMesh(key) → { M, real, pose, src } | null    M: { P, N, C, G, I, vox, orient } triangle arrays,
 //                                                    normalized (largest side 1, x/z centred, on y = 0)
 import * as THREE from 'three';
 import { ITEMS } from '../data/items.js';
@@ -173,7 +173,7 @@ function finish(b, orient = 'stand', o = {}) {
   const vox = (isFinite(b.vox) ? b.vox : Math.max(...bb.e) / 32) * s;
   return { P, N, C, G, I, vox, orient };
 }
-// how each orientation is looked at (the turn rocks the yaw round these)
+// how each orientation is looked at (a 3/4 view; kept for anyone drawing a model's picture)
 export const POSES = {
   stand: { yaw: -0.62, pitch: 0.46 },
   lay: { yaw: 0.86, pitch: 0.74 },

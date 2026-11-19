@@ -23,7 +23,7 @@ import { installPackArt } from './packArt.js';
 export function stackIcon(s, size) {
   if (!s) return '';
   if (s.tool) return itemVox.src(KIND_ICON[s.tool] || 'pick_rusty', size);
-  return itemVox.stack(s, size); // its real 3D model (itemVox.js): the flat icon until its still is made
+  return itemVox.stack(s, size); // the item's pixel-art icon (its 3D model is what the paw holds: fps/viewmodel/held.js)
 }
 /** The model key of a stack (what data-vox carries). */
 export const stackKey = (s) => (!s ? null : s.tool ? KIND_ICON[s.tool] || 'pick_rusty' : itemVox.stackKey(s));
@@ -114,7 +114,6 @@ export class SlotDnD {
     this.drag = null; // a press that may become a drag
     this.hand = null; // { c, i, k } units held in the paw (still in their slot until dropped)
     this.ghost = el('div', { class: 'inv-ghost', hidden: true, 'aria-hidden': 'true' }, [el('img', { class: 'pix', alt: '' }), el('span', { class: 'n' })]);
-    this.ghostSway = null;
     installPackArt(this.ghost); // (its count's brass tag)
     document.body.append(this.ghost);
     this.lastTap = { t: 0, key: '' };
@@ -367,7 +366,6 @@ export class SlotDnD {
     if (!s) return;
     const [img, n] = this.ghost.children;
     const key = stackKey(s), size = this.ctx.itemSize?.() ?? itemVox.itemPx('slot');
-    const sameItem = this.ghost.dataset.key === key && !this.ghost.hidden;
     img.src = stackIcon(s, size);
     this.ghost.dataset.key = key || '';
     n.textContent = k > 1 ? String(k) : '';
@@ -376,8 +374,6 @@ export class SlotDnD {
     this.ghost.classList.toggle('touch', !!this.drag?.touch);
     this.ghost.classList.toggle('blade', !!s.w);
     this.ctx.held?.(true);
-    // the stack in the paw sways gently while it's carried (one live picture at a time)
-    if (!sameItem) { this.ghostSway?.dispose(); this.ghostSway = itemVox.hold(img, key); }
     if (!quiet) bounce(this.ghost, 'grab');
   }
   showGhost(x, y, vx = 0) {
@@ -389,7 +385,7 @@ export class SlotDnD {
     this.ghost.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
     this.ghost.style.setProperty('--tilt', this.tilt.toFixed(1) + 'deg');
   }
-  hideGhost() { this.ghost.hidden = true; this.ghostSway?.dispose(); this.ghostSway = null; this.ghost.dataset.key = ''; this.tilt = -5; this.ctx.held?.(false); }
+  hideGhost() { this.ghost.hidden = true; this.ghost.dataset.key = ''; this.tilt = -5; this.ctx.held?.(false); }
   flyBack(h) {
     if (!h) return;
     bounce(this.nodeOf(h.c, h.i));
@@ -417,7 +413,6 @@ export class SlotDnD {
   destroy() {
     clearTimeout(this.drag?.longT);
     for (const off of this.on) off();
-    this.ghostSway?.dispose();
     this.ghost.remove();
   }
 }

@@ -143,6 +143,7 @@ const TOOLS = [
   ['none', null], ['hammer', null], ['tongs', null], ['smith', null], ['dynamite', 'dynamite'],
 ];
 const HELD = ['axe_iron', 'axe_stone', 'spade_iron', 'shears_iron', 'torch', 'plank', 'stone_block', 'lantern', 'build_hammer', 'clump_iron'];
+const ITEM_HELD = ['glowcap', 'copper_ore', 'amethyst', 'ruby', 'egg', 'honey', 'mushroom_stew', 'copper_ingot', 'chair_wood', 'blk_planks', 'bp_dagger', 'exit_ticket', 'stick', 'w.shortsword.iron.', 'w.axe.bronze.', 'cave_carrot', 'worm', 'helmet_basic', 'relic_idol'];
 const heldOf = (id) => { try { return heldGeo?.(id) || null; } catch { return null; } };
 const ASPECTS = [['16:9', 16 / 9], ['21:9', 21 / 9], ['32:9', 32 / 9], ['4:3', 4 / 3], ['1:1', 1], ['tall 9:16', 9 / 16], ['very tall 9:21', 9 / 21]];
 
@@ -202,6 +203,19 @@ for (const [an, aspect] of ASPECTS) {
       const geo = heldOf(id);
       for (const kind of ['pick', 'stake']) { vm.setTool(kind, { item: id, geo }); run(vm, 0.5, DT, {}); vm.swing(kind, 0.3); run(vm, 1.4, DT, {}); }
     }
+  });
+  // (wave 19) any item in the paw as its real model, each grip: pinch, cradle (open palm up), sheet, haft;
+  // idle sway, walking, a shrug, the guard, eating raw food from it, quick switches between them
+  state(`${an} held item models (pinch, cradle, sheet, haft)`, () => {
+    const vm = makeVM(aspect);
+    for (const id of ITEM_HELD) {
+      vm.setTool('held', { item: id }); run(vm, 0.5, DT, {}); run(vm, 1, DT, { speed: 4.6 });
+      vm.swing('held', 0.3); run(vm, 0.6, DT, {}); vm.block(true); run(vm, 0.4, DT, {}); vm.block(false); run(vm, 0.3, DT, {});
+      vm.eat('cave_carrot'); run(vm, 1.4, DT, {});
+    }
+    for (let i = 0; i < ITEM_HELD.length * 2; i++) { vm.setTool('held', { item: ITEM_HELD[(i * 7) % ITEM_HELD.length] }); run(vm, 0.04 + (i % 3) * 0.07, DT, {}); }
+    for (const id of ['cave_carrot', 'glowcap', 'egg', 'mushroom_stew']) { vm.setTool('food', { item: id }); run(vm, 0.5, DT, {}); vm.eat(id); run(vm, 1.4, DT, {}); }
+    run(vm, 1, DT, {});
   });
   state(`${an} tool switching mid-swing / mid-eat`, () => {
     const vm = makeVM(aspect); vm.setTool('pick', { item: 'pick_iron' }); run(vm, 0.6, DT, {});

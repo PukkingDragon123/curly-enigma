@@ -33,6 +33,31 @@ import { doodleURL, cssUrl } from '../ui/tomeArt.js';
 import { hash, hashStrLite } from './liftArt/kit.js';
 import { paintLayer, paintTop, paintCore, sketchOf, LIFT_ZONE_DEPTHS, LAYER_H, TOP_H, CORE_H, GROUND, SHAFT_X } from './liftArt/paint.js';
 import { placeLife, drawLayerAnim, drawTopAnim, drawSky, drawCoreAnim, drawMole, cageSprite } from './liftArt/anim.js';
+import { Diorama } from './liftArt/diorama.js';
+import { buildTop, buildLayer, buildCore, SEC_H, SHAFT_X3, GROUND3 } from './liftArt/build3d.js';
+import { Art, digits as drawDigits, CREAM as CREAM_C, PAL as PAL_C } from './liftArt/kit.js';
+
+// the 3D diorama renderer, made once per page (it holds render targets on the shared renderer)
+let DIO = null, DIO_FAILED = false;
+function diorama(game) {
+  if (DIO || DIO_FAILED) return DIO;
+  try {
+    if (/[?&]lift3d=0/.test(location.search) || !game.engine?.renderer) throw new Error('no 3D');
+    DIO = new Diorama(game.engine.renderer);
+  } catch (e) { DIO_FAILED = true; DIO = null; }
+  return DIO;
+}
+const numCache = new Map();
+/** A depth number as a little canvas in the 3x5 pixel font, on a plum chip. */
+function numCanvas(n) {
+  if (numCache.has(n)) return numCache.get(n);
+  const w = String(n).length * 4 + 1, a = new Art(w, 7);
+  for (let y = 0; y < 7; y++) for (let x = 0; x < w; x++) a.p(x, y, x === w - 1 || y === 6 ? PAL_C.k : PAL_C.K);
+  drawDigits(a, 1, 1, n, CREAM_C);
+  const cv = a.commit();
+  numCache.set(n, cv);
+  return cv;
+}
 
 export { LIFT_ZONE_DEPTHS };
 const X0 = -96, X1 = 96; // the mine's x extent (Generator BOUNDS), mapped across the scene
@@ -247,7 +272,7 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
   const S = { px: 3, W: 0, VH: 0, sections: [], scroll: 0, target: 0, vel: 0, total: 0, ready: false };
   h = game.ui.openPanel({
     title: opts.title || 'The Lift', sub: opts.sub || (canRide ? 'Where to?' : 'The layers you know.'), body, className: 'll-panel',
-    onClose: () => { alive = false; cancelAnimationFrame(raf); clearTimeout(idleT); ro?.disconnect(); window.removeEventListener('keydown', onKey, true); },
+    onClose: () => { alive = false; cancelAnimationFrame(raf); clearTimeout(idleT); ro?.disconnect(); window.removeEventListener('keydown', onKey, true); try { D3?.clear(); } catch (e) { /* gone */ } },
   });
   // (wave 9) an atlas leaf: the title as an illuminated initial over a knotwork band, a compass rose
   // in the margin, a raptor chasing a mole along the top edge (src/ui/tome.css)
@@ -258,30 +283,33 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
   const chase = el('div', { class: 'tm-chase', 'aria-hidden': 'true' }, ['raptor', 'mole'].map((k) => { const d = el('i', { class: 'tm-doodle tm-d-' + k }); d.style.setProperty('--d', cssUrl(doodleURL(k))); return d; }));
   h.el.append(el('i', { class: 'tm-compass', 'aria-hidden': 'true' }), chase);
 
+  let D3 = diorama(game);
+  if (D3) D3.clear();
   let idleT = 0;
   const build = () => {
     const cw = view.clientWidth, ch = view.clientHeight;
     if (!cw || !ch) return false;
-    // big pixels, a whole number of screen pixels each: about 288 art px across whatever the view's width
-    const px = Math.max(2, Math.round(cw / 288));
+    // a whole number of screen pixels per art pixel: about 480 across in 3D (288 for the flat tiles)
+    const px = Math.max(2, Math.round(cw / (D3 ? 480 : 288)));
     S.px = px;
     S.W = Math.max(160, Math.ceil(cw / px));
     S.VH = Math.max(60, Math.ceil(ch / px));
     canvas.width = S.W; canvas.height = S.VH;
     canvas.style.width = S.W * px + 'px'; canvas.style.height = S.VH * px + 'px';
     ctx.imageSmoothingEnabled = false;
-    const LH = LAYER_H;
-    const M = Math.ceil(0.22 * (TOP_H + S.VH) / 2) + 4;
+    const LH = D3 ? SEC_H.layer : LAYER_H, TH = D3 ? SEC_H.top : TOP_H, CH = D3 ? SEC_H.core : CORE_H;
+    const M = Math.ceil(0.22 * (TH + S.VH) / 2) + 4;
+    if (D3) { D3.clear(); D3.setSize(S.W, S.VH); }
     S.sections = [];
     let y = 0;
-    S.sections.push({ kind: 'top', key: 0, y, H: TOP_H, W: S.W, M, art: null });
-    y += TOP_H;
+    S.sections.push({ kind: 'top', key: 0, y, H: TH, W: S.W, M, art: null });
+    y += TH;
     for (let z = 1; z <= 6; z++) {
       S.sections.push({ kind: 'layer', key: z, z, y, H: LH, W: S.W, M, art: null });
       y += LH;
     }
-    S.sections.push({ kind: 'core', key: 7, y, H: CORE_H, W: S.W, M: 0, art: null });
-    y += CORE_H;
+    S.sections.push({ kind: 'core', key: 7, y, H: CH, W: S.W, M: 0, art: null });
+    y += CH;
     S.total = y;
     track.style.height = y * px + 'px';
     for (const sec of S.sections) {
@@ -291,7 +319,7 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
     for (const s of stops) if (!s.where.top) s.ax = ax(S.W, s.where.x);
     for (const sec of S.sections) if (sec.kind === 'layer') sec.stops = layerStops(sec.z);
     // the town cage rides from the town's floor to the foot of the deepest layer you've reached
-    S.cageTop = TOP_H - 8; S.cageBot = S.sections[deepest].y + 96;
+    S.cageTop = D3 ? 13 * 12 : TOP_H - 8; S.cageBot = S.sections[deepest].y + (D3 ? 144 : 96);
     return true;
   };
 
@@ -300,6 +328,20 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
   const paintSection = (sec) => {
     if (sec.art) return;
     const k = sec.key;
+    if (D3) {
+      // the 3D diorama: build the section, hand it to the renderer (the sketch is a pass over it)
+      const z = sec.z;
+      const built = sec.kind === 'top' ? buildTop({ W: sec.W, town })
+        : sec.kind === 'core' ? buildCore({ W: sec.W })
+          : buildLayer({ z, W: sec.W, seed, stops: sec.stops, finds: finds[z], ores: finds[z].ores.filter((o) => ORE_COL[o.id]).map((o) => ({ id: o.id, col: ORE_COL[o.id], known: !!o.e })) });
+      D3.add(sec, built);
+      sec.art = built;
+      sec.sk = reached[k] && (inked & bit(k)) ? null : true;
+      if (sec.kind === 'top') { if (town && (inked & bit(0))) sec.sk = null; placeTopTags(sec); }
+      else if (sec.kind === 'layer') placeLayerTags(sec);
+      sec.mode = reached[k] ? ((inked & bit(k)) ? 'color' : 'pending') : 'sketch';
+      return;
+    }
     if (sec.kind === 'top') {
       const A = paintTop({ W: sec.W, town, M: sec.M });
       sec.art = A;
@@ -349,7 +391,8 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
     }
     if (you && !you.top && you.zone === sec.z) {
       const x = you.stop ? clamp(you.stop.x - 15, 8, sec.W - 6) : clamp(ax(sec.W, you.x), 8, sec.W - 6);
-      youSpot = { sec, x, fy: sec.art.floorTop[clamp(x, 0, sec.W - 1)] };
+      const ft = sec.art.floorTop;
+      youSpot = { sec, x, fy: typeof ft === 'function' ? ft(x) : ft[clamp(x, 0, sec.W - 1)] };
       if (!you.stop) placeTag(youTag, x, sec.y + youSpot.fy - 13);
     }
   };
@@ -373,6 +416,7 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
     S.target = clamp(S.target + (e.deltaY * k) / S.px, 0, maxScroll());
     S.vel = 0;
   };
+  const tilt = [0, 0], tiltT = [0, 0];
   let drag = null;
   const onDown = (e) => {
     if (e.button != null && e.button !== 0) return;
@@ -397,7 +441,7 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
       drag.y = e.clientY;
       return;
     }
-    if (e.pointerType === 'mouse') hover(e);
+    if (e.pointerType === 'mouse') { hover(e); const r = view.getBoundingClientRect(); tiltT[0] = clamp(((e.clientX - r.left) / r.width) * 2 - 1, -1, 1); tiltT[1] = clamp(((e.clientY - r.top) / r.height) * 2 - 1, -1, 1); }
   };
   const onUp = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
@@ -530,7 +574,16 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
     }
     render(t);
   };
+  let last3d = -1;
   const render = (t) => {
+    if (D3) {
+      try { render3d(t); return; } catch (e) {
+        console.error('lift layers: the 3D diorama failed; drawing the flat map instead', e);
+        DIO_FAILED = true; DIO = null; D3 = null;
+        for (const s2 of S.sections) s2.art = null;
+        build(); layoutRail();
+      }
+    }
     const sy = Math.round(S.scroll), VH = S.VH, W = S.W;
     track.style.transform = `translateY(${-sy * S.px}px)`;
     ctx.fillStyle = '#1c1020';
@@ -543,7 +596,7 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
       const c0 = Math.max(0, top), c1 = Math.min(VH, top + sec.H);
       // a newly reached layer inks in once it's well in view
       if (sec.mode === 'pending' && top < VH * 0.55 && top + sec.H > VH * 0.45) { sec.pendT ??= t; if (t - sec.pendT > 0.35) startInk(sec, t); }
-      const p = sec.mode === 'ink' ? clamp((t - sec.ink0) / INK_DUR, 0, 1) : sec.mode === 'color' ? 1 : 0;
+      const p = sec.mode === 'ink' ? (sec.inkFreeze ?? clamp((t - sec.ink0) / INK_DUR, 0, 1)) : sec.mode === 'color' ? 1 : 0;
       if (sec.mode === 'ink' && p >= 1) sec.mode = 'color';
       if (sec.mode === 'ink' && sec.inkSnd < 3 && p > sec.inkSnd * 0.3 + 0.08) { sec.inkSnd++; game.audio.play('brush', { vol: 0.35 }); }
       const blit = (cv, k, M) => {
@@ -618,6 +671,45 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
       thumb.style.height = Math.max(8, Math.round(VH * k)) + 'px';
     }
   };
+  // the 3D frame: build what comes into view, the bands to sketch or ink, the cage, the mole, the depths
+  const render3d = (t) => {
+    const sy = Math.round(S.scroll), VH = S.VH, W = S.W;
+    track.style.transform = `translateY(${-sy * S.px}px)`;
+    if (railH) { const k = railH / S.total; thumb.style.transform = `translateY(${Math.round(sy * k)}px)`; thumb.style.height = Math.max(8, Math.round(VH * k)) + 'px'; }
+    if (t - last3d < 1 / 30 && last3d >= 0) return; // (a 30 fps cap: it's a map)
+    last3d = t;
+    const bands = [];
+    for (const sec of S.sections) {
+      const top = sec.y - sy;
+      if (top >= VH + 40 || top + sec.H <= -40) continue;
+      paintSection(sec);
+      if (sec.mode === 'pending' && top < VH * 0.55 && top + sec.H > VH * 0.45) { sec.pendT ??= t; if (t - sec.pendT > 0.35) startInk(sec, t); }
+      const p = sec.mode === 'ink' ? (sec.inkFreeze ?? clamp((t - sec.ink0) / INK_DUR, 0, 1)) : 0;
+      if (sec.mode === 'ink' && p >= 1) sec.mode = 'color';
+      if (sec.mode === 'ink' && sec.inkSnd < 3 && p > sec.inkSnd * 0.3 + 0.08) { sec.inkSnd++; game.audio.play('brush', { vol: 0.35 }); }
+      if (sec.mode === 'color' || !sec.sk) continue;
+      const sk = sketchFor(sec.key);
+      const y0 = sec.kind === 'top' ? top + GROUND3 + 8 : top;
+      bands.push({ y0, y1: top + sec.H, x0: sec.kind === 'top' ? sec.art.townX0 : 0, mode: sec.mode === 'ink' ? 2 : 1, p, faint: !!sk.faint, inkX: W * (sk.ink ?? 0), seed: sec.key * 1.7 });
+    }
+    for (let i = 0; i < 2; i++) tilt[i] += (tiltT[i] - tilt[i]) * 0.08;
+    const per = 26, tt = (t / per) % 1;
+    const u = tt < 0.18 ? 0 : tt < 0.5 ? (1 - Math.cos(((tt - 0.18) / 0.32) * Math.PI)) / 2 : tt < 0.68 ? 1 : (1 + Math.cos(((tt - 0.68) / 0.32) * Math.PI)) / 2;
+    const mole = youSpot ? { x: youSpot.x, y: youSpot.sec.y + youSpot.fy } : null;
+    const img = D3.frame({ scroll: sy, t, tilt, bands, cageY: S.cageTop + (S.cageBot - S.cageTop) * u, mole });
+    ctx.putImageData(img, 0, 0);
+    // the depths, in the pixel font, by the staff
+    for (const sec of S.sections) {
+      if (sec.kind !== 'layer') continue;
+      const top = sec.y - sy;
+      if (top >= VH || top + sec.H <= 0) continue;
+      const d0 = LIFT_ZONE_DEPTHS[sec.z - 1], d1 = LIFT_ZONE_DEPTHS[sec.z];
+      for (let d = Math.ceil(d0 / 10) * 10; d < d1; d += 10) {
+        if ((d - d0 < 5 && d !== d0) || d1 - d < 5) continue;
+        ctx.drawImage(numCanvas(d), 6, Math.round(top + ((d - d0) / (d1 - d0)) * sec.H) + 1);
+      }
+    }
+  };
   let railH = 0;
   const layoutRail = () => {
     railH = rail.clientHeight - 0;
@@ -666,7 +758,10 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
     dive: (z) => dive(nearestIn(z, null)),
     paintAll: () => { for (const s of S.sections) paintSection(s); },
     /** Re-run a layer's ink-in (for a look at it). */
-    reink: (key) => { const s = S.sections.find((q) => q.key === key); if (s && s.sk) { s.mode = 'pending'; s.pendT = null; } },
+    reink: (key) => { const s = S.sections.find((q) => q.key === key); if (s && s.sk) { s.mode = 'pending'; s.pendT = null; s.inkFreeze = undefined; } },
+    /** Hold a layer's ink-in at p (0..1) for a look at it. */
+    inkAt: (key, p) => { const s = S.sections.find((q) => q.key === key); if (s && s.sk) { s.mode = 'ink'; s.ink0 = 0; s.inkSnd = 3; s.inkFreeze = p; } },
+    is3d: () => !!D3,
   };
   return h;
 }
