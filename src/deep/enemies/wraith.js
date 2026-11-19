@@ -97,7 +97,7 @@ export class Wraith extends Beast {
           if (this.hurtPlayer(this.info.dmg * 1.6, [dx * 1.5, 0.5, dz * 1.5], 'drain_touch', { heavy: true, unblockable: true })) {
             const e = this.mgr.eye;
             stream(this.fx, e.x, e.y - 0.1, e.z, this.center.x, this.center.y, this.center.z, 16, this.G.mist);
-            this.mgr.say('wraith_grasp', 'Its touch drinks your warmth! When it glows <b>red</b>, back away.', 'bad', 90);
+            this.mgr.say('wraith_grasp', '<b>Red glow:</b> back off', 'bad', 90);
           }
           return true;
         }
@@ -190,7 +190,7 @@ export class Wraith extends Beast {
       this.blinkTo = new THREE.Vector3(x, y, z);
       this.fadeT = 0.45;
       puff(this.fx, this.center.x, this.center.y, this.center.z, 10, this.G.dark, 0.3, 0.3, 0.1, 0.6);
-      if (behind) m.say('wraith_blink', 'It <b>vanished</b>... check behind you!', 'warn', 120);
+      if (behind) m.say('wraith_blink', '<b>Behind you!</b>', 'warn', 120);
       return;
     }
   }

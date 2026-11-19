@@ -216,7 +216,7 @@ export class Webs {
       const ox = pl.pos.x - w.x - w.nx * side, oz = pl.pos.z - w.z - w.nz * side, oy = pl.pos.y + 0.4 - w.y;
       if (Math.abs(side) < 0.3 && ox * ox + oz * oz + oy * oy < w.r * w.r) {
         m.webbed = Math.max(m.webbed, 0.6);
-        if (!w.touchT || w.t - w.touchT > 2) { w.touchT = w.t; w.wob = 1; m.sound('web_tear', { vol: 0.4 }); m.noise(w.x, w.y, w.z, 9, 'web'); m.say('web', 'Sticky! A <b>spider web</b>. Cut it with your pick.', 'warn', 60); }
+        if (!w.touchT || w.t - w.touchT > 2) { w.touchT = w.t; w.wob = 1; m.sound('web_tear', { vol: 0.4 }); m.noise(w.x, w.y, w.z, 9, 'web'); m.say('web', '<b>Web!</b> Cut it', 'warn', 60); }
       }
       w.wob = Math.max(0, w.wob - dt * 1.5);
       w.mesh.scale.set(1 + Math.sin(w.t * 30) * 0.03 * w.wob, 1 - Math.sin(w.t * 26) * 0.03 * w.wob, 1);
@@ -308,7 +308,7 @@ export class Spider extends Beast {
         // a guard up in front catches it; otherwise: stuck
         if (m.blocking && m.combat.incoming(this, 0, [0, 0, 0], 'web_glob', { from, noParry: true }).blocked) return;
         m.webbed = Math.max(m.webbed, 2.4);
-        m.say('webbed', 'Webbed! You can barely move. <b>Raise your guard</b> to catch the next one.', 'bad', 40);
+        m.say('webbed', '<b>Webbed!</b> Guard up', 'bad', 40);
         m.sound('splat', { vol: 0.7 });
       },
     });

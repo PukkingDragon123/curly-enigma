@@ -156,9 +156,9 @@ export function openShop(game, shopId) {
           game.audio.play('ui_buy');
           game.audio.play('coins', { n: 3 });
           speak(pick(shop.bought || ['Pleasure.', 'Good choice.', 'Ta.']));
-          if (it.cat === 'furniture') ui.toast(`${it.name} is waiting at home. Place it in build mode.`, { icon: iconURL(id) });
-          if (it.cat === 'blueprint' && it.kind === 'weapon') ui.toast(`New forge plans: ${it.name}`, { icon: iconURL(id), kind: 'good' });
-          if (it.cat === 'blueprint' && it.kind === 'room') ui.toast('Your burrow is bigger now!', { kind: 'good' });
+          if (it.cat === 'furniture') ui.toast('<b>Sent home</b>', { icon: iconURL(id) });
+          if (it.cat === 'blueprint' && it.kind === 'weapon') ui.toast('<b>New plans</b>', { icon: iconURL(id), kind: 'good' });
+          if (it.cat === 'blueprint' && it.kind === 'room') ui.toast('<b>Burrow bigger!</b>', { kind: 'good' });
         } else {
           game.audio.play('ui_error');
           speak(r.reason === 'Not enough gold' ? pick(shop.poor || ['Bit short, are we?', 'No credit, sorry.']) : r.reason);
@@ -249,7 +249,7 @@ export function openShop(game, shopId) {
   const afterSell = (g) => {
     if (g > 0) {
       game.audio.play('coins', { n: Math.min(8, 2 + Math.floor(Math.log10(g + 1) * 1.5)) });
-      ui.toast(`Sold for <b>${formatGoldFull(g)}</b> gold`, { icon: COIN(), kind: 'good' });
+      ui.toast(`Sold · <b>${formatGoldFull(g)}</b>`, { icon: COIN(), kind: 'good' });
       st.learn('assay');
       tilt();
       if (g > 5000) speak(pick(['Now THAT is quality.', 'Hm. Hm! Well.', 'You\'re going to make me retire early.']));

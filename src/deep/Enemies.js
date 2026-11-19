@@ -498,14 +498,14 @@ export class Enemies {
     const h = this.hint;
     h.tough++;
     if (this.time - h.floatT > 0.7) { h.floatT = this.time; this.floatAt('too tough!', p, '#ffc89a', 0.9, 'tough'); }
-    if (h.tough === 1) this.say('tough', 'Clang! Its rock hide is <b>too tough</b>. Get behind it and mine the <b>glowing crystal</b> on its back.', 'warn', 9999);
-    else if (h.tough % 4 === 0 && this.time - h.toughT > 40) { h.toughT = this.time; this.say('tough2', 'Your pick just bounces off. <b>Circle around</b> (it turns slowly) and hit the <b>crystal</b>!', 'warn', 40); }
+    if (h.tough === 1) this.say('tough', '<b>Hit its crystal</b>', 'warn', 9999);
+    else if (h.tough % 4 === 0 && this.time - h.toughT > 40) { h.toughT = this.time; this.say('tough2', '<b>Circle round</b> · crystal', 'warn', 40); }
   }
 
   /** First crystal chipped off a golem: you're doing it right. */
   crystalHint() {
     if (this.hint.crystal++) return;
-    this.say('crystal', 'The crystal cracks. Keep at it: every shard staggers it.', 'good', 9999);
+    this.say('crystal', '<b>Crystal cracks!</b>', 'good', 9999);
   }
 
   /** A sound from a creature: quieter with distance, panned toward where it is. */
@@ -1036,7 +1036,7 @@ export class Enemies {
         const from = [p.x - v.x / sp, p.y, p.z - v.z / sp];
         if (s.onHit) s.onHit(s, from);
         else if (this.hurtPlayer(s.src || s, s.dmg, [v.x / sp * 2.5, 1.8, v.z / sp * 2.5], s.kind, { from })) {
-          if (fire) { this.say('ember', 'Ouch, hot! Embers <b>bounce</b>. Keep moving.', 'bad', 40); this.sound('ignite', {}); }
+          if (fire) { this.say('ember', '<b>Embers!</b> Keep moving', 'bad', 40); this.sound('ignite', {}); }
         }
         if (fire) this.fx.sparks(p.x, p.y, p.z, 16, s.hot, [0, 1, 0], 3.5);
         done = true;
@@ -1071,7 +1071,7 @@ export class Enemies {
           if (Math.abs(d - h.r) < 0.42 && pl.grounded && Math.abs(pl.pos.y - h.y) < 0.6) {
             h.hit = true;
             const ux = (pl.pos.x - h.x) / (d || 1), uz = (pl.pos.z - h.z) / (d || 1);
-            if (this.hurtPlayer(h.src || h, h.dmg * (d < 1.2 ? 1 : 0.7), [ux * 3.5, 3.4, uz * 3.5], 'quake')) this.say('quake', 'The shockwave knocked you over! <b>Jump</b> over it next time.', 'bad', 60);
+            if (this.hurtPlayer(h.src || h, h.dmg * (d < 1.2 ? 1 : 0.7), [ux * 3.5, 3.4, uz * 3.5], 'quake')) this.say('quake', '<b>Jump</b> the shockwave', 'bad', 60);
           }
         }
         if (h.r > h.rMax) this.hazards.splice(i, 1);
@@ -1085,7 +1085,7 @@ export class Enemies {
             h.acc = 0;
             if (this.hurtPlayer(h.src || h, h.sting, [0, 0, 0], 'spores')) {
               if (this.sneezeT <= 0) { this.sneezeT = 2.5; this.veil.hit(0.5, { tones: tonesOf(h.color) }); } // a faceful of spores: blink, sneeze
-              this.say('spores', 'Achoo! The <b>spores</b> sting. Get out of the cloud!', 'bad', 45);
+              this.say('spores', '<b>Spores!</b> Get out', 'bad', 45);
             }
           }
         }

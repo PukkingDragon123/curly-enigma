@@ -195,7 +195,7 @@ export class Slime extends Beast {
         const out = m.spawnGroup(['cave_slime'], this.pos.x + (i ? 0.25 : -0.25), this.pos.y + 0.05, this.pos.z, this.zone, { hidden: false, r: 0.6, split: this.tierN - 1 });
         for (const e of out) { e.awake = true; e.lastHitT = m.time; e.lastHitBy = 'player'; e.vel.set(rand(-2, 2), 3, rand(-2, 2)); e.emerge = 0.4; }
       }
-      m.say('slime_split', 'It <b>split</b>! Smaller slimes are quicker but weaker.', 'warn', 120);
+      m.say('slime_split', '<b>It split!</b>', 'warn', 120);
     }
   }
 }

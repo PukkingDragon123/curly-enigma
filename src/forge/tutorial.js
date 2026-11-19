@@ -12,17 +12,15 @@
 // the piece's 'piece' event emits lesson { step: 'pick_done' }, moves the lesson on to 'mine' and
 // sends you home (where he walks you to the lift). The pick on your belt unlocks the hotbar and the
 // touch dig button (ui.unlock: src/ui/Onboard.js UNLOCKS).
-// The cinematic tutorial (src/ui/Onboard.js): it opens as a cutscene (letterbox, his first line
-// through the cutscene talk when there is one, a hold skips it), and each new control gets a prompt
-// card drawn for the device (the mouse and Space on a PC, the big button on a touch screen): pick
-// the recipe, pump the bellows, start forging, carry it to the anvil, hammer, grind, balance.
-// The pick lesson opens on the smithy dark, the coals banked low: the view glides in to the hearth,
-// he works the bellows and the fire roars up (sparks, a flash, the room lit), and his two ingots go
-// on the bench. When the pick is done the reveal pushes in slowly on it while he admires it.
-// Kept light: his running instruction is one short line on his card, the prompt says which control;
-// no flying icons or title cards.
+// Wave 18: no cards. He opens with a short cutscene (letterbox, a hold of Esc / a click skips it),
+// then teaches by example: at each new step he comes round to stand across the work from you and
+// shows it (src/home/starDemo.js: pumping the bellows, hammering, the quench, the grind, levelling the
+// blade), and you copy him; at most a 2–4 word cue floats up by the work (teachWord). His remarks
+// float by his head (game.convo with his rig), not on a card.
 import * as THREE from 'three';
 import { pick, clamp } from '../core/util.js';
+import { StarDemo } from '../home/starDemo.js';
+import { teachWord } from '../home/tutorFx.js';
 
 const starMods = import.meta.glob('../gfx/char/starmole.js');
 const _v = new THREE.Vector3();
@@ -37,7 +35,7 @@ export class ForgeLesson {
     this.cool = {};
     this.t = 0;
     this.highlight = 'smelt_copper';
-    this.debug = { stage: () => this.stage, say: (k) => this.cool[k], prompt: () => this.obH?.id ?? null };
+    this.debug = { stage: () => this.stage, say: (k) => this.cool[k], prompt: () => this.demo?.kind ?? null, demo: () => ({ kind: this.demo?.kind ?? null, at: this.star?.at ?? null }) };
   }
 
   get ui() { return this.g.ui; }
@@ -49,17 +47,49 @@ export class ForgeLesson {
     if (this.star?.rig?.setExpression) { try { this.star.rig.setExpression(mood, { hold: 3 }); } catch (e) { /* older rig */ } }
     const card = () => this.ui.tutor?.say(html, { mood, place: 'top', ...o }) || Promise.resolve();
     if (o.wait && this.ui.onboard) return this.ui.onboard.talk(html, { mood, wait: true, scene: this.sc }, card);
+    // (wave 18: a passing remark floats by his head, no card)
+    const rig = this.star?.rig, cv = this.g.convo;
+    if (rig && cv?.say) {
+      try { return Promise.resolve(cv.say(html, { who: 'oldstar', rig, head: (out) => rig.headWorld(out), mood, key: o.key, dur: o.dur === Infinity || o.dur == null ? 4 : o.dur, wait: false })); } catch (e) { /* fall back to the line */ }
+    }
     return card();
   }
 
-  /** A prompt card for a control (the one before goes). Low on the screen: the work is in the middle. */
-  teach(id, o = {}) {
-    this.obH?.close?.();
-    if (this.g.scene !== this.sc) { this.obH = null; return null; }
-    this.obH = this.ui.onboard?.teach(id, { place: 'low', ...o }) || null;
-    return this.obH;
+  /**
+   * He shows the step (src/home/starDemo.js) and a few words float up by the work. kind: pump |
+   * hammer | quench | grind | balance; word: 2–4 words or null.
+   */
+  show(kind, word, secs = 2.8) {
+    if (this.g.scene !== this.sc) return;
+    // (once he's got round to the work: he walks over first when the view moves)
+    if (kind && this.demo) this.pendingDemo = { kind, secs, t: 0.25 };
+    if (word) this.later(kind ? 0.9 : 0, () => this.cue(word));
   }
-  untaught() { if (this.obH && !this.obH.done) this.obH.close(); this.obH = null; }
+
+  /** A few words floating up by the work (between it and him), once. */
+  cue(word) {
+    if (this.g.scene !== this.sc) return;
+    const d = this.sc.W?.docks?.[this.sc.view?.name];
+    const p = d?.look ? d.look.clone() : this.star ? this.star.pos.clone().setY(0.7) : null;
+    if (!p) return;
+    if (d?.look && this.star) p.lerp(_v.copy(this.star.pos).setY(d.look.y + 0.1), 0.35);
+    p.y += 0.1;
+    // (a second cue soon after the first floats above it, not on it)
+    if (this.t - (this.cueT ?? -9) < 2.8) p.y += d?.look ? 0.09 : 0.15;
+    this.cueT = this.t;
+    teachWord(this.g, word, p, { life: 2.6, size: d?.look ? 0.32 : 0.5 });
+  }
+
+  /** A gesture of his for a moment ('point', 'beckon', 'cheer'...). */
+  gesture(state, secs = 1.6) {
+    const r = this.star?.rig;
+    if (!r?.play) return;
+    r.play(state);
+    this.gestT = secs;
+  }
+
+  /** (wave 18: no prompt cards; kept for old callers) */
+  untaught() { this.demo?.stop(); }
 
   /** The opening cutscene ends (a hold, or work starting: nothing may wait behind it). */
   endCine() {
@@ -167,7 +197,8 @@ export class ForgeLesson {
     if (st.count('copper_ingot') > 0 && st.count('copper_ore') < 2) { this.toForging(true); return; }
     this.stage = 'smeltMenu';
     this.sc.menus.smeltList();
-    this.teach('click', { title: 'Smelt your copper', subPc: '<b>Click</b> <b>Smelt</b> by the copper', subT: '<b>Tap</b> <b>Smelt</b> by the copper', done: () => this.stage !== 'smeltMenu' });
+    this.gesture('point', 1.8);
+    this.cue('Smelt the copper');
   }
 
   /** The pickaxe lesson: the forge woken, his copper tossed to you, then the pick head on the forge. */
@@ -196,6 +227,37 @@ export class ForgeLesson {
     }
   }
 
+  /**
+   * Where he stands for a view of the work: by the hearth for the fire; for the anvil, the barrel or
+   * the wheel, across the work from you and a little to the side, where he can show you.
+   */
+  spotFor(name) {
+    const S = this.star, d = this.sc.W?.docks?.[name];
+    if (!S) return null;
+    if (!d || !d.stand || !d.look || !['anvil', 'barrel', 'grind'].includes(name)) return S.home;
+    let fx = d.look.x - d.stand.x, fz = d.look.z - d.stand.z;
+    const L = Math.hypot(fx, fz) || 1;
+    fx /= L; fz /= L;
+    return (S.spots ||= {})[name] ||= new THREE.Vector3(d.look.x + fx * 0.62 + fz * 0.3, 0, d.look.z + fz * 0.62 - fx * 0.3);
+  }
+
+  /** He walks over to the spot for the view you're in (a few steps, not a jump). */
+  follow(dt) {
+    const S = this.star, r = S?.rig;
+    if (!r) return;
+    const name = this.sc.view?.mode === 'dock' ? this.sc.view.name : 'hearth';
+    const to = this.spotFor(name) || S.home;
+    S.at = name;
+    const dx = to.x - S.pos.x, dz = to.z - S.pos.z, d = Math.hypot(dx, dz);
+    if (d > 0.03) {
+      const step = Math.min(d, dt * 1.5);
+      S.pos.x += (dx / d) * step; S.pos.z += (dz / d) * step;
+      if (!S.walking) { S.walking = true; r.play?.('walk'); }
+      r.face(Math.atan2(dx, dz));
+    } else if (S.walking) { S.walking = false; r.play?.('idle'); }
+    r.root.position.copy(S.pos);
+  }
+
   /** Old Star himself, standing by the hearth, watching you work. */
   async loadStar() {
     const load = starMods['../gfx/char/starmole.js'];
@@ -210,9 +272,21 @@ export class ForgeLesson {
       const pos = new THREE.Vector3(fp.x - 0.78, 0, fp.z + 0.62);
       rig.root.position.copy(pos);
       this.sc.scene.add(rig.root);
-      this.star = { rig, pos };
+      this.star = { rig, pos, home: pos.clone(), at: 'hearth' };
       rig.face(Math.atan2(2.3 - pos.x, 1.6 - pos.z), true);
       rig.play?.('idle');
+      // his example (src/home/starDemo.js): sparks off his blows, a puff of the bellows, steam off the quench
+      this.demo = new StarDemo(rig, {
+        audio: this.g.audio,
+        onBeat: (kind) => {
+          const sc = this.sc, hp = rig.handR?.getWorldPosition?.(new THREE.Vector3());
+          if (!hp) return;
+          if (kind === 'hammer') sc.particles?.sparks?.(hp, 14, 0.6);
+          else if (kind === 'pump') { sc.puff?.(); if (sc.fire) sc.fire.nudge = Math.max(sc.fire.nudge || 0, 0.7); } // (off to the side at the bellows: the coals flare with each of his pulls)
+          else if (kind === 'quench') { this.g.audio.play('steam', { vol: 0.35 }); sc.particles?.sparkle?.(hp, 0xdfe8ff, 6, 0.2, 0.3); }
+          else if (kind === 'grind') sc.particles?.sparks?.(hp, 5, 0.35);
+        },
+      });
     } catch (e) { console.warn('[forge] Old Star failed to load', e); }
   }
 
@@ -236,7 +310,7 @@ export class ForgeLesson {
         this.say(g === 'S' || g === 'A' ? 'Now <b>that</b> is a pick. I\'d trade you mine for it, if mine didn\'t know my paws.' : g === 'B' || g === 'C' ? 'Good honest pick. It\'ll bite.' : 'It\'s pick-ish. It\'ll dig.', g === 'F' || g === 'D' ? 'laugh' : 'proud', { dur: 6 });
         this.star?.rig?.play?.(g === 'F' || g === 'D' ? 'laugh' : 'cheer');
       });
-      this.later(5.0, () => this.say('On your belt. Home.', 'happy', { key: 'step', dur: Infinity }));
+      this.later(5.0, () => this.say('On your belt. Home.', 'happy', { key: 'step', dur: 3 }));
       this.stage = 'leave';
       return;
     }
@@ -256,18 +330,10 @@ export class ForgeLesson {
     if (name === 'step') {
       const run = d.run, k = run.sim?.workRange || run.m?.work || [550, 880];
       if (this.stage === 'planMenu' || this.stage === 'smelted' || this.stage === 'intro') this.stage = 'forge';
+      // (he shows it: src/home/starDemo.js; one word from him on the hammering, where to hit)
       this.stepPrompt(d.step, run);
-      if (d.step === 'heat' && !this.cool.heatIntro) {
-        this.cool.heatIntro = this.t;
-        this.say('Pump to the <b>gold band</b>.', 'calm', { key: 'step', dur: Infinity });
-      } else if (d.step === 'hammer') {
-        if (!this.cool.hammerIntro) {
-          this.cool.hammerIntro = this.t;
-          this.say('Hit the fat bits.', 'happy', { key: 'step', dur: Infinity });
-        }
-      } else if (d.step === 'grind') this.say('Now grind. Steady.', 'calm', { key: 'step', dur: 6 });
-      else if (d.step === 'balance') this.say('Make it sit level.', 'calm', { key: 'step', dur: Infinity });
-      else if (d.step === 'quench') this.say('Quench in the <b>blue band</b>.', 'stern', { key: 'step', dur: Infinity });
+      if (d.step === 'hammer' && !this.cool.hammerIntro) { this.cool.hammerIntro = this.t; this.later(3.4, () => this.say('Hit the fat bits.', 'happy', { key: 'step', dur: 3 })); }
+      void k;
       return;
     }
     if (name === 'strike') {
@@ -301,44 +367,41 @@ export class ForgeLesson {
         this.star?.rig?.play?.(g === 'F' || g === 'D' ? 'laugh' : 'cheer');
       });
       this.later(4.4, () => {
-        this.say('Yours. Now we <b>cook</b>.', 'happy', { key: 'step', dur: Infinity });
+        this.say('Yours. Now we <b>cook</b>.', 'happy', { key: 'step', dur: 3 });
         this.stage = 'leave';
       });
     }
   }
 
-  /** The prompt card for a forging step (each control once: heat, hammer, grind, balance, quench). */
+  /** He shows a forging step the first time it comes up (heat, hammer, grind, balance, quench), and you copy him. */
   stepPrompt(step, run) {
     const seen = (this.taught ||= new Set());
     if (seen.has(step)) return;
     seen.add(step);
-    const live = () => this.sc.activity === run && run.step === step;
-    if (step === 'heat') this.teach('hold', { title: 'Heat it', subPc: '<b>Hold</b> the left button (or <kbd>Space</kbd>) to pump', subT: '<b>Hold</b> the big button to pump', spot: this.touchSpot(), progress: () => { const a = this.sc.activity, s = a?.sim; if (!s?.meanT) return 0; const w = s.workRange || [600, 900]; return clamp((s.meanT() - 300) / Math.max(1, w[0] - 300), 0, 1); }, done: () => !live() });
-    else if (step === 'hammer') this.teach('hold', { title: 'Hammer it', subPc: 'Point at a thick spot · <b>hold</b> to raise, <b>let go</b> to strike', subT: 'Point at a thick spot · <b>hold</b> the button, <b>let go</b> to strike', spot: this.touchSpot(), done: () => !live() || (this.strikes || 0) >= 3 });
-    else if (step === 'grind') this.teach('hold', { title: 'Grind the edge', subPc: '<b>Hold</b> it to the wheel, steady', subT: '<b>Hold</b> it to the wheel, steady', done: () => !live() });
-    else if (step === 'balance') this.teach('drag', { title: 'Balance it', subPc: '<b>Drag</b> the slider till the blade sits level', subT: '<b>Drag</b> the slider till the blade sits level', done: () => !live() });
-    else if (step === 'quench') this.teach('hold', { title: 'Quench it', subPc: 'Plunge it in the barrel: <kbd>Q</kbd>', subT: 'Tap <b>Plunge</b> in the blue band', done: () => !live() });
+    void run;
+    if (step === 'heat') this.show('pump', 'Hold to pump');
+    else if (step === 'hammer') this.show('hammer', 'Hold, then let go', 3.2);
+    else if (step === 'grind') this.show('grind', 'Hold it steady');
+    else if (step === 'balance') this.show('balance', 'Drag till level');
+    else if (step === 'quench') this.show('quench', 'Q to plunge');
   }
 
-  /** The pick lesson's prompts, one per forging step (heat, hammer, quench). */
+  /** The pick lesson: he shows each forging step (heat, hammer, quench) as it comes up. */
   pickStep(step, run) {
     const seen = (this.taught ||= new Set());
-    const live = () => this.sc.activity === run && run.step === step;
+    void run;
     if (step === 'heat') {
-      if (seen.has('p-heat')) { this.remark('reheat', 'Back in the coals. Pump till it glows orange again.', 'calm', 10); return; }
+      if (seen.has('p-heat')) { this.remark('reheat', 'Back in the coals. Pump.', 'calm', 10); return; }
       seen.add('p-heat');
-      const w = run.sim?.workRange || [550, 880];
-      this.say('Pump to the <b>gold band</b>.', 'calm', { key: 'step', dur: Infinity });
-      this.teach('hold', { title: 'Heat the bar', subPc: '<b>Hold</b> the left button (or <kbd>Space</kbd>) to pump', subT: '<b>Hold</b> the big button to pump', spot: this.touchSpot(), progress: () => { const s = run.sim; if (!s?.workRange) return 0; return clamp((s.T - 300) / Math.max(1, s.workRange[0] - 300), 0, 1); }, done: () => !live() });
+      this.show('pump', 'Hold to pump');
     } else if (step === 'hammer') {
       if (seen.has('p-hammer')) return;
       seen.add('p-hammer');
-      this.say('Let go in the <b>green</b>.', 'happy', { key: 'step', dur: Infinity });
-      this.teach('hold', { title: 'Hammer the head', subPc: '<b>Hold</b> to raise · <b>let go</b> in the green', subT: '<b>Hold</b> the button · <b>let go</b> in the green', spot: this.touchSpot(), done: () => !live() });
+      this.show('hammer', 'Let go in green', 3.2);
     } else if (step === 'quench') {
       if (seen.has('p-quench')) return;
       seen.add('p-quench');
-      this.say('Into the water, hot!', 'stern', { key: 'step', dur: Infinity });
+      this.show('quench', 'In it goes, hot');
     }
   }
 
@@ -355,9 +418,9 @@ export class ForgeLesson {
     m.sel.infusion = null;
     m.sel.gem = null;
     m.plan();
-    if (!skipLine) this.say('An ingot. Now a <b>Dagger</b>.', 'proud', { key: 'step', dur: Infinity });
-    else this.say('Now a <b>Dagger</b>.', 'calm', { key: 'step', dur: Infinity });
-    this.teach('click', { title: 'Forge a dagger', subPc: '<b>Click</b> <b>Forge</b>', subT: '<b>Tap</b> <b>Forge</b>', done: () => this.stage !== 'planMenu' });
+    if (!skipLine) this.say('An ingot. Now a <b>dagger</b>.', 'proud', { key: 'step', dur: 4 });
+    this.gesture('point', 1.6);
+    this.cue('Forge a dagger');
   }
 
   // ------------------------------------------------------------ frame
@@ -377,20 +440,24 @@ export class ForgeLesson {
       const due = this.timers.filter((x) => x.t <= this.t);
       if (due.length) { this.timers = this.timers.filter((x) => x.t > this.t); for (const x of due) { try { x.fn(); } catch (e) { console.warn(e); } } }
     }
-    // Old Star: looks at you, talks while his card types
+    // Old Star: walks round to the work you're at, looks at you, shows you the step
     const r = this.star?.rig;
     if (r) {
+      this.follow(dt);
       const cam = sc.camera.position;
       const p = this.star.pos;
       if (typeof r.look === 'function') r.look(0, Math.atan2(cam.y - 0.6, Math.max(0.4, Math.hypot(cam.x - p.x, cam.z - p.z))) * 0.6);
-      r.face(Math.atan2(cam.x - p.x, cam.z - p.z));
+      if (!this.star.walking) r.face(Math.atan2(cam.x - p.x, cam.z - p.z));
+      if (this.gestT > 0 && (this.gestT -= dt) <= 0 && !this.star.walking) r.play?.('idle');
+      const pd = this.pendingDemo;
+      if (pd && (pd.t -= dt) <= 0 && !this.star.walking) { this.pendingDemo = null; this.demo?.play(pd.kind, pd.secs); }
       r.update(dt);
+      this.demo?.apply(dt);
     }
     if (this.stage === 'smeltMenu' && a && a.r) {
       this.stage = 'smelt';
       this.said = 0;
-      this.teach('hold', { title: 'Pump the bellows', subPc: '<b>Hold</b> the left button (or <kbd>Space</kbd>)', subT: '<b>Hold</b> the big button', spot: this.touchSpot(), progress: () => { const s = this.sc.activity?.sim; return s ? clamp((s.inBand || 0) / (s.required || 6), 0, 1) : 1; }, done: () => this.stage !== 'smelt' });
-      this.say('Hold it in the <b>pour heat</b> band.', 'calm', { key: 'step', dur: Infinity });
+      this.show('pump', 'Hold in the band');
     }
     if (this.stage === 'smelt' && a && a.sim && a.r) {
       const sim = a.sim;
@@ -404,7 +471,7 @@ export class ForgeLesson {
       if (T >= w[0] && !this.cool.workHot) {
         this.cool.workHot = this.t;
         this.say('<b>Working heat!</b> Anvil!', 'happy', { key: 'remark', dur: 4 });
-        if (!(this.taught ||= new Set()).has('anvil')) { this.taught.add('anvil'); this.teach('use', { title: 'To the anvil', subPc: 'Press <kbd>E</kbd> while it glows', subT: 'Tap <b>To the anvil</b>', done: () => !(this.sc.activity && this.sc.activity.step === 'heat') }); }
+        if (!(this.taught ||= new Set()).has('anvil')) { this.taught.add('anvil'); this.gesture('point', 1.4); this.cue('E to the anvil'); }
       }
       if (T < w[0] - 60) this.cool.workHot = undefined;
     }

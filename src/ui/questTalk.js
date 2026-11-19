@@ -8,6 +8,7 @@
 // While their request is under way they just remind you in a speech bubble (opts.say(html)).
 // opts.shop: () => opens their shop (keepers get a "Let's trade" note). Returns handled: false when
 // there was nothing to say about quests (the caller chats or opens the shop as usual).
+import { iconURL } from '../gfx/PixelArt.js';
 import { openTalkMenu } from './choices.js';
 import { npcFace, npcWho } from './npcFace.js';
 import { rewardText, countText } from './Tracker.js';
@@ -141,7 +142,7 @@ export function questTalk(game, npc, opts = {}) {
         line: tale.text.split('\n').join('<br>'), sub: `${tale.title}${isNew ? ' · a new tale for your book' : ''}`, mood: 'happy', className: 'qtk-tale',
         options: [...shopNote, bye(pick(['Thanks for the story', 'Fancy that', 'I\'ll remember that']))],
       });
-      if (isNew) game.ui.toast(`<small>A tale for your book · Lore</small><br><b>${tale.title}</b>`, { dur: 2600 });
+      if (isNew) game.ui.toast(`Tale: <b>${tale.title}</b>`, { dur: 2200 });
       return { handled: true, line: stripTags(tale.text.split('\n')[0]) };
     }
   }
@@ -167,7 +168,7 @@ export function questTalk(game, npc, opts = {}) {
     game.audio.play('success', { vol: 0.5 });
     say?.(pick(['Wonderful!', 'Oh, thank you!', 'Splendid.', 'Off you go, then!']), { mood: 'happy', wait: false, dur: 2.2 });
     const gives = QUESTS[id].gives;
-    if (gives) for (const it of Object.keys(gives)) game.ui.toast(`${name} hands you <b>${ITEMS[it]?.name || it}</b>.`, { dur: 2600 });
+    if (gives) Object.entries(gives).forEach(([it, n], i) => { if (ITEMS[it]) game.ui.status?.flyTo?.('pack', iconURL(it), { n: n || 1, delay: i * 240 }); }); // (wave 18: handed over as a thing)
   }
 }
 

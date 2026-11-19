@@ -304,7 +304,7 @@ export class QuestMarks {
       this.eye.hidden = true;
       g.audio.play('sparkle', { vol: 0.5 });
       g.state.emit('act', { type: 'look', at: best.at });
-      g.ui.toast(`You take a good look: <b>${best.label || best.at}</b>. Noted in your book.`, { icon: BART.eye(), dur: 2600 });
+      g.ui.toast(`Noted: <b>${best.label || best.at}</b>`, { icon: BART.eye(), dur: 2200 });
     }
   }
   setEye() { this.eyeRing.style.setProperty('--k', Math.min(1, this.gaze.t / GAZE_T).toFixed(3)); }

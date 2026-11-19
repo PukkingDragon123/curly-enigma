@@ -281,7 +281,7 @@ export class Troll extends Beast {
     this.coverT = 1.2;
     this.stun(1.1, 'dazed');
     this.sound('growl', { pitch: 0.8, dur: 0.6 });
-    this.mgr.say('troll_light', 'The troll <b>hates the light</b>! Shine your lamp in its eyes.', 'good', 120);
+    this.mgr.say('troll_light', '<b>Lamp it!</b>', 'good', 120);
   }
 
   // ------------------------------------------------------------------ body

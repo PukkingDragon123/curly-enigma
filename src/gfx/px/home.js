@@ -1191,8 +1191,18 @@ function blueprint(pc, t, level = 1) {
   const A = toward(cn, ca, 5.6), Bp = toward(cn, cb, 5.6);
   sheet.sub(M().poly([A, cn, Bp]));
   if (sd % 3 === 0) { const e = toward(C[2], C[3], 9 + (sd % 5)); sheet.sub(loop([[e[0] - 2, e[1] + 1], [e[0] - 0.6, e[1] - 1.6], [e[0] + 0.6, e[1] - 0.6], [e[0] + 1.8, e[1] - 2], [e[0] + 2.4, e[1] + 1]])); }
-  sheet.eachD((X, Y, x, y) => { const k = edgeK(sheet, X, Y, 3); pc.set(X, Y, B[k + ((X * 7 + Y * 3) % 11 === 0 ? 1 : 0)]); });
-  sheet.eachD((X, Y, x, y) => { if ((X % 4 === 0 || Y % 4 === 0) && hash2(X, Y, 1) < 0.85 && !isTop(sheet, X, Y)) pc.set(X, Y, B[2]); });
+  // wave 18: a real sheet in lamplight: lit from the top left, darker to the bottom right, a soft
+  // fold down the middle (a lit ridge and its shadow), a little foxing; then the faint grid
+  const fold = 15 + (sd % 5) - 2;
+  sheet.eachD((X, Y, x, y) => {
+    let k = edgeK(sheet, X, Y, 3) + ((X * 7 + Y * 3) % 11 === 0 ? 1 : 0);
+    const lt = (x + y) / 60; // 0 top-left .. 1 bottom-right
+    if (lt < 0.28 && hash2(X >> 1, Y >> 1, 5) < 0.7) k -= 1; else if (lt > 0.78 && hash2(X >> 1, Y >> 1, 6) < 0.7) k += 1;
+    if (Math.abs(x - fold) < 0.5) k -= 1; else if (Math.abs(x - fold - 1) < 0.5) k += 1;
+    pc.set(X, Y, B[Math.max(0, Math.min(B.length - 1, k))]);
+  });
+  sheet.eachD((X, Y, x, y) => { if ((X % 4 === 0 || Y % 4 === 0) && hash2(X, Y, 1) < 0.85 && !isTop(sheet, X, Y) && Math.abs(x - fold) > 1) pc.set(X, Y, B[2]); });
+  for (let i = 0; i < 3; i++) { const x = 5 + hash2(sd, i, 21) * 22, y = 6 + hash2(sd, i, 22) * 20; if (sheet.at(x, y)) dot(pc, x, y, B[4], 120); }
   const flap = M().poly([A, Bp, [A[0] + Bp[0] - cn[0], A[1] + Bp[1] - cn[1]]]);
   seam(pc, flap, 'shadow');
   flap.eachD((X, Y, x, y) => pc.set(X, Y, B[isTop(flap, X, Y) ? 1 : 2]));
@@ -1236,6 +1246,12 @@ function blueprint(pc, t, level = 1) {
     for (let x = x0; x < x0 + w; x += 2) dot(pc, x, y0 + h + 2, ink2);
     for (let i = 0; i < level; i++) { dot(pc, 5 + i * 3, 25, inkW); dot(pc, 5 + i * 3, 26, inkW); }
   }
+  // the title block in the bottom-right corner: a little white box, ruled, a maker's mark
+  { const tx = 20, ty = 22; for (let x = tx; x < tx + 7; x++) { if (sheet.at(x, ty)) dot(pc, x, ty, inkW); if (sheet.at(x, ty + 4)) dot(pc, x, ty + 4, inkW); }
+    for (let y = ty; y <= ty + 4; y++) { if (sheet.at(tx, y)) dot(pc, tx, y, inkW); if (sheet.at(tx + 6, y)) dot(pc, tx + 6, y, inkW); }
+    for (let x = tx + 2; x < tx + 6; x += 2) if (sheet.at(x, ty + 2)) dot(pc, x, ty + 2, ink2); }
+  // the curled corner throws a shadow onto the sheet
+  M().poly([A, Bp, [(A[0] + Bp[0]) / 2 + (16 - cn[0]) * 0.12, (A[1] + Bp[1]) / 2 + (16 - cn[1]) * 0.12]]).sub(flap).and(sheet).eachD((X, Y) => pc.set(X, Y, B[4]));
   ink(pc);
   // brass drawing pins in the two corners that are not folded
   for (const [x, y] of [C[(ci + 1) % 4], C[(ci + 2) % 4]].map(([x, y]) => [Math.round(x + (x < 16 ? 2 : -3)), Math.round(y + (y < 16 ? 2 : -3))])) { dot(pc, x, y, 0xf0d070); dot(pc, x + 1, y, 0xc89a3a); dot(pc, x, y + 1, 0xb08030); dot(pc, x + 1, y + 1, 0x7a5a20); }

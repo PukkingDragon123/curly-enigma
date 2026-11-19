@@ -322,7 +322,7 @@ export class Tyrant extends Beast {
     this.sound('roar_big', { pitch: 0.75, vol: 1 });
     this.mgr.shake(this, 1);
     this.mgr.noise(this.pos.x, this.pos.y + 2, this.pos.z, 30, 'roar');
-    this.mgr.say('tyrant_roar', 'The whole cave shakes... A <b>Cave Tyrant</b>! Its bite is too heavy to block: <b>dodge</b>.', 'bad', 9999);
+    this.mgr.say('tyrant_roar', '<b>Cave Tyrant!</b> Dodge', 'bad', 9999);
   }
   onWake() { this.sound('grunt', { pitch: 0.5, vol: 1 }); }
   onTaunt() { if (Math.random() < 0.3) { this.sound('growl', { pitch: 0.5, dur: 1.2, vol: 1 }); this.jawOpen = 0.6; } }

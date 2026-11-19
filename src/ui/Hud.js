@@ -5,6 +5,8 @@
 // The art: src/ui/uiSprites.js (sprites) and src/ui/hudArt.js (the pouch, tags, plates, strings: --h-*).
 import { el, formatGoldFull, clamp } from '../core/util.js';
 import { BUFFS } from '../data/recipes.js';
+import { ITEMS } from '../data/items.js';
+import { iconURL } from '../gfx/PixelArt.js';
 import { SPR } from './uiSprites.js';
 import { HART, installHudArt } from './hudArt.js';
 import { StaminaBar } from './Stamina.js';
@@ -156,6 +158,54 @@ export class Hud {
       setTimeout(() => g.remove(), 1000 + i * 85);
       if (i < 4) setTimeout(() => { const im = this.pouchImg; im.classList.remove('bob'); void im.offsetWidth; im.classList.add('bob'); }, 540 + i * 85);
     }
+  }
+
+  // ------------------------------------------------------------ rewards fly home
+  /**
+   * Wave 18: a reward is a thing, not a line of text: its picture (an item icon, a coin) pops up
+   * mid-screen and arcs into the backpack ('pack') or the coin pouch ('pouch'), which takes it with a
+   * gulp and a clink. n: how many (a few copies fly, staggered). from: {x, y} page px (default: just
+   * above the middle of the screen).
+   */
+  flyTo(target, src, { n = 1, from = null, delay = 0 } = {}) {
+    if (!src || this.ui.hudMode === 'none') return;
+    this.wake(3);
+    if (target === 'pouch') this.showPouch(3);
+    const dest = target === 'pouch' ? this.pouchImg : this.packImg;
+    const copies = Math.max(1, Math.min(target === 'pouch' ? 6 : 3, n));
+    for (let k = 0; k < copies; k++) {
+      setTimeout(() => {
+        const r = dest.getBoundingClientRect();
+        const x1 = r.left + r.width / 2, y1 = r.top + r.height * (target === 'pouch' ? 0.3 : 0.45);
+        const x0 = (from?.x ?? innerWidth / 2) + (k - (copies - 1) / 2) * 14, y0 = (from?.y ?? innerHeight * 0.42) + (k % 2) * 6;
+        const mx = (x0 + x1) / 2 + (x1 > x0 ? -40 : 40), my = Math.min(y0, y1) - 70 - Math.random() * 30;
+        const size = target === 'pouch' ? 24 : 48;
+        const img = el('img', { class: 'pix fly-reward', src, alt: '', style: { width: size + 'px', height: size + 'px' } });
+        this.ui.hud.append(img);
+        const tf = (x, y, s, rot) => `translate(${(x - size / 2).toFixed(1)}px, ${(y - size / 2).toFixed(1)}px) scale(${s}) rotate(${rot}deg)`;
+        const a = img.animate([
+          { transform: tf(x0, y0 + 16, 0.2, 0), opacity: 0 },
+          { transform: tf(x0, y0, 1.15, -6), opacity: 1, offset: 0.16 },
+          { transform: tf(x0, y0 - 4, 1, 0), opacity: 1, offset: 0.3 },
+          { transform: tf(mx, my, 0.9, 18), opacity: 1, offset: 0.62 },
+          { transform: tf(x1, y1, 0.42, 40), opacity: 1 },
+        ], { duration: 820, easing: 'cubic-bezier(.4, 0, .8, .6)', fill: 'forwards' });
+        a.onfinish = () => {
+          img.remove();
+          const au = this.game.audio;
+          if (target === 'pouch') { au.play('coins', { vol: 0.32 }); this.pouch.classList.remove('jingle'); void this.pouch.offsetWidth; this.pouch.classList.add('jingle'); }
+          else { au.play('pickup', { vol: 0.4 }); this.packBtn.classList.remove('gulp'); void this.packBtn.offsetWidth; this.packBtn.classList.add('gulp'); }
+        };
+      }, delay + k * 110);
+    }
+  }
+
+  /** A reward ({ gold, items }) as things flying home: coins to the pouch, items to the backpack. */
+  flyReward(r, delay = 0) {
+    if (!r) return;
+    let d = delay;
+    if (r.gold) { this.flyTo('pouch', SPR.coin(), { n: Math.round(Math.min(6, 1 + Math.log10(r.gold + 1) * 1.6)), delay: d }); d += 260; }
+    for (const [id, n] of Object.entries(r.items || {}).slice(0, 4)) { if (ITEMS[id]) { this.flyTo('pack', iconURL(id), { n: Math.min(3, n || 1), delay: d }); d += 240; } }
   }
 
   // ------------------------------------------------------------ buffs

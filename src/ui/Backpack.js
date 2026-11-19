@@ -557,7 +557,7 @@ export function openBackpack(game, opts = {}) {
       list.append(el('div', { class: 'bp-swap-row' }, [
         el('img', { class: 'pix', src: itemVox.src(id), alt: '' }), el('span', {}, ITEMS[id].name),
         el('button', { class: 'btn', onclick: () => {
-          if (!st.equip(id)) { sfx('nope'); ui.toast('Empty some pockets first: that bag is smaller.', { kind: 'warn', dur: 2000 }); return; }
+          if (!st.equip(id)) { sfx('nope'); ui.toast('<b>Bag too small</b>', { kind: 'warn', dur: 2000 }); return; }
           audio.play('ui_click'); render(); reanchor(); showSlot(slot, label, sample);
         } }, 'Equip'),
       ]));

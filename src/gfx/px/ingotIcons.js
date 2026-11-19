@@ -1,7 +1,8 @@
 // Ingot icons: every metal gets its own cast, built on the facet renderer: a rough sand-cast
 // copper bar with a pour lip, a soft tin pig, a notched bronze trapezoid, a hammered iron
-// bloom, a crisp folded steel bar, a small polished silver bar, a heavy stamped gold bar, a
-// slim mithril leaf, a moonsilver crescent, an adamant wedge and a fused starmetal lump.
+// bloom, a crisp folded steel bar, a polished silver bar, a heavy stamped gold bar, a slim
+// rainbow mithril bar, a moonsilver bar with a sunk crescent, a facet-cut adamant bar and a
+// rough starmetal bar with a glowing seam (wave 18: all of them read as ingots now).
 // Authored on the 32-unit design grid, rasterised natively at S× (res.js): plane bounds (T)
 // and pixel loops are native, marks are drawn at real-pixel scale.
 import { makeRng } from '../../core/util.js';
@@ -265,50 +266,50 @@ function gold(pc) {
   glint(pc, 25, 25, 0, 0xffffff, R[1]);
 }
 
+// wave 18: the last four read as a sliver, a crescent, a gem and a blob, not as ingots. Each is now a
+// cast bar like the rest, its metal told by its surface: mithril long and slim with a rainbow ripple,
+// moonsilver with a crescent sunk into its top and a cold glow, adamant cut into facets like a gem,
+// starmetal rough as a meteorite with a glowing seam and star specks.
 function mithril(pc) {
   const R = rampOf(RAMPS.mithril);
   const sc = new Scene(32);
-  // a slim leaf ingot: pointed ends, a raised mid-rib, laid on the diagonal
-  const a = 13.5, c = 4.4, h = 3.2, pts = [];
-  for (let i = 0; i <= 10; i++) {
-    const t = i / 10, x = (t - 0.5) * 2 * a, w = c * Math.pow(Math.sin(Math.PI * t), 0.75);
-    pts.push([x, 0, w], [x, 0, -w], [x * 0.96, h * 0.55, w * 0.62], [x * 0.96, h * 0.55, -w * 0.62]);
-  }
-  pts.push([-a * 0.85, h, 0], [a * 0.85, h, 0]);
-  const ob = sc.hull(metal(R, { eq: 0.65, glow: 0.15 }), view(yawPts(pts.map(([x, y, z]) => [x, y - h / 2, z]), 0.62), 16, 16.5, 0.85));
+  const o = { a: 12.6, c: 3.6, h: 3.8, top: 0.9, yaw: 0.6, x: 16, y: 17, p: 0.8, chamfer: 1.1, bevel: 0.85 };
+  const ob = sc.hull(metal(R, { eq: 0.65, glow: 0.15 }), place(bar(o), o));
   sc.render(pc);
   // iridescent sheen: a pink and a mint ripple across the planes
   sc.eachPx((X, Y, x, y, i) => {
     if (sc.ob[i] !== ob.id) return;
-    const b = (x * 0.8 + y + 40) % 11, k = sc.k[i];
+    const b = (x * 0.8 + y + 40) % 9, k = sc.k[i];
     const w = S > 1 ? 0.6 : 1;
     if (b < w && k >= 1 && k <= 3) pc.set(X, Y, 0xf2d8ff);
-    else if (b > 5 && b < 5 + w && k >= 2 && k <= 4) pc.set(X, Y, 0xc8fff0);
-    else if (S > 1 && b > 8 && b < 8.4 && k >= 2 && k <= 4) pc.set(X, Y, 0xd8e8ff);
+    else if (b > 4.5 && b < 4.5 + w && k >= 2 && k <= 4) pc.set(X, Y, 0xc8fff0);
   });
-  glint(pc, 11, 12, 2, 0xffffff, R[1], 0.6);
+  const T = topPlane(sc, ob);
+  sheen(pc, T, R, { base: 1, off: 0.04 });
+  glintN(pc, T.x0 + 3 * S, T.y0 + S, 2, 0xffffff, R[1]);
 }
 
 function moonsilver(pc) {
   const R = rampOf(RAMPS.moon);
   const sc = new Scene(32);
-  const m = metal(R, { eqShare: true, glow: 0.35, eq: 0.55 });
-  // a crescent ingot: thick in the middle, tapering to horns, lying on its back
-  const N = 8, A0 = 0.55, A1 = 3.6, RA = 10;
-  for (let i = 0; i < N; i++) {
-    const a0 = A0 + (A1 - A0) * (i / N), a1 = A0 + (A1 - A0) * ((i + 1) / N);
-    const tk = (s) => 0.6 + 3 * Math.sin(Math.PI * s);
-    const s0 = i / N, s1 = (i + 1) / N;
-    const pts = [];
-    for (const [a, s] of [[a0, s0], [a1, s1]]) {
-      const ox = Math.cos(a) * RA, oz = Math.sin(a) * RA, nx = Math.cos(a), nz = Math.sin(a), w = tk(s), hh = 1.2 + w * 0.6;
-      pts.push([ox - nx * w, 0, oz - nz * w], [ox + nx * w, 0, oz + nz * w], [ox - nx * w * 0.6, hh, oz - nz * w * 0.6], [ox + nx * w * 0.6, hh, oz + nz * w * 0.6]);
-    }
-    sc.hull(m, view(yawPts(pts, -0.4), 16.5, 15, 0.95), { group: 2 });
-  }
+  const o = { a: 10.8, c: 5.4, h: 5.4, top: 0.8, yaw: -0.42, x: 16, y: 17.5, p: 0.8, chamfer: 1.6, bevel: 0.7 };
+  const ob = sc.hull(metal(R, { glow: 0.35, eq: 0.55 }), place(bar(o), o));
   sc.render(pc);
-  glint(pc, 9, 12, 1, 0xffffff, R[1], 1);
-  glint(pc, 25, 21, 0, 0xffffff, R[1], 1);
+  const T = topPlane(sc, ob);
+  sheen(pc, T, R, { base: 1, off: 0.1 });
+  // a crescent moon sunk into the top: its shadowed inner wall top-left, a lit lip bottom-right, a cold glow in it
+  const cx = (T.x0 + T.x1) / 2, cy = (T.y0 + T.y1) / 2, r = Math.min(T.x1 - T.x0, (T.y1 - T.y0) * 2) * 0.22;
+  for (let Y = T.y0; Y <= T.y1; Y++) for (let X = T.x0; X <= T.x1; X++) {
+    if (!T.inT(X, Y)) continue;
+    const u = (X + 0.5 - cx) / r, v = (Y + 0.5 - cy) / (r * 0.55);
+    const inA = u * u + v * v < 1, inB = (u - 0.45) ** 2 + (v + 0.18) ** 2 < 0.72;
+    if (!inA || inB) continue;
+    const edgeTL = !(((u - 0.12) ** 2 + (v - 0.2) ** 2 < 1) && !((u - 0.57) ** 2 + (v + 0.02) ** 2 < 0.72));
+    pc.set(X, Y, edgeTL ? R[5] : u + v > 0.2 ? R[1] : R[3]);
+    pc.emit(X, Y, 0.5);
+  }
+  glintN(pc, T.x0 + 2 * S, T.y0 + S, 1, 0xffffff, R[1]);
+  glint(pc, 25, 22, 0, 0xffffff, R[1], 1);
 }
 
 function adamant(pc) {
@@ -316,38 +317,36 @@ function adamant(pc) {
   const sc = new Scene(32);
   const m = metal(R, { eq: 0.4, grad: 0.03 });
   m.toneFn = (f, n) => gemTone(n, { phase: 0.4, waves: 2 }) + (hash2(f.pid, 1, 4) - 0.5) * 0.6;
-  // a faceted wedge: a sharp keel along the top, cut facets down the flanks
-  const a = 11.5, c = 6, h = 7.5;
-  const pts = [[-a, 0, -c], [a, 0, -c * 0.7], [a * 0.9, 0, c], [-a * 0.95, 0, c * 0.9], [-a * 0.7, h, -0.3], [a * 0.75, h * 0.9, 0.3],
-    [-a * 1.05, h * 0.45, 0], [a * 1.08, h * 0.4, 0.3], [0, h * 0.62, c * 1.05], [0.5, h * 0.6, -c * 1.02], [-a * 0.5, h * 0.55, c * 0.85], [a * 0.5, h * 0.5, c * 0.9]];
-  sc.hull(m, view(yawPts(pts.map(([x, y, z]) => [x, y - h / 2, z]), -0.5), 16, 17, 0.72));
+  // a heavy bar cut into facets (it cleaves like a gem): a steep chamfer, the ends cut on a slant
+  const o = { a: 11, c: 5.6, h: 6.6, top: 0.72, yaw: -0.5, x: 16, y: 17.5, p: 0.76, chamfer: 2.4, bevel: 0.62 };
+  const pts = bar(o).map(([x, y, z], i) => [x + (y > o.h * 0.5 ? (x > 0 ? -1.2 : 1) : 0), y, z + (i % 5 === 0 ? 0.4 : 0)]);
+  const ob = sc.hull(m, place(pts, o));
   sc.render(pc);
-  glint(pc, 11, 10, 2, 0xffffff, R[1]);
+  const T = topPlane(sc, ob);
+  glintN(pc, T.x0 + 2 * S, T.y0 + S, 2, 0xffffff, R[1]);
+  glint(pc, 24, 21, 0, 0xffffff, R[1]);
 }
 
 function starmetal(pc) {
   const R = rampOf(RAMPS.star);
   const sc = new Scene(32);
-  const m = metal(R, { eqShare: true, glow: 0.3, tex: stoneTex(12, { amp: 0.3, pit: 0.06, speck: 0.04 }) });
-  // a fused meteor bar: two lumps run together, ragged and blistered
+  const m = metal(R, { glow: 0.3, tex: stoneTex(12, { amp: 0.32, pit: 0.08, speck: 0.04 }) });
+  // a bar cast from a fallen star: rough as the meteorite, blistered, a seam that never cooled
+  const o = { a: 11, c: 5.4, h: 6, top: 0.8, yaw: -0.3, x: 16, y: 17.5, p: 0.78, chamfer: 1.4, bevel: 0.78 };
   const rng = makeRng(23);
-  const A = stonePts(rng, 10, 7.5, 6.5, { n: 12, jag: 0.25, base: 0.7, yaw: 0.3 }).map(([x, y, z]) => [x - 4, y, z]);
-  const B = stonePts(rng, 7.5, 6.5, 6, { n: 10, jag: 0.3, base: 0.7, yaw: -0.4 }).map(([x, y, z]) => [x + 7, y - 0.5, z + 1]);
-  sc.hull(m, view(yawPts(A, -0.2), 15.5, 17, 0.75), { group: 1 });
-  sc.hull(m, view(yawPts(B, -0.2), 15.5, 17, 0.75), { group: 1 });
-  sc.roughen(sc.objs, { amount: 0.25, scale: 0.7, seed: 4 });
+  const pts = bar(o).map(([x, y, z]) => [x + rng.range(-0.6, 0.6), y + rng.range(-0.4, 0.4), z + rng.range(-0.5, 0.5)]);
+  sc.hull(m, place(pts, o));
+  sc.roughen(sc.objs, { amount: 0.22, scale: 0.7, seed: 4 });
   sc.render(pc);
-  // the seam where the lumps fused glows, and star-hot specks
   sc.eachPx((X, Y, x, y, i) => {
     if (sc.ob[i] < 0) return;
-    const d = Math.abs(x + 0.5 - 19 - (y - 17) * 0.35 - Math.sin(y * 1.1) * 0.6);
+    const d = Math.abs(x + 0.5 - 17 - (y - 17) * 0.5 - Math.sin(y * 1.1) * 0.6);
     if (d < (S > 1 ? 0.4 : 0.55)) { pc.set(X, Y, Y % 3 ? 0xffd860 : 0xfffbe0); pc.emit(X, Y, 1); }
-    else if (S > 1 && d < 0.75) { pc.set(X, Y, 0xd88a2a); pc.emit(X, Y, 0.6); } // the seam's cooler skin
+    else if (S > 1 && d < 0.75) { pc.set(X, Y, 0xd88a2a); pc.emit(X, Y, 0.6); }
     else if (hash2(X, Y, 7) < (S > 1 ? 0.012 : 0.02)) { pc.set(X, Y, 0xfffbe0); pc.emit(X, Y, 1); }
   });
-  glint(pc, 24, 7, 2, 0xffffff, 0xfff0a0, 1);
-  glint(pc, 6, 24, 1, 0xffffff, 0xfff0a0, 1);
-  glint(pc, 11, 12, 1, 0xffffff, R[1], 1);
+  glint(pc, 25, 8, 2, 0xffffff, 0xfff0a0, 1);
+  glint(pc, 10, 12, 1, 0xffffff, R[1], 1);
 }
 
 const DRAW = {

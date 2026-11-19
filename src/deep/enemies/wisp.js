@@ -147,7 +147,7 @@ export class Wisp extends Enemy {
           if (this.hurtPlayer(this.info.dmg, [this.dash[0] * 2, 1, this.dash[2] * 2], 'drain')) {
             stream(this.fx, m.eye.x, m.eye.y - 0.2, m.eye.z, this.pos.x, this.pos.y, this.pos.z, 24, this.G.mote);
             this.sound('wisp', {});
-            this.mgr.say('drain', 'A <b>Gloom Wisp</b> drank some of your energy! Shine your lamp on it.', 'bad', 30);
+            this.mgr.say('drain', '<b>Wisp!</b> Lamp it', 'bad', 30);
           }
           this.setState('flee');
           this.sqv += 5;

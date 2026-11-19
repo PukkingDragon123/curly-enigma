@@ -75,7 +75,7 @@ export class Lore {
 
   toast(e) {
     const ui = this.game.ui;
-    ui?.toast?.(`<small>Written in your book · Lore</small><br><b>${e.title}</b> <small>(B)</small>`, { icon: BART.tab('lore'), dur: 3400 });
+    ui?.toast?.(`Lore: <b>${e.title}</b>`, { icon: BART.tab('lore'), dur: 2400 });
     ui?.status?.setBadge?.(true);
     this.game.audio?.play?.('page', { vol: 0.5 });
   }

@@ -174,7 +174,7 @@ export function openUpgrades(game, startTab) {
   fit();
   window.addEventListener('resize', fit);
   ui.status?.pin?.(true);
-  for (const id of fresh) { const m = MILESTONES.find((x) => x.id === id); if (m) ui.toast(milestoneText(m), { kind: 'good' }); }
+  for (const id of fresh) { const m = MILESTONES.find((x) => x.id === id); if (m) { ui.toast(`<b>${m.name}</b>`, { kind: 'good' }); ui.status?.flyReward?.(m.reward, 300); } }
   h = ui.openPanel({ body: root, className: 'sh-panel ug-panel', onClose: () => { window.removeEventListener('resize', fit); ui.status?.pin?.(false); } });
   h.debug = { render, tab: (t) => { tab = t; enter = true; render(); } };
   return h;

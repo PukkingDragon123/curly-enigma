@@ -234,7 +234,7 @@ export default class DigScene extends Scene {
     await this.precompile();
     if (!st.flag('escaped') && !this.flags.hintRadar) {
       this.flags.hintRadar = true;
-      setTimeout(() => { if (g.scene === this) this.say('radar', 'Your radar hums: <b>Deep Town</b> is somewhere down there. Dig toward it.', 'good', 99); }, 2500);
+      setTimeout(() => { if (g.scene === this) this.say('radar', '<b>Deep Town</b> below', 'good', 99, DSPR.radarRing()); }, 2500);
     }
     this.music = 'mine';
   }
@@ -272,10 +272,10 @@ export default class DigScene extends Scene {
   }
 
   // ------------------------------------------------------------------ helpers
-  say(key, html, kind = 'warn', cd = 4) {
+  say(key, html, kind = 'warn', cd = 4, icon) {
     if (this.toastCd[key] && this.time - this.toastCd[key] < cd) return;
     this.toastCd[key] = this.time;
-    this.game.ui.toast(html, { kind });
+    this.game.ui.toast(html, { kind, icon }); // (wave 18: system lines are short and lead with a picture)
   }
   isTouch() { return document.documentElement.classList.contains('is-touch'); }
   get slotName() { return hotbarOf(this.state)[this.slot] || 'none'; }
@@ -394,8 +394,8 @@ export default class DigScene extends Scene {
     // the deep zones wear you down a little: frost in the Frost Vault, heat in the Magma Deep
     {
       const z = this.zone || 1;
-      if (z === 5 && !st.protects('cold')) { st.useEnergy(0.22 * dt * (st.hasBuff('warm') ? 0.3 : 1)); if (!st.hasBuff('warm')) this.say('cold', 'Brr. The cold is <b>sapping your energy</b>. A warm meal would help.', 'warn', 120); }
-      else if (z === 4 && !st.protects('heat')) { st.useEnergy(0.18 * dt * (st.hasBuff('cool') ? 0.4 : 1)); if (!st.hasBuff('cool')) this.say('heat', 'The heat down here is <b>draining you</b>. Something cooling to eat would help.', 'warn', 120); }
+      if (z === 5 && !st.protects('cold')) { st.useEnergy(0.22 * dt * (st.hasBuff('warm') ? 0.3 : 1)); if (!st.hasBuff('warm')) this.say('cold', '<b>Cold!</b> Eat warm', 'warn', 120); }
+      else if (z === 4 && !st.protects('heat')) { st.useEnergy(0.18 * dt * (st.hasBuff('cool') ? 0.4 : 1)); if (!st.hasBuff('cool')) this.say('heat', '<b>Hot!</b> Eat cool', 'warn', 120); }
     }
     if (pl.inLava && !st.protects('heat')) { st.useEnergy(18 * dt * (st.hasBuff('cool') ? 0.4 : 1)); if (chance(dt * 4)) this.audio.play('sizzle'); this.say('lava', '<b>LAVA!</b> Get out!', 'bad', 2); for (let k = 0; k < 2; k++) this.fx.ember(pl.pos.x, pl.pos.y + 0.3, pl.pos.z); }
     // head bob, footsteps on its beat and the sprint FOV kick (src/fps/feel.js); the bob is off
@@ -610,7 +610,7 @@ export default class DigScene extends Scene {
     } else if (tool === 'brush') {
       if (this.useT <= 0) { this.useT = it.rate || 0.12; this.brushHit(it); }
     } else if (tool === 'drill') {
-      if (this.drillHeat >= 1) { if (!this.flags.hot) { this.flags.hot = true; this.audio.play('overheat'); this.say('drill', 'The drill is too hot! Let it cool.', 'warn', 3); } return; }
+      if (this.drillHeat >= 1) { if (!this.flags.hot) { this.flags.hot = true; this.audio.play('overheat'); this.say('drill', '<b>Drill too hot</b>', 'warn', 3); } return; }
       this.flags.hot = false;
       this.drillHeat = Math.min(1, this.drillHeat + dt * (it.heatRate || 0.3));
       if (this.useT <= 0) { this.useT = 0.07; this.drillHit(it); }
@@ -721,7 +721,7 @@ export default class DigScene extends Scene {
     if (!breakable(m)) {
       this.audio.play('clang', { vol: 0.6 });
       this.fx.sparks(px, py, pz, 6, [1, 0.85, 0.5], out, 3);
-      if (m === M.BEDROCK) this.say('bedrock', 'Bedrock. Nothing gets through that.', 'warn', 6);
+      if (m === M.BEDROCK) this.say('bedrock', '<b>Bedrock</b>', 'warn', 6);
       return;
     }
     if (m >= ORE_BASE) { this.oreBlow(hit, mat, power, px, py, pz, out, F); return; }
@@ -733,7 +733,7 @@ export default class DigScene extends Scene {
       this.audio.play('clang'); this.fx.sparks(px, py, pz, 8, [1, 0.8, 0.4], out, 3);
       this.vm?.impact('pick', 1.2, { feel: 'clang', stop: 0.05 });
       const want = pickForTier?.(needs);
-      this.say('hard', `${mat.name} is too hard for this pickaxe${want ? `: you need a <b>${want.name}</b> or better` : ''}.`, 'warn', 5);
+      this.say('hard', want ? `<b>Too hard</b> · ${want.name}` : '<b>Too hard</b>', 'warn', 5);
       return;
     }
     const res = this.digger.strike(hit.vx, hit.vy, hit.vz, power, [hit.nx, hit.ny, hit.nz]);
@@ -1279,7 +1279,7 @@ export default class DigScene extends Scene {
     for (let k = 0; k < 6; k++) this.fx.glints(d.x, d.y, d.z);
     this.fx.dust(d.x, d.y, d.z, 8, [0.6, 0.55, 0.5], 0.1, out);
     this.bodies.spawn(voxels, { vel: [out[0] * 2 + rand(-0.5, 0.5), 2.5, out[2] * 2 + rand(-0.5, 0.5)], glow, scale: 0.85, pickup: { id: d.item, q: Math.round(s.q), p: pristine, delay: 0.75 } });
-    if (!this.flags.firstOre) { this.flags.firstOre = true; this.say('ore1', `<b>${it?.name || 'Ore'}!</b> It popped out of the wall.`, 'good', 10); }
+    if (!this.flags.firstOre) { this.flags.firstOre = true; this.say('ore1', `<b>${it?.name || 'Ore'}!</b>`, 'good', 10); }
   }
 
   collect(p) {
@@ -1291,7 +1291,7 @@ export default class DigScene extends Scene {
     const fits = to === 'bag' || (!st.canAdd && !(counts && this.trip >= st.bagCapacity()));
     // no room: it goes to the trunk at home rather than being lost
     st.addItem(p.id, { ...(it.q ? { q: p.q, p: p.p } : {}), spill: true });
-    if (!fits) this.game.ui.toast(`No room in your backpack: the <b>${it.name}</b> waits in the trunk at home.`, { icon: iconURL(p.id), kind: 'warn' });
+    if (!fits) this.game.ui.toast('<b>Sent home</b>', { icon: iconURL(p.id), kind: 'warn' });
     if (counts) { this.trip++; st.data.stats.ores++; if (p.p) st.data.stats.pristine++; this.tripItems.push(p.id); }
     this.tripValue += sellPrice(p.id, p.q, p.p);
     this.audio.play(it.cat === 'gem' || p.p ? 'pickup_gem' : 'pickup', { pitch: 0.9 + Math.random() * 0.3 });
@@ -1347,7 +1347,7 @@ export default class DigScene extends Scene {
     this.heavyT = this.time + 4;
     this.audio.play('ui_error');
     const it = ITEMS[id];
-    this.game.ui.toast(`<b>Too heavy!</b> You can't lift the ${it ? it.name : 'find'} as well.`, { kind: 'warn', icon: it ? iconURL(id) : undefined, dur: 2600 });
+    this.game.ui.toast('<b>Too heavy!</b>', { kind: 'warn', icon: it ? iconURL(id) : undefined, dur: 2000 });
   }
 
   /** The bag strip: pockets used / pockets (or finds this trip / capacity on old inventories). */
@@ -1362,7 +1362,7 @@ export default class DigScene extends Scene {
     if ((this.bagFullT || 0) > this.time) return;
     this.bagFullT = this.time + 4;
     this.audio.play('ui_error');
-    import('../ui/Backpack.js').then((m) => { if (m.bagFullToast) m.bagFullToast(this.game, id); else this.say('bag', 'Your backpack is full!', 'warn', 4); });
+    import('../ui/Backpack.js').then((m) => { if (m.bagFullToast) m.bagFullToast(this.game, id); else this.say('bag', '<b>Pack full</b>', 'warn', 4); });
   }
 
   chiselHit(it) {
@@ -1513,7 +1513,7 @@ export default class DigScene extends Scene {
 
   eatBest() {
     const f = this.bestFood();
-    if (!f) { this.say('nofood', 'No snacks in your bag.', 'warn'); return; }
+    if (!f) { this.say('nofood', '<b>No snacks</b>', 'warn'); return; }
     if (this.eatSeq && !this.eatSeq.over) return;
     // (wave 16) lift, three bites, a happy bob and a warm glow; the meal counts once it's eaten
     this.eatSeq = startEating(this.game, this.vm, f.id, { onDone: (id) => { this.game.eat(id); this.updateHotbar(); } });
@@ -1597,7 +1597,7 @@ export default class DigScene extends Scene {
     for (let i = 0; i < 18; i++) this.fx?.spawn?.({ x: L.x + (Math.random() - 0.5) * 0.8, y: L.y + 1 + Math.random() * 1.2, z: L.z + (Math.random() - 0.5) * 0.8, vx: (Math.random() - 0.5) * 1.5, vy: 1 + Math.random() * 1.5, vz: (Math.random() - 0.5) * 1.5, life: 0.9, size: 0.03, color: [1, 0.85, 0.4], glow: true, drag: 2 });
     void p;
     this.act('lift_unlock', { id: L.id, zone: L.zone });
-    this.game.ui.toast(`<b>Checkpoint unlocked: ${L.name}</b> · ${L.depth} m. Ride here from any lift you know.`, { kind: 'good', dur: 3600 });
+    this.game.ui.toast(`<b>Checkpoint</b> · ${L.depth} m`, { kind: 'good', dur: 2600 });
     this.state.save?.();
     setTimeout(() => { if (!this.leaving && this.game.scene === this) openLiftPanel(this.game, L.id, { title: L.name, sub: `${L.depth} m · checkpoint unlocked. Where to?`, onRide: (id) => this.rideLift(id) }); }, 900);
   }
@@ -1653,7 +1653,7 @@ export default class DigScene extends Scene {
       st.data.zoneMax = Math.max(st.data.zoneMax || 1, zone);
       this.music = 'mine';
       g.ui.setDepth(`<b>${Math.floor(depth)} m</b><br>${ZONES[zone].name}`);
-      if (this.time > 1) this.say('zone' + zone, `<b>${ZONES[zone].name}</b> · ${ZONES[zone].desc}`, 'good', 999);
+      if (this.time > 1) this.say('zone' + zone, `<b>${ZONES[zone].name}</b>`, 'good', 999);
     }
     // biomes: the light and fog lean their way; the first visit to each gets a word
     if ((this.bioT = (this.bioT || 0) - dt) <= 0) {
@@ -1662,7 +1662,7 @@ export default class DigScene extends Scene {
       if (b !== this.biome) {
         this.biome = b;
         const seen = (st.data.biomes ||= {});
-        if (b && !seen[BIOMES[b].id] && this.time > 1) { seen[BIOMES[b].id] = 1; this.say('bio' + b, `<b>${BIOMES[b].name}</b> · ${BIOMES[b].desc}`, 'good', 999); }
+        if (b && !seen[BIOMES[b].id] && this.time > 1) { seen[BIOMES[b].id] = 1; this.say('bio' + b, `<b>${BIOMES[b].name}</b>`, 'good', 999); }
       }
     }
     {
@@ -1699,7 +1699,7 @@ export default class DigScene extends Scene {
   /** Radar's "Head home": back to the burrow by the tunnel we came out of. */
   headHome() {
     if (this.leaving) return;
-    this.say('home', `Hauled up <b>${this.trip}</b> finds (≈${formatGoldFull(this.tripValue)}g).`, 'good', 1);
+    this.say('home', `<b>${this.trip}</b> finds home`, 'good', 1);
     this.goHome(this.lastMouth.wall, this.lastMouth.t);
   }
   leave(scene, params, opts = { transition: 'fade' }) {
@@ -1715,7 +1715,7 @@ export default class DigScene extends Scene {
     const st = this.state;
     st.data.stats.faints++;
     this.audio.play('faint');
-    this.say('faint', 'You blacked out. Woke up at home, short part of the haul.', 'bad', 1);
+    this.say('faint', '<b>Blacked out</b>', 'bad', 1);
     // lose half of this trip's finds
     const lost = this.tripItems.filter((_, i) => i % 2 === 1);
     for (const id of lost) st.removeItem(id, 1);

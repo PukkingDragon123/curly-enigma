@@ -2,21 +2,36 @@
 // simple dish (LESSON in data/recipes.js: Glowcap Soup) at his hearth, one step at a time, through
 // the tutor card (game.ui.tutor, owned by the home part; the lesson runs silently without it), and
 // reacts to how each step went. When the dish is done: act { type: 'lesson', step: 'cook_done' }.
-// The cinematic tutorial (src/ui/Onboard.js): it opens as a cutscene (letterbox, his first line
-// through the cutscene talk when there is one, a hold skips it; cooking starting ends it), and each
-// step's control gets a small prompt drawn for the device (click / tap, hold, drag, circles). His
-// running tip is one short line; the prompt carries the control. No flying icons or title cards.
+// Wave 18: no cards and no portrait. Old Star stands at the counter beside you (his real 3D model,
+// kept at the right of whatever station the view is on) and shows each step before you do it
+// (src/home/starDemo.js: chop, crack, stir, simmer, season...), then you copy him; at most a 2–4 word
+// cue floats up over the work (teachWord). His lines float by his head (game.convo with his rig).
+// The opening is still a short cutscene (letterbox; hold Esc or a click to skip; cooking starting ends it).
 import { LESSON, DISHES } from '../data/recipes.js';
 import { ITEMS } from '../data/items.js';
+import * as THREE from 'three';
 import { pick } from '../core/util.js';
 import { pantryCount, pantryGive } from './quality.js';
+import { StarDemo } from '../home/starDemo.js';
+import { teachWord } from '../home/tutorFx.js';
+
+const starMods = import.meta.glob('../gfx/char/starmole.js');
+const _p = new THREE.Vector3(), _f = new THREE.Vector3(), _r = new THREE.Vector3();
+/** Which of his mimes shows a step (src/home/starDemo.js), and the few words that float up for it. */
+const SHOW = {
+  chop: ['chop', 'Click the lines'], crack: ['crack', 'Click in the gold'], simmer: ['simmer', 'Hold for flame'],
+  stir: ['stir', 'Circle the mouse'], season: ['season', 'Space in the band'], fry: ['crack', 'Flip it golden'],
+  flip: ['crack', 'Toss, then catch'], pour: ['quench', 'Let go early'], knead: ['chop', 'A, D on beat'],
+  roll: ['grind', 'Drag the pin'], grate: ['grind', 'Long strokes down'], bake: ['pump', 'Out at golden'],
+  mash: ['hammer', 'Press the lumps'], plate: ['quench', 'Drop it centred'],
+};
 
 
 /** His tip for each kind of step (with the controls, since the lesson hides the usual hint). */
 function tipFor(kind) {
   return {
     chop: 'Knife first. Even pieces cook even.',
-    simmer: 'A simmer, not a boil. The pot\'s slow, so lead it.',
+    simmer: 'A simmer. Not a boil.',
     season: 'Pinch of salt. Too much is worse than none.',
     stir: 'Round and round. Not too fast or it slops over.',
     crack: 'Gently does it.',
@@ -31,24 +46,6 @@ function tipFor(kind) {
     plate: 'Make it look nice. Someone has to eat it.',
   }[kind] || 'Easy does it.';
 }
-
-/** The control each kind of step wants, its card's title, and the words for a PC and a touch screen. */
-const STEP_CONTROL = {
-  chop: ['click', 'Chop', 'Move the knife over a <b>dotted line</b>, <b>click</b>', 'Slide the knife to a <b>dotted line</b>, <b>tap</b>'],
-  simmer: ['hold', 'Simmer', '<b>Hold</b> the button (or <kbd>Space</kbd>) for flame', '<b>Hold</b> for flame, let go to ease off'],
-  season: ['click', 'Season', 'Shake it in, <kbd>Space</kbd> when it\'s in the band', '<b>Tap</b> to shake, then <b>Done</b>'],
-  stir: ['circle', 'Stir', 'Move the mouse in <b>circles</b>', 'Draw <b>circles</b> with your finger'],
-  crack: ['click', 'Crack the egg', '<b>Click</b> when the swing is in the gold', '<b>Tap</b> when the swing is in the gold'],
-  fry: ['click', 'Fry', '<b>Click</b> to flip it when it\'s golden', '<b>Tap</b> to flip it when it\'s golden'],
-  flip: ['click', 'Toss', '<b>Click</b> to toss, then catch it', '<b>Tap</b> to toss, then catch it'],
-  pour: ['hold', 'Pour', '<b>Hold</b> to pour, let go before the line', '<b>Hold</b> to pour, let go before the line'],
-  knead: ['click', 'Knead', '<kbd>A</kbd> <kbd>D</kbd> on the beat', 'Left, right, <b>on the beat</b>'],
-  roll: ['drag', 'Roll it out', '<b>Drag</b> the pin, lean on the thick side', '<b>Drag</b> the pin, lean on the thick side'],
-  grate: ['drag', 'Grate', 'Long <b>strokes</b> down the teeth', 'Long <b>strokes</b> down the teeth'],
-  bake: ['hold', 'Bake', 'Feed the fire, pull it out at golden', 'Feed the fire, pull it out at golden'],
-  mash: ['click', 'Mash', 'Aim at a lump and <b>press</b>', 'Aim at a lump and <b>tap</b>'],
-  plate: ['click', 'Plate up', '<b>Click</b> to drop it in the middle', '<b>Tap</b> to drop it in the middle'],
-};
 
 const REACT = [
   [90, 'proud', ['Clean as a cut gem.', 'That\'s a cook\'s paw.', 'You\'ve done this before.']],
@@ -69,6 +66,11 @@ export class CookLesson {
 
   say(html, o = {}) {
     if (this.game.scene !== this.sc) return Promise.resolve(); // (the kitchen has gone: nothing more to say)
+    // (wave 18: by his head at the counter, no card, no portrait)
+    const rig = this.star?.rig, cv = this.game.convo;
+    if (rig && cv?.say) {
+      try { return Promise.resolve(cv.say(html, { who: 'oldstar', rig, head: (out) => rig.headWorld(out), mood: o.mood, key: o.key, wait: !!o.wait, dur: o.dur === Infinity || o.dur == null ? 4 : o.dur })); } catch (e) { /* the old line */ }
+    }
     const t = this.game.ui.tutor;
     const card = () => { if (!t?.say) return Promise.resolve(); try { return Promise.resolve(t.say(html, { key: 'cook-lesson', ...o })); } catch (e) { return Promise.resolve(); } };
     // a line he waits on is a little cutscene (game.convo) when there is one
@@ -76,12 +78,63 @@ export class CookLesson {
     return card();
   }
 
-  /** A prompt card for a control (the one before goes): top left, clear of the pantry and the pot. */
-  teach(id, o = {}) {
-    this.obH?.close?.();
-    if (this.game.scene !== this.sc) { this.obH = null; return null; }
-    this.obH = this.game.ui.onboard?.teach(id, { place: 'left', ...o }) || null;
-    return this.obH;
+  /** He shows a step (a mime of it at the counter) and a few words float up over the work. */
+  show(kind) {
+    if (this.game.scene !== this.sc) return;
+    const sh = SHOW[kind];
+    if (!sh) return;
+    this.demo?.play(sh[0], 2.8);
+    setTimeout(() => this.cue(sh[1]), 450);
+  }
+
+  /** A few words floating up over the work, once. */
+  cue(word) {
+    if (this.game.scene !== this.sc || this.done) return;
+    const L = this.sc.camLook;
+    if (!L) return;
+    _p.copy(L);
+    _p.y += 0.22;
+    teachWord(this.game, word, _p.clone(), { life: 2.6, size: 0.5 });
+  }
+
+  /** Old Star himself, at the counter beside you (his own model, as in the forge lesson). */
+  async loadStar() {
+    const load = starMods['../gfx/char/starmole.js'];
+    if (!load || this.star) return;
+    try {
+      const m = await load();
+      if (this.game.scene !== this.sc) return;
+      const rig = m.makeStarMole({ height: 0.76 });
+      rig.root.scale.multiplyScalar(0.6 / (rig.height || 1));
+      this.sc.scene.add(rig.root);
+      this.star = { rig, pos: new THREE.Vector3(), ready: false };
+      this.demo = new StarDemo(rig, { audio: this.game.audio });
+      rig.play?.('idle');
+      // (per frame with the kitchen: the scene's own update, then his)
+      const up = this.sc.update.bind(this.sc);
+      this.sc.update = (dt) => { up(dt); this.tick(dt); };
+      this.sc.own?.(() => { rig.root.parent?.remove(rig.root); rig.dispose?.(); });
+    } catch (e) { console.warn('[cook] Old Star failed to load', e); }
+  }
+
+  /** Per frame: he keeps to the right of the station in view, at the counter, facing the work. */
+  tick(dt) {
+    const S = this.star;
+    if (!S?.rig) return;
+    const cam = this.sc.camera;
+    cam.getWorldDirection(_f);
+    _f.y = 0;
+    _f.normalize();
+    _r.set(-_f.z, 0, _f.x);
+    _p.copy(cam.position).addScaledVector(_f, 1.15).addScaledVector(_r, 0.72);
+    _p.y = -0.12; // (his feet in the counter: he reads as standing behind it)
+    if (!S.ready) { S.pos.copy(_p); S.ready = true; } else S.pos.lerp(_p, 1 - Math.exp(-dt * 3));
+    const r = S.rig;
+    r.root.position.copy(S.pos);
+    const L = this.sc.camLook || cam.position;
+    r.face(Math.atan2((L.x * 0.2 + cam.position.x * 0.8) - S.pos.x, (L.z * 0.2 + cam.position.z * 0.8) - S.pos.z)); // (to you, a little toward the work)
+    r.update(dt);
+    this.demo?.apply(dt);
   }
 
   /** The opening cutscene is over the moment cooking starts (nothing waits behind it). */
@@ -96,6 +149,7 @@ export class CookLesson {
   /** At the hearth: hand over what's missing, explain, then point at the pantry. */
   async start() {
     const st = this.game.state;
+    await this.loadStar();
     let gave = false;
     for (const [id, n] of Object.entries(LESSON.ing)) {
       for (let k = pantryCount(st, id); k < n; k++) { pantryGive(st, id, ITEMS[id]?.q ? { q: 82 } : {}); gave = true; }
@@ -114,8 +168,9 @@ export class CookLesson {
   pantryTip() {
     this.stage = 'pantry';
     const names = this.ids.map((id) => `<b>${ITEMS[id]?.name || id}</b>`).join(' and the ');
-    this.say(`The ${names}, then <b>Cook!</b>`, { mood: 'calm', dur: Infinity });
-    this.teach('click', { title: 'Into the pot', subPc: `<b>Click</b> the ${names}, then <b>Cook!</b>`, subT: `<b>Tap</b> the ${names}, then <b>Cook!</b>`, done: () => this.stage !== 'pantry' });
+    this.say(`The ${names}. Then cook.`, { mood: 'calm', dur: 5 });
+    this.star?.rig?.play?.('point');
+    setTimeout(() => { if (this.star?.rig && this.stage === 'pantry') this.star.rig.play?.('idle'); }, 1800);
   }
 
   /** Only the lesson's dish while he's teaching. */
@@ -139,18 +194,14 @@ export class CookLesson {
   onStep(kind) {
     if (this.done) return;
     this.stage = 'step:' + kind;
-    // a beat after the big title, the tip stays up while the step runs
-    setTimeout(() => { if (this.sc.step && this.sc.steps?.[this.sc.stepI] === kind && !this.done) this.say(tipFor(kind), { mood: 'calm', dur: Infinity }); }, 650);
-    const c = STEP_CONTROL[kind];
-    if (c) {
-      const i = this.sc.stepI;
-      this.teach(c[0], { title: c[1], subPc: c[2], subT: c[3], done: () => this.done || this.sc.stepI !== i || !this.sc.step });
-    }
+    // he shows it first (a mime at the counter, a few words over the work), then one short tip
+    this.show(kind);
+    setTimeout(() => { if (this.sc.step && this.sc.steps?.[this.sc.stepI] === kind && !this.done) this.say(tipFor(kind), { mood: 'calm', dur: 3.6, key: 'cook-tip' }); }, 3000);
   }
 
   onStepDone(kind, score) {
     if (this.done) return;
-    if (this.obH && !this.obH.done) this.obH.complete();
+    this.demo?.stop();
     const [, mood, lines] = REACT.find(([min]) => score >= min);
     this.say(pick(lines), { mood, dur: 2.4 });
   }
@@ -158,7 +209,7 @@ export class CookLesson {
   async onResult(res) {
     if (this.done) return;
     this.done = true;
-    this.obH?.close?.();
+    this.demo?.stop();
     this.stage = 'result';
     // the lesson's done the moment the dish is (quests listen for this)
     this.game.state.emit('act', { type: 'lesson', step: 'cook_done' });
@@ -173,5 +224,5 @@ export class CookLesson {
     this.stage = 'free';
   }
 
-  leave() { this.endCine(); this.obH?.close?.(); this.game.ui.tutor?.hide?.('cook-lesson'); }
+  leave() { this.endCine(); this.demo?.stop(); this.game.ui.tutor?.hide?.('cook-lesson'); }
 }

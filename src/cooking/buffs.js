@@ -38,7 +38,7 @@ export function foodBuffs(game, id, q) {
     st.addBuff(b, secs);
   }
   const names = ids.map((b) => `<b style="color:${BUFFS[b].color}">${BUFFS[b].name}</b>`).join(' + ');
-  game.ui.toast(`${names} for ${fmt(real)} · ${ids.map((b) => BUFFS[b].desc).join(' ')}`, { icon: iconURL(id), kind: 'good', dur: 3400 });
+  game.ui.toast(`<b>${names}</b> · ${fmt(real)}`, { icon: iconURL(id), kind: 'good', dur: 2400 });
   game.audio.play('glow', { vol: 0.5 });
   game.ui.buffs?.pop(ids);
   return ids;

@@ -738,7 +738,7 @@ export class Clumps {
     if ((want || tap) && this.cd <= 0) {
       const ray = tap ? this.tapRay(tap.x, tap.y) : null;
       if (!it) {
-        if (inp.mousePressed(0) || tap) this.say('notool', tool === 'pick' || tool === 'chisel' || tool === 'brush' ? `You don't have a ${tool}.` : 'Clean it with the <b>pick</b>, <b>chisel</b> or <b>brush</b>.', 'warn', 5);
+        if (inp.mousePressed(0) || tap) this.say('notool', tool === 'pick' || tool === 'chisel' || tool === 'brush' ? `<b>No ${tool}</b>` : '<b>Pick, chisel or brush</b>', 'warn', 5);
       } else if (tool === 'pick') {
         this.cd = (it.rate || 0.36) * PICK_CD_MUL * (this.st?.hasBuff?.('zippy') ? 0.8 : 1) + PICK_CD_ADD;
         this.pending = { t: PICK_LAND, tool, it, ray };
@@ -755,7 +755,7 @@ export class Clumps {
         this.cd = 0.08;
         this.strike('drill', it, ray);
       } else if (tool !== 'xray' && (inp.mousePressed(0) || tap)) {
-        this.say('tool', 'Clean it with the <b>pick</b>, <b>chisel</b> or <b>brush</b>. (Mouse wheel / 1-3 to switch.)', 'warn', 6);
+        this.say('tool', '<b>Pick, chisel or brush</b>', 'warn', 6);
       }
     }
     // the crosshair: what's under it on the clump

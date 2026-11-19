@@ -39,6 +39,7 @@ import { starPortraitURL } from '../ui/Tutor.js';
 import { openTalkMenu } from '../ui/choices.js';
 import { TUT } from '../ui/Onboard.js';
 import { Glint, flare, copperLump, satchel, notebook, rockyLump, chipLump, teachWord } from './tutorFx.js';
+import { StarDemo } from './starDemo.js';
 import { grantNook } from './nooks.js';
 
 const _v = new THREE.Vector3();
@@ -305,6 +306,59 @@ export class HomeLessons {
   }
 
   /**
+   * Inside a cutscene (wave 18): Old Star shows how to dig. A lump of rock lies on the floor between
+   * you; your view drops to it; he swings his old pick at it, three blows round the edge (chips, dust,
+   * a jolt), and the copper inside shows through. Then you copy him down the mine. (Test hook:
+   * scene.debug.digDemo() via the lesson's own.)
+   */
+  async digDemo({ go, sleep, tween }) {
+    const star = this.star, fx = this.fx, a = this.game.audio, c = this.cam;
+    if (!star?.rig || !c) return;
+    const lump = rockyLump(1);
+    lump.scale.setScalar(2.6);
+    const p = new THREE.Vector3(c.x, 0, c.z).lerp(_v.set(star.pos.x, 0, star.pos.z), 0.55);
+    p.y = this.floorY(p.x, p.z) + 0.04;
+    lump.position.copy(p);
+    lump.rotation.y = 0.6;
+    this.scene.add(lump);
+    star.faceTo(p.x, p.z);
+    // look down at it, with him and his swing in the shot (aimed between the lump and his chest)
+    const aim = p.clone().lerp(_v.set(star.pos.x, p.y, star.pos.z), 0.3);
+    aim.y = p.y + 0.34;
+    const yaw1 = Math.atan2(-(aim.x - c.x), -(aim.z - c.z)), pitch1 = Math.atan2(aim.y - c.y, Math.hypot(aim.x - c.x, aim.z - c.z));
+    const y0 = c.yaw, p0 = c.pitch, dy = wrap(yaw1 - y0);
+    const eye = () => new THREE.Vector3(c.x, c.y, c.z);
+    const demo = new StarDemo(star.rig, {
+      audio: a,
+      onBeat: (kind, n) => {
+        chipLump(fx, lump, 6, eye());
+        fx.dust?.(p.x, p.y + 0.03, p.z, 6, [0.5, 0.44, 0.38], 0.12);
+        fx.chips?.(p.x, p.y + 0.05, p.z, 6, [0.46, 0.4, 0.34], [0, 0.6, 0]);
+        if (this.rig) this.rig.shakeAmp = Math.max(this.rig.shakeAmp || 0, 0.12);
+        if (n === 1) teachWord(this.game, 'Dig round it', p.clone().add(new THREE.Vector3(0, 0.34, 0)), { life: 2.4, size: 0.42 });
+      },
+    });
+    try {
+      await go(tween(0.5, (k) => { const e = ease(k); c.yaw = y0 + dy * e; c.pitch = p0 + (pitch1 - p0) * e; }));
+      star.gesture('swing', 3.0);
+      demo.play('dig', 2.9);
+      const tick = (dt) => demo.swing(dt);
+      this.tickers.push(tick);
+      try { await go(sleep(2.9)); } finally { const i = this.tickers.indexOf(tick); if (i >= 0) this.tickers.splice(i, 1); }
+      // the last blow: the copper shows through
+      for (const b of lump.children) if (b.userData.rock && Math.random() < 0.5) b.visible = false;
+      flare(fx, p.clone().setY(p.y + 0.08), { n: 8, speed: 1 });
+      a.play('sparkle', { vol: 0.35 });
+      await go(sleep(0.6));
+    } finally {
+      demo.stop();
+      star.rig.play?.('idle');
+      lump.parent?.remove(lump);
+      lump.userData.dispose?.();
+    }
+  }
+
+  /**
    * Inside a cutscene: Old Star shows how ore is cleaned. He holds up a lump still in its crust of
    * rock and chisels at it: tink, tink, the rock flies off in chips, the copper comes out bright.
    * Two floating words say it; he says one. (Test hook: scene.debug.chipDemo().)
@@ -451,7 +505,8 @@ export class HomeLessons {
         await this.holdOut(satchel(), 'My old <b>satchel</b>. Spare <b>chisel</b> in it. Mind the hole.', 'happy', tools);
         this.giveChisel();
         ui.unlock?.(['pack', 'tools']);
-        // (he shows you what the chisel's for: ore comes out of the wall in a crust of rock)
+        // (he shows you how to dig, then what the chisel's for: ore comes out of the rock in a crust)
+        await this.digDemo(tools);
         await this.chipDemo(tools);
         star.gesture('point', 1.6);
         await line('<b>Copper</b> next. Down the cage. Look for orange.', 'happy');

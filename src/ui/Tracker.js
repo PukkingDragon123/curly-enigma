@@ -467,9 +467,10 @@ export class Tracker {
       if (list.length === 1) {
         const v = list[0].quest, who = v.giverName;
         const head = list[0].accept ? 'Quest accepted' : v.kind === 'request' ? `A request from ${who}` : v.kind === 'village' || v.kind === 'lore' ? `${who} asks a favour` : `New task from ${who}`;
-        this.ui.toast(`<small>${head}</small><br><b>${v.title}</b><br><small class="qt-first">First: ${v.text}</small>`, { icon: npcFace(this.game, v.giver, { size: 40 }), dur: 4200 });
+        void head;
+        this.ui.toast(`New: <b>${v.title}</b>`, { icon: npcFace(this.game, v.giver, { size: 40 }), dur: 2600 }); // (wave 18: short; the strip has the rest)
       } else {
-        this.ui.toast(`<b>${list.length} new tasks</b> in your book <small>(B)</small>`, { icon: BART.tab('quests') });
+        this.ui.toast(`<b>${list.length} new tasks</b>`, { icon: BART.tab('quests') });
       }
     }, 80);
   }
@@ -482,7 +483,7 @@ export class Tracker {
     const now = performance.now();
     if (now - (this.toastT[e.id] || 0) < 2500) return;
     this.toastT[e.id] = now;
-    this.ui.toast(`<b>${v.title}</b> · ${v.text} <b class="gold-txt">${countText(v)}</b>`, { icon: npcFace(this.game, v.giver, { size: 40 }), dur: 2200 });
+    this.ui.toast(`<b>${v.title}</b> <b class="gold-txt">${countText(v)}</b>`, { icon: npcFace(this.game, v.giver, { size: 40 }), dur: 1800 });
   }
 
   /** A step done: what's next (when the strip isn't showing that quest, or can't be seen). */
@@ -490,28 +491,32 @@ export class Tracker {
     const v = e.quest;
     if (!v || v.id === 'lessons' || this.quests.talking) return;
     if (e.id === this.quests.data.tracked && this.visible()) return;
-    this.ui.toast(`<b>${v.title}</b><br><small>Next: ${v.text}</small>`, { icon: BART.box(true), dur: 3200 });
+    this.ui.toast(`Next: <b>${v.title}</b>`, { icon: BART.box(true), dur: 2200 });
   }
 
-  /** Somebody's line when a step is done (Old Star says his through the tutor when he's there). */
+  /**
+   * Somebody's line when a step is done (Old Star says his through the tutor when he's there).
+   * Wave 18: no quote toasts any more (they piled up at the top); whatever they hand over flies
+   * into the backpack instead.
+   */
   sayToast(e) {
     if (!e?.text || (this.quests.talking && (!e.by || e.by === this.quests.talking))) return;
     if (e.by === 'oldstar' && this.game.sceneName === 'home' && this.ui.tutor?.say) { this.ui.tutor.say(e.text, { mood: e.mood || 'calm', key: 'quest-say' }); return; }
-    const who = e.by ? npcName(e.by) : null;
-    const icon = e.items ? undefined : e.by ? npcFace(this.game, e.by, { size: 40 }) : undefined;
-    const items = e.items ? Object.keys(e.items) : [];
-    setTimeout(() => this.ui.toast(who ? `<b>${who}:</b> “${e.text}”` : e.text, { icon: items[0] ? undefined : icon, kind: items.length ? 'good' : '', dur: 4200 }), this.ui.isPanelOpen() ? 0 : 120);
+    if (e.items) this.flyReward({ items: e.items }, 200);
   }
+
+  /** Rewards are things: items arc into the backpack, gold into the pouch (src/ui/Hud.js flyReward). */
+  flyReward(r, delay = 0) { this.ui.status?.flyReward?.(r, delay); }
 
   doneToast(e) {
     const v = e.quest;
     if (!v) return;
-    // skill points get their own toast from the skill tree when it's there
-    const rw = rewardText(this.game.state.addSkillPoints ? { ...e.reward, sp: 0 } : e.reward, { rep: QUESTS[e.id]?.giver });
-    const line = v.outro && !this.ui.isPanelOpen() && !this.quests.talking ? `<br><small class="qt-said">“${v.outro}”</small>` : '';
+    // wave 18: one short line (the queue in UI.toast keeps them one at a time); the rewards fly home
+    // as things, no reward list, no quote
     setTimeout(() => {
-      this.ui.toast(`<b>${v.title}</b> · done!${rw ? `<br><span class="gold-txt">${rw}</span>` : ''}${line}`, { kind: 'good', icon: BART.stamp(), dur: 5200 });
+      this.ui.toast(`<b>${v.title}</b> · done!`, { kind: 'good', icon: BART.stamp(), dur: 2600 });
       this.game.audio.play('success', { vol: 0.6 });
+      this.flyReward(e.reward, 350);
     }, this.ui.hudMode === 'deep' ? 650 : 0);
   }
 }

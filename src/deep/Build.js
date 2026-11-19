@@ -112,7 +112,7 @@ export class Build {
       d.kit = 1;
       this.st.addItem('blk_ladder', { n: 8, spill: true });
       this.st.addItem('blk_torch', { n: 6, spill: true });
-      setTimeout(() => this.ui.toast?.('A builder\'s start: <b>8 ladders</b> and <b>6 torches</b> in your pack. The build tool is <b>7</b>.', { icon: iconURL('blk_torch'), kind: 'good', dur: 4200 }), 3200);
+      setTimeout(() => this.ui.toast?.('<b>Ladders & torches</b> · key 7', { icon: iconURL('blk_torch'), kind: 'good', dur: 2600 }), 3200);
     }
     // gather: digging natural rock keeps a block now and then
     this.offAct = this.st.on('act', (a) => {
@@ -563,7 +563,7 @@ export class Build {
       if (s.lots) for (const l of s.lots) { this.st.addItem(s.id, { q: l.q, p: l.p, spill: true }); n++; }
       else { this.st.addItem(s.id, { n: s.n, spill: true }); n += s.n; }
     }
-    this.ui.toast?.(`The chest's things (<b>${n}</b>) go into your pack${at ? '' : ': the chest is gone'} (what doesn't fit waits at home).`, { kind: 'good', icon: iconURL('blk_chest') });
+    this.ui.toast?.(`<b>${n}</b> things packed`, { kind: 'good', icon: iconURL('blk_chest') });
     return n;
   }
   /** Chests whose blocks are gone from the saved world (another save's world, a lost edit): give their things back. */

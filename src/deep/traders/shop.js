@@ -227,8 +227,8 @@ export function openBurrowShop(game, shopId, o = {}) {
           T.sold[e.id] = (T.sold[e.id] || 0) + qty;
           speak(pick(shop.bought), 'happy');
           folk?.react('bought');
-          if (it.cat === 'furniture') ui.toast(`${it.name} is waiting at home. Place it in build mode.`, { icon: iconURL(e.id) });
-          if (it.cat === 'blueprint' && it.kind === 'weapon') ui.toast(`New forge plans: ${it.name}`, { icon: iconURL(e.id), kind: 'good' });
+          if (it.cat === 'furniture') ui.toast('<b>Sent home</b>', { icon: iconURL(e.id) });
+          if (it.cat === 'blueprint' && it.kind === 'weapon') ui.toast('<b>New plans</b>', { icon: iconURL(e.id), kind: 'good' });
         } else {
           au.play('ui_error');
           speak(r.reason === 'Not enough gold' ? pick(shop.poor) : r.full ? 'Your pack\'s stuffed. Lighten it, then come back.' : r.reason, r.reason === 'Not enough gold' ? 'sad' : 'thinking');
@@ -272,7 +272,7 @@ export function openBurrowShop(game, shopId, o = {}) {
   const afterSale = (g, id, n, extra = {}) => {
     if (g <= 0) return;
     au.play('coins', { n: Math.min(8, 2 + Math.floor(Math.log10(g + 1) * 1.5)) });
-    ui.toast(`Sold to ${shop.keeper.name} for <b>${formatGoldFull(g)}</b> gold`, { kind: 'good', icon: SPR.coin() });
+    ui.toast(`Sold · <b>${formatGoldFull(g)}</b>`, { kind: 'good', icon: SPR.coin() });
     st.emit('act', { type: 'sell', id, gold: g, to: npc, n, ...extra });
     speak(pick(shop.sold), 'happy');
     folk?.react('sold');
@@ -384,7 +384,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     if (g <= 0) return 0;
     stopHaggle();
     au.play('coins', { n: 8 }); au.play('ui_buy');
-    ui.toast(`Rocco takes the <b>${w.name}</b> for <b>${formatGoldFull(g)}</b> gold. No questions.`, { kind: 'good', icon: weaponIconURL(w.type, w.metal, w.infusion) });
+    ui.toast(`Sold · <b>${formatGoldFull(g)}</b>`, { kind: 'good', icon: weaponIconURL(w.type, w.metal, w.infusion) });
     st.emit('act', { type: 'sell', id: w.type, weapon: { type: w.type, metal: w.metal, grade: w.grade, score: w.score }, gold: g, to: npc });
     delete T.haggle[w.uid];
     speak(line || (off.grade === 'S' || off.grade === 'A' ? pick(['Oh, that is BEAUTIFUL. Don\'t tell anyone I said so.', 'Now THAT\'s a blade. My client will weep.']) : pick(shop.sold)), 'happy');
@@ -521,7 +521,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     if (gold) st.addGold(gold, 'crate');
     au.play('crack'); setTimeout(() => au.play(got === 'dust_fluff' ? 'oops' : 'fanfare'), 260);
     const what = got ? ITEMS[got].name : '';
-    ui.toast(`The crate held ${got ? `<b>${what}</b>` : ''}${got && gold ? ' and ' : ''}${gold ? `<b>${formatGoldFull(gold)}</b> gold` : ''}!${spilled ? ' (No room in your pack: it went home to your stash.)' : ''}`, { kind: got === 'dust_fluff' ? 'warn' : 'good', icon: got ? iconURL(got) : SPR.coin() });
+    ui.toast(got ? `<b>${what}</b>${spilled ? ' · sent home' : ''}` : `<b>${formatGoldFull(gold)}</b> gold`, { kind: got === 'dust_fluff' ? 'warn' : 'good', icon: got ? iconURL(got) : SPR.coin() });
     speak(line, got === 'dust_fluff' ? 'laugh' : 'surprised');
     folk?.react(got === 'dust_fluff' ? 'laugh' : 'deal');
     rerender();
@@ -544,7 +544,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     const dir = ['south', 'south-east', 'east', 'north-east', 'north', 'north-west', 'west', 'south-west'][((Math.round(Math.atan2(-dz, dx) / (Math.PI / 4)) % 8) + 8 + 2) % 8];
     const where = `about ${Math.round(Math.hypot(dx, dz))} m ${dir}${Math.abs(dy) > 3 ? `, ${Math.round(Math.abs(dy))} m ${dy < 0 ? 'down' : 'up'}` : ''}`;
     au.play('discover');
-    ui.toast(`Rocco marks a geode on your radar: ${where}. (${ITEMS[c.g.item]?.name || 'gems'} inside, he says.)`, { kind: 'good', icon: iconURL(c.g.item) });
+    ui.toast(`<b>Geode marked</b> · ${where}`, { kind: 'good', icon: iconURL(c.g.item) });
     speak(`${where.charAt(0).toUpperCase() + where.slice(1)}. Follow the little light on your radar. You didn't hear it from me.`, 'smug');
     folk?.react('deal');
     rerender();
@@ -557,7 +557,7 @@ export function openBurrowShop(game, shopId, o = {}) {
     st.emit('act', { type: 'sell', id: w.type, weapon: { type: w.type, metal: w.metal, grade: w.grade, score: w.score }, gold: 0, to: npc, swap: D.item });
     st.emit('act', { type: 'buy', id: D.item, gold: 0, from: npc });
     au.play('success');
-    ui.toast(`Swapped your ${w.name} for <b>${ITEMS[D.item].name}</b>.`, { kind: 'good', icon: iconURL(D.item) });
+    ui.toast(`<b>Swapped</b>`, { kind: 'good', icon: iconURL(D.item) });
     speak('Pleasure doing business. It was never here.', 'smug');
     folk?.react('deal');
     rerender();

@@ -198,7 +198,7 @@ export function installSkillFeedback(ui) {
     const s = st.data.skills;
     const n = s?.points || 0;
     if (!n || ui.hudMode === 'none' || ui.panelStack?.length || game.transitioning || st.unlocked?.('skills') === false) return; // [unlock guard]
-    const t = ui.toast(`You have <b>${n} skill point${n > 1 ? 's' : ''}</b> to spend. ${isTouch() ? 'Tap here.' : 'Open your book (<kbd>B</kbd>).'}`, { icon: tokenURL(), dur: 4200 });
+    const t = ui.toast(`<b>${n} point${n > 1 ? 's' : ''}</b> · <kbd>B</kbd>`, { icon: tokenURL(), dur: 2600 });
     t.classList.add('sk-nudge');
     t.addEventListener('click', () => openTree());
     s.nudge = st.data.playTime || 0;
@@ -239,7 +239,7 @@ export function installSkillFeedback(ui) {
       syncBadge();
       if (e.n > 0 && e.reason !== 'debug-quiet') {
         game.audio.play('sk_points');
-        const t = ui.toast(`<b>+${e.n} skill point${e.n > 1 ? 's' : ''}</b>${e.reason && !/^debug/.test(e.reason) ? ` · ${e.reason}` : ''}`, { icon: tokenURL(), kind: 'good' });
+        const t = ui.toast(`<b>+${e.n} skill point${e.n > 1 ? 's' : ''}</b>`, { icon: tokenURL(), kind: 'good' });
         t?.classList.add('sk-nudge');
         t?.addEventListener('click', () => openTree());
       }

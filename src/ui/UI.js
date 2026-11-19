@@ -2,7 +2,7 @@
 // lantern and charms drop in when they change, the backpack (with the Index Book peeking out)
 // waits in a corner, the tool belt tucks itself away. Big things open as real objects: the
 // leather backpack, the Index Book, shop counters and the pause journal.
-import { el } from '../core/util.js';
+import { el, clamp } from '../core/util.js';
 import { touchWanted } from '../core/platform.js';
 import { iconURL, specURL, weaponIconURL } from '../gfx/PixelArt.js';
 import { itemVox } from './itemVox.js'; // items as 3D voxel art in toasts and discovery cards
@@ -189,7 +189,7 @@ export class UI {
     // milestones reached outside the mine (in the mine the explosives perks announce them)
     st.on('milestone', () => {
       if (game.sceneName === 'deep') return;
-      for (const m of st.takeMilestones()) this.toast(milestoneText(m), { kind: 'good' });
+      for (const m of st.takeMilestones()) { this.toast(`<b>${m.name}</b>`, { kind: 'good' }); this.status.flyReward(m.reward, 300); } // (wave 18: the reward flies home)
     });
 
     window.addEventListener('keydown', (e) => {
@@ -324,7 +324,18 @@ export class UI {
    * in 3D (or the kind's seal) beside them, the letters arriving in a quick run; good news sparkles;
    * after `dur` ms the words scatter into voxel bits.
    */
+  /**
+   * A short floating line (wave 18: one at a time). Lines queue and show one after another, briefly;
+   * the same line already up or waiting isn't repeated, a newer line with the same picture replaces
+   * the waiting one, at most three wait, and a 'bad' one cuts the current line short. Returns the
+   * line's node at once (shown when its turn comes).
+   */
   toast(text, { icon, kind = '', dur = 2600 } = {}) {
+    const key = String(text) + '|' + kind;
+    const q = (this._toastQ ||= []);
+    if (this._toastNow?.key === key) return this._toastNow.el;
+    const same = q.find((x) => x.key === key);
+    if (same) return same.el;
     const color = SEAL_FOR[kind] || 'brown';
     const words = el('span', { class: 'toast-text' });
     const seal = el('img', { class: 'pix toast-seal', src: SPR.seal(color, kind === 'good' ? 'check' : kind === 'bad' ? 'x' : 'ring'), alt: '' });
@@ -333,14 +344,33 @@ export class UI {
       words,
       icon && kind ? seal : null,
     ]);
+    const item = { key, el: t, words, text, kind, icon, dur: clamp(dur, 1500, 3000) };
+    const twin = icon ? q.findIndex((x) => x.icon === icon && x.kind === kind) : -1;
+    if (twin >= 0) q[twin] = item; else q.push(item);
+    while (q.length > 3) { const i = q.findIndex((x) => x.kind !== 'bad'); q.splice(i >= 0 ? i : 0, 1); }
+    if (kind === 'bad' && this._toastNow && this._toastNow.kind !== 'bad') { clearTimeout(this._toastNow.timer); this._toastNow.out(); }
+    this._pumpToast();
+    return t;
+  }
+
+  _pumpToast() {
+    if (this._toastNow || !this._toastQ?.length) return;
+    const it = this._toastQ.shift();
+    this._toastNow = it;
+    const t = it.el, words = it.words, kind = it.kind;
     this.toasts.append(t);
-    floatIn(words, text, { delay: 0.08, stagger: 0.016, max: 0.5 });
+    floatIn(words, it.text, { delay: 0.08, stagger: 0.016, max: 0.5 });
     keepClear(t, { wrap: true });
     const colors = TOAST_BITS[kind] || TOAST_BITS[''];
     if (kind === 'good') setTimeout(() => { if (t.isConnected && !t.classList.contains('out')) bits(words, { colors, n: 12, rise: 20, spread: 30, sample: 10 }); }, 520);
     while (this.toasts.children.length > 4) this.toasts.firstChild.remove();
-    setTimeout(() => { t.classList.add('out'); leave(words, { colors }); setTimeout(() => t.remove(), 900); }, dur);
-    return t;
+    it.out = () => {
+      if (this._toastNow !== it) return;
+      this._toastNow = null;
+      t.classList.add('out'); leave(words, { colors }); setTimeout(() => t.remove(), 900);
+      setTimeout(() => this._pumpToast(), 280);
+    };
+    it.timer = setTimeout(it.out, it.dur + (this._toastQ.length ? 0 : 300));
   }
 
   discoverCard(e) {

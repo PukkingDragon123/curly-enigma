@@ -433,7 +433,7 @@ export class CrystalGolem extends Enemy {
         }
       }
     }
-    if (shattered) m.say('cgolem_blast', 'Boom! The blast <b>shattered</b> crystal off the golem. Less loot that way: mining it is gentler.', 'warn', 60);
+    if (shattered) m.say('cgolem_blast', '<b>Shattered</b> · less loot', 'warn', 60);
     else if (k > 0.25 && this.state !== 'crumble' && this.state !== 'stagger') { this.setState('stagger'); this.sound('golem_roar', { vol: 0.8 }); }
   }
 
@@ -610,7 +610,7 @@ export class CrystalGolem extends Enemy {
     this.sound('rumble_hit', { vol: 0.8 });
     this.sqv -= 6;
     m.addHazard({ kind: 'ring', x, y, z, r: 0.5, speed: 4.2, rMax: 2.9, dmg: this.info.dmg * 0.8, src: this });
-    m.say('cgolem_stomp', 'It <b>stomps</b> when you stay behind it. Jump the shockwave!', 'warn', 90);
+    m.say('cgolem_stomp', '<b>Stomp!</b> Jump it', 'warn', 90);
   }
 
   // ------------------------------------------------------------------ body

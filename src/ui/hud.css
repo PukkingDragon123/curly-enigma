@@ -406,3 +406,5 @@ html.is-touch .decorate-k { display: none; }
 #ui.hud-calm .belt { translate: 0 calc(var(--px) * 7); opacity: .58; filter: saturate(.75); transition: opacity 1.4s ease-in, translate 1.6s cubic-bezier(.6, 0, .8, .4), filter 1.4s; }
 #ui.hud-calm .belt .loop.sel { filter: brightness(1.12); }
 #ui.hud-calm .radar { opacity: .72; transition: opacity 1.4s ease-in; }
+/* rewards flying home (Hud.flyTo): crisp, shadowed down-right like everything else */
+.fly-reward { position: absolute; left: 0; top: 0; z-index: 7; pointer-events: none; image-rendering: pixelated; filter: drop-shadow(var(--px) var(--px) 0 rgba(20, 10, 4, .5)); will-change: transform; }

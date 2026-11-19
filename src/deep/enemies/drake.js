@@ -203,7 +203,7 @@ export class Drake extends Beast {
     if (l < 6.2 && (px * d.x + py * d.y + pz * d.z) / l > 0.88 && this.burnT <= 0 && clearLine(this.w, mouth.x, mouth.y, mouth.z, pc.x, pc.y, pc.z)) {
       this.burnT = 0.3;
       this.hurtPlayer(this.info.dmg * 0.45, [px / l * 1.2, 0.3, pz / l * 1.2], 'fire', { heavy: true, noParry: true, from: [mouth.x, mouth.y, mouth.z] });
-      this.mgr.say('drake_fire', 'Fire! Get <b>out of the cone</b>: your guard only takes the edge off.', 'bad', 60);
+      this.mgr.say('drake_fire', '<b>Fire!</b> Leave the cone', 'bad', 60);
     }
   }
 
