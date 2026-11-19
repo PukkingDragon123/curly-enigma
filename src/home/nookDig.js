@@ -1,6 +1,7 @@
 // Digging out an alcove (mixed into HomeScene). The soft rock Old Star has chalked (an arch and an X
-// over a patch of crumbly earth, nooks.js NOOKS[].dig) can be dug out once the lessons are done: E
-// at the chalk asks what it costs (gold for timber and props), then you take your pick to it in
+// over a patch of crumbly earth, nooks.js NOOKS[].dig) can be dug out once the lessons are done and
+// its Building skill is learned (wave 16: never gold, data/skills.js node.nook): E at the chalk asks,
+// then you take your pick to it in
 // first person: a few blows, the rock cracks and slumps, dust everywhere, and when it settles the
 // alcove is there (the cave is built again with it: houseLoad.js keys the rock on the open set).
 // One bought on the old board (older saves) is simply yours to dig. Your sleeping alcove is Old
@@ -157,8 +158,17 @@ export class NookDig {
     this.game.audio.play('debris', { vol: 0.25 });
     const [x0, z0, x1, z1] = n.rect.map((v) => v * 0.5);
     for (let i = 0; i < 40; i++) fx.spawn({ x: rand(x0, x1), y: rand(0.2, 1.6), z: rand(z0, z1), vx: rand(-0.03, 0.03), vy: rand(-0.06, -0.01), vz: rand(-0.03, 0.03), life: rand(3, 6), size: rand(0.006, 0.012), color: [0.62, 0.54, 0.44], alpha: 0.6, drag: 0.1, grav: 0.02 });
-    this.later(1.2, () => this.think(`${n.title}: dug out, propped and mine. Room for my things.`, 3.4));
-    this.later(2.6, () => { if (this.star?.rig && !this.star.scripted && this.star.mode !== 'sleep') this.star.say(pick(['Not bad for a first-timer. Keep the props where they are.', 'More cave! Next you\'ll want a window.', 'Mind you sweep the dust out. Ha. Who am I kidding.']), { mood: 'happy' }); });
+    this.later(1.2, () => this.think(`${n.title}: mine!`, 2.4));
+    // Old Star's one build tip: short, once, after your own thought has gone (never stacked on it)
+    const st = this.game.state;
+    if (!st.flag('starBuildTip')) {
+      this.later(4, () => {
+        if (!this.star?.rig || this.star.scripted || this.star.mode === 'sleep') return;
+        st.flag('starBuildTip', true);
+        const say = () => this.star.say('Take your hammer to it.', { mood: 'happy' });
+        if (this.build?.active) this.build.cue(say, 2.6); else say();
+      });
+    }
   }
 
   /** Your sleeping alcove was dug while you were out (the lessons' end): he tells you, once. */

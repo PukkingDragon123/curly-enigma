@@ -72,3 +72,12 @@ html.is-touch .hm-strip { bottom: calc(var(--sab, 0px) + var(--px) * 40); }
   html.is-touch .hm-info { padding: 0; flex-wrap: wrap; max-width: 46vw; }
 }
 @keyframes hm-in-l { 0% { transform: translateY(calc(var(--px) * 6)) scale(.9); opacity: 0; } }
+
+/* wave 16 polish: no words over the view while the hammer is out */
+.hm-strip.nope { animation: hm-nope .3s steps(6); }
+.hm-strip.nope .hm-mat.short img { animation: hm-blink .3s steps(2) 2; }
+@keyframes hm-nope { 20%, 60% { margin-left: calc(var(--px) * -2); } 40%, 80% { margin-left: calc(var(--px) * 2); } }
+@keyframes hm-blink { 50% { filter: brightness(2) sepia(1) hue-rotate(-30deg) saturate(4); } }
+.hm-mat.short img { filter: saturate(.3) brightness(.7) sepia(.6) hue-rotate(-25deg); }
+.hm-name { font-size: 16px; font-family: var(--font); }
+#ui.hammering > .look-catch .look-card { display: none; }

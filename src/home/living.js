@@ -25,6 +25,8 @@ export class HomeLiving {
 
   /** The mole's own thoughts: a bubble low in the middle of the view. */
   think(html, life = 3.6) {
+    // with the hammer out, one floating line at a time (src/home/build.js cue)
+    if (this.build?.active && !this._cueing) { this.build.cue(() => { this._cueing = true; try { this.think(html, life); } finally { this._cueing = false; } }, life); return; }
     const e = this.game.engine;
     const W = e.width * e.scale, H = e.height * e.scale;
     this.game.ui.bubble('self', html, W / 2, H * 0.74, { life });

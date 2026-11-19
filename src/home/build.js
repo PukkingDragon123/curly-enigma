@@ -112,6 +112,7 @@ export class FPBuild {
       this.openStrip();
       this.pickIndex(0, true);
       s.hammer?.classList.add('alt');
+      this.game.ui.root?.classList.add('hammering');
       this.game.ui.setHints(null);
       this.game.state.learn?.('building');
       // the hammer's belt loop lights up with it (src/ui/handTools.js keeps the two in step)
@@ -124,6 +125,7 @@ export class FPBuild {
       this.equipHammer(false);
       this.closeStrip();
       s.hammer?.classList.remove('alt');
+      this.game.ui.root?.classList.remove('hammering');
       this.game.state.save();
     }
   }
@@ -156,7 +158,7 @@ export class FPBuild {
     st.flag?.('hammerKit', true);
     st.addItem('blk_planks', { n: 8, spill: true });
     st.addItem('blk_log', { n: 2, spill: true });
-    this.game.ui.toast?.('Old Star left you some timber: <b>8 Planks</b>, <b>2 Logs</b>', { icon: iconURL('blk_planks'), kind: 'good' });
+    this.cue(() => this.game.ui.toast?.('+8 <b>Planks</b> · +2 <b>Logs</b>', { icon: iconURL('blk_planks'), kind: 'good', dur: 2400 }), 2.6);
   }
 
   /** What the current tab offers: [{ id, n, type, i, locked?, lv?, made? }]. */
@@ -310,7 +312,7 @@ export class FPBuild {
 
   putAway(p) {
     const st = this.game.state, d = st.data;
-    if (!isStorable(p.id)) { this.game.audio.play('ui_error'); this.flash('That one stays in your burrow. You can move it, though.'); return false; }
+    if (!isStorable(p.id)) { this.nope(); return false; }
     const rec = this.s.items.get(p.uid), at = rec && { cx: rec.cx, cz: rec.cz, bbox: rec.bbox.clone() };
     const i = d.home.placed.indexOf(p);
     if (i >= 0) { d.home.placed.splice(i, 1); this.s.removePlaced(p.uid); }
@@ -336,7 +338,7 @@ export class FPBuild {
   putAwaySel() {
     const sel = this.sel;
     if (!sel || sel.type !== 'move') return;
-    if (!isStorable(sel.id)) { this.cancelSel(true); this.flash('That one stays in your burrow.'); return; }
+    if (!isStorable(sel.id)) { this.cancelSel(true); this.nope(); return; }
     const p = sel.p;
     this.sel = null;
     this.clearGhost();
@@ -361,15 +363,15 @@ export class FPBuild {
     const s = this.s, st = this.game.state, d = st.data;
     const sel = this.sel, h = this.hover;
     if (this.job) return null;
-    if (!sel || !h || !h.ok) { this.game.audio.play('ui_error'); if (h?.reason) this.flash(h.reason); return null; }
+    if (!sel || !h || !h.ok) { this.nope(); return null; }
     let p;
     const f = FURNITURE[sel.id];
     if (sel.type === 'piece') {
       const made = f.made || {};
-      for (const [m, k] of Object.entries(made)) if (st.count(m) < k) { this.game.audio.play('ui_error'); this.flash(`Needs ${k} ${ITEMS[m]?.name || m}`); return null; }
+      for (const [m, k] of Object.entries(made)) if (st.count(m) < k) { this.nope(true); return null; }
       const free = Math.random() < (st.skill?.('salvage') || 0);
       if (!free) for (const [m, k] of Object.entries(made)) st.removeItem(m, k, { lowFirst: true });
-      else this.flash('Thrifty builder: no timber used!');
+      else this.game.audio.play('sparkle', { vol: 0.5 }); // (Thrifty Builder: no timber used)
       p = { uid: uid(), id: sel.id, x: h.x, y: h.y, r: h.r };
     } else if (sel.type === 'new') {
       if ((d.furniture[sel.id] || 0) <= 0) { this.cancelSel(true); return null; }
@@ -437,7 +439,27 @@ export class FPBuild {
     this.render();
   }
 
-  flash(txt) { this.ui?.flash(txt); }
+  /** Wordless "no": the ghost flushes red and shakes (the strip shakes when it's the timber). */
+  nope(strip = false) {
+    this.game.audio.play('ui_error', { vol: 0.5 });
+    if (this.ghost) { this.ghost.shake = 0.32; this.setGhostTint(false); this.ghost.ok = false; }
+    if (strip || !this.ghost) this.ui?.shake();
+  }
+  flash() { this.nope(); }
+
+  /** One floating cue at a time while the hammer is out (thoughts, Old Star's remarks, gifts):
+   *  the rest wait their turn (the newest two), never piling up over the view. */
+  cue(fn, dur = 3) {
+    if (!this.active) { fn(); return; }
+    if ((this.cueT || 0) > 0) { (this.cues ||= []).push([fn, dur]); if (this.cues.length > 2) this.cues.shift(); return; }
+    this.cueT = dur;
+    fn();
+  }
+  tickCues(dt) {
+    if (!(this.cueT > 0)) return;
+    this.cueT -= dt;
+    if (this.cueT <= 0 && this.cues?.length) { const [fn, dur] = this.cues.shift(); this.cueT = dur; fn(); }
+  }
 
   /** Test hook: place `id` at tile (x, y) facing r, from storage (one is added if none is stored). */
   placeDirect(id, x, y, r = 0) {
@@ -526,6 +548,7 @@ export class FPBuild {
     const inp = this.game.input, s = this.s;
     const canBuild = this.game.state.unlocked?.('build') !== false; // [unlock guard] (src/ui/Onboard.js UNLOCKS)
     if (inp.pressed('KeyX') && canBuild && !s.scripted && !this.game.ui.isPanelOpen()) (s.toggleBuildHere ? s.toggleBuildHere() : this.toggle());
+    this.tickCues(dt);
     if (!this.active) return;
     if (s.scripted) return;
     if (!this.useHammerKind && s.rig.vm) s.rig.vm.toolR.visible = false;
@@ -583,7 +606,8 @@ export class FPBuild {
       this.mark.visible = false;
     }
     // gold label for "place" / "pick up" (no E key cap: it's a click), white when it won't fit
-    this.game.ui.setCrosshair?.({ visible: true, kind: ok && (sel || this.hoverItem) ? 'ore' : 'none', label });
+    void label; // (no words by the crosshair: the piece's name is on the strip, a red shaking ghost says "not here")
+    this.game.ui.setCrosshair?.({ visible: true, kind: ok && (sel || this.hoverItem) ? 'ore' : 'none', label: '' });
     void prevHover;
   }
 
@@ -659,7 +683,8 @@ export class FPBuild {
       const want = r * Math.PI / 2;
       const cur = g.obj.rotation.y;
       g.obj.rotation.y = cur + Math.atan2(Math.sin(want - cur), Math.cos(want - cur)) * Math.min(1, dt * 18);
-      if (g.ok !== ok) { g.ok = ok; this.setGhostTint(ok); }
+      if (g.ok !== ok) { if (!ok && g.ok) g.shake = 0.28; g.ok = ok; this.setGhostTint(ok); }
+      if (g.shake > 0) { g.shake = Math.max(0, g.shake - dt); const k = g.shake / 0.3; g.obj.position.x += Math.sin(s.time * 70) * 0.06 * k; g.obj.rotation.z = Math.sin(s.time * 55) * 0.05 * k; } else g.obj.rotation.z = 0;
     }
     if (f.kind === 'wall') this.mark.visible = false;
     else { this.mark.visible = true; this.mark.position.set(x + fw / 2, 0.03, y + fd / 2); this.mark.scale.set(fw, 1, fd); }
@@ -667,6 +692,7 @@ export class FPBuild {
 
   dispose() {
     this.gone = true;
+    this.game.ui.root?.classList.remove('hammering');
     this.closeStrip();
     this.clearGhost();
     if (this.hammer) { this.hammer.parent?.remove(this.hammer); this.hammer.geometry.dispose(); }

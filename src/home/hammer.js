@@ -77,10 +77,9 @@ export class HammerUI {
     this.right = el('div', { class: 'hm-side r' });
     this.name = el('b', { class: 'hm-name' });
     this.cost = el('div', { class: 'hm-cost' });
-    this.msg = el('div', { class: 'hm-msg' });
     this.catBtn = el('button', { class: 'hm-cat', title: 'Category', onclick: (e) => { e.stopPropagation(); build.nextTab(); } }, [el('img', { class: 'pix', alt: '' })]);
     const keys = isTouch() ? null : el('div', { class: 'hm-keys', title: 'Hold Q: the wheel · R: turn · F: take down', html: '<kbd>Q</kbd>' });
-    this.strip = el('div', { class: 'hm-strip' }, [this.msg, el('div', { class: 'hm-info' }, [this.name, this.cost]), el('div', { class: 'hm-row' }, [this.catBtn, this.left, this.cur, this.right, keys].filter(Boolean))]);
+    this.strip = el('div', { class: 'hm-strip' }, [el('div', { class: 'hm-info' }, [this.name, this.cost]), el('div', { class: 'hm-row' }, [this.catBtn, this.left, this.cur, this.right, keys].filter(Boolean))]);
     this.strip.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.wheel = el('div', { class: 'hm-wheel', hidden: true }, [el('img', { class: 'hm-plate', src: plateURL(), alt: '' })]);
     this.wheel.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -121,21 +120,20 @@ export class HammerUI {
     big.classList.remove('bump'); void big.offsetWidth; big.classList.add('bump');
     if (list.length > 1) for (const k of [1, 2]) if (list.length > k * 2 - 1 || k === 1) this.right.append(this.slotEl(at(k), 'far' + k));
     this.name.textContent = nameOf(e.id);
+    // the timber it takes: just the material icons (dim + red when you're short; the slot's ×N says how many)
     this.cost.innerHTML = '';
-    if (e.locked) this.cost.append(el('span', { class: 'hm-need' }, `Building Lv ${e.lv}`));
-    else if (e.made) for (const [id, n] of Object.entries(e.made)) {
+    if (!e.locked && e.made) for (const [id, n] of Object.entries(e.made)) {
       const have = this.game.state.count(id);
-      this.cost.append(el('span', { class: 'hm-mat' + (have < n ? ' short' : '') }, [el('img', { class: 'pix', src: iconOf(id), alt: '' }), `${have}/${n}`]));
-    } else if (e.n !== null && e.n !== undefined) this.cost.append(el('span', { class: 'hm-mat' }, `×${e.n} stored`));
+      this.cost.append(el('span', { class: 'hm-mat' + (have < n ? ' short' : ''), title: `${n} ${nameOf(id)}` }, [el('img', { class: 'pix', src: iconOf(id), alt: '' })]));
+    }
     if (!this.wheel.hidden) this.renderWheel();
   }
 
-  flash(txt) {
-    this.msg.textContent = txt;
-    this.msg.classList.remove('on'); void this.msg.offsetWidth; this.msg.classList.add('on');
-    clearTimeout(this.msgT);
-    this.msgT = setTimeout(() => this.msg.classList.remove('on'), 1800);
+  /** A wordless "no" (short of timber, can't go there): the strip shakes, the cost icons blink. */
+  shake() {
+    this.strip.classList.remove('nope'); void this.strip.offsetWidth; this.strip.classList.add('nope');
   }
+  flash() { this.shake(); }
 
   // ---------------- the radial wheel
   get open() { return !this.wheel.hidden; }
