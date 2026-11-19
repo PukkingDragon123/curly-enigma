@@ -316,10 +316,10 @@ class Veil {
       const v = (y + 0.5) / H * 2 - 1;
       for (let x = 0; x < W; x++) {
         const uu = (x + 0.5) / W * 2 - 1;
-        // the eyelids: curved, meeting in the middle
-        const bow = 1 + 0.32 * (1 - uu * uu);
-        const top = -1 + lid * bow, bot = 1 - lid * bow;
-        if (v < top || v > bot) { u[y * W + x] = (v < top && v > top - 2 / H) || (v > bot && v < bot + 2 / H) ? rim : ink; continue; }
+        // the eyelids: an almond gap, open widest in the middle, pinching shut from the corners
+        const o = 1 - lid, gap = o * 1.3 * (1 - 0.55 * uu * uu) + o * o * o * o;
+        const top = -gap, bot = gap;
+        if (v < top || v > bot) { u[y * W + x] = lid < 0.97 && ((v < top && v > top - 2 / H) || (v > bot && v < bot + 2 / H)) ? rim : ink; continue; } // (a warm rim on the lids' edges till they meet)
         // the vignette: a rounded-rectangle falloff, dithered in four steps
         const e = Math.pow(Math.pow(Math.abs(uu), 2.6) + Math.pow(Math.abs(v), 2.6), 1 / 2.6);
         const d = clamp((e - r0) / 0.6, 0, 1) * Math.min(1, a * 1.4);

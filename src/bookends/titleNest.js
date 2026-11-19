@@ -823,7 +823,7 @@ export function makeNest(parent, opts) {
     E.slotEl.classList.add('arming');
     E.ask.hidden = false;
     E.posKey = ''; E.askKey = '';
-    E.wobV += 11; E.flash = 0.7; E.axis.set(1, 0, R(-0.3, 0.3)).normalize();
+    E.wobV += 11; E.flash = 0.25; E.axis.set(1, 0, R(-0.3, 0.3)).normalize();
     const pan = panOf(E);
     play('egg_crack', { pan, vol: 0.95 });
     setTimeout(() => play('egg_crack', { pan, pitch: 0.78, vol: 0.7 }), 110);
@@ -949,6 +949,10 @@ export function makeNest(parent, opts) {
       const want = Math.min(1, E.base + E.creep + E.boost + E.threat);
       E.cur += (want - E.cur) * (1 - Math.exp(-dt * 6));
       E.mat.userData.u.uCrack.value = E.cur;
+      // (asking: the cracks show dark with a thin seam of light, not a blaze; full light again when it breaks)
+      const leak = E.arming ? 0.32 : 1;
+      E.leak = (E.leak ?? 1) + (leak - (E.leak ?? 1)) * (1 - Math.exp(-dt * 8));
+      E.mat.userData.u.uLeak.value = E.leak;
       E.flash = Math.max(0, E.flash - dt * 2.2);
       E.mat.userData.u.uFlash.value = E.flash;
       if (E.hot && !E.hatchedOn && E.base > 0) {

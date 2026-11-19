@@ -690,3 +690,21 @@ html.is-touch .bp-hot .inv-slot .k { display: none; }
 @media (max-height: 500px) {
   .bp-equip .bp-loop, .bp-equip .bp-loop.empty, .bp-equip .inv-slot.bp-loop { width: calc(var(--icon) + var(--px) * 5); height: calc(var(--icon) + var(--px) * 5); border-width: calc(var(--px) * 3); border-image-width: calc(var(--px) * 3); }
 }
+
+/* ---------- phones held upright: the belt is a compact two-row block (5 + 4 loops) on the right,
+   just above the action buttons: clear of the thumb stick (it lands anywhere on the left 45% of
+   the screen, src/ui/TouchControls.js) and of the buttons under it ---------- */
+@media (max-width: 560px) {
+  html.is-touch #ui[data-hud] .belt.belt {
+    --lf: min(calc(var(--px) * 18), calc((55vw - var(--sar) - 22px) / 5));
+    left: auto; right: calc(var(--sar) + var(--px) * 4); bottom: calc(var(--sab) + var(--px) * 126); align-items: flex-end;
+  }
+  html.is-touch #ui .belt .belt-strap { height: auto; padding: calc(var(--px) * 1); }
+  html.is-touch #ui .belt .belt-loops { display: grid; grid-template-columns: repeat(5, var(--lf)); gap: calc(var(--px) * 1); padding: 0; }
+  html.is-touch #ui .belt .loop { margin: 0; max-width: none; }
+  html.is-touch #ui .belt .loop-face { width: var(--lf); height: var(--lf); border-width: calc(var(--px) * 3); border-image-width: calc(var(--px) * 3); }
+  html.is-touch #ui .belt .loop-face img { width: calc(var(--lf) - var(--px) * 4); height: auto; margin: 0; }
+  html.is-touch #ui .belt .loop.sel { transform: translateY(calc(var(--px) * -1)); }
+  html.is-touch #ui .belt .loop.sel .loop-face::before { inset: calc(var(--px) * -4); }
+  html.is-touch #ui .belt .belt-label { align-self: center; }
+}
