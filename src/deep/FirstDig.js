@@ -173,7 +173,7 @@ export class FirstDig {
     const cl = owner.clumps;
     if (this.step === 'find') {
       // (the copper named once, in the world, the first time it's in sight)
-      if (!this.named && this.t > 1.4) { const sp = this.seamTarget(owner.player.eye()); if (sp && sp.distanceTo(owner.player.eye()) < 7) { this.named = true; teachWord(owner.game, 'Copper', sp.add(new THREE.Vector3(0, 0.3, 0)), { kind: 'gold', life: 2.6, size: 0.7 }); } }
+      if (!this.named && this.t > 1.4) { const sp = this.seamTarget(owner.player.eye()); if (sp && sp.distanceTo(owner.player.eye()) < 7) { this.named = true; teachWord(owner.game, 'Copper', sp.add(new THREE.Vector3(0, 0.58, 0)), { kind: 'gold', life: 2.6, size: 0.6 }); } }
       // what glints: a clump lying about, else the nearest seam
       const lying = this.clumpTarget();
       if (lying) this.aim('clump', () => (lying.state === 'world' ? lying.pos : null));

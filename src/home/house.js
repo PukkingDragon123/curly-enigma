@@ -543,6 +543,9 @@ export class StarHouse {
     const cc = CZ.candleCluster(3, 474);
     this.place(cc.obj, 3.0, -1.72, 0.6);
     for (const f of cc.flames) this.candleGlow(this.toM(cc.obj, f), 0.14);
+    // (their light is the only light in this corner: a real one, a warm pool on the floor)
+    const cf = this.toM(cc.obj, cc.flames[0]);
+    this.light({ kind: 'candle', x: cf.x, y: cf.y + 0.05, z: cf.z, color: 0xffc070, intensity: 0.35, distance: 1.9, flicker: 0.2, speed: 1.2, halo: 0.07, haloOpacity: 0.5, pool: 0.55, poolOpacity: 0.14, priority: 3, power: 0.3, radius: 1.4 });
     this.web(2.95, 1.0, -1.05, -Math.PI * 0.75, 0.24, 2);
     // a shelf of jars on the north rock over the coal: pickles, honey, buttons, rivets, his tongs under it
     const js = CZ.jarShelf(0.52, 441);

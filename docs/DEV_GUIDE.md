@@ -131,8 +131,10 @@ network is `src/fps/lifts.js`. Scenes are in meters at mole scale (0.86 m tall, 
   layout in `src/iso/townLayout.js`, floors in `townFloor.js`, shop fronts `shopFront.js`, booth
   `booth.js`. Townsfolk switch to crowd LOD when far; shopkeepers always render in full. Every
   shop is in town: the wall shops, plus the burrow folk's stalls on the square (`TOWN.stalls`,
-  models in `src/town/shopStalls.js`: a 1/32 frame dressed at 1/64), whose keepers open the same
-  burrow panel as down the mine.
+  models in `src/town/shopStalls.js`: a 1/32 frame dressed at 1/64), whose keepers open the burrow
+  panel (`src/deep/traders/shop.js`). There are no shops, stalls or outposts down the mine (wave 18:
+  `Traders.js` is gone and `plan.burrows` stays empty); quest steps about the burrow folk point at
+  their stalls (`core/questWhere.js`).
 - **The old passage** (`src/home/passage.js`): once `state.escaped`, Old Star's front door stands open
   and a timbered tunnel doglegs up to your round green door in the town's north cliff (it stands
   open too). Both scenes build the same tunnel from this module (the burrow's frame; the town sees

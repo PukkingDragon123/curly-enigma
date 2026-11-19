@@ -319,7 +319,7 @@ export class Vegetation {
   lushAt(F, x, y, z, low = false) {
     const N = this.noise;
     const n = N[2].n(x / 19 + 41.7, y / 13 - 6.2, z / 19 + 17.3) * 0.75 + N[1].n(x / 7.5 - 3.1, y / 7.5 + 9.4, z / 7.5) * 0.3;
-    const pocket = Math.max(0, Math.min(1, (n - 0.3) / 0.22));
+    const pocket = Math.max(0, Math.min(1, (n - 0.18) / 0.18));
     const k = (F.thin ?? 1) + (1 - (F.thin ?? 1)) * pocket * pocket * (3 - 2 * pocket);
     return low && pocket < 0.5 ? k * 0.55 : k;
   }

@@ -37,6 +37,32 @@ const step = async (label, fn) => {
   console.log(`${errors.length > before ? '✗' : '✓'} ${label}${errors.length > before ? '\n   ' + errors.slice(before).join('\n   ') : ''}`);
 };
 
+/**
+ * The lift panel (src/fps/liftLayers.js) is really on screen: open, inside the viewport, faded in,
+ * its cross-section painted (not a black, dead view: wave 18 bug, it threw at home and in town).
+ */
+const liftPanelShown = async (where) => {
+  const ok = await page.waitForFunction(() => {
+    const p = document.querySelector('.ll-panel'), c = p?.querySelector('.ll-canvas');
+    if (!p || !c || !c.width) return false;
+    const x = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let lit = 0;
+    for (let i = 0; i < x.length; i += 4 * 97) if (x[i + 3] && x[i] + x[i + 1] + x[i + 2] > 60) lit++;
+    return lit > 20;
+  }, null, { timeout: 30000, polling: 250 }).then(() => true).catch(() => false);
+  const r = await page.evaluate(() => {
+    const p = document.querySelector('.ll-panel');
+    if (!p) return { panel: false };
+    const b = p.getBoundingClientRect();
+    return { panel: true, top: Math.round(b.top), bottom: Math.round(b.bottom), h: innerHeight, op: getComputedStyle(p.parentElement).display };
+  });
+  if (!ok || !r.panel) throw new Error(`the lift panel did not show (${where}): ` + JSON.stringify(r));
+  if (r.top < -2 || r.bottom > r.h + 2) throw new Error(`the lift panel runs off the screen (${where}): ` + JSON.stringify(r));
+  await shot('lift-' + where);
+  await page.evaluate(() => window.__game.ui.closeAllPanels());
+  await wait(300);
+};
+
 await page.goto(`http://127.0.0.1:${port}/?fresh=1&bag=48`); // bag=48: the test adds a lot of stuff
 await wait(3500);
 await step('title loads', async () => { if ((await scene()) !== 'title') throw new Error('not on title'); await shot('01-title'); });
@@ -477,12 +503,18 @@ await step('shops open & buy', async () => {
   }
 });
 await step('town lift → deep station → back up', async () => {
+  // E at Bramble's lift: the panel of the layers shows (and is painted)
+  await page.evaluate(() => window.__game.scene.debug.useLift());
+  await liftPanelShown('town');
   // Bramble's lift: the gate opens, the mole steps in, the cage drops into the pit → the first mine lift
   await page.evaluate(() => { const d = window.__game.scene.debug; d.useLift('L0'); return d.run(3.5); });
   for (let i = 0; i < 80 && ((await scene()) !== 'deep' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
   if ((await scene()) !== 'deep') throw new Error('lift did not go down: ' + (await scene()));
   await wait(2500);
   await shot('07-station');
+  // a mine lift's panel shows too
+  await page.evaluate(() => import('/src/fps/lifts.js').then((m) => { const s = window.__game.scene; m.openLiftPanel(window.__game, 'L0', { title: 'Mine entrance', onRide: () => {} }); return !!s; }));
+  await liftPanelShown('mine');
   // ride back up to town from the mine lift: the cage rises out of the pit and the mole steps out
   await page.evaluate(() => import('/src/fps/lifts.js').then((m) => m.rideTo(window.__game, 'town')));
   for (let i = 0; i < 80 && ((await scene()) !== 'town' || (await page.evaluate(() => window.__game.transitioning))); i++) await wait(250);
@@ -603,11 +635,11 @@ await step('home again + sleep', async () => {
     const off = dbg.toggleBuild(false);
     dbg.interact('Ride the lift');
     const panel = document.body.textContent.includes('Mine entrance');
-    window.__game.ui.closeAllPanels();
     return { on, off, placed: !!placed, panel };
   });
   if (!b.on || b.off || !b.placed) throw new Error('build mode: ' + JSON.stringify(b));
   if (!b.panel) throw new Error('the lift panel has no mine entrance');
+  await liftPanelShown('home');
   const d0 = await page.evaluate(() => window.__game.state.data.day);
   await page.evaluate(() => window.__game.sleep());
   const d1 = await page.evaluate(() => window.__game.state.data.day);

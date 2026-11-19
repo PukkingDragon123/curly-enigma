@@ -1492,7 +1492,9 @@ function paintTop(T) {
   const front = art(W, H + M * 2);
   for (let x = 0; x < W; x++) if (hash(x, 11, 5) < 0.3) for (let j = 0; j < 2 + (hash(x, 12, 5) * 4 | 0); j++) front.p(x, M + GROUND + 2 - j, j ? 0x2e5a22 : 0x1e3a18);
   // compose back: sky + cave backs under the mid
-  return { back: back.commit(), mid: mid.commit(), caveBack: caveBack.commit(), front: front.commit(), anim, homeR, townR };
+  // (the stops' floor spots go back with the art: placeTopTags stands "you" on them; they used to be
+  // left on the options object, so opening the panel at home or in town threw and the view stayed black)
+  return { back: back.commit(), mid: mid.commit(), caveBack: caveBack.commit(), front: front.commit(), anim, homeR, townR, homeStop: T.homeStop, townStop: T.townStop };
 }
 
 /** The glowing heart under everything. */
@@ -2050,7 +2052,7 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
     if (ht) placeTag(ht, A.homeR ? (A.homeR.x0 + A.homeR.x1) / 2 : sec.W * 0.3, sec.y + A.homeR.y0 + 4);
     if (tt) placeTag(tt, (A.townR.x0 + A.townR.x1) / 2, sec.y + A.townR.y0 + 4);
     if (you && you.top) youSpot = { sec, x: you.stop?.id === 'town' ? (A.townR.x0 + A.townR.x1) / 2 + 10 : clamp(ax(sec.W, 5) - 12, 8, sec.W - 8), fy: A.homeR.y1 - 1 };
-    if (you && you.top) { const f = you.stop?.id === 'town' ? A.townStop : A.homeStop; youSpot = { sec, x: f.x - 11, fy: f.fy }; }
+    if (you && you.top) { const f = (you.stop?.id === 'town' ? A.townStop : A.homeStop) || A.homeStop; if (f) youSpot = { sec, x: f.x - 11, fy: f.fy }; }
   };
   const placeLayerTags = (sec) => {
     // stack tags that would overlap
@@ -2317,9 +2319,10 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
     // paint what's in view now, the rest when the browser is idle
     S.ready = true;
     layoutRail();
-    render(0);
+    // (a painting error must not stop the loop: the view would stay black and dead)
+    try { render(0); } catch (e) { console.error('lift layers: first paint failed', e); }
     const queue = S.sections.slice().sort((a, b) => Math.abs(a.y - S.scroll) - Math.abs(b.y - S.scroll));
-    const idle = () => { if (!alive) return; const s = queue.find((q) => !q.art); if (!s) return; paintSection(s); idleT = setTimeout(idle, 40); };
+    const idle = () => { if (!alive) return; const s = queue.find((q) => !q.art); if (!s) return; try { paintSection(s); } catch (e) { console.error('lift layers: paint failed', e); s.art = s.art || null; return; } idleT = setTimeout(idle, 40); };
     idleT = setTimeout(idle, 120);
     raf = requestAnimationFrame(frame);
   };

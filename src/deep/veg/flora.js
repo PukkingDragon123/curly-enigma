@@ -144,8 +144,8 @@ function floraTable(zone, bio, depth) {
 }
 // the share of plants outside a lush pocket, by biome (1 grotto, 2 sandstone, 3 mushroom hollow,
 // 4 dino caverns) and by zone for the plain caves
-const THIN = { 1: 0.4, 2: 0.55, 3: 0.42, 4: 0.42 };
-const THIN_ZONE = { 1: 0.3, 2: 0.28, 3: 0.34, 4: 0.5, 5: 0.4, 6: 0.42 };
+const THIN = { 1: 0.46, 2: 0.6, 3: 0.48, 4: 0.48 };
+const THIN_ZONE = { 1: 0.36, 2: 0.34, 3: 0.4, 4: 0.55, 5: 0.45, 6: 0.48 };
 function floraBase(zone, bio, depth) {
   const near = depth < 6; // close to the surface, a little light gets in: a few grass tufts
   if (bio === 1) return {

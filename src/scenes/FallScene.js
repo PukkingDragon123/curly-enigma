@@ -56,7 +56,7 @@ const CAP = [0.7, 3.4];
 const SHOT_FX = [
   { hh: 0.5, rack: 0 }, { hh: 0.9, rack: 0.15 }, { hh: 0.6, rack: 0.85 }, { hh: 1.0, rack: 0.3 }, { hh: 0.6, rack: 0 },
   { hh: 0.7, rack: 0.35 }, { hh: 0.5, rack: 0.6 }, { hh: 0.35, rack: 0.8 }, { hh: 0.6, rack: 0.55 }, { hh: 0.7, rack: 0.1 },
-  { hh: 0.45, rack: 0.3 }, { hh: 0.5, rack: 0.35 }, { hh: 1.3, rack: 0.4 }, { hh: 1.7, rack: 0 }, { hh: 1.4, rack: 0 },
+  { hh: 0.45, rack: 0.2 }, { hh: 0.5, rack: 0.1 }, { hh: 1.3, rack: 0.4 }, { hh: 1.7, rack: 0 }, { hh: 1.4, rack: 0 },
   { hh: 0.6, rack: 0 }, { hh: 0, rack: 0 },
 ];
 const WALK = 0.8; // m/s (a brisk, bouncy stroll: ~3 steps a second with gait.js's cadence)
@@ -1071,7 +1071,7 @@ export default class FallScene extends Scene {
     {
       const k = this.lidOpen != null ? ease(this.lidOpen, this.lidOpen + 1.4, t) * (1 - ease(T.J + 0.4, T.J + 1.6, t)) : 0;
       const flick = 0.9 + Math.sin(t * 13) * 0.05 + Math.sin(t * 31) * 0.05;
-      this.chestLight.intensity = 3.2 * k * flick;
+      this.chestLight.intensity = 2.5 * k * flick; // (wave 18: his face stays readable in the gold)
       F.chestGlow.userData.glow.uIntensity.value = 0.45 + k * 0.9 * flick;
       F.chestGlow.userData.glow.uSize.value.setScalar(1.1 + k * 1.3);
       for (const b of this.chestBeams) b.userData.beam.base = k * 0.5;
@@ -1079,7 +1079,7 @@ export default class FallScene extends Scene {
         const a = Math.random() * Math.PI * 2, r = Math.random() * 0.25;
         this.gold.spawn({ pos: [Math.cos(a) * r, 0.36, -0.12 + Math.sin(a) * r * 0.6], vel: [(Math.random() - 0.5) * 0.15, 0.35 + Math.random() * 0.5, (Math.random() - 0.5) * 0.15], life: 2.2, color: Math.random() < 0.85 ? 0xffe080 : [0xff7a9a, 0x7ae8ff, 0x9aff9a][(Math.random() * 3) | 0], color2: 0xffa040, size: 0.022, wobble: 0.25, flicker: 0.5, fadeIn: 0.2, shape: Math.random() < 0.3 ? SHAPE.plus : SHAPE.square });
       }
-      p.bloom += k * 0.25;
+      p.bloom += k * 0.12;
       F.glintGain = 1 + k;
     }
     if (p.flash > 0) p.flash = Math.max(0, p.flash - dt * 2.4);

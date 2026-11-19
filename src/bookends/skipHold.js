@@ -10,16 +10,17 @@ import { el } from '../core/util.js';
 import { bits } from '../ui/floatType.js';
 
 const live = new Set();
-let escHeld = false, ptrHeld = false;
-// (registered when the module loads, before the interface's own Escape handler)
+let escHeld = false, ptrHeld = false, escSpent = false;
+// (registered when the module loads, before the interface's own Escape handler; an Esc that has
+// just skipped stays swallowed until it's let go, so its key repeats don't open the pause menu)
 if (typeof window !== 'undefined') {
   window.addEventListener('keydown', (e) => {
-    if (e.code !== 'Escape' || !live.size) return;
+    if (e.code !== 'Escape' || (!live.size && !escSpent)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    escHeld = true;
+    if (live.size) escHeld = true;
   }, true);
-  window.addEventListener('keyup', (e) => { if (e.code === 'Escape') escHeld = false; }, true);
+  window.addEventListener('keyup', (e) => { if (e.code === 'Escape') { escHeld = false; escSpent = false; } }, true);
   window.addEventListener('pointerdown', (e) => { if (e.button === 0) ptrHeld = true; }, true);
   for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, (e) => { if (e.button === 0 || ev === 'pointercancel') ptrHeld = false; }, true);
   window.addEventListener('blur', () => { escHeld = false; ptrHeld = false; });
@@ -130,6 +131,7 @@ export class SkipHold {
   fire() {
     if (this.fired) return;
     this.fired = true;
+    if (escHeld) escSpent = true;
     this.el.classList.add('fired');
     try { bits(this.g, { from: 'rect', n: 22, rise: 34, spread: 30 }); } catch (e) { /* no bits */ }
     live.delete(this);
