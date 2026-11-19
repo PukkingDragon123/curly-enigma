@@ -1,5 +1,6 @@
 /* ---------- the stamina gauge (src/ui/Stamina.js): one art pixel = one --px ---------- */
-.stam-dock { pointer-events: none; }
+/* nothing here takes a touch or a click: the stick, the look pad and the belt under it get them */
+.stam-dock, .stam-dock *, .stam-veil { pointer-events: none !important; }
 .stam {
   position: relative; width: calc(var(--px) * 92); height: calc(var(--px) * 18);
   filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(8, 4, 6, .45));
@@ -13,7 +14,7 @@
 .stam-dock.free { position: absolute; left: 0; right: 0; bottom: calc(var(--sab) + var(--px) * 6); display: flex; justify-content: center; }
 @media (max-width: 560px) { html.is-touch .stam-dock.free { bottom: calc(var(--sab) + var(--px) * 128); } }
 @media (min-width: 561px) { html.is-touch .stam-dock.free { bottom: calc(var(--sab) + var(--px) * 4); } }
-/* in the mine: riding on the tool belt, between the held tool's name and the strap; the row
+/* with the tool belt up: riding on it, between the held tool's name and the strap; the row
    folds away while it's tucked */
 .stam-dock.docked { display: flex; justify-content: center; align-items: flex-start; height: 0; transition: height .2s ease-in; }
 .stam-dock.docked.show { height: calc(var(--px) * 16); transition: height .26s var(--pop, cubic-bezier(.3, 1.6, .5, 1)); }

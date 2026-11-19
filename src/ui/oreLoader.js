@@ -489,8 +489,13 @@ export function oreLoader(host, opts = {}) {
         setRow(S - 1);
         view.classList.add('gleam');
       } catch (e) { /* noop */ }
+      // (it never stands in the way once done: clicks and touches go through at once, gone soon after)
+      root.style.pointerEvents = 'none';
+      root.setAttribute('aria-hidden', 'true');
       root.classList.add('out');
-      setTimeout(() => root.remove(), 380);
+      const rm = () => root.remove();
+      root.addEventListener('transitionend', rm, { once: true });
+      setTimeout(rm, 380);
     },
     remove() { api.done(); },
   };
