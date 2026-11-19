@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { Enemy, smooth, easeBack, TAU } from './base.js';
 import { VB, VS, mul, mix, c01, ramp } from './vox.js';
 import { H, eye, tufts, taper, hramp, lit, vnoise, bake } from './voxKit.js';
+import { socketEye, mouth } from './face.js';
 import { shockRing, puff, pebbles, sparkle } from './fx.js';
 import { MAT, M } from '../materials.js';
 import { rand, clamp } from '../../core/util.js';
@@ -51,24 +52,14 @@ export function buildMimic(pal, zone, seed) {
   for (const [x0, y0, z0, x1, y1, z1, r] of [[-9, 8, -4, -14, 13, -6, 2], [-9, 6, -1, -13, 8, 1, 1.3]]) taper(body, x0, y0, z0, x1, y1, z1, r, 0.5, (x, y, z, t) => (t > 0.7 ? mix(pal.acc, 0xffffff, 0.55) : x > x0 - 1 ? mul(pal.acc, 0.75) : pal.acc));
   if (zone <= 2) body.paint((x, y, z, c) => (y > 13 && body.open(x, y, z, 0, 1, 0) && vnoise(x, y, z, 2.5, 3) < 0.62 ? (body.open(x, y + 1, z, Math.sign(x) || 1, 0, 0) ? 0x3a7a32 : 0x5aa84a) : undefined));
   bake(body, { ao: 0.45, rim: 0.22 });
-  // deep sockets (the eyes sit in them), a jagged mouth with little teeth
-  for (const [cx, sd] of [[3.5, 1], [-4.5, -1]]) for (let y = 7; y <= 13; y++) for (let x = Math.floor(cx - 3); x <= Math.ceil(cx + 3); x++) {
-    if (Math.hypot((x + 0.5 - cx) / 2.8, (y + 0.5 - 10) / 3.2) > 1) continue;
-    const z = fr(x, y); body.del(x, y, z); body.set(x, y, z - 1, dark);
-  }
-  for (let x = -7; x <= 6; x++) {
-    const y = 4 + ((x + 8) % 3 === 0 ? 1 : 0) - (Math.abs(x + 0.5) > 5 ? -1 : 0), z = fr(x, y);
-    body.del(x, y, z); body.set(x, y, z - 1, 0x1a0c08);
-    if (x % 2 === 0) body.set(x, y + 1, fr(x, y + 1) + 1, 0xfff4e0); // upper teeth
-    else body.set(x, y - 1, fr(x, y - 1) + 1, 0xe8dcc0); // lower teeth
-  }
-  const front = (x, y) => Math.round((Math.max(fr(x * 2, y * 2), fr(x * 2 + 1, y * 2)) - 1) / 2);
-  const zf = Math.max(front(1, 5), front(-2, 5)) + 1;
+  // (no simple face) a crooked stone maw carved in: gums of dark clay, uneven little teeth and two
+  // chipped fangs, a lip of rock; glowing eyes deep in sockets under a jutting brow, one higher
+  mouth(body, 0, 4.6, { w: 14, h: 3.4, d: 3, curve: 0.22, asym: 0.6, gap: 2, fangs: [-0.62, 0.5], fang: 3, lower: true, tooth: 0xe8e0cc, gum: 0x6a3030, throat: 0x120806, tongue: 0x8a4a40, lip: TT[1] });
   const eyes = new VB(), angry = new VB();
-  const ec = 0xffd04a, hi = 0xfffbe0;
-  for (const [vb, a, col] of [[eyes, false, ec], [angry, true, 0xff6a3a]]) {
-    eyeVox(vb, 1, 4, zf, col, hi, a, 1);
-    eyeVox(vb, -3, 4, zf, col, hi, a, -1);
+  for (const sd of [1, -1]) {
+    const cx = sd * 4, cy = sd > 0 ? 10.6 : 10;
+    const at = socketEye(body, eyes, cx, cy, sd, { r: 2.2, depth: 0.6, glow: true, iris: 0xffd04a, pupil: 0x4a2004, slit: true, pr: 0.45, lid: 0.25, tilt: 0.3, skin: TT[2], brow: TT[4], browR: 1.5 });
+    socketEye(body, angry, cx, cy, sd, { r: 2.2, cz: at[2], ballOnly: true, glow: true, iris: 0xff6a3a, pupil: 0x3a0804, slit: true, pr: 0.5, ballLid: 0.45, tilt: 0.8, lidCol: TT[1] });
   }
   // stubby feet
   const foot = new VB(seed + 1);
@@ -84,7 +75,7 @@ export function buildMimic(pal, zone, seed) {
     sprout.box(-2, 2, 0, -1, 2, 0, g1); sprout.set(-3, 3, 0, g2); sprout.set(-2, 3, 0, g1);
   }
   return {
-    body: body.geo(0, 0, 0, H), eyes: eyes.geo(0, 5.5, 0), angry: angry.geo(0, 5.5, 0), foot: foot.geo(-0.5, 0, 0),
+    body: body.geo(0, 0, 0, H), eyes: eyes.geo(0, 11, 0, H), angry: angry.geo(0, 11, 0, H), foot: foot.geo(-0.5, 0, 0),
     sprout: sprout ? sprout.geo(0.5, 0, 0.5) : null, dust: c01(T[1]), chip: c01(T[2]),
   };
 }
@@ -259,8 +250,9 @@ export function buildGolem(pal, zone, seed) {
   const front = (vb, x, y) => { for (let z = 28; z > -24; z--) if (vb.has(x, y, z)) return z; return 0; };
   // brow, deep sockets, a grumpy mouth line under the jaw
   for (let x = -10; x <= 9; x++) for (const dy of [0, 1]) { const y = 31 + dy - (Math.abs(x + 0.5) > 7 ? 1 : 0), z = front(torso, x, y) + 1; torso.set(x, y, z, dy ? mul(T[2], 0.95) : mul(T[1], 0.85)); }
-  for (const sd of [1, -1]) for (let y = 26; y <= 29; y++) for (let dx = 0; dx < 5; dx++) { const x = sd > 0 ? 2 + dx : -3 - dx, z = front(torso, x, y); torso.del(x, y, z); torso.set(x, y, z - 1, dark); }
-  for (let x = -5; x <= 4; x++) { const y = 21 + (x === -5 || x === 4 ? 1 : 0); torso.set(x, y, front(torso, x, y), dark); }
+  // (no simple face) a grim slot of a mouth between the head and the jaw slab: stone gums and teeth,
+  // two broken tusks (the eyes are seated in sockets below)
+  mouth(torso, 0, 22.4, { w: 12, h: 3, d: 3, curve: -0.18, asym: -0.3, gap: 2, fangs: [-0.64, 0.58], fang: 3, lower: true, tooth: TT[4], gum: TT[0], throat: 0x0a0806, tongue: TT[1], lip: TT[1] });
   // runes on the shoulders and a glowing seam down the chest (its weak spot)
   for (const sd of [1, -1]) {
     const R = [[0, 0], [0, 1], [0, 2], [0, 3], [1, 3], [-1, 1], [1, 1], [-1, 3]];
@@ -299,9 +291,13 @@ export function buildGolem(pal, zone, seed) {
   for (const x of [-1, 3, 7]) for (let y = -22; y <= -20; y++) arm.set(x, y, front(arm, x, y), mul(T[0], 0.7));
   bake(leg, { ao: 0.35, rim: 0.2 }); bake(arm, { ao: 0.35, rim: 0.2 });
   // eyes, glowing in the sockets (placed at (0, 13, 0) VS)
-  const eyes = new VB(), angry = new VB();
+  const eyes = new VB(), angry = new VB(), atE = {};
   for (const [vb, a, col] of [[eyes, false, core], [angry, true, 0xff4a2a]]) {
-    for (const sd of [1, -1]) eye(vb, sd * 4.5, 27.5, 0, 2.2, 1.6, { iris: col, pupil: mix(col, 0xffffff, 0.6), pr: 0.35, lid: a ? dark : undefined, on: torso });
+    for (const sd of [1, -1]) {
+      const o = { r: 2.2, depth: 0.65, glow: true, iris: col, pupil: mix(col, 0xffffff, 0.6), pr: 0.35, lid: 0.3, tilt: 0.45, skin: TT[2], brow: TT[3], browR: 1.6 };
+      if (!a) atE[sd] = socketEye(torso, vb, sd * 4.5, 27.5, sd, o)[2];
+      else socketEye(torso, vb, sd * 4.5, 27.5, sd, { ...o, cz: atE[sd], ballOnly: true, ballLid: 0.45, tilt: 0.8, lidCol: dark });
+    }
   }
   return {
     torso: torso.geo(0, 0, 0, H), glow: glow.size ? glow.geo(0, 0, 0, H) : null, leg: leg.geo(0, 0, 0, H), arm: arm.geo(0, 0, 0, H),

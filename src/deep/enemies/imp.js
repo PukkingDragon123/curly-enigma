@@ -3,6 +3,7 @@
 import { Enemy } from './base.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
 import { H, taper, eye, hramp, lit, bake } from './voxKit.js';
+import { socketEye, mouth, nostrils } from './face.js';
 import { sparkle, puff, fireSpray } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -41,27 +42,23 @@ export function buildImp(zone) {
     // cheeks
     b.ell(sd * 5.6, 15.5, 5.6, 1.6, 1.2, 1, mix(P.skin, 0xff9a9a, 0.55));
   }
-  // heavy brow ridge over the eyes
-  for (let x = -8; x <= 7; x++) { const y = 21 + (Math.abs(x + 0.5) > 5 ? -1 : 0); const h = b.hitFrom(x, y, 20, 0, 0, -1); if (h) b.set(h[0], h[1], h[2] + 1, P.dark); }
   bake(b, { ao: 0.45, rim: 0.22 });
-  // face: nostrils, a wide grin with a row of teeth and two fangs
+  // (no simple face) flared nostrils in the muzzle, a crooked wide grin carved in: gums, a row of
+  // little teeth, uneven fangs, a forked-tongue tip
   const front = (x, y) => { for (let z = 18; z > -12; z--) if (b.has(x, y, z)) return z; return 0; };
-  b.set(-1, 17, front(-1, 17), 0x2a0a08); b.set(0, 17, front(0, 17), 0x2a0a08);
-  for (let x = -5; x <= 4; x++) {
-    const up = Math.abs(x + 0.5) > 3.5 ? 1 : 0, y = 13 + up;
-    b.set(x, y, front(x, y), 0x3a0e0a);
-    if (!up) b.set(x, y + 1, front(x, y + 1), (x & 1) ? 0xfff4e0 : 0xe8dcc8);
-  }
-  b.set(-3, 12, front(-3, 12) , 0xfff4e0); b.set(2, 12, front(2, 12), 0xfff4e0); // fangs
+  const ez = (Math.max(front(3, 18), front(-4, 18)) + 1) / 2;
+  nostrils(b, 0, 16.6, 2.6, { r: 0.7, col: 0x2a0a08 });
+  mouth(b, 0, 13.2, { w: 11, h: 3.2, d: 3, curve: 0.4, asym: 0.5, gap: 2, fangs: [-0.55, 0.42], fang: 3, lower: true, gum: 0x8a1a2a, throat: 0x1a0406, tongue: 0xe8506a, lip: SK[1] });
   // whip tail with a flame tip
   taper(b, 0, 4, -4.5, 0, 5, -9, 1.3, 1, P.dark); taper(b, 0, 5, -9, 0, 9, -12, 1, 0.8, P.dark); taper(b, 0, 9, -12, 0, 12, -11.5, 0.8, 0.6, P.dark);
   b.ell(0, 13.5, -11.5, 1.6, 2, 1.4, P.flame[2]); b.set(0, 15, -11, P.flame[3]); b.set(0, 16, -12, P.flame[3]); b.set(0, 13, -13, P.flame[1]);
-  // eyes (big, glowing; placed at (0, 9, ez) VS)
+  // eyes (glowing; placed at (0, 9, ez) VS): deep sockets under a heavy brow that dips to the nose,
+  // a mischievous squint on one side; angry: both lids drop hard
   const eyes = new VB(), angry = new VB();
-  for (const [vb, col, a] of [[eyes, P.eye, false], [angry, 0xff3a2a, true]]) {
-    for (const sd of [1, -1]) eye(vb, sd * 3.6, 18.5, 0, 2.2, 2.9, { iris: col, pupil: mul(col, 0.25), slit: true, pr: 0.5, lid: a ? P.dark : undefined, on: b });
+  for (const sd of [1, -1]) {
+    const at = socketEye(b, eyes, sd * 3.7, 18.8, sd, { r: 2.4, depth: 0.5, glow: true, iris: P.eye, pupil: mul(P.eye, 0.2), slit: true, pr: 0.5, lid: sd > 0 ? 0.2 : 0.34, tilt: 0.35, skin: SK[3], brow: SK[1], browR: 1.4, browUp: sd > 0 ? 0.5 : 0 });
+    socketEye(b, angry, sd * 3.7, 18.8, sd, { r: 2.4, cz: at[2], ballOnly: true, glow: true, iris: 0xff3a2a, pupil: 0x3a0804, slit: true, pr: 0.5, ballLid: 0.46, tilt: 0.8, lidCol: SK[1] });
   }
-  const ez = (Math.max(front(3, 18), front(-4, 18)) + 1) / 2;
   // arm (pivot at the shoulder): a tapered limb and three claws
   const arm = new VB(52);
   taper(arm, 0, -1, 0, 1, -5, 1, 2.2, 1.6, P.skin);

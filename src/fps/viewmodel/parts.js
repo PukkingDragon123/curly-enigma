@@ -1,4 +1,4 @@
-// First-person view-model geometry: the mole's furry forearms, a gripping fist and an open
+// First-person view-model geometry: the mole's furry forearms, a gloved gripping fist and open
 // spade paw, and every tool (pickaxes by tier, chisel + mallet, brush, drills, x-ray lamps,
 // glow stake, support beam, extruded food). All built as hi-res voxels (1 unit = VMV meters,
 // set in ViewModel.js), greedy-meshed and cached by their inputs.
@@ -217,7 +217,7 @@ export function fistGeo(dirt = 1) {
         return smudged(c, x, y, z, spots, 0.22);
       },
       2: (x, y, z, e) => {
-        let c = leather(v, x, y, z, e, { ...G_UP, k: 4.6, seed: 23, soot: 0.65, wear: 0.7 });
+        let c = leather(v, x, y, z, e, { ...G_UP, k: 4.7, seed: 23, soot: 0.4, wear: 0.7, grain: 0.7 });
         // the seams between the finger rolls: stitched
         for (const fyy of fy) if (Math.abs(y - (fyy + 2.8)) < 0.6 && !(e & PY)) c = stitch(c, Math.atan2(-z, x) * 9, 2);
         return smudged(c, x, y, z, spots, 0.22);

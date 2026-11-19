@@ -69,7 +69,7 @@ export function leather(v, x, y, z, e, o) {
   if (h3(x, y, z, seed + 3) < 0.03 * g) k -= 0.8;
   // a little ambient occlusion in the creases; convex edges rubbed pale
   const n = around(v, x, y, z);
-  if (n > 13) k -= Math.min(1, (n - 13) / 4) * 1.3;
+  if (n > 14) k -= Math.min(1, (n - 14) / 4) * 1.0;
   else if (n <= 9) k += 0.75 * (0.5 + (o.wear ?? 0.5));
   let c = ramp[Math.max(0, Math.min(ramp.length - 1, Math.round(k)))];
   // soot: smooth dark blotches (thickest low on the glove, where it brushes the forge)

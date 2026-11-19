@@ -5,6 +5,7 @@
 // seeded variant (markings, accessories) where the class asks for one.
 import { VB, mul, mix, c01 } from './vox.js';
 import { H, taper, eye, hramp, lit, bake, clumps, gloss } from './voxKit.js';
+import { socketEye, mouth, nostrils } from './face.js';
 import { clamp } from '../../core/util.js';
 
 /** Mesh at H; the pivot is given in VS units (as the classes place parts). */
@@ -30,11 +31,12 @@ export function buildWorm(v = 0) {
   }
   b.ell(0, 0.2, L, 2.3, 2.3, 2.6, lit(T, { bias: 0.12 }));
   bake(b, { ao: 0.3, rim: 0.25 });
-  // a little face: beads, blush, a smile
-  const fz = (x, y) => front(b, x, y, L + 6, L - 4);
-  bead(b, 1, 1, fz(1, 1) + 1); bead(b, -2, 1, fz(-2, 1) + 1);
-  for (const x of [2, -3]) b.set(x, 0, fz(x, 0) + 1, 0xff9aa6);
-  for (const x of [-1, 0]) b.set(x, -1, fz(x, -1) + 1, 0x7a2a34);
+  // (no simple face) an eyeless prostomium: a fleshy lip ring round a round mouth of tiny hooked
+  // teeth, a darker throat, two sensory pits and a fold over the top
+  b.ell(0, 0.2, L + 1.8, 2.6, 2.6, 1.2, (x, y, z, nx, ny) => (ny > 0.4 ? T[4] : T[3])); // the lip ring
+  mouth(b, 0, -0.2, { w: 3.4, h: 3, d: 2, curve: 0, gap: 1, fangs: [], lower: true, tooth: 0xfff0e8, gum: 0xa83a4a, lip: S[1], tongue: 0x7a1a2a });
+  taper(b, -2, 2.4, L + 1, 2, 2.4, L + 1, 0.9, 0.9, T[4]); // the fold over the mouth
+  for (const sd of [1, -1]) { const x = sd > 0 ? 2 : -3; b.del(x, 1, L + 1); b.set(x, 1, L, 0x5a1a24); } // sensory pits
   // a crumb of soil round the root, a leaf stuck on its head (or a pebble)
   for (const [x, y, z, c] of [[2, -2, 1, 0x5a3e2a], [-3, 1, 0, 0x6e4c32], [1, 2, 2, 0x4a3222], [-2, -2, 3, 0x7a5a3a]]) b.set(x, y, z, c);
   if (v === 0) { taper(b, 0, 2.6, L - 1, -2, 4.5, L - 3, 0.9, 0.6, 0x6aa844); b.set(-2, 5, L - 3, 0x9ad060); b.set(0, 3, L - 1, 0x4a7a2a); }
@@ -67,12 +69,13 @@ export function buildBunny(v = 0) {
   b.ell(0, 6.6, 5.4, 2.6, 1.9, 1.4, lit(fur, { bias: 0.22 })); // a pale muzzle
   bake(b, { ao: 0.24, rim: 0.18, aoCol: 0x6a5a6a }); // (soft: fluff, not rock)
   const fz = (x, y) => front(b, x, y, 14, -10);
-  // nose with a glint, buck teeth, a "w" mouth, blush
-  for (const [x, y, c] of [[-1, 7, 0xff7a92], [0, 7, 0xff7a92], [-1, 6, 0xd85a76], [0, 6, 0xd85a76]]) b.set(x, y, fz(x, y) + 1, c);
-  b.set(-1, 7, fz(-1, 7) + 2, 0xffd0dc);
-  for (const [x, y] of [[-2, 5], [1, 5]]) b.set(x, y, fz(x, y), 0x5a3028);
-  for (const [x, y] of [[-1, 5], [0, 5], [-1, 4], [0, 4]]) b.set(x, y, fz(x, y) + 1, y === 4 ? 0xe8e0d0 : GLINT);
-  for (const sd of [1, -1]) for (let dx = 0; dx < 2; dx++) { const x = sd > 0 ? 4 + dx : -5 - dx, y = 6; b.set(x, y, fz(x, y) + 1, dx ? 0xf0a0a8 : 0xff8a98); }
+  // (no simple face) a sculpted rabbit face: split-lip cheek pads, a sculpted pink nose pad with
+  // flared nostrils, an open mouth with gums and two big incisors, whiskers out of the cheeks
+  for (const sd of [1, -1]) b.ell(sd * 1.5, 6.2, 6.4, 1.9, 1.6, 1.4, lit(fur, { bias: 0.26 })); // cheek pads
+  b.ell(0, 7.9, 7.4, 1.6, 1.1, 1, (x, y, z, nx, ny) => (ny > 0.3 ? 0xffa8b8 : 0xe0728a)); // the nose pad
+  nostrils(b, 0, 7.6, 1.6, { r: 0.6, col: 0x6a2030, rim: 0xffc0cc });
+  mouth(b, 0, 4.6, { w: 4.2, h: 2.4, d: 2, curve: -0.1, asym: 0.25, gap: 9, fangs: [-0.24, 0.24], fang: 2, tooth: 0xfff8ec, gum: 0xd06a7a, throat: 0x3a1018, lip: fur[1] });
+  for (const sd of [1, -1]) for (const dy of [0, 1.4]) taper(b, sd * 2.6, 6 + dy * 0.6, 7, sd * 7.5, 6.4 + dy * 1.6, 8, 0.4, 0.3, 0xf4ece0); // whiskers
   // what it rolled through
   if (v === 0) { taper(b, 4.5, 10, -3, 8.5, 12.5, -4.5, 0.7, 0.45, 0x6a4a2a); b.set(7, 12, -4, 0x5a8a3a); b.set(8, 13, -4, 0x7ab848); b.set(8, 13, -5, 0x5a8a3a); }
   else if (v === 1) { // a lost brass button, thread still on
@@ -82,14 +85,17 @@ export function buildBunny(v = 0) {
     taper(b, 3.5, 12, -1, 4.2, 15, -1.2, 0.8, 0.7, 0xf4e8d0);
     b.ell(4.3, 15.6, -1.2, 2.2, 1.2, 2.2, (x, y, z, nx, ny) => (ny < -0.3 ? 0xd8c8b0 : ny > 0.5 ? 0x8ae8ff : 0x4ab8e0));
   }
-  // eyes (placed at (0, 4.5, ez) VS): big, glossy, a warm iris
+  // eyes (placed at (0, 4.5, ez) VS): set into sockets under tufted fur brows, a warm amber iris,
+  // one lid a touch lower than the other (a wary look)
   const eyes = new VB();
-  for (const sd of [1, -1]) eye(eyes, sd * 3.3, 9.4, 0, 2.2, 2.8, { iris: 0x120a0a, pupil: 0x060303, pr: 0.5, gr: 0.36, on: b }); // (glossy black beads)
   const ez = (Math.max(fz(3, 9), fz(-4, 9)) + 1) / 2;
+  for (const sd of [1, -1]) socketEye(b, eyes, sd * 3.4, 9.3, sd, { r: 2.2, depth: 0.45, iris: 0x8a4a1a, pupil: 0x0a0404, pr: 0.5, ir: 0.66, look: [-sd * 0.1, -0.05], lid: sd > 0 ? 0.24 : 0.34, tilt: 0.05, skin: fur[2], brow: fur[4], browR: 1.2, browUp: sd > 0 ? 0.6 : 0 });
   const ear = new VB(112 + v);
   // a long ear: a soft rim, a pink inside, a darker tip folding back (one floppy on variant 2)
-  taper(ear, 0, 0, 0, 0, 8, -1, 2.2, 1.7, (x, y, z, t) => (z >= 0 && y > 1 && Math.abs(x) < 1.2 ? (y > 5 ? 0xffb8c4 : 0xf09aaa) : lit(fur)(x, y, z, 0, 0.3, 0)));
+  taper(ear, 0, 0, 0, 0, 8, -1, 2.2, 1.7, (x, y, z, t) => lit(fur)(x, y, z, 0, 0.3, 0));
   taper(ear, 0, 8, -1, 0, 10.5, -3.5, 1.7, 0.9, (x, y, z) => (y > 9.5 ? fur[1] : fur[2]));
+  // the inner ear: a cupped hollow, pink deepening to the root, with a dark vein down the middle
+  for (const v of ear.list()) if (v.y > 1 && v.y < 9 && Math.abs(v.x + 0.5) < 1.3 && !ear.has(v.x, v.y, v.z + 1) && v.z >= -1) { ear.del(v.x, v.y, v.z); ear.set(v.x, v.y, v.z - 1, v.x === 0 && v.y % 3 ? 0xc8607a : v.y > 5 ? 0xffb8c8 : 0xf08aa0); }
   clumps(ear, 4, { tones: fur.slice(2), seed: 5, len: [1.5, 2.5], r: 1, filter: (x, y) => y < 4 });
   bake(ear, { ao: 0.3, rim: 0.25 });
   return { body: V(b), eyes: eyes.geo(0, 9, ez * 2, H), ez, ear: V(ear), fluff: c01(fur[4]), furC: fur.slice(1, 5).map(c01) };
@@ -112,7 +118,14 @@ export function buildBeetle() {
   for (const sd of [1, -1]) for (let i = 0; i < 3; i++) taper(b, sd * 2.6, -1.6, 3 - i * 3, sd * 4.8, -3.4, 3.6 - i * 3.4, 0.7, 0.5, head[1]); // legs
   gloss(b, { k: 0.55, min: 0.8, filter: (x, y, z) => z < 4 });
   bake(b, { ao: 0.35, rim: 0.2 });
-  for (const sd of [1, -1]) { const x = sd > 0 ? 1 : -3; eye(b, x + 0.5, 0.6, front(b, x, 0) + 1, 1.3, 1.5, { iris: 0x1a1a24, pupil: INK, pr: 0, look: [0, 0] }); }
+  // (no simple face) faceted compound eyes set into the head's sides, a clypeus plate, curved
+  // serrated mandibles, palps
+  const fac = new VB();
+  for (const sd of [1, -1]) socketEye(b, fac, sd * 1.9, 0.4, sd, { r: 1.5, depth: 0.3, glow: true, iris: 0x2a3a4a, pupil: 0x101820, pr: 0, lid: 0, brow: false });
+  fac.paint((x, y, z, c) => (c === 0xffffff ? undefined : (x + y + z) & 1 ? mix(c, 0x6ac8b8, 0.35) : c)); // facets
+  b.merge(fac);
+  b.ell(0, 1.2, 9.4, 1.8, 0.8, 0.9, head[2]); // clypeus
+  for (const sd of [1, -1]) { taper(b, sd * 1.2, -0.8, 9, sd * 1.8, -1, 11, 0.8, 0.6, head[1]); taper(b, sd * 1.8, -1, 11, sd * 0.4, -1.2, 12.4, 0.6, 0.4, (x, y, z, t) => (t > 0.6 ? 0xc8b890 : head[0])); b.set(sd > 0 ? 1 : -2, -1, 11, 0xd8c8a0); }
   for (const sd of [1, -1]) { taper(b, sd * 1, 1.6, 8.4, sd * 3, 4.5, 11, 0.5, 0.4, head[2]); b.ell(sd * 3.2, 4.8, 11.2, 0.9, 0.9, 0.9, 0xc8ff7a); } // antennae, glowing tips
   const glow = new VB(122);
   glow.ell(0, -0.8, -4.6, 3.4, 2.4, 3.2, (x, y, z, nx, ny, nz) => (z % 2 === 0 && nz < 0.5 ? 0xa8e860 : ny < -0.3 ? 0xf8ffd0 : 0xd8ff8a));
@@ -138,9 +151,11 @@ export function buildFish() {
   b.paint((x, y, z, c) => (Math.abs(x) >= 2 && y > -2 && y < 2 && z > -4 && z < 3 && (z & 1) === 0 && b.open(x, y, z, Math.sign(x), 0, 0) ? mix(c, 0xe89aa0, 0.35) : undefined));
   bake(b, { ao: 0.25, rim: 0.3 });
   const fz = (x, y) => front(b, x, y);
-  // (blind: milky eyes on the sides of the head)
-  for (const sd of [1, -1]) for (const [dz, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const x = sd > 0 ? 3 : -4; b.set(x, 1 + dy, 5 + dz, dz && dy ? GLINT : 0xdcd8e8); }
-  b.set(-1, -1, fz(-1, -1) + 1, 0x8a3a4a); b.set(0, -1, fz(0, -1) + 1, 0x8a3a4a); // a little "o" mouth
+  // (no simple face) blind: clouded eyes sunk in sockets under a ridge, nostrils, a gaping
+  // underbite of needle teeth
+  for (const sd of [1, -1]) socketEye(b, b, sd * 2.1, 1.6, sd, { r: 1.3, depth: 0.5, iris: 0xc8c0d4, pupil: 0xb0a8c0, sclera: 0xe8e4f0, pr: 0.35, lid: 0.35, tilt: 0.2, skin: T[2], brow: T[1], browR: 0.8 });
+  nostrils(b, 0, 3, 2, { r: 0.5, col: 0x8a4a54 });
+  mouth(b, 0, -1.4, { w: 5, h: 2.6, d: 2, curve: -0.2, gap: 1, fangs: [-0.7, 0.7], fang: 2, lower: true, tooth: 0xf8f4ff, gum: 0xc86a78, throat: 0x3a1420, lip: T[1] });
   gloss(b, { k: 0.35, min: 0.84 });
   const tail = new VB(132);
   // a forked fan with rays, on a short stem (the pivot is its root, z = -6)
@@ -213,9 +228,12 @@ export function buildTortoise(mossy) {
   head.ell(0, -1, 6.6, 2.6, 2, 1.8, lit(skin, { bias: 0.1 })); // a beaky snout
   taper(head, 0, 0, -1, 0, -1, -4, 2.8, 2.6, skin[1]); // the neck
   bake(head, { ao: 0.3, rim: 0.2 });
-  // sleepy eyes: half-lidded, a glint
-  for (const sd of [1, -1]) eye(head, sd * 2, 1.4, 0, 1.4, 1.6, { iris: 0x2a1a10, pupil: INK, pr: 0.5, lid: skin[3], on: head });
-  head.set(-1, -2, front(head, -1, -2) + 1, 0x4a3a2a); head.set(0, -2, front(head, 0, -2) + 1, 0x4a3a2a);
+  // (no simple face) heavy-lidded old eyes in deep sockets under a scaly brow, a hooked horn beak
+  // with a ridge, a crease of a mouth along it, nostrils on top
+  for (const sd of [1, -1]) socketEye(head, head, sd * 2.2, 1.6, sd, { r: 1.5, depth: 0.45, iris: 0x6a4a1a, pupil: INK, pr: 0.45, lid: 0.48, tilt: -0.1, skin: skin[2], brow: skin[1], browR: 0.9 });
+  taper(head, -0.5, 0, 7, -0.5, -1.8, 8.8, 1.6, 0.7, (x, y, z, t) => (t > 0.7 ? 0xd8c8a0 : x === 0 && y > -1 ? 0xb8a880 : 0x9a8a62)); // the beak hook
+  mouth(head, 0, -1.6, { w: 5, h: 1.4, d: 1, curve: 0.35, gap: 99, fangs: [], lip: 0x6a5a3a, gum: 0x8a4a3a, tongue: 0xb06060 });
+  nostrils(head, 0, 0.8, 1.6, { r: 0.5, col: 0x2a2018 });
   return { body: V(b), head: V(head) };
 }
 
@@ -280,7 +298,9 @@ export function buildSlug() {
     taper(b, sd * 1.4, 3, 8.5, sd * 2.6, 8, 10, 0.8, 0.6, g[3]);
     b.ell(sd * 2.7, 8.6, 10.2, 1.2, 1.2, 1.2, INK); b.set(sd > 0 ? 2 : -3, 9, 11, GLINT);
   }
-  b.set(-1, 0, front(b, -1, 0) + 1, 0x2a4a2a); b.set(0, 0, front(b, 0, 0) + 1, 0x2a4a2a); // a mouth
+  // (no simple face) a lipped mouth with a rasping radula, two oral tentacles beside it
+  mouth(b, 0, 1.4, { w: 4, h: 2, d: 2, curve: 0.1, gap: 1, fangs: [], lower: true, tooth: 0xe8f0d8, gum: 0x3a6a4a, throat: 0x10200a, lip: g[2], tongue: 0x8ab070 });
+  for (const sd of [1, -1]) taper(b, sd * 2, 1.6, 10.6, sd * 3.4, 0.4, 12.6, 0.7, 0.4, g[3]);
   return { body: V(b), slime: c01(g[4]) };
 }
 
@@ -293,8 +313,11 @@ export function buildSpider() {
   body.ell(0, 4.4, 2.8, 3.2, 2.6, 3.2, lit(D, { bias: 0.1 }));
   for (const [x, z, h, lx] of [[0, -3, 5, 0], [2, -6, 3.5, 1], [-2, -5, 3.5, -1], [0, -7.5, 2.5, 0]]) taper(body, x, 8, z, x + lx, 8 + h, z - 1, 1.3, 0.4, (xx, y, zz, t) => (t > 0.6 ? 0xf0ffff : xx > x ? C[3] : C[2]));
   bake(body, { ao: 0.3, rim: 0.25 });
-  for (const sd of [1, -1]) eye(body, sd * 1.3, 4.8, 0, 1.1, 1.3, { iris: 0xff6a8a, pupil: 0x3a0a1a, pr: 0.45, on: body });
-  for (const [x, y] of [[2.8, 6], [-2.8, 6], [1, 6.6], [-1, 6.6]]) body.set(Math.floor(x), Math.floor(y), front(body, Math.floor(x), Math.floor(y)) + 1, 0xff9ab0);
+  // (no simple face) two big glossy eyes and four small ones, each set in its own socket, a brow
+  // plate of crystal, chelicerae with fangs
+  for (const sd of [1, -1]) socketEye(body, body, sd * 1.4, 4.6, sd, { r: 1.2, depth: 0.3, glow: true, iris: 0xff5a7a, pupil: 0x2a0812, pr: 0.45, lid: 0, brow: C[3], browR: 0.7 });
+  for (const [x, y] of [[3.2, 6.2], [-3.2, 6.2], [1.2, 6.9], [-1.2, 6.9]]) socketEye(body, body, x, y, Math.sign(x), { r: 0.7, depth: 0.2, glow: true, iris: 0xff8aa8, pupil: 0x3a0a1a, pr: 0, lid: 0, brow: false });
+  for (const sd of [1, -1]) { taper(body, sd * 1, 3.2, 5.6, sd * 1.2, 1.6, 6.6, 0.9, 0.7, D[2]); taper(body, sd * 1.2, 1.6, 6.6, sd * 0.5, 0.6, 6.4, 0.6, 0.3, 0xf0f8ff); }
   const frames = [0, 1].map((f) => {
     const b = new VB(182);
     for (const sd of [1, -1]) for (let i = 0; i < 4; i++) {
@@ -324,9 +347,9 @@ export function buildVoidWisp() {
   taper(b, -2, 8, -1, -4.5, 12.5, -0.5, 2, 0.6, sh);
   taper(b, 3, 15, -2, 1.5, 17, -1, 0.7, 0.4, C[5]);
   b.paint((x, y, z, c) => (b.n(x, y, z, 7) > 0.975 && z < 3 ? C[5] : undefined)); // stars in the dark
-  const fz = (x, y) => front(b, x, y, 12, -12);
-  // big hollow eyes with a pale pupil each, a tiny "o" mouth
-  for (const sd of [1, -1]) eye(b, sd * 2.6, 0.8, 0, 1.9, 2.4, { iris: 0x0a0218, pupil: 0xd8b0ff, pr: 0.26, gr: 0.22, glint: 0xf0e0ff, look: [0.1 * sd, 0.1], on: b });
-  b.set(-1, -3, fz(-1, -3) + 1, 0x0a0218); b.set(0, -3, fz(0, -3) + 1, 0x0a0218);
+  // (no simple face) a face of the dark itself: heavy brow ridges, deep sockets with a cold glowing
+  // slit-pupilled eye in each (one wider than the other), a gaping jaw of crystal shard teeth
+  for (const sd of [1, -1]) socketEye(b, b, sd * 2.7, 1.2, sd, { r: sd > 0 ? 1.9 : 1.6, depth: 0.7, glow: true, iris: 0xc8a0ff, pupil: 0x12041e, slit: true, pr: 0.5, lid: sd > 0 ? 0.2 : 0.3, tilt: 0.45, skin: C[2], brow: C[3], browR: 1.1 });
+  mouth(b, 0, -3, { w: 7, h: 3.4, d: 3, curve: -0.3, asym: -0.4, gap: 2, fangs: [-0.55, 0.45], fang: 2, lower: true, tooth: 0xd8c0ff, gum: C[1], throat: 0x05010c, tongue: C[2], lip: C[2] });
   return { body: V(b), mote: [0.7, 0.45, 1] };
 }

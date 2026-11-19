@@ -3,7 +3,8 @@
 // Step back while it inflates; whack it while it's deflated and wobbly.
 import { Enemy, smooth, easeBack } from './base.js';
 import { VB, VS, mix, mul, c01 } from './vox.js';
-import { H, taper, eye } from './voxKit.js';
+import { H, taper, eye, hramp, lit, vnoise } from './voxKit.js';
+import { socketEye, mouth, nostrils } from './face.js';
 import { spores, puff, sparkle, quills } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -21,7 +22,11 @@ export function buildPuffer(zone) {
   const P = capFor(zone);
   const stem = new VB(81);
   const cream = [0xb8a888, 0xd8c8a4, 0xf0e2c4, 0xfff4dc];
-  stem.ell(0, 9.2, 0, 8.4, 9.2, 7.6, (x, y, z, nx, ny, nz) => cream[clamp(Math.floor((0.45 + ny * 0.3 + nz * 0.15 + (stem.n(x, y, z) - 0.5) * 0.12 + (((y + 64) % 4 === 0) ? -0.1 : 0)) * 4), 0, 3)]);
+  // (wave 17) fibrous flesh: vertical fibres and soft mottles, not stripes
+  const CR = hramp(0xe0d0b0, 6, { step: 0.08 });
+  stem.ell(0, 9.2, 0, 8.4, 9.2, 7.6, (x, y, z, nx, ny, nz) => CR[clamp(Math.floor((0.45 + ny * 0.28 + nz * 0.12 + (vnoise(x * 2.5, y * 0.4, z * 2.5, 3, 4) - 0.5) * 0.3) * 6), 0, 5)]);
+  for (const sd of [1, -1]) stem.ell(sd * 5, 7.6, 5.2, 2.6, 2, 2, lit(CR, { bias: 0.1 })); // cheekbones
+  stem.ell(0, 7.8, 7.4, 1.8, 2.2, 1.6, lit(CR, { bias: 0.14 })); // a knobbly nose
   // the ring skirt round the stem's top, frilled
   for (let a = 0; a < 96; a++) {
     const t = (a / 96) * Math.PI * 2, r = 8.4 + (a % 4 < 2 ? 0.8 : 0);
@@ -29,13 +34,16 @@ export function buildPuffer(zone) {
   }
   for (const sd of [1, -1]) { stem.ell(sd * 3.2, 1, 2, 2.6, 1.6, 3.2, 0xa89068); stem.set(sd > 0 ? 3 : -4, 0, 5, 0x8a7050); } // feet
   const front = (x, y) => { for (let z = 16; z > -12; z--) if (stem.has(x, y, z)) return z; return 0; };
-  for (const [x, y] of [[-1, 4], [0, 4], [-2, 5], [1, 5], [-1, 6], [0, 6]]) stem.set(x, y, front(x, y) + (y === 5 ? 0 : 0), y === 5 && (x === -2 || x === 1) ? 0x5a3022 : y === 5 ? 0x2a120c : 0x5a3022); // a little "o" mouth
-  for (const sd of [1, -1]) for (let dx = 0; dx < 3; dx++) { const x = sd > 0 ? 5 + dx : -6 - dx; stem.set(x, 7, front(x, 7), 0xffa8a0); stem.set(x, 6, front(x, 6), 0xf09890); } // blush
-  const eyes = new VB(), angry = new VB();
-  for (const [vb, a] of [[eyes, false], [angry, true]]) for (const sd of [1, -1]) {
-    eye(vb, sd * 3.2, 9.6, 0, 1.8, 2.4, { iris: a ? 0xff6a4a : 0x2a1a10, pupil: a ? 0x3a0a04 : 0x0a0604, pr: 0.5, lid: a ? mul(P.cap[1], 0.8) : undefined, on: stem });
-  }
+  // (no simple face) a gnarled fungal face: nostrils in the knobbly nose, a crooked mouth of peg
+  // teeth and gums, eyes deep in sockets under a cap-coloured brow, one lid heavier than the other
   const ez = (Math.max(front(3, 9), front(-4, 9)) + 1) / 2;
+  nostrils(stem, 0, 7.4, 1.6, { r: 0.55, col: 0x3a2014 });
+  mouth(stem, 0, 4.2, { w: 7.5, h: 2.6, d: 2, curve: -0.12, asym: 0.5, gap: 2, fangs: [-0.6, 0.35], fang: 2, lower: true, tooth: 0xf4ecd0, gum: 0xa85a4a, throat: 0x2a1008, lip: CR[1] });
+  const eyes = new VB(), angry = new VB();
+  for (const sd of [1, -1]) {
+    const at = socketEye(stem, eyes, sd * 3.4, 10.4, sd, { r: 2, depth: 0.45, iris: 0x4a8a3a, pupil: 0x0a0604, pr: 0.45, look: [sd * 0.08, 0], lid: sd > 0 ? 0.26 : 0.36, tilt: 0.1, skin: CR[2], brow: P.cap[1], browR: 1.1 });
+    socketEye(stem, angry, sd * 3.4, 10.4, sd, { r: 2, cz: at[2], ballOnly: true, iris: 0xff6a3a, pupil: 0x3a0a04, slit: true, pr: 0.5, ballLid: 0.45, tilt: 0.7, lidCol: P.cap[1] });
+  }
   // the cap (pivot at its underside center), its gills and its glowing warts
   const cap = new VB(82), spots = new VB(83);
   cap.ell(0, 0, 0, 15.2, 10.8, 15.2, (x, y, z, nx, ny) => {

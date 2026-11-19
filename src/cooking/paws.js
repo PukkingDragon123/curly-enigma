@@ -1,4 +1,4 @@
-// First-person mole paws: two big pink paws (makePaw) on long dark-fur sleeves.
+// First-person mole paws: two big paws in leather work gloves (makePaw) on long dark-fur sleeves.
 // The mole is short and the counter is high, so each sleeve rises from a shoulder below the
 // view up to the wrist, and the paw bends down at the wrist toward the work. Each paw follows a
 // goal point with smoothing; the wrist pose (pitch/roll/yaw) is applied on top of the arm line.

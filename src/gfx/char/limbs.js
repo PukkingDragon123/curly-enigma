@@ -183,7 +183,7 @@ function gloveGeo(ah, armBot, clawC, dirt, k, bake) {
       let c = leather(v, x, y, z, e, { ...UP, k: 4.6, seed: 61, soot: 0.5, wear: 0.6, grain: k > 1 ? 1 : 0.6 });
       if ((e & PZ) && Y > patchY0 && Y < patchY1) { // the knuckle patch, stitched round
         c = leather(v, x, y, z, e, { ...UP, ramp: GLOVE.patch, k: 4.6, seed: 62, soot: 0.25, wear: 0.9, grain: 0.6 });
-        if (k > 1 && (Y < patchY0 + 0.5 || Y > patchY1 - 0.5)) c = stitch(c, x, 2);
+        if (k > 1 && Y > patchY1 - 0.5) c = stitch(c, x, 2);
       } else if (k > 1 && (e & PZ) && Y >= patchY1 && Math.abs(Math.abs(X - pcx) - 1.6) < 0.25) c = stitch(c, y, 2); // the points down the back
       if (e & NZ) c = leather(v, x, y, z, e, { ...UP, ramp: GLOVE.patch, k: 3.8, seed: 63, soot: 0.6, wear: 0.4, grain: 0.6 }); // the palm
       if (dirt > 1 && h3(Math.floor(x / k), Math.floor(y / k), Math.floor(z / k), 77) < dirt * 0.04) c = mix(c, 0x6a4a30, 0.35);
@@ -199,13 +199,12 @@ function gloveGeo(ah, armBot, clawC, dirt, k, bake) {
     },
     3: (x, y, z, e) => {
       const Y = U(y);
-      let c = leather(v, x, y, z, e, { ...UP, ramp: GLOVE.cuff, k: 3.8, seed: 66, soot: 0.7, wear: 0.7, grain: 0.6 });
-      if (Y > cy1 - 0.5 / k - 0.01 || (e & PY)) c = leather(v, x, y, z, e, { ...UP, ramp: GLOVE.cuff, k: 5.2, seed: 67, soot: 0.2, wear: 1, grain: 0.4 }); // the rolled top
-      else if (k > 1 && Math.abs(Y - (cy1 - 0.75)) < 0.26) c = stitch(c, x + z, 2);
+      let c = leather(v, x, y, z, e, { ...UP, ramp: GLOVE.cuff, k: 4.6, seed: 66, soot: 0.5, wear: 0.7, grain: 0.5 });
+      if (Y > cy1 - 0.5 / k - 0.01 || (e & PY)) c = leather(v, x, y, z, e, { ...UP, ramp: GLOVE.cuff, k: 5.6, seed: 67, soot: 0.2, wear: 1, grain: 0.4 }); // the rolled top
       if (Y < cy0 + 0.5 / k + 0.01) c = mix(c, GLOVE.soot, 0.3);
       return c;
     },
-    4: (x, y, z, e) => leather(v, x, y, z, e, { ...UP, ramp: GLOVE.strap, k: 2.8, seed: 68, soot: 0, wear: 0.9, grain: 0.3 }),
+    4: (x, y, z, e) => leather(v, x, y, z, e, { ...UP, ramp: GLOVE.strap, k: 3.6, seed: 68, soot: 0, wear: 0.9, grain: 0.3 }),
     5: (x, y, z, e) => brass((e & PY ? 4.6 : e & NY ? 1.6 : 3.2) + (h3(x, y, z, 69) < 0.2 ? -0.8 : 0) - (around(v, x, y, z) > 12 ? 1.2 : 0)),
     6: (x, y, z, e) => ((e & NY) || (e & NZ) ? mix(clawC, 0xb8a888, 0.45) : (e & (PX | NX)) && !(e & PZ) ? mix(clawC, 0xc8b8a0, 0.3) : clawC),
     7: (x, y, z, e) => (dirt > 2 ? mix(clawC, 0x6a4a30, 0.45) : (e & PZ) ? lt(clawC, 0.3) : clawC),

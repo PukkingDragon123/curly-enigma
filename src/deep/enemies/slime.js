@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
 import { H, taper, eye, hramp } from './voxKit.js';
+import { socketEye, mouth } from './face.js';
 import { puff, sparkle } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -55,16 +56,14 @@ export function buildSlime(zone) {
   // (wave 17: a filled lip, not a ring floating round the foot)
   jelly.ell(0, 1.2, 0, R + 1, 2.2, R + 1, (x, y, z, nx, ny) => (y < 0 || jelly.has(x, y, z) ? undefined : ny > 0.2 ? J[2] : J[1]));
   for (let i = 0; i < 7; i++) { const t = jelly.n(i, 5, 5, 1) * Math.PI * 2; jelly.ell(Math.cos(t) * (R + 1.2), 1, Math.sin(t) * (R + 1.2), 1.6, 1.3, 1.6, C[1]); }
-  // face
+  // (no simple face) a face sculpted out of the jelly: thick jelly brow ridges, eyes sunk in deep
+  // sockets (one bigger, rolling sideways: unsettling), a wide carved maw lined with translucent
+  // jelly fangs over a dark gullet; the eyeballs are the opaque face part
   const face = new VB(82);
-  for (const sd of [1, -1]) eye(face, sd * 5, R * 0.95, 0, 2.6, 3.4, { iris: L.eye, pupil: mul(L.eye, 0.4), pr: 0.4, on: jelly });
-  for (let x = -4; x <= 3; x++) {
-    const y = Math.round(R * 0.62 - (x === -4 || x === 3 ? -1 : x === -3 || x === 2 ? 0 : 1) * 0.9);
-    const h = jelly.hitFrom(x, y, 40, 0, 0, -1); if (!h) continue;
-    face.set(x, h[1], h[2] + 1, L.eye);
-    if (x > -3 && x < 2) { face.set(x, h[1] - 1, h[2] + 1, x === -1 || x === 0 ? 0xe8607a : L.eye); }
-  }
-  for (const sd of [1, -1]) for (let dx = 0; dx < 3; dx++) { const x = sd > 0 ? 8 + dx : -9 - dx, h = jelly.hitFrom(x, R * 0.75, 40, 0, 0, -1); if (h) face.set(x, h[1], h[2] + 1, mix(C[2], 0xff7a90, 0.55)); }
+  const eyeCol = mix(C[3], 0xfff0a0, 0.4);
+  socketEye(jelly, face, 5.5, R * 0.98, 1, { r: 3.4, depth: 0.55, iris: eyeCol, pupil: mul(L.eye, 0.5), slit: true, pr: 0.55, ir: 0.6, look: [0.25, -0.1], sclera: 0xf0f4e0, lid: 0.22, tilt: 0.25, skin: J[3], brow: J[4], browR: 1.8 });
+  socketEye(jelly, face, -6, R * 0.94, -1, { r: 2.6, depth: 0.55, iris: eyeCol, pupil: mul(L.eye, 0.5), slit: true, pr: 0.55, ir: 0.6, look: [0.35, -0.15], sclera: 0xf0f4e0, lid: 0.34, tilt: 0.35, skin: J[3], brow: J[4], browR: 1.6 });
+  mouth(jelly, 0, R * 0.56, { w: 14, h: 4.4, d: 4, curve: 0.28, asym: -0.6, gap: 3, fangs: [-0.6, -0.15, 0.4], fang: 3, lower: true, tooth: mix(J[5], 0xffffff, 0.4), gum: J[1], throat: J[0], tongue: J[2], lip: J[4] });
   // things it swallowed
   const items = [];
   const bone = new VB(83); bone.cap(-6, 0, 0, 6, 1, 0, 1.6, 0xe8dcc0); for (const sx of [-1, 1]) for (const dy of [-1, 1]) bone.ell(sx * 7, 0.5 + dy * 1.4, 0, 1.8, 1.8, 1.8, 0xf0e4c8); items.push(bone);

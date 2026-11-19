@@ -4,6 +4,7 @@
 import { Enemy, TAU } from './base.js';
 import { VB, VS, c01 } from './vox.js';
 import { H, taper, eye, hramp, lit, bake, clumps } from './voxKit.js';
+import { socketEye, mouth, nostrils } from './face.js';
 import { puff, sparkle } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -17,7 +18,7 @@ export function buildBat() {
   // (wave 17) structured light in soft clumps (no per-voxel static), a pale chest, baked AO and rim
   const FR = hramp(FUR[3], 6, { step: 0.1 });
   const furSh = () => lit(FR, { clump: 0.3, cs: 2.6, seed: 4, bias: -0.05 });
-  const body = () => {
+  const body = (ev = new VB()) => {
     const b = new VB(91), sh = furSh(b);
     b.ell(0, -1, -1, 4.6, 5.2, 4.4, sh); // body
     b.ell(0, 3.2, 2.4, 4, 3.6, 3.6, sh); // head
@@ -30,16 +31,17 @@ export function buildBat() {
       taper(b, 2.2, 5, 2.4, 4.6, 11.5, 1.4, 1.8, 0.5, (x, y, z, t) => (z > 2.6 && t > 0.15 && t < 0.92 ? ((y % 3) ? EAR[1] : EAR[0]) : t > 0.9 ? EAR[2] : FUR[2]));
       // feet: little hooked claws under the body
       b.set(X(1), -6, 0, FUR[1]); b.set(X(2), -7, 0, BONE); b.set(X(2), -7, 1, 0xd8ccd8);
-      // fangs
-      b.set(X(1), 0, 6, 0xf4eef0); b.set(X(1), -1, 6, 0xd8ccd8);
     }
     b.mirrorX();
     // pug snout, nose-leaf, mouth
     b.ell(0, 2.2, 5.4, 2.2, 1.6, 1.4, FUR[3]);
-    b.box(-1, 2, 6, 0, 2, 6, BONE); // nostrils
-    b.box(-1, 3, 6, 0, 4, 6, EAR[1]); b.set(0, 5, 6, EAR[2]); b.set(-1, 5, 6, EAR[1]); // the leaf
-    b.box(-1, 0, 6, 0, 0, 6, 0x1a0a12); // mouth
-    bake(b, { ao: 0.4, rim: 0.25, skip: (c) => c === 0xf4eef0 || c === 0xd8ccd8 });
+    bake(b, { ao: 0.4, rim: 0.25 });
+    // (no simple face) a sculpted spear of a nose-leaf with a dark rim, flared nostrils, a snarling
+    // open mouth with gums, needle teeth and two long fangs; eyes deep in sockets under fur brows
+    taper(b, 0, 2.6, 6.6, 0, 5.8, 6.4, 1.2, 0.35, (x, y, z, t) => (t > 0.75 ? EAR[2] : Math.abs(x + 0.5) > 0.6 ? EAR[0] : EAR[1]));
+    nostrils(b, 0, 2.4, 1.8, { r: 0.55, col: 0x1a0a12, rim: EAR[1] });
+    mouth(b, 0, 0.4, { w: 4.8, h: 2.4, d: 2, curve: 0.2, gap: 1, fangs: [-0.6, 0.6], fang: 2, lower: true, tooth: 0xf4eef0, gum: 0xa04060, throat: 0x1a0610, tongue: 0xe06a8a, lip: FR[1] });
+    for (const sd of [1, -1]) socketEye(b, ev, sd * 1.9, 3.8, sd, { r: 1.5, depth: 0.4, glow: true, iris: 0xff5a8a, pupil: 0x3a0a1a, slit: true, pr: 0.5, lid: 0.22, tilt: 0.4, skin: FR[2], brow: FR[4], browR: 0.8 });
     return b;
   };
   /** One wing (sd = 1 right, -1 left) raised to angle a (radians up from level). */
@@ -99,8 +101,8 @@ export function buildBat() {
   }
   frames.push(folded.geo(0, 0, 0, H));
   // eyes: glowing, with a slit pupil and a glint (placed at (0, 0.5, 2) VS = (0, 1, 4) H)
-  const eyes = new VB(), ref = body();
-  for (const sd of [1, -1]) eye(eyes, sd * 1.9, 3.7, 0, 1.5, 1.8, { iris: 0xff5a8a, pupil: 0x3a0a1a, slit: true, pr: 0.5, gr: 0.36, on: ref }); // (wave 17: a little bigger)
+  const eyes = new VB();
+  body(eyes); // (the eyeballs, as seated in the sockets every frame's body carves)
   return { frames, eyes: eyes.geo(0, 1, 4, H), fur: c01(FUR[2]), eye: [1, 0.35, 0.55] };
 }
 
