@@ -1,53 +1,64 @@
-// Slot grids and the drag & drop engine for the backpack and the trunk.
-//
-// Pointer events cover mouse, pen and touch alike:
-//   drag a stack            move it (merge into the same item, swap with another, fill a gap)
-//   right-click / long-press  take half the stack into your paw (then tap or click a slot to put
-//                           it down; right-click a slot puts down one; dragging on carries it)
-//   click / tap             pick it (the paper tag with details and actions)
-//   double-click / double-tap / shift-click   send the stack to the other open container
-//   drop on the toss pit    throw it away
-// The backpack is a grid (core/inventory.js): its stacks are tiles spanning their
-// footprint on a .inv-gridbox[data-gridc]; a drag drops where the tile's shadow shows (green: it
-// fits, merges or swaps; red: it doesn't), and R / the mouse wheel / the Turn button turns what
-// you hold a quarter.
-// Slots are <button class="inv-slot" data-c="bag" data-i="3">. Nothing changes until a drop
-// lands (Inv.transfer moves the units in one go), so nothing can be lost mid-drag.
+// Slots and the drag & drop engine for the backpack, its belt row, the trunk and the chests
+// (Minecraft-like). Pointer events cover mouse, pen and touch alike:
+//   mouse   click a stack: it's in your paw (its tag opens); click a slot: put it all down (merge,
+//           fill, or swap: the other stack is in your paw then); right-click: half into the paw,
+//           or one put down; drag: carry it there; shift-click: to the belt / back into the pack
+//           (or to the trunk when it's open); hover + 1–9: swap with that belt slot; drag or click
+//           it outside the pack: dropped out
+//   touch   tap: pick it (the tag with details and actions); long-press (or press and drag): carry
+//           it; double-tap: the quick move
+// Something that won't go where you put it springs back and the slot shakes red.
+// Slots are <button class="inv-slot" data-c="bag" data-i="3">. Nothing changes until a drop lands
+// (core/inventory.js transfer moves the units in one go), so nothing can be lost mid-drag.
 import { el } from '../core/util.js';
-import { iconURL, weaponIconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
 import { gradeFor } from '../data/weapons.js';
 import * as Inv from '../core/inventory.js';
+import { KIND_ICON, KIND_LABEL } from '../core/hotbar.js';
 import { itemVox } from './itemVox.js';
 import { qColor, pips } from './common.js';
 
-/** Icon URL for a stack. */
+/** Icon URL for a stack (a belt tool: its sample item). */
 export function stackIcon(s) {
   if (!s) return '';
+  if (s.tool) return itemVox.src(KIND_ICON[s.tool] || 'pick_rusty');
   return itemVox.stack(s); // in 3D, as voxels (itemVox.js): the flat icon until its still is made
 }
 /** Display name for a stack. */
-export function stackName(s) { return !s ? '' : s.w ? s.w.name : ITEMS[s.id]?.name || s.id; }
+export function stackName(s) { return !s ? '' : s.tool ? KIND_LABEL[s.tool] || s.tool : s.w ? s.w.name : ITEMS[s.id]?.name || s.id; }
 
 /**
- * Build one slot button. opts: { c (container key), i, locked (sewn shut), lockLabel, hide (units
- * held in the paw from this slot), sel }.
+ * Build one slot button. opts: { c (container key), i, frame ('pocket' | 'loop' | 'trunk'),
+ * locked (sewn shut), lockLabel, hide (units held in the paw from this slot), sel, key (a number
+ * on a belt slot), refIcon(kind) (a belt tool's icon), refOff(kind) (that tool isn't owned) }.
  */
 export function slotEl(s, o = {}) {
   const b = el('button', { class: 'inv-slot ' + (o.frame || '') + (o.locked ? ' sewn' : '') + (s ? '' : ' empty') + (o.sel ? ' on' : ''), 'data-c': o.c, 'data-i': String(o.i), type: 'button', tabindex: o.locked ? -1 : 0 });
+  if (o.key) b.append(el('i', { class: 'k' }, o.key));
   if (o.locked) {
     b.disabled = true;
     b.setAttribute('aria-label', 'A pocket sewn shut' + (o.lockLabel ? ` (${o.lockLabel})` : ''));
     if (o.lockLabel) b.append(el('span', { class: 'inv-lock' }, o.lockLabel));
     return b;
   }
-  if (!s) { b.setAttribute('aria-label', 'Empty'); return b; }
+  if (!s) { b.setAttribute('aria-label', o.key ? `Belt ${o.key}: empty` : 'Empty'); return b; }
+  if (s.tool) {
+    // a tool from the rack hung on the belt (a reference: the tool itself stays on the rack)
+    const ghosted = (o.hide || 0) > 0;
+    b.classList.add('ref');
+    if (ghosted) b.classList.add('ghosted');
+    if (o.refOff?.(s.tool)) b.classList.add('off');
+    b.append(el('img', { class: 'pix', src: o.refIcon?.(s.tool) || stackIcon(s), alt: '', draggable: 'false' }));
+    b.setAttribute('aria-label', (o.key ? `Belt ${o.key}: ` : '') + stackName(s));
+    return b;
+  }
   const n = Inv.stackN(s) - (o.hide || 0);
   if (n <= 0) { b.classList.add('empty', 'ghosted'); b.setAttribute('aria-label', 'Empty'); return b; }
   const img = el('img', { class: 'pix', src: stackIcon(s), alt: '', draggable: 'false' });
   b.append(img);
   if (s.w) {
     const g = gradeFor(s.w.score);
+    b.classList.add('blade');
     b.append(el('span', { class: 'grade', style: { color: g.color } }, s.w.grade));
   } else if (s.lots) {
     const q = Inv.stackQ(s);
@@ -57,7 +68,7 @@ export function slotEl(s, o = {}) {
   }
   if (n > 1) b.append(el('span', { class: 'n' }, String(n)));
   if (o.hide) b.classList.add('ghosted');
-  b.setAttribute('aria-label', `${stackName(s)}${n > 1 ? ' ×' + n : ''}${s.lots ? `, quality ${Inv.stackQ(s)}%` : ''}`);
+  b.setAttribute('aria-label', `${o.key ? `Belt ${o.key}: ` : ''}${stackName(s)}${n > 1 ? ' ×' + n : ''}${s.lots ? `, quality ${Inv.stackQ(s)}%` : ''}`);
   return b;
 }
 
@@ -69,45 +80,18 @@ export function bounce(node, cls = 'pop') {
   node.classList.add(cls);
 }
 
-/**
- * A grid container: cells under the tiles, tiles spanning their footprints, the drop shadow.
- * o: { c, frame, hide(i) → units held from slot i, sel(i), sewnRows, sewnLabel, cls }.
- */
-export function gridBox(slots, o) {
-  const G = slots.grid;
-  const rows = G.rows + (o.sewnRows || 0);
-  const box = el('div', { class: 'inv-gridbox ' + (o.cls || ''), 'data-gridc': o.c, 'data-cols': String(G.cols), 'data-rows': String(G.rows) });
-  box.style.setProperty('--cols', String(G.cols));
-  box.style.setProperty('--rows', String(rows));
-  for (let y = 0; y < rows; y++) for (let x = 0; x < G.cols; x++) box.append(el('i', { class: 'inv-cell' + (y >= G.rows ? ' sewn' : ''), style: { gridColumn: String(x + 1), gridRow: String(y + 1) } }));
-  if (o.sewnRows && o.sewnLabel) box.append(el('span', { class: 'inv-lock', style: { gridColumn: `1 / span ${G.cols}`, gridRow: String(G.rows + 1) } }, o.sewnLabel));
-  slots.forEach((s, i) => {
-    if (!s || !s.g) return;
-    const [w, h] = Inv.dimsOf(s);
-    const b = slotEl(s, { c: o.c, i, frame: o.frame, hide: o.hide?.(i) || 0, sel: o.sel?.(i) });
-    b.classList.add('tile');
-    if (s.g.r) b.classList.add('rot');
-    if (w !== h) b.classList.add(w > h ? 'wide' : 'tall');
-    if (s.w) b.classList.add('blade');
-    b.style.gridColumn = `${s.g.x + 1} / span ${w}`;
-    b.style.gridRow = `${s.g.y + 1} / span ${h}`;
-    b.style.setProperty('--w', w);
-    b.style.setProperty('--h', h);
-    box.append(b);
-  });
-  box.append(el('i', { class: 'inv-shadow', hidden: true }));
-  return box;
-}
-
-const LONG_MS = 430;
+const LONG_MS = 380;
 
 /**
  * The drag & drop engine. ctx:
  *   root                the element slots live in (events are delegated)
- *   slots(c)            → the slot array of container c ('bag' | 'trunk')
+ *   slots(c)            → the slot array of container c
  *   cap(c)              → how many slots of c can be used (Infinity = grows)
- *   other(c)            → the container a quick-move sends to (or null)
+ *   other(c)            → the container a quick move sends to (or null)
  *   move(c, i, d, j, k) → do the transfer (returns units moved)
+ *   quick(c, i)         optional: the quick move itself (returns units moved)
+ *   outside(c, i, k)    optional: dropped outside the root (else it springs back)
+ *   numKey(c, i, n)     optional: 1–9 pressed over a slot
  *   toss(c, i, k)       the drop target [data-drop="toss"]
  *   select(c, i, node)  a click / tap
  *   hover(c, i, node, e) | hover(null)   mouse hover (tooltips)
@@ -123,75 +107,20 @@ export class SlotDnD {
     this.ghost = el('div', { class: 'inv-ghost', hidden: true, 'aria-hidden': 'true' }, [el('img', { class: 'pix', alt: '' }), el('span', { class: 'n' })]);
     document.body.append(this.ghost);
     this.lastTap = { t: 0, key: '' };
+    this.hoverSlot = null;
     this.on = [];
     const add = (t, type, fn, o) => { t.addEventListener(type, fn, o); this.on.push(() => t.removeEventListener(type, fn, o)); };
     add(this.root, 'pointerdown', (e) => this.down(e));
+    add(window, 'pointerdown', (e) => this.downOutside(e), true);
     add(window, 'pointermove', (e) => this.move(e), { passive: false });
     add(window, 'pointerup', (e) => this.up(e));
     add(window, 'pointercancel', (e) => this.cancelPress(e));
     add(this.root, 'contextmenu', (e) => e.preventDefault());
     add(this.root, 'pointerover', (e) => this.over(e));
-    add(this.root, 'pointerleave', () => ctx.hover?.(null));
+    add(this.root, 'pointerleave', () => { this.hoverSlot = null; ctx.hover?.(null); });
     add(this.root, 'keydown', (e) => this.key(e));
-    add(window, 'keydown', (e) => { if (this.hand && (e.code === 'KeyR' || e.key === 'r' || e.key === 'R')) { e.preventDefault(); e.stopPropagation(); this.turn(); } }, true);
-    add(this.root, 'wheel', (e) => { if (this.hand) { e.preventDefault(); this.turn(); } }, { passive: false });
+    add(window, 'keydown', (e) => this.digit(e), true);
   }
-
-  /** The grid cell under a point: { c, x, y, box } (or null off the grids). */
-  cellAt(px, py) {
-    for (const box of this.root.querySelectorAll('.inv-gridbox[data-gridc]')) {
-      const r = box.getBoundingClientRect();
-      if (px < r.left || py < r.top || px >= r.right || py >= r.bottom) continue;
-      const cols = +box.dataset.cols, rows = +box.dataset.rows;
-      const cs = getComputedStyle(box);
-      const pl = parseFloat(cs.paddingLeft) || 0, pt = parseFloat(cs.paddingTop) || 0;
-      const cw = (r.width - pl * 2) / cols, ch = cw;
-      const x = Math.floor((px - r.left - pl) / cw), y = Math.floor((py - r.top - pt) / ch);
-      if (x < 0 || y < 0 || x >= cols || y >= rows) return null;
-      return { c: box.dataset.gridc, x, y, box, cw };
-    }
-    return null;
-  }
-  /** Where the held tile's top-left cell would land for the pointer at (px, py). */
-  anchorAt(px, py) {
-    const cell = this.cellAt(px, py);
-    const h = this.hand;
-    if (!cell || !h) return null;
-    const s = this.stack(h.c, h.i);
-    if (!s) return null;
-    const [w, hh] = Inv.turned(Inv.footprint(s), h.r || 0);
-    const ox = Math.min(w - 1, h.ox || 0), oy = Math.min(hh - 1, h.oy || 0);
-    return { ...cell, x: cell.x - ox, y: cell.y - oy, w, h: hh };
-  }
-  /** Turn what's in the paw a quarter (R, the wheel, the Turn button). */
-  turn() {
-    const h = this.hand;
-    if (!h) return;
-    const s = this.stack(h.c, h.i);
-    if (!s) return;
-    const fp = Inv.footprint(s);
-    if (fp[0] === fp[1]) { this.ctx.sfx?.('nope'); return; }
-    h.r = h.r ? 0 : 1;
-    const t = h.ox; h.ox = h.oy; h.oy = t;
-    this.ctx.sfx?.('one');
-    this.ghostFor(s, h.k, true);
-    if (this.lastPt) { this.showGhost(this.lastPt.x, this.lastPt.y); this.highlight(this.lastPt.x, this.lastPt.y); }
-    this.ctx.turned?.(!!h.r);
-  }
-  /** Put what's in the paw down on a grid where the pointer is. True if it was a grid drop. */
-  placeGrid(px, py, k) {
-    const a = this.anchorAt(px, py), h = this.hand;
-    if (!a || !h) return false;
-    const r = this.ctx.moveAt?.(h.c, h.i, a.c, a.x, a.y, h.r || 0, k);
-    if (!r || r.moved <= 0) { this.ctx.sfx?.('nope'); this.shakeShadow(); return true; }
-    this.ctx.sfx?.(k === 1 && h.k > 1 ? 'one' : r.kind);
-    h.k -= r.moved;
-    if (h.k <= 0 || r.kind === 'swap' || !this.stack(h.c, h.i)) { this.hand = null; this.hideGhost(); this.clearHighlight(); }
-    else this.ghostFor(this.stack(h.c, h.i), h.k);
-    this.ctx.changed();
-    return true;
-  }
-  shakeShadow() { const sh = this.root.querySelector('.inv-shadow:not([hidden])'); if (sh) bounce(sh, 'shake'); }
 
   slotOf(node) {
     const b = node?.closest?.('.inv-slot');
@@ -199,8 +128,11 @@ export class SlotDnD {
     return { c: b.dataset.c, i: +b.dataset.i, node: b };
   }
   stack(c, i) { return this.ctx.slots(c)?.[i] || null; }
+  nodeOf(c, i) { return this.root.querySelector(`.inv-slot[data-c="${c}"][data-i="${i}"]`); }
   /** Units of slot (c, i) held in the paw (they still sit in the slot until dropped). */
   heldFrom(c, i) { return this.hand && this.hand.c === c && this.hand.i === i ? this.hand.k : 0; }
+  /** "No": the slot shakes red, what you hold springs back. */
+  nope(node) { this.ctx.sfx?.('nope'); bounce(node, 'shake'); if (this.ghost && !this.ghost.hidden) bounce(this.ghost, 'nope'); }
 
   down(e) {
     if (e.button > 2 || (e.pointerType === 'mouse' && e.button === 1)) return;
@@ -209,14 +141,11 @@ export class SlotDnD {
     const dropT = e.target.closest?.('[data-drop]');
     // with something in the paw, a click or tap puts it down
     if (this.hand) {
-      e.preventDefault();
-      if (e.target.closest?.('.inv-turn')) return;
-      if (e.button !== 2 && this.cellAt(e.clientX, e.clientY)) { this.placeGrid(e.clientX, e.clientY, this.hand.k); return; }
-      if (e.button === 2 && this.cellAt(e.clientX, e.clientY)) { this.turn(); return; }
       if (s) {
-        const k = e.button === 2 ? 1 : this.hand.k;
-        this.place(s.c, s.i, k, s.node);
-      } else if (dropT) this.dropOnTarget(dropT, this.hand.c, this.hand.i, this.hand.k);
+        e.preventDefault();
+        if (s.c === this.hand.c && s.i === this.hand.i && e.button !== 2) { this.cancelHand(); return; }
+        this.place(s.c, s.i, e.button === 2 ? 1 : this.hand.k, s.node, true);
+      } else if (dropT) { e.preventDefault(); this.dropOnTarget(dropT, this.hand.c, this.hand.i, this.hand.k); }
       else if (!e.target.closest('.inv-ghost')) this.cancelHand();
       return;
     }
@@ -226,17 +155,30 @@ export class SlotDnD {
     e.preventDefault();
     const n = Inv.stackN(st);
     this.drag = { ...s, pid: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, k: e.button === 2 ? Math.ceil(n / 2) : n, right: e.button === 2, touch: e.pointerType !== 'mouse', started: false, long: false, shift: e.shiftKey };
-    if (this.drag.touch && n > 1) {
+    if (this.drag.touch) {
+      // a long press lifts the whole stack (then drag it, or tap where it goes)
       this.drag.longT = setTimeout(() => {
         const d = this.drag;
         if (!d || d.started) return;
         d.long = true;
-        d.k = Math.ceil(n / 2);
-        this.ctx.sfx?.('split');
+        this.ctx.sfx?.('lift');
         bounce(d.node, 'squish');
         navigator.vibrate?.(12);
       }, LONG_MS);
     }
+  }
+  /** A click outside the pack with something in the paw: it drops out (the backdrop doesn't close). */
+  downOutside(e) {
+    if (!this.hand || this.drag || e.target !== this.root.closest('.modal-back')) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const h = this.hand;
+    this.hand = null;
+    this.hideGhost();
+    this.clearHighlight();
+    if (this.ctx.outside) this.ctx.outside(h.c, h.i, h.k);
+    else this.flyBack(h);
+    this.ctx.changed();
   }
 
   move(e) {
@@ -248,7 +190,7 @@ export class SlotDnD {
     if (!d.started && dist > (d.touch ? 9 : 5)) {
       clearTimeout(d.longT);
       d.started = true;
-      this.hand = { c: d.c, i: d.i, k: d.k, dragging: true, ...this.grabOf(d) };
+      this.hand = { c: d.c, i: d.i, k: d.k, dragging: true };
       this.ctx.hover?.(null);
       this.ctx.sfx?.('lift');
       this.ctx.changed();
@@ -262,51 +204,38 @@ export class SlotDnD {
     }
   }
 
-  /** Which cell of its tile a stack was picked up by (so it lands under the paw the same way). */
-  grabOf(d) {
-    const s = this.stack(d.c, d.i);
-    const r = s?.g?.r || 0;
-    if (!s?.g || !d.node?.classList.contains('tile')) return { r, ox: 0, oy: 0 };
-    const b = d.node.getBoundingClientRect();
-    const [w, h] = Inv.dimsOf(s);
-    return { r, ox: Math.max(0, Math.min(w - 1, Math.floor(((d.x0 - b.left) / b.width) * w))), oy: Math.max(0, Math.min(h - 1, Math.floor(((d.y0 - b.top) / b.height) * h))) };
-  }
-
   up(e) {
     const d = this.drag;
     if (!d || e.pointerId !== d.pid) return;
     clearTimeout(d.longT);
     this.drag = null;
     if (d.started) {
-      // a drag ends where the pointer is: on a grid, where the shadow shows
-      if (this.hand && this.cellAt(e.clientX, e.clientY)) {
-        this.placeGrid(e.clientX, e.clientY, this.hand.k);
-        if (this.hand) { const h = this.hand; this.hand = null; this.flyBack(h); }
-        this.hideGhost();
-        this.clearHighlight();
-        this.ctx.changed();
-        return;
-      }
+      // a drag ends where the pointer is
+      this.ghost.style.visibility = 'hidden';
       const tgt = document.elementFromPoint(e.clientX, e.clientY);
+      this.ghost.style.visibility = '';
       const s = this.slotOf(tgt);
       const dropT = tgt?.closest?.('[data-drop]');
+      const inside = tgt && this.root.contains(tgt);
       const h = this.hand;
-      this.hand = null;
       this.clearHighlight();
-      if (s && h) { this.hand = h; this.place(s.c, s.i, h.k, s.node); this.hand = null; }
+      if (s && h) { if (s.c === h.c && s.i === h.i) { this.hand = null; this.flyBack(h); } else this.place(s.c, s.i, h.k, s.node, false); this.hand = null; }
       else if (dropT && h) this.dropOnTarget(dropT, h.c, h.i, h.k);
-      else { this.ctx.sfx?.('nope'); this.flyBack(h); }
+      else if (!inside && h && this.ctx.outside) { this.hand = null; this.ctx.outside(h.c, h.i, h.k); }
+      else { this.hand = null; this.flyBack(h); }
+      this.hand = null;
       this.hideGhost();
       this.ctx.changed();
       return;
     }
     // no drag: a click / tap / long-press / right-click
-    if (d.long || d.right) {
-      // half the stack into the paw
-      this.hand = { c: d.c, i: d.i, k: d.k, ...this.grabOf(d) };
+    if (d.long || d.right || (!d.touch && !d.shift)) {
+      // into the paw: the whole stack (a click, a long press) or half of it (right-click)
+      this.hand = { c: d.c, i: d.i, k: d.k };
       this.ghostFor(this.stack(d.c, d.i), d.k);
       this.showGhost(e.clientX, e.clientY);
-      if (d.right) this.ctx.sfx?.('split');
+      this.ctx.sfx?.(d.right ? 'split' : 'lift');
+      if (!d.touch && !d.right) this.ctx.select?.(d.c, d.i, d.node, true);
       this.ctx.changed();
       return;
     }
@@ -329,8 +258,8 @@ export class SlotDnD {
     if (d.started) { this.flyBack(this.hand); this.hand = null; this.hideGhost(); this.clearHighlight(); this.ctx.changed(); }
   }
 
-  /** Put k units from the paw on slot (c, i). */
-  place(c, i, k, node) {
+  /** Put k units from the paw on slot (c, i). click: a Minecraft click (a swapped stack stays in the paw). */
+  place(c, i, k, node, click = false) {
     const h = this.hand;
     if (!h) return;
     const src = this.stack(h.c, h.i);
@@ -338,16 +267,21 @@ export class SlotDnD {
     if (!src) { this.cancelHand(); return; }
     if (h.c === c && h.i === i) { this.cancelHand(); return; }
     const whole = h.k >= Inv.stackN(src) && k >= h.k;
-    const kind = !dst ? 'drop' : Inv.sameKind(src, dst) ? 'merge' : 'swap';
-    if (kind === 'swap' && !whole) { this.ctx.sfx?.('nope'); bounce(node, 'shake'); return; }
+    const kind = !dst || dst.tool ? 'drop' : Inv.sameKind(src, dst) ? 'merge' : 'swap';
+    if (kind === 'swap' && !whole) { this.nope(node); return; }
     const moved = this.ctx.move(h.c, h.i, c, i, k);
-    if (moved <= 0) { this.ctx.sfx?.('nope'); bounce(node, 'shake'); return; }
+    if (moved <= 0) { this.nope(node); return; }
     this.ctx.sfx?.(k === 1 && h.k > 1 ? 'one' : kind);
     h.k -= moved;
-    if (h.k <= 0 || kind === 'swap' || !this.stack(h.c, h.i)) { this.hand = null; this.hideGhost(); }
-    else this.ghostFor(this.stack(h.c, h.i), h.k);
+    const left = this.stack(h.c, h.i);
+    if (kind === 'swap' && click && left) {
+      // what was there is in your paw now (it waits in the slot yours came from)
+      this.hand = { c: h.c, i: h.i, k: Inv.stackN(left) };
+      this.ghostFor(left, this.hand.k);
+    } else if (h.k <= 0 || kind === 'swap' || !left) { this.hand = null; this.hideGhost(); }
+    else this.ghostFor(left, h.k);
     this.ctx.changed();
-    bounce(this.root.querySelector(`.inv-slot[data-c="${c}"][data-i="${i}"]`));
+    bounce(this.nodeOf(c, i));
   }
 
   dropOnTarget(t, c, i, k) {
@@ -364,19 +298,19 @@ export class SlotDnD {
     this.ctx.changed();
   }
 
-  /** Double-click / shift-click: send the whole stack to the other container. */
+  /** Shift-click / double-tap: the quick move (belt ↔ pack, or to the other open container). */
   quick(c, i) {
-    const to = this.ctx.other?.(c);
-    if (!to) { const s = this.slotOf(this.root.querySelector(`.inv-slot[data-c="${c}"][data-i="${i}"]`)); if (s) this.ctx.select?.(c, i, s.node); return; }
     const st = this.stack(c, i);
     if (!st) return;
-    const moved = this.ctx.move(c, i, to, -1, Infinity);
-    this.ctx.sfx?.(moved > 0 ? 'drop' : 'nope');
-    this.ctx.changed();
-    if (moved > 0) {
-      const last = [...this.root.querySelectorAll(`.inv-slot[data-c="${to}"]`)].find((n) => !n.classList.contains('empty') && n.querySelector('img')?.src === stackIcon(st));
-      bounce(last);
+    let moved = 0;
+    if (this.ctx.quick) moved = this.ctx.quick(c, i);
+    else {
+      const to = this.ctx.other?.(c);
+      if (!to) { this.ctx.select?.(c, i, this.nodeOf(c, i)); return; }
+      moved = this.ctx.move(c, i, to, -1, Infinity);
     }
+    if (moved > 0) this.ctx.sfx?.('drop'); else this.nope(this.nodeOf(c, i));
+    this.ctx.changed();
   }
 
   cancelHand() {
@@ -394,14 +328,25 @@ export class SlotDnD {
     const s = this.slotOf(e.target);
     if (!s) return;
     e.preventDefault();
-    if (this.hand) this.place(s.c, s.i, this.hand.k, s.node);
+    if (this.hand) this.place(s.c, s.i, this.hand.k, s.node, true);
     else if (e.shiftKey) this.quick(s.c, s.i);
     else this.ctx.select?.(s.c, s.i, s.node);
   }
+  /** 1–9 over a slot: swap it with that belt slot (Minecraft). */
+  digit(e) {
+    const m = /^Digit([1-9])$/.exec(e.code || '');
+    if (!m || !this.ctx.numKey || !this.root.isConnected) return;
+    const s = this.hoverSlot && this.hoverSlot.node.isConnected ? this.hoverSlot : this.slotOf(document.activeElement);
+    if (!s || this.hand || this.drag) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.ctx.numKey(s.c, s.i, +m[1]);
+  }
 
   over(e) {
-    if (this.drag || this.hand || e.pointerType !== 'mouse') return;
     const s = this.slotOf(e.target);
+    this.hoverSlot = s;
+    if (this.drag || this.hand || e.pointerType !== 'mouse') return;
     if (s && this.stack(s.c, s.i)) this.ctx.hover?.(s.c, s.i, s.node, e);
     else this.ctx.hover?.(null);
   }
@@ -414,20 +359,7 @@ export class SlotDnD {
     n.textContent = k > 1 ? String(k) : '';
     this.ghost.hidden = false;
     this.ghost.classList.toggle('touch', !!this.drag?.touch);
-    // on a grid the paw holds the tile's shape (turned as you've turned it)
-    const h = this.hand, box = this.root.querySelector('.inv-gridbox[data-gridc]');
-    const cell = box ? this.cellAt(box.getBoundingClientRect().left + 4, box.getBoundingClientRect().top + 4)?.cw : 0;
-    if (h && cell) {
-      const [w, hh] = Inv.turned(Inv.footprint(s), h.r || 0);
-      this.ghost.classList.add('tiled');
-      this.ghost.classList.toggle('rot', !!h.r);
-      this.ghost.classList.toggle('blade', !!s.w);
-      this.ghost.style.setProperty('--gw', (w * cell).toFixed(1) + 'px');
-      this.ghost.style.setProperty('--gh', (hh * cell).toFixed(1) + 'px');
-      this.ghost.style.setProperty('--gox', (((h.ox || 0) + 0.5) * cell).toFixed(1) + 'px');
-      this.ghost.style.setProperty('--goy', (((h.oy || 0) + 0.5) * cell).toFixed(1) + 'px');
-      this.ghost.style.setProperty('--gi', (Math.min(w, hh) * cell * 0.86).toFixed(1) + 'px');
-    } else this.ghost.classList.remove('tiled', 'rot', 'blade');
+    this.ghost.classList.toggle('blade', !!s.w);
     this.ctx.held?.(true);
     if (!quiet) bounce(this.ghost, 'grab');
   }
@@ -440,31 +372,17 @@ export class SlotDnD {
   hideGhost() { this.ghost.hidden = true; this.ctx.held?.(false); }
   flyBack(h) {
     if (!h) return;
-    const node = this.root.querySelector(`.inv-slot[data-c="${h.c}"][data-i="${h.i}"]`);
-    bounce(node);
+    bounce(this.nodeOf(h.c, h.i));
   }
   highlight(x, y) {
     this.lastPt = { x, y };
-    // on a grid: the shadow where the tile would land (green / gold / red)
-    const a = this.anchorAt(x, y);
-    for (const sh of this.root.querySelectorAll('.inv-shadow')) {
-      const mine = a && sh.parentElement === a.box;
-      if (!mine) { sh.hidden = true; continue; }
-      const kind = this.ctx.canAt?.(this.hand.c, this.hand.i, a.c, a.x, a.y, this.hand.r || 0);
-      const G = { cols: +a.box.dataset.cols, rows: +a.box.dataset.rows };
-      const x0 = Math.max(0, a.x), y0 = Math.max(0, a.y), x1 = Math.min(G.cols, a.x + a.w), y1 = Math.min(G.rows, a.y + a.h);
-      sh.hidden = x1 <= x0 || y1 <= y0;
-      sh.style.gridColumn = `${x0 + 1} / ${x1 + 1}`;
-      sh.style.gridRow = `${y0 + 1} / ${y1 + 1}`;
-      sh.className = 'inv-shadow ' + (kind || 'bad');
-    }
-    if (a) { this.hot?.classList.remove('over'); this.hot = null; return; }
-    this.ghost.hidden = this.ghost.hidden || false;
     const prevVis = this.ghost.style.visibility;
     this.ghost.style.visibility = 'hidden';
     const t = document.elementFromPoint(x, y);
     this.ghost.style.visibility = prevVis;
     const node = t?.closest?.('.inv-slot:not([disabled]), [data-drop]');
+    const out = !!this.hand && !!t && !this.root.contains(t) && !!this.ctx.outside;
+    this.ghost.classList.toggle('out', out);
     if (node === this.hot) return;
     this.hot?.classList.remove('over');
     this.hot = node && this.root.contains(node) ? node : null;
@@ -473,7 +391,7 @@ export class SlotDnD {
   clearHighlight() {
     this.hot?.classList.remove('over');
     this.hot = null;
-    for (const sh of this.root.querySelectorAll('.inv-shadow')) sh.hidden = true;
+    this.ghost.classList.remove('out');
   }
 
   destroy() {

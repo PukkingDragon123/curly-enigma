@@ -22,7 +22,7 @@
 //        words at once); o.after: the copy goes after node in the page (default before)
 //   bits(node | rect, o)           a burst of tiny voxel bits / embers from a node's letters (or a rect)
 //        o: { n, colors: ['#hex', ...], rise, spread, life }
-import { voiceBlip, breathAfter } from './talkType.js';
+import { voiceFor, breathAfter } from './talkType.js';
 import './floatText.css';
 
 const ATOM = new Set(['KBD', 'IMG', 'CANVAS', 'SVG', 'svg', 'PICTURE', 'VIDEO']);
@@ -112,7 +112,8 @@ export function typeFloat(host, html, o = {}) {
   const total = flat.length;
   const speed = o.speed || 46;
   const face = o.face || null;
-  let n = 0, shown = 0, pause = 0, delay = o.delay ?? 0.1, blip = 0, raf = 0, timer = 0, last = performance.now(), born = last, talking = false;
+  let n = 0, shown = 0, pause = 0, delay = o.delay ?? 0.1, raf = 0, timer = 0, last = performance.now(), born = last, talking = false;
+  const voice = voiceFor(o); // (the 8-bit babble, one blip a syllable: src/audio/voice8.js)
   const ctl = { done: total === 0, stop, finish, cells, flat };
   const show = (k) => { if (k > shown) { arrive(cells, shown, k, { stagger: 0.008, max: 0.3 }); shown = k; } };
   function finish() {
@@ -147,8 +148,7 @@ export function typeFloat(host, html, o = {}) {
         }
         show(k);
         if (!talking && pause <= 0) { face?.talk(true); talking = true; }
-        blip -= k - before;
-        if (blip <= 0 && o.audio && flat[k - 1] !== ' ' && o.sound !== false) { blip = 3; voiceBlip(o.audio, o.voice, o.mood); }
+        voice.letters(flat, before, k);
       }
       if (n >= total) { finish(); return; }
     }

@@ -9,6 +9,7 @@ import { Cloth, ClothSet, clothTexture } from '../gfx/cloth.js';
 import { TOWN } from '../iso/townLayout.js';
 import { VoxelGrid, M32, line } from '../iso/kit.js';
 import { M } from './units.js';
+import { STALL, stallCloth } from './shopStalls.js';
 
 /** Banner colours and emblem per shop. */
 const SHOP_BANNER = {
@@ -19,7 +20,6 @@ const SHOP_BANNER = {
   blueprints: { base: [44, 80, 120], trim: [220, 230, 240], emblem: 'star' },
   outfitter: { base: [120, 50, 90], trim: [236, 196, 110], emblem: 'cup' },
 };
-const STALL_CLOTH = { shrooms: [[170, 64, 52], [232, 214, 176]], fish: [[60, 100, 150], [232, 232, 222]], gems: [[110, 70, 150], [232, 200, 96]] };
 
 /** An iron bracket sticking out of a wall along +z, L TU long, with a scroll under it (voxel art, TU). */
 function bracket(L = 0.9) {
@@ -69,11 +69,11 @@ export function buildTownCloth(S) {
   }
   // the market stalls' awnings: a striped valance along the front edge
   T.stalls.forEach((s, i) => {
-    const [a, b] = STALL_CLOTH[s.kind] || STALL_CLOTH.shrooms;
-    const w = 1.66, cs = Math.cos(s.yaw), sn = Math.sin(s.yaw);
-    const lx = -w / 2, lz = 0.6;
-    const cl = new Cloth({ w, h: 0.26, nx: 11, ny: 3, tex: clothTexture('valance', { base: a, trim: b, seed: i + 3 }), iters: 3, damping: 2.2, g, gust: 1.4 });
-    cl.place(s.x + lx * cs + lz * sn, 1.68, s.z - lx * sn + lz * cs, s.yaw);
+    const [a, b] = stallCloth(s.shop);
+    const V = STALL.valance, w = V.w, cs = Math.cos(s.yaw), sn = Math.sin(s.yaw);
+    const lx = -w / 2, lz = V.z;
+    const cl = new Cloth({ w, h: 0.17, nx: 13, ny: 3, tex: clothTexture('valance', { base: a, trim: b, seed: i + 3 }), iters: 3, damping: 2.2, g, gust: 1.4 });
+    cl.place(s.x + lx * cs + lz * sn, V.y, s.z - lx * sn + lz * cs, s.yaw);
     set.add(cl);
   });
   // the flag by the lift, on its pole

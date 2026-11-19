@@ -21,6 +21,7 @@ import { coalCart } from './lift.js';
 import { LID, cullFaces } from './build.js';
 import { M } from './units.js';
 import { buildTownCloth } from './townCloth.js';
+import { shopStall, STALL } from './shopStalls.js';
 import { ARCH as PARCH, PASSAGE, TOWN_XF } from '../home/passage.js';
 
 const _v = new THREE.Vector3();
@@ -638,20 +639,27 @@ export function buildMarket(S) {
   S.stallSpots = [];
   const Y = new THREE.Vector3(0, 1, 0);
   TOWN.stalls.forEach((s, i) => {
-    B.place(() => P.marketStall(s.kind, i + 2), s.x, s.z, s.yaw, { solid: false });
-    // the counter and the back posts block; the keeper stands in between
-    _v.set(0, 0, 0.3).applyAxisAngle(Y, s.yaw);
-    B.solidRot(s.x + _v.x, s.z + _v.z, 1.62, 0.36, s.yaw, 0, 0.8);
-    _v.set(0, 0, -0.45).applyAxisAngle(Y, s.yaw);
-    B.solidRot(s.x + _v.x, s.z + _v.z, 1.5, 0.3, s.yaw, 0, 0.5);
-    _v.set(0.7, 0, 0.6).applyAxisAngle(Y, s.yaw);
-    S.addLight({ x: s.x + _v.x, y: 1.55, z: s.z + _v.z, color: 0xffc070, intensity: 2, distance: 3, real: true, pool: 1.3, poolOpacity: 0.16, halo: 0.45, haloOpacity: 0.45, flicker: 0.14, bakePower: 0.7, bakeRadius: 2.6 });
-    _v.set(0, 0, -0.12).applyAxisAngle(Y, s.yaw);
-    S.stallSpots.push({ x: s.x + _v.x, z: s.z + _v.z, yaw: s.yaw, kind: s.kind });
-    _v.set(1.05, 0, 0.1).applyAxisAngle(Y, s.yaw);
-    B.place(() => (i % 2 ? P.sack({ color: 0xa88a5a }) : P.crate(i + 11)), s.x + _v.x, s.z + _v.z, s.yaw + 0.3);
-    _v.set(-1.05, 0, 0.25).applyAxisAngle(Y, s.yaw);
-    B.place(() => P.barrel(i + 21, { fill: s.kind === 'fish' ? 'water' : s.kind === 'gems' ? 'ore' : 'shrooms' }), s.x + _v.x, s.z + _v.z, s.yaw);
+    const loc = (lx, lz) => { _v.set(lx, 0, lz).applyAxisAngle(Y, s.yaw); return { x: s.x + _v.x, z: s.z + _v.z }; };
+    B.place(() => shopStall(s.shop, i + 2), s.x, s.z, s.yaw, { solid: false });
+    // the whole stall blocks (counter, side boards, back wall); the keeper stands inside
+    B.solidRot(s.x, s.z, STALL.w + 0.08, STALL.d, s.yaw, 0, 2.3);
+    // the hanging lantern: a warm pool on the counter and the keeper's face
+    const L = STALL.lantern, lp = loc(L.x, L.z + 0.06);
+    S.addLight({ x: lp.x, y: L.y, z: lp.z, color: 0xffc070, intensity: 1.3, distance: 2.8, real: true, pool: 1.3, poolOpacity: 0.14, halo: 0.4, haloOpacity: 0.4, flicker: 0.14, bakePower: 0.45, bakeRadius: 2.4 });
+    // the keeper behind the counter, and the serving window the crosshair targets (TU box)
+    const k = loc(0, STALL.keeper.z), wv = STALL.win;
+    const cs = [loc(wv[0], wv[2]), loc(wv[3], wv[2]), loc(wv[0], wv[5]), loc(wv[3], wv[5])];
+    S.shopInfo[s.shop] = {
+      yaw: s.yaw, stall: true,
+      keeper: { x: k.x, y: 0, z: k.z },
+      win: [Math.min(...cs.map((c) => c.x)), wv[1], Math.min(...cs.map((c) => c.z)), Math.max(...cs.map((c) => c.x)), wv[4], Math.max(...cs.map((c) => c.z))],
+      stand: loc(0, 1.5),
+    };
+    S.stallSpots.push({ x: k.x, z: k.z, yaw: s.yaw, shop: s.shop });
+    // a crate and a sack (or barrel) by the sides
+    const c1 = loc(1.38, 0.15), c2 = loc(-1.38, 0.3);
+    if (s.shop !== 'outpost') B.place(() => (i % 2 ? P.sack({ color: 0xa88a5a }) : P.crate(i + 11)), c1.x, c1.z, s.yaw + 0.3);
+    B.place(() => P.barrel(i + 21, { fill: s.shop === 'herbalist' ? 'shrooms' : s.shop === 'outpost' ? 'coal' : s.shop === 'rocco' ? null : 'apples' }), c2.x, c2.z, s.yaw);
   });
 }
 

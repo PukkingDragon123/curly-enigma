@@ -8,11 +8,13 @@
 // Built in town units under one scaled root (src/town/units.js); the mole walks in meters
 // (FPSRig + BoxWorld, docs/FPS.md).
 import * as THREE from 'three';
+import { HandTools } from '../ui/handTools.js'; // [inventory hook]
 import { Scene } from '../core/Scene.js';
 import { FPSRig, BoxWorld } from '../fps/FPSKit.js';
 import { openLiftPanel, rideTo, liftState } from '../fps/lifts.js';
 import { Actor } from '../iso/Actor.js';
 import { makeCharacter } from '../gfx/characters.js';
+import { makeRocco } from '../deep/traders/rocco.js';
 import { TOWN } from '../iso/townLayout.js';
 import { paintTownFloor, floorMaterialAt } from '../iso/townFloor.js';
 import { WATER_TIME } from '../iso/water.js';
@@ -509,8 +511,8 @@ export default class TownScene extends Scene {
   // ------------------------------------------------------------ keepers
   spawnKeepers() {
     this.keepers = [];
-    const mk = (id, spec, pos, yaw, label) => {
-      const rig = makeCharacter({ seed: 9, eyes: 'bead', dirt: 0.2, blush: true, ...KEEPER_LOOKS[id], ...spec, hat: spec.hat || 'none', glasses: spec.glasses || false });
+    const mk = (id, spec, pos, yaw, label, rig0 = null) => {
+      const rig = rig0 || makeCharacter({ seed: 9, eyes: 'bead', dirt: 0.2, blush: true, ...KEEPER_LOOKS[id], ...spec, hat: spec.hat || 'none', glasses: spec.glasses || false });
       const a = new Actor(rig, { x: pos.x, z: pos.z, yaw, name: spec.name, voice: spec.voice, radius: 0.27 });
       a.body.position.y = pos.y || 0;
       // grown-up keepers: stand so the eyes sit in the upper part of the serving window
@@ -535,6 +537,14 @@ export default class TownScene extends Scene {
       mk(s.id, sh.keeper, info.keeper, info.yaw, s.id === 'assay' ? `Sell to ${sh.keeper.name}` : `Shop at ${sh.name}`);
     }
     mk('ticket', SHOPS.ticket.keeper, this.shopInfo.ticket.keeper, 0, 'Surface Express tickets');
+    // the burrow folk at their stalls on the square (Rocco is a fox painted as a raccoon)
+    for (const s of TOWN.stalls) {
+      const sh = SHOPS[s.shop], info = this.shopInfo[s.shop];
+      if (!sh || !info) continue;
+      let rig = null;
+      if (s.shop === 'rocco') try { rig = makeRocco(); } catch (e) { console.warn('town: rocco', e); }
+      mk(s.shop, sh.keeper, info.keeper, info.yaw, `Shop at ${sh.name}`, rig);
+    }
     const L = TOWN.lift;
     this.bramble = mk('lift', BRAMBLE, { x: L.op.x, z: L.op.z }, Math.PI / 2 - 0.4, 'Ride the lift');
     this.bramble.a.collide = true;
@@ -860,6 +870,7 @@ export default class TownScene extends Scene {
       this.pushPlayer();
       this.checkPassage();
     }
+    (this.hands ||= new HandTools(this)).update(dt, busy || !!this.locked || !!this.seat, !!this.cut); // [inventory hook] the belt + the held tool (src/ui/handTools.js)
     this.syncPlayerProxy();
     this.eyeTarget.copy(rig.camera.position);
     g.convo?.director?.apply(rig.camera, dt); // cutscene talk camera (src/fx/director.js) [convo hook]

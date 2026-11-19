@@ -5,16 +5,20 @@
 //   const t = typeText(el, html, { voice, mood, audio, face, speed, onDone })
 //   t.finish()   show everything now      t.done   true once it's all there      t.stop()
 //   voiceBlip(audio, voice, mood, { muffled })  one syllable in a voice ({ f, type, q, vib, mumble })
+// The voice is the 8-bit babble of src/audio/voice8.js: one chip blip per syllable of the text,
+// tuned by the speaker (o.who: their key, for a timbre of their own) and the sentence.
+import { babbler, say } from '../audio/voice8.js';
 export const MOOD_PITCH = { calm: 1, neutral: 1, happy: 1.1, laugh: 1.22, worried: 1.16, stern: 0.86, proud: 1.04, sad: 0.9, angry: 0.92, surprised: 1.28, smug: 0.96, thinking: 0.94, sleepy: 0.8 };
 export const STAR_VOICE = { f: 205, type: 'square', q: 1.6, mumble: true };
 
 export function voiceBlip(a, v = STAR_VOICE, mood = 'calm', o = {}) {
-  if (!a?.tone || !a.ctx) return;
-  const base = (v.f || 205) * (MOOD_PITCH[mood] || 1);
-  const f = base * (0.82 + Math.random() * 0.4);
-  if (o.muffled) { a.tone({ f: f * 0.6, f2: f * 0.5, type: 'triangle', dur: 0.09, vol: 0.03, filter: 'lowpass', ff: 380, q: 0.8, reverb: 0.5 }); return; }
-  a.tone({ f, f2: f * (0.85 + Math.random() * 0.3), type: v.type || 'square', dur: v.mumble ? 0.05 : 0.045, vol: o.vol ?? 0.026, filter: 'bandpass', ff: base * 3, q: v.q || 1.6, ...(v.vib ? { vib: v.vib, vibRate: 14 } : {}) });
-  if (mood === 'worried') a.tone({ f: f * 1.02, type: 'sine', dur: 0.06, vol: 0.01, vib: 14, vibRate: 18 });
+  if (!a?.ctx) return;
+  say(a, v || STAR_VOICE, mood, o);
+}
+
+/** A babbling voice for typed text: .letters(flat, from, to) as letters appear (src/audio/voice8.js). */
+export function voiceFor(o = {}) {
+  return o.audio && o.sound !== false ? babbler(o.audio, o.voice || STAR_VOICE, o.mood, { who: o.who, muffled: o.muffled }) : { letters() {} };
 }
 
 /** Pause after a letter (end of a sentence, a clause, a dash). */
@@ -47,7 +51,8 @@ export function typeText(host, html, o = {}) {
   const total = flat.length;
   const speed = o.speed || 46;
   const face = o.face || null;
-  let n = 0, pause = 0, delay = o.delay ?? 0.1, blip = 0, raf = 0, timer = 0, last = performance.now(), born = last, talking = false;
+  let n = 0, pause = 0, delay = o.delay ?? 0.1, raf = 0, timer = 0, last = performance.now(), born = last, talking = false;
+  const voice = voiceFor(o);
   const ctl = { done: total === 0, stop, finish };
   const show = (k) => {
     let left = k;
@@ -92,8 +97,7 @@ export function typeText(host, html, o = {}) {
         }
         show(k);
         if (!talking && pause <= 0) { face?.talk(true); talking = true; }
-        blip -= k - before;
-        if (blip <= 0 && o.audio && flat[k - 1] !== ' ' && o.sound !== false) { blip = 3; voiceBlip(o.audio, o.voice, o.mood); }
+        voice.letters(flat, before, k);
       }
       if (n >= total) { finish(); return; }
     }

@@ -9,6 +9,7 @@ import { ChunkPool } from './ChunkPool.js';
 import { FPSPlayer } from './Player.js';
 import { Digger, breakable, plateOf, plateScale } from './Dig.js';
 import { Debris } from './Debris.js'; // (wave 14) chunky voxel bits knocked out of the face
+import { MoleShadow } from './MoleShadow.js'; // (wave 14) the mole's shape on the floor (its crawl, its paws)
 import { isBuilt } from './build/blocks.js';
 import { Cracks } from './Cracks.js'; // cracks on rock that took a blow but hasn't given yet
 import { Bodies } from './Bodies.js';
@@ -28,11 +29,11 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { iconURL as flatIcon } from '../gfx/PixelArt.js';
 import { itemVox } from '../ui/itemVox.js';
 import { VoxelGrid, meshGridGreedy } from '../gfx/Voxel.js';
-import { clamp, rand, chance, hexToRgb, formatGoldFull } from '../core/util.js';
+import { clamp, rand, chance, hexToRgb, formatGoldFull, hashStr } from '../core/util.js';
 import { DSPR } from '../ui/deepArt.js';
 import { Build } from './Build.js'; // building part: blocks, ladders, torches, doors, chests; tools that break them
 
-import { TOOL_KINDS, HOTBAR_N, hotbarOf } from '../core/hotbar.js';
+import { TOOL_KINDS, HOTBAR_N, hotbarOf, heldItem } from '../core/hotbar.js';
 // the build slot (slot 7) puts up what Build.js says: blocks on a 0.5 m grid, ladders, torches, doors…
 const REACH = 2.3;
 // (wave 14) how a blow feels, by what it lands on: camera kick, hit-stop on a crack (stop) and on a
@@ -108,6 +109,7 @@ export default class DigScene extends Scene {
     this.fx = new Particles(this.scene, this.world, this.U);
     this.fx.setPixelScale(g.engine.height, this.fov);
     this.bits = new Debris(this.scene, this.world, this.U);
+    this.shadow = new MoleShadow(this.scene, this.world);
     this.digger = new Digger(this.world);
     this.ores = new Ores(this.world);
     this.player = new FPSPlayer(this.world);
@@ -278,12 +280,14 @@ export default class DigScene extends Scene {
   }
   /** The strongest explosive in the bag (items with a blast radius). */
   bestBlast() {
-    let best = null;
+    let best = heldItem(this.state, this.slot, 'dynamite'); // [inventory hook] the stack on the picked belt slot
+    if (best) return best;
     for (const gr of this.state.inventory((it) => it && it.blast)) { const it = ITEMS[gr.id]; if (!best || it.blast > best.blast) best = it; }
     return best;
   }
   bestFood() {
-    let best = null;
+    let best = heldItem(this.state, this.slot, 'food'); // [inventory hook] the stack on the picked belt slot
+    if (best) return best;
     for (const gr of this.state.inventory((it) => it && (it.cat === 'food' || it.food))) {
       const it = ITEMS[gr.id];
       if (!best || (it.energy || it.food || 0) > (best.energy || best.food || 0)) best = it;
@@ -366,6 +370,7 @@ export default class DigScene extends Scene {
       if (this.props?.collide(pl.pos, 0.26, 0.85) && pl.hitsAt(pl.pos.x, pl.pos.y, pl.pos.z)) { pl.pos.x = ox; pl.pos.z = oz; }
     }
     if (ev.hop) { this.audio.play('jump', { vol: 0.12, pitch: 1.25 }); this.energy(0.05); }
+    if (!busy && (mv.x || mv.y) && pl.grounded && !exhausted && load.run && inp.isDown('ShiftLeft', 'ShiftRight')) this.energy(1.4 * dt); // [stamina hook] sprinting tires
     // hauling a heavy pack is hard work
     if (load.r > 1 && !busy && (mv.x || mv.y) && pl.grounded) this.energy(dt * 0.3 * Math.min(2, load.r - 1));
     if (ev.landed > 8) this.enemies?.noise?.(pl.pos.x, pl.pos.y, pl.pos.z, 3, 'land');
@@ -413,7 +418,12 @@ export default class DigScene extends Scene {
     this.updateProgress(dt);
     // camera (with kick and shake)
     const eye = pl.eye();
-    const bob = pl.grounded ? Math.sin(pl.bobT * 2) * 0.022 * clamp(pl.speed / 3, 0, 1) : 0;
+    // a belly crawl: the view low, heaving with each stroke and rolling side to side
+    const crawlK = (this.crawlK = (this.crawlK || 0) + ((pl.crawl ? 1 : 0) - (this.crawlK || 0)) * Math.min(1, dt * 8));
+    const cs = clamp(pl.speed / 1.1, 0, 1) * crawlK;
+    const bob = pl.grounded ? Math.sin(pl.bobT * 2) * 0.022 * clamp(pl.speed / 3, 0, 1) * (1 - crawlK) + Math.abs(Math.sin(pl.crawlPh)) * 0.022 * cs : 0;
+    const crawlRoll = Math.sin(pl.crawlPh) * 0.045 * cs, crawlPitch = -Math.abs(Math.cos(pl.crawlPh)) * 0.02 * cs;
+    this.shadow?.update(dt, pl);
     // the kick springs back with a small overshoot (quick and bouncy), the zoom punch too
     {
       const h = Math.min(dt, 1 / 30);
@@ -428,7 +438,7 @@ export default class DigScene extends Scene {
     const vo = this.viewOff && this.state.data.settings.shake ? this.viewOff : null; // a sneeze moves the head (enemies/veil.js)
     this.viewOff = null;
     this.camera.position.set(eye.x + (Math.random() - 0.5) * sh * 0.05, eye.y + bob + (Math.random() - 0.5) * sh * 0.05 + (vo ? vo[2] : 0), eye.z + (Math.random() - 0.5) * sh * 0.05);
-    this.camera.rotation.set(pl.pitch + this.kick.x + (vo ? vo[0] : 0), pl.yaw + this.kick.y, this.kick.z + (vo ? vo[1] : 0), 'YXZ');
+    this.camera.rotation.set(pl.pitch + this.kick.x + crawlPitch + (vo ? vo[0] : 0), pl.yaw + this.kick.y, this.kick.z + crawlRoll + (vo ? vo[1] : 0), 'YXZ');
     if (!this.gather) {
       const fov = this.fov + (this.state.data.settings.shake ? this.fovK : 0);
       if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
@@ -445,7 +455,7 @@ export default class DigScene extends Scene {
     // hands and tools
     if (this.vm) {
       const lampK = clamp(st.lightRadius() / 5, 0.6, 1.6);
-      this.vm.update(dt, { speed: pl.speed, grounded: pl.grounded, climbing: pl.climbing, swimming: pl.inWater, look, lamp: { color: this.U.lampCol.value, intensity: lampK }, ambient: this.U.ambient.value, camera: this.camera, heat: this.drillHeat });
+      this.vm.update(dt, { speed: pl.speed, grounded: pl.grounded, climbing: pl.climbing, swimming: pl.inWater, crawling: pl.crawl, crawlPh: pl.crawlPh, look, lamp: { color: this.U.lampCol.value, intensity: lampK }, ambient: this.U.ambient.value, camera: this.camera, heat: this.drillHeat });
     }
     this.hudTick(dt);
   }
@@ -534,8 +544,8 @@ export default class DigScene extends Scene {
           const hp = Math.max(0.3, mat.hp), power = this.digger.kitPower(this.pickPower());
           const R = clamp(0.11 + 0.2 * Math.sqrt(power / hp), 0.1, 0.46) * (brk === 'crumble' ? 1.08 : 1); // m (Dig.strike)
           const sink = brk === 'peel' ? R * 0.2 : R * 0.45;
-          U.aimP.value.w = 0;
-          U.aimR.value = R * 0.97;
+          U.aimP.value.w = brk === 'peel' ? 0 : -1; // -1: the rounded block soil goes in (Dig.bite box)
+          U.aimR.value = R * (brk === 'peel' ? 0.97 : 0.95);
           U.aim.value.set((hit.vx + 0.5) / VOX - n[0] * sink, (hit.vy + 0.5) / VOX - n[1] * sink, (hit.vz + 0.5) / VOX - n[2] * sink, U.aim.value.w);
         }
         want = 1;
@@ -680,23 +690,7 @@ export default class DigScene extends Scene {
       if (m === M.BEDROCK) this.say('bedrock', 'Bedrock. Nothing gets through that.', 'warn', 6);
       return;
     }
-    if (m >= ORE_BASE) {
-      // direct hit on ore: sparks, quality chips
-      const r = this.ores.hitOre(hit.vx, hit.vy, hit.vz, power * this.bonus('clean'));
-      this.audio.play('ore_damage');
-      this.sfx(['hit_metal1', 'hit_metal2'], { vol: 0.22, pitch: 1.3 + Math.random() * 0.2, reverb: 0.25 });
-      this.fx.sparks(px, py, pz, 10, col01(mat.accent), out, 3.5);
-      // bits of the ore itself fly off: you're chipping it
-      this.bits.burst(px, py, pz, 4, { kind: 'ore', out, colors: mat.tones.slice(1).map(col01), glow: 0.35 });
-      this.hitStop = Math.max(this.hitStop || 0, F.stop);
-      this.shake(F.shake * 0.5);
-      if (r) {
-        this.game.ui.floatText?.(`-${Math.max(1, Math.round(r.ore.frag * power * this.bonus('clean')))}%`, new THREE.Vector3(px, py, pz), { color: '#ff8a6a', size: 0.8, kind: 'ore' });
-        if (!this.flags.oreHit) { this.flags.oreHit = true; st.learn('ore_damage'); this.game.ui.floatText?.('Hit the rock, not ore', new THREE.Vector3(px + out[0] * 0.1, py + 0.2, pz + out[2] * 0.1), { kind: 'bad', life: 2.4, size: 0.85 }); }
-        if (r.s.q <= 0) this.shatter(r.d);
-      }
-      return;
-    }
+    if (m >= ORE_BASE) { this.oreBlow(hit, mat, power, px, py, pz, out, F); return; }
     // rock
     const tier = it.tier || 1;
     const zone = zoneAt(-py);
@@ -839,6 +833,82 @@ export default class DigScene extends Scene {
     }
     for (const v of out) w.setVoxel(v.x, v.y, v.z, 0);
     return out;
+  }
+
+  /**
+   * (wave 14) A blow on the ore itself. It still chips the quality (hit the rock round it to keep it
+   * fine), but it also cracks the lump: hard ores and big lumps take more blows (Ores.hpOf), in
+   * three crack stages you can see and hear (cracks spread over the ore, a ringing that climbs, grit,
+   * a groan), and the last one breaks the whole deposit out of the rock (oreBreak). Mined ore always
+   * comes out: it never shatters to nothing any more.
+   */
+  oreBlow(hit, mat, power, px, py, pz, out, F) {
+    const st = this.state;
+    const r = this.ores.hitOre(hit.vx, hit.vy, hit.vz, power * this.bonus('clean'), power);
+    if (!r || r.s.taken) { this.strayOre(hit, mat, out); return; }
+    const b = r.s.brk, stage = b < 0.34 ? 1 : b < 0.67 ? 2 : 3;
+    this.audio.play('ore_damage');
+    this.sfx(['hit_metal1', 'hit_metal2'], { vol: 0.2 + 0.05 * stage, pitch: 1.15 + 0.15 * stage + Math.random() * 0.1, reverb: 0.25 });
+    this.fx.sparks(px, py, pz, 6 + 3 * stage, col01(mat.accent), out, 3.5);
+    this.bits.burst(px, py, pz, 2 + stage, { kind: 'ore', out, colors: mat.tones.slice(1).map(col01), glow: 0.35 });
+    if (!r.broke) {
+      this.audio.play('crack', { vol: 0.15 + 0.3 * b, pitch: 1.35 - 0.35 * b, delay: 0.03 });
+      if (stage === 3) this.sfx(['creak1', 'creak2'], { vol: 0.13, pitch: 1.7, delay: 0.08 });
+      const d = r.d, w = this.world, gem = ITEMS[d.item]?.cat === 'gem';
+      this.cracks ||= new Cracks(this.scene, this.world);
+      this.cracks.hit(this.oreKey(d), [px, py, pz], out, b, (x, y, z) => w.voxelAt(x, y, z) >= ORE_BASE && w.depositAt(x, y, z)?.id === d.id, gem);
+      if (stage >= 2) this.fx.grit(px, py - 0.01, pz, stage, col01(mat.tones[2]), 0.04 + 0.03 * stage);
+      this.hitStop = Math.max(this.hitStop || 0, F.stop * (0.8 + 0.25 * stage));
+      this.shake(F.shake * (0.35 + 0.2 * stage));
+    }
+    const lost = Math.max(1, Math.round(r.ore.frag * power * this.bonus('clean')));
+    if (r.s.q > 10.5) this.game.ui.floatText?.(`-${lost}%`, new THREE.Vector3(px, py, pz), { color: '#ff8a6a', size: 0.8, kind: 'ore' });
+    if (!this.flags.oreHit) { this.flags.oreHit = true; st.learn('ore_damage'); }
+    if (r.broke) this.oreBreak(r.d, px, py, pz, out, mat);
+  }
+
+  /** Cracks.js key for a deposit (plates use positive keys; FirstDig uses -71..-73). */
+  oreKey(d) { return -1000 - (hashStr(String(d.id)) % 1000000); }
+
+  /** The last blow on a lump of ore: it gives with a big pop and drops out of the rock, whole. */
+  oreBreak(d, px, py, pz, out, mat) {
+    const f = this.ores.breakOut(d);
+    this.cracks?.clear(this.oreKey(d));
+    if (!f) return;
+    const F = FEEL.ore, cols = mat.tones.slice(1).map(col01);
+    this.audio.play('break', { snd: 'crystal', pitch: 0.85 });
+    this.audio.play('debris', { vol: 1.6, delay: 0.08 });
+    this.sfx(['chime2', 'chime3'], { vol: 0.25, pitch: 0.9 + Math.random() * 0.15, reverb: 0.5, delay: 0.06 });
+    this.breakPop(px, py, pz, out, { ...F, pop: 1.4 }, mat, 500, cols, 'ore');
+    this.bits.burst(px, py, pz, 10, { kind: 'ore', out, colors: cols, glow: 0.45, speed: 1.2, spread: 0.06 });
+    this.fx.shards(px, py, pz, 12, col01(mat.accent), out);
+    this.hitStop = Math.max(this.hitStop || 0, 0.1);
+    this.shake(0.3);
+    this.post.flash = Math.max(this.post.flash || 0, 0.08);
+    this.post.flashColor = mat.accent;
+    this.revealGlow = { x: d.x, y: d.y, z: d.z, c: col01(mat.accent), t: this.time };
+    this.vm?.impact('pick', 1.2, { feel: 'rebound', stop: 0.09 });
+    this.act('dig', { mat: ORE_BASE + d.oreId, n: f.voxels.length, tool: 'pick' });
+    this.popOre(f, out);
+  }
+
+  /**
+   * Ore voxels whose deposit is already gone (left behind by an old save, or a deposit split over a
+   * chunk that wasn't built yet when it came free): the blow knocks them out as a find of their own.
+   */
+  strayOre(hit, mat, out) {
+    const w = this.world, m = hit.m, vox = [];
+    for (let dz = -4; dz <= 4; dz++) for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      if (vox.length >= 160 || dx * dx + dy * dy + dz * dz > 18) continue;
+      const x = hit.vx + dx, y = hit.vy + dy, z = hit.vz + dz;
+      if (w.voxelAt(x, y, z) !== m) continue;
+      vox.push({ x, y, z, m, c: voxelColor(m, x, y, z, h3(x, y, z, 1)) });
+      w.setVoxel(x, y, z, 0);
+    }
+    if (!vox.length || !mat.item || !ITEMS[mat.item]) return;
+    const d = w.depositAt(hit.vx, hit.vy, hit.vz), q = Math.max(10, Math.round(d ? w.depState(d).q : 50));
+    this.audio.play('ore_free');
+    this.bodies.spawn(vox, { vel: [out[0] * 1.5, 2.2, out[2] * 1.5], glow: !!ORES[mat.ore]?.glow, scale: 0.85, pickup: { id: mat.item, q, p: false, delay: 0.6 } });
   }
 
   /** Breaking through a geode's shell: if the hollow behind is lined with crystal, it rings and glitters. */
@@ -1053,8 +1123,9 @@ export default class DigScene extends Scene {
       this.digger.loosen(broken);
       this.cracks?.refresh();
       if (res.cracked === undefined) this.undermine(broken);
-      const b = broken[0];
-      const freed = this.ores.checkFree((b.x + 0.5) / VOX, (b.y + 0.5) / VOX, (b.z + 0.5) / VOX, tool);
+      // deposits round the whole bite (a big slab reaches past a metre from its first voxel)
+      const c = this.centreOf(broken);
+      const freed = this.ores.checkFree(c.x, c.y, c.z, tool, c.r + 0.6);
       if (freed.seenNew) this.revealed(freed.seenNew, this.target ? [this.target.x, this.target.y, this.target.z] : null);
       for (const f of freed) this.popOre(f, out);
       return;
@@ -1063,11 +1134,17 @@ export default class DigScene extends Scene {
     this.act('dig', { mat: broken[0].m, n: broken.length, tool });
     st.data.stats.blocks += broken.length > 6 ? 1 : 0;
     this.lumps(broken, out);
-    const b = broken[0];
-    const x = (b.x + 0.5) / VOX, y = (b.y + 0.5) / VOX, z = (b.z + 0.5) / VOX;
-    const freed = this.ores.checkFree(x, y, z, tool);
+    const { x, y, z, r } = this.centreOf(broken);
+    const freed = this.ores.checkFree(x, y, z, tool, Math.min(3, r + 0.6));
     if (freed.seenNew) this.revealed(freed.seenNew, [x, y, z]);
     for (const f of freed) this.popOre(f, out);
+  }
+
+  /** Middle of a set of voxels (m) and the radius that holds them. */
+  centreOf(vox) {
+    let x0 = 1e9, y0 = 1e9, z0 = 1e9, x1 = -1e9, y1 = -1e9, z1 = -1e9;
+    for (const v of vox) { if (v.x < x0) x0 = v.x; if (v.x > x1) x1 = v.x; if (v.y < y0) y0 = v.y; if (v.y > y1) y1 = v.y; if (v.z < z0) z0 = v.z; if (v.z > z1) z1 = v.z; }
+    return { x: (x0 + x1 + 1) / 2 / VOX, y: (y0 + y1 + 1) / 2 / VOX, z: (z0 + z1 + 1) / 2 / VOX, r: Math.hypot(x1 - x0 + 1, y1 - y0 + 1, z1 - z0 + 1) / 2 / VOX };
   }
 
   /** Broken bits as grit, and (a big bite) a few tumbling lumps of quarter-meter cells. */
@@ -1169,16 +1246,6 @@ export default class DigScene extends Scene {
     this.fx.dust(d.x, d.y, d.z, 8, [0.6, 0.55, 0.5], 0.1, out);
     this.bodies.spawn(voxels, { vel: [out[0] * 2 + rand(-0.5, 0.5), 2.5, out[2] * 2 + rand(-0.5, 0.5)], glow, scale: 0.85, pickup: { id: d.item, q: Math.round(s.q), p: pristine, delay: 0.75 } });
     if (!this.flags.firstOre) { this.flags.firstOre = true; this.say('ore1', `<b>${it?.name || 'Ore'}!</b> It popped out of the wall.`, 'good', 10); }
-  }
-
-  shatter(d) {
-    const s = this.world.depState(d);
-    s.taken = true;
-    const vox = this.ores.voxelsOf(d);
-    for (const v of vox) this.world.setVoxel(v.x, v.y, v.z, 0);
-    this.fx.sparks(d.x, d.y, d.z, 20, col01(MAT[ORE_BASE + d.oreId].accent), [0, 0, 0], 4);
-    this.audio.play('crack');
-    this.say('shatter', `The ${ITEMS[d.item]?.name || 'ore'} shattered!`, 'bad', 3);
   }
 
   collect(p) {
@@ -1318,7 +1385,11 @@ export default class DigScene extends Scene {
     if (chance(0.5)) this.audio.play('hit', { snd: 'stone', vol: 0.4 });
     this.fx.sparks(px, py, pz, 3, [1, 0.7, 0.3], [hit.nx, hit.ny, hit.nz], 3);
     this.fx.dust(px, py, pz, 2, col01(MAT[hit.m]?.tones?.[1] ?? 0x806050), 0.05, [hit.nx, hit.ny, hit.nz]);
-    for (const o of res.ore) { const r2 = this.ores.hitOre(o.x, o.y, o.z, 0.5 * this.bonus('clean')); if (r2 && r2.s.q <= 0) this.shatter(r2.d); }
+    // the drill gouges the ore it touches (quality) and cracks it a little each bite; it never shatters
+    res.ore.forEach((o, i) => {
+      const r2 = this.ores.hitOre(o.x, o.y, o.z, 0.5 * this.bonus('clean'), i === 0 ? 0.35 : 0);
+      if (r2?.broke) this.oreBreak(r2.d, (o.x + 0.5) / VOX, (o.y + 0.5) / VOX, (o.z + 0.5) / VOX, [hit.nx, hit.ny, hit.nz], MAT[o.m]);
+    });
     this.shake(0.12);
     this.kick.set((Math.random() - 0.5) * 0.006, (Math.random() - 0.5) * 0.006, 0);
     this.afterBreak(res.broken, [hit.nx, hit.ny, hit.nz], 0.5, 'drill');
@@ -1574,7 +1645,7 @@ export default class DigScene extends Scene {
       if ((this.lowT ?? -999) < this.time - 60) {
         this.lowT = this.time;
         this.packWord('Low energy: eat', 'bad');
-        const ob = this.game.ui.onboard, sp = [ob?.spot?.('.hud-tl .lamp'), ob?.spot?.('snack')];
+        const ob = this.game.ui.onboard, sp = [ob?.spot?.('.stam'), ob?.spot?.('snack')];
         setTimeout(() => sp.forEach((x) => x?.remove()), 4500);
       }
     }
@@ -1612,7 +1683,10 @@ export default class DigScene extends Scene {
     for (const id of lost) st.removeItem(id, 1);
     this.trip -= lost.length;
     st.data.energy = Math.round(st.data.maxEnergy * 0.5);
-    this.goHome(this.lastMouth.wall, this.lastMouth.t);
+    // [stamina hook] the eyes close first (ui/Stamina.js), then home
+    const home = () => this.goHome(this.lastMouth.wall, this.lastMouth.t);
+    if (this.game.ui.status?.blackout) { st.data.energy = 0; this.game.ui.status.blackout(() => { st.data.energy = Math.round(Math.min(st.energyCap, st.data.maxEnergy * 0.5)); home(); }); }
+    else home();
   }
 
   explore() {
@@ -1915,6 +1989,7 @@ export default class DigScene extends Scene {
     this.world.pool?.dispose();
     this.bodies.dispose();
     this.bits?.dispose();
+    this.shadow?.dispose();
     this.cracks?.dispose();
     this.fx.dispose();
     this.enemies?.dispose();

@@ -59,7 +59,7 @@ export const UNLOCKS = {
   book: 'the book: B, its button, the quests and index tabs, the Index Book, discovery cards (his notebook: lessons.js, back with the copper)',
   radar: 'the radar and the depth plumb in the mine (back from the first ride down)',
   layers: 'M / a tap on the radar: the lift layers (back from the first ride down)',
-  energy: 'the lantern (when it first runs low, or the lessons\' end)',
+  energy: 'the stamina gauge (when it first runs low, or the lessons\' end)',
   gold: 'the coin pouch (your first gold, or the lessons\' end)',
   quests: 'the quest strip and its waymarks, the calendar (the lessons\' end)',
   skills: 'the skill tree tab, the XP plaque, level-up notes (the lessons\' end)',
@@ -101,7 +101,7 @@ const PIECES = [
   ['guard', 'guard', '.tc .d-block'],
   ['snack', 'snack', '.tc .d-snack, .tc .b-snack, .charms, .fb-strip'],
   ['gold', 'gold', '.hud-tl .pouch'],
-  ['energy', 'energy', '.hud-tl .lamp'],
+  ['energy', 'energy', '.stam-dock'],
   ['skills', 'skills', '.sk-chip, .sk-badge'],
   ['build', 'build', '.tc .b-build, .hud > button[aria-label="Decorate"]'],
 ];

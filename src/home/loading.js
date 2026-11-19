@@ -1,105 +1,35 @@
-// The wait while Old Star's camp is built (or put back together): a dark screen with a little
-// lantern swinging on its chain, the camp's name, a wick of a progress bar that burns along with
-// an ember at its tip, and what's being done ("Stoking the fire", "Winding the clock"...). CSS
-// animations only, so it keeps moving even while the page is busy. After the fall it's quieter:
-// just the ember line and three dots (you're out cold).
+// The wait while Old Star's camp is built (or put back together), and any other scene build that
+// takes a while: the ore loader (src/ui/oreLoader.js), a little cave niche where two mole paws
+// chip the crust off a glowing ore clump, the ore coming cleaner as the build goes on. No words.
+// It animates on the compositor, so it keeps moving even while the page is busy. After the fall
+// it's quieter: dim and low on a black screen (you're out cold).
 //
 //   const ld = houseLoading(game, { dark }); ld.set({ k, label }); ld.done()
-// opts.corner: no screen, just a small lantern in the corner (over a frame held on screen while a
+// opts.corner: no screen, just a small vignette in the corner (over a frame held on screen while a
 // scene is swapped in under it: Game.goto 'seamless'); opts.appear: seconds before it fades in, as
 // a CSS delay (a page busy building can't run a timer, but the compositor still runs this);
-// opts.wick: false leaves the progress wick out (a wait with nothing to count).
-import { el } from '../core/util.js';
-
-const LINES = {
-  start: 'Lighting a candle stub', rock: 'Sweeping the cave', west: 'Putting the kettle on', east: 'Patching the tarp',
-  ways: 'Kicking the steps clear', shell: 'Shaking out your blanket',
-  rooms: 'Trimming the lantern wicks', star: 'Waking Old Star', done: 'Home',
-};
-
-let styled = false;
-function style() {
-  if (styled) return;
-  styled = true;
-  const css = `
-.hl-back{position:absolute;inset:0;z-index:7;pointer-events:auto;background:radial-gradient(ellipse at 50% 46%,#2a1810 0,#120a08 55%,#070405 100%);display:grid;place-items:center;transition:opacity .45s ease;font-family:var(--font);color:#f4e2c0}
-.hl-back.out{opacity:0;pointer-events:none}
-.hl-card{display:flex;flex-direction:column;align-items:center;gap:calc(var(--px) * 5);transform:translateY(calc(var(--px) * -4))}
-.hl-lamp{position:relative;width:calc(var(--px) * 14);height:calc(var(--px) * 30);transform-origin:50% 0;animation:hlSwing 3.2s ease-in-out infinite}
-.hl-lamp i{position:absolute;left:50%;top:0;width:var(--px);height:calc(var(--px) * 9);margin-left:calc(var(--px) * -.5);background:repeating-linear-gradient(#6a5a4a 0 var(--px),#3a3028 var(--px) calc(var(--px) * 2))}
-.hl-lamp b{position:absolute;left:0;top:calc(var(--px) * 9);width:calc(var(--px) * 14);height:calc(var(--px) * 18);background:linear-gradient(#ffe7a0,#ffb04a 60%,#e8702a);box-shadow:0 0 0 var(--px) #2e2018,0 0 calc(var(--px) * 10) calc(var(--px) * 4) #ff9a3a55,inset 0 0 0 var(--px) #8a5a2a;animation:hlGlow 1.7s ease-in-out infinite}
-.hl-lamp b:before,.hl-lamp b:after{content:"";position:absolute;left:calc(var(--px) * -1);width:calc(var(--px) * 16);height:calc(var(--px) * 2);background:#2e2018}
-.hl-lamp b:before{top:calc(var(--px) * -2)}.hl-lamp b:after{bottom:calc(var(--px) * -2)}
-.hl-title{font-family:var(--font-head);font-size:var(--fs-h);letter-spacing:.06em;color:#f6dca8;text-shadow:0 var(--px) 0 #000,0 0 calc(var(--px) * 6) #ff9a3a44}
-.hl-wick{position:relative;width:min(calc(var(--px) * 110),70vw);height:calc(var(--px) * 3);background:#2a1a12;box-shadow:0 0 0 var(--px) #4a3020}
-.hl-wick em{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#7a2a12,#e8702a 70%,#ffd27a);transition:width .35s ease}
-.hl-wick em:after{content:"";position:absolute;right:calc(var(--px) * -2);top:calc(var(--px) * -2);width:calc(var(--px) * 7);height:calc(var(--px) * 7);background:#fff0b0;box-shadow:0 0 calc(var(--px) * 4) calc(var(--px) * 2) #ffb04a;animation:hlEmber .5s steps(2) infinite}
-.hl-what{min-height:1.3em;font-size:var(--fs);color:#d8b888;opacity:.9}
-.hl-what:after{content:"";display:inline-block;width:1.6em;text-align:left;animation:hlDots 1.2s steps(4) infinite}
-.hl-title,.hl-what{display:none}
-.hl-back.dark{background:#000}
-.hl-back.dark .hl-lamp,.hl-back.dark .hl-title{display:none}
-.hl-back.dark .hl-card{position:absolute;bottom:calc(var(--sab, 0px) + var(--px) * 18);transform:none}
-.hl-back.dark .hl-wick{height:var(--px);width:min(calc(var(--px) * 80),50vw);background:#140c08;box-shadow:none}
-.hl-back.dark .hl-wick em{background:linear-gradient(90deg,#3a1408,#a8481c)}
-.hl-back.dark .hl-wick em:after{width:calc(var(--px) * 3);height:calc(var(--px) * 3);top:calc(var(--px) * -1);right:calc(var(--px) * -1);background:#ff9a4a;box-shadow:0 0 calc(var(--px) * 3) var(--px) #a8481c}
-.hl-back.dark .hl-what{color:#6a5040}
-.hl-back.corner{background:none;pointer-events:none}
-.hl-back.corner .hl-card{position:absolute;right:calc(var(--sar, 0px) + var(--px) * 14);bottom:calc(var(--sab, 0px) + var(--px) * 12);transform:none;gap:0}
-.hl-back.corner .hl-lamp{width:calc(var(--px) * 7);height:calc(var(--px) * 15);filter:drop-shadow(0 0 calc(var(--px) * 4) #ff9a3a66)}
-.hl-back.corner .hl-lamp i{height:calc(var(--px) * 4)}
-.hl-back.corner .hl-lamp b{top:calc(var(--px) * 4);width:calc(var(--px) * 7);height:calc(var(--px) * 9)}
-.hl-back.corner .hl-lamp b:before,.hl-back.corner .hl-lamp b:after{width:calc(var(--px) * 9)}
-.hl-back.corner .hl-wick,.hl-back.nowick .hl-wick{display:none}
-.is-touch .hl-back.corner .hl-card{right:auto;left:50%;bottom:auto;top:calc(var(--sat, 0px) + var(--px) * 12);transform:translateX(-50%)}
-.hl-back.late{opacity:0;animation:hlIn .25s ease-out var(--hl-in, .5s) forwards}
-.hl-back.late.out{animation:none;opacity:0}
-@keyframes hlIn{to{opacity:1}}
-@keyframes hlSwing{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(7deg)}}
-@keyframes hlGlow{0%,100%{filter:brightness(1)}40%{filter:brightness(1.18)}70%{filter:brightness(.9)}}
-@keyframes hlEmber{50%{opacity:.6;transform:scale(.8)}}
-@keyframes hlDots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
-@media (prefers-reduced-motion:reduce){.hl-lamp,.hl-lamp b,.hl-wick em:after,.hl-what:after{animation:none}}`;
-  document.head.append(el('style', { 'data-house': 'loading' }, css));
-}
+// opts.wick: false means there's nothing to count (the ore comes clean on its own, slowly).
+import { oreLoader } from '../ui/oreLoader.js';
 
 /** The loading screen over the game (above the transition's black). opts.dark: after the fall. */
 export function houseLoading(game, opts = {}) {
-  let root = null, bar = null, what = null, shown = false, gone = false, last = '';
-  const t0 = performance.now();
-  const show = () => {
-    if (shown || gone) return;
-    shown = true;
-    try {
-      style();
-      bar = el('em');
-      what = el('div', { class: 'hl-what' }, opts.dark ? '' : LINES.start);
-      root = el('div', { class: 'hl-back' + (opts.dark ? ' dark' : '') + (opts.corner ? ' corner' : '') + (opts.wick === false ? ' nowick' : '') + (opts.appear ? ' late' : ''), role: 'status', 'aria-label': opts.label || 'Loading Old Star\'s camp' }, [
-        el('div', { class: 'hl-card' }, [el('div', { class: 'hl-lamp', 'aria-hidden': 'true' }, [el('i'), el('b')]), el('div', { class: 'hl-title' }, 'Old Star\'s camp'), el('div', { class: 'hl-wick' }, [bar]), what]),
-      ]);
-      if (opts.appear) root.style.setProperty('--hl-in', `${opts.appear}s`);
-      (game.ui?.overlay || document.body).append(root);
-    } catch (e) { /* no DOM to show it in */ }
-  };
-  // a house that's ready in a blink never flashes the screen (with opts.appear the CSS waits instead)
-  const timer = opts.appear ? (show(), 0) : setTimeout(show, opts.delay ?? 120);
+  let L = null, gone = false;
+  try {
+    L = oreLoader(game?.ui?.overlay || document.body, {
+      mode: opts.corner ? 'corner' : opts.dark ? 'dark' : 'full',
+      appear: opts.appear, delay: opts.appear ? 0 : (opts.delay ?? 120),
+      label: opts.label || 'Loading Old Star\'s camp', tau: opts.wick === false ? 5 : 9,
+    });
+  } catch (e) { /* no DOM to show it in */ }
   return {
     set(p) {
-      if (gone) return;
-      if (!shown && performance.now() - t0 > 100) show();
-      if (!bar) return;
-      bar.style.width = `${Math.round(Math.max(0.02, Math.min(1, p.k)) * 100)}%`;
-      const line = opts.dark ? '' : (LINES[p.label] || LINES.rooms);
-      if (line !== last && what) { last = line; what.textContent = line; }
+      if (gone || !L) return;
+      L.set(Math.max(0.02, Math.min(1, p?.k ?? 0)));
     },
     done() {
       if (gone) return;
       gone = true;
-      clearTimeout(timer);
-      if (!root) return;
-      if (bar) bar.style.width = '100%';
-      root.classList.add('out');
-      setTimeout(() => root.remove(), 500);
+      L?.done();
     },
   };
 }

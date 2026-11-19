@@ -580,3 +580,113 @@
   animation: capGlint .9s steps(6) .35s both;
 }
 @keyframes capGlint { 0% { filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .45)) brightness(1); } 40% { filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .45)) brightness(1.45); } 100% { filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .45)) brightness(1); } }
+
+/* ---------- wave 15: Minecraft-like slots (core/inventory.js): the pack as rows of nine sewn pockets,
+   the belt row of nine riveted loops along the bag's foot, the tool rack as sleeves you drag from ---------- */
+.bp-grid { display: block; }
+.bp-pack { display: grid; grid-template-columns: repeat(9, var(--slot-w)); gap: var(--gap); justify-content: center; align-content: start; padding: calc(var(--px) * 1) 0; }
+.bp-pack .inv-slot.pocket, .bp-pack .inv-slot.sewn {
+  width: var(--slot-w); height: var(--slot-w); border-style: solid; border-width: calc(var(--px) * 6); border-color: transparent;
+  border-image: var(--pk-pocket) 6 fill / min(calc(var(--px) * 6), 30%) stretch; image-rendering: pixelated;
+}
+.bp-pack .inv-slot.sewn::after { content: ''; position: absolute; inset: calc(var(--px) * -6); background: rgba(34, 18, 8, .5); pointer-events: none; }
+.bp-pack .inv-slot.sewn .inv-lock { z-index: 3; }
+.bp-pack .inv-slot.pocket.on { border-image-source: var(--pk-pocketOn); transform: translateY(calc(var(--px) * -1)); }
+.bp-pack .inv-slot img, .bp-hot .inv-slot img { width: min(var(--icon), calc(var(--slot-w) - var(--px) * 9)); filter: drop-shadow(0 calc(var(--px) * 1.5) 0 rgba(40, 20, 6, .45)); }
+.bp-pack .inv-slot .n, .bp-hot .inv-slot .n { right: calc(var(--px) * -4); bottom: calc(var(--px) * -5); z-index: 2; }
+.bp-pack .inv-slot .pips { top: calc(var(--px) * -4); left: calc(var(--px) * -3); }
+.bp-pack .inv-slot.q::before { left: 14%; right: 14%; bottom: calc(var(--px) * -3); }
+.inv-slot.blade img { transform: rotate(-45deg) scale(1.12); }
+.inv-slot.blade:not(.empty):hover img { transform: rotate(-40deg) scale(1.18); }
+
+/* the belt row: nine loops on a leather band, numbered; the slot in your paw sits up in brass */
+.bp-hot { display: grid; grid-template-columns: repeat(9, var(--slot-w)); gap: var(--gap); justify-content: center; align-self: center; padding: calc(var(--px) * 3) calc(var(--px) * 4); margin-top: calc(var(--px) * 3); }
+.bp-hot .inv-slot.loop {
+  width: var(--slot-w); height: var(--slot-w); border-style: solid; border-width: calc(var(--px) * 6); border-color: transparent;
+  border-image: var(--pk-loop) 6 fill / min(calc(var(--px) * 6), 30%) stretch; image-rendering: pixelated; cursor: grab;
+}
+.bp-hot .inv-slot.loop.empty { cursor: default; }
+.bp-hot .inv-slot.loop.on { border-image-source: var(--pk-loopOn); }
+.bp-hot .inv-slot .k {
+  position: absolute; left: calc(var(--px) * -4); top: calc(var(--px) * -5); z-index: 2; font-style: normal; font-size: 16px; line-height: 1; color: #fff4dc; pointer-events: none;
+  text-shadow: var(--px) 0 0 #1a0c06, calc(var(--px) * -1) 0 0 #1a0c06, 0 var(--px) 0 #1a0c06, 0 calc(var(--px) * -1) 0 #1a0c06;
+}
+html.is-touch .bp-hot .inv-slot .k { display: none; }
+/* the held slot: crisp stepped brass frame, no blur (Minecraft's white square, in brass) */
+.bp-hot .inv-slot.cur, #ui .belt .loop.sel .loop-face { z-index: 1; }
+.bp-hot .inv-slot.cur::after, #ui .belt .loop.sel .loop-face::before {
+  content: ''; position: absolute; inset: calc(var(--px) * -7); pointer-events: none; z-index: 3;
+  box-shadow: inset 0 0 0 var(--px) #2a1406, inset 0 0 0 calc(var(--px) * 2) #ffe9a0, inset 0 0 0 calc(var(--px) * 3) #c88a2a, 0 0 0 var(--px) #2a1406;
+  clip-path: polygon(0 var(--px), var(--px) var(--px), var(--px) 0, calc(100% - var(--px)) 0, calc(100% - var(--px)) var(--px), 100% var(--px), 100% calc(100% - var(--px)), calc(100% - var(--px)) calc(100% - var(--px)), calc(100% - var(--px)) 100%, var(--px) 100%, var(--px) calc(100% - var(--px)), 0 calc(100% - var(--px)));
+}
+.bp-hot .inv-slot.cur { transform: translateY(calc(var(--px) * -2)); }
+.bp-hot .inv-slot.ref.off img, #ui .belt .loop.off .loop-face img { filter: grayscale(1) brightness(.7); opacity: .45; }
+
+/* the tool rack: sleeves on the leather; a hung tool wears a brass tag with its belt number */
+.bp-col.tools .inv-slot.sleeve { cursor: grab; touch-action: none; }
+.bp-col.tools .inv-slot.sleeve.empty, .bp-col.tools .inv-slot.sleeve.off { cursor: default; }
+.bp-col.tools .inv-slot.sleeve.empty img { filter: brightness(0) invert(.9) sepia(.5); opacity: .16; }
+.bp-col.tools .inv-slot.sleeve.ghosted img { opacity: .45; }
+.inv-slot .hung {
+  position: absolute; right: calc(var(--px) * -5); top: calc(var(--px) * -5); z-index: 2; font-style: normal; font-size: 16px; line-height: 1; color: #2a1406;
+  padding: calc(var(--px) * .5) calc(var(--px) * 1.5); background: linear-gradient(#ffe9a0, #d8a440); box-shadow: 0 0 0 var(--px) #2a1406, inset 0 calc(var(--px) * -1) 0 #a8701e;
+  pointer-events: none;
+}
+
+/* "no": the slot shakes and flashes red; what you hold springs back */
+.inv-slot.shake { animation: nope .32s linear, nopeRed .32s steps(2); }
+@keyframes nopeRed { 0%, 60% { filter: sepia(1) saturate(5) hue-rotate(-38deg) brightness(.9); } }
+.inv-ghost.nope img { animation: ghostNope .3s var(--pop); }
+@keyframes ghostNope { 30% { transform: translate(calc(var(--px) * -4), calc(var(--px) * -3)) scale(1.18) rotate(-10deg); filter: sepia(1) saturate(4) hue-rotate(-38deg); } 65% { transform: translate(calc(var(--px) * 3), 0) scale(1.05) rotate(6deg); } }
+/* carried out of the pack: it tips, ready to drop out */
+.inv-ghost.out img { transform: scale(1) rotate(24deg) translateY(calc(var(--px) * 3)); opacity: .8; transition: transform .14s var(--pop), opacity .14s; }
+.inv-ghost.blade img { transform: rotate(-45deg) scale(1.12); }
+
+/* ---------- the HUD belt with nine loops: it shrinks to fit a phone held upright ---------- */
+#ui .belt .loop-face { position: relative; }
+#ui .belt .loop.sel .loop-face { filter: none; }
+#ui .belt .loop .n { z-index: 2; }
+@media (max-width: 640px) {
+  #ui .belt .loop { margin: 0; }
+  #ui .belt .loop-face {
+    width: calc((100vw - var(--sal) - var(--sar) - 28px) / 9); height: calc((100vw - var(--sal) - var(--sar) - 28px) / 9);
+    border-width: calc(var(--px) * 4); border-image-width: calc(var(--px) * 4);
+  }
+  #ui .belt .loop-face img { width: calc((100vw - 28px) / 9 - var(--px) * 6); height: auto; margin: 0; }
+  #ui .belt .loop .n { font-size: 16px; right: 0; bottom: 0; }
+  #ui .belt .belt-loops { gap: 0; padding: 0 calc(var(--px) * 2); }
+  .bp-hot { padding: calc(var(--px) * 2) calc(var(--px) * 1); }
+}
+/* a pickup that didn't fit: the loops flash red, the strap shakes, the find bounces off */
+#ui .belt-strap.nope { animation: nope .36s linear; }
+#ui .belt-strap.nope .loop-face { animation: nopeRed .4s steps(2); }
+.belt-bounce {
+  position: absolute; left: 50%; bottom: 60%; width: var(--icon-s); height: var(--icon-s); margin-left: calc(var(--icon-s) / -2); pointer-events: none; z-index: 4;
+  image-rendering: pixelated; filter: drop-shadow(0 calc(var(--px) * 2) 0 rgba(10, 4, 2, .5)); animation: bounceOff .74s cubic-bezier(.3, .7, .5, 1) both;
+}
+@keyframes bounceOff {
+  0% { transform: translateY(calc(var(--px) * -40)) scale(.8); opacity: 0; }
+  30% { transform: translateY(0) scale(1.15, .85); opacity: 1; }
+  55% { transform: translate(calc(var(--px) * 10), calc(var(--px) * -22)) rotate(40deg) scale(1); }
+  100% { transform: translate(calc(var(--px) * 22), calc(var(--px) * -6)) rotate(110deg) scale(.7); opacity: 0; }
+}
+
+/* six tools on the rack: the sleeves are a little smaller so the column fits beside the pack */
+.bp-equip .bp-loop, .bp-equip .bp-loop.empty, .bp-equip .inv-slot.bp-loop {
+  width: calc(var(--icon) * .78 + var(--px) * 10); height: calc(var(--icon) * .78 + var(--px) * 10); border-width: calc(var(--px) * 5); border-image-width: calc(var(--px) * 5);
+}
+.bp-equip .bp-loop img { width: calc(var(--icon) * .78); height: calc(var(--icon) * .78); margin-top: 0; }
+/* phones: thinner pocket seams so the things in them stay big enough to read */
+@media (max-width: 640px) {
+  .bp-pack .inv-slot.pocket, .bp-pack .inv-slot.sewn, .bp-hot .inv-slot.loop { border-width: calc(var(--px) * 3); border-image-width: calc(var(--px) * 3); }
+  .bp-pack .inv-slot.sewn::after { inset: calc(var(--px) * -3); }
+  .bp-pack .inv-slot img, .bp-hot .inv-slot img { width: calc(var(--slot-w) - var(--px) * 4); }
+  .bp-pack .inv-slot .n, .bp-hot .inv-slot .n { right: calc(var(--px) * -2); bottom: calc(var(--px) * -3); }
+  .bp-pack .inv-slot .pips { top: calc(var(--px) * -2); left: calc(var(--px) * -1); }
+  .bp-hot .inv-slot.cur::after { inset: calc(var(--px) * -4); }
+  .bp-equip .bp-loop, .bp-equip .bp-loop.empty, .bp-equip .inv-slot.bp-loop { width: calc(var(--icon) + var(--px) * 6); height: calc(var(--icon) + var(--px) * 6); border-width: calc(var(--px) * 3); border-image-width: calc(var(--px) * 3); }
+  .bp-equip .bp-loop img { width: var(--icon); height: var(--icon); }
+}
+@media (max-height: 500px) {
+  .bp-equip .bp-loop, .bp-equip .bp-loop.empty, .bp-equip .inv-slot.bp-loop { width: calc(var(--icon) + var(--px) * 5); height: calc(var(--icon) + var(--px) * 5); border-width: calc(var(--px) * 3); border-image-width: calc(var(--px) * 3); }
+}

@@ -116,8 +116,8 @@ export class Townsfolk {
     const el = this.make(108, { species: 'mole', age: 'elder', cane: true, glasses: true, outfit: 'vest', outfitColor: 0x6a4a3a, hat: 'cap', hatColor: 0x5a4a3a, brows: 'bushy' }, 'elder', { x: 0, z: 0, name: 'Old Hollis', full: true });
     this.seatAt(el, seat(B[4], -1));
     this.elder = el;
-    // market stall keepers
-    (this.s.stallSpots || []).forEach((sp, i) => {
+    // market stall keepers (the burrow folk's stalls have their own keepers: TownScene.spawnKeepers)
+    (this.s.stallSpots || []).filter((sp) => !sp.shop).forEach((sp, i) => {
       const v = this.make(170 + i, { age: 'adult', outfit: 'apron', outfitColor: [0xd9d0b8, 0x8ab0d0, 0xc8a0d8][i % 3], hat: i === 1 ? 'bandana' : 'none', hatColor: 0x3a6ac9, species: ['hedgehog', 'frog', 'molerat'][i % 3] }, 'vendor', { x: sp.x, z: sp.z, yaw: sp.yaw });
       v.kind = sp.kind;
       v.home = { x: sp.x, z: sp.z, yaw: sp.yaw };

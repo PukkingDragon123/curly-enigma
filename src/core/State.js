@@ -28,11 +28,13 @@ function defaultHome() {
 
 export function defaultData() {
   return {
-    v: 2,
+    v: 3,
     gold: 120,
     day: 1,
-    energy: 100,
-    maxEnergy: 100,
+    energy: 100, // stamina (the bar: src/ui/Stamina.js; rules: src/core/vitals.js)
+    maxEnergy: 100, // the bar's full length; afflictions eat into it from the right:
+    hunger: 0, // grows slowly, food takes it away
+    injury: 0, // from hits, mends slowly (faster with herbs, a hearty meal or sleep)
     lots: [], // read-only mirror of the backpack's quality lots [{uid, id, q, p}] (core/inventory.js)
     counts: {}, // read-only mirror of the backpack's stackables
     weapons: [], // read-only mirror of the forged weapons in the backpack
@@ -53,7 +55,7 @@ export function defaultData() {
     buffs: [], // [{id, until}] until = playTime seconds
     flags: {},
     commission: null,
-    settings: { music: 0.55, sfx: 0.85, pixel: 0, shake: 1 },
+    settings: { music: 0.55, sfx: 0.85, voice: 0.8, pixel: 0, shake: 1 },
     playTime: 0,
     created: Date.now(),
     skills: defaultSkills(), // the skill tree: XP, levels, points, stamped nodes (core/skills.js)
@@ -124,6 +126,10 @@ export class State {
       if (!this.data.home || !this.data.home.placed) this.data.home = defaultHome();
       // v1 saves began at home: they have already escaped the collapsed tunnels
       if (!(d.v >= 2)) { this.data.v = 2; this.data.flags = { ...this.data.flags, escaped: true }; }
+      // v2 → v3: the lantern's energy became the stamina bar (same field), with hunger and injury beside it
+      if (!(d.v >= 3)) { this.data.v = 3; this.data.hunger = 0; this.data.injury = 0; }
+      for (const k of ['energy', 'maxEnergy', 'hunger', 'injury']) if (!Number.isFinite(this.data[k])) this.data[k] = base[k];
+      this.data.energy = clamp(this.data.energy, 0, this.energyCap);
       dropRetired(this.data);
       this.data.upgrades = { ...(d.upgrades || {}) };
       for (const id of Object.keys(this.data.upgrades)) if (!UPGRADES[id]) delete this.data.upgrades[id];
@@ -178,20 +184,50 @@ export class State {
     return true;
   }
 
-  // ---------- energy ----------
+  // ---------- energy = stamina (src/core/vitals.js has the rules, src/ui/Stamina.js the bar) ----------
   get energy() { return this.data.energy; }
+  /** The bar's full length (upgrades and feasts raise it). */
   get maxEnergy() { return this.data.maxEnergy; }
+  /** How far stamina can fill right now: the full length less hunger and injury (never below a sliver). */
+  get energyCap() {
+    const d = this.data, m = d.maxEnergy;
+    return Math.max(m * 0.12, m - (d.hunger || 0) - (d.injury || 0));
+  }
   useEnergy(n) {
     const d = this.data;
-    d.energy = clamp(d.energy - n, 0, d.maxEnergy);
+    d.energy = clamp(d.energy - n, 0, this.energyCap);
+    if (n > 0) this.exert = (this.exert || 0) + n; // (vitals.js: hard work holds off the slow refill)
     this.emit('energy', { delta: -n });
     if (d.energy <= 0) this.emit('exhausted');
     return d.energy;
   }
   restoreEnergy(n) {
     const d = this.data;
-    d.energy = clamp(d.energy + n, 0, d.maxEnergy);
+    d.energy = clamp(d.energy + n, 0, this.energyCap);
     this.emit('energy', { delta: n });
+  }
+  /** A wound: its share of the bar is capped off (red, from the right) until it mends. */
+  injure(n) {
+    const d = this.data;
+    if (!(n > 0)) return;
+    d.injury = Math.min(d.maxEnergy * 0.7, (d.injury || 0) + n);
+    d.energy = Math.min(d.energy, this.energyCap);
+    this.emit('energy', { delta: 0, injury: n });
+  }
+  /** Mend n points of injury (herbs, a hearty meal, sleep). */
+  mend(n) {
+    const d = this.data;
+    if (!(n > 0) || !d.injury) return;
+    d.injury = Math.max(0, d.injury - n);
+    this.emit('energy', { delta: 0, mend: n });
+  }
+  /** Food: n points off hunger first (the bar opens up), then n points of stamina. */
+  feed(n, heal = 0) {
+    const d = this.data;
+    d.hunger = Math.max(0, (d.hunger || 0) - n);
+    if (heal > 0) d.injury = Math.max(0, (d.injury || 0) - heal);
+    d.energy = clamp(d.energy + n, 0, this.energyCap);
+    this.emit('energy', { delta: n, fed: n, mend: heal });
   }
 
   // ---------- buffs ----------
@@ -221,6 +257,7 @@ export class State {
       this.data.owned[id] = 1;
       if (it.cat === 'blueprint' && it.kind === 'forge') this.data.forgeLevel = Math.max(this.data.forgeLevel, it.level);
       if (it.cat === 'blueprint' && it.kind === 'room') this.data.home.level = Math.max(this.data.home.level, it.level);
+      if (it.cat === 'tool' && it.slot) Inv.hookNew(this, it.slot); // a new kind of tool hangs itself on a free belt slot
       this.emit('items', { id, n: 1 });
       return 1;
     }
@@ -314,7 +351,7 @@ export class State {
     const it = ITEMS[id];
     if (!it || !it.slot || !this.owns(id)) return false;
     // a smaller bag can't hold what's in the pockets it doesn't have
-    if (it.slot === 'bag' && Inv.gridCells((it.slots ?? 6) * Inv.CELLS_PER_POCKET) < Inv.bagFill(this).used) return false;
+    if (it.slot === 'bag' && !Inv.fitsBag(this, it)) return false;
     this.data.equip[it.slot] = id;
     this.emit('equip', { slot: it.slot, id });
     return true;

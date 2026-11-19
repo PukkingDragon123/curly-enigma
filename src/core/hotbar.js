@@ -1,30 +1,48 @@
-// The hotbar: five slots (Minecraft-like) at the bottom of the screen in the mine, each holding one
-// tool kind. Saved as state.data.hotbar; set from the backpack (the Hotbar row under the pockets).
+// The hotbar (the belt at the bottom of the screen): the first HOTBAR_N slots of the carried
+// inventory (core/inventory.js), Minecraft-like. A slot holds a tool from the rack ({ tool:
+// 'pick' }), an item stack, or nothing. Scenes read it as tool kinds: hotbarOf(state)[i] is
+// 'pick' | 'chisel' | 'brush' | 'drill' | 'xray' | 'build' (a hung tool), 'food' | 'dynamite' |
+// 'stake' (a snack, a blast, glow stakes in that slot) or null (empty, or an item just carried
+// there). heldItem() says which item a 'food'/'dynamite' slot holds.
+import { ITEMS } from '../data/items.js';
+import * as Inv from './inventory.js';
+
 export const TOOL_KINDS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'stake', 'build', 'dynamite', 'food'];
-export const HOTBAR_N = 5;
-export const HOTBAR_DEFAULT = ['pick', 'chisel', 'build', 'food', 'dynamite'];
-/** The player's 5-slot bar (repaired to known kinds, no duplicates). */
+export const REF_KINDS = Inv.REF_KINDS;
+export const HOTBAR_N = Inv.HOT;
+export const HOTBAR_DEFAULT = Inv.HOT_DEFAULT;
+
+const slotsOf = (st) => {
+  const s = st.data?.inv?.slots;
+  if (!Array.isArray(s)) return Inv.bag(st);
+  return s;
+};
+/** The stack (or tool) in belt slot i, or null. */
+export function hotStack(st, i) { return i >= 0 && i < HOTBAR_N ? slotsOf(st)[i] || null : null; }
+/** The belt as tool kinds (length HOTBAR_N). */
 export function hotbarOf(st) {
-  const d = st.data;
-  let bar = Array.isArray(d.hotbar) ? d.hotbar.slice(0, HOTBAR_N) : HOTBAR_DEFAULT.slice();
-  bar = bar.map((k) => (TOOL_KINDS.includes(k) ? k : null));
-  for (let i = 0; i < HOTBAR_N; i++) if (bar[i] === undefined) bar[i] = null;
-  bar = bar.map((k, i) => (k && bar.indexOf(k) === i ? k : null));
-  d.hotbar = bar;
-  return bar;
+  const s = slotsOf(st), out = new Array(HOTBAR_N);
+  for (let i = 0; i < HOTBAR_N; i++) out[i] = Inv.kindOf(s[i]);
+  return out;
 }
-/** Put a tool kind in hotbar slot i (it leaves any other slot it was in). */
+/** The item a 'food' / 'dynamite' / 'stake' belt slot holds (ITEMS entry), when slot i is that kind. */
+export function heldItem(st, i, kind) {
+  const s = hotStack(st, i);
+  if (!s || s.tool || s.w || (kind && Inv.kindOf(s) !== kind)) return null;
+  return ITEMS[s.id] || null;
+}
+/** Hang a tool kind on belt slot i (it leaves any other slot it was in). */
 export function hotbarSet(st, i, kind) {
-  const bar = hotbarOf(st);
-  const j = bar.indexOf(kind);
-  if (j >= 0) bar[j] = bar[i] ?? null;
-  bar[i] = kind;
-  st.data.hotbar = bar;
-  st.emit?.('items', { id: null, n: 0, hotbar: true });
-  return bar;
+  Inv.hookTool(st, kind, i);
+  return hotbarOf(st);
 }
 
-/** What each kind is called on the hotbar row. */
+/** What each kind is called on the belt. */
 export const KIND_LABEL = { pick: 'Pickaxe', chisel: 'Chisel', brush: 'Brush', drill: 'Drill', xray: 'X-Ray Lamp', stake: 'Glow Stakes', build: 'Building', dynamite: 'Explosives', food: 'Snack' };
 /** A sample item for each kind's icon. */
 export const KIND_ICON = { pick: 'pick_rusty', chisel: 'chisel_basic', brush: 'brush_basic', drill: 'drill_steam', xray: 'xray_lamp', stake: 'glow_stake', build: 'blk_ladder', dynamite: 'dynamite', food: 'grub_bar' };
+/** The item a belt tool shows: the equipped one (the build kit: a ladder), else null. */
+export function refItem(st, kind) {
+  if (kind === 'build') return ITEMS.blk_ladder || null;
+  return st.equipped?.(kind) || null;
+}

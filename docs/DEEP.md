@@ -374,7 +374,7 @@ Fluids internals (`src/deep/fluids/`):
   under the crosshair any more.
 - **Tunnels**: `scene.smooth(broken)` takes spikes and voxel-thin fins left round a bite. The mole
   (`player.assist`, on in the mine only) ducks into openings too low to stand in, hops ledges up to
-  `HOP` (0.62 m) it walks into, slips round corners a voxel or three wide, and is pushed out if rock
+  `HOP` (0.7 m) it walks into, slips round corners a voxel or three wide, and is pushed out if rock
   ends up inside it (not while the chunk is still on its way). Falls are swept (never through a
   thin floor) and land on the right voxel; a crouched eye never rides above the body.
 - **Reading ore** (no words): ore glints catch the lamp, in bigger cells far off, and carry through
@@ -384,3 +384,21 @@ Fluids internals (`src/deep/fluids/`):
   (`U.reveal`), glints and slivers burst out, its colour lights the rock round it for a moment.
 - Finds still lying about when the mole leaves go home with it (`bankFinds()`); a find is never
   dropped when `Bodies` is over its cap.
+- **Mining ore itself** (`DigScene.oreBlow`): a blow on ore still chips its quality, and cracks the
+  lump (`depState.brk`, `Ores.hitOre` / `hpOf`: hard ores and big lumps take more blows) in three
+  stages; the last blow breaks the whole deposit out (`Ores.breakOut` → `oreBreak`: a big pop, then
+  the clump). Quality never goes below 10 and ore never shatters to nothing. Deposits are matched
+  by `id` (`depositsNear` returns one record per id; `voxelsOf` compares ids): a deposit across a
+  chunk edge used to leave its other half in the wall. Stray ore voxels whose deposit is gone come
+  out as a find of their own (`strayOre`). `checkFree` looks round the whole bite.
+- **Soil bites** are rounded blocks square to the world (`Dig.bite(..., box)`), so dug tunnels have
+  flat floors and walls; the highlight follows (`aimP.w = -1`).
+- **Belly crawl** (`player.crawl`, 0.3 m tall, eye 0.2 m; `crawlPh` the stroke): when even a crouch
+  won't fit, the mole drops flat and squeezes through, and gets up as soon as there's room. The view
+  sits low, heaves and rolls with each stroke; the paws reach and pull (`vm.update({ crawling,
+  crawlPh })`, mode `crawl`). `MoleShadow.js` draws the mole's dithered voxel shadow on the floor:
+  feet that step, and in a crawl the whole body stretched out, swaying like a rag doll, four paws
+  reaching, the tail dragging; it leans into turns. A hop also mantles onto a ledge it nearly
+  clears (step-ups count while rising), `HOP` is 0.7 m.
+- **View model arms** are never stretched: a steered paw farther from its shoulder than the forearm
+  gets an elbow and an upper arm (`placeArm`, two bones).

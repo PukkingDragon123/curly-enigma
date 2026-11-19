@@ -83,34 +83,7 @@
 .pouch-delta.go { animation: deltaFloat 1.6s ease-out forwards; }
 @keyframes deltaFloat { 0% { transform: translateY(calc(var(--px) * -2)); opacity: 0; } 15% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { transform: translateY(calc(var(--px) * 4)); opacity: 0; } }
 
-/* lantern */
-.lamp {
-  position: relative; margin-top: calc(var(--sat) + var(--px) * 4); width: calc(var(--px) * 16); height: calc(var(--px) * 28);
-  transform: translateY(calc(-100% - var(--sat) - var(--px) * 10)); transform-origin: 50% calc(var(--px) * -30);
-  transition: transform .45s cubic-bezier(.5, -0.4, .6, 1); pointer-events: none;
-}
-.lamp.show { transform: none; transition: transform .55s var(--pop); animation: lampSway 3.2s ease-in-out .5s infinite; }
-@keyframes lampSway { 0%, 100% { transform: rotate(-2.5deg); } 50% { transform: rotate(2.5deg); } }
-.lamp-img { position: relative; width: 100%; height: 100%; z-index: 1; }
-.lamp-glow {
-  position: absolute; left: 50%; top: 55%; width: calc(var(--px) * 46); height: calc(var(--px) * 46); margin: calc(var(--px) * -23) 0 0 calc(var(--px) * -23);
-  border-radius: 50%; background: radial-gradient(circle, rgba(255, 200, 110, .55), rgba(255, 150, 60, .18) 45%, transparent 70%);
-  opacity: calc(var(--e, 1) * .95 + .05); transform: scale(calc(.45 + var(--e, 1) * .6)); transition: opacity .4s, transform .4s;
-}
-.lamp.low .lamp-glow { background: radial-gradient(circle, rgba(255, 110, 70, .55), rgba(220, 60, 40, .18) 45%, transparent 70%); opacity: .8; animation: lowPulse 1.1s ease-in-out infinite; }
-@keyframes lowPulse { 50% { opacity: .25; transform: scale(.5); } }
-.lamp.low.show { animation: lampSway 3.2s ease-in-out .5s infinite, lampShiver .9s steps(2) infinite; }
-@keyframes lampShiver { 50% { filter: brightness(.82); } }
-.lamp-tag {
-  position: absolute; left: 50%; top: calc(100% + var(--px) * 1); transform: translateX(-50%); white-space: nowrap;
-  font-size: 16px; line-height: 1; color: #ffe8c0; text-shadow: 0 var(--px) 0 #08070a;
-  border-style: solid; border-width: calc(var(--px) * 2) calc(var(--px) * 4); padding: 0 var(--px);
-  border-image: var(--h-ironTag) 2 4 fill / calc(var(--px) * 2) calc(var(--px) * 4) repeat;
-  filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .45));
-  opacity: 0; transition: opacity .3s;
-}
-.lamp.show .lamp-tag { opacity: 1; }
-.lamp.low .lamp-tag { color: #ffb0a0; }
+/* (the energy lantern became the stamina gauge: src/ui/stamina.css) */
 
 /* buff charms */
 .charms { display: flex; gap: calc(var(--px) * 2); margin-top: calc(var(--sat)); transform: translateY(-120%); transition: transform .4s var(--soft); }

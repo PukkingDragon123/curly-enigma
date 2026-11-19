@@ -20,7 +20,7 @@ URL params understood by `Game.start()`:
 - **Mix voxel 3D with flat 2D pixel art.** Build models with `VoxelGrid`. Characters use 1/32-unit voxels (twice the old 1/16 detail); props use 1/32 for anything the camera sees up close and 1/16 for big background pieces. Mesh hi-res grids with `voxelMesh(grid, {greedy: true})` (or `meshGridGreedy`) so flat-colored regions collapse into a few quads. Keep per-voxel color noise subtle and structured (bands, grain, patches) so it reads as material, not static. Draw flat pixel sprites with `PixelCanvas` / `drawTemplate` and turn them into textures with `pixelTexture(canvas)` (NearestFilter).
 - **Characters** come from `gfx/characters.js` (`makeCharacter`, `randomSpec`, `playerSpec`, `makeChicken`, `makePaw`): cute, blocky chibi folk with expressive faces (`rig.setExpression`, `talk`, `lookAt`; see `docs/REMAKE.md`). A taller grown-up build exists (`{ build: 'tall' }`) but the chibi one is the default.
 - **Warm, cozy, dirty underground.** Use reds, browns, moss greens, lantern oranges, glowing blue mushrooms and gold accents. The reference mood is a cozy pixel cabin with wooden beams, vines, a fireplace, dried herbs and a chalkboard.
-- **Almost no UI.** The interface is diegetic: the mole's backpack is the inventory, the Index Book is a real book with turning pages, gold is a coin pouch and energy is a little lantern. Nothing sits on screen permanently: those pieces slide in when they change, when they matter (low energy) or when the player reaches for them. Prompts are small glyphs next to the thing you can use.
+- **Almost no UI.** The interface is diegetic: the mole's backpack is the inventory, the Index Book is a real book with turning pages, gold is a coin pouch and stamina is a brass-and-leather gauge on the tool belt. Nothing sits on screen permanently: those pieces slide in when they change, when they matter (low stamina) or when the player reaches for them. Prompts are small glyphs next to the thing you can use.
 - **UI is DOM** over the canvas. Use the classes in `src/ui/styles.css` (`.panel`, `.btn`, `.btn.alt`, `.li`, `.grid`, `.slot`, `.tabs/.tab`, `.chip`, `.big-title`, `kbd`, `.muted`, `.gold-txt`, `.detail`, `.row`, `.spacer`). Fonts: `var(--font)` (Tiny5) and `var(--font-display)` (Jersey 10). Size things with `calc(var(--px) * N)`, where `--px` is 2–3 CSS px.
 - **No tutorials, no forced dialogue.** Players learn by experimenting. Useful feedback is fine: sounds, float texts, a short toast. Record discoveries with `state.learn('<mechanic id>')` or `state.discover(cat, id)`. The index book pops a card automatically.
 
@@ -30,7 +30,7 @@ URL params understood by `Game.start()`:
 - `game.engine`, `game.input`, `game.audio`, `game.state`, `game.ui`
 - `game.goto(name, params?, {transition:'iris'|'fade'|'none'|'seamless', dur, color, center:[u,v]})` switches scene. Scene names: `title fall home deep town forge cooking ending showroom` (`mine` is an alias of `deep` for old links). `'seamless'` holds the frame on screen (no black) while the next scene builds and dissolves into it; held keys and the pointer lock carry over (the old passage uses it). A scene whose `enter()` throws or runs past ~45 s is let go for a safe one (`FALLBACK` in `Game.js`: the mine, town, forge and cooking fall back home, home to the title); a lantern shows if a build takes a while (title, journey and home have their own). A `goto` made while a scene is loading is dropped; one made while it fades in waits its turn.
 - Loading must never wait forever: `renderer.compileAsync` is capped (7 s, and gives up during a WebGL context loss); every worker (`?worker&inline`, so the single-file build carries them) has a watchdog and a main-thread fallback. On a context loss the game pauses under a lantern (a Reload button after ~9 s); on restore `scene.onContextRestored()` runs (the town builds itself again: its statics drop their CPU copies once uploaded).
-- `game.eat(itemId)` eats food (handles energy, buffs, toasts). `game.sleep()` advances the day: restores energy, collects eggs and grows planters.
+- `game.eat(itemId)` eats food (`state.feed`: the food value comes off hunger and back onto stamina; `item.heal` mends injury; buffs, toasts). `game.sleep()` advances the day: mends injury, refills stamina, collects eggs and grows planters.
 - `game.showLoading(text)` returns a remover function.
 
 ### Scene (`src/core/Scene.js`)
@@ -64,7 +64,7 @@ Input is disabled automatically while a UI panel is open.
 
 ### State (`game.state`, persistent save)
 - Gold: `gold`, `addGold(n, reason)`, `spend(n)` (returns bool), `canAfford(n)`.
-- Energy: `energy`, `maxEnergy`, `useEnergy(n)`, `restoreEnergy(n)`. Buffs: `addBuff(id, secs)`, `hasBuff(id)`.
+- Stamina (the old energy field, same names): `energy`, `maxEnergy` (the bar's full length), `energyCap` (max less `data.hunger` and `data.injury`), `useEnergy(n)`, `restoreEnergy(n)`, `injure(n)`, `mend(n)`, `feed(n, heal)`. Rules (slow refill when resting, hunger growth, hits wound via the `hurt` act, healing) in `core/vitals.js`; the bar and the blackout (`ui.status.blackout(cb)`) in `ui/Stamina.js`. Buffs: `addBuff(id, secs)`, `hasBuff(id)`.
 - Items: `addItem(id, {q, p, n})`, `count(id)`, `owns(id)`, `removeItem(id, n, {lowFirst})` (returns the removed lots for quality items, or a count), `lotsOf(id)` (`[{uid,id,q,p}]`), `inventory(filterFn)` (grouped `[{id,n,avgQ?,lots?}]`).
 - Weapons: `addWeapon({type, metal, matQ, score, infusion?, gem?, gemQ?})` computes the grade, name and value and records the index entry. Also `removeWeapon(uid)` and `data.weapons`.
 - Equipment: `equip(id)`, `equipped(slot)`, `protects('zap'|'heat'|'cold')`, `bagCapacity()`, `lightRadius()`.
@@ -84,7 +84,7 @@ Input is disabled automatically while a UI panel is open.
 - `openShop(shopId)` with shopId one of `tools grocer furniture blueprints outfitter assay ticket`, `openInventory()`, `openIndex()`, `openMenu()`
 - `ui.world` is a DOM layer for anything anchored to world positions. It is cleared on scene change. Also `ui.root`, `ui.overlay`, `ui.hud`, and the corner clusters `ui.tl` / `ui.tr` plus `ui.bubbles`.
 - `setBag(n, cap)` (call on every pickup: the backpack bulges, shows `n/cap`, wiggles FULL; `setBag(null)` clears), `setFocusMode(on, {onBack})` (hides the corner HUD and shrinks the belt to the held tool; on touch, Back calls `onBack`), `setRadar(provider, opts)`, `setCrosshair(o)`, `openSurvey()` (first person, see `docs/DEEP.md`), `setTouchControls(on)` (hide the on-screen controls, e.g. in cutscenes), `pressKey(code, ms)` (simulated key tap).
-- The HUD lives in `ui/Hud.js` (coin pouch, lantern, charms, calendar, backpack + book, depth plumb-bob), `ui/Belt.js` (tool belt), `ui/Backpack.js`, `ui/IndexBook.js`, `ui/ShopUI.js`, `ui/Journal.js` (pause menu) and `ui/TouchControls.js`. Pixel chrome is generated in `ui/uiArt.js` (9-slice frames and tiles as `--a-*` CSS custom properties) and `ui/uiSprites.js`; styles are split into `hud.css`, `backpack.css`, `book.css`, `shop.css`, `touch.css` next to `styles.css`. Fonts: Tiny5, Jersey 10/15 and Jacquarda Bastarda 9, used only at sizes where they render crisp.
+- The HUD lives in `ui/Hud.js` (coin pouch, stamina gauge (`ui/Stamina.js`), charms, calendar, backpack + book, depth plumb-bob), `ui/Belt.js` (tool belt), `ui/Backpack.js`, `ui/IndexBook.js`, `ui/ShopUI.js`, `ui/Journal.js` (pause menu) and `ui/TouchControls.js`. Pixel chrome is generated in `ui/uiArt.js` (9-slice frames and tiles as `--a-*` CSS custom properties) and `ui/uiSprites.js`; styles are split into `hud.css`, `backpack.css`, `book.css`, `shop.css`, `touch.css` next to `styles.css`. Fonts: Tiny5, Jersey 10/15 and Jacquarda Bastarda 9, used only at sizes where they render crisp.
 - Tests: `node scripts/e2e.mjs` (desktop playthrough) and `node scripts/e2e-touch.mjs [outDir] [--portrait]` (phone viewport with real touch events: stick, tap-to-dig, face mode, backpack, book).
 - Use the `el(tag, attrs, children)` helper from `core/util.js` to build DOM.
 
@@ -129,7 +129,10 @@ network is `src/fps/lifts.js`. Scenes are in meters at mole scale (0.86 m tall, 
   (`canPlaceNooks`); footprints and kinds still in `src/iso/homeLayout.js`.
 - **Deep Town** (`TownScene.js`, `src/town/*`): cave, statics, shops, lift, folk, life, arrival, fx;
   layout in `src/iso/townLayout.js`, floors in `townFloor.js`, shop fronts `shopFront.js`, booth
-  `booth.js`. Townsfolk switch to crowd LOD when far; shopkeepers always render in full.
+  `booth.js`. Townsfolk switch to crowd LOD when far; shopkeepers always render in full. Every
+  shop is in town: the wall shops, plus the burrow folk's stalls on the square (`TOWN.stalls`,
+  models in `src/town/shopStalls.js`: a 1/32 frame dressed at 1/64), whose keepers open the same
+  burrow panel as down the mine.
 - **The old passage** (`src/home/passage.js`): once `state.escaped`, Old Star's front door stands open
   and a timbered tunnel doglegs up to your round green door in the town's north cliff (it stands
   open too). Both scenes build the same tunnel from this module (the burrow's frame; the town sees

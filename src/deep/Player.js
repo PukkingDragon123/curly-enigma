@@ -22,8 +22,10 @@ const HEIGHT = 0.86;
 const EYE = 0.72;
 const HEIGHT_C = 0.5; // crouched
 const EYE_C = 0.4;
+const HEIGHT_CR = 0.3; // (assist) flat on the belly: a full-body crawl through gaps a crouch won't fit
+const EYE_CR = 0.2;
 const STEP = 0.32;
-const HOP = 0.62; // (assist) the tallest ledge the mole hops up by itself when walking into it
+const HOP = 0.7; // (assist) the tallest ledge the mole hops up by itself when walking into it
 const NUDGE = 0.19; // (assist) how far round a corner the body may slip sideways (m)
 const GRAV = 15;
 
@@ -56,6 +58,8 @@ export class FPSPlayer {
     this.hopT = 0; // a little while after an auto-hop (no second one, no ledge guard)
     this.pushT = 0; // how long the legs have been pushing into a ledge
     this.stuckT = 0;
+    this.crawl = false; // (assist) down on the belly (a gap too low even to crouch in)
+    this.crawlPh = 0; // the crawl's stroke (advances with distance: the view and the paws follow it)
   }
 
   /** Is any solid voxel inside the box [x0,x1]×[y0,y1]×[z0,z1] (meters)? */
@@ -94,10 +98,13 @@ export class FPSPlayer {
     // crouch (in water the same key dives); standing up needs head room
     const wantLow = crouch && !frozen && !this.inWater;
     this.crouchKey = wantLow;
+    // crawling: up onto the knees (a crouch) as soon as there's room for it (in water: just up)
+    if (this.crawl && (this.inWater || !this.hitsAt(p.x, p.y, p.z, HEIGHT_C))) { this.crawl = false; this.h = HEIGHT_C; }
     if (wantLow && !this.crouched) { this.crouched = true; this.h = HEIGHT_C; }
     else if (wantLow) this.autoLow = false;
     else if (!wantLow && this.crouched) {
-      if (!this.hitsAt(p.x, p.y, p.z, HEIGHT)) { this.crouched = false; this.h = HEIGHT; this.autoLow = false; }
+      if (this.crawl) { /* still no room to get up */ }
+      else if (!this.hitsAt(p.x, p.y, p.z, HEIGHT)) { this.crouched = false; this.h = HEIGHT; this.autoLow = false; }
       else if (this.inWater) { // pinned under a ledge in water: slip down instead of sticking
         this.crouched = false; this.h = HEIGHT;
         for (let s = 1 / VOX; s <= 0.4; s += 1 / VOX) if (!this.hitsAt(p.x, p.y - s, p.z)) { p.y -= s; break; }
@@ -108,7 +115,8 @@ export class FPSPlayer {
     if (this.assist) this.unstick(dt);
 
     let speed = (run && !this.crouched ? 3.9 : 2.7) * speedMul;
-    if (this.crouched) speed *= this.autoLow && !wantLow ? 0.62 : 0.45; // ducking through a low bit is quicker than a sneak
+    if (this.crawl) speed *= 0.4; // a belly crawl
+    else if (this.crouched) speed *= this.autoLow && !wantLow ? 0.62 : 0.45; // ducking through a low bit is quicker than a sneak
     if (this.inWater || this.inLava) speed *= 0.6;
     else if (this.wade) speed *= 1 - 0.45 * this.wade; // wading through shallow water
     if (frozen) mv = { x: 0, y: 0 };
@@ -198,7 +206,8 @@ export class FPSPlayer {
     this.dipV += (-this.dip * 260 - this.dipV * 20) * dt;
     this.dip += this.dipV * dt;
     this._dipWas = this.dip;
-    this.eyeY = damp(this.eyeY, this.crouched ? EYE_C : EYE, 14, dt);
+    this.eyeY = damp(this.eyeY, this.crawl ? EYE_CR : this.crouched ? EYE_C : EYE, 14, dt);
+    if (this.crawl && this.grounded) this.crawlPh += hs * dt * 7.5;
     // crouching drops the body at once and the eye follows: never let the eye ride above the
     // body's top (it would look out through the roof of a low tunnel)
     if (this.crouched && this.eyeY > this.h - 0.09 && this.boxHits(p.x - 0.08, p.y + this.h, p.z - 0.08, p.x + 0.08, p.y + this.eyeY + 0.08, p.z + 0.08)) this.eyeY = this.h - 0.09;
@@ -232,17 +241,23 @@ export class FPSPlayer {
       p.x = nx; p.z = nz; return false;
     }
     // step up onto low ledges (rough voxel floors); a moment after leaving the ground still counts
-    const canStep = this.grounded || this.climbing || (this.assist && this.coyote > 0);
+    // (assist: also on the way up or at the top of a hop: a jump mantles onto a ledge it nearly clears)
+    const canStep = this.grounded || this.climbing || (this.assist && (this.coyote > 0 || this.vel.y > -1.5));
     if (canStep && this.stepUp(nx, nz)) return true;
     if (this.assist && !this.inWater) {
-      // too low to stand in, but a crouched mole fits: duck in by itself
-      if (!this.crouched && (this.grounded || this.coyote > 0)) {
+      // too low to stand in, but a crouched mole fits: duck in by itself; too low even for that:
+      // down on the belly and crawl (a gap a body high is enough)
+      if (!this.crawl && (this.grounded || this.coyote > 0)) {
         const h0 = this.h;
-        this.h = HEIGHT_C;
-        if (!this.hitsAt(nx, p.y, nz) || (canStep && this.stepUp(nx, nz, true))) {
-          if (!this.hitsAt(nx, p.y, nz)) { p.x = nx; p.z = nz; }
-          this.crouched = true; this.autoLow = true;
-          return false;
+        for (const hh of this.crouched ? [HEIGHT_CR] : [HEIGHT_C, HEIGHT_CR]) {
+          this.h = hh;
+          if (!this.hitsAt(nx, p.y, nz) || (canStep && this.stepUp(nx, nz, true))) {
+            if (!this.hitsAt(nx, p.y, nz)) { p.x = nx; p.z = nz; }
+            if (!this.crouched) this.autoLow = true;
+            this.crouched = true;
+            if (hh === HEIGHT_CR) this.crawl = true;
+            return false;
+          }
         }
         this.h = h0;
       }
@@ -334,11 +349,13 @@ export class FPSPlayer {
         for (const dy of [0, 1 / VOX, 2 / VOX, 4 / VOX, -1 / VOX]) if (tryAt(x, p.y + dy, z)) { p.set(x, p.y + dy, z); this.stuckT = 0; return; }
       }
     }
-    if (!this.crouched) {
-      this.h = HEIGHT_C;
-      if (!this.hitsAt(p.x, p.y, p.z)) { this.crouched = true; this.autoLow = true; this.stuckT = 0; return; }
-      this.h = HEIGHT;
+    const h0 = this.h;
+    for (const hh of [HEIGHT_C, HEIGHT_CR]) {
+      if (hh >= h0) continue;
+      this.h = hh;
+      if (!this.hitsAt(p.x, p.y, p.z)) { if (!this.crouched) this.autoLow = true; this.crouched = true; this.crawl = hh === HEIGHT_CR; this.stuckT = 0; return; }
     }
+    this.h = h0;
   }
 
   moveY(d) {
@@ -380,4 +397,4 @@ export class FPSPlayer {
   }
 }
 
-export { HW, HEIGHT, EYE, HEIGHT_C, EYE_C };
+export { HW, HEIGHT, EYE, HEIGHT_C, EYE_C, HEIGHT_CR, EYE_CR };

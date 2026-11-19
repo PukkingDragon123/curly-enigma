@@ -64,11 +64,14 @@ export const TOWN = {
   orePile: { x: 24.7, z: 13.6 },
   // mound houses in the back lanes (yaw: the way the front door faces; π = north, -π/2 = west)
   houses: [{ x: 8.6, z: 33.4, yaw: Math.PI }, { x: 26.4, z: 33.7, yaw: Math.PI }, { x: 38.9, z: 23.6, yaw: -Math.PI / 2 }, { x: 39.1, z: 12.6, yaw: -Math.PI / 2 }],
-  // market stalls around the plaza (decor; the keepers chat)
+  // the market on the square: the burrow folk's stalls (their shops down the mine keep a counter
+  // up here too), the general store the first thing you meet out of your burrow door, the supply
+  // post by the lift (src/town/shopStalls.js; front = the way yaw faces)
   stalls: [
-    { x: 11.55, z: 20.9, yaw: Math.PI * 0.25, kind: 'shrooms' },
-    { x: 25.6, z: 19.9, yaw: -Math.PI * 0.3, kind: 'fish' },
-    { x: 25.75, z: 9.35, yaw: -Math.PI * 0.75, kind: 'gems' },
+    { x: 14.2, z: 8.6, yaw: -Math.PI * 0.8, shop: 'trader' },
+    { x: 11.55, z: 20.9, yaw: Math.PI * 0.25, shop: 'herbalist' },
+    { x: 25.6, z: 19.9, yaw: -Math.PI * 0.3, shop: 'rocco' },
+    { x: 25.75, z: 9.35, yaw: -Math.PI * 0.75, shop: 'outpost' },
   ],
   // shallow puddles on the cobbles, catching the lantern light
   puddles: [[24.3, 18.5, 0.62, 0.42], [12.7, 9.7, 0.5, 0.36], [28.7, 14.6, 0.55, 0.4], [8.9, 21.6, 0.45, 0.3], [20.6, 23.6, 0.4, 0.3]],

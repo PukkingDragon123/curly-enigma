@@ -12,6 +12,7 @@
 // workshop bay and a pantry, from the Miners' Board or with E at the chalk marks); X (or the chair
 // button) is build mode in them. There is no digging out of the home: the lift is the way down.
 import * as THREE from 'three';
+import { HandTools } from '../ui/handTools.js'; // [inventory hook]
 import { Scene } from '../core/Scene.js';
 import { FPSRig } from '../fps/FPSKit.js';
 import { liftState } from '../fps/lifts.js';
@@ -824,10 +825,10 @@ export default class HomeScene extends Scene {
       this.rig.update(dt, { busy });
       this.rig.stepMat = this.stepMatAt(this.rig.player.pos.x, this.rig.player.pos.z);
       if (!busy) {
-        if (!this.build.active && this.rig.tool !== 'none') this.rig.setTool('none');
         if (!this.build.active && inp.pressed('KeyQ')) this.snack();
       }
     }
+    (this.hands ||= new HandTools(this)).update(dt, g.ui.isPanelOpen(), this.scripted || this.build.active); // [inventory hook] the belt + the held tool (src/ui/handTools.js)
     this.game.convo?.director?.apply(this.camera, dt); // cutscene talk camera (src/fx/director.js) [convo hook]
     this.build.update(dt);
     this.shell.hearth?.update?.(this.time);

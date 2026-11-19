@@ -1,13 +1,15 @@
-// The backpack: the inventory as a big, open leather rucksack (rows of pockets, Minecraft-like).
-//  - main compartment (canvas lining): the pockets, in rows of nine. A new mole has 9; a bigger
-//    bag (bought in the shops) unpicks more rows, sewn-shut pockets show what's still to come.
-//    A spring scale shows the load: past what the bag carries comfortably the mole slows down
-//    (core/weight.js), and heavy ore is best taken home
-//  - tool loops + gear hooks on the side = equipment (click → tag with Equip)
+// The backpack: the inventory as a big, open leather rucksack (Minecraft-like slots).
+//  - main compartment (canvas lining): the pack, rows of nine pockets. A new mole has two rows; a
+//    bigger bag (bought in the shops) unpicks another row, sewn-shut pockets show what's to come.
+//    Ore and gems take a pocket each; everything else stacks. A spring scale shows the load: past
+//    what the bag carries comfortably the mole slows down (core/weight.js)
+//  - the belt along the bag's foot: the nine hotbar slots (keys 1–9 in the mine, the house and
+//    town), the same slots as everywhere: drag stacks onto it, or tools off the rack
+//  - tool rack + gear hooks on the side = equipment (drag a tool onto the belt; click → its tag)
 //  - front pockets = Index Book, coin pouch, savings jar toward the Surface Ticket, calendar,
 //    snacks; or, at home, the trunk where whatever didn't fit waits
-//  - drag stacks between pockets and containers, right-click / long-press to split, double-click
-//    to send to the other side, drop on the toss pit to throw away (see invGrid.js)
+//  - click / drag to pick up, put down and swap, right-click to split, shift-click between the
+//    belt and the pack, drag out of the pack (or onto the toss pit) to drop it (see invGrid.js)
 //  - clicking anything hangs a paper tag on it: name, quality, notes, value and actions
 //
 //   openBackpack(game, { side: 'trunk' | 'front' }) → panel handle (ui.openInventory())
@@ -19,27 +21,29 @@ import { GOAL_GOLD } from '../core/State.js';
 import { gradeFor } from '../data/weapons.js';
 import * as Inv from '../core/inventory.js';
 import * as W from '../core/weight.js';
-import { TOOL_KINDS, HOTBAR_N, hotbarOf, hotbarSet, KIND_LABEL, KIND_ICON } from '../core/hotbar.js';
+import { HOTBAR_N, KIND_LABEL, KIND_ICON, refItem } from '../core/hotbar.js';
 import { SPR } from './uiSprites.js';
 import { qColor, pips, stagger, put } from './common.js';
-import { SlotDnD, slotEl, gridBox, stackIcon, stackName, bounce } from './invGrid.js';
+import { SlotDnD, slotEl, stackIcon, stackName, bounce } from './invGrid.js';
 import { INV_ART, installInvArt } from './invArt.js';
 import { installPackArt } from './packArt.js';
 import { itemVox } from './itemVox.js';
 import { installPanelArt } from './panelArt.js'; // (wave 9: cast brass corners and forged studs on the bag)
 
-const TOOL_SLOTS = [['pick', 'Pickaxe', 'pick_rusty'], ['chisel', 'Chisel', 'chisel_basic'], ['brush', 'Brush', 'brush_basic'], ['drill', 'Drill', 'drill_steam'], ['xray', 'X-Ray Lamp', 'xray_lamp']];
+const TOOL_SLOTS = [['pick', 'Pickaxe', 'pick_rusty'], ['chisel', 'Chisel', 'chisel_basic'], ['brush', 'Brush', 'brush_basic'], ['drill', 'Drill', 'drill_steam'], ['xray', 'X-Ray Lamp', 'xray_lamp'], ['build', 'Building', 'blk_ladder']];
 const GEAR_SLOTS = [['helmet', 'Helmet', 'helmet_basic'], ['gloves', 'Gloves', 'rubber_gloves'], ['suit', 'Suit', 'heat_suit'], ['boots', 'Boots', 'grip_boots'], ['bag', 'Bag', 'bag_small']];
 const BAGS = ['bag_small', 'bag_medium', 'bag_large', 'bag_huge', 'bag_bottomless'];
 const edible = (it) => it && (it.cat === 'food' || it.food);
 const COLS = Inv.COLS;
 
-/** Bag-full feedback (toast + the HUD pack wiggles). For pickups that didn't fit. */
+/**
+ * Bag-full feedback for a pickup that didn't fit (it stays where it lies): no words, the item
+ * bounces off the belt, the belt shakes red, the HUD pack wiggles.
+ */
 export function bagFullToast(game, id) {
-  const it = ITEMS[id];
   const ui = game.ui;
   game.audio.play('ui_error');
-  ui.toast(`<b>Backpack full!</b> No room for ${it ? it.name : 'that'}.`, { kind: 'warn', icon: it ? iconURL(id) : undefined, dur: 2600 });
+  ui.belt?.full?.(id);
   const f = game.state.bagFill?.();
   if (f) ui.setBag?.(f.slots, f.slots);
 }
@@ -50,6 +54,7 @@ export function openBackpack(game, opts = {}) {
   const ui = game.ui;
   const audio = game.audio;
   let selKey = null; // 'slot:<c>:<i>' | 'gear:<slot>'
+  const H = HOTBAR_N;
   let firstRender = true;
   const atHome = game.sceneName === 'home';
   const sides = () => {
@@ -60,8 +65,16 @@ export function openBackpack(game, opts = {}) {
   let side = opts.side && sides().includes(opts.side) ? opts.side : 'front';
 
   // ---------------------------------------------------------------- containers
-  const slotsOf = (c) => (c === 'bag' ? Inv.bag(st) : c === 'trunk' ? Inv.stash(st) : null);
+  // 'bag': the carried slots (0..H-1 the belt, then the pack); 'trunk': the stash at home;
+  // 'rack': the tool rack on the bag's side (belt tools are hung from it)
+  const rack = TOOL_SLOTS.map(([k]) => ({ tool: k }));
+  const slotsOf = (c) => (c === 'bag' ? Inv.bag(st) : c === 'trunk' ? Inv.stash(st) : c === 'rack' ? rack : null);
   const capOf = (c) => (c === 'bag' ? Inv.bagSlots(st) : c === 'trunk' ? Infinity : slotsOf(c).length);
+  const hasTool = (k) => k === 'build' || !!st.equipped(k);
+  const refIcon = (k) => itemVox.src(refItem(st, k)?.id || KIND_ICON[k]);
+  const refOff = (k) => !hasTool(k);
+  /** The belt slot the mole holds (the scene's), for the crisp highlight. */
+  const curHot = () => { const sc = game.scene; const v = sc?.hands?.slot ?? sc?.slot; return Number.isInteger(v) ? v : -1; };
 
   // ---------------------------------------------------------------- structure
   const grid = el('div', { class: 'bp-grid', role: 'grid', 'aria-label': 'Backpack pockets' });
@@ -70,13 +83,11 @@ export function openBackpack(game, opts = {}) {
   const scale = el('span', { class: 'bp-scale', title: 'How heavy your pack is' });
   const tidyB = el('button', { class: 'bp-tool', title: 'Tidy up (sort and stack)', 'aria-label': 'Tidy up', onclick: () => tidy('bag') }, [el('img', { class: 'pix', src: INV_ART.brush(), alt: '' }), el('span', {}, 'Tidy')]);
   const toss = el('div', { class: 'bp-toss', 'data-drop': 'toss', title: 'Drop a stack here to throw it away' }, [el('img', { class: 'pix', src: INV_ART.toss(false), alt: '' }), el('span', {}, 'Toss')]);
-  // turning what you hold (R, the wheel; on a touch screen this button)
-  const turnB = el('button', { class: 'bp-tool inv-turn', hidden: true, title: 'Turn it (R)', 'aria-label': 'Turn it', onclick: () => dnd?.turn() }, [el('span', { class: 'inv-turn-ico' }, '⟳'), el('span', {}, 'Turn')]);
-  const bar = el('div', { class: 'bp-bar' }, [count, scale, el('i', { class: 'spacer' }), turnB, tidyB, toss]);
+  const bar = el('div', { class: 'bp-bar' }, [count, scale, el('i', { class: 'spacer' }), tidyB, toss]);
   const tag = el('div', { class: 'bp-tag', hidden: true });
   const twine = el('i', { class: 'bp-twine', hidden: true });
   const tip = el('div', { class: 'inv-tip', hidden: true, role: 'tooltip' });
-  // the hotbar row: the five loops you see in the mine; tap one to choose what goes in it
+  // the belt along the bag's foot: the hotbar slots (the same nine as at the bottom of the screen)
   const hotRow = el('div', { class: 'bp-hot', role: 'group', 'aria-label': 'Hotbar' });
   const main = el('section', { class: 'bp-main' }, [bar, scroll, hotRow, twine, tag]);
   const equip = el('aside', { class: 'bp-equip' });
@@ -107,26 +118,31 @@ export function openBackpack(game, opts = {}) {
 
   // ---------------------------------------------------------------- the pockets
   const nextBag = () => {
-    const cur = Inv.bagPockets(st);
-    for (const id of BAGS) if ((ITEMS[id]?.slots || 0) > cur - Math.floor((st.upEffect?.('bag') || 0) / 4) && (ITEMS[id]?.slots || 0) > (st.equipped('bag')?.slots || 9)) return ITEMS[id];
+    const cur = st.equipped('bag')?.slots ?? 9;
+    for (const id of BAGS) if ((ITEMS[id]?.slots || 0) > cur) return ITEMS[id];
     return null;
   };
   const renderGrid = (animate) => {
-    const slots = Inv.bag(st);
+    const slots = Inv.bag(st), cap = Inv.bagSlots(st), P = cap - H;
     grid.innerHTML = '';
     grid.classList.toggle('bp-settle', !!animate);
-    // the pack's lining: a grid of cells; what you carry lies on it as tiles (turn them to fit).
-    // A sewn-shut row below shows the next bag.
+    // the pack: rows of nine pockets; the rest of the last row and the next bag's row sewn shut
     const nb = nextBag();
-    const box = gridBox(slots, { c: 'bag', frame: 'pocket', cls: 'bag' + (slots.grid.cols > 6 ? ' big' : ''), hide: (i) => dnd?.heldFrom('bag', i) || 0, sel: (i) => selKey === `slot:bag:${i}`, sewnRows: nb ? 1 : 0 });
-    grid.append(box);
-    if (nb) grid.append(el('div', { class: 'bp-nextbag' }, [el('span', { class: 'inv-lock' }, nb.name), el('small', {}, ` sews on more rows`)]));
-    const nodes = [...box.querySelectorAll('.inv-slot')];
+    const rows = Math.ceil(P / COLS), cells = rows * COLS + (nb ? COLS : 0);
+    const pack = el('div', { class: 'bp-pack', role: 'grid', 'aria-label': 'Pack' });
+    for (let k = 0; k < cells; k++) {
+      const i = H + k;
+      if (k < P) pack.append(slotEl(slots[i] || null, { c: 'bag', i, frame: 'pocket', hide: dnd?.heldFrom('bag', i) || 0, sel: selKey === `slot:bag:${i}` }));
+      else pack.append(slotEl(null, { c: 'sewn', i: k, frame: 'pocket', locked: true, lockLabel: nb && k === rows * COLS ? nb.name : '' }));
+    }
+    grid.append(pack);
+    const nodes = [...pack.querySelectorAll('.inv-slot:not(.sewn)')];
     if (animate) stagger(nodes, firstRender ? 16 : 8);
-    const f = Inv.bagFill(st);
-    count.innerHTML = `<b>${f.used}</b>/${f.slots}`;
-    count.title = `${f.used} of ${f.slots} cells used`;
-    count.classList.toggle('full', f.full);
+    let used = 0;
+    for (let i = H; i < cap; i++) if (slots[i]) used++;
+    count.innerHTML = `<b>${used}</b>/${P}`;
+    count.title = `${used} of ${P} pockets used`;
+    count.classList.toggle('full', used >= P);
     renderScale();
   };
   /** The spring scale: kg carried vs what the bag carries comfortably. */
@@ -163,7 +179,20 @@ export function openBackpack(game, opts = {}) {
       }
       return c;
     };
-    equip.append(col('Tools', TOOL_SLOTS, 'tools'), col('Gear', GEAR_SLOTS, 'gear'));
+    // the tool rack: drag a tool onto the belt (or shift-click it there); a hung one shows a brass tag
+    const tools = el('div', { class: 'bp-col tools' }, [el('div', { class: 'bp-coltitle' }, 'Tools')]);
+    const belt = Inv.bag(st).slice(0, H);
+    rack.forEach((r, i) => {
+      const k = r.tool, label = TOOL_SLOTS[i][1], cur = refItem(st, k);
+      const b = slotEl(r, { c: 'rack', i, frame: 'sleeve', refIcon, refOff, sel: selKey === `slot:rack:${i}` });
+      b.classList.add('bp-loop');
+      if (!hasTool(k)) b.classList.add('empty');
+      const at = belt.findIndex((x) => x?.tool === k);
+      if (at >= 0) b.append(el('i', { class: 'hung' }, String(at + 1)));
+      b.title = cur && hasTool(k) ? `${label}: ${cur.name}` : `${label}: none yet`;
+      tools.append(b);
+    });
+    equip.append(tools, col('Gear', GEAR_SLOTS, 'gear'));
   };
 
   // ---------------------------------------------------------------- the side: front pockets, the trunk
@@ -207,7 +236,7 @@ export function openBackpack(game, opts = {}) {
       ]),
       el('div', { class: 'bp-day' }, [
         el('div', { class: 'bp-cal' }, [el('img', { class: 'pix', src: SPR.calendar(false), alt: '' }), el('b', {}, String(st.data.day))]),
-        el('div', {}, [el('small', {}, bagIt ? bagIt.name : 'Bag'), el('span', {}, `${Inv.bag(st).grid.cols}×${Inv.bag(st).grid.rows} pack`)]),
+        el('div', {}, [el('small', {}, bagIt ? bagIt.name : 'Bag'), el('span', {}, `${Inv.bagPockets(st)} pockets`)]),
       ]),
     );
     // snack pouch: quick access to food in the pockets
@@ -221,7 +250,7 @@ export function openBackpack(game, opts = {}) {
       const b = el('button', { class: 'bp-snack', title: `${it.name} (+${it.energy ?? it.food})` }, [
         el('img', { class: 'pix', src: itemVox.src(f.id), alt: '' }), el('span', { class: 'n' }, String(f.n)),
       ]);
-      b.onclick = () => { if (i >= 0) selectSlot('bag', i, grid.querySelector(`.inv-slot[data-c="bag"][data-i="${i}"]`)); };
+      b.onclick = () => { if (i >= 0) selectSlot('bag', i, root.querySelector(`.inv-slot[data-c="bag"][data-i="${i}"]`)); };
       row.append(b);
     }
     if (!foods.length) row.append(el('span', { class: 'bp-none' }, 'No food packed.'));
@@ -250,9 +279,21 @@ export function openBackpack(game, opts = {}) {
   };
 
   // ---------------------------------------------------------------- moving things around
+  const atBelt = (c, i) => c === 'bag' && i >= 0 && i < H;
+  const refresh = () => game.scene?.updateHotbar?.();
   const move = (c, i, d, j, k) => {
+    // tools: from the rack onto a belt slot, along the belt, off it back onto the rack
+    if (c === 'rack') {
+      const kind = rack[i]?.tool;
+      if (!atBelt(d, j) || !hasTool(kind)) return 0;
+      const ok = Inv.hookTool(st, kind, j);
+      if (ok) refresh();
+      return ok ? 1 : 0;
+    }
     const from = slotsOf(c), to = slotsOf(d);
     if (!from || !to) return 0;
+    if (from[i]?.tool && d === 'rack') { from[i] = null; Inv.sync(st); st.emit('items', { id: null, n: 0, moved: 1 }); refresh(); return 1; }
+    if (d === 'rack') return 0;
     // the trunk only opens at home
     if ((c === 'trunk' || d === 'trunk') && !atHome && opts.side !== 'trunk') return 0;
     if (d === 'trunk' && j >= to.length) { while (to.length <= j) to.push(null); }
@@ -260,18 +301,45 @@ export function openBackpack(game, opts = {}) {
     if (j >= 0 && j >= cap) return 0;
     const moved = Inv.transfer(st, from, i, to, j, k, cap === Infinity ? to.length + 99 : cap);
     if (d === 'trunk' || c === 'trunk') { while (to.length && !to[to.length - 1]) to.pop(); while (from.length && !from[from.length - 1] && c === 'trunk') from.pop(); }
+    if (moved && (c === 'bag' || d === 'bag')) refresh();
     return moved;
   };
-  /** Drop on a grid cell (the backpack): the same rules as move(). */
-  const moveAt = (c, i, d, x, y, r, k) => {
-    const from = slotsOf(c), to = slotsOf(d);
-    if (!from || !to || !from[i]) return null;
-    if ((c === 'trunk' || d === 'trunk') && !atHome && opts.side !== 'trunk') return null;
-    const res = Inv.transferAt(st, from, i, to, x, y, r, k);
-    if (c === 'trunk') while (from.length && !from[from.length - 1]) from.pop();
-    return res;
+  const other = (c) => (c === 'bag' ? (side === 'trunk' ? 'trunk' : null) : c === 'trunk' ? 'bag' : null);
+  /** Shift-click / double-tap: belt ↔ pack (to the trunk while it's open); a rack tool on/off the belt. */
+  const quick = (c, i) => {
+    if (c === 'rack') {
+      const kind = rack[i]?.tool, b = Inv.bag(st);
+      const at = b.findIndex((x, j) => j < H && x?.tool === kind);
+      if (at >= 0) return move('bag', at, 'rack', -1, 1);
+      if (!hasTool(kind)) return 0;
+      const ok = Inv.hookTool(st, kind, -1);
+      if (ok) refresh();
+      return ok ? 1 : 0;
+    }
+    const to = other(c);
+    if (to) return move(c, i, to, -1, Infinity);
+    const m = Inv.quickMove(st, i);
+    if (m) refresh();
+    return m;
   };
-  const other = (c) => (c === 'bag' ? (side === 'trunk' ? 'trunk' : null) : 'bag');
+  /** Dragged (or clicked) out of the pack: a belt tool goes back on its rack, a stack drops out. */
+  const outside = (c, i, k) => {
+    const s = slotsOf(c)?.[i];
+    if (!s || c === 'rack') { bounce(dnd?.nodeOf(c, i)); return; }
+    if (s.tool) { move(c, i, 'rack', -1, 1); sfx('drop'); render(false); bounce(root.querySelector(`.inv-slot[data-c="rack"][data-i="${rack.findIndex((r) => r.tool === s.tool)}"]`)); return; }
+    tossStack(c, i, k);
+  };
+  /** 1–9 over a slot: swap it with that belt slot. */
+  const numKey = (c, i, n) => {
+    const j = n - 1;
+    if (c === 'bag' && i === j) return;
+    const m = move(c, i, 'bag', j, Infinity);
+    sfx(m > 0 ? 'swap' : 'nope');
+    if (m <= 0) bounce(dnd?.nodeOf(c, i), 'shake');
+    closeTag();
+    render(false);
+    bounce(dnd?.nodeOf('bag', j));
+  };
 
   const tidy = (c) => {
     const s = slotsOf(c);
@@ -289,7 +357,8 @@ export function openBackpack(game, opts = {}) {
 
   const tossStack = async (c, i, k) => {
     const s = slotsOf(c)?.[i];
-    if (!s) return;
+    if (!s || c === 'rack') return;
+    if (s.tool) { move(c, i, 'rack', -1, 1); sfx('drop'); render(false); return; }
     const n = Math.min(Inv.stackN(s), k);
     const worth = s.w ? s.w.value : s.lots ? s.lots.slice(0, n).reduce((a, l) => a + sellPrice(l.id, l.q, l.p), 0) : sellPrice(s.id) * n;
     if (worth >= 60 || s.w) {
@@ -317,16 +386,19 @@ export function openBackpack(game, opts = {}) {
     for (const n of root.querySelectorAll('.on[data-key], .inv-slot.on')) n.classList.remove('on');
     node?.classList.add('on');
   };
-  const selectSlot = (c, i, node) => {
+  let tagStack = null; // what the open tag describes (it closes when that stack moves away)
+  const selectSlot = (c, i, node, keep = false) => {
     const key = `slot:${c}:${i}`;
-    if (selKey === key && !tag.hidden) { closeTag(); return; }
+    if (selKey === key && !tag.hidden && !keep) { closeTag(); return; }
     const s = slotsOf(c)?.[i];
     if (!s) return;
     selKey = key;
     markSel(node);
     anchor = node;
-    audio.play('ui_click');
-    showStack(c, i);
+    if (!keep) audio.play('ui_click');
+    tagStack = s;
+    if (s.tool) { const t = TOOL_SLOTS.find(([x]) => x === s.tool); showSlot(s.tool, t?.[1] || KIND_LABEL[s.tool], t?.[2] || KIND_ICON[s.tool]); }
+    else showStack(c, i);
     placeTag();
   };
   const selectGear = (slot, label, sample, node) => {
@@ -341,6 +413,7 @@ export function openBackpack(game, opts = {}) {
   };
   const closeTag = () => {
     selKey = null;
+    tagStack = null;
     anchor = null;
     tag.hidden = true;
     twine.hidden = true;
@@ -413,17 +486,15 @@ export function openBackpack(game, opts = {}) {
     if (q !== null) info.push(`Quality <b style="color:${qColor(q)}">${q}%</b> on average${n > 1 && Math.min(...s.lots.map((l) => l.q)) !== Math.max(...s.lots.map((l) => l.q)) ? ` (${Math.min(...s.lots.map((l) => l.q))}–${Math.max(...s.lots.map((l) => l.q))}%)` : ''}${Inv.stackPristine(s) ? ` · ${s.lots.filter((l) => l.p).length} pristine` : ''}`);
     if (it.value) info.push(`Worth about <span class="gold-txt">${formatGoldFull(sellPrice(s.id, q ?? 100))}g</span> each`);
     if (it.energy || it.food) info.push(`Restores <b>${it.energy ?? it.food}</b> energy` + (it.buff ? ` · ${BUFFS[it.buff]?.name || it.buff}` : '') + (it.maxEnergy ? ` · +${it.maxEnergy} max energy` : ''));
-    info.push(`${n} here · stacks to ${Inv.stackMax(s.id)}${slotsOf(c)?.grid ? ` · takes <b>${Inv.footprint(s).join('×')}</b> cells` : ''}`);
+    info.push(Inv.stackMax(s.id) > 1 ? `${n} here · stacks to ${Inv.stackMax(s.id)}` : 'One per pocket');
     info.push(`Weighs <b>${W.kgOf(s.id) < 0.1 ? W.kgOf(s.id).toFixed(2) : W.kgOf(s.id).toFixed(1)} kg</b>${n > 1 ? ` each (${W.stackKg(s).toFixed(1)} kg here)` : ''}`);
     const actions = el('div', { class: 'bp-actions' });
     if (c === 'bag' && (it.cat === 'food' || (it.food && game.scene?.allowEatRaw !== false))) {
       actions.append(el('button', { class: 'btn', onclick: () => { game.eat(s.id); render(); refreshTag(); } }, it.cat === 'food' ? 'Eat' : 'Eat raw'));
     }
     const to = other(c);
-    if (to) actions.append(el('button', { class: 'btn alt', onclick: () => { const m = move(c, i, to, -1, Infinity); sfx(m > 0 ? 'drop' : 'nope'); closeTag(); render(); } }, to === 'bag' ? 'Take' : 'To the trunk'));
-    if (n > 1) actions.append(el('button', { class: 'btn alt', title: 'Take half into your paw (right-click or long-press)', onclick: () => { closeTag(); dnd.hand = { c, i, k: Math.ceil(n / 2) }; dnd.ghostFor(s, Math.ceil(n / 2)); const r = grid.getBoundingClientRect(); dnd.showGhost(r.left + r.width / 2, r.top + 30); sfx('split'); render(); } }, 'Split'));
-    const fpS = Inv.footprint(s);
-    if (slotsOf(c)?.grid && fpS[0] !== fpS[1]) actions.append(el('button', { class: 'btn alt', title: 'Turn it a quarter where it lies (R while holding it)', onclick: () => { if (Inv.rotateStack(st, slotsOf(c), i)) { sfx('one'); render(); reanchor(); placeTag(); } else { sfx('nope'); ui.toast('No room to turn it there.', { kind: 'warn', dur: 1400 }); } } }, 'Turn'));
+    if (to || c === 'bag') actions.append(el('button', { class: 'btn alt', title: 'Shift-click', onclick: () => { const m = quick(c, i); sfx(m > 0 ? 'drop' : 'nope'); closeTag(); render(); } }, to === 'bag' ? 'Take' : to ? 'To the trunk' : i < H ? 'To pack' : 'To belt'));
+    if (n > 1) actions.append(el('button', { class: 'btn alt', title: 'Take half into your paw (right-click)', onclick: () => { closeTag(); dnd.hand = { c, i, k: Math.ceil(n / 2) }; dnd.ghostFor(s, Math.ceil(n / 2)); const r = grid.getBoundingClientRect(); dnd.showGhost(r.left + r.width / 2, r.top + 30); sfx('split'); render(); } }, 'Split'));
     actions.append(el('button', { class: 'btn alt danger', onclick: () => tossStack(c, i, n) }, 'Toss'));
     put(tag,
       tagClose(),
@@ -458,8 +529,8 @@ export function openBackpack(game, opts = {}) {
   };
 
   const showSlot = (slot, label, sample) => {
-    const cur = st.equipped(slot);
-    const owned = Object.keys(st.data.owned).filter((id) => ITEMS[id]?.slot === slot);
+    const cur = slot === 'build' ? null : st.equipped(slot);
+    const owned = slot === 'build' ? [] : Object.keys(st.data.owned).filter((id) => ITEMS[id]?.slot === slot);
     tag.innerHTML = '';
     const info = [];
     if (cur) {
@@ -481,13 +552,22 @@ export function openBackpack(game, opts = {}) {
         } }, 'Equip'),
       ]));
     }
+    // tools hang on the belt from here (shift-click does the same)
+    const ri = rack.findIndex((r) => r.tool === slot);
+    let beltB = null;
+    if (ri >= 0 && hasTool(slot)) {
+      const on = Inv.bag(st).some((x, j) => j < H && x?.tool === slot);
+      beltB = el('div', { class: 'bp-actions' }, [el('button', { class: 'btn alt', title: 'Shift-click', onclick: () => { const m = quick('rack', ri); sfx(m > 0 ? 'drop' : 'nope'); closeTag(); render(); } }, on ? 'Off the belt' : 'On the belt')]);
+    }
+    const kitDesc = slot === 'build' ? 'Puts down blocks from your pack. R picks which.' : null;
     put(tag,
       tagClose(),
-      tagHead(itemVox.src(cur ? cur.id : sample), cur ? cur.name : `No ${label.toLowerCase()}`, cur ? `${label} · in use` : label, null, cur ? cur.id : null),
-      el('p', { class: 'bp-desc' }, cur ? cur.desc || '' : 'This loop is empty. The shops in Deep Town might have something for it.'),
+      tagHead(itemVox.src(cur ? cur.id : sample), cur ? cur.name : kitDesc ? label : `No ${label.toLowerCase()}`, cur ? `${label} · in use` : label, null, cur ? cur.id : null),
+      el('p', { class: 'bp-desc' }, cur ? cur.desc || '' : kitDesc || 'This loop is empty. The shops in Deep Town might have something for it.'),
       facts(info),
       others.length ? el('small', { class: 'bp-swap-t' }, 'Also packed') : null,
       others.length ? list : null,
+      beltB,
     );
   };
 
@@ -495,7 +575,11 @@ export function openBackpack(game, opts = {}) {
   const reanchor = () => {
     if (!selKey) return;
     let n = null;
-    if (selKey.startsWith('slot:')) { const [, c, i] = selKey.split(':'); n = root.querySelector(`.inv-slot[data-c="${c}"][data-i="${i}"]`); }
+    if (selKey.startsWith('slot:')) {
+      const [, c, i] = selKey.split(':');
+      if (slotsOf(c)?.[+i] !== tagStack) { closeTag(); return; } // what it described moved away
+      n = root.querySelector(`.inv-slot[data-c="${c}"][data-i="${i}"]`);
+    }
     else n = root.querySelector(`[data-key="${CSS.escape(selKey)}"]`);
     if (n) { markSel(n); anchor = n; placeTag(); }
   };
@@ -529,34 +613,15 @@ export function openBackpack(game, opts = {}) {
     }, 260);
   };
 
-  // ---------------------------------------------------------------- the hotbar row
+  // ---------------------------------------------------------------- the belt row (the hotbar)
   const renderHot = () => {
-    const bar = hotbarOf(st);
+    const slots = Inv.bag(st), cur = curHot();
     hotRow.innerHTML = '';
-        bar.forEach((k, i) => {
-      const b = el('button', { class: 'bp-hot-slot' + (k ? '' : ' empty') + (selKey === 'hot:' + i ? ' on' : ''), 'data-key': 'hot:' + i, title: k ? `${i + 1}: ${KIND_LABEL[k]}` : `${i + 1}: empty`, 'aria-label': k ? `Hotbar ${i + 1}: ${KIND_LABEL[k]}` : `Hotbar ${i + 1}: empty` }, [
-        k ? el('img', { class: 'pix', src: itemVox.src(KIND_ICON[k]), alt: '' }) : null, el('i', { class: 'k' }, String(i + 1)),
-      ]);
-      b.onclick = () => selectHot(i, b);
+    for (let i = 0; i < H; i++) {
+      const b = slotEl(slots[i] || null, { c: 'bag', i, frame: 'loop', key: String(i + 1), refIcon, refOff, hide: dnd?.heldFrom('bag', i) || 0, sel: selKey === `slot:bag:${i}` });
+      if (i === cur) b.classList.add('cur');
       hotRow.append(b);
-    });
-  };
-  const selectHot = (i, node) => {
-    const key = 'hot:' + i;
-    if (selKey === key && !tag.hidden) { closeTag(); return; }
-    selKey = key; markSel(node); anchor = node; audio.play('ui_click');
-    const bar = hotbarOf(st);
-    tag.innerHTML = '';
-    const list = el('div', { class: 'bp-swap' });
-    for (const k of TOOL_KINDS) {
-      list.append(el('div', { class: 'bp-swap-row' }, [
-        el('img', { class: 'pix', src: itemVox.src(KIND_ICON[k]), alt: '' }), el('span', {}, KIND_LABEL[k] + (bar.includes(k) && bar[i] !== k ? ` (slot ${bar.indexOf(k) + 1})` : '')),
-        el('button', { class: 'btn' + (bar[i] === k ? ' alt' : ''), disabled: bar[i] === k, onclick: () => { hotbarSet(st, i, k); sfx('drop'); game.scene?.updateHotbar?.(); closeTag(); renderHot(); } }, bar[i] === k ? 'In it' : 'Put here'),
-      ]));
     }
-    put(tag, tagClose(), tagHead(itemVox.src(bar[i] ? KIND_ICON[bar[i]] : 'pick_rusty'), `Hotbar slot ${i + 1}`, bar[i] ? KIND_LABEL[bar[i]] : 'Empty', null),
-      el('p', { class: 'bp-desc' }, `What sits in loop ${i + 1} at the bottom of the screen in the mine (key ${i + 1}).`), list);
-    placeTag();
   };
 
   // ---------------------------------------------------------------- render
@@ -576,11 +641,11 @@ export function openBackpack(game, opts = {}) {
     cap: capOf,
     other,
     move,
-    moveAt,
-    canAt: (c, i, d, x, y, r) => { const from = slotsOf(c), to = slotsOf(d); return from && to ? Inv.previewAt(from, i, to, x, y, r) : null; },
-    held: (on) => { turnB.hidden = !on; },
+    quick,
+    outside,
+    numKey,
     toss: (c, i, k) => tossStack(c, i, k),
-    select: (c, i, node) => selectSlot(c, i, node),
+    select: (c, i, node, keep) => selectSlot(c, i, node, keep),
     hover,
     changed: () => render(false),
     sfx,

@@ -8,6 +8,9 @@
 // The mine keeps its dug tunnels under its own key ('moleforge.world.v1', World.js). It belongs to
 // whichever slot played last (meta.world): switching slots parks those edits under
 // 'moleforge.world.v1.slotN' and brings the new slot's back, so every slot keeps its own holes.
+// The mine's part-filled pools ('moleforge.fluids.v1', deep/fluids/sim.js) go along with them the
+// same way ('moleforge.fluids.v1.slotN'). deleteSlot(i) removes every key of slot i: the save,
+// its parked mine and pools, and the live ones when slot i owns them (slotKeys(i) lists them).
 //
 // State (core/State.js) reads and writes the current slot through slotKey(state.slot), so every
 // save() / load() / hasSave() / wipeSave() / reset() path works on the slot in use. Its slot
@@ -35,13 +38,24 @@ export const GOAL = 1000000;
 const LEGACY_KEY = 'moleforge.save.v1';
 const META_KEY = 'moleforge.slots.v1';
 const WORLD_KEY = 'moleforge.world.v1';
+const FLUID_KEY = 'moleforge.fluids.v1';
+/** The keys that belong to whichever slot played the mine last (each parked per slot when not). */
+const MINE_KEYS = [WORLD_KEY, FLUID_KEY];
 
 // the quest list, if the quest part has shipped it (optional at build time)
 const QUEST_MODS = import.meta.glob('../data/quests.js', { eager: true });
 
 /** localStorage key of slot i (0-based). */
 export function slotKey(i) { return i > 0 ? `${LEGACY_KEY}.slot${i + 1}` : LEGACY_KEY; }
-const worldStash = (i) => `${WORLD_KEY}.slot${i + 1}`;
+const stash = (key, i) => `${key}.slot${i + 1}`;
+
+/** Every localStorage key slot i has (or may have): its save, its parked mine, and the live mine if it owns it. */
+export function slotKeys(i) {
+  i = clampSlot(i);
+  const keys = [slotKey(i), ...MINE_KEYS.map((k) => stash(k, i))];
+  if (clampSlot(readMeta().world ?? 0) === i) keys.push(...MINE_KEYS);
+  return keys;
+}
 
 function ls() { try { return window.localStorage; } catch (e) { return null; } }
 function readMeta() {
@@ -70,27 +84,32 @@ function swapWorld(i) {
   const m = readMeta();
   const owner = clampSlot(m.world ?? 0);
   if (owner === i) return;
-  try {
-    const live = s.getItem(WORLD_KEY);
-    if (live) s.setItem(worldStash(owner), live); else s.removeItem(worldStash(owner));
-  } catch (e) { console.warn('[saves] could not park the mine of slot', owner + 1, e); }
-  try {
-    const mine = s.getItem(worldStash(i));
-    if (mine) s.setItem(WORLD_KEY, mine); else s.removeItem(WORLD_KEY);
-    s.removeItem(worldStash(i));
-  } catch (e) { console.warn('[saves] could not restore the mine of slot', i + 1, e); }
+  for (const key of MINE_KEYS) {
+    try {
+      const live = s.getItem(key);
+      if (live) s.setItem(stash(key, owner), live); else s.removeItem(stash(key, owner));
+    } catch (e) { console.warn('[saves] could not park', key, 'of slot', owner + 1, e); }
+    try {
+      const mine = s.getItem(stash(key, i));
+      if (mine) s.setItem(key, mine); else s.removeItem(key);
+      s.removeItem(stash(key, i));
+    } catch (e) { console.warn('[saves] could not restore', key, 'of slot', i + 1, e); }
+  }
   m.world = i;
   writeMeta(m);
 }
 
-/** Forget the mine edits of slot i (new game / delete). */
+/** Forget the mine edits and pools of slot i (new game / delete). */
 function wipeWorld(i) {
   const s = ls();
   if (!s) return;
-  try {
-    s.removeItem(worldStash(i));
-    if (clampSlot(readMeta().world ?? 0) === i) s.removeItem(WORLD_KEY);
-  } catch (e) { /* noop */ }
+  const owns = clampSlot(readMeta().world ?? 0) === i;
+  for (const key of MINE_KEYS) {
+    try {
+      s.removeItem(stash(key, i));
+      if (owns) s.removeItem(key);
+    } catch (e) { /* noop */ }
+  }
 }
 
 /**
@@ -116,12 +135,13 @@ export function useSlot(state, i, { fresh = false } = {}) {
   return loaded;
 }
 
-/** Delete slot i (its save and its mine). If it's the slot in use, `state` starts over in memory. */
+/** Delete slot i: every key it has (slotKeys). If it's the slot in use, `state` starts over in memory. */
 export function deleteSlot(state, i) {
   i = clampSlot(i);
-  try { ls()?.removeItem(slotKey(i)); } catch (e) { /* noop */ }
-  wipeWorld(i);
+  const keys = slotKeys(i);
+  for (const k of keys) { try { ls()?.removeItem(k); } catch (e) { /* noop */ } }
   if (state && state.slot === i) state.reset();
+  return keys;
 }
 
 // ------------------------------------------------------------------ completion

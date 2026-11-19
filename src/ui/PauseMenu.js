@@ -7,6 +7,7 @@
 import { el } from '../core/util.js';
 import { makeSignMenu } from './signs.js';
 import { formatPlayTime } from '../core/saves.js';
+import { voiceBlip, STAR_VOICE } from './talkType.js';
 import './choices.css';
 import { bindCover, dropCap, sealCss, vars, ensureTomeArt } from './tomeFx.js'; // (wave 9: the chronicle and the bound board, src/ui/tome.css)
 import { doodleURL, cssUrl } from './tomeArt.js';
@@ -120,6 +121,7 @@ export function openSettings(game, { onClose } = {}) {
   const body = el('div', { class: 'pm-set' }, [
     slider('Music', 'music', (v) => audio.setVolumes({ music: v })),
     slider('Sound', 'sfx', (v) => audio.setVolumes({ sfx: v })),
+    slider('Voices', 'voice', (v) => { audio.setVolumes({ voice: v }); voiceBlip(audio, STAR_VOICE, 'happy'); }),
     opts('Pixels', [[-1, 'Fine'], [0, 'Normal'], [1, 'Chunky']], () => s.pixel || 0, (v) => { s.pixel = v; game.engine.setPixelOffset(v); }),
     opts('Shaders', [['auto', 'Auto'], ['high', 'Fancy'], ['low', 'Simple'], ['off', 'Off']], () => (game.engine.fxAuto ? 'auto' : game.engine.fx), (v) => game.engine.setFx(v)),
     el('div', { class: 'pm-row' }, [el('span', {}, 'Screen shake'), lever]),

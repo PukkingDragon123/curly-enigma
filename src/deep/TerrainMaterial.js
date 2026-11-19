@@ -675,9 +675,10 @@ export function makeTerrainMaterial(U) {
               ak = 1.0;
               rim = step(pl.y, 0.24);
             }
-          } else if (da < aimR) {
-            ak = 1.0;
-            rim = step(aimR - 0.024, da);
+          } else {
+            vec3 dv = abs(qw - aim.xyz);
+            float db = aimP.w < -0.5 ? sqrt(sqrt(dot(dv * dv, dv * dv))) : da; // the soil's rounded block
+            if (db < aimR) { ak = 1.0; rim = step(aimR - 0.024, db); }
           }
           if (ak > 0.0) {
             float br = aim.w * (0.8 + 0.2 * sin(time * 5.5));

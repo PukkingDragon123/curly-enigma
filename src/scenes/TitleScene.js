@@ -15,7 +15,7 @@
 // (hatched, a baby raptor in the shell, once a raptor's been tamed); choosing one cracks it open and
 // the camera pushes into its light, into the journey.
 //
-// Debug (scene.debug): openStones(), closeStones(), pick(i), fake(i, pct), hatch(i, on), smash(i),
+// Debug (scene.debug): openStones(), closeStones(), pick(i), fake(i, pct), hatch(i, on), smash(i), ask(i), confirmBreak(i), cancelAsk(),
 // hover(i), focus(i), press(i), boardCenter(i) → [x, y] page px, shot('menu'|'stones'), step(sec),
 // perf(), ready(), menu (the nav), closeup(i), beat(t) (the mole's loop at t s; LOOP.peep, LOOP.egg),
 // mole() (where he is in it). skipIntro() / intro() are kept (no opening shot any more: no-ops).
@@ -38,11 +38,12 @@ import { makeCritters } from '../bookends/forest/critters.js';
 import { makeFlocks } from '../bookends/forest/flocks.js';
 import { makeVoxelShadow } from '../bookends/forest/shadow.js';
 import { makeHeroMole } from '../gfx/char/hero.js';
-import { makeNest, EGGS } from '../bookends/titleNest.js';
+import { makeNest } from '../bookends/titleNest.js';
 import { titleSounds } from '../bookends/titleSounds.js';
 import { makeSignpost } from '../bookends/titleSigns.js';
 import { makeSignNav } from '../bookends/titleSignNav.js';
 import { openSettings } from '../ui/PauseMenu.js';
+import { oreLoader } from '../ui/oreLoader.js';
 import { makeSignMenu } from '../ui/signs.js';
 
 const REDUCED = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -112,9 +113,8 @@ export default class TitleScene extends Scene {
     setAir(0);
     MF.uWind.value.set(0.82, 0.57);
 
-    // a quiet card while the wood grows (a second or two; longer on a phone)
-    this.loadCard = el('div', { class: 'bk-root bk-loading' }, []);
-    g.ui.world.append(this.loadCard);
+    // the ore loader while the wood grows (a second or two; longer on a phone): src/ui/oreLoader.js
+    this.loadCard = oreLoader(g.ui.world, { through: true, tau: 4 });
     this.own(() => this.loadCard?.remove());
 
     // ---- the signpost first: the camera is framed on it, and the forest is built for that camera
@@ -163,7 +163,6 @@ export default class TitleScene extends Scene {
       slots: () => g.state.listSlots(),
       tame: (i) => this.tamed(i),
       onPick: (i, info) => this.pickSlot(i, info),
-      onDelete: (i) => g.ui.confirm(`<b>Break egg ${i + 1}?</b><br>The ${EGGS[i].name.toLowerCase()} egg and the save in it will be gone for good.`, 'Break it', 'Keep it'),
       afterDelete: (i) => { g.state.deleteSlot(i); this.refreshMenu(); },
     });
     this.own(() => this.nest.destroy());
@@ -178,7 +177,7 @@ export default class TitleScene extends Scene {
     // ...and the raptor's egg up the trail is kept in sight of the menu's camera (no stone or toadstool in front of it)
     const EN = FOREST.nest;
     for (const k of [0.07, 0.13, 0.2]) clear.push([lerp(EN.x, menuCam.x, k), lerp(EN.z, menuCam.z, k), 0.4]);
-    this.F = await buildForest({ lite, soft, view, clear, cancel: () => this.gone });
+    this.F = await buildForest({ lite, soft, view, clear, cancel: () => { this.loadCard?.bump(0.06); return this.gone; } });
     if (this.gone || this.F.cancelled) { this.F.dispose?.(); return; }
     this.textures.push(...this.F.textures);
     this.own(() => this.F.dispose());
@@ -563,12 +562,12 @@ export default class TitleScene extends Scene {
     this.menu = makeSignNav({
       layer: this.root, canvas: g.engine.canvas, camera: this.camera, post: this.sign, items: this.items, audio: g.audio, label: 'Main menu',
       blocked: () => g.ui.isPanelOpen() || this.nest?.open || this.busy || g.transitioning,
-      onBack: () => { if (g.ui.isPanelOpen()) g.ui.closePanel(); else if (this.nest?.open) this.closeStones(); },
+      onBack: () => { if (g.ui.isPanelOpen()) g.ui.closePanel(); else if (this.nest?.asking) this.nest.cancelAsk(); else if (this.nest?.open) this.closeStones(); },
     });
     this.own(() => this.menu.destroy());
 
     this.onKey = (e) => {
-      if (e.key === 'Escape' && this.nest.open && !g.ui.isPanelOpen()) { e.preventDefault(); this.closeStones(); }
+      if (e.key === 'Escape' && this.nest.open && !g.ui.isPanelOpen()) { e.preventDefault(); if (this.nest.asking) this.nest.cancelAsk(); else this.closeStones(); }
     };
     window.addEventListener('keydown', this.onKey);
     this.own(() => window.removeEventListener('keydown', this.onKey));
@@ -809,6 +808,7 @@ export default class TitleScene extends Scene {
       seen.add(key);
       try { r.compile(m, cam, sc); } catch (e) { /* optional */ }
       await new Promise((res) => setTimeout(res, 0));
+      this.loadCard?.bump(0.03);
       if (this.gone) break;
     }
     for (const o of hidden) o.visible = false;
@@ -838,6 +838,9 @@ export default class TitleScene extends Scene {
       hatch: later((i, on) => self.nest.setHatched(i, on)),
       hover: later((i) => self.nest.hover(i)),
       smash: later((i) => self.nest.smash(i)),
+      ask: later((i) => self.nest.ask(i)),
+      confirmBreak: later((i) => self.nest.confirmBreak(i)),
+      cancelAsk: later(() => self.nest.cancelAsk()),
       focus: later((i) => self.menu.focus(i)),
       press: later((i) => self.menu.press(i)),
       /** The mole's loop: its script times (LOOP) and where he is in it. */

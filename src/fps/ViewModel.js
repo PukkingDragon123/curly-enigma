@@ -98,6 +98,7 @@ const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 const _m4 = new THREE.Matrix4(), _s3 = new THREE.Vector3();
 const _c = new THREE.Color(), _c2 = new THREE.Color();
 const UNIT = new THREE.Vector3(1, 1, 1);
+const _e3 = new THREE.Vector3(), _e4 = new THREE.Vector3(), _e5 = new THREE.Vector3(), _e6 = new THREE.Vector3();
 
 function colorOf(c, fallback) {
   if (c === undefined || c === null) return _c2.set(fallback);
@@ -124,6 +125,8 @@ export class ViewModel {
     const g = (parent) => { const o = new THREE.Group(); parent.add(o); return o; };
     this.handR = g(this.rig); this.handL = g(this.rig);
     this.armR = g(this.rig); this.armL = g(this.rig);
+    // upper arms: only shown when a steered paw reaches farther than the forearm (two-bone reach)
+    this.uarmR = g(this.rig); this.uarmL = g(this.rig);
     this.toolR = scaleVisible(g(this.handR), UNIT.clone());
     this.toolL = scaleVisible(g(this.handL), UNIT.clone());
     this.foodLGroup = scaleVisible(g(this.handL), UNIT.clone());
@@ -350,6 +353,8 @@ export class ViewModel {
     const V = VMV, S = [V, V, V], M = [-V, V, V];
     A.part(this.armR, forearmGeo(), { scale: S });
     A.part(this.armL, forearmGeo(), { scale: M });
+    A.part(this.uarmR, forearmGeo(), { scale: S });
+    A.part(this.uarmL, forearmGeo(), { scale: M });
     this.gripR = scaleVisible(A.part(this.handR, fistGeo(), { scale: S }));
     this.openR = scaleVisible(A.part(this.handR, openPawGeo(), { scale: S }));
     this.gripL = scaleVisible(A.part(this.handL, fistGeo(), { scale: M }));
@@ -458,7 +463,7 @@ export class ViewModel {
     this.heatOverride = typeof o.heat === 'number' ? o.heat : null;
 
     // ---- mode changes and tool swaps go through a quick lower-and-raise
-    const want = o.climbing ? 'climb' : o.swimming ? 'swim' : 'tool';
+    const want = o.climbing ? 'climb' : o.swimming ? 'swim' : o.crawling ? 'crawl' : 'tool';
     const switching = want !== this.mode || this.pending;
     if (switching && !this.eating) {
       this.stow = Math.min(1, this.stow + dt * 7);
@@ -505,6 +510,12 @@ export class ViewModel {
     if (this.mode === 'climb') {
       this.climbPose(R, this.climbPh);
       this.climbPose(L, this.climbPh + Math.PI).mirror();
+      gripR = false; toolVis = false; leftItem = false;
+    } else if (this.mode === 'crawl') {
+      // a belly crawl: both paws flat out in front, reaching and pulling in turn (the tool tucked away)
+      const cp = o.crawlPh ?? this.climbPh;
+      this.crawlPose(R, cp);
+      this.crawlPose(L, cp + Math.PI).mirror();
       gripR = false; toolVis = false; leftItem = false;
     } else if (this.mode === 'swim') {
       this.swimPose(R, this.swimPh);
@@ -633,8 +644,8 @@ export class ViewModel {
     if (this.tool.spin) this.tool.spin.rotation.z = this.spinA;
 
     // ---- forearms from the shoulders (below the view) to the wrists
-    this.placeArm(this.armR, this.handR, 1);
-    this.placeArm(this.armL, this.handL, -1);
+    this.placeArm(this.armR, this.handR, 1, this.uarmR);
+    this.placeArm(this.armL, this.handL, -1, this.uarmL);
 
     // ---- whole-rig motion: look sway, walk bob, air, landing, shake, stow
     const rate = Math.max(dt, 1 / 120);
@@ -826,6 +837,14 @@ export class ViewModel {
     return out;
   }
 
+  /** One paw of a belly crawl at stroke phase ph: reach out low in front, claws down, and pull back. */
+  crawlPose(out, ph) {
+    const reach = (1 - Math.cos(ph)) / 2, lift = Math.max(0, Math.sin(ph));
+    out.copy(this.P.climbDn).mix(this.P.climbUp, reach);
+    out.move(-0.03, -0.06 + lift * 0.04, -0.03 - reach * 0.07).rot(0.5 + 0.2 * reach, 0, Math.sin(ph) * 0.1);
+    return out;
+  }
+
   climbPose(out, ph) {
     const k = (1 - Math.cos(ph)) / 2;
     out.copy(this.P.climbDn).mix(this.P.climbUp, k);
@@ -854,7 +873,13 @@ export class ViewModel {
     group.quaternion.copy(pose.q);
   }
 
-  placeArm(arm, hand, side) {
+  /**
+   * The forearm from the wrist toward the shoulder. It is never stretched (a steered paw reaching
+   * far used to pull the forearm out to 1.7× its length: the "super long arm"); a paw farther from
+   * its shoulder than the forearm reaches gets an elbow and an upper arm instead (two bones of the
+   * forearm's length, the elbow bending out and down).
+   */
+  placeArm(arm, hand, side, upper = null) {
     const S = this.P.shoulder;
     _v.set(0, 0, WRIST_Z * VMV).applyQuaternion(hand.quaternion).add(hand.position); // wrist
     _v2.set(S.x * side, S.y, S.z);
@@ -867,13 +892,27 @@ export class ViewModel {
       _v2.lerp(_up, this.driveK);
     }
     const thin = 1 - 0.22 * this.driveK;
+    const Ln = ARM_LEN * VMV; // the forearm's length (rig space, like the wrist and shoulder)
     arm.position.copy(_v);
-    _v2.sub(_v);
-    // a steered paw far from its shoulder: the forearm reaches all the way (its end never shows)
-    const reach = this.driveK > 0 ? 1 + (Math.min(1.7, Math.max(1, _v2.length() / (ARM_LEN * VMV))) - 1) * this.driveK : 1;
-    arm.scale.set(thin, thin, reach);
+    arm.scale.set(thin, thin, 1);
+    _v2.sub(_v); // wrist → shoulder
+    const D = _v2.length();
     _up.set(0, 1, 0).applyQuaternion(hand.quaternion);
-    aimZ(_v2, _up, arm.quaternion);
+    if (!upper || D <= Ln * 0.98) {
+      aimZ(_v2, _up, arm.quaternion);
+      if (upper) upper.scale.setScalar(0);
+      return;
+    }
+    // two bones: where the elbow goes (out to the side and down, off the wrist-shoulder line)
+    const dir = _e3.copy(_v2).multiplyScalar(1 / D);
+    const h = D < 2 * Ln ? Math.sqrt(Math.max(0, Ln * Ln - (D / 2) * (D / 2))) : 0;
+    const bend = _e4.set(side * 0.7, -1, 0.2);
+    bend.addScaledVector(dir, -bend.dot(dir)).normalize();
+    const elbow = _e5.copy(_v).addScaledVector(dir, D < 2 * Ln ? D / 2 : Ln).addScaledVector(bend, h);
+    aimZ(_e6.copy(elbow).sub(_v), _up, arm.quaternion);
+    upper.position.copy(elbow);
+    upper.scale.set(thin * 1.06, thin * 1.06, 1);
+    aimZ(_e6.copy(_v).add(_v2).sub(elbow), _up, upper.quaternion);
   }
 
   updateLights(o) {

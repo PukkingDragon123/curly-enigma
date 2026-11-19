@@ -1,13 +1,13 @@
 // The corner HUD: things that hang into view only when they matter, then tuck away again.
-//  top-left : coin pouch (gold) · lantern (energy) · charms (buffs) · tear-off calendar (new day)
+//  top-left : coin pouch (gold) · charms (buffs) · tear-off calendar (new day)
+//  stamina  : the brass gauge on the tool belt / bottom middle (src/ui/Stamina.js; it replaced the lantern)
 //  top-right: the backpack (inventory) with the Index Book peeking out · pause journal · depth plumb
 // The art: src/ui/uiSprites.js (sprites) and src/ui/hudArt.js (the pouch, tags, plates, strings: --h-*).
 import { el, formatGoldFull, clamp } from '../core/util.js';
 import { BUFFS } from '../data/recipes.js';
 import { SPR } from './uiSprites.js';
 import { HART, installHudArt } from './hudArt.js';
-
-const LOW = 0.3;
+import { StaminaBar } from './Stamina.js';
 
 export class Hud {
   constructor(ui) {
@@ -18,10 +18,7 @@ export class Hud {
     this.goldShown = st.gold;
     this.pouchT = 0;
     this.pinned = 0;
-    this.lampT = 0;
     this.peekT = 0;
-    this.lampBucket = -1;
-    this.lampLvl = -1;
     this.depthT = 0;
     this.packTagT = 0;
     this.bag = null;
@@ -38,16 +35,9 @@ export class Hud {
       el('i', { class: 'hang-string' }), this.pouchImg, el('div', { class: 'pouch-tag' }, [this.goldNum]), this.coinFx, this.pouchDelta,
     ]);
 
-    // ---- lantern (energy)
-    this.lampImg = el('img', { class: 'pix lamp-img', src: SPR.lantern(4), alt: '' });
-    this.lampTxt = el('span');
-    this.lamp = el('div', { class: 'lamp', title: 'Energy' }, [
-      el('i', { class: 'hang-chain' }), el('i', { class: 'lamp-glow' }), this.lampImg, el('div', { class: 'lamp-tag' }, [this.lampTxt]),
-    ]);
-
     // ---- buff charms
     this.charmsEl = el('div', { class: 'charms' });
-    this.tl = el('div', { class: 'hud-tl' }, [this.pouch, this.lamp, this.charmsEl]);
+    this.tl = el('div', { class: 'hud-tl' }, [this.pouch, this.charmsEl]);
 
     // ---- backpack with the book peeking out (top-right)
     this.packImg = el('img', { class: 'pix pack-img', src: SPR.pack(0), alt: '' });
@@ -75,9 +65,11 @@ export class Hud {
     this.cal = el('div', { class: 'cal', hidden: true });
 
     ui.hud.append(this.tl, this.tr, this.depth, this.cal);
+    // ---- stamina: one bar, afflictions eating it from the right (src/ui/Stamina.js)
+    this.stam = new StaminaBar(this);
 
     st.on('gold', (e) => this.onGold(e));
-    st.on('energy', (e) => this.onEnergy(e));
+    st.on('energy', (e) => this.stam.onEnergy(e));
     st.on('buffs', () => this.renderCharms());
     st.on('day', (e) => this.onDay(e));
     st.on('load', () => this.refresh());
@@ -88,19 +80,22 @@ export class Hud {
     const st = this.game.state;
     this.goldShown = st.gold;
     this.goldNum.textContent = formatGoldFull(st.gold);
-    this.setLamp();
     this.renderCharms();
   }
 
   setMode(mode) {
     if (mode !== 'mine' && mode !== 'deep') { this.setBag(null); this.setDepth(null); }
     if (mode === 'none') { clearTimeout(this.calTimer); this.cal.hidden = true; }
+    this.stam.setMode(mode);
   }
+  /** Out of stamina: the eyes close; cb runs once it's black (the next scene opens them). */
+  blackout(cb) { this.stam.blackout(cb); }
 
-  /** Show gold + energy for a moment (e.g. when reaching for the backpack). */
+  /** Show gold + stamina for a moment (e.g. when reaching for the backpack). */
   peek(t = 2.2) {
     this.peekT = Math.max(this.peekT, t);
     this.showPouch(t);
+    this.stam.peek(t);
   }
 
   // ------------------------------------------------------------ gold
@@ -150,26 +145,6 @@ export class Hud {
       this.coinFx.append(g);
       setTimeout(() => g.remove(), 1000 + i * 85);
       if (i < 4) setTimeout(() => { const im = this.pouchImg; im.classList.remove('bob'); void im.offsetWidth; im.classList.add('bob'); }, 540 + i * 85);
-    }
-  }
-
-  // ------------------------------------------------------------ energy
-  setLamp() {
-    const st = this.game.state;
-    const p = clamp(st.energy / Math.max(1, st.maxEnergy), 0, 1);
-    const lvl = p > 0.8 ? 4 : p > 0.55 ? 3 : p > LOW ? 2 : p > 0.08 ? 1 : 0;
-    if (lvl !== this.lampLvl) { this.lampLvl = lvl; this.lampImg.src = SPR.lantern(lvl, this.flick || 0); }
-    this.lamp.style.setProperty('--e', p.toFixed(3));
-    this.lamp.classList.toggle('low', p < LOW);
-    this.lampTxt.textContent = `${Math.ceil(st.energy)}/${st.maxEnergy}`;
-    return p;
-  }
-  onEnergy(e) {
-    const p = this.setLamp();
-    const bucket = Math.floor(p * 20);
-    if (bucket !== this.lampBucket || (e && e.delta > 0)) {
-      if (this.lampBucket >= 0 || (e && e.delta)) this.lampT = 2.6;
-      this.lampBucket = bucket;
     }
   }
 
@@ -309,18 +284,7 @@ export class Hud {
       if (this.pouchT <= 0 && !this.pinned) this.pouch.classList.remove('show');
     }
     if (this.peekT > 0) this.peekT -= dt;
-    if (this.lampT > 0) this.lampT -= dt;
-    const lampUp = this.lampT > 0 || this.peekT > 0 || this.lamp.classList.contains('low');
-    this.lamp.classList.toggle('show', lampUp);
-    // the flame dances while the lantern hangs in view: upright, bending, stretching (uneven beats)
-    if (lampUp) {
-      this.flickT = (this.flickT || 0) - dt;
-      if (this.flickT <= 0) {
-        this.flick = this.flick ? 0 : 1 + (Math.random() < 0.5 ? 1 : 0);
-        this.flickT = this.flick ? 0.08 + Math.random() * 0.12 : 0.15 + Math.random() * 0.45;
-        if (this.lampLvl >= 0) this.lampImg.src = SPR.lantern(this.lampLvl, this.flick);
-      }
-    }
+    this.stam.update(dt);
     // in first person the depth stays up (hanging under the radar); elsewhere it fades after a moment
     if (this.depthT > 0 && this.ui.hudMode !== 'deep') { this.depthT -= dt; if (this.depthT <= 0) this.depth.classList.remove('show'); }
     if (this.packTagT > 0 && !(this.bag && this.bag.n >= this.bag.cap)) { this.packTagT -= dt; if (this.packTagT <= 0) this.packTag.hidden = true; }

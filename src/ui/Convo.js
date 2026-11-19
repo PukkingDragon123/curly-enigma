@@ -240,7 +240,7 @@ export class Convo {
     this.root.classList.remove('typed');
     const sp = b.speaker;
     ghost(this.textEl); // (the old words scatter as the new ones come)
-    b.typer = typeFloat(this.textEl, prep(html), { voice: b.voice, mood: b.mood, audio: this.game.audio, face: sp ? { talk: (on) => sp.talk(on) } : this.face, delay: 0.05, onDone: () => this.onTyped(b) });
+    b.typer = typeFloat(this.textEl, prep(html), { voice: b.voice, who: b.key, mood: b.mood, audio: this.game.audio, face: sp ? { talk: (on) => sp.talk(on) } : this.face, delay: 0.05, onDone: () => this.onTyped(b) });
     this.textEl.append(this.nextEl);
   }
 
@@ -470,7 +470,7 @@ export class Convo {
     const sp = b.speaker;
     const mouth = heroLine ? { talk: (on) => this.director.hero?.talk(on) } : sp ? { talk: (on) => sp.talk(on) } : this.face;
     b.typer = typeFloat(this.textEl, prep(b.html), {
-      voice: b.voice, mood: b.mood, audio: this.game.audio, face: mouth,
+      voice: b.voice, who: b.key, mood: b.mood, audio: this.game.audio, face: mouth,
       delay: b.n === 0 ? 0.55 : 0.18, speed: b.mood === 'laugh' ? 52 : b.mood === 'stern' ? 40 : 46,
       onDone: () => this.onTyped(b),
     });

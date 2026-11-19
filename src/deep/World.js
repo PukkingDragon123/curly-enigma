@@ -272,18 +272,21 @@ export class DeepWorld {
     return best && bd < 0.35 ? best : null;
   }
 
-  /** Deposits within r meters of a point (only loaded chunks). */
+  /**
+   * Deposits within r meters of a point (only loaded chunks). A deposit across a chunk edge is
+   * listed by each chunk it reaches (each its own copy of the record): one per id comes back.
+   */
   depositsNear(x, y, z, r) {
-    const out = new Set();
+    const out = new Map();
     const c0 = Math.floor((x - r) * VOX) >> CB, c1 = Math.floor((x + r) * VOX) >> CB;
     const e0 = Math.floor((y - r) * VOX) >> CB, e1 = Math.floor((y + r) * VOX) >> CB;
     const f0 = Math.floor((z - r) * VOX) >> CB, f1 = Math.floor((z + r) * VOX) >> CB;
     for (let cz = f0; cz <= f1; cz++) for (let cy = e0; cy <= e1; cy++) for (let cx = c0; cx <= c1; cx++) {
       const ch = this.chunks.get(key3(cx, cy, cz));
       if (!ch) continue;
-      for (const d of ch.deps) if (Math.hypot(d.x - x, d.y - y, d.z - z) < r + d.r) out.add(d);
+      for (const d of ch.deps) if (!out.has(d.id) && Math.hypot(d.x - x, d.y - y, d.z - z) < r + d.r) out.set(d.id, d);
     }
-    return [...out];
+    return [...out.values()];
   }
 
   depState(d) {

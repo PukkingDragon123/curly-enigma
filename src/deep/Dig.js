@@ -129,9 +129,11 @@ export class Digger {
       const k = R * 0.2;
       return { broken: this.bite(vx + 0.5 - n[0] * k, vy + 0.5 - n[1] * k, vz + 0.5 - n[2] * k, R * 1.02, m, n, 0.5), material: m, brk };
     }
-    // the centre sinks into the rock so most of the ball takes rock out
+    // the centre sinks into the rock so most of the bite takes rock out. (wave 14) Soil goes in a
+    // rounded block, square to the world (clean, walkable tunnels: flat floors and walls with a
+    // little roughness), not a ball
     const cx = vx + 0.5 - n[0] * R * 0.45, cy = vy + 0.5 - n[1] * R * 0.45, cz = vz + 0.5 - n[2] * R * 0.45;
-    return { broken: this.bite(cx, cy, cz, R, m), material: m, brk };
+    return { broken: this.bite(cx, cy, cz, R, m, null, 1, true), material: m, brk, box: true };
   }
 
   /** Add damage to a plate (key); returns the new total. Old records are forgotten (bounded). */
@@ -229,13 +231,14 @@ export class Digger {
    * Remove breakable, non-ore voxels within a ragged ball (voxel units) and return them. With a
    * normal n and flat < 1 the ball is squashed to a disc flat × R deep across n (clay peeling).
    */
-  bite(cx, cy, cz, R, hostM, n = null, flat = 1) {
+  bite(cx, cy, cz, R, hostM, n = null, flat = 1, box = false) {
     const w = this.w, out = [];
     const r0 = Math.floor(R + 1), sq = n && flat < 1 ? 1 / (flat * flat) - 1 : 0;
     for (let z = Math.floor(cz) - r0; z <= Math.floor(cz) + r0; z++) for (let y = Math.floor(cy) - r0; y <= Math.floor(cy) + r0; y++) for (let x = Math.floor(cx) - r0; x <= Math.floor(cx) + r0; x++) {
       const ox = x + 0.5 - cx, oy = y + 0.5 - cy, oz = z + 0.5 - cz, dn = sq ? ox * n[0] + oy * n[1] + oz * n[2] : 0;
-      const d = Math.sqrt(ox * ox + oy * oy + oz * oz + dn * dn * sq);
-      if (d > R * (0.78 + 0.34 * h3(x, y, z, 31))) continue;
+      // box: a rounded block (the 4-norm) with a voxel or so of roughness on its faces
+      const d = box ? Math.sqrt(Math.sqrt(ox ** 4 + oy ** 4 + oz ** 4)) : Math.sqrt(ox * ox + oy * oy + oz * oz + dn * dn * sq);
+      if (d > R * (box ? 0.9 + 0.14 * h3(x, y, z, 31) : 0.78 + 0.34 * h3(x, y, z, 31))) continue;
       const m = w.voxelAt(x, y, z);
       if (!breakable(m) || m >= ORE_BASE || isBuilt(m)) continue;
       out.push({ x, y, z, m, c: voxelColor(m, x, y, z, h3(x, y, z, 1)) });

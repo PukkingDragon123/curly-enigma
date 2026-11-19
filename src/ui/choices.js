@@ -122,7 +122,7 @@ export function openTalkMenu(game, { name, who, mood = 'calm', face, line = '', 
   root.style.setProperty('--pp', size);
   h3d = portrait3d.mount(frame, cast, { size, mood });
   h3d.set(mood);
-  typer = typeText(sayP, line, { voice: cast?.voice, mood, audio, face: h3d, delay: 0.3 });
+  typer = typeText(sayP, line, { voice: cast?.voice, who: cast?.key, mood, audio, face: h3d, delay: 0.3 });
   say.addEventListener('pointerdown', () => typer?.finish());
   h.portrait = h3d;
   h.typer = typer;

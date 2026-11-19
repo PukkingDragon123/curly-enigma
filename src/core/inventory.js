@@ -1,43 +1,43 @@
-// The slot inventory: what the mole carries is a grid of stacks (Minecraft-like), and so is the
-// stash at home. State keeps its public item API (addItem, count,
-// removeItem, removeLot, lotsOf, inventory, addWeapon, removeWeapon, buy, sell*) and delegates
-// the carried items to this module.
+// The slot inventory (Minecraft-like). What the mole carries is ONE array of slots: the hotbar
+// first (HOT slots: the belt at the bottom of the screen, keys 1–9), then the pack (rows of nine).
+// State keeps its public item API (addItem, count, removeItem, removeLot, lotsOf, inventory,
+// addWeapon, removeWeapon, buy, sell*) and delegates the carried items to this module.
 //
-// A container is an array of slots: null or a stack.
-//   { id, n }                                plain stackables (food, plants, supplies, ...)
-//   { id, lots: [{ uid, id, q, p }, ...] }   quality items (ores, gems, ingots): one stack per item,
-//                                            showing the average quality
+// A slot is null or:
+//   { id, n }                                plain stackables (food, plants, supplies, blocks...)
+//   { id, lots: [{ uid, id, q, p }, ...] }   quality items. Ingots stack; ore, gems and clumps
+//                                            (cat 'mineral' / 'gem') never do: one per slot
 //   { id: 'weapon', w: weapon }              a forged weapon (one per slot)
-// Tools, equipment, blueprints, floors, wall styles and key items don't take slots
-// (state.data.owned), nor does unplaced furniture (state.data.furniture, it waits at home).
-//
-// The grid (a realistic pack, not a list): the backpack is a grid of cells
-// (`slots.grid = { cols, rows }`, set by bag()). Every stack takes a footprint of
-// cells (footprint(): a heavy ore lump 2×2, an ingot 2×1, a sword 1×3, a gem 1×1...) at
-// `stack.g = { x, y, r }` (r = 1: turned a quarter, so w and h swap). A container is full when
-// the next thing's footprint can't be fitted anywhere, in either orientation: turn things round
-// and pack them tight. The slot array is as long as there are cells (one stack per cell at most),
-// so all the slot code above keeps working; layout() gives any stack without a valid spot one.
-// The home's trunk and the chests have no grid (a stack per slot, as before).
+//   { tool: 'pick' }                         hotbar only: a tool from the rack hung on the belt.
+//                                            Tools, gear, blueprints, floors, wall styles and key
+//                                            items don't take slots (state.data.owned), nor does
+//                                            unplaced furniture (state.data.furniture)
+// New things go into the pack first, then into free belt slots; a snack, a blast or glow stakes go
+// onto the belt first when nothing of their kind hangs there yet (handFirst).
 //
 // Save data:
-//   data.inv   = { v: 1, slots: [...] }                 the backpack (length = bagSlots())
-//   data.stash = { slots: [...] }                       overflow kept at home (grows as needed)
-// data.lots / data.counts / data.weapons stay as read-only mirrors of the backpack (rebuilt after
-// every change), so code that reads them keeps working; never write to them directly.
+//   data.inv   = { v: 2, slots: [...] }   belt (HOT) + pack (bagPockets()); v1 (a grid pack and a
+//                                         kinds-only hotbar in data.hotbar) is migrated on load
+//   data.stash = { slots: [...] }         the trunk at home: whatever doesn't fit lands here (it
+//                                         grows as needed), so nothing is ever lost
+// data.lots / data.counts / data.weapons stay as read-only mirrors of the carried items (rebuilt
+// after every change), so code that reads them keeps working; never write to them directly.
 import { ITEMS } from '../data/items.js';
 import { uid as mkUid } from './util.js';
 import * as W from './weight.js';
 
-export const COLS = 9; // pockets per row (the trunk and the chests: Minecraft-like rows of nine)
-export const MAX_SLOTS = 108; // cells
-/** Each pocket of a bag (items.js `slots`) is two cells of its grid. */
-export const CELLS_PER_POCKET = 2;
-/** Grid columns for a number of cells (a small pack is 6 wide, a big one 9). */
-export const gridCols = (cells) => (cells <= 24 ? 6 : 9);
+export const COLS = 9; // slots per row (pack, trunk, chests)
+export const HOT = 9; // belt slots (the first HOT slots of the carried array)
+export const PACK_BASE = 18; // a new mole's pack: two rows
+export const MAX_PACK = 72;
+/** Tool kinds that hang on the belt as references (the tool itself stays on the rack). */
+export const REF_KINDS = ['pick', 'chisel', 'brush', 'drill', 'xray', 'build'];
+/** A new game's belt. */
+export const HOT_DEFAULT = ['pick', 'chisel', 'build'];
 
 const OWNED = new Set(['tool', 'equip', 'blueprint', 'floor', 'wallpaper', 'key']);
-const STACK_BY_CAT = { mineral: 8, gem: 8, ingot: 4, plant: 16, critter: 8, drop: 16, ingredient: 16, food: 8, consumable: 10 };
+const ONE = new Set(['mineral', 'gem']); // ore, gems, clumps: one per slot
+const STACK_BY_CAT = { ingot: 4, plant: 16, critter: 8, drop: 16, ingredient: 16, food: 8, consumable: 10 };
 /** Sort order of categories in a tidied container. */
 const CAT_ORDER = ['weapon', 'gem', 'mineral', 'ingot', 'consumable', 'food', 'ingredient', 'plant', 'critter', 'drop'];
 
@@ -47,121 +47,31 @@ export function slotted(id) {
   const it = ITEMS[id];
   return !!it && !OWNED.has(it.cat) && it.cat !== 'furniture';
 }
-/** How many fit in one slot. Items may set `stack` in items.js. */
+/** How many fit in one slot. Ore and gems: one. Other items may set `stack` in items.js. */
 export function stackMax(id) {
   if (id === 'weapon') return 1;
   const it = ITEMS[id];
+  if (ONE.has(it?.cat)) return 1;
   return it?.stack ?? STACK_BY_CAT[it?.cat] ?? 16;
 }
 export const isQ = (id) => !!ITEMS[id]?.q;
+export const isRef = (s) => !!s?.tool;
 
-// ---------------------------------------------------------------- the grid (footprints)
-const FP_BY_CAT = { gem: [1, 1], ingot: [2, 1], plant: [1, 1], critter: [1, 1], drop: [1, 1], ingredient: [1, 1], food: [1, 1], consumable: [1, 1] };
-const FP = {
-  support_beam: [3, 1], dynamite: [1, 2], fossil: [2, 2], dino_egg: [2, 2], drake_egg: [2, 2], armor_plate: [2, 2],
-  troll_tusk: [1, 3], tyrant_tooth: [1, 2], dino_meat: [2, 1], drake_meat: [2, 1], coal: [1, 1],
-};
-const WEAPON_FP = { dagger: [1, 2], axe: [2, 3], hammer: [2, 3], mace: [2, 3], greataxe: [2, 3] };
-/** Cells a stack (or an item id) takes, unturned: [w, h]. Items may set `fp` in items.js. */
-export function footprint(s) {
-  const id = typeof s === 'string' ? s : s?.id;
-  if (id === 'weapon') return WEAPON_FP[s?.w?.type] || [1, 3];
-  const it = ITEMS[id];
-  if (it?.fp) return it.fp;
-  if (FP[id]) return FP[id];
-  if (it?.cat === 'mineral') { const kg = W.kgOf(id); return kg >= 1.5 ? [2, 2] : kg >= 0.9 ? [2, 1] : [1, 1]; }
-  return FP_BY_CAT[it?.cat] || [1, 1];
-}
-/** [w, h] of a footprint turned r quarters. */
-export const turned = (fp, r) => (r ? [fp[1], fp[0]] : fp);
-/** A stack's [w, h] as it lies. */
-export const dimsOf = (s) => turned(footprint(s), s?.g?.r || 0);
-
-/** Cell → (slot index + 1) of what lies there (0: free). skip: a slot index to leave out. */
-export function occupancy(slots, skip = -1) {
-  const G = slots.grid;
-  const occ = new Int16Array(G.cols * G.rows);
-  slots.forEach((s, i) => {
-    if (!s || !s.g || i === skip) return;
-    const [w, h] = dimsOf(s);
-    for (let y = s.g.y; y < s.g.y + h; y++) for (let x = s.g.x; x < s.g.x + w; x++) if (x >= 0 && y >= 0 && x < G.cols && y < G.rows) occ[y * G.cols + x] = i + 1;
-  });
-  return occ;
-}
-/** Slot indices overlapping a w×h box at (x, y) (null: off the grid). */
-export function under(slots, x, y, w, h, occ = occupancy(slots)) {
-  const G = slots.grid;
-  if (x < 0 || y < 0 || x + w > G.cols || y + h > G.rows) return null;
-  const set = new Set();
-  for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) { const o = occ[yy * G.cols + xx]; if (o) set.add(o - 1); }
-  return [...set];
-}
-const fitsOcc = (occ, G, x, y, w, h) => {
-  if (x < 0 || y < 0 || x + w > G.cols || y + h > G.rows) return false;
-  for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) if (occ[yy * G.cols + xx]) return false;
-  return true;
-};
-const markOcc = (occ, G, x, y, w, h, v) => { for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) occ[yy * G.cols + xx] = v; };
-/** First free spot for a footprint, either way round (top-left first): { x, y, r } or null. */
-export function spotFor(occ, G, fp, prefer = 0) {
-  for (const r of prefer ? [1, 0] : [0, 1]) {
-    const [w, h] = turned(fp, r);
-    if (r && fp[0] === fp[1]) continue;
-    for (let y = 0; y + h <= G.rows; y++) for (let x = 0; x + w <= G.cols; x++) if (fitsOcc(occ, G, x, y, w, h)) return { x, y, r };
-  }
+/** What a slot does in the paw: a tool kind, 'food', 'dynamite', 'stake', or null (just held). */
+export function kindOf(s) {
+  if (!s) return null;
+  if (s.tool) return s.tool;
+  if (s.w) return null;
+  const it = ITEMS[s.id];
+  if (!it) return null;
+  if (it.blast) return 'dynamite';
+  if (s.id === 'glow_stake') return 'stake';
+  if (it.cat === 'food' || it.food) return 'food';
   return null;
-}
-/** Can a w×h footprint go at (x, y), leaving out slot `skip`? */
-export function fitsAt(slots, x, y, w, h, skip = -1) {
-  if (!slots.grid) return true;
-  return fitsOcc(occupancy(slots, skip), slots.grid, x, y, w, h);
-}
-/**
- * Give every stack a spot on the grid: those with a valid one keep it, the rest are fitted in
- * (biggest first). Returns the slot indices that don't fit anywhere (they keep no `g`).
- */
-export function layout(slots) {
-  const G = slots.grid;
-  if (!G) return [];
-  const occ = new Int16Array(G.cols * G.rows);
-  const bad = [];
-  slots.forEach((s, i) => {
-    if (!s) return;
-    const [w, h] = dimsOf(s);
-    if (s.g && fitsOcc(occ, G, s.g.x, s.g.y, w, h)) markOcc(occ, G, s.g.x, s.g.y, w, h, i + 1);
-    else bad.push(i);
-  });
-  const area = (i) => { const f = footprint(slots[i]); return f[0] * f[1]; };
-  bad.sort((a, b) => area(b) - area(a));
-  const over = [];
-  for (const i of bad) {
-    const s = slots[i], sp = spotFor(occ, G, footprint(s));
-    if (sp) { s.g = sp; const [w, h] = turned(footprint(s), sp.r); markOcc(occ, G, sp.x, sp.y, w, h, i + 1); }
-    else { delete s.g; over.push(i); }
-  }
-  return over;
-}
-/** Is everything on the grid where it should be? (no grid: always) */
-const laidOut = (slots) => !slots.grid || slots.every((s) => !s || s.g);
-/** Pack a grid from scratch: biggest first, top-left first. Returns the stacks that didn't fit. */
-export function pack(slots) {
-  if (!slots.grid) return [];
-  for (const s of slots) if (s) delete s.g;
-  const over = layout(slots);
-  const out = over.map((i) => slots[i]);
-  for (const i of over) slots[i] = null;
-  return out;
-}
-/** Free cells of a grid (no grid: empty slots). */
-export function freeCells(slots, cap = slots.length) {
-  if (!slots.grid) { let n = 0; for (let i = 0; i < cap; i++) if (!slots[i]) n++; return n; }
-  let n = 0;
-  for (const o of occupancy(slots)) if (!o) n++;
-  return n;
 }
 
 // ---------------------------------------------------------------- stacks
-export function stackN(s) { return !s ? 0 : s.w ? 1 : s.lots ? s.lots.length : s.n || 0; }
+export function stackN(s) { return !s ? 0 : s.tool || s.w ? 1 : s.lots ? s.lots.length : s.n || 0; }
 /** Average quality of a stack (quality items), else null. */
 export function stackQ(s) {
   if (!s || !s.lots || !s.lots.length) return null;
@@ -169,84 +79,86 @@ export function stackQ(s) {
 }
 export function stackPristine(s) { return !!s?.lots?.some((l) => l.p); }
 export const stackFull = (s) => stackN(s) >= stackMax(s.id);
-export const sameKind = (a, b) => !!a && !!b && !a.w && !b.w && a.id === b.id;
+export const sameKind = (a, b) => !!a && !!b && !a.w && !b.w && !a.tool && !b.tool && a.id === b.id;
+const units = (s) => s.w || s.lots || s.n;
+const leftN = (left) => (left == null ? 0 : Array.isArray(left) ? left.length : typeof left === 'number' ? left : 1);
 
 /** A copy of a stack (lots are shared objects; weapons are moved, not copied). */
 export function cloneStack(s) {
   if (!s) return null;
+  if (s.tool) return { tool: s.tool };
   if (s.w) return { id: 'weapon', w: s.w };
   if (s.lots) return { id: s.id, lots: s.lots.slice() };
   return { id: s.id, n: s.n };
 }
 
 // ---------------------------------------------------------------- containers
-/** Units of `id` that fit in the first `cap` slots. */
-export function roomFor(slots, id, cap = slots.length) {
-  const max = stackMax(id);
-  let room = 0, empty = 0;
-  for (let i = 0; i < cap; i++) {
-    const s = slots[i];
-    if (!s) empty++;
-    else if (!s.w && s.id === id) room += Math.max(0, max - stackN(s));
-  }
-  if (!slots.grid) return room + empty * max;
-  // on a grid: as many new stacks as their footprints can still be fitted in
-  const G = slots.grid, occ = occupancy(slots), fp = footprint(id);
-  for (let k = 0; k < empty; k++) {
-    const sp = spotFor(occ, G, fp);
-    if (!sp) break;
-    const [w, h] = turned(fp, sp.r);
-    markOcc(occ, G, sp.x, sp.y, w, h, 1);
-    room += max;
-  }
+const range = (a, b) => { const out = []; for (let i = a; i < b; i++) out.push(i); return out; };
+/** Should a new stack of this item go onto the belt first? (a snack/blast/stakes with none there) */
+function handFirst(slots, id) {
+  const H = slots.hot || 0;
+  if (!H) return false;
+  const k = kindOf({ id });
+  if (!k || (k === 'food' && ITEMS[id]?.cat !== 'food')) return false;
+  for (let i = 0; i < H; i++) if (kindOf(slots[i]) === k) return false;
+  return true;
+}
+/** Slot indices new stacks fill, in order: the pack, then the belt (hand items: the belt first). */
+export function fillOrder(slots, cap, id) {
+  const H = Math.min(slots.hot || 0, cap);
+  if (!H) return range(0, cap);
+  const hot = range(0, H), pack = range(H, cap);
+  return handFirst(slots, id) ? hot.concat(pack) : pack.concat(hot);
+}
+/** Units of `id` that fit in the first `cap` slots (or just in the slots `idx`). */
+export function roomFor(slots, id, cap = slots.length, idx = null) {
+  const max = stackMax(id), probe = { id };
+  let room = 0;
+  const each = (i) => { const s = slots[i]; if (!s) room += max; else if (sameKind(s, probe)) room += Math.max(0, max - stackN(s)); };
+  if (idx) idx.forEach(each); else for (let i = 0; i < cap; i++) each(i);
   return room;
 }
-/** A new stack goes into an empty slot (and, on a grid, a free spot): its index, or -1. */
-function newStack(slots, cap, s) {
-  let j = -1;
-  for (let i = 0; i < cap; i++) if (!slots[i]) { j = i; break; }
-  if (j < 0) return -1;
-  if (slots.grid) {
-    const sp = spotFor(occupancy(slots), slots.grid, footprint(s));
-    if (!sp) return -1;
-    s.g = sp;
-  }
-  slots[j] = s;
-  return j;
+/** A new stack goes into the first empty slot (in fill order): its index, or -1. */
+function newStack(slots, cap, s, idx = fillOrder(slots, cap, s.id)) {
+  for (const i of idx) if (!slots[i]) { slots[i] = s; return i; }
+  return -1;
 }
-export function usedSlots(slots) { let n = 0; for (const s of slots) if (s) n++; return n; }
-export function countIn(slots, id) { let n = 0; for (const s of slots) if (s && s.id === id) n += stackN(s); return n; }
+export function usedSlots(slots) { let n = 0; for (const s of slots) if (s && !s.tool) n++; return n; }
+export function countIn(slots, id) { let n = 0; for (const s of slots) if (s && !s.tool && s.id === id) n += stackN(s); return n; }
 export function lotsIn(slots, id) { const out = []; for (const s of slots) if (s && s.lots && s.id === id) out.push(...s.lots); return out; }
 
 /**
  * Put units into a container: `units` is a count (plain items), an array of lots (quality items)
- * or a weapon object. Fills partial stacks first, then empty slots (from `from` on).
- * Returns what didn't fit, in the same form (0 / [] / null when everything went in).
+ * or a weapon object. Fills partial stacks first (belt first), then empty slots (fill order, or
+ * just the slots in `idx`). Returns what didn't fit, in the same form (0 / [] / null when it all went in).
  */
-export function putIn(slots, id, units, cap = slots.length) {
+export function putIn(slots, id, units, cap = slots.length, idx = null) {
   const max = stackMax(id);
-  if (id === 'weapon') return newStack(slots, cap, { id: 'weapon', w: units }) >= 0 ? null : units;
+  const order = idx || fillOrder(slots, cap, id);
+  const merge = idx ? idx.slice().sort((a, b) => a - b) : range(0, Math.min(cap, slots.length));
+  if (id === 'weapon') return newStack(slots, cap, { id: 'weapon', w: units }, order) >= 0 ? null : units;
   if (Array.isArray(units)) {
     let left = units.slice();
-    for (let i = 0; i < cap && left.length; i++) {
+    for (const i of merge) {
+      if (!left.length) break;
       const s = slots[i];
       if (s && s.lots && s.id === id && s.lots.length < max) { const k = Math.min(max - s.lots.length, left.length); s.lots.push(...left.splice(0, k)); }
     }
     while (left.length) {
-      const s = { id, lots: left.slice(0, max) };
-      if (newStack(slots, cap, s) < 0) break;
+      if (newStack(slots, cap, { id, lots: left.slice(0, max) }, order) < 0) break;
       left.splice(0, max);
     }
     return left;
   }
   let left = units;
-  for (let i = 0; i < cap && left > 0; i++) {
+  for (const i of merge) {
+    if (left <= 0) break;
     const s = slots[i];
-    if (s && !s.w && !s.lots && s.id === id && s.n < max) { const k = Math.min(max - s.n, left); s.n += k; left -= k; }
+    if (s && !s.w && !s.tool && !s.lots && s.id === id && s.n < max) { const k = Math.min(max - s.n, left); s.n += k; left -= k; }
   }
   while (left > 0) {
     const k = Math.min(max, left);
-    if (newStack(slots, cap, { id, n: k }) < 0) break;
+    if (newStack(slots, cap, { id, n: k }, order) < 0) break;
     left -= k;
   }
   return left;
@@ -254,7 +166,8 @@ export function putIn(slots, id, units, cap = slots.length) {
 
 /**
  * Take n units of `id` out of a container. Quality items: the best lots first (lowFirst: the
- * worst), returns the lots; plain items: from the last stacks first, returns the count.
+ * worst), returns the lots; plain items: from the last stacks first (the pack before the belt),
+ * returns the count.
  */
 export function takeFrom(slots, id, n, { lowFirst = false } = {}) {
   if (isQ(id)) {
@@ -274,7 +187,7 @@ export function takeFrom(slots, id, n, { lowFirst = false } = {}) {
   let left = n, got = 0;
   for (let i = slots.length - 1; i >= 0 && left > 0; i--) {
     const s = slots[i];
-    if (!s || s.w || s.id !== id) continue;
+    if (!s || s.w || s.tool || s.id !== id) continue;
     const k = Math.min(s.n, left);
     s.n -= k; left -= k; got += k;
     if (s.n <= 0) slots[i] = null;
@@ -285,7 +198,7 @@ export function takeFrom(slots, id, n, { lowFirst = false } = {}) {
 /** Split a stack: take k units off slot i, returned as a new stack (the slot keeps the rest). */
 export function splitStack(slots, i, k) {
   const s = slots[i];
-  if (!s || s.w) return null;
+  if (!s || s.w || s.tool) return null;
   const n = stackN(s);
   k = Math.max(1, Math.min(n, k | 0));
   if (k >= n) { slots[i] = null; return s; }
@@ -302,9 +215,9 @@ export function splitStack(slots, i, k) {
 }
 
 /**
- * Drop a held stack onto slot j of a container (drag & drop). Merges into the same item (up to
- * the stack size), swaps with a different item, fills an empty slot. Returns what's still held
- * (null when it all went in).
+ * Drop a held stack onto slot j of a container. Merges into the same item (up to the stack
+ * size), swaps with a different item, fills an empty slot. Returns what's still held (null when
+ * it all went in).
  */
 export function dropOn(slots, j, held) {
   if (!held) return null;
@@ -326,12 +239,14 @@ export function dropOn(slots, j, held) {
   return t;
 }
 
-/** Merge partial stacks and order them (category, value, quality). Keeps the length. */
+/** Merge partial stacks and order them (category, value, quality). The belt stays as it is. */
 export function tidy(slots, cap = slots.length) {
+  const from = Math.min(slots.hot || 0, cap);
   const weapons = [], plain = new Map(), qual = new Map();
-  for (let i = 0; i < cap; i++) {
+  for (let i = from; i < cap; i++) {
     const s = slots[i];
     if (!s) continue;
+    if (s.tool) continue;
     if (s.w) weapons.push(s);
     else if (s.lots) { if (!qual.has(s.id)) qual.set(s.id, []); qual.get(s.id).push(...s.lots); }
     else plain.set(s.id, (plain.get(s.id) || 0) + s.n);
@@ -355,16 +270,20 @@ export function tidy(slots, cap = slots.length) {
       while (n > 0) { const k = Math.min(max, n); out.push({ id, n: k }); n -= k; }
     }
   }
-  out.forEach((s, i) => { if (i < cap) slots[i] = s; });
-  // anything that didn't fit back is returned (on a grid: packed tight, biggest first)
-  return [...out.slice(cap), ...pack(slots)];
+  let j = from;
+  const over = [];
+  for (const s of out) {
+    while (j < cap && slots[j]) j++;
+    if (j < cap) slots[j++] = s; else over.push(s);
+  }
+  return over;
 }
 
 /** Grouped view of a container: [{ id, n, avgQ?, lots? }] like state.inventory(). */
 export function groups(slots, filter = () => true) {
   const map = new Map();
   for (const s of slots) {
-    if (!s || s.w) continue;
+    if (!s || s.w || s.tool) continue;
     const it = ITEMS[s.id];
     if (!filter(it)) continue;
     let g = map.get(s.id);
@@ -378,44 +297,46 @@ export function groups(slots, filter = () => true) {
 }
 
 // ---------------------------------------------------------------- the backpack on the state
-/** Backpack pockets: the bag's slots + Deeper Pockets (1 per 2 levels) + the Carry skill. */
-// Test URLs: `?bag=N` gives the backpack N pockets, and `?give=...` (which hands out 5 of each
-// item at start) lifts it to the maximum, so test setups never lose items to a full bag.
+// Test URLs: `?bag=N` gives the pack N slots, and `?give=...` (which hands out 5 of each item at
+// start) lifts it to the maximum, so test setups never lose items to a full bag.
 let DEV_BAG = 0;
 try {
   const q = new URLSearchParams(globalThis.location?.search || '');
-  if (q.has('bag')) DEV_BAG = Math.max(1, Math.min(MAX_SLOTS, parseInt(q.get('bag'), 10) || 0));
-  else if (q.has('give')) DEV_BAG = MAX_SLOTS;
+  if (q.has('bag')) DEV_BAG = Math.max(1, Math.min(MAX_PACK, parseInt(q.get('bag'), 10) || 0));
+  else if (q.has('give')) DEV_BAG = MAX_PACK;
 } catch (e) { /* no location (worker) */ }
 
-/** The backpack's pockets (the bag's `slots` + Deeper Pockets + the Carry skill + a packed lunch). */
-export function bagPockets(state) {
+/**
+ * The pack's slots (not counting the belt): two rows for the Burlap Sack and a row more for each
+ * bigger bag (items.js `slots` + 9), + Deeper Pockets (a slot a level), + the Carry skill, + a
+ * packed lunch. bagIt: price a bag you might equip instead.
+ */
+export function bagPockets(state, bagIt = state.equipped?.('bag')) {
   if (DEV_BAG) return DEV_BAG;
-  const bag = state.equipped?.('bag');
-  let n = bag?.slots ?? 9;
-  n += Math.floor((state.upEffect?.('bag') || 0) / 4);
+  let n = COLS + (bagIt?.slots ?? 9);
+  n += Math.floor((state.upEffect?.('bag') || 0) / 2);
   const carry = state.skill?.('carry') || 1;
   if (carry > 1) n += Math.round((carry - 1) * COLS);
-  if (state.hasBuff?.('pack')) n += 1; // a packed lunch tied on: one more pocket while it lasts
-  return Math.max(1, Math.min(MAX_SLOTS / CELLS_PER_POCKET, n));
+  if (state.hasBuff?.('pack')) n += 1; // a packed lunch tied on: one more slot while it lasts
+  return Math.max(1, Math.min(MAX_PACK, n));
 }
-/** Cells of a grid of about n cells, rounded up to whole rows. */
-export function gridCells(n) { const c = gridCols(n); return Math.min(MAX_SLOTS, Math.ceil(n / c) * c); }
-/** The backpack's cells (its grid; the slot array is this long). */
-export function bagSlots(state) { return gridCells(bagPockets(state) * CELLS_PER_POCKET); }
+/** Every carried slot: the belt + the pack (the slot array is this long). */
+export function bagSlots(state) { return HOT + bagPockets(state); }
 
-/** The backpack's slot array (grown to the current bag size; never shrinks under items). */
+function markHot(s) {
+  if (s.hot !== HOT) Object.defineProperty(s, 'hot', { value: HOT, configurable: true, writable: true, enumerable: false });
+  return s;
+}
+/** The carried slot array (belt first, then the pack; grown to the current bag size). */
 export function bag(state) {
   const d = state.data;
-  if (!d.inv || !Array.isArray(d.inv.slots)) d.inv = { v: 1, slots: [] };
+  if (!d.inv || !Array.isArray(d.inv.slots)) d.inv = defaultInv();
   const s = d.inv.slots;
   const cap = bagSlots(state);
   while (s.length < cap) s.push(null);
-  // trailing empty slots past the bag's size go away
+  // empty slots past the bag's size go away (anything still in them is moved in by sync())
   while (s.length > cap && !s[s.length - 1]) s.pop();
-  const cols = gridCols(cap);
-  if (!s.grid || s.grid.cols !== cols || s.grid.rows !== cap / cols) Object.defineProperty(s, 'grid', { value: { cols, rows: cap / cols }, configurable: true, writable: true, enumerable: false });
-  return s;
+  return markHot(s);
 }
 export function stash(state) {
   const d = state.data;
@@ -423,14 +344,14 @@ export function stash(state) {
   return d.stash.slots;
 }
 
-/** Rebuild the read-only mirrors (data.lots, data.counts, data.weapons) from the backpack. */
+/** Rebuild the read-only mirrors (data.lots, data.counts, data.weapons) from the carried slots. */
 export function sync(state) {
   const d = state.data;
   const lots = [], counts = {}, weapons = [];
   const b = bag(state);
-  if (!laidOut(b)) spill(state, b);
+  if (b.length > bagSlots(state)) settle(state, b);
   for (const s of b) {
-    if (!s) continue;
+    if (!s || s.tool) continue;
     if (s.w) weapons.push(s.w);
     else if (s.lots) lots.push(...s.lots);
     else counts[s.id] = (counts[s.id] || 0) + s.n;
@@ -438,31 +359,42 @@ export function sync(state) {
   d.lots = lots; d.counts = counts; d.weapons = weapons;
 }
 
-/** Stacks with no spot on a grid (a smaller bag, an old save) go to the trunk at home. */
-function spill(state, slots) {
-  for (const i of layout(slots)) {
-    const s = slots[i];
-    slots[i] = null;
-    stashPut(state, s.id, s.w || s.lots || s.n);
-    state.emit?.('stash', { id: s.id, n: stackN(s) });
+/** Stacks past the bag's size (a smaller bag, a lunch eaten) move into free slots, else to the trunk. */
+function settle(state, b) {
+  const cap = bagSlots(state);
+  const out = b.splice(cap);
+  for (const s of out) {
+    if (!s || s.tool) continue;
+    const left = putIn(b, s.id, units(s), cap);
+    const n = leftN(left);
+    if (n > 0) { stashPut(state, s.id, left); state.emit?.('stash', { id: s.id, n }); }
   }
 }
 
 /** Will n of this item fit in the backpack right now? (always true for things without slots) */
 export function canAdd(state, id, n = 1) {
   if (!slotted(id)) return !!ITEMS[id];
-  const s = bag(state);
-  return roomFor(s, id, bagSlots(state)) >= n;
+  return roomFor(bag(state), id, bagSlots(state)) >= n;
 }
 /** The mole's load: { kg, carry, r, speed, jump, run, tier, max } (core/weight.js). */
 export function bagLoad(state) { return W.moleLoad(state, bag(state).slice(0, bagSlots(state))); }
 /** Can the mole lift n more of this item (by weight: up to twice what it carries comfortably)? */
 export function canLift(state, id, n = 1) { return !slotted(id) || W.canLift(state, bag(state), id, n); }
-/** { used, slots, free, full } of the backpack in cells (full = not one free cell left). */
+/** { used, slots, free, full } of every carried slot (belt + pack; full = not one free slot left). */
 export function bagFill(state) {
   const s = bag(state), cap = bagSlots(state);
-  const free = freeCells(s, cap);
-  return { used: cap - free, slots: cap, free, full: free <= 0 };
+  let used = 0;
+  for (let i = 0; i < cap; i++) if (s[i]) used++;
+  return { used, slots: cap, free: cap - used, full: used >= cap };
+}
+/** Would everything carried fit with this bag on? (a smaller bag can't hold what it has no slots for) */
+export function fitsBag(state, bagIt) {
+  const s = bag(state), cap = HOT + bagPockets(state, bagIt);
+  let items = 0;
+  for (const x of s) if (x && !x.tool) items++;
+  let refs = 0;
+  for (let i = 0; i < HOT; i++) if (s[i]?.tool) refs++;
+  return items + refs <= cap;
 }
 
 const lotOf = (id, q, p) => ({ uid: mkUid(), id, q: Math.round(Math.max(0, Math.min(100, q ?? 100))), p: !!p });
@@ -470,7 +402,7 @@ const lotOf = (id, q, p) => ({ uid: mkUid(), id, q: Math.round(Math.max(0, Math.
 /**
  * Put a slotted item into the backpack. Returns the last lot (quality items) or the new count,
  * or null (+ state.emit('full', {id, n})) when it doesn't fit. opts.spill sends what doesn't fit
- * to the stash at home instead (state.emit('stash', {id, n})); opts.lots adds those exact lots.
+ * to the trunk at home instead (state.emit('stash', {id, n})); opts.lots adds those exact lots.
  */
 export function addToBag(state, id, opts = {}) {
   const n = Math.max(0, opts.n ?? (opts.lots ? opts.lots.length : 1));
@@ -480,13 +412,13 @@ export function addToBag(state, id, opts = {}) {
     state.emit('full', { id, n });
     return null;
   }
-  let last = null, units;
+  let last = null, u;
   if (isQ(id)) {
-    units = opts.lots ? opts.lots.map((l) => ({ ...l, id })) : Array.from({ length: n }, () => lotOf(id, opts.q, opts.p));
-    last = units[units.length - 1] || null;
-  } else units = n;
-  const left = putIn(s, id, units, cap);
-  const nl = Array.isArray(left) ? left.length : left;
+    u = opts.lots ? opts.lots.map((l) => ({ ...l, id })) : Array.from({ length: n }, () => lotOf(id, opts.q, opts.p));
+    last = u[u.length - 1] || null;
+  } else u = n;
+  const left = putIn(s, id, u, cap);
+  const nl = leftN(left);
   if (nl > 0) {
     stashPut(state, id, left);
     state.emit('stash', { id, n: nl });
@@ -497,10 +429,10 @@ export function addToBag(state, id, opts = {}) {
   return isQ(id) ? last : state.count(id);
 }
 
-/** Put units into the stash at home (it grows as needed). */
-export function stashPut(state, id, units) {
+/** Put units into the trunk at home (it grows as needed). */
+export function stashPut(state, id, u) {
   const st = stash(state);
-  let left = putIn(st, id, units, st.length);
+  let left = putIn(st, id, u, st.length);
   if (id === 'weapon') { if (left) st.push({ id: 'weapon', w: left }); return; }
   const max = stackMax(id);
   if (Array.isArray(left)) { left = left.slice(); while (left.length) st.push({ id, lots: left.splice(0, max) }); return; }
@@ -531,7 +463,7 @@ export function removeLotFromBag(state, lotUid) {
   return null;
 }
 
-/** A forged weapon goes into a free pocket, or to the stash at home when the bag is full. */
+/** A forged weapon goes into a free slot, or to the trunk at home when the bag is full. */
 export function addWeaponToBag(state, weapon) {
   const s = bag(state);
   const left = putIn(s, 'weapon', weapon, bagSlots(state));
@@ -549,223 +481,237 @@ export function removeWeaponFromBag(state, wuid) {
   return w;
 }
 
+const done = (state, id, moved) => { sync(state); state.emit('items', { id, n: 0, moved }); return moved; };
+
 /**
  * Move up to k units of stack i of `from` onto slot j of `to` (or wherever they fit when j < 0;
  * toCap limits the target to its first slots). A whole stack swaps with a different item; part of
- * a stack only goes onto an empty slot or the same item; nothing is ever lost. Returns the
- * units moved. Always re-syncs the backpack mirrors and emits 'items'.
+ * a stack only goes onto an empty slot or the same item; nothing is ever lost. A tool on the belt
+ * only moves along the belt; an item put on a belt tool sends the tool back to its rack. Returns
+ * the units moved. Always re-syncs the backpack mirrors and emits 'items'.
  */
 export function transfer(state, from, i, to, j = -1, k = Infinity, toCap = to.length) {
   const src = from[i];
   if (!src || (from === to && i === j)) return 0;
+  const H = from.hot || 0;
+  if (src.tool) {
+    if (from !== to || j < 0 || j >= H) return 0;
+    from[i] = to[j] || null; to[j] = src;
+    return done(state, null, 1);
+  }
   const n = stackN(src);
   const take = Math.max(1, Math.min(n, k));
   const cut = (kk) => (kk >= n ? ((from[i] = null), src) : splitStack(from, i, kk));
-  const snap = snapshot(from, to);
   let moved = 0;
   if (j >= 0) {
-    const t = to[j];
+    let t = to[j];
+    // a belt tool swaps along the belt; anything else knocks it back onto the rack
+    if (t && t.tool && !(from === to && i < H && take >= n)) { to[j] = null; t = null; }
     if (t && !sameKind(t, src)) {
       if (take < n) return 0;
-      // a swap: on a grid each takes the other's place if it fits there (else anywhere it fits)
-      const gs = src.g, gt = t.g;
       to[j] = src; from[i] = t;
-      if (to.grid) src.g = gt ? { x: gt.x, y: gt.y, r: src.g?.r || 0 } : undefined; else delete src.g;
-      if (from.grid) t.g = gs ? { x: gs.x, y: gs.y, r: t.g?.r || 0 } : undefined; else delete t.g;
       moved = n;
     } else {
       const kk = Math.min(take, stackMax(src.id) - stackN(t));
       if (kk <= 0) return 0;
       const part = cut(kk);
-      if (!t) { to[j] = part; if (part.g && (to !== from || !to.grid)) delete part.g; } else dropOn(to, j, part);
+      if (!t) to[j] = part; else dropOn(to, j, part);
       moved = kk;
     }
   } else {
     const kk = Math.min(take, roomFor(to, src.id, toCap));
     if (kk <= 0) return 0;
     const part = cut(kk);
-    putIn(to, part.id, part.w || part.lots || part.n, toCap);
+    putIn(to, part.id, units(part), toCap);
     moved = kk;
   }
-  // everything must still lie somewhere on its grid: if not, nothing happened
-  if (!settle(from, to)) { snap(); return 0; }
-  sync(state);
-  state.emit('items', { id: src.id, n: 0, moved });
-  return moved;
-}
-
-/** Undo for a move between containers: snapshot(a, b) → restore(). */
-function snapshot(...arrs) {
-  const copy = (s) => { if (!s) return null; const c = { ...s }; if (s.lots) c.lots = s.lots.slice(); if (s.g) c.g = { ...s.g }; return c; };
-  const saved = arrs.map((a) => a.map(copy));
-  return () => arrs.forEach((a, k) => a.splice(0, a.length, ...saved[k]));
-}
-/** Lay out the grids among these containers; false when something has nowhere to go. */
-function settle(...arrs) {
-  for (const a of new Set(arrs)) if (a.grid && layout(a).length) return false;
-  return true;
+  return done(state, src.id, moved);
 }
 
 /**
- * Drag & drop on a grid: move up to k units of stack i of `from` to cell (x, y) of grid `to`,
- * turned r. Lands on free cells (or where it already was), merges into the one same item it
- * covers, or swaps with the one other stack it covers (that one goes back where yours came from,
- * or anywhere it fits). Returns { moved, kind: 'drop' | 'merge' | 'swap' } or null.
+ * Shift-click: a stack on the belt goes into the pack, one in the pack onto the belt (merging
+ * first, then the first free slot). A belt tool goes back to its rack. Returns units moved.
  */
-export function transferAt(state, from, i, to, x, y, r = 0, k = Infinity) {
-  const src = from[i];
-  if (!src || !to.grid) return null;
-  const n = stackN(src), take = Math.max(1, Math.min(n, k));
-  const [w, h] = turned(footprint(src), r ? 1 : 0);
-  const hit = under(to, x, y, w, h, occupancy(to, from === to ? i : -1));
-  if (!hit) return null;
-  const snap = snapshot(from, to);
-  let kind = 'drop', moved = 0;
-  if (!hit.length) {
-    if (take >= n) {
-      if (from === to) src.g = { x, y, r: r ? 1 : 0 };
-      else {
-        const j = to.findIndex((s) => !s);
-        if (j < 0) return null;
-        from[i] = null;
-        to[j] = src;
-        src.g = { x, y, r: r ? 1 : 0 };
-      }
-    } else {
-      const j = to.findIndex((s) => !s);
-      if (j < 0) return null;
-      const part = splitStack(from, i, take);
-      part.g = { x, y, r: r ? 1 : 0 };
-      to[j] = part;
-    }
-    moved = take;
-  } else if (hit.length === 1 && sameKind(to[hit[0]], src)) {
-    kind = 'merge';
-    const t = to[hit[0]];
-    const kk = Math.min(take, stackMax(src.id) - stackN(t));
-    if (kk <= 0) return null;
-    const part = kk >= n ? ((from[i] = null), src) : splitStack(from, i, kk);
-    dropOn(to, hit[0], part);
-    moved = kk;
-  } else if (hit.length === 1 && take >= n) {
-    kind = 'swap';
-    const jt = hit[0], t = to[jt], gs = src.g;
-    if (from === to) {
-      src.g = { x, y, r: r ? 1 : 0 };
-      t.g = gs ? { x: gs.x, y: gs.y, r: t.g?.r || 0 } : undefined;
-    } else {
-      to[jt] = src; from[i] = t;
-      src.g = { x, y, r: r ? 1 : 0 };
-      if (from.grid) t.g = gs ? { x: gs.x, y: gs.y, r: t.g?.r || 0 } : undefined; else delete t.g;
-    }
-    moved = n;
-  } else return null;
-  if (!settle(from, to)) { snap(); return null; }
-  sync(state);
-  state.emit('items', { id: src.id, n: 0, moved });
-  return { moved, kind };
-}
-
-/** What a drop at (x, y) turned r would do: 'drop' | 'merge' | 'swap' | null (no room). */
-export function previewAt(from, i, to, x, y, r = 0) {
-  const src = from[i];
-  if (!src || !to.grid) return null;
-  const [w, h] = turned(footprint(src), r ? 1 : 0);
-  const hit = under(to, x, y, w, h, occupancy(to, from === to ? i : -1));
-  if (!hit) return null;
-  if (!hit.length) return 'drop';
-  if (hit.length === 1 && sameKind(to[hit[0]], src)) return stackN(to[hit[0]]) < stackMax(src.id) ? 'merge' : null;
-  return hit.length === 1 ? 'swap' : null;
-}
-
-/** Turn a stack a quarter where it lies (or, if it can't turn there, wherever it can). */
-export function rotateStack(state, slots, i) {
-  const s = slots[i];
-  if (!s || !slots.grid || !s.g) return false;
-  const fp = footprint(s);
-  if (fp[0] === fp[1]) return false;
-  const r = s.g.r ? 0 : 1, [w, h] = turned(fp, r);
-  const occ = occupancy(slots, i);
-  if (fitsOcc(occ, slots.grid, s.g.x, s.g.y, w, h)) s.g = { x: s.g.x, y: s.g.y, r };
-  else {
-    // slide it as little as possible
-    let best = null;
-    for (let y = 0; y + h <= slots.grid.rows; y++) for (let x = 0; x + w <= slots.grid.cols; x++) {
-      if (!fitsOcc(occ, slots.grid, x, y, w, h)) continue;
-      const d = Math.abs(x - s.g.x) + Math.abs(y - s.g.y);
-      if (!best || d < best.d) best = { x, y, d };
-    }
-    if (!best) return false;
-    s.g = { x: best.x, y: best.y, r };
-  }
-  sync(state);
-  state.emit('items', { id: s.id, n: 0, moved: 0 });
-  return true;
+export function quickMove(state, i) {
+  const b = bag(state), cap = bagSlots(state), H = b.hot;
+  const s = b[i];
+  if (!s) return 0;
+  if (s.tool) { b[i] = null; return done(state, null, 1); }
+  const idx = i < H ? range(H, cap) : range(0, H);
+  const room = roomFor(b, s.id, cap, idx);
+  if (room <= 0) return 0;
+  const n = stackN(s), kk = Math.min(n, room);
+  const part = kk >= n ? ((b[i] = null), s) : splitStack(b, i, kk);
+  putIn(b, part.id, units(part), cap, idx);
+  return done(state, s.id, kk);
 }
 
 /**
- * Old saves (no data.inv): pack the old lots / counts / weapons into the backpack; whatever
- * doesn't fit waits in the stash at home. Returns the number of stacks that went to the stash.
+ * Hang a tool kind on belt slot j (-1: the first free one). It leaves any other belt slot it was
+ * in; an item in slot j moves into the pack (false if there's no room for it).
+ */
+export function hookTool(state, kind, j = -1) {
+  if (!REF_KINDS.includes(kind)) return false;
+  const b = bag(state), cap = bagSlots(state), H = b.hot;
+  const at = b.findIndex((s, i) => i < H && s?.tool === kind);
+  if (j < 0) { if (at >= 0) return true; j = b.findIndex((s, i) => i < H && !s); if (j < 0) return false; }
+  if (j >= H || at === j) return at === j;
+  const t = b[j];
+  if (t && !t.tool) {
+    // the item hanging there goes into the pack (only if all of it fits)
+    const idx = range(H, cap);
+    if (roomFor(b, t.id, cap, idx) < stackN(t)) return false;
+    b[j] = null;
+    putIn(b, t.id, units(t), cap, idx);
+  }
+  if (at >= 0) b[at] = t?.tool ? t : null; // a tool in slot j swaps to where this one hung
+  b[j] = { tool: kind };
+  done(state, null, 1);
+  return true;
+}
+/** A newly owned tool hangs itself on the belt if it isn't there and a slot is free. */
+export function hookNew(state, kind) {
+  const b = bag(state);
+  if (!REF_KINDS.includes(kind) || b.some((s, i) => i < b.hot && s?.tool === kind)) return false;
+  return hookTool(state, kind, -1);
+}
+
+// ---------------------------------------------------------------- saves
+/** Over-stacked stacks (ore from before ore stopped stacking) are split into separate stacks. */
+function restack(list) {
+  const out = [];
+  for (const s of list) {
+    if (!s) continue;
+    if (s.tool || s.w) { out.push(s); continue; }
+    const max = stackMax(s.id);
+    if (s.lots) for (let k = 0; k < s.lots.length; k += max) out.push({ id: s.id, lots: s.lots.slice(k, k + max) });
+    else for (let n = s.n; n > 0; n -= max) out.push({ id: s.id, n: Math.min(max, n) });
+  }
+  return out;
+}
+
+/**
+ * Make the carried slots valid: belt tools only on the belt (once each), no stack over its size,
+ * nothing past the bag's size. What has to move goes into free slots, the rest into the trunk.
+ * Returns the number of stacks sent to the trunk.
+ */
+export function normalize(state) {
+  const b = bag(state), cap = bagSlots(state), H = b.hot;
+  const extra = [], seen = new Set();
+  for (let i = 0; i < b.length; i++) {
+    const s = b[i];
+    if (!s) continue;
+    if (s.tool) { if (i >= H || seen.has(s.tool) || !REF_KINDS.includes(s.tool)) b[i] = null; else seen.add(s.tool); continue; }
+    if (i >= cap) { extra.push(s); b[i] = null; continue; }
+    if (s.w) continue;
+    const max = stackMax(s.id), n = stackN(s);
+    if (n > max) extra.push(splitStack(b, i, n - max));
+  }
+  b.length = Math.min(b.length, cap);
+  let stashed = 0;
+  for (const s of restack(extra)) {
+    const left = putIn(b, s.id, units(s), cap);
+    if (leftN(left) > 0) { stashPut(state, s.id, left); stashed++; }
+  }
+  return stashed;
+}
+
+const realStack = (s) => {
+  if (!s) return null;
+  if (s.tool) return REF_KINDS.includes(s.tool) ? { tool: s.tool } : null;
+  if (!(s.w || ITEMS[s.id]) || stackN(s) <= 0) return null;
+  const c = cloneStack(s);
+  if (c.lots) c.lots = c.lots.filter((l) => l && ITEMS[l.id || s.id]).map((l) => ({ ...l, id: l.id || s.id }));
+  return stackN(c) > 0 ? c : null;
+};
+/** How good a stack is to hold on the belt (best snack, strongest blast...). */
+const beltScore = (s) => { const it = ITEMS[s.id] || {}; return (it.blast || 0) * 100 + (it.energy ?? it.food ?? 0) + stackN(s) * 0.01; };
+
+/** Fill a fresh belt + pack from a list of stacks (and the old kinds-only hotbar); returns stacks sent to the trunk. */
+function rebuild(state, stacks, kinds) {
+  const d = state.data;
+  d.inv = { v: 2, slots: [] };
+  const b = bag(state), cap = bagSlots(state);
+  const pool = restack(stacks.filter((s) => s && !s.tool));
+  (kinds || HOT_DEFAULT).slice(0, HOT).forEach((k, i) => {
+    if (REF_KINDS.includes(k)) { if (!b.some((s) => s?.tool === k)) b[i] = { tool: k }; return; }
+    if (k !== 'food' && k !== 'dynamite' && k !== 'stake') return;
+    // the best stack of that kind rides on the belt where the old loop was
+    let best = -1;
+    pool.forEach((s, j) => { if (kindOf(s) === k && (best < 0 || beltScore(s) > beltScore(pool[best]))) best = j; });
+    if (best >= 0) b[i] = pool.splice(best, 1)[0];
+  });
+  let stashed = 0;
+  for (const s of pool) {
+    const left = putIn(b, s.id, units(s), cap);
+    if (leftN(left) > 0) { stashPut(state, s.id, left); stashed++; }
+  }
+  return stashed;
+}
+
+/**
+ * The oldest saves (no data.inv): pack the old lots / counts / weapons in; whatever doesn't fit
+ * waits in the trunk at home. Returns the number of stacks that went to the trunk.
  */
 export function migrate(state, old) {
   const d = state.data;
-  d.inv = { v: 1, slots: [] };
-  const s = bag(state), cap = bagSlots(state);
-  const st = stash(state);
-  let stashed = 0;
-  const place = (id, units) => {
-    const left = putIn(s, id, units, cap);
-    const nl = left == null ? 0 : Array.isArray(left) ? left.length : typeof left === 'number' ? left : 1;
-    if (nl > 0) {
-      const before = st.length;
-      stashPut(state, id, left);
-      stashed += st.length - before;
-    }
-  };
-  // what you'd want at hand first: food, supplies, then the valuable finds
+  const stacks = [];
   const counts = { ...(old.counts || {}) };
   const ids = Object.keys(counts).filter((id) => counts[id] > 0 && ITEMS[id]);
   const pri = (id) => ({ food: 0, consumable: 1 }[ITEMS[id].cat] ?? 5);
   ids.sort((a, b) => pri(a) - pri(b));
   for (const id of ids) {
     if (!slotted(id)) { if (ITEMS[id].cat === 'furniture') d.furniture[id] = (d.furniture[id] || 0) + counts[id]; else d.owned[id] = 1; continue; }
-    place(id, counts[id]);
+    stacks.push({ id, n: counts[id] });
   }
   const byId = new Map();
   for (const l of old.lots || []) if (ITEMS[l.id]) { if (!byId.has(l.id)) byId.set(l.id, []); byId.get(l.id).push({ uid: l.uid || mkUid(), id: l.id, q: l.q ?? 100, p: !!l.p }); }
   const qids = [...byId.keys()].sort((a, b) => (ITEMS[b].value || 0) - (ITEMS[a].value || 0));
-  for (const id of qids) place(id, byId.get(id).sort((a, b) => b.q - a.q));
-  for (const w of old.weapons || []) place('weapon', w);
+  for (const id of qids) stacks.push({ id, lots: byId.get(id).sort((a, b) => b.q - a.q) });
+  for (const w of old.weapons || []) stacks.push({ id: 'weapon', w });
+  const n = rebuild(state, stacks, old.hotbar);
   sync(state);
-  return stashed;
+  return n;
 }
 
-/** Fill in missing inventory data on load (and run the migration for old saves). */
+/** v1 saves: a grid pack (stacks with footprints, ore in eights) + a kinds-only hotbar. */
+function migrateV1(state, raw) {
+  const cols = raw.inv.slots.length > 24 ? 9 : 6;
+  // keep the old pack's reading order (top row first)
+  const at = (s) => (s.g ? s.g.y * cols + s.g.x : 1e6);
+  const src = raw.inv.slots.map((s, i) => [s, i, realStack(s)]).filter((e) => e[2]);
+  src.sort((a, b) => at(a[0]) - at(b[0]) || a[1] - b[1]);
+  return rebuild(state, src.map((e) => e[2]), Array.isArray(raw.hotbar) ? raw.hotbar : ['pick', 'chisel', 'build', 'food', 'dynamite']);
+}
+
+/** Fill in missing inventory data on load (and run the migrations for old saves). */
 export function loadInventory(state, raw) {
   const d = state.data;
   let stashed = 0;
-  // stacks of items that no longer exist go
-  const real = (s) => (s && (s.w || ITEMS[s.id]) && stackN(s) > 0 ? s : null);
   if (!raw || !raw.inv || !Array.isArray(raw.inv.slots)) stashed = migrate(state, raw || {});
+  else if (!(raw.inv.v >= 2)) stashed = migrateV1(state, raw);
   else {
     d.inv = raw.inv;
-    d.inv.slots = d.inv.slots.map(real);
+    d.inv.slots = d.inv.slots.map(realStack);
   }
+  delete d.hotbar; // (v1's kinds-only hotbar: the belt is d.inv.slots[0..HOT) now)
+  // the trunk: dead stacks go, over-stacked ore is split into single stacks
   const st = stash(state);
-  for (let i = 0; i < st.length; i++) st[i] = real(st[i]);
+  d.stash.slots = restack(st.map(realStack).filter((s) => s && !s.tool));
   // older saves kept a second container (a walking hut's shelves, `data.coop`): whatever was on
   // it waits in the trunk at home now
   const old = raw?.coop?.slots;
-  if (Array.isArray(old)) for (const s of old.map(real)) if (s) { stashPut(state, s.id, s.w || s.lots || s.n); stashed++; }
+  if (Array.isArray(old)) for (const s of old.map(realStack)) if (s && !s.tool) { stashPut(state, s.id, units(s)); stashed++; }
   delete d.coop;
-  while (st.length && !st[st.length - 1]) st.pop();
+  stashed += normalize(state);
   sync(state);
   return stashed;
 }
 
-/** The starting backpack for a new game: empty, like Minecraft (you fell down here with nothing). */
+/** The starting backpack for a new game: an empty pack, the pick and chisel loops on the belt. */
 export function defaultInv() {
-  return { v: 1, slots: [] };
+  const slots = HOT_DEFAULT.map((k) => ({ tool: k }));
+  return { v: 2, slots };
 }
 /** What a new game keeps in the trunk at home: a few grub bars and support beams. */
 export function defaultStash() {

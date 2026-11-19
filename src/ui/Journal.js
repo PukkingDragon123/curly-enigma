@@ -20,6 +20,7 @@ import { stepGoal } from '../core/questWhere.js';
 import { npcFace } from './npcFace.js';
 import { loreSheet } from './loreReader.js';
 import './lore.css';
+import { voiceBlip, STAR_VOICE } from './talkType.js';
 import { indexName } from '../core/State.js';
 import { BART } from './bookArt.js';
 import { TSFX, bindCover, curlTurn, dropCap, inkIn, margins, ribbonTabs, wiggleOn, sealCss, ensureTomeArt, vars } from './tomeFx.js';
@@ -582,6 +583,7 @@ export function openJournal(game) {
     el('h3', { class: 'jr-h' }, 'Settings'),
     slider('Music', s.music, (v) => { s.music = v; game.audio.setVolumes({ music: v }); }),
     slider('Sound', s.sfx, (v) => { s.sfx = v; game.audio.setVolumes({ sfx: v }); }),
+    slider('Voices', s.voice ?? 0.8, (v) => { s.voice = v; game.audio.setVolumes({ voice: v }); voiceBlip(game.audio, STAR_VOICE, 'happy'); }),
     el('div', { class: 'jr-row' }, [el('span', {}, 'Pixels'), el('div', { class: 'jr-opts' }, pixBtns)]),
     el('div', { class: 'jr-row' }, [el('span', {}, 'Screen shake'), lever]),
   ]);

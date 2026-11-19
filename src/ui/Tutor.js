@@ -25,7 +25,7 @@ import { el, clamp } from '../core/util.js';
 import { portrait3d } from '../gfx/portrait3d.js';
 import { randomSpec } from '../gfx/characters.js';
 import { installDialogArt } from './dialogArt.js';
-import { voiceBlip, breathAfter, STAR_VOICE } from './talkType.js';
+import { voiceBlip, voiceFor, breathAfter, STAR_VOICE } from './talkType.js';
 import { letterize, arrive, floatIn, ghost, bits } from './floatType.js';
 import { keepClear } from './uiSolid.js';
 import { SHOPS } from '../data/shops.js';
@@ -373,9 +373,8 @@ export class Tutor {
           }
           this.showChars(now);
           if (!this.talking && this.pauseT <= 0) { this.talking = true; this.face?.talk(true); }
-          // a blip every few letters (not on spaces)
-          this.blipT -= now - before;
-          if (this.blipT <= 0 && c.voice && this.flat[now - 1] !== ' ') { this.blipT = 3; this.blip(c.mood); }
+          // the 8-bit babble, a blip a syllable (src/audio/voice8.js)
+          if (c.voice) (c.babble ||= voiceFor({ audio: this.game.audio, voice: c.vo || STAR_VOICE, mood: c.mood, who: c.cast?.key, muffled: c.muffled })).letters(this.flat, before, now);
         }
         if (this.typedN >= this.total) { c.typed = true; this.revealAll(); this.talking = false; }
       }

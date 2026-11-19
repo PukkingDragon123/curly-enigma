@@ -10,6 +10,7 @@ import { BUFFS } from '../data/recipes.js';
 import { foodBuffs } from '../cooking/buffs.js';
 import { clamp, wait, el } from './util.js';
 import { houseLoading } from '../home/loading.js';
+import { attachVitals, tickVitals } from './vitals.js';
 
 // Scenes load lazily so each one stays self-contained.
 const SCENES = {
@@ -65,7 +66,7 @@ export class Game {
     this.autosaveT = 0;
     this.engine.onResize((w, h) => this.scene && this.scene.onResize(w, h));
     this.engine.setPixelOffset(this.state.data.settings.pixel || 0);
-    this.audio.setVolumes({ music: this.state.data.settings.music, sfx: this.state.data.settings.sfx });
+    this.audio.setVolumes({ music: this.state.data.settings.music, sfx: this.state.data.settings.sfx, voice: this.state.data.settings.voice ?? 0.8 });
 
     // Audio needs a user gesture.
     const unlock = () => { this.audio.init(); };
@@ -89,6 +90,7 @@ export class Game {
     this.engine.onContext((lost) => this.onContext(lost));
     this.state.on('gold', () => this.checkGoal());
     this.state.on('energy', () => {});
+    attachVitals(this); // stamina, hunger and injury (core/vitals.js)
   }
 
   async start() {
@@ -116,6 +118,7 @@ export class Game {
     if (this.scene && !this.transitioning && !blind) {
       if (this.sceneName !== 'title') st.data.playTime += dt;
       try { this.scene.update(dt); } catch (e) { console.error(e); this.reportError(e); }
+      tickVitals(this, dt);
       this.cheats();
     }
     if (this.scene && !blind) {
@@ -402,9 +405,11 @@ export class Game {
     const it = ITEMS[id];
     if (!it || st.count(id) <= 0) return false;
     const energy = it.energy ?? it.food ?? 0;
-    if (!energy && !it.buff) return false;
+    if (!energy && !it.buff && !it.heal) return false;
     const took = st.removeItem(id, 1);
-    st.restoreEnergy(energy * (st.skill?.('hearty') || 1));
+    // the stamina bar (core/vitals.js): the meal takes its worth off hunger and refills as much;
+    // herbs and herb dishes mend wounds (item.heal)
+    st.feed(energy * (st.skill?.('hearty') || 1), it.heal || 0);
     // cooking part: timed food buffs, longer for a better dish (src/cooking/buffs.js)
     if (it.buff) foodBuffs(this, id, Array.isArray(took) ? took[0]?.q : undefined);
     if (it.maxEnergy) {
@@ -427,7 +432,8 @@ export class Game {
     const st = this.state;
     const d = st.data;
     st.nextDay();
-    d.energy = d.maxEnergy;
+    d.injury = 0; // a night's sleep mends every wound (hunger stays: breakfast!)
+    d.energy = st.energyCap;
     d.buffs = [];
     // the bed's quality adds a morning buff
     const beds = d.home.placed.map((p) => ITEMS[p.id]).filter((it) => it && it.kind === 'bed');

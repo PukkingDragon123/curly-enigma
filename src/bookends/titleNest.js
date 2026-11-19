@@ -7,8 +7,10 @@
 // a baby raptor sits in the bottom half of its shell (the mine's raptor model, small and big-
 // headed), the top lying beside it. Hover (or focus) an egg: it wobbles and its crack creeps a
 // little, with a tiny crack; choose it: the shell gives (a sharp crack, a flash of light, chips)
-// and the game goes on from it. Deleting a save smashes its egg (after the confirm) and a fresh
-// smooth one rises from the straw.
+// and the game goes on from it. Deleting a save (the hammer by its egg, Delete, or a long press on
+// the egg): the egg cracks all over and trembles while an iron plate (Break) and a bark tag (Keep)
+// ask under it; Break swings the hammer down and the shell crumbles to dust (every key of that slot
+// goes: core/saves.js deleteSlot), then a fresh smooth egg rises from the straw.
 // The eggs are voxels at 1/96 m (the mine's own egg close-up), the nest's twigs, bones and quills
 // 1/64 m (small things), the rock shelf 1/32 m.
 //
@@ -17,9 +19,10 @@
 // to delete, "last played"; arrows move between eggs, Delete smashes one.
 //
 //   const N = makeNest(layer, { audio, camera, canvas, slots: () => state.listSlots(), tame: (i) => bool,
-//     onPick(i, slot), onDelete(i) → Promise<bool>, afterDelete(i) });
+//     onPick(i, slot), afterDelete(i) });
 //   scene.add(N.group);  N.update(dt)  N.show() / N.hide() / N.open / N.refresh() / N.setFake(i, pct)
-//   N.setHatched(i, on|null)  N.pick(i)  N.smash(i)  N.shot(aspect) → { pos, look, fov }  N.destroy()
+//   N.setHatched(i, on|null)  N.pick(i)  N.smash(i)  N.ask(i) / N.confirmBreak(i) / N.cancelAsk() / N.asking
+//   N.shot(aspect) → { pos, look, fov }  N.destroy()
 import * as THREE from 'three';
 import { el, clamp, formatGoldFull, makeRng } from '../core/util.js';
 import { formatPlayTime } from '../core/saves.js';
@@ -396,6 +399,26 @@ const CSS = /* css */`
 .nt-del:focus-visible { filter: drop-shadow(0 0 var(--px) #f2c23a) drop-shadow(0 0 var(--px) #f2c23a); }
 .nt-slot.busy .nt-del, .nt-slot.busy .nt-main { pointer-events: none; }
 #ui .nt-view:not(.on) .nt-main, #ui .nt-view:not(.on) .nt-del { pointer-events: none; }
+/* breaking an egg: it cracks all over while two crafted buttons ask (an iron plate, a bark tag) */
+.nt-main { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.nt-slot.arming .nt-plaque, .nt-slot.arming .nt-del, .nt-slot.arming .nt-last { visibility: hidden; }
+.nt-ask { position: absolute; left: 0; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: calc(var(--px) * 1.5); pointer-events: none; animation: ntAsk .26s cubic-bezier(.3,1.7,.5,1) both; }
+.nt-ask[hidden] { display: none; }
+.nt-ask-q { font-size: max(var(--g), round(calc(var(--px) * 5.4) + 2px, var(--g))); color: #ffd6b0; white-space: nowrap; letter-spacing: .04em; }
+.nt-ask-row { display: flex; gap: calc(var(--px) * 3); }
+#ui .nt-ask-b, .nt-ask-b { position: relative; isolation: isolate; pointer-events: auto; border: 0; margin: 0; background: transparent; cursor: pointer; outline: none; display: flex; align-items: center; gap: calc(var(--px) * 1.5);
+  padding: calc(var(--px) * 2.5) calc(var(--px) * 4.5) calc(var(--px) * 3); font-family: var(--font); font-size: max(var(--g), round(calc(var(--px) * 6) + 2px, var(--g))); color: #fbeedc; white-space: nowrap; text-shadow: 0 var(--px) 0 #120a08;
+  transition: transform .12s cubic-bezier(.3,1.8,.5,1), filter .12s; }
+.nt-ask-b img { width: calc(var(--px) * 8); height: calc(var(--px) * 8); image-rendering: pixelated; display: block; margin: calc(var(--px) * -1) 0; }
+.nt-ask-b:hover, .nt-ask-b:focus-visible { transform: translateY(calc(var(--px) * -1)) scale(1.07); }
+.nt-ask-b:active { transform: translateY(var(--px)) scale(.94, .9); transition-duration: .05s; }
+.nt-ask-b:focus-visible { filter: drop-shadow(0 0 var(--px) #f2c23a) drop-shadow(0 0 var(--px) #f2c23a); }
+.nt-brk { color: #ffe0c8; }
+.nt-swing { position: absolute; left: 0; top: 0; image-rendering: pixelated; transform-origin: 12% 88%; pointer-events: none; animation: ntSwing .3s cubic-bezier(.6,0,.8,.5) both; filter: drop-shadow(0 calc(var(--px) * 2) 0 #0008); }
+.nt-view.thud { animation: ntThud .2s steps(4); }
+@keyframes ntAsk { from { transform: translateX(-50%) scale(.4, .2); opacity: 0; } 60% { transform: translateX(-50%) scale(1.08, .94); opacity: 1; } to { transform: translateX(-50%); } }
+@keyframes ntSwing { 0% { transform: rotate(18deg) scale(.9); opacity: 0; } 20% { opacity: 1; transform: rotate(26deg); } 72% { transform: rotate(-88deg); } 84% { transform: rotate(-80deg) scale(1.04, .96); } 100% { transform: rotate(-84deg); opacity: 1; } }
+@keyframes ntThud { 25% { transform: translate(calc(var(--px) * 1.5), var(--px)); } 50% { transform: translate(calc(var(--px) * -1), calc(var(--px) * -.5)); } 75% { transform: translate(calc(var(--px) * .5), 0); } }
 @media (max-height: 520px) and (min-aspect-ratio: 5/4) {
   .nt-head { top: calc(var(--px) * 4 + env(safe-area-inset-top, 0px)); font-size: max(var(--g), round(calc(var(--px) * 12) + 2px, var(--g))); }
   .nt-plaque { min-width: 0; padding: calc(var(--px) * 2.5) calc(var(--px) * 3.5) calc(var(--px) * 3); }
@@ -409,26 +432,87 @@ const CSS = /* css */`
 }
 `;
 
-/** A tiny hammer icon (16×16) for the delete buttons (the save stones' own). */
+/**
+ * The egg-breaker's hammer (24×24), drawn per pixel: a forged iron head with a bevelled face, a
+ * rivet and a glint, an ash haft with grain, a leather grip wound round it and a brass ferrule,
+ * lit from the top left, a tinted outline. The same art swings down onto an egg (bigger).
+ */
 function hammerIcon() {
+  const N = 24;
   const c = document.createElement('canvas');
-  c.width = 16; c.height = 16;
+  c.width = N; c.height = N;
   const ctx = c.getContext('2d');
-  const img = ctx.createImageData(16, 16);
+  const img = ctx.createImageData(N, N);
   const b = new Uint32Array(img.data.buffer);
   const C32 = (hex, a = 255) => (((a & 255) << 24) | ((hex & 0xff) << 16) | (hex & 0xff00) | ((hex >>> 16) & 0xff)) >>> 0;
-  const set = (x, y, col) => { b[y * 16 + x] = C32(col); };
-  for (let i = 0; i < 10; i++) { set(4 + i, 11 - Math.round(i * 0.7), 0x2a1408); set(4 + i, 12 - Math.round(i * 0.7), i % 3 ? 0xa87444 : 0x7a5030); }
-  const head = [[9, 1], [10, 1], [11, 1], [12, 2], [13, 3], [14, 4], [8, 2], [9, 2], [10, 2], [11, 2], [12, 3], [13, 4], [9, 3], [10, 3], [11, 3], [12, 4], [10, 4], [11, 4], [11, 5]];
-  for (const [x, y] of head) set(x, y, y < 3 ? 0xd6d4e2 : 0x6a6672);
+  const set = (x, y, col) => { if (x >= 0 && y >= 0 && x < N && y < N) b[y * N + x] = C32(col); };
+  // the haft: from the bottom left up to the head, two pixels thick
+  for (let i = 0; i <= 15; i++) {
+    const x = 3 + i, y = 20 - Math.round(i * 0.94);
+    const grip = i < 6, ferrule = i === 6;
+    const lit = grip ? (i % 2 ? 0x8a4a2a : 0x6a3420) : ferrule ? 0xf0c860 : (i % 4 === 1 ? 0xd8b080 : 0xc89a64);
+    const dark = grip ? (i % 2 ? 0x5a2c18 : 0x442010) : ferrule ? 0xa07028 : 0x8a6038;
+    set(x, y, lit); set(x + 1, y + 1, dark); set(x, y + 1, grip && i % 2 ? 0x5a2c18 : dark);
+  }
+  set(3, 21, 0x442010); set(2, 21, 0x5a2c18); // (the grip's end, a knot of thong)
+  // the head: a block across the haft's top, the face to the right, the peen to the left
+  const head = (x, y) => { const u = x - y, v = x + y; return u >= -4 && u <= 2 && v >= 18 && v <= 31; };
+  for (let y = 0; y < 14; y++) for (let x = 8; x < 24; x++) {
+    if (!head(x, y)) continue;
+    const u = x - y, v = x + y;
+    let col = 0x6a6878;
+    if (u === -4 || v === 18) col = 0xc8c8d8; // lit top-left edges
+    else if (u === 2 || v === 31) col = 0x34323c; // shaded
+    else if (u === -3 || v === 19) col = 0x9a98aa;
+    if (v >= 29 && u > -4 && u < 2) col = v === 29 ? 0xe8e8f4 : 0xb0b0c4; // the striking face, bright
+    if (v === 18 && u > -1) col = 0x8a8898; // the peen
+    set(x, y, col);
+  }
+  set(15, 7, 0x2a2830); set(16, 7, 0xd0a050); set(15, 8, 0x8a6020); // the wedge rivet
+  set(19, 6, 0xffffff); set(20, 7, 0xe8e8f4); // a glint
   const o = new Uint32Array(b);
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-    const i = y * 16 + x;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = y * N + x;
     if (o[i]) continue;
-    if ((x > 0 && o[i - 1]) || (x < 15 && o[i + 1]) || (y > 0 && o[i - 16]) || (y < 15 && o[i + 16])) b[i] = C32(0xfff0d0, 230);
+    if ((x > 0 && o[i - 1]) || (x < N - 1 && o[i + 1]) || (y > 0 && o[i - N]) || (y < N - 1 && o[i + N])) b[i] = C32(0x1a0e0c, 235);
   }
   ctx.putImageData(img, 0, 0);
   return c.toDataURL();
+}
+
+/**
+ * An iron plate for the Break button, drawn per pixel: forged dark iron, nicked corners, a lit
+ * top-left bevel and a shaded bottom-right one, four rivets, hammer pocks and rust, a tinted outline.
+ */
+function drawPlate(canvas, w, h, seed) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  const b = new Uint32Array(img.data.buffer);
+  const C32 = (hex, a = 255) => (((a & 255) << 24) | ((hex & 0xff) << 16) | (hex & 0xff00) | ((hex >>> 16) & 0xff)) >>> 0;
+  const IRON = [0x1c1a20, 0x2e2c34, 0x403e48, 0x56545e, 0x74727e, 0x9a98a6];
+  const l = 1, r = w - 2, t = 1, bt = h - 2;
+  const inside = (x, y) => x >= l && x <= r && y >= t && y <= bt && Math.min(x - l, r - x) + Math.min(y - t, bt - y) >= 2;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!inside(x, y)) continue;
+    let k = 2 + (hash3(x >> 1, y >> 1, 3, seed) < 0.25 ? 1 : 0) - (hash3(x, y, 4, seed) < 0.06 ? 1 : 0);
+    if (y === t || x === l || (y === t + 1 && !inside(x, y - 1)) || (x === l + 1 && !inside(x - 1, y))) k = 5;
+    else if (y === t + 1 || x === l + 1) k = 4;
+    if (y === bt || x === r) k = 0; else if (y === bt - 1 || x === r - 1) k = 1;
+    let col = IRON[k];
+    if (k >= 1 && k <= 3 && hash3(x, y, 5, seed) < 0.035) col = 0x7a3a1a; // rust
+    b[y * w + x] = C32(col);
+  }
+  for (const [x, y] of [[l + 3, t + 3], [r - 3, t + 3], [l + 3, bt - 3], [r - 3, bt - 3]]) {
+    b[y * w + x] = C32(0xc8c4d0); b[y * w + x + 1] = C32(0x56545e); b[(y + 1) * w + x] = C32(0x56545e); b[(y + 1) * w + x + 1] = C32(0x1c1a20);
+  }
+  const o = new Uint32Array(b);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (o[i]) continue;
+    if ((x > 0 && o[i - 1]) || (x < w - 1 && o[i + 1]) || (y > 0 && o[i - w]) || (y < h - 1 && o[i + w])) b[i] = C32(0x0c0a10, 235);
+  }
+  ctx.putImageData(img, 0, 0);
 }
 
 /**
@@ -599,10 +683,29 @@ export function makeNest(parent, opts) {
     const plaque = el('div', { class: 'nt-plaque bk-outline' });
     const del = el('button', { class: 'nt-del', type: 'button', tabindex: '-1', 'aria-label': `Delete save ${E.i + 1}`, title: 'Break this egg (delete the save)' }, [el('img', { src: hammerURL, alt: '' })]);
     const last = el('div', { class: 'nt-last bk-outline', hidden: true }, '▾ last played');
-    const slotEl = el('div', { class: 'nt-slot' }, [ring, main, plaque, del, last]);
+    // the question while an egg is about to be broken: an iron plate to break it, a bark tag to keep it
+    const brk = el('button', { class: 'nt-ask-b nt-brk', type: 'button', tabindex: '-1', 'aria-label': `Break egg ${E.i + 1}: delete this save for good` }, [el('canvas', { class: 'nt-tag', 'aria-hidden': 'true' }), el('img', { src: hammerURL, alt: '' }), el('span', {}, 'Break')]);
+    const keep = el('button', { class: 'nt-ask-b nt-keep', type: 'button', tabindex: '-1', 'aria-label': `Keep egg ${E.i + 1}` }, [el('canvas', { class: 'nt-tag', 'aria-hidden': 'true' }), el('span', {}, 'Keep')]);
+    const ask = el('div', { class: 'nt-ask', hidden: true, role: 'group', 'aria-label': `Delete save ${E.i + 1}?` }, [el('span', { class: 'nt-ask-q bk-outline' }, 'Lose this save?'), el('div', { class: 'nt-ask-row' }, [brk, keep])]);
+    const slotEl = el('div', { class: 'nt-slot' }, [ring, main, plaque, del, last, ask]);
     slotEl.style.setProperty('--gc', E.spec.css);
     row.append(slotEl);
-    Object.assign(E, { main, ring, tag, plaque, del, last, slotEl, tagKey: '' });
+    Object.assign(E, { main, ring, tag, plaque, del, last, slotEl, ask, brk, keep, tagKey: '', arming: null, press: null, threat: 0 });
+    brk.addEventListener('click', (ev) => { ev.stopPropagation(); breakIt(E); });
+    keep.addEventListener('click', (ev) => { ev.stopPropagation(); disarm(E); });
+    ask.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') { disarm(E); ev.preventDefault(); ev.stopPropagation(); }
+      else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') { (document.activeElement === brk ? keep : brk).focus({ preventScroll: true }); ev.preventDefault(); }
+    });
+    // a long press on a saved egg (touch, or a held mouse button) asks to break it too
+    const unpress = () => { if (E.press && !E.press.fired) { clearTimeout(E.press.id); E.press = null; } };
+    main.addEventListener('pointerdown', (ev) => {
+      if (!isOpen || busy || E.smash || E.arming || !E.info?.used || (ev.button ?? 0) !== 0) return;
+      unpress();
+      E.press = { t0: performance.now(), fired: false, id: setTimeout(() => { if (!E.press) return; E.press.fired = true; try { navigator.vibrate?.(25); } catch (e) { /* none */ } arm(E); }, PRESS_MS) };
+    });
+    for (const k of ['pointerup', 'pointerleave', 'pointercancel']) main.addEventListener(k, unpress);
+    main.addEventListener('contextmenu', (ev) => { if (E.info?.used) ev.preventDefault(); });
     const enter = () => {
       if (E.hot || !isOpen) return;
       E.hot = true; slotEl.classList.add('hot');
@@ -618,7 +721,12 @@ export function makeNest(parent, opts) {
     main.addEventListener('blur', leave);
     del.addEventListener('pointerenter', () => slotEl.classList.add('hot'));
     del.addEventListener('pointerleave', () => { if (!E.hot) slotEl.classList.remove('hot'); });
-    main.addEventListener('click', () => pick(E));
+    main.addEventListener('click', () => {
+      if (E.press?.fired) { E.press = null; return; } // (the long press asked instead)
+      E.press = null;
+      if (E.arming) { disarm(E); return; }
+      pick(E);
+    });
     del.addEventListener('click', (ev) => { ev.stopPropagation(); smash(E); });
     main.addEventListener('keydown', (ev) => {
       if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft' || ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
@@ -631,6 +739,7 @@ export function makeNest(parent, opts) {
   const panOf = (E) => { const r = E.rect; return r ? clamp((r.cx / window.innerWidth) * 2 - 1, -0.7, 0.7) : 0; };
 
   let isOpen = false, busy = false;
+  const PRESS_MS = 600;
 
   /** The saves → the eggs and their plaques. */
   function refresh() {
@@ -704,27 +813,79 @@ export function makeNest(parent, opts) {
       if (light) sparks.spawn({ pos: [g.x, g.y, g.z], vel: [Math.cos(a) * R(0.1, 0.5), R(0.2, 0.9), Math.sin(a) * R(0.1, 0.5) + 0.2], life: R(0.4, 0.9), color: 0xfff2c0, color2: E.spec.light, size: R(0.006, 0.012), shape: SHAPE.square, drag: 1.5, flicker: 0.4 });
     }
   }
-  async function smash(E) {
-    if (busy || E.smash || !E.info?.used) return;
+  /** The hammer (or Delete, or a long press): the egg cracks all over and asks. */
+  function smash(E) { if (E.arming) breakIt(E); else arm(E); }
+  function arm(E) {
+    if (busy || E.smash || E.arming || !isOpen || !E.info?.used) return;
+    for (const o of eggs) if (o !== E) disarm(o, true);
+    E.press = E.press?.fired ? E.press : null;
+    E.arming = { t: 0, tick: 0.5 };
+    E.slotEl.classList.add('arming');
+    E.ask.hidden = false;
+    E.posKey = ''; E.askKey = '';
+    E.wobV += 11; E.flash = 0.7; E.axis.set(1, 0, R(-0.3, 0.3)).normalize();
+    const pan = panOf(E);
+    play('egg_crack', { pan, vol: 0.95 });
+    setTimeout(() => play('egg_crack', { pan, pitch: 0.78, vol: 0.7 }), 110);
+    burst(E, 8, true);
+    setTimeout(() => { if (E.arming) E.brk.focus({ preventScroll: true }); }, 60);
+    setTimeout(() => { if (E.arming) document.addEventListener('pointerdown', E.outside = (ev) => { if (!E.slotEl.contains(ev.target)) disarm(E); }, true); }, 0);
+  }
+  /** Keep it after all: the cracks close up again and the egg gives a little hop. */
+  function disarm(E, quiet = false) {
+    if (!E.arming) return;
+    E.arming = null;
+    if (E.outside) document.removeEventListener('pointerdown', E.outside, true);
+    E.outside = null;
+    E.slotEl.classList.remove('arming');
+    E.ask.hidden = true;
+    E.posKey = '';
+    if (quiet) return;
+    E.hopV = 1.3; E.wobV += 3;
+    play('ui_click', { vol: 0.5 });
+    if (E.hatchedOn) play('egg_chirp', { pan: panOf(E) });
+    if (isOpen) E.main.focus({ preventScroll: true });
+  }
+  /** Break it: the hammer swings down, the shell gives and crumbles to dust; a fresh egg rises. */
+  function breakIt(E) {
+    if (!E.arming || busy) return;
+    disarm(E, true);
     busy = true;
-    const ok = await (opts.onDelete ? opts.onDelete(E.i, E.info) : Promise.resolve(true));
-    busy = false;
-    if (!ok) { E.main.focus({ preventScroll: true }); return; }
-    doSmash(E);
+    E.slotEl.classList.add('busy');
+    E.threat = 1; E.flash = 0.4;
+    const r = E.rect;
+    if (r) {
+      const size = Math.round(Math.max(54, r.w * 1.25));
+      const hm = el('img', { class: 'nt-swing', src: hammerURL, alt: '', style: { width: `${size}px`, height: `${size}px`, left: `${Math.round(r.cx + r.w * 0.42 - size * 0.12)}px`, top: `${Math.round(r.cy + r.h * 0.12 - size * 0.88)}px` } });
+      E.slotEl.append(hm);
+      hm.addEventListener('animationend', () => setTimeout(() => hm.remove(), 120));
+      setTimeout(() => hm.remove(), 3000);
+    }
+    play('whoosh', { vol: 0.35, pitch: 1.3 });
+    E.swing = 0.23; // (the hammer lands: update() smashes it then)
   }
   function doSmash(E) {
     E.slotEl.classList.add('busy');
     E.smash = { t: 0, done: false };
-    E.wobV += 14;
-    play('egg_break', { pan: panOf(E) });
-    // the shell bursts into chips
+    E.wobV += 14; E.flash = 1; E.threat = 1;
+    const pan = panOf(E);
+    play('egg_break', { pan });
+    play('debris', { vol: 0.5, pan });
+    // the shell gives: shards drop and tumble, the rest crumbles to a drift of dust, a last puff of its light
     E.pivot.updateWorldMatrix(true, false);
     const c = group.worldToLocal(new THREE.Vector3(0, E.m.height * 0.5, 0).applyMatrix4(E.pivot.matrixWorld));
-    for (let k = 0; k < 40; k++) {
-      const a = Math.random() * TAU, up = R(0.4, 1.6);
-      chips.spawn({ pos: [c.x + Math.cos(a) * 0.06, c.y + R(-0.08, 0.1), c.z + Math.sin(a) * 0.06], vel: [Math.cos(a) * R(0.4, 1.1), up, Math.sin(a) * R(0.4, 1.1)], life: R(0.7, 1.3), color: E.spec.shell[(k % 4)], size: R(0.01, 0.02), shape: SHAPE.square, gravity: 6, drag: 0.4, spin: 10 });
+    const H = E.m.height, Rr = E.m.radius || 0.1;
+    for (let k = 0; k < 44; k++) {
+      const a = Math.random() * TAU, y = R(-0.45, 0.5) * H, rr = Rr * (0.6 + Math.random() * 0.4);
+      const shard = k < 18;
+      chips.spawn({ pos: [c.x + Math.cos(a) * rr, c.y + y, c.z + Math.sin(a) * rr], vel: shard ? [Math.cos(a) * R(0.3, 0.9), R(0.3, 1.2), Math.sin(a) * R(0.3, 0.9)] : [Math.cos(a) * R(0.05, 0.25), R(-0.4, 0.1), Math.sin(a) * R(0.05, 0.25)],
+        life: shard ? R(0.7, 1.2) : R(0.5, 0.9), color: E.spec.shell[k % 4], size: shard ? R(0.012, 0.02) : R(0.008, 0.013), shape: SHAPE.square, gravity: shard ? 6 : 3.5, drag: shard ? 0.4 : 1.2, spin: 10 });
     }
-    for (let k = 0; k < 24; k++) { const a = Math.random() * TAU; sparks.spawn({ pos: [c.x, c.y, c.z], vel: [Math.cos(a) * R(0.2, 0.8), R(0.3, 1.2), Math.sin(a) * R(0.2, 0.8)], life: R(0.4, 1.0), color: 0xfff0c0, color2: E.spec.light, size: R(0.008, 0.016), shape: SHAPE.square, drag: 1.2 }); }
+    for (let k = 0; k < 54; k++) { // dust: fine, pale, drifting out and settling
+      const a = Math.random() * TAU, y = R(-0.5, 0.45) * H;
+      chips.spawn({ pos: [c.x + Math.cos(a) * Rr * 0.8, c.y + y, c.z + Math.sin(a) * Rr * 0.8], vel: [Math.cos(a) * R(0.08, 0.35), R(0.02, 0.3), Math.sin(a) * R(0.08, 0.35)], life: R(1.0, 1.9), color: k % 3 ? 0xd8ccb4 : E.spec.shell[0], size: R(0.004, 0.008), shape: SHAPE.square, gravity: 0.25, drag: 2.4, spin: 3 });
+    }
+    for (let k = 0; k < 20; k++) { const a = Math.random() * TAU; sparks.spawn({ pos: [c.x, c.y, c.z], vel: [Math.cos(a) * R(0.2, 0.7), R(0.2, 1.0), Math.sin(a) * R(0.2, 0.7)], life: R(0.4, 0.9), color: 0xfff0c0, color2: E.spec.light, size: R(0.008, 0.014), shape: SHAPE.square, drag: 1.4 }); }
     E.rise = 0;
   }
 
@@ -768,7 +929,24 @@ export function makeNest(parent, opts) {
       // the crack: its save's progress, creeping a little while hovered, jumping when chosen
       E.creep += ((E.hot && E.base > 0 ? 0.075 : 0) - E.creep) * (1 - Math.exp(-dt * (E.hot ? 0.9 : 1.6)));
       if (E.boost > 0) E.boost = Math.min(0.32, E.boost + dt * 0.9);
-      const want = E.base + E.creep + E.boost;
+      // about to be broken: cracks all over (and trembling); a long press creeps them on
+      const pk = E.press && !E.press.fired ? clamp((performance.now() - E.press.t0) / PRESS_MS, 0, 1) : 0;
+      const wantT = E.smash || E.swing ? 1 : E.arming ? Math.max(0, clamp(E.base + 0.22, 0.42, 0.86) - E.base) : pk * Math.max(0, 0.36 - E.base);
+      if (E.swing > 0 && (E.swing -= dt) <= 0) {
+        E.swing = 0;
+        view.classList.remove('thud'); void view.offsetWidth; view.classList.add('thud');
+        busy = false;
+        doSmash(E);
+      }
+      E.threat += (wantT - E.threat) * (1 - Math.exp(-dt * (wantT > E.threat ? 9 : 4)));
+      if (E.arming) {
+        E.arming.t += dt;
+        E.wobV += (Math.random() - 0.5) * 70 * dt;
+        E.arming.tick -= dt;
+        if (E.arming.tick <= 0) { E.arming.tick = R(0.5, 0.9); play('egg_crack', { pan: panOf(E), vol: 0.35, pitch: R(0.8, 1.2) }); }
+        if (E.arming.t > 9) disarm(E);
+      } else if (pk > 0) E.wobV += (Math.random() - 0.5) * 40 * pk * dt;
+      const want = Math.min(1, E.base + E.creep + E.boost + E.threat);
       E.cur += (want - E.cur) * (1 - Math.exp(-dt * 6));
       E.mat.userData.u.uCrack.value = E.cur;
       E.flash = Math.max(0, E.flash - dt * 2.2);
@@ -789,7 +967,7 @@ export function makeNest(parent, opts) {
         E.smash.t += dt;
         E.pivot.visible = false;
         if (!E.smash.done && E.smash.t > 0.45) { E.smash.done = true; opts.afterDelete?.(E.i); refresh(); }
-        if (E.smash.t > 0.8) { E.smash = null; E.rise = 0.001; E.slotEl.classList.remove('busy'); E.main.focus({ preventScroll: true }); }
+        if (E.smash.t > 0.8) { E.smash = null; E.threat = 0; E.cur = E.base; E.rise = 0.001; E.slotEl.classList.remove('busy'); E.main.focus({ preventScroll: true }); }
       } else E.pivot.visible = true;
       if (E.rise < 1) {
         E.rise = Math.min(1, E.rise + dt / 0.7);
@@ -841,6 +1019,7 @@ export function makeNest(parent, opts) {
       E.main.style.height = `${Math.round(h)}px`;
       E.ring.style.left = `${Math.round(cx)}px`; E.ring.style.top = `${Math.round(botP[1] - 2)}px`;
       E.plaque.style.left = `${Math.round(cx)}px`; E.plaque.style.top = `${Math.round(botP[1] + 6)}px`;
+      E.ask.style.left = `${Math.round(cx)}px`; E.ask.style.top = `${Math.round(botP[1] + 6)}px`;
       E.del.style.left = `${Math.round(rP[0] + 6)}px`; E.del.style.top = `${Math.round(topP[1] + 10)}px`;
       E.last.style.left = `${Math.round(cx)}px`; E.last.style.top = `${Math.round(topP[1] - 6)}px`;
     }
@@ -852,6 +1031,15 @@ export function makeNest(parent, opts) {
       if (!w || !h || E.tagKey === k) continue;
       E.tagKey = k;
       drawTag(E.tag, w, h, 11 + E.i * 7, E.i === 0 ? 0xffc870 : E.i === 1 ? 0xb8e070 : 0xd0a0ff);
+    }
+    for (const E of eggs) {
+      if (!E.arming) continue;
+      const bw = Math.ceil(E.brk.offsetWidth / px), bh = Math.ceil(E.brk.offsetHeight / px), kw = Math.ceil(E.keep.offsetWidth / px), kh = Math.ceil(E.keep.offsetHeight / px);
+      const k = `${bw}x${bh}/${kw}x${kh}`;
+      if (!bw || E.askKey === k) continue;
+      E.askKey = k;
+      drawPlate(E.brk.firstChild, bw, bh, 5 + E.i);
+      drawTag(E.keep.firstChild, kw, kh, 23 + E.i * 5, 0xb8e070);
     }
   }
 
@@ -865,7 +1053,7 @@ export function makeNest(parent, opts) {
       view.classList.remove('out');
       view.classList.add('on');
       view.removeAttribute('aria-hidden');
-      for (const E of eggs) { E.main.tabIndex = 0; E.del.tabIndex = 0; E.posKey = ''; }
+      for (const E of eggs) { E.main.tabIndex = 0; E.del.tabIndex = 0; E.brk.tabIndex = 0; E.keep.tabIndex = 0; E.posKey = ''; }
       const list = eggs.map((E) => E.info);
       const latest = list.filter((x) => x.used).sort((a, b) => (b.saved || 0) - (a.saved || 0))[0];
       const first = latest ? eggs[latest.i] : eggs.find((E) => !E.info.used) || eggs[0];
@@ -876,7 +1064,7 @@ export function makeNest(parent, opts) {
       view.classList.remove('on');
       view.classList.add('out');
       view.setAttribute('aria-hidden', 'true');
-      for (const E of eggs) { E.main.tabIndex = -1; E.del.tabIndex = -1; E.hot = false; E.slotEl.classList.remove('hot'); }
+      for (const E of eggs) { disarm(E, true); E.press = null; E.main.tabIndex = -1; E.del.tabIndex = -1; E.hot = false; E.slotEl.classList.remove('hot'); }
       setTimeout(() => view.classList.remove('out'), 450);
     },
     refresh,
@@ -890,6 +1078,11 @@ export function makeNest(parent, opts) {
     pick(i) { pick(eggs[i]); },
     step(dt = 1 / 60, n = 1) { for (let j = 0; j < n; j++) update(dt); },
     smash(i) { const E = eggs[i]; if (!E.info?.used && E.fake == null) return false; doSmash(E); return true; },
+    /** Ask to break egg i (as the hammer or a long press does); confirmBreak(i) / cancelAsk() answer. */
+    ask(i) { arm(eggs[i]); return !!eggs[i].arming; },
+    confirmBreak(i) { breakIt(eggs[i]); },
+    cancelAsk() { for (const E of eggs) disarm(E); },
+    get asking() { return eggs.some((E) => E.arming); },
     update,
     destroy() {
       view.remove();

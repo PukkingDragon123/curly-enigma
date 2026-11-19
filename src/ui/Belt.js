@@ -1,12 +1,17 @@
-// The hotbar (ui.setHotbar): five leather loops on a strap at the bottom of the screen, always
-// shown (like Minecraft's). Number keys 1–5, the wheel or a tap pick a slot; empty loops show a
-// dashed outline (tools go there from the backpack).
+// The hotbar (ui.setHotbar): nine leather loops on a strap at the bottom of the screen, always
+// shown (like Minecraft's): the first nine slots of the inventory (core/hotbar.js). Number keys
+// 1–9, the wheel or a tap pick a slot; the picked one sits up in a crisp brass frame. A loop shows
+// what really hangs in it: a tool from the rack, or a stack (with its count). full(id): a pickup
+// that didn't fit bounces off the belt and the loops flash red (no words).
 // A new game (src/ui/Onboard.js UNLOCKS): until 'hotbar' is unlocked only the slots holding a tool
 // you have show (your first pick first, then the chisel...), and the build slot waits for 'build';
 // shown(i) says whether slot i is there (DigScene.selectSlot skips the others).
 import { el, clamp } from '../core/util.js';
 import { installPackArt } from './packArt.js';
-import { hotbarOf } from '../core/hotbar.js';
+import { hotbarOf, hotStack } from '../core/hotbar.js';
+import * as Inv from '../core/inventory.js';
+import { stackIcon, stackName } from './invGrid.js';
+import { iconURL } from '../gfx/PixelArt.js';
 import { floatIn, ghost } from './floatType.js'; // the held item's name floats (wave 9: no tag behind it)
 import { keepClear } from './uiSolid.js';
 
@@ -27,7 +32,7 @@ export class Belt {
     this.el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') { this.hover = true; this.expand(); } });
     this.el.addEventListener('pointerleave', () => { this.hover = false; });
     window.addEventListener('wheel', () => this.poke(), { passive: true });
-    window.addEventListener('keydown', (e) => { if (/^Digit[1-5]$/.test(e.code)) this.poke(); });
+    window.addEventListener('keydown', (e) => { if (/^Digit[1-9]$/.test(e.code)) this.poke(); });
   }
 
   poke() { if (!this.el.hidden && !this.ui.isPanelOpen()) this.expand(); }
@@ -42,6 +47,14 @@ export class Belt {
   /** slots: [{icon, key, label, off, n, meter}] */
   set(slots, sel = 0, onPick = null) {
     if (!slots) { this.el.hidden = true; this.slots = null; this._sig = null; this.sel = -1; return; }
+    // a loop holding a stack shows that stack (whatever kind the scene made of it)
+    const st0 = this.ui.game.state;
+    slots = slots.map((d, i) => {
+      const s = st0?.data?.inv ? hotStack(st0, i) : null;
+      if (!s || s.tool) return d;
+      const n = Inv.stackN(s);
+      return { ...d, icon: stackIcon(s), label: stackName(s), n: n > 1 ? n : undefined, off: false, empty: false, q: s.lots ? Inv.stackQ(s) : undefined };
+    });
     this.onPick = onPick;
     this.slots = slots;
     const wasHidden = this.el.hidden;
@@ -101,6 +114,21 @@ export class Belt {
       else this.label.textContent = '';
     }
     this.label.hidden = !show;
+  }
+
+  /** A pickup that didn't fit: it bounces off the belt, the loops flash red (no words). */
+  full(id) {
+    if (this.el.hidden) return;
+    this.expand();
+    this.strap.classList.remove('nope');
+    void this.strap.offsetWidth;
+    this.strap.classList.add('nope');
+    clearTimeout(this._nopeT);
+    this._nopeT = setTimeout(() => this.strap.classList.remove('nope'), 520);
+    if (!id) return;
+    const ico = el('img', { class: 'pix belt-bounce', src: iconURL(id), alt: '' });
+    this.strap.append(ico);
+    setTimeout(() => ico.remove(), 760);
   }
 
   /** Is slot i on the belt (not held back by the tutorial)? */

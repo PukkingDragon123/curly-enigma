@@ -32,6 +32,11 @@ export const KEEPER_MOODS = {
   assay: { mood: 'stern', greet: 'neutral', buy: 'happy', sell: 'thinking', big: 'surprised' },
   ticket: { mood: 'smug', greet: 'smug', buy: 'laugh', big: 'surprised' },
   lift: { mood: 'happy', greet: 'happy', buy: 'happy', big: 'laugh' },
+  // the burrow folk at their stalls on the square
+  trader: { mood: 'happy', greet: 'laugh', buy: 'happy', sell: 'happy', big: 'laugh' },
+  herbalist: { mood: 'stern', greet: 'neutral', buy: 'happy', sell: 'thinking', big: 'surprised' },
+  rocco: { mood: 'smug', greet: 'smug', buy: 'laugh', sell: 'happy', big: 'surprised' },
+  outpost: { mood: 'stern', greet: 'stern', buy: 'neutral', sell: 'thinking', big: 'surprised' },
 };
 
 /** What face to say a line with (a rough reading of its punctuation and words). */

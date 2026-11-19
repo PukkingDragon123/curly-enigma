@@ -36,6 +36,7 @@ import { makeVoxelShadow } from '../bookends/forest/shadow.js';
 import { buildFallShaft } from '../bookends/fallshaft.js';
 import { makeHeroMole } from '../gfx/char/hero.js';
 import { heartbeat, muffle } from '../bookends/journey.js';
+import { oreLoader } from '../ui/oreLoader.js';
 
 // the timeline (seconds): shots A..L
 // (F: into the clearing, a peep; N, N2, N3: the nest, the egg in his paws, wrapped and stowed; F2: on, the chest glints)
@@ -88,15 +89,14 @@ export default class FallScene extends Scene {
     FF.uShade.value = 0.31; // (the shade under the canopy a touch deeper: the flecks of sun stand out)
     this.own(() => { FF.uShade.value = 0.38; });
 
-    // ---- while the forest grows (a few seconds on a phone): a quiet card and a way past it
-    this.loadCard = el('div', { class: 'bk-root bk-loading' }, []);
-    this.game.ui.world.append(this.loadCard);
+    // ---- while the forest grows (a few seconds on a phone): the ore loader (src/ui/oreLoader.js), and a way past it
+    this.loadCard = oreLoader(this.game.ui.world, { through: true, tau: 5 });
     this.own(() => this.loadCard?.remove());
     // ---- the forest (phones, 'Simple' shaders and software GL get a lighter one; ?lite=0 / 1 forces it)
     const soft = params.lite !== '0' && params.lite !== '1' && !!this.game.engine.softwareGL;
     const lite = params.lite === '1' || soft || (params.lite !== '0' && this.game.engine.fx !== 'high');
     this.lite = soft ? 'soft' : lite;
-    this.F = await buildForest({ lite, soft, cancel: () => this.pendingSkip });
+    this.F = await buildForest({ lite, soft, cancel: () => { this.loadCard?.bump(0.06); return this.pendingSkip; } });
     this.textures.push(...this.F.textures);
     this.own(() => this.F.dispose());
     if (this.F.cancelled) { // skipped while it was still being built: straight on to waking up
