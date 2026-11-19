@@ -13,6 +13,7 @@
 // button) is build mode in them. There is no digging out of the home: the lift is the way down.
 import * as THREE from 'three';
 import { HandTools } from '../ui/handTools.js'; // [inventory hook]
+import { HarvestPatches } from '../deep/veg/harvest.js'; // (wave 16) glowcaps, salt and thyme to gather by the house
 import { Scene } from '../core/Scene.js';
 import { FPSRig } from '../fps/FPSKit.js';
 import { liftState } from '../fps/lifts.js';
@@ -87,7 +88,7 @@ export default class HomeScene extends Scene {
     // (drawing it here waited on the GPU to finish everything the last scene queued: up to 25 s on
     // software GL coming from the journey) and read back without waiting
     this.buildIconURL = null;
-    const makeIcon = () => { if (this.buildIconURL || this.gone) return; try { iconCanvas('chair_wood').toBlob((b) => { if (!b) return; this.buildIconURL = URL.createObjectURL(b); if (this.hammerImg) this.hammerImg.src = this.buildIconURL; }); } catch (e) { this.buildIconURL = iconURL('chair_wood'); if (this.hammerImg) this.hammerImg.src = this.buildIconURL; } };
+    const makeIcon = () => { if (this.buildIconURL || this.gone) return; try { iconCanvas('builder_hammer').toBlob((b) => { if (!b) return; this.buildIconURL = URL.createObjectURL(b); if (this.hammerImg) this.hammerImg.src = this.buildIconURL; }); } catch (e) { this.buildIconURL = iconURL('builder_hammer'); if (this.hammerImg) this.hammerImg.src = this.buildIconURL; } };
     const from = params.from || 'continue';
     // the wait while the house is built (or put back together): src/home/loading.js
     // (walking in from the old passage the frame held on screen stays: just a small lantern in the corner)
@@ -208,6 +209,8 @@ export default class HomeScene extends Scene {
     this.loose = [];
     for (const p of d.home.placed) this.addPlaced(p);
     this.addFixedInteractions();
+    // (wave 16) the burrow's own little larder: a glowcap patch, a salt outcrop, a thyme tuft (they grow back)
+    try { this.patches = new HarvestPatches(this, [{ kind: 'glowcaps', x: 7.7, z: -2.5, yaw: 0.6 }, { kind: 'salt', x: 6.45, z: -3.92, yaw: 0.3 }, { kind: 'thyme', x: 7.72, z: -2.02, yaw: 1.2 }], { tag: 'home' }); } catch (e) { console.warn('harvest patches', e); }
     this.chest = new LootChest(this, this.cave.dyn.chest);
     this.own(() => this.chest.dispose());
     this.shaftBox = [SHAFT.x0 - 0.14, HALL.y, SHAFT.z0, SHAFT.x1, HALL.y + 1.4, SHAFT.z1];
@@ -395,7 +398,7 @@ export default class HomeScene extends Scene {
     return this.rig.add(it);
   }
 
-  canInteract() { return !this.scripted && !this.seat && !this.build?.active && !this.chest?.busy; }
+  canInteract() { return !this.scripted && !this.seat && !this.build?.sel && !this.build?.wheelOpen && !this.chest?.busy; }
 
   /** Your own things: the bedroll (sleep), the flat stone with your notebook (the Index Book), your trunk; the chalked soft rock. */
   addFixedInteractions() {
@@ -791,7 +794,7 @@ export default class HomeScene extends Scene {
   // ------------------------------------------------------------ HUD bits
   /** The decorate button: a small, quiet round chip with a chair (desktop: the X key beside it). */
   hammerBtn() {
-    const b = el('button', { class: 'decorate-btn interactive', title: 'Build mode (X)', 'aria-label': 'Decorate', onclick: (e) => { e.stopPropagation(); this.toggleBuildHere(); } }, [
+    const b = el('button', { class: 'decorate-btn interactive', title: 'Builder\'s Hammer (X)', 'aria-label': 'Builder\'s Hammer', onclick: (e) => { e.stopPropagation(); this.toggleBuildHere(); } }, [
       (this.hammerImg = el('img', { class: 'pix', src: this.buildIconURL || 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', alt: '' })), el('span', { class: 'decorate-k' }, 'X'),
     ]);
     // in the HUD layer: above the "click to look around" catcher, so it works with a free mouse
@@ -799,14 +802,10 @@ export default class HomeScene extends Scene {
     this.hammer = b;
   }
 
-  /** Build mode from the hammer / X: it's your room you decorate, up the steps. */
+  /** X / the hammer chip: take out the Builder's Hammer (its belt loop, if it hangs there) or put it away. */
   toggleBuildHere() {
-    if (!this.build.active && !this.inBedroom(this.rig.player.pos.x, this.rig.player.pos.z)) {
-      this.game.audio.play('ui_error', { vol: 0.5 });
-      this.think(this.nooks?.size ? 'This is Old Star\'s hollow. I\'ll put my things in my own alcove.' : 'Nowhere of my own to put things yet. Old Star chalked a soft bit of rock for me to dig out…', 3.4);
-      return;
-    }
-    this.build.toggle();
+    if (this.build.active) { this.build.toggle(false); return; }
+    this.build.toggle(true);
   }
 
   // ------------------------------------------------------------ frame
@@ -822,13 +821,15 @@ export default class HomeScene extends Scene {
     } else {
       const busy = g.ui.isPanelOpen();
       this.updateAim();
-      this.rig.update(dt, { busy });
+      this.build?.preRig?.(); // the hammer's radial wheel steals the mouse's flicks while it's up (src/home/build.js)
+      this.rig.update(dt, { busy: busy || !!this.build?.wheelOpen });
       this.rig.stepMat = this.stepMatAt(this.rig.player.pos.x, this.rig.player.pos.z);
       if (!busy) {
         if (!this.build.active && inp.pressed('KeyQ')) this.snack();
       }
     }
-    (this.hands ||= new HandTools(this)).update(dt, g.ui.isPanelOpen(), this.scripted || this.build.active); // [inventory hook] the belt + the held tool (src/ui/handTools.js)
+    (this.hands ||= new HandTools(this)).update(dt, g.ui.isPanelOpen(), this.scripted); // (the Builder's Hammer is a belt tool: holding it is build mode) // [inventory hook] the belt + the held tool (src/ui/handTools.js)
+    this.patches?.update(dt); // [harvest hook] (veg/harvest.js)
     this.game.convo?.director?.apply(this.camera, dt); // cutscene talk camera (src/fx/director.js) [convo hook]
     this.build.update(dt);
     this.shell.hearth?.update?.(this.time);

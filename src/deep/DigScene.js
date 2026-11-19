@@ -34,6 +34,8 @@ import { DSPR } from '../ui/deepArt.js';
 import { Build } from './Build.js'; // building part: blocks, ladders, torches, doors, chests; tools that break them
 
 import { TOOL_KINDS, HOTBAR_N, hotbarOf, heldItem } from '../core/hotbar.js';
+import { startEating, glowLayer } from '../cooking/eating.js'; // (wave 16) the first-person bite sequence
+import { Harvest } from './veg/harvest.js'; // (wave 16) pluck plants, mine salt, rob honeycomb
 // the build slot (slot 7) puts up what Build.js says: blocks on a 0.5 m grid, ladders, torches, doors…
 const REACH = 2.3;
 // (wave 14) how a blow feels, by what it lands on: camera kick, hit-stop on a crack (stop) and on a
@@ -203,6 +205,9 @@ export default class DigScene extends Scene {
       if (!load) continue;
       try { const mod = await load(); this[key] = new mod[Name](ctx); } catch (e) { console.warn(Name + ' failed', e); }
     }
+    // (wave 16) every plant can be plucked, and salt, comb, nests, bushes, pods and roots grow among them
+    this.harvest = null;
+    if (this.vegetation) try { this.harvest = new Harvest(this); this.harvest.attach(this.vegetation); this.debug.harvest = this.harvest.debug; } catch (e) { console.warn('Harvest failed', e); this.harvest = null; }
     if (this.fluids || this.props) this.world.onChange = (vx, vy, vz, old, m) => { this.fluids?.onVoxel(vx, vy, vz, old, m); this.props?.onVoxel?.(vx, vy, vz, old, m); };
     this.bodies.hooks = {
       tick: (b, sp) => { if (chance(0.6)) this.audio.play('debris', { vol: clamp(sp / 8, 0.2, 0.7) }); if (sp > 3) this.fx.dust(b.pos.x, b.pos.y - b.r, b.pos.z, 2, [0.5, 0.42, 0.34], 0.05); },
@@ -323,6 +328,7 @@ export default class DigScene extends Scene {
     if (belt?.shown && !belt.shown(n)) { if (!dir) return; for (let k = 0; k < HOTBAR_N && !belt.shown(n); k++) n = (n + dir + HOTBAR_N) % HOTBAR_N; if (!belt.shown(n)) return; }
     if (this.slot === n) { if (hotbarOf(this.state)[n] === 'build') this.cycleBuild(); return; }
     this.slot = n;
+    this.eatSeq?.cancel();
     this.audio.play('ui_click', { pitch: 1.3 });
     this.updateHotbar();
   }
@@ -410,6 +416,7 @@ export default class DigScene extends Scene {
     if (this.ruins) this.events(this.ruins.update(dt, { player: pl, eye: pl.eye(), time: this.time }));
     if (this.traders) this.events(this.traders.update(dt, { player: pl, eye: pl.eye(), time: this.time, busy }));
     if (this.vegetation) this.events(this.vegetation.update(dt, { player: pl, eye: pl.eye(), time: this.time, busy }));
+    this.harvest?.update(dt, pl.eye());
     if (this.enemies) {
       this.events(this.enemies.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy, lamp: this.U.lampRange.value, blocking: !!this.blocking, blockT: this.blockT || 0 }));
     }
@@ -439,6 +446,12 @@ export default class DigScene extends Scene {
     this.viewOff = null;
     this.camera.position.set(eye.x + (Math.random() - 0.5) * sh * 0.05, eye.y + bob + (Math.random() - 0.5) * sh * 0.05 + (vo ? vo[2] : 0), eye.z + (Math.random() - 0.5) * sh * 0.05);
     this.camera.rotation.set(pl.pitch + this.kick.x + crawlPitch + (vo ? vo[0] : 0), pl.yaw + this.kick.y, this.kick.z + crawlRoll + (vo ? vo[1] : 0), 'YXZ');
+    if (this.eatSeq) { // (wave 16) eating: a happy bob and a warm glow (cooking/eating.js)
+      if (g.ui.isPanelOpen()) this.eatSeq.cancel();
+      const e = this.eatSeq.update(dt);
+      this.camera.position.y += e.bob; this.camera.rotation.z += e.roll; glowLayer(e.glow);
+      if (this.eatSeq.over) { this.eatSeq = null; glowLayer(0); }
+    }
     if (!this.gather) {
       const fov = this.fov + (this.state.data.settings.shake ? this.fovK : 0);
       if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
@@ -506,7 +519,7 @@ export default class DigScene extends Scene {
     const reach = hit ? Math.min(REACH, hit.dist + 0.05) : REACH;
     // something to pick or catch (props' plants, critters) comes first (unless it's behind a tame raptor)
     const near = this.useReach(eye, f, reach);
-    const use = this.clumps?.target(eye, f, near) || this.traders?.target?.(eye, f, near) || this.ruins?.target?.(eye, f, near) || this.builder?.target?.(eye, f, near) || this.props?.target?.(eye, f, near) || this.enemies?.catchTest?.(eye, f, reach);
+    const use = this.clumps?.target(eye, f, near) || this.traders?.target?.(eye, f, near) || this.ruins?.target?.(eye, f, near) || this.builder?.target?.(eye, f, near) || this.props?.target?.(eye, f, near) || this.harvest?.target(eye, f, near) || this.enemies?.catchTest?.(eye, f, reach);
     if (use) { ui.setCrosshair({ visible: true, kind: 'use', label: use.label }); return; }
     const foe = this.enemies?.hitTest(eye, f, reach);
     if (foe) { ui.setCrosshair(foe.passive ? { visible: true, kind: 'rock', label: foe.constructor.info?.name || '' } : { visible: true, kind: 'enemy' }); return; }
@@ -670,6 +683,11 @@ export default class DigScene extends Scene {
         this.energy(0.3);
         return;
       }
+    }
+    if (this.harvest && it) { // (wave 16) a salt outcrop in front of the rock takes the blow
+      const eye = this.player.eye(), f = this.player.forward();
+      const r = this.harvest.strike(eye, f, hit ? Math.min(REACH, hit.dist + 0.05) : REACH, power);
+      if (r) { this.events(r); this.kick.set(-0.012 * power, (Math.random() - 0.5) * 0.01, 0); if (this.vm) this.vm.impact('pick', 0.8); this.energy(0.3); return; }
     }
     if (!hit || !it) { if (this.vm) this.vm.impact('pick', 0.2); return; }
     const m = hit.m;
@@ -1480,9 +1498,10 @@ export default class DigScene extends Scene {
   eatBest() {
     const f = this.bestFood();
     if (!f) { this.say('nofood', 'No snacks in your bag.', 'warn'); return; }
-    this.game.eat(f.id);
-    if (this.vm) this.vm.eat(f.id);
-    this.updateHotbar();
+    if (this.eatSeq && !this.eatSeq.over) return;
+    // (wave 16) lift, three bites, a happy bob and a warm glow; the meal counts once it's eaten
+    this.eatSeq = startEating(this.game, this.vm, f.id, { onDone: (id) => { this.game.eat(id); this.updateHotbar(); } });
+    if (!this.eatSeq) { this.game.eat(f.id); this.updateHotbar(); }
   }
 
   hurt(n, kind, guarded = false) {
@@ -1491,6 +1510,7 @@ export default class DigScene extends Scene {
     n /= (st.skill?.('hide') || 1) * (kind === 'fall' ? st.skill?.('fall') || 1 : 1);
     this.state.useEnergy(n);
     this.act('hurt', { n, by: kind });
+    this.eatSeq?.cancel(); // a blow knocks the snack away from your mouth
     if (guarded) return; // the block already rang
     this.audio.play('hurt');
     this.shake(0.5);
@@ -1514,6 +1534,8 @@ export default class DigScene extends Scene {
       }
       const got = this.props?.use?.(eye, f, near);
       if (got) { this.events([got]); if (this.vm) this.vm.impact('none', 0.3); return; }
+      const hv = this.harvest?.use(eye, f, near); // pluck a plant, take salt, comb, eggs... (veg/harvest.js)
+      if (hv) { this.events(hv); return; }
       const evs = this.enemies?.catch?.(eye, f, reach, this.slotName);
       if (evs && evs.length) { this.events(evs); if (this.vm) this.vm.impact('none', 0.3); return; }
     }
@@ -1979,6 +2001,8 @@ export default class DigScene extends Scene {
   }
 
   exit() {
+    glowLayer(0);
+    this.harvest?.dispose?.();
     this.world.saveEdits();
     const g = this.game;
     try { this.bankFinds(); } catch (e) { console.warn('bank finds', e); }

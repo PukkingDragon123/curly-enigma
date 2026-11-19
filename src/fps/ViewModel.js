@@ -44,6 +44,24 @@ import { XrayBeam } from './viewmodel/beam.js';
 import { hammerGeo, tongsGeo, HAMMER_FACE, TONGS_JAW, TONGS_RIVET } from './viewmodel/smith.js';
 import { ITEMS } from '../data/items.js';
 import { explosiveModel } from '../deep/explosives/models.js';
+import { EatFx } from './viewmodel/eatFx.js';
+import { shade as shadeC } from '../core/util.js';
+import { isDish, dishVoxInto, dishForm } from '../cooking/dishVox.js';
+import { mainColor } from '../cooking/food.js';
+import { Vox, cached } from '../gfx/char/vox.js';
+
+// (wave 16) eating: lift (bouncy) · three bites · lower, about 1.2 s; cooked dishes are whole voxel
+// servings (src/cooking/dishVox.js) with bites taken out of them, raw snacks the icon extruded
+const EAT = { up: 0.22, bite: 0.24, down: 0.95, end: 1.2 };
+/** The snack's voxels at a bite stage (0..3): a dish built whole, else the icon extruded (parts.js). */
+function snackGeo(id, stage) {
+  if (!isDish(id)) return foodGeo(id || 'grub_bar', stage);
+  return cached(`vm-dish|${id}|${stage}`, () => {
+    const v = new Vox(-24, 25, -2, 46, -24, 25);
+    dishVoxInto(v, id, 13, stage);
+    return v.geometry(false, [0, -4, 0]);
+  });
+}
 
 /** Meters per view-model voxel. */
 export const VMV = 0.0035;
@@ -279,10 +297,23 @@ export class ViewModel {
 
   /** Bring a snack to the mouth and munch it (the right paw when holding food, else the left). */
   eat(itemId) {
-    if (this.eating) return;
+    if (this.eating) return false;
     const hand = this.kind === 'food' ? 'R' : 'L';
-    this.eating = { t: 0, id: itemId, hand, bites: 3 };
+    const f = isDish(itemId) ? dishForm(itemId) : null;
+    const c = f ? f.c : mainColor(itemId);
+    this.eating = { t: 0, id: itemId, hand, bites: 3, stage: 0, dish: !!f, hot: !!f && f.food !== 'jam' && f.food !== 'parfait', colors: [c, shadeC(c, 1.2), shadeC(c, 0.8), 0xf4e4c0] };
     if (hand === 'L' && itemId !== this.leftFood) { this.leftFood = itemId; this.rebuild(); }
+    return true;
+  }
+
+  /** Stop eating before it's done (a blow, another tool): the paw drops it back down, nothing eaten. */
+  cancelEat() {
+    const e = this.eating;
+    if (!e || e.cancel || e.t >= EAT.down) return false;
+    e.cancel = true;
+    e.t = EAT.down;
+    e.stage = 0;
+    return true;
   }
 
   /** Hold the guard up (call every frame; the lift is quick so a perfect block can be timed). */
@@ -416,7 +447,7 @@ export class ViewModel {
       T.tip = [0, -BEAM_GRIP, -8];
     } else if (kind === 'food') {
       const F = [V * 1.35, V * 1.35, V * 1.35];
-      T.food = [0, 1, 2, 3].map((st) => scaleVisible(A.part(this.toolR, foodGeo(item || 'grub_bar', st), { scale: F })));
+      T.food = [0, 1, 2, 3].map((st) => scaleVisible(A.part(this.toolR, snackGeo(item || 'grub_bar', st), { scale: F })));
       T.food.forEach((b, i) => { b.visible = i === 0; });
       T.tip = [0, 20, 0];
     }
@@ -441,7 +472,7 @@ export class ViewModel {
     this.foodL = null;
     if (this.leftFood) {
       const F = [V * 1.35, V * 1.35, V * 1.35];
-      this.foodL = [0, 1, 2, 3].map((st) => scaleVisible(A.part(this.foodLGroup, foodGeo(this.leftFood, st), { scale: F })));
+      this.foodL = [0, 1, 2, 3].map((st) => scaleVisible(A.part(this.foodLGroup, snackGeo(this.leftFood, st), { scale: F })));
       this.foodL.forEach((b, i) => { b.visible = i === 0; });
     }
     this.metal = metalOf(kind, item);
@@ -482,7 +513,8 @@ export class ViewModel {
     const stop = (this.stopping = this.stopT > 0);
     this.stopT = Math.max(0, this.stopT - dt);
     if (act) { act.t += stop ? dt * 0.06 : dt; if (act.t > act.dur + 0.4 && !(act.kind === 'stake' || act.kind === 'beam') || act.t > act.dur + 1.1) { this.action = null; this.pickPose = null; } }
-    if (this.eating) { this.eating.t += dt; if (this.eating.t > 1.45) this.finishEat(); }
+    if (this.eating) { this.eating.t += dt; if (this.eating.t > EAT.end) this.finishEat(); }
+    if (this.eatFx || this.eating) (this.eatFx ||= new EatFx(this.rig)).update(dt);
     if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
     this.shake = Math.max(0, this.shake - dt * 3.2);
     for (const k in this.useK) this.useK[k] += ((this.using[k] && this.kind === k && this.mode === 'tool' ? 1 : 0) - this.useK[k]) * Math.min(1, dt * 10);
@@ -587,9 +619,9 @@ export class ViewModel {
     if (this.eating) {
       const e = this.eating;
       const hand = e.hand === 'R' ? R : L;
-      const up = easeOut(e.t / 0.3), down = ease((e.t - 1.12) / 0.3);
+      const up = backOut(e.t / EAT.up), down = ease((e.t - EAT.down) / (EAT.end - EAT.down));
       const k = Math.min(up, 1 - down);
-      const nom = e.t > 0.3 && e.t < 1.12 ? Math.max(0, Math.sin(((e.t - 0.3) / 0.27) * Math.PI * 2)) : 0;
+      const nom = !e.cancel && e.t > EAT.up && e.t < EAT.down ? Math.max(0, Math.sin(((e.t - EAT.up) / EAT.bite) * Math.PI * 2)) : 0;
       this.tmp.q.copy(EAT_Q);
       if (e.hand === 'L') this.tmp.q.set(EAT_Q.x, -EAT_Q.y, -EAT_Q.z, EAT_Q.w);
       const M = this.P.mouth;
@@ -599,9 +631,13 @@ export class ViewModel {
       const other = e.hand === 'R' ? L : R;
       other.move(0, -0.035 * k, 0.015 * k);
       if (e.hand === 'L') { gripL = true; leftItem = false; }
-      const stage = Math.min(3, Math.max(0, Math.floor((e.t - 0.3) / 0.27) + (e.t > 0.3 ? 1 : 0)));
+      const stage = e.cancel ? 0 : Math.min(3, Math.max(0, Math.floor((e.t - EAT.up) / EAT.bite) + (e.t > EAT.up ? 1 : 0)));
       const parts = e.hand === 'L' ? this.foodL : this.tool.food;
-      if (parts) parts.forEach((b, i) => { b.visible = i === Math.min(stage, 3) && e.t < 1.2; });
+      if (parts) parts.forEach((b, i) => { b.visible = i === Math.min(stage, 3) && e.t < EAT.end; });
+      // each bite: crumbs spray from the mouth, a hot dish breathes steam all the while
+      const fx = (this.eatFx ||= new EatFx(this.rig));
+      if (stage > e.stage) { e.stage = stage; fx.bite(_v.clone().add(_v2.set(0, -0.01, -0.03)), e.colors, e.dish ? 9 : 12); }
+      if (e.hot && e.t < EAT.down && Math.random() < dt * 14) fx.steam(_v.clone().add(_v2.set(0, -0.03, -0.06)), 0.5);
     }
 
     // ---- hurt flinch
@@ -640,7 +676,7 @@ export class ViewModel {
       this.jaws[0].rotation.z = a;
       this.jaws[1].rotation.z = -a;
     }
-    this.foodLGroup.visible = !!(this.eating && this.eating.hand === 'L' && this.eating.t < 1.2);
+    this.foodLGroup.visible = !!(this.eating && this.eating.hand === 'L' && this.eating.t < EAT.end);
     if (this.tool.spin) this.tool.spin.rotation.z = this.spinA;
 
     // ---- forearms from the shoulders (below the view) to the wrists

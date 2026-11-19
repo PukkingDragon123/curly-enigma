@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { Legs, Chain, look } from './rig.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
+import { H, taper, sideEye } from './voxKit.js';
 import { puff, sparkle, shockRing, pebbles } from './fx.js';
 import { airBelow, airAbove, solidAt } from './physics.js';
 import { rand, clamp } from '../../core/util.js';
@@ -58,40 +59,63 @@ const RAPTOR = [
 ];
 
 export function buildRaptor(v) {
+  // (wave 16) at half the old voxel: a scaled body with tiger stripes, a scuted belly and a ridge of
+  // crest-coloured quills, a feather mantle at the shoulders; a long head with brow ridges, nostrils,
+  // a row of upper teeth and a swept quill crest; side eyes with slit pupils; feathered arms with
+  // ivory claws; a striped tail ending in a feather fan; scaly legs, three toes and a sickle claw
   const P = RAPTOR[v % RAPTOR.length], S = P.s;
+  const sk = (vb, o = {}) => (x, y, z, nx, ny, nz) => {
+    if (typeof ny !== 'number') { ny = 0; nz = 0; }
+    if (ny < -0.35) return ((y + 64) % 3 === 0) ? mul(P.belly, 0.86) : P.belly; // scutes
+    const n = vb.n(x, y, z);
+    if (o.stripe && ny > 0 && ((((z + Math.round(x * 0.4)) % 7) + 7) % 7) < 2 && n > 0.2) return P.stripe;
+    const scale = ((x + 64) % 3 === 0) !== ((z + 64) % 3 === 0) ? -0.08 : 0; // a fine scale grid
+    return S[Math.floor(clamp((o.k0 ?? 0.35) + ny * 0.45 + (n - 0.5) * 0.2 + scale, 0, 0.999) * S.length)];
+  };
   const body = new VB(121);
-  const bs = shader(body, S, { belly: P.belly, stripe: [4, P.stripe] });
-  body.ell(0, 0, 0, 3.8, 3.8, 5.6, bs);
-  body.ell(0, 1.4, 4.2, 3.4, 3.6, 3.2, bs); // chest
-  body.cap(0, 2.5, 5.5, 0, 6, 7.5, 2.3, shader(body, S, { belly: P.belly, k0: 0.45 })); // neck
-  for (let z = -4; z <= 5; z += 2) body.set(0, 4 + (z > 2 ? 1 : 0), z, P.crest[0]); // a ridge of quills
-  const head = new VB(122), hs = shader(head, S, { k0: 0.5 });
-  head.ell(0, 2.2, 1.5, 4, 3.6, 4.2, hs);
-  head.ell(0, 1, 5.6, 2.8, 2.1, 3.4, hs); // snout
-  head.paint((x, y, z) => (y <= 0 && z > 2 ? P.belly : undefined));
-  head.set(-2, 2, 8, 0x2a1810); head.set(1, 2, 8, 0x2a1810);
-  for (let i = 0; i < 4; i++) head.cap(0, 5 + i * 0.2, 1 - i * 1.6, (i % 2 ? 1 : -1) * 0.5, 8 - i * 0.8, -1 - i * 2, 0.7, i % 2 ? P.crest[1] : P.crest[0]); // the crest
-  const [eyes, angry] = bigEyes(head, 6, 3, 2.4, P.eye, 2);
+  body.ell(0, 0, 0, 7.6, 7.6, 11.2, sk(body, { stripe: 1 }));
+  body.ell(0, 2.8, 8.4, 6.8, 7.2, 6.4, sk(body)); // chest
+  taper(body, 0, 5, 11, 0, 12, 15, 4.6, 3.6, (x, y, z) => sk(body, { k0: 0.45 })(x, y, z, 0, 0.3, 0.5)); // neck
+  // a ridge of quills down the back, and a feather mantle round the shoulders
+  for (let z = -9; z <= 12; z += 3) taper(body, 0, 7 + (z > 5 ? 2 : 0), z, 0, 10 + (z > 5 ? 2 : 0), z - 2.5, 1.2, 0.4, (x, y, zz, t) => (t > 0.5 ? P.crest[1] : P.crest[0]));
+  for (let a = -5; a <= 5; a++) { const x = a * 1.3, h = body.hitFrom(x, 14, 8, 0, -1, 0); if (h) taper(body, h[0], h[1], h[2], h[0] + a * 0.25, h[1] - 1.5, h[2] - 3.5, 1, 0.4, Math.abs(a) % 2 ? P.crest[0] : P.crest[1]); }
+  const head = new VB(122), hs = sk(head, { k0: 0.5 });
+  head.ell(0, 4.4, 3, 8, 7.2, 8.4, hs);
+  head.ell(0, 2, 11.2, 5.6, 4.2, 6.8, hs); // snout
+  head.paint((x, y, z) => (y <= 0 && z > 4 ? P.belly : undefined));
+  // nostrils, brow ridges, upper teeth
+  for (const sd of [1, -1]) {
+    head.set(sd > 0 ? 2 : -3, 4, 17, 0x2a1810); head.set(sd > 0 ? 2 : -3, 5, 16, mul(S[0], 0.8));
+    taper(head, sd * 4.5, 9.5, 5, sd * 3.5, 8.5, 10, 1.4, 0.8, S[0]);
+    for (let z = 7; z <= 16; z += 2) head.set(sd > 0 ? 3 + (z > 13 ? -1 : 0) : -4 - (z > 13 ? -1 : 0), -1, z, z % 4 === 1 ? 0xffffff : 0xf0e8d8);
+  }
+  for (let i = 0; i < 5; i++) taper(head, (i % 2 ? 1 : -1) * 0.8, 10 + i * 0.3, 2 - i * 2.6, (i % 2 ? 1.5 : -1.5), 16 - i * 1.6, -3 - i * 3.6, 1.4, 0.5, (x, y, z, t) => (t > 0.55 ? P.crest[1] : P.crest[0])); // the crest
+  // eyes on the sides of the head (pivot at eye height: (0, 3) VS)
+  const eyes = new VB(), angry = new VB();
+  for (const sd of [1, -1]) {
+    sideEye(eyes, head, sd, 6.5, 6, 2.4, 2.2, { iris: P.eye, pupil: 0x100808, slit: true, pr: 0.55 });
+    sideEye(angry, head, sd, 6.5, 6, 2.4, 2.2, { iris: P.eye, pupil: 0x100808, slit: true, pr: 0.55, lid: S[0] });
+  }
   const jaw = new VB(123);
-  jaw.ell(0, -0.8, 4.2, 2.4, 1, 3.4, P.belly);
-  for (let z = 2; z <= 7; z += 2) for (const sd of [1, -1]) jaw.set(sd > 0 ? 1 : -2, 0, z, 0xffffff);
-  const arm = new VB(124); // small feathered arm (pivot at the shoulder), folded
-  arm.cap(0, 0, 0, 0, -3.5, 1.5, 1.1, S[2]);
-  for (let i = 0; i < 4; i++) arm.set(0, -1 - i, -1 - (i > 1 ? 1 : 0), i % 2 ? P.crest[0] : P.crest[1]);
-  for (const x of [-1, 0]) arm.set(x, -4.5, 2.5, 0xf4ecd8);
+  jaw.ell(0, -1.6, 8.4, 4.8, 2, 6.8, (x, y, z, nx, ny) => (ny > 0.5 && Math.abs(x + 0.5) < 2.5 ? 0xd86a6a : P.belly));
+  for (let z = 4; z <= 14; z += 2) for (const sd of [1, -1]) jaw.set(sd > 0 ? 3 : -4, 0, z, 0xffffff);
+  const arm = new VB(124); // a feathered arm (pivot at the shoulder), folded
+  taper(arm, 0, 0, 0, 0, -7, 3, 2.2, 1.6, S[2]);
+  for (let i = 0; i < 6; i++) taper(arm, 0, -1 - i, -1, 0, -2 - i * 1.1, -3.5 - (i > 2 ? 1 : 0), 0.8, 0.4, i % 2 ? P.crest[0] : P.crest[1]);
+  for (const x of [-1, 0, 1]) taper(arm, x * 0.8, -8, 4, x * 1.1, -10, 5.5, 0.6, 0.3, 0xf4ecd8);
   const tail = [0, 1, 2].map((i) => {
-    const t = new VB(125 + i), r = 2.6 - i * 0.6;
-    t.cap(0, 0, 0, 0, 0.2, -5, r, shader(t, S, { belly: P.belly, stripe: [3, P.stripe] }));
-    if (i === 2) for (let k = 0; k < 4; k++) t.set(k % 2 ? 1 : -1, 1, -5 - k, k % 2 ? P.crest[0] : P.crest[1]); // feather tuft
+    const t = new VB(125 + i), r = 5.2 - i * 1.2;
+    taper(t, 0, 0, 0, 0, 0.4, -10, r, r - 0.9, (x, y, z) => sk(t, { stripe: 1 })(x, y, z, x / r, (y - 0.2) / r, 0));
+    if (i === 2) for (let k = 0; k < 5; k++) taper(t, 0, 1, -8, (k - 2) * 1.6, 1.5 + Math.abs(k - 2) * -0.3, -15 + Math.abs(k - 2), 0.9, 0.4, k % 2 ? P.crest[0] : P.crest[1]); // feather fan
     return t;
   });
-  const thigh = new VB(128); thigh.cap(0, 0, 0, 0, -5.5, 0, 2.4, shader(thigh, S, { k0: 0.45 }));
-  const shin = new VB(129); shin.cap(0, 0, 0, 0, -6, 0, 1.4, shader(shin, S, { k0: 0.3 }));
+  const thigh = new VB(128); taper(thigh, 0, 0, 0, 0, -11, 0, 4.8, 3.4, (x, y, z) => sk(thigh, { k0: 0.45, stripe: 1 })(x, y, z, x / 4, 0.2, z / 4));
+  const shin = new VB(129); taper(shin, 0, 0, 0, 0, -12, 0, 2.8, 2, (x, y, z) => (z > 1 && (y + 64) % 2 === 0 ? S[3] : S[1]));
   const foot = new VB(130);
-  foot.box(-1, 0, -1, 1, 1, 2, S[1]);
-  for (const x of [-1, 1]) { foot.set(x, 0, 3, S[0]); foot.set(x, 0, 4, 0xf0e8d8); }
-  foot.set(0, 1, 2, S[0]); foot.set(0, 2, 3, 0xf8f0e0); foot.set(0, 2, 4, 0xffffff); // the sickle claw, raised
-  const G = (vb, py = 0) => vb.geo(0, py, 0);
+  foot.ell(0, 1, 1, 2.6, 1.6, 3.4, S[1]);
+  for (const x of [-2, 0, 2]) { taper(foot, x * 0.6, 0.6, 2, x, 0.5, 6.5, 1, 0.7, S[0]); foot.set(x, 0, 7, 0xf0e8d8); foot.set(x, 0, 8, 0xd8ccb8); }
+  taper(foot, 0, 2, 3, 0, 4.5, 6, 0.9, 0.5, 0xf8f0e0); foot.set(0, 5, 7, 0xffffff); foot.set(0, 4, 8, 0xffffff); // the sickle claw, raised
+  const G = (vb, py = 0) => vb.geo(0, py * 2, 0, H);
   return { body: G(body), head: G(head), jaw: G(jaw), eyes: G(eyes, 3), angry: G(angry, 3), arm: G(arm), tail: tail.map((t) => G(t)), thigh: G(thigh), shin: G(shin), foot: G(foot), hide: c01(S[2]), crest: c01(P.crest[1]) };
 }
 

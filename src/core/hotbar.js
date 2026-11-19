@@ -38,11 +38,11 @@ export function hotbarSet(st, i, kind) {
 }
 
 /** What each kind is called on the belt. */
-export const KIND_LABEL = { pick: 'Pickaxe', chisel: 'Chisel', brush: 'Brush', drill: 'Drill', xray: 'X-Ray Lamp', stake: 'Glow Stakes', build: 'Building', dynamite: 'Explosives', food: 'Snack' };
+export const KIND_LABEL = { pick: 'Pickaxe', chisel: 'Chisel', brush: 'Brush', drill: 'Drill', xray: 'X-Ray Lamp', stake: 'Glow Stakes', build: 'Builder\'s Hammer', dynamite: 'Explosives', food: 'Snack' };
 /** A sample item for each kind's icon. */
-export const KIND_ICON = { pick: 'pick_rusty', chisel: 'chisel_basic', brush: 'brush_basic', drill: 'drill_steam', xray: 'xray_lamp', stake: 'glow_stake', build: 'blk_ladder', dynamite: 'dynamite', food: 'grub_bar' };
-/** The item a belt tool shows: the equipped one (the build kit: a ladder), else null. */
+export const KIND_ICON = { pick: 'pick_rusty', chisel: 'chisel_basic', brush: 'brush_basic', drill: 'drill_steam', xray: 'xray_lamp', stake: 'glow_stake', build: 'builder_hammer', dynamite: 'dynamite', food: 'grub_bar' };
+/** The item a belt tool shows: the equipped one (the build slot: the Builder's Hammer), else null. */
 export function refItem(st, kind) {
-  if (kind === 'build') return ITEMS.blk_ladder || null;
+  if (kind === 'build') return ITEMS.builder_hammer || ITEMS.blk_ladder || null;
   return st.equipped?.(kind) || null;
 }

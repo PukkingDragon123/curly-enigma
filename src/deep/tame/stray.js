@@ -55,7 +55,7 @@ export class Stray extends TameRaptor {
   get trust() { return this.rec.trust || 0; }
   /** Two meals in one visit is plenty (unless that one's the meal that wins it over). */
   full() { return this.meals >= 2 && this.trust < 100; }
-  addTrust(n) { this.rec.trust = clamp((this.rec.trust || 0) + n, 0, 100); }
+  addTrust(n) { if (n > 0) n *= this.mgr?.state?.skill?.('trust') || 1; this.rec.trust = clamp((this.rec.trust || 0) + n, 0, 100); } // (Taming skills)
   setPlan(p) { if (this.plan !== p) { this.plan = p; this.planT = 0; this.goalSet = false; } }
   act(what, extra = {}) { this.mgr.queueEv({ act: { type: 'tame', what, ...extra } }); }
 

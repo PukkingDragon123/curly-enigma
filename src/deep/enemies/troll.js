@@ -11,7 +11,9 @@
 import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { Legs, Chain, look } from './rig.js';
-import { VB, mul, mix, c01 } from './vox.js';
+import { VB, mul, mix, c01, REFINE_MAX } from './vox.js';
+const HK = REFINE_MAX > 2 ? 2 : 1; // (the head at half the troll voxel: 2× more on desktops, as drawn on phones)
+import { taper, eye, tufts } from './voxKit.js';
 import { shockRing, puff, pebbles, sparkle } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -29,9 +31,10 @@ export function buildTroll(zone) {
   const L = lookFor(zone), S = L.s;
   const sc = (vb, k0 = 0.35) => (x, y, z, nx, ny, nz) => {
     if (typeof ny !== 'number') { ny = 0; nz = 0; }
-    const n = vb.n(x, y, z);
-    if (n > 0.93) return L.wart; // warts
-    const k = clamp(k0 + ny * 0.4 + nz * 0.06 + (n - 0.5) * 0.4, 0, 0.999);
+    const n = vb.n(x, y, z), patch = vb.n(x >> 2, y >> 2, z >> 2, 17);
+    if (n > 0.94) return L.wart; // warts
+    // (wave 16) structured skin: broad mottled patches, a little grain, not static
+    const k = clamp(k0 + ny * 0.42 + nz * 0.06 + (patch - 0.5) * 0.22 + (n - 0.5) * 0.12, 0, 0.999);
     return S[Math.floor(k * 4)];
   };
   // ---------------- torso (pivot at the hips): pot belly, a hunched back, boulder shoulders
@@ -68,26 +71,31 @@ export function buildTroll(zone) {
       if (h) { torso.del(...h); glow.set(...h, torso.n(i, 3, 0) < 0.5 ? 0xff6a1a : 0xffb040); }
     }
   }
-  // ---------------- head (pivot at the neck): low, heavy brow, big nose, tusks in an underbite
+  // ---------------- head (pivot at the neck), (wave 16) at half the troll voxel: a low skull under a
+  // creased brow, sunken sockets with bags under them, yellowed eyes, a warty bulb of a nose, notched
+  // ears, and tusks in an underbite over a row of peg teeth
   const head = new VB(53), hs = sc(head, 0.4);
-  head.ell(0, 4, 1, 6, 5.2, 5.6, hs);
-  head.ell(0, 7, 4.6, 5.6, 1.8, 2.6, (x, y, z, nx, ny) => mul(hs(x, y, z, nx, ny, 0), 0.85)); // brow
-  head.ell(0, 3.4, 7.4, 2.6, 3.2, 2.6, (x, y, z, nx, ny) => (ny > 0.5 ? S[3] : S[2])); // the nose
-  for (const sd of [1, -1]) { head.set(sd > 0 ? 1 : -2, 1, 8, L.wart); head.ell(sd * 5.2 - (sd < 0 ? 1 : 0), 5, 0, 1.4, 2.6, 1.6, hs); } // nostrils, ears
-  head.paint((x, y, z) => (L.dress === 'frost' && y > 6 && head.open(x, y, z, 0, 1, 0) ? L.hair[1] : L.dress === 'moss' && y > 7 && head.n(x, y, z, 2) < 0.4 ? 0x3a6a2a : undefined));
-  const eyeAt = [];
+  head.ell(0, 8, 2, 12, 10.4, 11.2, hs);
+  head.ell(0, 14, 9.2, 11.2, 3.6, 5.2, (x, y, z, nx, ny) => mul(hs(x, y, z, nx, ny, 0), (y + 64) % 2 ? 0.85 : 0.75)); // brow, creased
+  head.ell(0, 6.8, 14.8, 5.2, 6.4, 5.2, (x, y, z, nx, ny) => (head.n(x, y, z, 7) > 0.88 ? L.wart : ny > 0.5 ? S[3] : S[2])); // the nose
   for (const sd of [1, -1]) {
-    const h = head.hitFrom(sd * 2.8 - (sd < 0 ? 1 : 0), 5, 16, 0, 0, -1);
-    if (h) { eyeAt.push(h); head.set(h[0], h[1], h[2], 0x140c08); }
+    head.ell(sd * 2.4, 2.6, 18.2, 1.4, 1, 1, 0x140c08); // nostrils
+    head.ell(sd * 6, 7.6, 11.6, 3, 1.6, 2, mul(S[1], 0.9)); // bags under the eyes
+    taper(head, sd * 10.4, 10, 0, sd * 15.5, 14, -2.5, 3, 1, (x, y, z, t) => (t > 0.45 && t < 0.6 && y > 12 ? -1 : z > -1 && t < 0.8 ? mul(S[1], 0.85) : S[2])); // notched ears
+    // sunken sockets
+    for (let y = 9; y <= 12; y++) for (let x = 3; x <= 8; x++) { const X = sd > 0 ? x : -1 - x, h = head.hitFrom(X, y, 30, 0, 0, -1); if (h) { head.del(...h); head.set(h[0], h[1], h[2] - 1, 0x1a120c); } }
   }
+  tufts(head, 28, { tones: L.dress === 'frost' ? [L.hair[0], L.hair[1]] : L.dress === 'moss' ? [0x2e6a26, 0x4e9a3a] : [L.hair[0], L.hair[1]], seed: 4, len: [1, 3], filter: (x, y, z) => y > 15 && z < 8 });
+  head.paint((x, y, z) => (L.dress === 'frost' && y > 13 && head.open(x, y, z, 0, 1, 0) ? L.hair[1] : L.dress === 'moss' && y > 15 && head.n(x, y, z, 2) < 0.4 ? 0x3a6a2a : undefined));
   const jaw = new VB(54), jsh = sc(jaw, 0.25);
-  jaw.ell(0, -1, 4.6, 5.2, 2.3, 4, jsh);
-  for (const sd of [1, -1]) jaw.cap(sd * 3 - (sd < 0 ? 1 : 0), 0, 6.4, sd * 3.4 - (sd < 0 ? 1 : 0), 3.4, 6.6, 0.8, (x, y, z, t) => (t > 0.6 ? 0xfff6e0 : 0xe0d4b4)); // tusks
-  for (let x = -2; x <= 1; x++) jaw.set(x, 1, 7, 0xe8dcc0);
+  jaw.ell(0, -2, 9.2, 10.4, 4.6, 8, jsh);
+  jaw.ell(0, -1, 15, 6, 2.6, 2.6, mul(S[1], 0.8)); // the lower lip
+  for (const sd of [1, -1]) taper(jaw, sd * 6, 0, 12.8, sd * 6.8, 7, 13.4, 1.7, 0.8, (x, y, z, t) => (t > 0.65 ? 0xfff6e0 : t > 0.3 ? 0xe8dcbc : 0xc8b890)); // tusks
+  for (let x = -4; x <= 3; x++) jaw.set(x, 2, 15, (x & 1) ? 0xe8dcc0 : 0xd0c4a4);
+  for (const [x, y, z] of [[3, -4, 14], [-5, -5, 12], [1, -6, 13]]) jaw.ell(x, y, z, 1, 1, 1, L.wart);
   const eyes = new VB(), angry = new VB();
-  for (const [vb, mad] of [[eyes, false], [angry, true]]) for (const [ex, ey, ez] of eyeAt) {
-    vb.set(ex, ey, ez + 1, L.eye); vb.set(ex + (ex > 0 ? 1 : -1), ey, ez + 1, mad ? 0xff3a1a : L.eye);
-    if (!mad) vb.set(ex, ey + 1, ez + 1, 0xffffff);
+  for (const [vb, mad] of [[eyes, false], [angry, true]]) for (const sd of [1, -1]) {
+    eye(vb, sd * 5.6, 10.6, 0, 2.2, 1.8, { iris: mad ? 0xff3a1a : L.eye, sclera: 0xd8cc98, ir: 0.7, pupil: 0x140806, pr: 0.42, lid: mad ? mul(S[0], 0.8) : undefined, on: head });
   }
   // ---------------- limbs
   const thigh = new VB(55); thigh.cap(0, 0, 0, 0, -8.5, 0.5, 4, sc(thigh, 0.45));
@@ -111,9 +119,10 @@ export function buildTroll(zone) {
   });
   for (const [x, y, z] of [[3, 16, 2], [-3, 13, -1], [1, 20, 4], [-2, 19, -3]]) club.cap(x * 0.5, y, z * 0.5, x * 1.4, y + 2, z * 1.4, 0.8, 0xc8c4bc); // stone spikes
   for (let y = 6; y <= 9; y++) for (const [x, z] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) club.set(x, y, z, 0x8a7448); // the lashing
-  const V = (vb, px = 0, py = 0, pz = 0) => vb.hollow().geo(px, py, pz, TV);
+  // (wave 16: the big body stays at 3× on desktops, ~1/60 m: its mid and near copies carry the skin)
+  const V = (vb, px = 0, py = 0, pz = 0) => vb.hollow().geo(px, py, pz, TV, 3);
   return {
-    torso: V(torso), glow: glow.size ? glow.geo(0, 0, 0, TV) : null, head: V(head), jaw: V(jaw), eyes: eyes.geo(0, 5, 0, TV), angry: angry.geo(0, 5, 0, TV),
+    torso: V(torso), glow: glow.size ? glow.geo(0, 0, 0, TV) : null, head: head.hollow().geo(0, 0, 0, TV / 2, HK), jaw: jaw.hollow().geo(0, 0, 0, TV / 2, HK), eyes: eyes.geo(0, 10, 0, TV / 2), angry: angry.geo(0, 10, 0, TV / 2),
     thigh: V(thigh), shin: V(shin), foot: V(foot), arm: V(arm), club: V(club),
     hide: c01(S[1]), dust: [0.45, 0.4, 0.34], hot: L.dress === 'ember',
   };

@@ -9,6 +9,7 @@ import {
   blade, tube, spline, steam, twinkle, RAMPS,
   S, SZ, dc, nc, np, dot, dotE, alphaD, getD, grain, glD, isTopD, isBotD, stepD,
 } from '../gfx/px/lifeKit.js';
+import { DRAW2 } from './icons2.js';
 
 /** Icon spec for recipes.js / items: t = drawing, c = the dish's tint (liquids in the 3D kitchen). */
 export function cookIcon(t, c) { return c === undefined ? { k: 'cook', t } : { k: 'cook', t, c }; }
@@ -842,6 +843,7 @@ const DRAW = {
   berry: berries, thyme, tuber, garlic, moss, grub, dinoegg: dinoEgg, drake: drakeMeat,
   mushstew: mushStew, trufomelette: trufOmelette, rootpie: rootPie, fishpie: fishPie, friedgrubs: friedGrubs,
   saltfish: saltFish, bread, jamtoast: jamToast, jam: jamJar, frittata, jerky, pesto, mash, tea,
+  ...DRAW2, // wave 16: stone nut, puff spores (./icons2.js)
 };
 
 /** PixelArt.drawIconArt hook: draws { k: 'cook', t } specs, returns false for anything else. */

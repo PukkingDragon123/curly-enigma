@@ -19,17 +19,32 @@ import { buildRaptor, buildTyrant, buildShellback, buildPtero } from './dinos.js
 import { buildElk, buildMoleBear } from './bigfolk.js';
 import { TITAN_PARTS, COLO_PARTS, kaijuLo } from './kaiju.js';
 
-const vox = (geo, ox = 0, oy = 0, oz = 0, mirror = false) => ({ v: geo?.userData?.cvox || geo?.userData?.vox || [], o: [ox, oy, oz], mirror });
+// (wave 16) the redrawn species are modelled at half the old voxel (a troll's head at half the
+// troll's) while their poses below keep offsets in the old unit: such a pose sets UNIT (its old
+// voxel, m) and is gathered at UNIT / 2, coarser parts' voxels split 2×2×2 and the offsets doubled.
+// Poses that leave UNIT null are drawn as before.
+let UNIT = null;
+const voxOf = (geo) => {
+  const u = geo?.userData, L = u?.cvox || u?.vox || [];
+  if (!UNIT) return L;
+  const vs = u ? (u.cvox ? u.vs * (u.ck || 1) : u.vs) || UNIT : UNIT, f = Math.max(1, Math.round(vs / (UNIT / 2)));
+  if (f === 1) return L;
+  const out = [];
+  for (const { x, y, z, c } of L) for (let k = 0; k < f * f * f; k++) out.push({ x: x * f + (k % f), y: y * f + (Math.floor(k / f) % f), z: z * f + Math.floor(k / (f * f)), c });
+  return out;
+};
+const OS = () => (UNIT ? 2 : 1);
+const vox = (geo, ox = 0, oy = 0, oz = 0, mirror = false) => ({ v: voxOf(geo), o: [ox * OS(), oy * OS(), oz * OS()], mirror });
 /** A part turned about its own origin (rz around z, then rx around x, ry around y) before it's placed. */
 const rvox = (geo, ox, oy, oz, rz = 0, rx = 0, ry = 0, mirror = false) => {
   const cz = Math.cos(rz), sz = Math.sin(rz), cx = Math.cos(rx), sx = Math.sin(rx), cy = Math.cos(ry), sy = Math.sin(ry);
-  const v = (geo?.userData?.cvox || geo?.userData?.vox || []).map(({ x, y, z, c }) => {
+  const v = voxOf(geo).map(({ x, y, z, c }) => {
     let X = x * cz - y * sz, Y = x * sz + y * cz, Z = z;
     const Y2 = Y * cx - Z * sx; Z = Y * sx + Z * cx; Y = Y2;
     const X2 = X * cy + Z * sy; Z = -X * sy + Z * cy; X = X2;
     return { x: Math.round(X), y: Math.round(Y), z: Math.round(Z), c };
   });
-  return { v, o: [ox, oy, oz], mirror };
+  return { v, o: [ox * OS(), oy * OS(), oz * OS()], mirror };
 };
 /** Chain segments laid out one after another along -z (tails). */
 const chain = (geos, ox, oy, oz, step, dy = 0) => geos.map((g, i) => vox(g, ox, oy + dy * i, oz - step * i));
@@ -41,6 +56,7 @@ const POSES = {
     return [vox(G.body, 0, 2), vox(G.eyes, 0, 2), vox(G.sprout, -1, 11, -1), vox(G.foot, 2, 2), vox(G.foot, -1, 2)];
   },
   rubble_golem: () => {
+    UNIT = 1 / 24;
     const G = buildGolem(rockPalette(M.GRANITE), 3, 11);
     return [vox(G.torso, 0, 7), vox(G.glow, 0, 7), vox(G.eyes, 0, 7), vox(G.arm, 10, 20), vox(G.arm, -10, 20, 0, true), vox(G.leg, 5, 7), vox(G.leg, -5, 7)];
   },
@@ -58,11 +74,13 @@ const POSES = {
   },
   cave_troll: () => {
     const G = buildTroll(3), H = 16;
+    UNIT = 1 / 20; // (the troll's own voxel)
     return [vox(G.foot, 5, 0), vox(G.foot, -5, 0), vox(G.shin, 5, H - 8.5), vox(G.shin, -5, H - 8.5), vox(G.thigh, 5, H), vox(G.thigh, -5, H),
       vox(G.torso, 0, H), vox(G.head, 0, H + 16.5, 9.5), vox(G.jaw, 0, H + 18.5, 10.5), vox(G.eyes, 0, H + 16.5, 9.5),
       vox(G.arm, 12.5, H + 17, 0.5), vox(G.arm, -12.5, H + 17, 0.5, true), rvox(G.club, 13, H - 5, 5.5, -0.3, 0.4)];
   },
   cave_spider: () => {
+    UNIT = 1 / 24;
     const G = buildSpider(3), H = 8;
     const parts = [vox(G.body, 0, H), vox(G.eyes, 0, H), vox(G.fang, 1.4, H - 1.5, 7), vox(G.fang, -1.4, H - 1.5, 7, true)];
     if (G.glow) parts.push(vox(G.glow, 0, H));
@@ -74,6 +92,7 @@ const POSES = {
     return parts;
   },
   cave_slime: () => {
+    UNIT = 1 / 24;
     const G = buildSlime(1);
     return [vox(G.jelly), vox(G.face), vox(G.items[0], 0, 5, 0)];
   },
@@ -90,6 +109,7 @@ const POSES = {
     return parts;
   },
   raptor: () => {
+    UNIT = 1 / 24;
     const G = buildRaptor(0), H = 12;
     return [vox(G.foot, 2.6, 0), vox(G.foot, -2.6, 0), vox(G.shin, 2.6, H - 5.5), vox(G.shin, -2.6, H - 5.5), vox(G.thigh, 2.6, H), vox(G.thigh, -2.6, H),
       vox(G.body, 0, H), ...chain(G.tail, 0, H + 0.5, -5, 4.8), vox(G.head, 0, H + 6.5, 8), vox(G.jaw, 0, H + 7.3, 9.5), vox(G.eyes, 0, H + 6.5, 8), vox(G.arm, 3, H + 0.5, 5.5), vox(G.arm, -3, H + 0.5, 5.5, true)];
@@ -110,12 +130,14 @@ const POSES = {
     return [vox(G.body), vox(G.head, 0, 2.5, 6), vox(G.eyes, 0, 2.5, 6), rvox(G.wing, 2, 1, 1.5, 0.25), rvox(G.wing, -2, 1, 1.5, 0.25, 0, 0, true), vox(G.leg, 1.2, -1.5, -3), vox(G.leg, -1.2, -1.5, -3)];
   },
   gloom_wisp: () => {
+    UNIT = 1 / 24;
     const G = buildWisp(2);
     return [vox(G.orb), vox(G.eye), vox(G.tails[0], 1, -2, -7), vox(G.tails[1], 2, -3, -10), vox(G.tails[2], 3, -3, -12)];
   },
   ember_imp: () => {
+    UNIT = 1 / 24;
     const G = buildImp(4);
-    return [vox(G.body), vox(G.eyes, 0, 0, G.ez), vox(G.arm, 3, 5), vox(G.arm, -3, 5, 0, true), vox(G.flame, 0, 12, -1)];
+    return [vox(G.body), vox(G.eyes), vox(G.arm, 3, 5), vox(G.arm, -3, 5, 0, true), vox(G.flame, 0, 12, -1)];
   },
   crystal_wyrm: () => {
     const G = buildWyrm(3);
@@ -125,12 +147,14 @@ const POSES = {
     return parts;
   },
   spore_puffer: () => {
+    UNIT = 1 / 24;
     const G = buildPuffer(1);
-    return [vox(G.stem), vox(G.eyes, 0, 0, G.ez), vox(G.cap, 0, 8), vox(G.spots, 0, 8)];
+    return [vox(G.stem), vox(G.eyes), vox(G.cap, 0, 8), vox(G.spots, 0, 8)];
   },
   shade_bat: () => {
+    UNIT = 1 / 24;
     const G = buildBat();
-    return [vox(G.frames[0]), vox(G.eyes, 0, 0, 2)];
+    return [vox(G.frames[0]), vox(G.eyes)];
   },
   // (wave 13) the big folk and the kaiju
   cave_elk: () => {
@@ -209,6 +233,7 @@ export function enemyIconURL(id) {
   if (!pose) return null;
   let url = null;
   try {
+    UNIT = null;
     const parts = pose();
     url = render(parts);
   } catch (e) { console.warn('creature icon', id, e); }

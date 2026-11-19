@@ -3,6 +3,7 @@
 // Step back while it inflates; whack it while it's deflated and wobbly.
 import { Enemy, smooth, easeBack } from './base.js';
 import { VB, VS, mix, mul, c01 } from './vox.js';
+import { H, taper, eye } from './voxKit.js';
 import { spores, puff, sparkle, quills } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -14,41 +15,53 @@ const CAPS = {
 const capFor = (z) => CAPS[Math.min(3, Math.max(1, z))];
 
 export function buildPuffer(zone) {
+  // (wave 16) at half the old voxel: a squat cream stem with a frilled ring skirt and stubby feet, a
+  // shy face (big glossy eyes, blush, a little "o" mouth); a domed cap with a curled lip, real gills
+  // radiating underneath, raised glowing warts, and quills folded inside that bristle as it swells
   const P = capFor(zone);
   const stem = new VB(81);
   const cream = [0xb8a888, 0xd8c8a4, 0xf0e2c4, 0xfff4dc];
-  stem.ell(0, 4.6, 0, 4.2, 4.6, 3.8, (x, y, z, nx, ny, nz) => cream[clamp(Math.floor((0.45 + ny * 0.3 + nz * 0.15 + (stem.n(x, y, z) - 0.5) * 0.2) * 4), 0, 3)]);
-  stem.box(1, 0, 0, 2, 0, 2, 0xa89068); stem.box(-3, 0, 0, -2, 0, 2, 0xa89068); // feet
-  const front = (x, y) => { for (let z = 8; z > -6; z--) if (stem.has(x, y, z)) return z; return 0; };
-  stem.set(-1, 2, front(-1, 2), 0x5a3022); stem.set(0, 2, front(0, 2), 0x5a3022); // a little "o" mouth
-  stem.set(3, 3, front(3, 3), 0xffa8a0); stem.set(-4, 3, front(-4, 3), 0xffa8a0); // blush
-  const ez = Math.max(front(1, 5), front(-2, 5)) + 1;
-  const eyes = new VB(), angry = new VB();
-  for (const [vb, a] of [[eyes, false], [angry, true]]) {
-    for (const [x0, sd] of [[1, 1], [-3, -1]]) for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) {
-      const inner = sd > 0 ? x === 0 : x === 1;
-      if (a && y === 1 && inner) continue;
-      vb.set(x0 + x, 4 + y, 0, y === 1 && !inner ? 0xffffff : a ? 0xff6a4a : 0x2a1a10);
-    }
+  stem.ell(0, 9.2, 0, 8.4, 9.2, 7.6, (x, y, z, nx, ny, nz) => cream[clamp(Math.floor((0.45 + ny * 0.3 + nz * 0.15 + (stem.n(x, y, z) - 0.5) * 0.12 + (((y + 64) % 4 === 0) ? -0.1 : 0)) * 4), 0, 3)]);
+  // the ring skirt round the stem's top, frilled
+  for (let a = 0; a < 96; a++) {
+    const t = (a / 96) * Math.PI * 2, r = 8.4 + (a % 4 < 2 ? 0.8 : 0);
+    for (let d = 0; d < 2; d++) stem.set(Math.round(Math.cos(t) * (r - d)), 14 - (a % 4 < 2 ? 1 : 0) - d, Math.round(Math.sin(t) * (r - d) * 0.92), d ? cream[1] : cream[2]);
   }
-  // the cap (pivot at its underside center) and its glowing spots
+  for (const sd of [1, -1]) { stem.ell(sd * 3.2, 1, 2, 2.6, 1.6, 3.2, 0xa89068); stem.set(sd > 0 ? 3 : -4, 0, 5, 0x8a7050); } // feet
+  const front = (x, y) => { for (let z = 16; z > -12; z--) if (stem.has(x, y, z)) return z; return 0; };
+  for (const [x, y] of [[-1, 4], [0, 4], [-2, 5], [1, 5], [-1, 6], [0, 6]]) stem.set(x, y, front(x, y) + (y === 5 ? 0 : 0), y === 5 && (x === -2 || x === 1) ? 0x5a3022 : y === 5 ? 0x2a120c : 0x5a3022); // a little "o" mouth
+  for (const sd of [1, -1]) for (let dx = 0; dx < 3; dx++) { const x = sd > 0 ? 5 + dx : -6 - dx; stem.set(x, 7, front(x, 7), 0xffa8a0); stem.set(x, 6, front(x, 6), 0xf09890); } // blush
+  const eyes = new VB(), angry = new VB();
+  for (const [vb, a] of [[eyes, false], [angry, true]]) for (const sd of [1, -1]) {
+    eye(vb, sd * 3.2, 9.6, 0, 1.8, 2.4, { iris: a ? 0xff6a4a : 0x2a1a10, pupil: a ? 0x3a0a04 : 0x0a0604, pr: 0.5, lid: a ? mul(P.cap[1], 0.8) : undefined, on: stem });
+  }
+  const ez = (Math.max(front(3, 9), front(-4, 9)) + 1) / 2;
+  // the cap (pivot at its underside center), its gills and its glowing warts
   const cap = new VB(82), spots = new VB(83);
-  cap.ell(0, 0, 0, 7.6, 5.4, 7.6, (x, y, z, nx, ny) => {
+  cap.ell(0, 0, 0, 15.2, 10.8, 15.2, (x, y, z, nx, ny) => {
     if (y < 0) return -1;
-    const k = clamp(0.35 + ny * 0.5 + (cap.n(x, y, z) - 0.5) * 0.25, 0, 0.999);
+    const k = clamp(0.3 + ny * 0.5 + (cap.n(x, y, z) - 0.5) * 0.14 + (Math.hypot(x, z) > 13 ? -0.15 : 0), 0, 0.999);
     return P.cap[Math.floor(k * 4)];
   });
-  for (let z = -8; z <= 7; z++) for (let x = -8; x <= 7; x++) {
+  for (let z = -16; z <= 15; z++) for (let x = -16; x <= 15; x++) {
     const r = Math.hypot(x + 0.5, z + 0.5);
-    if (r < 7.4) cap.set(x, -1, z, r > 6 ? P.cap[1] : (Math.floor(Math.atan2(z + 0.5, x + 0.5) * 4) & 1) ? 0xe8d4b0 : 0xc8b490); // lip + gills
+    if (r > 15.6) continue;
+    if (r > 13.2) { cap.set(x, -1, z, P.cap[1]); cap.set(x, -2, z, r > 14.4 ? P.cap[0] : P.cap[1]); continue; } // a curled lip
+    const a = Math.atan2(z + 0.5, x + 0.5), gill = Math.floor(((a / (Math.PI * 2)) + 1) * 44) % 2;
+    if (r < 3) continue;
+    cap.set(x, -1, z, gill ? 0xe8d4b0 : 0xb8a080);
+    if (gill && r > 5 && r < 12.5) cap.set(x, -2, z, 0xd8c4a0);
   }
-  // spots: a few round patches on the dome's surface, moved to the glowing layer
-  const centers = [[0, 5, 0], [4, 3.5, 3], [-4, 3.5, 3], [5, 2.5, -2], [-5, 2.8, -2], [0, 3, -5.5], [2, 2, 6], [-2, 1.8, 6.2]];
-  for (const [x, y, z, c] of cap.list().map((v) => [v.x, v.y, v.z, v.c])) {
+  // warts: raised round patches on the dome, on the glowing layer
+  const centers = [[0, 10.5, 0, 3], [8, 7.5, 6, 2.6], [-8, 7.5, 6, 2.6], [10, 5.5, -4, 2.4], [-10, 6, -4, 2.4], [0, 6.5, -11, 2.6], [4, 4, 12.5, 2], [-4, 3.8, 12.6, 2], [6, 9.5, -3, 1.6], [-5, 9.8, 2.5, 1.4], [12.5, 3, 4, 1.6], [-12.5, 3, 4, 1.6]];
+  for (const [x, y, z] of cap.list().map((v) => [v.x, v.y, v.z])) {
     if (y < 0) continue;
-    for (const [sx, sy, sz] of centers) {
-      if (Math.hypot(x + 0.5 - sx, y + 0.5 - sy, z + 0.5 - sz) < 1.6 && (cap.open(x, y, z, 0, 1, 0) || cap.open(x, y, z, 1, 0, 0) || cap.open(x, y, z, -1, 0, 0) || cap.open(x, y, z, 0, 0, 1) || cap.open(x, y, z, 0, 0, -1))) {
-        cap.del(x, y, z); spots.set(x, y, z, c === -1 ? P.spot : P.spot);
+    for (const [sx, sy, sz, sr] of centers) {
+      const d = Math.hypot(x + 0.5 - sx, y + 0.5 - sy, z + 0.5 - sz);
+      if (d < sr && (cap.open(x, y, z, 0, 1, 0) || cap.open(x, y, z, 1, 0, 0) || cap.open(x, y, z, -1, 0, 0) || cap.open(x, y, z, 0, 0, 1) || cap.open(x, y, z, 0, 0, -1))) {
+        cap.del(x, y, z); spots.set(x, y, z, d < sr * 0.45 ? mix(P.spot, 0xffffff, 0.45) : P.spot);
+        const ox = Math.round((sx) / 15), oy = 1, oz = Math.round(sz / 15);
+        if (d < sr * 0.6) spots.set(x + ox, y + oy, z + oz, mix(P.spot, 0xffffff, 0.25)); // raised
       }
     }
   }
@@ -58,13 +71,10 @@ export function buildPuffer(zone) {
   for (let i = 0; i < N; i++) {
     const y = 0.22 + 0.74 * ((i + 0.5) / N), r = Math.sqrt(1 - y * y), a = i * 2.39996;
     const dx = Math.cos(a) * r, dz = Math.sin(a) * r;
-    const bx = dx * 7, by = y * 5, bz = dz * 7; // just under the dome's skin
-    for (let t = 0; t <= 4.2; t += 0.5) {
-      const c = t > 3.4 ? P.spot : t > 1.8 ? P.cap[3] : P.cap[1];
-      spines.set(Math.round(bx + dx * t), Math.round(by + y * t * 1.1), Math.round(bz + dz * t), c);
-    }
+    const bx = dx * 14, by = y * 10, bz = dz * 14; // just under the dome's skin
+    taper(spines, bx, by, bz, bx + dx * 8.4, by + y * 9.2, bz + dz * 8.4, 1.1, 0.4, (xx, yy, zz, t) => (t > 0.8 ? P.spot : t > 0.45 ? P.cap[3] : P.cap[1]));
   }
-  return { stem: stem.geo(0, 0, 0), eyes: eyes.geo(0, 4.5, 0), angry: angry.geo(0, 4.5, 0), ez, cap: cap.geo(0, 0, 0), spots: spots.geo(0, 0, 0), spines: spines.geo(0, 0, 0), spore: P.spore, light: P.light, capCol: c01(P.cap[2]), capDark: c01(P.cap[1]) };
+  return { stem: stem.geo(0, 0, 0, H), eyes: eyes.geo(0, 9, ez * 2, H), angry: angry.geo(0, 9, ez * 2, H), ez, cap: cap.geo(0, 0, 0, H), spots: spots.geo(0, 0, 0, H), spines: spines.geo(0, 0, 0, H), spore: P.spore, light: P.light, capCol: c01(P.cap[2]), capDark: c01(P.cap[1]) };
 }
 
 export class Puffer extends Enemy {

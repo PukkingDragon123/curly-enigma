@@ -30,7 +30,8 @@ export function chestContents(state) {
   // a small, cozy refill: a few coins and one little thing (the same for the whole day)
   const r = mulberry(d.day * 7919 + 13);
   const gold = 6 + Math.floor(r() * 16);
-  const small = [['glow_stake', 1], ['grub_bar', 1], ['tea_flask', 1], ['glowcap', 2], ['mushroom', 2], ['rootbeer', 1], ['cave_carrot', 2], ['honey', 1]].filter(([id]) => ITEMS[id]);
+  // (wave 16: no free ingredients any more; you gather those: src/deep/veg/harvest.js)
+  const small = [['glow_stake', 1], ['grub_bar', 1], ['tea_flask', 1], ['rootbeer', 1]].filter(([id]) => ITEMS[id]);
   const [id, n] = small[Math.floor(r() * small.length)] || ['grub_bar', 1];
   return [{ gold }, { id, n }];
 }

@@ -234,3 +234,15 @@
     var(--pn-strapBL) left bottom / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat, var(--pn-strapBR) right bottom / calc(var(--px) * 24) calc(var(--px) * 24) no-repeat;
   filter: drop-shadow(0 var(--px) 0 rgba(8, 4, 6, .5));
 }
+
+/* wave 16: the skill tree's wax seal on the board (the old upgrades are learned there now) */
+.ug-skillseal {
+  display: flex; align-items: center; gap: calc(var(--px) * 3); align-self: flex-start; cursor: pointer; font: inherit; font-size: 16px; color: #ffe8c0;
+  padding: calc(var(--px) * 2) calc(var(--px) * 6) calc(var(--px) * 2) calc(var(--px) * 2); border: 0; image-rendering: pixelated;
+  background: linear-gradient(#7a2a1a, #5a1a10); text-shadow: 0 var(--px) 0 #2a0a04;
+  box-shadow: 0 0 0 var(--px) #2a0c06, inset 0 var(--px) 0 rgba(255, 200, 160, .35), inset 0 calc(var(--px) * -2) 0 rgba(0, 0, 0, .35), 0 calc(var(--px) * 2) 0 rgba(10, 4, 2, .45);
+  transition: transform .12s var(--pop, cubic-bezier(.3, 1.6, .5, 1)), filter .12s;
+}
+.ug-skillseal img { width: calc(var(--px) * 13); height: calc(var(--px) * 13); }
+.ug-skillseal:hover { transform: translateY(calc(var(--px) * -1)) scale(1.04); filter: brightness(1.1); }
+.ug-skillseal:active { transform: translateY(var(--px)) scale(.96); }

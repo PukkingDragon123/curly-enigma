@@ -31,8 +31,9 @@ export function tickVitals(game, dt) {
   if (game.sceneName === 'title' || !ui || ui.hudMode === 'none') return;
   const k = d.maxEnergy / 100;
   const shown = ui.onboard?.isUnlocked ? ui.onboard.isUnlocked('energy') : true;
-  if (shown && !ui.isPanelOpen?.()) d.hunger = Math.min(d.maxEnergy * VIT.hungerMax, (d.hunger || 0) + VIT.hungerRate * k * dt);
-  if (d.injury > 0) d.injury = Math.max(0, d.injury - VIT.mend * k * dt * (st.hasBuff('hearty') ? 3 : 1));
+  // Survival skills (data/skills.js): appetite slows hunger, mend speeds healing
+  if (shown && !ui.isPanelOpen?.()) d.hunger = Math.min(d.maxEnergy * VIT.hungerMax, (d.hunger || 0) + VIT.hungerRate * k * dt / (st.skill?.('appetite') || 1));
+  if (d.injury > 0) d.injury = Math.max(0, d.injury - VIT.mend * k * dt * (st.hasBuff('hearty') ? 3 : 1) * (st.skill?.('mend') || 1));
   const cap = st.energyCap;
   if (d.energy > cap) d.energy = cap;
   else if (d.energy < cap && st.exert < VIT.exertRest && (d.energy > 0 || !game.scene?.faint)) { // (at 0 underground: the blackout)

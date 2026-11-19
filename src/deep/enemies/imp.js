@@ -2,6 +2,7 @@
 // giggles, and lobs ember blobs that arc, bounce off the rock and fizzle in a shower of sparks.
 import { Enemy } from './base.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
+import { H, taper, eye } from './voxKit.js';
 import { sparkle, puff, fireSpray } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -12,59 +13,70 @@ const PAL = {
 const palFor = (z) => (z >= 6 ? PAL[6] : PAL[4]);
 
 export function buildImp(zone) {
+  // (wave 16) at half the old voxel: a pot-bellied ember imp with a scaly belly plate, a big round
+  // head, ridged horns curling back, long pointed ears, a heavy brow, a toothy grin, three-toed
+  // clawed feet, clawed hands, a whip tail with a flame tip, and a crown of layered flame tongues
   const P = palFor(zone);
   const b = new VB(51);
   const skin = (x, y, z, nx, ny, nz) => {
-    const k = ny * 0.6 + nz * 0.3 + (b.n(x, y, z) - 0.5) * 0.3;
-    return k > 0.45 ? P.light : k < -0.35 ? P.dark : P.skin;
+    const k = ny * 0.6 + nz * 0.3 + (b.n(x, y, z) - 0.5) * 0.25 + ((x * 7 + y * 3 + z * 5) % 9 === 0 ? -0.25 : 0);
+    return k > 0.5 ? P.light : k < -0.35 ? P.dark : P.skin;
   };
-  b.ell(0, 3.6, 0, 3.2, 3.2, 2.8, (x, y, z, nx, ny, nz) => (nz > 0.45 && ny < 0.5 ? P.belly : skin(x, y, z, nx, ny, nz)));
-  b.ell(0, 9, 0.3, 4.7, 4.2, 4.3, skin);
-  // feet
-  b.box(1, 0, -1, 2, 0, 2, P.dark); b.box(-3, 0, -1, -2, 0, 2, P.dark);
-  // pointy ears and curly horns
+  b.ell(0, 7.2, 0, 6.4, 6.6, 5.6, (x, y, z, nx, ny, nz) => (nz > 0.5 && ny < 0.5 ? (((y + 40) % 3 === 0) ? mix(P.belly, P.dark, 0.3) : P.belly) : skin(x, y, z, nx, ny, nz)));
+  b.ell(0, 18, 0.6, 9.4, 8.4, 8.6, skin);
+  b.ell(0, 16, 6.6, 4.2, 2.6, 2.6, skin); // muzzle
   for (const sd of [1, -1]) {
-    const X = (x) => (sd > 0 ? x : -1 - x);
-    b.set(X(5), 9, 0, P.skin); b.set(X(6), 10, 0, P.skin); b.set(X(5), 10, 0, P.light);
-    const horn = [[3, 12, 0], [3, 13, 0], [4, 13, -1], [4, 14, -1], [5, 15, -1], [5, 16, -2]];
-    horn.forEach(([x, y, z], i) => b.set(X(x), y, z, i > 3 ? 0x6a4a3a : 0x3a2420));
+    // feet: three toes with dark claws
+    for (const dz of [-1.2, 0, 1.2]) taper(b, sd * 3.2, 0.8, 1, sd * (3.2 + dz * 0.6), 0.6, 4.2 + Math.abs(dz) * -0.6, 1.2, 0.9, P.dark);
+    for (const dz of [-1, 0, 1]) b.set(Math.round(sd * (3.2 + dz * 0.8)), 0, 5, 0x2a1410);
+    // ears: long and pointed, swept out and back, a darker inside
+    taper(b, sd * 8.6, 18.5, 0, sd * 15, 21, -2.5, 2.2, 0.4, (x, y, z, t) => (z > -0.5 && t > 0.2 && t < 0.85 ? P.dark : P.skin));
+    // horns: ridged rings, curling back and up
+    let hx = 4.5, hy = 24.5, hz = 0;
+    for (let i = 0; i < 6; i++) {
+      const nx = hx + 0.8 + i * 0.15, ny = hy + 1.8 - i * 0.15, nz = hz - 1 - i * 0.35;
+      taper(b, sd * hx, hy, hz, sd * nx, ny, nz, 1.9 - i * 0.25, 1.7 - i * 0.25, (i & 1) ? 0x3a2420 : i > 3 ? 0x8a6a52 : 0x5a3a2c);
+      hx = nx; hy = ny; hz = nz;
+    }
+    // cheeks
+    b.ell(sd * 5.6, 15.5, 5.6, 1.6, 1.2, 1, mix(P.skin, 0xff9a9a, 0.55));
   }
-  // face: grin, a fang, rosy cheeks
-  const front = (x, y) => { for (let z = 9; z > -6; z--) if (b.has(x, y, z)) return z; return 0; };
-  for (let x = -2; x <= 1; x++) b.set(x, 6, front(x, 6), 0x3a0e0a);
-  b.set(-3, 7, front(-3, 7), 0x3a0e0a); b.set(2, 7, front(2, 7), 0x3a0e0a);
-  b.set(0, 6, front(0, 6), 0xfff4e0);
-  b.set(3, 7, front(3, 7), mix(P.skin, 0xff9a9a, 0.6)); b.set(-4, 7, front(-4, 7), mix(P.skin, 0xff9a9a, 0.6));
-  // tail with a flame tip
-  for (const [x, y, z] of [[0, 2, -3], [0, 2, -4], [0, 3, -5], [0, 4, -6], [0, 5, -6]]) b.set(x, y, z, P.dark);
-  b.set(0, 6, -6, P.flame[2]); b.set(0, 6, -7, P.flame[1]); b.set(0, 7, -6, P.flame[3]);
-  // eyes (big, glowing)
+  // heavy brow ridge over the eyes
+  for (let x = -8; x <= 7; x++) { const y = 21 + (Math.abs(x + 0.5) > 5 ? -1 : 0); const h = b.hitFrom(x, y, 20, 0, 0, -1); if (h) b.set(h[0], h[1], h[2] + 1, P.dark); }
+  // face: nostrils, a wide grin with a row of teeth and two fangs
+  const front = (x, y) => { for (let z = 18; z > -12; z--) if (b.has(x, y, z)) return z; return 0; };
+  b.set(-1, 17, front(-1, 17), 0x2a0a08); b.set(0, 17, front(0, 17), 0x2a0a08);
+  for (let x = -5; x <= 4; x++) {
+    const up = Math.abs(x + 0.5) > 3.5 ? 1 : 0, y = 13 + up;
+    b.set(x, y, front(x, y), 0x3a0e0a);
+    if (!up) b.set(x, y + 1, front(x, y + 1), (x & 1) ? 0xfff4e0 : 0xe8dcc8);
+  }
+  b.set(-3, 12, front(-3, 12) , 0xfff4e0); b.set(2, 12, front(2, 12), 0xfff4e0); // fangs
+  // whip tail with a flame tip
+  taper(b, 0, 4, -4.5, 0, 5, -9, 1.3, 1, P.dark); taper(b, 0, 5, -9, 0, 9, -12, 1, 0.8, P.dark); taper(b, 0, 9, -12, 0, 12, -11.5, 0.8, 0.6, P.dark);
+  b.ell(0, 13.5, -11.5, 1.6, 2, 1.4, P.flame[2]); b.set(0, 15, -11, P.flame[3]); b.set(0, 16, -12, P.flame[3]); b.set(0, 13, -13, P.flame[1]);
+  // eyes (big, glowing; placed at (0, 9, ez) VS)
   const eyes = new VB(), angry = new VB();
   for (const [vb, col, a] of [[eyes, P.eye, false], [angry, 0xff3a2a, true]]) {
-    for (const [x0, sd] of [[1, 1], [-3, -1]]) {
-      for (let y = 0; y < 3; y++) for (let x = 0; x < 2; x++) {
-        const inner = sd > 0 ? x === 0 : x === 1;
-        if (a && y === 2 && inner) continue;
-        vb.set(x0 + x, 8 + y, 0, y === 2 && !inner ? 0xffffff : col);
-      }
-    }
+    for (const sd of [1, -1]) eye(vb, sd * 3.6, 18.5, 0, 2.2, 2.9, { iris: col, pupil: mul(col, 0.25), slit: true, pr: 0.5, lid: a ? P.dark : undefined, on: b });
   }
-  const ez = Math.max(front(1, 9), front(-2, 9)) + 1;
-  // arm (pivot at the shoulder)
+  const ez = (Math.max(front(3, 18), front(-4, 18)) + 1) / 2;
+  // arm (pivot at the shoulder): a tapered limb and three claws
   const arm = new VB(52);
-  arm.cap(0, -0.5, 0, 0.5, -2.5, 0.5, 1.1, P.skin);
-  arm.set(0, -3, 1, P.light); arm.set(1, -3, 1, P.light);
-  // flame tuft (pivot at its base)
+  taper(arm, 0, -1, 0, 1, -5, 1, 2.2, 1.6, P.skin);
+  for (const dx of [-1, 0, 1]) taper(arm, 1 + dx, -5.5, 1.5, 1 + dx * 1.5, -7, 3, 0.8, 0.4, dx ? P.light : 0x2a1410);
+  // flame tuft (pivot at its base): layered tongues, dark at the root, white-hot at the tips
   const fl = new VB(53);
-  fl.ell(0, 1, 0, 2.6, 2, 2.4, (x, y) => (y <= 0 ? P.flame[0] : P.flame[1]));
-  fl.ell(0, 3, -0.5, 1.8, 1.8, 1.6, (x, y) => (y >= 4 ? P.flame[3] : P.flame[2]));
-  fl.set(0, 5, -1, P.flame[3]); fl.set(-1, 6, -1, P.flame[3]); fl.set(1, 4, 1, P.flame[2]);
-  // ember blob (the thing it throws)
+  fl.ell(0, 1.5, 0, 5, 3, 4.6, (x, y) => (y <= 0 ? P.flame[0] : P.flame[1]));
+  for (const [x, z, h, l] of [[0, -1, 11, 0], [2.5, 0, 8, 0.25], [-2.5, 0.5, 8, -0.25], [1.2, 2.5, 6, 0.1], [-1.5, -2.5, 7, -0.1]]) {
+    taper(fl, x, 2, z, x + l * h, 2 + h, z - h * 0.25, 2.4, 0.4, (xx, yy, zz, t) => P.flame[Math.min(3, 1 + Math.floor(t * 3))]);
+  }
+  // ember blob (the thing it throws): a cracked coal, glowing in the cracks
   const blob = new VB(54);
-  blob.ell(0, 0, 0, 1.7, 1.7, 1.7, (x, y, z, nx, ny) => (ny > 0.45 ? P.flame[3] : ny > -0.2 ? P.flame[2] : ny > -0.6 ? P.flame[1] : P.flame[0]));
-  blob.set(0, 2, 0, P.flame[3]); blob.set(-1, 1, 1, 0xffffff);
+  blob.ell(0, 0, 0, 3.4, 3.4, 3.4, (x, y, z, nx, ny) => ((x + y * 2 + z) % 4 === 0 ? P.flame[3] : ny > 0.45 ? P.flame[2] : ny > -0.2 ? P.flame[1] : P.flame[0]));
+  blob.set(0, 4, 0, P.flame[3]); blob.set(-1, 3, 2, 0xffffff);
   return {
-    body: b.geo(0, 0, 0), eyes: eyes.geo(0, 9, 0), angry: angry.geo(0, 9, 0), ez, arm: arm.geo(0, 0, 0), flame: fl.geo(0, 0, 0), blob: blob.geo(0, 0, 0),
+    body: b.geo(0, 0, 0, H), eyes: eyes.geo(0, 18, ez * 2, H), angry: angry.geo(0, 18, ez * 2, H), ez, arm: arm.geo(0, 0, 0, H), flame: fl.geo(0, 0, 0, H), blob: blob.geo(0, 0, 0, H),
     light3: P.light3, ember: c01(P.flame[2]), hot: c01(P.flame[1]), smoke: [0.2, 0.17, 0.16],
   };
 }

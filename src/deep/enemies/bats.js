@@ -3,50 +3,101 @@
 // turns swooping at the lamp. One whack each.
 import { Enemy, TAU } from './base.js';
 import { VB, VS, c01 } from './vox.js';
+import { H, taper, eye, ramp4 } from './voxKit.js';
 import { puff, sparkle } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
-const FUR = [0x2a1e3a, 0x3a2c52, 0x4e3e68, 0x6a5a8a];
-const WING = 0x5a3e7a, BONE = 0x261a38, EAR = 0xa06a8a;
+const FUR = [0x1e1529, 0x2c2040, 0x3d2f58, 0x544476, 0x6e5e94];
+const WING = [0x2e1c40, 0x45295e, 0x5e3a7a, 0x7a5296], BONE = 0x1c1228, EAR = [0x7a4a6a, 0xb47896, 0xe0a0b8];
 
+// (wave 16) redrawn at half the old voxel (voxKit H): a furry body with a ruff, a round head with
+// big veined ears and a pug snout with a nose-leaf, fangs; wings of real membrane stretched between
+// an arm and three finger bones, scalloped between the tips, with a thumb claw at the wrist.
 export function buildBat() {
+  const furSh = (b) => (x, y, z, nx, ny, nz) => ramp4(FUR, 0.42 + ny * 0.3 + nz * 0.12 + (b.n(x, y, z) - 0.5) * 0.35 + ((x * 3 + y * 5 + z) % 4 === 0 ? 0.12 : 0));
   const body = () => {
-    const b = new VB(91);
-    b.ell(0, 0, 0, 2.6, 2.4, 2.4, (x, y, z, nx, ny, nz) => FUR[clamp(Math.floor((0.5 + ny * 0.35 + nz * 0.15 + (b.n(x, y, z) - 0.5) * 0.3) * 4), 0, 3)]);
+    const b = new VB(91), sh = furSh(b);
+    b.ell(0, -1, -1, 4.6, 5.2, 4.4, sh); // body
+    b.ell(0, 3.2, 2.4, 4, 3.6, 3.6, sh); // head
+    b.ell(0, 0.6, 1.2, 4.4, 2.4, 3.6, (x, y, z) => (b.n(x, y, z, 2) > 0.45 ? FUR[3] : FUR[4])); // the ruff
+    b.ell(0, -1.6, 2.2, 2.8, 3.2, 1.8, (x, y, z) => (((x + y) & 1) ? FUR[3] : FUR[2])); // chest
     for (const sd of [1, -1]) {
       const X = (x) => (sd > 0 ? x : -1 - x);
-      b.set(X(1), 2, 0, FUR[2]); b.set(X(1), 3, 0, FUR[3]); b.set(X(2), 3, 0, EAR); b.set(X(2), 4, 0, FUR[3]); b.set(X(1), 2, 1, EAR);
+      // ears: tall, tilted out, a pink inside with dark veins
+      taper(b, 2.2, 5, 2.4, 4.6, 11.5, 1.4, 1.8, 0.5, (x, y, z, t) => (z > 2.6 && t > 0.15 && t < 0.92 ? ((y % 3) ? EAR[1] : EAR[0]) : t > 0.9 ? EAR[2] : FUR[2]));
+      // feet: little hooked claws under the body
+      b.set(X(1), -6, 0, FUR[1]); b.set(X(2), -7, 0, BONE); b.set(X(2), -7, 1, 0xd8ccd8);
+      // fangs
+      b.set(X(1), 0, 6, 0xf4eef0); b.set(X(1), -1, 6, 0xd8ccd8);
     }
-    b.set(-1, -1, 2, 0xffffff); b.set(0, -2, 2, FUR[0]); // a fang
+    b.mirrorX();
+    // pug snout, nose-leaf, mouth
+    b.ell(0, 2.2, 5.4, 2.2, 1.6, 1.4, FUR[3]);
+    b.box(-1, 2, 6, 0, 2, 6, BONE); // nostrils
+    b.box(-1, 3, 6, 0, 4, 6, EAR[1]); b.set(0, 5, 6, EAR[2]); b.set(-1, 5, 6, EAR[1]); // the leaf
+    b.box(-1, 0, 6, 0, 0, 6, 0x1a0a12); // mouth
     return b;
   };
-  // wing frames: up, mid, down, folded (for roosting)
-  const wingAngles = [0.85, 0.1, -0.7];
-  const frames = wingAngles.map((a) => {
-    const b = body();
-    for (const sd of [1, -1]) {
-      for (let u = 0; u < 8; u++) {
-        const chord = [3, 4, 4, 4, 3, 3, 2, 1][u];
-        const x = 2 + Math.round(u * Math.cos(a)), y = Math.round(u * Math.sin(a));
-        for (let v = 0; v < chord; v++) {
-          if (v === chord - 1 && u % 2 === 1 && u > 1) continue; // scalloped trailing edge
-          const X = sd > 0 ? x : -1 - x;
-          b.set(X, y, 1 - v, v === 0 || u === 3 ? BONE : WING);
-        }
+  /** One wing (sd = 1 right, -1 left) raised to angle a (radians up from level). */
+  const wing = (b, a, sd) => {
+    const SH = [0, 0], WR = [7, -1], TIPS = [[17, 0], [15.5, 6.5], [11, 10.5]], TR = [0.5, 8.5];
+    const poly = [SH, WR, ...TIPS, TR];
+    const inPoly = (u, v) => {
+      let c = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [ui, vi] = poly[i], [uj, vj] = poly[j];
+        if ((vi > v) !== (vj > v) && u < ((uj - ui) * (v - vi)) / (vj - vi) + ui) c = !c;
       }
+      return c;
+    };
+    const seg = (u, v, p, q) => {
+      const dx = q[0] - p[0], dy = q[1] - p[1], t = clamp(((u - p[0]) * dx + (v - p[1]) * dy) / (dx * dx + dy * dy), 0, 1);
+      return Math.hypot(u - p[0] - dx * t, v - p[1] - dy * t);
+    };
+    // scallops: a bite out of the trailing edge between each pair of tips
+    const trail = [[TIPS[0], TIPS[1]], [TIPS[1], TIPS[2]], [TIPS[2], TR]];
+    const bitten = (u, v) => trail.some(([p, q]) => {
+      const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2, L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      const nx = (q[1] - p[1]) / L, ny = -(q[0] - p[0]) / L; // outward (away from the wrist)
+      const s = (mx - WR[0]) * nx + (my - WR[1]) * ny > 0 ? 1 : -1;
+      return Math.hypot(u - (mx + nx * s * L * 0.42), v - (my + ny * s * L * 0.42)) < L * 0.5;
+    });
+    const ca = Math.cos(a), sa = Math.sin(a);
+    for (let u = 0; u <= 18; u += 0.5) for (let v = -2; v <= 11; v += 0.5) {
+      const arm = seg(u, v, SH, WR) < 1.1, fing = TIPS.some((t) => seg(u, v, WR, t) < 0.55);
+      if (!arm && !fing && (!inPoly(u, v) || bitten(u, v))) continue;
+      const x = 4.2 + u * ca, y = 0.5 + u * sa, z = 1 - v;
+      let c;
+      if (arm || fing) c = BONE;
+      else {
+        const vein = TIPS.some((t) => Math.abs(seg(u, v, [0, 3], t) - 0) < 0.4) && u > 2;
+        const edge = !inPoly(u + 1, v + 1) || !inPoly(u - 1, v + 1);
+        c = vein ? WING[0] : edge ? WING[3] : u < 4 ? WING[1] : WING[2];
+      }
+      const X = Math.round(x);
+      b.set(sd > 0 ? X : -1 - X, Math.round(y), Math.round(z), c);
     }
-    return b.geo(0, 0, 0);
-  });
+    // thumb claw at the wrist
+    const wx = Math.round(4.2 + 7 * ca), wy = Math.round(0.5 + 7 * sa);
+    b.set(sd > 0 ? wx : -1 - wx, wy + 1, 2, 0xd8ccd8);
+  };
+  const wingAngles = [0.85, 0.1, -0.7];
+  const frames = wingAngles.map((a) => { const b = body(); wing(b, a, 1); wing(b, a, -1); return b.geo(0, 0, 0, H); });
   const folded = body();
   for (const sd of [1, -1]) {
     const X = (x) => (sd > 0 ? x : -1 - x);
-    for (let y = -2; y <= 1; y++) { folded.set(X(2), y, 1, WING); folded.set(X(2), y, 0, BONE); folded.set(X(2), y, -1, WING); }
-    folded.set(X(1), -3, 1, WING); folded.set(X(1), -3, 0, WING);
+    // wings wrapped round like a cloak, the wrist claws up by the ears
+    for (let y = -7; y <= 3; y++) for (let z = -3; z <= 3; z++) {
+      const xx = 5 + (Math.abs(z) > 2 ? -1 : 0) + (y < -4 ? -1 : 0);
+      folded.set(X(xx), y, z, z === 3 ? BONE : (y + z) % 4 === 0 ? WING[0] : y < -4 ? WING[2] : WING[1]);
+    }
+    folded.set(X(5), 4, 2, BONE); folded.set(X(5), 5, 2, 0xd8ccd8);
   }
-  frames.push(folded.geo(0, 0, 0));
-  const eyes = new VB();
-  eyes.set(1, 0, 0, 0xff5a8a); eyes.set(-2, 0, 0, 0xff5a8a);
-  return { frames, eyes: eyes.geo(0, 0.5, 0), fur: c01(FUR[2]), eye: [1, 0.35, 0.55] };
+  frames.push(folded.geo(0, 0, 0, H));
+  // eyes: glowing, with a slit pupil and a glint (placed at (0, 0.5, 2) VS = (0, 1, 4) H)
+  const eyes = new VB(), ref = body();
+  for (const sd of [1, -1]) eye(eyes, sd * 1.8, 3.6, 0, 1.4, 1.6, { iris: 0xff5a8a, pupil: 0x3a0a1a, slit: true, pr: 0.5, on: ref });
+  return { frames, eyes: eyes.geo(0, 1, 4, H), fur: c01(FUR[2]), eye: [1, 0.35, 0.55] };
 }
 
 /** Shared flock state for one group of bats. */

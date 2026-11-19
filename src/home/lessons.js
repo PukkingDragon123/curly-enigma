@@ -505,15 +505,11 @@ export class HomeLessons {
     if (!st.owns('bp_dagger')) st.addItem('bp_dagger', { spill: true, n: 1 });
   }
 
-  /** Before the cooking lesson: something to cook (an egg and mushrooms, if the pack's bare). */
+  /** Before the cooking lesson. (wave 16: no free eggs and mushrooms any more; Old Star hands over
+   *  just the lesson's glowcap and salt (cooking/lesson.js); the rest you gather: deep/veg/harvest.js) */
   prepCookLesson() {
     const st = this.game.state, sd = starData(st);
     sd.dishesAtLesson = st.data.stats?.dishes || 0;
-    const food = st.inventory((it) => it && (it.cat === 'food' || it.cat === 'plant' || it.cat === 'ingredient'));
-    if (food.length < 2) {
-      st.addItem('egg', { spill: true, n: 2 });
-      st.addItem('mushroom', { spill: true, n: 2 });
-    }
   }
 
   // ------------------------------------------------------------ the tutorial at home (step by step)

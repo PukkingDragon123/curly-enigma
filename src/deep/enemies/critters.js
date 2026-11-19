@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { Enemy, TAU, smooth, easeBack, wrapA } from './base.js';
 import { VB, VS, mix, mul, c01 } from './vox.js';
+import { H, taper, eye, tufts, ramp4 } from './voxKit.js';
 import { puff, sparkle, mote, pebbles, dustBurst, converge } from './fx.js';
 import { fluidAt, solidAt, airBelow, clearLine } from './physics.js';
 import { rockPalette } from './rock.js';
@@ -125,21 +126,43 @@ export class Earthworm extends Critter {
 
 // ------------------------------------------------------------------ Dust Bunny
 function buildBunny() {
+  // (wave 16) at half the old voxel: a ball of fluff made of clumps with strands sticking out, a
+  // cowlick, lint and a stray twig caught in it, long ears, a pink nose, a "w" mouth, blush, and big
+  // shiny eyes
   const b = new VB(111);
-  const fur = [0x9a8e7e, 0xb8ab98, 0xd2c6b2, 0xece2d0];
-  const sh = (x, y, z, nx, ny, nz) => fur[clamp(Math.floor((0.5 + ny * 0.35 + nz * 0.1 + (b.n(x, y, z) - 0.5) * 0.55) * 4), 0, 3)];
-  b.ell(0, 3.4, 0, 3.6, 3.4, 3.4, sh);
-  for (const [x, y, z] of [[2.5, 6, -1], [-3, 5, 1], [3.3, 2.5, -2], [-3.2, 2, -1.5], [0, 6.4, 1.5], [0.5, 4, -3.4], [-2, 4.5, -2.8]]) b.ell(x, y, z, 1.3, 1.2, 1.3, sh);
-  b.ell(0, 2.4, -3.6, 1.3, 1.3, 1.2, fur[3]); // tail puff
-  const front = (x, y) => { for (let z = 6; z > -6; z--) if (b.has(x, y, z)) return z; return 0; };
-  b.set(0, 3, front(0, 3) + 1, 0xff9aa8); b.set(-1, 3, front(-1, 3) + 1, 0xff9aa8); // pink nose
+  const fur = [0x8a7e70, 0xa89c8a, 0xc4b8a4, 0xdcd0bc, 0xf2e8d6];
+  const sh = (x, y, z, nx, ny, nz) => ramp4(fur, 0.48 + ny * 0.3 + nz * 0.1 + (b.n(x, y, z) - 0.5) * 0.4);
+  b.ell(0, 6.8, 0, 7.2, 6.8, 6.8, sh);
+  // clumps round the surface, each lit on its own top
+  for (let i = 0; i < 26; i++) {
+    const u = b.n(i, 1, 1, 5) * 2 - 1, a = b.n(i, 2, 2, 5) * Math.PI * 2, r = Math.sqrt(1 - u * u);
+    const cx = Math.cos(a) * r * 6.6, cy = 6.8 + u * 6.2, cz = Math.sin(a) * r * 6.4;
+    if (cz > 3.5 && Math.abs(cx) < 4.5 && cy > 4 && cy < 11) continue; // (the face stays clear)
+    const rr = 1.8 + b.n(i, 3, 3, 5) * 1.2;
+    b.ell(cx, cy, cz, rr, rr * 0.9, rr, (x, y, z, nx, ny) => ramp4(fur, 0.38 + ny * 0.45 + (b.n(x, y, z, 9) - 0.5) * 0.25));
+  }
+  tufts(b, 36, { tones: [fur[3], fur[4]], seed: 3, len: [1, 1], filter: (x, y, z) => !(z > 4 && Math.abs(x) < 4 && y > 4 && y < 11) });
+  // cowlick on the crown, the tail puff
+  taper(b, 0, 13, 0.5, 1.5, 16.5, 2.5, 1.4, 0.4, fur[4]); taper(b, 1.5, 16.5, 2.5, 3, 16, 3.5, 0.6, 0.3, fur[3]);
+  b.ell(0, 4.8, -7.2, 2.6, 2.6, 2.4, (x, y, z) => (b.n(x, y, z, 4) > 0.5 ? fur[4] : fur[3]));
+  // lint: a pebble and a twig caught in the fluff
+  b.ell(-5.5, 3, 3.5, 1, 0.9, 1, 0x6e6458); b.set(-5, 4, 4, 0x8a8070);
+  taper(b, 4.5, 10, -3, 8.5, 12.5, -4.5, 0.6, 0.4, 0x6a4a2a); b.set(7, 12, -4, 0x5a8a3a); b.set(8, 13, -4, 0x6aa848);
+  const front = (x, y) => { for (let z = 14; z > -10; z--) if (b.has(x, y, z)) return z; return 0; };
+  // face: nose with nostrils, a "w" mouth, blush
+  for (const [x, y, c] of [[-1, 7, 0xff8a9a], [0, 7, 0xff8a9a], [-1, 6, 0xd86878], [0, 6, 0xd86878], [-1, 8, 0xffc0c8]]) b.set(x, y, front(x, y) + 1, c);
+  for (const [x, y] of [[-3, 5], [-2, 4], [-1, 5], [0, 5], [1, 4], [2, 5]]) b.set(x, y, front(x, y), 0x4a3028);
+  for (const sd of [1, -1]) for (let dx = 0; dx < 3; dx++) for (let dy = 0; dy < 2; dy++) { const x = sd > 0 ? 3 + dx : -4 - dx, y = 6 + dy; b.set(x, y, front(x, y), dy ? 0xf4b0b0 : 0xe89a9e); }
+  // eyes (placed at (0, 4.5, ez) VS)
   const eyes = new VB();
-  for (const x0 of [1, -3]) { eyes.set(x0, 4, 0, 0x1a1210); eyes.set(x0 + 1, 4, 0, 0x1a1210); eyes.set(x0, 5, 0, 0x1a1210); eyes.set(x0 + 1, 5, 0, x0 > 0 ? 0xffffff : 0x1a1210); }
-  if (eyes.get(-3, 5, 0) >= 0) eyes.set(-3, 5, 0, 0xffffff);
-  const ez = Math.max(front(1, 4), front(-2, 4)) + 1;
+  for (const sd of [1, -1]) eye(eyes, sd * 3.2, 9.2, 0, 1.9, 2.4, { iris: 0x3a2418, pupil: 0x0e0806, pr: 0.5, on: b });
+  const ez = (Math.max(front(3, 9), front(-4, 9)) + 1) / 2;
   const ear = new VB(112);
-  ear.cap(0, 0, 0, 0, 4.5, -0.5, 1, (x, y, z) => (z >= 0 && y > 1 ? 0xffb8c0 : fur[2]));
-  return { body: b.geo(0, 0, 0), eyes: eyes.geo(0, 4.5, 0), ez, ear: ear.geo(0, 0, 0), fluff: c01(fur[3]), furC: fur.map(c01) };
+  // a long ear: soft rim, a pink inside, a darker tip that folds back
+  taper(ear, 0, 0, 0, 0, 8, -1, 2.1, 1.6, (x, y, z) => (z >= 0 && y > 1 && Math.abs(x) < 1.2 ? 0xffb0bc : fur[3]));
+  taper(ear, 0, 8, -1, 0, 10.5, -3, 1.6, 0.9, (x, y, z) => (y > 9.5 ? fur[1] : fur[2]));
+  tufts(ear, 6, { tones: [fur[3], fur[4]], seed: 5, len: [1, 1] });
+  return { body: b.geo(0, 0, 0, H), eyes: eyes.geo(0, 9, ez * 2, H), ez, ear: ear.geo(0, 0, 0, H), fluff: c01(fur[4]), furC: fur.slice(1).map(c01) };
 }
 
 export class DustBunny extends Critter {
@@ -152,7 +175,7 @@ export class DustBunny extends Critter {
     this.mat = this.material({ emissive: 0.1 });
     this.body = this.part(G.body, this.mat);
     this.eyes = this.part(G.eyes, this.material({ emissive: 0.5 }), this.root, 0, 4.5 * VS, G.ez * VS);
-    this.ears = [1, -1].map((sd) => this.part(G.ear, this.mat, this.root, sd * 1.6 * VS, 6 * VS, 0));
+    this.ears = [1, -1].map((sd) => this.part(G.ear, this.mat, this.root, sd * 2.5 * VS, 5.8 * VS, 0));
     this.hopT = rand(0.5, 2);
     this.brushT = 0;
     this.purr = 0;
@@ -210,7 +233,7 @@ export class DustBunny extends Critter {
     const up = this.puffK; // panicking: ears bolt upright, trembling
     this.ears.forEach((e, i) => {
       e.rotation.x = -flop * (1 - up) + up * 0.25;
-      e.rotation.z = (i ? -1 : 1) * (0.25 * (1 - up) + (this.purr > 0 ? Math.sin(this.t * 12) * 0.15 : 0) + up * Math.sin(this.t * 40 + i) * 0.12);
+      e.rotation.z = (i ? 1 : -1) * (0.32 * (1 - up) + (this.purr > 0 ? Math.sin(this.t * 12) * 0.15 : 0) + up * Math.sin(this.t * 40 + i) * 0.12);
     });
   }
   place() {
@@ -516,7 +539,6 @@ function buildCrab(pal) {
   };
   return { shell: make(true), naked: make(false), dust: c01(T[1]) };
 }
-const ramp4 = (T, t) => T[clamp(Math.floor(t * 4), 0, 3)];
 
 export class RockCrab extends Critter {
   static info = { id: 'rock_crab', name: 'Rock Crab', catch: 'hit', drop: 'crab_shell', snd: 'stone' };

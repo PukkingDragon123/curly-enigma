@@ -51,6 +51,19 @@ export const FURNITURE = {
   fountain: { name: 'Little Fountain', kind: 'decor', size: [2, 2], price: 15000, value: 4000, icon: { k: 'furn', t: 'fountain' }, desc: 'Trickles soothingly.' },
   trophy_pick: { name: 'Golden Pick Trophy', kind: 'decor', size: [1, 1], price: 50000, value: 12000, light: 0xffd34a, icon: { k: 'furn', t: 'trophy' }, desc: 'Awarded to yourself, by yourself.' },
   statue_mole: { name: 'Mole Statue', kind: 'decor', size: [2, 2], price: 120000, value: 30000, icon: { k: 'furn', t: 'statue' }, desc: 'You, in marble, heroically squinting.' },
+
+  // ---- hammer pieces (wave 16): built at home with the Builder's Hammer from materials (made), never
+  // sold; lv is the Building level that teaches it, blows how many hammer strikes it takes (src/home/hammer.js)
+  hp_post: { name: 'Timber Post', kind: 'decor', size: [1, 1], piece: true, made: { blk_log: 1 }, lv: 1, blows: 3, price: 0, value: 4, icon: { k: 'block', b: 'log' }, desc: 'A squared root-timber post, iron-strapped, floor to rock.' },
+  hp_crate: { name: 'Nailed Crate', kind: 'decor', size: [1, 1], piece: true, made: { blk_planks: 2 }, lv: 1, blows: 3, price: 0, value: 4, icon: { k: 'furn', t: 'crate' }, desc: 'Planks, a brace and a fistful of nails.' },
+  hp_deck: { name: 'Plank Decking', kind: 'rug', size: [2, 2], piece: true, made: { blk_planks: 4 }, lv: 1, blows: 4, price: 0, value: 8, icon: { k: 'block', b: 'planks' }, desc: 'A raised plank floor on little joists. Things stand on it.' },
+  hp_panel: { name: 'Plank Wall', kind: 'decor', size: [1, 1], piece: true, made: { blk_planks: 3 }, lv: 2, blows: 4, price: 0, value: 6, icon: { k: 'block', b: 'door' }, desc: 'Boards nailed to two rails between posts. A wall of your own.' },
+  hp_shelf: { name: 'Plank Shelving', kind: 'decor', size: [1, 1], piece: true, onWall: true, made: { blk_planks: 3 }, lv: 2, blows: 4, price: 0, value: 8, icon: { k: 'furn', t: 'bookshelf' }, desc: 'Three shelves against the rock, a jar or two already on them.' },
+  hp_stone: { name: 'Stone Wall', kind: 'decor', size: [1, 1], piece: true, made: { blk_cobble: 4 }, lv: 3, blows: 5, price: 0, value: 6, icon: { k: 'block', b: 'cobble' }, desc: 'Cobble laid in lime mortar, a little moss at the foot.' },
+  hp_bench: { name: 'Plank Bench', kind: 'decor', size: [2, 1], piece: true, made: { blk_planks: 4, blk_log: 1 }, lv: 3, blows: 4, price: 0, value: 10, icon: { k: 'block', b: 'workbench' }, desc: 'A long seat on two trestle legs.' },
+  hp_pillar: { name: 'Stone Pillar', kind: 'decor', size: [1, 1], piece: true, made: { blk_stonebrick: 3 }, lv: 4, blows: 5, price: 0, value: 12, icon: { k: 'block', b: 'stonebrick' }, desc: 'Dressed stone with a plinth and a carved capital.' },
+  hp_brick: { name: 'Brick Wall', kind: 'decor', size: [1, 1], piece: true, made: { blk_bricks: 4 }, lv: 5, blows: 5, price: 0, value: 12, icon: { k: 'block', b: 'bricks' }, desc: 'Fired clay bricks on a stone footing.' },
+  hp_table: { name: 'Trestle Table', kind: 'decor', size: [2, 1], piece: true, made: { blk_planks: 5 }, lv: 5, blows: 5, price: 0, value: 14, icon: { k: 'furn', t: 'longtable' }, desc: 'A long plank top on braced trestles.' },
 };
 
 export const FLOORS = {

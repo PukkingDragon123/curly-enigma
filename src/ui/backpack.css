@@ -671,11 +671,13 @@ html.is-touch .bp-hot .inv-slot .k { display: none; }
   100% { transform: translate(calc(var(--px) * 22), calc(var(--px) * -6)) rotate(110deg) scale(.7); opacity: 0; }
 }
 
-/* six tools on the rack: the sleeves are a little smaller so the column fits beside the pack */
+/* six tools on the rack: the sleeves are a little smaller so the column fits beside the pack, and
+   shrink further (--rk, set by Backpack.js fitRack) when the bag is short */
 .bp-equip .bp-loop, .bp-equip .bp-loop.empty, .bp-equip .inv-slot.bp-loop {
-  width: calc(var(--icon) * .78 + var(--px) * 10); height: calc(var(--icon) * .78 + var(--px) * 10); border-width: calc(var(--px) * 5); border-image-width: calc(var(--px) * 5);
+  width: calc((var(--icon) * .78 + var(--px) * 10) * var(--rk, 1)); height: calc((var(--icon) * .78 + var(--px) * 10) * var(--rk, 1)); border-width: calc(var(--px) * 5); border-image-width: calc(var(--px) * 5);
 }
-.bp-equip .bp-loop img { width: calc(var(--icon) * .78); height: calc(var(--icon) * .78); margin-top: 0; }
+.bp-equip .bp-loop img { width: calc(var(--icon) * .78 * var(--rk, 1)); height: calc(var(--icon) * .78 * var(--rk, 1)); margin-top: 0; }
+.bp-equip .bp-col { gap: calc(var(--px) * 2 * var(--rk, 1)); }
 /* phones: thinner pocket seams so the things in them stay big enough to read */
 @media (max-width: 640px) {
   .bp-pack .inv-slot.pocket, .bp-pack .inv-slot.sewn, .bp-hot .inv-slot.loop { border-width: calc(var(--px) * 3); border-image-width: calc(var(--px) * 3); }

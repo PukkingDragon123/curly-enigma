@@ -13,6 +13,7 @@
 import { VG, tone, dir8, DIR8, boxify, down2 } from './vox.js';
 import { rng, ph } from './paint.js';
 import { RES12 } from '../../gfx/voxRes.js';
+import * as SP from './shrooms.js'; // (wave 16) one design per mushroom and flower species
 
 // ---------------------------------------------------------------- ramps (dark → light)
 export const RAMP = {
@@ -185,10 +186,27 @@ function frond(r, g, x0, y0, z0, a, L, tilt0, droop, pw, RR, o = {}) {
     }
     side = -side;
   }
+  if (o.curl) { const sx = x0 + hx * s, sz = z0 + hz * s; curlTip(g, sx, Math.round(y), sz, hx, hz, RR, 1.6 + L * 0.06); }
   return Math.round(y);
 }
 
 /** A rosette of fronds (floor) or a fan out of a wall. o: { n, len [min, max] (voxels), tilt, droop, pw, lobed, gap, wall, tone }. */
+/** A fiddlehead: a stalk rising h voxels, then rolled into a spiral crozier facing heading a. */
+function fiddlehead(g, x, y, z, a, h, RR) {
+  const [hx, hz] = dir8(a);
+  for (let k = 0; k < h; k++) g.set(x + hx * Math.round(k * k * 0.02), y + k, z + hz * Math.round(k * k * 0.02), tone(RR, 2 + k / h * 1.5));
+  const bx = x + hx * Math.round(h * h * 0.02), by = y + h, bz = z + hz * Math.round(h * h * 0.02);
+  for (let t = 0; t < 2.6 * Math.PI; t += 0.18) {
+    const rr = 3.2 * (1 - t / (2.9 * Math.PI)), u = Math.sin(t) * rr, v = (1 - Math.cos(t)) * rr * 0.9;
+    g.set(bx + hx * u, by + v - (t > Math.PI ? rr * 0.3 : 0), bz + hz * u, tone(RR, 3 + t * 0.4), 0);
+    if (t < Math.PI) g.add(bx + hx * u + (hz ? 1 : 0), by + v, bz + hz * u + (hx ? 1 : 0), tone(RR, 4.5)); // the furled pinnae
+  }
+}
+/** A frond's tip rolled under into a small curl (curly ferns). */
+function curlTip(g, x, y, z, hx, hz, RR, size = 2.2) {
+  for (let t = 0; t < 1.8 * Math.PI; t += 0.3) { const rr = size * (1 - t / (2.2 * Math.PI)); g.set(x + hx * Math.sin(t) * rr, y - (1 - Math.cos(t)) * rr, z + hz * Math.sin(t) * rr, tone(RR, 4 + t * 0.2)); }
+}
+
 function fern(r, RR, o = {}) {
   const Lmax = o.len[1];
   const reach = Math.ceil(Lmax * 1.05) + 3;
@@ -205,7 +223,8 @@ function fern(r, RR, o = {}) {
   }
   // the crown: a tight knot of fiddleheads and old stalk bases
   if (!wall) for (let i = 0; i < 4; i++) g.set(cx + (i & 1), 0, cz + (i >> 1), tone(RR, 1));
-  if (!wall && o.fiddle) { g.set(cx, 2, cz, tone(RR, 4)); g.set(cx + 1, 3, cz, tone(RR, 4)); g.set(cx + 1, 4, cz, tone(RR, 5)); g.set(cx, 4, cz, tone(RR, 3)); }
+  // (wave 16) fiddleheads: young fronds standing up out of the crown, rolled into tight spirals
+  if (!wall && o.fiddle) for (let i = 0; i < r.int(2, 3); i++) fiddlehead(g, cx + r.int(-1, 1), 0, cz + r.int(-1, 1), r() * Math.PI * 2, r.int(7, 11), RR);
   return { g, pivot: [cx, 0, cz], mode: wall ? 'out' : 'up' };
 }
 
@@ -677,11 +696,11 @@ export const MODELS = {
   ashGrass: (r) => tuft(r, R.ash, { h: 12, n: r.int(6, 8), broken: 0.4, tone: 1, specks: 3, speckCol: R.ember, speckGlow: 3 }),
   voidGrass: (r) => tuft(r, R.void, { h: 14, n: r.int(7, 10), stiff: true, glowTip: 3, tone: 0.6 }),
   fungusGrass: (r) => tuft(r, R.stem, { h: 9, n: r.int(10, 14), wide: false, glowTip: 2, tone: -0.4, specks: 3, speckCol: r() < 0.5 ? R.violet : R.cyan, speckGlow: 3 }),
-  fern: (r) => fern(r, R.fern, { n: [5, 7], len: [17, 27], tilt: [0.5, 0.8], droop: 0.95, pw: 5, fiddle: r() < 0.3 }),
-  fernPale: (r) => fern(r, R.pale, { n: [4, 6], len: [13, 21], tilt: [0.55, 0.85], droop: 0.9, pw: 4 }),
+  fern: (r) => fern(r, R.fern, { n: [5, 7], len: [17, 27], tilt: [0.5, 0.8], droop: 0.95, pw: 5, fiddle: true, curl: true }),
+  fernPale: (r) => fern(r, R.pale, { n: [4, 6], len: [13, 21], tilt: [0.55, 0.85], droop: 0.9, pw: 4, curl: true, fiddle: r() < 0.5 }),
   giantFern: (r) => fern(r, R.dino, { n: [6, 8], len: [36, 54], tilt: [0.32, 0.55], droop: 0.75, pw: 8, lobed: true, rw: true, gap: 3, tone: -0.3 }),
   horsetail,
-  wallFern: (r) => fern(r, R.fern, { n: [3, 5], len: [12, 21], tilt: [0.6, 0.9], droop: 1.0, pw: 4, wall: true }),
+  wallFern: (r) => fern(r, R.fern, { n: [3, 5], len: [12, 21], tilt: [0.6, 0.9], droop: 1.0, pw: 4, wall: true, curl: true }),
   wallFernDino: (r) => fern(r, R.dino, { n: [3, 4], len: [24, 38], tilt: [0.55, 0.85], droop: 0.9, pw: 6, lobed: true, wall: true, gap: 3, tone: -0.3 }),
   clover: (r) => clover(r),
   cloverGlow: (r) => clover(r, { flowers: 3, flowerRamp: [0x1a6a72, 0x3ab0b4, 0x8ef0e6, 0xe8fffa], flowerGlow: 3 }),
@@ -691,25 +710,25 @@ export const MODELS = {
   litter,
   pebbles: (r) => pebbles(r),
   starMoss,
-  fungusCyan: (r) => fungus(r, R.cyan),
-  fungusViolet: (r) => fungus(r, R.violet, R.stem, { shape: r() < 0.5 ? 'cone' : undefined }),
-  fungusPink: (r) => fungus(r, R.pink),
-  fungusBlue: (r) => fungus(r, R.blue, R.stem, { shape: 'dome' }),
-  fungusAmber: (r) => fungus(r, R.amber, R.stem, { shape: 'flat', glow: 1 }),
-  fungusBrown: (r) => fungus(r, R.brownCap, R.stem, { glow: 0 }),
-  puffballs,
-  brownCap: (r) => fungus(r, R.brownCap, R.stem, { shape: 'flat', glow: 0, n: r.int(1, 3), big: 1.2, spots: 0.03, spotCol: 0xd8b48a }),
-  toadstool: (r) => fungus(r, R.red, R.stem, { shape: 'dome', glow: 0, n: r.int(1, 3), big: 1.05, spots: 0.18, spotCol: 0xf4ece0 }),
-  inkcap: (r) => fungus(r, R.ink, R.stem, { shape: 'cone', glow: 0, n: r.int(2, 4), tall: [10, 14], h: [4, 8], cr: [2.6, 3.4], spots: 0.04, spotCol: 0x14121a }),
-  glowShroom: (r) => fungus(r, r() < 0.33 ? R.violet : r() < 0.5 ? R.cyan : R.blue, R.stem, { shape: r() < 0.5 ? 'dome' : 'cone', n: r.int(2, 3), tall: [17, 24], h: [7, 12], cr: [3.2, 4.2] }),
-  mushTiny: (r) => (r() < 0.7 ? fungus(r, r() < 0.5 ? R.amber : R.cyan, R.stem, { n: r.int(5, 7), tall: [3, 4], h: [1, 3], cr: [1.8, 2.2], big: 0.9, shape: 'dome' }) : fungus(r, R.brownCap, R.stem, { n: r.int(5, 7), tall: [3, 4], h: [1, 3], cr: [1.8, 2.2], shape: 'dome', glow: 0, spots: 0.02 })),
-  emberCap: (r) => fungus(r, R.ember, R.ash, { shape: r() < 0.5 ? 'flat' : 'dome', n: r.int(2, 4), glow: 2 }),
-  frostCap: (r) => fungus(r, R.frost, R.frost, { shape: 'cone', n: r.int(2, 4), tall: [7, 10], glow: 1 }),
-  flowerCyan: (r) => flower(r, R.cyan, r() < 0.5 ? 'bell' : 'orb'),
-  flowerViolet: (r) => flower(r, R.violet, r() < 0.5 ? 'star' : 'spike'),
-  flowerPink: (r) => flower(r, R.pink, r() < 0.5 ? 'bell' : 'star'),
-  flowerEmber: (r) => flower(r, R.ember, r() < 0.5 ? 'orb' : 'spike', { stem: R.ash }),
-  flowerFrost: (r) => (r() < 0.5 ? flower(r, R.frost, 'star', { stem: R.frost }) : flower(r, R.crystal, 'bell', { stem: R.frost })),
+  fungusCyan: (r) => SP.lanterns(r, R),
+  fungusViolet: (r) => SP.witchHats(r, R),
+  fungusPink: (r) => SP.frills(r, R),
+  fungusBlue: (r) => SP.dotDomes(r, R),
+  fungusAmber: (r) => SP.trumpets(r, R),
+  fungusBrown: (r) => SP.porcini(r, R),
+  puffballs: (r) => (r() < 0.6 ? SP.earthstar(r, R) : puffballs(r)),
+  brownCap: (r) => SP.parasols(r, R),
+  toadstool: (r) => SP.toadstools(r, R),
+  inkcap: (r) => SP.shaggy(r, R),
+  glowShroom: (r) => SP.glowStalks(r, R),
+  mushTiny: (r) => SP.bonnets(r, R),
+  emberCap: (r) => SP.morels(r, R),
+  frostCap: (r) => SP.icicles(r, R),
+  flowerCyan: (r) => (r() < 0.55 ? SP.bellArch(r, R, R.cyan) : SP.lantern(r, R, R.cyan)),
+  flowerViolet: (r) => (r() < 0.65 ? SP.crystalBloom(r, R, R.violet) : flower(r, R.violet, 'spike')),
+  flowerPink: (r) => (r() < 0.6 ? SP.pitchers(r, R, R.pink) : flower(r, R.pink, 'star')),
+  flowerEmber: (r) => (r() < 0.6 ? SP.fireLily(r, R, R.ember, R.ash) : flower(r, R.ember, 'orb', { stem: R.ash })),
+  flowerFrost: (r) => (r() < 0.5 ? SP.crystalBloom(r, R, R.crystal, R.frost) : SP.bellArch(r, R, R.frost, R.frost)),
   thorn,
   stoneRose,
   ashWeed,
@@ -717,7 +736,7 @@ export const MODELS = {
   roots: (r) => roots(r, { len: 54 }),
   rootsShort: (r) => roots(r, { len: 24, n: r.int(4, 6) }),
   vine: (r) => vine(r, { len: 64 }),
-  vineBerry: (r) => vine(r, { len: 62, berry: r() < 0.5 ? R.cyan : R.pink, n: 2 }),
+  vineBerry: (r) => SP.bellVine(r, R, { len: 62, bell: r() < 0.5 ? R.cyan : R.pink }), // (wave 16) a bell-vine
   vineDino: (r) => vine(r, { len: 76, leaf: R.dino, n: 2 }),
   glowVine: (r) => vine(r, { len: 68, berry: R.amber, n: 2, berryP: 0.4 }), // cave vines hung with glow berries
   mossDrape: (r) => mossDrape(r, { len: 24, glowTip: 1 }),

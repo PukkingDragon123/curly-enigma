@@ -9,6 +9,7 @@ import { PGrid, PU, meshPropSteps, rng32, hv, shade, mixc } from './grid.js';
 import { LIFT_BUILD } from './lifts.js';
 import { HIRES } from './hires.js';
 import { HIRES_PLANTS } from './hiresPlants.js';
+import { HIRES64 } from './hires64.js'; // (wave 16) crates, barrels, signs at 1/64 m; carts, rails, supports at 1/32 m
 import { refineSteps, refineGrid, contentExtent, RES12 } from '../../gfx/voxRes.js';
 import { crystalHi, crystalCHi, shardHi, CRYSTAL_K } from './crystalHi.js';
 import { oreBit } from './oreBits.js';
@@ -707,7 +708,7 @@ BUILD.ashfern = (r, v) => BUILD.blindfern(r, v, 'ash');
 Object.assign(BUILD, LIFT_BUILD);
 // the 1/32 m set: lanterns on supports, glowing mushrooms, crates, barrels, rope coils, ore carts,
 // and the commonest forage plants (glowcaps, carrots, ferns, gloomshrooms, peppers, blooms, lilies)
-Object.assign(BUILD, HIRES, HIRES_PLANTS);
+Object.assign(BUILD, HIRES, HIRES_PLANTS, HIRES64);
 // one-off models built from world data (a lift's skinned cage, its lamp): defineModel(key, fn)
 const CUSTOM = new Map();
 BUILD.custom = (r, v, p) => (CUSTOM.get(p)?.() || { grid: new PGrid(1, 1, 1), pivot: [0, 0, 0] });

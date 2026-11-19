@@ -48,6 +48,9 @@ export const BUILD_ITEMS = {
     desc: 'A proper digging spade. Earth goes where it is told.' },
   spade_steel: { name: 'Steel Spade', cat: 'tool', slot: 'spade', tier: 4, power: 3.6, price: 8000, value: 2000, icon: { k: 'btool', t: 'spade', c: 0xc6d2de },
     desc: 'Cuts through clay like it was cake. Nice cake.' },
+  // the belt's build slot (wave 16): the hammer that puts up pieces at home and blocks below
+  builder_hammer: { name: 'Builder\'s Hammer', cat: 'tool', slot: 'build', tier: 1, value: 0, icon: { k: 'btool', t: 'hammer', c: 0x9aa0a8 },
+    desc: 'Hammers pieces into your alcoves, blocks into the mine. Wheel or hold Q to pick a piece.' },
   shears: { name: 'Pruning Shears', cat: 'tool', slot: 'shears', tier: 2, power: 1.5, price: 180, value: 45, icon: { k: 'btool', t: 'shears', c: 0x9aa0a8 },
     desc: 'Snips vines and webs clean, so you keep them. Without them vines just tear.' },
 };

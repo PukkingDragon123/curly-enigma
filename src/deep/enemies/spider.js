@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { Legs } from './rig.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
+import { H, taper, eye, tufts } from './voxKit.js';
 import { puff, sparkle } from './fx.js';
 import { LAYER_OUTLINE } from '../../core/Engine.js';
 import { rand, clamp } from '../../core/util.js';
@@ -24,6 +25,10 @@ const palFor = (z) => PAL[z >= 4 ? 4 : z >= 3 ? 3 : 1];
 const BODY_Y = 8.5; // body height (voxels) when standing
 
 export function buildSpider(zone) {
+  // (wave 16) at half the old voxel: a ridged carapace with a dark fovea and radial grooves, a hairy
+  // abdomen with a pale chevron saddle and side bands, eight eyes (two big glossy ones), hairy
+  // chelicerae with curved glossy fangs, clubbed palps, and jointed legs that taper to hooked claws,
+  // banded and bristled, with a knee knob at each joint
   const P = palFor(zone), S = P.s;
   const sc = (vb, k0 = 0.35) => (x, y, z, nx, ny, nz) => {
     if (typeof ny !== 'number') { ny = 0; nz = 0; }
@@ -31,47 +36,61 @@ export function buildSpider(zone) {
     return S[Math.floor(clamp(k0 + ny * 0.42 + (n - 0.5) * 0.3, 0, 0.999) * 4)];
   };
   const body = new VB(71), bs = sc(body);
-  body.ell(0, 0, 3, 4.6, 3, 5, bs); // cephalothorax
-  body.ell(0, 2.4, -7.5, 6.6, 5.4, 8, bs); // abdomen
-  body.ell(0, 1, -1.5, 2.2, 2, 2, bs); // waist
-  // markings on the abdomen: a pale chevron stripe and spots; bristles
+  body.ell(0, 0, 6, 9.2, 6, 10, bs); // cephalothorax
+  body.ell(0, 4.8, -15, 13.2, 10.8, 16, bs); // abdomen
+  body.ell(0, 2, -3, 4.4, 4, 4, bs); // waist
+  // carapace: radial grooves from the fovea, a lighter rim; abdomen: chevron saddle, side bands, spots
   body.paint((x, y, z, c) => {
-    if (!body.open(x, y, z, 0, 1, 0) || z > -1) return undefined;
-    const u = -z - 2;
-    if (Math.abs(Math.abs(x) - (u % 4) * 0.6) < 0.7 && u % 4 < 2.5 && u < 13) return P.mark;
-    if (body.n(x, y, z, 4) > 0.9) return mul(P.mark, 0.8);
+    if (!body.open(x, y, z, 0, 1, 0)) return undefined;
+    if (z > -2) {
+      const dx = x + 0.5, dz = z + 0.5 - 4, a = Math.atan2(dz, dx), r = Math.hypot(dx, dz);
+      if (r < 1.3) return S[0];
+      if (r > 3 && r < 8.5 && Math.abs(((a / (Math.PI / 4)) % 1 + 1) % 1 - 0.5) > 0.4) return mul(S[1], 0.85);
+      if (r > 8.2) return S[3];
+      return undefined;
+    }
+    const u = -z - 4, ax = Math.abs(x + 0.5);
+    if (u > 0 && u < 26 && Math.abs(ax - (u % 7) * 0.9) < 1.1 && u % 7 < 4.5) return P.mark;
+    if (u > 0 && u < 26 && ax < 1.2 && u % 7 > 5) return mul(P.mark, 0.75);
+    if (body.n(x, y, z, 4) > 0.93) return mul(P.mark, 0.8);
     return undefined;
   });
-  for (let i = 0; i < 40; i++) { const h = body.hitFrom(rand(-8, 8), 12, rand(-16, 6), 0, -1, 0); if (h) body.set(h[0], h[1] + 1, h[2], S[0]); }
-  body.box(-1, 0, -16, 0, 1, -15, mul(S[2], 1.1)); // spinnerets
+  body.paint((x, y, z) => (z < -4 && body.open(x, y, z, Math.sign(x) || 1, 0, 0) && Math.abs(x) > 9 && ((y + 40) % 5 === 0) ? mul(S[0], 1.1) : undefined));
+  tufts(body, 150, { tones: [S[0], S[1], S[2]], seed: 7, len: [1, 2], filter: (x, y, z) => z < -2 });
+  body.box(-2, 1, -32, 1, 3, -30, mul(S[2], 1.1)); body.box(-1, 1, -33, 0, 2, -33, mul(S[3], 1.1)); // spinnerets
   const glow = new VB(72);
   if (P.crystal) for (let i = 0; i < 7; i++) {
-    const h = body.hitFrom(rand(-4, 4), 12, -4 - i * 1.6, 0, -1, 0);
+    const h = body.hitFrom(rand(-8, 8), 24, -8 - i * 3.2, 0, -1, 0);
     if (!h) continue;
-    for (let k = 0; k < 3 + (i % 3); k++) glow.set(h[0], h[1] + 1 + k, h[2] + (k > 1 ? -1 : 0), P.crystal[Math.min(2, k)]);
+    taper(glow, h[0], h[1], h[2], h[0] + rand(-1.5, 1.5), h[1] + 5 + (i % 3) * 2, h[2] - 2, 1.6, 0.5, (x, y, z, t) => P.crystal[Math.min(2, Math.floor(t * 3))]);
   }
-  // eyes: two big ones in front, six small around
+  // eyes: two big glossy ones in front, six small around (placed at (0, 1, 0) VS)
   const eyes = new VB();
-  const eyeSpots = [[1, 1, 1.5], [-2, 1, 1.5], [2, 2, 1], [-3, 2, 1], [0, 2.5, 0.5], [-1, 2.5, 0.5], [3, 0, 0.5], [-4, 0, 0.5]];
-  eyeSpots.forEach(([x, y], i) => {
-    const h = body.hitFrom(x, y, 14, 0, 0, -1);
-    if (!h) return;
-    eyes.set(h[0], h[1], h[2] + 1, i < 2 ? 0xffffff : P.eye);
-    if (i < 2) { eyes.set(h[0] + (x > 0 ? 1 : -1), h[1], h[2] + 1, P.eye); eyes.set(h[0], h[1] - 1, h[2] + 1, P.eye); eyes.set(h[0] + (x > 0 ? 1 : -1), h[1] - 1, h[2] + 1, mul(P.eye, 0.7)); }
-  });
-  // fangs (one mesh per side, pivot at the root) and feelers
+  const eyeSpots = [[2, 2.5, 1.6], [-2, 2.5, 1.6], [4.6, 4, 0.9], [-4.6, 4, 0.9], [1.3, 5.3, 0.75], [-1.3, 5.3, 0.75], [6.4, 1.2, 0.8], [-6.4, 1.2, 0.8]];
+  for (const [x, y, r] of eyeSpots) eye(eyes, x, y, 0, r, r, { iris: r > 1 ? mul(P.eye, 0.7) : P.eye, pupil: mul(P.eye, 0.22), pr: r > 1 ? 0.55 : 0, on: body });
+  // fangs (one mesh per side, pivot at the root): a hairy chelicera and a curved glossy fang
   const fang = new VB(73);
-  fang.ell(0, 0, 0, 1.3, 1.4, 1.3, S[1]);
-  fang.cap(0, -0.5, 0.5, 0.4, -3.5, 1.4, 0.8, (x, y, z, t) => (t > 0.6 ? 0xd8c8b0 : P.fang));
+  fang.ell(0, 0, 0, 2.6, 2.8, 2.6, (x, y, z, nx, ny) => (fang.n(x, y, z) > 0.6 ? S[2] : ny > 0.2 ? S[2] : S[1]));
+  tufts(fang, 10, { tones: [S[0], S[1]], seed: 2, len: [1, 1] });
+  taper(fang, 0, -1.5, 1, 0.6, -5, 2.2, 1.5, 0.9, (x, y, z, t) => (t > 0.5 ? 0xd8c8b0 : P.fang));
+  taper(fang, 0.6, -5, 2.2, 0.8, -7.4, 1.4, 0.9, 0.35, (x, y, z, t) => (t > 0.5 ? 0xfff4e0 : 0xd8c8b0));
+  // palps: two segments and a dark club
   const palp = new VB(74);
-  palp.cap(0, 0, 0, 0, 0.5, 3.4, 0.7, S[2]); palp.cap(0, 0.5, 3.4, 0, -1.2, 4.6, 0.6, S[1]);
-  // legs: femur (up from the body to the knee) and tibia (down to the foot), banded
+  taper(palp, 0, 0, 0, 0, 1, 6.8, 1.4, 1.2, (x, y, z, t) => (t > 0.85 ? S[3] : S[2]));
+  taper(palp, 0, 1, 6.8, 0, -2.4, 9.2, 1.2, 1, S[1]);
+  palp.ell(0, -2.6, 9.4, 1.6, 1.8, 1.6, S[0]); palp.set(0, -1, 10, S[3]);
+  // legs: femur (up from the body to the knee) and tibia (down to the foot), banded, bristled, jointed
+  const band = (t, n) => (Math.floor(t * n) % 2 ? S[1] : S[2]);
   const fem = new VB(75);
-  fem.cap(0, 0, 0, 0, -11, 0, 1.15, (x, y, z, t) => (t > 0.85 ? S[3] : (Math.floor(t * 6) % 2 ? S[1] : S[2])));
-  for (let i = 0; i < 10; i++) fem.set(i % 2 ? 1 : -2, -1 - i, i % 3 - 1, S[0]); // bristles
+  taper(fem, 0, 0, 0, 0, -20, 0, 2.4, 1.8, (x, y, z, t) => (t < 0.08 ? S[3] : band(t, 5)));
+  fem.ell(0, -21, 0, 2.5, 2.2, 2.5, (x, y, z, nx, ny) => (ny > 0.3 ? S[3] : S[2])); // knee
+  for (let i = 0; i < 26; i++) { const y = -2 - Math.floor(fem.n(i, 0, 0, 1) * 17), a = fem.n(i, 1, 0, 1) * Math.PI * 2; const x = Math.round(Math.cos(a) * 3), z = Math.round(Math.sin(a) * 3); fem.set(x, y, z, S[0]); if (i % 4 === 0) fem.set(Math.round(Math.cos(a) * 4), y + 1, Math.round(Math.sin(a) * 4), mul(P.mark, 0.6)); }
   const tib = new VB(76);
-  tib.cap(0, 0, 0, 0, -13, 0, 0.85, (x, y, z, t) => (t > 0.85 ? mul(P.mark, 0.6) : t < 0.1 ? S[3] : (Math.floor(t * 5) % 2 ? S[1] : S[2])));
-  const V = (vb, px = 0, py = 0, pz = 0) => vb.geo(px, py, pz);
+  taper(tib, 0, 0, 0, 0, -18, 0, 1.8, 1.1, (x, y, z, t) => (t < 0.07 ? S[3] : band(t, 4)));
+  taper(tib, 0, -18, 0, 0, -25, 0.6, 1.1, 0.7, (x, y, z, t) => (t > 0.6 ? mul(P.mark, 0.6) : S[1]));
+  tib.set(0, -26, 1, P.fang); tib.set(0, -26, 2, 0xd8c8b0); tib.set(0, -25, 2, P.fang); // hooked claw
+  for (let i = 0; i < 18; i++) { const y = -2 - Math.floor(tib.n(i, 0, 0, 2) * 20), a = tib.n(i, 1, 0, 2) * Math.PI * 2; tib.set(Math.round(Math.cos(a) * 2.3), y, Math.round(Math.sin(a) * 2.3), S[0]); }
+  const V = (vb, px = 0, py = 0, pz = 0) => vb.geo(px * 2, py * 2, pz * 2, H);
   return { body: V(body), glow: glow.size ? V(glow) : null, eyes: V(eyes, 0, 1, 0), fang: V(fang), palp: V(palp), fem: V(fem), tib: V(tib), hide: c01(S[2]), eye: c01(P.eye) };
 }
 

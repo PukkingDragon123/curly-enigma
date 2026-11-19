@@ -1,0 +1,74 @@
+/* The Builder's Hammer (wave 16, src/home/hammer.js): the quick strip over the belt and the radial wheel. */
+.hm-strip {
+  position: absolute; left: 50%; bottom: calc(var(--sab, 0px) + var(--px) * 29); transform: translateX(-50%); z-index: 4; pointer-events: auto;
+  display: flex; flex-direction: column; align-items: center; gap: calc(var(--px) * 1); font-family: var(--font); animation: hm-in .2s var(--pop);
+}
+@keyframes hm-in { 0% { transform: translateX(-50%) translateY(calc(var(--px) * 6)) scale(.9); opacity: 0; } }
+.hm-row {
+  display: flex; align-items: flex-end; gap: calc(var(--px) * 1); padding: calc(var(--px) * 2) calc(var(--px) * 3);
+  background: linear-gradient(#6e4424 0 var(--px), #4e2e16 var(--px) calc(100% - var(--px) * 2), #2e1a0c calc(100% - var(--px) * 2));
+  box-shadow: 0 0 0 var(--px) #120804, inset 0 0 0 var(--px) #8a5a32, inset 0 calc(var(--px) * 2) 0 rgba(255, 200, 140, .12), 0 calc(var(--px) * 2) 0 var(--px) rgba(0, 0, 0, .35);
+}
+.hm-side { display: flex; align-items: flex-end; gap: calc(var(--px) * 1); }
+.hm-slot {
+  position: relative; width: calc(var(--px) * 14); height: calc(var(--px) * 14); padding: 0; border: 0; cursor: pointer; display: grid; place-items: center;
+  background: linear-gradient(#3a2414 0 var(--px), #2a180c var(--px)); box-shadow: 0 0 0 var(--px) #120804, inset 0 0 0 var(--px) #5a3a1e;
+  transition: transform .12s var(--pop), filter .12s;
+}
+.hm-slot img { width: calc(var(--px) * 12); height: calc(var(--px) * 12); image-rendering: pixelated; }
+.hm-slot.far2 { opacity: .55; transform: scale(.82); }
+.hm-slot.far1 { opacity: .85; }
+.hm-slot:hover { transform: translateY(calc(var(--px) * -1)); filter: brightness(1.12); }
+.hm-slot.big { width: calc(var(--px) * 22); height: calc(var(--px) * 22); background: linear-gradient(#5a3a1e 0 var(--px), #3e2410 var(--px)); box-shadow: 0 0 0 var(--px) #120804, 0 0 0 calc(var(--px) * 2) #e8be56, 0 0 0 calc(var(--px) * 3) #6a4410, inset 0 0 0 var(--px) #8a5a32; }
+.hm-slot.big img { width: calc(var(--px) * 20); height: calc(var(--px) * 20); }
+.hm-slot.big.bump { animation: hm-bump .26s var(--pop); }
+@keyframes hm-bump { 35% { transform: scale(1.16, .88); } 65% { transform: scale(.94, 1.06); } }
+.hm-slot.locked img { filter: brightness(.35) saturate(.3); }
+.hm-slot.short img { filter: saturate(.55) brightness(.85); }
+.hm-n, .hm-lock { position: absolute; right: calc(var(--px) * -2); bottom: calc(var(--px) * -2); font: 16px/1 var(--font); font-style: normal; color: #fff4d0; text-shadow: 1px 0 0 #120804, -1px 0 0 #120804, 0 1px 0 #120804, 0 -1px 0 #120804; }
+.hm-lock { color: #ffd0a0; left: 50%; right: auto; transform: translateX(-50%); white-space: nowrap; }
+.hm-cat { align-self: center; width: calc(var(--px) * 12); height: calc(var(--px) * 12); margin-right: calc(var(--px) * 2); padding: 0; border: 0; cursor: pointer; background: linear-gradient(135deg, #fff0b0 0 20%, #e8be56 20% 50%, #a87420 50% 80%, #6a4410 80%); box-shadow: 0 0 0 var(--px) #2a1606; display: grid; place-items: center; }
+.hm-cat img { width: calc(var(--px) * 10); height: calc(var(--px) * 10); image-rendering: pixelated; }
+.hm-cat:active { transform: scale(.92); }
+.hm-info { display: flex; align-items: center; gap: calc(var(--px) * 3); padding: 0 calc(var(--px) * 3); text-shadow: 0 var(--px) 0 #120804, var(--px) 0 0 #120804, calc(var(--px) * -1) 0 0 #120804, 0 calc(var(--px) * -1) 0 #120804; }
+.hm-name { font: var(--fs-h)/1 var(--font-display); color: #ffe8b0; white-space: nowrap; }
+.hm-cost { display: flex; gap: calc(var(--px) * 2); }
+.hm-mat, .hm-need { display: flex; align-items: center; gap: var(--px); font-size: 16px; color: #f4e2b4; }
+.hm-mat img { width: 32px; height: 32px; image-rendering: pixelated; margin: -6px -2px; }
+.hm-mat.short, .hm-need { color: #ff9a7a; }
+.hm-msg { font-size: 16px; color: #ffd0a0; text-shadow: 0 var(--px) 0 #120804, var(--px) 0 0 #120804, calc(var(--px) * -1) 0 0 #120804; opacity: 0; transform: translateY(calc(var(--px) * 2)); transition: opacity .15s, transform .15s var(--pop); min-height: 16px; }
+.hm-msg.on { opacity: 1; transform: none; }
+.hm-keys { align-self: center; margin-left: calc(var(--px) * 2); opacity: .8; }
+.hm-keys kbd { font-size: 16px; }
+.hm-strip.away { opacity: 0; pointer-events: none; transform: translateX(-50%) translateY(calc(var(--px) * 6)); transition: opacity .12s, transform .12s; }
+
+/* the radial wheel round the crosshair: an iron-banded oak wheel, pieces on the rim, categories in the hub */
+.hm-wheel {
+  --wd: min(calc(var(--px) * 120), 86vw, 86vh); --wr: calc(var(--wd) * .38); --ws: calc(var(--px) * 16); --wc: calc(var(--wd) * .13); --wcs: calc(var(--px) * 11);
+  position: absolute; left: 50%; top: 50%; width: var(--wd); height: var(--wd); margin: calc(var(--wd) / -2) 0 0 calc(var(--wd) / -2); z-index: 8; pointer-events: auto;
+  filter: drop-shadow(0 calc(var(--px) * 3) 0 rgba(6, 3, 1, .55));
+}
+.hm-wheel[hidden] { display: none; }
+.hm-wheel.in { animation: hm-wheel .2s var(--pop); }
+@keyframes hm-wheel { 0% { transform: scale(.6) rotate(-20deg); opacity: 0; } }
+.hm-plate { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.hm-wheel .hm-slot { position: absolute; width: var(--ws); height: var(--ws); }
+.hm-wheel .hm-slot img { width: calc(var(--ws) - var(--px) * 3); height: calc(var(--ws) - var(--px) * 3); }
+.hm-wheel .hm-slot.on { box-shadow: 0 0 0 var(--px) #120804, 0 0 0 calc(var(--px) * 2) #8a5a32, inset 0 0 0 var(--px) #5a3a1e; }
+.hm-wheel .hm-slot.hot { transform: scale(1.22); z-index: 2; box-shadow: 0 0 0 var(--px) #120804, 0 0 0 calc(var(--px) * 2) #ffe08a, 0 0 0 calc(var(--px) * 3) #6a4410; }
+.hm-wcat { position: absolute; width: var(--wcs); height: var(--wcs); padding: 0; border: 0; cursor: pointer; display: grid; place-items: center; background: #2e2620; box-shadow: 0 0 0 var(--px) #120804, inset 0 0 0 var(--px) #5a4636; transition: transform .1s var(--pop); }
+.hm-wcat img { width: calc(var(--wcs) - var(--px) * 3); height: calc(var(--wcs) - var(--px) * 3); image-rendering: pixelated; opacity: .6; }
+.hm-wcat.on { background: #6a4410; box-shadow: 0 0 0 var(--px) #120804, inset 0 0 0 var(--px) #e8be56; }
+.hm-wcat.on img { opacity: 1; }
+.hm-wcat:hover { transform: scale(1.1); }
+.hm-wname { position: absolute; left: 50%; top: calc(100% + var(--px) * 2); transform: translateX(-50%); white-space: nowrap; font: var(--fs-h)/1 var(--font-display); color: #ffe8b0; text-shadow: 0 var(--px) 0 #120804, var(--px) 0 0 #120804, calc(var(--px) * -1) 0 0 #120804, 0 calc(var(--px) * -1) 0 #120804; }
+/* phones: the strip clears the belt block and the thumbs */
+html.is-touch .hm-strip { bottom: calc(var(--sab, 0px) + var(--px) * 40); }
+/* phones held upright: a short strip (the piece and one either side) beside the belt block, over the stick */
+@media (max-width: 560px) {
+  html.is-touch .hm-strip { left: calc(var(--sal, 0px) + var(--px) * 3); bottom: calc(var(--sab, 0px) + var(--px) * 128); transform: none; align-items: flex-start; animation: hm-in-l .2s var(--pop); }
+  html.is-touch .hm-strip.away { transform: translateY(calc(var(--px) * 6)); }
+  html.is-touch .hm-slot.far2 { display: none; }
+  html.is-touch .hm-info { padding: 0; flex-wrap: wrap; max-width: 46vw; }
+}
+@keyframes hm-in-l { 0% { transform: translateY(calc(var(--px) * 6)) scale(.9); opacity: 0; } }

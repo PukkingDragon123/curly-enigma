@@ -1,20 +1,20 @@
-// The Miners' Board: the tavern's upgrade board, a wooden board under a hanging sign with paper
-// cards pinned to it. Each card is one upgrade (data/upgrades.js): its icon, level pips, what it
-// does now and next, and the price (gold, sometimes ingots or gems) with a button to buy the
-// next level. Tabs: Digging, Hauling, Blasting, Tavern, Tools (the tool ladder: what you own,
-// what Grubb sells, what's still deeper down) and Milestones (a ledger). On the left: the purse
-// and the mole's rig sheet (pick power, swing, bag, energy, lamp, blast, the tavern's takings).
+// The Miners' Board: the tavern's board, a wooden board under a hanging sign with paper notices
+// pinned to it. Wave 16: gold no longer buys upgrades (it's for goods and the ticket): the board
+// keeps the tool ladder (Tools: what you own, what Grubb sells, what's still deeper down) and the
+// Milestones ledger; a wax seal on the left opens the skill tree, where the old upgrades are
+// learned now. On the left: the purse and the mole's rig sheet (pick power, swing, bag, energy,
+// lamp, blast, the tavern's takings).
 // openUpgrades(game, tab?) → panel handle (ui.openUpgrades()).
 import { el, formatGoldFull, pick } from '../core/util.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
 import { ZONES } from '../data/zones.js';
 import { SHOPS } from '../data/shops.js';
-import { UPGRADES, UPGRADE_TABS, MILESTONES, milestoneValue, milestoneText, upgradeEffect, upgradeLock } from '../data/upgrades.js';
+import { UPGRADE_TABS, MILESTONES, milestoneValue, milestoneText } from '../data/upgrades.js';
+import { tokenURL } from './skillArt.js';
 import { explosiveIconURL } from '../deep/explosives/icon.js';
 import { SPR } from './uiSprites.js';
-import { Px, art } from './uiArt.js';
-import { put, swing } from './common.js';
+import { put } from './common.js';
 import { installPanelArt } from './panelArt.js'; // (wave 9: iron strap hinges on the board's frame)
 import './upgrades.css';
 import { dropCap, inkIn, margins, sealCss, vars, ensureTomeArt } from './tomeFx.js'; // (wave 9: the notices as vellum leaves, src/ui/tome.css)
@@ -32,38 +32,15 @@ const STAR_LINES = [
   'Every swing counts. Every coin too.',
 ];
 
-// ---------------------------------------------------------------- badge glyphs (round seals)
-const BADGE = {
-  up: { c: [0x8ac85a, 0x5a9a3a, 0x2a4a1a], t: ['..x..', '.xxx.', 'xxxxx', '.xxx.', '.xxx.'] },
-  plus: { c: [0x8ac85a, 0x4f8a34, 0x22421a], t: ['..x..', '..x..', 'xxxxx', '..x..', '..x..'] },
-  fast: { c: [0xffd27a, 0xd9901e, 0x5e3608], t: ['x.x..', '.x.x.', '..x.x', '.x.x.', 'x.x..'] },
-  eye: { c: [0x9fd0ff, 0x3f7ec8, 0x18305a], t: ['.....', '.xxx.', 'xx.xx', '.xxx.', '.....'] },
-  shield: { c: [0xb8c8d8, 0x5a7090, 0x1e2a3a], t: ['xxxxx', 'xx.xx', 'xx.xx', '.x.x.', '..x..'] },
-  coin: { c: [0xffe08a, 0xd9a020, 0x5e3a08], t: ['.xxx.', 'x...x', 'x.x.x', 'x...x', '.xxx.'] },
-  clock: { c: [0xe0c8ff, 0x8256b8, 0x30184a], t: ['.xxx.', 'x.x.x', 'x.xxx', 'x...x', '.xxx.'] },
-  star: { c: [0xffe8a0, 0xe0a020, 0x5e3608], t: ['..x..', '..x..', 'xxxxx', '.x.x.', 'x...x'] },
-  lock: { c: [0xc8c0b0, 0x6e675f, 0x1c1a18], t: ['.xxx.', '.x.x.', 'xxxxx', 'xx.xx', 'xxxxx'] },
-};
-function badgeURL(kind) {
-  return art('ugbadge:' + kind, () => {
-    const b = BADGE[kind] || BADGE.star;
-    const p = new Px(11, 11);
-    p.disk(5, 5, 5, b.c[1]);
-    p.set(3, 2, b.c[0]); p.set(2, 3, b.c[0]); p.set(4, 2, b.c[0]); p.set(2, 4, b.c[0]);
-    p.tpl(b.t.map((r) => r.replace(/x/g, 'a')), { a: kind === 'lock' ? 0xf6e8c8 : 0xfff8e8 }, 3, 3);
-    p.outline(b.c[2]);
-    return p;
-  });
-}
-
 // ---------------------------------------------------------------- the board
 export function openUpgrades(game, startTab) {
   const st = game.state, ui = game.ui;
   installPanelArt();
   st.checkMilestones?.();
   const fresh = new Set((st.takeMilestones?.() || []).map((m) => m.id));
-  let tab = UPGRADE_TABS.some((t) => t.id === startTab) ? startTab : fresh.size ? 'ms' : 'dig';
+  let tab = UPGRADE_TABS.some((t) => t.id === startTab) ? startTab : fresh.size ? 'ms' : 'gear';
   let enter = true;
+  let h = null;
 
   const tabsEl = el('div', { class: 'ug-tabs', role: 'tablist' });
   const grid = el('div', { class: 'ug-grid' });
@@ -71,7 +48,11 @@ export function openUpgrades(game, startTab) {
   const purse = el('div', { class: 'ug-purse' });
   const sheet = el('div', { class: 'ug-sheet' });
   const note = el('div', { class: 'ug-star' }, [el('b', {}, 'Old Star'), el('span', {}, pick(STAR_LINES))]);
-  const side = el('div', { class: 'ug-side' }, [purse, sheet, note]);
+  // the skill tree's wax seal: where the old upgrades are learned now (skill points, not gold)
+  const skillBtn = el('button', { class: 'ug-skillseal', title: 'Skill tree', 'aria-label': 'Skill tree', onclick: () => { game.audio.play('page'); h.close?.(); setTimeout(() => (ui.openBook ? ui.openBook('skills') : ui.openSkills?.()), 60); } }, [
+    el('img', { class: 'pix', src: tokenURL(), alt: '' }), el('span', {}, 'Skills'),
+  ]);
+  const side = el('div', { class: 'ug-side' }, [purse, skillBtn, sheet, note]);
   const main = el('div', { class: 'ug-main' }, [tabsEl, scroll]);
   const room = el('div', { class: 'ug-room' }, [side, main]);
   const sign = el('div', { class: 'sh-sign ug-sign' }, [el('i', { class: 'sh-chain l' }), el('i', { class: 'sh-chain r' }), el('h2', {}, 'The Miners\' Board')]);
@@ -83,7 +64,7 @@ export function openUpgrades(game, startTab) {
     purse.innerHTML = '';
     put(purse,
       el('img', { class: 'pix ug-pouch', src: SPR.pouch(false), alt: '' }),
-      el('div', {}, [el('b', {}, formatGoldFull(st.gold)), el('small', {}, 'gold in the pouch'), el('small', {}, `${st.upgradeLevels()} upgrades bought`)]));
+      el('div', {}, [el('b', {}, formatGoldFull(st.gold)), el('small', {}, 'gold in the pouch'), el('small', {}, `${Object.keys(st.data.skills?.nodes || {}).length} skills learned`)]));
     const mb = st.mineBonus();
     const pk = st.equipped('pick');
     const line = (label, val, extra) => el('div', { class: 'ug-line' }, [el('span', {}, label), el('b', { html: val }), extra ? el('small', { html: extra }) : null].filter(Boolean));
@@ -95,7 +76,7 @@ export function openUpgrades(game, startTab) {
       line('Pick', pk ? pk.name.replace(' Pickaxe', '') : 'None', pk ? `tier ${pk.tier || 1}` : ''),
       line('Power', ((pk?.power || 1) * mb.power).toFixed(1), mb.power > 1 ? `×${mb.power.toFixed(2)}` : ''),
       line('Swing', `${swing.toFixed(2)} s`, mb.rate < 1 ? `${Math.round((1 / mb.rate - 1) * 100)}% faster` : ''),
-      line('Bag', `${st.bagCapacity()} finds`, st.upEffect('bag') ? `+${st.upEffect('bag')} pockets` : ''),
+      line('Bag', `${st.bagCapacity()} finds`, ''),
       line('Energy', `${st.maxEnergy}`, ''),
       line('Lamp', `${st.lightRadius().toFixed(1)} m`, ''),
       line('Blast', `×${mb.blast.toFixed(2)}`, mb.sticky ? 'sticky fuse' : ''),
@@ -107,93 +88,12 @@ export function openUpgrades(game, startTab) {
   const renderTabs = () => {
     tabsEl.innerHTML = '';
     for (const t of UPGRADE_TABS) {
-      const n = t.id === 'ms' ? fresh.size : Object.keys(UPGRADES).filter((id) => UPGRADES[id].tab === t.id && st.canUpgrade(id, ZONE_NAMES).ok).length;
+      const n = t.id === 'ms' ? fresh.size : 0;
       const b = el('button', { class: 'ug-tab' + (tab === t.id ? ' on' : ''), role: 'tab', 'aria-selected': tab === t.id ? 'true' : 'false',
         onclick: () => { if (tab === t.id) return; tab = t.id; enter = true; game.audio.play('page', { vol: 0.6 }); render(); scroll.scrollTop = 0; } }, [t.name]);
-      if (n && t.id !== 'gear') b.append(el('i', { class: 'ug-dot' + (t.id === 'ms' ? ' new' : ''), title: t.id === 'ms' ? 'New' : `${n} you can afford` }, String(n)));
+      if (n) b.append(el('i', { class: 'ug-dot new', title: 'New' }, String(n)));
       tabsEl.append(b);
     }
-  };
-
-  // ---------------- an upgrade card
-  const card = (id) => {
-    const u = UPGRADES[id];
-    const lvl = st.upgrade(id);
-    const maxed = lvl >= u.max;
-    const chk = st.canUpgrade(id, ZONE_NAMES);
-    const lock = chk.lock || upgradeLock(id, st, ZONE_NAMES);
-    const c = el('div', { class: 'ug-card' + (maxed ? ' maxed' : '') + (lock ? ' locked' : '') + (chk.ok ? ' can' : ''), 'data-id': id });
-    c.style.setProperty('--rot', ((((id.charCodeAt(0) * 7 + id.length * 13) % 9) - 4) * 0.25) + 'deg');
-    const ic = el('div', { class: 'ug-ic' }, [
-      el('img', { class: 'pix', src: iconFor(u.icon), alt: '' }),
-      el('img', { class: 'pix ug-badge', src: badgeURL(lock ? 'lock' : u.badge), alt: '' }),
-    ]);
-    const pips = el('div', { class: 'ug-pips', title: `Level ${lvl} of ${u.max}` });
-    for (let i = 0; i < u.max; i++) pips.append(el('i', { class: i < lvl ? 'on' : '' }));
-    const head = el('div', { class: 'ug-hd' }, [
-      el('b', {}, u.name), // (its initial is rubricated: src/ui/tome.css)
-      el('small', {}, maxed ? 'Max level' : lock ? 'Locked' : `Level ${lvl} / ${u.max}`),
-      pips,
-    ]);
-    const now = u.fmt(upgradeEffect(id, lvl)), next = maxed ? null : u.fmt(upgradeEffect(id, lvl + 1));
-    const eff = el('div', { class: 'ug-eff' }, maxed
-      ? [el('span', { class: 'ug-max' }, now)]
-      : [lvl ? el('span', { class: 'ug-now' }, now) : el('span', { class: 'ug-desc' }, u.desc), el('span', { class: 'ug-next' }, [el('i', {}, '▸ '), next])]);
-    const foot = el('div', { class: 'ug-foot' });
-    if (lock) foot.append(el('span', { class: 'ug-lock' }, lock));
-    else if (maxed) foot.append(vars(el('i', { class: 'tm-ugseal', 'aria-hidden': 'true' }), { '--seal': sealCss('#3d7a2e', 20, 'crown') }), el('span', { class: 'ug-stamp' }, 'Maxed'));
-    else {
-      const cost = chk.cost || st.upgradeCost(id);
-      const costs = el('div', { class: 'ug-cost' }, [coinPrice(cost.gold, st.canAfford(cost.gold) ? '' : 'short')]);
-      for (const [nid, n] of Object.entries(cost.items || {})) {
-        const have = st.count(nid);
-        costs.append(el('span', { class: 'ug-need' + (have >= n ? '' : ' short'), title: `${n}× ${ITEMS[nid]?.name || nid} (you have ${have})` }, [
-          el('img', { class: 'pix', src: iconFor(nid), alt: '' }), `${Math.min(have, n)}/${n}`,
-        ]));
-      }
-      const btn = el('button', { class: 'btn ug-buy', disabled: !chk.ok, title: chk.ok ? `Buy level ${lvl + 1}` : chk.reason, onclick: () => buy(id) }, lvl ? 'Upgrade' : 'Buy');
-      foot.append(costs, btn);
-    }
-    put(c, ic, head, eff, foot);
-    if (!maxed && !lock && lvl) c.title = u.desc;
-    // (ui3) reach for a card and it swings on its tack, a little paper rustle
-    c.addEventListener('pointerenter', () => { if (swing(c, 1.8, 650)) game.audio.play('ui_hover', { vol: 0.16 }); });
-    return c;
-  };
-
-  const buy = (id) => {
-    const r = st.buyUpgrade(id);
-    if (!r.ok) {
-      game.audio.play('ui_error');
-      grid.querySelector(`.ug-card[data-id="${id}"] .ug-buy`)?.classList.add('nope');
-      return;
-    }
-    const u = UPGRADES[id];
-    game.audio.play('ui_buy');
-    game.audio.play('coins', { n: 3 });
-    game.audio.play(r.level >= u.max ? 'fanfare' : 'levelup');
-    for (const m of st.takeMilestones?.() || []) { fresh.add(m.id); ui.toast(milestoneText(m), { kind: 'good' }); }
-    const top = scroll.scrollTop;
-    enter = false;
-    render();
-    scroll.scrollTop = top;
-    const c = grid.querySelector(`.ug-card[data-id="${id}"]`);
-    if (!c) return;
-    c.classList.add('pop');
-    // the new level writes itself onto the notice
-    for (const [n, k] of [[c.querySelector('.ug-hd small'), 0], [c.querySelector('.ug-now, .ug-max'), 1]]) if (n) inkIn(n, { delay: 80 + k * 180, dur: 380, quill: !k, audio: k ? null : game.audio });
-    const pip = c.querySelectorAll('.ug-pips i.on')[r.level - 1];
-    pip?.classList.add('new');
-    c.append(el('div', { class: 'ug-float' }, r.level >= u.max ? 'MAX!' : `Lv ${r.level}!`));
-    for (let i = 0; i < 5; i++) {
-      const coin = el('i', { class: 'sh-coin ug-coin' });
-      coin.style.left = (40 + Math.random() * 50) + '%';
-      coin.style.top = '30%';
-      coin.style.animationDelay = `${i * 60}ms, ${i * 60}ms`;
-      c.append(coin);
-      setTimeout(() => coin.remove(), 900 + i * 60);
-    }
-    if (r.level >= u.max) note.lastChild.textContent = pick(['Now that is a fine bit of work.', 'Maxed out! I never got that far myself.', 'Ha! Nothing left to teach you there.']);
   };
 
   // ---------------- milestones ledger
@@ -266,13 +166,7 @@ export function openUpgrades(game, startTab) {
     root.dataset.tab = tab;
     grid.classList.toggle('enter', enter);
     if (tab === 'ms') renderMilestones();
-    else if (tab === 'gear') renderGear();
-    else {
-      const ids = Object.keys(UPGRADES).filter((id) => UPGRADES[id].tab === tab);
-      const cards = ids.map(card);
-      cards.forEach((c, i) => c.style.setProperty('--d', i * 40 + 'ms'));
-      grid.append(...cards);
-    }
+    else renderGear();
   };
 
   render();
@@ -281,7 +175,7 @@ export function openUpgrades(game, startTab) {
   window.addEventListener('resize', fit);
   ui.status?.pin?.(true);
   for (const id of fresh) { const m = MILESTONES.find((x) => x.id === id); if (m) ui.toast(milestoneText(m), { kind: 'good' }); }
-  const h = ui.openPanel({ body: root, className: 'sh-panel ug-panel', onClose: () => { window.removeEventListener('resize', fit); ui.status?.pin?.(false); } });
-  h.debug = { buy, render, tab: (t) => { tab = t; enter = true; render(); } };
+  h = ui.openPanel({ body: root, className: 'sh-panel ug-panel', onClose: () => { window.removeEventListener('resize', fit); ui.status?.pin?.(false); } });
+  h.debug = { render, tab: (t) => { tab = t; enter = true; render(); } };
   return h;
 }

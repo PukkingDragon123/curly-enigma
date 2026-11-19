@@ -11,7 +11,7 @@
 //   state.skillPoints()           → unspent points
 //   state.skillsDebug             → test hooks: xp, level, unlock, unlockAll, reset, points, act, force, dump
 // Events: state.emit('skill', { type: 'xp'|'level'|'unlock'|'points'|'perk'|'respec', ... }).
-import { SKILL_LINES, SKILL_NODES, NODE, SKILL_KEYS, XP_RULES, XP_RATE, TIER_LV, MAX_LEVEL, LINE, levelInfo, pointsForLevel, xpForLevel, nodesOf } from '../data/skills.js';
+import { SKILL_LINES, SKILL_NODES, NODE, SKILL_KEYS, XP_RULES, XP_RATE, TIER_LV, MAX_LEVEL, LINE, OLD_LINES, levelInfo, pointsForLevel, xpForLevel, nodesOf, needLv } from '../data/skills.js';
 import { ITEMS } from '../data/items.js';
 import { SMELTING } from '../data/weapons.js';
 
@@ -20,7 +20,7 @@ export const RESPEC_GOLD_PER_POINT = 30;
 
 export function defaultSkills() {
   return {
-    v: 1,
+    v: 2,
     xp: Object.fromEntries(LINE_IDS.map((id) => [id, 0])),
     lvl: Object.fromEntries(LINE_IDS.map((id) => [id, 1])),
     points: 0, // unspent
@@ -44,9 +44,8 @@ export function fillSkills(saved, data) {
       s.xp.mining = Math.min(xpForLevel(8), (st.ores || 0) * 8 + (st.pristine || 0) * 4 + (st.blocks || 0) * 0.25 + (st.blasts || 0) * 3);
       s.xp.smithing = Math.min(xpForLevel(8), (st.weapons || 0) * 45);
       s.xp.cooking = Math.min(xpForLevel(8), (st.dishes || 0) * 35);
-      s.xp.combat = Math.min(xpForLevel(6), (st.kills || 0) * 12 + (st.golems || 0) * 30);
-      s.xp.trading = Math.min(xpForLevel(8), Math.sqrt(st.earned || 0) * 6);
-      s.xp.exploring = Math.min(xpForLevel(6), (st.trips || 0) * 25 + (data.deepest || 0) * 1.5);
+      s.xp.survival = Math.min(xpForLevel(8), (st.kills || 0) * 12 + (st.golems || 0) * 30 + (st.trips || 0) * 25 + (data.deepest || 0) * 1.5);
+      s.xp.taming = Math.min(xpForLevel(6), (data.tame?.raptors?.length || 0) * 220);
       s.retro = true;
     }
     return syncLevels(s);
@@ -59,6 +58,20 @@ export function fillSkills(saved, data) {
     s.xp[id] = Number.isFinite(x) && x > 0 ? x : 0;
     const L = +saved.lvl?.[id];
     s.lvl[id] = Number.isFinite(L) && L >= 1 ? Math.min(MAX_LEVEL, Math.floor(L)) : 1;
+  }
+  // wave 16: seven lines became six. The old lines' XP moves over (their points were paid already,
+  // so the levels it reaches give none again); taming starts from the raptors already won over.
+  if (!(saved.v >= 2)) {
+    const moved = {};
+    for (const [old, to] of Object.entries(OLD_LINES)) {
+      const x = +saved.xp?.[old];
+      if (to && Number.isFinite(x) && x > 0) (moved[to] ||= []).push(x);
+    }
+    for (const [to, xs] of Object.entries(moved)) { xs.sort((a, b) => b - a); s.xp[to] += xs[0] + xs.slice(1).reduce((t, x) => t + x * 0.5, 0); }
+    const tame = data?.tame;
+    if (tame) s.xp.taming += (tame.raptors?.length || 0) * 220 + (tame.stray?.trust || 0) * 1.5;
+    for (const id of LINE_IDS) s.lvl[id] = Math.max(s.lvl[id], levelInfo(s.xp[id]).level);
+    s.v = 2;
   }
   s.nodes = {};
   let gone = 0;
@@ -107,7 +120,7 @@ export function skillValue(state, key) {
   const v = fxMap(state)[key] || 0;
   if (def.kind === 'mult') return 1 + v;
   if (def.kind === 'chance') return Math.min(0.95, v);
-  return v;
+  return v; // 'perk' and 'add'
 }
 
 /** Sum of a key over a list of node ids (for "before → after" in the book). */
@@ -144,7 +157,7 @@ export function canUnlock(state, id) {
   if (n.t > 0 && n.req.length && !n.req.some((r) => s.nodes[r])) {
     return { ok: false, code: 'path', reason: 'Stamp ' + n.req.map((r) => NODE[r].name).join(' or ') + ' first' };
   }
-  const need = TIER_LV[n.t] || 1;
+  const need = needLv(n);
   if ((s.lvl[n.line] || 1) < need) return { ok: false, code: 'level', reason: `Needs ${LINE[n.line].name} Lv ${need}`, need };
   if (s.points < n.cost) return { ok: false, code: 'points', reason: n.cost > 1 ? `Needs ${n.cost} skill points` : 'Needs a skill point' };
   return { ok: true, code: 'ok', reason: '' };
@@ -167,6 +180,8 @@ export function unlock(state, id, { free = false } = {}) {
   const s = state.data.skills;
   if (!free) s.points -= n.cost;
   s.nodes[id] = state.data.day || 1;
+  // stamina is the bar's own length (sleep and fainting read data.maxEnergy): it grows, and tops you up
+  if (n.fx.vigor) { state.data.maxEnergy += n.fx.vigor; state.restoreEnergy?.(n.fx.vigor); }
   touch(state);
   state.emit('skill', { type: 'unlock', id, line: n.line, node: n });
   return { ok: true, code: 'ok' };
@@ -186,7 +201,10 @@ export function respec(state, line, { free = false } = {}) {
   const cost = pts * RESPEC_GOLD_PER_POINT;
   if (!free && !state.spend(cost, 'respec')) return { ok: false, reason: 'Not enough gold' };
   const s = state.data.skills;
-  for (const n of nodesOf(line)) delete s.nodes[n.id];
+  for (const n of nodesOf(line)) {
+    if (s.nodes[n.id] && n.fx.vigor) state.data.maxEnergy = Math.max(40, state.data.maxEnergy - n.fx.vigor);
+    delete s.nodes[n.id];
+  }
   s.points += pts;
   s.respecs = (s.respecs || 0) + 1;
   touch(state);
@@ -380,7 +398,7 @@ export function attachSkills(state) {
     act: (type, payload = {}) => state.emit('act', { type, ...payload, free: true }),
     /** Pretend a key has this value (for testing what reads it); force(key) clears one, force() all. */
     force: (key, v) => { if (key === undefined) state._skillForce = null; else if (v === undefined) { if (state._skillForce) delete state._skillForce[key]; } else (state._skillForce ||= {})[key] = v; state._skillRev++; },
-    reset: () => { state.data.skills = defaultSkills(); touch(state); state.emit('skill', { type: 'respec', line: null, points: 0 }); },
+    reset: () => { for (const id of Object.keys(state.data.skills.nodes)) if (NODE[id]?.fx.vigor) state.data.maxEnergy = Math.max(40, state.data.maxEnergy - NODE[id].fx.vigor); state.data.skills = defaultSkills(); touch(state); state.emit('skill', { type: 'respec', line: null, points: 0 }); },
     dump: () => {
       const s = state.data.skills;
       const fx = {};

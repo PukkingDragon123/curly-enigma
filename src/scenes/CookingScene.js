@@ -20,6 +20,9 @@ import { findRecipe, closeRecipe, DISHES, RECIPES, MAX_INGS } from '../data/reci
 import { buffSecs } from '../cooking/buffs.js';
 import { kitchenData, ingredientQ, pantryCount, pantryTake, pantryGive } from '../cooking/quality.js';
 import { CookLesson } from '../cooking/lesson.js';
+import { techFor, canUse, STEP_FALLBACK } from '../data/cookTech.js';
+import { ingredientMesh } from '../cooking/ingVox.js';
+import { dishMesh } from '../cooking/dishVox.js';
 import { ITEMS } from '../data/items.js';
 import { itemVox } from '../ui/itemVox.js';
 import { pick, clamp } from '../core/util.js';
@@ -103,6 +106,7 @@ export default class CookingScene extends Scene {
     // Old Star's lesson (cooking { tutorial: true })
     this.lesson = params.tutorial && params.tutorial !== '0' ? new CookLesson(this) : null;
     this.installDebug();
+    if (params.tech === 'all') this.game.state._techAll = true; // (shots: every technique known)
     // dev/test shortcuts: ?cook=a,b&steps=chop,stir
     const pre = (params.cook || '').split(',').filter((id) => ITEMS[id] && pantryCount(this.game.state, id) > 0).slice(0, MAX_INGS);
     if (pre.length) this.startCooking(pre);
@@ -275,13 +279,15 @@ export default class CookingScene extends Scene {
       if (!want.includes(p.id)) {
         puff(this.fx, p.mesh.position.clone().setY(BOARD_TOP + 0.05), 0xfff4e0, 6, 0.1);
         this.scene.remove(p.mesh);
-        p.mesh.geometry.dispose();
+        if (!p.mesh.userData.keepGeo) p.mesh.geometry.dispose();
         this.previews.splice(this.previews.indexOf(p), 1);
       }
     }
     for (const id of want) {
       if (this.previews.some((p) => p.id === id)) continue;
-      const mesh = slabMesh(spriteCells(id, { horizontal: true }), { px: 0.028, depth: 3 });
+      // (wave 16) the ingredient as a real voxel model grown from its art (ui/itemVox.js)
+      const mesh = ingredientMesh(id, 0.34) || slabMesh(spriteCells(id, { horizontal: true }), { px: 0.028, depth: 3 });
+      mesh.rotation.y = (this.previews.length % 2 ? 0.35 : -0.3);
       this.scene.add(mesh);
       this.previews.push({ id, mesh, drop: 0, x: SPOTS.board.x });
       this.game.audio.play('place');
@@ -295,7 +301,7 @@ export default class CookingScene extends Scene {
   }
 
   clearPreviews() {
-    for (const p of this.previews) { this.scene.remove(p.mesh); p.mesh.geometry.dispose(); }
+    for (const p of this.previews) { this.scene.remove(p.mesh); if (!p.mesh.userData.keepGeo) p.mesh.geometry.dispose(); }
     this.previews = [];
   }
 
@@ -307,12 +313,24 @@ export default class CookingScene extends Scene {
     this.game.goto('home', { from: 'cooking', lesson: this.lesson ? (this.lesson.done ? 'cook_done' : 'cook') : undefined });
   }
 
+  /** A recipe that needs a technique: a short cue, its skill glyph on a brass tag (no ingredients used). */
+  needTech(t) {
+    if (!t) return;
+    this.game.audio.play('ui_error');
+    this.game.ui.toast(`<span class="ck-tech">Needs ${t.name}</span>`, { kind: 'warn' });
+    this.lastNeed = t.id;
+  }
+
   // ------------------------------------------------------------------ cooking flow
   startCooking(ids) {
     if (this.phase !== 'pantry' || !ids.length) return false; // ignore double clicks while the panel slides out
     const st = this.game.state;
     if (ids.some((id) => pantryCount(st, id) < 1)) { this.game.ui.toast('Missing an ingredient!', { kind: 'warn' }); return false; }
     if (this.lesson && !this.lesson.allow(ids)) return false;
+    // (wave 16) an advanced recipe needs its technique from the skill tree (data/cookTech.js):
+    // nothing is used up, a little brass tag names the technique
+    const want = findRecipe(Object.fromEntries(ids.map((id) => [id, 1])));
+    if (want && !canUse(st, want.dish)) { this.needTech(techFor(want.dish)); return false; }
     // the best of each goes in; its quality helps the dish
     const used = [];
     for (const id of ids) {
@@ -322,7 +340,7 @@ export default class CookingScene extends Scene {
     this.ingQ = clamp(ingredientQ(used), 0, 100);
     const r = findRecipe(Object.fromEntries(ids.map((id) => [id, 1])));
     this.dish = r ? r.dish : 'mystery_mush';
-    this.steps = r ? r.steps.slice() : ['chop', 'stir'];
+    this.steps = r ? r.steps.map((k) => (canUse(st, k) ? k : STEP_FALLBACK[k] || k)) : ['chop', 'stir'];
     if (this.params.steps) this.steps = this.params.steps.split(',').filter((s) => STEP_LABEL[s]);
     this.ings = ids.slice();
     this.chopQ = chopQueue(ids);
@@ -354,6 +372,19 @@ export default class CookingScene extends Scene {
     if (kind === 'stir') o.vessel = f.where === 'bowl' || f.where === 'cup' ? f.where : 'pot';
     if (kind === 'season') o.vessel = ['pot', 'bowl', 'pan'].includes(f.where) ? f.where : 'bowl';
     if (kind === 'fry' && !f.pieces && !f.egg) o.item = this.chopQ[0];
+    if (kind === 'crack') {
+      // an egg if there is one, else a stone nut, else a lump of rock salt (a geode to split)
+      const has = (id) => this.ings.includes(id);
+      o.item = has('egg') || has('dino_egg') || has('drake_egg') ? 'egg' : has('stone_nut') ? 'nut' : has('salt_crystal') ? 'geode' : 'egg';
+    }
+    if (kind === 'grind') {
+      const pref = ['stone_thyme', 'pepperroot', 'crystal_lily', 'glow_moss', 'emberbloom', 'cave_garlic', 'mushroom', 'grub', 'stone_nut', 'spore_puff'];
+      o.item = pref.find((id) => this.ings.includes(id)) || this.chopQ[0];
+    }
+    if (kind === 'peel') {
+      const pref = ['cave_carrot', 'tunnel_tuber', 'cave_garlic', 'bubblebulb', 'core_lotus', 'frost_shrimp', 'gloomshroom', 'egg'];
+      o.item = pref.find((id) => this.ings.includes(id)) || this.chopQ[0];
+    }
     if (kind === 'grate') {
       // grate the hard, grate-able thing: truffle, garlic, carrot... (else whatever is choppy)
       const pref = ['truffle', 'cave_garlic', 'cave_carrot', 'core_lotus', 'tunnel_tuber', 'glow_moss'];
@@ -455,8 +486,9 @@ export default class CookingScene extends Scene {
 
   showDishModel() {
     if (this.dishModel) return;
-    const m = standeeMesh(this.dish, { px: 0.03 });
-    m.position.copy(SPOTS.plate).setY(0.06);
+    // (wave 16) the dish as a fully built voxel serving (src/cooking/dishVox.js)
+    const m = dishMesh(this.dish, { size: 0.62, noPlate: true }) || standeeMesh(this.dish, { px: 0.03 });
+    m.position.copy(SPOTS.plate).setY(m.userData.dish?.vessel === 'plate' ? 0.07 : 0.06);
     m.scale.setScalar(0.01);
     this.scene.add(m);
     this.dishModel = m;

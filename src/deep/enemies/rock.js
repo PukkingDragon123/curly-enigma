@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { Enemy, smooth, easeBack, TAU } from './base.js';
 import { VB, VS, mul, mix, c01, ramp } from './vox.js';
+import { H, eye, tufts } from './voxKit.js';
 import { shockRing, puff, pebbles, sparkle } from './fx.js';
 import { MAT, M } from '../materials.js';
 import { rand, clamp } from '../../core/util.js';
@@ -215,63 +216,77 @@ export class Mimic extends Enemy {
 
 // ------------------------------------------------------------------ Rubble Golem
 export function buildGolem(pal, zone, seed) {
-  const T = pal.tones, dark = mul(T[0], 0.5), core = CORE[zone] || 0xffc860;
-  const sh = (vb) => (x, y, z, nx, ny, nz) => {
+  // (wave 16) at half the old voxel: stacked boulders, each with its own tone, strata lines and a
+  // lit top edge, chinked with pebbles; a jutting head with a heavy brow, deep sockets and a slab
+  // jaw; glowing runes cut into the shoulders and a core seam down the chest; boulder arms with a
+  // pebble elbow and a big knuckled fist; stubby pillar legs with toe stones
+  const T = pal.tones, dark = mul(T[0], 0.45), core = CORE[zone] || 0xffc860;
+  const sh = (vb, off = 0) => (x, y, z, nx, ny, nz) => {
     const k = vb.n(x, y, z);
-    if (k > 0.95) return pal.acc;
-    if (ny > 0.72 && k < 0.55) return mix(T[3], 0xffffff, 0.14); // a rim of light on top
-    return ramp(T, clamp(0.32 + ny * 0.5 + (nz || 0) * 0.1 + (k - 0.5) * 0.5, 0, 0.999));
+    if (k > 0.96) return pal.acc;
+    if (ny > 0.7 && k < 0.6) return mix(T[3], 0xffffff, 0.14); // a rim of light on top
+    if (((y + off + 64) % 6 === 0) && Math.abs(ny) < 0.6) return mul(T[0], 0.8); // strata
+    return ramp(T, clamp(0.32 + ny * 0.5 + (nz || 0) * 0.1 + (k - 0.5) * 0.4 + off * 0.02, 0, 0.999));
   };
-  // torso (pivot at the hips) with a head hunched into it and boulder shoulders
   const torso = new VB(seed), glow = new VB(seed + 5);
-  const s = sh(torso);
-  torso.ell(0, 8, -0.5, 9.5, 8.5, 7, s);
-  torso.ell(7.5, 13, 0, 4.6, 4.2, 4.6, s);
-  torso.ell(-7.5, 13, 0, 4.6, 4.2, 4.6, s);
-  torso.ell(0, 13.5, 5.5, 5.6, 4.6, 4.6, s);
-  torso.ell(-3, 4, 3, 4, 3.6, 4, s);
-  torso.ell(3.5, 3.5, 2.5, 3.6, 3.2, 4, s);
-  const front = (vb, x, y) => { for (let z = 14; z > -12; z--) if (vb.has(x, y, z)) return z; return 0; };
-  // a heavy brow, eye sockets, a grumpy mouth
-  for (let x = -5; x <= 4; x++) { const z = front(torso, x, 16) + 1; torso.set(x, 16, z, mul(T[1], 0.9)); torso.set(x, 15, z, mul(T[0], 0.9)); }
-  const sockets = [[1, 12], [2, 12], [3, 12], [1, 13], [2, 13], [3, 13], [-2, 12], [-3, 12], [-4, 12], [-2, 13], [-3, 13], [-4, 13]];
-  for (const [x, y] of sockets) torso.set(x, y, front(torso, x, y), dark);
-  for (let x = -3; x <= 2; x++) torso.set(x, 9 + (x === -3 || x === 2 ? 1 : 0), front(torso, x, 9 + (x === -3 || x === 2 ? 1 : 0)), dark);
-  // glowing seam down the chest (its weak spot)
+  // boulders: the chest, the belly, shoulders, the head, a hump behind
+  torso.ell(0, 17, -1, 18, 15, 13, sh(torso, 0));
+  torso.ell(0, 6, 2, 13, 8, 10, sh(torso, 2));
+  torso.ell(15, 26, 0, 9, 8.4, 9, sh(torso, 3));
+  torso.ell(-15, 26, 0, 9, 8.4, 9, sh(torso, 4));
+  torso.ell(0, 28, -8, 11, 7, 7, sh(torso, 1));
+  torso.ell(0, 27, 11, 10.5, 8.6, 8.6, sh(torso, 5)); // head
+  torso.box(-7, 19, 14, 6, 21, 19, sh(torso, 5)); // jaw slab
+  // pebbles chinked into the seams
+  for (let i = 0; i < 22; i++) { const h = torso.hitFrom(rand(-16, 16), rand(4, 30), 30, 0, 0, -1); if (h) torso.ell(h[0], h[1], h[2], 1.4, 1.2, 1.4, ramp(T, torso.n(i, 1, 1) * 0.6)); }
+  const front = (vb, x, y) => { for (let z = 28; z > -24; z--) if (vb.has(x, y, z)) return z; return 0; };
+  // brow, deep sockets, a grumpy mouth line under the jaw
+  for (let x = -10; x <= 9; x++) for (const dy of [0, 1]) { const y = 31 + dy - (Math.abs(x + 0.5) > 7 ? 1 : 0), z = front(torso, x, y) + 1; torso.set(x, y, z, dy ? mul(T[2], 0.95) : mul(T[1], 0.85)); }
+  for (const sd of [1, -1]) for (let y = 26; y <= 29; y++) for (let dx = 0; dx < 5; dx++) { const x = sd > 0 ? 2 + dx : -3 - dx, z = front(torso, x, y); torso.del(x, y, z); torso.set(x, y, z - 1, dark); }
+  for (let x = -5; x <= 4; x++) { const y = 21 + (x === -5 || x === 4 ? 1 : 0); torso.set(x, y, front(torso, x, y), dark); }
+  // runes on the shoulders and a glowing seam down the chest (its weak spot)
+  for (const sd of [1, -1]) {
+    const R = [[0, 0], [0, 1], [0, 2], [0, 3], [1, 3], [-1, 1], [1, 1], [-1, 3]];
+    for (const [dx, dy] of R) { const x = sd * 14 + dx, y = 24 + dy, z = front(torso, x, y); if (torso.has(x, y, z)) { torso.del(x, y, z); glow.set(x, y, z, dy === 3 ? mix(core, 0xffffff, 0.4) : core); } }
+  }
   let cx = 0, sz = 0;
-  for (let y = 2; y <= 8; y++) { cx += torso.n(0, y, 0, 3) < 0.5 ? -1 : 1; cx = clamp(cx, -2, 2); const z = front(torso, cx, y); torso.del(cx, y, z); glow.set(cx, y, z, y % 3 === 0 ? 0xffffff : core); sz += z; }
-  const seam = [0, 5, sz / 7];
+  for (let y = 4; y <= 17; y++) {
+    if (y % 2 === 0) { cx += torso.n(0, y, 0, 3) < 0.5 ? -1 : 1; cx = clamp(cx, -3, 3); }
+    for (const w of [0, 1]) { const x = cx + w, z = front(torso, x, y); torso.del(x, y, z); glow.set(x, y, z, y % 5 === 0 ? 0xffffff : w ? mul(core, 0.85) : core); if (!w) sz += z; }
+  }
+  const seam = [0, 5, sz / 14 / 2];
   // zone dressing
   torso.paint((x, y, z, c) => {
-    if (zone <= 2 && y > 9 && torso.open(x, y, z, 0, 1, 0) && torso.n(x, y, z, 9) < 0.55) return torso.n(x, y, z, 11) < 0.5 ? 0x3a7a3a : 0x5aa84a; // moss
-    if (zone === 5 && torso.open(x, y, z, 0, 1, 0) && y > 8) return torso.n(x, y, z, 12) < 0.3 ? 0xd8e8f4 : 0xf4faff; // snow
+    if (zone <= 2 && y > 18 && torso.open(x, y, z, 0, 1, 0) && torso.n(x, y, z, 9) < 0.55) return torso.n(x, y, z, 11) < 0.5 ? 0x3a7a3a : 0x5aa84a; // moss
+    if (zone === 5 && torso.open(x, y, z, 0, 1, 0) && y > 16) return torso.n(x, y, z, 12) < 0.3 ? 0xd8e8f4 : 0xf4faff; // snow
     return undefined;
   });
+  if (zone <= 2) tufts(torso, 40, { tones: [0x2a6a2a, 0x3a8a3a, 0x6ab84a], seed: 4, len: [1, 2], filter: (x, y, z) => y > 22 });
   if (zone === 4 || zone === 6) {
     for (const [x, y, z] of torso.list().map((v) => [v.x, v.y, v.z])) {
-      if (torso.n(x, y, z, 13) < 0.06 && (torso.open(x, y, z, 0, 0, 1) || torso.open(x, y, z, 1, 0, 0) || torso.open(x, y, z, -1, 0, 0))) { torso.del(x, y, z); glow.set(x, y, z, zone === 4 ? (torso.n(x, y, z, 14) < 0.5 ? 0xff7a1a : 0xffc040) : 0xffe08a); }
+      if (torso.n(x, y, z, 13) < 0.05 && (torso.open(x, y, z, 0, 0, 1) || torso.open(x, y, z, 1, 0, 0) || torso.open(x, y, z, -1, 0, 0))) { torso.del(x, y, z); glow.set(x, y, z, zone === 4 ? (torso.n(x, y, z, 14) < 0.5 ? 0xff7a1a : 0xffc040) : 0xffe08a); }
     }
   }
-  // legs (pivot at the hip)
+  // legs (pivot at the hip): a pillar of two stones and toe pebbles
   const leg = new VB(seed + 2);
-  const sl = sh(leg);
-  leg.ell(0, -3.2, 0, 3.4, 4.2, 3.4, (x, y, z, nx, ny) => mul(sl(x, y, z, nx, ny), 0.85));
-  leg.box(-3, -7, -2, 2, -6, 4, (x, y, z) => mul(ramp(T, leg.n(x, y, z) * 0.5), 0.8));
-  // arms (pivot at the shoulder): a boulder upper arm and a big fist
+  leg.ell(0, -6, 0, 6.8, 8, 6.8, (x, y, z, nx, ny, nz) => mul(sh(leg, 1)(x, y, z, nx, ny, nz), 0.88));
+  leg.ell(0, -11.5, 1, 7.2, 3, 8, (x, y, z, nx, ny, nz) => mul(sh(leg, 3)(x, y, z, nx, ny, nz), 0.8));
+  for (const dx of [-4, 0, 4]) leg.ell(dx, -12.6, 8, 2, 1.6, 2, mul(ramp(T, 0.3), 0.85));
+  // arms (pivot at the shoulder): a boulder upper arm, a pebble elbow, a big knuckled fist
   const arm = new VB(seed + 3);
-  const sa = sh(arm);
-  arm.cap(0, -1, 0, 1, -6, 0.5, 2.8, (x, y, z) => sa(x, y, z, 0, 0.2));
-  arm.ell(1.5, -10.5, 1, 4.4, 4.2, 4.4, sa);
-  for (let x = -1; x <= 4; x++) arm.set(x, -10, front(arm, x, -10), mul(T[0], 0.7)); // knuckles
-  // eyes
+  arm.ell(1, -6, 0, 5.4, 7, 5.2, sh(arm, 2));
+  arm.ell(1.5, -13, 0.5, 3, 2.6, 3, sh(arm, 4));
+  arm.ell(3, -21, 2, 8.8, 8.4, 8.8, sh(arm, 1));
+  for (let x = -3; x <= 9; x++) for (const y of [-19, -23]) arm.set(x, y, front(arm, x, y), mul(T[0], 0.65)); // knuckle grooves
+  for (const x of [-1, 3, 7]) for (let y = -22; y <= -20; y++) arm.set(x, y, front(arm, x, y), mul(T[0], 0.7));
+  // eyes, glowing in the sockets (placed at (0, 13, 0) VS)
   const eyes = new VB(), angry = new VB();
   for (const [vb, a, col] of [[eyes, false, core], [angry, true, 0xff4a2a]]) {
-    eyeVox(vb, 2, 12, front(torso, 2, 12) + 1, col, 0xffffff, a, 1);
-    eyeVox(vb, -4, 12, front(torso, -3, 12) + 1, col, 0xffffff, a, -1);
+    for (const sd of [1, -1]) eye(vb, sd * 4.5, 27.5, 0, 2.2, 1.6, { iris: col, pupil: mix(col, 0xffffff, 0.6), pr: 0.35, lid: a ? dark : undefined, on: torso });
   }
   return {
-    torso: torso.geo(0, 0, 0), glow: glow.size ? glow.geo(0, 0, 0) : null, leg: leg.geo(0, 0, 0), arm: arm.geo(0, 0, 0),
-    eyes: eyes.geo(0, 13, 0), angry: angry.geo(0, 13, 0), dust: c01(T[1]), chip: c01(T[2]), core: c01(core), seam,
+    torso: torso.geo(0, 0, 0, H), glow: glow.size ? glow.geo(0, 0, 0, H) : null, leg: leg.geo(0, 0, 0, H), arm: arm.geo(0, 0, 0, H),
+    eyes: eyes.geo(0, 26, 0, H), angry: angry.geo(0, 26, 0, H), dust: c01(T[1]), chip: c01(T[2]), core: c01(core), seam,
   };
 }
 

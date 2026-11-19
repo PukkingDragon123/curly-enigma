@@ -13,6 +13,12 @@ import { GrateStep } from './grate.js';
 import { RollStep } from './roll.js';
 import { BakeStep } from './bake.js';
 import { MashStep } from './mash.js';
+import { GrindStep } from './grind.js';
+import { PeelStep } from './peel.js';
+import { SkewerStep } from './skewer.js';
+import { WhiskStep } from './whisk.js';
+import { SiftStep } from './sift.js';
+import '../cook16.css';
 
 export const STEPS = {
   chop: ChopStep,
@@ -29,6 +35,11 @@ export const STEPS = {
   roll: RollStep,
   bake: BakeStep,
   mash: MashStep,
+  grind: GrindStep,
+  peel: PeelStep,
+  skewer: SkewerStep,
+  whisk: WhiskStep,
+  sift: SiftStep,
 };
 
 export function makeStep(kind, cook, opts) {

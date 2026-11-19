@@ -1,11 +1,12 @@
-// The upgrade board (tavern) and milestones: small upgrades with levels and rising costs, so the
-// numbers keep going up between tool tiers. State reads them (state.upgrade(id), upEffect(id),
+// The old upgrade board and milestones. Wave 16: gold no longer buys these (gold is for goods and
+// the surface ticket): their ideas are skill-tree nodes now (data/skills.js), and the levels a save
+// already bought stay owned and keep working (state.upEffect). The board shows the tool ladder and
+// the milestones ledger. State reads them (state.upgrade(id), upEffect(id),
 // mineBonus(), bagCapacity(), lightRadius(), tavernIncome()); the board is src/ui/Upgrades.js.
 //
 // UPGRADES[id]: { tab, name, desc, icon, badge, max, effect(level) → value, fmt(value) → text,
-//   cost: { gold: [base, growth], items: { level: { itemId: n } } }, req?: { zone, flag, up: [id, lvl] } }
-// Level L costs cost.gold[0] · growth^L gold (rounded to two significant figures) plus the items
-// listed for that level. Effects are pure numbers; State turns them into bonuses.
+//   req?: { zone, flag, up: [id, lvl] } }   (no prices: nothing here is sold any more)
+// Effects are pure numbers; State turns them into bonuses.
 import { ITEMS } from './items.js';
 import { formatGoldFull } from '../core/util.js';
 
@@ -21,10 +22,6 @@ const TAVERN = [0, 25, 60, 110, 180, 280, 420, 600, 850, 1200];
 export const TAVERN_BASE = 12;
 
 export const UPGRADE_TABS = [
-  { id: 'dig', name: 'Digging' },
-  { id: 'haul', name: 'Hauling' },
-  { id: 'blast', name: 'Blasting' },
-  { id: 'home', name: 'Home' },
   { id: 'gear', name: 'Tools' },
   { id: 'ms', name: 'Milestones' },
 ];
@@ -35,32 +32,27 @@ export const UPGRADES = {
     tab: 'dig', name: 'Strong Paws', icon: 'pick_steel', badge: 'up', max: 12,
     desc: 'Every pick blow lands harder. Rock cracks in fewer swings.',
     effect: (l) => 1 + 0.06 * l, fmt: (v) => `${pct(v - 1)} pick power`,
-    cost: { gold: [120, 1.62], items: { 3: { copper_ingot: 2 }, 5: { iron_ingot: 2 }, 7: { steel_ingot: 2 }, 9: { silver_ingot: 2 }, 11: { gold_ingot: 1 } } },
   },
   swing: {
     tab: 'dig', name: 'Quick Swing', icon: 'pick_copper', badge: 'fast', max: 8,
     desc: 'A looser grip and a shorter wind-up. More swings a minute.',
     effect: (l) => 1 - 0.04 * l, fmt: (v) => `${Math.round((1 / v - 1) * 100)}% faster swings`,
-    cost: { gold: [180, 1.78], items: { 2: { quartz: 2 }, 5: { amethyst: 1 }, 7: { ruby: 1 } } },
   },
   nose: {
     tab: 'dig', name: 'Prospector\'s Nose', icon: 'whisperweed', badge: 'eye', max: 6,
     desc: 'Buried ore glints through the rock from farther away.',
     effect: (l) => 1 + 0.15 * l, fmt: (v) => `${pct(v - 1)} glint range`,
-    cost: { gold: [200, 1.9], items: { 3: { lumite: 1 }, 5: { echo_crystal: 1 } } },
   },
   steady: {
     tab: 'dig', name: 'Steady Paws', icon: 'chisel_fine', badge: 'shield', max: 6,
     desc: 'Cleaner clump work: tools that slip onto the ore scratch it less.',
     effect: (l) => 1 - 0.08 * l, fmt: (v) => `${Math.round((1 - v) * 100)}% fewer scratches`,
-    cost: { gold: [250, 1.85], items: { 2: { tin_ingot: 2 }, 4: { silver_ingot: 1 } } },
     req: { zone: 2 },
   },
   appraise: {
     tab: 'dig', name: 'Keen Appraisal', icon: 'gold_ore', badge: 'coin', max: 10,
     desc: 'You learn what Old Vex looks for. Ore and gems sell for more.',
     effect: (l) => 0.04 * l, fmt: (v) => `${pct(v)} ore & gem value`,
-    cost: { gold: [400, 1.8], items: { 3: { amber: 1 }, 6: { sapphire: 1 }, 9: { diamond: 1 } } },
     req: { zone: 2 },
   },
 
@@ -69,26 +61,22 @@ export const UPGRADES = {
     tab: 'haul', name: 'Deeper Pockets', icon: 'bag_large', badge: 'plus', max: 10,
     desc: 'Extra pouches stitched inside the bag. More finds per trip.',
     effect: (l) => 2 * l, fmt: (v) => `+${v} bag space`,
-    cost: { gold: [150, 1.7], items: { 2: { rubber_sap: 3 }, 6: { spider_silk: 2 }, 9: { spider_silk: 4 } } },
   },
   stamina: {
     tab: 'haul', name: 'Stamina', icon: 'hearty_pie', badge: 'up', max: 10,
     desc: 'Longer shifts before the paws give out. Permanent, and fills you up on the spot.',
     effect: (l) => 10 * l, fmt: (v) => `+${v} max energy`,
-    cost: { gold: [200, 1.7], items: { 4: { hearty_pie: 1 }, 8: { hearty_pie: 2 } } },
   },
   rest: {
     tab: 'haul', name: 'Second Wind', icon: 'tea_flask', badge: 'clock', max: 5,
     desc: 'Stand still for a breath in the mine and energy trickles back.',
     effect: (l) => 0.4 * l, fmt: (v) => `+${v.toFixed(1)} energy/s resting`,
-    cost: { gold: [300, 2.1], items: { 1: { glowcap: 3 }, 3: { frostbloom: 1 } } },
     req: { zone: 2 },
   },
   lamp: {
     tab: 'haul', name: 'Brighter Wick', icon: 'helmet_brass', badge: 'star', max: 6,
     desc: 'A trimmed wick and a polished reflector. Your lamp reaches farther.',
     effect: (l) => 0.6 * l, fmt: (v) => `+${v.toFixed(1)} m light`,
-    cost: { gold: [160, 1.9], items: { 2: { lumite: 1 }, 4: { lumite: 2 } } },
   },
 
   // ───────────── blasting ─────────────
@@ -96,26 +84,22 @@ export const UPGRADES = {
     tab: 'blast', name: 'Bigger Bangs', icon: 'dynamite_bundle', badge: 'up', max: 6,
     desc: 'Tighter packing, better powder. Every charge digs a wider crater.',
     effect: (l) => 1 + 0.08 * l, fmt: (v) => `${pct(v - 1)} blast radius`,
-    cost: { gold: [300, 1.9], items: { 1: { coal: 4 }, 3: { coal: 8 }, 5: { bioxide: 1 } } },
   },
   throw: {
     tab: 'blast', name: 'Long Throw', icon: 'dynamite', badge: 'fast', max: 4,
     desc: 'A proper overarm toss. Sticks fly farther from your paw.',
     effect: (l) => 1 + 0.15 * l, fmt: (v) => `${pct(v - 1)} throw distance`,
-    cost: { gold: [220, 2] },
   },
   spare: {
     tab: 'blast', name: 'Spare Sticks', icon: 'dynamite', badge: 'plus', max: 5,
     desc: 'Grubb throws in extras. Sometimes a thrown stick turns out to be one of them.',
     effect: (l) => 0.08 * l, fmt: (v) => `${Math.round(v * 100)}% chance to keep a stick`,
-    cost: { gold: [500, 2] },
     req: { up: ['blast', 1] },
   },
   sticky: {
     tab: 'blast', name: 'Sticky Fuse', icon: 'slug_slime', badge: 'star', max: 1,
     desc: 'A dab of slug slime: charges stick to the first wall or ceiling they hit.',
     effect: (l) => l, fmt: (v) => (v ? 'Charges stick where they land' : 'Charges bounce and roll'),
-    cost: { gold: [1500, 1], items: { 0: { slug_slime: 3 } } },
     req: { up: ['blast', 2] },
   },
 
@@ -125,27 +109,23 @@ export const UPGRADES = {
     tab: 'home', name: 'Sleeping Alcove', icon: 'bed_straw', badge: 'plus', max: 1,
     desc: 'The soft rock behind your bedroll. A corner of your own: your bedroll and trunk move in, and there\'s room for furniture.',
     effect: (l) => l, fmt: (v) => (v ? 'Dug out: yours to furnish' : 'Chalk-marked soft rock'),
-    cost: { gold: [50, 1] },
   },
   nook_store: {
     tab: 'home', name: 'Storage Nook', icon: 'crate', badge: 'plus', max: 1,
     desc: 'A dry pocket west of your sleeping alcove. Room for crates, racks and whatever you hoard.',
     effect: (l) => l, fmt: (v) => (v ? 'Dug out: 20 tiles of floor' : 'Chalk-marked soft rock'),
-    cost: { gold: [400, 1] },
     req: { up: ['nook_bed', 1] },
   },
   nook_work: {
     tab: 'home', name: 'Workshop Bay', icon: 'weapon_rack', badge: 'plus', max: 1,
     desc: 'A bay off the hollow by the lift: room to lay out racks, benches and the things you\'re proud of.',
     effect: (l) => l, fmt: (v) => (v ? 'Dug out: 25 tiles of floor' : 'Chalk-marked soft rock'),
-    cost: { gold: [1500, 1], items: { 0: { copper_ingot: 2 } } },
     req: { up: ['nook_bed', 1] },
   },
   nook_pantry: {
     tab: 'home', name: 'Pantry', icon: 'planter', badge: 'plus', max: 1,
     desc: 'Cool rock south of your sleeping alcove. Planters, jars and sacks keep down there.',
     effect: (l) => l, fmt: (v) => (v ? 'Dug out: 12 cool tiles' : 'Chalk-marked soft rock'),
-    cost: { gold: [3500, 1], items: { 0: { iron_ingot: 2 } } },
     req: { up: ['nook_bed', 1] },
   },
 
@@ -154,7 +134,6 @@ export const UPGRADES = {
     tab: 'home', name: 'Tavern Taps', icon: 'rootbeer', badge: 'coin', max: 9,
     desc: 'New taps, a warmer hearth, a few more stools. The tavern earns a little more every day.',
     effect: (l) => TAVERN_BASE + TAVERN[l], fmt: (v) => `${v} gold a day`,
-    cost: { gold: [500, 2.05], items: { 0: { rootbeer: 4 }, 2: { honey: 4 }, 4: { copper_ingot: 4 }, 6: { silver_ingot: 2 }, 8: { gold_ingot: 2 } } },
   },
 };
 
@@ -162,14 +141,6 @@ export const UPGRADES = {
 export function upgradeEffect(id, level) {
   const u = UPGRADES[id];
   return u ? u.effect(Math.max(0, Math.min(u.max, level || 0))) : 0;
-}
-
-/** What level `level` → level+1 costs: { gold, items: {id: n} }, or null when maxed. */
-export function upgradeCost(id, level) {
-  const u = UPGRADES[id];
-  if (!u || level >= u.max) return null;
-  const [base, growth] = u.cost.gold;
-  return { gold: niceRound(base * growth ** level), items: { ...(u.cost.items?.[level] || {}) } };
 }
 
 /** null when unlocked, else a short reason ("Reach Clayworks"). zoneNames: ZONES[n].name. */
@@ -185,7 +156,7 @@ export function upgradeLock(id, st, zoneNames = []) {
 // ───────────── milestones ─────────────
 // stat: a key of state.data.stats, 'deepest', or a function (state) → number. Reached when ≥ at.
 // reward: { gold, items: { id: n } }; paid once, the moment it's reached.
-const upLevels = (st) => Object.values(st.data.upgrades || {}).reduce((s, n) => s + n, 0);
+const learned = (st) => Object.keys(st.data.skills?.nodes || {}).length;
 
 export const MILESTONES = [
   { id: 'ore_1', name: 'First Find', desc: 'Bag your first ore or gem.', stat: 'ores', at: 1, reward: { gold: 25 } },
@@ -209,8 +180,8 @@ export const MILESTONES = [
   { id: 'tier_5', name: 'Featherweight', desc: 'Dig with a mithril pickaxe or better.', stat: (st) => st.equipped('pick')?.tier || 0, at: 5, reward: { gold: 6000 } },
   { id: 'weapon_1', name: 'Smith', desc: 'Forge your first weapon.', stat: 'weapons', at: 1, reward: { gold: 150 } },
   { id: 'trips_10', name: 'Regular', desc: 'Come back up from 10 trips.', stat: 'trips', at: 10, reward: { gold: 200 } },
-  { id: 'up_10', name: 'Tinkerer', desc: 'Buy 10 upgrade levels.', stat: upLevels, at: 10, reward: { gold: 600 } },
-  { id: 'up_40', name: 'Master Miner', desc: 'Buy 40 upgrade levels.', stat: upLevels, at: 40, reward: { gold: 20000 } },
+  { id: 'up_10', name: 'Tinkerer', desc: 'Learn 10 skills.', stat: learned, at: 10, reward: { gold: 600 } },
+  { id: 'up_40', name: 'Master of Crafts', desc: 'Learn 40 skills.', stat: learned, at: 40, reward: { gold: 20000 } },
   { id: 'earned_10k', name: 'Pocket Money', desc: 'Earn 10,000 gold in total.', stat: 'earned', at: 10000, reward: { gold: 500 } },
   { id: 'earned_100k', name: 'Nest Egg', desc: 'Earn 100,000 gold in total.', stat: 'earned', at: 100000, reward: { gold: 5000 } },
   { id: 'earned_500k', name: 'Halfway to the Sky', desc: 'Earn 500,000 gold in total.', stat: 'earned', at: 500000, reward: { gold: 25000 } },

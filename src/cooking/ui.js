@@ -33,7 +33,7 @@ export const GRADES = [
 ];
 export const gradeOf = (score) => GRADES.find((x) => score >= x.min) || GRADES[GRADES.length - 1];
 
-export const STEP_LABEL = { chop: 'Chop', crack: 'Crack', stir: 'Stir', season: 'Season', fry: 'Fry', pour: 'Pour', knead: 'Knead', plate: 'Plate', simmer: 'Simmer', flip: 'Flip', grate: 'Grate', roll: 'Roll', bake: 'Bake', mash: 'Mash' };
+export const STEP_LABEL = { chop: 'Chop', crack: 'Crack', stir: 'Stir', season: 'Season', fry: 'Fry', pour: 'Pour', knead: 'Knead', plate: 'Plate', simmer: 'Simmer', flip: 'Flip', grate: 'Grate', roll: 'Roll', bake: 'Bake', mash: 'Mash', grind: 'Grind', peel: 'Peel', skewer: 'Roast', whisk: 'Whisk', sift: 'Sift' };
 
 const COOKABLE_CATS = ['plant', 'critter', 'ingredient'];
 const COOKABLE_EXTRA = ['salt_crystal', 'egg'];

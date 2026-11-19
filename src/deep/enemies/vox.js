@@ -13,13 +13,18 @@ export const VS = 1 / 24; // meters per creature voxel as modelled (terrain voxe
  * its silhouette smoothed from the coarse shape, so a big monster has far more voxels than a small
  * one and none of them look blockier than a kobold.
  */
-export const FINE = 1 / 60; // (wave 13: was 1/40; creatures carry about twice the voxels on their skin)
+export const FINE_DESK = 1 / 96; // (wave 16: was 1/60, and 1/40 before wave 13)
 /**
  * How far a model may be refined (a refined part's surface grows k², and every voxel face is
- * triangles on screen). Phones keep the old 2× (their extra detail is the near copy, hires.js).
+ * triangles on screen). Phones keep the old 2× (1/48 m for a model drawn at 1/24; their extra
+ * detail is the near copy, hires.js); desktops go to 4× (1/96 m) for anything that fits the cell
+ * budget, and the far copies (hires.js LOD) drop back to 2× past ~11 m.
  */
 const PHONE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-export const REFINE_MAX = PHONE ? 2 : 3;
+export const FINE = PHONE ? 1 / 60 : FINE_DESK; // (phones: as before, so their density holds)
+export const REFINE_MAX = PHONE ? 2 : 4;
+/** Fine cells one refine may walk on the main thread (a big troll stays at 3×: its near copy is finer). */
+const REFINE_CELLS = PHONE ? 1e6 : 1.2e6;
 /**
  * The skin style models are being built under (Enemies.geo sets it by model key): when set, every
  * geometry VB.geo makes carries its source voxels (userData.hiSrc) for the hi-res near copy.
@@ -160,12 +165,18 @@ export class VB {
   geoLo(px = 0, py = 0, pz = 0, vs = VS, kMax = REFINE_MAX) {
     // refined to the shared voxel size (FINE): k × finer, the pivot and voxel size with it
     // (kMax: a level of detail: the kaiju keep an unrefined far copy)
-    let k = Math.min(kMax, Math.max(1, Math.round(vs / FINE)));
+    let k = Math.min(kMax, Math.max(1, Math.round(vs / FINE + 0.2))); // (+0.2: a 1/40 m kobold goes 3× on desktops)
     if (k > 1 && this.v.size) {
       let lo = 0, hi = 0;
       for (const kk of this.v.keys()) { const a = Math.min(kk & 255, (kk >> 8) & 255, (kk >> 16) & 255) - 128, b = Math.max(kk & 255, (kk >> 8) & 255, (kk >> 16) & 255) - 128; if (a < lo) lo = a; if (b > hi) hi = b; }
       while (k > 1 && Math.max(-lo, hi + 1) * k > 124) k--;
       k = Math.min(k, REFINE_MAX);
+      if (k > 2) {
+        let x0 = 255, y0 = 255, z0 = 255, x1 = 0, y1 = 0, z1 = 0;
+        for (const kk of this.v.keys()) { const x = kk & 255, y = (kk >> 8) & 255, z = (kk >> 16) & 255; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+        const cells = (x1 - x0 + 3) * (y1 - y0 + 3) * (z1 - z0 + 3);
+        while (k > 2 && cells * k * k * k > REFINE_CELLS) k--;
+      }
     }
     if (k > 1) {
       // (the coarse voxels stay on it too: code that picks voxels by model coordinates uses them)

@@ -30,7 +30,7 @@ import { installPackArt } from './packArt.js';
 import { itemVox } from './itemVox.js';
 import { installPanelArt } from './panelArt.js'; // (wave 9: cast brass corners and forged studs on the bag)
 
-const TOOL_SLOTS = [['pick', 'Pickaxe', 'pick_rusty'], ['chisel', 'Chisel', 'chisel_basic'], ['brush', 'Brush', 'brush_basic'], ['drill', 'Drill', 'drill_steam'], ['xray', 'X-Ray Lamp', 'xray_lamp'], ['build', 'Building', 'blk_ladder']];
+const TOOL_SLOTS = [['pick', 'Pickaxe', 'pick_rusty'], ['chisel', 'Chisel', 'chisel_basic'], ['brush', 'Brush', 'brush_basic'], ['drill', 'Drill', 'drill_steam'], ['xray', 'X-Ray Lamp', 'xray_lamp'], ['build', 'Hammer', 'builder_hammer']];
 const GEAR_SLOTS = [['helmet', 'Helmet', 'helmet_basic'], ['gloves', 'Gloves', 'rubber_gloves'], ['suit', 'Suit', 'heat_suit'], ['boots', 'Boots', 'grip_boots'], ['bag', 'Bag', 'bag_small']];
 const BAGS = ['bag_small', 'bag_medium', 'bag_large', 'bag_huge', 'bag_bottomless'];
 const edible = (it) => it && (it.cat === 'food' || it.food);
@@ -193,6 +193,16 @@ export function openBackpack(game, opts = {}) {
       tools.append(b);
     });
     equip.append(tools, col('Gear', GEAR_SLOTS, 'gear'));
+    requestAnimationFrame(fitRack);
+  };
+  // wave 16: the rack's sleeves shrink to fit when the bag is shorter than the columns (desktop: the
+  // Tools column ran off the panel's foot)
+  const fitRack = () => {
+    if (!equip.isConnected) return;
+    equip.style.removeProperty('--rk');
+    const avail = equip.clientHeight;
+    const need = Math.max(...[...equip.children].map((c) => c.scrollHeight));
+    if (avail > 40 && need > avail + 1) equip.style.setProperty('--rk', Math.max(0.55, (avail / need) * 0.97).toFixed(3));
   };
 
   // ---------------------------------------------------------------- the side: front pockets, the trunk
@@ -559,7 +569,7 @@ export function openBackpack(game, opts = {}) {
       const on = Inv.bag(st).some((x, j) => j < H && x?.tool === slot);
       beltB = el('div', { class: 'bp-actions' }, [el('button', { class: 'btn alt', title: 'Shift-click', onclick: () => { const m = quick('rack', ri); sfx(m > 0 ? 'drop' : 'nope'); closeTag(); render(); } }, on ? 'Off the belt' : 'On the belt')]);
     }
-    const kitDesc = slot === 'build' ? 'Puts down blocks from your pack. R picks which.' : null;
+    const kitDesc = slot === 'build' ? 'Hammers pieces into your alcoves and blocks into the mine. Wheel or hold Q picks the piece.' : null;
     put(tag,
       tagClose(),
       tagHead(itemVox.src(cur ? cur.id : sample), cur ? cur.name : kitDesc ? label : `No ${label.toLowerCase()}`, cur ? `${label} · in use` : label, null, cur ? cur.id : null),
@@ -657,7 +667,7 @@ export function openBackpack(game, opts = {}) {
     root.classList.toggle('portrait', window.innerWidth < 640 && window.innerHeight > window.innerWidth);
   };
   fit();
-  const onResize = () => { fit(); if (!tag.hidden) placeTag(); };
+  const onResize = () => { fit(); fitRack(); if (!tag.hidden) placeTag(); };
   window.addEventListener('resize', onResize);
   const unsub = [
     st.on('gold', () => { if (side === 'front') renderSide(false); }),

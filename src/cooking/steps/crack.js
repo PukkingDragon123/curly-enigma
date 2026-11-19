@@ -1,7 +1,10 @@
 // CRACK: an egg above the bowl and a swinging power meter. Click inside the sweet zone.
 // Too gentle just dents it (try again, costs points); too hard smashes shell into the bowl.
+// (wave 16) It cracks other things too (opts.item): a stone nut wants a harder rap, a salt geode
+// the hardest and narrowest; they split into two halves (a kernel, a cave of salt cubes).
 import { Step, V3 } from './base.js';
 import { egg, eggShell, yolk, shellBit } from '../models.js';
+import { stoneNut, saltGeode } from '../toolVox.js';
 import { droplets, sparkle } from '../fx.js';
 import { VESSEL } from '../vessels.js';
 import { clamp } from '../../core/util.js';
@@ -17,12 +20,15 @@ export class CrackStep extends Step {
     this.rimY = 12 * 0.025;
     this.bowlTop = V3(S.x, this.rimY, S.z);
     this.eggScale = this.cook.ings?.includes('dino_egg') ? 2.3 : 1.45; // a dino egg is a big one
-    this.egg = this.temp(egg(false));
+    this.what = this.opts.item === 'nut' || this.opts.item === 'geode' ? this.opts.item : 'egg';
+    if (this.what !== 'egg') this.eggScale = 1;
+    this.egg = this.temp(this.whole(false));
     this.egg.scale.setScalar(this.eggScale);
     this.eggPos = V3(S.x + 0.26, this.rimY + 0.17, S.z + 0.02);
     this.egg.position.copy(this.eggPos);
-    const mid = 0.68 + (Math.random() - 0.5) * 0.12;
-    this.zone = this.win(mid - 0.085, mid + 0.085, 0.05, 0.98);
+    const mid = (this.what === 'geode' ? 0.82 : this.what === 'nut' ? 0.76 : 0.68) + (Math.random() - 0.5) * 0.1;
+    const half = this.what === 'geode' ? 0.065 : 0.085;
+    this.zone = this.win(mid - half, mid + half, 0.05, 0.98);
     this.power = 0;
     this.phaseP = Math.random() * 2;
     this.speed = 1.15;
@@ -32,6 +38,9 @@ export class CrackStep extends Step {
     this.after = 0;
     this.gauge = null;
   }
+
+  /** The thing to crack, whole (dented: a hairline crack shows). */
+  whole(dented) { return this.what === 'nut' ? stoneNut('whole') : this.what === 'geode' ? saltGeode('whole') : egg(dented); }
 
   ensureGauge() {
     if (this.gauge) return;
@@ -131,7 +140,7 @@ export class CrackStep extends Step {
       if (!this.dented) {
         const pos = this.egg.position.clone();
         this.egg.parent.remove(this.egg);
-        this.egg = this.temp(egg(true));
+        this.egg = this.temp(this.whole(true));
         this.egg.scale.setScalar(this.eggScale);
         this.egg.position.copy(pos);
         this.dented = true;
@@ -140,6 +149,7 @@ export class CrackStep extends Step {
       return;
     }
     const mid = (lo + hi) / 2;
+    if (this.what !== 'egg') return this.splitHard(p, lo, hi, mid, at);
     this.audio.play('crack_egg');
     this.cook.food.egg = true;
     this.cook.food.where = 'bowl';
@@ -181,6 +191,38 @@ export class CrackStep extends Step {
       this.final = clamp(100 - k * 22 - this.tries * 14, 20, 100);
       if (k < 0.35) sparkle(this.fx, at, 10);
       this.float(k < 0.35 ? 'Clean crack!' : 'Crack!', at.clone().add(V3(0, 0.12, 0)), '#ffe066');
+    }
+  }
+
+  /** A nut or a geode splits: two halves rock apart on the counter, the inside on show. */
+  splitHard(p, lo, hi, mid, at) {
+    const geode = this.what === 'geode';
+    this.audio.play('crack');
+    this.audio.play(geode ? 'chisel' : 'clunk', { vol: 0.6 });
+    this.egg.visible = false;
+    const S = this.S;
+    this.halves = [-1, 1].map((sd) => {
+      const m = this.temp(geode ? saltGeode('half') : stoneNut('half'));
+      m.position.copy(at);
+      return { m, from: at.clone(), to: V3(S.x + 0.3 + sd * 0.12, this.rimY - 0.02, S.z + 0.2), rz: sd * 0.9 };
+    });
+    this.bits = [];
+    if (p > hi + 0.02) {
+      this.result = 'smash';
+      this.final = clamp(62 - (p - hi) * 220 - this.tries * 12, 5, 60);
+      for (let i = 0; i < 7; i++) {
+        const b = this.temp(shellBit(i + 3));
+        b.scale.setScalar(1.8);
+        b.position.copy(at);
+        this.bits.push({ m: b, vy: 0.6, v: V3((Math.random() - 0.5) * 0.9, 0, (Math.random() - 0.2) * 0.6), floor: 0.02 });
+      }
+      this.float(geode ? 'Shattered!' : 'Crushed!', at.clone().add(V3(0, 0.12, 0)), '#ff9a8a');
+    } else {
+      this.result = 'good';
+      const k = clamp(Math.abs(p - mid) / ((hi - lo) / 2), 0, 1.3);
+      this.final = clamp(100 - k * 22 - this.tries * 14, 20, 100);
+      sparkle(this.fx, at, geode ? 16 : 8, geode ? [0xffffff, 0xf6e2e2, 0xe8c6c8] : undefined);
+      this.float(k < 0.35 ? 'Clean split!' : 'Crack!', at.clone().add(V3(0, 0.12, 0)), '#ffe066');
     }
   }
 

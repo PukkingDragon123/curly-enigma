@@ -1,6 +1,6 @@
 // Persistent game state + save/load. All gameplay systems read and write through here.
 import { ITEMS, sellPrice, setFindBonus } from '../data/items.js';
-import { UPGRADES, MILESTONES, upgradeEffect, upgradeCost, upgradeLock, milestoneValue } from '../data/upgrades.js';
+import { UPGRADES, MILESTONES, upgradeEffect, milestoneValue } from '../data/upgrades.js';
 import { MECHANICS } from '../data/mechanics.js';
 import { CREATURES } from '../data/creatures.js';
 import { DISHES } from '../data/recipes.js';
@@ -364,7 +364,7 @@ export class State {
     }
     return false;
   }
-  bagCapacity() { return Math.round(((this.equipped('bag')?.cap ?? 14) + this.upEffect('bag')) * (this.skill?.('carry') ?? 1)); }
+  bagCapacity() { return Math.round(((this.equipped('bag')?.cap ?? 14) + this.upEffect('bag') + (this.skill?.('pockets') ?? 0)) * (this.skill?.('carry') ?? 1)); }
   lightRadius() { return ((this.equipped('helmet')?.light ?? 5) + (this.hasBuff('glow') ? 2.5 : 0) + this.upEffect('lamp')) * (this.skill?.('lamp') ?? 1); }
   /** A shop price after the Haggler skills (state.buy charges this; show it on price tags). */
   buyPrice(price) { const k = this.skill?.('haggle') ?? 1; return k > 1 && price > 0 ? Math.max(1, Math.round(price / k)) : price; }
@@ -455,40 +455,14 @@ export class State {
   upEffect(id) { return upgradeEffect(id, this.upgrade(id)); }
   /** Total upgrade levels bought. */
   upgradeLevels() { return Object.values(this.data.upgrades || {}).reduce((s, n) => s + n, 0); }
-  /** Cost of the next level: { gold, items: {id: n} }, or null when maxed. */
-  upgradeCost(id) { return upgradeCost(id, this.upgrade(id)); }
-  /** Can the next level be bought? { ok, reason, cost, lock } */
-  canUpgrade(id, zoneNames) {
-    const u = UPGRADES[id];
-    if (!u) return { ok: false, reason: 'Unknown upgrade' };
-    const lock = upgradeLock(id, this, zoneNames);
-    if (lock) return { ok: false, reason: lock, lock };
-    const cost = this.upgradeCost(id);
-    if (!cost) return { ok: false, reason: 'Maxed out', max: true };
-    for (const [nid, n] of Object.entries(cost.items)) if (this.count(nid) < n) return { ok: false, reason: `Needs ${n}× ${ITEMS[nid]?.name || nid}`, cost };
-    if (!this.canAfford(cost.gold)) return { ok: false, reason: 'Not enough gold', cost };
-    return { ok: true, cost };
-  }
-  /** Buy the next level: pays gold and items, applies the effect. Returns { ok, reason, level }. */
-  buyUpgrade(id) {
-    const c = this.canUpgrade(id);
-    if (!c.ok) return c;
-    const { gold, items } = c.cost;
-    for (const [nid, n] of Object.entries(items)) this.removeItem(nid, n, { lowFirst: true });
-    this.spend(gold, 'upgrade');
-    const level = this.upgrade(id) + 1;
-    this.data.upgrades[id] = level;
-    // stamina is permanent max energy (sleep and fainting read data.maxEnergy), and tops you up
-    if (id === 'stamina') {
-      const add = upgradeEffect('stamina', level) - upgradeEffect('stamina', level - 1);
-      this.data.maxEnergy += add;
-      this.restoreEnergy(add);
-    }
-    this.applyUpgrades();
-    this.emit('upgrade', { id, level });
-    this.checkMilestones();
-    return { ok: true, level };
-  }
+  // Wave 16: gold no longer buys upgrades (gold is for goods and the ticket). The board's levels a
+  // save already bought stay owned and keep working (upEffect); everything new is learned in the
+  // skill tree (data/skills.js) or bought as goods in the shops.
+  /** No next level is sold any more. */
+  upgradeCost() { return null; }
+  /** Always no: learned in the skill tree now. */
+  canUpgrade() { return { ok: false, reason: 'Learned in the skill tree now', skill: true }; }
+  buyUpgrade(id) { return this.canUpgrade(id); }
   /** Keep derived bonuses (sale prices) in step with the upgrade levels. */
   applyUpgrades() {
     setFindBonus((1 + this.upEffect('appraise')) * (this.skill?.('sell') ?? 1)); // + the Trading skills
@@ -507,16 +481,16 @@ export class State {
       rate: this.upEffect('swing'),
       glint: this.upEffect('nose'),
       clean: this.upEffect('steady'),
-      blast: this.upEffect('blast'),
-      toss: this.upEffect('throw'),
-      sticky: this.upEffect('sticky') > 0,
-      spare: this.upEffect('spare'),
-      rest: this.upEffect('rest'),
+      blast: this.upEffect('blast'), // (× skill('blast') in Explosives)
+      toss: this.upEffect('throw') * (this.skill?.('toss') ?? 1),
+      sticky: this.upEffect('sticky') > 0 || (this.skill?.('sticky') ?? 0) > 0,
+      spare: Math.min(0.9, this.upEffect('spare') + (this.skill?.('spare') ?? 0)),
+      rest: this.upEffect('rest') + (this.skill?.('rest') ?? 0),
       value: this.upEffect('appraise'),
     };
   }
   /** Gold the tavern takes in each night (paid in nextDay). */
-  tavernIncome() { return Math.round(this.upEffect('tavern')); }
+  tavernIncome() { return Math.round(upgradeEffect('tavern', this.upgrade('tavern') + Math.round(this.skill?.('tavern') ?? 0))); }
 
   /** Pay out every milestone reached (gold + items, once each). Returns the new ones. */
   checkMilestones() {

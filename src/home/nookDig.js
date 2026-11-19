@@ -3,12 +3,12 @@
 // at the chalk asks what it costs (gold for timber and props), then you take your pick to it in
 // first person: a few blows, the rock cracks and slumps, dust everywhere, and when it settles the
 // alcove is there (the cave is built again with it: houseLoad.js keys the rock on the open set).
-// Buying one on the Miners' Board (its Home tab) while you're home does the same once the board is
-// closed; bought elsewhere, it's there the next time you come home. Your sleeping alcove is Old
+// One bought on the old board (older saves) is simply yours to dig. Your sleeping alcove is Old
 // Star's gift when the lessons end (HomeScene.enter grants it; he mentions it here).
 import * as THREE from 'three';
 import { NOOK, NOOKS, grantNook, diggable } from './nooks.js';
 import { starData } from './starData.js';
+import { SKILL_NODES } from '../data/skills.js';
 import { rand, pick } from '../core/util.js';
 
 const _v = new THREE.Vector3();
@@ -37,14 +37,18 @@ export class NookDig {
     return stage === 'done' || !!starData(st).skipped || st.unlocked?.('upgrades') !== false && !!st.data.unlocks;
   }
 
+  /** The Building skill that opens an alcove (data/skills.js node.nook), or null (the first one is free). */
+  nookSkill(id) { return SKILL_NODES.find((k) => k.nook === id) || null; }
+
   digLabel(n) {
-    if ((this.game.state.data.upgrades?.[n.id] || 0) >= 1) return `Dig out ${n.name}`; // (yours already: Old Star's gift, or bought on the board)
+    if ((this.game.state.data.upgrades?.[n.id] || 0) >= 1) return `Dig out ${n.name}`; // (yours already: Old Star's gift, or bought on the old board)
     if (!this.nooksAllowed()) return 'Old Star\'s chalk marks';
-    const cost = this.game.state.upgradeCost?.(n.id)?.gold ?? n.cost;
-    return `Dig out ${n.name} (${cost.toLocaleString()} gold)`;
+    const k = this.nookSkill(n.id);
+    if (!k || this.game.state.data.skills?.nodes?.[k.id]) return `Dig out ${n.name}`;
+    return `${n.name}: learn ${k.name}`;
   }
 
-  /** E at the chalk: the price, then the dig. */
+  /** E at the chalk: dig it out, once Building knows how (a skill, never gold: wave 16). */
   async useDigSpot(n, d) {
     const st = this.game.state, ui = this.game.ui, a = this.game.audio;
     if (!diggable(n.id, this.nooks)) return;
@@ -54,19 +58,18 @@ export class NookDig {
       this.think('An arch chalked on soft rock, and an X. Underneath, smaller: "LATER. FIRST, LESSONS."', 3.6);
       return;
     }
-    const chk = st.canUpgrade(n.id);
-    const cost = chk.cost?.gold ?? st.upgradeCost?.(n.id)?.gold ?? n.cost;
-    if (!chk.ok) {
+    const k = this.nookSkill(n.id);
+    if (k && !st.data.skills?.nodes?.[k.id]) {
       a.play('ui_error', { vol: 0.5 });
-      this.think(chk.reason === 'Not enough gold' ? `Old Star says ${cost.toLocaleString()} gold for the timber and props to hold ${n.name} up. I've got ${st.gold.toLocaleString()}.` : `Not yet: ${chk.reason}.`, 3.6);
+      this.think(`Old Star's chalk says it needs propping proper. I'll learn ${k.name} first (Building).`, 3.6);
       return;
     }
-    const ok = await ui.confirm(`Dig out <b>${n.title}</b>?<br><span class="muted">${n.desc}</span><br>Timber and props: <span class="gold-txt">${cost.toLocaleString()} gold</span>`, 'Dig it out', 'Not now');
+    const ok = await ui.confirm(`Dig out <b>${n.title}</b>?<br><span class="muted">${n.desc}</span>`, 'Dig it out', 'Not now');
     if (!ok || this.scripted) return;
     this.digging = n.id;
-    const r = st.buyUpgrade(n.id);
-    if (!r.ok) { this.digging = null; a.play('ui_error'); return; }
-    a.play('coins', { n: 3 });
+    grantNook(st, n.id);
+    st.emit('act', { type: 'nook', id: n.id });
+    a.play('chop', { vol: 0.6 });
     await this.digNook(n.id, { at: d });
   }
 

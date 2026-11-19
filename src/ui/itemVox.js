@@ -164,7 +164,7 @@ function buildModel(key) {
       n++;
     }
     if (!n) return null;
-    const geo = VB.prototype.geo.call(vb, 0, 0, 0, FINE);
+    const geo = (VB.prototype.geoLo || VB.prototype.geo).call(vb, 0, 0, 0, FINE); // (geoLo: the plain mesh, no near-copy bookkeeping the stand-in can't do)
     // keep the arrays (in voxels, the layers centred on z = 0), not the geometry
     const P = geo.attributes.position.array, C = geo.attributes.color.array, I = geo.index.array;
     const pos = new Float32Array(P.length);

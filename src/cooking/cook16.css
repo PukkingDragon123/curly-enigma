@@ -1,0 +1,21 @@
+/* wave 16 cooking bits: the roast step's side pips (little hand-cut voxel tiles on the doneness
+   bar), and the technique cue on the pantry when a recipe needs a skill-tree technique. */
+.ck-pip {
+  display: inline-block; width: calc(var(--px) * 5); height: calc(var(--px) * 5); margin: 0 calc(var(--px) * 1);
+  background: #f2dcb0; box-shadow: inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #b8946a, inset var(--px) var(--px) 0 #fff4dc, 0 0 0 var(--px) #3a2414;
+  transition: transform .12s cubic-bezier(.3, 1.6, .5, 1);
+}
+.ck-pip.gold { background: #e8a83a; box-shadow: inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #a86a1a, inset var(--px) var(--px) 0 #ffe08a, 0 0 0 var(--px) #3a2414; }
+.ck-pip.burnt { background: #3a2a22; box-shadow: inset calc(var(--px) * -1) calc(var(--px) * -1) 0 #1a1210, inset var(--px) var(--px) 0 #5a4a3a, 0 0 0 var(--px) #120a08; }
+.ck-pip.on { transform: translateY(calc(var(--px) * 1.5)) scale(1.25); }
+
+/* a recipe that needs a technique: its skill glyph and name hang on a little brass tag */
+.ck-tech {
+  display: inline-flex; align-items: center; gap: calc(var(--px) * 1.5); font-family: var(--font); font-size: 16px; line-height: 1;
+  color: #3a2414; background: linear-gradient(#f4d488, #d8a848); padding: calc(var(--px) * 1) calc(var(--px) * 2.5);
+  box-shadow: inset 0 calc(var(--px) * -1) 0 #9a6a1a, 0 0 0 var(--px) #3a2414, 0 var(--px) 0 var(--px) rgba(0, 0, 0, .25);
+  animation: ckTechIn .28s cubic-bezier(.3, 1.6, .5, 1);
+}
+.ck-tech img { width: calc(var(--px) * 8); height: calc(var(--px) * 8); image-rendering: pixelated; }
+@keyframes ckTechIn { from { transform: scale(.6) translateY(calc(var(--px) * 3)); opacity: 0; } }
+@media (min-width: 1500px) { .ck-tech { font-size: 24px; } }

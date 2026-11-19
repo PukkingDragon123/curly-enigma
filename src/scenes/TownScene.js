@@ -9,6 +9,7 @@
 // (FPSRig + BoxWorld, docs/FPS.md).
 import * as THREE from 'three';
 import { HandTools } from '../ui/handTools.js'; // [inventory hook]
+import { HarvestPatches } from '../deep/veg/harvest.js'; // (wave 16) wild finds round the mushroom trees
 import { Scene } from '../core/Scene.js';
 import { FPSRig, BoxWorld } from '../fps/FPSKit.js';
 import { openLiftPanel, rideTo, liftState } from '../fps/lifts.js';
@@ -631,6 +632,13 @@ export default class TownScene extends Scene {
   // ------------------------------------------------------------ interactions (crosshair + E)
   buildInteractions() {
     const rig = this.rig;
+    // (wave 16) glowcaps, berries, thyme and spore pods at the feet of the mushroom trees (they grow back)
+    try {
+      const kinds = ['glowcaps', 'bush', 'thyme', 'glowcaps', 'spores', 'bush'];
+      const spots = TOWN.trees.slice(0, 6).map((t, i) => { const a = 0.9 + i * 2.1, d = 0.95; return { kind: kinds[i % kinds.length], x: (t.x + Math.cos(a) * d) * M, z: (t.z + Math.sin(a) * d) * M, yaw: a }; });
+      const add = (it) => { const o = { kind: 'use', ...it, enabled: () => !this.locked && it.enabled() }; Object.defineProperty(o, 'label', { get: it.label, enumerable: true }); return rig.add(o); };
+      this.wild = new HarvestPatches(this, spots, { tag: 'town', add });
+    } catch (e) { console.warn('harvest patches', e); }
     const boxM = (b) => b.map((v) => v * M);
     // shops: the serving window and the keeper behind it
     for (const k of this.keepers) {
@@ -871,6 +879,7 @@ export default class TownScene extends Scene {
       this.checkPassage();
     }
     (this.hands ||= new HandTools(this)).update(dt, busy || !!this.locked || !!this.seat, !!this.cut); // [inventory hook] the belt + the held tool (src/ui/handTools.js)
+    this.wild?.update(dt); // [harvest hook] (veg/harvest.js)
     this.syncPlayerProxy();
     this.eyeTarget.copy(rig.camera.position);
     g.convo?.director?.apply(rig.camera, dt); // cutscene talk camera (src/fx/director.js) [convo hook]

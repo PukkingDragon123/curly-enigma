@@ -1,14 +1,18 @@
-// First-person build mode for your alcoves (src/home/nooks.js): X (or the chair button) puts a
-// little hammer in the mole's paw and opens a strip of everything in storage and the owned floors
-// (the walls are the cave's rock: no wall styles). A see-through ghost of the chosen piece snaps to
-// the tile grid where the crosshair meets the floor of an alcove you've dug (or its rock wall, for
-// things that hang), green when it fits and red when it doesn't;
-// R / E turns it, a click places it with a pop and a puff of dust. With empty paws, look at
-// anything placed and click to pick it up and move it, or F / right-click to put it away.
-//   desktop: wheel or 1-9 picks from the strip, Q switches the tab, X is done
-//   touch:   tap the strip; the big button places / picks up, "use" turns, "tool" cycles
+// The Builder's Hammer at home (wave 16; it was a top-down-ish "Decorate" panel): holding the hammer
+// (its belt loop, X, or the chair button) is building. A compact quick strip over the belt shows the
+// piece in the paw (src/home/hammer.js); the wheel steps along it, hold Q (or tap the hammer's loop
+// again) for the radial wheel: pieces you build from timber and stone (data/furniture.js piece,
+// taught by Building levels), furniture from storage, floors. A see-through ghost snaps to the
+// tile grid where the crosshair meets the floor of an alcove you've dug (src/home/nooks.js) or its
+// rock wall, green when it fits, red when it doesn't; R turns it, a click and the mole hammers it
+// in with a few quick blows (fewer and quicker with Building skills and levels: hammer.js
+// blowPlan). Hammering a piece already placed picks it up to move it; F / right-click takes it
+// down (furniture back to storage, built pieces give their timber back). Building XP: act 'build'.
+//   desktop: wheel / hold Q pick, R turns, click builds, F takes down, X puts the hammer away
+//   touch:   the strip and the wheel are tapped; the big button builds / picks up, "use" turns
 import * as THREE from 'three';
 import { FURNITURE, FLOORS, WALLS } from '../data/furniture.js';
+import { ITEMS } from '../data/items.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { el, uid, clamp } from '../core/util.js';
 import { buildFurniture } from '../iso/furniture.js';
@@ -18,6 +22,8 @@ import { VoxelGrid, mulc } from '../iso/kit.js';
 import { fastMesh } from '../iso/mesher.js';
 import { TOOL_KINDS, VMV } from '../fps/ViewModel.js';
 import { T, CEIL } from './units.js';
+import { PIECES } from './pieces.js';
+import { HammerUI, CATS, hammerIn, knockDown } from './hammer.js';
 
 const _o = new THREE.Vector3(), _d = new THREE.Vector3();
 const isTouch = () => document.documentElement.classList.contains('is-touch');
@@ -50,7 +56,7 @@ export class FPBuild {
     this.s = scene;
     this.game = scene.game;
     this.active = false;
-    this.tab = 'furniture';
+    this.tab = 'piece';
     this.sel = null; // { type: 'new'|'move'|'floor', id, p?, orig? }
     this.r = 0;
     this.hover = null;
@@ -100,10 +106,17 @@ export class FPBuild {
     if (on) {
       this.helpers.visible = true;
       this.equipHammer(true);
+      this.starterKit();
+      if (!this.entries().length) this.tab = this.tab === 'piece' ? 'furniture' : 'piece';
+      this.selIdx = 0;
       this.openStrip();
+      this.pickIndex(0, true);
       s.hammer?.classList.add('alt');
       this.game.ui.setHints(null);
       this.game.state.learn?.('building');
+      // the hammer's belt loop lights up with it (src/ui/handTools.js keeps the two in step)
+      const hands = s.hands, at = hands ? (this.game.state.data.inv?.slots || []).slice(0, 9).findIndex((x) => x?.tool === 'build') : -1;
+      if (hands && at >= 0 && hands.slot !== at) { hands.slot = at; hands._lastKind = 'build'; this.game.state.data.hotSel = at; }
     } else {
       this.cancelSel();
       this.helpers.visible = false;
@@ -123,116 +136,86 @@ export class FPBuild {
     if (this.hammer) this.hammer.visible = on;
   }
 
-  // ------------------------------------------------------------ the strip
+  // ------------------------------------------------------------ the quick strip + the wheel (hammer.js)
   openStrip() {
     this.closeStrip();
-    const touch = isTouch();
-    this.tabsEl = el('div', { class: 'tabs', style: { margin: 0 } });
-    this.row = el('div', { style: { display: 'flex', gap: 'calc(var(--px) * 2)', overflowX: 'auto', padding: 'calc(var(--px) * 1) 0', minHeight: 'calc(var(--px) * 22)' } });
-    this.info = el('div', { class: 'muted', style: { fontSize: 'max(var(--g), round(.78em + 2px, var(--g)))', minWidth: 0, flex: '1 1 auto' } });
-    this.actions = el('div', { class: 'row', style: { gap: 'calc(var(--px) * 2)', flexWrap: 'nowrap' } });
-    const keys = touch ? '' : '<kbd>Wheel</kbd>pick <kbd>Q</kbd>tab <kbd>R</kbd>turn <kbd>Click</kbd>place <kbd>F</kbd>store <kbd>X</kbd>done';
-    const panel = el('div', { class: 'panel', style: { width: touch ? 'min(calc(100vw - var(--px) * 96), calc(var(--px) * 230))' : 'min(calc(100vw - 40px), calc(var(--px) * 250))', padding: 'calc(var(--px) * 2) calc(var(--px) * 4)', animation: 'none', pointerEvents: 'auto' } }, [
-      el('div', { class: 'row', style: { gap: 'calc(var(--px) * 3)', flexWrap: 'wrap' } }, [el('b', { style: { fontFamily: 'var(--font-display)', fontSize: 'max(var(--gj), round(1.35em, var(--gj)))', fontWeight: 400, color: 'var(--wood-dk)', lineHeight: 1 } }, 'Decorate'), el('span', { class: 'muted', style: { fontSize: 'max(var(--g), round(.68em + 2px, var(--g)))' }, html: keys }), el('span', { class: 'spacer' }), this.tabsEl]),
-      this.row,
-      el('div', { class: 'row', style: { flexWrap: 'nowrap', gap: 'calc(var(--px) * 3)' } }, [this.info, this.actions]),
-    ]);
-    // phones: above the stick when upright, along the top when held sideways (the thumbs own the bottom)
-    const wide = window.innerWidth > window.innerHeight;
-    const pos = !touch ? { left: 0, right: 0, bottom: 'calc(var(--px) * 3)', justifyContent: 'center' }
-      : wide ? { left: 0, right: 0, top: 'calc(var(--sat, 0px) + var(--px) * 3)', justifyContent: 'center' }
-        : { left: 'calc(var(--sal, 0px) + var(--px) * 3)', bottom: 'calc(var(--sab, 0px) + var(--px) * 62)' };
-    if (touch && wide) panel.style.width = 'min(calc(100vw - var(--px) * 140), calc(var(--px) * 200))';
-    this.strip = el('div', { style: { position: 'absolute', display: 'flex', pointerEvents: 'none', zIndex: 4, ...pos } }, [panel]);
-    // clicks on the strip must not reach the game as a "place" click
-    this.strip.addEventListener('pointerdown', (e) => e.stopPropagation());
-    // in the HUD layer, above the "click to look around" catcher: with the mouse free (Esc) the
-    // strip can be clicked; with it captured, the wheel / number keys / Q pick from it
-    this.game.ui.hud.append(this.strip);
-    this.render();
+    this.ui = new HammerUI(this);
+    this.strip = this.ui.strip;
   }
 
   closeStrip() {
-    this.strip?.remove();
+    this.ui?.dispose();
+    this.ui = null;
     this.strip = null;
   }
 
-  /** What the current tab offers: [{ id, n, type }]. */
+  /** Old Star's timber: the first time the hammer comes out, a few planks and a log to start with. */
+  starterKit() {
+    const st = this.game.state;
+    if (st.flag?.('hammerKit')) return;
+    st.flag?.('hammerKit', true);
+    st.addItem('blk_planks', { n: 8, spill: true });
+    st.addItem('blk_log', { n: 2, spill: true });
+    this.game.ui.toast?.('Old Star left you some timber: <b>8 Planks</b>, <b>2 Logs</b>', { icon: iconURL('blk_planks'), kind: 'good' });
+  }
+
+  /** What the current tab offers: [{ id, n, type, i, locked?, lv?, made? }]. */
   entries() {
     const st = this.game.state, d = st.data;
-    if (this.tab === 'furniture') return Object.keys(FURNITURE).filter((id) => (d.furniture[id] || 0) > 0).map((id) => ({ id, n: d.furniture[id], type: 'new' }));
-    return Object.keys(FLOORS).filter((id) => st.owns(id) || id === 'floor_dirt').map((id) => ({ id, n: null, type: 'floor' }));
+    let out;
+    if (this.tab === 'piece') {
+      const lv = st.skillLevel?.('building') || 1;
+      const known = PIECES.filter((id) => (FURNITURE[id].lv || 1) <= lv);
+      const next = PIECES.filter((id) => (FURNITURE[id].lv || 1) > lv);
+      const nextLv = next.length ? FURNITURE[next[0]].lv : 0;
+      out = known.map((id) => {
+        const made = FURNITURE[id].made || {};
+        const n = Math.min(...Object.entries(made).map(([m, k]) => Math.floor(st.count(m) / k)));
+        return { id, n: Number.isFinite(n) ? n : 0, type: 'piece', made, short: !(n > 0) };
+      }).concat(next.filter((id) => FURNITURE[id].lv === nextLv).map((id) => ({ id, type: 'piece', locked: true, lv: nextLv })));
+    } else if (this.tab === 'furniture') out = Object.keys(FURNITURE).filter((id) => !FURNITURE[id].piece && (d.furniture[id] || 0) > 0).map((id) => ({ id, n: d.furniture[id], type: 'new' }));
+    else out = Object.keys(FLOORS).filter((id) => st.owns(id) || id === 'floor_dirt').map((id) => ({ id, n: null, type: 'floor' }));
+    out.forEach((e, i) => { e.i = i; });
+    return out;
   }
 
-  render() {
-    if (!this.strip) return;
-    const d = this.game.state.data;
-    this.tabsEl.innerHTML = '';
-    for (const [k, label] of [['furniture', 'Furniture'], ['floor', 'Floors']]) {
-      this.tabsEl.append(el('button', { class: 'tab' + (this.tab === k ? ' on' : ''), onclick: () => this.setTab(k) }, label));
-    }
-    this.row.innerHTML = '';
-    const list = this.entries();
-    const slot = (e, i) => {
-      const on = this.tab === 'wall' ? d.home.wall === e.id : this.sel && this.sel.id === e.id && this.sel.type !== 'move';
-      const name = (FURNITURE[e.id] || FLOORS[e.id] || WALLS[e.id])?.name || e.id;
-      return el('div', { class: 'slot interactive' + (on ? ' on' : ''), title: name, style: { width: 'calc(var(--icon-s, 32px) + 12px)', minWidth: 'calc(var(--icon-s, 32px) + 12px)', height: 'calc(var(--icon-s, 32px) + 12px)', outline: i === this.selIdx && !isTouch() ? 'var(--px) dashed #c8902a' : '' }, onclick: () => { this.selIdx = i; this.pickEntry(e); } }, [
-        el('img', { class: 'pix', src: iconURL(e.id), alt: name, style: { width: 'var(--icon-s, 32px)', height: 'var(--icon-s, 32px)' } }), e.n !== null ? el('span', { class: 'n' }, '×' + e.n) : null,
-      ]);
-    };
-    if (!list.length) this.row.append(el('div', { class: 'muted', style: { alignSelf: 'center', fontSize: 'max(var(--g), round(.8em + 2px, var(--g)))' } }, this.tab === 'furniture' ? 'Nothing in storage: Burrow & Board in Deep Town sells furniture. Look at a placed piece to move it.' : 'Nothing here yet.'));
-    void WALLS;
-    list.forEach((e, i) => this.row.append(slot(e, i)));
-    this.renderInfo();
-  }
-
-  renderInfo() {
-    if (!this.strip) return;
-    const sel = this.sel;
-    let txt = '';
-    this.actions.innerHTML = '';
-    const btn = (label, fn, alt = true) => this.actions.append(el('button', { class: 'btn' + (alt ? ' alt' : ''), onclick: (e) => { e.stopPropagation(); fn(); } }, label));
-    if (sel && (sel.type === 'new' || sel.type === 'move')) {
-      const f = FURNITURE[sel.id];
-      txt = `<b>${f.name}</b> · ` + (this.hover && this.hover.reason ? `<span style="color:#b0402a">${this.hover.reason}</span>` : isTouch() ? 'tap the big button to place' : 'click to place');
-      if (!isWallHung(sel.id) && !f.onWall) btn('Turn', () => this.rotate());
-      if (sel.type === 'move') btn(isStorable(sel.id) ? 'Store' : 'Put back', () => this.putAwaySel());
-      else btn('Cancel', () => this.cancelSel(true));
-    } else if (sel && sel.type === 'floor') {
-      txt = `<b>${FLOORS[sel.id].name}</b> · ` + (isTouch() ? 'hold the big button and walk to paint' : 'click or hold to paint tiles · right-click for dirt');
-      btn('Cancel', () => this.cancelSel(true));
-    } else if (this.hoverItem) {
-      const f = FURNITURE[this.hoverItem.id];
-      txt = `<b>${f.name}</b> · ` + (isStorable(this.hoverItem.id) ? (isTouch() ? 'big button: move' : 'click: move · F: store') : 'it stays in your burrow, but you can move it');
-      if (isStorable(this.hoverItem.id)) { const p = this.hoverItem; btn('Store', () => this.putAway(p)); }
-    } else txt = 'Pick something, or look at a piece in your alcove to move it.';
-    btn('Done', () => this.toggle(false), false);
-    if (this.info.innerHTML !== txt) this.info.innerHTML = txt;
-  }
+  render() { this.ui?.render(); }
+  renderInfo() { /* (the strip shows it all: hammer.js) */ }
 
   setTab(k) {
     if (this.tab === k) return;
     this.tab = k;
     this.selIdx = 0;
     this.cancelSel();
-    this.render();
+    this.pickIndex(0, true);
     this.game.audio.play('ui_click');
   }
+  nextTab() { const i = CATS.findIndex((c) => c.id === this.tab); this.setTab(CATS[(i + 1) % CATS.length].id); }
 
-  pickEntry(e) {
-    if (!e) return;
-    if (e.type === 'wall') { this.applyWall(e.id); return; }
-    this.select({ type: e.type, id: e.id });
+  /** Take entry i of the current tab into the paw (quiet: no click). */
+  pickIndex(i, quiet = false) {
+    const list = this.entries();
+    if (!list.length) { this.cancelSel(); this.render(); return; }
+    this.selIdx = ((i % list.length) + list.length) % list.length;
+    const e = list[this.selIdx];
+    if (e.locked) { this.cancelSel(); this.render(); return; }
+    if (this.sel && this.sel.id === e.id && this.sel.type === e.type) { this.render(); return; }
+    this.cancelSel();
+    this.sel = { type: e.type, id: e.id };
+    if (!quiet) this.game.audio.play('ui_click', { pitch: 1.2 });
+    if (e.type !== 'floor') { this.r = this.r || 0; this.makeGhost(e.id); }
+    this.render();
   }
 
-  /** Wheel / number keys / the touch tool button: step through the strip. */
+  pickEntry(e) { if (e) this.pickIndex(e.i ?? 0); }
+
+  /** Wheel / the touch tool button: step along the strip (locked pieces are passed over). */
   cycle(step) {
     const list = this.entries();
     if (!list.length) return;
-    this.selIdx = ((this.selIdx + step) % list.length + list.length) % list.length;
-    const e = list[this.selIdx];
-    if (e.type === 'wall') { this.render(); this.game.audio.play('ui_click'); return; }
-    this.pickEntry(e);
+    let k = this.selIdx;
+    for (let t = 0; t < list.length; t++) { k = ((k + step) % list.length + list.length) % list.length; if (!list[k].locked) break; }
+    this.pickIndex(k);
   }
 
   // ------------------------------------------------------------ selection
@@ -242,7 +225,7 @@ export class FPBuild {
     if (same) { this.render(); return; }
     this.sel = sel;
     this.game.audio.play('ui_click');
-    if (sel.type === 'new' || sel.type === 'move') { this.r = sel.p ? sel.p.r || 0 : this.r; this.makeGhost(sel.id); }
+    if (sel.type !== 'floor') { this.r = sel.p ? sel.p.r || 0 : this.r; this.makeGhost(sel.id); }
     this.render();
   }
 
@@ -328,14 +311,14 @@ export class FPBuild {
   putAway(p) {
     const st = this.game.state, d = st.data;
     if (!isStorable(p.id)) { this.game.audio.play('ui_error'); this.flash('That one stays in your burrow. You can move it, though.'); return false; }
+    const rec = this.s.items.get(p.uid), at = rec && { cx: rec.cx, cz: rec.cz, bbox: rec.bbox.clone() };
     const i = d.home.placed.indexOf(p);
     if (i >= 0) { d.home.placed.splice(i, 1); this.s.removePlaced(p.uid); }
     this.returnPlanter(p);
-    st.addItem(p.id, { spill: true, n: 1 });
+    this.giveBack(p.id);
     this.s.rebuildCollision();
-    this.game.audio.play('remove');
-    const [fw, fd] = footprint(p.id, p.r);
-    this.s.fx.dust((p.x + fw / 2) * T, 0.08, (p.y + fd / 2) * T, 10, [0.55, 0.45, 0.34], 0.15);
+    knockDown(this, p, at);
+    st.emit('act', { type: 'unbuild', id: p.id, home: true });
     st.save();
     this.hoverItem = null;
     this.render();
@@ -360,19 +343,35 @@ export class FPBuild {
     this.mark.visible = false;
     const st = this.game.state;
     this.returnPlanter(p);
-    st.addItem(p.id, { spill: true, n: 1 });
+    this.giveBack(p.id);
     this.game.audio.play('remove');
     st.save();
     this.render();
   }
 
-  /** Place the held piece where the ghost sits. */
+  /** Taken down: furniture goes back to storage, a built piece gives its timber / stone back. */
+  giveBack(id) {
+    const st = this.game.state, made = FURNITURE[id]?.made;
+    if (made) for (const [m, k] of Object.entries(made)) st.addItem(m, { spill: true, n: k });
+    else st.addItem(id, { spill: true, n: 1 });
+  }
+
+  /** Hammer the held piece in where the ghost sits (the data is written at once; the blows are the show). */
   place() {
     const s = this.s, st = this.game.state, d = st.data;
     const sel = this.sel, h = this.hover;
+    if (this.job) return null;
     if (!sel || !h || !h.ok) { this.game.audio.play('ui_error'); if (h?.reason) this.flash(h.reason); return null; }
     let p;
-    if (sel.type === 'new') {
+    const f = FURNITURE[sel.id];
+    if (sel.type === 'piece') {
+      const made = f.made || {};
+      for (const [m, k] of Object.entries(made)) if (st.count(m) < k) { this.game.audio.play('ui_error'); this.flash(`Needs ${k} ${ITEMS[m]?.name || m}`); return null; }
+      const free = Math.random() < (st.skill?.('salvage') || 0);
+      if (!free) for (const [m, k] of Object.entries(made)) st.removeItem(m, k, { lowFirst: true });
+      else this.flash('Thrifty builder: no timber used!');
+      p = { uid: uid(), id: sel.id, x: h.x, y: h.y, r: h.r };
+    } else if (sel.type === 'new') {
       if ((d.furniture[sel.id] || 0) <= 0) { this.cancelSel(true); return null; }
       st.removeItem(sel.id, 1);
       p = { uid: uid(), id: sel.id, x: h.x, y: h.y, r: h.r };
@@ -383,10 +382,12 @@ export class FPBuild {
     d.home.placed.push(p);
     const rec = s.addPlaced(p);
     s.rebuildCollision();
-    this.pop(rec);
+    if (rec) hammerIn(this, rec, { kind: sel.type === 'piece' ? 'piece' : sel.type }); else this.pop(rec);
+    if (sel.type !== 'move') st.emit('act', { type: 'build', home: true, id: p.id, tiles: (f.size?.[0] || 1) * (f.size?.[1] || 1), lv: f.lv || 1 });
     st.learn('building');
     st.save();
-    if (!(sel.type === 'new' && (d.furniture[sel.id] || 0) > 0)) { this.sel = null; this.clearGhost(); this.mark.visible = false; }
+    const more = sel.type === 'piece' ? true : sel.type === 'new' && (d.furniture[sel.id] || 0) > 0;
+    if (!more) { this.sel = null; this.clearGhost(); this.mark.visible = false; if (sel.type === 'new') this.pickIndex(Math.min(this.selIdx, this.entries().length - 1), true); }
     this.render();
     return p;
   }
@@ -436,11 +437,7 @@ export class FPBuild {
     this.render();
   }
 
-  flash(txt) {
-    if (!this.info) return;
-    this.info.innerHTML = `<span style="color:#b0402a">${txt}</span>`;
-    this.infoHold = 2.2;
-  }
+  flash(txt) { this.ui?.flash(txt); }
 
   /** Test hook: place `id` at tile (x, y) facing r, from storage (one is added if none is stored). */
   placeDirect(id, x, y, r = 0) {
@@ -454,6 +451,7 @@ export class FPBuild {
     this.sel = { type: 'new', id };
     this.makeGhost(id);
     this.hover = { x, y, r, ok: true };
+    this.job = null; // (a test places several in one go: earlier blows keep playing)
     const p = this.place();
     if (!wasActive) this.toggle(false);
     return { ok: !!p, uid: p?.uid };
@@ -514,6 +512,16 @@ export class FPBuild {
   }
 
   // ------------------------------------------------------------ frame
+  /** The radial wheel is up: the scene holds the view still (HomeScene passes busy to the rig). */
+  get wheelOpen() { return !!this.ui?.open; }
+  /** Before the rig's update: while the wheel is up, the mouse's flicks steer it instead of the view. */
+  preRig() {
+    const inp = this.game.input;
+    if (!this.wheelOpen) return;
+    const lk = inp.takeLook();
+    if (inp.pointerLocked) this.ui.steer(lk.dx, lk.dy);
+  }
+
   update(dt) {
     const inp = this.game.input, s = this.s;
     const canBuild = this.game.state.unlocked?.('build') !== false; // [unlock guard] (src/ui/Onboard.js UNLOCKS)
@@ -523,23 +531,34 @@ export class FPBuild {
     if (!this.useHammerKind && s.rig.vm) s.rig.vm.toolR.visible = false;
     if (this.infoHold > 0) { this.infoHold -= dt; if (this.infoHold <= 0) this.renderInfo(); }
     if (!inp.enabled || this.game.ui.isPanelOpen()) return;
-    // picking from the strip
+    // picking: the wheel steps along the strip; hold Q for the radial wheel (a tap of Q: next category)
+    const ui = this.ui;
     if (inp.mouse.wheel) this.cycle(inp.mouse.wheel > 0 ? 1 : -1);
-    for (let k = 1; k <= 9; k++) if (inp.pressed('Digit' + k)) { const e = this.entries()[k - 1]; if (e) { this.selIdx = k - 1; this.pickEntry(e); } }
-    if (inp.pressed('KeyQ')) this.setTab(this.tab === 'furniture' ? 'floor' : 'furniture');
-    const rot = inp.pressed('KeyR') || inp.pressed('KeyE');
+    if (inp.pressed('KeyQ')) this.qT = 0;
+    if (this.qT !== undefined && this.qT !== null) {
+      if (inp.isDown('KeyQ')) { this.qT += dt; if (this.qT > 0.16 && ui && !ui.open) ui.openWheel(); }
+      else { if (ui?.open) ui.closeWheel(true); else if (this.qT <= 0.16) this.nextTab(); this.qT = null; }
+    }
+    if (ui?.open) {
+      // the wheel is up: a click takes the one under the flick (or the pointer), right-click shuts it
+      if (inp.mousePressed(0) && inp.pointerLocked) ui.closeWheel(true);
+      else if (inp.mousePressed(2)) ui.closeWheel(false);
+      this.game.ui.setCrosshair?.({ visible: false });
+      return;
+    }
+    const rot = inp.pressed('KeyR') || (this.sel && inp.pressed('KeyE'));
     const store = inp.pressed('KeyF') || inp.mousePressed(2);
-    const click = s.rig.primaryPressed;
+    const click = s.rig.primaryPressed && !this.job;
     const pk = this.aim();
     const sel = this.sel;
     this.box.visible = false;
     const prevHover = this.hoverItem;
     this.hoverItem = null;
     let label = '', ok = true;
-    if (sel && (sel.type === 'new' || sel.type === 'move')) {
+    if (sel && sel.type !== 'floor') {
       if (rot) this.rotate();
       this.updateGhost(pk, dt);
-      label = this.hover?.ok ? `Place ${FURNITURE[sel.id].name}` : this.hover?.reason || 'Look at the floor';
+      label = this.hover?.ok ? `${sel.type === 'piece' ? 'Build' : 'Place'} ${FURNITURE[sel.id].name}` : this.hover?.reason || 'Look at the floor';
       ok = !!this.hover?.ok;
       if (click) this.place();
       else if (store) { if (sel.type === 'move') this.putAwaySel(); else this.cancelSel(true); }
@@ -557,15 +576,15 @@ export class FPBuild {
       if (p) {
         this.hoverItem = p;
         this.showBox(p);
-        label = `Pick up ${FURNITURE[p.id].name}`;
+        label = `Move ${FURNITURE[p.id].name}`;
         if (click || rot) this.pickUp(p);
         else if (store) this.putAway(p);
-      } else label = 'Pick something below';
+      } else label = '';
       this.mark.visible = false;
     }
     // gold label for "place" / "pick up" (no E key cap: it's a click), white when it won't fit
     this.game.ui.setCrosshair?.({ visible: true, kind: ok && (sel || this.hoverItem) ? 'ore' : 'none', label });
-    if (prevHover !== this.hoverItem || (sel && (sel.type === 'new' || sel.type === 'move'))) this.renderInfoThrottled(dt);
+    void prevHover;
   }
 
   renderInfoThrottled(dt) {
@@ -647,6 +666,7 @@ export class FPBuild {
   }
 
   dispose() {
+    this.gone = true;
     this.closeStrip();
     this.clearGhost();
     if (this.hammer) { this.hammer.parent?.remove(this.hammer); this.hammer.geometry.dispose(); }

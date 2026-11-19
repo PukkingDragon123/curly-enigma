@@ -105,6 +105,93 @@ const TOOLS = {
     '....ffeeeeeeeeeeeeff....',
     '......ffffffffffff......',
   ], { ...DOUGH, p: 0xc89a60 }),
+  // (wave 16) a granite mortar, the pestle leaning in, a little heap of green powder
+  grind: () => tool([
+    '..................hh....',
+    '.................hssh...',
+    '................hstu....',
+    '...............hstu.....',
+    '..............hstu......',
+    '.............hstu.......',
+    '...kkkkkkkkkkstukkkk....',
+    '..kmmmmmmmmmsugggmmmk...',
+    '..knnnnnnnnnnggggnnnk...',
+    '..kmmmmmmmmmmmmmmmmmk...',
+    '...kmmmmmmmmmmmmmmmk....',
+    '...kmnmnmnmnmnmnmnmk....',
+    '....kmmmmmmmmmmmmmk.....',
+    '.....kmmmmmmmmmmmk......',
+    '....kkkkkkkkkkkkkkk.....',
+    '...kpppppppppppppppk....',
+  ], { h: 0xd8d2c4, s: 0xb4ae9e, t: 0x8a8478, u: 0x5e5a52, k: 0x4a463e, m: 0x8a8478, n: 0x726c60, p: 0x5e5a52, g: 0x8ac860 }),
+  // a peeler at work, an orange ribbon curling off
+  peel: () => tool([
+    '.......................',
+    '..........oooo.........',
+    '.........ocqqco........',
+    '........ocq..qco.......',
+    '.......occ....co.......',
+    '......ocq......o..ss...',
+    '.....occ.......o.svvs..',
+    '....oocc......o..s..s..',
+    '...occcc....oo...svvs..',
+    '..occcc...oo......tt...',
+    '..occc..oo........tt...',
+    '...oooo...........bb...',
+    '..................bb...',
+    '..................bb...',
+    '..................dd...',
+  ], { o: 0x9a4416, c: 0xf2a35e, q: 0xffc890, s: 0xd8dee6, v: 0x7a8ea8, t: 0xb8962a, b: 0xe8dcc0, d: 0xb0a080 }),
+  // a skewer of chunks over a tongue of flame
+  skewer: () => tool([
+    '.......................',
+    '...aa....gg....aa......',
+    '..abba..gllg..abba.....',
+    'iiabbaiigllgiiabbaiiir.',
+    '..abba..gllg..abba..rr.',
+    '...aa....gg....aa......',
+    '.......................',
+    '.......f....f..........',
+    '......fyf..fyf....f....',
+    '.....fyyyf.fyyf..fyf...',
+    '.....fyeyffyeyf.fyyf...',
+    '....fyeeeyfyeeyffyeyf..',
+    '....feeeeeyeeeeyeeeef..',
+    '.....ffffffffffffffff..',
+  ], { a: 0x9a4416, b: 0xe08a3a, g: 0x5a8a2a, l: 0x9ad070, i: 0x9aa0aa, r: 0x5a5e66, f: 0xc8400a, y: 0xffcc4a, e: 0xfff09e }),
+  // a balloon whisk dipped in froth
+  whisk: () => tool([
+    '..........hh..........',
+    '..........hl..........',
+    '..........hl..........',
+    '..........bd..........',
+    '..........yy..........',
+    '.........sttu.........',
+    '........s.tt.u........',
+    '.......s..tt..u.......',
+    '.......s.t..t.u.......',
+    '.......s.t..t.u.......',
+    '....aaaaaaaaaaaaaa....',
+    '...accaacccaacccaac...',
+    '..acccccccccccccccce..',
+    '..eeeeeeeeeeeeeeeeef..',
+    '...ffffffffffffffff...',
+  ], { ...WOOD, y: 0xc8a040, s: 0xf2f6fa, t: 0xb8c4d2, u: 0x7a8ea8, ...DOUGH }),
+  // a round sieve, flour falling through it into a heap
+  sift: () => tool([
+    '.hhhhhhhhhhhhhhhh.......',
+    'hllllllllllllllllhbbbbb.',
+    'hlmnmnmnmnmnmnmnldbbbbbd',
+    '.dddddddddddddddd.......',
+    '...a...a....a...a.......',
+    '.....a....a...a.........',
+    '...a....a....a..........',
+    '......a...a.............',
+    '.....aaaaaaaa...........',
+    '...aacccccccccaa........',
+    '..acccccccccccccce......',
+    '.eeeeeeeeeeeeeeeeef.....',
+  ], { ...WOOD, m: 0xd8ccb0, n: 0xb8ac90, ...DOUGH }),
 };
 
 /** The picture for a cooking step kind (o.item: the ingredient a chop/grate/fry step works on). */
@@ -119,7 +206,8 @@ export function stepIcon(kind) {
     case 'plate': return skillIconURL('c_gourmet');
     case 'simmer': return skillIconURL('c_simmer');
     case 'bake': return skillIconURL('c_feast');
-    case 'roll': case 'grate': case 'mash': case 'flip': case 'knead': return art('ck:step:' + kind, TOOLS[kind]);
+    case 'roll': case 'grate': case 'mash': case 'flip': case 'knead':
+    case 'grind': case 'peel': case 'skewer': case 'whisk': case 'sift': return art('ck:step:' + kind, TOOLS[kind]);
     default: return skillIconURL('c_chef');
   }
 }

@@ -66,7 +66,7 @@ export function nooksFromKey(key) { return new Set(NOOKS.filter((n) => String(ke
 /** Can it be dug now? (its parent is open and it isn't). */
 export function diggable(id, set) { const n = NOOK[id]; return !!n && !set.has(id) && (!n.parent || set.has(n.parent)); }
 
-/** Open an alcove in the save (no cost: the board or the dig pays). */
+/** Open an alcove in the save (no cost: a Building skill opens the way, data/skills.js). */
 export function grantNook(state, id) {
   const d = state.data;
   d.upgrades ||= {};

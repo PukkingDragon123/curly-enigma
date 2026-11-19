@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { Beast } from './beast.js';
 import { VB, VS, mul, mix, c01 } from './vox.js';
+import { H, taper, eye } from './voxKit.js';
 import { puff, sparkle } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 
@@ -21,34 +22,50 @@ const LOOKS = {
 const SIZES = [0.55, 0.85, 1.35]; // small, medium, big
 
 export function buildSlime(zone) {
+  // (wave 16) at half the old voxel: a jelly dome with a sagging lip and drips, a curled peak on top,
+  // a lighter rim round its silhouette, a long wet highlight and bubbles rising inside; a big
+  // readable face (shiny eyes, a smile with a tongue, blush)
   const L = LOOKS[clamp(zone, 1, 6)], C = L.c;
-  const R = 8;
+  const R = 16;
   const jelly = new VB(81);
+  const bub = [];
+  for (let i = 0; i < 9; i++) {
+    const a = jelly.n(i, 1, 0, 3) * Math.PI * 2, h = 0.15 + jelly.n(i, 2, 0, 3) * 0.7;
+    const rr = Math.sqrt(1 - h * h);
+    bub.push([Math.cos(a) * rr * R * 0.98, R * 0.78 + h * R * 0.8, Math.sin(a) * rr * R * 0.98, 1.2 + jelly.n(i, 3, 0, 3) * 1.4]);
+  }
   jelly.ell(0, R * 0.78, 0, R, R * 0.82, R, (x, y, z, nx, ny, nz) => {
     if (y < 0) return -1;
-    if (ny > 0.55 && nx < -0.1 && nz > 0.1 && jelly.n(x, y, z) < 0.6) return C[3]; // the shine
-    const k = clamp(0.35 + ny * 0.5 + (jelly.n(x, y, z, 2) - 0.5) * 0.25, 0, 0.999);
+    // the long highlight up-left, a small one beside it
+    const hl = ny > 0.42 && ny < 0.8 && nx < -0.05 && nx > -0.55 && nz > 0.25 && Math.abs(nx + 0.3 - (ny - 0.6) * 0.6) < 0.09;
+    if (hl || Math.hypot(nx + 0.12, ny - 0.82, nz - 0.4) < 0.1) return C[3];
+    for (const [bx, by, bz, br] of bub) { const d = Math.hypot(x + 0.5 - bx, y + 0.5 - by, z + 0.5 - bz); if (d < br) return d < br * 0.5 ? C[3] : mix(C[2], C[3], 0.35); }
+    const rim = 1 - Math.abs(ny); // (silhouette: lighter, like light through the edge)
+    const k = clamp(0.18 + ny * 0.45 + (y / (R * 1.6)) * 0.3 + (rim > 0.82 ? 0.22 : 0) + (jelly.n(x, y, z, 2) - 0.5) * 0.12, 0, 0.999);
     return C[Math.floor(k * 4)];
   });
-  // a lip around the bottom (it sags)
-  for (let a = 0; a < 48; a++) { const t = (a / 48) * Math.PI * 2; jelly.set(Math.round(Math.cos(t) * (R + 0.4)), 0, Math.round(Math.sin(t) * (R + 0.4)), C[0]); }
-  // face: two dark eyes with a glint, a little mouth
+  // a curled peak on the crown
+  taper(jelly, 0, R * 1.5, 0, -1, R * 1.72, -1.5, 3.2, 1.6, C[2]); taper(jelly, -1, R * 1.72, -1.5, -3.2, R * 1.82, -2.2, 1.6, 0.7, C[3]);
+  // the sagging lip round the bottom, and a few drips
+  for (let a = 0; a < 120; a++) { const t = (a / 120) * Math.PI * 2; for (let w = 0; w < 2; w++) jelly.set(Math.round(Math.cos(t) * (R + 0.6 + w * 0.5)), w, Math.round(Math.sin(t) * (R + 0.6 + w * 0.5)), C[w ? 0 : 1]); }
+  for (let i = 0; i < 7; i++) { const t = jelly.n(i, 5, 5, 1) * Math.PI * 2; jelly.ell(Math.cos(t) * (R + 1.2), 1, Math.sin(t) * (R + 1.2), 1.6, 1.3, 1.6, C[1]); }
+  // face
   const face = new VB(82);
-  for (const sd of [1, -1]) {
-    const x0 = sd > 0 ? 2 : -4;
-    const h = jelly.hitFrom(x0 + 1, R * 0.95, 14, 0, 0, -1);
-    if (!h) continue;
-    for (let y = 0; y < 3; y++) for (let x = 0; x < 2; x++) face.set(x0 + x, h[1] + y - 1, h[2] + 1, y === 2 && x === (sd > 0 ? 1 : 0) ? 0xffffff : L.eye);
+  for (const sd of [1, -1]) eye(face, sd * 5, R * 0.95, 0, 2.6, 3.4, { iris: L.eye, pupil: mul(L.eye, 0.4), pr: 0.4, on: jelly });
+  for (let x = -4; x <= 3; x++) {
+    const y = Math.round(R * 0.62 - (x === -4 || x === 3 ? -1 : x === -3 || x === 2 ? 0 : 1) * 0.9);
+    const h = jelly.hitFrom(x, y, 40, 0, 0, -1); if (!h) continue;
+    face.set(x, h[1], h[2] + 1, L.eye);
+    if (x > -3 && x < 2) { face.set(x, h[1] - 1, h[2] + 1, x === -1 || x === 0 ? 0xe8607a : L.eye); }
   }
-  const m = jelly.hitFrom(0, R * 0.55, 14, 0, 0, -1);
-  if (m) for (let x = -2; x <= 1; x++) face.set(x, m[1] + (x === -2 || x === 1 ? 1 : 0), m[2] + 1, L.eye);
+  for (const sd of [1, -1]) for (let dx = 0; dx < 3; dx++) { const x = sd > 0 ? 8 + dx : -9 - dx, h = jelly.hitFrom(x, R * 0.75, 40, 0, 0, -1); if (h) face.set(x, h[1], h[2] + 1, mix(C[2], 0xff7a90, 0.55)); }
   // things it swallowed
   const items = [];
-  const bone = new VB(83); bone.cap(-3, 0, 0, 3, 0.5, 0, 0.9, 0xe8dcc0); bone.ell(-3.5, 0, 0, 1.3, 1.3, 1.3, 0xf0e4c8); bone.ell(3.5, 0.5, 0, 1.3, 1.3, 1.3, 0xf0e4c8); items.push(bone);
-  const ore = new VB(84); ore.ell(0, 0, 0, 2.2, 1.8, 2, (x, y, z) => (ore.n(x, y, z) > 0.6 ? 0xd9773f : 0x6e5a4b)); items.push(ore);
-  const shroom = new VB(85); shroom.cap(0, -2, 0, 0, 1, 0, 0.8, 0xe8e0d0); shroom.ell(0, 1.5, 0, 2.4, 1.2, 2.4, (x, y, z) => (shroom.n(x, y, z) > 0.75 ? 0xfff0c0 : 0xb82e2e)); items.push(shroom);
+  const bone = new VB(83); bone.cap(-6, 0, 0, 6, 1, 0, 1.6, 0xe8dcc0); for (const sx of [-1, 1]) for (const dy of [-1, 1]) bone.ell(sx * 7, 0.5 + dy * 1.4, 0, 1.8, 1.8, 1.8, 0xf0e4c8); items.push(bone);
+  const ore = new VB(84); ore.ell(0, 0, 0, 4.4, 3.6, 4, (x, y, z) => (ore.n(x, y, z) > 0.62 ? (ore.n(x, y, z, 2) > 0.5 ? 0xffb070 : 0xd9773f) : ore.n(x, y, z, 3) > 0.5 ? 0x6e5a4b : 0x54463a)); items.push(ore);
+  const shroom = new VB(85); shroom.cap(0, -4, 0, 0, 2, 0, 1.6, 0xe8e0d0); shroom.ell(0, 3, 0, 4.8, 2.4, 4.8, (x, y, z, nx, ny) => (ny < -0.2 ? 0xd8c8a8 : shroom.n(x, y, z) > 0.78 ? 0xfff0c0 : ny > 0.6 ? 0xd84040 : 0xb82e2e)); items.push(shroom);
   return {
-    jelly: jelly.geo(0, 0, 0), face: face.geo(0, 0, 0), items: items.map((v) => v.geo(0, 0, 0)), core: L.core,
+    jelly: jelly.geo(0, 0, 0, H), face: face.geo(0, 0, 0, H), items: items.map((v) => v.geo(0, 0, 0, H)), core: L.core,
     glow: L.glow, col: c01(C[1]), light: c01(C[2]), dark: c01(C[0]), shine: c01(C[3]),
   };
 }

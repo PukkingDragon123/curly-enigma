@@ -19,6 +19,7 @@
 // world.onChange by itself; calling it directly as well is harmless) · clearView(a, b, k) (a talk's
 // close-up: the plants between the camera and the face shrink away) · dispose() · info() ·
 // debug: { info(), near(x, y, z, r), models(), rebuild(), budget(ms), kinds(), bench(n) }.
+// veg.harvest (set by DigScene: ./veg/harvest.js) hears each chunk built and dropped: plucked plants.
 import * as THREE from 'three';
 import { CS, zoneAt, biomeAt } from './Generator.js';
 import { VOX } from './materials.js';
@@ -530,6 +531,7 @@ export class Vegetation {
       rec.d = this.stage.take();
       rec.slot = this.pool.alloc(rec.d.n);
       this.pool.write(rec.slot, rec.d);
+      if (this.harvest) try { this.harvest.onBuilt(this, rec); } catch (e) { console.warn('harvest', e); } // [harvest hook] (veg/harvest.js)
     }
     if (rec.glow) { const L = rec.glow, n = L.n; L.x /= n; L.y /= n; L.z /= n; L.c = L.c.map((v) => v / n); }
     const ms = performance.now() - t0;
@@ -539,6 +541,7 @@ export class Vegetation {
     return rec;
   }
   drop(rec) {
+    this.harvest?.onDrop(rec); // [harvest hook]
     if (rec.slot) this.pool.release(rec.slot);
     rec.slot = null;
     this.built.delete(rec.key);

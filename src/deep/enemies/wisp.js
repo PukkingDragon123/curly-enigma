@@ -3,6 +3,7 @@
 // flinches, shuts its eye and flees — that's the moment to whack it.
 import { Enemy, TAU, smooth } from './base.js';
 import { VB, VS, mix, c01 } from './vox.js';
+import { H, taper } from './voxKit.js';
 import { mote, stream, sparkle, puff, lightTrail, converge } from './fx.js';
 import { rand, clamp } from '../../core/util.js';
 import { airBelow, clearLine, solidAt } from './physics.js';
@@ -16,36 +17,58 @@ const PAL = {
 const palFor = (z) => PAL[z] || (z <= 2 ? PAL[2] : z === 4 ? PAL[6] : PAL[3]);
 
 export function buildWisp(zone) {
-  const P = palFor(zone);
+  // (wave 16) at half the old voxel: a dark faceted shell banded like a lantern, thick lids round one
+  // huge eye (veined white, a ringed iris, a slit pupil, two glints), a crown of ghost-flame tongues
+  // curling back off the top, and tail wisps with a bright core
+  const P = palFor(zone), Sh = P.shell;
+  const R = 10;
   const orb = new VB(31);
-  orb.ell(0, 0, 0, 5, 5, 5, (x, y, z, nx, ny, nz) => {
+  orb.ell(0, 0, 0, R, R, R, (x, y, z, nx, ny, nz) => {
     const rim = nx * -0.4 + ny * 0.7 + nz * 0.5; // light from above-front
-    const k = clamp(0.35 + rim * 0.45 + (orb.n(x, y, z) - 0.5) * 0.25, 0, 0.999);
-    return P.shell[Math.floor(k * 4)];
+    const band = Math.abs(ny) < 0.1 || Math.abs(Math.abs(ny) - 0.55) < 0.06; // lantern bands
+    if (band && nz < 0.6) return Sh[0];
+    const facet = (Math.floor((Math.atan2(nz, nx) + 4) * 2.6) + Math.floor((ny + 2) * 3)) % 2;
+    const k = clamp(0.35 + rim * 0.42 + facet * 0.1 + (orb.n(x, y, z) - 0.5) * 0.15, 0, 0.999);
+    return Sh[Math.floor(k * 4)];
   });
-  // ghostly flames licking up from the crown
-  for (const [x, z, h] of [[0, -1, 3], [2, -2, 2], [-3, -1, 2], [1, 1, 1]]) for (let i = 0; i < h; i++) orb.set(x, 5 + i, z, i === h - 1 ? P.shell[3] : P.shell[2]);
-  // the big eye: sclera ring, glowing iris, pupil, highlight
+  // thick lids round the eye (a ring a little proud of the shell)
+  for (let a = 0; a < 64; a++) {
+    const t = (a / 64) * Math.PI * 2, x = Math.cos(t) * 7.4, y = Math.sin(t) * 6.4 - 1;
+    const h = orb.hitFrom(Math.round(x), Math.round(y), 20, 0, 0, -1);
+    if (h) { orb.set(h[0], h[1], h[2] + 1, y > -1 ? Sh[3] : Sh[2]); if (y > 2) orb.set(h[0], h[1] + 1, h[2] + 1, mix(Sh[3], P.iris, 0.25)); }
+  }
+  // ghost-flame tongues off the crown, curling back, bright at the tips
+  const fl = [[0, -1, 9, 0.2], [3.5, -2, 7, -0.4], [-3.5, -2.5, 7.5, 0.5], [1.5, 2, 5, 0.1], [-2, 1.5, 5.5, -0.2], [0, -5, 6, 0]];
+  for (const [x, z, h, lean] of fl) {
+    const by = Math.sqrt(Math.max(0, R * R - x * x - z * z)) - 1;
+    taper(orb, x, by, z, x + lean * h, by + h * 0.6, z - h * 0.35, 2.2, 1.4, (xx, yy, zz, t) => (t > 0.6 ? P.tail : Sh[2]));
+    taper(orb, x + lean * h, by + h * 0.6, z - h * 0.35, x + lean * h * 1.4, by + h, z - h * 0.9, 1.4, 0.4, (xx, yy, zz, t) => (t > 0.7 ? mix(P.tail, P.iris, 0.7) : P.tail));
+  }
+  // the big eye: veined sclera, ringed iris, slit pupil, glints
   const eye = new VB(), red = new VB();
   for (const [vb, iris] of [[eye, P.iris], [red, 0xff4a5a]]) {
-    for (let y = -3; y <= 2; y++) for (let x = -3; x <= 2; x++) {
-      const corner = (x === -3 || x === 2) && (y === -3 || y === 2);
-      if (corner) continue;
-      const inIris = x >= -2 && x <= 1 && y >= -2 && y <= 1;
-      const pupil = x >= -1 && x <= 0 && y >= -1 && y <= 0;
-      let c = inIris ? iris : 0xeee6ff;
-      if (inIris && y === -2) c = mix(iris, 0x000000, 0.3);
-      if (pupil) c = 0x120818;
-      if (x === -2 && y === 1) c = 0xffffff;
-      vb.set(x, y, 5, c);
+    for (let y = -6; y <= 4; y++) for (let x = -6; x <= 5; x++) {
+      const u = (x + 0.5) / 6.4, v = (y + 1.5) / 5.6, d = Math.hypot(u, v);
+      if (d > 1) continue;
+      const ir = Math.hypot((x + 0.5) / 3.8, (y + 1.5) / 3.8);
+      let c = v > 0.6 ? 0xb8a8d0 : (Math.abs(x + y * 2) % 7 === 0 && d > 0.75) ? 0xd88aa8 : 0xeee6ff;
+      if (ir < 1) c = ir > 0.82 ? mix(iris, 0x000000, 0.45) : v < -0.1 ? mix(iris, 0xffffff, 0.3) : iris;
+      if (Math.abs(x + 0.5) < 0.9 && Math.abs(y + 1.5) < 3.2) c = 0x120818;
+      if (Math.hypot(x + 2.5, y - 0.5) < 1.2 || (x === 1 && y === -4)) c = 0xffffff;
+      const h = orb.hitFrom(x, y, 20, 0, 0, -1);
+      vb.set(x, y, h ? h[2] + 1 : 10, c);
     }
   }
   const tails = [2.5, 1.9, 1.3].map((r, i) => {
-    const t = new VB(40 + i);
-    t.ell(0, 0, 0, r, r, r, (x, y, z, nx, ny) => mix(P.shell[1], P.tail, clamp(0.35 + ny * 0.4 - i * 0.1, 0, 1)));
-    return t.geo(0, 0, 0);
+    const t = new VB(40 + i), q = r * 2;
+    t.ell(0, 0, 0, q, q, q, (x, y, z, nx, ny, nz) => {
+      if (Math.abs(nx) < 0.25 && ny > -0.3) return mix(P.tail, P.iris, 0.45); // a bright seam
+      return mix(Sh[1], P.tail, clamp(0.35 + ny * 0.4 - i * 0.1 + (t.n(x, y, z) - 0.5) * 0.2, 0, 1));
+    });
+    taper(t, 0, q * 0.8, 0, 0, q * 1.6, -q * 0.5, q * 0.45, 0.4, mix(P.tail, P.iris, 0.3));
+    return t.geo(0, 0, 0, H);
   });
-  return { orb: orb.geo(0, 0, 0), eye: eye.geo(0, -0.5, 5), red: red.geo(0, -0.5, 5), tails, mote: P.mote, glow: c01(P.iris) };
+  return { orb: orb.geo(0, 0, 0, H), eye: eye.geo(0, -1, 10, H), red: red.geo(0, -1, 10, H), tails, mote: P.mote, glow: c01(P.iris) };
 }
 
 export class Wisp extends Enemy {

@@ -10,6 +10,10 @@
 //   simmer  keep the pot at a simmer with the heat knob       flip    toss it high, catch it in the pan
 //   grate   stroke along the grater, stop before your knuckles roll    even out the dough with the pin
 //   bake    pull it from the hearth oven at golden            mash    pound the lumps on the beat
+//   grind   circle the pestle in the mortar, smooth and even  peel    hold to peel a strip, let go at knots
+//   skewer  turn it over the flame, every side golden          whisk   wiggle fast, keep the froth fluffy
+//   sift    tap the sieve while it swings over the bowl       (crack also takes nuts and salt geodes)
+// Some recipes and steps need a technique from the skill tree (data/cookTech.js).
 //
 // Dishes and foraged plants carry a quality (q, 0..100): a dish's quality is its cooking score
 // (helped by the quality of what went in) and stretches how long its buff lasts.
@@ -53,6 +57,10 @@ export const INGREDIENTS = {
     desc: 'Creamy cave grubs dug out of soft loam. Crunchy when fried. Do not think about it.' },
   dino_egg: { name: 'Dino Egg', cat: 'ingredient', q: true, value: 260, icon: I('dinoegg'),
     desc: 'A huge speckled egg from the Dino Caverns. Lift it gently: something big laid it.' },
+  stone_nut: { name: 'Stone Nut', cat: 'plant', value: 12, food: 3, icon: I('nut'),
+    desc: 'A knobbly nut with a shell like rock. Crack it on the rim, not your teeth.' },
+  spore_puff: { name: 'Puff Spores', cat: 'plant', value: 16, food: 1, icon: I('spores'),
+    desc: 'A soft pod of glowing spores. Sneezy. Sour and fizzy once it ferments.' },
   drake_meat: { name: 'Drake Meat', cat: 'ingredient', value: 70, price: 120, icon: I('drake'),
     desc: 'Lean dark meat from a rock drake. Tough as boots until it is cured.' },
 };
@@ -95,43 +103,57 @@ export const DISHES = {
   garlic_mash: D({ name: 'Garlic Tuber Mash', energy: 75, buff: 'sturdy', secs: 480, value: 80, icon: I('mash', 0xf0e0b0), desc: 'Pounded smooth with butter and cave garlic.' }),
   thyme_tea: D({ name: 'Stone-Thyme Tea', energy: 30, heal: 25, buff: 'cool', secs: 300, value: 50, icon: I('tea', 0xc8b060), desc: 'Herby, honeyed, cooling.' }),
   fish_pie: D({ name: 'Stargazer Fish Pie', energy: 120, buff: 'guard', secs: 600, value: 300, icon: I('fishpie', 0xd8a050), desc: 'The fish heads poke out of the crust to look at the stars. Down here, at the ceiling.' }),
+  // wave 16: wild finds and techniques
+  roast_nuts: D({ name: 'Salted Stone Nuts', energy: 26, buff: 'sturdy', secs: 200, value: 40, icon: { k: 'food', t: 'mush', c: 0xc89a5a }, desc: 'Cracked, pan-toasted, salted. A pocketful for the long dig.' }),
+  nut_brittle: D({ name: 'Honey Nut Brittle', energy: 35, buff: 'zippy', secs: 300, value: 85, icon: { k: 'food', t: 'pancakes', c: 0xe0a040 }, desc: 'Amber honey set hard around toasted nuts. Snaps loudly.' }),
+  spore_kraut: D({ name: 'Puff-Spore Kraut', energy: 30, heal: 10, buff: 'sense', secs: 420, value: 95, icon: { k: 'food', t: 'salad', c: 0xb8c070 }, desc: 'Sour, fizzy, a bit alive. Your nose tingles for hours.' }),
+  root_roast: D({ name: 'Fire-Roast Roots', energy: 48, buff: 'sturdy', secs: 360, value: 70, icon: { k: 'food', t: 'skewer', c: 0xe08a3a }, desc: 'Carrot and thyme, charred sweet over the flame.' }),
+  brined_egg: D({ name: 'Brined Pepper Egg', energy: 34, heal: 8, buff: 'warm', secs: 420, value: 75, icon: { k: 'food', t: 'egg', c: 0xe8b060 }, desc: 'Steeped in salt and pepperroot until the white turns gold.' }),
+  smoked_grubs: D({ name: 'Smoked Grub Skewer', energy: 52, buff: 'strong', secs: 480, value: 110, icon: { k: 'food', t: 'skewer', c: 0xa86a3a }, desc: 'Thyme-smoked, chewy, smells of the hearth.' }),
   mystery_mush: D({ name: 'Mystery Mush', energy: 10, value: 1, icon: { k: 'food', t: 'mush', c: 0x8a9a5a }, desc: 'It is food. Technically.' }),
 };
 
 /** ingredient id → count; order-insensitive. hint: a nudge the pantry can give (see closeRecipe). */
 export const RECIPES = [
   { dish: 'glowcap_soup', ing: { glowcap: 1, salt_crystal: 1 }, steps: ['chop', 'simmer', 'season'] },
-  { dish: 'carrot_stew', ing: { cave_carrot: 1, mushroom: 1, salt_crystal: 1 }, steps: ['chop', 'chop', 'simmer', 'season'] },
+  { dish: 'carrot_stew', ing: { cave_carrot: 1, mushroom: 1, salt_crystal: 1 }, steps: ['peel', 'chop', 'simmer', 'season'] },
   { dish: 'worm_noodles', ing: { worm: 1, flour: 1 }, steps: ['knead', 'roll', 'chop', 'simmer'] },
   { dish: 'fern_salad', ing: { blindfern: 1, cave_carrot: 1 }, steps: ['chop', 'grate', 'plate'] },
   { dish: 'fried_fish', ing: { blind_fish: 1, butter: 1 }, steps: ['chop', 'fry', 'plate'] },
-  { dish: 'spicy_omelette', ing: { egg: 1, pepperroot: 1 }, steps: ['crack', 'chop', 'stir', 'fry'] },
-  { dish: 'bubble_tea', ing: { bubblebulb: 1, rootbeer: 1 }, steps: ['chop', 'pour', 'stir'] },
-  { dish: 'zippy_skewer', ing: { sparkmoss: 1, worm: 1 }, steps: ['chop', 'fry', 'plate'] },
+  { dish: 'spicy_omelette', ing: { egg: 1, pepperroot: 1 }, steps: ['crack', 'grind', 'whisk', 'fry'] },
+  { dish: 'bubble_tea', ing: { bubblebulb: 1, rootbeer: 1 }, steps: ['peel', 'pour', 'stir'] },
+  { dish: 'zippy_skewer', ing: { sparkmoss: 1, worm: 1 }, steps: ['chop', 'skewer', 'plate'] },
   { dish: 'truffle_risotto', ing: { truffle: 1, butter: 1, mushroom: 1 }, steps: ['chop', 'simmer', 'stir', 'grate', 'plate'] },
-  { dish: 'shrimp_skewer', ing: { frost_shrimp: 1, pepperroot: 1 }, steps: ['chop', 'fry', 'plate'] },
-  { dish: 'ember_curry', ing: { emberbloom: 1, ashfern: 1, salt_crystal: 1 }, steps: ['chop', 'chop', 'simmer', 'season'] },
-  { dish: 'frost_parfait', ing: { frostbloom: 1, honey: 1, egg: 1 }, steps: ['crack', 'stir', 'pour', 'plate'] },
-  { dish: 'crystal_tea', ing: { crystal_lily: 1, honey: 1 }, steps: ['chop', 'pour', 'stir'] },
-  { dish: 'sleepy_stew', ing: { gloomshroom: 1, cave_carrot: 1, salt_crystal: 1 }, steps: ['chop', 'chop', 'simmer', 'season'] },
-  { dish: 'whisper_wrap', ing: { whisperweed: 1, flour: 1, egg: 1 }, steps: ['crack', 'knead', 'roll', 'chop', 'plate'] },
-  { dish: 'lotus_feast', ing: { core_lotus: 1, truffle: 1, honey: 1 }, steps: ['chop', 'grate', 'simmer', 'season', 'plate'] },
-  { dish: 'grub_pancakes', ing: { flour: 1, egg: 1, honey: 1 }, steps: ['crack', 'stir', 'flip', 'plate'] },
-  { dish: 'deviled_egg', ing: { egg: 1, salt_crystal: 1 }, steps: ['simmer', 'chop', 'season'] },
-  { dish: 'mushroom_stew', ing: { mushroom: 1, cave_garlic: 1, stone_thyme: 1, butter: 1 }, steps: ['chop', 'chop', 'simmer', 'stir', 'season'] },
-  { dish: 'truffle_omelette', ing: { egg: 1, truffle: 1, butter: 1 }, steps: ['crack', 'stir', 'flip', 'grate', 'plate'] },
-  { dish: 'root_pie', ing: { flour: 1, butter: 1, tunnel_tuber: 1, cave_carrot: 1 }, steps: ['chop', 'chop', 'knead', 'roll', 'bake'] },
+  { dish: 'shrimp_skewer', ing: { frost_shrimp: 1, pepperroot: 1 }, steps: ['peel', 'skewer', 'plate'] },
+  { dish: 'ember_curry', ing: { emberbloom: 1, ashfern: 1, salt_crystal: 1 }, steps: ['chop', 'grind', 'simmer', 'season'] },
+  { dish: 'frost_parfait', ing: { frostbloom: 1, honey: 1, egg: 1 }, steps: ['crack', 'whisk', 'pour', 'plate'] },
+  { dish: 'crystal_tea', ing: { crystal_lily: 1, honey: 1 }, steps: ['grind', 'pour', 'stir'] },
+  { dish: 'sleepy_stew', ing: { gloomshroom: 1, cave_carrot: 1, salt_crystal: 1 }, steps: ['peel', 'chop', 'simmer', 'season'] },
+  { dish: 'whisper_wrap', ing: { whisperweed: 1, flour: 1, egg: 1 }, steps: ['crack', 'sift', 'knead', 'roll', 'plate'] },
+  { dish: 'lotus_feast', ing: { core_lotus: 1, truffle: 1, honey: 1 }, steps: ['peel', 'grate', 'simmer', 'season', 'plate'] },
+  { dish: 'grub_pancakes', ing: { flour: 1, egg: 1, honey: 1 }, steps: ['crack', 'sift', 'whisk', 'flip', 'plate'] },
+  { dish: 'deviled_egg', ing: { egg: 1, salt_crystal: 1 }, steps: ['simmer', 'peel', 'season'] },
+  { dish: 'mushroom_stew', ing: { mushroom: 1, cave_garlic: 1, stone_thyme: 1, butter: 1 }, steps: ['chop', 'grind', 'simmer', 'stir', 'season'] },
+  { dish: 'truffle_omelette', ing: { egg: 1, truffle: 1, butter: 1 }, steps: ['crack', 'whisk', 'flip', 'grate', 'plate'] },
+  { dish: 'root_pie', ing: { flour: 1, butter: 1, tunnel_tuber: 1, cave_carrot: 1 }, steps: ['peel', 'chop', 'sift', 'knead', 'bake'] },
   { dish: 'fried_grubs', ing: { grub: 1, butter: 1, salt_crystal: 1 }, steps: ['fry', 'season', 'plate'] },
-  { dish: 'salted_fish', ing: { blind_fish: 1, salt_crystal: 1 }, steps: ['chop', 'season', 'bake'] },
+  { dish: 'salted_fish', ing: { blind_fish: 1, salt_crystal: 1 }, steps: ['crack', 'chop', 'season', 'bake'] },
   { dish: 'jam_toast', ing: { flour: 1, cave_berry: 1, honey: 1, butter: 1 }, steps: ['simmer', 'knead', 'bake', 'plate'] },
   { dish: 'berry_jam', ing: { cave_berry: 1, honey: 1 }, steps: ['mash', 'simmer', 'pour'] },
-  { dish: 'herb_bread', ing: { flour: 1, stone_thyme: 1, butter: 1 }, steps: ['chop', 'knead', 'bake'] },
-  { dish: 'dino_frittata', ing: { dino_egg: 1, tunnel_tuber: 1, stone_thyme: 1 }, steps: ['crack', 'chop', 'stir', 'fry', 'bake'] },
-  { dish: 'drake_jerky', ing: { drake_meat: 1, pepperroot: 1, salt_crystal: 1 }, steps: ['chop', 'season', 'bake'] },
+  { dish: 'herb_bread', ing: { flour: 1, stone_thyme: 1, butter: 1 }, steps: ['grind', 'sift', 'knead', 'bake'] },
+  { dish: 'dino_frittata', ing: { dino_egg: 1, tunnel_tuber: 1, stone_thyme: 1 }, steps: ['crack', 'peel', 'whisk', 'fry', 'bake'] },
+  { dish: 'drake_jerky', ing: { drake_meat: 1, pepperroot: 1, salt_crystal: 1 }, steps: ['chop', 'crack', 'season', 'skewer'] },
   { dish: 'glow_pesto', ing: { glow_moss: 1, cave_garlic: 1, flour: 1 }, steps: ['grate', 'knead', 'roll', 'chop', 'simmer'] },
-  { dish: 'garlic_mash', ing: { tunnel_tuber: 1, cave_garlic: 1, butter: 1 }, steps: ['chop', 'simmer', 'mash', 'season'] },
-  { dish: 'thyme_tea', ing: { stone_thyme: 1, honey: 1 }, steps: ['chop', 'pour', 'stir'] },
-  { dish: 'fish_pie', ing: { blind_fish: 1, flour: 1, butter: 1, tunnel_tuber: 1 }, steps: ['chop', 'chop', 'knead', 'roll', 'bake'] },
+  { dish: 'garlic_mash', ing: { tunnel_tuber: 1, cave_garlic: 1, butter: 1 }, steps: ['peel', 'simmer', 'mash', 'season'] },
+  { dish: 'thyme_tea', ing: { stone_thyme: 1, honey: 1 }, steps: ['grind', 'pour', 'stir'] },
+  // wave 16: wild finds (src/deep/veg/harvest.js) and the techniques (data/cookTech.js)
+  { dish: 'roast_nuts', ing: { stone_nut: 1, salt_crystal: 1 }, steps: ['crack', 'fry', 'season'] },
+  { dish: 'nut_brittle', ing: { stone_nut: 1, honey: 1 }, steps: ['crack', 'simmer', 'pour'] },
+  { dish: 'spore_kraut', ing: { spore_puff: 1, cave_garlic: 1, salt_crystal: 1 }, steps: ['chop', 'season', 'knead'] },
+  { dish: 'root_roast', ing: { cave_carrot: 1, stone_thyme: 1 }, steps: ['peel', 'skewer', 'season'] },
+  { dish: 'brined_egg', ing: { egg: 1, salt_crystal: 1, pepperroot: 1 }, steps: ['simmer', 'peel', 'crack', 'season'] },
+  { dish: 'smoked_grubs', ing: { grub: 1, stone_thyme: 1 }, steps: ['grind', 'skewer', 'plate'] },
+  { dish: 'fish_pie', ing: { blind_fish: 1, flour: 1, butter: 1, tunnel_tuber: 1 }, steps: ['chop', 'sift', 'knead', 'roll', 'bake'] },
 ];
 
 /** Old Star's cooking lesson: the dish, what he hands you if you have none, and its steps. */

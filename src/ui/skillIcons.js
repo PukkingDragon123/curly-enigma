@@ -1165,6 +1165,164 @@ P.clover = (D) => { for (const [x, y] of [[12, 12], [20, 12], [12, 20], [20, 20]
 Ico.prototype.leaf = function (cx, cy, len, ang, w, mat) { P.leaf(this, cx, cy, len, ang, w, mat); return this; };
 
 // ---------------------------------------------------------------- line emblems
+// ---------------- wave 16: the new nodes (building, survival, taming, cooking techniques, mining's board ideas)
+/** A nail, head top-left, driven at an angle. */
+const nail = (D, x, y, len = 9, ang = 0.9) => {
+  const ex = x + Math.cos(ang) * len, ey = y + Math.sin(ang) * len;
+  D.line(x, y, ex, ey, 1.6, M.iron, { shine: 10, spec: 0.5 });
+  D.line(x - Math.sin(ang) * 2.2, y + Math.cos(ang) * 2.2, x + Math.sin(ang) * 2.2, y - Math.cos(ang) * 2.2, 1.8, M.iron, { k: 0.7 });
+};
+/** A plank with grain and two nail heads. */
+const plank = (D, x, y, w, h, mat = M.wood) => {
+  D.rect(x, y, w, h, mat, { k: 0.55, rim: 0.22, tex: 0.08, seed: x * 7 + y });
+  for (let i = x + 2; i < x + w - 2; i += 5) D.ln(i, y + h * 0.35, i + 2, y + h * 0.35, C(mat, 2));
+  D.px(x + 2, y + h / 2, C(M.iron, 6)).px(x + w - 3, y + h / 2, C(M.iron, 6));
+};
+const fish = (D, cx, cy, s = 1, mat = M.blue) => {
+  D.push(cx - 16 * s, cy - 16 * s, s);
+  D.ell(15, 16, 9, 4.6, mat, { shine: 9, spec: 0.5 });
+  D.poly([[22, 16], [29, 10.5], [27.5, 16], [29, 21.5]], mat, { k: 0.5, rim: 0.2 });
+  D.px(10, 15, 0x10141e).px(11, 14, 0xffffff);
+  D.ln(14, 13, 15, 19, C(mat, 2)).ln(17, 13, 18, 19, C(mat, 2));
+  D.pop();
+};
+const smoke = (D, x, y, h = 14, c = [0xd8d0c8, 0xa89c94, 0x76706c]) => {
+  for (let i = 0; i < 4; i++) {
+    const r = 2.4 + i * 0.9, yy = y - i * h / 4, xx = x + Math.sin(i * 1.7) * 3;
+    D.disk(xx, yy, r, [c[2], c[1], c[1], c[0], c[0], 0xf4f0ec], { spec: 0.1, seam: false });
+  }
+};
+Object.assign(R, {
+  m_fuse: (D) => { D.push(-2, 2, 0.95); P.bomb(D, M.iron); D.pop(); D.arc(16, 18, 13, -2.4, -1.2, 0xffe08a); D.arc(16, 18, 15, -2.3, -1.3, 0xffb040); },
+  m_appraise: (D) => {
+    D.push(-4, 4, 0.8); P.scale(D, M.brass); D.pop();
+    P.gem(D, 23, 10, 6.5, M.emerald); D.spark(28, 4, 2);
+    D.push(12, 14, 0.42); P.coin(D, 16, 16, 12, M.gold); D.pop();
+  },
+  m_throw: (D) => {
+    for (let i = 0; i < 3; i++) D.arc(6, 30, 20 - i * 3, -1.45, -0.35, [0xfff6d8, 0xe8d4a0, 0xb8a070][i]);
+    D.push(8, -6, 0.62); P.bomb(D, M.iron); D.pop();
+    D.push(-8, 10, 0.48); P.paw(D); D.pop();
+  },
+  m_sticky: (D) => {
+    D.push(0, -3, 0.85); P.bomb(D, M.iron); D.pop();
+    D.shape((X, Y) => (Y > 21 && Y < 26 && X > 5 && X < 27) || ((X - 10) ** 2 / 2 + (Y - 27) ** 2 < 6) || ((X - 21) ** 2 / 2 + (Y - 28) ** 2 < 8), M.glow, { k: 0.6, shine: 7, spec: 0.6 });
+    D.px(9, 22, 0xf0fff8).px(18, 22, 0xf0fff8);
+  },
+  // ---------------- Building
+  b_mallet: (D) => {
+    D.line(6, 28, 18, 13, 3, M.wood, { shine: 6 });
+    D.rr(12, 3, 16, 10, 2.5, M.wood, { cylY: true, tex: 0.1 });
+    D.rect(13, 4, 2, 8, M.iron, { k: 0.6 }); D.rect(25, 4, 2, 8, M.iron, { k: 0.6 });
+    for (let i = 0; i < 3; i++) D.arc(20, 8, 11 + i * 2.5, 0.4, 1.2, [0xfff6d8, 0xe8d4a0, 0xb8a070][i]);
+  },
+  b_store: (D) => {
+    D.shape((X, Y) => Y > 3 && (Y > 13 || Math.hypot(X - 16, Y - 13) < 12.5) && X > 3.5 && X < 28.5, M.stone, { k: 0.5, tex: 0.25, seed: 9 });
+    D.shape((X, Y) => Y > 7 && (Y > 15 || Math.hypot(X - 16, Y - 15) < 8.5) && X > 7.5 && X < 24.5 && Y < 29, M.coal, { k: 0.2, bevel: false, seam: false });
+    D.rr(9, 17, 9, 9, 1, M.wood, { k: 0.55 }); D.ln(9, 21, 18, 21, C(M.wood, 2)); D.rect(9, 17, 9, 1.4, M.iron, { k: 0.6, bevel: false });
+    D.rr(17, 20, 7, 7, 1, M.burlap, { k: 0.6, tex: 0.12 });
+    D.halo(13, 12, 4, 0xffc050, 100); D.spark(13, 12, 1, 0xfffbe0, 0xffc050);
+  },
+  b_nails: (D) => { plank(D, 3, 18, 26, 9); nail(D, 8, 4, 13, 1.15); nail(D, 15, 6, 12, 1.25); nail(D, 22, 3, 14, 1.35); D.spark(25, 17, 2); },
+  b_work: (D) => { D.push(0, 7, 0.9); P.anvil(D); D.pop(); D.push(8, -8, 0.65); P.hammer(D, M.steel); D.pop(); D.push(-9, -9, 0.55); P.axe(D, M.steel); D.pop(); },
+  b_pantry: (D) => {
+    D.rect(3, 9, 26, 2.5, M.wood, { cylY: true }); D.rect(3, 22, 26, 2.5, M.wood, { cylY: true });
+    D.push(-7, -9, 0.42); P.jar(D, M.ice); D.pop(); D.push(2, -9, 0.42); P.jar(D, M.ice); D.pop();
+    D.push(-6, 5, 0.42); P.mushroom(D, M.cloth); D.pop(); D.push(8, 4, 0.5); P.egg(D); D.pop();
+    D.push(12, -10, 0.38); P.bottle(D, M.ruby); D.pop();
+  },
+  b_thrift: (D) => { plank(D, 4, 21, 24, 6, M.wood); plank(D, 6, 15, 22, 6, M.wood); plank(D, 3, 9, 20, 6, M.wood); D.push(10, -9, 0.45); P.coin(D, 16, 16, 12, M.gold); D.pop(); },
+  b_taps: (D) => {
+    D.ell(13, 18, 10, 11, M.wood, { tex: 0.1, shine: 5 });
+    D.rect(3, 11, 20, 2, M.iron, { k: 0.5 }); D.rect(3, 23, 20, 2, M.iron, { k: 0.5 });
+    D.rect(22, 15, 7, 3, M.brass, { cylY: true }); D.rect(26, 17, 2, 4, M.brass, { k: 0.6 });
+    D.ell(27, 26, 1.6, 2.4, M.bread, { shine: 9, spec: 0.6, glow: true });
+  },
+  b_carpenter: (D) => {
+    D.poly([[4, 27], [26, 5], [29, 8], [7, 30]], M.steel, { k: 0.6, rim: 0.25 });
+    for (let i = 0; i < 9; i++) D.px(8 + i * 2.3, 27 - i * 2.3, C(M.steel, 2));
+    D.rr(2, 24, 9, 6, 2, M.wood, { k: 0.55 });
+    plank(D, 13, 22, 17, 6, M.wood);
+    for (let i = 0; i < 4; i++) D.px(14 + i * 3, 30, C(M.wood, 6));
+  },
+  b_tavern: (D) => {
+    D.push(-5, 1, 0.8); D.rr(6, 8, 14, 18, 2, M.wood, { tex: 0.08 }); D.rect(6, 12, 14, 1.6, M.iron, { k: 0.6 }); D.rect(6, 21, 14, 1.6, M.iron, { k: 0.6 });
+    D.ell(13, 8, 7, 3, M.egg, { k: 0.8, shine: 4 }); D.pop();
+    D.rr(19, 12, 9, 13, 1.5, M.bread, { shine: 7, spec: 0.5, glow: true }); D.line(28, 15, 28, 22, 2, M.wood, { flat: true, k: 0.5 });
+    D.ell(23.5, 12, 5, 2.2, M.egg, { k: 0.85 });
+  },
+  b_architect: (D) => {
+    D.poly([[16, 3], [29, 13], [26, 13], [26, 28], [6, 28], [6, 13], [3, 13]], M.stone, { k: 0.5, tex: 0.2, seed: 6 });
+    D.poly([[16, 3], [29, 13], [3, 13]], M.wood, { k: 0.62, rim: 0.2 });
+    D.rr(13, 18, 6, 10, 2.5, M.dkwood, { k: 0.4 }); D.px(17, 23, C(M.brass, 6));
+    D.rect(8, 16, 3, 3, M.flame, { k: 0.8, glow: true }); D.rect(21, 16, 3, 3, M.flame, { k: 0.8, glow: true });
+    D.push(15, 14, 0.42); P.crown(D, M.gold, M.sapphire); D.pop();
+  },
+  // ---------------- Survival
+  v_lungs: (D) => { D.push(-3, 1, 0.9); P.heart(D, 16, 16, 1, M.cloth); D.pop(); D.push(8, -5, 0.6); P.wind(D, M.ice); D.pop(); },
+  v_rest: (D) => {
+    D.shape((X, Y) => Math.hypot(X - 15, Y - 15) < 11 && Math.hypot(X - 20, Y - 11) > 9, M.bread, { k: 0.75, shine: 6, spec: 0.4, glow: true });
+    D.halo(13, 17, 12, 0xfff0a0, 70);
+    for (const [x, y, sc] of [[22, 20, 0.32], [26, 13, 0.24]]) { D.push(x - 16 * sc, y - 16 * sc, sc); D.poly([[8, 8], [24, 8], [24, 11], [13, 22], [24, 22], [24, 25], [8, 25], [8, 22], [19, 11], [8, 11]], M.egg, { k: 0.85 }); D.pop(); }
+  },
+  v_belly: (D) => { D.push(-2, 2, 0.95); P.drumstick(D); D.pop(); D.push(10, -9, 0.42); P.plate(D, M.iron); D.pop(); },
+  v_mend: (D) => {
+    D.leaf(14, 17, 13, -0.75, 0.42, M.leaf); D.leaf(18, 19, 11, -2.1, 0.4, M.leaf);
+    D.rr(8, 19, 16, 6, 1.5, M.egg, { k: 0.75, rotate: 0 }); D.ln(12, 20, 12, 24, C(M.egg, 3)).ln(20, 20, 20, 24, C(M.egg, 3));
+    D.spark(25, 7, 2, 0xf0fff0, 0x8af0a0);
+  },
+  v_stamina: (D) => { P.heart(D, 16, 17, 1.05, M.cloth); D.push(4, 3, 0.75); P.hourglass(D); D.pop(); },
+  v_survivor: (D) => { D.push(0, 3, 0.95); P.shield(D, M.leaf, M.iron); D.pop(); D.push(-1, 0, 0.5); P.heart(D, 16, 18, 1, M.cloth); D.pop(); D.push(8, -9, 0.4); P.crown(D); D.pop(); },
+  // ---------------- Taming
+  a_gentle: (D) => { P.paw(D, 13, 19, 0.9); D.push(13, -6, 0.4); P.heart(D, 16, 16, 1, M.pink); D.pop(); D.arc(24, 14, 6, -1.4, 0.2, 0xfff0d0); },
+  a_treats: (D) => { D.push(-3, 3, 0.85); P.drumstick(D); D.pop(); D.push(10, -10, 0.42); P.paw(D); D.pop(); },
+  a_bite: (D) => {
+    D.poly([[3, 12], [16, 6], [29, 12], [29, 17], [3, 17]], M.leaf, { k: 0.5, rim: 0.2, tex: 0.1 });
+    D.poly([[3, 20], [29, 20], [29, 25], [16, 29], [3, 25]], M.leaf, { k: 0.38, rim: 0.2, tex: 0.1 });
+    for (let i = 0; i < 6; i++) { D.poly([[5 + i * 4, 17], [8 + i * 4, 17], [6.5 + i * 4, 21]], M.bone, { k: 0.85, seam: false }); D.poly([[6.5 + i * 4, 20], [9 + i * 4, 20], [7.8 + i * 4, 16.5]], M.bone, { k: 0.7, seam: false }); }
+    D.px(22, 10, 0xffe060).px(23, 10, 0x201008);
+  },
+  a_nose: (D) => { P.starNose(D, 12, 14, 8); D.push(10, 9, 0.5); P.gem(D, 16, 16, 9, M.amethyst); D.pop(); D.spark(26, 20, 2); },
+  a_bond: (D) => { P.heart(D, 16, 17, 1, M.pink); D.push(-7, -3, 0.42); P.paw(D); D.pop(); D.push(9, 5, 0.42); P.paw(D); D.pop(); },
+  a_pack: (D) => { for (const [x, y, sc] of [[-6, 2, 0.6], [6, 4, 0.6], [0, -4, 0.66]]) { D.push(x + 16 * (1 - sc), y + 16 * (1 - sc), sc); P.paw(D); D.pop(); } },
+  a_master: (D) => { D.push(0, 4, 0.9); P.paw(D); D.pop(); D.push(8, -12, 0.5); P.crown(D, M.gold, M.amethyst); D.pop(); },
+  // ---------------- cooking techniques (data/cookTech.js, the cooking part's)
+  cook_roast: (D) => { D.push(0, 4, 0.7); P.flame(D, 16, 30, 18, 12); D.pop(); D.line(3, 12, 29, 12, 1.6, M.iron, { shine: 10 }); for (const [x, m] of [[9, M.meat], [16, M.leaf], [23, M.meat]]) D.rr(x - 3, 8.5, 6, 7, 1.5, m, { shine: 6, spec: 0.3 }); },
+  cook_bake: (D) => {
+    D.ell(16, 18, 12.5, 8.5, M.bread, { shine: 6, spec: 0.25, tex: 0.08 });
+    for (let i = 0; i < 3; i++) D.line(8 + i * 6, 13, 11 + i * 6, 19, 1.4, M.bread, { flat: true, k: 0.9, seam: false });
+    D.rect(3, 25, 26, 3, M.wood, { cylY: true }); D.push(12, -10, 0.45); P.steam(D, 16, 14, 8); D.pop();
+  },
+  cook_whisk: (D) => {
+    D.line(5, 28, 13, 17, 3, M.wood, { shine: 6 });
+    for (let i = -2; i <= 2; i++) D.shape((X, Y) => { const dx = X - 19 - i * 1.2, dy = Y - 11; const r = Math.hypot(dx / (1 + Math.abs(i) * 0.5), dy * 0.8); return Math.abs(r - 7) < 0.7 && !(X < 15 && Y > 14); }, M.silver, { k: 0.8, seam: false });
+    D.push(10, 10, 0.45); P.egg(D); D.pop();
+  },
+  cook_grind: (D) => {
+    D.shape((X, Y) => Y > 15 && Y < 29 && Math.abs(X - 15) < 11 - (Y - 15) * 0.25, M.stone, { k: 0.5, tex: 0.2, seed: 5, grad: [-0.3, 0] });
+    D.ell(15, 15.5, 11, 2.6, M.coal, { flat: true, k: 0.4, bevel: false });
+    D.ell(15, 15.5, 9, 1.8, M.bread, { flat: true, k: 0.75, bevel: false, seam: false });
+    D.line(17, 15, 25, 4, 4, M.stone, { shine: 8, spec: 0.3 });
+    D.spark(10, 9, 1, 0xfff6d8, 0xe8c070);
+  },
+  cook_brine: (D) => { D.push(-2, 0, 0.8); P.jar(D, M.water); D.pop(); D.push(6, 8, 0.55); fish(D, 16, 16, 1, M.blue); D.pop(); for (const [x, y] of [[24, 6], [27, 10], [22, 11]]) D.px(x, y, 0xffffff).px(x + 1, y + 1, 0xd0e0f0); },
+  cook_smoke: (D) => { D.rect(4, 23, 24, 6, M.dkwood, { k: 0.45 }); D.line(7, 21, 25, 21, 2, M.iron, { flat: true, k: 0.6 }); D.push(-3, 4, 0.55); fish(D, 16, 16, 1, M.orange); D.pop(); smoke(D, 21, 14, 14); smoke(D, 10, 12, 10); },
+  cook_ferment: (D) => {
+    D.push(0, 1, 0.95); P.jar(D, M.ice); D.pop();
+    D.shape((X, Y) => Y > 15 && Y < 27 && Math.abs(X - 16) < 7, M.leaf, { k: 0.55, tex: 0.25, seed: 3, seam: false });
+    for (const [x, y, r] of [[13, 18, 1.4], [18, 21, 1.1], [15, 24, 0.9], [20, 16, 1.2]]) D.ring(x, y, r - 0.3, r + 0.4, M.ice, { seam: false });
+  },
+  cook_candy: (D) => {
+    D.line(6, 28, 18, 14, 2.4, M.wood, { shine: 6 });
+    for (let i = 0; i < 4; i++) D.ell(21 - i * 0.6, 7 + i * 2.6, 5.4 - Math.abs(i - 1.5) * 0.6, 1.5, M.bread, { shine: 9, spec: 0.6 });
+    D.ell(19.5, 20, 2, 3, M.bread, { shine: 9, spec: 0.7, glow: true }); D.ell(19.5, 25.5, 1.4, 1.8, M.bread, { shine: 9, spec: 0.7, glow: true });
+    D.halo(21, 12, 9, 0xffc040, 80);
+  },
+});
+/** Icons for techniques the cooking part adds later, by their icon word (data/cookTech.js). */
+const TECH_BY_ICON = { flame: 'cook_roast', bread: 'cook_bake', egg: 'cook_whisk', mortar: 'cook_grind', drop: 'cook_brine', smoke: 'cook_smoke', jar: 'cook_ferment', honey: 'cook_candy' };
+export function techIconId(icon) { return TECH_BY_ICON[icon] || 'cook_bake'; }
+
 const LINES = {
   mining: (D) => { D.push(0, 0, 1, true); P.pick(D, M.iron); D.pop(); P.pick(D, M.steel); D.spark(16, 4, 2); },
   smithing: (D) => { D.push(0, 6); P.anvil(D); D.pop(); D.push(8, -6, 0.7); P.hammer(D); D.pop(); D.spark(9, 7, 2, 0xfffbe0, 0xff9a30); },
@@ -1173,6 +1331,9 @@ const LINES = {
   exploring: (D) => { P.compass(D, 13, 18, 11); D.push(15, -2, 0.55); P.lantern(D); D.pop(); },
   foraging: (D) => { P.mushroom(D, M.cloth); D.leaf(3, 27, 9, -0.9, 0.38); D.leaf(29, 27, 9, -2.2, 0.38); },
   trading: (D) => { for (let i = 0; i < 4; i++) P.coinEdge(D, 9, 28 - i * 2.6, 13, M.gold); P.coin(D, 20, 15, 9, M.gold); D.spark(27, 4, 2); },
+  building: (D) => { plank(D, 2, 20, 28, 8, M.wood); D.push(2, -4, 0.95); P.hammer(D, M.steel); D.pop(); nail(D, 6, 9, 9, 1.2); D.spark(23, 18, 2); },
+  survival: (D) => { D.push(-1, 2, 0.95); P.shield(D, M.leaf, M.iron); D.pop(); D.push(0, -1, 0.55); P.heart(D, 16, 18, 1, M.cloth); D.pop(); },
+  taming: (D) => { P.paw(D, 14, 20, 0.95); D.push(11, -7, 0.42); P.heart(D, 16, 16, 1, M.pink); D.pop(); },
 };
 
 // ---------------------------------------------------------------- rendering + variants

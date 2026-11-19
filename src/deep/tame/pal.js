@@ -151,7 +151,8 @@ export class Pal extends TameRaptor {
     const d = Math.hypot(at.x - t.center.x, (at.y - t.center.y) * 0.7, at.z - t.center.z);
     if (d > 0.34 + (t.hitR || 0.3) * (t.size || 1) + 0.12) return false;
     const pick = m.state?.equipped?.('pick');
-    const dmg = Math.min(t.maxHp * 0.16, (pick?.power || 1) * 0.6);
+    const sk = m.state?.skill?.('palbite') || 1; // (Taming skills)
+    const dmg = Math.min(t.maxHp * 0.16 * sk, (pick?.power || 1) * 0.6 * sk);
     const l = Math.hypot(t.pos.x - this.pos.x, t.pos.z - this.pos.z) || 1;
     const dir = { x: (t.pos.x - this.pos.x) / l * 0.6, y: 0.2, z: (t.pos.z - this.pos.z) / l * 0.6 };
     const winding = t.atk && t.atk.phase === 'tell';
@@ -373,7 +374,7 @@ export class Pal extends TameRaptor {
       const ore = MAT[ORE_BASE + g.d.oreId];
       if (ore?.accent !== undefined && Math.random() < 0.6) m.fx.twinkle?.(a.x + rand(-0.06, 0.06), a.y + rand(-0.06, 0.06), a.z + rand(-0.06, 0.06), col01(ore.accent), 0.01);
     }
-    if (this.digT > 3.6) {
+    if (this.digT > 3.6 / (m.state?.skill?.('palfind') || 1)) { // (Taming skills)
       this.digT = 0;
       this.stats.finds++;
       this.rec.finds = (this.rec.finds || 0) + 1;

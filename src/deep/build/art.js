@@ -473,6 +473,32 @@ function spade(pc, c) {
   ink(pc);
   if (!stone) { const [gx, gy] = at(-2.6, 5); glint(pc, gx, gy, 1, R[0]); }
 }
+/** The Builder's Hammer (wave 16): an ash haft with a leather grip, a forged head with a crowned
+ *  striking face on one side and a split nail claw curling back on the other. */
+function hammer(pc, c) {
+  const W = RAMPS.ash(), R = metal(c), BR = mat(0xc8a040, { cont: 1.15 });
+  const E = [19.6, 9.4], hx = 7.2, hy = 28.6;
+  const L = Math.hypot(E[0] - hx, E[1] - hy), d = [(E[0] - hx) / L, (E[1] - hy) / L], p = [-d[1], d[0]];
+  const at = (a, b) => [E[0] + p[0] * a + d[0] * b, E[1] + p[1] * a + d[1] * b];
+  stick(pc, hx, hy, E[0] + d[0] * 1.6, E[1] + d[1] * 1.6, [1.5, 1.2], W, { grain: true, seed: 8, knots: [0.42] });
+  wrapStick(pc, hx, hy, E[0], E[1], 1.5, 1.5, 7, RAMPS.leather(), { rows: 4, grow: 0.4 });
+  // the head across the haft's tip: the face (a < 0), the eye, the claw curling back (a > 0)
+  const out = [[-8.6, -2.6], [-9.2, -1.2], [-9.2, 1.4], [-8.6, 2.8], [-5.4, 2.4], [-2.4, 2.6], [1.6, 2.4], [4.6, 3.6], [7.4, 6.2], [8.6, 5.4], [6.6, 2.2], [4, -0.6], [1.6, -2.4], [-2.4, -2.6], [-5.4, -2.2]];
+  const hm = loop(out.map(([a, b], i) => [...at(a, b), i < 4 ? 1 : 0]), { seg: 4 });
+  seam(pc, hm, 'shadow');
+  form(pc, hm, R, { flatten: 0.5, dome: 0.45, bias: 0.06 });
+  // the claw's split: a dark notch down its middle
+  for (let k = 0; k <= 8; k++) { const [x, y] = at(3.4 + k * 0.5, 0.6 + k * 0.62); P(pc, np(x), np(y), R[6]); }
+  // the striking face: bright, worn flat
+  for (let k = -2; k <= 2; k++) { const [x, y] = at(-9 + Math.abs(k) * 0.1, k * 1.1); P(pc, np(x), np(y), R[1]); }
+  dents(pc, hm, R, { dens: 0.06, seed: 9 });
+  // a brass collar and a wedge where the haft goes through the eye
+  const col = loop([at(-1.8, -3.6), at(1.8, -3.6), at(2, -1.2), at(-2, -1.2)].map((q) => [...q, 1]));
+  part(pc, col, BR, { bias: 0.1 });
+  const [rx, ry] = at(0, 0.4); rivet(pc, rx - 0.5, ry - 0.5, R);
+  ink(pc);
+  const [gx, gy] = at(-6.4, -1.6); glint(pc, gx, gy, 1, R[0]);
+}
 function shears(pc, c) {
   const R = metal(c), RD = mat(0xb03024, { cont: 1.1 });
   // two red-gripped handles below the pivot, a coil spring between them
@@ -504,6 +530,7 @@ export function drawBuildIcon(pc, spec) {
   if (spec.k === 'btool') {
     const c = spec.c ?? 0x9aa0a8;
     if (spec.t === 'axe') axe(pc, c);
+    else if (spec.t === 'hammer') hammer(pc, c);
     else if (spec.t === 'spade') spade(pc, c);
     else shears(pc, c);
     return true;

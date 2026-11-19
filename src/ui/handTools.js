@@ -11,8 +11,9 @@ import { HOTBAR_N, hotbarOf, hotStack, refItem, KIND_ICON } from '../core/hotbar
 import { ITEMS } from '../data/items.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { itemVox } from './itemVox.js';
+import { startEating, glowLayer } from '../cooking/eating.js'; // (wave 16) the first-person bite sequence
 
-const PAW = { pick: 'pick', chisel: 'chisel', brush: 'brush', drill: 'drill', xray: 'xray', build: 'beam', food: 'food', dynamite: 'dynamite', stake: 'stake' };
+const PAW = { pick: 'pick', chisel: 'chisel', brush: 'brush', drill: 'drill', xray: 'xray', build: 'hammer', food: 'food', dynamite: 'dynamite', stake: 'stake' };
 const SWING = { pick: { dur: 0.36, hit: 0.13, every: 0.44, snd: 'clang', pitch: 0.8 }, chisel: { dur: 0.2, hit: 0.09, every: 0.26, snd: 'chisel', pitch: 1 } };
 
 export class HandTools {
@@ -45,6 +46,7 @@ export class HandTools {
     if (belt?.shown && !belt.shown(n)) { if (!dir) return; for (let k = 0; k < HOTBAR_N && !belt.shown(n); k++) n = (n + dir + HOTBAR_N) % HOTBAR_N; if (!belt.shown(n)) return; }
     if (n === this.slot) return;
     this.slot = n;
+    this.eatSeq?.cancel();
     this.g.state.data.hotSel = n;
     this.g.audio.play('ui_click', { pitch: 1.3 });
     this.stopLoop();
@@ -68,7 +70,7 @@ export class HandTools {
       if (!s) { slots.push({ icon: iconURL('pick_rusty'), key, label: '', off: true, empty: true }); continue; }
       if (!s.tool) { slots.push({ icon: iconURL('pick_rusty'), key, label: '' }); continue; } // (Belt draws the stack)
       const it = refItem(st, s.tool), has = s.tool === 'build' || !!st.equipped(s.tool);
-      slots.push({ icon: itemVox.src(it?.id || KIND_ICON[s.tool]), key, label: has ? (s.tool === 'build' ? 'Building' : it?.name || '') : '', off: !has });
+      slots.push({ icon: itemVox.src(it?.id || KIND_ICON[s.tool]), key, label: has ? (s.tool === 'build' ? 'Builder\'s Hammer' : it?.name || '') : '', off: !has });
     }
     this.g.ui.setHotbar(slots, this.slot, (i) => this.tap(i));
   }
@@ -88,13 +90,26 @@ export class HandTools {
     const g = this.g, inp = g.input, rig = this.s.rig;
     if (!rig) return;
     if (off) { if (this._sig !== 'off') { this._sig = 'off'; this.swing = null; this.stopLoop(); g.ui.setHotbar(null); } return; }
+    const B = this.s.build; // the home's build mode (src/home/build.js): the Builder's Hammer in the paw
+    const hammering = !!(B?.active && this.kind === 'build');
     if (!busy) {
       for (let k = 0; k < HOTBAR_N; k++) if (inp.pressed('Digit' + (k + 1))) this.select(k);
-      if (inp.mouse.wheel) this.select(this.slot + Math.sign(inp.mouse.wheel), Math.sign(inp.mouse.wheel));
+      if (inp.mouse.wheel && !hammering) this.select(this.slot + Math.sign(inp.mouse.wheel), Math.sign(inp.mouse.wheel));
+    }
+    if (B) {
+      // taking the hammer out of its loop is building; picking another loop puts it away
+      const kind = this.kind;
+      if (kind !== this._lastKind) {
+        if (kind === 'build' && !B.active && !busy) B.toggle(true);
+        else if (this._lastKind === 'build' && B.active) B.toggle(false);
+        this._lastKind = kind;
+      }
+      if (B.active) { this.refreshBelt(); this.swing = null; this.stopLoop(); return; }
     }
     this.refreshBelt();
     this.holdIt();
     this.useT -= dt;
+    this.eating(dt, busy);
     // a swing in progress lands its blow
     const sw = this.swing;
     if (sw) {
@@ -128,12 +143,13 @@ export class HandTools {
     }
     if (!pressed) return;
     if (k === 'food' && it) {
+      if (this.eatSeq && !this.eatSeq.over) return;
       this.useT = 0.7;
-      rig.vm?.eat?.(it.id);
-      const id = it.id;
-      setTimeout(() => { if (!this.gone && this.g.state.count(id) > 0) this.g.eat(id); }, 550);
+      // (wave 16) lift, three bites, a happy bob and a warm glow; the meal counts once it's eaten
+      this.eatSeq = startEating(g, rig.vm, it.id, { onDone: (id) => { if (!this.gone && this.g.state.count(id) > 0) this.g.eat(id); } });
       return;
     }
+    if (k === 'build' && this.s.build) { this.useT = 0.25; if (this.s.build.active) this.s.build.ui?.toggleWheel(); else this.s.build.toggle(true); return; }
     if (k === 'build' && this.s.toggleBuildHere) { this.useT = 0.4; this.s.toggleBuildHere(); return; }
     // nothing to do with it here (a blast indoors, an ore): a little shrug of the paws
     this.useT = 0.35;
@@ -159,8 +175,21 @@ export class HandTools {
     try { this.s.fx?.dust?.(h.x + h.nx * 0.02, h.y, h.z + h.nz * 0.02, kind === 'pick' ? 5 : 2, [0.46, 0.36, 0.26], 0.05); } catch (e) { /* no voxel dust here */ }
   }
 
+  /** The eating sequence's bob and glow on the view (after the rig has placed the camera this frame). */
+  eating(dt, busy) {
+    const q = this.eatSeq;
+    if (!q) return;
+    if (busy && this.g.ui.isPanelOpen?.()) q.cancel();
+    const e = q.update(dt), cam = this.s.camera;
+    if (cam) { cam.position.y += e.bob; cam.rotation.z += e.roll; cam.updateMatrixWorld?.(); }
+    glowLayer(e.glow);
+    if (q.over) { this.eatSeq = null; glowLayer(0); }
+  }
+
   stopLoop() { if (this.loop) { this.loop.stop?.(); this.loop = null; } }
   dispose() {
+    this.eatSeq?.cancel();
+    glowLayer(0);
     this.gone = true;
     this.stopLoop();
   }
