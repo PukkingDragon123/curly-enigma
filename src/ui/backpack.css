@@ -603,10 +603,10 @@
 .bp-hot { display: grid; grid-template-columns: repeat(9, var(--slot-w)); gap: var(--gap); justify-content: center; align-self: center; padding: calc(var(--px) * 3) calc(var(--px) * 4); margin-top: calc(var(--px) * 3); }
 .bp-hot .inv-slot.loop {
   width: var(--slot-w); height: var(--slot-w); border-style: solid; border-width: calc(var(--px) * 6); border-color: transparent;
-  border-image: var(--pk-loop) 6 fill / min(calc(var(--px) * 6), 30%) stretch; image-rendering: pixelated; cursor: grab;
+  border-image: none; background: var(--hs-loop) 0 0 / 100% 100% no-repeat border-box; image-rendering: pixelated; cursor: grab; /* wave 20: the belt's own hand-drawn loop (src/ui/hudMaps.js) */
 }
 .bp-hot .inv-slot.loop.empty { cursor: default; }
-.bp-hot .inv-slot.loop.on { border-image-source: var(--pk-loopOn); }
+.bp-hot .inv-slot.loop.on { background-image: var(--hs-loopOn); }
 .bp-hot .inv-slot .k {
   position: absolute; left: calc(var(--px) * -4); top: calc(var(--px) * -5); z-index: 2; font-style: normal; font-size: 16px; line-height: 1; color: #fff0d2; pointer-events: none;
   text-shadow: var(--px) 0 0 #1e1424, calc(var(--px) * -1) 0 0 #1e1424, 0 var(--px) 0 #1e1424, 0 calc(var(--px) * -1) 0 #1e1424;
@@ -754,9 +754,9 @@ html.is-touch .bp-hot .inv-slot .k { display: none; }
 .bp-pack .inv-slot.pocket, .bp-pack .inv-slot.sewn, .bp-hot .inv-slot.loop, .bp-tgrid .inv-slot.trunk {
   border-width: calc(var(--px) * 6); border-image: var(--pk-well) 6 fill / calc(var(--px) * 6) repeat; image-rendering: pixelated; overflow: visible;
 }
-.bp-hot .inv-slot.loop { border-image-source: var(--pk-loopWell); }
+.bp-hot .inv-slot.loop { border-image: none; background: var(--hs-loop) 0 0 / 100% 100% no-repeat border-box; } /* wave 20: the belt's hand-drawn loops, as on the HUD */
 .bp-pack .inv-slot.pocket.on, .bp-tgrid .inv-slot.trunk.on { border-image-source: var(--pk-wellOn); }
-.bp-hot .inv-slot.loop.on { border-image-source: var(--pk-loopWellOn); }
+.bp-hot .inv-slot.loop.on { background-image: var(--hs-loopOn); }
 .bp-pack .inv-slot.sewn { border-image-source: var(--pk-sewnWell); }
 .bp-pack .inv-slot.pocket:not(.ghosted)::after { display: none; }
 .bp-pack .inv-slot img, .bp-hot .inv-slot img, .bp-tgrid .inv-slot img {
@@ -774,9 +774,8 @@ html.is-touch .bp-hot .inv-slot .k { display: none; }
   position: absolute; z-index: 2; left: calc(var(--px) * -6); right: calc(var(--px) * -6); bottom: calc(var(--px) * -6); height: 0; pointer-events: none;
   border-style: solid; border-width: 0 calc(var(--px) * 6) calc(var(--px) * 3); border-image: var(--pk-well) 0 6 3 6 / 0 calc(var(--px) * 6) calc(var(--px) * 3) repeat; image-rendering: pixelated;
 }
-.bp-hot .inv-slot > .lip { border-image-source: var(--pk-loopWell); }
+.bp-hot .inv-slot > .lip { display: none; }
 .bp-pack .inv-slot.pocket.on > .lip { border-image-source: var(--pk-wellOn); }
-.bp-hot .inv-slot.loop.on > .lip { border-image-source: var(--pk-loopWellOn); }
 .inv-slot.ghosted > .lip { opacity: .7; }
 .bp-hot .inv-slot.cur::after { inset: calc(var(--px) * -6); }
 .bp-hot .inv-slot .k { z-index: 3; left: calc(var(--px) * -5); top: calc(var(--px) * -6); }

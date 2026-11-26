@@ -13,10 +13,11 @@ import { moodOf, KEEPER_MOODS } from '../town/moods.js';
 import { COIN } from './UI.js';
 import { qColor, pips, swing } from './common.js';
 import { SPR } from './uiSprites.js';
+import { HS } from './hudSprites.js'; // wave 20: the HUD's hand-drawn coin
 import { GOAL_GOLD } from '../core/State.js';
 import { installPanelArt } from './panelArt.js'; // (wave 9: the forged strap hinges on the shop's frame)
 
-const price = (n, cls = '') => el('span', { class: 'price ' + cls }, [el('img', { class: 'pix', src: cls.includes('big') ? SPR.coin() : SPR.coinMini(), alt: '' }), formatGoldFull(n)]);
+const price = (n, cls = '') => el('span', { class: 'price ' + cls }, [el('img', { class: 'pix', src: HS.coin(), alt: '' }), formatGoldFull(n)]);
 
 /** Today's commission at the assay office. */
 export function todaysCommission(state) {
@@ -128,7 +129,7 @@ export function openShop(game, shopId) {
       onmouseenter: () => { game.audio.play('ui_hover', { vol: 0.14 }); swing(b.querySelector('.sh-tag'), 9, 900); },
     }, [
       el('span', { class: 'sh-item', 'data-vox': id }, [el('img', { class: 'pix', src: itemVox.src(id), alt: '' })]),
-      el('span', { class: 'sh-tag' }, [owned ? null : el('img', { class: 'pix', src: SPR.coinMini(), alt: '' }), tagTxt]),
+      el('span', { class: 'sh-tag' }, [owned ? null : el('img', { class: 'pix', src: HS.coin(), alt: '' }), tagTxt]),
     ]);
     return b;
   };

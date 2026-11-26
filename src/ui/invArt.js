@@ -119,8 +119,8 @@ const PACK = {
   edge: () => kitPx('bagEdge'),
   pocket: () => kitPx('pocket'),
   pocketOn: () => kitPx('pocket', { t: 'g', W: 'b', c: 'C' }),
-  sleeve: () => kitPx('sleeve'),
-  sleeveOn: () => kitPx('sleeve', { e: 'E', D: 'e', p: 'b' }),
+  sleeve: () => kitPx('sleeve', { e: 'E', D: 'e' }), // a paler hide, so the tools hung in it read at full colour
+  sleeveOn: () => kitPx('sleeve', { e: 'K', D: 'E', p: 'b' }),
   buckle: () => kitPx('buckle'),
   rivet: () => mapPx(['.Gb.', 'GYbu', 'bbuk', '.uk.']),
 };
