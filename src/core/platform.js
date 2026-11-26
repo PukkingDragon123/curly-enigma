@@ -1,4 +1,4 @@
-// The platform: Burrowsmith is a PC (Steam) game. There are no phone quality caps or LOD downgrades
+// The platform: Moleionaire is a PC (Steam) game. There are no phone quality caps or LOD downgrades
 // anywhere (PHONE is always false), and the on-screen touch controls stay in the code but are off
 // unless asked for: ?touch=1 (the touch e2e test) or localStorage 'burrowsmith.touch' = '1'.
 export const PHONE = false;

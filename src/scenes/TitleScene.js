@@ -663,7 +663,7 @@ export default class TitleScene extends Scene {
       ]),
       el('p', { class: 'muted' }, 'Thanks for digging.'),
     ]);
-    this.game.ui.openPanel({ title: 'Credits', sub: 'BURROWSMITH', body, onClose: () => setTimeout(() => this.menu.focus(2, true), 30) });
+    this.game.ui.openPanel({ title: 'Credits', sub: 'MOLEIONAIRE', body, onClose: () => setTimeout(() => this.menu.focus(2, true), 30) });
   }
 
   // ------------------------------------------------------------------ camera

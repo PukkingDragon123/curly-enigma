@@ -1,9 +1,11 @@
-// The BURROWSMITH logo as real pixel art: chunky 10px-tall bitmap letters with a bevelled ramp,
-// a 3px extrusion and a dark outline. "BURROW" is dug-up gold, "SMITH" is hot metal, and the
+// The MOLEIONAIRE logo as real pixel art: chunky 10px-tall bitmap letters with a bevelled ramp,
+// a 3px extrusion and a dark outline. "MOLE" is dug-up gold, "IONAIRE" is hot metal, and the
 // O holds a little gem. Each letter is its own image so the title can animate them.
 import { PixelCanvas } from '../gfx/PixelArt.js';
 
 const GLYPHS = {
+  N: ['##....##', '###...##', '####..##', '##.#..##', '##.##.##', '##..#.##', '##..####', '##...###', '##....##', '##....##'],
+  A: ['..####..', '.######.', '###..###', '##....##', '##....##', '########', '########', '##....##', '##....##', '##....##'],
   M: ['##......##', '###....###', '####..####', '##.####.##', '##..##..##', '##......##', '##......##', '##......##', '##......##', '##......##'],
   O: ['..####..', '.######.', '###..###', '##....##', '##....##', '##....##', '##....##', '###..###', '.######.', '..####..'],
   L: ['##.....', '##.....', '##.....', '##.....', '##.....', '##.....', '##.....', '##.....', '#######', '#######'],
@@ -58,13 +60,13 @@ function letterCanvas(ch, pal, gem) {
 }
 
 let cache = null;
-/** [{ch, url, w, h, hot}] for B-U-R-R-O-W-S-M-I-T-H. */
+/** [{ch, url, w, h, hot}] for M-O-L-E-I-O-N-A-I-R-E. */
 export function logoLetters() {
   if (cache) return cache;
-  const word = 'BURROWSMITH';
+  const word = 'MOLEIONAIRE';
   cache = [...word].map((ch, i) => {
-    const hot = i >= 6;
-    const { canvas, w, h } = letterCanvas(ch, hot ? HOT : GOLD, i === 4);
+    const hot = i >= 4;
+    const { canvas, w, h } = letterCanvas(ch, hot ? HOT : GOLD, i === 1);
     return { ch, url: canvas.toDataURL(), w, h, hot };
   });
   return cache;
