@@ -520,7 +520,7 @@ function style() {
   styled = true;
   const css = `
 .ol-back{position:absolute;inset:0;z-index:7;pointer-events:auto;background:radial-gradient(ellipse at 50% 46%,#24150e 0,#100906 55%,#060304 100%);display:grid;place-items:center;transition:opacity .3s ease}
-.ol-back.d3{background:#0d080e}
+.ol-back.d3{background:var(--pal-ink, #1e1424)}
 .ol-back.out,.ol-back.thru{pointer-events:none}.ol-back.out{opacity:0}
 .ol-view{position:relative;overflow:hidden;width:var(--ol-w);height:var(--ol-h);animation:olPop .32s cubic-bezier(.3,1.6,.5,1) both;filter:drop-shadow(0 0 calc(var(--ol-s) * 8) #ff9a3a2a)}
 .d3 .ol-view{filter:none}

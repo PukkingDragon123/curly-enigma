@@ -23,6 +23,7 @@ import { ClumpMesher } from '../deep/clumps/mesh.js';
 import { M } from '../deep/materials.js';
 import { ORES } from '../data/ores.js';
 import { Vox, h3 } from '../gfx/char/vox.js';
+import { PAL as P, OUTLINE, OUTLINE_LIT } from './palette.js';
 
 export const G3 = { W: 224, H: 144, F: 18, S: 8, dur: 1.35, cx: 92, cy: 84, rx: 26, ry: 24 };
 const { W, H, F, S } = G3;
@@ -48,10 +49,11 @@ const ROT_Y = 0.5; // the clump turned a little to show a broken face
 const HIT_DIR = new THREE.Vector3(0.78, 0.5, 0.38).normalize(); // where the point comes in from (world)
 const CAM = new THREE.Vector3(0.6, 1.55, 9.6);
 const SHOULDER = new THREE.Vector3(4.4, -0.6, 2.6);
-const LINE = [0x24, 0x14, 0x26]; // the house outline: dark plum
+const rgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const LINE = rgb(OUTLINE), LINE_LIT = rgb(OUTLINE_LIT); // the house outline (palette.js): ink, plum where the light hits
 
-// hand-drawn bits (palette: w cream, c yellow, b orange, a ember)
-const PAL = { w: [255, 246, 218], c: [255, 214, 104], b: [242, 146, 52], a: [188, 80, 30], o: [255, 232, 150] };
+// hand-drawn bits, in the master palette: w cream, c gold, b flame, a copper, o pale gold
+const PAL = { w: rgb(P.cream), c: rgb(P.goldLt), b: rgb(P.flameLt), a: rgb(P.copper), o: rgb(P.goldPale) };
 const FLASH = [
   '......a......',
   '......b...a..',
@@ -516,7 +518,7 @@ export class Bake3D {
       if (!(r || d || l || u)) continue;
       const j = i * 4;
       if ((l || u) || o[j + 3] === 0) { o[j] = LINE[0]; o[j + 1] = LINE[1]; o[j + 2] = LINE[2]; o[j + 3] = 255; } // the shade side: a full line
-      else { o[j] = (o[j] + LINE[0]) >> 1; o[j + 1] = (o[j + 1] + LINE[1]) >> 1; o[j + 2] = (o[j + 2] + LINE[2]) >> 1; } // the lit side: broken, half-tone
+      else if ((x + y) & 1 || o[j] + o[j + 1] + o[j + 2] < 150) { o[j] = LINE_LIT[0]; o[j + 1] = LINE_LIT[1]; o[j + 2] = LINE_LIT[2]; } // the lit side: a lighter line, broken
     }
   }
 
