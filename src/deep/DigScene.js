@@ -33,7 +33,7 @@ import { clamp, rand, chance, hexToRgb, formatGoldFull, hashStr } from '../core/
 import { DSPR } from '../ui/deepArt.js';
 import { Build } from './Build.js'; // building part: blocks, ladders, torches, doors, chests; tools that break them
 
-import { TOOL_KINDS, HOTBAR_N, hotbarOf, heldItem } from '../core/hotbar.js';
+import { TOOL_KINDS, HOTBAR_N, hotbarOf, heldItem, hotStack } from '../core/hotbar.js';
 import { startEating, glowLayer } from '../cooking/eating.js'; // (wave 16) the first-person bite sequence
 import { Harvest } from './veg/harvest.js'; // (wave 16) pluck plants, mine salt, rob honeycomb
 import { CamFeel } from '../fps/feel.js'; // head bob on the footsteps, sprint FOV kick
@@ -323,7 +323,11 @@ export default class DigScene extends Scene {
     const it = this.toolItem(this.slotName);
     if (this.vm) {
       const hand = this.builder?.handTool?.(this.slotName); // the block in the paw, or the axe / spade the dig slot picked
-      this.vm.setTool(hand ? hand.kind : this.slotName === 'build' ? 'beam' : it ? this.slotName : 'none', hand ? hand.opts : { item: it?.id });
+      // (wave 19) any other item in the slot is held up as its 3D model (src/fps/viewmodel/held.js)
+      const s = !hand && !it && this.slotName !== 'build' ? hotStack(st, this.slot) : null;
+      const heldKey = s && !s.tool ? (s.w ? `w.${s.w.type}.${s.w.metal}.${s.w.infusion || ''}` : ITEMS[s.id] ? s.id : null) : null;
+      if (heldKey) this.vm.setTool('held', { item: heldKey });
+      else this.vm.setTool(hand ? hand.kind : this.slotName === 'build' ? 'beam' : it ? this.slotName : 'none', hand ? hand.opts : { item: it?.id });
     }
   }
   selectSlot(i, dir = 0) {
