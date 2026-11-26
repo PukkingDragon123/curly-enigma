@@ -191,7 +191,7 @@ Everything (2D pixel art, voxel models, UI, FX) follows one recognizable style:
 - **Shapes:** chunky, hand-carved and a little lopsided. Exaggerated proportions; nothing perfectly symmetric or perfectly round. Silhouettes first.
 - **Voxel 3D:** a carved-toy feel. Chunky readable forms, 3–5 step ramps per material, baked AO, warm key light and cool plum fill. Detail is concentrated where the eye goes (faces, hands, edges, focal props); quiet areas stay quiet. No speckle-noise dithering.
 - **ONE CONSISTENT 2D STYLE: medium-res, Stardew-like, but our own.** The player says the art is "very very inconsistent". Every 2D asset must look as if one artist drew it:
-  - **Resolution grid:** item icons 24×24, small HUD glyphs 16×16, HUD objects and portraits 32–48, panel frame tiles 16×16 nine-slice. Everything is integer-scaled by the same factor (3× at 1080p, 2× at 720p). No mixed pixel sizes on screen.
+  - **Resolution grid:** item icons 24×24, small HUD glyphs 16×16, HUD objects and portraits 32–48, panel frame tiles 16×16 nine-slice. Everything is integer-scaled by the one shared CSS `--px` (3px at 720p, 4px at 1080p; do not change it). No mixed pixel sizes on screen.
   - **Shared palette:** one master palette in `src/ui/palette.js` (about 48 colours, warm and hand-picked, plum darks, cream lights). Every 2D asset uses it, and the item-icon renders get palette-snapped to it.
   - **Shared line rules:** 1px dark-plum outline, lighter outline on lit edges, top-left light, 3–4 tone ramps, hand-placed highlight pixels.
   - **No lazy assets and no simple shapes, ever:** no plain rectangles, circles or flat-filled boxes as art; every frame, button, bar and icon has a designed silhouette, texture marks and character.
