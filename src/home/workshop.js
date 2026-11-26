@@ -168,6 +168,9 @@ export class WorkshopLife {
     // back from the dig with his copper (but not by the cage): hand it over now
     if (this.lessonStage?.() === 'mine' && this.game.state.count('copper_ore') > 0 && !star.scripted) { this.onLessonArrival('lift'); return 'copper'; }
     if (this.lessonTalk?.()) return 'lesson';
+    // he had something for you: he hands it over (its poster drops onto your HUD) and says why
+    const given = this.game.quests?.justGiven?.('oldstar');
+    if (given?.intro) { star.say(given.intro, { mood: 'calm', convo: true }); return 'quest'; }
     const line = this.nextTip();
     star.say(line.text, { mood: line.mood, convo: true }); // a cutscene: he turns to you, the words float by him
     return line.text;

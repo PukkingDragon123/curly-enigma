@@ -1,7 +1,8 @@
 // Quest markers in the world (ticked by the objective strip, src/ui/Tracker.js):
-// - over people's heads: a chunky gold "!" (they have work for you), a gold "?" (hand it in, tell
-//   them, decide), a grey "?" (their request is under way). Pixel-art sprites that bob and spin like
-//   a coin, a faint ghost of them shows through walls. Who stands where comes from the scene:
+// - over people's heads: a little rolled poster (they have a quest to hand you: talk to them), a
+//   note with a tick (the pinned quest: hand it in, tell them, decide), the poster in grey (the
+//   pinned quest is theirs, under way). Hand-drawn pixel maps that bob a little; a faint ghost of
+//   them shows through walls. Only the pinned quest gets markers and a waypoint (wave 19). Who stands where comes from the scene:
 //   scene.questAnchors() → [{ npc, head(out) }] (the town: src/town/quests.js); at home Old Star
 //   (scene.star), in the mine the burrow keepers (scene.traders).
 // - the waypoint: a brass diamond on the tracked objective's spot with the distance (and ▲ ▼ when
@@ -13,124 +14,95 @@ import * as THREE from 'three';
 import { el } from '../core/util.js';
 import { resolveTarget, bearing } from '../core/questWhere.js';
 import { BART } from './bookArt.js';
-import { Px } from './uiArt.js';
-import { RAMP, tone, paperK } from './hudArt.js';
+import { Px, art } from './uiArt.js';
 
 const _v = new THREE.Vector3(), _f = new THREE.Vector3(), _w = new THREE.Vector3();
 const GAZE_T = 1.3;
 const BURROW_NPC = { trader: 'trader', herbalist: 'herbalist', rocco: 'rocco', outpost: 'outpost' };
 
-// ------------------------------------------------------------ marker art (pixel canvases)
-const GLYPHS = {
-  '!': ['..XXX..', '..XXX..', '..XXX..', '..XXX..', '..XXX..', '..XXX..', '...X...', '.......', '..XXX..', '..XXX..'],
-  '?': ['.XXXXX.', 'XXX.XXX', 'XX...XX', '.....XX', '....XXX', '...XXX.', '..XXX..', '.......', '..XXX..', '..XXX..'],
-};
-const COLORS = {
-  gold: { ramp: RAMP.gold, ol: 0x5a2a0c, ink: 0x3a1e0c },
-  grey: { ramp: [0x2a2420, 0x3e3832, 0x5a544e, 0x726c64, 0x8a847c, 0xa29c94, 0xb8b2a8, 0xd8d2c8], ol: 0x2a2420, ink: 0x3a342e },
-};
-/**
- * A parchment speech bubble (fibrous paper lit from the top, a darker turned-under bottom, an
- * inked rim and tail, a soft shadow) with a bevelled metal glyph: highlight up-left, shade
- * down-right, a glint.
- */
-export function markerCanvas(sym, tone_) {
-  const g = GLYPHS[sym], C = COLORS[tone_];
-  const gw = g[0].length, gh = g.length;
-  const W = gw + 9, H = gh + 10;
-  const p = new Px(W, H);
-  const bx0 = 1, by0 = 1, bx1 = W - 3, by1 = H - 6; // bubble box (inclusive)
-  const tx = (bx0 + bx1) >> 1;
-  const inBubble = (i, j) => i >= bx0 && i <= bx1 && j >= by0 && j <= by1 && !((i === bx0 || i === bx1) && (j === by0 || j === by1));
-  const inTail = (i, j) => j > by1 && j <= by1 + 3 && i >= tx - (by1 + 3 - j) && i <= tx + (by1 + 3 - j) - (j > by1 + 1 ? 1 : 0);
-  const inside = (i, j) => inBubble(i, j) || inTail(i, j);
-  const PP = RAMP.paper;
-  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
-    if (!inside(i, j)) continue;
-    let k = paperK(i, j, 71) + 0.08 - (j - by0) / (by1 - by0) * 0.12;
-    if (j <= by0) k = 0.98;
-    else if (j === by0 + 1 || i === bx0) k += 0.1;
-    else if (j >= by1 - 1 && inBubble(i, j)) k -= 0.18;
-    else if (i === bx1) k -= 0.12;
-    p.set(i, j, tone(PP, k));
-  }
-  const ink = tone_ === 'grey' ? 0x3a342e : 0x3a1e0c;
-  p.outline(ink);
-  // a soft shadow down and right of the inked rim
-  for (let j = H - 1; j > 0; j--) for (let i = W - 1; i > 0; i--) if (!p.a(i, j) && p.a(i - 1, j - 1) === 255) p.set(i, j, 0x140a04, 80);
-  // the glyph: a dark rim round it on the paper, then bevelled metal
-  const ox = 4, oy = 3;
-  const on = (i, j) => g[j]?.[i] === 'X';
-  for (let j = -1; j <= gh; j++) for (let i = -1; i <= gw; i++) {
-    if (on(i, j)) continue;
-    if (on(i + 1, j) || on(i - 1, j) || on(i, j + 1) || on(i, j - 1)) p.set(ox + i, oy + j, C.ol);
-  }
-  const R = C.ramp;
-  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
-    if (!on(i, j)) continue;
-    let k = 0.55 - j / gh * 0.15;
-    if (!on(i, j - 1) || !on(i - 1, j)) k = 0.88;
-    else if (!on(i, j + 1) || !on(i + 1, j)) k = 0.3;
-    p.set(ox + i, oy + j, tone(R, k));
-  }
-  // a glint on the first lit pixel
-  for (let j = 0; j < gh; j++) { const i = g[j].indexOf('X'); if (i >= 0) { p.set(ox + i, oy + j, 0xffffff); break; } }
-  p.ctx.putImageData(p.img, 0, 0);
-  return p.c;
-}
-const TEX = {};
-function texFor(kind) {
-  if (TEX[kind]) return TEX[kind];
-  const [sym, tone_] = kind === '!' ? ['!', 'gold'] : kind === '?' ? ['?', 'gold'] : ['?', 'grey'];
-  const c = markerCanvas(sym, tone_);
-  const t = new THREE.CanvasTexture(c);
-  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.userData.aspect = c.width / c.height;
-  return (TEX[kind] = t);
+// ------------------------------------------------------------ marker art (hand-drawn pixel maps)
+// Over a head: a little rolled poster tied with a red ribbon (they have a quest to hand you), a
+// note with a tick (yours to hand in or tell them; the pinned quest's only), the rolled poster in
+// grey (the pinned quest is theirs, under way). One character per pixel, no glow.
+const ROLL = [
+  '  xxxxx  ',
+  ' xhhhpqx ',
+  'xhhpppqqx',
+  'xhpppppqx',
+  'xxhpppqxx',
+  ' xhpppqx ',
+  ' xaaaaAx ',
+  ' xhpppqx ',
+  ' xhpppqx ',
+  'xxhpppqxx',
+  'xhpppppqx',
+  'xhqqqqqrx',
+  ' xxxxxxx ',
+  '  aA aA  ',
+  ' aA   aA ',
+];
+const NOTE = [
+  'xxxxxxx  ',
+  'xhhhhhxx ',
+  'xhppppqhx',
+  'xhppppaqx',
+  'xhpppaaqx',
+  'xhapaapqx',
+  'xhaaapqqx',
+  'xhpappqqx',
+  'xhpppqqrx',
+  'xqqqqqrrx',
+  'xxxxxxxxx',
+];
+const WARM = { x: 0x3a1e0c, h: 0xf6e6c0, p: 0xe8d2a4, q: 0xc8a878, r: 0xa6845e, a: 0xb0402c, A: 0x6a1a10 };
+const GREY = { x: 0x3a342e, h: 0xd8d2c8, p: 0xb8b2a8, q: 0x8a847c, r: 0x726c64, a: 0x6a6058, A: 0x4a423c };
+/** A head marker as a data URL (one art pixel per --px): '!' work to hand you, '?' yours to hand in,
+ *  '…' theirs, under way. */
+export function markerURL(kind) {
+  return art('qm:head:' + kind, () => {
+    const rows = kind === '?' ? NOTE : ROLL, pal = kind === '…' ? GREY : WARM;
+    const p = new Px(rows[0].length, rows.length);
+    for (let y = 0; y < rows.length; y++) for (let x = 0; x < rows[y].length; x++) { const c = pal[rows[y][x]]; if (c !== undefined) p.set(x, y, c); }
+    return p;
+  }, { res: 1 });
 }
 
+/**
+ * A marker over somebody's head, drawn in the HUD (crisp pixels, never bloomed or blurred by the 3D
+ * post pass), placed over the head each frame with a little bob, fading with distance.
+ */
 class HeadMark {
-  constructor(parent) {
-    this.group = new THREE.Group();
-    this.group.name = 'quest-mark';
-    const mk = (ghost) => {
-      const m = new THREE.SpriteMaterial({ map: texFor('!'), transparent: true, depthWrite: false, depthTest: !ghost, fog: false, opacity: ghost ? 0.3 : 1, toneMapped: false });
-      const s = new THREE.Sprite(m);
-      s.renderOrder = ghost ? 998 : 999;
-      s.center.set(0.5, 0);
-      return s;
-    };
-    this.main = mk(false);
-    this.ghost = mk(true);
-    this.group.add(this.ghost, this.main);
-    parent.add(this.group);
+  constructor(host) {
+    this.el = el('img', { class: 'pix qm-head', alt: '', hidden: true, 'aria-hidden': 'true' });
+    host.append(this.el);
     this.kind = null;
     this.t = Math.random() * 6;
-    this.pop = 0;
   }
   set(kind) {
     if (kind === this.kind) return;
     this.kind = kind;
-    this.group.visible = !!kind;
-    if (!kind) return;
-    this.main.material.map = this.ghost.material.map = texFor(kind);
-    this.main.material.needsUpdate = this.ghost.material.needsUpdate = true;
-    this.pop = 1;
+    if (!kind) { this.el.hidden = true; return; }
+    this.el.src = markerURL(kind);
+    this.el.classList.toggle('note', kind === '?');
+    this.el.classList.remove('pop'); void this.el.offsetWidth; this.el.classList.add('pop');
   }
-  place(p, dt, camPos) {
+  place(sc, p, dt, camPos) {
     this.t += dt;
+    const s = sc.toScreen ? sc.toScreen(p) : null;
     const d = camPos ? camPos.distanceTo(p) : 5;
-    const k = 0.2 * Math.max(1, Math.pow(d / 4, 0.6)) * (1 + this.pop * 0.6 * Math.sin(this.pop * Math.PI));
-    this.pop = Math.max(0, this.pop - dt * 2.5);
-    // a slow wobble rather than a spin: the bubble stays readable
-    const sway = 1 - 0.12 * Math.abs(Math.sin(this.t * 1.3));
-    this.group.position.set(p.x, p.y + 0.05 + Math.sin(this.t * 3) * 0.03 + d * 0.004, p.z);
-    const asp = this.main.material.map?.userData?.aspect || 0.79;
-    for (const s of [this.main, this.ghost]) { s.scale.set(k * asp * sway, k, 1); s.material.rotation = Math.sin(this.t * 1.7) * 0.08; }
+    if (!s?.visible || d > 26) { this.el.hidden = true; return; }
+    const P = pxSize(), bob = Math.round(Math.sin(this.t * 2.6) * 1.2) * P;
+    const w = this.el.offsetWidth || P * 9, h = this.el.offsetHeight || P * 15;
+    const x = Math.round((s.x - w / 2) / P) * P, y = Math.round((s.y - h) / P) * P + bob;
+    this.el.hidden = false;
+    this.el.style.transform = `translate(${x}px, ${y}px)`;
+    this.el.style.opacity = d > 14 ? Math.max(0.35, 1 - (d - 14) / 14).toFixed(2) : '';
   }
-  dispose() { this.group.removeFromParent(); this.main.material.dispose(); this.ghost.material.dispose(); }
+  hide() { this.el.hidden = true; }
+  dispose() { this.el.remove(); }
 }
+let _px = 0, _pxT = -1e9;
+const pxSize = () => { const now = performance.now(); if (now - _pxT > 1000) { _pxT = now; _px = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 3; } return _px; };
 
 // ------------------------------------------------------------ the manager
 export class QuestMarks {
@@ -180,7 +152,7 @@ export class QuestMarks {
     if (sc !== this.sceneRef) { this.clear(); this.sceneRef = sc; this.anchorT = 0; this.target = null; }
     const three = sc.scene, cam = sc.camera;
     const live = g.ui.hudMode === 'deep' && three?.isScene && cam;
-    if (!live) { this.way.hidden = true; this.eye.hidden = true; return; }
+    if (!live) { this.way.hidden = true; this.eye.hidden = true; for (const m of this.marks.values()) m.hide(); return; }
     this.anchorT -= dt;
     if (this.anchorT <= 0) {
       this.anchorT = 0.4;
@@ -188,9 +160,11 @@ export class QuestMarks {
       const seen = new Set();
       for (const a of this.anchors) {
         seen.add(a.npc);
-        const kind = Q.markerFor(a.npc);
+        let kind = Q.markerFor(a.npc);
+        // not messy: hand-ins and "under way" only for the pinned quest; quests to hand out always
+        if (kind && kind !== '!' && !this.pinnedWith(a.npc)) kind = Q.offers(a.npc).length || Q.followUp?.(a.npc) ? '!' : null;
         let m = this.marks.get(a.npc);
-        if (!m && kind) { m = new HeadMark(three); this.marks.set(a.npc, m); }
+        if (!m && kind) { m = new HeadMark(this.ui.hud); this.marks.set(a.npc, m); }
         m?.set(kind);
         if (m) m.anchor = a;
       }
@@ -198,14 +172,21 @@ export class QuestMarks {
     }
     const camPos = cam.getWorldPosition(_f);
     const hideAll = !!(g.ui.tracker?.muted || g.ui.focus || sc.cut || sc.locked && g.sceneName !== 'town' || sc.hideQuestMarks);
+    const shut = hideAll || g.ui.isPanelOpen();
     for (const m of this.marks.values()) {
-      m.group.visible = !!m.kind && !hideAll;
-      if (!m.kind || !m.anchor || hideAll) continue;
-      try { m.place(m.anchor.head(_v), dt, camPos); } catch (e) { m.set(null); }
+      if (!m.kind || !m.anchor || shut) { m.hide(); continue; }
+      try { m.place(sc, m.anchor.head(_v), dt, camPos); } catch (e) { m.set(null); }
     }
     this.updateTarget(dt);
     this.updateWaypoint();
     this.updateGaze(dt);
+  }
+
+  /** Is this npc part of the pinned quest (its giver, or the one its current step sends you to)? */
+  pinnedWith(npc) {
+    const Q = this.game.quests, id = Q?.data?.tracked;
+    if (!id) return false;
+    return Q.stepsFor(npc).some((m) => m.id === id);
   }
 
   clear() {
@@ -224,9 +205,9 @@ export class QuestMarks {
     const Q = this.game.quests, v = Q.tracked();
     this.target = v ? resolveTarget(this.game, v) : null;
     if (this.target) this.target.quest = v;
-    // the "take a good look" goals of every active quest (not just the tracked one), in this scene
+    // the pinned quest's "take a good look" goal, in this scene
     this.gazeGoals = [];
-    for (const q of Q.active()) {
+    for (const q of v ? [v] : []) {
       const s = q.step;
       const at = s?.look || (Array.isArray(s?.on) ? s.on : s?.on ? [s.on] : []).find((m) => m.type === 'look' && typeof m.at === 'string')?.at;
       if (!at || at === 'signpost' || at === 'cavein') continue; // those are read with E

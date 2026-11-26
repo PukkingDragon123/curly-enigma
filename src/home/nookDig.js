@@ -165,7 +165,8 @@ export class NookDig {
       this.later(4, () => {
         if (!this.star?.rig || this.star.scripted || this.star.mode === 'sleep') return;
         st.flag('starBuildTip', true);
-        const say = () => this.star.say('Take your hammer to it.', { mood: 'happy' });
+        if (!st.owns('builder_hammer')) st.flag('hammerHint', true); // (his one hammer line)
+        const say = () => this.star.say(st.owns('builder_hammer') ? 'Take your hammer to it.' : 'Forge yourself a hammer: copper and a log.', { mood: 'happy' });
         if (this.build?.active) this.build.cue(say, 2.6); else say();
       });
     }
@@ -180,7 +181,10 @@ export class NookDig {
     this.later(this.arrivalLesson === 'cook_done' ? 14 : 2.2, () => {
       const star = this.star;
       if (!star?.rig || star.mode === 'sleep') { this.think('The soft rock behind my bedroll\'s been dug out. A corner of my own!', 3.4); return; }
-      star.say('That soft rock behind your bedroll? Dug it out while you were busy. Your own corner, through there. The rest of the chalk\'s yours to dig.', { mood: 'proud' });
+      // (wave 16: his one hammer line rides along, the first time you'd want one)
+      const hammer = !st.owns('builder_hammer') && !st.flag('hammerHint');
+      if (hammer) st.flag('hammerHint', true);
+      star.say(hammer ? 'Dug out the soft rock behind your bedroll: your own corner. Forge a hammer and make it yours.' : 'That soft rock behind your bedroll? Dug it out while you were busy. Your own corner, through there. The rest of the chalk\'s yours to dig.', { mood: 'proud' });
     });
   }
 }

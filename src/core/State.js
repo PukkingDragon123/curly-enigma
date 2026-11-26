@@ -29,6 +29,7 @@ function defaultHome() {
 export function defaultData() {
   return {
     v: 3,
+    hv: 1, // (the hammer migration: new games make their own)
     gold: 120,
     day: 1,
     energy: 100, // stamina (the bar: src/ui/Stamina.js; rules: src/core/vitals.js)
@@ -128,6 +129,8 @@ export class State {
       if (!(d.v >= 2)) { this.data.v = 2; this.data.flags = { ...this.data.flags, escaped: true }; }
       // v2 → v3: the lantern's energy became the stamina bar (same field), with hunger and injury beside it
       if (!(d.v >= 3)) { this.data.v = 3; this.data.hunger = 0; this.data.injury = 0; }
+      // wave 16: the Builder's Hammer became a thing you make at the forge; saves that could build keep it
+      if (!(d.hv >= 1)) { this.data.hv = 1; if (this.unlocked('build') || this.data.flags?.hammerKit) this.data.owned = { ...this.data.owned, builder_hammer: 1 }; }
       for (const k of ['energy', 'maxEnergy', 'hunger', 'injury']) if (!Number.isFinite(this.data[k])) this.data[k] = base[k];
       this.data.energy = clamp(this.data.energy, 0, this.energyCap);
       dropRetired(this.data);

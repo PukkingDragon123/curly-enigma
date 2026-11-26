@@ -81,3 +81,5 @@ html.is-touch .hm-strip { bottom: calc(var(--sab, 0px) + var(--px) * 40); }
 .hm-mat.short img { filter: saturate(.3) brightness(.7) sepia(.6) hue-rotate(-25deg); }
 .hm-name { font-size: 16px; font-family: var(--font); }
 #ui.hammering > .look-catch .look-card { display: none; }
+/* no build button (wave 16): the touch pad's build / done keys are gone; the hammer on the belt is the way */
+html.is-touch #ui .tc-pad .b-build, html.is-touch #ui .tc-pad .b-done { display: none !important; }

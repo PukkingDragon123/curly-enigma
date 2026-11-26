@@ -429,6 +429,7 @@ export class Build {
     const eye = this.player.eye(), f = this.player.forward();
     const u = this.useTarget(eye, f, o.reach?.() ?? REACH);
     if (u) { this.useIt(u); return true; }
+    if (!this.st.owns?.('builder_hammer')) { this.audio.play('ui_error', { vol: 0.4 }); return false; }
     const p = this.planAt(o.target);
     if (!p) { this.audio.play('ui_error', { vol: 0.4 }); return false; }
     if (!p.ok) {
@@ -1038,7 +1039,7 @@ export class Build {
     this.time += dt;
     this.prepare();
     const own = this.owner, ui = this.ui;
-    const hide = !!o.hide;
+    const hide = !!o.hide || !this.st.owns?.('builder_hammer'); // (wave 16: building needs the Builder's Hammer, made at the forge)
     this.updateKit(dt);
     // the build slot: plan, ghost, crosshair
     if (!hide && own.slotName === 'build') {

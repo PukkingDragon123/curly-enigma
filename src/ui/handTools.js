@@ -39,7 +39,7 @@ export class HandTools {
   item(kind = this.kind) {
     const st = this.g.state, s = hotStack(st, this.slot);
     if (!s) return null;
-    if (s.tool) return s.tool === 'build' ? refItem(st, 'build') : st.equipped(s.tool);
+    if (s.tool) return s.tool === 'build' ? (st.owns('builder_hammer') ? refItem(st, 'build') : null) : st.equipped(s.tool);
     return s.w ? null : ITEMS[s.id] || null;
   }
 
@@ -74,7 +74,7 @@ export class HandTools {
       const s = bar[i], key = String(i + 1);
       if (!s) { slots.push({ icon: iconURL('pick_rusty'), key, label: '', off: true, empty: true }); continue; }
       if (!s.tool) { slots.push({ icon: iconURL('pick_rusty'), key, label: '' }); continue; } // (Belt draws the stack)
-      const it = refItem(st, s.tool), has = s.tool === 'build' || !!st.equipped(s.tool);
+      const it = refItem(st, s.tool), has = s.tool === 'build' ? st.owns('builder_hammer') : !!st.equipped(s.tool);
       slots.push({ icon: itemVox.src(it?.id || KIND_ICON[s.tool]), key, label: has ? (s.tool === 'build' ? 'Builder\'s Hammer' : it?.name || '') : '', off: !has });
     }
     this.g.ui.setHotbar(slots, this.slot, (i) => this.tap(i));
@@ -93,7 +93,7 @@ export class HandTools {
     const rig = this.s.rig;
     if (!rig) return;
     const k = this.kind, it = this.item(k);
-    let want = it || k === 'build' ? PAW[k] || 'none' : 'none';
+    let want = it ? PAW[k] || 'none' : 'none';
     let id = want === 'none' ? null : it?.id || null;
     if (want === 'none') { const hk = this.heldKey(); if (hk) { want = 'held'; id = hk; } }
     if (rig.tool !== want || rig.toolItem !== id) rig.setTool(want, id);

@@ -708,6 +708,7 @@ export class PartRun {
     st.data.owned[p.gives] = 1;
     st.data.toolQ = { ...(st.data.toolQ || {}), [p.gives]: score };
     st.equip?.(p.gives);
+    for (const [bid, bn] of Object.entries(p.bonus || {})) st.addItem(bid, { n: bn, spill: true }); // (the hammer: Old Star's timber)
     st.emit?.('items', { id: p.gives, n: 1 });
     this.finished = true;
     st.emit?.('act', { type: 'part', part: this.id, track: p.track, level: p.level, grade: grade.g, score }); // its own act: weapon quests count 'forge'

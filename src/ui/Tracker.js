@@ -255,10 +255,26 @@ export class Tracker {
 
   visible() { return !this.el.hidden && !this.muted && this.ui.hudMode === 'deep'; }
 
+  /**
+   * Wait for a clear view before a poster moves: no talk board or panel open, no cutscene holding
+   * the HUD (a poster handed over in a conversation drops in when it ends). False: just show it.
+   */
+  async clearView(max = 45000) {
+    const t0 = performance.now();
+    for (;;) {
+      const mode = this.ui.hudMode;
+      if (mode && mode !== 'deep' && mode !== 'none') return false; // the forge, the kitchen: no poster there
+      if (this.visible() && !this.ui.isPanelOpen?.() && !this.quests.talking) return true;
+      if (performance.now() - t0 > max) return false;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }
+
   async play(e) {
     const q = this.quests;
     const tracked = q.data.tracked;
-    const visible = this.visible();
+    const visible = e.kind === 'progress' ? this.visible() : await this.clearView();
+    if (visible && e.kind !== 'progress') this.ui.status?.wake?.(3);
     if (e.kind === 'progress') {
       if (e.id !== this.shown?.id) return;
       const v = q.get(e.id);
@@ -518,32 +534,30 @@ export class Tracker {
       this.starts = [];
       if (!list.length) return;
       this.ui.status?.setBadge?.(true);
-      if (list.length === 1) {
-        const v = list[0].quest;
-        if (v?.id && v.id === this.quests?.data.tracked && this.visible()) return; // its poster drops in: no words needed
-        this.ui.toast(`New: <b>${v.title}</b>`, { icon: npcFace(this.game, v.giver, { size: 40 }), dur: 2600 }); // (wave 18: short; the poster has the rest)
-      } else {
-        this.ui.toast(`<b>${list.length} new tasks</b>`, { icon: BART.tab('quests') });
-      }
+      // (wave 19: not messy) its poster drops onto the HUD; a word only where there's no poster to see
+      if (this.ui.hudMode === 'deep' || this.ui.hudMode === 'none') return;
+      const v = list[list.length - 1].quest;
+      if (v) this.ui.toast(`New: <b>${v.title}</b>`, { icon: npcFace(this.game, v.giver, { size: 40 }), dur: 2600 });
     }, 80);
   }
 
-  /** Progress on a quest that isn't on the poster (or while it can't be seen): a little note. */
+  /** Progress on the pinned quest while its poster can't be seen (the forge, the kitchen): a little
+   *  note. Other quests keep quiet: they're in the book (wave 19, not messy). */
   progressToast(e) {
     const v = e.quest;
     if (!v || (e.passive && v.step?.gold) || this.quests.talking) return;
-    if (e.id === this.shown?.id && this.visible()) return;
+    if (e.id !== this.quests.data.tracked || this.visible()) return;
     const now = performance.now();
     if (now - (this.toastT[e.id] || 0) < 2500) return;
     this.toastT[e.id] = now;
     this.ui.toast(`<b>${v.title}</b> <b class="gold-txt">${countText(v)}</b>`, { icon: npcFace(this.game, v.giver, { size: 40 }), dur: 1800 });
   }
 
-  /** A step done: what's next (when the poster isn't showing that quest, or can't be seen). */
+  /** A step of the pinned quest done while its poster can't be seen: what's next. */
   stepToast(e) {
     const v = e.quest;
     if (!v || v.id === 'lessons' || this.quests.talking) return;
-    if (e.id === this.quests.data.tracked && this.visible()) return;
+    if (e.id !== this.quests.data.tracked || this.visible()) return;
     this.ui.toast(`Next: <b>${v.title}</b>`, { icon: BART.box(true), dur: 2200 });
   }
 

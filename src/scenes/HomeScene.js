@@ -260,7 +260,7 @@ export default class HomeScene extends Scene {
     // the first-person HUD keeps the mine's depth plumb-bob up; there is no depth at home
     const dep = g.ui.status?.depth;
     if (dep) { dep.style.visibility = 'hidden'; this.own(() => { dep.style.visibility = ''; }); }
-    this.hammerBtn();
+    // (wave 16: no build button: the Builder's Hammer on the belt is the only way to build)
     mark('rest');
 
     // ---- arrival

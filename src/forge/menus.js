@@ -122,7 +122,7 @@ export class Menus {
   update() {
     const inp = this.game.input;
     if (!this.keyHandler || this.game.ui.isPanelOpen()) return;
-    for (const code of ['Digit1', 'Digit2', 'Enter']) if (inp.pressed(code)) { inp.consume(code); this.keyHandler(code); break; }
+    for (const code of ['Digit1', 'Digit2', 'Digit3', 'Enter']) if (inp.pressed(code)) { inp.consume(code); this.keyHandler(code); break; }
   }
 
   // ---------------------------------------------------------------- the order board (hub)
@@ -137,6 +137,7 @@ export class Menus {
     const bestOre = oreIds.filter((id) => st.count(id) > 0).sort((a, b) => st.count(b) - st.count(a))[0] || 'copper_ore';
     const plans = Object.keys(WEAPON_TYPES).filter((t) => st.owns('bp_' + t)).length;
     const forged = d.weapons.length;
+    const hammerCard = !this.scene.lesson && !st.owns('builder_hammer') && !!pieceOf('hammer_build');
     // two pinned cards, each a big picture, one word and what you have for it (pictures and numbers)
     const card = (icon, title, counts, key, on, r, tack, delay) => el('button', {
       class: 'sm-card', style: `--r:${r}deg;--tack:var(--fa-${tack});--d:${delay}s`,
@@ -150,7 +151,9 @@ export class Menus {
       el('div', { class: 'sm-cards' }, [
         card(itemVox.src('copper_ingot'), 'Smelt', [badge(itemVox.src(bestOre), ores, ores ? '' : 'miss', 'Ore'), badge(itemVox.src('coal'), st.count('coal'), st.count('coal') ? '' : 'miss', 'Coal')], '1', () => this.smeltList(), -1.2, 'tackRed', 0.08),
         card(itemVox.weapon('shortsword', 'iron'), 'Forge', [badge(itemVox.src(bestIngot), ingots, ingots ? '' : 'miss', 'Ingots'), badge(itemVox.src('bp_dagger'), plans, '', 'Plans')], '2', () => this.plan(), 1, 'tackBlue', 0.16),
-      ]),
+        // wave 16: the Builder's Hammer is made here (a forge piece), until you have one
+        hammerCard ? card(itemVox.src('builder_hammer'), 'Hammer', [badge(itemVox.src('copper_ingot'), st.count('copper_ingot'), st.count('copper_ingot') ? '' : 'miss', 'Copper'), badge(itemVox.src('blk_log'), st.count('blk_log'), st.count('blk_log') ? '' : 'miss', 'Log')], '3', () => this.makeHammer(), 0, 'tackRed', 0.24) : null,
+      ].filter(Boolean)),
       el('div', { class: 'sm-foot' }, [
         link('Look', null, () => { this.game.audio.play('ui_close'); this.hide(); }, 'eye'),
         forged ? badge(itemVox.weapon('dagger', 'bronze'), '×' + forged, 'sm-barrel', 'Forged, for the assay office') : null,
@@ -161,7 +164,11 @@ export class Menus {
     ]);
     if (!refresh) this.game.audio.play('page');
     this.show(node, 'main');
-    this.keyHandler = (code) => { if (code === 'Digit1') this.smeltList(); if (code === 'Digit2') this.plan(); };
+    this.keyHandler = (code) => { if (code === 'Digit1') this.smeltList(); if (code === 'Digit2') this.plan(); if (code === 'Digit3' && hammerCard) this.makeHammer(); };
+  }
+  /** The hammer card: forge it (a forge piece), or a shake when the copper or the log is missing. */
+  makeHammer() {
+    if (!this.startPart('hammer_build')) this.main(true);
   }
 
   // ---------------------------------------------------------------- the ledger (smelting)

@@ -135,7 +135,7 @@ export class TownQuests {
     const notes = [
       ...open.slice(0, 8).map((id) => {
         const d = QUESTS[id], who = d.from;
-        return { title: 'WANTED', text: Q.get(id).steps[0]?.text || d.title, who: `Ask ${npcName(who)} · ${NPCS[who]?.where || ''}`, cls: 'want', on: () => g.ui.toast(`Look for the <b class="gold-txt">!</b> over <b>${npcName(who)}</b>: ${NPCS[who]?.where || 'in town'}.`, { dur: 3400 }) };
+        return { title: 'WANTED', text: Q.get(id).steps[0]?.text || d.title, who: `Ask ${npcName(who)} · ${NPCS[who]?.where || ''}`, cls: 'want', on: () => g.ui.toast(`Talk to <b>${npcName(who)}</b>: ${NPCS[who]?.where || 'in town'}. Look for the rolled poster over their head.`, { dur: 3400 }) };
       }),
       ...under.slice(0, 4).map((v) => ({ title: 'IN HAND', text: v.title, who: `${npcName(v.giver)} · ${v.text}`, cls: 'taken', on: () => { h.close(); Q.track(v.id); g.ui.openBook?.('quests'); } })),
       ...NOTICES.slice(0, Math.max(1, 5 - open.length)).map((t) => ({ title: 'NOTICE', text: t, cls: 'misc' })),
@@ -143,7 +143,7 @@ export class TownQuests {
     const body = el('div', { class: 'nb' }, [
       el('div', { class: 'tk-sign' }, [el('i', { class: 'tk-chain l' }), el('i', { class: 'tk-chain r' }), el('h2', {}, 'Notice Board')]),
       el('div', { class: 'nb-cork' }, [
-        el('p', { class: 'nb-head' }, open.length ? `${open.length} request${open.length > 1 ? 's' : ''} pinned up${open.length > 8 ? ' (the newest 8 shown)' : ''}. Find who asked: there's a gold ! over their head.` : 'Nothing new pinned up. Check back after a day in the mine.'),
+        el('p', { class: 'nb-head' }, open.length ? `${open.length} request${open.length > 1 ? 's' : ''} pinned up${open.length > 8 ? ' (the newest 8 shown)' : ''}. Find who asked: there's a rolled poster over their head.` : 'Nothing new pinned up. Check back after a day in the mine.'),
         el('div', { class: 'nb-notes' }, notes.map(note)),
       ]),
     ]);

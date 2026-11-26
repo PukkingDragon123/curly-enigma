@@ -1,21 +1,20 @@
-// The lift's panel (and the M key's map): the underground side-on, top to bottom, as hand-made pixel
-// art: big pixels, hand-drawn 8x8 tiles and sprites (src/fps/liftArt/tiles.js) laid out by
-// hand-composed maps (maps.js) and put together by paint.js. The meadow and its oak; under the turf
-// Old Star's burrow and Deep Town as little vignettes; then the six layers (Rootsoil, Clayworks,
-// Crystal Grotto, Magma Deep, Frost Vault, the Core), each with its own rocks, sights and creatures,
-// the town lift's shaft running down through them with its cage riding it (anim.js), and the Core's
-// heart at the bottom. A survey staff down the left edge gives the depths.
+// The lift's panel (and the M key's map): the underground side-on, top to bottom, as a little lit
+// diorama. src/fps/liftArt/build3d.js builds each section in 3D (a voxel slab cut open, its caves laid
+// out by the hand-composed maps in maps.js, dressed with the game's own props, plants, furniture and
+// shop fronts, the hand-made sprites in tiles.js extruded into voxels), and diorama.js draws it small
+// through the shared renderer with real lights, soft shadows and fog, then a pixel pass (a stepped
+// ramp, plum outlines) into this panel's canvas, nearest-neighbour scaled. The meadow and its oak; Old
+// Star's burrow and Deep Town; the six layers (Rootsoil, Clayworks, Crystal Grotto, Magma Deep, Frost
+// Vault, the Core); the town lift's cage riding its shaft; the Core's heart. A survey staff gives the
+// depths. Without WebGL (or if the diorama fails) the same map is drawn flat from the tiles (paint.js).
 //
-// Layers you've reached are printed in colour. The ones you haven't are still there, as the
-// cartographer's unfinished pencil-and-sepia sketch on the paper, fading the deeper it goes; the
-// first time you see a layer you've reached, its colour rolls on over the sketch (the ink-in).
-// Locked lifts stay locked (a chained cage); a layer with no unlocked lift has no Dive.
+// Layers you've reached are in colour. The ones you haven't are the cartographer's unfinished pencil-
+// and-sepia sketch, fading the deeper it goes; the first time you see a layer you've reached, its
+// colour sweeps in over the sketch (the ink-in). Locked lifts stay locked (a chained cage); a layer
+// with no unlocked lift has no Dive.
 //
 // Every layer has a small plaque: its name, what you've found there (icons), and a Dive button that
-// rides to the nearest unlocked lift in it. Each lift stands in its layer at its real x with a tag
-// (click to ride). One art pixel = one --px; each section is painted once (lazily) into an offscreen
-// canvas at one art pixel = a whole number of screen pixels (about 288 art px across the view), and
-// a small rAF loop composites the visible ones with the animation on top.
+// rides to the nearest unlocked lift in it. Each lift stands in its layer with a tag (click to ride).
 //
 //   openLiftLayers(game, here, opts, dests, ride, locked) → panel handle   (lifts.js openLiftPanel)
 //   openLayers(game) → panel handle   (view-only unless you're standing at an unlocked lift)
@@ -34,7 +33,7 @@ import { hash, hashStrLite } from './liftArt/kit.js';
 import { paintLayer, paintTop, paintCore, sketchOf, LIFT_ZONE_DEPTHS, LAYER_H, TOP_H, CORE_H, GROUND, SHAFT_X } from './liftArt/paint.js';
 import { placeLife, drawLayerAnim, drawTopAnim, drawSky, drawCoreAnim, drawMole, cageSprite } from './liftArt/anim.js';
 import { Diorama } from './liftArt/diorama.js';
-import { buildTop, buildLayer, buildCore, SEC_H, SHAFT_X3, GROUND3 } from './liftArt/build3d.js';
+import { buildTop, buildLayer, buildCore, SEC_H, GROUND3 } from './liftArt/build3d.js';
 import { Art, digits as drawDigits, CREAM as CREAM_C, PAL as PAL_C } from './liftArt/kit.js';
 
 // the 3D diorama renderer, made once per page (it holds render targets on the shared renderer)
@@ -468,6 +467,8 @@ export function openLiftLayers(game, here, opts = {}, dests = [], ride = null, l
   view.addEventListener('pointercancel', (e) => { if (drag && e.pointerId === drag.id) drag = null; });
   view.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hideTip(); });
   view.addEventListener('click', onClickCapture, true);
+  // (the view never scrolls natively: focusing a tag far down must not slide the track under the canvas)
+  view.addEventListener('scroll', () => { if (view.scrollTop || view.scrollLeft) { view.scrollTop = 0; view.scrollLeft = 0; } });
   window.addEventListener('keydown', onKey, true);
 
   // what's under a point of the view: the section, the art x/y, the nearest stop

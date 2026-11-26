@@ -70,7 +70,7 @@ export function openBackpack(game, opts = {}) {
   const rack = TOOL_SLOTS.map(([k]) => ({ tool: k }));
   const slotsOf = (c) => (c === 'bag' ? Inv.bag(st) : c === 'trunk' ? Inv.stash(st) : c === 'rack' ? rack : null);
   const capOf = (c) => (c === 'bag' ? Inv.bagSlots(st) : c === 'trunk' ? Infinity : slotsOf(c).length);
-  const hasTool = (k) => k === 'build' || !!st.equipped(k);
+  const hasTool = (k) => (k === 'build' ? st.owns('builder_hammer') : !!st.equipped(k)); // (the hammer is made at the forge)
   const refKey = (k) => refItem(st, k)?.id || KIND_ICON[k];
   const refIcon = (k, size) => itemVox.src(refKey(k), size);
   // the CSS px an item shows at in a pocket / on a sleeve (bigger pockets: wave 19)

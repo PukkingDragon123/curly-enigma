@@ -6,11 +6,17 @@
 //   quests.done(id) → bool · quests.active() → [view] · quests.track(id) · quests.tracked() → view
 //   quests.get(id) → view · quests.list() → { active, done, open } · quests.forNpc(npc)
 //   quests.offers(npc) → [ids] (Deep Town folk: offered in their dialog) · quests.accept(id, npc)
+//   quests.justGiven(npc) → the quest that talking to them just handed over (once), or null
 //   quests.choose(id, optionId) · quests.markerFor(npc) → '!' | '?' | '…' | null (head markers)
 //   quests.rep(npc) → friendship · quests.choice(id) → the option picked
 //   quests.on('start'|'progress'|'step'|'done'|'track'|'say'|'change', fn) → unsubscribe
 //   quests.debug.{ list(), step(id), complete(id), start(id), act(a), reset(), data(), give(id) }
 //
+// Quests are only ever given by talking to someone (wave 19): Old Star's lessons start the game and
+// he hands over the next part when they end; every other quest is offered by its giver when you
+// talk to them (the burrow folk start theirs on the spot, the Deep Town folk ask, 'auto' quests are
+// a giver's follow-ups: one handed over per talk). A quest handed over is pinned (`tracked`): the
+// one poster on the HUD; the rest wait in the book, where any of them can be pinned instead.
 // Save: state.data.quests = { v, active: { id: { s, n, u?, day } }, done: { id: day }, tracked,
 //   order: [ids by start], seen: { id: 1 }, rep: { npc: n }, choices: { id: optionId } }.
 // Lore (game.lore, src/core/lore.js) is made here too: quests reward it and listen to its acts.
@@ -139,7 +145,8 @@ export class Quests {
     const d = this.state.data;
     const fresh = !d.quests;
     const q = (d.quests ||= {});
-    q.v = 1;
+    const old = !fresh && (q.v || 1) < 2;
+    q.v = 2;
     q.active ||= {};
     q.done ||= {};
     q.order ||= [];
@@ -156,6 +163,9 @@ export class Quests {
       else this.startQuiet('lessons');
     }
     if (q.tracked && !q.active[q.tracked]) q.tracked = null;
+    // a save from before quests were given by talking keeps everything it had going; its pin stays
+    // (or the first quest it took on is pinned)
+    if (old && !q.tracked) q.tracked = q.order.find((id) => q.active[id]) || null;
     this.refresh(true);
     if (!q.tracked) q.tracked = this.pickTrack();
     this.emit('change', { boot: true });
@@ -322,10 +332,10 @@ export class Quests {
     this.state.dirty = true;
     if (def.gives) this.giveItems(def.gives);
     const view = this.get(id);
-    // the objective line follows the newest quest, unless the lessons are running; a quest you just
-    // said yes to goes straight onto the strip
+    // a quest somebody just handed you is pinned (its poster drops onto the HUD), unless the lessons
+    // are running; one that starts on its own (a save, the lessons' hand-over) only fills an empty pin
     const cur = q.tracked;
-    if (!cur || cur === 'million' || (!q.active[cur]) || (accept && !q.active.lessons) || (def.kind === 'request' && by && QUESTS[cur]?.kind !== 'main')) {
+    if (!cur || !q.active[cur] || ((by || accept) && !q.active.lessons)) {
       q.tracked = id;
       if (!quiet) this.emit('track', { id, prev: cur });
     }
@@ -464,8 +474,8 @@ export class Quests {
       if (st.n >= max) this.advance(id);
       else this.emit('progress', { id, n: st.n, max, quest: this.get(id) });
     }
-    // talking to someone may start their next request
-    if (a.type === 'talk' && a.npc) this.offer(a.npc);
+    // talking to someone may hand you their next quest
+    if (a.type === 'talk' && a.npc) { this.given = null; this.offer(a.npc); }
     this.refreshSoon();
   }
 
@@ -501,12 +511,31 @@ export class Quests {
     const q = this.data;
     // a story beat (urgent) comes first, even alongside their other work
     const urgent = QUEST_ORDER.find((k) => QUESTS[k].from === npc && QUESTS[k].urgent && !QUESTS[k].ask && this.available(k));
-    if (urgent) { this.start(urgent, { by: npc }); return urgent; }
+    if (urgent) { this.start(urgent, { by: npc }); this.given = { npc, id: urgent }; return urgent; }
+    // a giver's follow-ups ('auto': Old Star's): never on their own, one handed over each time you talk
+    const fol = this.followUp(npc);
+    if (fol) { this.start(fol, { by: npc }); this.given = { npc, id: fol }; return fol; }
     if (Object.keys(q.active).some((id) => QUESTS[id].from === npc)) return null;
     const id = QUEST_ORDER.find((k) => QUESTS[k].from === npc && !QUESTS[k].ask && this.available(k));
     if (!id) return null;
     this.start(id, { by: npc });
+    this.given = { npc, id };
     return id;
+  }
+
+  /** The next follow-up this giver has for you (an 'auto' quest of theirs whose time has come). */
+  followUp(npc) {
+    npc = normNpc(npc);
+    return QUEST_ORDER.find((k) => QUESTS[k].auto && !QUESTS[k].from && normNpc(QUESTS[k].giver) === npc && this.available(k)) || null;
+  }
+
+  /** The quest the last talk with this npc handed over (read once: the scene says its intro). */
+  justGiven(npc) {
+    npc = normNpc(npc);
+    const g = this.given;
+    if (!g || g.npc !== npc) return null;
+    this.given = null;
+    return this.isActive(g.id) ? this.get(g.id) : null;
   }
 
   /** Quests this npc would offer you right now in a dialog (one at a time, like the burrow folk). */
@@ -542,7 +571,7 @@ export class Quests {
     const mine = this.stepsFor(npc);
     if (mine.some((m) => m.ready)) return '?';
     const busy = Object.keys(this.data.active).some((id) => QUESTS[id].from === npc);
-    if (this.offers(npc).length || QUEST_ORDER.some((k) => QUESTS[k].from === npc && !QUESTS[k].ask && this.available(k) && (QUESTS[k].urgent || !busy))) return '!';
+    if (this.offers(npc).length || this.followUp(npc) || QUEST_ORDER.some((k) => QUESTS[k].from === npc && !QUESTS[k].ask && this.available(k) && (QUESTS[k].urgent || !busy))) return '!';
     if (mine.length) return '…';
     return null;
   }
@@ -568,7 +597,7 @@ export class Quests {
     Promise.resolve().then(() => { this._soon = false; this.refresh(); });
   }
 
-  /** Auto-start quests whose requirements are done; complete steps whose state checks hold. */
+  /** Complete steps whose state checks hold. (Nothing starts here: quests are given by talking.) */
   refresh(quiet = false) {
     if (!this.data) return;
     if (this._busy) { this._again = true; return; }
@@ -578,10 +607,6 @@ export class Quests {
       do {
         this._again = false;
         const q = this.data;
-        for (const id of QUEST_ORDER) {
-          const def = QUESTS[id];
-          if (def.auto && this.available(id)) this.start(id, { quiet });
-        }
         for (const id of Object.keys(q.active)) {
           const def = QUESTS[id], a = q.active[id];
           const s = def?.steps[a.s];

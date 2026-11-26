@@ -15,7 +15,8 @@
 //     where: { place | burrow | ruin | zone }   a mark for the map }],
 //   reward: { gold, items: { id: n }, sp, lore: [ids], recipe: [dish ids], rep: n | { npc: n } },
 //   next: [ids], requires: [ids], when: (state) => bool (offered/started only while it holds),
-//   auto: true (starts once `requires` are done) · from: npc (offered when you talk to them)
+//   auto: true (a follow-up the giver hands over when you next talk to them, once `requires` are
+//   done; nothing starts on its own) · from: npc (offered when you talk to them)
 //   ask: true (Deep Town folk: offered in their dialog, Accept / Not now) · gives: { id: n } on start
 //   urgent: true (a story beat: offered first, even while the giver has other work under way) }
 // Kinds: 'main' (the million), 'story' (Old Star's follow-ups), 'request' (the burrow folk),
@@ -99,7 +100,7 @@ export const QUESTS = {
       { id: 'cook', text: 'Cook a meal at his hearth', hint: 'A miner who doesn\'t eat is called a skeleton.', lesson: 'cook_done', on: { type: 'cook' }, where: { place: 'home' } },
     ],
     reward: { gold: 100, sp: 2, items: { glow_stake: 3 } },
-    next: ['million'],
+    next: ['os_town', 'million'], // he hands these over in person as the lessons end
   },
 
   million: {

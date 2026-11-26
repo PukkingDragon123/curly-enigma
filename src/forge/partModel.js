@@ -101,6 +101,15 @@ const C2x2 = [[-0.5, 0], [0.5, 0], [-0.5, 1], [0.5, 1]];
 
 // ---------------------------------------------------------------- the pieces
 const SHAPES = {
+  // the Builder's Hammer: a square head across the haft's top, a crowned face one end, the nail claw curling back the other
+  hammer_build(S) {
+    const head = [];
+    for (let i = 0; i <= 18; i++) { const x = -8 + i; head.push([x, 9 - (x > 3 ? (x - 3) * 0.45 : 0), 0]); }
+    sweep(S, head, C3x2, { taper: (t) => (t < 0.15 ? 1 : t > 0.65 ? 0.6 - (t - 0.65) * 0.6 : 0.82), tone: (t) => (t < 0.1 ? 1 : 0) });
+    sweep(S, [[-1, 7, 0], [1, 7, 0]], C2x2, { tone: 2 }); // the eye's cheeks
+    for (let y = -14; y <= 7; y++) for (const [x, z] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) late(S, x, y, z, (y + x) % 5 === 0 ? 0x7a5432 : y < -10 ? 0x5a3a22 : 0x9a6a42);
+    for (let y = -12; y <= -9; y++) for (const [x, z] of [[1, 0], [-2, 0], [0, 1], [0, -2]]) late(S, x, y, z, 0x4a2a18); // grip
+  },
   // your first pickaxe: a curved head (a point one end, a chisel the other) round an eye, an ash haft set in at the end
   pick_first(S) {
     const head = [];

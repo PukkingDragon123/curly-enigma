@@ -101,12 +101,13 @@ export class FPBuild {
     const s = this.s;
     if (on === this.active) return;
     if (on && (s.scripted || this.game.ui.isPanelOpen())) return;
+    // building is the Builder's Hammer in your paw, and the hammer is made at the forge (wave 16)
+    if (on && !this.game.state.owns('builder_hammer')) { this.hammerHint(); return; }
     this.active = on;
     this.game.audio.play(on ? 'ui_open' : 'ui_close');
     if (on) {
       this.helpers.visible = true;
       this.equipHammer(true);
-      this.starterKit();
       if (!this.entries().length) this.tab = this.tab === 'piece' ? 'furniture' : 'piece';
       this.selIdx = 0;
       this.openStrip();
@@ -151,14 +152,14 @@ export class FPBuild {
     this.strip = null;
   }
 
-  /** Old Star's timber: the first time the hammer comes out, a few planks and a log to start with. */
-  starterKit() {
-    const st = this.game.state;
-    if (st.flag?.('hammerKit')) return;
-    st.flag?.('hammerKit', true);
-    st.addItem('blk_planks', { n: 8, spill: true });
-    st.addItem('blk_log', { n: 2, spill: true });
-    this.cue(() => this.game.ui.toast?.('+8 <b>Planks</b> · +2 <b>Logs</b>', { icon: iconURL('blk_planks'), kind: 'good', dur: 2400 }), 2.6);
+  /** No hammer yet: Old Star points you at the forge, once (one short line). */
+  hammerHint() {
+    const st = this.game.state, s = this.s;
+    if (st.flag?.('hammerHint')) { this.game.audio.play('ui_error', { vol: 0.4 }); return; }
+    st.flag?.('hammerHint', true);
+    const line = 'Forge yourself a hammer first: copper and a log.';
+    if (s.star?.rig && s.star.mode !== 'sleep' && !s.star.scripted) s.star.say(line, { mood: 'happy' });
+    else s.think?.(line, 3);
   }
 
   /** What the current tab offers: [{ id, n, type, i, locked?, lv?, made? }]. */
@@ -547,7 +548,7 @@ export class FPBuild {
   update(dt) {
     const inp = this.game.input, s = this.s;
     const canBuild = this.game.state.unlocked?.('build') !== false; // [unlock guard] (src/ui/Onboard.js UNLOCKS)
-    if (inp.pressed('KeyX') && canBuild && !s.scripted && !this.game.ui.isPanelOpen()) (s.toggleBuildHere ? s.toggleBuildHere() : this.toggle());
+    void canBuild; // (no build button or key: holding the hammer is building, src/ui/handTools.js)
     this.tickCues(dt);
     if (!this.active) return;
     if (s.scripted) return;

@@ -623,9 +623,19 @@ await step('cooking', async () => {
   await shot('11-cooking');
 });
 await step('home again + sleep', async () => {
+  // the Builder's Hammer is made at the forge first (a forge piece: copper head, a log for the haft)
+  await go('forge', { from: 'home' });
+  await wait(1500);
+  const hm = await page.evaluate(() => {
+    const sc = window.__game.scene;
+    if (sc.activity) sc.endActivity?.();
+    const res = sc.debug.part('hammer_build', { give: true });
+    return { res, owns: window.__game.state.owns('builder_hammer') };
+  });
+  if (!hm.owns) throw new Error('could not forge the Builder\'s Hammer: ' + JSON.stringify(hm));
   await go('home', { from: 'forge' });
   await wait(2000);
-  // first-person burrow hooks: build mode places a piece, the lift panel lists the mine entrance
+  // first-person burrow hooks: the hammer places a piece, the lift panel lists the mine entrance
   const b = await page.evaluate(() => {
     const dbg = window.__game.scene.debug;
     const on = dbg.toggleBuild(true);

@@ -28,7 +28,6 @@ export const GROUND3 = 4 * CS; // the meadow's grass line in the top section
 const FLOORY = 12 * CS; // a layer's hollow's floor (the top of map row 12)
 
 const lin = (c) => { const f = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return [f((c >> 16) & 255), f((c >> 8) & 255), f(c & 255)]; };
-const mulc = (c, k) => (clamp(((c >> 16) & 255) * k, 0, 255) << 16) | (clamp(((c >> 8) & 255) * k, 0, 255) << 8) | clamp((c & 255) * k, 0, 255);
 const mixc = (a, b, t) => (Math.round(((a >> 16) & 255) * (1 - t) + ((b >> 16) & 255) * t) << 16) | (Math.round(((a >> 8) & 255) * (1 - t) + ((b >> 8) & 255) * t) << 8) | Math.round((a & 255) * (1 - t) + (b & 255) * t);
 
 // ------------------------------------------------------------------ materials (shared)
@@ -178,7 +177,7 @@ function slab(map, zr, Wpx, Hpx, seed, o = {}) {
       // the back wall: carved in depth (flowstone columns standing out, recesses going in), so the
       // lamps and shadows have something to work on; the walls of a room stay flat
       const bc = o.backCol ? o.backCol(px, py) : null;
-      const colm = Math.abs(((px + Math.round(n(py * 0.04, 2) * 6)) % 34) - 17) / 17; // 0 at a column's middle
+      const colm = Math.abs(n(px * 0.05 + n(py * 0.03, 4) * 0.4, 2.5)) / 0.11; // 0 on a column's line (irregularly spaced)
       const tb = bc != null ? 2 : Math.max(1, Math.round(2 + (n(px * 0.035, py * 0.05 + 9) + 1) * 1.6 + (colm < 0.22 ? 3 - colm * 8 : 0)));
       for (let gz = 0; gz < tb; gz++) grid.set(gx, y, gz, bc != null ? bc : gz === tb - 1 ? (colm < 0.22 ? backR[2] : backR[1]) : backR[0]);
     }
