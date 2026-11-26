@@ -14,7 +14,9 @@
 import { el } from '../core/util.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
-import { Px, PAL, INK, art, mixHex, cssUrl } from './uiArt.js';
+import { Px, PAL, INK, art as baseArt, mixHex, cssUrl } from './uiArt.js';
+// wave 20: one pixel size on screen. Everything here is drawn at one art pixel a pixel (no fine half pixels).
+const art = (key, fn, o) => baseArt(key, fn, { ...o, res: 1 });
 import { portrait3d } from '../gfx/portrait3d.js';
 import { speakerOf, materialOf } from './Tutor.js';
 import { installDialogArt } from './dialogArt.js';

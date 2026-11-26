@@ -259,7 +259,7 @@ export class StaminaBar {
   drawFace() {
     const L = this.L, W = L.W, H = L.H, buf = this.buf, f = this.face, pic = f.pic;
     if (pic) {
-      const ox = GEO.face.x + f.bob.x, oy = GEO.face.y + f.bob.y, pw = pic.w, ph = pic.h, dim = pk(0x1e1226), lit = pk(0x3a2232);
+      const ox = GEO.face.x + f.bob.x, oy = GEO.face.y + f.bob.y, pw = pic.w, ph = pic.h, dim = pk(0x2e1b33), lit = pk(0x4a2b4a);
       for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) {
         if (pic.a[y * pw + x] < 255) continue;
         const fx = ox + x + 1, fy = oy + y + 1, i = fy * W + fx;
@@ -338,7 +338,7 @@ class Veil {
     const px = cssPx();
     const cell = px * 3, W = Math.ceil(innerWidth / cell), H = Math.ceil(innerHeight / cell);
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; this.img = this.ctx.createImageData(W, H); this.u = new Uint32Array(this.img.data.buffer); }
-    const u = this.u, ink = pk(0x120814), rim = pk(0x2e0e0e), r0 = 1.05 - a * 0.85;
+    const u = this.u, ink = pk(0x1e1424), rim = pk(0x2e1b33), r0 = 1.05 - a * 0.85;
     for (let y = 0; y < H; y++) {
       const v = (y + 0.5) / H * 2 - 1;
       for (let x = 0; x < W; x++) {

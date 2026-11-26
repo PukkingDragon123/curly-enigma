@@ -205,7 +205,15 @@ export function drawWeapon(pc, type, metalColor, infusionColor) {
 const urlCache = new Map();
 const urlKeys = new Map(); // icon URL → item id / weapon key (so a toast's icon can be shown in 3D: ui/itemVox.js)
 /** The item id (or 'w:type:metal:infusion') an iconURL/weaponIconURL string was made for, or null. */
-export function iconKeyOf(url) { return urlKeys.get(url) || null; }
+export function iconKeyOf(url) { return urlKeys.get(url) || provider?.keyOf(url) || null; }
+
+// wave 20: item icons come from their 3D models (src/ui/iconRender.js, registered by ui/itemVox.js):
+// provider.get(key) → URL | null (null: not rendered yet, the flat icon stands in), provider.keyOf(url)
+// → 'id' | 'w:type:metal:inf'. The flat art below stays for 3D textures (iconCanvas) and fallbacks.
+let provider = null;
+export function setIconProvider(p) { provider = p; }
+/** The flat icon URL made for a key ('id' or 'w:type:metal:inf'), if one was made. */
+export function peekFlatURL(key) { return urlCache.get(key) || null; }
 
 // the raw art of the last few item icons drawn (the 3D stills of ui/itemVox.js extrude the same art
 // right after the flat icon is made: no second draw)
@@ -226,6 +234,7 @@ export function iconCanvas(id, size = ICON) {
 
 /** Data URL for an item icon (cached). */
 export function iconURL(id) {
+  if (provider && ITEMS[id]) { const u = provider.get(id); if (u) return u; }
   if (urlCache.has(id)) return urlCache.get(id);
   const url = iconCanvas(id).toDataURL();
   urlCache.set(id, url);
@@ -244,6 +253,7 @@ export function specURL(key, spec) {
 /** Icon for a forged weapon instance or type+metal. */
 export function weaponIconURL(type, metal, infusion) {
   const key = `w:${type}:${metal}:${infusion || ''}`;
+  if (provider) { const u = provider.get(key); if (u) return u; }
   if (urlCache.has(key)) return urlCache.get(key);
   const pc = new PixelCanvas(ICON);
   drawWeapon(pc, type, METALS[metal]?.color ?? 0xa0a0a0, infusion ? INFUSIONS[infusion]?.color : null);

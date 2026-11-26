@@ -1,12 +1,17 @@
-// The loading screen: a little pixel-art vignette in a cave niche. Two mole paws take turns
-// chipping the rock crust off a glowing ore clump; chips fly, sparks pop, dust puffs, and as the
-// load goes on the crust flakes away until the ore gleams clean. No words.
+// The loading screen (wave 20): a tiny 3D scene in a cave niche. The game's own voxel pickaxe, in
+// the gloved fist, swings at a voxel ore clump: a wind-up, a snap, the hit held two frames, voxel
+// chips, sparks and a little dust. As the load goes on, crust wedges come off until the ore is
+// bare and gleams. No words. The scene itself is ./oreLoader3d.js (pick from fps/viewmodel, clump
+// from deep/clumps); if WebGL can't be had (or the game's context is lost), the old 2D vignette
+// below (two gloved mole paws chipping a clump) stands in, with the same API.
 //
 // It has to keep moving while the page is busy building a scene, so nothing here animates from
 // script: the whole loop is drawn once (per page) into a sprite sheet, rows = how clean the ore
-// is, columns = the frames of the chipping loop. A CSS steps() transform walks the columns (the
+// is, columns = the frames of the strike. A CSS steps() transform walks the columns (the
 // compositor runs it even while the main thread is stuck); set(k) picks the row, and a stage
-// change pops a few flakes (CSS too).
+// change pops a few flakes (CSS too). The 3D sheet's first row is baked at once (it shows in the
+// first frame), the rest in small slices between the build's own steps; its WebGL context is let go
+// as soon as the sheet is done, or when the last loader on screen ends.
 //
 //   const L = oreLoader(host, { mode: 'full' | 'dark' | 'corner', appear, delay, auto, label })
 //   L.set(k)  progress 0..1 (never goes back)    L.bump()  a nudge (a build step with no count)
@@ -15,6 +20,7 @@
 // all (a quick load never flashes it); opts.auto: false stops it creeping on by itself while nobody
 // calls set() (opts.tau: how slowly, s); opts.through: clicks go through it.
 import { el } from '../core/util.js';
+import { Bake3D, G3 } from './oreLoader3d.js';
 
 const W = 96, H = 64, F = 12, S = 8; // frame size (art px), frames in the loop, cleanliness stages
 const CX = 48, CY = 35, RX = 19, RY = 15, FLOOR = 50; // the clump
@@ -407,10 +413,12 @@ function pawLayer(f) {
   return (PAWS[f] = [Int32Array.from(idx), Uint32Array.from(col)]);
 }
 
-// The sheet: the first row (the crusted ore) is drawn at once, the cleaner rows one per tick after
+// The sheet: the first row (the crusted ore) is drawn at once, the cleaner rows bit by bit after
 // (between the build's own steps), and every loader on screen gets each row as it's done.
-let SHEET = null, SC = null, built = 0, building = 0;
+const G2 = { W, H, F, S, dur: 1.05, cx: CX, cy: CY, rx: RX, ry: RY };
+let SHEET = null, SC = null, G = G2, KIND = '', BAKE = null, built = 0, br = 0, bf = 0, building = 0; // (br, bf: the 3D frame baked next)
 const LIVE = new Set();
+const rowDone = (s) => { built = Math.max(built, s + 1); for (const L of LIVE) L.row(s); };
 function drawRow(s) {
   const c = SHEET, cl = s / (S - 1), st = drawStage(SC, cl);
   const img = c.getContext('2d').createImageData(W * F, H);
@@ -421,18 +429,85 @@ function drawRow(s) {
     for (let y = 0; y < H; y++) out.set(buf.subarray(y * W, y * W + W), y * W * F + f * W);
   }
   c.getContext('2d').putImageData(img, 0, s * H);
-  built = s + 1;
-  for (const L of LIVE) L.row(s);
+  rowDone(s);
+}
+/**
+ * The 3D scene can be had: not switched off (?loader3d=0), the game's own WebGL isn't lost, and it
+ * isn't a software rasterizer (SwiftShader, llvmpipe: there the bake would slow the very load it
+ * shows; ?loader3d=1 forces it on for shots).
+ */
+function want3d() {
+  try {
+    if (/[?&]loader3d=0\b/.test(location.search)) return false;
+    const eng = window.__game?.engine;
+    if (eng && (eng.contextLost || eng.renderer?.getContext?.()?.isContextLost?.())) return false;
+    return !eng?.softwareGL || /[?&]loader3d=1\b/.test(location.search);
+  } catch (e) { return false; }
+}
+/** Let the 3D scene's GPU resources and context go. */
+function dropBake() {
+  const b = BAKE;
+  BAKE = null;
+  if (b) b.dispose();
+}
+/** Bake 3D frames for about `ms`; on any failure the rows left become copies of the last good one. */
+function bake3d(ms) {
+  const t0 = performance.now(), ctx = SHEET.getContext('2d');
+  try {
+    if (!BAKE) BAKE = new Bake3D();
+    do {
+      BAKE.frame(ctx, br, bf, bf * G.W, br * G.H);
+      if (++bf >= G.F) { bf = 0; rowDone(br++); }
+    } while (br < G.S && performance.now() - t0 < ms);
+  } catch (e) {
+    console.warn('[loader]', e);
+    dropBake();
+    bf = 0; br = G.S;
+    while (built < G.S) {
+      ctx.drawImage(SHEET, 0, (built - 1) * G.H, G.W * G.F, G.H, 0, built * G.H, G.W * G.F, G.H);
+      rowDone(built);
+    }
+  }
+  if (br >= G.S) dropBake();
 }
 function sheet() {
+  if (!SHEET && want3d()) {
+    try {
+      BAKE = new Bake3D();
+      G = G3; KIND = '3d';
+      SHEET = document.createElement('canvas');
+      SHEET.width = G.W * G.F; SHEET.height = G.H * G.S;
+      const ctx = SHEET.getContext('2d');
+      // the first frame now (it's on screen this frame), standing in for the whole loop until the
+      // rest of the first row is baked a moment later
+      BAKE.frame(ctx, 0, 0, 0, 0);
+      for (let f = 1; f < G.F; f++) ctx.drawImage(SHEET, 0, 0, G.W, G.H, f * G.W, 0, G.W, G.H);
+      br = 0; bf = 1;
+      rowDone(0);
+    } catch (e) {
+      console.warn('[loader] no 3D loader, the 2D one instead:', e);
+      dropBake();
+      SHEET = null; built = 0; br = 0; bf = 0;
+    }
+  }
   if (!SHEET) {
+    G = G2; KIND = '2d';
     SHEET = document.createElement('canvas');
     SHEET.width = W * F; SHEET.height = H * S;
     SC = makeScene();
     drawRow(0);
   }
-  if (built < S && !building) {
-    const next = () => { building = 0; try { drawRow(built); } catch (e) { console.warn('[loader]', e); built = S; return; } if (built < S) building = setTimeout(next, 0); };
+  if ((KIND === '3d' ? br : built) < G.S && !building) {
+    const next = () => {
+      building = 0;
+      if (KIND === '3d') {
+        if (!LIVE.size) { dropBake(); return; } // nobody watching: the next loader picks it up again
+        bake3d(10);
+      } else {
+        try { drawRow(built); } catch (e) { console.warn('[loader]', e); while (built < S) { SHEET.getContext('2d').drawImage(SHEET, 0, (built - 1) * H, W * F, H, 0, built * H, W * F, H); rowDone(built); } return; }
+      }
+      if ((KIND === '3d' ? br : built) < G.S) building = setTimeout(next, 0);
+    };
     building = setTimeout(next, 0);
   }
   return SHEET;
@@ -445,12 +520,14 @@ function style() {
   styled = true;
   const css = `
 .ol-back{position:absolute;inset:0;z-index:7;pointer-events:auto;background:radial-gradient(ellipse at 50% 46%,#24150e 0,#100906 55%,#060304 100%);display:grid;place-items:center;transition:opacity .3s ease}
+.ol-back.d3{background:#0d080e}
 .ol-back.out,.ol-back.thru{pointer-events:none}.ol-back.out{opacity:0}
 .ol-view{position:relative;overflow:hidden;width:var(--ol-w);height:var(--ol-h);animation:olPop .32s cubic-bezier(.3,1.6,.5,1) both;filter:drop-shadow(0 0 calc(var(--ol-s) * 8) #ff9a3a2a)}
+.d3 .ol-view{filter:none}
 .ol-row{position:absolute;left:0;top:0;transform:translateY(calc(var(--ol-h) * var(--ol-r, 0) * -1))}
-.ol-strip{display:block;width:calc(var(--ol-w) * ${F});height:calc(var(--ol-h) * ${S});image-rendering:pixelated;animation:olRun 1.05s steps(${F}) infinite;will-change:transform}
+.ol-strip{display:block;width:calc(var(--ol-w) * var(--ol-f));height:calc(var(--ol-h) * var(--ol-n));image-rendering:pixelated;animation:olRun var(--ol-dur) steps(var(--ol-f)) infinite;will-change:transform}
 .ol-flake{position:absolute;left:var(--x);top:var(--y);width:calc(var(--ol-s) * 2);height:calc(var(--ol-s) * 2);background:var(--c);box-shadow:var(--ol-s) var(--ol-s) 0 #0d0706;animation:olFlake .6s cubic-bezier(.3,.6,.6,1) forwards;pointer-events:none}
-.ol-view.gleam:after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 55%,#fff6c8 0,#ffd25a55 22%,transparent 46%);mix-blend-mode:screen;animation:olGleam .45s ease-out forwards;pointer-events:none}
+.ol-view.gleam .ol-row{animation:olGleam .4s ease-out both}
 .ol-back.dark{background:#000}
 .ol-back.dark .ol-view{position:absolute;bottom:calc(var(--sab, 0px) + var(--px) * 12);filter:brightness(.55) saturate(.8)}
 .ol-back.corner{background:none;pointer-events:none;display:block}
@@ -462,15 +539,17 @@ function style() {
 @keyframes olRun{to{transform:translateX(-100%)}}
 @keyframes olPop{0%{transform:scale(.6,.4)}60%{transform:scale(1.06,.96)}100%{transform:none}}
 @keyframes olFlake{0%{transform:none;opacity:1}40%{transform:translate(calc(var(--dx) * .5),calc(var(--ol-s) * -7)) rotate(90deg)}100%{transform:translate(var(--dx),calc(var(--ol-s) * 14)) rotate(200deg);opacity:0}}
-@keyframes olGleam{0%{opacity:0}25%{opacity:1}100%{opacity:0}}
-@media (prefers-reduced-motion:reduce){.ol-strip{animation-duration:2.4s}}`;
+@keyframes olGleam{0%{filter:none}25%{filter:brightness(1.6) saturate(1.15)}100%{filter:none}}
+@media (prefers-reduced-motion:reduce){.ol-strip{animation-duration:calc(var(--ol-dur) * 2.3)}}`;
   document.head.append(el('style', { 'data-ui': 'ore-loader' }, css));
 }
 
 /** Art px → CSS px: whole device pixels per art pixel, sized to the screen. */
 function artScale(mode) {
   const dpr = window.devicePixelRatio || 1, vw = window.innerWidth || 800, vh = window.innerHeight || 600;
-  const fit = mode === 'corner' ? Math.min(vw * 0.24 / W, vh * 0.18 / H, 2) : mode === 'dark' ? Math.min(vw * 0.5 / W, vh * 0.3 / H, 3) : Math.min(Math.min(vw, vh) * 0.6 / H, vw * 0.92 / W, vh * 0.8 / H);
+  const { W, H } = G; // (the 3D scene is finer: about the game's own pixel size)
+  const fit = mode === 'corner' ? Math.min(vw * 0.24 / W, vh * 0.18 / H, 2) : mode === 'dark' ? Math.min(vw * 0.5 / W, vh * 0.3 / H, 3)
+    : KIND === '3d' ? Math.min(vh * 0.42 / H, vw * 0.6 / W) : Math.min(Math.min(vw, vh) * 0.6 / H, vw * 0.92 / W, vh * 0.8 / H);
   return Math.max(1, Math.floor(fit * dpr)) / dpr;
 }
 
@@ -493,8 +572,8 @@ export function oreLoader(host, opts = {}) {
       for (let j = 0; j < 4 + (r >> 1); j++) {
         const a = Math.random() * Math.PI - Math.PI, rr = 0.7 + Math.random() * 0.3;
         const f = el('i', { class: 'ol-flake' });
-        f.style.setProperty('--x', `${((CX + Math.cos(a) * RX * rr) * s).toFixed(1)}px`);
-        f.style.setProperty('--y', `${((CY + Math.sin(a) * RY * rr) * s).toFixed(1)}px`);
+        f.style.setProperty('--x', `${((G.cx + Math.cos(a) * G.rx * rr) * s).toFixed(1)}px`);
+        f.style.setProperty('--y', `${((G.cy + Math.sin(a) * G.ry * rr) * s).toFixed(1)}px`);
         f.style.setProperty('--dx', `${(Math.cos(a) * (6 + Math.random() * 10) * s).toFixed(1)}px`);
         f.style.setProperty('--c', ['#7d6b56', '#9c876a', '#615244', '#e89624'][j & 3]);
         f.style.animationDelay = `${(j * 0.03).toFixed(2)}s`;
@@ -503,21 +582,25 @@ export function oreLoader(host, opts = {}) {
       }
     } catch (e) { /* cosmetic */ }
   };
-  const apply = () => setRow(Math.min(S - 1, Math.floor(k * (S - 1) + 0.0001)));
+  const apply = () => setRow(Math.min(G.S - 1, Math.floor(k * (G.S - 1) + 0.0001)));
   const show = () => {
     if (shown || gone) return;
     shown = true;
     try {
       style();
-      s = artScale(mode);
       const strip = sheetCanvas();
+      s = artScale(mode);
+      const { W, H, F } = G;
       live = { row: (r) => { try { strip.getContext('2d').drawImage(SHEET, 0, r * H, W * F, H, 0, r * H, W * F, H); } catch (e) { /* lost */ } apply(); } };
       LIVE.add(live);
       view = el('div', { class: 'ol-view', 'aria-hidden': 'true' }, [el('div', { class: 'ol-row' }, [strip])]);
       view.style.setProperty('--ol-s', `${s}px`);
       view.style.setProperty('--ol-w', `${W * s}px`);
       view.style.setProperty('--ol-h', `${H * s}px`);
-      root = el('div', { class: `ol-back ${mode}${opts.appear ? ' late' : ''}${opts.through ? ' thru' : ''}`, role: 'status', 'aria-label': opts.label || 'Loading' }, [view]);
+      view.style.setProperty('--ol-f', String(F));
+      view.style.setProperty('--ol-n', String(G.S));
+      view.style.setProperty('--ol-dur', `${G.dur}s`);
+      root = el('div', { class: `ol-back ${mode}${KIND === '3d' ? ' d3' : ''}${opts.appear ? ' late' : ''}${opts.through ? ' thru' : ''}`, role: 'status', 'aria-label': opts.label || 'Loading' }, [view]);
       if (opts.appear) root.style.setProperty('--ol-in', `${opts.appear}s`);
       (host || document.body).append(root);
       apply();
@@ -549,9 +632,10 @@ export function oreLoader(host, opts = {}) {
       gone = true;
       clearTimeout(timerShow); clearInterval(auto);
       LIVE.delete(live);
+      if (!LIVE.size) dropBake(); // (the GPU side goes with the last loader; the sheet stays for the next)
       if (!root) return;
       try {
-        setRow(S - 1);
+        setRow(G.S - 1);
         view.classList.add('gleam');
       } catch (e) { /* noop */ }
       // (it never stands in the way once done: clicks and touches go through at once, gone soon after)
@@ -577,4 +661,10 @@ function sheetCanvas() {
 }
 
 /** Debug / shots: the whole sheet's canvas (drawn now). */
-export function oreSheet() { sheet(); while (built < S) drawRow(built); return SHEET; }
+export function oreSheet() {
+  sheet();
+  if (KIND === '3d') { while (br < G.S) bake3d(1e9); } else while (built < S) drawRow(built);
+  return SHEET;
+}
+/** Debug: which loader this page has ('3d' | '2d' | '' before the first) and whether it still holds a WebGL context. */
+export function oreLoaderInfo() { return { kind: KIND, built, rows: G.S, gpu: !!BAKE }; }

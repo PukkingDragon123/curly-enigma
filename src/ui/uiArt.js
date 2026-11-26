@@ -9,6 +9,7 @@ import { makeRng, mixHex, shade } from '../core/util.js';
 import { Px } from './px.js';
 import { refine } from './pxFine.js';
 import * as CA from './craftArt.js';
+import { KIT_ASSETS } from './handKit.js'; // wave 20: the hand-drawn panel kit (frames, buttons, tiles)
 
 // ---------------------------------------------------------------- raster (src/ui/px.js)
 export { Px };
@@ -307,7 +308,10 @@ const ASSETS = {
 // (a stretched edge would smear it); the leather book covers and the belt are leather
 const FLAT = { detail: false, edges: false };
 const OPTS = { sign: FLAT, slate: FLAT, key: FLAT, loop: FLAT, loopOn: FLAT, pocket: FLAT, pocketOn: FLAT, track: FLAT, cut: { detail: false, edges: false }, beltT: { brown: 'leather' }, leatherT: { brown: 'leather' } };
-export function asset(key) { return ASSETS[key] ? art(key, ASSETS[key], OPTS[key]) : ''; }
+export function asset(key) {
+  if (KIT_ASSETS[key]) return art('kit:' + key, KIT_ASSETS[key], { res: 1 }); // hand-authored maps, 1 art px = 1 --px
+  return ASSETS[key] ? art(key, ASSETS[key], OPTS[key]) : '';
+}
 
 // the big tiles and frames of panels that only open later (the books, the notice boards, the Miners'
 // Board): drawn while the game idles after boot, so the first frame is not held up by them
@@ -316,7 +320,7 @@ const LATER = new Set(['cover', 'journal', 'coverT', 'journalT', 'coverL', 'jour
 export function installArt(root = document.documentElement) {
   const put = (k) => { const u = asset(k); if (u) root.style.setProperty('--a-' + k, cssUrl(u)); };
   const later = [];
-  for (const k of Object.keys(ASSETS)) if (LATER.has(k)) later.push(k); else put(k);
+  for (const k of new Set([...Object.keys(ASSETS), ...Object.keys(KIT_ASSETS)])) if (LATER.has(k)) later.push(k); else put(k);
   const idle = (f) => (window.requestIdleCallback ? window.requestIdleCallback(f, { timeout: 600 }) : setTimeout(f, 60));
   const step = () => { const t0 = performance.now(); while (later.length && performance.now() - t0 < 10) put(later.shift()); if (later.length) idle(step); };
   if (later.length) idle(step);

@@ -3,11 +3,11 @@
 // recolour the accent (an ore's own colour). Keys: ' ' bare paper, '#' ink, '=' the soft ink of
 // the tone block, 'o' cut-away cream, 'a' / 'A' the poster's one accent ink, light and dark.
 export const PIC_W = 29, PIC_H = 18;
-export const PIC_INK = { '#': 0x2e1a28, '=': 0x8a6e68, 'o': 0xf6e6c0 };
+export const PIC_INK = { '#': 0x1e1424, '=': 0x94707e, 'o': 0xfff0d2 };
 
 export const PICS = {
   /** Old Star: the battered helmet and its lamp, white brows, round spectacles, the pink star of a nose */
-  star: { acc: [0xb0505a, 0x7a2a3a], rows: [
+  star: { acc: [0xa0583a, 0x74382a], rows: [
     '#############################',
     '#          #######          #',
     '# =====  #oo########  ===== #',
@@ -28,7 +28,7 @@ export const PICS = {
     '#############################',
   ] },
   /** a lump of rock studded with ore */
-  ore: { acc: [0xb0562a, 0x6e2c14], rows: [
+  ore: { acc: [0xb45e30, 0x74382a], rows: [
     '#############################',
     '#  ======          =======  #',
     '#                           #',
@@ -49,7 +49,7 @@ export const PICS = {
     '#############################',
   ] },
   /** the forge: a hammer coming down on a hot bar, sparks */
-  anvil: { acc: [0xb8582a, 0x7a2e14], rows: [
+  anvil: { acc: [0xb45e30, 0x7e3a1e], rows: [
     '#############################',
     '#                    ====   #',
     '#          a        ######  #',
@@ -70,7 +70,7 @@ export const PICS = {
     '#############################',
   ] },
   /** Deep Town: crooked roofs under the cave's teeth, lit windows, a string of lamps */
-  town: { acc: [0xc0802a, 0x8a5414], rows: [
+  town: { acc: [0xc8962a, 0x86552e], rows: [
     '#############################',
     '##########################  #',
     '#### ### #### ### ### ##### #',
@@ -91,7 +91,7 @@ export const PICS = {
     '#############################',
   ] },
   /** a fat sack of gold and a stack of coins */
-  coins: { acc: [0xc0902e, 0x7a5414], rows: [
+  coins: { acc: [0xc8962a, 0x86552e], rows: [
     '#############################',
     '#                           #',
     '#        # ## #             #',
@@ -112,7 +112,7 @@ export const PICS = {
     '#############################',
   ] },
   /** a cut gem, two glints */
-  gem: { acc: [0x2f6670, 0x173a42], rows: [
+  gem: { acc: [0x2f6a86, 0x1f3a52], rows: [
     '#############################',
     '#  =====             =====  #',
     '#      o                    #',
@@ -133,7 +133,7 @@ export const PICS = {
     '#############################',
   ] },
   /** a pot on the fire, steam */
-  pot: { acc: [0xb8582a, 0x7a2e14], rows: [
+  pot: { acc: [0xb45e30, 0x7e3a1e], rows: [
     '#############################',
     '#         o      o          #',
     '#        o      o  o        #',
@@ -154,7 +154,7 @@ export const PICS = {
     '#############################',
   ] },
   /** glowcaps */
-  plant: { acc: [0x3a6a8a, 0x1e3e5a], rows: [
+  plant: { acc: [0x2f6a86, 0x1f3a52], rows: [
     '#############################',
     '#         == ==  ==         #',
     '#          #######          #',
@@ -175,7 +175,7 @@ export const PICS = {
     '#############################',
   ] },
   /** something with teeth in the dark */
-  beast: { acc: [0xb8582a, 0x7a2e14], rows: [
+  beast: { acc: [0xb45e30, 0x7e3a1e], rows: [
     '#############################',
     '#                           #',
     '#        ##########         #',
@@ -196,7 +196,7 @@ export const PICS = {
     '#############################',
   ] },
   /** a broken arch on its pillars, a rune still glowing */
-  ruin: { acc: [0x2f6670, 0x173a42], rows: [
+  ruin: { acc: [0x2f6a86, 0x1f3a52], rows: [
     '#############################',
     '#                           #',
     '# ########### ##            #',
@@ -217,7 +217,7 @@ export const PICS = {
     '#############################',
   ] },
   /** the cage lift in its timbered shaft */
-  lift: { acc: [0xc0802a, 0x8a5414], rows: [
+  lift: { acc: [0xc8962a, 0x86552e], rows: [
     '#############################',
     '#####       #       #########',
     '##=##       #       ##=######',
@@ -238,7 +238,7 @@ export const PICS = {
     '#############################',
   ] },
   /** a blade, point up */
-  blade: { acc: [0xa8321e, 0x6a1a10], rows: [
+  blade: { acc: [0x9a2c2a, 0x5e1824], rows: [
     '#############################',
     '#             #             #',
     '#            #o#            #',
@@ -259,7 +259,7 @@ export const PICS = {
     '#############################',
   ] },
   /** a parcel tied with twine, a wax blob */
-  parcel: { acc: [0xa8321e, 0x6a1a10], rows: [
+  parcel: { acc: [0x9a2c2a, 0x5e1824], rows: [
     '#############################',
     '#                           #',
     '#       ==   ==   ==        #',

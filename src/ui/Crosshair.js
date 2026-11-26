@@ -6,10 +6,10 @@ import { el } from '../core/util.js';
 import { floatIn, ghost } from './floatType.js';
 import { keepClear } from './uiSolid.js';
 import { Px } from './uiArt.js';
-import { DSPR, progressRing } from './deepArt.js';
+import { HS, holdRing } from './hudSprites.js'; // (wave 20: hand-drawn reticles and hold ring, src/ui/hudMaps.js)
 
 const KINDS = new Set(['none', 'rock', 'ore', 'enemy', 'use']);
-const BITS = { ore: ['#fff6c4', '#ffe08a', '#d9a030'], enemy: ['#ffe0d0', '#ffb4a0', '#e8502a'], use: ['#ffffff', '#c8f4ff', '#7fc0f0'] };
+const BITS = { ore: ['#f8e49a', '#ecc650', '#c8962a'], enemy: ['#f2b47e', '#f28e2e', '#d4561e'], use: ['#fff0d2', '#a6dcd8', '#5ea6b8'] }; // (the master palette)
 const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
 export class Crosshair {
@@ -18,8 +18,8 @@ export class Crosshair {
     this.kind = null;
     this.text = null;
     this.q = -1;
-    this.ret = el('img', { class: 'pix xh-ret', src: DSPR.reticle('none'), alt: '' });
-    this.ring = new Px(25, 25);
+    this.ret = el('img', { class: 'pix xh-ret', src: HS.reticle('none'), alt: '' });
+    this.ring = new Px(25, 25, 1);
     this.ring.c.className = 'pix xh-ring';
     this.ring.c.hidden = true;
     this.label = el('span', { class: 'xh-label', hidden: true });
@@ -34,7 +34,7 @@ export class Crosshair {
     const kind = KINDS.has(o.kind) ? o.kind : 'none';
     if (kind !== this.kind) {
       this.kind = kind;
-      this.ret.src = DSPR.reticle(kind);
+      this.ret.src = HS.reticle(kind);
       this.el.dataset.kind = kind;
     }
     const text = o.label ? String(o.label) : '';
@@ -52,7 +52,7 @@ export class Crosshair {
       this.q = q;
       this.ring.c.hidden = !q;
       if (q) {
-        progressRing(this.ring, q / 24, q >= 24 ? 0x8af07a : kind === 'enemy' ? 0xff7a5a : 0xffd76a);
+        holdRing(this.ring, q / 24, q >= 24 ? 'f' : kind === 'enemy' ? 'H' : 'G');
         this.ring.ctx.putImageData(this.ring.img, 0, 0);
       }
     }

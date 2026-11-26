@@ -1,6 +1,11 @@
-// Item pictures in the UI (wave 19): the hand-drawn 2D pixel-art icons (gfx/PixelArt.js). The item's
-// real 3D model is what the mole holds in first person (src/fps/viewmodel/held.js); the slots, the
-// shops, the pantry, the forge, toasts and tooltips show the icon.
+// Item pictures in the UI. Wave 20: every item icon is rendered from the item's real 3D model (the
+// one the mole holds, src/fps/viewmodel/held.js) and made to look hand-drawn 2D (src/ui/iconRender.js:
+// 24×24, palette-snapped, outlined), shown at 24 × --px. It's registered as gfx/PixelArt.js's icon
+// provider, so iconURL / weaponIconURL everywhere (slots, hotbar, shops, pantry, forge, toasts,
+// tooltips, rewards, pickup flies, recipes) hand out the rendered icon. They're alive: on hover the
+// model turns ±20° with a wobble for a few frames, a stack lifted into the paw bounces and one dropped
+// in a slot squashes (re-rendered frames, so the pixels stay crisp; one live render at a time).
+// Skills, buffs and other abstract things keep their hand-drawn icons.
 //
 //   itemVox.src(id) → string                the icon (data URL)
 //   itemVox.weapon(type, metal, inf)        the same for a forged weapon
@@ -13,7 +18,8 @@
 //                                           cooking/ingVox.js)
 // (Its old names stay so every caller keeps working: spin, turn, hold, warm, prewarm do nothing now.)
 import { VB, FINE } from '../deep/enemies/vox.js';
-import { drawIconSmall, iconURL, weaponIconURL, iconKeyOf, drawWeapon, PixelCanvas, ICON } from '../gfx/PixelArt.js';
+import { drawIconSmall, iconURL, weaponIconURL, iconKeyOf, drawWeapon, PixelCanvas, ICON, setIconProvider, peekFlatURL } from '../gfx/PixelArt.js';
+import * as IR from './iconRender.js';
 import { hashStr } from '../core/util.js';
 import { ITEMS } from '../data/items.js';
 import { METALS, INFUSIONS } from '../data/weapons.js';
@@ -26,6 +32,85 @@ const isKey = (k) => typeof k === 'string' && (!!ITEMS[k] || k.startsWith('w.'))
 function flatOf(key) {
   if (key.startsWith('w.')) { const [, t, m, i] = key.split('.'); return weaponIconURL(t, m, i || undefined); }
   return iconURL(key);
+}
+
+// ------------------------------------------------------------------ the rendered icons
+const toIR = (k) => (k.startsWith('w:') ? 'w.' + k.slice(2).split(':').join('.') : k);
+const toPA = (k) => (k.startsWith('w.') ? 'w:' + k.slice(2).split('.').join(':') : k);
+const standIn = new Set(); // keys whose flat icon was handed out while the render waited
+setIconProvider({
+  get: (k) => { const u = IR.iconURL(toIR(k)); if (!u && !standIn.has(k)) standIn.add(k); return u; },
+  keyOf: (u) => { const k = IR.keyOfURL(u); return k ? toPA(k) : null; },
+});
+// a flat icon handed out while its render waited (over the frame's budget) is swapped once it lands
+IR.onIcon((key, url) => {
+  const pk = toPA(key);
+  if (!standIn.delete(pk) || typeof document === 'undefined') return;
+  const flat = peekFlatURL(pk);
+  if (!flat) return;
+  for (const img of document.querySelectorAll('img')) if (img.getAttribute('src') === flat) img.src = url;
+});
+
+// ------------------------------------------------------------------ alive: hover turn, lift bounce, drop squash
+// One live render at a time: the model re-rendered a few frames (yaw, pitch, squash over t in 0..1).
+const LIVE = {
+  hover: { dur: 0.9, f: (t) => [0.35 * Math.sin(t * Math.PI * 2) * (1 - t * 0.4), 0.07 * Math.sin(t * Math.PI * 4), 0] },
+  lift: { dur: 0.34, f: (t) => [0.12 * Math.sin(t * Math.PI), 0, t < 0.35 ? -0.7 * Math.sin((t / 0.35) * Math.PI) : 0.35 * Math.sin(((t - 0.35) / 0.65) * Math.PI) * (1 - t)] },
+  squash: { dur: 0.36, f: (t) => [0, 0, t < 0.3 ? 0.85 * Math.sin((t / 0.3) * Math.PI / 2) : 0.85 * Math.cos(((t - 0.3) / 0.7) * Math.PI * 1.5) * (1 - t) ** 1.2] },
+};
+let live = null;
+function stopLive() {
+  if (!live) return;
+  cancelAnimationFrame(live.raf);
+  live.img.src = live.base;
+  live.img.classList.remove('vox-live');
+  live = null;
+}
+function startLive(img, key, kind = 'hover', host = null) {
+  if (!img || !key || !IR.hasIcon(key)) return;
+  if (live && live.img === img && live.kind === kind) return;
+  stopLive();
+  const base = img.src;
+  if (IR.keyOfURL(base) !== key) return; // (a frame of something else is showing)
+  const L = LIVE[kind];
+  live = { img, key, kind, host, base, t0: performance.now(), last: 0, raf: 0 };
+  img.classList.add('vox-live');
+  const tick = (now) => {
+    if (!live || live.img !== img) return;
+    const t = (now - live.t0) / 1000 / L.dur;
+    if (t >= 1 || !img.isConnected) { stopLive(); return; }
+    if (now - live.last > 40) {
+      live.last = now;
+      const [y, p, sq] = L.f(t);
+      const cv = IR.renderFrame(key, y, p, sq);
+      if (!cv) { stopLive(); return; }
+      img.src = cv.toDataURL();
+    }
+    live.raf = requestAnimationFrame(tick);
+  };
+  live.raf = requestAnimationFrame(tick);
+}
+const keyOfImg = (img) => {
+  if (!img) return null;
+  const k = IR.keyOfURL(img.src) || (live?.img === img ? live.key : null);
+  return k;
+};
+const imgIn = (host) => (!host ? null : host.tagName === 'IMG' ? host : host.querySelector('img'));
+if (typeof document !== 'undefined') {
+  const HOST = 'img, button, .slot, .sh-item, .inv-slot, .li, .chip, .bp-loop, [data-vox]';
+  document.addEventListener('pointerover', (e) => {
+    if (e.pointerType && e.pointerType !== 'mouse') return;
+    const host = e.target.closest?.(HOST);
+    if (live?.kind === 'hover' && live.host && host !== live.host && !live.host.contains(e.target)) stopLive();
+    const img = imgIn(host), key = keyOfImg(img);
+    if (key && !(live && live.img === img)) startLive(img, key, 'hover', host);
+  }, true);
+  // the backpack's drag & drop (ui/invGrid.js): the ghost in the paw bounces up, a slot it lands in squashes
+  document.addEventListener('animationstart', (e) => {
+    const n = e.target;
+    if (e.animationName === 'slotPop') { const img = imgIn(n); startLive(img, keyOfImg(img), 'squash'); }
+    else if (e.animationName === 'grab' && n.tagName === 'IMG') startLive(n, keyOfImg(n), 'lift'); // (.inv-ghost.grab img)
+  }, true);
 }
 
 // ------------------------------------------------------------------ sizes
@@ -80,7 +165,13 @@ function extrude(key) {
 
 // ------------------------------------------------------------------ the API
 export const itemVox = {
-  init() {},
+  init(game) {
+    if (this._warm) return;
+    this._warm = true;
+    // what the mole carries first (the belt, the pack), then everything, at idle
+    try { IR.prewarm((game?.state?.inventory?.() || []).map((s) => s.id).filter(Boolean), true); } catch { /* fine */ }
+    IR.prewarm();
+  },
   ready() { return true; },
   wkey,
   src(id) { return isKey(id) ? flatOf(id) : ''; },
@@ -109,8 +200,11 @@ export const itemVox = {
   turn() { return null; },
   hold() { return null; },
   pop(img) { if (!img) return; img.classList.remove('vox-pop'); void img.offsetWidth; img.classList.add('vox-pop'); },
+  /** Play a live move on an icon <img>: 'hover' (turn), 'lift' (bounce), 'squash'. */
+  live(img, kind = 'hover') { startLive(img, keyOfImg(img), kind); },
+  icons: IR,
   url(id) { return isKey(id) ? flatOf(id) : null; },
   spin() { return null; },
-  stats() { return { mode: '2d' }; },
+  stats() { return { mode: 'render24', ...IR.stats() }; },
   _build: extrude,
 };

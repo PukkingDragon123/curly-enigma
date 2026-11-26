@@ -2,8 +2,11 @@
 // CSS custom properties --dl-*). Light from the top-left, 1 art pixel = 1 canvas pixel, shown at --px.
 //   installDialogArt()      once: sets every --dl-* on :root
 //   DL.spark(i)             a 7×7 sparkle frame (0..2) for bursts
-import { Px, PAL, INK, art, mixHex, cssUrl } from './uiArt.js';
+import { Px, PAL, INK, art as baseArt, mixHex, cssUrl } from './uiArt.js';
+// wave 20: one pixel size on screen. Everything here is drawn at one art pixel a pixel (no fine half pixels).
+const art = (key, fn, o) => baseArt(key, fn, { ...o, res: 1 });
 import * as CA from './craftArt.js';
+import { DIALOG_KIT } from './handKit.js';
 
 const B = PAL.brass;
 
@@ -497,7 +500,7 @@ const ASSETS = {
 /** (the ui3 pieces, for previews) */
 export const DLX = { parchForge, sootT: sootTile, parchLedger, ledgerT: ledgerTile, rule8: () => ruleTile(8), margin: marginTile, parchKraft, kraftT: kraftTile, parchJournal, glint, curl: curlSheet };
 
-export const DL = Object.fromEntries(Object.keys(ASSETS).map((k) => [k, () => art('dl:' + k, ASSETS[k])]));
+export const DL = Object.fromEntries(Object.keys(ASSETS).map((k) => [k, () => (DIALOG_KIT[k] ? art('dl:kit:' + k, DIALOG_KIT[k], { res: 1 }) : art('dl:' + k, ASSETS[k]))])); // wave 20: hand-drawn maps first (src/ui/handKit.js)
 DL.spark = (i) => DL['spark' + (i % 3)]();
 
 let installed = false;

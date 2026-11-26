@@ -2,14 +2,15 @@
 //  top-left : coin pouch (gold) · charms (buffs) · tear-off calendar (new day)
 //  stamina  : the brass gauge on the tool belt / bottom middle (src/ui/Stamina.js; it replaced the lantern)
 //  top-right: the backpack (inventory) with the Index Book peeking out · pause journal · depth plumb
-// The art: src/ui/uiSprites.js (sprites) and src/ui/hudArt.js (the pouch, tags, plates, strings: --h-*).
+// The art (wave 20): hand-drawn pixel maps, src/ui/hudMaps.js, made into sprites and CSS custom properties
+// by src/ui/hudSprites.js (the master palette, src/ui/palette.js); hudArt.js keeps the older pieces.
 import { el, formatGoldFull, clamp } from '../core/util.js';
 import { BUFFS } from '../data/recipes.js';
 import { ITEMS } from '../data/items.js';
 import { iconURL } from '../gfx/PixelArt.js';
-import { SPR } from './uiSprites.js';
-import { HART, installHudArt } from './hudArt.js';
+import { installHudArt } from './hudArt.js';
 import { StaminaBar } from './Stamina.js';
+import { HS, installHudSprites } from './hudSprites.js'; // (wave 20: the hand-drawn maps, src/ui/hudMaps.js)
 
 const CALM_AFTER = 9; // seconds of nothing happening before the corners tuck away
 
@@ -19,6 +20,7 @@ export class Hud {
     this.game = ui.game;
     const st = this.game.state;
     installHudArt();
+    installHudSprites();
     this.goldShown = st.gold;
     this.pouchT = 0;
     this.pinned = 0;
@@ -32,7 +34,7 @@ export class Hud {
 
     // ---- coin pouch (hangs from the top-left on its drawstring)
     this.goldNum = el('span', { class: 'pouch-num' }, formatGoldFull(st.gold));
-    this.pouchImg = el('img', { class: 'pix pouch-img', src: HART.pouch(false), alt: '' });
+    this.pouchImg = el('img', { class: 'pix pouch-img', src: HS.pouch(false), alt: '' });
     this.coinFx = el('div', { class: 'pouch-coins' });
     this.pouchDelta = el('div', { class: 'pouch-delta' });
     this.pouch = el('div', { class: 'pouch', title: 'Gold' }, [
@@ -44,11 +46,11 @@ export class Hud {
     this.tl = el('div', { class: 'hud-tl' }, [this.pouch, this.charmsEl]);
 
     // ---- backpack with the book peeking out (top-right)
-    this.packImg = el('img', { class: 'pix pack-img', src: SPR.pack(0), alt: '' });
+    this.packImg = el('img', { class: 'pix pack-img', src: HS.pack(0), alt: '' });
     this.packTag = el('span', { class: 'pack-tag', hidden: true });
     this.badge = el('i', { class: 'pack-badge', hidden: true });
     this.bookBtn = el('button', { class: 'pack-book', title: 'Book (B)', 'aria-label': 'Book: quests, map, skills, index', onclick: (e) => { e.stopPropagation(); if (ui.openBook) ui.openBook(); else ui.openIndex(); } }, [
-      el('img', { class: 'pix', src: SPR.bookPeek(), alt: '' }), this.badge,
+      el('img', { class: 'pix', src: HS.book(), alt: '' }), this.badge,
     ]);
     // a tap: the flap heaves open with a puff (then the backpack panel)
     this.packBtn = el('button', { class: 'pack-bag', title: 'Backpack (I)', 'aria-label': 'Backpack', onclick: () => { const b = this.packBtn; b.classList.remove('open'); void b.offsetWidth; b.classList.add('open'); ui.openInventory(); } }, [this.packImg, this.packTag]);
@@ -58,10 +60,10 @@ export class Hud {
     this.loadEl = el('div', { class: 'pack-load', hidden: true, title: 'How heavy your pack is' }, [el('b', {}, [this.loadFill]), this.loadTxt]);
     this.pack = el('div', { class: 'pack' }, [this.bookBtn, this.packBtn, this.loadEl]);
     this.menuBtn = el('button', { class: 'journal-btn', title: 'Journal (Esc)', 'aria-label': 'Pause menu', onclick: () => ui.openMenu() }, [
-      el('img', { class: 'pix', src: SPR.journalIcon(), alt: '' }),
+      el('img', { class: 'pix', src: HS.journal(), alt: '' }),
     ]);
     this.depthTxt = el('div', { class: 'depth-txt' });
-    this.depth = el('div', { class: 'depth' }, [el('img', { class: 'pix', src: SPR.plumb(), alt: '' }), this.depthTxt]);
+    this.depth = el('div', { class: 'depth' }, [el('img', { class: 'pix', src: HS.plumb(), alt: '' }), this.depthTxt]);
     this.tr = el('div', { class: 'hud-tr' }, [this.menuBtn, this.pack]);
     this.pack.addEventListener('pointerenter', () => this.peek());
 
@@ -132,9 +134,9 @@ export class Hud {
     this.pouch.classList.remove('jingle');
     void this.pouch.offsetWidth;
     this.pouch.classList.add('jingle');
-    this.pouchImg.src = HART.pouch(true);
+    this.pouchImg.src = HS.pouch(true);
     clearTimeout(this._pouchShut);
-    this._pouchShut = setTimeout(() => { this.pouchImg.src = HART.pouch(false); }, 1400);
+    this._pouchShut = setTimeout(() => { this.pouchImg.src = HS.pouch(false); }, 1400);
     if (d > 0) this.spawnCoins(clamp(Math.round(Math.log10(d + 1) * 2), 2, 9));
     else this.spawnCoins(clamp(Math.round(Math.log10(-d + 1) * 1.5), 1, 6), false);
   }
@@ -179,7 +181,8 @@ export class Hud {
         const x1 = r.left + r.width / 2, y1 = r.top + r.height * (target === 'pouch' ? 0.3 : 0.45);
         const x0 = (from?.x ?? innerWidth / 2) + (k - (copies - 1) / 2) * 14, y0 = (from?.y ?? innerHeight * 0.42) + (k % 2) * 6;
         const mx = (x0 + x1) / 2 + (x1 > x0 ? -40 : 40), my = Math.min(y0, y1) - 70 - Math.random() * 30;
-        const size = target === 'pouch' ? 24 : 48;
+        const px = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 3;
+        const size = target === 'pouch' ? 8 * px : 16 * px; // (whole art pixels: a coin 8, an item 16)
         const img = el('img', { class: 'pix fly-reward', src, alt: '', style: { width: size + 'px', height: size + 'px' } });
         this.ui.hud.append(img);
         const tf = (x, y, s, rot) => `translate(${(x - size / 2).toFixed(1)}px, ${(y - size / 2).toFixed(1)}px) scale(${s}) rotate(${rot}deg)`;
@@ -204,7 +207,7 @@ export class Hud {
   flyReward(r, delay = 0) {
     if (!r) return;
     let d = delay;
-    if (r.gold) { this.flyTo('pouch', SPR.coin(), { n: Math.round(Math.min(6, 1 + Math.log10(r.gold + 1) * 1.6)), delay: d }); d += 260; }
+    if (r.gold) { this.flyTo('pouch', HS.coin(), { n: Math.round(Math.min(6, 1 + Math.log10(r.gold + 1) * 1.6)), delay: d }); d += 260; }
     for (const [id, n] of Object.entries(r.items || {}).slice(0, 4)) { if (ITEMS[id]) { this.flyTo('pack', iconURL(id), { n: Math.min(3, n || 1), delay: d }); d += 240; } }
   }
 
@@ -221,7 +224,7 @@ export class Hud {
       if (!c) {
         const tip = el('span', { class: 'charm-tip' });
         const node = el('button', { class: 'charm', 'aria-label': def.name, onclick: (ev) => { ev.stopPropagation(); node.classList.toggle('open'); } }, [
-          el('i', { class: 'hang-string' }), el('img', { class: 'pix', src: SPR.charm(b.id), alt: '' }), tip,
+          el('i', { class: 'hang-string' }), el('img', { class: 'pix', src: HS.charm(b.id), alt: '' }), tip,
         ]);
         node.style.setProperty('--sway', (0.8 + Math.random() * 0.8).toFixed(2) + 's');
         node.style.setProperty('--len', String(4 + (this.charmEls.size % 3) * 3));
@@ -247,8 +250,8 @@ export class Hud {
     if (this.ui.hudMode === 'none') return;
     const cal = this.cal;
     cal.innerHTML = '';
-    const under = el('div', { class: 'cal-page' }, [el('img', { class: 'pix', src: SPR.calendar(false), alt: '' }), el('b', {}, String(day))]);
-    const over = el('div', { class: 'cal-page torn' }, [el('img', { class: 'pix', src: SPR.calendar(true), alt: '' }), el('b', {}, String(Math.max(1, day - 1)))]);
+    const under = el('div', { class: 'cal-page' }, [el('img', { class: 'pix', src: HS.calendar(false), alt: '' }), el('b', {}, String(day))]);
+    const over = el('div', { class: 'cal-page torn' }, [el('img', { class: 'pix', src: HS.calendar(true), alt: '' }), el('b', {}, String(Math.max(1, day - 1)))]);
     cal.append(under, over);
     cal.hidden = false;
     cal.className = 'cal';
@@ -282,7 +285,7 @@ export class Hud {
     if (n === null || n === undefined) {
       this.bag = null;
       this.explicitBag = false;
-      if (this.bagFill) { this.bagFill = 0; this.packImg.src = SPR.pack(0); }
+      if (this.bagFill) { this.bagFill = 0; this.packImg.src = HS.pack(0); }
       this.packTag.hidden = true;
       this.pack.classList.remove('full');
       return;
@@ -293,7 +296,7 @@ export class Hud {
     this.bag = { n, cap };
     const r = n / cap;
     const fill = n <= 0 ? 0 : r < 0.5 ? 1 : r < 1 ? 2 : 3;
-    if (fill !== this.bagFill) { this.bagFill = fill; this.packImg.src = SPR.pack(fill); }
+    if (fill !== this.bagFill) { this.bagFill = fill; this.packImg.src = HS.pack(fill); }
     const full = n >= cap;
     this.pack.classList.toggle('full', full);
     this.packTag.textContent = full ? 'FULL' : `${n}/${cap}`;

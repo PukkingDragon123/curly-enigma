@@ -25,7 +25,7 @@ import { HOTBAR_N, KIND_LABEL, KIND_ICON, refItem } from '../core/hotbar.js';
 import { SPR } from './uiSprites.js';
 import { qColor, pips, stagger, put } from './common.js';
 import { SlotDnD, slotEl, stackIcon, stackName, bounce } from './invGrid.js';
-import { INV_ART, installInvArt } from './invArt.js';
+import { INV_ART, installInvArt, installPackKit } from './invArt.js';
 import { installPackArt } from './packArt.js';
 import { itemVox } from './itemVox.js';
 import { installPanelArt } from './panelArt.js'; // (wave 9: cast brass corners and forged studs on the bag)
@@ -105,6 +105,7 @@ export function openBackpack(game, opts = {}) {
   const root = el('div', { class: 'bp' }, [flap, body, tip]);
   installInvArt(root);
   installPackArt(root);
+  installPackKit(root); // wave 20: the hand-drawn leather, canvas, edge, sleeves and buckle
   installPanelArt();
 
   // ---------------------------------------------------------------- sounds

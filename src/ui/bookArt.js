@@ -1,7 +1,9 @@
 // Pixel art for the quest tracker and the book: the parchment strip with its rolled ends, the
 // quill, Old Star's gilded seal, check boxes, chapter tab icons, givers' ink sketches and map pins.
 // Drawn once at 1 art px = 1 canvas px (shown at --px), cached as data URLs.
-import { Px, PAL, INK, art } from './uiArt.js';
+import { Px, PAL, INK, art as baseArt } from './uiArt.js';
+// wave 20: one pixel size on screen. Everything here is drawn at one art pixel a pixel (no fine half pixels).
+const art = (key, fn, o) => baseArt(key, fn, { ...o, res: 1 });
 import { makeRng } from '../core/util.js';
 import * as CA from './craftArt.js';
 const mix = CA.mix;

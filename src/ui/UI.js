@@ -12,6 +12,7 @@ import { milestoneText } from '../data/upgrades.js';
 import { indexName } from '../core/State.js';
 import { installArt, cssUrl } from './uiArt.js';
 import { SPR } from './uiSprites.js';
+import { HS } from './hudSprites.js'; // (wave 20: the toast's wax seal, hand-drawn)
 import { Hud } from './Hud.js';
 import { Belt } from './Belt.js';
 import { openBackpack } from './Backpack.js';
@@ -21,7 +22,6 @@ import { qColor } from './common.js';
 import { Radar } from './Radar.js';
 import { Crosshair } from './Crosshair.js';
 import { Tracker } from './Tracker.js';
-import { DSPR } from './deepArt.js';
 import { Tutor } from './Tutor.js';
 import { Convo } from './Convo.js'; // cutscene talk (game.convo)
 import { Onboard } from './Onboard.js'; // the cinematic tutorial's layer (prompts, letterbox, tutorial UI level)
@@ -48,8 +48,9 @@ export { qColor };
 const LAYER_MODS = import.meta.glob('../fps/liftLayers.js');
 const SEAL_FOR = { good: 'green', warn: 'amber', bad: 'red' };
 /** The bits a toast's words scatter into, by kind (good news: green and gold sparkles). */
-const TOAST_BITS = { good: ['#f4ffe0', '#b8f08a', '#ffd84a', '#7ac85a'], warn: ['#fff0c0', '#ffcf8a', '#ff9a3a'], bad: ['#ffe0d0', '#ff9a76', '#e8502a'], '': ['#fff6e0', '#f0d8a8', '#ffd27a'] };
-const GOLD_BITS = ['#ffffff', '#fff6c4', '#ffd84a', '#f0a830'];
+// (wave 20: the bits are master-palette colours, src/ui/palette.js)
+const TOAST_BITS = { good: ['#fff0d2', '#c2d872', '#ecc650', '#8cac48'], warn: ['#fff0d2', '#f2b47e', '#f28e2e'], bad: ['#f2b47e', '#d4788a', '#d4561e'], '': ['#fff0d2', '#f2dcae', '#ecc650'] };
+const GOLD_BITS = ['#fff0d2', '#f8e49a', '#ecc650', '#c8962a'];
 /** Things you can press: they press in with a soft latch click on the way down (ui3). */
 const PRESSABLE = '.btn, .sh-tab, .ug-tab, .stamp-btn, .tk-note, .cv-opt, .nb-note, .sd-pack, .sh-good, .qt-roll';
 /** (wave 10, quick and bouncy) Things that squash as you press them and spring back with an overshoot
@@ -135,7 +136,7 @@ export class UI {
     const lookB = el('b');
     this.lookCatch = el('div', { class: 'look-catch', 'aria-label': 'Click to look around', title: 'Esc frees the mouse' }, [
       el('div', { class: 'look-card' }, [
-        el('img', { class: 'pix', src: DSPR.mouse(), alt: '' }),
+        el('img', { class: 'pix', src: HS.mouse(), alt: '' }),
         el('div', {}, [lookB]),
       ]),
     ]);
@@ -338,7 +339,7 @@ export class UI {
     if (same) return same.el;
     const color = SEAL_FOR[kind] || 'brown';
     const words = el('span', { class: 'toast-text' });
-    const seal = el('img', { class: 'pix toast-seal', src: SPR.seal(color, kind === 'good' ? 'check' : kind === 'bad' ? 'x' : 'ring'), alt: '' });
+    const seal = el('img', { class: 'pix toast-seal', src: HS.seal(color, kind === 'good' ? 'check' : kind === 'bad' ? 'x' : 'ring'), alt: '' });
     const t = el('div', { class: 'toast ft-toast ' + kind, role: 'status' }, [
       icon ? itemVox.img(icon, 'pix toast-icon', { pop: true, game: this.game }) : seal, // (an item's icon comes in 3D, with a little turn)
       words,

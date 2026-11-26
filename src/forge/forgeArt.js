@@ -3,7 +3,9 @@
 // blueprint, the brass thermometer, rune medallions, gauges, the riveted forge-plate buttons,
 // the guild certificate and its wax seal. Everything is cached through uiArt's art(); the frames
 // and tiles are published on the forge layer as CSS custom properties (--fa-<key>).
-import { Px, PAL, INK, art, mixHex, shade, cssUrl } from '../ui/uiArt.js';
+import { Px, PAL, INK, art as baseArt, mixHex, shade, cssUrl } from '../ui/uiArt.js';
+// wave 20: one pixel size on screen. Everything here is drawn at one art pixel a pixel (no fine half pixels).
+const art = (key, fn, o) => baseArt(key, fn, { ...o, res: 1 });
 import { blob, lumpDist } from '../iso/organic.js';
 import { TONES, rivet, glint, quant, pnoise } from '../ui/craftArt.js';
 import { SPR } from '../ui/uiSprites.js';
@@ -11,6 +13,7 @@ import { PixelCanvas } from '../gfx/PixelArt.js';
 import { drawWeapon } from '../gfx/PixelArt.js';
 import { METALS, INFUSIONS } from '../data/weapons.js';
 import { bart, BOOK_KEYS } from './forgeBookArt.js';
+import { FORGE_KIT } from '../ui/handKit.js';
 
 const W = PAL.wood, B = PAL.brass, P = PAL.paper, L = PAL.leather;
 const CHALK = 0xeef2e6, BT = TONES.brass;
@@ -585,6 +588,7 @@ const TACKS = { tackRed: 0xc23c2c, tackBlue: 0x3f7ec8, tackGold: 0xe8b83a, tackG
 
 /** Data URL of a named forge sprite. */
 export function fart(key) {
+  if (FORGE_KIT[key]) return art('fa:kit:' + key, FORGE_KIT[key], { res: 1 }); // wave 20: hand-drawn maps first (src/ui/handKit.js)
   if (TACKS[key]) return SPR.tack(TACKS[key]);
   return art('fa:' + key, SPRITES[key], FOPTS[key]);
 }

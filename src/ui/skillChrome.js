@@ -17,7 +17,10 @@
 //   paintPipes(img, segs, joints) pipes on the board canvas (dim / lit / pending)
 // installSkillChrome() publishes the fixed ones as --skc-* custom properties.
 import { Px } from './px.js';
-import { art, cssUrl } from './uiArt.js';
+import { art as baseArt, cssUrl } from './uiArt.js';
+// wave 20: one pixel size on screen. Everything here is drawn at one art pixel a pixel (no fine half pixels).
+const art = (key, fn, o) => baseArt(key, fn, { ...o, res: 1 });
+import { SKILL_KIT } from './handKit.js';
 import { TONES, brassField, pnoise, hash, quant, edgeOf, edgeOfF, rivet, leatherTile } from './craftArt.js';
 
 const B = TONES.brass; // 10 tones
@@ -576,7 +579,7 @@ let installed = false;
 export function installSkillChrome(root = document.documentElement) {
   if (installed) return;
   installed = true;
-  const set = (k, u) => { if (u) root.style.setProperty('--skc-' + k, cssUrl(u)); };
+  const set = (k, u) => { if (SKILL_KIT[k]) u = art('skc:kit:' + k, SKILL_KIT[k], { res: 1 }); if (u) root.style.setProperty('--skc-' + k, cssUrl(u)); }; // wave 20: hand-drawn maps first (src/ui/handKit.js)
   set('panel', SKC.panel()); set('head', SKC.head()); set('medal', SKC.medal()); set('leather', SKC.leather());
   set('wm', SKC.watermark()); set('inset', SKC.inset()); set('knob', SKC.knob(false)); set('knobH', SKC.knob(true));
   set('btn', SKC.btn('brass')); set('btnDn', SKC.btn('brass', true)); set('btnGo', SKC.btn('green')); set('btnGoDn', SKC.btn('green', true)); set('btnOff', SKC.btn('iron'));

@@ -37,7 +37,7 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 const q = (v, s) => Math.round(v / s) * s;
 
 // the house palette for the picture: shadows fall to plum, highlights stop at cream
-const PLUM = [36, 20, 42], CREAM = [255, 242, 220], INK = [42, 20, 32];
+const PLUM = [46, 27, 51], CREAM = [255, 240, 210], INK = [30, 20, 36]; // (the master palette's plum, cream and ink)
 /** Read-back values (linear-ish) → the page's tones (a gentle lift, as the portraits do). */
 const LIFT = new Uint8ClampedArray(256).map((_, v) => Math.round(255 * Math.min(1, Math.pow(v / 255, 0.88) * 1.04)));
 

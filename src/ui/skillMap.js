@@ -17,6 +17,7 @@ import { skillIconURL, lineIconURL, techIconId, ICON_IDS } from './skillIcons.js
 import { tokenURL } from './skillArt.js';
 import { DL, installDialogArt } from './dialogArt.js';
 import './skillmap.css';
+import { MAPS, mapPx, kitPx } from './handKit.js';
 
 const isTouch = () => document.documentElement.classList.contains('is-touch');
 const W = 760, CX = W / 2, CY = W / 2;
@@ -79,50 +80,34 @@ const hex = (c) => '#' + (c >>> 0).toString(16).padStart(6, '0');
 
 // ------------------------------------------------------------------ the parchment map (drawn once)
 const PARCH = [0xf6e8c4, 0xeedcb0, 0xe4cd9c, 0xd6bb86, 0xc4a46e, 0xa8875a];
-const BURN = [0x8a6232, 0x6a4420, 0x4a2c12, 0x2e1a0a];
-const INKC = 0x4a2e16;
+const BURN = [0xb8945e, 0x86552e, 0x3a2318, 0x1e1424]; // master palette: tan, woodMid, bark, ink
+const INKC = 0x5e3a22;
 let MAP_URL = null;
 function mapURL() {
   if (MAP_URL) return MAP_URL;
-  const L = mapLayout(), b = new Buf(W, W), n1 = makeNoise2D(11), n2 = makeNoise2D(29), n3 = makeNoise2D(5);
-  const rng = makeRng(77);
-  const stains = [[0.24, 0.72, 40], [0.8, 0.22, 30], [0.7, 0.84, 24]].map(([x, y, r]) => ({ x: x * W, y: y * W, r }));
+  // wave 20: the sheet is the hand-drawn paper (src/ui/handMaps2.js) laid edge to edge, its rim torn
+  // along a hand-cut wobble and scorched in three flat bands; latitudes dotted in faded ink
+  const b = new Buf(W, W);
+  const sheet = [[kitPx('paperA'), kitPx('paperB', null, 'h')], [kitPx('paperB', null, 'v'), kitPx('paperA', null, 'hv')]];
+  const WOB = '0112100121100012', T = 32;
   for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
-    // a torn, burnt edge: a rounded square whose rim wanders
-    const dx = Math.abs(x - CX) / (W / 2), dy = Math.abs(y - CY) / (W / 2);
-    const sq = Math.pow(Math.pow(dx, 6) + Math.pow(dy, 6), 1 / 6);
-    const ang = Math.atan2(y - CY, x - CX);
-    const rim = 0.975 - 0.022 * (n1(Math.cos(ang) * 3 + 9, Math.sin(ang) * 3 + 4) + 1) - 0.012 * (n2(ang * 9, 1.3) + 1);
-    if (sq > rim) continue;
-    const edge = (rim - sq) * W / 2; // px in from the edge
-    const v = n1(x / 90, y / 90) * 0.55 + n2(x / 26, y / 26) * 0.3 + n3(x / 7, y / 7) * 0.15;
-    let ti = 1.6 + v * 2.2 + (B4[(y & 3) * 4 + (x & 3)] / 16 - 0.5) * 0.9;
-    // fold creases (thirds) and the stains of a long life
-    for (const f of [W / 3, (W * 2) / 3]) { if (Math.abs(x - f) < 1.5 && n3(y / 30, f) > -0.4) ti += x < f ? -0.9 : 1.2; if (Math.abs(y - f) < 1.5 && n3(x / 30, f + 7) > -0.4) ti += y < f ? -0.9 : 1.2; }
-    for (const s of stains) { const d = Math.hypot(x - s.x, y - s.y), rr = s.r + n2(x / 9, y / 9) * 3; if (d < rr) ti += Math.abs(d - rr) < 1.6 ? 1.6 : 0.45; }
-    let c = PARCH[Math.max(0, Math.min(5, Math.round(ti)))];
-    // the six lines' faint washes, fading out from the heart
+    const dx = Math.abs(x - CX), dy = Math.abs(y - CY), along = dx > dy ? y : x;
+    const edge = W / 2 - 6 - Math.max(dx, dy) - (dx + dy > W * 0.86 ? (dx + dy - W * 0.86) : 0) - +WOB[(along >> 3) & 15] * 2;
+    if (edge < 0) continue;
+    const t = sheet[(y / T | 0) & 1][(x / T | 0) & 1];
+    let c = t.get(x % T, y % T);
     const dr = Math.hypot(x - CX, y - CY);
-    if (dr > 46 && dr < 350) {
-      let aa = ang; for (const l of SKILL_LINES) { const s = L.lines[l.id]; let q = aa; while (q < s.a0) q += Math.PI * 2; while (q > s.a1) q -= Math.PI * 2; if (q >= s.a0 && q <= s.a1) { const f = (1 - Math.abs((q - s.c) / ((s.a1 - s.a0) / 2))) * Math.min(1, (dr - 46) / 60) * (1 - dr / 350); if (f * 0.5 > B4[(y & 3) * 4 + (x & 3)] / 16 * 0.5 + 0.12) c = mix(c, l.pal[1], 0.16); break; } }
-    }
-    // ring paths (one per tier), dotted in faded ink, like a map's latitudes
-    for (const R of RING) if (Math.abs(dr - R - 22) < 0.6 && ((Math.atan2(y - CY, x - CX) * R) | 0) % 6 < 3) c = mix(c, INKC, 0.25);
-    if (edge < 12) c = edge < 2 ? BURN[3] : edge < 4 ? BURN[2] : edge < 7 ? mix(BURN[1], c, (edge - 4) / 3 * 0.5) : mix(BURN[0], c, 0.55 + (edge - 7) / 5 * 0.45);
+    for (const R of RING) if (Math.abs(dr - R - 22) < 0.6 && ((Math.atan2(y - CY, x - CX) * R) | 0) % 6 < 3) c = INKC;
+    // the sheet was folded in thirds: a sand crease with its lit side, broken where the fold wore through
+    for (const f of [W / 3 | 0, (W * 2) / 3 | 0]) { if (x === f && (y >> 4) % 5) c = 0xdcbf8a; else if (x === f + 1 && (y >> 4) % 5) c = 0xfff0d2; if (y === f && (x >> 4) % 6) c = 0xdcbf8a; else if (y === f + 1 && (x >> 4) % 6) c = 0xfff0d2; }
+    if (edge < 12) c = edge < 2 ? BURN[3] : edge < 4 ? BURN[1] : edge < 7 ? BURN[0] : 0xdcbf8a;
     b.set(x, y, c);
-  }
-  // ink: rock specks and little pebbles drawn in the margins
-  for (let i = 0; i < 420; i++) {
-    const x = rng() * W, y = rng() * W, d = Math.hypot(x - CX, y - CY);
-    if (d < 40 || !b.a(x, y) || b.get(x, y) === BURN[3]) continue;
-    if (rng() < 0.75) b.set(x, y, INKC, 70 + rng() * 60);
-    else for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; b.set(x + Math.cos(a) * 2.2, y + Math.sin(a) * 1.6, INKC, 110); }
   }
   // a compass rose, bottom right: eight inked points and a red-ink north
   const rx = W - 92, ry = W - 92;
   for (let k = 0; k < 8; k++) {
     const a = (k / 8) * Math.PI * 2 - Math.PI / 2, len = k % 2 ? 14 : 30, wd = k % 2 ? 3 : 5;
-    for (let t = 0; t <= len; t++) { const w = wd * (1 - t / len); for (let s = -w; s <= w; s++) { const px = rx + Math.cos(a) * t - Math.sin(a) * s, py = ry + Math.sin(a) * t + Math.cos(a) * s; b.set(px, py, k === 0 ? (s < 0 ? 0xb8402c : 0x8a2418) : s < 0 ? 0xe8d4a8 : INKC, 230); } }
+    for (let t = 0; t <= len; t++) { const w = wd * (1 - t / len); for (let s = -w; s <= w; s++) { const px = rx + Math.cos(a) * t - Math.sin(a) * s, py = ry + Math.sin(a) * t + Math.cos(a) * s; b.set(px, py, k === 0 ? (s < 0 ? 0x9a2c2a : 0x5e1824) : s < 0 ? 0xf2dcae : INKC); } }
   }
   for (let t = 0; t < 360; t += 2) { const a = (t * Math.PI) / 180; b.set(rx + Math.cos(a) * 19, ry + Math.sin(a) * 19, INKC, 160); }
   MAP_URL = b.flush().toDataURL();
@@ -179,59 +164,20 @@ function rootlets(b, pts, seed, lit) {
 
 // ------------------------------------------------------------------ knot frames (per line × state)
 const frames = new Map();
+const hx = (c) => '#' + (c >>> 0).toString(16).padStart(6, '0');
+/** wave 20: the knots are hand-drawn maps (src/ui/handMaps6.js), recoloured per state and line. */
+function knotColors(line, kind) {
+  const L = line.pal || [];
+  if (kind === 'done') return { L: 'Y', W: 'G', w: 'b', n: 'C', C: hx(L[1] ?? 0xe0a040), c: hx(L[2] ?? 0xc07020), s: hx(L[3] ?? 0x804010), t: hx(L[3] ?? 0x804010), a: hx(L[2] ?? 0xc07020) };
+  if (kind === 'ready') return { L: 'Y', W: 'G', w: 'b', n: 'C', a: 'c' };
+  if (kind === 'open') return { n: 'B', a: 'c' };
+  if (kind === 'barred') return { L: '4', W: '3', w: '2', n: '1', C: '3', c: '2', s: '1', t: '1', a: '2' };
+  return { L: 'W', W: 'w', w: 'B', n: 'B', C: 'W', c: 'w', s: 'B', t: 'B', a: 'B' }; // locked: the sawn end of a root, growth rings showing
+}
 function frameURL(line, kind, size = NODE_S) {
   const key = line.id + kind + size;
-  if (frames.has(key)) return frames.get(key);
-  const b = new Buf(size, size), c = size / 2, r = makeRng(hashStr(key)), nz = makeNoise2D(hashStr(line.id) % 97);
-  const R0 = size * 0.36, R1 = size * 0.47;
-  const wax = line.pal, dark = kind === 'locked' || kind === 'barred';
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
-    const wob = nz(Math.cos(a) * 1.6 + 3, Math.sin(a) * 1.6) * 1.6;
-    const rIn = R0 + wob * 0.4, rOut = R1 + wob;
-    const k = (-dx - dy) / (d + 0.01);
-    if (d <= rIn) {
-      // the knot's face: wax for learned, parchment for the rest
-      let col;
-      if (kind === 'done') col = d < rIn - 2 ? (k * (d / rIn) > 0.3 ? wax[1] : k * (d / rIn) < -0.35 ? wax[3] : wax[2]) : wax[3];
-      else if (kind === 'ready') col = d < rIn - 1.5 ? (k > 0.4 && d > rIn * 0.6 ? 0xfff6d8 : 0xf4e2b4) : 0xd8b070;
-      else if (kind === 'open') col = d < rIn - 1.5 ? 0xe8d4a6 : 0xb89868;
-      else if (kind === 'barred') col = 0x8a8478;
-      else {
-        // wave 18: a locked knot is the sawn end of a root: growth rings, a radial check, its
-        // top-left lip catching the lamp and the bottom-right sunk in shadow
-        const ring = Math.floor(d / 2.3 + wob * 0.6 + nz(x * 0.3, y * 0.3) * 0.8);
-        col = ring % 2 ? 0x4e3a28 : 0x443222;
-        if (ring % 4 === 3) col = 0x3a2a1c;
-        const crack = Math.abs(((a - 0.7 + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.09 && d > rIn * 0.25;
-        if (crack) col = 0x1e140c;
-        if (d > rIn - 1.6) col = k > 0.25 ? 0x7a5a3c : k < -0.25 ? 0x160e08 : 0x2a1c10; // the lip
-        else if (d > rIn - 3.2 && k < -0.3) col = 0x2e2014; // shadow inside the lip
-        else if (k > 0.45 && d > rIn * 0.5) col = ring % 2 ? 0x624834 : 0x584030; // the lit side
-      }
-      if (kind === 'done' && ((x * 7 + y * 13) % 23 === 0)) col = wax[0];
-      b.set(x, y, col);
-    } else if (d <= rOut) {
-      // gnarled bark ring (brass-capped when it's ready, gold when learned)
-      const t = (d - rIn) / (rOut - rIn);
-      let col;
-      if (kind === 'done') col = t < 0.3 ? 0xffe08a : k > 0.3 ? 0xf2c23a : k < -0.3 ? 0x8a5a14 : 0xc8902a;
-      else if (kind === 'ready') col = t < 0.3 ? 0xfff0b0 : k > 0.3 ? 0xe8be56 : k < -0.3 ? 0x7a5018 : 0xa87420;
-      else if (dark) col = k > 0.3 ? 0x5a4636 : k < -0.3 ? 0x1e140c : 0x3a2c20;
-      else col = k > 0.3 ? 0x9a7448 : k < -0.3 ? 0x4a2e18 : 0x6e4a2a;
-      if (((a * 8 + t * 3) | 0) % 3 === 0 && t > 0.4) col = shade(col, -0.18); // bark grooves
-      b.set(x, y, col);
-    }
-  }
-  // rivets / nail heads round the ring for ready + done
-  if (kind === 'done' || kind === 'ready') for (let i = 0; i < 4; i++) { const a = -2.4 + i * Math.PI / 2 + r() * 0.2, x = c + Math.cos(a) * (R0 + R1) / 2, y = c + Math.sin(a) * (R0 + R1) / 2; b.set(x, y, 0xfff8e0); b.set(x + 1, y + 1, 0x5a3a10); }
-  // a dark outline round it all
-  const out = [];
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!b.a(x, y) && (b.a(x - 1, y) > 200 || b.a(x + 1, y) > 200 || b.a(x, y - 1) > 200 || b.a(x, y + 1) > 200)) out.push([x, y]);
-  for (const [x, y] of out) b.set(x, y, 0x150b06);
-  const url = b.flush().toDataURL();
-  frames.set(key, url);
-  return url;
+  if (!frames.has(key)) frames.set(key, mapPx(MAPS[size > 44 ? 'knot52' : 'knot40'], knotColors(line, kind)).url());
+  return frames.get(key);
 }
 
 // ------------------------------------------------------------------ the map

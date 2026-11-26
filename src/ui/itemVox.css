@@ -1,3 +1,22 @@
 /* Item icons (itemVox.js): a toast's or a reveal's icon hops in as it appears. */
 img.vox-pop { animation: voxPop .42s var(--pop, cubic-bezier(.25, 1.65, .45, 1)); }
 @keyframes voxPop { 0% { transform: translateY(calc(var(--px, 3px) * 3)) scale(.6); } 45% { transform: translateY(calc(var(--px, 3px) * -3)) scale(1.12, .92); } 70% { transform: scale(.96, 1.05); } }
+
+/* ---------- wave 20: item icons are 24×24 renders of the items' 3D models (iconRender.js), shown at
+   24 × --px (the one shared integer scale: 72 px at 720p, 96 px at 1080p). Smaller spots show them at
+   a whole multiple too (48 px = 2×). html:root outranks the :root defaults in styles.css / backpack.css. */
+html:root {
+  --item-px: calc(var(--px) * 24);
+  --icon: var(--item-px);
+  --icon-s: 48px;
+  --inv-item: min(var(--item-px), max(48px, round(down, calc(var(--inv-slot) + var(--px) * 2), 24px)));
+  --belt-item: min(var(--item-px), max(48px, round(down, calc(var(--belt-loop) - var(--px) * 4), 24px)));
+  --rack-item: 48px;
+  --snack-item: 48px;
+  --tag-item: var(--item-px);
+  --tip-item: var(--item-px);
+}
+img.vox-live { image-rendering: pixelated; }
+/* the hotbar loops (hud.css sizes the face off --icon-s): the icon at a whole multiple (3×), centred
+   on the face and spilling onto the loop's rim like the old 1.3× one, so the leather still shows */
+html .loop-face img { width: min(var(--item-px), 72px); height: min(var(--item-px), 72px); margin: calc((var(--icon-s) - min(var(--item-px), 72px)) / 2); }

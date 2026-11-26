@@ -4,7 +4,7 @@
 .stam {
   position: relative; width: calc(var(--px) * 98); height: calc(var(--px) * 12);
   /* a flat cast shadow (no blur): the stave stands a little off what's behind it */
-  filter: drop-shadow(var(--px) var(--px) 0 rgba(22, 8, 20, .5));
+  filter: drop-shadow(var(--px) var(--px) 0 rgba(30, 20, 36, .5));
   transform: translateY(calc(var(--px) * 10)) scale(.6, .2); opacity: 0;
   transition: transform .18s cubic-bezier(.5, -0.5, .8, .6), opacity .14s .04s;
 }

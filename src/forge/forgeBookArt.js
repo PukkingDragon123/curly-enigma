@@ -4,12 +4,15 @@
 // every step of the work (and the weapon itself drawn in ink with a watercolour wash for the
 // pattern book), and the smith's painted heat-colour chart beside the thermometer. Drawn in art
 // pixels on Px rasters (the r > 1 passes add the finer detail) and cached through uiArt's art().
-import { Px, PAL, INK, art, mixHex, shade } from '../ui/uiArt.js';
+import { Px, PAL, INK, art as baseArt, mixHex, shade } from '../ui/uiArt.js';
+// wave 20: one pixel size on screen. Everything here is drawn at one art pixel a pixel (no fine half pixels).
+const art = (key, fn, o) => baseArt(key, fn, { ...o, res: 1 });
 import { blob, lumpDist } from '../iso/organic.js';
 import { TONES, rivet, glint } from '../ui/craftArt.js';
 import { PixelCanvas, drawWeapon } from '../gfx/PixelArt.js';
 import { METALS } from '../data/weapons.js';
 import { glowHex, glowAmount } from './blackbody.js';
+import { FORGE_KIT } from '../ui/handKit.js';
 
 const hash = (x, y, s = 0) => { let h = (x * 374761393 + y * 668265263 + s * 2246822519) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 const wrap = (v, n) => ((v % n) + n) % n;
@@ -431,7 +434,10 @@ const BOOK = {
   inkCrucible: [inkCrucible, FLAT], ruleOrn: [ruleOrnament, FLAT],
 };
 /** Data URL of a named book-art sprite. */
-export function bart(key) { const e = BOOK[key]; return e ? art('fb:' + key, e[0], e[1]) : ''; }
+export function bart(key) {
+  if (FORGE_KIT[key]) return art('fb:kit:' + key, FORGE_KIT[key], { res: 1 }); // wave 20: hand-drawn maps first (src/ui/handKit.js)
+  const e = BOOK[key]; return e ? art('fb:' + key, e[0], e[1]) : '';
+}
 /** Keys published as --fa-<key> on the forge layer. */
 export const BOOK_KEYS = Object.keys(BOOK);
 export const inkStepURL = (step) => art('fb:step:' + step, () => inkStep(step), FLAT);

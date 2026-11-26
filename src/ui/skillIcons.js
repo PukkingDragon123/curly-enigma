@@ -8,7 +8,9 @@
 //   lineIconURL(lineId, mode)   the line's emblem (32×32)
 //   ICON_IDS                    every node id with a recipe (for the contact sheet)
 import { Px } from './px.js';
-import { art } from './uiArt.js';
+import { art as baseArt } from './uiArt.js';
+// wave 20: one pixel size on screen. Everything here is drawn at one art pixel a pixel (no fine half pixels).
+const art = (key, fn, o) => baseArt(key, fn, { ...o, res: 1 });
 
 const N = 32;
 const OUT = 0x150b06;

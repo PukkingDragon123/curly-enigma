@@ -7,9 +7,10 @@
 import { Px, art } from './uiArt.js';
 import { PICS, PIC_INK } from './posterPics.js';
 import { ITEMS } from '../data/items.js';
+import { nearest } from './palette.js';
 
-export const INK = 0x2e1a28; // plum-black, never pure black
-const RIM = 0x4a2a30;
+export const INK = 0x1e1424; // plum-black, never pure black
+const RIM = 0x4a2420;
 export const POSTER_W = 37, PIC_X = 4, PIC_Y = 5, TITLE_Y = 26, MID_H = 6, SCROLL_W = 47, SHEET_W = 43;
 
 /** Paint a pixel map (rows of characters) into a raster through a palette; ' ' stays clear. */
@@ -76,12 +77,12 @@ const BOT = [
 ];
 /** Poster stock by the kind of quest: Old Star's own on warm rag, his errands on buff, the burrow
  *  folk's on newsprint, the town's on ledger paper, lore on linen. */
-const PAPERS = {
-  main: { p: 0xe8d2a4, q: 0xcdb084, h: 0xf6e6c0, r: 0xa6845e },
-  story: { p: 0xe2cc9c, q: 0xc6aa7e, h: 0xf0dfb6, r: 0xa08060 },
-  request: { p: 0xd8ceb2, q: 0xbcb092, h: 0xe8e0c8, r: 0x9a8e74 },
-  village: { p: 0xdcd2a8, q: 0xc0b48a, h: 0xece4c0, r: 0x9c9070 },
-  lore: { p: 0xd2c6a4, q: 0xb6a888, h: 0xe2d8bc, r: 0x8a7c64 },
+const PAPERS = { // (wave 20: the master palette's paper tones, src/ui/palette.js)
+  main: { p: 0xf2dcae, q: 0xdcbf8a, h: 0xfff0d2, r: 0xb8945e },
+  story: { p: 0xdcbf8a, q: 0xb8945e, h: 0xf2dcae, r: 0xab7a42 },
+  request: { p: 0xc9bfbb, q: 0xa2989a, h: 0xf2dcae, r: 0x7a7174 },
+  village: { p: 0xf2dcae, q: 0xb8945e, h: 0xfff0d2, r: 0xab7a42 },
+  lore: { p: 0xc9bfbb, q: 0xb8945e, h: 0xf2dcae, r: 0x7a7174 },
 };
 
 /** The poster for a quest, k middle bands tall (room for the title): a data URL (cached). */
@@ -120,7 +121,7 @@ const CORK = [
   '   oooodddddddddddddoooo  ',
   '        oooooooooooo      ',
 ];
-export const corkArt = () => sprite('qp2:cork', CORK, { o: 0x2a1810, c: 0xc29458, k: 0x9e703e, d: 0x6a4422, b: 0xd8a84a, B: 0x8a5a1c, w: 0xfff0c0 });
+export const corkArt = () => sprite('qp2:cork', CORK, { o: 0x3a2318, c: 0xb8945e, k: 0xab7a42, d: 0x5e3a22, b: 0xc8962a, B: 0x86552e, w: 0xfff0d2 });
 // a hand-forged nail head, lit top left, a rust tear under it
 const NAIL = [
   ' xxx ',
@@ -130,7 +131,7 @@ const NAIL = [
   ' xxx ',
   '  u  ',
 ];
-export const nailArt = () => sprite('qp2:nail', NAIL, { x: 0x1e1418, h: 0xd8ccba, q: 0x8a7a6e, r: 0x4a3c3a, u: 0x7a3a1c });
+export const nailArt = () => sprite('qp2:nail', NAIL, { x: 0x1e1424, h: 0xc9bfbb, q: 0x7a7174, r: 0x3a3438, u: 0x7e3a1e });
 
 // ---------------------------------------------------------------- the scroll
 // a turned rod with knobs and brass rings; two frames (the grain rolls round as it turns)
@@ -148,7 +149,7 @@ const ROD_B = [
   'olmdbdmmmmmmddmmmmmmmdddmmmmmmmddmmmmmmmddBlmdo',
   ROD_A[4], ROD_A[5], ROD_A[6],
 ];
-const ROD_PAL = { o: 0x24141a, h: 0xc08a52, l: 0xa06c3c, m: 0x83552e, d: 0x56341b, b: 0xd8a84a, B: 0x8a5a1c };
+const ROD_PAL = { o: 0x1e1424, h: 0xb8945e, l: 0xab7a42, m: 0x86552e, d: 0x5e3a22, b: 0xc8962a, B: 0x86552e };
 export const rodArt = () => sprite('qp2:rod', [...ROD_A, ...ROD_B], ROD_PAL);
 
 /** The scroll's parchment: one strip that tiles down, hand-cut at the sides. */
@@ -168,7 +169,7 @@ export const curlArt = () => sprite('qp2:curl', ['r'.repeat(SHEET_W), 'q'.repeat
 const TWIST = ['h', 'm', 'm', 'd', 'h', 'm'];
 export const twineArt = () => art('qp2:twine', () => {
   const H = 14, p = new Px(SCROLL_W, H);
-  for (const x of [10, 36]) for (let y = 0; y < H; y++) p.set(x, y, { h: 0xd8b884, m: 0x9a7a4c, d: 0x5a4028 }[TWIST[y % TWIST.length]]);
+  for (const x of [10, 36]) for (let y = 0; y < H; y++) p.set(x, y, { h: 0xdcbf8a, m: 0xab7a42, d: 0x5e3a22 }[TWIST[y % TWIST.length]]);
   return p;
 }, { res: 1 });
 
@@ -176,7 +177,7 @@ export const twineArt = () => art('qp2:twine', () => {
 const PIP_E = [' xxxx ', 'x    x', 'x    x', ' xxxx '];
 const PIP_F = [' xxxx ', 'xhaaAx', 'xaaAAx', ' xxxx '];
 /** A progress pip: an inked nugget, empty or filled with the poster's accent. */
-export const pipArt = (full, acc = [0xb0562a, 0x6e2c14]) => sprite(`qp2:pip:${full ? 1 : 0}:${acc[0]}`, full ? PIP_F : PIP_E, { x: INK, a: acc[0], A: acc[1], h: 0xf6e6c0 });
+export const pipArt = (full, acc = [0xb45e30, 0x74382a]) => sprite(`qp2:pip:${full ? 1 : 0}:${acc[0]}`, full ? PIP_F : PIP_E, { x: INK, a: acc[0], A: acc[1], h: 0xf2dcae });
 const TICK = [
   '        aa',
   '       aa ',
@@ -188,18 +189,19 @@ const TICK = [
   '   A      ',
 ];
 /** A brushed tick in vermilion. */
-export const tickArt = () => sprite('qp2:tick', TICK, { a: 0xa8321e, A: 0x6a1a10 });
+export const tickArt = () => sprite('qp2:tick', TICK, { a: 0x9a2c2a, A: 0x5e1824 });
 const ARROW_N = ['    x    ', '   xax   ', '  xaaax  ', ' xaaaaax ', 'xxxaaaxxx', '  xaaax  ', '  xaaax  ', '  xaAax  ', '  xxxxx  '];
 const ARROW_NE = ['   xxxxxx', '    xaaax', '     xaax', '    xaaax', '   xaaxax', '  xaaa xx', ' xaaa    ', 'xaAa     ', ' xx      '];
 /** The way to go, eight ways round (k: 0 = straight ahead, clockwise). */
 export function arrowArt(k) {
   let rows = k % 2 ? ARROW_NE : ARROW_N;
   for (let i = 0; i < Math.floor(k / 2); i++) rows = turn(rows);
-  return sprite('qp2:arrow:' + k, rows, { x: 0x3a1420, a: 0xb0562a, A: 0x6e2c14 });
+  return sprite('qp2:arrow:' + k, rows, { x: 0x2e1b33, a: 0xb45e30, A: 0x74382a });
 }
 
 // ---------------------------------------------------------------- which picture, which paper
-const ACC_ORE = (id) => { const o = ITEMS[id]?.icon?.ore; return Array.isArray(o) && o.length > 2 ? [o[0], o[2]] : null; };
+const snapC = (c) => parseInt(nearest('#' + (c >>> 0).toString(16).padStart(6, '0').slice(-6)).hex.slice(1), 16);
+const ACC_ORE = (id) => { const o = ITEMS[id]?.icon?.ore; return Array.isArray(o) && o.length > 2 ? [snapC(o[0]), snapC(o[2])] : null; };
 const QUEST_MOTIF = {
   lessons: 'star', million: 'coins', os_town: 'town', os_neighbours: 'town', os_gem: 'gem', os_rocco: 'blade', os_lifts: 'lift',
   os_pristine: 'ore', os_blade: 'anvil', os_cook: 'pot', os_dynamite: 'ore', os_ruin: 'ruin', os_tenth: 'coins',
@@ -207,7 +209,7 @@ const QUEST_MOTIF = {
 function itemMotif(id) {
   const it = ITEMS[id];
   if (!it) return { m: 'parcel' };
-  if (it.cat === 'mineral') return { m: 'ore', acc: id === 'coal' ? [0x6a6068, 0x3a3238] : ACC_ORE(id) };
+  if (it.cat === 'mineral') return { m: 'ore', acc: id === 'coal' ? [0x7a7174, 0x3a3438] : ACC_ORE(id) };
   if (it.cat === 'gem') return { m: 'gem' };
   if (it.cat === 'ingot') return { m: 'anvil' };
   if (it.cat === 'plant' || it.cat === 'ingredient') return { m: 'plant' };

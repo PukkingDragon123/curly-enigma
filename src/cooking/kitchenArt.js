@@ -3,7 +3,9 @@
 // ui/uiArt.js: 1 art pixel = 1 canvas pixel, shown at an integer multiple of --px, light from the
 // top-left. Every sprite is cached as a data URL (KART.*); installKitchenArt() publishes the ones
 // the stylesheet uses as --a-ck-* custom properties.
-import { Px, PAL, INK, art, mixHex, cssUrl } from '../ui/uiArt.js';
+import { Px, PAL, INK, art as baseArt, mixHex, cssUrl } from '../ui/uiArt.js';
+// wave 20: one pixel size on screen. Everything here is drawn at one art pixel a pixel (no fine half pixels).
+const art = (key, fn, o) => baseArt(key, fn, { ...o, res: 1 });
 import { blob, lumpDist } from '../iso/organic.js';
 
 const W = PAL.wood, B = PAL.brass, P = PAL.paper;

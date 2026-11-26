@@ -19,8 +19,11 @@
 //  - edge(side): the browned, nicked fore-edge of a page; stain(): a tide-lined stain
 //  - quill(), pilcrow(), manicule(), compass(), scaleBar(), knot()
 // installTomeArt() publishes the shared pieces as --t-* custom properties on :root (idle, once).
-import { Px, art, cssUrl } from './uiArt.js';
+import { Px, art as baseArt, cssUrl } from './uiArt.js';
+// wave 20: one pixel size on screen. Everything here is drawn at one art pixel a pixel (no fine half pixels).
+const art = (key, fn, o) => baseArt(key, fn, { ...o, res: 1 });
 import * as CA from './craftArt.js';
+import { TOME_KIT, capKit } from './handKit.js';
 
 const { hash, pnoise, fbm, quant, mix } = CA;
 const G = CA.TONES.brass; // gold leaf, dark → light (10)
@@ -729,9 +732,12 @@ const ART = {
 // finishing pass options: inked frames and the vellum keep their own fine work (no material texture)
 const OPT = { detail: false };
 /** One of the kit's pieces as a data URL (cached). */
-export function tart(key) { return ART[key] ? art('tome:' + key, ART[key], OPT) : ''; }
+export function tart(key) {
+  if (TOME_KIT[key]) return art('tome:kit:' + key, TOME_KIT[key], { res: 1 }); // wave 20: hand-drawn maps (src/ui/handKit.js)
+  return ART[key] ? art('tome:' + key, ART[key], OPT) : '';
+}
 /** An illuminated initial's frame for a field colour ('blue' | 'red' | 'green' | 'purple' | 'gold'). */
-export const capURL = (field = 'blue') => art('tome:cap:' + field, () => cap(field, field.length * 13), OPT);
+export const capURL = (field = 'blue') => art('tome:kitcap:' + field, () => capKit(field), { res: 1 });
 /** A marginal doodle ('mole' | 'raptor' | 'ore' | 'mushroom' | 'snail' | 'hand' | 'beetle' | 'pick'). */
 export const doodleURL = (kind) => art('tome:doodle:' + kind, () => doodle(kind), OPT);
 /** A silk ribbon bookmark 9-slice in a colour ('#rrggbb'). */

@@ -4,15 +4,23 @@
 // lift stations and glow stakes. Markers well above or below you show as ▲ / ▼.
 // Click / tap it (or press M) for the layers below (the underground's layer scene).
 import { el } from '../core/util.js';
-import { Px, mixHex, cssUrl } from './uiArt.js';
-import { DSPR, RADAR, plotGlyph } from './deepArt.js';
+import { Px } from './uiArt.js';
+import { nearest } from './palette.js';
+const SNAP = new Map();
+/** A marker's own colour, snapped to the master palette (cached). */
+const snapC = (c) => { if (!SNAP.has(c)) SNAP.set(c, parseInt(nearest('#' + (c >>> 0).toString(16).padStart(6, '0').slice(-6)).hex.slice(1), 16)); return SNAP.get(c); };
+import { RADAR, plotGlyph } from './deepArt.js';
+import { HS } from './hudSprites.js'; // (wave 20: the bezel, glass, fleur and arrows are hand-drawn maps)
+import { hex as P } from './hudPix.js';
 
 export const CELL = { unknown: 0, open: 1, water: 2, lava: 3, rock: 4 };
 const TAU = Math.PI * 2;
 
+// (wave 20: every screen colour is a master-palette colour, src/ui/palette.js, through the HUD legend)
 export const MARK_COLOR = {
-  home: 0xffa04a, town: 0xffd76a, station: 0xf2c23a, stake: 0x9dff9a, enemy: 0xff4a3a, danger: 0xff3a2a, ore: 0xffd76a, quest: 0xffe24a,
+  home: P('H'), town: P('G'), station: P('g'), stake: P('F'), enemy: P('h'), danger: P('r'), ore: P('G'), quest: P('Y'),
 };
+const SCR = { unknown: P('K'), open: P('v'), water: P('z'), lava: P('w'), rock: P('M'), openEdge: P('f'), waterEdge: P('a'), lavaEdge: P('H'), lavaHot: P('h'), ring: P('V'), sweep: P('F'), sweepTail: P('V'), ink: P('K'), you: P('C') };
 export const LEVEL_GAP = 3; // meters above/below before a marker shows ▲ / ▼
 
 /**
@@ -50,24 +58,15 @@ export class Radar {
     this.time = 0;
     this.errLogged = false;
     this.screen = new Px(RADAR.screen, RADAR.screen);
-    // the phosphor tube: dimmer toward the rim, faint scanlines (a per-pixel factor, made once)
-    const N = RADAR.screen, R = RADAR.r;
-    this.tube = new Float32Array(N * N);
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-      const r = Math.hypot(i + 0.5 - R, j + 0.5 - R);
-      const rim = Math.max(0, Math.min(1, (r - (R - 5)) / 5));
-      this.tube[j * N + i] = (1 - rim * rim * 0.42) * (j & 1 ? 0.9 : 1);
-    }
     this.screen.c.className = 'pix radar-screen';
     this.tag = el('span', { class: 'radar-tag', hidden: true });
     this.el = el('button', {
       class: 'radar', hidden: true, title: 'Radar · M or tap: the layers below', 'aria-label': 'Radar: open the layers below',
       onclick: () => ui.openSurvey(),
-    }, [this.screen.c, el('img', { class: 'pix radar-glass', src: glassURL(), alt: '' }), el('img', { class: 'pix radar-ring', src: DSPR.radarRing(), alt: '' }), this.tag]);
+    }, [this.screen.c, el('img', { class: 'pix radar-glass', src: HS.radarGlass(), alt: '' }), el('img', { class: 'pix radar-ring', src: HS.radarRing(), alt: '' }), this.tag]);
     // the north fleur: rides the dial band, swung toward north on a damped spring (it overshoots
     // and wobbles when you turn fast, trembles a little while you walk, and jumps when tapped)
-    this.north = el('img', { class: 'pix radar-north', src: DSPR.north(), alt: '' });
-    document.documentElement.style.setProperty('--d-fleur', cssUrl(DSPR.north())); // (the depth plaque's crest: hud.css)
+    this.north = el('img', { class: 'pix radar-north', src: HS.fleur(), alt: '' }); // (also the depth plaque's crest: --d-fleur, hudSprites)
     this.el.append(this.north);
     this.nAng = 0;
     this.nVel = 0;
@@ -156,7 +155,7 @@ export class Radar {
     this._tagSig = sig;
     this.tag.innerHTML = '';
     this.tag.append(`${town.label || 'Town'} ${Math.round(dist)} m`);
-    if (Math.abs(dy) > LEVEL_GAP) this.tag.append(el('img', { class: 'pix', src: DSPR.tri(dy < 0 ? 'down' : 'up'), alt: dy < 0 ? 'down' : 'up' }), `${Math.abs(dy)}`);
+    if (Math.abs(dy) > LEVEL_GAP) this.tag.append(el('img', { class: 'pix', src: HS.tri(dy < 0 ? 'down' : 'up'), alt: dy < 0 ? 'down' : 'up' }), `${Math.abs(dy)}`);
   }
 
   draw() {
@@ -166,9 +165,9 @@ export class Radar {
     const sample = gridSampler(d);
     const buf = p.d;
     buf.fill(0);
-    const lavaPulse = 0.85 + Math.sin(this.time * 5) * 0.15;
-    const col = (v) => (v === 1 ? 0x1f7a42 : v === 2 ? 0x1d5c9e : v === 3 ? mixHex(0x7a2410, 0xe0502a, lavaPulse) : v === 4 ? 0x0f3a1e : 0x04140b);
-    const edge = (v) => (v === 1 ? 0x4ccf7a : v === 2 ? 0x6ab4f0 : v === 3 ? 0xffa04a : 0);
+    const lavaHot = Math.sin(this.time * 5) > 0.3;
+    const col = (v) => (v === 1 ? SCR.open : v === 2 ? SCR.water : v === 3 ? (lavaHot ? SCR.lavaHot : SCR.lava) : v === 4 ? SCR.rock : SCR.unknown);
+    const edge = (v) => (v === 1 ? SCR.openEdge : v === 2 ? SCR.waterEdge : v === 3 ? SCR.lavaEdge : 0);
     const world = (u, v) => [d.x + (u * ch + v * sh) * mpp, d.z + (-u * sh + v * ch) * mpp];
     for (let j = 0; j < N; j++)
       for (let i = 0; i < N; i++) {
@@ -187,18 +186,18 @@ export class Radar {
           }
           if (n) c = edge(val);
         }
-        // range rings and crosshair lines
-        if (Math.abs(r - R / 2) < 0.5 || (Math.abs(u) < 0.5 && (i + j) % 2 === 0) || (Math.abs(v) < 0.5 && (i + j) % 2 === 0)) c = mixHex(c, 0x3c9a5c, 0.45);
-        // the sweep, dithered into the phosphor
+        // the range ring and the cross, dotted in by hand-style dashes over the dark only
+        const dark = val === 0 || val === 4;
+        if (dark && (Math.abs(r - R / 2) < 0.5 ? (i + j) % 3 !== 0 : (Math.abs(u) < 0.5 || Math.abs(v) < 0.5) && (i + j) % 2 === 0)) c = SCR.ring;
+        // the sweep: a lime arm and a dithered tail (flat palette tones, no blending)
         const a = Math.atan2(u, -v);
         const ad = angDiff(this.sweep, a);
-        if (ad < 0.06) c = mixHex(c, 0xb8ffd0, 0.75);
-        else if (ad < 1.4) {
-          const g = (1 - ad / 1.4) ** 2;
-          if (g > BAYER[(j & 3) * 4 + (i & 3)] * 0.9) c = mixHex(c, 0x5cff8f, 0.18 + g * 0.35);
+        if (ad < 0.07) c = SCR.sweep;
+        else if (ad < 1.2 && dark) {
+          const g = (1 - ad / 1.2) ** 2;
+          if (g > BAYER[(j & 3) * 4 + (i & 3)]) c = SCR.sweepTail;
         }
-        const t = this.tube[j * N + i];
-        p.set(i, j, ((((c >> 16) & 255) * t) << 16) | ((((c >> 8) & 255) * t) << 8) | ((c & 255) * t));
+        p.set(i, j, c);
       }
 
     // markers
@@ -207,7 +206,6 @@ export class Radar {
       const dx = m.x - d.x, dz = m.z - d.z;
       return [(dx * ch - dz * sh) / mpp, (dx * sh + dz * ch) / mpp];
     };
-    const bright = (u, v) => 1 - (angDiff(this.sweep, Math.atan2(u, -v)) / TAU) * 0.55;
     // danger zones first (they sit under everything else)
     for (const m of marks) {
       if (m.kind !== 'danger') continue;
@@ -215,7 +213,7 @@ export class Radar {
       const rr = (m.r || 4) / mpp;
       if (Math.hypot(u, v) - rr > R) continue;
       const pulse = 0.55 + Math.sin(this.time * 6) * 0.35;
-      const color = m.color ?? MARK_COLOR.danger;
+      const color = m.color != null ? snapC(m.color) : MARK_COLOR.danger;
       for (let j = Math.floor(R + v - rr - 1); j <= R + v + rr + 1; j++)
         for (let i = Math.floor(R + u - rr - 1); i <= R + u + rr + 1; i++) {
           if (i < 0 || j < 0 || i >= N || j >= N) continue;
@@ -223,32 +221,31 @@ export class Radar {
           if (Math.hypot(pu, pv) > R) continue;
           const dd = Math.hypot(pu - u, pv - v);
           if (dd > rr) continue;
-          if (dd > rr - 1) p.set(i, j, mixHex(p.get(i, j), color, 0.4 + pulse * 0.5));
-          else if (((i + j) & 1) === 0) p.set(i, j, mixHex(p.get(i, j), color, 0.18 + pulse * 0.3));
+          if (dd > rr - 1) { if (pulse > 0.4 || (i + j) & 1) p.set(i, j, color); }
+          else if (((i + j) & 3) === 0 && pulse > 0.5) p.set(i, j, color);
         }
     }
     for (const m of marks) {
       if (m.kind === 'danger') continue;
       const [u, v] = toScreen(m);
       const dist = Math.hypot(u, v);
-      const color = m.color ?? MARK_COLOR[m.kind] ?? 0xffffff;
+      const color = m.color != null ? snapC(m.color) : MARK_COLOR[m.kind] ?? SCR.you;
       if (dist > R - 2.5) {
         if (m.kind === 'town' || m.kind === 'home' || (m.kind === 'quest' && Math.sin(this.time * 5) > -0.4)) this.rimArrow(u / dist, v / dist, color);
         continue;
       }
-      const b = bright(u, v);
-      const c = mixHex(0x000000, color, 0.45 + b * 0.55);
+      const c = color;
       const cx = R + u, cy = R + v;
       const dy = (m.y ?? d.y) - d.y;
       if (m.kind === 'enemy' && Math.sin(this.time * 14) < -0.2) continue;
       if (m.kind === 'quest' && Math.sin(this.time * 5) < -0.5) continue;
-      if (Math.abs(dy) > LEVEL_GAP && m.kind !== 'home' && m.kind !== 'town' && m.kind !== 'quest') { plotGlyph(p, dy > 0 ? 'up' : 'down', cx, cy, c, 0x020a05); continue; }
+      if (Math.abs(dy) > LEVEL_GAP && m.kind !== 'home' && m.kind !== 'town' && m.kind !== 'quest') { plotGlyph(p, dy > 0 ? 'up' : 'down', cx, cy, c, SCR.ink); continue; }
       const glyph = m.kind === 'ore' ? 'ore' : m.kind === 'enemy' ? 'enemy' : m.kind === 'stake' ? 'stake' : m.kind;
-      plotGlyph(p, glyph, cx, cy, c, 0x020a05);
-      if (Math.abs(dy) > LEVEL_GAP) plotGlyph(p, dy > 0 ? 'up' : 'down', cx + 4, cy - 2, c, 0x020a05);
+      plotGlyph(p, glyph, cx, cy, c, SCR.ink);
+      if (Math.abs(dy) > LEVEL_GAP) plotGlyph(p, dy > 0 ? 'up' : 'down', cx + 4, cy - 2, c, SCR.ink);
     }
     // you, always pointing up
-    plotGlyph(p, 'you', R, R + 0.5, 0xeafff2, 0x020a05);
+    plotGlyph(p, 'you', R, R + 0.5, SCR.you, SCR.ink);
     p.ctx.putImageData(p.img, 0, 0);
   }
 
@@ -256,31 +253,6 @@ export class Radar {
   rimArrow(ux, uy, color) {
     const R = RADAR.r;
     const sector = ((Math.round(Math.atan2(ux, -uy) / (Math.PI / 4)) % 8) + 8) % 8;
-    plotGlyph(this.screen, 'a' + sector, R + ux * (R - 3.6), R + uy * (R - 3.6), color, 0x020a05);
+    plotGlyph(this.screen, 'a' + sector, R + ux * (R - 3.6), R + uy * (R - 3.6), color, SCR.ink);
   }
-}
-
-let GLASS = null;
-/**
- * Wave 18: the scope's glass: a pixel crescent of reflected lamplight round its top-left, a hard
- * glint, a faint second reflection bottom-right (36×36 art px over the screen). Drawn once.
- */
-function glassURL() {
-  if (GLASS) return GLASS;
-  const n = 36, c = document.createElement('canvas');
-  c.width = n; c.height = n;
-  const g = c.getContext('2d'), im = g.createImageData(n, n), d = im.data;
-  const put = (x, y, a, v = 255) => { const i = (y * n + x) * 4; d[i] = v; d[i + 1] = v; d[i + 2] = Math.min(255, v + 10); d[i + 3] = a; };
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-    const dx = x + 0.5 - n / 2, dy = y + 0.5 - n / 2, r = Math.hypot(dx, dy) / (n / 2), a = Math.atan2(dy, dx);
-    if (r > 0.98) continue;
-    // the crescent: a band just inside the rim, from 9 to 12 o'clock, thicker in its middle
-    const mid = -2.35, span = Math.abs(a - mid);
-    if (span < 0.85 && r > 0.8 - (0.85 - span) * 0.14 && r < 0.9) put(x, y, span < 0.4 ? 90 : 55);
-    else if (Math.abs(a - 0.8) < 0.35 && r > 0.84 && r < 0.9 && (x + y) % 2) put(x, y, 30);
-  }
-  for (const [x, y, a] of [[10, 8, 210], [11, 8, 140], [10, 9, 140], [13, 7, 90]]) put(x, y, a);
-  g.putImageData(im, 0, 0);
-  GLASS = c.toDataURL();
-  return GLASS;
 }

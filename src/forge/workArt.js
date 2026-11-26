@@ -4,7 +4,9 @@
 // and the little hand-drawn glyphs on the action plates (flame, poker, anvil, drop, door...).
 // Glyphs are templates in art pixels: flat light/mid/dark planes lit from the top left, a tinted
 // outline, a glint. Cached through uiArt's art().
-import { Px, art } from '../ui/uiArt.js';
+import { Px, art as baseArt } from '../ui/uiArt.js';
+// wave 20: one pixel size on screen. Everything here is drawn at one art pixel a pixel (no fine half pixels).
+const art = (key, fn, o) => baseArt(key, fn, { ...o, res: 1 });
 import { skillIconURL, lineIconURL } from '../ui/skillIcons.js';
 import { itemVox } from '../ui/itemVox.js';
 

@@ -6,23 +6,25 @@
 import { Px, art } from '../ui/uiArt.js';
 import { skillIconURL } from '../ui/skillIcons.js';
 import { itemVox } from '../ui/itemVox.js';
+import { snapHex } from '../ui/palette.js';
 
-const OUT = 0x24150d;
+const OUT = 0x1e1424; // wave 20: master palette (src/ui/palette.js), ink outline
 const N = 32;
 
 /** A kitchen tool as a 32×32 picture: rows of letters → colours, then outline and a drop. */
 function tool(rows, pal, extra) {
   const p = new Px(N, N);
   const h = rows.length, w = Math.max(...rows.map((r) => r.length));
-  p.tpl(rows, pal, Math.floor((N - w) / 2), Math.floor((N - h) / 2));
+  const snapped = Object.fromEntries(Object.entries(pal).map(([k, v]) => [k, parseInt(snapHex('#' + v.toString(16).padStart(6, '0')).slice(1), 16)])); // every colour from the master palette
+  p.tpl(rows, snapped, Math.floor((N - w) / 2), Math.floor((N - h) / 2));
   extra?.(p);
   p.outline(OUT);
   return p;
 }
 
-const WOOD = { h: 0xf0c890, l: 0xd8a868, b: 0xae763c, d: 0x744620 };
-const STEEL = { s: 0xf2f6fa, t: 0xb8c4d2, u: 0x7a8ea8, v: 0x4a5a72 };
-const DOUGH = { a: 0xfff4dc, c: 0xf2dcb0, e: 0xd8b880, f: 0xb08850 };
+const WOOD = { h: 0xdcbf8a, l: 0xb8945e, b: 0xab7a42, d: 0x86552e };
+const STEEL = { s: 0xc9bfbb, t: 0xa2989a, u: 0x7a7174, v: 0x575056 };
+const DOUGH = { a: 0xfff0d2, c: 0xf2dcae, e: 0xdcbf8a, f: 0xb8945e };
 
 const TOOLS = {
   // a rolling pin across a sheet of dough
@@ -207,7 +209,7 @@ export function stepIcon(kind) {
     case 'simmer': return skillIconURL('c_simmer');
     case 'bake': return skillIconURL('c_feast');
     case 'roll': case 'grate': case 'mash': case 'flip': case 'knead':
-    case 'grind': case 'peel': case 'skewer': case 'whisk': case 'sift': return art('ck:step:' + kind, TOOLS[kind]);
+    case 'grind': case 'peel': case 'skewer': case 'whisk': case 'sift': return art('ck:step1:' + kind, TOOLS[kind], { res: 1 }); // one art pixel a pixel, like the rest of the kit
     default: return skillIconURL('c_chef');
   }
 }

@@ -3,7 +3,9 @@
 // stamp) and a pressed wax seal in the line's colour (stamped). Also the small line seals for the
 // tabs, the skill-point token and the red-ink "circled" mark for the selected node.
 // Everything is cached data URLs (uiArt.art); shown at integer multiples of the art pixel.
-import { Px, art, mixHex, PAL } from './uiArt.js';
+import { Px, art as baseArt, mixHex, PAL } from './uiArt.js';
+// wave 20: one pixel size on screen. Everything here is drawn at one art pixel a pixel (no fine half pixels).
+const art = (key, fn, o) => baseArt(key, fn, { ...o, res: 1 });
 import { makeRng, hashStr } from '../core/util.js';
 
 const INK = 0x2e1a0e;

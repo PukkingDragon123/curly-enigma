@@ -3,6 +3,7 @@
 // The HUD's pieces are shaded per pixel (pebbled leather, brass, fibrous paper, glass lit from
 // inside) with the helpers in src/ui/hudArt.js; sizes match what other screens show them at.
 import { Px, PAL, INK, art, mixHex } from './uiArt.js';
+import { HS, CHARM_KINDS } from './hudSprites.js';
 import { RAMP, tone, dtone, h2, vnoise, pebble, lambert, dome, rimLight, stitch, rivet, shadeC, mixC, paperK, pouchArt, THREAD } from './hudArt.js';
 
 const L = PAL.leather, B = PAL.brass, W = PAL.wood, P = PAL.paper;
@@ -20,204 +21,10 @@ function word(p, txt, x, y, c) {
   }
 }
 
-// ---------------------------------------------------------------- backpack (HUD access point)
-/** Paint a part's silhouette (any opaque pixels of m) in leather: lit rims, a cylinder across, pebbled grain. */
-function leatherPart(p, m, base, seed, { round = 0.3, pal = RAMP.leather, rim = 0.24 } = {}) {
-  let x0 = m.w, x1 = 0;
-  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (m.a(x, y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); }
-  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
-    if (!m.a(x, y)) continue;
-    const u = x1 > x0 ? ((x - x0) / (x1 - x0)) * 2 - 1 : 0;
-    const k = base + rimLight(m, x, y, 2) * rim - u * round * 0.5 - (u * u) * round * 0.25 + pebble(x, y, seed, 1.3) * 0.13;
-    p.set(x, y, tone(pal, k));
-  }
-}
-/** Stitches running round a silhouette, `inset` pixels in from its edge. */
-function stitchRound(p, m, inset = 2, c = THREAD, every = 3) {
-  const D = m.dist(inset + 1);
-  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (m.a(x, y) && D(x, y) === inset && (x + y * 2) % every !== every - 1) p.set(x, y, c);
-}
-/** fill: 0 empty · 1 some · 2 bulging · 3 full (overflowing). 30×32. */
-function packSprite(fill = 0) {
-  const LE = RAMP.leather, BR = RAMP.brass;
-  const p = new Px(30, 32);
-  const b = [0, 1, 1, 2][fill];
-  const bx = 5 - b, bw = 20 + b * 2, by = 10, bh = 20, cx = 15;
-  const mask = () => new Px(30, 32);
-  // the carry handle, a rolled leather loop, on two brass D-rings
-  const hm = mask();
-  for (let y = 1; y <= 9; y++) for (let x = 8; x <= 22; x++) {
-    const o = ((x + 0.5 - cx) / 5.8) ** 2 + ((y + 0.5 - 8) / 6.4) ** 2, i = ((x + 0.5 - cx) / 3.6) ** 2 + ((y + 0.5 - 8) / 4.3) ** 2;
-    if (o <= 1 && i > 1 && y <= 8) hm.set(x, y, 1);
-  }
-  leatherPart(p, hm, 0.5, 3, { round: 0.2 });
-  for (const dx of [10, 19]) { p.set(dx, 8, BR[7]); p.set(dx + 1, 8, BR[4]); p.set(dx, 9, BR[4]); p.set(dx + 1, 9, BR[2]); }
-  // items peeking out when stuffed
-  if (fill >= 2) {
-    p.poly([[8, 9], [11, 3], [13, 9]], 0x5ab0f0); p.line(10, 6, 11, 4, 0xd8f4ff); p.set(11, 4, 0xffffff); p.vl(12, 6, 8, 0x2a5490); p.set(9, 8, 0x3f7ec8);
-    for (let y = 4; y <= 9; y++) for (let x = 16; x <= 23; x++) {
-      const k = dome((x + 0.5 - 19.6) / 3, (y + 0.5 - 7.6) / 2.8, 0.8);
-      if (k >= 0) p.set(x, y, tone([0x3a2a20, 0x5a4234, 0x7a5a48, 0x9a7458, 0xd9773f, 0xf2a35e], k + (h2(x, y, 5) > 0.8 ? -0.3 : 0)));
-    }
-  }
-  if (fill >= 3) {
-    p.line(22, 3, 25, 10, 0xa06c3c); p.line(23, 3, 26, 10, 0x643e20);
-    p.rect(20, 1, 7, 2, 0x8e98a4); p.hl(20, 26, 1, 0xdee4ea); p.set(20, 3, 0x525a64); p.set(26, 0, 0xdee4ea);
-    for (let y = 4; y <= 9; y++) for (let x = 12; x <= 18; x++) {
-      const k = dome((x + 0.5 - 15) / 2.6, (y + 0.5 - 7) / 2.3, 0.7);
-      if (k >= 0) p.set(x, y, tone(RAMP.gold, 0.2 + k * 0.85));
-    }
-  }
-  // side pockets
-  for (const sx of [bx - 2, bx + bw - 2]) {
-    const sm = mask();
-    sm.rr(sx, 16, 4, 11, 1, 1);
-    leatherPart(p, sm, 0.34, 7 + sx, { round: 0.3 });
-    p.hl(sx, sx + 3, 18, LE[2]); p.hl(sx + 1, sx + 2, 17, LE[6]);
-    p.set(sx + 1, 19, BR[6]); p.set(sx + 2, 19, BR[3]);
-  }
-  // the body: a stitched seam down each side and along the bottom
-  const bm = mask();
-  bm.rr(bx, by, bw, bh, 5, 1);
-  leatherPart(p, bm, 0.46, 11, { round: 0.6 });
-  for (let y = by + bh - 3; y < by + bh; y++) for (let x = bx; x < bx + bw; x++) if (bm.a(x, y)) p.set(x, y, shadeC(p.get(x, y), 0.8));
-  stitch(p, bx + 2, by + 7, bx + 2, by + bh - 5, 1, 1, mixC(THREAD, LE[4], 0.3), null);
-  stitch(p, bx + bw - 3, by + 7, bx + bw - 3, by + bh - 5, 1, 1, mixC(THREAD, LE[2], 0.4), null);
-  stitch(p, bx + 4, by + bh - 3, bx + bw - 5, by + bh - 3, 2, 1, mixC(THREAD, LE[2], 0.35), null);
-  // the front pocket: a darker welt round it, stitched, a brass snap at its mouth
-  const pm = mask();
-  pm.rr(cx - 6, 20, 12, 8, 2, 1);
-  leatherPart(p, pm, 0.58, 13, { round: 0.4, rim: 0.3 });
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 30; x++) {
-    if (pm.a(x, y) || !p.a(x, y)) continue;
-    if (pm.a(x + 1, y) || pm.a(x - 1, y) || pm.a(x, y + 1) || pm.a(x, y - 1)) p.set(x, y, LE[1]);
-  }
-  stitchRound(p, pm, 1, mixC(THREAD, LE[5], 0.15), 2);
-  p.hl(cx - 4, cx + 3, 21, LE[7]);
-  rivet(p, cx - 1, 22, false, BR);
-  // the flap, on its own layer: a shadow line onto the body under it
-  const fy0 = fill >= 3 ? 7 : 8;
-  const flap = mask();
-  flap.rr(bx + 1, fy0, bw - 2, 9, 4, 1);
-  flap.ellipse(cx, fy0 + 8, bw / 2 - 2.5, 3.2, 1);
-  for (let x = 0; x < 30; x++) for (let y = 31; y >= 0; y--) if (flap.a(x, y)) { if (p.a(x, y + 1)) p.set(x, y + 1, LE[1]); if (p.a(x, y + 2)) p.set(x, y + 2, shadeC(p.get(x, y + 2), 0.75)); break; }
-  leatherPart(p, flap, 0.62, 19, { round: 0.5, rim: 0.3 });
-  stitchRound(p, flap, 2, THREAD, 3);
-  rivet(p, bx + 3, fy0 + 2, false, BR); rivet(p, bx + bw - 5, fy0 + 2, false, BR);
-  // the strap down the middle, its buckle, the tongue's holes
-  for (let y = fy0 + 6; y <= fy0 + 15; y++) {
-    p.set(cx - 1, y, tone(LE, 0.62 + pebble(cx, y, 23) * 0.1)); p.set(cx, y, tone(LE, 0.44 + pebble(cx + 1, y, 23) * 0.1)); p.set(cx + 1, y, LE[1]);
-  }
-  p.set(cx - 1, fy0 + 15, LE[3]); p.set(cx, fy0 + 15, LE[2]);
-  const qy = fy0 + 9;
-  for (let j = 0; j < 5; j++) for (let i = 0; i < 5; i++) {
-    const edge = i === 0 || j === 0 || i === 4 || j === 4;
-    if (!edge) continue;
-    p.set(cx - 2 + i, qy + j, i === 0 || j === 0 ? (i + j < 2 ? BR[8] : BR[6]) : i === 4 && j === 4 ? BR[1] : BR[3]);
-  }
-  p.set(cx - 2, qy, BR[5]); p.vl(cx, qy, qy + 3, BR[7]); p.set(cx, qy + 4, BR[4]);
-  p.set(cx, fy0 + 7, LE[0]);
-  if (fill >= 3) p.rect(cx - 1, fy0 + 14, 2, 2, LE[6]);
-  p.outline(0x180c06);
-  return p;
-}
-
-/** The Index Book peeking out of the backpack (upright, slight lean). 14×18. */
-function bookPeekSprite() {
-  const OX = RAMP.ox, BR = RAMP.brass, PP = RAMP.paper;
-  const s = new Px(11, 16);
-  // the page block on top, page edges in fine lines
-  for (let y = 1; y <= 3; y++) for (let x = 1; x <= 9; x++) s.set(x, y, (x + y) % 2 ? PP[6] : PP[4]);
-  s.hl(1, 9, 1, PP[7]);
-  // the cover: grained oxblood, a darker spine with two raised bands
-  const m = new Px(11, 16);
-  m.rect(0, 3, 10, 13, 1);
-  for (let y = 3; y <= 15; y++) for (let x = 0; x <= 9; x++) {
-    let k = 0.52 + rimLight(m, x, y, 1) * 0.22 + pebble(x, y, 31, 1.2) * 0.14;
-    if (x <= 1) k -= 0.18;
-    if (x <= 1 && (y === 5 || y === 13)) k += 0.35;
-    s.set(x, y, tone(OX, k));
-  }
-  // a gilt rule round the board, the title plate, brass corners
-  s.vl(3, 5, 13, OX[6]); s.hl(3, 8, 5, BR[5]); s.hl(3, 8, 13, BR[3]);
-  s.rect(5, 8, 3, 2, BR[5]); s.hl(5, 7, 8, BR[7]); s.set(7, 9, BR[3]);
-  s.set(9, 3, BR[7]); s.set(8, 3, BR[5]); s.set(9, 4, BR[4]);
-  s.set(9, 15, BR[3]); s.set(8, 15, BR[5]); s.set(9, 14, BR[4]);
-  s.vl(10, 2, 14, PP[3]);
-  // the ribbon
-  s.vl(7, 0, 2, 0xd0402a); s.set(7, 0, 0xff8a6a); s.set(6, 0, 0x8a2418);
-  const p = new Px(14, 18);
-  for (let y = 0; y < 16; y++) {
-    const off = Math.floor((15 - y) / 6);
-    for (let x = 0; x < 11; x++) if (s.a(x, y)) p.set(x + off + 1, y + 1, s.get(x, y));
-  }
-  p.outline(OX[0]);
-  return p;
-}
-
-/** Small closed pause journal with a pencil tucked in its band (the menu). 16×17. */
-function journalIcon() {
-  const G = RAMP.moss, BR = RAMP.brass, PP = RAMP.paper;
-  const p = new Px(16, 17);
-  const m = new Px(16, 17);
-  m.rect(1, 2, 10, 13, 1);
-  for (let y = 2; y <= 14; y++) for (let x = 1; x <= 10; x++) {
-    let k = 0.55 + rimLight(m, x, y, 1) * 0.2 + pebble(x, y, 37, 1.2) * 0.14;
-    if (x <= 2) k -= 0.2;
-    if (x <= 2 && (y === 4 || y === 12)) k += 0.3;
-    p.set(x, y, tone(G, k));
-  }
-  // page edges on the right
-  for (let y = 3; y <= 14; y++) p.set(11, y, y % 2 ? PP[6] : PP[4]);
-  p.set(11, 2, PP[2]);
-  // the elastic band, a brass label, a corner guard
-  for (let y = 2; y <= 14; y++) p.set(8, y, y % 3 === 0 ? 0x3a2418 : 0x24140c);
-  p.rect(4, 6, 3, 2, BR[5]); p.hl(4, 6, 6, BR[7]); p.set(6, 7, BR[3]);
-  p.set(10, 2, BR[7]); p.set(9, 2, BR[5]); p.set(10, 3, BR[4]);
-  // the pencil: eraser, ferrule, hex body, bare wood, lead
-  p.vl(13, 1, 2, 0xf0a098); p.vl(14, 1, 2, 0xc86a64);
-  p.set(13, 3, BR[7]); p.set(14, 3, BR[3]);
-  for (let y = 4; y <= 11; y++) { p.set(13, y, 0xf6d26a); p.set(14, y, 0xc8922e); }
-  p.set(13, 4, 0xffeaa0);
-  p.set(13, 12, 0xe8c8a0); p.set(14, 12, 0xb08858); p.set(13, 13, 0x3a3a40);
-  p.outline(INK);
-  return p;
-}
-
 // ---------------------------------------------------------------- coin pouch & coins
 /** The coin pouch at 22×22 (the HUD's own is 26×26: src/ui/hudArt.js). */
 function pouchSprite(open = false) {
   return pouchArt(open, 22);
-}
-
-/** Spinning coin strip: 4 frames of 8×8 (face, three-quarter, edge, three-quarter). */
-function coinStrip() {
-  const G = RAMP.gold;
-  const q = new Px(32, 8);
-  const frame = (f, rx) => {
-    const p = new Px(8, 8);
-    if (rx < 1) {
-      // edge on: a milled rim
-      for (let y = 1; y <= 6; y++) { p.set(3, y, y % 2 ? G[5] : G[4]); p.set(4, y, y % 2 ? G[2] : G[3]); }
-      p.set(3, 0, G[6]); p.set(4, 7, G[1]);
-    } else {
-      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-        const du = (x + 0.5 - 4) / rx, dv = (y + 0.5 - 4) / 3.7, r = Math.hypot(du, dv);
-        if (r > 1) continue;
-        const lit = -(du + dv) / (r * Math.SQRT2 || 1);
-        let k = 0.32 + dome(du, dv, 0.5) * 0.62;
-        if (r > 0.74 && lit < 0) k -= 0.16; // the rim's lower edge
-        p.set(x, y, tone(G, k));
-      }
-      // the stamp (a struck mark, lit on its lower lip), a glint
-      if (rx > 2.5) { p.set(4, 3, G[2]); p.set(4, 4, G[2]); p.set(5, 4, G[6]); p.set(4, 5, G[6]); p.set(2, 2, G[7]); }
-      else { p.vl(4, 3, 4, G[2]); p.set(4, 5, G[6]); p.set(3, 2, G[7]); }
-    }
-    p.outline(G[0]);
-    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (p.a(x, y)) q.set(f * 8 + x, y, p.get(x, y));
-  };
-  frame(0, 3.6); frame(1, 2.3); frame(2, 0); frame(3, 2.3);
-  return q;
 }
 
 // ---------------------------------------------------------------- lantern (energy)
@@ -311,121 +118,6 @@ function lanternSprite(level = 4, flick = 0) {
   return p;
 }
 
-// ---------------------------------------------------------------- buff charms
-const CHARM_TPL = {
-  glow: { rows: ['.aaaaa.', 'aAAaAAa', 'aaaaaaa', 'bbbbbbb', '..ccc..', '..ccc..', '..cCc..', '..ccc..'], pal: { a: 0x5aaaf0, A: 0xd8f4ff, b: 0x2a5ab0, c: 0xf0e2c0, C: 0xc8b48a } },
-  warm: { rows: ['...g...', '..ggr..', '..rrr..', '.rRrr..', '.rrrr..', '..rrr..', '...rr..', '....r..', '.....r.'], pal: { g: 0x5a9a3a, r: 0xd9402a, R: 0xff9a7a } },
-  cool: { rows: ['...a...', '.a.a.a.', '..aAa..', 'aaAAAaa', '..aAa..', '.a.a.a.', '...a...'], pal: { a: 0x9ae6ff, A: 0xffffff } },
-  bouncy: { rows: ['..ppp..', '.pPPpp.', 'pPppppp', 'ppppppp', 'ppppppp', '.ppppp.', '..ppp..'], pal: { p: 0xb58ae0, P: 0xffffff } },
-  zippy: { rows: ['...yy..', '..yy...', '.yy....', 'yyyyyy.', '...yy..', '..yy...', '.yy....', 'y......'], pal: { y: 0xffd84a } },
-  lucky: { rows: ['.gg.gg.', 'gGgggGg', 'ggg.ggg', '...s...', 'ggg.ggg', 'gGgggGg', '.gg.gg.', '....s..', '.....s.'], pal: { g: 0x5aaa3a, G: 0xa8e06a, s: 0x3a6a24 } },
-  sense: { rows: ['...v...', '..vVv..', '.vVvvv.', 'vvkkkvv', '.vvvvv.', '..vvv..', '...v...'], pal: { v: 0xa878e0, V: 0xe8d0ff, k: 0x2a1640 } },
-  sturdy: { rows: ['sssssss', 'sSSsSSs', 'sSsssSs', 'ssssss.', '.sssss.', '..sss..', '...s...'], pal: { s: 0xc9a050, S: 0xf0d890 } },
-};
-/** A charm on a brass jump ring and a twist of twine; its body lit at the top-left rims, shaded at the bottom-right. 11×15. */
-function charmSprite(id) {
-  const t = CHARM_TPL[id] || CHARM_TPL.lucky;
-  const BR = RAMP.brass, C = RAMP.twine;
-  const p = new Px(11, 15);
-  p.set(5, 0, BR[6]); p.set(4, 1, BR[7]); p.set(6, 1, BR[3]); p.set(5, 2, BR[2]);
-  p.set(5, 3, C[4]);
-  const body = new Px(11, 15);
-  body.tpl(t.rows, t.pal, 2, 4);
-  const plain = new Set(Object.entries(t.pal).filter(([k]) => k === k.toLowerCase()).map(([, v]) => v));
-  for (let y = 0; y < 15; y++) for (let x = 0; x < 11; x++) {
-    if (!body.a(x, y)) continue;
-    let c = body.get(x, y);
-    if (plain.has(c)) {
-      const r = rimLight(body, x, y, 1);
-      if (r > 0) c = mixC(c, 0xffffff, 0.32);
-      else if (r < 0) c = shadeC(c, 0.66);
-    }
-    p.set(x, y, c);
-  }
-  // a glint
-  for (let y = 4; y < 15; y++) { let done = false; for (let x = 0; x < 11; x++) if (body.a(x, y) && body.a(x + 1, y) && body.a(x, y + 1)) { p.set(x + 1, y + 1, 0xffffff); done = true; break; } if (done) break; }
-  p.outline(INK);
-  return p;
-}
-
-// ---------------------------------------------------------------- tear-off calendar page
-const RED = [0x2e0806, 0x4a0e0a, 0x6e1810, 0x922418, 0xb03222, 0xc8442e, 0xe0664a, 0xf4927a];
-function calendarSprite(torn = false) {
-  const PP = RAMP.paper, IR = RAMP.iron, BR = RAMP.brass;
-  const p = new Px(30, 34);
-  if (!torn) {
-    // the pad of pages underneath, each a hair offset
-    for (let y = 29; y <= 33; y++) for (let x = 2; x <= 27; x++) p.set(x, y, (y % 2 ? PP[3] : PP[5]));
-    p.hl(3, 27, 33, PP[1]); p.vl(27, 29, 33, PP[2]);
-  }
-  // the page: fibrous paper, a little darker toward the bottom right
-  for (let y = 4; y <= 30; y++) for (let x = 1; x <= 28; x++) {
-    const k = paperK(x, y, 51) + 0.1 - (x + y) * 0.003;
-    p.set(x, y, tone(PP, k));
-  }
-  p.hl(1, 28, 30, PP[2]); p.vl(28, 5, 30, PP[3]);
-  // the red header: cloth-bound, an embossed DAY
-  for (let y = 4; y <= 12; y++) for (let x = 1; x <= 28; x++) {
-    let k = 0.62 + (vnoise(x / 2, y * 1.5, 53) - 0.5) * 0.14 + (h2(x, y, 54) - 0.5) * 0.06;
-    if (y === 4) k = 0.9;
-    else if (y === 5) k += 0.08;
-    else if (y === 11) k -= 0.2;
-    else if (y === 12) k = 0.1;
-    p.set(x, y, tone(RED, k));
-  }
-  word(p, 'DAY', 11, 7, RED[1]);
-  word(p, 'DAY', 10, 6, 0xfff0d8);
-  // a ruled line under the header, the date's corner fold
-  for (let x = 3; x <= 26; x += 2) p.set(x, 14, PP[3]);
-  for (let y = 26; y <= 30; y++) for (let x = 24; x <= 28; x++) {
-    if (x + y > 54) p.clear(x, y);
-    else if (x + y === 54) p.set(x, y, PP[1]);
-    else if (x + y >= 51 && x >= 25 && y >= 26) p.set(x, y, x + y === 51 ? PP[2] : PP[6]);
-  }
-  if (torn) {
-    // the top edge, torn off along the perforation
-    for (let x = 1; x <= 28; x++) {
-      if (x % 3 === 0 || h2(x, 1, 55) > 0.6) p.clear(x, 4);
-      if (x % 3 === 0 && h2(x, 2, 55) > 0.5) p.set(x, 5, RED[7]);
-    }
-  } else {
-    // the iron binding bar with brass rivets, two rings through the page
-    for (let x = 0; x <= 29; x++) { p.set(x, 1, IR[6]); p.set(x, 2, IR[4]); p.set(x, 3, IR[2]); }
-    rivet(p, 2, 1, false, BR); rivet(p, 26, 1, false, BR);
-    for (const rx of [8, 21]) {
-      p.set(rx, 7, RED[0]); p.set(rx + 1, 7, RED[1]);
-      p.vl(rx, 0, 6, BR[6]); p.vl(rx + 1, 0, 6, BR[3]); p.set(rx, 0, BR[8]); p.set(rx + 1, 6, BR[2]);
-    }
-  }
-  p.outline(INK);
-  return p;
-}
-
-// ---------------------------------------------------------------- depth plumb-bob
-/** A brass plumb-bob on twine: an eye, a knurled collar, a faceted bob with a steel tip. 11×19. */
-function plumbSprite() {
-  const BR = RAMP.brass, C = RAMP.twine, ST = RAMP.steel;
-  const p = new Px(11, 19);
-  for (let y = 0; y <= 4; y++) p.set(5, y, y % 2 ? C[2] : C[4]);
-  p.set(5, 5, BR[7]); p.set(4, 6, BR[6]); p.set(6, 6, BR[3]); p.set(5, 7, BR[2]); p.set(5, 6, 0x1a0e08);
-  for (let x = 3; x <= 7; x++) { p.set(x, 8, x % 2 ? BR[7] : BR[4]); p.set(x, 9, x % 2 ? BR[5] : BR[3]); }
-  p.set(3, 8, BR[8]); p.set(7, 9, BR[2]);
-  for (let y = 10; y <= 17; y++) {
-    const hw = 4.6 - (y - 10) * 0.56;
-    for (let x = 0; x < 11; x++) {
-      const u = (x + 0.5 - 5.5) / Math.max(0.6, hw);
-      if (Math.abs(u) > 1) continue;
-      let k = u < -0.55 ? 0.92 : u < -0.15 ? 0.74 : u < 0.25 ? 0.54 : u < 0.6 ? 0.38 : 0.22;
-      if (y === 11) k -= 0.25; // a turned groove
-      p.set(x, y, tone(BR, k));
-    }
-  }
-  p.set(2, 10, BR[8]); p.set(2, 12, BR[8]); p.set(3, 13, BR[8]);
-  p.set(5, 17, ST[5]); p.set(5, 18, ST[3]);
-  p.outline(INK);
-  return p;
-}
-
 // ---------------------------------------------------------------- toast bits: tack & wax seals
 /** A domed push-pin head on a steel needle. 8×9. */
 function tackSprite(c = 0xc23c2c) {
@@ -440,49 +132,6 @@ function tackSprite(c = 0xc23c2c) {
   p.outline(INK);
   return p;
 }
-const SEAL = { red: PAL.red, green: PAL.green, amber: PAL.amber, brown: { hi: 0xd8a070, lt: 0xb07a46, base: 0x83552e, dk: 0x5e3a1f, dd: 0x3a2412 }, blue: PAL.blue, purple: PAL.purple };
-/** Wax seal (13×13): a blob with a wobbly edge, a raised rim, the face pressed with a mark. mark: 'ring' | 'x' | 'check' | 'star'. */
-function sealSprite(color = 'red', mark = 'ring') {
-  const S = SEAL[color] || SEAL.red;
-  const R = [shadeC(S.dd, 0.7), S.dd, S.dk, S.base, S.lt, S.hi, mixC(S.hi, 0xffffff, 0.5)];
-  const p = new Px(13, 13);
-  const c = 6.5;
-  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) {
-    const a = Math.atan2(y + 0.5 - c, x + 0.5 - c);
-    const rr = 5.6 + Math.sin(a * 5 + 0.7) * 0.5 + Math.sin(a * 3 + 2) * 0.3;
-    const du = (x + 0.5 - c) / rr, dv = (y + 0.5 - c) / rr, r = Math.hypot(du, dv);
-    if (r > 1) continue;
-    let k;
-    if (r > 0.7) k = 0.15 + dome(du, dv, 0.55) * 0.85;
-    else if (r > 0.6) k = du + dv < 0 ? 0.2 : 0.7;
-    else k = 0.5 - (du + dv) * 0.1;
-    p.set(x, y, tone(R, k));
-  }
-  const dent = (pts) => {
-    for (const [x, y] of pts) p.set(x, y, R[1]);
-    for (const [x, y] of pts) if (!pts.some(([a, b]) => a === x + 1 && b === y + 1)) p.set(x + 1, y + 1, R[5]);
-  };
-  if (mark === 'ring') {
-    const pts = [];
-    for (let a = 0; a < 20; a++) pts.push([Math.round(6 + Math.cos((a / 20) * Math.PI * 2) * 2.6), Math.round(6 + Math.sin((a / 20) * Math.PI * 2) * 2.6)]);
-    dent(pts); p.set(6, 6, R[1]);
-  } else if (mark === 'x') {
-    const pts = [];
-    for (let i = -2; i <= 2; i++) { pts.push([6 + i, 6 + i]); pts.push([6 + i, 6 - i]); }
-    dent(pts);
-  } else if (mark === 'check') {
-    dent([[3, 6], [4, 7], [5, 8], [6, 7], [7, 6], [8, 5], [9, 4]]);
-  } else if (mark === 'star') {
-    const pts = [];
-    for (let i = 3; i <= 9; i++) { pts.push([6, i]); pts.push([i, 6]); }
-    pts.push([5, 5], [7, 7], [7, 5], [5, 7]);
-    dent(pts);
-  }
-  p.set(3, 3, R[6]); p.set(4, 2, R[5]);
-  p.outline(INK);
-  return p;
-}
-
 // ---------------------------------------------------------------- touch controls
 const STONE = PAL.stone;
 function stickSprite() {
@@ -740,25 +389,26 @@ function beltTipSprite() {
 }
 
 // ---------------------------------------------------------------- registry
+// (wave 20: the pieces the HUD shows are its hand-drawn maps, src/ui/hudSprites.js, wherever they appear)
 const LEATHER_O = { brown: 'leather' }; // the finishing pass (src/ui/pxFine.js): their browns are leather
 export const SPR = {
-  pack: (fill = 0) => art('pack' + fill, () => packSprite(fill), LEATHER_O),
-  bookPeek: () => art('bookPeek', bookPeekSprite, LEATHER_O),
-  journalIcon: () => art('journalIcon', journalIcon, LEATHER_O),
+  pack: (fill = 0) => HS.pack(fill),
+  bookPeek: () => HS.book(),
+  journalIcon: () => HS.journal(),
   pouch: (open = false) => art('pouch' + (open ? 1 : 0), () => pouchSprite(open), LEATHER_O),
-  coins: () => art('coins', coinStrip),
+  coins: () => HS.coins(),
   coinMini: () => art('coinMini', () => {
     const p = new Px(6, 6);
     p.tpl(['.oooo.', 'ohllbo', 'olbbbo', 'obbbdo', 'obbddo', '.oooo.'], { o: B.dd, h: B.hi, l: B.lt, b: B.base, d: B.dk });
     return p;
   }),
-  coin: () => art('coin1', () => { const s = coinStrip(), p = new Px(8, 8); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (s.a(x, y)) p.set(x, y, s.get(x, y)); return p; }),
+  coin: () => HS.coin(),
   lantern: (lvl, flick = 0) => art('lantern' + lvl + (flick ? ':' + flick : ''), () => lanternSprite(lvl, flick)),
-  charm: (id) => art('charm:' + id, () => charmSprite(id)),
-  calendar: (torn = false) => art('cal' + (torn ? 1 : 0), () => calendarSprite(torn)),
-  plumb: () => art('plumb', plumbSprite),
+  charm: (id) => HS.charm(id),
+  calendar: (torn = false) => HS.calendar(torn),
+  plumb: () => HS.plumb(),
   tack: (c) => art('tack' + (c || ''), () => tackSprite(c)),
-  seal: (color = 'red', mark = 'ring') => art(`seal:${color}:${mark}`, () => sealSprite(color, mark)),
+  seal: (color = 'red', mark = 'ring') => HS.seal(color, mark),
   stick: () => art('stick', stickSprite),
   knob: () => art('knob', knobSprite),
   rbtn: (down = false) => art('rbtn' + (down ? 1 : 0), () => roundBtnSprite(down)),
@@ -773,4 +423,4 @@ export const SPR = {
   beltTip: () => art('beltTip', beltTipSprite),
   jar: (level = 0) => { const k = Math.round(Math.max(0, Math.min(1, level)) * 12); return art('jar' + k, () => jarSprite(k / 12)); },
 };
-export const CHARM_IDS = Object.keys(CHARM_TPL);
+export const CHARM_IDS = CHARM_KINDS;
