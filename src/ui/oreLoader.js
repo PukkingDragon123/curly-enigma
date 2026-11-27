@@ -21,11 +21,14 @@
 // calls set() (opts.tau: how slowly, s); opts.through: clicks go through it.
 import { el } from '../core/util.js';
 import { Bake3D, G3 } from './oreLoader3d.js';
+import { paintGrip } from './gripHand.js';
+import { OUTLINE } from './palette.js';
+const OUT_HEX = typeof OUTLINE === 'number' ? OUTLINE : parseInt(String(OUTLINE).replace('#', ''), 16);
 
 const W = 96, H = 64, F = 12, S = 8; // frame size (art px), frames in the loop, cleanliness stages
 const CX = 48, CY = 35, RX = 19, RY = 15, FLOOR = 50; // the clump
 const PR = [63, 27], PL = [33, 27]; // where the claws bite (right paw, left paw)
-const HIT_R = 2, HIT_L = 8; // the frames they bite on
+const HIT_R = 2; // the frame the pick bites on
 
 const C32 = (hex, a = 255) => (((a & 255) << 24) | ((hex & 0xff) << 16) | (hex & 0xff00) | ((hex >>> 16) & 0xff)) >>> 0;
 const P = (list) => list.map((h) => C32(h));
@@ -33,13 +36,6 @@ const ROCK = P([0x0b0706, 0x160f0c, 0x231813, 0x30221a, 0x403022, 0x56402c, 0x6e
 const CRUST = P([0x17110f, 0x2e2622, 0x473b33, 0x615244, 0x7d6b56, 0x9c876a, 0xbca784]);
 const ORE = P([0x3a1a06, 0x7a3a0a, 0xb86010, 0xe89624, 0xffc84a, 0xffe890, 0xfffbe0]);
 const FUR = P([0x120c12, 0x281e26, 0x3e323a, 0x5a4c54, 0x84747a]); // (velvet grey: it reads against the brown rock)
-// the work glove (gfx/char/glove.js): tan hide, the darker gauntlet, the oiled knuckle patch, strap, thread
-const GLV = P([0x24140a, 0x382012, 0x4e2e19, 0x684022, 0x84542c, 0x9e6a38, 0xb88248, 0xd09e62, 0xe4bc84]);
-const CUF = P([0x150c07, 0x21130b, 0x2f1b10, 0x3e2416, 0x50301d, 0x623c24, 0x784c2e]);
-const PAT = P([0x20130b, 0x311d12, 0x452a1a, 0x5b3a24, 0x734c30, 0x8e6242, 0xc89e7a]);
-const STR = P([0x100906, 0x1c110a, 0x2a1910, 0x3a2416, 0x4c311e]);
-const THR = P([0xc8b48a, 0xe8d8b0]);
-const CLAW = P([0x4a3a2a, 0x8e7e62, 0xcfc3a3, 0xf6eedc]);
 const MOSS = P([0x1e2c10, 0x3c5a1a, 0x6a8a2a]);
 const BLUE = P([0x0a2440, 0x16508a, 0x2e98da, 0x9ae6ff]);
 const BRASS = P([0x3a2410, 0x7a5420, 0xc49440, 0xf0d070]);
@@ -216,109 +212,6 @@ function drawStage(sc, c) {
 }
 
 // ------------------------------------------------------------------ the moving parts
-/** A mole paw in a leather work glove: dark fur arm from the corner, the gauntlet, five pale claws out of the cut-open fingertips; tips at (ax, ay). */
-const PAD = 24, BW = W + PAD * 2, BH = H + PAD * 2; // (a paw is drawn once on a padded sheet, then slid about)
-function drawPaw(buf, ax, ay, dir, squash) {
-  // Drawn per pixel (each pixel asks which part of the paw it is in), lit from the top left:
-  // a furry arm with strands and a rim of lantern light, spilling out of the glove's darker
-  // gauntlet (a rolled rim, a stitched seam, a strap with a brass buckle); the glove's back in tan
-  // hide with sooty blotches; an oiled knuckle patch rubbed pale; five
-  // gloved fingers whose cut-open tips let the long hooked claws out, each claw with a lit edge,
-  // a shade side and a dark gap between them. (gfx/char/glove.js has the 3D glove.)
-  const mask = new Uint8Array(BW * BH), cols = new Uint32Array(BW * BH);
-  const ux = 0.76 * dir, uy = 0.65, vx = -0.65 * dir, vy = 0.76;
-  const lit = (nu, nv) => -((nu * ux + nv * vx) + (nu * uy + nv * vy)) * 0.7; // a local normal → light
-  const CLAWS = [];
-  for (let k = 0; k < 5; k++) CLAWS.push({ v0: (k - 2) * 3.2, len: 8.6 - Math.abs(k - 2) * 0.9 - squash * 1.8 });
-  const sooty = (u, v) => vnoise(u * 0.35, v * 0.35, 47) > 0.7;
-  const x0 = Math.max(0, Math.floor(ax - 36)), x1 = Math.min(BW - 1, Math.ceil(ax + 36)), y0 = Math.max(0, Math.floor(ay - 14)), y1 = Math.min(BH - 1, Math.ceil(ay + 44));
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-    const dx = x - ax, dy = y - ay;
-    const u = dx * ux + dy * uy - 4.6, v = dx * vx + dy * vy;
-    let col = 0;
-    // the claws (on top): from the cut fingertips out along -u, curling a little, tapering to a hook
-    for (const c of CLAWS) {
-      const sc = 2.4 - u;
-      if (sc < 0 || sc > c.len) continue;
-      const k = sc / c.len, mid = c.v0 * (1 + k * 0.32) + k * k * 1.3 * dir;
-      const hw = 1.05 - k * 0.6, d = v - mid;
-      if (Math.abs(d) > hw) continue;
-      const side = lit(0, Math.sign(d) || 1);
-      col = k > 0.86 ? CLAW[3] : side > 0.2 ? CLAW[3] : side < -0.2 && Math.abs(d) > hw - 0.7 ? CLAW[1] : CLAW[2];
-      if (k < 0.12) col = LINE; // the dark opening the claw comes out of
-      break;
-    }
-    if (!col) {
-      // the gloved fingers: five short digits from the knuckles to the cut tips, lit on top
-      for (const c of CLAWS) {
-        if (u < 1.6 || u > 6.2 || Math.abs(v - c.v0) > 1.4) continue;
-        const d = v - c.v0, side = lit(0, Math.sign(d) || 1);
-        if (Math.abs(d) > 1.05) { col = side > 0 ? GLV[4] : GLV[1]; break; } // the seam between fingers
-        col = u < 2.9 ? (side > 0 ? GLV[7] : GLV[5]) // the rolled edge of the cut tip
-          : u < 5.2 ? (side > 0.2 ? GLV[6] : side < -0.2 ? GLV[3] : GLV[5])
-            : (side > 0 ? PAT[5] : PAT[3]); // the knuckle patch's front edge
-        if (u >= 2.9 && u < 3.6) col = GLV[2]; // a crease under the rolled edge
-        break;
-      }
-    }
-    if (!col && u > 12.2 && u < 19.6) {
-      // the gauntlet: a darker flared cuff, a strap with a brass buckle, a stitched rolled rim
-      const w = 7.8 + (u - 12.2) * 0.16;
-      if (Math.abs(v) <= w) {
-        const side = lit(0, Math.sign(v) || 1) * (Math.abs(v) / w);
-        let t = 3 + (side > 0.45 ? 2 : side > 0.1 ? 1 : side < -0.45 ? -2 : 0);
-        col = CUF[clamp(t, 0, 6)];
-        if (u > 13.6 && u < 15.8) { // the strap, and its buckle on the lit side
-          col = STR[clamp(t - 1, 0, 4)];
-          if (Math.abs(u - 13.7) < 0.35 || Math.abs(u - 15.7) < 0.35) col = STR[clamp(t, 0, 4)];
-          const bv = v + 3.8; // (the -v side faces the light for both paws)
-          if (Math.abs(bv) < 1.8 && u > 13.1 && u < 16.3) col = Math.abs(bv) < 0.6 && Math.abs(u - 14.7) < 0.7 ? BRASS[0] : bv < -0.6 && u < 14.2 ? BRASS[3] : BRASS[2]; // the buckle: lit corner, dark prong slot
-        } else if (u > 18.2) col = side > 0.3 ? CUF[6] : CUF[4]; // the rolled rim
-        else if (Math.abs(u - 17.6) < 0.4 && (Math.round(v) & 1)) col = THR[0]; // its stitched seam
-        else if (sooty(u, v + 9)) col = CUF[clamp(t - 2, 0, 6)];
-        if (Math.abs(v) > w - 0.8) col = side > 0 ? CUF[5] : CUF[1]; // the cuff's edge: a lit rim, a dark side
-      }
-    }
-    if (!col) {
-      // the glove's back: broad across the knuckles, narrowing to the wrist
-      const ru = (u - 9.2) / 5.4, rv = v / (8.4 - Math.max(0, u - 9) * 0.8);
-      const r = ru * ru + rv * rv * (1 + squash * 0.3), edge = 1 + (vnoise(u, v, 43) - 0.5) * 0.18;
-      if (r <= edge) {
-        let t = 4 + Math.round(lit(ru, rv) * 2);
-        const knuckle = u < 7.6;
-        if (knuckle && CLAWS.some((c) => Math.abs(v - c.v0) < 0.9)) t = u < 6.8 ? 7 : 3; // knuckles rubbed pale, a shade under each
-        col = knuckle ? PAT[clamp(t - 1, 0, 6)] : GLV[clamp(t, 0, 8)];
-        if (Math.abs(u - 7.9) < 0.5 && (Math.round(v) & 1)) col = THR[1]; // the patch's stitched edge
-        else if (!knuckle && sooty(u, v)) col = GLV[clamp(t - 3, 0, 8)];
-        if (r > edge - 0.12) col = GLV[1]; // the rounded edge in shade
-      }
-    }
-    if (!col && u > 9.5 && u < 52) {
-      // the arm: velvet fur in strands, shaggy at the edge, a rim of light, a ruff out of the cuff
-      const tuft = hash(Math.round(u), Math.sign(v), 45) > 0.62 ? 0.9 : 0;
-      const w = 6.4 + Math.min(1.4, (u - 10) * 0.1) + tuft + (u < 22 ? 0.9 : 0);
-      if (Math.abs(v) <= w) {
-        const side = lit(0, Math.sign(v) || 1) * (Math.abs(v) / w);
-        const strand = vnoise(u * 0.22 + v * 0.12, v * 1.1, 42);
-        let t = 2 + (strand > 0.64 ? 1 : strand < 0.32 ? -1 : 0);
-        if (side > 0.45) t = Math.abs(v) > w - 1.2 ? 4 : 3; // the lit edge
-        else if (side < -0.45) t = 0; // the shadow edge
-        if (u < 22) t = Math.min(4, t + 1); // the lighter ruff spilling out of the gauntlet
-        if (hash(Math.round(u * 1.5), Math.round(v * 1.5), 46) < 0.04) t = 4; // stray glinting hairs
-        col = FUR[clamp(t, 0, 4)];
-      }
-    }
-    if (col) { mask[y * BW + x] = 1; cols[y * BW + x] = col; }
-  }
-  // a tinted outline (and so a dark gap between the claws), then onto the frame
-  for (let y = 1; y < BH - 1; y++) for (let x = 1; x < BW - 1; x++) {
-    const i = y * BW + x;
-    if (mask[i]) { buf[i] = cols[i]; continue; }
-    if (mask[i - 1] || mask[i + 1] || mask[i - BW] || mask[i + BW]) buf[i] = LINE;
-  }
-}
-
-/** Chips, sparks, dust and the flash of one bite, t frames after it. */
 function drawBite(buf, sc, vis, c, px, py, t, seed) {
   const put = (x, y, col) => { x = Math.round(x); y = Math.round(y); if (x >= 0 && y >= 0 && x < W && y < H && sc.inNiche[y * W + x]) buf[y * W + x] = col; };
   if (t === 0) { // the flash: a white core, yellow rays
@@ -357,7 +250,6 @@ function drawBite(buf, sc, vis, c, px, py, t, seed) {
   }
 }
 
-const POSE = (f, hit) => { const t = (f - hit + F) % F; return [[0, 0, 1], [3, 3, 1], [6, 5, 0], [8, 7, 0], [9, 8, 0], [10, 9, 0], [10, 10, 0], [10, 9, 0], [9, 8, 0], [8, 7, 0], [6, 5, 0], [3, 2, 0]][t]; };
 
 function drawFrame(buf, sc, st, c, f) {
   const { vis } = st;
@@ -379,38 +271,68 @@ function drawFrame(buf, sc, st, c, f) {
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) buf[(gy + dy) * W + gx + dx] = big ? ORE[6] : ORE[5];
     if (big) for (const [dx, dy] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) buf[(gy + dy) * W + gx + dx] = ORE[5];
   }
-  // the bites (older one first), then the paws over them
-  for (const [hit, p, seed] of [[HIT_L, PL, 2], [HIT_R, PR, 1]]) {
-    const t = (f - hit + F) % F;
-    if (t <= 6) drawBite(buf, sc, vis, c, p[0], p[1], t, seed + f * 0);
-  }
-  const [idx, col] = pawLayer(f);
+  // the bite, then the pick in the gloved fist over it
+  const [idx, col] = pickLayer(f);
+  const t = (f - HIT_R + F) % F;
+  if (t <= 6) drawBite(buf, sc, vis, c, TIP[0], TIP[1], t, 1);
   for (let j = 0; j < idx.length; j++) buf[idx[j]] = col[j];
 }
-const PAWS = [], SPRITES = {};
-/** One paw (dir 1: the right), pressed flat by `sq`, on the padded sheet: its pixels. */
-function pawSprite(dir, sq) {
-  const key = dir + ':' + sq;
-  if (SPRITES[key]) return SPRITES[key];
-  const b = new Uint32Array(BW * BH), p = dir > 0 ? PR : PL;
-  drawPaw(b, PAD + p[0], PAD + p[1] + 1, dir, sq);
-  const pts = [];
-  for (let i = 0; i < BW * BH; i++) if (b[i]) pts.push(i % BW - PAD, Math.floor(i / BW) - PAD, b[i]);
-  return (SPRITES[key] = pts);
+// The pick, swung from a shoulder off the bottom-right corner: the arm's angle (deg) by frames since
+// the hit (the hit, a rebound, the wind-up slowing, held, the snap); the wrist cocks the head back further.
+const SWING = [0, -4, 5, 13, 21, 27, 31, 33, 34, 34, 22, 7];
+const SHO = [118, 96], GRIP = [73, 41], HDIR = [-0.3, -0.95], HLEN = 13; // the impact pose
+const WOOD = [0x24120a, 0x3e2210, 0x5c3418, 0x7a4822, 0x96602e]; // the handle (darker than the glove's tan)
+const IRON = [0x221e28, 0x3c3844, 0x5c5864, 0x85818c, 0xb4b0ba, 0xe8e4ee];
+const rot = (x, y, a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
+/** Where the pick's point is in the pose for arm angle a (deg). */
+function pickPose(a) {
+  const r = a * Math.PI / 180, [gx, gy] = rot(GRIP[0] - SHO[0], GRIP[1] - SHO[1], r * 0.22), [dx, dy] = rot(HDIR[0], HDIR[1], r * 1.6);
+  const g = [SHO[0] + gx, SHO[1] + gy], hd = [g[0] + dx * HLEN, g[1] + dy * HLEN], p = [dy, -dx]; // (p: the point's side, toward the ore)
+  const tip = [hd[0] + p[0] * 8 - dx * 2.2, hd[1] + p[1] * 8 - dy * 2.2];
+  return { g, d: [dx, dy], hd, p, tip };
 }
-/** Both paws in frame f (the same at every stage: drawn once): [indices, colours]. */
-function pawLayer(f) {
-  if (PAWS[f]) return PAWS[f];
-  const idx = [], col = [];
-  for (const [dir, hit] of [[-1, HIT_L], [1, HIT_R]]) {
-    const [u, v, sq] = POSE(f, hit), dx = Math.round(dir * (u * 0.62 + v * 0.1)), dy = Math.round(v * 0.78);
-    const pts = pawSprite(dir, sq);
-    for (let j = 0; j < pts.length; j += 3) {
-      const x = pts[j] + dx, y = pts[j + 1] + dy;
-      if (x >= 0 && y >= 0 && x < W && y < H) { idx.push(y * W + x); col.push(pts[j + 2]); }
+const TIP = pickPose(0).tip.map(Math.round);
+const PICKS = [];
+/** The pick and the fist in frame f (the same at every stage: drawn once): [indices, colours]. */
+function pickLayer(f) {
+  if (PICKS[f]) return PICKS[f];
+  const { g, d, hd, p } = pickPose(SWING[(f - HIT_R + F) % F]);
+  const px = new Map();
+  // the pick, per pixel: an ash handle with its grain, an iron head (a collar, the curved point, a
+  // short butt), lit from the top left, then the plum outline round it
+  const own = new Map();
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const rx = x + 0.5 - g[0], ry = y + 0.5 - g[1], u = rx * d[0] + ry * d[1], v = rx * p[0] + ry * p[1];
+    let c = -1;
+    const hx = x + 0.5 - hd[0], hy = y + 0.5 - hd[1], hu = hx * d[0] + hy * d[1], hv = hx * p[0] + hy * p[1];
+    // the head: the point curving down toward the ore, the butt behind, the collar round the eye
+    if (hv > -0.5 && hv < 8.5) {
+      const t = hv / 8.5, mid = -2.2 * t * t, half = 1.9 * (1 - t) + 0.35;
+      if (Math.abs(hu - mid) < half) c = hu - mid > half * 0.35 ? IRON[5 - (t > 0.8 ? 1 : 0)] : hu - mid > -half * 0.3 ? IRON[3] : IRON[1];
+    } else if (hv <= -0.5 && hv > -4.6) {
+      const half = 1.5 - (-hv - 0.5) * 0.12;
+      if (Math.abs(hu) < half) c = hu > half * 0.3 ? IRON[4] : hu > -half * 0.4 ? IRON[2] : IRON[1];
     }
+    if (c < 0 && Math.abs(hu) < 2.3 && Math.abs(hv) < 1.9) c = hu > 0.8 ? IRON[3] : IRON[2]; // the collar
+    // the handle, from below the fist up into the head; a lit stripe, grain dashes
+    if (c < 0 && u > -9 && u < HLEN - 1 && Math.abs(v) < 1.25) {
+      const side = v * (p[0] * -0.62 + p[1] * -0.78) > 0 ? 1 : 0;
+      c = side ? WOOD[4] : Math.abs(v) < 0.45 ? WOOD[3] : WOOD[2];
+      if (!side && ((Math.round(u) % 5) === 0)) c = WOOD[1];
+      if (u < -8) c = WOOD[1]; // the butt end
+    }
+    if (c >= 0) own.set(y * W + x, c);
   }
-  return (PAWS[f] = [Int32Array.from(idx), Uint32Array.from(col)]);
+  for (const [i, c] of own) px.set(i, c);
+  for (const i of own.keys()) for (const o of [1, -1, W, -W]) {
+    const j = i + o;
+    if (j >= 0 && j < W * H && !own.has(j) && Math.abs((j % W) - (i % W)) <= 1) px.set(j, OUT_HEX);
+  }
+  // the gloved fist round the handle, the arm in from the corner (./gripHand.js, the same as the 3D)
+  paintGrip((x, y, c) => px.set(y * W + x, c), { gx: g[0], gy: g[1], dx: d[0], dy: d[1], ax: SHO[0], ay: SHO[1], k: 0.85, w: W, h: H });
+  const idx = [], col = [];
+  for (const [i, c] of px) { idx.push(i); col.push(C32(c)); }
+  return (PICKS[f] = [Int32Array.from(idx), Uint32Array.from(col)]);
 }
 
 // The sheet: the first row (the crusted ore) is drawn at once, the cleaner rows bit by bit after
