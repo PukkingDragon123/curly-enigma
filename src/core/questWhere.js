@@ -57,7 +57,7 @@ export function stepGoal(view) {
   }
   if (!scene && w.place) scene = w.place === 'home' ? 'home' : w.place === 'town' ? 'town' : 'deep';
   if (!scene && w.sight) scene = TOWN_SIGHTS[w.sight] ? 'town' : w.sight === 'hole' ? 'home' : 'deep';
-  if (!scene && (w.burrow || w.ruin || w.danger || w.zone || w.biome)) scene = 'deep';
+  if (!scene && (w.burrow || w.ruin || w.danger || w.zone || w.biome || w.warden)) scene = 'deep';
   const types = (Array.isArray(s.on) ? s.on : s.on ? [s.on] : []).map((m) => m.type);
   if (types.includes('cook')) w.spot = 'hearth';
   else if (types.some((t) => t === 'forge' || t === 'smelt' || t === 'part')) w.spot = 'forge';
@@ -93,6 +93,7 @@ function deepPos(game, sc, g, me) {
   if (!plan) return null;
   if (g.burrow) { const b = (plan.burrows || []).find((x) => x.id === g.burrow || x.kind === g.burrow); return b ? { x: b.x, y: b.y + 1, z: b.z, label: npcName(Object.keys(BURROW_NPC).find((k) => BURROW_NPC[k] === b.kind) || b.kind), sub: NPCS[Object.keys(BURROW_NPC).find((k) => BURROW_NPC[k] === b.kind)]?.where } : null; }
   if (g.place === 'dig' && plan.prologue) return { ...plan.prologue, label: "Old Star's dig" };
+  if (g.warden) { const h = (plan.wardens || []).find((x) => x.id === g.warden); return h ? { x: h.x, y: h.y + 1, z: h.z, r: 4, label: g.warden === 'clay' ? 'The Clay Warden' : 'The Grotto Warden', sub: 'Off the lift stop' } : null; }
   if (g.ruin) {
     const save = game.state.data.deep?.ruins || {};
     let list = (plan.ruins || []).filter((r) => g.ruin === 'nearest' || r.kind === g.ruin || r.id === g.ruin);

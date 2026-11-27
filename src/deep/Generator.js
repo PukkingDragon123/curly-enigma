@@ -118,6 +118,21 @@ export function makePlan(seed, opts = {}) {
     plan.features.push({ kind: 'stop', id: 's' + s.n, x: s.x, y: s.y, z: s.z, sx: plan.shaft.x, sz: plan.shaft.z });
     plan.lights.push({ x: s.x - 1.25, y: s.y + 1.95, z: s.z - 0.62, c: [1.05, 0.66, 0.32], r: 5, lantern: true, lift: 's' + s.n }); // the gantry's lantern
   }
+  // (wave 21) the wardens' halls (data/way.js WARDENS: clay at stop 2, grotto at stop 3): a low dome a
+  // short climb east of the lift stop, where a warden sleeps across the way down
+  plan.wardens = [];
+  for (const [id, n, R, RY] of [['clay', 2, 4.4, 2.5], ['grotto', 3, 5.6, 3.2]]) {
+    const s = plan.stations[n];
+    if (!s) continue;
+    const a = { id, x: s.x + 11, y: s.y + 4.5, z: s.z + 1.2 }; // (above the stop: still in the layer you can dig)
+    plan.wardens.push(a);
+    plan.features.push({ kind: 'sphere', x: a.x, y: a.y + RY - 1.2, z: a.z, r: R, ry: RY, m: 0 });
+    for (let k = 0; k <= 8; k++) {
+      const t = k / 8;
+      plan.features.push({ kind: 'sphere', x: s.x + 2.4 + (a.x - R + 0.4 - s.x - 2.4) * t, y: s.y + 0.75 + (a.y + 0.5 - s.y - 0.75) * t, z: s.z + (a.z - s.z) * t, r: 1.05, ry: 0.85, m: 0 });
+    }
+    plan.lights.push({ x: a.x - 3.6, y: a.y + 1.6, z: a.z - 1.4, c: [1.0, 0.6, 0.3], r: 6, lantern: true });
+  }
 
   // lifts: the mine entrance under the burrow, three buried in every zone, the town shaft stops
   const LIFT_NAMES = [null, ['Root Cellar', 'Wormwood', 'Old Hollow'], ['Clay Pit', 'Potter\'s Drop', 'Redbank'], ['Glimmer Gallery', 'Prism Well', 'Geode Hall'],

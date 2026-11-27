@@ -7,6 +7,9 @@ import { ORES } from '../data/ores.js';
 import { h3 } from './noise.js';
 
 export class Ores {
+  /** (wave 21) Can the pick in paw free this ore? The scene sets it (ore.tier against the pick's). */
+  canTake() { return true; }
+
   constructor(world) {
     this.w = world;
   }
@@ -57,6 +60,8 @@ export class Ores {
     if (!d) return null;
     const s = this.w.depState(d);
     const ore = ORES[d.oreId];
+    // (wave 21) too soft a pick clangs off: no crack, no chip (the scene says which pick it wants)
+    if (!this.canTake(ore)) return { d, s, ore, k: 0, broke: false, tough: true };
     s.hits++;
     s.q = Math.max(Q_MIN, s.q - (ore.frag || 10) * power * (0.7 + Math.random() * 0.6));
     const k = crack * (power * 1.6) / this.hpOf(d);
@@ -110,6 +115,8 @@ export class Ores {
       if (!vox.length) continue;
       const e = this.exposure(d, vox);
       if (e.shows && !s.seen) { s.seen = true; freed.seenNew = d; }
+      // (wave 21) ore above your pick's tier stays fused in, however bare it is (data/way.js)
+      if (!this.canTake(ORES[d.oreId])) { if (e.frac >= 0.42) freed.tough = d; continue; }
       const need = s.brushed > 0.6 ? 0.42 : 0.58;
       if (e.frac < need) continue;
       s.taken = true;

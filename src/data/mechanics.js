@@ -3,7 +3,8 @@
 
 export const MECHANICS = {
   digging: { name: 'Digging', desc: 'Everything cracks before it breaks. Dirt\'s quick. Stone takes work. Hold the button.' },
-  too_hard: { name: 'Too Hard!', desc: 'Some rock bounces the pick right off. Grubb sells picks that bite it.' },
+  too_hard: { name: 'Too Hard!', desc: 'Some rock bounces the pick right off. A better pick bites it. You forge those at home.' },
+  ore_tier: { name: 'Too Tough', desc: 'Some ore won\'t come out for a soft pick, however bare you dig it. Bronze frees iron. Iron frees silver. Steel frees gold.' },
   hidden_ore: { name: 'Hidden Ore', desc: 'Ore hides in the rock. Open the rock beside it, or shine an x-ray through.' },
   chipped_ore: { name: 'Chipped Ore', desc: 'Hit the ore with a pick and you chip it. Chips cost money.' },
   vibration: { name: 'Vibrations', desc: 'Heavy blows shake the rock. Ore right next to them takes a knock.' },

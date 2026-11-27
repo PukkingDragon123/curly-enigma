@@ -162,6 +162,9 @@ export class Quests {
       if (begun) { q.done.lessons = d.day || 1; this.startQuiet('million'); }
       else this.startQuiet('lessons');
     }
+    // (wave 21) a save past the lessons from before the slate picks the way down up where it stands
+    // (its check steps let a save that already has the picks run straight through)
+    if (q.done.lessons && !q.order.some((id) => id.startsWith('way_') || id.startsWith('gate_'))) this.startQuiet('way_rootsoil');
     if (q.tracked && !q.active[q.tracked]) q.tracked = null;
     // a save from before quests were given by talking keeps everything it had going; its pin stays
     // (or the first quest it took on is pinned)

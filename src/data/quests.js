@@ -26,6 +26,7 @@
 import { SHOPS } from './shops.js';
 import { VILLAGERS } from './villagers.js';
 import { SIDE_QUESTS, BURROW_QUESTS } from './sideQuests.js';
+import { CARD, cardProgress, wardenBeaten, bestTier } from './way.js';
 
 export const ZONE_DEPTHS = [0, 25, 55, 90, 130, 170, 210]; // zone n spans [n-1]..[n] (Generator.js)
 export const ZONE_NAMES = [null, 'Rootsoil', 'Clayworks', 'Crystal Grotto', 'Magma Deep', 'Frost Vault', 'The Core'];
@@ -82,6 +83,80 @@ function deeper(n) {
   };
 }
 
+
+// ---------------------------------------------------------------- the way down (wave 21, data/way.js)
+// The spine: a card on Old Star's board, a pick forged from what it opens, a warden, the next card.
+const cardStep = (id, text, hint) => ({ id: 'card', text, hint, count: (st) => cardProgress(st, id).have, n: Object.values(CARD[id].slots).reduce((a, b) => a + b, 0), where: { place: 'home' } });
+const pickSteps = (ingot, n, tier, metal, hint) => [
+  { id: 'smelt', text: `Smelt ${n} ${metal} ingots`, hint, count: (st) => (bestTier(st) >= tier ? n : Math.min(n, st.count(ingot))), n, where: { place: 'home' } },
+  { id: 'forge', text: `Forge a ${metal} pickaxe`, hint: 'The forge board has a Pick card now.', check: (st) => bestTier(st) >= tier, where: { place: 'home' } },
+];
+const WAY_QUESTS = {
+  way_rootsoil: {
+    title: 'The Slate', giver: 'oldstar', kind: 'main',
+    intro: 'See my slate on the crate? Four jobs on it. Do them in order. First one\'s easy.',
+    outro: 'Bronze, next. I\'ve chalked the pattern by the forge.',
+    steps: [cardStep('rootsoil', 'Fill the Rootsoil card on the slate', 'Copper, tin and coal. All up in the Rootsoil. Bring them to the slate by the lift.')],
+    reward: CARD.rootsoil.reward, next: ['way_bronze'],
+  },
+  way_bronze: {
+    title: 'A Real Pick', giver: 'oldstar', kind: 'main',
+    intro: 'Three copper ore, one tin, a lump of coal: two bronze ingots. Then hit them till they\'re a pick.',
+    outro: 'Now iron won\'t laugh at you.',
+    steps: pickSteps('bronze_ingot', 2, 2, 'bronze', 'Copper and tin in the crucible together.'),
+    reward: { gold: 60 }, next: ['way_clayworks'],
+  },
+  way_clayworks: {
+    title: 'Clay Card', giver: 'oldstar', kind: 'main',
+    intro: 'Second card. Iron, lumite, a bit of amber. The Clayworks has all three.',
+    outro: 'Feel that? Something big rolled over in its sleep. Down by the lift stop.',
+    steps: [cardStep('clayworks', 'Fill the Clayworks card on the slate', 'Iron and lumite in the clay, 25 m down and lower. Amber hides in it too.')],
+    reward: CARD.clayworks.reward, next: ['gate_clay'],
+  },
+  gate_clay: {
+    title: 'The Clay Warden', giver: 'oldstar', kind: 'main',
+    intro: 'There\'s a golem up off the lift stop, 53 m down. Sat on the way down since before me. Its heart\'s what an iron pick wants.',
+    outro: 'Still ticking? Good. Iron goes round it.',
+    steps: [{ id: 'beat', text: 'Beat the Clay Warden', hint: 'A hall up the crawl east of the lift stop, 53 m down. Jump the slam. Hit the glowing seam.', on: { type: 'warden', id: 'clay' }, check: (st) => wardenBeaten(st, 'clay') || bestTier(st) >= 3, where: { warden: 'clay' } }],
+    reward: { gold: 200, sp: 1 }, next: ['way_iron'],
+  },
+  way_iron: {
+    title: 'Iron Round a Heart', giver: 'oldstar', kind: 'main',
+    intro: 'Three iron ingots and that heart. Quench it at the right glow or it\'ll crack.',
+    outro: 'Granite\'s yours now. Silver too.',
+    steps: pickSteps('iron_ingot', 3, 3, 'iron', 'Iron ore in the crucible. It wants a hot fire.'),
+    reward: { gold: 120 }, next: ['way_grotto'],
+  },
+  way_grotto: {
+    title: 'Grotto Card', giver: 'oldstar', kind: 'main',
+    intro: 'Third card. Silver and crystal. Down where the walls hum.',
+    outro: 'The other warden\'s awake. You woke it. Well done.',
+    steps: [cardStep('grotto', 'Fill the Grotto card on the slate', 'Silver, quartz and an amethyst. The Crystal Grotto, 55 m down and lower.')],
+    reward: CARD.grotto.reward, next: ['gate_grotto'],
+  },
+  gate_grotto: {
+    title: 'The Grotto Warden', giver: 'oldstar', kind: 'main',
+    intro: 'Crystal golem, up off the lift stop, 88 m down. Picks bounce off the front. Get behind it.',
+    outro: 'Steel next. Then the heat.',
+    steps: [{ id: 'beat', text: 'Beat the Grotto Warden', hint: 'A hall up the crawl east of the lift stop, 88 m down. Mine the crystal off its back.', on: { type: 'warden', id: 'grotto' }, check: (st) => wardenBeaten(st, 'grotto') || bestTier(st) >= 4, where: { warden: 'grotto' } }],
+    reward: { gold: 600, sp: 1 }, next: ['way_steel'],
+  },
+  way_steel: {
+    title: 'Steel Round a Heart', giver: 'oldstar', kind: 'main',
+    intro: 'Steel\'s iron with more coal and less patience. Three ingots and the heart.',
+    outro: 'That\'ll cut basalt. Don\'t cut yourself.',
+    steps: pickSteps('steel_ingot', 3, 4, 'steel', 'Iron ore and plenty of coal. Hold the heat.'),
+    reward: { gold: 300 }, next: ['way_magma'],
+  },
+  way_magma: {
+    title: 'Magma Card', giver: 'oldstar', kind: 'main',
+    intro: 'Last card. Gold and fire. Bring a suit.',
+    outro: 'That\'s my slate full. First time in thirty years.',
+    steps: [cardStep('magma', 'Fill the Magma card on the slate', 'Gold, magmaite and a ruby. The Magma Deep, 90 m down and lower.')],
+    reward: CARD.magma.reward, next: [],
+  },
+};
+
 // ---------------------------------------------------------------- the quests
 export const QUESTS = {
   // ======================================================== the lessons (the tutorial chain)
@@ -100,7 +175,7 @@ export const QUESTS = {
       { id: 'cook', text: 'Cook a meal at his hearth', hint: 'A miner who doesn\'t eat is called a skeleton.', lesson: 'cook_done', on: { type: 'cook' }, where: { place: 'home' } },
     ],
     reward: { gold: 100, sp: 2, items: { glow_stake: 3 } },
-    next: ['os_town', 'million'], // he hands these over in person as the lessons end
+    next: ['way_rootsoil', 'os_town', 'million'], // he hands these over in person as the lessons end (the board first: wave 21)
   },
 
   million: {
@@ -112,6 +187,8 @@ export const QUESTS = {
       { id: 'ticket', text: 'Buy your ticket at the Surface Express', hint: 'The ticket office in Deep Town. Mr. Fennimore will call you "darling".', on: { type: 'buy', id: 'exit_ticket' }, check: (st) => st.owns('exit_ticket'), where: { place: 'town' } },
     ],
   },
+
+  ...WAY_QUESTS, // (wave 21) the way down: the slate, the picks, the wardens
 
   // ======================================================== Old Star's follow-ups
   os_town: {

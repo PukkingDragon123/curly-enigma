@@ -13,6 +13,7 @@ import { qColor } from '../ui/UI.js';
 import { smeltStatus, quickSmelt, SmeltGame } from './smelt.js';
 import { ForgeRun } from './forging.js';
 import { PartRun, partStatus } from './parts.js';
+import { patternOpen, bestTier } from '../data/way.js';
 import { fart, token } from './forgeArt.js';
 import { bart, inkWeaponURL } from './forgeBookArt.js';
 import { cssUrl } from '../ui/uiArt.js';
@@ -122,7 +123,7 @@ export class Menus {
   update() {
     const inp = this.game.input;
     if (!this.keyHandler || this.game.ui.isPanelOpen()) return;
-    for (const code of ['Digit1', 'Digit2', 'Digit3', 'Enter']) if (inp.pressed(code)) { inp.consume(code); this.keyHandler(code); break; }
+    for (const code of ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Enter']) if (inp.pressed(code)) { inp.consume(code); this.keyHandler(code); break; }
   }
 
   // ---------------------------------------------------------------- the order board (hub)
@@ -138,6 +139,9 @@ export class Menus {
     const plans = Object.keys(WEAPON_TYPES).filter((t) => st.owns('bp_' + t)).length;
     const forged = d.weapons.length;
     const hammerCard = !this.scene.lesson && !st.owns('builder_hammer') && !!pieceOf('hammer_build');
+    // (wave 21) the next pick on the ladder, once its pattern is open: its metal and what else it takes
+    const nextPick = this.scene.lesson ? null : this.nextPick();
+    const pickBadges = nextPick ? partStatus(st, nextPick).ins.map((x) => badge(itemVox.src(x.id), `${x.have}/${x.n}`, x.have >= x.n ? '' : 'miss', ITEMS[x.id]?.name || x.id)) : [];
     // two pinned cards, each a big picture, one word and what you have for it (pictures and numbers)
     const card = (icon, title, counts, key, on, r, tack, delay) => el('button', {
       class: 'sm-card', style: `--r:${r}deg;--tack:var(--fa-${tack});--d:${delay}s`,
@@ -153,6 +157,7 @@ export class Menus {
         card(itemVox.weapon('shortsword', 'iron'), 'Forge', [badge(itemVox.src(bestIngot), ingots, ingots ? '' : 'miss', 'Ingots'), badge(itemVox.src('bp_dagger'), plans, '', 'Plans')], '2', () => this.plan(), 1, 'tackBlue', 0.16),
         // wave 16: the Builder's Hammer is made here (a forge piece), until you have one
         hammerCard ? card(itemVox.src('builder_hammer'), 'Hammer', [badge(itemVox.src('copper_ingot'), st.count('copper_ingot'), st.count('copper_ingot') ? '' : 'miss', 'Copper'), badge(itemVox.src('blk_log'), st.count('blk_log'), st.count('blk_log') ? '' : 'miss', 'Log')], '3', () => this.makeHammer(), 0, 'tackRed', 0.24) : null,
+        nextPick ? card(itemVox.src(nextPick), 'Pick', pickBadges, hammerCard ? '4' : '3', () => this.makePick(nextPick), -0.6, 'tackBlue', 0.3) : null,
       ].filter(Boolean)),
       el('div', { class: 'sm-foot' }, [
         link('Look', null, () => { this.game.audio.play('ui_close'); this.hide(); }, 'eye'),
@@ -164,7 +169,24 @@ export class Menus {
     ]);
     if (!refresh) this.game.audio.play('page');
     this.show(node, 'main');
-    this.keyHandler = (code) => { if (code === 'Digit1') this.smeltList(); if (code === 'Digit2') this.plan(); if (code === 'Digit3' && hammerCard) this.makeHammer(); };
+    this.keyHandler = (code) => {
+      if (code === 'Digit1') this.smeltList();
+      if (code === 'Digit2') this.plan();
+      if (code === 'Digit3') { if (hammerCard) this.makeHammer(); else if (nextPick) this.makePick(nextPick); }
+      if (code === 'Digit4' && hammerCard && nextPick) this.makePick(nextPick);
+    };
+  }
+  /** (wave 21) The next pick to forge: the lowest rung above the best you own, its pattern open. */
+  nextPick() {
+    const st = this.state, top = bestTier(st);
+    return Object.keys(FORGE_PIECES).find((id) => FORGE_PIECES[id].pick && (ITEMS[id]?.tier || 1) > top && patternOpen(st, id)) || null;
+  }
+  /** The pick card: forge it, or a shake and the reason when something's missing. */
+  makePick(id) {
+    if (this.startPart(id)) return;
+    const why = partStatus(this.state, id).why;
+    if (why) this.game.ui.toast(why, { kind: 'warn', icon: iconURL(id) });
+    this.main(true);
   }
   /** The hammer card: forge it (a forge piece), or a shake when the copper or the log is missing. */
   makeHammer() {

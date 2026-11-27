@@ -27,7 +27,7 @@ function frame(A0, d0) {
 const PICK_TIER = {
   pick_rusty: { head: 0x7c706a, cont: 1.0, rust: true, wood: 'old', wrap: 'twine', chip: true, crack: true },
   pick_first: { head: 0xc87a44, cont: 1.12, wood: 'ash', wrap: 0x5a3020, rough: true },
-  pick_copper: { head: 0xd4703a, cont: 1.2, wood: 'wood', wrap: 0x7a4426 },
+  pick_copper: { head: 0xc98a3a, cont: 1.2, wood: 'wood', wrap: 0x7a4426 }, // (bronze since wave 21)
   pick_iron: { head: 0x7e8590, cont: 1.18, wood: 'wood', wrap: 0x5a3422, dentK: 1.4 },
   pick_steel: { head: 0xa8b8c8, cont: 1.32, wood: 'dark', wrap: 0x4a2a1c, collar: 0xcf9a3a, stitch: 0xe0c890 },
   pick_mithril: { head: 0x9ce0e6, cont: 1.3, wood: 'dark', wrap: 0x2a3e66, collar: 0xe8b848, inlay: 0xf4e08a, stitch: 0xc8dcff },

@@ -10,13 +10,12 @@ export const SHOPS = {
     sign: 'pick',
     stock: [
       { id: 'chisel_basic' }, { id: 'brush_basic' }, { id: 'support_beam' }, { id: 'glow_stake' }, { id: 'dynamite' },
-      { id: 'pick_copper' }, { id: 'pick_iron', minZone: 2 }, { id: 'pick_steel', minZone: 3 },
+      // (wave 21) no picks: you forge them at home from the ore they're for (data/forgePieces.js)
       { id: 'drill_steam', minZone: 3 }, { id: 'xray_lamp', minZone: 2 }, { id: 'chisel_fine', minZone: 3 },
-      { id: 'brush_badger', minZone: 3 }, { id: 'pick_mithril', minZone: 4 }, { id: 'xray_prism', minZone: 5 },
-      { id: 'drill_lumite', minZone: 5 }, { id: 'pick_adamant', minZone: 5 },
+      { id: 'brush_badger', minZone: 3 }, { id: 'xray_prism', minZone: 5 },
+      { id: 'drill_lumite', minZone: 5 },
       // explosives: bigger charges once you've been deep enough to need them
       { id: 'dynamite_bundle', minZone: 3 }, { id: 'blasting_charge', minZone: 4 },
-      { id: 'pick_starmetal', minZone: 6 },
       // building part: the right tools for wood and soil (Dig.js toolRule)
       { id: 'axe_copper' }, { id: 'spade_copper' }, { id: 'shears' }, { id: 'axe_iron', minZone: 2 }, { id: 'spade_iron', minZone: 2 },
       { id: 'axe_steel', minZone: 3 }, { id: 'spade_steel', minZone: 3 },

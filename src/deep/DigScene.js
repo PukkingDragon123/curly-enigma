@@ -25,6 +25,8 @@ import { ITEMS, sellPrice, HARD_ROCK_TIER, pickForTier } from '../data/items.js'
 import * as EngineFx from '../core/Engine.js';
 import { ZONES } from '../data/zones.js';
 import { ORES } from '../data/ores.js';
+import { PICK_LADDER } from '../data/way.js';
+import { Wardens } from './Wardens.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { iconURL as flatIcon } from '../gfx/PixelArt.js';
 import { itemVox } from '../ui/itemVox.js';
@@ -116,6 +118,8 @@ export default class DigScene extends Scene {
     this.shadow = new MoleShadow(this.scene, this.world);
     this.digger = new Digger(this.world);
     this.ores = new Ores(this.world);
+    // (wave 21, data/way.js) ore above the pick's tier won't come free
+    this.ores.canTake = (ore) => (ore?.tier || 0) <= (this.state.equipped('pick')?.tier || 1);
     this.player = new FPSPlayer(this.world);
     this.player.assist = true; // (wave 14) duck into low tunnels, hop small ledges, slip round corners, never stay buried
     this.stakes = deep.stakes ||= [];
@@ -207,6 +211,8 @@ export default class DigScene extends Scene {
       if (!load) continue;
       try { const mod = await load(); this[key] = new mod[Name](ctx); } catch (e) { console.warn(Name + ' failed', e); }
     }
+    // (wave 21) the wardens by the lift stops (Wardens.js)
+    try { this.wardens = this.enemies ? new Wardens(this) : null; } catch (e) { console.warn('wardens failed', e); this.wardens = null; }
     // (wave 16) every plant can be plucked, and salt, comb, nests, bushes, pods and roots grow among them
     this.harvest = null;
     // (no hitches when chunks load) every plant model's first variant is built in a worker now,
@@ -431,6 +437,7 @@ export default class DigScene extends Scene {
     if (this.enemies) {
       this.events(this.enemies.update(dt, { player: pl, eye: pl.eye(), forward: pl.forward(), time: this.time, busy, lamp: this.U.lampRange.value, blocking: !!this.blocking, blockT: this.blockT || 0 }));
     }
+    this.wardens?.update(dt);
     this.fx.update(sdt);
     this.ambient(dt);
     this.updateProgress(dt);
@@ -884,6 +891,13 @@ export default class DigScene extends Scene {
     const st = this.state;
     const r = this.ores.hitOre(hit.vx, hit.vy, hit.vz, power * this.bonus('clean'), power);
     if (!r || r.s.taken) { this.strayOre(hit, mat, out); return; }
+    if (r.tough) {
+      // (wave 21) the pick skids off: a clang, sparks, and which pick it wants
+      this.audio.play('clang', { pitch: 1.25 }); this.fx.sparks(px, py, pz, 9, [1, 0.85, 0.5], out, 3.2);
+      this.vm?.impact('pick', 1.25, { feel: 'clang', stop: 0.06 });
+      this.toughOre(r.d);
+      return;
+    }
     const b = r.s.brk, stage = b < 0.34 ? 1 : b < 0.67 ? 2 : 3;
     this.audio.play('ore_damage');
     this.sfx(['hit_metal1', 'hit_metal2'], { vol: 0.2 + 0.05 * stage, pitch: 1.15 + 0.15 * stage + Math.random() * 0.1, reverb: 0.25 });
@@ -903,6 +917,13 @@ export default class DigScene extends Scene {
     if (r.s.q > 10.5) this.game.ui.floatText?.(`-${lost}%`, new THREE.Vector3(px, py, pz), { color: '#ff8a6a', size: 0.8, kind: 'ore' });
     if (!this.flags.oreHit) { this.flags.oreHit = true; st.learn('ore_damage'); }
     if (r.broke) this.oreBreak(r.d, px, py, pz, out, mat);
+  }
+
+  /** (wave 21) Ore too hard for the pick in paw: say which pick frees it (once in a while). */
+  toughOre(d) {
+    const t = ORES[d.oreId]?.tier || 1, want = PICK_LADDER.find((id) => (ITEMS[id].tier || 1) >= t);
+    if (!this.flags.toughSeen) { this.flags.toughSeen = true; this.state.learn?.('ore_tier'); }
+    this.say('tough' + t, want ? `<b>Too tough</b> · ${ITEMS[want].name}` : '<b>Too tough</b>', 'warn', 6, want ? iconURL(want) : undefined);
   }
 
   /** Cracks.js key for a deposit (plates use positive keys; FirstDig uses -71..-73). */
@@ -1165,6 +1186,7 @@ export default class DigScene extends Scene {
       const c = this.centreOf(broken);
       const freed = this.ores.checkFree(c.x, c.y, c.z, tool, c.r + 0.6);
       if (freed.seenNew) this.revealed(freed.seenNew, this.target ? [this.target.x, this.target.y, this.target.z] : null);
+      if (freed.tough) this.toughOre(freed.tough);
       for (const f of freed) this.popOre(f, out);
       return;
     }
@@ -1175,6 +1197,7 @@ export default class DigScene extends Scene {
     const { x, y, z, r } = this.centreOf(broken);
     const freed = this.ores.checkFree(x, y, z, tool, Math.min(3, r + 0.6));
     if (freed.seenNew) this.revealed(freed.seenNew, [x, y, z]);
+    if (freed.tough) this.toughOre(freed.tough);
     for (const f of freed) this.popOre(f, out);
   }
 
@@ -1798,6 +1821,7 @@ export default class DigScene extends Scene {
     }
     for (const s of this.stakes) markers.push({ kind: 'stake', x: s.x, y: s.y, z: s.z });
     if (this.enemies?.radarMarkers) markers.push(...this.enemies.radarMarkers(pl.pos));
+    if (this.wardens) markers.push(...this.wardens.radarMarkers(pl.pos));
     if (this.ruins?.radarMarkers) markers.push(...this.ruins.radarMarkers(pl.pos, !!o.survey));
     if (this.traders?.radarMarkers) markers.push(...this.traders.radarMarkers(pl.pos, !!o.survey));
     return { x: pl.pos.x, y: pl.pos.y, z: pl.pos.z, heading: pl.yaw, range: o.survey ? half * cell : 22, explored: { size, cell, data, ox: px - half, oz: pz - half }, markers };

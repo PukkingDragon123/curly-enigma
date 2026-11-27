@@ -205,6 +205,7 @@ const ACC_ORE = (id) => { const o = ITEMS[id]?.icon?.ore; return Array.isArray(o
 const QUEST_MOTIF = {
   lessons: 'star', million: 'coins', os_town: 'town', os_neighbours: 'town', os_gem: 'gem', os_rocco: 'blade', os_lifts: 'lift',
   os_pristine: 'ore', os_blade: 'anvil', os_cook: 'pot', os_dynamite: 'ore', os_ruin: 'ruin', os_tenth: 'coins',
+  way_rootsoil: 'ore', way_clayworks: 'ore', way_grotto: 'gem', way_magma: 'ore', way_bronze: 'anvil', way_iron: 'anvil', way_steel: 'anvil', gate_clay: 'beast', gate_grotto: 'beast',
 };
 function itemMotif(id) {
   const it = ITEMS[id];

@@ -14,6 +14,7 @@ import { el, clamp, lerp } from '../core/util.js';
 import { ITEMS } from '../data/items.js';
 import { METALS, FORGE_MAX_TEMP, gradeFor } from '../data/weapons.js';
 import { pieceOf } from '../data/forgePieces.js';
+import { patternOpen } from '../data/way.js';
 import { iconURL } from '../gfx/PixelArt.js';
 import { qColor } from '../ui/UI.js';
 import { fireIdleFor, widen, quenchResult, AMBIENT } from './bladeSim.js';
@@ -43,7 +44,8 @@ export function partStatus(st, id) {
   const done = st.owns(p.gives);
   let why = null;
   if (!done) {
-    if (hot) why = `Works at ${m.work[0]}°C+. Your hearth tops out at ${maxT}°C: it needs an upgrade from Inkwell Plans.`;
+    if (p.pick && !patternOpen(st, id)) why = 'Not yet. Fill the card on Old Star\'s board.';
+    else if (hot) why = `Works at ${m.work[0]}°C+. Your hearth tops out at ${maxT}°C: it needs an upgrade from Inkwell Plans.`;
     else {
       const miss = ins.find((x) => x.have < x.n);
       if (miss) why = `Need ${miss.n} ${ITEMS[miss.id]?.name || miss.id} (you have ${miss.have}).`;

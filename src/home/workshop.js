@@ -64,7 +64,7 @@ export class WorkshopLife {
     this.addIt({ box: [S.chest.x - 0.33, Y, S.chest.z - 0.3, S.chest.x + 0.33, Y + 0.42, S.chest.z + 0.3], label: () => (this.chest?.hasLoot ? 'Open Old Star\'s chest' : 'Open his old trunk'), action: () => this.chest?.use() });
     // the Miners' Board, the lift, the coal cart
     const m = c.minersAt;
-    this.addIt({ box: m.slate ? [m.x - 0.28, m.y, m.z - 0.28, m.x + 0.28, m.y + 0.62, m.z + 0.28] : [m.x - 0.05, m.y, m.z - 0.6, m.x + 0.12, m.y + 0.8, m.z + 0.6], label: 'Miners\' Board', action: () => this.useMinersBoard() });
+    this.addIt({ box: m.slate ? [m.x - 0.28, m.y, m.z - 0.28, m.x + 0.28, m.y + 0.62, m.z + 0.28] : [m.x - 0.05, m.y, m.z - 0.6, m.x + 0.12, m.y + 0.8, m.z + 0.6], label: () => this.wayBoard?.label() || 'Miners\' Board', action: () => this.useMinersBoard() });
     const liftLabel = () => (this.inCage() ? 'Pull the lever' : this.lessonRide?.() ? 'Ride down to the dig' : 'Ride the lift');
     const SH = this.shaftBox;
     this.addIt({ box: SH, label: liftLabel, action: () => this.useLift() });
@@ -273,6 +273,8 @@ export class WorkshopLife {
   useMinersBoard(tab) {
     const ui = this.game.ui;
     this.rig.vm?.impact('none', 0.2);
+    // (wave 21) the slate takes what your bag has for its card first (src/home/wayBoard.js)
+    if (!tab && this.wayBoard?.use()) return null;
     if (typeof ui.openUpgrades === 'function') { this.game.audio.play('page'); return ui.openUpgrades(tab); }
     this.game.audio.play('click');
     this.think('Notices: "Tools wanted." "Bigger bag." Someday.', 4);

@@ -62,6 +62,7 @@ export function defaultData() {
     skills: defaultSkills(), // the skill tree: XP, levels, points, stamped nodes (core/skills.js)
     tame: { raptors: [] }, // raptors you've tamed (src/deep/tame/index.js: raptors, active, stray)
     egg: null, // the raptor egg found on the journey: { day, at, crack, spot, hatched, id } (src/home/eggNest.js)
+    way: { cards: {}, done: {}, wardens: {} }, // (wave 21) Old Star's board and the wardens (data/way.js)
   };
 }
 

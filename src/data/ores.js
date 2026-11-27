@@ -45,7 +45,8 @@ export const isSolid = (id) => BLOCKS[id] && BLOCKS[id].phys !== 'none';
 export const isGranular = (id) => BLOCKS[id] && BLOCKS[id].phys === 'granular';
 
 /**
- * Ores embedded in blocks. item: what drops. hardMul: matrix hp multiplier.
+ * Ores embedded in blocks. item: what drops. hardMul: matrix hp multiplier. tier: the pick tier that
+ * frees it (wave 21, data/way.js: a softer pick clangs off and it stays fused in the rock).
  * frag: how much quality a direct pick hit chips (per hit, scaled by tool power);
  * vib: sensitivity to nearby strikes; tags: special behaviors.
  */
@@ -62,22 +63,22 @@ ore('tin_ore', { frag: 10 });
 ore('salt_crystal', { hardMul: 1.0, frag: 14, tags: ['soluble'] });
 ore('fossil', { hardMul: 1.2, frag: 30, vib: 2.2 });
 ore('quartz', { frag: 14 });
-ore('iron_ore', { hardMul: 1.5, frag: 9 });
+ore('iron_ore', { hardMul: 1.5, frag: 9, tier: 2 });
 ore('amber', { hardMul: 1.1, frag: 16 });
-ore('lumite', { frag: 12, tags: ['glow'], glow: 0x9dff9a });
-ore('silver_ore', { hardMul: 1.5, frag: 10 });
-ore('echo_crystal', { frag: 18, vib: 5, tags: ['resonant'] });
-ore('gravium', { frag: 12, tags: ['float'] });
-ore('bioxide', { frag: 14, tags: ['electric', 'explosive', 'glow'], glow: 0x7fe7ff });
-ore('amethyst', { frag: 14 });
-ore('gold_ore', { hardMul: 1.6, frag: 11 });
-ore('ruby', { hardMul: 1.8, frag: 13 });
-ore('magmaite', { frag: 12, tags: ['hot', 'glow'], glow: 0xff7a2a });
-ore('emerald', { hardMul: 1.8, frag: 13 });
-ore('frostite', { frag: 12, tags: ['cold', 'glow'], glow: 0xaef4ff });
-ore('sapphire', { hardMul: 1.9, frag: 13 });
+ore('lumite', { frag: 12, tags: ['glow'], glow: 0x9dff9a, tier: 2 });
+ore('silver_ore', { hardMul: 1.5, frag: 10, tier: 3 });
+ore('echo_crystal', { frag: 18, vib: 5, tags: ['resonant'], tier: 3 });
+ore('gravium', { frag: 12, tags: ['float'], tier: 3 });
+ore('bioxide', { frag: 14, tags: ['electric', 'explosive', 'glow'], glow: 0x7fe7ff, tier: 3 });
+ore('amethyst', { frag: 14, tier: 3 });
+ore('gold_ore', { hardMul: 1.6, frag: 11, tier: 4 });
+ore('ruby', { hardMul: 1.8, frag: 13, tier: 4 });
+ore('magmaite', { frag: 12, tags: ['hot', 'glow'], glow: 0xff7a2a, tier: 4 });
+ore('emerald', { hardMul: 1.8, frag: 13, tier: 4 });
+ore('frostite', { frag: 12, tags: ['cold', 'glow'], glow: 0xaef4ff, tier: 4 });
+ore('sapphire', { hardMul: 1.9, frag: 13, tier: 4 });
 ore('mithril_ore', { hardMul: 1.8, frag: 10, tier: 4 });
-ore('moonsilver_ore', { hardMul: 1.4, frag: 12, tags: ['tarnish', 'glow'], glow: 0xd8dcff });
+ore('moonsilver_ore', { hardMul: 1.4, frag: 12, tags: ['tarnish', 'glow'], glow: 0xd8dcff, tier: 4 });
 ore('diamond', { hardMul: 2.6, frag: 0, vib: 0, tier: 4 });
 ore('voidstone', { hardMul: 2.0, frag: 10, tags: ['void'], tier: 5 });
 ore('adamant_ore', { hardMul: 2.2, frag: 8, tier: 6 });

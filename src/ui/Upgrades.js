@@ -10,6 +10,7 @@ import { iconURL } from '../gfx/PixelArt.js';
 import { ITEMS } from '../data/items.js';
 import { ZONES } from '../data/zones.js';
 import { SHOPS } from '../data/shops.js';
+import { FORGE_PIECES } from '../data/forgePieces.js';
 import { UPGRADE_TABS, MILESTONES, milestoneValue, milestoneText } from '../data/upgrades.js';
 import { tokenURL } from './skillArt.js';
 import { explosiveIconURL } from '../deep/explosives/icon.js';
@@ -134,7 +135,7 @@ export function openUpgrades(game, startTab) {
         const it = ITEMS[id];
         const owned = st.owns(id), using = it.slot && st.data.equip[it.slot] === id;
         const inShop = stock.some((s) => s.id === id), z = minZone(id);
-        const status = it.cat === 'consumable' ? `have ${st.count(id)}` : using ? 'In paw' : owned ? 'Owned' : !inShop ? '' : z > zoneMax ? `${ZONE_NAMES[z] || 'Deeper'}` : formatGoldFull(it.price || 0);
+        const status = it.cat === 'consumable' ? `have ${st.count(id)}` : using ? 'In paw' : owned ? 'Owned' : !inShop ? (FORGE_PIECES[id]?.pick ? 'Forge it' : '') : z > zoneMax ? `${ZONE_NAMES[z] || 'Deeper'}` : formatGoldFull(it.price || 0);
         const t = el('div', { class: 'ug-rung' + (using ? ' using' : owned ? ' owned' : '') + (!owned && inShop && z > zoneMax ? ' far' : ''), title: `${it.name}: ${it.desc || ''}` }, [
           el('img', { class: 'pix', src: iconFor(id), alt: '' }),
           el('b', {}, it.name.replace(/ (Pickaxe|Drill|Lamp)$/, '')),

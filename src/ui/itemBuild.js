@@ -401,6 +401,23 @@ function pouch(c, spill, glow = 0) {
   if (spill) heapInto(g, 22, 0, 20, 5, 3, spill, glow);
   return { grid: g, orient: 'stand' };
 }
+/**
+ * (wave 21) A warden's heart: a fist of the warden's own rock, lopsided, split down one face where
+ * the warm core shows (clay: an ember; the grotto's: a cold crystal), a few rough knuckles of stone.
+ */
+function wardenHeart(rock, core) {
+  const g = G(26, 26, 22);
+  ell(g, 13, 12, 11, 10, 10.5, 8.5, (x, y, z, dx, dy) => (dy > 0.6 ? T(rock, 0.28) : dy < -0.45 ? T(rock, -0.3) : patch(x, y, z, 5, 3) > 0.7 ? T(rock, -0.12) : rock));
+  ell(g, 7, 17, 9, 4, 3.5, 4, (x, y, z, dx, dy) => (dy > 0.4 ? T(rock, 0.2) : T(rock, -0.08)));
+  ell(g, 19, 6, 13, 4.5, 3.5, 4, (x, y, z, dx, dy) => (dy < -0.3 ? T(rock, -0.3) : rock));
+  // the split: a jagged seam down the front, the core inside it
+  for (let y = 4; y < 22; y++) {
+    const x = 12 + Math.round(Math.sin(y * 0.9) * 1.5) + (y > 14 ? 1 : 0), w = y > 8 && y < 18 ? 2 : 1;
+    for (let dx = -w; dx <= w; dx++) for (let z = 14; z < 21; z++) if (g.has(x + dx, y, z)) g.set(x + dx, y, z, Math.abs(dx) < w ? T(core, 0.25) : core, 1);
+  }
+  return { grid: g, orient: 'stand' };
+}
+
 function heapInto(g, cx, y0, cz, r, h, c, glow = 0) {
   for (let z = -r; z <= r; z++) for (let x = -r; x <= r; x++) { const d = Math.hypot(x, z) / r; if (d > 1) continue; const top = Math.round(h * (1 - d)); for (let y = 0; y <= top; y++) g.set(cx + x, y0 + y, cz + z, (x + z + y) % 3 ? c : T(c, 0.25), glow); }
 }
@@ -697,6 +714,7 @@ Object.assign(B, {
   ember_scale: () => scale(0x8a2a1a, 0xffa040, 2), drake_scale: () => scale(0x4a6a3a, 0x9ac868),
   wisp_essence: () => vial(0xc8d8e0, 0xbfe6ff),
   kobold_trinket: trinket, beast_hide: hide,
+  clay_heart: () => wardenHeart(0x9a5a30, 0xf28e2e), grotto_heart: () => wardenHeart(0x5a6a84, 0xa6dcd8),
   troll_tusk: () => curved(0xe8dcc0, 0xf8f0e0, 34, 1.0, 4.2, { root: 0xb89a7a }),
   spider_fang: () => curved(0x2a2228, 0x8a3a5a, 24, 1.3, 3),
   raptor_claw: () => curved(0x3a3230, 0xe8e0d0, 26, 1.5, 3.4),

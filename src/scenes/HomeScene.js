@@ -54,6 +54,7 @@ import { campCloths } from '../home/campCloth.js';
 import { CampAir } from '../home/campAir.js';
 import { buildPassage, passageBoxes, inPassage, passageU, SWAP, PASSAGE_LOOK, toTown } from '../home/passage.js';
 import { inDoorway } from '../home/caveShell.js';
+import { WayBoard } from '../home/wayBoard.js'; // (wave 21) Old Star's slate: the way down
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -214,6 +215,7 @@ export default class HomeScene extends Scene {
     this.chest = new LootChest(this, this.cave.dyn.chest);
     this.own(() => this.chest.dispose());
     this.shaftBox = [SHAFT.x0 - 0.14, HALL.y, SHAFT.z0, SHAFT.x1, HALL.y + 1.4, SHAFT.z1];
+    try { this.wayBoard = new WayBoard(this); } catch (e) { console.warn('way board failed', e); this.wayBoard = null; }
     this.addCaveInteractions();
     this.addHouseInteractions();
     this.addIt({ box: [SHAFT.x0 - 0.24, HALL.y + 0.5, SHAFT.z0 - 0.22, SHAFT.x0, HALL.y + 1.05, SHAFT.z0], label: () => (this.lessonStage() === 'mine' ? 'Ride down to the dig' : 'Ride the lift'), action: () => this.useLift() });
@@ -813,6 +815,7 @@ export default class HomeScene extends Scene {
     super.update(dt);
     const g = this.game, inp = g.input;
     for (const t of [...this.tickers]) t(dt, this.time);
+    this.wayBoard?.update(dt);
     if (this.scripted) {
       inp.takeLook(); // the mouse doesn't steer a cutscene (and mustn't pile up for afterwards)
       if (this.seat && this.seat.ready && (inp.pressed('KeyE') || inp.axisX() || inp.axisY() || inp.pressed('Space'))) { inp.consume('KeyE'); this.standUp(); }
@@ -975,6 +978,9 @@ export default class HomeScene extends Scene {
       openNotes(i) { const k = i ?? s.noteUnderCrosshair(); s.readNotes(k); return s.notes[k]?.id ?? null; },
       /** E on the Miners' Board (resolves with its panel handle). */
       minersBoard(tab) { return s.useMinersBoard(tab); },
+      /** (wave 21) Old Star's slate: hand in what fits (true) and redraw; .board for its raster. */
+      handIn() { return s.wayBoard?.use() ?? false; },
+      wayBoard() { return s.wayBoard; },
       /** Open the loot chest; resolves with what it handed over. */
       openChest() { return s.chest.use(); },
       /** The cave clock (hours, 7 = morning, 21.5+ = Old Star sleeps). */

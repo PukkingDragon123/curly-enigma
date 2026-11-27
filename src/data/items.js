@@ -133,6 +133,9 @@ export const ITEMS = {
   ember_scale: { name: 'Ember Scale', cat: 'drop', value: 220, icon: { k: 'drop', t: 'scale' }, desc: 'Still warm. Off a lava newt.' },
   wisp_essence: { name: 'Wisp Essence', cat: 'drop', value: 900, icon: { k: 'drop', t: 'wisp' }, desc: 'Eats light. Keep the lid on.' },
   // creature loot (src/deep/enemies/loot.js; icons: enemies/lootArt.js). tags: what other parts may use them for
+  // the wardens' hearts (data/way.js): each goes into the next pick
+  clay_heart: { name: 'Clay Warden\'s Heart', cat: 'drop', value: 0, icon: { k: 'loot', t: 'gem', c: 0xd4561e }, lootCol: 0xf28e2e, tags: ['forge'], desc: 'Warm, and it ticks. Old Star says it goes in an iron pick.' },
+  grotto_heart: { name: 'Grotto Warden\'s Heart', cat: 'drop', value: 0, icon: { k: 'loot', t: 'gem', c: 0x5ea6b8 }, lootCol: 0xa6dcd8, tags: ['forge'], desc: 'Hums when you hold it. It goes in a steel pick.' },
   kobold_trinket: { name: 'Kobold Trinket', cat: 'drop', value: 90, icon: { k: 'loot', t: 'trinket' }, tags: ['trinket'], desc: 'Bone luck charm. Traders love these.' },
   beast_hide: { name: 'Thick Hide', cat: 'drop', value: 70, icon: { k: 'loot', t: 'hide', c: 0x8a7a52 }, tags: ['hide', 'forge'], lootCol: 0xb89a6a, desc: 'Warty. Makes a good grip.' },
   troll_tusk: { name: 'Troll Tusk', cat: 'drop', value: 380, icon: { k: 'loot', t: 'tusk' }, tags: ['trophy', 'forge'], lootCol: 0xf0e4c8, desc: 'Heavy. Smiths and carvers both want it.' },
@@ -162,14 +165,14 @@ export const ITEMS = {
   pick_first: { name: 'Your First Pickaxe', cat: 'tool', slot: 'pick', tier: 1, power: 1.1, rate: 0.34, value: 20, icon: { k: 'tool', t: 'pick', c: 0xc87840 }, desc: 'You made this. It shows.' },
   pick_rusty: { name: 'Rusty Pickaxe', cat: 'tool', slot: 'pick', tier: 1, power: 1.0, rate: 0.36, value: 5, icon: { k: 'tool', t: 'pick', c: 0x8a6a52 },
     desc: 'Your old pick. Dirt and soft stone.' },
-  pick_copper: { name: 'Copper Pickaxe', cat: 'tool', slot: 'pick', tier: 2, power: 1.5, rate: 0.33, price: 260, value: 80, icon: { k: 'tool', t: 'pick', c: 0xd9773f },
-    desc: 'Breaks granite and crystal.' },
+  pick_copper: { name: 'Bronze Pickaxe', cat: 'tool', slot: 'pick', tier: 2, power: 1.5, rate: 0.33, price: 260, value: 80, icon: { k: 'tool', t: 'pick', c: 0xc98a3a },
+    desc: 'Bites iron and lumite.' },
   pick_iron: { name: 'Iron Pickaxe', cat: 'tool', slot: 'pick', tier: 3, power: 2.2, rate: 0.31, price: 1800, value: 500, icon: { k: 'tool', t: 'pick', c: 0x9aa0a8 },
-    desc: 'Cracks basalt.' },
+    desc: 'Granite, crystal rock, silver.' },
   pick_steel: { name: 'Steel Pickaxe', cat: 'tool', slot: 'pick', tier: 4, power: 3.2, rate: 0.29, price: 9500, value: 2500, icon: { k: 'tool', t: 'pick', c: 0xc6d2de },
-    desc: 'Cuts obsidian and permafrost.' },
+    desc: 'Basalt, gold, rubies, the cold rock.' },
   pick_mithril: { name: 'Mithril Pickaxe', cat: 'tool', slot: 'pick', tier: 5, power: 4.6, rate: 0.26, price: 52000, value: 15000, icon: { k: 'tool', t: 'pick', c: 0x9fe0e6 },
-    desc: 'Light. Digs core rock.' },
+    desc: 'Light. Digs the Core\'s rock.' },
   pick_adamant: { name: 'Adamant Pickaxe', cat: 'tool', slot: 'pick', tier: 6, power: 6.5, rate: 0.24, price: 165000, value: 40000, icon: { k: 'tool', t: 'pick', c: 0x4fd9a0 },
     desc: 'Bites adamant. Bites anything.' },
   pick_starmetal: { name: 'Starmetal Pickaxe', cat: 'tool', slot: 'pick', tier: 7, power: 9.2, rate: 0.21, price: 420000, needs: { starmetal_ingot: 2 }, value: 110000, icon: { k: 'tool', t: 'pick', c: 0xffd27a },
@@ -274,10 +277,11 @@ export function sellPrice(id, q = 100, pristine = false) {
 }
 
 /**
- * The pick tier hard rock (MAT hp > 3.5) needs, by zone: obsidian in the Magma Deep wants iron,
- * the Frost Vault steel, the Core mithril. pickForTier(t) → the cheapest pick of that tier.
+ * The pick tier hard rock (MAT hp > 3.5) needs, by zone (wave 21, data/way.js): the Crystal Grotto's
+ * granite wants iron, the Magma Deep and the Frost Vault steel, the Core mithril.
+ * pickForTier(t) → the cheapest pick of that tier.
  */
-export const HARD_ROCK_TIER = [0, 0, 0, 0, 3, 4, 5];
+export const HARD_ROCK_TIER = [0, 0, 0, 3, 4, 4, 5];
 export function pickForTier(t) {
   return Object.values(ITEMS).filter((it) => it.slot === 'pick' && (it.tier || 1) >= t).sort((a, b) => (a.tier || 1) - (b.tier || 1))[0] || null;
 }
