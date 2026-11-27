@@ -1,0 +1,50 @@
+/* ---------- (wave 21) the morning letter and the gift tray (ui/letters.js) ---------- */
+.modal-back > .panel.lt-panel {
+  border: 0; background: none; box-shadow: none; filter: none; padding: 0; overflow: visible; color: var(--ink);
+  width: min(calc(100vw - 16px), calc(var(--px) * 132));
+}
+.modal-back > .panel.lt-panel::before { display: none; }
+.lt { position: relative; display: grid; place-items: center; cursor: pointer; padding-top: calc(var(--px) * 10); }
+.lt-env { position: absolute; top: 0; left: 50%; width: calc(var(--px) * 48); height: auto; margin-left: calc(var(--px) * -24); z-index: 2;
+  animation: ltEnv .55s var(--pop) both; }
+@keyframes ltEnv {
+  0% { transform: translateY(calc(var(--px) * 40)) rotate(-8deg) scale(1.4); opacity: 1; }
+  45% { transform: translateY(calc(var(--px) * -6)) rotate(4deg) scale(1.1); opacity: 1; }
+  100% { transform: translateY(calc(var(--px) * -30)) rotate(14deg) scale(.6); opacity: 0; }
+}
+.lt-sheet {
+  position: relative; width: 100%; box-sizing: border-box; padding: calc(var(--px) * 8) calc(var(--px) * 9) calc(var(--px) * 6);
+  border-style: solid; border-width: calc(var(--px) * 8); border-image: var(--a-parch) 8 / calc(var(--px) * 8) repeat;
+  background: var(--a-paperL) 0 0 / calc(var(--px) * 96) repeat padding-box, #fff0d2 padding-box;
+  transform: rotate(-.6deg); transform-origin: 50% 0; animation: ltOpen .5s .18s var(--pop) both;
+  filter: drop-shadow(calc(var(--px) * 2) calc(var(--px) * 3) 0 rgba(30, 20, 36, .4));
+}
+@keyframes ltOpen { 0% { transform: scaleY(.08) rotate(-.6deg); opacity: 0; } 40% { opacity: 1; } 100% { transform: scaleY(1) rotate(-.6deg); } }
+.lt-seal { position: absolute; top: calc(var(--px) * -14); right: calc(var(--px) * 6); width: calc(var(--px) * 26); height: auto; animation: ltSeal .4s .5s var(--pop) both; }
+@keyframes ltSeal { 0% { transform: scale(0) rotate(-30deg); } 100% { transform: scale(1) rotate(0); } }
+.lt-body p { margin: 0 0 calc(var(--px) * 3); font-family: var(--font); font-size: 16px; line-height: 1.45; color: #3a2418; animation: ltInk .5s var(--d, 300ms) ease-out both; }
+@keyframes ltInk { 0% { opacity: 0; transform: translateX(calc(var(--px) * -3)); clip-path: inset(0 100% 0 0); } 100% { opacity: 1; transform: none; clip-path: inset(0 0 0 0); } }
+.lt-from { text-align: right; font-family: var(--font-display); font-size: 24px; color: #6a2a20; margin-top: calc(var(--px) * 2); transform: rotate(-2deg); }
+.lt-gift { display: flex; gap: calc(var(--px) * 4); justify-content: center; margin: calc(var(--px) * 3) 0; }
+.lt-gift span { position: relative; animation: ltSeal .45s .9s var(--pop) both; }
+.lt-gift img { width: var(--icon); height: var(--icon); }
+.lt-gift b { position: absolute; right: calc(var(--px) * -3); bottom: 0; font-size: 16px; color: var(--ink); }
+.lt-hearts { display: flex; gap: var(--px); justify-content: center; margin: 0 auto calc(var(--px) * 5); }
+.lt-hearts img { width: calc(var(--px) * 9); height: calc(var(--px) * 8); }
+.lt-hearts img.on { animation: ltBeat .5s var(--pop) both; }
+@keyframes ltBeat { 0% { transform: scale(.4); } 100% { transform: scale(1); } }
+.lt-box { padding-top: calc(var(--px) * 10); }
+.lt-tags { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--px) * 30), 1fr)); gap: calc(var(--px) * 4) calc(var(--px) * 2); justify-items: center; }
+.lt-tag { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--px); padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: inherit; outline: none;
+  animation: tkIn .35s var(--d, 0ms) var(--pop) both; }
+.lt-paper { display: grid; place-items: center; width: calc(var(--px) * 22); height: calc(var(--px) * 26); background: 0 0 / 100% 100% no-repeat; transform: rotate(var(--tilt, 0deg)); transition: transform .12s var(--pop); }
+.lt-paper img { width: var(--icon-s, 32px); height: var(--icon-s, 32px); margin-top: calc(var(--px) * 4); }
+.lt-tag:hover .lt-paper, .lt-tag:focus-visible .lt-paper { transform: translateY(calc(var(--px) * -3)) rotate(0); filter: drop-shadow(var(--px) 0 0 #f8e49a) drop-shadow(calc(var(--px) * -1) 0 0 #f8e49a) drop-shadow(0 var(--px) 0 #f8e49a); }
+.lt-tag.given .lt-paper { animation: ltGive .4s ease-in forwards; }
+@keyframes ltGive { 40% { transform: translateY(calc(var(--px) * -8)) rotate(-6deg) scale(1.1); } 100% { transform: translateY(calc(var(--px) * -40)) scale(.3); opacity: 0; } }
+.lt-name { font-size: 16px; line-height: 1.05; color: #f2dcae; text-align: center; text-shadow: 0 var(--px) 0 #1e1424; max-width: calc(var(--px) * 32); }
+.lt-empty { color: var(--chalk); text-align: center; margin: calc(var(--px) * 4) 0; }
+/* the hearts over a friend's head (a bubble emote) */
+.lt-up { display: inline-flex; gap: var(--px); }
+.lt-up img { width: calc(var(--px) * 9); height: calc(var(--px) * 8); }
+.lt-up img.new { animation: ltBeat .6s .2s var(--pop) both; }

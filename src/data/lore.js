@@ -29,6 +29,7 @@ export const SHELVES = [
 ];
 
 const L = (id, shelf, src, title, text, extra = {}) => ({ id, shelf, src, title, text, ...extra });
+import { STORY_LORE } from './story.js';
 
 export const LORE = [
   // ============================================================ the Old Ones: carvings
@@ -117,6 +118,9 @@ export const LORE = [
   L('u_chest', 'surface', 'tale', 'You\'re Not the First', '"A box of gold in a clearing, and the ground gives way? You\'re not the first, youngster.\nEvery few years somebody falls through with a box of gold. The box never comes down with them. Funny, that."', { by: 'hollis' }),
   L('u_sun', 'surface', 'quest', 'What the Sun Is', 'Mr. Fennimore says the sun is a lamp that never needs oil, so big that it lights the whole sky at once.\nThe town doesn\'t believe him. Lark wrote a song about it anyway. It\'s the most popular song in Deep Town.'),
 ];
+
+// (wave 21) Old Star's chapters along the slate (src/data/story.js BEATS)
+LORE.push(...STORY_LORE.map(([id, title, text]) => L(id, 'oldstar', 'quest', title, text)));
 
 export const LORE_BY_ID = Object.fromEntries(LORE.map((e) => [e.id, e]));
 /** Hobb's journal pages in order. */

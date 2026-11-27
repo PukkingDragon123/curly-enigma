@@ -267,13 +267,16 @@ let FIND_BONUS = 1;
 export function setFindBonus(k) { FIND_BONUS = k > 0 ? k : 1; }
 
 /** Sell price for an item at a quality (0-100) with pristine bonus. */
+/** (wave 21) Today's price call (src/core/daily.js sets fn: Vex pays more for one ore a day). */
+export const SELL_MOD = { fn: null };
 export function sellPrice(id, q = 100, pristine = false) {
   const it = ITEMS[id];
   if (!it) return 0;
   const base = it.value || 0;
   const qq = it.q ? 0.25 + 0.75 * Math.max(0, Math.min(100, q)) / 100 : 1;
   const find = it.cat === 'mineral' || it.cat === 'gem' ? FIND_BONUS : 1;
-  return Math.max(1, Math.round(base * qq * (pristine ? 1.25 : 1) * find));
+  const day = SELL_MOD.fn ? SELL_MOD.fn(id) : 1;
+  return Math.max(1, Math.round(base * qq * (pristine ? 1.25 : 1) * find * day));
 }
 
 /**

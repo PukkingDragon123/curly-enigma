@@ -170,6 +170,7 @@ export class WorkshopLife {
     if (this.lessonTalk?.()) return 'lesson';
     // he had something for you: he hands it over (its poster drops onto your HUD) and says why
     const given = this.game.quests?.justGiven?.('oldstar');
+    if (this.storyBeat?.(given?.intro)) return 'story'; // (wave 21) the next chapter of his slate first (src/home/post.js)
     if (given?.intro) { star.say(given.intro, { mood: 'calm', convo: true }); return 'quest'; }
     const line = this.nextTip();
     star.say(line.text, { mood: line.mood, convo: true }); // a cutscene: he turns to you, the words float by him

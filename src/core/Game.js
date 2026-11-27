@@ -5,6 +5,7 @@ import { registerSounds } from './sounds.js';
 import { State, GOAL_GOLD } from './State.js';
 import { UI } from '../ui/UI.js';
 import { Quests } from './quests.js';
+import { Daily } from './daily.js';
 import { ITEMS } from '../data/items.js';
 import { BUFFS } from '../data/recipes.js';
 import { foodBuffs } from '../cooking/buffs.js';
@@ -63,6 +64,7 @@ export class Game {
     }
     this.ui = new UI(this);
     this.quests = new Quests(this); // quest chains, listening to state 'act' events (src/core/quests.js)
+    this.daily = new Daily(this); // (wave 21) story stage, friendship, the post, the day's mood (src/core/daily.js)
     this.scene = null;
     this.sceneName = null;
     this.transitioning = false;

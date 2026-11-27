@@ -21,6 +21,9 @@
 //   reset()                   forget every tamed raptor and the stray (tests)
 
 import { fluidAt } from '../enemies/physics.js';
+import { ITEMS } from '../../data/items.js';
+
+const PLANT_NAMES = new Set(Object.values(ITEMS).filter((it) => it.cat === 'plant').map((it) => it.name));
 
 const game = () => (typeof window !== 'undefined' ? window.__game : null);
 const T = () => game()?.scene?.enemies?.tame || null;
@@ -145,7 +148,15 @@ export function makeTameDebug() {
       const s = game()?.scene;
       const e = typeof which === 'object' ? which : which === 'pal' ? T()?.pal : T()?.stray;
       if (!D.look(which)) return false;
-      const its = D.clearView(e);
+      let its = D.clearView(e);
+      // a forage plant still in the way (a blindfern round its feet): pick it, as a player would, then look again
+      for (let k = 0; k < 2 && !its; k++) {
+        D.look(which); s.updateTarget?.();
+        const lb = (document.querySelector('.crosshair-label, .xh-label')?.textContent || '').replace(/^E\s*/, '');
+        if (!PLANT_NAMES.has(lb)) break;
+        s.interact(); D.step(20);
+        its = D.clearView(e);
+      }
       if (!its) D.look(which);
       s.updateTarget?.();
       const label = document.querySelector('.crosshair-label, .xh-label')?.textContent || null;

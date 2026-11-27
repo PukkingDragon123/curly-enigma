@@ -42,6 +42,7 @@ import { besideItem } from '../home/layoutfix.js';
 import { HomeMoves } from '../home/moves.js';
 import { HomeLiving } from '../home/living.js';
 import { WorkshopLife } from '../home/workshop.js';
+import { postPart } from '../home/post.js';
 import { HouseLife } from '../home/houseLife.js';
 import { RoomCull } from '../home/rooms.js';
 import { HomeLessons } from '../home/lessons.js';
@@ -234,6 +235,7 @@ export default class HomeScene extends Scene {
       this.moveStarBox();
     }
 
+    this.placePost(); // (wave 21) a letter by the bedroll (src/home/post.js)
     mark('starPlace');
     // ---- the mole
     this.spawnByFrom(from, params);
@@ -1063,6 +1065,7 @@ export default class HomeScene extends Scene {
 
 // the lift and the passage (src/home/moves.js); living in your alcoves (living.js); the workshop
 // (workshop.js); the lessons (lessons.js); waking up (wake.js); digging out alcoves (nookDig.js)
+Object.assign(HomeScene.prototype, postPart); // (wave 21) the morning post, Old Star's chapters (src/home/post.js)
 for (const M of [HomeMoves, HomeLiving, WorkshopLife, HouseLife, HomeLessons, HomeWake, NookDig]) {
   for (const k of Object.getOwnPropertyNames(M.prototype)) if (k !== 'constructor') Object.defineProperty(HomeScene.prototype, k, Object.getOwnPropertyDescriptor(M.prototype, k));
 }

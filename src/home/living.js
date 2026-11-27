@@ -262,6 +262,8 @@ export class HomeLiving {
     await this.getUp(rec);
     this.endScript();
     this.unstick();
+    this.placePost?.(); // (wave 21) the post came in the night; Old Star's nose on the day
+    this.morningWord?.();
   }
 
   refreshDayVisuals() {

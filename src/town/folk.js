@@ -13,6 +13,7 @@ import { makeRng, rand, pick, chance, clamp } from '../core/util.js';
 import { midiToFreq } from '../core/Audio.js';
 import { ROLE_MOODS, moodOf } from './moods.js';
 import { broom as makeBroom, lute, fishingRod, oreCrate } from './props.js';
+import { lifeTalk } from './lifeTalk.js';
 import { VILLAGERS, SEED_NPC } from '../data/villagers.js'; // quests part: Deep Town's folk by name
 
 const NAMES = ['Pebble', 'Rooty', 'Moss', 'Tuck', 'Clover', 'Burr', 'Dusty', 'Fern', 'Nib', 'Mabel', 'Toby', 'Bea', 'Pip', 'Tansy', 'Wort', 'Clem',
@@ -205,6 +206,9 @@ export class Townsfolk {
     // a named villager with quest business or a story to tell (src/town/quests.js)
     const q = npc.npcId ? this.s.townQuests?.talk(npc) : null;
     if (q) return q;
+    // (wave 21) day-to-day: their line for the story so far, heart events, gifts (src/town/lifeTalk.js)
+    const life = npc.npcId ? lifeTalk(this.s, npc) : null;
+    if (life) return life;
     const s = this.s, a = npc.a, p = s.player;
     if (!npc.seated) a.faceToward(p.x, p.z);
     npc.pause = 3.6;

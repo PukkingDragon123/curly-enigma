@@ -13,6 +13,7 @@ import { questTalk } from '../ui/questTalk.js';
 import { openTalkMenu } from '../ui/choices.js';
 import { el, pick } from '../core/util.js';
 import { SHOPS } from '../data/shops.js';
+import { ITEMS } from '../data/items.js';
 import { moodOf } from './moods.js';
 
 const _h = new THREE.Vector3();
@@ -107,7 +108,9 @@ export class TownQuests {
     this.greeted ||= {};
     if (this.s.time - (this.greeted[k.id] ?? -1e9) < 90) return false;
     this.greeted[k.id] = this.s.time;
-    const sh = SHOPS[k.id], line = pick(sh.lines || [`${sh.name}. Come in.`]);
+    const sh = SHOPS[k.id], sp = this.game.daily?.special();
+    // (wave 21) Vex has a price she's paying over the odds today
+    const line = k.id === 'assay' && sp && ITEMS[sp] ? pick([`Paying over the odds for ${ITEMS[sp].name.toLowerCase()} today. Don't ask why.`, `${ITEMS[sp].name}. I'm short. I'll pay for it.`]) : pick(sh.lines || [`${sh.name}. Come in.`]);
     cv.play({
       who: k.id, lines: [{ text: line, mood: k.faces?.greet || moodOf(line) }],
       choices: [
@@ -133,6 +136,7 @@ export class TownQuests {
       onclick: () => { g.audio.play('page', { vol: 0.5 }); o.on?.(); },
     }, [el('i', { class: 'nb-tack' }), el('b', {}, o.title), el('span', {}, o.text), o.who ? el('small', {}, o.who) : null]);
     const notes = [
+      ...dayNotes(g), // (wave 21) today's rumour and Vex's price (src/core/daily.js)
       ...open.slice(0, 8).map((id) => {
         const d = QUESTS[id], who = d.from;
         return { title: 'WANTED', text: Q.get(id).steps[0]?.text || d.title, who: `Ask ${npcName(who)} · ${NPCS[who]?.where || ''}`, cls: 'want', on: () => g.ui.toast(`Talk to <b>${npcName(who)}</b>: ${NPCS[who]?.where || 'in town'}. Look for the rolled poster over their head.`, { dur: 3400 }) };
@@ -171,6 +175,14 @@ export class TownQuests {
       k.item.label = m === '!' ? `${k.label} · ${k.spec.name} has work` : m === '?' ? `${k.label} · ${handLabel(Q, k.id)}` : k.label;
     }
   }
+}
+
+/** Today's two pinned slips: the rumour going round, and what Vex is short of. */
+function dayNotes(g) {
+  const D = g.daily;
+  if (!D) return [];
+  const sp = ITEMS[D.special()];
+  return [{ title: 'HEARD', text: D.rumour(), cls: 'misc' }, ...(sp ? [{ title: 'TODAY', text: `Vex's scale pays extra for ${sp.name.toLowerCase()}.`, cls: 'misc' }] : [])];
 }
 
 function handLabel(Q, npc) {

@@ -518,7 +518,8 @@ export class HarvestPatches {
     const q = qOf(st);
     const it = ITEMS[S.item];
     // into the pack (a full pack spills to the trunk), the index learns it, skills hear about it
-    for (let i = 0; i < S.n; i++) st.addItem(S.item, { ...(it?.q ? { q } : {}), spill: true });
+    const n = S.n + (this.g.daily?.cave.forage || 0); // (wave 21) glowcap days: one more
+    for (let i = 0; i < n; i++) st.addItem(S.item, { ...(it?.q ? { q } : {}), spill: true });
     if (it?.cat === 'plant') st.discover?.('plant', S.item);
     st.emit?.('act', { type: 'forage', id: S.item, q });
     setTimeout(() => {

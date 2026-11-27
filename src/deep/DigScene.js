@@ -347,7 +347,7 @@ export default class DigScene extends Scene {
     this.audio.play('ui_click', { pitch: 1.3 });
     this.updateHotbar();
   }
-  energy(n) { if (n > 0) this.state.useEnergy((this.state.hasBuff('sturdy') ? n * 0.6 : n) / (this.state.skill?.('stamina') || 1)); }
+  energy(n) { if (n > 0) this.state.useEnergy((this.state.hasBuff('sturdy') ? n * 0.6 : n) * (this.game.daily?.cave.dig ?? 1) / (this.state.skill?.('stamina') || 1)); } // (wave 21) still-air days dig easier
   shake(a) { if (this.state.data.settings.shake) this.shakeAmp = Math.max(this.shakeAmp, a); }
 
   // ------------------------------------------------------------------ frame
@@ -1305,7 +1305,7 @@ export default class DigScene extends Scene {
     if (pristine) this.audio.play('pristine');
     for (let k = 0; k < 6; k++) this.fx.glints(d.x, d.y, d.z);
     this.fx.dust(d.x, d.y, d.z, 8, [0.6, 0.55, 0.5], 0.1, out);
-    this.bodies.spawn(voxels, { vel: [out[0] * 2 + rand(-0.5, 0.5), 2.5, out[2] * 2 + rand(-0.5, 0.5)], glow, scale: 0.85, pickup: { id: d.item, q: Math.round(s.q), p: pristine, delay: 0.75 } });
+    this.bodies.spawn(voxels, { vel: [out[0] * 2 + rand(-0.5, 0.5), 2.5, out[2] * 2 + rand(-0.5, 0.5)], glow, scale: 0.85, pickup: { id: d.item, q: Math.min(100, Math.round(s.q) + (this.game.daily?.cave.oreQ || 0)), p: pristine, delay: 0.75 } });
     if (!this.flags.firstOre) { this.flags.firstOre = true; this.say('ore1', `<b>${it?.name || 'Ore'}!</b>`, 'good', 10); }
   }
 
