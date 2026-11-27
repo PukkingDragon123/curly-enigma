@@ -328,8 +328,8 @@ function pickLayer(f) {
     const j = i + o;
     if (j >= 0 && j < W * H && !own.has(j) && Math.abs((j % W) - (i % W)) <= 1) px.set(j, OUT_HEX);
   }
-  // the gloved fist round the handle, the arm in from the corner (./gripHand.js, the same as the 3D)
-  paintGrip((x, y, c) => px.set(y * W + x, c), { gx: g[0], gy: g[1], dx: d[0], dy: d[1], ax: SHO[0], ay: SHO[1], k: 0.85, w: W, h: H });
+//  // the gloved fist round the handle, the arm in from the corner (./gripHand.js, the same as the 3D)
+//  paintGrip((x, y, c) => px.set(y * W + x, c), { gx: g[0], gy: g[1], dx: d[0], dy: d[1], ax: SHO[0], ay: SHO[1], k: 0.85, w: W, h: H });
   const idx = [], col = [];
   for (const [i, c] of px) { idx.push(i); col.push(C32(c)); }
   return (PICKS[f] = [Int32Array.from(idx), Uint32Array.from(col)]);

@@ -483,8 +483,8 @@ export class Bake3D {
     this.over(o, this.grab(3));
     // the gloved fist round the handle and the arm in from the bottom-right edge, swinging with it
     const g = this.px(this.pickRoot.position), hd = this.px(this.pickBase.localToWorld(_v.set(0, 0.4, 0)));
-    paintGrip((x, y, c) => { const j = (y * W + x) * 4; o[j] = c >> 16; o[j + 1] = (c >> 8) & 255; o[j + 2] = c & 255; o[j + 3] = 255; },
-      { gx: g[0], gy: g[1], dx: hd[0] - g[0], dy: hd[1] - g[1], ax: W + 30, ay: H + 46, k: 2.3, w: W, h: H });
+//    paintGrip((x, y, c) => { const j = (y * W + x) * 4; o[j] = c >> 16; o[j + 1] = (c >> 8) & 255; o[j + 2] = c & 255; o[j + 3] = 255; },
+//      { gx: g[0], gy: g[1], dx: hd[0] - g[0], dy: hd[1] - g[1], ax: W + 30, ay: H + 46, k: 2.3, w: W, h: H });
     // the flash of the hit, drawn by hand, held for the hit-stop
     if (k === 0) this.stamp(o, FLASH, this.hitPx);
     else if (k === 1) this.stamp(o, FLASH2, this.hitPx);
