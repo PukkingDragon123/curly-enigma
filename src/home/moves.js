@@ -57,30 +57,30 @@ export class HomeMoves {
     if (lesson) this.onLessonRide?.();
     if (!this.inCage()) {
       const d = Math.hypot(this.cam.x - LIFT.outX, this.cam.z - LIFT.cz);
-      if (d > 0.2) await this.walkCam(LIFT.outX, LIFT.cz, 2.2);
+      if (d > 0.2) await this.walkCam(LIFT.outX, LIFT.cz, 3.2); // (wave 21: a brisk trot, not a stroll: this runs every trip)
     }
-    await this.walkCam(LIFT.cx, LIFT.cz, 1.6);
+    await this.walkCam(LIFT.cx, LIFT.cz, 2.6);
     // turn round to face out through the gate (west, into the cave)
     const yw0 = this.cam.yaw, dyw = Math.atan2(Math.sin(Math.PI / 2 - yw0), Math.cos(Math.PI / 2 - yw0));
-    await this.tween(0.45, (k) => { this.cam.yaw = yw0 + dyw * ease(k); this.cam.pitch += (-0.05 - this.cam.pitch) * 0.2; });
+    await this.tween(0.3, (k) => { this.cam.yaw = yw0 + dyw * ease(k); this.cam.pitch += (-0.05 - this.cam.pitch) * 0.2; });
     a.play('gate', { vol: 0.7 });
     if (lesson) this.game.ui.onboard?.cinema(true); // the first ride down is a cutscene (lessonDrop)
-    await this.tween(0.55, (k) => this.lift.setGate(ease(k)));
+    await this.tween(0.36, (k) => this.lift.setGate(ease(k)));
     this.gateShut = true;
     a.play('clunk', { vol: 0.6 });
     this.rig.shake(0.15);
-    await this.sleepFor(0.15);
+    await this.sleepFor(0.08);
     a.play('bell', { vol: 0.6 });
     this.rig.vm?.impact('none', 0.6);
-    await this.tween(0.3, (k) => this.lift.setLever(ease(k)));
-    await this.sleepFor(0.15);
+    await this.tween(0.22, (k) => this.lift.setLever(ease(k)));
+    await this.sleepFor(0.08);
     if (lesson) { await this.lessonDrop(); return; }
     // down: a jolt, a rattle, the sheave turning
     const loop = a.loop?.('elevator', { vol: 0.4 });
     a.play('creak', { vol: 0.6 });
     this.lift.sway = 1;
     const y0 = this.cam.y;
-    await this.tween(1.6, (k) => {
+    await this.tween(1.15, (k) => {
       const e = k < 0.15 ? (k / 0.15) ** 2 * 0.08 : 0.08 + (k - 0.15) / 0.85 * 0.92;
       const dy = e * 1.4;
       this.lift.setCage(-dy / T);

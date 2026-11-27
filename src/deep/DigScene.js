@@ -1305,7 +1305,7 @@ export default class DigScene extends Scene {
     if (pristine) this.audio.play('pristine');
     for (let k = 0; k < 6; k++) this.fx.glints(d.x, d.y, d.z);
     this.fx.dust(d.x, d.y, d.z, 8, [0.6, 0.55, 0.5], 0.1, out);
-    this.bodies.spawn(voxels, { vel: [out[0] * 2 + rand(-0.5, 0.5), 2.5, out[2] * 2 + rand(-0.5, 0.5)], glow, scale: 0.85, pickup: { id: d.item, q: Math.min(100, Math.round(s.q) + (this.game.daily?.cave.oreQ || 0)), p: pristine, delay: 0.75 } });
+    this.bodies.spawn(voxels, { vel: [out[0] * 2 + rand(-0.5, 0.5), 2.5, out[2] * 2 + rand(-0.5, 0.5)], glow, scale: 0.85, pickup: { id: d.item, q: Math.min(100, Math.round(s.q) + (this.game.daily?.cave.oreQ || 0)), p: pristine, delay: 0.5 } });
     if (!this.flags.firstOre) { this.flags.firstOre = true; this.say('ore1', `<b>${it?.name || 'Ore'}!</b>`, 'good', 10); }
   }
 
@@ -1321,7 +1321,13 @@ export default class DigScene extends Scene {
     if (!fits) this.game.ui.toast('<b>Sent home</b>', { icon: iconURL(p.id), kind: 'warn' });
     if (counts) { this.trip++; st.data.stats.ores++; if (p.p) st.data.stats.pristine++; this.tripItems.push(p.id); }
     this.tripValue += sellPrice(p.id, p.q, p.p);
-    this.audio.play(it.cat === 'gem' || p.p ? 'pickup_gem' : 'pickup', { pitch: 0.9 + Math.random() * 0.3 });
+    // (wave 21) finds picked up in a quick run climb a scale (Terraria/Stardew coin-chain feel): each
+    // one a step higher, a soft bag thump under it; a pause resets the run
+    const run = this.time - (this.pickRunT ?? -9) < 1.1 ? Math.min(7, (this.pickRun || 0) + 1) : 0;
+    this.pickRun = run; this.pickRunT = this.time;
+    const step = [0, 2, 4, 5, 7, 9, 11, 12][run];
+    this.audio.play(it.cat === 'gem' || p.p ? 'pickup_gem' : 'pickup', { pitch: Math.pow(2, step / 12) * (0.97 + Math.random() * 0.06) });
+    this.audio.noise?.({ color: 'brown', filter: 'lowpass', f: 260, dur: 0.07, vol: 0.13, a: 0.002 });
     const cat = it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'mineral' : it.cat === 'plant' ? 'plant' : null;
     if (cat) st.discover(cat, p.id);
     this.act(it.cat === 'gem' ? 'gem' : it.cat === 'mineral' ? 'ore' : it.cat === 'plant' || it.cat === 'ingredient' ? 'forage' : 'loot', { id: p.id, q: p.q, pristine: !!p.p });

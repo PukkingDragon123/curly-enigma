@@ -551,7 +551,7 @@ export class Clumps {
       const t = ox * dir.x + oy * dir.y + oz * dir.z;
       if (t < 0) continue;
       const d2 = ox * ox + oy * oy + oz * oz - t * t;
-      const rr = c.r * 1.35 + 0.04;
+      const rr = c.r * 1.5 + 0.06 + 0.07 * t; // (wave 21: forgiving aim, a cone that widens with distance: no pixel-hunting for a clump on the floor)
       if (d2 > rr * rr) continue;
       const th = t - Math.sqrt(Math.max(0, rr * rr - d2));
       if (th < bt) { bt = th; best = c; }

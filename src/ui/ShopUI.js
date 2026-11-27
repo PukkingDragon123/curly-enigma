@@ -251,6 +251,9 @@ export function openShop(game, shopId) {
     if (g > 0) {
       game.audio.play('coins', { n: Math.min(8, 2 + Math.floor(Math.log10(g + 1) * 1.5)) });
       ui.toast(`Sold · <b>${formatGoldFull(g)}</b>`, { icon: COIN(), kind: 'good' });
+      // (wave 21) the coins jump off the button you pressed and arc into the pouch, more for more
+      const btn = document.activeElement?.closest?.('button'), br = btn?.getBoundingClientRect?.();
+      ui.status?.flyTo?.('pouch', COIN(), { n: Math.round(Math.min(6, 1 + Math.log10(g + 1) * 1.6)), from: br && br.width ? { x: br.left + br.width / 2, y: br.top + br.height / 2 } : null, delay: 60 });
       st.learn('assay');
       tilt();
       if (g > 5000) speak(pick(['Now THAT is quality.', 'Hm. Hm! Well.', 'You\'re going to make me retire early.']));

@@ -1,5 +1,5 @@
 // The loading screen's little 3D scene (wave 20): the game's own voxel pickaxe (fps/viewmodel/parts.js
-// pickGeo, held in the gloved fist on the furry forearm) swings at a voxel ore clump (deep/clumps:
+// pickGeo, gripped in the mole's leather work glove (gloveGeo below, the gfx/char/glove.js palette, carved chunky so it reads as a hand) on the furry forearm) swings at a voxel ore clump (deep/clumps:
 // buildClump + ClumpMesher, a gold core in a crust of dirt and mudstone) on a rubble ledge against a
 // faint plated cave wall. Warm lamplight from the top left, a plum fill from the right, the ore's own
 // glow. Each strike: a wind-up, a snap, the hit (a pixel flash) held for two frames, then voxel chips
@@ -17,12 +17,13 @@
 //   b.dispose()                 frees every GPU resource and drops the context
 //   G3 = { W, H, F, S, dur, cx, cy, rx, ry }   sheet geometry (cx.. = the clump on screen, art px)
 import * as THREE from 'three';
-import { pickGeo, fistGeo, forearmGeo } from '../fps/viewmodel/parts.js';
+import { pickGeo, forearmGeo } from '../fps/viewmodel/parts.js';
+import { GLOVE } from '../gfx/char/glove.js';
 import { buildClump, AIR, SOFT, ORE, P_N, P_CRUST, P_ROCK, P_ORE } from '../deep/clumps/grid.js';
 import { ClumpMesher } from '../deep/clumps/mesh.js';
 import { M } from '../deep/materials.js';
 import { ORES } from '../data/ores.js';
-import { Vox, h3 } from '../gfx/char/vox.js';
+import { Vox, h3, mix, PX, PY, NY, PZ, NZ } from '../gfx/char/vox.js';
 import { PAL as P, OUTLINE, OUTLINE_LIT } from './palette.js';
 
 export const G3 = { W: 224, H: 144, F: 18, S: 8, dur: 1.35, cx: 92, cy: 84, rx: 26, ry: 24 };
@@ -42,6 +43,74 @@ const POSE = [
 ];
 
 const VS = 0.0235; // pick / glove voxel (world units)
+const GV = VS * 3; // the loader's own glove voxel: chunky, about 1.8 sheet pixels (the grip is the focal point)
+const ARM = 1.25; // the forearm, a size up to fill the gauntlet
+const G_END = 9; // the gauntlet's open end (glove voxels along +z)
+
+/**
+ * The mole's leather work glove gripping a handle that runs along +Y through the origin, in big
+ * chunky voxels (same frame as fps/viewmodel fistGeo: back of the paw +X, the fingers curl round
+ * through -Z, the forearm comes from +Z). Flat planes in the glove palette: lit tan hide on top, the
+ * knuckle patch worn pale, a dark groove between each finger roll, the thumb hooked over the top,
+ * claw tips out of the cut-open fingers, and the darker flared gauntlet with a strap, a brass
+ * buckle and a stitched seam.
+ */
+function gloveGeo() {
+  const v = new Vox(-6, 8, -7, 10, -6, G_END + 2);
+  const H = GLOVE.hide, C = GLOVE.cuff, K = GLOVE.patch;
+  const FY = [4.1, 1.5, -1.1, -3.7]; // the four finger rolls (centres along the handle)
+  // the back of the paw, outside the handle, and the heel running into the wrist
+  v.ell(2.7, 0.6, 1.6, 1.9, 5.4, 3, 0, 1, 2.4);
+  // the finger rolls: rings round the handle from the back (+x) through the front (-z) to the far side
+  FY.forEach((yc, i) => {
+    const r0 = 1.7, r1 = i === 3 ? 3.3 : 3.7;
+    v.fill(-5, 6, yc - 1.2, yc + 1.2, -5, 4, (x, y, z) => {
+      const r = Math.hypot(x, z), a = Math.atan2(-z, x) * 180 / Math.PI;
+      return r >= r0 && r <= r1 && Math.abs(y - yc) <= 1.08 && a > -20 && a < 196 - i * 6;
+    }, 0, 1);
+    // the knuckle: a bump at the corner, under the oiled patch
+    v.ell(2.8, yc, -2.6, 1.3, 1.05, 1.3, 0, 2);
+    // the claw out of the cut fingertip, hooked back along the far side
+    v.line(-3.2, yc - 0.2, 0.6, -2.9, yc - 0.5, 2.4, 0, 0.62, 6);
+  });
+  // the thumb hooks over the top of the handle from the far side, its tip resting on the first finger
+  v.line(-1.4, 5.2, 2.4, -2.1, 6.4, -0.2, 0, 1.25, 1);
+  v.line(-2.1, 6.4, -0.2, 0.2, 6.3, -2.4, 0, 1.15, 1);
+  v.line(0.2, 6.3, -2.4, 1.6, 5.8, -2.6, 0, 0.62, 6);
+  // the gauntlet: a flared tube along +z, its rim rolled, a raised strap with a brass buckle
+  const cx = 0.6, cy = 0.4;
+  v.fill(-6, 8, -7, 9, 2, G_END, (x, y, z) => {
+    const R = 3.9 + Math.max(0, z - 3) * 0.17, r = Math.hypot(x - cx, (y - cy) * 0.96);
+    return r <= R && r >= R - 1.7;
+  }, 0, 3);
+  v.fill(-6, 8, -7, 9, 4.2, 5.8, (x, y, z) => {
+    const R = 4.6, r = Math.hypot(x - cx, (y - cy) * 0.96);
+    return r <= R && r >= R - 1.2;
+  }, 0, 4);
+  v.box(4, 0, 4, 6, 3, 6, 0, 5);
+  v.box(4, 1, 4, 5, 2, 6, 0, 4); // (the strap through the buckle's frame)
+  const zt = 3; // the stitched seam where the hide meets the gauntlet
+  v.resolve({
+    1: (x, y, z, e) => {
+      let c = e & PY ? H[7] : e & NY ? H[3] : e & PX ? H[6] : e & NZ ? H[5] : H[4];
+      const g = FY.some((yc) => Math.abs(y + 0.5 - yc) > 0.6 && Math.abs(y + 0.5 - yc) < 1.3);
+      if (g && !(e & PY)) c = H[2]; // the groove between two rolls
+      if (z === zt && (e & PX) && (y & 1)) c = GLOVE.thread[2];
+      return c;
+    },
+    2: (x, y, z, e) => (e & PY ? K[7] : e & PX || e & NZ ? K[6] : K[4]),
+    3: (x, y, z, e) => {
+      const rim = z >= G_END - 1;
+      let c = rim ? (e & PY ? C[6] : e & PZ ? C[1] : C[5]) : e & PY ? C[5] : e & NY ? C[2] : C[4];
+      if (z === G_END - 2 && (e & PX) && (y & 1)) c = mix(c, GLOVE.thread[1], 0.6);
+      return c;
+    },
+    4: (x, y, z, e) => (e & PY ? GLOVE.strap[4] : GLOVE.strap[2]),
+    5: (x, y, z, e) => GLOVE.brass[e & PY ? 5 : e & PX ? 4 : 2],
+    6: (x, y, z, e) => (e & PY ? 0xf2e6c6 : 0xc8b490),
+  });
+  return v.geometry(false);
+}
 const WV = 0.15; // wall and floor voxels (coarser: big background pieces)
 const FLOOR_Y = -0.9;
 const CLUMP_X = -0.55;
@@ -324,14 +393,21 @@ export class Bake3D {
     const p = pickGeo('pick_iron');
     part(p.geo);
     if (p.glow) part(p.glow);
-    part(fistGeo());
+    // the gloved fist: the view model's fist is all fine stitching and speckle that turns to mush at
+    // the sheet's 224 × 144, so the loader carves its own chunky toy glove (gloveGeo below: the same
+    // work glove, gfx/char/glove.js palette, in big flat planes), its back to the camera
+    const glove = new THREE.Mesh(this.geo(gloveGeo()), mat);
+    glove.scale.set(-GV, GV, GV); // (mirrored: the back of the glove, knuckle patch and buckle, toward us)
+    glove.layers.set(3);
+    base.add(glove);
     this.scene.add(root);
-    // the forearm runs from the wrist (12 voxels behind the grip) up to a shoulder off to the right
+    // the forearm runs out of the gauntlet (its fur ruff spilling over the open end) up to a
+    // shoulder off to the right
     this.arm = new THREE.Mesh(this.geo(forearmGeo().clone()), mat);
-    this.arm.scale.setScalar(VS);
+    this.arm.scale.setScalar(VS * ARM);
     this.arm.layers.set(3);
     this.scene.add(this.arm);
-    this.wristLocal = new THREE.Vector3(0, 0, 12 * VS).applyEuler(base.rotation);
+    this.wristLocal = new THREE.Vector3(0, 0, (G_END - 11 * ARM * VS / GV) * GV).applyEuler(base.rotation);
     this.tipLocal = new THREE.Vector3(0, 66 * VS, -44 * VS).applyEuler(base.rotation);
   }
 

@@ -431,7 +431,10 @@ export class Game {
     if (id === 'pepperroot') st.addBuff('warm', 90);
     if (id === 'bubblebulb') st.addBuff('bouncy', 90);
     if (id === 'sparkmoss' && !st.protects('zap')) { this.audio.play('zap'); this.ui.toast('Bzzt! Your tongue tingles.', { kind: 'warn' }); st.addBuff('zippy', 60); }
+    // (wave 21) a bite, a second crunch, a swallow: layered so a meal lands with some weight
     this.audio.play('eat');
+    this.audio.play('eat', { vol: 0.55, pitch: 1.12 + Math.random() * 0.1, delay: 0.17, gap: 0 });
+    this.audio.play('gulp', { vol: 0.5, delay: 0.4 });
     this.ui.toast(`Ate ${it.name} <b>+${energy}</b>`, { icon: undefined });
     st.learn('energy');
     return true;
